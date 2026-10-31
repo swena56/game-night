@@ -405,7 +405,8 @@ Riders and Air Hockey start in it) (#13, #15).
   suspect, most votes first, the voters popping in one by one.
 - 🖍️ **Scribble Relay:** ✅ thin, normal and thick brushes (stored in each stroke's ink number, so older
   drawings and the bots' are unchanged), and 💾 saving a revealed chain as one tall PNG.
-- 🧠 **Trivia Rush:** ✅ added (#49), now 228 questions in 9 topics. ✅ The quickest right answer gets a ⚡ callout. ✅ An Answers setting adds ✅ true/false rounds (every question, or every third). ✅ 40 more questions, filling out the smaller topics (Space, Sport, Food).
+- 🧠 **Trivia Rush:** ✅ added (#49), now 228 questions in 9 topics. ✅ The quickest right answer gets a ⚡ callout. ✅ An Answers setting adds ✅ true/false rounds (every question, or every third). ✅ 40 more questions, filling out the smaller topics (Space, Sport, Food). ✅ Steady layout (#58): the question, answers and
+  note keep reserved heights, so the answer buttons never move between questions (true/false fills the same space).
 - 🥷 **Night Heist:** ✅ a night-by-night grid of everyone's choices and gold changes. ✅ Bots get a personality, shown on their chip: 🦊 greedy, 🐢 cautious or 🦉 watchful.
 - 🎭 **Unmask:** ✅ an ↶ Undo toast after flipping a batch of faces (toasts can now carry an action button).
   Next: generated avatars, and pinch-zoom on the board.

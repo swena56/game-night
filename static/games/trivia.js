@@ -36,6 +36,7 @@ UI.trivia = (() => {
     if (t.claim) $('tvQ').append(ctx.el('div', 'tv-claim', `→ ${t.claim}`), ctx.el('small', 'tv-tf', 'True or false?'));
 
     const opts = $('tvOpts'); opts.innerHTML = '';
+    opts.classList.toggle('two', t.options.length === 2);
     const canPick = S.phase === 'playing' && t.stage === 'ask' && t.playing && t.mine == null && !!ctx.act;
     t.options.forEach((text, i) => {
       const b = ctx.el('button', `tv-opt c${i}`);

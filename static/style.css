@@ -1200,10 +1200,12 @@ body.focus .ra-stage { height: max(220px, calc(var(--app-h, 100vh) - 215px)); }
 .tv { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px; }
 .tv-head { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--muted); }
 .tv-topic { font-weight: 700; color: var(--text); }
-.tv-q { font-size: 20px; font-weight: 700; text-align: center; padding: 14px 8px; min-height: 3.2em; line-height: 1.3; }
+.tv-q { font-size: 20px; font-weight: 700; text-align: center; padding: 10px 8px; min-height: 5.6em; line-height: 1.3;
+  display: flex; flex-direction: column; justify-content: center; }  /* room for a two-line question plus a true/false claim, so the answers never move (#58) */
 .tv-claim { margin-top: 8px; font-size: 24px; color: #ffd166; }
 .tv-tf { display: block; font-size: 13px; font-weight: 600; color: var(--muted); }
-.tv-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tv-opts { display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr; gap: 8px; min-height: 136px; }
+.tv-opts.two { grid-auto-rows: minmax(136px, 1fr); }  /* true / false: two tall buttons fill the same space */
 .tv-opt { display: flex; align-items: center; gap: 8px; text-align: left; padding: 14px 12px; min-height: 64px; border-radius: 14px;
   border: 0; color: #fff; font-size: 16px; font-weight: 600; position: relative; transition: transform .12s, opacity .2s; }
 .tv-opt b { flex: none; width: 26px; height: 26px; border-radius: 50%; background: #0003; display: grid; place-items: center; font-size: 13px; }
@@ -1214,8 +1216,8 @@ body.focus .ra-stage { height: max(220px, calc(var(--app-h, 100vh) - 215px)); }
 .tv-opt.wrong { text-decoration: line-through; }
 .tv-opt.right { box-shadow: 0 0 0 4px var(--ok), 0 0 18px var(--ok); transform: scale(1.03); }
 .tv-who { position: absolute; top: 4px; right: 6px; display: flex; gap: 2px; }
-.tv-note { min-height: 1.4em; text-align: center; font-size: 14px; color: var(--muted); }
-@media (max-width: 420px) { .tv-q { font-size: 17px; } .tv-opt { font-size: 14px; min-height: 58px; } }
+.tv-note { min-height: 2.8em; margin-top: 6px; text-align: center; font-size: 14px; color: var(--muted); }
+@media (max-width: 420px) { .tv-q { font-size: 17px; } .tv-opt { font-size: 14px; min-height: 58px; } .tv-opts { min-height: 124px; } .tv-opts.two { grid-auto-rows: minmax(124px, 1fr); } }
 
 /* word ladder */
 .ld { width: min(100%, 420px); margin: 0 auto; }
