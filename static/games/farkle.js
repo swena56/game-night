@@ -119,8 +119,13 @@ UI.farkle = (() => {
       const ev = $('fkEvent');
       ev.className = 'fk-event ' + f.event.kind;
       ev.textContent = f.event.kind === 'farkle' ? `💥 ${who} FARKLED (${f.event.roll.join(' ')})${f.event.lost ? ` and lost ${num(f.event.lost)}` : ''}!`
-        : `🏦 ${who} banked ${num(f.event.pts)}`;
+        : f.event.kind === 'hot' ? `🔥 HOT DICE! ${who} rolls all six again with ${num(f.event.pts)} on the line`
+          : `🏦 ${who} banked ${num(f.event.pts)}`;
       void ev.offsetWidth; ev.classList.add('show');
+      if (f.event.kind === 'hot') {
+        const box = $('fkDice'); box.classList.remove('hot'); void box.offsetWidth; box.classList.add('hot');
+        if (f.event.by === me) ctx.confetti();
+      }
     }
 
     // scores: a bar each toward the target

@@ -15,7 +15,8 @@ UI.yacht = (() => {
     </div>`;
     side.innerHTML = `<div class="panel"><div id="yaStatus" class="seat-row"></div>
       <ul class="rules ya-rules"><li>Ones–Sixes: that number's total</li><li>Full House: all dice · Four of a Kind: the four</li>
-      <li>Little Straight 1–5 · Big Straight 2–6: 30</li><li>Choice: all dice · Yacht (five alike): 50</li></ul></div>`;
+      <li>Little Straight 1–5 · Big Straight 2–6: 30</li><li>Choice: all dice · Yacht (five alike): 50</li></ul>
+      <div id="yaBest" hidden><h3>🏅 Best solo scores</h3><ol class="ya-best"></ol><p class="hint left">Kept on this device.</p></div></div>`;
     const dice = $('yaDice');
     for (let i = 0; i < 5; i++) {
       const b = Object.assign(document.createElement('button'), { className: 'ya-die' });  // ctx arrives with the first render
@@ -105,6 +106,28 @@ UI.yacht = (() => {
     for (const td of t.querySelectorAll('tr.ya-total td[data-id]')) td.textContent = String(y.totals[td.dataset.id] ?? 0);
     for (const th of t.querySelectorAll('th[data-id]')) th.classList.toggle('now', th.dataset.id === S.turn);
     $('yaStatus').textContent = y.last ? `Last: ${y.last}` : 'Twelve boxes each';
+    if (y.seats.length === 1 && y.seats[0] === me && !!ctx.act) showBest(y, me);
+  }
+
+  // solo high scores, kept in this browser; a finished card is recorded once (its boxes identify it)
+  function showBest(y, me) {
+    let best = [];
+    try { best = JSON.parse(localStorage.getItem('yacht.best')) || []; } catch {}
+    const card = JSON.stringify(y.cards[me]), score = y.totals[me] ?? 0;
+    let fresh = null;
+    if (S.phase === 'over' && !best.some((b) => b.card === card)) {
+      fresh = { score, card, date: new Date().toISOString().slice(0, 10) };
+      best = [...best, fresh].sort((a, b) => b.score - a.score).slice(0, 5);
+      try { localStorage.setItem('yacht.best', JSON.stringify(best)); } catch {}
+    }
+    const box = $('yaBest'), list = box.querySelector('ol');
+    box.hidden = !best.length;
+    list.innerHTML = '';
+    for (const b of best) {
+      const li = ctx.el('li', b === fresh || (S.phase === 'over' && b.card === card) ? 'now' : '', `${b.score} `);
+      li.append(ctx.el('small', '', b.date));
+      list.append(li);
+    }
   }
 
   return { mount, render };

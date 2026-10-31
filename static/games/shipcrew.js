@@ -1,7 +1,7 @@
 // Ship, Captain & Crew: three slots for the 6, 5 and 4, the loose dice (the cargo once all three are
 // in), and Roll / Dock. Once loaded, tap cargo dice to pick which ones to reroll.
 UI.shipcrew = (() => {
-  let S, ctx, pick = new Set([0, 1]), turnKey = '', seenLast = -1;
+  let S, ctx, pick = new Set([0, 1]), turnKey = '', seenLast = -1, rollKey = '';
   const $ = (id) => document.getElementById(id);
   const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
   const SLOTS = [[6, '🚢', 'Ship'], [5, '🧑‍✈️', 'Captain'], [4, '👥', 'Crew']];
@@ -14,7 +14,7 @@ UI.shipcrew = (() => {
   }
 
   function mount(main, side) {
-    pick = new Set([0, 1]); turnKey = ''; seenLast = -1;
+    pick = new Set([0, 1]); turnKey = ''; seenLast = -1; rollKey = '';
     main.innerHTML = `<div class="sc">
       <div id="scTurn" class="sc-turn"></div>
       <div id="scSlots" class="sc-slots"></div>
@@ -41,6 +41,9 @@ UI.shipcrew = (() => {
 
     $('scTurn').textContent = S.phase !== 'playing' ? '' : `Round ${sc.round}/${sc.rounds} · ${mine ? 'Your turn' : `${who?.name ?? '?'}'s turn`} · ${'🎲'.repeat(sc.maxRolls - sc.rolls) || 'no rolls left'}`;
 
+    // a fresh roll shakes the dice that just landed
+    const rk = `${S.turn}|${sc.round}|${sc.rolls}`, shake = !!sc.rolls && rollKey !== '' && rk !== rollKey;
+    rollKey = rk;
     const slots = $('scSlots'); slots.innerHTML = '';
     SLOTS.forEach(([v, icon, label], i) => {
       const slot = ctx.el('div', 'sc-slot' + (i < sc.found.length ? ' got' : i === sc.found.length ? ' next' : ''));
@@ -52,7 +55,7 @@ UI.shipcrew = (() => {
     const free = $('scFree'); free.innerHTML = '';
     sc.free.forEach((v, i) => {
       const canPick = mine && sc.loaded && sc.rolls < sc.maxRolls;
-      const b = die(v, (canPick && pick.has(i) ? 'held' : '') + (sc.loaded ? ' cargo' : ' dim'), 'button');
+      const b = die(v, (canPick && pick.has(i) ? 'held' : '') + (sc.loaded ? ' cargo' : ' dim') + (shake ? ' roll' : ''), 'button');
       b.disabled = !canPick;
       b.setAttribute('aria-label', `${v}${canPick ? (pick.has(i) ? ', will reroll' : ', keeping') : ''}`);
       b.onclick = () => { pick.has(i) ? pick.delete(i) : pick.add(i); render(S, ctx); };
@@ -81,9 +84,10 @@ UI.shipcrew = (() => {
       const p = ctx.player(pid); if (!p) continue;
       const row = ctx.el('div', 'seat-row' + (S.turn === pid ? ' turn' : ''));
       const dot = ctx.el('span', 'dot'); dot.style.background = p.color;
-      row.append(dot, ctx.el('span', '', `${p.name}: ${sc.scores[pid] ?? 0}`));
+      row.append(dot, ctx.el('span', '', sc.coins ? `${p.name}: ${sc.coins[pid] ?? 0} 🪙 · ${sc.scores[pid] ?? 0} cargo` : `${p.name}: ${sc.scores[pid] ?? 0}`));
       box.append(row);
     }
+    if (sc.pot != null) box.append(ctx.el('div', 'sc-pot', `🍺 Pot: ${sc.pot} 🪙`));
     if (sc.solo) box.append(ctx.el('div', 'hint left', `Solo goal: ${sc.goal} cargo`));
   }
 

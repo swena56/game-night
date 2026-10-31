@@ -1,7 +1,7 @@
 // Liar's Dice: the current bid up top, your hidden dice, then a bid picker (how many, which face) with
 // Liar! and Exact buttons. The last showdown stays on screen with everyone's dice until the next one.
 UI.liars = (() => {
-  let S, ctx, qty = 1, face = 2, bidKey = '', seenShow = '', rolled = -1;
+  let S, ctx, qty = 1, face = 2, bidKey = '', seenShow = '', rolled = -1, reviewOpen = false;
   const $ = (id) => document.getElementById(id);
   const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
   const say = (q, f) => (q === 1 ? `one ${f}` : `${q} ${f}s`);
@@ -116,6 +116,20 @@ UI.liars = (() => {
         for (const d of dice) dd.append(die(d, d === sd.bid[1] || (sd.wild && d === 1) ? 'match' : 'dim'));
         row.append(name, dd);
         show.append(row);
+      }
+      if (sd.review?.length) {
+        const rv = ctx.el('details', 'lr-review');
+        rv.open = reviewOpen; rv.ontoggle = () => { reviewOpen = rv.open; };
+        rv.append(ctx.el('summary', '', '📊 How likely was each bid?'));
+        for (const b of sd.review) {
+          const who = ctx.player(b.by);
+          const row = ctx.el('div', 'lr-rv' + (b.held ? ' held' : ' bust'));
+          const name = ctx.el('span', 'lr-name', who?.name ?? '?'); name.style.color = who?.color ?? 'inherit';
+          row.append(name, ctx.el('span', '', say(b.bid[0], b.bid[1])), ctx.el('b', '', `${b.odds}%`), ctx.el('span', '', b.held ? '✓ held' : '✗ bust'));
+          rv.append(row);
+        }
+        rv.append(ctx.el('div', 'hint left', "The odds are from each bidder's own seat: their dice, plus a fair roll for every hidden die."));
+        show.append(rv);
       }
       if (sk !== seenShow) { seenShow = sk; show.classList.remove('flash'); void show.offsetWidth; show.classList.add('flash'); }
     }

@@ -125,6 +125,15 @@ class LiarsDice(Game):
         self.room.add_log(f"🗣️ {p.name} bids {q} × {FACE[f - 1]} ({say(q, f)})")
         self.room.advance()
 
+    def review(self, hands, q, f, by):
+        """A bid seen from the bidder's seat afterwards: how likely it was from their own dice, and if it held."""
+        wild = self.s["wild"] and f != 1
+        count = lambda dice: sum(1 for d in dice if d == f or (wild and d == 1))
+        mine = count(hands.get(by, []))
+        hidden = sum(len(d) for pid, d in hands.items() if pid != by)
+        odds = at_least(q - mine, hidden, 1 / 3 if wild else 1 / 6)
+        return {"by": by, "bid": [q, f], "odds": round(100 * odds), "held": sum(map(count, hands.values())) >= q}
+
     def call(self, p, kind):
         r = self.room
         q, f, by = self.bid
@@ -149,7 +158,8 @@ class LiarsDice(Game):
                 out.append(x)
                 r.add_log(f"💀 {x.name} is out of dice!", "big")
         self.showdown = {"round": self.round, "hands": hands, "bid": [q, f], "by": by, "caller": p.id, "kind": kind,
-                         "count": n, "losers": [x.id for x in losers], "wild": self.s["wild"]}
+                         "count": n, "losers": [x.id for x in losers], "wild": self.s["wild"],
+                         "review": [self.review(hands, *b) for b in self.bids]}
         left = self.players()
         if len(left) == 1:
             w = left[0]

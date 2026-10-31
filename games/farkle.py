@@ -163,6 +163,8 @@ class Farkle(Game):
             if self.dice_left == 0:
                 self.dice_left = 6
                 r.add_log(f"🔥 Hot dice! {p.name} rolls all six again with {self.turn_pts:,} on the line.", "power")
+                self.event_id += 1
+                self.event = {"id": self.event_id, "kind": "hot", "by": p.id, "pts": self.turn_pts}
         self.roll = [self.rng.randint(1, 6) for _ in range(self.dice_left)]
         self.rolled = True
         if not keep_options(self.roll):

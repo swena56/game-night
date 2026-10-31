@@ -14,6 +14,7 @@ ROLLS = 3
 NEED = (6, 5, 4)
 NAMES = ("🚢 ship", "🧑‍✈️ captain", "👥 crew")
 SOLO_PER_ROUND = 5   # alone, average this much cargo a round to win (best play averages about 4.3)
+PURSE = 10           # 🍺 pot games: coins each player starts with
 
 
 @lru_cache(maxsize=None)
@@ -37,6 +38,7 @@ class ShipCrew(Game):
         "Rolls left? Tap cargo dice to reroll them (one or both), or ⚓ Dock to keep the cargo.",
         "No crew after three rolls scores 0. Most cargo after the last round wins.",
         f"Alone, average {SOLO_PER_ROUND} cargo a round to win.",
+        "🍺 Pub pot: everyone antes 1 🪙 a round and the round's best cargo takes the pot (a tie rolls it over). Most coins wins.",
     ]
     name = "Ship, Captain & Crew"
     icon = "🚢"
@@ -45,7 +47,11 @@ class ShipCrew(Game):
     max_players = 6
     settings_schema = {
         "rounds": ("Rounds", [(5, "5"), (3, "3"), (8, "8")], 5),
+        "pot": ("Scoring", [(False, "Total cargo"), (True, "🍺 Pub pot")], False),
     }
+
+    def potted(self):
+        return bool(self.s.get("pot")) and len(self.seats) > 1
 
     # -- setup
 
@@ -55,12 +61,46 @@ class ShipCrew(Game):
         for p in seated:
             p.g.score = 0
             p.g.best = 0
+            p.g.coins = PURSE
+            p.g.haul = None  # this round's cargo, for the pot
+        self.pot = 0
         self.round = 1
         self.turns = 0          # turns taken this round
         self.last = None        # the latest finished turn, for every screen
         self.first = rng.choice(seated).id
         self.room.add_log(f"🚢 Ship, Captain & Crew: {self.s['rounds']} rounds. Roll a 6, then a 5, then a 4!", "big")
+        self.ante()
         self.begin(self.first)
+
+    # -- 🍺 pub pot
+
+    def ante(self):
+        if not self.potted():
+            return
+        for q in self.players():
+            q.g.haul = None
+            if q.g.coins > 0:
+                q.g.coins -= 1
+                self.pot += 1
+        self.room.add_log(f"🍺 Everyone antes: {self.pot} 🪙 in the pot.")
+
+    def settle(self):
+        if not self.potted():
+            return
+        live = [q for q in self.players() if q.g.haul is not None]
+        top = max((q.g.haul for q in live), default=0)
+        best = [q for q in live if q.g.haul == top]
+        if top and len(best) == 1:
+            best[0].g.coins += self.pot
+            self.room.add_log(f"🍺 {best[0].name} takes the pot: {self.pot} 🪙 for {top} cargo!", "question")
+            self.pot = 0
+        elif self.round >= self.s["rounds"] and best and top:
+            share, self.pot = divmod(self.pot, len(best))
+            for q in best:
+                q.g.coins += share
+            self.room.add_log(f"🍺 A tie on the last round: {' & '.join(q.name for q in best)} split the pot.", "question")
+        else:
+            self.room.add_log(f"🍺 No single best cargo: the pot ({self.pot} 🪙) rolls over.")
 
     def begin(self, pid):
         self.found = []          # the needed faces found so far, in order
@@ -124,6 +164,7 @@ class ShipCrew(Game):
         pts = sum(self.free) if self.loaded() else 0
         p.g.score += pts
         p.g.best = max(p.g.best, pts)
+        p.g.haul = pts
         if self.loaded():
             r.add_log(f"⚓ {p.name} docks with {pts} cargo → {p.g.score}.", "question")
         else:
@@ -132,11 +173,13 @@ class ShipCrew(Game):
         self.turns += 1
         live = self.players()
         if self.turns >= len(live):
+            self.settle()
             if self.round >= self.s["rounds"]:
                 return self.finish()
             self.round += 1
             self.turns = 0
             r.add_log(f"🔔 Round {self.round} of {self.s['rounds']}.")
+            self.ante()
         r.advance()
         self.begin(r.turn)
 
@@ -149,6 +192,13 @@ class ShipCrew(Game):
             if p.g.score >= need:
                 return r.finish(p, f"🏆 {p.name} hauls {p.g.score} cargo in {self.s['rounds']} rounds!")
             return r.finish(None, f"🚢 {p.name} hauled {p.g.score} cargo. {need} wins solo — try again!")
+        if self.potted():
+            rank = lambda q: (q.g.coins, q.g.score)
+            top = max(map(rank, live))
+            best = [q for q in live if rank(q) == top]
+            if len(best) == 1:
+                return r.finish(best[0], f"🏆 {best[0].name} wins with {top[0]} 🪙!")
+            return r.finish(None, f"🤝 Tie at {top[0]} 🪙 and {top[1]} cargo between {' & '.join(q.name for q in best)}.")
         top = max(q.g.score for q in live)
         best = [q for q in live if q.g.score == top]
         if len(best) == 1:
@@ -214,10 +264,13 @@ class ShipCrew(Game):
     # -- view
 
     def meta(self, p):
-        return f"{p.g.score} cargo" if hasattr(p.g, "score") else ""
+        if not hasattr(p.g, "score"):
+            return ""
+        return f"{p.g.coins} 🪙 · {p.g.score} cargo" if self.potted() else f"{p.g.score} cargo"
 
     def final_scores(self):
-        return {i: self.room.players[i].g.score for i in self.seats if i in self.room.players}
+        key = "coins" if self.potted() else "score"
+        return {i: getattr(self.room.players[i].g, key) for i in self.seats if i in self.room.players}
 
     def view(self, p):
         r = self.room
@@ -227,4 +280,6 @@ class ShipCrew(Game):
             "loaded": self.loaded(), "last": self.last,
             "scores": {i: r.players[i].g.score for i in self.seats if i in r.players},
             "solo": len(self.seats) == 1, "goal": SOLO_PER_ROUND * self.s["rounds"],
+            "pot": self.pot if self.potted() else None,
+            "coins": {i: r.players[i].g.coins for i in self.seats if i in r.players} if self.potted() else None,
         }}
