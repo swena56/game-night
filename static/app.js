@@ -876,6 +876,27 @@ setInterval(() => {
   t.classList.toggle('urgent', left < 10);
 }, 250);
 
+// keep the screen on while a game is being played (browsers allow this on HTTPS and localhost only)
+let wakeLock = null, wakeBusy = false;
+async function keepAwake(on) {
+  if (wakeBusy || on === !!wakeLock) return;
+  wakeBusy = true;
+  try {
+    if (on) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });  // the browser drops it when the tab is hidden
+    } else {
+      const lock = wakeLock; wakeLock = null;
+      await lock.release();
+    }
+  } catch { wakeLock = null; }
+  wakeBusy = false;
+}
+setInterval(() => keepAwake(!!S && !replay && S.phase === 'playing' && !document.hidden && !!navigator.wakeLock), 1000);
+
+// installable app: the service worker keeps a copy of the app shell (HTTPS and localhost only)
+if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWorker.register('/sw.js').catch(() => {});
+
 const roomParam = (new URLSearchParams(location.search).get('room') || '').toUpperCase();
 if (roomParam) $('#code').value = roomParam;
 if (session && (!roomParam || roomParam === session.code)) connect(); else show('home');

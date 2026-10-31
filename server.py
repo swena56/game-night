@@ -26,7 +26,8 @@ from games.wordsmith import warm_up
 
 PORT = int(os.environ.get("PORT", 8000))
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
-CONTENT_TYPES = {".html": "text/html", ".js": "text/javascript", ".css": "text/css"}
+CONTENT_TYPES = {".html": "text/html", ".js": "text/javascript", ".css": "text/css",
+                 ".webmanifest": "application/manifest+json", ".png": "image/png", ".svg": "image/svg+xml"}
 MAX_PLAYERS = 6
 # Overall points for the evening: a win, playing a game to the end, and walking out of a live game.
 POINTS_WIN, POINTS_PLAYED, POINTS_QUIT = 3, 1, -2
@@ -934,7 +935,7 @@ class Handler(BaseHTTPRequestHandler):
         with open(os.path.join(STATIC_DIR, fname), "rb") as f:
             body = f.read()
         self.send_response(200)
-        self.send_header("Content-Type", ctype + "; charset=utf-8")
+        self.send_header("Content-Type", ctype if ctype.startswith("image/") else ctype + "; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-cache")
         self.end_headers()

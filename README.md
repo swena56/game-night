@@ -307,8 +307,12 @@ be checked without a browser.
    - A QR code for the invite link.
    - Spectator count and "👀 watching" names.
 9. **Game-specific polish:** see the per-game plan below.
-10. **Installable app (PWA).** Home-screen install, full-screen play, and keep the screen awake
-   during a game. Cache the app shell so reconnecting is instant.
+10. ✅ **Installable app (PWA).** A web manifest with a 🎲 icon (`static/icons/`, drawn by a tiny
+   pure-Python PNG writer) for home-screen install and full-screen play; a service worker (`static/sw.js`)
+   that serves the network first and falls back to the cached app shell after 1.5 s or when offline
+   (the API is never cached); and a screen wake lock while a game is in progress. Browsers only allow
+   the service worker and the wake lock on HTTPS or localhost, so on a plain-HTTP LAN address they quietly
+   stay off (the manifest still gives an "Add to Home screen" shortcut).
 11. **Rendering performance.** Update the log, chat and player chips in place instead of rebuilding
    them on every update. Send changes rather than the full state for large boards (19×19 Go,
    Wordsmith).
