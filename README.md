@@ -398,7 +398,9 @@ Riders and Air Hockey start in it) (#13, #15).
 - 🎭 **Unmask:** an undo toast for flips, generated avatars, and pinch-zoom on the board.
 
 **Strategy**
-- 🔺 **Backgammon:** ✅ added (#42). Next: a doubling cube, and a stronger evaluation for the hard bot.
+- 🔺 **Backgammon:** ✅ added (#42). ✅ A 🎲 doubling cube (on by default): double before you roll, take to own
+  the cube or drop and lose at its value; bots double and take from the race. Next: the Crawford rule for
+  matches, and a stronger evaluation for the hard bot.
 - ♟️ **Chess:** ✅ a move list in standard notation (Nf3, exd5, O-O, e8=Q#). Next: premoves, and capture animations.
 - ⛀ **Checkers:** ✅ last-move highlight, and an optional 🦅 flying-kings variant.
 - ⚫ **Go:** ✅ a territory overlay (shown at the end, ◫ toggle during play), and ↶ undo requests (bots always agree).

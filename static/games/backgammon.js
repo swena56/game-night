@@ -11,6 +11,9 @@ UI.backgammon = (() => {
       <div id="bgBoard" class="bg-board"></div>
       <div class="bg-info"><span id="bgMe"></span><span id="bgDice" class="bg-dice"></span></div>
       <div class="row bg-actions">
+        <button id="bgDouble" class="big">🎲 Double</button>
+        <button id="bgTake" class="primary big">✋ Take</button>
+        <button id="bgDrop" class="big danger">🏳️ Drop</button>
         <button id="bgRoll" class="primary big">🎲 Roll</button>
         <button id="bgUndo" class="big">↩ Undo</button>
         <button id="bgEnd" class="primary big">✅ End turn</button>
@@ -21,8 +24,13 @@ UI.backgammon = (() => {
       <li>Tap a checker, then a highlighted point. Doubles move four times.</li>
       <li>A lone checker can be hit to the bar; it must come back in first.</li>
       <li>All fifteen home? Bear off into the tray on the right.</li>
-      <li>Gammon (they bore none off) = 2 points · backgammon = 3.</li></ul></div>`;
+      <li>Gammon (they bore none off) = 2 points · backgammon = 3.</li>
+      <li>🎲 Before rolling you may double the stakes; your rival takes (and owns the cube) or drops and loses.</li></ul>
+      <div id="bgCube" class="bg-cube"></div></div>`;
     $('bgRoll').onclick = () => ctx.quiet(ctx.act('roll'));
+    $('bgDouble').onclick = async () => (await ctx.ask(`Offer to double? The game would be worth ${S.backgammon.cube * 2}, and your rival takes the cube.`, { ok: '🎲 Double' })) && ctx.quiet(ctx.act('double'));
+    $('bgTake').onclick = () => ctx.quiet(ctx.act('take'));
+    $('bgDrop').onclick = async () => (await ctx.ask(`Drop and lose ${S.backgammon.cube} point${S.backgammon.cube > 1 ? 's' : ''} now?`, { ok: '🏳️ Drop', danger: true })) && ctx.quiet(ctx.act('drop'));
     $('bgUndo').onclick = () => { sel = null; ctx.quiet(ctx.act('undo')); };
     $('bgEnd').onclick = () => { sel = null; ctx.quiet(ctx.act('end')); };
   }
@@ -106,10 +114,16 @@ UI.backgammon = (() => {
     $('bgOpp').textContent = `${oppColor === 'w' ? '⚪' : '⚫'} ${name(oppColor)} · ${g.pips[oppColor]} pips`;
     $('bgMe').textContent = `${myColor === 'w' ? '⚪' : '⚫'} ${g.me ? 'You' : name(myColor)} · ${g.pips[myColor]} pips`;
     $('bgScore').textContent = g.match > 1 ? `Match to ${g.match}: ${g.score[myColor]}–${g.score[oppColor]}` : '';
-    $('bgRoll').hidden = !mine || g.rolled.length > 0;
+    const answering = mine && !!g.offer;
+    $('bgRoll').hidden = !mine || g.rolled.length > 0 || answering;
+    $('bgDouble').hidden = !g.canDouble;
+    $('bgTake').hidden = $('bgDrop').hidden = !answering;
+    $('bgCube').textContent = !g.cubeOn ? '' : `🎲 Cube: ${g.cube} · ${!g.owner ? 'either player can double'
+      : g.owner === myColor && g.me ? 'only you can double' : `only ${name(g.owner)} can double`}`;
     $('bgUndo').hidden = !mine || !g.moves.length;
     $('bgEnd').hidden = !mine || !g.canEnd;
-    $('bgHint').textContent = !mine ? (S.phase === 'playing' ? `${ctx.player(S.turn)?.name ?? ''} is moving…` : '')
+    $('bgHint').textContent = answering ? `${name(g.offer)} doubles! Take to play on for ${g.cube * 2}, or drop and lose ${g.cube}.`
+      : !mine ? (S.phase === 'playing' ? (g.offer ? `Waiting for ${ctx.player(S.turn)?.name ?? ''} to take or drop…` : `${ctx.player(S.turn)?.name ?? ''} is moving…`) : '')
       : !g.rolled.length ? 'Roll the dice.' : g.canEnd ? (g.moves.length ? 'Done? End your turn (or undo).' : "No legal moves. End your turn.")
       : sel != null ? 'Now tap a highlighted point.' : g.bar[myColor] ? 'Bring your checker in from the bar first.' : 'Tap a glowing checker to move it.';
   }

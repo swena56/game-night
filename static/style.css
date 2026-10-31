@@ -862,6 +862,7 @@ body.focus .lr-stage { height: max(220px, calc(var(--app-h, 100vh) - 245px)); }
 .bg-die { width: 28px; height: 28px; border-radius: 6px; background: #fff; color: #111; display: grid; place-items: center; font-weight: 900; box-shadow: 0 2px 4px #0008; }
 .bg-die.theirs { background: #222; color: #eee; } .bg-die.used { opacity: .3; }
 .bg-actions > button[hidden] { display: none; }
+.bg-cube { margin-top: 8px; font-weight: 700; color: #ffd166; }
 .bg-rules { font-size: 13px; }
 
 /* safecracker */

@@ -6,7 +6,9 @@ point not held by two or more enemy checkers; landing on a single enemy checker 
 and a player with a checker on the bar must enter it before anything else. Once all fifteen are home
 you bear off. You must use as many dice as you can, and the larger die if only one can be played.
 A win is 1 point, a gammon (loser bore nothing off) 2, a backgammon (…and still has a checker on the
-bar or in the winner's home) 3. Matches are played to a points target. No doubling cube."""
+bar or in the winner's home) 3. Matches are played to a points target. An optional doubling cube
+multiplies the stakes: before rolling you may offer to double, and your rival takes (and owns the cube)
+or drops (and loses at the current value)."""
 import random
 import time
 from functools import lru_cache
@@ -229,6 +231,7 @@ class Backgammon(Game):
         "Land on a lone enemy checker to hit it to the bar. A checker on the bar must come back in first.",
         "With all fifteen in your home board, bear them off. You must use as many dice as you can.",
         "Win 1 point, a gammon 2 (they bore none off), a backgammon 3. Play one game or a match.",
+        "🎲 Doubling cube: before you roll, offer to double the stakes. Your rival takes (and may redouble later) or drops and loses now.",
     ]
     name = "Backgammon"
     icon = "🔺"
@@ -237,7 +240,9 @@ class Backgammon(Game):
     max_players = 2
     settings_schema = {
         "match": ("Play", [(1, "One game"), (3, "Match to 3"), (5, "Match to 5")], 1),
+        "cube": ("Doubling cube", [(True, "🎲 On"), (False, "Off")], True),
     }
+    cube, owner, offer = 1, None, None  # stakes, who may double next (None = either), a double waiting
 
     # -- setup
 
@@ -255,6 +260,7 @@ class Backgammon(Game):
         self.game_no += 1
         self.pos = new_position()
         self.last_moves, self.plan = [], []
+        self.cube, self.owner, self.offer = 1, None, None
         # opening roll: one die each, re-rolled on a tie; the higher plays both
         while True:
             a, b = self.rng.randint(1, 6), self.rng.randint(1, 6)
@@ -291,6 +297,14 @@ class Backgammon(Game):
             raise GameError("You're not playing.")
         self.require_turn(p)
         t = a.get("type")
+        if t == "double":
+            return self.double()
+        if t in ("take", "drop"):
+            if self.offer != -self.side[p.id]:
+                raise GameError("There's no double to answer.")
+            return self.answer(t == "take")
+        if self.offer:
+            raise GameError("Take or drop the double first.")
         if t == "roll":
             return self.roll()
         if t == "move":
@@ -308,6 +322,37 @@ class Backgammon(Game):
                 raise GameError("You still have a move to make.")
             return self.end_turn()
         raise GameError("Unknown action.")
+
+    # -- the doubling cube
+
+    def can_double(self):
+        return (bool(self.s.get("cube")) and not self.rolled and not self.offer and self.cube < 64
+                and self.owner in (None, self.turn_side) and self.room.phase == "playing")
+
+    def double(self):
+        if not self.can_double():
+            raise GameError("You can't double right now.")
+        self.offer = self.turn_side
+        self.room.add_log(f"🎲 {self.name_of(self.turn_side)} doubles: the game is now worth {self.cube * 2}. Take or drop?", "power")
+        self.room.begin_turn(self.ids[-self.turn_side])
+
+    def answer(self, take):
+        side = -self.offer
+        self.offer = None
+        if not take:
+            self.room.add_log(f"🏳️ {self.name_of(side)} drops the double.", "power")
+            return self.win(-side, dropped=True)
+        self.cube *= 2
+        self.owner = side
+        self.room.add_log(f"✋ {self.name_of(side)} takes: the cube is at {self.cube}.", "power")
+        self.room.begin_turn(self.ids[self.turn_side])
+
+    def cube_call(self, side, level, offered):
+        """A bot's doubling decisions, from the race: double with a clear lead, take unless far behind."""
+        mine, theirs = pips(self.pos, side), pips(self.pos, -side)
+        if offered:  # take or drop
+            return level == "easy" or mine <= theirs * (1.2 if level == "hard" else 1.25)
+        return level != "easy" and mine <= theirs * (0.9 if level == "hard" else 0.85)
 
     def roll(self):
         if self.rolled:
@@ -351,19 +396,25 @@ class Backgammon(Game):
             return "off"
         return str(x if side == WHITE else 25 - x)
 
-    def win(self, side):
+    def win(self, side, dropped=False):
         r = self.room
         loser = -side
         pts = 1
         kind = ""
-        if off(self.pos, loser) == 0:
+        if dropped:
+            pts, kind = self.cube, " a dropped double"
+        elif off(self.pos, loser) == 0:
             pts, kind = 2, " a gammon"
             back = bar(self.pos, loser) or any(self.pos[i] * loser > 0 and home(i, side) for i in range(1, 25))
             if back:
                 pts, kind = 3, " a backgammon"
+        if not dropped:
+            pts *= self.cube
         self.points[side] += pts
         self.last_moves = self.turn_moves
-        r.add_log(f"🏁 {self.name_of(side)} bears off the last checker:{kind or ' a win'}, {pts} point{'s' * (pts > 1)}!", "big")
+        how = "wins as the double is dropped" if dropped else "bears off the last checker"
+        cubed = f" (cube ×{self.cube})" if self.cube > 1 and not dropped else ""
+        r.add_log(f"🏁 {self.name_of(side)} {how}:{'' if dropped else kind or ' a win'}{cubed}, {pts} point{'s' * (pts > 1)}!", "big")
         target = self.s["match"]
         if self.points[side] >= target:
             w = r.players.get(self.ids[side])
@@ -374,6 +425,9 @@ class Backgammon(Game):
 
     def on_timeout(self):
         r = self.room
+        if self.offer:
+            r.add_log(f"⏰ {self.name_of(-self.offer)} ran out of time and takes the double.", "power")
+            return self.answer(True)
         r.add_log(f"⏰ {self.name_of(self.turn_side)} ran out of time; the moves were played for them.", "power")
         if not self.rolled:
             self.roll()
@@ -392,6 +446,8 @@ class Backgammon(Game):
         bits = ["⚪" if s == WHITE else "⚫", f"{pips(self.pos, s)} pips"]
         if self.s["match"] > 1:
             bits.append(f"{self.points[s]} pts")
+        if self.cube > 1 and self.owner == s:
+            bits.append(f"🎲 {self.cube}")
         return " · ".join(bits)
 
     def final_scores(self):
@@ -410,12 +466,20 @@ class Backgammon(Game):
             "pips": {"w": pips(self.pos, WHITE), "b": pips(self.pos, BLACK)},
             "match": self.s["match"], "score": {"w": self.points[WHITE], "b": self.points[BLACK]}, "game": self.game_no,
             "names": {"w": self.ids[WHITE], "b": self.ids[BLACK]},
+            "cube": self.cube, "owner": {WHITE: "w", BLACK: "b"}.get(self.owner),
+            "offer": {WHITE: "w", BLACK: "b"}.get(self.offer), "canDouble": self.can_double() and p.id == self.room.turn,
+            "cubeOn": bool(self.s.get("cube")),
         }}
 
     # -- bots: pick the best end-of-turn position, then play it one checker at a time
 
     def bot_turn(self, p):
         r = self.room
+        side = self.side[p.id]
+        if self.offer:
+            return self.answer(self.cube_call(side, p.bot, True))
+        if self.can_double() and self.cube_call(side, p.bot, False):
+            return self.double()
         if not self.rolled:
             self.roll()
             r.bot_at = time.time() + 0.8
