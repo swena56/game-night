@@ -1,11 +1,11 @@
 UI.moonshot = (() => {
-  let S, ctx, track, builtFor = '';
+  let S, ctx, track, builtFor = '', shownRoll = '';
   const TILE = { star: '⭐', meteor: '☄️', wormhole: '🌀' };
   const DIE = ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
-    builtFor = '';
+    builtFor = ''; shownRoll = '';
     // The dice and buttons sit right under the track (not in the side panel), so on a phone they're
     // on screen without scrolling past the board.
     main.innerHTML = `<div class="moon-track"></div>
@@ -52,6 +52,11 @@ UI.moonshot = (() => {
     if (m.preview && m.preview.cell <= m.goal) cells[m.preview.cell].classList.add('preview');
 
     $('msDice').textContent = m.dice ? m.dice.map((d) => DIE[d]).join(' ') : '🎲';
+    const rk = `${S.turn}|${m.fuel}|${m.dice}|${m.pos[S.turn]}`;
+    if (m.dice && shownRoll && rk !== shownRoll) {  // a fresh roll tumbles in
+      const d = $('msDice'); d.classList.remove('roll'); void d.offsetWidth; d.classList.add('roll');
+    }
+    shownRoll = rk;
     $('msFuel').textContent = `⛽ ${m.fuel} fuel this turn`;
     const turnPlayer = ctx.player(S.turn);
     let preview = '';

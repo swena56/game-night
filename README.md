@@ -433,11 +433,11 @@ Riders and Air Hockey start in it) (#13, #15).
 - 📍 **Cribbage:** ✅ added (#23). Next: animate pegging along the track, and an optional muggins rule.
 - ♠️ **Texas Hold'em:** ✅ added (#21). ✅ Buy back in after busting (#35; people only, bots don't). ✅ A 📜 hand-history panel (the last 8
   hands: board, result, cards shown and your own two), and 🙂 a winner whose rivals all folded can show their cards. Next: a time bank.
-- 🃏 **Last Card:** a fanned, swipeable hand, and animated dealing.
+- 🃏 **Last Card:** ✅ a fanned hand in one swipeable row (playable cards lift out). Next: animated dealing.
 - ⚡ **Speed:** ✅ added (#48). Next: drag a card onto a pile, a two-phones-face-to-face table layout, and a
   "slap" sound.
-- 🚢 **Sea Battle:** drag to place ships.
-- 🚀 **Moon Shot:** fit the track and dice on narrow screens (#6), and a dice-roll animation.
+- 🚢 **Sea Battle:** ✅ drag a placed ship to move it (tap still picks it up; the page doesn't scroll while placing).
+- 🚀 **Moon Shot:** ✅ on phones the rockets become coloured dots so six fit a square (#6), and fresh rolls tumble in.
 
 **New games players asked for**
 - ✅ 🔐 **Safecracker** (#22) and ✅ 🔎 **Grid Hunt** (#24, #37): original designs in the code-breaking and

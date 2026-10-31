@@ -234,6 +234,14 @@ label.check input { width: auto; margin: 0; }
 .moon-panel .preview { margin: 2px 0 0; min-height: 1.4em; color: var(--muted); }
 .moon-btns { grid-column: 1 / -1; margin: 0; }
 @media (max-width: 860px) { .moon-panel { position: sticky; bottom: 8px; z-index: 4; } }
+.moon-panel .dice.roll { animation: yaroll .45s cubic-bezier(.3, 1.4, .5, 1); }
+/* phones (#6): rockets become coloured dots (names stay in the tooltip) so six fit in one square */
+@media (max-width: 560px) {
+  .moon-track { gap: 3px; padding: 6px; }
+  .rocket { font-size: 0; width: 9px; height: 9px; padding: 0; border-radius: 50%; line-height: 0; }
+  .rocket.active { outline-width: 1.5px; }
+  .moon-panel .dice { font-size: 40px; }
+}
 
 /* "Animations" off in my settings */
 body.calm::before, body.calm *, body.calm *::before, body.calm *::after { animation: none !important; transition: none !important; }
@@ -306,6 +314,13 @@ body.calm::before, body.calm *, body.calm *::before, body.calm *::after { animat
 .suit-pick button { font-size: 24px; color: #111; background: #fff; }
 .suit-pick button.red { color: #d62828; }
 #lcDeclare.on { animation: pulse .7s infinite; }
+.hand.fan { flex-wrap: nowrap; gap: 0; overflow-x: auto; overflow-y: hidden; justify-content: safe center;
+  padding: 16px 22px 10px; scroll-snap-type: x proximity; overscroll-behavior-x: contain; }
+.hand.fan .card-btn { flex: none; margin-left: -16px; scroll-snap-align: center; transform-origin: 50% 130%;
+  transform: rotate(var(--rot, 0deg)) translateY(var(--drop, 0px)); }
+.hand.fan .card-btn:first-child { margin-left: 0; }
+.hand.fan .card-btn.ok { transform: rotate(var(--rot, 0deg)) translateY(calc(var(--drop, 0px) - 12px)); z-index: 1; }
+.hand.fan .card-btn:focus-visible, .hand.fan .card-btn.ok:hover { z-index: 2; }
 
 /* sea battle */
 .seas { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
@@ -517,6 +532,7 @@ button.danger { background: linear-gradient(180deg, #ff5d82, #ef476f 55%, #d9325
 .pc.toss { animation: toss .4s cubic-bezier(.2, 1.2, .4, 1); }
 @keyframes toss { from { transform: translate(-40px, 60px) rotate(-25deg) scale(.8); opacity: 0; } }
 .sea-grid { background: linear-gradient(160deg, #0f4c75, #0b3a5b); box-shadow: inset 0 0 20px #0006; }
+.sea-grid.placing { touch-action: none; }
 .sea-cell { background: linear-gradient(160deg, #2272a8, #1b5e8a); }
 .sea-cell.ship { background: linear-gradient(160deg, #a7b3bf, #7d8995); }
 .sea-cell.sunk { background: linear-gradient(160deg, #8a2a2a, #5a1515); }

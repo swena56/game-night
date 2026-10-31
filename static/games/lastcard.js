@@ -45,10 +45,15 @@ UI.lastcard = (() => {
     if (g.penalty) info.append(ctx.el('div', 'penalty', `+${g.penalty} pending!`));
     info.append(ctx.el('div', 'hint', g.direction === 1 ? '↻ clockwise' : '↺ reversed'));
 
+    // a fanned hand: one swipeable row, each card turned a little more the further it is from the middle
     const hand = $('lcHand'); hand.innerHTML = '';
-    for (const card of g.hand || []) {
+    const cards = g.hand || [], mid = (cards.length - 1) / 2, step = Math.min(6, 48 / Math.max(1, cards.length));
+    hand.classList.toggle('fan', cards.length > 0);
+    for (const [k, card] of cards.entries()) {
       const ok = g.playable.includes(card);
       const b = ctx.el('button', 'card-btn' + (ok ? ' ok' : ''));
+      b.style.setProperty('--rot', `${((k - mid) * step).toFixed(1)}deg`);
+      b.style.setProperty('--drop', `${(Math.abs(k - mid) * step * 0.6).toFixed(1)}px`);
       b.append(face(card));
       b.disabled = !ok;
       b.onclick = () => onCard(card);

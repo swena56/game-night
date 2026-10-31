@@ -1,9 +1,9 @@
 UI.seabattle = (() => {
-  let S, ctx, layout = [], pick = 0, horizontal = true, sonarMode = false, layoutFor = '';
+  let S, ctx, layout = [], pick = 0, horizontal = true, sonarMode = false, layoutFor = '', drag = null, dragged = false;
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
-    layout = []; pick = 0; horizontal = true; sonarMode = false; layoutFor = '';
+    layout = []; pick = 0; horizontal = true; sonarMode = false; layoutFor = ''; drag = null; dragged = false;
     main.innerHTML = `<div class="seas">
       <div><h3 id="sbEnemyTitle">Enemy waters</h3><div id="sbEnemy" class="sea-grid"></div></div>
       <div><h3 id="sbMineTitle">Your fleet</h3><div id="sbMine" class="sea-grid"></div></div>
@@ -30,6 +30,7 @@ UI.seabattle = (() => {
       }
       gridKeys(grid, 10);
     }
+    dragToPlace($('sbMine'));
     $('sbRotate').onclick = () => { horizontal = !horizontal; ctx.rerender(); };
     $('sbRandom').onclick = () => { layout = randomLayout(); pick = -1; ctx.rerender(); };
     $('sbClear').onclick = () => { layout = []; pick = 0; ctx.rerender(); };
@@ -69,6 +70,7 @@ UI.seabattle = (() => {
     if (!ctx.myTurn) sonarMode = false;
 
     $('sbPlace').hidden = !(placing && playing && !ready);
+    $('sbMine').classList.toggle('placing', placing && playing && !ready);  // drag ships without scrolling the page
     $('sbFire').hidden = placing;
     $('sbEnemyTitle').parentElement.hidden = placing && playing && !ready;
     $('sbMineTitle').textContent = playing ? 'Your fleet' : `${ctx.player(sea.player)?.name ?? ''}'s fleet`;
@@ -123,7 +125,40 @@ UI.seabattle = (() => {
     $('sbFleets').append(ctx.el('div', '', `Enemy: ${fleetLine(sea.enemy)}`), ctx.el('div', '', `Yours: ${fleetLine(sea.mine)}`));
   }
 
+  // while placing, a ship can be dragged to a new spot: grab any part of it and it follows your finger,
+  // staying put wherever it wouldn't fit. A tap (no drag) still picks it up.
+  function dragToPlace(grid) {
+    const placing = () => S && S.sea.stage === 'placing' && S.sea.player === S.me.id && !S.sea.ready[S.me.id];
+    const cellAt = (e) => {
+      const el = document.elementFromPoint?.(e.clientX, e.clientY)?.closest?.('.sea-cell');
+      const i = el ? [...grid.children].indexOf(el) : -1;
+      return i < 0 ? null : [Math.floor(i / 10), i % 10];
+    };
+    grid.addEventListener('pointerdown', (e) => {
+      if (!placing()) return;
+      const i = [...grid.children].indexOf(e.target.closest('.sea-cell'));
+      const r = Math.floor(i / 10), c = i % 10;
+      const idx = layout.findIndex((x) => x && cellsOf(x).some(([y, z]) => y === r && z === c));
+      if (idx < 0) return;
+      drag = { idx, off: layout[idx][3] ? c - layout[idx][1] : r - layout[idx][0], from: `${r},${c}` };
+      try { grid.setPointerCapture(e.pointerId); } catch {}
+    });
+    grid.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      const at = cellAt(e);
+      if (!at || at.join() === drag.from) return;
+      drag.from = at.join(); dragged = true;
+      const [, , len, h] = layout[drag.idx];
+      const item = h ? [at[0], at[1] - drag.off, len, h] : [at[0] - drag.off, at[1], len, h];
+      if (fits(item, drag.idx)) { layout[drag.idx] = item; ctx.rerender(); }
+    });
+    const end = () => { drag = null; };
+    grid.addEventListener('pointerup', end);
+    grid.addEventListener('pointercancel', end);
+  }
+
   function onMine(i) {
+    if (dragged) { dragged = false; return; }  // the click that ends a drag
     const r = Math.floor(i / 10), c = i % 10;
     const at = layout.findIndex((x) => x && cellsOf(x).some(([y, z]) => y === r && z === c));
     if (at >= 0) { layout[at] = null; pick = at; return ctx.rerender(); }  // pick a ship back up
