@@ -211,6 +211,7 @@ or the ❓ How-to-play dialog during a game ("Something wrong with …?").
 
 ```bash
 python3 tests/jscheck.py static/app.js static/games/*.js   # structural check, no Node needed
+python3 tests/csscheck.py                                    # layout lint (jsdom does no layout)
 node --check static/app.js                                  # real syntax check (Node.js)
 PORT=8767 python3 server.py &                               # a separate test server (own rooms-8767.pickle / feedback-8767.jsonl)
 cd tests && npm install && BASE=http://localhost:8767 node ui.js          # every game
@@ -251,34 +252,37 @@ be checked without a browser.
   `prefers-reduced-motion` turn all of it off.
 
 **Still to do** (in priority order):
-0. **Next up:** a shared "results card" component for multi-round games (Grid Hunt, Safecracker,
+1. **Screenshot checks come first.** #44 (invisible dice pips) passed every automated test, because
+   jsdom doesn't lay pages out. A Playwright pass that screenshots each game at 485 px and checks key
+   elements have a real size would have caught it.
+2. **Next up:** a shared "results card" component for multi-round games (Grid Hunt, Safecracker,
    Lucky Letters and Doodle Dash each draw their own today), and reserved heights for every game's
    status line so nothing jumps (#18).
-1. **A real-device check of the 3D view and the touch feel**, plus automated screenshots (Playwright on a
-   laptop) to catch visual problems that a simulated browser can't see.
-2. **A bottom-sheet layout with tabs** (*Actions · Log · Players*) and a sticky action bar for the main
+3. **A real-device check of the 3D views and the touch feel** (Light Riders, Paint Blast, Billiards),
+   which a simulated browser can't judge.
+4. **A bottom-sheet layout with tabs** (*Actions · Log · Players*) and a sticky action bar for the main
    action, plus undo toasts (Unmask flips, Wordsmith tiles).
-3. **More motion.** A "your turn" chime per game, animated captures (pieces fading off the board), and
+5. **More motion.** A "your turn" chime per game, animated captures (pieces fading off the board), and
    cards dealt into hands.
-4. **Accessibility.**
+6. **Accessibility.**
    - Player colours that are safe for colour-blind players, with a shape or pattern as well (never
      colour alone).
    - Screen-reader labels on every board square ("e4, white knight").
    - Keyboard play: arrow keys plus Enter.
    - Contrast checks, and text that scales with the browser font size.
-5. **Themes.** A light theme that follows the system setting. Board themes (wood, classic,
+7. **Themes.** A light theme that follows the system setting. Board themes (wood, classic,
    high-contrast) and card-back styles, chosen under ⚙️ My settings.
-6. **Identity and social.**
+8. **Identity and social.**
    - Avatars generated with the Unmask face generator.
    - A colour picker and rename in the lobby.
    - A QR code for the invite link.
    - Spectator count and "👀 watching" names.
-7. **Game-specific polish:** see the per-game plan below.
-8. **Installable app (PWA).** Home-screen install, full-screen play, and keep the screen awake
-    during a game. Cache the app shell so reconnecting is instant.
-9. **Rendering performance.** Update the log, chat and player chips in place instead of rebuilding
-    them on every update. Send changes rather than the full state for large boards (19×19 Go,
-    Wordsmith).
+9. **Game-specific polish:** see the per-game plan below.
+10. **Installable app (PWA).** Home-screen install, full-screen play, and keep the screen awake
+   during a game. Cache the app shell so reconnecting is instant.
+11. **Rendering performance.** Update the log, chat and player chips in place instead of rebuilding
+   them on every update. Send changes rather than the full state for large boards (19×19 Go,
+   Wordsmith).
 
 ## Per-game plan (with player feedback)
 
@@ -331,6 +335,18 @@ Riders and Air Hockey start in it) (#13, #15).
 - 🏍️ **Light Riders:** check the swipe fixes on a phone (#14); scale the swipe threshold with screen
   size; a vibration tick on each turn; a countdown overlay.
 - 🏒 **Air Hockey:** goal replay, a score-to-win setting, haptics on hits.
+- 🎨 **Paint Blast:** ✅ added (#20). Next: a shrinking arena in the last 15 s, a kick power-up, a
+  vibration tick when you're caught, and a paint-coverage bar under the clock.
+- 🪐 **Next action game, planned (#46): Sumo Saucers.** An original real-time arena game for 2–6:
+  - Everyone pilots a hover saucer on a round platform floating in space. Drag anywhere to steer
+    (momentum, like Air Hockey's physics); tap to 💨 dash, a big shove with a 2 s cooldown.
+  - Knock rivals off the edge; the last saucer on the platform wins the round, first to 3 rounds wins.
+  - Twist: the rim is lined with glowing bumpers that bounce you back once and then shatter, so the
+    edge gets more dangerous as the round goes on, and the platform shrinks every 20 s.
+  - Built on `games/hockey.py`'s server physics (circle collisions, 60 fps `frame`, `push_fast`).
+    Bots steer to stay near the centre, line up behind a rival who is near the edge, and dash
+    through them; harder bots also dodge dashes and save bumpers.
+  - It would make ⚡ Action 6 games (two even rows of 3).
 
 **Party**
 - 🎡 **Lucky Letters:** done for now (#17, #18, #19). ✅ The 3D wheel's camera now backs off to fit the whole wheel at any stage shape (#27).
@@ -341,10 +357,13 @@ Riders and Air Hockey start in it) (#13, #15).
 - 🥷 **Night Heist:** a night-by-night history grid, and bot personalities (greedy, cautious).
 - 🎭 **Unmask:** an undo toast for flips, generated avatars, and pinch-zoom on the board.
 
-**Board**
+**Strategy**
+- 🔺 **Backgammon:** ✅ added (#42). Next: a doubling cube, and a stronger evaluation for the hard bot.
 - ♟️ **Chess:** a move list in standard notation, premoves, and capture animations.
 - ⛀ **Checkers:** last-move highlight, and an optional flying-kings variant.
 - ⚫ **Go:** a territory overlay at the end, and a request-undo button.
+
+**Quick classics**
 - 🔴 **Drop Four:** highlight the winning line, and a move history.
 - 🔳 **Dots & Boxes:** a last-line highlight, and a bigger grid when the phone is sideways.
 - ❌ **Tic-Tac-Toe:** in Vanishing mode, dim the mark that fades next.
@@ -352,15 +371,18 @@ Riders and Air Hockey start in it) (#13, #15).
 **Words & puzzles**
 - 🔎 **Grid Hunt:** ✅ added (#24, #37). Next: a "trace" replay of each word in the results, a
   hint of how many words of each length remain, and a long-grid 6×6 option for big tables.
-- 🔐 **Safecracker:** ✅ added (#22). Next: a notes row to cross out colours, a colour-blind palette
+- 🔐 **Safecracker:** ✅ added (#22). ✅ Each round starts from an empty guess, with ↺ Last to bring
+  back your previous one (#45). Next: a notes row to cross out colours, a colour-blind palette
   setting (the numbers already help), and a duel mode where each player sets the other's code.
 - 🔤 **Wordsmith:** drag-and-drop tiles with a live score preview, and a hint button for solo play.
 
 **Cards / dice**
-- 🔺 **Backgammon:** ✅ added (#42). Next: a doubling cube, and a stronger evaluation for the hard bot.
-- 🎯 **Farkle:** ✅ added (#40).
-- 🎲 **Yacht:** ✅ added (#38: the traditional game the branded one grew from).
-- 📍 **Cribbage:** ✅ added (#23).
+- 🎯 **Farkle:** ✅ added (#40). ✅ Dice pips show on phones again (#44, shared with Yacht). Next: show the
+  chance of farkling with the dice left before you choose to roll, and a hot-dice flourish.
+- 🎲 **Yacht:** ✅ added (#38: the traditional game the branded one grew from). ✅ The dice pips were
+  invisible: the die's padding was a percentage, which CSS measures against the whole dice row, so it
+  squeezed the pips to nothing (#44). Next: confirm before scoring a 0, and a solo best-score table.
+- 📍 **Cribbage:** ✅ added (#23). Next: animate pegging along the track, and an optional muggins rule.
 - ♠️ **Texas Hold'em:** ✅ added (#21). ✅ Buy back in after busting (#35; people only, bots don't). Next: a hand-history panel, showing folded winners' cards
   on request, and a time bank.
 - 🃏 **Last Card:** a fanned, swipeable hand, and animated dealing.

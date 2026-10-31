@@ -1,7 +1,7 @@
 // Safecracker: build a guess from the colour pad, lock it in, and read everyone's revealed guesses.
 // Pegs carry their number as well as their colour, so colour is never the only cue.
 UI.safecracker = (() => {
-  let S, ctx, draft = [], probing = false, draftSafe = 0;
+  let S, ctx, draft = [], probing = false, draftFor = '';
   const COLORS = ['#ef476f', '#ffb703', '#06d6a0', '#3a86ff', '#c77dff', '#f4f1de', '#ff7f11', '#8d6e63'];
   const $ = (id) => document.getElementById(id);
 
@@ -12,7 +12,7 @@ UI.safecracker = (() => {
   }
 
   function mount(main, side) {
-    draft = []; probing = false; draftSafe = 0;
+    draft = []; probing = false; draftFor = '';
     main.innerHTML = `<div class="sc">
       <div class="sc-head"><span id="scSafe"></span><span id="scRound"></span></div>
       <div id="scOpened" class="sc-opened" hidden></div>
@@ -22,6 +22,7 @@ UI.safecracker = (() => {
         <div id="scPad" class="sc-pad"></div>
         <div class="row sc-actions">
           <button id="scBack" title="Remove the last colour">⌫</button>
+          <button id="scAgain" title="Start from your last guess">↺ Last</button>
           <button id="scProbe">🔍 Probe</button>
           <button id="scLock" class="primary">🔒 Lock in</button>
         </div>
@@ -31,9 +32,19 @@ UI.safecracker = (() => {
       <p class="hint left"><span class="sc-pin on"></span> right colour, right spot · <span class="sc-pin"></span> right colour, wrong spot.</p>
       <div id="scProbeInfo" class="hint left"></div></div>`;
     $('scBack').onclick = () => { draft.pop(); paint(); };
+    $('scAgain').onclick = () => { draft = lastGuess() || draft; paint(); };
     $('scProbe').onclick = () => { probing = !probing; paint(); };
     // the action field is "pegs": "code" is the room code in every request
     $('scLock').onclick = () => ctx.quiet(ctx.act('guess', { pegs: draft.slice() }));
+  }
+
+  // my previous guess on this safe, to start from when only a peg or two should change
+  function lastGuess() {
+    for (const round of [...S.safecracker.history].reverse()) {
+      const h = round.find((x) => x.by === S.me.id);
+      if (h) return h.code.slice();
+    }
+    return null;
   }
 
   function canPlay() {
@@ -75,6 +86,7 @@ UI.safecracker = (() => {
     }
     const probed = g.probed.includes(S.me.id);
     $('scBack').disabled = !live || !draft.length;
+    $('scAgain').disabled = !live || !lastGuess();
     $('scProbe').disabled = !live || probed;
     $('scProbe').classList.toggle('on', probing);
     $('scProbe').textContent = probed ? '🔍 Used' : probing ? '🔍 Pick a colour…' : '🔍 Probe';
@@ -90,7 +102,9 @@ UI.safecracker = (() => {
   function render(s, c) {
     S = s; ctx = c;
     const g = S.safecracker;
-    if (draftSafe !== g.safe) { draft = []; probing = false; draftSafe = g.safe; }
+    // every round starts from an empty guess (#45); ↺ Last brings the previous one back
+    const key = `${g.safe}:${g.round}`;
+    if (draftFor !== key) { draft = []; probing = false; draftFor = key; }
     if (draft.length > g.length) draft = draft.slice(0, g.length);
     $('scSafe').textContent = g.safes > 1 ? `🔐 Safe ${g.safe} of ${g.safes}` : '🔐 The safe';
     $('scRound').textContent = `Guess ${Math.min(g.round, g.rounds)} of ${g.rounds}`;
