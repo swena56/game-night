@@ -138,6 +138,10 @@ class Tower:
         return -0.51 * sum(heights) + 0.9 * lines - 0.5 * holes - 0.18 * bump - (8 if top >= H - 2 else 0)
 
     def best_move(self, kind, level):
+        return self.scored_move(kind, level)[0]
+
+    def scored_move(self, kind, level):
+        """(cells, x, y) of the best place for this piece, and how good it is."""
         noise = {"easy": 2.5, "normal": 0.6, "hard": 0.0}[level]
         best, best_score = None, -1e9
         for cells in ROTATIONS[kind]:
@@ -152,7 +156,7 @@ class Tower:
                 score = self.evaluate(g, lines) + random.uniform(0, noise)
                 if score > best_score:
                     best, best_score = (cells, px, py), score
-        return best
+        return best, best_score
 
 
 class Spire(Game):
@@ -297,6 +301,18 @@ class Spire(Game):
         if t.dead:
             return self.knock_out(o)
         kind = self.rng.choice(PIECE_SETS[self.s.get("pieces", "mixed")])
+        held = getattr(g, "held", None)
+        if o.bot != "easy":
+            # like a player with the ⇄ hold slot: park the first piece, then play whichever of the
+            # new piece and the parked one fits better, keeping the other for later
+            if held is None:
+                g.held = kind
+                g.next_at = now + 0.3
+                return
+            move, score = t.scored_move(kind, o.bot)
+            other, other_score = t.scored_move(held, o.bot)
+            if other and (not move or other_score > score):
+                g.held, kind = kind, held
         move = t.best_move(kind, o.bot)
         if not move:
             return self.knock_out(o)

@@ -368,12 +368,14 @@ Riders and Air Hockey start in it) (#13, #15).
   calling the pocket for the 8, and a 3D table.
 - 🗼 **Spire Siege:** ✅ a 🟦 4-block piece set beside the mixed 2/3/5-block set (#13), a ⇄ hold slot
   (C / Shift / swipe up), and a sharper flat well on high-DPI screens. ✅ 🟦 4-block is now the default
-  (#26); the odd shapes are the 🧩 Mixed option. Next: a stronger ring-clear effect, and bots that use hold.
+  (#26); the odd shapes are the 🧩 Mixed option. ✅ Normal and hard bots use the ⇄ hold slot (they park a piece and
+  play whichever of it and the new piece fits better). Next: a stronger ring-clear effect.
 - 🏍️ **Light Riders:** ✅ the swipe threshold scales with the arena (18–48 px), a 📳 vibration tick on each
   turn and a longer buzz when you crash, and a countdown overlay. Next: check the swipe fixes on a phone (#14).
 - 🏒 **Air Hockey:** ✅ a score-to-win setting, and 📳 haptics when your mallet hits the puck and on goals. Next: goal replay.
 - 🎨 **Paint Blast:** ✅ added (#20). ✅ A paint-coverage bar under the clock, and a 📳 buzz when you're
-  caught. Next: a shrinking arena in the last 15 s, and a kick power-up.
+  caught. ✅ 🧱 The walls close in during the last 15 s, a ring every 4 s (an option, on by default); paint
+  under them still counts and anyone caught there is pushed inside. Next: a kick power-up.
 - 🪐 **Sumo Saucers:** ✅ added (#46). ✅ 📳 Haptics when you're shoved and when you fall. Next: a
   slow-motion replay of the final knock-off. The original plan:
   - Everyone pilots a hover saucer on a round platform floating in space. Drag anywhere to steer
@@ -392,7 +394,7 @@ Riders and Air Hockey start in it) (#13, #15).
 - 🕵️ **Odd One Out:** more word pairs, and an animated "who voted for whom" reveal.
 - 🖍️ **Scribble Relay:** brush sizes, and saving a finished chain as an image.
 - 🧠 **Trivia Rush:** ✅ added (#49), 188 questions in 9 topics. ✅ The quickest right answer gets a ⚡ callout. ✅ An Answers setting adds ✅ true/false rounds (every question, or every third). Next: more questions.
-- 🥷 **Night Heist:** ✅ a night-by-night grid of everyone's choices and gold changes. Next: bot personalities (greedy, cautious).
+- 🥷 **Night Heist:** ✅ a night-by-night grid of everyone's choices and gold changes. ✅ Bots get a personality, shown on their chip: 🦊 greedy, 🐢 cautious or 🦉 watchful.
 - 🎭 **Unmask:** an undo toast for flips, generated avatars, and pinch-zoom on the board.
 
 **Strategy**
@@ -420,7 +422,7 @@ Riders and Air Hockey start in it) (#13, #15).
 - 🎯 **Farkle:** ✅ added (#40). ✅ Dice pips show on phones again (#44, shared with Yacht). ✅ The hint shows the
   chance of farkling with the dice you're about to roll. ✅ Hot dice get a 🔥 flourish on every screen.
 - 🚢 **Ship, Captain & Crew:** ✅ added to fill the 🎲 Dice & casino row. ✅ Fresh rolls shake the dice, and a 🍺 **Pub pot** option: everyone antes 1 🪙 a round, the best cargo takes the pot (ties roll it over), most coins wins.
-- 🤥 **Liar's Dice:** ✅ added to fill the 🎲 Dice & casino row. ✅ The showdown has a 📊 "How likely was each bid?" list: each bid's odds from the bidder's own seat, and whether it held. Next: a timed bid clock option.
+- 🤥 **Liar's Dice:** ✅ added to fill the 🎲 Dice & casino row. ✅ The showdown has a 📊 "How likely was each bid?" list: each bid's odds from the bidder's own seat, and whether it held. ✅ A bid clock is the room's Turn timer: run out and you bid or call automatically.
 - 🎲 **Yacht:** ✅ added (#38: the traditional game the branded one grew from). ✅ The dice pips were
   invisible: the die's padding was a percentage, which CSS measures against the whole dice row, so it
   squeezed the pips to nothing (#44). ✅ Asks before you score a 0. ✅ A 🏅 solo best-score table (top 5, kept on the device).

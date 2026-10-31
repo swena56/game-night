@@ -22,6 +22,7 @@ STUN = 36            # 3 s out after being caught
 SHIELD = 18          # 1.5 s of safety after respawning
 TAG_POINTS = 10
 COUNTDOWN, PAUSE = 3.0, 5.0
+CLOSE_FROM, CLOSE_EVERY = 15.0, 4.0  # 🧱 the walls close in: a ring of pillars from 15 s left, then every 4 s
 FLOOR, PILLAR, CRATE = 0, 1, 2
 POWERS = {"b": "💣 extra bomb", "r": "🔥 longer blast", "p": "🪣 paint splash"}
 
@@ -35,6 +36,7 @@ class PaintBlast(Game):
         "Caught in a blast? You're stunned for 3 s and respawn at home. Catching a rival scores +10.",
         "Crates hide 💣 more bombs, 🔥 longer blasts and 🪣 paint splashes.",
         "When the clock runs out, every tile in your colour is a point. Most points after the last round wins.",
+        "🧱 In the last 15 s the walls close in, one ring at a time. Paint under them still counts.",
     ]
     name = "Paint Blast"
     icon = "🎨"
@@ -46,7 +48,9 @@ class PaintBlast(Game):
         "secs": ("Round length", [(90, "1½ min"), (60, "1 min"), (120, "2 min")], 90),
         "rounds": ("Rounds", [(2, "2"), (1, "1"), (3, "3")], 2),
         "arena": ("Arena", [(13, "Medium"), (11, "Small"), (15, "Large")], 13),
+        "closing": ("Last 15 s", [(True, "🧱 Walls close in"), (False, "Arena stays open")], True),
     }
+    closed = 0  # rings of the arena walled off so far (rounds saved before this had none)
 
     # -- setup
 
@@ -86,6 +90,7 @@ class PaintBlast(Game):
         self.stage = "countdown"
         self.next_at = now + COUNTDOWN
         self.ends_at = None
+        self.closed = 0
         self.last_frame = now
         self.acc = 0.0
         self.room.add_log(f"🎨 Round {self.round}/{self.s['rounds']}: a fresh maze. Get ready!")
@@ -172,11 +177,41 @@ class PaintBlast(Game):
         while self.acc >= 1 and self.stage == "play":
             self.acc -= 1
             self.step()
+            self.close_in(now)
             if now >= self.ends_at:
                 self.end_round(now)
                 return True
         self.broadcast(now)
         return False
+
+    def close_in(self, now):
+        """Wall off the outer rings near the end. Anyone standing there is pushed to the nearest open tile inside."""
+        left = self.ends_at - now
+        if not self.s.get("closing", True) or left > CLOSE_FROM:
+            return
+        n = self.n
+        want = min((n - 5) // 2, int((CLOSE_FROM - left) / CLOSE_EVERY) + 1)
+        if want <= self.closed:
+            return
+        self.closed = want
+        ring = lambda c: min(c % n, c // n, n - 1 - c % n, n - 1 - c // n)
+        for c in range(n * n):
+            if ring(c) < want:
+                self.tiles[c] = PILLAR
+                self.bombs.pop(c, None)
+                self.burn.pop(c, None)
+                self.items.pop(c, None)
+        for i, c in enumerate(self.pos):
+            if self.tiles[c] == PILLAR:
+                self.pos[i] = self.nearest_open(c)
+                self.moved[i] = self.tick
+        if want == 1:
+            self.room.add_log("🧱 The walls are closing in!", "power")
+
+    def nearest_open(self, c):
+        n = self.n
+        spots = [d for d in range(n * n) if self.tiles[d] == FLOOR] or [c]
+        return min(spots, key=lambda d: abs(d % n - c % n) + abs(d // n - c // n))
 
     def active(self, i):
         return self.stun[i] == 0
@@ -230,6 +265,8 @@ class PaintBlast(Game):
                 if not self.stun[i]:
                     hx, hy = self.homes()[i]
                     self.pos[i] = hy * self.n + hx
+                    if self.tiles[self.pos[i]] == PILLAR:  # home is behind the closing walls
+                        self.pos[i] = self.nearest_open(self.pos[i])
                     self.shield[i] = SHIELD
                     self.want[i], self.nudge[i] = -1, False
             elif not self.shield[i] and self.pos[i] in self.burn:

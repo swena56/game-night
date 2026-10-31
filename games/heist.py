@@ -7,6 +7,8 @@ from .base import Game, GameError
 
 CHOICES = {"grab": "🥷", "guard": "🛡️", "rest": "😴"}
 FINE = 2
+# bot personalities: how much more (or less) often than a plain bot they grab and guard
+PERSONAS = {"greedy": ("🦊", 1.6, 0.7), "cautious": ("🐢", 0.5, 0.9), "watchful": ("🦉", 0.8, 1.6)}
 
 
 class Heist(Game):
@@ -17,6 +19,7 @@ class Heist(Game):
         'A lone grabber steals the whole vault; two grabbers trip the alarm.',
         'Guards fine every grabber 💰2 — but guarding an empty hall costs 💰1. Resting earns 💰1.',
         'Most gold after the last night wins.',
+        'Bots have a personality on their chip: 🦊 greedy grabs more, 🐢 cautious rests, 🦉 watchful guards.',
     ]
     name = "Night Heist"
     icon = "🥷"
@@ -36,6 +39,10 @@ class Heist(Game):
         self.choices = {}
         self.last = None
         self.nights = []  # every revealed night: {pid: [choice, gold change]}
+        # each bot gets a personality, dealt so a table of bots doesn't all play alike
+        kinds = list(PERSONAS)
+        rng.shuffle(kinds)
+        self.persona = {p.id: kinds[k % len(kinds)] for k, p in enumerate(q for q in seated if q.bot)}
         self.room.add_log("🌙 The heist begins. Everyone starts with 💰3.", "big")
         self.new_night()
 
@@ -138,7 +145,8 @@ class Heist(Game):
         if p.id not in self.gold:
             return ""
         locked = " · ✅" if p.id in self.choices and self.room.phase == "playing" else ""
-        return f"💰{self.gold[p.id]}{locked}"
+        kind = getattr(self, "persona", {}).get(p.id)
+        return f"💰{self.gold[p.id]}{locked}" + (f" · {PERSONAS[kind][0]} {kind}" if kind else "")
 
     def final_scores(self):
         return dict(self.gold)
@@ -174,5 +182,8 @@ class Heist(Game):
                 return "rest" if self.pot < 6 else "guard"  # protect the lead
             if self.gold[p.id] < FINE:
                 grab *= 1.3  # nothing to lose
+        kind = getattr(self, "persona", {}).get(p.id)
+        if kind:
+            grab, guard = grab * PERSONAS[kind][1], guard * PERSONAS[kind][2]
         roll = random.random()
         return "grab" if roll < grab else "guard" if roll < grab + guard else "rest"
