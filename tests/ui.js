@@ -264,11 +264,19 @@ const MOVES = {
     if (chips.length) return click(pick(chips));
     click(pick([...d.querySelectorAll('#toBar button:not(:disabled)')]));
   },
-  rummy(d) {
+  rummy(d, S, n, w) {
+    if (n === 1) {  // drag the last card of the hand to the front (#59)
+      const cards = [...d.querySelectorAll('#ruHand .card-btn')], last = cards.at(-1);
+      const fire = (el, type, x, y) => el.dispatchEvent(new w.MouseEvent(type, { bubbles: true, clientX: x, clientY: y }));
+      fire(last, 'pointerdown', 50, 0); fire(last, 'pointermove', 10, 0); fire(last, 'pointerup', -5, 0);
+      const now = [...d.querySelectorAll('#ruHand .card-btn')].map((x) => x.dataset.card);
+      if (now[0] !== last.dataset.card || !d.querySelector('#ruSort .seg-opt.on')?.textContent.includes('My order')) throw new Error('drag to reorder did not move the card');
+      return;
+    }
     for (const id of ['#ruDeck', '#ruDiscard']) { const b = d.querySelector(id); if (!b.disabled) return click(b); }
     const lay = d.querySelector('#ruLay');
     if (!lay.hidden && !lay.disabled) return click(lay);
-    click(pick([...d.querySelectorAll('#ruHand .card-btn:not(:disabled)')]));
+    click(pick([...d.querySelectorAll('#ruHand .card-btn:not(.idle)')]));
     click(d.querySelector('#ruThrow'));
   },
   putt(d, S, n, w) {  // a slingshot drag on the course

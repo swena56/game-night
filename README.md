@@ -473,6 +473,8 @@ Riders and Air Hockey start in it) (#13, #15).
   most colour wins. ✅ Walls close in over the last 15 s (setting), and a 👟 kick power-up. ✅ A gamepad (#54): a
   round d-pad that follows your thumb as it slides (no lifting to turn), and a big 💣 button to its right. Next: 3D tiles.
 - ✅ 🀄 **Contract Rummy** (#39 asked for a branded game): the traditional contract-rummy family it grew from.
+  ✅ Your own hand order (#59): drag a card to move it (any time, not just on your turn), or Sort by 🔢 rank or ♠ suit;
+  the choice is kept on the device, and drawn cards join at the right end.
 - ✅ ⚡ **Speed** (#48): the traditional real-time race card game, two players.
 - ✅ 🧠 **Trivia Rush** (#49): an original quick-fire quiz with its own question bank.
 - 🎲 #41 asks for "qork", which we couldn't identify. Ask the player which game they meant; if it's a

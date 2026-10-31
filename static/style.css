@@ -1323,3 +1323,14 @@ body.light .logo { background-image: linear-gradient(90deg, #e09a00, #e0457b, #1
 .pb-dpad span[data-d="1"] { grid-area: 2 / 3; } .pb-dpad span[data-d="2"] { grid-area: 3 / 2; }
 .pb-dpad span.on { color: #fff; background: #ffffff22; text-shadow: 0 0 10px var(--accent); }
 .pb-bomb { width: 104px; height: 104px; border-radius: 50%; font-size: 40px; padding: 0; touch-action: none; flex: none; }
+
+/* Contract Rummy: your own hand order (#59) */
+.ru-sort { display: flex; align-items: center; gap: 6px; justify-content: center; margin-top: 8px; }
+.ru-sort small { color: var(--muted); font-size: 12px; }
+.ru-sort .seg-opt { flex: none; padding: 5px 10px; font-size: 13px; }
+.ru-sort .seg-opt.on { border-color: var(--accent); background: #ffb7031a; }
+.ru-hand .card-btn { touch-action: none; }  /* a drag moves the card, not the page */
+.ru-hand .card-btn.idle { cursor: grab; }
+.ru-hand .card-btn.lifted { opacity: .25; }
+.ru-hand .card-btn.drop-before { box-shadow: -5px 0 0 -1px var(--accent); }
+.ru-ghost { position: fixed; z-index: 60; pointer-events: none; width: 44px; height: 64px; transform: rotate(-6deg) scale(1.1); box-shadow: 0 12px 24px #000a; }

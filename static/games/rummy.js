@@ -1,8 +1,12 @@
 // Contract Rummy: deck and discard pile on top, then every meld on the table, then your hand.
 // Select cards by tapping them. Before you've laid down, group them with Set / Run (tap a staged group
 // to undo it), then Lay down. Afterwards, tap a meld to add the selected cards to it. Discard ends your turn.
+// The hand's order is yours (#59): drag a card to move it, or sort by rank or suit. Drawn cards join at the right.
 UI.rummy = (() => {
-  let S, ctx, sel = [], staged = [], stageFor = '';
+  let S, ctx, sel = [], staged = [], stageFor = '', order = [], drag = null;
+  const RANKS = '23456789TJQKA', SUITS = 'SHCD';  // suits alternate black, red, black, red
+  let sortMode = 'suit';
+  try { sortMode = localStorage.getItem('rummy.sort') || 'suit'; } catch {}
   const SUIT = { S: '♠', H: '♥', D: '♦', C: '♣' };
   const $ = (id) => document.getElementById(id);
   const joker = (c) => c[0] === 'X';
@@ -15,13 +19,14 @@ UI.rummy = (() => {
   }
 
   function mount(main, side) {
-    sel = []; staged = []; stageFor = '';
+    sel = []; staged = []; stageFor = ''; order = []; drag = null;
     main.innerHTML = `<div class="ru">
       <div class="ru-top"><div id="ruContract" class="ru-contract"></div>
         <div class="ru-piles"><button id="ruDeck" class="ru-pile"></button><button id="ruDiscard" class="ru-pile"></button></div></div>
       <div id="ruMelds" class="ru-melds"></div>
       <div id="ruStaged" class="ru-staged"></div>
       <div id="ruNote" class="hh-note"></div>
+      <div class="ru-sort" id="ruSort" role="group" aria-label="Sort your hand"></div>
       <div id="ruHand" class="hh-hand ru-hand"></div>
       <div class="row ru-actions"><button id="ruSet">Set</button><button id="ruRun">Run</button>
         <button id="ruLay" class="primary">Lay down</button><button id="ruThrow" class="danger">Discard</button></div></div>`;
@@ -32,6 +37,74 @@ UI.rummy = (() => {
     $('ruRun').onclick = () => stage('run');
     $('ruLay').onclick = () => ctx.quiet(ctx.act('laydown', { groups: staged.map(([kind, cards]) => ({ kind, cards })) }));
     $('ruThrow').onclick = () => { if (sel.length === 1) { const card = sel[0]; sel = []; ctx.quiet(ctx.act('discard', { card })); } };
+  }
+
+  // ---------- hand order: a multiset kept in step with the server's hand (two decks, so cards repeat)
+  const rankOf = (c) => (joker(c) ? 99 : RANKS.indexOf(c[0]));
+  const SORTS = {
+    rank: (a, b) => rankOf(a) - rankOf(b) || SUITS.indexOf(a[1]) - SUITS.indexOf(b[1]),
+    suit: (a, b) => (joker(a) - joker(b)) || SUITS.indexOf(a[1]) - SUITS.indexOf(b[1]) || rankOf(a) - rankOf(b),
+  };
+  function syncOrder(hand) {
+    const left = [...hand], kept = [];
+    for (const c of order) { const k = left.indexOf(c); if (k >= 0) { kept.push(c); left.splice(k, 1); } }
+    order = [...kept, ...left];  // new cards join at the right
+    if (SORTS[sortMode]) order.sort(SORTS[sortMode]);
+  }
+  function setSort(mode) {
+    sortMode = mode;
+    try { localStorage.setItem('rummy.sort', mode); } catch {}
+    ctx.rerender();
+  }
+
+  // drag a card along the hand to move it; a press without moving is a tap (select)
+  function startDrag(e, card, b) {
+    if (e.button > 0) return;
+    drag = { card, b, x: e.clientX, y: e.clientY, ghost: null, moved: false };
+    const move = (ev) => {
+      if (!drag) return;
+      if (!drag.moved && Math.hypot(ev.clientX - drag.x, ev.clientY - drag.y) < 8) return;
+      if (!drag.moved) {
+        drag.moved = true;
+        drag.ghost = b.firstElementChild.cloneNode(true);
+        drag.ghost.classList.add('ru-ghost');
+        document.body.append(drag.ghost);
+        b.classList.add('lifted');
+      }
+      drag.ghost.style.left = `${ev.clientX - 22}px`; drag.ghost.style.top = `${ev.clientY - 40}px`;
+      const at = dropIndex(ev.clientX, ev.clientY);
+      for (const [k, x] of [...$('ruHand').children].entries()) x.classList.toggle('drop-before', k === at && x !== drag.b);
+    };
+    const up = (ev) => {
+      removeEventListener('pointermove', move); removeEventListener('pointerup', up); removeEventListener('pointercancel', up);
+      const d = drag; drag = null;
+      if (!d?.moved) return;
+      d.ghost.remove();
+      const shown = [...$('ruHand').children], from = shown.indexOf(d.b);
+      let to = ev.type === 'pointercancel' ? from : dropIndex(ev.clientX, ev.clientY);
+      d.b.skipClick = true;
+      if (from < 0 || to === from || to === from + 1) return ctx.rerender();
+      // move within the shown cards, then rebuild the order (cards staged in a group keep their places at the end)
+      const cards = shown.map((x) => x.dataset.card);
+      const [c] = cards.splice(from, 1);
+      cards.splice(to > from ? to - 1 : to, 0, c);
+      const rest = [...order];
+      for (const x of cards) rest.splice(rest.indexOf(x), 1);
+      order = [...cards, ...rest];
+      if (sortMode !== 'mine') { sortMode = 'mine'; try { localStorage.setItem('rummy.sort', 'mine'); } catch {} }
+      ctx.rerender();
+    };
+    addEventListener('pointermove', move); addEventListener('pointerup', up); addEventListener('pointercancel', up);
+  }
+  // where a card dropped at (x, y) goes: before the shown card whose middle is past the pointer (rows wrap)
+  function dropIndex(x, y) {
+    const shown = [...$('ruHand').children];
+    for (const [k, el] of shown.entries()) {
+      const r = el.getBoundingClientRect();
+      if (y < r.top) return k;
+      if (y <= r.bottom && x < r.left + r.width / 2) return k;
+    }
+    return shown.length;
   }
 
   function stage(kind) {
@@ -79,16 +152,43 @@ UI.rummy = (() => {
       st.append(b);
     });
 
+    const sortBox = $('ruSort'); sortBox.innerHTML = '';
+    sortBox.append(ctx.el('small', '', 'Sort:'));
+    for (const [mode, label] of [['mine', '✋ My order'], ['rank', '🔢 Rank'], ['suit', '♠ Suit']]) {
+      const b = ctx.el('button', 'seg-opt' + (sortMode === mode ? ' on' : ''), label);
+      b.setAttribute('aria-pressed', String(sortMode === mode));
+      b.onclick = () => setSort(mode);
+      sortBox.append(b);
+    }
+    sortBox.hidden = me == null;
+
+    if (!drag?.moved) renderHand(r, inStage, myTurn && r.drawn);  // never rebuild the hand under a card being dragged
+    renderButtons(r, me, myTurn);
+  }
+
+  function renderHand(r, inStage, canPick) {
+    syncOrder(r.hand);
     const hand = $('ruHand'); hand.innerHTML = '';
-    for (const card of r.hand) {
-      if (inStage.has(card)) continue;
-      const b = ctx.el('button', 'card-btn' + (sel.includes(card) ? ' ok' : ''));
+    const pending = [...inStage];  // a staged card leaves the hand once (duplicates stay)
+    for (const card of order) {
+      const k = pending.indexOf(card);
+      if (k >= 0) { pending.splice(k, 1); continue; }
+      const b = ctx.el('button', 'card-btn' + (sel.includes(card) ? ' ok' : '') + (canPick ? '' : ' idle'));
+      b.dataset.card = card;
       b.append(face(card));
-      b.disabled = !myTurn || !r.drawn;
-      b.onclick = () => { sel = sel.includes(card) ? sel.filter((x) => x !== card) : [...sel, card]; ctx.rerender(); };
+      b.setAttribute('aria-disabled', String(!canPick));  // not disabled: you can rearrange the hand any time
+      b.addEventListener('pointerdown', (e) => startDrag(e, card, b));
+      b.onclick = () => {
+        if (b.skipClick) { b.skipClick = false; return; }
+        if (!canPick) return;
+        sel = sel.includes(card) ? sel.filter((x) => x !== card) : [...sel, card];
+        ctx.rerender();
+      };
       hand.append(b);
     }
+  }
 
+  function renderButtons(r, me, myTurn) {
     const [k, m] = r.contract;
     const sets = staged.filter(([kd]) => kd === 'set').length, runs = staged.filter(([kd]) => kd === 'run').length;
     const can = myTurn && r.drawn;
@@ -112,5 +212,7 @@ UI.rummy = (() => {
     });
   }
 
-  return { mount, render };
+  function unmount() { drag?.ghost?.remove(); drag = null; }
+
+  return { mount, render, unmount };
 })();
