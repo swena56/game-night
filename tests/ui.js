@@ -403,12 +403,14 @@ async function lobbyTour() {
   click(d.querySelector('#addBotBtn')); await sleep(400);
   click(d.querySelector('#shareBtn'));
   await sleep(500);
+  const qr = d.querySelectorAll('#modalBody .invite-qr path').length === 1 && d.querySelector('#modalBody input')?.value.includes('?room=');
   const cats = [...d.querySelectorAll('#gamePicker .picker-cat')].map((x) => x.textContent).join(' ');
   const nofit = [...d.querySelectorAll('#gamePicker .nofit small')].map((x) => x.textContent).join(',');
   const howto = d.querySelectorAll('#howto li').length;
   click(d.querySelector('#leaveBtn')); await sleep(200);
   const leaveDialog = d.querySelector('#modalText').textContent; click(d.querySelector('#modalCancel'));
-  const out = { cats, nofit, howto, leaveDialog, tiles: tiles.length, game: S().gameId, players: d.querySelectorAll('#lobbyPlayers li').length,
+  if (!qr) notes.push('invite dialog has no QR code');
+  const out = { cats, nofit, howto, leaveDialog, qr, tiles: tiles.length, game: S().gameId, players: d.querySelectorAll('#lobbyPlayers li').length,
     settings: d.querySelectorAll('#settingsBox select').length, notes };
   close();
   return { ...out, errors };

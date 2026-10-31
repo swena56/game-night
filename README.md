@@ -304,7 +304,10 @@ be checked without a browser.
 8. **Identity and social.**
    - Avatars generated with the Unmask face generator.
    - A colour picker and rename in the lobby.
-   - A QR code for the invite link.
+   - ✅ A QR code for the invite link (📲 in the lobby). `static/qr.js` is a small dependency-free encoder
+     (byte mode, level M, versions 1–9), checked bit for bit against the `segno` library across five
+     versions and all eight masks. A host on the server's own device gets the Wi-Fi address in the link,
+     since "localhost" means nothing on a friend's phone.
    - Spectator count and "👀 watching" names.
 9. **Game-specific polish:** see the per-game plan below.
 10. ✅ **Installable app (PWA).** A web manifest with a 🎲 icon (`static/icons/`, drawn by a tiny

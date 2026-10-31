@@ -590,6 +590,7 @@ class Room:
         see_all = ghost or self.phase == "over"
         v = {
             "code": self.code,
+            "lan": lan_url(),
             "phase": self.phase,
             "settings": self.settings,
             "gameId": self.settings["game"],
@@ -1012,6 +1013,16 @@ def lan_ip():
             return s.getsockname()[0]
     except OSError:
         return "localhost"
+
+
+_LAN = [0.0, ""]
+
+
+def lan_url():
+    """The address friends on the same Wi-Fi use, rechecked every minute (the phone may change networks)."""
+    if time.time() - _LAN[0] > 60:
+        _LAN[:] = [time.time(), f"http://{lan_ip()}:{PORT}"]
+    return _LAN[1]
 
 
 if __name__ == "__main__":

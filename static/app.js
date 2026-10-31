@@ -743,15 +743,29 @@ $('#soloSetupBtn').onclick = () => solo(false);
 $('#addBotBtn').onclick = () => quiet(act('add_bot', { level: $('#botLevel').value }));
 $('#joinBtn').onclick = () => api('/api/join', { name: $('#name').value, code: $('#code').value.trim() }).then(enter).catch((e) => toast(e.message));
 $('#code').addEventListener('keydown', (e) => e.key === 'Enter' && $('#joinBtn').click());
-$('#shareBtn').onclick = async () => {
-  const url = `${location.origin}/?room=${S.code}`;
-  if (navigator.share) { navigator.share({ title: 'Join my Game Night room', url }).catch(() => {}); return; }
-  try { await navigator.clipboard.writeText(url); toast('Invite link copied!'); }
-  catch {
-    const input = el('input'); input.value = url; input.readOnly = true;
-    input.onfocus = () => input.select();
-    ask('Copy this link and send it to your friends:', { title: 'Invite link', body: input, ok: 'Done', cancel: '' });
+// the invite: a QR code to scan across the table, plus the link to copy or share. A host on the server's
+// own device (localhost) gets the Wi-Fi address instead, since "localhost" means nothing on a friend's phone.
+$('#shareBtn').onclick = () => {
+  const local = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+  const url = `${local && S.lan ? S.lan : location.origin}/?room=${S.code}`;
+  const body = el('div', 'invite');
+  const qr = QR.qrSvg(url);
+  if (qr) { qr.classList.add('invite-qr'); qr.setAttribute('role', 'img'); qr.setAttribute('aria-label', 'QR code for the invite link'); body.append(qr); }
+  const input = el('input'); input.value = url; input.readOnly = true;
+  input.onfocus = () => input.select();
+  const row = el('div', 'row');
+  const copy = el('button', '', '📋 Copy link');
+  copy.onclick = async () => {
+    try { await navigator.clipboard.writeText(url); toast('Invite link copied!'); } catch { input.focus(); input.select(); toast('Select the link and copy it.'); }
+  };
+  row.append(copy);
+  if (navigator.share) {
+    const share = el('button', '', '📤 Share…');
+    share.onclick = () => navigator.share({ title: 'Join my Game Night room', url }).catch(() => {});
+    row.append(share);
   }
+  body.append(input, row);
+  ask('Friends on the same Wi-Fi can scan this or open the link.', { title: `Room ${S.code}`, body, ok: 'Done', cancel: '' });
 };
 $('#startBtn').onclick = () => quiet(act('start'));
 $('#rematchBtn').onclick = () => quiet(act('rematch'));
