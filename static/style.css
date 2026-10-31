@@ -1383,3 +1383,38 @@ body.light .logo { background-image: linear-gradient(90deg, #e09a00, #e0457b, #1
 .avatar svg { display: block; width: 100%; height: 100%; }
 .plist .avatar { width: 30px; height: 30px; }
 .chip.out .avatar { filter: grayscale(1); opacity: .6; }
+
+/* qork (dice reuse the yacht .ya-die look) */
+.qk { display: flex; flex-direction: column; align-items: center; gap: 6px; user-select: none; -webkit-user-select: none; }
+.qk-info { font-weight: 700; color: var(--muted); }
+.qk-dice { display: flex; gap: 14px; min-height: 76px; align-items: center; }
+.qk-die { pointer-events: none; }
+.qk-die.blank span.on { opacity: 0; }
+.qk-die.tumble { animation: qkTumble .18s linear infinite; }
+@keyframes qkTumble { 0% { transform: rotate(-12deg) translateY(-4px); } 50% { transform: rotate(12deg) translateY(2px); } 100% { transform: rotate(-12deg) translateY(-4px); } }
+.qk-call { font-size: 22px; font-weight: 900; min-height: 1.4em; }
+.qk-call.hot { color: #ff922b; font-size: 30px; animation: bannerIn .25s ease-out; }
+.qk-mat { position: relative; width: min(100%, 340px, calc(100vh - 360px)); min-width: 220px; aspect-ratio: 1; border-radius: 50%;
+  background: radial-gradient(circle, #2f6b4f 0 55%, #23523c 56% 100%); box-shadow: inset 0 0 0 4px #ffffff22, 0 8px 24px #0006; touch-action: none; cursor: pointer; }
+.qk-mat svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.qk-mat line { stroke-width: 1.2; stroke-linecap: round; opacity: .85; }
+.qk-ring { position: absolute; left: 28%; top: 28%; width: 44%; height: 44%; border-radius: 50%; border: 2px dashed #ffffff55; }
+.qk-qork { position: absolute; width: 13%; height: 13%; transform: translate(-50%, -50%); border-radius: 30%; box-shadow: 0 3px 0 #0005, inset 0 -3px 0 #0003;
+  display: grid; place-items: center; font-size: 12px; color: #000a; transition: left .16s ease-out, top .16s ease-out; }
+.qk-qork.me { outline: 3px solid #fff; }
+.qk-qork.trapped { filter: brightness(.6); }
+.qk-cup { position: absolute; left: 22%; top: 22%; width: 56%; height: 56%; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle at 40% 35%, #ff8fa3cc, #d6336ccc 70%); border: 4px solid #fff6;
+  transform: scale(1.35) translateY(-30%); opacity: .25; transition: transform .12s ease-in, opacity .12s; }
+.qk-cup.down { transform: none; opacity: .9; }
+.qk-mat.flinch { animation: qkShake .3s; }
+@keyframes qkShake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+.qk-buttons { justify-content: center; gap: 10px; }
+.qk-buttons > * { flex: none; }
+.qk-go { min-width: 150px; font-size: 22px; }
+.qk-go.hot { animation: bannerIn .25s ease-out; box-shadow: 0 0 0 4px #ff922b; }
+.qk-times { display: flex; flex-direction: column; gap: 2px; min-height: 3em; width: min(100%, 320px); }
+.qk-time { display: flex; justify-content: space-between; }
+.qk-rolls { display: flex; flex-wrap: wrap; gap: 6px; }
+.qk-roll { padding: 2px 8px; border-radius: 8px; background: var(--field); font-weight: 700; }
+.qk-roll.hot { background: #ff922b; color: #000; }
