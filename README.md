@@ -29,6 +29,9 @@ address the server prints. **Play solo** on the home screen starts any game agai
 | 🔴 **Drop Four** | 2–4 | Gravity four-in-a-row. 3–4 players get a 9×7 board. | Optional 💣 **bomb disc**: it clears its 3×3 neighbourhood and the stack falls, which can complete *someone else's* line. |
 | 🔳 **Dots & Boxes** | 2–4 | The pencil-and-paper classic on a 3×3 to 6×6 grid. Close a box to claim it and move again. On touch screens a line takes two taps (pick, then confirm). | Optional 💎 **gem boxes** worth 3 points. |
 | ❌ **Tic-Tac-Toe** | 2 | The classic. | 👻 **Vanishing**: you keep only your 3 newest marks, and the oldest fades out. |
+| 🕵️ **Odd One Out** | 3–6 | Everyone gets the same secret word except one player, whose word is similar. Take turns giving one-word clues, then vote. | The odd one **doesn't know they're odd**. Catch them for +2 each; if they escape they get +4. A caught odd one can still guess the real word for +3. |
+| 🖍️ **Scribble Relay** | 3–6 | Everyone writes a phrase, then the chains pass round the table: draw what you're handed, caption the drawing you're handed, and so on. Drawing happens on your own phone (6 ink colours, undo). | You only see the entry right before yours. At the end each chain is revealed card by card and everyone ❤️ votes for their favourite entry. 🎯 A chain that ends where it started earns everyone in it +1. |
+| 🤥 **Fib Finder** | 2–6 | A strange-but-true fact appears with a word missing (56 facts). Everyone writes a believable fake answer, then picks which answer is real. | +3 for finding the truth, +2 for each player your fib fools. Typing the real answer is caught and rejected. House fibs make sure there are always enough answers. The last fact counts double. |
 | 🥷 **Night Heist** *(the surprise)* | 2–6 | A simultaneous bluffing game. Each night everyone secretly picks **Grab**, **Guard** or **Rest**, then all choices are revealed together. | A lone grabber steals the whole vault. Two grabbers trip the alarm and the loot grows. Guards fine grabbers 💰2 each, and guarding an empty hall costs 💰1. Reading the table is the whole game. |
 
 | 🚀 **Moon Shot** | 2–6 | Push-your-luck dice race to the moon. Roll to build fuel, then bank it to fly. Any 1 loses this turn's fuel; double 1s crash you to the start. | A random track of ⭐ boosts (+5), ☄️ meteors (−5) and 🌀 wormholes (swap with the leader), so *where* you stop matters. Doubles earn 🛡️ shields. |
@@ -50,6 +53,9 @@ Every game has **Easy / Normal / Hard bots**:
 - **Drop Four:** the hard bot searches 4 moves ahead (alpha-beta pruning).
 - **Dots & Boxes:** bots take free boxes and avoid drawing third sides. When forced to give boxes away, normal and hard give the fewest. Hard also uses chain strategy: in two-player games it *double-deals* (leaves the last two boxes of a long chain to keep control), and it opens two-box chains in the middle so they can't be double-dealt back.
 - **Tic-Tac-Toe:** the hard bot plays perfectly (minimax) in the classic variant.
+- **Odd One Out:** bots give clues from per-word clue lists (hard bots favour clues that fit both words) and vote by comparing everyone's clues with what they would expect. Bots also notice when the table's clues don't fit their own word.
+- **Scribble Relay:** bots draw from the Doodle Dash picture book, so anything not in it comes out as some other picture. They recognise each other's drawings, and stronger bots more often "get" a human's drawing.
+- **Fib Finder:** bots write plausible decoy answers. Like people, they sometimes just know the fact; hard bots are also suspicious of answers that don't sound like a real guess.
 - **Night Heist:** the bot reads the pot size and the table size.
 - **Chess:** alpha-beta search with iterative deepening (hard bot: up to 4 moves deep, 4s budget). It finishes off a lone king and avoids repetition draws when ahead.
 - **Checkers:** alpha-beta search (hard bot: up to 8 moves deep).

@@ -70,6 +70,35 @@ const click = (el) => el && el.dispatchEvent(new el.ownerDocument.defaultView.Mo
 
 // One "human" move per game, done purely through the DOM.
 const MOVES = {
+  oddone(d, S, n, w) {
+    if (S.oddone.stage === 'vote') return click(pick(enabled(d, '.oo-vote')));
+    const [form, input, text] = S.oddone.stage === 'guess' ? ['#ooGuessForm', '#ooGuess', pick(['tea', 'snow', 'pool'])]
+      : ['#ooClueForm', '#ooClue', pick(['warm', 'round', 'happy', 'big', 'fast', 'blue', 'loud', 'soft']) + 'ish'.slice(0, n % 4)];
+    d.querySelector(input).value = text;
+    d.querySelector(form).dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
+  },
+  fibfinder(d, S, n, w) {
+    if (S.fibfinder.stage === 'pick') return click(pick(enabled(d, '.fb-opt')));
+    d.querySelector('#fbFib').value = pick(['a tiny hat', 'seven', 'purple', 'cheese', 'the mayor']);
+    d.querySelector('#fbForm').dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
+  },
+  relay(d, S, n, w) {
+    const g = S.relay;
+    if (g.stage === 'show') return click(pick(enabled(d, '.rl-heart')));
+    if (g.kind === 'draw') {
+      const pad = d.querySelector('#rlPad');
+      pad.getBoundingClientRect = () => ({ left: 0, top: 0, width: 300, height: 300 });
+      for (let k = 0; k < 2; k++) {
+        click(pick([...d.querySelectorAll('.rl-swatch')]));
+        pad.dispatchEvent(new w.MouseEvent('pointerdown', { clientX: 30 + 100 * k, clientY: 40 }));
+        for (let i = 1; i < 12; i++) pad.dispatchEvent(new w.MouseEvent('pointermove', { clientX: 30 + 100 * k + i * 9, clientY: 40 + i * 15 }));
+        pad.dispatchEvent(new w.MouseEvent('pointerup', {}));
+      }
+      return click(d.querySelector('#rlSend'));
+    }
+    if (g.kind === 'write') click(d.querySelector('#rlIdea')); else d.querySelector('#rlText').value = pick(['a duck', 'my uncle', 'a cat']);
+    d.querySelector('#rlTextForm').dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
+  },
   unmask(d, S, n) {
     if (n % 4 === 3) { click(d.querySelector('#accuseBtn')); return click(pick(enabled(d, '#board .card:not(.down)'))); }
     const fl = d.querySelector('#log .entry button'); if (fl) click(fl);
@@ -126,6 +155,8 @@ const MOVES = {
   },
 };
 
+const UI_MINE = (f) => (f.stage === 'write' && !f.mine) || (f.stage === 'pick' && f.myPick == null);
+
 async function playSolo(game, seconds = 60) {
   const { w, d, errors, close } = await openPage(game === 'hockey' || game === 'riders');
   const S = () => w.eval('S');
@@ -138,7 +169,8 @@ async function playSolo(game, seconds = 60) {
   const end = Date.now() + seconds * 1000;
   while (Date.now() < end && S()?.phase === 'playing') {
     const s = S();
-    const mine = s.turn === s.me.id || (game === 'heist' && !s.heist.mine) || (game === 'seabattle' && s.sea.stage === 'placing' && !s.sea.ready[s.me.id])
+    const mine = s.turn === s.me.id || (game === 'heist' && !s.heist.mine) || (game === 'oddone' && s.oddone.stage === 'vote' && !s.oddone.myVote) || (game === 'fibfinder' && UI_MINE(s.fibfinder))
+      || (game === 'relay' && (s.relay.stage === 'play' ? !s.relay.sent : s.relay.myVote == null)) || (game === 'seabattle' && s.sea.stage === 'placing' && !s.sea.ready[s.me.id])
       || (game === 'spire' && s.spire.playing && s.spire.startIn <= 0)
       || (game === 'doodle' && s.doodle.stage === 'draw' && !s.doodle.solvers.some(([p]) => p === s.me.id)) || game === 'hockey' || (game === 'riders' && s.riders.stage === 'ride');
     if (game === 'lucky' && s.lucky.stage === 'wheel') { await sleep(300); continue; }
@@ -261,7 +293,7 @@ async function feedbackTour() {
   const lt = await lobbyTour();
   console.log('LOBBY', JSON.stringify(lt));
   for (const g of games.length ? games : Object.keys(MOVES)) {
-    const r = await playSolo(g, g === 'wordsmith' ? 40 : g === 'spire' ? 25 : g === 'lucky' ? 540 : 70);
+    const r = await playSolo(g, g === 'wordsmith' ? 40 : g === 'spire' ? 25 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
     console.log(`\n== ${g}: phase=${r.phase} moves=${r.moves} dialogs=${r.dialogs || 0} screen="${r.screen}" ${r.banner ? `banner="${r.banner}"` : ''}`);
     console.log(`   help: ${r.help} | log ticker: "${r.ticker}"`);
     if (r.replay) console.log(`   replay: ${r.replay}`);
