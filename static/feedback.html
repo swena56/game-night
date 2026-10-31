@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Feedback Inbox</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .inbox { max-width: 760px; margin: 0 auto; padding: 16px; }
+    .inbox h1 { font-size: 24px; }
+    .filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 16px; }
+    .filters button.on { border-color: var(--accent); background: #ffb7031a; }
+    .item { background: var(--panel); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 10px; border-left: 4px solid var(--danger); }
+    .item.idea { border-left-color: var(--accent2); }
+    .item.done { opacity: .55; }
+    .item .meta { color: var(--muted); font-size: 12px; display: flex; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 6px; }
+    .item .text { white-space: pre-wrap; word-wrap: break-word; font-size: 15px; }
+    .item details { margin-top: 8px; font-size: 12px; color: var(--muted); }
+    .item pre { white-space: pre-wrap; word-wrap: break-word; background: #0008; padding: 8px; border-radius: 8px; max-height: 260px; overflow: auto; }
+    .item .actions { margin-top: 8px; display: flex; gap: 8px; }
+    .empty { text-align: center; color: var(--muted); padding: 40px 0; }
+  </style>
+</head>
+<body>
+  <main class="inbox">
+    <h1>🐞💡 Feedback inbox</h1>
+    <p class="hint left">Bug reports and suggestions sent from Game Night. Stored in <code>data/feedback.jsonl</code> on this device.</p>
+    <div class="filters" id="filters"></div>
+    <div id="list"></div>
+  </main>
+  <script>
+    const FILTERS = [['open', 'Open'], ['all', 'All'], ['bug', '🐞 Bugs'], ['idea', '💡 Ideas'], ['done', '✅ Done']];
+    let items = [], filter = 'open';
+    const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+
+    async function load() {
+      const list = document.getElementById('list');
+      try {
+        const r = await fetch('/api/feedback');
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error);
+        items = j.items;
+      } catch (e) {
+        list.innerHTML = '';
+        list.append(el('p', 'empty', `🔒 ${e.message || "Can't load the inbox."} (Try http://localhost:8000/feedback.html on the device running the server.)`));
+        return;
+      }
+      render();
+    }
+
+    function render() {
+      const bar = document.getElementById('filters'); bar.innerHTML = '';
+      for (const [key, label] of FILTERS) {
+        const count = items.filter((i) => match(i, key)).length;
+        const b = el('button', key === filter ? 'on' : '', `${label} (${count})`);
+        b.onclick = () => { filter = key; render(); };
+        bar.append(b);
+      }
+      const list = document.getElementById('list'); list.innerHTML = '';
+      const shown = items.filter((i) => match(i, filter));
+      if (!shown.length) list.append(el('p', 'empty', 'Nothing here. 🎉'));
+      for (const i of shown) {
+        const card = el('div', `item ${i.kind} ${i.status}`);
+        const meta = el('div', 'meta');
+        const ctx = i.context || {};
+        meta.append(el('b', '', `${i.kind === 'bug' ? '🐞 Bug' : '💡 Idea'} #${i.id}`),
+          el('span', '', new Date(i.at * 1000).toLocaleString()),
+          el('span', '', i.name ? `from ${i.name}` : 'anonymous'));
+        if (ctx.game) meta.append(el('span', '', `${ctx.game} · ${ctx.phase}`));
+        if (ctx.errors?.length) meta.append(el('span', '', `⚠️ ${ctx.errors.length} JS error(s)`));
+        card.append(meta, el('div', 'text', i.text));  // textContent only: reports are untrusted input
+        if (Object.keys(ctx).length) {
+          const d = el('details'); d.append(el('summary', '', 'Technical details'), el('pre', '', JSON.stringify(ctx, null, 2)));
+          card.append(d);
+        }
+        const actions = el('div', 'actions');
+        const toggle = el('button', i.status === 'done' ? '' : 'primary', i.status === 'done' ? '↩︎ Reopen' : '✅ Mark done');
+        toggle.onclick = async () => {
+          const status = i.status === 'done' ? 'open' : 'done';
+          const r = await fetch('/api/feedback/status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: i.id, status }) });
+          if (r.ok) { i.status = status; render(); }
+        };
+        actions.append(toggle);
+        card.append(actions);
+        list.append(card);
+      }
+    }
+
+    const match = (i, key) => key === 'all' || (key === 'open' ? i.status === 'open' : key === 'done' ? i.status === 'done' : i.kind === key);
+    load();
+  </script>
+</body>
+</html>

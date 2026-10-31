@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Game Night</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- HOME -->
+  <section id="home" class="screen center" hidden>
+    <div class="panel narrow">
+      <h1 class="logo">🎲 Game Night</h1>
+      <p class="tag">17 games · play with friends or bots</p>
+      <label>Your name <input id="name" maxlength="16" autocomplete="nickname" placeholder="e.g. Sam"></label>
+      <button id="createBtn" class="primary big">Create a room</button>
+      <div class="or">or play solo against bots</div>
+      <div class="row">
+        <select id="soloGame"></select>
+        <select id="soloLevel"><option value="easy">Easy</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select>
+      </div>
+      <button id="soloBtn" class="big">🤖 Play solo</button>
+      <div class="or">or join a friend</div>
+      <div class="row">
+        <input id="code" maxlength="4" placeholder="CODE" class="code-input" autocapitalize="characters">
+        <button id="joinBtn">Join</button>
+      </div>
+      <button id="reportLink" class="ghost-btn report-link">🐞 Report a bug · 💡 Suggest an idea</button>
+    </div>
+  </section>
+
+  <!-- LOBBY -->
+  <section id="lobby" class="screen center" hidden>
+    <div class="panel narrow wide">
+      <div class="room-code">Room <b id="lobbyCode"></b></div>
+      <button id="shareBtn" class="ghost-btn">📋 Copy invite link</button>
+      <h3>Game</h3>
+      <div id="gamePicker" class="picker"></div>
+      <p id="gameDesc" class="hint"></p>
+      <ul id="howto" class="rules howto"></ul>
+      <h3>Players</h3>
+      <ul id="lobbyPlayers" class="plist"></ul>
+      <div id="botRow" class="row">
+        <select id="botLevel"><option value="easy">Easy</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select>
+        <button id="addBotBtn">🤖 Add computer player</button>
+      </div>
+      <h3>Settings</h3>
+      <div id="settingsBox" class="settings"></div>
+      <button id="startBtn" class="primary big">Start game</button>
+      <p id="waitHost" class="hint">Waiting for the host to start…</p>
+      <button id="lobbyReplayBtn" class="big" hidden>▶ Watch last game's replay</button>
+      <div id="scoreSection" hidden>
+        <h3>Scoreboard</h3>
+        <div id="scoreboard"></div>
+        <h3>Match history</h3>
+        <ol id="history" class="history"></ol>
+        <button id="resetScoresBtn" class="ghost-btn" hidden>Reset scoreboard</button>
+      </div>
+      <button id="leaveBtn" class="ghost-btn">Leave room</button>
+    </div>
+  </section>
+
+  <!-- GAME -->
+  <section id="game" class="screen" hidden>
+    <header class="topbar">
+      <span class="logo small" id="gameCode"></span>
+      <span id="turnText" class="turn"></span>
+      <span id="timer" class="timer"></span>
+      <button id="helpBtn" class="icon-btn" title="How to play" aria-label="How to play">❓</button>
+    </header>
+    <div id="overBanner" class="over" hidden>
+      <div id="overText"></div>
+      <div id="overScores" class="over-scores"></div>
+      <div class="over-actions">
+        <button id="rematchBtn" class="primary">🔁 Rematch</button>
+        <button id="lobbyBtn">🏠 Lobby</button>
+        <button id="readyBtn">🙋 I'm in!</button>
+        <button id="replayBtn">▶ Replay</button>
+      </div>
+      <span id="overWait" class="hint"></span>
+    </div>
+    <div class="layout">
+      <main>
+        <div id="players" class="chips"></div>
+        <div id="arena"></div>
+      </main>
+      <aside>
+        <div id="sideGame"></div>
+        <div class="panel log-panel">
+          <div id="reactBar" class="react-bar"></div>
+          <button id="logToggle" class="log-toggle" aria-expanded="true"><span>📜</span><span id="logLast"></span><span class="chev">▾</span></button>
+          <div id="log" class="log" aria-live="polite"></div>
+        </div>
+        <button id="quitBtn" class="ghost-btn">Leave game</button>
+      </aside>
+    </div>
+  </section>
+
+  <!-- REPLAY CONTROLS -->
+  <div id="replayBar" class="replay-bar" hidden>
+    <div id="replayCaption" class="replay-caption"></div>
+    <div class="row">
+      <button id="rpFirst">⏮</button><button id="rpPrev">◀</button><button id="rpPlay">▶</button>
+      <button id="rpNext">▶|</button><button id="rpLast">⏭</button><button id="rpExit" class="danger">✕</button>
+    </div>
+    <input id="rpSlider" type="range" min="0" value="0">
+  </div>
+
+  <!-- FLOATING BUTTONS, CHAT, PREFERENCES -->
+  <div id="fabs" class="fabs" hidden>
+    <button id="prefsBtn" title="Settings">⚙️</button>
+    <button id="chatBtn" title="Chat">💬<span id="chatBadge" class="badge" hidden></span></button>
+  </div>
+  <div id="chatBubble" class="chat-bubble" hidden></div>
+  <section id="chatPanel" class="drawer" hidden>
+    <header><b>💬 Chat</b><span id="chatNote" class="hint"></span><button id="chatClose" class="ghost-btn">✕</button></header>
+    <div id="chatList" class="chat-list"></div>
+    <div id="quickChat" class="quick-chat"></div>
+    <form id="chatForm" class="row"><input id="chatInput" maxlength="200" placeholder="Say something…" autocomplete="off"><button class="primary">Send</button></form>
+  </section>
+  <section id="prefsPanel" class="drawer" hidden>
+    <header><b>⚙️ My settings</b><button id="prefsClose" class="ghost-btn">✕</button></header>
+    <p class="hint left">Saved on this device only.</p>
+    <div id="prefsList"></div>
+    <button id="reportBtn" class="big">🐞 Report a bug / 💡 suggestion</button>
+  </section>
+
+  <!-- IN-APP DIALOG (replaces confirm/prompt) -->
+  <div id="modal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="modalText">
+    <div class="modal-card">
+      <h3 id="modalTitle" hidden></h3>
+      <p id="modalText"></p>
+      <div id="modalBody"></div>
+      <div class="row"><button id="modalCancel">Cancel</button><button id="modalOk" class="primary">OK</button></div>
+    </div>
+  </div>
+
+  <div id="connBanner" class="conn-banner" hidden>📡 Connection lost — reconnecting…</div>
+  <div id="floaters"></div>
+  <div id="toast" class="toast" hidden></div>
+  <script>window.UI = {};</script>
+  <script src="/faces.js"></script>
+  <script src="/games/unmask.js"></script>
+  <script src="/games/wordsmith.js"></script>
+  <script src="/games/dropfour.js"></script>
+  <script src="/games/boxes.js"></script>
+  <script src="/games/doodle.js"></script>
+  <script src="/games/hockey.js"></script>
+  <script src="/games/riders.js"></script>
+  <script src="/games/tictactoe.js"></script>
+  <script src="/games/heist.js"></script>
+  <script src="/games/moonshot.js"></script>
+  <script src="/games/chess3d.js"></script>
+  <script src="/games/chess.js"></script>
+  <script src="/games/checkers.js"></script>
+  <script src="/games/go.js"></script>
+  <script src="/games/lastcard.js"></script>
+  <script src="/games/seabattle.js"></script>
+  <script src="/games/spire.js"></script>
+  <script src="/games/lucky.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

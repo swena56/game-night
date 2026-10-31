@@ -1,0 +1,10 @@
+# Python
+__pycache__/
+*.pyc
+
+# test tooling (reinstall with: cd tests && npm install)
+tests/node_modules/
+
+# live server data: saved rooms, feedback reports, logs (keep the word list the games need)
+data/*
+!data/words.txt

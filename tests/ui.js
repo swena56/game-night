@@ -1,0 +1,274 @@
+// Drives the real Game Night UI in jsdom (a simulated, phone-sized browser) against a running server,
+// playing each game through real clicks and reporting any JavaScript errors.
+// Usage: start a server (e.g. PORT=8767 python3 server.py), then in tests/: npm install && BASE=http://localhost:8767 node ui.js [game ...]
+const { JSDOM, VirtualConsole } = require('jsdom');
+const BASE = process.env.BASE || 'http://localhost:8767';
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const nodeErrors = [];
+process.on('unhandledRejection', (e) => nodeErrors.push('unhandledRejection: ' + (e?.stack || e)));
+
+class ES { // minimal EventSource over fetch streaming
+  constructor(url) { this.url = new URL(url, BASE).href; this.readyState = 0; this.l = {}; this.ctrl = new AbortController(); this.open(); }
+  async open() {
+    try {
+      const r = await fetch(this.url, { signal: this.ctrl.signal });
+      if (!r.ok) { this.readyState = 2; this.onerror?.(); return; }
+      this.readyState = 1; this.onopen?.();
+      const dec = new TextDecoder(); let buf = '';
+      for await (const chunk of r.body) {
+        buf += dec.decode(chunk, { stream: true });
+        let i;
+        while ((i = buf.indexOf('\n\n')) >= 0) { this.dispatch(buf.slice(0, i)); buf = buf.slice(i + 2); }
+      }
+    } catch { if (this.readyState !== 2) { this.readyState = 0; this.onerror?.(); } }
+  }
+  dispatch(block) {
+    let ev = 'message', data = '';
+    for (const line of block.split('\n')) { if (line.startsWith('event: ')) ev = line.slice(7); else if (line.startsWith('data: ')) data += line.slice(6); }
+    if (!data || this.readyState === 2) return;
+    try { if (ev === 'message') this.onmessage?.({ data }); (this.l[ev] || []).forEach((f) => f({ data })); }
+    catch (e) { nodeErrors.push('in onmessage: ' + e.stack); }
+  }
+  addEventListener(t, f) { (this.l[t] ||= []).push(f); }
+  close() { this.readyState = 2; this.ctrl.abort(); }
+}
+ES.CONNECTING = 0; ES.OPEN = 1; ES.CLOSED = 2;
+
+// A canvas 2D context that accepts every call and draws nothing (jsdom has no canvas).
+const stubContext = () => new Proxy({}, { get: (t, k) => (k in t ? t[k] : /^create.*Gradient$/.test(k) ? () => ({ addColorStop() {} }) : () => {}), set: (t, k, v) => { t[k] = v; return true; } });
+
+async function openPage(stubCanvas = false) {
+  const errors = [];
+  const vc = new VirtualConsole();
+  vc.on('jsdomError', (e) => { if (!/Could not load img|Not implemented: HTMLCanvasElement/.test(e.message)) errors.push('jsdomError: ' + (e.detail?.stack || e.stack || e.message)); });
+  vc.on('error', (...a) => errors.push('console.error: ' + a.join(' ')));
+  const dom = await JSDOM.fromURL(BASE + '/', {
+    runScripts: 'dangerously', resources: 'usable', pretendToBeVisual: true, virtualConsole: vc,
+    beforeParse(w) {
+      w.fetch = (u, o) => fetch(new URL(u, BASE).href, o);
+      w.EventSource = ES;
+      w.ResizeObserver = class { observe() {} disconnect() {} };
+      w.matchMedia = (q) => ({ matches: /max-width/.test(q), media: q, addEventListener() {}, removeEventListener() {} }); // phone-sized
+      w.navigator.vibrate = () => true;
+      w.confirm = () => true; w.prompt = () => null; w.alert = () => {};
+      w.HTMLCanvasElement.prototype.getContext = stubCanvas ? function (kind) { return kind === '2d' ? stubContext() : null; } : () => null;
+      w.AudioContext = undefined;
+    },
+  });
+  await new Promise((r) => (dom.window.document.readyState === 'complete' ? r() : dom.window.addEventListener('load', r)));
+  return { w: dom.window, d: dom.window.document, errors, close: () => { try { dom.window.eval('es && es.close()'); } catch {} dom.window.close(); } };
+}
+
+async function waitFor(fn, ms = 15000) {
+  const end = Date.now() + ms;
+  while (Date.now() < end) { try { if (fn()) return true; } catch {} await sleep(100); }
+  return false;
+}
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+const enabled = (d, sel) => [...d.querySelectorAll(sel)].filter((b) => !b.disabled && !b.closest('[hidden]'));
+const click = (el) => el && el.dispatchEvent(new el.ownerDocument.defaultView.MouseEvent('click', { bubbles: true }));
+
+// One "human" move per game, done purely through the DOM.
+const MOVES = {
+  unmask(d, S, n) {
+    if (n % 4 === 3) { click(d.querySelector('#accuseBtn')); return click(pick(enabled(d, '#board .card:not(.down)'))); }
+    const fl = d.querySelector('#log .entry button'); if (fl) click(fl);
+    click(d.querySelector('#askBtn'));
+  },
+  wordsmith(d) { click(enabled(d, '#wsSwap')[0]); click(enabled(d, '.rack-tile')[0]); click(enabled(d, '#wsSwap')[0]); if (!enabled(d, '#wsSwap').length) return; click(d.querySelector('#wsPass')); },
+  chess(d) { click(pick(enabled(d, '.csq.movable'))); click(pick(enabled(d, '.csq.target, .csq.capture'))); click(enabled(d, '#chPromo button')[0]); },
+  checkers(d) { click(pick(enabled(d, '.csq.movable'))); click(pick(enabled(d, '.csq.target'))); },
+  go(d, S, n) { if (n > 30) return click(d.querySelector('#goPass')); click(pick(enabled(d, '.go-pt'))); },
+  lastcard(d) {
+    click(enabled(d, '#lcDeclare')[0]);
+    const ok = enabled(d, '.card-btn.ok');
+    if (ok.length) { click(ok[0]); return click(enabled(d, '#lcSuitPick button')[0]); }
+    click(enabled(d, '#lcPass')[0] || enabled(d, '#lcDraw')[0]);
+  },
+  seabattle(d, S) {
+    if (S.sea.stage === 'placing') { click(d.querySelector('#sbRandom')); return click(d.querySelector('#sbReady')); }
+    click(pick(enabled(d, '#sbEnemy .sea-cell')));
+  },
+  dropfour(d) { click(pick(enabled(d, '.d4-cell'))); },
+  boxes(d) { const ln = pick(enabled(d, '.bx-line:not(.drawn)')); click(ln); click(d.querySelector(`.bx-line[data-k="${ln?.dataset.k}"]`)); },  // touch: tap twice
+  doodle(d, S, n, w) {
+    d.querySelector('#ddGuess').value = pick(['cat', 'house', 'tree', 'car', 'apple', 'fish', 'sun']);
+    d.querySelector('#ddForm').dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
+  },
+  hockey(d, S, n, w) {  // drag the mallet to a few spots in our half (the bottom of the screen)
+    const c = d.querySelector('#hkCanvas');
+    c.getBoundingClientRect = () => ({ left: 0, top: 0, width: 320, height: 512 });
+    for (const type of ['pointerdown', 'pointermove']) c.dispatchEvent(new w.MouseEvent(type, { clientX: 40 + Math.random() * 240, clientY: 280 + Math.random() * 220, buttons: 1 }));
+  },
+  riders(d, S, n, w) {  // mix pad taps, swipes and keys
+    if (n % 3 === 0) return d.querySelectorAll('#lrPad button[data-d]')[n % 4]?.dispatchEvent(new w.MouseEvent('pointerdown', { bubbles: true }));
+    if (n % 3 === 1) return w.dispatchEvent(new w.KeyboardEvent('keydown', { code: pick(['ArrowLeft', 'ArrowRight', 'KeyW', 'Space']) }));
+    const st = d.querySelector('#lrStage');
+    st.dispatchEvent(new w.MouseEvent('pointerdown', { clientX: 100, clientY: 100 }));
+    st.dispatchEvent(new w.MouseEvent('pointermove', { clientX: 100 + pick([-40, 40, 0]), clientY: 100 + pick([-40, 40]) }));
+    st.dispatchEvent(new w.MouseEvent('pointerup', {}));
+  },
+  tictactoe(d) { click(pick(enabled(d, '.ttt-cell'))); },
+  heist(d) { click(pick(enabled(d, '.h-choice'))); },
+  moonshot(d, S) { click(S.moon.fuel >= 12 ? d.querySelector('#msBank') : d.querySelector('#msRoll')); },
+  lucky(d, S, n, w) {
+    const keys = enabled(d, '.lk-key');
+    if (keys.length) return click(pick(keys));
+    if (n % 6 === 5) {
+      d.querySelector('#lkSolve').value = 'definitely not it';
+      return d.querySelector('#lkSolveForm').dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
+    }
+    click(enabled(d, '#lkSpin')[0]);
+  },
+  spire(d, S, n, w) {
+    const key = (k) => w.dispatchEvent(new w.KeyboardEvent('keydown', { key: k, bubbles: true }));
+    key(pick(['ArrowLeft', 'ArrowRight', 'ArrowUp', ' ', ' ']));
+  },
+};
+
+async function playSolo(game, seconds = 60) {
+  const { w, d, errors, close } = await openPage(game === 'hockey' || game === 'riders');
+  const S = () => w.eval('S');
+  const report = { game, moves: 0, phase: null, notes: [] };
+  d.querySelector('#name').value = 'Tester';
+  d.querySelector('#soloGame').value = game;
+  d.querySelector('#soloLevel').value = 'easy';
+  click(d.querySelector('#soloBtn'));
+  if (!(await waitFor(() => !d.querySelector('#game').hidden && S()?.phase === 'playing'))) report.notes.push('never reached the game screen');
+  const end = Date.now() + seconds * 1000;
+  while (Date.now() < end && S()?.phase === 'playing') {
+    const s = S();
+    const mine = s.turn === s.me.id || (game === 'heist' && !s.heist.mine) || (game === 'seabattle' && s.sea.stage === 'placing' && !s.sea.ready[s.me.id])
+      || (game === 'spire' && s.spire.playing && s.spire.startIn <= 0)
+      || (game === 'doodle' && s.doodle.stage === 'draw' && !s.doodle.solvers.some(([p]) => p === s.me.id)) || game === 'hockey' || (game === 'riders' && s.riders.stage === 'ride');
+    if (game === 'lucky' && s.lucky.stage === 'wheel') { await sleep(300); continue; }
+    if (mine) { try { MOVES[game](d, s, report.moves, w); report.moves++; } catch (e) { errors.push('driver: ' + e.stack); } }
+    await sleep(60);
+    if (!d.querySelector('#modal').hidden) { report.dialogs = (report.dialogs || 0) + 1; click(d.querySelector('#modalOk')); }
+    await sleep(game === 'spire' ? 120 : 350);
+  }
+  click(d.querySelector('#helpBtn'));
+  report.help = d.querySelector('#modal').hidden ? 'no dialog' : `${d.querySelector('#modalTitle').textContent} (${d.querySelectorAll('#modalBody li').length} rules)`;
+  click(d.querySelector('#modalOk'));
+  report.ticker = d.querySelector('#logLast').textContent.slice(0, 40) + (d.querySelector('#log').hidden ? ' [log folded]' : ' [log open]');
+  report.phase = S()?.phase;
+  report.screen = d.querySelector('#turnText')?.textContent;
+  if (report.phase === 'over') {
+    report.banner = d.querySelector('#overText')?.textContent;
+    // replay
+    if (!d.querySelector('#replayBtn').hidden) {
+      click(d.querySelector('#replayBtn'));
+      await waitFor(() => !d.querySelector('#replayBar').hidden, 5000);
+      for (let i = 0; i < 3; i++) { click(d.querySelector('#rpNext')); await sleep(150); }
+      report.replay = d.querySelector('#replayCaption').textContent.slice(0, 50);
+      click(d.querySelector('#rpExit')); await sleep(300);
+    }
+    // chat + prefs
+    click(d.querySelector('#chatBtn'));
+    d.querySelector('#chatInput').value = 'gg from the test';
+    d.querySelector('#chatForm').dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
+    await waitFor(() => d.querySelector('#chatList').textContent.includes('gg from the test'), 5000) || report.notes.push('chat message never appeared');
+    click(d.querySelector('#prefsBtn')); report.prefs = d.querySelectorAll('#prefsList input').length;
+    // rematch, then back to lobby
+    click(d.querySelector('#rematchBtn'));
+    await waitFor(() => S().phase === 'playing', 8000) || report.notes.push('rematch did not start');
+    report.rematch = S().phase;
+  }
+  close();
+  report.errors = [...errors];
+  return report;
+}
+
+async function lobbyTour() {
+  const { w, d, errors, close } = await openPage();
+  const S = () => w.eval('S');
+  d.querySelector('#name').value = 'Host';
+  click(d.querySelector('#createBtn'));
+  const notes = [];
+  await waitFor(() => !d.querySelector('#lobby').hidden && S()) || notes.push('lobby never showed');
+  const tiles = d.querySelectorAll('#gamePicker .game-tile');
+  for (const t of [...tiles].slice(0, 12)) { click(t); await sleep(250); }
+  const sel = d.querySelector('#settingsBox select');
+  sel.value = sel.options[sel.options.length - 1].value; sel.dispatchEvent(new w.Event('change', { bubbles: true }));
+  click(d.querySelector('#addBotBtn')); await sleep(400);
+  click(d.querySelector('#shareBtn'));
+  await sleep(500);
+  const cats = [...d.querySelectorAll('#gamePicker .picker-cat')].map((x) => x.textContent).join(' ');
+  const nofit = [...d.querySelectorAll('#gamePicker .nofit small')].map((x) => x.textContent).join(',');
+  const howto = d.querySelectorAll('#howto li').length;
+  click(d.querySelector('#leaveBtn')); await sleep(200);
+  const leaveDialog = d.querySelector('#modalText').textContent; click(d.querySelector('#modalCancel'));
+  const out = { cats, nofit, howto, leaveDialog, tiles: tiles.length, game: S().gameId, players: d.querySelectorAll('#lobbyPlayers li').length,
+    settings: d.querySelectorAll('#settingsBox select').length, notes };
+  close();
+  return { ...out, errors };
+}
+
+async function feedbackTour() {
+  const notes = [];
+  // 1. report a bug from the home screen through the real dialog
+  const home = await openPage();
+  const d = home.d, w = home.w;
+  d.querySelector('#name').value = 'Tester';
+  click(d.querySelector('#reportLink'));
+  await waitFor(() => !d.querySelector('#modal').hidden, 3000) || notes.push('report dialog never opened');
+  const radios = [...d.querySelectorAll('input[name=reportKind]')].map((r) => r.value).join('/');
+  click(d.querySelector('#modalOk'));  // empty → should re-open with a hint
+  await sleep(300);
+  const reopened = !d.querySelector('#modal').hidden && d.querySelector('#toast').textContent;
+  d.querySelector('#reportText').value = 'The <b>chess</b> board <img src=x onerror=alert(1)> looks odd';
+  click(d.querySelector('.report .ghost-btn'));  // "What's included?"
+  const preview = d.querySelector('.report-pre').textContent;
+  click(d.querySelector('#modalOk'));
+  await waitFor(() => /Thanks!/.test(d.querySelector('#toast').textContent), 5000) || notes.push('no thank-you toast');
+  const thanks = d.querySelector('#toast').textContent;
+  home.close();
+  // 2. report from the in-game ❓ help dialog, with game details attached
+  const game = await openPage();
+  game.d.querySelector('#name').value = 'Tester';
+  game.d.querySelector('#soloGame').value = 'tictactoe';
+  click(game.d.querySelector('#soloBtn'));
+  await waitFor(() => game.w.eval('S')?.phase === 'playing');
+  click(game.d.querySelector('#helpBtn'));
+  click([...game.d.querySelectorAll('#modalBody button')].find((b) => /Something wrong/.test(b.textContent)));
+  await sleep(200);
+  game.d.querySelector('#reportText').value = 'Tic-tac-toe felt slow after my move';
+  click(game.d.querySelector('#modalOk'));
+  await waitFor(() => /Thanks!/.test(game.d.querySelector('#toast').textContent), 5000) || notes.push('in-game report failed');
+  game.close();
+  // 3. the inbox page renders reports safely and can mark them done
+  const vc = new VirtualConsole(); const errors = [...home.errors, ...game.errors];
+  vc.on('jsdomError', (e) => errors.push('inbox: ' + e.message));
+  const inbox = await JSDOM.fromURL(BASE + '/feedback.html', { runScripts: 'dangerously', resources: 'usable', virtualConsole: vc,
+    beforeParse(win) { win.fetch = (u, o) => fetch(new URL(u, BASE).href, o); } });
+  const id = inbox.window.document;
+  await waitFor(() => id.querySelectorAll('.item').length > 0, 5000) || notes.push('inbox showed nothing');
+  const first = id.querySelector('.item');
+  const injected = first.querySelector('.text b, .text img') !== null;
+  const withGame = [...id.querySelectorAll('.item')].some((x) => /tictactoe/.test(x.textContent));
+  click(first.querySelector('.actions button'));
+  await sleep(500);
+  const afterDone = id.querySelector('#filters').textContent;
+  const items = id.querySelectorAll('.item').length;
+  inbox.window.close();
+  return { radios, reopened, previewHasGame: preview.includes('"view"'), thanks, items,
+    htmlInjected: injected, inGameReportHasGame: withGame, filters: afterDone, notes, errors };
+}
+
+(async () => {
+  const games = process.argv.slice(2);
+  if (games[0] === 'feedback') { console.log('FEEDBACK', JSON.stringify(await feedbackTour(), null, 1)); process.exit(0); }
+  const lt = await lobbyTour();
+  console.log('LOBBY', JSON.stringify(lt));
+  for (const g of games.length ? games : Object.keys(MOVES)) {
+    const r = await playSolo(g, g === 'wordsmith' ? 40 : g === 'spire' ? 25 : g === 'lucky' ? 540 : 70);
+    console.log(`\n== ${g}: phase=${r.phase} moves=${r.moves} dialogs=${r.dialogs || 0} screen="${r.screen}" ${r.banner ? `banner="${r.banner}"` : ''}`);
+    console.log(`   help: ${r.help} | log ticker: "${r.ticker}"`);
+    if (r.replay) console.log(`   replay: ${r.replay}`);
+    if (r.rematch) console.log(`   rematch: ${r.rematch} | prefs toggles: ${r.prefs}`);
+    if (r.notes.length) console.log('   notes:', r.notes.join('; '));
+    for (const e of r.errors.filter((x) => !x.includes('WebGL')).slice(0, 5)) console.log('   ERROR', e.split('\n').slice(0, 4).join(' | '));
+  }
+  if (nodeErrors.length) console.log('\nNODE ERRORS:\n' + nodeErrors.slice(0, 8).join('\n'));
+  process.exit(0);
+})();

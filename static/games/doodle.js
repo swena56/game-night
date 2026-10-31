@@ -1,0 +1,100 @@
+// Doodle Dash: strokes arrive from the server as they start; each new stroke animates over its time slot.
+UI.doodle = (() => {
+  let S, ctx, svg, drawnRound = 0, drawnCount = 0, receivedAt = 0, tickTimer = 0;
+  const NS = 'http://www.w3.org/2000/svg';
+  const $ = (id) => document.getElementById(id);
+
+  function mount(main, side) {
+    drawnRound = 0; drawnCount = 0;
+    main.innerHTML = `<div class="dd">
+      <div class="dd-head"><span id="ddCat" class="dd-cat"></span><span id="ddRound" class="dd-round"></span></div>
+      <div class="dd-paper"><svg id="ddSvg" viewBox="-4 -4 108 108"></svg><div id="ddAnswer" class="dd-answer" hidden></div></div>
+      <div class="dd-bar"><span id="ddBar"></span></div>
+      <div id="ddHint" class="dd-hint"></div>
+      <form id="ddForm" class="row dd-form" autocomplete="off">
+        <input id="ddGuess" maxlength="40" placeholder="What is it?" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="send">
+        <button class="primary" id="ddSend">Guess</button>
+      </form>
+      <div id="ddStatus" class="dd-status"></div></div>`;
+    side.innerHTML = '<div class="panel"><h3>This picture</h3><div id="ddSolvers"></div></div>';
+    svg = $('ddSvg');
+    $('ddForm').onsubmit = (e) => {
+      e.preventDefault();
+      const text = $('ddGuess').value.trim();
+      if (!text) return;
+      $('ddGuess').value = '';
+      ctx.quiet(ctx.act('guess', { text }));
+    };
+    tickTimer = setInterval(tick, 200);
+  }
+
+  function unmount() { clearInterval(tickTimer); }
+
+  // progress bar and lockout countdown move smoothly between server updates
+  function tick() {
+    if (!S?.doodle || !$('ddBar')) return;
+    const d = S.doodle, since = (performance.now() - receivedAt) / 1000;
+    const drawn = d.stage === 'draw' ? d.drawn + since / d.secs : 1;
+    const last = drawn >= 1 && d.stage === 'draw';  // finished drawing: the bar becomes the last-chance timer
+    const width = last ? (d.left - since) / d.grace : drawn;
+    $('ddBar').style.width = `${Math.max(0, Math.min(1, width)) * 100}%`;
+    $('ddBar').parentElement.classList.toggle('last', last);
+    const locked = Math.max(0, d.locked - since);
+    const me = S.doodle.solvers.some(([pid]) => pid === S.me.id);
+    const live = S.phase === 'playing' && d.stage === 'draw' && !S.me.spectator && !me && ctx.act;
+    $('ddGuess').disabled = $('ddSend').disabled = !live || locked > 0;
+    $('ddStatus').textContent = locked > 0 ? `❌ Locked for ${Math.ceil(locked)}s` : me ? `✅ You got it: ${(d.answer || '').toUpperCase()}` : '';
+  }
+
+  function addStroke(dPath, animSecs, delay) {
+    const p = document.createElementNS(NS, 'path');
+    p.setAttribute('d', dPath);
+    p.setAttribute('pathLength', '1');
+    p.setAttribute('class', 'dd-ink');
+    if (animSecs > 0) p.style.animation = `dddraw ${animSecs}s linear ${-delay}s both`;
+    svg.append(p);
+  }
+
+  function render(s, c) {
+    S = s; ctx = c; receivedAt = performance.now();
+    const d = S.doodle;
+    if (d.round !== drawnRound || d.strokes.length < drawnCount) { svg.innerHTML = ''; drawnRound = d.round; drawnCount = 0; }
+    for (let i = drawnCount; i < d.strokes.length; i++) {
+      const newest = i === d.strokes.length - 1;
+      if (d.stage === 'reveal') addStroke(d.strokes[i], 0.35, -(i - drawnCount) * 0.12);  // finish quickly
+      else if (newest && d.age < d.per) addStroke(d.strokes[i], d.per * 0.9, Math.min(d.age, d.per * 0.9));
+      else addStroke(d.strokes[i], 0, 0);
+    }
+    drawnCount = d.strokes.length;
+
+    $('ddCat').textContent = `🏷️ ${d.category}`;
+    $('ddRound').textContent = `${d.round} / ${d.rounds}`;
+    const hint = $('ddHint'); hint.innerHTML = '';
+    for (const ch of d.hint) hint.append(ctx.el('span', ch === ' ' ? 'gap' : ch === '_' ? 'blank' : 'letter', ch === '_' ? '' : ch));
+    hint.classList.toggle('reveal', d.stage === 'reveal');
+    const ans = $('ddAnswer');
+    ans.hidden = d.stage !== 'reveal';
+    ans.textContent = d.stage === 'reveal' ? `${d.answer.toUpperCase()}!` : '';
+
+    const box = $('ddSolvers'); box.innerHTML = '';
+    if (!d.solvers.length) box.append(ctx.el('p', 'hint left', d.stage === 'draw' ? 'Nobody has it yet…' : 'Nobody got it.'));
+    for (const [pid, pts] of d.solvers) {
+      const p = ctx.player(pid);
+      const row = ctx.el('div', 'seat-row');
+      const dot = ctx.el('span', 'mini-disc'); dot.style.background = p?.color ?? '#888';
+      row.append(dot, `${p?.name ?? '?'} +${pts}`);
+      box.append(row);
+    }
+    box.append(ctx.el('p', 'hint left', d.mode === 'race' ? '⚡ First correct guess takes the picture.' : '🙌 Everyone can score; the first gets +2.'));
+    tick();
+  }
+
+  function turnText(s) {
+    const d = s.doodle;
+    if (s.phase !== 'playing') return null;
+    return d.stage === 'reveal' ? `🎨 It was ${d.answer}!` : `✏️ Picture ${d.round}/${d.rounds} — ${d.category}`;
+  }
+  const myMove = (s) => s.doodle.stage === 'draw' && !s.doodle.solvers.some(([pid]) => pid === s.me.id) && !s.me.spectator;
+
+  return { mount, render, unmount, turnText, myMove };
+})();

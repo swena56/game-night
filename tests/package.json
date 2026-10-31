@@ -1,0 +1,11 @@
+{
+  "name": "game-night-ui-tests",
+  "private": true,
+  "description": "Drives the real Game Night UI in jsdom against a running server.",
+  "scripts": {
+    "test": "node ui.js"
+  },
+  "devDependencies": {
+    "jsdom": "24.1.3"
+  }
+}
