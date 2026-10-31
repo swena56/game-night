@@ -900,3 +900,16 @@ body.focus .lr-stage { height: max(220px, calc(var(--app-h, 100vh) - 245px)); }
 .pb-stage canvas { display: block; border-radius: 10px; box-shadow: 0 8px 24px #0009; }
 body.focus .pb { max-width: 900px; }
 body.focus .pb-stage { height: max(220px, calc(var(--app-h, 100vh) - 265px)); }
+
+/* sumo saucers */
+.sm { max-width: 640px; margin: 0 auto; overscroll-behavior: none; user-select: none; -webkit-user-select: none; }
+.sm-stage { position: relative; height: min(calc(var(--app-h, 100vh) * .62), 600px); border-radius: var(--radius); overflow: hidden;
+  display: flex; justify-content: center; align-items: center; background: #05040d; }
+.sm-stage canvas { display: block; }
+.sm-stick { position: absolute; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; border: 2px solid #ffffff55;
+  background: #ffffff10; pointer-events: none; }
+.sm-stick span { position: absolute; left: 35px; top: 35px; width: 50px; height: 50px; border-radius: 50%; background: #ffffffaa; }
+.sm-bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; }
+.sm-bar button { min-width: 130px; padding: 14px; font-size: 17px; }
+body.focus .sm { max-width: 900px; }
+body.focus .sm-stage { height: max(220px, calc(var(--app-h, 100vh) - 215px)); }

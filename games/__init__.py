@@ -24,13 +24,14 @@ from .riders import Riders
 from .safecracker import Safecracker
 from .seabattle import SeaBattle
 from .spire import Spire
+from .sumo import Sumo
 from .tictactoe import TicTacToe
 from .unmask import Unmask
 from .yacht import Yacht
 from .wordsmith import Wordsmith
 
 # Order here is the order of the lobby's game picker.
-GAMES = {g.id: g for g in (Unmask, OddOne, Relay, FibFinder, Doodle, Lucky, Spire, Riders, PaintBlast, Hockey, Billiards, Wordsmith, GridHunt, Safecracker, Chess, Checkers, Backgammon, Go, LastCard, Holdem, Cribbage, SeaBattle,
+GAMES = {g.id: g for g in (Unmask, OddOne, Relay, FibFinder, Doodle, Lucky, Spire, Riders, PaintBlast, Sumo, Hockey, Billiards, Wordsmith, GridHunt, Safecracker, Chess, Checkers, Backgammon, Go, LastCard, Holdem, Cribbage, SeaBattle,
                            DropFour, Boxes, TicTacToe, Heist, MoonShot, Yacht, Farkle)}
 GAME_INFO = [g.info() for g in GAMES.values()]
 
