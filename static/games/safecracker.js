@@ -54,7 +54,7 @@ UI.safecracker = (() => {
     $('scAgain').onclick = () => { draft = lastGuess() || draft; paint(); };
     $('scProbe').onclick = () => { probing = !probing; paint(); };
     // the action field is "pegs": "code" is the room code in every request
-    $('scLock').onclick = () => ctx.quiet(ctx.act('guess', { pegs: draft.slice() }));
+    $('scLock').onclick = () => ctx.quiet(ctx.act(S.safecracker.stage === 'set' ? 'set' : 'guess', { pegs: draft.slice() }));
   }
 
   // my previous guess on this safe, to start from when only a peg or two should change
@@ -68,7 +68,7 @@ UI.safecracker = (() => {
 
   function canPlay() {
     const g = S.safecracker;
-    return S.phase === 'playing' && g.stage === 'crack' && !S.me.spectator && !S.me.eliminated && !g.mine && !!ctx.act;
+    return S.phase === 'playing' && (g.stage === 'crack' || g.stage === 'set') && !S.me.spectator && !S.me.eliminated && !g.mine && !!ctx.act;
   }
 
   function tapColor(c) {
@@ -107,13 +107,15 @@ UI.safecracker = (() => {
     const probed = g.probed.includes(S.me.id);
     $('scBack').disabled = !live || !draft.length;
     $('scAgain').disabled = !live || !lastGuess();
-    $('scProbe').disabled = !live || probed;
+    $('scProbe').disabled = !live || probed || g.stage === 'set';
     $('scProbe').classList.toggle('on', probing);
     $('scProbe').textContent = probed ? '🔍 Used' : probing ? '🔍 Pick a colour…' : '🔍 Probe';
     $('scLock').disabled = !live || draft.length !== g.length;
+    $('scLock').textContent = g.stage === 'set' ? '🔒 Set my code' : '🔒 Lock in';
     const waiting = g.waiting.map((id) => ctx.player(id)?.name).filter(Boolean);
     $('scStatus').textContent = S.phase !== 'playing' ? ''
       : g.stage === 'open' ? 'Next safe coming up…'
+      : g.stage === 'set' ? (g.mine ? `⚔️ Your code is set. Waiting for ${waiting.join(', ') || '…'}` : '⚔️ Build the secret code your rival has to crack.')
       : g.mine ? `🔒 Locked in. Waiting for ${waiting.join(', ') || '…'}`
       : probing ? 'Tap a colour to learn how many of it the code holds (costs a point if you crack this safe).'
       : waiting.length > 1 ? `Still choosing: ${waiting.join(', ')}` : '';
@@ -126,26 +128,35 @@ UI.safecracker = (() => {
     const key = `${g.safe}:${g.round}`;
     if (draftFor !== key) { draft = []; probing = false; draftFor = key; }
     if (draft.length > g.length) draft = draft.slice(0, g.length);
-    $('scSafe').textContent = g.safes > 1 ? `🔐 Safe ${g.safe} of ${g.safes}` : '🔐 The safe';
-    $('scRound').textContent = `Guess ${Math.min(g.round, g.rounds)} of ${g.rounds}`;
+    $('scSafe').textContent = (g.duel ? '⚔️ ' : '🔐 ') + (g.safes > 1 ? `Safe ${g.safe} of ${g.safes}` : g.duel ? 'Duel' : 'The safe');
+    $('scRound').textContent = g.stage === 'set' ? 'Setting codes' : `Guess ${Math.min(g.round, g.rounds)} of ${g.rounds}`;
 
+    // a duel's codes come as [[owner, code], ...]; a race has one shared code
     const code = g.code || g.opened;
-    $('scOpened').hidden = !code;
-    if (code) {
-      $('scOpened').innerHTML = '';
-      $('scOpened').append(ctx.el('span', '', g.code ? 'The code: ' : 'Opened: '), ...code.map((x) => peg(x)));
-    }
+    const box = $('scOpened');
+    box.hidden = !code && !(g.duel && g.mySet && g.stage === 'crack');
+    box.innerHTML = '';
+    if (code && g.duel) {
+      for (const [pid, c] of code) {
+        const line = ctx.el('div', '', pid === S.me.id ? 'Your code: ' : `${ctx.player(pid)?.name ?? '?'}'s code: `);
+        line.append(...c.map((x) => peg(x)));
+        box.append(line);
+      }
+    } else if (code) box.append(ctx.el('span', '', g.code ? 'The code: ' : 'Opened: '), ...code.map((x) => peg(x)));
+    else if (!box.hidden) box.append(ctx.el('span', '', '🛡️ Your code: '), ...g.mySet.map((x) => peg(x, 'small')));
 
     const hist = $('scHistory'); hist.innerHTML = '';
-    if (!g.history.length) hist.append(ctx.el('p', 'hint', 'No guesses yet. Everyone locks in a first guess, then all are revealed together.'));
+    if (!g.history.length) hist.append(ctx.el('p', 'hint', g.duel ? 'Both of you lock in a guess at the other\'s code, then both are revealed together.'
+      : 'No guesses yet. Everyone locks in a first guess, then all are revealed together.'));
     g.history.forEach((round, i) => {
       const box = ctx.el('div', 'sc-round');
       box.append(ctx.el('span', 'sc-rnum', String(i + 1)));
       const rows = ctx.el('div', 'sc-rows');
       for (const h of round) {
         const p = ctx.player(h.by);
-        const row = ctx.el('div', 'sc-row' + (h.by === S.me.id ? ' me' : ''));
-        const who = ctx.el('span', 'sc-who', p?.name ?? '?');
+        const row = ctx.el('div', 'sc-row' + (h.by === S.me.id ? ' me' : g.duel ? ' theirs' : ''));
+        const who = ctx.el('span', 'sc-who', g.duel && h.by !== S.me.id ? `${p?.name ?? '?'} → 🛡️` : p?.name ?? '?');
+        if (g.duel && h.by !== S.me.id) who.title = 'Their guess at your code';
         who.style.borderColor = p?.color ?? '#777';
         const pins = ctx.el('span', 'sc-pins');
         pins.title = `${h.exact} right spot, ${h.near} wrong spot`;
@@ -183,9 +194,9 @@ UI.safecracker = (() => {
   const turnText = (s) => {
     const g = s.safecracker;
     if (s.phase !== 'playing' || s.me.spectator) return null;
-    return g.stage === 'open' ? '🔓 Safe opened!' : g.mine ? '🔒 Locked in — waiting…' : '🔐 Build your guess!';
+    return g.stage === 'open' ? '🔓 Safe opened!' : g.stage === 'set' ? (g.mine ? '⚔️ Code set — waiting…' : '⚔️ Set your secret code!') : g.mine ? '🔒 Locked in — waiting…' : '🔐 Build your guess!';
   };
-  const myMove = (s) => s.phase === 'playing' && s.safecracker.stage === 'crack' && !s.safecracker.mine && !s.me.spectator;
+  const myMove = (s) => s.phase === 'playing' && ['crack', 'set'].includes(s.safecracker.stage) && !s.safecracker.mine && !s.me.spectator;
 
   return { mount, render, turnText, myMove };
 })();

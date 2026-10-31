@@ -964,6 +964,9 @@ body.focus .lr-stage { height: max(220px, calc(var(--app-h, 100vh) - 245px)); }
 .sc-rows { flex: 1; display: flex; flex-direction: column; gap: 4px; }
 .sc-row { display: flex; align-items: center; gap: 8px; }
 .sc-row.me .sc-who { font-weight: 800; }
+.sc-row.theirs { opacity: .72; }  /* a duel rival's guess at your code */
+.sc-opened { flex-wrap: wrap; }
+.sc-opened > div { display: flex; align-items: center; gap: 4px; }
 .sc-who { width: 70px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; border-left: 3px solid; padding-left: 5px; }
 .sc-code { display: flex; gap: 3px; }
 .sc-pins { display: flex; flex-wrap: wrap; gap: 3px; max-width: 60px; }

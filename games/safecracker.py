@@ -3,7 +3,8 @@ cracks the same safe at the same time. Each round everyone secretly locks in a g
 guesses are revealed together with their hints: ● (right colour, right spot) and ○ (right colour,
 wrong spot). So you learn from your rivals' guesses as well as your own, and nobody gains from
 going last. A match is several safes: cracking one alone scores 3, sharing the crack scores 2. Once
-per safe your 🔍 probe privately tells you how many of one colour the code holds, for a point less."""
+per safe your 🔍 probe privately tells you how many of one colour the code holds, for a point less.
+In a ⚔️ duel (two players) each secretly sets a code and both race to crack the other's."""
 import random
 import time
 from collections import Counter
@@ -31,6 +32,7 @@ class Safecracker(Game):
         "Crack it alone for 3 points, or 2 if others crack it in the same round. If nobody does before the rounds run out, the closest guess gets 1.",
         "Once per safe, 🔍 Probe a colour to learn privately how many of it the code holds. It costs a point if you crack that safe.",
         "Most points after the last safe wins. Alone, crack every safe.",
+        "⚔️ Duel (2 players): each of you secretly sets a code, then you race to crack each other's.",
     ]
     name = "Safecracker"
     icon = "🔐"
@@ -38,6 +40,7 @@ class Safecracker(Game):
     min_players = 1
     max_players = 6
     settings_schema = {
+        "mode": ("Mode", [("race", "🏁 Race: one shared safe"), ("duel", "⚔️ Duel: set each other's code (2 players)")], "race"),
         "length": ("Code length", [(4, "4 pegs"), (5, "5 pegs")], 4),
         "colors": ("Colours", [(6, "6"), (8, "8")], 6),
         "repeats": ("Repeated colours", [(True, "Allowed"), (False, "No repeats")], True),
@@ -45,7 +48,15 @@ class Safecracker(Game):
         "guesses": ("Guesses per safe", [(8, "8"), (10, "10"), (12, "12")], 10),
     }
 
+    duel = False  # rooms saved before duels existed
+
     # -- setup
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        if not isinstance(self.__dict__.get("cands"), dict):  # it was one shared list (or None)
+            self.cands = {}
+        self.__dict__.setdefault("codes", {})
 
     def start(self, seated, rng):
         self.rng = rng
@@ -56,25 +67,51 @@ class Safecracker(Game):
             p.g.score = 0
             p.g.cracks = 0
         self.opened = None  # the last safe's code, shown between safes
+        self.duel = self.s["mode"] == "duel" and len(seated) == 2
+        if self.s["mode"] == "duel" and not self.duel:
+            self.room.add_log("⚔️ A duel needs exactly two players, so this is a race for one shared safe.")
         self.room.add_log(f"🔐 Safecracker! {self.safes} safe{'s' if self.safes > 1 else ''}, each a {self.length}-peg "
                           f"code from {self.colors} colours{'' if self.repeats else ' (no repeats)'}.", "big")
         self.new_safe()
 
     def new_safe(self):
         self.safe += 1
-        pool = list(range(self.colors))
-        self.code = ([self.rng.choice(pool) for _ in range(self.length)] if self.repeats
-                     else self.rng.sample(pool, self.length))
+        self.code = self.random_code(self.rng)
+        self.codes = {}  # duel: each player's own secret code, the one their rival cracks
         self.history = []  # one list per finished round: [{"by", "code", "exact", "near"}]
         self.round = 0
-        self.stage = "crack"
-        self.cands = None  # codes that fit every revealed guess (built when a bot first needs it)
+        self.stage = "set" if self.duel else "crack"
+        self.cands = {}  # per cracker (None in a race): codes that fit the revealed guesses, built when a bot needs them
         for p in self.room.contenders():
             p.g.best = (0, 0)
             p.g.probe = None  # (colour, count)
         if self.safes > 1:
             self.room.add_log(f"🔐 Safe {self.safe}/{self.safes}.")
+        if self.duel:
+            self.locked = {}
+            self.room.turn = None
+            self.room.deadline = time.time() + self.room.settings["timer"] if self.room.settings["timer"] else None
+            self.room.bot_at = time.time() + random.uniform(1, 2.5)
+            self.room.add_log("⚔️ Set a secret code for your rival to crack.")
+            return
         self.new_round()
+
+    def random_code(self, rng):
+        pool = list(range(self.colors))
+        return [rng.choice(pool) for _ in range(self.length)] if self.repeats else rng.sample(pool, self.length)
+
+    def target(self, p):
+        """The code p is cracking: the shared safe, or in a duel the rival's code."""
+        if not self.duel:
+            return self.code
+        return next(c for pid, c in self.codes.items() if pid != p.id)
+
+    def set_code(self, p, code):
+        self.codes[p.id] = code
+        if len(self.codes) == len(self.room.contenders()):
+            self.room.add_log("⚔️ Both codes are set. Crack!", "big")
+            self.stage = "crack"
+            self.new_round()
 
     def new_round(self):
         r = self.room
@@ -85,6 +122,8 @@ class Safecracker(Game):
         r.bot_at = time.time() + random.uniform(1.5, 3.5)
 
     def waiting_on(self):
+        if self.stage == "set":
+            return [p for p in self.room.contenders() if p.id not in self.codes]
         if self.stage != "crack":
             return []
         return [p for p in self.room.contenders() if p.id not in self.locked]
@@ -103,6 +142,12 @@ class Safecracker(Game):
         if p.spectator or p.eliminated or not hasattr(p.g, "score"):
             raise GameError("You're watching this game.")
         kind = a.get("type")
+        if kind == "set" and self.stage == "set":
+            if p.id in self.codes:
+                raise GameError("Your code is set.")
+            return self.set_code(p, self.check_code(a.get("pegs")))
+        if self.stage == "set":
+            raise GameError("Set your secret code first.")
         if self.stage != "crack":
             raise GameError("Wait for the next safe.")
         if kind == "guess":
@@ -121,7 +166,7 @@ class Safecracker(Game):
     def probe(self, p, c):
         if p.g.probe is not None:
             raise GameError("You've already used your probe on this safe.")
-        n = self.code.count(c)
+        n = self.target(p).count(c)
         p.g.probe = (c, n)
         self.room.add_log(f"🔍 {p.name} used their probe.")
         self.room.add_log(f"🔍 The code holds {n} of colour {c + 1}.", "private", to=p.id)
@@ -135,13 +180,14 @@ class Safecracker(Game):
         shown = []
         for pid, code in self.locked.items():
             p = r.players[pid]
-            exact, near = pegs(self.code, code)
+            exact, near = pegs(self.target(p), code)
             p.g.best = max(p.g.best, (exact, near))
             shown.append({"by": pid, "code": code, "exact": exact, "near": near})
             r.add_log(f"🔐 {p.name}: {'·'.join(str(c + 1) for c in code)} → {'●' * exact + '○' * near or '—'}", "question")
         self.history.append(shown)
-        if self.cands is not None:
-            self.cands = [c for c in self.cands if all(pegs(c, h["code"]) == (h["exact"], h["near"]) for h in shown)]
+        for key, cands in self.cands.items():
+            self.cands[key] = [c for c in cands if all(pegs(c, h["code"]) == (h["exact"], h["near"])
+                                                         for h in shown if key is None or h["by"] == key)]
         crackers = [r.players[h["by"]] for h in shown if h["exact"] == self.length]
         if crackers:
             return self.cracked(crackers)
@@ -162,9 +208,11 @@ class Safecracker(Game):
                       + ("" if len(self.room.seated()) == 1 else " · ".join(parts)))
 
     def out_of_guesses(self):
-        shown = "·".join(str(c + 1) for c in self.code)
+        dots = lambda code: "·".join(str(c + 1) for c in code)
         ranked = sorted(self.room.contenders(), key=lambda q: q.g.best, reverse=True)
-        text = f"🔒 Nobody cracked safe {self.safe}: it was {shown}."
+        text = (f"🔒 Nobody cracked safe {self.safe}: it was {dots(self.code)}." if not self.duel else
+                "🔒 Neither code was cracked: " + " · ".join(f"{self.room.players[pid].name}'s was {dots(c)}"
+                                                            for pid, c in self.codes.items() if pid in self.room.players) + ".")
         if len(ranked) > 1 and ranked[0].g.best > ranked[1].g.best:
             ranked[0].g.score += 1
             b = ranked[0].g.best
@@ -173,7 +221,7 @@ class Safecracker(Game):
 
     def end_safe(self, text):
         r = self.room
-        self.opened = list(self.code)
+        self.opened = list(self.code) if not self.duel else [[pid, c] for pid, c in self.codes.items()]
         r.add_log(text, "big")
         if self.safe >= self.safes:
             return self.finish_game()
@@ -199,6 +247,12 @@ class Safecracker(Game):
     def on_timeout(self):
         if self.stage == "open":
             return self.new_safe()
+        if self.stage == "set":
+            for p in self.waiting_on():
+                if not p.bot:
+                    self.room.add_log(f"⏰ {p.name} didn't set a code, so a random one is set.", "power")
+                self.set_code(p, self.random_code(random))
+            return
         for p in self.waiting_on():
             if p.bot:
                 self.locked[p.id] = self.bot_guess(p)
@@ -209,6 +263,8 @@ class Safecracker(Game):
     def on_leave(self, p):
         super().on_leave(p)
         self.locked.pop(p.id, None)
+        if self.room.phase == "playing" and self.duel and len(self.room.contenders()) < 2:
+            return self.finish_game()
         if self.room.phase == "playing":
             self.maybe_resolve()
 
@@ -218,7 +274,8 @@ class Safecracker(Game):
         if not hasattr(p.g, "score"):
             return ""
         b = p.g.best
-        locked = " ✅" if p.id in self.locked and self.stage == "crack" and self.room.phase == "playing" else ""
+        done = self.codes if self.stage == "set" else self.locked
+        locked = " ✅" if p.id in done and self.stage in ("set", "crack") and self.room.phase == "playing" else ""
         pegs_ = "●" * b[0] + "○" * b[1]
         return f"{p.g.score} pts" + (f" · {pegs_}" if pegs_ and self.stage == "crack" else "") + (" 🔍" if p.g.probe else "") + locked
 
@@ -231,10 +288,13 @@ class Safecracker(Game):
             "length": self.length, "colors": self.colors, "repeats": self.repeats,
             "rounds": self.rounds, "round": self.round, "history": self.history, "stage": self.stage,
             "safe": self.safe, "safes": self.safes, "opened": self.opened if self.stage == "open" else None,
-            "waiting": [o.id for o in self.waiting_on()], "mine": self.locked.get(p.id),
+            "waiting": [o.id for o in self.waiting_on()],
+            "mine": self.codes.get(p.id) if self.stage == "set" else self.locked.get(p.id),
+            "duel": self.duel, "mySet": self.codes.get(p.id) if self.duel else None,
             "probed": [q.id for q in self.room.seated() if getattr(q.g, "probe", None) is not None],
             "myProbe": list(probe) if probe else None,
-            "code": self.code if self.room.phase == "over" else None,
+            "code": (self.code if not self.duel else [[pid, c] for pid, c in self.codes.items()])
+            if self.room.phase == "over" else None,
         }}
 
     # -- bots: everyone moves at once, so all undecided bots lock in together
@@ -243,6 +303,10 @@ class Safecracker(Game):
         return any(p.bot for p in self.waiting_on())  # nobody is waited on between safes
 
     def bot_tick(self):
+        if self.stage == "set":
+            for p in [p for p in self.waiting_on() if p.bot]:
+                self.set_code(p, self.random_code(random))
+            return
         for p in [p for p in self.waiting_on() if p.bot]:
             self.locked[p.id] = self.bot_guess(p)
         self.maybe_resolve()
@@ -251,12 +315,14 @@ class Safecracker(Game):
         codes = product(range(self.colors), repeat=self.length)
         return [list(c) for c in codes if self.repeats or len(set(c)) == self.length]
 
-    def consistent(self):
-        """Codes that fit every revealed guess so far (kept up to date after each round)."""
-        if self.cands is None:
-            self.cands = [c for c in self.all_codes()
-                          if all(pegs(c, h["code"]) == (h["exact"], h["near"]) for rnd in self.history for h in rnd)]
-        return self.cands
+    def consistent(self, p):
+        """Codes that fit every revealed guess at p's target so far (kept up to date after each round)."""
+        key = p.id if self.duel else None
+        if key not in self.cands:
+            self.cands[key] = [c for c in self.all_codes()
+                               if all(pegs(c, h["code"]) == (h["exact"], h["near"])
+                                      for rnd in self.history for h in rnd if key is None or h["by"] == key)]
+        return self.cands[key]
 
     @staticmethod
     def spread(guess, sample):
@@ -274,7 +340,7 @@ class Safecracker(Game):
                 if (self.repeats or len(set(g)) == len(g)) and all(
                         pegs(g, h["code"]) == (h["exact"], h["near"]) for h in mine):
                     return g
-        cands = self.consistent()
+        cands = self.consistent(p)
         # The hard bot probes only when the answer should all but pin the code down (a probe costs a point).
         if level == "hard" and p.g.probe is None and 2 < len(cands) <= 40:
             left = {col: sum(v * v for v in Counter(x.count(col) for x in cands).values()) / len(cands)
