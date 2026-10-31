@@ -913,3 +913,64 @@ body.focus .pb-stage { height: max(220px, calc(var(--app-h, 100vh) - 265px)); }
 .sm-bar button { min-width: 130px; padding: 14px; font-size: 17px; }
 body.focus .sm { max-width: 900px; }
 body.focus .sm-stage { height: max(220px, calc(var(--app-h, 100vh) - 215px)); }
+
+/* oware */
+.ow { display: flex; align-items: stretch; gap: 8px; width: min(100%, 640px); margin: 8px auto; }
+.ow-board { flex: 1; display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 22px;
+  background: linear-gradient(160deg, #8a5a2b, #5e3a17); box-shadow: inset 0 2px 6px #fff3, 0 8px 24px #0009; }
+.ow-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.ow-pit { aspect-ratio: 1; border-radius: 50%; padding: 4px; border: 0; background: radial-gradient(circle at 50% 35%, #3e260e, #26170a);
+  box-shadow: inset 0 3px 8px #000b; position: relative; display: flex; align-items: center; justify-content: center; }
+.ow-pit:disabled { opacity: 1; cursor: default; }
+.ow-pit.can { box-shadow: inset 0 3px 8px #000b, 0 0 0 3px var(--accent); }
+.ow-pit.last { box-shadow: inset 0 3px 8px #000b, 0 0 0 3px var(--accent2); }
+.ow-pit.caught { animation: pulse 1s 2; }
+.ow-seeds { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px; width: 80%; }
+.ow-seeds i { width: 7px; height: 7px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #f6e7c1, #b48a4a); }
+.ow-seeds b { font-size: 18px; color: #f6e7c1; }
+.ow-pit small { position: absolute; bottom: -2px; right: 2px; font-size: 10px; color: #f6e7c1aa; }
+.ow-store { width: 44px; border-radius: 22px; background: #26170a; color: #f6e7c1; font-size: 22px; font-weight: 900;
+  display: flex; align-items: center; justify-content: center; box-shadow: inset 0 3px 8px #000b; }
+.ow-store#owMine { border: 2px solid var(--accent); }
+
+/* reversi */
+.rv { width: min(100%, 560px, calc(var(--app-h, 100vh) - 190px)); min-width: min(100%, 280px); margin: 0 auto; }
+.rv-board { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; padding: 6px; border-radius: 10px;
+  background: #0d3b26; box-shadow: 0 8px 24px #0009; }
+.rv-cell { aspect-ratio: 1; padding: 0; border: 0; border-radius: 3px; background: #1f7a4d; position: relative; }
+.rv-cell:disabled { opacity: 1; cursor: default; }
+.rv-cell.can::after { content: ''; position: absolute; inset: 38%; border-radius: 50%; background: #ffffff55; }
+.rv-cell.last { outline: 2px solid var(--accent); outline-offset: -2px; }
+.rv-disc { position: absolute; inset: 9%; border-radius: 50%; }
+.rv-disc.mini { position: static; display: inline-block; width: 14px; height: 14px; }
+.rv-disc.dark { background: radial-gradient(circle at 35% 30%, #555, #0b0b0b); box-shadow: 0 2px 3px #0008; }
+.rv-disc.light { background: radial-gradient(circle at 35% 30%, #fff, #cfcfcf); box-shadow: 0 2px 3px #0008; }
+.rv-disc.flip { animation: rvflip .4s ease-in-out; }
+.rv-disc.drop { animation: pop .2s ease-out; }
+@keyframes rvflip { 0% { transform: scaleX(1); } 50% { transform: scaleX(.05); } 100% { transform: scaleX(1); } }
+
+/* ultimate tic-tac-toe */
+.ut { width: min(100%, 520px, calc(var(--app-h, 100vh) - 190px)); min-width: min(100%, 280px); margin: 0 auto; }
+.ut-big { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 8px; border-radius: 14px; background: #3d3456; }
+.ut-small { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; padding: 4px; border-radius: 8px; background: var(--panel); position: relative; transition: box-shadow .2s; }
+.ut-small.open { box-shadow: 0 0 0 3px var(--accent); }
+.ut-small.done .ut-cell { opacity: .35; }
+.ut-cell { aspect-ratio: 1; padding: 0; border: 0; border-radius: 4px; background: var(--panel2); font-size: clamp(12px, 4vw, 22px); font-weight: 900; }
+.ut-cell:disabled { opacity: 1; cursor: default; }
+.ut-cell.can { background: #ffb70322; }
+.ut-cell.last { outline: 2px solid var(--accent2); }
+.ut-cell.x, .ut-x { color: #ef476f; } .ut-cell.o, .ut-o { color: #8ecae6; }
+.ut-won { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: clamp(40px, 16vw, 90px);
+  font-weight: 900; pointer-events: none; }
+.ut-won.x { color: #ef476f; } .ut-won.o { color: #8ecae6; }
+
+/* nine men's morris */
+.mm { width: min(100%, 520px, calc(var(--app-h, 100vh) - 190px)); min-width: min(100%, 280px); margin: 0 auto; }
+.mm-board { width: 100%; display: block; background: linear-gradient(160deg, #caa46a, #a07a43); border-radius: 12px; box-shadow: 0 8px 24px #0009; }
+.mm-line { stroke: #3b2a12; stroke-width: 1.6; }
+.mm-pt { fill: #3b2a12; stroke-width: 2.5; cursor: pointer; transition: r .15s; }
+.mm-pt.empty.can { fill: var(--accent); r: 7; }
+.mm-pt.src { stroke-dasharray: 3 2; }
+.mm-pt.picked { stroke: var(--accent) !important; stroke-width: 4; }
+.mm-pt.take { stroke: var(--danger) !important; stroke-width: 4; animation: pulse 1s infinite; }
+.mm-pt.last { filter: drop-shadow(0 0 3px var(--accent2)); }

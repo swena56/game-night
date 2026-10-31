@@ -8,9 +8,9 @@
 const $ = (s) => document.querySelector(s);
 const REACTIONS = ['😂', '😱', '🤔', '😏', '🔥', '👀', '🙈', '🎉'];
 const QUICK_CHAT = ['gg', 'nice! 👏', 'hmm… 🤔', 'your turn 😴', 'rematch? 🔁', 'no way 😱'];
-const SOLO_GAMES = [['unmask', '🎭 Unmask'], ['oddone', '🕵️ Odd One Out'], ['relay', '🖍️ Scribble Relay'], ['fibfinder', '🤥 Fib Finder'], ['doodle', '✏️ Doodle Dash'], ['lucky', '🎡 Lucky Letters'], ['wordsmith', '🔤 Wordsmith'], ['gridhunt', '🔎 Grid Hunt'], ['safecracker', '🔐 Safecracker'], ['chess', '♟️ Chess'], ['checkers', '⛀ Checkers'], ['backgammon', '🔺 Backgammon'],
+const SOLO_GAMES = [['unmask', '🎭 Unmask'], ['oddone', '🕵️ Odd One Out'], ['relay', '🖍️ Scribble Relay'], ['fibfinder', '🤥 Fib Finder'], ['doodle', '✏️ Doodle Dash'], ['lucky', '🎡 Lucky Letters'], ['wordsmith', '🔤 Wordsmith'], ['gridhunt', '🔎 Grid Hunt'], ['safecracker', '🔐 Safecracker'], ['chess', '♟️ Chess'], ['checkers', '⛀ Checkers'], ['backgammon', '🔺 Backgammon'], ['oware', '🫘 Oware'], ['reversi', '⚪ Reversi'],
   ['go', '⚫ Go'], ['lastcard', '🃏 Last Card'], ['holdem', "♠️ Texas Hold'em"], ['cribbage', '📍 Cribbage'], ['seabattle', '🚢 Sea Battle'], ['dropfour', '🔴 Drop Four'],
-  ['boxes', '🔳 Dots & Boxes'], ['tictactoe', '❌ Tic-Tac-Toe'], ['heist', '🥷 Night Heist'], ['moonshot', '🚀 Moon Shot'], ['yacht', '🎲 Yacht'], ['farkle', '🎯 Farkle'], ['spire', '🗼 Spire Siege'], ['hockey', '🏒 Air Hockey'], ['billiards', '🎱 Billiards'], ['riders', '🏍️ Light Riders'], ['paintblast', '🎨 Paint Blast'], ['sumo', '🪐 Sumo Saucers']];
+  ['boxes', '🔳 Dots & Boxes'], ['tictactoe', '❌ Tic-Tac-Toe'], ['ultimate', '#️⃣ Ultimate Tic-Tac-Toe'], ['morris', "⚫ Nine Men's Morris"], ['heist', '🥷 Night Heist'], ['moonshot', '🚀 Moon Shot'], ['yacht', '🎲 Yacht'], ['farkle', '🎯 Farkle'], ['spire', '🗼 Spire Siege'], ['hockey', '🏒 Air Hockey'], ['billiards', '🎱 Billiards'], ['riders', '🏍️ Light Riders'], ['paintblast', '🎨 Paint Blast'], ['sumo', '🪐 Sumo Saucers']];
 const CATEGORIES = [['party', '🎉 Party'], ['action', '⚡ Action'], ['strategy', '♟️ Strategy'], ['classic', '✏️ Quick classics'],
   ['cards', '🃏 Cards'], ['dice', '🎲 Dice'], ['words', '🔤 Words & puzzles']];
 const SOLO_BOTS = { sumo: 3, paintblast: 3, gridhunt: 2, safecracker: 2, oddone: 3, relay: 3, fibfinder: 3, riders: 3, doodle: 2, heist: 3, moonshot: 2, lastcard: 2, holdem: 3, spire: 2, lucky: 2 };

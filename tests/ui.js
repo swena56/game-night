@@ -201,6 +201,16 @@ const MOVES = {
       setTimeout(() => w.dispatchEvent(new w.KeyboardEvent('keyup', { code, bubbles: true })), 200);
     }
   },
+  oware(d) { click(pick([...d.querySelectorAll('.ow-pit.can:not(:disabled)')])); },
+  reversi(d) { click(pick([...d.querySelectorAll('.rv-cell.can')])); },
+  ultimate(d) { click(pick([...d.querySelectorAll('.ut-cell.can')])); },
+  morris(d, S, n, w) {  // place, or pick a man then a point; take a man after a mill
+    const tap = (el) => el.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+    for (let k = 0; k < 3; k++) {
+      const take = [...d.querySelectorAll('.mm-pt.take')], can = [...d.querySelectorAll('.mm-pt.can')], src = [...d.querySelectorAll('.mm-pt.src')];
+      if (take.length) tap(pick(take)); else if (can.length) tap(pick(can)); else if (src.length) tap(pick(src)); else return;
+    }
+  },
   farkle(d, S) {
     const f = S.farkle;
     if (f.rolled) {
@@ -384,7 +394,7 @@ async function feedbackTour() {
   const lt = await lobbyTour();
   console.log('LOBBY', JSON.stringify(lt));
   for (const g of games.length ? games : Object.keys(MOVES)) {
-    const r = await playSolo(g, g === 'wordsmith' ? 40 : g === 'spire' ? 25 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'cribbage' ? 300 : g === 'yacht' ? 200 : g === 'farkle' ? 240 : g === 'backgammon' ? 300 : g === 'gridhunt' ? 260 : g === 'paintblast' ? 230 : g === 'sumo' ? 200 : g === 'safecracker' ? 200 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
+    const r = await playSolo(g, g === 'wordsmith' ? 40 : g === 'spire' ? 25 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'cribbage' ? 300 : g === 'yacht' ? 200 : g === 'farkle' ? 240 : g === 'backgammon' ? 300 : g === 'gridhunt' ? 260 : g === 'paintblast' ? 230 : g === 'sumo' ? 200 : g === 'reversi' || g === 'ultimate' || g === 'oware' || g === 'morris' ? 260 : g === 'safecracker' ? 200 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
     console.log(`\n== ${g}: phase=${r.phase} moves=${r.moves} dialogs=${r.dialogs || 0} screen="${r.screen}" ${r.banner ? `banner="${r.banner}"` : ''}`);
     console.log(`   help: ${r.help} | log ticker: "${r.ticker}"`);
     if (r.replay) console.log(`   replay: ${r.replay}`);
