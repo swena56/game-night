@@ -42,6 +42,7 @@ address the server prints. **Play solo** on the home screen starts any game agai
 | 🎡 **Lucky Letters** | 2–6 | Spin a **3D prize wheel** (three.js), call consonants, solve the hidden phrase. 78 original puzzles in 8 categories. | Vowels can only be called by landing on ✨ VOWEL. Special wedges: 💀 Bust, ⛔ Skip, 🎁 Wild (a free letter), 🦊 Steal (take 500 from the leader), and a growing ⚡ Jackpot. The server picks where the wheel stops, and every phone animates the same spin. |
 | 🗼 **Spire Siege** | 1–6 | **Real-time 3D** (three.js) falling-block battle on a cylindrical tower that wraps around. Pieces are 2-, 3- and 5-block shapes, or pick the 🟦 4-block set. ⇄ **Hold** parks a piece for later. Fill a whole ring to clear it. Clearing 2+ rings, or chaining clears, sends junk rings to a random rival. | The tower spins so your piece always faces you. Power cells: ⚡ surge (rivals fall faster), 🛡️ shield (blocks junk), 💣 blast (removes your bottom two rings). Solo survival works with 1 player. Prefer an upright board? 🧱 **Flat well** mode has side walls and a flat view. |
 | 🏍️ **Light Riders** | 2–6 | **Real-time** light-cycle duels in a **3D neon arena** (three.js; flat fallback). Your bike never stops and leaves a wall of light behind it. Crash into any wall and you're out; the last rider standing wins the round. | ⚡ 3 boosts per round (double speed). Swipe, D-pad or keyboard. Quick double turns are queued, so you can whip round a corner. Medium, small or large arena; chill, normal or fast speed. |
+| 🎨 **Paint Blast** | 2–6 | **Real-time** bomb maze: run through pillars and crates and drop bombs whose blasts run in a straight line in all four directions. Crates hide 💣 extra bombs, 🔥 longer blasts and 🪣 paint splashes. | **Every blast paints the floor in your colour**, and when the clock stops each painted tile is a point (+10 for catching a rival). Caught players are stunned for 3 s and respawn at home, so nobody sits out. The maze is mirror-symmetric and new every round. Swipe-and-hold to run, tap to bomb. |
 | 🏒 **Air Hockey** | 2 | **Real-time** table hockey: drag your mallet around your half, bank shots off the walls. Server-side physics at 60 fps. | 🏒🏒 Double Trouble puts two pucks on the table. Each player sees the table from their own end. |
 | 🎱 **Billiards** | 2 | Eight-ball pool on a top-down table with real physics (cushions, ball-to-ball collisions, six pockets). Drag to aim, set the power, shoot. | The server simulates every shot and sends the ball paths, so every phone plays back the same shot. A 🎯 aim guide (full, short or off) shows where both balls go. Fouls give ✋ ball in hand. The table stands upright on phones. |
 | ♟️ **Chess** | 2 | Full rules: castling, en passant, promotion, check/mate, stalemate, 50-move rule, threefold repetition, insufficient material. Draw offers and resignation. Optional ⏱️ clock: 3+2, 5+0 or 10+5. | Move generation is checked against standard perft counts. Black sees the board from their side. 🧊 **3D board** (three.js) by default: tap a piece, then its square; drag sideways to turn the board. The flat board is one tap away and is used automatically without WebGL. |
@@ -81,6 +82,7 @@ Every game has **Easy / Normal / Hard bots**:
 - **Lucky Letters:** the hard bot picks consonants by matching the revealed pattern against the 172k-word dictionary, and solves when each word has only one possible fit. All bots recognise familiar phrases once enough letters show; the stronger the bot, the sooner it notices.
 - **Doodle Dash:** bots "recognise" each picture at a random point in the drawing (sooner on harder levels), take a moment to type, and sometimes blurt out a wrong guess first.
 - **Light Riders:** bots steer toward open space (a flood fill). Hard bots, once three or fewer riders remain, fight for territory: they count the cells they can reach before any rival can, refuse head-on gambles, and only boost onto a clear straight. They never drive into a cell a rival could also take.
+- **Paint Blast:** bots map where every ticking bomb will blast (chain reactions included) and when, run for the nearest safe tile, and only drop a bomb when they can still escape it. They then head for the spot worth the most (crates to break, floor to paint, rivals to catch, power-ups) per step of walking. Hard thinks every tick and values paint and rivals more; easy reacts slowly and sometimes walks into its own blast. In simulation hard won 4 of 6 three-way games.
 - **Air Hockey:** bots line up behind the puck on the line to an aim point (sometimes a bank shot off the wall), then strike through it. They guard their goal when the puck is away. Levels differ in reaction time, mallet speed and aim.
 - **Spire Siege:** bots run their own towers on the server and choose placements by stack height, holes and bumpiness. Difficulty sets their speed and accuracy.
 - **Moon Shot:** the hard bot steers for stars, avoids meteors, aims for wormholes when it's behind, and takes more risk the further back it is.
@@ -159,7 +161,7 @@ Bots and autopilot stand-ins simulate towers on the server. After a refresh, you
 from your last snapshot. Real-time games set `replayable = False`, so no move-by-move replay is
 recorded for them.
 
-**Air Hockey** and **Light Riders** work the other way round, because players share the same puck or
+**Air Hockey**, **Light Riders** and **Paint Blast** work the other way round, because players share the same puck or
 arena: the **server owns the simulation**. Light Riders steps a grid at the arena's tick rate inside
 `frame()`. Turns are sent as *kept* inputs (`ctx.input(data, true)`), so a quick double turn never
 loses its first half. Each fast update carries every rider's newest cells, so a missed update or a
@@ -371,8 +373,8 @@ Riders and Air Hockey start in it) (#13, #15).
 - ✅ **Lobby grid** (#43): Board split into ♟️ Strategy and ✏️ Quick classics, Words became 🔤 Words &
   puzzles, and every group fills its rows evenly. Every group now holds 3–6 games; a new game should
   go where it keeps that balance.
-- 💣 **A bomb-maze arena** (#20): an original real-time game (server-owned grid like Light Riders)
-  where you drop bombs to break walls and trap rivals. It would start a group with Light Riders' grid code.
+- ✅ 🎨 **Paint Blast** (#20): an original real-time bomb maze where blasts paint the floor and the
+  most colour wins. Next: a shrinking arena in the last 15 s, a kick power-up, and 3D tiles.
 - 🃏 **A contract-rummy game** (#39 asks for a branded one): the public-domain rummy family where each
   hand demands a set "contract" (two sets, a set and a run…), with an original twist. It would bring
   🃏 Cards to 4.

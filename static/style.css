@@ -889,3 +889,13 @@ body.focus .lr-stage { height: max(220px, calc(var(--app-h, 100vh) - 245px)); }
 .gh-results { background: var(--panel); border-radius: var(--radius); padding: 10px; margin-top: 10px; }
 .gh-list b { margin-right: 4px; }
 .gh-list.missed { border-top: 1px solid #3d3456; padding-top: 6px; }
+
+/* paint blast */
+.pb { max-width: 640px; margin: 0 auto; overscroll-behavior: none; user-select: none; -webkit-user-select: none; }
+.pb-hud { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+.pb-hud b { font-size: 20px; color: var(--text); font-variant-numeric: tabular-nums; }
+.pb-hud b.hurry { color: var(--danger); }
+.pb-stage { position: relative; height: min(calc(var(--app-h, 100vh) * .6), 600px); display: flex; justify-content: center; align-items: center; }
+.pb-stage canvas { display: block; border-radius: 10px; box-shadow: 0 8px 24px #0009; }
+body.focus .pb { max-width: 900px; }
+body.focus .pb-stage { height: max(220px, calc(var(--app-h, 100vh) - 265px)); }
