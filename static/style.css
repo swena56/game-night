@@ -414,6 +414,8 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px s
 body.calm .csq .piece.taken { display: none; }
 @media (prefers-reduced-motion: reduce) { .gh-tile.trace { background: linear-gradient(#8ecae6, #4dabf7); } }
 body.calm .gh-tile.trace { background: linear-gradient(#8ecae6, #4dabf7); }
+body.calm .cb-plus { display: none; }
+@media (prefers-reduced-motion: reduce) { .cb-plus { display: none; } }
 
 /* lucky letters */
 .lucky { max-width: 680px; margin: 0 auto; }
@@ -796,6 +798,10 @@ body.focus .lr-stage { height: max(220px, calc(var(--app-h, 100vh) - 245px)); }
 .cb-peg { position: absolute; top: 50%; width: 14px; height: 14px; border-radius: 50%; transform: translate(-50%, -50%);
   box-shadow: 0 0 0 2px #fff, 0 2px 4px #000a; transition: left .6s ease-out; }
 .cb-score { font-weight: 900; text-align: right; font-variant-numeric: tabular-nums; }
+.cb-peg.back { opacity: .45; transition: none; box-shadow: 0 0 0 1px #fff8; }
+.cb-plus { position: absolute; bottom: 100%; transform: translateX(-50%); font-size: 12px; font-weight: 900; color: #ffd166;
+  text-shadow: 0 1px 2px #000; pointer-events: none; animation: cbPlus 1.6s ease-out forwards; }
+@keyframes cbPlus { 0% { opacity: 0; transform: translate(-50%, 6px); } 20% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; transform: translate(-50%, -14px); } }
 .cb-table { display: grid; gap: 8px; }
 .cb-mid { display: flex; justify-content: space-around; align-items: flex-start; }
 .cb-slot { display: grid; justify-items: center; gap: 2px; }
@@ -809,6 +815,7 @@ body.focus .lr-stage { height: max(220px, calc(var(--app-h, 100vh) - 245px)); }
 .cb-showhand small { color: #ffffffcc; display: block; text-align: center; }
 .cb-showtitle { display: flex; justify-content: space-between; align-items: center; }
 .cb-total { font-weight: 900; font-size: 20px; color: #ffd166; }
+.cb-countbox { display: grid; justify-items: center; gap: 8px; margin: 10px 0; }
 .pc.starter { box-shadow: 0 0 0 2px #ffd166, 0 2px 6px #0008; margin-left: 6px; }
 .cb-hand { margin: 12px 0 6px; min-height: 112px; }
 .cb-played { display: grid; gap: 6px; margin: 8px 0; }

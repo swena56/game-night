@@ -15,6 +15,7 @@ from .base import Game, GameError
 RANKS = "A23456789TJQK"
 SUITS = "SHDC"
 SHOW_PAUSE, CUT_PAUSE = 7.0, 0.0
+COUNT_SECS = 45  # 🦉 muggins: time to count your own hand
 
 
 def rank(card):
@@ -84,6 +85,7 @@ class Cribbage(Game):
         "The play: take turns laying cards, keeping the count at 31 or under. 15 and 31 score 2, pairs 2, runs their length, the last card 1.",
         "The show: score your hand with the starter: fifteens 2, pairs 2, runs, flushes, and nobs (jack of the starter's suit) 1.",
         "The dealer also scores the crib. First to the target wins the moment they reach it.",
+        "🦉 Muggins (an option): count your own hand. Miss points and the next player takes them!",
     ]
     name = "Cribbage"
     icon = "📍"
@@ -92,7 +94,9 @@ class Cribbage(Game):
     max_players = 3
     settings_schema = {
         "target": ("Game to", [(121, "121 (full)"), (61, "61 (short)")], 121),
+        "muggins": ("Counting", [(False, "Hands counted for you"), (True, "🦉 Muggins: count your own")], False),
     }
+    claims = None  # 🦉 muggins: what each person said their hand was worth
 
     # -- setup
 
@@ -255,6 +259,25 @@ class Cribbage(Game):
     def start_show(self):
         r = self.room
         r.turn = None
+        if self.s.get("muggins") and any(not p.bot for p in self.players()):
+            self.stage = "count"   # people count their own hands first; bots always count right
+            self.claims = {}
+            r.deadline = time.time() + COUNT_SECS
+            return r.add_log("🦉 Muggins: count your hand (with the starter). Points you miss go to the next player!", "power")
+        self.reveal_show()
+
+    def claim(self, p, n):
+        if self.stage != "count" or p.bot or p.id in self.claims:
+            raise GameError("There's nothing to count right now.")
+        if not isinstance(n, int) or isinstance(n, bool) or not 0 <= n <= 29:
+            raise GameError("A hand is worth 0 to 29.")
+        self.claims[p.id] = n
+        if all(o.bot or o.id in self.claims for o in self.players()):
+            self.reveal_show()
+
+    def reveal_show(self):
+        r = self.room
+        claims, self.claims = self.claims or {}, None
         self.stage = "show"
         self.show = []
         dealer_id = self.seats[self.dealer]
@@ -265,10 +288,19 @@ class Cribbage(Game):
                 continue
             items = score_show(p.g.hand, self.starter)
             total = sum(v for _, v in items)
-            self.show.append({"who": pid, "crib": False, "cards": p.g.hand, "items": items, "total": total})
+            said = claims.get(pid, total)
+            self.show.append({"who": pid, "crib": False, "cards": p.g.hand, "items": items, "total": total,
+                              "said": said if pid in claims else None})
             r.add_log(f"🧮 {p.name}'s hand: {total}" + (f" ({', '.join(f'{d} {v}' for d, v in items)})" if items else ""))
-            if self.peg(p, total, "hand"):
+            if said > total:
+                r.add_log(f"🧮 {p.name} counted {said}, but it's {total}.")
+            if self.peg(p, min(said, total), "hand"):
                 return
+            if said < total:  # 🦉 muggins: the next player takes what was missed
+                thief = self.pl(self.next_seat(pid))
+                r.add_log(f"🦉 Muggins! {p.name} counted {said} and missed {total - said}: {thief.name} takes them.", "power")
+                if self.peg(thief, total - said, "muggins"):
+                    return
         dealer = self.pl(dealer_id)
         items = score_show(self.crib, self.starter, crib=True)
         total = sum(v for _, v in items)
@@ -280,6 +312,8 @@ class Cribbage(Game):
         r.deadline = time.time() + SHOW_PAUSE + 1.5 * len(self.show)
 
     def on_timeout(self):
+        if self.stage == "count":  # anyone who didn't answer gets their true count
+            return self.reveal_show()
         if self.stage == "show":
             self.dealer = (self.dealer + 1) % len(self.seats)
             return self.deal()
@@ -320,6 +354,8 @@ class Cribbage(Game):
             return self.discard(p, a.get("cards"))
         if t == "play":
             return self.play(p, a.get("card"))
+        if t == "count":
+            return self.claim(p, a.get("n"))
         raise GameError("Unknown action.")
 
     # -- what each player sees
@@ -346,6 +382,7 @@ class Cribbage(Game):
             "hand": (p.g.hand if self.stage == "discard" else p.g.peg_hand) if mine else [],
             "kept": p.g.hand if mine else [],
             "show": self.show if self.stage == "show" or over else [],
+            "counting": self.stage == "count" and mine and not p.bot and p.id not in (self.claims or {}),
             "deal": self.deal_no,
         }}
 
@@ -355,7 +392,7 @@ class Cribbage(Game):
         now_ok = self.room.phase == "playing"
         if self.stage == "discard":
             return now_ok and any(o.bot and not o.g.discarded for o in self.players())
-        if self.stage == "show":
+        if self.stage in ("show", "count"):
             return False
         return super().bot_ready()
 

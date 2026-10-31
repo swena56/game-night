@@ -439,7 +439,7 @@ Riders and Air Hockey start in it) (#13, #15).
 - 🎲 **Yacht:** ✅ added (#38: the traditional game the branded one grew from). ✅ The dice pips were
   invisible: the die's padding was a percentage, which CSS measures against the whole dice row, so it
   squeezed the pips to nothing (#44). ✅ Asks before you score a 0. ✅ A 🏅 solo best-score table (top 5, kept on the device).
-- 📍 **Cribbage:** ✅ added (#23). Next: animate pegging along the track, and an optional muggins rule.
+- 📍 **Cribbage:** ✅ added (#23). ✅ Pegging animates along the track (the back peg leapfrogs, a floating +N). ✅ Optional muggins rule: in the show you count your own hand, and a rival takes any points you miss.
 - ♠️ **Texas Hold'em:** ✅ added (#21). ✅ Buy back in after busting (#35; people only, bots don't). ✅ A 📜 hand-history panel (the last 8
   hands: board, result, cards shown and your own two), and 🙂 a winner whose rivals all folded can show their cards.
   ✅ With a turn timer, a 60 s ⏳ time bank each, spent 20 s at a time before you're folded.
