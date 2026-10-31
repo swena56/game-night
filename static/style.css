@@ -1150,3 +1150,4 @@ body.focus .ra-stage { height: max(220px, calc(var(--app-h, 100vh) - 215px)); }
 .sc-actions { justify-content: center; gap: 8px; }
 .sc-last { margin-top: 10px; min-height: 1.4em; font-size: 14px; }
 .sc-lastline.fresh { animation: lr-flash .8s ease-out; border-radius: 8px; }
+.tv-who .dot.fastest { outline: 2px solid #ffd166; outline-offset: 1px; animation: ld-pop .4s ease-out; }

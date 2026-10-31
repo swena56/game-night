@@ -168,7 +168,10 @@ class Trivia(Game):
                 p.g.streak = 0
                 self.gained[p.id] = 0
         answer = self.q["options"][right]
-        r.add_log(f"✅ {answer}. " + (" · ".join(got) if got else "Nobody got it!"), "power")
+        fast = [(ans[1], pid) for pid, ans in self.answers.items() if ans[0] == right]
+        self.fastest = min(fast)[1] if fast and len(self.live()) > 1 else None
+        quick = r.players.get(self.fastest)
+        r.add_log(f"✅ {answer}. " + (" · ".join(got) if got else "Nobody got it!") + (f" ⚡ {quick.name} was quickest." if quick else ""), "power")
         self.stage = "reveal"
         self.plans = []
         self.end = self.now() + REVEAL_SECS
@@ -232,6 +235,7 @@ class Trivia(Game):
                 "right": self.q["right"],
                 "picks": {pid: i for pid, (i, _) in self.answers.items()},
                 "gained": self.gained,
+                "fastest": getattr(self, "fastest", None),
             }
         return {"trivia": out}
 

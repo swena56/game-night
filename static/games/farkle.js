@@ -5,6 +5,7 @@ UI.farkle = (() => {
   const $ = (id) => document.getElementById(id);
   const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
   const num = (n) => Number(n || 0).toLocaleString();
+  const FARKLE_PCT = { 1: 67, 2: 44, 3: 28, 4: 16, 5: 8, 6: 2 };  // chance a roll of n dice scores nothing
 
   // same scoring as games/farkle.py: every kept die must score
   const memo = new Map();
@@ -86,7 +87,8 @@ UI.farkle = (() => {
     $('fkBank').textContent = `🏦 Bank ${num(bankPts)}` + (need && bankPts < need ? ` (need ${num(need)})` : '');
     $('fkBest').hidden = !mine || !f.rolled;
     $('fkHint').textContent = !mine ? '' : !f.rolled ? 'Roll to start your turn.'
-      : picked.size && !valid ? 'Every die you set aside has to score.' : 'Tap scoring dice to set them aside, then roll the rest or bank.';
+      : picked.size && !valid ? 'Every die you set aside has to score.'
+      : valid ? `Rolling ${left} ${left === 1 ? 'die' : 'dice'}: ${FARKLE_PCT[left]}% chance to farkle.` : 'Tap scoring dice to set them aside, then roll the rest or bank.';
   }
 
   function render(s, c) {

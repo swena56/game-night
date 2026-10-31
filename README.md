@@ -381,7 +381,7 @@ Riders and Air Hockey start in it) (#13, #15).
 - ✏️ **Doodle Dash:** more drawings than 52, and a reveal card for each answer.
 - 🕵️ **Odd One Out:** more word pairs, and an animated "who voted for whom" reveal.
 - 🖍️ **Scribble Relay:** brush sizes, and saving a finished chain as an image.
-- 🧠 **Trivia Rush:** ✅ added (#49), 188 questions in 9 topics. Next: more questions, a "who got it first" flash, and true/false rounds.
+- 🧠 **Trivia Rush:** ✅ added (#49), 188 questions in 9 topics. ✅ The quickest right answer gets a ⚡ callout. Next: more questions, and true/false rounds.
 - 🥷 **Night Heist:** a night-by-night history grid, and bot personalities (greedy, cautious).
 - 🎭 **Unmask:** an undo toast for flips, generated avatars, and pinch-zoom on the board.
 
@@ -407,13 +407,13 @@ Riders and Air Hockey start in it) (#13, #15).
 - 🔤 **Wordsmith:** drag-and-drop tiles with a live score preview, and a hint button for solo play.
 
 **Cards / dice**
-- 🎯 **Farkle:** ✅ added (#40). ✅ Dice pips show on phones again (#44, shared with Yacht). Next: show the
-  chance of farkling with the dice left before you choose to roll, and a hot-dice flourish.
+- 🎯 **Farkle:** ✅ added (#40). ✅ Dice pips show on phones again (#44, shared with Yacht). ✅ The hint shows the
+  chance of farkling with the dice you're about to roll. Next: a hot-dice flourish.
 - 🚢 **Ship, Captain & Crew:** ✅ added to fill the 🎲 Dice & casino row. Next: a dice-shaking animation, and the pub rule where a round's low score pays into a pot.
 - 🤥 **Liar's Dice:** ✅ added to fill the 🎲 Dice & casino row. Next: a timed bid clock option, and showing each bid's odds after the reveal for learning.
 - 🎲 **Yacht:** ✅ added (#38: the traditional game the branded one grew from). ✅ The dice pips were
   invisible: the die's padding was a percentage, which CSS measures against the whole dice row, so it
-  squeezed the pips to nothing (#44). Next: confirm before scoring a 0, and a solo best-score table.
+  squeezed the pips to nothing (#44). ✅ Asks before you score a 0. Next: a solo best-score table.
 - 📍 **Cribbage:** ✅ added (#23). Next: animate pegging along the track, and an optional muggins rule.
 - ♠️ **Texas Hold'em:** ✅ added (#21). ✅ Buy back in after busting (#35; people only, bots don't). Next: a hand-history panel, showing folded winners' cards
   on request, and a time bank.

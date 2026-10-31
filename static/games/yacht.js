@@ -72,7 +72,11 @@ UI.yacht = (() => {
           const td = ctx.el('td'); td.dataset.id = id;
           if (id === me) {
             const b = ctx.el('button', 'ya-box');
-            b.onclick = () => ctx.quiet(ctx.act('score', { cat }));
+            b.onclick = async () => {
+              // Scoring a 0 burns the box for the rest of the game, so check first.
+              if (!S.yacht.preview?.[cat] && !(await ctx.ask(`Score 0 in ${label}? That box is used up for the game.`, { ok: 'Score 0', danger: true }))) return;
+              ctx.quiet(ctx.act('score', { cat }));
+            };
             td.append(b);
           }
           tr.append(td);

@@ -46,7 +46,7 @@ UI.trivia = (() => {
         if (who.length) {
           const dots = ctx.el('span', 'tv-who');
           for (const p of who) {
-            const d = ctx.el('span', 'dot'); d.style.background = p?.color ?? '#777'; d.title = p?.name ?? '?';
+            const d = ctx.el('span', 'dot' + (p && p.id === rv.fastest ? ' fastest' : '')); d.style.background = p?.color ?? '#777'; d.title = p?.name ?? '?';
             dots.append(d);
           }
           b.append(dots);
@@ -61,6 +61,8 @@ UI.trivia = (() => {
     if (rv) {
       const g = rv.gained[S.me.id];
       note = !t.playing ? '' : t.mine == null ? '⏰ No answer this time.' : g ? `✅ Right! +${g}${t.streak > 1 ? ` · 🔥 ${t.streak} in a row` : ''}` : '❌ Not this time.';
+      const quick = rv.fastest && ctx.player(rv.fastest);
+      if (quick) note += `${note ? ' · ' : ''}⚡ ${rv.fastest === S.me.id ? 'You were' : `${quick.name} was`} quickest!`;
     } else if (t.playing && t.mine != null) {
       const waiting = S.players.filter((p) => !p.spectator && !p.eliminated && !t.answered.includes(p.id)).length;
       note = `Locked in! ${waiting ? `Waiting for ${waiting} more…` : ''}`;
