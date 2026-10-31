@@ -289,8 +289,8 @@ be checked without a browser.
    which a simulated browser can't judge.
 4. **A bottom-sheet layout with tabs** (*Actions · Log · Players*) and a sticky action bar for the main
    action, plus undo toasts (Unmask flips, Wordsmith tiles).
-5. **More motion.** A "your turn" chime per game, animated captures (pieces fading off the board), and
-   cards dealt into hands.
+5. **More motion.** ✅ Animated captures in Chess and ✅ cards dealt into the Last Card hand. Next: a "your turn"
+   chime per game.
 6. **Accessibility.**
    - Player colours that are safe for colour-blind players, with a shape or pattern as well (never
      colour alone).
@@ -369,7 +369,8 @@ Riders and Air Hockey start in it) (#13, #15).
 - 🗼 **Spire Siege:** ✅ a 🟦 4-block piece set beside the mixed 2/3/5-block set (#13), a ⇄ hold slot
   (C / Shift / swipe up), and a sharper flat well on high-DPI screens. ✅ 🟦 4-block is now the default
   (#26); the odd shapes are the 🧩 Mixed option. ✅ Normal and hard bots use the ⇄ hold slot (they park a piece and
-  play whichever of it and the new piece fits better). Next: a stronger ring-clear effect.
+  play whichever of it and the new piece fits better). ✅ Ring clears call out RING! / DOUBLE! / TRIPLE! / SPIRE!
+  (with ×combo), buzz, and shake the stage for three or more.
 - 🏍️ **Light Riders:** ✅ the swipe threshold scales with the arena (18–48 px), a 📳 vibration tick on each
   turn and a longer buzz when you crash, and a countdown overlay. Next: check the swipe fixes on a phone (#14).
 - 🏒 **Air Hockey:** ✅ a score-to-win setting, and 📳 haptics when your mallet hits the puck and on goals. Next: goal replay.
@@ -403,7 +404,8 @@ Riders and Air Hockey start in it) (#13, #15).
 - 🔺 **Backgammon:** ✅ added (#42). ✅ A 🎲 doubling cube (on by default): double before you roll, take to own
   the cube or drop and lose at its value; bots double and take from the race. Next: the Crawford rule for
   matches, and a stronger evaluation for the hard bot.
-- ♟️ **Chess:** ✅ a move list in standard notation (Nf3, exd5, O-O, e8=Q#). Next: premoves, and capture animations.
+- ♟️ **Chess:** ✅ a move list in standard notation (Nf3, exd5, O-O, e8=Q#), and ✅ captured pieces tumble off
+  their square as the capturer slides in. Next: premoves.
 - ⛀ **Checkers:** ✅ last-move highlight, and an optional 🦅 flying-kings variant.
 - ⚫ **Go:** ✅ a territory overlay (shown at the end, ◫ toggle during play), and ↶ undo requests (bots always agree).
 
@@ -435,7 +437,8 @@ Riders and Air Hockey start in it) (#13, #15).
 - 📍 **Cribbage:** ✅ added (#23). Next: animate pegging along the track, and an optional muggins rule.
 - ♠️ **Texas Hold'em:** ✅ added (#21). ✅ Buy back in after busting (#35; people only, bots don't). ✅ A 📜 hand-history panel (the last 8
   hands: board, result, cards shown and your own two), and 🙂 a winner whose rivals all folded can show their cards. Next: a time bank.
-- 🃏 **Last Card:** ✅ a fanned hand in one swipeable row (playable cards lift out). Next: animated dealing.
+- 🃏 **Last Card:** ✅ a fanned hand in one swipeable row (playable cards lift out), and drawn cards are dealt in
+  from the deck.
 - ⚡ **Speed:** ✅ added (#48). Next: drag a card onto a pile, a two-phones-face-to-face table layout, and a
   "slap" sound.
 - 🚢 **Sea Battle:** ✅ drag a placed ship to move it (tap still picks it up; the page doesn't scroll while placing).

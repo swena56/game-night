@@ -133,7 +133,7 @@ UI.spire = (() => {
     if (powers.includes('shield')) st.shield++;
     if (powers.includes('blast')) { st.grid.splice(0, 2); st.grid.push(emptyRow(), emptyRow()); }
     if (full.length) {
-      flash(full.length >= 3 ? 'big' : 'small');
+      flash(full.length >= 3 ? 'big' : 'small', full.length, st.combo);
       if (powers.length) ctx.toast(powers.map((p) => `${POWER_ICON[p]} ${p}!`).join(' '));
       ctx.quiet(ctx.act('clear', { rings: full.length, combo: st.combo, powers }));
     }
@@ -364,10 +364,20 @@ UI.spire = (() => {
     }
   }
 
-  function flash(kind) {
+  // a ring clear: a flash, a named callout (bigger for more rings and for combos), a buzz, and a
+  // shake of the stage for three rings or more
+  function flash(kind, rings = 1, combo = 1) {
     const f = $('spFlash'); if (!f) return;
     f.className = 'sp-flash ' + kind;
     void f.offsetWidth; f.classList.add('on');
+    const call = $('spCall');
+    if (call) {
+      call.textContent = (['', 'RING!', 'DOUBLE!', 'TRIPLE!', 'SPIRE!'][Math.min(rings, 4)] || 'SPIRE!') + (combo > 1 ? ` ×${combo}` : '');
+      call.className = 'sp-call r' + Math.min(rings, 4);
+      void call.offsetWidth; call.classList.add('on');
+    }
+    if (rings >= 3) { const stage = f.parentElement; stage.classList.remove('shake'); void stage.offsetWidth; stage.classList.add('shake'); }
+    buzz(rings >= 3 ? [40, 30, 80] : 25);
   }
 
   // ---------- input
@@ -379,7 +389,7 @@ UI.spire = (() => {
     S = null;
     main.innerHTML = `<div class="spire-wrap">
       <div id="spStage" class="spire-stage"><canvas id="spFallback"></canvas>
-        <div id="spCount" class="sp-count"></div><div id="spFlash" class="sp-flash"></div><div id="spBanner" class="sp-banner" hidden></div></div>
+        <div id="spCount" class="sp-count"></div><div id="spFlash" class="sp-flash"></div><div id="spCall" class="sp-call"></div><div id="spBanner" class="sp-banner" hidden></div></div>
       <div class="sp-pad"><button data-k="rotl">⟲</button><button data-k="left">◀</button><button data-k="drop">⤓</button>
         <button data-k="right">▶</button><button data-k="rot">⟳</button><button data-k="soft">▼</button><button data-k="hold" title="Hold">⇄</button></div></div>`;
     side.innerHTML = `<div class="panel">

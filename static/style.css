@@ -315,6 +315,8 @@ body.calm::before, body.calm *, body.calm *::before, body.calm *::after { animat
 .hand.fan .card-btn { flex: none; margin-left: -16px; scroll-snap-align: center; transform-origin: 50% 130%;
   transform: rotate(var(--rot, 0deg)) translateY(var(--drop, 0px)); }
 .hand.fan .card-btn:first-child { margin-left: 0; }
+.card-btn.dealt .pc { animation: dealIn .4s var(--deal, 0s) both cubic-bezier(.2, 1.1, .4, 1); }
+@keyframes dealIn { from { opacity: 0; transform: translate(-40px, -90px) rotate(-30deg) scale(.6); } }
 .hand.fan .card-btn.ok { transform: rotate(var(--rot, 0deg)) translateY(calc(var(--drop, 0px) - 12px)); z-index: 1; }
 .hand.fan .card-btn:focus-visible, .hand.fan .card-btn.ok:hover { z-index: 2; }
 
@@ -349,6 +351,13 @@ body.calm::before, body.calm *, body.calm *::before, body.calm *::after { animat
 .sp-flash.small { background: radial-gradient(circle, #ffffff55, transparent 70%); }
 .sp-flash.big { background: radial-gradient(circle, #ffd166aa, transparent 70%); }
 .sp-flash.on { animation: spflash .45s ease-out; }
+.sp-call { position: absolute; left: 0; right: 0; top: 38%; text-align: center; pointer-events: none; opacity: 0;
+  font-weight: 900; font-size: 30px; letter-spacing: .06em; color: #fff; text-shadow: 0 0 12px #8e7dff, 0 3px 0 #0008; }
+.sp-call.r2 { font-size: 36px; color: #8ecae6; } .sp-call.r3 { font-size: 44px; color: #ffd166; } .sp-call.r4 { font-size: 54px; color: #ff8c1a; }
+.sp-call.on { animation: spCall 1s ease-out; }
+@keyframes spCall { 0% { opacity: 0; transform: scale(.4); } 15% { opacity: 1; transform: scale(1.15); } 70% { opacity: 1; transform: translateY(-10px); } 100% { opacity: 0; transform: translateY(-40px); } }
+.shake { animation: shake .35s; }
+@keyframes shake { 20% { transform: translate(-6px, 2px); } 40% { transform: translate(5px, -3px); } 60% { transform: translate(-4px, 1px); } 80% { transform: translate(3px, 0); } }
 @keyframes spflash { from { opacity: 1; } to { opacity: 0; } }
 .sp-pad { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-top: 8px; }
 .sp-pad button { font-size: 24px; padding: 12px 0; touch-action: manipulation; user-select: none; }
@@ -399,6 +408,9 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px s
   .fabs { bottom: 10px; right: 10px; } .fabs button { width: 46px; height: 46px; font-size: 20px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+/* effects that only exist to animate away must not linger when animation is off */
+@media (prefers-reduced-motion: reduce) { .csq .piece.taken { display: none; } }
+body.calm .csq .piece.taken { display: none; }
 
 /* lucky letters */
 .lucky { max-width: 680px; margin: 0 auto; }
@@ -513,6 +525,8 @@ button.danger { background: linear-gradient(180deg, #ff5d82, #ef476f 55%, #d9325
 @keyframes markIn { from { transform: scale(.3) rotate(-25deg); opacity: 0; } }
 .chessboard { border: 0; padding: 8px; background: linear-gradient(135deg, #7a4f2a, #4a2d14); box-shadow: inset 0 1px 0 #ffffff30, 0 12px 30px #0009; }
 .csq .piece { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; filter: drop-shadow(0 3px 2px #0006); }
+.csq .piece.taken { animation: takenOff .6s ease-in forwards; pointer-events: none; }
+@keyframes takenOff { 0% { opacity: 1; transform: none; } 40% { opacity: 1; transform: scale(1.1) rotate(-8deg); } 100% { opacity: 0; transform: translateY(30%) scale(.4) rotate(25deg); } }
 .csq .checker { position: relative; }
 .slide { z-index: 3; animation: slide .32s cubic-bezier(.3, .8, .4, 1); }
 @keyframes slide { from { transform: translate(calc(var(--dx) * var(--step, 100%)), calc(var(--dy) * var(--step, 100%))) scale(1.08); } }

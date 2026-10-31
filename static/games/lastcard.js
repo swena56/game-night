@@ -1,5 +1,5 @@
 UI.lastcard = (() => {
-  let S, ctx, pendingJack = null, shownTop;
+  let S, ctx, pendingJack = null, shownTop, shownHand = null;
   const SUIT = { S: '♠', H: '♥', D: '♦', C: '♣' };
   const $ = (id) => document.getElementById(id);
   const rank = (c) => c.slice(0, -1), suit = (c) => c.slice(-1);
@@ -11,7 +11,7 @@ UI.lastcard = (() => {
   }
 
   function mount(main, side) {
-    pendingJack = null; shownTop = undefined;
+    pendingJack = null; shownTop = undefined; shownHand = null;
     main.innerHTML = `<div class="table">
       <div class="pile-row">
         <button id="lcDeck" class="pc back"><b>🂠</b><small id="lcDeckCount"></small></button>
@@ -49,12 +49,19 @@ UI.lastcard = (() => {
     const hand = $('lcHand'); hand.innerHTML = '';
     const cards = g.hand || [], mid = (cards.length - 1) / 2, step = Math.min(6, 48 / Math.max(1, cards.length));
     hand.classList.toggle('fan', cards.length > 0);
+    // cards that weren't in the hand last time are dealt in from the deck, one after another
+    const before = shownHand ? [...shownHand] : null;
+    const fresh = new Set();
+    if (before) for (const card of cards) { const at = before.indexOf(card); if (at >= 0) before.splice(at, 1); else fresh.add(card); }
+    shownHand = cards;
+    let dealt = 0;
     for (const [k, card] of cards.entries()) {
       const ok = g.playable.includes(card);
       const b = ctx.el('button', 'card-btn' + (ok ? ' ok' : ''));
       b.style.setProperty('--rot', `${((k - mid) * step).toFixed(1)}deg`);
       b.style.setProperty('--drop', `${(Math.abs(k - mid) * step * 0.6).toFixed(1)}px`);
       b.append(face(card));
+      if (fresh.has(card)) { b.classList.add('dealt'); b.style.setProperty('--deal', `${dealt++ * 0.12}s`); fresh.delete(card); }
       b.disabled = !ok;
       b.onclick = () => onCard(card);
       hand.append(b);

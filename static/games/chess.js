@@ -1,5 +1,5 @@
 UI.chess = (() => {
-  let S, ctx, boardEl, sel = null, promo = null, shownLast, view3d = null, slide = null, clockTimer = 0, clockAt = 0;
+  let S, ctx, boardEl, sel = null, promo = null, shownLast, view3d = null, slide = null, clockTimer = 0, clockAt = 0, shownTaken = null, shownW = 0;
   const want3d = () => { try { return localStorage.getItem('chess.view') !== '2d'; } catch { return true; } };
   const GLYPH = { K: '♚', Q: '♛', R: '♜', B: '♝', N: '♞', P: '♟' };
   const NAME = { K: 'king', Q: 'queen', R: 'rook', B: 'bishop', N: 'knight', P: 'pawn' };
@@ -7,7 +7,7 @@ UI.chess = (() => {
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
-    sel = null; promo = null; shownLast = undefined; slide = null;
+    sel = null; promo = null; shownLast = undefined; slide = null; shownTaken = null; shownW = 0;
     main.innerHTML = '<div id="chClock" class="ch-clocks" hidden></div><div class="chess-wrap"><div class="chessboard"></div><div class="chess3d" id="ch3d" hidden></div></div>';
     side.innerHTML = `<div class="panel">
       <div id="chStatus" class="seat-row"></div>
@@ -47,6 +47,11 @@ UI.chess = (() => {
     const movable = new Set(moves.map((m) => m[0] * 8 + m[1]));
     const lastKey = ch.last?.join() ?? null, animate = shownLast !== undefined && lastKey && lastKey !== shownLast;
     shownLast = lastKey;
+    // a capture: the taken piece lingers on its square and fades off while the capturer slides in
+    const taken = ch.captured.w.length + ch.captured.b.length;
+    const victim = animate && shownTaken != null && taken > shownTaken
+      ? (ch.captured.w.length > shownW ? ['w', ch.captured.w.at(-1)] : ['b', ch.captured.b.at(-1)]) : null;
+    shownTaken = taken; shownW = ch.captured.w.length;
     [...boardEl.children].forEach((sq, i) => {
       const [r, col] = rc(i);
       const p = ch.board[r][col];
@@ -64,6 +69,7 @@ UI.chess = (() => {
           slide = { from: disp(ch.last[0], ch.last[1]), to: i };
         }
         sq.append(piece);
+        if (victim && ch.last[2] === r && ch.last[3] === col) sq.append(ctx.el('span', 'piece taken ' + victim[0], GLYPH[victim[1]] + TEXT));
       }
       sq.setAttribute('aria-label', `${'abcdefgh'[col]}${8 - r}, ${p ? `${p[0] === 'w' ? 'white' : 'black'} ${NAME[p[1]]}` : 'empty'}`);
       if (i % 8 === 0) sq.append(ctx.el('span', 'coord rank', String(8 - r)));
