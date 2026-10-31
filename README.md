@@ -372,8 +372,9 @@ Riders and Air Hockey start in it) (#13, #15).
 **Action / real-time**
 - 🎱 **Billiards:** ✅ added (#12). ✅ Dragging now turns the cue like a dial around the ball, so
   touching the stick no longer flips the aim 180° (#28). ✅ It starts in focus mode, so the floating
-  buttons no longer cover Shoot (#29), and the cue is a full-size tapered stick (#30). Next: pinch zoom (#28), spin (follow / draw),
-  calling the pocket for the 8, and a 3D table.
+  buttons no longer cover Shoot (#29), and the cue is a full-size tapered stick (#30). ✅ Spin: a follow / draw slider; after the
+  cue ball's first hit it rolls on or screws back. ✅ 📣 Calling the 8 (on by default): tap the pocket you're aiming at;
+  the 8 in any other pocket loses (bots call theirs too). Next: pinch zoom (#28) and a 3D table.
 - 🗼 **Spire Siege:** ✅ a 🟦 4-block piece set beside the mixed 2/3/5-block set (#13), a ⇄ hold slot
   (C / Shift / swipe up), and a sharper flat well on high-DPI screens. ✅ 🟦 4-block is now the default
   (#26); the odd shapes are the 🧩 Mixed option. ✅ Normal and hard bots use the ⇄ hold slot (they park a piece and
@@ -424,7 +425,9 @@ Riders and Air Hockey start in it) (#13, #15).
 **Strategy**
 - 🔺 **Backgammon:** ✅ added (#42). ✅ A 🎲 doubling cube (on by default): double before you roll, take to own
   the cube or drop and lose at its value; bots double and take from the race. ✅ The Crawford rule in matches
-  (no doubling the game after someone first reaches match point). Next: a stronger evaluation for the hard bot.
+  (no doubling the game after someone first reaches match point). ✅ A stronger hard bot: in a pure race it plays
+  for pips and a smooth bear-off (it used to fear blots nobody could hit), and in contact it values anchors in your
+  home board, a closed board when you're on the bar, and avoids tall stacks. It beat the old hard bot 116–84.
 - ♟️ **Chess:** ✅ a move list in standard notation (Nf3, exd5, O-O, e8=Q#), and ✅ captured pieces tumble off
   their square as the capturer slides in. ✅ ⏩ Premoves: during your rival's turn, tap a piece and a square; it plays the instant your turn starts
   if it's still legal (pawns promote to a queen), or is dropped with a note. ✕ cancels it.

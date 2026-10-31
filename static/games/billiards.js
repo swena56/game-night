@@ -3,6 +3,7 @@
 UI.billiards = (() => {
   let S, ctx, raf = 0, ro = null, animEnd = 0;
   let dial = null, aim = 0, aimFor = null, power = 0.55, cuePos = null, drag = null, anim = null, seenShot = 0;
+  let spin = 0, called = null;  // follow (+) / draw (−), and the pocket called for the 8
   let geo = null;  // canvas geometry: scale, rail width, portrait or not
   const $ = (id) => document.getElementById(id);
   const COLORS = ['#ffffff', '#f5c518', '#1f5fd1', '#d62828', '#6a2c91', '#f77f00', '#138a36', '#7a1f1f', '#111111'];
@@ -103,6 +104,16 @@ UI.billiards = (() => {
     g.beginPath(); g.moveTo(b.headX, 0); g.lineTo(b.headX, b.H); g.stroke();
     g.fillStyle = '#ffffff55'; g.beginPath(); g.arc(b.W * 0.73, b.H / 2, 0.7, 0, 7); g.fill();
     for (const [px, py, cap] of b.pockets) { g.fillStyle = '#050505'; g.beginPath(); g.arc(px, py, cap + 0.6, 0, 7); g.fill(); }
+    // the pocket called for the 8: yours while you aim, the shooter's while a shot plays
+    const call = anim ? b.shot?.called : b.calling && canShoot() ? called : null;
+    if (call != null && b.pockets[call]) {
+      const [px, py, cap] = b.pockets[call];
+      g.strokeStyle = '#ffd166'; g.lineWidth = 1.4; g.setLineDash([2, 1.5]);
+      g.beginPath(); g.arc(px, py, cap + 3, 0, 7); g.stroke(); g.setLineDash([]);
+    } else if (b.calling && canShoot()) {  // nothing called yet: every pocket pulses gently
+      g.strokeStyle = `rgba(255, 209, 102, ${0.35 + 0.3 * Math.sin(performance.now() / 250)})`; g.lineWidth = 1;
+      for (const [px, py, cap] of b.pockets) { g.beginPath(); g.arc(px, py, cap + 2.5, 0, 7); g.stroke(); }
+    }
     for (const d of [0.25, 0.5, 0.75]) {  // rail diamonds
       g.fillStyle = '#e9d8a6';
       for (const [x, y] of [[b.W * d / 2, -RAIL / 2], [b.W / 2 + b.W * d / 2, -RAIL / 2], [b.W * d / 2, b.H + RAIL / 2], [b.W / 2 + b.W * d / 2, b.H + RAIL / 2], [-RAIL / 2, b.H * d], [b.W + RAIL / 2, b.H * d]]) {
@@ -195,6 +206,10 @@ UI.billiards = (() => {
   function pointer(e, phase) {
     if (!canShoot() || !geo) return;
     const [x, y] = toTable(e.clientX, e.clientY);
+    if (phase === 'down' && B().calling) {  // on the 8: a tap on a pocket calls it
+      const hit = B().pockets.findIndex(([px, py, cap]) => Math.hypot(x - px, y - py) < cap + 6);
+      if (hit >= 0) { called = hit; ctx.rerender(); return; }
+    }
     if (phase === 'down') {
       const cue = cueAt();
       drag = B().inHand && cue && Math.hypot(x - cue[0], y - cue[1]) < B().R * 4 ? 'cue' : 'aim';
@@ -219,7 +234,11 @@ UI.billiards = (() => {
 
   function shoot() {
     if (!canShoot()) return;
-    const extra = { angle: aim, power };
+    const extra = { angle: aim, power, spin };
+    if (B().calling) {
+      if (called == null) return ctx.toast('📣 Tap the pocket you\'re aiming the 8 at first.');
+      extra.pocket = called;
+    }
     if (B().inHand) {
       if (!cuePos || !placeOk(...cuePos)) { ctx.toast(B().inHand === 'kitchen' ? 'Put the cue ball behind the line first.' : 'The cue ball overlaps another ball.'); return; }
       extra.cue = cuePos;
@@ -236,7 +255,9 @@ UI.billiards = (() => {
         <label class="bl-power">Power <input id="blPower" type="range" min="5" max="100" value="55"><b id="blPowerVal">55%</b></label>
         <button id="blRight" aria-label="Aim right">▶</button>
         <button id="blShoot" class="primary">🎱 Shoot</button>
-      </div></div>`;
+      </div>
+      <div class="bl-spin"><label>Spin <span>⬇ draw</span><input id="blSpin" type="range" min="-100" max="100" value="0" step="10"
+        aria-label="Spin: draw back or follow through"><span>follow ⬆</span></label><b id="blSpinVal">none</b></div></div>`;
     side.innerHTML = `<div class="panel">
       <div id="blStatus" class="seat-row"></div>
       <div id="blRacks" class="bl-racks"></div>
@@ -247,6 +268,11 @@ UI.billiards = (() => {
     c.addEventListener('pointermove', (e) => pointer(e, 'move'));
     c.addEventListener('pointerup', (e) => pointer(e, 'up'));
     c.addEventListener('pointercancel', () => { drag = null; });
+    $('blSpin').oninput = () => {
+      spin = $('blSpin').value / 100;
+      $('blSpinVal').textContent = !spin ? 'none' : `${spin > 0 ? 'follow' : 'draw'} ${Math.abs(spin * 100)}%`;
+    };
+    $('blSpin').ondblclick = () => { $('blSpin').value = 0; $('blSpin').oninput(); };
     $('blPower').oninput = () => { power = $('blPower').value / 100; $('blPowerVal').textContent = $('blPower').value + '%'; };
     // turn the aim by about 0.25° per tap, faster while held
     for (const [id, dir] of [['blLeft', -1], ['blRight', 1]]) {
@@ -279,17 +305,20 @@ UI.billiards = (() => {
     // a fresh turn for me: aim at something sensible and put a placeable cue ball down
     const turnKey = `${S.turn}:${b.shot?.id ?? 0}`;
     if (ctx.myTurn && aimFor !== turnKey) {
-      aimFor = turnKey;
+      aimFor = turnKey; called = null;
       cuePos = b.inHand ? defaultCue() : null;
       aim = defaultAim();
     }
     const me = S.me.id, mine = b.groups[me], turnName = ctx.player(S.turn)?.name ?? '';
+    const callText = called == null ? '📣 On the 8: tap the pocket you\'re calling.' : '🎱 Sink the 8 in the called pocket to win!';
     $('blStatus').textContent = S.phase !== 'playing' ? (b.last || 'Game over')
       : ctx.myTurn ? (b.inHand ? (b.inHand === 'kitchen' ? '✋ Place the cue ball behind the line, then break.' : '✋ Ball in hand: drag the cue ball anywhere.')
+          + (b.calling ? ` ${callText}` : '')
+        : b.calling ? callText
         : b.targets.length === 1 && b.targets[0] === 8 ? '🎱 Sink the 8 to win!' : b.breaking ? 'Your break!' : 'Your shot.')
       : `${turnName} is shooting…`;
     $('blShoot').disabled = !canShoot();
-    for (const id of ['blLeft', 'blRight', 'blPower']) $(id).disabled = !canShoot();
+    for (const id of ['blLeft', 'blRight', 'blPower', 'blSpin']) $(id).disabled = !canShoot();
     // each player's remaining balls
     const racks = $('blRacks'); racks.innerHTML = '';
     const onTable = new Set(b.balls.map(([n]) => n));

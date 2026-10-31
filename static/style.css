@@ -755,6 +755,11 @@ body.focus .lr-stage { height: max(220px, calc(var(--app-h, 100vh) - 245px)); }
 .bl-power { flex: 1; display: flex; align-items: center; gap: 6px; margin: 0; color: var(--text); font-weight: 700; }
 .bl-power input { flex: 1; accent-color: var(--accent); }
 .bl-power b { min-width: 3.2em; text-align: right; font-variant-numeric: tabular-nums; }
+.bl-spin { display: flex; align-items: center; gap: 8px; max-width: 560px; margin: 6px auto 0; font-size: 13px; color: var(--muted); }
+.bl-spin label { flex: 1; display: flex; align-items: center; gap: 6px; margin: 0; color: var(--text); font-weight: 700; font-size: 13px; }
+.bl-spin label span { font-weight: 500; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.bl-spin input { flex: 1; accent-color: var(--accent2); }
+.bl-spin b { min-width: 6.5em; text-align: right; }
 .bl-racks { display: grid; gap: 6px; margin: 8px 0; }
 .bl-rack { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; padding: 6px 8px; border-radius: 10px; background: #ffffff08; }
 .bl-rack.now { background: #ffb7031a; }

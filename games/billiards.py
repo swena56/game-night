@@ -17,6 +17,7 @@ from .base import Game, GameError
 TW, TH, R = 200.0, 100.0, 2.3        # table size and ball radius, in table units
 FRICTION = 70.0                      # rolling slow-down, units/s²
 CUSHION, BOUNCE = 0.78, 0.95         # speed kept off a cushion / in a ball-to-ball hit
+SPIN_K = 0.6                         # how much of the hit speed follow / draw gives back to the cue ball
 MIN_SPEED, MAX_SPEED = 25.0, 520.0   # cue speed at power 0 and 1
 DT, FRAME_EVERY = 1 / 120, 4         # simulation step; record every 4th step (30 fps)
 MAX_STEPS = 120 * 14
@@ -33,11 +34,13 @@ def near_mouth(x, y):
     return any(math.hypot(x - px, y - py) < cap + MOUTH for px, py, cap in POCKETS)
 
 
-def simulate(pos, angle, speed, record=True):
-    """Run one shot. pos: {ball: (x, y)} with the cue ball as 0.
+def simulate(pos, angle, speed, record=True, spin=0.0, holes=None):
+    """Run one shot. pos: {ball: (x, y)} with the cue ball as 0. spin: -1 (draw) to 1 (follow): after the cue
+    ball's first hit it rolls on (or back) along the aim line. holes, if given, gets {ball: pocket index}.
     Returns (final positions, pocketed balls in order, first ball the cue touched, frames)."""
     balls = {n: [x, y, 0.0, 0.0] for n, (x, y) in pos.items()}
-    balls[0][2], balls[0][3] = math.cos(angle) * speed, math.sin(angle) * speed
+    aim_x, aim_y = math.cos(angle), math.sin(angle)
+    balls[0][2], balls[0][3] = aim_x * speed, aim_y * speed
     pocketed, first, frames = [], None, []
     order = sorted(pos)
     for step in range(MAX_STEPS):
@@ -73,12 +76,18 @@ def simulate(pos, angle, speed, record=True):
                     b2[2] += j * nx; b2[3] += j * ny
                     if first is None and 0 in (n1, n2):
                         first = n2 if n1 == 0 else n1
+                        if spin:  # the spin takes hold once the cue ball has struck
+                            cb = b1 if n1 == 0 else b2
+                            cb[2] += aim_x * spin * rel * SPIN_K; cb[3] += aim_y * spin * rel * SPIN_K
                 push = (2 * R - d) / 2
                 b1[0] -= nx * push; b1[1] -= ny * push
                 b2[0] += nx * push; b2[1] += ny * push
         for n, b in list(balls.items()):
-            if any(math.hypot(b[0] - px, b[1] - py) < cap for px, py, cap in POCKETS):
+            hole = next((k for k, (px, py, cap) in enumerate(POCKETS) if math.hypot(b[0] - px, b[1] - py) < cap), None)
+            if hole is not None:
                 pocketed.append(n)
+                if holes is not None:
+                    holes[n] = hole
                 del balls[n]
                 continue
             mouth = near_mouth(b[0], b[1])
@@ -156,7 +165,12 @@ class Billiards(Game):
     max_players = 2
     settings_schema = {
         "guide": ("Aim guide", [("full", "🎯 Full (where both balls go)"), ("short", "Short"), ("off", "Off")], "full"),
+        "call8": ("The 8 ball", [(True, "📣 Call its pocket"), (False, "Any pocket")], True),
     }
+
+    def calling(self, pid):
+        """Shooting at the 8 with calls on: the shot must name a pocket."""
+        return bool(self.s.get("call8")) and not self.breaking and self.legal_targets(pid) == [8]
 
     # -- setup
 
@@ -218,9 +232,15 @@ class Billiards(Game):
                 raise GameError("The cue ball can't go there." + (" Keep it behind the line for the break." if self.in_hand == "kitchen" else ""))
         elif 0 not in self.pos:
             raise GameError("Place the cue ball first.")
-        self.shoot(p, float(angle), float(power), tuple(cue) if cue else None)
+        spin = a.get("spin", 0)
+        if not isinstance(spin, (int, float)) or not math.isfinite(spin) or not -1 <= spin <= 1:
+            raise GameError("Bad spin.")
+        pocket = a.get("pocket")
+        if self.calling(p.id) and (not isinstance(pocket, int) or isinstance(pocket, bool) or not 0 <= pocket < len(POCKETS)):
+            raise GameError("Call a pocket for the 8 first.")
+        self.shoot(p, float(angle), float(power), tuple(cue) if cue else None, float(spin), pocket if self.calling(p.id) else None)
 
-    def shoot(self, p, angle, power, cue=None):
+    def shoot(self, p, angle, power, cue=None, spin=0.0, pocket=None):
         r = self.room
         if cue:
             self.pos[0] = cue
@@ -228,12 +248,13 @@ class Billiards(Game):
         targets = self.legal_targets(p.id)
         speed = MIN_SPEED + (MAX_SPEED - MIN_SPEED) * power
         order = sorted(self.pos)
-        final, sunk, first, frames = simulate(self.pos, angle, speed)
+        holes = {}
+        final, sunk, first, frames = simulate(self.pos, angle, speed, spin=spin, holes=holes)
         breaking, self.breaking, self.in_hand = self.breaking, False, None
         self.pos = final
         self.shot_seq += 1
         dur = len(frames) / 30
-        self.shot = {"id": self.shot_seq, "by": p.id, "order": order, "frames": frames, "at": time.time()}
+        self.shot = {"id": self.shot_seq, "by": p.id, "order": order, "frames": frames, "at": time.time(), "called": pocket}
         self.busy_until = time.time() + dur
 
         foul = None
@@ -252,6 +273,8 @@ class Billiards(Game):
                 r.add_log("🎱 The 8 dropped on the break, so it goes back on its spot.", "power")
             else:
                 other = r.players.get(next((i for i in self.seats if i != p.id), None))
+                if before == set() and not foul and pocket is not None and holes.get(8) != pocket:
+                    foul = "in a pocket they didn't call"
                 if before == set() and not foul:
                     self.last = f"🏆 {p.name} sinks the 8!"
                     return self.finish(p, f"🏆 {p.name} sinks the 8 and wins!")
@@ -313,7 +336,7 @@ class Billiards(Game):
     def view(self, p):
         shot = None
         if self.shot:
-            shot = {k: self.shot[k] for k in ("id", "by", "order", "frames")}
+            shot = {k: self.shot.get(k) for k in ("id", "by", "order", "frames", "called")}
             shot["age"] = max(0.0, time.time() - self.shot["at"])
         return {"billiards": {
             "W": TW, "H": TH, "R": R, "headX": HEAD_X, "pockets": [[x, y, c] for x, y, c in POCKETS],
@@ -322,6 +345,7 @@ class Billiards(Game):
             "targets": self.legal_targets(self.room.turn) if self.room.turn else [],
             "shot": shot, "last": self.last, "guide": self.s["guide"],
             "minSpeed": MIN_SPEED, "maxSpeed": MAX_SPEED, "friction": FRICTION,
+            "calling": self.calling(self.room.turn) if self.room.turn and self.room.phase == "playing" else False,
         }}
 
     # -- bots: ghost-ball aiming; the hard bot test-runs its best ideas in the real engine
@@ -342,15 +366,21 @@ class Billiards(Game):
         shots = self.candidates(cx, cy, targets)
         if not shots:
             angle, power = self.safety(cx, cy, targets)
-            return self.shoot(p, angle + random.gauss(0, noise * 2), power, cue)
+            hole = None
+            if self.calling(p.id):  # a safety on the 8 still names a pocket: the one nearest the 8
+                ex, ey = self.pos[8]
+                hole = min(range(len(POCKETS)), key=lambda k: math.hypot(POCKETS[k][0] - ex, POCKETS[k][1] - ey))
+            return self.shoot(p, angle + random.gauss(0, noise * 2), power, cue, pocket=hole)
         if p.bot == "easy":
             pick = random.choice(shots[:3])
         elif p.bot == "normal":
             pick = shots[0]
         else:
             pick = self.test_run(p, shots[:5], cue)
-        _, angle, power = pick
-        self.shoot(p, angle + random.gauss(0, noise), min(1.0, power * random.uniform(0.95, 1.1)), cue)
+        _, angle, power, hole = pick
+        if not self.calling(p.id):
+            hole = None
+        self.shoot(p, angle + random.gauss(0, noise), min(1.0, power * random.uniform(0.95, 1.1)), cue, pocket=hole)
 
     def candidates(self, cx, cy, targets):
         """[(score, angle, power)] for direct pots, best first."""
@@ -359,7 +389,7 @@ class Billiards(Game):
         out = []
         for t in targets:
             tx, ty = pos[t]
-            for px, py, _ in POCKETS:
+            for hole, (px, py, _) in enumerate(POCKETS):
                 side = px == TW / 2
                 aim_x, aim_y = px, (py + (2.0 if py < 0 else -2.0)) if side else py
                 d1x, d1y = aim_x - tx, aim_y - ty
@@ -385,7 +415,7 @@ class Billiards(Game):
                 v0 = math.sqrt(2 * FRICTION * dist1 + v_obj2 / (cos * cos * ((1 + BOUNCE) / 2) ** 2))
                 power = max(0.08, min(1.0, (v0 - MIN_SPEED) / (MAX_SPEED - MIN_SPEED)))
                 score = 100 * cos * cos - 0.12 * dist1 - 0.18 * dist2 - (8 if side else 0)
-                out.append((score, math.atan2(vy, vx), power))
+                out.append((score, math.atan2(vy, vx), power, hole))
         out.sort(reverse=True)
         return out
 
@@ -442,5 +472,5 @@ class Billiards(Game):
                     self.pos = saved
                     val += 0.2 * follow[0][0] if follow else 0
                 if val > best_val:
-                    best, best_val = (shot[0], shot[1] + nudge, shot[2]), val
+                    best, best_val = (shot[0], shot[1] + nudge, shot[2], shot[3]), val
         return best

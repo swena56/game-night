@@ -342,6 +342,16 @@ const MOVES = {
     click(pick(opts));
   },
   billiards(d, S, n, w) {
+    if (d.querySelector('#blShoot').disabled) return;  // a shot is still rolling
+    if (S.billiards.calling) {  // on the 8: tap the pocket at table (0, 0) to call it (jsdom: canvas at the page's top left)
+      const c = d.querySelector('#blCanvas'), B = S.billiards, RAIL = 9, portrait = parseFloat(c.style.height) > parseFloat(c.style.width);
+      const k = parseFloat(c.style.width) / (portrait ? B.H + 2 * RAIL : B.W + 2 * RAIL);
+      const [x, y] = portrait ? [RAIL * k, (RAIL + B.W) * k] : [RAIL * k, RAIL * k];
+      c.dispatchEvent(new w.MouseEvent('pointerdown', { bubbles: true, clientX: x, clientY: y }));
+      if (!d.querySelector('#blStatus').textContent.includes('called pocket')) throw new Error(`tapping a pocket did not call it (canvas ${c.style.width}×${c.style.height}, tapped ${x.toFixed(1)},${y.toFixed(1)})`);
+    }
+    const spin = d.querySelector('#blSpin');
+    spin.value = String(pick([-50, 0, 50])); spin.dispatchEvent(new w.Event('input', { bubbles: true }));
     const power = d.querySelector('#blPower');
     power.value = String(30 + Math.floor(Math.random() * 70));
     power.dispatchEvent(new w.Event('input', { bubbles: true }));

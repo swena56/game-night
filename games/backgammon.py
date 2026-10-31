@@ -163,6 +163,24 @@ def finals(pos, side, dice):
     return out
 
 
+def contact(pos):
+    """Can the two sides still hit each other? (False once it's a pure race.)"""
+    white_back = 25 if pos[25] else max((i for i in range(1, 25) if pos[i] > 0), default=0)
+    black_back = 0 if pos[26] else min((i for i in range(1, 25) if pos[i] < 0), default=25)
+    return white_back > black_back
+
+
+def race_eval(pos, side):
+    """A pure race: pips, checkers off, and smooth bear-offs (gaps and tall stacks waste rolls)."""
+    them = -side
+    score = (pips(pos, them) - pips(pos, side)) * 1.2 + (off(pos, side) - off(pos, them)) * 4
+    for i in range(1, 25):
+        n = pos[i] * side
+        if n > 3 and home(i, side):
+            score -= (n - 3) * 0.6
+    return score
+
+
 def evaluate(pos, side, level):
     """Higher is better for `side`."""
     them = -side
@@ -196,6 +214,18 @@ def evaluate(pos, side, level):
             run = run + 1 if i in made else 0
             best = max(best, run)
         score += best * best * 0.8  # primes
+        # an anchor (a made point in their home board) is a safe landing spot for our back checkers
+        anchors = sum(1 for i in range(1, 25) if pos[i] * side >= 2 and home(i, them))
+        score += min(anchors, 2) * 3.0
+        # a hit checker of theirs facing a strong home board: each point we hold there may cost them a turn
+        if bar(pos, them):
+            closed = sum(1 for i in range(1, 25) if pos[i] * side >= 2 and home(i, side))
+            score += bar(pos, them) * closed * closed * 0.45
+        # tall stacks waste checkers that could be making points
+        for i in range(1, 25):
+            n = pos[i] * side
+            if n > 4:
+                score -= (n - 4) * 1.2
     return score
 
 
@@ -212,6 +242,7 @@ def lookahead(pos, side, candidates, budget=2.5):
         for (a, b), w in ROLLS:
             dice = (a, a, a, a) if a == b else (a, b)
             replies = finals(cand, -side, dice)
+            # the reply is judged with the plainer evaluation: it beat judging with the hard one 116–84
             worst = min((evaluate(rp, side, "normal") for rp in replies), default=evaluate(cand, side, "normal"))
             total += worst * w
         val = total / 36
@@ -497,7 +528,9 @@ class Backgammon(Game):
             elif ends:
                 level = p.bot
                 ranked = sorted(ends, key=lambda e: evaluate(e, self.turn_side, level) + random.uniform(0, 0.01), reverse=True)
-                if level == "hard" and len(ranked) > 1:
+                if level == "hard" and not contact(self.pos):  # a pure race: just bear in and off efficiently
+                    pick = max(ends, key=lambda e: race_eval(e, self.turn_side))
+                elif level == "hard" and len(ranked) > 1:
                     pick = lookahead(self.pos, self.turn_side, ranked[:4])
                 elif level == "normal" and len(ranked) > 1 and random.random() < 0.3:
                     pick = ranked[1]  # a decent casual player: sometimes the second-best play
