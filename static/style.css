@@ -1041,15 +1041,19 @@ body.focus .sm-stage { height: max(220px, calc(var(--app-h, 100vh) - 215px)); }
 .ow-board { flex: 1; display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 22px;
   background: linear-gradient(160deg, #8a5a2b, #5e3a17); box-shadow: inset 0 2px 6px #fff3, 0 8px 24px #0009; }
 .ow-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
-.ow-pit { aspect-ratio: 1; border-radius: 50%; padding: 4px; border: 0; background: radial-gradient(circle at 50% 35%, #3e260e, #26170a);
-  box-shadow: inset 0 3px 8px #000b; position: relative; display: flex; align-items: center; justify-content: center; }
+.ow-pit { aspect-ratio: 1; border-radius: 50%; padding: 0; border: 0; background: radial-gradient(circle at 50% 35%, #3e260e, #26170a);
+  box-shadow: inset 0 3px 8px #000b; position: relative; min-width: 0; min-height: 0; overflow: hidden; }
 .ow-pit:disabled { opacity: 1; cursor: default; }
 .ow-pit.can { box-shadow: inset 0 3px 8px #000b, 0 0 0 3px var(--accent); }
 .ow-pit.last { box-shadow: inset 0 3px 8px #000b, 0 0 0 3px var(--accent2); }
-.ow-pit.caught { animation: pulse 1s 2; }
-.ow-seeds { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px; width: 80%; }
-.ow-seeds i { width: 7px; height: 7px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #f6e7c1, #b48a4a); }
-.ow-seeds b { font-size: 18px; color: #f6e7c1; }
+.ow-pit.caught { animation: pulse 1s var(--cd, 0s) 2; }
+.ow-seeds { position: absolute; inset: 6%; pointer-events: none; }
+.ow-seeds i { position: absolute; width: 15%; height: 15%; border-radius: 50%; transform: translate(-50%, -50%);
+  background: radial-gradient(circle at 35% 35%, #f6e7c1, #b48a4a); box-shadow: 0 1px 1px #0008; }
+.ow-seeds i.drop { animation: owDrop .32s cubic-bezier(.3, 1.5, .5, 1) var(--d, 0s) backwards; }
+@keyframes owDrop { from { transform: translate(-50%, -180%) scale(.4); opacity: 0; } }
+.ow-seeds b { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #fff;
+  text-shadow: 0 0 4px #000, 0 0 8px #000; }
 .ow-pit small { position: absolute; bottom: -2px; right: 2px; font-size: 10px; color: #f6e7c1aa; }
 .ow-store { width: 44px; border-radius: 22px; background: #26170a; color: #f6e7c1; font-size: 22px; font-weight: 900;
   display: flex; align-items: center; justify-content: center; box-shadow: inset 0 3px 8px #000b; }

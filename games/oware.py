@@ -101,7 +101,7 @@ class Oware(Game):
         rng.shuffle(seated)
         self.seats = [p.id for p in seated]
         self.state = ((4,) * 12, (0, 0), 0)
-        self.last = None   # [pit, [captured pits]]
+        self.last = None   # [pit, [captured pits], seeds sown]
         self.room.add_log(f"🫘 Oware! {seated[0].name} sows first.", "big")
         self.room.begin_turn(seated[0].id)
 
@@ -126,7 +126,7 @@ class Oware(Game):
         sown, _ = sow(self.state[0], pit)
         captured = [j for j in side(1 - me) if sown[j] and not new[0][j]]
         self.state = new
-        self.last = [pit, captured]
+        self.last = [pit, captured, seeds]  # the client replays the sowing from these
         num = pit + 1 if me == 0 else pit - 5
         self.room.add_log(f"🫘 {p.name} sows {seeds} from pit {num}" + (f" and captures {took}!" if took else "."),
                           "power" if took else "question")

@@ -422,6 +422,8 @@ Riders and Air Hockey start in it) (#13, #15).
 
 **Quick classics**
 - 🔴 **Drop Four:** ✅ the winning line glows, and a move history of coloured column chips.
+- 🫘 **Oware:** ✅ seeds lie scattered in each pit at fixed spots, so pits never grow or reshuffle (#55, #57), and a
+  sowing drops its seeds in one pit at a time along the path, with captures flashing after they land (#56).
 - 🔳 **Dots & Boxes:** ✅ a last-line highlight. ✅ Wide grids (4×6, 5×8) that lie the long way on each screen: across on a sideways phone, down on an upright one.
 - ❌ **Tic-Tac-Toe:** ✅ in Vanishing mode, the mark that fades next is dimmed.
 
