@@ -219,6 +219,42 @@ const MOVES = {
     }
     click(pick([...d.querySelectorAll('#hhHand .card-btn:not(:disabled)')]));
   },
+  trivia(d) { click(pick([...d.querySelectorAll('.tv-opt:not(:disabled)')])); },
+  liars(d, S) {
+    const go = d.querySelector('#lrGo'), liar = d.querySelector('#lrLiar');
+    if (S.liars.bid && (Math.random() < 0.3 || go.disabled)) return click(liar);
+    if (S.liars.bid && Math.random() < 0.1 && !d.querySelector('#lrExact').hidden) return click(d.querySelector('#lrExact'));
+    if (Math.random() < 0.3) click(pick([...d.querySelectorAll('#lrFaces .ya-die')]));
+    if (Math.random() < 0.3) click(d.querySelector('#lrMore'));
+    const g2 = d.querySelector('#lrGo');
+    click(g2.disabled ? liar : g2);
+  },
+  shipcrew(d) {
+    const roll = d.querySelector('#scRoll'), dock = d.querySelector('#scDock');
+    if (!dock.hidden && (Math.random() < 0.5 || roll.hidden)) return click(dock);
+    if (!roll.hidden && !d.querySelector('#scFree .ya-die:not(:disabled)') && roll.disabled) return click(dock);
+    if (Math.random() < 0.3) { const c = d.querySelector('#scFree .ya-die:not(:disabled)'); if (c) click(c); }
+    const r2 = d.querySelector('#scRoll');
+    click(r2.disabled ? d.querySelector('#scFree .ya-die:not(:disabled)') : r2);
+  },
+  ladder(d, S, n, w) {
+    // Mostly hints (always a legal step); sometimes a typed word (often rejected) or a step back.
+    const r = Math.random();
+    if (r < 0.15 && !d.querySelector('#ldUndo').disabled) return click(d.querySelector('#ldUndo'));
+    if (r < 0.35) {
+      const last = S.ladder.path[S.ladder.path.length - 1];
+      d.querySelector('#ldInput').value = S.ladder.target[0] + last.slice(1);
+      return d.querySelector('#ldForm').dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
+    }
+    click(d.querySelector('#ldHint'));
+  },
+  speed(d, S, n, w) {  // play a fitting card; when it fits both piles, tap a lifted pile
+    const ok = [...d.querySelectorAll('#spHand .card-btn.ok:not(:disabled)')];
+    if (!ok.length) return;
+    click(pick(ok));
+    const t = [...d.querySelectorAll('.sp-pile.target')];
+    if (t.length) t[0].dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+  },
   twentyone(d) {
     const chips = [...d.querySelectorAll('.to-chip:not(:disabled)')];
     if (chips.length) return click(pick(chips));
@@ -310,7 +346,7 @@ async function playSolo(game, seconds = 60) {
     const mine = s.turn === s.me.id || (game === 'heist' && !s.heist.mine) || (game === 'oddone' && s.oddone.stage === 'vote' && !s.oddone.myVote) || (game === 'fibfinder' && UI_MINE(s.fibfinder)) || (game === 'holdem' && s.holdem.canRebuy) || (game === 'cribbage' && s.cribbage.stage === 'discard' && s.cribbage.discarded[s.me.id] === false)
       || (game === 'relay' && (s.relay.stage === 'play' ? !s.relay.sent : s.relay.myVote == null)) || (game === 'seabattle' && s.sea.stage === 'placing' && !s.sea.ready[s.me.id])
       || (game === 'spire' && s.spire.playing && s.spire.startIn <= 0) || (game === 'safecracker' && s.safecracker.stage === 'crack' && !s.safecracker.mine) || (game === 'gridhunt' && s.gridhunt.stage === 'hunt')
-      || (game === 'doodle' && s.doodle.stage === 'draw' && !s.doodle.solvers.some(([p]) => p === s.me.id)) || game === 'hockey' || (game === 'riders' && s.riders.stage === 'ride') || (game === 'paintblast' && s.paintblast.st === 'play') || (game === 'sumo' && s.sumo.stage === 'play') || (game === 'rally' && s.rally.stage === 'race') || (game === 'hearts' && s.hearts.stage === 'pass' && !s.hearts.myPass)
+      || (game === 'doodle' && s.doodle.stage === 'draw' && !s.doodle.solvers.some(([p]) => p === s.me.id)) || game === 'hockey' || (game === 'riders' && s.riders.stage === 'ride') || (game === 'paintblast' && s.paintblast.st === 'play') || (game === 'sumo' && s.sumo.stage === 'play') || (game === 'rally' && s.rally.stage === 'race') || (game === 'hearts' && s.hearts.stage === 'pass' && !s.hearts.myPass) || (game === 'speed' && s.speed.stage === 'play') || (game === 'trivia' && s.trivia.stage === 'ask' && s.trivia.mine == null) || (game === 'ladder' && s.ladder.stage === 'climb' && !s.ladder.done)
       || (game === 'twentyone' && s.twentyone.stage === 'bet' && !s.twentyone.bets[s.twentyone.me] && s.twentyone.chips[s.twentyone.me] > 0);
     if (game === 'lucky' && s.lucky.stage === 'wheel') { await sleep(300); continue; }
     if (mine) { try { MOVES[game](d, s, report.moves, w); report.moves++; } catch (e) { errors.push('driver: ' + e.stack); } }
@@ -435,7 +471,7 @@ async function feedbackTour() {
   const lt = await lobbyTour();
   console.log('LOBBY', JSON.stringify(lt));
   for (const g of games.length ? games : Object.keys(MOVES)) {
-    const r = await playSolo(g, g === 'wordsmith' ? 40 : g === 'spire' ? 25 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'cribbage' ? 300 : g === 'yacht' ? 200 : g === 'farkle' ? 240 : g === 'backgammon' ? 300 : g === 'gridhunt' ? 260 : g === 'paintblast' ? 230 : g === 'sumo' ? 200 : g === 'putt' ? 300 : g === 'rally' ? 150 : g === 'hearts' || g === 'rummy' ? 300 : g === 'twentyone' ? 200 : g === 'reversi' || g === 'ultimate' || g === 'oware' || g === 'morris' ? 260 : g === 'safecracker' ? 200 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
+    const r = await playSolo(g, g === 'wordsmith' ? 40 : g === 'spire' ? 25 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'cribbage' ? 300 : g === 'yacht' ? 200 : g === 'farkle' ? 240 : g === 'backgammon' ? 300 : g === 'gridhunt' ? 260 : g === 'paintblast' ? 230 : g === 'sumo' ? 200 : g === 'putt' ? 300 : g === 'rally' ? 150 : g === 'hearts' || g === 'rummy' ? 300 : g === 'twentyone' ? 200 : g === 'speed' ? 150 : g === 'trivia' ? 200 : g === 'ladder' ? 330 : g === 'liars' ? 300 : g === 'shipcrew' ? 200 : g === 'reversi' || g === 'ultimate' || g === 'oware' || g === 'morris' ? 260 : g === 'safecracker' ? 200 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
     console.log(`\n== ${g}: phase=${r.phase} moves=${r.moves} dialogs=${r.dialogs || 0} screen="${r.screen}" ${r.banner ? `banner="${r.banner}"` : ''}`);
     console.log(`   help: ${r.help} | log ticker: "${r.ticker}"`);
     if (r.replay) console.log(`   replay: ${r.replay}`);

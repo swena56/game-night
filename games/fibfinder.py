@@ -17,7 +17,7 @@ TRUTH_PTS, FOOL_PTS = 3, 2
 
 class FibFinder(Game):
     id = "fibfinder"
-    category = "party"
+    category = "words"
     howto = [
         "A strange-but-true fact appears with a word missing.",
         "Everyone secretly writes a fake answer that sounds true.",

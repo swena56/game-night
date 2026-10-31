@@ -36,7 +36,7 @@ def pretty(c):
 
 class TwentyOne(Game):
     id = "twentyone"
-    category = "cards"
+    category = "dice"
     howto = [
         "Everyone bets at once, then plays against the dealer: Hit for a card, Stand to stop, or Double (one card, double bet) on your first two.",
         "Get closer to 21 than the dealer without going over. Picture cards are 10, aces 1 or 11.",

@@ -1,0 +1,128 @@
+// Speed: your rival's hand across the top, the two centre piles in the middle, your hand at the bottom.
+// Tap a card to play it; if it fits both piles it lifts, and you tap the pile you want.
+UI.speed = (() => {
+  let S, ctx, chosen = null, seen = -1, receivedAt = 0, tickTimer = 0;
+  const SUIT = { S: '♠', H: '♥', D: '♦', C: '♣' };
+  const RANKS = 'A23456789TJQK';
+  const $ = (id) => document.getElementById(id);
+  const fits = (c, top) => [1, 12].includes((RANKS.indexOf(c[0]) - RANKS.indexOf(top[0]) + 13) % 13);
+
+  function face(card, cls = '') {
+    const f = ctx.el('span', `pc ${'HD'.includes(card[1]) ? 'red' : 'black'} ${cls}`);
+    f.append(ctx.el('b', '', card[0] === 'T' ? '10' : card[0]), ctx.el('i', '', SUIT[card[1]] + '︎'));
+    return f;
+  }
+
+  function back(n, cls = '') {
+    const f = ctx.el('span', `pc back ${cls}`);
+    f.append(ctx.el('small', '', String(n)));
+    return f;
+  }
+
+  function mount(main, side) {
+    chosen = null; seen = -1;
+    main.innerHTML = `<div class="sp">
+      <div id="spThem" class="sp-row"></div>
+      <div class="sp-table"><div id="spSide0" class="sp-side"></div><button id="spPile0" class="sp-pile"></button>
+        <button id="spPile1" class="sp-pile"></button><div id="spSide1" class="sp-side"></div></div>
+      <div id="spNote" class="sp-note"></div>
+      <div id="spHand" class="sp-row sp-hand"></div>
+      <div id="spMine" class="sp-mine"></div></div>`;
+    side.innerHTML = '<div class="panel"><h3>Speed</h3><div id="spScore"></div><p class="hint left">Cards fit one rank up or down, any suit. K and A wrap round. No turns!</p></div>';
+    for (const k of [0, 1]) $(`spPile${k}`).onclick = () => { if (chosen) send(chosen, k); };
+    tickTimer = setInterval(tick, 200);
+  }
+
+  function unmount() { clearInterval(tickTimer); }
+
+  const live = () => S?.phase === 'playing' && S.speed.stage === 'play' && S.speed.me != null && !!ctx.act;
+
+  function send(card, pile) {
+    chosen = null;
+    paint();
+    ctx.act('play', { card, pile }).catch((err) => { ctx.toast(err?.message || 'Too slow!'); });
+  }
+
+  function tap(card) {
+    if (!live()) return;
+    const sp = S.speed;
+    const ok = [0, 1].filter((k) => fits(card, sp.piles[k]));
+    if (!ok.length) { chosen = null; paint(); return ctx.toast("That card doesn't fit either pile."); }
+    if (ok.length === 1) return send(card, ok[0]);
+    chosen = chosen === card ? null : card;
+    paint();
+  }
+
+  function tick() {
+    if (!S?.speed || !$('spNote')) return;
+    const sp = S.speed;
+    const left = sp.wait == null ? 0 : Math.max(0, sp.wait - (performance.now() - receivedAt) / 1000);
+    let note = '';
+    if (S.phase !== 'playing') note = sp.result;
+    else if (sp.stage === 'between') note = `${sp.result} Next round in ${Math.ceil(left)}…`;
+    else if (sp.stuck) note = `🔄 Nobody can play — flipping in ${Math.ceil(left)}…`;
+    else if (chosen) note = 'It fits both piles: tap one.';
+    $('spNote').textContent = note;
+  }
+
+  function paint() {
+    const sp = S.speed;
+    const hand = $('spHand'); hand.innerHTML = '';
+    for (const card of sp.hand) {
+      const ok = live() && sp.piles.some((t) => fits(card, t));
+      const b = ctx.el('button', 'card-btn' + (ok ? ' ok' : '') + (chosen === card ? ' chosen' : ''));
+      b.append(face(card, 'big-card'));
+      b.disabled = !live();
+      b.setAttribute('aria-label', `${card[0] === 'T' ? '10' : card[0]} of ${SUIT[card[1]]}${ok ? ', playable' : ''}`);
+      b.onclick = () => tap(card);
+      hand.append(b);
+    }
+    for (const k of [0, 1]) {
+      const pile = $(`spPile${k}`);
+      pile.classList.toggle('target', !!chosen && fits(chosen, sp.piles[k]));
+      pile.disabled = !chosen;
+    }
+    tick();
+  }
+
+  function render(s, c) {
+    S = s; ctx = c; receivedAt = performance.now();
+    const sp = S.speed, me = sp.me ?? 0, them = 1 - me;
+    if (chosen && !sp.hand.includes(chosen)) chosen = null;
+    const rival = ctx.player(sp.seats[them]);
+
+    const top = $('spThem'); top.innerHTML = '';
+    const tag = ctx.el('div', 'sp-who', `${rival?.name ?? '?'} · ${sp.hands[them] + sp.stock[them]} cards left`);
+    tag.style.color = rival?.color ?? 'inherit';
+    top.append(tag);
+    for (let i = 0; i < sp.hands[them]; i++) top.append(back('', 'small'));
+
+    for (const k of [0, 1]) {
+      const pile = $(`spPile${k}`); pile.innerHTML = '';
+      const fresh = sp.seq !== seen && sp.last && sp.last[2] === k;
+      pile.append(face(sp.piles[k], 'big-card' + (fresh ? ' toss' : '')));
+      pile.setAttribute('aria-label', `Pile ${k + 1}: ${sp.piles[k][0] === 'T' ? '10' : sp.piles[k][0]} of ${SUIT[sp.piles[k][1]]}`);
+      const sideEl = $(`spSide${k}`); sideEl.innerHTML = '';
+      if (sp.side[k]) sideEl.append(back(sp.side[k], 'small'));
+    }
+    seen = sp.seq;
+
+    $('spMine').textContent = sp.me == null ? '' : `Your stock: ${sp.stock[me]} · ${sp.hands[me] + sp.stock[me]} cards to go`;
+    const score = $('spScore'); score.innerHTML = '';
+    for (const i of [0, 1]) {
+      const p = ctx.player(sp.seats[i]);
+      const row = ctx.el('div', 'seat-row');
+      const dot = ctx.el('span', 'dot'); dot.style.background = p?.color ?? '#777';
+      row.append(dot, ctx.el('span', '', `${p?.name ?? '?'}: ${sp.hands[i] + sp.stock[i]} cards` + (sp.rounds > 1 ? ` · ${sp.wins[i]} round${sp.wins[i] === 1 ? '' : 's'}` : '')));
+      score.append(row);
+    }
+    if (sp.rounds > 1) score.append(ctx.el('div', 'hint left', `Round ${sp.round} · first to ${sp.rounds} wins`));
+    paint();
+  }
+
+  const turnText = (s) => s.phase !== 'playing' ? null
+    : s.speed.me == null ? '⚡ Watching Speed' : s.speed.stage === 'between' ? '⚡ Next round soon…' : '⚡ Go go go!';
+  const myMove = (s) => s.phase === 'playing' && s.speed.stage === 'play' && s.speed.me != null;
+
+  return { mount, render, unmount, turnText, myMove };
+})();
