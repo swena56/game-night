@@ -35,6 +35,7 @@ UI.go = (() => {
         pt.onclick = () => ctx.myTurn && ctx.quiet(ctx.act('move', { r, c }));
         boardEl.append(pt);
       }
+    gridKeys(boardEl, n);
   }
 
   function render(s, c) {
@@ -46,6 +47,7 @@ UI.go = (() => {
     const area = showArea || S.phase !== 'playing' ? new Map(g.territory.map(([r, col, o]) => [r * n + col, o])) : new Map();
     [...boardEl.children].forEach((pt, i) => {
       const r = Math.floor(i / n), col = i % n, v = g.board[r][col];
+      pt.setAttribute('aria-label', `${'ABCDEFGHJKLMNOPQRST'[col]}${n - r}, ${v === 'b' ? 'black stone' : v === 'w' ? 'white stone' : area.has(i) ? `${area.get(i) === 'b' ? 'black' : 'white'} territory` : 'empty'}`);
       pt.innerHTML = '';
       pt.disabled = !ctx.myTurn || !!v;
       if (v) {

@@ -24,6 +24,7 @@ UI.dropfour = (() => {
           cell.onclick = () => drop(col);
           board.append(cell);
         }
+      gridKeys(board, cols);
     }
     const win = new Set((d.line || []).map(([r, c]) => r * cols + c));
     const last = d.last ? d.last[0] * cols + d.last[1] : -1;
@@ -31,6 +32,7 @@ UI.dropfour = (() => {
       const v = d.grid[Math.floor(i / cols)][i % cols];
       cell.style.setProperty('--disc', v == null ? 'transparent' : ctx.player(d.seats[v])?.color ?? '#777');
       cell.classList.toggle('filled', v != null);
+      cell.setAttribute('aria-label', `column ${i % cols + 1}, row ${rows - Math.floor(i / cols)}: ${v == null ? 'empty' : `${ctx.player(d.seats[v])?.name ?? '?'}'s disc`}`);
       cell.classList.toggle('win', win.has(i));
       cell.classList.toggle('last', i === last);
       cell.style.setProperty('--fall', Math.floor(i / cols) + 1);

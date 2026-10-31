@@ -16,6 +16,7 @@ UI.checkers = (() => {
       sq.onclick = () => onSquare(i);
       boardEl.append(sq);
     }
+    gridKeys(boardEl, 8);
     $('ckResign').onclick = async () => (await ctx.ask('Resign this game?', { ok: '🏳️ Resign', danger: true })) && ctx.quiet(ctx.act('resign'));
   }
 
@@ -44,6 +45,7 @@ UI.checkers = (() => {
       if (ends.has(k)) sq.classList.add('target');
       if (via.has(k)) sq.classList.add('via');
       if (!sel && ctx.myTurn && starts.has(k)) sq.classList.add('movable');
+      sq.setAttribute('aria-label', `${'abcdefgh'[col]}${8 - r}, ${p ? `${p.toLowerCase() === 'd' ? 'dark' : 'light'} ${p === p.toUpperCase() ? 'king' : 'man'}` : (r + col) % 2 ? 'empty' : 'light square'}`);
       sq.innerHTML = '';
       if (p) {
         const disc = ctx.el('span', 'checker ' + p.toLowerCase(), p === p.toUpperCase() ? '♛︎' : '');

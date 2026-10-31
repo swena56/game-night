@@ -11,6 +11,7 @@ UI.tictactoe = (() => {
       b.onclick = () => ctx.quiet(ctx.act('move', { cell: i }));
       grid.append(b);
     }
+    gridKeys(grid, 3);
   }
 
   function render(s, c) {
@@ -21,6 +22,7 @@ UI.tictactoe = (() => {
       b.textContent = v == null ? '' : t.marks[v];
       b.style.color = v == null ? '' : ctx.player(t.seats[v])?.color ?? '#999';
       b.classList.toggle('mark', v != null);
+      b.setAttribute('aria-label', `row ${Math.floor(i / 3) + 1}, column ${i % 3 + 1}, ${v == null ? 'empty' : `${ctx.player(t.seats[v])?.name ?? '?'}'s ${t.marks[v]}`}${t.fading.includes(i) ? ', fades next' : ''}`);
       b.classList.toggle('fading', t.fading.includes(i));
       b.classList.toggle('win', !!t.line?.includes(i));
       b.disabled = !ctx.myTurn || v != null;

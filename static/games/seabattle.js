@@ -25,8 +25,10 @@ UI.seabattle = (() => {
         const cell = document.createElement('button');
         cell.className = 'sea-cell';
         cell.onclick = () => (id === 'sbEnemy' ? onEnemy(i) : onMine(i));
+        cell.setAttribute('aria-label', `${'ABCDEFGHIJ'[Math.floor(i / 10)]}${i % 10 + 1}`);
         grid.append(cell);
       }
+      gridKeys(grid, 10);
     }
     $('sbRotate').onclick = () => { horizontal = !horizontal; ctx.rerender(); };
     $('sbRandom').onclick = () => { layout = randomLayout(); pick = -1; ctx.rerender(); };

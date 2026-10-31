@@ -672,6 +672,25 @@ function flashTurn() {
   if (!g) { g = el('div', 'turn-glow'); g.id = 'turnGlow'; document.body.append(g); }
   g.classList.remove('on'); void g.offsetWidth; g.classList.add('on');  // restart the animation
 }
+// arrow keys move focus around a board of buttons laid out `cols` wide (Enter/Space then press the
+// focused square); squares that can't be pressed right now are skipped over
+function gridKeys(box, cols) {
+  box.dataset.cols = cols;
+  if (box.dataset.keys) return;
+  box.dataset.keys = '1';
+  box.addEventListener('keydown', (e) => {
+    const n = +box.dataset.cols;
+    const step = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -n, ArrowDown: n }[e.key];
+    if (!step) return;
+    const kids = [...box.children], i = kids.indexOf(document.activeElement);
+    if (i < 0) return;
+    e.preventDefault();
+    for (let j = i + step; j >= 0 && j < kids.length; j += step) {
+      if (Math.abs(step) === 1 && Math.floor(j / n) !== Math.floor(i / n)) break;  // stay on the row
+      if (!kids[j].disabled) return kids[j].focus();
+    }
+  });
+}
 // a short vibration for game events (hits, crashes), if the player allows it; games call it directly
 function buzz(pattern) { if (prefs.vibrate) try { navigator.vibrate?.(pattern); } catch {} }
 const fmtNum = (n) => (typeof n === 'number' ? n.toLocaleString() : n);

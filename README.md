@@ -294,8 +294,10 @@ be checked without a browser.
 6. **Accessibility.**
    - Player colours that are safe for colour-blind players, with a shape or pattern as well (never
      colour alone).
-   - Screen-reader labels on every board square ("e4, white knight").
-   - Keyboard play: arrow keys plus Enter.
+   - ✅ Screen-reader labels on every board square ("e4, white knight") in Chess, Checkers, Go,
+     Tic-Tac-Toe, Drop Four, Reversi, Sea Battle and Ultimate Tic-Tac-Toe.
+   - ✅ Keyboard play on those boards: arrow keys move between squares (skipping ones you can't
+     press yet), Enter or Space plays. The shared `gridKeys(box, cols)` in `app.js` adds it to any grid.
    - Contrast checks, and text that scales with the browser font size.
 7. **Themes.** A light theme that follows the system setting. Board themes (wood, classic,
    high-contrast) and card-back styles, chosen under ⚙️ My settings.

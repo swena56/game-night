@@ -2,6 +2,7 @@ UI.chess = (() => {
   let S, ctx, boardEl, sel = null, promo = null, shownLast, view3d = null, slide = null, clockTimer = 0, clockAt = 0;
   const want3d = () => { try { return localStorage.getItem('chess.view') !== '2d'; } catch { return true; } };
   const GLYPH = { K: '♚', Q: '♛', R: '♜', B: '♝', N: '♞', P: '♟' };
+  const NAME = { K: 'king', Q: 'queen', R: 'rook', B: 'bishop', N: 'knight', P: 'pawn' };
   const TEXT = '︎'; // force text (not emoji) rendering of chess glyphs
   const $ = (id) => document.getElementById(id);
 
@@ -24,6 +25,7 @@ UI.chess = (() => {
       sq.onclick = () => onSquare(i);
       boardEl.append(sq);
     }
+    gridKeys(boardEl, 8);
     $('chView').onclick = () => {
       try { localStorage.setItem('chess.view', view3d ? '2d' : '3d'); } catch {}
       setView(!view3d);
@@ -63,6 +65,7 @@ UI.chess = (() => {
         }
         sq.append(piece);
       }
+      sq.setAttribute('aria-label', `${'abcdefgh'[col]}${8 - r}, ${p ? `${p[0] === 'w' ? 'white' : 'black'} ${NAME[p[1]]}` : 'empty'}`);
       if (i % 8 === 0) sq.append(ctx.el('span', 'coord rank', String(8 - r)));
       if (i >= 56) sq.append(ctx.el('span', 'coord file', 'abcdefgh'[col]));
     });

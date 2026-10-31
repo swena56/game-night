@@ -14,6 +14,7 @@ UI.reversi = (() => {
       b.onclick = () => ctx.myTurn && ctx.quiet(ctx.act('place', { cell: c }));
       board.append(b);
     }
+    gridKeys(board, 8);
   }
 
   function render(s, c) {
