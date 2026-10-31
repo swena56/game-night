@@ -8,7 +8,7 @@ class GameError(Exception):
 
 class Game:
     id = ""
-    category = ""   # board | cards | dice | party | words | action
+    category = ""   # party | action | strategy | classic | cards | dice | words (lobby groups)
     howto = []      # a few short how-to-play lines
     name = ""
     icon = ""

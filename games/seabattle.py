@@ -41,7 +41,7 @@ def random_fleet(rng):
 
 class SeaBattle(Game):
     id = "seabattle"
-    category = "board"
+    category = "classic"
     howto = [
         'Place your five ships (or tap Random), then tap Ready.',
         'Take turns firing at the enemy grid: 💦 miss, 🔥 hit, ✖ sunk.',

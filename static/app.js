@@ -8,12 +8,12 @@
 const $ = (s) => document.querySelector(s);
 const REACTIONS = ['😂', '😱', '🤔', '😏', '🔥', '👀', '🙈', '🎉'];
 const QUICK_CHAT = ['gg', 'nice! 👏', 'hmm… 🤔', 'your turn 😴', 'rematch? 🔁', 'no way 😱'];
-const SOLO_GAMES = [['unmask', '🎭 Unmask'], ['oddone', '🕵️ Odd One Out'], ['relay', '🖍️ Scribble Relay'], ['fibfinder', '🤥 Fib Finder'], ['doodle', '✏️ Doodle Dash'], ['lucky', '🎡 Lucky Letters'], ['wordsmith', '🔤 Wordsmith'], ['chess', '♟️ Chess'], ['checkers', '⛀ Checkers'], ['backgammon', '🔺 Backgammon'],
+const SOLO_GAMES = [['unmask', '🎭 Unmask'], ['oddone', '🕵️ Odd One Out'], ['relay', '🖍️ Scribble Relay'], ['fibfinder', '🤥 Fib Finder'], ['doodle', '✏️ Doodle Dash'], ['lucky', '🎡 Lucky Letters'], ['wordsmith', '🔤 Wordsmith'], ['gridhunt', '🔎 Grid Hunt'], ['safecracker', '🔐 Safecracker'], ['chess', '♟️ Chess'], ['checkers', '⛀ Checkers'], ['backgammon', '🔺 Backgammon'],
   ['go', '⚫ Go'], ['lastcard', '🃏 Last Card'], ['holdem', "♠️ Texas Hold'em"], ['cribbage', '📍 Cribbage'], ['seabattle', '🚢 Sea Battle'], ['dropfour', '🔴 Drop Four'],
   ['boxes', '🔳 Dots & Boxes'], ['tictactoe', '❌ Tic-Tac-Toe'], ['heist', '🥷 Night Heist'], ['moonshot', '🚀 Moon Shot'], ['yacht', '🎲 Yacht'], ['farkle', '🎯 Farkle'], ['spire', '🗼 Spire Siege'], ['hockey', '🏒 Air Hockey'], ['billiards', '🎱 Billiards'], ['riders', '🏍️ Light Riders']];
-const CATEGORIES = [['party', '🎉 Party'], ['action', '⚡ Action'], ['board', '♟️ Board'], ['cards', '🃏 Cards'],
-  ['dice', '🎲 Dice'], ['words', '🔤 Words']];
-const SOLO_BOTS = { oddone: 3, relay: 3, fibfinder: 3, riders: 3, doodle: 2, heist: 3, moonshot: 2, lastcard: 2, holdem: 3, spire: 2, lucky: 2 };
+const CATEGORIES = [['party', '🎉 Party'], ['action', '⚡ Action'], ['strategy', '♟️ Strategy'], ['classic', '✏️ Quick classics'],
+  ['cards', '🃏 Cards'], ['dice', '🎲 Dice'], ['words', '🔤 Words & puzzles']];
+const SOLO_BOTS = { gridhunt: 2, safecracker: 2, oddone: 3, relay: 3, fibfinder: 3, riders: 3, doodle: 2, heist: 3, moonshot: 2, lastcard: 2, holdem: 3, spire: 2, lucky: 2 };
 const MODE_DESC = {
   duel: 'Duel: each of you hides a face. Questions are answered automatically and truthfully. A wrong accusation loses.',
   manhunt: 'Manhunt: everyone hunts the same hidden culprit. Your question is public, but only you hear the answer. Guess wrong and you become a ghost 👻.',
@@ -310,6 +310,18 @@ function onState(s) {
 }
 
 // ---------- lobby
+// Each category gets as few rows as fit, then the columns that fill those rows most evenly
+// (8 games on a 4-wide screen: 4 + 4; 6 games: 3 + 3, never 4 + 2).
+function fitPicker() {
+  const width = $('#gamePicker').clientWidth;
+  const most = width ? Math.max(2, Math.floor((width + 8) / 104)) : 4;
+  for (const g of document.querySelectorAll('.picker-group')) {
+    const n = +g.dataset.count, rows = Math.ceil(n / most);
+    g.style.gridTemplateColumns = `repeat(${Math.ceil(n / rows)}, 1fr)`;
+  }
+}
+window.addEventListener('resize', () => { if (!$('#lobby').hidden) fitPicker(); });
+
 function renderLobby() {
   const host = S.host === S.me.id;
   const info = gameInfo();
@@ -320,7 +332,9 @@ function renderLobby() {
   for (const [cat, label] of CATEGORIES) {
     const games = S.games.filter((g) => g.category === cat);
     if (!games.length) continue;
-    pick.append(el('div', 'picker-cat', label));
+    const group = el('div', 'picker-group');
+    group.dataset.count = games.length;
+    pick.append(el('div', 'picker-cat', label), group);
     for (const g of games) {
       const fit = seated < g.min ? `needs ${g.min}+` : seated > g.max ? `max ${g.max}` : '';
       const b = el('button', 'game-tile' + (g.id === S.gameId ? ' on' : '') + (fit ? ' nofit' : ''));
@@ -329,9 +343,10 @@ function renderLobby() {
       b.disabled = !host && g.id !== S.gameId;
       b.setAttribute('aria-pressed', g.id === S.gameId);
       b.onclick = () => host && quiet(act('settings', { settings: { game: g.id } }));
-      pick.append(b);
+      group.append(b);
     }
   }
+  fitPicker();
   $('#gameDesc').textContent = info.blurb + (S.gameId === 'unmask' ? ' ' + MODE_DESC[S.settings.mode] : '');
   $('#howto').innerHTML = '';
   for (const line of info.howto) $('#howto').append(el('li', '', line));

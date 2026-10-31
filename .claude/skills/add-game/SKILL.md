@@ -55,7 +55,7 @@ Start from `templates/game.py`. The contract (`games/base.py`):
 ```python
 class MyGame(Game):
     id = "mygame"                  # url-safe, unique; also the UI module name
-    category = "board"             # party | action | board | cards | dice | words (lobby grouping)
+    category = "classic"           # party | action | strategy | classic | cards | dice | words (lobby group)
     howto = ["…", "…", "…"]        # 3–5 short rules: shown in the lobby and the ❓ dialog
     name, icon, blurb = "My Game", "🎲", "One-sentence pitch."
     min_players, max_players = 2, 4
@@ -88,6 +88,8 @@ Rules that keep games consistent:
   `self.room.deadline` yourself to schedule a one-off event: Lucky Letters resolves its spin that way.
 - **Leaving:** `on_leave(p)` defaults to forfeit-or-continue. Override it if your game must clean up.
 - **Validate every field of `a`** (types, ranges, ownership). Players can send anything.
+- **Don't name action fields `code`, `pid`, `token`, `type` or `aid`.** Every request carries the room
+  code and seat in those keys, so `ctx.act('guess', { code })` turns into "Room not found."
 - **Use the `rng` passed to `start`** for game randomness, and keep it (`self.rng = rng`) if you need
   more later.
 - **Real-time games:** either let each browser simulate its own board (copy `games/spire.py`), or

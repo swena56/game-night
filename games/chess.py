@@ -257,7 +257,7 @@ def move_text(pos, m, captured):
 
 class Chess(Game):
     id = "chess"
-    category = "board"
+    category = "strategy"
     howto = [
         'Tap a piece to see where it can go, then tap the destination.',
         'Checkmate the enemy king to win. Stalemate, repetition and the 50-move rule are draws.',

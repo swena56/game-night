@@ -37,7 +37,7 @@ def minimax(cells, me):
 
 class TicTacToe(Game):
     id = "tictactoe"
-    category = "board"
+    category = "classic"
     howto = [
         'Take turns placing your mark.',
         'Three in a row wins.',

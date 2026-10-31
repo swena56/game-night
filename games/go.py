@@ -158,7 +158,7 @@ def playout(b, to, nbrs, rnd, limit):
 
 class Go(Game):
     id = "go"
-    category = "board"
+    category = "strategy"
     howto = [
         'Take turns placing stones on the intersections.',
         'A group with no empty points next to it is captured.',

@@ -135,7 +135,7 @@ def sq(rc):
 
 class Checkers(Game):
     id = "checkers"
-    category = "board"
+    category = "strategy"
     howto = [
         'Pieces move diagonally forward onto dark squares.',
         'Jump an enemy piece to capture it. Captures are compulsory, and chains continue.',

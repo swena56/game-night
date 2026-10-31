@@ -164,7 +164,7 @@ class Spire(Game):
         'Fill a whole ring to clear it. Clear 2+ at once to send junk rings to a rival.',
         'Glowing power cells: ⚡ speed rivals up, 🛡️ block junk, 💣 blast your bottom rings.',
         'Hold (C, Shift, ⇄ or swipe up) parks the falling piece for later, once per piece.',
-        'Prefer an upright board? Pick 🧱 Flat well. Prefer plain pieces? Pick the 4-block set.',
+        'Prefer an upright board? Pick 🧱 Flat well. Want odd shapes? Pick the 🧩 Mixed set (2, 3 and 5 blocks).',
     ]
     name = "Spire Siege"
     icon = "🗼"
@@ -177,7 +177,7 @@ class Spire(Game):
         "speed": ("Start speed", [("chill", "🐢 Chill"), ("normal", "Normal"), ("fast", "🔥 Fast")], "normal"),
         "powers": ("Power cells", [(True, "On (⚡🛡️💣)"), (False, "Off")], True),
         "board": ("Board", [("tower", "🗼 Tower (wraps around)"), ("flat", "🧱 Flat well (side walls)")], "tower"),
-        "pieces": ("Pieces", [("mixed", "🧩 Mixed (2, 3 and 5 blocks)"), ("four", "🟦 4 blocks each")], "mixed"),
+        "pieces": ("Pieces", [("four", "🟦 4 blocks each"), ("mixed", "🧩 Mixed (2, 3 and 5 blocks)")], "four"),
     }
 
     def start(self, seated, rng):

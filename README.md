@@ -46,6 +46,8 @@ address the server prints. **Play solo** on the home screen starts any game agai
 | 🎱 **Billiards** | 2 | Eight-ball pool on a top-down table with real physics (cushions, ball-to-ball collisions, six pockets). Drag to aim, set the power, shoot. | The server simulates every shot and sends the ball paths, so every phone plays back the same shot. A 🎯 aim guide (full, short or off) shows where both balls go. Fouls give ✋ ball in hand. The table stands upright on phones. |
 | ♟️ **Chess** | 2 | Full rules: castling, en passant, promotion, check/mate, stalemate, 50-move rule, threefold repetition, insufficient material. Draw offers and resignation. Optional ⏱️ clock: 3+2, 5+0 or 10+5. | Move generation is checked against standard perft counts. Black sees the board from their side. 🧊 **3D board** (three.js) by default: tap a piece, then its square; drag sideways to turn the board. The flat board is one tap away and is used automatically without WebGL. |
 | ⛀ **Checkers** | 2 | American rules: compulsory captures, multi-jumps in one move, kings, and a 40-move no-progress draw. | Legal pieces and landing squares are highlighted. |
+| 🔎 **Grid Hunt** | 2–6 | Timed word hunt: everyone searches the same freshly shaken 4×4 or 5×5 letter grid at once, tracing words through touching tiles. Drag, tap, or type. | When time runs out the lists are compared, and **a word a rival also found scores nothing**. A ⭐ star tile doubles words through it. The grid is reshaken until it holds plenty of words, and the results show the longest ones nobody found. |
+| 🔐 **Safecracker** | 1–6 | Code-breaking: crack a hidden 4- or 5-peg colour code from ● (right spot) and ○ (wrong spot) hints. | **Everyone cracks the same safe at once**: guesses are locked in secretly, then all are revealed, so rivals' clues help you too. Crack it alone for 3, share the crack for 2. A private 🔍 probe per safe counts one colour, for a point. Pegs show numbers as well as colours. |
 | 🔺 **Backgammon** | 2 | The traditional race game, full rules: opening roll, doubles move four times, hits and the bar, bearing off (higher dice only for the farthest checker), and the must-use-both-dice / use-the-larger-die rules. | The board is drawn from your side, so your home is bottom right in either colour. Tap a checker, then a glowing point; undo until you end your turn. Gammons (2) and backgammons (3); one game or a match to 3 or 5. No doubling cube. |
 | ⚫ **Go** | 2 | 9×9, 13×13 or 19×19. Tromp–Taylor area scoring, positional superko, no suicide, 6.5 komi. | A live "score if it ended now" readout. |
 | 🃏 **Last Card** | 2–6 | Shedding game from the public-domain Crazy Eights / Mau-Mau family, with a standard 52-card deck. Optional action cards: 7 draw-two (stackable), 8 skip, Q reverse, J wild. | Call **“Last card!”** in time, or any opponent can 🚨 catch you for +2. |
@@ -68,6 +70,8 @@ Every game has **Easy / Normal / Hard bots**:
 - **Yacht:** bots judge a roll by its best box minus that box's typical value, so they don't waste Choice or Yacht on a weak roll. The hard bot tries all 32 ways to hold the dice, simulating the remaining rolls for each; normal keeps its most common face or a straight draw. Hard averages about 140 points.
 - **Cribbage:** bots keep the four cards worth the most averaged over every possible starter; the hard bot also feeds its own crib and starves a rival's. In the play they take the most points now, and the hard bot avoids leaving 5 or 21 (an easy 15 or 31) and inviting runs.
 - **Texas Hold'em:** bots estimate their share of the pot by simulating random runouts from their own two cards and the board only (no peeking), against the number of players still in. They compare that with the pot odds, raise strong hands by ½ to 1 pot, and stronger bots bluff now and then and shove the nuts on the river. Easy bots misjudge their hands and call too loosely.
+- **Grid Hunt:** the server solves every grid (a dictionary walk with prefix pruning). Each bot "spots" a share of the words at random moments, fewer of the long ones: about 5% (easy), 9% (normal) or 15% (hard) of the grid, so a quick human beats easy and normal bots.
+- **Safecracker:** bots keep the list of codes that fit every revealed clue. Normal guesses one of them at random; hard picks among the guesses that would split the rest most evenly and only spends its probe when the answer should pin the code down; easy mostly tracks its own clues only. Because every clue is shared, hard and normal finish about even, both far ahead of easy.
 - **Backgammon:** bots list every distinct end-of-turn position and score it on pip count, borne-off and hit checkers, points made (home board weighted), blots weighed by how many enemy rolls hit them, and primes. The hard bot then checks its top four against all 21 enemy rolls and the enemy's best reply to each; normal sometimes settles for its second-best play. Hard beat normal 46–14 and normal beat easy 52–8 in simulation.
 - **Chess:** alpha-beta search with iterative deepening (hard bot: up to 4 moves deep, 4s budget). It finishes off a lone king and avoids repetition draws when ahead.
 - **Checkers:** alpha-beta search (hard bot: up to 8 moves deep).
@@ -232,8 +236,8 @@ be checked without a browser.
   also covers landscape.
 - ✅ **In-app dialogs.** Every `confirm()` / `prompt()` is replaced by a styled dialog (resign, accuse,
   pass, leave, remove player, reset scores, invite link). Escape or tapping outside cancels.
-- ✅ **Better game picker.** Games are grouped by category (*Party · Action · Board · Cards · Dice ·
-  Words*). Games that don't fit the current player count are dimmed, with a reason ("needs 2+",
+- ✅ **Better game picker.** Games are grouped by category (*Party · Action · Strategy · Quick classics · Cards ·
+  Dice · Words & puzzles*), and each group picks its column count so its rows fill evenly (#43). Games that don't fit the current player count are dimmed, with a reason ("needs 2+",
   "max 4"). Each game has **How to play** rules in the lobby and a ❓ button during play.
 - ✅ Visible keyboard-focus outlines, and `prefers-reduced-motion` is respected automatically.
 - ✅ **Graphics pass.** A slowly drifting ambient background, glossy buttons with press feedback, and depth on
@@ -244,7 +248,10 @@ be checked without a browser.
   of your turn, and winning brings confetti and a shimmering banner. The Animations setting and
   `prefers-reduced-motion` turn all of it off.
 
-**Still to do:**
+**Still to do** (in priority order):
+0. **Next up:** a shared "results card" component for multi-round games (Grid Hunt, Safecracker,
+   Lucky Letters and Doodle Dash each draw their own today), and reserved heights for every game's
+   status line so nothing jumps (#18).
 1. **A real-device check of the 3D view and the touch feel**, plus automated screenshots (Playwright on a
    laptop) to catch visual problems that a simulated browser can't see.
 2. **A bottom-sheet layout with tabs** (*Actions · Log · Players*) and a sticky action bar for the main
@@ -317,9 +324,8 @@ Riders and Air Hockey start in it) (#13, #15).
   buttons no longer cover Shoot (#29), and the cue is a full-size tapered stick (#30). Next: pinch zoom (#28), spin (follow / draw),
   calling the pocket for the 8, and a 3D table.
 - 🗼 **Spire Siege:** ✅ a 🟦 4-block piece set beside the mixed 2/3/5-block set (#13), a ⇄ hold slot
-  (C / Shift / swipe up), and a sharper flat well on high-DPI screens. #26 asks for the 4-block pieces
-  again (that game ran before the option was live). Consider making 🟦 4-block the default. Next: a stronger ring-clear
-  effect, and bots that use hold.
+  (C / Shift / swipe up), and a sharper flat well on high-DPI screens. ✅ 🟦 4-block is now the default
+  (#26); the odd shapes are the 🧩 Mixed option. Next: a stronger ring-clear effect, and bots that use hold.
 - 🏍️ **Light Riders:** check the swipe fixes on a phone (#14); scale the swipe threshold with screen
   size; a vibration tick on each turn; a countdown overlay.
 - 🏒 **Air Hockey:** goal replay, a score-to-win setting, haptics on hits.
@@ -341,7 +347,14 @@ Riders and Air Hockey start in it) (#13, #15).
 - 🔳 **Dots & Boxes:** a last-line highlight, and a bigger grid when the phone is sideways.
 - ❌ **Tic-Tac-Toe:** in Vanishing mode, dim the mark that fades next.
 
-**Cards / dice / words**
+**Words & puzzles**
+- 🔎 **Grid Hunt:** ✅ added (#24, #37). Next: a "trace" replay of each word in the results, a
+  hint of how many words of each length remain, and a long-grid 6×6 option for big tables.
+- 🔐 **Safecracker:** ✅ added (#22). Next: a notes row to cross out colours, a colour-blind palette
+  setting (the numbers already help), and a duel mode where each player sets the other's code.
+- 🔤 **Wordsmith:** drag-and-drop tiles with a live score preview, and a hint button for solo play.
+
+**Cards / dice**
 - 🔺 **Backgammon:** ✅ added (#42). Next: a doubling cube, and a stronger evaluation for the hard bot.
 - 🎯 **Farkle:** ✅ added (#40).
 - 🎲 **Yacht:** ✅ added (#38: the traditional game the branded one grew from).
@@ -351,16 +364,20 @@ Riders and Air Hockey start in it) (#13, #15).
 - 🃏 **Last Card:** a fanned, swipeable hand, and animated dealing.
 - 🚢 **Sea Battle:** drag to place ships.
 - 🚀 **Moon Shot:** fit the track and dice on narrow screens (#6), and a dice-roll animation.
-- 🔤 **Wordsmith:** drag-and-drop tiles with a live score preview, and a hint button for solo play.
 
 **New games players asked for**
-- 🔢 **A code-breaking game** (#22): guess the hidden colour code from black and white peg hints.
-  It would be an original design, not a copy of a branded game.
-- 💣 **A bomb-maze arena** (#20): an original real-time game where you drop bombs to break walls
-  and trap rivals.
-- 🔠 **A letter-grid word hunt** (#24): an original timed game where everyone finds words in the same
-  shaken grid at once, and words someone else also found score nothing. It reuses the Wordsmith
-  dictionary. It would be an original design, not a copy of a branded game.
+- ✅ 🔐 **Safecracker** (#22) and ✅ 🔎 **Grid Hunt** (#24, #37): original designs in the code-breaking and
+  word-hunt genres, not copies of branded games.
+- ✅ **Lobby grid** (#43): Board split into ♟️ Strategy and ✏️ Quick classics, Words became 🔤 Words &
+  puzzles, and every group fills its rows evenly. Every group now holds 3–6 games; a new game should
+  go where it keeps that balance.
+- 💣 **A bomb-maze arena** (#20): an original real-time game (server-owned grid like Light Riders)
+  where you drop bombs to break walls and trap rivals. It would start a group with Light Riders' grid code.
+- 🃏 **A contract-rummy game** (#39 asks for a branded one): the public-domain rummy family where each
+  hand demands a set "contract" (two sets, a set and a run…), with an original twist. It would bring
+  🃏 Cards to 4.
+- 🎲 #41 asks for "qork", which we couldn't identify. If it's a roll-and-write dice game, an original
+  one would bring 🎲 Dice to 4. Ask the player which game they meant.
 - #2 asks for a remake of an NES game. We don't copy existing games.
 
 ## Roadmap

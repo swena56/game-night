@@ -222,7 +222,7 @@ def lookahead(pos, side, candidates, budget=2.5):
 
 class Backgammon(Game):
     id = "backgammon"
-    category = "board"
+    category = "strategy"
     howto = [
         "Move all fifteen checkers around and off the board. White moves 24 → 1, Black 1 → 24 (both shown heading to your bottom right).",
         "Each die is a move. Doubles play four times. Tap a checker, then where it goes. You can undo until you end your turn.",

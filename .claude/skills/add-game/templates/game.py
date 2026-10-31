@@ -11,7 +11,7 @@ TARGET = 21
 
 class RaceTo21(Game):
     id = "race21"
-    category = "board"
+    category = "classic"
     howto = [
         "Take turns adding 1, 2 or 3 to the counter.",
         f"Whoever brings the counter to exactly {TARGET} wins.",

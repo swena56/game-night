@@ -72,7 +72,7 @@ def score_grid(grid, seat):
 
 class DropFour(Game):
     id = "dropfour"
-    category = "board"
+    category = "classic"
     howto = [
         'Drop discs into columns; they fall to the lowest free space.',
         'Line up four in a row — across, down or diagonally — to win.',

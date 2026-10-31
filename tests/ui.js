@@ -155,6 +155,28 @@ const MOVES = {
     if (dest) return click(dest);
     click(pick([...d.querySelectorAll('.bg-pt.src, .bg-bar.src')]));
   },
+  safecracker(d, S, n) {
+    const lock = d.querySelector('#scLock');
+    if (!lock.disabled) return click(lock);
+    const probe = d.querySelector('#scProbe');
+    if (n === 3 && !probe.disabled) click(probe);  // probe once, then keep building the guess
+    click(pick([...d.querySelectorAll('.sc-peg.pad:not(.off)')]));
+  },
+  gridhunt(d, S, n, w) {
+    if (n % 3 === 0) {  // type a word on the keyboard
+      for (const k of [...'TEARS'.slice(0, 3 + (n % 3)), 'Enter']) w.dispatchEvent(new w.KeyboardEvent('keydown', { key: k, bubbles: true }));
+      return;
+    }
+    const tiles = [...d.querySelectorAll('.gh-tile')], size = S.gridhunt.n;
+    let at = Math.floor(Math.random() * tiles.length);
+    click(tiles[at]);
+    for (let k = 0; k < 3; k++) {  // walk to touching tiles, then tap the last one again to send
+      const next = tiles.map((_, i) => i).filter((i) => i !== at && Math.abs((i / size | 0) - (at / size | 0)) <= 1 && Math.abs(i % size - at % size) <= 1 && !tiles[i].classList.contains('on'));
+      if (!next.length) break;
+      at = pick(next); click(tiles[at]);
+    }
+    click(tiles[at]);
+  },
   farkle(d, S) {
     const f = S.farkle;
     if (f.rolled) {
@@ -213,7 +235,7 @@ async function playSolo(game, seconds = 60) {
     const s = S();
     const mine = s.turn === s.me.id || (game === 'heist' && !s.heist.mine) || (game === 'oddone' && s.oddone.stage === 'vote' && !s.oddone.myVote) || (game === 'fibfinder' && UI_MINE(s.fibfinder)) || (game === 'holdem' && s.holdem.canRebuy) || (game === 'cribbage' && s.cribbage.stage === 'discard' && s.cribbage.discarded[s.me.id] === false)
       || (game === 'relay' && (s.relay.stage === 'play' ? !s.relay.sent : s.relay.myVote == null)) || (game === 'seabattle' && s.sea.stage === 'placing' && !s.sea.ready[s.me.id])
-      || (game === 'spire' && s.spire.playing && s.spire.startIn <= 0)
+      || (game === 'spire' && s.spire.playing && s.spire.startIn <= 0) || (game === 'safecracker' && s.safecracker.stage === 'crack' && !s.safecracker.mine) || (game === 'gridhunt' && s.gridhunt.stage === 'hunt')
       || (game === 'doodle' && s.doodle.stage === 'draw' && !s.doodle.solvers.some(([p]) => p === s.me.id)) || game === 'hockey' || (game === 'riders' && s.riders.stage === 'ride');
     if (game === 'lucky' && s.lucky.stage === 'wheel') { await sleep(300); continue; }
     if (mine) { try { MOVES[game](d, s, report.moves, w); report.moves++; } catch (e) { errors.push('driver: ' + e.stack); } }
@@ -338,7 +360,7 @@ async function feedbackTour() {
   const lt = await lobbyTour();
   console.log('LOBBY', JSON.stringify(lt));
   for (const g of games.length ? games : Object.keys(MOVES)) {
-    const r = await playSolo(g, g === 'wordsmith' ? 40 : g === 'spire' ? 25 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'cribbage' ? 300 : g === 'yacht' ? 200 : g === 'farkle' ? 240 : g === 'backgammon' ? 300 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
+    const r = await playSolo(g, g === 'wordsmith' ? 40 : g === 'spire' ? 25 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'cribbage' ? 300 : g === 'yacht' ? 200 : g === 'farkle' ? 240 : g === 'backgammon' ? 300 : g === 'gridhunt' ? 260 : g === 'safecracker' ? 200 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
     console.log(`\n== ${g}: phase=${r.phase} moves=${r.moves} dialogs=${r.dialogs || 0} screen="${r.screen}" ${r.banner ? `banner="${r.banner}"` : ''}`);
     console.log(`   help: ${r.help} | log ticker: "${r.ticker}"`);
     if (r.replay) console.log(`   replay: ${r.replay}`);

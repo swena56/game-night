@@ -10,7 +10,7 @@ GEM = 3
 
 class Boxes(Game):
     id = "boxes"
-    category = "board"
+    category = "classic"
     howto = [
         "Take turns drawing one line between two neighbouring dots.",
         "Draw the 4th side of a box to claim it — then you move again.",
