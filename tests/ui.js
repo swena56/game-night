@@ -211,6 +211,33 @@ const MOVES = {
       if (take.length) tap(pick(take)); else if (can.length) tap(pick(can)); else if (src.length) tap(pick(src)); else return;
     }
   },
+  hearts(d, S) {
+    if (S.hearts.stage === 'pass') {
+      const cards = [...d.querySelectorAll('#hhHand .card-btn:not(:disabled)')].slice(0, 3);
+      cards.forEach((c) => click(c));
+      return click(d.querySelector('#hhPass'));
+    }
+    click(pick([...d.querySelectorAll('#hhHand .card-btn:not(:disabled)')]));
+  },
+  twentyone(d) {
+    const chips = [...d.querySelectorAll('.to-chip:not(:disabled)')];
+    if (chips.length) return click(pick(chips));
+    click(pick([...d.querySelectorAll('#toBar button:not(:disabled)')]));
+  },
+  rummy(d) {
+    for (const id of ['#ruDeck', '#ruDiscard']) { const b = d.querySelector(id); if (!b.disabled) return click(b); }
+    const lay = d.querySelector('#ruLay');
+    if (!lay.hidden && !lay.disabled) return click(lay);
+    click(pick([...d.querySelectorAll('#ruHand .card-btn:not(:disabled)')]));
+    click(d.querySelector('#ruThrow'));
+  },
+  putt(d, S, n, w) {  // a slingshot drag on the course
+    const fire = (el, type, x, y) => el.dispatchEvent(new w.MouseEvent(type, { bubbles: true, clientX: x, clientY: y }));
+    const st = d.querySelector('#ppStage');
+    fire(st, 'pointerdown', 150, 150);
+    fire(st, 'pointermove', 150 + Math.round(Math.random() * 120 - 60), 150 + Math.round(Math.random() * 120));
+    fire(st, 'pointerup', 0, 0);
+  },
   farkle(d, S) {
     const f = S.farkle;
     if (f.rolled) {
@@ -256,7 +283,7 @@ const MOVES = {
 const UI_MINE = (f) => (f.stage === 'write' && !f.mine) || (f.stage === 'pick' && f.myPick == null);
 
 async function playSolo(game, seconds = 60) {
-  const { w, d, errors, close } = await openPage(game === 'hockey' || game === 'riders' || game === 'paintblast' || game === 'sumo');
+  const { w, d, errors, close } = await openPage(game === 'hockey' || game === 'riders' || game === 'paintblast' || game === 'sumo' || game === 'putt');
   const S = () => w.eval('S');
   const report = { game, moves: 0, phase: null, notes: [] };
   d.querySelector('#name').value = 'Tester';
@@ -270,7 +297,8 @@ async function playSolo(game, seconds = 60) {
     const mine = s.turn === s.me.id || (game === 'heist' && !s.heist.mine) || (game === 'oddone' && s.oddone.stage === 'vote' && !s.oddone.myVote) || (game === 'fibfinder' && UI_MINE(s.fibfinder)) || (game === 'holdem' && s.holdem.canRebuy) || (game === 'cribbage' && s.cribbage.stage === 'discard' && s.cribbage.discarded[s.me.id] === false)
       || (game === 'relay' && (s.relay.stage === 'play' ? !s.relay.sent : s.relay.myVote == null)) || (game === 'seabattle' && s.sea.stage === 'placing' && !s.sea.ready[s.me.id])
       || (game === 'spire' && s.spire.playing && s.spire.startIn <= 0) || (game === 'safecracker' && s.safecracker.stage === 'crack' && !s.safecracker.mine) || (game === 'gridhunt' && s.gridhunt.stage === 'hunt')
-      || (game === 'doodle' && s.doodle.stage === 'draw' && !s.doodle.solvers.some(([p]) => p === s.me.id)) || game === 'hockey' || (game === 'riders' && s.riders.stage === 'ride') || (game === 'paintblast' && s.paintblast.st === 'play') || (game === 'sumo' && s.sumo.stage === 'play');
+      || (game === 'doodle' && s.doodle.stage === 'draw' && !s.doodle.solvers.some(([p]) => p === s.me.id)) || game === 'hockey' || (game === 'riders' && s.riders.stage === 'ride') || (game === 'paintblast' && s.paintblast.st === 'play') || (game === 'sumo' && s.sumo.stage === 'play') || (game === 'hearts' && s.hearts.stage === 'pass' && !s.hearts.myPass)
+      || (game === 'twentyone' && s.twentyone.stage === 'bet' && !s.twentyone.bets[s.twentyone.me] && s.twentyone.chips[s.twentyone.me] > 0);
     if (game === 'lucky' && s.lucky.stage === 'wheel') { await sleep(300); continue; }
     if (mine) { try { MOVES[game](d, s, report.moves, w); report.moves++; } catch (e) { errors.push('driver: ' + e.stack); } }
     await sleep(60);
@@ -394,7 +422,7 @@ async function feedbackTour() {
   const lt = await lobbyTour();
   console.log('LOBBY', JSON.stringify(lt));
   for (const g of games.length ? games : Object.keys(MOVES)) {
-    const r = await playSolo(g, g === 'wordsmith' ? 40 : g === 'spire' ? 25 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'cribbage' ? 300 : g === 'yacht' ? 200 : g === 'farkle' ? 240 : g === 'backgammon' ? 300 : g === 'gridhunt' ? 260 : g === 'paintblast' ? 230 : g === 'sumo' ? 200 : g === 'reversi' || g === 'ultimate' || g === 'oware' || g === 'morris' ? 260 : g === 'safecracker' ? 200 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
+    const r = await playSolo(g, g === 'wordsmith' ? 40 : g === 'spire' ? 25 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'cribbage' ? 300 : g === 'yacht' ? 200 : g === 'farkle' ? 240 : g === 'backgammon' ? 300 : g === 'gridhunt' ? 260 : g === 'paintblast' ? 230 : g === 'sumo' ? 200 : g === 'putt' ? 300 : g === 'hearts' || g === 'rummy' ? 300 : g === 'twentyone' ? 200 : g === 'reversi' || g === 'ultimate' || g === 'oware' || g === 'morris' ? 260 : g === 'safecracker' ? 200 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
     console.log(`\n== ${g}: phase=${r.phase} moves=${r.moves} dialogs=${r.dialogs || 0} screen="${r.screen}" ${r.banner ? `banner="${r.banner}"` : ''}`);
     console.log(`   help: ${r.help} | log ticker: "${r.ticker}"`);
     if (r.replay) console.log(`   replay: ${r.replay}`);
