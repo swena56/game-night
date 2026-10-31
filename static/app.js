@@ -484,6 +484,7 @@ function renderGame(view = S, readOnly = false, force = false) {
   const lookup = (id) => view.players.find((p) => p.id === id);
   const readOnlyAct = () => { toast('This is a replay.'); return Promise.reject(new Error('replay')); };
   ui.render(view, { act: readOnly ? readOnlyAct : act, input: readOnly ? () => {} : input, quiet, toast, el, ask, player: lookup, myTurn,
+    peek: readOnly ? null : (extra) => api('/api/peek', { ...session, ...extra }),
     confetti: readOnly ? () => {} : confetti, rerender: () => (replay ? showFrame() : renderGame(S, false, true)) });
   renderLog(ui, view);
 

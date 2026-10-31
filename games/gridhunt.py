@@ -81,7 +81,7 @@ class GridHunt(Game):
     min_players = 1
     max_players = 6
     settings_schema = {
-        "size": ("Grid", [(4, "4×4"), (5, "5×5")], 4),
+        "size": ("Grid", [(4, "4×4"), (5, "5×5"), (6, "6×6 (big tables)")], 4),
         "secs": ("Time per round", [(60, "1 min"), (90, "1½ min"), (120, "2 min"), (180, "3 min")], 90),
         "rounds": ("Rounds", [(1, "1"), (2, "2"), (3, "3")], 2),
     }
@@ -131,7 +131,7 @@ class GridHunt(Game):
             found = solve(tiles, self.n, self.min_len, star)
             if best is None or len(found) > len(best[1]):
                 best = (tiles, found, star)
-            if len(found) >= (45 if self.n == 4 else 70):
+            if len(found) >= {4: 45, 5: 70}.get(self.n, 110):
                 break
         self.tiles, self.all, self.star = best
         self.stage = "hunt"
@@ -239,7 +239,7 @@ class GridHunt(Game):
 
     def target(self):
         """The solo goal: about what a quick human finds (20 a round on 4×4, 30 on 5×5, for 90 s)."""
-        return round((20 if self.n == 4 else 30) * self.s["rounds"] * self.s["secs"] / 90)
+        return round({4: 20, 5: 30}.get(self.n, 40) * self.s["rounds"] * self.s["secs"] / 90)
 
     def finish_game(self):
         r = self.room

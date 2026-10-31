@@ -3,12 +3,21 @@
 UI.safecracker = (() => {
   let S, ctx, draft = [], probing = false, draftFor = '', notes = [], notesFor = null;
   const MARKS = ['', 'out', 'in'];  // a note cycles: unknown → ✗ not in the code → ✓ in the code
-  const COLORS = ['#ef476f', '#ffb703', '#06d6a0', '#3a86ff', '#c77dff', '#f4f1de', '#ff7f11', '#8d6e63'];
+  const STANDARD = ['#ef476f', '#ffb703', '#06d6a0', '#3a86ff', '#c77dff', '#f4f1de', '#ff7f11', '#8d6e63'];
+  // Okabe–Ito: eight colours that stay distinct with the common kinds of colour blindness
+  const SAFE = ['#d55e00', '#e69f00', '#009e73', '#0072b2', '#cc79a7', '#f0e442', '#56b4e9', '#eeeeee'];
+  let safe = false;
+  try { safe = localStorage.getItem('safecracker.palette') === 'safe'; } catch {}
+  let COLORS = safe ? SAFE : STANDARD;
   const $ = (id) => document.getElementById(id);
 
   function peg(c, cls = '') {
     const p = ctx.el('span', 'sc-peg ' + cls, c == null ? '' : String(c + 1));
-    if (c != null) p.style.background = COLORS[c];
+    if (c != null) {
+      p.style.background = COLORS[c];
+      const [r, g, b] = [1, 3, 5].map((k) => parseInt(COLORS[c].slice(k, k + 2), 16));
+      if (0.299 * r + 0.587 * g + 0.114 * b < 120) p.style.color = '#fff';  // keep the number readable on dark pegs
+    }
     return p;
   }
 
@@ -32,8 +41,15 @@ UI.safecracker = (() => {
     side.innerHTML = `<div class="panel"><h3>Clues</h3>
       <p class="hint left"><span class="sc-pin on"></span> right colour, right spot · <span class="sc-pin"></span> right colour, wrong spot.</p>
       <div id="scProbeInfo" class="hint left"></div>
+      <label class="check"><input type="checkbox" id="scSafePal"> Colour-blind-friendly colours</label>
       <h3>📝 Notes</h3><div id="scNotes" class="sc-notes"></div>
       <p class="hint left">Tap a colour to mark it ✗ out or ✓ in. Only you see your notes.</p></div>`;
+    $('scSafePal').checked = safe;
+    $('scSafePal').onchange = () => {
+      safe = $('scSafePal').checked; COLORS = safe ? SAFE : STANDARD;
+      try { localStorage.setItem('safecracker.palette', safe ? 'safe' : 'standard'); } catch {}
+      ctx.rerender();
+    };
     $('scBack').onclick = () => { draft.pop(); paint(); };
     $('scAgain').onclick = () => { draft = lastGuess() || draft; paint(); };
     $('scProbe').onclick = () => { probing = !probing; paint(); };

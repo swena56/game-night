@@ -196,20 +196,41 @@ class Wordsmith(Game):
 
     # -- actions
 
+    def placements(self, p, tiles):
+        """[{r, c, i (rack index)}] from the browser → ([(r, c, letter)], rack indices)."""
+        rack = getattr(p.g, "rack", [])
+        tiles = tiles if isinstance(tiles, list) else []
+        idx = [x.get("i") for x in tiles if isinstance(x, dict)]
+        if len(idx) != len(tiles) or len(set(idx)) != len(idx) or \
+                not all(isinstance(i, int) and not isinstance(i, bool) and 0 <= i < len(rack) for i in idx):
+            raise GameError("Those tiles aren't on your rack.")
+        placements = [(x.get("r"), x.get("c"), rack[x["i"]]) for x in tiles]
+        if not all(isinstance(r, int) and isinstance(c, int) for r, c, _ in placements):
+            raise GameError("Bad tile position.")
+        return placements, idx
+
+    def peek(self, p, a):
+        """What the tiles you've placed would score (live preview), or, alone against bots, a hint."""
+        if a.get("what") == "hint":
+            if len([o for o in self.room.contenders() if o.human()]) > 1:
+                raise GameError("Hints are for solo games against bots.")
+            moves = self.find_moves(getattr(p.g, "rack", []), 1.2)
+            if not moves:
+                return {"none": True}
+            score, tiles, texts = max(moves, key=lambda m: m[0])
+            return {"tiles": [list(t) for t in tiles], "words": texts, "score": score}
+        try:
+            score, texts, notes = self.check_play(self.placements(p, a.get("tiles"))[0])
+        except GameError as e:
+            return {"error": str(e)}
+        return {"score": score, "words": texts, "notes": notes}
+
     def act(self, p, a):
         self.require_turn(p)
         t = a.get("type")
         rack = p.g.rack
         if t == "play":
-            tiles = a.get("tiles") or []
-            idx = [x.get("i") for x in tiles if isinstance(x, dict)]
-            if len(idx) != len(tiles) or len(set(idx)) != len(idx) or \
-                    not all(isinstance(i, int) and 0 <= i < len(rack) for i in idx):
-                raise GameError("Those tiles aren't on your rack.")
-            placements = [(x.get("r"), x.get("c"), rack[x["i"]]) for x in tiles]
-            if not all(isinstance(r, int) and isinstance(c, int) for r, c, _ in placements):
-                raise GameError("Bad tile position.")
-            return self.play(p, placements, idx)
+            return self.play(p, *self.placements(p, a.get("tiles")))
         if t == "swap":
             idx = a.get("idx") or []
             if not idx or len(set(idx)) != len(idx) or \

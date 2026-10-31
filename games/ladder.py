@@ -1,6 +1,7 @@
 """Word Ladder: Lewis Carroll's public-domain "doublets" puzzle, raced. Everyone gets the same two
 words and climbs from one to the other by changing one letter at a time, every step a real word.
 Short ladders and quick finishes score most."""
+import random
 import time
 from collections import deque
 
@@ -79,6 +80,7 @@ class Ladder(Game):
         "size": ("Word length", [(4, "4 letters"), (3, "3 letters")], 4),
         "rounds": ("Ladders", [(3, "3"), (5, "5"), (1, "1")], 3),
         "secs": ("Time per ladder", [(90, "90 s"), (120, "2 min"), (60, "60 s")], 90),
+        "daily": ("Puzzles", [(False, "🎲 Random"), (True, "📅 Today's ladders (the same everywhere)")], False),
     }
 
     # -- setup
@@ -88,6 +90,9 @@ class Ladder(Game):
         self.skew = 0.0  # the bot simulator fast-forwards this virtual clock
         self.n_len = self.s["size"]
         self.used = set()
+        # 📅 daily: the puzzles come from the date alone, so every room plays the same ladders today
+        today = time.strftime("%Y-%m-%d")
+        self.prng = random.Random(f"ladder {today} {self.n_len}") if self.s.get("daily") else rng
         self.ids = []
         self.round = 0
         self.solo = len(seated) == 1
@@ -95,7 +100,8 @@ class Ladder(Game):
             self.late_join(p)
         self.room.turn = None
         self.room.bot_at = 0
-        self.room.add_log(f"🪜 Word Ladder! {self.s['rounds']} ladders of {self.n_len}-letter words. Change one letter at a time.", "big")
+        self.room.add_log(f"🪜 Word Ladder! {self.s['rounds']} ladders of {self.n_len}-letter words"
+                          + (f" (📅 the ladders for {today})" if self.s.get("daily") else "") + ". Change one letter at a time.", "big")
         self.next_round()
 
     def now(self):
@@ -114,17 +120,20 @@ class Ladder(Game):
     def live(self):
         return [p for p in self.room.contenders() if p.id in self.ids]
 
+    def puzzle_rng(self):
+        return getattr(self, "prng", None) or self.rng
+
     def pick_puzzle(self):
         pool = sorted(w for w in familiar(self.n_len) if w not in self.used)
         lo, hi = PAR[self.n_len]
         for _ in range(400):
-            a = self.rng.choice(pool)
+            a = self.puzzle_rng().choice(pool)
             d = distances(a)
             ends = [b for b in pool if lo <= d.get(b, 0) <= hi and b not in self.used]
             if ends:
-                b = self.rng.choice(ends)
+                b = self.puzzle_rng().choice(ends)
                 return a, b, d[b]
-        a, b = self.rng.sample(pool, 2)   # practically unreachable; keep the game going
+        a, b = self.puzzle_rng().sample(pool, 2)   # practically unreachable; keep the game going
         return a, b, distances(b).get(a, 9)
 
     def next_round(self):

@@ -138,6 +138,7 @@ UI.gridhunt = (() => {
       grid.innerHTML = '';
       grid.style.gridTemplateColumns = `repeat(${g.n}, 1fr)`;
       grid.classList.toggle('five', g.n === 5);
+      grid.classList.toggle('six', g.n === 6);
       g.tiles.forEach((t, i) => {
         const b = ctx.el('button', 'gh-tile' + (i === g.star ? ' star' : ''), t === 'QU' ? 'Qu' : t);
         b.dataset.i = i;

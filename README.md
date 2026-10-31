@@ -412,13 +412,15 @@ Riders and Air Hockey start in it) (#13, #15).
 
 **Words & puzzles**
 - 🔎 **Grid Hunt:** ✅ added (#24, #37). ✅ A "Still to find" line counts the words of each length you
-  haven't found. Next: a "trace" replay of each word in the results, and a long-grid 6×6 option for big tables.
+  haven't found. ✅ A 6×6 grid for big tables (4+ letters). Next: a "trace" replay of each word in the results.
 - 🔐 **Safecracker:** ✅ added (#22). ✅ Each round starts from an empty guess, with ↺ Last to bring
-  back your previous one (#45). ✅ A 📝 notes row marks colours ✗ out or ✓ in (shown on the pad too). Next: a colour-blind palette
-  setting (the numbers already help), and a duel mode where each player sets the other's code.
+  back your previous one (#45). ✅ A 📝 notes row marks colours ✗ out or ✓ in (shown on the pad too). ✅ A colour-blind-friendly palette
+  (Okabe–Ito, per device). Next: a duel mode where each player sets the other's code.
 - 🤥 **Fib Finder:** ✅ 118 facts, up from 56 (#51); moved here from Party to balance the lobby. ✅ A Facts setting picks a topic: 🐾 Animals, 🔬 Science & nature, 🏛️ History & inventions or 🔤 Words & names (a duplicate apple fact became the Hundred Years' War).
-- 🪜 **Word Ladder:** ✅ added: par, hints and bots use everyday words only, so revealed ladders never lean on obscure words. Next: a 5-letter mode once the everyday list is big enough (today it links only 154 pairs), and a daily shared ladder.
-- 🔤 **Wordsmith:** drag-and-drop tiles with a live score preview, and a hint button for solo play.
+- 🪜 **Word Ladder:** ✅ added: par, hints and bots use everyday words only, so revealed ladders never lean on obscure words. ✅ 📅 Today's ladders: the puzzles come from the date, so every room plays the same ones that day. Next: a 5-letter mode once the everyday list is big enough (today it links only 154 pairs).
+- 🔤 **Wordsmith:** ✅ a live score preview as you place tiles (the words and points, or why it won't play), and a
+  💡 hint button when you're the only person playing. Both use the new read-only `/api/peek` (a game opts in
+  with `peek(p, body)`). Next: drag-and-drop tiles.
 
 **Cards / dice**
 - 🎯 **Farkle:** ✅ added (#40). ✅ Dice pips show on phones again (#44, shared with Yacht). ✅ The hint shows the

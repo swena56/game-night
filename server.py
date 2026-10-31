@@ -731,6 +731,18 @@ def do_action(body):
     return {"ok": True}
 
 
+def peek(body):
+    """A read-only question for the current game (e.g. what a half-placed word would score): no state
+    changes, no broadcast."""
+    room = get_room(body.get("code"))
+    with room.cond:
+        p = auth(room, body.get("pid"), body.get("token"))
+        game = room.game if room.phase == "playing" else None
+        if game is None or not hasattr(game, "peek"):
+            raise GameError("Nothing to check right now.")
+        return game.peek(p, body)
+
+
 def realtime_input(body):
     """High-rate input for real-time games (paddle positions): no replay frame, no full broadcast."""
     room = get_room(body.get("code"))
@@ -965,7 +977,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         routes = {"/api/create": create_room, "/api/join": join_room, "/api/action": do_action, "/api/input": realtime_input,
-                  "/api/status": status, "/api/replay": replay,
+                  "/api/status": status, "/api/replay": replay, "/api/peek": peek,
                   "/api/feedback": lambda body: submit_feedback(body, self.client_address[0])}
         if self.local():
             routes["/api/feedback/status"] = set_feedback_status
