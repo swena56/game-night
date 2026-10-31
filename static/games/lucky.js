@@ -108,8 +108,23 @@ UI.lucky = (() => {
     gfx.camera.updateProjectionMatrix();
   }
 
+  // the letter clock (#63): a bar that empties while a letter is due, for everyone at the table
+  let clockFrom = 0, clockLeft = null;
+  function tickClock(now) {
+    const bar = $('lkClock'), L = S?.lucky;
+    const due = L && S.phase === 'playing' && (L.stage === 'letter' || L.stage === 'vowel') && clockLeft != null && L.clock;
+    if (!bar) return;
+    bar.hidden = !due;
+    if (!due) return;
+    const left = Math.max(0, clockLeft - (now - clockFrom) / 1000), fill = bar.firstElementChild;
+    fill.firstElementChild.style.width = `${(left / L.clock) * 100}%`;
+    fill.classList.toggle('last', left < 5);
+    bar.lastElementChild.textContent = `⏱️ ${Math.ceil(left)}s to call a letter`;
+  }
+
   function tick(now) {
     raf = requestAnimationFrame(tick);
+    tickClock(now);
     const a = currentAngle(now);
     if (gfx) {
       gfx.wheel.rotation.z = -a;
@@ -135,12 +150,15 @@ UI.lucky = (() => {
       <div id="lkStatus" class="seat-row"></div>
       <div id="lkJackpot" class="hint left"></div>
       <div class="lk-actions">
+        <div id="lkClock" class="lk-clock" hidden><div class="dd-bar"><span></span></div><small></small></div>
         <button id="lkSpin" class="primary big">🎡 SPIN</button>
+        <button id="lkBuy" class="lk-buy" hidden></button>
         <div id="lkKeys" class="lk-keys"></div>
         <form id="lkSolveForm" class="row"><input id="lkSolve" placeholder="Solve the puzzle…" autocomplete="off"><button>Solve</button></form>
       </div>
       <table id="lkScores" class="scores"></table></div>`;
     $('lkSpin').onclick = () => ctx.quiet(ctx.act('spin'));
+    $('lkBuy').onclick = () => ctx.quiet(ctx.act('buy'));
     $('lkSolveForm').onsubmit = (e) => {
       e.preventDefault();
       const guess = $('lkSolve').value.trim();
@@ -207,9 +225,15 @@ UI.lucky = (() => {
       : stage === 'wheel' ? `🎡 ${turnName} is spinning…`
       : !mine ? `${turnName}'s turn`
       : stage === 'letter' ? `Call a consonant — ${num(L.value)} each${L.wedge === 'jackpot' ? ` + ⚡ ${num(L.jackpot)}` : L.wedge === 'steal' ? ' + 🦊 steal' : ''}`
-      : stage === 'vowel' ? 'Call a vowel ✨' : 'Spin the wheel or solve!';
+      : stage === 'vowel' ? (L.wedge === 'bought' ? 'Call your vowel 💰' : 'Call a vowel ✨') : 'Spin the wheel or solve!';
     $('lkJackpot').textContent = `⚡ Jackpot: ${num(L.jackpot)}`;
+    clockFrom = performance.now(); clockLeft = S.timeLeft ?? null;
     $('lkSpin').hidden = !(mine && stage === 'spin');
+    const buy = $('lkBuy'), bank = L.bank[S.me.id] ?? 0, vowelsLeft = [...VOW].some((v) => !L.called.includes(v));
+    buy.hidden = !(mine && stage === 'spin' && L.buy);
+    buy.disabled = bank < (L.buy ?? 0) || !vowelsLeft;
+    buy.textContent = !vowelsLeft ? '💰 No vowels left' : `💰 Buy a vowel (${num(L.buy)})`;
+    buy.title = bank < (L.buy ?? 0) ? `You need ${num(L.buy)} in this round's bank.` : '';
     $('lkSolveForm').hidden = !(mine && stage === 'spin');
     const keys = $('lkKeys'); keys.innerHTML = '';
     if (mine && (stage === 'letter' || stage === 'vowel')) {

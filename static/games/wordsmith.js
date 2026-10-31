@@ -7,6 +7,7 @@ UI.wordsmith = (() => {
   let swapMode = false;
   const swapSel = new Set();
   let previewKey = '', previewTimer = 0;
+  let drag = null, skipClick = false;  // a tile being dragged from the rack (or moved on the board)
   const PREMIUM_LABEL = { '2L': 'DL', '3L': 'TL', '2W': 'DW', '3W': 'TW', '★': '★' };
   const $ = (id) => document.getElementById(id);
 
@@ -19,14 +20,19 @@ UI.wordsmith = (() => {
       <div id="wsPreview" class="ws-preview"></div>
       <div class="row"><button id="wsPlay" class="primary">Play</button><button id="wsRecall">Recall</button><button id="wsShuffle">🔀</button></div>
       <div class="row"><button id="wsSwap">Swap tiles…</button><button id="wsPass">Pass</button><button id="wsHint" hidden>💡 Hint</button></div>
-      <p class="hint left">Tap a tile, then tap a square. Tap a placed tile to take it back.
+      <p class="hint left">Drag a tile onto a square, or tap a tile and then a square. Drag a placed tile to move it,
+      or off the board (or tap it) to take it back.
       DL/TL = double/triple letter, DW/TW = double/triple word.</p></div>`;
     board = main.querySelector('.ws-board');
     for (let r = 0; r < 11; r++)
       for (let c = 0; c < 11; c++) {
         const cell = document.createElement('button');
         cell.className = 'ws-cell';
-        cell.onclick = () => onCell(r, c);
+        cell.onclick = () => { if (skipClick) { skipClick = false; return; } onCell(r, c); };
+        cell.addEventListener('pointerdown', (e) => {
+          const at = pending.findIndex((t) => t.r === r && t.c === c);
+          if (at >= 0) startDrag(e, pending[at].i, cell, at);
+        });
         board.append(cell);
       }
     $('wsPlay').onclick = play;
@@ -80,7 +86,8 @@ UI.wordsmith = (() => {
       if (used.has(i) || i >= rack.length) continue;
       const t = ctx.el('button', 'rack-tile' + (selected === i ? ' sel' : '') + (swapSel.has(i) ? ' swap' : ''), rack[i]);
       t.append(Object.assign(document.createElement('sub'), { textContent: w.values[rack[i]] }));
-      t.onclick = () => onRack(i);
+      t.onclick = () => { if (skipClick) { skipClick = false; return; } onRack(i); };
+      t.addEventListener('pointerdown', (e) => { if (!swapMode) startDrag(e, i, t, -1); });
       rackBox.append(t);
     }
     if (!rack.length) rackBox.append(ctx.el('span', 'hint', S.me.spectator ? 'Spectating' : 'No tiles'));
@@ -139,6 +146,45 @@ UI.wordsmith = (() => {
     try { sessionStorage.setItem('ws.pending.' + k, JSON.stringify(pending)); } catch {}
   }
 
+  // ---------- drag and drop: a rack tile onto a square, a placed tile to another square or off the board
+  function cellAt(x, y) {
+    const r = board.getBoundingClientRect();
+    if (!r.width || x < r.left || y < r.top || x >= r.right || y >= r.bottom) return null;
+    return [Math.floor(((y - r.top) / r.height) * 11), Math.floor(((x - r.left) / r.width) * 11)];
+  }
+  function startDrag(e, i, el, at) {
+    if (e.button > 0 || S.phase !== 'playing' || S.me.spectator) return;
+    drag = { i, el, at, x: e.clientX, y: e.clientY, ghost: null };
+    const move = (ev) => {
+      if (!drag) return;
+      if (!drag.ghost) {
+        if (Math.hypot(ev.clientX - drag.x, ev.clientY - drag.y) < 8) return;
+        drag.ghost = ctx.el('span', 'rack-tile ws-ghost', S.ws.rack[i]);
+        document.body.append(drag.ghost);
+        el.classList.add('lifted');
+      }
+      drag.ghost.style.left = `${ev.clientX - 20}px`; drag.ghost.style.top = `${ev.clientY - 44}px`;  // above the finger
+      const over = cellAt(ev.clientX, ev.clientY - 24);
+      for (const [k, c] of [...board.children].entries()) c.classList.toggle('drop', !!over && k === over[0] * 11 + over[1]);
+    };
+    const up = (ev) => {
+      removeEventListener('pointermove', move); removeEventListener('pointerup', up); removeEventListener('pointercancel', up);
+      const d = drag; drag = null;
+      if (!d?.ghost) return;
+      d.ghost.remove(); d.el.classList.remove('lifted');
+      for (const c of board.children) c.classList.remove('drop');
+      skipClick = true; setTimeout(() => { skipClick = false; }, 0);
+      const over = ev.type === 'pointerup' ? cellAt(ev.clientX, ev.clientY - 24) : null;
+      if (d.at >= 0) pending.splice(d.at, 1);  // a placed tile lifts off its square
+      if (over && S.ws.grid[over[0]][over[1]] == null && !pending.some((t) => t.r === over[0] && t.c === over[1])) {
+        pending.push({ r: over[0], c: over[1], i: d.i });
+      }
+      selected = null;
+      ctx.rerender();
+    };
+    addEventListener('pointermove', move); addEventListener('pointerup', up); addEventListener('pointercancel', up);
+  }
+
   function onRack(i) {
     if (swapMode) { swapSel.has(i) ? swapSel.delete(i) : swapSel.add(i); }
     else selected = selected === i ? null : i;
@@ -160,5 +206,7 @@ UI.wordsmith = (() => {
     ctx.act('play', { tiles: pending }).catch(() => {});
   }
 
-  return { mount, render };
+  function unmount() { drag?.ghost?.remove(); drag = null; }
+
+  return { mount, render, unmount };
 })();

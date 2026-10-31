@@ -206,6 +206,23 @@ function show(id) {
 }
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 const player = (id) => S.players.find((p) => p.id === id);
+// every player colour has its own shape, so who's who never rests on colour alone
+const SHAPES = { '#4dabf7': '●', '#ff922b': '▲', '#ff6b6b': '■', '#20c997': '◆', '#fcc419': '★', '#cc5de8': '✚', '#f06595': '⬟', '#51cf66': '⬢' };
+// after a game draws, its player-coloured dots become that colour's shape too
+function shapeDots(root) {
+  for (const d of root.querySelectorAll('.dot:not(.shaped), .mini-disc:not(.shaped)')) {
+    const m = /^rgb\((\d+), (\d+), (\d+)\)$/.exec(d.style.backgroundColor || '');
+    const hex = m && '#' + m.slice(1).map((x) => (+x).toString(16).padStart(2, '0')).join('');
+    if (!hex || !SHAPES[hex] || d.textContent) continue;
+    d.classList.add('shaped'); d.textContent = SHAPES[hex]; d.style.color = hex;
+  }
+}
+function mark(p, online = true) {
+  const m = el('span', 'pmark', SHAPES[p?.color] ?? '●');
+  m.style.color = online ? p?.color ?? '#777' : '#555';
+  m.setAttribute('aria-hidden', 'true');
+  return m;
+}
 const gameInfo = (id = S.gameId) => S.games.find((g) => g.id === id);
 
 // ---------- sound (tiny WebAudio blips, no files)
@@ -380,8 +397,7 @@ function renderLobby() {
   const ul = $('#lobbyPlayers'); ul.innerHTML = '';
   for (const p of S.players) {
     const li = el('li');
-    const dot = el('span', 'dot'); dot.style.background = p.online ? p.color : '#555';
-    li.append(dot, el('span', '', p.name + (p.id === S.me.id ? ' (you)' : '')));
+    li.append(mark(p, p.online), el('span', '', p.name + (p.id === S.me.id ? ' (you)' : '')));
     if (p.id === S.host) li.append(el('span', '', '👑'));
     if (p.id === S.me.id && S.phase !== 'playing') {
       const edit = el('button', 'ghost-btn', '✏️');
@@ -496,8 +512,7 @@ function renderGame(view = S, readOnly = false, force = false) {
   const chips = $('#players'); chips.innerHTML = '';
   for (const p of view.players) {
     const c = el('div', 'chip' + (p.id === view.turn ? ' turn-now' : '') + (p.eliminated ? ' out' : ''));
-    const dot = el('span', 'dot'); dot.style.background = p.online ? p.color : '#555';
-    c.append(dot, el('b', '', p.name));
+    c.append(mark(p, p.online), el('b', '', p.name));
     const bits = [p.spectator ? '👁 watching' : p.meta, p.played || p.points ? '⭐' + p.points : '', p.eliminated ? '👻' : '',
       p.standin ? '🤖 autopilot' : p.away ? '📡 away' : ''].filter(Boolean);
     if (bits.length) c.append(el('span', 'meta', bits.join(' · ')));
@@ -509,9 +524,10 @@ function renderGame(view = S, readOnly = false, force = false) {
   renderedKey = key;
   const lookup = (id) => view.players.find((p) => p.id === id);
   const readOnlyAct = () => { toast('This is a replay.'); return Promise.reject(new Error('replay')); };
-  ui.render(view, { act: readOnly ? readOnlyAct : act, input: readOnly ? () => {} : input, quiet, toast, el, ask, player: lookup, myTurn,
+  ui.render(view, { act: readOnly ? readOnlyAct : act, input: readOnly ? () => {} : input, quiet, toast, el, ask, player: lookup, mark: (id) => mark(lookup(id)), myTurn,
     peek: readOnly ? null : (extra) => api('/api/peek', { ...session, ...extra }),
     confetti: readOnly ? () => {} : confetti, rerender: () => (replay ? showFrame() : renderGame(S, false, true)) });
+  shapeDots($('#arena')); shapeDots($('#sideGame'));
   renderLog(ui, view);
 
   $('#overBanner').hidden = readOnly || view.phase !== 'over';
@@ -606,6 +622,7 @@ async function startReplay() {
     replay = { frames, i: 0, timer: null };
     $('#rpSlider').max = frames.length - 1;
     $('#replayBar').hidden = false;
+    document.body.classList.add('replaying');
     show('game');
     unmountUI();
     showFrame();
@@ -634,6 +651,7 @@ function stopReplay(rerender = true) {
   if (!replay) return;
   pauseReplay(); replay = null; unmountUI();
   $('#replayBar').hidden = true;
+  document.body.classList.remove('replaying');
   if (rerender && S) onState(S);
 }
 

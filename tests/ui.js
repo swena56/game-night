@@ -104,7 +104,19 @@ const MOVES = {
     const fl = d.querySelector('#log .entry button'); if (fl) click(fl);
     click(d.querySelector('#askBtn'));
   },
-  wordsmith(d) { click(enabled(d, '#wsSwap')[0]); click(enabled(d, '.rack-tile')[0]); click(enabled(d, '#wsSwap')[0]); if (!enabled(d, '#wsSwap').length) return; click(d.querySelector('#wsPass')); },
+  wordsmith(d, S, n, w) {
+    if (n === 0) {  // drag a rack tile onto the ★ (jsdom lays nothing out, so give the board a size first)
+      const board = d.querySelector('.ws-board'), tile = d.querySelector('.rack-tile');
+      board.getBoundingClientRect = () => ({ left: 0, top: 0, width: 440, height: 440, right: 440, bottom: 440 });
+      const fire = (el, type, x, y) => el.dispatchEvent(new w.MouseEvent(type, { bubbles: true, clientX: x, clientY: y }));
+      const k = [...board.children].findIndex((c) => !c.classList.contains('tile'));
+      const x = (k % 11) * 40 + 20, y = Math.floor(k / 11) * 40 + 20 + 24;  // the tile is held above the finger
+      fire(tile, 'pointerdown', 500, 500); fire(tile, 'pointermove', x, y); fire(tile, 'pointerup', x, y);
+      const placed = d.querySelectorAll('.ws-cell.pending');
+      if (placed.length !== 1 || [...board.children].indexOf(placed[0]) !== k) throw new Error('dragging a tile onto the board did not place it');
+      click(d.querySelector('#wsRecall'));
+    }
+    click(enabled(d, '#wsSwap')[0]); click(enabled(d, '.rack-tile')[0]); click(enabled(d, '#wsSwap')[0]); if (!enabled(d, '#wsSwap').length) return; click(d.querySelector('#wsPass')); },
   chess(d) { click(pick(enabled(d, '.csq.movable'))); click(pick(enabled(d, '.csq.target, .csq.capture'))); click(enabled(d, '#chPromo button')[0]); },
   checkers(d) { click(pick(enabled(d, '.csq.movable'))); click(pick(enabled(d, '.csq.target'))); },
   go(d, S, n) { if (n > 30) return click(d.querySelector('#goPass')); click(pick(enabled(d, '.go-pt'))); },
@@ -423,6 +435,7 @@ async function lobbyTour() {
   click(d.querySelector('#leaveBtn')); await sleep(200);
   const leaveDialog = d.querySelector('#modalText').textContent; click(d.querySelector('#modalCancel'));
   if (!qr) notes.push('invite dialog has no QR code');
+  if (d.querySelectorAll('#lobbyPlayers .pmark').length !== d.querySelectorAll('#lobbyPlayers li').length) notes.push('lobby players lack colour shapes');
   const out = { cats, nofit, howto, leaveDialog, qr, tiles: tiles.length, game: S().gameId, players: d.querySelectorAll('#lobbyPlayers li').length,
     settings: d.querySelectorAll('#settingsBox select').length, notes };
   close();

@@ -21,6 +21,7 @@ WEDGE_LABEL = {"bust": "💀 BUST", "skip": "⛔ SKIP", "wild": "🎁 WILD", "st
 SPIN_SECS = 4.0
 STEAL = 500
 SOLVE_MIN = 1000
+VOWEL_COST = 250   # with the Buy-a-vowel setting, paid from your round bank
 REVEAL_SECS = 4.5  # a solved puzzle stays up (and is celebrated) before the next round
 
 PUZZLES = {
@@ -70,7 +71,7 @@ class Lucky(Game):
     howto = [
         "Spin the wheel, then call a consonant. Each time it appears, you earn the wedge's value.",
         "Right? Keep going: spin again or solve. Wrong or already called? Next player.",
-        "Vowels can only be called by landing on ✨ VOWEL. 💀 BUST wipes your round bank.",
+        "Vowels: land on ✨ VOWEL, or (if the setting is on) 💰 buy one for 250 from your round bank. 💀 BUST wipes your round bank.",
         "🎁 WILD reveals a free letter, 🦊 STEAL takes 500 from the leader, ⚡ JACKPOT wins the pot.",
         "Solve on your turn to bank your round (at least 1000). Most points after the last round wins.",
     ]
@@ -81,7 +82,15 @@ class Lucky(Game):
     max_players = 6
     settings_schema = {
         "rounds": ("Rounds", [(2, "2 puzzles"), (3, "3 puzzles"), (5, "5 puzzles")], 3),
+        "clock": ("Time to call a letter", [(0, "No limit"), (10, "10 s"), (15, "15 s"), (20, "20 s")], 15),
+        "buy": ("Buy a vowel", [(False, "Off: ✨ wedge only"), (True, f"💰 On ({VOWEL_COST} from your round)")], False),
     }
+
+    def letter_clock(self):
+        """After a spin lands on a letter wedge: this game's own clock, else the room's turn timer (#63)."""
+        r = self.room
+        t = self.s.get("clock") or r.settings["timer"]
+        r.deadline = time.time() + t if t else None
 
     def start(self, seated, rng):
         self.rng = rng
@@ -152,6 +161,8 @@ class Lucky(Game):
             return self.do_spin(p)
         if t == "letter":
             return self.call_letter(p, str(a.get("letter") or "").upper())
+        if t == "buy":
+            return self.buy_vowel(p)
         if t == "solve":
             if self.stage != "spin":
                 raise GameError("You can solve at the start of your turn or after a correct letter.")
@@ -179,6 +190,7 @@ class Lucky(Game):
         r.deadline = time.time() + t if t else None
         if isinstance(w, int):
             self.value, self.stage = w, "letter"
+            self.letter_clock()
             r.add_log(f"🎡 {p.name} spun {w:,}.")
         elif w == "bust":
             lost = self.bank[p.id]
@@ -199,13 +211,31 @@ class Lucky(Game):
             self.stage = "spin"
         elif w == "vowel":
             self.value, self.stage = 100, "vowel"
+            self.letter_clock()
             r.add_log(f"✨ {p.name} may call a vowel.", "power")
         elif w == "steal":
             self.value, self.stage = 300, "letter"
+            self.letter_clock()
             r.add_log(f"🦊 {p.name} spun STEAL — call a letter right to take {STEAL:,} from the leader!", "power")
         elif w == "jackpot":
             self.value, self.stage = 500, "letter"
+            self.letter_clock()
             r.add_log(f"⚡ JACKPOT wedge! {p.name} wins 💰{self.jackpot:,} with a correct letter.", "power")
+
+    def buy_vowel(self, p):
+        r = self.room
+        if not self.s.get("buy"):
+            raise GameError("Vowels come from the ✨ wedge in this game.")
+        if self.stage != "spin":
+            raise GameError("Buy a vowel at the start of your turn or after a right letter.")
+        if all(v in self.called for v in VOWELS):
+            raise GameError("Every vowel has been called.")
+        if self.bank[p.id] < VOWEL_COST:
+            raise GameError(f"A vowel costs {VOWEL_COST} from this round's winnings.")
+        self.bank[p.id] -= VOWEL_COST
+        self.value, self.stage, self.wedge = 0, "vowel", "bought"
+        self.letter_clock()
+        r.add_log(f"💰 {p.name} buys a vowel.")
 
     def call_letter(self, p, ch):
         r = self.room
@@ -223,6 +253,12 @@ class Lucky(Game):
             r.add_log(f"❌ No {ch}. {p.name}'s turn ends.")
             return self.next_player()
         gain = self.value * n
+        if self.wedge == "bought":
+            r.add_log(f"✅ {n} × {ch} for {p.name}.", "question")
+            self.stage = "spin"
+            t = r.settings["timer"]
+            r.deadline = time.time() + t if t else None
+            return
         extra = ""
         if self.wedge == "jackpot":
             gain += self.jackpot
@@ -302,6 +338,7 @@ class Lucky(Game):
             "called": sorted(self.called), "stage": self.stage, "value": self.value, "wedge": self.wedge,
             "spin": spin, "round": self.round, "rounds": self.s["rounds"], "jackpot": self.jackpot,
             "bank": self.bank, "total": self.total, "seats": self.seats, "last": self.last_answer,
+            "buy": VOWEL_COST if self.s.get("buy") else None, "clock": self.s.get("clock") or self.room.settings["timer"] or None,
         }}
 
     # -- bots
@@ -319,6 +356,12 @@ class Lucky(Game):
             guess = self.try_solve(p)
             if guess:
                 return self.solve(p, guess)
+            vowels_left = [v for v in VOWELS if v not in self.called]  # what anyone at the table knows
+            if (self.s.get("buy") and vowels_left and self.bank[p.id] >= VOWEL_COST + 250
+                    and random.random() < {"easy": 0.15, "normal": 0.3, "hard": 0.45}.get(p.bot, 0.3)):
+                self.buy_vowel(p)
+                self.room.bot_at = time.time() + 1.0
+                return
             return self.do_spin(p)
         if self.room.turn == p.id and self.stage == "spin":
             self.room.bot_at = time.time() + 1.3  # let humans read the reveal before the next spin

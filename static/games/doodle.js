@@ -75,7 +75,17 @@ UI.doodle = (() => {
     const ans = $('ddAnswer');
     ans.hidden = d.stage !== 'reveal';
     $('ddWait').hidden = !(d.stage === 'draw' && !d.strokes.length);
-    ans.textContent = d.stage === 'reveal' ? `${d.answer.toUpperCase()}!` : '';
+    // the reveal card: what it was, its category, and who got it (first)
+    ans.innerHTML = '';
+    if (d.stage === 'reveal') {
+      const first = d.solvers[0] && ctx.player(d.solvers[0][0]);
+      const mineAt = d.solvers.findIndex(([pid]) => pid === S.me.id);
+      ans.append(ctx.el('small', 'dd-card-cat', `🏷️ ${d.category}`), ctx.el('b', 'dd-card-word', d.answer.toUpperCase()),
+        ctx.el('span', 'dd-card-who', !first ? '🙈 Nobody got it'
+          : `⚡ ${first.id === S.me.id ? 'You' : first.name} got it first (+${d.solvers[0][1]})`
+            + (d.solvers.length > 1 ? ` · ${d.solvers.length} got it` : '')
+            + (mineAt > 0 ? ` · you were #${mineAt + 1}` : '')));
+    }
 
     const box = $('ddSolvers'); box.innerHTML = '';
     if (!d.solvers.length) box.append(ctx.el('p', 'hint left', d.stage === 'draw' ? 'Nobody has it yet…' : 'Nobody got it.'));

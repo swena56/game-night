@@ -44,7 +44,9 @@ BANTER = {
     "win": ["gg 😎", "beep boop, victory 🤖", "too easy", "I calculated that 0.3s ago"],
     "lose": ["gg!", "rematch? 🔁", "I demand a recount", "well played, human", "my circuits need a nap"],
 }
-PLAYER_COLORS = ["#ff6b6b", "#4dabf7", "#51cf66", "#fcc419", "#cc5de8", "#ff922b", "#20c997", "#f06595"]
+# Ordered so the first seats stay far apart even with red-green or blue-yellow colour blindness (checked by
+# simulating protanopia, deuteranopia and tritanopia); each colour also has its own shape in the client.
+PLAYER_COLORS = ["#4dabf7", "#ff922b", "#ff6b6b", "#20c997", "#fcc419", "#cc5de8", "#f06595", "#51cf66"]
 BOT_NAMES = ["Robo", "Beep", "Sprocket", "Nova", "Bolt", "Pixel"]
 BOT_LEVELS = ("easy", "normal", "hard")
 REACTIONS = ["😂", "😱", "🤔", "😏", "🔥", "👀", "🙈", "🎉"]

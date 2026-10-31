@@ -54,6 +54,7 @@ label.check input { width: auto; margin: 0; }
 .plist { list-style: none; padding: 0; margin: 0 0 8px; }
 .plist li { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
 .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.pmark { flex: none; width: 1.1em; text-align: center; font-size: 14px; line-height: 1; text-shadow: 0 0 1px #0008; }
 .settings { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
 .hint { color: var(--muted); font-size: 13px; text-align: center; }
 
@@ -222,6 +223,13 @@ label.check input { width: auto; margin: 0; }
 .replay-bar { position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); width: min(94vw, 520px); z-index: 26;
   background: #0a0812ee; border: 1px solid var(--accent); border-radius: var(--radius); padding: 10px 12px; }
 .replay-caption { font-size: 13px; color: var(--muted); min-height: 2.6em; }
+/* a replay says so (#60): a heading in the bar, and a dashed frame with a REPLAY tag round the board */
+.replay-title { font-size: 12px; color: var(--muted); margin-bottom: 4px; line-height: 1.35; }
+.replay-title b { color: var(--accent2); font-size: 13px; }
+body.replaying #arena { position: relative; outline: 2px dashed #8ecae6aa; outline-offset: 4px; border-radius: var(--radius); }
+body.replaying #arena::before { content: '▶ REPLAY'; position: absolute; top: -12px; left: 12px; z-index: 4; padding: 1px 8px;
+  border-radius: 999px; background: #8ecae6; color: #0b2230; font-size: 11px; font-weight: 900; letter-spacing: .08em; }
+body.replaying .layout { padding-bottom: 190px; }  /* the bar covers the bottom of the page */
 .replay-bar input { width: 100%; padding: 0; }
 .replay-bar .row { margin: 6px 0; }
 
@@ -446,10 +454,13 @@ body.calm .cb-plus { display: none; }
 .lk-result { position: absolute; left: 0; right: 0; bottom: 10px; text-align: center; font-size: 26px; font-weight: 900;
   color: #fff; text-shadow: 0 2px 8px #000; pointer-events: none; }
 .lk-cat { text-align: center; margin: 10px 0 6px; font-weight: 800; color: var(--accent); letter-spacing: .04em; }
-.lk-board { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; padding: 12px; border-radius: var(--radius);
+.lucky { --lk-th: clamp(30px, 8.5vw, 46px); }
+/* room for three lines of tiles, so a new phrase doesn't move what's below (#61) */
+.lk-board { display: flex; flex-wrap: wrap; justify-content: center; align-content: center; gap: 6px 14px; padding: 12px;
+  min-height: calc(var(--lk-th) * 3 + 36px); border-radius: var(--radius);
   background: #0e3b2e; box-shadow: inset 0 0 0 3px #1f6b52; }
 .lk-word { display: flex; gap: 3px; }
-.lk-tile { width: clamp(22px, 6.5vw, 36px); height: clamp(30px, 8.5vw, 46px); display: flex; align-items: center; justify-content: center;
+.lk-tile { width: clamp(22px, 6.5vw, 36px); height: var(--lk-th); display: flex; align-items: center; justify-content: center;
   background: #2a9d8f; border-radius: 4px; font-weight: 900; font-size: clamp(16px, 5vw, 26px); color: #111; }
 .lk-tile.on { background: #fff; }
 .lk-tile.flip { animation: lkflip .5s ease-out; }
@@ -460,6 +471,10 @@ body.calm .cb-plus { display: none; }
 /* fixed-height status and action area, so buttons and letter keys appearing don't shift the page */
 #lkStatus { min-height: 2.6em; }
 .lk-actions { min-height: 148px; display: flex; flex-direction: column; justify-content: center; }
+.lk-clock { margin-bottom: 6px; text-align: right; }  /* the letter clock (#63) */
+.lk-clock .dd-bar { margin: 0 0 2px; width: 100%; }
+.lk-clock small { font-size: 12px; font-weight: 700; color: var(--muted); }
+.lk-buy { width: 100%; margin-top: 8px; }
 
 /* bug reports & suggestions */
 .report-link { display: block; margin: 14px auto 0; font-size: 13px; }
@@ -589,8 +604,13 @@ button.danger { background: linear-gradient(180deg, #ff5d82, #ef476f 55%, #d9325
 .dd-paper svg { display: block; width: 100%; height: 100%; }
 .dd-ink { fill: none; stroke: #2b2140; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; }
 @keyframes dddraw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
-.dd-answer { position: absolute; left: 0; right: 0; bottom: 8%; text-align: center; font-size: clamp(26px, 8vw, 44px); font-weight: 900;
-  color: #ef476f; text-shadow: 0 2px 0 #fff, 0 4px 12px #0004; animation: bannerIn .5s cubic-bezier(.2, 1.4, .4, 1); transform: rotate(-4deg); }
+/* the reveal card: a note pinned over the bottom of the drawing */
+.dd-answer { position: absolute; left: 8%; right: 8%; bottom: 5%; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 8px 10px; border-radius: 12px; background: #fffdf6f2; color: #2b2140; box-shadow: 0 6px 18px #0005, inset 0 0 0 2px #ef476f55;
+  animation: bannerIn .5s cubic-bezier(.2, 1.4, .4, 1); transform: rotate(-2deg); text-align: center; }
+.dd-card-cat { font-size: 12px; font-weight: 700; color: #6b5a8a; }
+.dd-card-word { font-size: clamp(24px, 7vw, 40px); font-weight: 900; color: #ef476f; line-height: 1.1; }
+.dd-card-who { font-size: 13px; font-weight: 700; }
 .dd-bar { height: 8px; background: var(--panel); border-radius: 999px; overflow: hidden; width: min(100%, 520px); margin: 10px auto 6px; }
 .dd-bar span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent2), var(--accent)); transition: width .2s linear; }
 .dd-bar.last span { background: var(--danger); }
@@ -1300,7 +1320,9 @@ body.focus .ra-stage { height: max(220px, calc(var(--app-h, 100vh) - 215px)); }
   .lk-stage { grid-row: span 2; height: min(calc(var(--app-h, 100vh) - 130px), 30vw); aspect-ratio: 1; }
   .lk-cat { margin-top: 0; }
   .lk-board { padding: 8px; }
-  .lk-tile { width: clamp(16px, 2.4vw, 30px); height: clamp(22px, 3.2vw, 38px); }
+  .lucky { --lk-th: clamp(22px, 3.2vw, 38px); }
+  .lk-tile { width: clamp(16px, 2.4vw, 30px); }
+  .lk-board { min-height: calc(var(--lk-th) * 3 + 28px); }
   .lk-actions { min-height: 0; }
 }
 body.light .panel { border-color: var(--line); box-shadow: 0 4px 16px #2d214718; }
@@ -1334,3 +1356,14 @@ body.light .logo { background-image: linear-gradient(90deg, #e09a00, #e0457b, #1
 .ru-hand .card-btn.lifted { opacity: .25; }
 .ru-hand .card-btn.drop-before { box-shadow: -5px 0 0 -1px var(--accent); }
 .ru-ghost { position: fixed; z-index: 60; pointer-events: none; width: 44px; height: 64px; transform: rotate(-6deg) scale(1.1); box-shadow: 0 12px 24px #000a; }
+
+/* player dots drawn by games turn into their colour's shape (colour is never the only cue) */
+.dot.shaped, .mini-disc.shaped { width: auto; height: auto; min-width: 1em; background: none !important; box-shadow: none; border: 0;
+  font-size: 13px; line-height: 1; text-align: center; text-shadow: 0 0 1px #0008; }
+
+/* Wordsmith drag and drop */
+.rack-tile, .ws-cell.pending { touch-action: none; }
+.rack-tile.lifted, .ws-cell.lifted { opacity: .3; }
+.ws-cell.drop { outline: 3px solid var(--accent); outline-offset: -2px; }
+.ws-ghost { position: fixed; z-index: 60; pointer-events: none; width: 40px; height: 40px; display: flex; align-items: center;
+  justify-content: center; border-radius: 6px; transform: scale(1.15); box-shadow: 0 10px 22px #000a; }

@@ -6,12 +6,12 @@ import time
 from collections import deque
 
 from .base import Game, GameError
-from .ladder_words import COMMON
+from .ladder_words import BRIDGE, COMMON
 from .wordsmith import words
 
 ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 REVEAL_SECS = 7
-PAR = {3: (3, 5), 4: (4, 6)}   # the everyday-word ladder lengths a puzzle may have
+PAR = {3: (3, 5), 4: (4, 6), 5: (4, 7)}   # the everyday-word ladder lengths a puzzle may have
 FINISH, OVER_PAR, FIRST, HINT = 10, 2, 5, 3
 BOT = {  # chance each step heads the right way, and seconds per step
     "easy": (0.55, 6.0, 11.0),
@@ -23,8 +23,9 @@ _dist = {}   # target -> {word: steps to target}; a module cache, so it isn't sa
 
 
 def familiar(n):
+    """Everyday words of length n (the bridges included): the pool for par, hints and bots."""
     dic = words()
-    return {w for w in COMMON[n] if w in dic}
+    return {w for w in COMMON[n] | BRIDGE.get(n, frozenset()) if w in dic}
 
 
 def neighbours(w, pool=None):
@@ -77,7 +78,7 @@ class Ladder(Game):
     min_players = 1
     max_players = 6
     settings_schema = {
-        "size": ("Word length", [(4, "4 letters"), (3, "3 letters")], 4),
+        "size": ("Word length", [(4, "4 letters"), (3, "3 letters"), (5, "5 letters (harder)")], 4),
         "rounds": ("Ladders", [(3, "3"), (5, "5"), (1, "1")], 3),
         "secs": ("Time per ladder", [(90, "90 s"), (120, "2 min"), (60, "60 s")], 90),
         "daily": ("Puzzles", [(False, "🎲 Random"), (True, "📅 Today's ladders (the same everywhere)")], False),
@@ -124,7 +125,8 @@ class Ladder(Game):
         return getattr(self, "prng", None) or self.rng
 
     def pick_puzzle(self):
-        pool = sorted(w for w in familiar(self.n_len) if w not in self.used)
+        bridge = BRIDGE.get(self.n_len, frozenset())  # plurals and past tenses are steps, never ends
+        pool = sorted(w for w in familiar(self.n_len) if w not in self.used and w not in bridge)
         lo, hi = PAR[self.n_len]
         for _ in range(400):
             a = self.puzzle_rng().choice(pool)

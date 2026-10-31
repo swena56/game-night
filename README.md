@@ -44,7 +44,7 @@ address the server prints. **Play solo** on the home screen starts any game agai
 | 🚢 **Ship, Captain & Crew** | 1–6 | The traditional tavern dice game: three rolls of five dice to find a 6 (ship), then a 5 (captain), then a 4 (crew), in order. The last two dice are your cargo. | Tap cargo dice to reroll one or both with the rolls you have left, or ⚓ dock. 3, 5 or 8 rounds; alone, average 5 cargo a round to win (best play averages about 4.3). Optional 🍺 pub pot: ante a coin a round, best cargo takes the pot. |
 | 🤥 **Liar's Dice** | 2–6 | The traditional bluffing game: everyone rolls in secret, then bids rise ("four 3s") until someone calls 🤥 Liar!. Whoever was wrong loses a die; the last with dice wins. | Optional wild 1s and 🎯 Exact calls (spot on and everyone else loses a die). A helper shows how many of a face to expect, and the showdown stays up with everyone's dice. |
 
-| ✏️ **Doodle Dash** | 2–6 | The computer draws a picture one line at a time (52 original line drawings in 6 categories) and everyone types guesses at once. Earlier guesses score more. | Letter blanks appear halfway through, then the first letter. A wrong guess locks you out for 3 s. Typos, plurals and synonyms are accepted. Scoring: everyone can score (the first gets +2), or ⚡ first correct only. Strokes reach the browser only as they're drawn, so nobody can peek. |
+| ✏️ **Doodle Dash** | 2–6 | The computer draws a picture one line at a time (68 original line drawings in 6 categories) and everyone types guesses at once. Earlier guesses score more. | Letter blanks appear halfway through, then the first letter. A wrong guess locks you out for 3 s. Typos, plurals and synonyms are accepted. Scoring: everyone can score (the first gets +2), or ⚡ first correct only. Strokes reach the browser only as they're drawn, so nobody can peek. |
 | 🎡 **Lucky Letters** | 2–6 | Spin a **3D prize wheel** (three.js), call consonants, solve the hidden phrase. 78 original puzzles in 8 categories. | Vowels can only be called by landing on ✨ VOWEL. Special wedges: 💀 Bust, ⛔ Skip, 🎁 Wild (a free letter), 🦊 Steal (take 500 from the leader), and a growing ⚡ Jackpot. The server picks where the wheel stops, and every phone animates the same spin. |
 | 🗼 **Spire Siege** | 1–6 | **Real-time 3D** (three.js) falling-block battle on a cylindrical tower that wraps around. Pieces are 2-, 3- and 5-block shapes, or pick the 🟦 4-block set. ⇄ **Hold** parks a piece for later. Fill a whole ring to clear it. Clearing 2+ rings, or chaining clears, sends junk rings to a random rival. | The tower spins so your piece always faces you. Power cells: ⚡ surge (rivals fall faster), 🛡️ shield (blocks junk), 💣 blast (removes your bottom two rings). Solo survival works with 1 player. Prefer an upright board? 🧱 **Flat well** mode has side walls and a flat view. |
 | 🏍️ **Light Riders** | 2–6 | **Real-time** light-cycle duels in a **3D neon arena** (three.js; flat fallback). Your bike never stops and leaves a wall of light behind it. Crash into any wall and you're out; the last rider standing wins the round. | ⚡ 3 boosts per round (double speed). Swipe, D-pad or keyboard. Quick double turns are queued, so you can whip round a corner. Medium, small or large arena; chill, normal or fast speed. |
@@ -129,6 +129,8 @@ Every game has **Easy / Normal / Hard bots**:
   - ▶ **Replay** plays the finished game move by move as soon as it opens (#68): pause, step, or drag the slider.
   - It shows the spectator's view, so every secret face, hidden choice and culprit is visible.
   - The last game's replay stays available from the lobby.
+  - It says it's a replay (#60): a heading in the replay bar explains what you're watching, and a dashed frame
+    with a ▶ REPLAY tag surrounds the board.
 - **Score keeping.**
   - A scoreboard for the evening, ranked by ⭐ points (+3 win, +1 played, −2 for walking out mid-game): wins, games played, 🔥 best streak, and wins per game.
   - A match history with final scores (Wordsmith points, Heist gold, Moon Shot distance).
@@ -293,8 +295,10 @@ be checked without a browser.
 5. ✅ **More motion.** Animated captures in Chess, cards dealt into the Last Card hand, and a "your turn"
    chime for each lobby group (strategy, cards, dice, words… each sound different).
 6. **Accessibility.**
-   - Player colours that are safe for colour-blind players, with a shape or pattern as well (never
-     colour alone).
+   - ✅ Player colours that are safe for colour-blind players, with a shape as well (never colour alone). The
+     palette is reordered so the first seats stay far apart under simulated protanopia, deuteranopia and
+     tritanopia (the closest pair among 3 players went from ΔE 5 to 18), and every colour has its own shape
+     (● ▲ ■ ◆ ★ ✚ ⬟ ⬢) in the player chips, the lobby list, and every player dot a game draws.
    - ✅ Screen-reader labels on every board square ("e4, white knight") in Chess, Checkers, Go,
      Tic-Tac-Toe, Drop Four, Reversi, Sea Battle and Ultimate Tic-Tac-Toe.
    - ✅ Keyboard play on those boards: arrow keys move between squares (skipping ones you can't
@@ -399,8 +403,13 @@ Riders and Air Hockey start in it) (#13, #15).
 **Party**
 - 🎡 **Lucky Letters:** done for now (#17, #18, #19). ✅ The 3D wheel's camera now backs off to fit the whole wheel at any stage shape (#27).
   ✅ On a sideways phone (#64) the wheel sits beside the phrase board and the controls beside the game; every
-  game gets that side-by-side layout on short landscape screens.
-- ✏️ **Doodle Dash:** more drawings than 52, and a reveal card for each answer.
+  game gets that side-by-side layout on short landscape screens. ✅ The board keeps room for three lines of tiles, so
+  a new phrase doesn't shift the page (#61). ✅ ⏱️ Time to call a letter (#63): 15 s by default (10, 20 or no limit),
+  with a bar that empties for everyone. ✅ 💰 Buy a vowel (#62): an optional setting; pay 250 from your round bank at the
+  start of a turn or after a right letter (bots buy too, without peeking at the answer).
+- ✏️ **Doodle Dash:** ✅ 68 drawings, up from 52 (star, heart, envelope, bell, anchor, ladder, candle, hat, sock, ghost, dice,
+  book, pencil, spoon, drum, snowman; each checked on the `tests/doodle_sheet.py` contact sheet). ✅ A reveal card for
+  each answer: the word, its category, who got it first and how many got it.
 - 🕵️ **Odd One Out:** ✅ 50 word pairs (up from 36), and an animated "who voted for whom" reveal: a row per
   suspect, most votes first, the voters popping in one by one.
 - 🖍️ **Scribble Relay:** ✅ thin, normal and thick brushes (stored in each stroke's ink number, so older
@@ -437,12 +446,15 @@ Riders and Air Hockey start in it) (#13, #15).
   (Okabe–Ito, per device). ✅ ⚔️ Duel mode (two players): each secretly sets a code, then you race to crack each
   other's in simultaneous rounds; your rival's guesses at your code show too, and both codes open at the end.
 - 🤥 **Fib Finder:** ✅ 118 facts, up from 56 (#51); moved here from Party to balance the lobby. ✅ A Facts setting picks a topic: 🐾 Animals, 🔬 Science & nature, 🏛️ History & inventions or 🔤 Words & names (a duplicate apple fact became the Hundred Years' War).
-- 🪜 **Word Ladder:** ✅ added: par, hints and bots use everyday words only, so revealed ladders never lean on obscure words. ✅ 📅 Today's ladders: the puzzles come from the date, so every room plays the same ones that day. Next: a 5-letter mode once the everyday list is big enough (today it links only 154 pairs).
+- 🪜 **Word Ladder:** ✅ added: par, hints and bots use everyday words only, so revealed ladders never lean on obscure words. ✅ 📅 Today's ladders: the puzzles come from the date, so every room plays the same ones that day. ✅ A 5-letter mode: the everyday list grew from 182 to 802
+  five-letter words, plus 236 plurals and past tenses that may be steps but never a puzzle's ends, linking over 8,000
+  ladders of 4–7 steps.
 - 🔤 **Wordsmith:** ✅ a live score preview as you place tiles (the words and points, or why it won't play), and a
   💡 hint button when you're the only person playing. Both use the new read-only `/api/peek` (a game opts in
   with `peek(p, body)`). ✅ Tile colours (#67): a bar in each player's colour shows who played every tile, and
   this turn's tiles are pale with a dashed outline in your colour, lifted, so they can't be mistaken for the ★.
-  Next: drag-and-drop tiles.
+  ✅ Drag and drop: drag a rack tile onto a square (it rides above your finger so you can see where it lands),
+  drag a placed tile to move it, or off the board to take it back. Tapping still works.
 
 **Cards / dice**
 - 🎯 **Farkle:** ✅ added (#40). ✅ Dice pips show on phones again (#44, shared with Yacht). ✅ The hint shows the
