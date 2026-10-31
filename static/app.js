@@ -203,14 +203,20 @@ const gameInfo = (id = S.gameId) => S.games.find((g) => g.id === id);
 
 // ---------- sound (tiny WebAudio blips, no files)
 let audio;
+// each lobby group has its own "your turn" chime, so a glance isn't needed to know which game is calling
+const TURN_CHIMES = {
+  strategy: [[523, 784], 'sine'], classic: [[660, 880], 'triangle'], cards: [[587, 740, 880], 'triangle'],
+  dice: [[440, 554, 659], 'triangle'], words: [[784, 988], 'sine'], party: [[523, 659, 784], 'triangle'], action: [[880, 1175], 'sine'],
+};
 function blip(kind) {
   if (!prefs.sound) return;
   try {
     audio ||= new (window.AudioContext || window.webkitAudioContext)();
-    const notes = { turn: [660, 880], chat: [520], win: [523, 659, 784, 1047], lose: [392, 330] }[kind];
+    const chime = kind === 'turn' ? TURN_CHIMES[S && gameInfo()?.category] : null;
+    const notes = chime ? chime[0] : { turn: [660, 880], chat: [520], win: [523, 659, 784, 1047], lose: [392, 330] }[kind];
     notes.forEach((f, i) => {
       const o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime + i * 0.11;
-      o.frequency.value = f; o.type = 'triangle';
+      o.frequency.value = f; o.type = chime ? chime[1] : 'triangle';
       g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.15, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
       o.connect(g).connect(audio.destination); o.start(t); o.stop(t + 0.2);
     });

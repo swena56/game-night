@@ -289,8 +289,8 @@ be checked without a browser.
    which a simulated browser can't judge.
 4. **A bottom-sheet layout with tabs** (*Actions · Log · Players*) and a sticky action bar for the main
    action, plus undo toasts (Unmask flips, Wordsmith tiles).
-5. **More motion.** ✅ Animated captures in Chess and ✅ cards dealt into the Last Card hand. Next: a "your turn"
-   chime per game.
+5. ✅ **More motion.** Animated captures in Chess, cards dealt into the Last Card hand, and a "your turn"
+   chime for each lobby group (strategy, cards, dice, words… each sound different).
 6. **Accessibility.**
    - Player colours that are safe for colour-blind players, with a shape or pattern as well (never
      colour alone).
