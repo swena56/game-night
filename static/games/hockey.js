@@ -57,7 +57,7 @@ UI.hockey = (() => {
     const stage = $('hkStage');
     if (!stage || !S?.hockey) return;
     const h = S.hockey, ratio = h.H / h.W;
-    const width = Math.min(stage.clientWidth || 320, (window.innerHeight - 150) / ratio, 520);
+    const width = Math.min(stage.clientWidth || 320, (window.innerHeight - (document.body.classList.contains('focus') ? 70 : 150)) / ratio, 520);
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.style.width = `${width}px`; canvas.style.height = `${width * ratio}px`;
     canvas.width = Math.round(width * dpr); canvas.height = Math.round(width * ratio * dpr);
@@ -181,5 +181,5 @@ UI.hockey = (() => {
   const turnText = (s) => (s.phase === 'playing' ? `🏒 ${s.hockey.score.join(' : ')} — first to ${s.hockey.target}` : null);
   const myMove = (s) => s.phase === 'playing' && s.hockey.me != null;
 
-  return { mount, render, unmount, fast, turnText, myMove };
+  return { mount, render, unmount, fast, turnText, myMove, focus: true };
 })();

@@ -263,11 +263,16 @@ class Chess(Game):
         'Checkmate the enemy king to win. Stalemate, repetition and the 50-move rule are draws.',
         'Castling, en passant and promotion all work — you pick the promotion piece.',
         'You can offer a draw or resign from the side panel.',
+        'With a clock, your time runs only on your turn; run out and you lose (a draw if your opponent has only a king).',
     ]
     name = "Chess"
     icon = "♟️"
     blurb = "The classic, with every rule: castling, en passant, promotion, and draws by stalemate or repetition."
-    settings_schema = {}
+    settings_schema = {
+        "clock": ("Clock", [(0, "Untimed"), (180, "⚡ 3 min + 2s"), (300, "5 min"), (600, "10 min + 5s")], 0),
+    }
+    INCREMENT = {180: 2, 300: 0, 600: 5}
+    clock, inc, turn_at = None, 0, 0.0  # games saved before clocks existed have none
 
     def start(self, seated, rng):
         rng.shuffle(seated)
@@ -277,8 +282,42 @@ class Chess(Game):
         self.last = None
         self.captured = {"w": [], "b": []}  # pieces each side has lost
         self.draw_offer = None
+        base = self.s.get("clock", 0)
+        self.clock = {pid: float(base) for pid in self.seats} if base else None
+        self.inc = self.INCREMENT.get(base, 0)
         self.room.add_log(f"♔ {seated[0].name} plays White, ♚ {seated[1].name} plays Black.", "big")
         self.room.begin_turn(seated[0].id)
+        self.start_clock()
+
+    # -- clock: the mover's time runs from turn_at; the room deadline is their flag-fall
+
+    def start_clock(self):
+        if self.clock and self.room.phase == "playing":
+            self.turn_at = time.time()
+            self.room.deadline = self.turn_at + self.clock[self.room.turn]
+
+    def left(self, pid):
+        t = self.clock[pid]
+        if pid == self.room.turn and self.room.phase == "playing":
+            t -= time.time() - self.turn_at
+        return max(0.0, t)
+
+    def on_restore(self, shift):
+        if self.clock:
+            self.turn_at += shift  # downtime doesn't count against the mover
+            self.room.deadline = self.turn_at + self.clock[self.room.turn]
+
+    def on_timeout(self):
+        if not self.clock:
+            return super().on_timeout()
+        r = self.room
+        p = r.players[r.turn]
+        opp = r.players.get(self.seats[1 - self.seats.index(p.id)])
+        self.clock[p.id] = 0.0
+        foe = "wb"[self.seats.index(opp.id)]
+        if all(not x or x[0] != foe or x[1] == "K" for row in self.pos.b for x in row):
+            return r.finish(None, f"⏰ {p.name} ran out of time, but {opp.name} can't checkmate — draw.")
+        r.finish(opp, f"⏰ {p.name} ran out of time — {opp.name} wins!")
 
     def color(self, p):
         return "wb"[self.seats.index(p.id)] if p.id in self.seats else None
@@ -320,6 +359,8 @@ class Chess(Game):
         r = self.room
         if self.draw_offer and self.draw_offer != p.id:
             self.draw_offer = None  # moving on counts as declining
+        if self.clock:
+            self.clock[p.id] = self.left(p.id) + self.inc
         before = self.pos
         self.pos, captured = apply(before, move)
         text = move_text(before, move, captured)
@@ -344,6 +385,7 @@ class Chess(Game):
         if insufficient(self.pos.b):
             return r.finish(None, "🤝 Draw — not enough material to checkmate.")
         r.advance()
+        self.start_clock()
 
     def meta(self, p):
         c = self.color(p)
@@ -357,6 +399,7 @@ class Chess(Game):
             "board": self.pos.b, "seats": self.seats, "turnColor": self.pos.turn, "me": mine,
             "moves": [list(m) for m in moves], "last": self.last, "check": check,
             "captured": self.captured, "drawOffer": self.draw_offer,
+            "clock": {pid: round(self.left(pid), 1) for pid in self.seats} if self.clock else None, "inc": self.inc,
         }}
 
     # -- bot
@@ -371,6 +414,8 @@ class Chess(Game):
         if p.bot == "easy" and random.random() < 0.3:
             return self.play(p, random.choice(moves))
         budget, max_depth = {"easy": (0.5, 1), "normal": (1.5, 2), "hard": (4.0, 4)}[p.bot]
+        if self.clock:
+            budget = min(budget, max(0.2, self.left(p.id) / 25))  # don't flag while thinking
         deadline = time.time() + budget
         best = random.choice(moves)
         noise = 60 if p.bot == "easy" else 8

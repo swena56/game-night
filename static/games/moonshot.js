@@ -6,12 +6,15 @@ UI.moonshot = (() => {
 
   function mount(main, side) {
     builtFor = '';
-    main.innerHTML = '<div class="moon-track"></div>';
-    side.innerHTML = `<div class="panel moon-panel">
-      <div id="msDice" class="dice"></div>
-      <div id="msFuel" class="fuel"></div>
-      <p id="msPreview" class="preview"></p>
-      <div class="row"><button id="msRoll" class="primary">🎲 Roll</button><button id="msBank">🚀 Fly!</button></div>
+    // The dice and buttons sit right under the track (not in the side panel), so on a phone they're
+    // on screen without scrolling past the board.
+    main.innerHTML = `<div class="moon-track"></div>
+      <div class="panel moon-panel">
+        <div id="msDice" class="dice"></div>
+        <div class="moon-info"><div id="msFuel" class="fuel"></div><p id="msPreview" class="preview"></p></div>
+        <div class="row moon-btns"><button id="msRoll" class="primary">🎲 Roll</button><button id="msBank">🚀 Fly!</button></div>
+      </div>`;
+    side.innerHTML = `<div class="panel">
       <ul class="rules">
         <li>🎲 Each roll adds fuel. Any <b>1</b> loses this turn's fuel.</li>
         <li>💥 <b>Double 1s</b> crash you back to the start (a 🛡️ shield saves you).</li>

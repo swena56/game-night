@@ -130,6 +130,7 @@ class Room:
         self.aids = {}  # pid -> {action id: result}, so retried requests apply once
         self.chat = []
         self.ready = set()     # players asking for another round
+        self.votes = {}        # player id -> game id: what to play next (game over only)
         self.history = []      # finished games, oldest first
         self.replay = []       # JSON frames of the current/last game
         self._replay_key = None
@@ -139,10 +140,11 @@ class Room:
     def __getstate__(self):
         state = self.__dict__.copy()
         del state["cond"]
+        state["_saved_at"] = time.time()
         return state
 
     def __setstate__(self, state):
-        self.__dict__.update({"chat": [], "ready": set(), "history": [], "replay": [],
+        self.__dict__.update({"chat": [], "ready": set(), "votes": {}, "history": [], "replay": [],
                               "_replay_key": None, "saved": {}, "fast": None, "fast_ver": 0})
         self.__dict__.update(state)
         for k, (_, _, d) in ROOM_SETTINGS.items():
@@ -152,8 +154,13 @@ class Room:
         for p in self.players.values():
             p.streams = 0
             p.last_seen = now
-        if self.deadline:  # give the current player their full turn back
-            self.deadline = now + self.settings["timer"]
+        # Time stood still while the server was down: shift deadlines (and the game's own clocks) forward,
+        # and give a turn-timer turn its full time back.
+        shift = max(0.0, now - self.__dict__.pop("_saved_at", now))
+        if self.deadline:
+            self.deadline = max(self.deadline + shift, now + self.settings["timer"])
+        if self.game and self.phase == "playing" and hasattr(self.game, "on_restore"):
+            self.game.on_restore(shift)
         self.bot_at = now + 2
 
     # -- connection handling
@@ -277,6 +284,7 @@ class Room:
         self.turn = None
         self.deadline = None
         self.ready = set()
+        self.votes = {}
         self.add_log(text, "big")
         gid = self.settings["game"]
         scores = self.game.final_scores() if self.game else {}
@@ -314,7 +322,7 @@ class Room:
         if not self.game or not self.game.replayable:
             return
         v = self.view(REPLAY_VIEWER)
-        for k in ("games", "roomSettings", "reactions", "chat", "ready", "history", "hasReplay"):
+        for k in ("games", "roomSettings", "reactions", "chat", "ready", "votes", "history", "hasReplay"):
             v.pop(k, None)
         v["log"] = v["log"][-2:]
         v["timeLeft"] = None
@@ -370,6 +378,25 @@ class Room:
         if t == "start":
             self.require_host(p, "lobby")
             return self.start()
+        if t == "next_vote":  # pick the next game; toggles, and a unanimous vote starts it
+            if self.phase != "over":
+                raise GameError("Voting opens when the game ends.")
+            gid = a.get("game")
+            if gid not in GAMES or not self.fits(gid):
+                raise GameError("That game doesn't fit this many players.")
+            if self.votes.get(p.id) == gid:
+                del self.votes[p.id]
+                return
+            self.votes[p.id] = gid
+            voters = [o.id for o in self.players.values() if not o.bot or o.standin]
+            if all(self.votes.get(i) == gid for i in voters):
+                return self.play_vote()
+            return
+        if t == "play_vote":
+            self.require_host(p, "over")
+            if not self.votes:
+                raise GameError("Nobody has voted yet.")
+            return self.play_vote()
         if t == "rematch":  # same game, same settings, straight back in
             self.require_host(p, "over")
             return self.start()
@@ -388,17 +415,46 @@ class Room:
         if self.phase != phase:
             raise GameError("Not right now.")
 
+    def fits(self, gid):
+        game = GAMES[gid](self)
+        game.s = self.settings if gid == self.settings["game"] else self.settings_for(gid)  # what it would start with
+        try:
+            game.check_players(self.seated())
+            return True
+        except GameError:
+            return False
+
+    def settings_for(self, gid):
+        return {**default_settings(gid), **self.saved.get(gid, {}), **{k: self.settings[k] for k in ROOM_SETTINGS}}
+
+    def play_vote(self):
+        """Start the game with the most votes. A tie goes to the host's pick, then lobby order."""
+        tally = {}
+        for gid in self.votes.values():
+            tally[gid] = tally.get(gid, 0) + 1
+        top = max(tally.values())
+        tied = [g for g in GAMES if tally.get(g) == top]
+        gid = self.votes.get(self.host) if self.votes.get(self.host) in tied else tied[0]
+        info = GAMES[gid]
+        self.add_log(f"🗳️ The vote picked {info.icon} {info.name} ({top} vote{'s' * (top > 1)})!", "big")
+        self.switch_game(gid)
+        self.start()
+
+    def switch_game(self, gid):
+        """Change the selected game, remembering each game's settings for next time."""
+        if gid == self.settings["game"]:
+            return
+        old = self.settings
+        self.saved[old["game"]] = {k: v for k, v in old.items() if k not in ROOM_SETTINGS}
+        self.settings = self.settings_for(gid)
+
     def change_settings(self, p, s):
         self.require_host(p, "lobby")
         if "game" in s:
             if s["game"] not in GAMES:
                 raise GameError("Unknown game.")
             if s["game"] != self.settings["game"]:
-                old = self.settings
-                self.saved[old["game"]] = {k: v for k, v in old.items() if k not in ROOM_SETTINGS}
-                self.settings = {**default_settings(s["game"]), **self.saved.get(s["game"], {}),
-                                 **{k: old[k] for k in ROOM_SETTINGS}}
-                return
+                return self.switch_game(s["game"])
         schema = {**GAMES[self.settings["game"]].settings_schema, **ROOM_SETTINGS}
         for k, v in s.items():
             if k == "game":
@@ -424,6 +480,7 @@ class Room:
         self.game = game
         self.phase = "playing"
         self.ready = set()
+        self.votes = {}
         self.replay = []
         self._replay_key = None
         game.start(list(seated), random.Random())
@@ -457,6 +514,7 @@ class Room:
         self.game = None
         self.turn = None
         self.deadline = None
+        self.votes = {}
         for p in self.players.values():
             p.reset()
         for p in [self.players[i] for i in self.order]:
@@ -511,6 +569,7 @@ class Room:
         hide_ghost_chat = self.phase == "playing" and not ghost
         v["chat"] = [m for m in self.chat if not (m["ghost"] and hide_ghost_chat)][-50:]
         v["ready"] = sorted(self.ready)
+        v["votes"] = self.votes
         v["history"] = self.history[-15:]
         v["hasReplay"] = len(self.replay) > 1
         if self.game:

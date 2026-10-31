@@ -49,18 +49,26 @@ UI.fibfinder = (() => {
     $('fbForm').hidden = !writing;
     $('fbMine').textContent = f.mine ? `✅ Your fib: “${f.mine}”. You can change it until everyone's in.` : 'Make it believable. If you type the real answer, you\'ll be asked for another.';
 
-    const box = $('fbOptions'); box.innerHTML = '';
+    const box = $('fbOptions');
     if (f.stage === 'pick') {
-      f.options.forEach((text, i) => {
-        const mine = f.mineIdx.includes(i);
-        const b = ctx.el('button', 'fb-opt', text);
-        if (mine) b.append(ctx.el('small', '', ' (your fib)'));
+      // Rebuild only when the answers change; otherwise update in place, so a tap that lands while
+      // bots are picking isn't lost to a replaced button.
+      const key = JSON.stringify([f.options, f.mineIdx]);
+      if (box.dataset.key !== key) {
+        box.innerHTML = ''; box.dataset.key = key;
+        f.options.forEach((text, i) => {
+          const b = ctx.el('button', 'fb-opt', text);
+          if (f.mineIdx.includes(i)) b.append(ctx.el('small', '', ' (your fib)'));
+          b.onclick = () => ctx.quiet(ctx.act('pick', { i }));
+          box.append(b);
+        });
+      }
+      [...box.children].forEach((b, i) => {
         b.classList.toggle('on', f.myPick === i);
-        b.disabled = mine || !playing();
-        b.onclick = () => ctx.quiet(ctx.act('pick', { i }));
-        box.append(b);
+        b.disabled = f.mineIdx.includes(i) || !playing();
       });
     } else if (f.reveal) {
+      box.innerHTML = ''; box.dataset.key = '';
       for (const o of f.reveal) {
         const card = ctx.el('div', `fb-res${o.truth ? ' truth' : ''}`);
         card.append(ctx.el('b', '', o.text));
@@ -77,6 +85,8 @@ UI.fibfinder = (() => {
         card.append(row);
         box.append(card);
       }
+    } else {
+      box.innerHTML = ''; box.dataset.key = '';
     }
     const waiting = f.waiting.map((id) => ctx.player(id)?.name).filter(Boolean);
     $('fbWaiting').textContent = S.phase === 'playing' && waiting.length ? `Waiting for: ${waiting.join(', ')}` : '';

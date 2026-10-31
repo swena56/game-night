@@ -149,9 +149,23 @@ const MOVES = {
     }
     click(enabled(d, '#lkSpin')[0]);
   },
+  holdem(d) {
+    const opts = enabled(d, '#heCall, #heFold, #heRaise, .he-presets button');
+    const call = d.querySelector('#heCall');
+    if (!call.disabled && Math.random() < 0.6) return click(call);
+    const preset = pick(enabled(d, '.he-presets button'));
+    if (preset && Math.random() < 0.5) { click(preset); return click(d.querySelector('#heRaise')); }
+    click(pick(opts));
+  },
+  billiards(d, S, n, w) {
+    const power = d.querySelector('#blPower');
+    power.value = String(30 + Math.floor(Math.random() * 70));
+    power.dispatchEvent(new w.Event('input', { bubbles: true }));
+    click(enabled(d, '#blShoot')[0]);
+  },
   spire(d, S, n, w) {
     const key = (k) => w.dispatchEvent(new w.KeyboardEvent('keydown', { key: k, bubbles: true }));
-    key(pick(['ArrowLeft', 'ArrowRight', 'ArrowUp', ' ', ' ']));
+    key(pick(['ArrowLeft', 'ArrowRight', 'ArrowUp', ' ', ' ', 'c']));
   },
 };
 
@@ -201,6 +215,9 @@ async function playSolo(game, seconds = 60) {
     d.querySelector('#chatForm').dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
     await waitFor(() => d.querySelector('#chatList').textContent.includes('gg from the test'), 5000) || report.notes.push('chat message never appeared');
     click(d.querySelector('#prefsBtn')); report.prefs = d.querySelectorAll('#prefsList input').length;
+    // next-game vote: suggestions render (voting itself would start another game, so it's checked server-side)
+    report.vote = d.querySelectorAll('#overVote .vote-chip').length;
+    if (!report.vote) report.notes.push('no next-game vote choices');
     // rematch, then back to lobby
     click(d.querySelector('#rematchBtn'));
     await waitFor(() => S().phase === 'playing', 8000) || report.notes.push('rematch did not start');
@@ -293,11 +310,11 @@ async function feedbackTour() {
   const lt = await lobbyTour();
   console.log('LOBBY', JSON.stringify(lt));
   for (const g of games.length ? games : Object.keys(MOVES)) {
-    const r = await playSolo(g, g === 'wordsmith' ? 40 : g === 'spire' ? 25 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
+    const r = await playSolo(g, g === 'wordsmith' ? 40 : g === 'spire' ? 25 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
     console.log(`\n== ${g}: phase=${r.phase} moves=${r.moves} dialogs=${r.dialogs || 0} screen="${r.screen}" ${r.banner ? `banner="${r.banner}"` : ''}`);
     console.log(`   help: ${r.help} | log ticker: "${r.ticker}"`);
     if (r.replay) console.log(`   replay: ${r.replay}`);
-    if (r.rematch) console.log(`   rematch: ${r.rematch} | prefs toggles: ${r.prefs}`);
+    if (r.rematch) console.log(`   rematch: ${r.rematch} | prefs toggles: ${r.prefs} | vote choices: ${r.vote}`);
     if (r.notes.length) console.log('   notes:', r.notes.join('; '));
     for (const e of r.errors.filter((x) => !x.includes('WebGL')).slice(0, 5)) console.log('   ERROR', e.split('\n').slice(0, 4).join(' | '));
   }

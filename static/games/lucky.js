@@ -2,7 +2,7 @@
 // The server picks where the wheel stops; every client animates the same spin to it.
 UI.lucky = (() => {
   let S, ctx, gfx = null, raf = 0, resizeObs = null;
-  let rest = 0, anim = null, seenSpin = 0, prevBoard = '';
+  let rest = 0, anim = null, seenSpin = 0, prevBoard = '', cheered = 0;
   const N = 16, SLICE = (Math.PI * 2) / N;
   const COLORS = ['#e63946', '#f4a261', '#2a9d8f', '#264653', '#e9c46a', '#8338ec', '#3a86ff', '#06d6a0'];
   const SPECIAL = { bust: '#111111', skip: '#6c757d', wild: '#9b5de5', steal: '#f77f00', jackpot: '#ffd60a', vowel: '#00b4d8' };
@@ -10,6 +10,7 @@ UI.lucky = (() => {
   const $ = (id) => document.getElementById(id);
   const colorOf = (w, i) => SPECIAL[w.value] || COLORS[i % COLORS.length];
   const textOf = (w) => (typeof w.value === 'number' ? String(w.value) : w.label);
+  const num = (n) => Number(n || 0).toLocaleString();
 
   // ---------- where to stop: same answer on every client
   function targetAngle(spin, from) {
@@ -100,7 +101,11 @@ UI.lucky = (() => {
   function resize() {
     const stage = $('lkStage'); if (!stage || !gfx) return;
     const w = stage.clientWidth, h = stage.clientHeight;
-    gfx.renderer.setSize(w, h); gfx.camera.aspect = w / h; gfx.camera.updateProjectionMatrix();
+    gfx.renderer.setSize(w, h); gfx.camera.aspect = w / h;
+    // Back the camera off until the whole wheel (rim ±5.3, pointer up to 6) fits with a margin, at any aspect.
+    const t = Math.tan((gfx.camera.fov * Math.PI) / 360), dist = Math.max(6.4 / t, 5.8 / (t * (w / h || 1)));
+    gfx.camera.position.set(0, -1.0, dist); gfx.camera.lookAt(0, 0.35, 0);
+    gfx.camera.updateProjectionMatrix();
   }
 
   function tick(now) {
@@ -120,7 +125,7 @@ UI.lucky = (() => {
 
   // ---------- mount / render
   function mount(main, side) {
-    rest = 0; anim = null; seenSpin = 0; prevBoard = '';
+    rest = 0; anim = null; seenSpin = 0; prevBoard = ''; cheered = 0;
     main.innerHTML = `<div class="lucky">
       <div id="lkStage" class="lk-stage"><div id="lkSvg"></div><div id="lkResult" class="lk-result"></div></div>
       <div class="lk-cat" id="lkCat"></div>
@@ -129,9 +134,11 @@ UI.lucky = (() => {
     side.innerHTML = `<div class="panel">
       <div id="lkStatus" class="seat-row"></div>
       <div id="lkJackpot" class="hint left"></div>
-      <button id="lkSpin" class="primary big">🎡 SPIN</button>
-      <div id="lkKeys" class="lk-keys"></div>
-      <form id="lkSolveForm" class="row"><input id="lkSolve" placeholder="Solve the puzzle…" autocomplete="off"><button>Solve</button></form>
+      <div class="lk-actions">
+        <button id="lkSpin" class="primary big">🎡 SPIN</button>
+        <div id="lkKeys" class="lk-keys"></div>
+        <form id="lkSolveForm" class="row"><input id="lkSolve" placeholder="Solve the puzzle…" autocomplete="off"><button>Solve</button></form>
+      </div>
       <table id="lkScores" class="scores"></table></div>`;
     $('lkSpin').onclick = () => ctx.quiet(ctx.act('spin'));
     $('lkSolveForm').onsubmit = (e) => {
@@ -170,7 +177,10 @@ UI.lucky = (() => {
       else { rest = targetAngle(L.spin, from) % (Math.PI * 2); anim = null; }
       $('lkResult').textContent = '';
     }
-    if (L.stage !== 'wheel' && L.spin && L.wedge != null) {
+    if (L.stage === 'solved' && L.last) {
+      $('lkResult').textContent = `🎉 ${L.last.by} +${num(L.last.won)}`;
+      if (cheered !== L.round) { cheered = L.round; ctx.confetti?.(); }
+    } else if (L.stage !== 'wheel' && L.spin && L.wedge != null) {
       const w = L.wedges[L.spin.wedge];
       $('lkResult').textContent = L.stage === 'spin' && typeof w.value === 'number' ? '' : textOf(w);
     }
@@ -193,11 +203,12 @@ UI.lucky = (() => {
     const mine = ctx.myTurn, stage = L.stage;
     const turnName = ctx.player(S.turn)?.name ?? '';
     $('lkStatus').textContent = S.phase !== 'playing' ? `Answer: ${L.board}`
+      : stage === 'solved' ? `🎉 ${L.last?.by ?? ''} solved it! Next puzzle coming up…`
       : stage === 'wheel' ? `🎡 ${turnName} is spinning…`
       : !mine ? `${turnName}'s turn`
-      : stage === 'letter' ? `Call a consonant — ${L.value} each${L.wedge === 'jackpot' ? ` + ⚡ ${L.jackpot}` : L.wedge === 'steal' ? ' + 🦊 steal' : ''}`
+      : stage === 'letter' ? `Call a consonant — ${num(L.value)} each${L.wedge === 'jackpot' ? ` + ⚡ ${num(L.jackpot)}` : L.wedge === 'steal' ? ' + 🦊 steal' : ''}`
       : stage === 'vowel' ? 'Call a vowel ✨' : 'Spin the wheel or solve!';
-    $('lkJackpot').textContent = `⚡ Jackpot: ${L.jackpot}`;
+    $('lkJackpot').textContent = `⚡ Jackpot: ${num(L.jackpot)}`;
     $('lkSpin').hidden = !(mine && stage === 'spin');
     $('lkSolveForm').hidden = !(mine && stage === 'spin');
     const keys = $('lkKeys'); keys.innerHTML = '';
@@ -216,11 +227,13 @@ UI.lucky = (() => {
       const p = ctx.player(pid); if (!p) continue;
       const tr = ctx.el('tr', pid === S.turn ? 'now' : '');
       const n = ctx.el('td', '', p.name); n.style.color = p.color;
-      tr.append(n, ctx.el('td', '', L.bank[pid] || 0), ctx.el('td', '', L.total[pid]));
+      tr.append(n, ctx.el('td', '', num(L.bank[pid])), ctx.el('td', '', num(L.total[pid])));
       table.append(tr);
     }
   }
 
-  const turnText = (s) => s.phase === 'playing' && s.lucky.stage === 'wheel' ? '🎡 Spinning…' : null;
-  return { mount, render, unmount, turnText };
+  const turnText = (s) => s.phase !== 'playing' ? null
+    : s.lucky.stage === 'wheel' ? '🎡 Spinning…' : s.lucky.stage === 'solved' ? '🎉 Solved!' : null;
+  const ownTimer = (s) => s.lucky.stage === 'solved';  // the reveal pause isn't anyone's turn clock
+  return { mount, render, unmount, turnText, ownTimer };
 })();

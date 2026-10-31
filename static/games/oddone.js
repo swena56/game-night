@@ -69,17 +69,24 @@ UI.oddone = (() => {
     const voting = g.stage === 'vote';
     $('ooVote').hidden = !voting;
     if (voting) {
-      const btns = $('ooVoteBtns'); btns.innerHTML = '';
-      for (const pid of g.order) {
-        const p = ctx.player(pid);
-        if (!p || pid === S.me.id || p.eliminated) continue;
-        const b = ctx.el('button', 'oo-vote');
-        b.append(dot(p), p.name);
+      // Update the buttons in place: rebuilding them on every update (bots chat and vote constantly)
+      // replaced a button between a phone's touch and its click, so taps were lost.
+      const btns = $('ooVoteBtns');
+      const want = g.order.filter((pid) => { const p = ctx.player(pid); return p && pid !== S.me.id && !p.eliminated; });
+      for (const b of [...btns.children]) if (!want.includes(b.dataset.pid)) b.remove();
+      want.forEach((pid, i) => {
+        let b = [...btns.children].find((x) => x.dataset.pid === pid);
+        if (!b) {
+          const p = ctx.player(pid);
+          b = ctx.el('button', 'oo-vote');
+          b.dataset.pid = pid;
+          b.append(dot(p), p.name);
+          b.onclick = () => ctx.quiet(ctx.act('vote', { target: pid }));
+        }
+        if (btns.children[i] !== b) btns.insertBefore(b, btns.children[i] || null);
         b.classList.toggle('on', g.myVote === pid);
         b.disabled = !playing();
-        b.onclick = () => ctx.quiet(ctx.act('vote', { target: pid }));
-        btns.append(b);
-      }
+      });
       const waiting = g.waiting.map((id) => ctx.player(id)?.name).filter(Boolean);
       $('ooWaiting').textContent = waiting.length ? `Waiting for: ${waiting.join(', ')}` : '';
     }

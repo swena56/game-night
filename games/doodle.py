@@ -86,6 +86,9 @@ class Doodle(Game):
     def now(self):
         return time.time() + self.skew
 
+    def on_restore(self, shift):
+        self.skew -= shift  # the picture resumes where it was when the server stopped
+
     def new_picture(self):
         self.round += 1
         self.pic = DRAWINGS[self.queue[self.round - 1]]

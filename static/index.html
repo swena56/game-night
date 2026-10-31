@@ -7,11 +7,23 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+  <!-- LOADING (shown while rejoining a room, until the first update arrives) -->
+  <section id="loading" class="screen center" hidden>
+    <div class="loading-card">
+      <div class="spinner" aria-hidden="true"></div>
+      <p id="loadingText">Joining the room…</p>
+      <div id="loadingSlow" hidden>
+        <p class="hint">This is taking a while. The server may be asleep or out of reach.</p>
+        <div class="row"><button id="loadingRetry" class="primary">↻ Try again</button><button id="loadingHome">🏠 Home</button></div>
+      </div>
+    </div>
+  </section>
+
   <!-- HOME -->
   <section id="home" class="screen center" hidden>
     <div class="panel narrow">
       <h1 class="logo">🎲 Game Night</h1>
-      <p class="tag">20 games · play with friends or bots</p>
+      <p class="tag">22 games · play with friends or bots</p>
       <label>Your name <input id="name" maxlength="16" autocomplete="nickname" placeholder="e.g. Sam"></label>
       <button id="createBtn" class="primary big">Create a room</button>
       <div class="or">or play solo against bots</div>
@@ -19,7 +31,10 @@
         <select id="soloGame"></select>
         <select id="soloLevel"><option value="easy">Easy</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select>
       </div>
-      <button id="soloBtn" class="big">🤖 Play solo</button>
+      <div class="row solo-row">
+        <button id="soloBtn" class="big">🤖 Play solo</button>
+        <button id="soloSetupBtn" class="big" title="Add the bots, then change the game's options in the lobby before starting">⚙️ Options first</button>
+      </div>
       <div class="or">or join a friend</div>
       <div class="row">
         <input id="code" maxlength="4" placeholder="CODE" class="code-input" autocapitalize="characters">
@@ -66,11 +81,14 @@
       <span class="logo small" id="gameCode"></span>
       <span id="turnText" class="turn"></span>
       <span id="timer" class="timer"></span>
+      <button id="focusBtn" class="icon-btn" title="Bigger board (hide players and log)" aria-label="Bigger board" aria-pressed="false"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="7" y="7" width="10" height="10" rx="1" fill="currentColor" stroke="none"/></svg></button>
+      <button id="fullBtn" class="icon-btn" title="Full screen" aria-label="Full screen" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
       <button id="helpBtn" class="icon-btn" title="How to play" aria-label="How to play">❓</button>
     </header>
     <div id="overBanner" class="over" hidden>
       <div id="overText"></div>
       <div id="overScores" class="over-scores"></div>
+      <div id="overVote" class="over-vote"></div>
       <div class="over-actions">
         <button id="rematchBtn" class="primary">🔁 Rematch</button>
         <button id="lobbyBtn">🏠 Lobby</button>
@@ -146,6 +164,8 @@
   <script src="/games/boxes.js"></script>
   <script src="/games/doodle.js"></script>
   <script src="/games/hockey.js"></script>
+  <script src="/games/billiards.js"></script>
+  <script src="/games/holdem.js"></script>
   <script src="/games/riders.js"></script>
   <script src="/games/tictactoe.js"></script>
   <script src="/games/heist.js"></script>

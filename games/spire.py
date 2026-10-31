@@ -3,7 +3,7 @@
 Each player's browser runs its own tower; the server routes attacks, shows everyone's
 boards and decides who's still standing. Bots run their towers here, server-side.
 
-Rules: pieces (2-, 3- and 5-block shapes) fall onto a 12-column ring that wraps around.
+Rules: pieces (2-, 3- and 5-block shapes, or an all-4-block set) fall onto a 12-column ring that wraps around.
 Filling a whole ring clears it. Clearing 2+ rings at once (or chaining clears) sends junk
 rings to a random rival. Power cells trigger when their ring clears: ⚡ surge (rivals fall
 faster), 🛡️ shield (blocks the next junk), 💣 blast (removes your bottom two rings).
@@ -22,7 +22,16 @@ SHAPES = {
     "e": [(0, 0), (2, 0), (0, 1), (1, 1), (2, 1)],  # U five
     "f": [(0, 0), (1, 0), (2, 0), (1, 1), (1, 2)],  # T five
     "g": [(0, 0), (1, 0), (1, 1), (1, 2), (2, 2)],  # S five
+    # the 4-block set ("j" is taken by junk)
+    "h": [(0, 0), (1, 0), (2, 0), (3, 0)],          # straight four
+    "i": [(0, 0), (1, 0), (0, 1), (1, 1)],          # square
+    "k": [(0, 0), (1, 0), (2, 0), (1, 1)],          # T four
+    "l": [(0, 0), (1, 0), (1, 1), (2, 1)],          # S four
+    "m": [(1, 0), (2, 0), (0, 1), (1, 1)],          # Z four
+    "n": [(0, 0), (1, 0), (2, 0), (0, 1)],          # J four
+    "o": [(0, 0), (1, 0), (2, 0), (2, 1)],          # L four
 }
+PIECE_SETS = {"mixed": "abcdefg", "four": "hiklmno"}
 POWERS = {"1": "surge", "2": "shield", "3": "blast"}
 ROW_CHARS = set(".j") | set(SHAPES) | set(POWERS)
 SPEEDS = {"chill": 1.0, "normal": 0.75, "fast": 0.5}
@@ -55,8 +64,9 @@ ROTATIONS = {k: rotations(v) for k, v in SHAPES.items()}
 class Tower:
     """Server-side tower for bots (and stand-ins for players who dropped out)."""
 
-    def __init__(self, rng, rows=None):
+    def __init__(self, rng, rows=None, flat=False):
         self.rng = rng
+        self.flat = flat  # a flat well has side walls instead of wrapping around
         self.grid = [[None] * W for _ in range(H + BUFFER)]
         if rows:
             for y in range(H):
@@ -71,6 +81,8 @@ class Tower:
         g = grid or self.grid
         for dx, dy in cells:
             y = py + dy
+            if self.flat and not 0 <= px + dx < W:
+                return False
             if y < 0 or y >= H + BUFFER or g[y][(px + dx) % W]:
                 return False
         return True
@@ -110,8 +122,7 @@ class Tower:
     def rows(self):
         return "".join(c or "." for y in range(H) for c in self.grid[y])
 
-    @staticmethod
-    def evaluate(grid, lines):
+    def evaluate(self, grid, lines):
         heights = []
         holes = 0
         for x in range(W):
@@ -122,7 +133,7 @@ class Tower:
                     break
             heights.append(h)
             holes += sum(1 for y in range(h) if not grid[y][x])
-        bump = sum(abs(heights[x] - heights[(x + 1) % W]) for x in range(W))
+        bump = sum(abs(heights[x] - heights[(x + 1) % W]) for x in range(W - 1 if self.flat else W))
         top = max(heights)
         return -0.51 * sum(heights) + 0.9 * lines - 0.5 * holes - 0.18 * bump - (8 if top >= H - 2 else 0)
 
@@ -152,6 +163,8 @@ class Spire(Game):
         '← → move around the tower, ↑ rotate, Space drops. On phones: swipe, tap, swipe down.',
         'Fill a whole ring to clear it. Clear 2+ at once to send junk rings to a rival.',
         'Glowing power cells: ⚡ speed rivals up, 🛡️ block junk, 💣 blast your bottom rings.',
+        'Hold (C, Shift, ⇄ or swipe up) parks the falling piece for later, once per piece.',
+        'Prefer an upright board? Pick 🧱 Flat well. Prefer plain pieces? Pick the 4-block set.',
     ]
     name = "Spire Siege"
     icon = "🗼"
@@ -163,6 +176,8 @@ class Spire(Game):
     settings_schema = {
         "speed": ("Start speed", [("chill", "🐢 Chill"), ("normal", "Normal"), ("fast", "🔥 Fast")], "normal"),
         "powers": ("Power cells", [(True, "On (⚡🛡️💣)"), (False, "Off")], True),
+        "board": ("Board", [("tower", "🗼 Tower (wraps around)"), ("flat", "🧱 Flat well (side walls)")], "tower"),
+        "pieces": ("Pieces", [("mixed", "🧩 Mixed (2, 3 and 5 blocks)"), ("four", "🟦 4 blocks each")], "mixed"),
     }
 
     def start(self, seated, rng):
@@ -264,7 +279,7 @@ class Spire(Game):
     def bot_step(self, o, now):
         g = o.g
         if g.tower is None:
-            g.tower = Tower(self.rng, g.rows)
+            g.tower = Tower(self.rng, g.rows, self.s.get("board") == "flat")
             g.tower.shield = g.shield
             g.applied = max([e["id"] for e in g.events], default=0)  # a stand-in starts fresh
         t = g.tower
@@ -281,7 +296,7 @@ class Spire(Game):
                 g.surge_until = now + ev["secs"]
         if t.dead:
             return self.knock_out(o)
-        kind = self.rng.choice(list(SHAPES))
+        kind = self.rng.choice(PIECE_SETS[self.s.get("pieces", "mixed")])
         move = t.best_move(kind, o.bot)
         if not move:
             return self.knock_out(o)
@@ -329,5 +344,5 @@ class Spire(Game):
             "W": W, "H": H, "buffer": BUFFER, "seed": self.seed + (self.seats.index(p.id) if mine else 0),
             "startIn": max(0.0, self.t0 - now), "elapsed": max(0.0, now - self.t0),
             "speed": SPEEDS[self.s["speed"]], "powers": self.s["powers"], "surgeSecs": SURGE_SECS,
-            "boards": boards, "events": p.g.events if mine else [], "playing": mine and not p.eliminated,
+            "flat": self.s.get("board") == "flat", "pieces": PIECE_SETS[self.s.get("pieces", "mixed")], "boards": boards, "events": p.g.events if mine else [], "playing": mine and not p.eliminated,
         }}

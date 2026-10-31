@@ -8,7 +8,7 @@ UI.doodle = (() => {
     drawnRound = 0; drawnCount = 0;
     main.innerHTML = `<div class="dd">
       <div class="dd-head"><span id="ddCat" class="dd-cat"></span><span id="ddRound" class="dd-round"></span></div>
-      <div class="dd-paper"><svg id="ddSvg" viewBox="-4 -4 108 108"></svg><div id="ddAnswer" class="dd-answer" hidden></div></div>
+      <div class="dd-paper"><svg id="ddSvg" viewBox="-4 -4 108 108"></svg><div id="ddAnswer" class="dd-answer" hidden></div><div id="ddWait" class="dd-wait" hidden>🖍️ Get ready…</div></div>
       <div class="dd-bar"><span id="ddBar"></span></div>
       <div id="ddHint" class="dd-hint"></div>
       <form id="ddForm" class="row dd-form" autocomplete="off">
@@ -74,6 +74,7 @@ UI.doodle = (() => {
     hint.classList.toggle('reveal', d.stage === 'reveal');
     const ans = $('ddAnswer');
     ans.hidden = d.stage !== 'reveal';
+    $('ddWait').hidden = !(d.stage === 'draw' && !d.strokes.length);
     ans.textContent = d.stage === 'reveal' ? `${d.answer.toUpperCase()}!` : '';
 
     const box = $('ddSolvers'); box.innerHTML = '';

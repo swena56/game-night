@@ -1,5 +1,5 @@
 UI.chess = (() => {
-  let S, ctx, boardEl, sel = null, promo = null, shownLast, view3d = null, slide = null;
+  let S, ctx, boardEl, sel = null, promo = null, shownLast, view3d = null, slide = null, clockTimer = 0, clockAt = 0;
   const want3d = () => { try { return localStorage.getItem('chess.view') !== '2d'; } catch { return true; } };
   const GLYPH = { K: '♚', Q: '♛', R: '♜', B: '♝', N: '♞', P: '♟' };
   const TEXT = '︎'; // force text (not emoji) rendering of chess glyphs
@@ -7,7 +7,7 @@ UI.chess = (() => {
 
   function mount(main, side) {
     sel = null; promo = null; shownLast = undefined; slide = null;
-    main.innerHTML = '<div class="chess-wrap"><div class="chessboard"></div><div class="chess3d" id="ch3d" hidden></div></div>';
+    main.innerHTML = '<div id="chClock" class="ch-clocks" hidden></div><div class="chess-wrap"><div class="chessboard"></div><div class="chess3d" id="ch3d" hidden></div></div>';
     side.innerHTML = `<div class="panel">
       <div id="chStatus" class="seat-row"></div>
       <div id="chTaken" class="taken"></div>
@@ -28,6 +28,7 @@ UI.chess = (() => {
       setView(!view3d);
     };
     if (want3d()) load3d();
+    clockTimer = setInterval(tickClock, 200);
     $('chResign').onclick = async () => (await ctx.ask('Resign this game?', { ok: '🏳️ Resign', danger: true })) && ctx.quiet(ctx.act('resign'));
   }
 
@@ -36,7 +37,7 @@ UI.chess = (() => {
   const rc = (i) => { const r = Math.floor(i / 8), c = i % 8; return flip() ? [7 - r, 7 - c] : [r, c]; };
 
   function render(s, c) {
-    S = s; ctx = c;
+    S = s; ctx = c; clockAt = performance.now();
     const ch = S.chess, moves = ch.moves;
     if (!ctx.myTurn) { sel = null; promo = null; }
     const targets = new Set(sel ? moves.filter((m) => m[0] === sel[0] && m[1] === sel[1]).map((m) => m[2] * 8 + m[3]) : []);
@@ -127,7 +128,27 @@ UI.chess = (() => {
     gl.sync(list, [...boardEl.children], flip() ? 'b' : 'w', s);
   }
 
-  function unmount() { if (gl) gl.dispose(); gl = null; view3d = null; }
+  function unmount() { if (gl) gl.dispose(); gl = null; view3d = null; clearInterval(clockTimer); }
+
+  // chess clock: the server sends both clocks; the mover's counts down locally between updates
+  const fmt = (t) => { t = Math.max(0, t); const m = Math.floor(t / 60), sec = t - m * 60; return t < 20 ? `${m}:${sec.toFixed(1).padStart(4, '0')}` : `${m}:${String(Math.floor(sec)).padStart(2, '0')}`; };
+  function tickClock() {
+    const box = $('chClock'), ch = S?.chess;
+    if (!box) return;
+    box.hidden = !ch?.clock;
+    if (!ch?.clock) return;
+    const since = (performance.now() - clockAt) / 1000, running = S.phase === 'playing' ? S.turn : null;
+    box.innerHTML = '';
+    // the opponent's clock first, then mine (Black, then White when watching)
+    const order = ch.me === 'b' ? [...ch.seats] : [...ch.seats].reverse();
+    for (const pid of order) {
+      const p = ctx.player(pid);
+      const t = ch.clock[pid] - (pid === running ? since : 0);
+      const row = ctx.el('div', 'ch-clock' + (pid === running ? ' on' : '') + (pid === running && t < 20 ? ' low' : ''));
+      row.append(ctx.el('span', '', `${ch.seats[0] === pid ? '♔' : '♚'} ${p?.name ?? '?'}${ch.inc ? ` · +${ch.inc}s` : ''}`), ctx.el('b', '', fmt(t)));
+      box.append(row);
+    }
+  }
 
   function onSquare(i) {
     if (!ctx.myTurn || promo) return;
@@ -142,5 +163,7 @@ UI.chess = (() => {
     ctx.rerender();
   }
 
-  return { mount, render, unmount };
+  const ownTimer = (s) => !!s.chess?.clock;  // the board shows both clocks; skip the top-bar timer
+
+  return { mount, render, unmount, ownTimer };
 })();

@@ -9,11 +9,11 @@ const $ = (s) => document.querySelector(s);
 const REACTIONS = ['😂', '😱', '🤔', '😏', '🔥', '👀', '🙈', '🎉'];
 const QUICK_CHAT = ['gg', 'nice! 👏', 'hmm… 🤔', 'your turn 😴', 'rematch? 🔁', 'no way 😱'];
 const SOLO_GAMES = [['unmask', '🎭 Unmask'], ['oddone', '🕵️ Odd One Out'], ['relay', '🖍️ Scribble Relay'], ['fibfinder', '🤥 Fib Finder'], ['doodle', '✏️ Doodle Dash'], ['lucky', '🎡 Lucky Letters'], ['wordsmith', '🔤 Wordsmith'], ['chess', '♟️ Chess'], ['checkers', '⛀ Checkers'],
-  ['go', '⚫ Go'], ['lastcard', '🃏 Last Card'], ['seabattle', '🚢 Sea Battle'], ['dropfour', '🔴 Drop Four'],
-  ['boxes', '🔳 Dots & Boxes'], ['tictactoe', '❌ Tic-Tac-Toe'], ['heist', '🥷 Night Heist'], ['moonshot', '🚀 Moon Shot'], ['spire', '🗼 Spire Siege'], ['hockey', '🏒 Air Hockey'], ['riders', '🏍️ Light Riders']];
+  ['go', '⚫ Go'], ['lastcard', '🃏 Last Card'], ['holdem', "♠️ Texas Hold'em"], ['seabattle', '🚢 Sea Battle'], ['dropfour', '🔴 Drop Four'],
+  ['boxes', '🔳 Dots & Boxes'], ['tictactoe', '❌ Tic-Tac-Toe'], ['heist', '🥷 Night Heist'], ['moonshot', '🚀 Moon Shot'], ['spire', '🗼 Spire Siege'], ['hockey', '🏒 Air Hockey'], ['billiards', '🎱 Billiards'], ['riders', '🏍️ Light Riders']];
 const CATEGORIES = [['party', '🎉 Party'], ['action', '⚡ Action'], ['board', '♟️ Board'], ['cards', '🃏 Cards'],
   ['dice', '🎲 Dice'], ['words', '🔤 Words']];
-const SOLO_BOTS = { oddone: 3, relay: 3, fibfinder: 3, riders: 3, doodle: 2, heist: 3, moonshot: 2, lastcard: 2, spire: 2, lucky: 2 };
+const SOLO_BOTS = { oddone: 3, relay: 3, fibfinder: 3, riders: 3, doodle: 2, heist: 3, moonshot: 2, lastcard: 2, holdem: 3, spire: 2, lucky: 2 };
 const MODE_DESC = {
   duel: 'Duel: each of you hides a face. Questions are answered automatically and truthfully. A wrong accusation loses.',
   manhunt: 'Manhunt: everyone hunts the same hidden culprit. Your question is public, but only you hear the answer. Guess wrong and you become a ghost 👻.',
@@ -191,7 +191,9 @@ async function reportDialog(kind = 'bug', draft = '') {
 }
 const logHasEntries = () => $('#log').childElementCount > 0;
 function show(id) {
-  for (const s of ['home', 'lobby', 'game']) $('#' + s).hidden = s !== id;
+  for (const s of ['loading', 'home', 'lobby', 'game']) $('#' + s).hidden = s !== id;
+  if (id !== 'game') document.body.classList.remove('focus');
+  if (id !== 'loading') clearTimeout(show.slow);
   $('#fabs').hidden = id === 'home';
   if (id === 'home') { $('#chatPanel').hidden = true; }
 }
@@ -221,6 +223,7 @@ function connect() {
   if (es) es.close();
   clearTimeout(retryTimer);
   firstState = true; mounted = null; lastLogId = 0; lastBeat = performance.now();
+  if (!S) showLoading();
   const source = es = new EventSource('/api/events?' + new URLSearchParams(session));
   source.onopen = () => { retryDelay = 1000; };
   source.onmessage = (e) => { beat(); onState(JSON.parse(e.data)); };
@@ -233,6 +236,14 @@ function connect() {
     if (source.readyState === EventSource.CLOSED && es === source) verifySeat();
   };
 }
+function showLoading() {
+  show('loading');
+  $('#loadingSlow').hidden = true;
+  show.slow = setTimeout(() => { $('#loadingSlow').hidden = false; }, 8000);
+}
+$('#loadingRetry').onclick = () => { if (session) connect(); };
+$('#loadingHome').onclick = () => leaveLocal();
+
 function beat() { lastBeat = performance.now(); setBanner(false); }
 function setBanner(down) {
   clearTimeout(setBanner.t);
@@ -387,22 +398,28 @@ function renderScores(host) {
     const li = el('li');
     li.append(el('b', '', `${h.icon} ${h.name}`), ` — ${h.winner ? '🏆 ' + h.winner : 'no winner'}`);
     const scored = h.players.filter((x) => x.score != null);
-    if (scored.length) li.append(el('div', 'hint left', scored.map((x) => `${x.name} ${x.score}`).join(' · ')));
+    if (scored.length) li.append(el('div', 'hint left', scored.map((x) => `${x.name} ${fmtNum(x.score)}`).join(' · ')));
     hist.append(li);
   }
   $('#resetScoresBtn').hidden = !host;
 }
 
 // ---------- game shell
-function renderGame(view = S, readOnly = false) {
+// Updates that only carry chat, reactions or the clock don't redraw the game: rebuilding buttons between a
+// phone's touch and its click loses the tap (bots chat a lot). `force` (ctx.rerender) always redraws.
+let renderedKey = null;
+const renderKey = (view, readOnly) => JSON.stringify(view, (k, v) => (k === 'chat' || k === 'reactions' || k === 'timeLeft' ? undefined : v)) + readOnly;
+function renderGame(view = S, readOnly = false, force = false) {
   const ui = UI[view.gameId];
   if (mounted !== view.gameId) {
     unmountUI();
     $('#arena').innerHTML = ''; $('#sideGame').innerHTML = '';
     ui.mount($('#arena'), $('#sideGame'));
     mounted = view.gameId;
+    renderedKey = null;  // a fresh mount always draws
   }
   const me = view.me, playing = view.phase === 'playing', myTurn = !readOnly && playing && view.turn === me.id;
+  applyFocus(view);
   $('#gameCode').textContent = `${gameInfo(view.gameId).icon} ${S.code}`;
 
   const tt = $('#turnText');
@@ -432,10 +449,13 @@ function renderGame(view = S, readOnly = false) {
     chips.append(c);
   }
 
+  const key = renderKey(view, readOnly);
+  if (!force && key === renderedKey && mounted === view.gameId) return;
+  renderedKey = key;
   const lookup = (id) => view.players.find((p) => p.id === id);
   const readOnlyAct = () => { toast('This is a replay.'); return Promise.reject(new Error('replay')); };
   ui.render(view, { act: readOnly ? readOnlyAct : act, input: readOnly ? () => {} : input, quiet, toast, el, ask, player: lookup, myTurn,
-    rerender: () => (replay ? showFrame() : renderGame()) });
+    confetti: readOnly ? () => {} : confetti, rerender: () => (replay ? showFrame() : renderGame(S, false, true)) });
   renderLog(ui, view);
 
   $('#overBanner').hidden = readOnly || view.phase !== 'over';
@@ -450,7 +470,7 @@ function renderOver() {
   const last = S.history.at(-1);
   const scored = last?.players.filter((x) => x.score != null) ?? [];
   $('#overScores').textContent = scored.length
-    ? [...scored].sort((a, b) => b.score - a.score).map((x) => `${x.name}: ${x.score}`).join(' · ') : '';
+    ? [...scored].sort((a, b) => b.score - a.score).map((x) => `${x.name}: ${fmtNum(x.score)}`).join(' · ') : '';
   const readyNames = S.ready.map((id) => player(id)?.name).filter(Boolean);
   $('#rematchBtn').hidden = !host; $('#lobbyBtn').hidden = !host;
   $('#readyBtn').textContent = S.ready.includes(me.id) ? '✋ Ready!' : "🙋 I'm in!";
@@ -458,6 +478,44 @@ function renderOver() {
   $('#replayBtn').hidden = !S.hasReplay;
   $('#overWait').textContent = (readyNames.length ? `Ready for more: ${readyNames.join(', ')}. ` : '')
     + (host ? '' : 'Waiting for the host…');
+  renderVote(host);
+}
+
+// Next-game vote: a few suggestions that fit the table (games with votes first), plus every other fitting
+// game in a drop-down. Tap again to take a vote back. A unanimous vote starts the game on the server.
+function renderVote(host) {
+  const box = $('#overVote'); box.innerHTML = '';
+  const seated = S.players.filter((p) => !p.spectator).length;
+  const fit = S.games.filter((g) => g.min <= seated && seated <= g.max);
+  const votes = S.votes || {}, mine = votes[S.me.id];
+  const count = (id) => Object.values(votes).filter((v) => v === id).length;
+  const recent = S.history.slice(-4).map((h) => h.game);
+  // suggestions: voted games, then ones not played lately, in a shuffle that stays put until the next game
+  let seed = S.history.length * 7919 + 13;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const fresh = fit.filter((g) => !recent.includes(g.id)).map((g) => [rnd(), g]).sort((a, b) => a[0] - b[0]).map(([, g]) => g);
+  const picks = [...fit.filter((g) => count(g.id)), ...fresh, ...fit].filter((g, i, all) => all.indexOf(g) === i).slice(0, 5);
+  box.append(el('div', 'hint left', '🗳️ Vote for the next game'));
+  const row = el('div', 'vote-row');
+  const vote = (id) => quiet(act('next_vote', { game: id }));
+  for (const g of picks) {
+    const n = count(g.id);
+    const b = el('button', 'vote-chip' + (mine === g.id ? ' on' : ''), `${g.icon} ${g.name}${n ? ` · ${n}` : ''}`);
+    b.title = Object.entries(votes).filter(([, v]) => v === g.id).map(([pid]) => player(pid)?.name).filter(Boolean).join(', ');
+    b.onclick = () => vote(g.id);
+    row.append(b);
+  }
+  const more = el('select', 'vote-more');
+  more.append(Object.assign(el('option', '', '➕ Other game…'), { value: '' }));
+  for (const g of fit.filter((g) => !picks.includes(g))) more.append(Object.assign(el('option', '', `${g.icon} ${g.name}`), { value: g.id }));
+  more.onchange = () => { if (more.value) vote(more.value); };
+  if (more.options.length > 1) row.append(more);
+  box.append(row);
+  if (host && Object.keys(votes).length) {
+    const play = el('button', 'primary', '▶ Play the vote winner');
+    play.onclick = () => quiet(act('play_vote'));
+    box.append(play);
+  }
 }
 
 function renderLog(ui, view) {
@@ -582,6 +640,7 @@ function flashTurn() {
   if (!g) { g = el('div', 'turn-glow'); g.id = 'turnGlow'; document.body.append(g); }
   g.classList.remove('on'); void g.offsetWidth; g.classList.add('on');  // restart the animation
 }
+const fmtNum = (n) => (typeof n === 'number' ? n.toLocaleString() : n);
 function confetti() {
   if (!motionOK()) return;
   const colors = ['#ffb703', '#ef476f', '#06d6a0', '#8ecae6', '#cc5de8', '#fff'];
@@ -616,15 +675,18 @@ $('#name').value = load('unmask.name') || '';
 for (const [id, label] of SOLO_GAMES) { const o = el('option', '', label); o.value = id; $('#soloGame').append(o); }
 $('#soloGame').value = load('unmask.soloGame') || 'unmask';
 $('#createBtn').onclick = () => api('/api/create', { name: $('#name').value }).then(enter).catch((e) => toast(e.message));
-$('#soloBtn').onclick = async () => {
+// Play solo starts at once; Options first stops in the lobby (bots seated) to change settings before Start.
+async function solo(startNow) {
   const game = $('#soloGame').value;
   store('unmask.soloGame', game);
   try {
     enter(await api('/api/create', { name: $('#name').value, game }));
     for (let i = 0; i < (SOLO_BOTS[game] || 1); i++) await act('add_bot', { level: $('#soloLevel').value });
-    await act('start');
+    if (startNow) await act('start');
   } catch (e) { toast(e.message); }
-};
+}
+$('#soloBtn').onclick = () => solo(true);
+$('#soloSetupBtn').onclick = () => solo(false);
 $('#addBotBtn').onclick = () => quiet(act('add_bot', { level: $('#botLevel').value }));
 $('#joinBtn').onclick = () => api('/api/join', { name: $('#name').value, code: $('#code').value.trim() }).then(enter).catch((e) => toast(e.message));
 $('#code').addEventListener('keydown', (e) => e.key === 'Enter' && $('#joinBtn').click());
@@ -696,9 +758,52 @@ $('#reportLink').onclick = () => reportDialog('bug');
 $('#reportBtn').onclick = () => { $('#prefsPanel').hidden = true; reportDialog('bug'); };
 applyPrefs();
 
+// ---------- full screen, and fitting the screen when the on-screen keyboard opens
+// Focus mode hides the player chips, log and floating buttons so the board gets the whole screen.
+// Real-time games (UI module `focus: true`) start in it; each game remembers the player's choice.
+const focusOn = (gameId) => load('focus:' + gameId) ?? !!UI[gameId]?.focus;
+function applyFocus(view = S) {
+  const on = !!view && view.phase === 'playing' && !replay && focusOn(view.gameId);
+  document.body.classList.toggle('focus', on);
+  $('#focusBtn').ariaPressed = String(on);
+}
+$('#focusBtn').onclick = () => {
+  if (!S) return;
+  store('focus:' + S.gameId, !focusOn(S.gameId));
+  if (S.phase !== 'playing') toast(focusOn(S.gameId) ? 'Bigger board turns on when the game starts.' : 'Bigger board off.');
+  applyFocus();
+};
+const FULL_ENTER_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>';
+const FULL_EXIT_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>';
+if (document.fullscreenEnabled && document.documentElement.requestFullscreen) {
+  $('#fullBtn').hidden = false;
+  $('#fullBtn').onclick = () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen({ navigationUI: 'hide' })).catch(() => {});
+  document.addEventListener('fullscreenchange', () => {
+    // SVG icons: the ⛶ / 🗗 glyphs are missing from many Android fonts and showed as boxes
+    const on = !!document.fullscreenElement;
+    $('#fullBtn').innerHTML = on ? FULL_EXIT_ICON : FULL_ENTER_ICON;
+    $('#fullBtn').title = $('#fullBtn').ariaLabel = on ? 'Exit full screen' : 'Full screen';
+  });
+}
+// --app-h is the height actually visible (minus browser bars and the keyboard); boards size against it.
+// While typing on a phone, chrome around the game hides so the board and the input both stay in view.
+function fitViewport() {
+  const vv = window.visualViewport, h = vv ? vv.height : innerHeight;
+  document.documentElement.style.setProperty('--app-h', `${Math.round(h)}px`);
+  const typing = !!document.activeElement?.matches?.('#arena input, #arena textarea');
+  const kb = typing && (!vv || innerHeight - vv.height > 120 || matchMedia('(pointer: coarse)').matches);
+  document.body.classList.toggle('kb-open', kb);
+  if (kb && vv) requestAnimationFrame(() => { window.scrollTo(0, 0); document.activeElement?.scrollIntoView?.({ block: 'nearest' }); });
+}
+window.visualViewport?.addEventListener('resize', fitViewport);
+addEventListener('resize', fitViewport);
+document.addEventListener('focusin', fitViewport);
+document.addEventListener('focusout', () => setTimeout(fitViewport, 50));
+fitViewport();
+
 setInterval(() => {
   const t = $('#timer');
-  if (!S || replay || S.timeLeft == null || S.phase !== 'playing') { t.textContent = ''; return; }
+  if (!S || replay || S.timeLeft == null || S.phase !== 'playing' || UI[S.gameId]?.ownTimer?.(S)) { t.textContent = ''; return; }
   const left = Math.max(0, S.timeLeft - (performance.now() - stateAt) / 1000);
   t.textContent = '⏱ ' + Math.ceil(left) + 's';
   t.classList.toggle('urgent', left < 10);

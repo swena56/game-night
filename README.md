@@ -38,13 +38,15 @@ address the server prints. **Play solo** on the home screen starts any game agai
 
 | ✏️ **Doodle Dash** | 2–6 | The computer draws a picture one line at a time (52 original line drawings in 6 categories) and everyone types guesses at once. Earlier guesses score more. | Letter blanks appear halfway through, then the first letter. A wrong guess locks you out for 3 s. Typos, plurals and synonyms are accepted. Scoring: everyone can score (the first gets +2), or ⚡ first correct only. Strokes reach the browser only as they're drawn, so nobody can peek. |
 | 🎡 **Lucky Letters** | 2–6 | Spin a **3D prize wheel** (three.js), call consonants, solve the hidden phrase. 78 original puzzles in 8 categories. | Vowels can only be called by landing on ✨ VOWEL. Special wedges: 💀 Bust, ⛔ Skip, 🎁 Wild (a free letter), 🦊 Steal (take 500 from the leader), and a growing ⚡ Jackpot. The server picks where the wheel stops, and every phone animates the same spin. |
-| 🗼 **Spire Siege** | 1–6 | **Real-time 3D** (three.js) falling-block battle on a cylindrical tower that wraps around. Pieces are 2-, 3- and 5-block shapes. Fill a whole ring to clear it. Clearing 2+ rings, or chaining clears, sends junk rings to a random rival. | The tower spins so your piece always faces you. Power cells: ⚡ surge (rivals fall faster), 🛡️ shield (blocks junk), 💣 blast (removes your bottom two rings). Solo survival works with 1 player. |
+| 🗼 **Spire Siege** | 1–6 | **Real-time 3D** (three.js) falling-block battle on a cylindrical tower that wraps around. Pieces are 2-, 3- and 5-block shapes, or pick the 🟦 4-block set. ⇄ **Hold** parks a piece for later. Fill a whole ring to clear it. Clearing 2+ rings, or chaining clears, sends junk rings to a random rival. | The tower spins so your piece always faces you. Power cells: ⚡ surge (rivals fall faster), 🛡️ shield (blocks junk), 💣 blast (removes your bottom two rings). Solo survival works with 1 player. Prefer an upright board? 🧱 **Flat well** mode has side walls and a flat view. |
 | 🏍️ **Light Riders** | 2–6 | **Real-time** light-cycle duels in a **3D neon arena** (three.js; flat fallback). Your bike never stops and leaves a wall of light behind it. Crash into any wall and you're out; the last rider standing wins the round. | ⚡ 3 boosts per round (double speed). Swipe, D-pad or keyboard. Quick double turns are queued, so you can whip round a corner. Medium, small or large arena; chill, normal or fast speed. |
 | 🏒 **Air Hockey** | 2 | **Real-time** table hockey: drag your mallet around your half, bank shots off the walls. Server-side physics at 60 fps. | 🏒🏒 Double Trouble puts two pucks on the table. Each player sees the table from their own end. |
-| ♟️ **Chess** | 2 | Full rules: castling, en passant, promotion, check/mate, stalemate, 50-move rule, threefold repetition, insufficient material. Draw offers and resignation. | Move generation is checked against standard perft counts. Black sees the board from their side. 🧊 **3D board** (three.js) by default: tap a piece, then its square; drag sideways to turn the board. The flat board is one tap away and is used automatically without WebGL. |
+| 🎱 **Billiards** | 2 | Eight-ball pool on a top-down table with real physics (cushions, ball-to-ball collisions, six pockets). Drag to aim, set the power, shoot. | The server simulates every shot and sends the ball paths, so every phone plays back the same shot. A 🎯 aim guide (full, short or off) shows where both balls go. Fouls give ✋ ball in hand. The table stands upright on phones. |
+| ♟️ **Chess** | 2 | Full rules: castling, en passant, promotion, check/mate, stalemate, 50-move rule, threefold repetition, insufficient material. Draw offers and resignation. Optional ⏱️ clock: 3+2, 5+0 or 10+5. | Move generation is checked against standard perft counts. Black sees the board from their side. 🧊 **3D board** (three.js) by default: tap a piece, then its square; drag sideways to turn the board. The flat board is one tap away and is used automatically without WebGL. |
 | ⛀ **Checkers** | 2 | American rules: compulsory captures, multi-jumps in one move, kings, and a 40-move no-progress draw. | Legal pieces and landing squares are highlighted. |
 | ⚫ **Go** | 2 | 9×9, 13×13 or 19×19. Tromp–Taylor area scoring, positional superko, no suicide, 6.5 komi. | A live "score if it ended now" readout. |
 | 🃏 **Last Card** | 2–6 | Shedding game from the public-domain Crazy Eights / Mau-Mau family, with a standard 52-card deck. Optional action cards: 7 draw-two (stackable), 8 skip, Q reverse, J wild. | Call **“Last card!”** in time, or any opponent can 🚨 catch you for +2. |
+| ♠️ **Texas Hold'em** | 2–6 | No-limit poker, the traditional game: blinds, two private cards, five shared cards, four betting rounds, all-ins with proper side pots. | Blinds rise every 6, 10 or 15 hands so every game ends. Uncalled chips come back, odd chips go to the first winner after the button, and showdown hands are named. Starting stacks of 1,000, 2,000 or 5,000. |
 | 🚢 **Sea Battle** | 2 | The classic pencil-and-paper fleet hunt: hide 5 ships, then take turns firing. | Firing rules: 1 shot, hit = fire again, or Salvo (1 shot per ship afloat). Optional 📡 sonar counts the ship squares in a 3×3 area. |
 
 Every game has **Easy / Normal / Hard bots**:
@@ -57,6 +59,8 @@ Every game has **Easy / Normal / Hard bots**:
 - **Scribble Relay:** bots draw from the Doodle Dash picture book, so anything not in it comes out as some other picture. They recognise each other's drawings, and stronger bots more often "get" a human's drawing.
 - **Fib Finder:** bots write plausible decoy answers. Like people, they sometimes just know the fact; hard bots are also suspicious of answers that don't sound like a real guess.
 - **Night Heist:** the bot reads the pot size and the table size.
+- **Billiards:** bots aim with the ghost-ball method, checking that both paths are clear and the cut isn't too thin, and pick a power that gets the ball to the pocket. With ball in hand they choose the spot with the best shot. The hard bot runs its five best ideas through the real physics engine and also weighs the next shot it leaves itself.
+- **Texas Hold'em:** bots estimate their share of the pot by simulating random runouts from their own two cards and the board only (no peeking), against the number of players still in. They compare that with the pot odds, raise strong hands by ½ to 1 pot, and stronger bots bluff now and then and shove the nuts on the river. Easy bots misjudge their hands and call too loosely.
 - **Chess:** alpha-beta search with iterative deepening (hard bot: up to 4 moves deep, 4s budget). It finishes off a lone king and avoids repetition draws when ahead.
 - **Checkers:** alpha-beta search (hard bot: up to 8 moves deep).
 - **Go:** heuristic play: captures, rescuing groups in atari, avoiding self-atari, shape. It recognises settled territory and passes. On 9×9 and 13×13 the hard bot shortlists the best heuristic moves and picks among them by Monte Carlo playouts (about 2.5 s per move, successive halving).
@@ -252,18 +256,92 @@ be checked without a browser.
    - A colour picker and rename in the lobby.
    - A QR code for the invite link.
    - Spectator count and "👀 watching" names.
-7. **Game-specific polish.**
-   - Chess: a move list in standard notation, premoves and an optional chess clock.
-   - Go: a territory overlay at the end, and a request-undo button.
-   - Wordsmith: drag-and-drop tiles with a live score preview.
-   - Sea Battle: drag-to-place ships.
-   - Last Card: a fanned, swipeable hand.
-   - Unmask: pinch-zoom on the board.
+7. **Game-specific polish:** see the per-game plan below.
 8. **Installable app (PWA).** Home-screen install, full-screen play, and keep the screen awake
     during a game. Cache the app shell so reconnecting is instant.
 9. **Rendering performance.** Update the log, chat and player chips in place instead of rebuilding
     them on every update. Send changes rather than the full state for large boards (19×19 Go,
     Wordsmith).
+
+## Per-game plan (with player feedback)
+
+Numbers like **#13** are reports in the feedback inbox (`data/feedback.jsonl`).
+
+**Done from feedback:** 3D chess (#3) and chess clocks (#5), Air Hockey (#1), Light Riders (#4), the
+Doodle Dash keyboard fit (#7), a loading screen instead of a blank one (#8), full screen (#9),
+swipes that can't scroll the page (#10), the 🧱 flat well (#11), a full-screen icon that is an SVG
+instead of a glyph many Android fonts lack (#16), a 4.5 s solve celebration in Lucky Letters before
+the next puzzle (#17), a fixed-height Lucky Letters action area so the page stops jumping (#18),
+thousands separators for money and scores (#19), and **focus mode** (the ▣ button in the top bar
+hides the player chips, log and floating buttons so the board fills the screen; Spire Siege, Light
+Riders and Air Hockey start in it) (#13, #15).
+
+**Across all games**
+- A real-phone screenshot pass at 485 px wide. Every phone report came from a 485–555 px screen (#6, #18).
+- Reserve space for status lines and action rows in the other games too, the way Lucky Letters does now (#18).
+- A short results card between rounds in every multi-round game, like the Lucky Letters solve pause (#17).
+- 🗳️ ✅ **Next-game voting** (#25): the game-over banner suggests five games that fit the table
+  (skipping recent ones) plus an "Other game…" list. Tap to vote, tap again to take it back. When every
+  human picks the same game it starts at once; otherwise the host taps **▶ Play the vote winner** (a
+  tie goes to the host's pick). Each game keeps its own settings. Bots don't vote. (The room action is
+  `next_vote`: an earlier `vote` name swallowed Odd One Out's in-game vote, #33/#34.)
+- ✅ Taps no longer get lost while bots act (#33, #34): the game screen skips redraws for chat- and
+  reaction-only updates, and Odd One Out / Fib Finder update their buttons in place.
+- ✅ **⚙️ Options first** on the home screen sets up a solo game in the lobby so you can change its
+  options before starting (#32).
+- 🏅 **Overall points** (#31): a running points total across games (for example 3 for a win, 1 for
+  finishing), shown on the scoreboard, with a penalty for leaving a game before it ends. Autopilot
+  takeovers after a dropped connection shouldn't count as quitting.
+
+**Action / real-time**
+- 🎱 **Billiards:** ✅ added (#12). ✅ Dragging now turns the cue like a dial around the ball, so
+  touching the stick no longer flips the aim 180° (#28). ✅ It starts in focus mode, so the floating
+  buttons no longer cover Shoot (#29), and the cue is a full-size tapered stick (#30). Next: pinch zoom (#28), spin (follow / draw),
+  calling the pocket for the 8, and a 3D table.
+- 🗼 **Spire Siege:** ✅ a 🟦 4-block piece set beside the mixed 2/3/5-block set (#13), a ⇄ hold slot
+  (C / Shift / swipe up), and a sharper flat well on high-DPI screens. #26 asks for the 4-block pieces
+  again (that game ran before the option was live). Consider making 🟦 4-block the default. Next: a stronger ring-clear
+  effect, and bots that use hold.
+- 🏍️ **Light Riders:** check the swipe fixes on a phone (#14); scale the swipe threshold with screen
+  size; a vibration tick on each turn; a countdown overlay.
+- 🏒 **Air Hockey:** goal replay, a score-to-win setting, haptics on hits.
+
+**Party**
+- 🎡 **Lucky Letters:** done for now (#17, #18, #19). ✅ The 3D wheel's camera now backs off to fit the whole wheel at any stage shape (#27).
+- ✏️ **Doodle Dash:** more drawings than 52, and a reveal card for each answer.
+- 🕵️ **Odd One Out:** more word pairs, and an animated "who voted for whom" reveal.
+- 🖍️ **Scribble Relay:** brush sizes, and saving a finished chain as an image.
+- 🤥 **Fib Finder:** more than 56 facts, and category picks.
+- 🥷 **Night Heist:** a night-by-night history grid, and bot personalities (greedy, cautious).
+- 🎭 **Unmask:** an undo toast for flips, generated avatars, and pinch-zoom on the board.
+
+**Board**
+- ♟️ **Chess:** a move list in standard notation, premoves, and capture animations.
+- ⛀ **Checkers:** last-move highlight, and an optional flying-kings variant.
+- ⚫ **Go:** a territory overlay at the end, and a request-undo button.
+- 🔴 **Drop Four:** highlight the winning line, and a move history.
+- 🔳 **Dots & Boxes:** a last-line highlight, and a bigger grid when the phone is sideways.
+- ❌ **Tic-Tac-Toe:** in Vanishing mode, dim the mark that fades next.
+
+**Cards / dice / words**
+- ♠️ **Texas Hold'em:** ✅ added (#21). Next: a hand-history panel, showing folded winners' cards
+  on request, and a time bank.
+- 🃏 **Last Card:** a fanned, swipeable hand, and animated dealing.
+- 🚢 **Sea Battle:** drag to place ships.
+- 🚀 **Moon Shot:** fit the track and dice on narrow screens (#6), and a dice-roll animation.
+- 🔤 **Wordsmith:** drag-and-drop tiles with a live score preview, and a hint button for solo play.
+
+**New games players asked for**
+- 🔢 **A code-breaking game** (#22): guess the hidden colour code from black and white peg hints.
+  It would be an original design, not a copy of a branded game.
+- 💣 **A bomb-maze arena** (#20): an original real-time game where you drop bombs to break walls
+  and trap rivals.
+- 🃏 **Cribbage** (#23): the traditional public-domain card game for 2–3 players, with a pegging board,
+  the crib, and counting for fifteens, pairs, runs and flushes. Bots choose discards by expected hand value.
+- 🔠 **A letter-grid word hunt** (#24): an original timed game where everyone finds words in the same
+  shaken grid at once, and words someone else also found score nothing. It reuses the Wordsmith
+  dictionary. It would be an original design, not a copy of a branded game.
+- #2 asks for a remake of an NES game. We don't copy existing games.
 
 ## Roadmap
 

@@ -6,8 +6,13 @@ UI.spire = (() => {
     a: [[0, 0], [1, 0]], b: [[0, 0], [1, 0], [2, 0]], c: [[0, 0], [1, 0], [0, 1]],
     d: [[0, 0], [1, 0], [0, 1], [1, 1], [0, 2]], e: [[0, 0], [2, 0], [0, 1], [1, 1], [2, 1]],
     f: [[0, 0], [1, 0], [2, 0], [1, 1], [1, 2]], g: [[0, 0], [1, 0], [1, 1], [1, 2], [2, 2]],
+    // the 4-block set
+    h: [[0, 0], [1, 0], [2, 0], [3, 0]], i: [[0, 0], [1, 0], [0, 1], [1, 1]], k: [[0, 0], [1, 0], [2, 0], [1, 1]],
+    l: [[0, 0], [1, 0], [1, 1], [2, 1]], m: [[1, 0], [2, 0], [0, 1], [1, 1]], n: [[0, 0], [1, 0], [2, 0], [0, 1]],
+    o: [[0, 0], [1, 0], [2, 0], [2, 1]],
   };
   const COLORS = { a: '#ff6b6b', b: '#4dabf7', c: '#51cf66', d: '#fcc419', e: '#cc5de8', f: '#ff922b', g: '#20c997',
+    h: '#4dd4f7', i: '#ffd43b', k: '#b197fc', l: '#69db7c', m: '#ff6b6b', n: '#5c7cfa', o: '#ffa94d',
     j: '#5c6170', 1: '#fff3a0', 2: '#a5f3ff', 3: '#ff5c8a' };
   const POWER = { 1: 'surge', 2: 'shield', 3: 'blast' };
   const POWER_ICON = { surge: '⚡', shield: '🛡️', blast: '💣' };
@@ -23,8 +28,13 @@ UI.spire = (() => {
       t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   }
   const emptyRow = () => Array(W).fill(null);
+  const flat = () => !!S?.spire?.flat;  // a flat well has side walls instead of wrapping around
   function fits(cells, x, y) {
-    return cells.every(([dx, dy]) => { const yy = y + dy; return yy >= 0 && yy < H + BUF && !st.grid[yy][mod(x + dx, W)]; });
+    return cells.every(([dx, dy]) => {
+      const yy = y + dy;
+      if (flat() && (x + dx < 0 || x + dx >= W)) return false;
+      return yy >= 0 && yy < H + BUF && !st.grid[yy][mod(x + dx, W)];
+    });
   }
   function norm(cells) {
     const mx = Math.min(...cells.map((c) => c[0])), my = Math.min(...cells.map((c) => c[1]));
@@ -32,7 +42,7 @@ UI.spire = (() => {
   }
   function drawKind() {
     if (!st.bag.length) {
-      st.bag = Object.keys(SHAPES);
+      st.bag = [...(S.spire.pieces || 'abcdefg')];
       for (let i = st.bag.length - 1; i > 0; i--) { const j = Math.floor(st.rng() * (i + 1)); [st.bag[i], st.bag[j]] = [st.bag[j], st.bag[i]]; }
     }
     const kind = st.bag.pop();
@@ -52,7 +62,7 @@ UI.spire = (() => {
     let applied = 0;
     try { applied = +sessionStorage.getItem(key) || 0; } catch {}
     st = {
-      grid, rng: mulberry32(sp.seed + (mine ? mine.rings * 7919 : 0)), bag: [], piece: null, next: null,
+      grid, rng: mulberry32(sp.seed + (mine ? mine.rings * 7919 : 0)), bag: [], piece: null, next: null, held: null, canHold: true,
       x: 0, y: 0, cells: null, fallAt: 0, lockAt: null, combo: 0, shield: mine?.shield || 0, surgeUntil: 0,
       applied, appliedKey: key, dead: !sp.playing, lastPush: 0, pushed: mine?.rows ?? '', angle: 0,
       start: performance.now() + sp.startIn * 1000 - sp.elapsed * 1000, shake: 0, dirty: true,
@@ -61,16 +71,27 @@ UI.spire = (() => {
     if (!st.dead) spawn();
   }
 
-  function spawn() {
-    const { kind, power } = st.next;
-    st.next = drawKind();
+  function spawn(from = null) {
+    const { kind, power } = from || st.next;
+    if (!from) { st.next = drawKind(); st.canHold = true; }
     st.piece = { kind, power };
     st.cells = SHAPES[kind].map((c) => [...c]);
     st.y = H;
+    if (flat()) st.x = Math.floor((W - 1 - Math.max(...st.cells.map((c) => c[0]))) / 2);
     if (!fits(st.cells, st.x, st.y)) return die();
     st.fallAt = performance.now() + interval();
     st.lockAt = null;
     renderNext();
+  }
+
+  // Hold parks the falling piece (power cell and all) and brings back the held one, or the next piece.
+  // Once per piece, so it can't be used to stall.
+  function hold() {
+    if (!active() || !st.canHold) return;
+    const parked = st.piece, back = st.held;
+    st.held = parked;
+    if (back) spawn(back); else spawn();
+    st.canHold = false;
   }
 
   function level() { return Math.max(0, Math.floor((performance.now() - st.start) / 30000)); }
@@ -282,7 +303,8 @@ UI.spire = (() => {
     if (!stage) return;
     const w = stage.clientWidth, h = stage.clientHeight;
     if (gfx) { gfx.renderer.setSize(w, h); gfx.camera.aspect = w / h; gfx.camera.updateProjectionMatrix(); }
-    const c = $('spFallback'); if (c) { c.width = w; c.height = h; }
+    const dpr = Math.min(devicePixelRatio || 1, 2);
+    const c = $('spFallback'); if (c) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
   }
 
   // ---------- 2D fallback: the ring unrolled around the active piece
@@ -291,26 +313,38 @@ UI.spire = (() => {
     const g = c?.getContext('2d');
     if (!g) return;
     const size = Math.min(c.width / W, c.height / (H + 1));
-    const ox = (c.width - size * W) / 2, centre = st.piece ? st.x : 0;
+    const ox = (c.width - size * W) / 2, centre = st.piece && !flat() ? st.x : Math.floor(W / 2);
     g.clearRect(0, 0, c.width, c.height);
     const cellAt = (x, y, col) => {
       const sx = mod(x - centre + Math.floor(W / 2), W);
       g.fillStyle = col; g.fillRect(ox + sx * size + 1, c.height - (y + 1) * size + 1, size - 2, size - 2);
     };
+    if (flat()) {  // the well's walls and floor
+      g.fillStyle = '#8ecae655';
+      g.fillRect(ox - 4, c.height - H * size, 3, H * size); g.fillRect(ox + W * size + 1, c.height - H * size, 3, H * size);
+    }
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) cellAt(x, y, st.grid[y][x] ? COLORS[st.grid[y][x]] : '#ffffff0d');
     if (st.piece) st.cells.forEach(([dx, dy]) => st.y + dy < H && cellAt(st.x + dx, st.y + dy, COLORS[st.piece.kind]));
   }
 
-  // ---------- side panel: next piece + rivals' mini towers
-  function renderNext() {
-    const c = $('spNext');
-    const g = c?.getContext('2d'), s = 14;
-    if (!g || !st?.next) return;
+  // ---------- side panel: next and held pieces + rivals' mini towers
+  function drawMini(c, p, dim) {
+    const g = c?.getContext('2d');
+    if (!g) return;
     g.clearRect(0, 0, c.width, c.height);
-    SHAPES[st.next.kind].forEach(([x, y], i) => {
-      g.fillStyle = st.next.power && st.next.power.at === i ? COLORS[st.next.power.ch] : COLORS[st.next.kind];
-      g.fillRect(8 + x * s, c.height - 8 - (y + 1) * s, s - 2, s - 2);
+    if (!p) return;
+    const cells = SHAPES[p.kind], s = Math.min(14, (c.width - 12) / (1 + Math.max(...cells.flat())));
+    g.globalAlpha = dim ? 0.35 : 1;
+    cells.forEach(([x, y], i) => {
+      g.fillStyle = p.power && p.power.at === i ? COLORS[p.power.ch] : COLORS[p.kind];
+      g.fillRect(6 + x * s, c.height - 6 - (y + 1) * s, s - 2, s - 2);
     });
+    g.globalAlpha = 1;
+  }
+  function renderNext() {
+    if (!st) return;
+    drawMini($('spNext'), st.next);
+    drawMini($('spHold'), st.held, !st.canHold);
   }
   function renderRivals() {
     const box = $('spRivals'); box.innerHTML = '';
@@ -338,21 +372,23 @@ UI.spire = (() => {
 
   // ---------- input
   function input(k) {
-    ({ left: () => move(-1), right: () => move(1), rot: () => rotate(1), rotl: () => rotate(-1), soft, drop: hard })[k]?.();
+    ({ left: () => move(-1), right: () => move(1), rot: () => rotate(1), rotl: () => rotate(-1), soft, drop: hard, hold })[k]?.();
   }
 
   function mount(main, side) {
+    S = null;
     main.innerHTML = `<div class="spire-wrap">
       <div id="spStage" class="spire-stage"><canvas id="spFallback"></canvas>
         <div id="spCount" class="sp-count"></div><div id="spFlash" class="sp-flash"></div><div id="spBanner" class="sp-banner" hidden></div></div>
       <div class="sp-pad"><button data-k="rotl">⟲</button><button data-k="left">◀</button><button data-k="drop">⤓</button>
-        <button data-k="right">▶</button><button data-k="rot">⟳</button><button data-k="soft">▼</button></div></div>`;
+        <button data-k="right">▶</button><button data-k="rot">⟳</button><button data-k="soft">▼</button><button data-k="hold" title="Hold">⇄</button></div></div>`;
     side.innerHTML = `<div class="panel">
       <div id="spStatus" class="seat-row"></div>
-      <div class="sp-nextbox"><span class="hint">Next</span><canvas id="spNext" width="60" height="60"></canvas></div>
+      <div class="sp-nextbox"><span class="hint">Next</span><canvas id="spNext" width="64" height="64"></canvas>
+        <span class="hint">Hold</span><canvas id="spHold" width="64" height="64"></canvas></div>
       <div id="spRivals" class="sp-rivals"></div>
-      <p class="hint left">⌨️ ← → move around the tower · ↑/X rotate · Z rotate back · ↓ soft drop · Space drop.<br>
-      📱 Swipe sideways to move, tap to rotate, swipe down to drop.</p></div>`;
+      <p class="hint left" id="spHint">⌨️ ← → move around the tower · ↑/X rotate · Z rotate back · ↓ soft drop · Space drop.<br>
+      C / Shift hold.<br>📱 Swipe sideways to move, tap to rotate, swipe down to drop, swipe up to hold.</p></div>`;
     for (const b of main.querySelectorAll('.sp-pad button')) {
       const k = b.dataset.k;
       b.onpointerdown = (e) => {
@@ -373,12 +409,12 @@ UI.spire = (() => {
     stage.onpointerup = (e) => {
       if (!start) return;
       const dy = e.clientY - start.y;
-      if (dy > 60) hard(); else if (!start.moved && Math.abs(dy) < 15) rotate(1);
+      if (dy > 60) hard(); else if (dy < -60 && !start.moved) hold(); else if (!start.moved && Math.abs(dy) < 15) rotate(1);
       start = null;
     };
     keyHandler = (e) => {
       if (e.target?.closest?.('input, textarea, select')) return;
-      const k = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'rot', x: 'rot', X: 'rot', z: 'rotl', Z: 'rotl', ArrowDown: 'soft', ' ': 'drop' }[e.key];
+      const k = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'rot', x: 'rot', X: 'rot', z: 'rotl', Z: 'rotl', ArrowDown: 'soft', ' ': 'drop', c: 'hold', C: 'hold', Shift: 'hold' }[e.key];
       if (k) { e.preventDefault(); input(k); }
     };
     addEventListener('keydown', keyHandler);
@@ -386,7 +422,8 @@ UI.spire = (() => {
     const load = window.THREE ? Promise.resolve() : new Promise((res, rej) => {
       const s = document.createElement('script'); s.src = '/vendor/three.min.js'; s.onload = res; s.onerror = rej; document.head.append(s);
     });
-    load.then(() => { initThree(); if (gfx) $('spFallback').hidden = true; resize(); })
+    // render() runs before this promise settles, so S is current here; a flat well stays 2D
+    load.then(() => { if (S?.spire?.flat) return resize(); initThree(); if (gfx) $('spFallback').hidden = true; resize(); })
       .catch(() => ctx?.toast('3D engine unavailable — using the flat view.'));
     raf = requestAnimationFrame(tick);
   }
@@ -403,6 +440,7 @@ UI.spire = (() => {
   function render(s, c) {
     S = s; ctx = c;
     const sp = S.spire;
+    if (sp.flat) $('spHint').textContent = '⌨️ ← → move · ↑/X rotate · Z rotate back · ↓ soft drop · Space drop · C/Shift hold. 📱 Swipe sideways to move, tap to rotate, swipe down to drop, swipe up to hold.';
     if (!st || st.seed !== sp.seed) { newState(sp); st.seed = sp.seed; st.dirty = true; }
     if (sp.playing && !st.dead) applyEvents(sp.events);
     if (!sp.playing && !st.dead) st.dead = true;
@@ -422,5 +460,5 @@ UI.spire = (() => {
     : !s.spire.playing ? '🗼 Watching the battle'
     : s.spire.startIn > 0 ? '🗼 Get ready…' : '🗼 Build fast, clear rings!';
 
-  return { mount, render, unmount, turnText };
+  return { mount, render, unmount, turnText, focus: true };
 })();

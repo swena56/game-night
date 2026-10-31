@@ -19,8 +19,13 @@ UI.riders = (() => {
     for (const b of $('lrPad').querySelectorAll('button[data-d]')) b.addEventListener('pointerdown', (e) => { e.preventDefault(); steer(+b.dataset.d); });
     $('lrBoost').addEventListener('pointerdown', (e) => { e.preventDefault(); boost(); });
     const stage = $('lrStage');
-    stage.style.touchAction = 'none';
-    stage.addEventListener('pointerdown', (e) => { swipe = { x: e.clientX, y: e.clientY }; });
+    // The whole game area ignores browser panning, so a swipe that strays off the arena can't scroll
+    // the page; the pointer is captured so the swipe keeps steering wherever the finger goes.
+    main.querySelector('.lr').style.touchAction = 'none';
+    stage.addEventListener('pointerdown', (e) => {
+      swipe = { x: e.clientX, y: e.clientY };
+      try { stage.setPointerCapture(e.pointerId); } catch {}
+    });
     stage.addEventListener('pointermove', (e) => {
       if (!swipe) return;
       const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y;
@@ -28,7 +33,7 @@ UI.riders = (() => {
       steer(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 1 : 3) : (dy > 0 ? 2 : 0));
       swipe = { x: e.clientX, y: e.clientY };  // keep swiping in the same gesture
     });
-    for (const t of ['pointerup', 'pointercancel', 'pointerleave']) stage.addEventListener(t, () => { swipe = null; });
+    for (const t of ['pointerup', 'pointercancel']) stage.addEventListener(t, () => { swipe = null; });
     keyHandler = (e) => {
       if (e.target?.closest?.('input, textarea, select')) return;
       const k = { ArrowUp: 0, KeyW: 0, ArrowRight: 1, KeyD: 1, ArrowDown: 2, KeyS: 2, ArrowLeft: 3, KeyA: 3 }[e.code];
@@ -280,5 +285,5 @@ UI.riders = (() => {
   const turnText = (s) => (s.phase === 'playing' ? `🏍️ Round ${s.riders.round} — first to ${s.riders.target}` : null);
   const myMove = (s) => s.phase === 'playing' && s.riders.stage === 'ride' && s.riders.me != null && s.riders.alive[s.riders.me];
 
-  return { mount, render, unmount, fast, turnText, myMove };
+  return { mount, render, unmount, fast, turnText, myMove, focus: true };
 })();

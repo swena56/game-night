@@ -21,6 +21,7 @@ WEDGE_LABEL = {"bust": "💀 BUST", "skip": "⛔ SKIP", "wild": "🎁 WILD", "st
 SPIN_SECS = 4.0
 STEAL = 500
 SOLVE_MIN = 1000
+REVEAL_SECS = 4.5  # a solved puzzle stays up (and is celebrated) before the next round
 
 PUZZLES = {
     "Food & Drink": ["PEANUT BUTTER AND JELLY", "HOT CHOCOLATE WITH MARSHMALLOWS", "FRESHLY SQUEEZED ORANGE JUICE",
@@ -137,6 +138,8 @@ class Lucky(Game):
         self.require_turn(p)
         if self.stage == "wheel":
             raise GameError("The wheel is still spinning!")
+        if self.stage == "solved":
+            raise GameError("The next puzzle is on its way!")
         if t == "spin":
             if self.stage != "spin":
                 raise GameError("Call a letter first.")
@@ -170,11 +173,11 @@ class Lucky(Game):
         r.deadline = time.time() + t if t else None
         if isinstance(w, int):
             self.value, self.stage = w, "letter"
-            r.add_log(f"🎡 {p.name} spun {w}.")
+            r.add_log(f"🎡 {p.name} spun {w:,}.")
         elif w == "bust":
             lost = self.bank[p.id]
             self.bank[p.id] = 0
-            r.add_log(f"💀 BUST! {p.name} loses {lost} and their turn.", "power")
+            r.add_log(f"💀 BUST! {p.name} loses {lost:,} and their turn.", "power")
             self.next_player()
         elif w == "skip":
             r.add_log(f"⛔ {p.name} lands on SKIP.", "power")
@@ -186,17 +189,17 @@ class Lucky(Game):
                 n = self.answer.count(ch)
                 self.called.add(ch)
                 self.bank[p.id] += 250 * n
-                r.add_log(f"🎁 WILD! The {ch}{'s' if n > 1 else ''} light up for {p.name} (+{250 * n}). Spin again or solve!", "power")
+                r.add_log(f"🎁 WILD! The {ch}{'s' if n > 1 else ''} light up for {p.name} (+{250 * n:,}). Spin again or solve!", "power")
             self.stage = "spin"
         elif w == "vowel":
             self.value, self.stage = 100, "vowel"
             r.add_log(f"✨ {p.name} may call a vowel.", "power")
         elif w == "steal":
             self.value, self.stage = 300, "letter"
-            r.add_log(f"🦊 {p.name} spun STEAL — call a letter right to take {STEAL} from the leader!", "power")
+            r.add_log(f"🦊 {p.name} spun STEAL — call a letter right to take {STEAL:,} from the leader!", "power")
         elif w == "jackpot":
             self.value, self.stage = 500, "letter"
-            r.add_log(f"⚡ JACKPOT wedge! {p.name} wins 💰{self.jackpot} with a correct letter.", "power")
+            r.add_log(f"⚡ JACKPOT wedge! {p.name} wins 💰{self.jackpot:,} with a correct letter.", "power")
 
     def call_letter(self, p, ch):
         r = self.room
@@ -217,7 +220,7 @@ class Lucky(Game):
         extra = ""
         if self.wedge == "jackpot":
             gain += self.jackpot
-            extra = f" plus the ⚡ jackpot of {self.jackpot}!"
+            extra = f" plus the ⚡ jackpot of {self.jackpot:,}!"
             self.jackpot = 1000
         if self.wedge == "steal":
             others = [i for i in self.seats if i != p.id and i in r.players]
@@ -227,9 +230,9 @@ class Lucky(Game):
                 self.total[leader] -= taken
                 self.bank[p.id] += taken
                 if taken:
-                    extra = f" and stole {taken} from {r.players[leader].name}! 🦊"
+                    extra = f" and stole {taken:,} from {r.players[leader].name}! 🦊"
         self.bank[p.id] += gain
-        r.add_log(f"✅ {n} × {ch} — {p.name} earns {gain}{extra}", "question")
+        r.add_log(f"✅ {n} × {ch} — {p.name} earns {gain:,}{extra}", "question")
         self.stage = "spin"
         t = r.settings["timer"]
         r.deadline = time.time() + t if t else None
@@ -243,10 +246,11 @@ class Lucky(Game):
         self.total[p.id] += won
         self.last_answer = {"category": self.category, "answer": self.answer, "by": p.name, "won": won}
         self.called |= set(self.answer)
-        r.add_log(f"🎉 {p.name} solved it: “{self.answer}” and banks {won}!", "big")
+        r.add_log(f"🎉 {p.name} solved it: “{self.answer}” and banks {won:,}!", "big")
         if self.round >= self.s["rounds"]:
             return self.finish()
-        self.new_round()
+        self.stage = "solved"  # on_timeout starts the next round once everyone has seen the answer
+        r.deadline = time.time() + REVEAL_SECS
 
     def finish(self):
         r = self.room
@@ -254,13 +258,15 @@ class Lucky(Game):
         top = max(self.total[p.id] for p in live)
         best = [p for p in live if self.total[p.id] == top]
         if len(best) == 1:
-            r.finish(best[0], f"🏆 {best[0].name} wins Lucky Letters with {top} points!")
+            r.finish(best[0], f"🏆 {best[0].name} wins Lucky Letters with {top:,} points!")
         else:
-            r.finish(None, f"🤝 Tie at {top} between {' & '.join(p.name for p in best)}.")
+            r.finish(None, f"🤝 Tie at {top:,} between {' & '.join(p.name for p in best)}.")
 
     def on_timeout(self):
         if self.stage == "wheel":
             return self.resolve_spin()
+        if self.stage == "solved":
+            return self.new_round()
         r = self.room
         r.add_log(f"⏰ {r.players[r.turn].name} ran out of time.", "power")
         self.next_player()
@@ -271,7 +277,7 @@ class Lucky(Game):
         if p.id not in self.total:
             return ""
         bank = self.bank.get(p.id, 0)
-        return f"💰{self.total[p.id]}" + (f" (+{bank})" if bank else "")
+        return f"💰{self.total[p.id]:,}" + (f" (+{bank:,})" if bank else "")
 
     def final_scores(self):
         return dict(self.total)
@@ -295,7 +301,7 @@ class Lucky(Game):
     # -- bots
 
     def bot_ready(self):
-        return self.stage != "wheel" and super().bot_ready()
+        return self.stage not in ("wheel", "solved") and super().bot_ready()
 
     def bot_turn(self, p):
         if self.stage == "letter":
