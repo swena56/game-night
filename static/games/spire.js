@@ -238,7 +238,7 @@ UI.spire = (() => {
     const make = (n, mat) => { const m = new T.InstancedMesh(geo, mat, n); m.instanceMatrix.setUsage(T.DynamicDrawUsage); tower.add(m); return m; };
     const settled = make(W * (H + BUF), new T.MeshStandardMaterial({ roughness: 0.35, metalness: 0.1 }));
     const piece = make(5, new T.MeshStandardMaterial({ roughness: 0.25, emissive: 0x222222 }));
-    const ghost = make(5, new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.16, depthWrite: false }));
+    const ghost = make(5, new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3, depthWrite: false }));
     // Create the per-instance colour buffers before the first frame so the shaders include them.
     for (const m of [settled, piece]) { m.setColorAt(0, new T.Color(0xffffff)); m.count = 0; }
     const stars = new T.Points(new T.BufferGeometry().setAttribute('position', new T.Float32BufferAttribute(
@@ -272,8 +272,7 @@ UI.spire = (() => {
       st.dirty = false;
     }
     if (st.piece) {
-      let gy = st.y;
-      while (fits(st.cells, st.x, gy - 1)) gy--;
+      const gy = landing();
       const pulse = 0.5 + 0.5 * Math.sin(now / 120);
       st.cells.forEach(([dx, dy], i) => {
         const power = st.piece.power && st.piece.power.at === i;
@@ -307,24 +306,47 @@ UI.spire = (() => {
     const c = $('spFallback'); if (c) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
   }
 
-  // ---------- 2D fallback: the ring unrolled around the active piece
+  // ---------- 2D fallback (and the flat well): the ring unrolled around the active piece. Two rows of
+  // the spawn zone show above the top line, and an outline marks where the piece will land.
+  function landing() {
+    let gy = st.y;
+    while (fits(st.cells, st.x, gy - 1)) gy--;
+    return gy;
+  }
   function draw2d() {
     const c = $('spFallback');
     const g = c?.getContext('2d');
     if (!g) return;
-    const size = Math.min(c.width / W, c.height / (H + 1));
-    const ox = (c.width - size * W) / 2, centre = st.piece && !flat() ? st.x : Math.floor(W / 2);
+    const rows = H + 2, dpr = c.width / Math.max(1, c.clientWidth || c.width);
+    const size = Math.floor(Math.min((c.width - 16 * dpr) / W, (c.height - 14 * dpr) / rows));
+    const ox = Math.round((c.width - size * W) / 2), floor = c.height - 8 * dpr;
+    const centre = st.piece && !flat() ? st.x : Math.floor(W / 2);
+    const sx = (x) => ox + mod(x - centre + Math.floor(W / 2), W) * size, sy = (y) => floor - (y + 1) * size;
+    const cellAt = (x, y, col) => { g.fillStyle = col; g.fillRect(sx(x) + 1, sy(y) + 1, size - 2, size - 2); };
     g.clearRect(0, 0, c.width, c.height);
-    const cellAt = (x, y, col) => {
-      const sx = mod(x - centre + Math.floor(W / 2), W);
-      g.fillStyle = col; g.fillRect(ox + sx * size + 1, c.height - (y + 1) * size + 1, size - 2, size - 2);
-    };
-    if (flat()) {  // the well's walls and floor
-      g.fillStyle = '#8ecae655';
-      g.fillRect(ox - 4, c.height - H * size, 3, H * size); g.fillRect(ox + W * size + 1, c.height - H * size, 3, H * size);
+    g.fillStyle = '#ffffff08'; g.fillRect(ox, sy(H - 1), W * size, H * size);  // the well
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) cellAt(x, y, st.grid[y][x] ? COLORS[st.grid[y][x]] : '#ffffff0a');
+    g.fillStyle = '#8ecae677';  // the floor, and walls on a flat well
+    g.fillRect(ox - 3 * dpr, floor, W * size + 6 * dpr, 3 * dpr);
+    if (flat()) { g.fillRect(ox - 3 * dpr, sy(H - 1), 3 * dpr, H * size); g.fillRect(ox + W * size, sy(H - 1), 3 * dpr, H * size); }
+    g.strokeStyle = '#ff6b6b88'; g.lineWidth = Math.max(1, dpr); g.setLineDash([6 * dpr, 5 * dpr]);  // the top: lock above it and you topple
+    g.beginPath(); g.moveTo(ox, sy(H - 1)); g.lineTo(ox + W * size, sy(H - 1)); g.stroke(); g.setLineDash([]);
+    if (!st.piece) return;
+    const col = COLORS[st.piece.kind], gy = landing();
+    if (gy !== st.y) {
+      g.strokeStyle = col; g.lineWidth = Math.max(2, 2 * dpr); g.globalAlpha = 0.85;
+      st.cells.forEach(([dx, dy]) => gy + dy < rows && g.strokeRect(sx(st.x + dx) + 2.5, sy(gy + dy) + 2.5, size - 5, size - 5));
+      g.globalAlpha = 1;
     }
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) cellAt(x, y, st.grid[y][x] ? COLORS[st.grid[y][x]] : '#ffffff0d');
-    if (st.piece) st.cells.forEach(([dx, dy]) => st.y + dy < H && cellAt(st.x + dx, st.y + dy, COLORS[st.piece.kind]));
+    st.cells.forEach(([dx, dy], i) => {
+      if (st.y + dy >= rows) return;
+      const power = st.piece.power && st.piece.power.at === i;
+      cellAt(st.x + dx, st.y + dy, power ? COLORS[st.piece.power.ch] : col);
+      if (power) {
+        g.font = `${Math.round(size * 0.6)}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.fillText(POWER_ICON[POWER[st.piece.power.ch]], sx(st.x + dx) + size / 2, sy(st.y + dy) + size / 2 + 1);
+      }
+    });
   }
 
   // ---------- side panel: next and held pieces + rivals' mini towers

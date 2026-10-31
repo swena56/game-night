@@ -67,6 +67,9 @@ UI.wordsmith = (() => {
         cell.classList.add('tile');
         cell.classList.toggle('pending', !!pend);
         cell.classList.toggle('last', lastSet.has(i));
+        const who = !pend && w.by?.[r][c];
+        cell.style.setProperty('--by', who ? ctx.player(who)?.color ?? '#0003' : '#0003');
+        if (pend) cell.style.setProperty('--by', ctx.player(S.me.id)?.color ?? '#fff');
         cell.append(ch, Object.assign(document.createElement('sub'), { textContent: w.values[ch] }));
       } else if (prem) cell.textContent = PREMIUM_LABEL[prem];
     });

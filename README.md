@@ -126,7 +126,7 @@ Every game has **Easy / Normal / Hard bots**:
   - The host picks 🔁 **Rematch** (same game and settings, instant) or 🏠 **Lobby**.
   - Everyone can tap 🙋 **I'm in!** so the host sees who wants more.
 - **Replays.**
-  - ▶ **Replay** steps through the finished game move by move: play/pause, step, or drag the slider.
+  - ▶ **Replay** plays the finished game move by move as soon as it opens (#68): pause, step, or drag the slider.
   - It shows the spectator's view, so every secret face, hidden choice and culprit is visible.
   - The last game's replay stays available from the lobby.
 - **Score keeping.**
@@ -371,7 +371,9 @@ Riders and Air Hockey start in it) (#13, #15).
   (C / Shift / swipe up), and a sharper flat well on high-DPI screens. ✅ 🟦 4-block is now the default
   (#26); the odd shapes are the 🧩 Mixed option. ✅ Normal and hard bots use the ⇄ hold slot (they park a piece and
   play whichever of it and the new piece fits better). ✅ Ring clears call out RING! / DOUBLE! / TRIPLE! / SPIRE!
-  (with ×combo), buzz, and shake the stage for three or more.
+  (with ×combo), buzz, and shake the stage for three or more. ✅ The flat well (#65, #66) outlines where the
+  piece will land, shows the two spawn rows above a dashed top line, has a floor, and shows power cells on the
+  falling piece; the 3D ghost is brighter.
 - 🏍️ **Light Riders:** ✅ the swipe threshold scales with the arena (18–48 px), a 📳 vibration tick on each
   turn and a longer buzz when you crash, and a countdown overlay. Next: check the swipe fixes on a phone (#14).
 - 🏒 **Air Hockey:** ✅ a score-to-win setting, 📳 haptics when your mallet hits the puck and on goals, and a ⏪ goal
@@ -394,6 +396,8 @@ Riders and Air Hockey start in it) (#13, #15).
 
 **Party**
 - 🎡 **Lucky Letters:** done for now (#17, #18, #19). ✅ The 3D wheel's camera now backs off to fit the whole wheel at any stage shape (#27).
+  ✅ On a sideways phone (#64) the wheel sits beside the phrase board and the controls beside the game; every
+  game gets that side-by-side layout on short landscape screens.
 - ✏️ **Doodle Dash:** more drawings than 52, and a reveal card for each answer.
 - 🕵️ **Odd One Out:** ✅ 50 word pairs (up from 36), and an animated "who voted for whom" reveal: a row per
   suspect, most votes first, the voters popping in one by one.
@@ -429,7 +433,9 @@ Riders and Air Hockey start in it) (#13, #15).
 - 🪜 **Word Ladder:** ✅ added: par, hints and bots use everyday words only, so revealed ladders never lean on obscure words. ✅ 📅 Today's ladders: the puzzles come from the date, so every room plays the same ones that day. Next: a 5-letter mode once the everyday list is big enough (today it links only 154 pairs).
 - 🔤 **Wordsmith:** ✅ a live score preview as you place tiles (the words and points, or why it won't play), and a
   💡 hint button when you're the only person playing. Both use the new read-only `/api/peek` (a game opts in
-  with `peek(p, body)`). Next: drag-and-drop tiles.
+  with `peek(p, body)`). ✅ Tile colours (#67): a bar in each player's colour shows who played every tile, and
+  this turn's tiles are pale with a dashed outline in your colour, lifted, so they can't be mistaken for the ★.
+  Next: drag-and-drop tiles.
 
 **Cards / dice**
 - 🎯 **Farkle:** ✅ added (#40). ✅ Dice pips show on phones again (#44, shared with Yacht). ✅ The hint shows the

@@ -366,6 +366,7 @@ async function playSolo(game, seconds = 60) {
     if (!d.querySelector('#replayBtn').hidden) {
       click(d.querySelector('#replayBtn'));
       await waitFor(() => !d.querySelector('#replayBar').hidden, 5000);
+      if (d.querySelector('#rpPlay').textContent !== '⏸') report.notes.push('replay did not start playing');
       for (let i = 0; i < 3; i++) { click(d.querySelector('#rpNext')); await sleep(150); }
       report.replay = d.querySelector('#replayCaption').textContent.slice(0, 50);
       click(d.querySelector('#rpExit')); await sleep(300);

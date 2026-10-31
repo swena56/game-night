@@ -608,6 +608,7 @@ async function startReplay() {
     show('game');
     unmountUI();
     showFrame();
+    $('#rpPlay').click();  // it plays straight away; ⏸ or the slider stops it
   } catch (e) { toast(e.message); }
 }
 function showFrame() {

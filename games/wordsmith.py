@@ -75,6 +75,7 @@ def warm_up():
 
 
 class Wordsmith(Game):
+    by = None  # rooms saved before tiles had owners
     id = "wordsmith"
     category = "words"
     howto = [
@@ -99,6 +100,7 @@ class Wordsmith(Game):
         self.bag = [ch for ch, (n, _) in TILES.items() for _ in range(n)]
         rng.shuffle(self.bag)
         self.grid = [[None] * SIZE for _ in range(SIZE)]
+        self.by = [[None] * SIZE for _ in range(SIZE)]  # who played each tile
         self.scores = {p.id: 0 for p in seated}
         for p in seated:
             p.g.rack = self.draw(RACK)
@@ -247,8 +249,11 @@ class Wordsmith(Game):
 
     def play(self, p, placements, idx):
         score, texts, notes = self.check_play(placements)
+        if self.by is None:  # a game saved before tiles remembered who played them
+            self.by = [[None] * SIZE for _ in range(SIZE)]
         for r, c, ch in placements:
             self.grid[r][c] = ch
+            self.by[r][c] = p.id
         p.g.rack = [ch for i, ch in enumerate(p.g.rack) if i not in idx]
         p.g.rack += self.draw(RACK - len(p.g.rack))
         self.scores[p.id] += score
@@ -308,7 +313,7 @@ class Wordsmith(Game):
     def view(self, p):
         return {"ws": {
             "grid": self.grid, "premiums": PREMIUMS, "values": VALUES, "bag": len(self.bag),
-            "bounty": self.bounty, "last": self.last, "scores": self.scores,
+            "bounty": self.bounty, "last": self.last, "scores": self.scores, "by": self.by,
             "rack": getattr(p.g, "rack", None),
             "bonuses": {"sweep": SWEEP_BONUS, "bounty": BOUNTY_BONUS},
         }}
