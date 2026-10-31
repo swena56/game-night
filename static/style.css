@@ -353,6 +353,11 @@ body.calm::before, body.calm *, body.calm *::before, body.calm *::after { animat
 .invite { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .invite-qr { display: block; width: min(240px, 70vw); height: auto; border-radius: 10px; }
 .invite input { width: 100%; text-align: center; }
+.profile { display: flex; flex-direction: column; gap: 12px; } .profile input { width: 100%; }
+.swatches { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.swatch { width: 36px; height: 36px; border-radius: 50%; padding: 0; border: 3px solid transparent; }
+.swatch.on { border-color: #fff; box-shadow: 0 0 0 2px #0008; }
+.swatch:disabled { opacity: .2; }
 .modal-card .rules { font-size: 14px; line-height: 1.5; }
 @keyframes pop { from { transform: scale(.94); opacity: 0; } to { transform: none; opacity: 1; } }
 .icon-btn { background: none; border: 0; font-size: 18px; padding: 4px 6px; }

@@ -357,6 +357,12 @@ function renderLobby() {
     const dot = el('span', 'dot'); dot.style.background = p.online ? p.color : '#555';
     li.append(dot, el('span', '', p.name + (p.id === S.me.id ? ' (you)' : '')));
     if (p.id === S.host) li.append(el('span', '', '👑'));
+    if (p.id === S.me.id && S.phase !== 'playing') {
+      const edit = el('button', 'ghost-btn', '✏️');
+      edit.title = 'Change your name or colour';
+      edit.onclick = editProfile;
+      li.append(edit);
+    }
     if (p.spectator) li.append(el('span', 'hint', 'spectating'));
     if (p.played || p.points) li.append(el('span', 'hint', `⭐ ${p.points}${p.wins ? ` · 🏆 ${p.wins}` : ''}`));
     if (p.away) li.append(el('span', 'hint', '📡 away'));
@@ -743,6 +749,27 @@ $('#soloSetupBtn').onclick = () => solo(false);
 $('#addBotBtn').onclick = () => quiet(act('add_bot', { level: $('#botLevel').value }));
 $('#joinBtn').onclick = () => api('/api/join', { name: $('#name').value, code: $('#code').value.trim() }).then(enter).catch((e) => toast(e.message));
 $('#code').addEventListener('keydown', (e) => e.key === 'Enter' && $('#joinBtn').click());
+// rename yourself or pick a colour (between games); colours other players have are greyed out
+async function editProfile() {
+  const me = S.players.find((p) => p.id === S.me.id);
+  const body = el('div', 'profile');
+  const input = el('input'); input.value = me.name; input.maxLength = 16; input.autocomplete = 'nickname';
+  const swatches = el('div', 'swatches');
+  let color = me.color;
+  for (const c of S.palette || []) {
+    const taken = S.players.some((p) => p.id !== me.id && p.color === c);
+    const b = el('button', 'swatch' + (c === color ? ' on' : ''));
+    b.style.background = c; b.disabled = taken;
+    b.setAttribute('aria-label', taken ? 'colour taken' : 'pick this colour');
+    b.onclick = () => { color = c; for (const x of swatches.children) x.classList.toggle('on', x === b); };
+    swatches.append(b);
+  }
+  body.append(input, swatches);
+  if (!(await ask('', { title: '✏️ You', body, ok: 'Save' }))) return;
+  if (input.value.trim() === me.name && color === me.color) return;
+  quiet(act('profile', { name: input.value, color }).then(() => { store('unmask.name', input.value.trim()); $('#name').value = input.value.trim(); }));
+}
+
 // the invite: a QR code to scan across the table, plus the link to copy or share. A host on the server's
 // own device (localhost) gets the Wi-Fi address instead, since "localhost" means nothing on a friend's phone.
 $('#shareBtn').onclick = () => {

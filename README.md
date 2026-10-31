@@ -303,12 +303,13 @@ be checked without a browser.
    high-contrast) and card-back styles, chosen under ⚙️ My settings.
 8. **Identity and social.**
    - Avatars generated with the Unmask face generator.
-   - A colour picker and rename in the lobby.
+   - ✅ A colour picker and rename in the lobby (✏️ next to your name, between games; names must be
+     unique in the room and colours can't be shared).
    - ✅ A QR code for the invite link (📲 in the lobby). `static/qr.js` is a small dependency-free encoder
      (byte mode, level M, versions 1–9), checked bit for bit against the `segno` library across five
      versions and all eight masks. A host on the server's own device gets the Wi-Fi address in the link,
      since "localhost" means nothing on a friend's phone.
-   - Spectator count and "👀 watching" names.
+   - ✅ Spectators show as "👁 watching" on their player chip.
 9. **Game-specific polish:** see the per-game plan below.
 10. ✅ **Installable app (PWA).** A web manifest with a 🎲 icon (`static/icons/`, drawn by a tiny
    pure-Python PNG writer) for home-screen install and full-screen play; a service worker (`static/sw.js`)

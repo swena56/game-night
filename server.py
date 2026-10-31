@@ -367,6 +367,8 @@ class Room:
             return
         if t == "chat":
             return self.chat_message(p, a.get("text"))
+        if t == "profile":
+            return self.set_profile(p, a.get("name"), a.get("color"))
         if t == "ready":
             if self.phase != "over":
                 raise GameError("Not right now.")
@@ -527,6 +529,24 @@ class Room:
         game.start(list(seated), random.Random())
         self.snap()
 
+    def set_profile(self, p, name, color):
+        """Rename yourself or pick a new colour, between games."""
+        if self.phase == "playing":
+            raise GameError("Change your name or colour between games.")
+        name = clean_name(name if name is not None else p.name)
+        if name.startswith("🤖"):
+            raise GameError("That name is saved for bots.")
+        if any(o is not p and o.name.casefold() == name.casefold() for o in self.players.values()):
+            raise GameError("Someone here already has that name.")
+        color = color or p.color
+        if color not in PLAYER_COLORS:
+            raise GameError("Pick one of the colours.")
+        if any(o is not p and o.color == color for o in self.players.values()):
+            raise GameError("Someone else has that colour.")
+        if name != p.name:
+            self.add_log(f"✏️ {p.name} is now {name}.")
+        p.name, p.color = name, color
+
     def chat_message(self, p, text):
         text = " ".join(str(text or "").split())[:200]
         if not text:
@@ -591,6 +611,7 @@ class Room:
         v = {
             "code": self.code,
             "lan": lan_url(),
+            "palette": PLAYER_COLORS,
             "phase": self.phase,
             "settings": self.settings,
             "gameId": self.settings["game"],
