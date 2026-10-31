@@ -373,13 +373,14 @@ Riders and Air Hockey start in it) (#13, #15).
   (with ×combo), buzz, and shake the stage for three or more.
 - 🏍️ **Light Riders:** ✅ the swipe threshold scales with the arena (18–48 px), a 📳 vibration tick on each
   turn and a longer buzz when you crash, and a countdown overlay. Next: check the swipe fixes on a phone (#14).
-- 🏒 **Air Hockey:** ✅ a score-to-win setting, and 📳 haptics when your mallet hits the puck and on goals. Next: goal replay.
+- 🏒 **Air Hockey:** ✅ a score-to-win setting, 📳 haptics when your mallet hits the puck and on goals, and a ⏪ goal
+  replay: the last 1.4 s before each goal at 60% speed, during a longer (2.8 s) pause before the serve.
 - 🎨 **Paint Blast:** ✅ added (#20). ✅ A paint-coverage bar under the clock, and a 📳 buzz when you're
   caught. ✅ 🧱 The walls close in during the last 15 s, a ring every 4 s (an option, on by default); paint
   under them still counts and anyone caught there is pushed inside. ✅ A 👟 kick power-up: walk into a bomb to send
   it sliding until something stops it.
-- 🪐 **Sumo Saucers:** ✅ added (#46). ✅ 📳 Haptics when you're shoved and when you fall. Next: a
-  slow-motion replay of the final knock-off. The original plan:
+- 🪐 **Sumo Saucers:** ✅ added (#46). ✅ 📳 Haptics when you're shoved and when you fall. ✅ Each round ends with a
+  ⏪ slow-motion replay of the knock-off (half speed, inside the pause before the next round). The original plan:
   - Everyone pilots a hover saucer on a round platform floating in space. Drag anywhere to steer
     (momentum, like Air Hockey's physics); tap to 💨 dash, a big shove with a 2 s cooldown.
   - Knock rivals off the edge; the last saucer on the platform wins the round, first to 3 rounds wins.

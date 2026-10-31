@@ -4,12 +4,13 @@
 UI.sumo = (() => {
   let S, ctx, snap = null, gotAt = 0, gl = null, flat = null, raf = 0, ro = null;
   let keyDown = null, keyUp = null, drag = null, stick = [0, 0], sentAt = 0, keys = new Set(), countdownAt = 0;
+  let hist = [], replay = null, live = null;  // recent frames; a slow-motion replay of the knock-off; the real state meanwhile
   const KEYS = { ArrowUp: [0, -1], KeyW: [0, -1], ArrowDown: [0, 1], KeyS: [0, 1], ArrowLeft: [-1, 0], KeyA: [-1, 0], ArrowRight: [1, 0], KeyD: [1, 0] };
   const STICK_PX = 60;
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
-    S = null; snap = null; gl = null; flat = null; drag = null; stick = [0, 0]; keys = new Set();
+    S = null; snap = null; gl = null; flat = null; drag = null; stick = [0, 0]; keys = new Set(); hist = []; replay = null; live = null;
     main.innerHTML = `<div class="sm"><div class="sm-stage" id="smStage">
         <div class="lr-banner" id="smBanner" hidden></div>
         <div class="sm-stick" id="smStick" hidden><span></span></div></div>
@@ -114,9 +115,24 @@ UI.sumo = (() => {
       if (now[6] && !was[6]) buzz([80, 50, 160]);       // over the edge
       else if (kick > 1.2 && !now[4]) buzz(35);          // shoved (not my own dash)
     }
-    snap = { R: d.R, bm: d.bm, s: d.s, st: d.st ?? d.stage };
-    gotAt = performance.now();
-    Object.assign(S.sumo, { R: d.R, bm: d.bm, s: d.s, stage: snap.st });
+    const next = { R: d.R, bm: d.bm, s: d.s, st: d.st ?? d.stage }, t = performance.now();
+    // the round just ended: replay its last 1.2 s at half speed (inside the 3 s pause before the next round)
+    if (next.st === 'over' && (replay ? live : snap)?.st === 'play' && hist.length > 4 && motionOK()) {
+      replay = { frames: hist.filter((x) => x.t >= t - 1200), start: t };
+      live = next;
+    }
+    if (next.st === 'play') { hist.push({ t, snap: next }); while (hist[0].t < t - 1500) hist.shift(); }
+    else hist = [];
+    if (replay) live = next; else { snap = next; gotAt = t; }
+    Object.assign(S.sumo, { R: d.R, bm: d.bm, s: d.s, stage: next.st });
+  }
+
+  // during a replay the drawing code reads `snap`, so it is pointed at the recorded frames
+  function replayFrame(now) {
+    const f = replay.frames, t = f[0].t + (now - replay.start) * 0.5;
+    if (t > f.at(-1).t + 300 || S.phase !== 'playing' && t > f.at(-1).t) { snap = live; gotAt = now; replay = null; return; }
+    snap = (f.findLast((x) => x.t <= t) || f[0]).snap;
+    gotAt = now;
   }
 
   function renderSide() {
@@ -150,10 +166,12 @@ UI.sumo = (() => {
   function loop(now) {
     raf = requestAnimationFrame(loop);
     if (!snap || !S?.sumo) return;
+    if (replay) replayFrame(now);
     (gl || flat)?.draw(now);
     const r = S.sumo, cd = (countdownAt - now) / 1000, mine = r.me != null ? snap.s[r.me] : null;
     let text = '';
-    if (S.phase === 'playing' && snap.st === 'countdown') text = cd > 0 ? String(Math.ceil(cd)) : 'GO!';
+    if (replay) text = '⏪ Slow-mo';
+    else if (S.phase === 'playing' && snap.st === 'countdown') text = cd > 0 ? String(Math.ceil(cd)) : 'GO!';
     else if (S.phase === 'playing' && snap.st === 'over') text = 'Round over';
     else if (S.phase === 'playing' && mine?.[6]) text = '🕳️ Off the edge — watching';
     $('smBanner').hidden = !text; $('smBanner').textContent = text;

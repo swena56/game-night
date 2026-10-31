@@ -4,12 +4,13 @@
 UI.hockey = (() => {
   let S, ctx, canvas, g2, table = null, raf = 0, ro = null;
   let net = null, me = null, own = null, target = null, oppShown = null, lastSent = 0, lastScore = '', flash = 0;
+  let hist = [], replay = null;  // recent frames, and a goal replay being shown
   const trail = [];
   const SPEED = 4.0;  // must match MALLET_SPEED in games/hockey.py
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
-    S = null; net = null; own = null; target = null; oppShown = null; lastScore = ''; trail.length = 0;
+    S = null; net = null; own = null; target = null; oppShown = null; lastScore = ''; trail.length = 0; hist = []; replay = null;
     main.innerHTML = `<div class="hk"><div class="hk-stage" id="hkStage"><canvas id="hkCanvas"></canvas>
       <div class="hk-banner" id="hkBanner" hidden></div></div></div>`;
     side.innerHTML = `<div class="panel"><div id="hkScore" class="hk-score"></div>
@@ -94,6 +95,7 @@ UI.hockey = (() => {
     if (!S?.hockey || !g2 || !canvas.width) return;
     const h = S.hockey;
     if (!table) table = drawTable();
+    if (replay && drawReplay(now)) return;
     const src = net || { pk: h.pk, ml: h.ml, at: now, pause: 0 };
     const dt = Math.min(0.12, (now - src.at) / 1000);
 
@@ -147,8 +149,40 @@ UI.hockey = (() => {
     banner.textContent = pause > 0.6 ? 'Ready…' : 'Go!';
   }
 
+  // ⏪ the last 1.4 s before a goal, at 60% speed, while the server pauses for the next serve
+  function drawReplay(now) {
+    const h = S.hockey, f = replay.frames, t = f[0].t + (now - replay.start) * 0.6;
+    if (t > f.at(-1).t || !motionOK()) { replay = null; trail.length = 0; return false; }
+    const frame = f.findLast((x) => x.t <= t) || f[0];
+    g2.clearRect(0, 0, canvas.width, canvas.height);
+    if (table) g2.drawImage(table, 0, 0);
+    const u = canvas.width / h.W;
+    for (const pk of frame.pk) {
+      const [sx, sy] = toScreen(pk[0], pk[1]);
+      g2.fillStyle = '#111'; g2.strokeStyle = '#ffd166'; g2.lineWidth = u * 0.01;
+      g2.beginPath(); g2.arc(sx, sy, h.puck * u, 0, 7); g2.fill(); g2.stroke();
+    }
+    frame.ml.forEach((m, i) => {
+      const [sx, sy] = toScreen(m[0], m[1]);
+      g2.fillStyle = ctx.player(h.seats[i])?.color ?? '#888';
+      g2.beginPath(); g2.arc(sx, sy, h.mallet * u, 0, 7); g2.fill();
+    });
+    g2.fillStyle = '#0008'; g2.fillRect(0, 0, canvas.width, canvas.height);  // dim it so it reads as a replay
+    const banner = $('hkBanner');
+    banner.hidden = false; banner.textContent = '⏪ Replay';
+    return true;
+  }
+
   function fast(data) {
     const h = S?.hockey;
+    const sc0 = data.sc.join(':');
+    if (lastScore && sc0 !== lastScore && hist.length > 4) {
+      const now = performance.now();
+      replay = { frames: hist.filter((x) => x.t >= now - 1400), start: now };
+      if (replay.frames.length < 4) replay = null;
+    }
+    hist.push({ t: performance.now(), pk: data.pk, ml: data.ml });
+    while (hist.length && hist[0].t < performance.now() - 1600) hist.shift();
     if (h?.me != null && net?.pk) {  // my mallet hit a puck: it's beside me and its speed jumped
       const [mx, my] = data.ml[h.me];
       data.pk.forEach(([x, y, vx, vy], k) => {

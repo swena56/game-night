@@ -19,6 +19,7 @@ FRICTION = 0.35          # fraction of speed lost per second
 WALL_BOUNCE, HIT_BOUNCE = 0.9, 0.95
 SUBSTEPS = 4
 SERVE_PAUSE = 1.2
+GOAL_PAUSE = 2.8         # after a goal: time for every screen to show the replay
 STUCK_SECS = 5          # a puck that stays in one spot this long is re-served in its half
 BOT = {  # reaction interval (s), mallet speed, aim noise
     "easy": (0.3, 1.6, 0.2),
@@ -219,6 +220,7 @@ class Hockey(Game):
             r.finish(who, f"🏆 {name} wins {max(self.score)}–{min(self.score)}!")
             return True
         self.serve(k, 1 - scorer, now)
+        self.paused_until = now + GOAL_PAUSE
         self.broadcast(now)
         return False
 
