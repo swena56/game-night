@@ -404,6 +404,40 @@ Riders and Air Hockey start in it) (#13, #15).
   one would bring 🎲 Dice to 4. Ask the player which game they meant.
 - #2 asks for a remake of an NES game. We don't copy existing games.
 
+## The next 10 games (balance plan)
+
+On a phone the picker fits 4 tiles a row, so a group fills its rows evenly at **3, 4, 6 or 8** games
+(5 and 7 leave a ragged row). Today: Party 6 · Action 5 · Strategy 4 · Quick classics 4 · Cards 3 ·
+Dice 3 · Words & puzzles 4 (29 games). These 10 make it **Party 6 · Action 8 · Strategy 6 · Quick
+classics 6 · Cards 6 · Dice 3 · Words & puzzles 4** (39), with every group filling its rows:
+
+| # | Game | Group | Players | Kind | Notes |
+|---|---|---|---|---|---|
+| 1 | 🪐 **Sumo Saucers** | Action | 2–6 | Real-time, three.js | Planned for #46: shove rivals off a shrinking floating platform. Air Hockey's physics. |
+| 2 | ⛳ **Putt Party** | Action | 1–6 | Turn-based physics, three.js | Original mini golf: procedurally built 3D holes (ramps, bumpers, moving gates), everyone putts the same hole, fewest strokes over 9. Server simulates each putt and sends the path, like Billiards. |
+| 3 | 🛸 **Hover Rally** | Action | 2–6 | Real-time, three.js | Hover-racers on a looping track: steer left/right, the throttle is automatic, ⚡ boost pads and drift. The track is a spline plus a side offset, so the server sim stays tiny. |
+| 4 | 🫘 **Oware** | Strategy | 2 | Turn-based | The traditional mancala game: sow seeds, capture twos and threes, the grand-slam rule. Alpha-beta bots, like Checkers. |
+| 5 | ⚪ **Reversi** | Strategy | 2 | Turn-based | The 19th-century public-domain game (not the branded version): flip lines of discs. Bots weigh corners, edges and mobility. |
+| 6 | #️⃣ **Ultimate Tic-Tac-Toe** | Quick classics | 2 | Turn-based | The folk game: nine boards in one, and your move sends your rival to a board. Monte Carlo bot. |
+| 7 | ⚫ **Nine Men's Morris** | Quick classics | 2 | Turn-based | The traditional mill game: place, move, then fly. Alpha-beta bot. |
+| 8 | 🃏 **Contract rummy** | Cards | 2–6 | Turn-based | Answers #39 with an original design in the public-domain rummy family: each hand demands a contract (two sets, a set and a run…). |
+| 9 | ♥️ **Hearts** | Cards | 3–6 (best 4) | Turn-based | The traditional trick-avoiding game: pass three, avoid hearts and the queen of spades, or shoot the moon. |
+| 10 | 🂡 **Twenty-One** | Cards | 1–6 | Simultaneous | The traditional casino game against a dealer bot, everyone at once, with chips across rounds. Instant solo play. |
+
+Later, to bring 🎲 Dice to 6 as well: Liar's Dice (the traditional bluffing game), Ship, Captain and
+Crew, and an original roll-and-write if #41's "qork" turns out to be one.
+
+**More three.js action ideas** (each works with the existing real-time plumbing: a server-owned sim
+with `frame` / `push_fast`, or each browser simulating its own board like Spire Siege):
+- 🥌 **Ice Stones:** curling-style sliding stones on a 3D sheet, turn-based physics like Billiards.
+- 🧱 **Stack Duel:** stack sliding blocks into a tower (overhang gets sliced off); each phone runs its
+  own tower, and perfect drops send a wobble to a rival.
+- ❄️ **Snowball Pit:** top-down 3D dodgeball arena; pick up snowballs and throw on release.
+- 🎳 **Pin Rush:** bowling with a swipe-to-throw and spin; everyone rolls the same frame at once.
+- 🪂 **Sky Drop:** fall through a 3D shaft of rings, steering by tilt or drag; most rings wins.
+- 🚤 **Bumper Boats:** bumper-car physics on water, with splash power-ups. It shares Sumo Saucers' code.
+- 🧊 **3D Paint Blast:** the same game drawn as a lit 3D maze (the plan's "3D tiles" item).
+
 ## Roadmap
 
 - **More games:** a drawing-and-guessing game (it fits the reactions feature well), a
