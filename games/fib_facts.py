@@ -72,7 +72,7 @@ FACTS = [
     ("The 'D' in D-Day stands for ____.", "day", [], ["death", "destiny", "doom", "deliverance"]),
     ("The Moon has ____.", "moonquakes", ["quakes", "earthquakes", "moon quakes"], ["rainstorms", "rivers", "oceans", "forests"]),
     ("Some cats are allergic to ____.", "humans", ["people", "human", "us"], ["rain", "music", "moonlight", "carpet"]),
-    ("Apples float because they are about a quarter ____.", "air", [], ["sugar", "juice", "seeds", "wax"]),
+    ("The Hundred Years' War actually lasted ____ years.", "116", ["one hundred and sixteen", "a hundred and sixteen"], ["99", "100", "87", "150"]),
     ("Botanically, an avocado is a ____.", "berry", ["fruit", "single-seeded berry"], ["nut", "vegetable", "legume", "root"]),
     ("The Eiffel Tower was meant to be ____ after 20 years.", "taken down", ["dismantled", "demolished", "torn down", "removed"], ["painted gold", "moved to London", "turned upside down", "sold"]),
     ("The tiny pocket in jeans was first made for ____.", "pocket watches", ["watches", "a pocket watch", "watch", "a watch"], ["tickets", "lighters", "keys", "matches"]),
@@ -122,3 +122,14 @@ FACTS = [
     ("The Great Pyramid was the world's tallest building for nearly ____ years.", "4,000", ["4000", "3,800", "3800", "four thousand"], ["40", "400", "100", "40,000"]),
     ("Wombats can run as fast as ____ km/h.", "40", ["forty", "35", "40km/h"], ["2", "5", "100", "200"]),
 ]
+
+# Topics for the Facts setting, as indices into FACTS (tests check every fact has exactly one).
+TOPICS = {
+    "animals": (2, 5, 6, 11, 12, 15, 19, 20, 25, 28, 29, 31, 36, 37, 40, 41, 48, 49, 50, 52, 53, 58, 59, 61,
+                68, 85, 86, 88, 89, 90, 91, 96, 97, 98, 104, 106, 113, 115, 117),
+    "science": (4, 16, 18, 27, 32, 39, 45, 51, 55, 56, 57, 60, 64, 65, 67, 70, 77, 78, 87, 92, 93, 94, 95, 101,
+                102, 111, 112, 114),
+    "history": (1, 3, 7, 9, 10, 14, 21, 23, 26, 30, 34, 35, 44, 46, 47, 54, 63, 69, 71, 72, 79, 80, 82, 83, 84,
+                99, 103, 116),
+    "words": (0, 8, 13, 17, 22, 24, 33, 38, 42, 43, 62, 66, 73, 74, 75, 76, 81, 100, 105, 107, 108, 109, 110),
+}

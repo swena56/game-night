@@ -397,12 +397,12 @@ Riders and Air Hockey start in it) (#13, #15).
 - ❌ **Tic-Tac-Toe:** ✅ in Vanishing mode, the mark that fades next is dimmed.
 
 **Words & puzzles**
-- 🔎 **Grid Hunt:** ✅ added (#24, #37). Next: a "trace" replay of each word in the results, a
-  hint of how many words of each length remain, and a long-grid 6×6 option for big tables.
+- 🔎 **Grid Hunt:** ✅ added (#24, #37). ✅ A "Still to find" line counts the words of each length you
+  haven't found. Next: a "trace" replay of each word in the results, and a long-grid 6×6 option for big tables.
 - 🔐 **Safecracker:** ✅ added (#22). ✅ Each round starts from an empty guess, with ↺ Last to bring
-  back your previous one (#45). Next: a notes row to cross out colours, a colour-blind palette
+  back your previous one (#45). ✅ A 📝 notes row marks colours ✗ out or ✓ in (shown on the pad too). Next: a colour-blind palette
   setting (the numbers already help), and a duel mode where each player sets the other's code.
-- 🤥 **Fib Finder:** ✅ 118 facts, up from 56 (#51); moved here from Party to balance the lobby. Next: category picks.
+- 🤥 **Fib Finder:** ✅ 118 facts, up from 56 (#51); moved here from Party to balance the lobby. ✅ A Facts setting picks a topic: 🐾 Animals, 🔬 Science & nature, 🏛️ History & inventions or 🔤 Words & names (a duplicate apple fact became the Hundred Years' War).
 - 🪜 **Word Ladder:** ✅ added: par, hints and bots use everyday words only, so revealed ladders never lean on obscure words. Next: a 5-letter mode once the everyday list is big enough (today it links only 154 pairs), and a daily shared ladder.
 - 🔤 **Wordsmith:** drag-and-drop tiles with a live score preview, and a hint button for solo play.
 

@@ -5,7 +5,7 @@ import random
 import time
 
 from .base import Game, GameError
-from .fib_facts import FACTS
+from .fib_facts import FACTS, TOPICS
 from .textmatch import norm, same
 
 WRITE_SECS = 75
@@ -31,6 +31,8 @@ class FibFinder(Game):
     max_players = 6
     settings_schema = {
         "rounds": ("Rounds", [(5, "5"), (7, "7"), (10, "10")], 7),
+        "topic": ("Facts", [("all", "🌍 Everything"), ("animals", "🐾 Animals"), ("science", "🔬 Science & nature"),
+                            ("history", "🏛️ History & inventions"), ("words", "🔤 Words & names")], "all"),
     }
 
     # -- setup
@@ -38,7 +40,8 @@ class FibFinder(Game):
     def start(self, seated, rng):
         self.rng = rng
         self.ids = [p.id for p in seated]
-        self.queue = rng.sample(range(len(FACTS)), min(self.s["rounds"], len(FACTS)))
+        pool = TOPICS.get(self.s.get("topic"), range(len(FACTS)))
+        self.queue = rng.sample(pool, min(self.s["rounds"], len(pool)))
         self.round = 0
         for p in seated:
             p.g.score = 0

@@ -1,7 +1,8 @@
 // Safecracker: build a guess from the colour pad, lock it in, and read everyone's revealed guesses.
 // Pegs carry their number as well as their colour, so colour is never the only cue.
 UI.safecracker = (() => {
-  let S, ctx, draft = [], probing = false, draftFor = '';
+  let S, ctx, draft = [], probing = false, draftFor = '', notes = [], notesFor = null;
+  const MARKS = ['', 'out', 'in'];  // a note cycles: unknown → ✗ not in the code → ✓ in the code
   const COLORS = ['#ef476f', '#ffb703', '#06d6a0', '#3a86ff', '#c77dff', '#f4f1de', '#ff7f11', '#8d6e63'];
   const $ = (id) => document.getElementById(id);
 
@@ -12,7 +13,7 @@ UI.safecracker = (() => {
   }
 
   function mount(main, side) {
-    draft = []; probing = false; draftFor = '';
+    draft = []; probing = false; draftFor = ''; notes = []; notesFor = null;
     main.innerHTML = `<div class="sc">
       <div class="sc-head"><span id="scSafe"></span><span id="scRound"></span></div>
       <div id="scOpened" class="sc-opened" hidden></div>
@@ -30,7 +31,9 @@ UI.safecracker = (() => {
       </div></div>`;
     side.innerHTML = `<div class="panel"><h3>Clues</h3>
       <p class="hint left"><span class="sc-pin on"></span> right colour, right spot · <span class="sc-pin"></span> right colour, wrong spot.</p>
-      <div id="scProbeInfo" class="hint left"></div></div>`;
+      <div id="scProbeInfo" class="hint left"></div>
+      <h3>📝 Notes</h3><div id="scNotes" class="sc-notes"></div>
+      <p class="hint left">Tap a colour to mark it ✗ out or ✓ in. Only you see your notes.</p></div>`;
     $('scBack').onclick = () => { draft.pop(); paint(); };
     $('scAgain').onclick = () => { draft = lastGuess() || draft; paint(); };
     $('scProbe').onclick = () => { probing = !probing; paint(); };
@@ -81,6 +84,7 @@ UI.safecracker = (() => {
       b.setAttribute('role', 'button');
       b.setAttribute('aria-label', `colour ${c + 1}`);
       b.classList.toggle('off', !live || used);
+      if (notes[c]) b.classList.add('note-' + MARKS[notes[c]]);
       if (live && !used) b.onclick = () => tapColor(c);
       pad.append(b);
     }
@@ -141,9 +145,23 @@ UI.safecracker = (() => {
     });
     hist.scrollTop = hist.scrollHeight;
 
+    if (notesFor !== g.safe) { notes = []; notesFor = g.safe; }
+    paintNotes();
+
     $('scProbeInfo').textContent = g.myProbe ? `🔍 Your probe: the code holds ${g.myProbe[1]} of colour ${g.myProbe[0] + 1}.`
       : 'Your 🔍 probe for this safe is unused.';
     paint();
+  }
+
+  function paintNotes() {
+    const box = $('scNotes'); box.innerHTML = '';
+    for (let c = 0; c < S.safecracker.colors; c++) {
+      const p = peg(c, 'note' + (notes[c] ? ' note-' + MARKS[notes[c]] : ''));
+      p.setAttribute('role', 'button');
+      p.setAttribute('aria-label', `colour ${c + 1}: ${['no note', 'not in the code', 'in the code'][notes[c] || 0]}`);
+      p.onclick = () => { notes[c] = ((notes[c] || 0) + 1) % 3; paintNotes(); paint(); };
+      box.append(p);
+    }
   }
 
   const turnText = (s) => {

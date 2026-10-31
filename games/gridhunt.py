@@ -265,6 +265,16 @@ class GridHunt(Game):
             return ""
         return f"{p.g.score} pts · {len(p.g.words)} words" if self.stage == "hunt" else f"{p.g.score} pts"
 
+    def lengths(self, mine):
+        """[[word length (7 means 7+), how many such words you haven't found yet], ...], shortest first."""
+        left = {}
+        have = set(mine)
+        for w in self.all:
+            if w not in have:
+                k = min(len(w), 7)
+                left[k] = left.get(k, 0) + 1
+        return sorted(left.items())
+
     def view(self, p):
         mine = getattr(p.g, "words", [])
         open_ = self.stage == "reveal" or self.room.phase == "over"
@@ -273,6 +283,7 @@ class GridHunt(Game):
             "tiles": self.tiles, "star": self.star, "minLen": self.min_len, "total": len(self.all),
             "left": max(0.0, self.end - self.now()), "secs": self.s["secs"],
             "mine": [[w, self.points(w)] for w in mine],
+            "lengths": self.lengths(mine),
             "counts": {q.id: len(q.g.words) for q in self.room.contenders() if hasattr(q.g, "words")},
             "results": self.results if open_ else None,
             "target": self.target() if len(self.room.seated()) == 1 else None,

@@ -856,6 +856,13 @@ body.focus .lr-stage { height: max(220px, calc(var(--app-h, 100vh) - 245px)); }
 .sc-peg.pad:active { transform: scale(.9); }
 .sc-peg.pad.off { opacity: .3; cursor: default; }
 .sc-peg.pad.probing { outline: 2px dashed var(--accent2); outline-offset: 2px; }
+.sc-notes { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
+.sc-peg.note { cursor: pointer; }
+.sc-peg.note-out, .sc-peg.note-in { position: relative; }
+.sc-peg.note-out { opacity: .4; }
+.sc-peg.note-out::after, .sc-peg.note-in::after { position: absolute; right: -4px; top: -6px; font-size: 13px; font-weight: 900; text-shadow: 0 1px 2px #000; }
+.sc-peg.note-out::after { content: "✗"; color: #ff8a8a; }
+.sc-peg.note-in::after { content: "✓"; color: #7dffb0; }
 .sc-opened { display: flex; align-items: center; gap: 6px; justify-content: center; padding: 8px; margin-bottom: 8px;
   background: #06d6a01a; border: 1px solid var(--ok); border-radius: var(--radius); font-weight: 700; }
 .sc-history { max-height: min(42vh, 360px); overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 2px; }

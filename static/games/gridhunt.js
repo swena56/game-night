@@ -153,6 +153,7 @@ UI.gridhunt = (() => {
     if (g.stage === 'hunt') {
       mine.append(ctx.el('div', 'hint left', g.mine.length ? `Your words: ${g.mine.length} (up to ${total} pts if nobody else has them)` : 'Your words will appear here.'));
       for (const [w, pts] of g.mine.slice().reverse()) mine.append(ctx.el('span', 'gh-chip', `${w} ${pts}`));
+      if (g.lengths?.length) mine.append(ctx.el('div', 'hint left', 'Still to find: ' + g.lengths.map(([n, k]) => `${k}× ${n}${n === 7 ? '+' : ''}-letter`).join(' · ')));
     }
 
     const counts = $('ghCounts'); counts.innerHTML = '';
