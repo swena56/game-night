@@ -10,7 +10,7 @@ const REACTIONS = ['😂', '😱', '🤔', '😏', '🔥', '👀', '🙈', '🎉
 const QUICK_CHAT = ['gg', 'nice! 👏', 'hmm… 🤔', 'your turn 😴', 'rematch? 🔁', 'no way 😱'];
 const SOLO_GAMES = [['unmask', '🎭 Unmask'], ['oddone', '🕵️ Odd One Out'], ['relay', '🖍️ Scribble Relay'], ['fibfinder', '🤥 Fib Finder'], ['doodle', '✏️ Doodle Dash'], ['lucky', '🎡 Lucky Letters'], ['wordsmith', '🔤 Wordsmith'], ['chess', '♟️ Chess'], ['checkers', '⛀ Checkers'],
   ['go', '⚫ Go'], ['lastcard', '🃏 Last Card'], ['holdem', "♠️ Texas Hold'em"], ['cribbage', '📍 Cribbage'], ['seabattle', '🚢 Sea Battle'], ['dropfour', '🔴 Drop Four'],
-  ['boxes', '🔳 Dots & Boxes'], ['tictactoe', '❌ Tic-Tac-Toe'], ['heist', '🥷 Night Heist'], ['moonshot', '🚀 Moon Shot'], ['spire', '🗼 Spire Siege'], ['hockey', '🏒 Air Hockey'], ['billiards', '🎱 Billiards'], ['riders', '🏍️ Light Riders']];
+  ['boxes', '🔳 Dots & Boxes'], ['tictactoe', '❌ Tic-Tac-Toe'], ['heist', '🥷 Night Heist'], ['moonshot', '🚀 Moon Shot'], ['yacht', '🎲 Yacht'], ['spire', '🗼 Spire Siege'], ['hockey', '🏒 Air Hockey'], ['billiards', '🎱 Billiards'], ['riders', '🏍️ Light Riders']];
 const CATEGORIES = [['party', '🎉 Party'], ['action', '⚡ Action'], ['board', '♟️ Board'], ['cards', '🃏 Cards'],
   ['dice', '🎲 Dice'], ['words', '🔤 Words']];
 const SOLO_BOTS = { oddone: 3, relay: 3, fibfinder: 3, riders: 3, doodle: 2, heist: 3, moonshot: 2, lastcard: 2, holdem: 3, spire: 2, lucky: 2 };

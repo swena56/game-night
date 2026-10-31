@@ -149,6 +149,12 @@ const MOVES = {
     }
     click(enabled(d, '#lkSpin')[0]);
   },
+  yacht(d, S) {
+    const boxes = enabled(d, '.ya-box');
+    if (boxes.length && (S.yacht.rollsLeft === 0 || Math.random() < 0.4)) return click(pick(boxes));
+    for (const b of enabled(d, '.ya-die')) if (Math.random() < 0.4) click(b);
+    click(d.querySelector('#yaRoll'));
+  },
   cribbage(d, S) {
     if (!d.querySelector('#cbDiscard').hidden) {
       for (const b of enabled(d, '#cbHand .card-btn').slice(0, S.cribbage.need)) click(b);
@@ -318,7 +324,7 @@ async function feedbackTour() {
   const lt = await lobbyTour();
   console.log('LOBBY', JSON.stringify(lt));
   for (const g of games.length ? games : Object.keys(MOVES)) {
-    const r = await playSolo(g, g === 'wordsmith' ? 40 : g === 'spire' ? 25 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'cribbage' ? 300 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
+    const r = await playSolo(g, g === 'wordsmith' ? 40 : g === 'spire' ? 25 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'cribbage' ? 300 : g === 'yacht' ? 200 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
     console.log(`\n== ${g}: phase=${r.phase} moves=${r.moves} dialogs=${r.dialogs || 0} screen="${r.screen}" ${r.banner ? `banner="${r.banner}"` : ''}`);
     console.log(`   help: ${r.help} | log ticker: "${r.ticker}"`);
     if (r.replay) console.log(`   replay: ${r.replay}`);

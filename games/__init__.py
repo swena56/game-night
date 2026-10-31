@@ -21,11 +21,12 @@ from .seabattle import SeaBattle
 from .spire import Spire
 from .tictactoe import TicTacToe
 from .unmask import Unmask
+from .yacht import Yacht
 from .wordsmith import Wordsmith
 
 # Order here is the order of the lobby's game picker.
 GAMES = {g.id: g for g in (Unmask, OddOne, Relay, FibFinder, Doodle, Lucky, Spire, Riders, Hockey, Billiards, Wordsmith, Chess, Checkers, Go, LastCard, Holdem, Cribbage, SeaBattle,
-                           DropFour, Boxes, TicTacToe, Heist, MoonShot)}
+                           DropFour, Boxes, TicTacToe, Heist, MoonShot, Yacht)}
 GAME_INFO = [g.info() for g in GAMES.values()]
 
 __all__ = ["GAMES", "GAME_INFO", "Game", "GameError"]
