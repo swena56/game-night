@@ -128,6 +128,9 @@ label.check input { width: auto; margin: 0; }
 .d4-cell:disabled { opacity: 1; cursor: default; }
 .d4.armed { background: #8b1d1d; }
 .mini-disc { width: 16px; height: 16px; border-radius: 50%; display: inline-block; }
+.d4-moves { display: flex; flex-wrap: wrap; gap: 3px; max-height: 52px; overflow-y: auto; margin: 6px 0; }
+.d4-move { min-width: 20px; height: 20px; padding: 0 4px; border-radius: 10px; background: var(--disc); color: #fff; font: 600 11px/20px system-ui, sans-serif; text-align: center; text-shadow: 0 1px 1px #0008; opacity: .75; }
+.d4-move.now { opacity: 1; box-shadow: 0 0 0 2px #fff; }
 
 /* wordsmith */
 .ws-board { display: grid; grid-template-columns: repeat(11, 1fr); gap: 2px; width: min(100%, 600px); margin: 6px auto;
@@ -243,6 +246,7 @@ body.calm::before, body.calm *, body.calm *::before, body.calm *::after { animat
 .coord { position: absolute; font-size: 10px; font-weight: 700; color: #0008; }
 .coord.rank { top: 2px; left: 3px; } .coord.file { bottom: 1px; right: 3px; }
 .taken { font-size: 18px; margin: 6px 0; }
+.ch-moves { max-height: 4.6em; overflow-y: auto; margin: 4px 0; padding-left: 2.2em; font: 13px/1.5 ui-monospace, monospace; white-space: pre; }
 .promo .piece-btn { font-size: 30px; }
 .checker { width: 78%; height: 78%; border-radius: 50%; display: flex; align-items: center; justify-content: center;
   font-size: clamp(14px, 4vw, 26px); box-shadow: inset 0 -4px 0 #0005, 0 2px 4px #0008; }
@@ -264,6 +268,8 @@ body.calm::before, body.calm *, body.calm *::before, body.calm *::after { animat
 .stone.last::after { content: ''; position: absolute; inset: 32%; border-radius: 50%; border: 2px solid #ef476f; }
 .ghost-stone { opacity: 0; } .go-pt:hover .ghost-stone { opacity: .35; }
 .ghost-stone.b { background: #000; } .ghost-stone.w { background: #fff; }
+.go-area { position: absolute; inset: 34%; border-radius: 2px; z-index: 1; opacity: .8; pointer-events: none; }
+.go-area.b { background: #111; } .go-area.w { background: #fff; box-shadow: 0 0 0 1px #0006; }
 
 /* last card */
 .table { background: radial-gradient(circle, #1f6b52, #0e3b2e); border-radius: var(--radius); padding: 14px; }

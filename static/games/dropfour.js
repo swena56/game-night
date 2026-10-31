@@ -5,6 +5,7 @@ UI.dropfour = (() => {
     dims = ''; bombArmed = false;
     main.innerHTML = '<div class="d4"></div>';
     side.innerHTML = `<div class="panel"><div id="d4Info"></div>
+      <div id="d4Moves" class="d4-moves"></div>
       <button id="bombBtn" class="danger" hidden>💣 Arm bomb</button></div>`;
     board = main.querySelector('.d4');
     document.getElementById('bombBtn').onclick = () => { bombArmed = !bombArmed; ctx.rerender(); };
@@ -45,6 +46,16 @@ UI.dropfour = (() => {
       row.append(disc, `${p?.name ?? 'left'}${pid === S.me.id ? ' (you)' : ''}`);
       info.append(row);
     }
+    const hist = document.getElementById('d4Moves'), moves = d.moves || [];
+    hist.innerHTML = '';
+    hist.hidden = !moves.length;
+    moves.forEach(([seat, col, bomb], i) => {
+      const m = ctx.el('span', 'd4-move' + (i === moves.length - 1 ? ' now' : ''), bomb ? `💣${col + 1}` : String(col + 1));
+      m.style.setProperty('--disc', ctx.player(d.seats[seat])?.color ?? '#777');
+      m.title = `Move ${i + 1}: column ${col + 1}`;
+      hist.append(m);
+    });
+    hist.scrollTop = hist.scrollHeight;
     const bb = document.getElementById('bombBtn');
     bb.hidden = !d.bombs || S.phase !== 'playing';
     bb.disabled = !ctx.myTurn;

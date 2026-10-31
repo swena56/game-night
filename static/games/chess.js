@@ -11,6 +11,7 @@ UI.chess = (() => {
     side.innerHTML = `<div class="panel">
       <div id="chStatus" class="seat-row"></div>
       <div id="chTaken" class="taken"></div>
+      <ol id="chMoves" class="ch-moves"></ol>
       <div id="chPromo" class="row promo" hidden></div>
       <div id="chDraw" class="row"></div>
       <div class="row"><button id="chResign" class="danger">🏳️ Resign</button></div>
@@ -72,6 +73,12 @@ UI.chess = (() => {
     const lost = (color) => ch.captured[color].map((k) => GLYPH[k] + TEXT).join('');
     $('chTaken').innerHTML = '';
     $('chTaken').append(ctx.el('div', '', `White took: ${lost('b') || '—'}`), ctx.el('div', '', `Black took: ${lost('w') || '—'}`));
+
+    const list = $('chMoves'), sans = ch.sans || [];
+    list.innerHTML = '';
+    for (let i = 0; i < sans.length; i += 2) list.append(ctx.el('li', '', sans.slice(i, i + 2).join('  ')));
+    list.hidden = !sans.length;
+    list.scrollTop = list.scrollHeight;
 
     const pr = $('chPromo'); pr.innerHTML = ''; pr.hidden = !promo;
     if (promo) for (const k of 'QRBN') {

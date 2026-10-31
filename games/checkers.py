@@ -33,28 +33,41 @@ def crown_row(piece):
     return 0 if piece.lower() == "d" else 7
 
 
-def jumps_from(b, r, c, piece):
-    """All maximal jump paths for one piece: [[(r,c), (r2,c2), ...], ...]."""
+def on_board(r, c):
+    return 0 <= r < 8 and 0 <= c < 8
+
+
+def jumps_from(b, r, c, piece, flying=False):
+    """All maximal jump paths for one piece: [[(r,c), (r2,c2), ...], ...]. A flying king jumps a piece
+    any distance away along an open diagonal and may land on any empty square beyond it."""
     paths = []
 
     def dfs(b, r, c, piece, path):
         extended = False
+        far = flying and piece.isupper()
         for dr, dc in dirs(piece):
-            mr, mc, tr, tc = r + dr, c + dc, r + 2 * dr, c + 2 * dc
-            if not (0 <= tr < 8 and 0 <= tc < 8) or b[tr][tc] is not None:
+            mr, mc = r + dr, c + dc
+            while far and on_board(mr, mc) and b[mr][mc] is None:
+                mr, mc = mr + dr, mc + dc
+            if not on_board(mr, mc):
                 continue
             mid = b[mr][mc]
             if not mid or mid.lower() == piece.lower():
                 continue
-            nb = [row[:] for row in b]
-            nb[r][c], nb[mr][mc] = None, None
-            crowned = piece.islower() and tr == crown_row(piece)
-            nb[tr][tc] = piece.upper() if crowned else piece
-            extended = True
-            if crowned:  # promotion ends the move
-                paths.append(path + [(tr, tc)])
-            else:
-                dfs(nb, tr, tc, nb[tr][tc], path + [(tr, tc)])
+            tr, tc = mr + dr, mc + dc
+            while on_board(tr, tc) and b[tr][tc] is None:
+                nb = [row[:] for row in b]
+                nb[r][c], nb[mr][mc] = None, None
+                crowned = piece.islower() and tr == crown_row(piece)
+                nb[tr][tc] = piece.upper() if crowned else piece
+                extended = True
+                if crowned:  # promotion ends the move
+                    paths.append(path + [(tr, tc)])
+                else:
+                    dfs(nb, tr, tc, nb[tr][tc], path + [(tr, tc)])
+                if not far:
+                    break
+                tr, tc = tr + dr, tc + dc
         if not extended and len(path) > 1:
             paths.append(path)
 
@@ -62,18 +75,21 @@ def jumps_from(b, r, c, piece):
     return paths
 
 
-def moves_for(b, side):
+def moves_for(b, side, flying=False):
     jumps, steps = [], []
     for r in range(8):
         for c in range(8):
             p = b[r][c]
             if not p or p.lower() != side:
                 continue
-            jumps += jumps_from(b, r, c, p)
+            jumps += jumps_from(b, r, c, p, flying)
             for dr, dc in dirs(p):
                 tr, tc = r + dr, c + dc
-                if 0 <= tr < 8 and 0 <= tc < 8 and b[tr][tc] is None:
+                while on_board(tr, tc) and b[tr][tc] is None:
                     steps.append([(r, c), (tr, tc)])
+                    if not (flying and p.isupper()):
+                        break
+                    tr, tc = tr + dr, tc + dc
     return jumps or steps  # captures are compulsory
 
 
@@ -85,9 +101,11 @@ def apply(b, path):
     nb[r][c] = None
     taken = 0
     for (r1, c1), (r2, c2) in zip(path, path[1:]):
-        if abs(r2 - r1) == 2:
-            nb[(r1 + r2) // 2][(c1 + c2) // 2] = None
-            taken += 1
+        dr, dc = (r2 > r1) - (r2 < r1), (c2 > c1) - (c2 < c1)
+        for k in range(1, abs(r2 - r1)):
+            if nb[r1 + k * dr][c1 + k * dc]:
+                nb[r1 + k * dr][c1 + k * dc] = None
+                taken += 1
     tr, tc = path[-1]
     promoted = piece.islower() and tr == crown_row(piece)
     nb[tr][tc] = piece.upper() if promoted else piece
@@ -108,10 +126,10 @@ def evaluate(b, side):
     return score
 
 
-def negamax(b, side, depth, alpha, beta, deadline):
+def negamax(b, side, depth, alpha, beta, deadline, flying=False):
     if time.time() > deadline:
         raise Timeout
-    moves = moves_for(b, side)
+    moves = moves_for(b, side, flying)
     if not moves:
         return -10000 - depth  # no moves = loss (sooner is worse)
     if depth == 0:
@@ -120,7 +138,7 @@ def negamax(b, side, depth, alpha, beta, deadline):
     best = -10 ** 9
     for path in moves:
         nb, _, _ = apply(b, path)
-        val = -negamax(nb, opp, depth - 1, -beta, -alpha, deadline)
+        val = -negamax(nb, opp, depth - 1, -beta, -alpha, deadline, flying)
         best = max(best, val)
         alpha = max(alpha, val)
         if alpha >= beta:
@@ -140,12 +158,18 @@ class Checkers(Game):
         'Pieces move diagonally forward onto dark squares.',
         'Jump an enemy piece to capture it. Captures are compulsory, and chains continue.',
         'Reach the far row to crown a king, which moves both ways.',
+        '🦅 Flying kings: a king glides any distance along an open diagonal and can jump a piece from afar.',
         'Win by taking every piece or leaving your opponent with no move.',
     ]
     name = "Checkers"
     icon = "⛀"
     blurb = "Jump to capture — captures are compulsory and chain together. Reach the far side to crown a king."
-    settings_schema = {}
+    settings_schema = {
+        "kings": ("Kings", [("short", "Classic (one step)"), ("flying", "🦅 Flying")], "short"),
+    }
+
+    def flying(self):
+        return self.s.get("kings") == "flying"
 
     def start(self, seated, rng):
         rng.shuffle(seated)
@@ -170,7 +194,7 @@ class Checkers(Game):
             raise GameError("Unknown action.")
         self.require_turn(p)
         path = [tuple(x) for x in a.get("path") or [] if isinstance(x, list) and len(x) == 2]
-        if path not in moves_for(self.board, self.side(p)):
+        if path not in moves_for(self.board, self.side(p), self.flying()):
             raise GameError("That move isn't allowed (remember: captures are compulsory).")
         self.play(p, path)
 
@@ -185,7 +209,7 @@ class Checkers(Game):
         r.add_log(f"{p.name}: {text}{extra}", "question")
         opp_id = self.seats[1 - self.seats.index(p.id)]
         opp_side = "l" if self.side(p) == "d" else "d"
-        if not moves_for(self.board, opp_side):
+        if not moves_for(self.board, opp_side, self.flying()):
             return r.finish(p, f"🏆 {p.name} wins — {r.players[opp_id].name} has no moves left!")
         if self.quiet >= NO_PROGRESS_LIMIT:
             return r.finish(None, "🤝 Draw — 40 moves each with no capture or crowning.")
@@ -200,13 +224,15 @@ class Checkers(Game):
 
     def view(self, p):
         s = self.side(p)
-        moves = moves_for(self.board, s) if s and self.room.turn == p.id else []
+        moves = moves_for(self.board, s, self.flying()) if s and self.room.turn == p.id else []
         return {"checkers": {"board": self.board, "seats": self.seats, "me": s,
-                             "moves": [[list(x) for x in m] for m in moves], "last": self.last}}
+                             "moves": [[list(x) for x in m] for m in moves], "last": self.last,
+                             "forced": bool(moves) and apply(self.board, moves[0])[1] > 0}}
 
     def bot_turn(self, p):
         side = self.side(p)
-        moves = moves_for(self.board, side)
+        flying = self.flying()
+        moves = moves_for(self.board, side, flying)
         if p.bot == "easy" and random.random() < 0.4:
             return self.play(p, random.choice(moves))
         budget, max_depth = {"easy": (0.4, 2), "normal": (1.2, 4), "hard": (3.0, 8)}[p.bot]
@@ -215,7 +241,7 @@ class Checkers(Game):
         best = random.choice(moves)
         for depth in range(1, max_depth + 1):
             try:
-                scored = sorted(((-negamax(apply(self.board, m)[0], opp, depth - 1, -10 ** 9, 10 ** 9, deadline)
+                scored = sorted(((-negamax(apply(self.board, m)[0], opp, depth - 1, -10 ** 9, 10 ** 9, deadline, flying)
                                   + random.uniform(0, 3), m) for m in moves), key=lambda x: -x[0])
                 best = scored[0][1]
                 moves = [m for _, m in scored]

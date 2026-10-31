@@ -255,6 +255,33 @@ def move_text(pos, m, captured):
     return text
 
 
+def san(pos, m, after, replies):
+    """Standard algebraic notation (Nf3, exd5, O-O, e8=Q+), from the position before the move."""
+    fr, fc, tr, tc, promo = m
+    k = pos.b[fr][fc][1]
+    if k == "K" and abs(tc - fc) == 2:
+        text = "O-O" if tc == 6 else "O-O-O"
+    else:
+        takes = pos.b[tr][tc] is not None or (k == "P" and fc != tc)
+        if k == "P":
+            text = (FILES[fc] + "x" if takes else "") + name(tr, tc) + (f"={promo}" if promo else "")
+        else:
+            rivals = [o for o in legal(pos) if o[2:4] == (tr, tc) and o[:2] != (fr, fc)
+                      and pos.b[o[0]][o[1]][1] == k]
+            hint = ""
+            if rivals:
+                if all(o[1] != fc for o in rivals):
+                    hint = FILES[fc]
+                elif all(o[0] != fr for o in rivals):
+                    hint = str(8 - fr)
+                else:
+                    hint = name(fr, fc)
+            text = k + hint + ("x" if takes else "") + name(tr, tc)
+    if in_check(after):
+        text += "+" if replies else "#"
+    return text
+
+
 class Chess(Game):
     id = "chess"
     category = "strategy"
@@ -273,6 +300,7 @@ class Chess(Game):
     }
     INCREMENT = {180: 2, 300: 0, 600: 5}
     clock, inc, turn_at = None, 0, 0.0  # games saved before clocks existed have none
+    sans = ()  # nor a move list
 
     def start(self, seated, rng):
         rng.shuffle(seated)
@@ -280,6 +308,7 @@ class Chess(Game):
         self.pos = Pos.initial()
         self.seen = {self.pos.key(): 1}
         self.last = None
+        self.sans = []
         self.captured = {"w": [], "b": []}  # pieces each side has lost
         self.draw_offer = None
         base = self.s.get("clock", 0)
@@ -371,6 +400,7 @@ class Chess(Game):
         self.seen[key] = self.seen.get(key, 0) + 1
         replies = legal(self.pos)
         check = in_check(self.pos)
+        self.sans = [*self.sans, san(before, move, self.pos, replies)]
         opp = r.players.get(self.seats[1 - self.seats.index(p.id)])
         if not replies:
             r.add_log(f"{p.name}: {text}{'#' if check else ''}", "question")
@@ -398,7 +428,7 @@ class Chess(Game):
         return {"chess": {
             "board": self.pos.b, "seats": self.seats, "turnColor": self.pos.turn, "me": mine,
             "moves": [list(m) for m in moves], "last": self.last, "check": check,
-            "captured": self.captured, "drawOffer": self.draw_offer,
+            "captured": self.captured, "drawOffer": self.draw_offer, "sans": list(self.sans),
             "clock": {pid: round(self.left(pid), 1) for pid in self.seats} if self.clock else None, "inc": self.inc,
         }}
 

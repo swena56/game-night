@@ -52,7 +52,7 @@ UI.checkers = (() => {
       }
     });
     const mine = ck.me ? (ck.me === 'd' ? '⚫ You play Dark' : '⚪ You play Light') : '👁 Watching';
-    const forced = ctx.myTurn && ck.moves.some((m) => Math.abs(m[1][0] - m[0][0]) === 2);
+    const forced = ctx.myTurn && ck.forced;
     $('ckStatus').textContent = mine + (forced ? ' · ⚠️ you must capture' : '');
     $('ckResign').disabled = S.phase !== 'playing' || !ck.me;
   }

@@ -87,6 +87,7 @@ class DropFour(Game):
     settings_schema = {
         "bombs": ("Bomb discs", [(False, "Off"), (True, "💣 One each")], False),
     }
+    moves = ()  # [seat, column, bomb?] in order; games saved before the history have none
 
     def start(self, seated, rng):
         rng.shuffle(seated)
@@ -96,6 +97,7 @@ class DropFour(Game):
         self.bombs = {p.id: 1 if self.s["bombs"] else 0 for p in seated}
         self.last = None
         self.line = None
+        self.moves = []
         self.room.add_log(f"{seated[0].name} drops first.", "big")
         self.room.begin_turn(seated[0].id)
 
@@ -122,6 +124,7 @@ class DropFour(Game):
         seat = self.seats.index(p.id)
         self.grid, row = apply_drop(self.grid, col, seat, bomb)
         self.last = [row, col] if not bomb else None
+        self.moves = [*self.moves, [seat, col, bomb]]
         if bomb:
             self.bombs[p.id] -= 1
             r.add_log(f"💣 {p.name} bombed column {col + 1}!", "power")
@@ -143,7 +146,7 @@ class DropFour(Game):
 
     def view(self, p):
         return {"d4": {"grid": self.grid, "seats": self.seats, "last": self.last, "line": self.line,
-                       "bombs": self.bombs.get(p.id, 0)}}
+                       "moves": list(self.moves), "bombs": self.bombs.get(p.id, 0)}}
 
     # -- bot
 

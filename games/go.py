@@ -164,6 +164,7 @@ class Go(Game):
         'A group with no empty points next to it is captured.',
         "Surround empty areas to make territory. You can't repeat a previous position (ko).",
         'Two passes in a row end the game. Stones + territory count; White gets 6.5 komi.',
+        '↶ Undo asks your opponent to take back your last move; bots always agree.',
     ]
     name = "Go"
     icon = "⚫"
@@ -172,6 +173,7 @@ class Go(Game):
     settings_schema = {
         "size": ("Board", [(9, "9×9 (quick)"), (13, "13×13"), (19, "19×19 (full)")], 9),
     }
+    snaps, undo_ask = (), None  # games saved before undo existed have no snapshots
 
     def start(self, seated, rng):
         rng.shuffle(seated)
@@ -183,6 +185,8 @@ class Go(Game):
         self.passes = 0
         self.moves = 0
         self.last = None
+        self.snaps = []  # (mover id, state before their move), newest last
+        self.undo_ask = None
         self.room.add_log(f"⚫ {seated[0].name} plays Black and goes first; ⚪ {seated[1].name} plays White (+{KOMI}).", "big")
         self.room.begin_turn(seated[0].id)
 
@@ -204,6 +208,12 @@ class Go(Game):
         if t == "resign":
             opp = self.room.players.get(self.seats[1 - self.seats.index(p.id)])
             return self.room.finish(opp, f"🏳️ {p.name} resigned — {opp.name} wins!")
+        if t == "undo_ask":
+            return self.ask_undo(p)
+        if t in ("undo_yes", "undo_no"):
+            if not self.undo_ask or self.undo_ask == p.id:
+                raise GameError("There's no undo request to answer.")
+            return self.answer_undo(p, t == "undo_yes")
         self.require_turn(p)
         if t == "pass":
             return self.do_pass(p)
@@ -217,7 +227,40 @@ class Go(Game):
             raise GameError("You can't play there (occupied, suicide, or ko).")
         self.play(p, r, c, res)
 
+    # -- undo: a move can be taken back (with the reply after it) if the opponent agrees
+
+    def snapshot(self, p):
+        self.undo_ask = None  # moving on counts as declining
+        state = (self.board, self.captures.copy(), self.passes, self.moves, self.last, self.room.turn)
+        self.snaps = [*self.snaps, (p.id, state)][-2:]
+
+    def ask_undo(self, p):
+        if self.room.phase != "playing" or not any(pid == p.id for pid, _ in self.snaps):
+            raise GameError("You have no move to take back.")
+        if self.undo_ask:
+            raise GameError("An undo request is already waiting.")
+        opp = self.room.players.get(self.seats[1 - self.seats.index(p.id)])
+        self.undo_ask = p.id
+        self.room.add_log(f"↶ {p.name} asks to take back their last move.", "power")
+        if opp and opp.bot:
+            self.answer_undo(opp, True)
+
+    def answer_undo(self, p, accept):
+        asker = self.room.players.get(self.undo_ask)
+        self.undo_ask = None
+        if not accept:
+            return self.room.add_log(f"{p.name} said no to the undo.")
+        while self.snaps:
+            pid, (board, captures, passes, moves, last, turn) = self.snaps.pop()
+            self.history.discard(key(self.board))
+            self.board, self.captures, self.passes, self.moves, self.last = board, captures, passes, moves, last
+            if pid == asker.id:
+                break
+        self.room.add_log(f"↶ {asker.name}'s move was taken back.", "power")
+        self.room.begin_turn(turn)
+
     def play(self, p, r, c, res):
+        self.snapshot(p)
         self.board, captured = res
         self.history.add(key(self.board))
         color = self.color(p)
@@ -230,6 +273,7 @@ class Go(Game):
         self.room.advance()
 
     def do_pass(self, p):
+        self.snapshot(p)
         self.passes += 1
         self.last = None
         self.room.add_log(f"{p.name} passed.")
@@ -259,7 +303,11 @@ class Go(Game):
 
     def view(self, p):
         return {"go": {"board": self.board, "seats": self.seats, "me": self.color(p), "last": self.last,
-                       "captures": self.captures, "score": self.scores(), "passes": self.passes, "komi": KOMI}}
+                       "captures": self.captures, "score": self.scores(), "passes": self.passes, "komi": KOMI,
+                       "territory": [[r, c, owner] for region, owner in regions(self.board) if owner
+                                     for r, c in region],
+                       "undo": {"asker": self.undo_ask,
+                                "can": any(pid == p.id for pid, _ in self.snaps)}}}
 
     # -- bot: heuristic move scoring
 

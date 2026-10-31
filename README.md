@@ -55,7 +55,7 @@ address the server prints. **Play solo** on the home screen starts any game agai
 | 🏒 **Air Hockey** | 2 | **Real-time** table hockey: drag your mallet around your half, bank shots off the walls. Server-side physics at 60 fps. | 🏒🏒 Double Trouble puts two pucks on the table. Each player sees the table from their own end. |
 | 🎱 **Billiards** | 2 | Eight-ball pool on a top-down table with real physics (cushions, ball-to-ball collisions, six pockets). Drag to aim, set the power, shoot. | The server simulates every shot and sends the ball paths, so every phone plays back the same shot. A 🎯 aim guide (full, short or off) shows where both balls go. Fouls give ✋ ball in hand. The table stands upright on phones. |
 | ♟️ **Chess** | 2 | Full rules: castling, en passant, promotion, check/mate, stalemate, 50-move rule, threefold repetition, insufficient material. Draw offers and resignation. Optional ⏱️ clock: 3+2, 5+0 or 10+5. | Move generation is checked against standard perft counts. Black sees the board from their side. 🧊 **3D board** (three.js) by default: tap a piece, then its square; drag sideways to turn the board. The flat board is one tap away and is used automatically without WebGL. |
-| ⛀ **Checkers** | 2 | American rules: compulsory captures, multi-jumps in one move, kings, and a 40-move no-progress draw. | Legal pieces and landing squares are highlighted. |
+| ⛀ **Checkers** | 2 | American rules: compulsory captures, multi-jumps in one move, kings, and a 40-move no-progress draw. | Legal pieces and landing squares are highlighted. Optional 🦅 flying kings glide any distance and jump from afar. |
 | 🔎 **Grid Hunt** | 2–6 | Timed word hunt: everyone searches the same freshly shaken 4×4 or 5×5 letter grid at once, tracing words through touching tiles. Drag, tap, or type. | When time runs out the lists are compared, and **a word a rival also found scores nothing**. A ⭐ star tile doubles words through it. The grid is reshaken until it holds plenty of words, and the results show the longest ones nobody found. |
 | 🔐 **Safecracker** | 1–6 | Code-breaking: crack a hidden 4- or 5-peg colour code from ● (right spot) and ○ (wrong spot) hints. | **Everyone cracks the same safe at once**: guesses are locked in secretly, then all are revealed, so rivals' clues help you too. Crack it alone for 3, share the crack for 2. A private 🔍 probe per safe counts one colour, for a point. Pegs show numbers as well as colours. |
 | 🔺 **Backgammon** | 2 | The traditional race game, full rules: opening roll, doubles move four times, hits and the bar, bearing off (higher dice only for the farthest checker), and the must-use-both-dice / use-the-larger-die rules. | The board is drawn from your side, so your home is bottom right in either colour. Tap a checker, then a glowing point; undo until you end your turn. Gammons (2) and backgammons (3); one game or a match to 3 or 5. No doubling cube. |
@@ -387,14 +387,14 @@ Riders and Air Hockey start in it) (#13, #15).
 
 **Strategy**
 - 🔺 **Backgammon:** ✅ added (#42). Next: a doubling cube, and a stronger evaluation for the hard bot.
-- ♟️ **Chess:** a move list in standard notation, premoves, and capture animations.
-- ⛀ **Checkers:** last-move highlight, and an optional flying-kings variant.
-- ⚫ **Go:** a territory overlay at the end, and a request-undo button.
+- ♟️ **Chess:** ✅ a move list in standard notation (Nf3, exd5, O-O, e8=Q#). Next: premoves, and capture animations.
+- ⛀ **Checkers:** ✅ last-move highlight, and an optional 🦅 flying-kings variant.
+- ⚫ **Go:** ✅ a territory overlay (shown at the end, ◫ toggle during play), and ↶ undo requests (bots always agree).
 
 **Quick classics**
-- 🔴 **Drop Four:** highlight the winning line, and a move history.
-- 🔳 **Dots & Boxes:** a last-line highlight, and a bigger grid when the phone is sideways.
-- ❌ **Tic-Tac-Toe:** in Vanishing mode, dim the mark that fades next.
+- 🔴 **Drop Four:** ✅ the winning line glows, and a move history of coloured column chips.
+- 🔳 **Dots & Boxes:** ✅ a last-line highlight. Next: a bigger grid when the phone is sideways.
+- ❌ **Tic-Tac-Toe:** ✅ in Vanishing mode, the mark that fades next is dimmed.
 
 **Words & puzzles**
 - 🔎 **Grid Hunt:** ✅ added (#24, #37). Next: a "trace" replay of each word in the results, a
