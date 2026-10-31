@@ -66,3 +66,22 @@ function faceSVG(f) {
   s.push('</svg>');
   return s.join('');
 }
+
+// A player's avatar: a face from the same generator, picked by their name, so every phone draws the same one
+// (the traits and weights follow make_face in games/unmask.py).
+function avatarFace(seed) {
+  let h = 2166136261;
+  for (const ch of String(seed)) h = Math.imul(h ^ ch.codePointAt(0), 16777619);
+  const rnd = () => { h = Math.imul(h ^ (h >>> 15), 2246822507); h = Math.imul(h ^ (h >>> 13), 3266489909); return ((h ^= h >>> 16) >>> 0) / 4294967296; };
+  const pick = (xs) => xs[Math.floor(rnd() * xs.length)];
+  const weighted = (pairs) => { let r = rnd() * pairs.reduce((t, [, w]) => t + w, 0); for (const [v, w] of pairs) if ((r -= w) < 0) return v; return pairs[0][0]; };
+  const hat = weighted([['none', 6], ['cap', 1], ['beanie', 1], ['tophat', 1]]);
+  const style = pick(hat !== 'none' ? ['short', 'long', 'curly'] : ['bald', 'short', 'long', 'curly', 'mohawk', 'bun']);
+  return {
+    hair_color: style === 'bald' ? 'none' : pick(['black', 'brown', 'blonde', 'red', 'white', 'blue']), hair_style: style,
+    eye_color: pick(['brown', 'blue', 'green']), glasses: weighted([['none', 5], ['round', 2], ['shades', 1]]), hat,
+    facial_hair: weighted([['none', 5], ['mustache', 2], ['beard', 2]]), earrings: weighted([['no', 3], ['yes', 1]]),
+    expression: pick(['smile', 'neutral', 'surprised']), shirt: pick(['red', 'blue', 'green', 'yellow', 'purple']),
+    skin: Math.floor(rnd() * 6), bg: Math.floor(rnd() * 8), hat_color: Math.floor(rnd() * 4),
+  };
+}

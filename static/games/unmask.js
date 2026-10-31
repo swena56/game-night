@@ -1,5 +1,8 @@
 UI.unmask = (() => {
   let S, ctx, boardKey = '', accuseMode = false, populated = false;
+  // card size, set by pinching the board or the 🔍 buttons, remembered on this device
+  let zoom = 92;
+  try { zoom = Math.min(200, Math.max(60, +localStorage.getItem('unmask.zoom') || 92)); } catch {}
   const $ = (s) => document.querySelector(s);
 
   const holds = (f, qid) => { const [a, v] = qid.split(':'); return v === 'any' ? f[a] !== 'none' : f[a] === v; };
@@ -8,7 +11,12 @@ UI.unmask = (() => {
 
   function mount(main, side) {
     boardKey = ''; accuseMode = false; populated = false;
-    main.innerHTML = '<div id="board" class="board"></div>';
+    main.innerHTML = `<div class="zoom-bar"><span>🔍</span><button id="zoomOut" aria-label="Smaller faces">−</button>
+      <button id="zoomIn" aria-label="Bigger faces">+</button><small>or pinch the board</small></div><div id="board" class="board"></div>`;
+    setZoom(zoom);
+    $('#zoomOut').onclick = () => setZoom(zoom / 1.2);
+    $('#zoomIn').onclick = () => setZoom(zoom * 1.2);
+    pinchable($('#board'));
     side.innerHTML = `
       <div id="identity" class="panel identity"></div>
       <div id="askPanel" class="panel">
@@ -30,6 +38,28 @@ UI.unmask = (() => {
     $('#useCombo').onchange = () => { $('#comboFields').hidden = !$('#useCombo').checked; updatePreview(); };
     $('#askBtn').onclick = () => { ctx.quiet(ctx.act('ask', { q: currentQuestion() })); $('#useCombo').checked = false; };
     $('#accuseBtn').onclick = () => { accuseMode = !accuseMode; ctx.rerender(); if (accuseMode) ctx.toast('Tap the face you think it is.'); };
+  }
+
+  function setZoom(px) {
+    zoom = Math.round(Math.min(200, Math.max(60, px)));
+    $('#board')?.style.setProperty('--card', `${zoom}px`);
+    try { localStorage.setItem('unmask.zoom', String(zoom)); } catch {}
+  }
+  function pinchable(board) {
+    const pts = new Map();
+    let from = null;
+    const spread = () => { const [a, b] = [...pts.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+    board.addEventListener('pointerdown', (e) => {
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size === 2) from = { d: spread(), zoom };
+    });
+    board.addEventListener('pointermove', (e) => {
+      if (!pts.has(e.pointerId)) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size === 2 && from?.d > 10) setZoom(from.zoom * (spread() / from.d));
+    });
+    const lift = (e) => { pts.delete(e.pointerId); if (pts.size < 2) from = null; };
+    for (const t of ['pointerup', 'pointercancel', 'pointerleave']) board.addEventListener(t, lift);
   }
 
   function render(s, c) {

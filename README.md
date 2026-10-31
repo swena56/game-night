@@ -309,7 +309,8 @@ be checked without a browser.
    table and its side panel on dark felt, since every board, card and canvas is drawn for it. Still to do:
    board themes (wood, classic, high-contrast) and card-back styles.
 8. **Identity and social.**
-   - Avatars generated with the Unmask face generator.
+   - ✅ Avatars generated with the Unmask face generator: every player gets a face picked by their name (the same
+     on every phone), shown in the player chips and the lobby list.
    - ✅ A colour picker and rename in the lobby (✏️ next to your name, between games; names must be
      unique in the room and colours can't be shared).
    - ✅ A QR code for the invite link (📲 in the lobby). `static/qr.js` is a small dependency-free encoder
@@ -418,7 +419,7 @@ Riders and Air Hockey start in it) (#13, #15).
   note keep reserved heights, so the answer buttons never move between questions (true/false fills the same space).
 - 🥷 **Night Heist:** ✅ a night-by-night grid of everyone's choices and gold changes. ✅ Bots get a personality, shown on their chip: 🦊 greedy, 🐢 cautious or 🦉 watchful.
 - 🎭 **Unmask:** ✅ an ↶ Undo toast after flipping a batch of faces (toasts can now carry an action button).
-  Next: generated avatars, and pinch-zoom on the board.
+  ✅ Pinch the board (or 🔍 − / +) to make the faces bigger or smaller; the size is kept on the device.
 
 **Strategy**
 - 🔺 **Backgammon:** ✅ added (#42). ✅ A 🎲 doubling cube (on by default): double before you roll, take to own

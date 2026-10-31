@@ -217,6 +217,18 @@ function shapeDots(root) {
     d.classList.add('shaped'); d.textContent = SHAPES[hex]; d.style.color = hex;
   }
 }
+// a small face for each player (by name), cached since the SVG is the same every time
+const avatarCache = new Map();
+function avatar(p) {
+  const a = el('span', 'avatar');
+  if (typeof faceSVG === 'function' && p?.name) {
+    const key = p.name.replace(/^🤖\s*/, '');
+    if (!avatarCache.has(key)) avatarCache.set(key, faceSVG(avatarFace(key)));
+    a.innerHTML = avatarCache.get(key);
+  }
+  a.setAttribute('aria-hidden', 'true');
+  return a;
+}
 function mark(p, online = true) {
   const m = el('span', 'pmark', SHAPES[p?.color] ?? '●');
   m.style.color = online ? p?.color ?? '#777' : '#555';
@@ -397,7 +409,7 @@ function renderLobby() {
   const ul = $('#lobbyPlayers'); ul.innerHTML = '';
   for (const p of S.players) {
     const li = el('li');
-    li.append(mark(p, p.online), el('span', '', p.name + (p.id === S.me.id ? ' (you)' : '')));
+    li.append(avatar(p), mark(p, p.online), el('span', '', p.name + (p.id === S.me.id ? ' (you)' : '')));
     if (p.id === S.host) li.append(el('span', '', '👑'));
     if (p.id === S.me.id && S.phase !== 'playing') {
       const edit = el('button', 'ghost-btn', '✏️');
@@ -512,7 +524,7 @@ function renderGame(view = S, readOnly = false, force = false) {
   const chips = $('#players'); chips.innerHTML = '';
   for (const p of view.players) {
     const c = el('div', 'chip' + (p.id === view.turn ? ' turn-now' : '') + (p.eliminated ? ' out' : ''));
-    c.append(mark(p, p.online), el('b', '', p.name));
+    c.append(avatar(p), mark(p, p.online), el('b', '', p.name));
     const bits = [p.spectator ? '👁 watching' : p.meta, p.played || p.points ? '⭐' + p.points : '', p.eliminated ? '👻' : '',
       p.standin ? '🤖 autopilot' : p.away ? '📡 away' : ''].filter(Boolean);
     if (bits.length) c.append(el('span', 'meta', bits.join(' · ')));
