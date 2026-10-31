@@ -148,11 +148,7 @@ label.check input { width: auto; margin: 0; }
 .ws-preview { min-height: 1.4em; font-size: 13px; font-weight: 700; margin: 4px 0; }
 .ws-preview.good { color: var(--ok); } .ws-preview.bad { color: #ff8a8a; }
 .rack-tile.sel { transform: translateY(-6px); outline: 3px solid var(--accent); }
-.ws-preview { min-height: 1.4em; font-size: 13px; font-weight: 700; margin: 4px 0; }
-.ws-preview.good { color: var(--ok); } .ws-preview.bad { color: #ff8a8a; }
 .rack-tile.swap { outline: 3px dashed var(--danger); opacity: .7; }
-.ws-preview { min-height: 1.4em; font-size: 13px; font-weight: 700; margin: 4px 0; }
-.ws-preview.good { color: var(--ok); } .ws-preview.bad { color: #ff8a8a; }
 .ws-info { display: flex; justify-content: space-between; color: var(--muted); font-size: 13px; }
 
 /* night heist */
@@ -596,6 +592,14 @@ button.danger { background: linear-gradient(180deg, #ff5d82, #ef476f 55%, #d9325
   background: linear-gradient(135deg, var(--panel2), var(--panel)); border-radius: var(--radius); border: 2px dashed #ffb70366; }
 .oo-card small { color: var(--muted); text-transform: uppercase; letter-spacing: .1em; font-size: 12px; }
 .oo-card b { font-size: 34px; letter-spacing: .04em; color: var(--accent); text-align: center; overflow-wrap: anywhere; }
+.oo-tally { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.oo-trow { display: grid; grid-template-columns: minmax(0, 8em) 1.6em 1fr; gap: 8px; align-items: center; padding: 4px 8px; border-radius: 10px; background: #ffffff0a; }
+.oo-trow.odd { background: #06d6a022; box-shadow: inset 0 0 0 1px var(--ok); }
+.oo-tname { display: flex; align-items: center; gap: 6px; font-weight: 700; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.oo-count { font-size: 18px; text-align: center; }
+.oo-voters { display: flex; flex-wrap: wrap; gap: 4px; }
+.oo-voter { border: 2px solid; border-radius: 999px; padding: 1px 8px; font-size: 12px; animation: votePop .4s both cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes votePop { from { opacity: 0; transform: scale(.3); } to { opacity: 1; transform: none; } }
 .oo-round { color: var(--muted); font-size: 13px; }
 .oo-clue-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 4px; border-radius: 10px; }
 .oo-clue-row.now { background: #ffb70318; }
@@ -633,9 +637,13 @@ button.danger { background: linear-gradient(180deg, #ff5d82, #ef476f 55%, #d9325
 .rl-art { width: min(100%, 320px); }
 .rl-ink { fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 .rl-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center; margin: 8px 0; }
-.rl-inks { display: flex; gap: 4px; }
+.rl-inks { display: flex; flex-wrap: wrap; gap: 4px; }
 .rl-swatch { width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 2px solid #fff3; }
 .rl-swatch.on { border: 3px solid #fff; transform: scale(1.12); }
+.rl-size { width: 30px; height: 30px; padding: 0; border-radius: 50%; display: grid; place-items: center; }
+.rl-size span { display: block; border-radius: 50%; background: var(--text); }
+.rl-size.on { outline: 2px solid #fff; }
+.rl-save { margin-top: 10px; }
 .rl-chain { display: grid; gap: 10px; }
 .rl-entry { background: var(--panel); border-radius: var(--radius); padding: 10px; display: grid; gap: 8px; animation: rlin .5s both; }
 .rl-who { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }

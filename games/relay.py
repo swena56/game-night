@@ -128,7 +128,9 @@ class Relay(Game):
             raise GameError("Draw something first!")
         out, total = [], 0
         for s in strokes:
-            if not (isinstance(s, list) and len(s) == 2 and isinstance(s[0], int) and 0 <= s[0] < COLORS
+            # s[0] is the ink: colour + 10 × brush size (0 normal, 1 thin, 2 thick)
+            if not (isinstance(s, list) and len(s) == 2 and isinstance(s[0], int) and not isinstance(s[0], bool)
+                    and 0 <= s[0] < 30 and s[0] % 10 < COLORS
                     and isinstance(s[1], list) and len(s[1]) >= 2 and len(s[1]) % 2 == 0):
                 raise GameError("Bad drawing.")
             pts = s[1]

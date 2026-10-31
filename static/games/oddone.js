@@ -1,6 +1,6 @@
 // Odd One Out: your secret word, the table's clues, then a vote.
 UI.oddone = (() => {
-  let S, ctx;
+  let S, ctx, shownVotes = '';
   const $ = (id) => document.getElementById(id);
   const playing = () => S.phase === 'playing' && !S.me.spectator && !S.me.eliminated;
 
@@ -103,14 +103,28 @@ UI.oddone = (() => {
       res.append(who);
       if (g.common) res.append(ctx.el('p', '', `Everyone else had “${g.common}”.`));
       if (g.result.guess) res.append(ctx.el('p', '', g.result.guessed ? `💡 They guessed “${g.result.guess}”. Correct, +3!` : `❌ They guessed “${g.result.guess}”.`));
-      const votes = ctx.el('div', 'reveal-row');
-      for (const [from, to] of Object.entries(g.votes || {})) {
-        const a = ctx.player(from), b = ctx.player(to);
-        const tag = ctx.el('span', 'reveal-tag', `${a?.name ?? '?'} → ${b?.name ?? '?'}`);
-        tag.style.borderColor = to === g.odd ? 'var(--ok)' : '#555';
-        votes.append(tag);
+      // who voted for whom: a row per suspect, most votes first, the voters' dots popping in one by one
+      // (animated the first time this result is shown)
+      const by = {};
+      for (const [from, to] of Object.entries(g.votes || {})) (by[to] ||= []).push(from);
+      const key = `${g.odd}|${g.oddWord}|${JSON.stringify(g.votes)}`, fresh = key !== shownVotes;
+      shownVotes = key;
+      const tally = ctx.el('div', 'oo-tally');
+      let k = 0;
+      for (const [to, froms] of Object.entries(by).sort((a, b) => b[1].length - a[1].length)) {
+        const row = ctx.el('div', 'oo-trow' + (to === g.odd ? ' odd' : ''));
+        const name = ctx.el('span', 'oo-tname'); name.append(dot(ctx.player(to)), ctx.player(to)?.name ?? '?');
+        const voters = ctx.el('span', 'oo-voters');
+        for (const from of froms) {
+          const v = ctx.el('span', 'oo-voter', ctx.player(from)?.name ?? '?');
+          v.style.borderColor = ctx.player(from)?.color ?? '#777';
+          if (fresh) v.style.animationDelay = `${0.35 * k++}s`; else v.style.animation = 'none';
+          voters.append(v);
+        }
+        row.append(name, ctx.el('b', 'oo-count', `${froms.length}`), voters);
+        tally.append(row);
       }
-      res.append(votes);
+      res.append(tally);
     }
   }
 

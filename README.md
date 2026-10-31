@@ -391,8 +391,10 @@ Riders and Air Hockey start in it) (#13, #15).
 **Party**
 - 🎡 **Lucky Letters:** done for now (#17, #18, #19). ✅ The 3D wheel's camera now backs off to fit the whole wheel at any stage shape (#27).
 - ✏️ **Doodle Dash:** more drawings than 52, and a reveal card for each answer.
-- 🕵️ **Odd One Out:** more word pairs, and an animated "who voted for whom" reveal.
-- 🖍️ **Scribble Relay:** brush sizes, and saving a finished chain as an image.
+- 🕵️ **Odd One Out:** ✅ 50 word pairs (up from 36), and an animated "who voted for whom" reveal: a row per
+  suspect, most votes first, the voters popping in one by one.
+- 🖍️ **Scribble Relay:** ✅ thin, normal and thick brushes (stored in each stroke's ink number, so older
+  drawings and the bots' are unchanged), and 💾 saving a revealed chain as one tall PNG.
 - 🧠 **Trivia Rush:** ✅ added (#49), 188 questions in 9 topics. ✅ The quickest right answer gets a ⚡ callout. ✅ An Answers setting adds ✅ true/false rounds (every question, or every third). Next: more questions.
 - 🥷 **Night Heist:** ✅ a night-by-night grid of everyone's choices and gold changes. ✅ Bots get a personality, shown on their chip: 🦊 greedy, 🐢 cautious or 🦉 watchful.
 - 🎭 **Unmask:** an undo toast for flips, generated avatars, and pinch-zoom on the board.

@@ -1,8 +1,10 @@
 // Scribble Relay: write / draw / caption on your own phone, then reveal the chains and vote.
 UI.relay = (() => {
-  let S, ctx, pad, padKey = '', strokes = [], cur = null, color = 0, ints = 0, shownKey = '';
+  let S, ctx, pad, padKey = '', strokes = [], cur = null, color = 0, size = 0, ints = 0, shownKey = '';
   const NS = 'http://www.w3.org/2000/svg';
   const INK = ['#1d1a26', '#e63946', '#1d7bd8', '#2a9d4b', '#f4a300', '#8e44ad'];
+  const WIDTH = [2.2, 1.1, 4.6];  // brush sizes: a stroke's ink number is colour + 10 × size
+  const inkOf = (c) => INK[c % 10] ?? INK[0], widthOf = (c) => WIDTH[Math.floor(c / 10)] ?? WIDTH[0];
   const MAX_INTS = 2300;
   const IDEAS = ['a cat riding a bicycle', 'a snowman at the beach', 'a dragon eating spaghetti', 'a robot walking a dog',
     'a haunted lighthouse', 'a giraffe in a tiny car', 'the moon wearing sunglasses', 'a pirate ship in a bathtub',
@@ -18,7 +20,8 @@ UI.relay = (() => {
     for (const [c, d] of v) {
       const p = document.createElementNS(NS, 'path');
       p.setAttribute('d', d);
-      p.setAttribute('stroke', INK[c] ?? INK[0]);
+      p.setAttribute('stroke', inkOf(c));
+      p.style.strokeWidth = widthOf(c);
       p.setAttribute('class', 'rl-ink');
       svg.append(p);
     }
@@ -32,7 +35,8 @@ UI.relay = (() => {
     for (const [c, pts] of strokes) {
       const p = document.createElementNS(NS, 'path');
       p.setAttribute('d', path(pts));
-      p.setAttribute('stroke', INK[c]);
+      p.setAttribute('stroke', inkOf(c));
+      p.style.strokeWidth = widthOf(c);
       p.setAttribute('class', 'rl-ink');
       pad.append(p);
     }
@@ -53,7 +57,7 @@ UI.relay = (() => {
       if (!pt) return;
       e.preventDefault();
       pad.setPointerCapture?.(e.pointerId);
-      cur = [color, pt];
+      cur = [color + 10 * size, pt];
       strokes.push(cur);
       ints += 2;
       redraw();
@@ -78,7 +82,7 @@ UI.relay = (() => {
   const canDraw = () => S?.relay?.stage === 'play' && S.relay.kind === 'draw' && !S.relay.sent && playing();
 
   function mount(main, side) {
-    padKey = ''; strokes = []; cur = null; ints = 0; color = 0; shownKey = '';
+    padKey = ''; strokes = []; cur = null; ints = 0; color = 0; size = 0; shownKey = '';
     main.innerHTML = `<div class="rl">
       <div class="rl-head"><span id="rlStep"></span><span id="rlTask" class="rl-task"></span></div>
       <div id="rlPrompt" class="rl-prompt"></div>
@@ -110,6 +114,14 @@ UI.relay = (() => {
       b.onclick = () => { color = i; markInk(); };
       $('rlInks').append(b);
     });
+    [[1, 'thin'], [0, 'normal'], [2, 'thick']].forEach(([k, label]) => {
+      const b = document.createElement('button');
+      b.className = 'rl-size'; b.type = 'button'; b.dataset.size = k;
+      b.setAttribute('aria-label', `${label} brush`);
+      b.append(Object.assign(document.createElement('span'), { style: `width:${WIDTH[k] * 3}px;height:${WIDTH[k] * 3}px` }));
+      b.onclick = () => { size = k; markInk(); };
+      $('rlInks').append(b);
+    });
     markInk();
     $('rlUndo').onclick = () => { const s = strokes.pop(); if (s) ints -= s[1].length; redraw(); };
     $('rlClear').onclick = () => { strokes = []; ints = 0; redraw(); };
@@ -125,7 +137,10 @@ UI.relay = (() => {
     };
   }
 
-  function markInk() { for (const b of document.querySelectorAll('.rl-swatch')) b.classList.toggle('on', +b.dataset.i === color); }
+  function markInk() {
+    for (const b of document.querySelectorAll('.rl-swatch')) b.classList.toggle('on', +b.dataset.i === color);
+    for (const b of document.querySelectorAll('.rl-size')) b.classList.toggle('on', +b.dataset.size === size);
+  }
 
   function render(s, c) {
     S = s; ctx = c;
@@ -178,7 +193,55 @@ UI.relay = (() => {
       card.append(b);
       box.append(card);
     });
+    const save = ctx.el('button', 'ghost-btn rl-save', '💾 Save this chain as a picture');
+    save.onclick = () => saveChain(g).catch(() => ctx.toast("Couldn't make the picture on this device."));
+    box.append(save);
     $('rlStatus').textContent = S.phase === 'playing' ? (waiting.length ? `Vote for your favourite. Waiting for: ${waiting.join(', ')}` : '') : '';
+  }
+
+  // the whole chain as one tall PNG: who did what, the phrases, and the drawings on white cards
+  async function saveChain(g) {
+    const W = 600, pad = 24, art = 360;
+    const c = document.createElement('canvas'), x = c.getContext('2d');
+    const wrap = (text, width) => {
+      const words = text.split(' '), lines = [''];
+      for (const w of words) {
+        const t = lines.at(-1) ? `${lines.at(-1)} ${w}` : w;
+        if (x.measureText(t).width > width && lines.at(-1)) lines.push(w); else lines[lines.length - 1] = t;
+      }
+      return lines;
+    };
+    const images = await Promise.all(g.chain.map((e) => {
+      if (e.kind !== 'draw') return null;
+      const paths = e.v.map(([ci, d]) => `<path d="${d}" stroke="${inkOf(ci)}" stroke-width="${widthOf(ci)}" fill="none" stroke-linecap="round" stroke-linejoin="round"/>`).join('');
+      const img = new Image();
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
+        `<svg xmlns="${NS}" viewBox="-2 -2 104 104" width="${art}" height="${art}"><rect x="-2" y="-2" width="104" height="104" fill="#fff"/>${paths}</svg>`);
+      return img.decode().then(() => img);
+    }));
+    x.font = '600 22px system-ui, sans-serif';
+    const blocks = g.chain.map((e, i) => (e.kind === 'draw' ? art : wrap(`“${e.v}”`, W - 2 * pad).length * 30) + 44);
+    c.width = W; c.height = pad * 2 + 50 + blocks.reduce((a, b) => a + b, 0);
+    x.fillStyle = '#16131f'; x.fillRect(0, 0, c.width, c.height);
+    x.fillStyle = '#ffb703'; x.font = '800 26px system-ui, sans-serif';
+    x.fillText(`🖍️ ${ctx.player(g.starter)?.name ?? '?'}'s Scribble Relay chain`, pad, pad + 26);
+    let y = pad + 60;
+    g.chain.forEach((e, i) => {
+      const p = ctx.player(e.by);
+      x.fillStyle = p?.color ?? '#aaa'; x.font = '700 18px system-ui, sans-serif';
+      x.fillText(`${p?.name ?? '?'} ${e.kind === 'draw' ? 'drew' : i ? 'guessed' : 'wrote'}`, pad, y + 18);
+      y += 32;
+      if (images[i]) { x.drawImage(images[i], (W - art) / 2, y); y += art + 12; }
+      else {
+        x.fillStyle = '#f3eefc'; x.font = '600 22px system-ui, sans-serif';
+        for (const line of wrap(`“${e.v}”`, W - 2 * pad)) { x.fillText(line, pad, y + 22); y += 30; }
+        y += 12;
+      }
+    });
+    const blob = await new Promise((res) => c.toBlob(res, 'image/png'));
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: `scribble-relay-chain-${g.show + 1}.png` });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
   }
 
   function turnText(s) {
