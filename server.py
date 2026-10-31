@@ -28,6 +28,8 @@ PORT = int(os.environ.get("PORT", 8000))
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 CONTENT_TYPES = {".html": "text/html", ".js": "text/javascript", ".css": "text/css"}
 MAX_PLAYERS = 6
+# Overall points for the evening: a win, playing a game to the end, and walking out of a live game.
+POINTS_WIN, POINTS_PLAYED, POINTS_QUIT = 3, 1, -2
 ROOM_TTL = 3 * 3600
 # Room-wide settings shown under every game's own settings in the lobby.
 ROOM_SETTINGS = {
@@ -68,6 +70,9 @@ def static_files():
     return files
 
 
+RECORD = ("wins", "played", "streak", "best_streak", "by_game", "points", "quits")  # survives leave + rejoin
+
+
 class Player:
     def __init__(self, name, color, spectator=False):
         self.id = secrets.token_hex(4)
@@ -87,10 +92,13 @@ class Player:
         self.streak = 0
         self.best_streak = 0
         self.by_game = {}
+        self.points = 0
+        self.quits = 0
         self.reset()
 
     def __setstate__(self, state):  # rooms saved by older versions lack newer fields
-        self.__dict__.update({"last_chat": 0, "played": 0, "streak": 0, "best_streak": 0, "by_game": {}})
+        self.__dict__.update({"last_chat": 0, "played": 0, "streak": 0, "best_streak": 0, "by_game": {},
+                              "points": 0, "quits": 0})
         self.__dict__.update(state)
 
     def human(self):
@@ -131,6 +139,7 @@ class Room:
         self.chat = []
         self.ready = set()     # players asking for another round
         self.votes = {}        # player id -> game id: what to play next (game over only)
+        self.ledger = {}       # name -> evening record of a human who left, restored if they rejoin
         self.history = []      # finished games, oldest first
         self.replay = []       # JSON frames of the current/last game
         self._replay_key = None
@@ -144,7 +153,7 @@ class Room:
         return state
 
     def __setstate__(self, state):
-        self.__dict__.update({"chat": [], "ready": set(), "votes": {}, "history": [], "replay": [],
+        self.__dict__.update({"chat": [], "ready": set(), "votes": {}, "ledger": {}, "history": [], "replay": [],
                               "_replay_key": None, "saved": {}, "fast": None, "fast_ver": 0})
         self.__dict__.update(state)
         for k, (_, _, d) in ROOM_SETTINGS.items():
@@ -248,10 +257,15 @@ class Room:
         self.order.append(p.id)
         if self.host is None:
             self.host = p.id
-        self.add_log(f"{name} joined{' as a spectator' if spectator else ''}.")
+        back = self.ledger.pop(name.casefold(), None)
+        if back:  # a returning player keeps their evening (penalties included)
+            p.__dict__.update(back)
+        self.add_log(f"{name} {'is back' if back else 'joined'}{' as a spectator' if spectator else ''}.")
         return p
 
     def remove_player(self, p):
+        if p.human() and (p.played or p.points or p.quits):
+            self.ledger[p.name.casefold()] = {k: getattr(p, k) for k in RECORD}
         del self.players[p.id]
         self.order.remove(p.id)
         if self.host == p.id:
@@ -290,7 +304,12 @@ class Room:
         scores = self.game.final_scores() if self.game else {}
         seated = self.seated()
         for p in seated:
+            if getattr(p, "quitting", False):
+                p.last_pts, p.streak = 0, 0
+                continue
             p.played += 1
+            p.last_pts = POINTS_WIN if winner and p.id == winner.id else POINTS_PLAYED
+            p.points += p.last_pts
             if winner and p.id == winner.id:
                 p.wins += 1
                 p.streak += 1
@@ -302,7 +321,7 @@ class Room:
         self.history.append({
             "game": gid, "icon": info.icon, "name": info.name, "at": time.time(), "text": text,
             "winner": winner.name if winner else None,
-            "players": [{"name": p.name, "color": p.color, "score": scores.get(p.id),
+            "players": [{"name": p.name, "color": p.color, "score": scores.get(p.id), "pts": p.last_pts,
                          "won": bool(winner and p.id == winner.id)} for p in seated],
         })
         self.history = self.history[-30:]
@@ -356,9 +375,10 @@ class Room:
             if p.id != self.host:
                 raise GameError("Only the host can do that.")
             for o in self.players.values():
-                o.wins = o.played = o.streak = o.best_streak = 0
+                o.wins = o.played = o.streak = o.best_streak = o.points = o.quits = 0
                 o.by_game = {}
             self.history = []
+            self.ledger = {}
             self.add_log(f"{p.name} reset the scoreboard.")
             return
         if t == "leave":
@@ -524,6 +544,10 @@ class Room:
 
     def leave(self, p):
         if self.phase == "playing" and not p.spectator and not p.eliminated:
+            p.points += POINTS_QUIT
+            p.quits += 1
+            self.add_log(f"🚪 {p.name} walked out mid-game ({POINTS_QUIT} ⭐).", "power")
+            p.quitting = True  # if leaving ends the game, the walk-out doesn't count as playing it
             self.game.on_leave(p)
         else:
             self.add_log(f"{p.name} left.")
@@ -562,6 +586,7 @@ class Room:
                 "bot": None if o.standin else o.bot, "meta": self.game.meta(o) if self.game else "",
                 "standin": o.standin, "away": o.shown_away and not o.standin,
                 "played": o.played, "streak": o.streak, "best": o.best_streak, "byGame": o.by_game,
+                "points": o.points, "quits": o.quits,
             } for o in (self.players[i] for i in self.order)],
             "me": {"id": p.id, "name": p.name, "spectator": p.spectator,
                    "eliminated": p.eliminated, "ghost": ghost},

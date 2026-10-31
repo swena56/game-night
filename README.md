@@ -89,7 +89,7 @@ Every game has **Easy / Normal / Hard bots**:
   - It shows the spectator's view, so every secret face, hidden choice and culprit is visible.
   - The last game's replay stays available from the lobby.
 - **Score keeping.**
-  - A scoreboard for the evening: wins, games played, 🔥 best streak, and wins per game.
+  - A scoreboard for the evening, ranked by ⭐ points (+3 win, +1 played, −2 for walking out mid-game): wins, games played, 🔥 best streak, and wins per game.
   - A match history with final scores (Wordsmith points, Heist gold, Moon Shot distance).
   - The host can reset it.
 - **Chat.**
@@ -289,9 +289,14 @@ Riders and Air Hockey start in it) (#13, #15).
   reaction-only updates, and Odd One Out / Fib Finder update their buttons in place.
 - ✅ **⚙️ Options first** on the home screen sets up a solo game in the lobby so you can change its
   options before starting (#32).
-- 🏅 **Overall points** (#31): a running points total across games (for example 3 for a win, 1 for
-  finishing), shown on the scoreboard, with a penalty for leaving a game before it ends. Autopilot
-  takeovers after a dropped connection shouldn't count as quitting.
+- 🏅 ✅ **Overall points** (#31): **+3 ⭐** for a win, **+1 ⭐** for playing a game to the end (draws and
+  knock-outs included), **−2 ⭐** for walking out of a game in progress. The scoreboard ranks by ⭐, player
+  chips show it, and the game-over banner says what you earned. The room remembers each human's evening
+  by name, so leaving and rejoining keeps your points (and the penalty). A dropped connection (autopilot)
+  or being removed by the host is not a walk-out. Resetting the scoreboard clears points too.
+- ✅ **Phone clean-up:** the game-over banner folds to one line (▴/▾, remembered) so the final board
+  stays in view; "I'm in!" only shows when there are other people to tell; the top bar keeps the turn
+  text on one line; every game leaves room under the floating ⚙️ 💬 buttons (#29 everywhere).
 
 **Action / real-time**
 - 🎱 **Billiards:** ✅ added (#12). ✅ Dragging now turns the cue like a dial around the ball, so

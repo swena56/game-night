@@ -691,3 +691,22 @@ body.focus .lr-stage { height: max(220px, calc(var(--app-h, 100vh) - 245px)); }
 .he-raise input { width: 100%; accent-color: var(--accent); }
 #heRaise { font-weight: 800; padding: 11px; }
 .he-ranks { font-size: 13px; }
+
+/* ---- UI clean-up ---- */
+/* game-over banner: a header row with a fold button; folded, only the result line shows */
+.over-head { display: flex; align-items: center; gap: 8px; }
+.over-head #overText { flex: 1; }
+.over-head .icon-btn { font-size: 18px; color: var(--muted); }
+.over.folded > :not(.over-head) { display: none; }
+.over.folded { padding-block: 8px; }
+/* top bar: one line however long the turn text is */
+.topbar .turn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar > * { flex-shrink: 0; } .topbar .turn { flex-shrink: 1; }
+@media (max-width: 860px) {
+  /* room under the floating ⚙️ 💬 buttons, so the last controls can scroll clear of them */
+  #game .layout { padding-bottom: 72px; }
+  body.focus #game .layout { padding-bottom: 10px; }
+  .over { margin: 8px 10px 0; padding: 10px 12px; font-size: 16px; }
+  .over-actions button { min-width: 0; padding: 9px 8px; }
+}
+@media (max-width: 400px) { .topbar .logo.small { display: none; } }

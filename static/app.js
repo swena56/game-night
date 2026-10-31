@@ -343,7 +343,7 @@ function renderLobby() {
     li.append(dot, el('span', '', p.name + (p.id === S.me.id ? ' (you)' : '')));
     if (p.id === S.host) li.append(el('span', '', '👑'));
     if (p.spectator) li.append(el('span', 'hint', 'spectating'));
-    if (p.wins) li.append(el('span', 'hint', `🏆 ${p.wins}`));
+    if (p.played || p.points) li.append(el('span', 'hint', `⭐ ${p.points}${p.wins ? ` · 🏆 ${p.wins}` : ''}`));
     if (p.away) li.append(el('span', 'hint', '📡 away'));
     if (p.bot) li.append(el('span', 'hint', `${p.bot} bot`));
     if (host && p.id !== S.me.id) {
@@ -373,20 +373,22 @@ function renderLobby() {
 }
 
 function renderScores(host) {
-  const played = S.players.filter((p) => p.played);
+  const played = S.players.filter((p) => p.played || p.points);
   $('#scoreSection').hidden = !played.length && !S.history.length;
   const board = $('#scoreboard'); board.innerHTML = '';
   if (played.length) {
     const games = [...new Set(played.flatMap((p) => Object.keys(p.byGame)))];
     const t = el('table', 'scores');
     const head = el('tr');
-    head.append(el('th', '', 'Player'), el('th', '', '🏆'), el('th', '', 'Played'), el('th', '', '🔥 Best'),
+    head.append(el('th', '', 'Player'), el('th', '', '⭐'), el('th', '', '🏆'), el('th', '', 'Played'), el('th', '', '🔥 Best'),
       ...games.map((g) => el('th', '', gameInfo(g)?.icon ?? g)));
     t.append(head);
-    for (const p of [...played].sort((a, b) => b.wins - a.wins || a.played - b.played)) {
+    for (const p of [...played].sort((a, b) => b.points - a.points || b.wins - a.wins || a.played - b.played)) {
       const tr = el('tr');
       const name = el('td', '', p.name); name.style.color = p.color;
-      tr.append(name, el('td', '', p.wins), el('td', '', p.played),
+      const pts = el('td', 'pts', String(p.points));
+      if (p.quits) pts.title = `${p.quits} walk-out${p.quits > 1 ? 's' : ''} (${p.quits * -2} ⭐)`;
+      tr.append(name, pts, el('td', '', p.wins), el('td', '', p.played),
         el('td', '', p.best + (p.streak > 1 ? ` (now ${p.streak})` : '')),
         ...games.map((g) => el('td', '', p.byGame[g] || '')));
       t.append(tr);
@@ -443,7 +445,7 @@ function renderGame(view = S, readOnly = false, force = false) {
     const c = el('div', 'chip' + (p.id === view.turn ? ' turn-now' : '') + (p.eliminated ? ' out' : ''));
     const dot = el('span', 'dot'); dot.style.background = p.online ? p.color : '#555';
     c.append(dot, el('b', '', p.name));
-    const bits = [p.spectator ? '👁 watching' : p.meta, p.wins ? '🏆' + p.wins : '', p.eliminated ? '👻' : '',
+    const bits = [p.spectator ? '👁 watching' : p.meta, p.played || p.points ? '⭐' + p.points : '', p.eliminated ? '👻' : '',
       p.standin ? '🤖 autopilot' : p.away ? '📡 away' : ''].filter(Boolean);
     if (bits.length) c.append(el('span', 'meta', bits.join(' · ')));
     chips.append(c);
@@ -469,10 +471,19 @@ function renderOver() {
   $('#overBanner').classList.toggle('won', w?.id === me.id);
   const last = S.history.at(-1);
   const scored = last?.players.filter((x) => x.score != null) ?? [];
-  $('#overScores').textContent = scored.length
-    ? [...scored].sort((a, b) => b.score - a.score).map((x) => `${x.name}: ${fmtNum(x.score)}`).join(' · ') : '';
+  const mineRow = last?.players.find((x) => x.name === me.name);
+  $('#overScores').textContent = [
+    mineRow?.pts ? `You earned +${mineRow.pts} ⭐ (now ${player(me.id)?.points ?? 0})` : '',
+    scored.length ? [...scored].sort((a, b) => b.score - a.score).map((x) => `${x.name}: ${fmtNum(x.score)}`).join(' · ') : '',
+  ].filter(Boolean).join(' — ');
   const readyNames = S.ready.map((id) => player(id)?.name).filter(Boolean);
   $('#rematchBtn').hidden = !host; $('#lobbyBtn').hidden = !host;
+  // "I'm in!" tells other people you want another round; alone with bots there's nobody to tell
+  $('#readyBtn').hidden = !S.players.some((p) => p.id !== me.id && !p.bot);
+  const folded = !!load('overFolded');
+  $('#overBanner').classList.toggle('folded', folded);
+  $('#overFold').textContent = folded ? '▾' : '▴';
+  $('#overFold').ariaExpanded = String(!folded);
   $('#readyBtn').textContent = S.ready.includes(me.id) ? '✋ Ready!' : "🙋 I'm in!";
   $('#readyBtn').classList.toggle('on', S.ready.includes(me.id));
   $('#replayBtn').hidden = !S.hasReplay;
@@ -710,10 +721,12 @@ $('#resetScoresBtn').onclick = async () =>
   (await ask('Reset the scoreboard and match history for everyone?', { ok: 'Reset', danger: true })) && quiet(act('reset_scores'));
 const leave = async () => {
   const playing = S?.phase === 'playing' && !S.me.spectator && !S.me.eliminated;
-  if (await ask(playing ? 'Leave this room? You will forfeit the current game.' : 'Leave this room?', { ok: 'Leave', danger: playing }))
+  if (await ask(playing ? 'Leave this room? You will forfeit the current game and lose 2 ⭐ for walking out.' : 'Leave this room?', { ok: 'Leave', danger: playing }))
     act('leave').catch(() => {}).then(leaveLocal);
 };
 $('#helpBtn').onclick = () => showHelp();
+// The game-over banner folds to one line so the final board stays in view (remembered on this device).
+$('#overFold').onclick = () => { store('overFolded', !load('overFolded') || null); renderOver(); };
 // Phones: fold the log into a one-line ticker so game controls sit right under the board.
 const compact = window.matchMedia?.('(max-width: 860px)');
 function setLogOpen(open) {
