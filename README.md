@@ -443,8 +443,8 @@ Riders and Air Hockey start in it) (#13, #15).
   ✅ With a turn timer, a 60 s ⏳ time bank each, spent 20 s at a time before you're folded.
 - 🃏 **Last Card:** ✅ a fanned hand in one swipeable row (playable cards lift out), and drawn cards are dealt in
   from the deck.
-- ⚡ **Speed:** ✅ added (#48). Next: drag a card onto a pile, a two-phones-face-to-face table layout, and a
-  "slap" sound.
+- ⚡ **Speed:** ✅ added (#48). ✅ Drag a card onto a pile (or tap as before), and a 👋 "slap" sound whenever a
+  card lands. Next: a two-phones-face-to-face table layout.
 - 🚢 **Sea Battle:** ✅ drag a placed ship to move it (tap still picks it up; the page doesn't scroll while placing).
 - 🚀 **Moon Shot:** ✅ on phones the rockets become coloured dots so six fit a square (#6), and fresh rolls tumble in.
 

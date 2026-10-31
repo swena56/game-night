@@ -1,7 +1,7 @@
 // Speed: your rival's hand across the top, the two centre piles in the middle, your hand at the bottom.
 // Tap a card to play it; if it fits both piles it lifts, and you tap the pile you want.
 UI.speed = (() => {
-  let S, ctx, chosen = null, seen = -1, receivedAt = 0, tickTimer = 0;
+  let S, ctx, chosen = null, seen = -1, receivedAt = 0, tickTimer = 0, drag = null, dragged = false;
   const SUIT = { S: '♠', H: '♥', D: '♦', C: '♣' };
   const RANKS = 'A23456789TJQK';
   const $ = (id) => document.getElementById(id);
@@ -20,7 +20,7 @@ UI.speed = (() => {
   }
 
   function mount(main, side) {
-    chosen = null; seen = -1;
+    chosen = null; seen = -1; drag = null; dragged = false;
     main.innerHTML = `<div class="sp">
       <div id="spThem" class="sp-row"></div>
       <div class="sp-table"><div id="spSide0" class="sp-side"></div><button id="spPile0" class="sp-pile"></button>
@@ -33,7 +33,38 @@ UI.speed = (() => {
     tickTimer = setInterval(tick, 200);
   }
 
-  function unmount() { clearInterval(tickTimer); }
+  function unmount() { clearInterval(tickTimer); drag?.ghost.remove(); drag = null; }
+
+  // drag a card onto a pile: a floating copy follows the finger (hand re-renders can't drop it);
+  // letting go over a pile plays there, anywhere else cancels. A plain tap still works as before.
+  function startDrag(e, card) {
+    if (!live() || e.button > 0) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    drag = { card, x: e.clientX, y: e.clientY, dx: e.clientX - r.left, dy: e.clientY - r.top, ghost: null };
+    const move = (ev) => {
+      if (!drag) return;
+      if (!drag.ghost) {
+        if (Math.hypot(ev.clientX - drag.x, ev.clientY - drag.y) < 10) return;
+        drag.ghost = face(card, 'big-card sp-ghost');
+        document.body.append(drag.ghost);
+        dragged = true; chosen = null; paint();
+      }
+      drag.ghost.style.left = `${ev.clientX - drag.dx}px`; drag.ghost.style.top = `${ev.clientY - drag.dy}px`;
+      const over = document.elementFromPoint?.(ev.clientX, ev.clientY)?.closest?.('.sp-pile');
+      for (const k of [0, 1]) $(`spPile${k}`)?.classList.toggle('over', over?.id === `spPile${k}`);
+    };
+    const up = (ev) => {
+      removeEventListener('pointermove', move); removeEventListener('pointerup', up); removeEventListener('pointercancel', up);
+      const d = drag; drag = null;
+      if (!d?.ghost) return;
+      setTimeout(() => { dragged = false; }, 0);  // swallow only the click that ends this drag
+      d.ghost.remove();
+      for (const k of [0, 1]) $(`spPile${k}`)?.classList.remove('over');
+      const over = ev.type === 'pointerup' && document.elementFromPoint?.(ev.clientX, ev.clientY)?.closest?.('.sp-pile');
+      if (over && live() && S.speed.hand.includes(d.card)) send(d.card, +over.id.slice(-1)); else paint();
+    };
+    addEventListener('pointermove', move); addEventListener('pointerup', up); addEventListener('pointercancel', up);
+  }
 
   const live = () => S?.phase === 'playing' && S.speed.stage === 'play' && S.speed.me != null && !!ctx.act;
 
@@ -74,7 +105,9 @@ UI.speed = (() => {
       b.append(face(card, 'big-card'));
       b.disabled = !live();
       b.setAttribute('aria-label', `${card[0] === 'T' ? '10' : card[0]} of ${SUIT[card[1]]}${ok ? ', playable' : ''}`);
-      b.onclick = () => tap(card);
+      b.onclick = () => { if (dragged) { dragged = false; return; } tap(card); };
+      b.onpointerdown = (e) => startDrag(e, card);
+      if (drag?.ghost && drag.card === card) b.classList.add('lifted');
       hand.append(b);
     }
     for (const k of [0, 1]) {
@@ -100,6 +133,7 @@ UI.speed = (() => {
     for (const k of [0, 1]) {
       const pile = $(`spPile${k}`); pile.innerHTML = '';
       const fresh = sp.seq !== seen && sp.last && sp.last[2] === k;
+      if (fresh && seen !== -1) slap();
       pile.append(face(sp.piles[k], 'big-card' + (fresh ? ' toss' : '')));
       pile.setAttribute('aria-label', `Pile ${k + 1}: ${sp.piles[k][0] === 'T' ? '10' : sp.piles[k][0]} of ${SUIT[sp.piles[k][1]]}`);
       const sideEl = $(`spSide${k}`); sideEl.innerHTML = '';

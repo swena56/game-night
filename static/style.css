@@ -1155,6 +1155,11 @@ body.focus .ra-stage { height: max(220px, calc(var(--app-h, 100vh) - 215px)); }
 .sp-hand { gap: 6px; padding-top: 8px; }
 .sp-hand .card-btn.chosen { transform: translateY(-16px); }
 .sp-hand .card-btn.chosen .pc { box-shadow: 0 0 0 3px #fff, 0 6px 14px #000a; }
+.sp-hand .card-btn { touch-action: none; }  /* a drag moves the card, not the page */
+.sp-hand .card-btn.lifted { visibility: hidden; }
+.sp-ghost { position: fixed; z-index: 60; pointer-events: none; transform: rotate(-6deg) scale(1.08); box-shadow: 0 12px 24px #000a; }
+.sp-pile.over { transform: scale(1.1); }
+.sp-pile.over .pc { box-shadow: 0 0 0 4px #fff, 0 4px 12px #000a; }
 .sp-mine { text-align: center; font-size: 12px; color: var(--muted); }
 @media (max-width: 420px) { .sp-hand .pc.big-card { width: 58px; height: 84px; } .sp-hand .pc.big-card b { font-size: 22px; } }
 

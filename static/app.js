@@ -223,6 +223,19 @@ function blip(kind) {
   } catch {}
 }
 
+// a card slapped onto a pile: a short burst of filtered noise
+function slap() {
+  if (!prefs.sound) return;
+  try {
+    audio ||= new (window.AudioContext || window.webkitAudioContext)();
+    const len = Math.floor(audio.sampleRate * 0.08), buf = audio.createBuffer(1, len, audio.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 3;
+    const src = audio.createBufferSource(), f = audio.createBiquadFilter(), g = audio.createGain();
+    src.buffer = buf; f.type = 'bandpass'; f.frequency.value = 1800; f.Q.value = 0.7; g.gain.value = 0.5;
+    src.connect(f).connect(g).connect(audio.destination); src.start();
+  } catch {}
+}
+
 // ---------- connection
 function enter(res) { session = res; store('unmask.session', res); store('unmask.name', $('#name').value.trim()); connect(); }
 function connect() {
