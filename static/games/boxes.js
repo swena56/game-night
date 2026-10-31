@@ -1,8 +1,12 @@
 UI.boxes = (() => {
-  let S, ctx, svg, size = 0, prev = null, picked = null;
+  // A wide grid lies the long way on the screen: across on a sideways phone, down on an upright one.
+  let S, ctx, svg, size = '', prev = null, picked = null;
   const NS = 'http://www.w3.org/2000/svg';
   const $ = (id) => document.getElementById(id);
   const hover = () => !!window.matchMedia?.('(hover: hover)').matches;  // mouse: click draws; touch: tap twice
+  const landscape = () => !!window.matchMedia?.('(orientation: landscape)').matches;
+  const layout = (b) => `${b.rows}x${b.cols}:${b.rows !== b.cols && (b.cols > b.rows) !== landscape()}`;
+  const onTurn = () => { if (S && layout(S.boxes) !== size) ctx.rerender(); };
   const node = (tag, attrs, parent) => {
     const e = document.createElementNS(NS, tag);
     for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
@@ -11,33 +15,45 @@ UI.boxes = (() => {
   };
 
   function mount(main, side) {
-    size = 0; prev = null; picked = null;
+    size = ''; prev = null; picked = null;
     main.innerHTML = '<div class="bx-wrap"><svg class="bx-board" id="bxSvg"></svg></div>';
     side.innerHTML = `<div class="panel"><div id="bxScores"></div>
       <p class="hint left" id="bxHint"></p></div>`;
     svg = $('bxSvg');
+    window.addEventListener('resize', onTurn);
   }
 
-  function build(n) {
-    size = n; svg.innerHTML = '';
-    svg.setAttribute('viewBox', `-0.35 -0.35 ${n + 0.7} ${n + 0.7}`);
+  function unmount() { window.removeEventListener('resize', onTurn); }
+
+  function build(b) {
+    const { rows, cols } = b;
+    size = layout(b); svg.innerHTML = '';
+    const flip = size.endsWith('true');
+    const at = (r, c) => (flip ? [r, c] : [c, r]);  // a grid point (row, column) on screen as [x, y]
+    const [w, h] = at(rows, cols);
+    svg.setAttribute('viewBox', `-0.35 -0.35 ${w + 0.7} ${h + 0.7}`);
+    svg.parentElement.style.setProperty('--ar', w / h);
     const boxes = node('g', {}, svg), lines = node('g', {}, svg), dots = node('g', {}, svg);
-    for (let r = 0; r < n; r++)
-      for (let c = 0; c < n; c++) {
+    for (let r = 0; r < rows; r++)
+      for (let c = 0; c < cols; c++) {
         const g = node('g', { class: 'bx-box', 'data-k': `${r},${c}` }, boxes);
-        node('rect', { x: c + 0.06, y: r + 0.06, width: 0.88, height: 0.88, rx: 0.08 }, g);
-        node('text', { x: c + 0.5, y: r + 0.53 }, g);
+        const [x, y] = at(r, c);
+        node('rect', { x: x + 0.06, y: y + 0.06, width: 0.88, height: 0.88, rx: 0.08 }, g);
+        node('text', { x: x + 0.5, y: y + 0.53 }, g);
       }
     const addLine = (d, r, c) => {
-      const [x1, y1, x2, y2] = d === 'h' ? [c, r, c + 1, r] : [c, r, c, r + 1];
+      const [x1, y1] = at(r, c), [x2, y2] = d === 'h' ? at(r, c + 1) : at(r + 1, c);
       const g = node('g', { class: 'bx-line', 'data-k': `${d},${r},${c}` }, lines);
       node('line', { x1, y1, x2, y2, class: 'bx-ink', pathLength: 1 }, g);
       node('line', { x1, y1, x2, y2, class: 'bx-hit' }, g);
       g.onclick = () => tap(d, r, c, g);
     };
-    for (let r = 0; r <= n; r++) for (let c = 0; c < n; c++) addLine('h', r, c);
-    for (let r = 0; r < n; r++) for (let c = 0; c <= n; c++) addLine('v', r, c);
-    for (let r = 0; r <= n; r++) for (let c = 0; c <= n; c++) node('circle', { cx: c, cy: r, r: 0.075, class: 'bx-dot' }, dots);
+    for (let r = 0; r <= rows; r++) for (let c = 0; c < cols; c++) addLine('h', r, c);
+    for (let r = 0; r < rows; r++) for (let c = 0; c <= cols; c++) addLine('v', r, c);
+    for (let r = 0; r <= rows; r++) for (let c = 0; c <= cols; c++) {
+      const [cx, cy] = at(r, c);
+      node('circle', { cx, cy, r: 0.075, class: 'bx-dot' }, dots);
+    }
   }
 
   function tap(d, r, c, g) {
@@ -52,8 +68,9 @@ UI.boxes = (() => {
 
   function render(s, c) {
     S = s; ctx = c;
-    const b = S.boxes, n = b.n;
-    if (n !== size) { build(n); prev = null; }
+    const b = S.boxes;
+    b.rows ??= b.n; b.cols ??= b.n;
+    if (layout(b) !== size) { build(b); prev = null; }
     const mySeat = b.seats.indexOf(S.me.id);
     svg.style.setProperty('--mine', mySeat >= 0 ? colorOf(mySeat) : '#fff');
     svg.classList.toggle('live', ctx.myTurn);
@@ -95,5 +112,5 @@ UI.boxes = (() => {
         : hover() ? 'Click a line between two dots.' : 'Tap a line to pick it, tap again to draw.';
   }
 
-  return { mount, render };
+  return { mount, render, unmount };
 })();

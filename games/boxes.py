@@ -23,42 +23,52 @@ class Boxes(Game):
     min_players = 2
     max_players = 4
     settings_schema = {
-        "size": ("Grid", [(3, "3×3 (quick)"), (4, "4×4"), (5, "5×5"), (6, "6×6 (long)")], 4),
+        "size": ("Grid", [(3, "3×3 (quick)"), (4, "4×4"), (5, "5×5"), (6, "6×6 (long)"),
+                          ("4x6", "4×6 wide"), ("5x8", "5×8 wide (long)")], 4),
         "gems": ("Gem boxes", [(True, "💎 On"), (False, "Off")], True),
     }
 
     # -- setup
 
+    def __setstate__(self, state):  # games saved before wide grids had only a square size n
+        self.__dict__.update(state)
+        if "rows" not in state and "n" in state:
+            self.rows = self.cols = state["n"]
+
     def start(self, seated, rng):
         self.rng = rng
-        n = self.n = self.s["size"]
+        size = self.s["size"]
+        rows, cols = self.rows, self.cols = (size, size) if isinstance(size, int) else tuple(map(int, size.split("x")))
         rng.shuffle(seated)
         self.seats = [p.id for p in seated]
-        self.h = [[None] * n for _ in range(n + 1)]  # seat that drew each horizontal line
-        self.v = [[None] * (n + 1) for _ in range(n)]
-        self.owner = [[None] * n for _ in range(n)]
-        cells = [(r, c) for r in range(n) for c in range(n)]
-        self.gems = [list(b) for b in sorted(rng.sample(cells, max(1, n * n // 6)))] if self.s["gems"] else []
+        self.h = [[None] * cols for _ in range(rows + 1)]  # seat that drew each horizontal line
+        self.v = [[None] * (cols + 1) for _ in range(rows)]
+        self.owner = [[None] * cols for _ in range(rows)]
+        cells = [(r, c) for r in range(rows) for c in range(cols)]
+        self.gems = [list(b) for b in sorted(rng.sample(cells, max(1, len(cells) // 6)))] if self.s["gems"] else []
         self.last = None
         self.claimed_last = []
         for p in seated:
             p.g.score = 0
             p.g.boxes = 0
-        self.room.add_log(f"🔳 {n}×{n} boxes. {seated[0].name} draws first.", "big")
+        self.room.add_log(f"🔳 {rows}×{cols} boxes. {seated[0].name} draws first.", "big")
         self.room.begin_turn(seated[0].id)
 
     # -- geometry (lines are tuples ("h"|"v", r, c); boxes are (r, c))
 
     def lines(self):
-        n = self.n
-        return [("h", r, c) for r in range(n + 1) for c in range(n)] + [("v", r, c) for r in range(n) for c in range(n + 1)]
+        rows, cols = self.rows, self.cols
+        return ([("h", r, c) for r in range(rows + 1) for c in range(cols)]
+                + [("v", r, c) for r in range(rows) for c in range(cols + 1)])
+
+    def cells(self):
+        return [(r, c) for r in range(self.rows) for c in range(self.cols)]
 
     def boxes_of(self, line):
         d, r, c = line
-        n = self.n
         if d == "h":
-            return [(rr, c) for rr in (r - 1, r) if 0 <= rr < n]
-        return [(r, cc) for cc in (c - 1, c) if 0 <= cc < n]
+            return [(rr, c) for rr in (r - 1, r) if 0 <= rr < self.rows]
+        return [(r, cc) for cc in (c - 1, c) if 0 <= cc < self.cols]
 
     @staticmethod
     def sides_of(box):
@@ -82,9 +92,9 @@ class Boxes(Game):
             raise GameError("Unknown action.")
         self.require_turn(p)
         d, r, c = a.get("d"), a.get("r"), a.get("c")
-        n = self.n
+        rows, cols = self.rows, self.cols
         ok = (isinstance(r, int) and isinstance(c, int) and
-              ((d == "h" and 0 <= r <= n and 0 <= c < n) or (d == "v" and 0 <= r < n and 0 <= c <= n)))
+              ((d == "h" and 0 <= r <= rows and 0 <= c < cols) or (d == "v" and 0 <= r < rows and 0 <= c <= cols)))
         if not ok:
             raise GameError("That's not a line on this grid.")
         if self.is_drawn((d, r, c)):
@@ -143,14 +153,13 @@ class Boxes(Game):
         return f"{p.g.score} pts" if hasattr(p.g, "score") else ""
 
     def view(self, p):
-        return {"boxes": {"n": self.n, "h": self.h, "v": self.v, "owner": self.owner, "gems": self.gems,
+        return {"boxes": {"rows": self.rows, "cols": self.cols, "h": self.h, "v": self.v, "owner": self.owner, "gems": self.gems,
                           "seats": self.seats, "last": self.last, "claimed": self.claimed_last}}
 
     # -- bot
 
     def three_sided(self, drawn):
-        n = self.n
-        return [(r, c) for r in range(n) for c in range(n)
+        return [(r, c) for r, c in self.cells()
                 if sum(s in drawn for s in self.sides_of((r, c))) == 3]
 
     def gives(self, drawn, line):
@@ -191,7 +200,7 @@ class Boxes(Game):
         rest = [ln for ln in free if ln not in (gap, far)]
         if not rest or any(self.safe(drawn, ln) for ln in rest):
             return None
-        left = sum(self.value((r, c)) for r in range(self.n) for c in range(self.n)
+        left = sum(self.value((r, c)) for r, c in self.cells()
                    if self.owner[r][c] is None and (r, c) not in (a, b))
         return far if left > self.value(a) + self.value(b) + 2 else None
 

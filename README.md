@@ -415,7 +415,7 @@ Riders and Air Hockey start in it) (#13, #15).
 
 **Quick classics**
 - 🔴 **Drop Four:** ✅ the winning line glows, and a move history of coloured column chips.
-- 🔳 **Dots & Boxes:** ✅ a last-line highlight. Next: a bigger grid when the phone is sideways.
+- 🔳 **Dots & Boxes:** ✅ a last-line highlight. ✅ Wide grids (4×6, 5×8) that lie the long way on each screen: across on a sideways phone, down on an upright one.
 - ❌ **Tic-Tac-Toe:** ✅ in Vanishing mode, the mark that fades next is dimmed.
 
 **Words & puzzles**
@@ -457,7 +457,7 @@ Riders and Air Hockey start in it) (#13, #15).
   puzzles, and every group fills its rows evenly. Every group now holds 3, 4, 6 or 8 games; a new game should
   go where it keeps that balance.
 - ✅ 🎨 **Paint Blast** (#20): an original real-time bomb maze where blasts paint the floor and the
-  most colour wins. Next: a shrinking arena in the last 15 s, a kick power-up, and 3D tiles.
+  most colour wins. ✅ Walls close in over the last 15 s (setting), and a 👟 kick power-up. Next: 3D tiles.
 - ✅ 🀄 **Contract Rummy** (#39 asked for a branded game): the traditional contract-rummy family it grew from.
 - ✅ ⚡ **Speed** (#48): the traditional real-time race card game, two players.
 - ✅ 🧠 **Trivia Rush** (#49): an original quick-fire quiz with its own question bank.
