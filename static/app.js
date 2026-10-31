@@ -54,9 +54,15 @@ addEventListener('unhandledrejection', (e) => noteError(e.reason?.message || e.r
 // ---------- utils
 function load(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } }
 function store(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, JSON.stringify(v)); } catch {} }
-function toast(msg) {
+// a short message; with an action ({ label, run }) it gets a button (e.g. "↶ Undo") and stays up longer
+function toast(msg, action = null) {
   const t = $('#toast'); t.textContent = msg; t.hidden = false;
-  clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 2800);
+  if (action) {
+    const b = el('button', 'toast-btn', action.label);
+    b.onclick = () => { t.hidden = true; action.run(); };
+    t.append(' ', b);
+  }
+  clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), action ? 5000 : 2800);
 }
 async function api(path, body) {
   let r;

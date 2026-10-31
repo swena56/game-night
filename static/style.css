@@ -93,6 +93,7 @@ label.check input { width: auto; margin: 0; }
 .conn-banner { position: fixed; top: 0; left: 0; right: 0; z-index: 40; text-align: center; padding: 8px 16px;
   background: var(--danger); color: #fff; font-weight: 700; animation: pulse 1.4s infinite; }
 .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #000d; padding: 10px 16px; border-radius: 10px; z-index: 30; max-width: 90vw; }
+.toast-btn { margin-left: 8px; padding: 4px 10px; background: var(--accent); color: #1b1300; border: 0; font-weight: 700; }
 #quitBtn { display: block; margin: 0 auto; }
 @keyframes pulse { 50% { opacity: .6; } }
 @keyframes wobble { from { transform: rotate(-1.5deg); } to { transform: rotate(1.5deg); } }

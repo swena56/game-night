@@ -288,7 +288,8 @@ be checked without a browser.
 3. **A real-device check of the 3D views and the touch feel** (Light Riders, Paint Blast, Billiards),
    which a simulated browser can't judge.
 4. **A bottom-sheet layout with tabs** (*Actions · Log · Players*) and a sticky action bar for the main
-   action, plus undo toasts (Unmask flips, Wordsmith tiles).
+   action. ✅ Undo toasts: `toast(msg, { label, run })` adds a button; Unmask offers ↶ Undo after a batch flip
+   (Wordsmith already has Recall).
 5. ✅ **More motion.** Animated captures in Chess, cards dealt into the Last Card hand, and a "your turn"
    chime for each lobby group (strategy, cards, dice, words… each sound different).
 6. **Accessibility.**
@@ -400,7 +401,8 @@ Riders and Air Hockey start in it) (#13, #15).
   drawings and the bots' are unchanged), and 💾 saving a revealed chain as one tall PNG.
 - 🧠 **Trivia Rush:** ✅ added (#49), now 228 questions in 9 topics. ✅ The quickest right answer gets a ⚡ callout. ✅ An Answers setting adds ✅ true/false rounds (every question, or every third). ✅ 40 more questions, filling out the smaller topics (Space, Sport, Food).
 - 🥷 **Night Heist:** ✅ a night-by-night grid of everyone's choices and gold changes. ✅ Bots get a personality, shown on their chip: 🦊 greedy, 🐢 cautious or 🦉 watchful.
-- 🎭 **Unmask:** an undo toast for flips, generated avatars, and pinch-zoom on the board.
+- 🎭 **Unmask:** ✅ an ↶ Undo toast after flipping a batch of faces (toasts can now carry an action button).
+  Next: generated avatars, and pinch-zoom on the board.
 
 **Strategy**
 - 🔺 **Backgammon:** ✅ added (#42). ✅ A 🎲 doubling cube (on by default): double before you roll, take to own

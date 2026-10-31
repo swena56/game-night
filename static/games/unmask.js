@@ -137,10 +137,13 @@ UI.unmask = (() => {
     $('#qPreview').textContent = t ? `“${t[0].toUpperCase() + t.slice(1)}?”` : '';
   }
 
-  function flip(ids, down) {
+  function flip(ids, down, undoable = false) {
+    const changed = ids.filter((id) => S.me.flipped.includes(id) !== down);
     S.me.flipped = down ? [...new Set([...S.me.flipped, ...ids])] : S.me.flipped.filter((x) => !ids.includes(x));
     ctx.rerender();
     ctx.quiet(ctx.act('flip', { ids, down }));
+    // flipping a batch at once is easy to regret: offer to put exactly those faces back
+    if (undoable && changed.length > 1) ctx.toast(`Flipped ${changed.length} faces.`, { label: '↶ Undo', run: () => flip(changed, !down) });
   }
 
   function onCardClick(id) {
@@ -162,7 +165,7 @@ UI.unmask = (() => {
     const ids = misfits(e.check);
     if (!ids.length) return null;
     const b = ctx.el('button', '', `Flip the ${ids.length} that don't fit`);
-    b.onclick = () => flip(ids, true);
+    b.onclick = () => flip(ids, true, true);
     return b;
   }
 
