@@ -33,6 +33,7 @@ class Trivia(Game):
         "questions": ("Questions", [(10, "10"), (15, "15"), (20, "20")], 10),
         "secs": ("Time to answer", [(15, "15 s"), (20, "20 s"), (10, "10 s")], 15),
         "topic": ("Topic", [("all", "🎲 Everything")] + [(k, v) for k, v in TOPICS.items()], "all"),
+        "style": ("Answers", [("four", "Four choices"), ("mixed", "🔀 Mixed with true/false"), ("tf", "✅ True or false")], "four"),
     }
 
     # -- setup
@@ -74,9 +75,16 @@ class Trivia(Game):
     def next_question(self):
         self.n += 1
         topic, text, right, wrong = self.queue[self.n - 1]
-        opts = [right, *wrong]
-        self.rng.shuffle(opts)
-        self.q = {"topic": topic, "text": text, "options": opts, "right": opts.index(right)}
+        style = self.s.get("style", "four")
+        if style == "tf" or (style == "mixed" and self.n % 3 == 0):
+            # a true/false round: is the answer shown the right one?
+            claim = right if self.rng.random() < 0.5 else self.rng.choice(wrong)
+            self.q = {"topic": topic, "text": text, "claim": claim, "options": ["True", "False"],
+                      "right": 0 if claim == right else 1, "answer": right}
+        else:
+            opts = [right, *wrong]
+            self.rng.shuffle(opts)
+            self.q = {"topic": topic, "text": text, "options": opts, "right": opts.index(right)}
         self.answers = {}   # pid -> (option index, seconds taken)
         self.gained = {}
         self.stage = "ask"
@@ -86,12 +94,13 @@ class Trivia(Game):
         for p in self.live():
             if p.bot:
                 know, lo, hi = BOT.get(p.bot, BOT["normal"])
-                pick = self.q["right"] if self.rng.random() < know else self.rng.randrange(4)
+                pick = self.q["right"] if self.rng.random() < know else self.rng.randrange(len(self.q["options"]))
                 self.plans.append((self.t0 + min(self.s["secs"] - 0.5, self.rng.uniform(lo, hi) * self.s["secs"] / 15), p.id, pick))
         self.plans.sort()
         self.sync()
         final = " 🔥 Double points!" if self.final() else ""
-        self.room.add_log(f"❓ Q{self.n}/{len(self.queue)} · {TOPICS[topic]}: {text}{final}", "question")
+        claim = f" → {self.q['claim']}: true or false?" if "claim" in self.q else ""
+        self.room.add_log(f"❓ Q{self.n}/{len(self.queue)} · {TOPICS[topic]}: {text}{claim}{final}", "question")
 
     def sync(self):
         self.room.deadline = self.next_event() - self.skew
@@ -168,6 +177,8 @@ class Trivia(Game):
                 p.g.streak = 0
                 self.gained[p.id] = 0
         answer = self.q["options"][right]
+        if "claim" in self.q:
+            answer = f"{answer}: it's {self.q['answer']}" if right else answer
         fast = [(ans[1], pid) for pid, ans in self.answers.items() if ans[0] == right]
         self.fastest = min(fast)[1] if fast and len(self.live()) > 1 else None
         quick = r.players.get(self.fastest)
@@ -222,6 +233,7 @@ class Trivia(Game):
         out = {
             "stage": self.stage, "n": self.n, "total": len(self.queue), "final": self.final(),
             "topic": TOPICS[self.q["topic"]], "text": self.q["text"], "options": self.q["options"],
+            "claim": self.q.get("claim"),
             "mine": mine[0] if mine else None,
             "answered": list(self.answers) if not reveal else [],
             "left": max(0.0, self.end - self.now()), "secs": self.s["secs"] if self.stage == "ask" else REVEAL_SECS,

@@ -20,6 +20,7 @@ HAND_NAMES = ["High card", "Pair", "Two pair", "Three of a kind", "Straight", "F
 STREETS = ["preflop", "flop", "turn", "river"]
 PAUSE, SHOWDOWN_PAUSE = 2.5, 5.0     # seconds between hands (longer when cards are shown)
 REBUY_WAIT = 12.0                    # how long the table waits when a buy-back would keep the game going
+HISTORY = 8                          # past hands kept for the hand-history panel
 
 
 def pretty(card):
@@ -314,6 +315,11 @@ class Holdem(Game):
         for i, v in winnings.items():
             self.pl(i).g.chips += v
         r.add_log(f"💰 {self.result}", "big")
+        # the hand history keeps everyone's hole cards so each player can look back at their own;
+        # `shown` is the same dict as self.shown, so a winner who shows later appears here too
+        entry = {"n": self.hand_no, "board": list(self.board), "result": self.result, "shown": self.shown,
+                 "cards": {i: list(self.pl(i).g.cards) for i in self.in_hand if self.pl(i)}}
+        self.history = [*getattr(self, "history", []), entry][-HISTORY:]
         for i in self.in_hand:
             p = self.pl(i)
             p.g.bet = 0
@@ -348,6 +354,8 @@ class Holdem(Game):
             return self.rebuy(p)
         if p.id not in self.seats or p.eliminated:
             raise GameError("You're out of this game.")
+        if t == "show":
+            return self.show(p)
         if self.stage == "done":
             raise GameError("The next hand is being dealt.")
         self.require_turn(p)
@@ -370,6 +378,13 @@ class Holdem(Game):
         if t == "allin":
             return self.raise_to(p, p.g.bet + p.g.chips)
         raise GameError("Unknown action.")
+
+    def show(self, p):
+        """Everyone else folded: the winner may turn their cards over anyway."""
+        if self.stage != "done" or self.shown or self.live() != [p.id]:
+            raise GameError("Only a winner whose rivals all folded can show their cards.")
+        self.shown[p.id] = {"cards": p.g.cards, "hand": "shown"}
+        self.room.add_log(f"🙂 {p.name} shows {' '.join(map(pretty, p.g.cards))}.", "question")
 
     def rebuy(self, p):
         if not self.can_rebuy(p):
@@ -481,6 +496,9 @@ class Holdem(Game):
             "stage": self.stage, "hand": self.hand_no, "board": self.board, "pot": self.pot() if self.hand_no else 0,
             "seats": seats, "blinds": [sb, bb], "pace": self.s["pace"], "curBet": self.cur_bet if self.hand_no else 0,
             "shown": self.shown, "result": self.result,
+            "canShow": self.stage == "done" and not self.shown and self.live() == [p.id] and self.room.phase == "playing",
+            "history": [{"n": e["n"], "board": e["board"], "result": e["result"], "shown": e["shown"],
+                         "mine": e["cards"].get(p.id, [])} for e in getattr(self, "history", [])],
             "myCards": p.g.cards if p.id in self.seats and hasattr(p.g, "cards") else [],
             "toCall": max(0, self.cur_bet - me.bet) if me and self.stage != "done" else 0,
             "minRaise": min(self.cur_bet + self.min_raise, me.bet + me.chips) if me and self.stage != "done" else 0,

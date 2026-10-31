@@ -35,6 +35,7 @@ class Heist(Game):
         self.gold = {p.id: 3 for p in seated}
         self.choices = {}
         self.last = None
+        self.nights = []  # every revealed night: {pid: [choice, gold change]}
         self.room.add_log("🌙 The heist begins. Everyone starts with 💰3.", "big")
         self.new_night()
 
@@ -73,6 +74,7 @@ class Heist(Game):
         grab = [i for i, c in self.choices.items() if c == "grab"]
         guard = [i for i, c in self.choices.items() if c == "guard"]
         rest = [i for i, c in self.choices.items() if c == "rest"]
+        before = dict(self.gold)
         for i in rest:
             self.gold[i] += 1
         if guard and grab:
@@ -104,6 +106,8 @@ class Heist(Game):
         r.add_log(f"Night {self.night}: {reveal}", "question")
         r.add_log(outcome, "power")
         self.last = {"night": self.night, "choices": dict(self.choices), "text": outcome}
+        self.nights = [*getattr(self, "nights", []),
+                       {i: [c, self.gold[i] - before[i]] for i, c in self.choices.items()}]
         if self.night >= self.s["rounds"]:
             return self.finish()
         self.new_night()
@@ -142,7 +146,8 @@ class Heist(Game):
     def view(self, p):
         return {"heist": {
             "night": self.night, "rounds": self.s["rounds"], "pot": self.pot,
-            "mine": self.choices.get(p.id), "last": self.last,
+            "mine": self.choices.get(p.id), "last": self.last, "nights": getattr(self, "nights", []),
+            "gold": self.gold,
             "waiting": [o.id for o in self.waiting_on()],
         }}
 

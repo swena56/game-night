@@ -13,6 +13,7 @@ UI.heist = (() => {
       <div id="hChoices" class="h-choices"></div>
       <p id="hWaiting" class="hint"></p>
       <div id="hLast" class="panel"></div>
+      <div id="hGrid" class="panel h-grid-wrap" hidden><h3>Night by night</h3><table id="hGridT" class="h-grid"></table></div>
     </div>`;
     side.innerHTML = `<div class="panel"><h3>How it works</h3>
       <p class="hint left">Everyone chooses in secret, then all choices are revealed together.</p>
@@ -59,6 +60,34 @@ UI.heist = (() => {
         row.append(tag);
       }
       last.append(row, ctx.el('p', '', h.last.text));
+    }
+    paintGrid(h);
+  }
+
+  // one row per player, one column per night: what they chose and how their gold moved
+  function paintGrid(h) {
+    const nights = h.nights || [];
+    document.getElementById('hGrid').hidden = !nights.length;
+    const t = document.getElementById('hGridT'); t.innerHTML = '';
+    if (!nights.length) return;
+    const head = ctx.el('tr'); head.append(ctx.el('th', '', ''));
+    nights.forEach((_, i) => head.append(ctx.el('th', '', String(i + 1))));
+    head.append(ctx.el('th', '', '💰'));
+    t.append(head);
+    for (const pid of Object.keys(h.gold)) {
+      const p = ctx.player(pid); if (!p) continue;
+      const tr = ctx.el('tr');
+      const name = ctx.el('td', 'h-name', p.name); name.style.color = p.color;
+      tr.append(name);
+      for (const n of nights) {
+        const [choice, delta] = n[pid] || [];
+        const td = ctx.el('td', delta > 0 ? 'up' : delta < 0 ? 'down' : '');
+        td.append(choice ? ICON[choice] : '·');
+        if (delta) td.append(ctx.el('small', '', (delta > 0 ? '+' : '') + delta));
+        tr.append(td);
+      }
+      tr.append(ctx.el('td', 'h-total', String(h.gold[pid])));
+      t.append(tr);
     }
   }
 

@@ -160,6 +160,13 @@ label.check input { width: auto; margin: 0; }
 .h-choice.on { border: 2px solid var(--accent); background: #ffb70322; }
 .reveal-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .reveal-tag { border: 2px solid; border-radius: 999px; padding: 3px 10px; }
+.h-grid-wrap { overflow-x: auto; }
+.h-grid { border-collapse: collapse; font-size: 13px; }
+.h-grid th, .h-grid td { padding: 3px 5px; text-align: center; white-space: nowrap; }
+.h-grid td small { display: block; font-size: 10px; font-weight: 700; }
+.h-grid td.up small { color: var(--ok); } .h-grid td.down small { color: var(--danger); }
+.h-grid .h-name { text-align: left; max-width: 7em; overflow: hidden; text-overflow: ellipsis; font-weight: 700; }
+.h-grid .h-total { font-weight: 800; }
 .rules { padding-left: 18px; margin: 6px 0; font-size: 13px; }
 @media (max-width: 480px) { .h-choice small { display: none; } }
 
@@ -683,6 +690,11 @@ body.focus .lr-stage { height: max(220px, calc(var(--app-h, 100vh) - 245px)); }
 .he-cards { display: flex; gap: 4px; justify-content: center; margin: 4px 0; }
 .pc.small { width: 30px; height: 42px; border-radius: 5px; } .pc.small b { font-size: 12px; } .pc.small i { font-size: 12px; }
 .pc.empty { background: #ffffff10; box-shadow: inset 0 0 0 2px #ffffff22; }
+.pc.tiny { width: 22px; height: 30px; border-radius: 4px; flex-direction: row; gap: 0; } .pc.tiny b { font-size: 10px; } .pc.tiny i { font-size: 10px; }
+.he-hist { margin-top: 8px; font-size: 13px; } .he-hist summary { cursor: pointer; font-weight: 700; }
+.he-hand { padding: 4px 0; border-top: 1px solid #ffffff14; }
+.he-hand-top { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; }
+.he-you { margin-left: 6px; opacity: .7; }
 .he-center { display: grid; justify-items: center; gap: 6px; }
 .he-pot { font-weight: 900; font-size: 18px; color: #ffd166; text-shadow: 0 2px 6px #000; }
 .he-board { display: flex; gap: 5px; }
@@ -1089,6 +1101,8 @@ body.focus .ra-stage { height: max(220px, calc(var(--app-h, 100vh) - 215px)); }
 .tv-head { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--muted); }
 .tv-topic { font-weight: 700; color: var(--text); }
 .tv-q { font-size: 20px; font-weight: 700; text-align: center; padding: 14px 8px; min-height: 3.2em; line-height: 1.3; }
+.tv-claim { margin-top: 8px; font-size: 24px; color: #ffd166; }
+.tv-tf { display: block; font-size: 13px; font-weight: 600; color: var(--muted); }
 .tv-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .tv-opt { display: flex; align-items: center; gap: 8px; text-align: left; padding: 14px 12px; min-height: 64px; border-radius: 14px;
   border: 0; color: #fff; font-size: 16px; font-weight: 600; position: relative; transition: transform .12s, opacity .2s; }

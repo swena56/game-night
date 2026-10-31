@@ -33,6 +33,7 @@ UI.trivia = (() => {
     $('tvNum').textContent = `Q${t.n}/${t.total}${t.final ? ' · 🔥 double points' : ''}`;
     $('tvTopic').textContent = t.topic;
     $('tvQ').textContent = t.text;
+    if (t.claim) $('tvQ').append(ctx.el('div', 'tv-claim', `→ ${t.claim}`), ctx.el('small', 'tv-tf', 'True or false?'));
 
     const opts = $('tvOpts'); opts.innerHTML = '';
     const canPick = S.phase === 'playing' && t.stage === 'ask' && t.playing && t.mine == null && !!ctx.act;

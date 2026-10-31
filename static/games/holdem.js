@@ -1,7 +1,7 @@
 // Texas Hold'em: the table (rivals, shared cards, pot), your two cards, and the betting bar.
 // The action buttons are built once and only updated, so taps never land on a replaced button.
 UI.holdem = (() => {
-  let S, ctx, raiseFor = null;
+  let S, ctx, raiseFor = null, histOpen = false;
   const SUIT = { S: '♠', H: '♥', D: '♦', C: '♣' };
   const $ = (id) => document.getElementById(id);
   const num = (n) => Number(n || 0).toLocaleString();
@@ -14,7 +14,7 @@ UI.holdem = (() => {
   const back = (cls = '') => ctx.el('span', `pc back ${cls}`);
 
   function mount(main, side) {
-    raiseFor = null;
+    raiseFor = null; histOpen = false;
     main.innerHTML = `<div class="he">
       <div class="table he-table">
         <div id="heSeats" class="he-seats"></div>
@@ -26,6 +26,7 @@ UI.holdem = (() => {
       </div>
       <div class="he-me"><div id="heMyCards" class="he-cards"></div><div id="heMyInfo" class="he-myinfo"></div></div>
       <button id="heRebuy" class="primary big" hidden></button>
+      <button id="heShow" hidden>🙂 Show my cards</button>
       <div id="heActions" class="he-actions">
         <div class="row he-main">
           <button id="heFold" class="danger">Fold</button>
@@ -41,10 +42,13 @@ UI.holdem = (() => {
       <div id="heStatus" class="seat-row"></div>
       <h3>Hands, best first</h3>
       <ol class="rules he-ranks"><li>Straight flush</li><li>Four of a kind</li><li>Full house</li><li>Flush</li>
-        <li>Straight</li><li>Three of a kind</li><li>Two pair</li><li>Pair</li><li>High card</li></ol></div>`;
+        <li>Straight</li><li>Three of a kind</li><li>Two pair</li><li>Pair</li><li>High card</li></ol>
+      <details id="heHist" class="he-hist" hidden><summary>📜 Hand history</summary><div id="heHistList"></div></details></div>`;
+    $('heHist').ontoggle = () => { histOpen = $('heHist').open; };
     const go = (type, extra) => ctx.quiet(ctx.act(type, extra));
     $('heFold').onclick = () => go('fold');
     $('heRebuy').onclick = () => go('rebuy');
+    $('heShow').onclick = () => go('show');
     $('heCall').onclick = () => go(S.holdem.toCall ? 'call' : 'check');
     $('heRaise').onclick = () => {
       const h = S.holdem, to = +$('heAmount').value;
@@ -99,6 +103,9 @@ UI.holdem = (() => {
     $('hePot').textContent = `Pot ${num(h.pot)}`;
     $('heResult').textContent = h.stage === 'done' || S.phase === 'over' ? h.result : '';
 
+    $('heShow').hidden = !h.canShow || !ctx.act;
+    paintHistory(h);
+
     // my hand
     const my = $('heMyCards'); my.innerHTML = '';
     for (const card of h.myCards) my.append(face(card, 'big-card'));
@@ -135,5 +142,30 @@ UI.holdem = (() => {
 
   const turnText = (s) => s.phase !== 'playing' ? null
     : s.holdem.rebuyWait ? '💸 Waiting for a buy-back…' : s.holdem.stage === 'done' ? '🃏 Next hand…' : null;
+  // the last few hands, newest first: the board, the result, any cards shown, and your own two cards
+  function paintHistory(h) {
+    const box = $('heHist'), list = $('heHistList');
+    box.hidden = !h.history?.length;
+    box.open = histOpen;
+    list.innerHTML = '';
+    for (const e of [...(h.history || [])].reverse()) {
+      const item = ctx.el('div', 'he-hand');
+      const top = ctx.el('div', 'he-hand-top');
+      top.append(ctx.el('b', '', `#${e.n}`));
+      for (const card of e.board) top.append(face(card, 'tiny'));
+      if (e.mine.length) { top.append(ctx.el('span', 'he-you', 'you:')); for (const card of e.mine) top.append(face(card, 'tiny')); }
+      item.append(top, ctx.el('div', 'hint left', e.result));
+      for (const [pid, sh] of Object.entries(e.shown)) {
+        if (pid === S.me.id) continue;
+        const row = ctx.el('div', 'he-hand-top');
+        row.append(ctx.el('span', 'he-you', `${ctx.player(pid)?.name ?? '?'}:`));
+        for (const card of sh.cards) row.append(face(card, 'tiny'));
+        row.append(ctx.el('small', '', sh.hand));
+        item.append(row);
+      }
+      list.append(item);
+    }
+  }
+
   return { mount, render, turnText };
 })();

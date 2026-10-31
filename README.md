@@ -381,8 +381,8 @@ Riders and Air Hockey start in it) (#13, #15).
 - ✏️ **Doodle Dash:** more drawings than 52, and a reveal card for each answer.
 - 🕵️ **Odd One Out:** more word pairs, and an animated "who voted for whom" reveal.
 - 🖍️ **Scribble Relay:** brush sizes, and saving a finished chain as an image.
-- 🧠 **Trivia Rush:** ✅ added (#49), 188 questions in 9 topics. ✅ The quickest right answer gets a ⚡ callout. Next: more questions, and true/false rounds.
-- 🥷 **Night Heist:** a night-by-night history grid, and bot personalities (greedy, cautious).
+- 🧠 **Trivia Rush:** ✅ added (#49), 188 questions in 9 topics. ✅ The quickest right answer gets a ⚡ callout. ✅ An Answers setting adds ✅ true/false rounds (every question, or every third). Next: more questions.
+- 🥷 **Night Heist:** ✅ a night-by-night grid of everyone's choices and gold changes. Next: bot personalities (greedy, cautious).
 - 🎭 **Unmask:** an undo toast for flips, generated avatars, and pinch-zoom on the board.
 
 **Strategy**
@@ -415,8 +415,8 @@ Riders and Air Hockey start in it) (#13, #15).
   invisible: the die's padding was a percentage, which CSS measures against the whole dice row, so it
   squeezed the pips to nothing (#44). ✅ Asks before you score a 0. ✅ A 🏅 solo best-score table (top 5, kept on the device).
 - 📍 **Cribbage:** ✅ added (#23). Next: animate pegging along the track, and an optional muggins rule.
-- ♠️ **Texas Hold'em:** ✅ added (#21). ✅ Buy back in after busting (#35; people only, bots don't). Next: a hand-history panel, showing folded winners' cards
-  on request, and a time bank.
+- ♠️ **Texas Hold'em:** ✅ added (#21). ✅ Buy back in after busting (#35; people only, bots don't). ✅ A 📜 hand-history panel (the last 8
+  hands: board, result, cards shown and your own two), and 🙂 a winner whose rivals all folded can show their cards. Next: a time bank.
 - 🃏 **Last Card:** a fanned, swipeable hand, and animated dealing.
 - ⚡ **Speed:** ✅ added (#48). Next: drag a card onto a pile, a two-phones-face-to-face table layout, and a
   "slap" sound.
