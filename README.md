@@ -359,13 +359,13 @@ Riders and Air Hockey start in it) (#13, #15).
 - 🗼 **Spire Siege:** ✅ a 🟦 4-block piece set beside the mixed 2/3/5-block set (#13), a ⇄ hold slot
   (C / Shift / swipe up), and a sharper flat well on high-DPI screens. ✅ 🟦 4-block is now the default
   (#26); the odd shapes are the 🧩 Mixed option. Next: a stronger ring-clear effect, and bots that use hold.
-- 🏍️ **Light Riders:** check the swipe fixes on a phone (#14); scale the swipe threshold with screen
-  size; a vibration tick on each turn; a countdown overlay.
-- 🏒 **Air Hockey:** goal replay, a score-to-win setting, haptics on hits.
-- 🎨 **Paint Blast:** ✅ added (#20). Next: a shrinking arena in the last 15 s, a kick power-up, a
-  vibration tick when you're caught, and a paint-coverage bar under the clock.
-- 🪐 **Sumo Saucers:** ✅ added (#46). Next: haptics on hits, and a slow-motion replay of the
-  final knock-off. The original plan:
+- 🏍️ **Light Riders:** ✅ the swipe threshold scales with the arena (18–48 px), a 📳 vibration tick on each
+  turn and a longer buzz when you crash, and a countdown overlay. Next: check the swipe fixes on a phone (#14).
+- 🏒 **Air Hockey:** ✅ a score-to-win setting, and 📳 haptics when your mallet hits the puck and on goals. Next: goal replay.
+- 🎨 **Paint Blast:** ✅ added (#20). ✅ A paint-coverage bar under the clock, and a 📳 buzz when you're
+  caught. Next: a shrinking arena in the last 15 s, and a kick power-up.
+- 🪐 **Sumo Saucers:** ✅ added (#46). ✅ 📳 Haptics when you're shoved and when you fall. Next: a
+  slow-motion replay of the final knock-off. The original plan:
   - Everyone pilots a hover saucer on a round platform floating in space. Drag anywhere to steer
     (momentum, like Air Hockey's physics); tap to 💨 dash, a big shove with a 2 s cooldown.
   - Knock rivals off the edge; the last saucer on the platform wins the round, first to 3 rounds wins.

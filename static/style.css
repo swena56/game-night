@@ -927,6 +927,8 @@ body.focus .lr-stage { height: max(220px, calc(var(--app-h, 100vh) - 245px)); }
 .pb-hud { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
 .pb-hud b { font-size: 20px; color: var(--text); font-variant-numeric: tabular-nums; }
 .pb-hud b.hurry { color: var(--danger); }
+.pb-cover { display: flex; height: 6px; border-radius: 3px; overflow: hidden; background: #ffffff14; margin: -2px 0 6px; }
+.pb-cover span { height: 100%; transition: width .3s; } .pb-cover span.me { box-shadow: inset 0 0 0 1px #fff; }
 .pb-stage { position: relative; height: min(calc(var(--app-h, 100vh) * .6), 600px); display: flex; justify-content: center; align-items: center; }
 .pb-stage canvas { display: block; border-radius: 10px; box-shadow: 0 8px 24px #0009; }
 body.focus .pb { max-width: 900px; }

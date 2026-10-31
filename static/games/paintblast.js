@@ -10,6 +10,7 @@ UI.paintblast = (() => {
   function mount(main, side) {
     S = null; snap = null; glide = []; heldDir = -1; touch = null;
     main.innerHTML = `<div class="pb"><div class="pb-hud"><span id="pbRound"></span><b id="pbClock"></b><span id="pbMe"></span></div>
+      <div class="pb-cover" id="pbCover" aria-label="Paint coverage"></div>
       <div class="pb-stage" id="pbStage"><canvas id="pbCanvas"></canvas><div class="lr-banner" id="pbBanner" hidden></div></div>
       <div class="lr-pad pb-pad" id="pbPad">
         <span></span><button data-d="0">▲</button><span></span>
@@ -88,6 +89,8 @@ UI.paintblast = (() => {
 
   function take(d) {
     const now = performance.now();
+    const i = me();
+    if (i != null && snap?.rd === d.rd && d.p[i]?.[1] && !snap.p?.[i]?.[1]) buzz([60, 40, 120]);  // I was just caught
     d.p.forEach(([pos], i) => {
       const gl = glide[i];
       if (!gl || snap?.rd !== d.rd) glide[i] = { from: pos, to: pos, at: 0 };
@@ -111,10 +114,33 @@ UI.paintblast = (() => {
       box.append(row);
     }
     $('pbRound').textContent = `🎨 Round ${r.round}/${r.rounds}`;
+    paintCover();
     const mine = r.me != null ? snap.p[r.me] : null;
     $('pbMe').textContent = mine ? `💣${mine[4]} 🔥${mine[5]} · ${mine[6]} pts` : 'Watching';
     $('pbPad').hidden = r.me == null;
     $('pbBomb').disabled = !mine || !!mine[1] || snap.st !== 'play';
+  }
+
+  // one bar under the clock: each colour's share of the open floor, biggest first
+  function paintCover() {
+    const bar = $('pbCover'); if (!bar || !snap.c || !snap.t) return;
+    const counts = new Array(S.paintblast.seats.length).fill(0);
+    let floor = 0;
+    for (let c = 0; c < snap.t.length; c++) {
+      if (snap.t[c] !== '.') continue;
+      floor++;
+      const owner = parseInt(snap.c.substr(c * 2, 2), 16);
+      if (owner) counts[owner - 1]++;
+    }
+    bar.innerHTML = '';
+    if (!floor) return;
+    counts.map((n, i) => [n, i]).filter(([n]) => n).sort((a, b) => b[0] - a[0]).forEach(([n, i]) => {
+      const seg = ctx.el('span', i === S.paintblast.me ? 'me' : '');
+      seg.style.width = `${(100 * n) / floor}%`;
+      seg.style.background = colorOf(i);
+      seg.title = `${ctx.player(S.paintblast.seats[i])?.name ?? '?'}: ${Math.round((100 * n) / floor)}%`;
+      bar.append(seg);
+    });
   }
 
   function resize() {

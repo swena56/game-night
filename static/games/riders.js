@@ -29,7 +29,8 @@ UI.riders = (() => {
     stage.addEventListener('pointermove', (e) => {
       if (!swipe) return;
       const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y;
-      if (Math.hypot(dx, dy) < 24) return;
+      // about 6% of the arena's width: small enough for a phone, not twitchy on a tablet
+      if (Math.hypot(dx, dy) < Math.max(18, Math.min(48, stage.clientWidth * 0.06))) return;
       steer(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 1 : 3) : (dy > 0 ? 2 : 0));
       swipe = { x: e.clientX, y: e.clientY };  // keep swiping in the same gesture
     });
@@ -56,7 +57,7 @@ UI.riders = (() => {
   }
 
   const mine = () => S?.riders?.me;
-  function steer(d) { if (mine() != null && S.phase === 'playing') ctx.input({ dir: d }, true); }
+  function steer(d) { if (mine() != null && S.phase === 'playing') { buzz(10); ctx.input({ dir: d }, true); } }
   function boost() { if (mine() != null && S.phase === 'playing') ctx.input({ boost: true }, true); }
   const colorOf = (i) => ctx.player(S.riders.seats[i])?.color ?? '#888';
 
@@ -81,7 +82,7 @@ UI.riders = (() => {
       for (let idx = Math.max(t.length, len - tail.length); idx < len; idx++) t.push(tail[idx - (len - tail.length)]);
       const wasAlive = live[i]?.alive;
       live[i] = { alive: !!alive, dir, boosts, boosting: !!boosting };
-      if (wasAlive && !alive) (gl || flat)?.crash?.(i);
+      if (wasAlive && !alive) { (gl || flat)?.crash?.(i); if (i === mine()) buzz([80, 50, 160]); }
     });
     if (data.k !== lastTick) { lastTick = data.k; tickAt = performance.now(); }
     S.riders.stage = data.st;

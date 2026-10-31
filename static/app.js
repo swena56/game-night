@@ -20,7 +20,7 @@ const MODE_DESC = {
 };
 const PREFS = [
   ['sound', '🔊 Sound effects', true],
-  ['vibrate', '📳 Vibrate on my turn', true],
+  ['vibrate', '📳 Vibrate (your turn, hits)', true],
   ['motion', '✨ Animations', true],
   ['bubbles', '💬 Chat pop-ups', true],
 ];
@@ -672,6 +672,8 @@ function flashTurn() {
   if (!g) { g = el('div', 'turn-glow'); g.id = 'turnGlow'; document.body.append(g); }
   g.classList.remove('on'); void g.offsetWidth; g.classList.add('on');  // restart the animation
 }
+// a short vibration for game events (hits, crashes), if the player allows it; games call it directly
+function buzz(pattern) { if (prefs.vibrate) try { navigator.vibrate?.(pattern); } catch {} }
 const fmtNum = (n) => (typeof n === 'number' ? n.toLocaleString() : n);
 function confetti() {
   if (!motionOK()) return;

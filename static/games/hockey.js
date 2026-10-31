@@ -148,9 +148,17 @@ UI.hockey = (() => {
   }
 
   function fast(data) {
+    const h = S?.hockey;
+    if (h?.me != null && net?.pk) {  // my mallet hit a puck: it's beside me and its speed jumped
+      const [mx, my] = data.ml[h.me];
+      data.pk.forEach(([x, y, vx, vy], k) => {
+        const old = net.pk[k];
+        if (old && Math.hypot(x - mx, y - my) < (h.mallet + h.puck) * 1.6 && Math.hypot(vx - old[2], vy - old[3]) > 0.8) buzz(25);
+      });
+    }
     net = { ...data, at: performance.now() };
     const sc = data.sc.join(':');
-    if (lastScore && sc !== lastScore) flash = performance.now() + 600;
+    if (lastScore && sc !== lastScore) { flash = performance.now() + 600; buzz(120); }
     lastScore = sc;
     renderScore(data.sc);
   }

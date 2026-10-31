@@ -108,6 +108,12 @@ UI.sumo = (() => {
   }
 
   function take(d) {
+    const i = me(), was = snap?.s?.[i], now = d.s?.[i];
+    if (i != null && was && now) {
+      const kick = Math.hypot(now[2] - was[2], now[3] - was[3]);
+      if (now[6] && !was[6]) buzz([80, 50, 160]);       // over the edge
+      else if (kick > 1.2 && !now[4]) buzz(35);          // shoved (not my own dash)
+    }
     snap = { R: d.R, bm: d.bm, s: d.s, st: d.st ?? d.stage };
     gotAt = performance.now();
     Object.assign(S.sumo, { R: d.R, bm: d.bm, s: d.s, stage: snap.st });
