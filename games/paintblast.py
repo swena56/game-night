@@ -24,7 +24,7 @@ TAG_POINTS = 10
 COUNTDOWN, PAUSE = 3.0, 5.0
 CLOSE_FROM, CLOSE_EVERY = 15.0, 4.0  # 🧱 the walls close in: a ring of pillars from 15 s left, then every 4 s
 FLOOR, PILLAR, CRATE = 0, 1, 2
-POWERS = {"b": "💣 extra bomb", "r": "🔥 longer blast", "p": "🪣 paint splash"}
+POWERS = {"b": "💣 extra bomb", "r": "🔥 longer blast", "p": "🪣 paint splash", "k": "👟 kick"}
 
 
 class PaintBlast(Game):
@@ -34,7 +34,7 @@ class PaintBlast(Game):
         "Move with a swipe-and-hold on the arena, the arrows, or the keyboard (arrows / WASD). Tap the arena, 💣 or Space to drop a bomb.",
         "A bomb blasts in a straight line in all four directions. It breaks the first crate it meets and paints every tile it touches in your colour.",
         "Caught in a blast? You're stunned for 3 s and respawn at home. Catching a rival scores +10.",
-        "Crates hide 💣 more bombs, 🔥 longer blasts and 🪣 paint splashes.",
+        "Crates hide 💣 more bombs, 🔥 longer blasts, 🪣 paint splashes and 👟 kick: walk into a bomb to send it sliding.",
         "When the clock runs out, every tile in your colour is a point. Most points after the last round wins.",
         "🧱 In the last 15 s the walls close in, one ring at a time. Paint under them still counts.",
     ]
@@ -51,6 +51,7 @@ class PaintBlast(Game):
         "closing": ("Last 15 s", [(True, "🧱 Walls close in"), (False, "Arena stays open")], True),
     }
     closed = 0  # rings of the arena walled off so far (rounds saved before this had none)
+    kick = None  # who has picked up 👟 kick this round
 
     # -- setup
 
@@ -83,6 +84,7 @@ class PaintBlast(Game):
         self.want, self.nudge, self.cool = [-1] * k, [False] * k, [0] * k
         self.drop, self.facing = [False] * k, [2] * k
         self.maxb, self.reach = [1] * k, [2] * k
+        self.kick = [False] * k
         self.stun, self.shield, self.tags = [0] * k, [SHIELD] * k, [0] * k
         self.moved = [0] * k  # tick of each player's last step, so browsers can glide
         self.think = [0] * k
@@ -243,6 +245,9 @@ class PaintBlast(Game):
                     self.cool[i] = MOVE_TICKS
                     self.moved[i] = self.tick
                     self.pick_up(i, nxt)
+                elif nxt in self.bombs and self.kick and self.kick[i]:
+                    self.kick_bomb(nxt, d)
+                    self.cool[i] = MOVE_TICKS
         # fuses, chain reactions, burning
         for c in list(self.bombs):
             self.bombs[c][0] -= 1
@@ -272,8 +277,21 @@ class PaintBlast(Game):
             elif not self.shield[i] and self.pos[i] in self.burn:
                 self.caught(i, self.burn[self.pos[i]][1])
 
+    def kick_bomb(self, c, d):
+        """👟 Send the bomb at c sliding in direction d until a wall, crate, bomb or player stops it."""
+        end = c
+        while True:
+            nxt = self.step_to(end, d)
+            if nxt is None or self.tiles[nxt] != FLOOR or nxt in self.bombs or nxt in self.pos:
+                break
+            end = nxt
+        if end != c:
+            self.bombs[end] = self.bombs.pop(c)
+
     def pick_up(self, i, c):
         kind = self.items.pop(c, None)
+        if kind == "k" and self.kick:
+            self.kick[i] = True
         if kind == "b":
             self.maxb[i] = min(5, self.maxb[i] + 1)
         elif kind == "r":
@@ -312,7 +330,7 @@ class PaintBlast(Game):
         for cc in crates:
             self.tiles[cc] = FLOOR
             if self.rng.random() < 0.3:
-                self.items[cc] = self.rng.choice("bbrrp")
+                self.items[cc] = self.rng.choice("bbrrpk")
 
     def caught(self, i, by):
         self.stun[i] = STUN
@@ -359,7 +377,7 @@ class PaintBlast(Game):
             "f": [[c, b[1]] for c, b in self.burn.items()],
             "i": [[c, kind] for c, kind in self.items.items()],
             "p": [[self.pos[i], self.stun[i], self.shield[i], self.moved[i], self.maxb[i], self.reach[i],
-                   self.round_points(i)] for i in range(len(self.seats))],
+                   self.round_points(i), bool(self.kick and self.kick[i])] for i in range(len(self.seats))],
             "left": max(0.0, self.ends_at - now) if self.ends_at and self.stage == "play" else None,
         }
 

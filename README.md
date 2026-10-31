@@ -376,7 +376,8 @@ Riders and Air Hockey start in it) (#13, #15).
 - 🏒 **Air Hockey:** ✅ a score-to-win setting, and 📳 haptics when your mallet hits the puck and on goals. Next: goal replay.
 - 🎨 **Paint Blast:** ✅ added (#20). ✅ A paint-coverage bar under the clock, and a 📳 buzz when you're
   caught. ✅ 🧱 The walls close in during the last 15 s, a ring every 4 s (an option, on by default); paint
-  under them still counts and anyone caught there is pushed inside. Next: a kick power-up.
+  under them still counts and anyone caught there is pushed inside. ✅ A 👟 kick power-up: walk into a bomb to send
+  it sliding until something stops it.
 - 🪐 **Sumo Saucers:** ✅ added (#46). ✅ 📳 Haptics when you're shoved and when you fall. Next: a
   slow-motion replay of the final knock-off. The original plan:
   - Everyone pilots a hover saucer on a round platform floating in space. Drag anywhere to steer

@@ -4,7 +4,7 @@
 UI.paintblast = (() => {
   let S, ctx, snap = null, canvas = null, g = null, raf = 0, ro = null, keyDown = null, keyUp = null;
   let glide = [], heldDir = -1, touch = null, countdownAt = 0, endsAt = 0;
-  const ITEM = { b: '💣', r: '🔥', p: '🪣' };
+  const ITEM = { b: '💣', r: '🔥', p: '🪣', k: '👟' };
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
@@ -116,7 +116,7 @@ UI.paintblast = (() => {
     $('pbRound').textContent = `🎨 Round ${r.round}/${r.rounds}`;
     paintCover();
     const mine = r.me != null ? snap.p[r.me] : null;
-    $('pbMe').textContent = mine ? `💣${mine[4]} 🔥${mine[5]} · ${mine[6]} pts` : 'Watching';
+    $('pbMe').textContent = mine ? `💣${mine[4]} 🔥${mine[5]}${mine[7] ? ' 👟' : ''} · ${mine[6]} pts` : 'Watching';
     $('pbPad').hidden = r.me == null;
     $('pbBomb').disabled = !mine || !!mine[1] || snap.st !== 'play';
   }
