@@ -111,7 +111,8 @@ UI.holdem = (() => {
     for (const card of h.myCards) my.append(face(card, 'big-card'));
     $('heMyInfo').textContent = !mine ? '👁 Watching' : mine.out ? '💥 Out of chips' : mine.folded && h.stage !== 'done' ? `Folded · 💰${num(mine.chips)}`
       : `💰${num(mine.chips)}${mine.bet ? ` · bet ${num(mine.bet)}` : ''}${h.shown[me] ? ` · ${h.shown[me].hand}` : ''}`
-        + [mine.button ? ' · 🔘 Dealer' : '', mine.sb ? ' · SB' : '', mine.bb ? ' · BB' : ''].join('');
+        + [mine.button ? ' · 🔘 Dealer' : '', mine.sb ? ' · SB' : '', mine.bb ? ' · BB' : ''].join('')
+        + (h.bank != null ? ` · ⏳ ${h.bank} s bank` : '');
 
     // busted with a buy-back left: offer it (the table waits if it would otherwise end)
     const rebuy = !!h.canRebuy && S.phase === 'playing' && !ctx.player(me)?.bot;

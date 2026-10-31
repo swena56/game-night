@@ -21,6 +21,7 @@ STREETS = ["preflop", "flop", "turn", "river"]
 PAUSE, SHOWDOWN_PAUSE = 2.5, 5.0     # seconds between hands (longer when cards are shown)
 REBUY_WAIT = 12.0                    # how long the table waits when a buy-back would keep the game going
 HISTORY = 8                          # past hands kept for the hand-history panel
+TIME_BANK, BANK_STEP = 60, 20        # with a turn timer: extra seconds each player has for the game, used 20 s at a time
 
 
 def pretty(card):
@@ -105,6 +106,7 @@ class Holdem(Game):
         "Each round you can fold, check, call, raise or go all-in. Best five-card hand at the end wins the pot.",
         "Hands, high to low: straight flush, four of a kind, full house, flush, straight, three of a kind, two pair, pair.",
         "Blinds rise every few hands. Run out of chips and you're out (unless you 💸 buy back in). Last player with chips wins.",
+        "With a turn timer, everyone has a 60 s ⏳ time bank: run out of time and it adds 20 s before you're folded.",
     ]
     name = "Texas Hold'em"
     icon = "♠️"
@@ -127,6 +129,7 @@ class Holdem(Game):
             p.g.cards, p.g.bet, p.g.put = [], 0, 0
             p.g.folded = p.g.allin = False
             p.g.rebuys = self.s.get("rebuys", 1)
+            p.g.bank = TIME_BANK
         self.hand_no = 0
         self.dealer = rng.randrange(len(self.seats))
         self.board, self.shown, self.result, self.last_act = [], {}, "", {}
@@ -166,6 +169,7 @@ class Holdem(Game):
         p.g.cards, p.g.bet, p.g.put = [], 0, 0
         p.g.folded = p.g.allin = False
         p.g.rebuys = self.s.get("rebuys", 1)
+        p.g.bank = TIME_BANK
         self.seats.append(p.id)
         if self.stage == "done" and len(self.alive()) >= 2:  # a table waiting for a buy-back can deal now
             soon = time.time() + 1.5
@@ -442,6 +446,12 @@ class Holdem(Game):
         if self.stage == "done":
             return self.new_hand()
         p = self.pl(self.room.turn)
+        bank = getattr(p.g, "bank", 0)
+        if bank > 0 and not p.bot:  # dip into the time bank before folding them
+            use = min(BANK_STEP, bank)
+            p.g.bank = bank - use
+            self.room.deadline = time.time() + use
+            return self.room.add_log(f"⏳ {p.name} is thinking: {use} s from the time bank ({p.g.bank} s left).", "power")
         self.room.add_log(f"⏰ {p.name} ran out of time.", "power")
         if self.cur_bet - p.g.bet > 0:
             self.fold(p)
@@ -503,6 +513,7 @@ class Holdem(Game):
             "toCall": max(0, self.cur_bet - me.bet) if me and self.stage != "done" else 0,
             "minRaise": min(self.cur_bet + self.min_raise, me.bet + me.chips) if me and self.stage != "done" else 0,
             "maxRaise": me.bet + me.chips if me else 0, "myBet": me.bet if me else 0,
+            "bank": getattr(p.g, "bank", 0) if mine and self.room.settings.get("timer") else None,
             "canRebuy": self.can_rebuy(p), "rebuysLeft": getattr(p.g, "rebuys", 0) if p.id in self.seats else 0,
             "rebuyWait": self.stage == "done" and len(self.alive()) < 2,
             "reveal": {i: self.pl(i).g.cards for i in self.seats if self.pl(i) and over and hasattr(self.pl(i).g, "cards")

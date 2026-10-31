@@ -402,8 +402,8 @@ Riders and Air Hockey start in it) (#13, #15).
 
 **Strategy**
 - 🔺 **Backgammon:** ✅ added (#42). ✅ A 🎲 doubling cube (on by default): double before you roll, take to own
-  the cube or drop and lose at its value; bots double and take from the race. Next: the Crawford rule for
-  matches, and a stronger evaluation for the hard bot.
+  the cube or drop and lose at its value; bots double and take from the race. ✅ The Crawford rule in matches
+  (no doubling the game after someone first reaches match point). Next: a stronger evaluation for the hard bot.
 - ♟️ **Chess:** ✅ a move list in standard notation (Nf3, exd5, O-O, e8=Q#), and ✅ captured pieces tumble off
   their square as the capturer slides in. Next: premoves.
 - ⛀ **Checkers:** ✅ last-move highlight, and an optional 🦅 flying-kings variant.
@@ -436,7 +436,8 @@ Riders and Air Hockey start in it) (#13, #15).
   squeezed the pips to nothing (#44). ✅ Asks before you score a 0. ✅ A 🏅 solo best-score table (top 5, kept on the device).
 - 📍 **Cribbage:** ✅ added (#23). Next: animate pegging along the track, and an optional muggins rule.
 - ♠️ **Texas Hold'em:** ✅ added (#21). ✅ Buy back in after busting (#35; people only, bots don't). ✅ A 📜 hand-history panel (the last 8
-  hands: board, result, cards shown and your own two), and 🙂 a winner whose rivals all folded can show their cards. Next: a time bank.
+  hands: board, result, cards shown and your own two), and 🙂 a winner whose rivals all folded can show their cards.
+  ✅ With a turn timer, a 60 s ⏳ time bank each, spent 20 s at a time before you're folded.
 - 🃏 **Last Card:** ✅ a fanned hand in one swipeable row (playable cards lift out), and drawn cards are dealt in
   from the deck.
 - ⚡ **Speed:** ✅ added (#48). Next: drag a card onto a pile, a two-phones-face-to-face table layout, and a
