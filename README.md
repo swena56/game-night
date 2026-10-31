@@ -300,8 +300,10 @@ be checked without a browser.
    - ✅ Keyboard play on those boards: arrow keys move between squares (skipping ones you can't
      press yet), Enter or Space plays. The shared `gridKeys(box, cols)` in `app.js` adds it to any grid.
    - Contrast checks, and text that scales with the browser font size.
-7. **Themes.** A light theme that follows the system setting. Board themes (wood, classic,
-   high-contrast) and card-back styles, chosen under ⚙️ My settings.
+7. **Themes.** ✅ ⚙️ My settings → Theme: 🌙 Dark, ☀️ Light or 🌓 Match my phone. Light turns the home screen,
+   lobby, chips, log, drawers and dialogs light (text checked at WCAG AA, 5:1 or better) and keeps the game
+   table and its side panel on dark felt, since every board, card and canvas is drawn for it. Still to do:
+   board themes (wood, classic, high-contrast) and card-back styles.
 8. **Identity and social.**
    - Avatars generated with the Unmask face generator.
    - ✅ A colour picker and rename in the lobby (✏️ next to your name, between games; names must be

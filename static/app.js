@@ -744,9 +744,24 @@ function confetti() {
 }
 
 // ---------- personal settings
-function applyPrefs() { document.body.classList.toggle('calm', !prefs.motion); }
+const THEMES = [['dark', '🌙 Dark'], ['light', '☀️ Light'], ['system', '🌓 Match my phone']];
+const lightQuery = window.matchMedia?.('(prefers-color-scheme: light)');
+function applyPrefs() {
+  document.body.classList.toggle('calm', !prefs.motion);
+  const light = prefs.theme === 'light' || (prefs.theme === 'system' && !!lightQuery?.matches);
+  document.body.classList.toggle('light', light);
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', light ? '#f4f1fa' : '#16131f');
+}
+lightQuery?.addEventListener?.('change', applyPrefs);
 function renderPrefs() {
   const box = $('#prefsList'); box.innerHTML = '';
+  const theme = el('label', '', 'Theme (the game table stays dark)');
+  const pick = el('select');
+  for (const [k, label] of THEMES) pick.append(Object.assign(el('option', '', label), { value: k }));
+  pick.value = prefs.theme || 'dark';
+  pick.onchange = () => { prefs.theme = pick.value; store('unmask.prefs', prefs); applyPrefs(); };
+  theme.append(pick);
+  box.append(theme);
   for (const [key, label] of PREFS) {
     const lab = el('label', 'check');
     const cb = el('input'); cb.type = 'checkbox'; cb.checked = prefs[key];
