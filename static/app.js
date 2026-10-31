@@ -31,6 +31,7 @@ let S = null;               // latest server state
 let stateAt = 0;            // when S arrived (for the countdown)
 let es = null;
 let mounted = null;         // game id whose UI is mounted
+let mountedNo = null;       // which game of the room it was mounted for: a rematch gets a fresh UI (#53)
 let lastTurn = null;
 let lastLogId = 0;
 let lastChatId = null;
@@ -460,11 +461,11 @@ const renderKey = (view, readOnly) => JSON.stringify(view, (k, v) => (k === 'cha
 function renderGame(view = S, readOnly = false, force = false) {
   const ui = UI[view.gameId];
   $('#quitBtn').textContent = view.host === view.me.id && view.phase === 'playing' ? '🏠 End game' : 'Leave game';
-  if (mounted !== view.gameId) {
+  if (mounted !== view.gameId || (!readOnly && mountedNo !== view.gameNo)) {
     unmountUI();
     $('#arena').innerHTML = ''; $('#sideGame').innerHTML = '';
     ui.mount($('#arena'), $('#sideGame'));
-    mounted = view.gameId;
+    mounted = view.gameId; mountedNo = view.gameNo;
     renderedKey = null;  // a fresh mount always draws
   }
   const me = view.me, playing = view.phase === 'playing', myTurn = !readOnly && playing && view.turn === me.id;

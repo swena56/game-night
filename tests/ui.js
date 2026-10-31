@@ -192,7 +192,11 @@ const MOVES = {
   paintblast(d, S, n, w) {  // mix pad holds, arena swipes/taps and keys
     const fire = (el, type, x = 0, y = 0) => el.dispatchEvent(new w.MouseEvent(type, { bubbles: true, clientX: x, clientY: y }));
     const kind = n % 4;
-    if (kind === 0) { const b = pick([...d.querySelectorAll('#pbPad button[data-d]')]); fire(b, 'pointerdown'); setTimeout(() => fire(b, 'pointerup'), 200); }
+    if (kind === 0) {  // press the d-pad off-centre, slide round to another direction, let go
+      const pad = d.querySelector('#pbPad');
+      fire(pad, 'pointerdown', pick([-50, 50]), 0); fire(pad, 'pointermove', 0, pick([-50, 50]));
+      setTimeout(() => fire(pad, 'pointerup'), 200);
+    }
     else if (kind === 1) { const st = d.querySelector('#pbStage'); fire(st, 'pointerdown', 100, 100); fire(st, 'pointerup', 100, 100); }
     else if (kind === 2) { const st = d.querySelector('#pbStage'); fire(st, 'pointerdown', 100, 100); fire(st, 'pointermove', 100 + pick([-40, 40]), 100); setTimeout(() => fire(st, 'pointerup'), 250); }
     else {

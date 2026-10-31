@@ -12,17 +12,28 @@ UI.paintblast = (() => {
     main.innerHTML = `<div class="pb"><div class="pb-hud"><span id="pbRound"></span><b id="pbClock"></b><span id="pbMe"></span></div>
       <div class="pb-cover" id="pbCover" aria-label="Paint coverage"></div>
       <div class="pb-stage" id="pbStage"><canvas id="pbCanvas"></canvas><div class="lr-banner" id="pbBanner" hidden></div></div>
-      <div class="lr-pad pb-pad" id="pbPad">
-        <span></span><button data-d="0">▲</button><span></span>
-        <button data-d="3">◀</button><button id="pbBomb" class="primary">💣</button><button data-d="1">▶</button>
-        <span></span><button data-d="2">▼</button><span></span></div></div>`;
+      <div class="pb-controls"><div class="pb-dpad" id="pbPad" role="group" aria-label="Move">
+        <span data-d="0">▲</span><span data-d="3">◀</span><span data-d="1">▶</span><span data-d="2">▼</span></div>
+        <button id="pbBomb" class="primary pb-bomb" aria-label="Drop a bomb">💣</button></div></div>`;
     side.innerHTML = `<div class="panel"><div id="pbScores"></div>
       <p class="hint left">Swipe and hold on the arena to run; tap it to drop a bomb. Or use the pad, or arrows / WASD and Space.</p></div>`;
     main.querySelector('.pb').style.touchAction = 'none';
-    for (const b of $('pbPad').querySelectorAll('button[data-d]')) {
-      b.addEventListener('pointerdown', (e) => { e.preventDefault(); hold(+b.dataset.d); });
-      for (const t of ['pointerup', 'pointercancel', 'pointerleave']) b.addEventListener(t, () => { if (heldDir === +b.dataset.d) hold(-1); });
-    }
+    // the d-pad steers by where the thumb is from its centre, so sliding round it turns without lifting (#54)
+    const pad = $('pbPad');
+    let padId = null;
+    const steer = (e) => {
+      const r = pad.getBoundingClientRect(), dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+      if (Math.hypot(dx, dy) < r.width * 0.12) return;  // the centre is a dead zone: keep going the same way
+      const d = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 1 : 3) : (dy > 0 ? 2 : 0);
+      if (d !== heldDir) hold(d);
+    };
+    pad.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); padId = e.pointerId;
+      try { pad.setPointerCapture(e.pointerId); } catch {}
+      steer(e);
+    });
+    pad.addEventListener('pointermove', (e) => { if (e.pointerId === padId) steer(e); });
+    for (const t of ['pointerup', 'pointercancel']) pad.addEventListener(t, (e) => { if (e.pointerId === padId) { padId = null; hold(-1); } });
     $('pbBomb').addEventListener('pointerdown', (e) => { e.preventDefault(); bomb(); });
     const stage = $('pbStage');
     stage.addEventListener('pointerdown', (e) => {
@@ -68,6 +79,7 @@ UI.paintblast = (() => {
     if (!playing() || d === heldDir) return;
     heldDir = d;
     ctx.input({ dir: d }, true);
+    for (const x of $('pbPad')?.querySelectorAll('[data-d]') ?? []) x.classList.toggle('on', +x.dataset.d === d);
   }
   function bomb() { if (playing()) ctx.input({ bomb: true }, true); }
   const colorOf = (i) => ctx.player(S.paintblast.seats[i])?.color ?? '#888';

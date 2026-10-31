@@ -526,6 +526,7 @@ class Room:
         self.votes = {}
         self.replay = []
         self._replay_key = None
+        self.game_no = getattr(self, "game_no", 0) + 1  # clients rebuild the game screen for each new game
         game.start(list(seated), random.Random())
         self.snap()
 
@@ -614,7 +615,7 @@ class Room:
             "palette": PLAYER_COLORS,
             "phase": self.phase,
             "settings": self.settings,
-            "gameId": self.settings["game"],
+            "gameId": self.settings["game"], "gameNo": getattr(self, "game_no", 0),
             "games": GAME_INFO,
             "roomSettings": ROOM_SETTINGS_INFO,
             "host": self.host,

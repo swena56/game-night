@@ -89,6 +89,7 @@ UI.putt = (() => {
   // where each ball is drawn: on its shot path while that animates, else where the server says
   function ballPos(i, now) {
     const p = S.putt;
+    if (anim && (anim.by >= p.balls.length || !anim.frames.length)) anim = null;  // a shot from a game that has ended
     if (anim && anim.by === i) {
       const k = Math.floor(((now - anim.t0) / 1000) * 30);
       if (k < anim.frames.length) return anim.frames[k];
@@ -161,6 +162,7 @@ UI.putt = (() => {
       resize();
     }
     function ensureBalls() {
+      while (balls.length > S.putt.seats.length) scene.remove(balls.pop());  // a rematch with fewer players (#53)
       while (balls.length < S.putt.seats.length) {
         const i = balls.length;
         const m = new T.Mesh(ballGeo, new T.MeshStandardMaterial({ color: new T.Color(colorOf(i)), roughness: 0.3 }));
