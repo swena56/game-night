@@ -411,6 +411,8 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px s
 /* effects that only exist to animate away must not linger when animation is off */
 @media (prefers-reduced-motion: reduce) { .csq .piece.taken { display: none; } }
 body.calm .csq .piece.taken { display: none; }
+@media (prefers-reduced-motion: reduce) { .gh-tile.trace { background: linear-gradient(#8ecae6, #4dabf7); } }
+body.calm .gh-tile.trace { background: linear-gradient(#8ecae6, #4dabf7); }
 
 /* lucky letters */
 .lucky { max-width: 680px; margin: 0 auto; }
@@ -963,6 +965,10 @@ body.focus .lr-stage { height: max(220px, calc(var(--app-h, 100vh) - 245px)); }
 .gh-tile:disabled { opacity: 1; cursor: default; filter: saturate(.6) brightness(.85); }
 .gh-tile.star::after { content: '⭐'; position: absolute; top: 2px; right: 4px; font-size: 12px; }
 .gh-tile.on { background: linear-gradient(#ffd166, var(--accent)); transform: scale(.94); }
+.gh-tile.trace { animation: ghTrace .5s var(--t, 0s) both; }
+@keyframes ghTrace { from { background: linear-gradient(#fbf5e6, #e9dfc4); } to { background: linear-gradient(#8ecae6, #4dabf7); transform: scale(.94); } }
+.gh-chip.traceable { cursor: pointer; }
+.gh-chip.traceable:hover, .gh-chip.traceable:focus-visible { outline: 2px solid var(--accent2); }
 .gh-tile.head { outline: 3px solid #fff; }
 .gh-entry { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 .gh-word { flex: 1; text-align: center; font-size: 22px; font-weight: 900; letter-spacing: .08em; min-height: 1.4em; }

@@ -181,6 +181,7 @@ UI.gridhunt = (() => {
         for (const [w, pts, shared] of g.results.lists[pid]) {
           const chip = ctx.el('span', 'gh-chip' + (shared ? ' shared' : ''), shared ? w : `${w} ${pts}`);
           if (shared) chip.title = 'Someone else found it too';
+          traceable(chip, w);
           box.append(chip);
         }
         if (!g.results.lists[pid].length) box.append(ctx.el('span', 'hint', ' no words'));
@@ -189,12 +190,44 @@ UI.gridhunt = (() => {
       if (g.results.missed.length) {
         const box = ctx.el('div', 'gh-list missed');
         box.append(ctx.el('b', '', 'Nobody found'));
-        for (const [w, pts] of g.results.missed) box.append(ctx.el('span', 'gh-chip', `${w} ${pts}`));
+        for (const [w, pts] of g.results.missed) { const chip = ctx.el('span', 'gh-chip', `${w} ${pts}`); traceable(chip, w); box.append(chip); }
         res.append(box);
       }
     }
     paint();
     tick();
+  }
+
+  // results: tap a word to see it traced across the grid, tile by tile
+  function pathOf(word) {
+    const g = S.gridhunt, n = g.n, tiles = g.tiles;
+    const walk = (i, at, used) => {
+      const t = tiles[i];
+      if (!word.startsWith(t, at) || used.includes(i)) return null;
+      const next = at + t.length, path = [...used, i];
+      if (next === word.length) return path;
+      for (let j = 0; j < tiles.length; j++) if (adjacent(i, j, n)) { const p = walk(j, next, path); if (p) return p; }
+      return null;
+    };
+    for (let i = 0; i < tiles.length; i++) { const p = walk(i, 0, []); if (p) return p; }
+    return null;
+  }
+  let traceTimer = 0;
+  function traceable(chip, word) {
+    chip.classList.add('traceable');
+    chip.setAttribute('role', 'button'); chip.tabIndex = 0;
+    const go = () => {
+      const path = pathOf(word.toUpperCase()), tiles = [...$('ghGrid').children];
+      if (!path) return;
+      tiles.forEach((t) => { t.classList.remove('trace'); t.style.removeProperty('--t'); });
+      void $('ghGrid').offsetWidth;
+      path.forEach((i, k) => { tiles[i].style.setProperty('--t', `${k * 0.18}s`); tiles[i].classList.add('trace'); });
+      clearTimeout(traceTimer);
+      traceTimer = setTimeout(() => tiles.forEach((t) => t.classList.remove('trace')), path.length * 180 + 1600);
+      $('ghGrid').scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
+    };
+    chip.onclick = go;
+    chip.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } };
   }
 
   const turnText = (s) => s.phase !== 'playing' ? null

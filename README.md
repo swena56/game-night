@@ -417,7 +417,8 @@ Riders and Air Hockey start in it) (#13, #15).
 
 **Words & puzzles**
 - 🔎 **Grid Hunt:** ✅ added (#24, #37). ✅ A "Still to find" line counts the words of each length you
-  haven't found. ✅ A 6×6 grid for big tables (4+ letters). Next: a "trace" replay of each word in the results.
+  haven't found. ✅ A 6×6 grid for big tables (4+ letters). ✅ Tap any word in the results to see it traced across
+  the grid, tile by tile.
 - 🔐 **Safecracker:** ✅ added (#22). ✅ Each round starts from an empty guess, with ↺ Last to bring
   back your previous one (#45). ✅ A 📝 notes row marks colours ✗ out or ✓ in (shown on the pad too). ✅ A colour-blind-friendly palette
   (Okabe–Ito, per device). Next: a duel mode where each player sets the other's code.
