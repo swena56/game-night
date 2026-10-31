@@ -415,7 +415,8 @@ Riders and Air Hockey start in it) (#13, #15).
   the cube or drop and lose at its value; bots double and take from the race. ✅ The Crawford rule in matches
   (no doubling the game after someone first reaches match point). Next: a stronger evaluation for the hard bot.
 - ♟️ **Chess:** ✅ a move list in standard notation (Nf3, exd5, O-O, e8=Q#), and ✅ captured pieces tumble off
-  their square as the capturer slides in. Next: premoves.
+  their square as the capturer slides in. ✅ ⏩ Premoves: during your rival's turn, tap a piece and a square; it plays the instant your turn starts
+  if it's still legal (pawns promote to a queen), or is dropped with a note. ✕ cancels it.
 - ⛀ **Checkers:** ✅ last-move highlight, and an optional 🦅 flying-kings variant.
 - ⚫ **Go:** ✅ a territory overlay (shown at the end, ◫ toggle during play), and ↶ undo requests (bots always agree).
 

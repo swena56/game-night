@@ -1,4 +1,6 @@
 UI.chess = (() => {
+  // premove: picked during the rival's turn ([fromR, fromC, toR, toC]), sent the moment it's our turn if it's legal
+  let pre = null, preSel = null;
   let S, ctx, boardEl, sel = null, promo = null, shownLast, view3d = null, slide = null, clockTimer = 0, clockAt = 0, shownTaken = null, shownW = 0;
   const want3d = () => { try { return localStorage.getItem('chess.view') !== '2d'; } catch { return true; } };
   const GLYPH = { K: '♚', Q: '♛', R: '♜', B: '♝', N: '♞', P: '♟' };
@@ -7,7 +9,7 @@ UI.chess = (() => {
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
-    sel = null; promo = null; shownLast = undefined; slide = null; shownTaken = null; shownW = 0;
+    sel = null; promo = null; pre = null; preSel = null; shownLast = undefined; slide = null; shownTaken = null; shownW = 0;
     main.innerHTML = '<div id="chClock" class="ch-clocks" hidden></div><div class="chess-wrap"><div class="chessboard"></div><div class="chess3d" id="ch3d" hidden></div></div>';
     side.innerHTML = `<div class="panel">
       <div id="chStatus" class="seat-row"></div>
@@ -43,6 +45,16 @@ UI.chess = (() => {
     S = s; ctx = c; clockAt = performance.now();
     const ch = S.chess, moves = ch.moves;
     if (!ctx.myTurn) { sel = null; promo = null; }
+    if (S.phase !== 'playing' || !ch.me) pre = preSel = null;
+    if (ctx.myTurn) preSel = null;
+    if (ctx.myTurn && pre && ctx.act) {
+      const want = pre, hits = moves.filter((m) => m[0] === want[0] && m[1] === want[1] && m[2] === want[2] && m[3] === want[3]);
+      pre = null;
+      if (hits.length) {  // a premoved pawn promotes to a queen
+        const m = hits.find((x) => !x[4] || x[4] === 'Q') ?? hits[0];
+        setTimeout(() => ctx.quiet(ctx.act('move', { move: m })), 0);
+      } else ctx.toast('Premove cancelled: it isn\'t legal now.');
+    }
     const targets = new Set(sel ? moves.filter((m) => m[0] === sel[0] && m[1] === sel[1]).map((m) => m[2] * 8 + m[3]) : []);
     const movable = new Set(moves.map((m) => m[0] * 8 + m[1]));
     const lastKey = ch.last?.join() ?? null, animate = shownLast !== undefined && lastKey && lastKey !== shownLast;
@@ -59,6 +71,8 @@ UI.chess = (() => {
       if (ch.last && ((ch.last[0] === r && ch.last[1] === col) || (ch.last[2] === r && ch.last[3] === col))) sq.classList.add('last');
       if (ch.check && ch.check[0] === r && ch.check[1] === col) sq.classList.add('check');
       if (sel && sel[0] === r && sel[1] === col) sq.classList.add('sel');
+      if (preSel && preSel[0] === r && preSel[1] === col) sq.classList.add('sel');
+      if (pre && ((pre[0] === r && pre[1] === col) || (pre[2] === r && pre[3] === col))) sq.classList.add('premove');
       if (targets.has(r * 8 + col)) sq.classList.add(p ? 'capture' : 'target');
       if (!sel && movable.has(r * 8 + col)) sq.classList.add('movable');
       sq.innerHTML = '';
@@ -79,6 +93,12 @@ UI.chess = (() => {
     sync3d();
     const mine = ch.me ? (ch.me === 'w' ? '♔ You play White' : '♚ You play Black') : '👁 Watching';
     $('chStatus').textContent = mine + (S.phase === 'playing' ? ` · ${ch.turnColor === 'w' ? 'White' : 'Black'} to move` : '');
+    if (pre || preSel) {
+      const sqName = (r, c) => 'abcdefgh'[c] + (8 - r);
+      const x = ctx.el('button', 'ghost-btn', '✕');
+      x.onclick = () => { pre = preSel = null; ctx.rerender(); };
+      $('chStatus').append(ctx.el('span', 'ch-pre', pre ? ` · ⏩ Premove ${sqName(pre[0], pre[1])}→${sqName(pre[2], pre[3])}` : ' · ⏩ Premove: pick a square'), x);
+    }
     const lost = (color) => ch.captured[color].map((k) => GLYPH[k] + TEXT).join('');
     $('chTaken').innerHTML = '';
     $('chTaken').append(ctx.el('div', '', `White took: ${lost('b') || '—'}`), ctx.el('div', '', `Black took: ${lost('w') || '—'}`));
@@ -167,7 +187,8 @@ UI.chess = (() => {
   }
 
   function onSquare(i) {
-    if (!ctx.myTurn || promo) return;
+    if (!ctx.myTurn) return premove(i);
+    if (promo) return;
     const [r, c] = rc(i);
     const moves = S.chess.moves;
     if (sel) {
@@ -176,6 +197,18 @@ UI.chess = (() => {
       if (hits.length === 1) { sel = null; ctx.quiet(ctx.act('move', { move: hits[0] })); return ctx.rerender(); }
     }
     sel = moves.some((m) => m[0] === r && m[1] === c) ? [r, c] : null;
+    ctx.rerender();
+  }
+
+  // during the rival's turn: tap a piece, then a square; tap the piece again (or ✕ in the status) to cancel
+  function premove(i) {
+    const ch = S.chess;
+    if (S.phase !== 'playing' || !ch.me || !ctx.act) return;
+    const [r, c] = rc(i), mine = ch.board[r][c]?.[0] === ch.me;
+    if (preSel && !(preSel[0] === r && preSel[1] === c) && !mine) { pre = [...preSel, r, c]; preSel = null; }
+    else if (preSel && preSel[0] === r && preSel[1] === c) preSel = null;
+    else if (mine) { preSel = [r, c]; pre = null; }
+    else pre = preSel = null;
     ctx.rerender();
   }
 

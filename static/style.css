@@ -1301,3 +1301,7 @@ body.light .panel { border-color: var(--line); box-shadow: 0 4px 16px #2d214718;
 body.light #sideGame > .panel { border-color: #ffffff0d; }
 body.light .toast, body.light .report-pre { color: #fff; }
 body.light .logo { background-image: linear-gradient(90deg, #e09a00, #e0457b, #1f7fae, #e09a00); }
+
+/* chess premoves: queued during the rival's turn */
+.csq.premove { box-shadow: inset 0 0 0 4px #8ecae6cc; background-image: linear-gradient(#8ecae63a, #8ecae63a); }
+.ch-pre { color: var(--accent2); font-weight: 700; }
