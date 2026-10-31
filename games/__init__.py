@@ -23,6 +23,7 @@ from .oddone import OddOne
 from .oware import Oware
 from .paintblast import PaintBlast
 from .putt import Putt
+from .rally import Rally
 from .relay import Relay
 from .reversi import Reversi
 from .riders import Riders
@@ -39,7 +40,7 @@ from .yacht import Yacht
 from .wordsmith import Wordsmith
 
 # Order here is the order of the lobby's game picker.
-GAMES = {g.id: g for g in (Unmask, OddOne, Relay, FibFinder, Doodle, Lucky, Spire, Riders, PaintBlast, Sumo, Putt, Hockey, Billiards, Wordsmith, GridHunt, Safecracker, Chess, Checkers, Backgammon, Go, Oware, Reversi, LastCard, Holdem, Cribbage, Hearts, TwentyOne, Rummy, SeaBattle,
+GAMES = {g.id: g for g in (Unmask, OddOne, Relay, FibFinder, Doodle, Lucky, Spire, Riders, PaintBlast, Sumo, Putt, Rally, Hockey, Billiards, Wordsmith, GridHunt, Safecracker, Chess, Checkers, Backgammon, Go, Oware, Reversi, LastCard, Holdem, Cribbage, Hearts, TwentyOne, Rummy, SeaBattle,
                            DropFour, Boxes, TicTacToe, Ultimate, Morris, Heist, MoonShot, Yacht, Farkle)}
 GAME_INFO = [g.info() for g in GAMES.values()]
 
