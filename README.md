@@ -27,7 +27,7 @@ address the server prints. **Play solo** on the home screen starts any game agai
 | 🎭 **Unmask** | 1–6 | Ask yes/no questions to find a hidden face. Faces are generated fresh every game. | Power cards. In Manhunt, everyone hears your question but only you hear the answer. Knocked-out players become ghosts who see everything. |
 | 🔤 **Wordsmith** | 2–4 | Crossword tile game on an original 11×11 board (80 tiles, no blanks, ENABLE dictionary). | A **bounty letter** rerolls every turn (+10). Using all 7 tiles is a **clean sweep** (+40). |
 | 🔴 **Drop Four** | 2–4 | Gravity four-in-a-row. 3–4 players get a 9×7 board. | Optional 💣 **bomb disc**: it clears its 3×3 neighbourhood and the stack falls, which can complete *someone else's* line. |
-| 🔳 **Dots & Boxes** | 2–4 | The pencil-and-paper classic on a 3×3 to 6×6 grid. Close a box to claim it and move again. On touch screens a line takes two taps (pick, then confirm). | Optional 💎 **gem boxes** worth 3 points. |
+| 🔳 **Dots & Boxes** | 2–6 | The pencil-and-paper classic on a 3×3 to 6×6 grid. Close a box to claim it and move again. On touch screens a line takes two taps (pick, then confirm). | Optional 💎 **gem boxes** worth 3 points. |
 | #️⃣ **Ultimate Tic-Tac-Toe** | 2 | The folk game: nine small boards in one. Where you play sends your rival to that board. Win three small boards in a row. | The boards you may play in glow; won boards show a big mark. |
 | ⚫ **Nine Men's Morris** | 2 | The traditional mill game: place 9 men, then slide them; a line of three (a mill) takes a rival man. Fewer than 3 men or no move loses. | Optional flying with 3 men. Tap a man, then its destination; after a mill, rival men you can take pulse red. |
 | ❌ **Tic-Tac-Toe** | 2 | The classic. | 👻 **Vanishing**: you keep only your 3 newest marks, and the oldest fades out. |
@@ -374,7 +374,8 @@ Riders and Air Hockey start in it) (#13, #15).
   touching the stick no longer flips the aim 180° (#28). ✅ It starts in focus mode, so the floating
   buttons no longer cover Shoot (#29), and the cue is a full-size tapered stick (#30). ✅ Spin: a follow / draw slider; after the
   cue ball's first hit it rolls on or screws back. ✅ 📣 Calling the 8 (on by default): tap the pocket you're aiming at;
-  the 8 in any other pocket loses (bots call theirs too). Next: pinch zoom (#28) and a 3D table.
+  the 8 in any other pocket loses (bots call theirs too). ✅ Pinch zoom (#28): two fingers zoom the table up to 3× and
+  pan, without moving the aim; 🔍 1× resets. Next: a 3D table.
 - 🗼 **Spire Siege:** ✅ a 🟦 4-block piece set beside the mixed 2/3/5-block set (#13), a ⇄ hold slot
   (C / Shift / swipe up), and a sharper flat well on high-DPI screens. ✅ 🟦 4-block is now the default
   (#26); the odd shapes are the 🧩 Mixed option. ✅ Normal and hard bots use the ⇄ hold slot (they park a piece and

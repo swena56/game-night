@@ -21,7 +21,7 @@ class Boxes(Game):
     icon = "🔳"
     blurb = "Draw lines, close boxes, chain your captures. Don't draw the third side!"
     min_players = 2
-    max_players = 4
+    max_players = 6
     settings_schema = {
         "size": ("Grid", [(3, "3×3 (quick)"), (4, "4×4"), (5, "5×5"), (6, "6×6 (long)"),
                           ("4x6", "4×6 wide"), ("5x8", "5×8 wide (long)")], 4),

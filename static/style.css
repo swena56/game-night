@@ -747,8 +747,9 @@ body.focus .lr-stage { height: max(220px, calc(var(--app-h, 100vh) - 245px)); }
 
 /* billiards */
 .bl { max-width: 900px; margin: 0 auto; user-select: none; -webkit-user-select: none; }
-.bl-stage { display: flex; justify-content: center; }
-.bl-stage canvas { display: block; border-radius: 10px; box-shadow: 0 14px 40px #000a; cursor: crosshair; }
+.bl-stage { display: flex; justify-content: center; position: relative; overflow: hidden; border-radius: 10px; touch-action: none; }
+.bl-stage canvas { display: block; border-radius: 10px; box-shadow: 0 14px 40px #000a; cursor: crosshair; transform-origin: 0 0; }
+.bl-zoom { position: absolute; top: 8px; right: 8px; padding: 6px 10px; font-size: 13px; background: #000a; color: #fff; z-index: 2; }
 .bl-controls { display: flex; align-items: center; gap: 8px; margin: 10px auto 0; max-width: 560px; }
 .bl-controls > button { flex: none; min-width: 48px; font-size: 20px; padding: 10px 0; touch-action: manipulation; }
 .bl-controls #blShoot { min-width: 96px; font-size: 16px; padding: 12px 10px; }

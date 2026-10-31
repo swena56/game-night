@@ -4,6 +4,8 @@ UI.billiards = (() => {
   let S, ctx, raf = 0, ro = null, animEnd = 0;
   let dial = null, aim = 0, aimFor = null, power = 0.55, cuePos = null, drag = null, anim = null, seenShot = 0;
   let spin = 0, called = null;  // follow (+) / draw (−), and the pocket called for the 8
+  let view = { z: 1, x: 0, y: 0 }, pinch = null, aimBefore = 0;  // two-finger zoom of the table (#28)
+  const touches = new Map();
   let geo = null;  // canvas geometry: scale, rail width, portrait or not
   const $ = (id) => document.getElementById(id);
   const COLORS = ['#ffffff', '#f5c518', '#1f5fd1', '#d62828', '#6a2c91', '#f77f00', '#138a36', '#7a1f1f', '#111111'];
@@ -32,7 +34,8 @@ UI.billiards = (() => {
     return portrait ? [(RAIL + y) * k, (RAIL + W - x) * k] : [(RAIL + x) * k, (RAIL + y) * k];
   }
   function toTable(clientX, clientY) {
-    const r = $('blCanvas').getBoundingClientRect(), k = geo.css, W = S.billiards.W;
+    const c = $('blCanvas'), r = c.getBoundingClientRect(), W = S.billiards.W;
+    const k = geo.css * (r.width && parseFloat(c.style.width) ? r.width / parseFloat(c.style.width) : 1);  // allow for the zoom
     const sx = (clientX - r.left) / k - RAIL, sy = (clientY - r.top) / k - RAIL;
     return geo.portrait ? [W - sy, sx] : [sx, sy];
   }
@@ -203,7 +206,37 @@ UI.billiards = (() => {
   function tick() { raf = requestAnimationFrame(tick); draw(); }
 
   // ---------- input
+  function applyView() {
+    const c = $('blCanvas');
+    if (!c) return;
+    c.style.transform = view.z === 1 ? '' : `translate(${view.x}px, ${view.y}px) scale(${view.z})`;
+    $('blZoom').hidden = view.z === 1;
+  }
+  // two fingers on the table zoom (1–3×) and pan; the zoom centres on the fingers
+  function onTouch(e, phase) {
+    if (phase === 'down') touches.set(e.pointerId, [e.clientX, e.clientY]);
+    else if (touches.has(e.pointerId) && phase === 'move') touches.set(e.pointerId, [e.clientX, e.clientY]);
+    else if (phase === 'up') { touches.delete(e.pointerId); if (touches.size < 2) pinch = null; return; }
+    if (touches.size !== 2) return;
+    const [[ax, ay], [bx, by]] = [...touches.values()], mid = [(ax + bx) / 2, (ay + by) / 2], d = Math.hypot(ax - bx, ay - by);
+    if (!pinch) {  // a second finger: this is a pinch, not an aim
+      if (drag === 'aim') aim = aimBefore;
+      drag = dial = null;
+      pinch = { d, mid, view: { ...view } };
+      return;
+    }
+    const z = Math.min(3, Math.max(1, pinch.view.z * d / Math.max(10, pinch.d)));
+    // the canvas's own top left, before the zoom (offsets ignore transforms)
+    const c = $('blCanvas'), box = c.parentElement.getBoundingClientRect(), left = box.left + c.offsetLeft, top = box.top + c.offsetTop;
+    // keep the table point under the fingers' first midpoint under their current midpoint
+    const ox = pinch.mid[0] - left - pinch.view.x, oy = pinch.mid[1] - top - pinch.view.y;
+    view = { z, x: mid[0] - left - ox * (z / pinch.view.z), y: mid[1] - top - oy * (z / pinch.view.z) };
+    if (z === 1) view = { z: 1, x: 0, y: 0 };
+    applyView();
+  }
+
   function pointer(e, phase) {
+    if (touches.size > 1 || pinch) return;
     if (!canShoot() || !geo) return;
     const [x, y] = toTable(e.clientX, e.clientY);
     if (phase === 'down' && B().calling) {  // on the 8: a tap on a pocket calls it
@@ -211,6 +244,7 @@ UI.billiards = (() => {
       if (hit >= 0) { called = hit; ctx.rerender(); return; }
     }
     if (phase === 'down') {
+      aimBefore = aim;
       const cue = cueAt();
       drag = B().inHand && cue && Math.hypot(x - cue[0], y - cue[1]) < B().R * 4 ? 'cue' : 'aim';
       // Aiming turns the cue like a dial: the drag rotates the current aim around the cue ball, so a
@@ -248,8 +282,10 @@ UI.billiards = (() => {
 
   // ---------- mount / render
   function mount(main, side) {
+    view = { z: 1, x: 0, y: 0 }; pinch = null; touches.clear();
     dial = null; aim = 0; aimFor = null; power = 0.55; cuePos = null; drag = null; anim = null; seenShot = 0; geo = null;
-    main.innerHTML = `<div class="bl"><div id="blStage" class="bl-stage"><canvas id="blCanvas"></canvas></div>
+    main.innerHTML = `<div class="bl"><div id="blStage" class="bl-stage"><canvas id="blCanvas"></canvas>
+        <button id="blZoom" class="bl-zoom" hidden aria-label="Show the whole table">🔍 1×</button></div>
       <div class="bl-controls">
         <button id="blLeft" aria-label="Aim left">◀</button>
         <label class="bl-power">Power <input id="blPower" type="range" min="5" max="100" value="55"><b id="blPowerVal">55%</b></label>
@@ -268,6 +304,11 @@ UI.billiards = (() => {
     c.addEventListener('pointermove', (e) => pointer(e, 'move'));
     c.addEventListener('pointerup', (e) => pointer(e, 'up'));
     c.addEventListener('pointercancel', () => { drag = null; });
+    const stage = $('blStage');
+    stage.addEventListener('pointerdown', (e) => onTouch(e, 'down'), true);
+    stage.addEventListener('pointermove', (e) => onTouch(e, 'move'), true);
+    for (const t of ['pointerup', 'pointercancel']) stage.addEventListener(t, (e) => onTouch(e, 'up'), true);
+    $('blZoom').onclick = () => { view = { z: 1, x: 0, y: 0 }; applyView(); };
     $('blSpin').oninput = () => {
       spin = $('blSpin').value / 100;
       $('blSpinVal').textContent = !spin ? 'none' : `${spin > 0 ? 'follow' : 'draw'} ${Math.abs(spin * 100)}%`;
