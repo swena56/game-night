@@ -243,6 +243,7 @@ class Backgammon(Game):
         "cube": ("Doubling cube", [(True, "🎲 On"), (False, "Off")], True),
     }
     cube, owner, offer = 1, None, None  # stakes, who may double next (None = either), a double waiting
+    crawford, crawford_done = False, False  # the one game after someone first reaches match point: no doubling
 
     # -- setup
 
@@ -261,6 +262,11 @@ class Backgammon(Game):
         self.pos = new_position()
         self.last_moves, self.plan = [], []
         self.cube, self.owner, self.offer = 1, None, None
+        target = self.s["match"]
+        self.crawford = target > 1 and not self.crawford_done and target - 1 in self.points.values()
+        if self.crawford:
+            self.crawford_done = True
+            r.add_log("🎲 Crawford game: someone is one point from the match, so no doubling this game.")
         # opening roll: one die each, re-rolled on a tie; the higher plays both
         while True:
             a, b = self.rng.randint(1, 6), self.rng.randint(1, 6)
@@ -326,7 +332,7 @@ class Backgammon(Game):
     # -- the doubling cube
 
     def can_double(self):
-        return (bool(self.s.get("cube")) and not self.rolled and not self.offer and self.cube < 64
+        return (bool(self.s.get("cube")) and not self.crawford and not self.rolled and not self.offer and self.cube < 64
                 and self.owner in (None, self.turn_side) and self.room.phase == "playing")
 
     def double(self):
@@ -468,7 +474,7 @@ class Backgammon(Game):
             "names": {"w": self.ids[WHITE], "b": self.ids[BLACK]},
             "cube": self.cube, "owner": {WHITE: "w", BLACK: "b"}.get(self.owner),
             "offer": {WHITE: "w", BLACK: "b"}.get(self.offer), "canDouble": self.can_double() and p.id == self.room.turn,
-            "cubeOn": bool(self.s.get("cube")),
+            "cubeOn": bool(self.s.get("cube")), "crawford": self.crawford,
         }}
 
     # -- bots: pick the best end-of-turn position, then play it one checker at a time

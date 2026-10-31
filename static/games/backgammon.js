@@ -118,7 +118,7 @@ UI.backgammon = (() => {
     $('bgRoll').hidden = !mine || g.rolled.length > 0 || answering;
     $('bgDouble').hidden = !g.canDouble;
     $('bgTake').hidden = $('bgDrop').hidden = !answering;
-    $('bgCube').textContent = !g.cubeOn ? '' : `🎲 Cube: ${g.cube} · ${!g.owner ? 'either player can double'
+    $('bgCube').textContent = !g.cubeOn ? '' : g.crawford ? '🎲 Crawford game: no doubling' : `🎲 Cube: ${g.cube} · ${!g.owner ? 'either player can double'
       : g.owner === myColor && g.me ? 'only you can double' : `only ${name(g.owner)} can double`}`;
     $('bgUndo').hidden = !mine || !g.moves.length;
     $('bgEnd').hidden = !mine || !g.canEnd;
