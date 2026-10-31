@@ -149,7 +149,15 @@ const MOVES = {
     }
     click(enabled(d, '#lkSpin')[0]);
   },
+  cribbage(d, S) {
+    if (!d.querySelector('#cbDiscard').hidden) {
+      for (const b of enabled(d, '#cbHand .card-btn').slice(0, S.cribbage.need)) click(b);
+      return click(d.querySelector('#cbDiscard'));
+    }
+    click(pick(enabled(d, '#cbHand .card-btn')));
+  },
   holdem(d) {
+    if (!d.querySelector('#heRebuy').hidden) return click(d.querySelector('#heRebuy'));
     const opts = enabled(d, '#heCall, #heFold, #heRaise, .he-presets button');
     const call = d.querySelector('#heCall');
     if (!call.disabled && Math.random() < 0.6) return click(call);
@@ -183,7 +191,7 @@ async function playSolo(game, seconds = 60) {
   const end = Date.now() + seconds * 1000;
   while (Date.now() < end && S()?.phase === 'playing') {
     const s = S();
-    const mine = s.turn === s.me.id || (game === 'heist' && !s.heist.mine) || (game === 'oddone' && s.oddone.stage === 'vote' && !s.oddone.myVote) || (game === 'fibfinder' && UI_MINE(s.fibfinder))
+    const mine = s.turn === s.me.id || (game === 'heist' && !s.heist.mine) || (game === 'oddone' && s.oddone.stage === 'vote' && !s.oddone.myVote) || (game === 'fibfinder' && UI_MINE(s.fibfinder)) || (game === 'holdem' && s.holdem.canRebuy) || (game === 'cribbage' && s.cribbage.stage === 'discard' && s.cribbage.discarded[s.me.id] === false)
       || (game === 'relay' && (s.relay.stage === 'play' ? !s.relay.sent : s.relay.myVote == null)) || (game === 'seabattle' && s.sea.stage === 'placing' && !s.sea.ready[s.me.id])
       || (game === 'spire' && s.spire.playing && s.spire.startIn <= 0)
       || (game === 'doodle' && s.doodle.stage === 'draw' && !s.doodle.solvers.some(([p]) => p === s.me.id)) || game === 'hockey' || (game === 'riders' && s.riders.stage === 'ride');
@@ -310,7 +318,7 @@ async function feedbackTour() {
   const lt = await lobbyTour();
   console.log('LOBBY', JSON.stringify(lt));
   for (const g of games.length ? games : Object.keys(MOVES)) {
-    const r = await playSolo(g, g === 'wordsmith' ? 40 : g === 'spire' ? 25 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
+    const r = await playSolo(g, g === 'wordsmith' ? 40 : g === 'spire' ? 25 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'cribbage' ? 300 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
     console.log(`\n== ${g}: phase=${r.phase} moves=${r.moves} dialogs=${r.dialogs || 0} screen="${r.screen}" ${r.banner ? `banner="${r.banner}"` : ''}`);
     console.log(`   help: ${r.help} | log ticker: "${r.ticker}"`);
     if (r.replay) console.log(`   replay: ${r.replay}`);

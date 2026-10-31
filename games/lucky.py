@@ -98,6 +98,12 @@ class Lucky(Game):
         self.starter = rng.randrange(len(seated))
         self.new_round()
 
+    def late_join(self, p):
+        """Join with 0 points; turns come round in seat order."""
+        self.seats.append(p.id)
+        self.total[p.id] = 0
+        self.bank[p.id] = 0
+
     # -- rounds & turns
 
     def new_round(self):

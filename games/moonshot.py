@@ -45,6 +45,12 @@ class MoonShot(Game):
         self.room.add_log(f"🚀 Race to {self.goal}! {first.name} launches first.", "big")
         self.room.begin_turn(first.id)
 
+    def late_join(self, p):
+        """Launch from the start; turns come round in seat order."""
+        self.seats.append(p.id)
+        self.pos[p.id] = 0
+        self.shields[p.id] = 0
+
     def act(self, p, a):
         self.require_turn(p)
         t = a.get("type")

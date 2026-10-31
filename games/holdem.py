@@ -19,6 +19,7 @@ HAND_NAMES = ["High card", "Pair", "Two pair", "Three of a kind", "Straight", "F
               "Four of a kind", "Straight flush"]
 STREETS = ["preflop", "flop", "turn", "river"]
 PAUSE, SHOWDOWN_PAUSE = 2.5, 5.0     # seconds between hands (longer when cards are shown)
+REBUY_WAIT = 12.0                    # how long the table waits when a buy-back would keep the game going
 
 
 def pretty(card):
@@ -102,7 +103,7 @@ class Holdem(Game):
         "You get two private cards. Five shared cards come out: the flop (3), the turn and the river.",
         "Each round you can fold, check, call, raise or go all-in. Best five-card hand at the end wins the pot.",
         "Hands, high to low: straight flush, four of a kind, full house, flush, straight, three of a kind, two pair, pair.",
-        "Blinds rise every few hands. Run out of chips and you're out. Last player with chips wins.",
+        "Blinds rise every few hands. Run out of chips and you're out (unless you 💸 buy back in). Last player with chips wins.",
     ]
     name = "Texas Hold'em"
     icon = "♠️"
@@ -112,6 +113,7 @@ class Holdem(Game):
     settings_schema = {
         "chips": ("Starting chips", [(1000, "1,000"), (2000, "2,000"), (5000, "5,000")], 1000),
         "pace": ("Blinds rise", [(6, "⚡ Every 6 hands"), (10, "Every 10 hands"), (15, "🐢 Every 15 hands")], 10),
+        "rebuys": ("Buy back in", [(0, "Off"), (1, "💸 Once each"), (3, "💸 Up to 3 times")], 1),
     }
 
     # -- setup
@@ -123,6 +125,7 @@ class Holdem(Game):
             p.g.chips = self.s["chips"]
             p.g.cards, p.g.bet, p.g.put = [], 0, 0
             p.g.folded = p.g.allin = False
+            p.g.rebuys = self.s.get("rebuys", 1)
         self.hand_no = 0
         self.dealer = rng.randrange(len(self.seats))
         self.board, self.shown, self.result, self.last_act = [], {}, "", {}
@@ -155,6 +158,24 @@ class Holdem(Game):
             if cand in pool:
                 return cand
         return None
+
+    def late_join(self, p):
+        """Sit in with a full starting stack from the next hand."""
+        p.g.chips = self.s["chips"]
+        p.g.cards, p.g.bet, p.g.put = [], 0, 0
+        p.g.folded = p.g.allin = False
+        p.g.rebuys = self.s.get("rebuys", 1)
+        self.seats.append(p.id)
+        if self.stage == "done" and len(self.alive()) >= 2:  # a table waiting for a buy-back can deal now
+            soon = time.time() + 1.5
+            self.room.deadline = min(self.room.deadline, soon) if self.room.deadline else soon
+
+    def can_rebuy(self, p):
+        """Busted people (not bots) with buy-backs left. They join again from the next hand."""
+        return bool(p and p.eliminated and p.human() and p.id in self.seats and getattr(p.g, "rebuys", 0) > 0)
+
+    def waiting_rebuy(self):
+        return [i for i in self.seats if self.can_rebuy(self.pl(i))]
 
     def blinds(self):
         return BLINDS[min(len(BLINDS) - 1, (self.hand_no - 1) // self.s["pace"])]
@@ -302,7 +323,13 @@ class Holdem(Game):
         self.stage = "done"
         r.turn = None
         if len(self.alive()) < 2:
-            return self.finish()
+            if not self.waiting_rebuy():
+                return self.finish()
+            # someone can still buy back in: give them a moment before the last player standing wins
+            names = ", ".join(self.pl(i).name for i in self.waiting_rebuy())
+            r.add_log(f"💸 {names} can buy back in — {int(REBUY_WAIT)}s before the game ends.", "power")
+            r.deadline = time.time() + REBUY_WAIT
+            return
         r.deadline = time.time() + (SHOWDOWN_PAUSE if self.shown else PAUSE)
 
     def finish(self):
@@ -317,6 +344,8 @@ class Holdem(Game):
 
     def act(self, p, a):
         t = a.get("type")
+        if t == "rebuy":
+            return self.rebuy(p)
         if p.id not in self.seats or p.eliminated:
             raise GameError("You're out of this game.")
         if self.stage == "done":
@@ -341,6 +370,19 @@ class Holdem(Game):
         if t == "allin":
             return self.raise_to(p, p.g.bet + p.g.chips)
         raise GameError("Unknown action.")
+
+    def rebuy(self, p):
+        if not self.can_rebuy(p):
+            raise GameError("You can't buy back in right now.")
+        p.g.rebuys -= 1
+        p.g.chips = self.s["chips"]
+        p.g.cards, p.g.bet, p.g.put = [], 0, 0
+        p.g.folded = p.g.allin = False
+        p.eliminated = False
+        self.room.add_log(f"💸 {p.name} buys back in for {self.s['chips']:,} chips!", "big")
+        if self.stage == "done" and len(self.alive()) >= 2:  # the table was waiting: deal soon
+            soon = time.time() + 1.5
+            self.room.deadline = min(self.room.deadline, soon) if self.room.deadline else soon
 
     def note(self, p, text, kind="info"):
         self.last_act[p.id] = text
@@ -443,6 +485,8 @@ class Holdem(Game):
             "toCall": max(0, self.cur_bet - me.bet) if me and self.stage != "done" else 0,
             "minRaise": min(self.cur_bet + self.min_raise, me.bet + me.chips) if me and self.stage != "done" else 0,
             "maxRaise": me.bet + me.chips if me else 0, "myBet": me.bet if me else 0,
+            "canRebuy": self.can_rebuy(p), "rebuysLeft": getattr(p.g, "rebuys", 0) if p.id in self.seats else 0,
+            "rebuyWait": self.stage == "done" and len(self.alive()) < 2,
             "reveal": {i: self.pl(i).g.cards for i in self.seats if self.pl(i) and over and hasattr(self.pl(i).g, "cards")
                        and i in getattr(self, "in_hand", []) and not self.pl(i).g.folded},
         }}

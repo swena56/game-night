@@ -25,6 +25,7 @@ UI.holdem = (() => {
         </div>
       </div>
       <div class="he-me"><div id="heMyCards" class="he-cards"></div><div id="heMyInfo" class="he-myinfo"></div></div>
+      <button id="heRebuy" class="primary big" hidden></button>
       <div id="heActions" class="he-actions">
         <div class="row he-main">
           <button id="heFold" class="danger">Fold</button>
@@ -43,6 +44,7 @@ UI.holdem = (() => {
         <li>Straight</li><li>Three of a kind</li><li>Two pair</li><li>Pair</li><li>High card</li></ol></div>`;
     const go = (type, extra) => ctx.quiet(ctx.act(type, extra));
     $('heFold').onclick = () => go('fold');
+    $('heRebuy').onclick = () => go('rebuy');
     $('heCall').onclick = () => go(S.holdem.toCall ? 'call' : 'check');
     $('heRaise').onclick = () => {
       const h = S.holdem, to = +$('heAmount').value;
@@ -104,6 +106,12 @@ UI.holdem = (() => {
       : `💰${num(mine.chips)}${mine.bet ? ` · bet ${num(mine.bet)}` : ''}${h.shown[me] ? ` · ${h.shown[me].hand}` : ''}`
         + [mine.button ? ' · 🔘 Dealer' : '', mine.sb ? ' · SB' : '', mine.bb ? ' · BB' : ''].join('');
 
+    // busted with a buy-back left: offer it (the table waits if it would otherwise end)
+    const rebuy = !!h.canRebuy && S.phase === 'playing' && !ctx.player(me)?.bot;
+    $('heRebuy').hidden = !rebuy;
+    $('heActions').hidden = rebuy;
+    if (rebuy) $('heRebuy').textContent = `💸 Buy back in for ${num(S.settings.chips)} (${h.rebuysLeft} left)${h.rebuyWait ? ' — the table is waiting!' : ''}`;
+
     // betting bar (only on my turn)
     const acting = ctx.myTurn && S.phase === 'playing' && h.stage !== 'done';
     $('heActions').classList.toggle('off', !acting);
@@ -125,6 +133,7 @@ UI.holdem = (() => {
       + (h.stage === 'done' || !turnName ? '' : ` · ${turnName} to act`);
   }
 
-  const turnText = (s) => s.phase !== 'playing' ? null : s.holdem.stage === 'done' ? '🃏 Next hand…' : null;
+  const turnText = (s) => s.phase !== 'playing' ? null
+    : s.holdem.rebuyWait ? '💸 Waiting for a buy-back…' : s.holdem.stage === 'done' ? '🃏 Next hand…' : null;
   return { mount, render, turnText };
 })();

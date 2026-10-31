@@ -49,6 +49,12 @@ class FibFinder(Game):
     def live(self):
         return [p for p in self.room.contenders() if p.id in self.ids]
 
+    def late_join(self, p):
+        """Join at 0; you can write or pick in the round that's running."""
+        p.g.score = 0
+        p.g.fooled = 0
+        self.ids.append(p.id)
+
     def new_round(self):
         r = self.room
         self.round += 1

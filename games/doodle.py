@@ -89,6 +89,12 @@ class Doodle(Game):
     def on_restore(self, shift):
         self.skew -= shift  # the picture resumes where it was when the server stopped
 
+    def late_join(self, p):
+        """Start guessing straight away, at 0 points."""
+        p.g.score = 0
+        p.g.got = 0
+        p.g.locked = 0.0
+
     def new_picture(self):
         self.round += 1
         self.pic = DRAWINGS[self.queue[self.round - 1]]

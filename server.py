@@ -417,6 +417,20 @@ class Room:
             if not self.votes:
                 raise GameError("Nobody has voted yet.")
             return self.play_vote()
+        if t == "join_game":  # a spectator sits in mid-game, in games that allow it (Game.late_join)
+            if self.phase != "playing":
+                raise GameError("There's no game to join right now.")
+            if not p.spectator:
+                raise GameError("You're already in the game.")
+            if len(self.seated()) >= min(MAX_PLAYERS, self.game.max_players):
+                raise GameError("The table is full. You'll get a seat for the next game.")
+            if not hasattr(self.game, "late_join"):
+                raise GameError(f"{self.game.name} can't take new players mid-game. You'll get a seat for the next one.")
+            p.reset()
+            self.game.late_join(p)
+            p.spectator = False
+            self.add_log(f"🙋 {p.name} joins the game!", "big")
+            return
         if t == "rematch":  # same game, same settings, straight back in
             self.require_host(p, "over")
             return self.start()

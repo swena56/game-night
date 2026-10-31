@@ -28,7 +28,7 @@ class Game:
         return {
             "id": cls.id, "name": cls.name, "icon": cls.icon, "blurb": cls.blurb,
             "category": cls.category, "howto": cls.howto,
-            "min": cls.min_players, "max": cls.max_players,
+            "min": cls.min_players, "max": cls.max_players, "lateJoin": hasattr(cls, "late_join"),
             "settings": [{"key": k, "label": lbl, "options": opts}
                          for k, (lbl, opts, _) in cls.settings_schema.items()],
         }

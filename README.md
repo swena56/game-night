@@ -46,7 +46,8 @@ address the server prints. **Play solo** on the home screen starts any game agai
 | ⛀ **Checkers** | 2 | American rules: compulsory captures, multi-jumps in one move, kings, and a 40-move no-progress draw. | Legal pieces and landing squares are highlighted. |
 | ⚫ **Go** | 2 | 9×9, 13×13 or 19×19. Tromp–Taylor area scoring, positional superko, no suicide, 6.5 komi. | A live "score if it ended now" readout. |
 | 🃏 **Last Card** | 2–6 | Shedding game from the public-domain Crazy Eights / Mau-Mau family, with a standard 52-card deck. Optional action cards: 7 draw-two (stackable), 8 skip, Q reverse, J wild. | Call **“Last card!”** in time, or any opponent can 🚨 catch you for +2. |
-| ♠️ **Texas Hold'em** | 2–6 | No-limit poker, the traditional game: blinds, two private cards, five shared cards, four betting rounds, all-ins with proper side pots. | Blinds rise every 6, 10 or 15 hands so every game ends. Uncalled chips come back, odd chips go to the first winner after the button, and showdown hands are named. Starting stacks of 1,000, 2,000 or 5,000. |
+| ♠️ **Texas Hold'em** | 2–6 | No-limit poker, the traditional game: blinds, two private cards, five shared cards, four betting rounds, all-ins with proper side pots. | Blinds rise every 6, 10 or 15 hands so every game ends. Uncalled chips come back, odd chips go to the first winner after the button, and showdown hands are named. Starting stacks of 1,000, 2,000 or 5,000. 💸 **Buy back in** (off, once, or up to 3 times) when you bust; if your bust would end the game, the table waits 12 s for you. |
+| 📍 **Cribbage** | 2–3 | The traditional pegging card game: discard to the crib, cut the starter, then the play (15s, pairs, runs, 31, go) and the show (fifteens, pairs, runs, flushes, nobs). | Scored exactly by the book, including his heels, the crib's five-card flush rule, and pegging out mid-hand. A peg track shows the race; the show lists every hand's points. Game to 121 or 61. |
 | 🚢 **Sea Battle** | 2 | The classic pencil-and-paper fleet hunt: hide 5 ships, then take turns firing. | Firing rules: 1 shot, hit = fire again, or Salvo (1 shot per ship afloat). Optional 📡 sonar counts the ship squares in a 3×3 area. |
 
 Every game has **Easy / Normal / Hard bots**:
@@ -60,6 +61,7 @@ Every game has **Easy / Normal / Hard bots**:
 - **Fib Finder:** bots write plausible decoy answers. Like people, they sometimes just know the fact; hard bots are also suspicious of answers that don't sound like a real guess.
 - **Night Heist:** the bot reads the pot size and the table size.
 - **Billiards:** bots aim with the ghost-ball method, checking that both paths are clear and the cut isn't too thin, and pick a power that gets the ball to the pocket. With ball in hand they choose the spot with the best shot. The hard bot runs its five best ideas through the real physics engine and also weighs the next shot it leaves itself.
+- **Cribbage:** bots keep the four cards worth the most averaged over every possible starter; the hard bot also feeds its own crib and starves a rival's. In the play they take the most points now, and the hard bot avoids leaving 5 or 21 (an easy 15 or 31) and inviting runs.
 - **Texas Hold'em:** bots estimate their share of the pot by simulating random runouts from their own two cards and the board only (no peeking), against the number of players still in. They compare that with the pot odds, raise strong hands by ½ to 1 pot, and stronger bots bluff now and then and shove the nuts on the river. Easy bots misjudge their hands and call too loosely.
 - **Chess:** alpha-beta search with iterative deepening (hard bot: up to 4 moves deep, 4s budget). It finishes off a lone king and avoids repetition draws when ahead.
 - **Checkers:** alpha-beta search (hard bot: up to 8 moves deep).
@@ -287,6 +289,11 @@ Riders and Air Hockey start in it) (#13, #15).
   `next_vote`: an earlier `vote` name swallowed Odd One Out's in-game vote, #33/#34.)
 - ✅ Taps no longer get lost while bots act (#33, #34): the game screen skips redraws for chat- and
   reaction-only updates, and Odd One Out / Fib Finder update their buttons in place.
+- ✅ **🙋 Join in mid-game** (#36): someone who arrives while a game is running gets a "Join in" button
+  in games that can take them: Texas Hold'em (from the next hand, full stack), Lucky Letters and Moon
+  Shot (0 points, next in seat order), Doodle Dash and Fib Finder (start guessing/writing at once).
+  Board games and the rest say no politely and seat them for the next game. A game opts in by defining
+  `late_join(p)`.
 - ✅ **⚙️ Options first** on the home screen sets up a solo game in the lobby so you can change its
   options before starting (#32).
 - 🏅 ✅ **Overall points** (#31): **+3 ⭐** for a win, **+1 ⭐** for playing a game to the end (draws and
@@ -329,7 +336,8 @@ Riders and Air Hockey start in it) (#13, #15).
 - ❌ **Tic-Tac-Toe:** in Vanishing mode, dim the mark that fades next.
 
 **Cards / dice / words**
-- ♠️ **Texas Hold'em:** ✅ added (#21). Next: a hand-history panel, showing folded winners' cards
+- 📍 **Cribbage:** ✅ added (#23).
+- ♠️ **Texas Hold'em:** ✅ added (#21). ✅ Buy back in after busting (#35; people only, bots don't). Next: a hand-history panel, showing folded winners' cards
   on request, and a time bank.
 - 🃏 **Last Card:** a fanned, swipeable hand, and animated dealing.
 - 🚢 **Sea Battle:** drag to place ships.
@@ -341,8 +349,6 @@ Riders and Air Hockey start in it) (#13, #15).
   It would be an original design, not a copy of a branded game.
 - 💣 **A bomb-maze arena** (#20): an original real-time game where you drop bombs to break walls
   and trap rivals.
-- 🃏 **Cribbage** (#23): the traditional public-domain card game for 2–3 players, with a pegging board,
-  the crib, and counting for fifteens, pairs, runs and flushes. Bots choose discards by expected hand value.
 - 🔠 **A letter-grid word hunt** (#24): an original timed game where everyone finds words in the same
   shaken grid at once, and words someone else also found score nothing. It reuses the Wordsmith
   dictionary. It would be an original design, not a copy of a branded game.

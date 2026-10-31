@@ -9,7 +9,7 @@ const $ = (s) => document.querySelector(s);
 const REACTIONS = ['😂', '😱', '🤔', '😏', '🔥', '👀', '🙈', '🎉'];
 const QUICK_CHAT = ['gg', 'nice! 👏', 'hmm… 🤔', 'your turn 😴', 'rematch? 🔁', 'no way 😱'];
 const SOLO_GAMES = [['unmask', '🎭 Unmask'], ['oddone', '🕵️ Odd One Out'], ['relay', '🖍️ Scribble Relay'], ['fibfinder', '🤥 Fib Finder'], ['doodle', '✏️ Doodle Dash'], ['lucky', '🎡 Lucky Letters'], ['wordsmith', '🔤 Wordsmith'], ['chess', '♟️ Chess'], ['checkers', '⛀ Checkers'],
-  ['go', '⚫ Go'], ['lastcard', '🃏 Last Card'], ['holdem', "♠️ Texas Hold'em"], ['seabattle', '🚢 Sea Battle'], ['dropfour', '🔴 Drop Four'],
+  ['go', '⚫ Go'], ['lastcard', '🃏 Last Card'], ['holdem', "♠️ Texas Hold'em"], ['cribbage', '📍 Cribbage'], ['seabattle', '🚢 Sea Battle'], ['dropfour', '🔴 Drop Four'],
   ['boxes', '🔳 Dots & Boxes'], ['tictactoe', '❌ Tic-Tac-Toe'], ['heist', '🥷 Night Heist'], ['moonshot', '🚀 Moon Shot'], ['spire', '🗼 Spire Siege'], ['hockey', '🏒 Air Hockey'], ['billiards', '🎱 Billiards'], ['riders', '🏍️ Light Riders']];
 const CATEGORIES = [['party', '🎉 Party'], ['action', '⚡ Action'], ['board', '♟️ Board'], ['cards', '🃏 Cards'],
   ['dice', '🎲 Dice'], ['words', '🔤 Words']];
@@ -422,6 +422,11 @@ function renderGame(view = S, readOnly = false, force = false) {
   }
   const me = view.me, playing = view.phase === 'playing', myTurn = !readOnly && playing && view.turn === me.id;
   applyFocus(view);
+  // spectators can sit in mid-game where the game allows it (Hold'em next hand, party games right away)
+  const info = gameInfo(view.gameId), seatedNow = view.players.filter((p) => !p.spectator).length;
+  const canJoin = !readOnly && playing && me.spectator && info?.lateJoin && seatedNow < Math.min(6, info.max);
+  $('#joinInBtn').hidden = !canJoin;
+  if (canJoin) $('#joinInBtn').textContent = `🙋 Join in${view.gameId === 'holdem' ? ' from the next hand' : ''}`;
   $('#gameCode').textContent = `${gameInfo(view.gameId).icon} ${S.code}`;
 
   const tt = $('#turnText');
@@ -725,6 +730,7 @@ const leave = async () => {
     act('leave').catch(() => {}).then(leaveLocal);
 };
 $('#helpBtn').onclick = () => showHelp();
+$('#joinInBtn').onclick = () => quiet(act('join_game'));
 // The game-over banner folds to one line so the final board stays in view (remembered on this device).
 $('#overFold').onclick = () => { store('overFolded', !load('overFolded') || null); renderOver(); };
 // Phones: fold the log into a one-line ticker so game controls sit right under the board.

@@ -2,6 +2,7 @@ from .base import Game, GameError
 from .billiards import Billiards
 from .boxes import Boxes
 from .checkers import Checkers
+from .cribbage import Cribbage
 from .doodle import Doodle
 from .chess import Chess
 from .dropfour import DropFour
@@ -23,7 +24,7 @@ from .unmask import Unmask
 from .wordsmith import Wordsmith
 
 # Order here is the order of the lobby's game picker.
-GAMES = {g.id: g for g in (Unmask, OddOne, Relay, FibFinder, Doodle, Lucky, Spire, Riders, Hockey, Billiards, Wordsmith, Chess, Checkers, Go, LastCard, Holdem, SeaBattle,
+GAMES = {g.id: g for g in (Unmask, OddOne, Relay, FibFinder, Doodle, Lucky, Spire, Riders, Hockey, Billiards, Wordsmith, Chess, Checkers, Go, LastCard, Holdem, Cribbage, SeaBattle,
                            DropFour, Boxes, TicTacToe, Heist, MoonShot)}
 GAME_INFO = [g.info() for g in GAMES.values()]
 
