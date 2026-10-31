@@ -439,6 +439,10 @@ class Room:
         if t == "lobby":
             self.require_host(p, "over")
             return self.to_lobby()
+        if t == "end_game":  # the host stops a running game for everyone; nobody gains or loses points
+            self.require_host(p, "playing")
+            self.add_log(f"🛑 {p.name} ended the game.", "big")
+            return self.to_lobby()
         if self.phase != "playing":
             raise GameError("The game isn't running.")
         if p.spectator:

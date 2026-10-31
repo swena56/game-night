@@ -428,6 +428,7 @@ let renderedKey = null;
 const renderKey = (view, readOnly) => JSON.stringify(view, (k, v) => (k === 'chat' || k === 'reactions' || k === 'timeLeft' ? undefined : v)) + readOnly;
 function renderGame(view = S, readOnly = false, force = false) {
   const ui = UI[view.gameId];
+  $('#quitBtn').textContent = view.host === view.me.id && view.phase === 'playing' ? '🏠 End game' : 'Leave game';
   if (mounted !== view.gameId) {
     unmountUI();
     $('#arena').innerHTML = ''; $('#sideGame').innerHTML = '';
@@ -758,7 +759,18 @@ function setLogOpen(open) {
 setLogOpen(!compact?.matches);
 $('#logToggle').onclick = () => setLogOpen($('#log').hidden);
 $('#leaveBtn').onclick = leave;
-$('#quitBtn').onclick = leave;
+// In a game, the host ends it and goes back to the lobby (#52); everyone else leaves the room.
+$('#quitBtn').onclick = async () => {
+  if (S?.host !== S?.me.id || S?.phase !== 'playing') return leave();
+  let instead = false;
+  const other = el('button', 'ghost-btn', 'Leave the room instead');
+  other.onclick = () => { instead = true; ask.close?.(false); };
+  const others = S.players.some((p) => p.id !== S.me.id && !p.bot);
+  const ok = await ask(others ? 'End this game for everyone and go back to the lobby? Nobody gains or loses points.' : 'End this game and go back to the lobby?',
+    { ok: '🏠 Back to lobby', body: other });
+  if (ok) quiet(act('end_game'));
+  else if (instead) leave();
+};
 for (const e of REACTIONS) {
   const b = el('button', '', e); b.onclick = () => quiet(act('react', { emoji: e }));
   $('#reactBar').append(b);

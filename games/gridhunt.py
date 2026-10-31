@@ -73,11 +73,12 @@ class GridHunt(Game):
         "Trace a word through touching tiles (diagonals too, no tile twice): drag across them, or tap them one by one and tap the last tile again to send. On a keyboard, just type.",
         "Words need 3+ letters on the 4×4 grid, 4+ on the 5×5. Points: length − 2. A word through the ⭐ star tile scores double.",
         "When time is up, a word anyone else also found scores nothing. Find the words nobody else sees!",
+        "Alone, every word counts: reach the target score to win.",
     ]
     name = "Grid Hunt"
     icon = "🔎"
     blurb = "Race the clock to find words in a shaken letter grid. Words a rival also found don't count."
-    min_players = 2
+    min_players = 1
     max_players = 6
     settings_schema = {
         "size": ("Grid", [(4, "4×4"), (5, "5×5")], 4),
@@ -236,8 +237,18 @@ class GridHunt(Game):
         self.end = self.now() + REVEAL_SECS
         self.room.deadline = self.end - self.skew
 
+    def target(self):
+        """The solo goal: about what a quick human finds (20 a round on 4×4, 30 on 5×5, for 90 s)."""
+        return round((20 if self.n == 4 else 30) * self.s["rounds"] * self.s["secs"] / 90)
+
     def finish_game(self):
         r = self.room
+        if len(r.seated()) == 1:
+            p = r.seated()[0]
+            goal = self.target()
+            if p.g.score >= goal:
+                return r.finish(p, f"🏆 {p.name} scores {p.g.score} — past the {goal}-point target!")
+            return r.finish(None, f"🔎 {p.name} scores {p.g.score}; the target was {goal}.")
         ranked = sorted(r.contenders(), key=lambda q: -q.g.score)
         text = " · ".join(f"{q.name} {q.g.score}" for q in ranked)
         if len(ranked) > 1 and ranked[0].g.score == ranked[1].g.score:
@@ -264,4 +275,5 @@ class GridHunt(Game):
             "mine": [[w, self.points(w)] for w in mine],
             "counts": {q.id: len(q.g.words) for q in self.room.contenders() if hasattr(q.g, "words")},
             "results": self.results if open_ else None,
+            "target": self.target() if len(self.room.seated()) == 1 else None,
         }}

@@ -146,7 +146,7 @@ UI.gridhunt = (() => {
       });
     }
     for (const b of grid.children) b.disabled = !live();
-    $('ghRound').textContent = `🔎 Round ${g.round} of ${g.rounds} · ${g.total} words hidden · ${g.minLen}+ letters`;
+    $('ghRound').textContent = `🔎 Round ${g.round} of ${g.rounds} · ${g.total} words hidden · ${g.minLen}+ letters` + (g.target ? ` · target ${g.target}` : '');
 
     const mine = $('ghMine'); mine.innerHTML = '';
     const total = g.mine.reduce((t, [, pts]) => t + pts, 0);

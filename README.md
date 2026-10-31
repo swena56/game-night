@@ -33,7 +33,7 @@ address the server prints. **Play solo** on the home screen starts any game agai
 | ❌ **Tic-Tac-Toe** | 2 | The classic. | 👻 **Vanishing**: you keep only your 3 newest marks, and the oldest fades out. |
 | 🕵️ **Odd One Out** | 3–6 | Everyone gets the same secret word except one player, whose word is similar. Take turns giving one-word clues, then vote. | The odd one **doesn't know they're odd**. Catch them for +2 each; if they escape they get +4. A caught odd one can still guess the real word for +3. |
 | 🖍️ **Scribble Relay** | 3–6 | Everyone writes a phrase, then the chains pass round the table: draw what you're handed, caption the drawing you're handed, and so on. Drawing happens on your own phone (6 ink colours, undo). | You only see the entry right before yours. At the end each chain is revealed card by card and everyone ❤️ votes for their favourite entry. 🎯 A chain that ends where it started earns everyone in it +1. |
-| 🤥 **Fib Finder** | 2–6 | A strange-but-true fact appears with a word missing (56 facts). Everyone writes a believable fake answer, then picks which answer is real. | +3 for finding the truth, +2 for each player your fib fools. Typing the real answer is caught and rejected. House fibs make sure there are always enough answers. The last fact counts double. |
+| 🤥 **Fib Finder** | 2–6 | A strange-but-true fact appears with a word missing (118 facts). Everyone writes a believable fake answer, then picks which answer is real. | +3 for finding the truth, +2 for each player your fib fools. Typing the real answer is caught and rejected. House fibs make sure there are always enough answers. The last fact counts double. |
 | 🥷 **Night Heist** *(the surprise)* | 2–6 | A simultaneous bluffing game. Each night everyone secretly picks **Grab**, **Guard** or **Rest**, then all choices are revealed together. | A lone grabber steals the whole vault. Two grabbers trip the alarm and the loot grows. Guards fine grabbers 💰2 each, and guarding an empty hall costs 💰1. Reading the table is the whole game. |
 
 | 🚀 **Moon Shot** | 2–6 | Push-your-luck dice race to the moon. Roll to build fuel, then bank it to fly. Any 1 loses this turn's fuel; double 1s crash you to the start. | A random track of ⭐ boosts (+5), ☄️ meteors (−5) and 🌀 wormholes (swap with the leader), so *where* you stop matters. Doubles earn 🛡️ shields. |
@@ -371,7 +371,7 @@ Riders and Air Hockey start in it) (#13, #15).
 - ✏️ **Doodle Dash:** more drawings than 52, and a reveal card for each answer.
 - 🕵️ **Odd One Out:** more word pairs, and an animated "who voted for whom" reveal.
 - 🖍️ **Scribble Relay:** brush sizes, and saving a finished chain as an image.
-- 🤥 **Fib Finder:** more than 56 facts, and category picks.
+- 🤥 **Fib Finder:** ✅ 118 facts, up from 56 (#51). Next: category picks.
 - 🥷 **Night Heist:** a night-by-night history grid, and bot personalities (greedy, cautious).
 - 🎭 **Unmask:** an undo toast for flips, generated avatars, and pinch-zoom on the board.
 
@@ -411,29 +411,27 @@ Riders and Air Hockey start in it) (#13, #15).
 - ✅ 🔐 **Safecracker** (#22) and ✅ 🔎 **Grid Hunt** (#24, #37): original designs in the code-breaking and
   word-hunt genres, not copies of branded games.
 - ✅ **Lobby grid** (#43): Board split into ♟️ Strategy and ✏️ Quick classics, Words became 🔤 Words &
-  puzzles, and every group fills its rows evenly. Every group now holds 3–6 games; a new game should
+  puzzles, and every group fills its rows evenly. Every group now holds 3, 4, 6 or 8 games; a new game should
   go where it keeps that balance.
 - ✅ 🎨 **Paint Blast** (#20): an original real-time bomb maze where blasts paint the floor and the
   most colour wins. Next: a shrinking arena in the last 15 s, a kick power-up, and 3D tiles.
-- 🃏 **A contract-rummy game** (#39 asks for a branded one): the public-domain rummy family where each
-  hand demands a set "contract" (two sets, a set and a run…), with an original twist. It would bring
-  🃏 Cards to 4.
-- 🎲 #41 asks for "qork", which we couldn't identify. If it's a roll-and-write dice game, an original
-  one would bring 🎲 Dice to 4. Ask the player which game they meant.
+- ✅ 🀄 **Contract Rummy** (#39 asked for a branded game): the traditional contract-rummy family it grew from.
+- 🎲 #41 asks for "qork", which we couldn't identify. Ask the player which game they meant; if it's a
+  dice game, it can join Liar's Dice and Ship, Captain and Crew in bringing 🎲 Dice to 6.
 - #2 asks for a remake of an NES game. We don't copy existing games.
 
 ## The next 10 games (balance plan)
 
 On a phone the picker fits 4 tiles a row, so a group fills its rows evenly at **3, 4, 6 or 8** games
-(5 and 7 leave a ragged row). Today: Party 6 · Action 5 · Strategy 4 · Quick classics 4 · Cards 3 ·
-Dice 3 · Words & puzzles 4 (29 games). These 10 make it **Party 6 · Action 8 · Strategy 6 · Quick
-classics 6 · Cards 6 · Dice 3 · Words & puzzles 4** (39), with every group filling its rows:
+(5 and 7 leave a ragged row). ✅ **Done:** all 10 are in, taking the lobby from 29 games (Party 6 ·
+Action 5 · Strategy 4 · Quick classics 4 · Cards 3 · Dice 3 · Words & puzzles 4) to **39: Party 6 ·
+Action 8 · Strategy 6 · Quick classics 6 · Cards 6 · Dice 3 · Words & puzzles 4**, every group filling its rows:
 
 | # | Game | Group | Players | Kind | Notes |
 |---|---|---|---|---|---|
 | 1 | 🪐 **Sumo Saucers** ✅ | Action | 2–6 | Real-time, three.js | Planned for #46: shove rivals off a shrinking floating platform. Air Hockey's physics. |
-| 2 | ⛳ **Putt Party** ✅ | Action | 1–6 | Turn-based physics, three.js | Original mini golf: procedurally built 3D holes (ramps, bumpers, moving gates), everyone putts the same hole, fewest strokes over 9. Server simulates each putt and sends the path, like Billiards. |
-| 3 | 🛸 **Hover Rally** ✅ | Action | 2–6 | Real-time, three.js | Hover-racers on a looping track: steer left/right, the throttle is automatic, ⚡ boost pads and drift. The track is a spline plus a side offset, so the server sim stays tiny. |
+| 2 | ⛳ **Putt Party** ✅ | Action | 1–6 | Turn-based physics, three.js | Original mini golf: procedurally built 3D holes (bumpers, sand, slopes, water), everyone putts the same hole, fewest strokes over 3, 6 or 9. Server simulates each putt and sends the path, like Billiards. |
+| 3 | 🛸 **Hover Rally** ✅ | Action | 2–6 | Real-time, three.js | Hover-racers on a looping track: steer left/right, the throttle is automatic, ⚡ boost pads and personal boosts. The track is a spline plus a side offset, so the server sim stays tiny. |
 | 4 | 🫘 **Oware** ✅ | Strategy | 2 | Turn-based | The traditional mancala game: sow seeds, capture twos and threes, the grand-slam rule. Alpha-beta bots, like Checkers. |
 | 5 | ⚪ **Reversi** ✅ | Strategy | 2 | Turn-based | The 19th-century public-domain game (not the branded version): flip lines of discs. Bots weigh corners, edges and mobility. |
 | 6 | #️⃣ **Ultimate Tic-Tac-Toe** ✅ | Quick classics | 2 | Turn-based | The folk game: nine boards in one, and your move sends your rival to a board. Monte Carlo bot. |
