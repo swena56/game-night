@@ -51,9 +51,11 @@ REACTIONS = ["😂", "😱", "🤔", "😏", "🔥", "👀", "🙈", "🎉"]
 # server for minutes, so presence is judged by heartbeats, not by open streams.
 AWAY_AFTER = 20                                            # seconds of silence before "away"
 OFFLINE_GRACE = int(os.environ.get("OFFLINE_GRACE", 45))   # seconds before autopilot / host handover
-SAVE_FILE = os.environ.get("ROOMS_FILE") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "rooms.pickle")
+# A server on another port (e.g. a test server) keeps its own rooms and inbox, so it can't overwrite the live ones.
+_SUFFIX = "" if PORT == 8000 else f"-{PORT}"
+SAVE_FILE = os.environ.get("ROOMS_FILE") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", f"rooms{_SUFFIX}.pickle")
 # Bug reports & suggestions: one JSON object per line, plus a small status map.
-FEEDBACK_FILE = os.environ.get("FEEDBACK_FILE") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "feedback.jsonl")
+FEEDBACK_FILE = os.environ.get("FEEDBACK_FILE") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", f"feedback{_SUFFIX}.jsonl")
 FEEDBACK_STATUS = FEEDBACK_FILE.rsplit(".", 1)[0] + "-status.json"
 FEEDBACK_KINDS = ("bug", "idea")
 FEEDBACK_LIMIT = (5, 600)  # at most 5 reports per 10 minutes from one address

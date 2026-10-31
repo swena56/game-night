@@ -767,3 +767,22 @@ body.focus .lr-stage { height: max(220px, calc(var(--app-h, 100vh) - 245px)); }
 .ya-box:disabled { opacity: 1; }
 .ya-total td { font-weight: 900; font-size: 16px; border-top: 2px solid #3d3456; }
 .ya-rules { font-size: 13px; }
+
+/* farkle (dice reuse the yacht .ya-die look) */
+.fk { max-width: 560px; margin: 0 auto; }
+.fk-turn { text-align: center; font-weight: 800; margin: 4px 0; }
+.fk-dice { flex-wrap: wrap; min-height: 86px; }
+.fk-event { text-align: center; font-weight: 800; min-height: 1.5em; opacity: 0; transition: opacity .3s; }
+.fk-event.show { opacity: 1; animation: bannerIn .4s ease-out; }
+.fk-event.farkle { color: var(--danger); }
+.fk-event.bank { color: var(--ok); }
+.fk-buttons { justify-content: center; margin: 2px 0; } .fk-buttons > * { flex: none; }
+.fk-actions > button { font-size: 16px; }
+.fk-scores { display: grid; gap: 6px; margin-top: 10px; }
+.fk-row { display: grid; grid-template-columns: minmax(70px, 30%) 1fr 64px; align-items: center; gap: 8px; font-size: 13px; }
+.fk-row b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fk-row.now b { text-decoration: underline var(--accent) 2px; }
+.fk-bar { height: 12px; border-radius: 999px; background: #ffffff10; overflow: hidden; }
+.fk-bar span { display: block; height: 100%; border-radius: 999px; transition: width .5s; }
+.fk-num { text-align: right; font-weight: 900; font-variant-numeric: tabular-nums; }
+.fk-rules { font-size: 13px; }
