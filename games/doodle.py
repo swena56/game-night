@@ -104,6 +104,7 @@ class Doodle(Game):
         self.per = DRAW_SECS / len(self.pic[3])
         self.end = self.t0 + DRAW_SECS + GRACE_SECS
         self.solvers = []  # [(pid, points)] in order
+        self.sent = 0  # strokes browsers have been told about; each new one is a clock event
         self.room.deadline = self.end - self.skew
         self.plan_bots()
         self.room.add_log(f"🖍️ Picture {self.round}/{len(self.queue)} — category: {self.pic[1]}.")
@@ -134,7 +135,7 @@ class Doodle(Game):
         if self.stage == "reveal":
             return self.end
         times = [self.end]
-        n = self.shown()
+        n = getattr(self, "sent", 0)  # rooms saved before this field existed
         if n < len(self.pic[3]):
             times.append(self.t0 + n * self.per)
         times += [t for t, _, _ in self.plans[:1]]
@@ -166,6 +167,7 @@ class Doodle(Game):
                     return self.finish_game()
                 self.new_picture()
             return
+        self.sent = self.shown()
         while self.plans and self.plans[0][0] <= now and self.stage == "draw":
             _, pid, text = self.plans.pop(0)
             p = self.room.players.get(pid)
