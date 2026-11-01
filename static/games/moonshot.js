@@ -57,7 +57,7 @@ UI.moonshot = (() => {
       const d = $('msDice'); d.classList.remove('roll'); void d.offsetWidth; d.classList.add('roll');
     }
     shownRoll = rk;
-    $('msFuel').textContent = `⛽ ${m.fuel} fuel this turn`;
+    $('msFuel').textContent = `⛽ ${m.fuel} fuel this turn` + (m.turnsLeft != null ? ` · ⏳ ${m.turnsLeft} turn${m.turnsLeft === 1 ? '' : 's'} left` : '');
     const turnPlayer = ctx.player(S.turn);
     let preview = '';
     if (m.preview && turnPlayer) {

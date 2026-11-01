@@ -83,10 +83,10 @@ address the server prints. **Play solo** on the home screen starts any game agai
 
 | Game | Players | What it is | Twist |
 |---|---|---|---|
-| 🚢 **Sea Battle** | 2 | The classic pencil-and-paper fleet hunt: hide 5 ships, then take turns firing. | Firing rules: 1 shot, hit = fire again, or Salvo (1 shot per ship afloat). Optional 📡 sonar counts the ship squares in a 3×3 area. |
+| 🚢 **Sea Battle** | 2 | The classic pencil-and-paper fleet hunt: hide 5 ships, then take turns firing. | Firing rules: 1 shot, hit = fire again, or Salvo (1 shot per ship afloat). Optional 📡 sonar counts the ship squares in a 3×3 area. A 12×12 sea with a sixth ship (a Frigate) for longer hunts. |
 | 🔴 **Drop Four** | 2–4 | Gravity four-in-a-row. 3–4 players get a 9×7 board. | Optional 💣 **bomb disc**: it clears its 3×3 neighbourhood and the stack falls, which can complete *someone else's* line. Optional ⬇️ **pull-outs**: take one of your own discs out of the bottom row instead of dropping, and the column slides down. |
 | 🔳 **Dots & Boxes** | 2–6 | The pencil-and-paper classic on a 3×3 to 6×6 grid. Close a box to claim it and move again. On touch screens a line takes two taps (pick, then confirm). | Optional 💎 **gem boxes** worth 3 points. |
-| ❌ **Tic-Tac-Toe** | 2 | The classic. | 👻 **Vanishing**: you keep only your 3 newest marks, and the oldest fades out. |
+| ❌ **Tic-Tac-Toe** | 2 | The classic. | 👻 **Vanishing**: you keep only your 3 newest marks, and the oldest fades out. A 4×4 board (four in a row; Vanishing keeps 4). |
 | #️⃣ **Ultimate Tic-Tac-Toe** | 2 | The folk game: nine small boards in one. Where you play sends your rival to that board. Win three small boards in a row. | The boards you may play in glow; won boards show a big mark; the last move is outlined. ↶ Undo requests. |
 | ⚫ **Nine Men's Morris** | 2 | The traditional mill game: place 9 men, then slide them; a line of three (a mill) takes a rival man. Fewer than 3 men or no move loses. | Optional flying with 3 men. Tap a man, then its destination; after a mill, rival men you can take pulse red. |
 
@@ -94,7 +94,7 @@ address the server prints. **Play solo** on the home screen starts any game agai
 
 | Game | Players | What it is | Twist |
 |---|---|---|---|
-| 🚀 **Moon Shot** | 2–6 | Push-your-luck dice race to the moon. Roll to build fuel, then bank it to fly. Any 1 loses this turn's fuel; double 1s crash you to the start. | A random track of ⭐ boosts (+5), ☄️ meteors (−5) and 🌀 wormholes (swap with the leader), so *where* you stop matters. Doubles earn 🛡️ shields. |
+| 🚀 **Moon Shot** | 1–6 | Push-your-luck dice race to the moon. Roll to build fuel, then bank it to fly. Any 1 loses this turn's fuel; double 1s crash you to the start. | A random track of ⭐ boosts (+5), ☄️ meteors (−5) and 🌀 wormholes (swap with the leader), so *where* you stop matters. Doubles earn 🛡️ shields. Alone, reach the moon within 4, 6 or 9 turns (by distance). |
 | 🎲 **Yacht** | 1–6 | The traditional dice game: five dice, up to three rolls (tap to hold), then fill one of twelve boxes. Classic scoring: Ones–Sixes, Full House, Four of a Kind, Little and Big Straight (30), Choice, Yacht (50). | Your open boxes show what the roll would score before you commit. Solo is a score attack: reach 150 to win. Optional bonuses: +35 for 63 in Ones–Sixes, +50 per extra Yacht. |
 | 🎯 **Farkle** | 1–6 | The traditional push-your-luck dice game: roll six, set aside scoring dice, roll the rest or bank. A roll with nothing scoring is a FARKLE and the turn's points are gone; score all six for hot dice. | Live total of the dice you've picked, a ✨ best-pick button, and everyone sees each farkle and bank. Play to 10,000 or 5,000, with a final round for the others; optional 500 to get on the board and −1,000 for three farkles in a row. |
 | 🥤 **Qork** | 2–6 | A reaction dice game (#41): the Cupper keeps rolling two dice, and on doubles or a seven every Corker yanks their Qork off the mat while the Cupper slams the cup down. Escape for +1; each trapped Qork is +1 to the Cupper (+1 more for trapping everyone); jumping early on any other roll is −1. The cup passes every round. | Reaction times are measured on each phone from the moment the dice land there, so a slow network doesn't lose the race; everyone's time is shown after each slam. Tap the mat, the big button or Space. 1–3 turns as Cupper each. |
@@ -431,15 +431,15 @@ Items that become ✅ move into the per-game plan.
 - 🀄 **Contract Rummy:** "may I?" buys of the discard out of turn. **M**
 
 **Quick classics**
-- 🚢 **Sea Battle:** a 12×12 board. **S**
+- 🚢 **Sea Battle:** ✅ a 12×12 sea with a sixth ship.
 - 🔴 **Drop Four:** ✅ ⬇️ pull-outs (an option): take one of your own discs out of the bottom row instead of dropping.
 - 🔳 **Dots & Boxes:** a chain-count hint in the endgame. **S**
-- ❌ **Tic-Tac-Toe:** a 4×4 variant. **S**
+- ❌ **Tic-Tac-Toe:** ✅ a 4×4 board, four in a row (Vanishing keeps 4 marks there).
 - #️⃣ **Ultimate Tic-Tac-Toe:** ✅ undo requests. (It already outlined the last move: the plan was wrong.)
 - ⚫ **Nine Men's Morris:** Twelve Men's Morris (diagonals) option. **S**
 
 **Dice & casino**
-- 🚀 **Moon Shot:** a solo target. **S**
+- 🚀 **Moon Shot:** ✅ solo: reach the moon within 4, 6 or 9 turns (a hard bot alone makes it 53–61% of the time).
 - 🎲 **Yacht:** ✅ optional bonuses: +35 for 63 in Ones–Sixes (the card shows progress, 41/63) and +50 per extra Yacht; bots play for them.
 - 🎯 **Farkle:** ~~extra scores~~: three pairs and the 1–6 straight already score 1,500.
 - 🥤 **Qork:** collect real-phone reports on reaction fairness. **S**

@@ -6,6 +6,7 @@ from .base import Game, GameError
 
 TILE_TEXT = {"star": "⭐ boost +5", "meteor": "☄️ meteor −5", "wormhole": "🌀 wormhole: swap with the leader"}
 MAX_SHIELDS = 2
+SOLO_TURNS = {30: 4, 50: 6, 75: 9}  # alone: reach the moon within this many turns
 
 
 class MoonShot(Game):
@@ -15,13 +16,13 @@ class MoonShot(Game):
         'Roll two dice to build fuel, then Fly to move that far.',
         "Any 1 loses this turn's fuel; double 1s crash you back to the start.",
         'Doubles earn a 🛡️ shield. Stopping on ⭐ +5, ☄️ −5, 🌀 swaps you with the leader.',
-        'First to the moon wins.',
+        'First to the moon wins. Alone, reach it within a turn limit (4, 6 or 9 turns by distance).',
     ]
     name = "Moon Shot"
     icon = "🚀"
     blurb = ("Roll two dice to build fuel, then bank it to fly. A 1 loses this turn's fuel, double 1s crash you "
              "back to the start. Stars boost, meteors knock you back, wormholes swap you with the leader.")
-    min_players = 2
+    min_players = 1
     max_players = 6
     settings_schema = {
         "goal": ("Distance", [(30, "Short (30)"), (50, "Classic (50)"), (75, "Long (75)")], 50),
@@ -41,9 +42,21 @@ class MoonShot(Game):
             cells = rng.sample(range(4, self.goal - 1), self.goal // 5)
             for c in cells:
                 self.tiles[c] = rng.choices(["star", "meteor", "wormhole"], weights=[4, 4, 2])[0]
+        self.turns = 0  # turns finished (counted alone, for the solo limit)
         first = rng.choice(seated)
+        if len(seated) == 1:
+            self.room.add_log(f"🚀 Reach the moon ({self.goal}) within {self.limit()} turns!", "big")
+            return self.room.begin_turn(first.id)
         self.room.add_log(f"🚀 Race to {self.goal}! {first.name} launches first.", "big")
         self.room.begin_turn(first.id)
+
+    turns = 0  # games saved before the solo mode
+
+    def limit(self):
+        return SOLO_TURNS.get(self.goal, 6)
+
+    def solo(self):
+        return len(self.seats) == 1
 
     def late_join(self, p):
         """Launch from the start; turns come round in seat order."""
@@ -116,11 +129,17 @@ class MoonShot(Game):
         r.add_log(msg + ".", "question")
         if self.pos[p.id] >= self.goal:
             self.pos[p.id] = self.goal
+            if self.solo():
+                return r.finish(p, f"🌕 {p.name} reached the moon on turn {self.turns + 1} of {self.limit()}!")
             return r.finish(p, f"🌕 {p.name} reached the moon!")
         self.end_turn()
 
     def end_turn(self):
         self.fuel = 0
+        self.turns += 1
+        if self.solo() and self.turns >= self.limit():
+            p = self.room.players.get(self.seats[0])
+            return self.room.finish(None, f"🌑 Out of turns: {p.name if p else '?'} got to {self.pos[self.seats[0]]} of {self.goal}.")
         self.room.advance()
 
     def on_timeout(self):
@@ -145,7 +164,7 @@ class MoonShot(Game):
             land = self.pos[turn] + self.fuel
             preview = {"cell": land, "tile": self.tiles.get(land)}
         return {"moon": {
-            "goal": self.goal, "seats": self.seats, "pos": self.pos, "shields": self.shields,
+            "goal": self.goal, "seats": self.seats, "turnsLeft": self.limit() - self.turns if self.solo() else None, "pos": self.pos, "shields": self.shields,
             "tiles": {str(k): v for k, v in self.tiles.items()}, "fuel": self.fuel, "dice": self.dice,
             "preview": preview, "tileText": TILE_TEXT,
         }}

@@ -133,11 +133,12 @@ label.check input { width: auto; margin: 0; }
 .seat-row { display: flex; align-items: center; gap: 8px; font-weight: 700; padding: 3px 0; }
 
 /* tic-tac-toe */
-.ttt { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; width: min(100%, 420px); margin: 10px auto; }
+.ttt { display: grid; grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr)); gap: 8px; width: min(100%, 420px); margin: 10px auto; }
 .ttt-cell { aspect-ratio: 1; font-size: clamp(40px, 14vw, 84px); font-weight: 900; background: var(--panel); border-radius: 16px; padding: 0; }
 .ttt-cell:disabled { opacity: 1; cursor: default; }
 .ttt-cell.fading { opacity: .35; }
 .ttt-cell.win { background: #ffb70333; outline: 3px solid var(--accent); }
+.ttt.big { gap: 6px; } .ttt.big .ttt-cell { font-size: clamp(30px, 10vw, 64px); border-radius: 12px; }
 
 /* drop four */
 .d4 { display: grid; grid-template-columns: repeat(var(--cols), 1fr); gap: 5px; padding: 8px; background: #1d4ed8; border-radius: 16px;
@@ -356,7 +357,7 @@ body.calm::before, body.calm *, body.calm *::before, body.calm *::after { animat
 /* sea battle */
 .seas { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 @media (max-width: 860px) { .seas { grid-template-columns: 1fr; } }
-.sea-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; background: #0b3a5b; padding: 4px; border-radius: 8px;
+.sea-grid { display: grid; grid-template-columns: repeat(var(--n, 10), minmax(0, 1fr)); gap: 2px; background: #0b3a5b; padding: 4px; border-radius: 8px;
   width: min(100%, 420px); margin: 0 auto; }
 .sea-cell { aspect-ratio: 1; padding: 0; border: 0; border-radius: 3px; background: #1b5e8a; color: #fff; font-size: clamp(10px, 3vw, 16px); }
 .sea-cell.ship { background: #8d99a6; }

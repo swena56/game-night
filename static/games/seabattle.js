@@ -1,9 +1,9 @@
 UI.seabattle = (() => {
-  let S, ctx, layout = [], pick = 0, horizontal = true, sonarMode = false, layoutFor = '', drag = null, dragged = false;
+  let S, ctx, layout = [], pick = 0, horizontal = true, sonarMode = false, layoutFor = '', drag = null, dragged = false, N = 0;  // N: the sea's size (10 or 12)
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
-    layout = []; pick = 0; horizontal = true; sonarMode = false; layoutFor = ''; drag = null; dragged = false;
+    layout = []; pick = 0; horizontal = true; sonarMode = false; layoutFor = ''; drag = null; dragged = false; N = 0;
     main.innerHTML = `<div class="seas">
       <div><h3 id="sbEnemyTitle">Enemy waters</h3><div id="sbEnemy" class="sea-grid"></div></div>
       <div><h3 id="sbMineTitle">Your fleet</h3><div id="sbMine" class="sea-grid"></div></div>
@@ -19,17 +19,6 @@ UI.seabattle = (() => {
         <button id="sbSonar" class="big">📡 Use sonar</button>
         <div id="sbFleets" class="hint left"></div>
       </div></div>`;
-    for (const id of ['sbEnemy', 'sbMine']) {
-      const grid = $(id);
-      for (let i = 0; i < 100; i++) {
-        const cell = document.createElement('button');
-        cell.className = 'sea-cell';
-        cell.onclick = () => (id === 'sbEnemy' ? onEnemy(i) : onMine(i));
-        cell.setAttribute('aria-label', `${'ABCDEFGHIJ'[Math.floor(i / 10)]}${i % 10 + 1}`);
-        grid.append(cell);
-      }
-      gridKeys(grid, 10);
-    }
     dragToPlace($('sbMine'));
     $('sbRotate').onclick = () => { horizontal = !horizontal; ctx.rerender(); };
     $('sbRandom').onclick = () => { layout = randomLayout(); pick = -1; ctx.rerender(); };
@@ -38,11 +27,28 @@ UI.seabattle = (() => {
     $('sbSonar').onclick = () => { sonarMode = !sonarMode; ctx.rerender(); if (sonarMode) ctx.toast('Tap the centre of the area to scan.'); };
   }
 
+  function buildGrids(n) {
+    N = n;
+    for (const id of ['sbEnemy', 'sbMine']) {
+      const grid = $(id);
+      grid.innerHTML = '';
+      grid.style.setProperty('--n', n);
+      for (let i = 0; i < n * n; i++) {
+        const cell = document.createElement('button');
+        cell.className = 'sea-cell';
+        cell.onclick = () => (id === 'sbEnemy' ? onEnemy(i) : onMine(i));
+        cell.setAttribute('aria-label', `${'ABCDEFGHIJKL'[Math.floor(i / n)]}${i % n + 1}`);
+        grid.append(cell);
+      }
+      gridKeys(grid, n);
+    }
+  }
+
   const spec = () => S.sea.fleetSpec;
   const cellsOf = ([r, c, len, h]) => Array.from({ length: len }, (_, k) => (h ? [r, c + k] : [r + k, c]));
   function fits(item, skip) {
     const taken = new Set(layout.filter((x, i) => x && i !== skip).flatMap(cellsOf).map((x) => x.join()));
-    return cellsOf(item).every(([r, c]) => r >= 0 && c >= 0 && r < 10 && c < 10 && !taken.has(`${r},${c}`));
+    return cellsOf(item).every(([r, c]) => r >= 0 && c >= 0 && r < N && c < N && !taken.has(`${r},${c}`));
   }
   function randomLayout() {
     for (;;) {
@@ -52,7 +58,7 @@ UI.seabattle = (() => {
         let placed = false;
         for (let t = 0; t < 200 && !placed; t++) {
           const h = Math.random() < 0.5;
-          const item = [Math.floor(Math.random() * (h ? 10 : 11 - len)), Math.floor(Math.random() * (h ? 11 - len : 10)), len, h];
+          const item = [Math.floor(Math.random() * (h ? N : N + 1 - len)), Math.floor(Math.random() * (h ? N + 1 - len : N)), len, h];
           if (fits(item, layout.length)) { layout.push(item); placed = true; }
         }
         if (!placed) { ok = false; break; }
@@ -64,6 +70,7 @@ UI.seabattle = (() => {
   function render(s, c) {
     S = s; ctx = c;
     const sea = S.sea, placing = sea.stage === 'placing';
+    if (N !== (sea.n || 10)) buildGrids(sea.n || 10);
     const playing = sea.player === S.me.id;
     const ready = sea.ready[S.me.id];
     if (layoutFor !== S.code + sea.seats.join()) { layoutFor = S.code + sea.seats.join(); layout = []; pick = 0; }
@@ -82,8 +89,8 @@ UI.seabattle = (() => {
       : sea.mine.map((s, i) => ({ cells: s.cells || [], idx: i, sunk: s.sunk }));
     for (const s of myShips) for (const x of s.cells) shipAt.set(x.join(), s);
     const incoming = new Map(sea.theirShots.map(([r, c, v]) => [`${r},${c}`, v]));
-    for (let i = 0; i < 100; i++) {
-      const k = `${Math.floor(i / 10)},${i % 10}`, cell = mine[i], s = shipAt.get(k), hit = incoming.get(k);
+    for (let i = 0; i < N * N; i++) {
+      const k = `${Math.floor(i / N)},${i % N}`, cell = mine[i], s = shipAt.get(k), hit = incoming.get(k);
       cell.className = 'sea-cell' + (s ? ' ship' : '') + (s && s.sunk ? ' sunk' : '') + (s && placing && s.idx === pick ? ' picked' : '');
       cell.textContent = hit === 'miss' ? '•' : hit ? '🔥' : '';
       cell.disabled = !(placing && playing && !ready);
@@ -96,8 +103,8 @@ UI.seabattle = (() => {
     const scanned = new Map();
     for (const [r, c, n] of sea.scans) for (let y = r - 1; y <= r + 1; y++) for (let x = c - 1; x <= c + 1; x++) scanned.set(`${y},${x}`, n);
     const scanCentre = new Map(sea.scans.map(([r, c, n]) => [`${r},${c}`, n]));
-    for (let i = 0; i < 100; i++) {
-      const k = `${Math.floor(i / 10)},${i % 10}`, cell = enemy[i], v = shots.get(k);
+    for (let i = 0; i < N * N; i++) {
+      const k = `${Math.floor(i / N)},${i % N}`, cell = enemy[i], v = shots.get(k);
       cell.className = 'sea-cell' + (revealed.has(k) ? ' ship' : '') + (v === 'sunk' ? ' sunk' : '') + (scanned.has(k) ? ' scanned' : '')
         + (sea.last && `${sea.last[0]},${sea.last[1]}` === k ? ' last' : '');
       cell.textContent = v === 'miss' ? '•' : v === 'hit' ? '🔥' : v === 'sunk' ? '✖' : scanCentre.has(k) ? String(scanCentre.get(k)) : '';
@@ -132,12 +139,12 @@ UI.seabattle = (() => {
     const cellAt = (e) => {
       const el = document.elementFromPoint?.(e.clientX, e.clientY)?.closest?.('.sea-cell');
       const i = el ? [...grid.children].indexOf(el) : -1;
-      return i < 0 ? null : [Math.floor(i / 10), i % 10];
+      return i < 0 ? null : [Math.floor(i / N), i % N];
     };
     grid.addEventListener('pointerdown', (e) => {
       if (!placing()) return;
       const i = [...grid.children].indexOf(e.target.closest('.sea-cell'));
-      const r = Math.floor(i / 10), c = i % 10;
+      const r = Math.floor(i / N), c = i % N;
       const idx = layout.findIndex((x) => x && cellsOf(x).some(([y, z]) => y === r && z === c));
       if (idx < 0) return;
       drag = { idx, off: layout[idx][3] ? c - layout[idx][1] : r - layout[idx][0], from: `${r},${c}` };
@@ -159,7 +166,7 @@ UI.seabattle = (() => {
 
   function onMine(i) {
     if (dragged) { dragged = false; return; }  // the click that ends a drag
-    const r = Math.floor(i / 10), c = i % 10;
+    const r = Math.floor(i / N), c = i % N;
     const at = layout.findIndex((x) => x && cellsOf(x).some(([y, z]) => y === r && z === c));
     if (at >= 0) { layout[at] = null; pick = at; return ctx.rerender(); }  // pick a ship back up
     if (pick < 0 || pick >= spec().length) return;
@@ -173,7 +180,7 @@ UI.seabattle = (() => {
 
   function onEnemy(i) {
     if (!ctx.myTurn) return;
-    const r = Math.floor(i / 10), c = i % 10;
+    const r = Math.floor(i / N), c = i % N;
     if (sonarMode) { sonarMode = false; return ctx.quiet(ctx.act('sonar', { r, c })); }
     ctx.quiet(ctx.act('fire', { r, c }));
   }

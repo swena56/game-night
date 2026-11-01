@@ -1,4 +1,5 @@
-"""Tic-Tac-Toe, plus a Vanishing variant where you only keep your 3 newest marks."""
+"""Tic-Tac-Toe on 3×3 (three in a row) or 4×4 (four in a row), plus a Vanishing variant where you only keep
+your newest marks (3, or 4 on the big board)."""
 import random
 from functools import lru_cache
 
@@ -9,10 +10,20 @@ MARKS = ["✖", "◯"]
 MOVE_LIMIT = 60  # Vanishing games can't fill the board, so call a draw eventually
 
 
+def lines_for(n):
+    rows = [tuple(r * n + c for c in range(n)) for r in range(n)]
+    cols = [tuple(r * n + c for r in range(n)) for c in range(n)]
+    return rows + cols + [tuple(i * n + i for i in range(n)), tuple(i * n + n - 1 - i for i in range(n))]
+
+
+LINES4 = lines_for(4)
+
+
 def winner_of(cells):
-    for a, b, c in LINES:
-        if cells[a] is not None and cells[a] == cells[b] == cells[c]:
-            return cells[a], (a, b, c)
+    for line in (LINES if len(cells) == 9 else LINES4):
+        v = cells[line[0]]
+        if v is not None and all(cells[i] == v for i in line):
+            return v, line
     return None, None
 
 
@@ -40,20 +51,22 @@ class TicTacToe(Game):
     category = "classic"
     howto = [
         'Take turns placing your mark.',
-        'Three in a row wins.',
-        '👻 Vanishing: you keep only your 3 newest marks — the faded one disappears next.',
+        'Three in a row wins (four in a row on the 4×4 board).',
+        '👻 Vanishing: you keep only your 3 newest marks (4 on 4×4) — the faded one disappears next.',
     ]
     name = "Tic-Tac-Toe"
     icon = "❌"
     blurb = "Three in a row. Try Vanishing mode: only your 3 newest marks stay on the board."
     settings_schema = {
         "variant": ("Variant", [("classic", "Classic"), ("vanishing", "👻 Vanishing")], "classic"),
+        "size": ("Board", [(3, "3×3"), (4, "4×4 (four in a row)")], 3),
     }
 
     def start(self, seated, rng):
         rng.shuffle(seated)
         self.seats = [p.id for p in seated]
-        self.cells = [None] * 9
+        self.n = self.s.get("size", 3)
+        self.cells = [None] * (self.n * self.n)
         self.history = [[], []]  # per seat, oldest first
         self.moves = 0
         self.line = None
@@ -63,6 +76,11 @@ class TicTacToe(Game):
     def seat(self, p):
         return self.seats.index(p.id) if p.id in self.seats else None
 
+    n = 3  # games saved before the 4×4 board
+
+    def keep(self):
+        return self.n
+
     def vanishing(self):
         return self.s["variant"] == "vanishing"
 
@@ -71,7 +89,7 @@ class TicTacToe(Game):
         cells, history = list(cells), [list(h) for h in history]
         cells[cell] = seat
         history[seat].append(cell)
-        if self.vanishing() and len(history[seat]) > 3:
+        if self.vanishing() and len(history[seat]) > self.keep():
             cells[history[seat].pop(0)] = None
         return cells, history
 
@@ -80,7 +98,7 @@ class TicTacToe(Game):
             raise GameError("Unknown action.")
         self.require_turn(p)
         cell = a.get("cell")
-        if not isinstance(cell, int) or not 0 <= cell < 9 or self.cells[cell] is not None:
+        if not isinstance(cell, int) or isinstance(cell, bool) or not 0 <= cell < len(self.cells) or self.cells[cell] is not None:
             raise GameError("Pick an empty square.")
         self.move(p, cell)
 
@@ -92,7 +110,7 @@ class TicTacToe(Game):
         w, line = winner_of(self.cells)
         if w is not None:
             self.line = line
-            r.finish(p, f"🏆 {p.name} gets three in a row!")
+            r.finish(p, f"🏆 {p.name} gets {'three' if self.n == 3 else 'four'} in a row!")
         elif None not in self.cells or self.moves >= MOVE_LIMIT:
             r.finish(None, "🤝 It's a draw.")
         else:
@@ -105,8 +123,8 @@ class TicTacToe(Game):
     def view(self, p):
         fading = []
         if self.vanishing():
-            fading = [h[0] for h in self.history if len(h) == 3]
-        return {"ttt": {"cells": self.cells, "seats": self.seats, "marks": MARKS,
+            fading = [h[0] for h in self.history if len(h) == self.keep()]
+        return {"ttt": {"cells": self.cells, "seats": self.seats, "marks": MARKS, "n": self.n,
                         "fading": fading, "line": self.line}}
 
     # -- bot
@@ -114,7 +132,7 @@ class TicTacToe(Game):
     def bot_turn(self, p):
         seat = self.seat(p)
         free = [i for i, v in enumerate(self.cells) if v is None]
-        if p.bot == "hard" and not self.vanishing():
+        if p.bot == "hard" and not self.vanishing() and self.n == 3:
             return self.move(p, minimax(tuple(self.cells), seat)[1])
 
         def wins_with(s, i, cells=None, history=None):
@@ -134,8 +152,15 @@ class TicTacToe(Game):
                         return self.move(p, i)
             if p.bot != "easy":
                 safe = [i for i in free if not gives_away(i)] or free
-                for pref in (4, 0, 2, 6, 8):
+                prefs = (4, 0, 2, 6, 8) if self.n == 3 else (5, 6, 9, 10, 0, 3, 12, 15)
+                for pref in prefs:
                     if pref in safe:
                         return self.move(p, pref)
+                if self.n == 4 and p.bot == "hard":  # build on my own open lines
+                    def value(i):
+                        cells, _ = self.place(self.cells, self.history, seat, i)
+                        return sum(sum(cells[k] == seat for k in line) ** 2 for line in LINES4
+                                   if all(cells[k] in (None, seat) for k in line))
+                    return self.move(p, max(safe, key=value))
                 return self.move(p, random.choice(safe))
         self.move(p, random.choice(free))

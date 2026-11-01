@@ -1,28 +1,36 @@
 UI.tictactoe = (() => {
-  let S, ctx, grid;
+  let S, ctx, grid, built = 0;
 
   function mount(main, side) {
+    built = 0;
     main.innerHTML = '<div class="ttt"></div>';
     side.innerHTML = '<div class="panel" id="tttInfo"></div>';
     grid = main.querySelector('.ttt');
-    for (let i = 0; i < 9; i++) {
+  }
+
+  function build(n) {  // 3×3 or 4×4
+    built = n; grid.innerHTML = '';
+    grid.style.setProperty('--n', n);
+    grid.classList.toggle('big', n === 4);
+    for (let i = 0; i < n * n; i++) {
       const b = document.createElement('button');
       b.className = 'ttt-cell';
       b.onclick = () => ctx.quiet(ctx.act('move', { cell: i }));
       grid.append(b);
     }
-    gridKeys(grid, 3);
+    gridKeys(grid, n);
   }
 
   function render(s, c) {
     S = s; ctx = c;
-    const t = S.ttt;
+    const t = S.ttt, n = t.n || 3;
+    if (built !== n) build(n);
     [...grid.children].forEach((b, i) => {
       const v = t.cells[i];
       b.textContent = v == null ? '' : t.marks[v];
       b.style.color = v == null ? '' : ctx.player(t.seats[v])?.color ?? '#999';
       b.classList.toggle('mark', v != null);
-      b.setAttribute('aria-label', `row ${Math.floor(i / 3) + 1}, column ${i % 3 + 1}, ${v == null ? 'empty' : `${ctx.player(t.seats[v])?.name ?? '?'}'s ${t.marks[v]}`}${t.fading.includes(i) ? ', fades next' : ''}`);
+      b.setAttribute('aria-label', `row ${Math.floor(i / n) + 1}, column ${i % n + 1}, ${v == null ? 'empty' : `${ctx.player(t.seats[v])?.name ?? '?'}'s ${t.marks[v]}`}${t.fading.includes(i) ? ', fades next' : ''}`);
       b.classList.toggle('fading', t.fading.includes(i));
       b.classList.toggle('win', !!t.line?.includes(i));
       b.disabled = !ctx.myTurn || v != null;
@@ -35,7 +43,8 @@ UI.tictactoe = (() => {
       info.append(row);
     });
     if (S.settings.variant === 'vanishing')
-      info.append(ctx.el('p', 'hint', '👻 Vanishing: you only keep 3 marks. Your faded mark disappears when you place the next one.'));
+      info.append(ctx.el('p', 'hint', `👻 Vanishing: you only keep ${n} marks. Your faded mark disappears when you place the next one.`));
+    if (n === 4) info.append(ctx.el('p', 'hint', 'Four in a row wins: across, down or corner to corner.'));
   }
 
   return { mount, render };
