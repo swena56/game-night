@@ -26,6 +26,7 @@ UI.safecracker = (() => {
     main.innerHTML = `<div class="sc">
       <div class="sc-head"><span id="scSafe"></span><span id="scRound"></span></div>
       <div id="scOpened" class="sc-opened" hidden></div>
+      <div id="scStand" hidden></div>
       <div id="scHistory" class="sc-history"></div>
       <div class="sc-entry">
         <div id="scSlots" class="sc-slots"></div>
@@ -131,6 +132,7 @@ UI.safecracker = (() => {
     $('scSafe').textContent = (g.duel ? '⚔️ ' : '🔐 ') + (g.safes > 1 ? `Safe ${g.safe} of ${g.safes}` : g.duel ? 'Duel' : 'The safe');
     $('scRound').textContent = g.stage === 'set' ? 'Setting codes' : `Guess ${Math.min(g.round, g.rounds)} of ${g.rounds}`;
 
+    standingsCard($('scStand'), g.standings, { title: `After safe ${g.safe} of ${g.safes}` });
     // a duel's codes come as [[owner, code], ...]; a race has one shared code
     const code = g.code || g.opened;
     const box = $('scOpened');

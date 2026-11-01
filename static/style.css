@@ -1450,3 +1450,24 @@ body.light .logo { background-image: linear-gradient(90deg, #e09a00, #e0457b, #1
 .sb-mini { display: flex; gap: 2px; margin: 4px 0; }
 .sb-mini span { flex: 1; text-align: center; font-size: 11px; font-weight: 800; border-radius: 3px; background: #e4d3ad; color: #3a2410; }
 .sb-mini span.shut { background: transparent; color: #ffffff30; }
+
+/* shared results card between rounds (standingsCard in app.js) */
+.st-card { width: 100%; max-width: 420px; margin: 8px auto; padding: 10px 12px; border-radius: 14px; background: var(--panel);
+  box-shadow: 0 6px 18px #0006; animation: bannerIn .3s ease-out; text-align: left; }
+.st-title { margin: 0 0 6px; font-size: 15px; text-align: center; }
+.st-row { display: grid; grid-template-columns: 2em minmax(0, 1fr) auto auto 2.2em; gap: 8px; align-items: center; padding: 4px 2px;
+  border-bottom: 1px solid var(--line); font-size: 15px; }
+.st-row:last-of-type { border-bottom: 0; }
+.st-row.me { background: #ffffff0d; border-radius: 6px; }
+.st-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; gap: 6px; align-items: center; }
+.st-gain { font-weight: 800; color: var(--muted); text-align: right; }
+.st-gain.up { color: var(--ok); animation: pop .4s ease-out; } .st-gain.down { color: var(--danger); }
+.st-total { text-align: right; min-width: 3ch; }
+.st-move { font-size: 12px; font-weight: 800; } .st-move.up { color: var(--ok); } .st-move.down { color: var(--danger); }
+.st-note { margin: 6px 0 0; text-align: center; }
+/* Lucky Letters keeps a steady board (#61): its card floats over the wheel instead of pushing the page */
+.st-float { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); width: min(92%, 380px); margin: 0; z-index: 3;
+  background: color-mix(in srgb, var(--panel) 92%, transparent); backdrop-filter: blur(4px); }
+.st-float.st-card { animation: none; }
+.dd-stand.st-card { box-shadow: none; margin: 6px 0 0; padding: 6px 4px; background: transparent; }
+.dd-stand .st-row { font-size: 13px; padding: 2px; }

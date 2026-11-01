@@ -85,6 +85,8 @@ UI.doodle = (() => {
           : `⚡ ${first.id === S.me.id ? 'You' : first.name} got it first (+${d.solvers[0][1]})`
             + (d.solvers.length > 1 ? ` · ${d.solvers.length} got it` : '')
             + (mineAt > 0 ? ` · you were #${mineAt + 1}` : '')));
+      const st = ctx.el('div', 'dd-stand'); ans.append(st);
+      standingsCard(st, d.standings, { title: `After picture ${d.round} of ${d.rounds}` });
     }
 
     const box = $('ddSolvers'); box.innerHTML = '';

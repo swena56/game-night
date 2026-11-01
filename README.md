@@ -381,7 +381,9 @@ Items that become ✅ move into the per-game plan.
 1. ✅ **Layout check in a real browser:** `tests/layout.js` starts every game at 485 and 1280 px in Chromium and fails on sideways
    scrolling, a game area with no size, visible elements squeezed to nothing (#44) and JavaScript errors. Its first run found
    13 games that scrolled sideways on phones, all fixed.
-2. **A shared results card** between rounds and reserved status-line heights (#17, #18). **M**
+2. ✅ **A shared results card** between rounds: `Game.mark_round()` / `standings()` on the server and `standingsCard()` in
+   app.js show each player's gain, running total, rank and ▲/▼ places moved. Used by Grid Hunt, Safecracker, Lucky Letters,
+   Doodle Dash and Shut the Box. Still to do: reserved status-line heights (#18) in the remaining games.
 3. ✅ **Even the 🎲 Dice & casino row again:** Qork made it 7 games; 📦 **Shut the Box** makes it 8 (46 games).
 4. **Keyboard and screen-reader play** in the boards that still lack it (Backgammon, Oware, Ultimate, Morris, Dots & Boxes,
    the card games, Yacht, Farkle) using the shared `gridKeys`. **M**
@@ -463,7 +465,7 @@ Riders and Air Hockey start in it) (#13, #15).
 **Across all games**
 - A real-phone screenshot pass at 485 px wide. Every phone report came from a 485–555 px screen (#6, #18).
 - Reserve space for status lines and action rows in the other games too, the way Lucky Letters does now (#18).
-- A short results card between rounds in every multi-round game, like the Lucky Letters solve pause (#17).
+- ✅ A short results card between rounds (#17): the shared standings card in Grid Hunt, Safecracker, Lucky Letters, Doodle Dash and Shut the Box.
 - 🗳️ ✅ **Next-game voting** (#25): the game-over banner suggests five games that fit the table
   (skipping recent ones) plus an "Other game…" list. Tap to vote, tap again to take it back. When every
   human picks the same game it starts at once; otherwise the host taps **▶ Play the vote winner** (a

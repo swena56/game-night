@@ -96,6 +96,7 @@ class Doodle(Game):
         p.g.locked = 0.0
 
     def new_picture(self):
+        self.mark_round()
         self.round += 1
         self.pic = DRAWINGS[self.queue[self.round - 1]]
         self.stage = "draw"
@@ -259,6 +260,7 @@ class Doodle(Game):
             "per": self.per, "hint": self.hint(frac),
             "answer": self.pic[0] if self.stage == "reveal" or p.id in solved else None,
             "solvers": [[pid, pts] for pid, pts in self.solvers], "mode": self.s["mode"],
+            "standings": self.standings() if self.stage == "reveal" else None,
             "locked": max(0.0, getattr(p.g, "locked", 0) - now), "left": max(0.0, self.end - now),
             "drawn": min(1.0, max(0.0, frac)) if self.stage == "draw" else 1.0, "secs": DRAW_SECS, "grace": GRACE_SECS,
         }}

@@ -22,7 +22,7 @@ UI.shutbox = (() => {
       <div id="sbSum" class="sb-sum"></div>
       <div class="row sb-actions"><button id="sbRoll2" class="primary big">🎲 Roll</button>
         <button id="sbRoll1" class="big">🎲 One die</button><button id="sbShut" class="primary big">📦 Shut</button></div>
-      <p id="sbHint" class="hint"></p></div>`;
+      <p id="sbHint" class="hint"></p><div id="sbStand" hidden></div></div>`;
     side.innerHTML = `<div class="panel"><h3 id="sbRound">Boxes</h3><div id="sbBoxes"></div><p id="sbTarget" class="hint left"></p>
       <div id="sbBest" hidden><h3>🏅 Best solo totals</h3><ol class="ya-best"></ol><p class="hint left">Fewest points first. Kept on this device, for these tiles and rounds.</p></div></div>`;
     $('sbRoll2').onclick = () => ctx.quiet(ctx.act('roll', { dice: 2 }));
@@ -86,6 +86,7 @@ UI.shutbox = (() => {
       : chosen > total ? 'Too much: tap a tile to put it back.' : 'Tap tiles that add up to your roll, then Shut.';
 
     $('sbRound').textContent = `Round ${sb.round} of ${sb.rounds}`;
+    standingsCard($('sbStand'), sb.standings, { title: `After round ${sb.round} of ${sb.rounds}`, note: 'Lowest total wins.', lower: true });
     const list = $('sbBoxes'); list.innerHTML = '';
     for (const pid of sb.seats) {
       const p = ctx.player(pid), bxp = sb.boxes[pid];

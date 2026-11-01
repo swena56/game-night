@@ -736,6 +736,31 @@ function flashTurn() {
   if (!g) { g = el('div', 'turn-glow'); g.id = 'turnGlow'; document.body.append(g); }
   g.classList.remove('on'); void g.offsetWidth; g.classList.add('on');  // restart the animation
 }
+// The shared results card between rounds: everyone's gain this round, running total and rank, with
+// ▲/▼ for places moved. `rows` come from Game.standings() on the server. Fills `box` (emptied first).
+// `lower`: fewer points is better (Shut the Box), so gains aren't coloured as good news.
+function standingsCard(box, rows, { title = '', note = '', unit = '', fmt = (v) => v.toLocaleString(), lower = false } = {}) {
+  box.innerHTML = '';
+  box.hidden = !rows?.length;
+  if (!rows?.length) return;
+  box.classList.add('st-card');
+  if (title) box.append(el('h4', 'st-title', title));
+  const medal = ['🥇', '🥈', '🥉'];
+  for (const r of rows) {
+    const p = S.players.find((x) => x.id === r.id);
+    const row = el('div', 'st-row' + (r.id === S.me.id ? ' me' : ''));
+    const name = el('span', 'st-name', p?.name ?? 'left');
+    name.prepend(mark(p));
+    const moved = r.was - r.rank;  // positive: climbed
+    row.append(el('span', 'st-rank', medal[r.rank - 1] ?? `${r.rank}.`), name,
+      el('span', 'st-gain' + (lower ? '' : r.gain > 0 ? ' up' : r.gain < 0 ? ' down' : ''), r.gain ? `${r.gain > 0 ? '+' : '−'}${fmt(Math.abs(r.gain))}` : '·'),
+      el('b', 'st-total', `${fmt(r.total)}${unit}`),
+      el('span', 'st-move' + (moved > 0 ? ' up' : moved < 0 ? ' down' : ''), moved > 0 ? `▲${moved}` : moved < 0 ? `▼${-moved}` : ''));
+    box.append(row);
+  }
+  if (note) box.append(el('p', 'hint st-note', note));
+}
+
 // A device-local top-5 table for solo play. `box` holds an <ol>; `id` names this game (recorded once, when
 // `over`), `lower` means fewer is better (Shut the Box), `fmt` turns a score into text.
 function soloBest(box, key, id, score, over, { lower = false, fmt = String } = {}) {

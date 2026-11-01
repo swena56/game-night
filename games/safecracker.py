@@ -85,6 +85,7 @@ class Safecracker(Game):
         p.g.probe = None
 
     def new_safe(self):
+        self.mark_round()
         self.safe += 1
         if self.s.get("daily") and not self.duel:  # 📅 the code comes from the date and the settings alone
             seed = f"safe {time.strftime('%Y-%m-%d')} {self.length} {self.colors} {self.repeats} {self.safe}"
@@ -302,6 +303,7 @@ class Safecracker(Game):
             "length": self.length, "colors": self.colors, "repeats": self.repeats,
             "rounds": self.rounds, "round": self.round, "history": self.history, "stage": self.stage,
             "safe": self.safe, "safes": self.safes, "opened": self.opened if self.stage == "open" else None,
+            "standings": self.standings() if self.stage == "open" else None,
             "waiting": [o.id for o in self.waiting_on()],
             "mine": self.codes.get(p.id) if self.stage == "set" else self.locked.get(p.id),
             "duel": self.duel, "mySet": self.codes.get(p.id) if self.duel else None,

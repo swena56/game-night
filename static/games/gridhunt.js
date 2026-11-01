@@ -18,7 +18,7 @@ UI.gridhunt = (() => {
       <div class="gh-entry"><button id="ghClear" title="Clear">✕</button><span id="ghWord" class="gh-word"></span><button id="ghSend" class="primary">Send</button></div>
       <div id="ghNote" class="gh-note"></div>
       <div id="ghMine" class="gh-mine"></div>
-      <div id="ghResults" class="gh-results" hidden></div></div>`;
+      <div id="ghStand" hidden></div><div id="ghResults" class="gh-results" hidden></div></div>`;
     side.innerHTML = '<div class="panel"><h3>Words found</h3><div id="ghCounts"></div><p class="hint left">Only the count shows until time is up. Words someone else also found score nothing.</p></div>';
     $('ghClear').onclick = () => { clear(); paint(); };
     $('ghSend').onclick = send;
@@ -166,6 +166,7 @@ UI.gridhunt = (() => {
       counts.append(row);
     }
 
+    standingsCard($('ghStand'), g.standings, { title: `After round ${g.round} of ${g.rounds}` });
     const res = $('ghResults');
     res.hidden = !g.results;
     if (g.results) {

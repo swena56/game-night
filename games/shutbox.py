@@ -125,7 +125,10 @@ class ShutBox(Game):
     def pl(self, pid):
         return self.room.players.get(pid)
 
+    low_wins = True
+
     def new_round(self):
+        self.mark_round()
         self.round += 1
         self.done = []          # who has played their box this round
         self.stage = "play"
@@ -300,6 +303,7 @@ class ShutBox(Game):
             "boxes": boxes, "dice": self.dice, "rolled": self.rolled, "rollId": self.roll_id,
             "options": opts, "canOne": bool(cur) and not self.rolled and may_roll_one(open_now, self.s["onedie"]),
             "done": self.done, "last": self.last, "target": self.target() if len(self.seats) == 1 else None,
+            "standings": self.standings() if self.stage == "between" and len(self.seats) > 1 else None,
         }}
 
     # -- bots: one decision per call

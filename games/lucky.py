@@ -116,6 +116,7 @@ class Lucky(Game):
     # -- rounds & turns
 
     def new_round(self):
+        self.mark_round()
         r = self.room
         self.category, self.answer = self.queue[self.round]
         self.round += 1
@@ -338,6 +339,7 @@ class Lucky(Game):
             "called": sorted(self.called), "stage": self.stage, "value": self.value, "wedge": self.wedge,
             "spin": spin, "round": self.round, "rounds": self.s["rounds"], "jackpot": self.jackpot,
             "bank": self.bank, "total": self.total, "seats": self.seats, "last": self.last_answer,
+            "standings": self.standings() if self.stage == "solved" else None,
             "buy": VOWEL_COST if self.s.get("buy") else None, "clock": self.s.get("clock") or self.room.settings["timer"] or None,
         }}
 

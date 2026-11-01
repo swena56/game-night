@@ -132,6 +132,7 @@ class GridHunt(Game):
                 return ["QU" if t == "Q" else t for t in tiles]
 
     def new_round(self):
+        self.mark_round()
         self.round += 1
         best = None
         for _ in range(25):  # keep shaking until the grid is rich enough
@@ -294,5 +295,6 @@ class GridHunt(Game):
             "lengths": self.lengths(mine),
             "counts": {q.id: len(q.g.words) for q in self.room.contenders() if hasattr(q.g, "words")},
             "results": self.results if open_ else None,
+            "standings": self.standings() if self.stage == "reveal" else None,
             "target": self.target() if len(self.room.seated()) == 1 else None,
         }}

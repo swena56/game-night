@@ -63,6 +63,30 @@ class Game:
         """{player id: number} for score-based games, recorded in the match history."""
         return {}
 
+    # -- standings between rounds (the shared results card, `standingsCard` in app.js)
+
+    low_wins = False  # True when the lowest score wins (Shut the Box)
+
+    def mark_round(self):
+        """Call when a round starts: the standings shown after it count gains from here."""
+        self.round_start = dict(self.final_scores() or {})
+
+    def standings(self):
+        """[{id, total, gain, rank, was}] best first; `was` is the rank before this round."""
+        now = self.final_scores() or {}
+        before = getattr(self, "round_start", {})
+        def ranks(scores):
+            order = sorted(scores, key=lambda i: scores[i], reverse=not self.low_wins)
+            out = {}
+            for k, pid in enumerate(order):  # ties share a rank
+                out[pid] = out[order[k - 1]] if k and scores[pid] == scores[order[k - 1]] else k + 1
+            return out
+        prev = {pid: before.get(pid, 0) for pid in now}
+        rn = ranks(now)
+        rb = rn if len(set(prev.values())) <= 1 else ranks(prev)  # all level before (round 1): nobody "moved"
+        return [{"id": pid, "total": now[pid], "gain": now[pid] - before.get(pid, 0), "rank": rn[pid], "was": rb[pid]}
+                for pid in sorted(now, key=lambda i: rn[i])]
+
     def skip_turn(self, p):
         return False
 

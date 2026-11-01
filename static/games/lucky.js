@@ -142,7 +142,7 @@ UI.lucky = (() => {
   function mount(main, side) {
     rest = 0; anim = null; seenSpin = 0; prevBoard = ''; cheered = 0;
     main.innerHTML = `<div class="lucky">
-      <div id="lkStage" class="lk-stage"><div id="lkSvg"></div><div id="lkResult" class="lk-result"></div></div>
+      <div id="lkStage" class="lk-stage"><div id="lkSvg"></div><div id="lkResult" class="lk-result"></div><div id="lkStand" class="st-float" hidden></div></div>
       <div class="lk-cat" id="lkCat"></div>
       <div id="lkBoard" class="lk-board"></div>
     </div>`;
@@ -195,6 +195,7 @@ UI.lucky = (() => {
       else { rest = targetAngle(L.spin, from) % (Math.PI * 2); anim = null; }
       $('lkResult').textContent = '';
     }
+    standingsCard($('lkStand'), L.standings, { title: `After puzzle ${L.round} of ${L.rounds}`, fmt: num });
     if (L.stage === 'solved' && L.last) {
       $('lkResult').textContent = `🎉 ${L.last.by} +${num(L.last.won)}`;
       if (cheered !== L.round) { cheered = L.round; ctx.confetti?.(); }
