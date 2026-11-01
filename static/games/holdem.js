@@ -110,7 +110,7 @@ UI.holdem = (() => {
     const my = $('heMyCards'); my.innerHTML = '';
     for (const card of h.myCards) my.append(face(card, 'big-card'));
     $('heMyInfo').textContent = !mine ? '👁 Watching' : mine.out ? '💥 Out of chips' : mine.folded && h.stage !== 'done' ? `Folded · 💰${num(mine.chips)}`
-      : `💰${num(mine.chips)}${mine.bet ? ` · bet ${num(mine.bet)}` : ''}${h.shown[me] ? ` · ${h.shown[me].hand}` : ''}`
+      : `💰${num(mine.chips)}${mine.bet ? ` · bet ${num(mine.bet)}` : ''}${h.myHand && !mine.folded ? ` · 🃏 ${h.myHand}` : h.shown[me] ? ` · ${h.shown[me].hand}` : ''}`
         + [mine.button ? ' · 🔘 Dealer' : '', mine.sb ? ' · SB' : '', mine.bb ? ' · BB' : ''].join('')
         + (h.bank != null ? ` · ⏳ ${h.bank} s bank` : '');
 

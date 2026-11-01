@@ -84,12 +84,16 @@ class GridHunt(Game):
         "size": ("Grid", [(4, "4×4"), (5, "5×5"), (6, "6×6 (big tables)")], 4),
         "secs": ("Time per round", [(60, "1 min"), (90, "1½ min"), (120, "2 min"), (180, "3 min")], 90),
         "rounds": ("Rounds", [(1, "1"), (2, "2"), (3, "3")], 2),
+        "daily": ("Grids", [(False, "🎲 Random"), (True, "📅 Today's grids (the same everywhere)")], False),
     }
 
     # -- setup and clock
 
     def start(self, seated, rng):
         self.rng = rng
+        # 📅 daily: the grids come from the date alone, so every room hunts the same ones today
+        self.today = time.strftime("%Y-%m-%d")
+        self.grng = random.Random(f"gridhunt {self.today} {self.s['size']}") if self.s.get("daily") else rng
         self.skew = 0.0  # the bot simulator fast-forwards this virtual clock
         self.n = self.s["size"]
         self.min_len = 3 if self.n == 4 else 4
@@ -99,7 +103,8 @@ class GridHunt(Game):
         self.room.turn = None
         self.room.bot_at = 0
         self.room.add_log(f"🔎 Grid Hunt! {self.s['rounds']} round{'s' if self.s['rounds'] > 1 else ''} on a "
-                          f"{self.n}×{self.n} grid. Words a rival also finds score nothing.", "big")
+                          f"{self.n}×{self.n} grid" + (f" (📅 the grids for {self.today})" if self.s.get("daily") else "")
+                          + ". Words a rival also finds score nothing.", "big")
         self.new_round()
 
     def now(self):
@@ -114,11 +119,14 @@ class GridHunt(Game):
         p.g.words = []
         p.g.round_pts = 0
 
+    def grid_rng(self):
+        return getattr(self, "grng", None) or self.rng  # games saved before daily grids
+
     def shake(self):
         letters, weights = list(WEIGHTS), list(WEIGHTS.values())
         cells = self.n * self.n
         while True:
-            tiles = self.rng.choices(letters, weights, k=cells)
+            tiles = self.grid_rng().choices(letters, weights, k=cells)
             v = sum(t in VOWELS for t in tiles)
             if cells * 0.25 <= v <= cells * 0.45:
                 return ["QU" if t == "Q" else t for t in tiles]
@@ -127,7 +135,7 @@ class GridHunt(Game):
         self.round += 1
         best = None
         for _ in range(25):  # keep shaking until the grid is rich enough
-            tiles, star = self.shake(), self.rng.randrange(self.n * self.n)
+            tiles, star = self.shake(), self.grid_rng().randrange(self.n * self.n)
             found = solve(tiles, self.n, self.min_len, star)
             if best is None or len(found) > len(best[1]):
                 best = (tiles, found, star)

@@ -146,6 +146,8 @@ label.check input { width: auto; margin: 0; }
 .d4-cell::after { content: ''; position: absolute; inset: 6%; border-radius: 50%; background: var(--disc); transition: background .2s; }
 .d4-cell.filled::after { box-shadow: inset 0 -4px 0 #0004; }
 .d4-cell.last::after { outline: 3px solid #fff; }
+.d4-cell.pullable::after { outline: 3px dashed #fff; outline-offset: 2px; animation: pulse 1s ease-in-out infinite alternate; }
+.d4.pulling .d4-cell:disabled { opacity: .55; }
 .d4-cell.win::after { animation: pulse .8s infinite; outline: 3px solid var(--accent); }
 .d4-cell:disabled { opacity: 1; cursor: default; }
 .d4.armed { background: #8b1d1d; }

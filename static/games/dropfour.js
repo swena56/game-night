@@ -1,14 +1,16 @@
 UI.dropfour = (() => {
-  let S, ctx, board, dims = '', bombArmed = false;
+  let S, ctx, board, dims = '', bombArmed = false, pullArmed = false;
 
   function mount(main, side) {
-    dims = ''; bombArmed = false;
+    dims = ''; bombArmed = false; pullArmed = false;
     main.innerHTML = '<div class="d4"></div>';
     side.innerHTML = `<div class="panel"><div id="d4Info"></div>
       <div id="d4Moves" class="d4-moves"></div>
-      <button id="bombBtn" class="danger" hidden>💣 Arm bomb</button></div>`;
+      <button id="bombBtn" class="danger" hidden>💣 Arm bomb</button>
+      <button id="pullBtn" hidden>⬇️ Pull a disc</button></div>`;
     board = main.querySelector('.d4');
-    document.getElementById('bombBtn').onclick = () => { bombArmed = !bombArmed; ctx.rerender(); };
+    document.getElementById('bombBtn').onclick = () => { bombArmed = !bombArmed; pullArmed = false; ctx.rerender(); };
+    document.getElementById('pullBtn').onclick = () => { pullArmed = !pullArmed; bombArmed = false; ctx.rerender(); };
   }
 
   function render(s, c) {
@@ -36,9 +38,12 @@ UI.dropfour = (() => {
       cell.classList.toggle('win', win.has(i));
       cell.classList.toggle('last', i === last);
       cell.style.setProperty('--fall', Math.floor(i / cols) + 1);
-      cell.disabled = !ctx.myTurn;
+      const pullable = pullArmed && Math.floor(i / cols) === rows - 1 && (d.pulls || []).includes(i % cols);
+      cell.classList.toggle('pullable', pullable);
+      cell.disabled = !ctx.myTurn || (pullArmed && !pullable);
     });
     board.classList.toggle('armed', bombArmed);
+    board.classList.toggle('pulling', pullArmed);
 
     const info = document.getElementById('d4Info'); info.innerHTML = '';
     for (const pid of d.seats) {
@@ -52,7 +57,7 @@ UI.dropfour = (() => {
     hist.innerHTML = '';
     hist.hidden = !moves.length;
     moves.forEach(([seat, col, bomb], i) => {
-      const m = ctx.el('span', 'd4-move' + (i === moves.length - 1 ? ' now' : ''), bomb ? `💣${col + 1}` : String(col + 1));
+      const m = ctx.el('span', 'd4-move' + (i === moves.length - 1 ? ' now' : ''), bomb === 'pull' ? `⬇${col + 1}` : bomb ? `💣${col + 1}` : String(col + 1));
       m.style.setProperty('--disc', ctx.player(d.seats[seat])?.color ?? '#777');
       m.title = `Move ${i + 1}: column ${col + 1}`;
       hist.append(m);
@@ -63,10 +68,16 @@ UI.dropfour = (() => {
     bb.disabled = !ctx.myTurn;
     bb.classList.toggle('on', bombArmed);
     bb.textContent = bombArmed ? '💣 Armed — pick a column' : '💣 Arm bomb';
+    const pb = document.getElementById('pullBtn');
+    pb.hidden = !(d.pulls && S.phase === 'playing' && (d.pulls.length || pullArmed) && ctx.myTurn);
+    if (pb.hidden) pullArmed = false;
+    pb.classList.toggle('on', pullArmed);
+    pb.textContent = pullArmed ? '⬇️ Tap one of your bottom discs (tap here to cancel)' : '⬇️ Pull a disc';
   }
 
   function drop(col) {
     if (!ctx.myTurn) return;
+    if (pullArmed) { pullArmed = false; return ctx.quiet(ctx.act('pull', { col })); }
     const bomb = bombArmed;
     bombArmed = false;
     ctx.quiet(ctx.act('drop', { col, bomb }));

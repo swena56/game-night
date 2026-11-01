@@ -76,6 +76,37 @@ def evaluate(cards):
     return (0, *vals[:5])
 
 
+RANK_NAME = {2: "2", 3: "3", 4: "4", 5: "5", 6: "6", 7: "7", 8: "8", 9: "9", 10: "10", 11: "jack", 12: "queen",
+             13: "king", 14: "ace"}
+
+
+def plural(v):
+    return "sixes" if v == 6 else RANK_NAME[v] + "s"
+
+
+def describe(cards):
+    """A friendly name for the best hand in these cards: "Pair of 7s", "Flush, ace high", "Kings full of 3s"."""
+    e = evaluate(cards)
+    cat, a = e[0], e[1] if len(e) > 1 else 0
+    if cat == 8:
+        return "Royal flush" if a == 14 else f"Straight flush, {RANK_NAME[a]} high"
+    if cat == 7:
+        return f"Four {plural(a)}"
+    if cat == 6:
+        return f"{plural(a).capitalize()} full of {plural(e[2])}"
+    if cat == 5:
+        return f"Flush, {RANK_NAME[a]} high"
+    if cat == 4:
+        return f"Straight, {RANK_NAME[a]} high"
+    if cat == 3:
+        return f"Three {plural(a)}"
+    if cat == 2:
+        return f"Two pair, {plural(a)} and {plural(e[2])}"
+    if cat == 1:
+        return f"Pair of {plural(a)}"
+    return f"{RANK_NAME[a].capitalize()} high"
+
+
 def equity(mine, board, opponents, trials, rng):
     """Monte Carlo share of the pot against `opponents` random hands (what a player could know)."""
     deck = [r + s for r in RANKS for s in SUITS if r + s not in mine and r + s not in board]
@@ -510,6 +541,7 @@ class Holdem(Game):
             "history": [{"n": e["n"], "board": e["board"], "result": e["result"], "shown": e["shown"],
                          "mine": e["cards"].get(p.id, [])} for e in getattr(self, "history", [])],
             "myCards": p.g.cards if p.id in self.seats and hasattr(p.g, "cards") else [],
+            "myHand": describe(p.g.cards + list(self.board)) if p.id in self.seats and getattr(p.g, "cards", None) else "",
             "toCall": max(0, self.cur_bet - me.bet) if me and self.stage != "done" else 0,
             "minRaise": min(self.cur_bet + self.min_raise, me.bet + me.chips) if me and self.stage != "done" else 0,
             "maxRaise": me.bet + me.chips if me else 0, "myBet": me.bet if me else 0,

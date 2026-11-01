@@ -39,7 +39,7 @@ address the server prints. **Play solo** on the home screen starts any game agai
 |---|---|---|---|
 | 🎡 **Lucky Letters** | 2–6 | Spin a **3D prize wheel** (three.js), call consonants, solve the hidden phrase. 78 original puzzles in 8 categories. | Vowels can only be called by landing on ✨ VOWEL. Special wedges: 💀 Bust, ⛔ Skip, 🎁 Wild (a free letter), 🦊 Steal (take 500 from the leader), and a growing ⚡ Jackpot. The server picks where the wheel stops, and every phone animates the same spin. |
 | 🔤 **Wordsmith** | 2–4 | Crossword tile game on an original 11×11 board (80 tiles, no blanks, ENABLE dictionary). | A **bounty letter** rerolls every turn (+10). Using all 7 tiles is a **clean sweep** (+40). |
-| 🔎 **Grid Hunt** | 2–6 | Timed word hunt: everyone searches the same freshly shaken 4×4 or 5×5 letter grid at once, tracing words through touching tiles. Drag, tap, or type. | When time runs out the lists are compared, and **a word a rival also found scores nothing**. A ⭐ star tile doubles words through it. The grid is reshaken until it holds plenty of words, and the results show the longest ones nobody found. |
+| 🔎 **Grid Hunt** | 2–6 | Timed word hunt: everyone searches the same freshly shaken 4×4 or 5×5 letter grid at once, tracing words through touching tiles. Drag, tap, or type. | When time runs out the lists are compared, and **a word a rival also found scores nothing**. A ⭐ star tile doubles words through it. The grid is reshaken until it holds plenty of words, and the results show the longest ones nobody found. 📅 Today's grids (an option) are the same in every room. |
 | 🔐 **Safecracker** | 1–6 | Code-breaking: crack a hidden 4- or 5-peg colour code from ● (right spot) and ○ (wrong spot) hints. | **Everyone cracks the same safe at once**: guesses are locked in secretly, then all are revealed, so rivals' clues help you too. Crack it alone for 3, share the crack for 2. A private 🔍 probe per safe counts one colour, for a point. Pegs show numbers as well as colours. |
 | 🤥 **Fib Finder** | 2–6 | A strange-but-true fact appears with a word missing (118 facts). Everyone writes a believable fake answer, then picks which answer is real. | +3 for finding the truth, +2 for each player your fib fools. Typing the real answer is caught and rejected. House fibs make sure there are always enough answers. The last fact counts double. |
 | 🪜 **Word Ladder** | 1–6 | Lewis Carroll's public-domain "doublets" as a race: everyone climbs from the same start word to the same goal word, changing one letter per step, every step a real word. | Par is the shortest ladder of everyday words; any dictionary word is allowed in between. ↩ takes a step back for free, 💡 fills in the next step for 3 points. 3- or 4-letter words. |
@@ -73,7 +73,7 @@ address the server prints. **Play solo** on the home screen starts any game agai
 | Game | Players | What it is | Twist |
 |---|---|---|---|
 | 🃏 **Last Card** | 2–6 | Shedding game from the public-domain Crazy Eights / Mau-Mau family, with a standard 52-card deck. Optional action cards: 7 draw-two (stackable), 8 skip, Q reverse, J wild. | Call **“Last card!”** in time, or any opponent can 🚨 catch you for +2. |
-| ♠️ **Texas Hold'em** | 2–6 | No-limit poker, the traditional game: blinds, two private cards, five shared cards, four betting rounds, all-ins with proper side pots. | Blinds rise every 6, 10 or 15 hands so every game ends. Uncalled chips come back, odd chips go to the first winner after the button, and showdown hands are named. Starting stacks of 1,000, 2,000 or 5,000. 💸 **Buy back in** (off, once, or up to 3 times) when you bust; if your bust would end the game, the table waits 12 s for you. |
+| ♠️ **Texas Hold'em** | 2–6 | No-limit poker, the traditional game: blinds, two private cards, five shared cards, four betting rounds, all-ins with proper side pots. | Blinds rise every 6, 10 or 15 hands so every game ends. Uncalled chips come back, odd chips go to the first winner after the button, and showdown hands are named. Your own best hand is named live ("Pair of 7s"). Starting stacks of 1,000, 2,000 or 5,000. 💸 **Buy back in** (off, once, or up to 3 times) when you bust; if your bust would end the game, the table waits 12 s for you. |
 | 📍 **Cribbage** | 2–3 | The traditional pegging card game: discard to the crib, cut the starter, then the play (15s, pairs, runs, 31, go) and the show (fifteens, pairs, runs, flushes, nobs). | Scored exactly by the book, including his heels, the crib's five-card flush rule, and pegging out mid-hand. A peg track shows the race; the show lists every hand's points. Game to 121 or 61. |
 | ♥️ **Hearts** | 3–6 | The traditional trick-dodging game: pass three, follow suit, avoid hearts (1) and the Q♠ (13), or shoot the moon. Game to 100 or 50, lowest wins. | No points on the first trick, hearts must be broken before they're led. With 3, 5 or 6 players low cards are removed so the deal is even. Optional 💎 J♦ worth −10. |
 | ⚡ **Speed** | 2 | The traditional two-player race card game (also called Spit), in real time: no turns, both players slap cards one rank up or down onto two centre piles. | Kings and aces wrap round. When nobody can play, fresh cards flip from the side piles. First to empty hand and stock wins; one round or best of 3. |
@@ -84,7 +84,7 @@ address the server prints. **Play solo** on the home screen starts any game agai
 | Game | Players | What it is | Twist |
 |---|---|---|---|
 | 🚢 **Sea Battle** | 2 | The classic pencil-and-paper fleet hunt: hide 5 ships, then take turns firing. | Firing rules: 1 shot, hit = fire again, or Salvo (1 shot per ship afloat). Optional 📡 sonar counts the ship squares in a 3×3 area. |
-| 🔴 **Drop Four** | 2–4 | Gravity four-in-a-row. 3–4 players get a 9×7 board. | Optional 💣 **bomb disc**: it clears its 3×3 neighbourhood and the stack falls, which can complete *someone else's* line. |
+| 🔴 **Drop Four** | 2–4 | Gravity four-in-a-row. 3–4 players get a 9×7 board. | Optional 💣 **bomb disc**: it clears its 3×3 neighbourhood and the stack falls, which can complete *someone else's* line. Optional ⬇️ **pull-outs**: take one of your own discs out of the bottom row instead of dropping, and the column slides down. |
 | 🔳 **Dots & Boxes** | 2–6 | The pencil-and-paper classic on a 3×3 to 6×6 grid. Close a box to claim it and move again. On touch screens a line takes two taps (pick, then confirm). | Optional 💎 **gem boxes** worth 3 points. |
 | ❌ **Tic-Tac-Toe** | 2 | The classic. | 👻 **Vanishing**: you keep only your 3 newest marks, and the oldest fades out. |
 | #️⃣ **Ultimate Tic-Tac-Toe** | 2 | The folk game: nine small boards in one. Where you play sends your rival to that board. Win three small boards in a row. | The boards you may play in glow; won boards show a big mark; the last move is outlined. ↶ Undo requests. |
@@ -408,7 +408,7 @@ Items that become ✅ move into the per-game plan.
 **Words & puzzles**
 - 🎡 **Lucky Letters:** a bonus round for the winner. **M**
 - 🔤 **Wordsmith:** optional blank tiles; a turn history of words and points. **S–M**
-- 🔎 **Grid Hunt:** a 📅 daily grid, like Word Ladder's. **S**
+- 🔎 **Grid Hunt:** ✅ 📅 today's grids, the same in every room (like Word Ladder's daily ladders).
 - 🔐 **Safecracker:** a daily solo safe. **S**
 - 🤥 **Fib Finder:** more facts in the thinner topics. **M**
 - 🪜 **Word Ladder:** a missing-rung puzzle mode. **M**
@@ -416,14 +416,14 @@ Items that become ✅ move into the per-game plan.
 **Strategy**
 - ♟️ **Chess:** a stronger hard bot (quiescence search, transposition table, small opening book); Chess960. **M–L**
 - ⛀ **Checkers:** ✅ undo requests and draw offers, like Go and Chess.
-- 🔺 **Backgammon:** a pip count on screen. **S**
+- 🔺 **Backgammon:** ~~a pip count~~: it already shows both pip counts by the players' names.
 - ⚫ **Go:** ✅ handicap stones (2–9, on the star points; White moves first, komi 0.5) and a komi setting.
 - 🫘 **Oware:** ✅ undo requests (shared with Reversi, Ultimate and Checkers: `games/undo.py`).
 - ⚪ **Reversi:** ✅ a flip-hints option and undo requests.
 
 **Cards**
 - 🃏 **Last Card:** play several cards of one rank at once (option). **M**
-- ♠️ **Texas Hold'em:** your current best hand named live. **S**
+- ♠️ **Texas Hold'em:** ✅ your best hand named live under your cards ("Pair of 7s", "Kings full of 3s").
 - 📍 **Cribbage:** a "best discard" hint for learners. **M**
 - ♥️ **Hearts:** ✅ an optional 💎 J♦ −10 (bots keep it, and win tricks for it).
 - ⚡ **Speed:** the face-to-face two-phone layout. **M**
@@ -431,7 +431,7 @@ Items that become ✅ move into the per-game plan.
 
 **Quick classics**
 - 🚢 **Sea Battle:** a 12×12 board. **S**
-- 🔴 **Drop Four:** a pop-out variant. **S**
+- 🔴 **Drop Four:** ✅ ⬇️ pull-outs (an option): take one of your own discs out of the bottom row instead of dropping.
 - 🔳 **Dots & Boxes:** a chain-count hint in the endgame. **S**
 - ❌ **Tic-Tac-Toe:** a 4×4 variant. **S**
 - #️⃣ **Ultimate Tic-Tac-Toe:** ✅ undo requests. (It already outlined the last move: the plan was wrong.)
@@ -440,7 +440,7 @@ Items that become ✅ move into the per-game plan.
 **Dice & casino**
 - 🚀 **Moon Shot:** a solo target. **S**
 - 🎲 **Yacht:** ✅ optional bonuses: +35 for 63 in Ones–Sixes (the card shows progress, 41/63) and +50 per extra Yacht; bots play for them.
-- 🎯 **Farkle:** optional extra scores (three pairs, a 1–6 straight). **S**
+- 🎯 **Farkle:** ~~extra scores~~: three pairs and the 1–6 straight already score 1,500.
 - 🥤 **Qork:** collect real-phone reports on reaction fairness. **S**
 - 🚢 **Ship, Captain & Crew:** a solo best-score table. **S**
 - 🤥 **Liar's Dice:** a "palifico" round when someone is down to one die (option). **S**
