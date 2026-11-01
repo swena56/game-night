@@ -64,8 +64,8 @@ label.check input { width: auto; margin: 0; }
 .turn.mine { color: var(--accent); animation: pulse 1.4s infinite; }
 .timer { font-variant-numeric: tabular-nums; min-width: 52px; text-align: right; }
 .timer.urgent { color: var(--danger); font-weight: 700; }
-.layout { display: grid; grid-template-columns: 1fr 340px; gap: 16px; padding: 12px 16px; max-width: 1300px; margin: 0 auto; }
-@media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; padding: 12px 16px; max-width: 1300px; margin: 0 auto; }
+@media (max-width: 860px) { .layout { grid-template-columns: minmax(0, 1fr); }  /* minmax: a long log line can't widen the page */ }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
 .chip { background: var(--panel); border-radius: 999px; padding: 5px 12px; display: flex; gap: 6px; align-items: center; font-size: 13px; border: 2px solid transparent; }
 .chip.turn-now { border-color: var(--accent); }
@@ -1107,8 +1107,8 @@ body.focus .sm-stage { height: max(220px, calc(var(--app-h, 100vh) - 215px)); }
 
 /* ultimate tic-tac-toe */
 .ut { width: min(100%, 520px, calc(var(--app-h, 100vh) - 190px)); min-width: min(100%, 280px); margin: 0 auto; }
-.ut-big { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 8px; border-radius: 14px; background: var(--line); }
-.ut-small { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; padding: 4px; border-radius: 8px; background: var(--panel); position: relative; transition: box-shadow .2s; }
+.ut-big { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 8px; border-radius: 14px; background: var(--line); }
+.ut-small { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; padding: 4px; border-radius: 8px; background: var(--panel); position: relative; transition: box-shadow .2s; }
 .ut-small.open { box-shadow: 0 0 0 3px var(--accent); }
 .ut-small.done .ut-cell { opacity: .35; }
 .ut-cell { aspect-ratio: 1; padding: 0; border: 0; border-radius: 4px; background: var(--panel2); font-size: clamp(12px, 4vw, 22px); font-weight: 900; }

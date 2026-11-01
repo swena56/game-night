@@ -8,12 +8,9 @@ description: Drive the real Game Night app in headless Chromium to verify a chan
 ## Handle
 - Test server on its own port (it writes `data/rooms-<PORT>.pickle`; delete it afterwards):
   `PORT=8791 python3 server.py &`
-- Browser: the Kali `python3-playwright` package is broken (missing `/usr/share/nodejs/playwright/cli.js`).
-  Install `playwright-core` into the scratchpad instead and drive the system Chromium:
-  ```bash
-  cd <scratchpad>/pw && npm init -y && npm install playwright-core@1.48.2
-  NODE_PATH=<scratchpad>/pw/node_modules node drive.js
-  ```
+- Browser: `cd tests && npm install` brings in `playwright-core` (and jsdom). Run driver scripts with
+  `NODE_PATH=/home/kali/game-night/tests/node_modules node drive.js`. Don't use the Kali `python3-playwright` apt package: it
+  lacks its Node driver (`/usr/share/nodejs/playwright/cli.js`, from the `node-playwright` package).
   `chromium.launch({ executablePath: '/usr/bin/chromium', args: ['--no-sandbox'] })`, viewport 485×900
   (the phone width every player report came from).
 
@@ -24,6 +21,7 @@ description: Drive the real Game Night app in headless Chromium to verify a chan
   `page.evaluate` (useful to fire two actions at once).
 - Rare deals or states: run the real server through a small wrapper that monkeypatches the game
   (e.g. stacks the shoe in `deal`) and then `runpy.run_path("server.py", run_name="__main__")`.
+- Run one Chromium at a time: four at once (WebGL games) crashed every browser.
 - Check sideways overflow: `document.documentElement.scrollWidth` should be 485.
 
 ## Gotchas
@@ -31,5 +29,6 @@ description: Drive the real Game Night app in headless Chromium to verify a chan
   Find test servers by port: `tr '\0' '\n' < /proc/$p/environ | grep PORT=`.
 - To compare with the old behaviour: `git worktree add --detach <scratch>/head HEAD`, copy
   `data/words.txt` into it, and run a second server from there.
-- Known existing issue (October 2026): a long log line (e.g. "🧮 Dealer 23 (bust): …") widens the one-column
-  `.layout` grid through the side panel's log ticker, so the page scrolls sideways at 485 px.
+- Layout columns are `minmax(0, 1fr)` so long text can't widen the page. A board whose own grid uses plain `1fr` can
+  then spill past the edge instead (Ultimate did): give it `minmax(0, 1fr)` too. Sweep every game: start each solo
+  at 485 and 1280 px and compare `scrollWidth` with the previous commit (one browser at a time, about 5 minutes).

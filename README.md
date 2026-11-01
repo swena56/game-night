@@ -279,6 +279,10 @@ cd tests && npm install && BASE=http://localhost:8767 node ui.js          # ever
 BASE=http://localhost:8767 node ui.js chess spire                          # just some
 ```
 
+`tests/` also installs **playwright-core** for checks in a real browser (layout, WebGL), which jsdom can't do. It drives the
+system Chromium (`chromium.launch({ executablePath: '/usr/bin/chromium' })`) and downloads no browsers of its own. On Kali,
+the `python3-playwright` apt package doesn't work on its own: it needs the separate `node-playwright` package for its driver.
+
 `tests/ui.js` loads the real page in **jsdom**, a simulated browser sized like a phone. It plays each
 game solo against bots **through real clicks and key presses**, then exercises game over, replay,
 chat, settings, ❓ help and rematch, and reports every JavaScript error. It has already caught three
