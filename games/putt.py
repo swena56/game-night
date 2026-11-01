@@ -9,6 +9,7 @@ Physics runs on the server in 2D (x across, y up the course, one unit per tile) 
 and each putt's path is sent to every browser to play back, like Billiards."""
 import math
 import random
+import time
 
 from .base import Game, GameError
 
@@ -23,6 +24,7 @@ CUP_SPEED = 2.0                # faster than this and the ball lips out
 FRAME = 8                      # record every 8th step (30 fps)
 MAX_STEPS = 240 * 14
 STROKE_CAP = 8
+HOLE_PAUSE = 4.0               # seconds to read the hole's scores, after the last putt has rolled
 
 
 def walk_path(rng):
@@ -160,8 +162,8 @@ class Putt(Game):
     id = "putt"
     category = "action"
     howto = [
-        "Drag back from anywhere and let go to putt: the further you drag, the harder the shot. The ball goes the opposite way, like a slingshot.",
-        "Move the view with two fingers: drag to pan, pinch to zoom, twist to turn. Or use the buttons on the view: 🎯 stands behind your ball, ⛳ shows the whole hole.",
+        "Put your finger on your ball (the ringed one), drag back and let go: the further you drag, the harder the shot. The ball goes the opposite way, like a slingshot.",
+        "Drag anywhere else to move the view; two fingers pinch to zoom and twist to turn. After each putt the camera swings round behind your ball. 🎯 does that too, ⛳ shows the whole hole.",
         "Everyone plays the same hole, one stroke each in turn. Balls pass through each other.",
         "🟫 Sand slows the ball, ↗ slopes push it, ⚪ bumpers bounce it, and 💧 water costs a stroke (you replay from where you hit).",
         f"Hole out in the fewest strokes; {STROKE_CAP} is the most a hole can cost. Lowest total wins.",
@@ -174,6 +176,7 @@ class Putt(Game):
     settings_schema = {
         "holes": ("Holes", [(6, "6"), (3, "3 (quick)"), (9, "9")], 6),
     }
+    low_wins = True  # strokes: the standings card ranks fewest first
 
     # -- setup
 
@@ -189,6 +192,8 @@ class Putt(Game):
         return self.room.players.get(self.seats[i])
 
     def new_hole(self):
+        self.between = False
+        self.mark_round()
         self.hole_no += 1
         self.hole = make_hole(self.rng)
         self.course = None
@@ -227,9 +232,23 @@ class Putt(Game):
         r = self.room
         for i in range(len(self.seats)):
             self.cards[i].append(self.strokes[i] if self.holed[i] else STROKE_CAP)
-        totals = [sum(c) for c in self.cards]
         names = [self.pl(i).name if self.pl(i) else "?" for i in range(len(self.seats))]
         r.add_log(f"🏁 Hole {self.hole_no}: " + " · ".join(f"{names[i]} {self.cards[i][-1]}" for i in range(len(self.seats))), "big")
+        # Let the last putt roll in on everyone's screen, then show the hole's scores, before moving on:
+        # the next hole used to replace this one in the same update, so the final putt was never seen.
+        self.between = True
+        r.turn = None
+        r.deadline = time.time() + self.roll_time() + HOLE_PAUSE
+
+    def roll_time(self):
+        """How long the last putt takes to play back in the browsers (frames at 30 a second)."""
+        return len(self.shot["frames"]) / 30 if self.shot else 0.0
+
+    def after_hole(self):
+        r = self.room
+        self.between = False
+        totals = [sum(c) for c in self.cards]
+        names = [self.pl(i).name if self.pl(i) else "?" for i in range(len(self.seats))]
         if self.hole_no >= self.s["holes"]:
             if len(self.seats) == 1:
                 par = 3 * self.s["holes"]
@@ -281,9 +300,19 @@ class Putt(Game):
         self.shot_id += 1
         self.shot = {"by": i, "frames": frames, "result": result, "id": self.shot_id, "from": list(start)}
         self.next_turn(i)
+        # nobody putts again until this ball has stopped rolling on screen (a bot used to go after about a
+        # second, cutting the animation short so the ball jumped to where it stopped)
+        r, wait = self.room, self.roll_time()
+        if r.turn is not None:
+            if self.pl(self.seats.index(r.turn)).bot:
+                r.bot_at = max(r.bot_at, time.time() + wait + 0.8)
+            if r.deadline:
+                r.deadline += wait
 
     def on_timeout(self):
         r = self.room
+        if getattr(self, "between", False):
+            return self.after_hole()
         i = self.seats.index(r.turn)
         r.add_log(f"⏰ {self.pl(i).name} ran out of time.", "power")
         self.putt(i, *self.plan_shot(i, "easy"))
@@ -314,9 +343,10 @@ class Putt(Game):
         return {"putt": {
             "seats": self.seats, "me": self.seat(p), "hole": self.hole_no, "holes": self.s["holes"],
             "cells": h["cells"], "kinds": h["kinds"], "slope": h["slope"], "bumpers": h["bumpers"],
-            "tee": h["tee"], "cup": h["cup"], "cols": COLS, "rows": ROWS, "ball": BALL, "cupR": CUP,
+            "tee": h["tee"], "cup": h["cup"], "path": h["path"], "cols": COLS, "rows": ROWS, "ball": BALL, "cupR": CUP,
             "balls": self.balls, "strokes": self.strokes, "holed": self.holed, "cards": self.cards,
-            "shot": self.shot, "cap": STROKE_CAP,
+            "shot": self.shot, "cap": STROKE_CAP, "between": getattr(self, "between", False),
+            "standings": self.standings() if getattr(self, "between", False) and len(self.seats) > 1 else None,
         }}
 
     # -- bots: aim along the fairway, try many putts in the real physics, keep the best
@@ -359,6 +389,10 @@ class Putt(Game):
         a, pw = best
         noise_a, noise_p = {"easy": (0.12, 0.15), "normal": (0.05, 0.07), "hard": (0.012, 0.02)}[level]
         return a + random.gauss(0, noise_a), max(0.02, min(1.0, pw * (1 + random.gauss(0, noise_p))))
+
+    def bot_ready(self):
+        p = self.room.players.get(self.room.turn)
+        return bool(p and p.bot) and not getattr(self, "between", False)  # the pause between holes runs on the clock
 
     def bot_turn(self, p):
         i = self.seat(p)

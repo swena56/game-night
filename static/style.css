@@ -1492,4 +1492,8 @@ body.light .logo { background-image: linear-gradient(90deg, #e09a00, #e0457b, #1
 .pp-cam { position: absolute; right: 8px; top: 34px; display: flex; flex-direction: column; gap: 6px; z-index: 2; }
 .pp-cam button { width: 40px; height: 40px; padding: 0; border-radius: 12px; background: #0b1626cc; border: 1px solid #ffffff2a;
   font-size: 18px; line-height: 1; display: grid; place-items: center; touch-action: manipulation; }
-.pp-cam button[aria-pressed="true"] { background: var(--accent); color: #1b1300; border-color: transparent; }
+.pp-done { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(88%, 340px); max-height: 86%; overflow: auto;
+  background: #0b1626ee; border: 1px solid #ffffff2a; border-radius: var(--radius); padding: 12px 14px; z-index: 3; animation: bannerIn .4s ease-out; }
+.pp-done h3 { margin: 0 0 8px; text-align: center; }
+.pp-done-row { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; font-size: 14px; }
+.pp-done .st-card { margin-top: 10px; }
