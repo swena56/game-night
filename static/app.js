@@ -736,6 +736,21 @@ function flashTurn() {
   if (!g) { g = el('div', 'turn-glow'); g.id = 'turnGlow'; document.body.append(g); }
   g.classList.remove('on'); void g.offsetWidth; g.classList.add('on');  // restart the animation
 }
+// Take-back buttons for a game's `undo` view ({asker, can}, from games/undo.py): "↶ Undo my move", or
+// Allow / Refuse when the rival asked. Fills `box` (emptied first); nothing for spectators or after the game.
+function undoRow(box, undo, S, ctx, playing) {
+  box.innerHTML = '';
+  if (!undo || S.phase !== 'playing' || !playing) return;
+  if (undo.asker && undo.asker !== S.me.id) {
+    const yes = el('button', 'primary', '↶ Allow undo'); yes.onclick = () => quiet(ctx.act('undo_yes'));
+    const no = el('button', '', 'Refuse'); no.onclick = () => quiet(ctx.act('undo_no'));
+    box.append(yes, no);
+  } else {
+    const b = el('button', '', undo.asker ? 'Undo asked…' : '↶ Undo my move');
+    b.disabled = !!undo.asker || !undo.can; b.onclick = () => quiet(ctx.act('undo_ask'));
+    box.append(b);
+  }
+}
 // arrow keys move focus around a board of buttons laid out `cols` wide (Enter/Space then press the
 // focused square); squares that can't be pressed right now are skipped over
 function gridKeys(box, cols) {

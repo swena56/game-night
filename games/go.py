@@ -6,6 +6,7 @@ import time
 from .base import Game, GameError
 
 KOMI = 6.5
+HANDICAP_KOMI = 0.5  # the usual komi in a handicap game
 MC_SECONDS = 2.5  # hard bot thinking time per move (9×9 and 13×13)
 
 
@@ -156,6 +157,21 @@ def playout(b, to, nbrs, rnd, limit):
     return score
 
 
+def star_points(n, stones):
+    """The traditional handicap points: corners first, then the centre (odd counts) and the sides."""
+    if stones < 2:
+        return []
+    lo = 2 if n < 13 else 3
+    hi, mid = n - 1 - lo, n // 2
+    corners = [(lo, hi), (hi, lo), (hi, hi), (lo, lo)]
+    sides = [(mid, lo), (mid, hi), (lo, mid), (hi, mid)]
+    pts = corners[:min(stones, 4)]
+    if stones >= 6:
+        pts += sides[:2 if stones < 8 else 4]
+    if stones in (5, 7, 9):
+        pts.append((mid, mid))
+    return pts[:stones]
+
 class Go(Game):
     id = "go"
     category = "strategy"
@@ -163,7 +179,8 @@ class Go(Game):
         'Take turns placing stones on the intersections.',
         'A group with no empty points next to it is captured.',
         "Surround empty areas to make territory. You can't repeat a previous position (ko).",
-        'Two passes in a row end the game. Stones + territory count; White gets 6.5 komi.',
+        'Two passes in a row end the game. Stones + territory count; White gets komi (6.5 points unless you change it).',
+        'Handicap (an option): Black starts with stones on the star points, White moves first and komi is 0.5. Against a bot, you play Black.',
         '↶ Undo asks your opponent to take back your last move; bots always agree.',
     ]
     name = "Go"
@@ -172,14 +189,25 @@ class Go(Game):
              "Capture dead stones before you both pass — what's on the board is what counts.")
     settings_schema = {
         "size": ("Board", [(9, "9×9 (quick)"), (13, "13×13"), (19, "19×19 (full)")], 9),
+        "komi": ("Komi (White's bonus)", [(6.5, "6.5"), (7.5, "7.5"), (5.5, "5.5"), (0.5, "0.5")], 6.5),
+        "handicap": ("Handicap stones for Black", [(0, "None"), (2, "2"), (3, "3"), (4, "4"), (5, "5"), (6, "6 (13×13+)"),
+                                                   (9, "9 (13×13+)")], 0),
     }
+    komi = KOMI  # games saved before the komi setting
     snaps, undo_ask = (), None  # games saved before undo existed have no snapshots
 
     def start(self, seated, rng):
         rng.shuffle(seated)
-        self.seats = [p.id for p in seated]  # seat 0 = black
         n = self.s["size"]
+        stones = min(self.s.get("handicap", 0), 5 if n == 9 else 9)
+        humans = [p for p in seated if not p.bot]
+        if stones and len(humans) == 1:  # the handicap goes to the person playing a bot
+            seated.sort(key=lambda p: bool(p.bot))
+        self.seats = [p.id for p in seated]  # seat 0 = black
+        self.komi = HANDICAP_KOMI if stones else self.s.get("komi", KOMI)
         self.board = [[None] * n for _ in range(n)]
+        for r, c in star_points(n, stones):
+            self.board[r][c] = "b"
         self.history = {key(self.board)}
         self.captures = {"b": 0, "w": 0}
         self.passes = 0
@@ -187,7 +215,11 @@ class Go(Game):
         self.last = None
         self.snaps = []  # (mover id, state before their move), newest last
         self.undo_ask = None
-        self.room.add_log(f"⚫ {seated[0].name} plays Black and goes first; ⚪ {seated[1].name} plays White (+{KOMI}).", "big")
+        if stones:
+            self.room.add_log(f"⚫ {seated[0].name} plays Black with {stones} handicap stones; ⚪ {seated[1].name} plays White "
+                              f"(+{self.komi}) and goes first.", "big")
+            return self.room.begin_turn(seated[1].id)
+        self.room.add_log(f"⚫ {seated[0].name} plays Black and goes first; ⚪ {seated[1].name} plays White (+{self.komi}).", "big")
         self.room.begin_turn(seated[0].id)
 
     def color(self, p):
@@ -283,7 +315,7 @@ class Go(Game):
 
     def scores(self):
         s = area_score(self.board)
-        return {"b": s["b"], "w": s["w"] + KOMI}
+        return {"b": s["b"], "w": s["w"] + self.komi}
 
     def finish_game(self):
         r = self.room
@@ -303,7 +335,7 @@ class Go(Game):
 
     def view(self, p):
         return {"go": {"board": self.board, "seats": self.seats, "me": self.color(p), "last": self.last,
-                       "captures": self.captures, "score": self.scores(), "passes": self.passes, "komi": KOMI,
+                       "captures": self.captures, "score": self.scores(), "passes": self.passes, "komi": self.komi,
                        "territory": [[r, c, owner] for region, owner in regions(self.board) if owner
                                      for r, c in region],
                        "undo": {"asker": self.undo_ask,
@@ -384,7 +416,7 @@ class Go(Game):
         for share in (0.25, 0.5, 1.0):  # successive halving: drop the weaker half twice
             while time.time() < start + budget * share:
                 for k in alive:
-                    result = sign * (playout(boards[k], opp, nbrs, rnd, n * n * 2) - KOMI)
+                    result = sign * (playout(boards[k], opp, nbrs, rnd, n * n * 2) - self.komi)
                     wins[k] += result > 0
                     margin[k] += result
                     tries[k] += 1

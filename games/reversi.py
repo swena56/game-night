@@ -5,6 +5,7 @@ and one of yours; every disc in each closed line flips to your colour. If you ca
 when neither player can, the most discs wins. Dark moves first."""
 from .base import Game, GameError
 from .search import WIN, best_move
+from .undo import Undo
 
 N = 8
 DIRS = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
@@ -81,7 +82,7 @@ def evaluate(board, me):
     return pos + 8 * mob + (disc * 4 if empties < 12 else 0)
 
 
-class Reversi(Game):
+class Reversi(Undo, Game):
     id = "reversi"
     category = "strategy"
     howto = [
@@ -89,13 +90,16 @@ class Reversi(Game):
         "Every trapped disc flips to your colour. Glowing squares show where you can play.",
         "If you can't move, you pass. When neither player can move, the most discs wins.",
         "Corners can never be flipped back, so they're worth fighting for.",
+        "↶ Undo asks your rival to take back your last move. Flip hints (an option) show how many discs each move would flip.",
     ]
     name = "Reversi"
     icon = "⚪"
     blurb = "The classic disc-flipping game: trap rival discs in a line and flip them to your colour."
     min_players = 2
     max_players = 2
-    settings_schema = {}
+    settings_schema = {
+        "hints": ("Flip hints", [(False, "Off"), (True, "Show how many each move flips")], False),
+    }
 
     def start(self, seated, rng):
         self.rng = rng
@@ -112,6 +116,10 @@ class Reversi(Game):
         return self.seats.index(p.id) if p.id in self.seats else None
 
     def act(self, p, a):
+        if p.id not in self.seats:
+            raise GameError("You're watching this game.")
+        if self.undo_act(p, a.get("type")):
+            return
         if a.get("type") != "place":
             raise GameError("Unknown action.")
         self.require_turn(p)
@@ -120,7 +128,14 @@ class Reversi(Game):
             raise GameError("That square doesn't trap any discs.")
         self.place(p, c)
 
+    def undo_state(self):
+        return self.board, self.last, list(self.flipped)
+
+    def undo_restore(self, state):
+        self.board, self.last, self.flipped = state
+
     def place(self, p, c):
+        self.snapshot(p)
         me = self.seat(p)
         self.flipped = flips(self.board, me, c)
         self.board = play(self.board, me, c)
@@ -157,6 +172,9 @@ class Reversi(Game):
         return {"reversi": {
             "board": self.board, "seats": self.seats, "me": i, "last": self.last, "flipped": self.flipped,
             "legal": placements(self.board, i) if mine and i is not None else [],
+            "flipCounts": {c: len(flips(self.board, i, c)) for c in placements(self.board, i)}
+            if mine and i is not None and self.s.get("hints") else {},
+            "undo": self.undo_view(p),
             "counts": [self.board.count(0), self.board.count(1)],
         }}
 

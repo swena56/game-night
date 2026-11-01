@@ -66,7 +66,13 @@ UI.yacht = (() => {
       const head = ctx.el('tr'); head.append(ctx.el('th', '', ''));
       for (const id of seats) { const th = ctx.el('th', '', ctx.player(id)?.name ?? '?'); th.style.color = ctx.player(id)?.color ?? ''; th.dataset.id = id; head.append(th); }
       t.append(head);
+      const extraRow = (cls, label) => {
+        const tr = ctx.el('tr', 'ya-extra ' + cls); tr.append(ctx.el('td', '', label));
+        for (const id of seats) { const td = ctx.el('td'); td.dataset.id = id; tr.append(td); }
+        t.append(tr);
+      };
       for (const [cat, label] of y.cats) {
+        if (cat === 'full' && y.bonus) extraRow('ya-bonus', `Bonus (${y.need}+)`);
         const tr = ctx.el('tr'); tr.dataset.cat = cat;
         tr.append(ctx.el('td', '', label));
         for (const id of seats) {
@@ -84,6 +90,7 @@ UI.yacht = (() => {
         }
         t.append(tr);
       }
+      if (y.extraOn) extraRow('ya-yachts', 'Extra Yachts');
       const tot = ctx.el('tr', 'ya-total'); tot.append(ctx.el('td', '', 'Total'));
       for (const id of seats) { const td = ctx.el('td'); td.dataset.id = id; tot.append(td); }
       t.append(tot);
@@ -104,6 +111,13 @@ UI.yacht = (() => {
       }
     }
     for (const td of t.querySelectorAll('tr.ya-total td[data-id]')) td.textContent = String(y.totals[td.dataset.id] ?? 0);
+    // the bonus row shows progress (41/63) until it's earned, then +35
+    for (const td of t.querySelectorAll('tr.ya-bonus td[data-id]')) {
+      const id = td.dataset.id, got = y.upperBonus?.[id];
+      td.textContent = got ? `+${got}` : `${y.upper?.[id] ?? 0}/${y.need}`;
+      td.classList.toggle('got', !!got);
+    }
+    for (const td of t.querySelectorAll('tr.ya-yachts td[data-id]')) td.textContent = y.extra?.[td.dataset.id] ? `+${y.extra[td.dataset.id]}` : '';
     for (const th of t.querySelectorAll('th[data-id]')) th.classList.toggle('now', th.dataset.id === S.turn);
     $('yaStatus').textContent = y.last ? `Last: ${y.last}` : 'Twelve boxes each';
     if (y.seats.length === 1 && y.seats[0] === me && !!ctx.act) showBest(y, me);

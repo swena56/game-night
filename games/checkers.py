@@ -3,6 +3,7 @@ import random
 import time
 
 from .base import Game, GameError
+from .undo import Undo
 
 NO_PROGRESS_LIMIT = 80  # plies without a capture or promotion → draw
 
@@ -151,7 +152,7 @@ def sq(rc):
     return f"{'abcdefgh'[c]}{8 - r}"
 
 
-class Checkers(Game):
+class Checkers(Undo, Game):
     id = "checkers"
     category = "strategy"
     howto = [
@@ -160,6 +161,7 @@ class Checkers(Game):
         'Reach the far row to crown a king, which moves both ways.',
         '🦅 Flying kings: a king glides any distance along an open diagonal and can jump a piece from afar.',
         'Win by taking every piece or leaving your opponent with no move.',
+        '↶ Undo asks your rival to take back your last move; 🤝 you can also offer a draw.',
     ]
     name = "Checkers"
     icon = "⛀"
@@ -167,6 +169,8 @@ class Checkers(Game):
     settings_schema = {
         "kings": ("Kings", [("short", "Classic (one step)"), ("flying", "🦅 Flying")], "short"),
     }
+
+    draw_offer = None  # games saved before draw offers existed
 
     def flying(self):
         return self.s.get("kings") == "flying"
@@ -190,6 +194,17 @@ class Checkers(Game):
         if t == "resign":
             opp = self.room.players.get(self.seats[1 - self.seats.index(p.id)])
             return self.room.finish(opp, f"🏳️ {p.name} resigned — {opp.name} wins!")
+        if self.undo_act(p, t):
+            return
+        if t == "draw_offer":
+            if self.draw_offer:
+                raise GameError("A draw offer is already on the table.")
+            self.draw_offer = p.id
+            return self.room.add_log(f"🤝 {p.name} offers a draw.", "power")
+        if t in ("draw_accept", "draw_decline"):
+            if not self.draw_offer or self.draw_offer == p.id:
+                raise GameError("There's no draw offer to answer.")
+            return self.answer_draw(p, t == "draw_accept")
         if t != "move":
             raise GameError("Unknown action.")
         self.require_turn(p)
@@ -198,8 +213,23 @@ class Checkers(Game):
             raise GameError("That move isn't allowed (remember: captures are compulsory).")
         self.play(p, path)
 
+    def answer_draw(self, p, accept):
+        self.draw_offer = None
+        if accept:
+            return self.room.finish(None, f"🤝 {p.name} accepted the draw.")
+        self.room.add_log(f"{p.name} declined the draw.")
+
+    def undo_state(self):
+        return self.board, self.quiet, self.last
+
+    def undo_restore(self, state):
+        self.board, self.quiet, self.last = state
+
     def play(self, p, path):
         r = self.room
+        if self.draw_offer and self.draw_offer != p.id:
+            self.draw_offer = None  # moving on counts as declining
+        self.snapshot(p)
         self.board, taken, promoted = apply(self.board, path)
         self.last = [list(x) for x in path]
         self.quiet = 0 if taken or promoted else self.quiet + 1
@@ -227,10 +257,16 @@ class Checkers(Game):
         moves = moves_for(self.board, s, self.flying()) if s and self.room.turn == p.id else []
         return {"checkers": {"board": self.board, "seats": self.seats, "me": s,
                              "moves": [[list(x) for x in m] for m in moves], "last": self.last,
-                             "forced": bool(moves) and apply(self.board, moves[0])[1] > 0}}
+                             "forced": bool(moves) and apply(self.board, moves[0])[1] > 0,
+                             "drawOffer": self.draw_offer, "undo": self.undo_view(p)}}
 
     def bot_turn(self, p):
         side = self.side(p)
+        if self.draw_offer and self.draw_offer != p.id:
+            accept = evaluate(self.board, side) < -90  # about a man behind
+            self.answer_draw(p, accept)
+            if accept:
+                return
         flying = self.flying()
         moves = moves_for(self.board, side, flying)
         if p.bot == "easy" and random.random() < 0.4:

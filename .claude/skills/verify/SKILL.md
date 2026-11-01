@@ -22,7 +22,7 @@ description: Drive the real Game Night app in headless Chromium to verify a chan
 - Rare deals or states: run the real server through a small wrapper that monkeypatches the game
   (e.g. stacks the shoe in `deal`) and then `runpy.run_path("server.py", run_name="__main__")`.
 - Run one Chromium at a time: four at once (WebGL games) crashed every browser.
-- Check sideways overflow: `document.documentElement.scrollWidth` should be 485.
+- Check sideways overflow: `document.documentElement.scrollWidth` should be 485. `tests/layout.js` does this for every game.
 
 ## Gotchas
 - Never `pkill -f server.py` / `pgrep -f <name>`: the pattern matches your own shell and kills it.

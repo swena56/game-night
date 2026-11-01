@@ -15,6 +15,7 @@ RANKS = "23456789TJQKA"
 SUITS = "CDSH"   # sort order in hand: clubs, diamonds, spades, hearts
 VALUE = {r: i + 2 for i, r in enumerate(RANKS)}
 QUEEN = "QS"
+JACK = "JD"        # with the jack option, taking the J♦ is −10
 REMOVE = ["2D", "3D", "3C", "4D"]  # taken out so the deck divides evenly
 HAND_PAUSE = 5.0   # pause on the hand's points
 
@@ -39,6 +40,7 @@ class Hearts(Game):
         "The 2♣ leads first. Follow suit if you can; the highest card of the suit led takes the trick.",
         "Each heart you take is 1 point and the Q♠ is 13. Take them all to shoot the moon: everyone else gets 26.",
         "No points on the first trick, and no leading hearts until one has been played.",
+        "Optional 💎 J♦: whoever takes the jack of diamonds scores −10 (it counts even when someone shoots the moon).",
         "When someone reaches the target, the lowest score wins.",
     ]
     name = "Hearts"
@@ -48,6 +50,7 @@ class Hearts(Game):
     max_players = 6
     settings_schema = {
         "target": ("Game to", [(100, "100 points"), (50, "50 points (quick)")], 100),
+        "jack": ("Jack of diamonds", [(False, "No bonus"), (True, "💎 J♦ is −10")], False),
     }
 
     # -- setup
@@ -154,9 +157,9 @@ class Hearts(Game):
         win = max((t for t in self.trick if t[1][1] == suit), key=lambda t: VALUE[t[1][0]])[0]
         cards = [c for _, c in self.trick]
         self.taken[win].extend(cards)
-        pts = sum(points(c) for c in cards)
+        pts = sum(points(c) for c in cards) - (10 if self.jack() and JACK in cards else 0)
         w = self.pl(win)
-        r.add_log(f"🃏 {' '.join(pretty(c) for c in cards)} → {w.name if w else '?'}" + (f" (+{pts})" if pts else ""),
+        r.add_log(f"🃏 {' '.join(pretty(c) for c in cards)} → {w.name if w else '?'}" + (f" ({pts:+})" if pts else ""),
                   "power" if pts else "question")
         self.last_trick = {"cards": [[s, c] for s, c in self.trick], "winner": win}
         self.trick = []
@@ -164,6 +167,13 @@ class Hearts(Game):
         if not self.hands[win]:
             return self.end_hand()
         r.begin_turn(self.seats[win])
+
+    def jack(self):
+        return bool(self.s.get("jack"))
+
+    def took(self, i):
+        """Points taken this hand so far: hearts and the queen, less 10 for the J♦ when that option is on."""
+        return sum(points(c) for c in self.taken[i]) - (10 if self.jack() and JACK in self.taken[i] else 0)
 
     def end_hand(self):
         r = self.room
@@ -173,11 +183,17 @@ class Hearts(Game):
             got = [0 if i == moon else 26 for i in range(len(got))]
             m = self.pl(moon)
             r.add_log(f"🌙 {m.name if m else '?'} shot the moon! Everyone else takes 26.", "big")
+        if self.jack():
+            for i, t in enumerate(self.taken):
+                if JACK in t:
+                    got[i] -= 10
+                    j = self.pl(i)
+                    r.add_log(f"💎 {j.name if j else '?'} took the J♦: −10.", "power")
         for i, g in enumerate(got):
             self.scores[i] += g
         self.hand_points = got
         names = [self.pl(i).name if self.pl(i) else "?" for i in range(len(self.seats))]
-        r.add_log("🧮 " + " · ".join(f"{names[i]} +{got[i]} ({self.scores[i]})" for i in range(len(got))), "big")
+        r.add_log("🧮 " + " · ".join(f"{names[i]} {got[i]:+} ({self.scores[i]})" for i in range(len(got))), "big")
         if max(self.scores) >= self.s["target"]:
             low = min(self.scores)
             best = [i for i, v in enumerate(self.scores) if v == low]
@@ -262,7 +278,7 @@ class Hearts(Game):
             "seats": self.seats, "me": i, "stage": self.stage, "hand": self.hands[i] if mine else [],
             "counts": [len(h) for h in self.hands], "trick": [[s, c] for s, c in self.trick],
             "last": self.last_trick, "scores": self.scores, "handNo": self.hand_no,
-            "taken": [sum(points(c) for c in t) for t in self.taken], "broken": self.broken,
+            "taken": [self.took(k) for k in range(n)], "broken": self.broken, "jack": self.jack(),
             "pass": self.passing(), "passed": sorted(self.passes), "myPass": self.passes.get(i) if mine else None,
             "received": getattr(self, "received", {}).get(i) if mine and self.stage == "play" and self.first else None,
             "legal": self.legal(i) if mine and self.stage == "play" and self.room.turn == p.id else [],
@@ -310,6 +326,8 @@ class Hearts(Game):
             d += 4 * max(0, 4 - sum(1 for x in hand if x[1] == c[1]))
             if c[1] == "S" and VALUE[c[0]] < 12:
                 d -= 15  # low spades protect against the queen
+            if c == JACK and self.jack():
+                d -= 40  # keep the −10 jack
             return d
         return sorted(hand, key=danger, reverse=True)[:3]
 
@@ -337,6 +355,12 @@ class Hearts(Game):
         pts = sum(points(c) for _, c in self.trick)
         following = legal[0][1] == suit
         last = len(self.trick) == len(self.seats) - 1
+        if following and self.jack() and level != "easy":
+            # the J♦ is worth taking when it outweighs the hearts in the trick
+            jack_here = JACK in [c for _, c in self.trick] or JACK in legal
+            winners = [c for c in legal if VALUE[c[0]] > top and c != QUEEN]
+            if jack_here and winners and pts < 10 and (last or suit == "D"):
+                return JACK if JACK in winners else max(winners, key=lambda c: VALUE[c[0]])
         if following:
             under = [c for c in legal if VALUE[c[0]] < top]
             if under:  # duck with the highest card that still loses
@@ -347,7 +371,9 @@ class Hearts(Game):
             # must win: win with the lowest, except never volunteer the queen
             safe = [c for c in legal if c != QUEEN] or legal
             return min(safe, key=lambda c: VALUE[c[0]]) if not last else max(safe, key=lambda c: VALUE[c[0]])
-        # void in the suit led: dump the worst card
+        # void in the suit led: dump the worst card (never the −10 jack)
+        if self.jack() and level != "easy" and len(legal) > 1 and JACK in legal:
+            legal = [c for c in legal if c != JACK]
         if QUEEN in legal:
             return QUEEN
         high_spades = [c for c in legal if c[1] == "S" and c[0] in "KA"]

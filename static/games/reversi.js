@@ -5,7 +5,7 @@ UI.reversi = (() => {
 
   function mount(main, side) {
     seen = '';
-    main.innerHTML = '<div class="rv"><div class="rv-board" id="rvBoard"></div><p id="rvHint" class="hint"></p></div>';
+    main.innerHTML = '<div class="rv"><div class="rv-board" id="rvBoard"></div><p id="rvHint" class="hint"></p><div id="rvUndo" class="row center"></div></div>';
     side.innerHTML = '<div class="panel"><div id="rvSeats"></div></div>';
     board = $('rvBoard');
     for (let c = 0; c < 64; c++) {
@@ -27,7 +27,9 @@ UI.reversi = (() => {
       b.classList.toggle('can', legal.has(i) && ctx.myTurn);
       b.classList.toggle('last', i === r.last);
       b.disabled = !(legal.has(i) && ctx.myTurn);
-      let disc = b.firstElementChild;
+      const n = ctx.myTurn ? r.flipCounts?.[i] : null;  // flip hint: how many discs this square flips
+      if (n) b.dataset.flips = n; else delete b.dataset.flips;
+      let disc = b.querySelector('.rv-disc');
       if (v == null) { disc?.remove(); return; }
       if (!disc) { disc = ctx.el('span', 'rv-disc'); b.append(disc); }
       disc.className = 'rv-disc ' + (v === 0 ? 'dark' : 'light') + (fresh && flipped.has(i) ? ' flip' : '') + (fresh && i === r.last ? ' drop' : '');
@@ -39,6 +41,7 @@ UI.reversi = (() => {
       info.append(row);
     });
     $('rvHint').textContent = S.phase === 'playing' && ctx.myTurn ? 'Tap a glowing square.' : '';
+    undoRow($('rvUndo'), r.undo, S, ctx, r.me != null);
   }
 
   return { mount, render };

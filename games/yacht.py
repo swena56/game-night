@@ -4,7 +4,9 @@ Each turn: roll five dice up to three times, holding any between rolls, then sco
 one of twelve boxes you haven't used (a zero if they don't fit). Classic scoring, no bonus:
 Ones–Sixes (sum of that number), Full House (sum of all dice), Four of a Kind (sum of the four),
 Little Straight 1-2-3-4-5 (30), Big Straight 2-3-4-5-6 (30), Choice (sum), Yacht (five alike, 50).
-After twelve rounds the highest total wins. One player is a score attack."""
+After twelve rounds the highest total wins. One player is a score attack.
+Two optional bonuses: +35 when Ones–Sixes total 63 or more, and +50 for every further Yacht rolled once
+the Yacht box already holds 50."""
 import random
 import time
 from collections import Counter
@@ -22,6 +24,7 @@ PAR = {"ones": 2, "twos": 5, "threes": 8, "fours": 11, "fives": 14, "sixes": 17,
 
 
 SOLO_TARGET = 150  # a strong solo score (the hard bot averages about 140)
+UPPER_NEED, UPPER_BONUS, EXTRA_YACHT = 63, 35, 50  # the optional bonuses
 
 
 def score(cat, dice):
@@ -52,14 +55,18 @@ class Yacht(Game):
         "Roll five dice up to three times. Tap dice to hold them between rolls.",
         "Then score the roll in one empty box. If it doesn't fit, you must still pick one (it scores 0).",
         "Ones–Sixes: that number's total. Full House: all dice. Four of a Kind: the four. Straights 1–5 or 2–6: 30. Choice: all dice. Yacht (five alike): 50.",
-        "Twelve rounds; the highest total wins. Alone, reach 150 to win.",
+        "Twelve rounds; the highest total wins. Alone, reach 150 to win (175 with the upper bonus on).",
+        "Optional bonuses: +35 when Ones–Sixes add up to 63 or more, and +50 for each extra Yacht once your Yacht box holds 50.",
     ]
     name = "Yacht"
     icon = "🎲"
     blurb = "The classic dice game: three rolls, hold what you like, and fill twelve boxes for the best total."
     min_players = 1
     max_players = 6
-    settings_schema = {}
+    settings_schema = {
+        "bonus": ("Upper bonus", [(False, "Off (classic)"), (True, "+35 for 63 in Ones–Sixes")], False),
+        "extra": ("Extra Yachts", [(False, "Off (classic)"), (True, "+50 each")], False),
+    }
 
     # -- setup
 
@@ -68,6 +75,7 @@ class Yacht(Game):
         self.seats = [p.id for p in seated]
         for p in seated:
             p.g.card = {c: None for c in CATS}
+            p.g.extra = 0  # extra Yachts scored
         self.dice, self.held, self.rolls_left, self.roll_id = [1, 2, 3, 4, 5], [False] * 5, 3, 0
         self.last = ""
         first = rng.choice(seated)
@@ -78,8 +86,18 @@ class Yacht(Game):
         self.held, self.rolls_left = [False] * 5, 3
         self.room.begin_turn(pid)
 
+    def upper(self, p):
+        return sum(p.g.card[c] or 0 for c in CATS[:6])
+
+    def upper_bonus(self, p):
+        return UPPER_BONUS if self.s.get("bonus") and self.upper(p) >= UPPER_NEED else 0
+
     def total(self, p):
-        return sum(v for v in p.g.card.values() if v is not None)
+        return (sum(v for v in p.g.card.values() if v is not None) + self.upper_bonus(p)
+                + EXTRA_YACHT * getattr(p.g, "extra", 0))
+
+    def target(self):
+        return SOLO_TARGET + (UPPER_BONUS if self.s.get("bonus") else 0)
 
     # -- actions
 
@@ -116,7 +134,14 @@ class Yacht(Game):
         if cat not in CATS or p.g.card[cat] is not None:
             raise GameError("Pick an empty box.")
         pts = score(cat, self.dice)
+        extra = self.s.get("extra") and len(set(self.dice)) == 1 and p.g.card["yacht"] == 50
+        had_bonus = self.upper_bonus(p)
         p.g.card[cat] = pts
+        if extra:
+            p.g.extra = getattr(p.g, "extra", 0) + 1
+            self.room.add_log(f"⛵⛵ Another Yacht for {p.name}: +{EXTRA_YACHT}!", "big")
+        if self.upper_bonus(p) and not had_bonus:
+            self.room.add_log(f"🎁 {p.name} makes {UPPER_NEED} in Ones–Sixes: +{UPPER_BONUS} bonus!", "big")
         self.last = f"{p.name}: {LABEL[cat]} {pts}"
         big = cat == "yacht" and pts
         self.room.add_log(f"{'⛵ YACHT! ' if big else '📝 '}{p.name} scores {pts} in {LABEL[cat]} ({' '.join(map(str, self.dice))}).",
@@ -132,9 +157,9 @@ class Yacht(Game):
         live = [r.players[i] for i in self.seats if i in r.players]
         if len(live) == 1:
             p = live[0]
-            won = self.total(p) >= SOLO_TARGET
+            won = self.total(p) >= self.target()
             return r.finish(p if won else None, f"🎲 {p.name} finishes with {self.total(p)} points" +
-                            (" — a fine voyage! 🏆" if won else f". Reach {SOLO_TARGET} to win solo!"))
+                            (" — a fine voyage! 🏆" if won else f". Reach {self.target()} to win solo!"))
         top = max(self.total(p) for p in live)
         best = [p for p in live if self.total(p) == top]
         if len(best) == 1:
@@ -175,6 +200,11 @@ class Yacht(Game):
             "rolled": self.rolls_left < 3,
             "preview": {c: score(c, self.dice) for c in CATS if cur.g.card[c] is None} if cur and self.rolls_left < 3 else {},
             "last": self.last,
+            "bonus": bool(self.s.get("bonus")), "extraOn": bool(self.s.get("extra")), "need": UPPER_NEED,
+            "upper": {i: self.upper(r.players[i]) for i in self.seats if i in r.players},
+            "upperBonus": {i: self.upper_bonus(r.players[i]) for i in self.seats if i in r.players},
+            "extra": {i: EXTRA_YACHT * getattr(r.players[i].g, "extra", 0) for i in self.seats if i in r.players},
+            "target": self.target(),
         }}
 
     # -- bots
@@ -184,11 +214,20 @@ class Yacht(Game):
         open_ = [c for c in CATS if p.g.card[c] is None]
         if level == "easy":
             return max(open_, key=lambda c: (score(c, dice), random.random()))
-        return max(open_, key=lambda c: score(c, dice) - PAR[c] + (8 if c == "yacht" and score(c, dice) else 0))
+        return max(open_, key=lambda c: score(c, dice) - PAR[c] + (8 if c == "yacht" and score(c, dice) else 0)
+                   + self.bonus_pull(p, c, dice))
+
+    def bonus_pull(self, p, cat, dice):
+        """With the upper bonus on, three or more of a face up top is worth extra (it keeps 63 in reach)."""
+        if not self.s.get("bonus") or cat not in CATS[:6] or self.upper(p) >= UPPER_NEED:
+            return 0
+        face = CATS.index(cat) + 1
+        return (score(cat, dice) - 3 * face) * 0.8 + (4 if score(cat, dice) >= 3 * face else 0)
 
     def box_value(self, p, dice):
         """How good a final roll is for this player: the best (score - par) over open boxes."""
-        return max(score(c, dice) - PAR[c] for c in CATS if p.g.card[c] is None)
+        extra = EXTRA_YACHT if self.s.get("extra") and len(set(dice)) == 1 and p.g.card["yacht"] == 50 else 0
+        return extra + max(score(c, dice) - PAR[c] + self.bonus_pull(p, c, dice) for c in CATS if p.g.card[c] is None)
 
     def choose_hold(self, p, level):
         dice = self.dice

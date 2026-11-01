@@ -9,6 +9,7 @@ seeds you must give them some; if you can't, you keep the seeds on your side and
 25 seeds wins; 24 each is a draw."""
 from .base import Game, GameError
 from .search import WIN, best_move
+from .undo import Undo
 
 QUIET_LIMIT = 80   # plies with no capture: the seeds left are endlessly circling, so each side keeps its own
 
@@ -80,7 +81,7 @@ def evaluate(state, me):
     return score
 
 
-class Oware(Game):
+class Oware(Undo, Game):
     id = "oware"
     category = "strategy"
     howto = [
@@ -88,6 +89,7 @@ class Oware(Game):
         "If your last seed makes a rival pit 2 or 3, you capture it, plus the rival pits just before it that hold 2 or 3.",
         "You can't capture every rival seed at once (that captures nothing). If your rival has no seeds, you must give them some.",
         "25 seeds wins. If nobody can capture any more, each side keeps the seeds in its row.",
+        "↶ Undo asks your rival to take back your last move.",
     ]
     name = "Oware"
     icon = "🫘"
@@ -109,6 +111,10 @@ class Oware(Game):
         return self.seats.index(p.id) if p.id in self.seats else None
 
     def act(self, p, a):
+        if p.id not in self.seats:
+            raise GameError("You're watching this game.")
+        if self.undo_act(p, a.get("type")):
+            return
         if a.get("type") != "sow":
             raise GameError("Unknown action.")
         self.require_turn(p)
@@ -117,7 +123,14 @@ class Oware(Game):
             raise GameError("Pick one of your pits with seeds (and feed your rival if they're empty).")
         self.sow(p, pit)
 
+    def undo_state(self):
+        return self.state, self.last
+
+    def undo_restore(self, state):
+        self.state, self.last = state
+
     def sow(self, p, pit):
+        self.snapshot(p)
         me = self.seat(p)
         before = self.state[1][me]
         seeds = self.state[0][pit]
@@ -160,6 +173,7 @@ class Oware(Game):
             "pits": self.state[0], "stores": self.state[1], "seats": self.seats,
             "me": i, "last": self.last,
             "legal": legal(self.state, i) if mine and i is not None else [],
+            "undo": self.undo_view(p),
         }}
 
     def bot_turn(self, p):

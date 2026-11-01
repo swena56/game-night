@@ -56,7 +56,7 @@ UI.hearts = (() => {
     const offName = { 1: 'left', [n - 1]: 'right', 2: 'across' }[h.pass];
     let note = '';
     if (h.stage === 'pass') note = h.myPass ? `Passed. Waiting for ${n - h.passed.length} more…` : `Pick 3 cards to pass ${offName} (${chosen.length}/3).`;
-    else if (h.stage === 'score' && h.handPoints) note = 'This hand: ' + h.handPoints.map((v, i) => `${i === me ? 'You' : name(i)} +${v}`).join(' · ');
+    else if (h.stage === 'score' && h.handPoints) note = 'This hand: ' + h.handPoints.map((v, i) => `${i === me ? 'You' : name(i)} ${v < 0 ? '−' + -v : '+' + v}`).join(' · ');
     else if (h.received) note = 'You received: ' + h.received.map((c) => (c[0] === 'T' ? '10' : c[0]) + SUIT[c[1]]).join(' ');
     else if (h.stage === 'play' && S.turn === S.me.id) note = h.broken ? 'Your turn.' : 'Your turn. Hearts not broken yet.';
     $('hhNote').textContent = note;

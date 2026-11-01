@@ -11,7 +11,7 @@ UI.oware = (() => {
     main.innerHTML = `<div class="ow"><div class="ow-store" id="owTheirs"></div>
       <div class="ow-board"><div class="ow-row" id="owTop"></div><div class="ow-row" id="owBottom"></div></div>
       <div class="ow-store" id="owMine"></div></div>
-      <p id="owHint" class="hint"></p>`;
+      <p id="owHint" class="hint"></p><div id="owUndo" class="row center"></div>`;
     side.innerHTML = '<div class="panel"><div id="owSeats"></div><p class="hint left">Sowing goes counter-clockwise: along your row to the right, then back along the top.</p></div>';
   }
 
@@ -83,6 +83,7 @@ UI.oware = (() => {
       info.append(row);
     });
     $('owHint').textContent = S.phase !== 'playing' ? '' : ctx.myTurn ? 'Tap one of your glowing pits to sow it.' : '';
+    undoRow($('owUndo'), S.oware.undo, S, ctx, S.oware.me != null);
   }
 
   return { mount, render };

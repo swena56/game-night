@@ -5,6 +5,7 @@ is already won or full, they may play anywhere. Win a small board with three in 
 game with three small boards in a row. With no line left to make, the game is a draw."""
 from .base import Game, GameError
 from .search import WIN, best_move
+from .undo import Undo
 
 LINES = [(0, 1, 2), (3, 4, 5), (6, 7, 8), (0, 3, 6), (1, 4, 7), (2, 5, 8), (0, 4, 8), (2, 4, 6)]
 DRAWN = 2  # a small board with no winner and no space
@@ -73,7 +74,7 @@ def evaluate(state, me):
     return score
 
 
-class Ultimate(Game):
+class Ultimate(Undo, Game):
     id = "ultimate"
     category = "classic"
     howto = [
@@ -81,6 +82,7 @@ class Ultimate(Game):
         "Where you play inside a small board sends your rival to that same board on the big grid.",
         "If that board is already won or full, they can play anywhere.",
         "Win three small boards in a row to win the game.",
+        "↶ Undo asks your rival to take back your last move.",
     ]
     name = "Ultimate Tic-Tac-Toe"
     icon = "#️⃣"
@@ -102,6 +104,10 @@ class Ultimate(Game):
         return self.seats.index(p.id) if p.id in self.seats else None
 
     def act(self, p, a):
+        if p.id not in self.seats:
+            raise GameError("You're watching this game.")
+        if self.undo_act(p, a.get("type")):
+            return
         if a.get("type") != "mark":
             raise GameError("Unknown action.")
         self.require_turn(p)
@@ -110,7 +116,14 @@ class Ultimate(Game):
             raise GameError("Play in the highlighted board.")
         self.mark(p, c)
 
+    def undo_state(self):
+        return self.state, self.last
+
+    def undo_restore(self, state):
+        self.state, self.last = state
+
     def mark(self, p, c):
+        self.snapshot(p)
         me = self.seat(p)
         before = self.state[1]
         self.state = play(self.state, me, c)
@@ -140,6 +153,7 @@ class Ultimate(Game):
             "cells": self.state[0], "boards": self.state[1], "seats": self.seats, "me": i, "last": self.last,
             "open": sorted({m // 9 for m in legal(self.state, nxt)}) if nxt is not None else [],
             "legal": legal(self.state, i) if mine and i is not None else [],
+            "undo": self.undo_view(p),
         }}
 
     def bot_turn(self, p):

@@ -8,6 +8,7 @@ UI.checkers = (() => {
     side.innerHTML = `<div class="panel">
       <div id="ckStatus" class="seat-row"></div>
       <p class="hint left">Tap a piece, then where it should land. Captures are compulsory and multi-jumps happen in one go.</p>
+      <div id="ckDraw" class="row"></div><div id="ckUndo" class="row"></div>
       <div class="row"><button id="ckResign" class="danger">🏳️ Resign</button></div></div>`;
     boardEl = main.querySelector('.chessboard');
     for (let i = 0; i < 64; i++) {
@@ -57,6 +58,19 @@ UI.checkers = (() => {
     const forced = ctx.myTurn && ck.forced;
     $('ckStatus').textContent = mine + (forced ? ' · ⚠️ you must capture' : '');
     $('ckResign').disabled = S.phase !== 'playing' || !ck.me;
+    const dr = $('ckDraw'); dr.innerHTML = '';
+    if (S.phase === 'playing' && ck.me) {
+      if (ck.drawOffer && ck.drawOffer !== S.me.id) {
+        const yes = ctx.el('button', 'primary', '🤝 Accept draw'); yes.onclick = () => ctx.quiet(ctx.act('draw_accept'));
+        const no = ctx.el('button', '', 'Decline'); no.onclick = () => ctx.quiet(ctx.act('draw_decline'));
+        dr.append(yes, no);
+      } else {
+        const b = ctx.el('button', '', ck.drawOffer ? 'Draw offered…' : '🤝 Offer draw');
+        b.disabled = !!ck.drawOffer; b.onclick = () => ctx.quiet(ctx.act('draw_offer'));
+        dr.append(b);
+      }
+    }
+    undoRow($('ckUndo'), ck.undo, S, ctx, !!ck.me);
   }
 
   function onSquare(i) {

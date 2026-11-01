@@ -5,7 +5,7 @@ UI.ultimate = (() => {
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
-    main.innerHTML = '<div class="ut"><div class="ut-big" id="utBig"></div><p id="utHint" class="hint"></p></div>';
+    main.innerHTML = '<div class="ut"><div class="ut-big" id="utBig"></div><p id="utHint" class="hint"></p><div id="utUndo" class="row center"></div></div>';
     side.innerHTML = '<div class="panel"><div id="utSeats"></div><p class="hint left">Where you play in a small board sends your rival to that board on the big grid.</p></div>';
     big = $('utBig');
     for (let b = 0; b < 9; b++) {
@@ -47,6 +47,7 @@ UI.ultimate = (() => {
       info.append(row);
     });
     $('utHint').textContent = S.phase !== 'playing' || !ctx.myTurn ? '' : u.open.length > 1 ? 'Play in any glowing board.' : `Play in board ${u.open[0] + 1}.`;
+    undoRow($('utUndo'), u.undo, S, ctx, u.me != null);
   }
 
   return { mount, render };

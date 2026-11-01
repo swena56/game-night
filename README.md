@@ -62,11 +62,11 @@ address the server prints. **Play solo** on the home screen starts any game agai
 | Game | Players | What it is | Twist |
 |---|---|---|---|
 | ♟️ **Chess** | 2 | Full rules: castling, en passant, promotion, check/mate, stalemate, 50-move rule, threefold repetition, insufficient material. Draw offers and resignation. Optional ⏱️ clock: 3+2, 5+0 or 10+5. | Move generation is checked against standard perft counts. Black sees the board from their side. 🧊 **3D board** (three.js) by default: tap a piece, then its square; drag sideways to turn the board. The flat board is one tap away and is used automatically without WebGL. |
-| ⛀ **Checkers** | 2 | American rules: compulsory captures, multi-jumps in one move, kings, and a 40-move no-progress draw. | Legal pieces and landing squares are highlighted. Optional 🦅 flying kings glide any distance and jump from afar. |
+| ⛀ **Checkers** | 2 | American rules: compulsory captures, multi-jumps in one move, kings, and a 40-move no-progress draw. | Legal pieces and landing squares are highlighted. Optional 🦅 flying kings glide any distance and jump from afar. 🤝 Draw offers and ↶ undo requests. |
 | 🔺 **Backgammon** | 2 | The traditional race game, full rules: opening roll, doubles move four times, hits and the bar, bearing off (higher dice only for the farthest checker), and the must-use-both-dice / use-the-larger-die rules. | The board is drawn from your side, so your home is bottom right in either colour. Tap a checker, then a glowing point; undo until you end your turn. Gammons (2) and backgammons (3); one game or a match to 3 or 5. Optional 🎲 doubling cube. |
-| ⚫ **Go** | 2 | 9×9, 13×13 or 19×19. Tromp–Taylor area scoring, positional superko, no suicide, 6.5 komi. | A live "score if it ended now" readout. |
-| 🫘 **Oware** | 2 | The traditional mancala game (abapa rules): sow seeds counter-clockwise, capture rival pits you leave at 2 or 3, chaining backwards. 25 seeds wins. | The grand-slam rule, the must-feed rule, and an endless-circling stop. Captured pits flash and the last pit sown is ringed. |
-| ⚪ **Reversi** | 2 | The 19th-century public-domain disc-flipping game on 8×8: trap a line of rival discs to flip them. Passes when you can't move. | Legal squares glow, and flipped discs spin over. |
+| ⚫ **Go** | 2 | 9×9, 13×13 or 19×19. Tromp–Taylor area scoring, positional superko, no suicide, 6.5 komi. | A live "score if it ended now" readout. Komi of 6.5, 7.5, 5.5 or 0.5, and 2–9 handicap stones on the star points (you take Black against a bot). |
+| 🫘 **Oware** | 2 | The traditional mancala game (abapa rules): sow seeds counter-clockwise, capture rival pits you leave at 2 or 3, chaining backwards. 25 seeds wins. | The grand-slam rule, the must-feed rule, and an endless-circling stop. Captured pits flash and the last pit sown is ringed. ↶ Undo requests. |
+| ⚪ **Reversi** | 2 | The 19th-century public-domain disc-flipping game on 8×8: trap a line of rival discs to flip them. Passes when you can't move. | Legal squares glow, and flipped discs spin over. Optional flip hints show how many discs each square would flip. ↶ Undo requests. |
 
 ### 🃏 Cards (6)
 
@@ -75,7 +75,7 @@ address the server prints. **Play solo** on the home screen starts any game agai
 | 🃏 **Last Card** | 2–6 | Shedding game from the public-domain Crazy Eights / Mau-Mau family, with a standard 52-card deck. Optional action cards: 7 draw-two (stackable), 8 skip, Q reverse, J wild. | Call **“Last card!”** in time, or any opponent can 🚨 catch you for +2. |
 | ♠️ **Texas Hold'em** | 2–6 | No-limit poker, the traditional game: blinds, two private cards, five shared cards, four betting rounds, all-ins with proper side pots. | Blinds rise every 6, 10 or 15 hands so every game ends. Uncalled chips come back, odd chips go to the first winner after the button, and showdown hands are named. Starting stacks of 1,000, 2,000 or 5,000. 💸 **Buy back in** (off, once, or up to 3 times) when you bust; if your bust would end the game, the table waits 12 s for you. |
 | 📍 **Cribbage** | 2–3 | The traditional pegging card game: discard to the crib, cut the starter, then the play (15s, pairs, runs, 31, go) and the show (fifteens, pairs, runs, flushes, nobs). | Scored exactly by the book, including his heels, the crib's five-card flush rule, and pegging out mid-hand. A peg track shows the race; the show lists every hand's points. Game to 121 or 61. |
-| ♥️ **Hearts** | 3–6 | The traditional trick-dodging game: pass three, follow suit, avoid hearts (1) and the Q♠ (13), or shoot the moon. Game to 100 or 50, lowest wins. | No points on the first trick, hearts must be broken before they're led. With 3, 5 or 6 players low cards are removed so the deal is even. |
+| ♥️ **Hearts** | 3–6 | The traditional trick-dodging game: pass three, follow suit, avoid hearts (1) and the Q♠ (13), or shoot the moon. Game to 100 or 50, lowest wins. | No points on the first trick, hearts must be broken before they're led. With 3, 5 or 6 players low cards are removed so the deal is even. Optional 💎 J♦ worth −10. |
 | ⚡ **Speed** | 2 | The traditional two-player race card game (also called Spit), in real time: no turns, both players slap cards one rank up or down onto two centre piles. | Kings and aces wrap round. When nobody can play, fresh cards flip from the side piles. First to empty hand and stock wins; one round or best of 3. |
 | 🀄 **Contract Rummy** | 2–6 | The traditional rummy game where each hand has a contract (two sets of 3; a set and a run of 4; … three runs of 4), with two decks and four wild jokers. The answer to #39. | Lay down the whole contract at once, then add to anyone's melds. Cards left in hand count against you; lowest total after 7 (or 4) hands wins. |
 
@@ -87,7 +87,7 @@ address the server prints. **Play solo** on the home screen starts any game agai
 | 🔴 **Drop Four** | 2–4 | Gravity four-in-a-row. 3–4 players get a 9×7 board. | Optional 💣 **bomb disc**: it clears its 3×3 neighbourhood and the stack falls, which can complete *someone else's* line. |
 | 🔳 **Dots & Boxes** | 2–6 | The pencil-and-paper classic on a 3×3 to 6×6 grid. Close a box to claim it and move again. On touch screens a line takes two taps (pick, then confirm). | Optional 💎 **gem boxes** worth 3 points. |
 | ❌ **Tic-Tac-Toe** | 2 | The classic. | 👻 **Vanishing**: you keep only your 3 newest marks, and the oldest fades out. |
-| #️⃣ **Ultimate Tic-Tac-Toe** | 2 | The folk game: nine small boards in one. Where you play sends your rival to that board. Win three small boards in a row. | The boards you may play in glow; won boards show a big mark. |
+| #️⃣ **Ultimate Tic-Tac-Toe** | 2 | The folk game: nine small boards in one. Where you play sends your rival to that board. Win three small boards in a row. | The boards you may play in glow; won boards show a big mark; the last move is outlined. ↶ Undo requests. |
 | ⚫ **Nine Men's Morris** | 2 | The traditional mill game: place 9 men, then slide them; a line of three (a mill) takes a rival man. Fewer than 3 men or no move loses. | Optional flying with 3 men. Tap a man, then its destination; after a mill, rival men you can take pulse red. |
 
 ### 🎲 Dice & casino (7)
@@ -95,7 +95,7 @@ address the server prints. **Play solo** on the home screen starts any game agai
 | Game | Players | What it is | Twist |
 |---|---|---|---|
 | 🚀 **Moon Shot** | 2–6 | Push-your-luck dice race to the moon. Roll to build fuel, then bank it to fly. Any 1 loses this turn's fuel; double 1s crash you to the start. | A random track of ⭐ boosts (+5), ☄️ meteors (−5) and 🌀 wormholes (swap with the leader), so *where* you stop matters. Doubles earn 🛡️ shields. |
-| 🎲 **Yacht** | 1–6 | The traditional dice game: five dice, up to three rolls (tap to hold), then fill one of twelve boxes. Classic scoring: Ones–Sixes, Full House, Four of a Kind, Little and Big Straight (30), Choice, Yacht (50). | Your open boxes show what the roll would score before you commit. Solo is a score attack: reach 150 to win. |
+| 🎲 **Yacht** | 1–6 | The traditional dice game: five dice, up to three rolls (tap to hold), then fill one of twelve boxes. Classic scoring: Ones–Sixes, Full House, Four of a Kind, Little and Big Straight (30), Choice, Yacht (50). | Your open boxes show what the roll would score before you commit. Solo is a score attack: reach 150 to win. Optional bonuses: +35 for 63 in Ones–Sixes, +50 per extra Yacht. |
 | 🎯 **Farkle** | 1–6 | The traditional push-your-luck dice game: roll six, set aside scoring dice, roll the rest or bank. A roll with nothing scoring is a FARKLE and the turn's points are gone; score all six for hot dice. | Live total of the dice you've picked, a ✨ best-pick button, and everyone sees each farkle and bank. Play to 10,000 or 5,000, with a final round for the others; optional 500 to get on the board and −1,000 for three farkles in a row. |
 | 🥤 **Qork** | 2–6 | A reaction dice game (#41): the Cupper keeps rolling two dice, and on doubles or a seven every Corker yanks their Qork off the mat while the Cupper slams the cup down. Escape for +1; each trapped Qork is +1 to the Cupper (+1 more for trapping everyone); jumping early on any other roll is −1. The cup passes every round. | Reaction times are measured on each phone from the moment the dice land there, so a slow network doesn't lose the race; everyone's time is shown after each slam. Tap the mat, the big button or Space. 1–3 turns as Cupper each. |
 | 🚢 **Ship, Captain & Crew** | 1–6 | The traditional tavern dice game: three rolls of five dice to find a 6 (ship), then a 5 (captain), then a 4 (crew), in order. The last two dice are your cargo. | Tap cargo dice to reroll one or both with the rolls you have left, or ⚓ dock. 3, 5 or 8 rounds; alone, average 5 cargo a round to win (best play averages about 4.3). Optional 🍺 pub pot: ante a coin a round, best cargo takes the pot. |
@@ -279,6 +279,11 @@ cd tests && npm install && BASE=http://localhost:8767 node ui.js          # ever
 BASE=http://localhost:8767 node ui.js chess spire                          # just some
 ```
 
+```bash
+BASE=http://localhost:8767 node layout.js            # every game at 485 and 1280 px in real Chromium (about 10 minutes)
+BASE=http://localhost:8767 SHOTS=/tmp/shots node layout.js yacht go    # some games, with screenshots
+```
+
 `tests/` also installs **playwright-core** for checks in a real browser (layout, WebGL), which jsdom can't do. It drives the
 system Chromium (`chromium.launch({ executablePath: '/usr/bin/chromium' })`) and downloads no browsers of its own. On Kali,
 the `python3-playwright` apt package doesn't work on its own: it needs the separate `node-playwright` package for its driver.
@@ -371,7 +376,9 @@ Almost everything in the per-game plan below is done, so this is the next list. 
 Items that become ✅ move into the per-game plan.
 
 **Across all games**
-1. **485 px screenshot pass** (Playwright): a real layout check for every game, which jsdom can't do (#44). **M**
+1. ✅ **Layout check in a real browser:** `tests/layout.js` starts every game at 485 and 1280 px in Chromium and fails on sideways
+   scrolling, a game area with no size, visible elements squeezed to nothing (#44) and JavaScript errors. Its first run found
+   13 games that scrolled sideways on phones, all fixed.
 2. **A shared results card** between rounds and reserved status-line heights (#17, #18). **M**
 3. **Even the 🎲 Dice & casino row again:** Qork made it 7 games. Add an 8th, or move Twenty-One to Cards and add a card game. **S–M**
 4. **Keyboard and screen-reader play** in the boards that still lack it (Backgammon, Oware, Ultimate, Morris, Dots & Boxes,
@@ -406,17 +413,17 @@ Items that become ✅ move into the per-game plan.
 
 **Strategy**
 - ♟️ **Chess:** a stronger hard bot (quiescence search, transposition table, small opening book); Chess960. **M–L**
-- ⛀ **Checkers:** undo requests and draw offers, like Go and Chess. **S**
+- ⛀ **Checkers:** ✅ undo requests and draw offers, like Go and Chess.
 - 🔺 **Backgammon:** a pip count on screen. **S**
-- ⚫ **Go:** handicap stones and a komi setting. **S**
-- 🫘 **Oware:** it has no settings at all. Add undo requests. **S**
-- ⚪ **Reversi:** it has no settings. Add a "show flips" hint option and undo requests. **S**
+- ⚫ **Go:** ✅ handicap stones (2–9, on the star points; White moves first, komi 0.5) and a komi setting.
+- 🫘 **Oware:** ✅ undo requests (shared with Reversi, Ultimate and Checkers: `games/undo.py`).
+- ⚪ **Reversi:** ✅ a flip-hints option and undo requests.
 
 **Cards**
 - 🃏 **Last Card:** play several cards of one rank at once (option). **M**
 - ♠️ **Texas Hold'em:** your current best hand named live. **S**
 - 📍 **Cribbage:** a "best discard" hint for learners. **M**
-- ♥️ **Hearts:** an optional J♦ −10. **S**
+- ♥️ **Hearts:** ✅ an optional 💎 J♦ −10 (bots keep it, and win tricks for it).
 - ⚡ **Speed:** the face-to-face two-phone layout. **M**
 - 🀄 **Contract Rummy:** "may I?" buys of the discard out of turn. **M**
 
@@ -425,12 +432,12 @@ Items that become ✅ move into the per-game plan.
 - 🔴 **Drop Four:** a pop-out variant. **S**
 - 🔳 **Dots & Boxes:** a chain-count hint in the endgame. **S**
 - ❌ **Tic-Tac-Toe:** a 4×4 variant. **S**
-- #️⃣ **Ultimate Tic-Tac-Toe:** a last-move highlight. **S**
+- #️⃣ **Ultimate Tic-Tac-Toe:** ✅ undo requests. (It already outlined the last move: the plan was wrong.)
 - ⚫ **Nine Men's Morris:** Twelve Men's Morris (diagonals) option. **S**
 
 **Dice & casino**
 - 🚀 **Moon Shot:** a solo target. **S**
-- 🎲 **Yacht:** it has no settings. Add the optional upper-section bonus (35 for 63+) and extra Yacht bonuses. **S**
+- 🎲 **Yacht:** ✅ optional bonuses: +35 for 63 in Ones–Sixes (the card shows progress, 41/63) and +50 per extra Yacht; bots play for them.
 - 🎯 **Farkle:** optional extra scores (three pairs, a 1–6 straight). **S**
 - 🥤 **Qork:** collect real-phone reports on reaction fairness. **S**
 - 🚢 **Ship, Captain & Crew:** a solo best-score table. **S**
