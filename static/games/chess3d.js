@@ -5,12 +5,10 @@ const Chess3D = (() => {
   const LIGHT = 0xf0d9b5, DARK = 0xb58863;
   const MARK = { sel: 0x2b8a3e, check: 0xef476f, last: 0xffe066, capture: 0xe8590c };
 
-  function create(stage, onSquare) {
+  function create(stage, onSquare, onLost) {
     const T = window.THREE;
-    let renderer;
-    try { renderer = new T.WebGLRenderer({ antialias: true, alpha: true }); } catch { return null; }
-    if (!renderer.getContext()) { renderer.dispose(); return null; }
-    renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+    const renderer = GL3.renderer({ alpha: true }, { onLost });
+    if (!renderer) return null;
     renderer.shadowMap.enabled = true;
     stage.append(renderer.domElement);
 

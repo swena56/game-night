@@ -400,22 +400,31 @@ Items that become ✅ move into the per-game plan.
 3. ✅ **Even the 🎲 Dice & casino row again:** Qork made it 7 games; 📦 **Shut the Box** makes it 8 (46 games).
 4. **Keyboard and screen-reader play** in the boards that still lack it (Backgammon, Oware, Ultimate, Morris, Dots & Boxes,
    the card games, Yacht, Farkle) using the shared `gridKeys`. **M**
+6. ✅ **🎵 Move sounds:** every move now makes a sound, picked by the game's lobby group: a wooden click for board games, a
+   card flick, a dice rattle, a soft pop for word and party games, a capture thud and a little fanfare for big moments. All
+   synthesized; switch them off with 🎵 in the settings (🔊 still mutes everything). Games can ask for one with `ctx.sfx(kind)`.
+7. ✅ **Shared 3D layer** (`static/gl3.js`) for the seven three.js games: three.js loads once, the picture drops to a lower
+   resolution when frames get slow and climbs back when they're smooth again, and when a phone throws the GPU away
+   (switching apps) the game builds a fresh 3D view instead of freezing on a black one. Camera shake for hits (Sumo, Riders).
 5. ✅ **🙋 Join in mid-game** for Odd One Out, Safecracker and Shut the Box. (Grid Hunt already could; Yacht can't fairly,
    since a late card would make everyone wait for its twelve boxes.)
 
 **Party**
-- 🎭 **Unmask:** a question-history panel (each question and how many faces it ruled out). **M**
+- 🎭 **Unmask:** ✅ a 🗒️ clues panel: each answer you've had, how many faces it ruled out, and how many still fit.
 - 🕵️ **Odd One Out:** word pairs written by the host; join between rounds. **S**
 - 🖍️ **Scribble Relay:** a fill tool, and a timer per step so slow drawers don't stall the table. **M**
-- 🧠 **Trivia Rush:** a streak bonus; a host-supplied question pack. **M**
+- 🧠 **Trivia Rush:** ✅ a 🔥 streak bonus (+50 per right answer in a row from the third, up to +150). Still to do: a host-supplied question pack. **M**
 - ✏️ **Doodle Dash:** a mode where players draw and the rest guess (Relay's canvas). **L**
 - 🥷 **Night Heist:** a two-player balance pass in simulation. **S**
 
 **Action**
-- 🗼 **Spire Siege:** a solo sprint/marathon with a best-score table; an incoming-junk meter. **M**
+- 🗼 **Spire Siege:** ✅ a 🧱 incoming-junk meter: junk sent to you waits 3 s on the edge of your well (flashing when it's
+  about to land), and every ring you clear before then knocks it down. Still to do: a solo sprint/marathon with a best-score table. **M**
 - 🏍️ **Light Riders:** check the swipe fixes on a phone (#14); 2v2 teams. **M**
 - 🎨 **Paint Blast:** 3D tiles; teams. **L**
-- 🪐 **Sumo Saucers:** platform shapes (ring, figure-8). **M**
+- 🪐 **Sumo Saucers:** ✅ a 🍩 ring arena with a pit in the middle (or 🔀 alternating with the disc each round); bots keep off
+  both edges and only charge toward the pit from well back (hard beats normal 21–8 in 30 three-bot games). The camera shakes
+  when you're shoved. Still to do: a figure-8. **M**
 - ⛳ **Putt Party:** ✅ playable on phones: the 3D camera now fits each hole (the tee row, with your ball, used to sit below the
   bottom of a phone screen), a touch while a putt rolls skips to its end instead of silently ignoring your drag, the power bar
   moved off the tee, and the scorecard total sits in its column. ✅ **Camera controls:** two fingers pan, pinch to zoom and
@@ -431,14 +440,16 @@ Items that become ✅ move into the per-game plan.
   own friction and visible blades; corner banks, straight or curved; a 🌀 windmill whose sails close its doorway on a clock
   (the server simulates the putt against the sails' real position, so you time your shot); a ramp jump over a stream; a
   splash with ripples when a ball goes in the water; and collision effects: rings, a bumper that squashes, flashes and boings,
-  knocks and a cup rattle. Each hole has its own par (4 with a jump or a windmill). Still to do: a per-hole scorecard; a course of the day. **M**
-- 🛸 **Hover Rally:** lap splits; a ghost of your best solo lap. **M**
+  knocks and a cup rattle. Each hole has its own par (4 with a jump or a windmill). ✅ **A golf scorecard:** a par row, birdies circled, bogeys
+  boxed, a ± to-par column, and the between-holes card names the result (🐦 Birdie!, Par, Bogey…). Still to do: a course of the day. **M**
+- 🛸 **Hover Rally:** ✅ ⏱ lap splits (each lap's time, faster/slower than the last, the best starred, called out on screen)
+  and a 👻 ghost of your best lap so far racing beside you.
 - 🏒 **Air Hockey:** 2v2 with four mallets. **M**
 - 🎱 **Billiards:** the 3D table; a 9-ball variant. **L**
 
 **Words & puzzles**
 - 🎡 **Lucky Letters:** a bonus round for the winner. **M**
-- 🔤 **Wordsmith:** optional blank tiles; a turn history of words and points. **S–M**
+- 🔤 **Wordsmith:** ✅ a turn history (each player's words and points, swaps and passes, the best play starred). Still to do: optional blank tiles. **M**
 - 🔎 **Grid Hunt:** ✅ 📅 today's grids, the same in every room (like Word Ladder's daily ladders).
 - 🔐 **Safecracker:** ✅ 📅 today's safes (the codes come from the date and settings).
 - 🤥 **Fib Finder:** more facts in the thinner topics. **M**
@@ -455,7 +466,8 @@ Items that become ✅ move into the per-game plan.
 **Cards**
 - 🃏 **Last Card:** play several cards of one rank at once (option). **M**
 - ♠️ **Texas Hold'em:** ✅ your best hand named live under your cards ("Pair of 7s", "Kings full of 3s").
-- 📍 **Cribbage:** a "best discard" hint for learners. **M**
+- 📍 **Cribbage:** ✅ 💡 Suggest a discard (against bots only): picks the cards the hard bot would throw and says what the
+  four you keep score on average over every starter.
 - ♥️ **Hearts:** ✅ an optional 💎 J♦ −10 (bots keep it, and win tricks for it).
 - ⚡ **Speed:** the face-to-face two-phone layout. **M**
 - 🀄 **Contract Rummy:** "may I?" buys of the discard out of turn. **M**
@@ -464,7 +476,7 @@ Items that become ✅ move into the per-game plan.
 - 🚢 **Sea Battle:** ✅ a 12×12 sea with a sixth ship.
 - 🔴 **Drop Four:** ✅ ⬇️ pull-outs (an option): take one of your own discs out of the bottom row instead of dropping.
 - 🔳 **Dots & Boxes:** ✅ an endgame hint listing the chains and loops left once every line gives boxes away.
-- ❌ **Tic-Tac-Toe:** ✅ a 4×4 board, four in a row (Vanishing keeps 4 marks there).
+- ❌ **Tic-Tac-Toe:** ✅ a 4×4 board, four in a row (Vanishing keeps 4 marks there). ✅ The newest mark is outlined.
 - #️⃣ **Ultimate Tic-Tac-Toe:** ✅ undo requests. (It already outlined the last move: the plan was wrong.)
 - ⚫ **Nine Men's Morris:** ✅ a Twelve Men's Morris option (12 men, corner diagonals).
 

@@ -14,6 +14,8 @@ BOT = {  # chance of knowing the answer, and how many seconds they take
     "hard": (0.8, 2.5, 7.0),
 }
 
+STREAK_PTS, STREAK_CAP = 50, 3   # streak bonus per right answer in a row beyond two, and its cap
+
 
 class Trivia(Game):
     id = "trivia"
@@ -22,6 +24,7 @@ class Trivia(Game):
         "Everyone gets the same question at the same time, with four answers to pick from.",
         f"A right answer scores {BASE_PTS}, plus up to {SPEED_PTS} more the faster you are. A wrong one scores nothing.",
         "You can't change your answer, so be quick but sure. The last question counts double.",
+        f"🔥 Streaks pay: from your 3rd right answer in a row, +{STREAK_PTS} more for each (up to +{STREAK_PTS * STREAK_CAP}).",
         f"Most points wins. Alone, get {round(SOLO_GOAL * 100)}% right to win.",
     ]
     name = "Trivia Rush"
@@ -168,9 +171,10 @@ class Trivia(Game):
             ans = self.answers.get(p.id)
             if ans and ans[0] == right:
                 pts = (BASE_PTS + round(SPEED_PTS * max(0.0, 1 - ans[1] / secs) / 10) * 10) * mult
-                p.g.score += pts
                 p.g.right += 1
                 p.g.streak += 1
+                pts += STREAK_PTS * max(0, min(p.g.streak - 2, STREAK_CAP))  # 🔥 3 in a row and up
+                p.g.score += pts
                 self.gained[p.id] = pts
                 got.append(f"{p.name} +{pts}")
             else:

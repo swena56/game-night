@@ -165,7 +165,7 @@ class Spire(Game):
     howto = [
         'Pieces fall onto a tower that wraps all the way around.',
         '← → move around the tower, ↑ rotate, Space drops. On phones: swipe, tap, swipe down.',
-        'Fill a whole ring to clear it. Clear 2+ at once to send junk rings to a rival.',
+        'Fill a whole ring to clear it. Clear 2+ at once to send junk rings to a rival. Junk sent to you waits 3 s on the 🧱 meter: clear rings to block it.',
         'Glowing power cells: ⚡ speed rivals up, 🛡️ block junk, 💣 blast your bottom rings.',
         'Hold (C, Shift, ⇄ or swipe up) parks the falling piece for later, once per piece.',
         'Prefer an upright board? Pick 🧱 Flat well. Want odd shapes? Pick the 🧩 Mixed set (2, 3 and 5 blocks).',

@@ -52,11 +52,14 @@ UI.lucky = (() => {
 
   function initThree() {
     const T = window.THREE, stage = $('lkStage');
-    let renderer;
-    try { renderer = new T.WebGLRenderer({ antialias: true, alpha: true }); } catch { return; }
+    const renderer = GL3.renderer({ alpha: true }, { onLost: () => {
+      if (!gfx || gfx.renderer !== renderer) return;
+      renderer.dispose(); renderer.domElement.remove(); gfx = null;
+      if (stage.isConnected) { initThree(); resize(); }
+    } });
+    if (!renderer) return;
     const tex = wheelTexture(T, S.lucky.wedges);
     if (!tex) { renderer.dispose(); return; }
-    renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
     stage.prepend(renderer.domElement);
     const scene = new T.Scene(), camera = new T.PerspectiveCamera(38, 1, 0.1, 100);
     camera.position.set(0, -1.2, 15); camera.lookAt(0, 0.2, 0);
@@ -180,10 +183,7 @@ UI.lucky = (() => {
     const L = S.lucky;
     if (!$('lkSvg').innerHTML) {
       $('lkSvg').innerHTML = buildSvg(L.wedges);
-      const load = window.THREE ? Promise.resolve() : new Promise((res, rej) => {
-        const sc = document.createElement('script'); sc.src = '/vendor/three.min.js'; sc.onload = res; sc.onerror = rej; document.head.append(sc);
-      });
-      load.then(initThree).catch(() => {});
+      GL3.load().then(initThree).catch(() => {});
     }
     // start (or join) the spin animation when the server reports a new spin
     if (L.spin && L.spin.id !== seenSpin) {

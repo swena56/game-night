@@ -160,9 +160,7 @@ UI.putt = (() => {
     window.addEventListener('keydown', onKey);
     ro = window.ResizeObserver ? new ResizeObserver(() => (gl || flat)?.resize()) : null;
     ro?.observe(stage);
-    const ready = window.THREE ? Promise.resolve() : new Promise((res, rej) => {
-      const sc = document.createElement('script'); sc.src = '/vendor/three.min.js'; sc.onload = res; sc.onerror = rej; document.head.append(sc);
-    });
+    const ready = GL3.load();
     ready.then(() => { if (stage.isConnected && !gl) gl = make3d(stage); }).catch(() => {})
       .finally(() => {
         if (stage.isConnected && !gl && !flat) flat = make2d(stage);
@@ -224,26 +222,47 @@ UI.putt = (() => {
     if (h && h.textContent !== t) h.textContent = t;
   }
 
+  // golf words for a score against par, and the card's mark (circle under par, square over)
+  const VS_PAR = { '-3': 'Albatross! 🦅🦅', '-2': 'Eagle! 🦅', '-1': 'Birdie! 🐦', 0: 'Par', 1: 'Bogey', 2: 'Double bogey' };
+  const vsPar = (n, par) => (n === 1 ? '🎯 Hole in one!' : VS_PAR[n - par] ?? `${n - par > 0 ? '+' : ''}${n - par}`);
+  const markCls = (n, par) => (n - par <= -2 ? 'eagle' : n - par === -1 ? 'birdie' : n - par === 1 ? 'bogey' : n - par >= 2 ? 'dbl' : '');
+  const toPar = (d) => (d === 0 ? 'E' : d > 0 ? `+${d}` : String(d));
+
   function renderCard() {
     const p = S.putt, box = $('ppCard'); box.innerHTML = '';
     const t = ctx.el('table', 'scores');
     const head = ctx.el('tr');
     const live = !p.between;  // between holes, the hole just played is already on the card
-    head.append(ctx.el('th', '', ''), ...p.cards[0].map((_, k) => ctx.el('th', '', String(k + 1))));
-    if (live) head.append(ctx.el('th', '', String(p.hole)));
-    head.append(ctx.el('th', '', 'Σ'));
+    const pars = p.pars || [];
+    const played = p.cards[0].length + (live ? 1 : 0);
+    head.append(ctx.el('th', '', 'Hole'), ...Array.from({ length: played }, (_, k) => ctx.el('th', k + 1 === p.hole ? 'now' : '', String(k + 1))));
+    head.append(ctx.el('th', '', 'Σ'), ctx.el('th', '', '±'));
     t.append(head);
+    if (pars.length) {
+      const pr = ctx.el('tr', 'pp-par');
+      pr.append(ctx.el('td', '', 'Par'), ...Array.from({ length: played }, (_, k) => ctx.el('td', '', String(pars[k] ?? 3))));
+      pr.append(ctx.el('td', '', String(pars.slice(0, played).reduce((a, b) => a + b, 0))), ctx.el('td'));
+      t.append(pr);
+    }
     p.seats.forEach((pid, i) => {
       const row = ctx.el('tr');
       const nm = ctx.el('td', '', ctx.player(pid)?.name ?? '?'); nm.style.color = colorOf(i);
-      row.append(nm, ...p.cards[i].map((v) => ctx.el('td', '', String(v))));
-      if (live) row.append(ctx.el('td', '', p.holed[i] ? `${p.strokes[i]}✓` : String(p.strokes[i])));
+      row.append(nm);
+      let diff = 0;
+      p.cards[i].forEach((v, k) => {
+        const par = pars[k] ?? 3; diff += v - par;
+        const td = ctx.el('td'); td.append(ctx.el('span', 'pp-mark ' + markCls(v, par), String(v)));
+        td.title = vsPar(v, par); row.append(td);
+      });
+      if (live) row.append(ctx.el('td', 'now', p.holed[i] ? `${p.strokes[i]}✓` : String(p.strokes[i])));
+      if (live && p.holed[i]) diff += p.strokes[i] - (pars[p.hole - 1] ?? 3);
       const tot = ctx.el('td');
       tot.append(ctx.el('b', '', String(p.cards[i].reduce((a, b) => a + b, 0) + (live ? p.strokes[i] : 0))));
-      row.append(tot);
+      row.append(tot, ctx.el('td', 'pp-topar ' + (diff < 0 ? 'under' : diff > 0 ? 'over' : ''), toPar(diff)));
       t.append(row);
     });
     box.append(t);
+    box.append(ctx.el('p', 'hint left pp-legend', '◯ birdie · ◎ eagle · ▢ bogey · ± strokes against par'));
   }
 
   // between holes: this hole's strokes and the standings, once the last putt has rolled in (see loop)
@@ -256,7 +275,8 @@ UI.putt = (() => {
       const s = p.cards[i][p.cards[i].length - 1];
       const r = ctx.el('div', 'pp-done-row');
       const nm = ctx.el('span', '', ctx.player(pid)?.name ?? '?'); nm.style.color = colorOf(i);
-      r.append(nm, ctx.el('b', '', p.holed[i] ? (s === 1 ? '🎯 Hole in one!' : `${s} strokes`) : `${s} (picked up)`));
+      const par = p.pars?.[p.hole - 1] ?? 3;
+      r.append(nm, ctx.el('b', 'pp-res ' + markCls(s, par), p.holed[i] ? (s === 1 ? '🎯 Hole in one!' : `${s} · ${vsPar(s, par)}`) : `${s} (picked up)`));
       rows.append(r);
     });
     standingsCard($('ppStand'), p.standings, { title: 'Total so far', note: 'Fewest strokes wins.', lower: true });
@@ -327,12 +347,18 @@ UI.putt = (() => {
     return t;
   }
 
+  // the phone threw the GPU context away (app switch, memory): start a fresh 3D view
+  function lost(stage) {
+    if (!stage.isConnected) return;
+    gl?.dispose(); gl = make3d(stage);
+    if (!gl) flat ||= make2d(stage); holeKey = '';
+  }
+
   function make3d(stage) {
     const T = window.THREE;
     let renderer;
-    try { renderer = new T.WebGLRenderer({ antialias: true }); } catch { return null; }
-    if (!renderer.getContext()) { renderer.dispose(); return null; }
-    renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+    renderer = GL3.renderer({}, { onLost: () => lost(stage) });
+    if (!renderer) return null;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = T.PCFSoftShadowMap;
     stage.prepend(renderer.domElement);

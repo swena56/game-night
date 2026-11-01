@@ -25,6 +25,8 @@ DASH_MASS = 2.5        # a dashing saucer hits like this many saucers
 BOUNCE = 1.15          # saucer-on-saucer restitution (a little extra pop)
 BUMPERS = 16           # rim segments
 BUMPER_KICK = 0.75     # how much of a saucer's outward speed a bumper returns
+PIT = 2.2              # the 🍩 ring arena: a pit of this radius in the middle
+RING_MIN_RADIUS = 5.6  # …so the ring never shrinks thinner than this
 FALL_SECS = 1.0        # falling animation before a saucer is out
 COUNTDOWN, ROUND_PAUSE = 3.0, 3.0
 BOT = {  # reaction interval (s), aim noise (units), dash willingness
@@ -46,11 +48,13 @@ class Saucer:
 
 class Sumo(Game):
     id = "sumo"
+    pit = 0.0  # (rooms saved before the ring arena existed)
     category = "action"
     howto = [
         "Drag anywhere to steer your saucer (it keeps its momentum). Or use WASD / the arrow keys.",
         "Tap, 💨 or Space to dash: a big shove, every 2 seconds.",
         "Knock rivals off the edge. Glowing bumpers on the rim bounce you back once, then shatter.",
+        "🍩 The ring arena has a pit in the middle: that's an edge too.",
         "The platform shrinks as the round goes on. Last saucer standing wins the round; first to the target wins.",
     ]
     name = "Sumo Saucers"
@@ -62,6 +66,7 @@ class Sumo(Game):
     settings_schema = {
         "target": ("Rounds to win", [(3, "3"), (2, "2"), (5, "5")], 3),
         "bumpers": ("Rim bumpers", [(True, "On"), (False, "Off (sudden death)")], True),
+        "arena": ("Arena", [("disc", "🪐 Disc"), ("ring", "🍩 Ring (a pit in the middle)"), ("mix", "🔀 Changes every round")], "disc"),
     }
 
     # -- setup
@@ -82,6 +87,8 @@ class Sumo(Game):
         k = len(self.seats)
         self.round += 1
         self.radius = RADIUS
+        arena = self.s.get("arena", "disc")
+        self.pit = PIT if arena == "ring" or (arena == "mix" and self.round % 2 == 0) else 0.0
         self.bumpers = [bool(self.s["bumpers"])] * BUMPERS
         offset = self.rng.random() * math.tau
         self.saucers = []
@@ -160,9 +167,10 @@ class Sumo(Game):
             p = self.room.players.get(pid)
             if p and p.bot and not self.saucers[i].out:
                 self.bot_think(i, p.bot, now)
-        if now - self.shrunk_at >= SHRINK_EVERY and self.radius > MIN_RADIUS:
+        floor = RING_MIN_RADIUS if self.pit else MIN_RADIUS
+        if now - self.shrunk_at >= SHRINK_EVERY and self.radius > floor:
             self.shrunk_at = now
-            self.radius = max(MIN_RADIUS, self.radius - SHRINK_BY)
+            self.radius = max(floor, self.radius - SHRINK_BY)
             self.room.add_log("🌑 The platform shrinks!")
         h = dt / 3
         for _ in range(3):
@@ -235,6 +243,9 @@ class Sumo(Game):
             if s.out or s.fall:
                 continue
             d = math.hypot(s.x, s.y)
+            if self.pit and d < self.pit - SAUCER * 0.3:
+                s.fall = now  # centre over the pit: down it goes
+                continue
             if d <= self.radius - SAUCER * 0.2:
                 continue
             seg = self.segment(s.x, s.y)
@@ -325,17 +336,29 @@ class Sumo(Game):
                         m = math.hypot(px, py) or 1
                         self.steer(me, px / m, py / m)
                         return
-        # too close to the edge: get back toward the middle
-        if d_me > R * (0.62 if level == "hard" else 0.72):
+        # too close to the edge: get back toward the middle (of the ring, in the 🍩 arena)
+        pit = self.pit
+        if pit:
+            safe = (R - pit) * (0.22 if level == "hard" else 0.14)
+            mid = (R + pit) / 2
+            if d_me < pit + SAUCER + safe or d_me > R - SAUCER - safe:
+                k = (mid - d_me) / (d_me or 1e-6)
+                self.steer(me, me.x * k, me.y * k)
+                return
+        elif d_me > R * (0.62 if level == "hard" else 0.72):
             self.steer(me, -me.x, -me.y)
             return
         # victim: the rival easiest to push out (nearest the edge, and close to us)
         def ease(js):
             j, s = js
-            return (R - math.hypot(s.x, s.y)) + 0.5 * math.hypot(s.x - me.x, s.y - me.y)
+            d = math.hypot(s.x, s.y)
+            edge = min(R - d, d - pit) if pit else R - d
+            return edge + 0.5 * math.hypot(s.x - me.x, s.y - me.y)
         j, t = min(rivals, key=ease)
         dt_ = math.hypot(t.x, t.y) or 1e-6
         ux, uy = t.x / dt_, t.y / dt_  # outward through the target
+        if pit and dt_ - pit < R - dt_:
+            ux, uy = -ux, -uy           # nearer the pit: shove it inward instead
         # line up on the inside of the target, then charge outward through it
         bx, by = t.x - ux * 2.6 * SAUCER, t.y - uy * 2.6 * SAUCER
         bx += random.gauss(0, noise)
@@ -343,7 +366,10 @@ class Sumo(Game):
         to_b = math.hypot(bx - me.x, by - me.y)
         lined = (me.x * ux + me.y * uy) < (t.x * ux + t.y * uy) - SAUCER
         gap = math.hypot(t.x - me.x, t.y - me.y)
-        if lined and gap < 4.5 and now >= me.cool_until and random.random() < eager:
+        inward = pit and (ux * t.x + uy * t.y) < 0
+        # a dash toward the pit carries you in after them: careful bots only take it from well back
+        reach = 4.5 if not inward else 3.0 if level == "easy" or d_me - pit > 4.0 else 0.0
+        if lined and gap < reach and now >= me.cool_until and random.random() < eager:
             self.steer(me, t.x - me.x, t.y - me.y)
             self.dash(i, now)
             return
@@ -389,6 +415,7 @@ class Sumo(Game):
         return {"sumo": {
             "seats": self.seats, "me": self.seat(p), "round": self.round, "wins": self.wins,
             "target": self.s["target"], "stage": self.stage, "R": self.radius, "R0": RADIUS, "saucer": SAUCER,
+            "pit": self.pit,
             "bm": "".join("1" if b else "0" for b in self.bumpers), "nb": BUMPERS,
             "s": [[s.x, s.y, s.vx, s.vy, int(now < s.dash_until), max(0.0, s.cool_until - now),
                    2 if s.out else 1 if s.fall else 0] for s in self.saucers],

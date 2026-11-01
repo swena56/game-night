@@ -140,6 +140,7 @@ p.preview { color: var(--accent2); font-style: italic; min-height: 1.4em; margin
 .ttt-cell:disabled { opacity: 1; cursor: default; }
 .ttt-cell.fading { opacity: .35; }
 .ttt-cell.win { background: #ffb70333; outline: 3px solid var(--accent); }
+.ttt-cell.last { outline: 2px dashed var(--muted); outline-offset: -6px; }
 .ttt.big { gap: 6px; } .ttt.big .ttt-cell { font-size: clamp(30px, 10vw, 64px); border-radius: 12px; }
 
 /* drop four */
@@ -645,7 +646,7 @@ button.danger { background: linear-gradient(180deg, #ff5d82, #ef476f 55%, #d9325
 .lr-stage { position: relative; height: min(calc(var(--app-h, 100vh) * .62), 600px); border-radius: var(--radius); overflow: hidden; display: flex; justify-content: center;
   background: #05060f; box-shadow: inset 0 0 0 1px #8ecae633, 0 0 30px #1f6fff33, 0 12px 30px #000a; }
 .lr-stage canvas { display: block; width: 100%; height: 100%; }
-.lr-banner { position: absolute; left: 0; right: 0; top: 42%; text-align: center; font-size: 44px; font-weight: 900; color: #fff;
+.lr-banner { position: absolute; left: 0; right: 0; top: 42%; text-align: center; font-size: clamp(24px, 8vw, 44px); font-weight: 900; color: #fff;
   text-shadow: 0 0 18px #8ecae6, 0 0 40px #1f6fff; pointer-events: none; letter-spacing: .06em; }
 .lr-pad { display: grid; grid-template-columns: repeat(3, 64px); gap: 6px; justify-content: center; margin-top: 10px; user-select: none; }
 .lr-pad button { height: 54px; font-size: 22px; touch-action: manipulation; }
@@ -1497,3 +1498,47 @@ body.light .logo { background-image: linear-gradient(90deg, #e09a00, #e0457b, #1
 .pp-done h3 { margin: 0 0 8px; text-align: center; }
 .pp-done-row { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; font-size: 14px; }
 .pp-done .st-card { margin-top: 10px; }
+
+/* hover rally: lap splits */
+.lr-banner.small { font-size: 22px; top: 18%; }
+.ra-splits { margin-top: 8px; min-height: 1.4em; }
+.ra-split { display: flex; gap: 8px; align-items: baseline; font-variant-numeric: tabular-nums; }
+.ra-split span { flex: 1; color: var(--muted); }
+.ra-split.best b::after { content: ' ⭐'; }
+.ra-split small.faster { color: #57cc99; }
+.ra-split small.slower { color: #ef476f; }
+
+/* spire siege: the incoming-junk meter (left edge of the well) */
+.sp-junk { position: absolute; left: 6px; bottom: 6px; width: 14px; height: calc(var(--n, 1) * 8%); min-height: 16px; border-radius: 7px;
+  background: repeating-linear-gradient(0deg, #ef476f 0 6px, #b5174a 6px 8px); box-shadow: 0 0 10px #ef476f99; transition: height .2s; pointer-events: none; }
+.sp-junk::after { content: '🧱' attr(data-n); position: absolute; left: 18px; bottom: 0; font: 700 14px system-ui, sans-serif; color: #ffb3c6; white-space: nowrap; }
+.sp-junk.soon { animation: spJunk .3s infinite alternate; }
+@keyframes spJunk { to { box-shadow: 0 0 18px #ff2d55; filter: brightness(1.4); } }
+body.calm .sp-junk.soon { animation: none; }
+
+/* putt party: a golf scorecard (par row, birdie circles, bogey squares, to-par column) */
+.pp-card th.now, .pp-card td.now { background: var(--panel2); }
+.pp-card tr.pp-par td { color: var(--muted); font-style: italic; }
+.pp-mark { display: inline-block; min-width: 1.6em; line-height: 1.5em; border: 1.5px solid transparent; }
+.pp-mark.birdie { border-color: #57cc99; border-radius: 50%; }
+.pp-mark.eagle { border-color: #57cc99; border-radius: 50%; box-shadow: 0 0 0 2px var(--panel), 0 0 0 3.5px #57cc99; }
+.pp-mark.bogey { border-color: #f4a261; }
+.pp-mark.dbl { border-color: #ef476f; box-shadow: 0 0 0 2px var(--panel), 0 0 0 3.5px #ef476f; }
+.pp-topar.under { color: #57cc99; font-weight: 700; } .pp-topar.over { color: #ef476f; }
+.pp-legend { font-size: 11px; margin: 4px 0 0; }
+.pp-res.birdie, .pp-res.eagle { color: #57cc99; }
+
+/* wordsmith: turn history */
+.ws-plays { max-height: 220px; overflow-y: auto; font-size: 13px; }
+.ws-play { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; border-bottom: 1px solid #ffffff0d; }
+.ws-play .who { flex: 0 0 auto; max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+.ws-play .words { flex: 1; text-transform: uppercase; letter-spacing: .04em; overflow-wrap: anywhere; }
+.ws-play.best b::after { content: ' ⭐'; }
+
+/* unmask: your clues */
+.um-notes { font-size: 13px; max-height: 240px; overflow-y: auto; }
+.um-note { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; border-bottom: 1px solid #ffffff0d; }
+.um-note .q { flex: 1; }
+.um-note b.yes { color: #57cc99; } .um-note b.no { color: #ef476f; }
+.um-note small { min-width: 2.6em; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+.um-note.best small { color: var(--accent); font-weight: 700; }

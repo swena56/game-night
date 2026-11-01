@@ -20,6 +20,7 @@ const MODE_DESC = {
 };
 const PREFS = [
   ['sound', '🔊 Sound effects', true],
+  ['moves', '🎵 Move sounds (pieces, cards, dice)', true],
   ['vibrate', '📳 Vibrate (your turn, hits)', true],
   ['motion', '✨ Animations', true],
   ['bubbles', '💬 Chat pop-ups', true],
@@ -270,6 +271,37 @@ function slap() {
     src.buffer = buf; f.type = 'bandpass'; f.frequency.value = 1800; f.Q.value = 0.7; g.gain.value = 0.5;
     src.connect(f).connect(g).connect(audio.destination); src.start();
   } catch {}
+}
+
+// Move sounds: every game gets a short sound for each move (a new log line), chosen by its lobby group,
+// and game modules can ask for one with ctx.sfx(kind). All synthesized, no files.
+function tone(f0, f1, dur, type = 'sine', vol = 0.12, at = 0) {
+  const o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime + at;
+  o.type = type; o.frequency.setValueAtTime(f0, t); if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(audio.destination); o.start(t); o.stop(t + dur + 0.02);
+}
+function noise(dur, freq, q, vol, at = 0) {
+  const len = Math.max(1, Math.floor(audio.sampleRate * dur)), buf = audio.createBuffer(1, len, audio.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2;
+  const src = audio.createBufferSource(), f = audio.createBiquadFilter(), g = audio.createGain();
+  src.buffer = buf; f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = q; g.gain.value = vol;
+  src.connect(f).connect(g).connect(audio.destination); src.start(audio.currentTime + at);
+}
+const SFX = {
+  place: () => { tone(320, 180, 0.09, 'sine', 0.16); noise(0.03, 2400, 1.2, 0.25); },          // a piece set down
+  capture: () => { tone(260, 120, 0.14, 'triangle', 0.16); noise(0.05, 1500, 0.8, 0.35, 0.02); },
+  card: () => noise(0.08, 1800, 0.7, 0.5),
+  dice: () => { for (let i = 0; i < 5; i++) noise(0.025, 2600 + Math.random() * 1600, 2, 0.35, i * 0.045 + Math.random() * 0.02); },
+  pop: () => tone(520, 880, 0.09, 'sine', 0.1),
+  tick: () => tone(1200, 1200, 0.03, 'square', 0.03),
+  good: () => [659, 880].forEach((f, i) => tone(f, f, 0.16, 'triangle', 0.1, i * 0.09)),
+  bad: () => tone(300, 150, 0.25, 'sawtooth', 0.05),
+};
+const CATEGORY_SFX = { strategy: 'place', classic: 'place', cards: 'card', dice: 'dice', words: 'pop', party: 'pop' };
+function sfx(kind) {
+  if (!prefs.sound || !prefs.moves || !SFX[kind] || document.hidden) return;
+  try { audio ||= new (window.AudioContext || window.webkitAudioContext)(); SFX[kind](); } catch {}
 }
 
 // ---------- connection
@@ -538,7 +570,7 @@ function renderGame(view = S, readOnly = false, force = false) {
   const readOnlyAct = () => { toast('This is a replay.'); return Promise.reject(new Error('replay')); };
   ui.render(view, { act: readOnly ? readOnlyAct : act, input: readOnly ? () => {} : input, quiet, toast, el, ask, player: lookup, mark: (id) => mark(lookup(id)), myTurn,
     peek: readOnly ? null : (extra) => api('/api/peek', { ...session, ...extra }),
-    confetti: readOnly ? () => {} : confetti, rerender: () => (replay ? showFrame() : renderGame(S, false, true)) });
+    confetti: readOnly ? () => {} : confetti, sfx: readOnly ? () => {} : sfx, rerender: () => (replay ? showFrame() : renderGame(S, false, true)) });
   shapeDots($('#arena')); shapeDots($('#sideGame'));
   renderLog(ui, view);
 
@@ -623,7 +655,15 @@ function renderLog(ui, view) {
     box.append(row);
   }
   $('#logLast').textContent = view.log.at(-1)?.text ?? '';
-  if (newestId !== lastLogId) { box.scrollTop = box.scrollHeight; lastLogId = newestId; }
+  if (newestId !== lastLogId) {
+    box.scrollTop = box.scrollHeight;
+    // a sound for the new move, unless the game plays its own or it's the first state / a replay
+    if (lastLogId && !replay && !firstState && view.phase === 'playing' && !ui.ownSounds) {
+      const e = view.log.at(-1), cat = gameInfo(view.gameId)?.category;
+      if (cat !== 'action') sfx(e.kind === 'big' ? 'good' : /captur|takes|jump|hit|sunk|bust|farkle/i.test(e.text) && cat !== 'words' ? 'capture' : CATEGORY_SFX[cat]);
+    }
+    lastLogId = newestId;
+  }
 }
 
 // ---------- replays
@@ -972,12 +1012,14 @@ for (const e of REACTIONS) {
   $('#reactBar').append(b);
 }
 // replay controls
-$('#rpFirst').onclick = () => stepReplay(0);
-$('#rpPrev').onclick = () => { pauseReplay(); stepReplay(replay.i - 1); };
-$('#rpNext').onclick = () => { pauseReplay(); stepReplay(replay.i + 1); };
-$('#rpLast').onclick = () => stepReplay(Infinity);
-$('#rpSlider').oninput = () => { pauseReplay(); stepReplay(+$('#rpSlider').value); };
+// (a late tap after the replay closed does nothing)
+$('#rpFirst').onclick = () => replay && stepReplay(0);
+$('#rpPrev').onclick = () => { if (!replay) return; pauseReplay(); stepReplay(replay.i - 1); };
+$('#rpNext').onclick = () => { if (!replay) return; pauseReplay(); stepReplay(replay.i + 1); };
+$('#rpLast').onclick = () => replay && stepReplay(Infinity);
+$('#rpSlider').oninput = () => { if (!replay) return; pauseReplay(); stepReplay(+$('#rpSlider').value); };
 $('#rpPlay').onclick = () => {
+  if (!replay) return;
   if (replay.timer) return pauseReplay();
   if (replay.i >= replay.frames.length - 1) replay.i = 0;
   $('#rpPlay').textContent = '⏸';

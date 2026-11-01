@@ -33,7 +33,8 @@ UI.unmask = (() => {
           <button id="accuseBtn" class="danger">🎯 Accuse…</button>
         </div>
         <div id="cards" class="cards"></div>
-      </div>`;
+      </div>
+      <div class="panel"><h3>🗒️ Your clues</h3><div id="umNotes" class="um-notes"></div></div>`;
     for (const id of ['#qa', '#qb', '#qop']) $(id).onchange = updatePreview;
     $('#useCombo').onchange = () => { $('#comboFields').hidden = !$('#useCombo').checked; updatePreview(); };
     $('#askBtn').onclick = () => { ctx.quiet(ctx.act('ask', { q: currentQuestion() })); $('#useCombo').checked = false; };
@@ -68,6 +69,22 @@ UI.unmask = (() => {
     renderBoard();
     renderIdentity();
     renderAsk();
+    renderNotes();
+  }
+
+  // every answer you've had, and how many faces each one ruled out
+  function renderNotes() {
+    const box = $('#umNotes'), n = S.me?.notes; if (!box || !n) return;
+    box.innerHTML = '';
+    if (!n.rows.length) { box.append(ctx.el('p', 'hint left', 'Your answers collect here, with how many faces each one ruled out.')); return; }
+    const best = Math.max(...n.rows.map((r) => r[2]));
+    n.rows.forEach(([text, ans, out], k) => {
+      const row = ctx.el('div', 'um-note' + (out && out === best ? ' best' : ''));
+      row.append(ctx.el('span', 'q', `${k + 1}. ${text}`), ctx.el('b', ans ? 'yes' : 'no', ans ? 'YES' : 'NO'),
+        ctx.el('small', '', out ? `−${out}` : '±0'));
+      box.append(row);
+    });
+    box.append(ctx.el('p', 'hint left', `${n.left} face${n.left === 1 ? '' : 's'} still fit${n.left === 1 ? 's' : ''} everything you know.`));
   }
 
   function renderBoard() {

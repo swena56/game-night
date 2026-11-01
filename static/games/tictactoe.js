@@ -1,8 +1,8 @@
 UI.tictactoe = (() => {
-  let S, ctx, grid, built = 0;
+  let S, ctx, grid, built = 0, prev = null, last = -1;
 
   function mount(main, side) {
-    built = 0;
+    built = 0; prev = null; last = -1;
     main.innerHTML = '<div class="ttt"></div>';
     side.innerHTML = '<div class="panel" id="tttInfo"></div>';
     grid = main.querySelector('.ttt');
@@ -24,7 +24,14 @@ UI.tictactoe = (() => {
   function render(s, c) {
     S = s; ctx = c;
     const t = S.ttt, n = t.n || 3;
-    if (built !== n) build(n);
+    if (built !== n) { build(n); prev = null; }
+    // the newest mark gets an outline (and pops in), so you can see what was just played
+    if (prev && prev.length === t.cells.length) {
+      const fresh = t.cells.findIndex((v, i) => v != null && prev[i] !== v);
+      if (fresh >= 0) last = fresh;
+    }
+    if (t.cells.every((v) => v == null)) last = -1;
+    prev = [...t.cells];
     [...grid.children].forEach((b, i) => {
       const v = t.cells[i];
       b.textContent = v == null ? '' : t.marks[v];
@@ -33,6 +40,7 @@ UI.tictactoe = (() => {
       b.setAttribute('aria-label', `row ${Math.floor(i / n) + 1}, column ${i % n + 1}, ${v == null ? 'empty' : `${ctx.player(t.seats[v])?.name ?? '?'}'s ${t.marks[v]}`}${t.fading.includes(i) ? ', fades next' : ''}`);
       b.classList.toggle('fading', t.fading.includes(i));
       b.classList.toggle('win', !!t.line?.includes(i));
+      b.classList.toggle('last', i === last && v != null && !t.line);
       b.disabled = !ctx.myTurn || v != null;
     });
     const info = document.getElementById('tttInfo'); info.innerHTML = '';

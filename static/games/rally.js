@@ -4,15 +4,18 @@
 UI.rally = (() => {
   let S, ctx, gl = null, flat = null, raf = 0, ro = null, keyDown = null, keyUp = null;
   let crafts = [], gotAt = 0, steerNow = 0, keys = new Set(), touch = null, countdownAt = 0, trackKey = '';
+  // ⏱ lap splits and 👻 a ghost of your best lap so far this race (recorded in the browser)
+  let laps = [], lapRun = null, ghost = null, lapFlash = 0, lapMsg = '';
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
     gl = null; flat = null; crafts = []; steerNow = 0; keys = new Set(); touch = null; trackKey = '';
+    laps = []; lapRun = null; ghost = null; lapFlash = 0;
     main.innerHTML = `<div class="ra"><div class="ra-hud"><span id="raLap"></span><b id="raPlace"></b><span id="raSpeed"></span></div>
       <div class="ra-stage" id="raStage"><div class="lr-banner" id="raBanner" hidden></div>
         <div class="ra-half left">◀</div><div class="ra-half right">▶</div></div>
       <div class="sm-bar"><span class="hint">Hold a side to steer · swipe up to boost</span><button id="raBoost" class="primary">⚡ Boost</button></div></div>`;
-    side.innerHTML = '<div class="panel"><div id="raOrder"></div></div>';
+    side.innerHTML = '<div class="panel"><div id="raOrder"></div><div id="raSplits" class="ra-splits"></div></div>';
     main.querySelector('.ra').style.touchAction = 'none';
     $('raBoost').addEventListener('pointerdown', (e) => { e.preventDefault(); boost(); });
     const stage = $('raStage');
@@ -39,9 +42,7 @@ UI.rally = (() => {
     addEventListener('keydown', keyDown); addEventListener('keyup', keyUp);
     ro = window.ResizeObserver ? new ResizeObserver(() => (gl || flat)?.resize()) : null;
     ro?.observe(stage);
-    const ready = window.THREE ? Promise.resolve() : new Promise((res, rej) => {
-      const sc = document.createElement('script'); sc.src = '/vendor/three.min.js'; sc.onload = res; sc.onerror = rej; document.head.append(sc);
-    });
+    const ready = GL3.load();
     ready.then(() => { if (stage.isConnected && !gl) gl = make3d(stage); }).catch(() => {})
       .finally(() => { if (stage.isConnected && !gl && !flat) flat = make2d(stage); trackKey = ''; });
     raf = requestAnimationFrame(loop);
@@ -117,6 +118,54 @@ UI.rally = (() => {
       const place = order().indexOf(r.me) + 1;
       $('raPlace').textContent = `${place}${['st', 'nd', 'rd'][place - 1] || 'th'}`;
     } else { $('raLap').textContent = 'Watching'; $('raPlace').textContent = ''; }
+    splits();
+  }
+
+  const secs = (ms) => (ms / 1000).toFixed(1) + 's';
+  function splits() {
+    const box = $('raSplits'); if (!box) return;
+    box.innerHTML = '';
+    if (!laps.length) { box.append(ctx.el('div', 'hint left', S.rally.me != null ? '⏱ Lap times show here. Beat your 👻 ghost!' : '')); return; }
+    const best = Math.min(...laps);
+    laps.forEach((ms, k) => {
+      const row = ctx.el('div', 'ra-split' + (ms === best ? ' best' : ''));
+      const d = k ? ms - laps[k - 1] : 0;
+      row.append(ctx.el('span', '', `Lap ${k + 1}`), ctx.el('b', '', secs(ms)),
+        ctx.el('small', d < 0 ? 'faster' : d > 0 ? 'slower' : '', k ? `${d < 0 ? '−' : '+'}${secs(Math.abs(d))}` : ''));
+      box.append(row);
+    });
+  }
+
+  // record my lap: (time into the lap, s, d) every ~50 ms; a finished lap that beats the best becomes the ghost
+  function trackLap(now) {
+    const r = S.rally, c = r.me != null ? crafts[r.me] : null;
+    if (!c) return;
+    // (a lap that ends the race is counted even when the race is already over in the same update)
+    if (!lapRun && (r.stage !== 'race' || S.phase !== 'playing')) return;
+    if (!lapRun) lapRun = { lap: c[5], t0: now, pts: [] };
+    if (c[5] !== lapRun.lap) {
+      const ms = now - lapRun.t0, best = laps.length ? Math.min(...laps) : Infinity;
+      laps.push(ms);
+      if (ms < best) ghost = { ms, pts: lapRun.pts };
+      lapMsg = `Lap ${laps.length}: ${secs(ms)}${ms < best && laps.length > 1 ? ' — best! ⭐' : ''}`;
+      lapFlash = now + 1800;
+      if (ms < best && laps.length > 1) ctx.sfx?.('good');
+      lapRun = { lap: c[5], t0: now, pts: [] };
+      splits();
+    }
+    if (c[6] || r.stage !== 'race' || S.phase !== 'playing') return;
+    const last = lapRun.pts.at(-1);
+    if (!last || now - lapRun.t0 - last[0] > 50) lapRun.pts.push([now - lapRun.t0, sNow(r.me, now), c[1]]);
+  }
+  // where the ghost is now: the best lap's sample at the same time into this lap
+  function ghostAt(now) {
+    if (!ghost || !lapRun || crafts[S.rally.me]?.[6]) return null;
+    const t = now - lapRun.t0, p = ghost.pts;
+    if (!p.length || t > p.at(-1)[0]) return null;
+    let lo = 0, hi = p.length - 1;
+    while (lo < hi - 1) { const m = (lo + hi) >> 1; if (p[m][0] <= t) lo = m; else hi = m; }
+    const a = p[lo], b = p[hi], f = b[0] > a[0] ? Math.max(0, Math.min(1, (t - a[0]) / (b[0] - a[0]))) : 0;
+    return at(a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f);
   }
 
   function loop(now) {
@@ -124,21 +173,31 @@ UI.rally = (() => {
     if (!S?.rally) return;
     const r = S.rally, key = `${r.length}`;
     if (key !== trackKey && (gl || flat)) { trackKey = key; (gl || flat).build(); }
+    if (key !== trackLap.key) { trackLap.key = key; laps = []; lapRun = null; ghost = null; splits(); }
+    trackLap(now);
     (gl || flat)?.draw(now);
     const mine = r.me != null ? crafts[r.me] : null;
     $('raSpeed').textContent = mine ? `${Math.round(mine[2] * 10)} km/h${mine[3] ? ' ⚡' : ''}` : '';
     const cd = (countdownAt - now) / 1000;
-    const text = S.phase === 'playing' && r.stage === 'countdown' ? (cd > 0 ? String(Math.ceil(cd)) : 'GO!') : mine?.[6] && S.phase === 'playing' ? '🏁 Finished!' : '';
+    const text = S.phase === 'playing' && r.stage === 'countdown' ? (cd > 0 ? String(Math.ceil(cd)) : 'GO!') : mine?.[6] && S.phase === 'playing' ? '🏁 Finished!'
+      : now < lapFlash ? lapMsg : '';
     $('raBanner').hidden = !text; $('raBanner').textContent = text;
+    $('raBanner').classList.toggle('small', !!text && text === lapMsg);
   }
 
   // ---------- three.js: course (x, y) → world (x, 0, -y)
+  // the phone threw the GPU context away (app switch, memory): start a fresh 3D view
+  function lost(stage) {
+    if (!stage.isConnected) return;
+    gl?.dispose(); gl = make3d(stage);
+    if (!gl) flat ||= make2d(stage); trackKey = '';
+  }
+
   function make3d(stage) {
     const T = window.THREE;
     let renderer;
-    try { renderer = new T.WebGLRenderer({ antialias: true }); } catch { return null; }
-    if (!renderer.getContext()) { renderer.dispose(); return null; }
-    renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+    renderer = GL3.renderer({}, { onLost: () => lost(stage) });
+    if (!renderer) return null;
     stage.prepend(renderer.domElement);
     const scene = new T.Scene(); scene.background = new T.Color(0x070512); scene.fog = new T.Fog(0x070512, 40, 140);
     const camera = new T.PerspectiveCamera(65, 1, 0.1, 400);
@@ -186,9 +245,13 @@ UI.rally = (() => {
       const w = stage.clientWidth || 320, h = stage.clientHeight || 320;
       renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
     }
+    const ghostShip = new T.Mesh(new T.BoxGeometry(1.4, 0.35, 0.9), new T.MeshBasicMaterial({ color: 0xbfe9ff, transparent: true, opacity: 0.3, depthWrite: false }));
+    ghostShip.visible = false; scene.add(ghostShip);
     function draw(now) {
       ensureShips();
-      const r = S.rally;
+      const r = S.rally, gp = ghostAt(now);
+      ghostShip.visible = !!gp;
+      if (gp) { ghostShip.position.copy(V(gp, 0.45)); ghostShip.rotation.y = Math.atan2(gp.uy, gp.ux); ghostShip.material.opacity = 0.22 + 0.08 * Math.sin(now / 150); }
       ships.forEach((g, i) => {
         const c = crafts[i]; if (!c) return;
         const p = at(sNow(i, now), c[1]);
@@ -231,6 +294,8 @@ UI.rally = (() => {
       g.fillStyle = '#070512'; g.fillRect(0, 0, canvas.width, canvas.height);
       g.strokeStyle = '#24203a'; g.lineWidth = r.width * 2 * k; g.lineJoin = 'round';
       g.beginPath(); r.track.forEach(([x, y], j) => (j ? g.lineTo(X(x), Y(y)) : g.moveTo(X(x), Y(y)))); g.closePath(); g.stroke();
+      const gp = ghostAt(now);
+      if (gp) { g.strokeStyle = '#bfe9ffaa'; g.lineWidth = 2; g.beginPath(); g.arc(X(gp.x), Y(gp.y), Math.max(3, 0.8 * k), 0, 7); g.stroke(); }
       crafts.forEach((c, i) => {
         const p = at(sNow(i, now), c[1]);
         g.fillStyle = colorOf(i); g.strokeStyle = i === r.me ? '#fff' : '#000'; g.lineWidth = 2;
@@ -244,5 +309,5 @@ UI.rally = (() => {
   const turnText = (s) => (s.phase === 'playing' ? `🛸 ${s.rally.laps} laps` : null);
   const myMove = (s) => s.phase === 'playing' && s.rally.stage === 'race' && s.rally.me != null && !s.rally.c[s.rally.me][6];
 
-  return { mount, render, unmount, fast, turnText, myMove, focus: true };
+  return { mount, render, unmount, fast, turnText, myMove, focus: true, ghost: () => (S?.rally ? ghostAt(performance.now()) : null), laps: () => [...laps] };
 })();

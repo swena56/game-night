@@ -33,6 +33,7 @@ UI.cribbage = (() => {
         <button id="cbCountGo" class="primary big">🧮 That's my count</button>
       </div>
       <button id="cbDiscard" class="primary big" hidden></button>
+      <button id="cbTip" hidden>💡 Suggest a discard</button>
       <p id="cbHint" class="hint"></p>
     </div>`;
     side.innerHTML = `<div class="panel"><div id="cbStatus" class="seat-row"></div><div id="cbPlayed" class="cb-played"></div>
@@ -42,6 +43,12 @@ UI.cribbage = (() => {
     $('cbLess').onclick = () => { myCount = Math.max(0, myCount - 1); $('cbMine').textContent = myCount; };
     $('cbMore').onclick = () => { myCount = Math.min(29, myCount + 1); $('cbMine').textContent = myCount; };
     $('cbCountGo').onclick = () => ctx.quiet(ctx.act('count', { n: myCount }));
+    $('cbTip').onclick = () => {
+      ctx.peek?.({ what: 'discard' }).then((r) => {
+        picked = new Set(r.cards); ctx.rerender();
+        ctx.toast(`💡 Keeping the other four scores about ${r.avg} on average, whatever the starter.`);
+      }).catch((e) => ctx.toast(e.message));
+    };
     $('cbDiscard').onclick = () => {
       const cards = [...picked];
       ctx.quiet(ctx.act('discard', { cards }).then(() => { picked = new Set(); }));
@@ -135,6 +142,8 @@ UI.cribbage = (() => {
       b.disabled = !(discarding || (playing && g.count + value(card) <= 31));
     }
     $('cbDiscard').hidden = !discarding;
+    const humans = S.players.filter((p) => !p.spectator && !p.bot && !p.eliminated).length;
+    $('cbTip').hidden = !discarding || humans !== 1 || !ctx.peek;
     $('cbDiscard').disabled = picked.size !== g.need;
     $('cbDiscard').textContent = `✂️ Send ${g.need === 1 ? 'this card' : `these ${g.need}`} to ${g.dealer === me ? 'your' : `${dealerName}'s`} crib`
       + (picked.size !== g.need ? ` (${picked.size}/${g.need})` : '');

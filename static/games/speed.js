@@ -158,5 +158,5 @@ UI.speed = (() => {
     : s.speed.me == null ? '⚡ Watching Speed' : s.speed.stage === 'between' ? '⚡ Next round soon…' : '⚡ Go go go!';
   const myMove = (s) => s.phase === 'playing' && s.speed.stage === 'play' && s.speed.me != null;
 
-  return { mount, render, unmount, turnText, myMove };
+  return { mount, render, unmount, turnText, myMove, ownSounds: true };
 })();

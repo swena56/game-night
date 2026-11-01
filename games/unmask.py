@@ -371,6 +371,15 @@ class Unmask(Game):
 
     # -- view
 
+    def notes(self, p):
+        """What I've learned, in order: each question, its answer and how many faces it ruled out."""
+        left, out = list(self.board), []
+        for q, ans in getattr(p.g, "learned", []):
+            keep = [f for f in left if evaluate(f, q) == ans]
+            out.append([qtext(q), ans, len(left) - len(keep)])
+            left = keep
+        return {"rows": out, "left": len(left)}
+
     def view(self, p):
         r = self.room
         see_all = p.spectator or p.eliminated or r.phase == "over"
@@ -389,5 +398,6 @@ class Unmask(Game):
                 "flipped": sorted(getattr(g, "flipped", ())),
                 "cards": [{"id": c, "name": CARDS[c]["name"], "icon": CARDS[c]["icon"], "desc": CARDS[c]["desc"]}
                           for c in getattr(g, "cards", [])],
+                "notes": self.notes(p),
             },
         }

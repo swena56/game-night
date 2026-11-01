@@ -106,6 +106,7 @@ class Wordsmith(Game):
             p.g.rack = self.draw(RACK)
         self.scoreless = 0
         self.last = []
+        self.plays = []  # the turn history: [pid, words, points] ('—' words for a pass or swap)
         self.bounty = None
         first = rng.choice(seated)
         self.room.add_log(f"{first.name} opens. The first word must cover the ★.", "big")
@@ -243,6 +244,7 @@ class Wordsmith(Game):
             return self.swap(p, idx)
         if t == "pass":
             self.room.add_log(f"{p.name} passed.")
+            self.note_play(p, "⏭ passed", 0)
             self.scoreless += 1
             return self.next_turn()
         raise GameError("Unknown action.")
@@ -261,6 +263,7 @@ class Wordsmith(Game):
         self.scoreless = 0
         extra = f" ({', '.join(notes)})" if notes else ""
         self.room.add_log(f"{p.name} played {', '.join(texts)} for {score}{extra}.", "question")
+        self.note_play(p, ", ".join(texts), score)
         if not p.g.rack and not self.bag:
             return self.end_game(p)
         self.next_turn()
@@ -272,7 +275,13 @@ class Wordsmith(Game):
         self.rng.shuffle(self.bag)
         self.scoreless += 1
         self.room.add_log(f"{p.name} swapped {len(idx)} tile{'s' * (len(idx) > 1)}.")
+        self.note_play(p, f"🔄 swapped {len(idx)}", 0)
         self.next_turn()
+
+    def note_play(self, p, words, pts):
+        if not hasattr(self, "plays"):
+            self.plays = []
+        self.plays = (self.plays + [[p.id, words, pts]])[-40:]
 
     def next_turn(self):
         if self.scoreless >= 2 * len(self.room.contenders()):
@@ -314,7 +323,7 @@ class Wordsmith(Game):
         return {"ws": {
             "grid": self.grid, "premiums": PREMIUMS, "values": VALUES, "bag": len(self.bag),
             "bounty": self.bounty, "last": self.last, "scores": self.scores, "by": self.by,
-            "rack": getattr(p.g, "rack", None),
+            "rack": getattr(p.g, "rack", None), "plays": getattr(self, "plays", [])[-12:],
             "bonuses": {"sweep": SWEEP_BONUS, "bounty": BOUNTY_BONUS},
         }}
 
@@ -381,6 +390,7 @@ class Wordsmith(Game):
             if len(self.bag) >= RACK:
                 return self.swap(p, list(range(len(p.g.rack))))
             self.room.add_log(f"{p.name} passed.")
+            self.note_play(p, "⏭ passed", 0)
             self.scoreless += 1
             return self.next_turn()
         moves.sort(key=lambda m: m[0])

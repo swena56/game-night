@@ -43,9 +43,7 @@ UI.riders = (() => {
     addEventListener('keydown', keyHandler);
     ro = window.ResizeObserver ? new ResizeObserver(() => { gl?.resize(); flat?.resize(); }) : null;
     ro?.observe(stage);
-    const ready = window.THREE ? Promise.resolve() : new Promise((res, rej) => {
-      const sc = document.createElement('script'); sc.src = '/vendor/three.min.js'; sc.onload = res; sc.onerror = rej; document.head.append(sc);
-    });
+    const ready = GL3.load();
     ready.then(() => { if (stage.isConnected && !gl) gl = make3d(stage); }).catch(() => {})
       .finally(() => { if (stage.isConnected && !gl && !flat) flat = make2d(stage); if (S) (gl || flat)?.reset(); });
     raf = requestAnimationFrame(loop);
@@ -135,12 +133,18 @@ UI.riders = (() => {
   }
 
   // ---------- three.js arena
+  // the phone threw the GPU context away (app switch, memory): start a fresh 3D view
+  function lost(stage) {
+    if (!stage.isConnected) return;
+    gl?.dispose(); gl = make3d(stage);
+    if (!gl) flat ||= make2d(stage); if (S) (gl || flat)?.reset();
+  }
+
   function make3d(stage) {
     const T = window.THREE;
     let renderer;
-    try { renderer = new T.WebGLRenderer({ antialias: true }); } catch { return null; }
-    if (!renderer.getContext()) { renderer.dispose(); return null; }
-    renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+    renderer = GL3.renderer({}, { onLost: () => lost(stage) });
+    if (!renderer) return null;
     stage.prepend(renderer.domElement);
     const scene = new T.Scene(); scene.background = new T.Color(0x05060f); scene.fog = new T.Fog(0x05060f, 60, 160);
     const camera = new T.PerspectiveCamera(45, 1, 0.5, 400);
@@ -224,9 +228,50 @@ UI.riders = (() => {
         if (fits) break;
         dist *= 1.08;
       }
+      base.copy(camera.position);
+    }
+    // 💥 a crash: sparks in the rider's colour, a shockwave ring, and a shake when it's you
+    const base = new T.Vector3(), booms = [];
+    let lastDraw = 0;
+    function crash(i) {
+      const bike = bikes[i]; if (!bike || !world) return;
+      const color = new T.Color(colorOf(i)), N = 70, pos = new Float32Array(N * 3), vel = [];
+      for (let k = 0; k < N; k++) {
+        pos.set([bike.position.x, 0.5, bike.position.z], k * 3);
+        const a = Math.random() * 6.283, up = 2 + Math.random() * 6, sp = 3 + Math.random() * 9;
+        vel.push([Math.cos(a) * sp, up, Math.sin(a) * sp]);
+      }
+      const geo = new T.BufferGeometry(); geo.setAttribute('position', new T.BufferAttribute(pos, 3));
+      const pts = new T.Points(geo, new T.PointsMaterial({ color, size: 0.45, transparent: true }));
+      const ring = new T.Mesh(new T.RingGeometry(0.6, 0.9, 40), new T.MeshBasicMaterial({ color, transparent: true, side: T.DoubleSide }));
+      ring.rotation.x = -Math.PI / 2; ring.position.set(bike.position.x, 0.05, bike.position.z);
+      world.add(pts, ring);
+      booms.push({ pts, ring, vel, t: 0 });
+      if (i === S.riders.me) GL3.shake(camera, 1.1);
+    }
+    function tickBooms(dt) {
+      for (const b of booms) {
+        b.t += dt;
+        const a = b.pts.geometry.attributes.position;
+        for (let k = 0; k < b.vel.length; k++) {
+          const v = b.vel[k]; v[1] -= 18 * dt;
+          a.array[k * 3] += v[0] * dt; a.array[k * 3 + 1] = Math.max(0.05, a.array[k * 3 + 1] + v[1] * dt); a.array[k * 3 + 2] += v[2] * dt;
+          if (a.array[k * 3 + 1] <= 0.05) { v[0] *= 0.8; v[2] *= 0.8; v[1] = Math.abs(v[1]) * 0.3; }
+        }
+        a.needsUpdate = true;
+        b.pts.material.opacity = Math.max(0, 1 - b.t / 1.4);
+        b.ring.scale.setScalar(1 + b.t * 9); b.ring.material.opacity = Math.max(0, 0.9 - b.t * 1.5);
+      }
+      while (booms.length && booms[0].t > 1.4) {
+        const b = booms.shift(); world?.remove(b.pts, b.ring);
+        b.pts.geometry.dispose(); b.pts.material.dispose(); b.ring.geometry.dispose(); b.ring.material.dispose();
+      }
     }
     function draw(now) {
       if (!world) return;
+      const dt = Math.min(0.1, (now - lastDraw) / 1000); lastDraw = now;
+      tickBooms(dt);
+      camera.position.copy(base); GL3.tickShake(camera, dt);
       trails.forEach((t, i) => {
         const pos = headPos(i, now), bike = bikes[i], tip = tips[i];
         if (!pos) { bike.visible = tip.visible = false; return; }
@@ -242,7 +287,7 @@ UI.riders = (() => {
     }
     function dispose() { renderer.dispose(); renderer.domElement.remove(); }
     if (S) build();
-    return { sync, reset, resize, draw, dispose };
+    return { sync, reset, resize, draw, dispose, crash };
   }
 
   // ---------- flat fallback

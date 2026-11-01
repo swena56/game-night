@@ -22,7 +22,8 @@ UI.wordsmith = (() => {
       <div class="row"><button id="wsSwap">Swap tiles…</button><button id="wsPass">Pass</button><button id="wsHint" hidden>💡 Hint</button></div>
       <p class="hint left">Drag a tile onto a square, or tap a tile and then a square. Drag a placed tile to move it,
       or off the board (or tap it) to take it back.
-      DL/TL = double/triple letter, DW/TW = double/triple word.</p></div>`;
+      DL/TL = double/triple letter, DW/TW = double/triple word.</p></div>
+      <div class="panel"><h3>Turns</h3><div id="wsPlays" class="ws-plays"></div></div>`;
     board = main.querySelector('.ws-board');
     for (let r = 0; r < 11; r++)
       for (let c = 0; c < 11; c++) {
@@ -48,8 +49,25 @@ UI.wordsmith = (() => {
     };
   }
 
+  // the turn history: newest first, the best play of the game starred
+  function renderPlays() {
+    const box = $('wsPlays'); if (!box) return;
+    const plays = S.ws.plays || [];
+    box.innerHTML = '';
+    if (!plays.length) { box.append(ctx.el('p', 'hint left', 'Words played show up here.')); return; }
+    const best = Math.max(...plays.map((x) => x[2]));
+    for (const [pid, words, pts] of [...plays].reverse()) {
+      const p = ctx.player(pid);
+      const row = ctx.el('div', 'ws-play' + (pts && pts === best ? ' best' : ''));
+      const who = ctx.el('span', 'who', p?.name ?? '?'); who.style.color = p?.color ?? '';
+      row.append(who, ctx.el('span', 'words', words), ctx.el('b', '', pts ? `+${pts}` : ''));
+      box.append(row);
+    }
+  }
+
   function render(s, c) {
     S = s; ctx = c;
+    renderPlays();
     const w = S.ws, rack = w.rack || [];
     const key = rack.join('');
     if (key !== rackKey) {  // rack changed (new turn/tiles): reset local arrangement

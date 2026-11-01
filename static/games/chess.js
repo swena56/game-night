@@ -133,12 +133,15 @@ UI.chess = (() => {
   const disp = (r, c) => (flip() ? (7 - r) * 8 + (7 - c) : r * 8 + c);
   let gl = null;  // the 3D scene once created, false if WebGL is unavailable
   function load3d() {
-    const ready = window.THREE ? Promise.resolve() : new Promise((res, rej) => {
-      const sc = document.createElement('script'); sc.src = '/vendor/three.min.js'; sc.onload = res; sc.onerror = rej; document.head.append(sc);
-    });
+    const ready = GL3.load();
     ready.then(() => {
       if (!boardEl?.isConnected || gl) return;
-      gl = Chess3D.create($('ch3d'), (i) => onSquare(i)) || false;
+      gl = Chess3D.create($('ch3d'), (i) => onSquare(i), () => {
+        // the GPU context was lost (phone app switch): make a new 3D board
+        if (!gl) return;
+        gl.dispose(); gl = null;
+        if (view3d) load3d();
+      }) || false;
       setView(!!gl);
     }).catch(() => { gl = false; setView(false); });
   }

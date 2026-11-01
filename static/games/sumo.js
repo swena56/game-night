@@ -52,9 +52,7 @@ UI.sumo = (() => {
     addEventListener('keyup', keyUp);
     ro = window.ResizeObserver ? new ResizeObserver(() => (gl || flat)?.resize()) : null;
     ro?.observe(stage);
-    const ready = window.THREE ? Promise.resolve() : new Promise((res, rej) => {
-      const sc = document.createElement('script'); sc.src = '/vendor/three.min.js'; sc.onload = res; sc.onerror = rej; document.head.append(sc);
-    });
+    const ready = GL3.load();
     ready.then(() => { if (stage.isConnected && !gl) gl = make3d(stage); }).catch(() => {})
       .finally(() => { if (stage.isConnected && !gl && !flat) flat = make2d(stage); });
     raf = requestAnimationFrame(loop);
@@ -113,7 +111,7 @@ UI.sumo = (() => {
     if (i != null && was && now) {
       const kick = Math.hypot(now[2] - was[2], now[3] - was[3]);
       if (now[6] && !was[6]) buzz([80, 50, 160]);       // over the edge
-      else if (kick > 1.2 && !now[4]) buzz(35);          // shoved (not my own dash)
+      else if (kick > 1.2 && !now[4]) { buzz(35); gl?.shake?.(Math.min(0.9, 0.25 + kick * 0.06)); }  // shoved (not my own dash)
     }
     const next = { R: d.R, bm: d.bm, s: d.s, st: d.st ?? d.stage }, t = performance.now();
     // the round just ended: replay its last 1.2 s at half speed (inside the 3 s pause before the next round)
@@ -179,12 +177,18 @@ UI.sumo = (() => {
   }
 
   // ---------- three.js arena
+  // the phone threw the GPU context away (app switch, memory): start a fresh 3D view
+  function lost(stage) {
+    if (!stage.isConnected) return;
+    gl?.dispose(); gl = make3d(stage);
+    if (!gl) flat ||= make2d(stage);
+  }
+
   function make3d(stage) {
     const T = window.THREE;
     let renderer;
-    try { renderer = new T.WebGLRenderer({ antialias: true }); } catch { return null; }
-    if (!renderer.getContext()) { renderer.dispose(); return null; }
-    renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+    renderer = GL3.renderer({}, { onLost: () => lost(stage) });
+    if (!renderer) return null;
     stage.prepend(renderer.domElement);
     const scene = new T.Scene(); scene.background = new T.Color(0x05040d);
     const camera = new T.PerspectiveCamera(42, 1, 0.5, 300);
@@ -202,9 +206,28 @@ UI.sumo = (() => {
     const platform = new T.Group(); scene.add(platform);
     const disc = new T.Mesh(new T.CylinderGeometry(R0, R0 * 0.8, 1.2, 64), new T.MeshStandardMaterial({ color: 0x3a3358, metalness: 0.4, roughness: 0.5 }));
     disc.position.y = -0.6; platform.add(disc);
+    const marks = [];
     for (const f of [0.33, 0.66]) {
       const ring = new T.Mesh(new T.RingGeometry(R0 * f - 0.05, R0 * f + 0.05, 64), new T.MeshBasicMaterial({ color: 0x6b5f9a, side: T.DoubleSide }));
-      ring.rotation.x = -Math.PI / 2; ring.position.y = 0.01; platform.add(ring);
+      ring.rotation.x = -Math.PI / 2; ring.position.y = 0.01; platform.add(ring); marks.push(ring);
+    }
+    // 🍩 the ring arena: the platform is rebuilt with a hole when it shrinks (the pit itself never does)
+    let pitKey = '', ringMesh = null;
+    const pitGlow = new T.Mesh(new T.TorusGeometry(1, 0.06, 8, 64), new T.MeshBasicMaterial({ color: 0xff5fa2 }));
+    pitGlow.rotation.x = Math.PI / 2; pitGlow.position.y = 0.03; pitGlow.visible = false; scene.add(pitGlow);
+    function ensurePit() {
+      const pit = S.sumo.pit || 0, key = pit ? `${pit}:${snap.R}` : '';
+      if (key === pitKey) return;
+      pitKey = key;
+      if (ringMesh) { scene.remove(ringMesh); ringMesh.geometry.dispose(); ringMesh = null; }
+      disc.visible = !pit; marks.forEach((m) => (m.visible = !pit)); pitGlow.visible = !!pit;
+      if (!pit) return;
+      pitGlow.scale.set(pit, pit, 1);
+      const shape = new T.Shape(); shape.absarc(0, 0, snap.R, 0, Math.PI * 2, false);
+      const hole = new T.Path(); hole.absarc(0, 0, pit, 0, Math.PI * 2, true); shape.holes.push(hole);
+      ringMesh = new T.Mesh(new T.ExtrudeGeometry(shape, { depth: 1.2, bevelEnabled: false, curveSegments: 64 }), disc.material);
+      ringMesh.rotation.x = Math.PI / 2;
+      scene.add(ringMesh);
     }
     const nb = S?.sumo?.nb ?? 16, bumpers = [];
     for (let k = 0; k < nb; k++) {
@@ -236,16 +259,22 @@ UI.sumo = (() => {
         scene.add(g); saucers.push(g);
       }
     }
+    const base = new T.Vector3();
+    let lastDraw = 0;
     function resize() {
       const w = stage.clientWidth || 320, h = stage.clientHeight || 320;
       renderer.setSize(w, h); camera.aspect = w / h;
       // keep the whole platform in view whatever the screen shape
       const fit = R0 * 1.25 / Math.tan((camera.fov * Math.PI) / 360) / Math.min(1, camera.aspect);
       camera.position.set(0, fit * 0.85, fit * 0.6); camera.lookAt(0, -1, 0.6);
+      base.copy(camera.position);
       camera.updateProjectionMatrix();
     }
     function draw(now) {
-      ensureSaucers();
+      ensureSaucers(); ensurePit();
+      const dt = Math.min(0.1, (now - lastDraw) / 1000); lastDraw = now;
+      camera.position.copy(base); GL3.tickShake(camera, dt);
+      pitGlow.material.color.setHSL(0.92, 1, 0.55 + 0.15 * Math.sin(now / 250));
       const k = snap.R / R0;
       platform.scale.set(k, 1, k);
       bumpers.forEach((m, j) => { m.visible = snap.bm[j] === '1'; });
@@ -264,7 +293,7 @@ UI.sumo = (() => {
     }
     function dispose() { renderer.dispose(); renderer.domElement.remove(); }
     resize();
-    return { draw, resize, dispose };
+    return { draw, resize, dispose, shake: (a) => GL3.shake(camera, a) };
   }
 
   // ---------- flat fallback (no WebGL)
@@ -283,6 +312,10 @@ UI.sumo = (() => {
       const W = canvas.width, R0 = S.sumo.R0, k = W / (2.3 * R0), c = W / 2;
       g.fillStyle = '#05040d'; g.fillRect(0, 0, W, W);
       g.fillStyle = '#3a3358'; g.beginPath(); g.arc(c, c, snap.R * k, 0, 7); g.fill();
+      if (S.sumo.pit) {
+        g.fillStyle = '#05040d'; g.strokeStyle = '#ff5fa2'; g.lineWidth = 0.12 * k;
+        g.beginPath(); g.arc(c, c, S.sumo.pit * k, 0, 7); g.fill(); g.stroke();
+      }
       const nb = snap.bm.length;
       g.lineWidth = 0.4 * k; g.strokeStyle = '#8ecae6';
       for (let j = 0; j < nb; j++) {

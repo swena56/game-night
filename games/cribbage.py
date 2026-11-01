@@ -404,6 +404,20 @@ class Cribbage(Game):
             return
         super().bot_tick()
 
+    def peek(self, p, a):
+        """💡 A learner's hint, alone against bots: the discard the hard bot would make, and what the
+        four kept cards score on average."""
+        if a.get("what") != "discard" or self.stage != "discard" or p.id not in self.seats or p.g.discarded:
+            raise GameError("No hint right now.")
+        if len([o for o in self.room.contenders() if o.human()]) > 1:
+            raise GameError("Hints are for games against bots.")
+        out = self.choose_discard(p, "hard")
+        keep = [c for c in p.g.hand if c not in out]
+        seen = set(p.g.hand)
+        starters = [rk + s for rk in RANKS for s in SUITS if rk + s not in seen]
+        avg = sum(sum(v for _, v in score_show(keep, st)) for st in starters) / len(starters)
+        return {"cards": out, "avg": round(avg, 1)}
+
     def choose_discard(self, p, level):
         """Keep the four cards worth the most on average over every possible starter; the hard bot also
         values (or avoids feeding) the crib."""

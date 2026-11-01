@@ -65,7 +65,7 @@ UI.spire = (() => {
       grid, rng: mulberry32(sp.seed + (mine ? mine.rings * 7919 : 0)), bag: [], piece: null, next: null, held: null, canHold: true,
       x: 0, y: 0, cells: null, fallAt: 0, lockAt: null, combo: 0, shield: mine?.shield || 0, surgeUntil: 0,
       applied, appliedKey: key, dead: !sp.playing, lastPush: 0, pushed: mine?.rows ?? '', angle: 0,
-      start: performance.now() + sp.startIn * 1000 - sp.elapsed * 1000, shake: 0, dirty: true,
+      start: performance.now() + sp.startIn * 1000 - sp.elapsed * 1000, shake: 0, dirty: true, incoming: [],
     };
     st.next = drawKind();
     if (!st.dead) spawn();
@@ -134,6 +134,8 @@ UI.spire = (() => {
     if (powers.includes('blast')) { st.grid.splice(0, 2); st.grid.push(emptyRow(), emptyRow()); }
     if (full.length) {
       flash(full.length >= 3 ? 'big' : 'small', full.length, st.combo);
+      const blocked = counter(full.length + Math.max(0, st.combo - 1));
+      if (blocked) ctx.toast(`🧱 Blocked ${blocked} incoming junk!`);
       if (powers.length) ctx.toast(powers.map((p) => `${POWER_ICON[p]} ${p}!`).join(' '));
       ctx.quiet(ctx.act('clear', { rings: full.length, combo: st.combo, powers }));
     }
@@ -143,6 +145,33 @@ UI.spire = (() => {
     spawn();
   }
 
+  const JUNK_DELAY = 3000;
+  // clears knock pending junk down, oldest first; returns how much was blocked
+  function counter(n) {
+    let blocked = 0;
+    while (n > 0 && st.incoming.length) {
+      const q = st.incoming[0], k = Math.min(n, q.n);
+      q.n -= k; n -= k; blocked += k;
+      if (!q.n) st.incoming.shift();
+    }
+    if (blocked) meter();
+    return blocked;
+  }
+  function meter() {
+    const m = $('spJunk'); if (!m) return;
+    const n = st.dead ? 0 : st.incoming.reduce((a, q) => a + q.n, 0);
+    m.hidden = !n;
+    m.style.setProperty('--n', Math.min(n, 10));
+    m.dataset.n = n;
+    const soon = st.incoming.length && st.incoming[0].at - performance.now() < 1000;
+    m.classList.toggle('soon', !!soon);
+  }
+  function landJunk(now) {
+    if (!st.incoming.length) return;
+    if (st.dead) { st.incoming = []; meter(); return; }
+    while (st.incoming.length && st.incoming[0].at <= now) { const q = st.incoming.shift(); addJunk(q.n); if (st.dead) break; }
+    meter();
+  }
   function addJunk(n) {
     const gap = Math.floor(Math.random() * W);
     for (let i = 0; i < n; i++) {
@@ -181,8 +210,10 @@ UI.spire = (() => {
       if (ev.id <= st.applied) continue;
       st.applied = ev.id;
       if (ev.kind === 'junk') {
+        if (st.dead) continue;
         if (st.shield > 0) { st.shield--; ctx.toast(`🛡️ Shield blocked ${ev.n} junk from ${ev.from}!`); push(true); }
-        else { addJunk(ev.n); ctx.toast(`🧱 ${ev.from} sent you ${ev.n} junk!`); }
+        // 🧱 junk waits on the meter for a moment: clear rings before it lands to knock it down
+        else { st.incoming.push({ n: ev.n, at: performance.now() + JUNK_DELAY }); ctx.toast(`🧱 ${ev.from} is sending you ${ev.n} junk — clear rings to block it!`); meter(); }
       } else if (ev.kind === 'surge') {
         st.surgeUntil = performance.now() + ev.secs * 1000;
         ctx.toast(`⚡ ${ev.from}'s surge — you're falling faster!`);
@@ -195,6 +226,7 @@ UI.spire = (() => {
   function tick(now) {
     raf = requestAnimationFrame(tick);
     if (!st) return;
+    landJunk(now);
     const count = $('spCount');
     const left = st.start - now;
     count.textContent = S.phase === 'playing' && left > 0 ? Math.ceil(left / 1000) : left > -700 && S.phase === 'playing' ? 'GO!' : '';
@@ -216,9 +248,12 @@ UI.spire = (() => {
   function initThree() {
     const T = window.THREE;
     const stage = $('spStage');
-    let renderer;
-    try { renderer = new T.WebGLRenderer({ antialias: true, alpha: true }); } catch { return; }
-    renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+    const renderer = GL3.renderer({ alpha: true }, { onLost: () => {
+      if (!gfx || gfx.renderer !== renderer) return;
+      renderer.dispose(); renderer.domElement.remove(); gfx = null;
+      if (stage.isConnected) { initThree(); resize(); }
+    } });
+    if (!renderer) return;
     stage.prepend(renderer.domElement);
     const scene = new T.Scene();
     const camera = new T.PerspectiveCamera(42, 1, 0.1, 200);
@@ -411,7 +446,8 @@ UI.spire = (() => {
     S = null;
     main.innerHTML = `<div class="spire-wrap">
       <div id="spStage" class="spire-stage"><canvas id="spFallback"></canvas>
-        <div id="spCount" class="sp-count"></div><div id="spFlash" class="sp-flash"></div><div id="spCall" class="sp-call"></div><div id="spBanner" class="sp-banner" hidden></div></div>
+        <div id="spCount" class="sp-count"></div><div id="spFlash" class="sp-flash"></div><div id="spCall" class="sp-call"></div><div id="spBanner" class="sp-banner" hidden></div>
+        <div id="spJunk" class="sp-junk" hidden title="Incoming junk: clear rings to block it"></div></div>
       <div class="sp-pad"><button data-k="rotl">⟲</button><button data-k="left">◀</button><button data-k="drop">⤓</button>
         <button data-k="right">▶</button><button data-k="rot">⟳</button><button data-k="soft">▼</button><button data-k="hold" title="Hold">⇄</button></div></div>`;
     side.innerHTML = `<div class="panel">
@@ -451,9 +487,7 @@ UI.spire = (() => {
     };
     addEventListener('keydown', keyHandler);
     resizeObs = new ResizeObserver(resize); resizeObs.observe(stage);
-    const load = window.THREE ? Promise.resolve() : new Promise((res, rej) => {
-      const s = document.createElement('script'); s.src = '/vendor/three.min.js'; s.onload = res; s.onerror = rej; document.head.append(s);
-    });
+    const load = GL3.load();
     // render() runs before this promise settles, so S is current here; a flat well stays 2D
     load.then(() => { if (S?.spire?.flat) return resize(); initThree(); if (gfx) $('spFallback').hidden = true; resize(); })
       .catch(() => ctx?.toast('3D engine unavailable — using the flat view.'));
@@ -492,5 +526,7 @@ UI.spire = (() => {
     : !s.spire.playing ? '🗼 Watching the battle'
     : s.spire.startIn > 0 ? '🗼 Get ready…' : '🗼 Build fast, clear rings!';
 
-  return { mount, render, unmount, turnText, focus: true };
+  // (test hook: junk arriving from a rival, as if a clear had sent it)
+  const testJunk = (n) => st && applyEvents([{ id: st.applied + 1, kind: 'junk', n, from: 'Test' }]);
+  return { mount, render, unmount, turnText, focus: true, testJunk, testState: () => ({ inc: st?.incoming, now: performance.now(), dead: st?.dead }) };
 })();

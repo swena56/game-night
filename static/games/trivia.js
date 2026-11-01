@@ -62,7 +62,7 @@ UI.trivia = (() => {
     let note = '';
     if (rv) {
       const g = rv.gained[S.me.id];
-      note = !t.playing ? '' : t.mine == null ? '⏰ No answer this time.' : g ? `✅ Right! +${g}${t.streak > 1 ? ` · 🔥 ${t.streak} in a row` : ''}` : '❌ Not this time.';
+      note = !t.playing ? '' : t.mine == null ? '⏰ No answer this time.' : g ? `✅ Right! +${g}${t.streak > 2 ? ` · 🔥 ${t.streak} in a row (+${50 * Math.min(t.streak - 2, 3)} streak bonus)` : t.streak > 1 ? ' · 🔥 2 in a row: one more for a bonus' : ''}` : '❌ Not this time.';
       const quick = rv.fastest && ctx.player(rv.fastest);
       if (quick) note += `${note ? ' · ' : ''}⚡ ${rv.fastest === S.me.id ? 'You were' : `${quick.name} was`} quickest!`;
     } else if (t.playing && t.mine != null) {
