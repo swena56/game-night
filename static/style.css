@@ -1154,6 +1154,10 @@ body.focus .sm-stage { height: max(220px, calc(var(--app-h, 100vh) - 215px)); }
 .to-seat { background: var(--panel); border-radius: 12px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
 .to-seat.turn { box-shadow: 0 0 0 2px var(--accent); }
 .to-seat.me { border: 1px solid #ffffff22; }
+.to-hand { display: flex; flex-direction: column; gap: 4px; border-radius: 8px; padding: 2px; }
+.to-hand + .to-hand { border-top: 1px dashed #ffffff22; padding-top: 6px; }
+.to-hand.cur { box-shadow: 0 0 0 2px var(--accent); }
+.to-hand .to-foot { flex-wrap: wrap; row-gap: 2px; }
 .to-head, .to-foot { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 13px; }
 .to-foot .bust { color: var(--danger); }
 .to-res { font-weight: 800; font-size: 12px; } .to-res.win { color: var(--ok); } .to-res.lose { color: var(--danger); }

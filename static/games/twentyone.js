@@ -1,5 +1,5 @@
 // Twenty-One: the dealer's cards on top, every seat's cards and bet below, and a bar with the bet
-// chips (while betting) or Hit / Stand / Double (on your turn).
+// chips (while betting) or Hit / Stand / Double / Split (on your turn). A split seat shows one row per hand.
 UI.twentyone = (() => {
   let S, ctx;
   const SUIT = { S: '♠', H: '♥', D: '♦', C: '♣' };
@@ -35,12 +35,24 @@ UI.twentyone = (() => {
       const head = ctx.el('div', 'to-head');
       const nm = ctx.el('b', '', `${p?.name ?? 'left'}${i === me ? ' (you)' : ''}`); nm.style.color = p?.color ?? 'inherit';
       head.append(nm, ctx.el('span', 'hint', t.bets[i] ? `bet ${t.bets[i]}` : t.stage === 'bet' && t.chips[i] > 0 ? 'betting…' : ''));
-      const cards = ctx.el('div', 'to-cards');
-      t.cards[i].forEach((card) => cards.append(face(card, 'small')));
-      const foot = ctx.el('div', 'to-foot');
-      if (t.cards[i].length) foot.append(ctx.el('b', t.totals[i] > 21 ? 'bust' : '', String(t.totals[i])));
-      if (t.result[i]) foot.append(ctx.el('span', 'to-res ' + (t.result[i][1] > 0 ? 'win' : t.result[i][1] < 0 ? 'lose' : ''), `${t.result[i][0]} ${t.result[i][1] > 0 ? '+' : ''}${t.result[i][1]}`));
-      box.append(head, cards, foot);
+      box.append(head);
+      const hs = t.seatHands[i], split = hs.length > 1;
+      hs.forEach((h, k) => {
+        const wrap = ctx.el('div', 'to-hand' + (split && S.turn === pid && t.stage === 'play' && t.cur[i] === k ? ' cur' : ''));
+        const cards = ctx.el('div', 'to-cards');
+        h.cards.forEach((card) => cards.append(face(card, 'small')));
+        const foot = ctx.el('div', 'to-foot');
+        foot.append(ctx.el('b', h.total > 21 ? 'bust' : '', String(h.total)));
+        if (split) foot.append(ctx.el('span', 'hint', `🪙 ${h.bet}`));
+        if (h.res) foot.append(ctx.el('span', 'to-res ' + (h.res[1] > 0 ? 'win' : h.res[1] < 0 ? 'lose' : ''), `${h.res[0]} ${h.res[1] > 0 ? '+' : ''}${h.res[1]}`));
+        wrap.append(cards, foot);
+        box.append(wrap);
+      });
+      if (split && t.result[i]) {
+        const [, d] = t.result[i], tot = ctx.el('div', 'to-foot');
+        tot.append(ctx.el('span', 'hint', 'total'), ctx.el('span', 'to-res ' + (d > 0 ? 'win' : d < 0 ? 'lose' : ''), `${d > 0 ? '+' : ''}${d}`));
+        box.append(tot);
+      }
       seats.append(box);
     });
 
@@ -56,13 +68,15 @@ UI.twentyone = (() => {
       }
       note = 'Place your bet.';
     } else if (playing && t.stage === 'play' && ctx.myTurn) {
-      for (const [type, label, cls] of [['hit', '➕ Hit', 'primary'], ['stand', '✋ Stand', ''], ['double', '💰 Double', '']]) {
+      for (const [type, label, cls] of [['hit', '➕ Hit', 'primary'], ['stand', '✋ Stand', ''], ['double', '💰 Double', ''], ['split', '✂️ Split', '']]) {
+        if (type === 'split' && !t.canSplit) continue;  // only offered on a pair
         const b = ctx.el('button', cls, label);
         if (type === 'double') b.disabled = !t.canDouble;
         b.onclick = () => ctx.quiet(ctx.act(type));
         bar.append(b);
       }
-      note = `You have ${t.totals[me]}.`;
+      const hs = t.seatHands[me];
+      note = hs.length > 1 ? `Hand ${t.cur[me] + 1} of ${hs.length}: you have ${hs[t.cur[me]].total}.` : `You have ${hs[0].total}.`;
     } else if (playing && t.stage === 'bet') note = t.chips[me] > 0 ? 'Waiting for the other bets…' : 'Out of chips — watching.';
     else if (t.stage === 'dealer') note = 'The dealer plays…';
     $('toNote').textContent = note;
