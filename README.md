@@ -90,7 +90,7 @@ address the server prints. **Play solo** on the home screen starts any game agai
 | #️⃣ **Ultimate Tic-Tac-Toe** | 2 | The folk game: nine small boards in one. Where you play sends your rival to that board. Win three small boards in a row. | The boards you may play in glow; won boards show a big mark; the last move is outlined. ↶ Undo requests. |
 | ⚫ **Nine Men's Morris** | 2 | The traditional mill game: place 9 men, then slide them; a line of three (a mill) takes a rival man. Fewer than 3 men or no move loses. | Optional flying with 3 men. Tap a man, then its destination; after a mill, rival men you can take pulse red. |
 
-### 🎲 Dice & casino (7)
+### 🎲 Dice & casino (8)
 
 | Game | Players | What it is | Twist |
 |---|---|---|---|
@@ -99,6 +99,7 @@ address the server prints. **Play solo** on the home screen starts any game agai
 | 🎯 **Farkle** | 1–6 | The traditional push-your-luck dice game: roll six, set aside scoring dice, roll the rest or bank. A roll with nothing scoring is a FARKLE and the turn's points are gone; score all six for hot dice. | Live total of the dice you've picked, a ✨ best-pick button, and everyone sees each farkle and bank. Play to 10,000 or 5,000, with a final round for the others; optional 500 to get on the board and −1,000 for three farkles in a row. |
 | 🥤 **Qork** | 2–6 | A reaction dice game (#41): the Cupper keeps rolling two dice, and on doubles or a seven every Corker yanks their Qork off the mat while the Cupper slams the cup down. Escape for +1; each trapped Qork is +1 to the Cupper (+1 more for trapping everyone); jumping early on any other roll is −1. The cup passes every round. | Reaction times are measured on each phone from the moment the dice land there, so a slow network doesn't lose the race; everyone's time is shown after each slam. Tap the mat, the big button or Space. 1–3 turns as Cupper each. |
 | 🚢 **Ship, Captain & Crew** | 1–6 | The traditional tavern dice game: three rolls of five dice to find a 6 (ship), then a 5 (captain), then a 4 (crew), in order. The last two dice are your cargo. | Tap cargo dice to reroll one or both with the rolls you have left, or ⚓ dock. 3, 5 or 8 rounds; alone, average 5 cargo a round to win (best play averages about 4.3). Optional 🍺 pub pot: ante a coin a round, best cargo takes the pot. |
+| 📦 **Shut the Box** | 1–6 | The traditional pub dice game: roll two dice and shut open tiles (1–9, or 1–12) that add up to the roll, until nothing fits. The open tiles are your points; lowest total after 1, 3 or 5 rounds wins. | Shut every tile to shut the box for 0. Once 7 and up are shut you may roll one die. Tiles that can't fit your roll are dimmed, and a single possible fit is picked for you. Alone, beat 10 points a round. |
 | 🤥 **Liar's Dice** | 2–6 | The traditional bluffing game: everyone rolls in secret, then bids rise ("four 3s") until someone calls 🤥 Liar!. Whoever was wrong loses a die; the last with dice wins. | Optional wild 1s and 🎯 Exact calls (spot on and everyone else loses a die). A helper shows how many of a face to expect, and the showdown stays up with everyone's dice. |
 | 🂡 **Twenty-One** | 1–6 | The traditional casino game against a dealer bot: everyone bets at once, then hits, stands, doubles or ✂️ splits a pair in turn. Dealer draws to 17; a two-card 21 pays 3:2. | Four-deck shoe. Split up to four hands (split aces get one card each; a 21 after a split pays even money). Most chips after 5, 8 or 12 hands wins; alone, beat your starting 100. |
 
@@ -117,6 +118,7 @@ Every game has **Easy / Normal / Hard bots**:
 - **Farkle:** bots weigh the chance of farkling with the dice left (measured: 67% with one die down to 2% with six) against the average gain, and keep rolling when it pays; in the final round they roll until they beat the leader. Hard keeps fewer dice to roll more. Simulation shows Farkle is mostly luck past that: hard and normal finish about even, both well ahead of easy.
 - **Qork:** bots react after a human-like delay (easy ≈ 640 ms, normal ≈ 480 ms, hard ≈ 350 ms) and sometimes flinch at a near miss (a 6 or 8, or dice one apart): easy 10%, normal 7%, hard 2%. They only see what's on the table. Simulation: hard wins almost every bot-only game.
 - **Ship, Captain & Crew:** hard bots reroll cargo by an exact expected-value table (one die or both); normal bots reroll below 7, easy below 6; in the last round, bots behind the leader gamble.
+- **Shut the Box:** the hard bot plays perfectly: it works out the lowest expected score for every possible box and roll (11.0 points a round with tiles 1–9; it scored 10.85 over 450 rounds and shut the box 9% of the time). Normal shuts the fewest, highest tiles (11.6), easy picks any fit (20.2). It's mostly luck: hard and normal finish about even.
 - **Liar's Dice:** bots judge bids with the binomial odds from their own dice and the hidden count, bid the most believable raise and sometimes bluff; hard bots also assume a bidder holds one of the face they bid, and call 🎯 Exact when it is the likeliest count.
 - **Yacht:** bots judge a roll by its best box minus that box's typical value, so they don't waste Choice or Yacht on a weak roll. The hard bot tries all 32 ways to hold the dice, simulating the remaining rolls for each; normal keeps its most common face or a straight draw. Hard averages about 140 points.
 - **Cribbage:** bots keep the four cards worth the most averaged over every possible starter; the hard bot also feeds its own crib and starves a rival's. In the play they take the most points now, and the hard bot avoids leaving 5 or 21 (an easy 15 or 31) and inviting runs.
@@ -380,7 +382,7 @@ Items that become ✅ move into the per-game plan.
    scrolling, a game area with no size, visible elements squeezed to nothing (#44) and JavaScript errors. Its first run found
    13 games that scrolled sideways on phones, all fixed.
 2. **A shared results card** between rounds and reserved status-line heights (#17, #18). **M**
-3. **Even the 🎲 Dice & casino row again:** Qork made it 7 games. Add an 8th, or move Twenty-One to Cards and add a card game. **S–M**
+3. ✅ **Even the 🎲 Dice & casino row again:** Qork made it 7 games; 📦 **Shut the Box** makes it 8 (46 games).
 4. **Keyboard and screen-reader play** in the boards that still lack it (Backgammon, Oware, Ultimate, Morris, Dots & Boxes,
    the card games, Yacht, Farkle) using the shared `gridKeys`. **M**
 5. **🙋 Join in mid-game** for more round-based games: Odd One Out, Grid Hunt, Safecracker, Yacht. **S each**
@@ -641,7 +643,8 @@ race) then brought Words & puzzles to 6.
 
 ✅ 🎲 Dice & casino then reached 6 with 🚢 **Ship, Captain & Crew** and 🤥 **Liar's Dice**, so all seven groups fill
 their rows: **44 games**, Party 6 · Action 8 · Strategy 6 · Quick classics 6 · Cards 6 · Dice & casino 6 ·
-Words & puzzles 6. ✅ #41's "qork" turned out to be a reaction game, now 🥤 **Qork**: **45 games**, Dice & casino 7.
+Words & puzzles 6. ✅ #41's "qork" turned out to be a reaction game, now 🥤 **Qork**: **45 games**, Dice & casino 7. ✅ 📦 **Shut the Box** brings it to 8: **46 games**, every group
+filling its rows again.
 
 **More three.js action ideas** (each works with the existing real-time plumbing: a server-owned sim
 with `frame` / `push_fast`, or each browser simulating its own board like Spire Siege):

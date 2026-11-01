@@ -1415,12 +1415,34 @@ body.light .logo { background-image: linear-gradient(90deg, #e09a00, #e0457b, #1
 .qk-cup.down { transform: none; opacity: .9; }
 .qk-mat.flinch { animation: qkShake .3s; }
 @keyframes qkShake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
-.qk-buttons { justify-content: center; gap: 10px; }
-.qk-buttons > * { flex: none; }
-.qk-go { min-width: 150px; font-size: 22px; }
+.qk-buttons { justify-content: center; gap: 10px; flex-wrap: nowrap; max-width: 100%; }
+.qk-buttons > * { flex: 0 1 auto; min-width: 0; }  /* Roll and SLAM side by side fit a 485 px phone */
+.qk-go { min-width: min(150px, 34vw); font-size: clamp(17px, 4.6vw, 22px); }
 .qk-go.hot { animation: bannerIn .25s ease-out; box-shadow: 0 0 0 4px #ff922b; }
 .qk-times { display: flex; flex-direction: column; gap: 2px; min-height: 3em; width: min(100%, 320px); }
 .qk-time { display: flex; justify-content: space-between; }
 .qk-rolls { display: flex; flex-wrap: wrap; gap: 6px; }
 .qk-roll { padding: 2px 8px; border-radius: 8px; background: var(--field); font-weight: 700; }
 .qk-roll.hot { background: #ff922b; color: #000; }
+
+/* shut the box (dice reuse the yacht .ya-die look) */
+.sb { width: min(100%, 560px); margin: 0 auto; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.sb-who { font-weight: 800; min-height: 1.4em; }
+.sb-box { width: 100%; display: grid; grid-template-columns: repeat(var(--sb-n, 9), minmax(0, 1fr)); gap: 4px; padding: 10px 8px 14px;
+  border-radius: 14px; background: linear-gradient(#7a4a24, #4e2c12); box-shadow: inset 0 3px 0 #ffffff22, 0 8px 18px #0008; }
+.sb-box:has(> :nth-child(10)) { --sb-n: 12; }
+.sb-tile { aspect-ratio: 2 / 3; padding: 0; border: 0; border-radius: 5px; font-weight: 900; font-size: clamp(14px, 4.4vw, 26px);
+  background: linear-gradient(#fbf3df, #e4d3ad); color: #3a2410; box-shadow: 0 3px 0 #a88a58; transition: transform .2s, background .2s; }
+.sb-tile:disabled { opacity: 1; cursor: default; }
+.sb-tile.dim { opacity: .45; }
+.sb-tile.picked { transform: translateY(-6px); background: linear-gradient(#ffe08a, #f2b632); box-shadow: 0 0 0 3px var(--accent), 0 3px 0 #a88a58; }
+.sb-tile.shut { background: #2a170a; color: #ffffff2e; box-shadow: inset 0 3px 6px #000a; transform: none; }
+.sb-dice { min-height: clamp(50px, 15vw, 70px); }
+.sb-dice.faded { opacity: .45; }
+.sb-sum { font-weight: 800; min-height: 1.3em; }
+.sb-actions { justify-content: center; min-height: 52px; }
+.sb-row { padding: 6px 0; border-bottom: 1px solid var(--line); }
+.sb-row.now .seat-row span.grow { text-decoration: underline; text-decoration-color: var(--accent); }
+.sb-mini { display: flex; gap: 2px; margin: 4px 0; }
+.sb-mini span { flex: 1; text-align: center; font-size: 11px; font-weight: 800; border-radius: 3px; background: #e4d3ad; color: #3a2410; }
+.sb-mini span.shut { background: transparent; color: #ffffff30; }

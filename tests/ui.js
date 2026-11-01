@@ -258,6 +258,18 @@ const MOVES = {
     const r2 = d.querySelector('#scRoll');
     click(r2.disabled ? d.querySelector('#scFree .ya-die:not(:disabled)') : r2);
   },
+  shutbox(d, S) {  // roll (one die now and then), or tap the tiles of one fitting set and Shut
+    const r1 = d.querySelector('#sbRoll1'), r2 = d.querySelector('#sbRoll2');
+    if (!r2.hidden) return click(!r1.hidden && Math.random() < 0.5 ? r1 : r2);
+    const opts = S.shutbox.options;
+    if (!opts.length) return;
+    for (const b of [...d.querySelectorAll('#sbBox .sb-tile.picked')]) click(b);
+    const want = opts[Math.floor(Math.random() * opts.length)];
+    for (const v of want) click([...d.querySelectorAll('#sbBox .sb-tile')].find((b) => b.textContent === String(v)));
+    const shut = d.querySelector('#sbShut');
+    if (shut.disabled) throw new Error(`Shut stayed disabled after picking ${want} (roll ${S.shutbox.dice})`);
+    click(shut);
+  },
   ladder(d, S, n, w) {
     // Mostly hints (always a legal step); sometimes a typed word (often rejected) or a step back.
     const r = Math.random();
@@ -515,7 +527,7 @@ async function feedbackTour() {
   const lt = await lobbyTour();
   console.log('LOBBY', JSON.stringify(lt));
   for (const g of games.length ? games : Object.keys(MOVES)) {
-    const r = await playSolo(g, g === 'wordsmith' ? 40 : g === 'spire' ? 25 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'cribbage' ? 300 : g === 'yacht' ? 200 : g === 'farkle' ? 240 : g === 'qork' ? 200 : g === 'backgammon' ? 300 : g === 'gridhunt' ? 260 : g === 'paintblast' ? 230 : g === 'sumo' ? 200 : g === 'putt' ? 300 : g === 'rally' ? 150 : g === 'hearts' || g === 'rummy' ? 300 : g === 'twentyone' ? 200 : g === 'speed' ? 150 : g === 'trivia' ? 200 : g === 'ladder' ? 330 : g === 'liars' ? 300 : g === 'shipcrew' ? 200 : g === 'reversi' || g === 'ultimate' || g === 'oware' || g === 'morris' ? 260 : g === 'safecracker' ? 200 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
+    const r = await playSolo(g, g === 'wordsmith' ? 40 : g === 'spire' ? 25 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'cribbage' ? 300 : g === 'yacht' ? 200 : g === 'farkle' ? 240 : g === 'qork' ? 200 : g === 'backgammon' ? 300 : g === 'gridhunt' ? 260 : g === 'paintblast' ? 230 : g === 'sumo' ? 200 : g === 'putt' ? 300 : g === 'rally' ? 150 : g === 'hearts' || g === 'rummy' ? 300 : g === 'twentyone' ? 200 : g === 'speed' ? 150 : g === 'trivia' ? 200 : g === 'ladder' ? 330 : g === 'liars' ? 300 : g === 'shipcrew' || g === 'shutbox' ? 200 : g === 'reversi' || g === 'ultimate' || g === 'oware' || g === 'morris' ? 260 : g === 'safecracker' ? 200 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
     console.log(`\n== ${g}: phase=${r.phase} moves=${r.moves} dialogs=${r.dialogs || 0} screen="${r.screen}" ${r.banner ? `banner="${r.banner}"` : ''}`);
     console.log(`   help: ${r.help} | log ticker: "${r.ticker}"`);
     if (r.replay) console.log(`   replay: ${r.replay}`);
