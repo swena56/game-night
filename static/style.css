@@ -183,6 +183,10 @@ p.preview { color: var(--accent2); font-style: italic; min-height: 1.4em; margin
 .ws-preview.good { color: var(--ok); } .ws-preview.bad { color: #ff8a8a; }
 .rack-tile.sel { transform: translateY(-6px); outline: 3px solid var(--accent); }
 .rack-tile.swap { outline: 3px dashed var(--danger); opacity: .7; }
+.ws-cell.tile.blank, .rack-tile.blank { color: #8a6a3a; font-style: italic; }  /* a blank: its letter, no points */
+.ws-blank { margin: 6px 0; }
+.ws-letters { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 4px; }
+.ws-letters button { padding: 6px 0; font-weight: 800; }
 .ws-info { display: flex; justify-content: space-between; color: var(--muted); font-size: 13px; }
 
 /* night heist */

@@ -22,6 +22,11 @@ TILES = {
     "F": (1, 4), "W": (1, 3), "K": (1, 5), "V": (1, 6), "J": (1, 8), "X": (1, 8), "Q": (1, 10), "Z": (1, 8),
 }
 VALUES = {k: v for k, (_, v) in TILES.items()}
+BLANK = "?"  # on a rack; on the board a blank is the lowercase of the letter it stands for, worth 0
+
+
+def value(ch):
+    return VALUES.get(ch, 0)
 BOUNTY_POOL = "DGHCMPBYFWKV"
 
 
@@ -74,6 +79,16 @@ def warm_up():
     threading.Thread(target=words, daemon=True).start()
 
 
+def with_blanks(w, missing, skip):
+    """The word with the letters the rack lacks in lowercase (played as blanks), never at index `skip`."""
+    out, missing = list(w), list(missing)
+    for j in range(len(w) - 1, -1, -1):
+        if j != skip and out[j] in missing:
+            missing.remove(out[j])
+            out[j] = out[j].lower()
+    return "".join(out)
+
+
 class Wordsmith(Game):
     by = None  # rooms saved before tiles had owners
     id = "wordsmith"
@@ -83,6 +98,7 @@ class Wordsmith(Game):
         'The first word covers the ★. Every word after must connect to the board.',
         'DL/TL multiply a letter, DW/TW the whole word. Using the bounty letter scores +10.',
         'Use all 7 tiles in one go for a +40 clean sweep.',
+        'With blank tiles on, a blank (?) can be any letter you choose, but it scores 0.',
     ]
     name = "Wordsmith"
     icon = "🔤"
@@ -92,12 +108,13 @@ class Wordsmith(Game):
     max_players = 4
     settings_schema = {
         "bounty": ("Bounty letter", [(True, "On"), (False, "Off")], True),
+        "blanks": ("Blank tiles", [(0, "None"), (2, "2 blanks (any letter, 0 points)")], 0),
     }
 
     def start(self, seated, rng):
         words()
         self.rng = rng
-        self.bag = [ch for ch, (n, _) in TILES.items() for _ in range(n)]
+        self.bag = [ch for ch, (n, _) in TILES.items() for _ in range(n)] + [BLANK] * self.s.get("blanks", 0)
         rng.shuffle(self.bag)
         self.grid = [[None] * SIZE for _ in range(SIZE)]
         self.by = [[None] * SIZE for _ in range(SIZE)]  # who played each tile
@@ -173,7 +190,7 @@ class Wordsmith(Game):
         found = [w for w in found if len(w) >= 2]
         if not found:
             raise GameError("Make a word of at least 2 letters.")
-        texts = ["".join(get(r, c) for r, c in w) for w in found]
+        texts = ["".join(get(r, c) for r, c in w).upper() for w in found]
         bad = [t for t in texts if t not in words()]
         if bad:
             raise GameError(f"Not in the dictionary: {', '.join(bad)}")
@@ -181,7 +198,7 @@ class Wordsmith(Game):
         for cells in found:
             sub, mult = 0, 1
             for r, c in cells:
-                v = VALUES[get(r, c)]
+                v = value(get(r, c))
                 if (r, c) in new:
                     prem = PREMIUMS[r][c]
                     v *= {"2L": 2, "3L": 3}.get(prem, 1)
@@ -207,7 +224,15 @@ class Wordsmith(Game):
         if len(idx) != len(tiles) or len(set(idx)) != len(idx) or \
                 not all(isinstance(i, int) and not isinstance(i, bool) and 0 <= i < len(rack) for i in idx):
             raise GameError("Those tiles aren't on your rack.")
-        placements = [(x.get("r"), x.get("c"), rack[x["i"]]) for x in tiles]
+        placements = []
+        for x in tiles:
+            ch = rack[x["i"]]
+            if ch == BLANK:  # the browser says which letter the blank stands for
+                ch = x.get("as")
+                if not (isinstance(ch, str) and len(ch) == 1 and "A" <= ch.upper() <= "Z"):
+                    raise GameError("Pick a letter for the blank tile.")
+                ch = ch.lower()
+            placements.append((x.get("r"), x.get("c"), ch))
         if not all(isinstance(r, int) and isinstance(c, int) for r, c, _ in placements):
             raise GameError("Bad tile position.")
         return placements, idx
@@ -300,7 +325,7 @@ class Wordsmith(Game):
         live = r.contenders()
         bonus = 0
         for p in live:
-            left = sum(VALUES[ch] for ch in p.g.rack)
+            left = sum(value(ch) for ch in p.g.rack)
             self.scores[p.id] -= left
             bonus += left
         if out:
@@ -321,7 +346,7 @@ class Wordsmith(Game):
 
     def view(self, p):
         return {"ws": {
-            "grid": self.grid, "premiums": PREMIUMS, "values": VALUES, "bag": len(self.bag),
+            "grid": self.grid, "premiums": PREMIUMS, "values": {**VALUES, BLANK: 0}, "bag": len(self.bag),
             "bounty": self.bounty, "last": self.last, "scores": self.scores, "by": self.by,
             "rack": getattr(p.g, "rack", None), "plays": getattr(self, "plays", [])[-12:],
             "bonuses": {"sweep": SWEEP_BONUS, "bounty": BOUNTY_BONUS},
@@ -332,13 +357,14 @@ class Wordsmith(Game):
     def find_moves(self, rack, budget):
         words()
         rc = Counter(rack)
+        blanks = rc.pop(BLANK, 0)
         on_board = defaultdict(list)
         for r in range(SIZE):
             for c in range(SIZE):
                 if self.grid[r][c]:
-                    on_board[self.grid[r][c]].append((r, c))
+                    on_board[self.grid[r][c].upper()].append((r, c))
         empty = not on_board
-        allowed = mask(rack) | mask(on_board)
+        allowed = (1 << 26) - 1 if blanks else mask(rc) | mask(on_board)
         deadline = time.time() + budget
         moves, seen = [], set()
 
@@ -362,25 +388,30 @@ class Wordsmith(Game):
             need.subtract(rc)
             extra = [ch for ch, k in need.items() if k > 0 for _ in range(k)]
             if empty:
-                if not extra:
+                if len(extra) <= blanks:
+                    word = with_blanks(w, extra, None)
                     for start in range(max(0, MID - len(w) + 1), min(MID, SIZE - len(w)) + 1):
-                        consider([(MID, start + k, w[k]) for k in range(len(w))])
+                        consider([(MID, start + k, word[k]) for k in range(len(w))])
                 continue
-            if len(extra) != 1:
+            # one letter comes from the board; blanks cover any others the rack lacks
+            if len(extra) > blanks + 1 or (not blanks and len(extra) != 1):
                 continue
-            letter = extra[0]
-            for r, c in on_board[letter]:
-                for k, ch in enumerate(w):
-                    if ch != letter:
-                        continue
-                    for dr, dc in ((0, 1), (1, 0)):
-                        r0, c0 = r - dr * k, c - dc * k
-                        r1, c1 = r0 + dr * (len(w) - 1), c0 + dc * (len(w) - 1)
-                        if not (0 <= r0 and 0 <= c0 and r1 < SIZE and c1 < SIZE):
-                            continue
-                        tiles = [(r0 + dr * j, c0 + dc * j, w[j]) for j in range(len(w)) if j != k]
-                        if all(self.grid[y][x] is None for y, x, _ in tiles):
-                            consider(tiles)
+            anchors = set(extra) if len(extra) > blanks else set(w) & on_board.keys()
+            for letter in anchors:
+                missing = list(extra)
+                if letter in missing:
+                    missing.remove(letter)
+                for r, c in on_board[letter]:
+                    for k in (k for k, ch in enumerate(w) if ch == letter):
+                        word = with_blanks(w, missing, k)
+                        for dr, dc in ((0, 1), (1, 0)):
+                            r0, c0 = r - dr * k, c - dc * k
+                            r1, c1 = r0 + dr * (len(w) - 1), c0 + dc * (len(w) - 1)
+                            if not (0 <= r0 and 0 <= c0 and r1 < SIZE and c1 < SIZE):
+                                continue
+                            tiles = [(r0 + dr * j, c0 + dc * j, word[j]) for j in range(len(w)) if j != k]
+                            if all(self.grid[y][x] is None for y, x, _ in tiles):
+                                consider(tiles)
         return moves
 
     def bot_turn(self, p):
@@ -403,7 +434,7 @@ class Wordsmith(Game):
         _, tiles, _ = pick
         idx, used = [], set()
         for _, _, ch in tiles:
-            i = next(i for i, x in enumerate(p.g.rack) if x == ch and i not in used)
+            i = next(i for i, x in enumerate(p.g.rack) if x == (BLANK if ch.islower() else ch) and i not in used)
             used.add(i)
             idx.append(i)
         self.play(p, tiles, idx)

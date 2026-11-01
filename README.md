@@ -38,7 +38,7 @@ address the server prints. **Play solo** on the home screen starts any game agai
 | Game | Players | What it is | Twist |
 |---|---|---|---|
 | 🎡 **Lucky Letters** | 2–6 | Spin a **3D prize wheel** (three.js), call consonants, solve the hidden phrase. 78 original puzzles in 8 categories. | Vowels can only be called by landing on ✨ VOWEL. Special wedges: 💀 Bust, ⛔ Skip, 🎁 Wild (a free letter), 🦊 Steal (take 500 from the leader), and a growing ⚡ Jackpot. The server picks where the wheel stops, and every phone animates the same spin. |
-| 🔤 **Wordsmith** | 2–4 | Crossword tile game on an original 11×11 board (80 tiles, no blanks, ENABLE dictionary). | A **bounty letter** rerolls every turn (+10). Using all 7 tiles is a **clean sweep** (+40). |
+| 🔤 **Wordsmith** | 2–4 | Crossword tile game on an original 11×11 board (80 tiles, ENABLE dictionary). | A **bounty letter** rerolls every turn (+10). Using all 7 tiles is a **clean sweep** (+40). Optional **blank tiles**: 2 that can be any letter and score 0. |
 | 🔎 **Grid Hunt** | 2–6 | Timed word hunt: everyone searches the same freshly shaken 4×4 or 5×5 letter grid at once, tracing words through touching tiles. Drag, tap, or type. | When time runs out the lists are compared, and **a word a rival also found scores nothing**. A ⭐ star tile doubles words through it. The grid is reshaken until it holds plenty of words, and the results show the longest ones nobody found. 📅 Today's grids (an option) are the same in every room. |
 | 🔐 **Safecracker** | 1–6 | Code-breaking: crack a hidden 4- or 5-peg colour code from ● (right spot) and ○ (wrong spot) hints. | **Everyone cracks the same safe at once**: guesses are locked in secretly, then all are revealed, so rivals' clues help you too. Crack it alone for 3, share the crack for 2. A private 🔍 probe per safe counts one colour, for a point. Pegs show numbers as well as colours. 📅 Today's safes (an option): the same codes in every room that day. |
 | 🤥 **Fib Finder** | 2–6 | A strange-but-true fact appears with a word missing (118 facts). Everyone writes a believable fake answer, then picks which answer is real. | +3 for finding the truth, +2 for each player your fib fools. Typing the real answer is caught and rejected. House fibs make sure there are always enough answers. The last fact counts double. |
@@ -453,7 +453,7 @@ Items that become ✅ move into the per-game plan.
 
 **Words & puzzles**
 - 🎡 **Lucky Letters:** a bonus round for the winner. **M**
-- 🔤 **Wordsmith:** ✅ a turn history (each player's words and points, swaps and passes, the best play starred). Still to do: optional blank tiles. **M**
+- 🔤 **Wordsmith:** ✅ a turn history (each player's words and points, swaps and passes, the best play starred). ✅ Optional blank tiles (lobby setting): a blank is any letter you pick after placing it, scores 0 and shows its letter in italics; bots and 💡 hints use blanks too.
 - 🔎 **Grid Hunt:** ✅ 📅 today's grids, the same in every room (like Word Ladder's daily ladders).
 - 🔐 **Safecracker:** ✅ 📅 today's safes (the codes come from the date and settings).
 - 🤥 **Fib Finder:** more facts in the thinner topics. **M**
@@ -713,8 +713,7 @@ with `frame` / `push_fast`, or each browser simulating its own board like Spire 
 - **Meta:** a game-night playlist that rotates games automatically, plus a running
   scoreboard across the evening.
 - **Unmask:** Mole mode, Bluff Duel (lie tokens), a Daily Puzzle, and theme packs.
-- **Wordsmith:** a live score preview while placing tiles, drag-and-drop, and challenge voting
-  as a house-rules dictionary.
+- **Wordsmith:** challenge voting as a house-rules dictionary (the live score preview, drag-and-drop and blank tiles are done).
 - **Night Heist:** character roles (the Insider sees one other player's choice), and a
   heat meter that makes repeat grabbers easier to catch.
 - **Infrastructure:** persist rooms across restarts, and host online behind HTTPS.

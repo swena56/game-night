@@ -1,6 +1,6 @@
 UI.wordsmith = (() => {
   let S, ctx, board;
-  let pending = [];      // [{r, c, i}] tiles placed this turn (i = rack index)
+  let pending = [];      // [{r, c, i, as}] tiles placed this turn (i = rack index; as = the letter a blank stands for)
   let selected = null;   // rack index picked up
   let order = [];        // display order of rack indices (for Shuffle)
   let rackKey = '';
@@ -10,6 +10,10 @@ UI.wordsmith = (() => {
   let drag = null, skipClick = false;  // a tile being dragged from the rack (or moved on the board)
   const PREMIUM_LABEL = { '2L': 'DL', '3L': 'TL', '2W': 'DW', '3W': 'TW', '★': '★' };
   const $ = (id) => document.getElementById(id);
+  const BLANK = '?';
+  const unnamed = () => pending.find((t) => S.ws.rack[t.i] === BLANK && !t.as);  // a placed blank still waiting for its letter
+  // a tile's face: the letter, then its points (a blank's letter is shown, with no points)
+  const face = (el, ch, blank) => { el.classList.toggle('blank', blank); el.append(ch, Object.assign(document.createElement('sub'), { textContent: blank ? '' : S.ws.values[ch] })); };
 
   function mount(main, side) {
     pending = []; selected = null; order = []; rackKey = ''; swapMode = false; swapSel.clear(); previewKey = '';
@@ -17,6 +21,7 @@ UI.wordsmith = (() => {
     side.innerHTML = `<div class="panel">
       <div class="ws-info"><span id="wsBag"></span><span id="wsBounty"></span></div>
       <div id="wsRack" class="rack"></div>
+      <div id="wsBlank" class="ws-blank" hidden><p class="hint">Which letter is the blank?</p><div id="wsLetters" class="ws-letters"></div></div>
       <div id="wsPreview" class="ws-preview"></div>
       <div class="row"><button id="wsPlay" class="primary">Play</button><button id="wsRecall">Recall</button><button id="wsShuffle">🔀</button></div>
       <div class="row"><button id="wsSwap">Swap tiles…</button><button id="wsPass">Pass</button><button id="wsHint" hidden>💡 Hint</button></div>
@@ -36,6 +41,12 @@ UI.wordsmith = (() => {
         });
         board.append(cell);
       }
+    for (const ch of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') {
+      const b = document.createElement('button');
+      b.textContent = ch;
+      b.onclick = () => { const t = unnamed(); if (t) { t.as = ch; ctx.rerender(); } };
+      $('wsLetters').append(b);
+    }
     $('wsPlay').onclick = play;
     $('wsHint').onclick = hint;
     $('wsRecall').onclick = () => { pending = []; selected = null; ctx.rerender(); };
@@ -87,14 +98,14 @@ UI.wordsmith = (() => {
       cell.className = 'ws-cell' + (prem ? ' p' + prem.replace('★', 'star') : '');
       cell.textContent = '';
       if (letter || pend) {
-        const ch = letter || rack[pend.i];
+        const ch = letter ? letter.toUpperCase() : rack[pend.i] === BLANK ? pend.as || BLANK : rack[pend.i];
         cell.classList.add('tile');
         cell.classList.toggle('pending', !!pend);
         cell.classList.toggle('last', lastSet.has(i));
         const who = !pend && w.by?.[r][c];
         cell.style.setProperty('--by', who ? ctx.player(who)?.color ?? '#0003' : '#0003');
         if (pend) cell.style.setProperty('--by', ctx.player(S.me.id)?.color ?? '#fff');
-        cell.append(ch, Object.assign(document.createElement('sub'), { textContent: w.values[ch] }));
+        face(cell, ch, letter ? letter !== ch : rack[pend.i] === BLANK);
       } else if (prem) cell.textContent = PREMIUM_LABEL[prem];
     });
 
@@ -102,8 +113,8 @@ UI.wordsmith = (() => {
     const used = new Set(pending.map((t) => t.i));
     for (const i of order) {
       if (used.has(i) || i >= rack.length) continue;
-      const t = ctx.el('button', 'rack-tile' + (selected === i ? ' sel' : '') + (swapSel.has(i) ? ' swap' : ''), rack[i]);
-      t.append(Object.assign(document.createElement('sub'), { textContent: w.values[rack[i]] }));
+      const t = ctx.el('button', 'rack-tile' + (selected === i ? ' sel' : '') + (swapSel.has(i) ? ' swap' : ''));
+      face(t, rack[i], rack[i] === BLANK);
       t.onclick = () => { if (skipClick) { skipClick = false; return; } onRack(i); };
       t.addEventListener('pointerdown', (e) => { if (!swapMode) startDrag(e, i, t, -1); });
       rackBox.append(t);
@@ -113,7 +124,8 @@ UI.wordsmith = (() => {
     $('wsBag').textContent = `👜 ${w.bag} in bag`;
     $('wsBounty').textContent = w.bounty ? `🎯 Bounty: ${w.bounty} (+${w.bonuses.bounty})` : '';
     const playing = S.phase === 'playing' && rack.length;
-    $('wsPlay').disabled = !ctx.myTurn || !pending.length || swapMode;
+    $('wsBlank').hidden = !unnamed();
+    $('wsPlay').disabled = !ctx.myTurn || !pending.length || swapMode || !!unnamed();
     $('wsPass').disabled = !ctx.myTurn;
     $('wsSwap').disabled = !ctx.myTurn || !playing;
     $('wsSwap').textContent = !swapMode ? 'Swap tiles…' : swapSel.size ? `Swap ${swapSel.size}` : 'Cancel swap';
@@ -131,7 +143,7 @@ UI.wordsmith = (() => {
     previewKey = key;
     clearTimeout(previewTimer);
     box.textContent = ''; box.className = 'ws-preview';
-    if (!pending.length || !ctx.peek) return;
+    if (!pending.length || !ctx.peek || unnamed()) return;
     previewTimer = setTimeout(() => {
       ctx.peek({ what: 'score', tiles: pending }).then((res) => {
         if (previewKey !== key || !box.isConnected) return;
@@ -146,9 +158,10 @@ UI.wordsmith = (() => {
     ctx.peek({ what: 'hint' }).then((res) => {
       if (res.none) return ctx.toast('No word fits. Try swapping tiles.');
       const rack = S.ws.rack, free = rack.map((_, i) => i);
-      pending = res.tiles.map(([r, c, ch]) => {
-        const at = free.findIndex((i) => rack[i] === ch);
-        return { r, c, i: free.splice(at, 1)[0] };
+      pending = res.tiles.map(([r, c, ch]) => {  // a lowercase letter is played with a blank
+        const blank = ch !== ch.toUpperCase();
+        const at = free.findIndex((i) => rack[i] === (blank ? BLANK : ch));
+        return blank ? { r, c, i: free.splice(at, 1)[0], as: ch.toUpperCase() } : { r, c, i: free.splice(at, 1)[0] };
       });
       selected = null;
       ctx.toast(`💡 ${res.words.join(', ')} for ${res.score}`);
@@ -193,9 +206,9 @@ UI.wordsmith = (() => {
       for (const c of board.children) c.classList.remove('drop');
       skipClick = true; setTimeout(() => { skipClick = false; }, 0);
       const over = ev.type === 'pointerup' ? cellAt(ev.clientX, ev.clientY - 24) : null;
-      if (d.at >= 0) pending.splice(d.at, 1);  // a placed tile lifts off its square
+      const as = d.at >= 0 ? pending.splice(d.at, 1)[0].as : undefined;  // a placed tile lifts off its square (a blank keeps its letter)
       if (over && S.ws.grid[over[0]][over[1]] == null && !pending.some((t) => t.r === over[0] && t.c === over[1])) {
-        pending.push({ r: over[0], c: over[1], i: d.i });
+        pending.push(as ? { r: over[0], c: over[1], i: d.i, as } : { r: over[0], c: over[1], i: d.i });
       }
       selected = null;
       ctx.rerender();
