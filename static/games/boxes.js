@@ -110,6 +110,12 @@ UI.boxes = (() => {
     $('bxHint').textContent = !ctx.myTurn ? (b.gems.length ? `💎 Gem boxes are worth 3.` : '')
       : picked ? 'Tap the glowing line again to draw it.'
         : hover() ? 'Click a line between two dots.' : 'Tap a line to pick it, tap again to draw.';
+    // endgame: every line now gives boxes away, so show what's left to hand over
+    if (b.chains?.length) {
+      const chains = b.chains.filter(([, loop]) => !loop).map(([n]) => n), loops = b.chains.filter(([, loop]) => loop).map(([n]) => n);
+      $('bxHint').textContent += ` ⛓ Every line gives boxes away now. Chains: ${chains.join(' · ') || 'none'}` +
+        (loops.length ? ` · loops: ${loops.join(' · ')}` : '') + '. Hand over the small ones first.';
+    }
   }
 
   return { mount, render, unmount };

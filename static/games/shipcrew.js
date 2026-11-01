@@ -23,7 +23,8 @@ UI.shipcrew = (() => {
       <div class="row sc-actions"><button id="scRoll" class="primary big"></button><button id="scDock" class="big">⚓ Dock</button></div>
       <p id="scHint" class="hint"></p>
       <div id="scLast" class="sc-last"></div></div>`;
-    side.innerHTML = '<div class="panel"><h3>Cargo</h3><div id="scScores"></div><p class="hint left">Find 6 → 5 → 4 in order. The other two dice are your cargo.</p></div>';
+    side.innerHTML = `<div class="panel"><h3>Cargo</h3><div id="scScores"></div><p class="hint left">Find 6 → 5 → 4 in order. The other two dice are your cargo.</p>
+      <div id="scBest" hidden><h3>🏅 Best solo hauls</h3><ol class="ya-best"></ol><p class="hint left">Kept on this device, for this number of rounds.</p></div></div>`;
     $('scRoll').onclick = () => {
       const sc = S.shipcrew;
       ctx.quiet(ctx.act('roll', sc.loaded ? { reroll: [...pick].sort() } : {}));
@@ -89,6 +90,7 @@ UI.shipcrew = (() => {
     }
     if (sc.pot != null) box.append(ctx.el('div', 'sc-pot', `🍺 Pot: ${sc.pot} 🪙`));
     if (sc.solo) box.append(ctx.el('div', 'hint left', `Solo goal: ${sc.goal} cargo`));
+    if (sc.solo && sc.seats[0] === S.me.id && !!ctx.act) soloBest($('scBest'), `shipcrew.best.${sc.rounds}`, `${S.code}#${S.gameNo}`, sc.scores[S.me.id] ?? 0, S.phase === 'over', { fmt: (v) => `${v} cargo` });
   }
 
   const turnText = (s) => s.phase !== 'playing' || s.turn !== s.me.id ? null

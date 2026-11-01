@@ -36,6 +36,7 @@ UI.liars = (() => {
 
   const legal = (q, f) => {
     const l = S.liars;
+    if (l.palifico && l.bid) return f === l.bid[1] && q > l.bid[0] && q <= l.total;  // palifico: same face, more dice
     return f >= l.low && f <= 6 && q >= 1 && q <= l.total && (!l.bid || q > l.bid[0] || (q === l.bid[0] && f > l.bid[1]));
   };
 
@@ -46,6 +47,7 @@ UI.liars = (() => {
     const fav = +(Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 6);
     if (!l.bid) { qty = Math.max(1, Math.round(l.total / (l.wild ? 4 : 7))); face = fav; return; }
     const [q, f] = l.bid;
+    if (l.palifico) { qty = q + 1; face = f; return; }
     if (legal(q, fav)) { qty = q; face = fav; } else if (f < 6) { qty = q; face = f + 1; } else { qty = q + 1; face = fav; }
   }
 
@@ -64,7 +66,7 @@ UI.liars = (() => {
     }
     const ok = legal(qty, face);
     $('lrGo').disabled = !ok;
-    $('lrGo').textContent = ok ? `Bid ${say(qty, face)}` : 'Raise the bid';
+    $('lrGo').textContent = ok ? `Bid ${say(qty, face)}` : l.palifico && l.bid ? `🗿 Stay on ${l.bid[1]}s, raise the count` : 'Raise the bid';
     $('lrLiar').disabled = !l.bid;
     $('lrExact').hidden = !l.exact;
     $('lrExact').disabled = !l.bid;

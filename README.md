@@ -40,7 +40,7 @@ address the server prints. **Play solo** on the home screen starts any game agai
 | 🎡 **Lucky Letters** | 2–6 | Spin a **3D prize wheel** (three.js), call consonants, solve the hidden phrase. 78 original puzzles in 8 categories. | Vowels can only be called by landing on ✨ VOWEL. Special wedges: 💀 Bust, ⛔ Skip, 🎁 Wild (a free letter), 🦊 Steal (take 500 from the leader), and a growing ⚡ Jackpot. The server picks where the wheel stops, and every phone animates the same spin. |
 | 🔤 **Wordsmith** | 2–4 | Crossword tile game on an original 11×11 board (80 tiles, no blanks, ENABLE dictionary). | A **bounty letter** rerolls every turn (+10). Using all 7 tiles is a **clean sweep** (+40). |
 | 🔎 **Grid Hunt** | 2–6 | Timed word hunt: everyone searches the same freshly shaken 4×4 or 5×5 letter grid at once, tracing words through touching tiles. Drag, tap, or type. | When time runs out the lists are compared, and **a word a rival also found scores nothing**. A ⭐ star tile doubles words through it. The grid is reshaken until it holds plenty of words, and the results show the longest ones nobody found. 📅 Today's grids (an option) are the same in every room. |
-| 🔐 **Safecracker** | 1–6 | Code-breaking: crack a hidden 4- or 5-peg colour code from ● (right spot) and ○ (wrong spot) hints. | **Everyone cracks the same safe at once**: guesses are locked in secretly, then all are revealed, so rivals' clues help you too. Crack it alone for 3, share the crack for 2. A private 🔍 probe per safe counts one colour, for a point. Pegs show numbers as well as colours. |
+| 🔐 **Safecracker** | 1–6 | Code-breaking: crack a hidden 4- or 5-peg colour code from ● (right spot) and ○ (wrong spot) hints. | **Everyone cracks the same safe at once**: guesses are locked in secretly, then all are revealed, so rivals' clues help you too. Crack it alone for 3, share the crack for 2. A private 🔍 probe per safe counts one colour, for a point. Pegs show numbers as well as colours. 📅 Today's safes (an option): the same codes in every room that day. |
 | 🤥 **Fib Finder** | 2–6 | A strange-but-true fact appears with a word missing (118 facts). Everyone writes a believable fake answer, then picks which answer is real. | +3 for finding the truth, +2 for each player your fib fools. Typing the real answer is caught and rejected. House fibs make sure there are always enough answers. The last fact counts double. |
 | 🪜 **Word Ladder** | 1–6 | Lewis Carroll's public-domain "doublets" as a race: everyone climbs from the same start word to the same goal word, changing one letter per step, every step a real word. | Par is the shortest ladder of everyday words; any dictionary word is allowed in between. ↩ takes a step back for free, 💡 fills in the next step for 3 points. 3- or 4-letter words. |
 
@@ -85,10 +85,10 @@ address the server prints. **Play solo** on the home screen starts any game agai
 |---|---|---|---|
 | 🚢 **Sea Battle** | 2 | The classic pencil-and-paper fleet hunt: hide 5 ships, then take turns firing. | Firing rules: 1 shot, hit = fire again, or Salvo (1 shot per ship afloat). Optional 📡 sonar counts the ship squares in a 3×3 area. A 12×12 sea with a sixth ship (a Frigate) for longer hunts. |
 | 🔴 **Drop Four** | 2–4 | Gravity four-in-a-row. 3–4 players get a 9×7 board. | Optional 💣 **bomb disc**: it clears its 3×3 neighbourhood and the stack falls, which can complete *someone else's* line. Optional ⬇️ **pull-outs**: take one of your own discs out of the bottom row instead of dropping, and the column slides down. |
-| 🔳 **Dots & Boxes** | 2–6 | The pencil-and-paper classic on a 3×3 to 6×6 grid. Close a box to claim it and move again. On touch screens a line takes two taps (pick, then confirm). | Optional 💎 **gem boxes** worth 3 points. |
+| 🔳 **Dots & Boxes** | 2–6 | The pencil-and-paper classic on a 3×3 to 6×6 grid. Close a box to claim it and move again. On touch screens a line takes two taps (pick, then confirm). | Optional 💎 **gem boxes** worth 3 points. In the endgame, when every line gives boxes away, a ⛓ hint lists the chains and loops left. |
 | ❌ **Tic-Tac-Toe** | 2 | The classic. | 👻 **Vanishing**: you keep only your 3 newest marks, and the oldest fades out. A 4×4 board (four in a row; Vanishing keeps 4). |
 | #️⃣ **Ultimate Tic-Tac-Toe** | 2 | The folk game: nine small boards in one. Where you play sends your rival to that board. Win three small boards in a row. | The boards you may play in glow; won boards show a big mark; the last move is outlined. ↶ Undo requests. |
-| ⚫ **Nine Men's Morris** | 2 | The traditional mill game: place 9 men, then slide them; a line of three (a mill) takes a rival man. Fewer than 3 men or no move loses. | Optional flying with 3 men. Tap a man, then its destination; after a mill, rival men you can take pulse red. |
+| ⚫ **Nine Men's Morris** | 2 | The traditional mill game: place 9 men, then slide them; a line of three (a mill) takes a rival man. Fewer than 3 men or no move loses. | Optional flying with 3 men. Tap a man, then its destination; after a mill, rival men you can take pulse red. **Twelve Men's Morris** option: 12 men each and the corner diagonals are lines (a full board is a draw). |
 
 ### 🎲 Dice & casino (8)
 
@@ -98,9 +98,9 @@ address the server prints. **Play solo** on the home screen starts any game agai
 | 🎲 **Yacht** | 1–6 | The traditional dice game: five dice, up to three rolls (tap to hold), then fill one of twelve boxes. Classic scoring: Ones–Sixes, Full House, Four of a Kind, Little and Big Straight (30), Choice, Yacht (50). | Your open boxes show what the roll would score before you commit. Solo is a score attack: reach 150 to win. Optional bonuses: +35 for 63 in Ones–Sixes, +50 per extra Yacht. |
 | 🎯 **Farkle** | 1–6 | The traditional push-your-luck dice game: roll six, set aside scoring dice, roll the rest or bank. A roll with nothing scoring is a FARKLE and the turn's points are gone; score all six for hot dice. | Live total of the dice you've picked, a ✨ best-pick button, and everyone sees each farkle and bank. Play to 10,000 or 5,000, with a final round for the others; optional 500 to get on the board and −1,000 for three farkles in a row. |
 | 🥤 **Qork** | 2–6 | A reaction dice game (#41): the Cupper keeps rolling two dice, and on doubles or a seven every Corker yanks their Qork off the mat while the Cupper slams the cup down. Escape for +1; each trapped Qork is +1 to the Cupper (+1 more for trapping everyone); jumping early on any other roll is −1. The cup passes every round. | Reaction times are measured on each phone from the moment the dice land there, so a slow network doesn't lose the race; everyone's time is shown after each slam. Tap the mat, the big button or Space. 1–3 turns as Cupper each. |
-| 🚢 **Ship, Captain & Crew** | 1–6 | The traditional tavern dice game: three rolls of five dice to find a 6 (ship), then a 5 (captain), then a 4 (crew), in order. The last two dice are your cargo. | Tap cargo dice to reroll one or both with the rolls you have left, or ⚓ dock. 3, 5 or 8 rounds; alone, average 5 cargo a round to win (best play averages about 4.3). Optional 🍺 pub pot: ante a coin a round, best cargo takes the pot. |
-| 📦 **Shut the Box** | 1–6 | The traditional pub dice game: roll two dice and shut open tiles (1–9, or 1–12) that add up to the roll, until nothing fits. The open tiles are your points; lowest total after 1, 3 or 5 rounds wins. | Shut every tile to shut the box for 0. Once 7 and up are shut you may roll one die. Tiles that can't fit your roll are dimmed, and a single possible fit is picked for you. Alone, beat 10 points a round. |
-| 🤥 **Liar's Dice** | 2–6 | The traditional bluffing game: everyone rolls in secret, then bids rise ("four 3s") until someone calls 🤥 Liar!. Whoever was wrong loses a die; the last with dice wins. | Optional wild 1s and 🎯 Exact calls (spot on and everyone else loses a die). A helper shows how many of a face to expect, and the showdown stays up with everyone's dice. |
+| 🚢 **Ship, Captain & Crew** | 1–6 | The traditional tavern dice game: three rolls of five dice to find a 6 (ship), then a 5 (captain), then a 4 (crew), in order. The last two dice are your cargo. | Tap cargo dice to reroll one or both with the rolls you have left, or ⚓ dock. 3, 5 or 8 rounds; alone, average 5 cargo a round to win (best play averages about 4.3). Optional 🍺 pub pot: ante a coin a round, best cargo takes the pot. A 🏅 best-solo-hauls table on your device. |
+| 📦 **Shut the Box** | 1–6 | The traditional pub dice game: roll two dice and shut open tiles (1–9, or 1–12) that add up to the roll, until nothing fits. The open tiles are your points; lowest total after 1, 3 or 5 rounds wins. | Shut every tile to shut the box for 0. Once 7 and up are shut you may roll one die. Tiles that can't fit your roll are dimmed, and a single possible fit is picked for you. Alone, beat 10 points a round; a 🏅 best-solo-totals table on your device. |
+| 🤥 **Liar's Dice** | 2–6 | The traditional bluffing game: everyone rolls in secret, then bids rise ("four 3s") until someone calls 🤥 Liar!. Whoever was wrong loses a die; the last with dice wins. | Optional wild 1s and 🎯 Exact calls (spot on and everyone else loses a die). A helper shows how many of a face to expect, and the showdown stays up with everyone's dice. Optional 🗿 **palifico**: the first time someone is down to one die they open a round where 1s aren't wild and every bid keeps the opening face. |
 | 🂡 **Twenty-One** | 1–6 | The traditional casino game against a dealer bot: everyone bets at once, then hits, stands, doubles or ✂️ splits a pair in turn. Dealer draws to 17; a two-card 21 pays 3:2. | Four-deck shoe. Split up to four hands (split aces get one card each; a 21 after a split pays even money). Most chips after 5, 8 or 12 hands wins; alone, beat your starting 100. |
 
 Every game has **Easy / Normal / Hard bots**:
@@ -410,7 +410,7 @@ Items that become ✅ move into the per-game plan.
 - 🎡 **Lucky Letters:** a bonus round for the winner. **M**
 - 🔤 **Wordsmith:** optional blank tiles; a turn history of words and points. **S–M**
 - 🔎 **Grid Hunt:** ✅ 📅 today's grids, the same in every room (like Word Ladder's daily ladders).
-- 🔐 **Safecracker:** a daily solo safe. **S**
+- 🔐 **Safecracker:** ✅ 📅 today's safes (the codes come from the date and settings).
 - 🤥 **Fib Finder:** more facts in the thinner topics. **M**
 - 🪜 **Word Ladder:** a missing-rung puzzle mode. **M**
 
@@ -433,18 +433,18 @@ Items that become ✅ move into the per-game plan.
 **Quick classics**
 - 🚢 **Sea Battle:** ✅ a 12×12 sea with a sixth ship.
 - 🔴 **Drop Four:** ✅ ⬇️ pull-outs (an option): take one of your own discs out of the bottom row instead of dropping.
-- 🔳 **Dots & Boxes:** a chain-count hint in the endgame. **S**
+- 🔳 **Dots & Boxes:** ✅ an endgame hint listing the chains and loops left once every line gives boxes away.
 - ❌ **Tic-Tac-Toe:** ✅ a 4×4 board, four in a row (Vanishing keeps 4 marks there).
 - #️⃣ **Ultimate Tic-Tac-Toe:** ✅ undo requests. (It already outlined the last move: the plan was wrong.)
-- ⚫ **Nine Men's Morris:** Twelve Men's Morris (diagonals) option. **S**
+- ⚫ **Nine Men's Morris:** ✅ a Twelve Men's Morris option (12 men, corner diagonals).
 
 **Dice & casino**
 - 🚀 **Moon Shot:** ✅ solo: reach the moon within 4, 6 or 9 turns (a hard bot alone makes it 53–61% of the time).
 - 🎲 **Yacht:** ✅ optional bonuses: +35 for 63 in Ones–Sixes (the card shows progress, 41/63) and +50 per extra Yacht; bots play for them.
 - 🎯 **Farkle:** ~~extra scores~~: three pairs and the 1–6 straight already score 1,500.
 - 🥤 **Qork:** collect real-phone reports on reaction fairness. **S**
-- 🚢 **Ship, Captain & Crew:** a solo best-score table. **S**
-- 🤥 **Liar's Dice:** a "palifico" round when someone is down to one die (option). **S**
+- 🚢 **Ship, Captain & Crew:** ✅ a solo best-hauls table (shared `soloBest()` in app.js, also used by Shut the Box).
+- 🤥 **Liar's Dice:** ✅ an optional 🗿 palifico round when someone first drops to one die (not with two players left).
 - 🂡 **Twenty-One:** ✅ ✂️ splitting pairs: up to four hands, one card each on split aces, double after a split; bots split by basic strategy.
 
 ## Per-game plan (with player feedback)

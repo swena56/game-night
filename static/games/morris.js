@@ -13,9 +13,11 @@ UI.morris = (() => {
     main.innerHTML = `<div class="mm"><svg id="mmSvg" class="mm-board" viewBox="0 0 200 200"></svg><p id="mmHint" class="hint"></p></div>`;
     side.innerHTML = '<div class="panel"><div id="mmSeats"></div></div>';
     svg = $('mmSvg');
-    const line = (a, b) => { const l = document.createElementNS(NS, 'line'); const [x1, y1] = at(a), [x2, y2] = at(b); Object.entries({ x1, y1, x2, y2 }).forEach(([k, v]) => l.setAttribute(k, v)); l.setAttribute('class', 'mm-line'); svg.append(l); };
+    const line = (a, b, cls = 'mm-line') => { const l = document.createElementNS(NS, 'line'); const [x1, y1] = at(a), [x2, y2] = at(b); Object.entries({ x1, y1, x2, y2 }).forEach(([k, v]) => l.setAttribute(k, v)); l.setAttribute('class', cls); svg.append(l); };
     for (const [a, b, c] of [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11], [12, 13, 14], [15, 16, 17], [18, 19, 20], [21, 22, 23],
       [0, 9, 21], [3, 10, 18], [6, 11, 15], [1, 4, 7], [16, 19, 22], [8, 12, 17], [5, 13, 20], [2, 14, 23]]) { line(a, b); line(b, c); }
+    // Twelve Men's Morris: the corner diagonals (shown only in that variant)
+    for (const [a, b, c] of [[0, 3, 6], [2, 5, 8], [21, 18, 15], [23, 20, 17]]) { line(a, b, 'mm-line mm-diag'); line(b, c, 'mm-line mm-diag'); }
     for (let i = 0; i < 24; i++) {
       const g = document.createElementNS(NS, 'circle');
       const [x, y] = at(i);
@@ -79,6 +81,7 @@ UI.morris = (() => {
     if (!ctx.myTurn) { pick = null; pending = null; }
     paint();
     const m = S.morris, info = $('mmSeats'); info.innerHTML = '';
+    svg.classList.toggle('twelve', !!m.twelve);
     m.seats.forEach((pid, i) => {
       const p = ctx.player(pid), row = ctx.el('div', 'seat-row');
       const disc = ctx.el('span', 'mini-disc'); disc.style.background = i === 0 ? '#1c1726' : '#f4eedd'; disc.style.border = `2px solid ${p?.color ?? '#777'}`;

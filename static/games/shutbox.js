@@ -23,7 +23,8 @@ UI.shutbox = (() => {
       <div class="row sb-actions"><button id="sbRoll2" class="primary big">🎲 Roll</button>
         <button id="sbRoll1" class="big">🎲 One die</button><button id="sbShut" class="primary big">📦 Shut</button></div>
       <p id="sbHint" class="hint"></p></div>`;
-    side.innerHTML = '<div class="panel"><h3 id="sbRound">Boxes</h3><div id="sbBoxes"></div><p id="sbTarget" class="hint left"></p></div>';
+    side.innerHTML = `<div class="panel"><h3 id="sbRound">Boxes</h3><div id="sbBoxes"></div><p id="sbTarget" class="hint left"></p>
+      <div id="sbBest" hidden><h3>🏅 Best solo totals</h3><ol class="ya-best"></ol><p class="hint left">Fewest points first. Kept on this device, for these tiles and rounds.</p></div></div>`;
     $('sbRoll2').onclick = () => ctx.quiet(ctx.act('roll', { dice: 2 }));
     $('sbRoll1').onclick = () => ctx.quiet(ctx.act('roll', { dice: 1 }));
     $('sbShut').onclick = () => {
@@ -102,6 +103,8 @@ UI.shutbox = (() => {
       list.append(row);
     }
     $('sbTarget').textContent = sb.target != null ? `Alone: finish on ${sb.target} points or fewer to win.` : 'Lowest total after the last round wins.';
+    if (sb.target != null && sb.seats[0] === S.me.id && !!ctx.act)
+      soloBest($('sbBest'), `shutbox.best.${sb.n}.${sb.rounds}`, `${S.code}#${S.gameNo}`, sb.boxes[S.me.id]?.total ?? 0, S.phase === 'over', { lower: true, fmt: (v) => `${v} pts` });
   }
 
   return { mount, render };

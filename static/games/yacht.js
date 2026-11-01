@@ -130,7 +130,7 @@ UI.yacht = (() => {
     const card = JSON.stringify(y.cards[me]), score = y.totals[me] ?? 0;
     let fresh = null;
     if (S.phase === 'over' && !best.some((b) => b.card === card)) {
-      fresh = { score, card, date: new Date().toISOString().slice(0, 10) };
+      fresh = { score, card, date: new Date().toLocaleDateString('en-CA') };
       best = [...best, fresh].sort((a, b) => b.score - a.score).slice(0, 5);
       try { localStorage.setItem('yacht.best', JSON.stringify(best)); } catch {}
     }

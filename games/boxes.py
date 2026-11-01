@@ -154,7 +154,40 @@ class Boxes(Game):
 
     def view(self, p):
         return {"boxes": {"rows": self.rows, "cols": self.cols, "h": self.h, "v": self.v, "owner": self.owner, "gems": self.gems,
-                          "seats": self.seats, "last": self.last, "claimed": self.claimed_last}}
+                          "seats": self.seats, "last": self.last, "claimed": self.claimed_last,
+                          "chains": self.chains() if self.room.phase == "playing" else None}}
+
+    def chains(self):
+        """In the endgame (no safe line left and nothing to take), the chains and loops still on the board:
+        [[boxes, is_loop], …], longest first. None before then."""
+        drawn = self.drawn()
+        free = [ln for ln in self.lines() if ln not in drawn]
+        if not free or self.three_sided(drawn) or any(self.safe(drawn, ln) for ln in free):
+            return None
+        open_boxes = {(r, c) for r, c in self.cells() if self.owner[r][c] is None}
+        seen, out = set(), []
+        for start in open_boxes:
+            if start in seen:
+                continue
+            comp, stack, closed = [], [start], True
+            seen.add(start)
+            while stack:
+                b = stack.pop()
+                comp.append(b)
+                for s in self.sides_of(b):
+                    if s in drawn:
+                        continue
+                    others = [o for o in self.boxes_of(s) if o != b]
+                    if not others:
+                        closed = False  # runs off the edge of the board
+                    for o in others:
+                        if o in open_boxes and o not in seen:
+                            seen.add(o)
+                            stack.append(o)
+            loop = closed and len(comp) >= 4 and all(
+                sum(s not in drawn for s in self.sides_of(b)) == 2 for b in comp)
+            out.append([len(comp), loop])
+        return sorted(out, key=lambda x: (-x[0], x[1]))
 
     # -- bot
 

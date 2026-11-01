@@ -736,6 +736,27 @@ function flashTurn() {
   if (!g) { g = el('div', 'turn-glow'); g.id = 'turnGlow'; document.body.append(g); }
   g.classList.remove('on'); void g.offsetWidth; g.classList.add('on');  // restart the animation
 }
+// A device-local top-5 table for solo play. `box` holds an <ol>; `id` names this game (recorded once, when
+// `over`), `lower` means fewer is better (Shut the Box), `fmt` turns a score into text.
+function soloBest(box, key, id, score, over, { lower = false, fmt = String } = {}) {
+  let best = [];
+  try { best = JSON.parse(localStorage.getItem(key)) || []; } catch {}
+  let fresh = null;
+  if (over && !best.some((b) => b.id === id)) {
+    fresh = { id, score, date: new Date().toLocaleDateString('en-CA') };
+    best = [...best, fresh].sort((a, b) => (lower ? a.score - b.score : b.score - a.score)).slice(0, 5);
+    try { localStorage.setItem(key, JSON.stringify(best)); } catch {}
+  }
+  const list = box.querySelector('ol');
+  box.hidden = !best.length;
+  list.innerHTML = '';
+  for (const b of best) {
+    const li = el('li', b === fresh || (over && b.id === id) ? 'now' : '', `${fmt(b.score)} `);
+    li.append(el('small', '', b.date));
+    list.append(li);
+  }
+}
+
 // Take-back buttons for a game's `undo` view ({asker, can}, from games/undo.py): "↶ Undo my move", or
 // Allow / Refuse when the rival asked. Fills `box` (emptied first); nothing for spectators or after the game.
 function undoRow(box, undo, S, ctx, playing) {

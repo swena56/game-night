@@ -1129,6 +1129,7 @@ body.focus .sm-stage { height: max(220px, calc(var(--app-h, 100vh) - 215px)); }
 .mm { width: min(100%, 520px, calc(var(--app-h, 100vh) - 190px)); min-width: min(100%, 280px); margin: 0 auto; }
 .mm-board { width: 100%; display: block; background: linear-gradient(160deg, #caa46a, #a07a43); border-radius: 12px; box-shadow: 0 8px 24px #0009; }
 .mm-line { stroke: #3b2a12; stroke-width: 1.6; }
+.mm-diag { display: none; } .mm-board.twelve .mm-diag { display: inline; }
 .mm-pt { fill: #3b2a12; stroke-width: 2.5; cursor: pointer; transition: r .15s; }
 .mm-pt.empty.can { fill: var(--accent); r: 7; }
 .mm-pt.src { stroke-dasharray: 3 2; }

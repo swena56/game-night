@@ -46,6 +46,7 @@ class Safecracker(Game):
         "repeats": ("Repeated colours", [(True, "Allowed"), (False, "No repeats")], True),
         "safes": ("Safes", [(1, "1"), (3, "3"), (5, "5")], 3),
         "guesses": ("Guesses per safe", [(8, "8"), (10, "10"), (12, "12")], 10),
+        "daily": ("Codes", [(False, "🎲 Random"), (True, "📅 Today's safes (the same everywhere)")], False),
     }
 
     duel = False  # rooms saved before duels existed
@@ -85,7 +86,11 @@ class Safecracker(Game):
 
     def new_safe(self):
         self.safe += 1
-        self.code = self.random_code(self.rng)
+        if self.s.get("daily") and not self.duel:  # 📅 the code comes from the date and the settings alone
+            seed = f"safe {time.strftime('%Y-%m-%d')} {self.length} {self.colors} {self.repeats} {self.safe}"
+            self.code = self.random_code(random.Random(seed))
+        else:
+            self.code = self.random_code(self.rng)
         self.codes = {}  # duel: each player's own secret code, the one their rival cracks
         self.history = []  # one list per finished round: [{"by", "code", "exact", "near"}]
         self.round = 0

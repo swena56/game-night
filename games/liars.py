@@ -40,6 +40,7 @@ class LiarsDice(Game):
         "On your turn, raise the bid about ALL the dice on the table: more dice, or the same number of a higher face (\"four 3s\" → \"four 5s\" or \"five 2s\").",
         "Or call 🤥 Liar! on the last bid: the dice are shown, and whoever was wrong loses a die. 🎯 Exact bets the count is spot on: right, and everyone else loses a die; wrong, and you lose one.",
         "With wild 1s on, every 1 counts as any face (so you can't bid 1s).",
+        "🗿 Palifico (an option): the first time someone is down to one die, they open a special round: 1s aren't wild and every bid keeps the opening face (only the count goes up).",
         "Lose all your dice and you're out. The last player with dice wins.",
     ]
     name = "Liar's Dice"
@@ -49,6 +50,7 @@ class LiarsDice(Game):
     max_players = 6
     settings_schema = {
         "wild": ("1s", [(True, "Wild"), (False, "Not wild")], True),
+        "palifico": ("🗿 Palifico", [(False, "Off"), (True, "On: first time down to one die, a special round")], False),
         "exact": ("🎯 Exact calls", [(True, "Allowed"), (False, "Off")], True),
     }
 
@@ -72,20 +74,29 @@ class LiarsDice(Game):
     def total(self):
         return sum(p.g.count for p in self.players())
 
-    def lowest_face(self):
-        return 2 if self.s["wild"] else 1
+    palifico = False  # games saved before the palifico option
 
-    def new_round(self, pid):
+    def wild(self):
+        return self.s["wild"] and not self.palifico
+
+    def lowest_face(self):
+        return 2 if self.wild() else 1
+
+    def new_round(self, pid, palifico=False):
         self.round += 1
+        self.palifico = palifico
         for p in self.players():
             p.g.dice = sorted(self.rng.randint(1, 6) for _ in range(p.g.count))
         self.bid = None       # [quantity, face, pid]
         self.bids = []
         self.room.add_log(f"🎲 Round {self.round}: everyone rolls. {self.total()} dice on the table.")
+        if palifico:
+            self.room.add_log(f"🗿 Palifico! {self.room.players[pid].name} is down to one die: 1s aren't wild this round, "
+                              "and every bid keeps the opening face.", "big")
         self.room.begin_turn(pid)
 
     def matches(self, face):
-        return sum(1 for p in self.players() for d in p.g.dice if d == face or (self.s["wild"] and d == 1))
+        return sum(1 for p in self.players() for d in p.g.dice if d == face or (self.wild() and d == 1))
 
     def skip_turn(self, p):
         return p.id not in self.seats or p.eliminated or not getattr(p.g, "count", 0)
@@ -95,6 +106,8 @@ class LiarsDice(Game):
     def legal(self, q, f):
         if not (self.lowest_face() <= f <= 6 and 1 <= q <= self.total()):
             return False
+        if self.palifico and self.bid is not None:
+            return f == self.bid[1] and q > self.bid[0]
         return self.bid is None or q > self.bid[0] or (q == self.bid[0] and f > self.bid[1])
 
     def act(self, p, a):
@@ -107,8 +120,10 @@ class LiarsDice(Game):
             if not all(isinstance(x, int) and not isinstance(x, bool) for x in (q, f)):
                 raise GameError("Pick a number and a face.")
             if not self.lowest_face() <= f <= 6:
-                raise GameError("1s are wild, so bid on 2–6." if self.s["wild"] else "Pick a face from 1 to 6.")
+                raise GameError("1s are wild, so bid on 2–6." if self.wild() else "Pick a face from 1 to 6.")
             if not self.legal(q, f):
+                if self.palifico and self.bid:
+                    raise GameError(f"Palifico: stay on {self.bid[1]}s and raise the count.")
                 raise GameError("Raise the bid: more dice, or the same number of a higher face.")
             return self.place(p, q, f)
         if t in ("liar", "exact"):
@@ -127,7 +142,7 @@ class LiarsDice(Game):
 
     def review(self, hands, q, f, by):
         """A bid seen from the bidder's seat afterwards: how likely it was from their own dice, and if it held."""
-        wild = self.s["wild"] and f != 1
+        wild = self.wild() and f != 1
         count = lambda dice: sum(1 for d in dice if d == f or (wild and d == 1))
         mine = count(hands.get(by, []))
         hidden = sum(len(d) for pid, d in hands.items() if pid != by)
@@ -158,7 +173,7 @@ class LiarsDice(Game):
                 out.append(x)
                 r.add_log(f"💀 {x.name} is out of dice!", "big")
         self.showdown = {"round": self.round, "hands": hands, "bid": [q, f], "by": by, "caller": p.id, "kind": kind,
-                         "count": n, "losers": [x.id for x in losers], "wild": self.s["wild"],
+                         "count": n, "losers": [x.id for x in losers], "wild": self.wild(),
                          "review": [self.review(hands, *b) for b in self.bids]}
         left = self.players()
         if len(left) == 1:
@@ -168,6 +183,11 @@ class LiarsDice(Game):
         nxt = losers[0] if len(losers) == 1 and not losers[0].eliminated else p
         if nxt.eliminated:
             nxt = left[0]
+        pali = [x for x in losers if self.s.get("palifico") and x.g.count == 1 and not x.eliminated
+                and not getattr(x.g, "palifico_done", False)]
+        if pali and len(left) > 2:  # with two left it would decide the game on one die
+            pali[0].g.palifico_done = True
+            return self.new_round(pali[0].id, palifico=True)
         self.new_round(nxt.id)
 
     def on_timeout(self):
@@ -195,9 +215,9 @@ class LiarsDice(Game):
 
     def chance(self, p, q, f, level, exact=False):
         """How likely a bid is, from p's own dice and the number of hidden dice."""
-        own = sum(1 for d in p.g.dice if d == f or (self.s["wild"] and d == 1))
+        own = sum(1 for d in p.g.dice if d == f or (self.wild() and d == 1))
         hidden = self.total() - len(p.g.dice)
-        prob = 1 / 3 if self.s["wild"] and f != 1 else 1 / 6
+        prob = 1 / 3 if self.wild() and f != 1 else 1 / 6
         need = q - own
         if level == "hard" and self.bid and self.bid[2] != p.id and self.bid[1] == f and hidden:
             need -= 1      # the bidder probably holds at least one of the face they bid
@@ -252,7 +272,7 @@ class LiarsDice(Game):
             "counts": {i: r.players[i].g.count for i in self.seats if i in r.players},
             "mine": list(getattr(p.g, "dice", [])) if p.id in self.seats else [],
             "bid": self.bid, "bids": self.bids[-8:], "round": self.round,
-            "total": self.total(), "wild": self.s["wild"], "exact": self.s["exact"], "low": self.lowest_face(),
+            "total": self.total(), "wild": self.wild(), "palifico": self.palifico, "exact": self.s["exact"], "low": self.lowest_face(),
             "showdown": self.showdown,
             # at the end, everyone's dice are shown
             "hands": {x.id: x.g.dice for x in self.players()} if r.phase == "over" else None,
