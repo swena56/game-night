@@ -156,6 +156,10 @@ Every game has **Easy / Normal / Hard bots**:
   - Each game remembers its last settings when you switch away and back.
   - The host can remove players, and every settings change is noted in the log.
   - ⚙️ **My settings** (stored on your device): sound, vibration, animations and chat pop-ups.
+- **In the lobby.**
+  - Players who aren't the host tap a game tile to 🙏 ask for it (#70); tap it again to take it back. The tile shows how many
+    asked, the player list shows each request, and the host still picks whatever they like. A request clears when that game starts.
+  - 👁 **Watch** next to your name sits you out of the following games as a spectator until you tap 🙋 **Play** (#71).
 - **When a game ends.**
   - The host picks 🔁 **Rematch** (same game and settings, instant) or 🏠 **Lobby**.
   - Everyone can tap 🙋 **I'm in!** so the host sees who wants more.

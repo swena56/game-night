@@ -424,12 +424,20 @@ function renderLobby() {
     pick.append(el('div', 'picker-cat', label), group);
     for (const g of games) {
       const fit = seated < g.min ? `needs ${g.min}+` : seated > g.max ? `max ${g.max}` : '';
-      const b = el('button', 'game-tile' + (g.id === S.gameId ? ' on' : '') + (fit ? ' nofit' : ''));
+      const wishers = S.players.filter((p) => p.wish === g.id);
+      const b = el('button', 'game-tile' + (g.id === S.gameId ? ' on' : '') + (fit ? ' nofit' : '')
+        + (S.me && wishers.some((p) => p.id === S.me.id) ? ' wished' : ''));
       b.append(el('span', 'gicon', g.icon), el('b', '', g.name),
         el('small', '', fit || (g.min === g.max ? `${g.min} players` : `${g.min}–${g.max} players`)));
-      b.disabled = !host && g.id !== S.gameId;
+      // players ask the host for games; the host sees who asked (#70)
+      if (wishers.length) {
+        const w = el('span', 'wishes', `🙏${wishers.length > 1 ? ' ' + wishers.length : ''}`);
+        w.title = 'Asked for by ' + wishers.map((p) => p.name).join(', ');
+        b.append(w);
+      }
+      b.title = host ? '' : g.id === S.gameId ? 'The host picked this game' : 'Ask the host for this game (tap again to take it back)';
       b.setAttribute('aria-pressed', g.id === S.gameId);
-      b.onclick = () => host && quiet(act('settings', { settings: { game: g.id } }));
+      b.onclick = () => quiet(host ? act('settings', { settings: { game: g.id } }) : act('wish', { game: g.id }));
       group.append(b);
     }
   }
@@ -449,7 +457,14 @@ function renderLobby() {
       edit.onclick = editProfile;
       li.append(edit);
     }
-    if (p.spectator) li.append(el('span', 'hint', 'spectating'));
+    if (p.spectator) li.append(el('span', 'hint', p.watching ? '👁 watching' : 'spectating'));
+    if (p.wish) li.append(el('span', 'hint', '🙏 ' + (gameInfo(p.wish)?.name || p.wish)));
+    if (p.id === S.me.id && !p.bot && S.phase === 'lobby') {  // sit out or take a seat (#71)
+      const w = el('button', 'ghost-btn watch-btn', p.spectator ? '🙋 Play' : '👁 Watch');
+      w.title = p.spectator ? 'Take a seat in the next game' : 'Sit out and watch the next games';
+      w.onclick = () => quiet(act('watch', { on: !p.spectator }));
+      li.append(w);
+    }
     if (p.played || p.points) li.append(el('span', 'hint', `⭐ ${p.points}${p.wins ? ` · 🏆 ${p.wins}` : ''}`));
     if (p.away) li.append(el('span', 'hint', '📡 away'));
     if (p.bot) li.append(el('span', 'hint', `${p.bot} bot`));

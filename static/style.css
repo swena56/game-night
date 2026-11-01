@@ -131,6 +131,10 @@ p.preview { color: var(--accent2); font-style: italic; min-height: 1.4em; margin
 .game-tile.on { border: 2px solid var(--accent); background: #ffb7031a; }
 .game-tile:disabled { opacity: .35; }
 .game-tile.on:disabled { opacity: 1; }
+.game-tile { position: relative; }
+.game-tile .wishes { position: absolute; top: 3px; right: 4px; font-size: 11px; font-weight: 700; }
+.game-tile.wished { outline: 2px dashed var(--accent2); outline-offset: -4px; }
+.plist .watch-btn { font-size: 13px; }
 .hint.left { text-align: left; }
 .seat-row { display: flex; align-items: center; gap: 8px; font-weight: 700; padding: 3px 0; }
 

@@ -85,6 +85,8 @@ class Player:
         self.name = name
         self.color = color
         self.spectator = spectator
+        self.watching = False  # chose to sit out: stays a spectator from game to game (#71)
+        self.wish = None  # the game this player asked the host for, in the lobby (#70)
         self.streams = 0
         self.wins = 0
         self.bot = None  # difficulty level for computer players
@@ -103,7 +105,7 @@ class Player:
 
     def __setstate__(self, state):  # rooms saved by older versions lack newer fields
         self.__dict__.update({"last_chat": 0, "played": 0, "streak": 0, "best_streak": 0, "by_game": {},
-                              "points": 0, "quits": 0})
+                              "points": 0, "quits": 0, "watching": False, "wish": None})
         self.__dict__.update(state)
 
     def human(self):
@@ -402,6 +404,34 @@ class Room:
                 raise GameError("No such bot.")
             self.add_log(f"{bot.name} was unplugged.")
             return self.remove_player(bot)
+        if t == "watch":  # sit the next games out, or take a seat again (#71)
+            if self.phase != "lobby":
+                raise GameError("Switch between playing and watching in the lobby.")
+            if p.bot:
+                raise GameError("Bots always play.")
+            if a.get("on"):
+                if not p.spectator:
+                    self.add_log(f"👁 {p.name} will watch.")
+                p.spectator = p.watching = True
+                return
+            if p.spectator and len(self.seated()) >= MAX_PLAYERS:
+                raise GameError("The table is full.")
+            if p.spectator:
+                self.add_log(f"🙋 {p.name} will play.")
+            p.spectator = p.watching = False
+            return
+        if t == "wish":  # ask the host for a game; tapping it again takes the request back (#70)
+            if self.phase != "lobby":
+                raise GameError("Ask for a game in the lobby.")
+            gid = a.get("game")
+            if gid not in GAMES:
+                raise GameError("Unknown game.")
+            if p.wish == gid:
+                p.wish = None
+                return
+            p.wish = gid
+            self.add_log(f"🙏 {p.name} would like to play {GAMES[gid].icon} {GAMES[gid].name}.")
+            return
         if t == "start":
             self.require_host(p, "lobby")
             return self.start()
@@ -435,7 +465,7 @@ class Room:
                 raise GameError(f"{self.game.name} can't take new players mid-game. You'll get a seat for the next one.")
             p.reset()
             self.game.late_join(p)
-            p.spectator = False
+            p.spectator = p.watching = False
             self.add_log(f"🙋 {p.name} joins the game!", "big")
             return
         if t == "rematch":  # same game, same settings, straight back in
@@ -518,6 +548,8 @@ class Room:
         game.check_players(seated)
         for p in self.players.values():
             p.reset()
+            if p.wish == self.settings["game"]:
+                p.wish = None  # granted
         self.log = []
         self.winner = None
         self.turn = None
@@ -582,7 +614,7 @@ class Room:
         for p in self.players.values():
             p.reset()
         for p in [self.players[i] for i in self.order]:
-            if p.spectator and len(self.seated()) < MAX_PLAYERS:
+            if p.spectator and not p.watching and len(self.seated()) < MAX_PLAYERS:
                 p.spectator = False
         self.add_log("Back to the lobby for another round!", "big")
 
@@ -628,6 +660,7 @@ class Room:
             "log": [e for e in self.log if e["to"] is None or e["to"] == p.id or see_all][-80:],
             "players": [{
                 "id": o.id, "name": o.name, "color": o.color, "spectator": o.spectator,
+                "watching": o.watching, "wish": o.wish,
                 "eliminated": o.eliminated, "online": not o.shown_away, "wins": o.wins,
                 "bot": None if o.standin else o.bot, "meta": self.game.meta(o) if self.game else "",
                 "standin": o.standin, "away": o.shown_away and not o.standin,
