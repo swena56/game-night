@@ -967,7 +967,10 @@ class Handler(BaseHTTPRequestHandler):
         if url.path == "/api/events":
             return self.events(parse_qs(url.query))
         if url.path not in self.files:
-            return self.send_json(404, {"error": "Not found"})
+            # a file added since the server started (e.g. a new static/gl3.js): rescan before giving up
+            Handler.files = static_files()
+            if url.path not in self.files:
+                return self.send_json(404, {"error": "Not found"})
         fname, ctype = self.files[url.path]
         with open(os.path.join(STATIC_DIR, fname), "rb") as f:
             body = f.read()
