@@ -284,7 +284,14 @@ BASE=http://localhost:8767 node ui.js chess spire                          # jus
 ```bash
 BASE=http://localhost:8767 node layout.js            # every game at 485 and 1280 px in real Chromium (about 10 minutes)
 BASE=http://localhost:8767 SHOTS=/tmp/shots node layout.js yacht go    # some games, with screenshots
+OFFLINE_GRACE=2 PORT=8768 python3 ../server.py &     # jumps.js needs a short autopilot grace
+BASE=http://localhost:8768 node jumps.js             # does anything move while the game is played? (about 20 minutes)
 ```
+
+`jumps.js` (#18) starts each game solo at 485 px and blocks the page's presence heartbeat, so autopilot plays your seat
+while the page keeps receiving every update. It samples the game area every 120 ms and reports every time a board, a row of
+dice or a hand moves up or down, naming what above it grew or shrank. A move when the stage changes (placing ships, then
+battle) is expected; one on every turn is the bug.
 
 `tests/` also installs **playwright-core** for checks in a real browser (layout, WebGL), which jsdom can't do. It drives the
 system Chromium (`chromium.launch({ executablePath: '/usr/bin/chromium' })`) and downloads no browsers of its own. On Kali,
@@ -327,9 +334,8 @@ be checked without a browser.
 1. **Screenshot checks come first.** #44 (invisible dice pips) passed every automated test, because
    jsdom doesn't lay pages out. A Playwright pass that screenshots each game at 485 px and checks key
    elements have a real size would have caught it.
-2. **Next up:** a shared "results card" component for multi-round games (Grid Hunt, Safecracker,
-   Lucky Letters and Doodle Dash each draw their own today), and reserved heights for every game's
-   status line so nothing jumps (#18).
+2. ✅ A shared results card for multi-round games and reserved heights so nothing jumps (#17, #18): see *Across all games*
+   below.
 3. **A real-device check of the 3D views and the touch feel** (Light Riders, Paint Blast, Billiards),
    which a simulated browser can't judge.
 4. **A bottom-sheet layout with tabs** (*Actions · Log · Players*) and a sticky action bar for the main
@@ -383,7 +389,14 @@ Items that become ✅ move into the per-game plan.
    13 games that scrolled sideways on phones, all fixed.
 2. ✅ **A shared results card** between rounds: `Game.mark_round()` / `standings()` on the server and `standingsCard()` in
    app.js show each player's gain, running total, rank and ▲/▼ places moved. Used by Grid Hunt, Safecracker, Lucky Letters,
-   Doodle Dash and Shut the Box. Still to do: reserved status-line heights (#18) in the remaining games.
+   Doodle Dash and Shut the Box.
+   ✅ **Nothing jumps (#18):** `tests/jumps.js` lets autopilot play each game in Chromium and reports every time the board or
+   the controls move. It found 12 games that moved on every turn, all fixed: hint lines that emptied out (Reversi, Oware,
+   Ultimate), Backgammon's dice row, a global `.preview` margin that made Yacht's score rows and Moon Shot's track 12 px taller
+   every turn, Farkle's wrapping dice and buttons, Ship Captain & Crew's empty dice row, Safecracker's guess list (now a fixed
+   height, so the colour pad stays put), Twenty-One's Hit/Stand bar (now under the dealer, above the seats that grow with each
+   card), Odd One Out's clue box (now under the clues), Rummy's first meld and Paint Blast's clock. It also caught a Putt error
+   on the first frame of every shot. What still moves is a stage change (Sea Battle placing → firing, Cribbage's count).
 3. ✅ **Even the 🎲 Dice & casino row again:** Qork made it 7 games; 📦 **Shut the Box** makes it 8 (46 games).
 4. **Keyboard and screen-reader play** in the boards that still lack it (Backgammon, Oware, Ultimate, Morris, Dots & Boxes,
    the card games, Yacht, Farkle) using the shared `gridKeys`. **M**
@@ -464,7 +477,7 @@ Riders and Air Hockey start in it) (#13, #15).
 
 **Across all games**
 - A real-phone screenshot pass at 485 px wide. Every phone report came from a 485–555 px screen (#6, #18).
-- Reserve space for status lines and action rows in the other games too, the way Lucky Letters does now (#18).
+- ✅ Reserve space for status lines and action rows in the other games too (#18): see `tests/jumps.js` above.
 - ✅ A short results card between rounds (#17): the shared standings card in Grid Hunt, Safecracker, Lucky Letters, Doodle Dash and Shut the Box.
 - 🗳️ ✅ **Next-game voting** (#25): the game-over banner suggests five games that fit the table
   (skipping recent ones) plus an "Other game…" list. Tap to vote, tap again to take it back. When every

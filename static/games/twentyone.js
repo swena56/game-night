@@ -15,9 +15,9 @@ UI.twentyone = (() => {
   function mount(main, side) {
     main.innerHTML = `<div class="to">
       <div class="to-dealer"><div class="hint">🎩 Dealer <b id="toDealerTotal"></b></div><div id="toDealer" class="to-cards"></div></div>
-      <div id="toSeats" class="to-seats"></div>
       <div id="toBar" class="row to-bar"></div>
-      <p id="toNote" class="hint"></p></div>`;
+      <p id="toNote" class="hint"></p>
+      <div id="toSeats" class="to-seats"></div></div>`;  // the buttons sit above the seats, which grow with every card (#18)
     side.innerHTML = '<div class="panel"><h3>Chips</h3><div id="toChips"></div><p class="hint left">Dealer draws to 17. A two-card 21 pays 3 to 2.</p></div>';
   }
 

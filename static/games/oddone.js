@@ -7,6 +7,8 @@ UI.oddone = (() => {
   function mount(main, side) {
     main.innerHTML = `<div class="oo">
       <div class="oo-card"><small id="ooLabel">Your secret word</small><b id="ooWord"></b><span id="ooRound" class="oo-round"></span></div>
+      <!-- the clues stay put under the word; what you do now (clue, vote, result) comes after them (#18) -->
+      <div class="panel"><h3>Clues</h3><div id="ooClues"></div></div>
       <form id="ooClueForm" class="row oo-form" autocomplete="off" hidden>
         <input id="ooClue" maxlength="20" placeholder="One-word clue" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="send">
         <button class="primary">Give clue</button>
@@ -18,7 +20,6 @@ UI.oddone = (() => {
       </form>
       <div id="ooVote" class="panel" hidden><h3>Who has the odd word?</h3><div id="ooVoteBtns" class="oo-votes"></div><p id="ooWaiting" class="hint"></p></div>
       <div id="ooResult" class="panel oo-result" hidden></div>
-      <div class="panel"><h3>Clues</h3><div id="ooClues"></div></div>
     </div>`;
     side.innerHTML = `<div class="panel"><h3>How it works</h3><ul class="rules">
       <li>Everyone has the same word, <b>except one player</b>, who has a similar one and doesn't know it.</li>

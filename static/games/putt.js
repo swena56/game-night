@@ -91,7 +91,8 @@ UI.putt = (() => {
     const p = S.putt;
     if (anim && (anim.by >= p.balls.length || !anim.frames.length)) anim = null;  // a shot from a game that has ended
     if (anim && anim.by === i) {
-      const k = Math.floor(((now - anim.t0) / 1000) * 30);
+      // a frame's timestamp can be a little earlier than the moment the shot arrived: never index below 0
+      const k = Math.max(0, Math.floor(((now - anim.t0) / 1000) * 30));
       if (k < anim.frames.length) return anim.frames[k];
       anim = null;
     }
