@@ -5,7 +5,7 @@ import time
 
 from .base import Game, GameError
 
-CHOICES = {"grab": "🥷", "guard": "🛡️", "rest": "😴"}
+CHOICES = {"grab": "🦹", "guard": "🛡️", "rest": "😴"}
 FINE = 2
 # bot personalities: how much more (or less) often than a plain bot they grab and guard
 PERSONAS = {"greedy": ("🦊", 1.6, 0.7), "cautious": ("🐢", 0.5, 0.9), "watchful": ("🦉", 0.8, 1.6)}
@@ -22,7 +22,7 @@ class Heist(Game):
         'Bots have a personality on their chip: 🦊 greedy grabs more, 🐢 cautious rests, 🦉 watchful guards.',
     ]
     name = "Night Heist"
-    icon = "🥷"
+    icon = "🦹"
     blurb = ("Everyone secretly picks Grab, Guard or Rest. A lone grabber steals the loot, "
              "two grabbers trip the alarm, and guards fine anyone they catch.")
     min_players = 2

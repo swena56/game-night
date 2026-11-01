@@ -4,7 +4,7 @@ UI.shipcrew = (() => {
   let S, ctx, pick = new Set([0, 1]), turnKey = '', seenLast = -1, rollKey = '';
   const $ = (id) => document.getElementById(id);
   const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
-  const SLOTS = [[6, '🚢', 'Ship'], [5, '🧑‍✈️', 'Captain'], [4, '👥', 'Crew']];
+  const SLOTS = [[6, '🚢', 'Ship'], [5, '🧭', 'Captain'], [4, '👥', 'Crew']];
 
   function die(value, cls = '', tag = 'span') {
     const b = ctx.el(tag, 'ya-die ' + cls);
@@ -85,10 +85,10 @@ UI.shipcrew = (() => {
       const p = ctx.player(pid); if (!p) continue;
       const row = ctx.el('div', 'seat-row' + (S.turn === pid ? ' turn' : ''));
       const dot = ctx.el('span', 'dot'); dot.style.background = p.color;
-      row.append(dot, ctx.el('span', '', sc.coins ? `${p.name}: ${sc.coins[pid] ?? 0} 🪙 · ${sc.scores[pid] ?? 0} cargo` : `${p.name}: ${sc.scores[pid] ?? 0}`));
+      row.append(dot, ctx.el('span', '', sc.coins ? `${p.name}: ${sc.coins[pid] ?? 0} 💰 · ${sc.scores[pid] ?? 0} cargo` : `${p.name}: ${sc.scores[pid] ?? 0}`));
       box.append(row);
     }
-    if (sc.pot != null) box.append(ctx.el('div', 'sc-pot', `🍺 Pot: ${sc.pot} 🪙`));
+    if (sc.pot != null) box.append(ctx.el('div', 'sc-pot', `🍺 Pot: ${sc.pot} 💰`));
     if (sc.solo) box.append(ctx.el('div', 'hint left', `Solo goal: ${sc.goal} cargo`));
     if (sc.solo && sc.seats[0] === S.me.id && !!ctx.act) soloBest($('scBest'), `shipcrew.best.${sc.rounds}`, `${S.code}#${S.gameNo}`, sc.scores[S.me.id] ?? 0, S.phase === 'over', { fmt: (v) => `${v} cargo` });
   }

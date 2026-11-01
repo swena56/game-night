@@ -4,7 +4,7 @@
 UI.paintblast = (() => {
   let S, ctx, snap = null, canvas = null, g = null, raf = 0, ro = null, keyDown = null, keyUp = null;
   let glide = [], heldDir = -1, touch = null, countdownAt = 0, endsAt = 0;
-  const ITEM = { b: '💣', r: '🔥', p: '🪣', k: '👟' };
+  const ITEM = { b: '💣', r: '🔥', p: '🖌️', k: '👟' };
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {

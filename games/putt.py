@@ -350,7 +350,7 @@ class Putt(Game):
     howto = [
         "Put your finger on your ball (the ringed one), drag back and let go: the further you drag, the harder the shot. The ball goes the opposite way, like a slingshot.",
         "Drag anywhere else to turn and tilt the view; two fingers (or a right-drag) pan, pinch or the wheel zooms. The camera follows your ball, then swings round behind it. 🎯 does that too, ⛳ shows the whole hole.",
-        "⛰️ Humps push the ball aside and bowls pull it in; ⚪ bumpers, ▪️ posts and 🪨 rocks bounce it; long grass slows it.",
+        "⛰️ Humps push the ball aside and bowls pull it in; ⚪ bumpers, ▪️ posts and 🌑 rocks bounce it; long grass slows it.",
         "🌀 Time your putt through the windmill's doorway, and hit the ramp hard enough to clear the stream.",
         "Everyone plays the same hole, one stroke each in turn. Balls pass through each other.",
         "🟫 Sand slows the ball, ↗ slopes push it, ⚪ bumpers bounce it, and 💧 water costs a stroke (you replay from where you hit).",

@@ -174,7 +174,7 @@ class OddOne(Game):
         else:
             if oddp:
                 oddp.g.score += 4
-                r.add_log(f"🥷 {oddp.name} slipped away with “{self.odd_word}” (everyone else had “{self.common}”). +4", "power")
+                r.add_log(f"🏃 {oddp.name} slipped away with “{self.odd_word}” (everyone else had “{self.common}”). +4", "power")
             self.reveal()
 
     def guess(self, p, text):

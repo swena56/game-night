@@ -115,7 +115,7 @@ UI.qork = (() => {
     // buttons
     const go = $('qkGo'), roll = $('qkRoll');
     go.hidden = !me;
-    go.textContent = me === 'cup' ? '🥤 SLAM!' : '🪢 YANK!';
+    go.textContent = me === 'cup' ? '🥤 SLAM!' : '💪 YANK!';
     go.disabled = replay() || g.stage === 'wait' || g.stage === 'result' || pressedNo === g.rollNo || g.acted[S.me.id] !== undefined;
     go.classList.toggle('hot', !!g.trigger && g.stage === 'snap');
     roll.hidden = me !== 'cup' || !(g.stage === 'wait' || g.stage === 'dice');
@@ -132,13 +132,13 @@ UI.qork = (() => {
     if (res) {
       const rows = Object.entries(res.times).filter(([, ms]) => ms >= 0).sort((a, b) => a[1] - b[1]);
       for (const [pid, ms] of rows) {
-        const tag = pid === g.cupper ? '🥤' : res.escaped.includes(pid) ? '💨' : '🪤';
+        const tag = pid === g.cupper ? '🥤' : res.escaped.includes(pid) ? '💨' : '🔒';
         const row = ctx.el('div', 'qk-time');
         row.append(ctx.el('span', '', `${tag} ${ctx.player(pid)?.name ?? '?'}`), ctx.el('b', '', `${ms} ms`));
         times.append(row);
       }
       for (const pid of res.trapped.filter((id) => !(id in res.times && res.times[id] >= 0))) {
-        times.append(ctx.el('div', 'qk-time', `🪤 ${ctx.player(pid)?.name ?? '?'} — didn't move`));
+        times.append(ctx.el('div', 'qk-time', `🔒 ${ctx.player(pid)?.name ?? '?'} — didn't move`));
       }
     }
 
@@ -149,7 +149,7 @@ UI.qork = (() => {
 
   function turnText(s) {
     const g = s.qork;
-    if (g.stage === 'snap') return g.cupper === s.me.id ? '🥤 SLAM!' : '🪢 YANK!';
+    if (g.stage === 'snap') return g.cupper === s.me.id ? '🥤 SLAM!' : '💪 YANK!';
     return g.cupper === s.me.id ? '🥤 You are the Cupper' : null;
   }
 

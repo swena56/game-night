@@ -38,7 +38,7 @@ UI.hearts = (() => {
       const box = ctx.el('div', 'hh-rival' + (S.turn === h.seats[i] ? ' turn' : ''));
       const p = ctx.player(h.seats[i]);
       const nm = ctx.el('b', '', name(i)); nm.style.color = p?.color ?? 'inherit';
-      box.append(nm, ctx.el('small', '', `🂠 ${h.counts[i]} · ♥ ${h.taken[i]}`));
+      box.append(nm, ctx.el('small', '', `🎴 ${h.counts[i]} · ♥ ${h.taken[i]}`));
       riv.append(box);
     }
 

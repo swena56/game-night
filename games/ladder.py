@@ -73,7 +73,7 @@ class Ladder(Game):
         "Most points after the last ladder wins. Alone, finish every ladder to win.",
     ]
     name = "Word Ladder"
-    icon = "🪜"
+    icon = "🧗"
     blurb = "Change one letter at a time to climb from word to word: Lewis Carroll's puzzle, as a race."
     min_players = 1
     max_players = 6
@@ -101,7 +101,7 @@ class Ladder(Game):
             self.late_join(p)
         self.room.turn = None
         self.room.bot_at = 0
-        self.room.add_log(f"🪜 Word Ladder! {self.s['rounds']} ladders of {self.n_len}-letter words"
+        self.room.add_log(f"🧗 Word Ladder! {self.s['rounds']} ladders of {self.n_len}-letter words"
                           + (f" (📅 the ladders for {today})" if self.s.get("daily") else "") + ". Change one letter at a time.", "big")
         self.next_round()
 
@@ -155,7 +155,7 @@ class Ladder(Game):
             if p.bot:
                 self.plan(p)
         self.sync()
-        self.room.add_log(f"🪜 Ladder {self.round}/{self.s['rounds']}: {a} → {b} (par {par} steps).", "question")
+        self.room.add_log(f"🧗 Ladder {self.round}/{self.s['rounds']}: {a} → {b} (par {par} steps).", "question")
 
     # -- bots
 
@@ -306,7 +306,7 @@ class Ladder(Game):
             self.solution.append(nxt)
         for p in self.live():
             self.gained.setdefault(p.id, 0)
-        self.room.add_log(f"🪜 One shortest ladder: {' → '.join(self.solution)}")
+        self.room.add_log(f"🧗 One shortest ladder: {' → '.join(self.solution)}")
         self.stage = "reveal"
         self.plans = []
         self.end = self.now() + REVEAL_SECS
@@ -320,7 +320,7 @@ class Ladder(Game):
             text = f"{p.g.finished}/{self.s['rounds']} ladders, {p.g.score} points"
             if p.g.finished >= self.s["rounds"]:
                 return r.finish(p, f"🏆 {p.name} climbed every ladder: {text}!")
-            return r.finish(None, f"🪜 {p.name}: {text}. Finish them all to win — try again!")
+            return r.finish(None, f"🧗 {p.name}: {text}. Finish them all to win — try again!")
         if not live:
             return r.finish(None, "Everyone left.")
         ranked = sorted(live, key=lambda q: -q.g.score)

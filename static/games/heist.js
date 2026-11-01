@@ -1,7 +1,7 @@
 UI.heist = (() => {
   let S, ctx;
   const OPTIONS = [
-    ['grab', '🥷', 'Grab', 'Steal the whole vault, but only if you are the only grabber and nobody guards.'],
+    ['grab', '🦹', 'Grab', 'Steal the whole vault, but only if you are the only grabber and nobody guards.'],
     ['guard', '🛡️', 'Guard', 'Catch grabbers and collect a 💰2 fine from each. Guarding an empty hall costs 💰1.'],
     ['rest', '😴', 'Rest', 'Play it safe: +💰1.'],
   ];
@@ -18,7 +18,7 @@ UI.heist = (() => {
     side.innerHTML = `<div class="panel"><h3>How it works</h3>
       <p class="hint left">Everyone chooses in secret, then all choices are revealed together.</p>
       <ul class="rules">
-        <li>🥷 A <b>lone grabber</b> steals the vault.</li>
+        <li>🦹 A <b>lone grabber</b> steals the vault.</li>
         <li>🔔 <b>Two or more grabbers</b> trip the alarm, and the loot keeps growing.</li>
         <li>🛡️ <b>Guards</b> fine every grabber 💰2.</li>
         <li>😴 <b>Rest</b> earns 💰1.</li>

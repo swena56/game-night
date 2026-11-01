@@ -51,7 +51,7 @@ class TwentyOne(Game):
         "Most chips after the last hand wins. Alone, finish ahead of your starting 100.",
     ]
     name = "Twenty-One"
-    icon = "🂡"
+    icon = "♦️"
     blurb = "The classic against-the-dealer card game: hit, stand, double or split, and leave with the most chips."
     min_players = 1
     max_players = 6
@@ -67,7 +67,7 @@ class TwentyOne(Game):
         self.chips = [START_CHIPS] * len(seated)
         self.shoe = []
         self.hand_no = 0
-        self.room.add_log(f"🂡 Twenty-One! {self.s['hands']} hands, {START_CHIPS} chips each.", "big")
+        self.room.add_log(f"♦️ Twenty-One! {self.s['hands']} hands, {START_CHIPS} chips each.", "big")
         self.new_hand()
 
     def __setstate__(self, state):  # games saved before splitting kept one card list per seat
@@ -104,7 +104,7 @@ class TwentyOne(Game):
         r.turn = None
         r.deadline = time.time() + r.settings["timer"] if r.settings["timer"] else None
         r.bot_at = time.time() + random.uniform(0.8, 1.6)
-        r.add_log(f"🂡 Hand {self.hand_no}/{self.s['hands']}: place your bets.")
+        r.add_log(f"♦️ Hand {self.hand_no}/{self.s['hands']}: place your bets.")
 
     # -- betting
 
@@ -359,7 +359,7 @@ class TwentyOne(Game):
 
     def meta(self, p):
         i = self.seat(p)
-        return "" if i is None else f"🪙 {self.chips[i]}"
+        return "" if i is None else f"💰 {self.chips[i]}"
 
     def final_scores(self):
         return {pid: self.chips[i] for i, pid in enumerate(self.seats)}

@@ -65,7 +65,7 @@ UI.ladder = (() => {
   function render(s, c) {
     S = s; ctx = c; receivedAt = performance.now();
     const l = S.ladder, rv = l.reveal;
-    $('ldRound').textContent = `🪜 Ladder ${l.round}/${l.rounds}`;
+    $('ldRound').textContent = `🧗 Ladder ${l.round}/${l.rounds}`;
     $('ldPar').textContent = `${l.start} → ${l.target} · par ${l.par}`;
     $('ldInput').maxLength = l.len;
     $('ldInput').placeholder = `${l.len} letters`;
@@ -90,7 +90,7 @@ UI.ladder = (() => {
     const rev = $('ldReveal'); rev.innerHTML = ''; rev.hidden = !rv;
     if (rv) {
       const best = ctx.el('div', 'ld-card');
-      best.append(ctx.el('b', '', `🪜 A shortest ladder (${rv.solution.length - 1})`), ctx.el('div', 'ld-line', rv.solution.join(' → ')));
+      best.append(ctx.el('b', '', `🧗 A shortest ladder (${rv.solution.length - 1})`), ctx.el('div', 'ld-line', rv.solution.join(' → ')));
       rev.append(best);
       for (const [pid, path] of Object.entries(rv.paths)) {
         const p = ctx.player(pid);
@@ -116,7 +116,7 @@ UI.ladder = (() => {
   }
 
   const turnText = (s) => s.phase !== 'playing' ? null
-    : s.ladder.stage === 'reveal' ? '🪜 Ladders revealed' : !s.ladder.playing ? '🪜 Watching' : s.ladder.done ? '🪜 Done — waiting' : '🪜 Climb!';
+    : s.ladder.stage === 'reveal' ? '🧗 Ladders revealed' : !s.ladder.playing ? '🧗 Watching' : s.ladder.done ? '🧗 Done — waiting' : '🧗 Climb!';
   const myMove = (s) => s.phase === 'playing' && s.ladder.stage === 'climb' && s.ladder.playing && !s.ladder.done;
 
   return { mount, render, unmount, turnText, myMove };

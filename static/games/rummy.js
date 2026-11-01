@@ -207,7 +207,7 @@ UI.rummy = (() => {
     r.seats.map((pid, i) => [i, r.scores[i]]).sort((a, b) => a[1] - b[1]).forEach(([i, v]) => {
       const row = ctx.el('div', 'seat-row');
       const dot = ctx.el('span', 'mini-disc'); dot.style.background = ctx.player(r.seats[i])?.color ?? '#777';
-      row.append(dot, ctx.el('span', 'grow', `${name(i)}${i === me ? ' (you)' : ''} · 🂠${r.counts[i]}${r.down[i] ? ' ✅' : ''}`), ctx.el('b', '', String(v)));
+      row.append(dot, ctx.el('span', 'grow', `${name(i)}${i === me ? ' (you)' : ''} · 🎴${r.counts[i]}${r.down[i] ? ' ✅' : ''}`), ctx.el('b', '', String(v)));
       sc.append(row);
     });
   }

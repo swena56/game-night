@@ -24,7 +24,7 @@ TAG_POINTS = 10
 COUNTDOWN, PAUSE = 3.0, 5.0
 CLOSE_FROM, CLOSE_EVERY = 15.0, 4.0  # 🧱 the walls close in: a ring of pillars from 15 s left, then every 4 s
 FLOOR, PILLAR, CRATE = 0, 1, 2
-POWERS = {"b": "💣 extra bomb", "r": "🔥 longer blast", "p": "🪣 paint splash", "k": "👟 kick"}
+POWERS = {"b": "💣 extra bomb", "r": "🔥 longer blast", "p": "🖌️ paint splash", "k": "👟 kick"}
 
 
 class PaintBlast(Game):
@@ -34,7 +34,7 @@ class PaintBlast(Game):
         "Move with a swipe-and-hold on the arena, the arrows, or the keyboard (arrows / WASD). Tap the arena, 💣 or Space to drop a bomb.",
         "A bomb blasts in a straight line in all four directions. It breaks the first crate it meets and paints every tile it touches in your colour.",
         "Caught in a blast? You're stunned for 3 s and respawn at home. Catching a rival scores +10.",
-        "Crates hide 💣 more bombs, 🔥 longer blasts, 🪣 paint splashes and 👟 kick: walk into a bomb to send it sliding.",
+        "Crates hide 💣 more bombs, 🔥 longer blasts, 🖌️ paint splashes and 👟 kick: walk into a bomb to send it sliding.",
         "When the clock runs out, every tile in your colour is a point. Most points after the last round wins.",
         "🧱 In the last 15 s the walls close in, one ring at a time. Paint under them still counts.",
     ]

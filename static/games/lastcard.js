@@ -14,7 +14,7 @@ UI.lastcard = (() => {
     pendingJack = null; shownTop = undefined; shownHand = null;
     main.innerHTML = `<div class="table">
       <div class="pile-row">
-        <button id="lcDeck" class="pc back"><b>🂠</b><small id="lcDeckCount"></small></button>
+        <button id="lcDeck" class="pc back"><b>🎴</b><small id="lcDeckCount"></small></button>
         <div id="lcTop"></div>
         <div id="lcInfo" class="lc-info"></div>
       </div>

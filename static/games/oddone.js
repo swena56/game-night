@@ -25,7 +25,7 @@ UI.oddone = (() => {
       <li>Everyone has the same word, <b>except one player</b>, who has a similar one and doesn't know it.</li>
       <li>💬 Give one-word clues. Too vague looks suspicious; too obvious helps the odd one.</li>
       <li>🗳️ Vote for the odd one: <b>+2</b> each if they're caught (+1 if they escape).</li>
-      <li>🥷 An odd one who escapes gets <b>+4</b>. Caught? Guess the real word for <b>+3</b>.</li></ul></div>`;
+      <li>🏃 An odd one who escapes gets <b>+4</b>. Caught? Guess the real word for <b>+3</b>.</li></ul></div>`;
     const send = (form, input, type) => {
       $(form).onsubmit = (e) => {
         e.preventDefault();
@@ -98,7 +98,7 @@ UI.oddone = (() => {
     if (!res.hidden) {
       res.innerHTML = '';
       const odd = ctx.player(g.odd);
-      res.append(ctx.el('h3', '', g.result.caught ? '🎯 Caught!' : '🥷 The odd one escaped!'));
+      res.append(ctx.el('h3', '', g.result.caught ? '🎯 Caught!' : '🏃 The odd one escaped!'));
       const who = ctx.el('p', 'oo-who');
       who.append(dot(odd), `${odd?.name ?? '?'} had “${g.oddWord}”`);
       res.append(who);

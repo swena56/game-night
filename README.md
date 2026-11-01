@@ -31,7 +31,7 @@ address the server prints. **Play solo** on the home screen starts any game agai
 | 🖍️ **Scribble Relay** | 3–6 | Everyone writes a phrase, then the chains pass round the table: draw what you're handed, caption the drawing you're handed, and so on. Drawing happens on your own phone (6 ink colours, undo). | You only see the entry right before yours. At the end each chain is revealed card by card and everyone ❤️ votes for their favourite entry. 🎯 A chain that ends where it started earns everyone in it +1. |
 | 🧠 **Trivia Rush** | 1–6 | Quick-fire quiz: everyone gets the same question with four answers and picks at once (228 original questions in 9 topics). | 100 for a right answer plus up to 100 for speed; the last question counts double. Pick one topic or everything. Alone, get 70% right to win. |
 | ✏️ **Doodle Dash** | 2–6 | The computer draws a picture one line at a time (68 original line drawings in 6 categories) and everyone types guesses at once. Earlier guesses score more. | Letter blanks appear halfway through, then the first letter. A wrong guess locks you out for 3 s. Typos, plurals and synonyms are accepted. Scoring: everyone can score (the first gets +2), or ⚡ first correct only. Strokes reach the browser only as they're drawn, so nobody can peek. |
-| 🥷 **Night Heist** *(the surprise)* | 2–6 | A simultaneous bluffing game. Each night everyone secretly picks **Grab**, **Guard** or **Rest**, then all choices are revealed together. | A lone grabber steals the whole vault. Two grabbers trip the alarm and the loot grows. Guards fine grabbers 💰2 each, and guarding an empty hall costs 💰1. Reading the table is the whole game. |
+| 🦹 **Night Heist** *(the surprise)* | 2–6 | A simultaneous bluffing game. Each night everyone secretly picks **Grab**, **Guard** or **Rest**, then all choices are revealed together. | A lone grabber steals the whole vault. Two grabbers trip the alarm and the loot grows. Guards fine grabbers 💰2 each, and guarding an empty hall costs 💰1. Reading the table is the whole game. |
 
 ### 🔤 Words & puzzles (6)
 
@@ -42,7 +42,7 @@ address the server prints. **Play solo** on the home screen starts any game agai
 | 🔎 **Grid Hunt** | 2–6 | Timed word hunt: everyone searches the same freshly shaken 4×4 or 5×5 letter grid at once, tracing words through touching tiles. Drag, tap, or type. | When time runs out the lists are compared, and **a word a rival also found scores nothing**. A ⭐ star tile doubles words through it. The grid is reshaken until it holds plenty of words, and the results show the longest ones nobody found. 📅 Today's grids (an option) are the same in every room. |
 | 🔐 **Safecracker** | 1–6 | Code-breaking: crack a hidden 4- or 5-peg colour code from ● (right spot) and ○ (wrong spot) hints. | **Everyone cracks the same safe at once**: guesses are locked in secretly, then all are revealed, so rivals' clues help you too. Crack it alone for 3, share the crack for 2. A private 🔍 probe per safe counts one colour, for a point. Pegs show numbers as well as colours. 📅 Today's safes (an option): the same codes in every room that day. |
 | 🤥 **Fib Finder** | 2–6 | A strange-but-true fact appears with a word missing (118 facts). Everyone writes a believable fake answer, then picks which answer is real. | +3 for finding the truth, +2 for each player your fib fools. Typing the real answer is caught and rejected. House fibs make sure there are always enough answers. The last fact counts double. |
-| 🪜 **Word Ladder** | 1–6 | Lewis Carroll's public-domain "doublets" as a race: everyone climbs from the same start word to the same goal word, changing one letter per step, every step a real word. | Par is the shortest ladder of everyday words; any dictionary word is allowed in between. ↩ takes a step back for free, 💡 fills in the next step for 3 points. 3- or 4-letter words. |
+| 🧗 **Word Ladder** | 1–6 | Lewis Carroll's public-domain "doublets" as a race: everyone climbs from the same start word to the same goal word, changing one letter per step, every step a real word. | Par is the shortest ladder of everyday words; any dictionary word is allowed in between. ↩ takes a step back for free, 💡 fills in the next step for 3 points. 3- or 4-letter words. |
 
 ### ⚡ Action (8)
 
@@ -50,9 +50,9 @@ address the server prints. **Play solo** on the home screen starts any game agai
 |---|---|---|---|
 | 🗼 **Spire Siege** | 1–6 | **Real-time 3D** (three.js) falling-block battle on a cylindrical tower that wraps around. Pieces are 2-, 3- and 5-block shapes, or pick the 🟦 4-block set. ⇄ **Hold** parks a piece for later. Fill a whole ring to clear it. Clearing 2+ rings, or chaining clears, sends junk rings to a random rival. | The tower spins so your piece always faces you. Power cells: ⚡ surge (rivals fall faster), 🛡️ shield (blocks junk), 💣 blast (removes your bottom two rings). Solo survival works with 1 player. Prefer an upright board? 🧱 **Flat well** mode has side walls and a flat view. |
 | 🏍️ **Light Riders** | 2–6 | **Real-time** light-cycle duels in a **3D neon arena** (three.js; flat fallback). Your bike never stops and leaves a wall of light behind it. Crash into any wall and you're out; the last rider standing wins the round. | ⚡ 3 boosts per round (double speed). Swipe, D-pad or keyboard. Quick double turns are queued, so you can whip round a corner. Medium, small or large arena; chill, normal or fast speed. |
-| 🎨 **Paint Blast** | 2–6 | **Real-time** bomb maze: run through pillars and crates and drop bombs whose blasts run in a straight line in all four directions. Crates hide 💣 extra bombs, 🔥 longer blasts and 🪣 paint splashes. | **Every blast paints the floor in your colour**, and when the clock stops each painted tile is a point (+10 for catching a rival). Caught players are stunned for 3 s and respawn at home, so nobody sits out. The maze is mirror-symmetric and new every round. Swipe-and-hold to run, tap to bomb. |
+| 🎨 **Paint Blast** | 2–6 | **Real-time** bomb maze: run through pillars and crates and drop bombs whose blasts run in a straight line in all four directions. Crates hide 💣 extra bombs, 🔥 longer blasts and 🖌️ paint splashes. | **Every blast paints the floor in your colour**, and when the clock stops each painted tile is a point (+10 for catching a rival). Caught players are stunned for 3 s and respawn at home, so nobody sits out. The maze is mirror-symmetric and new every round. Swipe-and-hold to run, tap to bomb. |
 | 🪐 **Sumo Saucers** | 2–6 | **Real-time 3D** (three.js; flat fallback): pilot a hover saucer on a floating platform and shove rivals off the edge. Drag anywhere for a virtual stick, tap to 💨 dash. | Glowing rim bumpers bounce you back once, then shatter, and the platform shrinks every 15 s. Last saucer floating wins the round; first to 3 wins. Optional sudden death with no bumpers. |
-| ⛳ **Putt Party** | 1–6 | **3D** mini golf (three.js; top-down fallback) on holes generated each game: a winding walled fairway with ⚪ bumpers, ▪️ posts, 🪨 rocks, 🟫 sand, long grass, ↗ slopes, ⛰️ humps and bowls, curved banks, a 🌀 windmill to time, a ramp jump and 💧 water. Drag back from your ball and let go to putt; a drag anywhere else moves the view, and the camera swings behind your ball after each putt. | The server simulates every putt and sends the ball's path, so every phone plays back the same shot. Everyone plays the same hole, a stroke each in turn. Solo: finish at or under par (3 a hole, 4 for a hole with a jump or a windmill). |
+| ⛳ **Putt Party** | 1–6 | **3D** mini golf (three.js; top-down fallback) on holes generated each game: a winding walled fairway with ⚪ bumpers, ▪️ posts, 🌑 rocks, 🟫 sand, long grass, ↗ slopes, ⛰️ humps and bowls, curved banks, a 🌀 windmill to time, a ramp jump and 💧 water. Drag back from your ball and let go to putt; a drag anywhere else moves the view, and the camera swings behind your ball after each putt. | The server simulates every putt and sends the ball's path, so every phone plays back the same shot. Everyone plays the same hole, a stroke each in turn. Solo: finish at or under par (3 a hole, 4 for a hole with a jump or a windmill). |
 | 🛸 **Hover Rally** | 1–6 | **Real-time 3D** hover-craft race (three.js chase camera; top-down fallback) on a looping track generated each game. The throttle is automatic: hold a side of the screen (or ←/→) to steer. | Bends push you outward and the inside line is shorter, so racing lines matter; walls scrub speed. ⚡ Boost pads plus 3 boosts of your own, sideways bumps. Alone: beat a target time. |
 | 🏒 **Air Hockey** | 2 | **Real-time** table hockey: drag your mallet around your half, bank shots off the walls. Server-side physics at 60 fps. | 🏒🏒 Double Trouble puts two pucks on the table. Each player sees the table from their own end. |
 | 🎱 **Billiards** | 2 | Eight-ball pool on a top-down table with real physics (cushions, ball-to-ball collisions, six pockets). Drag to aim, set the power, shoot. | The server simulates every shot and sends the ball paths, so every phone plays back the same shot. A 🎯 aim guide (full, short or off) shows where both balls go. Fouls give ✋ ball in hand. The table stands upright on phones. |
@@ -65,7 +65,7 @@ address the server prints. **Play solo** on the home screen starts any game agai
 | ⛀ **Checkers** | 2 | American rules: compulsory captures, multi-jumps in one move, kings, and a 40-move no-progress draw. | Legal pieces and landing squares are highlighted. Optional 🦅 flying kings glide any distance and jump from afar. 🤝 Draw offers and ↶ undo requests. |
 | 🔺 **Backgammon** | 2 | The traditional race game, full rules: opening roll, doubles move four times, hits and the bar, bearing off (higher dice only for the farthest checker), and the must-use-both-dice / use-the-larger-die rules. | The board is drawn from your side, so your home is bottom right in either colour. Tap a checker, then a glowing point; undo until you end your turn. Gammons (2) and backgammons (3); one game or a match to 3 or 5. Optional 🎲 doubling cube. |
 | ⚫ **Go** | 2 | 9×9, 13×13 or 19×19. Tromp–Taylor area scoring, positional superko, no suicide, 6.5 komi. | A live "score if it ended now" readout. Komi of 6.5, 7.5, 5.5 or 0.5, and 2–9 handicap stones on the star points (you take Black against a bot). |
-| 🫘 **Oware** | 2 | The traditional mancala game (abapa rules): sow seeds counter-clockwise, capture rival pits you leave at 2 or 3, chaining backwards. 25 seeds wins. | The grand-slam rule, the must-feed rule, and an endless-circling stop. Captured pits flash and the last pit sown is ringed. ↶ Undo requests. |
+| 🌰 **Oware** | 2 | The traditional mancala game (abapa rules): sow seeds counter-clockwise, capture rival pits you leave at 2 or 3, chaining backwards. 25 seeds wins. | The grand-slam rule, the must-feed rule, and an endless-circling stop. Captured pits flash and the last pit sown is ringed. ↶ Undo requests. |
 | ⚪ **Reversi** | 2 | The 19th-century public-domain disc-flipping game on 8×8: trap a line of rival discs to flip them. Passes when you can't move. | Legal squares glow, and flipped discs spin over. Optional flip hints show how many discs each square would flip. ↶ Undo requests. |
 
 ### 🃏 Cards (6)
@@ -101,7 +101,7 @@ address the server prints. **Play solo** on the home screen starts any game agai
 | 🚢 **Ship, Captain & Crew** | 1–6 | The traditional tavern dice game: three rolls of five dice to find a 6 (ship), then a 5 (captain), then a 4 (crew), in order. The last two dice are your cargo. | Tap cargo dice to reroll one or both with the rolls you have left, or ⚓ dock. 3, 5 or 8 rounds; alone, average 5 cargo a round to win (best play averages about 4.3). Optional 🍺 pub pot: ante a coin a round, best cargo takes the pot. A 🏅 best-solo-hauls table on your device. |
 | 📦 **Shut the Box** | 1–6 | The traditional pub dice game: roll two dice and shut open tiles (1–9, or 1–12) that add up to the roll, until nothing fits. The open tiles are your points; lowest total after 1, 3 or 5 rounds wins. | Shut every tile to shut the box for 0. Once 7 and up are shut you may roll one die. Tiles that can't fit your roll are dimmed, and a single possible fit is picked for you. Alone, beat 10 points a round; a 🏅 best-solo-totals table on your device. |
 | 🤥 **Liar's Dice** | 2–6 | The traditional bluffing game: everyone rolls in secret, then bids rise ("four 3s") until someone calls 🤥 Liar!. Whoever was wrong loses a die; the last with dice wins. | Optional wild 1s and 🎯 Exact calls (spot on and everyone else loses a die). A helper shows how many of a face to expect, and the showdown stays up with everyone's dice. Optional 🗿 **palifico**: the first time someone is down to one die they open a round where 1s aren't wild and every bid keeps the opening face. |
-| 🂡 **Twenty-One** | 1–6 | The traditional casino game against a dealer bot: everyone bets at once, then hits, stands, doubles or ✂️ splits a pair in turn. Dealer draws to 17; a two-card 21 pays 3:2. | Four-deck shoe. Split up to four hands (split aces get one card each; a 21 after a split pays even money). Most chips after 5, 8 or 12 hands wins; alone, beat your starting 100. |
+| ♦️ **Twenty-One** | 1–6 | The traditional casino game against a dealer bot: everyone bets at once, then hits, stands, doubles or ✂️ splits a pair in turn. Dealer draws to 17; a two-card 21 pays 3:2. | Four-deck shoe. Split up to four hands (split aces get one card each; a 21 after a split pays even money). Most chips after 5, 8 or 12 hands wins; alone, beat your starting 100. |
 
 Every game has **Easy / Normal / Hard bots**:
 - **Unmask:** the bot picks the question that splits the remaining faces best.
@@ -415,7 +415,7 @@ Items that become ✅ move into the per-game plan.
 - 🖍️ **Scribble Relay:** a fill tool, and a timer per step so slow drawers don't stall the table. **M**
 - 🧠 **Trivia Rush:** ✅ a 🔥 streak bonus (+50 per right answer in a row from the third, up to +150). Still to do: a host-supplied question pack. **M**
 - ✏️ **Doodle Dash:** a mode where players draw and the rest guess (Relay's canvas). **L**
-- 🥷 **Night Heist:** a two-player balance pass in simulation. **S**
+- 🦹 **Night Heist:** a two-player balance pass in simulation. **S**
 
 **Action**
 - 🗼 **Spire Siege:** ✅ a 🧱 incoming-junk meter: junk sent to you waits 3 s on the edge of your well (flashing when it's
@@ -436,7 +436,7 @@ Items that become ✅ move into the per-game plan.
   of a hole there's a pause with the hole's strokes and the standings before the next hole. ✅ **Round 4 (feedback #18–28):**
   a drag away from the ball turns and tilts the view (right-drag pans; keys ← → ↑ ↓, W A S D, + −); full power is a shorter
   pull; the camera follows your rolling ball; a waving flag; dimpled balls that visibly roll; shadows, mown grass and the rough
-  around the course; ⛰️ humps and bowls, ▪️ posts and 🪨 rocks; three grass lengths (fairway, fringe, long rough) with their
+  around the course; ⛰️ humps and bowls, ▪️ posts and 🌑 rocks; three grass lengths (fairway, fringe, long rough) with their
   own friction and visible blades; corner banks, straight or curved; a 🌀 windmill whose sails close its doorway on a clock
   (the server simulates the putt against the sails' real position, so you time your shot); a ramp jump over a stream; a
   splash with ripples when a ball goes in the water; and collision effects: rings, a bumper that squashes, flashes and boings,
@@ -453,14 +453,14 @@ Items that become ✅ move into the per-game plan.
 - 🔎 **Grid Hunt:** ✅ 📅 today's grids, the same in every room (like Word Ladder's daily ladders).
 - 🔐 **Safecracker:** ✅ 📅 today's safes (the codes come from the date and settings).
 - 🤥 **Fib Finder:** more facts in the thinner topics. **M**
-- 🪜 **Word Ladder:** a missing-rung puzzle mode. **M**
+- 🧗 **Word Ladder:** a missing-rung puzzle mode. **M**
 
 **Strategy**
 - ♟️ **Chess:** a stronger hard bot (quiescence search, transposition table, small opening book); Chess960. **M–L**
 - ⛀ **Checkers:** ✅ undo requests and draw offers, like Go and Chess.
 - 🔺 **Backgammon:** ~~a pip count~~: it already shows both pip counts by the players' names.
 - ⚫ **Go:** ✅ handicap stones (2–9, on the star points; White moves first, komi 0.5) and a komi setting.
-- 🫘 **Oware:** ✅ undo requests (shared with Reversi, Ultimate and Checkers: `games/undo.py`).
+- 🌰 **Oware:** ✅ undo requests (shared with Reversi, Ultimate and Checkers: `games/undo.py`).
 - ⚪ **Reversi:** ✅ a flip-hints option and undo requests.
 
 **Cards**
@@ -487,7 +487,7 @@ Items that become ✅ move into the per-game plan.
 - 🥤 **Qork:** collect real-phone reports on reaction fairness. **S**
 - 🚢 **Ship, Captain & Crew:** ✅ a solo best-hauls table (shared `soloBest()` in app.js, also used by Shut the Box).
 - 🤥 **Liar's Dice:** ✅ an optional 🗿 palifico round when someone first drops to one die (not with two players left).
-- 🂡 **Twenty-One:** ✅ ✂️ splitting pairs: up to four hands, one card each on split aces, double after a split; bots split by basic strategy.
+- ♦️ **Twenty-One:** ✅ ✂️ splitting pairs: up to four hands, one card each on split aces, double after a split; bots split by basic strategy.
 
 ## Per-game plan (with player feedback)
 
@@ -581,7 +581,7 @@ Riders and Air Hockey start in it) (#13, #15).
   drawings and the bots' are unchanged), and 💾 saving a revealed chain as one tall PNG.
 - 🧠 **Trivia Rush:** ✅ added (#49), now 228 questions in 9 topics. ✅ The quickest right answer gets a ⚡ callout. ✅ An Answers setting adds ✅ true/false rounds (every question, or every third). ✅ 40 more questions, filling out the smaller topics (Space, Sport, Food). ✅ Steady layout (#58): the question, answers and
   note keep reserved heights, so the answer buttons never move between questions (true/false fills the same space).
-- 🥷 **Night Heist:** ✅ a night-by-night grid of everyone's choices and gold changes. ✅ Bots get a personality, shown on their chip: 🦊 greedy, 🐢 cautious or 🦉 watchful.
+- 🦹 **Night Heist:** ✅ a night-by-night grid of everyone's choices and gold changes. ✅ Bots get a personality, shown on their chip: 🦊 greedy, 🐢 cautious or 🦉 watchful.
 - 🎭 **Unmask:** ✅ an ↶ Undo toast after flipping a batch of faces (toasts can now carry an action button).
   ✅ Pinch the board (or 🔍 − / +) to make the faces bigger or smaller; the size is kept on the device.
 
@@ -599,7 +599,7 @@ Riders and Air Hockey start in it) (#13, #15).
 
 **Quick classics**
 - 🔴 **Drop Four:** ✅ the winning line glows, and a move history of coloured column chips.
-- 🫘 **Oware:** ✅ seeds lie scattered in each pit at fixed spots, so pits never grow or reshuffle (#55, #57), and a
+- 🌰 **Oware:** ✅ seeds lie scattered in each pit at fixed spots, so pits never grow or reshuffle (#55, #57), and a
   sowing drops its seeds in one pit at a time along the path, with captures flashing after they land (#56).
 - 🔳 **Dots & Boxes:** ✅ a last-line highlight. ✅ Wide grids (4×6, 5×8) that lie the long way on each screen: across on a sideways phone, down on an upright one.
 - ❌ **Tic-Tac-Toe:** ✅ in Vanishing mode, the mark that fades next is dimmed.
@@ -613,7 +613,7 @@ Riders and Air Hockey start in it) (#13, #15).
   (Okabe–Ito, per device). ✅ ⚔️ Duel mode (two players): each secretly sets a code, then you race to crack each
   other's in simultaneous rounds; your rival's guesses at your code show too, and both codes open at the end.
 - 🤥 **Fib Finder:** ✅ 118 facts, up from 56 (#51); moved here from Party to balance the lobby. ✅ A Facts setting picks a topic: 🐾 Animals, 🔬 Science & nature, 🏛️ History & inventions or 🔤 Words & names (a duplicate apple fact became the Hundred Years' War).
-- 🪜 **Word Ladder:** ✅ added: par, hints and bots use everyday words only, so revealed ladders never lean on obscure words. ✅ 📅 Today's ladders: the puzzles come from the date, so every room plays the same ones that day. ✅ A 5-letter mode: the everyday list grew from 182 to 802
+- 🧗 **Word Ladder:** ✅ added: par, hints and bots use everyday words only, so revealed ladders never lean on obscure words. ✅ 📅 Today's ladders: the puzzles come from the date, so every room plays the same ones that day. ✅ A 5-letter mode: the everyday list grew from 182 to 802
   five-letter words, plus 236 plurals and past tenses that may be steps but never a puzzle's ends, linking over 8,000
   ladders of 4–7 steps.
 - 🔤 **Wordsmith:** ✅ a live score preview as you place tiles (the words and points, or why it won't play), and a
@@ -626,7 +626,7 @@ Riders and Air Hockey start in it) (#13, #15).
 **Cards / dice**
 - 🎯 **Farkle:** ✅ added (#40). ✅ Dice pips show on phones again (#44, shared with Yacht). ✅ The hint shows the
   chance of farkling with the dice you're about to roll. ✅ Hot dice get a 🔥 flourish on every screen.
-- 🚢 **Ship, Captain & Crew:** ✅ added to fill the 🎲 Dice & casino row. ✅ Fresh rolls shake the dice, and a 🍺 **Pub pot** option: everyone antes 1 🪙 a round, the best cargo takes the pot (ties roll it over), most coins wins.
+- 🚢 **Ship, Captain & Crew:** ✅ added to fill the 🎲 Dice & casino row. ✅ Fresh rolls shake the dice, and a 🍺 **Pub pot** option: everyone antes 1 💰 a round, the best cargo takes the pot (ties roll it over), most coins wins.
 - 🤥 **Liar's Dice:** ✅ added to fill the 🎲 Dice & casino row. ✅ The showdown has a 📊 "How likely was each bid?" list: each bid's odds from the bidder's own seat, and whether it held. ✅ A bid clock is the room's Turn timer: run out and you bid or call automatically.
 - 🎲 **Yacht:** ✅ added (#38: the traditional game the branded one grew from). ✅ The dice pips were
   invisible: the die's padding was a percentage, which CSS measures against the whole dice row, so it
@@ -672,18 +672,18 @@ Action 8 · Strategy 6 · Quick classics 6 · Cards 6 · Dice 3 · Words & puzzl
 | 1 | 🪐 **Sumo Saucers** ✅ | Action | 2–6 | Real-time, three.js | Planned for #46: shove rivals off a shrinking floating platform. Air Hockey's physics. |
 | 2 | ⛳ **Putt Party** ✅ | Action | 1–6 | Turn-based physics, three.js | Original mini golf: procedurally built 3D holes (bumpers, sand, slopes, water), everyone putts the same hole, fewest strokes over 3, 6 or 9. Server simulates each putt and sends the path, like Billiards. |
 | 3 | 🛸 **Hover Rally** ✅ | Action | 2–6 | Real-time, three.js | Hover-racers on a looping track: steer left/right, the throttle is automatic, ⚡ boost pads and personal boosts. The track is a spline plus a side offset, so the server sim stays tiny. |
-| 4 | 🫘 **Oware** ✅ | Strategy | 2 | Turn-based | The traditional mancala game: sow seeds, capture twos and threes, the grand-slam rule. Alpha-beta bots, like Checkers. |
+| 4 | 🌰 **Oware** ✅ | Strategy | 2 | Turn-based | The traditional mancala game: sow seeds, capture twos and threes, the grand-slam rule. Alpha-beta bots, like Checkers. |
 | 5 | ⚪ **Reversi** ✅ | Strategy | 2 | Turn-based | The 19th-century public-domain game (not the branded version): flip lines of discs. Bots weigh corners, edges and mobility. |
 | 6 | #️⃣ **Ultimate Tic-Tac-Toe** ✅ | Quick classics | 2 | Turn-based | The folk game: nine boards in one, and your move sends your rival to a board. Monte Carlo bot. |
 | 7 | ⚫ **Nine Men's Morris** ✅ | Quick classics | 2 | Turn-based | The traditional mill game: place, move, then fly. Alpha-beta bot. |
 | 8 | 🃏 **Contract rummy** ✅ | Cards | 2–6 | Turn-based | Answers #39 with an original design in the public-domain rummy family: each hand demands a contract (two sets, a set and a run…). |
 | 9 | ♥️ **Hearts** ✅ | Cards | 3–6 (best 4) | Turn-based | The traditional trick-avoiding game: pass three, avoid hearts and the queen of spades, or shoot the moon. |
-| 10 | 🂡 **Twenty-One** ✅ | Cards | 1–6 | Simultaneous | The traditional casino game against a dealer bot, everyone at once, with chips across rounds. Instant solo play. |
+| 10 | ♦️ **Twenty-One** ✅ | Cards | 1–6 | Simultaneous | The traditional casino game against a dealer bot, everyone at once, with chips across rounds. Instant solo play. |
 
 **After the plan:** Speed (#48) and Trivia Rush (#49) took the lobby to **41**. To keep groups even,
 Trivia Rush joined Party, Fib Finder moved to Words & puzzles, and Twenty-One moved from Cards to a
 renamed 🎲 **Dice & casino**: Party 6 · Action 8 · Strategy 6 · Quick classics 6 · Cards 6 · Dice &
-casino 4 · Words & puzzles 5. ✅ 🪜 **Word Ladder** (Lewis Carroll's public-domain "doublets" puzzle as a
+casino 4 · Words & puzzles 5. ✅ 🧗 **Word Ladder** (Lewis Carroll's public-domain "doublets" puzzle as a
 race) then brought Words & puzzles to 6.
 
 ✅ 🎲 Dice & casino then reached 6 with 🚢 **Ship, Captain & Crew** and 🤥 **Liar's Dice**, so all seven groups fill

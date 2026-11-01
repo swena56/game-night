@@ -43,7 +43,7 @@ UI.twentyone = (() => {
         h.cards.forEach((card) => cards.append(face(card, 'small')));
         const foot = ctx.el('div', 'to-foot');
         foot.append(ctx.el('b', h.total > 21 ? 'bust' : '', String(h.total)));
-        if (split) foot.append(ctx.el('span', 'hint', `🪙 ${h.bet}`));
+        if (split) foot.append(ctx.el('span', 'hint', `💰 ${h.bet}`));
         if (h.res) foot.append(ctx.el('span', 'to-res ' + (h.res[1] > 0 ? 'win' : h.res[1] < 0 ? 'lose' : ''), `${h.res[0]} ${h.res[1] > 0 ? '+' : ''}${h.res[1]}`));
         wrap.append(cards, foot);
         box.append(wrap);
@@ -61,7 +61,7 @@ UI.twentyone = (() => {
     let note = '';
     if (playing && t.stage === 'bet' && !t.bets[me] && t.chips[me] > 0) {
       for (const amt of t.betOptions) {
-        const b = ctx.el('button', 'to-chip', `🪙 ${amt}`);
+        const b = ctx.el('button', 'to-chip', `💰 ${amt}`);
         b.disabled = !ctx.act;
         b.onclick = () => ctx.quiet(ctx.act('bet', { amount: amt }));
         bar.append(b);
@@ -85,13 +85,13 @@ UI.twentyone = (() => {
     t.seats.map((pid, i) => [i, t.chips[i]]).sort((a, b) => b[1] - a[1]).forEach(([i, v]) => {
       const row = ctx.el('div', 'seat-row');
       const dot = ctx.el('span', 'mini-disc'); dot.style.background = ctx.player(t.seats[i])?.color ?? '#777';
-      row.append(dot, ctx.el('span', 'grow', ctx.player(t.seats[i])?.name ?? 'left'), ctx.el('b', '', `🪙 ${v}`));
+      row.append(dot, ctx.el('span', 'grow', ctx.player(t.seats[i])?.name ?? 'left'), ctx.el('b', '', `💰 ${v}`));
       ch.append(row);
     });
     ch.append(ctx.el('div', 'hint left', `Hand ${t.hand} of ${t.hands}`));
   }
 
-  const turnText = (s) => (s.phase === 'playing' && s.twentyone.stage === 'bet' ? (s.twentyone.me != null && !s.twentyone.bets[s.twentyone.me] && s.twentyone.chips[s.twentyone.me] > 0 ? '🪙 Place your bet' : '🪙 Bets going in…') : null);
+  const turnText = (s) => (s.phase === 'playing' && s.twentyone.stage === 'bet' ? (s.twentyone.me != null && !s.twentyone.bets[s.twentyone.me] && s.twentyone.chips[s.twentyone.me] > 0 ? '💰 Place your bet' : '💰 Bets going in…') : null);
   const myMove = (s) => s.phase === 'playing' && s.twentyone.stage === 'bet' && s.twentyone.me != null && !s.twentyone.bets[s.twentyone.me] && s.twentyone.chips[s.twentyone.me] > 0;
 
   return { mount, render, turnText, myMove };

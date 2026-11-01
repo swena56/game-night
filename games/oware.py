@@ -92,7 +92,7 @@ class Oware(Undo, Game):
         "↶ Undo asks your rival to take back your last move.",
     ]
     name = "Oware"
-    icon = "🫘"
+    icon = "🌰"
     blurb = "The traditional mancala game: sow seeds round the board and capture pits of 2 and 3."
     min_players = 2
     max_players = 2
@@ -104,7 +104,7 @@ class Oware(Undo, Game):
         self.seats = [p.id for p in seated]
         self.state = ((4,) * 12, (0, 0), 0)
         self.last = None   # [pit, [captured pits], seeds sown]
-        self.room.add_log(f"🫘 Oware! {seated[0].name} sows first.", "big")
+        self.room.add_log(f"🌰 Oware! {seated[0].name} sows first.", "big")
         self.room.begin_turn(seated[0].id)
 
     def seat(self, p):
@@ -141,7 +141,7 @@ class Oware(Undo, Game):
         self.state = new
         self.last = [pit, captured, seeds]  # the client replays the sowing from these
         num = pit + 1 if me == 0 else pit - 5
-        self.room.add_log(f"🫘 {p.name} sows {seeds} from pit {num}" + (f" and captures {took}!" if took else "."),
+        self.room.add_log(f"🌰 {p.name} sows {seeds} from pit {num}" + (f" and captures {took}!" if took else "."),
                           "power" if took else "question")
         nxt = 1 - me
         if not legal(self.state, nxt):
@@ -161,7 +161,7 @@ class Oware(Undo, Game):
 
     def meta(self, p):
         i = self.seat(p)
-        return "" if i is None else f"🫘 {self.state[1][i]}"
+        return "" if i is None else f"🌰 {self.state[1][i]}"
 
     def final_scores(self):
         return {pid: self.state[1][i] for i, pid in enumerate(self.seats)}

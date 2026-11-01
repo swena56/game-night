@@ -79,7 +79,7 @@ UI.oware = (() => {
     o.seats.forEach((pid, i) => {
       const p = ctx.player(pid), row = ctx.el('div', 'seat-row');
       const disc = ctx.el('span', 'mini-disc'); disc.style.background = p?.color ?? '#777';
-      row.append(disc, ctx.el('span', 'grow', `${p?.name ?? 'left'}${i === o.me ? ' (you)' : ''}`), ctx.el('b', '', `🫘 ${o.stores[i]}`));
+      row.append(disc, ctx.el('span', 'grow', `${p?.name ?? 'left'}${i === o.me ? ' (you)' : ''}`), ctx.el('b', '', `🌰 ${o.stores[i]}`));
       info.append(row);
     });
     $('owHint').textContent = S.phase !== 'playing' ? '' : ctx.myTurn ? 'Tap one of your glowing pits to sow it.' : '';

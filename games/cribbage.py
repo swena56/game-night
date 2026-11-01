@@ -155,7 +155,7 @@ class Cribbage(Game):
         t = r.settings["timer"]
         r.deadline = time.time() + max(t, 30) if t else None
         dealer = self.pl(self.seats[self.dealer])
-        r.add_log(f"🂠 Deal {self.deal_no}: {dealer.name} deals. Everyone discards {self.need()} to {dealer.name}'s crib.")
+        r.add_log(f"🎴 Deal {self.deal_no}: {dealer.name} deals. Everyone discards {self.need()} to {dealer.name}'s crib.")
 
     def need(self):
         return 2 if len(self.seats) == 2 else 1

@@ -300,7 +300,7 @@ class Holdem(Game):
         self.deck.pop()  # burn
         new = [self.deck.pop() for _ in range(n)]
         self.board += new
-        self.room.add_log(f"{'🂠' if n == 3 else '➕'} {self.stage.title()}: {' '.join(pretty(c) for c in new)}")
+        self.room.add_log(f"{'🎴' if n == 3 else '➕'} {self.stage.title()}: {' '.join(pretty(c) for c in new)}")
 
     def run_out(self):
         for i in self.in_hand:
