@@ -9,6 +9,11 @@ UI.lucky = (() => {
   const CONS = 'BCDFGHJKLMNPQRSTVWXYZ', VOW = 'AEIOU';
   const $ = (id) => document.getElementById(id);
   const colorOf = (w, i) => SPECIAL[w.value] || COLORS[i % COLORS.length];
+  // dark text on the light wedges (yellow, sand, mint, orange, cyan, jackpot), white on the rest (#74)
+  const inkOf = (hex) => {
+    const lin = (i) => { const c = parseInt(hex.slice(i, i + 2), 16) / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+    return 0.2126 * lin(1) + 0.7152 * lin(3) + 0.0722 * lin(5) > 0.3 ? '#111' : '#fff';
+  };
   const textOf = (w) => (typeof w.value === 'number' ? String(w.value) : w.label);
   const num = (n) => Number(n || 0).toLocaleString();
 
@@ -40,7 +45,7 @@ UI.lucky = (() => {
       g.fillStyle = colorOf(w, i); g.fill();
       g.strokeStyle = '#ffffffaa'; g.lineWidth = 4; g.stroke();
       g.save(); g.translate(R, R); g.rotate(a0 + SLICE / 2);
-      g.fillStyle = w.value === 'jackpot' ? '#111' : '#fff';
+      g.fillStyle = inkOf(colorOf(w, i));
       g.font = 'bold 50px system-ui, sans-serif'; g.textAlign = 'right'; g.textBaseline = 'middle';
       g.fillText(textOf(w), R - 34, 0);
       g.restore();
@@ -95,7 +100,7 @@ UI.lucky = (() => {
       parts.push(`<path d="M${r},${r} L${p(a0)} A${r},${r} 0 0,1 ${p(a1)} Z" fill="${colorOf(w, i)}" stroke="#fff8"/>`);
       const mid = (a0 + SLICE / 2) * 180 / Math.PI;
       parts.push(`<text x="${r * 1.88}" y="${r}" transform="rotate(${mid} ${r} ${r})" text-anchor="end" dominant-baseline="middle"
-        font-size="9" font-weight="700" fill="${w.value === 'jackpot' ? '#111' : '#fff'}">${textOf(w)}</text>`);
+        font-size="9" font-weight="700" fill="${inkOf(colorOf(w, i))}">${textOf(w)}</text>`);
     });
     return `<svg viewBox="0 0 200 200" class="lk-wheel"><g id="lkSvgWheel">${parts.join('')}</g>
       <circle cx="100" cy="100" r="14" fill="#ffd166"/></svg><div class="lk-pointer">▼</div>`;

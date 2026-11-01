@@ -78,7 +78,9 @@ UI.ladder = (() => {
     const can = live();
     for (const id of ['ldInput', 'ldGo', 'ldHint']) $(id).disabled = !can;
     $('ldUndo').disabled = !can || l.path.length < 2;
-    $('ldForm').hidden = !l.playing || l.done || l.stage !== 'climb';
+    $('ldForm').hidden = !l.playing;
+    // keep the entry row's space when you finish or the clock runs out, so the goal and note don't jump (#73)
+    $('ldForm').classList.toggle('off', l.done || l.stage !== 'climb');
 
     const steps = l.path.length - 1;
     let note = '';

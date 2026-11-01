@@ -1287,6 +1287,7 @@ body.focus .ra-stage { height: max(220px, calc(var(--app-h, 100vh) - 215px)); }
 .ld-goal { margin-top: 10px; opacity: .85; }
 .ld-entry { display: flex; gap: 6px; justify-content: center; margin-top: 10px; }
 .ld-entry[hidden] { display: none; }
+.ld-entry.off { visibility: hidden; }
 .ld-entry input { width: 7.5em; text-align: center; text-transform: uppercase; font-size: 20px; font-weight: 800; letter-spacing: .1em; }
 .ld-note { min-height: 1.4em; text-align: center; font-size: 13px; margin-top: 6px; }
 .ld-reveal { display: grid; gap: 6px; margin-top: 10px; }
