@@ -13,9 +13,12 @@ import pickle
 import random
 import secrets
 import socket
+import ssl
+import subprocess
 import threading
 import time
 import traceback
+import zlib
 from collections import defaultdict, deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
@@ -62,6 +65,12 @@ FEEDBACK_FILE = os.environ.get("FEEDBACK_FILE") or os.path.join(os.path.dirname(
 FEEDBACK_STATUS = FEEDBACK_FILE.rsplit(".", 1)[0] + "-status.json"
 FEEDBACK_KINDS = ("bug", "idea")
 FEEDBACK_LIMIT = (5, 600)  # at most 5 reports per 10 minutes from one address
+# HTTPS: on by default (SSL=0 turns it off). Without CERT_FILE/KEY_FILE a self-signed certificate is made in data/.
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+LOG_REQUESTS = os.environ.get("LOG_REQUESTS") == "1"
+USE_SSL = os.environ.get("SSL", "1").lower() not in ("0", "off", "no", "false")
+CERT_FILE = os.environ.get("CERT_FILE") or os.path.join(DATA_DIR, "cert.pem")
+KEY_FILE = os.environ.get("KEY_FILE") or os.path.join(DATA_DIR, "key.pem")
 
 
 def static_files():
@@ -973,11 +982,40 @@ def frame_ticker():
 
 # ---------------------------------------------------------------- http
 
+# Text files are worth gzipping (three.min.js: 600 KB → ~150 KB); images are already compressed.
+COMPRESSIBLE = ("text/", "application/json", "application/javascript", "application/manifest+json", "image/svg+xml")
+_STATIC_CACHE = {}  # path → (mtime, size, etag, raw bytes, gzipped bytes or None)
+
+
+def static_body(fname, ctype):
+    """A static file's bytes, ETag and gzipped copy, read and compressed once per change of the file."""
+    path = os.path.join(STATIC_DIR, fname)
+    st = os.stat(path)
+    hit = _STATIC_CACHE.get(path)
+    if hit and hit[0] == st.st_mtime_ns and hit[1] == st.st_size:
+        return hit[2:]
+    with open(path, "rb") as f:
+        raw = f.read()
+    gz = zlib.compress(raw, 9, wbits=31) if ctype.startswith(COMPRESSIBLE) and len(raw) > 512 else None
+    entry = (st.st_mtime_ns, st.st_size, f'"{st.st_mtime_ns:x}-{st.st_size:x}"', raw, gz)
+    _STATIC_CACHE[path] = entry
+    return entry[2:]
+
+
 class Handler(BaseHTTPRequestHandler):
     files = static_files()
+    # Keep-alive: a phone reuses one TLS connection for its requests instead of a fresh handshake each time.
+    protocol_version = "HTTP/1.1"
+    disable_nagle_algorithm = True   # small live updates go out at once instead of waiting to batch
+    timeout = 75                     # an idle keep-alive connection is closed after this many seconds
 
-    def log_message(self, *args):
-        pass
+    def gzip_ok(self):
+        return "gzip" in (self.headers.get("Accept-Encoding") or "").lower()
+
+    def log_message(self, fmt, *args):
+        if LOG_REQUESTS:
+            tls = "tls" if isinstance(self.connection, ssl.SSLSocket) else "plain"
+            print(f"{self.client_address[0]} {tls} {fmt % args} host={self.headers.get('Host') if self.headers else None}")
 
     def send_json(self, status, data):
         body = json.dumps(data).encode()
@@ -986,6 +1024,25 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def parse_request(self):
+        """Plain HTTP from another device is sent to HTTPS on the same port (old invite links and QR codes keep working).
+        Localhost may stay on plain HTTP: it is already a secure context, and start.sh and the tests use it."""
+        if not super().parse_request():
+            return False
+        # A proxy or tunnel that handles HTTPS itself forwards plain HTTP, and says so in X-Forwarded-Proto.
+        proxied_https = (self.headers.get("X-Forwarded-Proto") or "").split(",")[0].strip().lower() == "https"
+        if self.server.ssl_context and not isinstance(self.connection, ssl.SSLSocket) and not self.local() and not proxied_https:
+            host = self.headers.get("Host") or f"{lan_ip()}:{PORT}"
+            print(f"↪ https redirect: {self.client_address[0]} {self.command} {host}{self.path} "
+                  f"via={self.headers.get('Via')} fwd={self.headers.get('X-Forwarded-For')} ua={self.headers.get('User-Agent')}")
+            self.send_response(301 if self.command in ("GET", "HEAD") else 308)
+            self.send_header("Location", f"https://{host}{self.path}")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            self.close_connection = True
+            return False
+        return True
 
     def local(self):
         """The feedback inbox is only for whoever runs the server, on that device."""
@@ -1005,12 +1062,24 @@ class Handler(BaseHTTPRequestHandler):
             if url.path not in self.files:
                 return self.send_json(404, {"error": "Not found"})
         fname, ctype = self.files[url.path]
-        with open(os.path.join(STATIC_DIR, fname), "rb") as f:
-            body = f.read()
+        etag, body, gz = static_body(fname, ctype)
+        # no-cache = the browser revalidates every time, but an unchanged file costs a tiny 304, not a download.
+        if etag in (self.headers.get("If-None-Match") or ""):
+            self.send_response(304)
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            return
+        if gz is not None and self.gzip_ok():
+            body = gz
         self.send_response(200)
         self.send_header("Content-Type", ctype if ctype.startswith("image/") else ctype + "; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-cache")
+        self.send_header("ETag", etag)
+        self.send_header("Vary", "Accept-Encoding")
+        if body is gz:
+            self.send_header("Content-Encoding", "gzip")
         self.end_headers()
         self.wfile.write(body)
 
@@ -1021,11 +1090,10 @@ class Handler(BaseHTTPRequestHandler):
         if self.local():
             routes["/api/feedback/status"] = set_feedback_status
         route = routes.get(urlparse(self.path).path)
-        if not route:
-            return self.send_json(404, {"error": "Not found"})
         length = int(self.headers.get("Content-Length") or 0)
-        if length > 10_000:
-            return self.send_json(413, {"error": "Too large"})
+        if not route or length > 10_000:
+            self.close_connection = True   # the unread body would otherwise be parsed as the next request
+            return self.send_json(404 if not route else 413, {"error": "Not found" if not route else "Too large"})
         try:
             body = json.loads(self.rfile.read(length) or b"{}")
             if not isinstance(body, dict):
@@ -1044,14 +1112,24 @@ class Handler(BaseHTTPRequestHandler):
                 p = auth(room, first("pid"), first("token"))
         except GameError as e:
             return self.send_json(403, {"error": str(e)})
+        # The stream has no length: it ends when the connection closes.
+        self.close_connection = True
+        # One gzip stream for the whole connection, flushed after every event: each view is mostly the same
+        # as the one before, so after the first one an update costs a few dozen bytes instead of kilobytes.
+        gz = zlib.compressobj(6, zlib.DEFLATED, 31) if self.gzip_ok() else None
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "close")
+        self.send_header("X-Accel-Buffering", "no")   # a reverse proxy must pass events through as they come
+        if gz:
+            self.send_header("Content-Encoding", "gzip")
         self.end_headers()
         with room.cond:
             room.connected(p)
             room.bump()
         last, last_fast = -1, room.fast_ver
+        sent_games = False
         try:
             while True:
                 with room.cond:
@@ -1059,7 +1137,15 @@ class Handler(BaseHTTPRequestHandler):
                         room.cond.wait(10)
                     if room.code not in ROOMS or p.id not in room.players:
                         break
-                    payload = None if room.version == last else json.dumps(room.view(p))
+                    payload = None
+                    if room.version != last:
+                        v = room.view(p)
+                        # The game catalogue (~45 KB) never changes while the server runs: send it once per
+                        # stream, and the page keeps it (app.js onState).
+                        if sent_games:
+                            del v["games"]
+                        sent_games = True
+                        payload = json.dumps(v, separators=(",", ":"))
                     fast = room.fast if room.fast_ver != last_fast and room.phase == "playing" else None
                     last, last_fast = room.version, room.fast_ver
                 out = b""
@@ -1068,7 +1154,10 @@ class Handler(BaseHTTPRequestHandler):
                 if fast:
                     out += f"event: fast\ndata: {fast}\n\n".encode()
                 # Named heartbeat so the page can tell a live connection from a dead one.
-                self.wfile.write(out or b"event: ping\ndata: {}\n\n")
+                out = out or b"event: ping\ndata: {}\n\n"
+                if gz:
+                    out = gz.compress(out) + gz.flush(zlib.Z_SYNC_FLUSH)
+                self.wfile.write(out)
                 self.wfile.flush()
         except OSError:
             pass
@@ -1093,8 +1182,58 @@ _LAN = [0.0, ""]
 def lan_url():
     """The address friends on the same Wi-Fi use, rechecked every minute (the phone may change networks)."""
     if time.time() - _LAN[0] > 60:
-        _LAN[:] = [time.time(), f"http://{lan_ip()}:{PORT}"]
+        _LAN[:] = [time.time(), f"{SCHEME}://{lan_ip()}:{PORT}"]
     return _LAN[1]
+
+
+class GameServer(ThreadingHTTPServer):
+    """Serves HTTPS and plain HTTP on one port: each connection's first byte says which (0x16 starts a TLS handshake)."""
+    daemon_threads = True
+    ssl_context = None
+
+    def finish_request(self, request, client_address):
+        if not self.ssl_context:
+            return super().finish_request(request, client_address)
+        try:
+            request.settimeout(10)   # a silent client mustn't hold its thread forever
+            if request.recv(1, socket.MSG_PEEK) == b"\x16":
+                request = self.ssl_context.wrap_socket(request, server_side=True)
+            request.settimeout(None)
+        except (OSError, ssl.SSLError) as e:
+            if LOG_REQUESTS:
+                print(f"{client_address[0]} TLS handshake failed: {e!r}")
+            return   # handshake failed, e.g. the visitor declined the certificate warning
+        try:
+            super().finish_request(request, client_address)
+        finally:
+            if isinstance(request, ssl.SSLSocket):
+                request.close()
+
+
+def make_ssl_context():
+    """A TLS context from CERT_FILE/KEY_FILE, making a self-signed pair with openssl the first time. None → plain HTTP."""
+    if not USE_SSL:
+        return None
+    if not (os.path.exists(CERT_FILE) and os.path.exists(KEY_FILE)):
+        os.makedirs(os.path.dirname(KEY_FILE), exist_ok=True)
+        names = ",".join(["DNS:localhost", "IP:127.0.0.1"] + ([f"IP:{lan_ip()}"] if lan_ip() != "localhost" else []))
+        try:
+            subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-sha256", "-days", "3650",
+                            "-subj", "/CN=Game Night", "-addext", f"subjectAltName={names}",
+                            "-keyout", KEY_FILE, "-out", CERT_FILE], check=True, capture_output=True)
+            os.chmod(KEY_FILE, 0o600)
+            print(f"Made a self-signed certificate: {CERT_FILE}")
+        except (OSError, subprocess.CalledProcessError) as e:
+            print(f"⚠️  No certificate and couldn't make one ({e}); serving plain HTTP. "
+                  "Install openssl (Termux: pkg install openssl-tool) or set CERT_FILE and KEY_FILE.")
+            return None
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.load_cert_chain(CERT_FILE, KEY_FILE)
+    return ctx
+
+
+SSL_CONTEXT = make_ssl_context() if __name__ == "__main__" else None
+SCHEME = "https" if SSL_CONTEXT else "http"
 
 
 if __name__ == "__main__":
@@ -1104,7 +1243,7 @@ if __name__ == "__main__":
         print(f"Restored {len(ROOMS)} room(s) from the last run.")
     threading.Thread(target=ticker, daemon=True).start()
     threading.Thread(target=frame_ticker, daemon=True).start()
-    server = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
-    server.daemon_threads = True
-    print(f"Game night running → http://localhost:{PORT}  (friends: http://{lan_ip()}:{PORT})")
+    server = GameServer(("0.0.0.0", PORT), Handler)
+    server.ssl_context = SSL_CONTEXT
+    print(f"Game night running → {SCHEME}://localhost:{PORT}  (friends: {SCHEME}://{lan_ip()}:{PORT})")
     server.serve_forever()

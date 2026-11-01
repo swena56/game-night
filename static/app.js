@@ -381,6 +381,7 @@ function leaveLocal() {
 
 function onState(s) {
   const prev = S;
+  s.games ??= prev?.games ?? [];  // the server sends the game catalogue once per connection
   S = s; stateAt = performance.now();
   history.replaceState(null, '', '?room=' + s.code);
   if (prev && prev.phase === 'playing' && s.phase === 'over' && !firstState) {

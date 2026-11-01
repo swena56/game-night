@@ -20,6 +20,12 @@ folder's current name).
 No dependencies: Python 3 standard library only. Friends on the same Wi-Fi open the LAN
 address the server prints. **Play solo** on the home screen starts any game against bots.
 
+**HTTPS** is on by default. The first start makes a self-signed certificate in `data/` (needs
+`openssl`; on Termux: `pkg install openssl-tool`), so each browser shows a one-time "not private"
+warning: tap *Advanced → Proceed*. To use your own certificate, set `CERT_FILE=… KEY_FILE=…`.
+`SSL=0` turns HTTPS off. Old `http://` links from other devices redirect to `https://` on the same
+port, and `http://localhost` still works on the server's own device.
+
 ## The games
 
 ### 🎉 Party (6)
@@ -30,7 +36,7 @@ address the server prints. **Play solo** on the home screen starts any game agai
 | 🕵️ **Odd One Out** | 3–6 | Everyone gets the same secret word except one player, whose word is similar. Take turns giving one-word clues, then vote. | The odd one **doesn't know they're odd**. Catch them for +2 each; if they escape they get +4. A caught odd one can still guess the real word for +3. |
 | 🖍️ **Scribble Relay** | 3–6 | Everyone writes a phrase, then the chains pass round the table: draw what you're handed, caption the drawing you're handed, and so on. Drawing happens on your own phone (6 ink colours, undo). | You only see the entry right before yours. At the end each chain is revealed card by card and everyone ❤️ votes for their favourite entry. 🎯 A chain that ends where it started earns everyone in it +1. |
 | 🧠 **Trivia Rush** | 1–6 | Quick-fire quiz: everyone gets the same question with four answers and picks at once (228 original questions in 9 topics). | 100 for a right answer plus up to 100 for speed; the last question counts double. Pick one topic or everything. Alone, get 70% right to win. |
-| ✏️ **Doodle Dash** | 2–6 | The computer draws a picture one line at a time (68 original line drawings in 6 categories) and everyone types guesses at once. Earlier guesses score more. | Letter blanks appear halfway through, then the first letter. A wrong guess locks you out for 3 s. Typos, plurals and synonyms are accepted. Scoring: everyone can score (the first gets +2), or ⚡ first correct only. Strokes reach the browser only as they're drawn, so nobody can peek. |
+| ✏️ **Doodle Dash** | 2–6 | The computer draws a picture one line at a time (199 original line drawings in 8 categories) and everyone types guesses at once. Earlier guesses score more. | Letter blanks appear halfway through, then the first letter. A wrong guess locks you out for 3 s. Typos, plurals and synonyms are accepted. Scoring: everyone can score (the first gets +2), or ⚡ first correct only. Strokes reach the browser only as they're drawn, so nobody can peek. |
 | 🦹 **Night Heist** *(the surprise)* | 2–6 | A simultaneous bluffing game. Each night everyone secretly picks **Grab**, **Guard** or **Rest**, then all choices are revealed together. | A lone grabber steals the whole vault. Two grabbers trip the alarm and the loot grows. Guards fine grabbers 💰2 each, and guarding an empty hall costs 💰1. Reading the table is the whole game. |
 
 ### 🔤 Words & puzzles (6)
@@ -576,7 +582,14 @@ Riders and Air Hockey start in it) (#13, #15).
   a new phrase doesn't shift the page (#61). ✅ ⏱️ Time to call a letter (#63): 15 s by default (10, 20 or no limit),
   with a bar that empties for everyone. ✅ 💰 Buy a vowel (#62): an optional setting; pay 250 from your round bank at the
   start of a turn or after a right letter (bots buy too, without peeking at the answer).
-- ✏️ **Doodle Dash:** ✅ 68 drawings, up from 52 (star, heart, envelope, bell, anchor, ladder, candle, hat, sock, ghost, dice,
+- ✏️ **Doodle Dash:** ✅ 199 drawings, up from 99, with two new categories (Clothing, Sport): 17 more animals (horse to
+  seahorse), 18 foods, 8 vehicles, 7 places, 11 nature pictures, 8 clothes, 10 sports and 21 things. Volcano is now its
+  own picture, no longer another word for mountain.
+  ✅ 99 drawings, up from 68: ten animals (dog, mouse, duck, pig, owl, octopus, bee, crab, elephant,
+  frog), eight foods (grapes, watermelon, hamburger, lollipop, egg, strawberry, donut, cheese), bus, truck, helicopter,
+  submarine, bridge, windmill, city, barn, cactus, lightning, snowflake, fire and tornado. A near-miss guess that is
+  another picture's name no longer counts ("mouse" for a house, "lock" for a clock, "rain" for a train).
+  ✅ 68 drawings, up from 52 (star, heart, envelope, bell, anchor, ladder, candle, hat, sock, ghost, dice,
   book, pencil, spoon, drum, snowman; each checked on the `tests/doodle_sheet.py` contact sheet). ✅ A reveal card for
   each answer: the word, its category, who got it first and how many got it.
 - 🕵️ **Odd One Out:** ✅ 50 word pairs (up from 36), and an animated "who voted for whom" reveal: a row per

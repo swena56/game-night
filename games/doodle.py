@@ -21,6 +21,12 @@ def norm(text):
     return re.sub(r"\s+", "", t)
 
 
+def is_answer(guess, names):
+    """Right if it matches one of the picture's names, or is a near miss that isn't another picture's
+    name (so "mouse" never passes for a house, nor "lock" for a clock)."""
+    return guess in names or (guess not in ALL_NAMES and any(close(guess, n) for n in names))
+
+
 def close(a, b):
     """Exact, a plural, or one typo away (for answers of 5+ letters), counting swapped neighbours as one."""
     if a == b or a.rstrip("s") == b.rstrip("s"):
@@ -46,6 +52,9 @@ def close(a, b):
         else:
             i += 1; j += 1
     return edits + (len(a) - i) + (len(b) - j) <= 1
+
+
+ALL_NAMES = {norm(x) for d in DRAWINGS for x in [d[0], *d[2]]}
 
 
 class Doodle(Game):
@@ -198,7 +207,7 @@ class Doodle(Game):
     def guess(self, p, text):
         answer, _, aliases, _ = self.pic
         g = norm(text)
-        if g and any(close(g, norm(x)) for x in [answer, *aliases]):
+        if g and is_answer(g, {norm(x) for x in [answer, *aliases]}):
             frac = min(1.0, max(0.0, (self.now() - self.t0) / DRAW_SECS))
             pts = 3 + round(7 * (1 - frac)) + (2 if self.s["mode"] == "all" and not self.solvers else 0)
             self.solvers.append((p.id, pts))
