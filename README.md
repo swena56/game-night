@@ -416,7 +416,9 @@ Items that become ✅ move into the per-game plan.
 - 🏍️ **Light Riders:** check the swipe fixes on a phone (#14); 2v2 teams. **M**
 - 🎨 **Paint Blast:** 3D tiles; teams. **L**
 - 🪐 **Sumo Saucers:** platform shapes (ring, figure-8). **M**
-- ⛳ **Putt Party:** a per-hole scorecard; a course of the day. **M**
+- ⛳ **Putt Party:** ✅ playable on phones: the 3D camera now fits each hole (the tee row, with your ball, used to sit below the
+  bottom of a phone screen), a touch while a putt rolls skips to its end instead of silently ignoring your drag, the power bar
+  moved off the tee, and the scorecard total sits in its column. Still to do: a per-hole scorecard; a course of the day. **M**
 - 🛸 **Hover Rally:** lap splits; a ghost of your best solo lap. **M**
 - 🏒 **Air Hockey:** 2v2 with four mallets. **M**
 - 🎱 **Billiards:** the 3D table; a 9-ball variant. **L**

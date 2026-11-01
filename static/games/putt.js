@@ -15,6 +15,8 @@ UI.putt = (() => {
     const stage = $('ppStage');
     main.querySelector('.pp').style.touchAction = 'none';
     stage.addEventListener('pointerdown', (e) => {
+      // a touch while a putt is still rolling skips it to the end: it used to swallow your drag silently
+      if (anim && S?.phase === 'playing' && ctx?.myTurn) anim = null;
       if (!canAim()) return;
       aim = { x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY };
       try { stage.setPointerCapture(e.pointerId); } catch {}
@@ -65,8 +67,14 @@ UI.putt = (() => {
     $('ppHole').textContent = `⛳ Hole ${p.hole} of ${p.holes}`;
     const turn = p.seats.indexOf(S.turn);
     $('ppTurn').textContent = turn >= 0 ? `${turn === p.me ? 'Your' : (ctx.player(S.turn)?.name ?? '?') + "'s"} putt · stroke ${p.strokes[turn] + 1}` : '';
-    $('ppHint').textContent = S.phase === 'playing' && ctx.myTurn ? 'Drag back from anywhere and let go to putt.' : '';
+    hint();
     renderCard();
+  }
+
+  function hint() {
+    const t = S.phase !== 'playing' || !ctx.myTurn ? '' : anim ? 'Tap to skip ahead, then drag back to putt.' : 'Drag back from anywhere and let go to putt.';
+    const h = $('ppHint');
+    if (h && h.textContent !== t) h.textContent = t;
   }
 
   function renderCard() {
@@ -80,7 +88,8 @@ UI.putt = (() => {
       const nm = ctx.el('td', '', ctx.player(pid)?.name ?? '?'); nm.style.color = colorOf(i);
       row.append(nm, ...p.cards[i].map((v) => ctx.el('td', '', String(v))),
         ctx.el('td', '', p.holed[i] ? `${p.strokes[i]}✓` : String(p.strokes[i])),
-        ctx.el('b', '', String(p.cards[i].reduce((a, b) => a + b, 0) + p.strokes[i])));
+        ctx.el('td', '', ''));
+      row.lastChild.append(ctx.el('b', '', String(p.cards[i].reduce((a, b) => a + b, 0) + p.strokes[i])));
       t.append(row);
     });
     box.append(t);
@@ -109,6 +118,7 @@ UI.putt = (() => {
     bar.hidden = !shot;
     if (shot) bar.firstElementChild.style.width = `${shot.power * 100}%`;
     (gl || flat)?.draw(now, shot);
+    hint();  // the animation ends here, not in render
   }
 
   // ---------- three.js course: world x = course x, world z = -course y
@@ -175,11 +185,29 @@ UI.putt = (() => {
       const w = stage.clientWidth || 320, h = stage.clientHeight || 320;
       renderer.setSize(w, h); camera.aspect = w / h;
       const p = S?.putt; if (!p) return;
-      const cx = p.cols / 2, cy = p.rows / 2;
-      const fit = Math.max(p.rows * 0.62, (p.cols * 0.75) / Math.min(1, camera.aspect));
-      camera.position.set(cx, fit * 1.15, -cy + fit * 0.75);
-      camera.lookAt(cx, 0, -cy - 0.4);
+      // Fit the camera to the course the hole actually uses: look down at it from behind the tee at a
+      // fixed tilt, then back away until every corner (and the flag on top) is inside the picture.
+      // A fixed formula used to leave the tee row, with your ball on it, below the bottom of a phone.
       camera.updateProjectionMatrix();
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+      for (const [x, y] of p.cells) { x0 = Math.min(x0, x); x1 = Math.max(x1, x + 1); y0 = Math.min(y0, y); y1 = Math.max(y1, y + 1); }
+      if (!isFinite(x0)) { x0 = 0; x1 = p.cols; y0 = 0; y1 = p.rows; }
+      const cx = (x0 + x1) / 2, cz = -(y0 + y1) / 2;
+      const tilt = 1.05;  // radians below the horizon: steep enough to read the fairway, shallow enough to feel 3D
+      const dir = new T.Vector3(0, -Math.sin(tilt), -Math.cos(tilt));
+      const target = new T.Vector3(cx, 0, cz);
+      const corners = [];
+      for (const x of [x0, x1]) for (const y of [y0, y1]) for (const h of [0, 0.15]) corners.push(new T.Vector3(x, h, -y));
+      corners.push(W(...p.cup).setY(0.75));  // the flag
+      const fits = (d) => {
+        camera.position.copy(target).addScaledVector(dir, -d);
+        camera.lookAt(target);
+        camera.updateMatrixWorld();
+        return corners.every((c) => { const v = c.clone().project(camera); return Math.abs(v.x) <= 0.94 && Math.abs(v.y) <= 0.94 && v.z < 1; });
+      };
+      let lo = 1, hi = 60;
+      for (let k = 0; k < 30; k++) { const mid = (lo + hi) / 2; if (fits(mid)) hi = mid; else lo = mid; }
+      fits(hi);
     }
     const ray = new T.Raycaster(), ground = new T.Plane(new T.Vector3(0, 1, 0), 0);
     function toGround(cx, cy) {

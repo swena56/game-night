@@ -1205,7 +1205,8 @@ body.focus .sm-stage { height: max(220px, calc(var(--app-h, 100vh) - 215px)); }
 .pp-stage { position: relative; height: min(calc(var(--app-h, 100vh) * .64), 640px); border-radius: var(--radius); overflow: hidden;
   display: flex; justify-content: center; align-items: center; background: #0c1a2b; }
 .pp-stage canvas { display: block; }
-.pp-power { position: absolute; left: 12px; right: 12px; bottom: 12px; height: 10px; border-radius: 999px; background: #0008; overflow: hidden; }
+/* at the top: the tee, and your ball, are at the bottom of the hole */
+.pp-power { position: absolute; left: 12px; right: 12px; top: 12px; height: 10px; border-radius: 999px; background: #0008; overflow: hidden; }
 .pp-power span { display: block; height: 100%; background: linear-gradient(90deg, var(--ok), var(--accent), var(--danger)); }
 .pp-card { overflow-x: auto; } .pp-card table { font-size: 12px; } .pp-card td, .pp-card th { padding: 2px 5px; text-align: center; }
 body.focus .pp { max-width: 900px; }
