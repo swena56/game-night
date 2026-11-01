@@ -1488,3 +1488,8 @@ body.light .logo { background-image: linear-gradient(90deg, #e09a00, #e0457b, #1
 /* reserved status lines (#18): these hints empty out between turns, so keep their line */
 #rvHint, #owHint, #utHint { min-height: 1.4em; }
 .ru-melds { min-height: 74px; align-content: flex-start; }  /* one row of melds reserved: the first one laid doesn't push the hand */
+/* putt camera buttons: a column on the right edge of the 3D view */
+.pp-cam { position: absolute; right: 8px; top: 34px; display: flex; flex-direction: column; gap: 6px; z-index: 2; }
+.pp-cam button { width: 40px; height: 40px; padding: 0; border-radius: 12px; background: #0b1626cc; border: 1px solid #ffffff2a;
+  font-size: 18px; line-height: 1; display: grid; place-items: center; touch-action: manipulation; }
+.pp-cam button[aria-pressed="true"] { background: var(--accent); color: #1b1300; border-color: transparent; }

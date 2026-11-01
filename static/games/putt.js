@@ -6,23 +6,73 @@ UI.putt = (() => {
   const COLORS = { fair: ['#2f9e44', '#37b24d'], sand: '#e9c46a', water: '#3a86ff', slope: '#74c69d' };
   const $ = (id) => document.getElementById(id);
 
+  let pts = new Map(), gest = null, moveMode = false, turnSeen = '';
+
   function mount(main, side) {
     gl = null; flat = null; holeKey = ''; anim = null; seenShot = 0; aim = null;
+    pts = new Map(); gest = null; moveMode = false; turnSeen = '';
     main.innerHTML = `<div class="pp"><div class="pp-hud"><span id="ppHole"></span><span id="ppTurn"></span></div>
-      <div class="pp-stage" id="ppStage"><div class="pp-power" id="ppPower" hidden><span></span></div></div>
+      <div class="pp-stage" id="ppStage"><div class="pp-power" id="ppPower" hidden><span></span></div>
+        <div class="pp-cam" id="ppCam" hidden>
+          <button data-c="move" title="Move the view with one finger (instead of aiming)" aria-pressed="false">✋</button>
+          <button data-c="left" title="Turn anticlockwise" aria-label="Turn the course anticlockwise">⟲</button>
+          <button data-c="right" title="Turn clockwise" aria-label="Turn the course clockwise">⟳</button>
+          <button data-c="in" title="Zoom in" aria-label="Zoom in">＋</button>
+          <button data-c="out" title="Zoom out" aria-label="Zoom out">－</button>
+          <button data-c="ball" title="Look from behind your ball" aria-label="Look from behind your ball">🎯</button>
+          <button data-c="fit" title="Show the whole hole" aria-label="Show the whole hole">⛳</button>
+        </div></div>
       <p id="ppHint" class="hint"></p></div>`;
     side.innerHTML = '<div class="panel"><h3>Scorecard</h3><div id="ppCard" class="pp-card"></div></div>';
     const stage = $('ppStage');
     main.querySelector('.pp').style.touchAction = 'none';
+    $('ppCam').addEventListener('pointerdown', (e) => e.stopPropagation());
+    $('ppCam').addEventListener('click', (e) => {
+      const c = e.target.closest('button')?.dataset.c, v = gl?.view;
+      if (!c || !v) return;
+      if (c === 'move') { moveMode = !moveMode; e.target.closest('button').setAttribute('aria-pressed', String(moveMode)); hint(); }
+      else if (c === 'left') v.rotate(Math.PI / 4);    // the course turns anticlockwise: the camera swings right
+      else if (c === 'right') v.rotate(-Math.PI / 4);
+      else if (c === 'in') v.zoom(1.3);
+      else if (c === 'out') v.zoom(1 / 1.3);
+      else if (c === 'ball') v.behind();
+      else if (c === 'fit') v.fit();
+    });
+    // One finger aims (or moves the view in ✋ mode). Two fingers move the view: drag to pan, pinch to zoom,
+    // twist to rotate. With a mouse: the wheel zooms and a right-drag pans.
+    const two = () => {
+      const [a, b] = [...pts.values()];
+      return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, d: Math.hypot(a.x - b.x, a.y - b.y), ang: Math.atan2(b.y - a.y, b.x - a.x) };
+    };
     stage.addEventListener('pointerdown', (e) => {
+      try { stage.setPointerCapture(e.pointerId); } catch {}
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size === 2 && gl) { aim = null; $('ppPower').hidden = true; gest = { ...two(), kind: 'two' }; return; }
+      if (pts.size > 1) return;
+      if (gl && (moveMode || e.button === 2)) { gest = { x: e.clientX, y: e.clientY, kind: 'pan' }; return; }
       // a touch while a putt is still rolling skips it to the end: it used to swallow your drag silently
       if (anim && S?.phase === 'playing' && ctx?.myTurn) anim = null;
       if (!canAim()) return;
       aim = { x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY };
-      try { stage.setPointerCapture(e.pointerId); } catch {}
     });
-    stage.addEventListener('pointermove', (e) => { if (aim) { aim.x = e.clientX; aim.y = e.clientY; } });
-    const release = () => {
+    stage.addEventListener('pointermove', (e) => {
+      if (!pts.has(e.pointerId)) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const v = gl?.view;
+      if (gest?.kind === 'two' && pts.size === 2 && v) {
+        const g = two();
+        v.pan(gest.x, gest.y, g.x, g.y);
+        if (gest.d > 20 && g.d > 20) v.zoom(g.d / gest.d);
+        v.rotate(gest.ang - g.ang);
+        gest = { ...g, kind: 'two' };
+      } else if (gest?.kind === 'pan' && v) {
+        v.pan(gest.x, gest.y, e.clientX, e.clientY);
+        gest = { x: e.clientX, y: e.clientY, kind: 'pan' };
+      } else if (aim) { aim.x = e.clientX; aim.y = e.clientY; }
+    });
+    const release = (e) => {
+      pts.delete(e.pointerId);
+      if (gest) { if (!pts.size) gest = null; else if (gest.kind === 'two') gest = null; return; }
       if (!aim) return;
       const shot = aimShot();
       aim = null;
@@ -30,14 +80,20 @@ UI.putt = (() => {
       if (shot && shot.power > 0.03 && canAim()) ctx.quiet(ctx.act('putt', { angle: +shot.angle.toFixed(4), power: +shot.power.toFixed(3) }));
     };
     stage.addEventListener('pointerup', release);
-    stage.addEventListener('pointercancel', () => { aim = null; $('ppPower').hidden = true; });
+    stage.addEventListener('pointercancel', (e) => { pts.delete(e.pointerId); gest = null; aim = null; $('ppPower').hidden = true; });
+    stage.addEventListener('contextmenu', (e) => e.preventDefault());
+    stage.addEventListener('wheel', (e) => { if (!gl) return; e.preventDefault(); gl.view.zoom(e.deltaY < 0 ? 1.12 : 1 / 1.12); }, { passive: false });
     ro = window.ResizeObserver ? new ResizeObserver(() => (gl || flat)?.resize()) : null;
     ro?.observe(stage);
     const ready = window.THREE ? Promise.resolve() : new Promise((res, rej) => {
       const sc = document.createElement('script'); sc.src = '/vendor/three.min.js'; sc.onload = res; sc.onerror = rej; document.head.append(sc);
     });
     ready.then(() => { if (stage.isConnected && !gl) gl = make3d(stage); }).catch(() => {})
-      .finally(() => { if (stage.isConnected && !gl && !flat) flat = make2d(stage); holeKey = ''; });
+      .finally(() => {
+        if (stage.isConnected && !gl && !flat) flat = make2d(stage);
+        holeKey = '';
+        if ($('ppCam')) $('ppCam').hidden = !gl;  // the flat view always shows the whole hole
+      });
     raf = requestAnimationFrame(loop);
   }
 
@@ -67,12 +123,17 @@ UI.putt = (() => {
     $('ppHole').textContent = `⛳ Hole ${p.hole} of ${p.holes}`;
     const turn = p.seats.indexOf(S.turn);
     $('ppTurn').textContent = turn >= 0 ? `${turn === p.me ? 'Your' : (ctx.player(S.turn)?.name ?? '?') + "'s"} putt · stroke ${p.strokes[turn] + 1}` : '';
+    // your turn starts: make sure your ball is in the picture (once per stroke, so it never fights your own panning)
+    const tk = S.phase === 'playing' && ctx.myTurn ? `${p.hole}:${p.strokes[p.me]}` : '';
+    if (tk && tk !== turnSeen && gl) { turnSeen = tk; gl.view.showBall(); }
     hint();
     renderCard();
   }
 
   function hint() {
-    const t = S.phase !== 'playing' || !ctx.myTurn ? '' : anim ? 'Tap to skip ahead, then drag back to putt.' : 'Drag back from anywhere and let go to putt.';
+    const t = moveMode ? '✋ Drag to move the view. Tap ✋ again to aim.'
+      : S.phase !== 'playing' || !ctx.myTurn ? (gl ? 'Two fingers move, zoom and turn the view.' : '')
+        : anim ? 'Tap to skip ahead, then drag back to putt.' : 'Drag back from anywhere and let go to putt. Two fingers move the view.';
     const h = $('ppHint');
     if (h && h.textContent !== t) h.textContent = t;
   }
@@ -136,6 +197,9 @@ UI.putt = (() => {
     let course = new T.Group(); scene.add(course);
     const balls = [], ballGeo = new T.SphereGeometry(1, 16, 12);
     let aimLine = null;
+    // a ring on the ground under your own ball, so you can find it (every ball starts on the same tee)
+    const ring = new T.Mesh(new T.RingGeometry(0.1, 0.14, 32), new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, side: T.DoubleSide }));
+    ring.rotation.x = -Math.PI / 2; ring.visible = false; scene.add(ring);
     const W = (x, y) => new T.Vector3(x, 0, -y);
     function build() {
       scene.remove(course); course = new T.Group(); scene.add(course);
@@ -170,6 +234,7 @@ UI.putt = (() => {
       flagM.position.copy(W(...p.cup)).add(new T.Vector3(0.125, 0.62, 0)); course.add(flagM);
       const tee = new T.Mesh(new T.CylinderGeometry(0.09, 0.09, 0.01, 16), new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4 }));
       tee.position.copy(W(...p.tee)).setY(0.003); course.add(tee);
+      Object.assign(view, { yaw: 0, zoom: 1, px: 0, pz: 0 });  // a new hole starts on the whole-hole view
       resize();
     }
     function ensureBalls() {
@@ -181,34 +246,89 @@ UI.putt = (() => {
         scene.add(m); balls.push(m);
       }
     }
-    function resize() {
-      const w = stage.clientWidth || 320, h = stage.clientHeight || 320;
-      renderer.setSize(w, h); camera.aspect = w / h;
-      const p = S?.putt; if (!p) return;
-      // Fit the camera to the course the hole actually uses: look down at it from behind the tee at a
-      // fixed tilt, then back away until every corner (and the flag on top) is inside the picture.
-      // A fixed formula used to leave the tee row, with your ball on it, below the bottom of a phone.
-      camera.updateProjectionMatrix();
+    // The view: turned by yaw (0 = looking up the course from behind the tee), zoomed in from the fit that
+    // shows the whole hole, and panned (world x/z). Every new hole starts on the whole-hole fit.
+    const view = { yaw: 0, zoom: 1, px: 0, pz: 0 };
+    let box = null, fitD = 10;
+    const TILT = 1.05;  // radians below the horizon: steep enough to read the fairway, shallow enough to feel 3D
+    const forward = () => new T.Vector3(Math.sin(view.yaw) * Math.cos(TILT), -Math.sin(TILT), -Math.cos(view.yaw) * Math.cos(TILT));
+    function bounds() {
+      const p = S.putt;
       let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
       for (const [x, y] of p.cells) { x0 = Math.min(x0, x); x1 = Math.max(x1, x + 1); y0 = Math.min(y0, y); y1 = Math.max(y1, y + 1); }
       if (!isFinite(x0)) { x0 = 0; x1 = p.cols; y0 = 0; y1 = p.rows; }
-      const cx = (x0 + x1) / 2, cz = -(y0 + y1) / 2;
-      const tilt = 1.05;  // radians below the horizon: steep enough to read the fairway, shallow enough to feel 3D
-      const dir = new T.Vector3(0, -Math.sin(tilt), -Math.cos(tilt));
-      const target = new T.Vector3(cx, 0, cz);
-      const corners = [];
-      for (const x of [x0, x1]) for (const y of [y0, y1]) for (const h of [0, 0.15]) corners.push(new T.Vector3(x, h, -y));
-      corners.push(W(...p.cup).setY(0.75));  // the flag
-      const fits = (d) => {
-        camera.position.copy(target).addScaledVector(dir, -d);
-        camera.lookAt(target);
-        camera.updateMatrixWorld();
-        return corners.every((c) => { const v = c.clone().project(camera); return Math.abs(v.x) <= 0.94 && Math.abs(v.y) <= 0.94 && v.z < 1; });
-      };
-      let lo = 1, hi = 60;
-      for (let k = 0; k < 30; k++) { const mid = (lo + hi) / 2; if (fits(mid)) hi = mid; else lo = mid; }
-      fits(hi);
+      return { x0, x1, y0, y1, cx: (x0 + x1) / 2, cz: -(y0 + y1) / 2 };
     }
+    function aimAt(target, d) {
+      camera.position.copy(target).addScaledVector(forward(), -d);
+      camera.lookAt(target);
+      camera.updateMatrixWorld();
+    }
+    // the distance at which the whole hole (every corner, and the flag on top) fits, for the current yaw
+    function refit() {
+      const p = S.putt, target = new T.Vector3(box.cx, 0, box.cz), corners = [];
+      for (const x of [box.x0, box.x1]) for (const y of [box.y0, box.y1]) for (const h of [0, 0.15]) corners.push(new T.Vector3(x, h, -y));
+      corners.push(W(...p.cup).setY(0.75));
+      const fits = (d) => { aimAt(target, d); return corners.every((c) => { const v = c.clone().project(camera); return Math.abs(v.x) <= 0.94 && Math.abs(v.y) <= 0.94 && v.z < 1; }); };
+      let lo = 0.5, hi = 60;
+      for (let k = 0; k < 30; k++) { const mid = (lo + hi) / 2; if (fits(mid)) hi = mid; else lo = mid; }
+      fitD = hi;
+    }
+    function place() {
+      if (!box) return;
+      view.zoom = Math.min(5, Math.max(0.6, view.zoom));
+      // keep the point you look at over the course
+      view.px = Math.min(box.x1 - box.cx, Math.max(box.x0 - box.cx, view.px));
+      view.pz = Math.min(-box.y0 - box.cz, Math.max(-box.y1 - box.cz, view.pz));
+      aimAt(new T.Vector3(box.cx + view.px, 0, box.cz + view.pz), fitD / view.zoom);
+    }
+    function resize() {
+      const w = stage.clientWidth || 320, h = stage.clientHeight || 320;
+      renderer.setSize(w, h); camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      if (!S?.putt) return;
+      box = bounds();
+      refit();
+      place();
+    }
+    function onScreen(x, y) {
+      const v = W(x, y).project(camera);
+      return Math.abs(v.x) <= 0.9 && Math.abs(v.y) <= 0.9 && v.z < 1;
+    }
+    const viewApi = {
+      fit() { Object.assign(view, { yaw: 0, zoom: 1, px: 0, pz: 0 }); resize(); },
+      rotate(da) { view.yaw += da; refit(); place(); },
+      zoom(f) { view.zoom *= f; place(); },
+      // drag the ground under the finger from screen point (x0, y0) to (x1, y1)
+      pan(x0, y0, x1, y1) {
+        const a = toGround(x0, y0), b = toGround(x1, y1);
+        if (!a || !b) return;
+        view.px -= b.x - a.x; view.pz -= b.z - a.z;
+        place();
+      },
+      // stand behind your ball, facing the cup, a little zoomed in
+      behind() {
+        const p = S.putt;
+        if (p.me == null || !box) return;
+        const [bx, by] = p.balls[p.me], dx = p.cup[0] - bx, dy = p.cup[1] - by;
+        view.yaw = Math.atan2(dx, dy);
+        refit();
+        const len = Math.hypot(dx, dy) || 1, ahead = Math.min(1.2, len / 2);
+        view.zoom = 1.8;
+        view.px = bx + (dx / len) * ahead - box.cx; view.pz = -(by + (dy / len) * ahead) - box.cz;
+        place();
+      },
+      // your ball has to be in the picture when it's your turn
+      showBall() {
+        const p = S.putt;
+        if (p.me == null || !box) return;
+        const [bx, by] = p.balls[p.me];
+        if (onScreen(bx, by)) return;
+        view.px = bx - box.cx; view.pz = -by - box.cz;
+        place();
+        if (!onScreen(bx, by)) { view.zoom = 1; place(); }
+      },
+    };
     const ray = new T.Raycaster(), ground = new T.Plane(new T.Vector3(0, 1, 0), 0);
     function toGround(cx, cy) {
       const r = renderer.domElement.getBoundingClientRect();
@@ -232,6 +352,12 @@ UI.putt = (() => {
       });
       if (aimLine) { scene.remove(aimLine); aimLine = null; }
       const me = p.me;
+      ring.visible = me != null && !p.holed[me];
+      if (ring.visible) {
+        const at = ballPos(me, now);
+        ring.position.copy(W(at[0], at[1])).setY(0.006);
+        ring.scale.setScalar(ctx.myTurn && S.phase === 'playing' ? 1 + 0.15 * Math.sin(now / 250) : 1);  // pulses on your turn
+      }
       if (shot && me != null) {
         const [bx, by] = p.balls[me], len = 0.4 + shot.power * 2.2;
         const g = new T.BufferGeometry().setFromPoints([W(bx, by).setY(0.04), W(bx + Math.cos(shot.angle) * len, by + Math.sin(shot.angle) * len).setY(0.04)]);
@@ -241,7 +367,7 @@ UI.putt = (() => {
       renderer.render(scene, camera);
     }
     function dispose() { renderer.dispose(); renderer.domElement.remove(); }
-    return { build, draw, resize, dispose, screenDir };
+    return { build, draw, resize, dispose, screenDir, view: viewApi };
   }
 
   // ---------- flat top-down fallback

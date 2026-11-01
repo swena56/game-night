@@ -161,6 +161,7 @@ class Putt(Game):
     category = "action"
     howto = [
         "Drag back from anywhere and let go to putt: the further you drag, the harder the shot. The ball goes the opposite way, like a slingshot.",
+        "Move the view with two fingers: drag to pan, pinch to zoom, twist to turn. Or use the buttons on the view: 🎯 stands behind your ball, ⛳ shows the whole hole.",
         "Everyone plays the same hole, one stroke each in turn. Balls pass through each other.",
         "🟫 Sand slows the ball, ↗ slopes push it, ⚪ bumpers bounce it, and 💧 water costs a stroke (you replay from where you hit).",
         f"Hole out in the fewest strokes; {STROKE_CAP} is the most a hole can cost. Lowest total wins.",
