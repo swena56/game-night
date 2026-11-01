@@ -385,7 +385,8 @@ Items that become ✅ move into the per-game plan.
 3. ✅ **Even the 🎲 Dice & casino row again:** Qork made it 7 games; 📦 **Shut the Box** makes it 8 (46 games).
 4. **Keyboard and screen-reader play** in the boards that still lack it (Backgammon, Oware, Ultimate, Morris, Dots & Boxes,
    the card games, Yacht, Farkle) using the shared `gridKeys`. **M**
-5. **🙋 Join in mid-game** for more round-based games: Odd One Out, Grid Hunt, Safecracker, Yacht. **S each**
+5. ✅ **🙋 Join in mid-game** for Odd One Out, Safecracker and Shut the Box. (Grid Hunt already could; Yacht can't fairly,
+   since a late card would make everyone wait for its twelve boxes.)
 
 **Party**
 - 🎭 **Unmask:** a question-history panel (each question and how many faces it ruled out). **M**
@@ -472,7 +473,9 @@ Riders and Air Hockey start in it) (#13, #15).
   reaction-only updates, and Odd One Out / Fib Finder update their buttons in place.
 - ✅ **🙋 Join in mid-game** (#36): someone who arrives while a game is running gets a "Join in" button
   in games that can take them: Texas Hold'em (from the next hand, full stack), Lucky Letters and Moon
-  Shot (0 points, next in seat order), Doodle Dash and Fib Finder (start guessing/writing at once).
+  Shot (0 points, next in seat order), Doodle Dash, Fib Finder, Grid Hunt and Safecracker races (start
+  guessing/writing at once), Odd One Out (from the next round, since watchers have seen this round's
+  words) and Shut the Box (from the next round; each missed round counts as that round's worst score).
   Board games and the rest say no politely and seat them for the next game. A game opts in by defining
   `late_join(p)`.
 - ✅ **⚙️ Options first** on the home screen sets up a solo game in the lobby so you can change its

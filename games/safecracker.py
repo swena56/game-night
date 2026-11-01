@@ -74,6 +74,15 @@ class Safecracker(Game):
                           f"code from {self.colors} colours{'' if self.repeats else ' (no repeats)'}.", "big")
         self.new_safe()
 
+    def late_join(self, p):
+        """Join at 0 and lock in guesses from the round that's running (races only: a duel is two people)."""
+        if self.duel:
+            raise GameError("A duel is just the two of you. You'll get a seat for the next game.")
+        p.g.score = 0
+        p.g.cracks = 0
+        p.g.best = (0, 0)
+        p.g.probe = None
+
     def new_safe(self):
         self.safe += 1
         self.code = self.random_code(self.rng)

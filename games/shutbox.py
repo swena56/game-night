@@ -106,6 +106,22 @@ class ShutBox(Game):
                           "Lowest total wins.", "big")
         self.new_round()
 
+    def late_join(self, p):
+        """Play from the next round. Lowest total wins, so each round you missed counts as its worst score."""
+        p.g.tiles = list(range(1, self.n + 1))
+        p.g.scores = [self.worst(k) for k in range(len(self.done_rounds()))]
+        p.g.shut_count = 0
+        self.seats.append(p.id)
+        self.room.add_log(f"📦 {p.name} plays from the next round; missed rounds count as that round's worst score.")
+
+    def done_rounds(self):
+        """Rounds already scored (the current one counts once everyone has played it)."""
+        return range(self.round if self.stage == "between" else self.round - 1)
+
+    def worst(self, k):
+        got = [self.pl(pid).g.scores[k] for pid in self.seats if self.pl(pid) and len(getattr(self.pl(pid).g, "scores", [])) > k]
+        return max(got) if got else sum(range(1, self.n + 1))
+
     def pl(self, pid):
         return self.room.players.get(pid)
 
@@ -201,6 +217,10 @@ class ShutBox(Game):
         live = [self.pl(pid) for pid in self.seats if self.live(pid)]
         if not live:
             return r.finish(None, "Everyone left.")
+        worst = self.worst(self.round - 1)
+        for p in live:  # someone who joined during this round missed it
+            if len(p.g.scores) < self.round:
+                p.g.scores.append(worst)
         r.add_log("🧮 Round " + str(self.round) + ": " + " · ".join(
             f"{p.name} {p.g.scores[-1] if len(p.g.scores) == self.round else '—'} ({self.total(p)})" for p in live), "big")
         if self.round >= self.s["rounds"]:

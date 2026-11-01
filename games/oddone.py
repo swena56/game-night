@@ -49,10 +49,21 @@ class OddOne(Game):
         self.new_round()
 
     def live(self):
-        return [p for p in self.room.contenders() if p.id in self.ids]
+        return [p for p in self.room.contenders() if p.id in self.ids and p.id not in self.joining]
+
+    joining = frozenset()  # games saved before late joining
+
+    def late_join(self, p):
+        """Watchers have seen this round's secret words, so a newcomer plays from the next round, at 0."""
+        p.g.score = 0
+        p.g.word = None
+        self.ids.append(p.id)
+        self.joining = {*self.joining, p.id}
+        self.room.add_log(f"🕵️ {p.name} plays from the next round.")
 
     def new_round(self):
         r = self.room
+        self.joining = set()
         self.round += 1
         pair = list(self.pairs[(self.round - 1) % len(self.pairs)])
         self.rng.shuffle(pair)
@@ -76,6 +87,8 @@ class OddOne(Game):
         t = a.get("type")
         if p.id not in self.ids or p.eliminated:
             raise GameError("You're watching this round.")
+        if p.id in self.joining:
+            raise GameError("You play from the next round: this one's words were on show while you watched.")
         if t == "clue":
             if self.stage != "clue":
                 raise GameError("It's not clue time.")
