@@ -157,6 +157,10 @@ p.preview { color: var(--accent2); font-style: italic; min-height: 1.4em; margin
 .game-tile:not(:disabled):hover { transform: translateY(-2px); box-shadow: 0 6px 16px #0006; }
 .game-tile.on .gicon { animation: hop .5s ease-out; }
 @keyframes hop { 40% { transform: translateY(-6px) scale(1.15); } }
+.game-chosen { display: flex; align-items: center; gap: 10px; margin: 16px 0 0; padding-top: 12px; border-top: 1px solid var(--line);
+  font-size: 20px; scroll-margin-top: 12px; }
+.game-chosen .gicon { font-size: 30px; filter: drop-shadow(0 3px 4px #0007); }
+.game-chosen + #gameDesc { margin-top: 4px; }
 
 /* dialogs */
 .modal { position: fixed; inset: 0; z-index: 50; background: #0009; display: flex; align-items: center; justify-content: center; padding: 16px;

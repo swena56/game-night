@@ -54,7 +54,8 @@
       <div class="room-code">Room <b id="lobbyCode"></b></div>
       <button id="shareBtn" class="ghost-btn">📲 Invite: link &amp; QR code</button>
       <h3>Game</h3>
-      <div id="gamePicker" class="picker"></div>
+      <div id="gamePicker" class="picker" aria-label="Games (arrow keys move, Enter picks)"></div>
+      <div id="gameChosen" class="game-chosen"></div>
       <p id="gameDesc" class="hint"></p>
       <ul id="howto" class="rules howto"></ul>
       <h3>Players</h3>
@@ -63,7 +64,7 @@
         <select id="botLevel"><option value="easy">Easy</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select>
         <button id="addBotBtn">🤖 Add computer player</button>
       </div>
-      <h3>Settings</h3>
+      <h3 id="settingsHead">Settings</h3>
       <div id="settingsBox" class="settings"></div>
       <button id="startBtn" class="primary big">Start game</button>
       <p id="waitHost" class="hint">Waiting for the host to start… Tap a game to ask the host for it.</p>

@@ -203,7 +203,7 @@ function show(id) {
   if (id !== 'game') document.body.classList.remove('focus');
   if (id !== 'loading') clearTimeout(show.slow);
   $('#fabs').hidden = id === 'home';
-  if (id === 'home') { $('#chatPanel').hidden = true; }
+  if (id === 'home') { $('#chatPanel').hidden = true; document.title = 'Game Night'; }
 }
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 const player = (id) => S.players.find((p) => p.id === id);
@@ -409,13 +409,37 @@ function fitPicker() {
   }
 }
 window.addEventListener('resize', () => { if (!$('#lobby').hidden) fitPicker(); });
+let pickedGame = null;  // the game this host just tapped, scrolled to once the server confirms it
+
+// arrow keys move between game tiles by where they sit on screen, across categories (#37)
+$('#gamePicker').addEventListener('keydown', (e) => {
+  const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+  const cur = document.activeElement;
+  if (!dir || !cur?.classList.contains('game-tile')) return;
+  e.preventDefault();
+  const mid = (r) => [r.left + r.width / 2, r.top + r.height / 2];
+  const [x0, y0] = mid(cur.getBoundingClientRect());
+  let best = null, bestScore = Infinity;
+  for (const t of document.querySelectorAll('#gamePicker .game-tile')) {
+    if (t === cur) continue;
+    const [x, y] = mid(t.getBoundingClientRect());
+    const along = (x - x0) * dir[0] + (y - y0) * dir[1], across = Math.abs((x - x0) * dir[1] + (y - y0) * dir[0]);
+    if (along < 4) continue;
+    const score = along + across * 3;
+    if (score < bestScore) { best = t; bestScore = score; }
+  }
+  best?.focus();
+  best?.scrollIntoView({ block: 'nearest' });
+});
 
 function renderLobby() {
   const host = S.host === S.me.id;
   const info = gameInfo();
   $('#lobbyCode').textContent = S.code;
 
-  const pick = $('#gamePicker'); pick.innerHTML = '';
+  const pick = $('#gamePicker');
+  const focused = document.activeElement?.closest?.('#gamePicker .game-tile')?.dataset.game;  // keep keyboard focus across redraws (#37)
+  pick.innerHTML = '';
   const seated = S.players.filter((p) => !p.spectator).length;
   for (const [cat, label] of CATEGORIES) {
     const games = S.games.filter((g) => g.category === cat);
@@ -438,11 +462,25 @@ function renderLobby() {
       }
       b.title = host ? '' : g.id === S.gameId ? 'The host picked this game' : 'Ask the host for this game (tap again to take it back)';
       b.setAttribute('aria-pressed', g.id === S.gameId);
-      b.onclick = () => quiet(host ? act('settings', { settings: { game: g.id } }) : act('wish', { game: g.id }));
+      b.dataset.game = g.id;
+      b.onclick = () => {
+        if (host) { pickedGame = g.id; quiet(act('settings', { settings: { game: g.id } })); }
+        else quiet(act('wish', { game: g.id }));
+      };
       group.append(b);
     }
   }
   fitPicker();
+  if (focused) pick.querySelector(`[data-game="${focused}"]`)?.focus({ preventScroll: true });
+  // the chosen game sits above its rules and settings; after the host picks one, bring it into view (#38, #39)
+  const chosen = $('#gameChosen'); chosen.innerHTML = '';
+  chosen.append(el('span', 'gicon', info.icon), el('b', '', info.name));
+  $('#settingsHead').textContent = `${info.name} settings`;
+  document.title = `${info.name} — Game Night`;
+  if (pickedGame && pickedGame === S.gameId) {
+    pickedGame = null;
+    requestAnimationFrame(() => chosen.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  }
   $('#gameDesc').textContent = info.blurb + (S.gameId === 'unmask' ? ' ' + MODE_DESC[S.settings.mode] : '');
   $('#howto').innerHTML = '';
   for (const line of info.howto) $('#howto').append(el('li', '', line));
@@ -565,7 +603,8 @@ function renderGame(view = S, readOnly = false, force = false) {
       flashTurn();
       if (prefs.vibrate) navigator.vibrate?.(120);
     }
-    document.title = myTurn ? '🔔 Your turn — Game Night' : 'Game Night';
+    const gname = gameInfo(view.gameId ?? S.gameId)?.name;
+    document.title = (myTurn ? '🔔 Your turn — ' : '') + (gname ? gname + ' — ' : '') + 'Game Night';
     lastTurn = view.turn;
   }
 
@@ -1054,6 +1093,16 @@ $('#chatForm').onsubmit = (e) => { e.preventDefault(); sendChat($('#chatInput').
 for (const q of QUICK_CHAT) { const b = el('button', '', q); b.type = 'button'; b.onclick = () => sendChat(q); $('#quickChat').append(b); }
 $('#prefsBtn').onclick = () => { renderPrefs(); $('#prefsPanel').hidden = !$('#prefsPanel').hidden; $('#chatPanel').hidden = true; };
 $('#prefsClose').onclick = () => ($('#prefsPanel').hidden = true);
+// a tap anywhere outside an open drawer (or Escape) closes it (#36); its own buttons still toggle it
+const closeDrawers = () => { $('#chatPanel').hidden = true; $('#prefsPanel').hidden = true; };
+document.addEventListener('pointerdown', (e) => {
+  if ($('#chatPanel').hidden && $('#prefsPanel').hidden) return;
+  if (e.target.closest?.('.drawer, #fabs, #chatBubble, #modal')) return;
+  closeDrawers();
+}, true);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && $('#modal').hidden && !($('#chatPanel').hidden && $('#prefsPanel').hidden)) closeDrawers();
+});
 $('#reportLink').onclick = () => reportDialog('bug');
 $('#reportBtn').onclick = () => { $('#prefsPanel').hidden = true; reportDialog('bug'); };
 applyPrefs();
