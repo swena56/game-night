@@ -372,11 +372,11 @@ class Unmask(Game):
     # -- view
 
     def notes(self, p):
-        """What I've learned, in order: each question, its answer and how many faces it ruled out."""
+        """What I've learned, in order: each question, its answer, how many faces it ruled out and the question itself."""
         left, out = list(self.board), []
         for q, ans in getattr(p.g, "learned", []):
             keep = [f for f in left if evaluate(f, q) == ans]
-            out.append([qtext(q), ans, len(left) - len(keep)])
+            out.append([qtext(q), ans, len(left) - len(keep), q])
             left = keep
         return {"rows": out, "left": len(left)}
 

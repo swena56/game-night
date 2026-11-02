@@ -91,6 +91,7 @@ class Reversi(Undo, Game):
         "If you can't move, you pass. When neither player can move, the most discs wins.",
         "Corners can never be flipped back, so they're worth fighting for.",
         "↶ Undo asks your rival to take back your last move. Flip hints (an option) show how many discs each move would flip.",
+        "🏳️ Resign ends the game and your rival wins; the host can then start a rematch.",
     ]
     name = "Reversi"
     icon = "⚪"
@@ -118,6 +119,9 @@ class Reversi(Undo, Game):
     def act(self, p, a):
         if p.id not in self.seats:
             raise GameError("You're watching this game.")
+        if a.get("type") == "resign":
+            opp = self.room.players.get(self.seats[1 - self.seat(p)])
+            return self.room.finish(opp, f"🏳️ {p.name} resigned — {opp.name if opp else 'their rival'} wins!")
         if self.undo_act(p, a.get("type")):
             return
         if a.get("type") != "place":

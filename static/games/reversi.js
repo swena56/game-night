@@ -6,7 +6,7 @@ UI.reversi = (() => {
   function mount(main, side) {
     seen = '';
     main.innerHTML = '<div class="rv"><div class="rv-board" id="rvBoard"></div><p id="rvHint" class="hint"></p><div id="rvUndo" class="row center"></div></div>';
-    side.innerHTML = '<div class="panel"><div id="rvSeats"></div></div>';
+    side.innerHTML = '<div class="panel"><div id="rvSeats"></div><div class="row"><button id="rvResign" class="danger">🏳️ Resign</button></div></div>';
     board = $('rvBoard');
     for (let c = 0; c < 64; c++) {
       const b = ctx?.el ? ctx.el('button', 'rv-cell') : Object.assign(document.createElement('button'), { className: 'rv-cell' });
@@ -15,6 +15,7 @@ UI.reversi = (() => {
       board.append(b);
     }
     gridKeys(board, 8);
+    $('rvResign').onclick = async () => (await ctx.ask('Resign this game?', { ok: '🏳️ Resign', danger: true })) && ctx.quiet(ctx.act('resign'));
   }
 
   function render(s, c) {
@@ -41,6 +42,8 @@ UI.reversi = (() => {
       info.append(row);
     });
     $('rvHint').textContent = S.phase === 'playing' && ctx.myTurn ? 'Tap a glowing square.' : '';
+    $('rvResign').hidden = r.me == null;
+    $('rvResign').disabled = S.phase !== 'playing';
     undoRow($('rvUndo'), r.undo, S, ctx, r.me != null);
   }
 

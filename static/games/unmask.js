@@ -1,5 +1,5 @@
 UI.unmask = (() => {
-  let S, ctx, boardKey = '', accuseMode = false, populated = false;
+  let S, ctx, boardKey = '', accuseMode = false, populated = false, seenNotes = null, sizer = null;
   // card size, set by pinching the board or the 🔍 buttons, remembered on this device
   let zoom = 92;
   try { zoom = Math.min(200, Math.max(60, +localStorage.getItem('unmask.zoom') || 92)); } catch {}
@@ -10,13 +10,14 @@ UI.unmask = (() => {
   const misfits = (c) => S.board.filter((f) => !S.me.flipped.includes(f.id) && evaluate(f, c.q) !== c.ans).map((f) => f.id);
 
   function mount(main, side) {
-    boardKey = ''; accuseMode = false; populated = false;
+    boardKey = ''; accuseMode = false; populated = false; seenNotes = null;
     main.innerHTML = `<div class="zoom-bar"><span>🔍</span><button id="zoomOut" aria-label="Smaller faces">−</button>
       <button id="zoomIn" aria-label="Bigger faces">+</button><small>or pinch the board</small></div><div id="board" class="board"></div>`;
     setZoom(zoom);
     $('#zoomOut').onclick = () => setZoom(zoom / 1.2);
     $('#zoomIn').onclick = () => setZoom(zoom * 1.2);
     pinchable($('#board'));
+    sizer?.disconnect(); sizer = new ResizeObserver(fitColumns); sizer.observe($('#board'));
     side.innerHTML = `
       <div id="identity" class="panel identity"></div>
       <div id="askPanel" class="panel">
@@ -44,8 +45,25 @@ UI.unmask = (() => {
   function setZoom(px) {
     zoom = Math.round(Math.min(200, Math.max(60, px)));
     $('#board')?.style.setProperty('--card', `${zoom}px`);
+    fitColumns();
     try { localStorage.setItem('unmask.zoom', String(zoom)); } catch {}
   }
+  // as many columns as fit, but (#13) prefer a count that fills the last row: 24 faces as 6×4, not 7+7+7+3
+  function fitColumns() {
+    const b = $('#board'); if (!b) return;
+    const n = b.children.length, gap = 10;
+    const max = Math.max(1, Math.floor((b.clientWidth + gap) / (zoom + gap)));
+    let cols = max;
+    if (n > max) {
+      let best = -1;
+      for (let c = max; c >= Math.max(1, Math.ceil(max * 0.7)); c--) {
+        const score = n % c === 0 ? 1 : (n % c) / c;
+        if (score > best) { best = score; cols = c; }
+      }
+    }
+    b.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+  }
+
   function pinchable(board) {
     const pts = new Map();
     let from = null;
@@ -75,11 +93,20 @@ UI.unmask = (() => {
   // every answer you've had, and how many faces each one ruled out
   function renderNotes() {
     const box = $('#umNotes'), n = S.me?.notes; if (!box || !n) return;
+    const fresh = seenNotes != null && n.rows.length > seenNotes;
+    seenNotes = n.rows.length;
+    // a new answer (#14): say it plainly, with a one-tap flip of the faces it rules out
+    if (fresh && S.phase === 'playing') {
+      const [text, ans, , q] = n.rows[n.rows.length - 1];
+      const ids = q ? misfits({ q, ans }) : [];
+      ctx.toast(`“${text}” → ${ans ? 'YES ✅' : 'NO ❌'}`,
+        ids.length ? { label: `Flip the ${ids.length} that don't fit`, run: () => flip(ids, true, true) } : null);
+    }
     box.innerHTML = '';
     if (!n.rows.length) { box.append(ctx.el('p', 'hint left', 'Your answers collect here, with how many faces each one ruled out.')); return; }
     const best = Math.max(...n.rows.map((r) => r[2]));
     n.rows.forEach(([text, ans, out], k) => {
-      const row = ctx.el('div', 'um-note' + (out && out === best ? ' best' : ''));
+      const row = ctx.el('div', 'um-note' + (out && out === best ? ' best' : '') + (fresh && k === n.rows.length - 1 ? ' new' : ''));
       row.append(ctx.el('span', 'q', `${k + 1}. ${text}`), ctx.el('b', ans ? 'yes' : 'no', ans ? 'YES' : 'NO'),
         ctx.el('small', '', out ? `−${out}` : '±0'));
       box.append(row);
@@ -99,6 +126,7 @@ UI.unmask = (() => {
         b.onclick = () => onCardClick(f.id);
         board.append(b);
       }
+      fitColumns();
     }
     const flipped = new Set(S.me.flipped);
     const badges = {};

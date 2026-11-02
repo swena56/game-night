@@ -1493,6 +1493,8 @@ body.focus .sm-stage { height: max(220px, calc(var(--app-h, 100vh) - 215px)); }
 .um-note b.yes { color: #57cc99; } .um-note b.no { color: #ef476f; }
 .um-note small { min-width: 2.6em; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
 .um-note.best small { color: var(--accent); font-weight: 700; }
+.um-note.new { animation: um-new 2.4s ease-out; }  /* the answer that just came in (#14) */
+@keyframes um-new { from { background: #ffd16655; } to { background: transparent; } }
 
 /* wordsmith */
 .ws-board { display: grid; grid-template-columns: repeat(11, 1fr); gap: 2px; width: min(100%, 560px, calc(var(--app-h, 100vh) - 150px)); margin: 6px auto;
@@ -1577,8 +1579,8 @@ body.focus .sm-stage { height: max(220px, calc(var(--app-h, 100vh) - 215px)); }
   #game .layout { grid-template-columns: minmax(0, 1fr) minmax(250px, 36%); align-items: start; }
 }
 
-/* focus mode (topbar ▣ button): the board takes the whole screen */
-body.focus #players, body.focus .log-panel, body.focus #quitBtn, body.focus #fabs, body.focus #chatBubble { display: none; }
+/* focus mode (topbar ▣ button): the board takes the whole screen; Leave/End game stays so nobody is stuck (#10) */
+body.focus #players, body.focus .log-panel, body.focus #fabs, body.focus #chatBubble { display: none; }
 body.focus .topbar { padding-block: 4px; }
 body.focus .layout { padding-top: 6px; }
 
