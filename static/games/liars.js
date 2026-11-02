@@ -15,18 +15,18 @@ UI.liars = (() => {
 
   function mount(main, side) {
     qty = 1; face = 2; bidKey = ''; seenShow = ''; rolled = -1;
-    main.innerHTML = `<div class="lr">
-      <div id="lrBid" class="lr-bid"></div>
-      <div class="lr-label">Your dice</div>
-      <div id="lrMine" class="ya-dice lr-mine"></div>
-      <div id="lrPick" class="lr-pick">
-        <div class="lr-qty"><button id="lrLess" aria-label="Fewer">−</button><b id="lrQty"></b><span>×</span><button id="lrMore" aria-label="More">+</button></div>
-        <div id="lrFaces" class="lr-faces"></div>
+    main.innerHTML = `<div class="liar">
+      <div id="lrBid" class="liar-bid"></div>
+      <div class="liar-label">Your dice</div>
+      <div id="lrMine" class="ya-dice liar-mine"></div>
+      <div id="lrPick" class="liar-pick">
+        <div class="liar-qty"><button id="lrLess" aria-label="Fewer">−</button><b id="lrQty"></b><span>×</span><button id="lrMore" aria-label="More">+</button></div>
+        <div id="lrFaces" class="liar-faces"></div>
         <div id="lrOdds" class="hint"></div>
-        <div class="row lr-actions"><button id="lrGo" class="primary big">Bid</button><button id="lrLiar" class="big danger">🤥 Liar!</button><button id="lrExact" class="big">🎯 Exact</button></div>
+        <div class="row liar-actions"><button id="lrGo" class="primary big">Bid</button><button id="lrLiar" class="big danger">🤥 Liar!</button><button id="lrExact" class="big">🎯 Exact</button></div>
       </div>
-      <div id="lrShow" class="lr-show" hidden></div></div>`;
-    side.innerHTML = '<div class="panel"><h3>Cups</h3><div id="lrCups"></div><h3>Bids this round</h3><div id="lrBids" class="lr-bids"></div></div>';
+      <div id="lrShow" class="liar-show" hidden></div></div>`;
+    side.innerHTML = '<div class="panel"><h3>Cups</h3><div id="lrCups"></div><h3>Bids this round</h3><div id="lrBids" class="liar-bids"></div></div>';
     $('lrLess').onclick = () => { qty = Math.max(1, qty - 1); paint(); };
     $('lrMore').onclick = () => { qty = Math.min(S.liars.total, qty + 1); paint(); };
     $('lrGo').onclick = () => ctx.quiet(ctx.act('bid', { qty, face }));
@@ -82,11 +82,11 @@ UI.liars = (() => {
     const bidBox = $('lrBid'); bidBox.innerHTML = '';
     if (l.bid) {
       const p = ctx.player(l.bid[2]);
-      const who = ctx.el('span', 'lr-who', `${p?.name ?? '?'} bids`);
+      const who = ctx.el('span', 'liar-who', `${p?.name ?? '?'} bids`);
       who.style.color = p?.color ?? 'inherit';
-      bidBox.append(who, ctx.el('b', 'lr-q', `${l.bid[0]} ×`), die(l.bid[1], 'lr-bigdie'));
+      bidBox.append(who, ctx.el('b', 'liar-q', `${l.bid[0]} ×`), die(l.bid[1], 'liar-bigdie'));
     } else {
-      bidBox.append(ctx.el('span', 'lr-who', `Round ${l.round} · ${l.total} dice on the table · no bid yet`));
+      bidBox.append(ctx.el('span', 'liar-who', `Round ${l.round} · ${l.total} dice on the table · no bid yet`));
     }
 
     const mine = $('lrMine'); mine.innerHTML = '';
@@ -112,21 +112,21 @@ UI.liars = (() => {
       show.append(ctx.el('div', 'hint left', `Lost a die: ${lost}`));
       for (const [pid, dice] of Object.entries(sd.hands)) {
         const p = ctx.player(pid);
-        const row = ctx.el('div', 'lr-hand' + (sd.losers.includes(pid) ? ' lost' : ''));
-        const name = ctx.el('span', 'lr-name', p?.name ?? '?'); name.style.color = p?.color ?? 'inherit';
-        const dd = ctx.el('span', 'lr-dice');
+        const row = ctx.el('div', 'liar-hand' + (sd.losers.includes(pid) ? ' lost' : ''));
+        const name = ctx.el('span', 'liar-name', p?.name ?? '?'); name.style.color = p?.color ?? 'inherit';
+        const dd = ctx.el('span', 'liar-dice');
         for (const d of dice) dd.append(die(d, d === sd.bid[1] || (sd.wild && d === 1) ? 'match' : 'dim'));
         row.append(name, dd);
         show.append(row);
       }
       if (sd.review?.length) {
-        const rv = ctx.el('details', 'lr-review');
+        const rv = ctx.el('details', 'liar-review');
         rv.open = reviewOpen; rv.ontoggle = () => { reviewOpen = rv.open; };
         rv.append(ctx.el('summary', '', '📊 How likely was each bid?'));
         for (const b of sd.review) {
           const who = ctx.player(b.by);
-          const row = ctx.el('div', 'lr-rv' + (b.held ? ' held' : ' bust'));
-          const name = ctx.el('span', 'lr-name', who?.name ?? '?'); name.style.color = who?.color ?? 'inherit';
+          const row = ctx.el('div', 'liar-rv' + (b.held ? ' held' : ' bust'));
+          const name = ctx.el('span', 'liar-name', who?.name ?? '?'); name.style.color = who?.color ?? 'inherit';
           row.append(name, ctx.el('span', '', say(b.bid[0], b.bid[1])), ctx.el('b', '', `${b.odds}%`), ctx.el('span', '', b.held ? '✓ held' : '✗ bust'));
           rv.append(row);
         }

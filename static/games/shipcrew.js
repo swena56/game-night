@@ -15,14 +15,14 @@ UI.shipcrew = (() => {
 
   function mount(main, side) {
     pick = new Set([0, 1]); turnKey = ''; seenLast = -1; rollKey = '';
-    main.innerHTML = `<div class="sc">
-      <div id="scTurn" class="sc-turn"></div>
-      <div id="scSlots" class="sc-slots"></div>
-      <div id="scLabel" class="sc-label"></div>
-      <div id="scFree" class="ya-dice sc-free"></div>
-      <div class="row sc-actions"><button id="scRoll" class="primary big"></button><button id="scDock" class="big">⚓ Dock</button></div>
+    main.innerHTML = `<div class="crew">
+      <div id="scTurn" class="crew-turn"></div>
+      <div id="scSlots" class="crew-slots"></div>
+      <div id="scLabel" class="crew-label"></div>
+      <div id="scFree" class="ya-dice crew-free"></div>
+      <div class="row crew-actions"><button id="scRoll" class="primary big"></button><button id="scDock" class="big">⚓ Dock</button></div>
       <p id="scHint" class="hint"></p>
-      <div id="scLast" class="sc-last"></div></div>`;
+      <div id="scLast" class="crew-last"></div></div>`;
     side.innerHTML = `<div class="panel"><h3>Cargo</h3><div id="scScores"></div><p class="hint left">Find 6 → 5 → 4 in order. The other two dice are your cargo.</p>
       <div id="scBest" hidden><h3>🏅 Best solo hauls</h3><ol class="ya-best"></ol><p class="hint left">Kept on this device, for this number of rounds.</p></div></div>`;
     $('scRoll').onclick = () => {
@@ -47,8 +47,8 @@ UI.shipcrew = (() => {
     rollKey = rk;
     const slots = $('scSlots'); slots.innerHTML = '';
     SLOTS.forEach(([v, icon, label], i) => {
-      const slot = ctx.el('div', 'sc-slot' + (i < sc.found.length ? ' got' : i === sc.found.length ? ' next' : ''));
-      slot.append(i < sc.found.length ? die(v) : ctx.el('span', 'sc-empty', String(v)), ctx.el('small', '', `${icon} ${label}`));
+      const slot = ctx.el('div', 'crew-slot' + (i < sc.found.length ? ' got' : i === sc.found.length ? ' next' : ''));
+      slot.append(i < sc.found.length ? die(v) : ctx.el('span', 'crew-empty', String(v)), ctx.el('small', '', `${icon} ${label}`));
       slots.append(slot);
     });
 
@@ -73,7 +73,7 @@ UI.shipcrew = (() => {
     const last = $('scLast'); last.innerHTML = '';
     if (sc.last) {
       const p = ctx.player(sc.last.by);
-      const line = ctx.el('div', 'sc-lastline' + (sc.last.n !== seenLast ? ' fresh' : ''));
+      const line = ctx.el('div', 'crew-lastline' + (sc.last.n !== seenLast ? ' fresh' : ''));
       seenLast = sc.last.n;
       const name = ctx.el('b', '', p?.name ?? '?'); name.style.color = p?.color ?? 'inherit';
       line.append(name, ctx.el('span', '', sc.last.cargo.length ? ` docked with ${sc.last.pts} cargo (${sc.last.cargo.join(' + ')})` : ` sank: no ${['ship', 'captain', 'crew'][sc.last.found.length]} — 0`));
@@ -88,7 +88,7 @@ UI.shipcrew = (() => {
       row.append(dot, ctx.el('span', '', sc.coins ? `${p.name}: ${sc.coins[pid] ?? 0} 💰 · ${sc.scores[pid] ?? 0} cargo` : `${p.name}: ${sc.scores[pid] ?? 0}`));
       box.append(row);
     }
-    if (sc.pot != null) box.append(ctx.el('div', 'sc-pot', `🍺 Pot: ${sc.pot} 💰`));
+    if (sc.pot != null) box.append(ctx.el('div', 'crew-pot', `🍺 Pot: ${sc.pot} 💰`));
     if (sc.solo) box.append(ctx.el('div', 'hint left', `Solo goal: ${sc.goal} cargo`));
     if (sc.solo && sc.seats[0] === S.me.id && !!ctx.act) soloBest($('scBest'), `shipcrew.best.${sc.rounds}`, `${S.code}#${S.gameNo}`, sc.scores[S.me.id] ?? 0, S.phase === 'over', { fmt: (v) => `${v} cargo` });
   }
