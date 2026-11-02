@@ -1,7 +1,7 @@
 // Safecracker: build a guess from the colour pad, lock it in, and read everyone's revealed guesses.
 // Pegs carry their number as well as their colour, so colour is never the only cue.
 UI.safecracker = (() => {
-  let S, ctx, draft = [], probing = false, draftFor = '', notes = [], notesFor = null;
+  let S, ctx, draft = [], cursor = 0, probing = false, draftFor = '', notes = [], notesFor = null;
   const MARKS = ['', 'out', 'in'];  // a note cycles: unknown → ✗ not in the code → ✓ in the code
   const STANDARD = ['#ef476f', '#ffb703', '#06d6a0', '#3a86ff', '#c77dff', '#f4f1de', '#ff7f11', '#8d6e63'];
   // Okabe–Ito: eight colours that stay distinct with the common kinds of colour blindness
@@ -22,7 +22,7 @@ UI.safecracker = (() => {
   }
 
   function mount(main, side) {
-    draft = []; probing = false; draftFor = ''; notes = []; notesFor = null;
+    draft = []; cursor = 0; probing = false; draftFor = ''; notes = []; notesFor = null;
     main.innerHTML = `<div class="sc">
       <div class="sc-head"><span id="scSafe"></span><span id="scRound"></span></div>
       <div id="scOpened" class="sc-opened" hidden></div>
@@ -32,7 +32,7 @@ UI.safecracker = (() => {
         <div id="scSlots" class="sc-slots"></div>
         <div id="scPad" class="sc-pad"></div>
         <div class="row sc-actions">
-          <button id="scBack" title="Remove the last colour">⌫</button>
+          <button id="scBack" title="Remove the selected colour (or the last one)">⌫</button>
           <button id="scAgain" title="Start from your last guess">↺ Last</button>
           <button id="scProbe">🔍 Probe</button>
           <button id="scLock" class="primary">🔒 Lock in</button>
@@ -51,11 +51,29 @@ UI.safecracker = (() => {
       try { localStorage.setItem('safecracker.palette', safe ? 'safe' : 'standard'); } catch {}
       ctx.rerender();
     };
-    $('scBack').onclick = () => { draft.pop(); paint(); };
-    $('scAgain').onclick = () => { draft = lastGuess() || draft; paint(); };
+    $('scBack').onclick = () => {
+      // clear the selected peg if it has one, else the last filled one; the others stay put (#42)
+      const i = cursor != null && draft[cursor] != null ? cursor : draft.findLastIndex((x) => x != null);
+      if (i >= 0) { draft[i] = null; cursor = i; }
+      paint();
+    };
+    $('scAgain').onclick = () => { const last = lastGuess(); if (last) { draft = last; cursor = null; } paint(); };
     $('scProbe').onclick = () => { probing = !probing; paint(); };
     // the action field is "pegs": "code" is the room code in every request
     $('scLock').onclick = () => ctx.quiet(ctx.act(S.safecracker.stage === 'set' ? 'set' : 'guess', { pegs: draft.slice() }));
+  }
+
+  // the guess is a fixed row of slots (null = empty), so taking a peg out never shifts the others (#42)
+  function fit(n) {
+    draft = Array.from({ length: n }, (_, i) => draft[i] ?? null);
+    if (cursor != null && cursor >= n) cursor = null;
+    if (cursor == null) next(0);
+  }
+  // select the first empty slot from i on (wrapping), or none when the row is full
+  function next(i) {
+    const n = draft.length;
+    for (let k = 0; k < n; k++) { const j = (i + k) % n; if (draft[j] == null) { cursor = j; return; } }
+    cursor = null;
   }
 
   // my previous guess on this safe, to start from when only a peg or two should change
@@ -79,8 +97,12 @@ UI.safecracker = (() => {
       ctx.quiet(ctx.act('probe', { color: c }));
       return paint();
     }
-    if (draft.length >= g.length || (!g.repeats && draft.includes(c))) return;
-    draft.push(c);
+    if (cursor == null) return;
+    // without repeats, a colour already in the row swaps places with the selected slot (#41)
+    const j = g.repeats ? -1 : draft.indexOf(c);
+    if (j >= 0 && j !== cursor) draft[j] = draft[cursor];
+    draft[cursor] = c;
+    next(cursor + 1);
     paint();
   }
 
@@ -90,28 +112,39 @@ UI.safecracker = (() => {
     const slots = $('scSlots'); slots.innerHTML = '';
     const shown = g.mine || draft;
     for (let i = 0; i < g.length; i++) {
-      const p = peg(shown[i], 'slot' + (shown[i] == null ? ' empty' : ''));
-      if (live && shown[i] != null) p.onclick = () => { draft.splice(i, 1); paint(); };
+      const p = peg(shown[i], 'slot' + (shown[i] == null ? ' empty' : '') + (live && i === cursor ? ' sel' : ''));
+      if (live) {
+        p.setAttribute('role', 'button');
+        p.setAttribute('aria-label', `spot ${i + 1}: ${shown[i] == null ? 'empty' : 'colour ' + (shown[i] + 1)}`);
+        // tap a slot to choose where the next colour goes; tap the selected one again to empty it
+        p.onclick = () => {
+          if (i === cursor && draft[i] != null) draft[i] = null;
+          else cursor = i;
+          paint();
+        };
+      }
       slots.append(p);
     }
     const pad = $('scPad'); pad.innerHTML = '';
     for (let c = 0; c < g.colors; c++) {
       const b = peg(c, 'pad' + (probing ? ' probing' : ''));
       const used = !g.repeats && draft.includes(c) && !probing;
+      const open = live && (probing || cursor != null);
       b.setAttribute('role', 'button');
-      b.setAttribute('aria-label', `colour ${c + 1}`);
-      b.classList.toggle('off', !live || used);
+      b.setAttribute('aria-label', `colour ${c + 1}` + (used ? ' (in your guess: tap to move it here)' : ''));
+      b.classList.toggle('off', !open);
+      b.classList.toggle('used', open && used);
       if (notes[c]) b.classList.add('note-' + MARKS[notes[c]]);
-      if (live && !used) b.onclick = () => tapColor(c);
+      if (open) b.onclick = () => tapColor(c);
       pad.append(b);
     }
     const probed = g.probed.includes(S.me.id);
-    $('scBack').disabled = !live || !draft.length;
+    $('scBack').disabled = !live || draft.every((x) => x == null);
     $('scAgain').disabled = !live || !lastGuess();
     $('scProbe').disabled = !live || probed || g.stage === 'set';
     $('scProbe').classList.toggle('on', probing);
     $('scProbe').textContent = probed ? '🔍 Used' : probing ? '🔍 Pick a colour…' : '🔍 Probe';
-    $('scLock').disabled = !live || draft.length !== g.length;
+    $('scLock').disabled = !live || draft.some((x) => x == null);
     $('scLock').textContent = g.stage === 'set' ? '🔒 Set my code' : '🔒 Lock in';
     const waiting = g.waiting.map((id) => ctx.player(id)?.name).filter(Boolean);
     $('scStatus').textContent = S.phase !== 'playing' ? ''
@@ -119,7 +152,8 @@ UI.safecracker = (() => {
       : g.stage === 'set' ? (g.mine ? `⚔️ Your code is set. Waiting for ${waiting.join(', ') || '…'}` : '⚔️ Build the secret code your rival has to crack.')
       : g.mine ? `🔒 Locked in. Waiting for ${waiting.join(', ') || '…'}`
       : probing ? 'Tap a colour to learn how many of it the code holds (costs a point if you crack this safe).'
-      : waiting.length > 1 ? `Still choosing: ${waiting.join(', ')}` : '';
+      : waiting.length > 1 ? `Still choosing: ${waiting.join(', ')}`
+      : 'Tap a spot to change just that peg.';
   }
 
   function render(s, c) {
@@ -127,8 +161,8 @@ UI.safecracker = (() => {
     const g = S.safecracker;
     // every round starts from an empty guess (#45); ↺ Last brings the previous one back
     const key = `${g.safe}:${g.round}`;
-    if (draftFor !== key) { draft = []; probing = false; draftFor = key; }
-    if (draft.length > g.length) draft = draft.slice(0, g.length);
+    if (draftFor !== key) { draft = []; cursor = 0; probing = false; draftFor = key; }
+    fit(g.length);
     $('scSafe').textContent = (g.duel ? '⚔️ ' : '🔐 ') + (g.safes > 1 ? `Safe ${g.safe} of ${g.safes}` : g.duel ? 'Duel' : 'The safe');
     $('scRound').textContent = g.stage === 'set' ? 'Setting codes' : `Guess ${Math.min(g.round, g.rounds)} of ${g.rounds}`;
 

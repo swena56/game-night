@@ -626,7 +626,9 @@ Riders and Air Hockey start in it) (#13, #15).
   haven't found. ✅ A 6×6 grid for big tables (4+ letters). ✅ Tap any word in the results to see it traced across
   the grid, tile by tile.
 - 🔐 **Safecracker:** ✅ added (#22). ✅ Each round starts from an empty guess, with ↺ Last to bring
-  back your previous one (#45). ✅ A 📝 notes row marks colours ✗ out or ✓ in (shown on the pad too). ✅ A colour-blind-friendly palette
+  back your previous one (#45). ✅ The guess is a fixed row of spots: tap a spot to select it, the next colour goes there,
+  and tapping it again empties it without shifting the other pegs (#42); without repeats, tapping a colour that's already
+  in the row swaps it into the selected spot (#41). ✅ A 📝 notes row marks colours ✗ out or ✓ in (shown on the pad too). ✅ A colour-blind-friendly palette
   (Okabe–Ito, per device). ✅ ⚔️ Duel mode (two players): each secretly sets a code, then you race to crack each
   other's in simultaneous rounds; your rival's guesses at your code show too, and both codes open at the end.
 - 🤥 **Fib Finder:** ✅ 118 facts, up from 56 (#51); moved here from Party to balance the lobby. ✅ A Facts setting picks a topic: 🐾 Animals, 🔬 Science & nature, 🏛️ History & inventions or 🔤 Words & names (a duplicate apple fact became the Hundred Years' War).
