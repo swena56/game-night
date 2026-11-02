@@ -154,8 +154,11 @@ Wire-up:
 - `static/index.html`: add `<script src="/games/<id>.js"></script>` next to the others.
 - `static/app.js`: add `['<id>', '<icon> <Name>']` to `SOLO_GAMES`, and an entry in `SOLO_BOTS` if
   solo play needs more than one bot.
-- `static/style.css`: append a `/* <name> */` block. Reuse the CSS variables (`--panel`,
-  `--accent`, …).
+- `static/style.css`: add a `/* <name> */` section under *6. Games, A to Z*, in A-to-Z order of
+  the game id, holding all of the game's rules (its phone, focus-mode and keyboard-open rules too).
+  Pick a class prefix no other game uses (`grep -n '\.<prefix>[-{ .]' static/style.css`): `.sc` and `.lr`
+  are already shared by two games each. Reuse the CSS variables (`--panel`, `--accent`, …) and the
+  shared pieces in section 5 (cards, dice, timer bar, arena banners).
 - Bump the game count in the home-screen tagline (`index.html`, the `.tag` paragraph).
 
 ## Step 4: Test, in this order
