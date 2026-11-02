@@ -53,7 +53,7 @@ UI.qork = (() => {
     pressedNo = g.rollNo;
     const ms = g.stage === 'tumble' || shownNo !== g.rollNo ? -1 : performance.now() - shownAt;
     if (!g.trigger) $('qkMat').classList.add('flinch');
-    ctx.quiet(ctx.act('react', { ms: Math.round(ms) }));
+    ctx.quiet(ctx.act('yank', { ms: Math.round(ms) }));
     draw();
   }
 

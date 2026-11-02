@@ -403,6 +403,8 @@ async function playSolo(game, seconds = 60) {
     if (game === 'lucky' && s.lucky.stage === 'wheel') { await sleep(300); continue; }
     if (mine) { try { MOVES[game](d, s, report.moves, w); report.moves++; } catch (e) { errors.push('driver: ' + e.stack); } }
     await sleep(60);
+    // the server turned a press away as unknown: the game's action never reached it (Qork #11)
+    const t = d.querySelector('#toast'); if (!t.hidden && /Unknown/.test(t.textContent) && !report.notes.includes('toast: ' + t.textContent)) report.notes.push('toast: ' + t.textContent);
     if (!d.querySelector('#modal').hidden) { report.dialogs = (report.dialogs || 0) + 1; click(d.querySelector('#modalOk')); }
     await sleep(game === 'spire' ? 120 : 350);
   }

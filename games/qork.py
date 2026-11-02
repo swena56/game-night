@@ -33,7 +33,7 @@ class Qork(Game):
     id = "qork"
     category = "dice"
     howto = [
-        "One player is the 🥤 Cupper and keeps rolling two dice; everyone else is a Corker with a Qork on the mat.",
+        "One player is the 🥤 Cupper and keeps rolling two dice; everyone else is a Corker with a Qork (a cork on a string) in the middle of the mat.",
         "On doubles or a total of 7, Corkers tap YANK to pull their Qork away, and the Cupper taps SLAM.",
         "Yank before the cup lands: +1. Too slow: you're trapped and the Cupper gets +1 (all trapped: +1 more).",
         "Jumping early on any other roll costs you 1 point — Cuppers too.",
@@ -190,7 +190,9 @@ class Qork(Game):
                 raise GameError("Not yet!")
             self.roll()
             return
-        if a.get("type") != "react":
+        # "yank" (YANK or SLAM), not "react": the room takes "react" for its emoji bar, which swallowed
+        # every human press with "Unknown reaction." (#11)
+        if a.get("type") != "yank":
             raise GameError("Unknown action.")
         if p.spectator or p.eliminated or not hasattr(p.g, "score"):
             raise GameError("You're watching this game.")
