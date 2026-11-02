@@ -88,8 +88,13 @@ UI.riders = (() => {
     renderSide();
   }
 
+  let sideKey = '';
   function renderSide() {
     const r = S.riders, box = $('lrRiders'); if (!box) return;
+    // fast updates arrive every tick: only rebuild the panel when something on it changed (#32)
+    const key = JSON.stringify([r.round, r.stage, r.wins, r.seats, r.me, live.map((L) => [L?.alive, L?.boosts])]);
+    if (key === sideKey && box.childElementCount) return;
+    sideKey = key;
     box.innerHTML = '';
     box.append(ctx.el('div', 'hint left', `Round ${r.round} · first to ${r.target}`));
     r.seats.forEach((pid, i) => {
@@ -150,7 +155,7 @@ UI.riders = (() => {
     const camera = new T.PerspectiveCamera(45, 1, 0.5, 400);
     scene.add(new T.AmbientLight(0xffffff, 0.35));
     const sun = new T.DirectionalLight(0xffffff, 0.5); sun.position.set(-20, 60, 30); scene.add(sun);
-    let n = 0, world = null, ribbons = [], bikes = [], tips = [], drawn = [];
+    let n = 0, world = null, ribbons = [], bikes = [], tips = [], drawn = [], pend = [];
     const segGeo = new T.BoxGeometry(1, 1, 1);
 
     function build() {
@@ -174,7 +179,7 @@ UI.riders = (() => {
       for (const [w, d, x, z] of [[n + 1, 0.5, 0, -half - 0.25], [n + 1, 0.5, 0, half + 0.25], [0.5, n + 1, -half - 0.25, 0], [0.5, n + 1, half + 0.25, 0]]) {
         const m = new T.Mesh(new T.BoxGeometry(w, 1.2, d), wallMat); m.position.set(x, 0.6, z); world.add(m);
       }
-      ribbons = []; bikes = []; tips = []; drawn = [];
+      ribbons = []; bikes = []; tips = []; drawn = []; pend = [];
       S.riders.seats.forEach((_, i) => {
         const color = new T.Color(colorOf(i));
         const rm = new T.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.85, transparent: true, opacity: 0.9 });
@@ -205,11 +210,17 @@ UI.riders = (() => {
       if (!world || S.riders.n !== n || ribbons.length !== trails.length) return build();
       trails.forEach((t, i) => {
         const inst = ribbons[i];
-        if (t.length < drawn[i]) drawn[i] = 0;
-        for (let k = Math.max(1, drawn[i]); k < t.length; k++) segment(at(t[k - 1]), at(t[k]), (m) => inst.setMatrixAt(k - 1, m));
-        inst.count = Math.max(0, t.length - 1);
-        inst.instanceMatrix.needsUpdate = true;
         inst.material.opacity = live[i]?.alive ? 0.9 : 0.3;
+        if (t.length < drawn[i]) drawn[i] = 0;
+        if (t.length === drawn[i]) return;
+        const from = Math.max(1, drawn[i]);
+        for (let k = from; k < t.length; k++) segment(at(t[k - 1]), at(t[k]), (m) => inst.setMatrixAt(k - 1, m));
+        inst.count = Math.max(0, t.length - 1);
+        // upload only the new segments, not the whole n×n buffer (#32)
+        const attr = inst.instanceMatrix;
+        pend[i] = Math.min(pend[i] ?? Infinity, from - 1);  // two updates between frames: upload both
+        if (attr.updateRange) { attr.updateRange.offset = pend[i] * 16; attr.updateRange.count = (t.length - 1 - pend[i]) * 16; }
+        attr.needsUpdate = true;
         drawn[i] = t.length;
       });
     }
@@ -219,14 +230,14 @@ UI.riders = (() => {
       renderer.setSize(w, h, false); camera.aspect = w / h;
       // fit the whole arena: move the camera back until all four corners are on screen
       const half = (n || 40) / 2 + 1;
-      let dist = half * 1.6;
-      for (let k = 0; k < 30; k++) {
-        camera.position.set(0, dist * 0.82, dist * 0.62); camera.lookAt(0, 0, half * 0.08); camera.updateProjectionMatrix(); camera.updateMatrixWorld();
+      let dist = half * 1.2;
+      for (let k = 0; k < 80; k++) {
+        camera.position.set(0, dist * 0.9, dist * 0.44); camera.lookAt(0, 0, half * 0.06); camera.updateProjectionMatrix(); camera.updateMatrixWorld();
         const fits = [[-half, -half], [half, -half], [-half, half], [half, half]].every(([x, z]) => {
           const p = new T.Vector3(x, 0, z).project(camera); return Math.abs(p.x) < 0.96 && Math.abs(p.y) < 0.94;
         });
         if (fits) break;
-        dist *= 1.08;
+        dist *= 1.03;
       }
       base.copy(camera.position);
     }
@@ -284,6 +295,7 @@ UI.riders = (() => {
         if (tip.visible) segment(at(t[t.length - 1]), p, (m) => { tip.matrixAutoUpdate = false; tip.matrix.copy(m); });
       });
       renderer.render(scene, camera);
+      pend = [];
     }
     function dispose() { renderer.dispose(); renderer.domElement.remove(); }
     if (S) build();

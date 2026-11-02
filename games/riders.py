@@ -78,6 +78,7 @@ class Riders(Game):
         self.synced = now
         self.last_frame = now
         self.acc = 0.0
+        self.sent = None
         self.room.add_log(f"🔵 Round {self.round} — get ready!")
 
     def occupy(self, i, x, y):
@@ -139,7 +140,11 @@ class Riders(Game):
         if self.stage == "ride" and now - self.synced > SYNC_EVERY:
             self.synced = now
             changed = True
-        self.broadcast(now)
+        # only when the grid moved: sending every 60 fps frame flooded each browser with ~50 updates a
+        # second at 6 riders, each one redrawing the side panel and re-uploading every trail (#32)
+        if (self.tick, self.stage) != self.sent:
+            self.sent = (self.tick, self.stage)
+            self.broadcast(now)
         return changed
 
     def step(self, now):

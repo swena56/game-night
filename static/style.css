@@ -1177,8 +1177,16 @@ body.kb-open .rl-art { width: min(100%, calc(var(--app-h, 100vh) - 200px)); }
 .lr-stage canvas { display: block; width: 100%; height: 100%; }
 .lr-pad { display: grid; grid-template-columns: repeat(3, 64px); gap: 6px; justify-content: center; margin-top: 10px; user-select: none; }
 .lr-pad button { height: 54px; font-size: 22px; touch-action: manipulation; }
-body.focus .lr { max-width: 900px; }
+body.focus .lr { max-width: 1200px; }
 body.focus .lr-stage { height: max(220px, calc(var(--app-h, 100vh) - 245px)); }
+/* a wide screen with a mouse: the pad sits beside the arena, so the arena gets the full height (#32) */
+@media (min-width: 900px) and (hover: hover) and (pointer: fine) {
+  .lr { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 12px; }
+  .lr-pad { grid-template-columns: repeat(3, 52px); margin: 0; }
+  .lr-pad button { height: 46px; }
+  .lr-stage { height: min(calc(var(--app-h, 100vh) - 140px), 760px); }
+  body.focus .lr-stage { height: max(220px, calc(var(--app-h, 100vh) - 70px)); }
+}
 
 /* contract rummy */
 .ru { width: min(100%, 680px); margin: 0 auto; display: flex; flex-direction: column; gap: 8px; }

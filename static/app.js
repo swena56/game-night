@@ -429,7 +429,7 @@ $('#gamePicker').addEventListener('keydown', (e) => {
     if (score < bestScore) { best = t; bestScore = score; }
   }
   best?.focus();
-  best?.scrollIntoView({ block: 'nearest' });
+  best?.scrollIntoView?.({ block: 'nearest' });
 });
 
 function renderLobby() {
@@ -479,7 +479,7 @@ function renderLobby() {
   document.title = `${info.name} — Game Night`;
   if (pickedGame && pickedGame === S.gameId) {
     pickedGame = null;
-    requestAnimationFrame(() => chosen.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    requestAnimationFrame(() => chosen.scrollIntoView?.({ behavior: 'smooth', block: 'start' }));
   }
   $('#gameDesc').textContent = info.blurb + (S.gameId === 'unmask' ? ' ' + MODE_DESC[S.settings.mode] : '');
   $('#howto').innerHTML = '';
