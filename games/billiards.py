@@ -18,6 +18,7 @@ TW, TH, R = 200.0, 100.0, 2.3        # table size and ball radius, in table unit
 FRICTION = 70.0                      # rolling slow-down, units/s²
 CUSHION, BOUNCE = 0.78, 0.95         # speed kept off a cushion / in a ball-to-ball hit
 SPIN_K = 0.6                         # how much of the hit speed follow / draw gives back to the cue ball
+SIDE_K, SIDE_KEEP = 0.22, 0.45       # side spin: sideways kick off a cushion (share of the strike speed), spin left after it
 MIN_SPEED, MAX_SPEED = 25.0, 520.0   # cue speed at power 0 and 1
 DT, FRAME_EVERY = 1 / 120, 4         # simulation step; record every 4th step (30 fps)
 MAX_STEPS = 120 * 14
@@ -34,16 +35,20 @@ def near_mouth(x, y):
     return any(math.hypot(x - px, y - py) < cap + MOUTH for px, py, cap in POCKETS)
 
 
-def simulate(pos, angle, speed, record=True, spin=0.0, holes=None):
+def simulate(pos, angle, speed, record=True, spin=0.0, holes=None, side=0.0):
     """Run one shot. pos: {ball: (x, y)} with the cue ball as 0. spin: -1 (draw) to 1 (follow): after the cue
-    ball's first hit it rolls on (or back) along the aim line. holes, if given, gets {ball: pocket index}.
+    ball's first hit it rolls on (or back) along the aim line. side: -1 (left) to 1 (right english): the cue
+    ball spins clockwise (seen from above) for right, and each cushion kicks it sideways against that spin,
+    so right english comes off a rail to the ball's own right. holes, if given, gets {ball: pocket index}.
     Returns (final positions, pocketed balls in order, first ball the cue touched, frames)."""
     balls = {n: [x, y, 0.0, 0.0] for n, (x, y) in pos.items()}
     aim_x, aim_y = math.cos(angle), math.sin(angle)
     balls[0][2], balls[0][3] = aim_x * speed, aim_y * speed
     pocketed, first, frames = [], None, []
     order = sorted(pos)
+    english = side * speed  # the cue ball's sideways spin, as a speed; it wears off with time and cushions
     for step in range(MAX_STEPS):
+        english *= 1 - 1.2 * DT
         moving = False
         for b in balls.values():
             v = math.hypot(b[2], b[3])
@@ -93,10 +98,16 @@ def simulate(pos, angle, speed, record=True, spin=0.0, holes=None):
             mouth = near_mouth(b[0], b[1])
             for axis, size in ((0, TW), (1, TH)):
                 lo, hi = (-R, size + R) if mouth else (R, size - R)
-                if b[axis] < lo:
-                    b[axis], b[axis + 2] = lo, abs(b[axis + 2]) * CUSHION
-                elif b[axis] > hi:
-                    b[axis], b[axis + 2] = hi, -abs(b[axis + 2]) * CUSHION
+                into = -1 if b[axis] < lo else 1 if b[axis] > hi else 0  # which way the cushion lies
+                if not into:
+                    continue
+                b[axis], b[axis + 2] = (lo, abs(b[axis + 2]) * CUSHION) if into < 0 else (hi, -abs(b[axis + 2]) * CUSHION)
+                if n == 0 and english:
+                    # the contact point's spin slides along the cushion; friction pushes the ball the other way.
+                    # Clockwise spin at a contact in direction (nx, ny) moves that point along (-ny, nx).
+                    nx, ny = (into, 0) if axis == 0 else (0, into)
+                    b[2] -= -ny * english * SIDE_K; b[3] -= nx * english * SIDE_K
+                    english *= SIDE_KEEP
         if record and step % FRAME_EVERY == 0:
             frame = []
             for n in order:
@@ -155,6 +166,7 @@ class Billiards(Game):
         "Drag anywhere on the table to turn the cue around the ball, set the power, then Shoot. ◀ ▶ fine-tune.",
         "The first ball you pocket after the break picks your group: 🔵 solids (1–7) or 🟠 stripes (9–15).",
         "Pocket one of yours and you shoot again. Hit your own group first.",
+        "The cue-ball pad by Shoot picks where the cue strikes: high to follow through, low to draw back, left or right to bend the bounce off a cushion.",
         "Fouls (cue ball in a pocket, missing everything, wrong ball first) give your rival ✋ ball in hand.",
         "Clear your group, then sink the 8 to win. The 8 too early, or with a foul, loses.",
     ]
@@ -232,15 +244,16 @@ class Billiards(Game):
                 raise GameError("The cue ball can't go there." + (" Keep it behind the line for the break." if self.in_hand == "kitchen" else ""))
         elif 0 not in self.pos:
             raise GameError("Place the cue ball first.")
-        spin = a.get("spin", 0)
-        if not isinstance(spin, (int, float)) or not math.isfinite(spin) or not -1 <= spin <= 1:
+        spin, side = a.get("spin", 0), a.get("side", 0)
+        if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and -1 <= v <= 1 for v in (spin, side)):
             raise GameError("Bad spin.")
         pocket = a.get("pocket")
         if self.calling(p.id) and (not isinstance(pocket, int) or isinstance(pocket, bool) or not 0 <= pocket < len(POCKETS)):
             raise GameError("Call a pocket for the 8 first.")
-        self.shoot(p, float(angle), float(power), tuple(cue) if cue else None, float(spin), pocket if self.calling(p.id) else None)
+        self.shoot(p, float(angle), float(power), tuple(cue) if cue else None, float(spin), pocket if self.calling(p.id) else None,
+                   float(side))
 
-    def shoot(self, p, angle, power, cue=None, spin=0.0, pocket=None):
+    def shoot(self, p, angle, power, cue=None, spin=0.0, pocket=None, side=0.0):
         r = self.room
         if cue:
             self.pos[0] = cue
@@ -249,7 +262,7 @@ class Billiards(Game):
         speed = MIN_SPEED + (MAX_SPEED - MIN_SPEED) * power
         order = sorted(self.pos)
         holes = {}
-        final, sunk, first, frames = simulate(self.pos, angle, speed, spin=spin, holes=holes)
+        final, sunk, first, frames = simulate(self.pos, angle, speed, spin=spin, holes=holes, side=side)
         breaking, self.breaking, self.in_hand = self.breaking, False, None
         self.pos = final
         self.shot_seq += 1

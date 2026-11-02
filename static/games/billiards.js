@@ -3,7 +3,8 @@
 UI.billiards = (() => {
   let S, ctx, raf = 0, ro = null, animEnd = 0;
   let dial = null, aim = 0, aimFor = null, power = 0.55, cuePos = null, drag = null, anim = null, seenShot = 0;
-  let spin = 0, called = null;  // follow (+) / draw (−), and the pocket called for the 8
+  let spin = 0, english = 0, called = null;  // where the cue tip strikes: follow (+) / draw (−), right (+) / left (−); the pocket called for the 8
+  let rolls = new Map();  // each ball's orientation, so it turns as it rolls (#33)
   let view = { z: 1, x: 0, y: 0 }, pinch = null, aimBefore = 0;  // two-finger zoom of the table (#28)
   const touches = new Map();
   let geo = null;  // canvas geometry: scale, rail width, portrait or not
@@ -19,7 +20,7 @@ UI.billiards = (() => {
     const B = S.billiards, dpr = Math.min(devicePixelRatio || 1, 2);
     const portrait = stage.clientWidth < (window.visualViewport?.height ?? innerHeight) * 0.8;
     const longSide = B.W + 2 * RAIL, shortSide = B.H + 2 * RAIL;
-    const chrome = document.body.classList.contains('focus') ? 120 : 210;  // top bar, controls (and chips/log)
+    const chrome = document.body.classList.contains('focus') ? 132 : 190;  // top bar, controls (and chips/log)
     const availH = Math.max(200, (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--app-h')) || innerHeight) - chrome);
     const w = stage.clientWidth || 320;
     const k = portrait ? Math.min(w / shortSide, availH / longSide) : Math.min(w / longSide, availH / shortSide);
@@ -154,7 +155,8 @@ UI.billiards = (() => {
     const back = rpx + (6 + power * 46) * lw, len = Math.max(190 * lw, rpx * 34), dx = Math.cos(aim), dy = Math.sin(aim);
     const [ux, uy] = geo.portrait ? [dy, -dx] : [dx, dy];
     const [px, py] = [-uy, ux], tipW = Math.max(3 * lw, rpx * 0.55), buttW = tipW * 2.3;
-    const at = (d, w) => [sx - ux * d + px * w, sy - uy * d + py * w];
+    const off = english * rpx * 0.55;  // the stick lines up with where the tip will strike (side spin)
+    const at = (d, w) => [sx - ux * d + px * (w + off), sy - uy * d + py * (w + off)];
     const wood = g.createLinearGradient(...at(back, 0), ...at(back + len, 0));
     wood.addColorStop(0, '#f1d9a8'); wood.addColorStop(0.62, '#c8925a'); wood.addColorStop(0.64, '#2b1a10'); wood.addColorStop(1, '#3d2414');
     g.fillStyle = '#0005';  // shadow
@@ -184,15 +186,71 @@ UI.billiards = (() => {
   }
   const k1 = () => geo.k / geo.css;  // device pixels per CSS pixel
 
+  // ---------- rolling balls (#33): each ball keeps an orientation in screen space: p, the centre of its number
+  // spot, and a, the axis its stripe runs round (also "up" for the printed number). Moving d pixels rolls it
+  // d / r radians about the axis at right angles to the motion. Balls are shaded pixel by pixel on a small
+  // canvas, redrawn only when they turn.
+  const rot = (v, k, c, sn) => {  // Rodrigues: v turned about unit axis k
+    const d = k[0] * v[0] + k[1] * v[1] + k[2] * v[2];
+    const cx = k[1] * v[2] - k[2] * v[1], cy = k[2] * v[0] - k[0] * v[2], cz = k[0] * v[1] - k[1] * v[0];
+    return [v[0] * c + cx * sn + k[0] * d * (1 - c), v[1] * c + cy * sn + k[1] * d * (1 - c), v[2] * c + cz * sn + k[2] * d * (1 - c)];
+  };
+  function rollTo(n, x, y, r) {
+    let o = rolls.get(n);
+    if (!o) { o = { p: [0, 0, 1], a: [0, -1, 0], x, y, ver: 1, img: null }; rolls.set(n, o); return o; }
+    const dx = x - o.x, dy = y - o.y, d = Math.hypot(dx, dy);
+    o.x = x; o.y = y;
+    if (d < 0.01 || d > r * 12) return o;  // still, or put back on the table: no roll
+    const k = [-dy / d, dx / d, 0], ang = d / r, c = Math.cos(ang), sn = Math.sin(ang);
+    o.p = rot(o.p, k, c, sn); o.a = rot(o.a, k, c, sn);
+    const m = Math.hypot(...o.p); o.p = o.p.map((v) => v / m);
+    const dot = o.a[0] * o.p[0] + o.a[1] * o.p[1] + o.a[2] * o.p[2];  // keep a at right angles to p
+    o.a = o.a.map((v, i) => v - dot * o.p[i]); const ma = Math.hypot(...o.a); o.a = o.a.map((v) => v / ma);
+    o.ver++;
+    return o;
+  }
+  const rgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  function ballImage(n, o, r) {
+    const size = Math.max(4, Math.ceil(r * 2 * 2));  // drawn at twice the size, then scaled down: smooth edges
+    if (o.img && o.imgVer === o.ver && o.img.width === size) return o.img;
+    const cv = o.img?.width === size ? o.img : Object.assign(document.createElement('canvas'), { width: size, height: size });
+    const g = cv.getContext('2d'), im = g.createImageData(size, size), px = im.data, h = size / 2;
+    const col = rgb(colorOf(n)), ivory = [251, 251, 242], red = [193, 18, 31], [p0, p1, p2] = o.p, [a0, a1, a2] = o.a;
+    for (let j = 0; j < size; j++) for (let i = 0; i < size; i++) {
+      const x = (i + 0.5 - h) / h, y = (j + 0.5 - h) / h, z2 = 1 - x * x - y * y;
+      if (z2 <= 0) continue;
+      const z = Math.sqrt(z2), sp = x * p0 + y * p1 + z * p2;
+      let c;
+      if (n === 0) c = Math.abs(sp) > 0.975 ? red : ivory;  // the cue ball's two red dots show it turning
+      else if (sp > 0.87) c = ivory;  // the number spot
+      else if (n > 8) c = Math.abs(x * a0 + y * a1 + z * a2) < 0.5 ? col : ivory;
+      else c = col;
+      const k = (j * size + i) * 4;
+      px[k] = c[0]; px[k + 1] = c[1]; px[k + 2] = c[2]; px[k + 3] = 255;
+    }
+    g.putImageData(im, 0, 0);
+    // the number, printed on the spot: it leans with the ball and flattens as it rolls toward the edge
+    if (n && p2 > 0.2) {
+      const len = Math.hypot(p0, p1) || 1, ux = p0 / len, uy = p1 / len, f = p2;
+      // flatten along the direction to the spot's centre (u), then turn the text so its top follows a
+      const up = [a0 - (a0 * p0 + a1 * p1 + a2 * p2) * p0, a1 - (a0 * p0 + a1 * p1 + a2 * p2) * p1];
+      const th = Math.atan2(up[0], -up[1]);
+      g.save();
+      g.translate(h + p0 * h, h + p1 * h);
+      g.transform(1 - (1 - f) * ux * ux, -(1 - f) * ux * uy, -(1 - f) * ux * uy, 1 - (1 - f) * uy * uy, 0, 0);
+      g.rotate(th);
+      g.fillStyle = '#111'; g.font = `bold ${Math.round(h * 0.62)}px system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(String(n), 0, h * 0.04);
+      g.restore();
+    }
+    o.img = cv; o.imgVer = o.ver;
+    return cv;
+  }
   function drawBall(g, n, x, y, r) {
-    const col = colorOf(n);
+    const o = rollTo(n, x, y, r);
     g.fillStyle = '#0006'; g.beginPath(); g.arc(x + r * 0.18, y + r * 0.22, r, 0, 7); g.fill();
     g.save(); g.beginPath(); g.arc(x, y, r, 0, 7); g.clip();
-    g.fillStyle = n > 8 ? '#fbfbf2' : col; g.fillRect(x - r, y - r, 2 * r, 2 * r);
-    if (n > 8) { g.fillStyle = col; g.fillRect(x - r, y - r * 0.55, 2 * r, r * 1.1); }
-    if (n) { g.fillStyle = '#fff'; g.beginPath(); g.arc(x, y, r * 0.48, 0, 7); g.fill();
-      g.fillStyle = '#111'; g.font = `bold ${Math.round(r * 0.7)}px system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.fillText(String(n), x, y + r * 0.04); }
+    g.drawImage(ballImage(n, o, r), x - r, y - r, 2 * r, 2 * r);
     const shine = g.createRadialGradient(x - r * 0.4, y - r * 0.4, r * 0.1, x, y, r);
     shine.addColorStop(0, '#ffffff99'); shine.addColorStop(0.4, '#ffffff10'); shine.addColorStop(1, '#00000040');
     g.fillStyle = shine; g.fillRect(x - r, y - r, 2 * r, 2 * r);
@@ -268,7 +326,7 @@ UI.billiards = (() => {
 
   function shoot() {
     if (!canShoot()) return;
-    const extra = { angle: aim, power, spin };
+    const extra = { angle: aim, power, spin, side: english };
     if (B().calling) {
       if (called == null) return ctx.toast('📣 Tap the pocket you\'re aiming the 8 at first.');
       extra.pocket = called;
@@ -282,7 +340,7 @@ UI.billiards = (() => {
 
   // ---------- mount / render
   function mount(main, side) {
-    view = { z: 1, x: 0, y: 0 }; pinch = null; touches.clear();
+    view = { z: 1, x: 0, y: 0 }; pinch = null; touches.clear(); rolls = new Map(); spin = english = 0;
     dial = null; aim = 0; aimFor = null; power = 0.55; cuePos = null; drag = null; anim = null; seenShot = 0; geo = null;
     main.innerHTML = `<div class="bl"><div id="blStage" class="bl-stage"><canvas id="blCanvas"></canvas>
         <button id="blZoom" class="bl-zoom" hidden aria-label="Show the whole table">🔍 1×</button></div>
@@ -290,10 +348,12 @@ UI.billiards = (() => {
         <button id="blLeft" aria-label="Aim left">◀</button>
         <label class="bl-power">Power <input id="blPower" type="range" min="5" max="100" value="55"><b id="blPowerVal">55%</b></label>
         <button id="blRight" aria-label="Aim right">▶</button>
+        <div class="bl-spin"><div id="blSpin" class="bl-cueball" tabindex="0" role="slider" aria-valuemin="0" aria-valuemax="100"
+          aria-label="Where the cue strikes the cue ball (arrow keys move it, 0 centres it)"
+          title="Tap where the cue hits the cue ball: high = follow, low = draw (back spin), left or right = side spin off the cushions. Double-tap to centre."><i id="blTip"></i></div>
+          <small id="blSpinVal">centre</small></div>
         <button id="blShoot" class="primary">🎱 Shoot</button>
-      </div>
-      <div class="bl-spin"><label>Spin <span>⬇ draw</span><input id="blSpin" type="range" min="-100" max="100" value="0" step="10"
-        aria-label="Spin: draw back or follow through"><span>follow ⬆</span></label><b id="blSpinVal">none</b></div></div>`;
+      </div></div>`;
     side.innerHTML = `<div class="panel">
       <div id="blStatus" class="seat-row"></div>
       <div id="blRacks" class="bl-racks"></div>
@@ -309,11 +369,29 @@ UI.billiards = (() => {
     stage.addEventListener('pointermove', (e) => onTouch(e, 'move'), true);
     for (const t of ['pointerup', 'pointercancel']) stage.addEventListener(t, (e) => onTouch(e, 'up'), true);
     $('blZoom').onclick = () => { view = { z: 1, x: 0, y: 0 }; applyView(); };
-    $('blSpin').oninput = () => {
-      spin = $('blSpin').value / 100;
-      $('blSpinVal').textContent = !spin ? 'none' : `${spin > 0 ? 'follow' : 'draw'} ${Math.abs(spin * 100)}%`;
+    // the cue-ball pad (#34): where the tip strikes. Up/down is follow/draw, left/right is side spin.
+    const pad = $('blSpin');
+    const setTip = (fx, fy) => {
+      const m = Math.hypot(fx, fy);
+      if (m > 1) { fx /= m; fy /= m; }  // stay on the ball
+      english = Math.round(fx * 10) / 10 || 0; spin = Math.round(-fy * 10) / 10 || 0;  // || 0: no −0
+      $('blTip').style.left = `${50 + english * 36}%`; $('blTip').style.top = `${50 - spin * 36}%`;
+      const parts = [spin ? `${spin > 0 ? 'follow' : 'draw'} ${Math.abs(spin * 100)}%` : '', english ? `${english > 0 ? 'right' : 'left'} ${Math.abs(english * 100)}%` : ''].filter(Boolean);
+      $('blSpinVal').textContent = parts.join(' · ') || 'centre';
+      pad.setAttribute('aria-valuetext', $('blSpinVal').textContent);
     };
-    $('blSpin').ondblclick = () => { $('blSpin').value = 0; $('blSpin').oninput(); };
+    let padDrag = false;
+    const padAt = (e) => { const r = pad.getBoundingClientRect(); setTip(((e.clientX - r.left) / r.width - 0.5) / 0.36, ((e.clientY - r.top) / r.height - 0.5) / 0.36); };
+    pad.onpointerdown = (e) => { if (!canShoot()) return; e.preventDefault(); padDrag = true; try { pad.setPointerCapture(e.pointerId); } catch {} padAt(e); };
+    pad.onpointermove = (e) => padDrag && padAt(e);
+    pad.onpointerup = pad.onpointercancel = () => { padDrag = false; };
+    pad.ondblclick = () => canShoot() && setTip(0, 0);
+    pad.onkeydown = (e) => {
+      if (!canShoot()) return;
+      const step = { ArrowLeft: [-0.2, 0], ArrowRight: [0.2, 0], ArrowUp: [0, -0.2], ArrowDown: [0, 0.2] }[e.key];
+      if (step) { e.preventDefault(); setTip(english + step[0], -spin + step[1]); } else if (e.key === '0' || e.key === 'Home') setTip(0, 0);
+    };
+    setTip(0, 0);
     $('blPower').oninput = () => { power = $('blPower').value / 100; $('blPowerVal').textContent = $('blPower').value + '%'; };
     // turn the aim by about 0.25° per tap, faster while held
     for (const [id, dir] of [['blLeft', -1], ['blRight', 1]]) {
@@ -359,7 +437,8 @@ UI.billiards = (() => {
         : b.targets.length === 1 && b.targets[0] === 8 ? '🎱 Sink the 8 to win!' : b.breaking ? 'Your break!' : 'Your shot.')
       : `${turnName} is shooting…`;
     $('blShoot').disabled = !canShoot();
-    for (const id of ['blLeft', 'blRight', 'blPower', 'blSpin']) $(id).disabled = !canShoot();
+    for (const id of ['blLeft', 'blRight', 'blPower']) $(id).disabled = !canShoot();
+    $('blSpin').classList.toggle('off', !canShoot());
     // each player's remaining balls
     const racks = $('blRacks'); racks.innerHTML = '';
     const onTable = new Set(b.balls.map(([n]) => n));
