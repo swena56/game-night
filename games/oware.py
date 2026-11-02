@@ -85,8 +85,10 @@ class Oware(Undo, Game):
     id = "oware"
     category = "strategy"
     howto = [
-        "Tap one of your pits to sow its seeds, one per pit, counter-clockwise (skipping the pit you emptied).",
-        "If your last seed makes a rival pit 2 or 3, you capture it, plus the rival pits just before it that hold 2 or 3.",
+        "Your row is the bottom one; the seeds you capture go in your store on the right.",
+        "Tap one of your pits: all its seeds are dropped one per pit, rightward along your row, then leftward along your rival's row and round again (skipping the pit you emptied).",
+        "If your last seed lands in a rival pit and makes it 2 or 3, you capture those seeds, plus the rival pits just before it that now hold 2 or 3.",
+        "With a mouse, point at a pit to see where its seeds would go and what it would capture.",
         "You can't capture every rival seed at once (that captures nothing). If your rival has no seeds, you must give them some.",
         "25 seeds wins. If nobody can capture any more, each side keeps the seeds in its row.",
         "↶ Undo asks your rival to take back your last move.",

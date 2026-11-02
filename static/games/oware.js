@@ -8,11 +8,31 @@ UI.oware = (() => {
 
   function mount(main, side) {
     shownKey = null;
-    main.innerHTML = `<div class="ow"><div class="ow-store" id="owTheirs"></div>
-      <div class="ow-board"><div class="ow-row" id="owTop"></div><div class="ow-row" id="owBottom"></div></div>
-      <div class="ow-store" id="owMine"></div></div>
+    // rows, stores and pits are labelled, and the flow arrows show the way seeds travel (#16)
+    main.innerHTML = `<div class="ow"><div class="ow-store" id="owTheirs"><b></b><small></small></div>
+      <div class="ow-mid"><div class="ow-label" id="owTopLabel"></div>
+        <div class="ow-board"><div class="ow-row" id="owTop"></div><div class="ow-row" id="owBottom"></div></div>
+        <div class="ow-label" id="owBottomLabel"></div></div>
+      <div class="ow-store" id="owMine"><b></b><small>You</small></div></div>
       <p id="owHint" class="hint"></p><div id="owUndo" class="row center"></div>`;
-    side.innerHTML = '<div class="panel"><div id="owSeats"></div><p class="hint left">Sowing goes counter-clockwise: along your row to the right, then back along the top.</p></div>';
+    side.innerHTML = `<div class="panel"><div id="owSeats"></div>
+      <p class="hint left">Seeds travel counter-clockwise: along your row to the right, then back along the top.
+      Your captures go in the store on the right (gold).</p></div>`;
+  }
+
+  // what sowing `from` would do, by the server's rules: the pits that get seeds, where the last one lands,
+  // and the rival pits it captures (none if that would take every rival seed)
+  const sideOf = (seat) => (seat === 0 ? [0, 1, 2, 3, 4, 5] : [6, 7, 8, 9, 10, 11]);
+  function preview(pits, from, me) {
+    const after = [...pits], reached = new Set();
+    let left = after[from], i = from;
+    after[from] = 0;
+    while (left) { i = (i + 1) % 12; if (i === from) continue; after[i]++; reached.add(i); left--; }
+    const theirs = sideOf(1 - me), taken = [];
+    for (let j = i; theirs.includes(j) && (after[j] === 2 || after[j] === 3); j--) taken.push(j);
+    const all = theirs.reduce((t, j) => t + after[j], 0);
+    const seeds = taken.reduce((t, j) => t + after[j], 0);
+    return { reached, last: i, taken: seeds === all ? [] : taken, slam: taken.length > 0 && seeds === all, seeds };
   }
 
   // Seed k of a pit always sits in the same spot (a golden-angle spiral with a little jitter), so seeds
@@ -34,7 +54,7 @@ UI.oware = (() => {
       seeds.append(seed);
     }
     if (n > MAX_SHOWN) seeds.append(ctx.el('b', '', String(n)));
-    b.append(seeds, ctx.el('small', '', String(n)));
+    b.append(seeds, ctx.el('small', '', String(n)), ctx.el('em', 'ow-num', String(i % 6 + 1)));
     return b;
   }
 
@@ -68,13 +88,23 @@ UI.oware = (() => {
         if (caught.includes(i)) b.style.setProperty('--cd', `${animate ? done : 0}s`);  // captures flash once the seeds have landed
         b.disabled = !legal.has(i) || !ctx.myTurn;
         b.onclick = () => ctx.quiet(ctx.act('sow', { pit: i }));
+        if (!b.disabled) {  // a mouse or keyboard shows the move before it's made
+          b.onpointerenter = (e) => e.pointerType === 'mouse' && showPreview(i);
+          b.onfocus = () => b.matches(':focus-visible') && showPreview(i);
+          b.onpointerleave = b.onblur = () => showPreview(null);
+        }
         row.append(b);
       }
     }
     const them = 1 - me;
-    $('owMine').textContent = String(o.stores[me]);
-    $('owTheirs').textContent = String(o.stores[them]);
-    $('owMine').title = 'Your captured seeds'; $('owTheirs').title = 'Rival captured seeds';
+    const rival = ctx.player(o.seats[them])?.name ?? 'Rival', rivalShort = rival.replace(/^🤖\s*/, '');
+    $('owMine').querySelector('b').textContent = String(o.stores[me]);
+    $('owTheirs').querySelector('b').textContent = String(o.stores[them]);
+    $('owTheirs').querySelector('small').textContent = rivalShort;
+    $('owMine').title = 'Your captured seeds'; $('owTheirs').title = `${rival}'s captured seeds`;
+    const watching = o.me == null;
+    $('owTopLabel').textContent = `◀ ${watching ? rival : rivalShort}'s row`;
+    $('owBottomLabel').textContent = watching ? `${ctx.player(o.seats[me])?.name ?? '?'}'s row ▶` : 'Your row ▶';
     const info = $('owSeats'); info.innerHTML = '';
     o.seats.forEach((pid, i) => {
       const p = ctx.player(pid), row = ctx.el('div', 'seat-row');
@@ -82,8 +112,28 @@ UI.oware = (() => {
       row.append(disc, ctx.el('span', 'grow', `${p?.name ?? 'left'}${i === o.me ? ' (you)' : ''}`), ctx.el('b', '', `🌰 ${o.stores[i]}`));
       info.append(row);
     });
-    $('owHint').textContent = S.phase !== 'playing' ? '' : ctx.myTurn ? 'Tap one of your glowing pits to sow it.' : '';
+    baseHint = S.phase !== 'playing' ? ''
+      : ctx.myTurn ? `Your turn: tap a glowing pit to sow it.${last >= 0 ? ` The blue ring is the pit ${rivalShort} last sowed from.` : ''}`
+      : `${rivalShort} is thinking…`;
+    $('owHint').textContent = baseHint;
     undoRow($('owUndo'), S.oware.undo, S, ctx, S.oware.me != null);
+  }
+
+  let baseHint = '';
+  function showPreview(from) {
+    for (const b of document.querySelectorAll('.ow-pit')) b.classList.remove('gets', 'lands', 'takes');
+    const o = S?.oware;
+    if (from == null || !o || o.me == null) { $('owHint').textContent = baseHint; return; }
+    const pv = preview(o.pits, from, o.me), at = (i) => document.querySelector(`.ow-pit[data-i="${i}"]`);
+    for (const i of pv.reached) at(i)?.classList.add('gets');
+    at(pv.last)?.classList.add('lands');
+    for (const i of pv.taken) at(i)?.classList.add('takes');
+    const n = o.pits[from], mine = sideOf(o.me).includes(pv.last);
+    const where = mine ? `your pit ${pv.last % 6 + 1}` : `their pit ${pv.last % 6 + 1}`;
+    $('owHint').textContent = `Sow ${n} seed${n === 1 ? '' : 's'}: the last lands in ${where}`
+      + (pv.taken.length ? ` and captures ${pv.seeds} (pits of 2 or 3)!`
+        : pv.slam ? ' — that would take all their seeds, so it captures nothing.'
+        : mine ? ' (captures only happen on their side).' : ' — no capture (it needs to make 2 or 3).');
   }
 
   return { mount, render };
