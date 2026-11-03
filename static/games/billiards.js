@@ -1,9 +1,8 @@
 // Billiards: a top-down table on a canvas. The server simulates each shot and sends the ball paths
 // (30 frames a second), which every phone plays back. The table stands upright on portrait screens.
 UI.billiards = (() => {
-  let S, ctx, raf = 0, ro = null, animEnd = 0;
-  let dial = null, aim = 0, aimFor = null, power = 0.55, cuePos = null, drag = null, anim = null, seenShot = 0;
-  let ownAim = false;  // once you've shot, your aim carries over to your next turn instead of snapping to a default (#52)
+  let S, ctx, raf = 0, ro = null, roRaf = 0, animEnd = 0, setTip = null;
+  let dial = null, aim = 0, aimFor = null, power = 0.55, cuePos = null, drag = null, anim = null, seenShot = 0, lastShot = null;
   let spin = 0, english = 0, called = null, pushing = false;  // where the cue tip strikes: follow (+) / draw (−), right (+) / left (−); the pocket called for the 8
   let rolls = new Map();  // each ball's orientation, so it turns as it rolls (#33)
   let view = { z: 1, x: 0, y: 0 }, pinch = null, aimBefore = 0;  // two-finger zoom of the table (#28)
@@ -256,12 +255,39 @@ UI.billiards = (() => {
   }
 
   // ---------- drawing
+  // ---------- shot playback: the cue's stroke (anim.lead seconds), then the balls; a replay runs slower
+  const shotTime = () => (anim ? ((performance.now() - anim.start) / 1000) * anim.slow : 0);  // seconds into the shot
+  function play(shot, age, slow = 1, replay = false) {
+    const lead = shot.stroke ? B().lead || 0 : 0, dur = lead + shot.frames.length / 30;
+    clearTimeout(animEnd);
+    anim = age < dur ? { frames: shot.frames, order: shot.order, start: performance.now() - (age * 1000) / slow, lead, slow, replay,
+      stroke: shot.stroke, called: shot.called } : null;
+    if (anim) {
+      anim.sounds = contacts(anim.frames, anim.order); anim.next = 0;
+      // a timer (not the draw loop) ends the playback, so controls come back even where nothing draws
+      animEnd = setTimeout(() => { anim = null; ctx?.rerender?.(); }, ((dur - age) * 1000) / slow);
+    }
+    if (replay) ctx?.rerender?.();  // (a live shot arrives inside render already)
+  }
+  function stopReplay() {
+    if (!anim?.replay) return;
+    clearTimeout(animEnd); anim = null; ctx?.rerender?.();
+  }
+  // the shooter's cue during the stroke: pulled back a little further, then driven through to the ball
+  function strokeNow() {
+    const st = anim?.stroke, t = shotTime(), L = anim?.lead;
+    if (!st || !L || t > L + 0.12) return null;
+    const u = Math.min(1, t / L), pull = st[1] * 1.25;
+    const back = u < 0.35 ? st[1] + (pull - st[1]) * (u / 0.35) : pull * (1 - ((u - 0.35) / 0.65) ** 2);
+    return { x: st[4], y: st[5], aim: st[0], power: Math.max(0, back), spin: st[2], english: st[3] };
+  }
+
   // where the balls are now: a playing shot's frame (eased between the 30-a-second frames), or the resting table
   function ballsNow() {
     const b = B();
     let balls = b.balls.map(([n, x, y]) => [n, x, y]);
     if (anim) {
-      const t = Math.max(0, (performance.now() - anim.start) / (1000 / 30)), last = anim.frames.length - 1;
+      const t = Math.max(0, (shotTime() - anim.lead) * 30), last = anim.frames.length - 1;
       const i = Math.min(last, Math.floor(t)), f = i < last ? t - i : 0, f0 = anim.frames[i], f1 = anim.frames[Math.min(last, i + 1)];
       balls = [];
       anim.order.forEach((n, j) => {
@@ -269,6 +295,8 @@ UI.billiards = (() => {
         if (x0 < 0) return;
         balls.push(x1 < 0 ? [n, x0 / 10, y0 / 10] : [n, (x0 + (x1 - x0) * f) / 10, (y0 + (y1 - y0) * f) / 10]);
       });
+      const st = anim.stroke, cue = st && shotTime() < anim.lead && balls.find(([n]) => n === 0);
+      if (cue) { cue[1] = st[4]; cue[2] = st[5]; }  // still on its spot while the cue strokes
     } else if (b.inHand && canShoot()) {
       balls = balls.filter(([n]) => n !== 0);
       if (cuePos) balls.push([0, ...cuePos]);
@@ -304,9 +332,9 @@ UI.billiards = (() => {
     if (!anim && drag !== 'cue') { const at = cue || resting; if (at) camAt = { x: at[0], y: at[1], aim }; }
     gl.render({
       balls: ballsNow(), animating: !!anim,
-      stick: cue ? { x: cue[0], y: cue[1], aim, power, spin, english } : null,
+      stick: cue ? { x: cue[0], y: cue[1], aim, power, spin, english } : strokeNow(),
       guide, ring: shooting && b.inHand && cuePos ? { x: cuePos[0], y: cuePos[1], ok: placeOk(...cuePos) } : null,
-      call: anim ? b.shot?.called ?? null : b.calling && shooting ? called : null, callAll: !!(b.calling && shooting),
+      call: anim ? anim.called ?? null : b.calling && shooting ? called : null, callAll: !!(b.calling && shooting),
       cam: camAt,
     });
   }
@@ -337,7 +365,7 @@ UI.billiards = (() => {
     g.fillStyle = '#ffffff55'; g.beginPath(); g.arc(b.W * 0.73, b.H / 2, 0.7, 0, 7); g.fill();
     for (const [px, py, cap] of b.pockets) { g.fillStyle = '#050505'; g.beginPath(); g.arc(px, py, cap + 0.6, 0, 7); g.fill(); }
     // the pocket called for the 8: yours while you aim, the shooter's while a shot plays
-    const call = anim ? b.shot?.called : b.calling && canShoot() ? called : null;
+    const call = anim ? anim.called : b.calling && canShoot() ? called : null;
     if (call != null && b.pockets[call]) {
       const [px, py, cap] = b.pockets[call];
       g.strokeStyle = '#ffd166'; g.lineWidth = 1.4; g.setLineDash([2, 1.5]);
@@ -358,6 +386,8 @@ UI.billiards = (() => {
     const balls = ballsNow();
     const rpx = R * k;
     if (!anim && canShoot()) drawGuide(g, rpx);
+    const sk = strokeNow();
+    if (sk) drawStick(g, [sk.x, sk.y], sk.aim, sk.power, sk.english, rpx);
     for (const [n, x, y] of balls) drawBall(g, n, ...toScreen(x, y), rpx);
     if (!anim && canShoot() && b.inHand && cuePos) {  // ball-in-hand ring
       const [sx, sy] = toScreen(...cuePos);
@@ -366,12 +396,9 @@ UI.billiards = (() => {
     }
   }
 
-  function drawGuide(g, rpx) {
-    const cue = cueAt();
-    if (!cue) return;
-    const guide = B().guide, { gx, gy, ball } = trace(cue), lw = k1();
-    const [sx, sy] = toScreen(...cue), [ex, ey] = toScreen(gx, gy);
-    // the cue stick: a tapered wooden cue with a white ferrule and blue tip, pulled back further with more power
+  // the cue stick: a tapered wooden cue with a white ferrule and blue tip, pulled back further with more power
+  function drawStick(g, cue, aim, power, english, rpx) {
+    const lw = k1(), [sx, sy] = toScreen(...cue);
     const back = rpx + (6 + power * 46) * lw, len = Math.max(190 * lw, rpx * 34), dx = Math.cos(aim), dy = Math.sin(aim);
     const [ux, uy] = geo.portrait ? [dy, -dx] : [dx, dy];
     const [px, py] = [-uy, ux], tipW = Math.max(3 * lw, rpx * 0.55), buttW = tipW * 2.3;
@@ -389,6 +416,14 @@ UI.billiards = (() => {
     g.lineTo(...at(back + 4 * lw, -tipW / 2)); g.lineTo(...at(back, -tipW / 2)); g.fill();
     g.fillStyle = '#3a86ff'; g.beginPath(); g.moveTo(...at(back - 1.5 * lw, tipW / 2)); g.lineTo(...at(back, tipW / 2));
     g.lineTo(...at(back, -tipW / 2)); g.lineTo(...at(back - 1.5 * lw, -tipW / 2)); g.fill();
+  }
+
+  function drawGuide(g, rpx) {
+    const cue = cueAt();
+    if (!cue) return;
+    const guide = B().guide, { gx, gy, ball } = trace(cue), lw = k1();
+    const [sx, sy] = toScreen(...cue), [ex, ey] = toScreen(gx, gy);
+    drawStick(g, cue, aim, power, english, rpx);
     if (guide === 'off') return;
     const full = guide === 'full';
     if (!full) {  // the short guide: just which way the cue points
@@ -550,6 +585,8 @@ UI.billiards = (() => {
       held.fine = e.shiftKey;
     } else if (k === 'ArrowUp' || k === 'ArrowDown') {
       setPower(power + (k === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 0.01 : 0.05));
+    } else if (k.length === 1 && k >= '0' && k <= '9' && !t?.closest?.('[role="slider"]')) {
+      setPower(k === '0' ? 1 : +k / 10);  // number keys (#53): 1 = 10% … 9 = 90%, 0 = full power
     } else if ((k === ' ' || k === 'Enter') && !t?.closest?.('button, [role="slider"]')) {
       if (!e.repeat) shoot();
     } else if ((k === 'c' || k === 'C') && view3d) {
@@ -650,7 +687,7 @@ UI.billiards = (() => {
   // play each contact once its moment in the shot comes (the draw loop calls this every frame)
   function shotSounds() {
     if (!anim?.sounds) return;
-    const now = (performance.now() - anim.start) / 1000;
+    const now = shotTime() - anim.lead;
     for (let n = 0; anim.next < anim.sounds.length && anim.sounds[anim.next].t <= now; ) {
       const e = anim.sounds[anim.next++];
       if (now - e.t < 0.15) clack(e, 0.007 * n++);  // the break's many clicks spread over a few ms instead of stacking  // a late joiner (or a tab back from the background) doesn't get a burst of old clicks
@@ -688,6 +725,7 @@ UI.billiards = (() => {
   }
 
   function pointer(e, phase) {
+    if (phase === 'down' && anim?.replay) return stopReplay();  // a tap on the table ends a replay
     if (touches.size > 1 || pinch) return;
     if (!canShoot() || !geo) return;
     const [x, y] = toTable(e.clientX, e.clientY);
@@ -779,20 +817,21 @@ UI.billiards = (() => {
       if (!cuePos || !placeOk(...cuePos)) { ctx.toast(B().inHand === 'kitchen' ? 'Put the cue ball behind the line first.' : 'The cue ball overlaps another ball.'); return; }
       extra.cue = cuePos;
     }
-    ownAim = true;
     ctx.quiet(ctx.act('shoot', extra));
   }
 
   // ---------- mount / render
   function mount(main, side) {
     view = { z: 1, x: 0, y: 0 }; pinch = null; touches.clear(); rolls = new Map(); spin = english = 0;
-    dial = null; aim = 0; aimFor = null; power = 0.55; cuePos = null; drag = null; anim = null; seenShot = 0; geo = null; ownAim = false;
+    dial = null; aim = 0; aimFor = null; power = 0.55; cuePos = null; drag = null; anim = null; seenShot = 0; lastShot = null; geo = null;
     gl = null; view3d = false; camAt = null;
     main.innerHTML = `<div class="bl"><div id="blStage" class="bl-stage"><canvas id="blCanvas"></canvas>
         <button id="blZoom" class="bl-zoom" hidden aria-label="Show the whole table">🔍 1×</button>
         <div class="bl-views"><button id="blView" hidden>🧊 3D</button><button id="blCam" hidden>🎥 Behind cue</button>
           <button id="blPush" hidden aria-pressed="false" title="9-ball: the first shot after the break may be a push-out. It needn't hit anything; your rival then shoots from there or hands it back.">🔀 Push out</button>
-          <button id="blPass" hidden title="Make your rival shoot from where their push-out left the balls">↩️ Hand it back</button></div></div>
+          <button id="blReplay" hidden title="Watch the last shot again, slowed down">⏪ Replay</button>
+          <button id="blPass" hidden title="Make your rival shoot from where their push-out left the balls">↩️ Hand it back</button></div>
+        <div class="bl-rackdone" id="blRackDone" hidden><h3 id="blRackTitle"></h3><div id="blStand"></div></div></div>
       <div class="bl-controls">
         <button id="blLeft" aria-label="Aim left">◀</button>
         <div class="bl-power"><div id="blStroke" class="bl-stroke" title="Pull the cue back: drag left from anywhere on the bar and let go to shoot. Tap to just set the power. Drag off the bar to cancel.">
@@ -810,7 +849,7 @@ UI.billiards = (() => {
       <div id="blStatus" class="seat-row"></div>
       <div id="blRacks" class="bl-racks"></div>
       <p class="hint left" id="blHint">Drag anywhere on the table to turn the cue around the ball. ◀ ▶ fine-tune. Pull the power bar back and let go to shoot. ✋ With ball in hand, drag the cue ball to move it.</p>
-      <p class="hint left bl-keys">Keys: ← → turn the cue (hold to turn faster, Shift for fine aim) · ↑ ↓ power · Space shoots · W A S D move the cue ball in hand · C switches the 3D camera.</p></div>`;
+      <p class="hint left bl-keys">Keys: ← → turn the cue (hold to turn faster, Shift for fine aim) · ↑ ↓ or 1–9, 0 power · Space shoots · W A S D move the cue ball in hand · C switches the 3D camera.</p></div>`;
     const c = $('blCanvas');
     c.style.touchAction = 'none';
     c.addEventListener('pointerdown', (e) => pointer(e, 'down'));
@@ -824,11 +863,12 @@ UI.billiards = (() => {
     $('blZoom').onclick = () => { view = { z: 1, x: 0, y: 0 }; applyView(); };
     $('blView').onclick = () => { setPref('view', view3d ? '2d' : '3d'); setView(!view3d); };
     $('blCam').onclick = () => setCam(cam === 'cue' ? 'table' : 'cue');
+    $('blReplay').onclick = () => (anim?.replay ? stopReplay() : !anim && lastShot && play(lastShot, 0, 0.6, true));
     $('blPush').onclick = () => { pushing = !pushing; ctx?.rerender?.(); };
     $('blPass').onclick = () => { if (canShoot()) ctx.quiet(ctx.act('pass')); };
     // the cue-ball pad (#34): where the tip strikes. Up/down is follow/draw, left/right is side spin.
     const pad = $('blSpin');
-    const setTip = (fx, fy) => {
+    setTip = (fx, fy) => {
       const m = Math.hypot(fx, fy);
       if (m > 1) { fx /= m; fy /= m; }  // stay on the ball
       english = Math.round(fx * 10) / 10 || 0; spin = Math.round(-fy * 10) / 10 || 0;  // || 0: no −0
@@ -896,13 +936,15 @@ UI.billiards = (() => {
     window.addEventListener('keydown', onKey);
     window.addEventListener('keyup', onKeyUp);
     window.addEventListener('blur', onKeyUp);
-    ro = window.ResizeObserver ? new ResizeObserver(() => layout()) : null;
+    // laid out on the next frame: resizing the canvas inside the callback re-triggers the observer and
+    // the browser reports "ResizeObserver loop completed with undelivered notifications"
+    ro = window.ResizeObserver ? new ResizeObserver(() => { cancelAnimationFrame(roRaf); roRaf = requestAnimationFrame(layout); }) : null;
     ro?.observe($('blStage')); ro?.observe(side);  // the info strip growing a line shrinks the table to match
     raf = requestAnimationFrame(tick);
   }
 
   function unmount() {
-    cancelAnimationFrame(raf); clearTimeout(animEnd); ro?.disconnect();
+    cancelAnimationFrame(raf); cancelAnimationFrame(roRaf); clearTimeout(animEnd); ro?.disconnect(); setTip = null;
     if (onKey) { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('blur', onKeyUp); }
     onKey = onKeyUp = null; held.dir = 0;
     if (gl) gl.dispose();
@@ -918,19 +960,16 @@ UI.billiards = (() => {
     // play a new shot from where it is now (late joiners skip ahead; old shots just show the result)
     if (b.shot && b.shot.id !== seenShot) {
       seenShot = b.shot.id;
-      const dur = b.shot.frames.length / 30;
-      anim = b.shot.age < dur ? { frames: b.shot.frames, order: b.shot.order, start: performance.now() - b.shot.age * 1000 } : null;
-      if (anim) { anim.sounds = contacts(anim.frames, anim.order); anim.next = 0; }
-      // a timer (not the draw loop) ends the playback, so controls come back even where nothing draws
-      clearTimeout(animEnd);
-      if (anim) animEnd = setTimeout(() => { anim = null; ctx?.rerender?.(); }, (dur - b.shot.age) * 1000);
+      lastShot = b.shot;
+      play(b.shot, b.shot.age);
     }
     // a fresh turn for me: aim at something sensible and put a placeable cue ball down
     const turnKey = `${S.turn}:${b.shot?.id ?? 0}`;
     if (ctx.myTurn && aimFor !== turnKey) {
       aimFor = turnKey; called = null; pushing = false;
+      setTip?.(0, 0);  // each shot starts from a centre hit (#52), like the aim and the power do afresh
       cuePos = b.inHand ? defaultCue() : null;
-      if (!ownAim || b.breaking) aim = defaultAim();
+      aim = defaultAim();
     }
     const me = S.me.id, mine = b.groups[me], turnName = ctx.player(S.turn)?.name ?? '';
     const pushText = pushing ? '🔀 Push out: no need to hit anything (a scratch is still a foul). Your rival then shoots from there or hands it back.'
@@ -947,17 +986,32 @@ UI.billiards = (() => {
         : pushing ? pushText
         : b.rules === '9' ? foulWarn + pushText + (b.targets[0] === 9 ? '9️⃣ Only the 9 left: sink it to win!' : `Hit the ${b.targets[0]} first. Sink the 9 to win.`)
         : b.targets.length === 1 && b.targets[0] === 8 ? '🎱 Sink the 8 to win!' : 'Your shot.')
+      : b.between ? `🏁 Rack ${b.rackNo} to ${ctx.player(b.rackWinner)?.name ?? '?'}. The next rack is coming up…`
       : S.turn ? (b.pushChoice === S.turn ? `🔀 ${turnName} decides: shoot from here or hand it back…` : `${turnName} is shooting…`) : '🎱 …';
     $('blPush').hidden = !(canShoot() && b.pushOk);
     $('blPush').classList.toggle('on', pushing);
     $('blPush').setAttribute('aria-pressed', String(pushing));
     $('blPass').hidden = !(canShoot() && b.pushChoice === me);
+    $('blReplay').hidden = !lastShot || (anim && !anim.replay);
+    $('blReplay').textContent = anim?.replay ? '⏹ Stop' : '⏪ Replay';
     $('blShoot').disabled = !canShoot();
     for (const id of ['blLeft', 'blRight', 'blPower']) $(id).disabled = !canShoot();
     $('blStroke').classList.toggle('off', !canShoot());
     $('blSpin').classList.toggle('off', !canShoot());
+    // a match: racks won, and between racks a card with the score
+    $('blRackDone').hidden = !b.between;
+    if (b.between) {
+      $('blRackTitle').textContent = `🏁 Rack ${b.rackNo} to ${ctx.player(b.rackWinner)?.name ?? '?'}`;
+      standingsCard($('blStand'), b.standings, { title: `Race to ${b.race}`, note: 'The next rack is coming up. The break alternates.' });
+    }
     // each player's remaining balls
     const racks = $('blRacks'); racks.innerHTML = '';
+    if (b.race > 1) {
+      const seats = Object.keys(b.racks || {}), row = ctx.el('div', 'bl-rack bl-match');
+      row.append(ctx.el('b', '', `🏁 Race to ${b.race} · rack ${b.rackNo}`));
+      row.append(ctx.el('span', '', seats.map((i) => `${ctx.player(i)?.name ?? '?'} ${b.racks[i]}`).join(' – ')));
+      racks.append(row);
+    }
     const onTable = new Set(b.balls.map(([n]) => n));
     if (b.rules === '9') {  // nine-ball: no groups, just the balls still up, lowest (the one to hit) first
       const row = ctx.el('div', 'bl-rack');
@@ -986,6 +1040,6 @@ UI.billiards = (() => {
     if (mine) $('blHint').textContent = `You have ${mine === 'solids' ? '🔵 solids (1–7)' : '🟠 stripes (9–15)'}. Drag to turn the cue, ◀ ▶ fine-tune.`;
   }
 
-  const turnText = (s) => s.phase !== 'playing' ? null : s.billiards.inHand && s.turn === s.me.id ? '✋ Ball in hand' : null;
+  const turnText = (s) => s.phase !== 'playing' ? null : s.billiards.between ? '🏁 Next rack…' : s.billiards.inHand && s.turn === s.me.id ? '✋ Ball in hand' : null;
   return { mount, render, unmount, turnText, focus: true };
 })();

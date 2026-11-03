@@ -36,6 +36,7 @@ MIN_SPEED, MAX_SPEED = 25.0, 520.0   # cue speed at power 0 and 1
 # play stays on the table) would stop the rack dead. Breaks get their own top speed and a livelier cloth, so
 # about half of them pot a ball (tests/billiards_physics.py measures it).
 BREAK_MAX_SPEED, BREAK_FRICTION = 720.0, 18.0
+STROKE_LEAD = 0.35                   # seconds of cue stroke the browsers show before the balls move
 # the cloth setting: (rolling friction, top cue speed). Classic is the slow cloth the game started with; fast
 # rolls about like a real table (rolling friction ~0.02 g), with a lower top speed so the power bar stays usable
 CLOTHS = {"classic": (FRICTION, MAX_SPEED), "fast": (15.0, 320.0)}
@@ -57,6 +58,7 @@ CORNER_FACING, SIDE_FACING = 25, 45  # the jaw's facing runs from the point to t
 HEAD_X, FOOT = TW / 4, (TW * 0.73, TH / 2)
 SOLIDS, STRIPES = set(range(1, 8)), set(range(9, 16))
 GROUPS = {"solids": SOLIDS, "stripes": STRIPES}
+RACK_PAUSE = 6.0                     # seconds between racks in a match: the score, then the next break
 PUSH_TAKE = {"easy": -1e9, "normal": 30, "hard": 45}  # the bot shoots after a rival's push if its best pot scores this
 GROUP_LABEL = {"solids": "🔵 solids", "stripes": "🟠 stripes"}
 
@@ -376,6 +378,7 @@ class Billiards(Game):
         "guide": ("Aim guide", [("full", "🎯 Full (where both balls go)"), ("short", "Short"), ("off", "Off")], "full"),
         "call8": ("The 8 ball", [(True, "📣 Call its pocket"), (False, "Any pocket")], True),
         "cloth": ("Cloth", [("classic", "🐢 Classic (slow, short rolls)"), ("fast", "🏎️ Fast (rolls like a real table)")], "classic"),
+        "race": ("Match", [(1, "1 rack"), (2, "🏁 Race to 2"), (3, "🏁 Race to 3"), (5, "🏁 Race to 5")], 1),
     }
 
     @property
@@ -393,27 +396,49 @@ class Billiards(Game):
 
     # -- setup
 
+    @property
+    def race(self):
+        return self.s.get("race") or 1
+
     def start(self, seated, rng):
         self.rng = rng
         self.seats = [p.id for p in seated]
+        self.racks = {p.id: 0 for p in seated}  # racks won, for a race to several
+        self.rack_no = 0
+        self.shot_seq = 0                # never restarts, so every shot of a match has its own id
+        for p in seated:
+            p.g.sunk = 0
+        self.breaker = rng.choice(seated).id
+        self.new_rack()
+
+    def new_rack(self):
+        """Rack the balls and break. In a match the break alternates."""
+        r, rng = self.room, self.rng
+        self.rack_no += 1
+        self.between = False
+        self.rack_winner = None
         self.pos = rack9(rng) if self.nine else rack(rng)
         self.pos[0] = (HEAD_X, TH / 2)
         self.groups = {}                 # player id -> "solids" | "stripes"
         self.breaking = True
         self.in_hand = "kitchen"         # None | "kitchen" (behind the head line) | "anywhere"
         self.shot = None
-        self.shot_seq = 0
         self.busy_until = 0.0
         self.last = ""
         self.ending = None               # (winner id, text): the 8 decided it, shown once the balls stop (#46)
         self.push_ok = False             # 9-ball: the first shot after the break may be a push-out
         self.push_choice = None          # 9-ball: after a push, the player who picks: shoot from there or hand it back
-        self.fouls = {p.id: 0 for p in seated}  # 9-ball: fouls in a row; the third loses
-        for p in seated:
-            p.g.sunk = 0
-        first = rng.choice(seated)
-        self.room.add_log(f"{'9️⃣ Nine-ball' if self.nine else '🎱 Billiards'}! {first.name} breaks.", "big")
-        self.room.begin_turn(first.id)
+        self.fouls = {i: 0 for i in self.seats}  # 9-ball: fouls in a row; the third loses
+        self.mark_round()
+        if self.breaker not in r.players:  # the breaker left: the other player breaks
+            self.breaker = next((i for i in self.seats if i in r.players), self.breaker)
+        first = r.players[self.breaker]
+        game = '9️⃣ Nine-ball' if self.nine else '🎱 Billiards'
+        if self.race > 1:
+            r.add_log(f"{game}, race to {self.race}: rack {self.rack_no}. {first.name} breaks.", "big")
+        else:
+            r.add_log(f"{game}! {first.name} breaks.", "big")
+        r.begin_turn(first.id)
 
     # -- helpers
 
@@ -495,12 +520,14 @@ class Billiards(Game):
         speed = MIN_SPEED + (top - MIN_SPEED) * power
         order = sorted(self.pos)
         holes = {}
+        cx, cy = self.pos[0]
         final, sunk, first, frames = simulate(self.pos, angle, speed, spin=spin, holes=holes, side=side, friction=fric)
         breaking, self.breaking, self.in_hand = self.breaking, False, None
         self.pos = final
         self.shot_seq += 1
-        dur = len(frames) / 30
-        self.shot = {"id": self.shot_seq, "by": p.id, "order": order, "frames": frames, "at": time.time(), "called": pocket}
+        dur = STROKE_LEAD + len(frames) / 30  # the stroke, then the balls
+        self.shot = {"id": self.shot_seq, "by": p.id, "order": order, "frames": frames, "at": time.time(), "called": pocket,
+                     "stroke": [round(angle, 5), round(power, 3), round(spin, 2), round(side, 2), round(cx, 2), round(cy, 2)]}
         self.busy_until = time.time() + dur
 
         foul = None
@@ -630,17 +657,40 @@ class Billiards(Game):
     def bot_ready(self):
         if getattr(self, "ending", None):
             return True  # the ticker also waits for room.bot_at, set to just after the balls stop
+        if getattr(self, "between", False):
+            return False  # the pause between racks runs on the clock (on_timeout)
         return super().bot_ready()
 
     def bot_tick(self):
         if getattr(self, "ending", None):
             wid, text = self.ending
             self.ending = None
-            return self.room.finish(self.room.players.get(wid), text)
+            return self.end_rack(wid, text)
         return super().bot_tick()
+
+    def end_rack(self, wid, text):
+        """A rack is decided and its last shot has stopped rolling. One rack, or the race is won: game over.
+        Otherwise a pause with the match score, then the next rack, broken by the other player."""
+        r = self.room
+        racks = getattr(self, "racks", None)
+        winner = r.players.get(wid)
+        if racks is None or self.race <= 1 or wid not in racks:
+            return r.finish(winner, text)
+        racks[wid] += 1
+        score = "–".join(str(racks[i]) for i in sorted(racks, key=lambda i: -racks[i]))
+        if racks[wid] >= self.race:
+            return r.finish(winner, f"{text} 🏁 {winner.name if winner else '?'} takes the match {score}.")
+        r.add_log(f"{text} Rack {self.rack_no} to {winner.name if winner else '?'}: {score}.", "big")
+        self.between = True
+        self.rack_winner = wid
+        self.breaker = next((i for i in self.seats if i != self.breaker), self.breaker)
+        r.turn = None
+        r.deadline = time.time() + RACK_PAUSE
 
     def on_timeout(self):
         r = self.room
+        if getattr(self, "between", False):
+            return self.new_rack()
         r.add_log(f"⏰ {r.players[r.turn].name} ran out of time. Ball in hand for the other player.", "power")
         self.in_hand = self.in_hand or "anywhere"
         self.push_ok, self.push_choice = False, None
@@ -660,12 +710,14 @@ class Billiards(Game):
         return f"{GROUP_LABEL[g]} · {left} left" if left else f"{GROUP_LABEL[g]} · on the 8!"
 
     def final_scores(self):
+        if self.race > 1 and hasattr(self, "racks"):
+            return {i: self.racks[i] for i in self.seats if i in self.room.players}
         return {i: self.room.players[i].g.sunk for i in self.seats if i in self.room.players}
 
     def view(self, p):
         shot = None
         if self.shot:
-            shot = {k: self.shot.get(k) for k in ("id", "by", "order", "frames", "called")}
+            shot = {k: self.shot.get(k) for k in ("id", "by", "order", "frames", "called", "stroke")}
             shot["age"] = max(0.0, time.time() - self.shot["at"])
         return {"billiards": {
             "W": TW, "H": TH, "R": R, "headX": HEAD_X, "pockets": [[x, y, c] for x, y, c in POCKETS],
@@ -673,7 +725,7 @@ class Billiards(Game):
             "rules": "9" if self.nine else "8", "groups": self.groups, "inHand": self.in_hand, "breaking": self.breaking,
             "targets": self.legal_targets(self.room.turn) if self.room.turn else [],
             "shot": shot, "last": self.last, "guide": self.s["guide"],
-            "minSpeed": MIN_SPEED, "maxSpeed": self.table[1], "friction": self.table[0],
+            "lead": STROKE_LEAD, "minSpeed": MIN_SPEED, "maxSpeed": self.table[1], "friction": self.table[0],
             "breakMaxSpeed": BREAK_MAX_SPEED, "breakFriction": BREAK_FRICTION,
             # the engine's constants, so the aim guide runs the same physics in the browser
             "phys": {"slide": SLIDE, "bounce": BOUNCE, "railGrip": RAIL_GRIP, "tipK": TIP_K,
@@ -684,6 +736,9 @@ class Billiards(Game):
             "calling": self.calling(self.room.turn) if self.room.turn and self.room.phase == "playing" else False,
             "pushOk": bool(getattr(self, "push_ok", False)), "pushChoice": getattr(self, "push_choice", None),
             "fouls": getattr(self, "fouls", {}),
+            "race": self.race, "racks": getattr(self, "racks", {}), "rackNo": getattr(self, "rack_no", 1),
+            "between": getattr(self, "between", False), "rackWinner": getattr(self, "rack_winner", None),
+            "standings": self.standings() if getattr(self, "between", False) else None,
         }}
 
     # -- bots: ghost-ball aiming; the hard bot test-runs its best ideas in the real engine

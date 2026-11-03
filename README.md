@@ -61,7 +61,7 @@ port, and `http://localhost` still works on the server's own device.
 | ⛳ **Putt Party** | 1–6 | **3D** mini golf (three.js; top-down fallback) on holes generated each game: a winding walled fairway with ⚪ bumpers, ▪️ posts, 🌑 rocks, 🟫 sand, long grass, ↗ slopes, ⛰️ humps and bowls, curved banks, a 🌀 windmill to time, a ramp jump and 💧 water. Drag back from your ball and let go to putt; a drag anywhere else moves the view, and the camera swings behind your ball after each putt. | The server simulates every putt and sends the ball's path, so every phone plays back the same shot. Everyone plays the same hole, a stroke each in turn. Solo: finish at or under par (3 a hole, 4 for a hole with a jump or a windmill). |
 | 🛸 **Hover Rally** | 1–6 | **Real-time 3D** hover-craft race (three.js chase camera; top-down fallback) on a looping track generated each game. The throttle is automatic: hold a side of the screen (or ←/→) to steer. | Bends push you outward and the inside line is shorter, so racing lines matter; walls scrub speed. ⚡ Boost pads plus 3 boosts of your own, sideways bumps. Alone: beat a target time. |
 | 🏒 **Air Hockey** | 2 | **Real-time** table hockey: drag your mallet around your half, bank shots off the walls. Server-side physics at 60 fps. | 🏒🏒 Double Trouble puts two pucks on the table. Each player sees the table from their own end. |
-| 🎱 **Billiards** | 2 | Eight-ball pool on a top-down table with real physics (spin that skids then rolls, follow, draw and english, cushions, throw, six pockets with jaws). Drag to aim, set the power, shoot. | The server simulates every shot and sends the ball paths, so every phone plays back the same shot. A 🎯 aim guide (full, short or off) shows where both balls go. Fouls give ✋ ball in hand. The table stands upright on phones. |
+| 🎱 **Billiards** | 2 | Eight-ball pool on a top-down table with real physics (spin that skids then rolls, follow, draw and english, cushions, throw, six pockets with jaws). Drag to aim, set the power, shoot. | The server simulates every shot and sends the ball paths, so every phone plays back the same shot. A 🎯 aim guide (full, short or off) shows where both balls go. Fouls give ✋ ball in hand. 🏁 Play one rack or a race to 2, 3 or 5. The table stands upright on phones. |
 
 ### ♟️ Strategy (6)
 
@@ -457,7 +457,8 @@ Items that become ✅ move into the per-game plan.
 - 🛸 **Hover Rally:** ✅ ⏱ lap splits (each lap's time, faster/slower than the last, the best starred, called out on screen)
   and a 👻 ghost of your best lap so far racing beside you.
 - 🏒 **Air Hockey:** 2v2 with four mallets. **M**
-- 🎱 **Billiards:** the 3D table; a 9-ball variant. **L**
+- 🎱 **Billiards:** ✅ the 3D table; ✅ a 9-ball variant; ✅ a livelier break, push-outs and match play; ✅ the cue strokes
+  and a ⏪ replay. Next: the aim guide drifts (about 1 unit) on hard shots at a ball near the foot rail.
 
 **Words & puzzles**
 - 🎡 **Lucky Letters:** a bonus round for the winner. **M**
@@ -565,11 +566,13 @@ Riders and Air Hockey start in it) (#13, #15).
   70), so about four breaks in ten pot a ball in 8-ball and half in 9-ball; the aim guide uses the same values.
   ✅ Fuller rules: a scratch on an 8-ball break gives ball in hand behind the head line; 9-ball has the 🔀 push-out
   (the first shot after the break needn't hit anything; the rival shoots from there or hands it back) and three fouls
-  in a row lose (a warning after two). `tests/billiards_rules.py` checks the rules with a scripted engine.
+  in a row lose (a warning after two). `tests/billiards_rules.py` checks the rules with a scripted engine. ✅ 🏁 Match play: a race to 2, 3 or 5 racks
+  (lobby setting), the break alternating; between racks a card shows who took the rack and the match score. ✅ The cue
+  strokes: every shot (the rival's too) opens with the stick drawing back and driving through the cue ball (0.35 s, which the
+  server allows for before the result or the next turn), and ⏪ Replay plays the last shot again at 0.6× (tap to stop).
   ✅ A 🏎️ Fast cloth table setting (#54): rolling friction 15 (about a real table) instead of 70, with a top speed of
   320 so the power bar stays usable; a ball at the same speed rolls about 3× further, the same power about 1.5×.
-  🐢 Classic stays the default. The bots and the aim guide follow the setting. ✅ Your aim carries over to your next
-  turn instead of snapping to a default (#52); the first shot and the break still start aimed at the rack.
+  🐢 Classic stays the default. The bots and the aim guide follow the setting.
 - 🗼 **Spire Siege:** ✅ a 🟦 4-block piece set beside the mixed 2/3/5-block set (#13), a ⇄ hold slot
   (C / Shift / swipe up), and a sharper flat well on high-DPI screens. ✅ 🟦 4-block is now the default
   (#26); the odd shapes are the 🧩 Mixed option. ✅ Normal and hard bots use the ⇄ hold slot (they park a piece and
