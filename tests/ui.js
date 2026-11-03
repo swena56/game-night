@@ -319,7 +319,7 @@ const MOVES = {
     const fire = (el, type, x, y) => el.dispatchEvent(new w.MouseEvent(type, { bubbles: true, clientX: x, clientY: y }));
     const st = d.querySelector('#raStage');
     if (n % 3 === 2) {
-      const code = pick(['ArrowLeft', 'ArrowRight', 'Space']);
+      const code = pick(['ArrowLeft', 'ArrowRight', 'Space', 'KeyF']);
       w.dispatchEvent(new w.KeyboardEvent('keydown', { code, bubbles: true }));
       return setTimeout(() => w.dispatchEvent(new w.KeyboardEvent('keyup', { code, bubbles: true })), 250);
     }

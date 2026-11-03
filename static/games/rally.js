@@ -1,29 +1,32 @@
 // Hover Rally: the track in 3D with a chase camera behind your craft (three.js), or top-down 2D.
 // Craft are (s, d): distance along the track and sideways offset (left is +d); positions glide
 // between server updates using each craft's speed. Hold the left/right half of the screen to steer.
-// The server also sends moments (bumps, boost-pad hits) that become sparks, sounds and camera shake.
+// The server also sends moments (bumps, boost-pad hits, missile pickups, launches and hits) that become
+// sparks, sounds and camera shake, and the 🚀 missiles in flight, which glide along the track like the craft.
 UI.rally = (() => {
   let S, ctx, gl = null, flat = null, raf = 0, ro = null, keyDown = null, keyUp = null;
   let crafts = [], gotAt = 0, steerNow = 0, keys = new Set(), touch = null, countdownAt = 0, trackKey = '';
   // ⏱ lap splits and 👻 a ghost of your best lap so far this race (recorded in the browser)
   let laps = [], lapRun = null, ghost = null, lapFlash = 0, lapMsg = '';
-  let prevMine = null, beeped = 0;
+  let prevMine = null, beeped = 0, missiles = [], pk = [], warnAt = 0;
+  const MISSILE_SPEED = 30;  // as on the server
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
     gl = null; flat = null; crafts = []; steerNow = 0; keys = new Set(); touch = null; trackKey = '';
-    laps = []; lapRun = null; ghost = null; lapFlash = 0; prevMine = null; beeped = 0;
+    laps = []; lapRun = null; ghost = null; lapFlash = 0; prevMine = null; beeped = 0; missiles = []; pk = [];
     main.innerHTML = `<div class="ra"><div class="ra-hud"><span id="raLap"></span><b id="raPlace"></b><span id="raSpeed"></span></div>
       <div class="ra-stage" id="raStage"><div class="lr-banner" id="raBanner" hidden></div>
         <div class="ra-half left">◀</div><div class="ra-half right">▶</div></div>
-      <div class="sm-bar"><span class="hint">Hold a side to steer · swipe up to boost</span><button id="raBoost" class="primary">⚡ Boost</button></div></div>`;
+      <div class="sm-bar"><span class="hint">Hold a side to steer · swipe up to boost, down to fire</span><button id="raFire" hidden>🚀</button><button id="raBoost" class="primary">⚡ Boost</button></div></div>`;
     side.innerHTML = '<div class="panel"><div id="raOrder"></div><div id="raSplits" class="ra-splits"></div></div>';
     main.querySelector('.ra').style.touchAction = 'none';
     $('raBoost').addEventListener('pointerdown', (e) => { e.preventDefault(); boost(); });
+    $('raFire').addEventListener('pointerdown', (e) => { e.preventDefault(); fire(); });
     const stage = $('raStage');
     stage.addEventListener('pointerdown', (e) => {
       const r = stage.getBoundingClientRect();
-      touch = { y: e.clientY, boosted: false };
+      touch = { y: e.clientY, boosted: false, fired: false };
       try { stage.setPointerCapture(e.pointerId); } catch {}
       steer(e.clientX - r.left < (r.width || 320) / 2 ? 1 : -1);
     });
@@ -31,6 +34,7 @@ UI.rally = (() => {
       if (!touch) return;
       const r = stage.getBoundingClientRect();
       if (!touch.boosted && touch.y - e.clientY > 50) { touch.boosted = true; boost(); }
+      if (!touch.fired && e.clientY - touch.y > 50) { touch.fired = true; fire(); }
       steer(e.clientX - r.left < (r.width || 320) / 2 ? 1 : -1);
     });
     for (const t of ['pointerup', 'pointercancel']) stage.addEventListener(t, () => { touch = null; steer(0); });
@@ -39,6 +43,7 @@ UI.rally = (() => {
       if (e.target?.closest?.('input, textarea, select')) return;
       if (KEY[e.code]) { e.preventDefault(); keys.add(e.code); steer(Math.sign([...keys].reduce((a, k) => a + KEY[k], 0))); }
       else if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') { e.preventDefault(); if (!e.repeat) boost(); }
+      else if (e.code === 'KeyF' || e.code === 'ArrowDown' || e.code === 'KeyS') { e.preventDefault(); if (!e.repeat) fire(); }
     };
     keyUp = (e) => { if (keys.delete(e.code)) steer(Math.sign([...keys].reduce((a, k) => a + KEY[k], 0))); };
     addEventListener('keydown', keyDown); addEventListener('keyup', keyUp);
@@ -84,6 +89,11 @@ UI.rally = (() => {
       beep: () => tone(660, 660, 0.14, 'square', 0.05),
       go: () => tone(1320, 1320, 0.35, 'square', 0.06),
       lap: () => [784, 1047].forEach((f, k) => tone(f, f, 0.14, 'triangle', 0.08, k * 0.08)),
+      pick: () => [523, 784, 1047].forEach((f, k) => tone(f, f, 0.09, 'square', 0.04, k * 0.05)),
+      fire: () => { noise(0.5, 2500, 500, 1.2, 0.6); tone(900, 200, 0.4, 'sawtooth', 0.05); },
+      hit: () => { noise(0.6, 1200, 120, 0.8, 1.1); tone(90, 35, 0.5, 'sine', 0.35); },   // you got hit
+      boom: () => { noise(0.35, 900, 200, 0.8, 0.35); tone(110, 50, 0.3, 'sine', 0.12); },  // someone else did
+      warn: () => tone(1500, 1500, 0.06, 'square', 0.04),
     };
     function play(kind, now) {
       if (!on()) return;
@@ -118,27 +128,33 @@ UI.rally = (() => {
   const racing = () => me() != null && S.phase === 'playing';
   function steer(v) { if (v === steerNow) return; steerNow = v; if (racing()) ctx.input({ steer: v }, true); }
   function boost() { if (racing()) ctx.input({ boost: true }, true); }
+  function fire() { if (racing() && crafts[me()]?.[9]) ctx.input({ fire: true }, true); }
   const colorOf = (i) => ctx.player(S.rally.seats[i])?.color ?? '#fff';
 
   function render(s, c) {
     S = s; ctx = c;
-    take(s.rally.c, s.rally.stage);
+    take(s.rally.c, s.rally.stage, s.rally.m, s.rally.pk);
     countdownAt = performance.now() + s.rally.countdown * 1000;
   }
 
   function fast(d) {
     if (!S?.rally) return;
-    take(d.c, d.st);
+    take(d.c, d.st, d.m, d.pk);
     const me = S.rally.me;
     for (const e of d.e || []) {
       gl?.fx(e);
       if (e[0] === 'pad' && e[1] === me) snd.play('pad');
       else if (e[0] === 'bump') snd.play(e.slice(1).includes(me) ? 'bump' : 'far');
+      else if (e[0] === 'pick' && e[1] === me) snd.play('pick');
+      else if (e[0] === 'fire') snd.play('fire');
+      else if (e[0] === 'hit') snd.play(e[1] === me ? 'hit' : 'boom');
     }
   }
 
-  function take(list, stage) {
+  function take(list, stage, m, p) {
     crafts = list.map((x) => x.slice());
+    missiles = m || []; pk = p || [];
+    S.rally.m = missiles; S.rally.pk = pk;
     const mine = S.rally.me != null ? crafts[S.rally.me] : null;
     if (mine && prevMine && mine[4] < prevMine[4]) snd.play('boost');  // one of my own boosts fired
     prevMine = mine;
@@ -165,6 +181,9 @@ UI.rally = (() => {
     return c[0] + c[2] * dt;
   }
 
+  const mNow = (m, now) => m[0] + (S.rally.stage === 'race' ? MISSILE_SPEED * Math.min(0.15, (now - gotAt) / 1000) : 0);
+  const incoming = () => S.rally.me != null && missiles.some((m) => m[2] === S.rally.me);
+
   function order() {
     return crafts.map((c, i) => i).sort((a, b) => (crafts[a][6] || 99) - (crafts[b][6] || 99) || crafts[b][0] - crafts[a][0]);
   }
@@ -185,6 +204,9 @@ UI.rally = (() => {
     $('raBoost').textContent = mine ? `⚡ ${mine[4]}` : '⚡';
     $('raBoost').disabled = !mine || !mine[4] || r.stage !== 'race' || !!mine[6];
     $('raBoost').parentElement.hidden = r.me == null;
+    $('raFire').hidden = !r.pickups?.length;
+    $('raFire').disabled = !mine?.[9] || r.stage !== 'race' || !!mine?.[6];
+    $('raFire').classList.toggle('primary', !!mine?.[9]);
     if (mine) {
       $('raLap').textContent = mine[6] ? 'Finished!' : `Lap ${Math.min(mine[5] + 1, r.laps)} / ${r.laps}`;
       const place = order().indexOf(r.me) + 1;
@@ -260,10 +282,12 @@ UI.rally = (() => {
       snd.engine(mine[2], r.top, !!mine[3]);
       if (mine[7]) snd.play('scrape', now);
     } else snd.engine(null);
+    const warn = mine && !mine[6] && incoming();
+    if (warn && now > warnAt) { warnAt = now + 220; snd.play('warn'); }
     const text = S.phase === 'playing' && r.stage === 'countdown' ? (cd > 0 ? String(Math.ceil(cd)) : 'GO!') : mine?.[6] && S.phase === 'playing' ? '🏁 Finished!'
-      : now < lapFlash ? lapMsg : '';
+      : mine?.[10] ? '💫 Hit!' : warn ? '⚠️ Missile behind!' : now < lapFlash ? lapMsg : '';
     $('raBanner').hidden = !text; $('raBanner').textContent = text;
-    $('raBanner').classList.toggle('small', !!text && text === lapMsg);
+    $('raBanner').classList.toggle('small', !!text && (text === lapMsg || text.startsWith('⚠️')));
   }
 
   // ---------- three.js: course (x, y) → world (x, 0, -y)
@@ -306,6 +330,8 @@ UI.rally = (() => {
       return new T.CanvasTexture(c);
     })();
     const padMat = new T.MeshBasicMaterial({ map: chevron, color: 0xffd166, transparent: true, opacity: 0.9, side: T.DoubleSide, blending: T.AdditiveBlending, depthWrite: false });
+    const pickups = [], pickGeo = new T.OctahedronGeometry(0.42);
+    const pickMat = new T.MeshStandardMaterial({ color: 0xff5d5d, emissive: 0xff2d2d, emissiveIntensity: 0.6, metalness: 0.3, roughness: 0.2 });
     const glowMat = (color, opacity = 1) => ({ map: dot, color, transparent: true, opacity, blending: T.AdditiveBlending, depthWrite: false });
     function build() {
       scene.remove(track); track = new T.Group(); scene.add(track);
@@ -329,6 +355,13 @@ UI.rally = (() => {
         const s = r.cum[((pi % n) + n) % n], p = at(s, lat);
         const pad = new T.Mesh(new T.PlaneGeometry(2, 1.6), padMat);
         pad.position.copy(V(p, 0.03)); pad.rotation.x = -Math.PI / 2; pad.rotation.z = Math.atan2(p.uy, p.ux); track.add(pad);
+      }
+      pickups.length = 0;
+      for (const [pi, lat] of r.pickups || []) {  // 🚀 pickups: spinning crystals hovering over the track
+        const s = r.cum[((pi % n) + n) % n], p = at(s, lat), g = new T.Group();
+        g.add(new T.Mesh(pickGeo, pickMat), new T.Sprite(new T.SpriteMaterial(glowMat(0xff5d5d, 0.7))));
+        g.children[1].scale.set(1.6, 1.6, 1);
+        g.position.copy(V(p, 0.7)); track.add(g); pickups.push(g);
       }
       cam.ready = false;
       for (const g of ships) g.userData.trail.pts.length = 0;
@@ -366,10 +399,40 @@ UI.rally = (() => {
         const tag = new T.Sprite(new T.SpriteMaterial({ map: new T.CanvasTexture(c), transparent: true, depthWrite: false }));
         tag.scale.set(2.6, 0.65, 1); tag.position.y = 1.3; g.add(tag);
       }
+      const held = rocket(); held.scale.setScalar(0.7); held.position.set(-0.1, 0.38, 0); held.visible = false; tilt.add(held);
       const trail = ribbon(col); scene.add(trail.mesh);
-      Object.assign(g.userData, { tilt, paint, flames, under, trail, d: null, vd: 0, lean: 0, lift: 0, flare: 0 });
+      Object.assign(g.userData, { tilt, paint, flames, under, trail, held, d: null, vd: 0, lean: 0, lift: 0, flare: 0, spin: 0 });
       return g;
     }
+    // ---- missiles: a slim body with a red nose and fins, facing +x
+    const rMetal = new T.MeshStandardMaterial({ color: 0xe8ecf4, metalness: 0.6, roughness: 0.3 });
+    const rRed = new T.MeshStandardMaterial({ color: 0xff3b3b, emissive: 0xff2020, emissiveIntensity: 0.5 });
+    function rocket() {
+      const g = new T.Group();
+      const bodyGeo = new T.CylinderGeometry(0.11, 0.11, 0.8, 8); bodyGeo.rotateZ(Math.PI / 2);
+      const noseGeo = new T.ConeGeometry(0.11, 0.3, 8); noseGeo.rotateZ(-Math.PI / 2);
+      const nose = new T.Mesh(noseGeo, rRed); nose.position.x = 0.55;
+      const finGeo = new T.BoxGeometry(0.2, 0.36, 0.03);
+      const f1 = new T.Mesh(finGeo, rRed), f2 = new T.Mesh(finGeo, rRed);
+      f1.position.x = f2.position.x = -0.32; f2.rotation.x = Math.PI / 2;
+      g.add(new T.Mesh(bodyGeo, rMetal), nose, f1, f2);
+      return g;
+    }
+    const flying = [];
+    function drawMissiles(now) {
+      while (flying.length < missiles.length) {
+        const g = rocket(), fl = new T.Sprite(new T.SpriteMaterial(glowMat(0xffb347)));
+        fl.position.x = -0.6; fl.scale.set(0.9, 0.6, 1); g.add(fl); scene.add(g); flying.push(g);
+      }
+      flying.forEach((g, k) => {
+        const m = missiles[k]; g.visible = !!m; if (!m) return;
+        const s = mNow(m, now), p = at(s, m[1]);
+        g.position.copy(V(p, 0.6)); g.rotation.y = Math.atan2(p.uy, p.ux); g.rotation.x = now / 60;
+        const t = V(at(s - 0.7, m[1]), 0.6);
+        spawn(1, t.x, t.y, t.z, 0, 0.4, 0, 0.5, 0xbbbbbb, 0.5);
+      });
+    }
+
     function ensureShips() {
       while (ships.length < S.rally.seats.length) { const g = craft(ships.length); scene.add(g); ships.push(g); }
     }
@@ -442,6 +505,15 @@ UI.rally = (() => {
         const p = shipAt(e[1]);
         spawn(26, p.x, 0.2, p.z, 0, 3, 0, 5, 0xffd166, 0.55, 6);
         ships[e[1]].userData.flare = 1;
+      } else if (e[0] === 'hit' && shipAt(e[1])) {  // an explosion: a hot flash, then embers
+        const p = shipAt(e[1]);
+        spawn(30, p.x, 0.6, p.z, 0, 3, 0, 9, 0xffb347, 0.6, 8);
+        spawn(14, p.x, 0.6, p.z, 0, 2, 0, 5, 0xff3b3b, 0.9, 4);
+        ships[e[1]].userData.flare = 1;
+        if (e[1] === S.rally.me) GL3.shake(camera, 0.7);
+      } else if (e[0] === 'pick' && shipAt(e[1])) {
+        const p = shipAt(e[1]);
+        spawn(14, p.x, 0.7, p.z, 0, 2, 0, 4, 0xff5d5d, 0.4, 6);
       } else if (e[0] === 'bump' && shipAt(e[1]) && shipAt(e[2])) {
         const a = shipAt(e[1]), b = shipAt(e[2]);
         spawn(20, (a.x + b.x) / 2, 0.5, (a.z + b.z) / 2, 0, 2, 0, 7, 0xcfe8ff, 0.4, 10);
@@ -464,6 +536,8 @@ UI.rally = (() => {
       const ease = (rate) => 1 - Math.exp(-dt * rate);
       const r = S.rally, gp = ghostAt(now), W = r.width;
       padMat.opacity = 0.65 + 0.35 * Math.sin(now / 140);
+      pickups.forEach((g, k) => { g.visible = !!pk[k]; g.rotation.y = now / 400; g.position.y = 0.7 + 0.12 * Math.sin(now / 250 + k); });
+      drawMissiles(now);
       ghostShip.visible = !!gp;
       if (gp) { ghostShip.position.copy(V(gp, 0.45)); ghostShip.rotation.y = Math.atan2(gp.uy, gp.ux); ghostShip.material.opacity = 0.22 + 0.08 * Math.sin(now / 150); }
       ships.forEach((g, i) => {
@@ -473,7 +547,10 @@ UI.rally = (() => {
         else { const nd = u.d + (c[1] - u.d) * ease(18); u.vd += ((nd - u.d) / dt - u.vd) * ease(8); u.d = nd; }
         const s = sNow(i, now), p = at(s, u.d), boosting = !!c[3];
         g.position.copy(V(p, 0.45 + 0.06 * Math.sin(now / 200 + i)));
-        g.rotation.y = Math.atan2(p.uy, p.ux);
+        // spinning from a missile hit: whirl round, then settle back facing forward
+        if (c[10]) u.spin += dt * 16; else if (u.spin) { const to = Math.round(u.spin / Math.PI / 2) * Math.PI * 2; u.spin += (to - u.spin) * ease(10); if (Math.abs(to - u.spin) < 0.01) u.spin = 0; }
+        g.rotation.y = Math.atan2(p.uy, p.ux) + u.spin;
+        u.held.visible = !!c[9];
         // left is +d and leaning left is a negative turn about the forward axis
         const lean = Math.max(-0.5, Math.min(0.5, -(u.vd * 0.07 + (i === r.me ? steerNow * 0.22 : 0))));
         u.lean += (lean - u.lean) * ease(10); u.lift += ((boosting ? 0.08 : 0) - u.lift) * ease(6); u.flare *= Math.exp(-dt * 4);
@@ -544,6 +621,14 @@ UI.rally = (() => {
       g.fillStyle = '#070512'; g.fillRect(0, 0, canvas.width, canvas.height);
       g.strokeStyle = '#24203a'; g.lineWidth = r.width * 2 * k; g.lineJoin = 'round';
       g.beginPath(); r.track.forEach(([x, y], j) => (j ? g.lineTo(X(x), Y(y)) : g.moveTo(X(x), Y(y)))); g.closePath(); g.stroke();
+      g.fillStyle = '#ff5d5d';
+      (r.pickups || []).forEach(([pi, lat], j) => {
+        if (!pk[j]) return;
+        const p = at(r.cum[pi % r.track.length], lat), x = X(p.x), y = Y(p.y), q = Math.max(3, 0.5 * k);
+        g.beginPath(); g.moveTo(x, y - q); g.lineTo(x + q, y); g.lineTo(x, y + q); g.lineTo(x - q, y); g.fill();
+      });
+      g.fillStyle = '#ffb347';
+      for (const m of missiles) { const p = at(mNow(m, now), m[1]); g.beginPath(); g.arc(X(p.x), Y(p.y), Math.max(2, 0.35 * k), 0, 7); g.fill(); }
       const gp = ghostAt(now);
       if (gp) { g.strokeStyle = '#bfe9ffaa'; g.lineWidth = 2; g.beginPath(); g.arc(X(gp.x), Y(gp.y), Math.max(3, 0.8 * k), 0, 7); g.stroke(); }
       crafts.forEach((c, i) => {
