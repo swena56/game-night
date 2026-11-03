@@ -1,7 +1,7 @@
 // Billiards: a top-down table on a canvas. The server simulates each shot and sends the ball paths
 // (30 frames a second), which every phone plays back. The table stands upright on portrait screens.
 UI.billiards = (() => {
-  let S, ctx, raf = 0, ro = null, animEnd = 0;
+  let S, ctx, raf = 0, ro = null, roRaf = 0, animEnd = 0, setTip = null;
   let dial = null, aim = 0, aimFor = null, power = 0.55, cuePos = null, drag = null, anim = null, seenShot = 0;
   let spin = 0, english = 0, called = null, pushing = false;  // where the cue tip strikes: follow (+) / draw (−), right (+) / left (−); the pocket called for the 8
   let rolls = new Map();  // each ball's orientation, so it turns as it rolls (#33)
@@ -537,6 +537,8 @@ UI.billiards = (() => {
       held.fine = e.shiftKey;
     } else if (k === 'ArrowUp' || k === 'ArrowDown') {
       setPower(power + (k === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 0.01 : 0.05));
+    } else if (k.length === 1 && k >= '0' && k <= '9' && !t?.closest?.('[role="slider"]')) {
+      setPower(k === '0' ? 1 : +k / 10);  // number keys (#53): 1 = 10% … 9 = 90%, 0 = full power
     } else if ((k === ' ' || k === 'Enter') && !t?.closest?.('button, [role="slider"]')) {
       if (!e.repeat) shoot();
     } else if ((k === 'c' || k === 'C') && view3d) {
@@ -796,7 +798,7 @@ UI.billiards = (() => {
       <div id="blStatus" class="seat-row"></div>
       <div id="blRacks" class="bl-racks"></div>
       <p class="hint left" id="blHint">Drag anywhere on the table to turn the cue around the ball. ◀ ▶ fine-tune. Pull the power bar back and let go to shoot. ✋ With ball in hand, drag the cue ball to move it.</p>
-      <p class="hint left bl-keys">Keys: ← → turn the cue (hold to turn faster, Shift for fine aim) · ↑ ↓ power · Space shoots · W A S D move the cue ball in hand · C switches the 3D camera.</p></div>`;
+      <p class="hint left bl-keys">Keys: ← → turn the cue (hold to turn faster, Shift for fine aim) · ↑ ↓ or 1–9, 0 power · Space shoots · W A S D move the cue ball in hand · C switches the 3D camera.</p></div>`;
     const c = $('blCanvas');
     c.style.touchAction = 'none';
     c.addEventListener('pointerdown', (e) => pointer(e, 'down'));
@@ -814,7 +816,7 @@ UI.billiards = (() => {
     $('blPass').onclick = () => { if (canShoot()) ctx.quiet(ctx.act('pass')); };
     // the cue-ball pad (#34): where the tip strikes. Up/down is follow/draw, left/right is side spin.
     const pad = $('blSpin');
-    const setTip = (fx, fy) => {
+    setTip = (fx, fy) => {
       const m = Math.hypot(fx, fy);
       if (m > 1) { fx /= m; fy /= m; }  // stay on the ball
       english = Math.round(fx * 10) / 10 || 0; spin = Math.round(-fy * 10) / 10 || 0;  // || 0: no −0
@@ -882,13 +884,15 @@ UI.billiards = (() => {
     window.addEventListener('keydown', onKey);
     window.addEventListener('keyup', onKeyUp);
     window.addEventListener('blur', onKeyUp);
-    ro = window.ResizeObserver ? new ResizeObserver(() => layout()) : null;
+    // laid out on the next frame: resizing the canvas inside the callback re-triggers the observer and
+    // the browser reports "ResizeObserver loop completed with undelivered notifications"
+    ro = window.ResizeObserver ? new ResizeObserver(() => { cancelAnimationFrame(roRaf); roRaf = requestAnimationFrame(layout); }) : null;
     ro?.observe($('blStage')); ro?.observe(side);  // the info strip growing a line shrinks the table to match
     raf = requestAnimationFrame(tick);
   }
 
   function unmount() {
-    cancelAnimationFrame(raf); clearTimeout(animEnd); ro?.disconnect();
+    cancelAnimationFrame(raf); cancelAnimationFrame(roRaf); clearTimeout(animEnd); ro?.disconnect(); setTip = null;
     if (onKey) { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('blur', onKeyUp); }
     onKey = onKeyUp = null; held.dir = 0;
     if (gl) gl.dispose();
@@ -915,6 +919,7 @@ UI.billiards = (() => {
     const turnKey = `${S.turn}:${b.shot?.id ?? 0}`;
     if (ctx.myTurn && aimFor !== turnKey) {
       aimFor = turnKey; called = null; pushing = false;
+      setTip?.(0, 0);  // each shot starts from a centre hit (#52), like the aim and the power do afresh
       cuePos = b.inHand ? defaultCue() : null;
       aim = defaultAim();
     }
