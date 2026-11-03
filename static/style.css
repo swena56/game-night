@@ -458,6 +458,9 @@ body.replaying .layout { padding-bottom: 190px; }  /* the bar covers the bottom 
 .bl-stage { display: flex; justify-content: center; position: relative; overflow: hidden; border-radius: 10px; touch-action: none; }
 .bl-stage canvas { display: block; border-radius: 10px; box-shadow: 0 14px 40px #000a; cursor: crosshair; transform-origin: 0 0; }
 .bl-zoom { position: absolute; top: 8px; right: 8px; padding: 6px 10px; font-size: 13px; background: #000a; color: #fff; z-index: 2; }
+.bl-stage canvas[hidden] { display: none; }
+.bl-views { position: absolute; top: 8px; left: 8px; display: flex; gap: 6px; z-index: 2; }
+.bl-views button { padding: 6px 10px; font-size: 13px; background: #000a; color: #fff; }
 .bl-controls { display: flex; align-items: center; gap: 8px; margin: 10px auto 0; max-width: 640px; }
 .bl-controls > button { flex: none; min-width: 48px; font-size: 20px; padding: 10px 0; touch-action: manipulation; }
 .bl-controls #blShoot { min-width: 96px; font-size: 16px; padding: 12px 10px; }
@@ -479,6 +482,8 @@ body.replaying .layout { padding-bottom: 190px; }  /* the bar covers the bottom 
 body.focus .bl { max-width: none; }
 body.focus .layout:has(.bl) { max-width: 1900px; }
 .bl-racks { display: grid; gap: 6px; margin: 8px 0; }
+.bl-keys { opacity: 0.8; }
+@media (hover: none) { .bl-keys { display: none; } }
 .bl-rack { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; padding: 6px 8px; border-radius: 10px; background: #ffffff08; }
 .bl-rack.now { background: #ffb7031a; }
 .bl-rack b { margin-right: 6px; }
