@@ -436,6 +436,9 @@ class Billiards(Game):
             "targets": self.legal_targets(self.room.turn) if self.room.turn else [],
             "shot": shot, "last": self.last, "guide": self.s["guide"],
             "minSpeed": MIN_SPEED, "maxSpeed": MAX_SPEED, "friction": FRICTION,
+            # the engine's constants, so the aim guide runs the same physics in the browser
+            "phys": {"slide": SLIDE, "cushion": CUSHION, "bounce": BOUNCE, "railGrip": RAIL_GRIP, "tipK": TIP_K,
+                     "sideTip": SIDE_TIP, "sideDecay": SIDE_DECAY, "dt": DT, "stop": STOP, "mouth": MOUTH},
             "calling": self.calling(self.room.turn) if self.room.turn and self.room.phase == "playing" else False,
         }}
 

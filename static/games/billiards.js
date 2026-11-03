@@ -20,8 +20,12 @@ UI.billiards = (() => {
     const B = S.billiards, dpr = Math.min(devicePixelRatio || 1, 2);
     const portrait = stage.clientWidth < (window.visualViewport?.height ?? innerHeight) * 0.8;
     const longSide = B.W + 2 * RAIL, shortSide = B.H + 2 * RAIL;
-    const chrome = document.body.classList.contains('focus') ? 132 : 190;  // top bar, controls (and chips/log)
-    const availH = Math.max(200, (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--app-h')) || innerHeight) - chrome);
+    // room for the table: the visible height less what sits above it (top bar, chips) and below it
+    // (the shot controls and the game-info strip), so all of it is on screen without scrolling
+    const appH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--app-h')) || innerHeight;
+    const above = stage.getBoundingClientRect().top + scrollY, info = $('sideGame');
+    const below = (stage.nextElementSibling?.offsetHeight ?? 60) + (info?.offsetParent ? info.offsetHeight + 10 : 0) + 30;
+    const availH = Math.max(200, appH - Math.max(40, above) - below);
     const w = stage.clientWidth || 320;
     const k = portrait ? Math.min(w / shortSide, availH / longSide) : Math.min(w / longSide, availH / shortSide);
     const cw = Math.round((portrait ? shortSide : longSide) * k), ch = Math.round((portrait ? longSide : shortSide) * k);
@@ -88,6 +92,136 @@ UI.billiards = (() => {
       if (d) { const t = ((d > 0 ? hi : lo) - p) / d; if (t > 0 && t < best.t) best = { t, ball: null }; }
     }
     return { gx: cue[0] + dx * best.t, gy: cue[1] + dy * best.t, ball: best.ball };
+  }
+
+  // ---------- aim guide prediction: the server's shot engine (simulate() in games/billiards.py, constants from
+  // the view), run here so the guide shows where the balls really go. The cue ball skids then rolls, so after
+  // the hit the cloth bends it forward (follow, or plain rolling) or back (draw) off the 90° tangent line, and
+  // how far it bends depends on power. Runs only until the first hit's paths are long enough to draw.
+  const OBJ_LEN = 55, CUE_LEN = 40;  // how much of each path to show, in table units
+  let predKey = '', pred = null;
+  function predict(cue) {
+    const b = B(), P = b.phys;
+    if (!P) return null;
+    const key = [aim, power, spin, english, cue[0], cue[1], b.balls.map((a) => a.join()).join(';')].join('|');
+    if (key === predKey) return pred;
+    predKey = key;
+    const R = b.R, W = b.W, H = b.H, POCK = b.pockets, MOUTH = P.mouth, F = b.friction;
+    const balls = new Map();
+    for (const [n, x, y] of b.balls) if (n !== 0) balls.set(n, [x, y, 0, 0, 0, 0, 0]);
+    const speed = b.minSpeed + (b.maxSpeed - b.minSpeed) * power, ax = Math.cos(aim), ay = Math.sin(aim), top = P.tipK * spin * speed;
+    const cb = [cue[0], cue[1], ax * speed, ay * speed, ax * top, ay * top, P.sideTip * english * speed];
+    balls.set(0, cb);
+    const cloth = (o, h) => {
+      let [, , vx, vy, sx, sy] = o;
+      if (o[6]) o[6] = Math.abs(o[6]) < 0.5 ? 0 : o[6] * (1 - P.sideDecay * h);
+      let ux = vx - sx, uy = vy - sy;
+      const u = Math.hypot(ux, uy);
+      if (u > 0.5) {
+        const a = Math.min(P.slide * h, u / 3.5);
+        ux = (ux / u) * a; uy = (uy / u) * a;
+        vx -= ux; vy -= uy; sx += 2.5 * ux; sy += 2.5 * uy;
+        o[2] = vx; o[3] = vy; o[4] = sx; o[5] = sy; o[0] += vx * h; o[1] += vy * h;
+        return true;
+      }
+      const v = Math.hypot(vx, vy), nv = v - F * h;
+      if (nv < P.stop) { o[2] = o[3] = o[4] = o[5] = 0; return false; }
+      o[2] = o[4] = (vx * nv) / v; o[3] = o[5] = (vy * nv) / v;
+      o[0] += o[2] * h; o[1] += o[3] * h;
+      return true;
+    };
+    const rail = (o, axis, into) => {
+      const t = 1 - axis, vn = into * o[2 + axis];
+      if (vn <= 0) return;
+      const jn = vn * (1 + P.cushion);
+      o[2 + axis] = -into * vn * P.cushion;
+      o[4 + axis] *= -P.cushion;
+      const side = axis === 0 ? into : -into, slip = o[2 + t] + side * o[6];
+      const jt = Math.max(-P.railGrip * jn, Math.min(P.railGrip * jn, slip / 3.5));
+      o[2 + t] -= jt; o[6] -= side * 2.5 * jt;
+    };
+    let first = null, hit = null;  // the first ball the cue ball touches, and where both balls were at that moment
+    const collide = (h) => {
+      const live = [...balls];
+      for (let i = 0; i < live.length; i++) {
+        const [n1, b1] = live[i];
+        for (let j = i + 1; j < live.length; j++) {
+          const [n2, b2] = live[j];
+          if (!(b1[2] || b1[3] || b2[2] || b2[3])) continue;
+          let dx = b2[0] - b1[0], dy = b2[1] - b1[1];
+          const d2 = dx * dx + dy * dy;
+          if (d2 >= 4 * R * R || d2 === 0) continue;
+          let d = Math.sqrt(d2), nx = dx / d, ny = dy / d, rel = (b1[2] - b2[2]) * nx + (b1[3] - b2[3]) * ny;
+          if (rel <= 0) {
+            const push = (2 * R - d) / 2;
+            b1[0] -= nx * push; b1[1] -= ny * push; b2[0] += nx * push; b2[1] += ny * push;
+            continue;
+          }
+          const wx = b2[2] - b1[2], wy = b2[3] - b1[3], w2 = wx * wx + wy * wy, dw = dx * wx + dy * wy;
+          const back = w2 ? Math.min(h, (dw + Math.sqrt(Math.max(0, dw * dw - w2 * (d2 - 4 * R * R)))) / w2) : 0;
+          for (const o of [b1, b2]) { o[0] -= o[2] * back; o[1] -= o[3] * back; }
+          dx = b2[0] - b1[0]; dy = b2[1] - b1[1]; d = Math.hypot(dx, dy) || 2 * R; nx = dx / d; ny = dy / d;
+          rel = (b1[2] - b2[2]) * nx + (b1[3] - b2[3]) * ny;
+          const jj = (Math.max(0, rel) * (1 + P.bounce)) / 2;
+          b1[2] -= jj * nx; b1[3] -= jj * ny; b2[2] += jj * nx; b2[3] += jj * ny;
+          if (first == null && (n1 === 0 || n2 === 0)) {
+            first = n1 === 0 ? n2 : n1;
+            const ob = n1 === 0 ? b2 : b1;
+            hit = { cue: [cb[0], cb[1]], ball: [ob[0], ob[1]] };
+          }
+          for (const o of [b1, b2]) { o[0] += o[2] * back; o[1] += o[3] * back; }
+        }
+      }
+    };
+    // after the hit, follow both balls until each has gone its length, stopped, dropped or reached a cushion
+    const paths = new Map(), done = new Set();
+    const track = (n, o, wall) => {
+      if (done.has(n)) return;
+      const p = paths.get(n), [lx, ly] = p.pts[p.pts.length - 1];
+      p.len += Math.hypot(o[0] - lx, o[1] - ly);
+      p.pts.push([o[0], o[1]]);
+      if (wall || p.len >= (n === 0 ? CUE_LEN : OBJ_LEN) || !(o[2] || o[3])) done.add(n);
+    };
+    let stopAt = null;
+    for (let step = 0; step < 120 * 14; step++) {
+      const fastest = Math.max(...[...balls.values()].map((o) => Math.abs(o[2]) + Math.abs(o[3])));
+      const subs = Math.max(1, Math.ceil((fastest * P.dt) / R)), h = P.dt / subs;
+      let moving = false;
+      for (let s = 0; s < subs; s++) {
+        moving = false;
+        for (const o of balls.values()) if ((o[2] || o[3] || o[4] || o[5]) && cloth(o, h)) moving = true;
+        if (!moving) break;
+        const had = first;
+        collide(h);
+        if (had == null && first != null) {
+          paths.set(0, { pts: [hit.cue], len: 0 }); paths.set(first, { pts: [hit.ball], len: 0 });
+        }
+        for (const [n, o] of [...balls]) {
+          const inPocket = POCK.some(([px, py, cap]) => Math.hypot(o[0] - px, o[1] - py) < cap);
+          if (inPocket) {
+            if (paths.has(n) && !done.has(n)) { paths.get(n).pts.push([o[0], o[1]]); paths.get(n).sunk = true; done.add(n); }
+            balls.delete(n);
+            if (n === 0 && first == null) return (pred = { scratch: [o[0], o[1]] });
+            continue;
+          }
+          const mouth = POCK.some(([px, py, cap]) => Math.hypot(o[0] - px, o[1] - py) < cap + MOUTH);
+          let wall = false;
+          for (const [axis, size] of [[0, W], [1, H]]) {
+            const lo = mouth ? -R : R, hi = mouth ? size + R : size - R;
+            const into = o[axis] < lo ? -1 : o[axis] > hi ? 1 : 0;
+            if (into) { o[axis] = into < 0 ? lo : hi; rail(o, axis, into); wall = true; }
+          }
+          if (n === 0 && first == null && wall) return (pred = null);  // a cushion first: the plain aim line says it all
+          if (paths.has(n) && wall) track(n, o, true);
+        }
+      }
+      if (first == null && !(cb[2] || cb[3])) { stopAt = [cb[0], cb[1]]; break; }  // runs out before reaching anything
+      for (const [n, p] of paths) if (!done.has(n)) { const o = balls.get(n); if (o) track(n, o, false); else done.add(n); }
+      if (!moving || (paths.size && paths.size === done.size)) break;
+    }
+    if (stopAt) return (pred = { stop: stopAt });
+    if (first == null) return (pred = null);
+    return (pred = { ghost: hit.cue, ball: hit.ball, obj: paths.get(first), cue: paths.get(0) });
   }
 
   // ---------- drawing
@@ -171,14 +305,32 @@ UI.billiards = (() => {
     g.lineTo(...at(back, -tipW / 2)); g.lineTo(...at(back - 1.5 * lw, -tipW / 2)); g.fill();
     if (guide === 'off') return;
     const full = guide === 'full';
-    const toX = full ? ex : sx + (ex - sx) * Math.min(1, (40 * lw) / Math.hypot(ex - sx, ey - sy || 1));
-    const toY = full ? ey : sy + (ey - sy) * Math.min(1, (40 * lw) / Math.hypot(ex - sx, ey - sy || 1));
+    if (!full) {  // the short guide: just which way the cue points
+      const f = Math.min(1, (40 * lw) / Math.hypot(ex - sx, ey - sy || 1));
+      g.strokeStyle = '#ffffffaa'; g.lineWidth = 1.2 * lw; g.setLineDash([5 * lw, 4 * lw]);
+      g.beginPath(); g.moveTo(sx, sy); g.lineTo(sx + (ex - sx) * f, sy + (ey - sy) * f); g.stroke(); g.setLineDash([]);
+      return;
+    }
+    // the full guide runs the shot engine: the ghost ball sits where the cue ball really meets the first ball
+    // (or where it stops short, or the pocket it would drop into), with both balls' real paths after the hit
+    const p = predict(cue), end = p?.ghost || p?.stop || p?.scratch || [gx, gy], [hx, hy] = toScreen(...end);
     g.strokeStyle = '#ffffffaa'; g.lineWidth = 1.2 * lw; g.setLineDash([5 * lw, 4 * lw]);
-    g.beginPath(); g.moveTo(sx, sy); g.lineTo(toX, toY); g.stroke(); g.setLineDash([]);
-    if (!full) return;
-    g.strokeStyle = '#ffffffcc'; g.lineWidth = 1 * lw;
-    g.beginPath(); g.arc(ex, ey, rpx, 0, 7); g.stroke();  // ghost ball
-    if (ball) {  // where the object ball heads
+    g.beginPath(); g.moveTo(sx, sy); g.lineTo(hx, hy); g.stroke();
+    g.strokeStyle = p?.scratch ? '#ef476f' : '#ffffffcc'; g.lineWidth = 1 * lw;
+    if (!p?.stop) g.setLineDash([]);  // a dashed ghost: the cue ball runs out of pace and stops here
+    g.beginPath(); g.arc(hx, hy, rpx, 0, 7); g.stroke(); g.setLineDash([]);
+    const line = (path, colour, width, dash) => {
+      if (!path || path.pts.length < 2) return;
+      g.strokeStyle = colour; g.lineWidth = width * lw; g.setLineDash(dash ? [4 * lw, 3 * lw] : []);
+      g.beginPath(); g.moveTo(...toScreen(...path.pts[0]));
+      for (const pt of path.pts.slice(1)) g.lineTo(...toScreen(...pt));
+      g.stroke(); g.setLineDash([]);
+      if (path.sunk) { const [qx, qy] = toScreen(...path.pts[path.pts.length - 1]); g.beginPath(); g.arc(qx, qy, rpx * 0.7, 0, 7); g.stroke(); }
+    };
+    if (p?.ghost) {
+      line(p.obj, '#ffd166', 1.6, false);  // where the object ball goes
+      line(p.cue, '#bfe9ffcc', 1.4, true);  // and the cue ball, bent by its follow or draw
+    } else if (!p && ball) {  // no prediction (an older server): the line of centres
       const [bx, by] = toScreen(...ball), nx = bx - ex, ny = by - ey, n = Math.hypot(nx, ny) || 1;
       g.strokeStyle = '#ffd166'; g.lineWidth = 1.6 * lw;
       g.beginPath(); g.moveTo(bx, by); g.lineTo(bx + (nx / n) * 45 * lw, by + (ny / n) * 45 * lw); g.stroke();
@@ -251,8 +403,13 @@ UI.billiards = (() => {
     g.fillStyle = '#0006'; g.beginPath(); g.arc(x + r * 0.18, y + r * 0.22, r, 0, 7); g.fill();
     g.save(); g.beginPath(); g.arc(x, y, r, 0, 7); g.clip();
     g.drawImage(ballImage(n, o, r), x - r, y - r, 2 * r, 2 * r);
-    const shine = g.createRadialGradient(x - r * 0.4, y - r * 0.4, r * 0.1, x, y, r);
-    shine.addColorStop(0, '#ffffff99'); shine.addColorStop(0.4, '#ffffff10'); shine.addColorStop(1, '#00000040');
+    // shading in two parts so the glare never washes out the number: the rim darkens for roundness, and a
+    // small tight highlight sits up by the top-left edge, clear of the spot when it faces up
+    const rim = g.createRadialGradient(x, y, r * 0.55, x, y, r);
+    rim.addColorStop(0, '#00000000'); rim.addColorStop(1, '#00000048');
+    g.fillStyle = rim; g.fillRect(x - r, y - r, 2 * r, 2 * r);
+    const hx = x - r * 0.5, hy = y - r * 0.5, shine = g.createRadialGradient(hx, hy, 0, hx, hy, r * 0.3);
+    shine.addColorStop(0, '#ffffffb0'); shine.addColorStop(0.45, '#ffffff38'); shine.addColorStop(1, '#ffffff00');
     g.fillStyle = shine; g.fillRect(x - r, y - r, 2 * r, 2 * r);
     g.restore();
   }
@@ -442,7 +599,7 @@ UI.billiards = (() => {
           <small id="blSpinVal">centre</small></div>
         <button id="blShoot" class="primary">🎱 Shoot</button>
       </div></div>`;
-    side.innerHTML = `<div class="panel">
+    side.innerHTML = `<div class="panel bl-side">
       <div id="blStatus" class="seat-row"></div>
       <div id="blRacks" class="bl-racks"></div>
       <p class="hint left" id="blHint">Drag anywhere on the table to turn the cue around the ball. ◀ ▶ fine-tune. ✋ With ball in hand, drag the cue ball to move it.</p></div>`;
@@ -490,7 +647,7 @@ UI.billiards = (() => {
     }
     $('blShoot').onclick = shoot;
     ro = window.ResizeObserver ? new ResizeObserver(() => layout()) : null;
-    ro?.observe($('blStage'));
+    ro?.observe($('blStage')); ro?.observe(side);  // the info strip growing a line shrinks the table to match
     raf = requestAnimationFrame(tick);
   }
 
