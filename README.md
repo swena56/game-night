@@ -458,7 +458,8 @@ Items that become ✅ move into the per-game plan.
   and a 👻 ghost of your best lap so far racing beside you.
 - 🏒 **Air Hockey:** 2v2 with four mallets. **M**
 - 🎱 **Billiards:** ✅ the 3D table; ✅ a 9-ball variant; ✅ a livelier break, push-outs and match play; ✅ the cue strokes
-  and a ⏪ replay. Next: the aim guide drifts (about 1 unit) on hard shots at a ball near the foot rail.
+  and a ⏪ replay; ✅ the aim guide no longer drifts on hard shots near the foot rail (the server now sends exact
+  ball positions; a ball rounded to 0.01 had sent the guide up to about a unit off the real path).
 
 **Words & puzzles**
 - 🎡 **Lucky Letters:** a bonus round for the winner. **M**
@@ -560,7 +561,8 @@ Riders and Air Hockey start in it) (#13, #15).
   ✅ Cushions meet the ball at natural-roll height, so a rolling ball comes off still rolling and a skidding one
   picks up topspin; soft hits keep more speed than hard ones. ✅ Throw: a cut drags the object ball 1–4° toward the
   cue ball's line, and english turns it further or back. ✅ `tests/billiards_physics.py` checks all of it and
-  that the aim guide's copy of the engine follows the server's paths. The cloth is about 9× slower than a
+  that the aim guide's copy of the engine follows the server's paths exactly (to 0.01, against the server's
+  position at every sub-step, so cushion contacts and pocket drops are compared too). The cloth is about 9× slower than a
   real one (so position play stays on the table), which left a break potting almost nothing. ✅ A livelier break:
   the break gets its own top speed (720, about twice a hard shot) and a faster cloth (rolling friction 18 instead of
   70), so about four breaks in ten pot a ball in 8-ball and half in 9-ball; the aim guide uses the same values.
