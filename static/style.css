@@ -462,6 +462,10 @@ body.replaying .layout { padding-bottom: 190px; }  /* the bar covers the bottom 
 .bl-views { position: absolute; top: 8px; left: 8px; display: flex; gap: 6px; z-index: 2; }
 .bl-views button { padding: 6px 10px; font-size: 13px; background: #000a; color: #fff; }
 .bl-views button.on { background: #ffb703; color: #000; }
+.bl-rackdone { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(88%, 340px); max-height: 86%; overflow: auto;
+  background: #0b1626ee; border: 1px solid #ffffff2a; border-radius: var(--radius); padding: 12px 14px; z-index: 3; animation: bannerIn .4s ease-out; }
+.bl-rackdone h3 { margin: 0 0 8px; text-align: center; }
+.bl-match { gap: 10px; flex-wrap: wrap; }
 .bl-controls { display: flex; align-items: center; gap: 8px; margin: 10px auto 0; max-width: 640px; }
 .bl-controls > button { flex: none; min-width: 48px; font-size: 20px; padding: 10px 0; touch-action: manipulation; }
 .bl-controls #blShoot { min-width: 96px; font-size: 16px; padding: 12px 10px; }

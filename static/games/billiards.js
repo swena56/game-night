@@ -780,7 +780,8 @@ UI.billiards = (() => {
         <button id="blZoom" class="bl-zoom" hidden aria-label="Show the whole table">🔍 1×</button>
         <div class="bl-views"><button id="blView" hidden>🧊 3D</button><button id="blCam" hidden>🎥 Behind cue</button>
           <button id="blPush" hidden aria-pressed="false" title="9-ball: the first shot after the break may be a push-out. It needn't hit anything; your rival then shoots from there or hands it back.">🔀 Push out</button>
-          <button id="blPass" hidden title="Make your rival shoot from where their push-out left the balls">↩️ Hand it back</button></div></div>
+          <button id="blPass" hidden title="Make your rival shoot from where their push-out left the balls">↩️ Hand it back</button></div>
+        <div class="bl-rackdone" id="blRackDone" hidden><h3 id="blRackTitle"></h3><div id="blStand"></div></div></div>
       <div class="bl-controls">
         <button id="blLeft" aria-label="Aim left">◀</button>
         <div class="bl-power"><div id="blStroke" class="bl-stroke" title="Pull the cue back: drag left from anywhere on the bar and let go to shoot. Tap to just set the power. Drag off the bar to cancel.">
@@ -938,6 +939,7 @@ UI.billiards = (() => {
         : pushing ? pushText
         : b.rules === '9' ? foulWarn + pushText + (b.targets[0] === 9 ? '9️⃣ Only the 9 left: sink it to win!' : `Hit the ${b.targets[0]} first. Sink the 9 to win.`)
         : b.targets.length === 1 && b.targets[0] === 8 ? '🎱 Sink the 8 to win!' : 'Your shot.')
+      : b.between ? `🏁 Rack ${b.rackNo} to ${ctx.player(b.rackWinner)?.name ?? '?'}. The next rack is coming up…`
       : S.turn ? (b.pushChoice === S.turn ? `🔀 ${turnName} decides: shoot from here or hand it back…` : `${turnName} is shooting…`) : '🎱 …';
     $('blPush').hidden = !(canShoot() && b.pushOk);
     $('blPush').classList.toggle('on', pushing);
@@ -947,8 +949,20 @@ UI.billiards = (() => {
     for (const id of ['blLeft', 'blRight', 'blPower']) $(id).disabled = !canShoot();
     $('blStroke').classList.toggle('off', !canShoot());
     $('blSpin').classList.toggle('off', !canShoot());
+    // a match: racks won, and between racks a card with the score
+    $('blRackDone').hidden = !b.between;
+    if (b.between) {
+      $('blRackTitle').textContent = `🏁 Rack ${b.rackNo} to ${ctx.player(b.rackWinner)?.name ?? '?'}`;
+      standingsCard($('blStand'), b.standings, { title: `Race to ${b.race}`, note: 'The next rack is coming up. The break alternates.' });
+    }
     // each player's remaining balls
     const racks = $('blRacks'); racks.innerHTML = '';
+    if (b.race > 1) {
+      const seats = Object.keys(b.racks || {}), row = ctx.el('div', 'bl-rack bl-match');
+      row.append(ctx.el('b', '', `🏁 Race to ${b.race} · rack ${b.rackNo}`));
+      row.append(ctx.el('span', '', seats.map((i) => `${ctx.player(i)?.name ?? '?'} ${b.racks[i]}`).join(' – ')));
+      racks.append(row);
+    }
     const onTable = new Set(b.balls.map(([n]) => n));
     if (b.rules === '9') {  // nine-ball: no groups, just the balls still up, lowest (the one to hit) first
       const row = ctx.el('div', 'bl-rack');
@@ -977,6 +991,6 @@ UI.billiards = (() => {
     if (mine) $('blHint').textContent = `You have ${mine === 'solids' ? '🔵 solids (1–7)' : '🟠 stripes (9–15)'}. Drag to turn the cue, ◀ ▶ fine-tune.`;
   }
 
-  const turnText = (s) => s.phase !== 'playing' ? null : s.billiards.inHand && s.turn === s.me.id ? '✋ Ball in hand' : null;
+  const turnText = (s) => s.phase !== 'playing' ? null : s.billiards.between ? '🏁 Next rack…' : s.billiards.inHand && s.turn === s.me.id ? '✋ Ball in hand' : null;
   return { mount, render, unmount, turnText, focus: true };
 })();

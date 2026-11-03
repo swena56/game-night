@@ -176,5 +176,38 @@ script(sunk=[], first=None)
 shoot(g, a)
 check("the third foul in a row loses", room.phase == "over" and room.winner == "b")
 
+# ---------- match play: race to 2, the break alternates, a pause between racks
+g, room, a, bo = new_game("9", race=2)
+script(sunk=[9])
+shoot(g, a, cue=[b.HEAD_X - 5, b.TH / 2])  # the 9 on the break wins rack 1
+check("rack 1 won: a pause, not game over", room.phase == "playing" and g.between and room.turn is None
+      and g.racks == {"a": 1, "b": 0} and room.deadline)
+v = g.view(a)["billiards"]
+check("the view shows the match score between racks", v["between"] and v["race"] == 2 and v["rackWinner"] == "a"
+      and v["standings"] and v["standings"][0]["id"] == "a")
+check("no bot moves during the pause", not g.bot_ready())
+g.on_timeout()
+check("rack 2: the other player breaks", not g.between and room.turn == "b" and g.breaking and g.rack_no == 2
+      and g.in_hand == "kitchen" and len(g.pos) == 10)
+script(sunk=[9])
+shoot(g, bo, cue=[b.HEAD_X - 5, b.TH / 2])
+check("1–1: another rack", g.between and g.racks == {"a": 1, "b": 1})
+g.on_timeout()
+check("rack 3: back to the first breaker", room.turn == "a" and g.rack_no == 3)
+script(sunk=[9])
+shoot(g, a, cue=[b.HEAD_X - 5, b.TH / 2])
+check("reaching the race wins the match", room.phase == "over" and room.winner == "a" and "2–1" in room.logs[-1], room.logs[-1])
+check("a match records racks won", g.final_scores() == {"a": 2, "b": 1})
+
+g, room, a, bo = new_game("8")
+check("one rack records balls sunk", g.final_scores() == {"a": 0, "b": 0} and g.race == 1)
+script(sunk=[0, 8])
+shoot(g, a, cue=[b.HEAD_X - 5, b.TH / 2])
+script(sunk=[8])
+g.groups = {"a": "solids", "b": "stripes"}
+g.pos = {0: (50, 50), 8: (100, 50)}
+shoot(g, bo, pocket=0)  # Bo's group is cleared: the 8 in the called pocket wins
+check("one rack: the 8 ends the game at once", room.phase == "over" and room.winner == "b")
+
 print(f"\n{len(fails)} failed" if fails else "\nall passed")
 sys.exit(1 if fails else 0)
