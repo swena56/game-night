@@ -58,17 +58,53 @@ const Billiards3D = (() => {
     g.putImageData(im, 0, 0);
     return [c, g];
   }
+  // tileable value noise: a random lattice of `cells` per side, smoothly interpolated
+  function tileNoise(size, cells) {
+    const lat = Array.from({ length: cells * cells }, Math.random), out = new Float32Array(size * size);
+    const L = (i, j) => lat[((j + cells) % cells) * cells + ((i + cells) % cells)], s = (t) => t * t * (3 - 2 * t);
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const fx = (x / size) * cells, fy = (y / size) * cells, i = Math.floor(fx), j = Math.floor(fy), u = s(fx - i), v = s(fy - j);
+        out[y * size + x] = (L(i, j) * (1 - u) + L(i + 1, j) * u) * (1 - v) + (L(i, j + 1) * (1 - u) + L(i + 1, j + 1) * u) * v;
+      }
+    }
+    return out;
+  }
+  // woollen baize at 512px a tile: soft mottling, a fine twill weave, a lengthwise nap and loose fibres lying
+  // on top. The colour map and the bump map share every fibre, so the light catches the ones you can see.
   function feltTextures(T, aniso) {
-    const size = 256, nap = new Float32Array(size * size);
-    for (let i = 0; i < nap.length; i++) nap[i] = Math.random();
-    // soften to a fine fuzz, with a faint lengthwise nap
-    const at = (x, y) => nap[((y + size) % size) * size + ((x + size) % size)];
-    const fuzz = (x, y) => (at(x, y) * 2 + at(x + 1, y) + at(x - 1, y) + at(x, y + 1) * 0.5 + at(x, y - 1) * 0.5) / 5;
-    const [cc] = noiseCanvas(size, (d, k, x, y) => {
-      const v = fuzz(x, y) - 0.5 + (Math.random() - 0.5) * 0.25;
-      d[k] = 18 + v * 12; d[k + 1] = 106 + v * 24; d[k + 2] = 60 + v * 14; d[k + 3] = 255;
+    const size = 512, grain = new Float32Array(size * size);
+    for (let i = 0; i < grain.length; i++) grain[i] = Math.random();
+    const at = (x, y) => grain[((y + size) % size) * size + ((x + size) % size)];
+    const fuzz = (x, y) => (at(x, y) * 2 + at(x + 1, y) + at(x - 1, y) + at(x + 2, y) * 0.5 + at(x - 2, y) * 0.5 + at(x, y + 1) * 0.6 + at(x, y - 1) * 0.6) / 5.2;
+    const mottle = tileNoise(size, 4), clump = tileNoise(size, 24);
+    const weave = (x, y) => (((x + y) >> 1) % 2 ? 0.5 : -0.5) * (((x - y + size) >> 1) % 3 ? 0.6 : 1);  // a tight twill
+    const level = (x, y) => {
+      const i = y * size + x;
+      return (fuzz(x, y) - 0.5) * 0.9 + (mottle[i] - 0.5) * 0.35 + (clump[i] - 0.5) * 0.4 + weave(x, y) * 0.16;
+    };
+    const [cc, cg] = noiseCanvas(size, (d, k, x, y) => {
+      const v = level(x, y);
+      d[k] = 17 + v * 13; d[k + 1] = 104 + v * 30; d[k + 2] = 58 + v * 16; d[k + 3] = 255;
     });
-    const [bc] = noiseCanvas(size, (d, k, x, y) => { const v = 128 + (fuzz(x, y) - 0.5) * 180; d[k] = d[k + 1] = d[k + 2] = v; d[k + 3] = 255; });
+    const [bc, bg] = noiseCanvas(size, (d, k, x, y) => { const v = 128 + level(x, y) * 120; d[k] = d[k + 1] = d[k + 2] = v; d[k + 3] = 255; });
+    // loose fibres: short curled strokes, mostly along the nap, light or dark, wrapped across the tile's edges
+    for (let f = 0; f < 9000; f++) {
+      const x0 = Math.random() * size, y0 = Math.random() * size, len = 3 + Math.random() * 9;
+      const a = (Math.random() < 0.7 ? 0 : Math.PI / 2) + (Math.random() - 0.5) * 1.2, bend = (Math.random() - 0.5) * 0.6;
+      const light = Math.random() < 0.55, alpha = 0.08 + Math.random() * 0.16, w = 0.5 + Math.random() * 0.6;
+      const pts = [];
+      for (let t = 0; t <= 4; t++) { const aa = a + bend * t; pts.push([x0 + Math.cos(aa) * len * t / 4, y0 + Math.sin(aa) * len * t / 4]); }
+      for (const [g, col] of [[cg, light ? `rgba(120,200,140,${alpha})` : `rgba(4,40,18,${alpha})`], [bg, light ? `rgba(255,255,255,${alpha * 1.6})` : `rgba(0,0,0,${alpha * 1.4})`]]) {
+        g.strokeStyle = col; g.lineWidth = w;
+        for (const ox of [-size, 0, size]) {
+          for (const oy of [-size, 0, size]) {
+            if ((ox && Math.abs(x0 + ox - size / 2) > size / 2 + len) || (oy && Math.abs(y0 + oy - size / 2) > size / 2 + len)) continue;
+            g.beginPath(); pts.forEach(([px, py], i) => (i ? g.lineTo(px + ox, py + oy) : g.moveTo(px + ox, py + oy))); g.stroke();
+          }
+        }
+      }
+    }
     return [cc, bc].map((c) => {
       const t = new T.CanvasTexture(c);
       t.wrapS = t.wrapT = T.RepeatWrapping; t.anisotropy = aniso;
@@ -92,6 +128,39 @@ const Billiards3D = (() => {
     t.wrapS = t.wrapT = T.RepeatWrapping; t.anisotropy = aniso;
     return t;
   }
+  // the inside of a pocket: dark leather, with a knotted net of cord over it that catches the lamp light
+  function pocketTexture(T, aniso) {
+    const c = Object.assign(document.createElement('canvas'), { width: 256, height: 128 }), g = c.getContext('2d');
+    g.fillStyle = '#2a1b12'; g.fillRect(0, 0, 256, 128);
+    for (let i = 0; i < 900; i++) {  // creased, worn leather
+      g.fillStyle = `rgba(${Math.random() < 0.5 ? '0,0,0' : '120,80,50'},${0.05 + Math.random() * 0.08})`;
+      g.fillRect(Math.random() * 256, Math.random() * 128, 1 + Math.random() * 6, 1 + Math.random() * 2);
+    }
+    g.lineCap = 'round';
+    for (const [col, w] of [['#0b0705', 4.5], ['#6b4a30', 2.2], ['#8d6745', 0.8]]) {  // cord: shadow, body, sheen
+      g.strokeStyle = col; g.lineWidth = w;
+      for (let k = -8; k < 16; k++) {
+        g.beginPath(); g.moveTo(k * 32, 0); g.lineTo(k * 32 + 128, 128); g.stroke();
+        g.beginPath(); g.moveTo(k * 32 + 128, 0); g.lineTo(k * 32, 128); g.stroke();
+      }
+    }
+    g.fillStyle = '#4a3220';
+    for (let k = 0; k < 16; k++) for (let j = 0; j < 8; j++) if ((k + j) % 2 === 0) { g.beginPath(); g.arc(k * 16, j * 16, 2.4, 0, 7); g.fill(); }
+    const t = new T.CanvasTexture(c);
+    t.wrapS = t.wrapT = T.RepeatWrapping; t.anisotropy = aniso;
+    return t;
+  }
+
+  // a rectangle with rounded corners, as a three.js shape in the table's flat (x, -y) space
+  function roundedRect(T, x0, y0, x1, y1, r) {
+    const s = new T.Shape();
+    s.moveTo(x0 + r, -y0); s.lineTo(x1 - r, -y0); s.absarc(x1 - r, -y0 - r, r, Math.PI / 2, 0, true);
+    s.lineTo(x1, -y1 + r); s.absarc(x1 - r, -y1 + r, r, 0, -Math.PI / 2, true);
+    s.lineTo(x0 + r, -y1); s.absarc(x0 + r, -y1 + r, r, -Math.PI / 2, -Math.PI, true);
+    s.lineTo(x0, -y0 - r); s.absarc(x0 + r, -y0 - r, r, Math.PI, Math.PI / 2, true);
+    return s;
+  }
+
   // a dim room with two bright lamp panels, for the balls' and rails' reflections
   function lampRoom(T, renderer) {
     const room = new T.Scene();
@@ -146,22 +215,49 @@ const Billiards3D = (() => {
     // the table, built in table units: shapes are drawn as (x, -y) and turned flat so they extrude upward
     const flat = (pts) => new T.Shape(pts.map(([x, y]) => new T.Vector2(x, -y)));
     const lay = (geo, mat, y = 0) => { const m = new T.Mesh(geo, mat); m.rotation.x = -Math.PI / 2; m.position.y = y; table.add(m); return m; };
-    const FELT = 14;  // table units per tile of the baize texture
+    const FELT = 12;  // table units per tile of the baize texture
     const [feltMap, feltBump] = feltTextures(T, aniso);
     feltMap.repeat.set(1 / FELT, 1 / FELT); feltBump.repeat.set(1 / FELT, 1 / FELT);
-    const cloth = new T.MeshStandardMaterial({ map: feltMap, bumpMap: feltBump, bumpScale: 0.06, roughness: 0.95, metalness: 0 });
-    const holes = b.pockets.map(([x, y, cap]) => [x, y, cap + 0.5]);
+    const cloth = new T.MeshStandardMaterial({ map: feltMap, bumpMap: feltBump, bumpScale: 0.09, roughness: 0.93, metalness: 0 });
+    const HOLE = 0.8, ROLL = 0.3;  // the cloth's hole, and the round of its edge (so it reads as cap + 0.5)
+    const holes = b.pockets.map(([x, y, cap]) => [x, y, cap + HOLE]);
     lay(new T.ShapeGeometry(flat(outline(0, 0, W, H, holes, false)), 8), cloth).receiveShadow = true;
-    // the pockets' dark insides: a floor below, and an open cup under each hole
-    lay(new T.PlaneGeometry(W + 2 * RAIL, H + 2 * RAIL), new T.MeshBasicMaterial({ color: 0x040404 }), -3.9).position.set(W / 2, -3.9, H / 2);
-    const cupMat = new T.MeshStandardMaterial({ color: 0x0c0a09, roughness: 0.9, side: T.DoubleSide });
-    for (const [x, y, cap] of b.pockets) {
-      const cup = new T.Mesh(new T.CylinderGeometry(cap + 1.2, cap + 0.4, 3.9, 48, 1, true), cupMat);
-      cup.position.set(x, -1.95, y); table.add(cup);
-    }
-    // varnished wooden rails, with the pocket openings cut out
-    const frame = flat([[-RAIL, -RAIL], [W + RAIL, -RAIL], [W + RAIL, H + RAIL], [-RAIL, H + RAIL]]);
     const notch = (cap) => cap + 1.2;
+    // the angles (from a0, through L radians) where a circle round a pocket passes through a region
+    const arcWhere = (px, py, r, inside) => {
+      const N = 360, hit = [];
+      for (let i = 0; i < N; i++) { const a = (i / N) * 2 * Math.PI; hit.push(inside(px + r * Math.cos(a), py + r * Math.sin(a))); }
+      const first = hit.findIndex((h, i) => h && !hit[(i + N - 1) % N]);
+      if (first < 0) return null;
+      let n = 0; while (n < N && hit[(first + n) % N]) n++;
+      return [(first / N) * 2 * Math.PI, (n / N) * 2 * Math.PI];
+    };
+    // three.js measures a cylinder's / lathe's sweep from +z towards +x; table angles run from +x towards +z (y)
+    const sweep = ([a0, L]) => [Math.PI / 2 - a0 - L, L];
+    // pockets: the cloth rolls over the slate's edge into each hole, and below it hangs a leather pocket with a
+    // net over it, lit by the lamps so you can see down into it (it is deeper than a ball, which drops out of sight)
+    const netMap = pocketTexture(T, aniso);
+    netMap.repeat.set(3, 1);
+    const pocketMat = new T.MeshStandardMaterial({ map: netMap, roughness: 0.75, side: T.DoubleSide, envMap: env, envMapIntensity: 0.15 });
+    const lipMat = new T.MeshStandardMaterial({ map: feltMap, bumpMap: feltBump, bumpScale: 0.05, color: 0xb8c4b8, roughness: 0.95, side: T.DoubleSide });
+    for (const [x, y, cap] of b.pockets) {
+      const r = cap + HOLE, arc = arcWhere(x, y, r, (qx, qy) => qx > 0 && qx < W && qy > 0 && qy < H);
+      if (arc) {  // the cloth's rolled edge: a bullnose from the hole's rim, curling down inside it
+        const lip = [];
+        for (let i = 0; i <= 8; i++) { const a = (i / 8) * (Math.PI / 2); lip.push(new T.Vector2(r - ROLL * Math.sin(a), -ROLL * (1 - Math.cos(a)))); }
+        lip.push(new T.Vector2(r - ROLL, -1.1));
+        const m = new T.Mesh(new T.LatheGeometry(lip, 64, ...sweep(arc)), lipMat);
+        m.position.set(x, 0, y); m.receiveShadow = true; table.add(m);
+      }
+      // the bag: wide under the cut, then gathered to a rounded bottom
+      const top = notch(cap) + 0.1, bag = [[top, -0.15], [top, -1.1], [top * 0.94, -2.2], [top * 0.8, -3.2], [top * 0.6, -3.9], [top * 0.35, -4.3], [0.01, -4.45]]
+        .map(([rr, h]) => new T.Vector2(rr, h));
+      const m = new T.Mesh(new T.LatheGeometry(bag, 64), pocketMat);
+      m.position.set(x, 0, y); m.receiveShadow = true; table.add(m);
+    }
+    // varnished wooden rails with rounded outer corners, and the pocket openings cut out
+    const CORNER = RAIL - 1;
+    const frame = roundedRect(T, -RAIL, -RAIL, W + RAIL, H + RAIL, CORNER);
     frame.holes.push(new T.Path(outline(-CUSH, -CUSH, W + CUSH, H + CUSH, b.pockets.map(([x, y, cap]) => [x, y, notch(cap)]), true).map(([x, y]) => new T.Vector2(x, -y))));
     const grain = woodTexture(T, aniso);
     grain.repeat.set(1 / 70, 1 / 18);
@@ -169,9 +265,9 @@ const Billiards3D = (() => {
     const rails = lay(new T.ExtrudeGeometry(frame, { depth: RAIL_TOP + 3.5, bevelEnabled: true, bevelThickness: 0.5, bevelSize: 0.5, bevelSegments: 4, curveSegments: 16 }), wood, -4);
     rails.castShadow = rails.receiveShadow = true;
     const apronGrain = grain.clone(); apronGrain.needsUpdate = true; apronGrain.repeat.set(1 / 40, 1 / 6);
-    const apron = new T.Mesh(new T.BoxGeometry(W + 2 * RAIL + 1, 8, H + 2 * RAIL + 1),
-      new T.MeshStandardMaterial({ map: apronGrain, color: 0x8a7a70, roughness: 0.45, envMap: env, envMapIntensity: 0.3 }));
-    apron.position.set(W / 2, -8.2, H / 2); table.add(apron);
+    lay(new T.ExtrudeGeometry(roundedRect(T, -RAIL - 0.5, -RAIL - 0.5, W + RAIL + 0.5, H + RAIL + 0.5, CORNER + 0.5),
+      { depth: 8, bevelEnabled: true, bevelThickness: 0.3, bevelSize: 0.3, bevelSegments: 3, curveSegments: 24 }),
+    new T.MeshStandardMaterial({ map: apronGrain, color: 0x8a7a70, roughness: 0.45, envMap: env, envMapIntensity: 0.3 }), -12.2);
 
     // felt cushions: a rubber nose that bulges out at about two thirds of a ball's height, then a top that
     // rolls back up to the rail. The profile is swept along each rail; its ends lean back into the pocket jaws.
@@ -229,20 +325,14 @@ const Billiards3D = (() => {
 
     // pockets: a leather lining down the cut in the rail, and a rounded leather rim over its top edge
     const leather = new T.MeshStandardMaterial({ color: 0x2b1c12, roughness: 0.5, envMap: env, envMapIntensity: 0.35 });
-    const lining = new T.MeshStandardMaterial({ color: 0x1c130d, roughness: 0.7, side: T.BackSide });
+    const lining = new T.MeshStandardMaterial({ color: 0x3a2618, roughness: 0.6, side: T.BackSide, envMap: env, envMapIntensity: 0.2 });
     for (const [px, py, cap] of b.pockets) {
       // the arc of the cut that runs through wood (outside the cushions' back line)
-      const r = notch(cap), N = 360, wood = [];
-      for (let i = 0; i < N; i++) {
-        const a2 = (i / N) * 2 * Math.PI, x = px + r * Math.cos(a2), y = py + r * Math.sin(a2);
-        wood.push(x < -CUSH || x > W + CUSH || y < -CUSH || y > H + CUSH);
-      }
-      const first = wood.findIndex((w, i) => w && !wood[(i + N - 1) % N]);
-      if (first < 0) continue;
-      let n = 0; while (n < N && wood[(first + n) % N]) n++;
-      const a0 = (first / N) * 2 * Math.PI, L = (n / N) * 2 * Math.PI;
-      const wall = new T.Mesh(new T.CylinderGeometry(r - 0.04, r - 0.04, RAIL_TOP + 3.9, 64, 1, true, Math.PI / 2 - a0 - L, L), lining);
-      wall.position.set(px, (RAIL_TOP - 3.9) / 2, py); table.add(wall);
+      const r = notch(cap), arc = arcWhere(px, py, r, (x, y) => x < -CUSH || x > W + CUSH || y < -CUSH || y > H + CUSH);
+      if (!arc) continue;
+      const [a0, L] = arc;
+      const wall = new T.Mesh(new T.CylinderGeometry(r - 0.04, r - 0.04, RAIL_TOP + 1.2, 64, 1, true, ...sweep(arc)), lining);
+      wall.position.set(px, (RAIL_TOP - 1.2) / 2, py); wall.receiveShadow = true; table.add(wall);
       const rim = new T.Group(), torus = new T.Mesh(new T.TorusGeometry(r + 0.05, 0.5, 14, 72, L), leather);
       torus.rotation.x = Math.PI / 2; rim.add(torus);
       rim.rotation.y = -a0; rim.position.set(px, RAIL_TOP - 0.05, py); table.add(rim);
