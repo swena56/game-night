@@ -440,7 +440,95 @@ UI.billiards = (() => {
     g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
   }
 
-  function tick() { raf = requestAnimationFrame(tick); draw(); }
+  function tick() { raf = requestAnimationFrame(tick); draw(); shotSounds(); }
+
+  // ---------- sound: the cue's tock, ball-on-ball clicks, cushion thumps and pocket drops
+  // Found in the shot's frames, not sent by the server: a ball whose velocity jumps between frames hit
+  // something, and a ball that vanishes went down. Loudness follows how hard the hit was.
+  function contacts(frames, order) {
+    const b = B(), R = b.R, out = [], at = (f, j) => (frames[f][2 * j] < 0 ? null : [frames[f][2 * j] / 10, frames[f][2 * j + 1] / 10]);
+    const last = frames.length - 1, quiet = new Map(), pairs = new Map();
+    const jolt = (f, j) => {  // how much ball j's velocity changed at frame f, in units a frame
+      const a = f > 0 && f < last && at(f - 1, j), c = a && at(f, j), d = c && at(f + 1, j);
+      return d ? Math.hypot(d[0] - 2 * c[0] + a[0], d[1] - 2 * c[1] + a[1]) : 0;
+    };
+    if (last < 1) return out;
+    const p0 = at(0, order.indexOf(0)), p1 = at(1, order.indexOf(0));
+    if (p0 && p1) out.push({ t: 0, kind: 'cue', v: Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) });
+    for (let f = 1; f < last; f++) {
+      order.forEach((n, j) => {
+        const a = at(f - 1, j), c = at(f, j), d = at(f + 1, j);
+        if (c && !d) { out.push({ t: f / 30, kind: 'pocket', v: a ? Math.hypot(c[0] - a[0], c[1] - a[1]) : 3 }); return; }
+        if (!a || !c || !d) return;
+        const dv = jolt(f, j);
+        if (dv < 0.5 || (quiet.get(n) ?? -9) > f - 3) return;  // friction and spin change it far less than an impact
+        quiet.set(n, f);
+        // another ball close by at this frame or the next means a ball-on-ball hit, else the cushion
+        const reach = 2 * R + Math.hypot(d[0] - c[0], d[1] - c[1]) + 0.6;
+        let other = -1, best = Infinity;
+        order.forEach((m, k) => {
+          if (k === j) return;
+          for (const g of [f, f + 1]) {
+            const p = at(g, k), q = at(g, j);
+            if (p && q) { const dist = Math.hypot(p[0] - q[0], p[1] - q[1]); if (dist < best) { best = dist; other = m; } }
+          }
+        });
+        if (best < reach) {
+          const key = Math.min(n, other) * 100 + Math.max(n, other);
+          if ((pairs.get(key) ?? -9) > f - 3) return;  // both balls feel the same click
+          pairs.set(key, f); quiet.set(other, f);
+          const k = order.indexOf(other);  // an impact can straddle two frames: hear the whole of it
+          out.push({ t: f / 30, kind: 'ball', v: Math.max(dv, jolt(f + 1, j), jolt(f, k), jolt(f + 1, k)) });
+        } else out.push({ t: f / 30, kind: 'rail', v: Math.max(dv, jolt(f + 1, j)) });
+      });
+    }
+    return out.sort((x, y) => x.t - y.t);
+  }
+  let actx = null;
+  function voice(type, f0, f1, dur, vol, t) {
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.002); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur + 0.02);
+  }
+  function noise(dur, freq, q, vol, t) {
+    const len = Math.max(1, Math.floor(actx.sampleRate * dur)), buf = actx.createBuffer(1, len, actx.sampleRate), d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 3;
+    const s = actx.createBufferSource(), fl = actx.createBiquadFilter(), g = actx.createGain();
+    s.buffer = buf; fl.type = 'bandpass'; fl.frequency.value = freq; fl.Q.value = q; g.gain.value = vol;
+    s.connect(fl).connect(g).connect(actx.destination); s.start(t);
+  }
+  function clack(e, delay = 0) {
+    if ((typeof prefs !== 'undefined' && !prefs.sound) || document.hidden) return;
+    try {
+      actx ||= new (window.AudioContext || window.webkitAudioContext)();
+      const t = actx.currentTime + delay, h = Math.min(1, e.v / 12);  // 12 units a frame is a hard hit
+      if (e.kind === 'ball') {  // a bright, hard click with a little ring
+        const vol = 0.04 + 0.32 * h, p = 1 + (Math.random() - 0.5) * 0.08;
+        voice('sine', 2600 * p, 2200 * p, 0.05, vol, t); voice('triangle', 4100 * p, 3600 * p, 0.025, vol * 0.5, t);
+        noise(0.012, 5000, 1.5, vol * 1.6, t);
+      } else if (e.kind === 'rail') {  // a dull rubber thump
+        const vol = 0.04 + 0.28 * h;
+        voice('sine', 170, 95, 0.09, vol, t); noise(0.03, 700, 1, vol * 0.9, t);
+      } else if (e.kind === 'pocket') {  // a knock into the pocket, then a short rattle
+        const vol = 0.12 + 0.18 * Math.min(1, e.v / 6);
+        voice('triangle', 260, 140, 0.12, vol, t); noise(0.05, 900, 2, vol, t);
+        [0.07, 0.12, 0.16].forEach((dt, i) => voice('sine', 1500 - i * 200, 1300 - i * 200, 0.03, vol * (0.35 - i * 0.08), t + dt));
+      } else {  // the cue tip on the cue ball: a woody tock
+        const vol = 0.06 + 0.24 * h;
+        voice('triangle', 950, 620, 0.06, vol, t); noise(0.02, 2400, 2, vol * 1.2, t);
+      }
+    } catch {}
+  }
+  // play each contact once its moment in the shot comes (the draw loop calls this every frame)
+  function shotSounds() {
+    if (!anim?.sounds) return;
+    const now = (performance.now() - anim.start) / 1000;
+    for (let n = 0; anim.next < anim.sounds.length && anim.sounds[anim.next].t <= now; ) {
+      const e = anim.sounds[anim.next++];
+      if (now - e.t < 0.15) clack(e, 0.007 * n++);  // the break's many clicks spread over a few ms instead of stacking  // a late joiner (or a tab back from the background) doesn't get a burst of old clicks
+    }
+  }
 
   // ---------- input
   function applyView() {
@@ -596,6 +684,7 @@ UI.billiards = (() => {
       seenShot = b.shot.id;
       const dur = b.shot.frames.length / 30;
       anim = b.shot.age < dur ? { frames: b.shot.frames, order: b.shot.order, start: performance.now() - b.shot.age * 1000 } : null;
+      if (anim) { anim.sounds = contacts(anim.frames, anim.order); anim.next = 0; }
       // a timer (not the draw loop) ends the playback, so controls come back even where nothing draws
       clearTimeout(animEnd);
       if (anim) animEnd = setTimeout(() => { anim = null; ctx?.rerender?.(); }, (dur - b.shot.age) * 1000);
