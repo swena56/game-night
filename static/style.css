@@ -475,9 +475,19 @@ body.replaying .layout { padding-bottom: 190px; }  /* the bar covers the bottom 
   background: #3a86ff; box-shadow: 0 0 0 2px #fff, 0 0 6px #3a86ff; transition: left .08s, top .08s; }
 .bl-cueball.off { opacity: .45; cursor: default; }
 .bl-cueball:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-/* bigger board on a wide screen (#35): the table may take the whole width, not stop at 900px */
+/* the table takes the whole width (#35), so there is no side column: the game info (status, each player's balls),
+   the emoji bar and the log sit in a strip under the shot controls. The table is sized to leave room for that strip. */
 body.focus .bl { max-width: none; }
-body.focus .layout:has(.bl) { max-width: 1900px; }
+#game .layout:has(.bl) { grid-template-columns: minmax(0, 1fr); max-width: 1900px; }
+#game .layout:has(.bl) > aside { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; }
+#game .layout:has(.bl) #sideGame { flex: 3 1 420px; min-width: 0; }
+#game .layout:has(.bl) .log-panel { flex: 1 1 300px; min-width: 0; margin: 0; }
+#game .layout:has(.bl) #quitBtn { flex: 1 1 100%; }  /* its own line, clear of the floating ⚙️ 💬 buttons */
+.bl-side { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 12px; }
+.bl-side #blStatus { flex: 1 1 240px; min-width: 0; }
+.bl-side .bl-racks { display: flex; flex-wrap: wrap; margin: 0; }
+.bl-side #blHint { flex-basis: 100%; margin: 0; font-size: 12px; }
+body.focus #blHint { display: none; }  /* ❓ has the same how-to; the table gets the room */
 .bl-racks { display: grid; gap: 6px; margin: 8px 0; }
 .bl-rack { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; padding: 6px 8px; border-radius: 10px; background: #ffffff08; }
 .bl-rack.now { background: #ffb7031a; }
