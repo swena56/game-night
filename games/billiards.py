@@ -215,6 +215,18 @@ def rack(rng):
     return pos
 
 
+def rack9(rng):
+    """Nine-ball's diamond at the foot spot: the 1 at the front, the 9 in the middle, the rest anywhere."""
+    rest = list(range(2, 9))
+    rng.shuffle(rest)
+    fill, pos, gap = iter(rest), {}, 2 * R + 0.02
+    for row, count in enumerate((1, 2, 3, 2, 1)):
+        for i in range(count):
+            x, y = FOOT[0] + row * gap * math.sqrt(3) / 2, FOOT[1] + (i - (count - 1) / 2) * gap
+            pos[1 if row == 0 else 9 if (row, i) == (2, 1) else next(fill)] = (x, y)
+    return pos
+
+
 def free_spot(pos, x, y):
     """The point nearest (x, y), searching along the table's length, where a ball fits."""
     for k in range(200):
@@ -241,33 +253,40 @@ class Billiards(Game):
     id = "billiards"
     category = "action"
     howto = [
-        "Drag anywhere on the table to turn the cue around the ball, set the power, then Shoot. ◀ ▶ fine-tune.",
+        "Drag anywhere on the table to turn the cue around the ball. ◀ ▶ fine-tune. Pull the power bar back and let go to shoot (or set it and press Shoot).",
         "The first ball you pocket after the break picks your group: 🔵 solids (1–7) or 🟠 stripes (9–15).",
         "Pocket one of yours and you shoot again. Hit your own group first.",
         "The cue-ball pad by Shoot picks where the cue strikes: high to follow through, low to draw back, the middle to stop dead on a close straight hit, left or right to bend the bounce off a cushion. Spin wears off as the ball travels.",
         "Fouls (cue ball in a pocket, missing everything, wrong ball first) give your rival ✋ ball in hand.",
         "Clear your group, then sink the 8 to win. The 8 too early, or with a foul, loses.",
+        "9️⃣ 9-ball (pick it in the settings): balls 1–9. Always hit the lowest ball first; sink any ball and you go again. "
+        "Sink the 9 on a legal shot (even on the break, or knocked in off another ball) to win.",
     ]
     name = "Billiards"
     icon = "🎱"
-    blurb = "Eight-ball pool on a top-down table with real physics. Clear your group, then sink the 8."
+    blurb = "Eight-ball or nine-ball pool with real physics. Clear your group and sink the 8, or run the balls to the 9."
     min_players = 2
     max_players = 2
     settings_schema = {
+        "rules": ("Game", [("8", "🎱 8-ball"), ("9", "9️⃣ 9-ball")], "8"),
         "guide": ("Aim guide", [("full", "🎯 Full (where both balls go)"), ("short", "Short"), ("off", "Off")], "full"),
         "call8": ("The 8 ball", [(True, "📣 Call its pocket"), (False, "Any pocket")], True),
     }
 
+    @property
+    def nine(self):
+        return self.s.get("rules") == "9"
+
     def calling(self, pid):
         """Shooting at the 8 with calls on: the shot must name a pocket."""
-        return bool(self.s.get("call8")) and not self.breaking and self.legal_targets(pid) == [8]
+        return bool(self.s.get("call8")) and not self.nine and not self.breaking and self.legal_targets(pid) == [8]
 
     # -- setup
 
     def start(self, seated, rng):
         self.rng = rng
         self.seats = [p.id for p in seated]
-        self.pos = rack(rng)
+        self.pos = rack9(rng) if self.nine else rack(rng)
         self.pos[0] = (HEAD_X, TH / 2)
         self.groups = {}                 # player id -> "solids" | "stripes"
         self.breaking = True
@@ -276,10 +295,11 @@ class Billiards(Game):
         self.shot_seq = 0
         self.busy_until = 0.0
         self.last = ""
+        self.ending = None               # (winner id, text): the 8 decided it, shown once the balls stop (#46)
         for p in seated:
             p.g.sunk = 0
         first = rng.choice(seated)
-        self.room.add_log(f"🎱 Billiards! {first.name} breaks.", "big")
+        self.room.add_log(f"{'9️⃣ Nine-ball' if self.nine else '🎱 Billiards'}! {first.name} breaks.", "big")
         self.room.begin_turn(first.id)
 
     # -- helpers
@@ -289,6 +309,9 @@ class Billiards(Game):
         return {n for n in GROUPS[g] if n in self.pos} if g else None
 
     def legal_targets(self, pid):
+        if self.nine:  # always the lowest ball on the table
+            low = [n for n in self.pos if n]
+            return [min(low)] if low else []
         left = self.mine(pid)
         if left is None:
             return [n for n in self.pos if n not in (0, 8)]
@@ -355,6 +378,8 @@ class Billiards(Game):
             foul = "no ball was hit"
         elif not breaking and first not in targets:
             foul = f"the {first} was hit first"
+        if self.nine:
+            return self.after_nine(p, sunk, foul, breaking)
         objects = [n for n in sunk if n not in (0, 8)]
         p.g.sunk += len(objects)
 
@@ -401,8 +426,56 @@ class Billiards(Game):
             r.advance()
         r.bot_at = max(r.bot_at, self.busy_until + 0.7)
 
+    def after_nine(self, p, sunk, foul, breaking):
+        """Nine-ball: hit the lowest ball first; pocket anything on a legal shot and you shoot again; the 9 on a
+        legal shot (the break and combinations count) wins. A foul gives ball in hand and brings the 9 back up."""
+        r = self.room
+        objects = [n for n in sunk if n]
+        p.g.sunk += len([n for n in objects if n != 9])
+        names = ", ".join(str(n) for n in objects)
+        if 9 in sunk and not foul:
+            self.last = f"🏆 {p.name} sinks the 9!"
+            return self.finish(p, f"🏆 {p.name} sinks the 9{' on the break' if breaking else ''} and wins!")
+        if 9 in sunk:
+            self.pos[9] = free_spot(self.pos, *FOOT)
+        if foul:
+            self.in_hand = "anywhere"
+            if 0 in sunk:
+                self.pos.pop(0, None)
+            self.last = f"⚠️ Foul: {foul}."
+            r.add_log(f"⚠️ {p.name}: foul, {foul}{f' (sank {names})' if objects else ''}"
+                      f"{'. The 9 goes back on its spot' if 9 in sunk else ''}. Ball in hand for the other player.", "power")
+            r.advance()
+        elif objects:
+            self.last = f"✅ {p.name} sank {names}."
+            r.add_log(f"✅ {p.name} sank {names}{' on the break' if breaking else ''} and shoots again.", "question")
+            r.begin_turn(p.id)
+        else:
+            self.last = f"{p.name} missed."
+            r.add_log(f"🎱 {p.name} potted nothing.")
+            r.advance()
+        r.bot_at = max(r.bot_at, self.busy_until + 0.7)
+
     def finish(self, winner, text):
-        self.room.finish(winner, text)
+        """The game is decided, but the shot is still rolling on everyone's screen: hold the result
+        until the balls stop (bot_ready / bot_tick below), so no one sees the win before the 8 drops."""
+        r = self.room
+        self.ending = (winner.id if winner else None, text)
+        r.turn = None
+        r.deadline = None
+        r.bot_at = self.busy_until + 0.4
+
+    def bot_ready(self):
+        if getattr(self, "ending", None):
+            return True  # the ticker also waits for room.bot_at, set to just after the balls stop
+        return super().bot_ready()
+
+    def bot_tick(self):
+        if getattr(self, "ending", None):
+            wid, text = self.ending
+            self.ending = None
+            return self.room.finish(self.room.players.get(wid), text)
+        return super().bot_tick()
 
     def on_timeout(self):
         r = self.room
@@ -415,6 +488,8 @@ class Billiards(Game):
     def meta(self, p):
         if not hasattr(p.g, "sunk"):
             return ""
+        if self.nine:
+            return f"{p.g.sunk} sunk"
         g = self.groups.get(p.id)
         if not g:
             return "open table"
@@ -432,7 +507,7 @@ class Billiards(Game):
         return {"billiards": {
             "W": TW, "H": TH, "R": R, "headX": HEAD_X, "pockets": [[x, y, c] for x, y, c in POCKETS],
             "balls": [[n, round(x, 2), round(y, 2)] for n, (x, y) in sorted(self.pos.items())],
-            "groups": self.groups, "inHand": self.in_hand, "breaking": self.breaking,
+            "rules": "9" if self.nine else "8", "groups": self.groups, "inHand": self.in_hand, "breaking": self.breaking,
             "targets": self.legal_targets(self.room.turn) if self.room.turn else [],
             "shot": shot, "last": self.last, "guide": self.s["guide"],
             "minSpeed": MIN_SPEED, "maxSpeed": MAX_SPEED, "friction": FRICTION,
@@ -538,6 +613,8 @@ class Billiards(Game):
     def test_run(self, p, shots, cue):
         """Hard bot: run its top ideas through the real engine and keep the one that works out best."""
         start, mine = time.time(), GROUPS.get(self.groups.get(p.id), None)
+        if self.nine:
+            mine = set(range(1, 9))
         targets = set(self.legal_targets(p.id))
         pos = dict(self.pos)
         if cue:
@@ -551,12 +628,17 @@ class Billiards(Game):
                 val = shot[0] * 0.1
                 if 0 in sunk or first is None or first not in targets:
                     val -= 120
-                if 8 in sunk:
+                if self.nine:
+                    if 9 in sunk:
+                        val += 1000 if 0 not in sunk and first in targets else -200
+                elif 8 in sunk:
                     val += 1000 if targets == {8} and 0 not in sunk and first == 8 else -1000
                 good = [n for n in sunk if n not in (0, 8) and (mine is None or n in mine)]
                 val += 60 * len(good)
                 if good and 0 in final:  # leave: is there a next pot from here?
                     nxt = [t for t in (sorted(mine & set(final)) if mine else []) if t in final]
+                    if self.nine:
+                        nxt = [min(n for n in final if n)] if any(final.keys() - {0}) else []
                     saved = self.pos
                     self.pos = final
                     follow = self.candidates(*final[0], nxt or [8]) if (nxt or 8 in final) else []

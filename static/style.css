@@ -464,8 +464,24 @@ body.replaying .layout { padding-bottom: 190px; }  /* the bar covers the bottom 
 .bl-controls { display: flex; align-items: center; gap: 8px; margin: 10px auto 0; max-width: 640px; }
 .bl-controls > button { flex: none; min-width: 48px; font-size: 20px; padding: 10px 0; touch-action: manipulation; }
 .bl-controls #blShoot { min-width: 96px; font-size: 16px; padding: 12px 10px; }
-.bl-power { flex: 1; display: flex; align-items: center; gap: 6px; margin: 0; color: var(--text); font-weight: 700; }
-.bl-power input { flex: 1; accent-color: var(--accent); }
+.bl-power { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; margin: 0; color: var(--text); font-weight: 700; }
+/* the stroke bar (#48): a cue whose tip rests at the right; pulling back (left) opens the coloured gap = power */
+.bl-stroke { --p: .55; flex: 1; position: relative; height: 40px; border-radius: 10px; overflow: hidden; cursor: ew-resize; touch-action: none;
+  background: #ffffff10; box-shadow: inset 0 0 0 1px #ffffff1c; }
+.bl-stroke > i { position: absolute; right: 0; top: 0; bottom: 0; width: calc(var(--p) * 100%);
+  background: linear-gradient(90deg, #e63946, #ffb703 45%, #52b788); opacity: .55; }
+.bl-cuestick { position: absolute; top: 50%; height: 8px; margin-top: -4px; right: calc(var(--p) * 100% + 4px); width: 140%; border-radius: 4px 3px 3px 4px;
+  background: linear-gradient(90deg, #3b2412 0 55%, #c89b62 55% 97%, #f4f1e8 97% 99%, #3a86ff 99%); box-shadow: 0 2px 4px #0008; pointer-events: none; }
+.bl-marks { position: absolute; inset: 0; display: flex; pointer-events: none; }
+.bl-marks em { flex: 1; font-style: normal; font-size: 10px; font-weight: 600; color: #fff9; text-align: center; padding-top: 1px;
+  border-right: 1px dashed #ffffff26; text-shadow: 0 1px 2px #000; }
+.bl-marks em:last-child { border-right: 0; }
+.bl-stroke.pulling { box-shadow: inset 0 0 0 2px var(--accent); }
+.bl-stroke.cancel { box-shadow: inset 0 0 0 2px #e63946; }
+.bl-stroke.cancel > i { opacity: .15; }
+.bl-stroke.off { opacity: .45; cursor: default; }
+.bl-stroke input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.bl-stroke:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
 .bl-power b { min-width: 3.2em; text-align: right; font-variant-numeric: tabular-nums; }
 .bl-spin { flex: none; display: flex; flex-direction: column; align-items: center; gap: 1px; }
 .bl-spin small { font-size: 10px; color: var(--muted); white-space: nowrap; max-width: 92px; overflow: hidden; text-overflow: ellipsis; }
@@ -491,6 +507,7 @@ body.focus .layout:has(.bl) { max-width: 1900px; }
   font-size: 10px; font-weight: 900; color: #111; background: var(--c); box-shadow: inset 0 0 0 5px var(--c), inset 0 0 0 11px #fff; }
 .bl-dot.stripe { background: linear-gradient(#fbfbf2 22%, var(--c) 22% 78%, #fbfbf2 78%); box-shadow: inset 0 0 0 11px transparent; }
 .bl-dot.gone { opacity: .22; }
+.bl-dot.next { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* dots & boxes */
 .bx-wrap { --ar: 1; width: min(100%, calc(560px * var(--ar)), calc((var(--app-h, 100vh) - 150px) * var(--ar))); margin: 8px auto; padding: 10px; border-radius: var(--radius);
@@ -549,6 +566,7 @@ body.focus .layout:has(.bl) { max-width: 1900px; }
 .csq .piece.taken { animation: takenOff .6s ease-in forwards; pointer-events: none; }
 @keyframes takenOff { 0% { opacity: 1; transform: none; } 40% { opacity: 1; transform: scale(1.1) rotate(-8deg); } 100% { opacity: 0; transform: translateY(30%) scale(.4) rotate(25deg); } }
 .csq .checker { position: relative; }
+.csq .ck-ghost { position: absolute; pointer-events: none; }
 /* a moved piece slides from its origin square */
 .slide { z-index: 3; animation: slide .32s cubic-bezier(.3, .8, .4, 1); }
 @keyframes slide { from { transform: translate(calc(var(--dx) * var(--step, 100%)), calc(var(--dy) * var(--step, 100%))) scale(1.08); } }

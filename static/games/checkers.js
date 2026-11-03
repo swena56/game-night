@@ -25,6 +25,39 @@ UI.checkers = (() => {
   const rc = (i) => { const r = Math.floor(i / 8), c = i % 8; return flip() ? [7 - r, 7 - c] : [r, c]; };
   const same = (a, b) => a[0] === b[0] && a[1] === b[1];
 
+
+  // Hop a piece through every square of its capture path, slowly enough to follow: about 0.45 s a jump.
+  // The pieces it takes come back as ghosts on their squares and fade as it passes over them.
+  const HOP = 450;
+  let hopRun = null;  // {key, start}: a hop still playing, picked up again if the board redraws mid-way
+  function hopAlong(disc, path, color, elapsed = 0) {
+    const s = flip() ? -1 : 1, end = path.at(-1);
+    const at = ([r, c]) => `translate(calc(${(c - end[1]) * s} * var(--step, 100%)), calc(${(r - end[0]) * s} * var(--step, 100%)))`;
+    const frames = [];
+    path.forEach((x, i) => {
+      if (i) {  // lift halfway through each hop
+        const m = [(x[0] + path[i - 1][0]) / 2, (x[1] + path[i - 1][1]) / 2];
+        frames.push({ transform: `${at(m)} scale(1.22)`, offset: (i - 0.5) / (path.length - 1) });
+      }
+      frames.push({ transform: `${at(x)} scale(1)`, offset: i / (path.length - 1) });
+    });
+    disc.style.zIndex = 4;
+    const run = disc.animate(frames, { duration: HOP * (path.length - 1), easing: 'ease-in-out' });
+    run.currentTime = elapsed;
+    run.onfinish = run.oncancel = () => { disc.style.zIndex = ''; };
+    const other = color === 'd' ? 'l' : 'd';
+    path.forEach((x, i) => {
+      if (!i || Math.abs(x[0] - path[i - 1][0]) !== 2) return;
+      const sq = [...boardEl.children].find((_, k) => same(rc(k), [(x[0] + path[i - 1][0]) / 2, (x[1] + path[i - 1][1]) / 2]));
+      if (!sq) return;
+      const ghost = ctx.el('span', 'checker ' + other + ' ck-ghost', '');
+      sq.append(ghost);
+      const fade = ghost.animate([{ opacity: 1, transform: 'scale(1)' }, { opacity: 1, transform: 'scale(1)', offset: 0.5 }, { opacity: 0, transform: 'scale(.4)' }],
+        { duration: HOP, delay: HOP * (i - 1), fill: 'both' });
+      fade.currentTime = elapsed;
+      fade.onfinish = fade.oncancel = () => ghost.remove();
+    });
+  }
   function render(s, c) {
     S = s; ctx = c;
     const ck = S.checkers;
@@ -37,6 +70,13 @@ UI.checkers = (() => {
     const lastKey = ck.last ? ck.last.join(';') : null, animate = shownLast !== undefined && lastKey && lastKey !== shownLast;
     shownLast = lastKey;
     const [from, to] = ck.last ? [ck.last[0], ck.last.at(-1)] : [];
+    // a capture hops square by square, each taken piece fading as it's jumped (#43); a plain step just slides
+    const jumped = animate && ck.last.some((x, i) => i && Math.abs(x[0] - ck.last[i - 1][0]) === 2);
+    const hopping = jumped && typeof motionOK === 'function' && motionOK() && !!Element.prototype.animate;
+    if (hopping) hopRun = { key: lastKey, start: performance.now() };
+    const resume = !animate && hopRun?.key === lastKey ? performance.now() - hopRun.start : null;
+    const resuming = resume != null && resume < HOP * ((ck.last?.length || 1) - 1);
+    let hopper = null;
     [...boardEl.children].forEach((sq, i) => {
       const [r, col] = rc(i), k = `${r},${col}`;
       const p = ck.board[r][col];
@@ -50,10 +90,15 @@ UI.checkers = (() => {
       sq.innerHTML = '';
       if (p) {
         const disc = ctx.el('span', 'checker ' + p.toLowerCase(), p === p.toUpperCase() ? '♛︎' : '');
-        if (animate && to[0] === r && to[1] === col) slideFrom(disc, from[0] - r, from[1] - col, flip());
+        if (to && to[0] === r && to[1] === col) {
+          if (hopping || resuming) hopper = [disc, p.toLowerCase()];
+          else if (animate) slideFrom(disc, from[0] - r, from[1] - col, flip());
+        }
         sq.append(disc);
       }
     });
+    // after every square is drawn, so the ghosts of taken pieces aren't cleared away again
+    if (hopper) hopAlong(hopper[0], ck.last, hopper[1], hopping ? 0 : resume);
     const mine = ck.me ? (ck.me === 'd' ? '⚫ You play Dark' : '⚪ You play Light') : '👁 Watching';
     const forced = ctx.myTurn && ck.forced;
     $('ckStatus').textContent = mine + (forced ? ' · ⚠️ you must capture' : '');

@@ -340,6 +340,7 @@ UI.billiards = (() => {
     power = Math.max(0.05, Math.min(1, Math.round(p * 100) / 100));
     const el = $('blPower'); if (el) el.value = Math.round(power * 100);
     if ($('blPowerVal')) $('blPowerVal').textContent = Math.round(power * 100) + '%';
+    if ($('blStroke')) $('blStroke').style.setProperty('--p', power);
   }
   function keyDown(e) {
     if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -598,7 +599,10 @@ UI.billiards = (() => {
         <div class="bl-views"><button id="blView" hidden>🧊 3D</button><button id="blCam" hidden>🎥 Behind cue</button></div></div>
       <div class="bl-controls">
         <button id="blLeft" aria-label="Aim left">◀</button>
-        <label class="bl-power">Power <input id="blPower" type="range" min="5" max="100" value="55"><b id="blPowerVal">55%</b></label>
+        <div class="bl-power"><div id="blStroke" class="bl-stroke" title="Pull the cue back: drag left from anywhere on the bar and let go to shoot. Tap to just set the power. Drag off the bar to cancel.">
+            <i id="blFill"></i><span class="bl-cuestick"></span><span class="bl-marks"><em>break</em><em>hard</em><em>medium</em><em>soft</em></span>
+            <input id="blPower" type="range" min="5" max="100" value="55" aria-label="Power"></div>
+          <b id="blPowerVal">55%</b></div>
         <button id="blRight" aria-label="Aim right">▶</button>
         <div class="bl-spin"><div id="blSpin" class="bl-cueball" tabindex="0" role="slider" aria-valuemin="0" aria-valuemax="100"
           aria-label="Where the cue strikes the cue ball (arrow keys move it, 0 centres it)"
@@ -609,7 +613,7 @@ UI.billiards = (() => {
     side.innerHTML = `<div class="panel">
       <div id="blStatus" class="seat-row"></div>
       <div id="blRacks" class="bl-racks"></div>
-      <p class="hint left" id="blHint">Drag anywhere on the table to turn the cue around the ball. ◀ ▶ fine-tune. ✋ With ball in hand, drag the cue ball to move it.</p>
+      <p class="hint left" id="blHint">Drag anywhere on the table to turn the cue around the ball. ◀ ▶ fine-tune. Pull the power bar back and let go to shoot. ✋ With ball in hand, drag the cue ball to move it.</p>
       <p class="hint left bl-keys">Keys: ← → turn the cue (hold to turn faster, Shift for fine aim) · ↑ ↓ power · Space shoots · W A S D move the cue ball in hand · C switches the 3D camera.</p></div>`;
     const c = $('blCanvas');
     c.style.touchAction = 'none';
@@ -648,6 +652,39 @@ UI.billiards = (() => {
     };
     setTip(0, 0);
     $('blPower').oninput = () => setPower($('blPower').value / 100);
+    // the stroke bar (#48): a cue lying along the bar, its tip at the right. Press anywhere and drag left to
+    // pull it back (power grows with the pull, the stick and guide follow live), let go to strike. A tap with
+    // no pull just sets the power; dragging well off the bar cancels and puts the power back.
+    const bar = $('blStroke');
+    let stroke = null;
+    const barPower = (e) => { const r = bar.getBoundingClientRect(); return r.width ? (r.right - e.clientX) / r.width : power; };
+    bar.onpointerdown = (e) => {
+      if (!canShoot()) return;
+      e.preventDefault();
+      try { bar.setPointerCapture(e.pointerId); } catch {}
+      stroke = { x0: e.clientX, p0: power, pulled: false, off: false };
+      bar.classList.add('pulling');
+    };
+    bar.onpointermove = (e) => {
+      if (!stroke) return;
+      const r = bar.getBoundingClientRect();
+      stroke.off = e.clientY < r.top - 50 || e.clientY > r.bottom + 50;
+      bar.classList.toggle('cancel', stroke.off);
+      if (stroke.off) return setPower(stroke.p0);
+      const pull = stroke.x0 - e.clientX;  // how far back from where the press started
+      if (pull > 8) stroke.pulled = true;
+      if (stroke.pulled) setPower(Math.max(0.05, pull / (r.width || 1)));
+    };
+    bar.onpointerup = (e) => {
+      if (!stroke) return;
+      const st = stroke; stroke = null;
+      bar.classList.remove('pulling', 'cancel');
+      if (st.off) return setPower(st.p0);
+      if (st.pulled) shoot();
+      else setPower(barPower(e));  // a tap: put the power where the tap was
+    };
+    bar.onpointercancel = () => { if (stroke) setPower(stroke.p0); stroke = null; bar.classList.remove('pulling', 'cancel'); };
+    setPower(power);
     // turn the aim by about 0.25° per tap, faster while held
     for (const [id, dir] of [['blLeft', -1], ['blRight', 1]]) {
       let hold = null;
@@ -703,15 +740,28 @@ UI.billiards = (() => {
       : ctx.myTurn ? (b.inHand ? (b.inHand === 'kitchen' ? '✋ Place the cue ball behind the line, then break.' : '✋ Ball in hand: drag the cue ball anywhere.')
           + (b.calling ? ` ${callText}` : '')
         : b.calling ? callText
-        : b.targets.length === 1 && b.targets[0] === 8 ? '🎱 Sink the 8 to win!' : b.breaking ? 'Your break!' : 'Your shot.')
-      : `${turnName} is shooting…`;
+        : b.breaking ? 'Your break!'
+        : b.rules === '9' ? (b.targets[0] === 9 ? '9️⃣ Only the 9 left: sink it to win!' : `Hit the ${b.targets[0]} first. Sink the 9 to win.`)
+        : b.targets.length === 1 && b.targets[0] === 8 ? '🎱 Sink the 8 to win!' : 'Your shot.')
+      : S.turn ? `${turnName} is shooting…` : '🎱 …';
     $('blShoot').disabled = !canShoot();
     for (const id of ['blLeft', 'blRight', 'blPower']) $(id).disabled = !canShoot();
+    $('blStroke').classList.toggle('off', !canShoot());
     $('blSpin').classList.toggle('off', !canShoot());
     // each player's remaining balls
     const racks = $('blRacks'); racks.innerHTML = '';
     const onTable = new Set(b.balls.map(([n]) => n));
-    for (const pid of Object.keys(b.groups).length ? Object.keys(b.groups) : S.players.filter((p) => !p.spectator).map((p) => p.id)) {
+    if (b.rules === '9') {  // nine-ball: no groups, just the balls still up, lowest (the one to hit) first
+      const row = ctx.el('div', 'bl-rack');
+      row.append(ctx.el('b', '', 'Up next'));
+      for (let n = 1; n <= 9; n++) {
+        const dot = ctx.el('span', 'bl-dot' + (onTable.has(n) ? '' : ' gone') + (n === 9 ? ' stripe' : '') + (n === b.targets[0] ? ' next' : ''), String(n));
+        dot.style.setProperty('--c', colorOf(n));
+        row.append(dot);
+      }
+      racks.append(row);
+    }
+    for (const pid of b.rules === '9' ? [] : Object.keys(b.groups).length ? Object.keys(b.groups) : S.players.filter((p) => !p.spectator).map((p) => p.id)) {
       const p = ctx.player(pid); if (!p) continue;
       const row = ctx.el('div', 'bl-rack' + (pid === S.turn ? ' now' : ''));
       const name = ctx.el('b', '', p.name + (pid === me ? ' (you)' : '')); name.style.color = p.color;
