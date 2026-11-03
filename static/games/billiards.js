@@ -251,8 +251,13 @@ UI.billiards = (() => {
     g.fillStyle = '#0006'; g.beginPath(); g.arc(x + r * 0.18, y + r * 0.22, r, 0, 7); g.fill();
     g.save(); g.beginPath(); g.arc(x, y, r, 0, 7); g.clip();
     g.drawImage(ballImage(n, o, r), x - r, y - r, 2 * r, 2 * r);
-    const shine = g.createRadialGradient(x - r * 0.4, y - r * 0.4, r * 0.1, x, y, r);
-    shine.addColorStop(0, '#ffffff99'); shine.addColorStop(0.4, '#ffffff10'); shine.addColorStop(1, '#00000040');
+    // shading in two parts so the glare never washes out the number: the rim darkens for roundness, and a
+    // small tight highlight sits up by the top-left edge, clear of the spot when it faces up
+    const rim = g.createRadialGradient(x, y, r * 0.55, x, y, r);
+    rim.addColorStop(0, '#00000000'); rim.addColorStop(1, '#00000048');
+    g.fillStyle = rim; g.fillRect(x - r, y - r, 2 * r, 2 * r);
+    const hx = x - r * 0.5, hy = y - r * 0.5, shine = g.createRadialGradient(hx, hy, 0, hx, hy, r * 0.3);
+    shine.addColorStop(0, '#ffffffb0'); shine.addColorStop(0.45, '#ffffff38'); shine.addColorStop(1, '#ffffff00');
     g.fillStyle = shine; g.fillRect(x - r, y - r, 2 * r, 2 * r);
     g.restore();
   }
