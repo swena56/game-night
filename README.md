@@ -460,8 +460,8 @@ Items that become ✅ move into the per-game plan.
   (setting, on by default; not in solo): pickups give one homing missile; a hit keeps 35% of your speed and spins you for
   0.7 s, then 2 s of protection; a warning beep while one is locked on you. About 70% of shots land against bots that dodge.
   Next:
-  - 🗺️ A minimap in a corner of the 3D view (track outline, every craft, missiles), and a spectator camera that follows the
-    leader instead of the fixed overhead view. **S**
+  - ✅ 🗺️ A minimap in the top corner of the 3D view (track outline, the line, every craft with you ringed, missiles in
+    flight), and when you're watching, the chase camera follows the leader instead of a fixed overhead view.
   - 📳 Phone vibration on a hit, a bump and a pad (`navigator.vibrate`, off with reduced motion). **S**
   - 💣 A second pickup to answer missiles: a mine dropped behind you, or a one-hit shield. Pickups would then be random, with
     racers further back more likely to get the better one, so the leader isn't the only target. **M**

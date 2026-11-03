@@ -524,7 +524,43 @@ UI.rally = (() => {
     function resize() {
       const w = stage.clientWidth || 320, h = stage.clientHeight || 320;
       renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
+      mini.size();
     }
+
+    // ---- 🗺️ minimap in the top corner: the track outline, every craft (you ringed in white) and missiles in flight
+    const mini = (() => {
+      const cv = document.createElement('canvas'); cv.className = 'ra-mini'; stage.append(cv);
+      const g = cv.getContext('2d');
+      let k = 1, ox = 0, oy = 0, path = null, dpr = 1, px = 0;
+      function size() {
+        const css = Math.round(Math.max(84, Math.min(130, (stage.clientWidth || 320) * 0.26)));
+        dpr = Math.min(devicePixelRatio || 1, 2); px = Math.round(css * dpr);
+        cv.style.width = cv.style.height = `${css}px`; cv.width = cv.height = px;
+        const pts = S?.rally?.track; if (!pts) return;
+        const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+        const span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) + 8;
+        k = px / span; ox = (Math.max(...xs) + Math.min(...xs)) / 2; oy = (Math.max(...ys) + Math.min(...ys)) / 2;
+        path = new Path2D(); pts.forEach(([x, y], j) => (j ? path.lineTo(X(x), Y(y)) : path.moveTo(X(x), Y(y)))); path.closePath();
+      }
+      const X = (x) => px / 2 + (x - ox) * k, Y = (y) => px / 2 - (y - oy) * k;
+      function draw(now, focus) {
+        if (!path) return;
+        const r = S.rally;
+        g.clearRect(0, 0, px, px);
+        g.lineJoin = 'round'; g.strokeStyle = 'rgba(76,201,240,.55)'; g.lineWidth = 5 * dpr; g.stroke(path);
+        g.strokeStyle = 'rgba(20,16,40,.9)'; g.lineWidth = 2.5 * dpr; g.stroke(path);
+        const f = at(0, 0); g.fillStyle = '#fff'; g.fillRect(X(f.x) - 1.5 * dpr, Y(f.y) - 1.5 * dpr, 3 * dpr, 3 * dpr);  // the line
+        g.fillStyle = '#ffb347';
+        for (const m of missiles) { const p = at(mNow(m, now), m[1]); g.beginPath(); g.arc(X(p.x), Y(p.y), 1.8 * dpr, 0, 7); g.fill(); }
+        // rivals first so you're drawn on top
+        for (const i of crafts.map((c, i) => i).sort((a, b) => (a === focus) - (b === focus))) {
+          const p = at(sNow(i, now), crafts[i][1]), big = i === focus;
+          g.fillStyle = colorOf(i); g.beginPath(); g.arc(X(p.x), Y(p.y), (big ? 3.6 : 2.6) * dpr, 0, 7); g.fill();
+          if (big) { g.strokeStyle = '#fff'; g.lineWidth = 1.5 * dpr; g.stroke(); }
+        }
+      }
+      return { size, draw };
+    })();
     const ghostShip = new T.Mesh(new T.BoxGeometry(1.4, 0.35, 0.9), new T.MeshBasicMaterial({ color: 0xbfe9ff, transparent: true, opacity: 0.3, depthWrite: false }));
     ghostShip.visible = false; scene.add(ghostShip);
     // chase camera: eases after the craft, widens its view with speed, drops lower on boost and banks with the lean
@@ -576,8 +612,11 @@ UI.rally = (() => {
           if (i === r.me) GL3.shake(camera, 0.12);
         }
       });
-      if (r.me != null && crafts[r.me] && ships[r.me]) {
-        const c = crafts[r.me], u = ships[r.me].userData, p = at(sNow(r.me, now), u.d ?? c[1]);
+      // the chase camera follows you, or the leader when you're watching
+      const who = r.me ?? (S.phase === 'playing' ? order()[0] : null);
+      mini.draw(now, who);
+      if (who != null && crafts[who] && ships[who]) {
+        const c = crafts[who], u = ships[who].userData, p = at(sNow(who, now), u.d ?? c[1]);
         cam.boost += ((c[3] ? 1 : 0) - cam.boost) * ease(4);
         const back = 7 - 1.3 * cam.boost, k = Math.min(1.4, c[2] / r.top);
         want.set(p.x - p.ux * back, 3.6 - 0.7 * cam.boost, -(p.y - p.uy * back));
@@ -595,7 +634,7 @@ UI.rally = (() => {
       tickParts(dt);
       renderer.render(scene, camera);
     }
-    function dispose() { renderer.dispose(); renderer.domElement.remove(); }
+    function dispose() { renderer.dispose(); renderer.domElement.remove(); stage.querySelector('.ra-mini')?.remove(); }
     return { build, draw, resize, dispose, fx };
   }
 
