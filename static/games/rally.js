@@ -1,24 +1,26 @@
 // Hover Rally: the track in 3D with a chase camera behind your craft (three.js), or top-down 2D.
 // Craft are (s, d): distance along the track and sideways offset (left is +d); positions glide
 // between server updates using each craft's speed. Hold the left/right half of the screen to steer.
-// The server also sends moments (bumps, boost-pad hits, missile pickups, launches and hits) that become
-// sparks, sounds and camera shake, and the 🚀 missiles in flight, which glide along the track like the craft.
+// The server also sends moments (bumps, boost-pad hits, item pickups, launches, drops, shields and hits) that
+// become sparks, sounds and camera shake, plus the 🚀 missiles in flight (they glide along the track like the
+// craft) and the 💣 mines lying on it.
 UI.rally = (() => {
   let S, ctx, gl = null, flat = null, raf = 0, ro = null, keyDown = null, keyUp = null;
   let crafts = [], gotAt = 0, steerNow = 0, keys = new Set(), touch = null, countdownAt = 0, trackKey = '';
   // ⏱ lap splits and 👻 a ghost of your best lap so far this race (recorded in the browser)
   let laps = [], lapRun = null, ghost = null, lapFlash = 0, lapMsg = '';
-  let prevMine = null, beeped = 0, missiles = [], pk = [], warnAt = 0;
+  let prevMine = null, beeped = 0, missiles = [], mines = [], pk = [], warnAt = 0;
   const MISSILE_SPEED = 30;  // as on the server
+  const ITEM = ['🎁', '🚀', '💣', '🛡️'];  // craft row [9]: nothing held, or the item
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
     gl = null; flat = null; crafts = []; steerNow = 0; keys = new Set(); touch = null; trackKey = '';
-    laps = []; lapRun = null; ghost = null; lapFlash = 0; prevMine = null; beeped = 0; missiles = []; pk = [];
+    laps = []; lapRun = null; ghost = null; lapFlash = 0; prevMine = null; beeped = 0; missiles = []; mines = []; pk = [];
     main.innerHTML = `<div class="ra"><div class="ra-hud"><span id="raLap"></span><b id="raPlace"></b><span id="raSpeed"></span></div>
       <div class="ra-stage" id="raStage"><div class="lr-banner" id="raBanner" hidden></div>
         <div class="ra-half left">◀</div><div class="ra-half right">▶</div></div>
-      <div class="sm-bar"><span class="hint">Hold a side to steer · swipe up to boost, down to fire</span><button id="raFire" hidden>🚀</button><button id="raBoost" class="primary">⚡ Boost</button></div></div>`;
+      <div class="sm-bar"><span class="hint">Hold a side to steer · swipe up to boost, down to use an item</span><button id="raFire" hidden>🎁</button><button id="raBoost" class="primary">⚡ Boost</button></div></div>`;
     side.innerHTML = '<div class="panel"><div id="raOrder"></div><div id="raSplits" class="ra-splits"></div></div>';
     main.querySelector('.ra').style.touchAction = 'none';
     $('raBoost').addEventListener('pointerdown', (e) => { e.preventDefault(); boost(); });
@@ -94,6 +96,9 @@ UI.rally = (() => {
       hit: () => { noise(0.6, 1200, 120, 0.8, 1.1); tone(90, 35, 0.5, 'sine', 0.35); },   // you got hit
       boom: () => { noise(0.35, 900, 200, 0.8, 0.35); tone(110, 50, 0.3, 'sine', 0.12); },  // someone else did
       warn: () => tone(1500, 1500, 0.06, 'square', 0.04),
+      drop: () => { tone(220, 110, 0.12, 'square', 0.06); tone(1800, 1800, 0.05, 'sine', 0.05, 0.12); },  // a clunk, then the arming tick
+      shield: () => [0, 1, 2, 3].forEach((k) => tone(600 + k * 220, 700 + k * 260, 0.18, 'sine', 0.05, k * 0.04)),
+      block: () => { tone(1400, 900, 0.3, 'triangle', 0.12); noise(0.15, 4000, 2000, 2, 0.3); },
     };
     function play(kind, now) {
       if (!on()) return;
@@ -133,13 +138,13 @@ UI.rally = (() => {
 
   function render(s, c) {
     S = s; ctx = c;
-    take(s.rally.c, s.rally.stage, s.rally.m, s.rally.pk);
+    take(s.rally.c, s.rally.stage, s.rally.m, s.rally.pk, s.rally.mn);
     countdownAt = performance.now() + s.rally.countdown * 1000;
   }
 
   function fast(d) {
     if (!S?.rally) return;
-    take(d.c, d.st, d.m, d.pk);
+    take(d.c, d.st, d.m, d.pk, d.mn);
     const me = S.rally.me;
     for (const e of d.e || []) {
       gl?.fx(e);
@@ -148,13 +153,16 @@ UI.rally = (() => {
       else if (e[0] === 'pick' && e[1] === me) snd.play('pick');
       else if (e[0] === 'fire') snd.play('fire');
       else if (e[0] === 'hit') snd.play(e[1] === me ? 'hit' : 'boom');
+      else if (e[0] === 'drop' && e[1] === me) snd.play('drop');
+      else if (e[0] === 'shield' && e[1] === me) snd.play('shield');
+      else if (e[0] === 'block') snd.play('block');
     }
   }
 
-  function take(list, stage, m, p) {
+  function take(list, stage, m, p, mn) {
     crafts = list.map((x) => x.slice());
-    missiles = m || []; pk = p || [];
-    S.rally.m = missiles; S.rally.pk = pk;
+    missiles = m || []; pk = p || []; mines = mn || [];
+    S.rally.m = missiles; S.rally.pk = pk; S.rally.mn = mines;
     const mine = S.rally.me != null ? crafts[S.rally.me] : null;
     if (mine && prevMine && mine[4] < prevMine[4]) snd.play('boost');  // one of my own boosts fired
     prevMine = mine;
@@ -207,6 +215,7 @@ UI.rally = (() => {
     $('raFire').hidden = !r.pickups?.length;
     $('raFire').disabled = !mine?.[9] || r.stage !== 'race' || !!mine?.[6];
     $('raFire').classList.toggle('primary', !!mine?.[9]);
+    $('raFire').textContent = ITEM[mine?.[9] || 0];
     if (mine) {
       $('raLap').textContent = mine[6] ? 'Finished!' : `Lap ${Math.min(mine[5] + 1, r.laps)} / ${r.laps}`;
       const place = order().indexOf(r.me) + 1;
@@ -271,7 +280,7 @@ UI.rally = (() => {
     trackLap(now);
     (gl || flat)?.draw(now);
     const mine = r.me != null ? crafts[r.me] : null;
-    $('raSpeed').textContent = mine ? `${Math.round(mine[2] * 10)} km/h${mine[3] ? ' ⚡' : mine[8] ? ' 💨' : ''}` : '';
+    $('raSpeed').textContent = mine ? `${Math.round(mine[2] * 10)} km/h${mine[11] ? ' 🛡️' : ''}${mine[3] ? ' ⚡' : mine[8] ? ' 💨' : ''}` : '';
     const cd = (countdownAt - now) / 1000;
     // 3, 2, 1 beeps and a higher one for GO
     if (mine && S.phase === 'playing' && r.stage === 'countdown') {
@@ -331,6 +340,7 @@ UI.rally = (() => {
     })();
     const padMat = new T.MeshBasicMaterial({ map: chevron, color: 0xffd166, transparent: true, opacity: 0.9, side: T.DoubleSide, blending: T.AdditiveBlending, depthWrite: false });
     const pickups = [], pickGeo = new T.OctahedronGeometry(0.42);
+    // pickups shift colour: it could be any item
     const pickMat = new T.MeshStandardMaterial({ color: 0xff5d5d, emissive: 0xff2d2d, emissiveIntensity: 0.6, metalness: 0.3, roughness: 0.2 });
     const glowMat = (color, opacity = 1) => ({ map: dot, color, transparent: true, opacity, blending: T.AdditiveBlending, depthWrite: false });
     function build() {
@@ -399,9 +409,13 @@ UI.rally = (() => {
         const tag = new T.Sprite(new T.SpriteMaterial({ map: new T.CanvasTexture(c), transparent: true, depthWrite: false }));
         tag.scale.set(2.6, 0.65, 1); tag.position.y = 1.3; g.add(tag);
       }
-      const held = rocket(); held.scale.setScalar(0.7); held.position.set(-0.1, 0.38, 0); held.visible = false; tilt.add(held);
+      // the item held rides on the roof; a shield is a bubble round the whole craft
+      const held = [null, rocket(), mineMesh(), new T.Mesh(new T.CylinderGeometry(0.28, 0.28, 0.06, 16), shieldMat)];
+      held[1].scale.setScalar(0.7); held[2].scale.setScalar(0.6); held[3].rotation.x = Math.PI / 2;
+      for (const h of held.slice(1)) { h.position.set(-0.1, 0.42, 0); h.visible = false; tilt.add(h); }
+      const bubble = new T.Mesh(bubbleGeo, bubbleMat.clone()); bubble.scale.set(1.5, 0.8, 1.05); bubble.visible = false; g.add(bubble);
       const trail = ribbon(col); scene.add(trail.mesh);
-      Object.assign(g.userData, { tilt, paint, flames, under, trail, held, d: null, vd: 0, lean: 0, lift: 0, flare: 0, spin: 0 });
+      Object.assign(g.userData, { tilt, paint, flames, under, trail, held, bubble, d: null, vd: 0, lean: 0, lift: 0, flare: 0, spin: 0 });
       return g;
     }
     // ---- missiles: a slim body with a red nose and fins, facing +x
@@ -417,6 +431,31 @@ UI.rally = (() => {
       f1.position.x = f2.position.x = -0.32; f2.rotation.x = Math.PI / 2;
       g.add(new T.Mesh(bodyGeo, rMetal), nose, f1, f2);
       return g;
+    }
+    // ---- mines: a dark ball with studs and a light that blinks
+    const mineBody = new T.MeshStandardMaterial({ color: 0x2a2a35, metalness: 0.7, roughness: 0.4 });
+    const shieldMat = new T.MeshStandardMaterial({ color: 0x7fdcff, emissive: 0x3aa9ff, emissiveIntensity: 0.7 });
+    const bubbleGeo = new T.SphereGeometry(1, 20, 14);
+    const bubbleMat = new T.MeshBasicMaterial({ color: 0x7fdcff, transparent: true, opacity: 0.22, blending: T.AdditiveBlending, depthWrite: false });
+    function mineMesh() {
+      const g = new T.Group(), studGeo = new T.ConeGeometry(0.07, 0.18, 6);
+      g.add(new T.Mesh(new T.IcosahedronGeometry(0.32, 0), mineBody));
+      for (const [x, y, z] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, 0, 1], [0, 0, -1]]) {
+        const st = new T.Mesh(studGeo, mineBody); st.position.set(x * 0.34, y * 0.34, z * 0.34);
+        st.lookAt(x * 2, y * 2, z * 2); st.rotateX(Math.PI / 2); g.add(st);
+      }
+      const light = new T.Sprite(new T.SpriteMaterial(glowMat(0xff3030))); light.scale.set(0.5, 0.5, 1); light.position.y = 0.3;
+      g.add(light); g.userData.light = light;
+      return g;
+    }
+    const laid = [];
+    function drawMines(now) {
+      while (laid.length < mines.length) { const g = mineMesh(); scene.add(g); laid.push(g); }
+      laid.forEach((g, k) => {
+        const m = mines[k]; g.visible = !!m; if (!m) return;
+        g.position.copy(V(at(m[0], m[1]), 0.35 + 0.05 * Math.sin(now / 300 + k))); g.rotation.y = now / 900 + k;
+        g.userData.light.material.opacity = (now / 250 + k) % 2 < 1 ? 1 : 0.15;
+      });
     }
     const flying = [];
     function drawMissiles(now) {
@@ -513,7 +552,15 @@ UI.rally = (() => {
         if (e[1] === S.rally.me) GL3.shake(camera, 0.7);
       } else if (e[0] === 'pick' && shipAt(e[1])) {
         const p = shipAt(e[1]);
-        spawn(14, p.x, 0.7, p.z, 0, 2, 0, 4, 0xff5d5d, 0.4, 6);
+        spawn(14, p.x, 0.7, p.z, 0, 2, 0, 4, [0, 0xff5d5d, 0x8a8aa0, 0x7fdcff][e[2]] || 0xffffff, 0.4, 6);
+      } else if ((e[0] === 'shield' || e[0] === 'block') && shipAt(e[1])) {  // the bubble going up, or taking a hit
+        const p = shipAt(e[1]);
+        spawn(e[0] === 'block' ? 34 : 18, p.x, 0.6, p.z, 0, 1.5, 0, e[0] === 'block' ? 8 : 4, 0x7fdcff, 0.5, 2);
+        ships[e[1]].userData.flare = 1;
+        if (e[0] === 'block' && e[1] === S.rally.me) GL3.shake(camera, 0.25);
+      } else if (e[0] === 'drop' && shipAt(e[1])) {
+        const p = shipAt(e[1]);
+        spawn(8, p.x, 0.3, p.z, 0, 1, 0, 2, 0x8a8aa0, 0.4, 6);
       } else if (e[0] === 'bump' && shipAt(e[1]) && shipAt(e[2])) {
         const a = shipAt(e[1]), b = shipAt(e[2]);
         spawn(20, (a.x + b.x) / 2, 0.5, (a.z + b.z) / 2, 0, 2, 0, 7, 0xcfe8ff, 0.4, 10);
@@ -550,6 +597,8 @@ UI.rally = (() => {
         g.lineJoin = 'round'; g.strokeStyle = 'rgba(76,201,240,.55)'; g.lineWidth = 5 * dpr; g.stroke(path);
         g.strokeStyle = 'rgba(20,16,40,.9)'; g.lineWidth = 2.5 * dpr; g.stroke(path);
         const f = at(0, 0); g.fillStyle = '#fff'; g.fillRect(X(f.x) - 1.5 * dpr, Y(f.y) - 1.5 * dpr, 3 * dpr, 3 * dpr);  // the line
+        g.fillStyle = '#ff3030';
+        for (const m of mines) { const p = at(m[0], m[1]); g.fillRect(X(p.x) - 1.3 * dpr, Y(p.y) - 1.3 * dpr, 2.6 * dpr, 2.6 * dpr); }
         g.fillStyle = '#ffb347';
         for (const m of missiles) { const p = at(mNow(m, now), m[1]); g.beginPath(); g.arc(X(p.x), Y(p.y), 1.8 * dpr, 0, 7); g.fill(); }
         // rivals first so you're drawn on top
@@ -572,8 +621,9 @@ UI.rally = (() => {
       const ease = (rate) => 1 - Math.exp(-dt * rate);
       const r = S.rally, gp = ghostAt(now), W = r.width;
       padMat.opacity = 0.65 + 0.35 * Math.sin(now / 140);
+      pickMat.color.setHSL((now / 2500) % 1, 0.85, 0.6); pickMat.emissive.setHSL((now / 2500) % 1, 0.9, 0.35);
       pickups.forEach((g, k) => { g.visible = !!pk[k]; g.rotation.y = now / 400; g.position.y = 0.7 + 0.12 * Math.sin(now / 250 + k); });
-      drawMissiles(now);
+      drawMissiles(now); drawMines(now);
       ghostShip.visible = !!gp;
       if (gp) { ghostShip.position.copy(V(gp, 0.45)); ghostShip.rotation.y = Math.atan2(gp.uy, gp.ux); ghostShip.material.opacity = 0.22 + 0.08 * Math.sin(now / 150); }
       ships.forEach((g, i) => {
@@ -586,7 +636,9 @@ UI.rally = (() => {
         // spinning from a missile hit: whirl round, then settle back facing forward
         if (c[10]) u.spin += dt * 16; else if (u.spin) { const to = Math.round(u.spin / Math.PI / 2) * Math.PI * 2; u.spin += (to - u.spin) * ease(10); if (Math.abs(to - u.spin) < 0.01) u.spin = 0; }
         g.rotation.y = Math.atan2(p.uy, p.ux) + u.spin;
-        u.held.visible = !!c[9];
+        u.held.forEach((h, k) => h && (h.visible = c[9] === k));
+        u.bubble.visible = !!c[11];
+        if (c[11]) u.bubble.material.opacity = 0.18 + 0.08 * Math.sin(now / 90 + i);
         // left is +d and leaning left is a negative turn about the forward axis
         const lean = Math.max(-0.5, Math.min(0.5, -(u.vd * 0.07 + (i === r.me ? steerNow * 0.22 : 0))));
         u.lean += (lean - u.lean) * ease(10); u.lift += ((boosting ? 0.08 : 0) - u.lift) * ease(6); u.flare *= Math.exp(-dt * 4);
@@ -666,6 +718,8 @@ UI.rally = (() => {
         const p = at(r.cum[pi % r.track.length], lat), x = X(p.x), y = Y(p.y), q = Math.max(3, 0.5 * k);
         g.beginPath(); g.moveTo(x, y - q); g.lineTo(x + q, y); g.lineTo(x, y + q); g.lineTo(x - q, y); g.fill();
       });
+      g.fillStyle = '#ff3030';
+      for (const m of mines) { const p = at(m[0], m[1]), q = Math.max(2, 0.3 * k); g.fillRect(X(p.x) - q, Y(p.y) - q, 2 * q, 2 * q); }
       g.fillStyle = '#ffb347';
       for (const m of missiles) { const p = at(mNow(m, now), m[1]); g.beginPath(); g.arc(X(p.x), Y(p.y), Math.max(2, 0.35 * k), 0, 7); g.fill(); }
       const gp = ghostAt(now);
@@ -674,6 +728,7 @@ UI.rally = (() => {
         const p = at(sNow(i, now), c[1]);
         g.fillStyle = colorOf(i); g.strokeStyle = i === r.me ? '#fff' : '#000'; g.lineWidth = 2;
         g.beginPath(); g.arc(X(p.x), Y(p.y), Math.max(3, 0.8 * k), 0, 7); g.fill(); g.stroke();
+        if (c[11]) { g.strokeStyle = '#7fdcff'; g.beginPath(); g.arc(X(p.x), Y(p.y), Math.max(5, 1.3 * k), 0, 7); g.stroke(); }  // shielded
       });
     }
     resize();
