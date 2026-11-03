@@ -20,8 +20,12 @@ UI.billiards = (() => {
     const B = S.billiards, dpr = Math.min(devicePixelRatio || 1, 2);
     const portrait = stage.clientWidth < (window.visualViewport?.height ?? innerHeight) * 0.8;
     const longSide = B.W + 2 * RAIL, shortSide = B.H + 2 * RAIL;
-    const chrome = document.body.classList.contains('focus') ? 132 : 190;  // top bar, controls (and chips/log)
-    const availH = Math.max(200, (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--app-h')) || innerHeight) - chrome);
+    // room for the table: the visible height less what sits above it (top bar, chips) and below it
+    // (the shot controls and the game-info strip), so all of it is on screen without scrolling
+    const appH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--app-h')) || innerHeight;
+    const above = stage.getBoundingClientRect().top + scrollY, info = $('sideGame');
+    const below = (stage.nextElementSibling?.offsetHeight ?? 60) + (info?.offsetParent ? info.offsetHeight + 10 : 0) + 30;
+    const availH = Math.max(200, appH - Math.max(40, above) - below);
     const w = stage.clientWidth || 320;
     const k = portrait ? Math.min(w / shortSide, availH / longSide) : Math.min(w / longSide, availH / shortSide);
     const cw = Math.round((portrait ? shortSide : longSide) * k), ch = Math.round((portrait ? longSide : shortSide) * k);
@@ -354,7 +358,7 @@ UI.billiards = (() => {
           <small id="blSpinVal">centre</small></div>
         <button id="blShoot" class="primary">🎱 Shoot</button>
       </div></div>`;
-    side.innerHTML = `<div class="panel">
+    side.innerHTML = `<div class="panel bl-side">
       <div id="blStatus" class="seat-row"></div>
       <div id="blRacks" class="bl-racks"></div>
       <p class="hint left" id="blHint">Drag anywhere on the table to turn the cue around the ball. ◀ ▶ fine-tune. ✋ With ball in hand, drag the cue ball to move it.</p></div>`;
@@ -402,7 +406,7 @@ UI.billiards = (() => {
     }
     $('blShoot').onclick = shoot;
     ro = window.ResizeObserver ? new ResizeObserver(() => layout()) : null;
-    ro?.observe($('blStage'));
+    ro?.observe($('blStage')); ro?.observe(side);  // the info strip growing a line shrinks the table to match
     raf = requestAnimationFrame(tick);
   }
 
