@@ -87,6 +87,27 @@ for cut in (30, 60):
     left = math.degrees(math.atan2(moved[0][1] - t[1] * 10, moved[0][0] - t[0] * 10))
     throw = left + cut  # the object ball is dragged toward the cue ball's line: a thinner cut than aimed
     check(f"{cut}° cut throws the object ball 1–5°", 1 <= throw <= 5.5, f"left at {left:.1f}°")
+# slow cuts throw more than hard ones (the balls grip better when their surfaces slip slowly)
+def throw_at(cut, speed):
+    t = (100.0, 50.0)
+    u = (math.cos(math.radians(-cut)), math.sin(math.radians(-cut)))
+    frames = shot({0: (t[0] - 12, t[1] - u[1] * 2 * R), 1: t}, 0, speed)[3]  # close: still skidding (a stun)
+    moved = [(f[2], f[3]) for f in frames if f[2] != -1 and math.hypot(f[2] - t[0] * 10, f[3] - t[1] * 10) > 60]
+    return math.degrees(math.atan2(moved[0][1] - t[1] * 10, moved[0][0] - t[0] * 10)) + cut
+
+
+slow, fast = throw_at(30, 100), throw_at(30, 500)
+check("a soft stun cut throws more than a hard one", slow > fast + 1 and 2.5 < slow < 6, f"{slow:.1f}° vs {fast:.1f}°")
+# squirt: right english pushes the cue ball left of the aim (−y heading +x), about 2°
+final = shot({0: (30, 50)}, 0, 120, side=1)[0]
+check("right english squirts the cue ball left", 47 < final[0][1] < 49.6, f"y={final[0][1]:.2f} after {final[0][0] - 30:.0f} units")
+final = shot({0: (30, 50)}, 0, 120, side=-1)[0]
+check("left english squirts it right", 50.4 < final[0][1] < 53, f"y={final[0][1]:.2f}")
+# english wears off at a steady rate, not ever more slowly
+ball = [100.0, 50.0, 50.0, 0.0, 50.0, 0.0, 100.0]
+for _ in range(30):
+    b.cloth(ball, 1 / 120)
+check("english wears off steadily", abs(ball[6] - (100 - b.SIDE_DECAY * 30 / 120)) < 1e-6, f"{ball[6]:.1f} left")
 check("a fast ball grazing another hits it", shot({0: (20, 50), 1: (60, 54.5)}, 0, 520)[2] == 1)
 check("a fast ball just missing another misses", shot({0: (20, 50), 1: (60, 54.7)}, 0, 520)[2] is None)
 
@@ -138,7 +159,8 @@ def guide_check():
                       "first": first, "frames": frames})
     b.FRAME_EVERY = every
     phys = {"slide": b.SLIDE, "bounce": b.BOUNCE, "railGrip": b.RAIL_GRIP, "tipK": b.TIP_K, "sideTip": b.SIDE_TIP,
-            "sideDecay": b.SIDE_DECAY, "dt": b.DT, "stop": b.STOP, "throw": b.THROW, "cushionSoft": b.CUSHION_SOFT,
+            "sideDecay": b.SIDE_DECAY, "dt": b.DT, "stop": b.STOP, "throw": b.THROW, "throwSlow": b.THROW_SLOW,
+            "throwV": b.THROW_V, "squirt": b.SQUIRT, "cushionSoft": b.CUSHION_SOFT,
             "cushionHard": b.CUSHION_HARD, "cushionV": b.CUSHION_V, "near": b.NEAR_EDGE}
     table = {"W": b.TW, "H": b.TH, "R": R, "pockets": [list(p) for p in b.POCKETS], "edges": [list(e) for e in b.EDGES],
              "friction": b.FRICTION, "minSpeed": b.MIN_SPEED, "maxSpeed": b.MAX_SPEED, "phys": phys}

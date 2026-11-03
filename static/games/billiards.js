@@ -118,12 +118,17 @@ UI.billiards = (() => {
     const R = b.R, POCK = b.pockets, EDGES = b.edges || [], F = b.friction, NEAR = P.near, W = b.W, H = b.H;
     const balls = new Map();
     for (const [n, x, y] of b.balls) if (n !== 0) balls.set(n, [x, y, 0, 0, 0, 0, 0]);
-    const speed = b.minSpeed + (b.maxSpeed - b.minSpeed) * power, ax = Math.cos(aim), ay = Math.sin(aim), top = P.tipK * spin * speed;
+    // squirt: right english pushes the cue ball a little left of the stick's line
+    const launch = aim - (P.squirt || 0) * english;
+    const speed = b.minSpeed + (b.maxSpeed - b.minSpeed) * power, ax = Math.cos(launch), ay = Math.sin(launch), top = P.tipK * spin * speed;
     const cb = [cue[0], cue[1], ax * speed, ay * speed, ax * top, ay * top, P.sideTip * english * speed];
     balls.set(0, cb);
     const cloth = (o, h) => {
       let [, , vx, vy, sx, sy] = o;
-      if (o[6]) o[6] = Math.abs(o[6]) < 0.5 ? 0 : o[6] * (1 - P.sideDecay * h);
+      if (o[6]) {  // english wears off steadily (an older server sent an exponential rate, < 5)
+        if (P.sideDecay < 5) o[6] = Math.abs(o[6]) < 0.5 ? 0 : o[6] * (1 - P.sideDecay * h);
+        else o[6] = Math.abs(o[6]) <= P.sideDecay * h ? 0 : o[6] - Math.sign(o[6]) * P.sideDecay * h;
+      }
       let ux = vx - sx, uy = vy - sy;
       const u = Math.hypot(ux, uy);
       if (u > 0.5) {
@@ -190,7 +195,8 @@ UI.billiards = (() => {
           const tx = -ny, ty = nx, sh = (b1[2] - b2[2]) * tx + (b1[3] - b2[3]) * ty + b1[6] + b2[6];
           const slip = Math.hypot(sh, (b1[4] + b2[4]) * nx + (b1[5] + b2[5]) * ny);
           if (jj && slip > 1e-9 && P.throw) {
-            const jt = Math.sign(sh) * Math.min((P.throw * jj * Math.abs(sh)) / slip, Math.abs(sh) / 7);
+            const mu = P.throw + (P.throwV ? P.throwSlow * Math.exp(-slip / P.throwV) : 0);  // grips more when slipping slowly
+            const jt = Math.sign(sh) * Math.min((mu * jj * Math.abs(sh)) / slip, Math.abs(sh) / 7);
             b1[2] -= jt * tx; b1[3] -= jt * ty; b2[2] += jt * tx; b2[3] += jt * ty;
             b1[6] -= 2.5 * jt; b2[6] -= 2.5 * jt;
           }
@@ -283,8 +289,14 @@ UI.billiards = (() => {
     const b = B(), shooting = !anim && canShoot(), cue = shooting ? cueAt() : null;
     let guide = null;
     if (cue) {
-      const tr = trace(cue);
-      guide = { mode: b.guide, cue, g: [tr.gx, tr.gy], ball: tr.ball, deflect: tr.ball && b.guide === 'full' ? deflection(cue, tr.gx, tr.gy, tr.ball) : null };
+      // the full guide runs the shot engine, as the flat view does: where the cue ball really meets the first
+      // ball (squirt, spin and all), or stops, or drops, and both balls' paths after the hit
+      const p = b.guide === 'full' ? predict(cue) : null, end = p && (p.ghost || p.stop || p.scratch);
+      if (end) guide = { mode: b.guide, cue, g: end, ball: p.ball, objPath: p.obj?.pts, cuePath: p.cue?.pts, stop: !!p.stop, scratch: !!p.scratch };
+      else {
+        const tr = trace(cue);
+        guide = { mode: b.guide, cue, g: [tr.gx, tr.gy], ball: tr.ball, deflect: tr.ball && b.guide === 'full' ? deflection(cue, tr.gx, tr.gy, tr.ball) : null };
+      }
     }
     // behind-the-cue camera: follows the cue ball and the aim, but holds still while the cue ball is dragged or a shot plays
     const resting = ballMap()[0];

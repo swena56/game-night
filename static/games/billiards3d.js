@@ -46,7 +46,7 @@ const Billiards3D = (() => {
     }
     if (n === 0) for (const u of [0, 512, 1024]) { g.fillStyle = '#c1121f'; g.beginPath(); g.arc(u, 256, 18, 0, 7); g.fill(); }
     const t = new T.CanvasTexture(c);
-    t.anisotropy = aniso;
+    t.anisotropy = aniso; t.encoding = T.sRGBEncoding;
     return t;
   }
 
@@ -105,9 +105,10 @@ const Billiards3D = (() => {
         }
       }
     }
-    return [cc, bc].map((c) => {
+    return [cc, bc].map((c, i) => {
       const t = new T.CanvasTexture(c);
       t.wrapS = t.wrapT = T.RepeatWrapping; t.anisotropy = aniso;
+      if (!i) t.encoding = T.sRGBEncoding;  // the colour map (the bump map is plain heights)
       return t;
     });
   }
@@ -125,7 +126,7 @@ const Billiards3D = (() => {
       g.stroke();
     }
     const t = new T.CanvasTexture(c);
-    t.wrapS = t.wrapT = T.RepeatWrapping; t.anisotropy = aniso;
+    t.wrapS = t.wrapT = T.RepeatWrapping; t.anisotropy = aniso; t.encoding = T.sRGBEncoding;
     return t;
   }
   // the inside of a pocket: dark leather, with a knotted net of cord over it that catches the lamp light
@@ -147,7 +148,7 @@ const Billiards3D = (() => {
     g.fillStyle = '#4a3220';
     for (let k = 0; k < 16; k++) for (let j = 0; j < 8; j++) if ((k + j) % 2 === 0) { g.beginPath(); g.arc(k * 16, j * 16, 2.4, 0, 7); g.fill(); }
     const t = new T.CanvasTexture(c);
-    t.wrapS = t.wrapT = T.RepeatWrapping; t.anisotropy = aniso;
+    t.wrapS = t.wrapT = T.RepeatWrapping; t.anisotropy = aniso; t.encoding = T.sRGBEncoding;
     return t;
   }
 
@@ -161,15 +162,20 @@ const Billiards3D = (() => {
     return s;
   }
 
-  // a dim room with two bright lamp panels, for the balls' and rails' reflections
-  function lampRoom(T, renderer) {
-    const room = new T.Scene();
-    room.add(new T.Mesh(new T.BoxGeometry(400, 200, 300), new T.MeshBasicMaterial({ color: 0x241a14, side: T.BackSide })));
-    for (const x of [-55, 55]) {
-      const lamp = new T.Mesh(new T.PlaneGeometry(60, 16), new T.MeshBasicMaterial({ color: 0xfff3dc, side: T.DoubleSide }));
-      lamp.rotation.x = Math.PI / 2; lamp.position.set(x, 70, 0); room.add(lamp);
+  // a dim room with the pool lamp's three bright shades (where the scene's lamps are), for the balls' and
+  // rails' reflections. Colours are given linear: this scene is rendered straight into the environment map.
+  const LAMPS = [-0.33, 0, 0.33], LAMP_Y = 72;  // shades along the table's length (× its width), and their height
+  function lampRoom(T, renderer, W) {
+    const room = new T.Scene(), lin = (hex) => new T.Color(hex).convertSRGBToLinear();
+    room.add(new T.Mesh(new T.BoxGeometry(400, 200, 300), new T.MeshBasicMaterial({ color: lin(0x1c1511), side: T.BackSide })));
+    for (const f of LAMPS) {
+      // a glowing disc under each shade, with the shade's dark rim around it
+      const lamp = new T.Mesh(new T.CircleGeometry(11, 40), new T.MeshBasicMaterial({ color: new T.Color(0xfff1d8).multiplyScalar(2.2), side: T.DoubleSide }));
+      lamp.rotation.x = Math.PI / 2; lamp.position.set(f * W, LAMP_Y, 0); room.add(lamp);
+      const shade = new T.Mesh(new T.RingGeometry(11, 15, 40), new T.MeshBasicMaterial({ color: lin(0x0e2a1a), side: T.DoubleSide }));
+      shade.rotation.x = Math.PI / 2; shade.position.set(f * W, LAMP_Y + 0.1, 0); room.add(shade);
     }
-    const floor = new T.Mesh(new T.PlaneGeometry(400, 300), new T.MeshBasicMaterial({ color: 0x0f3a22, side: T.DoubleSide }));
+    const floor = new T.Mesh(new T.PlaneGeometry(400, 300), new T.MeshBasicMaterial({ color: lin(0x0f3a22), side: T.DoubleSide }));
     floor.rotation.x = -Math.PI / 2; floor.position.y = -1; room.add(floor);  // the green of the cloth, reflected low on the balls
     const pm = new T.PMREMGenerator(renderer);
     const env = pm.fromScene(room, 0.03).texture;
@@ -196,21 +202,28 @@ const Billiards3D = (() => {
     const canvas = renderer.domElement;
     const { W, H, R } = b;
     const aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy?.() || 1);
-    const env = lampRoom(T, renderer);
+    // colour managed: sRGB textures and colours, lit in linear light, filmic tone mapping so the lamps'
+    // hot spots on the balls and the cloth roll off softly instead of clipping
+    renderer.outputEncoding = T.sRGBEncoding;
+    renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15;
+    const env = lampRoom(T, renderer, W);
 
     const scene = new T.Scene(), camera = new T.PerspectiveCamera(30, 1, 1, 1000);
     const table = new T.Group(); table.position.set(-W / 2, 0, -H / 2); scene.add(table);
-    scene.add(new T.HemisphereLight(0xfff6e8, 0x20241c, 0.5));
-    const sun = new T.DirectionalLight(0xfff4e0, 0.55);
-    sun.position.set(-30, 160, 40); sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
-    Object.assign(sun.shadow.camera, { left: -W / 2 - 12, right: W / 2 + 12, top: H / 2 + 12, bottom: -H / 2 - 12, near: 60, far: 260 });
-    sun.shadow.bias = -0.0008; sun.shadow.radius = 3;
-    scene.add(sun);
-    for (const fx of [0.27, 0.73]) {  // two lamps over the table: soft pools of light and a shine on each ball
-      const lamp = new T.PointLight(0xfff1d6, 0.6, 260, 1.2);
-      lamp.position.set(W * fx - W / 2, 70, 0); scene.add(lamp);
-    }
+    // lighting: a dim room, and a three-shade pool lamp hanging over the table. Each shade is a spotlight
+    // aimed straight down, so the cloth is brightest under the lamp and falls off toward the rails and the
+    // corners; the two outer shades cast soft shadows (two faint shadows per ball, as under a real lamp).
+    scene.add(new T.HemisphereLight(0xffeedd, 0x1a140f, 0.2));
+    LAMPS.forEach((f, i) => {
+      const lamp = new T.SpotLight(0xfff0d6, i === 1 ? 1.15 : 1.3, 230, 0.82, 0.9, 1);
+      lamp.position.set(f * W, LAMP_Y, 0); lamp.target.position.set(f * W * 1.15, 0, 0);
+      scene.add(lamp, lamp.target);
+      if (i !== 1) {
+        lamp.castShadow = true; lamp.shadow.mapSize.set(1024, 1024);
+        Object.assign(lamp.shadow.camera, { near: 40, far: 140 });
+        lamp.shadow.bias = -0.0006;
+      }
+    });
 
     // the table, built in table units: shapes are drawn as (x, -y) and turned flat so they extrude upward
     const flat = (pts) => new T.Shape(pts.map(([x, y]) => new T.Vector2(x, -y)));
@@ -379,8 +392,17 @@ const Billiards3D = (() => {
     lay(new T.PlaneGeometry(0.4, H), chalk, 0.02).position.set(b.headX, 0.02, H / 2);
     lay(new T.CircleGeometry(0.7, 24), chalk, 0.02).position.set(W * 0.73, 0.02, H / 2);
 
-    // balls: glossy, clear-coated spheres that reflect the lamps, each turned as it rolls
+    // balls: glossy, clear-coated spheres that reflect the lamps, each turned as it rolls, each with a soft
+    // dark patch on the cloth right under it where the ball shuts out the room's light (contact shadow)
     const ballGeo = new T.SphereGeometry(R, 64, 40), balls = new Map();
+    const blot = (() => {
+      const c = Object.assign(document.createElement('canvas'), { width: 64, height: 64 }), g = c.getContext('2d');
+      const r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+      r.addColorStop(0, 'rgba(0,0,0,0.85)'); r.addColorStop(0.35, 'rgba(0,0,0,0.5)'); r.addColorStop(0.7, 'rgba(0,0,0,0.12)'); r.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = r; g.fillRect(0, 0, 64, 64);
+      return new T.CanvasTexture(c);
+    })();
+    const blotGeo = new T.PlaneGeometry(R * 2.7, R * 2.7), blotMat = new T.MeshBasicMaterial({ map: blot, transparent: true, depthWrite: false });
     function ball(n) {
       let o = balls.get(n);
       if (o) return o;
@@ -390,7 +412,9 @@ const Billiards3D = (() => {
       // number spot facing up, a little turned so the rack doesn't look stamped out
       m.quaternion.setFromEuler(new T.Euler(-Math.PI / 2 + (Math.random() - 0.5) * 0.5, (Math.random() - 0.5) * 0.6, 0));
       table.add(m);
-      o = { m, x: null, y: null };
+      const shadow = new T.Mesh(blotGeo, blotMat);
+      shadow.rotation.x = -Math.PI / 2; shadow.renderOrder = 1; shadow.visible = false; table.add(shadow);
+      o = { m, shadow, x: null, y: null };
       balls.set(n, o);
       return o;
     }
@@ -402,6 +426,7 @@ const Billiards3D = (() => {
       }
       o.x = x; o.y = y;
       o.m.position.set(x, R, y);
+      o.shadow.position.set(x, 0.03, y);
     }
     const falling = [];  // balls dropping into a pocket
 
@@ -436,7 +461,41 @@ const Billiards3D = (() => {
       };
       return g;
     };
+    // a ribbon along a path (the engine's predicted paths bend with spin and off cushions); rebuilt only
+    // when it's handed a new path
+    const ribbon = (color, opacity, dashed) => {
+      const mat = new T.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, side: T.DoubleSide, map: dashed ? dashTexture(T) : null });
+      const m = new T.Mesh(new T.BufferGeometry(), mat);
+      m.renderOrder = 2; m.visible = false; m.frustumCulled = false; table.add(m);
+      m.set = (pts, w) => {
+        if (pts === m.pts) { m.visible = true; return; }
+        m.pts = pts;
+        const P = [pts[0]];
+        for (const q of pts) { const l = P[P.length - 1]; if (Math.hypot(q[0] - l[0], q[1] - l[1]) >= 0.5) P.push(q); }
+        const end = pts[pts.length - 1];
+        if (P[P.length - 1] !== end && Math.hypot(end[0] - P[P.length - 1][0], end[1] - P[P.length - 1][1]) > 0.05) P.push(end);
+        m.visible = P.length > 1;
+        if (!m.visible) return;
+        const pos = [], uv = [], idx = [];
+        let along = 0;
+        P.forEach((q, i) => {
+          const a = P[Math.max(0, i - 1)], c = P[Math.min(P.length - 1, i + 1)];
+          const tl = Math.hypot(c[0] - a[0], c[1] - a[1]) || 1, nx = (-(c[1] - a[1]) / tl) * (w / 2), ny = ((c[0] - a[0]) / tl) * (w / 2);
+          if (i) along += Math.hypot(q[0] - P[i - 1][0], q[1] - P[i - 1][1]);
+          pos.push(q[0] + nx, 0.08, q[1] + ny, q[0] - nx, 0.08, q[1] - ny);
+          uv.push(along / 4.2, 0, along / 4.2, 1);
+          if (i) idx.push(2 * i - 2, 2 * i - 1, 2 * i, 2 * i - 1, 2 * i + 1, 2 * i);
+        });
+        m.geometry.dispose();
+        m.geometry = new T.BufferGeometry();
+        m.geometry.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
+        m.geometry.setAttribute('uv', new T.Float32BufferAttribute(uv, 2));
+        m.geometry.setIndex(idx);
+      };
+      return m;
+    };
     const aimLine = strip(0xffffff, 0.75, true), objLine = strip(0xffd166, 0.9, false), cueLine = strip(0xbfe9ff, 0.8, true);
+    const objPath = ribbon(0xffd166, 0.9, false), cuePath = ribbon(0xbfe9ff, 0.8, true);
     const ghost = new T.Mesh(ballGeo, new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.22, depthWrite: false }));
     table.add(ghost);
     const ringMesh = (r0, r1, color) => {
@@ -445,6 +504,17 @@ const Billiards3D = (() => {
     };
     const handRing = ringMesh(R * 1.9, R * 2.25, 0xffb703);
     const callRings = b.pockets.map(([x, y, cap]) => { const m = ringMesh(cap + 2.3, cap + 3.1, 0xffd166); m.position.set(x, RAIL_TOP + 0.6, y); return m; });
+
+    // the colours above were picked as sRGB: light works in linear, so convert them once; the overlays (aim
+    // guide, ghost ball, rings) skip tone mapping so they keep exactly the colours picked
+    const overlays = new Set([ghost.material, handRing.material, objPath.material, cuePath.material, ...callRings.map((m) => m.material)]);
+    scene.traverse((o) => {
+      const m = o.material;
+      if (!m || m.userData.lin) return;
+      m.userData.lin = true;
+      m.color?.convertSRGBToLinear();
+      if (overlays.has(m) || (m.isMeshBasicMaterial && m.depthWrite === false && m !== blotMat)) m.toneMapped = false;
+    });
 
     // ---------- camera
     const camNow = { pos: new T.Vector3(), look: new T.Vector3() }, camGoal = { pos: new T.Vector3(), look: new T.Vector3() };
@@ -491,9 +561,10 @@ const Billiards3D = (() => {
       const now = performance.now(), dt = Math.min(0.1, (now - last) / 1000); last = now;
       // balls
       const seen = new Set();
-      for (const [n, x, y] of st.balls) { const o = ball(n); o.m.visible = true; o.falling = false; roll(o, x, y); seen.add(n); }
+      for (const [n, x, y] of st.balls) { const o = ball(n); o.m.visible = o.shadow.visible = true; o.falling = false; roll(o, x, y); seen.add(n); }
       for (const [n, o] of balls) {
         if (seen.has(n) || !o.m.visible || o.falling) continue;
+        o.shadow.visible = false;
         if (st.animating && o.x != null) {  // gone mid-shot: it dropped into the nearest pocket
           const p = b.pockets.reduce((a, q) => (Math.hypot(q[0] - o.x, q[1] - o.y) < Math.hypot(a[0] - o.x, a[1] - o.y) ? q : a));
           falling.push({ o, from: [o.x, o.y], to: p, t0: now }); o.falling = true;
@@ -514,14 +585,19 @@ const Billiards3D = (() => {
         tilt.position.set(-(R + 0.6 + s.power * 14), s.spin * R * 0.55, s.english * R * 0.55);
       }
       const gd = st.guide;
-      aimLine.visible = objLine.visible = cueLine.visible = ghost.visible = false;
+      aimLine.visible = objLine.visible = cueLine.visible = objPath.visible = cuePath.visible = ghost.visible = false;
       if (gd && gd.mode !== 'off') {
         const [cx, cy] = gd.cue, [gx, gy] = gd.g, full = gd.mode === 'full', L = Math.hypot(gx - cx, gy - cy) || 1;
         const k = full ? 1 : Math.min(1, 26 / L);
         aimLine.set(cx + ((gx - cx) / L) * R, cy + ((gy - cy) / L) * R, cx + (gx - cx) * k, cy + (gy - cy) * k, 0.45);
         if (full) {
           ghost.visible = true; ghost.position.set(gx, R, gy);
-          if (gd.ball) {
+          // red: the cue ball would drop; fainter: it runs out of pace and stops here
+          ghost.material.color.set(gd.scratch ? 0xef476f : 0xffffff).convertSRGBToLinear(); ghost.material.opacity = gd.stop ? 0.12 : 0.22;
+          if (gd.objPath || gd.cuePath) {  // the engine's own prediction: the paths really taken
+            if (gd.objPath) objPath.set(gd.objPath, 0.5);
+            if (gd.cuePath) cuePath.set(gd.cuePath, 0.4);
+          } else if (gd.ball) {
             const [bx, by] = gd.ball, nx = bx - gx, ny = by - gy, n = Math.hypot(nx, ny) || 1;
             objLine.set(bx, by, bx + (nx / n) * 28, by + (ny / n) * 28, 0.5);
           }
@@ -544,7 +620,7 @@ const Billiards3D = (() => {
         moving = camNow.pos.distanceToSquared(camGoal.pos) > 0.0004 || camNow.look.distanceToSquared(camGoal.look) > 0.0004;
       } else if (mode === 'table' && fitted) camera.position.copy(fitted.pos), camera.lookAt(0, 0, 0);
       // draw only when something changed
-      const k = JSON.stringify([st.balls, s && [s.x, s.y, s.aim, s.power, s.spin, s.english], gd && [gd.mode, gd.g], st.ring, st.call, mode]);
+      const k = JSON.stringify([st.balls, s && [s.x, s.y, s.aim, s.power, s.spin, s.english], gd && [gd.mode, gd.g, gd.objPath?.length, gd.cuePath?.length, gd.cuePath?.at(-1)], st.ring, st.call, mode]);
       if (k === key && !st.animating && !falling.length && !moving && !(st.callAll && st.call == null)) return;
       key = k;
       renderer.render(scene, camera);
