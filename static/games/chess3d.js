@@ -1,6 +1,7 @@
 // 3D chessboard for UI.chess, drawn with three.js. It mirrors the 2D board (which stays the source of
 // truth for selection, targets and promotion): sync() copies the 2D squares' highlight classes onto
-// 3D tiles, and taps are mapped back to the same square index. Drag sideways to turn the board.
+// 3D tiles, and taps are mapped back to the same square index. Drag to turn and tilt the board, pinch or scroll to
+// zoom, two-finger (or right-) drag to pan.
 const Chess3D = (() => {
   const LIGHT = 0xf0d9b5, DARK = 0xb58863;
   const MARK = { sel: 0x2b8a3e, check: 0xef476f, last: 0xffe066, capture: 0xe8590c };
@@ -41,11 +42,27 @@ const Chess3D = (() => {
     const kinds = buildKinds(T);
     const pieces = new T.Group(); scene.add(pieces);
 
-    let yaw = 0, raf = 0, anim = null, dirty = true;
+    // an orbit camera (#40): turn all the way round, tilt, zoom and pan; the defaults are the old fixed view
+    const HOME = { yaw: 0, pitch: 0.95, dist: 13.5, tx: 0, tz: 0 };
+    let cam = { ...HOME }, raf = 0, anim = null, dirty = true;
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    const moved = () => Object.keys(HOME).some((k) => Math.abs(cam[k] - HOME[k]) > 1e-3);
     function place() {
-      const dist = 13.5, pitch = 0.95;
-      camera.position.set(Math.sin(yaw) * dist * Math.cos(pitch), dist * Math.sin(pitch), Math.cos(yaw) * dist * Math.cos(pitch));
-      camera.lookAt(Math.sin(yaw) * 0.5, -0.4, Math.cos(yaw) * 0.5);
+      const { yaw, pitch, dist, tx, tz } = cam;
+      camera.position.set(tx + Math.sin(yaw) * dist * Math.cos(pitch), dist * Math.sin(pitch), tz + Math.cos(yaw) * dist * Math.cos(pitch));
+      camera.lookAt(tx + Math.sin(yaw) * 0.5, -0.4, tz + Math.cos(yaw) * 0.5);
+    }
+    function setCam(next) {
+      cam = { ...cam, ...next };
+      cam.pitch = clamp(cam.pitch, 0.3, 1.5); cam.dist = clamp(cam.dist, 6, 24);
+      cam.tx = clamp(cam.tx, -4.5, 4.5); cam.tz = clamp(cam.tz, -4.5, 4.5);
+      resetBtn.hidden = !moved();
+      dirty = true; kick();
+    }
+    // slide the look-at point along the board, in screen directions: drag right and the board follows the finger
+    function pan(dx, dy) {
+      const k = cam.dist / (stage.clientHeight || 400) * 1.1, { yaw } = cam;
+      setCam({ tx: cam.tx - (Math.cos(yaw) * dx + Math.sin(yaw) * dy) * k, tz: cam.tz - (-Math.sin(yaw) * dx + Math.cos(yaw) * dy) * k });
     }
     function resize() {
       const w = stage.clientWidth || 300, h = stage.clientHeight || 300;
@@ -67,21 +84,55 @@ const Chess3D = (() => {
     }
     const kick = () => { if (!raf) raf = requestAnimationFrame(frameLoop); };
 
-    // input: tap picks a square, sideways drag turns the board
+    // input: a tap picks a square. One finger (or the mouse) turns and tilts the board; two fingers pinch to
+    // zoom and drag to pan; with a mouse the wheel zooms and a right- or Shift-drag pans. Double-tap or ⟲ resets.
     const ray = new T.Raycaster(), ptr = new T.Vector2();
-    let down = null;
-    const el = renderer.domElement;
-    el.style.touchAction = 'pan-y';
-    el.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, yaw, moved: false }; });
-    el.addEventListener('pointermove', (e) => {
-      if (!down) return;
-      const dx = e.clientX - down.x;
-      if (Math.abs(dx) > 8) down.moved = true;
-      if (down.moved) { yaw = Math.max(-1.1, Math.min(1.1, down.yaw - dx / 180)); dirty = true; kick(); }
+    const el = renderer.domElement, ptrs = new Map();
+    let gesture = null;  // { kind: 'turn' | 'pan' | 'pinch', ... } while a drag is under way
+    el.style.touchAction = 'none';
+    const resetBtn = document.createElement('button');
+    resetBtn.className = 'ch3d-reset'; resetBtn.hidden = true; resetBtn.textContent = '⟲';
+    resetBtn.title = 'Reset the view'; resetBtn.setAttribute('aria-label', 'Reset the 3D view');
+    resetBtn.onclick = () => setCam(HOME);
+    stage.append(resetBtn);
+    const mid = () => { const [a, b] = [...ptrs.values()]; return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, span: Math.hypot(a.x - b.x, a.y - b.y) || 1 }; };
+    function startGesture(e) {
+      if (ptrs.size >= 2) { const m = mid(); gesture = { kind: 'pinch', ...m, dist: cam.dist, moved: true }; return; }
+      const panning = e.button === 2 || e.shiftKey || e.ctrlKey;
+      gesture = { kind: panning ? 'pan' : 'turn', x: e.clientX, y: e.clientY, yaw: cam.yaw, pitch: cam.pitch, moved: false };
+    }
+    el.addEventListener('contextmenu', (e) => e.preventDefault());
+    el.addEventListener('pointerdown', (e) => {
+      try { el.setPointerCapture(e.pointerId); } catch {}
+      ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      startGesture(e);
     });
-    el.addEventListener('pointerup', (e) => {
-      const d = down; down = null;
-      if (!d || d.moved) return;
+    el.addEventListener('pointermove', (e) => {
+      if (!ptrs.has(e.pointerId) || !gesture) return;
+      ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const g = gesture;
+      if (g.kind === 'pinch') {
+        if (ptrs.size < 2) return;
+        const m = mid();
+        pan(m.x - g.x, m.y - g.y); g.x = m.x; g.y = m.y;
+        setCam({ dist: g.dist * (g.span / m.span) });
+        return;
+      }
+      const dx = e.clientX - g.x, dy = e.clientY - g.y;
+      if (!g.moved && Math.hypot(dx, dy) > 8) g.moved = true;
+      if (!g.moved) return;
+      if (g.kind === 'pan') { pan(e.clientX - (g.lx ?? g.x), e.clientY - (g.ly ?? g.y)); g.lx = e.clientX; g.ly = e.clientY; }
+      else setCam({ yaw: g.yaw - dx / 180, pitch: g.pitch + dy / 220 });
+    });
+    const lift = (e) => {
+      const had = ptrs.delete(e.pointerId), g = gesture;
+      if (!had) return;
+      if (ptrs.size) {  // one finger of a pinch lifted: carry on turning with the other, from where it is now
+        if (g?.kind === 'pinch') { const [p] = ptrs.values(); gesture = { kind: 'turn', x: p.x, y: p.y, yaw: cam.yaw, pitch: cam.pitch, moved: true }; }
+        return;
+      }
+      gesture = null;
+      if (!g || g.moved || e.type !== 'pointerup') return;
       const rect = el.getBoundingClientRect();
       ptr.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
       ray.setFromCamera(ptr, camera);
@@ -89,9 +140,11 @@ const Chess3D = (() => {
       let o = hit?.object;
       while (o && o.userData.i == null) o = o.parent;
       if (o) onSquare(o.userData.i);
-    });
-    el.addEventListener('pointerleave', () => { down = null; });
-    el.addEventListener('dblclick', () => { yaw = 0; dirty = true; kick(); });
+    };
+    el.addEventListener('pointerup', lift);
+    el.addEventListener('pointercancel', lift);
+    el.addEventListener('wheel', (e) => { e.preventDefault(); setCam({ dist: cam.dist * Math.exp(e.deltaY * 0.0012) }); }, { passive: false });
+    el.addEventListener('dblclick', () => setCam(HOME));
     const ro = window.ResizeObserver ? new ResizeObserver(resize) : null;
     ro?.observe(stage);
     resize();
@@ -127,7 +180,7 @@ const Chess3D = (() => {
 
     function dispose() {
       cancelAnimationFrame(raf); ro?.disconnect();
-      renderer.dispose(); el.remove();
+      renderer.dispose(); el.remove(); resetBtn.remove();
     }
     return { sync, dispose };
   }

@@ -609,6 +609,7 @@ body.focus #blHint { display: none; }  /* ❓ has the same how-to; the table get
 .chess3d { position: relative; width: min(100%, 600px, calc(var(--app-h, 100vh) - 140px)); aspect-ratio: 1; margin: 8px auto; border-radius: var(--radius);
   overflow: hidden; background: radial-gradient(ellipse at 50% 30%, #3a2d5c, #120e1c 75%); box-shadow: inset 0 0 0 1px #ffffff12, 0 10px 30px #0008; }
 .chess3d canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.ch3d-reset { position: absolute; top: 8px; right: 8px; z-index: 1; min-width: 40px; padding: 6px 10px; font-size: 18px; background: #000a; color: #fff; }
 /* desktop: the board can use the whole height (#69), like the 2D board */
 @media (min-width: 861px) { .chess3d { width: min(100%, 900px, calc(var(--app-h, 100vh) - 140px)); } }
 
