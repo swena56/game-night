@@ -8,7 +8,8 @@ or more) give one of: 🚀 a missile that homes in on the racer ahead, 💣 a mi
 or 🛡️ a shield that stops the next hit. A hit knocks most of a craft's speed off and spins it for a
 moment. Leaders mostly get mines and shields, racers further back mostly missiles, so the leader
 isn't just a target. Craft that touch bump each other sideways. First across the line after the
-last lap wins.
+last lap wins; in 💥 Elimination, each time the leader crosses the line (from the end of lap 1)
+whoever is last is out, until one is left.
 
 Server-owned like Sumo Saucers: the track is a closed curve sampled into points; each craft is a
 position along it (s, in track units) and a sideways offset (d), so the simulation stays tiny.
@@ -87,7 +88,7 @@ def make_track(rng):
 
 class Craft:
     # defaults for races saved before these existed (rooms come back from data/rooms.pickle on restart)
-    wall, pad, draft, item, spin_until, shield_until = False, None, False, None, 0.0, 0.0
+    wall, pad, draft, item, spin_until, shield_until, out = False, None, False, None, 0.0, 0.0, False
 
     def __init__(self, s, d):
         self.s, self.d, self.v = s, d, 0.0
@@ -103,6 +104,7 @@ class Craft:
         self.item = None       # the item held: "missile", "mine" or "shield"
         self.spin_until = 0.0  # spinning from a hit
         self.shield_until = 0.0
+        self.out = False       # knocked out in Elimination (it also has a finishing place)
 
 
 class Rally(Game):
@@ -116,6 +118,7 @@ class Rally(Game):
         "💣 a mine drops behind you, 🛡️ a shield stops the next hit. A hit spins you out. Leaders get more mines and shields, the pack more missiles.",
         "Tuck in close behind a rival to ride their 💨 slipstream, then pull out and pass.",
         "Bump rivals sideways. First across the line after the last lap wins.",
+        "💥 Elimination (a lobby setting): each time the leader crosses the line, whoever is last is out. The last one flying wins.",
     ]
     name = "Hover Rally"
     icon = "🛸"
@@ -123,9 +126,10 @@ class Rally(Game):
     min_players = 1
     max_players = 6
     replayable = False
-    pickups, pickup_at, missiles, mines = (), (), (), ()   # for races saved before items; start() sets real ones
+    pickups, pickup_at, missiles, mines, elim, elim_lap = (), (), (), (), False, 0   # for races saved before items; start() sets real ones
     settings_schema = {
         "laps": ("Laps", [(3, "3"), (2, "2 (quick)"), (5, "5")], 3),
+        "mode": ("Mode", [("race", "🏁 Race"), ("elim", "💥 Elimination (last place out every lap; laps don't apply)")], "race"),
         "missiles": ("Items", [(True, "🎁 On (🚀 💣 🛡️)"), (False, "Off (pure racing)")], True),
     }
 
@@ -162,13 +166,16 @@ class Rally(Game):
         self.frames = 0
         self.places = 0
         self.first_done = None
+        self.elim = n > 1 and self.s.get("mode") == "elim"
+        self.elim_lap = 0      # the most laps anyone has done, so each lap the leader completes knocks one out
         self.bot_next = [0.0] * n
         self.ev = []           # since the last broadcast: ["bump", i, j] / ["pad", i] / ["pick", i, item] / ["fire", i] /
         #                        ["drop", i] / ["shield", i] / ["hit", victim, by, "missile"|"mine"] / ["block", victim, by]
         self.touching = set()  # pairs in contact, so a long scrape alongside is one bump
         self.room.turn = None
         self.room.deadline = None
-        self.room.add_log(f"🛸 Hover Rally: {self.s['laps']} laps of a new track ({self.length:.0f} m). Get ready!", "big")
+        what = "💥 Elimination (last place out every lap)" if self.elim else f"{self.s['laps']} laps"
+        self.room.add_log(f"🛸 Hover Rally: {what} on a new track ({self.length:.0f} m). Get ready!", "big")
 
     def seat(self, p):
         return self.seats.index(p.id) if p.id in self.seats else None
@@ -353,7 +360,11 @@ class Rally(Game):
             lap = max(0, math.floor(c.s / self.length))
             if lap > c.lap:
                 c.lap = lap
-                if c.lap >= self.s["laps"]:
+                if self.elim:
+                    if lap > self.elim_lap:
+                        self.elim_lap = lap
+                        changed = self.knock_out(now) or changed
+                elif c.lap >= self.s["laps"]:
                     self.places += 1
                     c.finished = self.places
                     c.finish_time = now - self.started
@@ -365,7 +376,7 @@ class Rally(Game):
         self.bump()
         self.fly(dt, now)
         racing = [i for i, c in enumerate(self.crafts) if c.finished is None and self.active(i)]
-        if not racing or (self.first_done and now - self.first_done > FINISH_WAIT):
+        if not racing or (self.elim and len(racing) == 1) or (self.first_done and now - self.first_done > FINISH_WAIT):
             self.end_race()
             return True
         if self.frames % 2 == 0:
@@ -418,6 +429,21 @@ class Rally(Game):
                     (q if ds > 0 else p).v *= 0.97
         self.touching = touching
 
+    def knock_out(self, now):
+        """Elimination: the racer furthest back is out, and takes the lowest place still free."""
+        live = [i for i, c in enumerate(self.crafts) if c.finished is None and self.active(i)]
+        if len(live) < 2:
+            return False
+        i = min(live, key=lambda j: self.crafts[j].s)
+        c = self.crafts[i]
+        c.out = True
+        c.finished = len(self.crafts) - sum(o.out for o in self.crafts) + 1
+        c.item, c.boost_until, c.shield_until = None, 0.0, 0.0
+        p = self.room.players.get(self.seats[i])
+        self.ev.append(["out", i])
+        self.room.add_log(f"💥 {p.name if p else '?'} is out on lap {self.elim_lap} ({self.ordinal(c.finished)}).", "power")
+        return True
+
     def end_race(self):
         r = self.room
         self.stage = "done"
@@ -434,7 +460,7 @@ class Rally(Game):
             if t is not None and t <= par:
                 return r.finish(p, f"🏆 {p.name} beats the target time: {t:.1f}s (target {par:.1f}s)!")
             return r.finish(None, f"🛸 {p.name if p else '?'} finished in {t:.1f}s; the target was {par:.1f}s." if t else "🛸 Race over.")
-        r.finish(p, f"🏆 {p.name if p else '?'} wins Hover Rally!")
+        r.finish(p, f"🏆 {p.name if p else '?'} {'is the last one flying and ' if self.elim else ''}wins Hover Rally!")
 
     @staticmethod
     def ordinal(n):
@@ -447,10 +473,10 @@ class Rally(Game):
 
     def craft_rows(self, now):
         """Each craft as [s, d, speed, boosting, boosts left, laps done, finishing place, scraping a wall,
-        in a slipstream, item held (0 none, else ITEMS), spinning, shielded]."""
+        in a slipstream, item held (0 none, else ITEMS), spinning, shielded, knocked out]."""
         r2 = lambda v: round(v, 2)
         return [[r2(c.s), r2(c.d), r2(c.v), int(now < c.boost_until), c.boosts, c.lap, c.finished or 0, int(c.wall), int(c.draft),
-                 ITEMS.get(c.item, 0), int(now < c.spin_until), int(now < c.shield_until)] for c in self.crafts]
+                 ITEMS.get(c.item, 0), int(now < c.spin_until), int(now < c.shield_until), int(c.out)] for c in self.crafts]
 
     def missile_rows(self):
         """Each missile in flight as [s, d, target craft or -1]."""
@@ -534,7 +560,9 @@ class Rally(Game):
         if i is None:
             return ""
         c = self.crafts[i]
-        return f"🏁 {self.ordinal(c.finished)}" if c.finished else f"Lap {min(c.lap + 1, self.s['laps'])}/{self.s['laps']}"
+        if c.finished:
+            return f"{'💥' if c.out else '🏁'} {self.ordinal(c.finished)}"
+        return f"Lap {c.lap + 1}" if self.elim else f"Lap {min(c.lap + 1, self.s['laps'])}/{self.s['laps']}"
 
     def final_scores(self):
         return {pid: self.crafts[i].finished for i, pid in enumerate(self.seats) if self.crafts[i].finished}
@@ -549,5 +577,5 @@ class Rally(Game):
             "c": self.craft_rows(now), "pickups": self.pickups, "pk": self.pickup_flags(now), "m": self.missile_rows(),
             "mn": self.mine_rows(),
             "countdown": max(0.0, self.next_at - now) if self.stage == "countdown" else 0,
-            "top": TOP_SPEED,
+            "top": TOP_SPEED, "elim": self.elim,
         }}

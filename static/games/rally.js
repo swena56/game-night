@@ -98,6 +98,8 @@ UI.rally = (() => {
       warn: () => tone(1500, 1500, 0.06, 'square', 0.04),
       drop: () => { tone(220, 110, 0.12, 'square', 0.06); tone(1800, 1800, 0.05, 'sine', 0.05, 0.12); },  // a clunk, then the arming tick
       shield: () => [0, 1, 2, 3].forEach((k) => tone(600 + k * 220, 700 + k * 260, 0.18, 'sine', 0.05, k * 0.04)),
+      out: () => tone(400, 200, 0.3, 'triangle', 0.06),   // 💥 someone else is knocked out
+      outMe: () => [392, 330, 262, 196].forEach((f, k) => tone(f, f * 0.97, 0.22, 'sawtooth', 0.05, k * 0.16)),
       block: () => { tone(1400, 900, 0.3, 'triangle', 0.12); noise(0.15, 4000, 2000, 2, 0.3); },
     };
     function play(kind, now) {
@@ -146,7 +148,10 @@ UI.rally = (() => {
     if (!S?.rally) return;
     take(d.c, d.st, d.m, d.pk, d.mn);
     const me = S.rally.me;
+    // 📳 buzz (the app's helper, off with the Vibrate setting) for what happens to your craft
+    const BUZZ = { hit: [60, 40, 140], out: [200, 80, 200], block: 40, bump: 25, pad: 15, pick: 12 };
     for (const e of d.e || []) {
+      if (BUZZ[e[0]] && (e[1] === me || (e[0] === 'bump' && e[2] === me)) && typeof buzz === 'function') buzz(BUZZ[e[0]]);
       gl?.fx(e);
       if (e[0] === 'pad' && e[1] === me) snd.play('pad');
       else if (e[0] === 'bump') snd.play(e.slice(1).includes(me) ? 'bump' : 'far');
@@ -156,6 +161,7 @@ UI.rally = (() => {
       else if (e[0] === 'drop' && e[1] === me) snd.play('drop');
       else if (e[0] === 'shield' && e[1] === me) snd.play('shield');
       else if (e[0] === 'block') snd.play('block');
+      else if (e[0] === 'out') snd.play(e[1] === me ? 'outMe' : 'out');
     }
   }
 
@@ -199,13 +205,13 @@ UI.rally = (() => {
   function side() {
     const r = S.rally, box = $('raOrder'); if (!box) return;
     box.innerHTML = '';
-    box.append(ctx.el('div', 'hint left', `${r.laps} laps`));
+    box.append(ctx.el('div', 'hint left', r.elim ? '💥 Elimination: last place is out every lap' : `${r.laps} laps`));
     order().forEach((i, k) => {
       const c = crafts[i], p = ctx.player(r.seats[i]);
       const row = ctx.el('div', 'seat-row');
       const dot = ctx.el('span', 'mini-disc'); dot.style.background = colorOf(i);
       row.append(ctx.el('b', '', `${k + 1}.`), dot, ctx.el('span', 'grow', `${p?.name ?? 'left'}${i === r.me ? ' (you)' : ''}`),
-        ctx.el('span', 'hint', c[6] ? '🏁' : `lap ${Math.min(c[5] + 1, r.laps)}`));
+        ctx.el('span', 'hint', c[12] ? '💥 out' : c[6] ? '🏁' : `lap ${r.elim ? c[5] + 1 : Math.min(c[5] + 1, r.laps)}`));
       box.append(row);
     });
     const mine = r.me != null ? crafts[r.me] : null;
@@ -217,7 +223,7 @@ UI.rally = (() => {
     $('raFire').classList.toggle('primary', !!mine?.[9]);
     $('raFire').textContent = ITEM[mine?.[9] || 0];
     if (mine) {
-      $('raLap').textContent = mine[6] ? 'Finished!' : `Lap ${Math.min(mine[5] + 1, r.laps)} / ${r.laps}`;
+      $('raLap').textContent = mine[12] ? '💥 Out' : mine[6] ? 'Finished!' : r.elim ? `Lap ${mine[5] + 1} · ${crafts.filter((c) => !c[6]).length} left` : `Lap ${Math.min(mine[5] + 1, r.laps)} / ${r.laps}`;
       const place = order().indexOf(r.me) + 1;
       $('raPlace').textContent = `${place}${['st', 'nd', 'rd'][place - 1] || 'th'}`;
     } else { $('raLap').textContent = 'Watching'; $('raPlace').textContent = ''; }
@@ -293,7 +299,7 @@ UI.rally = (() => {
     } else snd.engine(null);
     const warn = mine && !mine[6] && incoming();
     if (warn && now > warnAt) { warnAt = now + 220; snd.play('warn'); }
-    const text = S.phase === 'playing' && r.stage === 'countdown' ? (cd > 0 ? String(Math.ceil(cd)) : 'GO!') : mine?.[6] && S.phase === 'playing' ? '🏁 Finished!'
+    const text = S.phase === 'playing' && r.stage === 'countdown' ? (cd > 0 ? String(Math.ceil(cd)) : 'GO!') : mine?.[6] && S.phase === 'playing' ? (mine[12] ? '💥 Out!' : '🏁 Finished!')
       : mine?.[10] ? '💫 Hit!' : warn ? '⚠️ Missile behind!' : now < lapFlash ? lapMsg : '';
     $('raBanner').hidden = !text; $('raBanner').textContent = text;
     $('raBanner').classList.toggle('small', !!text && (text === lapMsg || text.startsWith('⚠️')));
@@ -558,6 +564,10 @@ UI.rally = (() => {
         spawn(e[0] === 'block' ? 34 : 18, p.x, 0.6, p.z, 0, 1.5, 0, e[0] === 'block' ? 8 : 4, 0x7fdcff, 0.5, 2);
         ships[e[1]].userData.flare = 1;
         if (e[0] === 'block' && e[1] === S.rally.me) GL3.shake(camera, 0.25);
+      } else if (e[0] === 'out' && shipAt(e[1])) {  // 💥 knocked out: a puff of dark smoke
+        const p = shipAt(e[1]);
+        spawn(30, p.x, 0.5, p.z, 0, 2.5, 0, 3, 0x6c6c80, 1.2, -0.5);
+        if (e[1] === S.rally.me) GL3.shake(camera, 0.5);
       } else if (e[0] === 'drop' && shipAt(e[1])) {
         const p = shipAt(e[1]);
         spawn(8, p.x, 0.3, p.z, 0, 1, 0, 2, 0x8a8aa0, 0.4, 6);
@@ -632,7 +642,8 @@ UI.rally = (() => {
         if (u.d == null || !dt) u.d = c[1];
         else { const nd = u.d + (c[1] - u.d) * ease(18); u.vd += ((nd - u.d) / dt - u.vd) * ease(8); u.d = nd; }
         const s = sNow(i, now), p = at(s, u.d), boosting = !!c[3];
-        g.position.copy(V(p, 0.45 + 0.06 * Math.sin(now / 200 + i)));
+        u.sink = c[12] ? Math.min(1, (u.sink || 0) + dt * 0.8) : 0;  // knocked out: it settles onto the track
+        g.position.copy(V(p, 0.45 - 0.3 * u.sink + 0.06 * (1 - u.sink) * Math.sin(now / 200 + i)));
         // spinning from a missile hit: whirl round, then settle back facing forward
         if (c[10]) u.spin += dt * 16; else if (u.spin) { const to = Math.round(u.spin / Math.PI / 2) * Math.PI * 2; u.spin += (to - u.spin) * ease(10); if (Math.abs(to - u.spin) < 0.01) u.spin = 0; }
         g.rotation.y = Math.atan2(p.uy, p.ux) + u.spin;
@@ -644,7 +655,7 @@ UI.rally = (() => {
         u.lean += (lean - u.lean) * ease(10); u.lift += ((boosting ? 0.08 : 0) - u.lift) * ease(6); u.flare *= Math.exp(-dt * 4);
         u.tilt.rotation.set(u.lean, 0, u.lift + 0.03 * Math.sin(now / 260 + i));
         u.paint.emissiveIntensity = boosting ? 0.8 : 0.15 + 0.6 * u.flare;
-        const k = Math.min(1.4, c[2] / r.top), fl = 0.35 + 0.35 * k + (boosting ? 0.5 : 0) * (0.85 + 0.3 * Math.random());
+        const k = Math.min(1.4, c[2] / r.top), fl = (0.35 + 0.35 * k + (boosting ? 0.5 : 0) * (0.85 + 0.3 * Math.random())) * (1 - u.sink);
         for (const f of u.flames) f.scale.set(fl, fl * 0.8, 1);
         u.under.material.opacity = 0.45 + 0.1 * Math.sin(now / 120 + i) + 0.5 * u.flare;
         trailTick(u.trail, at(s - 0.85, u.d), boosting);
@@ -735,7 +746,7 @@ UI.rally = (() => {
     return { build: resize, draw, resize };
   }
 
-  const turnText = (s) => (s.phase === 'playing' ? `🛸 ${s.rally.laps} laps` : null);
+  const turnText = (s) => (s.phase === 'playing' ? (s.rally.elim ? '💥 Elimination' : `🛸 ${s.rally.laps} laps`) : null);
   const myMove = (s) => s.phase === 'playing' && s.rally.stage === 'race' && s.rally.me != null && !s.rally.c[s.rally.me][6];
 
   return { mount, render, unmount, fast, turnText, myMove, focus: true, ghost: () => (S?.rally ? ghostAt(performance.now()) : null), laps: () => [...laps] };

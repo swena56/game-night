@@ -59,7 +59,7 @@ port, and `http://localhost` still works on the server's own device.
 | 🎨 **Paint Blast** | 2–6 | **Real-time** bomb maze: run through pillars and crates and drop bombs whose blasts run in a straight line in all four directions. Crates hide 💣 extra bombs, 🔥 longer blasts and 🖌️ paint splashes. | **Every blast paints the floor in your colour**, and when the clock stops each painted tile is a point (+10 for catching a rival). Caught players are stunned for 3 s and respawn at home, so nobody sits out. The maze is mirror-symmetric and new every round. Swipe-and-hold to run, tap to bomb. |
 | 🪐 **Sumo Saucers** | 2–6 | **Real-time 3D** (three.js; flat fallback): pilot a hover saucer on a floating platform and shove rivals off the edge. Drag anywhere for a virtual stick, tap to 💨 dash. | Glowing rim bumpers bounce you back once, then shatter, and the platform shrinks every 15 s. Last saucer floating wins the round; first to 3 wins. Optional sudden death with no bumpers. |
 | ⛳ **Putt Party** | 1–6 | **3D** mini golf (three.js; top-down fallback) on holes generated each game: a winding walled fairway with ⚪ bumpers, ▪️ posts, 🌑 rocks, 🟫 sand, long grass, ↗ slopes, ⛰️ humps and bowls, curved banks, a 🌀 windmill to time, a ramp jump and 💧 water. Drag back from your ball and let go to putt; a drag anywhere else moves the view, and the camera swings behind your ball after each putt. | The server simulates every putt and sends the ball's path, so every phone plays back the same shot. Everyone plays the same hole, a stroke each in turn. Solo: finish at or under par (3 a hole, 4 for a hole with a jump or a windmill). |
-| 🛸 **Hover Rally** | 1–6 | **Real-time 3D** hover-craft race (three.js chase camera; top-down fallback) on a looping track generated each game. The throttle is automatic: hold a side of the screen (or ←/→) to steer. | Bends push you outward and the inside line is shorter, so racing lines matter; walls scrub speed. ⚡ Boost pads plus 3 boosts of your own, a 💨 slipstream behind rivals, 🎁 item pickups: 🚀 homing missiles, 💣 mines and 🛡️ shields, leaders getting more mines and shields and the pack more missiles (a hit spins you out; setting to turn items off), sideways bumps. Alone: beat a target time. |
+| 🛸 **Hover Rally** | 1–6 | **Real-time 3D** hover-craft race (three.js chase camera; top-down fallback) on a looping track generated each game. The throttle is automatic: hold a side of the screen (or ←/→) to steer. | Bends push you outward and the inside line is shorter, so racing lines matter; walls scrub speed. ⚡ Boost pads plus 3 boosts of your own, a 💨 slipstream behind rivals, 🎁 item pickups: 🚀 homing missiles, 💣 mines and 🛡️ shields, leaders getting more mines and shields and the pack more missiles (a hit spins you out; setting to turn items off), sideways bumps. 💥 Elimination mode: last place is out every lap. Alone: beat a target time. |
 | 🏒 **Air Hockey** | 2 | **Real-time** table hockey: drag your mallet around your half, bank shots off the walls. Server-side physics at 60 fps. | 🏒🏒 Double Trouble puts two pucks on the table. Each player sees the table from their own end. |
 | 🎱 **Billiards** | 2 | Eight-ball pool on a top-down table with real physics (spin that skids then rolls, follow, draw and english, cushions, ball-to-ball collisions, six pockets). Drag to aim, set the power, shoot. | The server simulates every shot and sends the ball paths, so every phone plays back the same shot. A 🎯 aim guide (full, short or off) shows where both balls go. Fouls give ✋ ball in hand. The table stands upright on phones. |
 
@@ -462,7 +462,8 @@ Items that become ✅ move into the per-game plan.
   Next:
   - ✅ 🗺️ A minimap in the top corner of the 3D view (track outline, the line, every craft with you ringed, missiles in
     flight), and when you're watching, the chase camera follows the leader instead of a fixed overhead view.
-  - 📳 Phone vibration on a hit, a bump and a pad (`navigator.vibrate`, off with reduced motion). **S**
+  - ✅ 📳 Phone vibration when you're hit, your shield blocks, you bump someone, or you cross a pad or a pickup (follows the
+    📳 Vibrate setting).
   - ✅ 🎁 Random items from the pickups: 🚀 a missile, 💣 a mine dropped behind you (armed after 0.6 s, lasts 25 s, hits its
     owner too) or 🛡️ a shield (6 s, stops one missile or mine). The leader gets a mine half the time and a missile 20%; last
     place gets a missile 70%. In 4-bot races about 70% of missiles and mines land, and easy still finishes last.
@@ -470,7 +471,9 @@ Items that become ✅ move into the per-game plan.
     best-lap board and your best lap from earlier in the day as the 👻 ghost. **M**
   - 🚧 Track features: ice patches (steering barely works), ramps over gaps, and narrow sections, picked per track so each
     one plays differently. **M–L**
-  - 🏁 An elimination mode: from lap 2, whoever is last as the leader crosses the line is out. **S–M**
+  - ✅ 💥 Elimination mode (lobby setting): each time the leader completes a lap, whoever is furthest back is out and takes the
+    lowest place still free; the last one flying wins (laps don't apply). Six racers take 5 laps, about 80 s. Knocked-out
+    craft settle onto the track with their engines off.
 - 🏒 **Air Hockey:** 2v2 with four mallets. **M**
 - 🎱 **Billiards:** the 3D table; a 9-ball variant. **L**
 
