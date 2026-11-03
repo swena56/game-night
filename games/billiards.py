@@ -32,6 +32,7 @@ MIN_SPEED, MAX_SPEED = 25.0, 520.0   # cue speed at power 0 and 1
 # play stays on the table) would stop the rack dead. Breaks get their own top speed and a livelier cloth, so
 # about half of them pot a ball (tests/billiards_physics.py measures it).
 BREAK_MAX_SPEED, BREAK_FRICTION = 720.0, 18.0
+STROKE_LEAD = 0.35                   # seconds of cue stroke the browsers show before the balls move
 DT, FRAME_EVERY = 1 / 120, 4         # simulation step; record every 4th step (30 fps)
 MAX_STEPS = 120 * 14
 MAX_MOVE = R                         # sub-step so no ball moves further than this at once (no tunnelling)
@@ -491,12 +492,14 @@ class Billiards(Game):
         speed = MIN_SPEED + (top - MIN_SPEED) * power
         order = sorted(self.pos)
         holes = {}
+        cx, cy = self.pos[0]
         final, sunk, first, frames = simulate(self.pos, angle, speed, spin=spin, holes=holes, side=side, friction=fric)
         breaking, self.breaking, self.in_hand = self.breaking, False, None
         self.pos = final
         self.shot_seq += 1
-        dur = len(frames) / 30
-        self.shot = {"id": self.shot_seq, "by": p.id, "order": order, "frames": frames, "at": time.time(), "called": pocket}
+        dur = STROKE_LEAD + len(frames) / 30  # the stroke, then the balls
+        self.shot = {"id": self.shot_seq, "by": p.id, "order": order, "frames": frames, "at": time.time(), "called": pocket,
+                     "stroke": [round(angle, 5), round(power, 3), round(spin, 2), round(side, 2), round(cx, 2), round(cy, 2)]}
         self.busy_until = time.time() + dur
 
         foul = None
@@ -686,7 +689,7 @@ class Billiards(Game):
     def view(self, p):
         shot = None
         if self.shot:
-            shot = {k: self.shot.get(k) for k in ("id", "by", "order", "frames", "called")}
+            shot = {k: self.shot.get(k) for k in ("id", "by", "order", "frames", "called", "stroke")}
             shot["age"] = max(0.0, time.time() - self.shot["at"])
         return {"billiards": {
             "W": TW, "H": TH, "R": R, "headX": HEAD_X, "pockets": [[x, y, c] for x, y, c in POCKETS],
@@ -694,7 +697,7 @@ class Billiards(Game):
             "rules": "9" if self.nine else "8", "groups": self.groups, "inHand": self.in_hand, "breaking": self.breaking,
             "targets": self.legal_targets(self.room.turn) if self.room.turn else [],
             "shot": shot, "last": self.last, "guide": self.s["guide"],
-            "minSpeed": MIN_SPEED, "maxSpeed": MAX_SPEED, "friction": FRICTION,
+            "lead": STROKE_LEAD, "minSpeed": MIN_SPEED, "maxSpeed": MAX_SPEED, "friction": FRICTION,
             "breakMaxSpeed": BREAK_MAX_SPEED, "breakFriction": BREAK_FRICTION,
             # the engine's constants, so the aim guide runs the same physics in the browser
             "phys": {"slide": SLIDE, "bounce": BOUNCE, "railGrip": RAIL_GRIP, "tipK": TIP_K,

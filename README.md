@@ -457,7 +457,8 @@ Items that become ✅ move into the per-game plan.
 - 🛸 **Hover Rally:** ✅ ⏱ lap splits (each lap's time, faster/slower than the last, the best starred, called out on screen)
   and a 👻 ghost of your best lap so far racing beside you.
 - 🏒 **Air Hockey:** 2v2 with four mallets. **M**
-- 🎱 **Billiards:** the 3D table; a 9-ball variant. **L**
+- 🎱 **Billiards:** ✅ the 3D table; ✅ a 9-ball variant; ✅ a livelier break, push-outs and match play; ✅ the cue strokes
+  and a ⏪ replay. Next: the aim guide drifts (about 1 unit) on hard shots at a ball near the foot rail.
 
 **Words & puzzles**
 - 🎡 **Lucky Letters:** a bonus round for the winner. **M**
@@ -566,7 +567,9 @@ Riders and Air Hockey start in it) (#13, #15).
   ✅ Fuller rules: a scratch on an 8-ball break gives ball in hand behind the head line; 9-ball has the 🔀 push-out
   (the first shot after the break needn't hit anything; the rival shoots from there or hands it back) and three fouls
   in a row lose (a warning after two). `tests/billiards_rules.py` checks the rules with a scripted engine. ✅ 🏁 Match play: a race to 2, 3 or 5 racks
-  (lobby setting), the break alternating; between racks a card shows who took the rack and the match score.
+  (lobby setting), the break alternating; between racks a card shows who took the rack and the match score. ✅ The cue
+  strokes: every shot (the rival's too) opens with the stick drawing back and driving through the cue ball (0.35 s, which the
+  server allows for before the result or the next turn), and ⏪ Replay plays the last shot again at 0.6× (tap to stop).
 - 🗼 **Spire Siege:** ✅ a 🟦 4-block piece set beside the mixed 2/3/5-block set (#13), a ⇄ hold slot
   (C / Shift / swipe up), and a sharper flat well on high-DPI screens. ✅ 🟦 4-block is now the default
   (#26); the odd shapes are the 🧩 Mixed option. ✅ Normal and hard bots use the ⇄ hold slot (they park a piece and
