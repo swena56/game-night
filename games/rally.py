@@ -2,12 +2,14 @@
 
 The throttle is automatic: you only steer. Bends push you toward the outside, so you steer into
 them; scraping a wall scrubs off speed. ⚡ Boost pads on the track give a burst of speed, and each
-racer also has three boosts of their own. Craft that touch bump each other sideways. First across
-the line after the last lap wins.
+racer also has three boosts of their own. Tucking in close behind a rival puts you in their
+slipstream, which lifts your top speed so you can pull out and pass. Craft that touch bump each
+other sideways. First across the line after the last lap wins.
 
 Server-owned like Sumo Saucers: the track is a closed curve sampled into points; each craft is a
 position along it (s, in track units) and a sideways offset (d), so the simulation stays tiny.
-frame(now) runs at 60 fps and positions stream to browsers over the room's fast channel."""
+frame(now) runs at 60 fps and positions stream to browsers over the room's fast channel, along with
+the moments the browser turns into sparks, sounds and camera shake: bumps and boost-pad hits."""
 import math
 import random
 import time
@@ -24,6 +26,8 @@ SCRAPE = 0.3              # speed kept per second while touching a wall
 BOOST_SECS, BOOSTS = 1.2, 3
 PAD_EVERY = 90            # a boost pad every this many samples (roughly)
 CRAFT = 0.7               # craft half-size for bumps
+DRAFT_SPEED = 17.5        # top speed in a rival's slipstream
+DRAFT_LEN, DRAFT_W = 7.0, 1.2   # the slipstream: this far behind a craft and this close sideways
 COUNTDOWN, FINISH_WAIT = 3.0, 15.0
 BOT = {  # reaction (s), look-ahead (s), how well it counters the outward push, steering correction
     "easy": (0.45, 0.1, 0.5, 0.8),
@@ -73,6 +77,9 @@ class Craft:
         self.lap = 0
         self.finished = None   # finishing place
         self.finish_time = None
+        self.wall = False      # scraping a wall right now
+        self.pad = None        # the boost pad it's on, so each pad counts as one hit
+        self.draft = False     # in someone's slipstream
 
 
 class Rally(Game):
@@ -82,6 +89,7 @@ class Rally(Game):
         "Your hover craft speeds up by itself — you only steer. Hold the left or right side of the screen, the arrows, or A / D.",
         "Bends push you toward the outside: steer into them. Scraping a wall slows you down.",
         "Glowing ⚡ pads on the track give a burst of speed. You also have 3 boosts of your own (⚡, Space or swipe up).",
+        "Tuck in close behind a rival to ride their 💨 slipstream, then pull out and pass.",
         "Bump rivals sideways. First across the line after the last lap wins.",
     ]
     name = "Hover Rally"
@@ -120,6 +128,8 @@ class Rally(Game):
         self.places = 0
         self.first_done = None
         self.bot_next = [0.0] * n
+        self.ev = []           # ["bump", i, j] / ["pad", i] since the last broadcast
+        self.touching = set()  # pairs in contact, so a long scrape alongside is one bump
         self.room.turn = None
         self.room.deadline = None
         self.room.add_log(f"🛸 Hover Rally: {self.s['laps']} laps of a new track ({self.length:.0f} m). Get ready!", "big")
@@ -193,24 +203,32 @@ class Rally(Game):
         for i, c in enumerate(self.crafts):
             p = self.room.players.get(self.seats[i])
             if c.finished is not None or not p or p.eliminated:
+                c.wall = False
                 c.v = max(0.0, c.v - ACCEL * dt) if c.finished is not None else 0.0
                 c.s += c.v * dt
                 continue
-            top = BOOST_SPEED if now < c.boost_until else TOP_SPEED
+            c.draft = self.drafting(i)
+            top = BOOST_SPEED if now < c.boost_until else DRAFT_SPEED if c.draft else TOP_SPEED
             c.v = min(top, c.v + ACCEL * dt) if c.v < top else max(top, c.v - ACCEL * 0.6 * dt)
             k = self.curvature(c.s)
             # left is +d; a left bend (k > 0) pushes the craft right (outward)
             c.d += (c.steer * STEER - k * c.v * c.v * PUSH) * dt
-            if abs(c.d) > HALF_WIDTH - 0.35:
+            c.wall = abs(c.d) > HALF_WIDTH - 0.35
+            if c.wall:
                 c.d = math.copysign(HALF_WIDTH - 0.35, c.d)
                 c.v *= SCRAPE ** dt
             # the inside of a bend is a tighter curve, so it covers the track faster
             c.s += c.v * dt / max(0.6, 1 - k * c.d)
             # boost pads
             idx = self.index(c.s)
+            on = None
             for pi_, lat in self.pads:
                 if abs(idx - pi_) <= 2 and abs(c.d - lat) < 0.9:
                     c.boost_until = max(c.boost_until, now + 0.7)
+                    on = pi_
+            if on is not None and on != c.pad:
+                self.ev.append(["pad", i])
+            c.pad = on
             # laps completed: the grid starts just behind the line, at s < 0
             lap = max(0, math.floor(c.s / self.length))
             if lap > c.lap:
@@ -237,20 +255,40 @@ class Rally(Game):
         p = self.room.players.get(self.seats[i])
         return bool(p and not p.eliminated)
 
+    def drafting(self, i):
+        """Is craft i close behind another racer (not finished) and roughly in line with it?"""
+        c = self.crafts[i]
+        for j, o in enumerate(self.crafts):
+            if j != i and o.finished is None and self.active(j):
+                ds = (o.s - c.s) % self.length
+                if 2 * CRAFT < ds < DRAFT_LEN and abs(o.d - c.d) < DRAFT_W:
+                    return True
+        return False
+
     def bump(self):
-        live = [c for i, c in enumerate(self.crafts) if c.finished is None and self.active(i)]
+        live = [i for i, c in enumerate(self.crafts) if c.finished is None and self.active(i)]
+        touching = set()
         for a in range(len(live)):
             for b in range(a + 1, len(live)):
-                p, q = live[a], live[b]
+                p, q = self.crafts[live[a]], self.crafts[live[b]]
                 ds = (p.s - q.s + self.length / 2) % self.length - self.length / 2
                 dd = p.d - q.d
+                pair = (live[a], live[b])
+                # a pair stays "in contact" until it's clearly apart, so the push that separates it
+                # for a frame doesn't make every frame of a scrape a new bump
+                if pair in self.touching and abs(ds) < 2 * CRAFT * 1.4 + 1 and abs(dd) < 2 * CRAFT + 0.6:
+                    touching.add(pair)
                 if abs(ds) < 2 * CRAFT * 1.4 and abs(dd) < 2 * CRAFT:
+                    touching.add(pair)
+                    if pair not in self.touching:
+                        self.ev.append(["bump", *pair])
                     push = (2 * CRAFT - abs(dd)) / 2 + 0.05
                     sgn = 1 if dd >= 0 else -1
                     p.d += sgn * push
                     q.d -= sgn * push
                     # the one behind loses a little speed
                     (q if ds > 0 else p).v *= 0.97
+        self.touching = touching
 
     def end_race(self):
         r = self.room
@@ -275,11 +313,15 @@ class Rally(Game):
         return {1: "1st", 2: "2nd", 3: "3rd"}.get(n, f"{n}th")
 
     def broadcast(self, now):
+        self.room.push_fast({"st": self.stage, "c": self.craft_rows(now), "e": self.ev})
+        self.ev = []
+
+    def craft_rows(self, now):
+        """Each craft as [s, d, speed, boosting, boosts left, laps done, finishing place, scraping a wall,
+        in a slipstream]."""
         r2 = lambda v: round(v, 2)
-        self.room.push_fast({
-            "st": self.stage,
-            "c": [[r2(c.s), r2(c.d), r2(c.v), int(now < c.boost_until), c.boosts, c.lap, c.finished or 0] for c in self.crafts],
-        })
+        return [[r2(c.s), r2(c.d), r2(c.v), int(now < c.boost_until), c.boosts, c.lap, c.finished or 0, int(c.wall), int(c.draft)]
+                for c in self.crafts]
 
     # -- bots
 
@@ -300,15 +342,17 @@ class Rally(Game):
                 if 0 <= (pi_ - idx) % SAMPLES <= 18:
                     target = lat
                     break
-        # don't sit right behind someone
+        # normal and hard tuck into a slipstream on the straights; everyone pulls out to pass when close
+        straight = all(abs(self.curvature(c.s + x)) < 0.02 for x in (3, 8, 14))
         for j, o in enumerate(self.crafts):
             if j != i and o.finished is None:
                 ds = (o.s - c.s) % self.length
-                if 0 < ds < 4 and abs(o.d - c.d) < 1.4:
+                if 0 < ds < 2.5 and abs(o.d - c.d) < 1.4:
                     target = o.d + (1.6 if o.d < 0 else -1.6)
+                elif level != "easy" and straight and 2.5 <= ds < DRAFT_LEN - 1:
+                    target = o.d
         push = k * c.v * c.v * PUSH * skill
         c.steer = max(-1.0, min(1.0, (push + (target - c.d) * gain) / STEER + random.gauss(0, 0.08 if level == "easy" else 0.02)))
-        straight = all(abs(self.curvature(c.s + x)) < 0.02 for x in (3, 8, 14))
         if level != "easy" and c.boosts and straight and now >= c.boost_until and random.random() < (0.05 if level == "hard" else 0.02):
             self.boost(i, now)
 
@@ -344,7 +388,7 @@ class Rally(Game):
             "seats": self.seats, "me": self.seat(p), "laps": self.s["laps"], "stage": self.stage,
             "track": [[r2(x), r2(y)] for x, y in self.pts], "length": self.length, "width": HALF_WIDTH,
             "pads": self.pads, "cum": [r2(v) for v in self.cum],
-            "c": [[r2(c.s), r2(c.d), r2(c.v), int(now < c.boost_until), c.boosts, c.lap, c.finished or 0] for c in self.crafts],
+            "c": self.craft_rows(now),
             "countdown": max(0.0, self.next_at - now) if self.stage == "countdown" else 0,
             "top": TOP_SPEED,
         }}
