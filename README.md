@@ -61,7 +61,7 @@ port, and `http://localhost` still works on the server's own device.
 | ⛳ **Putt Party** | 1–6 | **3D** mini golf (three.js; top-down fallback) on holes generated each game: a winding walled fairway with ⚪ bumpers, ▪️ posts, 🌑 rocks, 🟫 sand, long grass, ↗ slopes, ⛰️ humps and bowls, curved banks, a 🌀 windmill to time, a ramp jump and 💧 water. Drag back from your ball and let go to putt; a drag anywhere else moves the view, and the camera swings behind your ball after each putt. | The server simulates every putt and sends the ball's path, so every phone plays back the same shot. Everyone plays the same hole, a stroke each in turn. Solo: finish at or under par (3 a hole, 4 for a hole with a jump or a windmill). |
 | 🛸 **Hover Rally** | 1–6 | **Real-time 3D** hover-craft race (three.js chase camera; top-down fallback) on a looping track generated each game. The throttle is automatic: hold a side of the screen (or ←/→) to steer. | Bends push you outward and the inside line is shorter, so racing lines matter; walls scrub speed. ⚡ Boost pads plus 3 boosts of your own, sideways bumps. Alone: beat a target time. |
 | 🏒 **Air Hockey** | 2 | **Real-time** table hockey: drag your mallet around your half, bank shots off the walls. Server-side physics at 60 fps. | 🏒🏒 Double Trouble puts two pucks on the table. Each player sees the table from their own end. |
-| 🎱 **Billiards** | 2 | Eight-ball pool on a top-down table with real physics (cushions, ball-to-ball collisions, six pockets). Drag to aim, set the power, shoot. | The server simulates every shot and sends the ball paths, so every phone plays back the same shot. A 🎯 aim guide (full, short or off) shows where both balls go. Fouls give ✋ ball in hand. The table stands upright on phones. |
+| 🎱 **Billiards** | 2 | Eight-ball pool on a top-down table with real physics (spin that skids then rolls, follow, draw and english, cushions, ball-to-ball collisions, six pockets). Drag to aim, set the power, shoot. | The server simulates every shot and sends the ball paths, so every phone plays back the same shot. A 🎯 aim guide (full, short or off) shows where both balls go. Fouls give ✋ ball in hand. The table stands upright on phones. |
 
 ### ♟️ Strategy (6)
 
@@ -547,7 +547,11 @@ Riders and Air Hockey start in it) (#13, #15).
   buttons no longer cover Shoot (#29), and the cue is a full-size tapered stick (#30). ✅ Spin: a follow / draw slider; after the
   cue ball's first hit it rolls on or screws back. ✅ 📣 Calling the 8 (on by default): tap the pocket you're aiming at;
   the 8 in any other pocket loses (bots call theirs too). ✅ Pinch zoom (#28): two fingers zoom the table up to 3× and
-  pan, without moving the aim; 🔍 1× resets. Next: a 3D table.
+  pan, without moving the aim; 🔍 1× resets. ✅ Ball physics: every ball carries spin, skids until it rolls
+  and only then slows at the rolling rate, so follow, draw and stun come from the cloth (a centre hit stops dead
+  up close but rolls through from afar, and the cue ball's path bends after a cut); english is real spin that
+  cushion friction turns into a sideways kick on any ball; hits are wound back to the exact moment of contact
+  (cut angles were up to 19° off) and fast balls sub-step so they can't pass through each other. Next: a 3D table.
 - 🗼 **Spire Siege:** ✅ a 🟦 4-block piece set beside the mixed 2/3/5-block set (#13), a ⇄ hold slot
   (C / Shift / swipe up), and a sharper flat well on high-DPI screens. ✅ 🟦 4-block is now the default
   (#26); the odd shapes are the 🧩 Mixed option. ✅ Normal and hard bots use the ⇄ hold slot (they park a piece and
