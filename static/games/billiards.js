@@ -7,6 +7,13 @@ UI.billiards = (() => {
   let rolls = new Map();  // each ball's orientation, so it turns as it rolls (#33)
   let view = { z: 1, x: 0, y: 0 }, pinch = null, aimBefore = 0;  // two-finger zoom of the table (#28)
   const touches = new Map();
+  let held = { dir: 0, since: 0, fine: false, last: 0 }, onKey = null, onKeyUp = null;  // ← → held to turn the cue
+  // the 3D table (static/games/billiards3d.js): null until loaded, false without WebGL. The flat canvas stays as a fallback.
+  let gl = null, view3d = false, camAt = null;
+  const pref = (k, d) => { try { return localStorage.getItem('billiards.' + k) || d; } catch { return d; } };
+  const setPref = (k, v) => { try { localStorage.setItem('billiards.' + k, v); } catch {} };
+  let cam = pref('cam', 'table');  // 3D camera: 'table' (the whole table, tilted) or 'cue' (behind the cue ball)
+  const surf = () => (view3d && gl ? gl.canvas : $('blCanvas'));  // the canvas being shown
   let geo = null;  // canvas geometry: scale, rail width, portrait or not
   const $ = (id) => document.getElementById(id);
   const COLORS = ['#ffffff', '#f5c518', '#1f5fd1', '#d62828', '#6a2c91', '#f77f00', '#138a36', '#7a1f1f', '#111111'];
@@ -28,6 +35,7 @@ UI.billiards = (() => {
     c.style.width = cw + 'px'; c.style.height = ch + 'px';
     c.width = Math.round(cw * dpr); c.height = Math.round(ch * dpr);
     geo = { k: k * dpr, css: k, portrait, focus: document.body.classList.contains('focus') };
+    if (gl) { gl.canvas.style.width = cw + 'px'; gl.canvas.style.height = ch + 'px'; gl.resize(cw, ch, portrait); }
   }
   // table (x, y) -> canvas pixels; portrait puts the head (break end) at the bottom
   function toScreen(x, y) {
@@ -35,6 +43,7 @@ UI.billiards = (() => {
     return portrait ? [(RAIL + y) * k, (RAIL + W - x) * k] : [(RAIL + x) * k, (RAIL + y) * k];
   }
   function toTable(clientX, clientY) {
+    if (view3d && gl) return gl.pick(clientX, clientY) || [-1e3, -1e3];
     const c = $('blCanvas'), r = c.getBoundingClientRect(), W = S.billiards.W;
     const k = geo.css * (r.width && parseFloat(c.style.width) ? r.width / parseFloat(c.style.width) : 1);  // allow for the zoom
     const sx = (clientX - r.left) / k - RAIL, sy = (clientY - r.top) / k - RAIL;
@@ -91,7 +100,57 @@ UI.billiards = (() => {
   }
 
   // ---------- drawing
+  // where the balls are now: a playing shot's frame (eased between the 30-a-second frames), or the resting table
+  function ballsNow() {
+    const b = B();
+    let balls = b.balls.map(([n, x, y]) => [n, x, y]);
+    if (anim) {
+      const t = Math.max(0, (performance.now() - anim.start) / (1000 / 30)), last = anim.frames.length - 1;
+      const i = Math.min(last, Math.floor(t)), f = i < last ? t - i : 0, f0 = anim.frames[i], f1 = anim.frames[Math.min(last, i + 1)];
+      balls = [];
+      anim.order.forEach((n, j) => {
+        const x0 = f0[2 * j], y0 = f0[2 * j + 1], x1 = f1[2 * j], y1 = f1[2 * j + 1];
+        if (x0 < 0) return;
+        balls.push(x1 < 0 ? [n, x0 / 10, y0 / 10] : [n, (x0 + (x1 - x0) * f) / 10, (y0 + (y1 - y0) * f) / 10]);
+      });
+    } else if (b.inHand && canShoot()) {
+      balls = balls.filter(([n]) => n !== 0);
+      if (cuePos) balls.push([0, ...cuePos]);
+    }
+    return balls;
+  }
+  // where the cue ball heads after hitting the first ball: along the tangent, bent by follow or draw (table units)
+  function deflection(cue, gx, gy, ball) {
+    const ax = gx - cue[0], ay = gy - cue[1], am = Math.hypot(ax, ay) || 1, nx = ball[0] - gx, ny = ball[1] - gy, n = Math.hypot(nx, ny) || 1;
+    const along = (ax * nx + ay * ny) / (am * n);
+    let tx = ax / am - (along * nx) / n, ty = ay / am - (along * ny) / n;
+    const tm = Math.hypot(tx, ty);
+    if (tm < 0.05) return null;
+    tx = tx / tm + (nx / n) * spin * along * 0.9; ty = ty / tm + (ny / n) * spin * along * 0.9;
+    const m = Math.hypot(tx, ty) || 1, L = 44 * Math.min(1, tm + 0.2);
+    return [(tx / m) * L, (ty / m) * L];
+  }
+  function draw3d() {
+    const b = B(), shooting = !anim && canShoot(), cue = shooting ? cueAt() : null;
+    let guide = null;
+    if (cue) {
+      const tr = trace(cue);
+      guide = { mode: b.guide, cue, g: [tr.gx, tr.gy], ball: tr.ball, deflect: tr.ball && b.guide === 'full' ? deflection(cue, tr.gx, tr.gy, tr.ball) : null };
+    }
+    // behind-the-cue camera: follows the cue ball and the aim, but holds still while the cue ball is dragged or a shot plays
+    const resting = ballMap()[0];
+    if (!anim && drag !== 'cue') { const at = cue || resting; if (at) camAt = { x: at[0], y: at[1], aim }; }
+    gl.render({
+      balls: ballsNow(), animating: !!anim,
+      stick: cue ? { x: cue[0], y: cue[1], aim, power, spin, english } : null,
+      guide, ring: shooting && b.inHand && cuePos ? { x: cuePos[0], y: cuePos[1], ok: placeOk(...cuePos) } : null,
+      call: anim ? b.shot?.called ?? null : b.calling && shooting ? called : null, callAll: !!(b.calling && shooting),
+      cam: camAt,
+    });
+  }
+
   function draw() {
+    if (view3d && gl && geo && S?.billiards) return draw3d();
     const c = $('blCanvas'), g = c?.getContext('2d');
     if (!g || !geo || !S?.billiards) return;
     const b = B(), { k } = geo, R = b.R;
@@ -127,15 +186,7 @@ UI.billiards = (() => {
     g.setTransform(1, 0, 0, 1, 0, 0);
 
     // balls: a playing shot's frame, or the resting table
-    let balls = b.balls.map(([n, x, y]) => [n, x, y]);
-    if (anim) {
-      const i = Math.min(anim.frames.length - 1, Math.floor((performance.now() - anim.start) / (1000 / 30)));
-      const f = anim.frames[i];
-      balls = anim.order.map((n, j) => [n, f[2 * j] / 10, f[2 * j + 1] / 10]).filter(([, x]) => x >= 0);
-    } else if (b.inHand && canShoot()) {
-      balls = balls.filter(([n]) => n !== 0);
-      if (cuePos) balls.push([0, ...cuePos]);
-    }
+    const balls = ballsNow();
     const rpx = R * k;
     if (!anim && canShoot()) drawGuide(g, rpx);
     for (const [n, x, y] of balls) drawBall(g, n, ...toScreen(x, y), rpx);
@@ -182,6 +233,18 @@ UI.billiards = (() => {
       const [bx, by] = toScreen(...ball), nx = bx - ex, ny = by - ey, n = Math.hypot(nx, ny) || 1;
       g.strokeStyle = '#ffd166'; g.lineWidth = 1.6 * lw;
       g.beginPath(); g.moveTo(bx, by); g.lineTo(bx + (nx / n) * 45 * lw, by + (ny / n) * 45 * lw); g.stroke();
+      // and where the cue ball glances off: along the tangent, bent forward by follow or back by draw
+      const ax = ex - sx, ay = ey - sy, am = Math.hypot(ax, ay) || 1, along = (ax * nx + ay * ny) / (am * n);
+      let tx = ax / am - along * nx / n, ty = ay / am - along * ny / n;
+      const tm = Math.hypot(tx, ty);
+      if (tm > 0.05) {
+        tx /= tm; ty /= tm;
+        const bend = spin * along * 0.9;  // a fuller hit passes on more of the spin
+        tx += (nx / n) * bend; ty += (ny / n) * bend;
+        const m2 = Math.hypot(tx, ty) || 1, L = 70 * lw * Math.min(1, tm + 0.2);
+        g.strokeStyle = '#bfe9ffcc'; g.lineWidth = 1.4 * lw; g.setLineDash([4 * lw, 3 * lw]);
+        g.beginPath(); g.moveTo(ex, ey); g.lineTo(ex + (tx / m2) * L, ey + (ty / m2) * L); g.stroke(); g.setLineDash([]);
+      }
     }
   }
   const k1 = () => geo.k / geo.css;  // device pixels per CSS pixel
@@ -261,7 +324,57 @@ UI.billiards = (() => {
     g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
   }
 
-  function tick() { raf = requestAnimationFrame(tick); draw(); shotSounds(); }
+  function tick(now) {
+    raf = requestAnimationFrame(tick);
+    if (held.dir && canShoot()) {  // a held arrow turns the cue, slowly at first, then faster (Shift: fine)
+      const dt = Math.min(0.05, (now - held.last) / 1000), t = (now - held.since) / 1000;
+      const rate = held.fine ? 0.04 : Math.min(1.6, 0.12 + 0.12 * t + 0.6 * t * t);  // radians a second
+      if (t > 0.18) aim += held.dir * rate * dt;
+    }
+    held.last = now;
+    draw(); shotSounds();
+  }
+
+  // ---------- keyboard: ← → turn the cue, ↑ ↓ power, Space shoots, W A S D move the cue ball in hand
+  function setPower(p) {
+    power = Math.max(0.05, Math.min(1, Math.round(p * 100) / 100));
+    const el = $('blPower'); if (el) el.value = Math.round(power * 100);
+    if ($('blPowerVal')) $('blPowerVal').textContent = Math.round(power * 100) + '%';
+  }
+  function keyDown(e) {
+    if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target, k = e.key;
+    if (t?.isContentEditable || (t?.closest?.('input, textarea, select') && t.id !== 'blPower')) return;
+    if (!$('blCanvas') || $('modal')?.hidden === false) return;  // not while a dialog is open
+    if ((k === 'c' || k === 'C') && view3d && !t?.closest?.('button')) { setCam(cam === 'cue' ? 'table' : 'cue'); e.preventDefault(); return; }
+    if (!canShoot()) return;
+    if (k === 'ArrowLeft' || k === 'ArrowRight') {
+      const dir = k === 'ArrowLeft' ? -1 : 1;
+      if (!e.repeat || held.dir !== dir) {
+        aim += dir * (e.shiftKey ? 0.0015 : 0.0045);  // one tap: about a quarter of a degree
+        held = { dir, since: performance.now(), fine: e.shiftKey, last: performance.now() };
+      }
+      held.fine = e.shiftKey;
+    } else if (k === 'ArrowUp' || k === 'ArrowDown') {
+      setPower(power + (k === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 0.01 : 0.05));
+    } else if ((k === ' ' || k === 'Enter') && !t?.closest?.('button, [role="slider"]')) {
+      if (!e.repeat) shoot();
+    } else if ((k === 'c' || k === 'C') && view3d) {
+      setCam(cam === 'cue' ? 'table' : 'cue');
+    } else if (B().inHand && k.length === 1 && 'wasd'.includes(k.toLowerCase())) {
+      // nudge the cue ball in screen directions (the table stands upright on portrait screens)
+      const key = k.toLowerCase(), step = e.shiftKey ? 0.5 : 2;
+      let [sx, sy] = [key === 'a' ? -1 : key === 'd' ? 1 : 0, key === 'w' ? -1 : key === 's' ? 1 : 0];
+      if (geo?.portrait) [sx, sy] = [-sy, sx];
+      const b = B(), cur = cuePos || defaultCue();
+      cuePos = [Math.max(b.R, Math.min(b.W - b.R, cur[0] + sx * step)), Math.max(b.R, Math.min(b.H - b.R, cur[1] + sy * step))];
+    } else return;
+    e.preventDefault();
+  }
+  function keyUp(e) {
+    if ((e.key === 'ArrowLeft' && held.dir === -1) || (e.key === 'ArrowRight' && held.dir === 1)) held.dir = 0;
+    if (e.key === 'Shift') held.fine = false;
+  }
 
   // ---------- sound: the cue's tock, ball-on-ball clicks, cushion thumps and pocket drops
   // Found in the shot's frames, not sent by the server: a ball whose velocity jumps between frames hit
@@ -353,7 +466,7 @@ UI.billiards = (() => {
 
   // ---------- input
   function applyView() {
-    const c = $('blCanvas');
+    const c = surf();
     if (!c) return;
     c.style.transform = view.z === 1 ? '' : `translate(${view.x}px, ${view.y}px) scale(${view.z})`;
     $('blZoom').hidden = view.z === 1;
@@ -373,7 +486,7 @@ UI.billiards = (() => {
     }
     const z = Math.min(3, Math.max(1, pinch.view.z * d / Math.max(10, pinch.d)));
     // the canvas's own top left, before the zoom (offsets ignore transforms)
-    const c = $('blCanvas'), box = c.parentElement.getBoundingClientRect(), left = box.left + c.offsetLeft, top = box.top + c.offsetTop;
+    const c = surf(), box = c.parentElement.getBoundingClientRect(), left = box.left + c.offsetLeft, top = box.top + c.offsetTop;
     // keep the table point under the fingers' first midpoint under their current midpoint
     const ox = pinch.mid[0] - left - pinch.view.x, oy = pinch.mid[1] - top - pinch.view.y;
     view = { z, x: mid[0] - left - ox * (z / pinch.view.z), y: mid[1] - top - oy * (z / pinch.view.z) };
@@ -395,8 +508,8 @@ UI.billiards = (() => {
       drag = B().inHand && cue && Math.hypot(x - cue[0], y - cue[1]) < B().R * 4 ? 'cue' : 'aim';
       // Aiming turns the cue like a dial: the drag rotates the current aim around the cue ball, so a
       // touch on the stick (behind the ball) or anywhere else never swings it round.
-      if (drag === 'aim' && cue) dial = { from: Math.atan2(y - cue[1], x - cue[0]), aim0: aim };
-      try { $('blCanvas').setPointerCapture(e.pointerId); } catch {}
+      if (drag === 'aim' && cue) dial = behind() ? { x0: e.clientX, aim0: aim } : { from: Math.atan2(y - cue[1], x - cue[0]), aim0: aim };
+      try { surf().setPointerCapture(e.pointerId); } catch {}
     }
     if (!drag) return;
     if (drag === 'cue') {
@@ -404,12 +517,61 @@ UI.billiards = (() => {
       cuePos = [Math.max(b.R, Math.min(b.W - b.R, x)), Math.max(b.R, Math.min(b.H - b.R, y))];
     } else {
       const cue = cueAt();
-      if (cue && dial && Math.hypot(x - cue[0], y - cue[1]) > 3) {
+      if (dial && dial.x0 != null) aim = dial.aim0 + (e.clientX - dial.x0) * 0.0035;  // behind the cue: drag sideways to turn
+      else if (cue && dial && Math.hypot(x - cue[0], y - cue[1]) > 3) {
         const turn = Math.atan2(y - cue[1], x - cue[0]) - dial.from;
         aim = dial.aim0 + Math.atan2(Math.sin(turn), Math.cos(turn));
       }
     }
     if (phase === 'up') drag = dial = null;
+  }
+
+  const behind = () => view3d && gl && cam === 'cue';
+
+  // ---------- 3D table
+  function load3d() {
+    if (gl !== null || !S?.billiards) return;
+    gl = undefined;  // loading
+    GL3.load().then(() => {
+      const stage = $('blStage');
+      if (!stage || gl) return;
+      gl = Billiards3D.create(stage, B(), { onLost: () => {  // the GPU context was lost (phone app switch): build a new table
+        if (!gl) return;
+        gl.dispose(); gl = null;
+        if (view3d) { view3d = false; load3d(); }
+      } }) || false;
+      if (gl) {
+        stage.insertBefore(gl.canvas, $('blZoom'));
+        const c = gl.canvas;
+        c.style.touchAction = 'none';
+        c.addEventListener('pointerdown', (e) => pointer(e, 'down'));
+        c.addEventListener('pointermove', (e) => pointer(e, 'move'));
+        c.addEventListener('pointerup', (e) => pointer(e, 'up'));
+        c.addEventListener('pointercancel', () => { drag = null; });
+        gl.setMode(cam);
+      }
+      setView(!!gl);
+    }).catch(() => { gl = false; setView(false); });
+  }
+  function setView(on) {
+    if (on && gl === null) return load3d();
+    if (gl === undefined) return;  // still loading
+    view3d = on && !!gl;
+    view = { z: 1, x: 0, y: 0 };
+    for (const c of [$('blCanvas'), gl && gl.canvas]) if (c) c.style.transform = '';
+    $('blZoom').hidden = true;
+    $('blCanvas').hidden = view3d;
+    if (gl) gl.canvas.hidden = !view3d;
+    $('blView').hidden = gl === false;
+    $('blView').textContent = view3d ? '▦ Flat' : '🧊 3D';
+    $('blCam').hidden = !view3d;
+    $('blCam').textContent = cam === 'cue' ? '🗺️ Whole table' : '🎥 Behind cue';
+    layout();
+  }
+  function setCam(m) {
+    cam = m; setPref('cam', m);
+    gl?.setMode?.(m);
+    setView(view3d);
   }
 
   function shoot() {
@@ -430,8 +592,10 @@ UI.billiards = (() => {
   function mount(main, side) {
     view = { z: 1, x: 0, y: 0 }; pinch = null; touches.clear(); rolls = new Map(); spin = english = 0;
     dial = null; aim = 0; aimFor = null; power = 0.55; cuePos = null; drag = null; anim = null; seenShot = 0; geo = null;
+    gl = null; view3d = false; camAt = null;
     main.innerHTML = `<div class="bl"><div id="blStage" class="bl-stage"><canvas id="blCanvas"></canvas>
-        <button id="blZoom" class="bl-zoom" hidden aria-label="Show the whole table">🔍 1×</button></div>
+        <button id="blZoom" class="bl-zoom" hidden aria-label="Show the whole table">🔍 1×</button>
+        <div class="bl-views"><button id="blView" hidden>🧊 3D</button><button id="blCam" hidden>🎥 Behind cue</button></div></div>
       <div class="bl-controls">
         <button id="blLeft" aria-label="Aim left">◀</button>
         <label class="bl-power">Power <input id="blPower" type="range" min="5" max="100" value="55"><b id="blPowerVal">55%</b></label>
@@ -445,7 +609,8 @@ UI.billiards = (() => {
     side.innerHTML = `<div class="panel">
       <div id="blStatus" class="seat-row"></div>
       <div id="blRacks" class="bl-racks"></div>
-      <p class="hint left" id="blHint">Drag anywhere on the table to turn the cue around the ball. ◀ ▶ fine-tune. ✋ With ball in hand, drag the cue ball to move it.</p></div>`;
+      <p class="hint left" id="blHint">Drag anywhere on the table to turn the cue around the ball. ◀ ▶ fine-tune. ✋ With ball in hand, drag the cue ball to move it.</p>
+      <p class="hint left bl-keys">Keys: ← → turn the cue (hold to turn faster, Shift for fine aim) · ↑ ↓ power · Space shoots · W A S D move the cue ball in hand · C switches the 3D camera.</p></div>`;
     const c = $('blCanvas');
     c.style.touchAction = 'none';
     c.addEventListener('pointerdown', (e) => pointer(e, 'down'));
@@ -457,6 +622,8 @@ UI.billiards = (() => {
     stage.addEventListener('pointermove', (e) => onTouch(e, 'move'), true);
     for (const t of ['pointerup', 'pointercancel']) stage.addEventListener(t, (e) => onTouch(e, 'up'), true);
     $('blZoom').onclick = () => { view = { z: 1, x: 0, y: 0 }; applyView(); };
+    $('blView').onclick = () => { setPref('view', view3d ? '2d' : '3d'); setView(!view3d); };
+    $('blCam').onclick = () => setCam(cam === 'cue' ? 'table' : 'cue');
     // the cue-ball pad (#34): where the tip strikes. Up/down is follow/draw, left/right is side spin.
     const pad = $('blSpin');
     const setTip = (fx, fy) => {
@@ -480,7 +647,7 @@ UI.billiards = (() => {
       if (step) { e.preventDefault(); setTip(english + step[0], -spin + step[1]); } else if (e.key === '0' || e.key === 'Home') setTip(0, 0);
     };
     setTip(0, 0);
-    $('blPower').oninput = () => { power = $('blPower').value / 100; $('blPowerVal').textContent = $('blPower').value + '%'; };
+    $('blPower').oninput = () => setPower($('blPower').value / 100);
     // turn the aim by about 0.25° per tap, faster while held
     for (const [id, dir] of [['blLeft', -1], ['blRight', 1]]) {
       let hold = null;
@@ -489,17 +656,30 @@ UI.billiards = (() => {
       $(id).onpointerup = $(id).onpointerleave = $(id).onpointercancel = () => clearInterval(hold);
     }
     $('blShoot').onclick = shoot;
+    held = { dir: 0, since: 0, fine: false, last: 0 };
+    onKey = keyDown; onKeyUp = keyUp;
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onKeyUp);
     ro = window.ResizeObserver ? new ResizeObserver(() => layout()) : null;
     ro?.observe($('blStage'));
     raf = requestAnimationFrame(tick);
   }
 
-  function unmount() { cancelAnimationFrame(raf); clearTimeout(animEnd); ro?.disconnect(); }
+  function unmount() {
+    cancelAnimationFrame(raf); clearTimeout(animEnd); ro?.disconnect();
+    if (onKey) { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('blur', onKeyUp); }
+    onKey = onKeyUp = null; held.dir = 0;
+    if (gl) gl.dispose();
+    gl = null; view3d = false;
+  }
 
   function render(s, c) {
     S = s; ctx = c;
     const b = B();
     if (!geo || geo.focus !== document.body.classList.contains('focus')) layout();
+    if (gl === null && pref('view', '3d') === '3d') load3d();
+    else if (gl === null) $('blView').hidden = false;
     // play a new shot from where it is now (late joiners skip ahead; old shots just show the result)
     if (b.shot && b.shot.id !== seenShot) {
       seenShot = b.shot.id;
