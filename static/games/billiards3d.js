@@ -316,11 +316,38 @@ const Billiards3D = (() => {
     const gap = (i) => b.pockets[i][2] + 3.4;  // where the cushion nose starts (the server's pocket mouth)
     const jaw = 2.6;
     const cushion = (p0, p1, out) => { const m = new T.Mesh(cushionGeo(p0, p1, out, jaw, jaw), cushMat); m.castShadow = m.receiveShadow = true; table.add(m); };
-    for (const [y, out, a, z] of [[0, -1, 0, 1], [0, -1, 1, 2], [H, 1, 3, 4], [H, 1, 4, 5]]) {  // long rails: pockets a..z
-      cushion([b.pockets[a][0] + gap(a), y], [b.pockets[z][0] - gap(z), y], [0, out]);
-    }
-    for (const [x, out, a, z] of [[0, -1, 0, 3], [W, 1, 2, 5]]) {  // short rails
-      cushion([x, b.pockets[a][1] + gap(a)], [x, b.pockets[z][1] - gap(z)], [out, 0]);
+    const E = b.edges || [];
+    if (E.length && E.length % 3 === 0) {
+      // the server's cushion line: per pocket, [in facing, out facing, rail to the next pocket]. Each rail's
+      // cushion runs between two jaw points, and its ends lean back along that jaw's facing.
+      const lean = (px, py, fx, fy, u, out) => {  // rail units back per unit of depth, along the facing
+        const vx = fx - px, vy = fy - py, d = vx * out[0] + vy * out[1];
+        return d > 0.01 ? Math.min(3, Math.abs(vx * u[0] + vy * u[1]) / d) : jaw / CUSH;
+      };
+      for (let i = 0; i < E.length; i += 3) {
+        const [x1, y1, x2, y2] = E[i + 2], len = Math.hypot(x2 - x1, y2 - y1);
+        if (len < 1) continue;
+        const u = [(x2 - x1) / len, (y2 - y1) / len];
+        let out = [u[1], -u[0]];
+        if (out[0] * ((x1 + x2) / 2 - W / 2) + out[1] * ((y1 + y2) / 2 - H / 2) < 0) out = [-out[0], -out[1]];
+        const f0 = E[i + 1], f1 = E[(i + 3) % E.length];  // this pocket's out facing (f_out -> p_out), the next one's in facing
+        // the back of the cushion's end stays clear of the hole (and the leather rim round it)
+        const fit = (px, py, j, back) => {
+          const [cx, cy, cap] = b.pockets.reduce((a, q) => (Math.hypot(q[0] - px, q[1] - py) < Math.hypot(a[0] - px, a[1] - py) ? q : a));
+          while (j > 0 && Math.hypot(px + back * u[0] * j + out[0] * CUSH - cx, py + back * u[1] * j + out[1] * CUSH - cy) < cap + 1) j -= 0.1;
+          return Math.max(0, j);
+        };
+        const j0 = fit(x1, y1, CUSH * lean(x1, y1, f0[0], f0[1], u, out), -1), j1 = fit(x2, y2, CUSH * lean(x2, y2, f1[2], f1[3], u, out), 1);
+        const m = new T.Mesh(cushionGeo([x1, y1], [x2, y2], out, j0, j1), cushMat);
+        m.castShadow = m.receiveShadow = true; table.add(m);
+      }
+    } else {
+      for (const [y, out, a, z] of [[0, -1, 0, 1], [0, -1, 1, 2], [H, 1, 3, 4], [H, 1, 4, 5]]) {  // long rails: pockets a..z
+        cushion([b.pockets[a][0] + gap(a), y], [b.pockets[z][0] - gap(z), y], [0, out]);
+      }
+      for (const [x, out, a, z] of [[0, -1, 0, 3], [W, 1, 2, 5]]) {  // short rails
+        cushion([x, b.pockets[a][1] + gap(a)], [x, b.pockets[z][1] - gap(z)], [out, 0]);
+      }
     }
 
     // pockets: a leather lining down the cut in the rail, and a rounded leather rim over its top edge
