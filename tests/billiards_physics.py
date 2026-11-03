@@ -109,9 +109,9 @@ check("the bot pots most cut shots", tried >= 15 and made >= 0.75 * tried, f"{ma
 # ---------- speed: a full-power break simulates quickly
 pos = b.rack(random.Random(1))
 pos[0] = (b.HEAD_X, b.TH / 2)
-t0 = time.time()
+t0 = time.process_time()  # CPU time: other busy processes on this machine don't count
 shot(pos, math.atan2(b.FOOT[1] - b.TH / 2, b.FOOT[0] - b.HEAD_X), b.MAX_SPEED)
-check("a break simulates in under half a second", time.time() - t0 < 0.5, f"{time.time() - t0:.3f}s")
+check("a break simulates in under half a second", time.process_time() - t0 < 0.5, f"{time.process_time() - t0:.3f}s of CPU")
 
 
 # ---------- the aim guide's engine agrees with the server's
