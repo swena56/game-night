@@ -2,12 +2,20 @@
 
 The throttle is automatic: you only steer. Bends push you toward the outside, so you steer into
 them; scraping a wall scrubs off speed. ⚡ Boost pads on the track give a burst of speed, and each
-racer also has three boosts of their own. Craft that touch bump each other sideways. First across
-the line after the last lap wins.
+racer also has three boosts of their own. Tucking in close behind a rival puts you in their
+slipstream, which lifts your top speed so you can pull out and pass. Item pickups (in races of two
+or more) give one of: 🚀 a missile that homes in on the racer ahead, 💣 a mine dropped behind you,
+or 🛡️ a shield that stops the next hit. A hit knocks most of a craft's speed off and spins it for a
+moment. Leaders mostly get mines and shields, racers further back mostly missiles, so the leader
+isn't just a target. Craft that touch bump each other sideways. First across the line after the
+last lap wins; in 💥 Elimination, each time the leader crosses the line (from the end of lap 1)
+whoever is last is out, until one is left.
 
 Server-owned like Sumo Saucers: the track is a closed curve sampled into points; each craft is a
 position along it (s, in track units) and a sideways offset (d), so the simulation stays tiny.
-frame(now) runs at 60 fps and positions stream to browsers over the room's fast channel."""
+frame(now) runs at 60 fps and positions stream to browsers over the room's fast channel, along with
+the moments the browser turns into sparks, sounds and camera shake: bumps, boost-pad hits and
+item pickups, launches, drops, shields and hits."""
 import math
 import random
 import time
@@ -24,6 +32,20 @@ SCRAPE = 0.3              # speed kept per second while touching a wall
 BOOST_SECS, BOOSTS = 1.2, 3
 PAD_EVERY = 90            # a boost pad every this many samples (roughly)
 CRAFT = 0.7               # craft half-size for bumps
+DRAFT_SPEED = 17.5        # top speed in a rival's slipstream
+DRAFT_LEN, DRAFT_W = 7.0, 1.2   # the slipstream: this far behind a craft and this close sideways
+MISSILE_SPEED, MISSILE_TURN, MISSILE_LIFE = 30.0, 3.0, 3.5   # units/s, sideways units/s, seconds
+SPIN_SECS, SPIN_KEEP, SAFE = 0.7, 0.35, 2.0   # a hit: no steering this long, speed drops to this share,
+#                                            then no further hits for SAFE seconds after the spin
+MINE_LIFE, MINE_ARM, MINES = 25.0, 0.6, 8      # seconds on the track, seconds before it's live, most on the track at once
+SHIELD_SECS = 6.0
+PICKUP_RESPAWN = 4.0
+ITEMS = {"missile": 1, "mine": 2, "shield": 3}   # as sent to browsers
+
+
+def item_odds(f):
+    """Chances of (missile, mine, shield) for a racer whose place is f of the way back (0 = leading, 1 = last)."""
+    return 0.2 + 0.5 * f, 0.5 - 0.4 * f, 0.3 - 0.1 * f
 COUNTDOWN, FINISH_WAIT = 3.0, 15.0
 BOT = {  # reaction (s), look-ahead (s), how well it counters the outward push, steering correction
     "easy": (0.45, 0.1, 0.5, 0.8),
@@ -65,6 +87,9 @@ def make_track(rng):
 
 
 class Craft:
+    # defaults for races saved before these existed (rooms come back from data/rooms.pickle on restart)
+    wall, pad, draft, item, spin_until, shield_until, out = False, None, False, None, 0.0, 0.0, False
+
     def __init__(self, s, d):
         self.s, self.d, self.v = s, d, 0.0
         self.steer = 0.0
@@ -73,6 +98,13 @@ class Craft:
         self.lap = 0
         self.finished = None   # finishing place
         self.finish_time = None
+        self.wall = False      # scraping a wall right now
+        self.pad = None        # the boost pad it's on, so each pad counts as one hit
+        self.draft = False     # in someone's slipstream
+        self.item = None       # the item held: "missile", "mine" or "shield"
+        self.spin_until = 0.0  # spinning from a hit
+        self.shield_until = 0.0
+        self.out = False       # knocked out in Elimination (it also has a finishing place)
 
 
 class Rally(Game):
@@ -82,16 +114,23 @@ class Rally(Game):
         "Your hover craft speeds up by itself — you only steer. Hold the left or right side of the screen, the arrows, or A / D.",
         "Bends push you toward the outside: steer into them. Scraping a wall slows you down.",
         "Glowing ⚡ pads on the track give a burst of speed. You also have 3 boosts of your own (⚡, Space or swipe up).",
+        "Grab a 🎁 pickup for an item, and use it with its button, F or a swipe down: 🚀 a missile homes in on the racer ahead, "
+        "💣 a mine drops behind you, 🛡️ a shield stops the next hit. A hit spins you out. Leaders get more mines and shields, the pack more missiles.",
+        "Tuck in close behind a rival to ride their 💨 slipstream, then pull out and pass.",
         "Bump rivals sideways. First across the line after the last lap wins.",
+        "💥 Elimination (a lobby setting): each time the leader crosses the line, whoever is last is out. The last one flying wins.",
     ]
     name = "Hover Rally"
     icon = "🛸"
-    blurb = "Hover-craft racing on a new looping 3D track each game. Steer into the bends and hit the boost pads."
+    blurb = "Hover-craft racing on a new looping 3D track each game. Steer into the bends, hit the boost pads, fire homing missiles, drop mines."
     min_players = 1
     max_players = 6
     replayable = False
+    pickups, pickup_at, missiles, mines, elim, elim_lap = (), (), (), (), False, 0   # for races saved before items; start() sets real ones
     settings_schema = {
         "laps": ("Laps", [(3, "3"), (2, "2 (quick)"), (5, "5")], 3),
+        "mode": ("Mode", [("race", "🏁 Race"), ("elim", "💥 Elimination (last place out every lap; laps don't apply)")], "race"),
+        "missiles": ("Items", [(True, "🎁 On (🚀 💣 🛡️)"), (False, "Off (pure racing)")], True),
     }
 
     # -- setup
@@ -110,6 +149,14 @@ class Rally(Game):
             if rng.random() < 0.75:
                 self.pads.append((i + rng.randint(-8, 8), rng.choice((-1.3, 0.0, 1.3))))
         n = len(seated)
+        # item pickups: pairs across the track, between the boost pads (not in a solo time trial)
+        self.pickups = []
+        if n > 1 and self.s.get("missiles", True):
+            for i in range(PAD_EVERY, SAMPLES, PAD_EVERY * 2):
+                self.pickups += [(i, -1.2), (i, 1.2)]
+        self.pickup_at = [0.0] * len(self.pickups)   # back on the track at this time
+        self.missiles = []     # dicts: s, d, owner, target (craft index or None), until
+        self.mines = []        # dicts: s, d, owner, armed (time), until
         # grid: two abreast, a few units apart, just behind the line
         self.crafts = [Craft(-2.0 - 2.2 * (i // 2), (-1.1 if i % 2 == 0 else 1.1) if n > 1 else 0.0) for i in range(n)]
         self.stage = "countdown"
@@ -119,10 +166,16 @@ class Rally(Game):
         self.frames = 0
         self.places = 0
         self.first_done = None
+        self.elim = n > 1 and self.s.get("mode") == "elim"
+        self.elim_lap = 0      # the most laps anyone has done, so each lap the leader completes knocks one out
         self.bot_next = [0.0] * n
+        self.ev = []           # since the last broadcast: ["bump", i, j] / ["pad", i] / ["pick", i, item] / ["fire", i] /
+        #                        ["drop", i] / ["shield", i] / ["hit", victim, by, "missile"|"mine"] / ["block", victim, by]
+        self.touching = set()  # pairs in contact, so a long scrape alongside is one bump
         self.room.turn = None
         self.room.deadline = None
-        self.room.add_log(f"🛸 Hover Rally: {self.s['laps']} laps of a new track ({self.length:.0f} m). Get ready!", "big")
+        what = "💥 Elimination (last place out every lap)" if self.elim else f"{self.s['laps']} laps"
+        self.room.add_log(f"🛸 Hover Rally: {what} on a new track ({self.length:.0f} m). Get ready!", "big")
 
     def seat(self, p):
         return self.seats.index(p.id) if p.id in self.seats else None
@@ -161,12 +214,87 @@ class Rally(Game):
             c.steer = max(-1.0, min(1.0, float(st)))
         if a.get("boost") is True:
             self.boost(i, time.time())
+        if a.get("fire") is True:
+            self.fire(i, time.time())
 
     def boost(self, i, now):
         c = self.crafts[i]
         if self.stage == "race" and c.boosts > 0 and now >= c.boost_until and c.finished is None:
             c.boosts -= 1
             c.boost_until = now + BOOST_SECS
+
+    def fire(self, i, now):
+        """Use the held item."""
+        c = self.crafts[i]
+        if self.stage != "race" or not c.item or c.finished is not None:
+            return
+        item, c.item = c.item, None
+        if item == "shield":
+            c.shield_until = now + SHIELD_SECS
+            self.ev.append(["shield", i])
+            return
+        if item == "mine":
+            self.mines.append({"s": c.s - 2 * CRAFT - 0.4, "d": c.d, "owner": i, "armed": now + MINE_ARM, "until": now + MINE_LIFE})
+            del self.mines[:-MINES]
+            self.ev.append(["drop", i])
+            return
+        # aim at the nearest racer ahead (within half a lap); with nobody there it flies straight on
+        ahead = [((o.s - c.s) % self.length, j) for j, o in enumerate(self.crafts)
+                 if j != i and o.finished is None and self.active(j)]
+        ahead = [x for x in ahead if x[0] < self.length / 2]
+        self.missiles.append({"s": c.s + 1.2, "d": c.d, "owner": i, "target": min(ahead)[1] if ahead else None,
+                              "until": now + MISSILE_LIFE})
+        self.ev.append(["fire", i])
+
+    def fly(self, dt, now):
+        """Move each missile along the track, steering toward its target; it hits any rival it reaches.
+        Mines sit still and hit whoever runs into them (their owner too, once armed)."""
+        for m in list(self.missiles):
+            m["s"] += MISSILE_SPEED * dt
+            t = m["target"]
+            if t is not None and (self.crafts[t].finished is not None or not self.active(t)):
+                t = m["target"] = None
+            if t is not None:
+                want = self.crafts[t].d - m["d"]
+                m["d"] += max(-MISSILE_TURN * dt, min(MISSILE_TURN * dt, want))
+            hit = self.touch(m, 1.0, 1.1, now, m["owner"])
+            if hit is not None:
+                self.strike(hit, m["owner"], "missile", now)
+            if hit is not None or now > m["until"]:
+                self.missiles.remove(m)
+        for m in list(self.mines):
+            hit = self.touch(m, 0.9, 1.0, now, None if now >= m["armed"] else m["owner"])
+            if hit is not None:
+                self.strike(hit, m["owner"], "mine", now)
+            if hit is not None or now > m["until"]:
+                self.mines.remove(m)
+
+    def touch(self, m, reach_s, reach_d, now, skip):
+        """The racer (not `skip`, not still recovering from a hit) that missile or mine m is touching, or None."""
+        half = self.length / 2
+        for j, c in enumerate(self.crafts):
+            if j != skip and c.finished is None and self.active(j) and now >= c.spin_until + SAFE:
+                ds = (c.s - m["s"] + half) % self.length - half
+                if abs(ds) < reach_s and abs(c.d - m["d"]) < reach_d:
+                    return j
+        return None
+
+    def strike(self, j, by, what, now):
+        """A missile or mine reaches craft j: its shield takes the hit, or it spins out."""
+        c = self.crafts[j]
+        pb, pj = self.room.players.get(self.seats[by]), self.room.players.get(self.seats[j])
+        nb, nj = pb.name if pb else "?", pj.name if pj else "?"
+        whose = "their own" if by == j else f"{nb}’s"
+        if now < c.shield_until:
+            c.shield_until = 0.0
+            self.ev.append(["block", j, by])
+            self.room.add_log(f"🛡️ {nj}'s shield stops {whose} {what}!")
+            return
+        c.v *= SPIN_KEEP
+        c.spin_until = now + SPIN_SECS
+        c.boost_until = 0.0
+        self.ev.append(["hit", j, by, what])
+        self.room.add_log(f"💣 {nj} hits {whose} mine!" if what == "mine" else f"🚀 {nb} hits {nj}!")
 
     # -- simulation
 
@@ -193,29 +321,50 @@ class Rally(Game):
         for i, c in enumerate(self.crafts):
             p = self.room.players.get(self.seats[i])
             if c.finished is not None or not p or p.eliminated:
+                c.wall = False
                 c.v = max(0.0, c.v - ACCEL * dt) if c.finished is not None else 0.0
                 c.s += c.v * dt
                 continue
-            top = BOOST_SPEED if now < c.boost_until else TOP_SPEED
+            c.draft = self.drafting(i)
+            top = BOOST_SPEED if now < c.boost_until else DRAFT_SPEED if c.draft else TOP_SPEED
             c.v = min(top, c.v + ACCEL * dt) if c.v < top else max(top, c.v - ACCEL * 0.6 * dt)
             k = self.curvature(c.s)
-            # left is +d; a left bend (k > 0) pushes the craft right (outward)
-            c.d += (c.steer * STEER - k * c.v * c.v * PUSH) * dt
-            if abs(c.d) > HALF_WIDTH - 0.35:
+            # left is +d; a left bend (k > 0) pushes the craft right (outward); no steering while spinning
+            steer = 0.0 if now < c.spin_until else c.steer
+            c.d += (steer * STEER - k * c.v * c.v * PUSH) * dt
+            c.wall = abs(c.d) > HALF_WIDTH - 0.35
+            if c.wall:
                 c.d = math.copysign(HALF_WIDTH - 0.35, c.d)
                 c.v *= SCRAPE ** dt
             # the inside of a bend is a tighter curve, so it covers the track faster
             c.s += c.v * dt / max(0.6, 1 - k * c.d)
             # boost pads
             idx = self.index(c.s)
+            on = None
             for pi_, lat in self.pads:
                 if abs(idx - pi_) <= 2 and abs(c.d - lat) < 0.9:
                     c.boost_until = max(c.boost_until, now + 0.7)
+                    on = pi_
+            if on is not None and on != c.pad:
+                self.ev.append(["pad", i])
+            c.pad = on
+            # item pickups: one held at a time
+            if not c.item:
+                for n_, (pi_, lat) in enumerate(self.pickups):
+                    if now >= self.pickup_at[n_] and abs(idx - pi_) <= 2 and abs(c.d - lat) < 0.9:
+                        c.item = self.draw_item(i)
+                        self.pickup_at[n_] = now + PICKUP_RESPAWN
+                        self.ev.append(["pick", i, ITEMS[c.item]])
+                        break
             # laps completed: the grid starts just behind the line, at s < 0
             lap = max(0, math.floor(c.s / self.length))
             if lap > c.lap:
                 c.lap = lap
-                if c.lap >= self.s["laps"]:
+                if self.elim:
+                    if lap > self.elim_lap:
+                        self.elim_lap = lap
+                        changed = self.knock_out(now) or changed
+                elif c.lap >= self.s["laps"]:
                     self.places += 1
                     c.finished = self.places
                     c.finish_time = now - self.started
@@ -225,32 +374,75 @@ class Rally(Game):
                         self.first_done = now
                     changed = True
         self.bump()
+        self.fly(dt, now)
         racing = [i for i, c in enumerate(self.crafts) if c.finished is None and self.active(i)]
-        if not racing or (self.first_done and now - self.first_done > FINISH_WAIT):
+        if not racing or (self.elim and len(racing) == 1) or (self.first_done and now - self.first_done > FINISH_WAIT):
             self.end_race()
             return True
         if self.frames % 2 == 0:
             self.broadcast(now)
         return changed
 
+    def draw_item(self, i):
+        """A random item, weighted by place: see item_odds."""
+        live = sorted((j for j, c in enumerate(self.crafts) if c.finished is None and self.active(j)),
+                      key=lambda j: -self.crafts[j].s)
+        f = live.index(i) / (len(live) - 1) if i in live and len(live) > 1 else 0.5
+        return self.rng.choices(("missile", "mine", "shield"), item_odds(f))[0]
+
     def active(self, i):
         p = self.room.players.get(self.seats[i])
         return bool(p and not p.eliminated)
 
+    def drafting(self, i):
+        """Is craft i close behind another racer (not finished) and roughly in line with it?"""
+        c = self.crafts[i]
+        for j, o in enumerate(self.crafts):
+            if j != i and o.finished is None and self.active(j):
+                ds = (o.s - c.s) % self.length
+                if 2 * CRAFT < ds < DRAFT_LEN and abs(o.d - c.d) < DRAFT_W:
+                    return True
+        return False
+
     def bump(self):
-        live = [c for i, c in enumerate(self.crafts) if c.finished is None and self.active(i)]
+        live = [i for i, c in enumerate(self.crafts) if c.finished is None and self.active(i)]
+        touching = set()
         for a in range(len(live)):
             for b in range(a + 1, len(live)):
-                p, q = live[a], live[b]
+                p, q = self.crafts[live[a]], self.crafts[live[b]]
                 ds = (p.s - q.s + self.length / 2) % self.length - self.length / 2
                 dd = p.d - q.d
+                pair = (live[a], live[b])
+                # a pair stays "in contact" until it's clearly apart, so the push that separates it
+                # for a frame doesn't make every frame of a scrape a new bump
+                if pair in self.touching and abs(ds) < 2 * CRAFT * 1.4 + 1 and abs(dd) < 2 * CRAFT + 0.6:
+                    touching.add(pair)
                 if abs(ds) < 2 * CRAFT * 1.4 and abs(dd) < 2 * CRAFT:
+                    touching.add(pair)
+                    if pair not in self.touching:
+                        self.ev.append(["bump", *pair])
                     push = (2 * CRAFT - abs(dd)) / 2 + 0.05
                     sgn = 1 if dd >= 0 else -1
                     p.d += sgn * push
                     q.d -= sgn * push
                     # the one behind loses a little speed
                     (q if ds > 0 else p).v *= 0.97
+        self.touching = touching
+
+    def knock_out(self, now):
+        """Elimination: the racer furthest back is out, and takes the lowest place still free."""
+        live = [i for i, c in enumerate(self.crafts) if c.finished is None and self.active(i)]
+        if len(live) < 2:
+            return False
+        i = min(live, key=lambda j: self.crafts[j].s)
+        c = self.crafts[i]
+        c.out = True
+        c.finished = len(self.crafts) - sum(o.out for o in self.crafts) + 1
+        c.item, c.boost_until, c.shield_until = None, 0.0, 0.0
+        p = self.room.players.get(self.seats[i])
+        self.ev.append(["out", i])
+        self.room.add_log(f"💥 {p.name if p else '?'} is out on lap {self.elim_lap} ({self.ordinal(c.finished)}).", "power")
+        return True
 
     def end_race(self):
         r = self.room
@@ -268,18 +460,34 @@ class Rally(Game):
             if t is not None and t <= par:
                 return r.finish(p, f"🏆 {p.name} beats the target time: {t:.1f}s (target {par:.1f}s)!")
             return r.finish(None, f"🛸 {p.name if p else '?'} finished in {t:.1f}s; the target was {par:.1f}s." if t else "🛸 Race over.")
-        r.finish(p, f"🏆 {p.name if p else '?'} wins Hover Rally!")
+        r.finish(p, f"🏆 {p.name if p else '?'} {'is the last one flying and ' if self.elim else ''}wins Hover Rally!")
 
     @staticmethod
     def ordinal(n):
         return {1: "1st", 2: "2nd", 3: "3rd"}.get(n, f"{n}th")
 
     def broadcast(self, now):
+        self.room.push_fast({"st": self.stage, "c": self.craft_rows(now), "e": self.ev, "m": self.missile_rows(),
+                             "mn": self.mine_rows(), "pk": self.pickup_flags(now)})
+        self.ev = []
+
+    def craft_rows(self, now):
+        """Each craft as [s, d, speed, boosting, boosts left, laps done, finishing place, scraping a wall,
+        in a slipstream, item held (0 none, else ITEMS), spinning, shielded, knocked out]."""
         r2 = lambda v: round(v, 2)
-        self.room.push_fast({
-            "st": self.stage,
-            "c": [[r2(c.s), r2(c.d), r2(c.v), int(now < c.boost_until), c.boosts, c.lap, c.finished or 0] for c in self.crafts],
-        })
+        return [[r2(c.s), r2(c.d), r2(c.v), int(now < c.boost_until), c.boosts, c.lap, c.finished or 0, int(c.wall), int(c.draft),
+                 ITEMS.get(c.item, 0), int(now < c.spin_until), int(now < c.shield_until), int(c.out)] for c in self.crafts]
+
+    def missile_rows(self):
+        """Each missile in flight as [s, d, target craft or -1]."""
+        return [[round(m["s"], 2), round(m["d"], 2), -1 if m["target"] is None else m["target"]] for m in self.missiles]
+
+    def mine_rows(self):
+        """Each mine on the track as [s, d]."""
+        return [[round(m["s"], 2), round(m["d"], 2)] for m in self.mines]
+
+    def pickup_flags(self, now):
+        return [int(now >= t) for t in self.pickup_at]
 
     # -- bots
 
@@ -300,15 +508,35 @@ class Rally(Game):
                 if 0 <= (pi_ - idx) % SAMPLES <= 18:
                     target = lat
                     break
-        # don't sit right behind someone
+        # normal and hard tuck into a slipstream on the straights; everyone pulls out to pass when close
+        straight = all(abs(self.curvature(c.s + x)) < 0.02 for x in (3, 8, 14))
         for j, o in enumerate(self.crafts):
             if j != i and o.finished is None:
                 ds = (o.s - c.s) % self.length
-                if 0 < ds < 4 and abs(o.d - c.d) < 1.4:
+                if 0 < ds < 2.5 and abs(o.d - c.d) < 1.4:
                     target = o.d + (1.6 if o.d < 0 else -1.6)
+                elif level != "easy" and straight and 2.5 <= ds < DRAFT_LEN - 1:
+                    target = o.d
+        # normal and hard steer round mines ahead and sidestep a missile closing in on them
+        incoming = any(m["target"] == i and 0 < (c.s - m["s"]) % self.length < 12 for m in self.missiles)
+        if level != "easy":
+            for m in self.mines:
+                if 0 < (m["s"] - c.s) % self.length < 3 + c.v * ahead * 1.5 and abs(m["d"] - target) < 1.3:
+                    target = m["d"] + (1.7 if m["d"] < 0 else -1.7)
+            if incoming and (level == "hard" or random.random() < 0.5) and now >= c.shield_until:
+                target = c.d + (2.0 if c.d < 0 else -2.0)
         push = k * c.v * c.v * PUSH * skill
         c.steer = max(-1.0, min(1.0, (push + (target - c.d) * gain) / STEER + random.gauss(0, 0.08 if level == "easy" else 0.02)))
-        straight = all(abs(self.curvature(c.s + x)) < 0.02 for x in (3, 8, 14))
+        # items: fire at a rival a little way ahead, drop a mine in front of one close behind,
+        # raise the shield when a missile is coming; now and then anyone just uses what they hold
+        if c.item and now >= c.spin_until:
+            rivals = [(o.s - c.s) % self.length for j, o in enumerate(self.crafts) if j != i and o.finished is None and self.active(j)]
+            eager = {"easy": 0.1, "normal": 0.25, "hard": 0.5}[level]
+            use = {"missile": any(0 < x < 25 for x in rivals),
+                   "mine": any(self.length - 12 < x < self.length - 2 for x in rivals),
+                   "shield": incoming}[c.item]
+            if (use and random.random() < eager) or random.random() < 0.004:
+                self.fire(i, now)
         if level != "easy" and c.boosts and straight and now >= c.boost_until and random.random() < (0.05 if level == "hard" else 0.02):
             self.boost(i, now)
 
@@ -332,7 +560,9 @@ class Rally(Game):
         if i is None:
             return ""
         c = self.crafts[i]
-        return f"🏁 {self.ordinal(c.finished)}" if c.finished else f"Lap {min(c.lap + 1, self.s['laps'])}/{self.s['laps']}"
+        if c.finished:
+            return f"{'💥' if c.out else '🏁'} {self.ordinal(c.finished)}"
+        return f"Lap {c.lap + 1}" if self.elim else f"Lap {min(c.lap + 1, self.s['laps'])}/{self.s['laps']}"
 
     def final_scores(self):
         return {pid: self.crafts[i].finished for i, pid in enumerate(self.seats) if self.crafts[i].finished}
@@ -344,7 +574,8 @@ class Rally(Game):
             "seats": self.seats, "me": self.seat(p), "laps": self.s["laps"], "stage": self.stage,
             "track": [[r2(x), r2(y)] for x, y in self.pts], "length": self.length, "width": HALF_WIDTH,
             "pads": self.pads, "cum": [r2(v) for v in self.cum],
-            "c": [[r2(c.s), r2(c.d), r2(c.v), int(now < c.boost_until), c.boosts, c.lap, c.finished or 0] for c in self.crafts],
+            "c": self.craft_rows(now), "pickups": self.pickups, "pk": self.pickup_flags(now), "m": self.missile_rows(),
+            "mn": self.mine_rows(),
             "countdown": max(0.0, self.next_at - now) if self.stage == "countdown" else 0,
-            "top": TOP_SPEED,
+            "top": TOP_SPEED, "elim": self.elim,
         }}

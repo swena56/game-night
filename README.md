@@ -59,7 +59,7 @@ port, and `http://localhost` still works on the server's own device.
 | 🎨 **Paint Blast** | 2–6 | **Real-time** bomb maze: run through pillars and crates and drop bombs whose blasts run in a straight line in all four directions. Crates hide 💣 extra bombs, 🔥 longer blasts and 🖌️ paint splashes. | **Every blast paints the floor in your colour**, and when the clock stops each painted tile is a point (+10 for catching a rival). Caught players are stunned for 3 s and respawn at home, so nobody sits out. The maze is mirror-symmetric and new every round. Swipe-and-hold to run, tap to bomb. |
 | 🪐 **Sumo Saucers** | 2–6 | **Real-time 3D** (three.js; flat fallback): pilot a hover saucer on a floating platform and shove rivals off the edge. Drag anywhere for a virtual stick, tap to 💨 dash. | Glowing rim bumpers bounce you back once, then shatter, and the platform shrinks every 15 s. Last saucer floating wins the round; first to 3 wins. Optional sudden death with no bumpers. |
 | ⛳ **Putt Party** | 1–6 | **3D** mini golf (three.js; top-down fallback) on holes generated each game: a winding walled fairway with ⚪ bumpers, ▪️ posts, 🌑 rocks, 🟫 sand, long grass, ↗ slopes, ⛰️ humps and bowls, curved banks, a 🌀 windmill to time, a ramp jump and 💧 water. Drag back from your ball and let go to putt; a drag anywhere else moves the view, and the camera swings behind your ball after each putt. | The server simulates every putt and sends the ball's path, so every phone plays back the same shot. Everyone plays the same hole, a stroke each in turn. Solo: finish at or under par (3 a hole, 4 for a hole with a jump or a windmill). |
-| 🛸 **Hover Rally** | 1–6 | **Real-time 3D** hover-craft race (three.js chase camera; top-down fallback) on a looping track generated each game. The throttle is automatic: hold a side of the screen (or ←/→) to steer. | Bends push you outward and the inside line is shorter, so racing lines matter; walls scrub speed. ⚡ Boost pads plus 3 boosts of your own, sideways bumps. Alone: beat a target time. |
+| 🛸 **Hover Rally** | 1–6 | **Real-time 3D** hover-craft race (three.js chase camera; top-down fallback) on a looping track generated each game. The throttle is automatic: hold a side of the screen (or ←/→) to steer. | Bends push you outward and the inside line is shorter, so racing lines matter; walls scrub speed. ⚡ Boost pads plus 3 boosts of your own, a 💨 slipstream behind rivals, 🎁 item pickups: 🚀 homing missiles, 💣 mines and 🛡️ shields, leaders getting more mines and shields and the pack more missiles (a hit spins you out; setting to turn items off), sideways bumps. 💥 Elimination mode: last place is out every lap. Alone: beat a target time. |
 | 🏒 **Air Hockey** | 2 | **Real-time** table hockey: drag your mallet around your half, bank shots off the walls. Server-side physics at 60 fps. | 🏒🏒 Double Trouble puts two pucks on the table. Each player sees the table from their own end. |
 | 🎱 **Billiards** | 2 | Eight-ball pool on a top-down table with real physics (spin that skids then rolls, follow, draw and english, cushions, ball-to-ball collisions, six pockets). Drag to aim, set the power, shoot. | The server simulates every shot and sends the ball paths, so every phone plays back the same shot. A 🎯 aim guide (full, short or off) shows where both balls go. Fouls give ✋ ball in hand. The table stands upright on phones. |
 
@@ -149,7 +149,7 @@ Every game has **Easy / Normal / Hard bots**:
 - **Light Riders:** bots steer toward open space (a flood fill). Hard bots, once three or fewer riders remain, fight for territory: they count the cells they can reach before any rival can, refuse head-on gambles, and only boost onto a clear straight. They never drive into a cell a rival could also take.
 - **Paint Blast:** bots map where every ticking bomb will blast (chain reactions included) and when, run for the nearest safe tile, and only drop a bomb when they can still escape it. They then head for the spot worth the most (crates to break, floor to paint, rivals to catch, power-ups) per step of walking. Hard thinks every tick and values paint and rivals more; easy reacts slowly and sometimes walks into its own blast. In simulation hard won 4 of 6 three-way games.
 - **Sumo Saucers:** bots keep away from the rim, pick the rival easiest to push out (near the edge and near them), line up on the inside of it and dash outward through it. Normal and hard bots sidestep a rival's dash. In simulation hard beat normal 20–0 and normal beat easy 20–0; rounds last about 30 s.
-- **Hover Rally:** bots look ahead for the next bend, take the inside line, counter the outward push and correct toward their line; they dodge out from behind rivals. Hard reacts fastest, looks furthest ahead, hunts boost pads and boosts on straights. On the same track with no bumping, hard finished first in 6 of 8 races, normal second, easy third, and a craft that never steered last every time.
+- **Hover Rally:** bots look ahead for the next bend, take the inside line, counter the outward push and correct toward their line; they dodge out from behind rivals. Hard reacts fastest, looks furthest ahead, hunts boost pads and boosts on straights. Normal and hard tuck into slipstreams, steer round mines and sidestep missiles closing in on them. Every bot fires a missile at a rival a short way ahead, drops a mine in front of one close behind and raises a shield when a missile is coming (hard most eagerly). On the same track with no bumping, hard finished first in 6 of 8 races, normal second, easy third, and a craft that never steered last every time.
 - **Air Hockey:** bots line up behind the puck on the line to an aim point (sometimes a bank shot off the wall), then strike through it. They guard their goal when the puck is away. Levels differ in reaction time, mallet speed and aim.
 - **Spire Siege:** bots run their own towers on the server and choose placements by stack height, holes and bumpiness. Difficulty sets their speed and accuracy.
 - **Moon Shot:** the hard bot steers for stars, avoids meteors, aims for wormholes when it's behind, and takes more risk the further back it is.
@@ -453,7 +453,27 @@ Items that become ✅ move into the per-game plan.
   knocks and a cup rattle. Each hole has its own par (4 with a jump or a windmill). ✅ **A golf scorecard:** a par row, birdies circled, bogeys
   boxed, a ± to-par column, and the between-holes card names the result (🐦 Birdie!, Par, Bogey…). Still to do: a course of the day. **M**
 - 🛸 **Hover Rally:** ✅ ⏱ lap splits (each lap's time, faster/slower than the last, the best starred, called out on screen)
-  and a 👻 ghost of your best lap so far racing beside you.
+  and a 👻 ghost of your best lap so far racing beside you. ✅ **Feel:** a craft model that leans into turns and lifts its
+  nose on boost, light trails, sparks off walls and bumps, camera shake, pulsing chevron boost pads, and synthesized sound
+  (an engine hum pitched by speed, pad and boost whooshes, bump thuds, wall scrapes, 3-2-1-GO, a lap chime). ✅ **💨 Slipstream:**
+  close behind a rival on a straight your top speed rises (15 → 17.5) so you can pull out and pass. ✅ **🚀 Missiles**
+  (setting, on by default; not in solo): pickups give one homing missile; a hit keeps 35% of your speed and spins you for
+  0.7 s, then 2 s of protection; a warning beep while one is locked on you. About 70% of shots land against bots that dodge.
+  Next:
+  - ✅ 🗺️ A minimap in the top corner of the 3D view (track outline, the line, every craft with you ringed, missiles in
+    flight), and when you're watching, the chase camera follows the leader instead of a fixed overhead view.
+  - ✅ 📳 Phone vibration when you're hit, your shield blocks, you bump someone, or you cross a pad or a pickup (follows the
+    📳 Vibrate setting).
+  - ✅ 🎁 Random items from the pickups: 🚀 a missile, 💣 a mine dropped behind you (armed after 0.6 s, lasts 25 s, hits its
+    owner too) or 🛡️ a shield (6 s, stops one missile or mine). The leader gets a mine half the time and a missile 20%; last
+    place gets a missile 70%. In 4-bot races about 70% of missiles and mines land, and easy still finishes last.
+  - 📅 Today's track: the same track in every room for the day (seeded from the date, like Grid Hunt's daily grids), with a
+    best-lap board and your best lap from earlier in the day as the 👻 ghost. **M**
+  - 🚧 Track features: ice patches (steering barely works), ramps over gaps, and narrow sections, picked per track so each
+    one plays differently. **M–L**
+  - ✅ 💥 Elimination mode (lobby setting): each time the leader completes a lap, whoever is furthest back is out and takes the
+    lowest place still free; the last one flying wins (laps don't apply). Six racers take 5 laps, about 80 s. Knocked-out
+    craft settle onto the track with their engines off.
 - 🏒 **Air Hockey:** 2v2 with four mallets. **M**
 - 🎱 **Billiards:** the 3D table; a 9-ball variant. **L**
 
@@ -694,7 +714,7 @@ Action 8 · Strategy 6 · Quick classics 6 · Cards 6 · Dice 3 · Words & puzzl
 |---|---|---|---|---|---|
 | 1 | 🪐 **Sumo Saucers** ✅ | Action | 2–6 | Real-time, three.js | Planned for #46: shove rivals off a shrinking floating platform. Air Hockey's physics. |
 | 2 | ⛳ **Putt Party** ✅ | Action | 1–6 | Turn-based physics, three.js | Original mini golf: procedurally built 3D holes (bumpers, sand, slopes, water), everyone putts the same hole, fewest strokes over 3, 6 or 9. Server simulates each putt and sends the path, like Billiards. |
-| 3 | 🛸 **Hover Rally** ✅ | Action | 2–6 | Real-time, three.js | Hover-racers on a looping track: steer left/right, the throttle is automatic, ⚡ boost pads and personal boosts. The track is a spline plus a side offset, so the server sim stays tiny. |
+| 3 | 🛸 **Hover Rally** ✅ | Action | 2–6 | Real-time, three.js | Hover-racers on a looping track: steer left/right, the throttle is automatic, ⚡ boost pads and personal boosts, 💨 slipstreams and 🚀 homing missiles. The track is a spline plus a side offset, so the server sim stays tiny. |
 | 4 | 🌰 **Oware** ✅ | Strategy | 2 | Turn-based | The traditional mancala game: sow seeds, capture twos and threes, the grand-slam rule. Alpha-beta bots, like Checkers. |
 | 5 | ⚪ **Reversi** ✅ | Strategy | 2 | Turn-based | The 19th-century public-domain game (not the branded version): flip lines of discs. Bots weigh corners, edges and mobility. |
 | 6 | #️⃣ **Ultimate Tic-Tac-Toe** ✅ | Quick classics | 2 | Turn-based | The folk game: nine boards in one, and your move sends your rival to a board. Monte Carlo bot. |

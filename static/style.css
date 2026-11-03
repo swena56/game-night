@@ -1141,6 +1141,7 @@ body.focus .pp-stage { height: max(240px, calc(var(--app-h, 100vh) - 190px)); }
 .ra-stage { position: relative; height: min(calc(var(--app-h, 100vh) * .62), 600px); border-radius: var(--radius); overflow: hidden;
   display: flex; justify-content: center; align-items: center; background: #070512; }
 .ra-stage canvas { display: block; }
+.ra-stage canvas.ra-mini { position: absolute; top: 8px; right: 8px; pointer-events: none; border-radius: 10px; background: rgba(7,5,18,.55); }
 .ra-half { position: absolute; top: 0; bottom: 0; width: 50%; display: flex; align-items: flex-end; padding: 12px; font-size: 22px;
   color: #ffffff30; pointer-events: none; }
 .ra-half.left { left: 0; } .ra-half.right { right: 0; justify-content: flex-end; }
