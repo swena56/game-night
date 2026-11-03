@@ -26,6 +26,10 @@ TIP_K = 1.5                          # follow / draw: spin (as surface speed R·
 SIDE_TIP = 1.25                      # side spin: the same, for english (spin about the vertical axis)
 SIDE_DECAY = 0.8                     # english wears off at this rate, per second
 MIN_SPEED, MAX_SPEED = 25.0, 520.0   # cue speed at power 0 and 1
+# the break: a real break is about twice a hard shot, and a slow cloth (FRICTION is ~9x real, so position
+# play stays on the table) would stop the rack dead. Breaks get their own top speed and a livelier cloth, so
+# about half of them pot a ball (tests/billiards_physics.py measures it).
+BREAK_MAX_SPEED, BREAK_FRICTION = 720.0, 18.0
 DT, FRAME_EVERY = 1 / 120, 4         # simulation step; record every 4th step (30 fps)
 MAX_STEPS = 120 * 14
 MAX_MOVE = R                         # sub-step so no ball moves further than this at once (no tunnelling)
@@ -78,7 +82,7 @@ def cushion_e(vn):
     return CUSHION_SOFT - (CUSHION_SOFT - CUSHION_HARD) * min(1.0, vn / CUSHION_V)
 
 
-def cloth(b, h):
+def cloth(b, h, friction=FRICTION):
     """Advance one ball by h seconds of table friction. b = [x, y, vx, vy, sx, sy, sz]: (sx, sy) is the
     rolling spin as the speed it gives the contact point with the cloth (R·ω), sz the english (R·ω about
     the vertical). While the contact point slips (v ≠ s) sliding friction pulls v and s together, the
@@ -98,7 +102,7 @@ def cloth(b, h):
         b[0] += vx * h; b[1] += vy * h
         return True
     v = math.hypot(vx, vy)
-    nv = v - FRICTION * h
+    nv = v - friction * h
     if nv < STOP:
         b[2] = b[3] = b[4] = b[5] = 0.0
         return False
@@ -196,7 +200,7 @@ def collide(balls, first, h):
     return first
 
 
-def simulate(pos, angle, speed, record=True, spin=0.0, holes=None, side=0.0):
+def simulate(pos, angle, speed, record=True, spin=0.0, holes=None, side=0.0, friction=FRICTION):
     """Run one shot. pos: {ball: (x, y)} with the cue ball as 0. spin: -1 (draw) to 1 (follow): where the tip
     strikes, top to bottom. Struck high the cue ball turns over faster than it rolls, struck low it spins
     backwards; struck in the middle it skids (a stun). The spin only shows after the cue ball hits a ball,
@@ -218,7 +222,7 @@ def simulate(pos, angle, speed, record=True, spin=0.0, holes=None, side=0.0):
         for _ in range(subs):
             moving = False
             for b in balls.values():
-                if (b[2] or b[3] or b[4] or b[5]) and cloth(b, h):
+                if (b[2] or b[3] or b[4] or b[5]) and cloth(b, h, friction):
                     moving = True
             if not moving:
                 break
@@ -432,10 +436,11 @@ class Billiards(Game):
             self.pos[0] = cue
         before = self.mine(p.id)
         targets = self.legal_targets(p.id)
-        speed = MIN_SPEED + (MAX_SPEED - MIN_SPEED) * power
+        top, fric = (BREAK_MAX_SPEED, BREAK_FRICTION) if self.breaking else (MAX_SPEED, FRICTION)
+        speed = MIN_SPEED + (top - MIN_SPEED) * power
         order = sorted(self.pos)
         holes = {}
-        final, sunk, first, frames = simulate(self.pos, angle, speed, spin=spin, holes=holes, side=side)
+        final, sunk, first, frames = simulate(self.pos, angle, speed, spin=spin, holes=holes, side=side, friction=fric)
         breaking, self.breaking, self.in_hand = self.breaking, False, None
         self.pos = final
         self.shot_seq += 1
@@ -583,6 +588,7 @@ class Billiards(Game):
             "targets": self.legal_targets(self.room.turn) if self.room.turn else [],
             "shot": shot, "last": self.last, "guide": self.s["guide"],
             "minSpeed": MIN_SPEED, "maxSpeed": MAX_SPEED, "friction": FRICTION,
+            "breakMaxSpeed": BREAK_MAX_SPEED, "breakFriction": BREAK_FRICTION,
             # the engine's constants, so the aim guide runs the same physics in the browser
             "phys": {"slide": SLIDE, "bounce": BOUNCE, "railGrip": RAIL_GRIP, "tipK": TIP_K,
                      "sideTip": SIDE_TIP, "sideDecay": SIDE_DECAY, "dt": DT, "stop": STOP, "throw": THROW,

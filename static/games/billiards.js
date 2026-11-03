@@ -112,13 +112,13 @@ UI.billiards = (() => {
   function predict(cue) {
     const b = B(), P = b.phys;
     if (!P) return null;
-    const key = [aim, power, spin, english, cue[0], cue[1], b.balls.map((a) => a.join()).join(';')].join('|');
+    const key = [aim, power, spin, english, cue[0], cue[1], b.breaking, b.balls.map((a) => a.join()).join(';')].join('|');
     if (key === predKey) return pred;
     predKey = key;
-    const R = b.R, POCK = b.pockets, EDGES = b.edges || [], F = b.friction, NEAR = P.near, W = b.W, H = b.H;
+    const brk = b.breaking && b.breakMaxSpeed, R = b.R, POCK = b.pockets, EDGES = b.edges || [], F = brk ? b.breakFriction : b.friction, NEAR = P.near, W = b.W, H = b.H;
     const balls = new Map();
     for (const [n, x, y] of b.balls) if (n !== 0) balls.set(n, [x, y, 0, 0, 0, 0, 0]);
-    const speed = b.minSpeed + (b.maxSpeed - b.minSpeed) * power, ax = Math.cos(aim), ay = Math.sin(aim), top = P.tipK * spin * speed;
+    const speed = b.minSpeed + ((brk ? b.breakMaxSpeed : b.maxSpeed) - b.minSpeed) * power, ax = Math.cos(aim), ay = Math.sin(aim), top = P.tipK * spin * speed;
     const cb = [cue[0], cue[1], ax * speed, ay * speed, ax * top, ay * top, P.sideTip * english * speed];
     balls.set(0, cb);
     const cloth = (o, h) => {

@@ -558,9 +558,10 @@ Riders and Air Hockey start in it) (#13, #15).
   ✅ Cushions meet the ball at natural-roll height, so a rolling ball comes off still rolling and a skidding one
   picks up topspin; soft hits keep more speed than hard ones. ✅ Throw: a cut drags the object ball 1–4° toward the
   cue ball's line, and english turns it further or back. ✅ `tests/billiards_physics.py` checks all of it and
-  that the aim guide's copy of the engine follows the server's paths. Known: the cloth is about 9× slower than a
-  real one, so a break rarely pots a ball; near-real cloth (rolling friction ~12 instead of 70) pots about one in
-  two breaks but makes every shot roll 2–5× further. Next: a 3D table.
+  that the aim guide's copy of the engine follows the server's paths. The cloth is about 9× slower than a
+  real one (so position play stays on the table), which left a break potting almost nothing. ✅ A livelier break:
+  the break gets its own top speed (720, about twice a hard shot) and a faster cloth (rolling friction 18 instead of
+  70), so about four breaks in ten pot a ball in 8-ball and half in 9-ball; the aim guide uses the same values.
 - 🗼 **Spire Siege:** ✅ a 🟦 4-block piece set beside the mixed 2/3/5-block set (#13), a ⇄ hold slot
   (C / Shift / swipe up), and a sharper flat well on high-DPI screens. ✅ 🟦 4-block is now the default
   (#26); the odd shapes are the 🧩 Mixed option. ✅ Normal and hard bots use the ⇄ hold slot (they park a piece and

@@ -125,23 +125,26 @@ def guide_check():
     if not m:
         check("found predict() in billiards.js", False)
         return
-    shots = [  # (cue ball, object ball, aim angle, power, spin, english)
-        ((60, 50), (100, 53), 0.0, 0.4, 0, 0), ((60, 50), (100, 47), 0.0, 0.6, 1, 0),
-        ((40, 30), (120, 60), math.atan2(28, 80), 0.5, -1, 0.5), ((150, 80), (60, 20), math.atan2(-58.2, -90), 0.7, 0.3, -1),
+    shots = [  # (cue ball, object ball, aim angle, power, spin, english, a break?)
+        ((60, 50), (100, 53), 0.0, 0.4, 0, 0, False), ((60, 50), (100, 47), 0.0, 0.6, 1, 0, False),
+        ((40, 30), (120, 60), math.atan2(28, 80), 0.5, -1, 0.5, False), ((150, 80), (60, 20), math.atan2(-58.2, -90), 0.7, 0.3, -1, False),
+        ((50, 50), (100, 52), 0.0, 1.0, 0, 0, True),  # the break: its own top speed and cloth
     ]
     cases, every = [], b.FRAME_EVERY
     b.FRAME_EVERY = 1  # record every step, so curved (spin) paths are compared closely
-    for cue, obj, ang, power, spin, side in shots:
-        speed = b.MIN_SPEED + (b.MAX_SPEED - b.MIN_SPEED) * power
-        _, _, first, frames, _ = shot({0: cue, 1: obj}, ang, speed, spin=spin, side=side)
+    for cue, obj, ang, power, spin, side, brk in shots:
+        top, fric = (b.BREAK_MAX_SPEED, b.BREAK_FRICTION) if brk else (b.MAX_SPEED, b.FRICTION)
+        speed = b.MIN_SPEED + (top - b.MIN_SPEED) * power
+        _, _, first, frames, _ = shot({0: cue, 1: obj}, ang, speed, spin=spin, side=side, friction=fric)
         cases.append({"cue": cue, "obj": obj, "aim": ang, "power": power, "spin": spin, "english": side,
-                      "first": first, "frames": frames})
+                      "breaking": brk, "first": first, "frames": frames})
     b.FRAME_EVERY = every
     phys = {"slide": b.SLIDE, "bounce": b.BOUNCE, "railGrip": b.RAIL_GRIP, "tipK": b.TIP_K, "sideTip": b.SIDE_TIP,
             "sideDecay": b.SIDE_DECAY, "dt": b.DT, "stop": b.STOP, "throw": b.THROW, "cushionSoft": b.CUSHION_SOFT,
             "cushionHard": b.CUSHION_HARD, "cushionV": b.CUSHION_V, "near": b.NEAR_EDGE}
     table = {"W": b.TW, "H": b.TH, "R": R, "pockets": [list(p) for p in b.POCKETS], "edges": [list(e) for e in b.EDGES],
-             "friction": b.FRICTION, "minSpeed": b.MIN_SPEED, "maxSpeed": b.MAX_SPEED, "phys": phys}
+             "friction": b.FRICTION, "minSpeed": b.MIN_SPEED, "maxSpeed": b.MAX_SPEED, "phys": phys,
+             "breakFriction": b.BREAK_FRICTION, "breakMaxSpeed": b.BREAK_MAX_SPEED}
     js = f"""
 let aim = 0, power = 0, spin = 0, english = 0, TABLE = {json.dumps(table)}, CUR = null;
 const B = () => CUR;
@@ -149,7 +152,7 @@ const B = () => CUR;
 const out = [];
 for (const c of {json.dumps(cases)}) {{
   aim = c.aim; power = c.power; spin = c.spin; english = c.english; predKey = '';
-  CUR = Object.assign({{}}, TABLE, {{ balls: [[1, c.obj[0], c.obj[1]]] }});
+  CUR = Object.assign({{}}, TABLE, {{ balls: [[1, c.obj[0], c.obj[1]]], breaking: c.breaking }});
   const p = predict(c.cue);
   out.push(p && p.obj ? {{ obj: p.obj.pts, cue: p.cue.pts }} : null);
 }}
@@ -188,6 +191,25 @@ def seg_dist(x, y, ax, ay, bx, by):
     return math.hypot(ax + t * dx - x, ay + t * dy - y)
 
 
+# ---------- the break: its livelier cloth and top speed pot a ball on about half of all breaks
+def break_check():
+    for nine in (False, True):
+        pots = scratches = 0
+        for seed in range(40):
+            rng = random.Random(seed)
+            pos = b.rack9(rng) if nine else b.rack(rng)
+            y = b.TH / 2 + rng.uniform(-6, 6)
+            pos[0] = (b.HEAD_X, y)
+            ang = math.atan2(b.FOOT[1] - y, b.FOOT[0] - b.HEAD_X) + rng.gauss(0, 0.004)
+            _, sunk, _, _ = b.simulate(pos, ang, b.BREAK_MAX_SPEED, record=False, friction=b.BREAK_FRICTION)
+            pots += any(n for n in sunk)
+            scratches += 0 in sunk
+        game = "9-ball" if nine else "8-ball"
+        check(f"{game} breaks pot a ball often", 10 <= pots <= 30, f"{pots}/40")
+        check(f"{game} breaks rarely scratch", scratches <= 6, f"{scratches}/40")
+
+
+break_check()
 guide_check()
 print(f"\n{len(fails)} failed" if fails else "\nall passed")
 sys.exit(1 if fails else 0)
