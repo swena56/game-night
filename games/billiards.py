@@ -6,8 +6,10 @@ cushions, ball-to-ball collisions, six pockets) and sends the recorded ball path
 Rules: break, then the first legally pocketed ball gives the shooter that group (solids 1–7 or
 stripes 9–15). Pocket one of yours and you shoot again. Fouls (cue ball pocketed, hitting nothing,
 or hitting the wrong ball first) give the other player ball in hand: they can place the cue ball
-anywhere. Clear your group, then sink the 8 to win. Sinking the 8 early, or with a foul, loses.
-The 8 on the break is put back on its spot."""
+anywhere (behind the head line after a scratch on the break). Clear your group, then sink the 8 to win.
+Sinking the 8 early, or with a foul, loses. The 8 on the break is put back on its spot.
+Nine-ball: hit the lowest ball first, the 9 on any legal shot wins, the first shot after the break may be a
+push-out, and three fouls in a row lose."""
 import math
 import random
 import time
@@ -44,6 +46,7 @@ CORNER_FACING, SIDE_FACING = 25, 45  # the jaw's facing runs from the point to t
 HEAD_X, FOOT = TW / 4, (TW * 0.73, TH / 2)
 SOLIDS, STRIPES = set(range(1, 8)), set(range(9, 16))
 GROUPS = {"solids": SOLIDS, "stripes": STRIPES}
+PUSH_TAKE = {"easy": -1e9, "normal": 30, "hard": 45}  # the bot shoots after a rival's push if its best pot scores this
 GROUP_LABEL = {"solids": "🔵 solids", "stripes": "🟠 stripes"}
 
 
@@ -333,10 +336,13 @@ class Billiards(Game):
         "Pocket one of yours and you shoot again. Hit your own group first.",
         "The cue-ball pad by Shoot picks where the cue strikes: high to follow through, low to draw back, the middle to stop dead on a close straight hit, left or right to bend the bounce off a cushion. Spin wears off as the ball travels.",
         "Pockets have jaws: a ball straight in drops, one coming in at a slant can catch the point and rattle out. Side pockets want straight-in shots.",
-        "Fouls (cue ball in a pocket, missing everything, wrong ball first) give your rival ✋ ball in hand.",
+        "Fouls (cue ball in a pocket, missing everything, wrong ball first) give your rival ✋ ball in hand: anywhere, "
+        "or behind the line after a scratch on an 8-ball break.",
         "Clear your group, then sink the 8 to win. The 8 too early, or with a foul, loses.",
         "9️⃣ 9-ball (pick it in the settings): balls 1–9. Always hit the lowest ball first; sink any ball and you go again. "
         "Sink the 9 on a legal shot (even on the break, or knocked in off another ball) to win.",
+        "🔀 9-ball push-out: the first shot after the break may be a push. It needn't hit anything (only a scratch is a foul), "
+        "then your rival shoots from there or hands it back to you. Three fouls in a row lose.",
     ]
     name = "Billiards"
     icon = "🎱"
@@ -372,6 +378,9 @@ class Billiards(Game):
         self.busy_until = 0.0
         self.last = ""
         self.ending = None               # (winner id, text): the 8 decided it, shown once the balls stop (#46)
+        self.push_ok = False             # 9-ball: the first shot after the break may be a push-out
+        self.push_choice = None          # 9-ball: after a push, the player who picks: shoot from there or hand it back
+        self.fouls = {p.id: 0 for p in seated}  # 9-ball: fouls in a row; the third loses
         for p in seated:
             p.g.sunk = 0
         first = rng.choice(seated)
@@ -403,11 +412,17 @@ class Billiards(Game):
     # -- actions
 
     def act(self, p, a):
-        if a.get("type") != "shoot":
+        kind = a.get("type")
+        if kind not in ("shoot", "pass"):
             raise GameError("Unknown action.")
         self.require_turn(p)
         if time.time() < self.busy_until:
             raise GameError("Wait for the balls to stop.")
+        if kind == "pass":
+            return self.hand_back(p)
+        push = a.get("push") is True
+        if push and not (self.nine and self.push_ok):
+            raise GameError("A push-out is only allowed on the first shot after the break.")
         angle, power = a.get("angle"), a.get("power")
         if not all(isinstance(v, (int, float)) and math.isfinite(v) for v in (angle, power)) or not 0 <= power <= 1:
             raise GameError("Bad shot.")
@@ -428,12 +443,24 @@ class Billiards(Game):
         if self.calling(p.id) and (not isinstance(pocket, int) or isinstance(pocket, bool) or not 0 <= pocket < len(POCKETS)):
             raise GameError("Call a pocket for the 8 first.")
         self.shoot(p, float(angle), float(power), tuple(cue) if cue else None, float(spin), pocket if self.calling(p.id) else None,
-                   float(side))
+                   float(side), push)
 
-    def shoot(self, p, angle, power, cue=None, spin=0.0, pocket=None, side=0.0):
+    def hand_back(self, p):
+        """9-ball, after a rival's push-out: make the pusher shoot from where the balls lie."""
+        r = self.room
+        if self.push_choice != p.id:
+            raise GameError("You can only hand the table back after a push-out.")
+        self.push_choice = None
+        other = next((i for i in self.seats if i != p.id), None)
+        self.last = f"↩️ {p.name} hands it back."
+        r.add_log(f"↩️ {p.name} hands the table back: {r.players[other].name if other in r.players else 'their rival'} shoots from there.")
+        r.begin_turn(other)
+
+    def shoot(self, p, angle, power, cue=None, spin=0.0, pocket=None, side=0.0, push=False):
         r = self.room
         if cue:
             self.pos[0] = cue
+        self.push_ok, self.push_choice = False, None  # shooting after a rival's push takes the table as it lies
         before = self.mine(p.id)
         targets = self.legal_targets(p.id)
         top, fric = (BREAK_MAX_SPEED, BREAK_FRICTION) if self.breaking else (MAX_SPEED, FRICTION)
@@ -451,12 +478,14 @@ class Billiards(Game):
         foul = None
         if 0 in sunk:
             foul = "the cue ball went in"
+        elif push:
+            pass  # a push-out needn't hit anything
         elif first is None:
             foul = "no ball was hit"
         elif not breaking and first not in targets:
             foul = f"the {first} was hit first"
         if self.nine:
-            return self.after_nine(p, sunk, foul, breaking)
+            return self.after_nine(p, sunk, foul, breaking, push)
         objects = [n for n in sunk if n not in (0, 8)]
         p.g.sunk += len(objects)
 
@@ -487,11 +516,13 @@ class Billiards(Game):
         scored = [n for n in objects if own is None or n in own]
         names = ", ".join(str(n) for n in objects)
         if foul:
-            self.in_hand = "anywhere"
+            # a scratch on the break: ball in hand behind the head line; any other foul: anywhere
+            self.in_hand = "kitchen" if breaking and 0 in sunk else "anywhere"
             if 0 in sunk:
                 self.pos.pop(0, None)
             self.last = f"⚠️ Foul: {foul}."
-            r.add_log(f"⚠️ {p.name}: foul, {foul}{f' (sank {names})' if objects else ''}. Ball in hand for the other player.", "power")
+            where = " behind the line" if self.in_hand == "kitchen" else ""
+            r.add_log(f"⚠️ {p.name}: foul, {foul}{f' (sank {names})' if objects else ''}. Ball in hand{where} for the other player.", "power")
             r.advance()
         elif scored:
             self.last = f"✅ {p.name} sank {names}."
@@ -503,25 +534,51 @@ class Billiards(Game):
             r.advance()
         r.bot_at = max(r.bot_at, self.busy_until + 0.7)
 
-    def after_nine(self, p, sunk, foul, breaking):
+    def after_nine(self, p, sunk, foul, breaking, push=False):
         """Nine-ball: hit the lowest ball first; pocket anything on a legal shot and you shoot again; the 9 on a
-        legal shot (the break and combinations count) wins. A foul gives ball in hand and brings the 9 back up."""
+        legal shot (the break and combinations count) wins. A foul gives ball in hand and brings the 9 back up.
+        The first shot after the break may be a push-out: no need to hit anything, and the rival then picks
+        who shoots next. Three fouls in a row lose."""
         r = self.room
         objects = [n for n in sunk if n]
         p.g.sunk += len([n for n in objects if n != 9])
         names = ", ".join(str(n) for n in objects)
+        other_id = next((i for i in self.seats if i != p.id), None)
+        if foul:
+            self.fouls[p.id] = self.fouls.get(p.id, 0) + 1
+            if self.fouls[p.id] >= 3:
+                other = r.players.get(other_id)
+                self.last = f"💥 {p.name} fouled three times in a row."
+                r.add_log(f"⚠️ {p.name}: foul, {foul}.", "power")
+                return self.finish(other, f"💥 {p.name} fouled three times in a row. {other.name if other else 'Their rival'} wins!")
+        else:
+            self.fouls[p.id] = 0
+        if push and not foul:
+            if 9 in sunk:
+                self.pos[9] = free_spot(self.pos, *FOOT)
+            self.push_choice = other_id
+            self.last = f"🔀 {p.name} pushes out."
+            r.add_log(f"🔀 {p.name} pushes out{f' (sank {names})' if objects else ''}"
+                      f"{'. The 9 goes back on its spot' if 9 in sunk else ''}. "
+                      f"{r.players[other_id].name if other_id in r.players else 'Their rival'} shoots from there or hands it back.", "question")
+            r.advance()
+            r.bot_at = max(r.bot_at, self.busy_until + 0.7)
+            return
         if 9 in sunk and not foul:
             self.last = f"🏆 {p.name} sinks the 9!"
             return self.finish(p, f"🏆 {p.name} sinks the 9{' on the break' if breaking else ''} and wins!")
         if 9 in sunk:
             self.pos[9] = free_spot(self.pos, *FOOT)
+        if breaking:
+            self.push_ok = True  # whoever shoots next may push out
         if foul:
             self.in_hand = "anywhere"
             if 0 in sunk:
                 self.pos.pop(0, None)
             self.last = f"⚠️ Foul: {foul}."
+            warn = " ⚠️ Two fouls in a row: one more loses." if self.fouls[p.id] == 2 else ""
             r.add_log(f"⚠️ {p.name}: foul, {foul}{f' (sank {names})' if objects else ''}"
-                      f"{'. The 9 goes back on its spot' if 9 in sunk else ''}. Ball in hand for the other player.", "power")
+                      f"{'. The 9 goes back on its spot' if 9 in sunk else ''}. Ball in hand for the other player.{warn}", "power")
             r.advance()
         elif objects:
             self.last = f"✅ {p.name} sank {names}."
@@ -558,6 +615,7 @@ class Billiards(Game):
         r = self.room
         r.add_log(f"⏰ {r.players[r.turn].name} ran out of time. Ball in hand for the other player.", "power")
         self.in_hand = self.in_hand or "anywhere"
+        self.push_ok, self.push_choice = False, None
         r.advance()
 
     # -- what each player sees
@@ -595,6 +653,8 @@ class Billiards(Game):
                      "cushionSoft": CUSHION_SOFT, "cushionHard": CUSHION_HARD, "cushionV": CUSHION_V, "near": NEAR_EDGE},
             "edges": [list(e) for e in EDGES],
             "calling": self.calling(self.room.turn) if self.room.turn and self.room.phase == "playing" else False,
+            "pushOk": bool(getattr(self, "push_ok", False)), "pushChoice": getattr(self, "push_choice", None),
+            "fouls": getattr(self, "fouls", {}),
         }}
 
     # -- bots: ghost-ball aiming; the hard bot test-runs its best ideas in the real engine
@@ -613,6 +673,8 @@ class Billiards(Game):
             cue = self.place_cue(p, targets)
         cx, cy = cue or self.pos[0]
         shots = self.candidates(cx, cy, targets)
+        if self.push_choice == p.id and (not shots or shots[0][0] < PUSH_TAKE[p.bot]):
+            return self.hand_back(p)  # the rival pushed out to a poor spot: make them shoot it
         if not shots:
             angle, power = self.safety(cx, cy, targets)
             hole = None

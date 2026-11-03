@@ -461,6 +461,7 @@ body.replaying .layout { padding-bottom: 190px; }  /* the bar covers the bottom 
 .bl-stage canvas[hidden] { display: none; }
 .bl-views { position: absolute; top: 8px; left: 8px; display: flex; gap: 6px; z-index: 2; }
 .bl-views button { padding: 6px 10px; font-size: 13px; background: #000a; color: #fff; }
+.bl-views button.on { background: #ffb703; color: #000; }
 .bl-controls { display: flex; align-items: center; gap: 8px; margin: 10px auto 0; max-width: 640px; }
 .bl-controls > button { flex: none; min-width: 48px; font-size: 20px; padding: 10px 0; touch-action: manipulation; }
 .bl-controls #blShoot { min-width: 96px; font-size: 16px; padding: 12px 10px; }

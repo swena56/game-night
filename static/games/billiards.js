@@ -3,7 +3,7 @@
 UI.billiards = (() => {
   let S, ctx, raf = 0, ro = null, animEnd = 0;
   let dial = null, aim = 0, aimFor = null, power = 0.55, cuePos = null, drag = null, anim = null, seenShot = 0;
-  let spin = 0, english = 0, called = null;  // where the cue tip strikes: follow (+) / draw (−), right (+) / left (−); the pocket called for the 8
+  let spin = 0, english = 0, called = null, pushing = false;  // where the cue tip strikes: follow (+) / draw (−), right (+) / left (−); the pocket called for the 8
   let rolls = new Map();  // each ball's orientation, so it turns as it rolls (#33)
   let view = { z: 1, x: 0, y: 0 }, pinch = null, aimBefore = 0;  // two-finger zoom of the table (#28)
   const touches = new Map();
@@ -757,6 +757,7 @@ UI.billiards = (() => {
   function shoot() {
     if (!canShoot()) return;
     const extra = { angle: aim, power, spin, side: english };
+    if (pushing && B().pushOk) extra.push = true;
     if (B().calling) {
       if (called == null) return ctx.toast('📣 Tap the pocket you\'re aiming the 8 at first.');
       extra.pocket = called;
@@ -775,7 +776,9 @@ UI.billiards = (() => {
     gl = null; view3d = false; camAt = null;
     main.innerHTML = `<div class="bl"><div id="blStage" class="bl-stage"><canvas id="blCanvas"></canvas>
         <button id="blZoom" class="bl-zoom" hidden aria-label="Show the whole table">🔍 1×</button>
-        <div class="bl-views"><button id="blView" hidden>🧊 3D</button><button id="blCam" hidden>🎥 Behind cue</button></div></div>
+        <div class="bl-views"><button id="blView" hidden>🧊 3D</button><button id="blCam" hidden>🎥 Behind cue</button>
+          <button id="blPush" hidden aria-pressed="false" title="9-ball: the first shot after the break may be a push-out. It needn't hit anything; your rival then shoots from there or hands it back.">🔀 Push out</button>
+          <button id="blPass" hidden title="Make your rival shoot from where their push-out left the balls">↩️ Hand it back</button></div></div>
       <div class="bl-controls">
         <button id="blLeft" aria-label="Aim left">◀</button>
         <div class="bl-power"><div id="blStroke" class="bl-stroke" title="Pull the cue back: drag left from anywhere on the bar and let go to shoot. Tap to just set the power. Drag off the bar to cancel.">
@@ -807,6 +810,8 @@ UI.billiards = (() => {
     $('blZoom').onclick = () => { view = { z: 1, x: 0, y: 0 }; applyView(); };
     $('blView').onclick = () => { setPref('view', view3d ? '2d' : '3d'); setView(!view3d); };
     $('blCam').onclick = () => setCam(cam === 'cue' ? 'table' : 'cue');
+    $('blPush').onclick = () => { pushing = !pushing; ctx?.rerender?.(); };
+    $('blPass').onclick = () => { if (canShoot()) ctx.quiet(ctx.act('pass')); };
     // the cue-ball pad (#34): where the tip strikes. Up/down is follow/draw, left/right is side spin.
     const pad = $('blSpin');
     const setTip = (fx, fy) => {
@@ -909,20 +914,30 @@ UI.billiards = (() => {
     // a fresh turn for me: aim at something sensible and put a placeable cue ball down
     const turnKey = `${S.turn}:${b.shot?.id ?? 0}`;
     if (ctx.myTurn && aimFor !== turnKey) {
-      aimFor = turnKey; called = null;
+      aimFor = turnKey; called = null; pushing = false;
       cuePos = b.inHand ? defaultCue() : null;
       aim = defaultAim();
     }
     const me = S.me.id, mine = b.groups[me], turnName = ctx.player(S.turn)?.name ?? '';
+    const pushText = pushing ? '🔀 Push out: no need to hit anything (a scratch is still a foul). Your rival then shoots from there or hands it back.'
+      : b.pushOk ? '🔀 You may push out (button on the table), or play a normal shot. ' : '';
+    const foulWarn = b.rules === '9' && (b.fouls?.[me] ?? 0) === 2 ? '⚠️ Two fouls in a row: one more loses. ' : '';
+    const pushedBy = b.pushChoice === me ? ctx.player(Object.keys(b.fouls || {}).find((i) => i !== me))?.name ?? 'Your rival' : '';
     const callText = called == null ? '📣 On the 8: tap the pocket you\'re calling.' : '🎱 Sink the 8 in the called pocket to win!';
     $('blStatus').textContent = S.phase !== 'playing' ? (b.last || 'Game over')
       : ctx.myTurn ? (b.inHand ? (b.inHand === 'kitchen' ? '✋ Place the cue ball behind the line, then break.' : '✋ Ball in hand: drag the cue ball anywhere.')
           + (b.calling ? ` ${callText}` : '')
         : b.calling ? callText
         : b.breaking ? 'Your break!'
-        : b.rules === '9' ? (b.targets[0] === 9 ? '9️⃣ Only the 9 left: sink it to win!' : `Hit the ${b.targets[0]} first. Sink the 9 to win.`)
+        : pushedBy ? `🔀 ${pushedBy} pushed out. Shoot from here (hit the ${b.targets[0]} first), or ↩️ hand it back.`
+        : pushing ? pushText
+        : b.rules === '9' ? foulWarn + pushText + (b.targets[0] === 9 ? '9️⃣ Only the 9 left: sink it to win!' : `Hit the ${b.targets[0]} first. Sink the 9 to win.`)
         : b.targets.length === 1 && b.targets[0] === 8 ? '🎱 Sink the 8 to win!' : 'Your shot.')
-      : S.turn ? `${turnName} is shooting…` : '🎱 …';
+      : S.turn ? (b.pushChoice === S.turn ? `🔀 ${turnName} decides: shoot from here or hand it back…` : `${turnName} is shooting…`) : '🎱 …';
+    $('blPush').hidden = !(canShoot() && b.pushOk);
+    $('blPush').classList.toggle('on', pushing);
+    $('blPush').setAttribute('aria-pressed', String(pushing));
+    $('blPass').hidden = !(canShoot() && b.pushChoice === me);
     $('blShoot').disabled = !canShoot();
     for (const id of ['blLeft', 'blRight', 'blPower']) $(id).disabled = !canShoot();
     $('blStroke').classList.toggle('off', !canShoot());

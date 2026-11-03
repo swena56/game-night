@@ -120,7 +120,7 @@ Every game has **Easy / Normal / Hard bots**:
 - **Fib Finder:** bots write plausible decoy answers. Like people, they sometimes just know the fact; hard bots are also suspicious of answers that don't sound like a real guess.
 - **Word Ladder:** bots step along a shortest everyday-word ladder; easier bots take wrong turns more often, back up when stuck and climb more slowly.
 - **Night Heist:** the bot reads the pot size and the table size.
-- **Billiards:** bots aim with the ghost-ball method, checking that both paths are clear and the cut isn't too thin, and pick a power that gets the ball to the pocket. With ball in hand they choose the spot with the best shot. The hard bot runs its five best ideas through the real physics engine and also weighs the next shot it leaves itself, then tries its pick with follow and with draw in case either leaves a better one. All bots cut a touch thinner to allow for throw.
+- **Billiards:** bots aim with the ghost-ball method, checking that both paths are clear and the cut isn't too thin, and pick a power that gets the ball to the pocket. With ball in hand they choose the spot with the best shot. The hard bot runs its five best ideas through the real physics engine and also weighs the next shot it leaves itself, then tries its pick with follow and with draw in case either leaves a better one. All bots cut a touch thinner to allow for throw. Bots never push out in 9-ball; after a rival's push they shoot only if they have a decent pot (the easy bot always shoots) and otherwise hand the table back.
 - **Farkle:** bots weigh the chance of farkling with the dice left (measured: 67% with one die down to 2% with six) against the average gain, and keep rolling when it pays; in the final round they roll until they beat the leader. Hard keeps fewer dice to roll more. Simulation shows Farkle is mostly luck past that: hard and normal finish about even, both well ahead of easy.
 - **Qork:** bots react after a human-like delay (easy ≈ 640 ms, normal ≈ 480 ms, hard ≈ 350 ms) and sometimes flinch at a near miss (a 6 or 8, or dice one apart): easy 10%, normal 7%, hard 2%. They only see what's on the table. Simulation: hard wins almost every bot-only game.
 - **Ship, Captain & Crew:** hard bots reroll cargo by an exact expected-value table (one die or both); normal bots reroll below 7, easy below 6; in the last round, bots behind the leader gamble.
@@ -287,6 +287,7 @@ python3 tests/jscheck.py static/app.js static/games/*.js   # structural check, n
 python3 tests/csscheck.py                                    # layout lint (jsdom does no layout)
 node --check static/app.js                                  # real syntax check (Node.js)
 python3 tests/billiards_physics.py                          # billiards shot engine, and the aim guide's copy of it
+python3 tests/billiards_rules.py                            # billiards rules (push-outs, fouls, breaks) on a scripted engine
 PORT=8767 python3 server.py &                               # a separate test server (own rooms-8767.pickle / feedback-8767.jsonl)
 cd tests && npm install && BASE=http://localhost:8767 node ui.js          # every game
 BASE=http://localhost:8767 node ui.js chess spire                          # just some
@@ -562,6 +563,9 @@ Riders and Air Hockey start in it) (#13, #15).
   real one (so position play stays on the table), which left a break potting almost nothing. ✅ A livelier break:
   the break gets its own top speed (720, about twice a hard shot) and a faster cloth (rolling friction 18 instead of
   70), so about four breaks in ten pot a ball in 8-ball and half in 9-ball; the aim guide uses the same values.
+  ✅ Fuller rules: a scratch on an 8-ball break gives ball in hand behind the head line; 9-ball has the 🔀 push-out
+  (the first shot after the break needn't hit anything; the rival shoots from there or hands it back) and three fouls
+  in a row lose (a warning after two). `tests/billiards_rules.py` checks the rules with a scripted engine.
 - 🗼 **Spire Siege:** ✅ a 🟦 4-block piece set beside the mixed 2/3/5-block set (#13), a ⇄ hold slot
   (C / Shift / swipe up), and a sharper flat well on high-DPI screens. ✅ 🟦 4-block is now the default
   (#26); the odd shapes are the 🧩 Mixed option. ✅ Normal and hard bots use the ⇄ hold slot (they park a piece and
