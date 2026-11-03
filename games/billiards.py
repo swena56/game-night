@@ -31,6 +31,9 @@ TIP_K = 1.5                          # follow / draw: spin (as surface speed R·
 SIDE_TIP = 1.25                      # side spin: the same, for english (spin about the vertical axis)
 SIDE_DECAY = 150.0                   # english wears off steadily (the contact patch's twisting friction), units/s²
 SQUIRT = math.radians(2.0)           # english pushes the cue ball off the stick's line, away from the side struck
+MAX_ELEV = 60.0                      # how far the cue's butt can be raised (degrees), for swerve and massé (#45)
+MASSE_K = 2.0                        # an elevated side hit: sideways roll (R·ω) per unit of cue speed, × sin(elevation)
+ELEV_LOSS = 0.35                     # ... and a steeper stroke drives more of it into the cloth: speed × (1 − this · sin)
 MIN_SPEED, MAX_SPEED = 25.0, 520.0   # cue speed at power 0 and 1
 # the break: a real break is about twice a hard shot, and a slow cloth (FRICTION is ~9x real, so position
 # play stays on the table) would stop the rack dead. Breaks get their own top speed and a livelier cloth, so
@@ -221,20 +224,27 @@ def collide(balls, first, h):
     return first
 
 
-def simulate(pos, angle, speed, record=True, spin=0.0, holes=None, side=0.0, friction=FRICTION):
+def simulate(pos, angle, speed, record=True, spin=0.0, holes=None, side=0.0, friction=FRICTION, elev=0.0):
     """Run one shot. pos: {ball: (x, y)} with the cue ball as 0. spin: -1 (draw) to 1 (follow): where the tip
     strikes, top to bottom. Struck high the cue ball turns over faster than it rolls, struck low it spins
     backwards; struck in the middle it skids (a stun). The spin only shows after the cue ball hits a ball,
     which takes its speed but not its spin: the cloth then drives it on, stops it dead or pulls it back, and
     on a cut shot bends its path. side: -1 (left) to 1 (right english), spin about the vertical that bends
-    the bounce off each cushion. holes, if given, gets {ball: pocket index}.
+    the bounce off each cushion. elev: how far the cue's butt is raised (0 to MAX_ELEV degrees). An elevated
+    side hit tilts the spin's axis, so the ball also rolls sideways while it skids: the cloth bends its path
+    toward the side struck (a swerve, or a massé when steep), and less of the spin is left for the cushions.
+    holes, if given, gets {ball: pocket index}.
     Returns (final positions, pocketed balls in order, first ball the cue touched, frames)."""
     balls = {n: [x, y, 0.0, 0.0, 0.0, 0.0, 0.0] for n, (x, y) in pos.items()}
     side = max(-1.0, min(1.0, side))
     angle -= SQUIRT * side  # right english (side > 0) squirts the ball to the left of the aim
     aim_x, aim_y = math.cos(angle), math.sin(angle)
+    tilt = math.radians(max(0.0, min(MAX_ELEV, elev)))
+    speed *= 1 - ELEV_LOSS * math.sin(tilt)
     top = TIP_K * max(-1.0, min(1.0, spin)) * speed
-    balls[0][2:] = [aim_x * speed, aim_y * speed, aim_x * top, aim_y * top, SIDE_TIP * side * speed]
+    curve = MASSE_K * side * speed * math.sin(tilt)  # sideways roll, toward the ball's right for right english
+    balls[0][2:] = [aim_x * speed, aim_y * speed, aim_x * top - aim_y * curve, aim_y * top + aim_x * curve,
+                    SIDE_TIP * side * speed * math.cos(tilt)]
     pocketed, first, frames = [], None, []
     order = sorted(pos)
     for step in range(MAX_STEPS):
@@ -357,6 +367,7 @@ class Billiards(Game):
         "The first ball you pocket after the break picks your group: 🔵 solids (1–7) or 🟠 stripes (9–15).",
         "Pocket one of yours and you shoot again. Hit your own group first.",
         "The cue-ball pad by Shoot picks where the cue strikes: high to follow through, low to draw back, the middle to stop dead on a close straight hit, left or right to bend the bounce off a cushion. Side spin also pushes the cue ball a touch off the line "
+        "⤴ under the pad raises the butt of the cue: with left or right on the pad, the cue ball curves toward that side (a swerve; steep, a massé) and goes a little slower.",
         "(the full aim guide shows where it really goes). Spin wears off as the ball travels.",
         "Pockets have jaws: a ball straight in drops, one coming in at a slant can catch the point and rattle out. Side pockets want straight-in shots.",
         "The Cloth setting: 🐢 Classic is slow, so balls stop soon; 🏎️ Fast rolls like a real table, so play softer.",
@@ -489,14 +500,16 @@ class Billiards(Game):
                 raise GameError("The cue ball can't go there." + (" Keep it behind the line for the break." if self.in_hand == "kitchen" else ""))
         elif 0 not in self.pos:
             raise GameError("Place the cue ball first.")
-        spin, side = a.get("spin", 0), a.get("side", 0)
+        spin, side, elev = a.get("spin", 0), a.get("side", 0), a.get("elev", 0)
         if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and -1 <= v <= 1 for v in (spin, side)):
             raise GameError("Bad spin.")
+        if not (isinstance(elev, (int, float)) and not isinstance(elev, bool) and math.isfinite(elev) and 0 <= elev <= MAX_ELEV):
+            raise GameError("Bad cue elevation.")
         pocket = a.get("pocket")
         if self.calling(p.id) and (not isinstance(pocket, int) or isinstance(pocket, bool) or not 0 <= pocket < len(POCKETS)):
             raise GameError("Call a pocket for the 8 first.")
         self.shoot(p, float(angle), float(power), tuple(cue) if cue else None, float(spin), pocket if self.calling(p.id) else None,
-                   float(side), push)
+                   float(side), push, float(elev))
 
     def hand_back(self, p):
         """9-ball, after a rival's push-out: make the pusher shoot from where the balls lie."""
@@ -509,7 +522,7 @@ class Billiards(Game):
         r.add_log(f"↩️ {p.name} hands the table back: {r.players[other].name if other in r.players else 'their rival'} shoots from there.")
         r.begin_turn(other)
 
-    def shoot(self, p, angle, power, cue=None, spin=0.0, pocket=None, side=0.0, push=False):
+    def shoot(self, p, angle, power, cue=None, spin=0.0, pocket=None, side=0.0, push=False, elev=0.0):
         r = self.room
         if cue:
             self.pos[0] = cue
@@ -521,7 +534,7 @@ class Billiards(Game):
         order = sorted(self.pos)
         holes = {}
         cx, cy = self.pos[0]
-        final, sunk, first, frames = simulate(self.pos, angle, speed, spin=spin, holes=holes, side=side, friction=fric)
+        final, sunk, first, frames = simulate(self.pos, angle, speed, spin=spin, holes=holes, side=side, friction=fric, elev=elev)
         breaking, self.breaking, self.in_hand = self.breaking, False, None
         self.pos = final
         self.shot_seq += 1
@@ -731,6 +744,7 @@ class Billiards(Game):
             "phys": {"slide": SLIDE, "bounce": BOUNCE, "railGrip": RAIL_GRIP, "tipK": TIP_K,
                      "sideTip": SIDE_TIP, "sideDecay": SIDE_DECAY, "dt": DT, "stop": STOP, "throw": THROW,
                      "throwSlow": THROW_SLOW, "throwV": THROW_V, "squirt": SQUIRT,
+                     "masseK": MASSE_K, "elevLoss": ELEV_LOSS, "maxElev": MAX_ELEV,
                      "cushionSoft": CUSHION_SOFT, "cushionHard": CUSHION_HARD, "cushionV": CUSHION_V, "near": NEAR_EDGE},
             "edges": [list(e) for e in EDGES],
             "calling": self.calling(self.room.turn) if self.room.turn and self.room.phase == "playing" else False,

@@ -573,6 +573,9 @@ Riders and Air Hockey start in it) (#13, #15).
   ✅ A 🏎️ Fast cloth table setting (#54): rolling friction 15 (about a real table) instead of 70, with a top speed of
   320 so the power bar stays usable; a ball at the same speed rolls about 3× further, the same power about 1.5×.
   🐢 Classic stays the default. The bots and the aim guide follow the setting.
+  ✅ ⤴ Cue elevation (#45): raise the butt of the cue up to 60°; with side spin the cue ball also rolls sideways
+  while it skids, so the cloth curves it toward the side struck (a swerve, or a massé when steep: about 40 units
+  sideways over a long shot at 55°), and a steep stroke loses some speed into the cloth. The aim guide shows the curve.
 - 🗼 **Spire Siege:** ✅ a 🟦 4-block piece set beside the mixed 2/3/5-block set (#13), a ⇄ hold slot
   (C / Shift / swipe up), and a sharper flat well on high-DPI screens. ✅ 🟦 4-block is now the default
   (#26); the odd shapes are the 🧩 Mixed option. ✅ Normal and hard bots use the ⇄ hold slot (they park a piece and

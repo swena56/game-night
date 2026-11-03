@@ -51,6 +51,17 @@ check("right english bends off the rail", final[0][1] < 40, f"y={final[0][1]:.1f
 final = shot({0: (100, 50)}, 0, 200, side=-1)[0]
 check("left english bends the other way", final[0][1] > 60, f"y={final[0][1]:.1f}")
 
+# ---------- cue elevation (#45): an elevated side hit curves toward the side struck; a level one doesn't
+def sideways(side, elev):
+    return b.simulate({0: (30, 50)}, 0.0, 150, side=side, elev=elev, record=False)[0][0][1] - 50
+
+
+level, swerve, masse = sideways(1, 0), sideways(1, 20), sideways(1, 55)
+check("a level cue with english doesn't curve (only squirts a little)", -8 < level < 0, f"{level:+.1f}")
+check("an elevated right-english hit curves right", swerve > 10 and masse > swerve, f"{swerve:+.1f} at 20°, {masse:+.1f} at 55°")
+check("left english curves the other way", abs(sideways(-1, 55) + masse) < 1e-6, f"{sideways(-1, 55):+.1f}")
+check("elevation without english goes straight", abs(sideways(0, 55)) < 1e-6)
+
 # ---------- cushions: a rolling ball comes off still rolling; a soft hit keeps more speed than a hard one
 ball = [190.0, 50.0, 100.0, 0.0, 100.0, 0.0, 0.0]
 b.rail(ball, 1.0, 0.0)
@@ -168,36 +179,38 @@ def guide_check():
     if not m:
         check("found predict() in billiards.js", False)
         return
-    shots = [  # (cue ball, object ball, aim angle, power, spin, english, a break? / "fast" cloth)
+    shots = [  # (cue ball, object ball, aim angle, power, spin, english, a break? / "fast" cloth / cue elevation)
         ((60, 50), (100, 53), 0.0, 0.4, 0, 0, False), ((60, 50), (100, 47), 0.0, 0.6, 1, 0, False),
         ((40, 30), (120, 60), math.atan2(28, 80), 0.5, -1, 0.5, False), ((150, 80), (60, 20), math.atan2(-58.2, -90), 0.7, 0.3, -1, False),
         ((50, 50), (100, 52), 0.0, 1.0, 0, 0, True),  # the break: its own top speed and cloth
         ((60, 50), (100, 47), 0.0, 0.5, 1, 0, "fast"), ((40, 30), (120, 60), math.atan2(28, 80), 0.6, -1, 0.5, "fast"),
+        ((30, 50), (112, 58.5), 0.0, 0.5, 0, 1, 40),  # an elevated cue (40°): a swerve into the ball
     ]
     cases, every = [], b.FRAME_EVERY
     b.FRAME_EVERY = 1  # record every step, so curved (spin) paths are compared closely
     for cue, obj, ang, power, spin, side, brk in shots:
-        top, fric = (b.BREAK_MAX_SPEED, b.BREAK_FRICTION) if brk is True else b.CLOTHS["fast"][::-1] if brk else (b.MAX_SPEED, b.FRICTION)
+        el = brk if isinstance(brk, (int, float)) and not isinstance(brk, bool) else 0
+        top, fric = (b.BREAK_MAX_SPEED, b.BREAK_FRICTION) if brk is True else b.CLOTHS["fast"][::-1] if brk == "fast" else (b.MAX_SPEED, b.FRICTION)
         speed = b.MIN_SPEED + (top - b.MIN_SPEED) * power
-        _, _, first, frames, _ = shot({0: cue, 1: obj}, ang, speed, spin=spin, side=side, friction=fric)
+        _, _, first, frames, _ = shot({0: cue, 1: obj}, ang, speed, spin=spin, side=side, friction=fric, elev=el)
         cases.append({"cue": cue, "obj": obj, "aim": ang, "power": power, "spin": spin, "english": side,
                       "breaking": brk is True, "friction": fric if brk is not True else b.FRICTION,
-                      "maxSpeed": top if brk is not True else b.MAX_SPEED, "first": first, "frames": frames})
+                      "maxSpeed": top if brk is not True else b.MAX_SPEED, "elev": el, "first": first, "frames": frames})
     b.FRAME_EVERY = every
     phys = {"slide": b.SLIDE, "bounce": b.BOUNCE, "railGrip": b.RAIL_GRIP, "tipK": b.TIP_K, "sideTip": b.SIDE_TIP,
             "sideDecay": b.SIDE_DECAY, "dt": b.DT, "stop": b.STOP, "throw": b.THROW, "throwSlow": b.THROW_SLOW,
-            "throwV": b.THROW_V, "squirt": b.SQUIRT, "cushionSoft": b.CUSHION_SOFT,
+            "throwV": b.THROW_V, "squirt": b.SQUIRT, "masseK": b.MASSE_K, "elevLoss": b.ELEV_LOSS, "maxElev": b.MAX_ELEV, "cushionSoft": b.CUSHION_SOFT,
             "cushionHard": b.CUSHION_HARD, "cushionV": b.CUSHION_V, "near": b.NEAR_EDGE}
     table = {"W": b.TW, "H": b.TH, "R": R, "pockets": [list(p) for p in b.POCKETS], "edges": [list(e) for e in b.EDGES],
              "friction": b.FRICTION, "minSpeed": b.MIN_SPEED, "maxSpeed": b.MAX_SPEED, "phys": phys,
              "breakFriction": b.BREAK_FRICTION, "breakMaxSpeed": b.BREAK_MAX_SPEED}
     js = f"""
-let aim = 0, power = 0, spin = 0, english = 0, TABLE = {json.dumps(table)}, CUR = null;
+let aim = 0, power = 0, spin = 0, english = 0, elev = 0, TABLE = {json.dumps(table)}, CUR = null;
 const B = () => CUR;
 {m.group(0)}
 const out = [];
 for (const c of {json.dumps(cases)}) {{
-  aim = c.aim; power = c.power; spin = c.spin; english = c.english; predKey = '';
+  aim = c.aim; power = c.power; spin = c.spin; english = c.english; elev = c.elev; predKey = '';
   CUR = Object.assign({{}}, TABLE, {{ balls: [[1, c.obj[0], c.obj[1]]], breaking: c.breaking, friction: c.friction, maxSpeed: c.maxSpeed }});
   const p = predict(c.cue);
   out.push(p && p.obj ? {{ obj: p.obj.pts, cue: p.cue.pts }} : null);

@@ -3,7 +3,8 @@
 UI.billiards = (() => {
   let S, ctx, raf = 0, ro = null, roRaf = 0, animEnd = 0, setTip = null;
   let dial = null, aim = 0, aimFor = null, power = 0.55, cuePos = null, drag = null, anim = null, seenShot = 0, lastShot = null;
-  let spin = 0, english = 0, called = null, pushing = false;  // where the cue tip strikes: follow (+) / draw (−), right (+) / left (−); the pocket called for the 8
+  let spin = 0, english = 0, elev = 0, called = null, pushing = false;  // elev: the cue's butt raised, in degrees (swerve / massé, #45)
+  // where the cue tip strikes: follow (+) / draw (−), right (+) / left (−); the pocket called for the 8
   let rolls = new Map();  // each ball's orientation, so it turns as it rolls (#33)
   let view = { z: 1, x: 0, y: 0 }, pinch = null, aimBefore = 0;  // two-finger zoom of the table (#28)
   const touches = new Map();
@@ -112,7 +113,7 @@ UI.billiards = (() => {
   function predict(cue) {
     const b = B(), P = b.phys;
     if (!P) return null;
-    const key = [aim, power, spin, english, cue[0], cue[1], b.breaking, b.balls.map((a) => a.join()).join(';')].join('|');
+    const key = [aim, power, spin, english, elev, cue[0], cue[1], b.breaking, b.balls.map((a) => a.join()).join(';')].join('|');
     if (key === predKey) return pred;
     predKey = key;
     const brk = b.breaking && b.breakMaxSpeed, R = b.R, POCK = b.pockets, EDGES = b.edges || [], F = brk ? b.breakFriction : b.friction, NEAR = P.near, W = b.W, H = b.H;
@@ -120,8 +121,11 @@ UI.billiards = (() => {
     for (const [n, x, y] of b.balls) if (n !== 0) balls.set(n, [x, y, 0, 0, 0, 0, 0]);
     // squirt: right english pushes the cue ball a little left of the stick's line
     const launch = aim - (P.squirt || 0) * english;
-    const speed = b.minSpeed + ((brk ? b.breakMaxSpeed : b.maxSpeed) - b.minSpeed) * power, ax = Math.cos(launch), ay = Math.sin(launch), top = P.tipK * spin * speed;
-    const cb = [cue[0], cue[1], ax * speed, ay * speed, ax * top, ay * top, P.sideTip * english * speed];
+    // an elevated side hit also rolls the ball sideways while it skids, so it curves (simulate() in games/billiards.py)
+    const tilt = (Math.max(0, Math.min(P.maxElev || 0, elev)) * Math.PI) / 180;
+    const speed = (b.minSpeed + ((brk ? b.breakMaxSpeed : b.maxSpeed) - b.minSpeed) * power) * (1 - (P.elevLoss || 0) * Math.sin(tilt));
+    const ax = Math.cos(launch), ay = Math.sin(launch), top = P.tipK * spin * speed, curve = (P.masseK || 0) * english * speed * Math.sin(tilt);
+    const cb = [cue[0], cue[1], ax * speed, ay * speed, ax * top - ay * curve, ay * top + ax * curve, P.sideTip * english * speed * Math.cos(tilt)];
     balls.set(0, cb);
     const cloth = (o, h) => {
       let [, , vx, vy, sx, sy] = o;
@@ -808,6 +812,7 @@ UI.billiards = (() => {
   function shoot() {
     if (!canShoot()) return;
     const extra = { angle: aim, power, spin, side: english };
+    if (elev) extra.elev = elev;
     if (pushing && B().pushOk) extra.push = true;
     if (B().calling) {
       if (called == null) return ctx.toast('📣 Tap the pocket you\'re aiming the 8 at first.');
@@ -820,9 +825,17 @@ UI.billiards = (() => {
     ctx.quiet(ctx.act('shoot', extra));
   }
 
+  function setElev(d) {  // the cue elevation control (#45)
+    elev = Math.max(0, Math.min(60, Math.round(d / 5) * 5));
+    const el = $('blElev');
+    if (!el) return;
+    el.value = elev;
+    $('blElevVal').textContent = elev ? `${elev}°` : 'level';
+  }
+
   // ---------- mount / render
   function mount(main, side) {
-    view = { z: 1, x: 0, y: 0 }; pinch = null; touches.clear(); rolls = new Map(); spin = english = 0;
+    view = { z: 1, x: 0, y: 0 }; pinch = null; touches.clear(); rolls = new Map(); spin = english = elev = 0;
     dial = null; aim = 0; aimFor = null; power = 0.55; cuePos = null; drag = null; anim = null; seenShot = 0; lastShot = null; geo = null;
     gl = null; view3d = false; camAt = null;
     main.innerHTML = `<div class="bl"><div id="blStage" class="bl-stage"><canvas id="blCanvas"></canvas>
@@ -842,7 +855,9 @@ UI.billiards = (() => {
         <div class="bl-spin"><div id="blSpin" class="bl-cueball" tabindex="0" role="slider" aria-valuemin="0" aria-valuemax="100"
           aria-label="Where the cue strikes the cue ball (arrow keys move it, 0 centres it)"
           title="Tap where the cue hits the cue ball: high = follow, low = draw (back spin), left or right = side spin off the cushions. Double-tap to centre."><i id="blTip"></i></div>
-          <small id="blSpinVal">centre</small></div>
+          <small id="blSpinVal">centre</small>
+          <label class="bl-elev" title="Raise the butt of the cue: with side spin the cue ball curves toward the side you hit (a swerve; steep, a massé)">⤴
+            <input id="blElev" type="range" min="0" max="60" step="5" value="0" aria-label="Cue elevation"><span id="blElevVal">level</span></label></div>
         <button id="blShoot" class="primary">🎱 Shoot</button>
       </div></div>`;
     side.innerHTML = `<div class="panel bl-side">
@@ -877,6 +892,7 @@ UI.billiards = (() => {
       $('blSpinVal').textContent = parts.join(' · ') || 'centre';
       pad.setAttribute('aria-valuetext', $('blSpinVal').textContent);
     };
+    $('blElev').oninput = () => setElev(+$('blElev').value);
     let padDrag = false;
     const padAt = (e) => { const r = pad.getBoundingClientRect(); setTip(((e.clientX - r.left) / r.width - 0.5) / 0.36, ((e.clientY - r.top) / r.height - 0.5) / 0.36); };
     pad.onpointerdown = (e) => { if (!canShoot()) return; e.preventDefault(); padDrag = true; try { pad.setPointerCapture(e.pointerId); } catch {} padAt(e); };
@@ -968,6 +984,7 @@ UI.billiards = (() => {
     if (ctx.myTurn && aimFor !== turnKey) {
       aimFor = turnKey; called = null; pushing = false;
       setTip?.(0, 0);  // each shot starts from a centre hit (#52), like the aim and the power do afresh
+      setElev(0);
       cuePos = b.inHand ? defaultCue() : null;
       aim = defaultAim();
     }
@@ -998,6 +1015,7 @@ UI.billiards = (() => {
     for (const id of ['blLeft', 'blRight', 'blPower']) $(id).disabled = !canShoot();
     $('blStroke').classList.toggle('off', !canShoot());
     $('blSpin').classList.toggle('off', !canShoot());
+    $('blElev').disabled = !canShoot();
     // a match: racks won, and between racks a card with the score
     $('blRackDone').hidden = !b.between;
     if (b.between) {
