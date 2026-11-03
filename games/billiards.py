@@ -17,8 +17,11 @@ from .base import Game, GameError
 TW, TH, R = 200.0, 100.0, 2.3        # table size and ball radius, in table units (1 unit ≈ 1.27 cm)
 FRICTION = 70.0                      # rolling slow-down, units/s²
 SLIDE = 130.0                        # sliding friction while a ball skids on the cloth, units/s²
-CUSHION, BOUNCE = 0.78, 0.95         # speed kept off a cushion / in a ball-to-ball hit
+BOUNCE = 0.95                        # speed kept in a ball-to-ball hit
+CUSHION_SOFT, CUSHION_HARD = 0.88, 0.66  # cushion bounce: soft hits keep more, hard ones squash the rubber
+CUSHION_V = 450.0                    # ... reaching CUSHION_HARD at this speed into the cushion
 RAIL_GRIP = 0.2                      # cushion friction: sideways impulse at most this share of the bounce impulse
+THROW = 0.06                         # ball-to-ball friction: a cut throws the object ball up to ~3° off the line
 TIP_K = 1.5                          # follow / draw: spin (as surface speed R·ω) per unit of cue speed at full offset
 SIDE_TIP = 1.25                      # side spin: the same, for english (spin about the vertical axis)
 SIDE_DECAY = 0.8                     # english wears off at this rate, per second
@@ -29,17 +32,50 @@ MAX_MOVE = R                         # sub-step so no ball moves further than th
 STOP = 1.0                           # a rolling ball slower than this stops
 # a ball struck without spin skids, then rolls at 5/7 of its speed: how far it goes per unit of speed²
 REACH_K = (24 / 49) / (2 * SLIDE) + (25 / 49) / (2 * FRICTION)
-# pockets: (x, y, capture radius); the side pockets sit just outside the long rails
+# pockets: (x, y, hole radius); a ball drops once its centre is over the hole. The side pockets sit just
+# outside the long rails.
 POCKETS = [(0, 0, 4.4), (TW / 2, -0.8, 3.9), (TW, 0, 4.4), (0, TH, 4.4), (TW / 2, TH + 0.8, 3.9), (TW, TH, 4.4)]
-MOUTH = 3.4                          # how far past the capture radius the cushions open up
+CORNER_JAW, SIDE_JAW = 7.0, 5.4      # where the cushion ends (the jaw's point): from a corner / either side of a side pocket
+CORNER_FACING, SIDE_FACING = 25, 45  # the jaw's facing runs from the point to the hole's edge this far round (degrees)
 HEAD_X, FOOT = TW / 4, (TW * 0.73, TH / 2)
 SOLIDS, STRIPES = set(range(1, 8)), set(range(9, 16))
 GROUPS = {"solids": SOLIDS, "stripes": STRIPES}
 GROUP_LABEL = {"solids": "🔵 solids", "stripes": "🟠 stripes"}
 
 
-def near_mouth(x, y):
-    return any(math.hypot(x - px, y - py) < cap + MOUTH for px, py, cap in POCKETS)
+def table_edges():
+    """The cushion line as segments [(x1, y1, x2, y2)], clockwise on screen from the top-left pocket: each
+    rail's cushion runs from one jaw point to the next, and each jaw has a facing angled from its point to
+    the edge of the hole, so the pocket is a funnel. A ball straight at a pocket drops; one coming in at a
+    slant or off line hits a point or a facing and can rattle out, more so the harder it's going."""
+    c25, s25 = math.cos(math.radians(CORNER_FACING)), math.sin(math.radians(CORNER_FACING))
+    c45, s45 = math.cos(math.radians(SIDE_FACING)), math.sin(math.radians(SIDE_FACING))
+    jaws = []  # per pocket, in order: (in point, in facing end, out facing end, out point)
+    for (px, py, cap), shape in zip(
+            [POCKETS[0], POCKETS[1], POCKETS[2], POCKETS[5], POCKETS[4], POCKETS[3]],
+            [((0, 1), (1, 0)), ("side", (1, 0), (0, -1), 0.0), ((-1, 0), (0, 1)), ((0, -1), (-1, 0)),
+             ("side", (-1, 0), (0, 1), TH), ((1, 0), (0, -1))]):
+        if shape[0] == "side":
+            _, (ax, ay), (ox, oy), rail_y = shape  # along the direction of travel; out of the table
+            jaws.append(((px - ax * SIDE_JAW, rail_y), (px + cap * (-c45 * ax + s45 * ox), py + cap * (-c45 * ay + s45 * oy)),
+                         (px + cap * (c45 * ax + s45 * ox), py + cap * (c45 * ay + s45 * oy)), (px + ax * SIDE_JAW, rail_y)))
+        else:
+            (ax, ay), (bx, by) = shape  # towards the jaw we arrive at / the one we leave by
+            jaws.append(((px + ax * CORNER_JAW, py + ay * CORNER_JAW), (px + cap * (c25 * ax - s25 * bx), py + cap * (c25 * ay - s25 * by)),
+                         (px + cap * (c25 * bx - s25 * ax), py + cap * (c25 * by - s25 * ay)), (px + bx * CORNER_JAW, py + by * CORNER_JAW)))
+    edges = []
+    for i, (p_in, f_in, f_out, p_out) in enumerate(jaws):
+        edges += [(*p_in, *f_in), (*f_out, *p_out), (*p_out, *jaws[(i + 1) % len(jaws)][0])]
+    return [tuple(round(v, 4) for v in e) for e in edges]
+
+
+EDGES = table_edges()
+NEAR_EDGE = CORNER_JAW + R           # balls further than this inside the cushion line can't touch any edge
+
+
+def cushion_e(vn):
+    """How much of its speed into the cushion a ball keeps: a soft hit more, a hard one less."""
+    return CUSHION_SOFT - (CUSHION_SOFT - CUSHION_HARD) * min(1.0, vn / CUSHION_V)
 
 
 def cloth(b, h):
@@ -71,30 +107,47 @@ def cloth(b, h):
     return True
 
 
-def rail(b, axis, into):
-    """A cushion on `axis` lying in direction `into` (±1): bounce, and let cushion friction act on the
-    english. The contact point's sideways slip is the ball's sideways speed plus its english, and the
-    cushion pushes against that slip, up to RAIL_GRIP of the bounce impulse; that kick changes both the
-    ball's path and its english (7/2: the same slip-to-speed ratio as on the cloth). Right english
-    (clockwise) comes off a rail to the ball's own right."""
-    t = 1 - axis  # the other axis runs along the cushion
-    vn = into * b[2 + axis]
+def rail(b, nx, ny):
+    """Bounce off a cushion lying in direction (nx, ny) from the ball's centre. The cushion's nose meets
+    the ball at natural-roll height (7/5 R off the cloth), where a push changes the ball's speed and its
+    rolling spin alike: a rolling ball comes off still rolling, a skidding one comes off with topspin.
+    Cushion friction pushes against the contact point's sideways slip (sideways speed plus english), up
+    to RAIL_GRIP of the bounce impulse, changing both the path and the english (7/2: the same
+    slip-to-speed ratio as on the cloth). Right english (clockwise) comes off to the ball's own right."""
+    vn = b[2] * nx + b[3] * ny
     if vn <= 0:  # already on its way out
         return
-    jn = vn * (1 + CUSHION)
-    b[2 + axis] = -into * vn * CUSHION
-    # the rolling spin turns around too, so a rolling ball still rolls (the cushion hits above centre)
-    b[4 + axis] *= -CUSHION
-    side = into if axis == 0 else -into  # the contact point's english moves along the cushion this way
-    slip = b[2 + t] + side * b[6]
+    jn = vn * (1 + cushion_e(vn))
+    tx, ty = -ny, nx  # along the cushion: the way the english moves the contact point
+    slip = b[2] * tx + b[3] * ty + b[6]
     jt = max(-RAIL_GRIP * jn, min(RAIL_GRIP * jn, slip / 3.5))
-    b[2 + t] -= jt
-    b[6] -= side * 2.5 * jt
+    jx, jy = -jn * nx - jt * tx, -jn * ny - jt * ty
+    b[2] += jx; b[3] += jy
+    b[4] += jx; b[5] += jy
+    b[6] -= 2.5 * jt
+
+
+def edges(b):
+    """Keep a ball off the cushions, jaw points and facings, bouncing it off any it has run into."""
+    x, y = b[0], b[1]
+    if NEAR_EDGE < x < TW - NEAR_EDGE and NEAR_EDGE < y < TH - NEAR_EDGE:
+        return
+    for x1, y1, x2, y2 in EDGES:
+        dx, dy = x2 - x1, y2 - y1
+        t = max(0.0, min(1.0, ((x - x1) * dx + (y - y1) * dy) / (dx * dx + dy * dy)))
+        qx, qy = x1 + t * dx - x, y1 + t * dy - y  # from the centre to the nearest point of this edge
+        d = math.hypot(qx, qy)
+        if d >= R or d == 0:
+            continue
+        nx, ny = qx / d, qy / d
+        x -= nx * (R - d); y -= ny * (R - d)
+        b[0], b[1] = x, y
+        rail(b, nx, ny)
 
 
 def collide(balls, first, h):
-    """Ball-to-ball hits: equal masses, along the line of centres, near-frictionless, so the balls swap
-    speed but keep their own spin. Returns the first ball the cue ball touched."""
+    """Ball-to-ball hits: equal masses, along the line of centres, so the balls swap speed but keep their
+    own roll, with a little friction between them (THROW). Returns the first ball the cue ball touched."""
     live = list(balls.items())
     for i, (n1, b1) in enumerate(live):
         for n2, b2 in live[i + 1:]:
@@ -125,6 +178,17 @@ def collide(balls, first, h):
             j = max(0.0, rel) * (1 + BOUNCE) / 2
             b1[2] -= j * nx; b1[3] -= j * ny
             b2[2] += j * nx; b2[3] += j * ny
+            # friction between the balls: the contact points slip sideways (a cut, and their english) and
+            # up-down (their roll), and friction against the sideways part throws the object ball off the
+            # line of centres, toward where the cue ball was heading, and turns each ball's english
+            tx, ty = -ny, nx
+            sh = (b1[2] - b2[2]) * tx + (b1[3] - b2[3]) * ty + b1[6] + b2[6]
+            slip = math.hypot(sh, (b1[4] + b2[4]) * nx + (b1[5] + b2[5]) * ny)
+            if j and slip > 1e-9:
+                jt = math.copysign(min(THROW * j * abs(sh) / slip, abs(sh) / 7), sh)  # 7: both balls' 1 + 5/2
+                b1[2] -= jt * tx; b1[3] -= jt * ty
+                b2[2] += jt * tx; b2[3] += jt * ty
+                b1[6] -= 2.5 * jt; b2[6] -= 2.5 * jt
             for b in (b1, b2):
                 b[0] += b[2] * back; b[1] += b[3] * back
             if first is None and 0 in (n1, n2):
@@ -161,19 +225,15 @@ def simulate(pos, angle, speed, record=True, spin=0.0, holes=None, side=0.0):
             first = collide(balls, first, h)
             for n, b in list(balls.items()):
                 hole = next((k for k, (px, py, cap) in enumerate(POCKETS) if math.hypot(b[0] - px, b[1] - py) < cap), None)
+                if hole is None and not (-8 < b[0] < TW + 8 and -8 < b[1] < TH + 8):  # off the table somehow: it went in
+                    hole = min(range(len(POCKETS)), key=lambda k: math.hypot(b[0] - POCKETS[k][0], b[1] - POCKETS[k][1]))
                 if hole is not None:
                     pocketed.append(n)
                     if holes is not None:
                         holes[n] = hole
                     del balls[n]
                     continue
-                mouth = near_mouth(b[0], b[1])
-                for axis, size in ((0, TW), (1, TH)):
-                    lo, hi = (-R, size + R) if mouth else (R, size - R)
-                    into = -1 if b[axis] < lo else 1 if b[axis] > hi else 0  # which way the cushion lies
-                    if into:
-                        b[axis] = lo if into < 0 else hi
-                        rail(b, axis, into)
+                edges(b)
         if not moving:
             break
         if record and step % FRAME_EVERY == 0:
@@ -188,14 +248,25 @@ def simulate(pos, angle, speed, record=True, spin=0.0, holes=None, side=0.0):
     return final, pocketed, first, frames
 
 
-def cue_speed(dist, arrive):
+def cue_speed(dist, arrive, skid=False):
     """The cue speed (struck in the middle) that is still `arrive` after `dist`: it skids, losing SLIDE
-    per second, until it rolls at 5/7 of its start speed, which takes 24/49·v²/(2·SLIDE) of cloth."""
+    per second, until it rolls at 5/7 of its start speed, which takes 24/49·v²/(2·SLIDE) of cloth.
+    With skid=True, also whether it is still skidding when it gets there."""
     v0 = math.sqrt(arrive * arrive + 2 * SLIDE * dist)
     if (24 / 49) * v0 * v0 / (2 * SLIDE) >= dist:
-        return v0  # still skidding when it gets there
+        return (v0, True) if skid else v0  # still skidding when it gets there
     # rolling by then: (5/7·v0)² − 2·FRICTION·(dist − skid) = arrive²
-    return math.sqrt((arrive * arrive + 2 * FRICTION * dist) / (25 / 49 + FRICTION * 24 / (49 * SLIDE)))
+    v0 = math.sqrt((arrive * arrive + 2 * FRICTION * dist) / (25 / 49 + FRICTION * 24 / (49 * SLIDE)))
+    return (v0, False) if skid else v0
+
+
+def throw_angle(cos, skidding):
+    """How far (radians) a cut at this cosine throws the object ball off the line of centres, by the
+    engine's ball-to-ball friction: all the slip is sideways for a skidding cue ball; a rolling one also
+    slips up-down, so less of the friction goes sideways."""
+    sin = math.sqrt(max(0.0, 1 - cos * cos))
+    j = cos * (1 + BOUNCE) / 2
+    return math.atan(min(THROW * j * (1 if skidding else sin), sin / 7) / j) if j else 0.0
 
 
 def rack(rng):
@@ -245,6 +316,7 @@ class Billiards(Game):
         "The first ball you pocket after the break picks your group: 🔵 solids (1–7) or 🟠 stripes (9–15).",
         "Pocket one of yours and you shoot again. Hit your own group first.",
         "The cue-ball pad by Shoot picks where the cue strikes: high to follow through, low to draw back, the middle to stop dead on a close straight hit, left or right to bend the bounce off a cushion. Spin wears off as the ball travels.",
+        "Pockets have jaws: a ball straight in drops, one coming in at a slant can catch the point and rattle out. Side pockets want straight-in shots.",
         "Fouls (cue ball in a pocket, missing everything, wrong ball first) give your rival ✋ ball in hand.",
         "Clear your group, then sink the 8 to win. The 8 too early, or with a foul, loses.",
     ]
@@ -437,8 +509,10 @@ class Billiards(Game):
             "shot": shot, "last": self.last, "guide": self.s["guide"],
             "minSpeed": MIN_SPEED, "maxSpeed": MAX_SPEED, "friction": FRICTION,
             # the engine's constants, so the aim guide runs the same physics in the browser
-            "phys": {"slide": SLIDE, "cushion": CUSHION, "bounce": BOUNCE, "railGrip": RAIL_GRIP, "tipK": TIP_K,
-                     "sideTip": SIDE_TIP, "sideDecay": SIDE_DECAY, "dt": DT, "stop": STOP, "mouth": MOUTH},
+            "phys": {"slide": SLIDE, "bounce": BOUNCE, "railGrip": RAIL_GRIP, "tipK": TIP_K,
+                     "sideTip": SIDE_TIP, "sideDecay": SIDE_DECAY, "dt": DT, "stop": STOP, "throw": THROW,
+                     "cushionSoft": CUSHION_SOFT, "cushionHard": CUSHION_HARD, "cushionV": CUSHION_V, "near": NEAR_EDGE},
+            "edges": [list(e) for e in EDGES],
             "calling": self.calling(self.room.turn) if self.room.turn and self.room.phase == "playing" else False,
         }}
 
@@ -471,10 +545,11 @@ class Billiards(Game):
             pick = shots[0]
         else:
             pick = self.test_run(p, shots[:5], cue)
-        _, angle, power, hole = pick
+        _, angle, power, hole, *rest = pick
         if not self.calling(p.id):
             hole = None
-        self.shoot(p, angle + random.gauss(0, noise), min(1.0, power * random.uniform(0.95, 1.1)), cue, pocket=hole)
+        self.shoot(p, angle + random.gauss(0, noise), min(1.0, power * random.uniform(0.95, 1.1)), cue,
+                   spin=rest[0] if rest else 0.0, pocket=hole)
 
     def candidates(self, cx, cy, targets):
         """[(score, angle, power)] for direct pots, best first."""
@@ -494,8 +569,6 @@ class Billiards(Game):
                 if side and abs(uy) < 0.55:
                     continue  # side pockets only take balls coming in fairly straight
                 gx, gy = tx - ux * 2 * R, ty - uy * 2 * R
-                if not (R * 0.5 <= gx <= TW - R * 0.5 and R * 0.5 <= gy <= TH - R * 0.5):
-                    continue
                 vx, vy = gx - cx, gy - cy
                 dist1 = math.hypot(vx, vy)
                 if dist1 < 1e-6:
@@ -503,10 +576,23 @@ class Billiards(Game):
                 cos = (vx * ux + vy * uy) / dist1
                 if cos < 0.25:
                     continue
+                v_obj = math.sqrt((dist2 + 25) / REACH_K)  # the object ball leaves skidding, then rolls
+                arrive = v_obj / (cos * (1 + BOUNCE) / 2)
+                v0, skidding = cue_speed(dist1, arrive, True)
+                # throw: the cut drags the object ball toward the cue ball's line, so cut a little thinner
+                k = math.tan(throw_angle(cos, skidding))
+                ax, ay = vx / dist1 - cos * ux, vy / dist1 - cos * uy  # the cue ball's sideways motion
+                am = math.hypot(ax, ay)
+                if am > 1e-9:
+                    nx, ny = ux - k * ax / am, uy - k * ay / am
+                    nm = math.hypot(nx, ny)
+                    gx, gy = tx - nx / nm * 2 * R, ty - ny / nm * 2 * R
+                    vx, vy = gx - cx, gy - cy
+                    dist1 = math.hypot(vx, vy)
+                if not (R * 0.5 <= gx <= TW - R * 0.5 and R * 0.5 <= gy <= TH - R * 0.5):
+                    continue
                 if not seg_clear(cx, cy, gx, gy, pos, {0, t}) or not seg_clear(tx, ty, aim_x, aim_y, pos, {0, t}):
                     continue
-                v_obj = math.sqrt((dist2 + 25) / REACH_K)  # the object ball leaves skidding, then rolls
-                v0 = cue_speed(dist1, v_obj / (cos * (1 + BOUNCE) / 2))
                 power = max(0.08, min(1.0, (v0 - MIN_SPEED) / (MAX_SPEED - MIN_SPEED)))
                 score = 100 * cos * cos - 0.12 * dist1 - 0.18 * dist2 - (8 if side else 0)
                 out.append((score, math.atan2(vy, vx), power, hole))
@@ -550,21 +636,34 @@ class Billiards(Game):
             for nudge in (0.0, 0.004, -0.004):
                 if time.time() - start > 2.5:
                     return best
-                final, sunk, first, _ = simulate(pos, shot[1] + nudge, MIN_SPEED + (MAX_SPEED - MIN_SPEED) * shot[2], record=False)
-                val = shot[0] * 0.1
-                if 0 in sunk or first is None or first not in targets:
-                    val -= 120
-                if 8 in sunk:
-                    val += 1000 if targets == {8} and 0 not in sunk and first == 8 else -1000
-                good = [n for n in sunk if n not in (0, 8) and (mine is None or n in mine)]
-                val += 60 * len(good)
-                if good and 0 in final:  # leave: is there a next pot from here?
-                    nxt = [t for t in (sorted(mine & set(final)) if mine else []) if t in final]
-                    saved = self.pos
-                    self.pos = final
-                    follow = self.candidates(*final[0], nxt or [8]) if (nxt or 8 in final) else []
-                    self.pos = saved
-                    val += 0.2 * follow[0][0] if follow else 0
+                val = shot[0] * 0.1 + self.try_shot(pos, shot[1] + nudge, shot[2], 0.0, targets, mine)
                 if val > best_val:
                     best, best_val = (shot[0], shot[1] + nudge, shot[2], shot[3]), val
+        # then play position: the same shot with follow or draw, if that leaves a better next shot
+        if best_val > 0:
+            for spin in (0.6, -0.6):
+                if time.time() - start > 2.5:
+                    break
+                val = best[0] * 0.1 + self.try_shot(pos, best[1], best[2], spin, targets, mine)
+                if val > best_val + 2:
+                    best, best_val = (*best[:4], spin), val
         return best
+
+    def try_shot(self, pos, angle, power, spin, targets, mine):
+        """Hard bot: how well a shot works out in the real engine, including the next shot it leaves."""
+        final, sunk, first, _ = simulate(pos, angle, MIN_SPEED + (MAX_SPEED - MIN_SPEED) * power, record=False, spin=spin)
+        val = 0.0
+        if 0 in sunk or first is None or first not in targets:
+            val -= 120
+        if 8 in sunk:
+            val += 1000 if targets == {8} and 0 not in sunk and first == 8 else -1000
+        good = [n for n in sunk if n not in (0, 8) and (mine is None or n in mine)]
+        val += 60 * len(good)
+        if good and 0 in final:  # leave: is there a next pot from here?
+            nxt = [t for t in (sorted(mine & set(final)) if mine else []) if t in final]
+            saved = self.pos
+            self.pos = final
+            follow = self.candidates(*final[0], nxt or [8]) if (nxt or 8 in final) else []
+            self.pos = saved
+            val += 0.2 * follow[0][0] if follow else 0
+        return val

@@ -61,7 +61,7 @@ port, and `http://localhost` still works on the server's own device.
 | ⛳ **Putt Party** | 1–6 | **3D** mini golf (three.js; top-down fallback) on holes generated each game: a winding walled fairway with ⚪ bumpers, ▪️ posts, 🌑 rocks, 🟫 sand, long grass, ↗ slopes, ⛰️ humps and bowls, curved banks, a 🌀 windmill to time, a ramp jump and 💧 water. Drag back from your ball and let go to putt; a drag anywhere else moves the view, and the camera swings behind your ball after each putt. | The server simulates every putt and sends the ball's path, so every phone plays back the same shot. Everyone plays the same hole, a stroke each in turn. Solo: finish at or under par (3 a hole, 4 for a hole with a jump or a windmill). |
 | 🛸 **Hover Rally** | 1–6 | **Real-time 3D** hover-craft race (three.js chase camera; top-down fallback) on a looping track generated each game. The throttle is automatic: hold a side of the screen (or ←/→) to steer. | Bends push you outward and the inside line is shorter, so racing lines matter; walls scrub speed. ⚡ Boost pads plus 3 boosts of your own, sideways bumps. Alone: beat a target time. |
 | 🏒 **Air Hockey** | 2 | **Real-time** table hockey: drag your mallet around your half, bank shots off the walls. Server-side physics at 60 fps. | 🏒🏒 Double Trouble puts two pucks on the table. Each player sees the table from their own end. |
-| 🎱 **Billiards** | 2 | Eight-ball pool on a top-down table with real physics (spin that skids then rolls, follow, draw and english, cushions, ball-to-ball collisions, six pockets). Drag to aim, set the power, shoot. | The server simulates every shot and sends the ball paths, so every phone plays back the same shot. A 🎯 aim guide (full, short or off) shows where both balls go. Fouls give ✋ ball in hand. The table stands upright on phones. |
+| 🎱 **Billiards** | 2 | Eight-ball pool on a top-down table with real physics (spin that skids then rolls, follow, draw and english, cushions, throw, six pockets with jaws). Drag to aim, set the power, shoot. | The server simulates every shot and sends the ball paths, so every phone plays back the same shot. A 🎯 aim guide (full, short or off) shows where both balls go. Fouls give ✋ ball in hand. The table stands upright on phones. |
 
 ### ♟️ Strategy (6)
 
@@ -120,7 +120,7 @@ Every game has **Easy / Normal / Hard bots**:
 - **Fib Finder:** bots write plausible decoy answers. Like people, they sometimes just know the fact; hard bots are also suspicious of answers that don't sound like a real guess.
 - **Word Ladder:** bots step along a shortest everyday-word ladder; easier bots take wrong turns more often, back up when stuck and climb more slowly.
 - **Night Heist:** the bot reads the pot size and the table size.
-- **Billiards:** bots aim with the ghost-ball method, checking that both paths are clear and the cut isn't too thin, and pick a power that gets the ball to the pocket. With ball in hand they choose the spot with the best shot. The hard bot runs its five best ideas through the real physics engine and also weighs the next shot it leaves itself.
+- **Billiards:** bots aim with the ghost-ball method, checking that both paths are clear and the cut isn't too thin, and pick a power that gets the ball to the pocket. With ball in hand they choose the spot with the best shot. The hard bot runs its five best ideas through the real physics engine and also weighs the next shot it leaves itself, then tries its pick with follow and with draw in case either leaves a better one. All bots cut a touch thinner to allow for throw.
 - **Farkle:** bots weigh the chance of farkling with the dice left (measured: 67% with one die down to 2% with six) against the average gain, and keep rolling when it pays; in the final round they roll until they beat the leader. Hard keeps fewer dice to roll more. Simulation shows Farkle is mostly luck past that: hard and normal finish about even, both well ahead of easy.
 - **Qork:** bots react after a human-like delay (easy ≈ 640 ms, normal ≈ 480 ms, hard ≈ 350 ms) and sometimes flinch at a near miss (a 6 or 8, or dice one apart): easy 10%, normal 7%, hard 2%. They only see what's on the table. Simulation: hard wins almost every bot-only game.
 - **Ship, Captain & Crew:** hard bots reroll cargo by an exact expected-value table (one die or both); normal bots reroll below 7, easy below 6; in the last round, bots behind the leader gamble.
@@ -286,6 +286,7 @@ or the ❓ How-to-play dialog during a game ("Something wrong with …?").
 python3 tests/jscheck.py static/app.js static/games/*.js   # structural check, no Node needed
 python3 tests/csscheck.py                                    # layout lint (jsdom does no layout)
 node --check static/app.js                                  # real syntax check (Node.js)
+python3 tests/billiards_physics.py                          # billiards shot engine, and the aim guide's copy of it
 PORT=8767 python3 server.py &                               # a separate test server (own rooms-8767.pickle / feedback-8767.jsonl)
 cd tests && npm install && BASE=http://localhost:8767 node ui.js          # every game
 BASE=http://localhost:8767 node ui.js chess spire                          # just some
@@ -551,7 +552,15 @@ Riders and Air Hockey start in it) (#13, #15).
   and only then slows at the rolling rate, so follow, draw and stun come from the cloth (a centre hit stops dead
   up close but rolls through from afar, and the cue ball's path bends after a cut); english is real spin that
   cushion friction turns into a sideways kick on any ball; hits are wound back to the exact moment of contact
-  (cut angles were up to 19° off) and fast balls sub-step so they can't pass through each other. Next: a 3D table.
+  (cut angles were up to 19° off) and fast balls sub-step so they can't pass through each other. ✅ Pockets have
+  jaws: the cushion ends at a point and an angled facing runs in to the hole, so a ball straight in drops and one
+  coming in at a slant or off line can catch a point and rattle out (side pockets only take fairly straight balls).
+  ✅ Cushions meet the ball at natural-roll height, so a rolling ball comes off still rolling and a skidding one
+  picks up topspin; soft hits keep more speed than hard ones. ✅ Throw: a cut drags the object ball 1–4° toward the
+  cue ball's line, and english turns it further or back. ✅ `tests/billiards_physics.py` checks all of it and
+  that the aim guide's copy of the engine follows the server's paths. Known: the cloth is about 9× slower than a
+  real one, so a break rarely pots a ball; near-real cloth (rolling friction ~12 instead of 70) pots about one in
+  two breaks but makes every shot roll 2–5× further. Next: a 3D table.
 - 🗼 **Spire Siege:** ✅ a 🟦 4-block piece set beside the mixed 2/3/5-block set (#13), a ⇄ hold slot
   (C / Shift / swipe up), and a sharper flat well on high-DPI screens. ✅ 🟦 4-block is now the default
   (#26); the odd shapes are the 🧩 Mixed option. ✅ Normal and hard bots use the ⇄ hold slot (they park a piece and

@@ -106,7 +106,7 @@ UI.billiards = (() => {
     const key = [aim, power, spin, english, cue[0], cue[1], b.balls.map((a) => a.join()).join(';')].join('|');
     if (key === predKey) return pred;
     predKey = key;
-    const R = b.R, W = b.W, H = b.H, POCK = b.pockets, MOUTH = P.mouth, F = b.friction;
+    const R = b.R, POCK = b.pockets, EDGES = b.edges || [], F = b.friction, NEAR = P.near, W = b.W, H = b.H;
     const balls = new Map();
     for (const [n, x, y] of b.balls) if (n !== 0) balls.set(n, [x, y, 0, 0, 0, 0, 0]);
     const speed = b.minSpeed + (b.maxSpeed - b.minSpeed) * power, ax = Math.cos(aim), ay = Math.sin(aim), top = P.tipK * spin * speed;
@@ -130,15 +130,28 @@ UI.billiards = (() => {
       o[0] += o[2] * h; o[1] += o[3] * h;
       return true;
     };
-    const rail = (o, axis, into) => {
-      const t = 1 - axis, vn = into * o[2 + axis];
+    const rail = (o, nx, ny) => {  // rail() in games/billiards.py: (nx, ny) points from the ball to the cushion
+      const vn = o[2] * nx + o[3] * ny;
       if (vn <= 0) return;
-      const jn = vn * (1 + P.cushion);
-      o[2 + axis] = -into * vn * P.cushion;
-      o[4 + axis] *= -P.cushion;
-      const side = axis === 0 ? into : -into, slip = o[2 + t] + side * o[6];
+      const e = P.cushionSoft - (P.cushionSoft - P.cushionHard) * Math.min(1, vn / P.cushionV);
+      const jn = vn * (1 + e), tx = -ny, ty = nx, slip = o[2] * tx + o[3] * ty + o[6];
       const jt = Math.max(-P.railGrip * jn, Math.min(P.railGrip * jn, slip / 3.5));
-      o[2 + t] -= jt; o[6] -= side * 2.5 * jt;
+      const jx = -jn * nx - jt * tx, jy = -jn * ny - jt * ty;
+      o[2] += jx; o[3] += jy; o[4] += jx; o[5] += jy; o[6] -= 2.5 * jt;
+    };
+    const edges = (o) => {  // edges(): cushions, jaw points and facings; true if it touched one
+      let x = o[0], y = o[1], hit = false;
+      if (NEAR < x && x < W - NEAR && NEAR < y && y < H - NEAR) return false;
+      for (const [x1, y1, x2, y2] of EDGES) {
+        const dx = x2 - x1, dy = y2 - y1;
+        const t = Math.max(0, Math.min(1, ((x - x1) * dx + (y - y1) * dy) / (dx * dx + dy * dy)));
+        const qx = x1 + t * dx - x, qy = y1 + t * dy - y, d = Math.hypot(qx, qy);
+        if (d >= R || d === 0) continue;
+        const nx = qx / d, ny = qy / d;
+        x -= nx * (R - d); y -= ny * (R - d); o[0] = x; o[1] = y;
+        rail(o, nx, ny); hit = true;
+      }
+      return hit;
     };
     let first = null, hit = null;  // the first ball the cue ball touches, and where both balls were at that moment
     const collide = (h) => {
@@ -164,6 +177,14 @@ UI.billiards = (() => {
           rel = (b1[2] - b2[2]) * nx + (b1[3] - b2[3]) * ny;
           const jj = (Math.max(0, rel) * (1 + P.bounce)) / 2;
           b1[2] -= jj * nx; b1[3] -= jj * ny; b2[2] += jj * nx; b2[3] += jj * ny;
+          // throw: friction between the balls (collide() in games/billiards.py)
+          const tx = -ny, ty = nx, sh = (b1[2] - b2[2]) * tx + (b1[3] - b2[3]) * ty + b1[6] + b2[6];
+          const slip = Math.hypot(sh, (b1[4] + b2[4]) * nx + (b1[5] + b2[5]) * ny);
+          if (jj && slip > 1e-9 && P.throw) {
+            const jt = Math.sign(sh) * Math.min((P.throw * jj * Math.abs(sh)) / slip, Math.abs(sh) / 7);
+            b1[2] -= jt * tx; b1[3] -= jt * ty; b2[2] += jt * tx; b2[3] += jt * ty;
+            b1[6] -= 2.5 * jt; b2[6] -= 2.5 * jt;
+          }
           if (first == null && (n1 === 0 || n2 === 0)) {
             first = n1 === 0 ? n2 : n1;
             const ob = n1 === 0 ? b2 : b1;
@@ -204,13 +225,7 @@ UI.billiards = (() => {
             if (n === 0 && first == null) return (pred = { scratch: [o[0], o[1]] });
             continue;
           }
-          const mouth = POCK.some(([px, py, cap]) => Math.hypot(o[0] - px, o[1] - py) < cap + MOUTH);
-          let wall = false;
-          for (const [axis, size] of [[0, W], [1, H]]) {
-            const lo = mouth ? -R : R, hi = mouth ? size + R : size - R;
-            const into = o[axis] < lo ? -1 : o[axis] > hi ? 1 : 0;
-            if (into) { o[axis] = into < 0 ? lo : hi; rail(o, axis, into); wall = true; }
-          }
+          const wall = edges(o);
           if (n === 0 && first == null && wall) return (pred = null);  // a cushion first: the plain aim line says it all
           if (paths.has(n) && wall) track(n, o, true);
         }
@@ -237,7 +252,14 @@ UI.billiards = (() => {
     g.fillStyle = '#7a4f2a'; roundRect(g, -RAIL + 1.5, -RAIL + 1.5, b.W + 2 * RAIL - 3, b.H + 2 * RAIL - 3, 5); g.fill();
     const cloth = g.createRadialGradient(b.W / 2, b.H / 2, 10, b.W / 2, b.H / 2, b.W * 0.6);
     cloth.addColorStop(0, '#1d8a4e'); cloth.addColorStop(1, '#0f5c33');
-    g.fillStyle = cloth; g.fillRect(0, 0, b.W, b.H);
+    g.fillStyle = cloth;
+    if (b.edges?.length) {  // the cushion line, with each pocket's jaws angling in to the hole
+      g.beginPath();
+      for (const [x1, y1, x2, y2] of b.edges) { g.lineTo(x1, y1); g.lineTo(x2, y2); }
+      g.closePath(); g.fill();
+      g.strokeStyle = '#0b4a28'; g.lineWidth = 0.8; g.lineJoin = 'round';
+      for (const [x1, y1, x2, y2] of b.edges) { g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); }
+    } else g.fillRect(0, 0, b.W, b.H);
     g.strokeStyle = '#ffffff33'; g.lineWidth = 0.4;
     g.beginPath(); g.moveTo(b.headX, 0); g.lineTo(b.headX, b.H); g.stroke();
     g.fillStyle = '#ffffff55'; g.beginPath(); g.arc(b.W * 0.73, b.H / 2, 0.7, 0, 7); g.fill();
