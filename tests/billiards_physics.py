@@ -111,21 +111,43 @@ check("english wears off steadily", abs(ball[6] - (100 - b.SIDE_DECAY * 30 / 120
 check("a fast ball grazing another hits it", shot({0: (20, 50), 1: (60, 54.5)}, 0, 520)[2] == 1)
 check("a fast ball just missing another misses", shot({0: (20, 50), 1: (60, 54.7)}, 0, 520)[2] is None)
 
-# ---------- the bot's aim allows for throw: it pots most cut shots into one corner
+# ---------- the bot's aim allows for throw: it pots most cut shots into one corner, on either cloth
 g = b.Billiards.__new__(b.Billiards)
-rng, made, tried = random.Random(7), 0, 0
-b.MAX_STEPS = 360
-for _ in range(30):
-    t = (rng.uniform(25, 90), rng.uniform(15, 85))
-    c = (rng.uniform(t[0] + 15, 180), rng.uniform(10, 90))
-    g.pos = {0: c, 1: t}
-    cands = [x for x in g.candidates(*c, [1]) if x[3] == 0]
-    if cands:
-        _, ang, power, _ = cands[0]
-        tried += 1
-        made += shot({0: c, 1: t}, ang, b.MIN_SPEED + (b.MAX_SPEED - b.MIN_SPEED) * power)[4].get(1) == 0
-b.MAX_STEPS = saved
-check("the bot pots most cut shots", tried >= 15 and made >= 0.75 * tried, f"{made} of {tried}")
+for cloth in ("classic", "fast"):
+    g.s = {"cloth": cloth}
+    fric, top = g.table
+    rng, made, tried = random.Random(7), 0, 0
+    b.MAX_STEPS = 360
+    for _ in range(30):
+        t = (rng.uniform(25, 90), rng.uniform(15, 85))
+        c = (rng.uniform(t[0] + 15, 180), rng.uniform(10, 90))
+        g.pos = {0: c, 1: t}
+        cands = [x for x in g.candidates(*c, [1]) if x[3] == 0]
+        if cands:
+            _, ang, power, _ = cands[0]
+            tried += 1
+            made += shot({0: c, 1: t}, ang, b.MIN_SPEED + (top - b.MIN_SPEED) * power, friction=fric)[4].get(1) == 0
+    b.MAX_STEPS = saved
+    check(f"the bot pots most cut shots ({cloth} cloth)", tried >= 15 and made >= 0.75 * tried, f"{made} of {tried}")
+
+
+# ---------- the fast cloth: the same power rolls much further
+def rolled(cloth, power=None, speed=None):
+    fric, top = b.CLOTHS[cloth]
+    speed = speed or b.MIN_SPEED + (top - b.MIN_SPEED) * power
+    frames = shot({0: (40, 50)}, 0.0, speed, friction=fric)[3]  # along the centre line: no pocket
+    pts = [(f[0] / 10, f[1] / 10) for f in frames if f[0] != -1]
+    return sum(math.hypot(x2 - x1, y2 - y1) for (x1, y1), (x2, y2) in zip(pts, pts[1:]))
+
+
+# its top speed is lower (so the power bar stays usable), so the same power rolls a bit further, and
+# a ball going at the same speed rolls far further
+for power in (0.15, 0.4):
+    slow, fast = rolled("classic", power), rolled("fast", power)
+    check(f"fast cloth rolls further at {power:.0%} power", fast > 1.3 * slow, f"{slow:.0f} vs {fast:.0f} units")
+slow, fast = rolled("classic", speed=150), rolled("fast", speed=150)
+check("fast cloth: a ball at the same speed rolls far further", fast > 2.5 * slow, f"{slow:.0f} vs {fast:.0f} units")
+check("fast cloth: a soft shot still stays on the table", rolled("fast", 0.05) < 120, f"{rolled('fast', 0.05):.0f} units at 5%")
 
 # ---------- speed: a full-power break simulates quickly
 pos = b.rack(random.Random(1))
@@ -146,19 +168,21 @@ def guide_check():
     if not m:
         check("found predict() in billiards.js", False)
         return
-    shots = [  # (cue ball, object ball, aim angle, power, spin, english, a break?)
+    shots = [  # (cue ball, object ball, aim angle, power, spin, english, a break? / "fast" cloth)
         ((60, 50), (100, 53), 0.0, 0.4, 0, 0, False), ((60, 50), (100, 47), 0.0, 0.6, 1, 0, False),
         ((40, 30), (120, 60), math.atan2(28, 80), 0.5, -1, 0.5, False), ((150, 80), (60, 20), math.atan2(-58.2, -90), 0.7, 0.3, -1, False),
         ((50, 50), (100, 52), 0.0, 1.0, 0, 0, True),  # the break: its own top speed and cloth
+        ((60, 50), (100, 47), 0.0, 0.5, 1, 0, "fast"), ((40, 30), (120, 60), math.atan2(28, 80), 0.6, -1, 0.5, "fast"),
     ]
     cases, every = [], b.FRAME_EVERY
     b.FRAME_EVERY = 1  # record every step, so curved (spin) paths are compared closely
     for cue, obj, ang, power, spin, side, brk in shots:
-        top, fric = (b.BREAK_MAX_SPEED, b.BREAK_FRICTION) if brk else (b.MAX_SPEED, b.FRICTION)
+        top, fric = (b.BREAK_MAX_SPEED, b.BREAK_FRICTION) if brk is True else b.CLOTHS["fast"][::-1] if brk else (b.MAX_SPEED, b.FRICTION)
         speed = b.MIN_SPEED + (top - b.MIN_SPEED) * power
         _, _, first, frames, _ = shot({0: cue, 1: obj}, ang, speed, spin=spin, side=side, friction=fric)
         cases.append({"cue": cue, "obj": obj, "aim": ang, "power": power, "spin": spin, "english": side,
-                      "breaking": brk, "first": first, "frames": frames})
+                      "breaking": brk is True, "friction": fric if brk is not True else b.FRICTION,
+                      "maxSpeed": top if brk is not True else b.MAX_SPEED, "first": first, "frames": frames})
     b.FRAME_EVERY = every
     phys = {"slide": b.SLIDE, "bounce": b.BOUNCE, "railGrip": b.RAIL_GRIP, "tipK": b.TIP_K, "sideTip": b.SIDE_TIP,
             "sideDecay": b.SIDE_DECAY, "dt": b.DT, "stop": b.STOP, "throw": b.THROW, "throwSlow": b.THROW_SLOW,
@@ -174,7 +198,7 @@ const B = () => CUR;
 const out = [];
 for (const c of {json.dumps(cases)}) {{
   aim = c.aim; power = c.power; spin = c.spin; english = c.english; predKey = '';
-  CUR = Object.assign({{}}, TABLE, {{ balls: [[1, c.obj[0], c.obj[1]]], breaking: c.breaking }});
+  CUR = Object.assign({{}}, TABLE, {{ balls: [[1, c.obj[0], c.obj[1]]], breaking: c.breaking, friction: c.friction, maxSpeed: c.maxSpeed }});
   const p = predict(c.cue);
   out.push(p && p.obj ? {{ obj: p.obj.pts, cue: p.cue.pts }} : null);
 }}

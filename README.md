@@ -566,6 +566,10 @@ Riders and Air Hockey start in it) (#13, #15).
   ✅ Fuller rules: a scratch on an 8-ball break gives ball in hand behind the head line; 9-ball has the 🔀 push-out
   (the first shot after the break needn't hit anything; the rival shoots from there or hands it back) and three fouls
   in a row lose (a warning after two). `tests/billiards_rules.py` checks the rules with a scripted engine.
+  ✅ A 🏎️ Fast cloth table setting (#54): rolling friction 15 (about a real table) instead of 70, with a top speed of
+  320 so the power bar stays usable; a ball at the same speed rolls about 3× further, the same power about 1.5×.
+  🐢 Classic stays the default. The bots and the aim guide follow the setting. ✅ Your aim carries over to your next
+  turn instead of snapping to a default (#52); the first shot and the break still start aimed at the rack.
 - 🗼 **Spire Siege:** ✅ a 🟦 4-block piece set beside the mixed 2/3/5-block set (#13), a ⇄ hold slot
   (C / Shift / swipe up), and a sharper flat well on high-DPI screens. ✅ 🟦 4-block is now the default
   (#26); the odd shapes are the 🧩 Mixed option. ✅ Normal and hard bots use the ⇄ hold slot (they park a piece and

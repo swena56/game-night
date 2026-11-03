@@ -3,6 +3,7 @@
 UI.billiards = (() => {
   let S, ctx, raf = 0, ro = null, animEnd = 0;
   let dial = null, aim = 0, aimFor = null, power = 0.55, cuePos = null, drag = null, anim = null, seenShot = 0;
+  let ownAim = false;  // once you've shot, your aim carries over to your next turn instead of snapping to a default (#52)
   let spin = 0, english = 0, called = null, pushing = false;  // where the cue tip strikes: follow (+) / draw (−), right (+) / left (−); the pocket called for the 8
   let rolls = new Map();  // each ball's orientation, so it turns as it rolls (#33)
   let view = { z: 1, x: 0, y: 0 }, pinch = null, aimBefore = 0;  // two-finger zoom of the table (#28)
@@ -778,13 +779,14 @@ UI.billiards = (() => {
       if (!cuePos || !placeOk(...cuePos)) { ctx.toast(B().inHand === 'kitchen' ? 'Put the cue ball behind the line first.' : 'The cue ball overlaps another ball.'); return; }
       extra.cue = cuePos;
     }
+    ownAim = true;
     ctx.quiet(ctx.act('shoot', extra));
   }
 
   // ---------- mount / render
   function mount(main, side) {
     view = { z: 1, x: 0, y: 0 }; pinch = null; touches.clear(); rolls = new Map(); spin = english = 0;
-    dial = null; aim = 0; aimFor = null; power = 0.55; cuePos = null; drag = null; anim = null; seenShot = 0; geo = null;
+    dial = null; aim = 0; aimFor = null; power = 0.55; cuePos = null; drag = null; anim = null; seenShot = 0; geo = null; ownAim = false;
     gl = null; view3d = false; camAt = null;
     main.innerHTML = `<div class="bl"><div id="blStage" class="bl-stage"><canvas id="blCanvas"></canvas>
         <button id="blZoom" class="bl-zoom" hidden aria-label="Show the whole table">🔍 1×</button>
@@ -928,7 +930,7 @@ UI.billiards = (() => {
     if (ctx.myTurn && aimFor !== turnKey) {
       aimFor = turnKey; called = null; pushing = false;
       cuePos = b.inHand ? defaultCue() : null;
-      aim = defaultAim();
+      if (!ownAim || b.breaking) aim = defaultAim();
     }
     const me = S.me.id, mine = b.groups[me], turnName = ctx.player(S.turn)?.name ?? '';
     const pushText = pushing ? '🔀 Push out: no need to hit anything (a scratch is still a foul). Your rival then shoots from there or hands it back.'

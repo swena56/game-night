@@ -36,12 +36,19 @@ MIN_SPEED, MAX_SPEED = 25.0, 520.0   # cue speed at power 0 and 1
 # play stays on the table) would stop the rack dead. Breaks get their own top speed and a livelier cloth, so
 # about half of them pot a ball (tests/billiards_physics.py measures it).
 BREAK_MAX_SPEED, BREAK_FRICTION = 720.0, 18.0
+# the cloth setting: (rolling friction, top cue speed). Classic is the slow cloth the game started with; fast
+# rolls about like a real table (rolling friction ~0.02 g), with a lower top speed so the power bar stays usable
+CLOTHS = {"classic": (FRICTION, MAX_SPEED), "fast": (15.0, 320.0)}
 DT, FRAME_EVERY = 1 / 120, 4         # simulation step; record every 4th step (30 fps)
 MAX_STEPS = 120 * 14
 MAX_MOVE = R                         # sub-step so no ball moves further than this at once (no tunnelling)
 STOP = 1.0                           # a rolling ball slower than this stops
 # a ball struck without spin skids, then rolls at 5/7 of its speed: how far it goes per unit of speed²
-REACH_K = (24 / 49) / (2 * SLIDE) + (25 / 49) / (2 * FRICTION)
+def reach_k(friction=FRICTION):
+    return (24 / 49) / (2 * SLIDE) + (25 / 49) / (2 * friction)
+
+
+REACH_K = reach_k()
 # pockets: (x, y, hole radius); a ball drops once its centre is over the hole. The side pockets sit just
 # outside the long rails.
 POCKETS = [(0, 0, 4.4), (TW / 2, -0.8, 3.9), (TW, 0, 4.4), (0, TH, 4.4), (TW / 2, TH + 0.8, 3.9), (TW, TH, 4.4)]
@@ -266,15 +273,15 @@ def simulate(pos, angle, speed, record=True, spin=0.0, holes=None, side=0.0, fri
     return final, pocketed, first, frames
 
 
-def cue_speed(dist, arrive, skid=False):
+def cue_speed(dist, arrive, skid=False, friction=FRICTION):
     """The cue speed (struck in the middle) that is still `arrive` after `dist`: it skids, losing SLIDE
     per second, until it rolls at 5/7 of its start speed, which takes 24/49·v²/(2·SLIDE) of cloth.
     With skid=True, also whether it is still skidding when it gets there."""
     v0 = math.sqrt(arrive * arrive + 2 * SLIDE * dist)
     if (24 / 49) * v0 * v0 / (2 * SLIDE) >= dist:
         return (v0, True) if skid else v0  # still skidding when it gets there
-    # rolling by then: (5/7·v0)² − 2·FRICTION·(dist − skid) = arrive²
-    v0 = math.sqrt((arrive * arrive + 2 * FRICTION * dist) / (25 / 49 + FRICTION * 24 / (49 * SLIDE)))
+    # rolling by then: (5/7·v0)² − 2·friction·(dist − skid) = arrive²
+    v0 = math.sqrt((arrive * arrive + 2 * friction * dist) / (25 / 49 + friction * 24 / (49 * SLIDE)))
     return (v0, False) if skid else v0
 
 
@@ -350,6 +357,7 @@ class Billiards(Game):
         "The cue-ball pad by Shoot picks where the cue strikes: high to follow through, low to draw back, the middle to stop dead on a close straight hit, left or right to bend the bounce off a cushion. Side spin also pushes the cue ball a touch off the line "
         "(the full aim guide shows where it really goes). Spin wears off as the ball travels.",
         "Pockets have jaws: a ball straight in drops, one coming in at a slant can catch the point and rattle out. Side pockets want straight-in shots.",
+        "The Cloth setting: 🐢 Classic is slow, so balls stop soon; 🏎️ Fast rolls like a real table, so play softer.",
         "Fouls (cue ball in a pocket, missing everything, wrong ball first) give your rival ✋ ball in hand: anywhere, "
         "or behind the line after a scratch on an 8-ball break.",
         "Clear your group, then sink the 8 to win. The 8 too early, or with a foul, loses.",
@@ -367,7 +375,13 @@ class Billiards(Game):
         "rules": ("Game", [("8", "🎱 8-ball"), ("9", "9️⃣ 9-ball")], "8"),
         "guide": ("Aim guide", [("full", "🎯 Full (where both balls go)"), ("short", "Short"), ("off", "Off")], "full"),
         "call8": ("The 8 ball", [(True, "📣 Call its pocket"), (False, "Any pocket")], True),
+        "cloth": ("Cloth", [("classic", "🐢 Classic (slow, short rolls)"), ("fast", "🏎️ Fast (rolls like a real table)")], "classic"),
     }
+
+    @property
+    def table(self):
+        """(rolling friction, top cue speed) for normal shots on this game's cloth."""
+        return CLOTHS.get(getattr(self, "s", {}).get("cloth"), CLOTHS["classic"])
 
     @property
     def nine(self):
@@ -477,7 +491,7 @@ class Billiards(Game):
         self.push_ok, self.push_choice = False, None  # shooting after a rival's push takes the table as it lies
         before = self.mine(p.id)
         targets = self.legal_targets(p.id)
-        top, fric = (BREAK_MAX_SPEED, BREAK_FRICTION) if self.breaking else (MAX_SPEED, FRICTION)
+        fric, top = (BREAK_FRICTION, BREAK_MAX_SPEED) if self.breaking else self.table
         speed = MIN_SPEED + (top - MIN_SPEED) * power
         order = sorted(self.pos)
         holes = {}
@@ -659,7 +673,7 @@ class Billiards(Game):
             "rules": "9" if self.nine else "8", "groups": self.groups, "inHand": self.in_hand, "breaking": self.breaking,
             "targets": self.legal_targets(self.room.turn) if self.room.turn else [],
             "shot": shot, "last": self.last, "guide": self.s["guide"],
-            "minSpeed": MIN_SPEED, "maxSpeed": MAX_SPEED, "friction": FRICTION,
+            "minSpeed": MIN_SPEED, "maxSpeed": self.table[1], "friction": self.table[0],
             "breakMaxSpeed": BREAK_MAX_SPEED, "breakFriction": BREAK_FRICTION,
             # the engine's constants, so the aim guide runs the same physics in the browser
             "phys": {"slide": SLIDE, "bounce": BOUNCE, "railGrip": RAIL_GRIP, "tipK": TIP_K,
@@ -713,6 +727,7 @@ class Billiards(Game):
         """[(score, angle, power)] for direct pots, best first."""
         pos = dict(self.pos)
         pos[0] = (cx, cy)
+        fric, top = self.table
         out = []
         for t in targets:
             tx, ty = pos[t]
@@ -734,9 +749,9 @@ class Billiards(Game):
                 cos = (vx * ux + vy * uy) / dist1
                 if cos < 0.25:
                     continue
-                v_obj = math.sqrt((dist2 + 25) / REACH_K)  # the object ball leaves skidding, then rolls
+                v_obj = math.sqrt((dist2 + 25) / reach_k(fric))  # the object ball leaves skidding, then rolls
                 arrive = v_obj / (cos * (1 + BOUNCE) / 2)
-                v0, skidding = cue_speed(dist1, arrive, True)
+                v0, skidding = cue_speed(dist1, arrive, True, fric)
                 # throw: the cut drags the object ball toward the cue ball's line, so cut a little thinner
                 k = math.tan(throw_angle(cos, skidding, arrive))
                 ax, ay = vx / dist1 - cos * ux, vy / dist1 - cos * uy  # the cue ball's sideways motion
@@ -751,7 +766,7 @@ class Billiards(Game):
                     continue
                 if not seg_clear(cx, cy, gx, gy, pos, {0, t}) or not seg_clear(tx, ty, aim_x, aim_y, pos, {0, t}):
                     continue
-                power = max(0.08, min(1.0, (v0 - MIN_SPEED) / (MAX_SPEED - MIN_SPEED)))
+                power = max(0.03, min(1.0, (v0 - MIN_SPEED) / (top - MIN_SPEED)))
                 score = 100 * cos * cos - 0.12 * dist1 - 0.18 * dist2 - (8 if side else 0)
                 out.append((score, math.atan2(vy, vx), power, hole))
         out.sort(reverse=True)
@@ -764,7 +779,9 @@ class Billiards(Game):
         seen = [t for t in targets if seg_clear(cx, cy, *pos[t], pos, {0, t})] or targets
         t = min(seen, key=lambda n: math.hypot(pos[n][0] - cx, pos[n][1] - cy))
         tx, ty = pos[t]
-        return math.atan2(ty - cy, tx - cx), 0.35
+        fric, top = self.table  # enough to reach it and push it on a little, on either cloth
+        v0 = cue_speed(math.hypot(tx - cx, ty - cy), 70, friction=fric)
+        return math.atan2(ty - cy, tx - cx), max(0.05, min(1.0, (v0 - MIN_SPEED) / (top - MIN_SPEED)))
 
     def place_cue(self, p, targets):
         best, best_score = None, -1e9
@@ -811,7 +828,8 @@ class Billiards(Game):
 
     def try_shot(self, pos, angle, power, spin, targets, mine):
         """Hard bot: how well a shot works out in the real engine, including the next shot it leaves."""
-        final, sunk, first, _ = simulate(pos, angle, MIN_SPEED + (MAX_SPEED - MIN_SPEED) * power, record=False, spin=spin)
+        fric, top = self.table
+        final, sunk, first, _ = simulate(pos, angle, MIN_SPEED + (top - MIN_SPEED) * power, record=False, spin=spin, friction=fric)
         val = 0.0
         if 0 in sunk or first is None or first not in targets:
             val -= 120
