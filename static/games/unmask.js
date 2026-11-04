@@ -1,5 +1,5 @@
 UI.unmask = (() => {
-  let S, ctx, boardKey = '', accuseMode = false, populated = false, seenNotes = null, sizer = null;
+  let S, ctx, boardKey = '', accuseMode = false, populated = false, seenNotes = null, sizer = null, seenPhase = null;
   // card size, set by pinching the board or the 🔍 buttons, remembered on this device
   // Until the player picks a size, phones fit every face on one screen with the Ask panel just under it.
   let zoom = 92, autoFit = true;
@@ -102,6 +102,13 @@ UI.unmask = (() => {
     S = s; ctx = c;
     if (!ctx.myTurn) accuseMode = false;
     renderBoard();
+    if (S.phase === 'over' && seenPhase === 'playing') {
+      const u = document.querySelector('#board .card.unmasked');
+      u?.scrollIntoView?.({ block: 'center', behavior: motionOK() ? 'smooth' : 'auto' });
+      ctx.sfx(S.winner === S.me.id ? 'fanfare' : 'thud');
+      Kit.callout(S.winner === S.me.id ? '🎭 Unmasked!' : '🎭 Revealed', S.winner === S.me.id ? 'gold' : 'cool');
+    }
+    seenPhase = S.phase;
     renderIdentity();
     renderAsk();
     renderNotes();
@@ -157,6 +164,9 @@ UI.unmask = (() => {
       c.classList.toggle('down', flipped.has(id));
       c.classList.toggle('mine', S.me.secret === id);
       if (badges[id]) c.dataset.badge = badges[id].join(' & '); else delete c.dataset.badge;
+      // the unmasking: the face everyone was after zooms up under a spotlight, once
+      const target = S.reveal?.culprit ?? (S.phase === 'over' ? Object.entries(S.reveal?.secrets || {}).find(([pid]) => pid !== S.me.id)?.[1] : null);
+      c.classList.toggle('unmasked', S.phase === 'over' && id === target);
     }
     board.classList.toggle('accusing', accuseMode);
   }

@@ -48,6 +48,8 @@ class Hearts(Game):
     blurb = "The classic trick-dodging game: avoid hearts and the queen of spades, or take them all."
     min_players = 3
     max_players = 6
+    badges = {**Game.badges, "moon": ("🌙", "Shoot the moon", "Take every heart and the Q♠ in one hand"),
+              "clean": ("🧼", "Clean hands", "Finish a hand without taking a point")}
     settings_schema = {
         "target": ("Game to", [(100, "100 points"), (50, "50 points (quick)")], 100),
         "jack": ("Jack of diamonds", [(False, "No bonus"), (True, "💎 J♦ is −10")], False),
@@ -182,6 +184,8 @@ class Hearts(Game):
         if moon is not None:
             got = [0 if i == moon else 26 for i in range(len(got))]
             m = self.pl(moon)
+            if m:
+                self.award(m, "moon")
             r.add_log(f"🌙 {m.name if m else '?'} shot the moon! Everyone else takes 26.", "big")
         if self.jack():
             for i, t in enumerate(self.taken):
@@ -191,6 +195,8 @@ class Hearts(Game):
                     r.add_log(f"💎 {j.name if j else '?'} took the J♦: −10.", "power")
         for i, g in enumerate(got):
             self.scores[i] += g
+            if g <= 0 and moon is None and self.pl(i):
+                self.award(self.pl(i), "clean")
         self.hand_points = got
         names = [self.pl(i).name if self.pl(i) else "?" for i in range(len(self.seats))]
         r.add_log("🧮 " + " · ".join(f"{names[i]} {got[i]:+} ({self.scores[i]})" for i in range(len(got))), "big")

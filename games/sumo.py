@@ -421,4 +421,6 @@ class Sumo(Game):
                    2 if s.out else 1 if s.fall else 0] for s in self.saucers],
             "countdown": max(0.0, self.next_at - now) if self.stage in ("countdown", "over") else 0,
             "dashCool": DASH_COOL,
+            "shrinkIn": (max(0.0, SHRINK_EVERY - (now - self.shrunk_at))
+                         if self.stage == "play" and self.radius > (RING_MIN_RADIUS if self.pit else MIN_RADIUS) else None),
         }}

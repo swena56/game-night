@@ -57,6 +57,7 @@ class TicTacToe(Game):
     name = "Tic-Tac-Toe"
     icon = "❌"
     blurb = "Three in a row. Try Vanishing mode: only your 3 newest marks stay on the board."
+    badges = {**Game.badges, "vanisher": ("👻", "Now you see me", "Win a Vanishing game")}
     settings_schema = {
         "variant": ("Variant", [("classic", "Classic"), ("vanishing", "👻 Vanishing")], "classic"),
         "size": ("Board", [(3, "3×3"), (4, "4×4 (four in a row)")], 3),
@@ -110,6 +111,8 @@ class TicTacToe(Game):
         w, line = winner_of(self.cells)
         if w is not None:
             self.line = line
+            if self.vanishing():
+                self.award(p, "vanisher")
             r.finish(p, f"🏆 {p.name} gets {'three' if self.n == 3 else 'four'} in a row!")
         elif None not in self.cells or self.moves >= MOVE_LIMIT:
             r.finish(None, "🤝 It's a draw.")

@@ -1,13 +1,14 @@
 // Backgammon: an HTML board drawn from your side (your home board bottom right, whichever colour you
 // play). Tap a checker (or the bar), then a highlighted point or the tray to move. Undo until you end.
 UI.backgammon = (() => {
-  let S, ctx, sel = null;
+  let S, ctx, sel = null, seenMoves = null, seenRoll = '', seenOff = null, prevBar = null;
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
-    sel = null;
+    sel = null; seenMoves = null; seenRoll = ''; seenOff = null; prevBar = null;
     main.innerHTML = `<div class="bg">
       <div class="bg-info"><span id="bgOpp"></span><span id="bgScore"></span></div>
+      <div id="bgRace" class="bg-race" title="The pip race: fewer pips to bear off is ahead"><i></i><b></b></div>
       <div id="bgBoard" class="bg-board"></div>
       <div class="bg-info"><span id="bgMe"></span><span id="bgDice" class="bg-dice"></span></div>
       <div class="row bg-actions">
@@ -62,7 +63,12 @@ UI.backgammon = (() => {
       ctx.rerender();
     };
 
-    const board = $('bgBoard'); board.innerHTML = '';
+    const board = $('bgBoard');
+    // where each point's top checker sat before this redraw, so a checker just moved can glide over
+    const movesKey = JSON.stringify([g.moves, g.last]);
+    const glideFrom = seenMoves != null && movesKey !== seenMoves ? topRects(board) : null;
+    seenMoves = movesKey;
+    board.innerHTML = '';
     const point = (v, top) => {
       const i = view === 'w' ? v : 25 - v;          // displayed → real
       const n = g.points[i - 1];
@@ -75,6 +81,7 @@ UI.backgammon = (() => {
       const stack = ctx.el('div', 'bg-stack');
       const color = n > 0 ? 'w' : 'b', count = Math.abs(n);
       for (let k = 0; k < Math.min(count, 5); k++) stack.append(ctx.el('span', `bg-ck ${color}`, k === 4 && count > 5 ? String(count) : ''));
+      el.dataset.k = String(i);
       el.append(stack, ctx.el('small', 'bg-num', String(v)));
       el.onclick = () => tap(i);
       return el;
@@ -82,6 +89,7 @@ UI.backgammon = (() => {
     const half = (vs, top) => { const h = ctx.el('div', 'bg-half'); for (const v of vs) h.append(point(v, top)); return h; };
     const barEl = (color, top) => {
       const el = ctx.el('button', `bg-bar ${top ? 'top' : 'bottom'}`);
+      el.dataset.k = 'bar-' + color;
       const n = g.bar[color];
       for (let k = 0; k < Math.min(n, 4); k++) el.append(ctx.el('span', `bg-ck ${color}`, k === 3 && n > 4 ? String(n) : ''));
       if (color === myColor) {
@@ -93,6 +101,7 @@ UI.backgammon = (() => {
     };
     const tray = (color, top) => {
       const el = ctx.el('button', `bg-off ${top ? 'top' : 'bottom'}`);
+      el.dataset.k = 'off-' + color;
       const n = g.off[color];
       for (let k = 0; k < n; k++) el.append(ctx.el('span', `bg-slab ${color}`));
       el.title = `${n} borne off`;
@@ -103,13 +112,43 @@ UI.backgammon = (() => {
     board.append(half([13, 14, 15, 16, 17, 18], true), barEl(oppColor, true), half([19, 20, 21, 22, 23, 24], true), tray(oppColor, true),
       half([12, 11, 10, 9, 8, 7], false), barEl(myColor, false), half([6, 5, 4, 3, 2, 1], false), tray(myColor, false));
 
-    // dice, buttons, names
+    // the newest move glides from where it started (a hit checker flies to the bar too)
+    if (glideFrom) {
+      const mv = (g.moves.length ? g.moves : g.last).at(-1);
+      const fromKey = (f, color) => (String(f) === 'bar' ? 'bar-' + color : String(f));
+      if (mv) {
+        const [f, t] = mv, mover = g.moves.length ? g.turn : (g.turn === 'w' ? 'b' : 'w');
+        const toKey = String(t) === 'off' ? 'off-' + mover : String(t);
+        glide(board, glideFrom.get(fromKey(f, mover)), toKey);
+        ctx.sfx(String(t) === 'off' ? 'chip' : 'place');
+        const victim = mover === 'w' ? 'b' : 'w';
+        if (prevBar && g.bar[victim] > prevBar[victim]) { glide(board, glideFrom.get(toKey), 'bar-' + victim); ctx.sfx('capture'); }
+      }
+    }
+    // dice, buttons, names: real dice with pips, tumbling when they're freshly rolled
     const dice = $('bgDice'); dice.innerHTML = '';
     const left = [...g.dice];
+    const rollKey = `${g.turn}|${g.rolled.join()}|${g.last?.length ?? 0}|${g.score?.w},${g.score?.b}`;
+    const fresh = g.rolled.length && seenRoll && rollKey !== seenRoll && !g.moves.length;
+    seenRoll = rollKey;
     for (const d of g.rolled) {
       const used = !left.includes(d); if (!used) left.splice(left.indexOf(d), 1);
-      dice.append(ctx.el('span', 'bg-die' + (used ? ' used' : '') + (g.turn === myColor ? '' : ' theirs'), String(d)));
+      const die = Dice.die(d, 'small bg-die' + (used ? ' used' : '') + (g.turn === myColor ? '' : ' theirs'));
+      die.setAttribute('aria-label', String(d));
+      dice.append(die);
     }
+    if (fresh) Dice.roll(dice.children);
+    // the race: a bar split by pip counts (the shorter journey home is ahead)
+    const pm = g.pips[myColor], po = g.pips[oppColor], race = $('bgRace');
+    race.firstChild.style.width = (pm + po ? (po / (pm + po)) * 100 : 50) + '%';
+    race.firstChild.className = 'me-' + myColor;
+    race.lastChild.textContent = pm === po ? 'Even race' : pm < po ? `You lead by ${po - pm} pips` : `Behind by ${pm - po} pips`;
+    if (!g.me) race.lastChild.textContent = `Pips: ${pm}–${po}`;
+    // bearing off: each checker into the tray clicks; the last one is a moment
+    const offNow = g.off.w + g.off.b;
+    if (seenOff != null && offNow > seenOff && g.off[g.turn === 'w' ? 'b' : 'w'] === 15) Kit.callout('🏁 All home!', 'gold');
+    seenOff = offNow;
+    prevBar = { ...g.bar };
     const name = (col) => ctx.player(g.names[col])?.name ?? '?';
     $('bgOpp').textContent = `${oppColor === 'w' ? '⚪' : '⚫'} ${name(oppColor)} · ${g.pips[oppColor]} pips`;
     $('bgMe').textContent = `${myColor === 'w' ? '⚪' : '⚫'} ${g.me ? 'You' : name(myColor)} · ${g.pips[myColor]} pips`;
@@ -128,5 +167,24 @@ UI.backgammon = (() => {
       : sel != null ? 'Now tap a highlighted point.' : g.bar[myColor] ? 'Bring your checker in from the bar first.' : 'Tap a glowing checker to move it.';
   }
 
-  return { mount, render };
+  // the rect of the top checker on each point, the bar and the trays (and how many sit on each bar)
+  function topRects(board) {
+    const m = new Map();
+    board.querySelectorAll('[data-k]').forEach((el) => {
+      const ck = el.classList.contains('bg-off') ? el : el.querySelector('.bg-stack .bg-ck:last-child') || el.querySelector('.bg-ck:last-child') || el;
+      m.set(el.dataset.k, ck.getBoundingClientRect());
+    });
+    return m;
+  }
+  function glide(board, from, toKey) {
+    if (!from || !motionOK()) return;
+    const host = board.querySelector(`[data-k="${toKey}"]`);
+    const ck = host?.classList.contains('bg-off') ? host.lastElementChild : host?.querySelector('.bg-stack .bg-ck:last-child') || host?.querySelector('.bg-ck:last-child');
+    if (!ck?.animate) return;
+    const to = ck.getBoundingClientRect();
+    ck.animate([{ transform: `translate(${from.left + from.width / 2 - to.left - to.width / 2}px, ${from.top + from.height / 2 - to.top - to.height / 2}px)`, zIndex: 5 },
+      { transform: 'none', zIndex: 5 }], { duration: 340, easing: 'cubic-bezier(.3, .9, .4, 1)' });
+  }
+
+  return { mount, render, ownSounds: true };
 })();

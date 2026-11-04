@@ -1,7 +1,10 @@
 // Nine Men's Morris: an SVG board of 24 points. Tap a point to place; in the moving phase tap a man,
 // then where it goes. When a move makes a mill, tap the rival man to take. Only legal choices respond.
 UI.morris = (() => {
-  let S, ctx, svg, pick = null, pending = null;
+  let S, ctx, svg, pick = null, pending = null, seenLast = null;
+  const MILLS = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11], [12, 13, 14], [15, 16, 17], [18, 19, 20], [21, 22, 23],
+    [0, 9, 21], [3, 10, 18], [6, 11, 15], [1, 4, 7], [16, 19, 22], [8, 12, 17], [5, 13, 20], [2, 14, 23]];
+  const DIAGS = [[0, 3, 6], [2, 5, 8], [21, 18, 15], [23, 20, 17]];
   const POS = [[0, 0], [3, 0], [6, 0], [1, 1], [3, 1], [5, 1], [2, 2], [3, 2], [4, 2], [0, 3], [1, 3], [2, 3],
     [4, 3], [5, 3], [6, 3], [2, 4], [3, 4], [4, 4], [1, 5], [3, 5], [5, 5], [0, 6], [3, 6], [6, 6]];
   const NS = 'http://www.w3.org/2000/svg';
@@ -9,7 +12,7 @@ UI.morris = (() => {
   const at = (i) => [10 + POS[i][0] * 30, 10 + POS[i][1] * 30];
 
   function mount(main, side) {
-    pick = null; pending = null;
+    pick = null; pending = null; seenLast = null;
     main.innerHTML = `<div class="mm"><svg id="mmSvg" class="mm-board" viewBox="0 0 200 200"></svg><p id="mmHint" class="hint"></p></div>`;
     side.innerHTML = '<div class="panel"><div id="mmSeats"></div></div>';
     svg = $('mmSvg');
@@ -76,10 +79,41 @@ UI.morris = (() => {
       : placing ? `Tap an empty point to place a man (${m.hand[m.me]} left).` : pick != null ? 'Tap where it goes.' : 'Tap one of your men to move it.';
   }
 
+  // the move just made: a man glides from where it was, a new mill flashes, a taken man shrinks away
+  function animateLast(m) {
+    const key = JSON.stringify(m.last);
+    if (seenLast === null || key === seenLast || !m.last) { seenLast = key; return; }
+    seenLast = key;
+    const [src, dst, take] = m.last;
+    const man = svg.querySelector(`.mm-pt[data-i="${dst}"]`);
+    if (motionOK() && man?.animate) {
+      const [x0, y0] = src >= 0 ? at(src) : [at(dst)[0], -20], [x1, y1] = at(dst);
+      man.animate([{ transform: `translate(${x0 - x1}px, ${y0 - y1}px)` }, { transform: 'none' }], { duration: src >= 0 ? 320 : 380, easing: 'cubic-bezier(.3, .9, .4, 1)' });
+    }
+    setTimeout(() => ctx.sfx('place'), 300);
+    if (take >= 0) {
+      const lines = [...MILLS, ...(m.twelve ? DIAGS : [])].filter((l) => l.includes(dst) && l.every((i) => m.board[i] === m.board[dst]));
+      for (const l of lines) {
+        const [x1, y1] = at(l[0]), [x2, y2] = at(l[2]);
+        const f = document.createElementNS(NS, 'line');
+        Object.entries({ x1, y1, x2, y2, class: 'mm-mill' }).forEach(([k, v]) => f.setAttribute(k, v));
+        svg.insertBefore(f, svg.querySelector('.mm-pt'));
+        setTimeout(() => f.remove(), 1400);
+      }
+      const [tx, ty] = at(take), ghost = document.createElementNS(NS, 'circle');
+      Object.entries({ cx: tx, cy: ty, r: 9, class: 'mm-gone' }).forEach(([k, v]) => ghost.setAttribute(k, v));
+      ghost.style.fill = m.board[dst] === 0 ? '#f4eedd' : '#1c1726';
+      svg.append(ghost);
+      setTimeout(() => ghost.remove(), 700);
+      setTimeout(() => ctx.sfx('capture'), 380);
+    }
+  }
+
   function render(s, c) {
     S = s; ctx = c;
     if (!ctx.myTurn) { pick = null; pending = null; }
     paint();
+    animateLast(S.morris);
     const m = S.morris, info = $('mmSeats'); info.innerHTML = '';
     svg.classList.toggle('twelve', !!m.twelve);
     m.seats.forEach((pid, i) => {
@@ -91,5 +125,5 @@ UI.morris = (() => {
     });
   }
 
-  return { mount, render };
+  return { mount, render, ownSounds: true };
 })();

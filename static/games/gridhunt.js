@@ -2,7 +2,7 @@
 // send), or type them on a keyboard. The server checks every word against the grid and the dictionary.
 UI.gridhunt = (() => {
   let S, ctx, path = [], typed = '', dragging = false, dragMoved = false, skipClick = false;
-  let receivedAt = 0, tickTimer = 0, gridKey = '', note = '';
+  let receivedAt = 0, tickTimer = 0, gridKey = '', note = '', lastTick = 0, seenResults = '';
   const $ = (id) => document.getElementById(id);
 
   const adjacent = (a, b, n) => a !== b && Math.abs((a / n | 0) - (b / n | 0)) <= 1 && Math.abs((a % n) - (b % n)) <= 1;
@@ -10,7 +10,7 @@ UI.gridhunt = (() => {
   const live = () => S?.phase === 'playing' && S.gridhunt.stage === 'hunt' && !S.me.spectator && !!ctx.act;
 
   function mount(main, side) {
-    path = []; typed = ''; gridKey = ''; note = '';
+    path = []; typed = ''; gridKey = ''; note = ''; seenResults = '';
     main.innerHTML = `<div class="gh">
       <div class="gh-head"><span id="ghRound"></span><span id="ghLeft" class="gh-left"></span></div>
       <div class="dd-bar"><span id="ghBar"></span></div>
@@ -92,14 +92,19 @@ UI.gridhunt = (() => {
   }
 
   function send() {
-    const w = word();
+    const w = word(), traced = [...path];
     clear(); paint();
     if (!w || !live()) return;
     ctx.act('word', { word: w }).then(() => {
       const got = S.gridhunt.mine.find(([x]) => x === w.toUpperCase());
       note = `✅ ${w.toUpperCase()}${got ? ` +${got[1]}` : ''}`;
+      // found: a rising chime (higher for longer words) and a ripple along the tiles it used
+      ctx.sfx('rise', w.length * 1.5);
+      const tiles = $('ghGrid').children;
+      traced.forEach((i, k) => { const t = tiles[i]; if (!t) return; t.style.animationDelay = k * 0.05 + 's'; t.classList.remove('found'); void t.offsetWidth; t.classList.add('found'); });
+      if (w.length >= 7) Kit.callout(`${w.toUpperCase()}!`, 'gold', { ms: 1200 });
       paint();
-    }).catch((err) => { note = `❌ ${err?.message || 'Not a word here.'}`; paint(); });
+    }).catch((err) => { note = `❌ ${err?.message || 'Not a word here.'}`; ctx.sfx('wrong'); const ww = $('ghWord'); ww.classList.remove('shake'); void ww.offsetWidth; ww.classList.add('shake'); paint(); });
   }
 
   function tick() {
@@ -108,6 +113,8 @@ UI.gridhunt = (() => {
     const hunting = g.stage === 'hunt' && S.phase === 'playing';
     $('ghBar').style.width = `${hunting ? (left / g.secs) * 100 : 0}%`;
     $('ghBar').parentElement.classList.toggle('last', hunting && left < 10);
+    $('ghGrid').classList.toggle('hurry', hunting && left < 10);
+    if (hunting && left < 10 && left > 0 && Math.ceil(left) !== lastTick) { lastTick = Math.ceil(left); ctx.sfx('tickfast'); }
     $('ghLeft').textContent = !hunting ? '' : `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
   }
 
@@ -173,6 +180,10 @@ UI.gridhunt = (() => {
       res.innerHTML = '';
       res.append(ctx.el('h3', '', S.phase === 'over' ? `Round ${g.round} results` : `Round ${g.round} results — next grid soon…`));
       const ids = Object.keys(g.results.lists).sort((a, b) => g.results.pts[b] - g.results.pts[a]);
+      const rk = `${g.round}`, freshResults = seenResults !== rk && motionOK();
+      seenResults = rk;
+      let strikeK = 0;
+      if (freshResults) setTimeout(() => { for (let k = 0; k < Math.min(strikeK, 10); k++) setTimeout(() => ctx.sfx('crack'), k * 180); }, 300);
       for (const pid of ids) {
         const p = ctx.player(pid);
         const box = ctx.el('div', 'gh-list');
@@ -181,6 +192,8 @@ UI.gridhunt = (() => {
         box.append(head);
         for (const [w, pts, shared] of g.results.lists[pid]) {
           const chip = ctx.el('span', 'gh-chip' + (shared ? ' shared' : ''), shared ? w : `${w} ${pts}`);
+          // words a rival also found are struck out one after another
+          if (shared && freshResults) { chip.style.setProperty('--sd', strikeK++ * 0.18 + 's'); chip.classList.add('strike'); }
           if (shared) chip.title = 'Someone else found it too';
           traceable(chip, w);
           box.append(chip);

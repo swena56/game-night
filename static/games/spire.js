@@ -46,7 +46,9 @@ UI.spire = (() => {
       for (let i = st.bag.length - 1; i > 0; i--) { const j = Math.floor(st.rng() * (i + 1)); [st.bag[i], st.bag[j]] = [st.bag[j], st.bag[i]]; }
     }
     const kind = st.bag.pop();
-    const power = S.spire.powers && st.rng() < 1 / 8
+    // a comeback: once your tower is two-thirds full, power cells turn up twice as often
+    const high = st.grid?.slice(Math.floor(H * 2 / 3), H).some((row) => row.some(Boolean));
+    const power = S.spire.powers && st.rng() < (high ? 1 / 4 : 1 / 8)
       ? { at: Math.floor(st.rng() * SHAPES[kind].length), ch: String(1 + Math.floor(st.rng() * 3)) } : null;
     return { kind, power };
   }
@@ -125,6 +127,7 @@ UI.spire = (() => {
     const { kind, power } = st.piece;
     st.cells.forEach(([dx, dy], i) => { st.grid[st.y + dy][mod(st.x + dx, W)] = power && power.at === i ? power.ch : kind; });
     st.piece = null;
+    ctx.sfx('place');
     const full = [];
     for (let y = 0; y < H + BUF; y++) if (st.grid[y].every(Boolean)) full.push(y);
     const powers = full.flatMap((y) => st.grid[y].filter((c) => POWER[c]).map((c) => POWER[c]));
@@ -169,7 +172,7 @@ UI.spire = (() => {
   function landJunk(now) {
     if (!st.incoming.length) return;
     if (st.dead) { st.incoming = []; meter(); return; }
-    while (st.incoming.length && st.incoming[0].at <= now) { const q = st.incoming.shift(); addJunk(q.n); if (st.dead) break; }
+    while (st.incoming.length && st.incoming[0].at <= now) { const q = st.incoming.shift(); addJunk(q.n); ctx.sfx('thud'); if (st.dead) break; }
     meter();
   }
   function addJunk(n) {
@@ -213,9 +216,10 @@ UI.spire = (() => {
         if (st.dead) continue;
         if (st.shield > 0) { st.shield--; ctx.toast(`🛡️ Shield blocked ${ev.n} junk from ${ev.from}!`); push(true); }
         // 🧱 junk waits on the meter for a moment: clear rings before it lands to knock it down
-        else { st.incoming.push({ n: ev.n, at: performance.now() + JUNK_DELAY }); ctx.toast(`🧱 ${ev.from} is sending you ${ev.n} junk — clear rings to block it!`); meter(); }
+        else { st.incoming.push({ n: ev.n, at: performance.now() + JUNK_DELAY }); ctx.sfx('alarm'); buzz([60, 40, 60]); ctx.toast(`🧱 ${ev.from} is sending you ${ev.n} junk — clear rings to block it!`); meter(); }
       } else if (ev.kind === 'surge') {
         st.surgeUntil = performance.now() + ev.secs * 1000;
+        ctx.sfx('whoosh');
         ctx.toast(`⚡ ${ev.from}'s surge — you're falling faster!`);
       }
     }
@@ -435,6 +439,9 @@ UI.spire = (() => {
     }
     if (rings >= 3) { const stage = f.parentElement; stage.classList.remove('shake'); void stage.offsetWidth; stage.classList.add('shake'); }
     buzz(rings >= 3 ? [40, 30, 80] : 25);
+    // the clear sound climbs with the size of the clear and the combo
+    ctx.sfx('rise', rings * 2 + (combo - 1) * 2);
+    if (rings >= 3) ctx.sfx('boom');
   }
 
   // ---------- input

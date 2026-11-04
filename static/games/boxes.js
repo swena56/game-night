@@ -1,6 +1,6 @@
 UI.boxes = (() => {
   // A wide grid lies the long way on the screen: across on a sideways phone, down on an upright one.
-  let S, ctx, svg, size = '', prev = null, picked = null;
+  let S, ctx, svg, size = '', prev = null, picked = null, combo = 0, comboBy = null;
   const NS = 'http://www.w3.org/2000/svg';
   const $ = (id) => document.getElementById(id);
   const hover = () => !!window.matchMedia?.('(hover: hover)').matches;  // mouse: click draws; touch: tap twice
@@ -96,6 +96,19 @@ UI.boxes = (() => {
       g.style.setProperty('--fill', seat != null ? colorOf(seat) : 'transparent');
       const name = seat != null ? ctx.player(b.seats[seat])?.name ?? '?' : '';
       g.querySelector('text').textContent = seat != null ? (gem ? '💎' : [...name.replace(/^🤖\s*/, '')][0] ?? '') : gem ? '💎' : '';
+    }
+    // a combo: boxes closed one after another by the same player rise in pitch, with +n over each
+    if (prev) {
+      const fresh = [...svg.querySelectorAll('.bx-box.fresh')];
+      const lineChanged = JSON.stringify([b.h, b.v]) !== JSON.stringify([prev.h, prev.v]);
+      if (fresh.length) {
+        const who = S.turn;
+        combo = comboBy === who ? combo + fresh.length : fresh.length;
+        comboBy = who;
+        ctx.sfx('rise', combo);
+        fresh.forEach((g) => Kit.flyText(g, gems.has(g.dataset.k) ? '+3 💎' : '+1', 'gold'));
+        if (combo >= 4) Kit.callout(`⛓ ×${combo}`, 'gold');
+      } else if (lineChanged) { combo = 0; comboBy = null; }
     }
     prev = { h: b.h, v: b.v, owner: b.owner };
 

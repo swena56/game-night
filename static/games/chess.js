@@ -77,13 +77,13 @@ UI.chess = (() => {
       if (!sel && movable.has(r * 8 + col)) sq.classList.add('movable');
       sq.innerHTML = '';
       if (p) {
-        const piece = ctx.el('span', 'piece ' + p[0], GLYPH[p[1]] + TEXT);
+        const piece = ctx.el('span', `piece ${p[0]} p${p[1]}`, GLYPH[p[1]] + TEXT);
         if (animate && ch.last[2] === r && ch.last[3] === col) {
           slideFrom(piece, ch.last[0] - r, ch.last[1] - col, flip());
           slide = { from: disp(ch.last[0], ch.last[1]), to: i };
         }
         sq.append(piece);
-        if (victim && ch.last[2] === r && ch.last[3] === col) sq.append(ctx.el('span', 'piece taken ' + victim[0], GLYPH[victim[1]] + TEXT));
+        if (victim && ch.last[2] === r && ch.last[3] === col) sq.append(ctx.el('span', `piece taken ${victim[0]} p${victim[1]}`, GLYPH[victim[1]] + TEXT));
       }
       sq.setAttribute('aria-label', `${'abcdefgh'[col]}${8 - r}, ${p ? `${p[0] === 'w' ? 'white' : 'black'} ${NAME[p[1]]}` : 'empty'}`);
       if (i % 8 === 0) sq.append(ctx.el('span', 'coord rank', String(8 - r)));
@@ -99,9 +99,20 @@ UI.chess = (() => {
       x.onclick = () => { pre = preSel = null; ctx.rerender(); };
       $('chStatus').append(ctx.el('span', 'ch-pre', pre ? ` · ⏩ Premove ${sqName(pre[0], pre[1])}→${sqName(pre[2], pre[3])}` : ' · ⏩ Premove: pick a square'), x);
     }
-    const lost = (color) => ch.captured[color].map((k) => GLYPH[k] + TEXT).join('');
+    // captured material, most valuable first, and who is ahead (+N in pawns)
+    const VAL = { Q: 9, R: 5, B: 3, N: 3, P: 1, K: 0 };
+    const worth = (color) => ch.captured[color].reduce((t, k) => t + VAL[k], 0);
+    const lead = worth('b') - worth('w');  // white's lead: black pieces taken minus white pieces taken
+    const tray = (label, color, plus) => {
+      const row = ctx.el('div', 'taken-row', label + ' ');
+      const ks = [...ch.captured[color]].sort((a, b) => VAL[b] - VAL[a]);
+      if (!ks.length) row.append('—');
+      for (const k of ks) row.append(ctx.el('span', `piece ${color} p${k}`, GLYPH[k] + TEXT));
+      if (plus > 0) row.append(ctx.el('b', '', `+${plus}`));
+      return row;
+    };
     $('chTaken').innerHTML = '';
-    $('chTaken').append(ctx.el('div', '', `White took: ${lost('b') || '—'}`), ctx.el('div', '', `Black took: ${lost('w') || '—'}`));
+    $('chTaken').append(tray('White took:', 'b', lead), tray('Black took:', 'w', -lead));
 
     const list = $('chMoves'), sans = ch.sans || [];
     list.innerHTML = '';
@@ -111,7 +122,8 @@ UI.chess = (() => {
 
     const pr = $('chPromo'); pr.innerHTML = ''; pr.hidden = !promo;
     if (promo) for (const k of 'QRBN') {
-      const b = ctx.el('button', 'piece-btn', GLYPH[k] + TEXT);
+      const b = ctx.el('button', 'piece-btn');
+      b.append(ctx.el('span', `piece ${ch.me || 'w'} p${k}`, GLYPH[k] + TEXT));
       b.onclick = () => { const m = [...promo, k]; promo = null; sel = null; ctx.quiet(ctx.act('move', { move: m })); };
       pr.append(b);
     }

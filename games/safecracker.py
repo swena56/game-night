@@ -39,6 +39,7 @@ class Safecracker(Game):
     blurb = "Everyone cracks the same colour code at once, and every guess is revealed to the table."
     min_players = 1
     max_players = 6
+    badges = {**Game.badges, "quick": ("⚡", "Light fingers", "Crack a safe within three guesses")}
     settings_schema = {
         "mode": ("Mode", [("race", "🏁 Race: one shared safe"), ("duel", "⚔️ Duel: set each other's code (2 players)")], "race"),
         "length": ("Code length", [(4, "4 pegs"), (5, "5 pegs")], 4),
@@ -216,6 +217,8 @@ class Safecracker(Game):
         parts = []
         for p in crackers:
             p.g.cracks += 1
+            if self.round <= 3:
+                self.award(p, "quick")
             pts = (3 if alone else 2) - (1 if p.g.probe else 0)
             p.g.score += pts
             parts.append(f"{p.name} +{pts}{' (probed)' if p.g.probe else ''}")

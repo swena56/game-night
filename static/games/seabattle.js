@@ -1,9 +1,20 @@
 UI.seabattle = (() => {
   let S, ctx, layout = [], pick = 0, horizontal = true, sonarMode = false, layoutFor = '', drag = null, dragged = false, N = 0;  // N: the sea's size (10 or 12)
   const $ = (id) => document.getElementById(id);
+  let seenShots = null, seenIncoming = null;
+  // a ship drawn as a hull: rounded bow, square stern, joined along its length
+  function hulls(ships, into) {
+    for (const cells of ships) {
+      if (!cells?.length) continue;
+      const h = cells.length > 1 && cells[0][0] === cells[1][0];
+      cells.forEach(([r, c], k) => into.set(`${r},${c}`, `hull ${h ? 'h' : 'v'} ${k === 0 ? 'bow' : k === cells.length - 1 ? 'stern' : 'mid'}${cells.length === 1 ? ' solo' : ''}`));
+    }
+    return into;
+  }
 
   function mount(main, side) {
     layout = []; pick = 0; horizontal = true; sonarMode = false; layoutFor = ''; drag = null; dragged = false; N = 0;
+    seenShots = null; seenIncoming = null; render.sunk = null;
     main.innerHTML = `<div class="seas">
       <div><h3 id="sbEnemyTitle">Enemy waters</h3><div id="sbEnemy" class="sea-grid"></div></div>
       <div><h3 id="sbMineTitle">Your fleet</h3><div id="sbMine" class="sea-grid"></div></div>
@@ -92,9 +103,12 @@ UI.seabattle = (() => {
       : sea.mine.map((s, i) => ({ cells: s.cells || [], idx: i, sunk: s.sunk }));
     for (const s of myShips) for (const x of s.cells) shipAt.set(x.join(), s);
     const incoming = new Map(sea.theirShots.map(([r, c, v]) => [`${r},${c}`, v]));
+    const myHull = hulls(myShips.map((x) => x.cells), new Map());
+    const lastIn = sea.theirShots.at(-1), newIn = seenIncoming != null && sea.theirShots.length > seenIncoming;
     for (let i = 0; i < N * N; i++) {
       const k = `${Math.floor(i / N)},${i % N}`, cell = mine[i], s = shipAt.get(k), hit = incoming.get(k);
-      cell.className = 'sea-cell' + (s ? ' ship' : '') + (s && s.sunk ? ' sunk' : '') + (s && placing && s.idx === pick ? ' picked' : '');
+      cell.className = 'sea-cell' + (s ? ' ship ' + myHull.get(k) : '') + (s && s.sunk ? ' sunk' : '') + (s && placing && s.idx === pick ? ' picked' : '')
+        + (newIn && lastIn && `${lastIn[0]},${lastIn[1]}` === k ? (hit === 'miss' ? ' plop' : ' boom') : '');
       cell.textContent = hit === 'miss' ? '•' : hit ? '🔥' : '';
       cell.disabled = !(placing && playing && !ready);
     }
@@ -106,13 +120,28 @@ UI.seabattle = (() => {
     const scanned = new Map();
     for (const [r, c, n] of sea.scans) for (let y = r - 1; y <= r + 1; y++) for (let x = c - 1; x <= c + 1; x++) scanned.set(`${y},${x}`, n);
     const scanCentre = new Map(sea.scans.map(([r, c, n]) => [`${r},${c}`, n]));
+    const enemyHull = hulls(sea.enemy.map((x) => x.cells), new Map());
+    const newOut = seenShots != null && sea.myShots.length > seenShots;
     for (let i = 0; i < N * N; i++) {
       const k = `${Math.floor(i / N)},${i % N}`, cell = enemy[i], v = shots.get(k);
-      cell.className = 'sea-cell' + (revealed.has(k) ? ' ship' : '') + (v === 'sunk' ? ' sunk' : '') + (scanned.has(k) ? ' scanned' : '')
-        + (sea.last && `${sea.last[0]},${sea.last[1]}` === k ? ' last' : '');
+      const isLast = sea.last && `${sea.last[0]},${sea.last[1]}` === k;
+      cell.className = 'sea-cell' + (revealed.has(k) ? ' ship ' + (enemyHull.get(k) || '') : '') + (v === 'sunk' ? ' sunk' : '') + (scanned.has(k) ? ' scanned' : '')
+        + (isLast ? ' last' : '') + (isLast && newOut ? (v === 'miss' ? ' plop' : ' boom') : '');
       cell.textContent = v === 'miss' ? '•' : v === 'hit' ? '🔥' : v === 'sunk' ? '✖' : scanCentre.has(k) ? String(scanCentre.get(k)) : '';
       cell.disabled = !ctx.myTurn || (!!v && !sonarMode);
     }
+
+    // sounds: a splash for a miss, a boom for a hit, and a callout when a ship goes down
+    const sunkMine = sea.mine.filter((x) => x.sunk).length, sunkTheirs = sea.enemy.filter((x) => x.sunk).length;
+    if (newOut || newIn) {
+      const v = newOut ? shots.get(`${sea.last?.[0]},${sea.last?.[1]}`) : lastIn?.[2];
+      ctx.sfx(v === 'miss' ? 'splash' : 'boom');
+      if (v !== 'miss' && newIn) ctx.buzz(80);
+    }
+    if (render.sunk && sunkTheirs > render.sunk[1]) Kit.callout('💥 SUNK!', 'gold');
+    else if (render.sunk && sunkMine > render.sunk[0]) Kit.callout('🌊 Ship lost', 'bad');
+    render.sunk = [sunkMine, sunkTheirs];
+    seenShots = sea.myShots.length; seenIncoming = sea.theirShots.length;
 
     // side panel
     let status;
@@ -196,5 +225,5 @@ UI.seabattle = (() => {
     return sea.ready[s.me.id] ? '⚓ Waiting for the other fleet…' : '⚓ Place your fleet';
   }
 
-  return { mount, render, turnText };
+  return { mount, render, turnText, ownSounds: true };
 })();

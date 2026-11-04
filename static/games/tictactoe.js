@@ -1,15 +1,29 @@
 UI.tictactoe = (() => {
-  let S, ctx, grid, built = 0, prev = null, last = -1;
+  let S, ctx, grid, built = 0, prev = null, last = -1, strike = null, struck = '';
+  // the marks are drawn as pen strokes that draw themselves in (an ✖ is two strokes, a ◯ one loop)
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  function drawMark(seat) {
+    const svg = document.createElementNS(SVGNS, 'svg');
+    svg.setAttribute('viewBox', '0 0 100 100'); svg.setAttribute('class', 'ttt-ink'); svg.setAttribute('aria-hidden', 'true');
+    const paths = seat === 0 ? ['M24 24 L76 76', 'M76 24 L24 76'] : ['M50 20 a30 30 0 1 1 -0.1 0'];
+    paths.forEach((d, k) => {
+      const p = document.createElementNS(SVGNS, 'path');
+      p.setAttribute('d', d); p.setAttribute('pathLength', '100'); p.style.animationDelay = k * 0.12 + 's';
+      svg.append(p);
+    });
+    return svg;
+  }
 
   function mount(main, side) {
     built = 0; prev = null; last = -1;
     main.innerHTML = '<div class="ttt"></div>';
     side.innerHTML = '<div class="panel" id="tttInfo"></div>';
     grid = main.querySelector('.ttt');
+    strike = null; struck = '';
   }
 
   function build(n) {  // 3×3 or 4×4
-    built = n; grid.innerHTML = '';
+    built = n; grid.innerHTML = ''; strike = null; struck = '';
     grid.style.setProperty('--n', n);
     grid.classList.toggle('big', n === 4);
     for (let i = 0; i < n * n; i++) {
@@ -34,7 +48,11 @@ UI.tictactoe = (() => {
     prev = [...t.cells];
     [...grid.children].forEach((b, i) => {
       const v = t.cells[i];
-      b.textContent = v == null ? '' : t.marks[v];
+      if (String(v) !== b.dataset.v) {
+        b.dataset.v = String(v);
+        b.replaceChildren();
+        if (v != null) b.append(drawMark(v), ctx.el('span', 'sr-only', t.marks[v]));
+      }
       b.style.color = v == null ? '' : ctx.player(t.seats[v])?.color ?? '#999';
       b.classList.toggle('mark', v != null);
       b.setAttribute('aria-label', `row ${Math.floor(i / n) + 1}, column ${i % n + 1}, ${v == null ? 'empty' : `${ctx.player(t.seats[v])?.name ?? '?'}'s ${t.marks[v]}`}${t.fading.includes(i) ? ', fades next' : ''}`);
@@ -43,16 +61,40 @@ UI.tictactoe = (() => {
       b.classList.toggle('last', i === last && v != null && !t.line);
       b.disabled = !ctx.myTurn || v != null;
     });
+    drawStrike(t, n);
+    const lineNew = Kit.changed('ttt-line', t.line || null);
+    if (t.line && lineNew) ctx.sfx('crack');
     const info = document.getElementById('tttInfo'); info.innerHTML = '';
     t.seats.forEach((pid, i) => {
       const p = ctx.player(pid);
       const row = ctx.el('div', 'seat-row', `${t.marks[i]}  ${p?.name ?? '—'}${pid === S.me.id ? ' (you)' : ''}`);
       row.style.color = p?.color ?? '';
+      // the series: wins at Tic-Tac-Toe tonight
+      row.append(ctx.el('b', 'ttt-wins', '🏆'.repeat(Math.min(5, p?.byGame?.tictactoe || 0)) + ((p?.byGame?.tictactoe || 0) > 5 ? `×${p.byGame.tictactoe}` : '')));
       info.append(row);
     });
     if (S.settings.variant === 'vanishing')
       info.append(ctx.el('p', 'hint', `👻 Vanishing: you only keep ${n} marks. Your faded mark disappears when you place the next one.`));
     if (n === 4) info.append(ctx.el('p', 'hint', 'Four in a row wins: across, down or corner to corner.'));
+  }
+
+  // a pen line through the winning row, from the first square's centre to the last one's
+  function drawStrike(t, n) {
+    const key = t.line ? t.line.join() : '';
+    if (key === struck) return;
+    struck = key;
+    strike?.remove(); strike = null;
+    if (!t.line) return;
+    const c = (i) => [((i % n) + 0.5) * 100 / n, (Math.floor(i / n) + 0.5) * 100 / n];
+    const [a, b] = [c(t.line[0]), c(t.line.at(-1))];
+    const ext = 0.32 * 100 / n, dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy);
+    const ux = dx / len * ext, uy = dy / len * ext;
+    strike = document.createElementNS(SVGNS, 'svg');
+    strike.setAttribute('viewBox', '0 0 100 100'); strike.setAttribute('preserveAspectRatio', 'none'); strike.setAttribute('class', 'ttt-strike');
+    const p = document.createElementNS(SVGNS, 'path');
+    p.setAttribute('d', `M${a[0] - ux} ${a[1] - uy} L${b[0] + ux} ${b[1] + uy}`); p.setAttribute('pathLength', '100');
+    strike.append(p);
+    grid.append(strike);
   }
 
   return { mount, render };

@@ -4,11 +4,7 @@ UI.lastcard = (() => {
   const $ = (id) => document.getElementById(id);
   const rank = (c) => c.slice(0, -1), suit = (c) => c.slice(-1);
 
-  function face(card, cls = '') {
-    const f = ctx.el('span', `pc ${'HD'.includes(suit(card)) ? 'red' : 'black'} ${cls}`);
-    f.append(ctx.el('b', '', rank(card)), ctx.el('i', '', SUIT[suit(card)] + '︎'));
-    return f;
-  }
+  const face = (card, cls = '') => Cards.face(card, cls);
 
   function mount(main, side) {
     pendingJack = null; shownTop = undefined; shownHand = null;
@@ -37,13 +33,24 @@ UI.lastcard = (() => {
     const g = S.cards;
     if (!ctx.myTurn) pendingJack = null;
     const top = $('lcTop'); top.innerHTML = '';
-    top.append(face(g.top, 'big-card' + (shownTop !== undefined && shownTop !== g.top ? ' toss' : '')));
+    const played = shownTop !== undefined && shownTop !== g.top;
+    top.append(face(g.top, 'big-card' + (played ? ' toss' : '')));
+    // action cards land with a stamp and a sound of their own
+    if (played) {
+      const r = rank(g.top), act = g.actions && { 7: ['+' + g.penalty, 'bad'], 8: ['⛔ Skip', 'bad'], Q: ['⇄ Reverse', 'cool'], J: [SUIT[g.suit] + '︎', 'HD'.includes(g.suit) ? 'bad' : 'cool'] }[r];
+      if (act) {
+        const stamp = ctx.el('span', 'lc-stamp ' + act[1], act[0]);
+        top.append(stamp);
+        ctx.sfx(r === '7' ? 'rise' : r === '8' ? 'thud' : r === 'Q' ? 'whoosh' : 'pickup', g.penalty / 2);
+        if (r === '7' && g.penalty >= 4) Kit.callout(`+${g.penalty}!`, 'bad', { ms: 1100 });
+      } else ctx.sfx('card');
+    }
     shownTop = g.top;
     $('lcDeckCount').textContent = g.deck;
     const info = $('lcInfo'); info.innerHTML = '';
     if (g.suit !== suit(g.top)) info.append(ctx.el('div', 'chip-suit ' + ('HD'.includes(g.suit) ? 'red' : ''), `Suit: ${SUIT[g.suit]}︎`));
-    if (g.penalty) info.append(ctx.el('div', 'penalty', `+${g.penalty} pending!`));
-    info.append(ctx.el('div', 'hint', g.direction === 1 ? '↻ clockwise' : '↺ reversed'));
+    if (g.penalty) { const pen = ctx.el('div', 'penalty', `+${g.penalty} pending!`); pen.style.setProperty('--sz', Math.min(1.6, 1 + g.penalty / 12)); info.append(pen); }
+    info.append(ctx.el('div', 'hint lc-dir' + (g.direction === 1 ? '' : ' rev'), g.direction === 1 ? '↻ clockwise' : '↺ reversed'));
 
     // a fanned hand: one swipeable row, each card turned a little more the further it is from the middle
     const hand = $('lcHand'); hand.innerHTML = '';
@@ -54,6 +61,7 @@ UI.lastcard = (() => {
     const fresh = new Set();
     if (before) for (const card of cards) { const at = before.indexOf(card); if (at >= 0) before.splice(at, 1); else fresh.add(card); }
     shownHand = cards;
+    if (before && fresh.size) ctx.sfx('deal');
     let dealt = 0;
     for (const [k, card] of cards.entries()) {
       const ok = g.playable.includes(card);
@@ -108,5 +116,5 @@ UI.lastcard = (() => {
     ctx.quiet(ctx.act('play', { card }));
   }
 
-  return { mount, render };
+  return { mount, render, ownSounds: true };
 })();

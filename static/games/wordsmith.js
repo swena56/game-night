@@ -3,7 +3,7 @@ UI.wordsmith = (() => {
   let pending = [];      // [{r, c, i, as}] tiles placed this turn (i = rack index; as = the letter a blank stands for)
   let selected = null;   // rack index picked up
   let order = [];        // display order of rack indices (for Shuffle)
-  let rackKey = '';
+  let rackKey = '', seenLast = null, prevScores = null, seenBounty = null;
   let swapMode = false;
   const swapSel = new Set();
   let previewKey = '', previewTimer = 0;
@@ -16,7 +16,7 @@ UI.wordsmith = (() => {
   const face = (el, ch, blank) => { el.classList.toggle('blank', blank); el.append(ch, Object.assign(document.createElement('sub'), { textContent: blank ? '' : S.ws.values[ch] })); };
 
   function mount(main, side) {
-    pending = []; selected = null; order = []; rackKey = ''; swapMode = false; swapSel.clear(); previewKey = '';
+    pending = []; selected = null; order = []; rackKey = ''; swapMode = false; swapSel.clear(); previewKey = ''; seenLast = null; prevScores = null; seenBounty = null;
     main.innerHTML = '<div class="ws-board"></div>';
     side.innerHTML = `<div class="panel">
       <div class="ws-info"><span id="wsBag"></span><span id="wsBounty"></span></div>
@@ -89,6 +89,12 @@ UI.wordsmith = (() => {
     pending = pending.filter((t) => w.grid[t.r][t.c] == null && t.i < rack.length);
     save(S.code + key);
     const lastSet = new Set(w.last.map(([r, c]) => r * 11 + c));
+    // a new play: its tiles snap down one after another and the points burst out of the word
+    const lastKey = JSON.stringify(w.last), played = seenLast !== null && lastKey !== seenLast && w.last.length;
+    const gainer = played && prevScores ? Object.keys(w.scores).find((id) => w.scores[id] > (prevScores[id] ?? 0)) : null;
+    const gain = gainer ? w.scores[gainer] - (prevScores[gainer] ?? 0) : 0;
+    seenLast = lastKey; prevScores = { ...w.scores };
+    const lastOrder = new Map(w.last.map(([r, c], k) => [r * 11 + c, k]));
 
     [...board.children].forEach((cell, i) => {
       const r = Math.floor(i / 11), c = i % 11;
@@ -102,6 +108,8 @@ UI.wordsmith = (() => {
         cell.classList.add('tile');
         cell.classList.toggle('pending', !!pend);
         cell.classList.toggle('last', lastSet.has(i));
+        if (played && lastSet.has(i) && motionOK()) { cell.classList.add('snap'); cell.style.animationDelay = lastOrder.get(i) * 0.07 + 's'; }
+        else cell.classList.remove('snap');
         const who = !pend && w.by?.[r][c];
         cell.style.setProperty('--by', who ? ctx.player(who)?.color ?? '#0003' : '#0003');
         if (pend) cell.style.setProperty('--by', ctx.player(S.me.id)?.color ?? '#fff');
@@ -109,6 +117,15 @@ UI.wordsmith = (() => {
       } else if (prem) cell.textContent = PREMIUM_LABEL[prem];
     });
 
+    if (played) {
+      w.last.forEach((_, k) => setTimeout(() => ctx.sfx('place'), k * 70));
+      const [mr, mc] = w.last[Math.floor(w.last.length / 2)];
+      if (gain) setTimeout(() => Kit.flyText(board.children[mr * 11 + mc], `+${gain}`, gain >= 40 ? 'gold' : 'good'), w.last.length * 70 + 100);
+      if (w.last.length === 7) Kit.callout('🧹 Clean sweep!', 'gold', { sound: 'fanfare' });
+      else if (gain >= 50) Kit.callout(`${gain}!`, 'gold', { ms: 1100 });
+    }
+    if (w.bounty && seenBounty && w.bounty !== seenBounty) { const b = $('wsBounty'); b.classList.remove('flash'); void b.offsetWidth; b.classList.add('flash'); }
+    seenBounty = w.bounty;
     const rackBox = $('wsRack'); rackBox.innerHTML = '';
     const used = new Set(pending.map((t) => t.i));
     for (const i of order) {
@@ -239,5 +256,5 @@ UI.wordsmith = (() => {
 
   function unmount() { drag?.ghost?.remove(); drag = null; }
 
-  return { mount, render, unmount };
+  return { ownSounds: true, mount, render, unmount };
 })();

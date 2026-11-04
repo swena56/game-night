@@ -1,17 +1,12 @@
 // Ship, Captain & Crew: three slots for the 6, 5 and 4, the loose dice (the cargo once all three are
 // in), and Roll / Dock. Once loaded, tap cargo dice to pick which ones to reroll.
 UI.shipcrew = (() => {
-  let S, ctx, pick = new Set([0, 1]), turnKey = '', seenLast = -1, rollKey = '';
+  let S, ctx, pick = new Set([0, 1]), turnKey = '', seenLast = -1, rollKey = '', seenFound = 0;
   const $ = (id) => document.getElementById(id);
-  const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
+  const PIPS = Dice.PIPS;
   const SLOTS = [[6, '🚢', 'Ship'], [5, '🧭', 'Captain'], [4, '👥', 'Crew']];
 
-  function die(value, cls = '', tag = 'span') {
-    const b = ctx.el(tag, 'ya-die ' + cls);
-    const on = new Set(PIPS[value]);
-    for (let k = 0; k < 9; k++) b.append(ctx.el('span', on.has(k) ? 'on' : ''));
-    return b;
-  }
+  const die = (value, cls = '', tag = 'span') => Dice.die(value, cls, tag);
 
   function mount(main, side) {
     pick = new Set([0, 1]); turnKey = ''; seenLast = -1; rollKey = '';
@@ -47,16 +42,25 @@ UI.shipcrew = (() => {
     rollKey = rk;
     const slots = $('scSlots'); slots.innerHTML = '';
     SLOTS.forEach(([v, icon, label], i) => {
-      const slot = ctx.el('div', 'crew-slot' + (i < sc.found.length ? ' got' : i === sc.found.length ? ' next' : ''));
+      const slot = ctx.el('div', 'crew-slot' + (i < sc.found.length ? ' got' : i === sc.found.length ? ' next' : '')
+        + (shake && i < sc.found.length && i >= seenFound ? ' landed' : ''));
       slot.append(i < sc.found.length ? die(v) : ctx.el('span', 'crew-empty', String(v)), ctx.el('small', '', `${icon} ${label}`));
       slots.append(slot);
     });
 
+    // the ship's crew coming aboard, and a full hold, are moments
+    if (shake && sc.found.length > seenFound) {
+      ctx.sfx('good');
+      if (sc.loaded) Kit.callout('⚓ Loaded!', 'good', { ms: 1100 });
+    }
+    if (shake && sc.loaded && sc.free[0] + sc.free[1] === 12) Kit.callout('Full hold! 12', 'gold', { sound: 'fanfare' });
+    seenFound = sc.found.length;
     $('scLabel').textContent = sc.loaded ? `Cargo: ${sc.free[0] + sc.free[1]}` : sc.rolls ? `Still looking for a ${SLOTS[sc.found.length][0]} (${SLOTS[sc.found.length][2].toLowerCase()})` : '';
     const free = $('scFree'); free.innerHTML = '';
     sc.free.forEach((v, i) => {
       const canPick = mine && sc.loaded && sc.rolls < sc.maxRolls;
-      const b = die(v, (canPick && pick.has(i) ? 'held' : '') + (sc.loaded ? ' cargo' : ' dim') + (shake ? ' roll' : ''), 'button');
+      const b = die(v, (canPick && pick.has(i) ? 'held' : '') + (sc.loaded ? ' cargo' : ' dim'), 'button');
+      if (shake) setTimeout(() => Dice.roll([b], { sound: false }), 0);
       b.disabled = !canPick;
       b.setAttribute('aria-label', `${v}${canPick ? (pick.has(i) ? ', will reroll' : ', keeping') : ''}`);
       b.onclick = () => { pick.has(i) ? pick.delete(i) : pick.add(i); render(S, ctx); };
@@ -74,6 +78,7 @@ UI.shipcrew = (() => {
     if (sc.last) {
       const p = ctx.player(sc.last.by);
       const line = ctx.el('div', 'crew-lastline' + (sc.last.n !== seenLast ? ' fresh' : ''));
+      if (sc.last.n !== seenLast && seenLast !== -1 && !sc.last.cargo.length) Kit.callout('🌊 Sunk', 'bad', { ms: 1100 });
       seenLast = sc.last.n;
       const name = ctx.el('b', '', p?.name ?? '?'); name.style.color = p?.color ?? 'inherit';
       line.append(name, ctx.el('span', '', sc.last.cargo.length ? ` docked with ${sc.last.pts} cargo (${sc.last.cargo.join(' + ')})` : ` sank: no ${['ship', 'captain', 'crew'][sc.last.found.length]} — 0`));

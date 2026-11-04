@@ -27,6 +27,8 @@ class Heist(Game):
              "two grabbers trip the alarm, and guards fine anyone they catch.")
     min_players = 2
     max_players = 6
+    badges = {**Game.badges, "mastermind": ("💎", "Mastermind", "Steal a vault holding 💰20 or more"),
+              "hawk": ("🦅", "Hawk-eyed", "Guard on a night when two or more players grab")}
     settings_schema = {
         "rounds": ("Nights", [(6, "6 nights"), (8, "8 nights"), (10, "10 nights")], 8),
     }
@@ -95,6 +97,9 @@ class Heist(Game):
                 self.gold[i] += share
             self.pot += leftover
             outcome = f"🚨 {names(guard)} caught {names(grab)}! Fines paid: 💰{fines}."
+            if len(grab) >= 2:
+                for i in guard:
+                    self.award(i, "hawk")
         elif guard:
             for i in guard:
                 if self.gold[i]:
@@ -103,6 +108,8 @@ class Heist(Game):
             outcome = f"🥱 {names(guard)} guarded an empty hallway and dropped 💰1 into the vault."
         elif len(grab) == 1:
             outcome = f"💎 {names(grab)} slipped in alone and stole 💰{self.pot}!"
+            if self.pot >= 20:
+                self.award(grab[0], "mastermind")
             self.gold[grab[0]] += self.pot
             self.pot = 0
         elif grab:

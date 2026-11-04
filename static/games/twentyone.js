@@ -2,15 +2,9 @@
 // chips (while betting) or Hit / Stand / Double / Split (on your turn). A split seat shows one row per hand.
 UI.twentyone = (() => {
   let S, ctx;
-  const SUIT = { S: '♠', H: '♥', D: '♦', C: '♣' };
   const $ = (id) => document.getElementById(id);
 
-  function face(card, cls = '') {
-    if (card === '??') return ctx.el('span', `pc back ${cls}`);
-    const f = ctx.el('span', `pc ${'HD'.includes(card[1]) ? 'red' : 'black'} ${cls}`);
-    f.append(ctx.el('b', '', card[0] === 'T' ? '10' : card[0]), ctx.el('i', '', SUIT[card[1]] + '︎'));
-    return f;
-  }
+  const face = (card, cls = '') => Cards.face(card, cls);
 
   function mount(main, side) {
     main.innerHTML = `<div class="to">
@@ -22,7 +16,7 @@ UI.twentyone = (() => {
   }
 
   // The bet builder (#5): tap chips to stack a bet, then Deal. The stake lives here until it's sent.
-  let stake = 0, stakeHand = null, seen = new Map(), seenHand = null;
+  let stake = 0, stakeHand = null, seen = new Map(), seenHand = null, holeHidden = false, called = new Set();
   function betBar(bar, t, me) {
     const chips = t.chips[me], last = Math.min(t.lastBets?.[me] || 0, chips), min = t.minBet || 5;
     const draw = () => {
@@ -32,7 +26,7 @@ UI.twentyone = (() => {
         const b = ctx.el('button', `to-chip c${amt}`, String(amt));
         b.title = `Add ${amt}`;
         b.disabled = !ctx.act || stake + amt > chips;
-        b.onclick = () => { stake += amt; draw(); };
+        b.onclick = () => { stake += amt; ctx.sfx('chip'); draw(); };
         pile.append(b);
       }
       const row = ctx.el('div', 'to-betrow');
@@ -52,7 +46,8 @@ UI.twentyone = (() => {
       deal.disabled = !ctx.act || !(stake === chips || stake >= min);
       deal.onclick = () => ctx.quiet(ctx.act('bet', { amount: stake }));
       row.append(deal);
-      const stack = ctx.el('div', 'hint to-stake', stake ? `Your bet: 💰 ${stake} of ${chips}` : `Tap chips to build a bet (you have ${chips}).`);
+      const stack = ctx.el('div', 'hint to-stake', stake ? `Your bet: ${stake} of ${chips}` : `Tap chips to build a bet (you have ${chips}).`);
+      if (stake) stack.prepend(Chips.stack(stake, { label: false, max: 10 }));
       bar.append(pile, stack, row);
     };
     draw();
@@ -74,7 +69,18 @@ UI.twentyone = (() => {
     };
     const dl = $('toDealer'); dl.innerHTML = '';
     const dd = dealt('d', t.dealer);
-    t.dealer.forEach((card, k) => dl.append(dd(face(card), k)));
+    // the dealer's hole card turns over in place when the dealer plays
+    const flipHole = holeHidden && !t.dealer.includes('??') && t.dealer.length >= 2;
+    holeHidden = t.dealer.includes('??');
+    t.dealer.forEach((card, k) => {
+      const f = dd(face(card), k);
+      if (flipHole && k === 1 && motionOK()) { f.classList.remove('dealt'); f.classList.add('flip-in'); }
+      dl.append(f);
+    });
+    if (flipHole) ctx.sfx('flip');
+    if (seenHand === t.hand && t.dealer.length && !t.dealer.includes('??') && t.dealerTotal > 21 && !called.has('d' + t.hand)) {
+      called.add('d' + t.hand); Kit.callout('Dealer busts!', 'good', { ms: 1200 });
+    }
     $('toDealerTotal').textContent = t.dealer.length ? String(t.dealerTotal) + (t.dealer.includes('??') ? '+?' : '') : '';
 
     const seats = $('toSeats'); seats.innerHTML = '';
@@ -83,7 +89,7 @@ UI.twentyone = (() => {
       const box = ctx.el('div', 'to-seat' + (S.turn === pid ? ' turn' : '') + (i === me ? ' me' : ''));
       const head = ctx.el('div', 'to-head');
       const nm = ctx.el('b', '', `${p?.name ?? 'left'}${i === me ? ' (you)' : ''}`); nm.style.color = p?.color ?? 'inherit';
-      head.append(nm, ctx.el('span', 'hint', t.bets[i] ? `bet ${t.bets[i]}` : t.stage === 'bet' && t.chips[i] > 0 ? 'betting…' : ''));
+      head.append(nm, t.bets[i] ? Chips.stack(t.bets[i], { max: 6, cls: 'to-bet' }) : ctx.el('span', 'hint', t.stage === 'bet' && t.chips[i] > 0 ? 'betting…' : ''));
       box.append(head);
       const hs = t.seatHands[i], split = hs.length > 1;
       hs.forEach((h, k) => {
@@ -93,6 +99,12 @@ UI.twentyone = (() => {
         h.cards.forEach((card, n) => cards.append(dh(face(card, 'small'), n)));
         const foot = ctx.el('div', 'to-foot');
         foot.append(ctx.el('b', h.total > 21 ? 'bust' : '', String(h.total)));
+        // my own big moments: blackjack and bust
+        const ck = `${t.hand}:${k}`;
+        if (i === me && !called.has(ck)) {
+          if (h.total > 21) { called.add(ck); Kit.callout('BUST', 'bad', { ms: 1100 }); ctx.sfx('wrong'); ctx.buzz(60); }
+          else if (h.total === 21 && h.cards.length === 2 && !split) { called.add(ck); Kit.callout('Blackjack!', 'gold', { sound: 'fanfare' }); }
+        }
         if (split) foot.append(ctx.el('span', 'hint', `💰 ${h.bet}`));
         if (h.res) foot.append(ctx.el('span', 'to-res ' + (h.res[1] > 0 ? 'win' : h.res[1] < 0 ? 'lose' : ''), `${h.res[0]} ${h.res[1] > 0 ? '+' : ''}${h.res[1]}`));
         wrap.append(cards, foot);

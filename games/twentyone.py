@@ -52,6 +52,7 @@ class TwentyOne(Game):
         "Most chips after the last hand wins. Alone, finish ahead of your starting 100.",
     ]
     name = "Blackjack"
+    badges = {**Game.badges, "charlie": ("🎩", "Five-card Charlie", "Win a hand holding five cards or more")}
     icon = "♦️"
     blurb = "Twenty-One against the dealer: build your bet, then hit, stand, double or split, and leave with the most chips."
     min_players = 1
@@ -272,6 +273,8 @@ class TwentyOne(Game):
                 else:
                     dh, text = -b, "lost"
                 h["res"] = [text, dh]
+                if dh > 0 and len(h["cards"]) >= 5 and self.pl(i):
+                    self.award(self.pl(i), "charlie")
                 texts.append(text)
                 delta += dh
             self.chips[i] += delta

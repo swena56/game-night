@@ -52,6 +52,8 @@ class SeaBattle(Game):
     name = "Sea Battle"
     icon = "🚢"
     blurb = "Hide your fleet, then hunt theirs square by square. Sink every ship to win."
+    badges = {**Game.badges, "admiral": ("⚓", "Admiral", "Win without losing a ship"),
+              "eagle": ("🦅", "Eagle eye", "Sink the whole fleet with at most two shots per ship square")}
     settings_schema = {
         "shots": ("Firing rule", [("classic", "1 shot per turn"), ("chain", "Hit = fire again"),
                                   ("salvo", "Salvo: 1 shot per ship afloat")], "chain"),
@@ -163,6 +165,10 @@ class SeaBattle(Game):
                     p.g.shots[cell] = "sunk"
                 room.add_log(f"{p.name} fires at {cell_name(r, c)} — 💥 sank the {ship['name']}!", "big")
                 if all(len(s["hits"]) == len(s["cells"]) for s in opp.g.ships):
+                    if not any(len(s["hits"]) == len(s["cells"]) for s in p.g.ships):
+                        self.award(p, "admiral")
+                    if len(p.g.shots) <= 2 * sum(len(s["cells"]) for s in opp.g.ships):
+                        self.award(p, "eagle")
                     return room.finish(p, f"🏆 {p.name} sank the whole fleet!")
             else:
                 p.g.shots[(r, c)] = "hit"

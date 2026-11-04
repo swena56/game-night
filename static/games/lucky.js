@@ -133,7 +133,12 @@ UI.lucky = (() => {
   function tick(now) {
     raf = requestAnimationFrame(tick);
     tickClock(now);
-    const a = currentAngle(now);
+    const spinning = !!anim, a = currentAngle(now);
+    // a ratchet click each time a peg passes the pointer, and the wedge's own sound where it stops
+    const peg = Math.floor(a / SLICE);
+    if (anim && peg !== lastPeg && lastPeg != null) ctx?.sfx?.('tick');
+    lastPeg = peg;
+    if (spinning && !anim) landSound();
     if (gfx) {
       gfx.wheel.rotation.z = -a;
       // the pointer flicks as pegs pass under it
@@ -144,6 +149,18 @@ UI.lucky = (() => {
       const g = $('lkSvgWheel');
       if (g) g.setAttribute('transform', `rotate(${(a * 180) / Math.PI} 100 100)`);
     }
+  }
+
+  let lastPeg = null;
+  function landSound() {
+    const L = S?.lucky, w = L?.spin && L.wedges[L.spin.wedge];
+    if (!w) return;
+    const v = w.value;
+    if (v === 'bust') { ctx.sfx('wrong'); Kit.callout('💀 BUST', 'bad', { ms: 1100 }); }
+    else if (v === 'jackpot') { ctx.sfx('fanfare'); Kit.callout('⚡ JACKPOT', 'gold'); }
+    else if (v === 'steal') { ctx.sfx('whoosh'); Kit.callout('🦊 Steal!', 'gold', { ms: 1100 }); }
+    else if (v === 'skip') ctx.sfx('thud');
+    else ctx.sfx('good');
   }
 
   // ---------- mount / render

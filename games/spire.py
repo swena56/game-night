@@ -317,7 +317,8 @@ class Spire(Game):
         if not move:
             return self.knock_out(o)
         cells, px, py = move
-        power_at = self.rng.randrange(len(cells)) if self.s["powers"] and self.rng.random() < POWER_CHANCE else None
+        high = any(any(row) for row in t.grid[H * 2 // 3:H])  # the comeback rule, as for people
+        power_at = self.rng.randrange(len(cells)) if self.s["powers"] and self.rng.random() < POWER_CHANCE * (2 if high else 1) else None
         for i, (dx, dy) in enumerate(cells):
             t.grid[py + dy][(px + dx) % W] = self.rng.choice(list(POWERS)) if i == power_at else kind
         lines, powers = t.clear(t.grid)

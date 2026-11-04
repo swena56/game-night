@@ -39,7 +39,7 @@ class Hockey(Game):
     howto = [
         "Drag your mallet around your half of the table.",
         "Smash the puck into the goal at the far end. Bank shots off the walls count!",
-        "First to the target score wins.",
+        "First to the target score wins. 🔥 At match point the puck gets faster.",
         "🏒🏒 Double Trouble puts two pucks on the table.",
     ]
     name = "Air Hockey"
@@ -164,9 +164,13 @@ class Hockey(Game):
             self.mvel[i] = [(nx - mx) / h, (ny - my) / h]
             self.mallets[i] = [nx, ny]
 
+    def match_point(self):
+        """Either player one goal from winning: the puck runs faster and slows down less."""
+        return max(self.score) >= self.s["target"] - 1
+
     def move_puck(self, pk, h):
         """Move one puck a substep. Returns the scoring seat if it went into a goal."""
-        decay = max(0.0, 1 - FRICTION * h)
+        decay = max(0.0, 1 - FRICTION * (0.6 if self.match_point() else 1) * h)
         pk.vx *= decay
         pk.vy *= decay
         pk.x += pk.vx * h
@@ -205,8 +209,9 @@ class Hockey(Game):
             if 0 < d < MALLET + PUCK:
                 self.mallets[i] = self.clamp(i, pk.x - dx / d * (MALLET + PUCK), pk.y - dy / d * (MALLET + PUCK))
         sp = math.hypot(pk.vx, pk.vy)
-        if sp > MAX_PUCK:
-            pk.vx, pk.vy = pk.vx / sp * MAX_PUCK, pk.vy / sp * MAX_PUCK
+        top = MAX_PUCK * (1.25 if self.match_point() else 1)  # 🔥 match point: a livelier puck
+        if sp > top:
+            pk.vx, pk.vy = pk.vx / sp * top, pk.vy / sp * top
         return None
 
     def goal(self, scorer, k, now):
