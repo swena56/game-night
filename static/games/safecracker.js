@@ -24,7 +24,12 @@ UI.safecracker = (() => {
   function mount(main, side) {
     draft = []; cursor = 0; probing = false; draftFor = ''; notes = []; notesFor = null; seenRounds = null; seenOpen = null; seenSafe = null;
     main.innerHTML = `<div class="sc">
-      <div class="sc-head"><span id="scSafe"></span><span id="scRound"></span></div>
+      <div class="sc-head"><svg id="scVault" class="sc-vault" viewBox="0 0 64 64" aria-hidden="true">
+          <rect x="2" y="2" width="60" height="60" rx="8" class="frame"/>
+          <g class="door"><circle cx="32" cy="32" r="26" class="plate"/><circle cx="32" cy="32" r="21" class="ring"/>
+            <g class="bolts"><rect x="2" y="29" width="8" height="6" rx="2"/><rect x="54" y="29" width="8" height="6" rx="2"/><rect x="29" y="2" width="6" height="8" rx="2"/><rect x="29" y="54" width="6" height="8" rx="2"/></g>
+            <g class="dial"><circle cx="32" cy="32" r="12"/><path d="M32 20 v6 M32 38 v6 M20 32 h6 M38 32 h6"/><circle cx="32" cy="22.5" r="1.8" class="notch"/></g></g></svg>
+        <span class="grow"><span id="scSafe"></span><small id="scStreak" class="sc-streak" hidden></small></span><span id="scRound"></span></div>
       <div id="scOpened" class="sc-opened" hidden></div>
       <div id="scStand" hidden></div>
       <div id="scHistory" class="sc-history"></div>
@@ -167,6 +172,14 @@ UI.safecracker = (() => {
     $('scRound').textContent = g.stage === 'set' ? 'Setting codes' : `Guess ${Math.min(g.round, g.rounds)} of ${g.rounds}`;
 
     standingsCard($('scStand'), g.standings, { title: `After safe ${g.safe} of ${g.safes}` });
+    // the vault: the dial turns a notch with every round of guesses; an opened safe swings its door
+    const vault = $('scVault');
+    vault.style.setProperty('--turn', `${g.round * 137 + g.history.reduce((t, r) => t + r.length, 0) * 23}deg`);
+    vault.classList.toggle('open', !!(g.code || g.opened));
+    // 📅 today's safes: a streak of days played, kept on this device
+    const streak = dailyStreak(g);
+    $('scStreak').hidden = !streak;
+    $('scStreak').textContent = streak ? ` 📅 ${streak}-day streak` : '';
     // a duel's codes come as [[owner, code], ...]; a race has one shared code
     const code = g.code || g.opened;
     const box = $('scOpened');
@@ -229,6 +242,20 @@ UI.safecracker = (() => {
     $('scProbeInfo').textContent = g.myProbe ? `🔍 Your probe: the code holds ${g.myProbe[1]} of colour ${g.myProbe[0] + 1}.`
       : 'Your 🔍 probe for this safe is unused.';
     paint();
+  }
+
+  const day = (d) => d.toISOString().slice(0, 10);
+  function dailyStreak(g) {
+    if (!g.daily) return 0;
+    let rec = { last: null, streak: 0 };
+    try { rec = JSON.parse(localStorage.getItem('safecracker.daily')) || rec; } catch {}
+    const today = day(new Date()), yesterday = day(new Date(Date.now() - 864e5));
+    if (S.phase === 'over' && !S.me.spectator && rec.last !== today) {
+      rec = { last: today, streak: rec.last === yesterday ? rec.streak + 1 : 1 };
+      try { localStorage.setItem('safecracker.daily', JSON.stringify(rec)); } catch {}
+      if (rec.streak > 1) Kit.callout(`📅 ${rec.streak}-day streak!`, 'gold', { ms: 1800 });
+    }
+    return rec.last === today || rec.last === yesterday ? rec.streak : 0;
   }
 
   function paintNotes() {

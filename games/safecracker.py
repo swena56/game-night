@@ -310,6 +310,7 @@ class Safecracker(Game):
             "waiting": [o.id for o in self.waiting_on()],
             "mine": self.codes.get(p.id) if self.stage == "set" else self.locked.get(p.id),
             "duel": self.duel, "mySet": self.codes.get(p.id) if self.duel else None,
+            "daily": bool(self.s.get("daily")) and not self.duel,
             "probed": [q.id for q in self.room.seated() if getattr(q.g, "probe", None) is not None],
             "myProbe": list(probe) if probe else None,
             "code": (self.code if not self.duel else [[pid, c] for pid, c in self.codes.items()])

@@ -2187,3 +2187,22 @@ body.calm .cb-plus { display: none; }
 .ch-bal { width: min(100%, 560px, var(--room)); height: 6px; margin: 6px auto 0; border-radius: 3px; background: #222; overflow: hidden; display: flex; }
 .ch-bal i { display: block; height: 100%; background: #f0ece2; transition: width .6s cubic-bezier(.3, 1.3, .5, 1); }
 .ch-bal.flip { flex-direction: row-reverse; }
+
+/* safecracker: a vault door whose dial turns with every guess; it swings open when the safe is cracked */
+.sc-head { align-items: center; gap: 10px; }
+.sc-vault { width: 46px; height: 46px; flex: none; overflow: visible; }
+.sc-vault .frame { fill: #2b2f36; stroke: #12151a; stroke-width: 2; }
+.sc-vault .door { transform-origin: 6px 32px; transition: transform .9s cubic-bezier(.5, -.3, .3, 1.2); }
+.sc-vault .plate { fill: #9aa3ad; stroke: #5d6670; stroke-width: 2; }
+.sc-vault .ring { fill: none; stroke: #c9d0d8; stroke-width: 1.5; stroke-dasharray: 2 3; }
+.sc-vault .bolts rect { fill: #e2b53c; transition: transform .4s; }
+.sc-vault.open .bolts rect:nth-child(1) { transform: translateX(7px); } .sc-vault.open .bolts rect:nth-child(2) { transform: translateX(-7px); }
+.sc-vault.open .bolts rect:nth-child(3) { transform: translateY(7px); } .sc-vault.open .bolts rect:nth-child(4) { transform: translateY(-7px); }
+.sc-vault .dial { transform-origin: 32px 32px; transform: rotate(var(--turn, 0deg)); transition: transform .9s cubic-bezier(.3, 1.4, .5, 1); }
+.sc-vault .dial circle:first-child { fill: #3d434c; stroke: #c9d0d8; stroke-width: 1.5; }
+.sc-vault .dial path { stroke: #c9d0d8; stroke-width: 1.5; }
+.sc-vault .dial .notch { fill: #ffd166; }
+.sc-vault.open .door { transform: scaleX(.3) skewY(-10deg); transition-delay: .35s; }
+.sc-vault.open .frame { fill: #111; }
+.sc-head .grow { flex: 1; min-width: 0; }
+.sc-streak { color: #ffd166; font-weight: 700; }
