@@ -15,9 +15,15 @@ Server-owned like Sumo Saucers: the track is a closed curve sampled into points;
 position along it (s, in track units) and a sideways offset (d), so the simulation stays tiny.
 frame(now) runs at 60 fps and positions stream to browsers over the room's fast channel, along with
 the moments the browser turns into sparks, sounds and camera shake: bumps, boost-pad hits and
-item pickups, launches, drops, shields and hits."""
+item pickups, launches, drops, shields and hits.
+
+📅 Today's track comes from the date alone, so every room races the same one; people's best laps
+on it go on a board for the day, kept in data/ (one file per server port, like the rooms file)."""
+import json
 import math
+import os
 import random
+import threading
 import time
 
 from .base import Game, GameError
@@ -41,6 +47,44 @@ MINE_LIFE, MINE_ARM, MINES = 25.0, 0.6, 8      # seconds on the track, seconds b
 SHIELD_SECS = 6.0
 PICKUP_RESPAWN = 4.0
 ITEMS = {"missile": 1, "mine": 2, "shield": 3}   # as sent to browsers
+
+
+BOARD_FILE = os.environ.get("RALLY_BOARD_FILE") or os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data",
+    "rally-daily" + ("" if os.environ.get("PORT", "8000") == "8000" else f"-{os.environ['PORT']}") + ".json")
+BOARD_KEEP = 10
+_board_lock = threading.Lock()
+
+
+def read_board(today):
+    """Today's best laps, fastest first: [{"name", "ms"}, ...] (empty on a new day)."""
+    try:
+        with open(BOARD_FILE) as f:
+            data = json.load(f)
+        return data["laps"] if data.get("date") == today else []
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
+
+
+def add_to_board(today, name, ms):
+    """Put a lap on today's board if it's fast enough; returns (its place or None, the board)."""
+    with _board_lock:
+        laps = read_board(today)
+        if len(laps) >= BOARD_KEEP and ms >= laps[-1]["ms"]:
+            return None, laps
+        laps.append({"name": name, "ms": ms})
+        laps.sort(key=lambda x: x["ms"])
+        del laps[BOARD_KEEP:]
+        place = next((k + 1 for k, x in enumerate(laps) if x["ms"] == ms and x["name"] == name), None)
+        try:
+            os.makedirs(os.path.dirname(BOARD_FILE), exist_ok=True)
+            tmp = BOARD_FILE + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump({"date": today, "laps": laps}, f)
+            os.replace(tmp, BOARD_FILE)
+        except OSError:
+            pass
+        return place, laps
 
 
 def item_odds(f):
@@ -92,7 +136,7 @@ def make_track(rng):
 class Craft:
     # defaults for races saved before these existed (rooms come back from data/rooms.pickle on restart)
     wall, pad, draft, item, spin_until, shield_until, out = False, None, False, None, 0.0, 0.0, False
-    launch, stall_until = None, 0.0
+    launch, stall_until, lap_t0, best_lap = None, 0.0, None, None
 
     def __init__(self, s, d):
         self.s, self.d, self.v = s, d, 0.0
@@ -111,6 +155,8 @@ class Craft:
         self.out = False       # knocked out in Elimination (it also has a finishing place)
         self.launch = None     # when boost was first pressed in the countdown
         self.stall_until = 0.0 # jumped the start: slow to get going
+        self.lap_t0 = None     # when this lap began (the first one when it crosses the line)
+        self.best_lap = None   # ms
 
 
 class Rally(Game):
@@ -134,10 +180,12 @@ class Rally(Game):
     max_players = 6
     replayable = False
     pickups, pickup_at, missiles, mines, elim, elim_lap = (), (), (), (), False, 0   # for races saved before items; start() sets real ones
+    daily, today, board, race_id = False, "", (), 0   # races saved before today's track
     settings_schema = {
         "laps": ("Laps", [(3, "3"), (2, "2 (quick)"), (5, "5")], 3),
         "mode": ("Mode", [("race", "🏁 Race"), ("elim", "💥 Elimination (last place out every lap; laps don't apply)")], "race"),
         "missiles": ("Items", [(True, "🎁 On (🚀 💣 🛡️)"), (False, "Off (pure racing)")], True),
+        "track": ("Track", [("new", "🎲 A new track"), ("daily", "📅 Today's track (the same everywhere, with a best-lap board)")], "new"),
     }
 
     # -- setup
@@ -146,15 +194,21 @@ class Rally(Game):
         self.rng = rng
         rng.shuffle(seated)
         self.seats = [p.id for p in seated]
-        self.pts, self.seg, self.length, self.curv = make_track(rng)
+        # 📅 today's track: the track (and everything on it) comes from the date alone
+        self.today = time.strftime("%Y-%m-%d")
+        self.daily = self.s.get("track") == "daily"
+        trng = random.Random(f"rally {self.today}") if self.daily else rng
+        self.board = read_board(self.today) if self.daily else []
+        self.race_id = rng.randrange(1 << 30)   # so browsers can tell a rematch on the same track is a new race
+        self.pts, self.seg, self.length, self.curv = make_track(trng)
         self.cum = [0.0]
         for L in self.seg:
             self.cum.append(self.cum[-1] + L)
         # boost pads: (sample index, lateral centre)
         self.pads = []
         for i in range(PAD_EVERY // 2, SAMPLES, PAD_EVERY):
-            if rng.random() < 0.75:
-                self.pads.append((i + rng.randint(-8, 8), rng.choice((-1.3, 0.0, 1.3))))
+            if trng.random() < 0.75:
+                self.pads.append((i + trng.randint(-8, 8), trng.choice((-1.3, 0.0, 1.3))))
         n = len(seated)
         # item pickups: pairs across the track, between the boost pads (not in a solo time trial)
         self.pickups = []
@@ -182,7 +236,8 @@ class Rally(Game):
         self.room.turn = None
         self.room.deadline = None
         what = "💥 Elimination (last place out every lap)" if self.elim else f"{self.s['laps']} laps"
-        self.room.add_log(f"🛸 Hover Rally: {what} on a new track ({self.length:.0f} m). Get ready!", "big")
+        where = f"📅 today's track ({self.today}, {self.length:.0f} m)" if self.daily else f"a new track ({self.length:.0f} m)"
+        self.room.add_log(f"🛸 Hover Rally: {what} on {where}. Get ready!", "big")
 
     def seat(self, p):
         return self.seats.index(p.id) if p.id in self.seats else None
@@ -370,9 +425,12 @@ class Rally(Game):
                         self.ev.append(["pick", i, ITEMS[c.item]])
                         break
             # laps completed: the grid starts just behind the line, at s < 0
+            if c.lap_t0 is None and c.s >= 0:
+                c.lap_t0 = now
             lap = max(0, math.floor(c.s / self.length))
             if lap > c.lap:
                 c.lap = lap
+                changed = self.lap_done(i, p, now) or changed
                 if self.elim:
                     if lap > self.elim_lap:
                         self.elim_lap = lap
@@ -395,6 +453,23 @@ class Rally(Game):
         if self.frames % 2 == 0:
             self.broadcast(now)
         return changed
+
+    def lap_done(self, i, p, now):
+        """Time the lap just finished; on today's track a person's good lap goes on the day's board
+        (True then, so everyone's view picks up the new board)."""
+        c = self.crafts[i]
+        if c.lap_t0 is None:
+            return False
+        ms, c.lap_t0 = round((now - c.lap_t0) * 1000), now
+        c.best_lap = ms if c.best_lap is None else min(c.best_lap, ms)
+        if not self.daily or p.bot:
+            return False
+        place, self.board = add_to_board(self.today, p.name, ms)
+        if place == 1:
+            self.room.add_log(f"⭐ {p.name} sets today's best lap: {ms / 1000:.2f}s!", "big")
+        elif place:
+            self.room.add_log(f"📅 {p.name}'s {ms / 1000:.2f}s lap is {self.ordinal(place)} on today's board.")
+        return place is not None
 
     def launches(self, now):
         """GO: a boost pressed just before it gives a start boost, one pressed too early stalls.
@@ -608,5 +683,6 @@ class Rally(Game):
             "c": self.craft_rows(now), "pickups": self.pickups, "pk": self.pickup_flags(now), "m": self.missile_rows(),
             "mn": self.mine_rows(),
             "countdown": max(0.0, self.next_at - now) if self.stage == "countdown" else 0,
-            "top": TOP_SPEED, "elim": self.elim,
+            "top": TOP_SPEED, "elim": self.elim, "race": self.race_id,
+            "daily": {"date": self.today, "board": list(self.board[:5])} if self.daily else None,
         }}

@@ -21,7 +21,7 @@ UI.rally = (() => {
       <div class="ra-stage" id="raStage"><div class="lr-banner" id="raBanner" hidden></div>
         <div class="ra-half left">◀</div><div class="ra-half right">▶</div></div>
       <div class="sm-bar"><span class="hint">Hold a side to steer · swipe up to boost, down to use an item</span><button id="raFire" hidden>🎁</button><button id="raBoost" class="primary">⚡ Boost</button></div></div>`;
-    side.innerHTML = '<div class="panel"><div id="raOrder"></div><div id="raSplits" class="ra-splits"></div></div>';
+    side.innerHTML = '<div class="panel"><div id="raOrder"></div><div id="raSplits" class="ra-splits"></div><div id="raDaily" class="ra-splits"></div></div>';
     main.querySelector('.ra').style.touchAction = 'none';
     $('raBoost').addEventListener('pointerdown', (e) => { e.preventDefault(); boost(); });
     $('raFire').addEventListener('pointerdown', (e) => { e.preventDefault(); fire(); });
@@ -245,6 +245,7 @@ UI.rally = (() => {
       $('raPlace').textContent = `${place}${['st', 'nd', 'rd'][place - 1] || 'th'}`;
     } else { $('raLap').textContent = 'Watching'; $('raPlace').textContent = ''; }
     splits();
+    daily();
   }
 
   const secs = (ms) => (ms / 1000).toFixed(1) + 's';
@@ -262,6 +263,37 @@ UI.rally = (() => {
     });
   }
 
+  // 📅 today's track: the day's best laps (from every room), yours in bold
+  function daily() {
+    const box = $('raDaily'), d = S.rally.daily; if (!box) return;
+    box.innerHTML = '';
+    if (!d) return;
+    box.append(ctx.el('div', 'hint left', `📅 Today's best laps (${d.date})`));
+    if (!d.board.length) box.append(ctx.el('div', 'hint left', 'No laps yet. Set the first!'));
+    const myName = ctx.player(S.me?.id)?.name ?? S.me?.name;
+    d.board.forEach((x, k) => {
+      const row = ctx.el('div', 'ra-split' + (x.name === myName ? ' mine' : ''));
+      row.append(ctx.el('span', '', `${k + 1}. ${x.name}`), ctx.el('b', '', (x.ms / 1000).toFixed(2) + 's'));
+      box.append(row);
+    });
+  }
+
+  // 👻 on today's track your best lap of the day is kept on this device and races beside you next time
+  const ghostKey = () => `rally-ghost:${S.rally.daily?.date}`;
+  function storedGhost() {
+    if (!S.rally.daily) return null;
+    try { const g = JSON.parse(localStorage.getItem(ghostKey())); return g?.ms > 0 && Array.isArray(g.pts) ? g : null; } catch { return null; }
+  }
+  function storeGhost(g) {
+    if (!S.rally.daily) return;
+    try {
+      const old = storedGhost();
+      if (old && old.ms <= g.ms) return;
+      const r2 = (v) => Math.round(v * 100) / 100;
+      localStorage.setItem(ghostKey(), JSON.stringify({ ms: Math.round(g.ms), pts: g.pts.map((q) => q.map(r2)) }));
+    } catch {}
+  }
+
   // record my lap: (time into the lap, s, d) every ~50 ms; a finished lap that beats the best becomes the ghost
   function trackLap(now) {
     const r = S.rally, c = r.me != null ? crafts[r.me] : null;
@@ -272,7 +304,7 @@ UI.rally = (() => {
     if (c[5] !== lapRun.lap) {
       const ms = now - lapRun.t0, best = laps.length ? Math.min(...laps) : Infinity;
       laps.push(ms);
-      if (ms < best) ghost = { ms, pts: lapRun.pts };
+      if (ms < Math.min(best, ghost?.ms ?? Infinity)) { ghost = { ms, pts: lapRun.pts }; storeGhost(ghost); }
       lapMsg = `Lap ${laps.length}: ${secs(ms)}${ms < best && laps.length > 1 ? ' — best! ⭐' : ''}`;
       lapFlash = now + 1800;
       if (ms < best && laps.length > 1) ctx.sfx?.('good'); else if (!c[6]) snd.play('lap');
@@ -297,9 +329,9 @@ UI.rally = (() => {
   function loop(now) {
     raf = requestAnimationFrame(loop);
     if (!S?.rally) return;
-    const r = S.rally, key = `${r.length}`;
+    const r = S.rally, key = `${r.length}`, race = `${key} ${r.race}`;
     if (key !== trackKey && (gl || flat)) { trackKey = key; (gl || flat).build(); }
-    if (key !== trackLap.key) { trackLap.key = key; laps = []; lapRun = null; ghost = null; splits(); }
+    if (race !== trackLap.key) { trackLap.key = race; laps = []; lapRun = null; ghost = storedGhost(); splits(); }
     trackLap(now);
     (gl || flat)?.draw(now);
     const mine = r.me != null ? crafts[r.me] : null;
