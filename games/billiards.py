@@ -386,7 +386,7 @@ class Billiards(Game):
     max_players = 2
     settings_schema = {
         "rules": ("Game", [("8", "🎱 8-ball"), ("9", "9️⃣ 9-ball")], "8"),
-        "guide": ("Aim guide", [("full", "🎯 Full (where both balls go)"), ("short", "Short"), ("off", "Off")], "full"),
+        "guide": ("Aim guide", [("full", "🎯 Full (where both balls go)"), ("light", "Light (ghost ball and a hint of the angle)"), ("short", "Short"), ("off", "Off")], "full"),
         "call8": ("The 8 ball", [(True, "📣 Call its pocket"), (False, "Any pocket")], True),
         "cloth": ("Cloth", [("classic", "🐢 Classic (slow, short rolls)"), ("fast", "🏎️ Fast (rolls like a real table)")], "classic"),
         "race": ("Match", [(1, "1 rack"), (2, "🏁 Race to 2"), (3, "🏁 Race to 3"), (5, "🏁 Race to 5")], 1),

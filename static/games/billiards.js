@@ -430,6 +430,18 @@ UI.billiards = (() => {
     drawStick(g, cue, aim, power, english, rpx);
     if (guide === 'off') return;
     const full = guide === 'full';
+    if (guide === 'light') {  // #50: the ghost ball where the cue ball first meets a ball, and a short hint of the angle
+      g.strokeStyle = '#ffffffaa'; g.lineWidth = 1.2 * lw; g.setLineDash([5 * lw, 4 * lw]);
+      g.beginPath(); g.moveTo(sx, sy); g.lineTo(ex, ey); g.stroke(); g.setLineDash([]);
+      g.strokeStyle = '#ffffff99'; g.lineWidth = 1 * lw;
+      g.beginPath(); g.arc(ex, ey, rpx, 0, 7); g.stroke();
+      if (ball) {
+        const [bx, by] = toScreen(...ball), nx = bx - ex, ny = by - ey, n = Math.hypot(nx, ny) || 1;
+        g.strokeStyle = '#ffd166aa'; g.lineWidth = 1.4 * lw;
+        g.beginPath(); g.moveTo(bx, by); g.lineTo(bx + (nx / n) * 16 * lw, by + (ny / n) * 16 * lw); g.stroke();
+      }
+      return;
+    }
     if (!full) {  // the short guide: just which way the cue points
       const f = Math.min(1, (40 * lw) / Math.hypot(ex - sx, ey - sy || 1));
       g.strokeStyle = '#ffffffaa'; g.lineWidth = 1.2 * lw; g.setLineDash([5 * lw, 4 * lw]);
@@ -622,11 +634,11 @@ UI.billiards = (() => {
     };
     if (last < 1) return out;
     const p0 = at(0, order.indexOf(0)), p1 = at(1, order.indexOf(0));
-    if (p0 && p1) out.push({ t: 0, kind: 'cue', v: Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) });
+    if (p0 && p1) out.push({ t: 0, kind: 'cue', v: Math.hypot(p1[0] - p0[0], p1[1] - p0[1]), x: p0[0], y: p0[1] });
     for (let f = 1; f < last; f++) {
       order.forEach((n, j) => {
         const a = at(f - 1, j), c = at(f, j), d = at(f + 1, j);
-        if (c && !d) { out.push({ t: f / 30, kind: 'pocket', v: a ? Math.hypot(c[0] - a[0], c[1] - a[1]) : 3 }); return; }
+        if (c && !d) { out.push({ t: f / 30, kind: 'pocket', v: a ? Math.hypot(c[0] - a[0], c[1] - a[1]) : 3, x: c[0], y: c[1] }); return; }
         if (!a || !c || !d) return;
         const dv = jolt(f, j);
         if (dv < 0.5 || (quiet.get(n) ?? -9) > f - 3) return;  // friction and spin change it far less than an impact
@@ -646,56 +658,115 @@ UI.billiards = (() => {
           if ((pairs.get(key) ?? -9) > f - 3) return;  // both balls feel the same click
           pairs.set(key, f); quiet.set(other, f);
           const k = order.indexOf(other);  // an impact can straddle two frames: hear the whole of it
-          out.push({ t: f / 30, kind: 'ball', v: Math.max(dv, jolt(f + 1, j), jolt(f, k), jolt(f + 1, k)) });
-        } else out.push({ t: f / 30, kind: 'rail', v: Math.max(dv, jolt(f + 1, j)) });
+          out.push({ t: f / 30, kind: 'ball', v: Math.max(dv, jolt(f + 1, j), jolt(f, k), jolt(f + 1, k)), x: c[0], y: c[1] });
+        } else out.push({ t: f / 30, kind: 'rail', v: Math.max(dv, jolt(f + 1, j)), x: c[0], y: c[1] });
       });
     }
     return out.sort((x, y) => x.t - y.t);
   }
-  let actx = null;
-  function voice(type, f0, f1, dur, vol, t) {
+  // #49: everything goes through one bus — a gentle compressor (a break's pile of clicks doesn't clip) and a
+  // short room reverb — and each sound is panned to where on the table it happened.
+  let actx = null, bus = null, roll = null;
+  const muted = () => (typeof prefs !== 'undefined' && !prefs.sound) || document.hidden;
+  function audio() {
+    if (actx) return actx;
+    actx = new (window.AudioContext || window.webkitAudioContext)();
+    const comp = actx.createDynamicsCompressor();
+    comp.threshold.value = -16; comp.ratio.value = 4; comp.attack.value = 0.002; comp.release.value = 0.12;
+    comp.connect(actx.destination);
+    bus = actx.createGain(); bus.connect(comp);
+    if (actx.createConvolver) {
+      const verb = actx.createConvolver(), wet = actx.createGain(), len = Math.floor(actx.sampleRate * 0.5), ir = actx.createBuffer(2, len, actx.sampleRate);
+      for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 4; }
+      verb.buffer = ir; wet.gain.value = 0.14;
+      bus.connect(verb).connect(wet).connect(comp);
+    }
+    return actx;
+  }
+  function panTo(x, y) {
+    const b = B();
+    if (!actx.createStereoPanner || x == null || !b?.W) return bus;
+    const p = actx.createStereoPanner();  // across the table as it's seen: the long side runs up a phone
+    p.pan.value = 0.6 * (geo?.portrait ? (y / b.H) * 2 - 1 : (x / b.W) * 2 - 1);
+    p.connect(bus);
+    return p;
+  }
+  function voice(type, f0, f1, dur, vol, t, dst) {
     const o = actx.createOscillator(), g = actx.createGain();
     o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.002); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur + 0.02);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(Math.max(0.0002, vol), t + 0.0015); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(dst); o.start(t); o.stop(t + dur + 0.02);
   }
-  function noise(dur, freq, q, vol, t) {
+  function noise(dur, freq, q, vol, t, dst, type = 'bandpass') {
     const len = Math.max(1, Math.floor(actx.sampleRate * dur)), buf = actx.createBuffer(1, len, actx.sampleRate), d = buf.getChannelData(0);
     for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 3;
     const s = actx.createBufferSource(), fl = actx.createBiquadFilter(), g = actx.createGain();
-    s.buffer = buf; fl.type = 'bandpass'; fl.frequency.value = freq; fl.Q.value = q; g.gain.value = vol;
-    s.connect(fl).connect(g).connect(actx.destination); s.start(t);
+    s.buffer = buf; fl.type = type; fl.frequency.value = freq; fl.Q.value = q; g.gain.value = vol;
+    s.connect(fl).connect(g).connect(dst); s.start(t);
   }
   function clack(e, delay = 0) {
-    if ((typeof prefs !== 'undefined' && !prefs.sound) || document.hidden) return;
+    if (muted()) return;
     try {
-      actx ||= new (window.AudioContext || window.webkitAudioContext)();
-      const t = actx.currentTime + delay, h = Math.min(1, e.v / 12);  // 12 units a frame is a hard hit
-      if (e.kind === 'ball') {  // a bright, hard click with a little ring
-        const vol = 0.04 + 0.32 * h, p = 1 + (Math.random() - 0.5) * 0.08;
-        voice('sine', 2600 * p, 2200 * p, 0.05, vol, t); voice('triangle', 4100 * p, 3600 * p, 0.025, vol * 0.5, t);
-        noise(0.012, 5000, 1.5, vol * 1.6, t);
-      } else if (e.kind === 'rail') {  // a dull rubber thump
-        const vol = 0.04 + 0.28 * h;
-        voice('sine', 170, 95, 0.09, vol, t); noise(0.03, 700, 1, vol * 0.9, t);
-      } else if (e.kind === 'pocket') {  // a knock into the pocket, then a short rattle
-        const vol = 0.12 + 0.18 * Math.min(1, e.v / 6);
-        voice('triangle', 260, 140, 0.12, vol, t); noise(0.05, 900, 2, vol, t);
-        [0.07, 0.12, 0.16].forEach((dt, i) => voice('sine', 1500 - i * 200, 1300 - i * 200, 0.03, vol * (0.35 - i * 0.08), t + dt));
-      } else {  // the cue tip on the cue ball: a woody tock
-        const vol = 0.06 + 0.24 * h;
-        voice('triangle', 950, 620, 0.06, vol, t); noise(0.02, 2400, 2, vol * 1.2, t);
+      audio();
+      const t = actx.currentTime + delay, h = Math.min(1, e.v / 12), dst = panTo(e.x, e.y);  // 12 units a frame is a hard hit
+      if (e.kind === 'ball') {
+        // phenolic balls ring briefly at a few inharmonic partials over a sharp tick; a harder hit is brighter
+        const vol = 0.03 + 0.34 * h, p = 1 + (Math.random() - 0.5) * 0.06;
+        for (const [f, d, a] of [[3150, 0.045, 1], [4820, 0.03, 0.55], [6900, 0.018, 0.25 + 0.4 * h]])
+          voice('sine', f * p, f * p * 0.985, d, vol * a, t, dst);
+        noise(0.006, 5500, 0.7, vol * (1 + h), t, dst, 'highpass');
+      } else if (e.kind === 'rail') {  // the rubber cushion: a soft low thump, and the wooden rail's knock on a hard hit
+        const vol = 0.04 + 0.3 * h;
+        voice('sine', 150, 70, 0.14, vol, t, dst); noise(0.05, 450, 0.8, vol * 0.9, t, dst, 'lowpass');
+        if (h > 0.35) voice('triangle', 420, 300, 0.05, vol * 0.35 * h, t, dst);
+      } else if (e.kind === 'pocket') {  // a thud into the pocket, then the ball rattling down the return
+        const vol = 0.12 + 0.2 * Math.min(1, e.v / 6);
+        voice('sine', 115, 60, 0.18, vol, t, dst); noise(0.07, 320, 0.7, vol * 0.8, t, dst, 'lowpass');
+        let dt = 0.1;
+        for (let i = 0; i < 5; i++) {
+          const fade = 1 - i / 6;
+          voice('triangle', 720 - i * 40 + Math.random() * 60, 520 - i * 30, 0.035, vol * 0.26 * fade, t + dt, dst);
+          noise(0.014, 1300, 1.4, vol * 0.14 * fade, t + dt, dst);
+          dt += 0.06 + i * 0.028 + Math.random() * 0.02;
+        }
+      } else {  // the leather tip on the cue ball: a short tock, and a little of the stick's own body
+        const vol = 0.06 + 0.26 * h;
+        voice('triangle', 1100, 700, 0.05, vol, t, dst); voice('sine', 2600, 2300, 0.02, vol * 0.35, t, dst);
+        voice('sine', 330, 250, 0.08, vol * 0.25, t, dst); noise(0.014, 2000, 1.2, vol * 1.1, t, dst);
       }
+    } catch {}
+  }
+  // the balls rolling on the cloth: a soft low rumble that follows how fast everything is moving
+  function rolling(level) {
+    if (!actx) return;  // audio opens with the first click of a shot
+    try {
+      if (!roll) {
+        const len = actx.sampleRate * 2, buf = actx.createBuffer(1, len, actx.sampleRate), d = buf.getChannelData(0);
+        for (let i = 0, last = 0; i < len; i++) d[i] = last = last * 0.96 + (Math.random() * 2 - 1) * 0.2;  // brown-ish noise
+        const s = actx.createBufferSource(), fl = actx.createBiquadFilter(), g = actx.createGain();
+        s.buffer = buf; s.loop = true; fl.type = 'lowpass'; fl.frequency.value = 300; fl.Q.value = 0.6; g.gain.value = 0;
+        s.connect(fl).connect(g).connect(bus); s.start();
+        roll = { g, level: 0 };
+      }
+      if (Math.abs(level - roll.level) < 0.002) return;
+      roll.level = level;
+      roll.g.gain.setTargetAtTime(level, actx.currentTime, 0.08);
     } catch {}
   }
   // play each contact once its moment in the shot comes (the draw loop calls this every frame)
   function shotSounds() {
-    if (!anim?.sounds) return;
+    if (!anim?.sounds || muted()) return rolling(0);
     const now = shotTime() - anim.lead;
     for (let n = 0; anim.next < anim.sounds.length && anim.sounds[anim.next].t <= now; ) {
       const e = anim.sounds[anim.next++];
-      if (now - e.t < 0.15) clack(e, 0.007 * n++);  // the break's many clicks spread over a few ms instead of stacking  // a late joiner (or a tab back from the background) doesn't get a burst of old clicks
+      if (now - e.t < 0.15) clack(e, 0.007 * n++);  // the break's many clicks spread over a few ms instead of stacking; a late joiner doesn't get a burst of old clicks
     }
+    const fr = anim.frames, f = Math.floor(now * 30);
+    let speed = 0;
+    if (f >= 0 && f < fr.length - 1)
+      for (let j = 0; j < fr[f].length; j += 2)
+        if (fr[f][j] >= 0 && fr[f + 1][j] >= 0) speed += Math.hypot(fr[f + 1][j] - fr[f][j], fr[f + 1][j + 1] - fr[f][j + 1]) / 10;
+    rolling(Math.min(0.05, 0.011 * Math.sqrt(speed)));
   }
 
   // ---------- input
@@ -961,6 +1032,7 @@ UI.billiards = (() => {
 
   function unmount() {
     cancelAnimationFrame(raf); cancelAnimationFrame(roRaf); clearTimeout(animEnd); ro?.disconnect(); setTip = null;
+    rolling(0);  // the draw loop stops here, so hush the rumble now
     if (onKey) { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('blur', onKeyUp); }
     onKey = onKeyUp = null; held.dir = 0;
     if (gl) gl.dispose();

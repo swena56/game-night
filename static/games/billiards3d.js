@@ -588,9 +588,17 @@ const Billiards3D = (() => {
       aimLine.visible = objLine.visible = cueLine.visible = objPath.visible = cuePath.visible = ghost.visible = false;
       if (gd && gd.mode !== 'off') {
         const [cx, cy] = gd.cue, [gx, gy] = gd.g, full = gd.mode === 'full', L = Math.hypot(gx - cx, gy - cy) || 1;
-        const k = full ? 1 : Math.min(1, 26 / L);
+        const light = gd.mode === 'light';  // #50: the ghost ball and a short hint of the object ball's line
+        const k = full || light ? 1 : Math.min(1, 26 / L);
         aimLine.set(cx + ((gx - cx) / L) * R, cy + ((gy - cy) / L) * R, cx + (gx - cx) * k, cy + (gy - cy) * k, 0.45);
-        if (full) {
+        if (light) {
+          ghost.visible = true; ghost.position.set(gx, R, gy);
+          ghost.material.color.set(0xffffff).convertSRGBToLinear(); ghost.material.opacity = 0.18;
+          if (gd.ball) {
+            const [bx, by] = gd.ball, nx = bx - gx, ny = by - gy, n = Math.hypot(nx, ny) || 1;
+            objLine.set(bx, by, bx + (nx / n) * 9, by + (ny / n) * 9, 0.4);
+          }
+        } else if (full) {
           ghost.visible = true; ghost.position.set(gx, R, gy);
           // red: the cue ball would drop; fainter: it runs out of pace and stops here
           ghost.material.color.set(gd.scratch ? 0xef476f : 0xffffff).convertSRGBToLinear(); ghost.material.opacity = gd.stop ? 0.12 : 0.22;
