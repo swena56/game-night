@@ -170,9 +170,14 @@ UI.rummy = (() => {
 
   // #31: cards new to the hand since it was last drawn are dealt in from the deck, one after another (the
   // whole hand at the start of each deal, the drawn card on a turn). A multiset: two decks repeat cards.
-  let shown = null, shownNo = null, shownTop;
+  // Opening the page mid-hand shows the hand as it is, unless it was only just dealt.
+  let shown = null, shownNo = null, shownTop, dealing = [], dealStart = 0;  // dealing: [{card, delay}] from dealStart
   function freshCards(r) {
-    if (shownNo !== r.handNo) { shown = []; shownNo = r.handNo; }
+    if (shownNo !== r.handNo) {
+      const n = r.counts.length, size = r.handNo <= 3 ? 10 : 12;
+      const justDealt = shownNo !== null || (r.deck === 108 - n * size - 1 && !r.melds.length);
+      shown = justDealt ? [] : [...r.hand]; shownNo = r.handNo;
+    }
     const left = [...shown], fresh = [];
     for (const c of r.hand) { const at = left.indexOf(c); if (at >= 0) left.splice(at, 1); else fresh.push(c); }
     shown = [...r.hand];
@@ -181,8 +186,13 @@ UI.rummy = (() => {
 
   function renderHand(r, inStage, canPick) {
     syncOrder(r.hand);
-    const fresh = freshCards(r), gap = fresh.length > 3 ? 0.07 : 0.12;
-    let dealt = 0;
+    const fresh = freshCards(r), gap = fresh.length > 3 ? 0.07 : 0.12, now = performance.now();
+    if (fresh.length) {  // give each new card its turn, in the order they sit in the hand
+      dealing = []; dealStart = now;
+      for (const c of order) { const f = fresh.indexOf(c); if (f >= 0) { fresh.splice(f, 1); dealing.push({ card: c, delay: dealing.length * gap }); } }
+    }
+    // a rebuild mid-deal (a bot moved, you tapped a card) carries each flight on from where it was
+    const flying = [...dealing], since = (now - dealStart) / 1000;
     const hand = $('ruHand'); hand.innerHTML = '';
     const pending = [...inStage];  // a staged card leaves the hand once (duplicates stay)
     for (const card of order) {
@@ -191,8 +201,11 @@ UI.rummy = (() => {
       const b = ctx.el('button', 'card-btn' + (sel.includes(card) ? ' ok' : '') + (canPick ? '' : ' idle'));
       b.dataset.card = card;
       b.append(face(card));
-      const f = fresh.indexOf(card);
-      if (f >= 0) { fresh.splice(f, 1); b.classList.add('dealt'); b.style.setProperty('--deal', `${(dealt++ * gap).toFixed(2)}s`); }
+      const f = flying.findIndex((d) => d.card === card);
+      if (f >= 0) {
+        const left = flying.splice(f, 1)[0].delay - since;  // negative: already part-way through the .4s flight
+        if (left > -0.4) { b.classList.add('dealt'); b.style.setProperty('--deal', `${left.toFixed(3)}s`); }
+      }
       b.setAttribute('aria-disabled', String(!canPick));  // not disabled: you can rearrange the hand any time
       b.addEventListener('pointerdown', (e) => startDrag(e, card, b));
       b.onclick = () => {
@@ -229,7 +242,7 @@ UI.rummy = (() => {
     });
   }
 
-  function unmount() { drag?.ghost?.remove(); drag = null; shown = shownNo = null; shownTop = undefined; }
+  function unmount() { drag?.ghost?.remove(); drag = null; shown = shownNo = null; shownTop = undefined; dealing = []; }
 
   return { mount, render, unmount };
 })();
