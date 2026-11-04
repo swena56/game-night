@@ -267,7 +267,7 @@ UI.billiards = (() => {
     anim = age < dur ? { frames: shot.frames, order: shot.order, start: performance.now() - (age * 1000) / slow, lead, slow, replay,
       stroke: shot.stroke, called: shot.called } : null;
     if (anim) {
-      anim.sounds = contacts(anim.frames, anim.order); anim.next = 0;
+      anim.sounds = contacts(anim.frames, anim.order); anim.roll = rolling(anim.frames); anim.next = 0;
       // a timer (not the draw loop) ends the playback, so controls come back even where nothing draws
       animEnd = setTimeout(() => { anim = null; ctx?.rerender?.(); }, ((dur - age) * 1000) / slow);
     }
@@ -622,11 +622,11 @@ UI.billiards = (() => {
     };
     if (last < 1) return out;
     const p0 = at(0, order.indexOf(0)), p1 = at(1, order.indexOf(0));
-    if (p0 && p1) out.push({ t: 0, kind: 'cue', v: Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) });
+    if (p0 && p1) out.push({ t: 0, kind: 'cue', v: Math.hypot(p1[0] - p0[0], p1[1] - p0[1]), p: p0 });
     for (let f = 1; f < last; f++) {
       order.forEach((n, j) => {
         const a = at(f - 1, j), c = at(f, j), d = at(f + 1, j);
-        if (c && !d) { out.push({ t: f / 30, kind: 'pocket', v: a ? Math.hypot(c[0] - a[0], c[1] - a[1]) : 3 }); return; }
+        if (c && !d) { out.push({ t: f / 30, kind: 'pocket', v: a ? Math.hypot(c[0] - a[0], c[1] - a[1]) : 3, p: c }); return; }
         if (!a || !c || !d) return;
         const dv = jolt(f, j);
         if (dv < 0.5 || (quiet.get(n) ?? -9) > f - 3) return;  // friction and spin change it far less than an impact
@@ -646,55 +646,157 @@ UI.billiards = (() => {
           if ((pairs.get(key) ?? -9) > f - 3) return;  // both balls feel the same click
           pairs.set(key, f); quiet.set(other, f);
           const k = order.indexOf(other);  // an impact can straddle two frames: hear the whole of it
-          out.push({ t: f / 30, kind: 'ball', v: Math.max(dv, jolt(f + 1, j), jolt(f, k), jolt(f + 1, k)) });
-        } else out.push({ t: f / 30, kind: 'rail', v: Math.max(dv, jolt(f + 1, j)) });
+          out.push({ t: f / 30, kind: 'ball', v: Math.max(dv, jolt(f + 1, j), jolt(f, k), jolt(f + 1, k)), p: c });
+        } else out.push({ t: f / 30, kind: 'rail', v: Math.max(dv, jolt(f + 1, j)), p: c });
       });
     }
     return out.sort((x, y) => x.t - y.t);
   }
-  let actx = null;
-  function voice(type, f0, f1, dur, vol, t) {
-    const o = actx.createOscillator(), g = actx.createGain();
-    o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.002); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur + 0.02);
+  // how fast all the balls on the table are going at each frame, for the rolling rumble on the cloth
+  function rolling(frames) {
+    const out = new Float32Array(frames.length);
+    for (let f = 1; f < frames.length; f++) {
+      const a = frames[f - 1], c = frames[f];
+      for (let i = 0; i < c.length; i += 2) if (c[i] >= 0 && a[i] >= 0) out[f] += Math.hypot(c[i] - a[i], c[i + 1] - a[i + 1]) / 10;
+    }
+    return out;
   }
-  function noise(dur, freq, q, vol, t) {
-    const len = Math.max(1, Math.floor(actx.sampleRate * dur)), buf = actx.createBuffer(1, len, actx.sampleRate), d = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 3;
+
+  // The voices are built the way the real sounds are made: a very short burst of noise (the impact itself,
+  // brighter and shorter the harder the hit) exciting a few damped resonances (the rail's wood, the cue's
+  // shaft, the pocket), never a swept tone. Everything goes through a small room and a gentle compressor so
+  // the break's pile of clicks sits together, and each sound is panned to where on the table it happened.
+  let actx = null, bus = null, noiseBuf = null, roll = null;
+  function audio() {
+    if (actx) return actx;
+    actx = new (window.AudioContext || window.webkitAudioContext)();
+    const sr = actx.sampleRate, comp = actx.createDynamicsCompressor();
+    comp.threshold.value = -16; comp.knee.value = 8; comp.ratio.value = 4; comp.attack.value = 0.001; comp.release.value = 0.12;
+    comp.connect(actx.destination);
+    noiseBuf = actx.createBuffer(1, sr, sr);
+    const nd = noiseBuf.getChannelData(0);
+    for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+    // a games room: a few early reflections off the walls, then a short tail that loses its highs as it dies
+    const len = Math.floor(sr * 0.45), ir = actx.createBuffer(2, len, sr);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = ir.getChannelData(ch);
+      let lp = 0;
+      for (let i = 0; i < len; i++) {
+        const s = i / sr, k = Math.min(0.92, 0.25 + s * 3);  // the one-pole smoothing grows: highs fade first
+        lp += (1 - k) * ((Math.random() * 2 - 1) - lp);
+        d[i] = s < 0.012 ? 0 : lp * Math.exp(-s / 0.075) * 1.6;
+      }
+      for (const [ms, a] of [[7, 0.5], [11, 0.35], [17, 0.3], [23, 0.2], [31, 0.15]]) d[Math.floor(sr * (ms + ch * 1.3) / 1000)] += a * (ch ? -1 : 1);
+    }
+    const rev = actx.createConvolver(), wet = actx.createGain();
+    rev.buffer = ir; wet.gain.value = 0.32;
+    rev.connect(wet).connect(comp);
+    bus = { dry: comp, rev };
+    return actx;
+  }
+  const quietNow = () => (typeof prefs !== 'undefined' && !prefs.sound) || document.hidden;
+  // left to right as the table is shown (the flat view turns it on its side in portrait); the 3D camera moves, so it stays centred
+  function panAt(p) {
+    const b = B();
+    if (!p || view3d || !geo || !b) return 0;
+    const u = geo.portrait ? p[1] / b.H : p[0] / b.W;
+    return Math.max(-0.7, Math.min(0.7, (u - 0.5) * 1.4));
+  }
+  function out(pan, send = 1) {  // a panned input feeding the room
+    const g = actx.createStereoPanner ? actx.createStereoPanner() : actx.createGain();
+    if (g.pan) g.pan.value = pan;
+    g.connect(bus.dry);
+    if (send) { const s = actx.createGain(); s.gain.value = send; g.connect(s).connect(bus.rev); }
+    return g;
+  }
+  // a burst of noise through a filter, falling away with time constant tau
+  function burst(dst, t, type, freq, q, vol, tau) {
     const s = actx.createBufferSource(), fl = actx.createBiquadFilter(), g = actx.createGain();
-    s.buffer = buf; fl.type = 'bandpass'; fl.frequency.value = freq; fl.Q.value = q; g.gain.value = vol;
-    s.connect(fl).connect(g).connect(actx.destination); s.start(t);
+    s.buffer = noiseBuf; fl.type = type; fl.frequency.value = freq; fl.Q.value = q;
+    g.gain.setValueAtTime(vol, t); g.gain.setTargetAtTime(0, t, tau);
+    s.connect(fl).connect(g).connect(dst);
+    s.start(t, Math.random() * 0.8); s.stop(t + tau * 8 + 0.01);
+  }
+  // one damped resonance: struck, then ringing down with time constant tau
+  function mode(dst, t, f, vol, tau) {
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.frequency.value = f * (1 + (Math.random() - 0.5) * 0.04);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + 0.0007); g.gain.setTargetAtTime(0, t + 0.0007, tau);
+    o.connect(g).connect(dst); o.start(t); o.stop(t + tau * 8 + 0.01);
+  }
+  // two phenolic balls: a sharp, dry clack. Almost all impact (the balls themselves ring far above hearing),
+  // so it's a hard broadband snap with a little tonal colour, duller and softer for a gentle kiss.
+  function ballClick(dst, t, h) {
+    const vol = 0.06 + 0.55 * h ** 0.8;
+    burst(dst, t, 'bandpass', 2400 + 3200 * h, 0.8, vol * 1.3, 0.0012 + 0.0014 * (1 - h));
+    burst(dst, t, 'highpass', 6000, 0.7, vol * 0.5 * h, 0.0008);
+    for (const [f, a, tau] of [[3150, 0.22, 0.007], [4480, 0.16, 0.005], [5900, 0.1, 0.004]]) mode(dst, t, f, vol * a * (f > 4000 ? 0.15 + 0.85 * h : 0.4 + 0.6 * h), tau);
+    mode(dst, t, 1700, vol * 0.12 * (1 - h), 0.004);
   }
   function clack(e, delay = 0) {
-    if ((typeof prefs !== 'undefined' && !prefs.sound) || document.hidden) return;
+    if (quietNow()) return;
     try {
-      actx ||= new (window.AudioContext || window.webkitAudioContext)();
+      audio();
       const t = actx.currentTime + delay, h = Math.min(1, e.v / 12);  // 12 units a frame is a hard hit
-      if (e.kind === 'ball') {  // a bright, hard click with a little ring
-        const vol = 0.04 + 0.32 * h, p = 1 + (Math.random() - 0.5) * 0.08;
-        voice('sine', 2600 * p, 2200 * p, 0.05, vol, t); voice('triangle', 4100 * p, 3600 * p, 0.025, vol * 0.5, t);
-        noise(0.012, 5000, 1.5, vol * 1.6, t);
-      } else if (e.kind === 'rail') {  // a dull rubber thump
-        const vol = 0.04 + 0.28 * h;
-        voice('sine', 170, 95, 0.09, vol, t); noise(0.03, 700, 1, vol * 0.9, t);
-      } else if (e.kind === 'pocket') {  // a knock into the pocket, then a short rattle
-        const vol = 0.12 + 0.18 * Math.min(1, e.v / 6);
-        voice('triangle', 260, 140, 0.12, vol, t); noise(0.05, 900, 2, vol, t);
-        [0.07, 0.12, 0.16].forEach((dt, i) => voice('sine', 1500 - i * 200, 1300 - i * 200, 0.03, vol * (0.35 - i * 0.08), t + dt));
-      } else {  // the cue tip on the cue ball: a woody tock
-        const vol = 0.06 + 0.24 * h;
-        voice('triangle', 950, 620, 0.06, vol, t); noise(0.02, 2400, 2, vol * 1.2, t);
+      if (e.kind === 'ball') ballClick(out(panAt(e.p)), t, h);
+      else if (e.kind === 'rail') {  // the rubber cushion under the cloth: a muffled thup, and the wooden rail behind it
+        const dst = out(panAt(e.p), 0.8), vol = 0.05 + 0.4 * h;
+        burst(dst, t, 'lowpass', 350 + 1500 * h, 0.7, vol * 1.1, 0.008 + 0.004 * h);
+        mode(dst, t, 150, vol * 0.55, 0.045); mode(dst, t, 245, vol * 0.3, 0.03); mode(dst, t, 430, vol * 0.18, 0.018);
+        if (h > 0.4) mode(dst, t, 1100, vol * 0.12 * h, 0.005);
+      } else if (e.kind === 'pocket') {  // a thock against the pocket's leather, a rattle in the jaws if it came fast, then the roll down the return
+        const dst = out(panAt(e.p), 0.7), fast = Math.min(1, e.v / 6), vol = 0.12 + 0.25 * fast;
+        burst(dst, t, 'lowpass', 600 + 600 * fast, 0.8, vol, 0.012);
+        mode(dst, t, 105, vol * 0.7, 0.06); mode(dst, t, 185, vol * 0.4, 0.04); mode(dst, t, 340, vol * 0.2, 0.02);
+        if (fast > 0.5) [0.035, 0.07].forEach((dt, i) => { burst(dst, t + dt, 'lowpass', 900, 0.8, vol * (0.45 - i * 0.2), 0.006); mode(dst, t + dt, 240, vol * (0.3 - i * 0.12), 0.02); });
+        const t1 = t + 0.18, dur = 0.75, s = actx.createBufferSource(), fl = actx.createBiquadFilter(), g = actx.createGain();
+        const lfo = actx.createOscillator(), depth = actx.createGain();  // the joins in the gutter make it bump as it rolls
+        s.buffer = noiseBuf; s.loop = true; fl.type = 'lowpass'; fl.frequency.value = 320; fl.Q.value = 1.2;
+        lfo.frequency.value = 14 + Math.random() * 6; depth.gain.value = 0.06; lfo.connect(depth).connect(g.gain);
+        g.gain.setValueAtTime(0, t1); g.gain.linearRampToValueAtTime(0.12, t1 + 0.08); g.gain.setValueAtTime(0.12, t1 + dur - 0.25); g.gain.linearRampToValueAtTime(0, t1 + dur);
+        s.connect(fl).connect(g).connect(dst); s.start(t1); s.stop(t1 + dur + 0.05); lfo.start(t1); lfo.stop(t1 + dur + 0.05);
+        ballClick(dst, t1 + dur - 0.04, 0.18);  // and it bumps into the balls already down
+      } else {  // the leather tip on the cue ball: a rounder tok with the cue's shaft in it, a crack on a hard break
+        const dst = out(panAt(e.p), 0.8), vol = 0.08 + 0.4 * h;
+        burst(dst, t, 'bandpass', 1500 + 1500 * h, 1.1, vol * 1.2, 0.0025);
+        mode(dst, t, 820, vol * 0.3, 0.012); mode(dst, t, 1640, vol * 0.18, 0.008); mode(dst, t, 190, vol * 0.25, 0.025);
+        if (h > 0.6) burst(dst, t, 'highpass', 4000, 0.7, vol * (h - 0.6) * 1.5, 0.001);
       }
     } catch {}
   }
+  // the balls rolling on the cloth: a low rumble that rises and falls with how much is moving
+  function rollTo(level) {
+    if (!roll && level <= 0) return;
+    if (!roll) {
+      const s = actx.createBufferSource(), fl = actx.createBiquadFilter(), hiss = actx.createBiquadFilter(), g = actx.createGain(), hg = actx.createGain();
+      s.buffer = noiseBuf; s.loop = true;
+      fl.type = 'lowpass'; fl.frequency.value = 220; fl.Q.value = 0.6;
+      hiss.type = 'bandpass'; hiss.frequency.value = 1800; hiss.Q.value = 0.5; hg.gain.value = 0.08;  // the nap of the cloth
+      g.gain.value = 0;
+      s.connect(fl).connect(g); s.connect(hiss).connect(hg).connect(g); g.connect(bus.dry);
+      s.start();
+      roll = { s, g, off: null };
+    }
+    clearTimeout(roll.off); roll.off = null;
+    roll.g.gain.setTargetAtTime(level, actx.currentTime, 0.05);
+    if (level <= 0) {  // let it fade, then stop the source so nothing runs between shots
+      const r = roll;
+      r.off = setTimeout(() => { try { r.s.stop(); } catch {} if (roll === r) roll = null; }, 400);
+    }
+  }
   // play each contact once its moment in the shot comes (the draw loop calls this every frame)
   function shotSounds() {
-    if (!anim?.sounds) return;
+    if (!anim?.sounds || quietNow()) { if (roll && !roll.off) rollTo(0); return; }
     const now = shotTime() - anim.lead;
     for (let n = 0; anim.next < anim.sounds.length && anim.sounds[anim.next].t <= now; ) {
       const e = anim.sounds[anim.next++];
-      if (now - e.t < 0.15) clack(e, 0.007 * n++);  // the break's many clicks spread over a few ms instead of stacking  // a late joiner (or a tab back from the background) doesn't get a burst of old clicks
+      // the break's many clicks spread over a few ms instead of stacking; a late joiner (or a tab back
+      // from the background) doesn't get a burst of old clicks
+      if (now - e.t < 0.15) clack(e, 0.007 * n++);
+    }
+    if (actx && anim.roll) {
+      const f = Math.floor(now * 30), sp = f >= 0 && f < anim.roll.length ? anim.roll[f] : 0;
+      try { rollTo(sp > 0.05 ? 0.16 * Math.min(1, Math.sqrt(sp / 12)) : 0); } catch {}
     }
   }
 
@@ -960,7 +1062,7 @@ UI.billiards = (() => {
   }
 
   function unmount() {
-    cancelAnimationFrame(raf); cancelAnimationFrame(roRaf); clearTimeout(animEnd); ro?.disconnect(); setTip = null;
+    cancelAnimationFrame(raf); cancelAnimationFrame(roRaf); clearTimeout(animEnd); try { if (roll) rollTo(0); } catch {} ro?.disconnect(); setTip = null;
     if (onKey) { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('blur', onKeyUp); }
     onKey = onKeyUp = null; held.dir = 0;
     if (gl) gl.dispose();
