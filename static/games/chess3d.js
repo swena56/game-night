@@ -1,6 +1,6 @@
 // 3D chessboard for UI.chess, drawn with three.js. It mirrors the 2D board (which stays the source of
 // truth for selection, targets and promotion): sync() copies the 2D squares' highlight classes onto
-// 3D tiles, and taps are mapped back to the same square index. Drag sideways to turn the board.
+// 3D tiles, and taps are mapped back to the same square index. Drag to turn and tilt, right-drag to pan, wheel or pinch to zoom (#40).
 const Chess3D = (() => {
   const LIGHT = 0xf0d9b5, DARK = 0xb58863;
   const MARK = { sel: 0x2b8a3e, check: 0xef476f, last: 0xffe066, capture: 0xe8590c };
@@ -41,12 +41,26 @@ const Chess3D = (() => {
     const kinds = buildKinds(T);
     const pieces = new T.Group(); scene.add(pieces);
 
-    let yaw = 0, raf = 0, anim = null, dirty = true;
+    // an orbit camera (#40): yaw turns round the board, pitch tilts, dist zooms, (tx, tz) pans
+    const HOME = { yaw: 0, pitch: 0.95, dist: 13.5, tx: 0, tz: 0 };
+    let { yaw, pitch, dist, tx, tz } = HOME, raf = 0, anim = null, dirty = true;
+    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
     function place() {
-      const dist = 13.5, pitch = 0.95;
-      camera.position.set(Math.sin(yaw) * dist * Math.cos(pitch), dist * Math.sin(pitch), Math.cos(yaw) * dist * Math.cos(pitch));
-      camera.lookAt(Math.sin(yaw) * 0.5, -0.4, Math.cos(yaw) * 0.5);
+      pitch = clamp(pitch, 0.3, 1.5); dist = clamp(dist, 6, 22);
+      tx = clamp(tx, -4.5, 4.5); tz = clamp(tz, -4.5, 4.5);
+      const ox = tx + Math.sin(yaw) * 0.5, oz = tz + Math.cos(yaw) * 0.5;
+      camera.position.set(ox + Math.sin(yaw) * dist * Math.cos(pitch), -0.4 + dist * Math.sin(pitch), oz + Math.cos(yaw) * dist * Math.cos(pitch));
+      camera.lookAt(ox, -0.4, oz);
     }
+    const redraw = () => { dirty = true; kick(); };
+    function reset() { ({ yaw, pitch, dist, tx, tz } = HOME); redraw(); }
+    function pan(dx, dy) {  // screen pixels → board units, in the camera's frame
+      const k = (dist / (stage.clientHeight || 300)) * 0.9;
+      tx -= (Math.cos(yaw) * dx + Math.sin(yaw) * dy) * k;
+      tz -= (-Math.sin(yaw) * dx + Math.cos(yaw) * dy) * k;
+      redraw();
+    }
+    const zoom = (f) => { dist *= f; redraw(); };
     function resize() {
       const w = stage.clientWidth || 300, h = stage.clientHeight || 300;
       renderer.setSize(w, h, false); camera.aspect = w / h;
@@ -67,21 +81,45 @@ const Chess3D = (() => {
     }
     const kick = () => { if (!raf) raf = requestAnimationFrame(frameLoop); };
 
-    // input: tap picks a square, sideways drag turns the board
+    // input: a tap picks a square. Drag turns the board (a mouse also tilts it); right-drag or shift-drag
+    // pans; the wheel or a pinch zooms, and two fingers pan; double-tap resets the view.
     const ray = new T.Raycaster(), ptr = new T.Vector2();
-    let down = null;
+    const touches = new Map();  // pointerId → {x, y}
+    let down = null, pinch = null;
     const el = renderer.domElement;
-    el.style.touchAction = 'pan-y';
-    el.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY, yaw, moved: false }; });
-    el.addEventListener('pointermove', (e) => {
-      if (!down) return;
-      const dx = e.clientX - down.x;
-      if (Math.abs(dx) > 8) down.moved = true;
-      if (down.moved) { yaw = Math.max(-1.1, Math.min(1.1, down.yaw - dx / 180)); dirty = true; kick(); }
+    el.style.touchAction = 'pan-y';  // one finger up and down still scrolls the page on a phone
+    const mid = () => { const [a, b] = [...touches.values()]; return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, d: Math.hypot(a.x - b.x, a.y - b.y) || 1 }; };
+    el.addEventListener('pointerdown', (e) => {
+      touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (touches.size === 2) { down = null; pinch = mid(); return; }
+      down = { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY, moved: false,
+        pan: e.button === 2 || e.shiftKey, tilt: e.pointerType === 'mouse' };
     });
+    el.addEventListener('pointermove', (e) => {
+      if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pinch && touches.size === 2) {
+        const m = mid();
+        zoom(pinch.d / m.d); pan(m.x - pinch.x, m.y - pinch.y);
+        pinch = m; return;
+      }
+      if (!down) return;
+      if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8) down.moved = true;
+      if (!down.moved) return;
+      const dx = e.clientX - down.lx, dy = e.clientY - down.ly;
+      down.lx = e.clientX; down.ly = e.clientY;
+      if (down.pan) return pan(dx, dy);
+      yaw -= dx / 180;
+      if (down.tilt) pitch += dy / 220;
+      redraw();
+    });
+    const lift = (e) => { touches.delete(e.pointerId); if (touches.size < 2) pinch = null; };
+    el.addEventListener('pointercancel', (e) => { lift(e); down = null; });
+    el.addEventListener('contextmenu', (e) => e.preventDefault());
+    el.addEventListener('wheel', (e) => { e.preventDefault(); zoom(Math.exp(e.deltaY * (e.deltaMode ? 0.05 : 0.0015))); }, { passive: false });
     el.addEventListener('pointerup', (e) => {
+      lift(e);
       const d = down; down = null;
-      if (!d || d.moved) return;
+      if (!d || d.moved || d.pan) return;
       const rect = el.getBoundingClientRect();
       ptr.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
       ray.setFromCamera(ptr, camera);
@@ -90,8 +128,21 @@ const Chess3D = (() => {
       while (o && o.userData.i == null) o = o.parent;
       if (o) onSquare(o.userData.i);
     });
-    el.addEventListener('pointerleave', () => { down = null; });
-    el.addEventListener('dblclick', () => { yaw = 0; dirty = true; kick(); });
+    el.addEventListener('pointerleave', (e) => { lift(e); down = null; });
+    el.addEventListener('dblclick', reset);
+    // view buttons, for anyone who doesn't guess the gestures
+    const pad = document.createElement('div');
+    pad.className = 'c3-pad';
+    for (const [label, title, fn] of [['⟲', 'Turn left', () => { yaw += Math.PI / 8; redraw(); }], ['⟳', 'Turn right', () => { yaw -= Math.PI / 8; redraw(); }],
+      ['⤒', 'Tilt up (more top-down)', () => { pitch += 0.15; redraw(); }], ['⤓', 'Tilt down', () => { pitch -= 0.15; redraw(); }],
+      ['＋', 'Zoom in', () => zoom(0.85)], ['－', 'Zoom out', () => zoom(1 / 0.85)], ['⌂', 'Reset the view', reset]]) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.textContent = label; b.title = label === '⌂' ? title + ' (or double-tap the board)' : title;
+      b.setAttribute('aria-label', title);
+      b.onclick = fn;
+      pad.append(b);
+    }
+    stage.append(pad);
     const ro = window.ResizeObserver ? new ResizeObserver(resize) : null;
     ro?.observe(stage);
     resize();
@@ -127,7 +178,7 @@ const Chess3D = (() => {
 
     function dispose() {
       cancelAnimationFrame(raf); ro?.disconnect();
-      renderer.dispose(); el.remove();
+      renderer.dispose(); el.remove(); pad.remove();
     }
     return { sync, dispose };
   }

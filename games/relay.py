@@ -276,6 +276,7 @@ class Relay(Game):
                 if self.step:
                     prev = self.chains[self.chain_of(p.id)][-1]
                     out["prompt"] = self.public(prev)
+            out["kinds"] = [self.kind(k) for k in range(self.steps)]  # the road ahead: write, draw, caption, …
         else:
             out["show"] = self.show
             out["chain"] = [self.public(e) for e in self.chains[self.show]]
@@ -307,6 +308,13 @@ class Relay(Game):
         self.used_art.add(i)
         return i
 
+    @staticmethod
+    def near_art(text):
+        """Pictures whose one-word name ends a longer word of the text: the head of a compound (sunflower → flower)."""
+        tw = [w for w in words(text) if w not in STOP]
+        return [i for i, d in enumerate(DRAWINGS)
+                if any(len(n) >= 3 and " " not in n and any(w.endswith(n) and w != n for w in tw) for n in [d[0], *d[2]])]
+
     def auto_entry(self, pid, level):
         """A bot's entry. Bots draw from the Doodle Dash picture book, so they can only draw things
         that are in it; anything else comes out as some other picture (which is half the fun)."""
@@ -318,6 +326,7 @@ class Relay(Game):
         prev = chain[-1]
         if kind == "draw":
             match = [i for i, d in enumerate(DRAWINGS) if any(mentions(prev["v"], n) for n in [d[0], *d[2]])]
+            match = match or self.near_art(prev["v"])  # "a giant sunflower" is still a flower (#12)
             i = random.choice(match) if match else self.fresh_art()
             strokes = DRAWINGS[i][3]
             keep = {"easy": 0.7, "normal": 0.9, "hard": 1.0}[level]

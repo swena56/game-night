@@ -9,7 +9,7 @@ const $ = (s) => document.querySelector(s);
 const REACTIONS = ['😂', '😱', '🤔', '😏', '🔥', '👀', '🙈', '🎉'];
 const QUICK_CHAT = ['gg', 'nice! 👏', 'hmm… 🤔', 'your turn 😴', 'rematch? 🔁', 'no way 😱'];
 const SOLO_GAMES = [['unmask', '🎭 Unmask'], ['oddone', '🕵️ Odd One Out'], ['relay', '🖍️ Scribble Relay'], ['trivia', '🧠 Trivia Rush'], ['fibfinder', '🤥 Fib Finder'], ['ladder', '🧗 Word Ladder'], ['doodle', '✏️ Doodle Dash'], ['lucky', '🎡 Lucky Letters'], ['wordsmith', '🔤 Wordsmith'], ['gridhunt', '🔎 Grid Hunt'], ['safecracker', '🔐 Safecracker'], ['chess', '♟️ Chess'], ['checkers', '⛀ Checkers'], ['backgammon', '🔺 Backgammon'], ['oware', '🌰 Oware'], ['reversi', '⚪ Reversi'],
-  ['go', '⚫ Go'], ['lastcard', '🃏 Last Card'], ['holdem', "♠️ Texas Hold'em"], ['cribbage', '📍 Cribbage'], ['hearts', '♥️ Hearts'], ['speed', '⚡ Speed'], ['twentyone', '♦️ Twenty-One'], ['rummy', '🀄 Contract Rummy'], ['seabattle', '🚢 Sea Battle'], ['dropfour', '🔴 Drop Four'],
+  ['go', '⚫ Go'], ['lastcard', '🃏 Last Card'], ['holdem', "♠️ Texas Hold'em"], ['cribbage', '📍 Cribbage'], ['hearts', '♥️ Hearts'], ['speed', '⚡ Speed'], ['twentyone', '♦️ Blackjack'], ['rummy', '🀄 Contract Rummy'], ['seabattle', '🚢 Sea Battle'], ['dropfour', '🔴 Drop Four'],
   ['boxes', '🔳 Dots & Boxes'], ['tictactoe', '❌ Tic-Tac-Toe'], ['ultimate', '#️⃣ Ultimate Tic-Tac-Toe'], ['morris', "⚫ Nine Men's Morris"], ['heist', '🦹 Night Heist'], ['moonshot', '🚀 Moon Shot'], ['yacht', '🎲 Yacht'], ['farkle', '🎯 Farkle'], ['qork', '🥤 Qork'], ['shipcrew', '🚢 Ship, Captain & Crew'], ['shutbox', '📦 Shut the Box'], ['liars', '🤥 Liar\'s Dice'], ['spire', '🗼 Spire Siege'], ['hockey', '🏒 Air Hockey'], ['billiards', '🎱 Billiards'], ['riders', '🏍️ Light Riders'], ['paintblast', '🎨 Paint Blast'], ['sumo', '🪐 Sumo Saucers'], ['putt', '⛳ Putt Party'], ['rally', '🛸 Hover Rally']];
 const CATEGORIES = [['party', '🎉 Party'], ['action', '⚡ Action'], ['strategy', '♟️ Strategy'], ['classic', '✏️ Quick classics'],
   ['cards', '🃏 Cards'], ['dice', '🎲 Dice & casino'], ['words', '🔤 Words & puzzles']];
@@ -297,6 +297,11 @@ const SFX = {
   tick: () => tone(1200, 1200, 0.03, 'square', 0.03),
   good: () => [659, 880].forEach((f, i) => tone(f, f, 0.16, 'triangle', 0.1, i * 0.09)),
   bad: () => tone(300, 150, 0.25, 'sawtooth', 0.05),
+  // Paint Blast (#6): a bomb set down, a paint blast, a power-up, catching a rival
+  drop: () => { tone(200, 120, 0.08, 'sine', 0.14); noise(0.02, 900, 1, 0.2); },
+  boom: () => { noise(0.32, 240, 0.6, 0.9); tone(120, 45, 0.28, 'sine', 0.22); noise(0.1, 2600, 0.8, 0.22, 0.02); },
+  pickup: () => [880, 1320].forEach((f, i) => tone(f, f, 0.09, 'triangle', 0.09, i * 0.06)),
+  tag: () => [784, 988, 1319].forEach((f, i) => tone(f, f, 0.12, 'triangle', 0.1, i * 0.07)),
 };
 const CATEGORY_SFX = { strategy: 'place', classic: 'place', cards: 'card', dice: 'dice', words: 'pop', party: 'pop' };
 function sfx(kind) {

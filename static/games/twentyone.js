@@ -21,11 +21,60 @@ UI.twentyone = (() => {
     side.innerHTML = '<div class="panel"><h3>Chips</h3><div id="toChips"></div><p class="hint left">Dealer draws to 17. A two-card 21 pays 3 to 2.</p></div>';
   }
 
+  // The bet builder (#5): tap chips to stack a bet, then Deal. The stake lives here until it's sent.
+  let stake = 0, stakeHand = null, seen = new Map(), seenHand = null;
+  function betBar(bar, t, me) {
+    const chips = t.chips[me], last = Math.min(t.lastBets?.[me] || 0, chips), min = t.minBet || 5;
+    const draw = () => {
+      bar.innerHTML = '';
+      const pile = ctx.el('div', 'to-chips');
+      for (const amt of t.betOptions) {
+        const b = ctx.el('button', `to-chip c${amt}`, String(amt));
+        b.title = `Add ${amt}`;
+        b.disabled = !ctx.act || stake + amt > chips;
+        b.onclick = () => { stake += amt; draw(); };
+        pile.append(b);
+      }
+      const row = ctx.el('div', 'to-betrow');
+      const clear = ctx.el('button', '', '✖ Clear');
+      clear.disabled = !stake;
+      clear.onclick = () => { stake = 0; draw(); };
+      const all = ctx.el('button', '', `All in ${chips}`);
+      all.onclick = () => { stake = chips; draw(); };
+      row.append(clear, all);
+      if (last) {
+        const again = ctx.el('button', '', `↺ ${last}`);
+        again.title = 'Bet the same as last hand';
+        again.onclick = () => ctx.quiet(ctx.act('bet', { amount: last }));
+        row.append(again);
+      }
+      const deal = ctx.el('button', 'primary to-deal', stake ? `Deal · bet ${stake}` : 'Deal');
+      deal.disabled = !ctx.act || !(stake === chips || stake >= min);
+      deal.onclick = () => ctx.quiet(ctx.act('bet', { amount: stake }));
+      row.append(deal);
+      const stack = ctx.el('div', 'hint to-stake', stake ? `Your bet: 💰 ${stake} of ${chips}` : `Tap chips to build a bet (you have ${chips}).`);
+      bar.append(pile, stack, row);
+    };
+    draw();
+  }
+
   function render(s, c) {
     S = s; ctx = c;
     const t = S.twentyone, me = t.me;
+    // #31: a card dealt since the last render flies in from the shoe, once, one after another
+    if (seenHand !== t.hand) { seenHand = t.hand; seen = new Map(); }
+    let flying = 0;
+    const dealt = (key, cards) => {
+      const was = seen.get(key) ?? 0;
+      seen.set(key, cards.length);
+      return (el, k) => {
+        if (k >= was) { el.classList.add('dealt'); el.style.setProperty('--deal', `${(flying++ * 0.11).toFixed(2)}s`); }
+        return el;
+      };
+    };
     const dl = $('toDealer'); dl.innerHTML = '';
-    t.dealer.forEach((card, k) => dl.append(face(card, k ? 'deal' : '')));
+    const dd = dealt('d', t.dealer);
+    t.dealer.forEach((card, k) => dl.append(dd(face(card), k)));
     $('toDealerTotal').textContent = t.dealer.length ? String(t.dealerTotal) + (t.dealer.includes('??') ? '+?' : '') : '';
 
     const seats = $('toSeats'); seats.innerHTML = '';
@@ -40,7 +89,8 @@ UI.twentyone = (() => {
       hs.forEach((h, k) => {
         const wrap = ctx.el('div', 'to-hand' + (split && S.turn === pid && t.stage === 'play' && t.cur[i] === k ? ' cur' : ''));
         const cards = ctx.el('div', 'to-cards');
-        h.cards.forEach((card) => cards.append(face(card, 'small')));
+        const dh = dealt(`${i}:${k}`, h.cards);
+        h.cards.forEach((card, n) => cards.append(dh(face(card, 'small'), n)));
         const foot = ctx.el('div', 'to-foot');
         foot.append(ctx.el('b', h.total > 21 ? 'bust' : '', String(h.total)));
         if (split) foot.append(ctx.el('span', 'hint', `💰 ${h.bet}`));
@@ -60,13 +110,9 @@ UI.twentyone = (() => {
     const playing = S.phase === 'playing' && me != null;
     let note = '';
     if (playing && t.stage === 'bet' && !t.bets[me] && t.chips[me] > 0) {
-      for (const amt of t.betOptions) {
-        const b = ctx.el('button', 'to-chip', `💰 ${amt}`);
-        b.disabled = !ctx.act;
-        b.onclick = () => ctx.quiet(ctx.act('bet', { amount: amt }));
-        bar.append(b);
-      }
-      note = 'Place your bet.';
+      if (stakeHand !== t.hand) { stakeHand = t.hand; stake = 0; }
+      betBar(bar, t, me);
+      note = '';
     } else if (playing && t.stage === 'play' && ctx.myTurn) {
       for (const [type, label, cls] of [['hit', '➕ Hit', 'primary'], ['stand', '✋ Stand', ''], ['double', '💰 Double', ''], ['split', '✂️ Split', '']]) {
         if (type === 'split' && !t.canSplit) continue;  // only offered on a pair

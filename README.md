@@ -32,7 +32,7 @@ port, and `http://localhost` still works on the server's own device.
 
 | Game | Players | What it is | Twist |
 |---|---|---|---|
-| 🎭 **Unmask** | 1–6 | Ask yes/no questions to find a hidden face. Faces are generated fresh every game. | Power cards. In Manhunt, everyone hears your question but only you hear the answer. Knocked-out players become ghosts who see everything. |
+| 🎭 **Unmask** | 1–6 | Ask yes/no questions to find a hidden face. Faces are generated fresh every game: man or woman, hair, eyes (still visible under sunglasses, worn low on the nose), glasses, hats, facial hair, earrings, expression, shirt. | Power cards. In Manhunt, everyone hears your question but only you hear the answer. Knocked-out players become ghosts who see everything. |
 | 🕵️ **Odd One Out** | 3–6 | Everyone gets the same secret word except one player, whose word is similar. Take turns giving one-word clues, then vote. | The odd one **doesn't know they're odd**. Catch them for +2 each; if they escape they get +4. A caught odd one can still guess the real word for +3. |
 | 🖍️ **Scribble Relay** | 3–6 | Everyone writes a phrase, then the chains pass round the table: draw what you're handed, caption the drawing you're handed, and so on. Drawing happens on your own phone (6 ink colours, undo). | You only see the entry right before yours. At the end each chain is revealed card by card and everyone ❤️ votes for their favourite entry. 🎯 A chain that ends where it started earns everyone in it +1. |
 | 🧠 **Trivia Rush** | 1–6 | Quick-fire quiz: everyone gets the same question with four answers and picks at once (228 original questions in 9 topics). | 100 for a right answer plus up to 100 for speed; the last question counts double. Pick one topic or everything. Alone, get 70% right to win. |
@@ -61,7 +61,7 @@ port, and `http://localhost` still works on the server's own device.
 | ⛳ **Putt Party** | 1–6 | **3D** mini golf (three.js; top-down fallback) on holes generated each game: a winding walled fairway with ⚪ bumpers, ▪️ posts, 🌑 rocks, 🟫 sand, long grass, ↗ slopes, ⛰️ humps and bowls, curved banks, a 🌀 windmill to time, a ramp jump and 💧 water. Drag back from your ball and let go to putt; a drag anywhere else moves the view, and the camera swings behind your ball after each putt. | The server simulates every putt and sends the ball's path, so every phone plays back the same shot. Everyone plays the same hole, a stroke each in turn. Solo: finish at or under par (3 a hole, 4 for a hole with a jump or a windmill). |
 | 🛸 **Hover Rally** | 1–6 | **Real-time 3D** hover-craft race (three.js chase camera; top-down fallback) on a looping track generated each game. The throttle is automatic: hold a side of the screen (or ←/→) to steer. | Bends push you outward and the inside line is shorter, so racing lines matter; walls scrub speed. ⚡ Boost pads plus 3 boosts of your own, a 💨 slipstream behind rivals, 🎁 item pickups: 🚀 homing missiles, 💣 mines and 🛡️ shields, leaders getting more mines and shields and the pack more missiles (a hit spins you out; setting to turn items off), sideways bumps. 💥 Elimination mode: last place is out every lap. Alone: beat a target time. |
 | 🏒 **Air Hockey** | 2 | **Real-time** table hockey: drag your mallet around your half, bank shots off the walls. Server-side physics at 60 fps. | 🏒🏒 Double Trouble puts two pucks on the table. Each player sees the table from their own end. |
-| 🎱 **Billiards** | 2 | Eight-ball pool on a top-down table with real physics (spin that skids then rolls, follow, draw and english, cushions, ball-to-ball collisions, six pockets). Drag to aim, set the power, shoot. | The server simulates every shot and sends the ball paths, so every phone plays back the same shot. A 🎯 aim guide (full, short or off) shows where both balls go. Fouls give ✋ ball in hand. The table stands upright on phones. |
+| 🎱 **Billiards** | 2 | Eight-ball pool on a top-down table with real physics (spin that skids then rolls, follow, draw and english, cushions, throw, six pockets with jaws). Drag to aim, set the power, shoot. | The server simulates every shot and sends the ball paths, so every phone plays back the same shot. A 🎯 aim guide (full, light, short or off) shows where both balls go; light shows just the ghost ball and a hint of the angle. Fouls give ✋ ball in hand. 🏁 Play one rack or a race to 2, 3 or 5. The table stands upright on phones. |
 
 ### ♟️ Strategy (6)
 
@@ -107,7 +107,7 @@ port, and `http://localhost` still works on the server's own device.
 | 🚢 **Ship, Captain & Crew** | 1–6 | The traditional tavern dice game: three rolls of five dice to find a 6 (ship), then a 5 (captain), then a 4 (crew), in order. The last two dice are your cargo. | Tap cargo dice to reroll one or both with the rolls you have left, or ⚓ dock. 3, 5 or 8 rounds; alone, average 5 cargo a round to win (best play averages about 4.3). Optional 🍺 pub pot: ante a coin a round, best cargo takes the pot. A 🏅 best-solo-hauls table on your device. |
 | 📦 **Shut the Box** | 1–6 | The traditional pub dice game: roll two dice and shut open tiles (1–9, or 1–12) that add up to the roll, until nothing fits. The open tiles are your points; lowest total after 1, 3 or 5 rounds wins. | Shut every tile to shut the box for 0. Once 7 and up are shut you may roll one die. Tiles that can't fit your roll are dimmed, and a single possible fit is picked for you. Alone, beat 10 points a round; a 🏅 best-solo-totals table on your device. |
 | 🤥 **Liar's Dice** | 2–6 | The traditional bluffing game: everyone rolls in secret, then bids rise ("four 3s") until someone calls 🤥 Liar!. Whoever was wrong loses a die; the last with dice wins. | Optional wild 1s and 🎯 Exact calls (spot on and everyone else loses a die). A helper shows how many of a face to expect, and the showdown stays up with everyone's dice. Optional 🗿 **palifico**: the first time someone is down to one die they open a round where 1s aren't wild and every bid keeps the opening face. |
-| ♦️ **Twenty-One** | 1–6 | The traditional casino game against a dealer bot: everyone bets at once, then hits, stands, doubles or ✂️ splits a pair in turn. Dealer draws to 17; a two-card 21 pays 3:2. | Four-deck shoe. Split up to four hands (split aces get one card each; a 21 after a split pays even money). Most chips after 5, 8 or 12 hands wins; alone, beat your starting 100. |
+| ♦️ **Blackjack** (Twenty-One) | 1–6 | The casino game against a dealer bot: everyone stacks up a bet from 5–100 chips (or all-in, or ↺ last bet) at once, then hits, stands, doubles or ✂️ splits a pair in turn. Dealer draws to 17; a two-card 21 pays 3:2. | Four-deck shoe. Split up to four hands (split aces get one card each; a 21 after a split pays even money). Most chips after 5, 8 or 12 hands wins; alone, beat your starting 100. |
 
 Every game has **Easy / Normal / Hard bots**:
 - **Unmask:** the bot picks the question that splits the remaining faces best.
@@ -120,7 +120,7 @@ Every game has **Easy / Normal / Hard bots**:
 - **Fib Finder:** bots write plausible decoy answers. Like people, they sometimes just know the fact; hard bots are also suspicious of answers that don't sound like a real guess.
 - **Word Ladder:** bots step along a shortest everyday-word ladder; easier bots take wrong turns more often, back up when stuck and climb more slowly.
 - **Night Heist:** the bot reads the pot size and the table size.
-- **Billiards:** bots aim with the ghost-ball method, checking that both paths are clear and the cut isn't too thin, and pick a power that gets the ball to the pocket. With ball in hand they choose the spot with the best shot. The hard bot runs its five best ideas through the real physics engine and also weighs the next shot it leaves itself.
+- **Billiards:** bots aim with the ghost-ball method, checking that both paths are clear and the cut isn't too thin, and pick a power that gets the ball to the pocket. With ball in hand they choose the spot with the best shot. The hard bot runs its five best ideas through the real physics engine and also weighs the next shot it leaves itself, then tries its pick with follow and with draw in case either leaves a better one. All bots cut a touch thinner to allow for throw. Bots never push out in 9-ball; after a rival's push they shoot only if they have a decent pot (the easy bot always shoots) and otherwise hand the table back.
 - **Farkle:** bots weigh the chance of farkling with the dice left (measured: 67% with one die down to 2% with six) against the average gain, and keep rolling when it pays; in the final round they roll until they beat the leader. Hard keeps fewer dice to roll more. Simulation shows Farkle is mostly luck past that: hard and normal finish about even, both well ahead of easy.
 - **Qork:** bots react after a human-like delay (easy ≈ 640 ms, normal ≈ 480 ms, hard ≈ 350 ms) and sometimes flinch at a near miss (a 6 or 8, or dice one apart): easy 10%, normal 7%, hard 2%. They only see what's on the table. Simulation: hard wins almost every bot-only game.
 - **Ship, Captain & Crew:** hard bots reroll cargo by an exact expected-value table (one die or both); normal bots reroll below 7, easy below 6; in the last round, bots behind the leader gamble.
@@ -134,7 +134,7 @@ Every game has **Easy / Normal / Hard bots**:
 - **Backgammon:** bots list every distinct end-of-turn position and score it on pip count, borne-off and hit checkers, points made (home board weighted), blots weighed by how many enemy rolls hit them, and primes. The hard bot then checks its top four against all 21 enemy rolls and the enemy's best reply to each; normal sometimes settles for its second-best play. Hard beat normal 46–14 and normal beat easy 52–8 in simulation.
 - **Oware, Reversi, Ultimate Tic-Tac-Toe, Nine Men's Morris:** one shared search (`games/search.py`): negamax with alpha-beta and iterative deepening under a time budget (hard: 2.5 s, 6–9 moves deep; normal: 3–4 deep; easy: 1 deep with noise). Each game adds its own evaluation: Oware weighs captured seeds, seeds at home and rival pits sitting on 1–2; Reversi uses square weights (corners high, the squares next to an empty corner low), mobility and, near the end, disc count; Ultimate scores open two-in-a-rows on the big and small boards; Morris counts men, open two-man lines and mobility. Hard beat easy 6–0 in every one.
 - **Hearts:** bots pass their most dangerous cards (high spades, high hearts, cards from short suits), duck under the winning card when they can, win clean tricks when they play last, and dump the Q♠ and high hearts when void. Hard also avoids leading or taking high spades while the queen is out. Hard and normal finish about even; both beat easy.
-- **Twenty-One:** hard plays full basic strategy (soft totals, doubles and pair splits), normal a simplified version that splits only aces and 8s, easy hits below 15. Over a few hands it's mostly luck, as at a real table.
+- **Blackjack:** hard plays full basic strategy (soft totals, doubles and pair splits), normal a simplified version that splits only aces and 8s, easy hits below 15. Over a few hands it's mostly luck, as at a real table.
 - **Speed:** bots play at a human pace (about 2 s a card for easy, 1.2 s for normal, 0.8 s for hard). Normal and hard prefer plays that leave another card playable straight after.
 - **Trivia Rush:** bots "know" an answer with some chance (45% easy, 62% normal, 80% hard) and otherwise guess; harder bots also answer faster.
 - **Contract Rummy:** bots search their hand for the contract (every way of making 3-card sets and 4-card runs, jokers included, both copies of a card), take the discard only when it completes the contract or helps and they wouldn't throw it straight back, and discard the card that helps least (pairs for set contracts, same-suit neighbours for run contracts). After laying down they add every card that fits. Hard beat normal 9–6 and normal beat easy 12–3.
@@ -286,6 +286,9 @@ or the ❓ How-to-play dialog during a game ("Something wrong with …?").
 python3 tests/jscheck.py static/app.js static/games/*.js   # structural check, no Node needed
 python3 tests/csscheck.py                                    # layout lint (jsdom does no layout)
 node --check static/app.js                                  # real syntax check (Node.js)
+python3 tests/billiards_physics.py                          # billiards shot engine, and the aim guide's copy of it
+python3 tests/billiards_rules.py                            # billiards rules (push-outs, fouls, breaks) on a scripted engine
+python3 tests/blackjack_bets.py                             # Blackjack bets: built from chips, all-in, last bet repeated
 PORT=8767 python3 server.py &                               # a separate test server (own rooms-8767.pickle / feedback-8767.jsonl)
 cd tests && npm install && BASE=http://localhost:8767 node ui.js          # every game
 BASE=http://localhost:8767 node ui.js chess spire                          # just some
@@ -475,7 +478,9 @@ Items that become ✅ move into the per-game plan.
     lowest place still free; the last one flying wins (laps don't apply). Six racers take 5 laps, about 80 s. Knocked-out
     craft settle onto the track with their engines off.
 - 🏒 **Air Hockey:** 2v2 with four mallets. **M**
-- 🎱 **Billiards:** the 3D table; a 9-ball variant. **L**
+- 🎱 **Billiards:** ✅ the 3D table; ✅ a 9-ball variant; ✅ a livelier break, push-outs and match play; ✅ the cue strokes
+  and a ⏪ replay; ✅ the aim guide no longer drifts on hard shots near the foot rail (the server now sends exact
+  ball positions; a ball rounded to 0.01 had sent the guide up to about a unit off the real path).
 
 **Words & puzzles**
 - 🎡 **Lucky Letters:** a bonus round for the winner. **M**
@@ -571,7 +576,29 @@ Riders and Air Hockey start in it) (#13, #15).
   and only then slows at the rolling rate, so follow, draw and stun come from the cloth (a centre hit stops dead
   up close but rolls through from afar, and the cue ball's path bends after a cut); english is real spin that
   cushion friction turns into a sideways kick on any ball; hits are wound back to the exact moment of contact
-  (cut angles were up to 19° off) and fast balls sub-step so they can't pass through each other. Next: a 3D table.
+  (cut angles were up to 19° off) and fast balls sub-step so they can't pass through each other. ✅ Pockets have
+  jaws: the cushion ends at a point and an angled facing runs in to the hole, so a ball straight in drops and one
+  coming in at a slant or off line can catch a point and rattle out (side pockets only take fairly straight balls).
+  ✅ Cushions meet the ball at natural-roll height, so a rolling ball comes off still rolling and a skidding one
+  picks up topspin; soft hits keep more speed than hard ones. ✅ Throw: a cut drags the object ball 1–4° toward the
+  cue ball's line, and english turns it further or back. ✅ `tests/billiards_physics.py` checks all of it and
+  that the aim guide's copy of the engine follows the server's paths exactly (to 0.01, against the server's
+  position at every sub-step, so cushion contacts and pocket drops are compared too). The cloth is about 9× slower than a
+  real one (so position play stays on the table), which left a break potting almost nothing. ✅ A livelier break:
+  the break gets its own top speed (720, about twice a hard shot) and a faster cloth (rolling friction 18 instead of
+  70), so about four breaks in ten pot a ball in 8-ball and half in 9-ball; the aim guide uses the same values.
+  ✅ Fuller rules: a scratch on an 8-ball break gives ball in hand behind the head line; 9-ball has the 🔀 push-out
+  (the first shot after the break needn't hit anything; the rival shoots from there or hands it back) and three fouls
+  in a row lose (a warning after two). `tests/billiards_rules.py` checks the rules with a scripted engine. ✅ 🏁 Match play: a race to 2, 3 or 5 racks
+  (lobby setting), the break alternating; between racks a card shows who took the rack and the match score. ✅ The cue
+  strokes: every shot (the rival's too) opens with the stick drawing back and driving through the cue ball (0.35 s, which the
+  server allows for before the result or the next turn), and ⏪ Replay plays the last shot again at 0.6× (tap to stop).
+  ✅ A 🏎️ Fast cloth table setting (#54): rolling friction 15 (about a real table) instead of 70, with a top speed of
+  320 so the power bar stays usable; a ball at the same speed rolls about 3× further, the same power about 1.5×.
+  🐢 Classic stays the default. The bots and the aim guide follow the setting.
+  ✅ ⤴ Cue elevation (#45): raise the butt of the cue up to 60°; with side spin the cue ball also rolls sideways
+  while it skids, so the cloth curves it toward the side struck (a swerve, or a massé when steep: about 40 units
+  sideways over a long shot at 55°), and a steep stroke loses some speed into the cloth. The aim guide shows the curve.
 - 🗼 **Spire Siege:** ✅ a 🟦 4-block piece set beside the mixed 2/3/5-block set (#13), a ⇄ hold slot
   (C / Shift / swipe up), and a sharper flat well on high-DPI screens. ✅ 🟦 4-block is now the default
   (#26); the odd shapes are the 🧩 Mixed option. ✅ Normal and hard bots use the ⇄ hold slot (they park a piece and

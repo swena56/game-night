@@ -1,12 +1,20 @@
 // Billiards: a top-down table on a canvas. The server simulates each shot and sends the ball paths
 // (30 frames a second), which every phone plays back. The table stands upright on portrait screens.
 UI.billiards = (() => {
-  let S, ctx, raf = 0, ro = null, animEnd = 0;
-  let dial = null, aim = 0, aimFor = null, power = 0.55, cuePos = null, drag = null, anim = null, seenShot = 0;
-  let spin = 0, english = 0, called = null;  // where the cue tip strikes: follow (+) / draw (−), right (+) / left (−); the pocket called for the 8
+  let S, ctx, raf = 0, ro = null, roRaf = 0, animEnd = 0, setTip = null;
+  let dial = null, aim = 0, aimFor = null, power = 0.55, cuePos = null, drag = null, anim = null, seenShot = 0, lastShot = null;
+  let spin = 0, english = 0, elev = 0, called = null, pushing = false;  // elev: the cue's butt raised, in degrees (swerve / massé, #45)
+  // where the cue tip strikes: follow (+) / draw (−), right (+) / left (−); the pocket called for the 8
   let rolls = new Map();  // each ball's orientation, so it turns as it rolls (#33)
   let view = { z: 1, x: 0, y: 0 }, pinch = null, aimBefore = 0;  // two-finger zoom of the table (#28)
   const touches = new Map();
+  let held = { dir: 0, since: 0, fine: false, last: 0 }, onKey = null, onKeyUp = null;  // ← → held to turn the cue
+  // the 3D table (static/games/billiards3d.js): null until loaded, false without WebGL. The flat canvas stays as a fallback.
+  let gl = null, view3d = false, camAt = null;
+  const pref = (k, d) => { try { return localStorage.getItem('billiards.' + k) || d; } catch { return d; } };
+  const setPref = (k, v) => { try { localStorage.setItem('billiards.' + k, v); } catch {} };
+  let cam = pref('cam', 'table');  // 3D camera: 'table' (the whole table, tilted) or 'cue' (behind the cue ball)
+  const surf = () => (view3d && gl ? gl.canvas : $('blCanvas'));  // the canvas being shown
   let geo = null;  // canvas geometry: scale, rail width, portrait or not
   const $ = (id) => document.getElementById(id);
   const COLORS = ['#ffffff', '#f5c518', '#1f5fd1', '#d62828', '#6a2c91', '#f77f00', '#138a36', '#7a1f1f', '#111111'];
@@ -32,6 +40,7 @@ UI.billiards = (() => {
     c.style.width = cw + 'px'; c.style.height = ch + 'px';
     c.width = Math.round(cw * dpr); c.height = Math.round(ch * dpr);
     geo = { k: k * dpr, css: k, portrait, focus: document.body.classList.contains('focus') };
+    if (gl) { gl.canvas.style.width = cw + 'px'; gl.canvas.style.height = ch + 'px'; gl.resize(cw, ch, portrait); }
   }
   // table (x, y) -> canvas pixels; portrait puts the head (break end) at the bottom
   function toScreen(x, y) {
@@ -39,6 +48,7 @@ UI.billiards = (() => {
     return portrait ? [(RAIL + y) * k, (RAIL + W - x) * k] : [(RAIL + x) * k, (RAIL + y) * k];
   }
   function toTable(clientX, clientY) {
+    if (view3d && gl) return gl.pick(clientX, clientY) || [-1e3, -1e3];
     const c = $('blCanvas'), r = c.getBoundingClientRect(), W = S.billiards.W;
     const k = geo.css * (r.width && parseFloat(c.style.width) ? r.width / parseFloat(c.style.width) : 1);  // allow for the zoom
     const sx = (clientX - r.left) / k - RAIL, sy = (clientY - r.top) / k - RAIL;
@@ -103,18 +113,26 @@ UI.billiards = (() => {
   function predict(cue) {
     const b = B(), P = b.phys;
     if (!P) return null;
-    const key = [aim, power, spin, english, cue[0], cue[1], b.balls.map((a) => a.join()).join(';')].join('|');
+    const key = [aim, power, spin, english, elev, cue[0], cue[1], b.breaking, b.balls.map((a) => a.join()).join(';')].join('|');
     if (key === predKey) return pred;
     predKey = key;
-    const R = b.R, W = b.W, H = b.H, POCK = b.pockets, MOUTH = P.mouth, F = b.friction;
+    const brk = b.breaking && b.breakMaxSpeed, R = b.R, POCK = b.pockets, EDGES = b.edges || [], F = brk ? b.breakFriction : b.friction, NEAR = P.near, W = b.W, H = b.H;
     const balls = new Map();
     for (const [n, x, y] of b.balls) if (n !== 0) balls.set(n, [x, y, 0, 0, 0, 0, 0]);
-    const speed = b.minSpeed + (b.maxSpeed - b.minSpeed) * power, ax = Math.cos(aim), ay = Math.sin(aim), top = P.tipK * spin * speed;
-    const cb = [cue[0], cue[1], ax * speed, ay * speed, ax * top, ay * top, P.sideTip * english * speed];
+    // squirt: right english pushes the cue ball a little left of the stick's line
+    const launch = aim - (P.squirt || 0) * english;
+    // an elevated side hit also rolls the ball sideways while it skids, so it curves (simulate() in games/billiards.py)
+    const tilt = (Math.max(0, Math.min(P.maxElev || 0, elev)) * Math.PI) / 180;
+    const speed = (b.minSpeed + ((brk ? b.breakMaxSpeed : b.maxSpeed) - b.minSpeed) * power) * (1 - (P.elevLoss || 0) * Math.sin(tilt));
+    const ax = Math.cos(launch), ay = Math.sin(launch), top = P.tipK * spin * speed, curve = (P.masseK || 0) * english * speed * Math.sin(tilt);
+    const cb = [cue[0], cue[1], ax * speed, ay * speed, ax * top - ay * curve, ay * top + ax * curve, P.sideTip * english * speed * Math.cos(tilt)];
     balls.set(0, cb);
     const cloth = (o, h) => {
       let [, , vx, vy, sx, sy] = o;
-      if (o[6]) o[6] = Math.abs(o[6]) < 0.5 ? 0 : o[6] * (1 - P.sideDecay * h);
+      if (o[6]) {  // english wears off steadily (an older server sent an exponential rate, < 5)
+        if (P.sideDecay < 5) o[6] = Math.abs(o[6]) < 0.5 ? 0 : o[6] * (1 - P.sideDecay * h);
+        else o[6] = Math.abs(o[6]) <= P.sideDecay * h ? 0 : o[6] - Math.sign(o[6]) * P.sideDecay * h;
+      }
       let ux = vx - sx, uy = vy - sy;
       const u = Math.hypot(ux, uy);
       if (u > 0.5) {
@@ -130,15 +148,28 @@ UI.billiards = (() => {
       o[0] += o[2] * h; o[1] += o[3] * h;
       return true;
     };
-    const rail = (o, axis, into) => {
-      const t = 1 - axis, vn = into * o[2 + axis];
+    const rail = (o, nx, ny) => {  // rail() in games/billiards.py: (nx, ny) points from the ball to the cushion
+      const vn = o[2] * nx + o[3] * ny;
       if (vn <= 0) return;
-      const jn = vn * (1 + P.cushion);
-      o[2 + axis] = -into * vn * P.cushion;
-      o[4 + axis] *= -P.cushion;
-      const side = axis === 0 ? into : -into, slip = o[2 + t] + side * o[6];
+      const e = P.cushionSoft - (P.cushionSoft - P.cushionHard) * Math.min(1, vn / P.cushionV);
+      const jn = vn * (1 + e), tx = -ny, ty = nx, slip = o[2] * tx + o[3] * ty + o[6];
       const jt = Math.max(-P.railGrip * jn, Math.min(P.railGrip * jn, slip / 3.5));
-      o[2 + t] -= jt; o[6] -= side * 2.5 * jt;
+      const jx = -jn * nx - jt * tx, jy = -jn * ny - jt * ty;
+      o[2] += jx; o[3] += jy; o[4] += jx; o[5] += jy; o[6] -= 2.5 * jt;
+    };
+    const edges = (o) => {  // edges(): cushions, jaw points and facings; true if it touched one
+      let x = o[0], y = o[1], hit = false;
+      if (NEAR < x && x < W - NEAR && NEAR < y && y < H - NEAR) return false;
+      for (const [x1, y1, x2, y2] of EDGES) {
+        const dx = x2 - x1, dy = y2 - y1;
+        const t = Math.max(0, Math.min(1, ((x - x1) * dx + (y - y1) * dy) / (dx * dx + dy * dy)));
+        const qx = x1 + t * dx - x, qy = y1 + t * dy - y, d = Math.hypot(qx, qy);
+        if (d >= R || d === 0) continue;
+        const nx = qx / d, ny = qy / d;
+        x -= nx * (R - d); y -= ny * (R - d); o[0] = x; o[1] = y;
+        rail(o, nx, ny); hit = true;
+      }
+      return hit;
     };
     let first = null, hit = null;  // the first ball the cue ball touches, and where both balls were at that moment
     const collide = (h) => {
@@ -164,6 +195,15 @@ UI.billiards = (() => {
           rel = (b1[2] - b2[2]) * nx + (b1[3] - b2[3]) * ny;
           const jj = (Math.max(0, rel) * (1 + P.bounce)) / 2;
           b1[2] -= jj * nx; b1[3] -= jj * ny; b2[2] += jj * nx; b2[3] += jj * ny;
+          // throw: friction between the balls (collide() in games/billiards.py)
+          const tx = -ny, ty = nx, sh = (b1[2] - b2[2]) * tx + (b1[3] - b2[3]) * ty + b1[6] + b2[6];
+          const slip = Math.hypot(sh, (b1[4] + b2[4]) * nx + (b1[5] + b2[5]) * ny);
+          if (jj && slip > 1e-9 && P.throw) {
+            const mu = P.throw + (P.throwV ? P.throwSlow * Math.exp(-slip / P.throwV) : 0);  // grips more when slipping slowly
+            const jt = Math.sign(sh) * Math.min((mu * jj * Math.abs(sh)) / slip, Math.abs(sh) / 7);
+            b1[2] -= jt * tx; b1[3] -= jt * ty; b2[2] += jt * tx; b2[3] += jt * ty;
+            b1[6] -= 2.5 * jt; b2[6] -= 2.5 * jt;
+          }
           if (first == null && (n1 === 0 || n2 === 0)) {
             first = n1 === 0 ? n2 : n1;
             const ob = n1 === 0 ? b2 : b1;
@@ -204,13 +244,7 @@ UI.billiards = (() => {
             if (n === 0 && first == null) return (pred = { scratch: [o[0], o[1]] });
             continue;
           }
-          const mouth = POCK.some(([px, py, cap]) => Math.hypot(o[0] - px, o[1] - py) < cap + MOUTH);
-          let wall = false;
-          for (const [axis, size] of [[0, W], [1, H]]) {
-            const lo = mouth ? -R : R, hi = mouth ? size + R : size - R;
-            const into = o[axis] < lo ? -1 : o[axis] > hi ? 1 : 0;
-            if (into) { o[axis] = into < 0 ? lo : hi; rail(o, axis, into); wall = true; }
-          }
+          const wall = edges(o);
           if (n === 0 && first == null && wall) return (pred = null);  // a cushion first: the plain aim line says it all
           if (paths.has(n) && wall) track(n, o, true);
         }
@@ -225,7 +259,92 @@ UI.billiards = (() => {
   }
 
   // ---------- drawing
+  // ---------- shot playback: the cue's stroke (anim.lead seconds), then the balls; a replay runs slower
+  const shotTime = () => (anim ? ((performance.now() - anim.start) / 1000) * anim.slow : 0);  // seconds into the shot
+  function play(shot, age, slow = 1, replay = false) {
+    const lead = shot.stroke ? B().lead || 0 : 0, dur = lead + shot.frames.length / 30;
+    clearTimeout(animEnd);
+    anim = age < dur ? { frames: shot.frames, order: shot.order, start: performance.now() - (age * 1000) / slow, lead, slow, replay,
+      stroke: shot.stroke, called: shot.called } : null;
+    if (anim) {
+      anim.sounds = contacts(anim.frames, anim.order); anim.roll = rolling(anim.frames); anim.next = 0;
+      // a timer (not the draw loop) ends the playback, so controls come back even where nothing draws
+      animEnd = setTimeout(() => { anim = null; ctx?.rerender?.(); }, ((dur - age) * 1000) / slow);
+    }
+    if (replay) ctx?.rerender?.();  // (a live shot arrives inside render already)
+  }
+  function stopReplay() {
+    if (!anim?.replay) return;
+    clearTimeout(animEnd); anim = null; ctx?.rerender?.();
+  }
+  // the shooter's cue during the stroke: pulled back a little further, then driven through to the ball
+  function strokeNow() {
+    const st = anim?.stroke, t = shotTime(), L = anim?.lead;
+    if (!st || !L || t > L + 0.12) return null;
+    const u = Math.min(1, t / L), pull = st[1] * 1.25;
+    const back = u < 0.35 ? st[1] + (pull - st[1]) * (u / 0.35) : pull * (1 - ((u - 0.35) / 0.65) ** 2);
+    return { x: st[4], y: st[5], aim: st[0], power: Math.max(0, back), spin: st[2], english: st[3] };
+  }
+
+  // where the balls are now: a playing shot's frame (eased between the 30-a-second frames), or the resting table
+  function ballsNow() {
+    const b = B();
+    let balls = b.balls.map(([n, x, y]) => [n, x, y]);
+    if (anim) {
+      const t = Math.max(0, (shotTime() - anim.lead) * 30), last = anim.frames.length - 1;
+      const i = Math.min(last, Math.floor(t)), f = i < last ? t - i : 0, f0 = anim.frames[i], f1 = anim.frames[Math.min(last, i + 1)];
+      balls = [];
+      anim.order.forEach((n, j) => {
+        const x0 = f0[2 * j], y0 = f0[2 * j + 1], x1 = f1[2 * j], y1 = f1[2 * j + 1];
+        if (x0 < 0) return;
+        balls.push(x1 < 0 ? [n, x0 / 10, y0 / 10] : [n, (x0 + (x1 - x0) * f) / 10, (y0 + (y1 - y0) * f) / 10]);
+      });
+      const st = anim.stroke, cue = st && shotTime() < anim.lead && balls.find(([n]) => n === 0);
+      if (cue) { cue[1] = st[4]; cue[2] = st[5]; }  // still on its spot while the cue strokes
+    } else if (b.inHand && canShoot()) {
+      balls = balls.filter(([n]) => n !== 0);
+      if (cuePos) balls.push([0, ...cuePos]);
+    }
+    return balls;
+  }
+  // where the cue ball heads after hitting the first ball: along the tangent, bent by follow or draw (table units)
+  function deflection(cue, gx, gy, ball) {
+    const ax = gx - cue[0], ay = gy - cue[1], am = Math.hypot(ax, ay) || 1, nx = ball[0] - gx, ny = ball[1] - gy, n = Math.hypot(nx, ny) || 1;
+    const along = (ax * nx + ay * ny) / (am * n);
+    let tx = ax / am - (along * nx) / n, ty = ay / am - (along * ny) / n;
+    const tm = Math.hypot(tx, ty);
+    if (tm < 0.05) return null;
+    tx = tx / tm + (nx / n) * spin * along * 0.9; ty = ty / tm + (ny / n) * spin * along * 0.9;
+    const m = Math.hypot(tx, ty) || 1, L = 44 * Math.min(1, tm + 0.2);
+    return [(tx / m) * L, (ty / m) * L];
+  }
+  function draw3d() {
+    const b = B(), shooting = !anim && canShoot(), cue = shooting ? cueAt() : null;
+    let guide = null;
+    if (cue) {
+      // the full guide runs the shot engine, as the flat view does: where the cue ball really meets the first
+      // ball (squirt, spin and all), or stops, or drops, and both balls' paths after the hit
+      const p = b.guide === 'full' ? predict(cue) : null, end = p && (p.ghost || p.stop || p.scratch);
+      if (end) guide = { mode: b.guide, cue, g: end, ball: p.ball, objPath: p.obj?.pts, cuePath: p.cue?.pts, stop: !!p.stop, scratch: !!p.scratch };
+      else {
+        const tr = trace(cue);
+        guide = { mode: b.guide, cue, g: [tr.gx, tr.gy], ball: tr.ball, deflect: tr.ball && b.guide === 'full' ? deflection(cue, tr.gx, tr.gy, tr.ball) : null };
+      }
+    }
+    // behind-the-cue camera: follows the cue ball and the aim, but holds still while the cue ball is dragged or a shot plays
+    const resting = ballMap()[0];
+    if (!anim && drag !== 'cue') { const at = cue || resting; if (at) camAt = { x: at[0], y: at[1], aim }; }
+    gl.render({
+      balls: ballsNow(), animating: !!anim,
+      stick: cue ? { x: cue[0], y: cue[1], aim, power, spin, english } : strokeNow(),
+      guide, ring: shooting && b.inHand && cuePos ? { x: cuePos[0], y: cuePos[1], ok: placeOk(...cuePos) } : null,
+      call: anim ? anim.called ?? null : b.calling && shooting ? called : null, callAll: !!(b.calling && shooting),
+      cam: camAt,
+    });
+  }
+
   function draw() {
+    if (view3d && gl && geo && S?.billiards) return draw3d();
     const c = $('blCanvas'), g = c?.getContext('2d');
     if (!g || !geo || !S?.billiards) return;
     const b = B(), { k } = geo, R = b.R;
@@ -237,13 +356,20 @@ UI.billiards = (() => {
     g.fillStyle = '#7a4f2a'; roundRect(g, -RAIL + 1.5, -RAIL + 1.5, b.W + 2 * RAIL - 3, b.H + 2 * RAIL - 3, 5); g.fill();
     const cloth = g.createRadialGradient(b.W / 2, b.H / 2, 10, b.W / 2, b.H / 2, b.W * 0.6);
     cloth.addColorStop(0, '#1d8a4e'); cloth.addColorStop(1, '#0f5c33');
-    g.fillStyle = cloth; g.fillRect(0, 0, b.W, b.H);
+    g.fillStyle = cloth;
+    if (b.edges?.length) {  // the cushion line, with each pocket's jaws angling in to the hole
+      g.beginPath();
+      for (const [x1, y1, x2, y2] of b.edges) { g.lineTo(x1, y1); g.lineTo(x2, y2); }
+      g.closePath(); g.fill();
+      g.strokeStyle = '#0b4a28'; g.lineWidth = 0.8; g.lineJoin = 'round';
+      for (const [x1, y1, x2, y2] of b.edges) { g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); }
+    } else g.fillRect(0, 0, b.W, b.H);
     g.strokeStyle = '#ffffff33'; g.lineWidth = 0.4;
     g.beginPath(); g.moveTo(b.headX, 0); g.lineTo(b.headX, b.H); g.stroke();
     g.fillStyle = '#ffffff55'; g.beginPath(); g.arc(b.W * 0.73, b.H / 2, 0.7, 0, 7); g.fill();
     for (const [px, py, cap] of b.pockets) { g.fillStyle = '#050505'; g.beginPath(); g.arc(px, py, cap + 0.6, 0, 7); g.fill(); }
     // the pocket called for the 8: yours while you aim, the shooter's while a shot plays
-    const call = anim ? b.shot?.called : b.calling && canShoot() ? called : null;
+    const call = anim ? anim.called : b.calling && canShoot() ? called : null;
     if (call != null && b.pockets[call]) {
       const [px, py, cap] = b.pockets[call];
       g.strokeStyle = '#ffd166'; g.lineWidth = 1.4; g.setLineDash([2, 1.5]);
@@ -261,17 +387,11 @@ UI.billiards = (() => {
     g.setTransform(1, 0, 0, 1, 0, 0);
 
     // balls: a playing shot's frame, or the resting table
-    let balls = b.balls.map(([n, x, y]) => [n, x, y]);
-    if (anim) {
-      const i = Math.min(anim.frames.length - 1, Math.floor((performance.now() - anim.start) / (1000 / 30)));
-      const f = anim.frames[i];
-      balls = anim.order.map((n, j) => [n, f[2 * j] / 10, f[2 * j + 1] / 10]).filter(([, x]) => x >= 0);
-    } else if (b.inHand && canShoot()) {
-      balls = balls.filter(([n]) => n !== 0);
-      if (cuePos) balls.push([0, ...cuePos]);
-    }
+    const balls = ballsNow();
     const rpx = R * k;
     if (!anim && canShoot()) drawGuide(g, rpx);
+    const sk = strokeNow();
+    if (sk) drawStick(g, [sk.x, sk.y], sk.aim, sk.power, sk.english, rpx);
     for (const [n, x, y] of balls) drawBall(g, n, ...toScreen(x, y), rpx);
     if (!anim && canShoot() && b.inHand && cuePos) {  // ball-in-hand ring
       const [sx, sy] = toScreen(...cuePos);
@@ -280,12 +400,9 @@ UI.billiards = (() => {
     }
   }
 
-  function drawGuide(g, rpx) {
-    const cue = cueAt();
-    if (!cue) return;
-    const guide = B().guide, { gx, gy, ball } = trace(cue), lw = k1();
-    const [sx, sy] = toScreen(...cue), [ex, ey] = toScreen(gx, gy);
-    // the cue stick: a tapered wooden cue with a white ferrule and blue tip, pulled back further with more power
+  // the cue stick: a tapered wooden cue with a white ferrule and blue tip, pulled back further with more power
+  function drawStick(g, cue, aim, power, english, rpx) {
+    const lw = k1(), [sx, sy] = toScreen(...cue);
     const back = rpx + (6 + power * 46) * lw, len = Math.max(190 * lw, rpx * 34), dx = Math.cos(aim), dy = Math.sin(aim);
     const [ux, uy] = geo.portrait ? [dy, -dx] : [dx, dy];
     const [px, py] = [-uy, ux], tipW = Math.max(3 * lw, rpx * 0.55), buttW = tipW * 2.3;
@@ -303,8 +420,28 @@ UI.billiards = (() => {
     g.lineTo(...at(back + 4 * lw, -tipW / 2)); g.lineTo(...at(back, -tipW / 2)); g.fill();
     g.fillStyle = '#3a86ff'; g.beginPath(); g.moveTo(...at(back - 1.5 * lw, tipW / 2)); g.lineTo(...at(back, tipW / 2));
     g.lineTo(...at(back, -tipW / 2)); g.lineTo(...at(back - 1.5 * lw, -tipW / 2)); g.fill();
+  }
+
+  function drawGuide(g, rpx) {
+    const cue = cueAt();
+    if (!cue) return;
+    const guide = B().guide, { gx, gy, ball } = trace(cue), lw = k1();
+    const [sx, sy] = toScreen(...cue), [ex, ey] = toScreen(gx, gy);
+    drawStick(g, cue, aim, power, english, rpx);
     if (guide === 'off') return;
     const full = guide === 'full';
+    if (guide === 'light') {  // #50: the ghost ball where the cue ball first meets a ball, and a short hint of the angle
+      g.strokeStyle = '#ffffffaa'; g.lineWidth = 1.2 * lw; g.setLineDash([5 * lw, 4 * lw]);
+      g.beginPath(); g.moveTo(sx, sy); g.lineTo(ex, ey); g.stroke(); g.setLineDash([]);
+      g.strokeStyle = '#ffffff99'; g.lineWidth = 1 * lw;
+      g.beginPath(); g.arc(ex, ey, rpx, 0, 7); g.stroke();
+      if (ball) {
+        const [bx, by] = toScreen(...ball), nx = bx - ex, ny = by - ey, n = Math.hypot(nx, ny) || 1;
+        g.strokeStyle = '#ffd166aa'; g.lineWidth = 1.4 * lw;
+        g.beginPath(); g.moveTo(bx, by); g.lineTo(bx + (nx / n) * 16 * lw, by + (ny / n) * 16 * lw); g.stroke();
+      }
+      return;
+    }
     if (!full) {  // the short guide: just which way the cue points
       const f = Math.min(1, (40 * lw) / Math.hypot(ex - sx, ey - sy || 1));
       g.strokeStyle = '#ffffffaa'; g.lineWidth = 1.2 * lw; g.setLineDash([5 * lw, 4 * lw]);
@@ -334,6 +471,18 @@ UI.billiards = (() => {
       const [bx, by] = toScreen(...ball), nx = bx - ex, ny = by - ey, n = Math.hypot(nx, ny) || 1;
       g.strokeStyle = '#ffd166'; g.lineWidth = 1.6 * lw;
       g.beginPath(); g.moveTo(bx, by); g.lineTo(bx + (nx / n) * 45 * lw, by + (ny / n) * 45 * lw); g.stroke();
+      // and where the cue ball glances off: along the tangent, bent forward by follow or back by draw
+      const ax = ex - sx, ay = ey - sy, am = Math.hypot(ax, ay) || 1, along = (ax * nx + ay * ny) / (am * n);
+      let tx = ax / am - along * nx / n, ty = ay / am - along * ny / n;
+      const tm = Math.hypot(tx, ty);
+      if (tm > 0.05) {
+        tx /= tm; ty /= tm;
+        const bend = spin * along * 0.9;  // a fuller hit passes on more of the spin
+        tx += (nx / n) * bend; ty += (ny / n) * bend;
+        const m2 = Math.hypot(tx, ty) || 1, L = 70 * lw * Math.min(1, tm + 0.2);
+        g.strokeStyle = '#bfe9ffcc'; g.lineWidth = 1.4 * lw; g.setLineDash([4 * lw, 3 * lw]);
+        g.beginPath(); g.moveTo(ex, ey); g.lineTo(ex + (tx / m2) * L, ey + (ty / m2) * L); g.stroke(); g.setLineDash([]);
+      }
     }
   }
   const k1 = () => geo.k / geo.css;  // device pixels per CSS pixel
@@ -418,7 +567,60 @@ UI.billiards = (() => {
     g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
   }
 
-  function tick() { raf = requestAnimationFrame(tick); draw(); shotSounds(); }
+  function tick(now) {
+    raf = requestAnimationFrame(tick);
+    if (held.dir && canShoot()) {  // a held arrow turns the cue, slowly at first, then faster (Shift: fine)
+      const dt = Math.min(0.05, (now - held.last) / 1000), t = (now - held.since) / 1000;
+      const rate = held.fine ? 0.04 : Math.min(1.6, 0.12 + 0.12 * t + 0.6 * t * t);  // radians a second
+      if (t > 0.18) aim += held.dir * rate * dt;
+    }
+    held.last = now;
+    draw(); shotSounds();
+  }
+
+  // ---------- keyboard: ← → turn the cue, ↑ ↓ power, Space shoots, W A S D move the cue ball in hand
+  function setPower(p) {
+    power = Math.max(0.05, Math.min(1, Math.round(p * 100) / 100));
+    const el = $('blPower'); if (el) el.value = Math.round(power * 100);
+    if ($('blPowerVal')) $('blPowerVal').textContent = Math.round(power * 100) + '%';
+    if ($('blStroke')) $('blStroke').style.setProperty('--p', power);
+  }
+  function keyDown(e) {
+    if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target, k = e.key;
+    if (t?.isContentEditable || (t?.closest?.('input, textarea, select') && t.id !== 'blPower')) return;
+    if (!$('blCanvas') || $('modal')?.hidden === false) return;  // not while a dialog is open
+    if ((k === 'c' || k === 'C') && view3d && !t?.closest?.('button')) { setCam(cam === 'cue' ? 'table' : 'cue'); e.preventDefault(); return; }
+    if (!canShoot()) return;
+    if (k === 'ArrowLeft' || k === 'ArrowRight') {
+      const dir = k === 'ArrowLeft' ? -1 : 1;
+      if (!e.repeat || held.dir !== dir) {
+        aim += dir * (e.shiftKey ? 0.0015 : 0.0045);  // one tap: about a quarter of a degree
+        held = { dir, since: performance.now(), fine: e.shiftKey, last: performance.now() };
+      }
+      held.fine = e.shiftKey;
+    } else if (k === 'ArrowUp' || k === 'ArrowDown') {
+      setPower(power + (k === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 0.01 : 0.05));
+    } else if (k.length === 1 && k >= '0' && k <= '9' && !t?.closest?.('[role="slider"]')) {
+      setPower(k === '0' ? 1 : +k / 10);  // number keys (#53): 1 = 10% … 9 = 90%, 0 = full power
+    } else if ((k === ' ' || k === 'Enter') && !t?.closest?.('button, [role="slider"]')) {
+      if (!e.repeat) shoot();
+    } else if ((k === 'c' || k === 'C') && view3d) {
+      setCam(cam === 'cue' ? 'table' : 'cue');
+    } else if (B().inHand && k.length === 1 && 'wasd'.includes(k.toLowerCase())) {
+      // nudge the cue ball in screen directions (the table stands upright on portrait screens)
+      const key = k.toLowerCase(), step = e.shiftKey ? 0.5 : 2;
+      let [sx, sy] = [key === 'a' ? -1 : key === 'd' ? 1 : 0, key === 'w' ? -1 : key === 's' ? 1 : 0];
+      if (geo?.portrait) [sx, sy] = [-sy, sx];
+      const b = B(), cur = cuePos || defaultCue();
+      cuePos = [Math.max(b.R, Math.min(b.W - b.R, cur[0] + sx * step)), Math.max(b.R, Math.min(b.H - b.R, cur[1] + sy * step))];
+    } else return;
+    e.preventDefault();
+  }
+  function keyUp(e) {
+    if ((e.key === 'ArrowLeft' && held.dir === -1) || (e.key === 'ArrowRight' && held.dir === 1)) held.dir = 0;
+    if (e.key === 'Shift') held.fine = false;
+  }
 
   // ---------- sound: the cue's tock, ball-on-ball clicks, cushion thumps and pocket drops
   // Found in the shot's frames, not sent by the server: a ball whose velocity jumps between frames hit
@@ -432,11 +634,11 @@ UI.billiards = (() => {
     };
     if (last < 1) return out;
     const p0 = at(0, order.indexOf(0)), p1 = at(1, order.indexOf(0));
-    if (p0 && p1) out.push({ t: 0, kind: 'cue', v: Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) });
+    if (p0 && p1) out.push({ t: 0, kind: 'cue', v: Math.hypot(p1[0] - p0[0], p1[1] - p0[1]), p: p0 });
     for (let f = 1; f < last; f++) {
       order.forEach((n, j) => {
         const a = at(f - 1, j), c = at(f, j), d = at(f + 1, j);
-        if (c && !d) { out.push({ t: f / 30, kind: 'pocket', v: a ? Math.hypot(c[0] - a[0], c[1] - a[1]) : 3 }); return; }
+        if (c && !d) { out.push({ t: f / 30, kind: 'pocket', v: a ? Math.hypot(c[0] - a[0], c[1] - a[1]) : 3, p: c }); return; }
         if (!a || !c || !d) return;
         const dv = jolt(f, j);
         if (dv < 0.5 || (quiet.get(n) ?? -9) > f - 3) return;  // friction and spin change it far less than an impact
@@ -456,61 +658,163 @@ UI.billiards = (() => {
           if ((pairs.get(key) ?? -9) > f - 3) return;  // both balls feel the same click
           pairs.set(key, f); quiet.set(other, f);
           const k = order.indexOf(other);  // an impact can straddle two frames: hear the whole of it
-          out.push({ t: f / 30, kind: 'ball', v: Math.max(dv, jolt(f + 1, j), jolt(f, k), jolt(f + 1, k)) });
-        } else out.push({ t: f / 30, kind: 'rail', v: Math.max(dv, jolt(f + 1, j)) });
+          out.push({ t: f / 30, kind: 'ball', v: Math.max(dv, jolt(f + 1, j), jolt(f, k), jolt(f + 1, k)), p: c });
+        } else out.push({ t: f / 30, kind: 'rail', v: Math.max(dv, jolt(f + 1, j)), p: c });
       });
     }
     return out.sort((x, y) => x.t - y.t);
   }
-  let actx = null;
-  function voice(type, f0, f1, dur, vol, t) {
-    const o = actx.createOscillator(), g = actx.createGain();
-    o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.002); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g).connect(actx.destination); o.start(t); o.stop(t + dur + 0.02);
+  // how fast all the balls on the table are going at each frame, for the rolling rumble on the cloth
+  function rolling(frames) {
+    const out = new Float32Array(frames.length);
+    for (let f = 1; f < frames.length; f++) {
+      const a = frames[f - 1], c = frames[f];
+      for (let i = 0; i < c.length; i += 2) if (c[i] >= 0 && a[i] >= 0) out[f] += Math.hypot(c[i] - a[i], c[i + 1] - a[i + 1]) / 10;
+    }
+    return out;
   }
-  function noise(dur, freq, q, vol, t) {
-    const len = Math.max(1, Math.floor(actx.sampleRate * dur)), buf = actx.createBuffer(1, len, actx.sampleRate), d = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 3;
+
+  // The voices are built the way the real sounds are made: a very short burst of noise (the impact itself,
+  // brighter and shorter the harder the hit) exciting a few damped resonances (the rail's wood, the cue's
+  // shaft, the pocket), never a swept tone. Everything goes through a small room and a gentle compressor so
+  // the break's pile of clicks sits together, and each sound is panned to where on the table it happened.
+  let actx = null, bus = null, noiseBuf = null, roll = null;
+  function audio() {
+    if (actx) return actx;
+    actx = new (window.AudioContext || window.webkitAudioContext)();
+    const sr = actx.sampleRate, comp = actx.createDynamicsCompressor();
+    comp.threshold.value = -16; comp.knee.value = 8; comp.ratio.value = 4; comp.attack.value = 0.001; comp.release.value = 0.12;
+    comp.connect(actx.destination);
+    noiseBuf = actx.createBuffer(1, sr, sr);
+    const nd = noiseBuf.getChannelData(0);
+    for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+    // a games room: a few early reflections off the walls, then a short tail that loses its highs as it dies
+    const len = Math.floor(sr * 0.45), ir = actx.createBuffer(2, len, sr);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = ir.getChannelData(ch);
+      let lp = 0;
+      for (let i = 0; i < len; i++) {
+        const s = i / sr, k = Math.min(0.92, 0.25 + s * 3);  // the one-pole smoothing grows: highs fade first
+        lp += (1 - k) * ((Math.random() * 2 - 1) - lp);
+        d[i] = s < 0.012 ? 0 : lp * Math.exp(-s / 0.075) * 1.6;
+      }
+      for (const [ms, a] of [[7, 0.5], [11, 0.35], [17, 0.3], [23, 0.2], [31, 0.15]]) d[Math.floor(sr * (ms + ch * 1.3) / 1000)] += a * (ch ? -1 : 1);
+    }
+    const rev = actx.createConvolver(), wet = actx.createGain();
+    rev.buffer = ir; wet.gain.value = 0.32;
+    rev.connect(wet).connect(comp);
+    bus = { dry: comp, rev };
+    return actx;
+  }
+  const quietNow = () => (typeof prefs !== 'undefined' && !prefs.sound) || document.hidden;
+  // left to right as the table is shown (the flat view turns it on its side in portrait); the 3D camera moves, so it stays centred
+  function panAt(p) {
+    const b = B();
+    if (!p || view3d || !geo || !b) return 0;
+    const u = geo.portrait ? p[1] / b.H : p[0] / b.W;
+    return Math.max(-0.7, Math.min(0.7, (u - 0.5) * 1.4));
+  }
+  function out(pan, send = 1) {  // a panned input feeding the room
+    const g = actx.createStereoPanner ? actx.createStereoPanner() : actx.createGain();
+    if (g.pan) g.pan.value = pan;
+    g.connect(bus.dry);
+    if (send) { const s = actx.createGain(); s.gain.value = send; g.connect(s).connect(bus.rev); }
+    return g;
+  }
+  // a burst of noise through a filter, falling away with time constant tau
+  function burst(dst, t, type, freq, q, vol, tau) {
     const s = actx.createBufferSource(), fl = actx.createBiquadFilter(), g = actx.createGain();
-    s.buffer = buf; fl.type = 'bandpass'; fl.frequency.value = freq; fl.Q.value = q; g.gain.value = vol;
-    s.connect(fl).connect(g).connect(actx.destination); s.start(t);
+    s.buffer = noiseBuf; fl.type = type; fl.frequency.value = freq; fl.Q.value = q;
+    g.gain.setValueAtTime(vol, t); g.gain.setTargetAtTime(0, t, tau);
+    s.connect(fl).connect(g).connect(dst);
+    s.start(t, Math.random() * 0.8); s.stop(t + tau * 8 + 0.01);
+  }
+  // one damped resonance: struck, then ringing down with time constant tau
+  function mode(dst, t, f, vol, tau) {
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.frequency.value = f * (1 + (Math.random() - 0.5) * 0.04);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + 0.0007); g.gain.setTargetAtTime(0, t + 0.0007, tau);
+    o.connect(g).connect(dst); o.start(t); o.stop(t + tau * 8 + 0.01);
+  }
+  // two phenolic balls: a sharp, dry clack. Almost all impact (the balls themselves ring far above hearing),
+  // so it's a hard broadband snap with a little tonal colour, duller and softer for a gentle kiss.
+  function ballClick(dst, t, h) {
+    const vol = 0.06 + 0.55 * h ** 0.8;
+    burst(dst, t, 'bandpass', 2400 + 3200 * h, 0.8, vol * 1.3, 0.0012 + 0.0014 * (1 - h));
+    burst(dst, t, 'highpass', 6000, 0.7, vol * 0.5 * h, 0.0008);
+    for (const [f, a, tau] of [[3150, 0.22, 0.007], [4480, 0.16, 0.005], [5900, 0.1, 0.004]]) mode(dst, t, f, vol * a * (f > 4000 ? 0.15 + 0.85 * h : 0.4 + 0.6 * h), tau);
+    mode(dst, t, 1700, vol * 0.12 * (1 - h), 0.004);
   }
   function clack(e, delay = 0) {
-    if ((typeof prefs !== 'undefined' && !prefs.sound) || document.hidden) return;
+    if (quietNow()) return;
     try {
-      actx ||= new (window.AudioContext || window.webkitAudioContext)();
+      audio();
       const t = actx.currentTime + delay, h = Math.min(1, e.v / 12);  // 12 units a frame is a hard hit
-      if (e.kind === 'ball') {  // a bright, hard click with a little ring
-        const vol = 0.04 + 0.32 * h, p = 1 + (Math.random() - 0.5) * 0.08;
-        voice('sine', 2600 * p, 2200 * p, 0.05, vol, t); voice('triangle', 4100 * p, 3600 * p, 0.025, vol * 0.5, t);
-        noise(0.012, 5000, 1.5, vol * 1.6, t);
-      } else if (e.kind === 'rail') {  // a dull rubber thump
-        const vol = 0.04 + 0.28 * h;
-        voice('sine', 170, 95, 0.09, vol, t); noise(0.03, 700, 1, vol * 0.9, t);
-      } else if (e.kind === 'pocket') {  // a knock into the pocket, then a short rattle
-        const vol = 0.12 + 0.18 * Math.min(1, e.v / 6);
-        voice('triangle', 260, 140, 0.12, vol, t); noise(0.05, 900, 2, vol, t);
-        [0.07, 0.12, 0.16].forEach((dt, i) => voice('sine', 1500 - i * 200, 1300 - i * 200, 0.03, vol * (0.35 - i * 0.08), t + dt));
-      } else {  // the cue tip on the cue ball: a woody tock
-        const vol = 0.06 + 0.24 * h;
-        voice('triangle', 950, 620, 0.06, vol, t); noise(0.02, 2400, 2, vol * 1.2, t);
+      if (e.kind === 'ball') ballClick(out(panAt(e.p)), t, h);
+      else if (e.kind === 'rail') {  // the rubber cushion under the cloth: a muffled thup, and the wooden rail behind it
+        const dst = out(panAt(e.p), 0.8), vol = 0.05 + 0.4 * h;
+        burst(dst, t, 'lowpass', 350 + 1500 * h, 0.7, vol * 1.1, 0.008 + 0.004 * h);
+        mode(dst, t, 150, vol * 0.55, 0.045); mode(dst, t, 245, vol * 0.3, 0.03); mode(dst, t, 430, vol * 0.18, 0.018);
+        if (h > 0.4) mode(dst, t, 1100, vol * 0.12 * h, 0.005);
+      } else if (e.kind === 'pocket') {  // a thock against the pocket's leather, a rattle in the jaws if it came fast, then the roll down the return
+        const dst = out(panAt(e.p), 0.7), fast = Math.min(1, e.v / 6), vol = 0.12 + 0.25 * fast;
+        burst(dst, t, 'lowpass', 600 + 600 * fast, 0.8, vol, 0.012);
+        mode(dst, t, 105, vol * 0.7, 0.06); mode(dst, t, 185, vol * 0.4, 0.04); mode(dst, t, 340, vol * 0.2, 0.02);
+        if (fast > 0.5) [0.035, 0.07].forEach((dt, i) => { burst(dst, t + dt, 'lowpass', 900, 0.8, vol * (0.45 - i * 0.2), 0.006); mode(dst, t + dt, 240, vol * (0.3 - i * 0.12), 0.02); });
+        const t1 = t + 0.18, dur = 0.75, s = actx.createBufferSource(), fl = actx.createBiquadFilter(), g = actx.createGain();
+        const lfo = actx.createOscillator(), depth = actx.createGain();  // the joins in the gutter make it bump as it rolls
+        s.buffer = noiseBuf; s.loop = true; fl.type = 'lowpass'; fl.frequency.value = 320; fl.Q.value = 1.2;
+        lfo.frequency.value = 14 + Math.random() * 6; depth.gain.value = 0.06; lfo.connect(depth).connect(g.gain);
+        g.gain.setValueAtTime(0, t1); g.gain.linearRampToValueAtTime(0.12, t1 + 0.08); g.gain.setValueAtTime(0.12, t1 + dur - 0.25); g.gain.linearRampToValueAtTime(0, t1 + dur);
+        s.connect(fl).connect(g).connect(dst); s.start(t1); s.stop(t1 + dur + 0.05); lfo.start(t1); lfo.stop(t1 + dur + 0.05);
+        ballClick(dst, t1 + dur - 0.04, 0.18);  // and it bumps into the balls already down
+      } else {  // the leather tip on the cue ball: a rounder tok with the cue's shaft in it, a crack on a hard break
+        const dst = out(panAt(e.p), 0.8), vol = 0.08 + 0.4 * h;
+        burst(dst, t, 'bandpass', 1500 + 1500 * h, 1.1, vol * 1.2, 0.0025);
+        mode(dst, t, 820, vol * 0.3, 0.012); mode(dst, t, 1640, vol * 0.18, 0.008); mode(dst, t, 190, vol * 0.25, 0.025);
+        if (h > 0.6) burst(dst, t, 'highpass', 4000, 0.7, vol * (h - 0.6) * 1.5, 0.001);
       }
     } catch {}
   }
+  // the balls rolling on the cloth: a low rumble that rises and falls with how much is moving
+  function rollTo(level) {
+    if (!roll && level <= 0) return;
+    if (!roll) {
+      const s = actx.createBufferSource(), fl = actx.createBiquadFilter(), hiss = actx.createBiquadFilter(), g = actx.createGain(), hg = actx.createGain();
+      s.buffer = noiseBuf; s.loop = true;
+      fl.type = 'lowpass'; fl.frequency.value = 220; fl.Q.value = 0.6;
+      hiss.type = 'bandpass'; hiss.frequency.value = 1800; hiss.Q.value = 0.5; hg.gain.value = 0.08;  // the nap of the cloth
+      g.gain.value = 0;
+      s.connect(fl).connect(g); s.connect(hiss).connect(hg).connect(g); g.connect(bus.dry);
+      s.start();
+      roll = { s, g, off: null };
+    }
+    clearTimeout(roll.off); roll.off = null;
+    roll.g.gain.setTargetAtTime(level, actx.currentTime, 0.05);
+    if (level <= 0) {  // let it fade, then stop the source so nothing runs between shots
+      const r = roll;
+      r.off = setTimeout(() => { try { r.s.stop(); } catch {} if (roll === r) roll = null; }, 400);
+    }
+  }
   // play each contact once its moment in the shot comes (the draw loop calls this every frame)
   function shotSounds() {
-    if (!anim?.sounds) return;
-    const now = (performance.now() - anim.start) / 1000;
+    if (!anim?.sounds || quietNow()) { if (roll && !roll.off) rollTo(0); return; }
+    const now = shotTime() - anim.lead;
     for (let n = 0; anim.next < anim.sounds.length && anim.sounds[anim.next].t <= now; ) {
       const e = anim.sounds[anim.next++];
-      if (now - e.t < 0.15) clack(e, 0.007 * n++);  // the break's many clicks spread over a few ms instead of stacking  // a late joiner (or a tab back from the background) doesn't get a burst of old clicks
+      // the break's many clicks spread over a few ms instead of stacking; a late joiner (or a tab back
+      // from the background) doesn't get a burst of old clicks
+      if (now - e.t < 0.15) clack(e, 0.007 * n++);
+    }
+    if (actx && anim.roll) {
+      const f = Math.floor(now * 30), sp = f >= 0 && f < anim.roll.length ? anim.roll[f] : 0;
+      try { rollTo(sp > 0.05 ? 0.16 * Math.min(1, Math.sqrt(sp / 12)) : 0); } catch {}
     }
   }
 
   // ---------- input
   function applyView() {
-    const c = $('blCanvas');
+    const c = surf();
     if (!c) return;
     c.style.transform = view.z === 1 ? '' : `translate(${view.x}px, ${view.y}px) scale(${view.z})`;
     $('blZoom').hidden = view.z === 1;
@@ -530,7 +834,7 @@ UI.billiards = (() => {
     }
     const z = Math.min(3, Math.max(1, pinch.view.z * d / Math.max(10, pinch.d)));
     // the canvas's own top left, before the zoom (offsets ignore transforms)
-    const c = $('blCanvas'), box = c.parentElement.getBoundingClientRect(), left = box.left + c.offsetLeft, top = box.top + c.offsetTop;
+    const c = surf(), box = c.parentElement.getBoundingClientRect(), left = box.left + c.offsetLeft, top = box.top + c.offsetTop;
     // keep the table point under the fingers' first midpoint under their current midpoint
     const ox = pinch.mid[0] - left - pinch.view.x, oy = pinch.mid[1] - top - pinch.view.y;
     view = { z, x: mid[0] - left - ox * (z / pinch.view.z), y: mid[1] - top - oy * (z / pinch.view.z) };
@@ -539,6 +843,7 @@ UI.billiards = (() => {
   }
 
   function pointer(e, phase) {
+    if (phase === 'down' && anim?.replay) return stopReplay();  // a tap on the table ends a replay
     if (touches.size > 1 || pinch) return;
     if (!canShoot() || !geo) return;
     const [x, y] = toTable(e.clientX, e.clientY);
@@ -552,8 +857,8 @@ UI.billiards = (() => {
       drag = B().inHand && cue && Math.hypot(x - cue[0], y - cue[1]) < B().R * 4 ? 'cue' : 'aim';
       // Aiming turns the cue like a dial: the drag rotates the current aim around the cue ball, so a
       // touch on the stick (behind the ball) or anywhere else never swings it round.
-      if (drag === 'aim' && cue) dial = { from: Math.atan2(y - cue[1], x - cue[0]), aim0: aim };
-      try { $('blCanvas').setPointerCapture(e.pointerId); } catch {}
+      if (drag === 'aim' && cue) dial = behind() ? { x0: e.clientX, aim0: aim } : { from: Math.atan2(y - cue[1], x - cue[0]), aim0: aim };
+      try { surf().setPointerCapture(e.pointerId); } catch {}
     }
     if (!drag) return;
     if (drag === 'cue') {
@@ -561,7 +866,8 @@ UI.billiards = (() => {
       cuePos = [Math.max(b.R, Math.min(b.W - b.R, x)), Math.max(b.R, Math.min(b.H - b.R, y))];
     } else {
       const cue = cueAt();
-      if (cue && dial && Math.hypot(x - cue[0], y - cue[1]) > 3) {
+      if (dial && dial.x0 != null) aim = dial.aim0 + (e.clientX - dial.x0) * 0.0035;  // behind the cue: drag sideways to turn
+      else if (cue && dial && Math.hypot(x - cue[0], y - cue[1]) > 3) {
         const turn = Math.atan2(y - cue[1], x - cue[0]) - dial.from;
         aim = dial.aim0 + Math.atan2(Math.sin(turn), Math.cos(turn));
       }
@@ -569,9 +875,59 @@ UI.billiards = (() => {
     if (phase === 'up') drag = dial = null;
   }
 
+  const behind = () => view3d && gl && cam === 'cue';
+
+  // ---------- 3D table
+  function load3d() {
+    if (gl !== null || !S?.billiards) return;
+    gl = undefined;  // loading
+    GL3.load().then(() => {
+      const stage = $('blStage');
+      if (!stage || gl) return;
+      gl = Billiards3D.create(stage, B(), { onLost: () => {  // the GPU context was lost (phone app switch): build a new table
+        if (!gl) return;
+        gl.dispose(); gl = null;
+        if (view3d) { view3d = false; load3d(); }
+      } }) || false;
+      if (gl) {
+        stage.insertBefore(gl.canvas, $('blZoom'));
+        const c = gl.canvas;
+        c.style.touchAction = 'none';
+        c.addEventListener('pointerdown', (e) => pointer(e, 'down'));
+        c.addEventListener('pointermove', (e) => pointer(e, 'move'));
+        c.addEventListener('pointerup', (e) => pointer(e, 'up'));
+        c.addEventListener('pointercancel', () => { drag = null; });
+        gl.setMode(cam);
+      }
+      setView(!!gl);
+    }).catch(() => { gl = false; setView(false); });
+  }
+  function setView(on) {
+    if (on && gl === null) return load3d();
+    if (gl === undefined) return;  // still loading
+    view3d = on && !!gl;
+    view = { z: 1, x: 0, y: 0 };
+    for (const c of [$('blCanvas'), gl && gl.canvas]) if (c) c.style.transform = '';
+    $('blZoom').hidden = true;
+    $('blCanvas').hidden = view3d;
+    if (gl) gl.canvas.hidden = !view3d;
+    $('blView').hidden = gl === false;
+    $('blView').textContent = view3d ? '▦ Flat' : '🧊 3D';
+    $('blCam').hidden = !view3d;
+    $('blCam').textContent = cam === 'cue' ? '🗺️ Whole table' : '🎥 Behind cue';
+    layout();
+  }
+  function setCam(m) {
+    cam = m; setPref('cam', m);
+    gl?.setMode?.(m);
+    setView(view3d);
+  }
+
   function shoot() {
     if (!canShoot()) return;
     const extra = { angle: aim, power, spin, side: english };
+    if (elev) extra.elev = elev;
+    if (pushing && B().pushOk) extra.push = true;
     if (B().calling) {
       if (called == null) return ctx.toast('📣 Tap the pocket you\'re aiming the 8 at first.');
       extra.pocket = called;
@@ -583,26 +939,46 @@ UI.billiards = (() => {
     ctx.quiet(ctx.act('shoot', extra));
   }
 
+  function setElev(d) {  // the cue elevation control (#45)
+    elev = Math.max(0, Math.min(60, Math.round(d / 5) * 5));
+    const el = $('blElev');
+    if (!el) return;
+    el.value = elev;
+    $('blElevVal').textContent = elev ? `${elev}°` : 'level';
+  }
+
   // ---------- mount / render
   function mount(main, side) {
-    view = { z: 1, x: 0, y: 0 }; pinch = null; touches.clear(); rolls = new Map(); spin = english = 0;
-    dial = null; aim = 0; aimFor = null; power = 0.55; cuePos = null; drag = null; anim = null; seenShot = 0; geo = null;
+    view = { z: 1, x: 0, y: 0 }; pinch = null; touches.clear(); rolls = new Map(); spin = english = elev = 0;
+    dial = null; aim = 0; aimFor = null; power = 0.55; cuePos = null; drag = null; anim = null; seenShot = 0; lastShot = null; geo = null;
+    gl = null; view3d = false; camAt = null;
     main.innerHTML = `<div class="bl"><div id="blStage" class="bl-stage"><canvas id="blCanvas"></canvas>
-        <button id="blZoom" class="bl-zoom" hidden aria-label="Show the whole table">🔍 1×</button></div>
+        <button id="blZoom" class="bl-zoom" hidden aria-label="Show the whole table">🔍 1×</button>
+        <div class="bl-views"><button id="blView" hidden>🧊 3D</button><button id="blCam" hidden>🎥 Behind cue</button>
+          <button id="blPush" hidden aria-pressed="false" title="9-ball: the first shot after the break may be a push-out. It needn't hit anything; your rival then shoots from there or hands it back.">🔀 Push out</button>
+          <button id="blReplay" hidden title="Watch the last shot again, slowed down">⏪ Replay</button>
+          <button id="blPass" hidden title="Make your rival shoot from where their push-out left the balls">↩️ Hand it back</button></div>
+        <div class="bl-rackdone" id="blRackDone" hidden><h3 id="blRackTitle"></h3><div id="blStand"></div></div></div>
       <div class="bl-controls">
         <button id="blLeft" aria-label="Aim left">◀</button>
-        <label class="bl-power">Power <input id="blPower" type="range" min="5" max="100" value="55"><b id="blPowerVal">55%</b></label>
+        <div class="bl-power"><div id="blStroke" class="bl-stroke" title="Pull the cue back: drag left from anywhere on the bar and let go to shoot. Tap to just set the power. Drag off the bar to cancel.">
+            <i id="blFill"></i><span class="bl-cuestick"></span><span class="bl-marks"><em>break</em><em>hard</em><em>medium</em><em>soft</em></span>
+            <input id="blPower" type="range" min="5" max="100" value="55" aria-label="Power"></div>
+          <b id="blPowerVal">55%</b></div>
         <button id="blRight" aria-label="Aim right">▶</button>
         <div class="bl-spin"><div id="blSpin" class="bl-cueball" tabindex="0" role="slider" aria-valuemin="0" aria-valuemax="100"
           aria-label="Where the cue strikes the cue ball (arrow keys move it, 0 centres it)"
           title="Tap where the cue hits the cue ball: high = follow, low = draw (back spin), left or right = side spin off the cushions. Double-tap to centre."><i id="blTip"></i></div>
-          <small id="blSpinVal">centre</small></div>
+          <small id="blSpinVal">centre</small>
+          <label class="bl-elev" title="Raise the butt of the cue: with side spin the cue ball curves toward the side you hit (a swerve; steep, a massé)">⤴
+            <input id="blElev" type="range" min="0" max="60" step="5" value="0" aria-label="Cue elevation"><span id="blElevVal">level</span></label></div>
         <button id="blShoot" class="primary">🎱 Shoot</button>
       </div></div>`;
     side.innerHTML = `<div class="panel bl-side">
       <div id="blStatus" class="seat-row"></div>
       <div id="blRacks" class="bl-racks"></div>
-      <p class="hint left" id="blHint">Drag anywhere on the table to turn the cue around the ball. ◀ ▶ fine-tune. ✋ With ball in hand, drag the cue ball to move it.</p></div>`;
+      <p class="hint left" id="blHint">Drag anywhere on the table to turn the cue around the ball. ◀ ▶ fine-tune. Pull the power bar back and let go to shoot. ✋ With ball in hand, drag the cue ball to move it.</p>
+      <p class="hint left bl-keys">Keys: ← → turn the cue (hold to turn faster, Shift for fine aim) · ↑ ↓ or 1–9, 0 power · Space shoots · W A S D move the cue ball in hand · C switches the 3D camera.</p></div>`;
     const c = $('blCanvas');
     c.style.touchAction = 'none';
     c.addEventListener('pointerdown', (e) => pointer(e, 'down'));
@@ -614,9 +990,14 @@ UI.billiards = (() => {
     stage.addEventListener('pointermove', (e) => onTouch(e, 'move'), true);
     for (const t of ['pointerup', 'pointercancel']) stage.addEventListener(t, (e) => onTouch(e, 'up'), true);
     $('blZoom').onclick = () => { view = { z: 1, x: 0, y: 0 }; applyView(); };
+    $('blView').onclick = () => { setPref('view', view3d ? '2d' : '3d'); setView(!view3d); };
+    $('blCam').onclick = () => setCam(cam === 'cue' ? 'table' : 'cue');
+    $('blReplay').onclick = () => (anim?.replay ? stopReplay() : !anim && lastShot && play(lastShot, 0, 0.6, true));
+    $('blPush').onclick = () => { pushing = !pushing; ctx?.rerender?.(); };
+    $('blPass').onclick = () => { if (canShoot()) ctx.quiet(ctx.act('pass')); };
     // the cue-ball pad (#34): where the tip strikes. Up/down is follow/draw, left/right is side spin.
     const pad = $('blSpin');
-    const setTip = (fx, fy) => {
+    setTip = (fx, fy) => {
       const m = Math.hypot(fx, fy);
       if (m > 1) { fx /= m; fy /= m; }  // stay on the ball
       english = Math.round(fx * 10) / 10 || 0; spin = Math.round(-fy * 10) / 10 || 0;  // || 0: no −0
@@ -625,6 +1006,7 @@ UI.billiards = (() => {
       $('blSpinVal').textContent = parts.join(' · ') || 'centre';
       pad.setAttribute('aria-valuetext', $('blSpinVal').textContent);
     };
+    $('blElev').oninput = () => setElev(+$('blElev').value);
     let padDrag = false;
     const padAt = (e) => { const r = pad.getBoundingClientRect(); setTip(((e.clientX - r.left) / r.width - 0.5) / 0.36, ((e.clientY - r.top) / r.height - 0.5) / 0.36); };
     pad.onpointerdown = (e) => { if (!canShoot()) return; e.preventDefault(); padDrag = true; try { pad.setPointerCapture(e.pointerId); } catch {} padAt(e); };
@@ -637,7 +1019,40 @@ UI.billiards = (() => {
       if (step) { e.preventDefault(); setTip(english + step[0], -spin + step[1]); } else if (e.key === '0' || e.key === 'Home') setTip(0, 0);
     };
     setTip(0, 0);
-    $('blPower').oninput = () => { power = $('blPower').value / 100; $('blPowerVal').textContent = $('blPower').value + '%'; };
+    $('blPower').oninput = () => setPower($('blPower').value / 100);
+    // the stroke bar (#48): a cue lying along the bar, its tip at the right. Press anywhere and drag left to
+    // pull it back (power grows with the pull, the stick and guide follow live), let go to strike. A tap with
+    // no pull just sets the power; dragging well off the bar cancels and puts the power back.
+    const bar = $('blStroke');
+    let stroke = null;
+    const barPower = (e) => { const r = bar.getBoundingClientRect(); return r.width ? (r.right - e.clientX) / r.width : power; };
+    bar.onpointerdown = (e) => {
+      if (!canShoot()) return;
+      e.preventDefault();
+      try { bar.setPointerCapture(e.pointerId); } catch {}
+      stroke = { x0: e.clientX, p0: power, pulled: false, off: false };
+      bar.classList.add('pulling');
+    };
+    bar.onpointermove = (e) => {
+      if (!stroke) return;
+      const r = bar.getBoundingClientRect();
+      stroke.off = e.clientY < r.top - 50 || e.clientY > r.bottom + 50;
+      bar.classList.toggle('cancel', stroke.off);
+      if (stroke.off) return setPower(stroke.p0);
+      const pull = stroke.x0 - e.clientX;  // how far back from where the press started
+      if (pull > 8) stroke.pulled = true;
+      if (stroke.pulled) setPower(Math.max(0.05, pull / (r.width || 1)));
+    };
+    bar.onpointerup = (e) => {
+      if (!stroke) return;
+      const st = stroke; stroke = null;
+      bar.classList.remove('pulling', 'cancel');
+      if (st.off) return setPower(st.p0);
+      if (st.pulled) shoot();
+      else setPower(barPower(e));  // a tap: put the power where the tap was
+    };
+    bar.onpointercancel = () => { if (stroke) setPower(stroke.p0); stroke = null; bar.classList.remove('pulling', 'cancel'); };
+    setPower(power);
     // turn the aim by about 0.25° per tap, faster while held
     for (const [id, dir] of [['blLeft', -1], ['blRight', 1]]) {
       let hold = null;
@@ -646,49 +1061,101 @@ UI.billiards = (() => {
       $(id).onpointerup = $(id).onpointerleave = $(id).onpointercancel = () => clearInterval(hold);
     }
     $('blShoot').onclick = shoot;
-    ro = window.ResizeObserver ? new ResizeObserver(() => layout()) : null;
+    held = { dir: 0, since: 0, fine: false, last: 0 };
+    onKey = keyDown; onKeyUp = keyUp;
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onKeyUp);
+    // laid out on the next frame: resizing the canvas inside the callback re-triggers the observer and
+    // the browser reports "ResizeObserver loop completed with undelivered notifications"
+    ro = window.ResizeObserver ? new ResizeObserver(() => { cancelAnimationFrame(roRaf); roRaf = requestAnimationFrame(layout); }) : null;
     ro?.observe($('blStage')); ro?.observe(side);  // the info strip growing a line shrinks the table to match
     raf = requestAnimationFrame(tick);
   }
 
-  function unmount() { cancelAnimationFrame(raf); clearTimeout(animEnd); ro?.disconnect(); }
+  function unmount() {
+    cancelAnimationFrame(raf); cancelAnimationFrame(roRaf); clearTimeout(animEnd); try { if (roll) rollTo(0); } catch {} ro?.disconnect(); setTip = null;
+    if (onKey) { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('blur', onKeyUp); }
+    onKey = onKeyUp = null; held.dir = 0;
+    if (gl) gl.dispose();
+    gl = null; view3d = false;
+  }
 
   function render(s, c) {
     S = s; ctx = c;
     const b = B();
     if (!geo || geo.focus !== document.body.classList.contains('focus')) layout();
+    if (gl === null && pref('view', '3d') === '3d') load3d();
+    else if (gl === null) $('blView').hidden = false;
     // play a new shot from where it is now (late joiners skip ahead; old shots just show the result)
     if (b.shot && b.shot.id !== seenShot) {
       seenShot = b.shot.id;
-      const dur = b.shot.frames.length / 30;
-      anim = b.shot.age < dur ? { frames: b.shot.frames, order: b.shot.order, start: performance.now() - b.shot.age * 1000 } : null;
-      if (anim) { anim.sounds = contacts(anim.frames, anim.order); anim.next = 0; }
-      // a timer (not the draw loop) ends the playback, so controls come back even where nothing draws
-      clearTimeout(animEnd);
-      if (anim) animEnd = setTimeout(() => { anim = null; ctx?.rerender?.(); }, (dur - b.shot.age) * 1000);
+      lastShot = b.shot;
+      play(b.shot, b.shot.age);
     }
     // a fresh turn for me: aim at something sensible and put a placeable cue ball down
     const turnKey = `${S.turn}:${b.shot?.id ?? 0}`;
     if (ctx.myTurn && aimFor !== turnKey) {
-      aimFor = turnKey; called = null;
+      aimFor = turnKey; called = null; pushing = false;
+      setTip?.(0, 0);  // each shot starts from a centre hit (#52), like the aim and the power do afresh
+      setElev(0);
       cuePos = b.inHand ? defaultCue() : null;
       aim = defaultAim();
     }
     const me = S.me.id, mine = b.groups[me], turnName = ctx.player(S.turn)?.name ?? '';
+    const pushText = pushing ? '🔀 Push out: no need to hit anything (a scratch is still a foul). Your rival then shoots from there or hands it back.'
+      : b.pushOk ? '🔀 You may push out (button on the table), or play a normal shot. ' : '';
+    const foulWarn = b.rules === '9' && (b.fouls?.[me] ?? 0) === 2 ? '⚠️ Two fouls in a row: one more loses. ' : '';
+    const pushedBy = b.pushChoice === me ? ctx.player(Object.keys(b.fouls || {}).find((i) => i !== me))?.name ?? 'Your rival' : '';
     const callText = called == null ? '📣 On the 8: tap the pocket you\'re calling.' : '🎱 Sink the 8 in the called pocket to win!';
     $('blStatus').textContent = S.phase !== 'playing' ? (b.last || 'Game over')
       : ctx.myTurn ? (b.inHand ? (b.inHand === 'kitchen' ? '✋ Place the cue ball behind the line, then break.' : '✋ Ball in hand: drag the cue ball anywhere.')
           + (b.calling ? ` ${callText}` : '')
         : b.calling ? callText
-        : b.targets.length === 1 && b.targets[0] === 8 ? '🎱 Sink the 8 to win!' : b.breaking ? 'Your break!' : 'Your shot.')
-      : `${turnName} is shooting…`;
+        : b.breaking ? 'Your break!'
+        : pushedBy ? `🔀 ${pushedBy} pushed out. Shoot from here (hit the ${b.targets[0]} first), or ↩️ hand it back.`
+        : pushing ? pushText
+        : b.rules === '9' ? foulWarn + pushText + (b.targets[0] === 9 ? '9️⃣ Only the 9 left: sink it to win!' : `Hit the ${b.targets[0]} first. Sink the 9 to win.`)
+        : b.targets.length === 1 && b.targets[0] === 8 ? '🎱 Sink the 8 to win!' : 'Your shot.')
+      : b.between ? `🏁 Rack ${b.rackNo} to ${ctx.player(b.rackWinner)?.name ?? '?'}. The next rack is coming up…`
+      : S.turn ? (b.pushChoice === S.turn ? `🔀 ${turnName} decides: shoot from here or hand it back…` : `${turnName} is shooting…`) : '🎱 …';
+    $('blPush').hidden = !(canShoot() && b.pushOk);
+    $('blPush').classList.toggle('on', pushing);
+    $('blPush').setAttribute('aria-pressed', String(pushing));
+    $('blPass').hidden = !(canShoot() && b.pushChoice === me);
+    $('blReplay').hidden = !lastShot || (anim && !anim.replay);
+    $('blReplay').textContent = anim?.replay ? '⏹ Stop' : '⏪ Replay';
     $('blShoot').disabled = !canShoot();
     for (const id of ['blLeft', 'blRight', 'blPower']) $(id).disabled = !canShoot();
+    $('blStroke').classList.toggle('off', !canShoot());
     $('blSpin').classList.toggle('off', !canShoot());
+    $('blElev').disabled = !canShoot();
+    // a match: racks won, and between racks a card with the score
+    $('blRackDone').hidden = !b.between;
+    if (b.between) {
+      $('blRackTitle').textContent = `🏁 Rack ${b.rackNo} to ${ctx.player(b.rackWinner)?.name ?? '?'}`;
+      standingsCard($('blStand'), b.standings, { title: `Race to ${b.race}`, note: 'The next rack is coming up. The break alternates.' });
+    }
     // each player's remaining balls
     const racks = $('blRacks'); racks.innerHTML = '';
+    if (b.race > 1) {
+      const seats = Object.keys(b.racks || {}), row = ctx.el('div', 'bl-rack bl-match');
+      row.append(ctx.el('b', '', `🏁 Race to ${b.race} · rack ${b.rackNo}`));
+      row.append(ctx.el('span', '', seats.map((i) => `${ctx.player(i)?.name ?? '?'} ${b.racks[i]}`).join(' – ')));
+      racks.append(row);
+    }
     const onTable = new Set(b.balls.map(([n]) => n));
-    for (const pid of Object.keys(b.groups).length ? Object.keys(b.groups) : S.players.filter((p) => !p.spectator).map((p) => p.id)) {
+    if (b.rules === '9') {  // nine-ball: no groups, just the balls still up, lowest (the one to hit) first
+      const row = ctx.el('div', 'bl-rack');
+      row.append(ctx.el('b', '', 'Up next'));
+      for (let n = 1; n <= 9; n++) {
+        const dot = ctx.el('span', 'bl-dot' + (onTable.has(n) ? '' : ' gone') + (n === 9 ? ' stripe' : '') + (n === b.targets[0] ? ' next' : ''), String(n));
+        dot.style.setProperty('--c', colorOf(n));
+        row.append(dot);
+      }
+      racks.append(row);
+    }
+    for (const pid of b.rules === '9' ? [] : Object.keys(b.groups).length ? Object.keys(b.groups) : S.players.filter((p) => !p.spectator).map((p) => p.id)) {
       const p = ctx.player(pid); if (!p) continue;
       const row = ctx.el('div', 'bl-rack' + (pid === S.turn ? ' now' : ''));
       const name = ctx.el('b', '', p.name + (pid === me ? ' (you)' : '')); name.style.color = p.color;
@@ -705,6 +1172,6 @@ UI.billiards = (() => {
     if (mine) $('blHint').textContent = `You have ${mine === 'solids' ? '🔵 solids (1–7)' : '🟠 stripes (9–15)'}. Drag to turn the cue, ◀ ▶ fine-tune.`;
   }
 
-  const turnText = (s) => s.phase !== 'playing' ? null : s.billiards.inHand && s.turn === s.me.id ? '✋ Ball in hand' : null;
+  const turnText = (s) => s.phase !== 'playing' ? null : s.billiards.between ? '🏁 Next rack…' : s.billiards.inHand && s.turn === s.me.id ? '✋ Ball in hand' : null;
   return { mount, render, unmount, turnText, focus: true };
 })();
