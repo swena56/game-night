@@ -1039,6 +1039,13 @@ body.kb-open .fb-fact { font-size: 16px; padding: 10px; }
 .go-area.fill { animation: goFill .4s both cubic-bezier(.3, 1.6, .5, 1); }
 @keyframes goFill { from { transform: scale(0); opacity: 0; } }
 .stone.go-gone { animation: goGone .6s ease-in forwards; pointer-events: none; z-index: 2; }
+.go-bowls { display: flex; gap: 10px; justify-content: center; margin: 8px 0; }
+.go-bowl { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.go-bowl > span { position: relative; display: block; width: 64px; height: 40px; border-radius: 50% / 0 0 100% 100%;
+  background: radial-gradient(ellipse at 50% 0%, #6b4419 0 45%, #9c6a2c 46%, #5a3812 100%); box-shadow: inset 0 3px 0 #c58f4b, 0 4px 8px #0007; }
+.go-bowl > span .stone { inset: auto; width: 13px; height: 13px; left: var(--x); top: var(--y); transform: translate(-50%, -50%); }
+.go-bowl > b { font-size: .85em; }
+.go-bowl.bump > span { animation: owBump .45s cubic-bezier(.3, 1.6, .5, 1); }
 @keyframes goGone { 0% { transform: none; } 30% { transform: translateY(-20%) scale(1.15); } 100% { transform: translateY(-120%) scale(.4); opacity: 0; } }
 .stone.b { background: radial-gradient(circle at 35% 30%, #777, #222 45%, #000 70%); }
 .stone.w { background: radial-gradient(circle at 35% 30%, #fff, #eee 45%, #c9c4b8 80%); }
@@ -1333,6 +1340,9 @@ body.calm .gh-tile.trace { background: linear-gradient(#8ecae6, #4dabf7); }
 .mm-pt.picked { stroke: var(--accent) !important; stroke-width: 4; }
 .mm-pt.take { stroke: var(--danger) !important; stroke-width: 4; animation: pulse 1s infinite; }
 .mm-pt.last { filter: drop-shadow(0 0 3px var(--accent2)); }
+.mm-pt.empty.warn { stroke: var(--danger); stroke-width: 2; stroke-dasharray: 2.5 1.5; r: 7; fill: #ef476f40; }
+#mmWarn.on { border-color: var(--danger); color: var(--danger); }
+body:not(.calm) .mm-pt.empty.warn { animation: pulse 1.2s ease-in-out infinite alternate; }
 
 /* odd one out */
 .oo { max-width: 640px; margin: 0 auto; }

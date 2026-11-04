@@ -9,6 +9,8 @@ UI.go = (() => {
     side.innerHTML = `<div class="panel">
       <div id="goStatus" class="seat-row"></div>
       <div id="goScore" class="hint left"></div>
+      <div class="go-bowls"><div class="go-bowl" id="goBowlB" title="White stones Black has captured"><span></span><b></b></div>
+        <div class="go-bowl" id="goBowlW" title="Black stones White has captured"><span></span><b></b></div></div>
       <div class="row"><button id="goPass">Pass</button><button id="goResign" class="danger">🏳️ Resign</button></div>
       <div class="row" id="goUndo"></div>
       <div class="row"><button id="goArea">◫ Show territory</button></div>
@@ -66,11 +68,16 @@ UI.go = (() => {
       }
       else if (ctx.myTurn) pt.append(ctx.el('span', 'ghost-stone ' + g.me));
     });
-    for (const [r, col, v] of gone) {
-      const ghost = ctx.el('span', 'stone ' + v + ' go-gone');
-      boardEl.children[r * n + col]?.append(ghost);
+    // captured stones lift off and fly into the capturer's bowl of prisoners
+    gone.forEach(([r, col, v], k) => {
+      const pt = boardEl.children[r * n + col];
+      const ghost = ctx.el('span', 'stone ' + v + ' go-gone'), flyer = ctx.el('span', 'stone ' + v);
+      pt?.append(ghost, flyer);
+      Kit.fly(flyer, $(v === 'w' ? 'goBowlB' : 'goBowlW').firstElementChild, { ms: 560, delay: 120 + k * 70, scale: 0.45, remove: false });
+      flyer.remove();
       setTimeout(() => ghost.remove(), 700);
-    }
+    });
+    bowls(g, gone.length ? 680 + gone.length * 70 : 0);
     if (fresh && lastKey) ctx.sfx('place');
     if (gone.length) setTimeout(() => ctx.sfx('capture'), 120);
     if (gone.length >= 4) Kit.callout(`${gone.length} captured!`, 'gold', { ms: 1200 });
@@ -95,6 +102,28 @@ UI.go = (() => {
         b.disabled = !!g.undo.asker || !g.undo.can; b.onclick = () => ctx.quiet(ctx.act('undo_ask'));
         un.append(b);
       }
+    }
+  }
+
+  // each side's prisoners: a little pile of the rival's stones (up to 14 drawn) with the count
+  function bowls(g, wait) {
+    for (const [c, id] of [['b', 'goBowlB'], ['w', 'goBowlW']]) {
+      const bowl = $(id), pile = bowl.firstElementChild, n = g.captures[c];
+      if (bowl.dataset.n === String(n)) continue;
+      const grew = bowl.dataset.n != null && n > +bowl.dataset.n;
+      const fill = () => {
+        pile.innerHTML = '';
+        for (let k = 0; k < Math.min(n, 14); k++) {
+          const st = ctx.el('i', 'stone ' + (c === 'b' ? 'w' : 'b'));
+          st.style.setProperty('--x', `${50 + 30 * Math.sin(k * 2.4) * Math.min(1, k / 4)}%`);
+          st.style.setProperty('--y', `${60 - 18 * Math.cos(k * 2.4) * Math.min(1, k / 4) - k}%`);
+          pile.append(st);
+        }
+        bowl.lastElementChild.textContent = `${c === 'b' ? '⚫' : '⚪'} ${n}`;
+        if (grew) { bowl.classList.remove('bump'); void bowl.offsetWidth; bowl.classList.add('bump'); }
+      };
+      bowl.dataset.n = n;
+      grew && wait ? setTimeout(fill, wait) : fill();
     }
   }
 

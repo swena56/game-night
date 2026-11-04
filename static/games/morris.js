@@ -1,7 +1,7 @@
 // Nine Men's Morris: an SVG board of 24 points. Tap a point to place; in the moving phase tap a man,
 // then where it goes. When a move makes a mill, tap the rival man to take. Only legal choices respond.
 UI.morris = (() => {
-  let S, ctx, svg, pick = null, pending = null, seenLast = null;
+  let S, ctx, svg, pick = null, pending = null, seenLast = null, warn = false;
   const MILLS = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11], [12, 13, 14], [15, 16, 17], [18, 19, 20], [21, 22, 23],
     [0, 9, 21], [3, 10, 18], [6, 11, 15], [1, 4, 7], [16, 19, 22], [8, 12, 17], [5, 13, 20], [2, 14, 23]];
   const DIAGS = [[0, 3, 6], [2, 5, 8], [21, 18, 15], [23, 20, 17]];
@@ -14,8 +14,12 @@ UI.morris = (() => {
   function mount(main, side) {
     pick = null; pending = null; seenLast = null;
     main.innerHTML = `<div class="mm"><svg id="mmSvg" class="mm-board" viewBox="0 0 200 200"></svg><p id="mmHint" class="hint"></p></div>`;
-    side.innerHTML = '<div class="panel"><div id="mmSeats"></div></div>';
+    side.innerHTML = `<div class="panel"><div id="mmSeats"></div>
+      <div class="row"><button id="mmWarn" aria-pressed="false">⚠ Show threats</button></div>
+      <p class="hint left">Threats ring the empty points where your rival could finish a mill next move.</p></div>`;
     svg = $('mmSvg');
+    try { warn = localStorage.getItem('mmWarn') === '1'; } catch { warn = false; }
+    $('mmWarn').onclick = () => { warn = !warn; try { localStorage.setItem('mmWarn', warn ? '1' : '0'); } catch {} paint(); };
     const line = (a, b, cls = 'mm-line') => { const l = document.createElementNS(NS, 'line'); const [x1, y1] = at(a), [x2, y2] = at(b); Object.entries({ x1, y1, x2, y2 }).forEach(([k, v]) => l.setAttribute(k, v)); l.setAttribute('class', cls); svg.append(l); };
     for (const [a, b, c] of [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11], [12, 13, 14], [15, 16, 17], [18, 19, 20], [21, 22, 23],
       [0, 9, 21], [3, 10, 18], [6, 11, 15], [1, 4, 7], [16, 19, 22], [8, 12, 17], [5, 13, 20], [2, 14, 23]]) { line(a, b); line(b, c); }
@@ -53,8 +57,28 @@ UI.morris = (() => {
 
   function send(mv) { pick = null; pending = null; paint(); ctx.quiet(ctx.act('move', { move: mv })); }
 
+  // empty points where `seat` could complete a mill with its next move (a placement, a step or a flight;
+  // the man that moves can't be one of the two already in the line)
+  function threats(m, seat) {
+    const b = m.board, lines = [...MILLS, ...(m.twelve ? DIAGS : [])], out = new Set();
+    const mine = b.map((v, i) => (v === seat ? i : -1)).filter((i) => i >= 0);
+    const flying = !m.hand[seat] && m.fly !== false && mine.length === 3;
+    const adj = (a, c) => lines.some((l) => l.indexOf(a) >= 0 && Math.abs(l.indexOf(a) - l.indexOf(c)) === 1 && l.includes(c));
+    for (const l of lines) {
+      const empty = l.filter((i) => b[i] == null);
+      if (empty.length !== 1 || l.filter((i) => b[i] === seat).length !== 2) continue;
+      const d = empty[0];
+      if (m.hand[seat] > 0 || mine.some((s) => !l.includes(s) && (flying || adj(s, d)))) out.add(d);
+    }
+    return out;
+  }
+
   function paint() {
     const m = S.morris, legal = m.legal, mine = ctx.myTurn;
+    const danger = warn && m.me != null && S.phase === 'playing' ? threats(m, 1 - m.me) : new Set();
+    const wb = $('mmWarn');
+    if (wb) { wb.hidden = m.me == null; wb.classList.toggle('on', warn); wb.setAttribute('aria-pressed', String(warn));
+      wb.textContent = warn ? `⚠ Threats: ${danger.size || 'none'}` : '⚠ Show threats'; }
     const placing = m.me != null && m.hand[m.me] > 0;
     const targets = new Set(), sources = new Set(), takes = new Set();
     if (mine) {
@@ -73,7 +97,7 @@ UI.morris = (() => {
       g.style.fill = v == null ? '' : v === 0 ? '#1c1726' : '#f4eedd';
       g.style.stroke = color || '';
       g.setAttribute('class', 'mm-pt' + (v == null ? ' empty' : ' man') + (targets.has(i) ? ' can' : '') + (sources.has(i) ? ' src' : '')
-        + (i === pick ? ' picked' : '') + (takes.has(i) ? ' take' : '') + (i === last[1] ? ' last' : ''));
+        + (i === pick ? ' picked' : '') + (takes.has(i) ? ' take' : '') + (i === last[1] ? ' last' : '') + (danger.has(i) ? ' warn' : ''));
     }
     $('mmHint').textContent = !mine || S.phase !== 'playing' ? '' : pending ? '🎯 Mill! Tap a rival man to take.'
       : placing ? `Tap an empty point to place a man (${m.hand[m.me]} left).` : pick != null ? 'Tap where it goes.' : 'Tap one of your men to move it.';

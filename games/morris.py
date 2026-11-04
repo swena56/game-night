@@ -187,7 +187,7 @@ class Morris(Game):
         return {"morris": {
             "board": self.state[0], "hand": self.state[1], "seats": self.seats, "me": i, "last": self.last,
             "legal": [list(m) for m in legal(self.state, i, self.fly, self.twelve)] if mine and i is not None else [],
-            "quiet": self.state[2], "limit": QUIET_LIMIT, "twelve": self.twelve,
+            "quiet": self.state[2], "limit": QUIET_LIMIT, "twelve": self.twelve, "fly": self.fly,
         }}
 
     def bot_turn(self, p):
