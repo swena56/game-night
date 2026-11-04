@@ -326,7 +326,7 @@ be checked without a browser.
 
 **Done:**
 - ✅ **Simulated-browser test pass** (above). Everything it found is fixed.
-- ✅ **Phone-first layout.** The game log folds into a one-line ticker, so controls sit right under the
+- ✅ **Phone-first layout.** The game log folds into a one-line ticker in the dock, so controls sit right under the
   board. Player chips scroll sideways instead of wrapping. Boards are capped to the screen height, which
   also covers landscape.
 - ✅ **In-app dialogs.** Every `confirm()` / `prompt()` is replaced by a styled dialog (resign, accuse,
@@ -351,8 +351,13 @@ be checked without a browser.
    below.
 3. **A real-device check of the 3D views and the touch feel** (Light Riders, Paint Blast, Billiards),
    which a simulated browser can't judge.
-4. **A bottom-sheet layout with tabs** (*Actions · Log · Players*) and a sticky action bar for the main
-   action. ✅ Undo toasts: `toast(msg, { label, run })` adds a button; Unmask offers ↶ Undo after a batch flip
+4. ✅ **A dock and bottom sheets.** On a phone the reactions, the latest log line and chat share one dock
+   under the game; the log, chat and settings open as bottom sheets over it, and the ⋯ menu in the top bar
+   holds bigger board, full screen, chat, settings and leave. A phone on its side drops the dock and chips
+   row and puts the log back in the side column. `app.js` measures the room a board has (`--stage-h`,
+   `--room` in `style.css`), so boards no longer guess the chrome's height; `.stick-top` / `.stick-bottom`
+   keep a game's main controls in view over a long card or list (Yacht's dice, Sea Battle's Ready). A pressed
+   button shows a spinner while the server answers and shakes if the move is refused. ✅ Undo toasts: `toast(msg, { label, run })` adds a button; Unmask offers ↶ Undo after a batch flip
    (Wordsmith already has Recall).
 5. ✅ **More motion.** Animated captures in Chess, cards dealt into the Last Card hand, and a "your turn"
    chime for each lobby group (strategy, cards, dice, words… each sound different).

@@ -169,6 +169,18 @@ button.shake { animation: shake .35s; }
 .game-tile:not(:disabled):hover { transform: translateY(-2px); box-shadow: 0 6px 16px #0006; }
 .game-tile.on .gicon { animation: hop .5s ease-out; }
 @keyframes hop { 40% { transform: translateY(-6px) scale(1.15); } }
+/* phones: compact tiles, four across; the player count only shows when it's the reason a game is dimmed */
+@media (max-width: 600px) {
+  .picker-group { gap: 6px; }
+  .game-tile { padding: 7px 3px 6px; gap: 1px; border-radius: 10px; }
+  .game-tile .gicon { font-size: 22px; }
+  .game-tile b { font-size: 12px; line-height: 1.2; }
+  .game-tile:not(.nofit) small { display: none; }
+  .game-tile small { font-size: 10px; }
+  /* Start stays at the bottom of the screen however long the lobby is; the ⚙️ 💬 buttons sit above it */
+  #lobby #startBtn { position: sticky; bottom: max(10px, env(safe-area-inset-bottom)); z-index: 5; box-shadow: 0 6px 24px #000a, 0 3px 12px #ffb70340; }
+  body[data-screen="lobby"] .fabs { bottom: calc(74px + env(safe-area-inset-bottom)); }
+}
 .game-chosen { display: flex; align-items: center; gap: 10px; margin: 16px 0 0; padding-top: 12px; border-top: 1px solid var(--line);
   font-size: 20px; scroll-margin-top: 12px; }
 .game-chosen .gicon { font-size: 30px; filter: drop-shadow(0 3px 4px #0007); }

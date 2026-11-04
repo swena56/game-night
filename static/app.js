@@ -426,7 +426,8 @@ function onState(s) {
 // (8 games on a 4-wide screen: 4 + 4; 6 games: 3 + 3, never 4 + 2).
 function fitPicker() {
   const width = $('#gamePicker').clientWidth;
-  const most = width ? Math.max(2, Math.floor((width + 8) / 104)) : 4;
+  const tile = window.matchMedia?.('(max-width: 600px)').matches ? 78 : 104;  // phones get compact tiles (style.css)
+  const most = width ? Math.max(2, Math.floor((width + 8) / tile)) : 4;
   for (const g of document.querySelectorAll('.picker-group')) {
     const n = +g.dataset.count, rows = Math.ceil(n / most);
     g.style.gridTemplateColumns = `repeat(${Math.ceil(n / rows)}, 1fr)`;
@@ -553,6 +554,8 @@ function renderLobby() {
     lab.append(sel); box.append(lab);
   }
   $('#startBtn').hidden = !host; $('#waitHost').hidden = host; $('#botRow').hidden = !host;
+  const chosenInfo = gameInfo(S.gameId);
+  $('#startBtn').textContent = chosenInfo ? `▶ Start ${chosenInfo.icon} ${chosenInfo.name}` : 'Start game';
   $('#lobbyReplayBtn').hidden = !S.hasReplay;
   renderScores(host);
 }
@@ -634,15 +637,20 @@ function renderGame(view = S, readOnly = false, force = false) {
     lastTurn = view.turn;
   }
 
-  const chips = $('#players'); chips.innerHTML = '';
-  for (const p of view.players) {
-    const c = el('div', 'chip' + (p.id === view.turn ? ' turn-now' : '') + (p.eliminated ? ' out' : '') + (p.id === me.id ? ' me' : ''));
-    c.title = p.name;
-    c.append(avatar(p), mark(p, p.online), el('b', '', p.name));
-    const bits = [p.spectator ? '👁 watching' : p.meta, p.played || p.points ? '⭐' + p.points : '', p.eliminated ? '👻' : '',
-      p.standin ? '🤖 autopilot' : p.away ? '📡 away' : ''].filter(Boolean);
-    if (bits.length) c.append(el('span', 'meta', bits.join(' · ')));
-    chips.append(c);
+  // the chips only change when something they show does (not on every chat line or clock tick)
+  const chips = $('#players');
+  const chipKey = JSON.stringify([view.turn, me.id, view.players.map((p) => [p.id, p.name, p.color, p.online, p.meta, p.points, p.played, p.spectator, p.eliminated, p.standin, p.away])]);
+  if (chipKey !== chips.dataset.key) {
+    chips.dataset.key = chipKey; chips.innerHTML = '';
+    for (const p of view.players) {
+      const c = el('div', 'chip' + (p.id === view.turn ? ' turn-now' : '') + (p.eliminated ? ' out' : '') + (p.id === me.id ? ' me' : ''));
+      c.title = p.name;
+      c.append(avatar(p), mark(p, p.online), el('b', '', p.name));
+      const bits = [p.spectator ? '👁 watching' : p.meta, p.played || p.points ? '⭐' + p.points : '', p.eliminated ? '👻' : '',
+        p.standin ? '🤖 autopilot' : p.away ? '📡 away' : ''].filter(Boolean);
+      if (bits.length) c.append(el('span', 'meta', bits.join(' · ')));
+      chips.append(c);
+    }
   }
 
   measureStage();
