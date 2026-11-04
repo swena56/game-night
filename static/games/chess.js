@@ -1,6 +1,6 @@
 UI.chess = (() => {
   // premove: picked during the rival's turn ([fromR, fromC, toR, toC]), sent the moment it's our turn if it's legal
-  let pre = null, preSel = null;
+  let pre = null, preSel = null, arrowFit = null;
   let S, ctx, boardEl, sel = null, promo = null, shownLast, view3d = null, slide = null, clockTimer = 0, clockAt = 0, shownTaken = null, shownW = 0;
   const want3d = () => { try { return localStorage.getItem('chess.view') !== '2d'; } catch { return true; } };
   const GLYPH = { K: '♚', Q: '♛', R: '♜', B: '♝', N: '♞', P: '♟' };
@@ -10,7 +10,8 @@ UI.chess = (() => {
 
   function mount(main, side) {
     sel = null; promo = null; pre = null; preSel = null; shownLast = undefined; slide = null; shownTaken = null; shownW = 0;
-    main.innerHTML = '<div id="chClock" class="ch-clocks" hidden></div><div class="chess-wrap"><div class="chessboard"></div><div class="chess3d" id="ch3d" hidden></div></div>';
+    main.innerHTML = `<div id="chClock" class="ch-clocks" hidden></div><div id="chBal" class="ch-bal" aria-hidden="true"><i></i></div><div class="chess-wrap"><div class="chessboard"></div>
+      <svg id="chArrow" class="ch-arrow" viewBox="0 0 8 8" aria-hidden="true"><defs><marker id="chHead" viewBox="0 0 4 4" refX="2" refY="2" markerWidth="2.6" markerHeight="2.6" orient="auto"><path d="M0 0 L4 2 L0 4 z"/></marker></defs><line marker-end="url(#chHead)"/></svg><div class="chess3d" id="ch3d" hidden></div></div>`;
     side.innerHTML = `<div class="panel">
       <div id="chStatus" class="seat-row"></div>
       <div id="chTaken" class="taken"></div>
@@ -28,6 +29,7 @@ UI.chess = (() => {
       boardEl.append(sq);
     }
     gridKeys(boardEl, 8);
+    arrowFit?.disconnect(); arrowFit = new ResizeObserver(() => S && drawArrow(S.chess.last)); arrowFit.observe(boardEl);
     $('chView').onclick = () => {
       try { localStorage.setItem('chess.view', view3d ? '2d' : '3d'); } catch {}
       setView(!view3d);
@@ -91,6 +93,10 @@ UI.chess = (() => {
     });
 
     sync3d();
+    drawArrow(ch.last);
+    // big moments: check (the king's square pulses) and the end of the game
+    if (animate && ch.check && S.phase === 'playing') { Kit.callout('Check!', ch.turnColor === ch.me ? 'bad' : 'gold', { ms: 900 }); ctx.sfx('rise'); }
+    if (S.phase === 'over' && animate && ch.check) Kit.callout('♚ Checkmate!', S.winner === S.me.id ? 'gold' : 'bad', { sound: S.winner === S.me.id ? 'fanfare' : 'thud', ms: 1800 });
     const mine = ch.me ? (ch.me === 'w' ? '♔ You play White' : '♚ You play Black') : '👁 Watching';
     $('chStatus').textContent = mine + (S.phase === 'playing' ? ` · ${ch.turnColor === 'w' ? 'White' : 'Black'} to move` : '');
     if (pre || preSel) {
@@ -111,6 +117,11 @@ UI.chess = (() => {
       if (plus > 0) row.append(ctx.el('b', '', `+${plus}`));
       return row;
     };
+    // the balance of material as a tug of war above the board: white's share grows from the left (from Black's side, the right)
+    const bal = $('chBal');
+    bal.firstChild.style.width = `${50 + Math.max(-45, Math.min(45, lead * 4))}%`;
+    bal.classList.toggle('flip', flip());
+    bal.title = lead ? `${lead > 0 ? 'White' : 'Black'} is ${Math.abs(lead)} ahead in material` : 'Material is level';
     $('chTaken').innerHTML = '';
     $('chTaken').append(tray('White took:', 'b', lead), tray('Black took:', 'w', -lead));
 
@@ -141,6 +152,22 @@ UI.chess = (() => {
     $('chResign').disabled = !playing;
   }
 
+  // the last move as an arrow over the 2D board (squares in display order, so it turns with the board)
+  function drawArrow(last) {
+    const svg = $('chArrow'); if (!svg) return;
+    svg.style.display = last && !view3d ? '' : 'none';
+    if (!last || view3d) return;
+    const a = disp(last[0], last[1]), b = disp(last[2], last[3]);
+    const [x1, y1, x2, y2] = [a % 8 + 0.5, Math.floor(a / 8) + 0.5, b % 8 + 0.5, Math.floor(b / 8) + 0.5];
+    const len = Math.hypot(x2 - x1, y2 - y1) || 1, cut = 0.32;  // stop short of the centre, so the head doesn't hide the piece
+    const line = svg.querySelector('line');
+    line.setAttribute('x1', x1); line.setAttribute('y1', y1);
+    line.setAttribute('x2', x2 - ((x2 - x1) / len) * cut); line.setAttribute('y2', y2 - ((y2 - y1) / len) * cut);
+    // sit exactly over the 64 squares (inside the board's padding)
+    const wrap = svg.parentElement.getBoundingClientRect(), first = boardEl.firstElementChild.getBoundingClientRect(), lastSq = boardEl.lastElementChild.getBoundingClientRect();
+    Object.assign(svg.style, { left: first.left - wrap.left + 'px', top: first.top - wrap.top + 'px', width: lastSq.right - first.left + 'px', height: lastSq.bottom - first.top + 'px' });
+  }
+
   // ---------- optional 3D view (static/games/chess3d.js); the 2D board stays the source of truth
   const disp = (r, c) => (flip() ? (7 - r) * 8 + (7 - c) : r * 8 + c);
   let gl = null;  // the 3D scene once created, false if WebGL is unavailable
@@ -166,7 +193,7 @@ UI.chess = (() => {
     btn.hidden = gl === false;
     btn.textContent = view3d ? '▦ Flat board' : '🧊 3D board';
     $('chViewHint').hidden = !view3d;
-    if (S) sync3d();
+    if (S) { sync3d(); drawArrow(S.chess.last); }
   }
   function sync3d() {
     const s = slide; slide = null;
@@ -179,7 +206,7 @@ UI.chess = (() => {
     gl.sync(list, [...boardEl.children], flip() ? 'b' : 'w', s);
   }
 
-  function unmount() { if (gl) gl.dispose(); gl = null; view3d = null; clearInterval(clockTimer); }
+  function unmount() { if (gl) gl.dispose(); gl = null; view3d = null; clearInterval(clockTimer); arrowFit?.disconnect(); arrowFit = null; }
 
   // chess clock: the server sends both clocks; the mover's counts down locally between updates
   const fmt = (t) => { t = Math.max(0, t); const m = Math.floor(t / 60), sec = t - m * 60; return t < 20 ? `${m}:${sec.toFixed(1).padStart(4, '0')}` : `${m}:${String(Math.floor(sec)).padStart(2, '0')}`; };
