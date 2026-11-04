@@ -12,8 +12,10 @@ UI.seabattle = (() => {
       <div id="sbStatus" class="seat-row"></div>
       <div id="sbPlace">
         <div id="sbShips" class="ship-list"></div>
-        <div class="row"><button id="sbRotate">↻ Rotate</button><button id="sbRandom">🎲 Random</button><button id="sbClear">Clear</button></div>
-        <button id="sbReady" class="primary big">⚓ Ready</button>
+        <div class="stick-bottom sb-place-actions">
+          <div class="row"><button id="sbRotate">↻ Rotate</button><button id="sbRandom">🎲 Random</button><button id="sbClear">Clear</button></div>
+          <button id="sbReady" class="primary big">⚓ Ready</button>
+        </div>
       </div>
       <div id="sbFire">
         <button id="sbSonar" class="big">📡 Use sonar</button>
@@ -79,6 +81,7 @@ UI.seabattle = (() => {
     $('sbPlace').hidden = !(placing && playing && !ready);
     $('sbMine').classList.toggle('placing', placing && playing && !ready);  // drag ships without scrolling the page
     $('sbFire').hidden = placing;
+    $('sbEnemy').closest('.seas').classList.toggle('firing', !placing);  // phones: your fleet shrinks under the enemy's
     $('sbEnemyTitle').parentElement.hidden = placing && playing && !ready;
     $('sbMineTitle').textContent = playing ? 'Your fleet' : `${ctx.player(sea.player)?.name ?? ''}'s fleet`;
 
@@ -185,5 +188,13 @@ UI.seabattle = (() => {
     ctx.quiet(ctx.act('fire', { r, c }));
   }
 
-  return { mount, render };
+  // both fleets are placed at once, so the top bar says what to do rather than whose turn it is
+  function turnText(s) {
+    const sea = s.sea;
+    if (sea.stage !== 'placing' || s.phase !== 'playing') return null;
+    if (sea.player !== s.me.id) return '⚓ Fleets are being placed…';
+    return sea.ready[s.me.id] ? '⚓ Waiting for the other fleet…' : '⚓ Place your fleet';
+  }
+
+  return { mount, render, turnText };
 })();

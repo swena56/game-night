@@ -80,12 +80,21 @@ async function api(path, body) {
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
 const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
 // Every action carries an id; the server applies each id once, so network retries are safe.
+// The button that was just pressed shows it's working (after a short delay, so fast replies don't flicker)
+// and shakes if the server turns the move down.
+let pressed = null, pressedAt = 0;
+document.addEventListener('click', (e) => { pressed = e.target.closest?.('button'); pressedAt = performance.now(); }, true);
 async function act(type, extra = {}) {
   const body = { ...session, type, ...extra, aid: newId() };
+  const btn = performance.now() - pressedAt < 80 ? pressed : null;
+  const busy = btn && setTimeout(() => btn.isConnected && btn.classList.add('busy'), 220);
+  const settle = () => { clearTimeout(busy); btn?.classList.remove('busy'); };
   for (let attempt = 0; ; attempt++) {
-    try { return await api('/api/action', body); }
+    try { const r = await api('/api/action', body); settle(); return r; }
     catch (e) {
       if (e.network && attempt < 4) { await sleep(500 * 2 ** attempt); continue; }
+      settle();
+      if (btn?.isConnected && motionOK()) { btn.classList.remove('shake'); void btn.offsetWidth; btn.classList.add('shake'); }
       toast(e.message); throw e;
     }
   }
@@ -113,10 +122,19 @@ function ask(text, { ok = 'OK', cancel = 'Cancel', danger = false, title = '', b
     $('#modalBody').innerHTML = ''; if (body) $('#modalBody').append(body);
     $('#modalOk').textContent = ok; $('#modalOk').className = danger ? 'danger' : 'primary';
     $('#modalCancel').textContent = cancel || ''; $('#modalCancel').hidden = !cancel;
-    const key = (e) => { if (e.key === 'Escape') done(false); };
+    const before = document.activeElement;
+    const key = (e) => {
+      if (e.key === 'Escape') return done(false);
+      if (e.key !== 'Tab') return;  // Tab cycles inside the dialog
+      const f = [...m.querySelectorAll('button, input, select, textarea, [tabindex]')].filter((x) => !x.disabled && x.offsetParent !== null);
+      if (!f.length) return;
+      const i = f.indexOf(document.activeElement);
+      if (e.shiftKey && i <= 0) { e.preventDefault(); f.at(-1).focus(); } else if (!e.shiftKey && i === f.length - 1) { e.preventDefault(); f[0].focus(); }
+    };
     const done = (v) => {
       m.hidden = true; ask.close = null;
       document.removeEventListener('keydown', key);
+      if (before?.isConnected && document.contains(before)) try { before.focus({ preventScroll: true }); } catch {}
       resolve(v);
     };
     ask.close = done;
@@ -200,7 +218,8 @@ async function reportDialog(kind = 'bug', draft = '') {
 const logHasEntries = () => $('#log').childElementCount > 0;
 function show(id) {
   for (const s of ['loading', 'home', 'lobby', 'game']) $('#' + s).hidden = s !== id;
-  if (id !== 'game') document.body.classList.remove('focus');
+  if (id !== 'game') { document.body.classList.remove('focus'); closeMenu(); closeSheets(); }
+  document.body.dataset.screen = id;
   if (id !== 'loading') clearTimeout(show.slow);
   $('#fabs').hidden = id === 'home';
   if (id === 'home') { $('#chatPanel').hidden = true; document.title = 'Game Night'; }
@@ -407,7 +426,8 @@ function onState(s) {
 // (8 games on a 4-wide screen: 4 + 4; 6 games: 3 + 3, never 4 + 2).
 function fitPicker() {
   const width = $('#gamePicker').clientWidth;
-  const most = width ? Math.max(2, Math.floor((width + 8) / 104)) : 4;
+  const tile = window.matchMedia?.('(max-width: 600px)').matches ? 78 : 104;  // phones get compact tiles (style.css)
+  const most = width ? Math.max(2, Math.floor((width + 8) / tile)) : 4;
   for (const g of document.querySelectorAll('.picker-group')) {
     const n = +g.dataset.count, rows = Math.ceil(n / most);
     g.style.gridTemplateColumns = `repeat(${Math.ceil(n / rows)}, 1fr)`;
@@ -534,6 +554,8 @@ function renderLobby() {
     lab.append(sel); box.append(lab);
   }
   $('#startBtn').hidden = !host; $('#waitHost').hidden = host; $('#botRow').hidden = !host;
+  const chosenInfo = gameInfo(S.gameId);
+  $('#startBtn').textContent = chosenInfo ? `▶ Start ${chosenInfo.icon} ${chosenInfo.name}` : 'Start game';
   $('#lobbyReplayBtn').hidden = !S.hasReplay;
   renderScores(host);
 }
@@ -579,7 +601,9 @@ let renderedKey = null;
 const renderKey = (view, readOnly) => JSON.stringify(view, (k, v) => (k === 'chat' || k === 'reactions' || k === 'timeLeft' ? undefined : v)) + readOnly;
 function renderGame(view = S, readOnly = false, force = false) {
   const ui = UI[view.gameId];
-  $('#quitBtn').textContent = view.host === view.me.id && view.phase === 'playing' ? '🏠 End game' : 'Leave game';
+  const ending = view.host === view.me.id && view.phase === 'playing';
+  $('#quitLabel').textContent = ending ? 'End game' : 'Leave game';
+  $('#quitBtn').firstChild.textContent = ending ? '🏠' : '🚪';
   if (mounted !== view.gameId || (!readOnly && mountedNo !== view.gameNo)) {
     unmountUI();
     $('#arena').innerHTML = ''; $('#sideGame').innerHTML = '';
@@ -613,16 +637,23 @@ function renderGame(view = S, readOnly = false, force = false) {
     lastTurn = view.turn;
   }
 
-  const chips = $('#players'); chips.innerHTML = '';
-  for (const p of view.players) {
-    const c = el('div', 'chip' + (p.id === view.turn ? ' turn-now' : '') + (p.eliminated ? ' out' : ''));
-    c.append(avatar(p), mark(p, p.online), el('b', '', p.name));
-    const bits = [p.spectator ? '👁 watching' : p.meta, p.played || p.points ? '⭐' + p.points : '', p.eliminated ? '👻' : '',
-      p.standin ? '🤖 autopilot' : p.away ? '📡 away' : ''].filter(Boolean);
-    if (bits.length) c.append(el('span', 'meta', bits.join(' · ')));
-    chips.append(c);
+  // the chips only change when something they show does (not on every chat line or clock tick)
+  const chips = $('#players');
+  const chipKey = JSON.stringify([view.turn, me.id, view.players.map((p) => [p.id, p.name, p.color, p.online, p.meta, p.points, p.played, p.spectator, p.eliminated, p.standin, p.away])]);
+  if (chipKey !== chips.dataset.key) {
+    chips.dataset.key = chipKey; chips.innerHTML = '';
+    for (const p of view.players) {
+      const c = el('div', 'chip' + (p.id === view.turn ? ' turn-now' : '') + (p.eliminated ? ' out' : '') + (p.id === me.id ? ' me' : ''));
+      c.title = p.name;
+      c.append(avatar(p), mark(p, p.online), el('b', '', p.name));
+      const bits = [p.spectator ? '👁 watching' : p.meta, p.played || p.points ? '⭐' + p.points : '', p.eliminated ? '👻' : '',
+        p.standin ? '🤖 autopilot' : p.away ? '📡 away' : ''].filter(Boolean);
+      if (bits.length) c.append(el('span', 'meta', bits.join(' · ')));
+      chips.append(c);
+    }
   }
 
+  measureStage();
   const key = renderKey(view, readOnly);
   if (!force && key === renderedKey && mounted === view.gameId) return;
   renderedKey = key;
@@ -714,7 +745,7 @@ function renderLog(ui, view) {
     if (b) row.append(b);
     box.append(row);
   }
-  $('#logLast').textContent = view.log.at(-1)?.text ?? '';
+  $('#logLast').textContent = $('#dockLast').textContent = view.log.at(-1)?.text ?? '';
   if (newestId !== lastLogId) {
     box.scrollTop = box.scrollHeight;
     // a sound for the new move, unless the game plays its own or it's the first state / a replay
@@ -796,7 +827,7 @@ function renderChat() {
     blip('chat');
   }
   lastChatId = S.chat.at(-1)?.id ?? lastChatId ?? 0;
-  $('#chatBadge').hidden = !unread; $('#chatBadge').textContent = unread;
+  setBadge();
   const ghostOnly = S.phase === 'playing' && S.me.ghost && S.settings.ghost_chat === 'private';
   $('#chatNote').textContent = ghostOnly ? '👻 only ghosts & spectators see your messages' : '';
 }
@@ -1053,7 +1084,8 @@ function setLogOpen(open) {
   $('#logToggle').classList.toggle('open', open);
 }
 setLogOpen(!compact?.matches);
-$('#logToggle').onclick = () => setLogOpen($('#log').hidden);
+// (in the phone sheet the header closes the sheet instead)
+$('#logToggle').onclick = () => (logSheet() ? setLogSheet(false) : setLogOpen($('#log').hidden));
 $('#leaveBtn').onclick = leave;
 // In a game, the host ends it and goes back to the lobby (#52); everyone else leaves the room.
 $('#quitBtn').onclick = async () => {
@@ -1069,7 +1101,9 @@ $('#quitBtn').onclick = async () => {
 };
 for (const e of REACTIONS) {
   const b = el('button', '', e); b.onclick = () => quiet(act('react', { emoji: e }));
-  $('#reactBar').append(b);
+  b.setAttribute('aria-label', 'React ' + e);
+  const d = b.cloneNode(true); d.onclick = () => { quiet(act('react', { emoji: e })); setReactOpen(false); };
+  $('#reactBar').append(b); $('#dockReactBar').append(d);
 }
 // replay controls
 // (a late tap after the replay closed does nothing)
@@ -1090,7 +1124,7 @@ $('#rpExit').onclick = () => stopReplay();
 $('#chatBtn').onclick = () => {
   const open = $('#chatPanel').hidden;
   $('#chatPanel').hidden = !open; $('#prefsPanel').hidden = true;
-  if (open) { unread = 0; $('#chatBadge').hidden = true; $('#chatBubble').hidden = true; $('#chatList').scrollTop = 1e9; $('#chatInput').focus(); }
+  if (open) { unread = 0; setBadge(); $('#chatBubble').hidden = true; $('#chatList').scrollTop = 1e9; $('#chatInput').focus(); }
 };
 $('#chatClose').onclick = () => ($('#chatPanel').hidden = true);
 $('#chatBubble').onclick = () => $('#chatBtn').click();
@@ -1098,15 +1132,56 @@ $('#chatForm').onsubmit = (e) => { e.preventDefault(); sendChat($('#chatInput').
 for (const q of QUICK_CHAT) { const b = el('button', '', q); b.type = 'button'; b.onclick = () => sendChat(q); $('#quickChat').append(b); }
 $('#prefsBtn').onclick = () => { renderPrefs(); $('#prefsPanel').hidden = !$('#prefsPanel').hidden; $('#chatPanel').hidden = true; };
 $('#prefsClose').onclick = () => ($('#prefsPanel').hidden = true);
-// a tap anywhere outside an open drawer (or Escape) closes it (#36); its own buttons still toggle it
-const closeDrawers = () => { $('#chatPanel').hidden = true; $('#prefsPanel').hidden = true; };
+function setBadge() {
+  for (const b of [$('#chatBadge'), $('#dockBadge')]) { b.hidden = !unread; b.textContent = unread; }
+  $('#menuBtn').classList.toggle('unread', !!unread);  // where chat lives when the dock is hidden
+}
+
+// ---------- the in-game menu (⋯), the phone dock and its sheets
+function closeMenu() { $('#gameMenu').hidden = true; $('#menuBtn').ariaExpanded = 'false'; }
+$('#menuBtn').onclick = () => {
+  const open = $('#gameMenu').hidden;
+  closeSheets();
+  $('#gameMenu').hidden = !open; $('#menuBtn').ariaExpanded = String(open);
+  if (open) $('#gameMenu button:not([hidden])')?.focus({ preventScroll: true });
+};
+// a menu item does its thing and the menu closes
+$('#gameMenu').addEventListener('click', (e) => { if (e.target.closest('button')) closeMenu(); });
+$('#gameMenu').addEventListener('keydown', (e) => {
+  const items = [...$('#gameMenu').querySelectorAll('button:not([hidden])')], i = items.indexOf(document.activeElement);
+  const step = { ArrowDown: 1, ArrowUp: -1 }[e.key];
+  if (step) { e.preventDefault(); items[(i + step + items.length) % items.length]?.focus(); }
+});
+$('#menuChat').onclick = () => $('#chatBtn').click();
+$('#menuPrefs').onclick = () => $('#prefsBtn').click();
+function setReactOpen(open) { $('#dockReactBar').hidden = !open; $('#dockReact').ariaExpanded = String(open); }
+$('#dockReact').onclick = () => setReactOpen($('#dockReactBar').hidden);
+// phones: the log is a sheet that slides up from the dock (opened at full length)
+const logSheet = () => document.body.classList.contains('log-open');
+function setLogSheet(open) {
+  document.body.classList.toggle('log-open', open);
+  if (open) { setLogOpen(true); $('#log').scrollTop = 1e9; }
+}
+$('#dockLog').onclick = () => setLogSheet(!logSheet());
+$('#dockChat').onclick = () => $('#chatBtn').click();
+function closeSheets() {
+  $('#chatPanel').hidden = true; $('#prefsPanel').hidden = true;
+  setLogSheet(false); setReactOpen(false);
+}
+// a tap anywhere outside an open drawer, sheet or menu (or Escape) closes it (#36); its own buttons still toggle it
 document.addEventListener('pointerdown', (e) => {
+  const t = e.target;
+  if (!$('#gameMenu').hidden && !t.closest?.('#gameMenu, #menuBtn')) closeMenu();
+  if (!$('#dockReactBar').hidden && !t.closest?.('#dock')) setReactOpen(false);
+  if (logSheet() && !t.closest?.('.log-panel, #dockLog, #modal')) setLogSheet(false);
   if ($('#chatPanel').hidden && $('#prefsPanel').hidden) return;
-  if (e.target.closest?.('.drawer, #fabs, #chatBubble, #modal')) return;
-  closeDrawers();
+  if (t.closest?.('.drawer, #fabs, #dockChat, #gameMenu, #menuBtn, #chatBubble, #modal')) return;
+  $('#chatPanel').hidden = true; $('#prefsPanel').hidden = true;
 }, true);
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && $('#modal').hidden && !($('#chatPanel').hidden && $('#prefsPanel').hidden)) closeDrawers();
+  if (e.key !== 'Escape' || !$('#modal').hidden) return;
+  if (!$('#gameMenu').hidden) { closeMenu(); $('#menuBtn').focus(); return; }
+  closeSheets();
 });
 $('#reportLink').onclick = () => reportDialog('bug');
 $('#reportBtn').onclick = () => { $('#prefsPanel').hidden = true; reportDialog('bug'); };
@@ -1120,6 +1195,7 @@ function applyFocus(view = S) {
   const on = !!view && view.phase === 'playing' && !replay && focusOn(view.gameId);
   document.body.classList.toggle('focus', on);
   $('#focusBtn').ariaPressed = String(on);
+  measureStage();
 }
 $('#focusBtn').onclick = () => {
   if (!S) return;
@@ -1132,12 +1208,14 @@ const FULL_EXIT_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="no
 if (document.fullscreenEnabled && document.documentElement.requestFullscreen) {
   $('#fullBtn').hidden = false;
   $('#fullBtn').onclick = () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen({ navigationUI: 'hide' })).catch(() => {});
-  document.addEventListener('fullscreenchange', () => {
-    // SVG icons: the ⛶ / 🗗 glyphs are missing from many Android fonts and showed as boxes
+  // SVG icons: the ⛶ / 🗗 glyphs are missing from many Android fonts and showed as boxes
+  const fullIcon = () => {
     const on = !!document.fullscreenElement;
-    $('#fullBtn').innerHTML = on ? FULL_EXIT_ICON : FULL_ENTER_ICON;
-    $('#fullBtn').title = $('#fullBtn').ariaLabel = on ? 'Exit full screen' : 'Full screen';
-  });
+    $('#fullBtn .ico').innerHTML = on ? FULL_EXIT_ICON : FULL_ENTER_ICON;
+    $('#fullBtn .lbl').textContent = on ? 'Exit full screen' : 'Full screen';
+  };
+  document.addEventListener('fullscreenchange', fullIcon);
+  fullIcon();
 }
 // --app-h is the height actually visible (minus browser bars and the keyboard); boards size against it.
 // While typing on a phone, chrome around the game hides so the board and the input both stay in view.
@@ -1147,8 +1225,25 @@ function fitViewport() {
   const typing = !!document.activeElement?.matches?.('#arena input, #arena textarea');
   const kb = typing && (!vv || innerHeight - vv.height > 120 || matchMedia('(pointer: coarse)').matches);
   document.body.classList.toggle('kb-open', kb);
+  measureStage();
   if (kb && vv) requestAnimationFrame(() => { window.scrollTo(0, 0); document.activeElement?.scrollIntoView?.({ block: 'nearest' }); });
 }
+// --stage-w / --stage-h: the room a board has below the chips and above the dock when the page is at
+// the top; games size against it (style.css "fit-stage") instead of guessing the chrome's height.
+function measureStage() {
+  const a = $('#arena');
+  if (!a || $('#game').hidden) return;
+  const vv = window.visualViewport, h = vv ? vv.height : innerHeight;
+  const dock = $('#dock'), dockH = dock && getComputedStyle(dock).display !== 'none' ? dock.offsetHeight : 0;
+  const top = a.getBoundingClientRect().top + scrollY;
+  const root = document.documentElement.style;
+  root.setProperty('--stage-w', `${Math.round(a.clientWidth)}px`);
+  root.setProperty('--dock-h', `${dockH}px`);
+  root.setProperty('--bar-h', `${Math.round($('#game .topbar').offsetHeight)}px`);  // for controls that stick under it
+  root.setProperty('--stage-h', `${Math.max(200, Math.round(h - top - dockH - 8))}px`);
+}
+if (window.ResizeObserver) new ResizeObserver(() => measureStage()).observe($('#players'));
+addEventListener('resize', () => requestAnimationFrame(measureStage));
 window.visualViewport?.addEventListener('resize', fitViewport);
 addEventListener('resize', fitViewport);
 document.addEventListener('focusin', fitViewport);
