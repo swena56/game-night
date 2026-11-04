@@ -151,9 +151,25 @@ UI.relay = (() => {
     const waiting = g.waiting.map((id) => ctx.player(id)?.name).filter(Boolean);
 
     if (g.stage === 'play') {
-      $('rlStep').textContent = `Step ${g.step + 1} of ${g.steps}`;
+      // #12: where you are in the chain, who handed you this, and what to do with it
+      const st = $('rlStep'); st.innerHTML = '';
+      const icon = { write: '✍️', draw: '🖍️', caption: '🏷️' };
+      (g.kinds || []).forEach((k, i) => {
+        const b = ctx.el('span', 'rl-dot' + (i < g.step ? ' done' : i === g.step ? ' on' : ''), icon[k]);
+        b.title = `Step ${i + 1}: ${{ write: 'write', draw: 'draw', caption: 'caption' }[k]}`;
+        st.append(b);
+      });
+      st.setAttribute('aria-label', `Step ${g.step + 1} of ${g.steps}`);
       $('rlTask').textContent = label[g.kind];
       const pr = $('rlPrompt'); pr.innerHTML = '';
+      const from = g.prompt && ctx.player(g.prompt.by), fromName = from ? from.name : 'The last player';
+      const last = g.step === g.steps - 1 ? ' This is the last step of the chain.' : '';
+      const how = {
+        write: 'Write something for the next player to draw: the sillier the better.',
+        draw: `${fromName} wrote this. Draw it (no letters!) and the next player guesses what it is.${last}`,
+        caption: `${fromName} drew this. What is it? Your caption goes on to be drawn.${last}`,
+      }[g.kind];
+      if (playing() && !g.sent) pr.append(ctx.el('p', 'rl-how', how));
       if (g.prompt?.kind === 'text') pr.append(ctx.el('div', 'rl-quote', `“${g.prompt.v}”`));
       if (g.prompt?.kind === 'draw') pr.append(art(g.prompt.v, 'rl-art'));
       const live = playing() && !g.sent;
@@ -193,10 +209,19 @@ UI.relay = (() => {
       card.append(b);
       box.append(card);
     });
+    const texts = g.chain.filter((e) => e.kind === 'text');
+    if (texts.length > 1) {  // how far the phrase drifted, once the whole chain is on show
+      const sum = ctx.el('p', 'rl-sum', `🌀 Started as “${texts[0].v}”, ended as “${texts.at(-1).v}”.`);
+      if (fresh) sum.style.animationDelay = `${g.chain.length * 1.2}s`; else sum.style.animation = 'none';
+      box.append(sum);
+    }
     const save = ctx.el('button', 'ghost-btn rl-save', '💾 Save this chain as a picture');
     save.onclick = () => saveChain(g).catch(() => ctx.toast("Couldn't make the picture on this device."));
     box.append(save);
-    $('rlStatus').textContent = S.phase === 'playing' ? (waiting.length ? `Vote for your favourite. Waiting for: ${waiting.join(', ')}` : '') : '';
+    const mine = playing() && g.myVote == null && g.waiting.includes(S.me.id);
+    $('rlStatus').textContent = S.phase === 'playing'
+      ? (mine ? '❤️ Tap the heart on your favourite entry (not your own): its author gets +1.' : '')
+        + (waiting.length ? ` Waiting for: ${waiting.join(', ')}` : '') : '';
   }
 
   // the whole chain as one tall PNG: who did what, the phrases, and the drawings on white cards

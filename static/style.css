@@ -1195,6 +1195,12 @@ body.focus .ra-stage { height: max(220px, calc(var(--app-h, 100vh) - 215px)); }
 .rl-task { color: var(--accent); font-weight: 700; }
 .rl-quote { background: var(--panel); border-radius: var(--radius); padding: 14px; font-size: 20px; text-align: center; overflow-wrap: anywhere; }
 .rl-prompt { margin-bottom: 10px; }
+.rl-how { margin: 0 0 8px; text-align: center; }
+.rl-dot { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; font-size: 13px; margin-right: 3px; background: var(--panel); opacity: .45; }
+.rl-dot.done { opacity: .8; }
+.rl-dot.on { opacity: 1; box-shadow: 0 0 0 2px var(--accent); }
+.rl-head { align-items: center; gap: 8px; flex-wrap: wrap; }
+.rl-sum { text-align: center; color: var(--muted); animation: rlin .5s both; }
 .rl-pad, .rl-art { display: block; width: min(100%, 460px, calc(var(--app-h, 100vh) - 260px)); aspect-ratio: 1; margin: 0 auto;
   background: #fffdf6; border-radius: var(--radius); }
 .rl-pad { touch-action: none; cursor: crosshair; box-shadow: 0 0 0 3px var(--accent); }
