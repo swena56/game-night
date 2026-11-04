@@ -1187,6 +1187,8 @@ body.focus .pp-stage { height: max(240px, calc(var(--app-h, 100vh) - 190px)); }
 .ra-split.best b::after { content: ' ⭐'; }
 .ra-split small.faster { color: #57cc99; }
 .ra-split small.slower { color: #ef476f; }
+.ra-split.mine span { color: var(--text); font-weight: 700; }
+#raDaily:not(:empty) { margin-top: 12px; }
 body.focus .ra { max-width: 900px; }
 body.focus .ra-stage { height: max(220px, calc(var(--app-h, 100vh) - 215px)); }
 
