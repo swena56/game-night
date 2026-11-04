@@ -126,7 +126,9 @@ UI.rummy = (() => {
     $('ruContract').textContent = `Hand ${r.handNo}/${r.hands}: ${r.contractText}`;
     const deck = $('ruDeck'); deck.innerHTML = ''; deck.append(ctx.el('span', 'pc back'), ctx.el('small', '', `${r.deck} left`));
     const dis = $('ruDiscard'); dis.innerHTML = '';
-    dis.append(r.top ? face(r.top) : ctx.el('span', 'pc empty'), ctx.el('small', '', 'discard'));
+    const tossed = shownTop !== undefined && r.top && r.top !== shownTop;  // a fresh discard lands on the pile
+    shownTop = r.top;
+    dis.append(r.top ? face(r.top, tossed ? 'toss' : '') : ctx.el('span', 'pc empty'), ctx.el('small', '', 'discard'));
     deck.disabled = dis.disabled = !myTurn || r.drawn;
     if (!r.top) dis.disabled = true;
 
@@ -166,8 +168,21 @@ UI.rummy = (() => {
     renderButtons(r, me, myTurn);
   }
 
+  // #31: cards new to the hand since it was last drawn are dealt in from the deck, one after another (the
+  // whole hand at the start of each deal, the drawn card on a turn). A multiset: two decks repeat cards.
+  let shown = null, shownNo = null, shownTop;
+  function freshCards(r) {
+    if (shownNo !== r.handNo) { shown = []; shownNo = r.handNo; }
+    const left = [...shown], fresh = [];
+    for (const c of r.hand) { const at = left.indexOf(c); if (at >= 0) left.splice(at, 1); else fresh.push(c); }
+    shown = [...r.hand];
+    return fresh;
+  }
+
   function renderHand(r, inStage, canPick) {
     syncOrder(r.hand);
+    const fresh = freshCards(r), gap = fresh.length > 3 ? 0.07 : 0.12;
+    let dealt = 0;
     const hand = $('ruHand'); hand.innerHTML = '';
     const pending = [...inStage];  // a staged card leaves the hand once (duplicates stay)
     for (const card of order) {
@@ -176,6 +191,8 @@ UI.rummy = (() => {
       const b = ctx.el('button', 'card-btn' + (sel.includes(card) ? ' ok' : '') + (canPick ? '' : ' idle'));
       b.dataset.card = card;
       b.append(face(card));
+      const f = fresh.indexOf(card);
+      if (f >= 0) { fresh.splice(f, 1); b.classList.add('dealt'); b.style.setProperty('--deal', `${(dealt++ * gap).toFixed(2)}s`); }
       b.setAttribute('aria-disabled', String(!canPick));  // not disabled: you can rearrange the hand any time
       b.addEventListener('pointerdown', (e) => startDrag(e, card, b));
       b.onclick = () => {
@@ -212,7 +229,7 @@ UI.rummy = (() => {
     });
   }
 
-  function unmount() { drag?.ghost?.remove(); drag = null; }
+  function unmount() { drag?.ghost?.remove(); drag = null; shown = shownNo = null; shownTop = undefined; }
 
   return { mount, render, unmount };
 })();

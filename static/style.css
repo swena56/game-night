@@ -1503,7 +1503,7 @@ body.focus .sm-stage { height: max(220px, calc(var(--app-h, 100vh) - 215px)); }
 .to { width: min(100%, 640px); margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
 .to-dealer { background: radial-gradient(circle at 50% 0, #1f7a4d, #0d3b26); border-radius: 18px; padding: 10px; text-align: center; min-height: 120px; }
 .to-cards { display: flex; gap: 4px; justify-content: center; flex-wrap: wrap; min-height: 44px; }
-.to-cards .pc.deal { animation: pop .25s ease-out; }
+.to-cards .pc.dealt { animation: dealIn .4s var(--deal, 0s) both cubic-bezier(.2, 1.1, .4, 1); }
 .to-seats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
 .to-seat { background: var(--panel); border-radius: 12px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
 .to-seat.turn { box-shadow: 0 0 0 2px var(--accent); }

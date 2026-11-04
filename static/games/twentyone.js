@@ -22,7 +22,7 @@ UI.twentyone = (() => {
   }
 
   // The bet builder (#5): tap chips to stack a bet, then Deal. The stake lives here until it's sent.
-  let stake = 0, stakeHand = null;
+  let stake = 0, stakeHand = null, seen = new Map(), seenHand = null;
   function betBar(bar, t, me) {
     const chips = t.chips[me], last = Math.min(t.lastBets?.[me] || 0, chips), min = t.minBet || 5;
     const draw = () => {
@@ -61,8 +61,20 @@ UI.twentyone = (() => {
   function render(s, c) {
     S = s; ctx = c;
     const t = S.twentyone, me = t.me;
+    // #31: a card dealt since the last render flies in from the shoe, once, one after another
+    if (seenHand !== t.hand) { seenHand = t.hand; seen = new Map(); }
+    let flying = 0;
+    const dealt = (key, cards) => {
+      const was = seen.get(key) ?? 0;
+      seen.set(key, cards.length);
+      return (el, k) => {
+        if (k >= was) { el.classList.add('dealt'); el.style.setProperty('--deal', `${(flying++ * 0.11).toFixed(2)}s`); }
+        return el;
+      };
+    };
     const dl = $('toDealer'); dl.innerHTML = '';
-    t.dealer.forEach((card, k) => dl.append(face(card, k ? 'deal' : '')));
+    const dd = dealt('d', t.dealer);
+    t.dealer.forEach((card, k) => dl.append(dd(face(card), k)));
     $('toDealerTotal').textContent = t.dealer.length ? String(t.dealerTotal) + (t.dealer.includes('??') ? '+?' : '') : '';
 
     const seats = $('toSeats'); seats.innerHTML = '';
@@ -77,7 +89,8 @@ UI.twentyone = (() => {
       hs.forEach((h, k) => {
         const wrap = ctx.el('div', 'to-hand' + (split && S.turn === pid && t.stage === 'play' && t.cur[i] === k ? ' cur' : ''));
         const cards = ctx.el('div', 'to-cards');
-        h.cards.forEach((card) => cards.append(face(card, 'small')));
+        const dh = dealt(`${i}:${k}`, h.cards);
+        h.cards.forEach((card, n) => cards.append(dh(face(card, 'small'), n)));
         const foot = ctx.el('div', 'to-foot');
         foot.append(ctx.el('b', h.total > 21 ? 'bust' : '', String(h.total)));
         if (split) foot.append(ctx.el('span', 'hint', `💰 ${h.bet}`));
