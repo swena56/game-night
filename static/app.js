@@ -1126,6 +1126,7 @@ $('#prefsBtn').onclick = () => { renderPrefs(); $('#prefsPanel').hidden = !$('#p
 $('#prefsClose').onclick = () => ($('#prefsPanel').hidden = true);
 function setBadge() {
   for (const b of [$('#chatBadge'), $('#dockBadge')]) { b.hidden = !unread; b.textContent = unread; }
+  $('#menuBtn').classList.toggle('unread', !!unread);  // where chat lives when the dock is hidden
 }
 
 // ---------- the in-game menu (⋯), the phone dock and its sheets

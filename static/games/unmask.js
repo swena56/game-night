@@ -1,8 +1,9 @@
 UI.unmask = (() => {
   let S, ctx, boardKey = '', accuseMode = false, populated = false, seenNotes = null, sizer = null;
   // card size, set by pinching the board or the 🔍 buttons, remembered on this device
-  let zoom = 92;
-  try { zoom = Math.min(200, Math.max(60, +localStorage.getItem('unmask.zoom') || 92)); } catch {}
+  // Until the player picks a size, phones fit every face on one screen with the Ask panel just under it.
+  let zoom = 92, autoFit = true;
+  try { const z = +localStorage.getItem('unmask.zoom'); if (z) { zoom = Math.min(200, Math.max(60, z)); autoFit = false; } } catch {}
   const $ = (s) => document.querySelector(s);
 
   const holds = (f, qid) => { const [a, v] = qid.split(':'); return v === 'any' ? f[a] !== 'none' : f[a] === v; };
@@ -13,9 +14,9 @@ UI.unmask = (() => {
     boardKey = ''; accuseMode = false; populated = false; seenNotes = null;
     main.innerHTML = `<div class="zoom-bar"><span>🔍</span><button id="zoomOut" aria-label="Smaller faces">−</button>
       <button id="zoomIn" aria-label="Bigger faces">+</button><small>or pinch the board</small></div><div id="board" class="board"></div>`;
-    setZoom(zoom);
-    $('#zoomOut').onclick = () => setZoom(zoom / 1.2);
-    $('#zoomIn').onclick = () => setZoom(zoom * 1.2);
+    setZoom(zoom, !autoFit);
+    $('#zoomOut').onclick = () => setZoom(cardWidth() / 1.2);
+    $('#zoomIn').onclick = () => setZoom(cardWidth() * 1.2);
     pinchable($('#board'));
     sizer?.disconnect(); sizer = new ResizeObserver(fitColumns); sizer.observe($('#board'));
     side.innerHTML = `
@@ -42,19 +43,35 @@ UI.unmask = (() => {
     $('#accuseBtn').onclick = () => { accuseMode = !accuseMode; ctx.rerender(); if (accuseMode) ctx.toast('Tap the face you think it is.'); };
   }
 
-  function setZoom(px) {
-    zoom = Math.round(Math.min(200, Math.max(60, px)));
+  function setZoom(px, chosen = true) {
+    zoom = Math.round(Math.min(200, Math.max(chosen ? 40 : 60, px)));
+    if (chosen) autoFit = false;
     $('#board')?.style.setProperty('--card', `${zoom}px`);
     fitColumns();
-    try { localStorage.setItem('unmask.zoom', String(zoom)); } catch {}
+    if (chosen) try { localStorage.setItem('unmask.zoom', String(zoom)); } catch {}
+  }
+  const cardWidth = () => $('#board .card')?.getBoundingClientRect().width || zoom;
+  const phone = () => window.matchMedia?.('(max-width: 860px)').matches;
+  // the fewest columns that fit all the faces in the room above the Ask panel (a card is about its width + the name tall)
+  function autoColumns(b, n, gap) {
+    const room = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--stage-h')) || innerHeight - 180;
+    const avail = Math.max(260, room - 40 - 170);  // the zoom bar above, the question picker below
+    for (let c = 3; c <= 8; c++) {
+      const w = (b.clientWidth - gap * (c - 1)) / c, rows = Math.ceil(n / c);
+      if (rows * (w + 24) + gap * (rows - 1) <= avail) return c;
+    }
+    return 8;
   }
   // as many columns as fit, but (#13) prefer a count that fills the last row: 24 faces as 6×4, not 7+7+7+3
   function fitColumns() {
     const b = $('#board'); if (!b) return;
     const n = b.children.length, gap = 10;
-    const max = Math.max(1, Math.floor((b.clientWidth + gap) / (zoom + gap)));
+    const fit = autoFit && phone() && n;
+    const max = fit ? autoColumns(b, n, gap) : Math.max(1, Math.floor((b.clientWidth + gap) / (zoom + gap)));
     let cols = max;
-    if (n > max) {
+    // fitted: one more column if that fills the last row (fewer would no longer fit)
+    if (fit && n % max && !(n % (max + 1)) && max < 8) cols = max + 1;
+    else if (n > max && !fit) {
       let best = -1;
       for (let c = max; c >= Math.max(1, Math.ceil(max * 0.7)); c--) {
         const score = n % c === 0 ? 1 : (n % c) / c;

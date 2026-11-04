@@ -220,6 +220,8 @@ button.shake { animation: shake .35s; }
 .timer.urgent { color: var(--danger); font-weight: 700; }
 .topbar .turn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-shrink: 1; }
 .topbar > * { flex-shrink: 0; }
+#menuBtn { position: relative; }
+#menuBtn.unread::after { content: ''; position: absolute; top: 6px; right: 6px; width: 9px; height: 9px; border-radius: 50%; background: var(--danger); }
 #focusBtn[aria-pressed="true"] { color: var(--accent); }
 #focusBtn[aria-pressed="true"]::after { content: '✓'; margin-left: auto; }
 
@@ -689,6 +691,12 @@ body.focus #blHint { display: none; }  /* ❓ has the same how-to; the table get
 .cb-total { font-weight: 900; font-size: 20px; color: #ffd166; }
 .cb-countbox { display: grid; justify-items: center; gap: 8px; margin: 10px 0; }
 .cb-hand { margin: 12px 0 6px; min-height: 112px; }
+/* phones: the six dealt cards share one row instead of wrapping onto two */
+@media (max-width: 860px) {
+  .cb-hand { flex-wrap: nowrap; gap: 4px; margin: 10px 0 4px; min-height: 0; }
+  .cb-hand .pc.big-card { width: min(72px, calc((100vw - 40px) / 6)); height: auto; aspect-ratio: 72 / 104; }
+  .cb-hand .pc.big-card b { font-size: 22px; } .cb-hand .pc.big-card i { font-size: 24px; }
+}
 .cb-played { display: grid; gap: 6px; margin: 8px 0; }
 .cb-playedrow { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; font-size: 13px; }
 .cb-playedrow b { margin-right: 4px; }
@@ -987,6 +995,11 @@ body.calm .gh-tile.trace { background: linear-gradient(#8ecae6, #4dabf7); }
 .lucky { max-width: 680px; margin: 0 auto; --lk-th: clamp(30px, 8.5vw, 46px); }
 .lk-stage { position: relative; height: min(48vh, 420px); border-radius: var(--radius); overflow: hidden;
   background: radial-gradient(ellipse at 50% 40%, #3d2f66, #0b0918 75%); }
+/* phones: the wheel gives up height so the board and the spin / letter controls fit under it */
+@media (max-width: 860px) and (orientation: portrait) {
+  .lk-stage { height: clamp(190px, calc(var(--room) - 400px), 420px); }
+  .lk-cat { margin: 6px 0 4px; }
+}
 .lk-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
 #lkSvg { position: absolute; inset: 6%; display: flex; justify-content: center; }
 .lk-wheel { height: 100%; aspect-ratio: 1; filter: drop-shadow(0 8px 16px #000a); }
@@ -1626,6 +1639,15 @@ body.focus .sm-stage { height: max(220px, calc(var(--room) - 155px)); }
 .identity { display: flex; gap: 12px; align-items: center; }
 .identity .mini { width: 72px; border-radius: 10px; overflow: hidden; flex: none; }
 .identity .mini svg { display: block; width: 100%; }
+/* phones: your face and the question picker stay short, so Ask sits right under the fitted board */
+@media (max-width: 860px) {
+  .identity { padding: 6px 10px; gap: 10px; font-size: 14px; margin-bottom: 8px; }
+  .identity .mini { width: 44px; border-radius: 8px; }
+  #askPanel { padding: 10px 12px; }
+  #askPanel h3 { display: none; }
+  #askPanel .preview { margin: 4px 0; min-height: 0; }
+  #askPanel .check { margin: 6px 0; }
+}
 .cards { display: grid; gap: 8px; margin-top: 10px; }
 .pcard { background: linear-gradient(135deg, #3b2d5c, #2a2140); border: 1px solid #5a4a86; border-radius: 10px; padding: 8px 10px; display: flex; gap: 10px; align-items: center; }
 .pcard .txt { flex: 1; font-size: 12px; color: var(--muted); }
@@ -1747,7 +1769,19 @@ body.focus .sm-stage { height: max(220px, calc(var(--room) - 155px)); }
 
 /* a phone on its side (#64): the side panel sits beside the game instead of below it, so the controls are on screen without scrolling */
 @media (orientation: landscape) and (max-height: 540px) and (min-width: 600px) {
-  #game .layout { grid-template-columns: minmax(0, 1fr) minmax(250px, 36%); align-items: start; }
+  #game .layout { grid-template-columns: minmax(0, 1fr) minmax(250px, 36%); align-items: start; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
+  /* height is what's short: no dock and no chips row (the top bar names whose turn it is); the log and
+     reactions go back to the side column, chat is in the ⋯ menu */
+  #game .dock, #players { display: none !important; }
+  #game .log-panel { display: block; }
+  #game .layout > aside { position: sticky; top: var(--bar-h, 52px); max-height: calc(var(--app-h, 100vh) - var(--bar-h, 52px) - 10px); overflow-y: auto; }
+  body[data-screen="game"] .toast { bottom: calc(14px + env(safe-area-inset-bottom)); }
+  .topbar { padding-block: 2px; }
+  /* card hands overlap into one row instead of wrapping onto a second */
+  .hh-hand, .ru-hand { flex-wrap: nowrap; justify-content: safe center; gap: 0; }
+  .hh-hand > * + *, .ru-hand > * + * { margin-left: -10px; }
+  .hh-hand > *:hover, .ru-hand > *:focus-visible { z-index: 1; }
+  .hh-trick { min-height: 84px; }
 }
 
 /* focus mode (topbar ▣ button): the board takes the whole screen; Leave/End game stays so nobody is stuck (#10) */

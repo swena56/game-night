@@ -4,14 +4,17 @@
 //   - the page doesn't scroll sideways (scrollWidth fits the screen);
 //   - the game area has a real size;
 //   - nothing visible is squeezed to nothing: text, or a filled shape such as a die's pip (#44);
+//   - every control can be reached: scrolled to the end, no button in the game is covered by the
+//     phone dock or another fixed layer;
 //   - the page throws no JavaScript errors.
 // Usage: start a server (e.g. PORT=8767 python3 server.py), then in tests/:
 //   npm install && BASE=http://localhost:8767 node layout.js [game ...]
-//   SHOTS=/some/dir  also saves a screenshot per game and width;  WIDTHS=485,1280 (the default)
+//   SHOTS=/some/dir  also saves a screenshot per game and width;  WIDTHS=485,1280 (the default; a size
+//   such as 844x390 sets the height too, for a phone on its side)
 // It uses the system Chromium (CHROMIUM=/usr/bin/chromium by default) through playwright-core.
 const { chromium } = require('playwright-core');
 const BASE = process.env.BASE || 'http://localhost:8767';
-const WIDTHS = (process.env.WIDTHS || '485,1280').split(',').map(Number);
+const WIDTHS = (process.env.WIDTHS || '485,1280').split(',');
 const SHOTS = process.env.SHOTS;
 const CHROMIUM = process.env.CHROMIUM || '/usr/bin/chromium';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -53,6 +56,19 @@ function inspect() {
     problems.push(`${squashed.length} visible element(s) squeezed to nothing, e.g. ${e.tagName.toLowerCase()}.${String(e.className).trim().split(/\s+/).join('.')}` +
       ` (${Math.round(e.getBoundingClientRect().width)}×${Math.round(e.getBoundingClientRect().height)}) "${e.textContent.trim().slice(0, 20)}"`);
   }
+  // scrolled to the end, every visible control must be the thing a tap at its centre lands on
+  window.scrollTo(0, document.scrollingElement.scrollHeight);
+  const covered = [];
+  for (const b of document.querySelectorAll('#arena button, #sideGame button, #game .over button')) {
+    const r = b.getBoundingClientRect();
+    if (r.width < 4 || r.height < 4 || !shown(b) || b.closest('[hidden]')) continue;
+    const x = r.left + r.width / 2, y = r.top + r.height / 2;
+    if (y < 0 || y > innerHeight || x < 0 || x > innerWidth) continue;
+    const hit = document.elementFromPoint(x, y);
+    if (hit && !b.contains(hit) && !hit.contains(b) && hit.closest('#dock, .drawer, .replay-bar, .toast')) covered.push(`${b.id || b.textContent.trim().slice(0, 14)} (under ${hit.closest('#dock, .drawer, .replay-bar, .toast').className || hit.tagName})`);
+  }
+  window.scrollTo(0, 0);
+  if (covered.length) problems.push(`${covered.length} control(s) can't be tapped, e.g. ${covered.slice(0, 3).join(', ')}`);
   return problems;
 }
 
@@ -61,7 +77,8 @@ async function check(game, width) {
   const browser = await chromium.launch({ executablePath: CHROMIUM, args: ['--no-sandbox'] });
   const errors = [];
   try {
-    const page = await browser.newPage({ viewport: { width, height: width < 700 ? 900 : 860 } });
+    const [w, h] = String(width).split('x').map(Number);
+    const page = await browser.newPage({ viewport: { width: w, height: h || (w < 700 ? 900 : 860) } });
     page.on('pageerror', (e) => errors.push(String(e.message || e)));
     page.on('console', (m) => m.type() === 'error' && !/favicon|Failed to load resource|WebGL|GPU stall/i.test(m.text()) && errors.push(m.text()));
     await page.goto(BASE + '/');
