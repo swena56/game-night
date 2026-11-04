@@ -1,7 +1,9 @@
 // Doodle Dash: strokes arrive from the server as they start; each new stroke animates over its time slot.
 UI.doodle = (() => {
+  let hintSeen = { round: 0, hint: '' };
   let S, ctx, svg, drawnRound = 0, drawnCount = 0, receivedAt = 0, tickTimer = 0, seenSolved = '', lastTick = 0;
   const NS = 'http://www.w3.org/2000/svg';
+  const MARKERS = ['#2b2140', '#1d4ed8', '#b91c1c', '#047857', '#7c3aed', '#c2410c'];
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
@@ -63,7 +65,12 @@ UI.doodle = (() => {
   function render(s, c) {
     S = s; ctx = c; receivedAt = performance.now();
     const d = S.doodle;
-    if (d.round !== drawnRound || d.strokes.length < drawnCount) { svg.innerHTML = ''; drawnRound = d.round; drawnCount = 0; }
+    if (d.round !== drawnRound || d.strokes.length < drawnCount) {
+      // a fresh sheet, with a marker of its own colour (and a slightly wobbly, inky line)
+      svg.innerHTML = '<defs><filter id="ddMarker" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="1" seed="3"/><feDisplacementMap in="SourceGraphic" scale="1.1"/></filter></defs>';
+      svg.style.setProperty('--ink', MARKERS[d.round % MARKERS.length]);
+      drawnRound = d.round; drawnCount = 0;
+    }
     for (let i = drawnCount; i < d.strokes.length; i++) {
       const newest = i === d.strokes.length - 1;
       if (d.stage === 'reveal') addStroke(d.strokes[i], 0.35, -(i - drawnCount) * 0.12);  // finish quickly
@@ -75,7 +82,10 @@ UI.doodle = (() => {
     $('ddCat').textContent = `🏷️ ${d.category}`;
     $('ddRound').textContent = `${d.round} / ${d.rounds}`;
     const hint = $('ddHint'); hint.innerHTML = '';
-    for (const ch of d.hint) hint.append(ctx.el('span', ch === ' ' ? 'gap' : ch === '_' ? 'blank' : 'letter', ch === '_' ? '' : ch));
+    const shownLetters = hintSeen.round === d.round ? hintSeen.hint : '';
+    [...d.hint].forEach((ch, i) => hint.append(ctx.el('span', (ch === ' ' ? 'gap' : ch === '_' ? 'blank' : 'letter') + (ch !== '_' && ch !== ' ' && shownLetters[i] === '_' && d.stage === 'draw' ? ' late' : ''), ch === '_' ? '' : ch)));
+    if (d.stage === 'draw' && shownLetters && [...d.hint].some((ch, i) => ch !== '_' && shownLetters[i] === '_')) ctx.sfx('pop');
+    hintSeen = { round: d.round, hint: d.hint };
     hint.classList.toggle('reveal', d.stage === 'reveal');
     const ans = $('ddAnswer');
     ans.hidden = d.stage !== 'reveal';
@@ -98,7 +108,7 @@ UI.doodle = (() => {
     const solvedKey = `${d.round}:${d.solvers.length}`;
     if (seenSolved && solvedKey !== seenSolved && d.solvers.length && seenSolved.split(':')[0] === String(d.round)) {
       const [pid, pts] = d.solvers.at(-1), p = ctx.player(pid);
-      if (pid === S.me.id) { ctx.sfx('good'); Kit.callout(`✅ +${pts}`, 'good', { ms: 1100 }); }
+      if (pid === S.me.id) { ctx.sfx('good'); Kit.callout(`✅ +${pts}`, 'good', { ms: 1100 }); if (d.solvers.length === 1) ctx.confetti(); }
       else { ctx.sfx('pop'); Kit.flyText(svg, `${p?.name ?? '?'} got it!`, 'info'); }
     }
     seenSolved = solvedKey;

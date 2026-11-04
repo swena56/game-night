@@ -926,7 +926,7 @@ body.focus #blHint { display: none; }  /* ❓ has the same how-to; the table get
   background: repeating-linear-gradient(0deg, #0000 0 23px, #8ecae622 23px 24px), linear-gradient(160deg, #fffdf6, #f3ecdc);
   box-shadow: 0 10px 30px #0008, inset 0 0 0 1px #0001; transform: rotate(-.6deg); }
 .dd-paper svg { display: block; width: 100%; height: 100%; }
-.dd-ink { fill: none; stroke: #2b2140; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; }
+.dd-ink { fill: none; stroke: var(--ink, #2b2140); stroke-width: 2.6; filter: url(#ddMarker); stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; }
 @keyframes dddraw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
 .dd-wait { position: absolute; inset: 0; display: grid; place-items: center; color: #8a8199; font-size: 20px; animation: pulse 1.2s infinite; pointer-events: none; }
 /* the reveal card: a note pinned over the bottom of the drawing */
@@ -2239,3 +2239,7 @@ body.calm .cb-plus { display: none; }
 @keyframes hStrobe { 50% { opacity: .35; } }
 .h-night { transition: opacity .3s; } .vault.alarm .h-night, .vault.caught .h-night { opacity: .2; }
 #hTip { margin-top: 8px; }
+
+/* doodle dash: a late letter drops into its blank */
+.dd-hint .letter.late { animation: ddLate .5s cubic-bezier(.3, 1.6, .5, 1); color: #ffd166; }
+@keyframes ddLate { from { transform: translateY(-14px) scale(1.4); opacity: 0; } }
