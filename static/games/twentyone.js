@@ -8,7 +8,10 @@ UI.twentyone = (() => {
 
   function mount(main, side) {
     main.innerHTML = `<div class="to">
-      <div class="to-dealer"><div class="hint">🎩 Dealer <b id="toDealerTotal"></b></div><div id="toDealer" class="to-cards"></div></div>
+      <div class="to-dealer"><div class="to-shoe" id="toShoe" aria-hidden="true"><i></i><i></i><i></i></div>
+        <div class="hint">🎩 Dealer <b id="toDealerTotal"></b></div><div id="toDealer" class="to-cards"></div>
+        <svg class="to-arc" viewBox="0 0 300 44" aria-hidden="true"><path id="toArcPath" d="M18 6 Q150 52 282 6" fill="none"/>
+          <text><textPath href="#toArcPath" startOffset="50%" text-anchor="middle" id="toArcText">PAYS 3 TO 2 · DEALER STANDS ON 17</textPath></text></svg></div>
       <div id="toBar" class="row to-bar"></div>
       <p id="toNote" class="hint"></p>
       <div id="toSeats" class="to-seats"></div></div>`;  // the buttons sit above the seats, which grow with every card (#18)
@@ -16,7 +19,7 @@ UI.twentyone = (() => {
   }
 
   // The bet builder (#5): tap chips to stack a bet, then Deal. The stake lives here until it's sent.
-  let stake = 0, stakeHand = null, seen = new Map(), seenHand = null, holeHidden = false, called = new Set();
+  let stake = 0, pairOn = false, stakeHand = null, seen = new Map(), seenHand = null, holeHidden = false, called = new Set();
   function betBar(bar, t, me) {
     const chips = t.chips[me], last = Math.min(t.lastBets?.[me] || 0, chips), min = t.minBet || 5;
     const draw = () => {
@@ -39,12 +42,22 @@ UI.twentyone = (() => {
       if (last) {
         const again = ctx.el('button', '', `↺ ${last}`);
         again.title = 'Bet the same as last hand';
-        again.onclick = () => ctx.quiet(ctx.act('bet', { amount: last }));
+        again.onclick = () => ctx.quiet(ctx.act('bet', { amount: last, pair: !!(t.pairs && t.lastPairs?.[me] && last + t.pairBet <= chips) }));
         row.append(again);
       }
-      const deal = ctx.el('button', 'primary to-deal', stake ? `Deal · bet ${stake}` : 'Deal');
+      // 👯 the Perfect Pairs side bet (a room option): a toggle that rides on top of the main bet
+      const pairOk = t.pairs && stake + t.pairBet <= chips;
+      if (t.pairs) {
+        const pb = ctx.el('button', 'to-pairbtn' + (pairOn && pairOk ? ' on' : ''), `👯 Pair +${t.pairBet}`);
+        pb.title = `A ${t.pairBet}-chip side bet on your first two cards being a pair: ${t.pairPays.mixed}:1 mixed, ${t.pairPays.coloured}:1 same colour, ${t.pairPays.perfect}:1 same suit`;
+        pb.setAttribute('aria-pressed', String(pairOn && pairOk));
+        pb.disabled = !pairOk;
+        pb.onclick = () => { pairOn = !pairOn; ctx.sfx('chip'); draw(); };
+        row.append(pb);
+      }
+      const deal = ctx.el('button', 'primary to-deal', stake ? `Deal · bet ${stake}${pairOn && pairOk ? ` + ${t.pairBet}` : ''}` : 'Deal');
       deal.disabled = !ctx.act || !(stake === chips || stake >= min);
-      deal.onclick = () => ctx.quiet(ctx.act('bet', { amount: stake }));
+      deal.onclick = () => ctx.quiet(ctx.act('bet', { amount: stake, pair: !!(pairOn && pairOk) }));
       row.append(deal);
       const stack = ctx.el('div', 'hint to-stake', stake ? `Your bet: ${stake} of ${chips}` : `Tap chips to build a bet (you have ${chips}).`);
       if (stake) stack.prepend(Chips.stack(stake, { label: false, max: 10 }));
@@ -63,9 +76,23 @@ UI.twentyone = (() => {
       const was = seen.get(key) ?? 0;
       seen.set(key, cards.length);
       return (el, k) => {
-        if (k >= was) { el.classList.add('dealt'); el.style.setProperty('--deal', `${(flying++ * 0.11).toFixed(2)}s`); }
+        if (k >= was) { el.dataset.fresh = ''; el.style.setProperty('--deal', `${(flying++ * 0.11).toFixed(2)}s`); }
         return el;
       };
+    };
+    // once the new cards are in place, aim each one's deal animation from the shoe
+    const fromShoe = () => {
+      const shoe = $('toShoe')?.getBoundingClientRect();
+      document.querySelectorAll('.to [data-fresh]').forEach((c) => {
+        delete c.dataset.fresh;
+        if (shoe?.width) {
+          const r = c.getBoundingClientRect();
+          c.style.setProperty('--fx', `${shoe.left + shoe.width / 2 - (r.left + r.width / 2)}px`);
+          c.style.setProperty('--fy', `${shoe.top + shoe.height / 2 - (r.top + r.height / 2)}px`);
+        }
+        c.classList.add('dealt');
+        if (motionOK()) setTimeout(() => ctx.sfx('deal'), parseFloat(c.style.getPropertyValue('--deal')) * 1000 || 0);
+      });
     };
     const dl = $('toDealer'); dl.innerHTML = '';
     const dd = dealt('d', t.dealer);
@@ -74,13 +101,14 @@ UI.twentyone = (() => {
     holeHidden = t.dealer.includes('??');
     t.dealer.forEach((card, k) => {
       const f = dd(face(card), k);
-      if (flipHole && k === 1 && motionOK()) { f.classList.remove('dealt'); f.classList.add('flip-in'); }
+      if (flipHole && k === 1 && motionOK()) { delete f.dataset.fresh; f.classList.add('flip-in'); }
       dl.append(f);
     });
     if (flipHole) ctx.sfx('flip');
     if (seenHand === t.hand && t.dealer.length && !t.dealer.includes('??') && t.dealerTotal > 21 && !called.has('d' + t.hand)) {
       called.add('d' + t.hand); Kit.callout('Dealer busts!', 'good', { ms: 1200 });
     }
+    $('toArcText').textContent = t.pairs ? `PAYS 3 TO 2 · PAIRS PAY ${t.pairPays.perfect} TO 1` : 'PAYS 3 TO 2 · DEALER STANDS ON 17';
     $('toDealerTotal').textContent = t.dealer.length ? String(t.dealerTotal) + (t.dealer.includes('??') ? '+?' : '') : '';
 
     const seats = $('toSeats'); seats.innerHTML = '';
@@ -90,6 +118,15 @@ UI.twentyone = (() => {
       const head = ctx.el('div', 'to-head');
       const nm = ctx.el('b', '', `${p?.name ?? 'left'}${i === me ? ' (you)' : ''}`); nm.style.color = p?.color ?? 'inherit';
       head.append(nm, t.bets[i] ? Chips.stack(t.bets[i], { max: 6, cls: 'to-bet' }) : ctx.el('span', 'hint', t.stage === 'bet' && t.chips[i] > 0 ? 'betting…' : ''));
+      const pr = t.pairRes?.[i];
+      if (t.pair?.[i] && !pr) head.append(ctx.el('span', 'to-pair', `👯 ${t.pair[i]}`));
+      if (pr) {
+        head.append(ctx.el('span', 'to-pair ' + (pr[1] > 0 ? 'win' : 'lose'), pr[1] > 0 ? `👯 ${pr[0]} +${pr[1]}` : `👯 ${pr[1]}`));
+        if (i === me && pr[1] > 0 && !called.has('p' + t.hand)) {
+          called.add('p' + t.hand);
+          Kit.callout(pr[0] === 'perfect' ? `Perfect pair! +${pr[1]}` : `${pr[0][0].toUpperCase() + pr[0].slice(1)} pair! +${pr[1]}`, 'gold', { sound: 'fanfare', ms: 1600 });
+        }
+      }
       box.append(head);
       const hs = t.seatHands[i], split = hs.length > 1;
       hs.forEach((h, k) => {
@@ -117,6 +154,25 @@ UI.twentyone = (() => {
       }
       seats.append(box);
     });
+
+    fromShoe();
+    if (t.stage === 'settle' && !called.has('pay' + t.hand)) {
+      called.add('pay' + t.hand);
+      const dealerBox = document.querySelector('.to-dealer');
+      [...seats.children].forEach((box, i) => {
+        const res = t.result[i], stack = box.querySelector('.to-bet');
+        if (!res || !stack) return;
+        const d = res[1];
+        if (d > 0) {  // the winnings slide out from the dealer to the seat
+          const pay = Chips.stack(d, { label: false, max: 5, cls: 'to-paychips' });
+          dealerBox.append(pay);
+          Kit.fly(pay, stack, { ms: 600, delay: 150 * i, remove: false });
+          pay.remove();
+        } else if (d < 0) Kit.fly(stack, dealerBox, { ms: 600, delay: 150 * i });
+        if (d) setTimeout(() => Kit.flyText(box.querySelector('.to-head'), `${d > 0 ? '+' : ''}${d}`, d > 0 ? 'good' : 'bad'), 150 * i + 450);
+      });
+      if (t.result[me]?.[1] > 0) setTimeout(() => ctx.sfx('chip'), 500);
+    }
 
     const bar = $('toBar'); bar.innerHTML = '';
     const playing = S.phase === 'playing' && me != null;

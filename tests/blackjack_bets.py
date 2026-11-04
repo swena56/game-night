@@ -89,5 +89,51 @@ g2 = t.TwentyOne.__new__(t.TwentyOne)
 g2.__setstate__(state)
 check("old saves get a last bet", g2.last_bet == g.bets)
 
+# -- Perfect Pairs side bet
+check("pair kinds", (t.pair_kind(["7H", "7D"]), t.pair_kind(["7H", "7S"]), t.pair_kind(["7H", "7H"]), t.pair_kind(["7H", "8H"]))
+      == ("coloured", "mixed", "perfect", None))
+
+
+def pairs_game(cards):
+    """A one-seat game with Perfect Pairs on; the shoe deals `cards` to the player, then 9C 7S to the dealer."""
+    g, room, pa = new_game()
+    room.settings["pairs"] = True
+    g.shoe = [r + s for r in "23456" for s in "SHDC"] * 4  # plenty left, so no fresh shoe
+    g.shoe += ["7S", cards[1], "9C", cards[0]]  # popped from the end: you, dealer, you, dealer
+    return g, room, pa
+
+
+g, room, pa = new_game()
+g.act(pa, {"type": "bet", "amount": 10, "pair": True})
+check("pair bet ignored when the option is off", g.pair[0] == 0 and g.pair_res[0] is None)
+
+g, room, pa = pairs_game(["KH", "KH"])
+g.act(pa, {"type": "bet", "amount": 10, "pair": True})
+check("a perfect pair pays 25 to 1", g.pair_res[0] == ["perfect", 125] and g.chips[0] >= 100 + 125 - 10, f"{g.pair_res} chips={g.chips}")
+
+g, room, pa = pairs_game(["KH", "KS"])
+g.act(pa, {"type": "bet", "amount": 10, "pair": True})
+check("a mixed pair pays 6 to 1", g.pair_res[0] == ["mixed", 30], f"{g.pair_res}")
+
+g, room, pa = pairs_game(["KH", "QS"])
+g.act(pa, {"type": "bet", "amount": 10, "pair": True})
+check("no pair loses the side bet", g.pair_res[0] == ["none", -5], f"{g.pair_res}")
+check("the pair choice is remembered", g.last_pair == [True])
+
+g, room, pa = pairs_game(["KH", "QS"])
+g.chips[0] = 10
+try:
+    g.act(pa, {"type": "bet", "amount": 10, "pair": True})
+    check("all-in plus a pair bet rejected", False)
+except GameError:
+    check("all-in plus a pair bet rejected", True)
+
+state = g.__dict__.copy()
+for k in ("pair", "pair_res", "last_pair"):
+    state.pop(k)
+g2 = t.TwentyOne.__new__(t.TwentyOne)
+g2.__setstate__(state)
+check("old saves get empty pair bets", g2.pair == [0] and g2.pair_res == [None] and g2.last_pair == [False])
+
 print(f"\n{len(fails)} failed" if fails else "\nall passed")
 sys.exit(1 if fails else 0)
