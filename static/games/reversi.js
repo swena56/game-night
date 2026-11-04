@@ -12,14 +12,39 @@ UI.reversi = (() => {
       const b = ctx?.el ? ctx.el('button', 'rv-cell') : Object.assign(document.createElement('button'), { className: 'rv-cell' });
       b.setAttribute('aria-label', `${'abcdefgh'[c % 8]}${Math.floor(c / 8) + 1}`);
       b.onclick = () => ctx.myTurn && ctx.quiet(ctx.act('place', { cell: c }));
+      // a preview with a mouse or keyboard: a ghost disc, and (with hints on) the discs it would turn
+      b.onpointerenter = (e) => e.pointerType === 'mouse' && preview(c);
+      b.onpointerleave = () => preview(null);
+      b.onfocus = () => preview(c); b.onblur = () => preview(null);
       board.append(b);
     }
     gridKeys(board, 8);
     $('rvResign').onclick = async () => (await ctx.ask('Resign this game?', { ok: '🏳️ Resign', danger: true })) && ctx.quiet(ctx.act('resign'));
   }
 
+  const DIRS = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]];
+  function flipsFor(bd, me, c) {
+    const out = [], r0 = Math.floor(c / 8), c0 = c % 8;
+    for (const [dr, dc] of DIRS) {
+      const run = [];
+      let r = r0 + dr, cc = c0 + dc;
+      while (r >= 0 && r < 8 && cc >= 0 && cc < 8 && bd[r * 8 + cc] === 1 - me) { run.push(r * 8 + cc); r += dr; cc += dc; }
+      if (run.length && r >= 0 && r < 8 && cc >= 0 && cc < 8 && bd[r * 8 + cc] === me) out.push(...run);
+    }
+    return out;
+  }
+  function preview(c) {
+    board?.querySelectorAll('.rv-ghost').forEach((g) => g.remove());
+    board?.querySelectorAll('.rv-disc.would').forEach((d) => d.classList.remove('would'));
+    const r = S?.reversi;
+    if (c == null || !r || !ctx?.myTurn || !r.legal.includes(c)) return;
+    board.children[c].append(ctx.el('span', 'rv-disc rv-ghost ' + (r.me === 0 ? 'dark' : 'light')));
+    if (Object.keys(r.flipCounts || {}).length) flipsFor(r.board, r.me, c).forEach((i) => board.children[i].querySelector('.rv-disc')?.classList.add('would'));
+  }
+
   function render(s, c) {
     S = s; ctx = c;
+    preview(null);
     const r = S.reversi, legal = new Set(r.legal), flipped = new Set(r.flipped);
     const first = !seen, fresh = `${r.last}:${r.counts}` !== seen;  // animate flips once per move
     seen = `${r.last}:${r.counts}`;
