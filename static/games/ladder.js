@@ -1,11 +1,11 @@
 // Word Ladder: the start word at the top, your steps below it, an entry box, and the goal word at the
 // bottom. Each step shows which letter changed. After the round everyone's ladders are revealed.
 UI.ladder = (() => {
-  let S, ctx, receivedAt = 0, tickTimer = 0, busy = false, seenProgress = {};
+  let S, ctx, receivedAt = 0, tickTimer = 0, busy = false, seenProgress = {}, seenLen = null;
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
-    busy = false; seenProgress = {};
+    busy = false; seenProgress = {}; seenLen = null;
     main.innerHTML = `<div class="ld">
       <div class="ld-head"><span id="ldRound"></span><span id="ldPar" class="ld-par"></span></div>
       <div class="dd-bar"><span id="ldBar"></span></div>
@@ -14,12 +14,13 @@ UI.ladder = (() => {
         <button type="button" id="ldUndo" title="Take back a step">↩</button>
         <input id="ldInput" maxlength="5" autocapitalize="characters" spellcheck="false" enterkeyhint="go" aria-label="Next word">
         <button type="submit" id="ldGo" class="primary">Step</button>
-        <button type="button" id="ldHint" title="Fill in the next step">💡</button>
+        <button type="button" id="ldPeek" title="Show which letter to change next (1 point)">🔎</button>
+        <button type="button" id="ldHint" title="Fill in the next step (3 points)">💡</button>
       </form>
       <div id="ldNote" class="ld-note"></div>
       <div id="ldGoal" class="ld-ladder ld-goal"></div>
       <div id="ldReveal" class="ld-reveal" hidden></div></div>`;
-    side.innerHTML = '<div class="panel"><h3>Climbers</h3><div id="ldScores"></div><p class="hint left">Change one letter per step. Hints cost 3 points; taking a step back is free.</p></div>';
+    side.innerHTML = '<div class="panel"><h3>Climbers</h3><div id="ldScores"></div><p class="hint left">Change one letter per step. 🔎 shows which letter to change for 1 point, 💡 fills in a step for 3; taking a step back is free.</p></div>';
     $('ldForm').onsubmit = (e) => {
       e.preventDefault();
       const w = $('ldInput').value.trim().toUpperCase();
@@ -27,6 +28,7 @@ UI.ladder = (() => {
     };
     $('ldUndo').onclick = () => send('undo', {});
     $('ldHint').onclick = () => send('hint', {});
+    $('ldPeek').onclick = () => send('peek', {});
     tickTimer = setInterval(tick, 200);
   }
 
@@ -58,8 +60,8 @@ UI.ladder = (() => {
     return row;
   }
 
-  function ladderOf(path, target, box) {
-    path.forEach((w, i) => box.append(rung(w, i ? path[i - 1] : null, i === 0 ? 'start' : w === target ? 'goal done' : '')));
+  function ladderOf(path, target, box, fresh = -1) {
+    path.forEach((w, i) => box.append(rung(w, i ? path[i - 1] : null, (i === 0 ? 'start' : w === target ? 'goal done' : '') + (i === fresh ? ' fresh' : ''))));
   }
 
   function render(s, c) {
@@ -71,12 +73,23 @@ UI.ladder = (() => {
     $('ldInput').placeholder = `${l.len} letters`;
 
     const box = $('ldLadder'); box.innerHTML = '';
-    ladderOf(l.path, l.target, box);
+    // a new rung: its changed letter flips over and the climber's step clicks
+    const key = `${l.round}:${l.path.length}`, fresh = seenLen && seenLen.split(':')[0] === String(l.round) && l.path.length > +seenLen.split(':')[1] ? l.path.length - 1 : -1;
+    seenLen = key;
+    ladderOf(l.path, l.target, box, fresh);
+    if (fresh > 0) ctx.sfx(l.path[fresh] === l.target ? 'fanfare' : 'flip');
+    // 🔎 a peek: the rung to come, with the letter to change marked
+    if (l.peek != null && !l.done) {
+      const ghost = ctx.el('div', 'ld-rung ghost');
+      [...l.path.at(-1)].forEach((ch, i) => ghost.append(ctx.el('span', 'ld-tile' + (i === l.peek ? ' peek' : ''), i === l.peek ? '?' : ch)));
+      box.append(ghost);
+    }
     const goal = $('ldGoal'); goal.innerHTML = '';
     if (!l.done) goal.append(rung(l.target, null, 'goal'));
 
     const can = live();
     for (const id of ['ldInput', 'ldGo', 'ldHint']) $(id).disabled = !can;
+    $('ldPeek').disabled = !can || l.peek != null;
     $('ldUndo').disabled = !can || l.path.length < 2;
     $('ldForm').hidden = !l.playing;
     // keep the entry row's space when you finish or the clock runs out, so the goal and note don't jump (#73)

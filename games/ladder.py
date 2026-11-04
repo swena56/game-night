@@ -13,6 +13,7 @@ ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 REVEAL_SECS = 7
 PAR = {3: (3, 5), 4: (4, 6), 5: (4, 7)}   # the everyday-word ladder lengths a puzzle may have
 FINISH, OVER_PAR, FIRST, HINT = 10, 2, 5, 3
+PEEK = 1  # 🔎 shows which letter to change next, for a point
 BOT = {  # chance each step heads the right way, and seconds per step
     "easy": (0.55, 6.0, 11.0),
     "normal": (0.72, 4.0, 8.0),
@@ -69,7 +70,7 @@ class Ladder(Game):
         "Everyone gets the same two words. Climb from the top word to the bottom one.",
         "Each step changes exactly one letter and must be a real word: COLD → CORD → CARD → WARD → WARM.",
         f"Par is the shortest ladder of everyday words. Finishing scores {FINISH}, minus {OVER_PAR} for every step over par; the first to finish gets +{FIRST}.",
-        f"Stuck? ↩ takes back a step for free, and 💡 fills in the next step for {HINT} points.",
+        f"Stuck? ↩ takes back a step for free, 🔎 shows which letter to change next for {PEEK} point, and 💡 fills in the next step for {HINT} points.",
         "Most points after the last ladder wins. Alone, finish every ladder to win.",
     ]
     name = "Word Ladder"
@@ -146,6 +147,8 @@ class Ladder(Game):
         self.paths = {pid: [a] for pid in self.ids}
         self.done = {}      # pid -> seconds taken
         self.hints = {}     # pid -> hints used this round
+        self.peeks = {}     # pid -> peeks used this round
+        self.peek = {}      # pid -> [word, spot]: the letter of `word` to change next
         self.gained = {}
         self.stage = "climb"
         self.t0 = self.now()
@@ -272,6 +275,16 @@ class Ladder(Game):
                 raise GameError("No way on from here without repeating — take a step back.")
             self.hints[p.id] = self.hints.get(p.id, 0) + 1
             self.add_step(p, nxt)
+        elif kind == "peek":
+            peek = getattr(self, "peek", {})
+            if peek.get(p.id, [None])[0] == path[-1]:
+                raise GameError("You've already peeked at this step.")
+            nxt = self.best_step(path[-1], path)
+            if nxt is None:
+                raise GameError("No way on from here without repeating — take a step back.")
+            spot = next(i for i, (x, y) in enumerate(zip(path[-1], nxt)) if x != y)
+            self.peek = {**peek, p.id: [path[-1], spot]}
+            self.peeks = {**getattr(self, "peeks", {}), p.id: getattr(self, "peeks", {}).get(p.id, 0) + 1}
         else:
             raise GameError("Unknown action.")
 
@@ -284,7 +297,7 @@ class Ladder(Game):
         first = len(self.done) == 1 and not self.solo
         steps = len(path) - 1
         pts = max(2, FINISH - OVER_PAR * max(0, steps - self.par)) + (FIRST if first else 0)
-        pts = max(0, pts - HINT * self.hints.get(p.id, 0))
+        pts = max(0, pts - HINT * self.hints.get(p.id, 0) - PEEK * getattr(self, "peeks", {}).get(p.id, 0))
         p.g.score += pts
         p.g.finished += 1
         self.gained[p.id] = pts
@@ -360,6 +373,7 @@ class Ladder(Game):
             "left": max(0.0, self.end - self.now()), "secs": self.s["secs"] if self.stage == "climb" else REVEAL_SECS,
             "progress": {pid: [len(path) - 1, pid in self.done] for pid, path in self.paths.items()},
             "solo": self.solo,
+            "peek": next((x[1] for x in [getattr(self, "peek", {}).get(p.id)] if x and x[0] == self.paths.get(p.id, [self.start_word])[-1]), None),
             "reveal": None,
         }
         if reveal:

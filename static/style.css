@@ -2206,3 +2206,15 @@ body.calm .cb-plus { display: none; }
 .sc-vault.open .frame { fill: #111; }
 .sc-head .grow { flex: 1; min-width: 0; }
 .sc-streak { color: #ffd166; font-weight: 700; }
+
+/* word ladder: real side rails, the new letter flips over, a peeked rung shows the letter to change */
+.ld-ladder:not(.ld-goal) { width: fit-content; margin: 8px auto 0; padding: 0 16px 4px; position: relative;
+  border-left: 5px solid #8b6b45; border-right: 5px solid #8b6b45; border-radius: 4px; box-shadow: inset 6px 0 6px -6px #0008, inset -6px 0 6px -6px #0008; }
+.ld-rung + .ld-rung::before { left: -16px; right: -16px; opacity: .8; }
+.ld-rung.fresh .ld-tile.new { animation: ldFlip .45s cubic-bezier(.3, 1.4, .5, 1); }
+@keyframes ldFlip { from { transform: perspective(200px) rotateX(-100deg); } }
+.ld-rung.fresh { animation: ldClimb .35s ease-out; }
+@keyframes ldClimb { from { transform: translateY(14px); opacity: .3; } }
+.ld-rung.ghost .ld-tile { background: none; border: 2px dashed #ffffff40; color: #ffffff60; box-shadow: none; }
+.ld-rung.ghost .ld-tile.peek { border-color: #ffd166; color: #ffd166; animation: ldPeek .8s ease-in-out infinite alternate; }
+@keyframes ldPeek { to { box-shadow: 0 0 12px #ffd166; } }
