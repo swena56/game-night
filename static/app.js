@@ -665,8 +665,13 @@ function renderGame(view = S, readOnly = false, force = false) {
   shapeDots($('#arena')); shapeDots($('#sideGame'));
   renderLog(ui, view);
 
+  const wasHidden = $('#overBanner').hidden;
   $('#overBanner').hidden = readOnly || view.phase !== 'over';
-  if (!readOnly && view.phase === 'over') renderOver();
+  if (!readOnly && view.phase === 'over') {
+    renderOver();
+    // as the results appear, focus the main button so Enter starts the next round
+    if (wasHidden) [$('#rematchBtn'), $('#readyBtn')].find((b) => !b.hidden)?.focus({ preventScroll: true });
+  }
 }
 
 function renderOver() {
@@ -1075,6 +1080,10 @@ const leave = async () => {
 $('#helpBtn').onclick = () => showHelp();
 $('#joinInBtn').onclick = () => quiet(act('join_game'));
 // The game-over banner folds to one line so the final board stays in view (remembered on this device).
+// Enter/Space on a results button belongs to that button, not to a game's own key handler (Light Riders boosts on Enter)
+addEventListener('keydown', (e) => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target?.closest?.('#overBanner')) e.stopPropagation();
+}, true);
 $('#overFold').onclick = () => { store('overFolded', !load('overFolded') || null); renderOver(); };
 // Phones: fold the log into a one-line ticker so game controls sit right under the board.
 const compact = window.matchMedia?.('(max-width: 860px)');
