@@ -37,7 +37,7 @@ port, and `http://localhost` still works on the server's own device.
 | 🖍️ **Scribble Relay** | 3–6 | Everyone writes a phrase, then the chains pass round the table: draw what you're handed, caption the drawing you're handed, and so on. Drawing happens on your own phone (6 ink colours, undo). | You only see the entry right before yours. At the end each chain is revealed card by card and everyone ❤️ votes for their favourite entry. 🎯 A chain that ends where it started earns everyone in it +1. |
 | 🧠 **Trivia Rush** | 1–6 | Quick-fire quiz: everyone gets the same question with four answers and picks at once (228 original questions in 9 topics). | 100 for a right answer plus up to 100 for speed; the last question counts double. Pick one topic or everything. Alone, get 70% right to win. |
 | ✏️ **Doodle Dash** | 2–6 | The computer draws a picture one line at a time (199 original line drawings in 8 categories) and everyone types guesses at once. Earlier guesses score more. | Letter blanks appear halfway through, then the first letter. A wrong guess locks you out for 3 s. Typos, plurals and synonyms are accepted. Scoring: everyone can score (the first gets +2), or ⚡ first correct only. Strokes reach the browser only as they're drawn, so nobody can peek. |
-| 🦹 **Night Heist** *(the surprise)* | 2–6 | A simultaneous bluffing game. Each night everyone secretly picks **Grab**, **Guard** or **Rest**, then all choices are revealed together. | A lone grabber steals the whole vault. Two grabbers trip the alarm and the loot grows. Guards fine grabbers 💰2 each, and guarding an empty hall costs 💰1. Reading the table is the whole game. |
+| 🦹 **Night Heist** *(the surprise)* | 2–6 | A simultaneous bluffing game. Each night everyone secretly picks **Grab**, **Guard** or **Rest**, then all choices are revealed together. | A lone grabber steals the whole vault. Two grabbers trip the alarm and the loot grows. Guards fine grabbers 💰2 each, and guarding an empty hall costs 💰1. Reading the table is the whole game. Option 🕵️ **Inside man**: once a game, before you choose, learn how many of those who've already chosen are grabbing. |
 
 ### 🔤 Words & puzzles (6)
 
@@ -297,6 +297,7 @@ python3 tests/billiards_rules.py                            # billiards rules (p
 python3 tests/blackjack_bets.py                             # Blackjack bets: built from chips, all-in, last bet repeated, Perfect Pairs
 python3 tests/unmask_rules.py                              # Unmask: the 🎲 Bold guess badge
 python3 tests/ladder_rules.py                              # Word Ladder: 🔎 peek, once per step, a point off the finish
+python3 tests/heist_rules.py                               # Night Heist: the 🕵️ inside man tip-off
 PORT=8767 python3 server.py &                               # a separate test server (own rooms-8767.pickle / feedback-8767.jsonl)
 cd tests && npm install && BASE=http://localhost:8767 node ui.js          # every game
 BASE=http://localhost:8767 node ui.js chess spire                          # just some

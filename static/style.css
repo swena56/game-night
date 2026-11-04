@@ -2222,3 +2222,20 @@ body.calm .cb-plus { display: none; }
 /* contract rummy: a card laid off onto a meld lands with a glow */
 .ru-cards .pc.laidoff { animation: ruLaid 1.4s ease-out; }
 @keyframes ruLaid { 0% { transform: translateY(-14px) scale(1.15); box-shadow: 0 0 0 3px #ffd166, 0 0 16px #ffd166; } 30% { transform: none; } 100% { box-shadow: 0 0 0 0 #ffd16600; } }
+
+/* night heist: a night sky behind the vault, a guard's torch sweeping it (faster as the loot grows), red strobes on the alarm */
+.vault { position: relative; overflow: hidden; isolation: isolate; }
+.h-night { position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: radial-gradient(1px 1px at 12% 20%, #fff8, transparent), radial-gradient(1px 1px at 30% 70%, #fff6, transparent), radial-gradient(1.5px 1.5px at 55% 15%, #fff9, transparent),
+    radial-gradient(1px 1px at 78% 40%, #fff7, transparent), radial-gradient(1px 1px at 90% 80%, #fff5, transparent), radial-gradient(1px 1px at 65% 88%, #fff6, transparent),
+    linear-gradient(transparent 70%, #0a0818 70%) , linear-gradient(#141033, #251a4a); }
+.h-night .moon { position: absolute; top: 10px; right: 14px; width: 22px; height: 22px; border-radius: 50%; box-shadow: -6px 3px 0 0 #f6e7b0; }
+.h-night .beam { position: absolute; left: 50%; top: -40%; width: 120%; height: 180%; transform-origin: 50% 0; margin-left: -60%;
+  background: conic-gradient(from 168deg at 50% 0, transparent 0deg, #fff3c455 6deg, #fff3c422 14deg, transparent 24deg); animation: hSweep 6s ease-in-out infinite alternate; }
+.vault[data-heat="2"] .beam { animation-duration: 4s; } .vault[data-heat="3"] .beam { animation-duration: 2.4s; }
+@keyframes hSweep { from { transform: rotate(-38deg); } to { transform: rotate(38deg); } }
+/* three slow pulses (well under three flashes a second), not a strobe, for photosensitive players */
+.h-strobe { position: fixed; inset: 0; z-index: 35; pointer-events: none; background: radial-gradient(circle, #ff1f3d00 30%, #ff1f3d 100%); animation: hStrobe .55s ease-in-out 3; opacity: 0; }
+@keyframes hStrobe { 50% { opacity: .35; } }
+.h-night { transition: opacity .3s; } .vault.alarm .h-night, .vault.caught .h-night { opacity: .2; }
+#hTip { margin-top: 8px; }

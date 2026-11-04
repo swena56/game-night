@@ -10,12 +10,13 @@ UI.heist = (() => {
   function mount(main, side) {
     seenNight = null; shownPot = null;
     main.innerHTML = `<div class="heist">
-      <div class="vault" id="hVault">
+      <div class="vault" id="hVault"><div class="h-night" aria-hidden="true"><i class="moon"></i><i class="beam"></i></div>
         <svg class="vault-door" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" class="vd-rim"/><circle cx="50" cy="50" r="38" class="vd-face"/>
           <g class="vd-wheel"><circle cx="50" cy="50" r="12"/><path d="M50 22v56M22 50h56M30 30l40 40M70 30 30 70"/></g>
           <circle cx="50" cy="50" r="5" class="vd-hub"/></svg>
         <div class="vault-info"><div id="hNight"></div><div id="hPot" class="pot"></div><div id="hCoins" class="coins"></div></div></div>
       <div id="hChoices" class="h-choices"></div>
+      <div class="row center"><button id="hTip" hidden>🕵️ Ask your inside man</button></div>
       <p id="hWaiting" class="hint"></p>
       <div id="hLast" class="panel"></div>
       <div id="hGrid" class="panel h-grid-wrap" hidden><h3>Night by night</h3><table id="hGridT" class="h-grid"></table></div>
@@ -29,6 +30,7 @@ UI.heist = (() => {
         <li>😴 <b>Rest</b> earns 💰1.</li>
       </ul>
       <p class="hint left">You can change your mind until the last player locks in. Most gold after the final night wins.</p></div>`;
+    main.querySelector('#hTip').onclick = () => ctx.quiet(ctx.act('tip'));
     const box = main.querySelector('#hChoices');
     for (const [id, icon, label, desc] of OPTIONS) {
       const b = document.createElement('button');
@@ -49,6 +51,10 @@ UI.heist = (() => {
       b.classList.toggle('on', h.mine === b.dataset.id);
       b.disabled = !canPlay;
     }
+    const tip = document.getElementById('hTip');
+    tip.hidden = !h.tips || !canPlay;
+    tip.disabled = !!h.mine || h.waiting.length >= Object.keys(h.gold).length;  // nobody has chosen yet
+    tip.title = 'Once a game: how many of those who have chosen tonight are grabbing';
     const waiting = h.waiting.map((id) => ctx.player(id)?.name).filter(Boolean);
     document.getElementById('hWaiting').textContent =
       S.phase === 'playing' && waiting.length ? `Waiting for: ${waiting.join(', ')}` : '';
@@ -81,7 +87,7 @@ UI.heist = (() => {
   function outcome(h) {
     const t = h.last.text, vault = document.getElementById('hVault');
     const flash = (cls) => { vault.classList.remove('alarm', 'caught', 'stolen'); void vault.offsetWidth; vault.classList.add(cls); };
-    if (t.startsWith('🔔')) { flash('alarm'); ctx.sfx('alarm'); Kit.callout('🔔 ALARM!', 'bad'); }
+    if (t.startsWith('🔔')) { flash('alarm'); strobe(); ctx.sfx('alarm'); Kit.callout('🔔 ALARM!', 'bad'); }
     else if (t.startsWith('🚨')) { flash('caught'); ctx.sfx('alarm'); Kit.callout('🚨 Caught!', 'cool'); }
     else if (t.startsWith('💎')) {
       flash('stolen'); ctx.sfx('fanfare'); Kit.callout('💎 HEIST!', 'gold');
@@ -89,6 +95,14 @@ UI.heist = (() => {
       if (thief === S.me.id) ctx.confetti();
     } else if (t.startsWith('🥱')) ctx.sfx('bad');
     else ctx.sfx('pop');
+  }
+
+  // the alarm: the whole screen strobes red for a moment
+  function strobe() {
+    if (!motionOK()) return;
+    const s = ctx.el('div', 'h-strobe');
+    document.body.append(s);
+    setTimeout(() => s.remove(), 1750);
   }
 
   // the pot counts up or down to its new size, with a pile of coins that grows with it
