@@ -42,20 +42,27 @@ function faceSVG(f) {
     s.push(`<ellipse cx="${x}" cy="48" rx="4.6" ry="${big ? 5.6 : 4}" fill="#fff" stroke="${LINE}"/>`,
       `<circle cx="${x}" cy="48.5" r="2.5" fill="${PAL.eye[f.eye_color]}"/><circle cx="${x}" cy="48.5" r="1.1" fill="#111"/>`);
   }
+  const woman = f.gender === 'woman';  // #15: lashes, blush and lip colour; only men grow facial hair
+  if (woman) {
+    const top = 48 - (big ? 5.6 : 4);
+    for (const x of [41, 59])
+      s.push(`<path d="M${x - 3.2} ${top + 0.9} L${x - 5} ${top - 1.6}M${x} ${top} L${x} ${top - 2.8}M${x + 3.2} ${top + 0.9} L${x + 5} ${top - 1.6}" stroke="#1a1a1a" stroke-width="1.3" stroke-linecap="round"/>`);
+    s.push(`<ellipse cx="33.5" cy="57" rx="4" ry="2.4" fill="#ff6f86" opacity=".4"/><ellipse cx="66.5" cy="57" rx="4" ry="2.4" fill="#ff6f86" opacity=".4"/>`);
+  }
   const by = big ? 37 : 40;
   s.push(`<path d="M35 ${by} Q41 ${by - 3} 46 ${by}M54 ${by} Q59 ${by - 3} 65 ${by}" stroke="${brow}" stroke-width="2.2" fill="none" stroke-linecap="round"/>`);
   s.push(`<path d="M50 51 Q46.5 57 50 58" stroke="${LINE}" stroke-width="1.5" fill="none"/>`);
 
-  // facial hair, then mouth
+  // facial hair, glasses, then mouth
   if (f.facial_hair === 'beard') s.push(`<path d="M28 50 Q27 78 50 77 Q73 78 72 50 Q70 67 60 66 Q50 61 40 66 Q30 67 28 50 Z" fill="${brow}" stroke="${LINE}"/>`);
-  if (f.expression === 'smile') s.push(`<path d="M42 63 Q50 71 58 63 Z" fill="#7a2e2e" stroke="#5a1f1f" stroke-width="1.2"/>`);
-  else if (f.expression === 'neutral') s.push(`<path d="M44 65 L56 65" stroke="#5a1f1f" stroke-width="2" stroke-linecap="round"/>`);
-  else s.push(`<ellipse cx="50" cy="66" rx="3.4" ry="4.4" fill="#5a1f1f"/>`);
-  if (f.facial_hair !== 'none') s.push(`<path d="M40 62 Q45 56 50 59 Q55 56 60 62 Q55 60 50 61.5 Q45 60 40 62 Z" fill="${brow}" stroke="${LINE}"/>`);
-
-  // glasses
   if (f.glasses === 'round') s.push(`<g fill="rgba(255,255,255,.15)" stroke="#222" stroke-width="1.8"><circle cx="41" cy="48" r="7"/><circle cx="59" cy="48" r="7"/><path d="M48 48 L52 48"/></g>`);
-  if (f.glasses === 'shades') s.push(`<g fill="#151515" stroke="#000" stroke-width="1.2"><rect x="32.5" y="43" width="16" height="10" rx="3.5"/><rect x="51.5" y="43" width="16" height="10" rx="3.5"/><path d="M48.5 46 L51.5 46" fill="none" stroke-width="2"/></g>`);
+  // Sunglasses sit low on the nose, so the eye colour still shows above them (#15).
+  if (f.glasses === 'shades') s.push(`<g fill="#1c2433" stroke="#000" stroke-width="1.2"><path d="M33 54 L27.5 50M67 54 L72.5 50" fill="none" stroke-width="1.6"/><path d="M33 52.5 H48 V56 Q48 61 42 61 H38 Q33 61 33 56 Z"/><path d="M52 52.5 H67 V56 Q67 61 62 61 H58 Q52 61 52 56 Z"/><path d="M48 54.5 Q50 53 52 54.5" fill="none" stroke-width="1.8"/><path d="M35 54.5 L39 54.5M54 54.5 L58 54.5" stroke="#fff" stroke-opacity=".35" stroke-width="1"/></g>`);
+  const lip = woman ? ['#c2185b', '#8e1046'] : ['#7a2e2e', '#5a1f1f'];
+  if (f.expression === 'smile') s.push(`<path d="M42 63 Q50 71 58 63 Z" fill="${lip[0]}" stroke="${lip[1]}" stroke-width="1.2"/>`);
+  else if (f.expression === 'neutral') s.push(`<path d="M44 65 L56 65" stroke="${woman ? lip[0] : lip[1]}" stroke-width="${woman ? 3 : 2}" stroke-linecap="round"/>`);
+  else s.push(`<ellipse cx="50" cy="66" rx="3.4" ry="4.4" fill="${woman ? lip[0] : lip[1]}"/>`);
+  if (f.facial_hair !== 'none') s.push(`<path d="M40 62 Q45 56 50 59 Q55 56 60 62 Q55 60 50 61.5 Q45 60 40 62 Z" fill="${brow}" stroke="${LINE}"/>`);
 
   // hats
   const hc = PAL.hat[f.hat_color];
