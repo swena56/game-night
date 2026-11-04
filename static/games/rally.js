@@ -201,24 +201,33 @@ UI.rally = (() => {
 
   // track geometry: the point and left normal at distance s, and h, the 🏔️ hill height there
   function at(s, d) {
-    const r = S.rally, L = r.length, cum = r.cum, pts = r.track, n = pts.length, hl = hillsNow();
+    const r = S.rally, L = r.length, cum = r.cum, pts = r.track, n = pts.length, { h: hl, bank } = hillsNow();
     s = ((s % L) + L) % L;
     let lo = 0, hi = n;
     while (lo < hi - 1) { const mid = (lo + hi) >> 1; if (cum[mid] <= s) lo = mid; else hi = mid; }
     const a = pts[lo], b = pts[(lo + 1) % n], seg = (cum[lo + 1] ?? L) - cum[lo] || 1, f = (s - cum[lo]) / seg;
     const tx = (b[0] - a[0]) / seg, ty = (b[1] - a[1]) / seg, m = Math.hypot(tx, ty) || 1;
     const ux = tx / m, uy = ty / m;
-    return { x: a[0] + (b[0] - a[0]) * f - uy * d, y: a[1] + (b[1] - a[1]) * f + ux * d, ux, uy, h: hl[lo] + (hl[(lo + 1) % n] - hl[lo]) * f };
+    const tilt = bank[lo] + (bank[(lo + 1) % n] - bank[lo]) * f;  // banked bends: the outside edge is higher
+    return { x: a[0] + (b[0] - a[0]) * f - uy * d, y: a[1] + (b[1] - a[1]) * f + ux * d, ux, uy,
+      h: hl[lo] + (hl[(lo + 1) % n] - hl[lo]) * f - tilt * d, tilt };
   }
 
   // 🏔️ hills (3D only, the race itself is flat): a few slow waves round the lap, their phases taken from the
-  // track's own shape so every phone sees the same ones; flat near the line and over ramps, gaps and narrows
+  // track's own shape so every phone sees the same ones; flat near the line and over ramps, gaps and narrows.
+  // Bends are banked too: bank[k] is the rise per unit toward the right (left bends lift the right edge),
+  // from the curvature smoothed over a few units, at most about 16°.
   let hills = null;
   function hillsNow() {
     const r = S.rally, n = r.track.length, L = r.length;
-    if (hills?.key === r.length) return hills.h;
-    const h = new Array(n).fill(0);
+    if (hills?.key === r.length) return hills;
+    const h = new Array(n).fill(0), bank = new Array(n).fill(0);
     if (gl) {
+      const pts = r.track, dir = pts.map((p, k) => Math.atan2(pts[(k + 1) % n][1] - p[1], pts[(k + 1) % n][0] - p[0]));
+      const curv = dir.map((a, k) => {
+        const turn = ((a - dir[(k - 1 + n) % n] + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+        return turn / Math.max(1e-6, (r.cum[(k + 1) % n] || L) - r.cum[k]);
+      });
       const ph = [r.track[0][0], r.track[3][1], r.track[7][0]].map((v) => (v * 12.9898) % (Math.PI * 2));
       const smooth = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
       const flat = (r.zones || []).filter((z) => z[0] !== 'ice');
@@ -227,10 +236,13 @@ UI.rally = (() => {
         let w = smooth((Math.min(s, L - s) - 4) / 11);
         for (const [, a, b] of flat) w = Math.min(w, smooth((Math.max(a - s, s - b, 0) - 2) / 8));
         h[k] = w * Math.max(0, 0.9 + 0.5 * Math.sin(2 * u + ph[0]) + 0.35 * Math.sin(3 * u + ph[1]) + 0.15 * Math.sin(5 * u + ph[2]));
+        let c = 0;
+        for (let j = -10; j <= 10; j++) c += curv[(k + j + n) % n];
+        bank[k] = w * Math.max(-0.3, Math.min(0.3, (c / 21) * 3));
       }
     }
-    hills = { key: r.length, h };
-    return h;
+    hills = { key: r.length, h, bank };
+    return hills;
   }
   const hillAt = (s) => at(s, 0).h;
 
@@ -432,6 +444,32 @@ UI.rally = (() => {
     scene.add(new T.HemisphereLight(0xbfd9ff, 0x221133, 0.8));
     const sun = new T.DirectionalLight(0xffffff, 0.7); sun.position.set(20, 40, 10); scene.add(sun);  // gives the hulls some shape
     const grid = new T.GridHelper(260, 52, 0x3a2a6a, 0x1c1438); grid.position.y = -0.05; scene.add(grid);
+    // the sky: a dome glowing violet at the horizon and black overhead, stars, and a ringed planet; it rides
+    // along with the camera so it's always far away, and the fog leaves it alone
+    const sky = new T.Group(); scene.add(sky);
+    {
+      const dome = new T.SphereGeometry(300, 24, 16), cols = [], c = new T.Color(), lo = new T.Color(0x070512), mid = new T.Color(0x2a1450), top = new T.Color(0x020108);
+      const pa = dome.attributes.position;
+      for (let k = 0; k < pa.count; k++) {
+        const y = pa.getY(k) / 300;  // -1 .. 1
+        if (y < 0) c.copy(lo); else if (y < 0.15) c.copy(lo).lerp(mid, y / 0.15); else c.copy(mid).lerp(top, Math.min(1, (y - 0.15) / 0.5));
+        cols.push(c.r, c.g, c.b);
+      }
+      dome.setAttribute('color', new T.Float32BufferAttribute(cols, 3));
+      sky.add(new T.Mesh(dome, new T.MeshBasicMaterial({ vertexColors: true, side: T.BackSide, fog: false, depthWrite: false })));
+      const stars = [];
+      for (let k = 0; k < 700; k++) {
+        const a = Math.random() * Math.PI * 2, y = 0.08 + Math.random() * 0.92, rr = Math.sqrt(1 - y * y);
+        stars.push(Math.cos(a) * rr * 280, y * 280, Math.sin(a) * rr * 280);
+      }
+      const sg = new T.BufferGeometry(); sg.setAttribute('position', new T.Float32BufferAttribute(stars, 3));
+      sky.add(new T.Points(sg, new T.PointsMaterial({ size: 1.6, sizeAttenuation: false, color: 0xdfe6ff, fog: false, transparent: true, opacity: 0.85, depthWrite: false })));
+      const planet = new T.Mesh(new T.SphereGeometry(26, 24, 16), new T.MeshBasicMaterial({ color: 0x8a5cc8, fog: false }));
+      const ring = new T.Mesh(new T.RingGeometry(34, 46, 48), new T.MeshBasicMaterial({ color: 0xd8b4fe, transparent: true, opacity: 0.45, side: T.DoubleSide, fog: false, depthWrite: false }));
+      ring.rotation.x = Math.PI / 2.4; planet.add(ring);
+      planet.position.set(-170, 80, -190); sky.add(planet);
+      sky.renderOrder = -1;
+    }
     let track = new T.Group(); scene.add(track);
     const ships = [];
     const V = (p, h = 0) => new T.Vector3(p.x, h + (p.h || 0), -p.y);  // on the hills when p comes from at()
@@ -496,10 +534,9 @@ UI.rally = (() => {
       scenery();
       const line = new T.Mesh(new T.PlaneGeometry(0.6, W * 2), new T.MeshBasicMaterial({ color: 0xffffff, side: T.DoubleSide }));
       const p0 = at(0, 0); line.position.copy(V(p0, 0.02)); line.rotation.x = -Math.PI / 2; line.rotation.z = Math.atan2(p0.uy, p0.ux); track.add(line);
-      for (const [pi, lat] of r.pads) {
-        const s = r.cum[((pi % n) + n) % n], p = at(s, lat);
-        const pad = new T.Mesh(new T.PlaneGeometry(2, 1.6), padMat);
-        pad.position.copy(V(p, 0.03)); pad.rotation.x = -Math.PI / 2; pad.rotation.z = Math.atan2(p.uy, p.ux); track.add(pad);
+      for (const [pi, lat] of r.pads) {  // laid on the surface, so they follow the hills and banking
+        const s = r.cum[((pi % n) + n) % n];
+        strip(s - 1, s + 1, () => 0.8, () => 0.03, padMat, lat, true);
       }
       pickups.length = 0;
       for (const [pi, lat] of r.pickups || []) {  // 🚀 pickups: spinning crystals hovering over the track
@@ -513,12 +550,14 @@ UI.rally = (() => {
       resize();
     }
 
-    // ---- 🚧 track features: a ribbon between s = a and b, with half-width w(s) and height y(s)
-    function strip(a, b, w, y, mat) {
+    // ---- 🚧 track features: a ribbon between s = a and b, with half-width w(s) and height y(s) over the
+    // surface, centred `off` to the left; its texture runs across it, or (along) in the direction of travel
+    function strip(a, b, w, y, mat, off = 0, along = false) {
       const pos = [], uv = [], idx = [], steps = Math.max(2, Math.ceil((b - a) / 0.4));
       for (let k = 0; k <= steps; k++) {
-        const s = a + (b - a) * k / steps, h = y(s), p = at(s, w(s)), q = at(s, -w(s));
-        pos.push(p.x, h + p.h, -p.y, q.x, h + q.h, -q.y); uv.push(0, (s - a) / 2, 1, (s - a) / 2);
+        const s = a + (b - a) * k / steps, h = y(s), p = at(s, off + w(s)), q = at(s, off - w(s));
+        pos.push(p.x, h + p.h, -p.y, q.x, h + q.h, -q.y);
+        if (along) uv.push((s - a) / (b - a), 1, (s - a) / (b - a), 0); else uv.push(0, (s - a) / 2, 1, (s - a) / 2);
         if (k < steps) { const o = k * 2; idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2); }
       }
       const g = new T.BufferGeometry();
@@ -565,8 +604,10 @@ UI.rally = (() => {
       }
     }
     // ---- scenery: glowing pylons along both sides (every fourth one coloured by how far round the lap it is),
-    // arches over the track with a checkered one at the line, and a ring of mountains fading into the fog
-    const pylonMat = new T.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.55, roughness: 0.4 });
+    // arches over the track with a checkered one at the line, a ring of mountains fading into the fog,
+    // crystals on the ground and a grandstand. Instanced meshes take their colour per instance, which only
+    // tints the lit colour (not an emissive glow), so the pylons are unlit and pulse through their colour.
+    const pylonMat = new T.MeshBasicMaterial({ color: 0xffffff });
     const archMat = new T.MeshStandardMaterial({ color: 0x3a2a6a, emissive: 0x4cc9f0, emissiveIntensity: 0.25, metalness: 0.5, roughness: 0.4 });
     const checker = (() => {
       const c = document.createElement('canvas'); c.width = 128; c.height = 32;
@@ -582,7 +623,7 @@ UI.rally = (() => {
       const m = new T.Matrix4(), col = new T.Color();
       for (let k = 0; k < count; k++) for (const side of [1, -1]) {
         const s = (k + 0.5) * every, p = at(s, side * (wAt(s) + 0.9)), j = k * 2 + (side > 0 ? 0 : 1);
-        m.makeTranslation(p.x, p.h + 0.8, -p.y); pylons.setMatrixAt(j, m);
+        m.makeTranslation(p.x, at(s, side * wAt(s)).h + 0.8, -p.y); pylons.setMatrixAt(j, m);  // level with the edge
         pylons.setColorAt(j, k % 4 ? col.set(0x4cc9f0) : col.setHSL(s / L, 0.9, 0.6));
       }
       track.add(pylons);
@@ -591,9 +632,13 @@ UI.rally = (() => {
         let s = (k * L) / 6;
         while (k && zoneAt(s, ['ramp', 'gap', 'narrow'])) s += 2;
         const p = at(s, 0), w = wAt(s) + 0.7, a = new T.Group();
-        for (const z of [w, -w]) { const post = new T.Mesh(new T.BoxGeometry(0.3, 3.4, 0.3), archMat); post.position.set(0, 1.7, z); a.add(post); }
+        // each post stands on its own edge of a banked bend (local +z is the right-hand side)
+        const lift = (z) => (p.tilt || 0) * z, top = 3.4 + Math.abs(lift(w));
+        for (const z of [w, -w]) {
+          const post = new T.Mesh(new T.BoxGeometry(0.3, top - lift(z), 0.3), archMat); post.position.set(0, (top + lift(z)) / 2, z); a.add(post);
+        }
         const bar = new T.Mesh(new T.BoxGeometry(0.3, 0.5, w * 2 + 0.3), k ? archMat : new T.MeshBasicMaterial({ map: checker }));
-        bar.position.y = 3.4; a.add(bar);
+        bar.position.y = top; a.add(bar);
         a.position.copy(V(p, 0)); a.rotation.y = Math.atan2(p.uy, p.ux); track.add(a);
       }
       // mountains: low-poly cones far out, placed from the track's own numbers so they stay put
@@ -606,6 +651,60 @@ UI.rally = (() => {
         const c = new T.Mesh(new T.ConeGeometry(10 + 8 * rnd(4), hgt, 5 + Math.floor(rnd(5) * 3)), mtn);
         c.position.set(cx + Math.cos(a) * rad, hgt / 2 - 0.1, -(cy + Math.sin(a) * rad)); c.rotation.y = rnd(6) * 3; track.add(c);
       }
+      // crystals: clusters of glowing shards on the ground, kept well clear of the track
+      const near = r.track.filter((_, j) => j % 6 === 0), clear = (x, y) => near.every((q) => Math.hypot(q[0] - x, q[1] - y) > r.width + 4);
+      const shards = new T.InstancedMesh(new T.ConeGeometry(0.45, 2.4, 5), crystalMat, 90), q = new T.Quaternion(), e = new T.Euler(), sc = new T.Vector3();
+      let made = 0;
+      for (let k = 0; made < 90 && k < 600; k++) {
+        const rnd = (j) => { const v = Math.sin((k + 1) * 91.17 + j * 47.3 + L * 3.1) * 43758.5453; return v - Math.floor(v); };
+        const x = cx + (rnd(1) - 0.5) * 190, y = cy + (rnd(2) - 0.5) * 190;
+        if (!clear(x, y)) continue;
+        for (let j = 0; j < 3 && made < 90; j++, made++) {  // three shards to a cluster, leaning out
+          const size = 0.5 + rnd(3 + j) * 1.1;
+          e.set((rnd(6 + j) - 0.5) * 0.9, rnd(9 + j) * 6, (rnd(12 + j) - 0.5) * 0.9); q.setFromEuler(e); sc.set(size, size, size);
+          m.compose(new T.Vector3(x + (rnd(15 + j) - 0.5) * 1.6, size * 1.1 - 0.3, -(y + (rnd(18 + j) - 0.5) * 1.6)), q, sc);
+          shards.setMatrixAt(made, m); shards.setColorAt(made, col.setHSL(rnd(4) < 0.5 ? 0.52 : 0.85, 0.9, 0.55));
+        }
+      }
+      shards.count = made; track.add(shards);
+      grandstand();
+    }
+    const crystalMat = new T.MeshStandardMaterial({ color: 0xffffff, emissive: 0x1a1030, metalness: 0.2, roughness: 0.15, flatShading: true });
+    // ---- the grandstand at the line, on the outside of the track, with a crowd that jumps as craft go by
+    const crowd = { mesh: null, base: [], hype: 0 };
+    function grandstand() {
+      const r = S.rally, W = r.width, p0 = at(0, 0);
+      const xs = r.track.map((q) => q[0]), ys = r.track.map((q) => q[1]);
+      const cx = (Math.max(...xs) + Math.min(...xs)) / 2, cy = (Math.max(...ys) + Math.min(...ys)) / 2;
+      const left = at(0, 5), right = at(0, -5), side = Math.hypot(left.x - cx, left.y - cy) > Math.hypot(right.x - cx, right.y - cy) ? 1 : -1;
+      const g = new T.Group(); g.position.copy(V(p0, 0)); g.rotation.y = Math.atan2(p0.uy, p0.ux); track.add(g);
+      const z0 = -side * (W + 3.2), out = -side;  // local +z is the right-hand side (d < 0)
+      const standMat = new T.MeshStandardMaterial({ color: 0x2a2440, roughness: 0.7 });
+      for (let k = 0; k < 3; k++) {
+        const step = new T.Mesh(new T.BoxGeometry(14, 0.5 + k * 0.6, 1.1), standMat);
+        step.position.set(0, (0.5 + k * 0.6) / 2, z0 + out * k * 1.1); g.add(step);
+      }
+      const roof = new T.Mesh(new T.BoxGeometry(14.5, 0.15, 3.8), archMat); roof.position.set(0, 4.2, z0 + out * 1.1); g.add(roof);
+      const fans = new T.InstancedMesh(new T.BoxGeometry(0.32, 0.55, 0.3), new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 }), 3 * 24);
+      const c = new T.Color(), mm = new T.Matrix4();
+      crowd.base = [];
+      for (let k = 0; k < 3; k++) for (let j = 0; j < 24; j++) {
+        const n = k * 24 + j, x = -6.6 + j * 0.575 + (Math.sin(n * 7.1) * 0.08), y = 0.5 + k * 0.6 + 0.28, z = z0 + out * k * 1.1;
+        crowd.base.push([x, y, z, Math.sin(n * 12.9898) * 43758.5453 % 1]);
+        mm.makeTranslation(x, y, z); fans.setMatrixAt(n, mm); fans.setColorAt(n, c.setHSL(Math.abs(Math.sin(n * 3.7)), 0.7, 0.6));
+      }
+      crowd.mesh = fans; g.add(fans);
+    }
+    function cheer(now, dt) {  // the crowd bobs, and jumps when a craft is close to the line
+      if (!crowd.mesh || calm()) return;
+      const r = S.rally, L = r.length;
+      const close = crafts.some((c, i) => { const d = (((sNow(i, now) % L) + L) % L); return Math.min(d, L - d) < 14; });
+      crowd.hype += ((close ? 1 : 0.15) - crowd.hype) * (1 - Math.exp(-dt * 4));
+      const mm = new T.Matrix4();
+      crowd.base.forEach(([x, y, z, ph], n) => {
+        mm.makeTranslation(x, y + crowd.hype * 0.3 * Math.max(0, Math.sin(now / 110 + ph * 20)), z); crowd.mesh.setMatrixAt(n, mm);
+      });
+      crowd.mesh.instanceMatrix.needsUpdate = true;
     }
     const bollardGeo = new T.CylinderGeometry(0.16, 0.18, 0.4, 10);
     const bollardMat = [new T.MeshStandardMaterial({ color: 0xff7a1a, emissive: 0xff5a00, emissiveIntensity: 0.4 }), new T.MeshStandardMaterial({ color: 0xffffff, emissive: 0x666666 })];
@@ -744,14 +843,14 @@ UI.rally = (() => {
     pgeo.setAttribute('color', new T.BufferAttribute(new Float32Array(NP * 3), 3));
     const points = new T.Points(pgeo, new T.PointsMaterial({ size: 0.35, map: dot, vertexColors: true, transparent: true, blending: T.AdditiveBlending, depthWrite: false }));
     points.frustumCulled = false; scene.add(points);
-    function spawn(n, x, y, z, vx, vy, vz, spread, color, life, grav = 0) {
+    function spawn(n, x, y, z, vx, vy, vz, spread, color, life, grav = 0, floor = 0.03) {  // floor: where they bounce
       if (calm()) return;
       const c = new T.Color(color);
       for (let k = 0; k < n; k++) {
         if (parts.length >= NP) parts.shift();
         const l = life * (0.6 + Math.random() * 0.6);
         parts.push({ x, y, z, vx: vx + (Math.random() - 0.5) * spread, vy: vy + Math.random() * spread * 0.6, vz: vz + (Math.random() - 0.5) * spread,
-          life: l, max: l, c, grav });
+          life: l, max: l, c, grav, floor });
       }
     }
     function tickParts(dt) {
@@ -759,7 +858,7 @@ UI.rally = (() => {
         const q = parts[k];
         if ((q.life -= dt) <= 0) { parts.splice(k, 1); continue; }
         q.vy -= q.grav * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.z += q.vz * dt;
-        if (q.y < 0.03) { q.y = 0.03; q.vy *= -0.4; }
+        if (q.y < q.floor) { q.y = q.floor; q.vy *= -0.4; }
       }
       const pos = pgeo.attributes.position, col = pgeo.attributes.color;
       for (let k = 0; k < NP; k++) {
@@ -770,45 +869,46 @@ UI.rally = (() => {
       }
       pos.needsUpdate = col.needsUpdate = true;
     }
-    const shipAt = (i) => ships[i]?.position;
+    // where a craft is, with g the track surface under it (on the hills), so effects start and land there
+    const shipAt = (i) => ships[i] && { x: ships[i].position.x, z: ships[i].position.z, g: ships[i].userData.ground ?? 0 };
     function fx(e) {
       if (e[0] === 'pad' && shipAt(e[1])) {
         const p = shipAt(e[1]);
-        spawn(26, p.x, 0.2, p.z, 0, 3, 0, 5, 0xffd166, 0.55, 6);
+        spawn(26, p.x, p.g + 0.2, p.z, 0, 3, 0, 5, 0xffd166, 0.55, 6, p.g + 0.03);
         ships[e[1]].userData.flare = 1;
       } else if (e[0] === 'hit' && shipAt(e[1])) {  // an explosion: a hot flash, then embers
         const p = shipAt(e[1]);
-        spawn(30, p.x, 0.6, p.z, 0, 3, 0, 9, 0xffb347, 0.6, 8);
-        spawn(14, p.x, 0.6, p.z, 0, 2, 0, 5, 0xff3b3b, 0.9, 4);
+        spawn(30, p.x, p.g + 0.6, p.z, 0, 3, 0, 9, 0xffb347, 0.6, 8, p.g + 0.03);
+        spawn(14, p.x, p.g + 0.6, p.z, 0, 2, 0, 5, 0xff3b3b, 0.9, 4, p.g + 0.03);
         ships[e[1]].userData.flare = 1;
         if (e[1] === S.rally.me) GL3.shake(camera, 0.7);
       } else if (e[0] === 'pick' && shipAt(e[1])) {
         const p = shipAt(e[1]);
-        spawn(14, p.x, 0.7, p.z, 0, 2, 0, 4, [0, 0xff5d5d, 0x8a8aa0, 0x7fdcff][e[2]] || 0xffffff, 0.4, 6);
+        spawn(14, p.x, p.g + 0.7, p.z, 0, 2, 0, 4, [0, 0xff5d5d, 0x8a8aa0, 0x7fdcff][e[2]] || 0xffffff, 0.4, 6, p.g + 0.03);
       } else if ((e[0] === 'shield' || e[0] === 'block') && shipAt(e[1])) {  // the bubble going up, or taking a hit
         const p = shipAt(e[1]);
-        spawn(e[0] === 'block' ? 34 : 18, p.x, 0.6, p.z, 0, 1.5, 0, e[0] === 'block' ? 8 : 4, 0x7fdcff, 0.5, 2);
+        spawn(e[0] === 'block' ? 34 : 18, p.x, p.g + 0.6, p.z, 0, 1.5, 0, e[0] === 'block' ? 8 : 4, 0x7fdcff, 0.5, 2, p.g + 0.03);
         ships[e[1]].userData.flare = 1;
         if (e[0] === 'block' && e[1] === S.rally.me) GL3.shake(camera, 0.25);
       } else if (e[0] === 'out' && shipAt(e[1])) {  // 💥 knocked out: a puff of dark smoke
         const p = shipAt(e[1]);
-        spawn(30, p.x, 0.5, p.z, 0, 2.5, 0, 3, 0x6c6c80, 1.2, -0.5);
+        spawn(30, p.x, p.g + 0.5, p.z, 0, 2.5, 0, 3, 0x6c6c80, 1.2, -0.5, p.g + 0.03);
         if (e[1] === S.rally.me) GL3.shake(camera, 0.5);
       } else if (e[0] === 'fall' && shipAt(e[1])) {  // 🕳️ into the gap: a burst of smoke and sparks from below
         const p = shipAt(e[1]);
-        spawn(30, p.x, -1, p.z, 0, 4, 0, 3, 0x6c6c80, 1.0, 1);
-        spawn(16, p.x, -1, p.z, 0, 5, 0, 4, 0xff6b3b, 0.6, 8);
+        spawn(30, p.x, p.g - 1, p.z, 0, 4, 0, 3, 0x6c6c80, 1.0, 1, p.g - 6);
+        spawn(16, p.x, p.g - 1, p.z, 0, 5, 0, 4, 0xff6b3b, 0.6, 8, p.g - 6);
         if (e[1] === S.rally.me) GL3.shake(camera, 0.6);
       } else if (e[0] === 'land' && shipAt(e[1])) {
         const p = shipAt(e[1]);
-        spawn(12, p.x, 0.1, p.z, 0, 1, 0, 4, 0xcfe8ff, 0.35, 6);
+        spawn(12, p.x, p.g + 0.1, p.z, 0, 1, 0, 4, 0xcfe8ff, 0.35, 6, p.g + 0.03);
         if (e[1] === S.rally.me) GL3.shake(camera, 0.3);
       } else if (e[0] === 'drop' && shipAt(e[1])) {
         const p = shipAt(e[1]);
-        spawn(8, p.x, 0.3, p.z, 0, 1, 0, 2, 0x8a8aa0, 0.4, 6);
+        spawn(8, p.x, p.g + 0.3, p.z, 0, 1, 0, 2, 0x8a8aa0, 0.4, 6, p.g + 0.03);
       } else if (e[0] === 'bump' && shipAt(e[1]) && shipAt(e[2])) {
         const a = shipAt(e[1]), b = shipAt(e[2]);
-        spawn(20, (a.x + b.x) / 2, 0.5, (a.z + b.z) / 2, 0, 2, 0, 7, 0xcfe8ff, 0.4, 10);
+        spawn(20, (a.x + b.x) / 2, a.g + 0.5, (a.z + b.z) / 2, 0, 2, 0, 7, 0xcfe8ff, 0.4, 10, a.g + 0.03);
         if (e.slice(1).includes(S.rally.me)) GL3.shake(camera, 0.35);
       }
     }
@@ -871,7 +971,8 @@ UI.rally = (() => {
       pickMat.color.setHSL((now / 2500) % 1, 0.85, 0.6); pickMat.emissive.setHSL((now / 2500) % 1, 0.9, 0.35);
       pickups.forEach((g, k) => { g.visible = !!pk[k]; g.rotation.y = now / 400; g.position.y = g.userData.y + 0.12 * Math.sin(now / 250 + k); });
       glints.forEach((g, k) => { g.material.opacity = Math.max(0, Math.sin(now / 380 + k * 1.7)) ** 8; });
-      pylonMat.emissiveIntensity = calm() ? 0.55 : 0.45 + 0.25 * Math.sin(now / 300);
+      pylonMat.color.setScalar(calm() ? 0.9 : 0.75 + 0.25 * Math.sin(now / 300));
+      cheer(now, dt);
       drawMissiles(now); drawMines(now);
       ghostShip.visible = !!gp;
       if (gp) { ghostShip.position.copy(V(gp, 0.45)); ghostShip.rotation.y = Math.atan2(gp.uy, gp.ux); ghostShip.material.opacity = 0.22 + 0.08 * Math.sin(now / 150); }
@@ -881,6 +982,7 @@ UI.rally = (() => {
         if (u.d == null || !dt) u.d = c[1];
         else { const nd = u.d + (c[1] - u.d) * ease(18); u.vd += ((nd - u.d) / dt - u.vd) * ease(8); u.d = nd; }
         const s = sNow(i, now), p = at(s, u.d), boosting = !!c[3];
+        u.ground = p.h;
         u.sink = c[12] ? Math.min(1, (u.sink || 0) + dt * 0.8) : 0;  // knocked out: it settles onto the track
         // 🚧 up a ramp, then the jump's arc from the server (eased between updates); after a fall it pops back
         const air = c[13] || 0;
@@ -898,7 +1000,8 @@ UI.rally = (() => {
         const lean = Math.max(-0.5, Math.min(0.5, -(u.vd * 0.07 + (i === r.me ? steerNow * 0.22 : 0))));
         u.lean += (lean - u.lean) * ease(10); u.lift += ((boosting ? 0.08 : 0) - u.lift) * ease(6); u.flare *= Math.exp(-dt * 4);
         const pitch = Math.atan((hillAt(s + 1) - hillAt(s - 1)) / 2);  // nose up the hills, down over the crests
-        u.tilt.rotation.set(u.lean, 0, u.lift + pitch + 0.03 * Math.sin(now / 260 + i));
+        u.bank = -Math.atan(p.tilt || 0);  // rolled with a banked bend
+        u.tilt.rotation.set(u.lean + u.bank, 0, u.lift + pitch + 0.03 * Math.sin(now / 260 + i));
         u.paint.emissiveIntensity = boosting ? 0.8 : 0.15 + 0.6 * u.flare;
         const k = Math.min(1.4, c[2] / r.top), fl = (0.35 + 0.35 * k + (boosting ? 0.5 : 0) * (0.85 + 0.3 * Math.random())) * (1 - u.sink);
         for (const f of u.flames) f.scale.set(fl, fl * 0.8, 1);
@@ -919,7 +1022,7 @@ UI.rally = (() => {
         }
         if (c[7]) {  // scraping: sparks off the wall it's touching
           const w = V(at(s, Math.sign(u.d) * W), 0.3);
-          spawn(2, w.x, w.y, w.z, vx, 1.5, vz, 3, 0xffa94d, 0.4, 12);
+          spawn(2, w.x, w.y, w.z, vx, 1.5, vz, 3, 0xffa94d, 0.4, 12, w.y - 0.27);
           if (i === r.me) GL3.shake(camera, 0.12);
         }
       });
@@ -938,10 +1041,11 @@ UI.rally = (() => {
         cam.ready = true;
         const fov = 60 + 10 * k + 10 * cam.boost;
         if (Math.abs(camera.fov - fov) > 0.05) { camera.fov = fov; camera.updateProjectionMatrix(); }
-        camera.position.copy(cam.pos); camera.lookAt(cam.look); camera.rotateZ(-u.lean * 0.35);
+        camera.position.copy(cam.pos); camera.lookAt(cam.look); camera.rotateZ(-u.lean * 0.35 - (u.bank || 0) * 0.6);
       } else {
         camera.position.set(0, 95, 55); camera.lookAt(0, 0, 0);
       }
+      sky.position.copy(camera.position);
       GL3.tickShake(camera, dt);
       tickParts(dt);
       renderer.render(scene, camera);

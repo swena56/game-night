@@ -489,6 +489,10 @@ Items that become ✅ move into the per-game plan.
   - ✅ 🏔️ Hills and scenery in the 3D view: gentle rises and dips (drawing only, the race stays flat; level at the line and
     over ramps, gaps and narrows) with embankments down to the ground, glowing pylons along both sides, arches over the
     track with a checkered one at the line, and a ring of mountains fading into the fog. Craft pitch with the slope.
+    ✅ Then: banked bends (the outside edge rises with the curve, up to about 16°, level at the line and over features;
+    craft and camera roll with it, and boost pads lie on the slope), a sky dome glowing violet at the horizon with stars
+    and a ringed planet, clusters of glowing crystals on the ground, and a grandstand at the line whose crowd jumps
+    as craft go by (still with 🧘 calm). Sparks and smoke now start from, and bounce off, the track surface on the hills.
 - 🏒 **Air Hockey:** 2v2 with four mallets. **M**
 - 🎱 **Billiards:** ✅ the 3D table; ✅ a 9-ball variant; ✅ a livelier break, push-outs and match play; ✅ the cue strokes
   and a ⏪ replay; ✅ the aim guide no longer drifts on hard shots near the foot rail (the server now sends exact
