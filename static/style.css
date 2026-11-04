@@ -1515,7 +1515,16 @@ body.focus .sm-stage { height: max(220px, calc(var(--app-h, 100vh) - 215px)); }
 .to-bar { justify-content: center; min-height: 52px; margin-top: 8px; }  /* the chip buttons are 51px */
 .to-dealer .to-cards { min-height: 78px; }  /* a full-size card: the dealer's row doesn't grow on the deal */
 #toNote { min-height: 1.4em; margin: 4px 0 8px; }
-.to-chip { border-radius: 999px; font-weight: 800; padding: 12px 18px; background: radial-gradient(circle, #ffd166, #e09f00); color: #2a1b00; border: 3px dashed #fff8; }
+.to-bar { flex-wrap: wrap; }
+.to-chips, .to-betrow, .to-stake { flex: 1 1 100%; display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; margin: 0; }
+.to-betrow > button { flex: 0 1 auto; }
+.to-betrow .to-deal { min-width: 9em; }
+.to-chip { --chip: #e09f00; border-radius: 999px; font-weight: 800; width: 52px; height: 52px; padding: 0; flex: 0 0 auto; color: #fff; text-shadow: 0 1px 2px #0008;
+  background: radial-gradient(circle, var(--chip) 52%, #fff 53% 58%, var(--chip) 59%); border: 3px dashed #fffa; transition: transform .1s; }
+.to-chip:not(:disabled):active { transform: translateY(2px) scale(.95); }
+.to-chip:disabled { opacity: .35; }
+.to-chip.c5 { --chip: #c0392b; } .to-chip.c10 { --chip: #2563c9; } .to-chip.c25 { --chip: #1e8a4c; }
+.to-chip.c50 { --chip: #d97706; } .to-chip.c100 { --chip: #222; }
 
 /* ultimate tic-tac-toe */
 .ut { width: min(100%, 520px, calc(var(--app-h, 100vh) - 190px)); min-width: min(100%, 280px); margin: 0 auto; }
