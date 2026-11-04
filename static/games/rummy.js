@@ -31,7 +31,14 @@ UI.rummy = (() => {
     $('ruSet').onclick = () => stage('set');
     $('ruRun').onclick = () => stage('run');
     $('ruLay').onclick = () => ctx.quiet(ctx.act('laydown', { groups: staged.map(([kind, cards]) => ({ kind, cards })) }));
-    $('ruThrow').onclick = () => { if (sel.length === 1) { const card = sel[0]; sel = []; ctx.quiet(ctx.act('discard', { card })); } };
+    $('ruThrow').onclick = () => {
+      if (sel.length !== 1) return;
+      const card = sel[0]; sel = [];
+      // the card leaves the hand and sails onto the discard pile
+      const from = [...$('ruHand').children].find((b) => b.dataset.card === card)?.firstElementChild;
+      Kit.fly(from, $('ruDiscard').querySelector('.pc') || $('ruDiscard'), { ms: 380, remove: false });
+      ctx.quiet(ctx.act('discard', { card }));
+    };
   }
 
   // ---------- hand order: a multiset kept in step with the server's hand (two decks, so cards repeat)
@@ -140,6 +147,15 @@ UI.rummy = (() => {
     deck.disabled = dis.disabled = !myTurn || r.drawn;
     if (!r.top) dis.disabled = true;
 
+    // cards laid off onto a meld since the last look glow for a moment; a player going out gets a callout
+    const added = r.melds.map((m, idx) => {
+      const was = [...(meldCards[idx] || [])], fresh = new Set();
+      if (meldCards[idx]) m.cards.forEach((x, k) => { const at = was.indexOf(x); if (at >= 0) was.splice(at, 1); else fresh.add(k); });
+      return fresh;
+    });
+    meldCards = r.melds.map((m) => [...m.cards]);
+    if (shownCounts && shownNo === r.handNo) r.counts.forEach((n, i) => { if (!n && shownCounts[i]) Kit.callout(i === me ? '🃏 You go out!' : `🃏 ${name(i)} goes out!`, i === me ? 'gold' : 'cool', { sound: i === me ? 'fanfare' : 'sweep', ms: 1600 }); });
+    shownCounts = [...r.counts];
     const melds = $('ruMelds'); melds.innerHTML = '';
     if (!r.melds.length) melds.append(ctx.el('p', 'hint', 'No melds on the table yet.'));
     r.melds.forEach((m, idx) => {
@@ -147,7 +163,7 @@ UI.rummy = (() => {
       if (idx >= freshFrom) b.style.animationDelay = (idx - freshFrom) * 0.12 + 's';
       const who = ctx.el('small', '', `${name(m.owner)} · ${m.kind}`);
       const row = ctx.el('span', 'ru-cards');
-      m.cards.forEach((x) => row.append(face(x, 'small')));
+      m.cards.forEach((x, k) => row.append(face(x, 'small' + (added[idx]?.has(k) ? ' laidoff' : ''))));
       b.append(who, row);
       b.disabled = !(myTurn && r.drawn && r.down[me] && sel.length);
       b.onclick = () => { const cards = sel; sel = []; ctx.quiet(ctx.act('add', { meld: idx, cards })); };
@@ -180,7 +196,7 @@ UI.rummy = (() => {
   // #31: cards new to the hand since it was last drawn are dealt in from the deck, one after another (the
   // whole hand at the start of each deal, the drawn card on a turn). A multiset: two decks repeat cards.
   // Opening the page mid-hand shows the hand as it is, unless it was only just dealt.
-  let shown = null, shownNo = null, shownTop, dealing = [], dealStart = 0, shownMelds = null;  // dealing: [{card, delay}] from dealStart
+  let shown = null, shownNo = null, shownTop, dealing = [], dealStart = 0, shownMelds = null, meldCards = [], shownCounts = null;  // dealing: [{card, delay}] from dealStart
   function freshCards(r) {
     if (shownNo !== r.handNo) {
       const n = r.counts.length, size = r.handNo <= 3 ? 10 : 12;
@@ -251,7 +267,7 @@ UI.rummy = (() => {
     });
   }
 
-  function unmount() { drag?.ghost?.remove(); drag = null; shown = shownNo = null; shownTop = undefined; dealing = []; }
+  function unmount() { drag?.ghost?.remove(); drag = null; shown = shownNo = null; shownTop = undefined; dealing = []; meldCards = []; shownCounts = null; }
 
   return { mount, render, unmount };
 })();

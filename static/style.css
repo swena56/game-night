@@ -2218,3 +2218,7 @@ body.calm .cb-plus { display: none; }
 .ld-rung.ghost .ld-tile { background: none; border: 2px dashed #ffffff40; color: #ffffff60; box-shadow: none; }
 .ld-rung.ghost .ld-tile.peek { border-color: #ffd166; color: #ffd166; animation: ldPeek .8s ease-in-out infinite alternate; }
 @keyframes ldPeek { to { box-shadow: 0 0 12px #ffd166; } }
+
+/* contract rummy: a card laid off onto a meld lands with a glow */
+.ru-cards .pc.laidoff { animation: ruLaid 1.4s ease-out; }
+@keyframes ruLaid { 0% { transform: translateY(-14px) scale(1.15); box-shadow: 0 0 0 3px #ffd166, 0 0 16px #ffd166; } 30% { transform: none; } 100% { box-shadow: 0 0 0 0 #ffd16600; } }
