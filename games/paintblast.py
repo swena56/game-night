@@ -374,6 +374,8 @@ class PaintBlast(Game):
             "k": self.tick, "st": self.stage, "rd": self.round,
             "t": "".join(".#+"[v] for v in self.tiles), "c": self.paint.hex(),
             "b": [[c, b[0], b[1]] for c, b in self.bombs.items()],
+            # where the bombs will blast and in how many ticks (the bots' own map), so the arena can warn (#6)
+            "w": [[c, f] for c, f in self.danger().items() if f > 0] if self.bombs else [],
             "f": [[c, b[1]] for c, b in self.burn.items()],
             "i": [[c, kind] for c, kind in self.items.items()],
             "p": [[self.pos[i], self.stun[i], self.shield[i], self.moved[i], self.maxb[i], self.reach[i],

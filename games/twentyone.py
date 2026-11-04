@@ -1,6 +1,6 @@
-"""Twenty-One: the traditional casino card game, everyone against a dealer bot.
+"""Blackjack (Twenty-One): the casino card game, everyone against a dealer bot.
 
-Each hand: everyone bets at once, then takes turns to hit, stand or double down (one card, doubled
+Each hand: everyone builds a bet from chips (any multiple of 5 up to their stack) at once, then takes turns to hit, stand or double down (one card, doubled
 bet) on two cards, or split a pair into two hands (up to four). Go over 21 and you bust. The dealer then reveals the hole card and draws to 17
 (standing on every 17). Beat the dealer and you win your bet; a two-card 21 pays 3 to 2; a tie gets
 your bet back. Split aces get one card each, and a 21 after a split pays even money. Four decks,
@@ -14,7 +14,8 @@ from .base import Game, GameError
 RANKS = "A23456789TJQK"
 SUITS = "SHDC"
 START_CHIPS = 100
-BETS = (5, 10, 25)
+BETS = (5, 10, 25, 50, 100)  # the chips a bet is built from
+MIN_BET = 5
 MAX_HANDS = 4      # a seat can split up to three times
 DEALER_STEP = 0.9   # seconds between dealer cards
 SETTLE_SECS = 3.5   # pause on the results
@@ -44,15 +45,15 @@ class TwentyOne(Game):
     id = "twentyone"
     category = "dice"
     howto = [
-        "Everyone bets at once, then plays against the dealer: Hit for a card, Stand to stop, or Double (one card, double bet) on your first two.",
+        "Everyone stacks up a bet at once (tap chips, then Deal; ↺ repeats your last bet), then plays against the dealer: Hit for a card, Stand to stop, or Double (one card, double bet) on your first two.",
         "Two cards of the same value? ✂️ Split them into two hands, each with its own bet (up to four hands). Split aces get one card each.",
         "Get closer to 21 than the dealer without going over. Picture cards are 10, aces 1 or 11.",
         "The dealer draws to 17. Beat them to win your bet; a two-card 21 pays 3 to 2; a tie gives your bet back.",
         "Most chips after the last hand wins. Alone, finish ahead of your starting 100.",
     ]
-    name = "Twenty-One"
+    name = "Blackjack"
     icon = "♦️"
-    blurb = "The classic against-the-dealer card game: hit, stand, double or split, and leave with the most chips."
+    blurb = "Twenty-One against the dealer: build your bet, then hit, stand, double or split, and leave with the most chips."
     min_players = 1
     max_players = 6
     settings_schema = {
@@ -67,7 +68,8 @@ class TwentyOne(Game):
         self.chips = [START_CHIPS] * len(seated)
         self.shoe = []
         self.hand_no = 0
-        self.room.add_log(f"♦️ Twenty-One! {self.s['hands']} hands, {START_CHIPS} chips each.", "big")
+        self.last_bet = [0] * len(seated)
+        self.room.add_log(f"♦️ Blackjack! {self.s['hands']} hands, {START_CHIPS} chips each.", "big")
         self.new_hand()
 
     def __setstate__(self, state):  # games saved before splitting kept one card list per seat
@@ -75,6 +77,7 @@ class TwentyOne(Game):
             state["hands"] = [[{"cards": c, "bet": b, "done": d, "res": None}] if c else []
                               for c, b, d in zip(state.pop("cards"), state["bets"], state.pop("done"))]
             state["cur"] = [0] * len(state["hands"])
+        state.setdefault("last_bet", list(state.get("bets", [])))
         self.__dict__.update(state)
 
     def pl(self, i):
@@ -110,8 +113,14 @@ class TwentyOne(Game):
 
     def bet(self, i, amount):
         self.bets[i] = min(amount, self.chips[i])
+        self.last_bet[i] = self.bets[i]
         if all(self.bets[j] or not self.live(j) for j in range(len(self.seats))):
             self.deal()
+
+    def valid_bet(self, i, amount):
+        if not isinstance(amount, int) or isinstance(amount, bool) or amount <= 0 or amount > self.chips[i]:
+            return False
+        return amount == self.chips[i] or (amount >= MIN_BET and amount % MIN_BET == 0)  # all-in is always allowed
 
     def deal(self):
         n = len(self.seats)
@@ -124,13 +133,13 @@ class TwentyOne(Game):
             self.dealer.append(self.draw())
         self.stage = "play"
         if natural(self.dealer):
-            self.room.add_log(f"😮 The dealer has twenty-one: {' '.join(pretty(c) for c in self.dealer)}.", "power")
+            self.room.add_log(f"😮 The dealer has blackjack: {' '.join(pretty(c) for c in self.dealer)}.", "power")
             return self.settle()
         for i in range(n):
             if self.bets[i] and natural(self.hands[i][0]["cards"]):
                 self.hands[i][0]["done"] = True
                 p = self.pl(i)
-                self.room.add_log(f"🎉 {p.name if p else '?'} has twenty-one!", "power")
+                self.room.add_log(f"🎉 {p.name if p else '?'} has blackjack!", "power")
         self.next_player(-1)
 
     # -- playing
@@ -253,7 +262,7 @@ class TwentyOne(Game):
                 if t > 21:
                     dh, text = -b, "bust"
                 elif nat and not dnat:
-                    dh, text = b * 3 // 2, "twenty-one!"
+                    dh, text = b * 3 // 2, "blackjack!"
                 elif dnat and not nat:
                     dh, text = -b, "lost"
                 elif d > 21 or t > d:
@@ -302,8 +311,10 @@ class TwentyOne(Game):
             amount = a.get("amount")
             if self.stage != "bet" or self.bets[i]:
                 raise GameError("Bets are in.")
-            if amount not in BETS or not self.chips[i]:
-                raise GameError("Bet 5, 10 or 25.")
+            if not self.chips[i]:
+                raise GameError("You're out of chips.")
+            if not self.valid_bet(i, amount):
+                raise GameError(f"Bet a multiple of {MIN_BET}, up to your {self.chips[i]} chips.")
             return self.bet(i, amount)
         if t in ("hit", "stand", "double", "split"):
             self.require_turn(p)
@@ -331,7 +342,7 @@ class TwentyOne(Game):
         if self.stage == "bet":
             for i in range(len(self.seats)):
                 if self.live(i) and not self.bets[i]:
-                    self.bet(i, BETS[0] if not self.auto(i) else self.bot_bet(i))
+                    self.bet(i, self.bot_bet(i) if self.auto(i) else (self.last_bet[i] or MIN_BET))  # the clock repeats your last bet
             return
         i = self.seats.index(r.turn)
         r.add_log(f"⏰ {self.pl(i).name} ran out of time and stands.", "power")
@@ -375,7 +386,7 @@ class TwentyOne(Game):
             "seats": self.seats, "me": i, "stage": self.stage, "hand": self.hand_no, "hands": self.s["hands"],
             "chips": self.chips, "bets": self.bets, "seatHands": hands, "cur": self.cur, "dealer": dealer,
             "dealerTotal": total(self.dealer)[0] if reveal and self.dealer else (total(self.dealer[:1])[0] if self.dealer else 0),
-            "result": self.result, "canDouble": mine and self.can_double(i), "canSplit": mine and self.can_split(i), "betOptions": list(BETS),
+            "result": self.result, "lastBets": self.last_bet, "minBet": MIN_BET, "canDouble": mine and self.can_double(i), "canSplit": mine and self.can_split(i), "betOptions": list(BETS),
         }}
 
     # -- bots
@@ -414,8 +425,10 @@ class TwentyOne(Game):
     def bot_bet(self, i):
         lv = self.level(i)
         if lv == "easy":
-            return random.choice(BETS)
-        return 10 if self.chips[i] >= 40 or lv == "normal" else 5
+            return random.choice(BETS[:3])
+        if lv == "hard":  # about a tenth of the stack, in fives
+            return max(MIN_BET, min(self.chips[i], self.chips[i] // 10 // MIN_BET * MIN_BET))
+        return min(self.chips[i], 10)
 
     def bot_move(self, i, level, split=True):
         cards = self.hand(i)["cards"]

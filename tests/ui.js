@@ -289,8 +289,11 @@ const MOVES = {
     if (t.length) t[0].dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
   },
   twentyone(d) {
+    const deal = d.querySelector('.to-deal:not(:disabled)');
+    if (deal && Math.random() < 0.6) return click(deal);
     const chips = [...d.querySelectorAll('.to-chip:not(:disabled)')];
     if (chips.length) return click(pick(chips));
+    if (deal) return click(deal);
     click(pick([...d.querySelectorAll('#toBar button:not(:disabled)')]));
   },
   rummy(d, S, n, w) {

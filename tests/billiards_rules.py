@@ -209,5 +209,11 @@ g.pos = {0: (50, 50), 8: (100, 50)}
 shoot(g, bo, pocket=0)  # Bo's group is cleared: the 8 in the called pocket wins
 check("one rack: the 8 ends the game at once", room.phase == "over" and room.winner == "b")
 
+# ---------- the view sends exact ball positions: the aim guide re-runs the shot from them
+g, room, a, bo = new_game("8")
+g.pos[1] = (192.236158970, 42.959114867)
+v = dict((n, (x, y)) for n, x, y in g.view(a)["billiards"]["balls"])
+check("the view sends ball positions unrounded", v[1] == g.pos[1], f"{v[1]}")
+
 print(f"\n{len(fails)} failed" if fails else "\nall passed")
 sys.exit(1 if fails else 0)

@@ -386,7 +386,7 @@ class Billiards(Game):
     max_players = 2
     settings_schema = {
         "rules": ("Game", [("8", "🎱 8-ball"), ("9", "9️⃣ 9-ball")], "8"),
-        "guide": ("Aim guide", [("full", "🎯 Full (where both balls go)"), ("short", "Short"), ("off", "Off")], "full"),
+        "guide": ("Aim guide", [("full", "🎯 Full (where both balls go)"), ("light", "Light (ghost ball and a hint of the angle)"), ("short", "Short"), ("off", "Off")], "full"),
         "call8": ("The 8 ball", [(True, "📣 Call its pocket"), (False, "Any pocket")], True),
         "cloth": ("Cloth", [("classic", "🐢 Classic (slow, short rolls)"), ("fast", "🏎️ Fast (rolls like a real table)")], "classic"),
         "race": ("Match", [(1, "1 rack"), (2, "🏁 Race to 2"), (3, "🏁 Race to 3"), (5, "🏁 Race to 5")], 1),
@@ -734,7 +734,9 @@ class Billiards(Game):
             shot["age"] = max(0.0, time.time() - self.shot["at"])
         return {"billiards": {
             "W": TW, "H": TH, "R": R, "headX": HEAD_X, "pockets": [[x, y, c] for x, y, c in POCKETS],
-            "balls": [[n, round(x, 2), round(y, 2)] for n, (x, y) in sorted(self.pos.items())],
+            # exact positions: the aim guide re-runs the shot from them, and a ball rounded to 0.01 sent a hard
+            # shot near the foot rail almost a unit off the server's path
+            "balls": [[n, x, y] for n, (x, y) in sorted(self.pos.items())],
             "rules": "9" if self.nine else "8", "groups": self.groups, "inHand": self.in_hand, "breaking": self.breaking,
             "targets": self.legal_targets(self.room.turn) if self.room.turn else [],
             "shot": shot, "last": self.last, "guide": self.s["guide"],

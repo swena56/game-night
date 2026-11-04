@@ -7,14 +7,17 @@ HAIR_COLORS = ["black", "brown", "blonde", "red", "white", "blue"]
 EYE_COLORS = ["brown", "blue", "green"]
 SHIRTS = ["red", "blue", "green", "yellow", "purple"]
 # Traits players can ask about. Skin tone and backgrounds are cosmetic only.
-ASKABLE = ["hair_color", "hair_style", "eye_color", "glasses", "hat",
+ASKABLE = ["gender", "hair_color", "hair_style", "eye_color", "glasses", "hat",
            "facial_hair", "earrings", "expression", "shirt"]
-NAMES = [
-    "Ada", "Bram", "Cleo", "Dax", "Esme", "Finn", "Gus", "Hana", "Ivo", "Juno",
-    "Kai", "Lula", "Milo", "Nell", "Otto", "Pia", "Quin", "Rosa", "Sol", "Tess",
-    "Uma", "Vik", "Wren", "Xan", "Yara", "Zed", "Bea", "Cyd", "Dot", "Eli",
-    "Fern", "Hugo", "Iris", "Jax", "Kit", "Lev", "Mae", "Nico", "Olive", "Pip",
-]
+# Names follow the face (#15): women are drawn with lashes, blush and lip colour; only men have facial hair.
+NAMES = {
+    "woman": ["Ada", "Cleo", "Esme", "Hana", "Juno", "Lula", "Nell", "Pia", "Rosa", "Tess", "Uma", "Wren",
+              "Yara", "Bea", "Dot", "Fern", "Iris", "Mae", "Olive", "Ivy", "Zoe", "Nora", "Lily", "Ruby",
+              "Gwen", "Faye", "Opal", "Maya", "Lena", "Tara", "Vera", "Elsa"],
+    "man": ["Bram", "Dax", "Finn", "Gus", "Ivo", "Kai", "Milo", "Otto", "Quin", "Sol", "Vik", "Xan",
+            "Zed", "Cyd", "Eli", "Hugo", "Jax", "Lev", "Nico", "Pip", "Kit", "Abe", "Ben", "Cal",
+            "Dev", "Ezra", "Gil", "Hal", "Jon", "Leo", "Max", "Rex"],
+}
 
 
 def weighted(rng, pairs):
@@ -26,13 +29,15 @@ def make_face(rng):
     # Under a hat only styles with visible sides are allowed, so every trait stays readable.
     styles = ["short", "long", "curly"] if hat != "none" else ["bald", "short", "long", "curly", "mohawk", "bun"]
     hair_style = rng.choice(styles)
+    gender = rng.choice(["woman", "man"])
     return {
+        "gender": gender,
         "hair_color": "none" if hair_style == "bald" else rng.choice(HAIR_COLORS),
         "hair_style": hair_style,
         "eye_color": rng.choice(EYE_COLORS),
         "glasses": weighted(rng, [("none", 5), ("round", 2), ("shades", 1)]),
         "hat": hat,
-        "facial_hair": weighted(rng, [("none", 5), ("mustache", 2), ("beard", 2)]),
+        "facial_hair": "none" if gender == "woman" else weighted(rng, [("none", 3), ("mustache", 2), ("beard", 2)]),
         "earrings": weighted(rng, [("no", 3), ("yes", 1)]),
         "expression": rng.choice(["smile", "neutral", "surprised"]),
         "shirt": rng.choice(SHIRTS),
@@ -44,7 +49,7 @@ def make_face(rng):
 
 def make_board(size, rng):
     faces, seen = [], set()
-    names = rng.sample(NAMES, size)
+    pools = {g: rng.sample(ns, len(ns)) for g, ns in NAMES.items()}
     while len(faces) < size:
         face = make_face(rng)
         key = tuple(face[a] for a in ASKABLE)
@@ -52,7 +57,7 @@ def make_board(size, rng):
             continue
         seen.add(key)
         face["id"] = len(faces)
-        face["name"] = names[len(faces)]
+        face["name"] = pools[face["gender"]].pop()
         faces.append(face)
     return faces
 
@@ -63,6 +68,8 @@ def _catalog():
     def add(group, attr, value, text):
         items.append({"id": f"{attr}:{value}", "group": group, "text": text})
 
+    add("Person", "gender", "woman", "is a woman")
+    add("Person", "gender", "man", "is a man")
     for c in HAIR_COLORS:
         add("Hair", "hair_color", c, f"has {c} hair")
     for v, t in [("bald", "is bald"), ("short", "has short hair"), ("long", "has long hair"),
@@ -91,9 +98,10 @@ QTEXT = {q["id"]: q["text"] for q in CATALOG}
 
 def holds(face, qid):
     attr, value = qid.split(":", 1)
+    have = face.get(attr, "none")  # boards saved before a trait existed
     if value == "any":
-        return face[attr] != "none"
-    return face[attr] == value
+        return have != "none"
+    return have == value
 
 
 def evaluate(face, q):
@@ -117,7 +125,7 @@ def yn(ans):
 
 def reveal_trait(face, attr):
     """Turn one true trait of a face into a (question, answer) pair, or None."""
-    value = face[attr]
+    value = face.get(attr, "none")
     if f"{attr}:{value}" in QTEXT:
         return {"a": f"{attr}:{value}"}, True
     if value == "none" and f"{attr}:any" in QTEXT:

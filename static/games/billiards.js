@@ -430,6 +430,18 @@ UI.billiards = (() => {
     drawStick(g, cue, aim, power, english, rpx);
     if (guide === 'off') return;
     const full = guide === 'full';
+    if (guide === 'light') {  // #50: the ghost ball where the cue ball first meets a ball, and a short hint of the angle
+      g.strokeStyle = '#ffffffaa'; g.lineWidth = 1.2 * lw; g.setLineDash([5 * lw, 4 * lw]);
+      g.beginPath(); g.moveTo(sx, sy); g.lineTo(ex, ey); g.stroke(); g.setLineDash([]);
+      g.strokeStyle = '#ffffff99'; g.lineWidth = 1 * lw;
+      g.beginPath(); g.arc(ex, ey, rpx, 0, 7); g.stroke();
+      if (ball) {
+        const [bx, by] = toScreen(...ball), nx = bx - ex, ny = by - ey, n = Math.hypot(nx, ny) || 1;
+        g.strokeStyle = '#ffd166aa'; g.lineWidth = 1.4 * lw;
+        g.beginPath(); g.moveTo(bx, by); g.lineTo(bx + (nx / n) * 16 * lw, by + (ny / n) * 16 * lw); g.stroke();
+      }
+      return;
+    }
     if (!full) {  // the short guide: just which way the cue points
       const f = Math.min(1, (40 * lw) / Math.hypot(ex - sx, ey - sy || 1));
       g.strokeStyle = '#ffffffaa'; g.lineWidth = 1.2 * lw; g.setLineDash([5 * lw, 4 * lw]);
