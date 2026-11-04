@@ -2138,3 +2138,22 @@ body.calm .cb-plus { display: none; }
 .to-pairbtn.on { background: #ffd16633; box-shadow: inset 0 0 0 2px #ffd166; }
 .to-pair { font-size: 11px; font-weight: 700; color: var(--muted); } .to-pair.win { color: #ffd166; } .to-pair.lose { opacity: .6; }
 .to-paychips { position: absolute; left: 50%; bottom: 8px; }
+
+/* unmask: a flipped face turns over to show a card back; the latest answer as a speech bubble; the shrinking line-up */
+.card::before { content: '🎭'; position: absolute; inset: 0; z-index: 2; display: grid; place-items: center; font-size: calc(var(--card, 92px) * .4);
+  background: repeating-linear-gradient(45deg, #3b2a6b 0 8px, #2c1f52 8px 16px); border-radius: inherit; opacity: 0; transition: opacity .2s .12s; pointer-events: none; }
+.card.down { transform: rotateX(180deg) scale(.9); filter: none; opacity: .5; }
+.card.down::before { opacity: 1; transform: rotateX(180deg); }
+.card.turning { transition: transform .45s cubic-bezier(.3, 1.5, .5, 1), opacity .45s; }
+.um-bubble { position: fixed; z-index: 30; left: 50%; top: calc(var(--bar-h, 52px) + 64px); transform: translateX(-50%); width: max-content; max-width: calc(100vw - 32px);
+  display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-radius: 16px; background: #fff; color: #222; font-weight: 700; box-shadow: 0 4px 14px #0008; pointer-events: none; }
+.um-bubble::after { content: ''; position: absolute; left: 24px; bottom: -8px; border: 8px solid transparent; border-bottom: 0; border-top-color: #fff; }
+.um-bubble b { padding: 2px 8px; border-radius: 8px; color: #fff; transform: rotate(-6deg); }
+.um-bubble b.yes { background: var(--ok); } .um-bubble b.no { background: var(--danger); }
+.um-bubble.pop { animation: umPop .4s cubic-bezier(.2, 1.5, .4, 1); }
+@keyframes umPop { from { transform: translateX(-50%) scale(.6) translateY(10px); opacity: 0; } }
+.um-lineup { display: flex; align-items: center; margin: -32px 0 8px; min-height: 22px; max-width: calc(100% - 190px); overflow: hidden; }
+.um-lineup .n { min-width: 26px; margin-right: 4px; text-align: center; font-size: 15px; color: #ffd166; }
+.um-mini { flex: none; width: 20px; height: 20px; margin-left: -7px; border-radius: 50%; overflow: hidden; background: #fff; box-shadow: 0 0 0 1.5px var(--bg, #16131f); }
+.um-mini:nth-child(2) { margin-left: 0; }
+.um-mini svg { width: 100%; height: 100%; display: block; }

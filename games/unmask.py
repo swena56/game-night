@@ -163,7 +163,8 @@ class Unmask(Game):
     blurb = "Ask yes/no questions to find the hidden face. Power cards, private answers, ghosts."
     min_players = 1
     max_players = 6
-    badges = {**Game.badges, "sharp": ("🔍", "Sharp eye", "Unmask the right face after three questions or fewer")}
+    badges = {**Game.badges, "sharp": ("🔍", "Sharp eye", "Unmask the right face after three questions or fewer"),
+              "bold": ("🎲", "Bold guess", "Unmask the right face with a third of your board still face-up")}
     settings_schema = {
         "mode": ("Mode", [("duel", "⚔️ Duel (1v1)"), ("manhunt", "🕵️ Manhunt (1–6)")], "duel"),
         "size": ("Board", [(16, "16 faces"), (24, "24 faces"), (30, "30 faces")], 24),
@@ -276,6 +277,7 @@ class Unmask(Game):
             if face == opp.g.secret:
                 if len(getattr(p.g, "learned", [])) <= 3:
                     self.award(p, "sharp")
+                self.bold(p)
                 r.finish(p, f"🎯 {p.name} unmasked {opp.name}: it was {truth}! {p.name} wins!")
             else:
                 r.finish(opp, f"💥 {p.name} accused {name}, but it was {truth}. {opp.name} wins!")
@@ -283,6 +285,7 @@ class Unmask(Game):
         if face == self.culprit:
             if len(getattr(p.g, "learned", [])) <= 3:
                 self.award(p, "sharp")
+            self.bold(p)
             r.finish(p, f"🎯 {p.name} caught the culprit, {name}! {p.name} wins!")
             return
         p.eliminated = True
@@ -295,6 +298,13 @@ class Unmask(Game):
             r.finish(left[0], f"🏆 {left[0].name} is the last hunter standing! (It was {culprit}.)")
         else:
             r.advance()
+
+    def bold(self, p):
+        """A right accusation with a third of your board still face-up is a bold guess."""
+        up = len(self.board) - len(getattr(p.g, "flipped", ()))
+        if up * 3 >= len(self.board):
+            self.award(p, "bold")
+            self.room.add_log(f"🎲 A bold guess — {p.name} still had {up} faces up!", "power")
 
     def use_card(self, p, card):
         r = self.room
