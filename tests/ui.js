@@ -146,13 +146,21 @@ const MOVES = {
     c.getBoundingClientRect = () => ({ left: 0, top: 0, width: 320, height: 512 });
     for (const type of ['pointerdown', 'pointermove']) c.dispatchEvent(new w.MouseEvent(type, { clientX: 40 + Math.random() * 240, clientY: 280 + Math.random() * 220, buttons: 1 }));
   },
-  riders(d, S, n, w) {  // mix pad taps, swipes and keys
-    if (n % 3 === 0) return d.querySelectorAll('#lrPad button[data-d]')[n % 4]?.dispatchEvent(new w.MouseEvent('pointerdown', { bubbles: true }));
-    if (n % 3 === 1) return w.dispatchEvent(new w.KeyboardEvent('keydown', { code: pick(['ArrowLeft', 'ArrowRight', 'KeyW', 'Space']) }));
-    const st = d.querySelector('#lrStage');
-    st.dispatchEvent(new w.MouseEvent('pointerdown', { clientX: 100, clientY: 100 }));
-    st.dispatchEvent(new w.MouseEvent('pointermove', { clientX: 100 + pick([-40, 40, 0]), clientY: 100 + pick([-40, 40]) }));
-    st.dispatchEvent(new w.MouseEvent('pointerup', {}));
+  riders(d, S, n, w) {  // mix taps (relative-turn mode), swipes anywhere, the boost button and keys
+    const root = d.querySelector('#lrRoot');
+    if (n % 4 === 0) {
+      const tap = d.querySelector('#lrTap');
+      if (!tap.checked) { tap.checked = true; tap.dispatchEvent(new w.Event('change', { bubbles: true })); }
+      root.getBoundingClientRect = () => ({ left: 0, top: 0, width: 320, height: 480 });
+      return root.dispatchEvent(new w.MouseEvent('pointerdown', { bubbles: true, clientX: pick([40, 280]), clientY: 200 }));
+    }
+    if (n % 4 === 1) return w.dispatchEvent(new w.KeyboardEvent('keydown', { code: pick(['ArrowLeft', 'ArrowRight', 'KeyW', 'KeyQ', 'KeyE', 'Space']) }));
+    if (n % 4 === 2) return d.querySelector('#lrBoost')?.dispatchEvent(new w.MouseEvent('pointerdown', { bubbles: true }));
+    const tap = d.querySelector('#lrTap');
+    if (tap.checked) { tap.checked = false; tap.dispatchEvent(new w.Event('change', { bubbles: true })); }
+    root.dispatchEvent(new w.MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 100 }));
+    root.dispatchEvent(new w.MouseEvent('pointermove', { bubbles: true, clientX: 100 + pick([-40, 40, 0]), clientY: 100 + pick([-40, 40]) }));
+    root.dispatchEvent(new w.MouseEvent('pointerup', { bubbles: true }));
   },
   tictactoe(d) { click(pick(enabled(d, '.ttt-cell'))); },
   heist(d) { click(pick(enabled(d, '.h-choice'))); },

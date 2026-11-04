@@ -15,6 +15,9 @@ from .base import Game, GameError
 DIRS = [(0, -1), (1, 0), (0, 1), (-1, 0)]  # up, right, down, left (screen directions)
 COUNTDOWN, ROUND_PAUSE = 3.0, 2.8
 BOOSTS, BOOST_TICKS = 3, 12
+GRIND_FULL = 25    # ticks spent riding right beside a wall or trail that earn a boost back
+RESPAWN = 1.5      # seconds between a crash and riding again, while lives remain
+GHOST_TICKS = 2    # a respawned rider holds still this long so everyone sees it appear
 SYNC_EVERY = 3.0   # seconds between full-view resyncs while riding
 TAIL = 6           # recent cells per rider in each fast update (covers missed updates and boosts)
 
@@ -25,12 +28,13 @@ class Riders(Game):
     howto = [
         "Your light bike never stops, and leaves a wall of light behind it.",
         "Swipe, use the arrows or the arrow keys to turn. Don't hit any wall — yours included.",
-        "⚡ Boost (3 per round) doubles your speed for a moment.",
-        "Last rider standing wins the round. First to the target wins the match.",
+        "⚡ Boost (3 per round) doubles your speed for a moment. Ride right beside a wall or trail to grind a boost back.",
+        "Crash with lives left and your trail vanishes — you respawn in open space a moment later.",
+        "Last rider with lives left wins the round. First to the target wins the match.",
     ]
     name = "Light Riders"
     icon = "🏍️"
-    blurb = "Neon light-bike duels. Box your rivals in with your trail — last rider riding wins."
+    blurb = "Neon light-bike duels. Box your rivals in, grind trails for boosts — last rider riding wins."
     min_players = 2
     max_players = 6
     replayable = False
@@ -38,6 +42,7 @@ class Riders(Game):
         "target": ("Rounds to win", [(3, "3"), (2, "2"), (5, "5")], 3),
         "arena": ("Arena", [(44, "Medium"), (32, "Small"), (60, "Large")], 44),
         "speed": ("Speed", [(10, "Normal"), (7, "Chill"), (14, "Fast")], 10),
+        "lives": ("Lives", [(3, "3"), (1, "1 (classic)"), (5, "5")], 3),
     }
 
     # -- setup
@@ -63,6 +68,8 @@ class Riders(Game):
         self.alive = [True] * k
         self.dirs, self.queue = [0] * k, [deque() for _ in range(k)]
         self.boosts, self.boosting = [BOOSTS] * k, [0] * k
+        self.lives = [self.s.get("lives", 3)] * k
+        self.respawn_at, self.ghost, self.grind = [None] * k, [0] * k, [0] * k
         self.tick = 0
         # spread riders round a circle, each facing the nearest axis toward the centre
         offset = self.rng.random() * 6.283
@@ -132,8 +139,11 @@ class Riders(Game):
                 self.new_round(now)
                 return True
             return False
-        self.acc += dt * self.s["speed"]
         changed = False
+        for i, at in enumerate(self.respawn_at):
+            if at is not None and now >= at:
+                changed |= self.respawn(i)
+        self.acc += dt * self.s["speed"]
         while self.acc >= 1 and self.stage == "ride":
             self.acc -= 1
             changed |= self.step(now)
@@ -158,8 +168,12 @@ class Riders(Game):
             if self.queue[i]:
                 self.dirs[i] = self.queue[i].popleft()
         crashed = set()
+        holding = {i for i in range(len(self.seats)) if self.ghost[i]}
+        for i in holding:
+            self.ghost[i] -= 1
         for sub in range(2):
-            movers = [i for i in range(len(self.seats)) if self.alive[i] and i not in crashed and (sub == 0 or self.boosting[i])]
+            movers = [i for i in range(len(self.seats))
+                      if self.alive[i] and i not in crashed and i not in holding and (sub == 0 or self.boosting[i])]
             if not movers:
                 continue
             targets = {}
@@ -181,19 +195,85 @@ class Riders(Game):
         for i in range(len(self.seats)):
             if self.boosting[i]:
                 self.boosting[i] -= 1
+            elif self.alive[i] and i not in crashed and i not in holding and self.grinding(i):
+                self.grind[i] += 1
+                if self.grind[i] >= GRIND_FULL:
+                    self.grind[i] = 0
+                    self.boosts[i] = min(BOOSTS, self.boosts[i] + 1)
         if not crashed:
             return False
         names = []
         for i in crashed:
             self.alive[i] = False
+            self.boosting[i] = self.grind[i] = 0
+            self.queue[i].clear()
+            self.lives[i] -= 1
             p = self.room.players.get(self.seats[i])
-            names.append(p.name if p else "?")
+            name = p.name if p else "?"
+            if self.lives[i] > 0:
+                for c in self.trails[i]:  # the wreck clears away, freeing its space
+                    self.grid[c] = 0
+                self.trails[i] = []
+                self.respawn_at[i] = now + RESPAWN
+                name += f" ({self.lives[i]} ♥ left)"
+            else:
+                name += " (out)"
+            names.append(name)
         self.room.add_log(f"💥 {' and '.join(names)} crashed!", "power")
         self.check_round(now)
         return True
 
+    def grinding(self, i):
+        """True when the rider's head is right beside a wall or any trail other than the cell it came from."""
+        t = self.trails[i]
+        head, prev = t[-1], (t[-2] if len(t) > 1 else None)
+        x, y = head % self.n, head // self.n
+        for dx, dy in DIRS:
+            xx, yy = x + dx, y + dy
+            if not (0 <= xx < self.n and 0 <= yy < self.n):
+                return True
+            c = yy * self.n + xx
+            if c != prev and self.grid[c]:
+                return True
+        return False
+
+    def run(self, c, d):
+        """How many empty cells lie straight ahead of c in direction d."""
+        k = 0
+        while k < self.n and (c := self.free(c, *DIRS[d])) is not None:
+            k += 1
+        return k
+
+    def respawn(self, i):
+        """Bring a crashed rider back in the most open spot away from everyone else. True if it worked."""
+        n = self.n
+        self.respawn_at[i] = None
+        heads = [self.trails[j][-1] for j in range(len(self.seats)) if self.alive[j] and self.trails[j]]
+        best, best_score = None, -1
+        for _ in range(60):
+            c = self.rng.randrange(n * n)
+            if self.grid[c] or any(abs(h % n - c % n) + abs(h // n - c // n) < 4 for h in heads):
+                continue
+            score = self.space(c, 200) * 10 + max(self.run(c, d) for d in range(4))
+            if score > best_score:
+                best, best_score = c, score
+        if best is None:  # nowhere open: try any empty cell at all
+            empty = [c for c in range(n * n) if not self.grid[c]]
+            if not empty:
+                self.lives[i] = 0
+                self.check_round(time.time())
+                return True
+            best = self.rng.choice(empty)
+        self.dirs[i] = max(range(4), key=lambda d: self.run(best, d))
+        self.trails[i] = []
+        self.occupy(i, best % n, best // n)
+        self.alive[i] = True
+        self.queue[i].clear()
+        self.ghost[i] = GHOST_TICKS
+        return True
+
     def check_round(self, now):
-        left = [i for i in range(len(self.seats)) if self.alive[i]]
+        left = [i for i in range(len(self.seats)) if self.alive[i] or self.respawn_at[i] is not None]
         if len(left) > 1:
             return
         r = self.room
@@ -208,13 +288,15 @@ class Riders(Game):
             r.add_log(f"🏁 {name} wins round {self.round}!", "big")
         else:
             r.add_log(f"🤝 Round {self.round} is a draw — everyone crashed.", "big")
+        self.respawn_at = [None] * len(self.seats)
         self.stage = "over"
         self.next_at = now + ROUND_PAUSE
 
     def broadcast(self, now):
         self.room.push_fast({
             "k": self.tick, "st": self.stage,
-            "p": [[len(t), int(self.alive[i]), self.dirs[i], self.boosts[i], int(self.boosting[i] > 0), *t[-TAIL:]]
+            "p": [[len(t), int(self.alive[i]), self.dirs[i], self.boosts[i], int(self.boosting[i] > 0),
+                   self.lives[i], self.grind[i], *t[-TAIL:]]
                   for i, t in enumerate(self.trails)],
         })
 
@@ -326,7 +408,9 @@ class Riders(Game):
         p.eliminated = True
         r = self.room
         r.add_log(f"{p.name} left the grid.")
-        if i is not None and self.alive[i]:
+        if i is not None:
+            self.lives[i] = 0
+            self.respawn_at[i] = None
             self.alive[i] = False
             if self.stage == "ride":
                 self.check_round(time.time())
@@ -348,5 +432,7 @@ class Riders(Game):
             "n": self.n, "seats": self.seats, "me": self.seat(p), "stage": self.stage, "round": self.round,
             "wins": self.wins, "target": self.s["target"], "speed": self.s["speed"], "tick": self.tick,
             "trails": self.trails, "alive": self.alive, "dirs": self.dirs, "boosts": self.boosts,
+            "lives": self.lives, "maxLives": self.s.get("lives", 3), "grind": self.grind, "grindFull": GRIND_FULL,
+            "respawning": [None if at is None else max(0.0, at - time.time()) for at in self.respawn_at],
             "countdown": max(0.0, self.next_at - time.time()) if self.stage in ("countdown", "over") else 0,
         }}
