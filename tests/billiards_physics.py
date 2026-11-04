@@ -185,18 +185,45 @@ def guide_check():
         ((50, 50), (100, 52), 0.0, 1.0, 0, 0, True),  # the break: its own top speed and cloth
         ((60, 50), (100, 47), 0.0, 0.5, 1, 0, "fast"), ((40, 30), (120, 60), math.atan2(28, 80), 0.6, -1, 0.5, "fast"),
         ((30, 50), (112, 58.5), 0.0, 0.5, 0, 1, 40),  # an elevated cue (40°): a swerve into the ball
+        # hard shots at a ball near the foot rail: into a cushion, off a cushion with follow, into a corner pocket
+        ((70.9231, 37.5401), (176.5499, 67.7736), 0.27773, 0.8, 0, 0, False),
+        ((112.4643, 79.5532), (192.2362, 42.9591), -0.44609, 1.0, 1, 0, False),
+        ((103.0025, 54.4338), (173.7672, 80.0331), 0.33251, 0.9, -1, 0, False),
     ]
-    cases, every = [], b.FRAME_EVERY
-    b.FRAME_EVERY = 1  # record every step, so curved (spin) paths are compared closely
-    for cue, obj, ang, power, spin, side, brk in shots:
-        el = brk if isinstance(brk, (int, float)) and not isinstance(brk, bool) else 0
-        top, fric = (b.BREAK_MAX_SPEED, b.BREAK_FRICTION) if brk is True else b.CLOTHS["fast"][::-1] if brk == "fast" else (b.MAX_SPEED, b.FRICTION)
-        speed = b.MIN_SPEED + (top - b.MIN_SPEED) * power
-        _, _, first, frames, _ = shot({0: cue, 1: obj}, ang, speed, spin=spin, side=side, friction=fric, elev=el)
-        cases.append({"cue": cue, "obj": obj, "aim": ang, "power": power, "spin": spin, "english": side,
-                      "breaking": brk is True, "friction": fric if brk is not True else b.FRICTION,
-                      "maxSpeed": top if brk is not True else b.MAX_SPEED, "elev": el, "first": first, "frames": frames})
-    b.FRAME_EVERY = every
+    # the server's path at every sub-step (each ball's position after the cloth moves it and after a cushion
+    # stops it), so the guide can be held to it exactly: recorded frames skip the moment a ball meets a
+    # cushion or drops, and cut that corner by up to a few units on a hard shot
+    trace, cloth, edges = {}, b.cloth, b.edges
+
+    def log(o):
+        trace.setdefault(id(o), (o, []))[1].append((o[0], o[1]))
+
+    def traced_cloth(o, h, friction=b.FRICTION):
+        moving = cloth(o, h, friction)
+        log(o)
+        return moving
+
+    def traced_edges(o):
+        edges(o)
+        log(o)
+
+    cases = []
+    b.cloth, b.edges = traced_cloth, traced_edges
+    try:
+        for cue, obj, ang, power, spin, side, brk in shots:
+            el = brk if isinstance(brk, (int, float)) and not isinstance(brk, bool) else 0
+            top, fric = (b.BREAK_MAX_SPEED, b.BREAK_FRICTION) if brk is True else b.CLOTHS["fast"][::-1] if brk == "fast" else (b.MAX_SPEED, b.FRICTION)
+            speed = b.MIN_SPEED + (top - b.MIN_SPEED) * power
+            trace.clear()
+            _, _, first, _, _ = shot({0: cue, 1: obj}, ang, speed, spin=spin, side=side, friction=fric, elev=el, record=False)
+            paths = {0: [tuple(cue)], 1: [tuple(obj)]}  # each traced ball is whichever start spot its trace begins nearest
+            for _, pts in trace.values():
+                paths[min((0, 1), key=lambda n: math.dist(pts[0], (cue, obj)[n]))] += pts
+            cases.append({"cue": cue, "obj": obj, "aim": ang, "power": power, "spin": spin, "english": side,
+                          "breaking": brk is True, "friction": fric if brk is not True else b.FRICTION,
+                          "maxSpeed": top if brk is not True else b.MAX_SPEED, "elev": el, "first": first, "paths": paths})
+    finally:
+        b.cloth, b.edges = cloth, edges
     phys = {"slide": b.SLIDE, "bounce": b.BOUNCE, "railGrip": b.RAIL_GRIP, "tipK": b.TIP_K, "sideTip": b.SIDE_TIP,
             "sideDecay": b.SIDE_DECAY, "dt": b.DT, "stop": b.STOP, "throw": b.THROW, "throwSlow": b.THROW_SLOW,
             "throwV": b.THROW_V, "squirt": b.SQUIRT, "masseK": b.MASSE_K, "elevLoss": b.ELEV_LOSS, "maxElev": b.MAX_ELEV, "cushionSoft": b.CUSHION_SOFT,
@@ -233,14 +260,13 @@ console.log(JSON.stringify(out));
             continue
         # every point the guide drew lies on the server's path
         worst = 0.0
-        for k, pts in ((2, pred["obj"]), (0, pred["cue"])):
-            path = [(f[k] / 10, f[k + 1] / 10) for f in case["frames"] if f[k] != -1]
+        for n, pts in ((1, pred["obj"]), (0, pred["cue"])):
+            path = case["paths"][n]
             segs = list(zip(path, path[1:]))
-            # (the cue ball's first point is the moment of contact, mid-step, where its recorded path
-            # turns a corner; the corner itself isn't recorded)
-            for x, y in pts[1:] if k == 0 else pts:
+            # (the cue ball's first point is the moment of contact, which collide() winds back to mid-step)
+            for x, y in pts[1:] if n == 0 else pts:
                 worst = max(worst, min(seg_dist(x, y, *a, *bb) for a, bb in segs) if segs else 0)
-        check(f"guide shot {i + 1} follows the server's path", worst < 0.3, f"off by up to {worst:.2f}")
+        check(f"guide shot {i + 1} follows the server's path", worst < 0.01, f"off by up to {worst:.4f}")
 
 
 def seg_dist(x, y, ax, ay, bx, by):
