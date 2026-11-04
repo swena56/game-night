@@ -30,14 +30,14 @@ UI.rally = (() => {
       const r = stage.getBoundingClientRect();
       touch = { y: e.clientY, boosted: false, fired: false };
       try { stage.setPointerCapture(e.pointerId); } catch {}
-      steer(e.clientX - r.left < (r.width || 320) / 2 ? 1 : -1);
+      steer(analog(e.clientX - r.left, r.width || 320));
     });
     stage.addEventListener('pointermove', (e) => {
       if (!touch) return;
       const r = stage.getBoundingClientRect();
       if (!touch.boosted && touch.y - e.clientY > 50) { touch.boosted = true; boost(); }
       if (!touch.fired && e.clientY - touch.y > 50) { touch.fired = true; fire(); }
-      steer(e.clientX - r.left < (r.width || 320) / 2 ? 1 : -1);
+      steer(analog(e.clientX - r.left, r.width || 320));
     });
     for (const t of ['pointerup', 'pointercancel']) stage.addEventListener(t, () => { touch = null; steer(0); });
     const KEY = { ArrowLeft: 1, KeyA: 1, ArrowRight: -1, KeyD: -1 };
@@ -85,6 +85,7 @@ UI.rally = (() => {
     const HITS = {
       pad: () => { noise(0.45, 600, 4000, 1.5, 0.5); tone(440, 990, 0.3, 'triangle', 0.07); },
       boost: () => { noise(0.7, 300, 2600, 1.2, 0.6); tone(110, 220, 0.6, 'sawtooth', 0.04); },
+      stall: () => [0, 1, 2].forEach((k) => tone(70, 50, 0.12, 'sawtooth', 0.07, k * 0.15)),  // a jumped start sputters
       bump: () => { tone(140, 60, 0.18, 'sine', 0.3); noise(0.08, 900, 500, 1, 0.5); },
       far: () => noise(0.06, 800, 500, 1, 0.12),  // rivals bumping each other
       scrape: () => noise(0.12, 3000, 2200, 4, 0.18),
@@ -133,7 +134,18 @@ UI.rally = (() => {
 
   const me = () => S?.rally?.me;
   const racing = () => me() != null && S.phase === 'playing';
-  function steer(v) { if (v === steerNow) return; steerNow = v; if (racing()) ctx.input({ steer: v }, true); }
+  // touch steering is analog: the further from the middle you hold, the harder you turn (in steps of a
+  // quarter, so a wobbling thumb doesn't flood the server); a little dead zone in the middle
+  function analog(x, w) {
+    const v = Math.max(-1, Math.min(1, (w / 2 - x) / (w * 0.35)));
+    return Math.abs(v) < 0.08 ? 0 : Math.sign(v) * Math.max(0.25, Math.round(Math.abs(v) * 4) / 4);
+  }
+  function steer(v) {
+    if (v === steerNow) return;
+    steerNow = v;
+    document.querySelectorAll('.ra-half').forEach((h) => { h.style.color = `rgba(255,255,255,${0.19 + 0.5 * Math.max(0, h.classList.contains('left') ? v : -v)})`; });
+    if (racing()) ctx.input({ steer: v }, true);
+  }
   function boost() { if (racing()) ctx.input({ boost: true }, true); }
   function fire() { if (racing() && crafts[me()]?.[9]) ctx.input({ fire: true }, true); }
   const colorOf = (i) => ctx.player(S.rally.seats[i])?.color ?? '#fff';
@@ -149,7 +161,7 @@ UI.rally = (() => {
     take(d.c, d.st, d.m, d.pk, d.mn);
     const me = S.rally.me;
     // 📳 buzz (the app's helper, off with the Vibrate setting) for what happens to your craft
-    const BUZZ = { hit: [60, 40, 140], out: [200, 80, 200], block: 40, bump: 25, pad: 15, pick: 12 };
+    const BUZZ = { hit: [60, 40, 140], out: [200, 80, 200], block: 40, bump: 25, pad: 15, pick: 12, launch: 30 };
     for (const e of d.e || []) {
       if (BUZZ[e[0]] && (e[1] === me || (e[0] === 'bump' && e[2] === me)) && typeof buzz === 'function') buzz(BUZZ[e[0]]);
       gl?.fx(e);
@@ -162,6 +174,10 @@ UI.rally = (() => {
       else if (e[0] === 'shield' && e[1] === me) snd.play('shield');
       else if (e[0] === 'block') snd.play('block');
       else if (e[0] === 'out') snd.play(e[1] === me ? 'outMe' : 'out');
+      else if (e[0] === 'launch' && e[1] === me) {
+        snd.play(e[2] ? 'boost' : 'stall');
+        lapMsg = e[2] ? '🚀 Perfect start!' : '😬 Too early!'; lapFlash = performance.now() + 1500;
+      }
     }
   }
 
@@ -216,7 +232,8 @@ UI.rally = (() => {
     });
     const mine = r.me != null ? crafts[r.me] : null;
     $('raBoost').textContent = mine ? `⚡ ${mine[4]}` : '⚡';
-    $('raBoost').disabled = !mine || !mine[4] || r.stage !== 'race' || !!mine[6];
+    // during the countdown the button is live for a 🚀 start boost (press it just before GO)
+    $('raBoost').disabled = !mine || (r.stage === 'race' ? !mine[4] || !!mine[6] : r.stage !== 'countdown');
     $('raBoost').parentElement.hidden = r.me == null;
     $('raFire').hidden = !r.pickups?.length;
     $('raFire').disabled = !mine?.[9] || r.stage !== 'race' || !!mine?.[6];

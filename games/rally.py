@@ -47,6 +47,9 @@ def item_odds(f):
     """Chances of (missile, mine, shield) for a racer whose place is f of the way back (0 = leading, 1 = last)."""
     return 0.2 + 0.5 * f, 0.5 - 0.4 * f, 0.3 - 0.1 * f
 COUNTDOWN, FINISH_WAIT = 3.0, 15.0
+LAUNCH_WINDOW, LAUNCH_EARLY = 0.45, 1.0   # boost this close before GO for a start boost; earlier than this stalls
+LAUNCH_SECS, LAUNCH_V, STALL_SECS = 0.9, 9.0, 0.6   # a good start leaves the line at LAUNCH_V
+LAUNCH_ODDS = {"easy": 0.0, "normal": 0.35, "hard": 0.7}   # how often a bot nails the start
 BOT = {  # reaction (s), look-ahead (s), how well it counters the outward push, steering correction
     "easy": (0.45, 0.1, 0.5, 0.8),
     "normal": (0.15, 0.3, 0.85, 1.6),
@@ -89,6 +92,7 @@ def make_track(rng):
 class Craft:
     # defaults for races saved before these existed (rooms come back from data/rooms.pickle on restart)
     wall, pad, draft, item, spin_until, shield_until, out = False, None, False, None, 0.0, 0.0, False
+    launch, stall_until = None, 0.0
 
     def __init__(self, s, d):
         self.s, self.d, self.v = s, d, 0.0
@@ -105,6 +109,8 @@ class Craft:
         self.spin_until = 0.0  # spinning from a hit
         self.shield_until = 0.0
         self.out = False       # knocked out in Elimination (it also has a finishing place)
+        self.launch = None     # when boost was first pressed in the countdown
+        self.stall_until = 0.0 # jumped the start: slow to get going
 
 
 class Rally(Game):
@@ -114,6 +120,7 @@ class Rally(Game):
         "Your hover craft speeds up by itself — you only steer. Hold the left or right side of the screen, the arrows, or A / D.",
         "Bends push you toward the outside: steer into them. Scraping a wall slows you down.",
         "Glowing ⚡ pads on the track give a burst of speed. You also have 3 boosts of your own (⚡, Space or swipe up).",
+        "🚀 Start boost: press boost just before GO (as the 1 goes). Too early and you stall.",
         "Grab a 🎁 pickup for an item, and use it with its button, F or a swipe down: 🚀 a missile homes in on the racer ahead, "
         "💣 a mine drops behind you, 🛡️ a shield stops the next hit. A hit spins you out. Leaders get more mines and shields, the pack more missiles.",
         "Tuck in close behind a rival to ride their 💨 slipstream, then pull out and pass.",
@@ -219,6 +226,10 @@ class Rally(Game):
 
     def boost(self, i, now):
         c = self.crafts[i]
+        if self.stage == "countdown":
+            if c.launch is None:
+                c.launch = now
+            return
         if self.stage == "race" and c.boosts > 0 and now >= c.boost_until and c.finished is None:
             c.boosts -= 1
             c.boost_until = now + BOOST_SECS
@@ -306,6 +317,7 @@ class Rally(Game):
             if now >= self.next_at:
                 self.stage = "race"
                 self.started = now
+                self.launches(now)
                 self.room.add_log("🟢 Go!")
                 return True
             if self.frames % 6 == 0:
@@ -327,7 +339,8 @@ class Rally(Game):
                 continue
             c.draft = self.drafting(i)
             top = BOOST_SPEED if now < c.boost_until else DRAFT_SPEED if c.draft else TOP_SPEED
-            c.v = min(top, c.v + ACCEL * dt) if c.v < top else max(top, c.v - ACCEL * 0.6 * dt)
+            acc = ACCEL * (0.5 if now < c.stall_until else 1.0)
+            c.v = min(top, c.v + acc * dt) if c.v < top else max(top, c.v - ACCEL * 0.6 * dt)
             k = self.curvature(c.s)
             # left is +d; a left bend (k > 0) pushes the craft right (outward); no steering while spinning
             steer = 0.0 if now < c.spin_until else c.steer
@@ -382,6 +395,24 @@ class Rally(Game):
         if self.frames % 2 == 0:
             self.broadcast(now)
         return changed
+
+    def launches(self, now):
+        """GO: a boost pressed just before it gives a start boost, one pressed too early stalls.
+        Bots roll for a good start here."""
+        for i, c in enumerate(self.crafts):
+            p = self.room.players.get(self.seats[i])
+            if p and p.bot and random.random() < LAUNCH_ODDS.get(p.bot, 0.0):
+                c.launch = now - random.uniform(0.05, LAUNCH_WINDOW - 0.05)
+            if c.launch is None:
+                continue
+            if now - c.launch <= LAUNCH_WINDOW:
+                c.boost_until = now + LAUNCH_SECS
+                c.v = max(c.v, LAUNCH_V)
+                self.ev.append(["launch", i, 1])
+            elif now - c.launch > LAUNCH_EARLY:
+                c.stall_until = now + STALL_SECS
+                self.ev.append(["launch", i, 0])
+            c.launch = None
 
     def draw_item(self, i):
         """A random item, weighted by place: see item_odds."""
