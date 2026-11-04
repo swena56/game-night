@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Game Night</title>
   <meta name="theme-color" content="#16131f">
   <link rel="manifest" href="/manifest.webmanifest">
@@ -84,11 +84,17 @@
   <section id="game" class="screen" hidden>
     <header class="topbar">
       <span class="logo small" id="gameCode"></span>
-      <span id="turnText" class="turn"></span>
+      <span id="turnText" class="turn" aria-live="polite"></span>
       <span id="timer" class="timer"></span>
-      <button id="focusBtn" class="icon-btn" title="Bigger board (hide players and log)" aria-label="Bigger board" aria-pressed="false"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="7" y="7" width="10" height="10" rx="1" fill="currentColor" stroke="none"/></svg></button>
-      <button id="fullBtn" class="icon-btn" title="Full screen" aria-label="Full screen" hidden><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
       <button id="helpBtn" class="icon-btn" title="How to play" aria-label="How to play">❓</button>
+      <button id="menuBtn" class="icon-btn" title="Menu" aria-label="Menu" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2.2"/><circle cx="12" cy="12" r="2.2"/><circle cx="19" cy="12" r="2.2"/></svg></button>
+      <div id="gameMenu" class="game-menu" role="menu" hidden>
+        <button id="focusBtn" role="menuitemcheckbox" aria-pressed="false"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="7" y="7" width="10" height="10" rx="1" fill="currentColor" stroke="none"/></svg><span>Bigger board</span></button>
+        <button id="fullBtn" role="menuitem" hidden><span class="ico"></span><span class="lbl">Full screen</span></button>
+        <button id="menuChat" role="menuitem"><span>💬</span><span>Chat</span></button>
+        <button id="menuPrefs" role="menuitem"><span>⚙️</span><span>My settings</span></button>
+        <button id="quitBtn" role="menuitem" class="menu-danger"><span>🚪</span><span id="quitLabel">Leave game</span></button>
+      </div>
     </header>
     <div id="overBanner" class="over" hidden>
       <div class="over-head"><div id="overText"></div>
@@ -116,9 +122,15 @@
           <button id="logToggle" class="log-toggle" aria-expanded="true"><span>📜</span><span id="logLast"></span><span class="chev">▾</span></button>
           <div id="log" class="log" aria-live="polite"></div>
         </div>
-        <button id="quitBtn" class="ghost-btn">Leave game</button>
       </aside>
     </div>
+    <!-- phones: reactions, the latest log line and chat in one bar under the game -->
+    <nav id="dock" class="dock" aria-label="Table">
+      <button id="dockReact" class="dock-btn" aria-label="React" aria-expanded="false">😀</button>
+      <button id="dockLog" class="dock-log" aria-label="Game log"><span>📜</span><span id="dockLast"></span></button>
+      <button id="dockChat" class="dock-btn" aria-label="Chat">💬<span id="dockBadge" class="badge" hidden></span></button>
+      <div id="dockReactBar" class="dock-react" hidden></div>
+    </nav>
   </section>
 
   <!-- REPLAY CONTROLS -->
@@ -164,7 +176,7 @@
 
   <div id="connBanner" class="conn-banner" hidden>📡 Connection lost — reconnecting…</div>
   <div id="floaters"></div>
-  <div id="toast" class="toast" hidden></div>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   <script>window.UI = {};</script>
   <script src="/gl3.js"></script>
   <script src="/faces.js"></script>

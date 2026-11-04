@@ -8,9 +8,11 @@ UI.yacht = (() => {
   function mount(main, side) {
     hold = [false, false, false, false, false]; holdFor = null; seenRoll = 0; cardKey = '';
     main.innerHTML = `<div class="ya">
-      <div id="yaDice" class="ya-dice"></div>
-      <button id="yaRoll" class="primary big"></button>
-      <p id="yaHint" class="hint"></p>
+      <div class="ya-top stick-top">
+        <div id="yaDice" class="ya-dice"></div>
+        <button id="yaRoll" class="primary big"></button>
+        <p id="yaHint" class="hint"></p>
+      </div>
       <table id="yaCard" class="scores ya-card"></table>
     </div>`;
     side.innerHTML = `<div class="panel"><div id="yaStatus" class="seat-row"></div>
