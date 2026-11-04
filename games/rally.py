@@ -17,6 +17,11 @@ frame(now) runs at 60 fps and positions stream to browsers over the room's fast 
 the moments the browser turns into sparks, sounds and camera shake: bumps, boost-pad hits and
 item pickups, launches, drops, shields and hits.
 
+🚧 Track features, a few per track: ❄️ ice (steering barely bites and bends push harder), narrows
+(the track pinches in), and ramps over a gap. A jump carries a craft speed × AIR_T along the track,
+so one that hits the ramp too slow (after a hit or a wall) falls short into the gap and is put
+back on the far side, slow and spinning.
+
 📅 Today's track comes from the date alone, so every room races the same one; people's best laps
 on it go on a board for the day, kept in data/ (one file per server port, like the rooms file)."""
 import json
@@ -90,6 +95,10 @@ def add_to_board(today, name, ms):
 def item_odds(f):
     """Chances of (missile, mine, shield) for a racer whose place is f of the way back (0 = leading, 1 = last)."""
     return 0.2 + 0.5 * f, 0.5 - 0.4 * f, 0.3 - 0.1 * f
+RAMP_LEN, GAP, AIR_T, JUMP_H = 3.0, 7.0, 0.6, 1.6   # units, units, seconds of flight per unit/s, peak height
+FALL_SECS = 0.6                 # falling short: this long dropping into the gap before it's put back
+NARROW_W, TAPER = 1.4, 5.0      # half-width in a narrows, and how long it takes to pinch in
+ICE_GRIP, ICE_PUSH = 0.25, 1.3  # on ice: share of steering left, and how much harder bends push
 COUNTDOWN, FINISH_WAIT = 3.0, 15.0
 LAUNCH_WINDOW, LAUNCH_EARLY = 0.45, 1.0   # boost this close before GO for a start boost; earlier than this stalls
 LAUNCH_SECS, LAUNCH_V, STALL_SECS = 0.9, 9.0, 0.6   # a good start leaves the line at LAUNCH_V
@@ -136,7 +145,7 @@ def make_track(rng):
 class Craft:
     # defaults for races saved before these existed (rooms come back from data/rooms.pickle on restart)
     wall, pad, draft, item, spin_until, shield_until, out = False, None, False, None, 0.0, 0.0, False
-    launch, stall_until, lap_t0, best_lap = None, 0.0, None, None
+    launch, stall_until, lap_t0, best_lap, air = None, 0.0, None, None, None
 
     def __init__(self, s, d):
         self.s, self.d, self.v = s, d, 0.0
@@ -157,6 +166,7 @@ class Craft:
         self.stall_until = 0.0 # jumped the start: slow to get going
         self.lap_t0 = None     # when this lap began (the first one when it crosses the line)
         self.best_lap = None   # ms
+        self.air = None        # in a jump: (take-off s, flight length, falls short?, when it started dropping)
 
 
 class Rally(Game):
@@ -170,6 +180,8 @@ class Rally(Game):
         "Grab a 🎁 pickup for an item, and use it with its button, F or a swipe down: 🚀 a missile homes in on the racer ahead, "
         "💣 a mine drops behind you, 🛡️ a shield stops the next hit. A hit spins you out. Leaders get more mines and shields, the pack more missiles.",
         "Tuck in close behind a rival to ride their 💨 slipstream, then pull out and pass.",
+        "🚧 Some tracks have ❄️ ice (you barely steer, so line up before it), narrows, and ramps over a gap: "
+        "hit a ramp at speed or you'll fall short.",
         "Bump rivals sideways. First across the line after the last lap wins.",
         "💥 Elimination (a lobby setting): each time the leader crosses the line, whoever is last is out. The last one flying wins.",
     ]
@@ -181,11 +193,13 @@ class Rally(Game):
     replayable = False
     pickups, pickup_at, missiles, mines, elim, elim_lap = (), (), (), (), False, 0   # for races saved before items; start() sets real ones
     daily, today, board, race_id = False, "", (), 0   # races saved before today's track
+    zones, hw = (), None   # races saved before track features (hw None: HALF_WIDTH everywhere)
     settings_schema = {
         "laps": ("Laps", [(3, "3"), (2, "2 (quick)"), (5, "5")], 3),
         "mode": ("Mode", [("race", "🏁 Race"), ("elim", "💥 Elimination (last place out every lap; laps don't apply)")], "race"),
         "missiles": ("Items", [(True, "🎁 On (🚀 💣 🛡️)"), (False, "Off (pure racing)")], True),
         "track": ("Track", [("new", "🎲 A new track"), ("daily", "📅 Today's track (the same everywhere, with a best-lap board)")], "new"),
+        "features": ("Track features", [(True, "🚧 Ice, narrows and ramps"), (False, "Plain track")], True),
     }
 
     # -- setup
@@ -209,11 +223,16 @@ class Rally(Game):
         for i in range(PAD_EVERY // 2, SAMPLES, PAD_EVERY):
             if trng.random() < 0.75:
                 self.pads.append((i + trng.randint(-8, 8), trng.choice((-1.3, 0.0, 1.3))))
+        self.zones, self.hw = [], [HALF_WIDTH] * len(self.pts)
+        if self.s.get("features", True):
+            self.place_features(trng)
+        self.pads = [(self.clear_of_zones(i), lat) for i, lat in self.pads]
         n = len(seated)
         # item pickups: pairs across the track, between the boost pads (not in a solo time trial)
         self.pickups = []
         if n > 1 and self.s.get("missiles", True):
             for i in range(PAD_EVERY, SAMPLES, PAD_EVERY * 2):
+                i = self.clear_of_zones(i)
                 self.pickups += [(i, -1.2), (i, 1.2)]
         self.pickup_at = [0.0] * len(self.pickups)   # back on the track at this time
         self.missiles = []     # dicts: s, d, owner, target (craft index or None), until
@@ -241,6 +260,60 @@ class Rally(Game):
 
     def seat(self, p):
         return self.seats.index(p.id) if p.id in self.seats else None
+
+    # -- track features
+
+    def place_features(self, trng):
+        """Two or three different features, away from the start line and each other. Zones are
+        [kind, from s, to s]: "ice", "narrow", and a ramp as "ramp" (up to the take-off) then "gap"."""
+        L = self.length
+        taken = []   # (from, to) with room around them
+        def free(a, b):
+            return 20 <= a and b <= L - 12 and all(b + 10 <= x or y + 10 <= a for x, y in taken)
+        for kind in trng.sample(["ice", "narrow", "ramp"], trng.choice((2, 3))):
+            if kind == "ramp":
+                # only on a near-straight stretch: from a little before the ramp to a little past the landing
+                spots = [s for s in (self.cum[i] for i in range(0, len(self.pts), 4))
+                         if free(s, s + RAMP_LEN + GAP)
+                         and all(abs(self.curvature(s + x)) < 0.03 for x in range(-8, int(RAMP_LEN + GAP + 7)))]
+                if not spots:
+                    continue
+                a = trng.choice(spots)
+                self.zones += [["ramp", a, a + RAMP_LEN], ["gap", a + RAMP_LEN, a + RAMP_LEN + GAP]]
+                taken.append((a, a + RAMP_LEN + GAP))
+                continue
+            size = trng.uniform(18, 28) if kind == "ice" else trng.uniform(20, 30)
+            for _ in range(60):
+                a = trng.uniform(20, L - 12 - size)
+                if free(a, a + size):
+                    self.zones.append([kind, a, a + size])
+                    taken.append((a, a + size))
+                    break
+        self.zones.sort(key=lambda z: z[1])
+        for kind, a, b in self.zones:
+            if kind == "narrow":   # pinch in over TAPER at each end
+                for i, s in enumerate(self.cum[:-1]):
+                    if a <= s <= b:
+                        self.hw[i] = HALF_WIDTH - (HALF_WIDTH - NARROW_W) * min(1.0, (s - a) / TAPER, (b - s) / TAPER)
+
+    def zone(self, s, kinds=None):
+        """The feature zone at track position s (any lap), or None."""
+        for z in self.zones:
+            if (kinds is None or z[0] in kinds) and (s - z[1]) % self.length < z[2] - z[1]:
+                return z
+        return None
+
+    def clear_of_zones(self, i):
+        """A sample index moved just past any feature it lands in (for pads and pickups)."""
+        z = self.zone(self.cum[i % len(self.pts)] - 2)
+        z = z or self.zone(self.cum[i % len(self.pts)] + 2)
+        if not z:
+            return i
+        end = self.zones[self.zones.index(z) + 1][2] if z[0] == "ramp" else z[2]   # past the gap too
+        return self.index(end + 3)
+
+    def half_width(self, idx):
+        return self.hw[idx] if self.hw else HALF_WIDTH
 
     # -- track helpers
 
@@ -300,7 +373,12 @@ class Rally(Game):
             self.ev.append(["shield", i])
             return
         if item == "mine":
-            self.mines.append({"s": c.s - 2 * CRAFT - 0.4, "d": c.d, "owner": i, "armed": now + MINE_ARM, "until": now + MINE_LIFE})
+            s = c.s - 2 * CRAFT - 0.4
+            z = self.zone(s, ("ramp", "gap"))
+            if z:   # not on a ramp or over the gap: just before the ramp
+                ramp = z if z[0] == "ramp" else self.zones[self.zones.index(z) - 1]
+                s -= (s - ramp[1]) % self.length + 0.5
+            self.mines.append({"s": s, "d": c.d, "owner": i, "armed": now + MINE_ARM, "until": now + MINE_LIFE})
             del self.mines[:-MINES]
             self.ev.append(["drop", i])
             return
@@ -329,17 +407,18 @@ class Rally(Game):
             if hit is not None or now > m["until"]:
                 self.missiles.remove(m)
         for m in list(self.mines):
-            hit = self.touch(m, 0.9, 1.0, now, None if now >= m["armed"] else m["owner"])
+            hit = self.touch(m, 0.9, 1.0, now, None if now >= m["armed"] else m["owner"], flying=False)
             if hit is not None:
                 self.strike(hit, m["owner"], "mine", now)
             if hit is not None or now > m["until"]:
                 self.mines.remove(m)
 
-    def touch(self, m, reach_s, reach_d, now, skip):
-        """The racer (not `skip`, not still recovering from a hit) that missile or mine m is touching, or None."""
+    def touch(self, m, reach_s, reach_d, now, skip, flying=True):
+        """The racer (not `skip`, not still recovering from a hit) that missile or mine m is touching, or None.
+        flying=False: craft in the air over a gap are out of reach (mines)."""
         half = self.length / 2
         for j, c in enumerate(self.crafts):
-            if j != skip and c.finished is None and self.active(j) and now >= c.spin_until + SAFE:
+            if j != skip and c.finished is None and self.active(j) and now >= c.spin_until + SAFE and (flying or not c.air):
                 ds = (c.s - m["s"] + half) % self.length - half
                 if abs(ds) < reach_s and abs(c.d - m["d"]) < reach_d:
                     return j
@@ -396,16 +475,31 @@ class Rally(Game):
             top = BOOST_SPEED if now < c.boost_until else DRAFT_SPEED if c.draft else TOP_SPEED
             acc = ACCEL * (0.5 if now < c.stall_until else 1.0)
             c.v = min(top, c.v + acc * dt) if c.v < top else max(top, c.v - ACCEL * 0.6 * dt)
+            if c.air:
+                self.jump(i, p, dt, now)
+                continue
             k = self.curvature(c.s)
+            idx = self.index(c.s)
+            ice = self.zone(c.s, ("ice",)) is not None
             # left is +d; a left bend (k > 0) pushes the craft right (outward); no steering while spinning
-            steer = 0.0 if now < c.spin_until else c.steer
-            c.d += (steer * STEER - k * c.v * c.v * PUSH) * dt
-            c.wall = abs(c.d) > HALF_WIDTH - 0.35
+            steer = 0.0 if now < c.spin_until else c.steer * (ICE_GRIP if ice else 1.0)
+            c.d += (steer * STEER - k * c.v * c.v * PUSH * (ICE_PUSH if ice else 1.0)) * dt
+            edge = self.half_width(idx) - 0.35
+            c.wall = abs(c.d) > edge
             if c.wall:
-                c.d = math.copysign(HALF_WIDTH - 0.35, c.d)
+                c.d = math.copysign(edge, c.d)
                 c.v *= SCRAPE ** dt
             # the inside of a bend is a tighter curve, so it covers the track faster
+            was = c.s
             c.s += c.v * dt / max(0.6, 1 - k * c.d)
+            # off the end of a ramp: a jump as long as the speed allows
+            for z in self.zones:
+                if z[0] == "ramp" and (was - z[2]) % self.length > self.length / 2 and (c.s - z[2]) % self.length < self.length / 2:
+                    take_off = c.s - (c.s - z[2]) % self.length
+                    span = c.v * AIR_T
+                    c.air = (take_off, span, span < GAP, None)
+                    c.wall = False
+                    self.ev.append(["jump", i])
             # boost pads
             idx = self.index(c.s)
             on = None
@@ -453,6 +547,40 @@ class Rally(Game):
         if self.frames % 2 == 0:
             self.broadcast(now)
         return changed
+
+    def jump(self, i, p, dt, now):
+        """A craft in the air: straight on along the track, no steering, until it lands, or (short of
+        the far side) drops into the gap and is put back past it. Ramps are never near the line, so
+        no lap ends in the air."""
+        c = self.crafts[i]
+        take_off, span, short, dropping = c.air
+        if dropping is None:
+            c.s += c.v * dt
+        else:   # down into the gap, drifting on a little, for FALL_SECS
+            c.s = min(c.s + c.v * 0.3 * dt, take_off + GAP - 0.3)
+        flown = c.s - take_off
+        if not short and flown >= span:
+            c.air = None
+            self.ev.append(["land", i])
+        elif short and dropping is None and flown >= span:
+            c.air = (take_off, span, True, now)
+        elif dropping is not None and now - dropping >= FALL_SECS:
+            c.air = None
+            c.s = take_off + GAP + 0.5
+            c.d, c.v = 0.0, 5.0
+            c.spin_until, c.boost_until = now + 0.8, 0.0
+            self.ev.append(["fall", i])
+            self.room.add_log(f"🕳️ {p.name} falls short of the gap!")
+
+    def height(self, c, now):
+        """A craft's height over the track: a jump's arc, then (falling short) a drop into the gap."""
+        if not c.air:
+            return 0.0
+        if c.air[3] is not None:
+            return round(-9 * (now - c.air[3]) ** 2, 2)
+        flown, span = c.s - c.air[0], c.air[1]
+        f = flown / span
+        return round(4 * JUMP_H * f * (1 - f), 2)
 
     def lap_done(self, i, p, now):
         """Time the lap just finished; on today's track a person's good lap goes on the day's board
@@ -511,7 +639,7 @@ class Rally(Game):
         return False
 
     def bump(self):
-        live = [i for i, c in enumerate(self.crafts) if c.finished is None and self.active(i)]
+        live = [i for i, c in enumerate(self.crafts) if c.finished is None and self.active(i) and not c.air]
         touching = set()
         for a in range(len(live)):
             for b in range(a + 1, len(live)):
@@ -579,10 +707,10 @@ class Rally(Game):
 
     def craft_rows(self, now):
         """Each craft as [s, d, speed, boosting, boosts left, laps done, finishing place, scraping a wall,
-        in a slipstream, item held (0 none, else ITEMS), spinning, shielded, knocked out]."""
+        in a slipstream, item held (0 none, else ITEMS), spinning, shielded, knocked out, height in a jump]."""
         r2 = lambda v: round(v, 2)
         return [[r2(c.s), r2(c.d), r2(c.v), int(now < c.boost_until), c.boosts, c.lap, c.finished or 0, int(c.wall), int(c.draft),
-                 ITEMS.get(c.item, 0), int(now < c.spin_until), int(now < c.shield_until), int(c.out)] for c in self.crafts]
+                 ITEMS.get(c.item, 0), int(now < c.spin_until), int(now < c.shield_until), int(c.out), self.height(c, now)] for c in self.crafts]
 
     def missile_rows(self):
         """Each missile in flight as [s, d, target craft or -1]."""
@@ -631,7 +759,14 @@ class Rally(Game):
                     target = m["d"] + (1.7 if m["d"] < 0 else -1.7)
             if incoming and (level == "hard" or random.random() < 0.5) and now >= c.shield_until:
                 target = c.d + (2.0 if c.d < 0 else -2.0)
-        push = k * c.v * c.v * PUSH * skill
+        # 🚧 stay inside a narrows; on ice (normal and hard) hold the middle and steer harder,
+        # since the grip is mostly gone
+        lim = min(self.half_width(self.index(c.s)), self.half_width(self.index(look))) - 0.5
+        target = max(-lim, min(lim, target))
+        icy = self.zone(c.s, ("ice",)) or self.zone(look, ("ice",))
+        if icy and level != "easy":
+            target *= 0.3
+        push = k * c.v * c.v * PUSH * skill * (ICE_PUSH / ICE_GRIP if icy and level != "easy" else 1.0)
         c.steer = max(-1.0, min(1.0, (push + (target - c.d) * gain) / STEER + random.gauss(0, 0.08 if level == "easy" else 0.02)))
         # items: fire at a rival a little way ahead, drop a mine in front of one close behind,
         # raise the shield when a missile is coming; now and then anyone just uses what they hold
@@ -645,6 +780,10 @@ class Rally(Game):
                 self.fire(i, now)
         if level != "easy" and c.boosts and straight and now >= c.boost_until and random.random() < (0.05 if level == "hard" else 0.02):
             self.boost(i, now)
+        # too slow for a ramp coming up: boost so the jump clears the gap
+        if level != "easy" and c.boosts and now >= c.boost_until and c.v * AIR_T < GAP + 0.5 and not c.air:
+            if any(z[0] == "ramp" and 0 < (z[1] - c.s) % self.length < 12 for z in self.zones):
+                self.boost(i, now)
 
     # -- the rest of the contract
 
@@ -684,5 +823,6 @@ class Rally(Game):
             "mn": self.mine_rows(),
             "countdown": max(0.0, self.next_at - now) if self.stage == "countdown" else 0,
             "top": TOP_SPEED, "elim": self.elim, "race": self.race_id,
+            "zones": [[k, r2(a), r2(b)] for k, a, b in self.zones], "hw": [r2(w) for w in self.hw] if self.hw else None,
             "daily": {"date": self.today, "board": list(self.board[:5])} if self.daily else None,
         }}

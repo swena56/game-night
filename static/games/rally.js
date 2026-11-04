@@ -3,7 +3,8 @@
 // between server updates using each craft's speed. Hold the left/right half of the screen to steer.
 // The server also sends moments (bumps, boost-pad hits, item pickups, launches, drops, shields and hits) that
 // become sparks, sounds and camera shake, plus the 🚀 missiles in flight (they glide along the track like the
-// craft) and the 💣 mines lying on it.
+// craft) and the 💣 mines lying on it. 🚧 Track features come as zones ([kind, from s, to s]: ice, narrow,
+// ramp, gap) with the half-width at every sample; a craft in a jump has its height in row [13].
 UI.rally = (() => {
   let S, ctx, gl = null, flat = null, raf = 0, ro = null, keyDown = null, keyUp = null;
   let crafts = [], gotAt = 0, steerNow = 0, keys = new Set(), touch = null, countdownAt = 0, trackKey = '';
@@ -75,10 +76,10 @@ UI.rally = (() => {
       g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
       o.connect(g).connect(a.destination); o.start(t); o.stop(t + dur + 0.02);
     }
-    function noise(dur, f0, f1, q, vol) {
+    function noise(dur, f0, f1, q, vol, at = 0) {
       const len = Math.max(1, Math.floor(a.sampleRate * dur)), buf = a.createBuffer(1, len, a.sampleRate), d = buf.getChannelData(0);
       for (let k = 0; k < len; k++) d[k] = (Math.random() * 2 - 1) * Math.sin(Math.PI * k / len);
-      const src = a.createBufferSource(), fl = a.createBiquadFilter(), g = a.createGain(), t = a.currentTime;
+      const src = a.createBufferSource(), fl = a.createBiquadFilter(), g = a.createGain(), t = a.currentTime + at;
       src.buffer = buf; fl.type = 'bandpass'; fl.Q.value = q; fl.frequency.setValueAtTime(f0, t); fl.frequency.exponentialRampToValueAtTime(f1, t + dur);
       g.gain.value = vol; src.connect(fl).connect(g).connect(a.destination); src.start(t);
     }
@@ -102,6 +103,9 @@ UI.rally = (() => {
       out: () => tone(400, 200, 0.3, 'triangle', 0.06),   // 💥 someone else is knocked out
       outMe: () => [392, 330, 262, 196].forEach((f, k) => tone(f, f * 0.97, 0.22, 'sawtooth', 0.05, k * 0.16)),
       block: () => { tone(1400, 900, 0.3, 'triangle', 0.12); noise(0.15, 4000, 2000, 2, 0.3); },
+      jump: () => { noise(0.4, 400, 1800, 1.4, 0.4); tone(300, 600, 0.3, 'triangle', 0.04); },   // off the ramp
+      land: () => { tone(120, 50, 0.2, 'sine', 0.3); noise(0.1, 700, 300, 1, 0.4); },
+      fall: () => { tone(700, 90, 0.9, 'triangle', 0.08); noise(0.5, 300, 80, 0.8, 0.5, 0.6); },   // down the gap, then a crunch
     };
     function play(kind, now) {
       if (!on()) return;
@@ -161,7 +165,7 @@ UI.rally = (() => {
     take(d.c, d.st, d.m, d.pk, d.mn);
     const me = S.rally.me;
     // 📳 buzz (the app's helper, off with the Vibrate setting) for what happens to your craft
-    const BUZZ = { hit: [60, 40, 140], out: [200, 80, 200], block: 40, bump: 25, pad: 15, pick: 12, launch: 30 };
+    const BUZZ = { hit: [60, 40, 140], out: [200, 80, 200], block: 40, bump: 25, pad: 15, pick: 12, launch: 30, land: 30, fall: [120, 60, 120] };
     for (const e of d.e || []) {
       if (BUZZ[e[0]] && (e[1] === me || (e[0] === 'bump' && e[2] === me)) && typeof buzz === 'function') buzz(BUZZ[e[0]]);
       gl?.fx(e);
@@ -174,6 +178,8 @@ UI.rally = (() => {
       else if (e[0] === 'shield' && e[1] === me) snd.play('shield');
       else if (e[0] === 'block') snd.play('block');
       else if (e[0] === 'out') snd.play(e[1] === me ? 'outMe' : 'out');
+      else if ((e[0] === 'jump' || e[0] === 'land') && e[1] === me) snd.play(e[0]);
+      else if (e[0] === 'fall' && e[1] === me) { snd.play('fall'); lapMsg = '🕳️ Fell short!'; lapFlash = performance.now() + 1500; }
       else if (e[0] === 'launch' && e[1] === me) {
         snd.play(e[2] ? 'boost' : 'stall');
         lapMsg = e[2] ? '🚀 Perfect start!' : '😬 Too early!'; lapFlash = performance.now() + 1500;
@@ -203,6 +209,37 @@ UI.rally = (() => {
     const tx = (b[0] - a[0]) / seg, ty = (b[1] - a[1]) / seg, m = Math.hypot(tx, ty) || 1;
     const ux = tx / m, uy = ty / m;
     return { x: a[0] + (b[0] - a[0]) * f - uy * d, y: a[1] + (b[1] - a[1]) * f + ux * d, ux, uy };
+  }
+
+  // 🚧 the feature zone at s (any lap), optionally only of the given kinds; the half-width at sample k
+  function zoneAt(s, kinds) {
+    const r = S.rally, L = r.length;
+    return (r.zones || []).find((z) => (!kinds || kinds.includes(z[0])) && ((((s - z[1]) % L) + L) % L) < z[2] - z[1]) || null;
+  }
+  const hwAt = (k) => S.rally.hw?.[((k % S.rally.track.length) + S.rally.track.length) % S.rally.track.length] ?? S.rally.width;
+  const RAMP_TOP = 0.55;  // how high a ramp's lip is (drawing only)
+  function rampLift(s) {
+    const z = zoneAt(s, ['ramp']), L = S.rally.length;
+    return z ? RAMP_TOP * ((((s - z[1]) % L) + L) % L) / (z[2] - z[1]) : 0;
+  }
+
+  // flat drawings (2D view and minimap): the zones of each kind as Path2D polylines along the middle,
+  // or (filled) as strips the track's width
+  const ZONE_INK = { ice: '#bfeaff', ramp: '#ffd166', gap: '#070512', narrow: null };
+  function zonePaths(X, Y, filled) {
+    const r = S.rally, out = [];
+    for (const [kind, a, b] of r.zones || []) {
+      if (!ZONE_INK[kind]) continue;
+      const path = new Path2D(), steps = Math.max(2, Math.ceil((b - a) / 0.5)), n = r.track.length;
+      const w = (s) => hwAt(Math.round(n * (((s % r.length) + r.length) % r.length) / r.length)) + (kind === 'gap' ? 0.4 : 0);
+      for (let k = 0; k <= steps; k++) {
+        const s = a + (b - a) * k / steps, p = at(s, filled ? w(s) : 0);
+        k ? path.lineTo(X(p.x), Y(p.y)) : path.moveTo(X(p.x), Y(p.y));
+      }
+      if (filled) { for (let k = steps; k >= 0; k--) { const s = a + (b - a) * k / steps, p = at(s, -w(s)); path.lineTo(X(p.x), Y(p.y)); } path.closePath(); }
+      out.push([kind, path]);
+    }
+    return out;
   }
 
   function sNow(i, now) {
@@ -400,20 +437,27 @@ UI.rally = (() => {
     const glowMat = (color, opacity = 1) => ({ map: dot, color, transparent: true, opacity, blending: T.AdditiveBlending, depthWrite: false });
     function build() {
       scene.remove(track); track = new T.Group(); scene.add(track);
-      const r = S.rally, n = r.track.length, W = r.width;
-      const pos = [], left = [], right = [];
+      const r = S.rally, n = r.track.length, W = r.width, L = r.length;
+      // the surface, with a hole where a gap is; the edge lines break there too
+      const pos = [], edges = [[], []], edgeMat = new T.LineBasicMaterial({ color: 0x4cc9f0 });
+      const gapAt = (k) => !!zoneAt(((r.cum[k % n] ?? 0) + (r.cum[(k + 1) % n] || L)) / 2, ['gap']);
+      const endEdges = () => {
+        for (const e of edges) { if (e.length > 1) track.add(new T.Line(new T.BufferGeometry().setFromPoints(e), edgeMat)); e.length = 0; }
+      };
       for (let k = 0; k <= n; k++) {
-        const s = r.cum[k % n] ?? 0;
-        const a = at(s, W), b = at(s, -W);
+        const s = r.cum[k % n] ?? 0, w = hwAt(k);
+        const a = at(s, w), b = at(s, -w);
         pos.push(a.x, 0, -a.y, b.x, 0, -b.y);
-        left.push(V(a, 0.05)); right.push(V(b, 0.05));
+        edges[0].push(V(a, 0.05)); edges[1].push(V(b, 0.05));
+        if (k < n && gapAt(k)) endEdges();
       }
+      endEdges();
       const idx = [];
-      for (let k = 0; k < n; k++) { const q = k * 2; idx.push(q, q + 1, q + 2, q + 1, q + 3, q + 2); }
+      for (let k = 0; k < n; k++) { if (gapAt(k)) continue; const q = k * 2; idx.push(q, q + 1, q + 2, q + 1, q + 3, q + 2); }
       const g = new T.BufferGeometry();
       g.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
       track.add(new T.Mesh(g, new T.MeshStandardMaterial({ color: 0x24203a, roughness: 0.8, side: T.DoubleSide })));
-      for (const edge of [left, right]) track.add(new T.Line(new T.BufferGeometry().setFromPoints(edge), new T.LineBasicMaterial({ color: 0x4cc9f0 })));
+      features();
       const line = new T.Mesh(new T.PlaneGeometry(0.6, W * 2), new T.MeshBasicMaterial({ color: 0xffffff, side: T.DoubleSide }));
       const p0 = at(0, 0); line.position.copy(V(p0, 0.02)); line.rotation.x = -Math.PI / 2; line.rotation.z = Math.atan2(p0.uy, p0.ux); track.add(line);
       for (const [pi, lat] of r.pads) {
@@ -432,6 +476,60 @@ UI.rally = (() => {
       for (const g of ships) g.userData.trail.pts.length = 0;
       resize();
     }
+
+    // ---- 🚧 track features: a ribbon between s = a and b, with half-width w(s) and height y(s)
+    function strip(a, b, w, y, mat) {
+      const pos = [], uv = [], idx = [], steps = Math.max(2, Math.ceil((b - a) / 0.4));
+      for (let k = 0; k <= steps; k++) {
+        const s = a + (b - a) * k / steps, h = y(s), p = at(s, w(s)), q = at(s, -w(s));
+        pos.push(p.x, h, -p.y, q.x, h, -q.y); uv.push(0, (s - a) / 2, 1, (s - a) / 2);
+        if (k < steps) { const o = k * 2; idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2); }
+      }
+      const g = new T.BufferGeometry();
+      g.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); g.setAttribute('uv', new T.Float32BufferAttribute(uv, 2));
+      g.setIndex(idx); g.computeVertexNormals();
+      const m = new T.Mesh(g, mat); track.add(m); return m;
+    }
+    const stripes = (() => {  // hazard stripes for ramps
+      const c = document.createElement('canvas'); c.width = c.height = 64;
+      const g = c.getContext('2d'); g.fillStyle = '#ffd166'; g.fillRect(0, 0, 64, 64); g.fillStyle = '#1a1626';
+      for (let x = -64; x < 64; x += 32) { g.beginPath(); g.moveTo(x, 64); g.lineTo(x + 16, 64); g.lineTo(x + 80, 0); g.lineTo(x + 64, 0); g.fill(); }
+      const tx = new T.CanvasTexture(c); tx.wrapS = tx.wrapT = T.RepeatWrapping; return tx;
+    })();
+    const iceMat = new T.MeshStandardMaterial({ color: 0xbfeaff, emissive: 0x3a7ca5, emissiveIntensity: 0.35, metalness: 0.4, roughness: 0.08,
+      transparent: true, opacity: 0.6, side: T.DoubleSide, depthWrite: false });
+    const glints = [];
+    function features() {
+      const r = S.rally, W = r.width, n = r.track.length;
+      const wAt = (s) => hwAt(Math.round(n * (((s % r.length) + r.length) % r.length) / r.length));
+      glints.length = 0;
+      for (const [kind, a, b] of r.zones || []) {
+        if (kind === 'ice') {  // a glossy sheet of ice, with glints that twinkle
+          strip(a, b, wAt, () => 0.02, iceMat);
+          for (let k = 0; k < 6; k++) {
+            const sp = new T.Sprite(new T.SpriteMaterial(glowMat(0xffffff, 0))), p = at(a + (b - a) * (k + 0.5) / 6, (k % 3 - 1) * W * 0.55);
+            sp.position.copy(V(p, 0.08)); sp.scale.set(0.7, 0.7, 1); track.add(sp); glints.push(sp);
+          }
+        } else if (kind === 'ramp') {  // a striped wedge up to the lip, with a face dropping off at the take-off
+          strip(a, b, () => W, (s) => 0.01 + RAMP_TOP * (s - a) / (b - a), new T.MeshStandardMaterial({ map: stripes, roughness: 0.6, side: T.DoubleSide }));
+          const p = at(b, 0), face = new T.Mesh(new T.PlaneGeometry(W * 2, RAMP_TOP), new T.MeshStandardMaterial({ color: 0x2a2440, side: T.DoubleSide }));
+          face.position.copy(V(p, RAMP_TOP / 2)); face.rotation.y = Math.atan2(p.uy, p.ux) + Math.PI / 2; track.add(face);
+        } else if (kind === 'gap') {  // a pit with a red glow far below
+          const p = at((a + b) / 2, 0), len = b - a, depth = 6;
+          const pit = new T.Mesh(new T.BoxGeometry(len, depth, W * 2), new T.MeshStandardMaterial({ color: 0x120c22, emissive: 0x3a0610, emissiveIntensity: 0.6, side: T.BackSide }));
+          pit.position.copy(V(p, -depth / 2 - 0.01)); pit.rotation.y = Math.atan2(p.uy, p.ux); track.add(pit);
+          const glow = new T.Sprite(new T.SpriteMaterial(glowMat(0xff3b3b, 0.5))); glow.position.copy(V(p, -depth + 0.3)); glow.scale.set(len, len, 1); track.add(glow);
+        } else if (kind === 'narrow') {  // orange and white bollards where it pinches in and opens out
+          for (const s of [a, a + 5, b - 5, b]) for (const side of [1, -1]) {
+            const p = at(s, side * (wAt(s) + 0.25)), post = new T.Group();
+            const lo = new T.Mesh(bollardGeo, bollardMat[0]), hi = new T.Mesh(bollardGeo, bollardMat[1]);
+            lo.position.y = 0.2; hi.position.y = 0.6; post.add(lo, hi); post.position.copy(V(p, 0)); track.add(post);
+          }
+        }
+      }
+    }
+    const bollardGeo = new T.CylinderGeometry(0.16, 0.18, 0.4, 10);
+    const bollardMat = [new T.MeshStandardMaterial({ color: 0xff7a1a, emissive: 0xff5a00, emissiveIntensity: 0.4 }), new T.MeshStandardMaterial({ color: 0xffffff, emissive: 0x666666 })];
 
     // ---- craft: a wedge hull with a cockpit, two engine pods and a tail fin, leaning into its turns.
     // The group faces +x; `tilt` inside it carries the lean (about x) and the nose lift on boost (about z).
@@ -543,8 +641,8 @@ UI.rally = (() => {
       mesh.frustumCulled = false;
       return { mesh, pts: [], color };
     }
-    function trailTick(tr, p, boosting) {  // p: the point behind the craft, from at()
-      const head = { x: p.x, y: 0.42, z: -p.y, nx: -p.uy, nz: -p.ux }, pts = tr.pts;
+    function trailTick(tr, p, boosting, y = 0.42) {  // p: the point behind the craft, from at(); y: its height
+      const head = { x: p.x, y, z: -p.y, nx: -p.uy, nz: -p.ux }, pts = tr.pts;
       if (pts[0] && Math.hypot(pts[0].x - head.x, pts[0].z - head.z) > 6) pts.length = 0;  // jumped: a new race
       if (pts.length < 2 || Math.hypot(pts[1].x - head.x, pts[1].z - head.z) > 0.45) pts.unshift(head); else pts[0] = head;
       if (pts.length > TRAIL) pts.length = TRAIL;
@@ -617,6 +715,15 @@ UI.rally = (() => {
         const p = shipAt(e[1]);
         spawn(30, p.x, 0.5, p.z, 0, 2.5, 0, 3, 0x6c6c80, 1.2, -0.5);
         if (e[1] === S.rally.me) GL3.shake(camera, 0.5);
+      } else if (e[0] === 'fall' && shipAt(e[1])) {  // 🕳️ into the gap: a burst of smoke and sparks from below
+        const p = shipAt(e[1]);
+        spawn(30, p.x, -1, p.z, 0, 4, 0, 3, 0x6c6c80, 1.0, 1);
+        spawn(16, p.x, -1, p.z, 0, 5, 0, 4, 0xff6b3b, 0.6, 8);
+        if (e[1] === S.rally.me) GL3.shake(camera, 0.6);
+      } else if (e[0] === 'land' && shipAt(e[1])) {
+        const p = shipAt(e[1]);
+        spawn(12, p.x, 0.1, p.z, 0, 1, 0, 4, 0xcfe8ff, 0.35, 6);
+        if (e[1] === S.rally.me) GL3.shake(camera, 0.3);
       } else if (e[0] === 'drop' && shipAt(e[1])) {
         const p = shipAt(e[1]);
         spawn(8, p.x, 0.3, p.z, 0, 1, 0, 2, 0x8a8aa0, 0.4, 6);
@@ -637,7 +744,7 @@ UI.rally = (() => {
     const mini = (() => {
       const cv = document.createElement('canvas'); cv.className = 'ra-mini'; stage.append(cv);
       const g = cv.getContext('2d');
-      let k = 1, ox = 0, oy = 0, path = null, dpr = 1, px = 0;
+      let k = 1, ox = 0, oy = 0, path = null, dpr = 1, px = 0, zones = [];
       function size() {
         const css = Math.round(Math.max(84, Math.min(130, (stage.clientWidth || 320) * 0.26)));
         dpr = Math.min(devicePixelRatio || 1, 2); px = Math.round(css * dpr);
@@ -647,6 +754,7 @@ UI.rally = (() => {
         const span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) + 8;
         k = px / span; ox = (Math.max(...xs) + Math.min(...xs)) / 2; oy = (Math.max(...ys) + Math.min(...ys)) / 2;
         path = new Path2D(); pts.forEach(([x, y], j) => (j ? path.lineTo(X(x), Y(y)) : path.moveTo(X(x), Y(y)))); path.closePath();
+        zones = zonePaths(X, Y, false);
       }
       const X = (x) => px / 2 + (x - ox) * k, Y = (y) => px / 2 - (y - oy) * k;
       function draw(now, focus) {
@@ -655,6 +763,7 @@ UI.rally = (() => {
         g.clearRect(0, 0, px, px);
         g.lineJoin = 'round'; g.strokeStyle = 'rgba(76,201,240,.55)'; g.lineWidth = 5 * dpr; g.stroke(path);
         g.strokeStyle = 'rgba(20,16,40,.9)'; g.lineWidth = 2.5 * dpr; g.stroke(path);
+        for (const [kind, zp] of zones) { g.strokeStyle = kind === 'gap' ? '#ff3b3b' : ZONE_INK[kind]; g.lineWidth = (kind === 'gap' ? 3 : 2.5) * dpr; g.stroke(zp); }
         const f = at(0, 0); g.fillStyle = '#fff'; g.fillRect(X(f.x) - 1.5 * dpr, Y(f.y) - 1.5 * dpr, 3 * dpr, 3 * dpr);  // the line
         g.fillStyle = '#ff3030';
         for (const m of mines) { const p = at(m[0], m[1]); g.fillRect(X(p.x) - 1.3 * dpr, Y(p.y) - 1.3 * dpr, 2.6 * dpr, 2.6 * dpr); }
@@ -682,6 +791,7 @@ UI.rally = (() => {
       padMat.opacity = 0.65 + 0.35 * Math.sin(now / 140);
       pickMat.color.setHSL((now / 2500) % 1, 0.85, 0.6); pickMat.emissive.setHSL((now / 2500) % 1, 0.9, 0.35);
       pickups.forEach((g, k) => { g.visible = !!pk[k]; g.rotation.y = now / 400; g.position.y = 0.7 + 0.12 * Math.sin(now / 250 + k); });
+      glints.forEach((g, k) => { g.material.opacity = Math.max(0, Math.sin(now / 380 + k * 1.7)) ** 8; });
       drawMissiles(now); drawMines(now);
       ghostShip.visible = !!gp;
       if (gp) { ghostShip.position.copy(V(gp, 0.45)); ghostShip.rotation.y = Math.atan2(gp.uy, gp.ux); ghostShip.material.opacity = 0.22 + 0.08 * Math.sin(now / 150); }
@@ -692,7 +802,12 @@ UI.rally = (() => {
         else { const nd = u.d + (c[1] - u.d) * ease(18); u.vd += ((nd - u.d) / dt - u.vd) * ease(8); u.d = nd; }
         const s = sNow(i, now), p = at(s, u.d), boosting = !!c[3];
         u.sink = c[12] ? Math.min(1, (u.sink || 0) + dt * 0.8) : 0;  // knocked out: it settles onto the track
-        g.position.copy(V(p, 0.45 - 0.3 * u.sink + 0.06 * (1 - u.sink) * Math.sin(now / 200 + i)));
+        // 🚧 up a ramp, then the jump's arc from the server (eased between updates); after a fall it pops back
+        const air = c[13] || 0;
+        u.h = u.h == null || !dt || Math.abs(air - u.h) > 2 ? air : u.h + (air - u.h) * ease(20);
+        u.ramp = air ? (u.ramp || 0) * Math.exp(-dt * 2.5) : rampLift(s);
+        const up = u.h + u.ramp;
+        g.position.copy(V(p, 0.45 + up - 0.3 * u.sink + 0.06 * (1 - u.sink) * Math.sin(now / 200 + i)));
         // spinning from a missile hit: whirl round, then settle back facing forward
         if (c[10]) u.spin += dt * 16; else if (u.spin) { const to = Math.round(u.spin / Math.PI / 2) * Math.PI * 2; u.spin += (to - u.spin) * ease(10); if (Math.abs(to - u.spin) < 0.01) u.spin = 0; }
         g.rotation.y = Math.atan2(p.uy, p.ux) + u.spin;
@@ -706,8 +821,10 @@ UI.rally = (() => {
         u.paint.emissiveIntensity = boosting ? 0.8 : 0.15 + 0.6 * u.flare;
         const k = Math.min(1.4, c[2] / r.top), fl = (0.35 + 0.35 * k + (boosting ? 0.5 : 0) * (0.85 + 0.3 * Math.random())) * (1 - u.sink);
         for (const f of u.flames) f.scale.set(fl, fl * 0.8, 1);
-        u.under.material.opacity = 0.45 + 0.1 * Math.sin(now / 120 + i) + 0.5 * u.flare;
-        trailTick(u.trail, at(s - 0.85, u.d), boosting);
+        // the glow underneath stays on the ground (fainter the higher you are) and is gone over a gap
+        u.under.position.y = -0.4 - Math.max(0, up);
+        u.under.material.opacity = zoneAt(s, ['gap']) ? 0 : (0.45 + 0.1 * Math.sin(now / 120 + i) + 0.5 * u.flare) / (1 + Math.max(0, u.h));
+        trailTick(u.trail, at(s - 0.85, u.d), boosting, 0.42 + up);
         if (!dt || c[6]) return;
         const vx = -p.ux * c[2] * 0.3, vz = p.uy * c[2] * 0.3;
         if (boosting) for (const z of [-0.5, 0.5]) {
@@ -731,9 +848,10 @@ UI.rally = (() => {
         const c = crafts[who], u = ships[who].userData, p = at(sNow(who, now), u.d ?? c[1]);
         cam.boost += ((c[3] ? 1 : 0) - cam.boost) * ease(4);
         const back = 7 - 1.3 * cam.boost, k = Math.min(1.4, c[2] / r.top);
-        want.set(p.x - p.ux * back, 3.6 - 0.7 * cam.boost, -(p.y - p.uy * back));
+        const up = 0.6 * ((u.h || 0) + (u.ramp || 0));  // rise a little with a jump
+        want.set(p.x - p.ux * back, 3.6 - 0.7 * cam.boost + up, -(p.y - p.uy * back));
         if (!cam.ready) cam.pos.copy(want); else cam.pos.lerp(want, ease(8));
-        want.set(p.x + p.ux * 6, 0.5, -(p.y + p.uy * 6));
+        want.set(p.x + p.ux * 6, 0.5 + up, -(p.y + p.uy * 6));
         if (!cam.ready) cam.look.copy(want); else cam.look.lerp(want, ease(10));
         cam.ready = true;
         const fov = 60 + 10 * k + 10 * cam.boost;
@@ -755,7 +873,7 @@ UI.rally = (() => {
     const canvas = document.createElement('canvas'); stage.prepend(canvas);
     const g = canvas.getContext('2d');
     if (!g) { stage.append('Your browser cannot draw this game.'); return null; }
-    let k = 3, ox = 0, oy = 0;
+    let k = 3, ox = 0, oy = 0, ring = null, zones = [];
     function resize() {
       const dpr = Math.min(devicePixelRatio || 1, 2);
       const size = Math.max(160, Math.min(stage.clientWidth || 320, stage.clientHeight || 320));
@@ -765,13 +883,26 @@ UI.rally = (() => {
       const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
       const span = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) + 10;
       k = canvas.width / span; ox = (Math.max(...xs) + Math.min(...xs)) / 2; oy = (Math.max(...ys) + Math.min(...ys)) / 2;
+      ring = null; zones = [];
+      const r = S?.rally; if (!r?.cum || typeof Path2D === 'undefined') return;
+      // the track as a ring between its two edges (the width varies at narrows), then its features on top
+      ring = new Path2D();
+      for (const side of [1, -1]) {
+        r.track.forEach((_, j) => { const p = at(r.cum[j], side * hwAt(j)); j ? ring.lineTo(X(p.x), Y(p.y)) : ring.moveTo(X(p.x), Y(p.y)); });
+        ring.closePath();
+      }
+      zones = zonePaths(X, Y, true);
     }
     const X = (x) => canvas.width / 2 + (x - ox) * k, Y = (y) => canvas.height / 2 - (y - oy) * k;
     function draw(now) {
       const r = S.rally;
       g.fillStyle = '#070512'; g.fillRect(0, 0, canvas.width, canvas.height);
-      g.strokeStyle = '#24203a'; g.lineWidth = r.width * 2 * k; g.lineJoin = 'round';
-      g.beginPath(); r.track.forEach(([x, y], j) => (j ? g.lineTo(X(x), Y(y)) : g.moveTo(X(x), Y(y)))); g.closePath(); g.stroke();
+      if (ring) { g.fillStyle = '#24203a'; g.fill(ring, 'evenodd'); } else {
+        g.strokeStyle = '#24203a'; g.lineWidth = r.width * 2 * k; g.lineJoin = 'round';
+        g.beginPath(); r.track.forEach(([x, y], j) => (j ? g.lineTo(X(x), Y(y)) : g.moveTo(X(x), Y(y)))); g.closePath(); g.stroke();
+      }
+      for (const [kind, zp] of zones) { g.fillStyle = ZONE_INK[kind]; g.globalAlpha = kind === 'ice' ? 0.55 : 1; g.fill(zp); }
+      g.globalAlpha = 1;
       g.fillStyle = '#ff5d5d';
       (r.pickups || []).forEach(([pi, lat], j) => {
         if (!pk[j]) return;
