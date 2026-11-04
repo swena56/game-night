@@ -2243,3 +2243,9 @@ body.calm .cb-plus { display: none; }
 /* doodle dash: a late letter drops into its blank */
 .dd-hint .letter.late { animation: ddLate .5s cubic-bezier(.3, 1.6, .5, 1); color: #ffd166; }
 @keyframes ddLate { from { transform: translateY(-14px) scale(1.4); opacity: 0; } }
+
+/* checkers: a forced capture lights the pieces that must jump; a new king's crown drops on */
+.csq.must .checker { box-shadow: 0 0 0 3px #ef476f, 0 0 14px #ef476f; animation: ckMust .8s ease-in-out infinite alternate; }
+@keyframes ckMust { to { box-shadow: 0 0 0 3px #ffd166, 0 0 20px #ffd166; } }
+.checker.king.crowned::after { animation: ckCrown .55s var(--cd, 0s) both cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes ckCrown { from { transform: translateY(-160%) scale(1.8) rotate(-20deg); opacity: 0; } }

@@ -56,9 +56,13 @@ UI.checkers = (() => {
       const fade = ghost.animate([{ opacity: 1, transform: 'scale(1)' }, { opacity: 1, transform: 'scale(1)', offset: 0.5 }, { opacity: 0, transform: 'scale(.4)' }],
         { duration: HOP, delay: HOP * (i - 1), fill: 'both' });
       fade.currentTime = elapsed;
-      fade.onfinish = fade.oncancel = () => ghost.remove();
+      fade.oncancel = () => ghost.remove();
+      // the taken piece is carried off to the tray beside the board
+      fade.onfinish = () => { Kit.fly(ghost, $('ckTray'), { ms: 500, scale: 0.4 }); ghost.remove(); };
     });
   }
+  // did the last move make a king? (one more king on the board than before it)
+  const crownedNow = (ck) => ck.board.flat().filter((x) => x && x === x.toUpperCase()).length > shownKings;
   function render(s, c) {
     S = s; ctx = c;
     const ck = S.checkers;
@@ -86,12 +90,14 @@ UI.checkers = (() => {
       if (sel && same(sel, [r, col])) sq.classList.add('sel');
       if (ends.has(k)) sq.classList.add('target');
       if (via.has(k)) sq.classList.add('via');
-      if (!sel && ctx.myTurn && starts.has(k)) sq.classList.add('movable');
+      if (!sel && ctx.myTurn && starts.has(k)) sq.classList.add('movable', ...(ck.forced ? ['must'] : []));
       sq.setAttribute('aria-label', `${'abcdefgh'[col]}${8 - r}, ${p ? `${p.toLowerCase() === 'd' ? 'dark' : 'light'} ${p === p.toUpperCase() ? 'king' : 'man'}` : (r + col) % 2 ? 'empty' : 'light square'}`);
       sq.innerHTML = '';
       if (p) {
         const disc = ctx.el('span', 'checker ' + p.toLowerCase() + (p === p.toUpperCase() ? ' king' : ''), p === p.toUpperCase() ? '♛︎' : '');
         if (to && to[0] === r && to[1] === col) {
+          // just crowned: the crown drops onto the piece once it has landed
+          if (animate && p === p.toUpperCase() && crownedNow(ck)) { disc.classList.add('crowned'); disc.style.setProperty('--cd', `${hopping ? (HOP * (ck.last.length - 1)) / 1000 : 0.25}s`); }
           if (hopping || resuming) hopper = [disc, p.toLowerCase()];
           else if (animate) slideFrom(disc, from[0] - r, from[1] - col, flip());
         }
