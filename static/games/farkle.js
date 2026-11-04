@@ -3,7 +3,7 @@
 UI.farkle = (() => {
   let S, ctx, picked = new Set(), rollKey = '', seenEvent = 0;
   const $ = (id) => document.getElementById(id);
-  const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
+  const PIPS = Dice.PIPS;
   const num = (n) => Number(n || 0).toLocaleString();
   const FARKLE_PCT = { 1: 67, 2: 44, 3: 28, 4: 16, 5: 8, 6: 2 };  // chance a roll of n dice scores nothing
 
@@ -39,12 +39,7 @@ UI.farkle = (() => {
   }
   const keptScore = () => best([...picked].map((i) => S.farkle.roll[i]).sort());
 
-  function die(value, cls = '') {
-    const b = ctx.el('button', 'ya-die ' + cls);
-    const on = new Set(PIPS[value]);
-    for (let k = 0; k < 9; k++) b.append(ctx.el('span', on.has(k) ? 'on' : ''));
-    return b;
-  }
+  const die = (value, cls = '') => Dice.die(value, cls, 'button');
 
   function mount(main, side) {
     picked = new Set(); rollKey = ''; seenEvent = 0;
@@ -105,10 +100,11 @@ UI.farkle = (() => {
       const box = $('fkDice'); box.innerHTML = '';
       const dice = f.rolled ? f.roll : [1, 2, 3, 4, 5, 6].slice(0, f.diceLeft);
       dice.forEach((v, i) => {
-        const b = die(v, f.rolled ? 'roll' : 'blank');
+        const b = die(v, f.rolled ? '' : 'blank');
         b.onclick = () => { picked.has(i) ? picked.delete(i) : picked.add(i); paint(); };
         box.append(b);
       });
+      if (f.rolled) Dice.roll(box.children, { sound: false });
     }
     paint();
 
@@ -122,6 +118,12 @@ UI.farkle = (() => {
         : f.event.kind === 'hot' ? `🔥 HOT DICE! ${who} rolls all six again with ${num(f.event.pts)} on the line`
           : `🏦 ${who} banked ${num(f.event.pts)}`;
       void ev.offsetWidth; ev.classList.add('show');
+      if (f.event.kind === 'farkle') {
+        // a bust: the dice shake and go grey, with a thud
+        const box = $('fkDice'); box.classList.remove('bust', 'shake'); void box.offsetWidth; box.classList.add('bust', 'shake');
+        Kit.callout('FARKLE!', 'bad', { ms: 1300 });
+        ctx.sfx('wrong'); if (f.event.by === me) ctx.buzz([40, 40, 80]);
+      } else if (f.event.kind === 'bank' && f.event.pts >= 1500) Kit.callout(`🏦 ${num(f.event.pts)}`, 'gold', { ms: 1300 });
       if (f.event.kind === 'hot') {
         const box = $('fkDice'); box.classList.remove('hot'); void box.offsetWidth; box.classList.add('hot');
         if (f.event.by === me) ctx.confetti();
@@ -138,6 +140,14 @@ UI.farkle = (() => {
       const bar = ctx.el('div', 'fk-bar'); const fill = ctx.el('span');
       fill.style.width = `${Math.min(100, (100 * Math.max(0, f.scores[pid])) / f.target)}%`; fill.style.background = p.color;
       bar.append(fill);
+      // the turn's points on the line show as a ghost extension of the bar
+      if (pid === S.turn && f.turnPts > 0 && S.phase === 'playing') {
+        const ghost = ctx.el('i', 'fk-ghost');
+        ghost.style.left = fill.style.width;
+        ghost.style.width = `${Math.max(0, Math.min(100 - parseFloat(fill.style.width), (100 * f.turnPts) / f.target))}%`;
+        ghost.style.background = p.color;
+        bar.append(ghost);
+      }
       row.append(name, bar, ctx.el('span', 'fk-num', num(f.scores[pid])));
       sc.append(row);
     }

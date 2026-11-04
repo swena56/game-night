@@ -1,7 +1,7 @@
 // Safecracker: build a guess from the colour pad, lock it in, and read everyone's revealed guesses.
 // Pegs carry their number as well as their colour, so colour is never the only cue.
 UI.safecracker = (() => {
-  let S, ctx, draft = [], cursor = 0, probing = false, draftFor = '', notes = [], notesFor = null;
+  let S, ctx, draft = [], cursor = 0, probing = false, draftFor = '', notes = [], notesFor = null, seenRounds = null, seenOpen = null, seenSafe = null;
   const MARKS = ['', 'out', 'in'];  // a note cycles: unknown → ✗ not in the code → ✓ in the code
   const STANDARD = ['#ef476f', '#ffb703', '#06d6a0', '#3a86ff', '#c77dff', '#f4f1de', '#ff7f11', '#8d6e63'];
   // Okabe–Ito: eight colours that stay distinct with the common kinds of colour blindness
@@ -22,7 +22,7 @@ UI.safecracker = (() => {
   }
 
   function mount(main, side) {
-    draft = []; cursor = 0; probing = false; draftFor = ''; notes = []; notesFor = null;
+    draft = []; cursor = 0; probing = false; draftFor = ''; notes = []; notesFor = null; seenRounds = null; seenOpen = null; seenSafe = null;
     main.innerHTML = `<div class="sc">
       <div class="sc-head"><span id="scSafe"></span><span id="scRound"></span></div>
       <div id="scOpened" class="sc-opened" hidden></div>
@@ -184,6 +184,9 @@ UI.safecracker = (() => {
     const hist = $('scHistory'); hist.innerHTML = '';
     if (!g.history.length) hist.append(ctx.el('p', 'hint', g.duel ? 'Both of you lock in a guess at the other\'s code, then both are revealed together.'
       : 'No guesses yet. Everyone locks in a first guess, then all are revealed together.'));
+    // a freshly revealed round: its clue pins drop in one at a time, ticking like tumblers
+    const freshRound = seenRounds !== null && g.history.length > seenRounds && seenSafe === g.safe ? g.history.length - 1 : -1;
+    let pinK = 0;
     g.history.forEach((round, i) => {
       const box = ctx.el('div', 'sc-round');
       box.append(ctx.el('span', 'sc-rnum', String(i + 1)));
@@ -199,6 +202,7 @@ UI.safecracker = (() => {
         for (let k = 0; k < h.exact; k++) pins.append(ctx.el('span', 'sc-pin on'));
         for (let k = 0; k < h.near; k++) pins.append(ctx.el('span', 'sc-pin'));
         if (!h.exact && !h.near) pins.append(ctx.el('span', 'sc-none', '—'));
+        if (i === freshRound && motionOK()) for (const pin of pins.children) { pin.classList.add('drop'); pin.style.animationDelay = pinK++ * 0.12 + 's'; }
         row.append(who, ctx.el('span', 'sc-code'), pins);
         row.children[1].append(...h.code.map((x) => peg(x, 'small')));
         rows.append(row);
@@ -207,6 +211,17 @@ UI.safecracker = (() => {
       hist.append(box);
     });
     hist.scrollTop = hist.scrollHeight;
+    if (freshRound >= 0) for (let k = 0; k < Math.min(pinK, 12); k++) setTimeout(() => ctx.sfx('tick'), k * 120);
+    // cracked: the dial spins and the door swings open
+    const opened = !!(g.code || g.opened);
+    if (opened && seenOpen === false && seenSafe === g.safe) {
+      const cracked = g.history.at(-1)?.some((h) => h.exact === g.length && h.by === S.me.id);
+      const door = ctx.el('div', 'sc-door'); door.append(ctx.el('span', 'sc-dial'));
+      $('scOpened').prepend(door);
+      ctx.sfx(cracked ? 'fanfare' : 'crack');
+      if (cracked) Kit.callout('🔓 Cracked!', 'gold');
+    }
+    seenOpen = opened; seenRounds = g.history.length; seenSafe = g.safe;
 
     if (notesFor !== g.safe) { notes = []; notesFor = g.safe; }
     paintNotes();

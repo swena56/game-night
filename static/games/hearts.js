@@ -1,18 +1,14 @@
 // Hearts: rivals across the top, the trick in the middle, your hand at the bottom. In the passing
 // stage tap three cards and send them; in play only the cards you may play stand up.
 UI.hearts = (() => {
-  let S, ctx, chosen = [], chosenFor = '';
+  let S, ctx, chosen = [], chosenFor = '', seenLast = null, seenTrick = 0, seenBroken = null, seenHandPts = null;
   const SUIT = { S: '♠', H: '♥', D: '♦', C: '♣' };
   const $ = (id) => document.getElementById(id);
 
-  function face(card, cls = '') {
-    const f = ctx.el('span', `pc ${'HD'.includes(card[1]) ? 'red' : 'black'} ${cls}`);
-    f.append(ctx.el('b', '', card[0] === 'T' ? '10' : card[0]), ctx.el('i', '', SUIT[card[1]] + '︎'));
-    return f;
-  }
+  const face = (card, cls = '') => Cards.face(card, cls);
 
   function mount(main, side) {
-    chosen = []; chosenFor = '';
+    chosen = []; chosenFor = ''; seenLast = null; seenTrick = 0; seenBroken = null; seenHandPts = null;
     main.innerHTML = `<div class="hh">
       <div id="hhRivals" class="hh-rivals"></div>
       <div id="hhTrick" class="hh-trick"></div>
@@ -36,6 +32,7 @@ UI.hearts = (() => {
     for (let k = 1; k < n; k++) {
       const i = ((me ?? 0) + k) % n;
       const box = ctx.el('div', 'hh-rival' + (S.turn === h.seats[i] ? ' turn' : ''));
+      box.dataset.seat = i;
       const p = ctx.player(h.seats[i]);
       const nm = ctx.el('b', '', name(i)); nm.style.color = p?.color ?? 'inherit';
       box.append(nm, ctx.el('small', '', `🎴 ${h.counts[i]} · ♥ ${h.taken[i]}`));
@@ -51,6 +48,8 @@ UI.hearts = (() => {
       tr.append(slot);
     }
     if (!showing.length) tr.append(ctx.el('span', 'hint', h.stage === 'pass' ? 'Passing…' : h.stage === 'score' ? '' : 'Lead a card.'));
+
+    juice(h, tr, showing);
 
     // note line
     const offName = { 1: 'left', [n - 1]: 'right', 2: 'across' }[h.pass];
@@ -93,8 +92,37 @@ UI.hearts = (() => {
     sc.append(ctx.el('div', 'hint left', `Hand ${h.handNo} · game to ${h.target}`));
   }
 
+  // a finished trick is swept to whoever took it; the Q♠ lands with a thud; hearts breaking and
+  // shooting the moon get their moment
+  function juice(h, tr, showing) {
+    const lastKey = h.last ? JSON.stringify(h.last.cards) : null;
+    const first = seenLast === null;
+    if (!first && showing.length > seenTrick && showing.some(([, c]) => c === 'QS') && !showing.slice(0, seenTrick).some(([, c]) => c === 'QS')) {
+      ctx.sfx('thud'); ctx.buzz(40);
+      if (motionOK()) { tr.classList.remove('shake'); void tr.offsetWidth; tr.classList.add('shake'); }
+    } else if (!first && showing.length > seenTrick && h.trick.length) ctx.sfx('card');
+    if (!first && lastKey && lastKey !== seenLast && !h.trick.length) {
+      const w = h.last.winner, target = w === h.me ? $('hhHand') : document.querySelector(`.hh-rival[data-seat="${w}"]`);
+      ctx.sfx('card');
+      setTimeout(() => {
+        if (!tr.isConnected) return;
+        [...tr.querySelectorAll('.pc')].forEach((card, k) => Kit.fly(card, target, { ms: 420, delay: k * 50, scale: 0.5 }));
+        tr.classList.add('swept');
+        ctx.sfx('sweep');
+        const pts = h.last.cards.reduce((t, [, c]) => t + (c[1] === 'H' ? 1 : c === 'QS' ? 13 : 0), 0);
+        if (pts && target) setTimeout(() => Kit.flyText(target, `+${pts}`, 'bad'), 420);
+      }, 900);
+    } else tr.classList.remove('swept');
+    if (seenBroken === false && h.broken) Kit.callout('💔 Hearts broken', 'bad', { ms: 1200 });
+    const hp = JSON.stringify(h.handPoints || null);
+    if (!first && h.handPoints && hp !== seenHandPts && h.handPoints.filter((v) => v >= 26).length === h.n - 1) {
+      Kit.callout('🌙 Shot the moon!', 'gold', { sound: 'fanfare', ms: 2000 });
+    }
+    seenHandPts = hp; seenBroken = h.broken; seenLast = lastKey; seenTrick = h.trick.length ? showing.length : 0;
+  }
+
   const turnText = (s) => (s.phase === 'playing' && s.hearts.stage === 'pass' ? (s.hearts.myPass ? '🔁 Waiting for the others to pass…' : '🔁 Pick 3 cards to pass') : null);
   const myMove = (s) => s.phase === 'playing' && s.hearts.stage === 'pass' && !s.hearts.myPass && s.hearts.me != null;
 
-  return { mount, render, turnText, myMove };
+  return { mount, render, turnText, myMove, ownSounds: true };
 })();

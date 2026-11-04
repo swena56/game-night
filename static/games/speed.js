@@ -1,17 +1,13 @@
 // Speed: your rival's hand across the top, the two centre piles in the middle, your hand at the bottom.
 // Tap a card to play it; if it fits both piles it lifts, and you tap the pile you want.
 UI.speed = (() => {
-  let S, ctx, chosen = null, seen = -1, receivedAt = 0, tickTimer = 0, drag = null, dragged = false;
+  let S, ctx, chosen = null, seen = -1, receivedAt = 0, tickTimer = 0, drag = null, dragged = false, streak = 0, lastMine = 0, prevTops = [];
   const SUIT = { S: '♠', H: '♥', D: '♦', C: '♣' };
   const RANKS = 'A23456789TJQK';
   const $ = (id) => document.getElementById(id);
   const fits = (c, top) => [1, 12].includes((RANKS.indexOf(c[0]) - RANKS.indexOf(top[0]) + 13) % 13);
 
-  function face(card, cls = '') {
-    const f = ctx.el('span', `pc ${'HD'.includes(card[1]) ? 'red' : 'black'} ${cls}`);
-    f.append(ctx.el('b', '', card[0] === 'T' ? '10' : card[0]), ctx.el('i', '', SUIT[card[1]] + '︎'));
-    return f;
-  }
+  const face = (card, cls = '') => Cards.face(card, cls);
 
   function back(n, cls = '') {
     const f = ctx.el('span', `pc back ${cls}`);
@@ -133,13 +129,27 @@ UI.speed = (() => {
     for (const k of [0, 1]) {
       const pile = $(`spPile${k}`); pile.innerHTML = '';
       const fresh = sp.seq !== seen && sp.last && sp.last[2] === k;
-      if (fresh && seen !== -1) slap();
+      if (fresh && seen !== -1) {
+        slap();
+        // a streak: my own plays coming fast, one after another
+        const now = performance.now();
+        if (sp.last[0] === me) {
+          streak = now - lastMine < 1800 ? streak + 1 : 1;
+          lastMine = now;
+          if (streak >= 3) { ctx.sfx('rise', streak); Kit.flyText(pile, `🔥 ×${streak}`, 'gold'); }
+          if (streak === 6) Kit.callout('On fire!', 'gold', { ms: 1000 });
+        } else if (sp.last[0] === them) {
+          // the rival just beat me to a pile I could have used: a near miss flash
+          if (sp.hand.some((c2) => fits(c2, prevTops[k] || ''))) { pile.classList.remove('near'); void pile.offsetWidth; pile.classList.add('near'); }
+        }
+      }
       pile.append(face(sp.piles[k], 'big-card' + (fresh ? ' toss' : '')));
       pile.setAttribute('aria-label', `Pile ${k + 1}: ${sp.piles[k][0] === 'T' ? '10' : sp.piles[k][0]} of ${SUIT[sp.piles[k][1]]}`);
       const sideEl = $(`spSide${k}`); sideEl.innerHTML = '';
       if (sp.side[k]) sideEl.append(back(sp.side[k], 'small'));
     }
     seen = sp.seq;
+    prevTops = [...sp.piles];
 
     $('spMine').textContent = sp.me == null ? '' : `Your stock: ${sp.stock[me]} · ${sp.hands[me] + sp.stock[me]} cards to go`;
     const score = $('spScore'); score.innerHTML = '';

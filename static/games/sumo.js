@@ -90,11 +90,13 @@ UI.sumo = (() => {
     sentAt = now;
     ctx.input({ sx: +x.toFixed(3), sy: +y.toFixed(3) }, force);
   }
-  function dash() { if (playing()) ctx.input({ dash: true, sx: +stick[0].toFixed(3), sy: +stick[1].toFixed(3) }, true); }
+  function dash() { if (playing()) ctx.sfx('whoosh'); if (playing()) ctx.input({ dash: true, sx: +stick[0].toFixed(3), sy: +stick[1].toFixed(3) }, true); }
 
   // ---------- state
+  let shrinkAt = 0, warnTick = 0;
   function render(s, c) {
     S = s; ctx = c;
+    shrinkAt = s.sumo.shrinkIn != null ? performance.now() + s.sumo.shrinkIn * 1000 : 0;
     take(s.sumo);
     countdownAt = performance.now() + s.sumo.countdown * 1000;
     renderSide();
@@ -111,7 +113,13 @@ UI.sumo = (() => {
     if (i != null && was && now) {
       const kick = Math.hypot(now[2] - was[2], now[3] - was[3]);
       if (now[6] && !was[6]) buzz([80, 50, 160]);       // over the edge
-      else if (kick > 1.2 && !now[4]) { buzz(35); gl?.shake?.(Math.min(0.9, 0.25 + kick * 0.06)); }  // shoved (not my own dash)
+      else if (kick > 1.2 && !now[4]) { buzz(35); gl?.shake?.(Math.min(0.9, 0.25 + kick * 0.06)); ctx.sfx('thud'); }  // shoved (not my own dash)
+    }
+    // sounds for everyone: a saucer going over the edge, a bumper shattering, the platform shrinking
+    if (snap?.s && d.s) {
+      d.s.forEach((x, k) => { const y = snap.s[k]; if (y && x[6] && !y[6]) ctx.sfx('whoosh'); });
+      if (snap.bm && d.bm && [...d.bm].filter((b) => b === '1').length < [...snap.bm].filter((b) => b === '1').length) ctx.sfx('crack');
+      if (snap.R && d.R < snap.R - 0.01) { ctx.sfx('boom'); gl?.shake?.(0.4); buzz(60); }
     }
     const next = { R: d.R, bm: d.bm, s: d.s, st: d.st ?? d.stage }, t = performance.now();
     // the round just ended: replay its last 1.2 s at half speed (inside the 3 s pause before the next round)
@@ -174,6 +182,11 @@ UI.sumo = (() => {
     else if (S.phase === 'playing' && mine?.[6]) text = '🕳️ Off the edge — watching';
     $('smBanner').hidden = !text; $('smBanner').textContent = text;
     if (mine && mine[5] > 0 && Math.floor(now / 100) % 2 === 0) renderSide();  // tick the dash cooldown
+    // the edge crumbles: three seconds before the platform shrinks, the rim flashes and ticks
+    const warn = shrinkAt && snap.st === 'play' && !replay ? (shrinkAt - now) / 1000 : Infinity;
+    $('smStage').classList.toggle('crumble', warn > 0 && warn < 3);
+    if (warn > 0 && warn < 3 && Math.ceil(warn) !== warnTick) { warnTick = Math.ceil(warn); ctx.sfx('tickfast'); }
+    if (warn > 3 || warn <= 0) warnTick = 0;
   }
 
   // ---------- three.js arena

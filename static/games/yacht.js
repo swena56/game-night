@@ -1,12 +1,12 @@
 // Yacht: five dice (tap to hold), a Roll button, and the scorecard. Your open boxes become buttons
 // that show what the current roll would score. The card is built once and updated in place.
 UI.yacht = (() => {
-  let S, ctx, hold = [false, false, false, false, false], holdFor = null, seenRoll = 0, cardKey = '';
+  let S, ctx, hold = [false, false, false, false, false], holdFor = null, seenRoll = 0, cardKey = '', filledSeen = null, filledNow = null;
   const $ = (id) => document.getElementById(id);
-  const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
+  const PIPS = Dice.PIPS;
 
   function mount(main, side) {
-    hold = [false, false, false, false, false]; holdFor = null; seenRoll = 0; cardKey = '';
+    hold = [false, false, false, false, false]; holdFor = null; seenRoll = 0; cardKey = ''; filledSeen = null; filledNow = null;
     main.innerHTML = `<div class="ya">
       <div class="ya-top stick-top">
         <div id="yaDice" class="ya-dice"></div>
@@ -40,8 +40,13 @@ UI.yacht = (() => {
       b.classList.toggle('held', y.rolled && hold[i]);
       b.classList.toggle('blank', !y.rolled);
       b.disabled = !canHold();
-      if (rolling && !(y.held[i])) { b.classList.remove('roll'); void b.offsetWidth; b.classList.add('roll'); }
     });
+    if (rolling) {
+      const moving = [...$('yaDice').children].filter((_, i) => !y.held[i]);
+      Dice.roll(moving, { sound: false });
+      // five alike: the moment of the game
+      if (y.dice.every((d) => d === y.dice[0])) setTimeout(() => Kit.callout('⛵ YACHT!', 'gold', { sound: 'fanfare', ms: 1800 }), 450);
+    }
   }
 
   function render(s, c) {
@@ -102,6 +107,13 @@ UI.yacht = (() => {
       for (const td of tr.querySelectorAll('td[data-id]')) {
         const v = y.cards[td.dataset.id]?.[cat];
         const b = td.querySelector('button');
+        // a box just filled flashes, with its points floating up
+        const fk = `${td.dataset.id}:${cat}`;
+        if (v != null && filledSeen && !filledSeen.has(fk)) {
+          td.classList.remove('ya-fresh'); void td.offsetWidth; td.classList.add('ya-fresh');
+          if (v) Kit.flyText(td, `+${v}`, v >= 25 ? 'gold' : 'good');
+        }
+        if (v != null) (filledNow ||= new Set()).add(fk);
         if (b) {
           const open = v == null, live = open && mineTurn && y.rolled;
           b.disabled = !live;
@@ -112,6 +124,12 @@ UI.yacht = (() => {
         } else td.textContent = v == null ? '' : String(v);
       }
     }
+    filledSeen = filledNow || new Set(); filledNow = null;
+    // the best-scoring open box for this roll gets a star
+    if (mineTurn && y.rolled && y.preview) {
+      const top = Math.max(...Object.values(y.preview));
+      for (const b of t.querySelectorAll('.ya-box.preview')) b.classList.toggle('best', top > 0 && +b.textContent === top);
+    } else for (const b of t.querySelectorAll('.ya-box.best')) b.classList.remove('best');
     for (const td of t.querySelectorAll('tr.ya-total td[data-id]')) td.textContent = String(y.totals[td.dataset.id] ?? 0);
     // the bonus row shows progress (41/63) until it's earned, then +35
     for (const td of t.querySelectorAll('tr.ya-bonus td[data-id]')) {

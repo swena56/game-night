@@ -1,11 +1,11 @@
 // Doodle Dash: strokes arrive from the server as they start; each new stroke animates over its time slot.
 UI.doodle = (() => {
-  let S, ctx, svg, drawnRound = 0, drawnCount = 0, receivedAt = 0, tickTimer = 0;
+  let S, ctx, svg, drawnRound = 0, drawnCount = 0, receivedAt = 0, tickTimer = 0, seenSolved = '', lastTick = 0;
   const NS = 'http://www.w3.org/2000/svg';
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
-    drawnRound = 0; drawnCount = 0;
+    drawnRound = 0; drawnCount = 0; seenSolved = '';
     main.innerHTML = `<div class="dd">
       <div class="dd-head"><span id="ddCat" class="dd-cat"></span><span id="ddRound" class="dd-round"></span></div>
       <div class="dd-paper"><svg id="ddSvg" viewBox="-4 -4 108 108"></svg><div id="ddAnswer" class="dd-answer" hidden></div><div id="ddWait" class="dd-wait" hidden>🖍️ Get ready…</div></div>
@@ -39,6 +39,11 @@ UI.doodle = (() => {
     const width = last ? (d.left - since) / d.grace : drawn;
     $('ddBar').style.width = `${Math.max(0, Math.min(1, width)) * 100}%`;
     $('ddBar').parentElement.classList.toggle('last', last);
+    // hurry: the last five seconds tick
+    const secsLeft = last ? d.left - since : Infinity;
+    if (secsLeft < 5 && secsLeft > 0 && Math.ceil(secsLeft) !== lastTick && !S.doodle.solvers.some(([pid]) => pid === S.me.id) && S.phase === 'playing') {
+      lastTick = Math.ceil(secsLeft); ctx.sfx('tickfast');
+    }
     const locked = Math.max(0, d.locked - since);
     const me = S.doodle.solvers.some(([pid]) => pid === S.me.id);
     const live = S.phase === 'playing' && d.stage === 'draw' && !S.me.spectator && !me && ctx.act;
@@ -89,6 +94,14 @@ UI.doodle = (() => {
       standingsCard(st, d.standings, { title: `After picture ${d.round} of ${d.rounds}` });
     }
 
+    // someone getting it pops up over the picture with a ding (a big one when it's me)
+    const solvedKey = `${d.round}:${d.solvers.length}`;
+    if (seenSolved && solvedKey !== seenSolved && d.solvers.length && seenSolved.split(':')[0] === String(d.round)) {
+      const [pid, pts] = d.solvers.at(-1), p = ctx.player(pid);
+      if (pid === S.me.id) { ctx.sfx('good'); Kit.callout(`✅ +${pts}`, 'good', { ms: 1100 }); }
+      else { ctx.sfx('pop'); Kit.flyText(svg, `${p?.name ?? '?'} got it!`, 'info'); }
+    }
+    seenSolved = solvedKey;
     const box = $('ddSolvers'); box.innerHTML = '';
     if (!d.solvers.length) box.append(ctx.el('p', 'hint left', d.stage === 'draw' ? 'Nobody has it yet…' : 'Nobody got it.'));
     for (const [pid, pts] of d.solvers) {

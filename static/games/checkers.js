@@ -1,12 +1,13 @@
 UI.checkers = (() => {
-  let S, ctx, boardEl, sel = null, shownLast;
+  let S, ctx, boardEl, sel = null, shownLast, shownKings = 0;
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
-    sel = null; shownLast = undefined;
+    sel = null; shownLast = undefined; shownKings = 0;
     main.innerHTML = '<div class="chessboard checkers"></div>';
     side.innerHTML = `<div class="panel">
       <div id="ckStatus" class="seat-row"></div>
+      <div id="ckTray" class="ck-tray"></div>
       <p class="hint left">Tap a piece, then where it should land. Captures are compulsory and multi-jumps happen in one go.</p>
       <div id="ckDraw" class="row"></div><div id="ckUndo" class="row"></div>
       <div class="row"><button id="ckResign" class="danger">🏳️ Resign</button></div></div>`;
@@ -89,7 +90,7 @@ UI.checkers = (() => {
       sq.setAttribute('aria-label', `${'abcdefgh'[col]}${8 - r}, ${p ? `${p.toLowerCase() === 'd' ? 'dark' : 'light'} ${p === p.toUpperCase() ? 'king' : 'man'}` : (r + col) % 2 ? 'empty' : 'light square'}`);
       sq.innerHTML = '';
       if (p) {
-        const disc = ctx.el('span', 'checker ' + p.toLowerCase(), p === p.toUpperCase() ? '♛︎' : '');
+        const disc = ctx.el('span', 'checker ' + p.toLowerCase() + (p === p.toUpperCase() ? ' king' : ''), p === p.toUpperCase() ? '♛︎' : '');
         if (to && to[0] === r && to[1] === col) {
           if (hopping || resuming) hopper = [disc, p.toLowerCase()];
           else if (animate) slideFrom(disc, from[0] - r, from[1] - col, flip());
@@ -99,6 +100,25 @@ UI.checkers = (() => {
     });
     // after every square is drawn, so the ghosts of taken pieces aren't cleared away again
     if (hopper) hopAlong(hopper[0], ck.last, hopper[1], hopping ? 0 : resume);
+    // a multi-jump gets a callout as it lands, and each hop clicks
+    if (hopping) {
+      const hops = ck.last.length - 1;
+      for (let k = 1; k <= hops; k++) setTimeout(() => ctx.sfx('capture'), HOP * k - 60);
+      if (hops >= 2) setTimeout(() => Kit.callout(hops === 2 ? 'Double jump!' : hops === 3 ? 'Triple jump!' : `${hops}× jump!`, 'gold'), HOP * hops);
+    } else if (animate) ctx.sfx('place');
+    const kings = ck.board.flat().filter((x) => x && x === x.toUpperCase()).length;
+    if (animate && kings > shownKings) setTimeout(() => { ctx.sfx('good'); Kit.callout('👑 Crowned!', 'gold', { ms: 1100 }); }, hopping ? HOP * (ck.last.length - 1) : 250);
+    shownKings = kings;
+    // pieces taken so far: 12 each to start
+    const tray = $('ckTray'); tray.innerHTML = '';
+    for (const side of ['d', 'l']) {
+      const left = ck.board.flat().filter((x) => x && x.toLowerCase() === side).length, lost = 12 - left;
+      const span = ctx.el('span', '', `${side === 'd' ? '⚫' : '⚪'} ${left} `);
+      const pile = ctx.el('span', '');
+      for (let k = 0; k < lost; k++) pile.append(ctx.el('i', 'mini ' + side));
+      span.append(pile);
+      tray.append(span);
+    }
     const mine = ck.me ? (ck.me === 'd' ? '⚫ You play Dark' : '⚪ You play Light') : '👁 Watching';
     const forced = ctx.myTurn && ck.forced;
     $('ckStatus').textContent = mine + (forced ? ' · ⚠️ you must capture' : '');
@@ -130,5 +150,5 @@ UI.checkers = (() => {
     ctx.rerender();
   }
 
-  return { mount, render };
+  return { mount, render, ownSounds: true };
 })();

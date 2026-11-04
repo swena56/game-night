@@ -1,11 +1,11 @@
 // Word Ladder: the start word at the top, your steps below it, an entry box, and the goal word at the
 // bottom. Each step shows which letter changed. After the round everyone's ladders are revealed.
 UI.ladder = (() => {
-  let S, ctx, receivedAt = 0, tickTimer = 0, busy = false;
+  let S, ctx, receivedAt = 0, tickTimer = 0, busy = false, seenProgress = {};
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
-    busy = false;
+    busy = false; seenProgress = {};
     main.innerHTML = `<div class="ld">
       <div class="ld-head"><span id="ldRound"></span><span id="ldPar" class="ld-par"></span></div>
       <div class="dd-bar"><span id="ldBar"></span></div>
@@ -111,8 +111,17 @@ UI.ladder = (() => {
       const [n, done] = l.progress[p.id] ?? [0, false];
       const row = ctx.el('div', 'seat-row');
       const dot = ctx.el('span', 'dot'); dot.style.background = p.color;
-      row.append(dot, ctx.el('span', '', `${p.name}: ${parseInt(p.meta) || 0} pts · ${done ? '🏁' : `${n} step${n === 1 ? '' : 's'}`}`));
+      row.append(dot, ctx.el('span', 'grow', `${p.name}: ${parseInt(p.meta) || 0} pts · ${done ? '🏁' : `${n} step${n === 1 ? '' : 's'}`}`));
+      // a little ladder per climber: one rung per step of par, lit as they climb, a flag when they're up
+      const mini = ctx.el('span', 'ld-mini' + (done ? ' done' : ''));
+      const rungs = Math.max(l.par, n);
+      for (let k = 0; k < rungs; k++) mini.append(ctx.el('i', k < n ? 'on' : ''));
+      mini.style.setProperty('--c', p.color);
+      row.append(mini);
       scores.append(row);
+      const was = seenProgress[p.id];
+      if (was && p.id !== S.me.id && done && !was[1]) Kit.flyText(row, `🏁 ${p.name}`, 'info');
+      seenProgress[p.id] = [n, done];
     }
     tick();
   }

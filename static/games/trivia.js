@@ -1,11 +1,12 @@
 // Trivia Rush: the question, a shrinking time bar and four big answer buttons. After everyone answers
 // (or time runs out) the right answer lights up with who picked what.
 UI.trivia = (() => {
-  let S, ctx, receivedAt = 0, tickTimer = 0;
+  let S, ctx, receivedAt = 0, tickTimer = 0, seenQ = '', myRank = null, lastTick = 0;
   const $ = (id) => document.getElementById(id);
   const LETTERS = 'ABCD';
 
   function mount(main, side) {
+    seenQ = ''; myRank = null;
     main.innerHTML = `<div class="tv">
       <div class="tv-head"><span id="tvNum"></span><span id="tvTopic" class="tv-topic"></span></div>
       <div class="dd-bar"><span id="tvBar"></span></div>
@@ -25,6 +26,8 @@ UI.trivia = (() => {
     const asking = S.phase === 'playing' && t.stage === 'ask';
     $('tvBar').style.width = `${asking ? (left / t.secs) * 100 : 0}%`;
     $('tvBar').parentElement.classList.toggle('last', asking && left < 4);
+    // the last few seconds tick, louder for anyone still to answer
+    if (asking && left < 4 && left > 0 && Math.ceil(left) !== lastTick) { lastTick = Math.ceil(left); if (t.playing && t.mine == null) ctx.sfx('tickfast'); }
   }
 
   function render(s, c) {
@@ -55,10 +58,22 @@ UI.trivia = (() => {
         }
       }
       b.disabled = !canPick;
-      b.onclick = () => ctx.quiet(ctx.act('answer', { i }));
+      b.onclick = () => { ctx.sfx('lock'); ctx.quiet(ctx.act('answer', { i })); };
       opts.append(b);
     });
 
+    // the answer lands: a chime or a buzz, and my points float up off my button
+    const qk = `${t.n}:${t.stage}`;
+    if (rv && seenQ && qk !== seenQ && t.playing) {
+      const g = rv.gained[S.me.id];
+      if (t.mine != null) {
+        ctx.sfx(g ? 'good' : 'wrong');
+        if (g) Kit.flyText(opts.children[t.mine], `+${g}`, 'good');
+        else { const w = opts.children[t.mine]; w.classList.add('shake'); }
+      }
+      if (g && t.streak >= 3) Kit.callout(`🔥 ${t.streak} in a row!`, 'gold', { ms: 1200 });
+    }
+    seenQ = qk;
     let note = '';
     if (rv) {
       const g = rv.gained[S.me.id];
@@ -72,15 +87,24 @@ UI.trivia = (() => {
     if (t.solo) note += `${note ? ' · ' : ''}${t.right} right so far (need ${t.goal})`;
     $('tvNote').textContent = note;
 
-    const box = $('tvScores'); box.innerHTML = '';
+    // the scoreboard re-sorts with rows sliding to their new places; taking or losing the lead is called out
+    const box = $('tvScores'), before = Kit.snap(box); box.innerHTML = '';
     const rows = S.players.filter((p) => !p.spectator).slice().sort((a, b) => (parseInt(b.meta) || 0) - (parseInt(a.meta) || 0));
+    const rank = rows.findIndex((p) => p.id === S.me.id);
+    if (rv && myRank != null && rank >= 0 && rank !== myRank && rows.length > 1) {
+      if (rank === 0) Kit.callout('👑 You take the lead!', 'gold', { ms: 1300 });
+      else if (rank > myRank) Kit.flyText(box, '⬇ Overtaken!', 'bad');
+    }
+    if (rank >= 0 && (rv || myRank == null)) myRank = rank;
     for (const p of rows) {
       const row = ctx.el('div', 'seat-row');
+      row.dataset.k = p.id;
       const dot = ctx.el('span', 'dot'); dot.style.background = p.color;
       const gain = rv?.gained[p.id];
       row.append(dot, ctx.el('span', '', `${p.name}: ${p.meta || '0 pts'}${gain ? ` (+${gain})` : ''}`));
       box.append(row);
     }
+    Kit.glide(box, before, 450);
     tick();
   }
 

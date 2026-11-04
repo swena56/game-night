@@ -183,16 +183,27 @@ UI.hockey = (() => {
     }
     hist.push({ t: performance.now(), pk: data.pk, ml: data.ml });
     while (hist.length && hist[0].t < performance.now() - 1600) hist.shift();
-    if (h?.me != null && net?.pk) {  // my mallet hit a puck: it's beside me and its speed jumped
-      const [mx, my] = data.ml[h.me];
+    if (h && net?.pk) {
+      // a mallet hit (a clack, louder for a harder hit; a buzz when it's mine) or a wall (a tick)
       data.pk.forEach(([x, y, vx, vy], k) => {
         const old = net.pk[k];
-        if (old && Math.hypot(x - mx, y - my) < (h.mallet + h.puck) * 1.6 && Math.hypot(vx - old[2], vy - old[3]) > 0.8) buzz(25);
+        if (!old) return;
+        const jump = Math.hypot(vx - old[2], vy - old[3]);
+        const near = data.ml.findIndex(([mx, my]) => Math.hypot(x - mx, y - my) < (h.mallet + h.puck) * 1.6);
+        if (near >= 0 && jump > 0.8) { ctx.sfx(jump > 2 ? 'capture' : 'place'); if (near === h.me) buzz(25); }
+        else if ((Math.sign(vx) !== Math.sign(old[2]) && Math.abs(old[2]) > 0.3) || (Math.sign(vy) !== Math.sign(old[3]) && Math.abs(old[3]) > 0.3)) ctx.sfx('tick');
       });
     }
     net = { ...data, at: performance.now() };
     const sc = data.sc.join(':');
-    if (lastScore && sc !== lastScore) { flash = performance.now() + 600; buzz(120); }
+    if (lastScore && sc !== lastScore) {
+      flash = performance.now() + 600; buzz(120);
+      // the goal horn, and a cheer when it's mine
+      const was = lastScore.split(':').map(Number), scorer = data.sc.findIndex((v, i) => v > was[i]);
+      ctx.sfx('alarm');
+      if (scorer === h?.me) setTimeout(() => ctx.sfx('good'), 500);
+      if (h && Math.max(...data.sc) === h.target - 1 && Math.max(...was) < h.target - 1) setTimeout(() => Kit.callout('🔥 Match point', 'gold', { ms: 1400 }), 900);
+    }
     lastScore = sc;
     renderScore(data.sc);
   }
@@ -208,7 +219,8 @@ UI.hockey = (() => {
       row.append(dot, ctx.el('span', 'grow', `${p?.name ?? 'left'}${i === h.me ? ' (you)' : ''}`), ctx.el('b', 'hk-num', String(sc[i])));
       box.append(row);
     }
-    box.append(ctx.el('p', 'hint left', `First to ${h.target}.`));
+    const hot = Math.max(...sc) >= h.target - 1 && Math.max(...sc) < h.target;
+    box.append(ctx.el('p', 'hint left' + (hot ? ' hk-hot' : ''), hot ? `🔥 Match point: the puck is faster! First to ${h.target}.` : `First to ${h.target}.`));
   }
 
   function render(s, c) {

@@ -2,18 +2,13 @@
 // Hand buttons are rebuilt only when the hand changes, so taps aren't lost to other players' updates.
 UI.cribbage = (() => {
   let S, ctx, picked = new Set(), handKey = '', shownScore = {}, backPeg = {}, myCount = 0, countFor = '';
-  const SUIT = { S: '♠', H: '♥', D: '♦', C: '♣' };
   const $ = (id) => document.getElementById(id);
   const value = (c) => Math.min('A23456789TJQK'.indexOf(c[0]) + 1, 10);
 
-  function face(card, cls = '') {
-    const f = ctx.el('span', `pc ${'HD'.includes(card[1]) ? 'red' : 'black'} ${cls}`);
-    f.append(ctx.el('b', '', card[0] === 'T' ? '10' : card[0]), ctx.el('i', '', SUIT[card[1]] + '︎'));
-    return f;
-  }
+  const face = (card, cls = '') => Cards.face(card, cls);
 
   function mount(main, side) {
-    picked = new Set(); handKey = ''; shownScore = {}; backPeg = {};
+    picked = new Set(); handKey = ''; shownScore = {}; backPeg = {}; render.seenPeg = undefined;
     main.innerHTML = `<div class="cb">
       <div id="cbTrack" class="cb-track"></div>
       <div class="table cb-table">
@@ -69,6 +64,7 @@ UI.cribbage = (() => {
       const lane = ctx.el('div', 'cb-lane' + (pid === S.turn ? ' now' : ''));
       const name = ctx.el('b', '', `${p.name}${pid === g.dealer ? ' 🔘' : ''}`); name.style.color = p.color;
       const bar = ctx.el('div', 'cb-bar');
+      bar.style.setProperty('--n', g.target);
       const score = g.scores[pid] || 0, was = shownScore[pid] ?? score;
       if (score < was) backPeg[pid] = 0;               // a new game
       else if (score > was) backPeg[pid] = was;
@@ -97,6 +93,13 @@ UI.cribbage = (() => {
     const seq = $('cbSeq'); seq.innerHTML = '';
     for (const card of g.seq) seq.append(face(card, 'small'));
     $('cbLast').textContent = g.stage === 'peg' ? g.lastPeg : '';
+    // pegging calls: "Fifteen two!", "Thirty-one!", "Pair!" as they're scored
+    if (g.lastPeg && g.lastPeg !== render.seenPeg && render.seenPeg !== undefined && g.stage === 'peg') {
+      const why = g.lastPeg.split(' · ')[1] || '';
+      const call = /31/.test(why) ? 'Thirty-one!' : /15|fifteen/i.test(why) ? 'Fifteen two!' : /run/i.test(why) ? 'Run!' : /pair|kind/i.test(why) ? 'Pair!' : '';
+      if (call) Kit.callout(call, 'gold', { ms: 1100 });
+    }
+    render.seenPeg = g.lastPeg;
 
     // the show
     const show = $('cbShow'); show.innerHTML = '';

@@ -1,20 +1,15 @@
 // Liar's Dice: the current bid up top, your hidden dice, then a bid picker (how many, which face) with
 // Liar! and Exact buttons. The last showdown stays on screen with everyone's dice until the next one.
 UI.liars = (() => {
-  let S, ctx, qty = 1, face = 2, bidKey = '', seenShow = '', rolled = -1, reviewOpen = false;
+  let S, ctx, qty = 1, face = 2, bidKey = '', seenShow = null, rolled = -1, reviewOpen = false, revealEnd = 0;
   const $ = (id) => document.getElementById(id);
-  const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
+  const PIPS = Dice.PIPS;
   const say = (q, f) => (q === 1 ? `one ${f}` : `${q} ${f}s`);
 
-  function die(value, cls = '', tag = 'span') {
-    const b = ctx.el(tag, 'ya-die ' + cls);
-    const on = new Set(PIPS[value]);
-    for (let k = 0; k < 9; k++) b.append(ctx.el('span', on.has(k) ? 'on' : ''));
-    return b;
-  }
+  const die = (value, cls = '', tag = 'span') => Dice.die(value, cls, tag);
 
   function mount(main, side) {
-    qty = 1; face = 2; bidKey = ''; seenShow = ''; rolled = -1;
+    qty = 1; face = 2; bidKey = ''; seenShow = null; rolled = -1;
     main.innerHTML = `<div class="liar">
       <div id="lrBid" class="liar-bid"></div>
       <div class="liar-label">Your dice</div>
@@ -90,7 +85,8 @@ UI.liars = (() => {
     }
 
     const mine = $('lrMine'); mine.innerHTML = '';
-    for (const d of l.mine) mine.append(die(d, (l.wild && d === 1 ? 'wild ' : '') + (l.round !== rolled ? 'roll' : '')));
+    for (const d of l.mine) mine.append(die(d, (l.wild && d === 1 ? 'wild ' : '')));
+    if (l.round !== rolled && rolled !== -1) { mine.classList.remove('dice-cup'); void mine.offsetWidth; mine.classList.add('dice-cup'); Dice.roll(mine.children, { sound: false }); }
     rolled = l.round;
     if (!l.mine.length) mine.append(ctx.el('span', 'hint', S.me.spectator || !l.seats.includes(S.me.id) ? 'Watching' : 'Out of dice — watching'));
 
@@ -100,8 +96,10 @@ UI.liars = (() => {
     // the last showdown
     const sd = l.showdown, show = $('lrShow');
     show.hidden = !sd;
-    if (sd) {
-      const sk = JSON.stringify([sd.round, sd.caller, sd.kind]);
+    const sk = sd ? JSON.stringify([sd.round, sd.caller, sd.kind]) : '';
+    const fresh = sd && sk !== seenShow && seenShow !== null;
+    if (sd && !fresh && performance.now() < revealEnd) { /* the cups are still lifting: leave them be */ }
+    else if (sd) {
       show.innerHTML = '';
       const caller = ctx.player(sd.caller), by = ctx.player(sd.by);
       const title = sd.kind === 'liar'
@@ -110,9 +108,15 @@ UI.liars = (() => {
       show.append(ctx.el('b', '', title));
       const lost = sd.losers.map((id) => ctx.player(id)?.name ?? '?').join(', ');
       show.append(ctx.el('div', 'hint left', `Lost a die: ${lost}`));
+      // a fresh call: every cup lifts in turn while the count of the bid face climbs
+      const counter = ctx.el('div', 'liar-count');
+      if (fresh && motionOK()) { counter.textContent = `0 of ${sd.bid[0]}`; show.append(counter); }
+      const rows = [];
       for (const [pid, dice] of Object.entries(sd.hands)) {
         const p = ctx.player(pid);
-        const row = ctx.el('div', 'liar-hand' + (sd.losers.includes(pid) ? ' lost' : ''));
+        const row = ctx.el('div', 'liar-hand' + (sd.losers.includes(pid) ? ' lost' : '') + (fresh && motionOK() ? ' cupped' : ''));
+        row.dataset.n = dice.filter((d) => d === sd.bid[1] || (sd.wild && d === 1)).length;
+        rows.push(row);
         const name = ctx.el('span', 'liar-name', p?.name ?? '?'); name.style.color = p?.color ?? 'inherit';
         const dd = ctx.el('span', 'liar-dice');
         for (const d of dice) dd.append(die(d, d === sd.bid[1] || (sd.wild && d === 1) ? 'match' : 'dim'));
@@ -133,8 +137,19 @@ UI.liars = (() => {
         rv.append(ctx.el('div', 'hint left', "The odds are from each bidder's own seat: their dice, plus a fair roll for every hidden die."));
         show.append(rv);
       }
-      if (sk !== seenShow) { seenShow = sk; show.classList.remove('flash'); void show.offsetWidth; show.classList.add('flash'); }
+      if (fresh && motionOK()) {
+        let n = 0;
+        const held = sd.kind === 'liar' ? sd.count >= sd.bid[0] : sd.count === sd.bid[0];
+        revealEnd = performance.now() + rows.length * 650 + 400;
+        Kit.reveal(rows, 650, (row) => {
+          row.classList.remove('cupped');
+          n += +row.dataset.n;
+          counter.textContent = `${n} of ${sd.bid[0]}`;
+          counter.classList.toggle('over', n >= sd.bid[0]);
+        }, { done: () => { Kit.callout(sd.kind === 'exact' ? (held ? '🎯 Spot on!' : '🎯 Missed!') : held ? '😇 Truth!' : '🤥 LIAR!', held === (sd.kind === 'exact') ? 'good' : 'bad'); ctx.sfx(held ? 'good' : 'bad'); } });
+      } else if (sk !== seenShow) { show.classList.remove('flash'); void show.offsetWidth; show.classList.add('flash'); }
     }
+    seenShow = sk;
     if (S.phase === 'over' && l.hands) {
       const fin = ctx.el('div', 'hint left', 'Final dice: ' + Object.entries(l.hands).map(([pid, d]) => `${ctx.player(pid)?.name ?? '?'} ${d.join(' ')}`).join(' · '));
       show.append(fin); show.hidden = false;

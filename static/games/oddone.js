@@ -126,6 +126,18 @@ UI.oddone = (() => {
         tally.append(row);
       }
       res.append(tally);
+      // suspense: the votes pop in first, with a drum roll, and only then is the odd one unmasked
+      if (fresh && motionOK() && k) {
+        const wait = 0.35 * k + 0.6;
+        for (const el of [res.querySelector('h3'), ...res.querySelectorAll('p')]) { el.classList.add('oo-suspense'); el.style.animationDelay = `${wait}s`; }
+        for (let t = 0; t < wait * 1000 - 150; t += 110) setTimeout(() => ctx.sfx('tickfast'), t);
+        setTimeout(() => {
+          Kit.callout(g.result.caught ? '🎯 Caught!' : '🏃 Escaped!', g.result.caught ? 'good' : 'bad');
+          ctx.sfx(g.result.caught ? 'fanfare' : 'whoosh');
+          const row = [...res.querySelectorAll('.oo-clue-row, .oo-trow.odd')];
+          row.forEach((r2) => r2.classList.add('spot'));
+        }, wait * 1000);
+      }
     }
   }
 
