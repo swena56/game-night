@@ -151,9 +151,19 @@ function showHelp(id = S?.gameId) {
   const body = el('div');
   const ul = el('ul', 'rules');
   for (const line of g.howto) ul.append(el('li', '', line));
+  const badges = Object.entries(g.badges || {});
+  if (badges.length) {
+    const mine = S?.players?.find((p) => p.id === S.me?.id)?.badges || {};
+    const bl = el('ul', 'rules badge-list');
+    for (const [k, [emo, name, how]] of badges) {
+      const li = el('li', mine[`${g.id}:${k}`] ? 'got' : '', `${emo} ${name}: ${how}`);
+      bl.append(li);
+    }
+    body.append(el('h4', '', '🏅 Badges'), bl);
+  }
   const report = el('button', 'ghost-btn', `🐞 Something wrong with ${g.name}? Tell us`);
   report.onclick = () => reportDialog('bug');
-  body.append(ul, report);
+  body.prepend(ul); body.append(report);
   ask(g.blurb, { title: `${g.icon} How to play ${g.name}`, body, ok: 'Got it', cancel: '' });
 }
 
@@ -321,11 +331,28 @@ const SFX = {
   boom: () => { noise(0.32, 240, 0.6, 0.9); tone(120, 45, 0.28, 'sine', 0.22); noise(0.1, 2600, 0.8, 0.22, 0.02); },
   pickup: () => [880, 1320].forEach((f, i) => tone(f, f, 0.09, 'triangle', 0.09, i * 0.06)),
   tag: () => [784, 988, 1319].forEach((f, i) => tone(f, f, 0.12, 'triangle', 0.1, i * 0.07)),
+  // the shared kit (static/kit.js) and the games' big moments
+  deal: () => { noise(0.05, 2600, 0.9, 0.35); noise(0.04, 1400, 0.7, 0.2, 0.03); },              // a card skimming out
+  flip: () => { noise(0.03, 3000, 1.4, 0.3); tone(700, 900, 0.05, 'sine', 0.05, 0.01); },         // a card or tile turned over
+  chip: () => [0, 0.05, 0.09].forEach((t) => tone(2400 + Math.random() * 600, 1900, 0.04, 'sine', 0.06, t)),
+  settle: () => { tone(180, 120, 0.06, 'sine', 0.14); noise(0.02, 3200, 2, 0.2); },               // dice come to rest
+  whoosh: () => noise(0.22, 900, 0.5, 0.35),
+  sweep: () => { noise(0.18, 1600, 0.6, 0.35); tone(400, 700, 0.15, 'sine', 0.04); },             // a trick swept up
+  thud: () => { tone(110, 50, 0.22, 'sine', 0.3); noise(0.06, 400, 0.8, 0.4); },
+  splash: () => { noise(0.3, 700, 0.4, 0.5); tone(500, 200, 0.2, 'sine', 0.05, 0.03); },
+  crack: () => { noise(0.08, 3500, 0.5, 0.6); tone(900, 300, 0.1, 'square', 0.04); },
+  fanfare: () => [523, 659, 784, 1047, 784, 1047].forEach((f, i) => tone(f, f, i > 3 ? 0.3 : 0.14, 'triangle', 0.11, i * 0.1)),
+  alarm: () => [0, 0.22, 0.44].forEach((t) => tone(880, 620, 0.2, 'square', 0.05, t)),
+  tickfast: () => tone(1600, 1600, 0.025, 'square', 0.04),
+  // a rising note for combos and streaks: sfx('rise', n) climbs a step with each n
+  rise: (n = 0) => { const f = 440 * 2 ** (Math.min(n, 12) / 12 * 1.5); tone(f, f * 1.5, 0.12, 'triangle', 0.1); },
+  lock: () => { tone(1200, 1200, 0.03, 'square', 0.05); tone(600, 600, 0.05, 'square', 0.04, 0.03); },
+  wrong: () => { tone(220, 160, 0.18, 'square', 0.05); tone(208, 150, 0.18, 'square', 0.05, 0.02); },
 };
 const CATEGORY_SFX = { strategy: 'place', classic: 'place', cards: 'card', dice: 'dice', words: 'pop', party: 'pop' };
-function sfx(kind) {
+function sfx(kind, arg) {
   if (!prefs.sound || !prefs.moves || !SFX[kind] || document.hidden) return;
-  try { audio ||= new (window.AudioContext || window.webkitAudioContext)(); SFX[kind](); } catch {}
+  try { audio ||= new (window.AudioContext || window.webkitAudioContext)(); SFX[kind](arg); } catch {}
 }
 
 // ---------- connection
@@ -560,6 +587,19 @@ function renderLobby() {
   renderScores(host);
 }
 
+// a player's 🏅 badges this evening as a row of emoji (×n when earned more than once), named on hover
+function badgeShelf(p) {
+  const td = el('td', 'badge-shelf');
+  for (const [k, n] of Object.entries(p.badges || {})) {
+    const [gid, key] = k.split(':'), g = gameInfo(gid), b = g?.badges?.[key];
+    if (!b) continue;
+    const s = el('span', '', b[0] + (n > 1 ? `×${n}` : ''));
+    s.title = `${b[1]} (${g.icon} ${g.name}): ${b[2]}`;
+    td.append(s);
+  }
+  return td;
+}
+
 function renderScores(host) {
   const played = S.players.filter((p) => p.played || p.points);
   $('#scoreSection').hidden = !played.length && !S.history.length;
@@ -568,7 +608,7 @@ function renderScores(host) {
     const games = [...new Set(played.flatMap((p) => Object.keys(p.byGame)))];
     const t = el('table', 'scores');
     const head = el('tr');
-    head.append(el('th', '', 'Player'), el('th', '', '⭐'), el('th', '', '🏆'), el('th', '', 'Played'), el('th', '', '🔥 Best'),
+    head.append(el('th', '', 'Player'), el('th', '', '⭐'), el('th', '', '🏆'), el('th', '', 'Played'), el('th', '', '🔥 Best'), el('th', '', '🏅'),
       ...games.map((g) => el('th', '', gameInfo(g)?.icon ?? g)));
     t.append(head);
     for (const p of [...played].sort((a, b) => b.points - a.points || b.wins - a.wins || a.played - b.played)) {
@@ -577,7 +617,7 @@ function renderScores(host) {
       const pts = el('td', 'pts', String(p.points));
       if (p.quits) pts.title = `${p.quits} walk-out${p.quits > 1 ? 's' : ''} (${p.quits * -2} ⭐)`;
       tr.append(name, pts, el('td', '', p.wins), el('td', '', p.played),
-        el('td', '', p.best + (p.streak > 1 ? ` (now ${p.streak})` : '')),
+        el('td', '', p.best + (p.streak > 1 ? ` (now ${p.streak})` : '')), badgeShelf(p),
         ...games.map((g) => el('td', '', p.byGame[g] || '')));
       t.append(tr);
     }
@@ -639,14 +679,14 @@ function renderGame(view = S, readOnly = false, force = false) {
 
   // the chips only change when something they show does (not on every chat line or clock tick)
   const chips = $('#players');
-  const chipKey = JSON.stringify([view.turn, me.id, view.players.map((p) => [p.id, p.name, p.color, p.online, p.meta, p.points, p.played, p.spectator, p.eliminated, p.standin, p.away])]);
+  const chipKey = JSON.stringify([view.turn, me.id, view.players.map((p) => [p.id, p.name, p.color, p.online, p.meta, p.points, p.played, p.streak, p.spectator, p.eliminated, p.standin, p.away])]);
   if (chipKey !== chips.dataset.key) {
     chips.dataset.key = chipKey; chips.innerHTML = '';
     for (const p of view.players) {
       const c = el('div', 'chip' + (p.id === view.turn ? ' turn-now' : '') + (p.eliminated ? ' out' : '') + (p.id === me.id ? ' me' : ''));
       c.title = p.name;
       c.append(avatar(p), mark(p, p.online), el('b', '', p.name));
-      const bits = [p.spectator ? '👁 watching' : p.meta, p.played || p.points ? '⭐' + p.points : '', p.eliminated ? '👻' : '',
+      const bits = [p.spectator ? '👁 watching' : p.meta, p.played || p.points ? '⭐' + p.points : '', p.streak > 1 ? '🔥' + p.streak : '', p.eliminated ? '👻' : '',
         p.standin ? '🤖 autopilot' : p.away ? '📡 away' : ''].filter(Boolean);
       if (bits.length) c.append(el('span', 'meta', bits.join(' · ')));
       chips.append(c);
@@ -659,14 +699,29 @@ function renderGame(view = S, readOnly = false, force = false) {
   renderedKey = key;
   const lookup = (id) => view.players.find((p) => p.id === id);
   const readOnlyAct = () => { toast('This is a replay.'); return Promise.reject(new Error('replay')); };
+  kitMuted = readOnly;
   ui.render(view, { act: readOnly ? readOnlyAct : act, input: readOnly ? () => {} : input, quiet, toast, el, ask, player: lookup, mark: (id) => mark(lookup(id)), myTurn,
     peek: readOnly ? null : (extra) => api('/api/peek', { ...session, ...extra }),
-    confetti: readOnly ? () => {} : confetti, sfx: readOnly ? () => {} : sfx, rerender: () => (replay ? showFrame() : renderGame(S, false, true)) });
+    confetti: readOnly ? () => {} : confetti, sfx: readOnly ? () => {} : sfx, buzz: readOnly ? () => {} : buzz, rerender: () => (replay ? showFrame() : renderGame(S, false, true)) });
   shapeDots($('#arena')); shapeDots($('#sideGame'));
   renderLog(ui, view);
 
   $('#overBanner').hidden = readOnly || view.phase !== 'over';
   if (!readOnly && view.phase === 'over') renderOver();
+}
+
+// "📈 Room record": the winner's score is the best this game has seen in the room tonight (higher is
+// better for games that report scores; a first game of its kind isn't a record)
+function roomRecord(last) {
+  const won = last?.players.find((x) => x.won);
+  const scores = last?.players.map((x) => x.score).filter((v) => typeof v === 'number') ?? [];
+  if (!won || typeof won.score !== 'number' || scores.length < 2) return '';
+  // which way is better shows in who won: the winner holds the top score, or the bottom one (Hearts, Shut the Box)
+  const low = won.score === Math.min(...scores) && won.score !== Math.max(...scores);
+  const before = S.history.slice(0, -1).filter((h) => h.game === last.game && h.players.filter((x) => x.score != null).length > 1)
+    .flatMap((h) => h.players.map((x) => x.score)).filter((v) => typeof v === 'number');
+  const beat = low ? won.score < Math.min(...before) : won.score > Math.max(...before);
+  return before.length && beat ? `📈 Room record for ${last.name}: ${fmtNum(won.score)}` : '';
 }
 
 function renderOver() {
@@ -680,6 +735,8 @@ function renderOver() {
   $('#overScores').textContent = [
     mineRow?.pts ? `You earned +${mineRow.pts} ⭐ (now ${player(me.id)?.points ?? 0})` : '',
     scored.length ? [...scored].sort((a, b) => b.score - a.score).map((x) => `${x.name}: ${fmtNum(x.score)}`).join(' · ') : '',
+    w?.streak > 1 ? `🔥 ${w.id === me.id ? 'You have' : w.name + ' has'} won ${w.streak} in a row` : '',
+    roomRecord(last),
   ].filter(Boolean).join(' — ');
   const readyNames = S.ready.map((id) => player(id)?.name).filter(Boolean);
   $('#rematchBtn').hidden = !host; $('#lobbyBtn').hidden = !host;
@@ -749,6 +806,9 @@ function renderLog(ui, view) {
   if (newestId !== lastLogId) {
     box.scrollTop = box.scrollHeight;
     // a sound for the new move, unless the game plays its own or it's the first state / a replay
+    const fresh = lastLogId && !replay && !firstState ? view.log.filter((e) => e.id > lastLogId) : [];
+    const mine = fresh.find((e) => e.kind === 'badge' && e.text.startsWith(`🏅 ${S.me.name} earned`));
+    if (mine) { sfx('fanfare'); toast(mine.text.replace(`${S.me.name} earned`, 'You earned')); }
     if (lastLogId && !replay && !firstState && view.phase === 'playing' && !ui.ownSounds) {
       const e = view.log.at(-1), cat = gameInfo(view.gameId)?.category;
       if (cat !== 'action') sfx(e.kind === 'big' ? 'good' : /captur|takes|jump|hit|sunk|bust|farkle/i.test(e.text) && cat !== 'words' ? 'capture' : CATEGORY_SFX[cat]);
