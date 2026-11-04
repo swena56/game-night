@@ -19,7 +19,7 @@ UI.chess = (() => {
       <div id="chDraw" class="row"></div>
       <div class="row"><button id="chResign" class="danger">🏳️ Resign</button></div>
       <div class="row"><button id="chView" hidden></button></div>
-      <p class="hint left" id="chViewHint" hidden>3D: tap a piece, then its square. Drag sideways to turn the board; double-tap to reset.</p></div>`;
+      <p class="hint left" id="chViewHint" hidden>3D: tap a piece, then its square. Drag to turn the board (with a mouse, up and down tilts it), right-drag or shift-drag to pan, scroll or pinch to zoom, or use the buttons; double-tap resets.</p></div>`;
     boardEl = main.querySelector('.chessboard');
     for (let i = 0; i < 64; i++) {
       const sq = document.createElement('button');
