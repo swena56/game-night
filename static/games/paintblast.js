@@ -99,9 +99,46 @@ UI.paintblast = (() => {
     renderSide();
   }
 
+  // ---------- juice (#6): sounds, paint splatter, a shake for a blast close by, +10 when you catch someone
+  let parts = [], floats = [], shakeAt = 0, shakeAmp = 0;
+  function events(prev, d, now) {
+    const i = me(), n = S?.paintblast?.n;
+    if (!n || prev?.rd !== d.rd) return;
+    const sfx = (k) => ctx?.sfx?.(k);
+    const had = (list, c) => list?.some((x) => x[0] === c);
+    if (d.b.some(([c]) => !had(prev.b, c))) sfx('drop');
+    const lit = d.f.filter(([c]) => !had(prev.f, c));
+    if (lit.length) {
+      sfx('boom');
+      const mine = i != null ? d.p[i][0] : null;
+      for (const [c, owner] of lit) {
+        const x = (c % n) + 0.5, y = Math.floor(c / n) + 0.5;
+        for (let k = 0; k < 4; k++) {
+          const a = Math.random() * 7, v = 1.5 + Math.random() * 3;
+          parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, at: now, life: 380 + Math.random() * 300, color: colorOf(owner), r: 0.06 + Math.random() * 0.08 });
+        }
+        if (mine != null && Math.abs((mine % n) - (c % n)) + Math.abs(Math.floor(mine / n) - Math.floor(c / n)) <= 2) { shakeAt = now; shakeAmp = 0.12; }
+      }
+      if (parts.length > 400) parts = parts.slice(-400);
+    }
+    if (i != null) {
+      const [pos] = d.p[i];
+      if (prev.i?.some(([c]) => c === pos) && !d.i.some(([c]) => c === pos)) sfx('pickup');
+      d.p.forEach((p, j) => {  // a rival caught in my blast
+        if (j === i || !p[1] || prev.p[j]?.[1]) return;
+        const fire = d.f.find(([c]) => c === prev.p[j][0] || c === p[0]);
+        if (fire?.[1] !== i) return;
+        sfx('tag');
+        const c = prev.p[j][0];
+        floats.push({ x: (c % n) + 0.5, y: Math.floor(c / n) + 0.3, at: now, text: '+10' });
+      });
+    }
+  }
+
   function take(d) {
     const now = performance.now();
     const i = me();
+    if (snap && S) events(snap, d, now);
     if (i != null && snap?.rd === d.rd && d.p[i]?.[1] && !snap.p?.[i]?.[1]) buzz([60, 40, 120]);  // I was just caught
     d.p.forEach(([pos], i) => {
       const gl = glide[i];
@@ -193,7 +230,9 @@ UI.paintblast = (() => {
     const n = S.paintblast.n;
     if (!canvas.width) resize();
     const W = canvas.width, cell = W / n;
-    g.fillStyle = '#17121f'; g.fillRect(0, 0, W, W);
+    const sh = now - shakeAt < 260 ? shakeAmp * cell * (1 - (now - shakeAt) / 260) : 0;
+    g.setTransform(1, 0, 0, 1, sh ? (Math.random() - 0.5) * 2 * sh : 0, sh ? (Math.random() - 0.5) * 2 * sh : 0);
+    g.fillStyle = '#17121f'; g.fillRect(-W, -W, 3 * W, 3 * W);
     const paint = snap.c;
     for (let c = 0; c < n * n; c++) {
       const x = (c % n) * cell, y = Math.floor(c / n) * cell, t = snap.t[c];
@@ -214,6 +253,15 @@ UI.paintblast = (() => {
         g.beginPath(); g.moveTo(x + cell * 0.14, y + cell * 0.14); g.lineTo(x + cell * 0.86, y + cell * 0.86); g.stroke();
       }
     }
+    // where the bombs will blast: a faint red at first, pulsing harder as the fuse runs down (#6)
+    for (const [c, f] of snap.w || []) {
+      if (snap.t[c] === '#') continue;
+      const soon = Math.max(0, 1 - f / 18);
+      g.fillStyle = '#ff2d55';
+      g.globalAlpha = soon ? 0.12 + 0.3 * soon * (0.6 + 0.4 * Math.sin(now / 70)) : 0.08;
+      g.fillRect((c % n) * cell + 2, Math.floor(c / n) * cell + 2, cell - 4, cell - 4);
+    }
+    g.globalAlpha = 1;
     g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = `${Math.round(cell * 0.62)}px system-ui, sans-serif`;
     for (const [c, kind] of snap.i) g.fillText(ITEM[kind] || '?', (c % n + 0.5) * cell, (Math.floor(c / n) + 0.55) * cell);
     for (const [c, owner] of snap.f) {
@@ -239,6 +287,23 @@ UI.paintblast = (() => {
       g.beginPath(); g.arc(x, y, cell * 0.38, 0, 7); g.fill(); g.stroke();
       g.fillStyle = '#fff'; g.beginPath(); g.arc(x - cell * 0.12, y - cell * 0.08, cell * 0.08, 0, 7); g.arc(x + cell * 0.12, y - cell * 0.08, cell * 0.08, 0, 7); g.fill();
     });
+    // paint splatter flying out of each blast, slowing as it goes
+    parts = parts.filter((p) => now - p.at < p.life);
+    for (const p of parts) {
+      const t = (now - p.at) / 1000, k = 1 - (now - p.at) / p.life, drag = 1 - Math.exp(-3 * t);
+      g.globalAlpha = 0.85 * k; g.fillStyle = p.color;
+      g.beginPath(); g.arc((p.x + (p.vx / 3) * drag) * cell, (p.y + (p.vy / 3) * drag) * cell, p.r * cell * (0.6 + 0.4 * k), 0, 7); g.fill();
+    }
+    g.globalAlpha = 1;
+    floats = floats.filter((f) => now - f.at < 900);
+    for (const f of floats) {
+      const k = (now - f.at) / 900;
+      g.globalAlpha = 1 - k * k; g.font = `bold ${Math.round(cell * 0.6)}px system-ui, sans-serif`;
+      g.lineWidth = cell * 0.12; g.strokeStyle = '#000a'; g.fillStyle = '#ffd166';
+      g.strokeText(f.text, f.x * cell, (f.y - 0.8 * k) * cell); g.fillText(f.text, f.x * cell, (f.y - 0.8 * k) * cell);
+    }
+    g.globalAlpha = 1;
+    g.setTransform(1, 0, 0, 1, 0, 0);
   }
 
   const turnText = (s) => (s.phase === 'playing' ? `🎨 Round ${s.paintblast.round} of ${s.paintblast.rounds}` : null);
