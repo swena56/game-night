@@ -257,9 +257,14 @@ UI.paintblast = (() => {
     for (const [c, f] of snap.w || []) {
       if (snap.t[c] === '#') continue;
       const soon = Math.max(0, 1 - f / 18);
+      const x = (c % n) * cell, y = Math.floor(c / n) * cell, beat = 0.6 + 0.4 * Math.sin(now / 70);
       g.fillStyle = '#ff2d55';
-      g.globalAlpha = soon ? 0.12 + 0.3 * soon * (0.6 + 0.4 * Math.sin(now / 70)) : 0.08;
-      g.fillRect((c % n) * cell + 2, Math.floor(c / n) * cell + 2, cell - 4, cell - 4);
+      g.globalAlpha = soon ? 0.2 + 0.4 * soon * beat : 0.12;
+      g.fillRect(x + 2, y + 2, cell - 4, cell - 4);
+      if (soon > 0.4) {  // under a second to go: a bright edge too
+        g.globalAlpha = 0.5 + 0.5 * beat; g.strokeStyle = '#ff5a7a'; g.lineWidth = Math.max(1, cell * 0.06);
+        g.strokeRect(x + 3, y + 3, cell - 6, cell - 6);
+      }
     }
     g.globalAlpha = 1;
     g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = `${Math.round(cell * 0.62)}px system-ui, sans-serif`;

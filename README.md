@@ -288,6 +288,7 @@ python3 tests/csscheck.py                                    # layout lint (jsdo
 node --check static/app.js                                  # real syntax check (Node.js)
 python3 tests/billiards_physics.py                          # billiards shot engine, and the aim guide's copy of it
 python3 tests/billiards_rules.py                            # billiards rules (push-outs, fouls, breaks) on a scripted engine
+python3 tests/blackjack_bets.py                             # Blackjack bets: built from chips, all-in, last bet repeated
 PORT=8767 python3 server.py &                               # a separate test server (own rooms-8767.pickle / feedback-8767.jsonl)
 cd tests && npm install && BASE=http://localhost:8767 node ui.js          # every game
 BASE=http://localhost:8767 node ui.js chess spire                          # just some
