@@ -98,6 +98,7 @@ class Oware(Undo, Game):
     blurb = "The traditional mancala game: sow seeds round the board and capture pits of 2 and 3."
     min_players = 2
     max_players = 2
+    badges = {**Game.badges, "harvest": ("🌾", "Big harvest", "Win with 36 seeds or more")}
     settings_schema = {}
 
     def start(self, seated, rng):
@@ -159,6 +160,8 @@ class Oware(Undo, Game):
         if st[0] == st[1]:
             return r.finish(None, f"🤝 A draw, {st[0]}–{st[1]}.")
         w = 0 if st[0] > st[1] else 1
+        if st[w] >= 36:
+            self.award(self.seats[w], "harvest")
         r.finish(r.players.get(self.seats[w]), f"🏆 {names[w]} wins Oware, {st[w]}–{st[1 - w]}!")
 
     def meta(self, p):

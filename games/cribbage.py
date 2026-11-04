@@ -92,6 +92,7 @@ class Cribbage(Game):
     blurb = "The classic pegging card game: make fifteens, pairs and runs, and race your peg to 121."
     min_players = 2
     max_players = 3
+    badges = {**Game.badges, "big_hand": ("🃏", "Twenty-plus", "Score 20 or more in one hand at the show")}
     settings_schema = {
         "target": ("Game to", [(121, "121 (full)"), (61, "61 (short)")], 121),
         "muggins": ("Counting", [(False, "Hands counted for you"), (True, "🦉 Muggins: count your own")], False),
@@ -288,6 +289,8 @@ class Cribbage(Game):
                 continue
             items = score_show(p.g.hand, self.starter)
             total = sum(v for _, v in items)
+            if total >= 20:
+                self.award(p, "big_hand")
             said = claims.get(pid, total)
             self.show.append({"who": pid, "crib": False, "cards": p.g.hand, "items": items, "total": total,
                               "said": said if pid in claims else None})

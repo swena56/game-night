@@ -84,6 +84,7 @@ class ShutBox(Game):
     blurb = "The traditional pub dice game: shut the numbered tiles that match your roll, and leave as little open as you can."
     min_players = 1
     max_players = 6
+    badges = {**Game.badges, "shut": ("📦", "Shut it!", "Shut every tile in the box")}
     settings_schema = {
         "tiles": ("Tiles", [(9, "1–9 (classic)"), (12, "1–12 (long)")], 9),
         "rounds": ("Rounds", [(3, "3"), (1, "1"), (5, "5")], 3),
@@ -207,6 +208,7 @@ class ShutBox(Game):
             return
         p.g.shut_count = getattr(p.g, "shut_count", 0) + 1
         self.last = {"by": p.id, "pts": 0, "shut": True}
+        self.award(p, "shut")
         self.room.add_log(f"🎉 {p.name} SHUTS THE BOX! 0 points.", "big")
         self.end_box(p)
 

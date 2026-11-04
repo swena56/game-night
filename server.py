@@ -84,7 +84,7 @@ def static_files():
     return files
 
 
-RECORD = ("wins", "played", "streak", "best_streak", "by_game", "points", "quits")  # survives leave + rejoin
+RECORD = ("wins", "played", "streak", "best_streak", "by_game", "points", "quits", "badges")  # survives leave + rejoin
 
 
 class Player:
@@ -110,6 +110,7 @@ class Player:
         self.by_game = {}
         self.points = 0
         self.quits = 0
+        self.badges = {}  # "game:key" -> times earned this evening (🏅, see Room.award)
         self.reset()
 
     def __setstate__(self, state):  # rooms saved by older versions lack newer fields
@@ -327,6 +328,8 @@ class Room:
             p.last_pts = POINTS_WIN if winner and p.id == winner.id else POINTS_PLAYED
             p.points += p.last_pts
             if winner and p.id == winner.id:
+                if any(o.bot == "hard" and not o.standin for o in seated):
+                    self.award(p, gid, "giant")
                 p.wins += 1
                 p.streak += 1
                 p.best_streak = max(p.best_streak, p.streak)
@@ -345,6 +348,19 @@ class Room:
             if p.bot and not p.standin and random.random() < 0.6:
                 lines = BANTER["win" if winner and p.id == winner.id else "lose"]
                 self.add_chat(p, random.choice(lines))
+
+    def award(self, p, gid, key):
+        """🏅 A badge for player `p` in game `gid` (key from that game's `badges`). Counted per evening;
+        the first of each kind is announced in the log, and bots never earn them."""
+        p = self.players.get(p) if isinstance(p, str) else p
+        badge = GAMES[gid].badges.get(key) if gid in GAMES else None
+        if not p or not badge or p.bot or p.standin:
+            return
+        k = f"{gid}:{key}"
+        p.badges = getattr(p, "badges", None) or {}
+        p.badges[k] = p.badges.get(k, 0) + 1
+        if p.badges[k] == 1:
+            self.add_log(f"🏅 {p.name} earned {badge[0]} {badge[1]}!", "badge")
 
     def add_chat(self, p, text, ghost=False):
         self._eid += 1
@@ -674,7 +690,7 @@ class Room:
                 "bot": None if o.standin else o.bot, "meta": self.game.meta(o) if self.game else "",
                 "standin": o.standin, "away": o.shown_away and not o.standin,
                 "played": o.played, "streak": o.streak, "best": o.best_streak, "byGame": o.by_game,
-                "points": o.points, "quits": o.quits,
+                "points": o.points, "quits": o.quits, "badges": getattr(o, "badges", None) or {},
             } for o in (self.players[i] for i in self.order)],
             "me": {"id": p.id, "name": p.name, "spectator": p.spectator,
                    "eliminated": p.eliminated, "ghost": ghost},

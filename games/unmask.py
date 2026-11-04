@@ -163,6 +163,7 @@ class Unmask(Game):
     blurb = "Ask yes/no questions to find the hidden face. Power cards, private answers, ghosts."
     min_players = 1
     max_players = 6
+    badges = {**Game.badges, "sharp": ("🔍", "Sharp eye", "Unmask the right face after three questions or fewer")}
     settings_schema = {
         "mode": ("Mode", [("duel", "⚔️ Duel (1v1)"), ("manhunt", "🕵️ Manhunt (1–6)")], "duel"),
         "size": ("Board", [(16, "16 faces"), (24, "24 faces"), (30, "30 faces")], 24),
@@ -273,11 +274,15 @@ class Unmask(Game):
             opp = r.opponent(p)
             truth = self.board[opp.g.secret]["name"]
             if face == opp.g.secret:
+                if len(getattr(p.g, "learned", [])) <= 3:
+                    self.award(p, "sharp")
                 r.finish(p, f"🎯 {p.name} unmasked {opp.name}: it was {truth}! {p.name} wins!")
             else:
                 r.finish(opp, f"💥 {p.name} accused {name}, but it was {truth}. {opp.name} wins!")
             return
         if face == self.culprit:
+            if len(getattr(p.g, "learned", [])) <= 3:
+                self.award(p, "sharp")
             r.finish(p, f"🎯 {p.name} caught the culprit, {name}! {p.name} wins!")
             return
         p.eliminated = True

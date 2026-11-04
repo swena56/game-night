@@ -118,6 +118,7 @@ class Morris(Game):
     blurb = "The ancient mill game: place, slide and make lines of three to take your rival's men."
     min_players = 2
     max_players = 2
+    badges = {**Game.badges, "untouched": ("🛡️", "Untouched", "Win without losing a single man")}
     settings_schema = {
         "fly": ("Flying with 3 men", [(True, "On"), (False, "Off")], True),
         "men": ("Men", [(9, "Nine Men's Morris"), (12, "Twelve Men's Morris (diagonals)")], 9),
@@ -168,6 +169,8 @@ class Morris(Game):
                 return r.finish(None, "🤝 The board is full — a draw.")
             q = r.players.get(self.seats[nxt])
             why = "is down to two men" if not self.state[1][nxt] and self.state[0].count(nxt) < 3 else "has no move"
+            if self.state[0].count(me) + self.state[1][me] == (12 if self.twelve else 9):
+                self.award(p, "untouched")
             return r.finish(p, f"🏆 {q.name if q else '?'} {why} — {p.name} wins!")
         r.begin_turn(self.seats[nxt])
 

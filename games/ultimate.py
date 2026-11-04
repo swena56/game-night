@@ -89,6 +89,7 @@ class Ultimate(Undo, Game):
     blurb = "Nine tic-tac-toe boards in one: every move decides where your rival plays next."
     min_players = 2
     max_players = 2
+    badges = {**Game.badges, "sniper": ("🎯", "No wasted boards", "Win with exactly three small boards")}
     settings_schema = {}
 
     def start(self, seated, rng):
@@ -136,6 +137,8 @@ class Ultimate(Undo, Game):
             r.add_log(f"{'✕◯'[me]} {p.name} plays board {b + 1}, square {c % 9 + 1}.", "question")
         res = big_result(self.state[1])
         if res in (0, 1):
+            if self.state[1].count(me) == 3:
+                self.award(p, "sniper")
             return r.finish(p, f"🏆 {p.name} wins three boards in a row!")
         if not legal(self.state, 1 - me):
             return r.finish(None, "🤝 No lines left to win — a draw.")

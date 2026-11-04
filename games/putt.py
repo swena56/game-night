@@ -361,6 +361,7 @@ class Putt(Game):
     blurb = "Mini golf on freshly built 3D holes with bumpers, sand, slopes and water. Fewest strokes wins."
     min_players = 1
     max_players = 6
+    badges = {**Game.badges, "ace": ("🎯", "Hole in one", "Sink a putt in a single stroke")}
     settings_schema = {
         "holes": ("Holes", [(6, "6"), (3, "3 (quick)"), (9, "9")], 6),
     }
@@ -481,6 +482,8 @@ class Putt(Game):
             self.holed[i] = True
             self.balls[i] = list(end)
             s = self.strokes[i]
+            if s == 1:
+                self.award(self.seats[i], "ace")
             self.room.add_log(f"⛳ {name} holes out in {s}!" + (" 🎯 Hole in one!" if s == 1 else ""), "power" if s <= 2 else "question")
         else:
             self.balls[i] = [end[0], end[1]]

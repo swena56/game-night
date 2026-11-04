@@ -98,6 +98,8 @@ class Reversi(Undo, Game):
     blurb = "The classic disc-flipping game: trap rival discs in a line and flip them to your colour."
     min_players = 2
     max_players = 2
+    badges = {**Game.badges, "wipeout": ("🌑", "Wipeout", "Win with no rival discs left on the board"),
+              "landslide": ("⛰️", "Landslide", "Win with 48 discs or more")}
     settings_schema = {
         "hints": ("Flip hints", [(False, "Off"), (True, "Show how many each move flips")], False),
     }
@@ -161,6 +163,10 @@ class Reversi(Undo, Game):
         if counts[0] == counts[1]:
             return r.finish(None, f"🤝 A draw, {counts[0]}–{counts[1]}.")
         w = 0 if counts[0] > counts[1] else 1
+        if counts[1 - w] == 0:
+            self.award(self.seats[w], "wipeout")
+        elif counts[w] >= 48:
+            self.award(self.seats[w], "landslide")
         r.finish(r.players.get(self.seats[w]), f"🏆 {names[w]} wins Reversi, {counts[w]}–{counts[1 - w]}!")
 
     def meta(self, p):

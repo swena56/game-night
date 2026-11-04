@@ -22,6 +22,7 @@ class Boxes(Game):
     blurb = "Draw lines, close boxes, chain your captures. Don't draw the third side!"
     min_players = 2
     max_players = 6
+    badges = {**Game.badges, "chain": ("⛓", "Chain gang", "Close 6 boxes in a single turn")}
     settings_schema = {
         "size": ("Grid", [(3, "3×3 (quick)"), (4, "4×4"), (5, "5×5"), (6, "6×6 (long)"),
                           ("4x6", "4×6 wide"), ("5x8", "5×8 wide (long)")], 4),
@@ -109,6 +110,10 @@ class Boxes(Game):
         drawn = self.drawn()
         won = [b for b in self.boxes_of(line) if all(s in drawn for s in self.sides_of(b))]
         self.claimed_last = [list(b) for b in won]
+        # a run of boxes in one turn (🏅 at 6)
+        self.run = (getattr(self, "run", 0) + len(won)) if won else 0
+        if self.run >= 6:
+            self.award(p, "chain")
         for br, bc in won:
             self.owner[br][bc] = seat
             p.g.score += self.value((br, bc))

@@ -45,6 +45,7 @@ class ShipCrew(Game):
     blurb = "The old tavern dice game: roll a 6, 5 and 4 in order, then gamble on your cargo."
     min_players = 1
     max_players = 6
+    badges = {**Game.badges, "full_hold": ("📦", "Full hold", "Dock with the best cargo there is: 12")}
     settings_schema = {
         "rounds": ("Rounds", [(5, "5"), (3, "3"), (8, "8")], 5),
         "pot": ("Scoring", [(False, "Total cargo"), (True, "🍺 Pub pot")], False),
@@ -170,6 +171,8 @@ class ShipCrew(Game):
         else:
             r.add_log(f"🌊 {p.name} never found a {NAMES[len(self.found)]}: 0 this turn.", "power")
         self.last = {"by": p.id, "found": list(self.found), "cargo": list(self.free) if self.loaded() else [], "pts": pts, "n": self.round * 10 + self.turns}
+        if pts == 12:
+            self.award(p, "full_hold")
         self.turns += 1
         live = self.players()
         if self.turns >= len(live):

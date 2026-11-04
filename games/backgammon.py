@@ -269,6 +269,7 @@ class Backgammon(Game):
     blurb = "The ancient race game: run, hit, block and bear off all fifteen checkers before your rival."
     min_players = 2
     max_players = 2
+    badges = {**Game.badges, "backgammon": ("🎯", "Backgammon!", "Win the deciding game with a backgammon")}
     settings_schema = {
         "match": ("Play", [(1, "One game"), (3, "Match to 3"), (5, "Match to 5")], 1),
         "cube": ("Doubling cube", [(True, "🎲 On"), (False, "Off")], True),
@@ -455,6 +456,8 @@ class Backgammon(Game):
         target = self.s["match"]
         if self.points[side] >= target:
             w = r.players.get(self.ids[side])
+            if pts >= 3 and not dropped:
+                self.award(w, "backgammon")
             score = f" ({self.points[WHITE]}–{self.points[BLACK]})" if target > 1 else ""
             return r.finish(w, f"🏆 {self.name_of(side)} wins Backgammon{kind and ' with' + kind}{score}!")
         r.add_log(f"📊 Match score: ⚪ {self.points[WHITE]} – ⚫ {self.points[BLACK]} (to {target}).")

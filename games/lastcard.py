@@ -42,6 +42,7 @@ class LastCard(Game):
              "Queens reverse, Jacks are wild. Call “Last card!” — or get caught.")
     min_players = 2
     max_players = 6
+    badges = {**Game.badges, "stack": ("🥞", "Stacked", "Pass on a draw-six or more by stacking 7s")}
     settings_schema = {
         "hand": ("Starting hand", [(5, "5 cards"), (7, "7 cards")], 7),
         "actions": ("Action cards", [(True, "On (7·8·Q·J)"), (False, "Off (plain)")], True),
@@ -162,6 +163,8 @@ class LastCard(Game):
             k = rank(card)
             if k == "7":
                 self.penalty += 2
+                if self.penalty >= 6:
+                    self.award(p, "stack")
                 extra = f" — next player draws {self.penalty} (or plays a 7)"
             elif k == "8":
                 skip = True

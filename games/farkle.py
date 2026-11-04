@@ -99,6 +99,7 @@ class Farkle(Game):
     blurb = "Push-your-luck dice: keep the scoring dice, roll again or bank, and don't farkle it all away."
     min_players = 1
     max_players = 6
+    badges = {**Game.badges, "vault": ("🏦", "Bank vault", "Bank 3,000 points or more in a single turn")}
     settings_schema = {
         "target": ("Play to", [(10000, "10,000"), (5000, "5,000")], 10000),
         "opening": ("Get on the board", [(500, "500 in one turn"), (0, "Any score")], 500),
@@ -199,6 +200,8 @@ class Farkle(Game):
         r.add_log(f"🏦 {p.name} banks {pts:,} → {p.g.score:,}.", "question")
         self.event_id += 1
         self.event = {"id": self.event_id, "kind": "bank", "by": p.id, "pts": pts}
+        if pts >= 3000:
+            self.award(p, "vault")
         if p.g.score >= self.s["target"] and self.final_from is None and len(self.seats) > 1:
             self.final_from = p.id
             r.add_log(f"🏁 {p.name} reaches {self.s['target']:,}! Everyone else gets one last turn.", "big")

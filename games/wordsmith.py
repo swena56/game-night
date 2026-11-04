@@ -106,6 +106,8 @@ class Wordsmith(Game):
              f"all 7 tiles for +{SWEEP_BONUS}.")
     min_players = 2
     max_players = 4
+    badges = {**Game.badges, "sweep": ("🧹", "Clean sweep", "Play all seven tiles in one turn"),
+              "big_word": ("📜", "Wordsmith", "Score 60 or more with one play")}
     settings_schema = {
         "bounty": ("Bounty letter", [(True, "On"), (False, "Off")], True),
         "blanks": ("Blank tiles", [(0, "None"), (2, "2 blanks (any letter, 0 points)")], 0),
@@ -284,6 +286,10 @@ class Wordsmith(Game):
         p.g.rack = [ch for i, ch in enumerate(p.g.rack) if i not in idx]
         p.g.rack += self.draw(RACK - len(p.g.rack))
         self.scores[p.id] += score
+        if len(placements) == RACK:
+            self.award(p, "sweep")
+        if score >= 60:
+            self.award(p, "big_word")
         self.last = [[r, c] for r, c, _ in placements]
         self.scoreless = 0
         extra = f" ({', '.join(notes)})" if notes else ""
