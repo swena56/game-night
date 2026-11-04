@@ -486,6 +486,9 @@ Items that become ✅ move into the per-game plan.
   - ✅ 🎮 Analog touch steering (the further from the middle you hold, the harder you turn, in quarter steps) and a 🚀
     start boost: press boost in the last 0.45 s before GO to leave the line at 9 with a short boost; earlier than 1 s
     stalls you. Hard bots nail it 70% of the time, normal 35%.
+  - ✅ 🏔️ Hills and scenery in the 3D view: gentle rises and dips (drawing only, the race stays flat; level at the line and
+    over ramps, gaps and narrows) with embankments down to the ground, glowing pylons along both sides, arches over the
+    track with a checkered one at the line, and a ring of mountains fading into the fog. Craft pitch with the slope.
 - 🏒 **Air Hockey:** 2v2 with four mallets. **M**
 - 🎱 **Billiards:** ✅ the 3D table; ✅ a 9-ball variant; ✅ a livelier break, push-outs and match play; ✅ the cue strokes
   and a ⏪ replay; ✅ the aim guide no longer drifts on hard shots near the foot rail (the server now sends exact

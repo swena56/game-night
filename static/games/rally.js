@@ -199,17 +199,40 @@ UI.rally = (() => {
     side();
   }
 
-  // track geometry: the point and left normal at distance s
+  // track geometry: the point and left normal at distance s, and h, the 🏔️ hill height there
   function at(s, d) {
-    const r = S.rally, L = r.length, cum = r.cum, pts = r.track, n = pts.length;
+    const r = S.rally, L = r.length, cum = r.cum, pts = r.track, n = pts.length, hl = hillsNow();
     s = ((s % L) + L) % L;
     let lo = 0, hi = n;
     while (lo < hi - 1) { const mid = (lo + hi) >> 1; if (cum[mid] <= s) lo = mid; else hi = mid; }
     const a = pts[lo], b = pts[(lo + 1) % n], seg = (cum[lo + 1] ?? L) - cum[lo] || 1, f = (s - cum[lo]) / seg;
     const tx = (b[0] - a[0]) / seg, ty = (b[1] - a[1]) / seg, m = Math.hypot(tx, ty) || 1;
     const ux = tx / m, uy = ty / m;
-    return { x: a[0] + (b[0] - a[0]) * f - uy * d, y: a[1] + (b[1] - a[1]) * f + ux * d, ux, uy };
+    return { x: a[0] + (b[0] - a[0]) * f - uy * d, y: a[1] + (b[1] - a[1]) * f + ux * d, ux, uy, h: hl[lo] + (hl[(lo + 1) % n] - hl[lo]) * f };
   }
+
+  // 🏔️ hills (3D only, the race itself is flat): a few slow waves round the lap, their phases taken from the
+  // track's own shape so every phone sees the same ones; flat near the line and over ramps, gaps and narrows
+  let hills = null;
+  function hillsNow() {
+    const r = S.rally, n = r.track.length, L = r.length;
+    if (hills?.key === r.length) return hills.h;
+    const h = new Array(n).fill(0);
+    if (gl) {
+      const ph = [r.track[0][0], r.track[3][1], r.track[7][0]].map((v) => (v * 12.9898) % (Math.PI * 2));
+      const smooth = (x) => { x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
+      const flat = (r.zones || []).filter((z) => z[0] !== 'ice');
+      for (let k = 0; k < n; k++) {
+        const s = r.cum[k], u = (s / L) * Math.PI * 2;
+        let w = smooth((Math.min(s, L - s) - 4) / 11);
+        for (const [, a, b] of flat) w = Math.min(w, smooth((Math.max(a - s, s - b, 0) - 2) / 8));
+        h[k] = w * Math.max(0, 0.9 + 0.5 * Math.sin(2 * u + ph[0]) + 0.35 * Math.sin(3 * u + ph[1]) + 0.15 * Math.sin(5 * u + ph[2]));
+      }
+    }
+    hills = { key: r.length, h };
+    return h;
+  }
+  const hillAt = (s) => at(s, 0).h;
 
   // 🚧 the feature zone at s (any lap), optionally only of the given kinds; the half-width at sample k
   function zoneAt(s, kinds) {
@@ -411,7 +434,7 @@ UI.rally = (() => {
     const grid = new T.GridHelper(260, 52, 0x3a2a6a, 0x1c1438); grid.position.y = -0.05; scene.add(grid);
     let track = new T.Group(); scene.add(track);
     const ships = [];
-    const V = (p, h = 0) => new T.Vector3(p.x, h, -p.y);
+    const V = (p, h = 0) => new T.Vector3(p.x, h + (p.h || 0), -p.y);  // on the hills when p comes from at()
     const calm = () => document.body.classList.contains('calm');
     // a soft round dot: engine glows, the glow under each craft, particles
     const dot = (() => {
@@ -437,6 +460,7 @@ UI.rally = (() => {
     const glowMat = (color, opacity = 1) => ({ map: dot, color, transparent: true, opacity, blending: T.AdditiveBlending, depthWrite: false });
     function build() {
       scene.remove(track); track = new T.Group(); scene.add(track);
+      hills = null;  // worked out afresh now that there's a 3D view
       const r = S.rally, n = r.track.length, W = r.width, L = r.length;
       // the surface, with a hole where a gap is; the edge lines break there too
       const pos = [], edges = [[], []], edgeMat = new T.LineBasicMaterial({ color: 0x4cc9f0 });
@@ -447,7 +471,7 @@ UI.rally = (() => {
       for (let k = 0; k <= n; k++) {
         const s = r.cum[k % n] ?? 0, w = hwAt(k);
         const a = at(s, w), b = at(s, -w);
-        pos.push(a.x, 0, -a.y, b.x, 0, -b.y);
+        pos.push(a.x, a.h, -a.y, b.x, b.h, -b.y);
         edges[0].push(V(a, 0.05)); edges[1].push(V(b, 0.05));
         if (k < n && gapAt(k)) endEdges();
       }
@@ -457,7 +481,19 @@ UI.rally = (() => {
       const g = new T.BufferGeometry();
       g.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
       track.add(new T.Mesh(g, new T.MeshStandardMaterial({ color: 0x24203a, roughness: 0.8, side: T.DoubleSide })));
+      // embankments: each edge down to the ground, so the hills read as solid ground (none at a gap: the pit has walls)
+      const bank = [], bankIdx = [];
+      for (let k = 0; k <= n; k++) {
+        const q = k * 2;
+        bank.push(pos[q * 3], pos[q * 3 + 1], pos[q * 3 + 2], pos[q * 3], -0.05, pos[q * 3 + 2]);
+        bank.push(pos[q * 3 + 3], pos[q * 3 + 4], pos[q * 3 + 5], pos[q * 3 + 3], -0.05, pos[q * 3 + 5]);
+        if (k < n && !gapAt(k)) { const o = k * 4; bankIdx.push(o, o + 1, o + 4, o + 1, o + 5, o + 4, o + 2, o + 3, o + 6, o + 3, o + 7, o + 6); }
+      }
+      const bg = new T.BufferGeometry();
+      bg.setAttribute('position', new T.Float32BufferAttribute(bank, 3)); bg.setIndex(bankIdx); bg.computeVertexNormals();
+      track.add(new T.Mesh(bg, new T.MeshStandardMaterial({ color: 0x15112a, roughness: 0.9, side: T.DoubleSide })));
       features();
+      scenery();
       const line = new T.Mesh(new T.PlaneGeometry(0.6, W * 2), new T.MeshBasicMaterial({ color: 0xffffff, side: T.DoubleSide }));
       const p0 = at(0, 0); line.position.copy(V(p0, 0.02)); line.rotation.x = -Math.PI / 2; line.rotation.z = Math.atan2(p0.uy, p0.ux); track.add(line);
       for (const [pi, lat] of r.pads) {
@@ -470,7 +506,7 @@ UI.rally = (() => {
         const s = r.cum[((pi % n) + n) % n], p = at(s, lat), g = new T.Group();
         g.add(new T.Mesh(pickGeo, pickMat), new T.Sprite(new T.SpriteMaterial(glowMat(0xff5d5d, 0.7))));
         g.children[1].scale.set(1.6, 1.6, 1);
-        g.position.copy(V(p, 0.7)); track.add(g); pickups.push(g);
+        g.position.copy(V(p, 0.7)); g.userData.y = g.position.y; track.add(g); pickups.push(g);
       }
       cam.ready = false;
       for (const g of ships) g.userData.trail.pts.length = 0;
@@ -482,7 +518,7 @@ UI.rally = (() => {
       const pos = [], uv = [], idx = [], steps = Math.max(2, Math.ceil((b - a) / 0.4));
       for (let k = 0; k <= steps; k++) {
         const s = a + (b - a) * k / steps, h = y(s), p = at(s, w(s)), q = at(s, -w(s));
-        pos.push(p.x, h, -p.y, q.x, h, -q.y); uv.push(0, (s - a) / 2, 1, (s - a) / 2);
+        pos.push(p.x, h + p.h, -p.y, q.x, h + q.h, -q.y); uv.push(0, (s - a) / 2, 1, (s - a) / 2);
         if (k < steps) { const o = k * 2; idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2); }
       }
       const g = new T.BufferGeometry();
@@ -526,6 +562,49 @@ UI.rally = (() => {
             lo.position.y = 0.2; hi.position.y = 0.6; post.add(lo, hi); post.position.copy(V(p, 0)); track.add(post);
           }
         }
+      }
+    }
+    // ---- scenery: glowing pylons along both sides (every fourth one coloured by how far round the lap it is),
+    // arches over the track with a checkered one at the line, and a ring of mountains fading into the fog
+    const pylonMat = new T.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.55, roughness: 0.4 });
+    const archMat = new T.MeshStandardMaterial({ color: 0x3a2a6a, emissive: 0x4cc9f0, emissiveIntensity: 0.25, metalness: 0.5, roughness: 0.4 });
+    const checker = (() => {
+      const c = document.createElement('canvas'); c.width = 128; c.height = 32;
+      const g = c.getContext('2d');
+      for (let x = 0; x < 16; x++) for (let y = 0; y < 4; y++) { g.fillStyle = (x + y) % 2 ? '#111' : '#fff'; g.fillRect(x * 8, y * 8, 8, 8); }
+      return new T.CanvasTexture(c);
+    })();
+    function scenery() {
+      const r = S.rally, L = r.length, n = r.track.length, every = 12, count = Math.floor(L / every);
+      const wAt = (s) => hwAt(Math.round(n * (((s % L) + L) % L) / L));
+      // pylons: one instanced mesh for all of them
+      const pylons = new T.InstancedMesh(new T.CylinderGeometry(0.1, 0.14, 1.6, 8), pylonMat, count * 2);
+      const m = new T.Matrix4(), col = new T.Color();
+      for (let k = 0; k < count; k++) for (const side of [1, -1]) {
+        const s = (k + 0.5) * every, p = at(s, side * (wAt(s) + 0.9)), j = k * 2 + (side > 0 ? 0 : 1);
+        m.makeTranslation(p.x, p.h + 0.8, -p.y); pylons.setMatrixAt(j, m);
+        pylons.setColorAt(j, k % 4 ? col.set(0x4cc9f0) : col.setHSL(s / L, 0.9, 0.6));
+      }
+      track.add(pylons);
+      // arches: at the line (checkered) and five more spread round, nudged off ramps and gaps
+      for (let k = 0; k < 6; k++) {
+        let s = (k * L) / 6;
+        while (k && zoneAt(s, ['ramp', 'gap', 'narrow'])) s += 2;
+        const p = at(s, 0), w = wAt(s) + 0.7, a = new T.Group();
+        for (const z of [w, -w]) { const post = new T.Mesh(new T.BoxGeometry(0.3, 3.4, 0.3), archMat); post.position.set(0, 1.7, z); a.add(post); }
+        const bar = new T.Mesh(new T.BoxGeometry(0.3, 0.5, w * 2 + 0.3), k ? archMat : new T.MeshBasicMaterial({ map: checker }));
+        bar.position.y = 3.4; a.add(bar);
+        a.position.copy(V(p, 0)); a.rotation.y = Math.atan2(p.uy, p.ux); track.add(a);
+      }
+      // mountains: low-poly cones far out, placed from the track's own numbers so they stay put
+      const xs = r.track.map((q) => q[0]), ys = r.track.map((q) => q[1]);
+      const cx = (Math.max(...xs) + Math.min(...xs)) / 2, cy = (Math.max(...ys) + Math.min(...ys)) / 2;
+      const mtn = new T.MeshStandardMaterial({ color: 0x2a1d4a, emissive: 0x120a26, roughness: 1, flatShading: true });
+      for (let k = 0; k < 16; k++) {
+        const rnd = (j) => { const v = Math.sin((k + 1) * 78.233 + j * 12.9898 + L) * 43758.5453; return v - Math.floor(v); };
+        const a = (k / 16) * Math.PI * 2 + rnd(1) * 0.3, rad = 110 + 20 * rnd(2), hgt = 15 + 20 * rnd(3);
+        const c = new T.Mesh(new T.ConeGeometry(10 + 8 * rnd(4), hgt, 5 + Math.floor(rnd(5) * 3)), mtn);
+        c.position.set(cx + Math.cos(a) * rad, hgt / 2 - 0.1, -(cy + Math.sin(a) * rad)); c.rotation.y = rnd(6) * 3; track.add(c);
       }
     }
     const bollardGeo = new T.CylinderGeometry(0.16, 0.18, 0.4, 10);
@@ -790,8 +869,9 @@ UI.rally = (() => {
       const r = S.rally, gp = ghostAt(now), W = r.width;
       padMat.opacity = 0.65 + 0.35 * Math.sin(now / 140);
       pickMat.color.setHSL((now / 2500) % 1, 0.85, 0.6); pickMat.emissive.setHSL((now / 2500) % 1, 0.9, 0.35);
-      pickups.forEach((g, k) => { g.visible = !!pk[k]; g.rotation.y = now / 400; g.position.y = 0.7 + 0.12 * Math.sin(now / 250 + k); });
+      pickups.forEach((g, k) => { g.visible = !!pk[k]; g.rotation.y = now / 400; g.position.y = g.userData.y + 0.12 * Math.sin(now / 250 + k); });
       glints.forEach((g, k) => { g.material.opacity = Math.max(0, Math.sin(now / 380 + k * 1.7)) ** 8; });
+      pylonMat.emissiveIntensity = calm() ? 0.55 : 0.45 + 0.25 * Math.sin(now / 300);
       drawMissiles(now); drawMines(now);
       ghostShip.visible = !!gp;
       if (gp) { ghostShip.position.copy(V(gp, 0.45)); ghostShip.rotation.y = Math.atan2(gp.uy, gp.ux); ghostShip.material.opacity = 0.22 + 0.08 * Math.sin(now / 150); }
@@ -817,14 +897,16 @@ UI.rally = (() => {
         // left is +d and leaning left is a negative turn about the forward axis
         const lean = Math.max(-0.5, Math.min(0.5, -(u.vd * 0.07 + (i === r.me ? steerNow * 0.22 : 0))));
         u.lean += (lean - u.lean) * ease(10); u.lift += ((boosting ? 0.08 : 0) - u.lift) * ease(6); u.flare *= Math.exp(-dt * 4);
-        u.tilt.rotation.set(u.lean, 0, u.lift + 0.03 * Math.sin(now / 260 + i));
+        const pitch = Math.atan((hillAt(s + 1) - hillAt(s - 1)) / 2);  // nose up the hills, down over the crests
+        u.tilt.rotation.set(u.lean, 0, u.lift + pitch + 0.03 * Math.sin(now / 260 + i));
         u.paint.emissiveIntensity = boosting ? 0.8 : 0.15 + 0.6 * u.flare;
         const k = Math.min(1.4, c[2] / r.top), fl = (0.35 + 0.35 * k + (boosting ? 0.5 : 0) * (0.85 + 0.3 * Math.random())) * (1 - u.sink);
         for (const f of u.flames) f.scale.set(fl, fl * 0.8, 1);
         // the glow underneath stays on the ground (fainter the higher you are) and is gone over a gap
         u.under.position.y = -0.4 - Math.max(0, up);
         u.under.material.opacity = zoneAt(s, ['gap']) ? 0 : (0.45 + 0.1 * Math.sin(now / 120 + i) + 0.5 * u.flare) / (1 + Math.max(0, u.h));
-        trailTick(u.trail, at(s - 0.85, u.d), boosting, 0.42 + up);
+        const tp = at(s - 0.85, u.d);
+        trailTick(u.trail, tp, boosting, 0.42 + up + tp.h);
         if (!dt || c[6]) return;
         const vx = -p.ux * c[2] * 0.3, vz = p.uy * c[2] * 0.3;
         if (boosting) for (const z of [-0.5, 0.5]) {
@@ -849,9 +931,9 @@ UI.rally = (() => {
         cam.boost += ((c[3] ? 1 : 0) - cam.boost) * ease(4);
         const back = 7 - 1.3 * cam.boost, k = Math.min(1.4, c[2] / r.top);
         const up = 0.6 * ((u.h || 0) + (u.ramp || 0));  // rise a little with a jump
-        want.set(p.x - p.ux * back, 3.6 - 0.7 * cam.boost + up, -(p.y - p.uy * back));
+        want.set(p.x - p.ux * back, 3.6 - 0.7 * cam.boost + up + Math.max(p.h, hillAt(sNow(who, now) - back)), -(p.y - p.uy * back));
         if (!cam.ready) cam.pos.copy(want); else cam.pos.lerp(want, ease(8));
-        want.set(p.x + p.ux * 6, 0.5 + up, -(p.y + p.uy * 6));
+        want.set(p.x + p.ux * 6, 0.5 + up + hillAt(sNow(who, now) + 6), -(p.y + p.uy * 6));
         if (!cam.ready) cam.look.copy(want); else cam.look.lerp(want, ease(10));
         cam.ready = true;
         const fov = 60 + 10 * k + 10 * cam.boost;
