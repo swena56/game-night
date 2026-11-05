@@ -1560,6 +1560,8 @@ body.focus .spire-stage { height: max(240px, calc(var(--room) - 70px)); }
 .sm-bar button { min-width: 130px; padding: 14px; font-size: 17px; }
 body.focus .sm { max-width: 900px; }
 body.focus .sm-stage { height: max(220px, calc(var(--room) - 155px)); }
+.sm-flash.dim { font-size: 16px; opacity: .8; letter-spacing: .02em; }
+.sm-ko { font-size: 12px; opacity: .8; margin-right: 6px; }
 
 /* tic-tac-toe */
 .ttt { display: grid; grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr)); gap: 8px; width: min(100%, 560px, var(--room)); margin: 10px auto; }
