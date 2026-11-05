@@ -531,6 +531,15 @@ body.light #arena .stick-bottom { background: linear-gradient(transparent, #1d17
 .kit-callout.still { animation: fadeOut 1.5s ease-in forwards; }
 @keyframes calloutIn { 0% { transform: translate(-50%, -50%) scale(.3) rotate(-6deg); opacity: 0; } 18% { transform: translate(-50%, -50%) scale(1.12) rotate(1deg); opacity: 1; }
   30% { transform: translate(-50%, -50%) scale(1); } 80% { opacity: 1; } 100% { transform: translate(-50%, -60%) scale(1.04); opacity: 0; } }
+/* a rubber stamp slammed onto a spot: FARKLE, SKIP, FLINCH! */
+.kit-stamp { position: fixed; z-index: 45; transform: translate(-50%, -50%) rotate(-8deg); pointer-events: none; white-space: nowrap;
+  font-size: clamp(20px, 6vw, 34px); font-weight: 900; letter-spacing: .08em; text-transform: uppercase; padding: 2px 12px;
+  color: var(--sc, #ef476f); border: 4px solid currentColor; border-radius: 8px; background: #0009;
+  animation: stampIn 1.1s cubic-bezier(.2, 1.4, .4, 1) forwards; }
+.kit-stamp.good { --sc: #06d6a0; } .kit-stamp.gold { --sc: #ffd166; } .kit-stamp.cool { --sc: #4dabf7; }
+.kit-stamp.still { animation: fadeOut 1.1s ease-in forwards; }
+@keyframes stampIn { 0% { transform: translate(-50%, -50%) rotate(-8deg) scale(2.4); opacity: 0; } 15% { transform: translate(-50%, -50%) rotate(-8deg) scale(.92); opacity: 1; }
+  24% { transform: translate(-50%, -50%) rotate(-8deg) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; } }
 
 /* arena banners and score rows for the real-time games (Light Riders, Paint Blast, Sumo Saucers, Hover Rally) */
 .lr-banner { position: absolute; left: 0; right: 0; top: 42%; text-align: center; font-size: clamp(24px, 8vw, 44px); font-weight: 900; color: #fff;
@@ -1110,19 +1119,39 @@ body.calm .gh-tile.trace { background: linear-gradient(#8ecae6, #4dabf7); }
 .gh-list.missed { border-top: 1px solid var(--line); padding-top: 6px; }
 
 /* hearts */
-.hh { width: min(100%, 640px); margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
-.hh-rivals { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
-.hh-rival { background: var(--panel); border-radius: 10px; padding: 6px 10px; display: flex; flex-direction: column; align-items: center; min-width: 80px; }
-.hh-rival.turn { box-shadow: 0 0 0 2px var(--accent); }
-.hh-rival small { color: var(--muted); font-size: 12px; }
-.hh-trick { min-height: 112px; display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap;
-  background: radial-gradient(circle, #1f7a4d, #0d3b26); border-radius: 18px; padding: 10px; }
-.hh-slot { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; animation: pop .2s ease-out; }
-.hh-slot.won .pc { box-shadow: 0 0 0 3px var(--accent); }
+.hh { width: min(100%, 640px); margin: 0 auto; display: flex; flex-direction: column; gap: 8px; }
+/* the round table: seats on an oval round the edge (--x/--y from -1 to 1), the trick in the middle */
+.hh-table { position: relative; height: clamp(270px, 62vw, 340px); border-radius: 50% / 42%; padding: 0;
+  box-shadow: inset 0 0 0 7px #5a3a1e, inset 0 0 0 9px #8b5e34, inset 0 0 50px #000a, 0 6px 18px #0007; transition: filter .3s; }
+.hh-table.dark { animation: hhDark .9s ease-out; }
+@keyframes hhDark { 0% { filter: brightness(.45) saturate(.6); } 100% { filter: none; } }
+.hh-seat { position: absolute; left: calc(50% + var(--x) * (50% - 50px)); top: calc(50% + var(--y) * (50% - 30px));
+  transform: translate(-50%, -50%); z-index: 2; background: #0b1f19d9; border-radius: 10px; padding: 4px 8px; min-width: 76px;
+  display: flex; flex-direction: column; align-items: center; line-height: 1.15; box-shadow: 0 2px 8px #0007; white-space: nowrap; }
+.hh-seat.bottom { top: calc(100% - 22px); }
+.hh-seat.turn { box-shadow: 0 0 0 2px var(--accent), 0 0 16px var(--accent); }
+.hh-seat small { color: #cfe; font-size: 11px; opacity: .8; }
+.hh-pips { display: flex; gap: 1px; align-items: center; }
+.hh-pips i { font-style: normal; color: #ff5d73; font-size: 11px; line-height: 1; animation: pop .25s ease-out; }
+.hh-pips small { font-size: 10px; }
+.hh-trick { position: absolute; inset: 0; pointer-events: none; }
+.hh-slot { position: absolute; left: calc(50% + var(--x) * 52px); top: calc(50% + var(--y) * 40px - 6px);
+  transform: translate(-50%, -50%) rotate(var(--r, 0deg)); }
+.hh-slot.in { animation: hhIn .28s cubic-bezier(.2, 1.1, .4, 1); }
+@keyframes hhIn { from { transform: translate(-50%, -50%) translate(calc(var(--x) * 110px), calc(var(--y) * 90px)) rotate(calc(var(--r, 0deg) * 4)) scale(.7); opacity: .3; } }
+.hh-slot.won .pc { box-shadow: 0 0 0 3px var(--accent), 0 0 18px var(--accent); }
 .hh-trick.swept .hh-slot { opacity: 0; transition: opacity .2s .3s; }
+.hh-table .pc { width: 48px; height: 69px; } .hh-table .pc b { font-size: 18px; } .hh-table .pc i { font-size: 19px; }
+.hh-arrow { position: absolute; left: 50%; top: 47%; font-size: 40px; color: #ffd166; text-shadow: 0 2px 8px #000a;
+  transform: translate(-50%, -50%) rotate(var(--deg)); }
+.hh-arrow:not(.sent) { animation: hhNudge 1.1s ease-in-out infinite; }
+.hh-arrow.sent { opacity: .35; }
+@keyframes hhNudge { 50% { transform: translate(-50%, -50%) rotate(var(--deg)) translateY(10px); } }
+.hh-lead { position: absolute; left: 50%; top: 47%; transform: translate(-50%, -50%); color: #fff9; font-size: 13px; }
 .hh-note { min-height: 1.4em; text-align: center; font-size: 13px; color: var(--muted); }
-.hh-hand { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; padding-top: 8px; }
+.hh-hand { padding-top: 8px; }
 .hh-hand .pc { width: 44px; height: 64px; } .hh-hand .pc b { font-size: 17px; } .hh-hand .pc i { font-size: 18px; }
+.hh-hand .card-btn.got .pc { box-shadow: 0 0 0 2px #ffd166, 0 0 12px #ffd166aa; }
 
 /* night heist */
 .heist { max-width: 640px; margin: 0 auto; }
@@ -2210,7 +2239,6 @@ body.focus .sm-stage { height: max(220px, calc(var(--room) - 155px)); }
   .hh-hand, .ru-hand { flex-wrap: nowrap; justify-content: safe center; gap: 0; }
   .hh-hand > * + *, .ru-hand > * + * { margin-left: -10px; }
   .hh-hand > *:hover, .ru-hand > *:focus-visible { z-index: 1; }
-  .hh-trick { min-height: 84px; }
 }
 
 /* focus mode (topbar ▣ button): the board takes the whole screen; Leave/End game stays so nobody is stuck (#10) */
