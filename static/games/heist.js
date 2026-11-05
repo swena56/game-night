@@ -25,7 +25,7 @@ UI.heist = (() => {
       <p class="hint left">Everyone chooses in secret, then all choices are revealed together.</p>
       <ul class="rules">
         <li>🦹 A <b>lone grabber</b> steals the vault.</li>
-        <li>🔔 <b>Two or more grabbers</b> trip the alarm, and the loot keeps growing.</li>
+        <li id="hRuleTwo">🔔 <b>Two or more grabbers</b> trip the alarm, and the loot keeps growing.</li>
         <li>🛡️ <b>Guards</b> fine every grabber 💰2.</li>
         <li>😴 <b>Rest</b> earns 💰1.</li>
       </ul>
@@ -44,7 +44,19 @@ UI.heist = (() => {
   function render(s, c) {
     S = s; ctx = c;
     const h = S.heist;
-    document.getElementById('hNight').textContent = `🌙 Night ${h.night} of ${h.rounds}`;
+    const two = document.getElementById('hRuleTwo');
+    if (two && h.crew) two.innerHTML = '🤝 <b>Two grabbers</b> split the vault; <b>three or more</b> trip the alarm.';
+    document.getElementById('hNight').textContent = h.rounds ? `🌙 Night ${h.night} of ${h.rounds}` : `🌙 Night ${h.night} · ♾️`;
+    // ♾️ endless: the host decides when everyone cashes out (#63)
+    let out = document.getElementById('hCashout');
+    if (!h.rounds && h.host && S.phase === 'playing' && h.night > 1) {
+      if (!out) {
+        out = ctx.el('button', 'ghost-btn h-cashout', '🏁 Cash out');
+        out.id = 'hCashout';
+        out.onclick = async () => (await ctx.ask('End the heist now? Most gold wins.', { ok: '🏁 Cash out' })) && ctx.quiet(ctx.act('cashout'));
+        document.getElementById('hNight').after(out);
+      }
+    } else out?.remove();
     paintPot(h.pot);
     const canPlay = S.phase === 'playing' && !S.me.ghost && !S.me.spectator;
     for (const b of document.querySelectorAll('.h-choice')) {
@@ -70,7 +82,11 @@ UI.heist = (() => {
         const p = ctx.player(pid);
         // each choice is a card that turns over in turn: the reveal is the whole game
         const tag = ctx.el('span', 'reveal-tag h-card' + (fresh && motionOK() ? ' down' : ''));
-        tag.append(ctx.el('b', 'h-front', `${ICON[choice]} ${p?.name ?? '?'}`), ctx.el('b', 'h-back', `❓ ${p?.name ?? '?'}`));
+        // each card wears the player's face, so the table reads at a glance who did what
+        const front = ctx.el('b', 'h-front'), back = ctx.el('b', 'h-back');
+        front.append(avatar(p), `${ICON[choice]} ${p?.name ?? '?'}`); back.append(avatar(p), `❓ ${p?.name ?? '?'}`);
+        tag.append(front, back);
+        tag.dataset.pid = pid;
         tag.style.borderColor = p?.color ?? '#777';
         tag.dataset.choice = choice;
         row.append(tag); tags.push(tag);
@@ -89,10 +105,17 @@ UI.heist = (() => {
     const flash = (cls) => { vault.classList.remove('alarm', 'caught', 'stolen'); void vault.offsetWidth; vault.classList.add(cls); };
     if (t.startsWith('🔔')) { flash('alarm'); strobe(); ctx.sfx('alarm'); Kit.callout('🔔 ALARM!', 'bad'); }
     else if (t.startsWith('🚨')) { flash('caught'); ctx.sfx('alarm'); Kit.callout('🚨 Caught!', 'cool'); }
-    else if (t.startsWith('💎')) {
-      flash('stolen'); ctx.sfx('fanfare'); Kit.callout('💎 HEIST!', 'gold');
-      const thief = Object.entries(h.last.choices).find(([, c]) => c === 'grab')?.[0];
-      if (thief === S.me.id) ctx.confetti();
+    else if (t.startsWith('💎') || t.startsWith('🤝')) {
+      flash('stolen'); ctx.sfx('fanfare'); Kit.callout(t.startsWith('🤝') ? '🤝 CREW HEIST!' : '💎 HEIST!', 'gold');
+      const thieves = Object.entries(h.last.choices).filter(([, c]) => c === 'grab').map(([pid]) => pid);
+      if (thieves.includes(S.me.id)) ctx.confetti();
+      // the loot leaves the vault: coins fly from the pile to each thief's card
+      const coins = [...document.querySelectorAll('#hCoins i')].slice(-6);
+      thieves.forEach((pid, k) => {
+        const card = document.querySelector(`#hLast .h-card[data-pid="${pid}"]`);
+        coins.forEach((c, i) => Kit.fly(c, card, { ms: 520, delay: k * 120 + i * 70, scale: 1.3 }));
+      });
+      if (coins.length) setTimeout(() => ctx.sfx('chip'), 450);
     } else if (t.startsWith('🥱')) ctx.sfx('bad');
     else ctx.sfx('pop');
   }
@@ -126,12 +149,12 @@ UI.heist = (() => {
 
   // one row per player, one column per night: what they chose and how their gold moved
   function paintGrid(h) {
-    const nights = h.nights || [];
+    const all = h.nights || [], from = Math.max(0, all.length - 10), nights = all.slice(from);  // the last 10 nights fit a phone
     document.getElementById('hGrid').hidden = !nights.length;
     const t = document.getElementById('hGridT'); t.innerHTML = '';
     if (!nights.length) return;
     const head = ctx.el('tr'); head.append(ctx.el('th', '', ''));
-    nights.forEach((_, i) => head.append(ctx.el('th', '', String(i + 1))));
+    nights.forEach((_, i) => head.append(ctx.el('th', '', String(from + i + 1))));
     head.append(ctx.el('th', '', '💰'));
     t.append(head);
     for (const pid of Object.keys(h.gold)) {
