@@ -2553,3 +2553,5 @@ body.calm .card-btn.twin { animation: none; }
 .hh-seat.moonish::after { content: '🌙'; position: absolute; top: -10px; right: -8px; font-size: 16px; }
 @keyframes hhMoon { 50% { box-shadow: 0 0 0 2px #c8b6ff, 0 0 28px #c8b6ff; } }
 body.calm .hh-seat.moonish { animation: none; }
+/* hold'em: during an all-in run-out the hand names wait for the last card */
+.he-suspense .he-handname, .he-suspense .he-myhand { visibility: hidden; }

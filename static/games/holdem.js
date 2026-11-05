@@ -1,6 +1,7 @@
 // Texas Hold'em: the table (rivals, shared cards, pot), your two cards, and the betting bar.
 // The action buttons are built once and only updated, so taps never land on a replaced button.
 UI.holdem = (() => {
+  let revealAt = 0;  // when an all-in run-out's last card has turned over
   let S, ctx, raiseFor = null, histOpen = false, seenBoard = -1, seenHand = 0, seenBets = '', seenDone = null;
   const HANDS = ['High card', 'Pair', 'Two pair', 'Three of a kind', 'Straight', 'Flush', 'Full house', 'Four of a kind', 'Straight flush'];
   const $ = (id) => document.getElementById(id);
@@ -138,13 +139,24 @@ UI.holdem = (() => {
     // the flop, turn and river turn over one card at a time
     const board = $('heBoard'); board.innerHTML = '';
     const newHand = h.hand !== seenHand, fromCard = newHand || seenBoard < 0 ? h.board.length : seenBoard;
+    // 🔥 an all-in run-out: the hands are face up and the rest of the board comes out slowly, with a heartbeat
+    const runout = h.runout != null && h.stage === 'done' && h.board.length > fromCard && !newHand && motionOK();
+    // cards dealt before the all-in (the flop, if everyone went all in on it) still come out quickly
+    const slowFrom = runout ? Math.max(h.runout, fromCard) : 5, quick = Math.max(0, slowFrom - fromCard) * 0.18;
+    const delay = (i) => (i < slowFrom ? (i - fromCard) * 0.18 : quick + 0.6 + (i - slowFrom) * 1.1);
+    if (runout) { Kit.callout('🔥 ALL IN', 'gold', { ms: 1100 }); ctx.buzz?.([40, 80, 40]); }
     for (let i = 0; i < 5; i++) {
       if (!h.board[i]) { board.append(ctx.el('span', 'pc empty')); continue; }
       const f = face(h.board[i], h.best5?.includes(h.board[i]) && h.stage === 'done' ? 'best' : '');
-      if (i >= fromCard && motionOK()) { f.classList.add('flip-in'); f.style.animationDelay = (i - fromCard) * 0.18 + 's'; f.style.animationFillMode = 'both'; }
+      if (i >= fromCard && motionOK()) { f.classList.add('flip-in'); f.style.animationDelay = delay(i) + 's'; f.style.animationFillMode = 'both'; }
       board.append(f);
     }
-    if (h.board.length > fromCard) for (let k = 0; k < h.board.length - fromCard; k++) setTimeout(() => ctx.sfx('flip'), k * 180);
+    for (let i = fromCard; i < h.board.length; i++) {
+      setTimeout(() => ctx.sfx('flip'), delay(i) * 1000);
+      if (i >= slowFrom) setTimeout(() => ctx.sfx('thud'), delay(i) * 1000 - 350);  // ba-dum before each slow card
+    }
+    if (newHand) revealAt = 0;
+    else if (h.board.length > fromCard) revealAt = performance.now() + (runout ? (delay(h.board.length - 1) + 0.5) * 1000 : 0);
     seenBoard = h.board.length; seenHand = h.hand;
     const pot = $('hePot'); pot.innerHTML = '';
     const amt = ctx.el('span', 'he-pot-amt'); amt.append(ctx.el('small', '', 'Pot'), ctx.el('b', '', num(h.pot)));
@@ -156,8 +168,9 @@ UI.holdem = (() => {
     const doneKey = h.stage === 'done' ? `${h.hand}:${(h.winners || []).join()}` : '';
     if (doneKey && seenDone !== doneKey && seenDone !== null && h.winners?.length) {
       const w = h.winners[0], target = w === me ? $('heMyCards') : box.querySelector(`[data-id="${w}"]`);
-      setTimeout(() => { Kit.fly(pot.querySelector('.he-potchips'), target, { ms: 600 }); ctx.sfx('chip'); }, 700);
-      if (w === me) setTimeout(() => ctx.sfx('good'), 1300);
+      const later = Math.max(0, revealAt - performance.now());  // after a run-out has finished dealing
+      setTimeout(() => { Kit.fly(pot.querySelector('.he-potchips'), target, { ms: 600 }); ctx.sfx('chip'); }, 700 + later);
+      if (w === me) setTimeout(() => ctx.sfx('good'), 1300 + later);
       // say who won, big, before the next hand (the result line under the board says with what)
       const names = h.winners.map((id) => (id === me ? 'You' : (ctx.player(id)?.name ?? '?').replace(/^🤖\s*/, '')));
       Kit.callout(names.length > 1 ? `${names.join(' & ')} split!` : `${names[0]} ${w === me ? 'win' : 'wins'}!`,
@@ -165,8 +178,13 @@ UI.holdem = (() => {
     }
     seenDone = doneKey;
     const done = h.stage === 'done' || S.phase === 'over';
-    $('heResult').textContent = done ? h.result : '';
-    $('heResult').classList.toggle('done', done && !!h.result);
+    // after an all-in, who won waits until the last card is out (hand names too, via .he-suspense)
+    const hold = Math.max(0, revealAt - performance.now());
+    const res = $('heResult');
+    clearTimeout(res._t);
+    const show = () => { res.textContent = done ? h.result : ''; res.classList.toggle('done', done && !!h.result); document.querySelector('.he')?.classList.remove('he-suspense'); };
+    if (hold && done) { res.textContent = '🔥 All in…'; res.classList.remove('done'); document.querySelector('.he')?.classList.add('he-suspense'); res._t = setTimeout(show, hold); }
+    else show();
     // between hands: a bar runs down to the next deal, and people still in can skip ahead
     const between = h.stage === 'done' && S.phase === 'playing' && !h.rebuyWait && S.timeLeft != null;
     const nx = $('heNext'); nx.hidden = !between;
