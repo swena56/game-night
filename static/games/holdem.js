@@ -117,7 +117,7 @@ UI.holdem = (() => {
     const doneKey = h.stage === 'done' ? `${h.hand}:${(h.winners || []).join()}` : '';
     if (doneKey && seenDone !== doneKey && seenDone !== null && h.winners?.length) {
       const w = h.winners[0], target = w === me ? $('heMyCards') : box.querySelector(`[data-id="${w}"]`);
-      setTimeout(() => { Kit.fly(pot.querySelector('.chips'), target, { ms: 600 }); ctx.sfx('chip'); }, 700);
+      setTimeout(() => { Kit.fly(pot.querySelector('.chip-stack'), target, { ms: 600 }); ctx.sfx('chip'); }, 700);
       if (w === me) setTimeout(() => ctx.sfx('good'), 1300);
     }
     seenDone = doneKey;

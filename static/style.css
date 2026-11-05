@@ -505,15 +505,15 @@ body.light #arena .stick-bottom { background: linear-gradient(transparent, #1d17
   60% { transform: rotate(-6deg); } 80% { transform: rotate(4deg); } }
 
 /* casino chips: a stack per amount with the number under it (Hold'em, Blackjack) */
-.chips { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; vertical-align: middle; }
-.chips b { font-size: 12px; color: #ffd166; text-shadow: 0 1px 2px #000; }
+.chip-stack { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; vertical-align: middle; }
+.chip-stack b { font-size: 12px; color: #ffd166; text-shadow: 0 1px 2px #000; }
 .chip-col { display: flex; flex-direction: column-reverse; align-items: center; }
-.chip { display: block; width: 22px; height: 7px; border-radius: 50%; margin-top: -3px; border: 1px solid #0006;
+.cchip { display: block; width: 22px; height: 7px; border-radius: 50%; margin-top: -3px; border: 1px solid #0006;
   background: var(--c); box-shadow: inset 0 0 0 2px #fff8, 0 1px 1px #0008; }
-.chip-col .chip:first-child { margin-top: 0; }
-.chip.white { --c: #eee; } .chip.red { --c: #d62828; } .chip.green { --c: #1b8a3d; } .chip.black { --c: #222; }
-.chip.purple { --c: #7b2cbf; } .chip.gold { --c: #e0a400; }
-.chips.big .chip { width: 30px; height: 9px; margin-top: -4px; }
+.chip-col .cchip:first-child { margin-top: 0; }
+.cchip.white { --c: #eee; } .cchip.red { --c: #d62828; } .cchip.green { --c: #1b8a3d; } .cchip.black { --c: #222; }
+.cchip.purple { --c: #7b2cbf; } .cchip.gold { --c: #e0a400; }
+.chip-stack.big .cchip { width: 30px; height: 9px; margin-top: -4px; }
 
 /* "+38" rising from where it was scored, and a big word across the screen */
 .fly-text { position: fixed; z-index: 45; transform: translate(-50%, -50%); font-weight: 900; font-size: 22px; pointer-events: none;
@@ -734,7 +734,7 @@ body.focus #blHint { display: none; }  /* ❓ has the same how-to; the table get
 /* hold'em: the pot as chips, the winning five lit up, a hand-strength meter */
 .he-pot { display: flex; align-items: center; justify-content: center; gap: 6px; }
 .he-pot-label { font-size: 12px; color: #fffb; text-transform: uppercase; letter-spacing: .1em; }
-.he-bet .chips { flex-direction: row; gap: 4px; } .he-bet .chip { width: 14px; height: 5px; }
+.he-bet .chip-stack { flex-direction: row; gap: 4px; } .he-bet .cchip { width: 14px; height: 5px; }
 .pc.best { box-shadow: 0 0 0 3px #ffd166, 0 0 16px #ffd166aa; transform: translateY(-4px); }
 .he-seat.winner { box-shadow: 0 0 0 3px #ffd166, 0 0 20px #ffd16688; }
 .he-meter { display: flex; gap: 2px; margin-top: 4px; height: 8px; width: 140px; }
@@ -751,9 +751,9 @@ body.focus #blHint { display: none; }  /* ❓ has the same how-to; the table get
 .penalty { font-size: calc(1em * var(--sz, 1)); animation: pulse .8s infinite alternate; }
 .lc-dir.rev { color: var(--accent); }
 /* blackjack: bets as chip stacks */
-.to-bet { flex-direction: row; gap: 4px; flex: none; } .to-bet .chip { width: 16px; height: 6px; }
+.to-bet { flex-direction: row; gap: 4px; flex: none; } .to-bet .cchip { width: 16px; height: 6px; }
 .to-head { flex-wrap: wrap; } .to-head > b { min-width: 0; overflow-wrap: anywhere; }
-.to-stake .chips { margin-right: 8px; }
+.to-stake .chip-stack { margin-right: 8px; }
 /* contract rummy: the contract as goals to tick off; freshly laid melds sweep in */
 .ru-goal { display: inline-block; margin: 0 3px; padding: 1px 7px; border-radius: 999px; font-size: 12px; background: #ffffff14; box-shadow: inset 0 0 0 1px #ffffff30; }
 .ru-goal.done { background: #06d6a033; box-shadow: inset 0 0 0 1px var(--ok); }

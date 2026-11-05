@@ -69,12 +69,12 @@ const Chips = (() => {
   const DENOMS = [[1000, 'gold'], [500, 'purple'], [100, 'black'], [25, 'green'], [5, 'red'], [1, 'white']];
   // a little stack of casino chips for `amount` (at most `max` chips drawn), with the amount under it
   function stack(amount, { max = 8, label = true, cls = '' } = {}) {
-    const box = el('span', 'chips ' + cls), col = el('span', 'chip-col');
+    const box = el('span', 'chip-stack ' + cls), col = el('span', 'chip-col');
     let left = Math.max(0, Math.round(amount)), n = 0;
     for (const [v, c] of DENOMS) {
-      while (left >= v && n < max) { col.append(el('i', 'chip ' + c)); left -= v; n++; }
+      while (left >= v && n < max) { col.append(el('i', 'cchip ' + c)); left -= v; n++; }
     }
-    if (!n && amount > 0) col.append(el('i', 'chip white'));
+    if (!n && amount > 0) col.append(el('i', 'cchip white'));
     box.append(col);
     if (label) box.append(el('b', '', Number(amount).toLocaleString()));
     return box;
