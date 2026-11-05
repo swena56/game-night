@@ -190,8 +190,8 @@ UI.hockey = (() => {
         if (!old) return;
         const jump = Math.hypot(vx - old[2], vy - old[3]);
         const near = data.ml.findIndex(([mx, my]) => Math.hypot(x - mx, y - my) < (h.mallet + h.puck) * 1.6);
-        if (near >= 0 && jump > 0.8) { ctx.sfx(jump > 2 ? 'capture' : 'place'); if (near === h.me) buzz(25); }
-        else if ((Math.sign(vx) !== Math.sign(old[2]) && Math.abs(old[2]) > 0.3) || (Math.sign(vy) !== Math.sign(old[3]) && Math.abs(old[3]) > 0.3)) ctx.sfx('tick');
+        if (near >= 0 && jump > 0.8) { ctx.sfx('puck', Math.min(1, jump / 4)); if (near === h.me) buzz(25); }
+        else if ((Math.sign(vx) !== Math.sign(old[2]) && Math.abs(old[2]) > 0.3) || (Math.sign(vy) !== Math.sign(old[3]) && Math.abs(old[3]) > 0.3)) ctx.sfx('rail');
       });
     }
     net = { ...data, at: performance.now() };
@@ -200,8 +200,8 @@ UI.hockey = (() => {
       flash = performance.now() + 600; buzz(120);
       // the goal horn, and a cheer when it's mine
       const was = lastScore.split(':').map(Number), scorer = data.sc.findIndex((v, i) => v > was[i]);
-      ctx.sfx('alarm');
-      if (scorer === h?.me) setTimeout(() => ctx.sfx('good'), 500);
+      // a cheer for the scorer, a groan for the one scored on; watchers get the neutral horn
+      ctx.sfx(h?.me == null || h.me < 0 ? 'alarm' : scorer === h.me ? 'cheer' : 'groan');
       if (h && Math.max(...data.sc) === h.target - 1 && Math.max(...was) < h.target - 1) setTimeout(() => Kit.callout('🔥 Match point', 'gold', { ms: 1400 }), 900);
     }
     lastScore = sc;

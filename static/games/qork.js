@@ -219,5 +219,5 @@ UI.qork = (() => {
     return g.stage === 'snap' || (g.cupper === s.me.id && (g.stage === 'wait' || g.stage === 'dice'));
   }
 
-  return { mount, render, unmount, turnText, myMove };
+  return { mount, render, unmount, turnText, myMove, ownSounds: true };  // the trigger cue stays the only sharp sound
 })();

@@ -31,7 +31,8 @@ let prefs = { ...Object.fromEntries(PREFS.map(([k, , d]) => [k, d])), ...(load('
 let S = null;               // latest server state
 let stateAt = 0;            // when S arrived (for the countdown)
 let es = null;
-let mounted = null;         // game id whose UI is mounted
+let mounted = null;
+let overFoldedAt = -1;       // S.history.length of the results the player folded         // game id whose UI is mounted
 let mountedNo = null;       // which game of the room it was mounted for: a rematch gets a fresh UI (#53)
 let lastTurn = null;
 let lastLogId = 0;
@@ -227,6 +228,7 @@ async function reportDialog(kind = 'bug', draft = '') {
 }
 const logHasEntries = () => $('#log').childElementCount > 0;
 function show(id) {
+  if (id === 'game' && document.body.dataset.screen !== 'game' && document.scrollingElement) document.scrollingElement.scrollTop = 0;  // the lobby may have scrolled (#72)
   for (const s of ['loading', 'home', 'lobby', 'game']) $('#' + s).hidden = s !== id;
   if (id !== 'game') { document.body.classList.remove('focus'); closeMenu(); closeSheets(); }
   document.body.dataset.screen = id;
@@ -363,6 +365,11 @@ const SFX = {
   rise: (n = 0) => { const f = 440 * 2 ** (Math.min(n, 12) / 12 * 1.5); tone(f, f * 1.5, 0.12, 'triangle', 0.1); },
   lock: () => { tone(1000, 1000, 0.03, 'triangle', 0.06); tone(520, 520, 0.05, 'triangle', 0.06, 0.03); },
   wrong: () => { tone(220, 160, 0.18, 'triangle', 0.08); tone(208, 150, 0.18, 'triangle', 0.07, 0.02); },
+  // air hockey: a hard plastic puck clack (louder for a harder hit), a dull rail knock, a crowd swell and a groan
+  puck: (hard = 0) => { noise(0.025, 3400, 2.2, 0.28 + hard * 0.2); tone(1500, 900, 0.03, 'square', 0.025 + hard * 0.02); },
+  rail: () => { noise(0.04, 900, 1.4, 0.22); tone(240, 180, 0.05, 'sine', 0.06); },
+  cheer: () => { noise(0.9, 1400, 0.35, 0.18); [659, 784, 988].forEach((f, i) => tone(f, f, 0.18, 'triangle', 0.08, 0.12 + i * 0.09)); },
+  groan: () => { tone(330, 196, 0.5, 'triangle', 0.07); tone(262, 165, 0.5, 'triangle', 0.05, 0.04); },
 };
 const CATEGORY_SFX = { strategy: 'place', classic: 'place', cards: 'card', dice: 'dice', words: 'pop', party: 'pop' };
 function sfx(kind, arg) {
@@ -375,7 +382,10 @@ function enter(res) { session = res; store('unmask.session', res); store('unmask
 function connect() {
   if (es) es.close();
   clearTimeout(retryTimer);
-  firstState = true; mounted = null; lastLogId = 0; lastBeat = performance.now();
+  // a reconnect mounts the game afresh: unmount the old UI first, or its render loop keeps running
+  // beside the new one (doubled frames, errors against a cleared #arena)
+  if (!replay) unmountUI();
+  firstState = true; lastLogId = 0; lastBeat = performance.now();
   if (!S) showLoading();
   const source = es = new EventSource('/api/events?' + new URLSearchParams(session));
   source.onopen = () => { retryDelay = 1000; };
@@ -450,6 +460,9 @@ function onState(s) {
   s.games ??= prev?.games ?? [];  // the server sends the game catalogue once per connection
   S = s; stateAt = performance.now();
   history.replaceState(null, '', '?room=' + s.code);
+  if (s.phase === 'playing' && prev?.phase !== 'playing' && s.gameId) {  // "Played lately" in the lobby (#67), this device only
+    store('recentGames', [s.gameId, ...(load('recentGames') || []).filter((g) => g !== s.gameId)].slice(0, 6));
+  }
   if (prev && prev.phase === 'playing' && s.phase === 'over' && !firstState) {
     blip(s.winner === s.me.id ? 'win' : 'lose');
     if (s.winner === s.me.id) confetti();
@@ -472,10 +485,13 @@ function fitPicker() {
   const most = width ? Math.max(2, Math.floor((width + 8) / tile)) : 4;
   for (const g of document.querySelectorAll('.picker-group')) {
     const n = +g.dataset.count, rows = Math.ceil(n / most);
-    g.style.gridTemplateColumns = `repeat(${Math.ceil(n / rows)}, 1fr)`;
+    // a short group (favourites, played lately) keeps ordinary tile widths instead of stretching
+    g.style.gridTemplateColumns = `repeat(${n < Math.min(most, 4) ? Math.min(most, 4) : Math.ceil(n / rows)}, minmax(0, 1fr))`;
   }
 }
 window.addEventListener('resize', () => { if (!$('#lobby').hidden) fitPicker(); });
+$('#pickerFind').oninput = () => S && renderLobby();
+$('#pickerFits').onclick = () => { store('pickerFits', !load('pickerFits') || null); renderLobby(); };
 let pickedGame = null;  // the game this host just tapped, scrolled to once the server confirms it
 
 // arrow keys move between game tiles by where they sit on screen, across categories (#37)
@@ -526,8 +542,20 @@ function renderLobby() {
   const focused = document.activeElement?.closest?.('#gamePicker .game-tile')?.dataset.game;  // keep keyboard focus across redraws (#37)
   pick.innerHTML = '';
   const seated = S.players.filter((p) => !p.spectator).length;
-  for (const [cat, label] of CATEGORIES) {
-    const games = S.games.filter((g) => g.category === cat);
+  // organising (#67): favourites and lately played on top, a name filter, and "fits us"
+  const query = $('#pickerFind').value.trim().toLowerCase(), onlyFits = !!load('pickerFits');
+  $('#pickerFits').setAttribute('aria-pressed', onlyFits);
+  $('#pickerFits').textContent = `👥 Fits ${seated}`;
+  const fits = (g) => seated >= g.min && seated <= g.max;
+  const shown = S.games.filter((g) => (!query || g.name.toLowerCase().includes(query) || g.category.includes(query)) && (!onlyFits || fits(g) || g.id === S.gameId));
+  const byId = (ids) => ids.map((id) => shown.find((g) => g.id === id)).filter(Boolean);
+  const groups = [['⭐ Favourites', byId(load('favGames') || [])], ['🕘 Played lately', byId(load('recentGames') || [])]];
+  if (query) groups.length = 0;  // while searching, each game shows once
+  for (const [cat, label] of CATEGORIES) groups.push([label, shown.filter((g) => g.category === cat)]);
+  if (!shown.length) pick.append(el('p', 'hint', query ? `No game matches “${query}”.` : 'No game fits this many players.'));
+  for (const [label, list] of groups) {
+    // games that fit the players here come first in each group
+    const games = [...list].sort((a, b) => fits(b) - fits(a));
     if (!games.length) continue;
     const group = el('div', 'picker-group');
     group.dataset.count = games.length;
@@ -560,6 +588,12 @@ function renderLobby() {
   // the chosen game sits above its rules and settings; after the host picks one, bring it into view (#38, #39)
   const chosen = $('#gameChosen'); chosen.innerHTML = '';
   chosen.append(el('span', 'gicon', info.icon), el('b', '', info.name));
+  const favs = load('favGames') || [], fav = favs.includes(S.gameId);
+  const star = el('button', 'ghost-btn fav-btn' + (fav ? ' on' : ''), fav ? '★' : '☆');
+  star.title = fav ? 'Remove from your favourites' : 'Add to your favourites (kept on this device)';
+  star.setAttribute('aria-pressed', fav);
+  star.onclick = () => { store('favGames', fav ? favs.filter((g) => g !== S.gameId) : [S.gameId, ...favs]); renderLobby(); };
+  chosen.append(star);
   $('#settingsHead').textContent = `${info.name} settings`;
   document.title = `${info.name} — Game Night`;
   if (pickedGame && pickedGame === S.gameId) {
@@ -780,7 +814,7 @@ function renderOver() {
   $('#rematchBtn').hidden = !host; $('#lobbyBtn').hidden = !host;
   // "I'm in!" tells other people you want another round; alone with bots there's nobody to tell
   $('#readyBtn').hidden = !S.players.some((p) => p.id !== me.id && !p.bot);
-  const folded = !!load('overFolded');
+  const folded = overFoldedAt === S.history.length;  // folding lasts for this game's results only
   $('#overBanner').classList.toggle('folded', folded);
   $('#overFold').textContent = folded ? '▾' : '▴';
   $('#overFold').ariaExpanded = String(!folded);
@@ -849,7 +883,8 @@ function renderLog(ui, view) {
     if (mine) { sfx('fanfare'); toast(mine.text.replace(`${S.me.name} earned`, 'You earned')); }
     if (lastLogId && !replay && !firstState && view.phase === 'playing' && !ui.ownSounds) {
       const e = view.log.at(-1), cat = gameInfo(view.gameId)?.category;
-      if (cat !== 'action') sfx(e.kind === 'big' ? 'good' : /captur|takes|jump|hit|sunk|bust|farkle/i.test(e.text) && cat !== 'words' ? 'capture' : CATEGORY_SFX[cat]);
+      const sad = /nobody|never|bust|💀|timed? out|ran out|gave up|forfeit/i.test(e.text);
+      if (cat !== 'action') sfx(e.kind === 'big' ? (sad ? 'bad' : 'good') : /captur|takes|jump|hit|sunk|bust|farkle/i.test(e.text) && cat !== 'words' ? 'capture' : CATEGORY_SFX[cat]);
     }
     lastLogId = newestId;
   }
@@ -1184,7 +1219,10 @@ $('#joinInBtn').onclick = () => quiet(act('join_game'));
 addEventListener('keydown', (e) => {
   if ((e.key === 'Enter' || e.key === ' ') && e.target?.closest?.('#overBanner')) e.stopPropagation();
 }, true);
-$('#overFold').onclick = () => { store('overFolded', !load('overFolded') || null); renderOver(); };
+const setOverFold = (on) => { overFoldedAt = on ? S.history.length : -1; renderOver(); };
+$('#overFold').onclick = (e) => { e.stopPropagation(); setOverFold(overFoldedAt !== S.history.length); };
+// folded, the whole result line is the button that opens it again
+$('#overBanner .over-head').onclick = (e) => { if ($('#overBanner').classList.contains('folded') && !e.target.closest('button')) setOverFold(false); };
 // Phones: fold the log into a one-line ticker so game controls sit right under the board.
 const compact = window.matchMedia?.('(max-width: 860px)');
 function setLogOpen(open) {
@@ -1332,6 +1370,10 @@ function fitViewport() {
   const vv = window.visualViewport, h = vv ? vv.height : innerHeight;
   document.documentElement.style.setProperty('--app-h', `${Math.round(h)}px`);
   const typing = !!document.activeElement?.matches?.('#arena input, #arena textarea');
+  // the chat sheet is fixed to the bottom: lift it above the on-screen keyboard
+  const kbH = vv ? Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop)) : 0;
+  document.documentElement.style.setProperty('--kb', `${kbH}px`);
+  document.body.classList.toggle('chat-typing', kbH > 60 && !!document.activeElement?.matches?.('#chatInput'));
   const kb = typing && (!vv || innerHeight - vv.height > 120 || matchMedia('(pointer: coarse)').matches);
   document.body.classList.toggle('kb-open', kb);
   measureStage();
@@ -1354,6 +1396,7 @@ function measureStage() {
 if (window.ResizeObserver) new ResizeObserver(() => measureStage()).observe($('#players'));
 addEventListener('resize', () => requestAnimationFrame(measureStage));
 window.visualViewport?.addEventListener('resize', fitViewport);
+window.visualViewport?.addEventListener('scroll', () => { if (document.body.classList.contains('chat-typing')) fitViewport(); });
 addEventListener('resize', fitViewport);
 document.addEventListener('focusin', fitViewport);
 document.addEventListener('focusout', () => setTimeout(fitViewport, 50));
