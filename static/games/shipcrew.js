@@ -12,6 +12,12 @@ UI.shipcrew = (() => {
     pick = new Set([0, 1]); turnKey = ''; seenLast = -1; rollKey = '';
     main.innerHTML = `<div class="crew">
       <div id="scTurn" class="crew-turn"></div>
+      <svg id="scShip" class="crew-ship" viewBox="0 0 200 90" aria-hidden="true">
+        <path class="sea" d="M0 70 Q12 64 25 70 T50 70 T75 70 T100 70 T125 70 T150 70 T175 70 T200 70 V90 H0 Z"/>
+        <g class="part hull"><path d="M38 58 H162 L148 74 H52 Z"/><path class="trim" d="M44 62 H156"/></g>
+        <g class="part mast"><path class="pole" d="M100 58 V12"/><path class="sail" d="M102 16 Q132 32 102 50 Z"/><path class="sail2" d="M98 20 Q74 34 98 48 Z"/><path class="flag" d="M100 12 L114 16 L100 20 Z"/></g>
+        <g class="part crew"><circle cx="70" cy="51" r="4"/><circle cx="84" cy="51" r="4"/><circle cx="118" cy="51" r="4"/><circle cx="132" cy="51" r="4"/></g>
+      </svg>
       <div id="scSlots" class="crew-slots"></div>
       <div id="scLabel" class="crew-label"></div>
       <div class="ya-tray"><div id="scFree" class="ya-dice crew-free"></div></div>
@@ -48,6 +54,12 @@ UI.shipcrew = (() => {
       slots.append(slot);
     });
 
+    // the ship comes together: a hull for the 6, mast and sails for the 5, crew aboard for the 4
+    const ship = $('scShip');
+    ['hull', 'mast', 'crew'].forEach((part, i) => ship.querySelector('.' + part).classList.toggle('on', i < sc.found.length));
+    ship.classList.toggle('loaded', sc.loaded);
+    // each die found this roll sails up from the tray into its slot
+    if (shake) for (let i = seenFound; i < sc.found.length; i++) Kit.fly($('scFree'), slots.children[i].firstElementChild, { ms: 420, delay: (i - seenFound) * 120 });
     // the ship's crew coming aboard, and a full hold, are moments
     if (shake && sc.found.length > seenFound) {
       ctx.sfx('good');
@@ -79,6 +91,7 @@ UI.shipcrew = (() => {
       const p = ctx.player(sc.last.by);
       const line = ctx.el('div', 'crew-lastline' + (sc.last.n !== seenLast ? ' fresh' : ''));
       if (sc.last.n !== seenLast && seenLast !== -1 && !sc.last.cargo.length) Kit.callout('🌊 Sunk', 'bad', { ms: 1100 });
+      if (sc.last.n !== seenLast && seenLast !== -1 && sc.last.raid) Kit.callout(`🏴‍☠️ Raid on ${ctx.player(sc.last.raid)?.name ?? '?'}!`, 'gold', { ms: 1400, sound: 'whoosh' });
       seenLast = sc.last.n;
       const name = ctx.el('b', '', p?.name ?? '?'); name.style.color = p?.color ?? 'inherit';
       line.append(name, ctx.el('span', '', sc.last.cargo.length ? ` docked with ${sc.last.pts} cargo (${sc.last.cargo.join(' + ')})` : ` sank: no ${['ship', 'captain', 'crew'][sc.last.found.length]} — 0`));
