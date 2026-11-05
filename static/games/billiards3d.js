@@ -58,45 +58,53 @@ const Billiards3D = (() => {
     g.putImageData(im, 0, 0);
     return [c, g];
   }
-  // tileable value noise: a random lattice of `cells` per side, smoothly interpolated
-  function tileNoise(size, cells) {
-    const lat = Array.from({ length: cells * cells }, Math.random), out = new Float32Array(size * size);
-    const L = (i, j) => lat[((j + cells) % cells) * cells + ((i + cells) % cells)], s = (t) => t * t * (3 - 2 * t);
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        const fx = (x / size) * cells, fy = (y / size) * cells, i = Math.floor(fx), j = Math.floor(fy), u = s(fx - i), v = s(fy - j);
-        out[y * size + x] = (L(i, j) * (1 - u) + L(i + 1, j) * u) * (1 - v) + (L(i, j + 1) * (1 - u) + L(i + 1, j + 1) * u) * v;
+  // value noise on a w×h grid: a random lattice of cx×cy cells, smoothly interpolated (it tiles across both edges)
+  function valueNoise(w, h, cx, cy = cx) {
+    const lat = Array.from({ length: cx * cy }, Math.random), out = new Float32Array(w * h);
+    const L = (i, j) => lat[(j % cy) * cx + (i % cx)], s = (t) => t * t * (3 - 2 * t);
+    for (let y = 0; y < h; y++) {
+      const fy = (y / h) * cy, j = Math.floor(fy), v = s(fy - j);
+      for (let x = 0; x < w; x++) {
+        const fx = (x / w) * cx, i = Math.floor(fx), u = s(fx - i);
+        out[y * w + x] = (L(i, j) * (1 - u) + L(i + 1, j) * u) * (1 - v) + (L(i, j + 1) * (1 - u) + L(i + 1, j + 1) * u) * v;
       }
     }
     return out;
   }
-  // woollen baize at 512px a tile: soft mottling, a fine twill weave, a lengthwise nap and loose fibres lying
-  // on top. The colour map and the bump map share every fibre, so the light catches the ones you can see.
-  function feltTextures(T, aniso) {
-    const size = 512, grain = new Float32Array(size * size);
-    for (let i = 0; i < grain.length; i++) grain[i] = Math.random();
-    const at = (x, y) => grain[((y + size) % size) * size + ((x + size) % size)];
-    const fuzz = (x, y) => (at(x, y) * 2 + at(x + 1, y) + at(x - 1, y) + at(x + 2, y) * 0.5 + at(x - 2, y) * 0.5 + at(x, y + 1) * 0.6 + at(x, y - 1) * 0.6) / 5.2;
-    const mottle = tileNoise(size, 4), clump = tileNoise(size, 24);
-    const weave = (x, y) => (((x + y) >> 1) % 2 ? 0.5 : -0.5) * (((x - y + size) >> 1) % 3 ? 0.6 : 1);  // a tight twill
-    const level = (x, y) => {
-      const i = y * size + x;
-      return (fuzz(x, y) - 0.5) * 0.9 + (mottle[i] - 0.5) * 0.35 + (clump[i] - 0.5) * 0.4 + weave(x, y) * 0.16;
-    };
-    const [cc, cg] = noiseCanvas(size, (d, k, x, y) => {
-      const v = level(x, y);
-      d[k] = 17 + v * 13; d[k + 1] = 104 + v * 30; d[k + 2] = 58 + v * 16; d[k + 3] = 255;
-    });
-    const [bc, bg] = noiseCanvas(size, (d, k, x, y) => { const v = 128 + level(x, y) * 120; d[k] = d[k + 1] = d[k + 2] = v; d[k + 3] = 255; });
+  // The baize is two layers, so neither the detail nor the colour shows a repeat:
+  //  - feltDetail: a tile (FELT_TILE table units, 64 texels a unit) of the cloth's surface: a tight twill weave
+  //    under a soft fuzz and loose fibres lying along the nap, over a grain of small soft clumps (an eighth
+  //    to one unit across) that still shows from across the table. There's nothing bigger than a unit in it,
+  //    and the bed samples it twice at unrelated scales, so its repeat never lines up into a pattern. Its
+  //    colour map is a plain brightness (multiplied into the cloth's colour) and its bump map shares every fibre.
+  //  - feltMacro: one texture over the whole bed, with the colour itself: its slow unevenness, the wear where
+  //    the balls run most (the long string, the rack, the break), and a few dabs of blue chalk.
+  const FELT_TILE = 8;
+  function feltDetail(T, aniso) {
+    const size = 512, N = size * size, noise = new Float32Array(N), h = new Float32Array(N);
+    for (let i = 0; i < N; i++) noise[i] = Math.random();
+    const at = (x, y) => noise[((y + size) % size) * size + ((x + size) % size)];
+    const fine = valueNoise(size, size, 64), mid = valueNoise(size, size, 16), clump = valueNoise(size, size, 8);
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        // fuzz: the noise smeared along the nap (x) and a little across it
+        const fuzz = (at(x, y) * 2 + at(x - 1, y) + at(x + 1, y) + (at(x - 2, y) + at(x + 2, y) + at(x, y - 1) + at(x, y + 1)) * 0.6) / 6.4 - 0.5;
+        const twill = Math.sin(((x + y) * Math.PI * 2) / 4) * (0.75 + 0.25 * Math.sin((x - y) * Math.PI * 2 / 16));
+        const i = y * size + x;
+        h[i] = fuzz * 0.7 + twill * 0.1 + (fine[i] - 0.5) * 0.4 + (mid[i] - 0.5) * 0.55 + (clump[i] - 0.5) * 0.4;
+      }
+    }
+    const [cc, cg] = noiseCanvas(size, (d, k, x, y) => { const v = 210 + h[y * size + x] * 64; d[k] = d[k + 1] = d[k + 2] = v; d[k + 3] = 255; });
+    const [bc, bg] = noiseCanvas(size, (d, k, x, y) => { const v = 128 + h[y * size + x] * 110; d[k] = d[k + 1] = d[k + 2] = v; d[k + 3] = 255; });
     // loose fibres: short curled strokes, mostly along the nap, light or dark, wrapped across the tile's edges
-    for (let f = 0; f < 9000; f++) {
-      const x0 = Math.random() * size, y0 = Math.random() * size, len = 3 + Math.random() * 9;
-      const a = (Math.random() < 0.7 ? 0 : Math.PI / 2) + (Math.random() - 0.5) * 1.2, bend = (Math.random() - 0.5) * 0.6;
-      const light = Math.random() < 0.55, alpha = 0.08 + Math.random() * 0.16, w = 0.5 + Math.random() * 0.6;
+    for (let f = 0; f < 2600; f++) {
+      const x0 = Math.random() * size, y0 = Math.random() * size, len = 6 + Math.random() * 16;
+      const a = (Math.random() < 0.75 ? 0 : Math.PI / 2) + (Math.random() - 0.5) * 1.1, bend = (Math.random() - 0.5) * 0.5;
+      const light = Math.random() < 0.55, alpha = 0.05 + Math.random() * 0.1, w = 0.9 + Math.random() * 0.9;
       const pts = [];
       for (let t = 0; t <= 4; t++) { const aa = a + bend * t; pts.push([x0 + Math.cos(aa) * len * t / 4, y0 + Math.sin(aa) * len * t / 4]); }
-      for (const [g, col] of [[cg, light ? `rgba(120,200,140,${alpha})` : `rgba(4,40,18,${alpha})`], [bg, light ? `rgba(255,255,255,${alpha * 1.6})` : `rgba(0,0,0,${alpha * 1.4})`]]) {
-        g.strokeStyle = col; g.lineWidth = w;
+      for (const [g, col] of [[cg, light ? `rgba(255,255,255,${alpha})` : `rgba(0,0,0,${alpha})`], [bg, light ? `rgba(255,255,255,${alpha * 1.5})` : `rgba(0,0,0,${alpha * 1.3})`]]) {
+        g.strokeStyle = col; g.lineWidth = w; g.lineCap = 'round';
         for (const ox of [-size, 0, size]) {
           for (const oy of [-size, 0, size]) {
             if ((ox && Math.abs(x0 + ox - size / 2) > size / 2 + len) || (oy && Math.abs(y0 + oy - size / 2) > size / 2 + len)) continue;
@@ -105,25 +113,81 @@ const Billiards3D = (() => {
         }
       }
     }
-    return [cc, bc].map((c, i) => {
+    return [cc, bc].map((c) => {
       const t = new T.CanvasTexture(c);
-      t.wrapS = t.wrapT = T.RepeatWrapping; t.anisotropy = aniso;
-      if (!i) t.encoding = T.sRGBEncoding;  // the colour map (the bump map is plain heights)
+      t.wrapS = t.wrapT = T.RepeatWrapping; t.anisotropy = aniso;  // both linear: a brightness and heights
       return t;
     });
   }
+  // the bed's colour, 1024×512 over the whole W×H table: canvas x, y are table x, y
+  function feltMacro(T, aniso, W, H, headX) {
+    const w = 1024, h = 512, sx = w / W, sy = h / H;
+    const slow = valueNoise(w, h, 6, 3), soft = valueNoise(w, h, 28, 14);
+    const c = Object.assign(document.createElement('canvas'), { width: w, height: h }), g = c.getContext('2d');
+    const im = g.createImageData(w, h), d = im.data;
+    for (let i = 0; i < w * h; i++) {
+      const v = (slow[i] - 0.5) * 0.09 + (soft[i] - 0.5) * 0.05, k = i * 4;
+      d[k] = 22 * (1 + v); d[k + 1] = 114 * (1 + v); d[k + 2] = 64 * (1 + v * 0.8); d[k + 3] = 255;
+    }
+    g.putImageData(im, 0, 0);
+    const blob = (x, y, rx, ry, col, a) => {
+      g.save(); g.translate(x * sx, y * sy); g.scale(rx * sx, ry * sy);
+      const r = g.createRadialGradient(0, 0, 0, 0, 0, 1);
+      r.addColorStop(0, `rgba(${col},${a})`); r.addColorStop(1, `rgba(${col},0)`);
+      g.fillStyle = r; g.beginPath(); g.arc(0, 0, 1, 0, 7); g.fill(); g.restore();
+    };
+    // wear: a faint pale track down the long string, worn patches where the rack sits and where the break is struck
+    blob(W / 2, H / 2, W * 0.42, H * 0.16, '150,200,160', 0.07);
+    blob(W * 0.76, H / 2, 13, 11, '150,200,160', 0.08);
+    blob(headX - 4, H / 2, 10, 14, '150,200,160', 0.06);
+    // blue chalk, rubbed off the cue tip on the cloth around the head string and the rack
+    for (let i = 0; i < 5; i++) {
+      const x = i < 3 ? headX + (Math.random() - 0.6) * 22 : W * 0.7 + Math.random() * 18, y = H / 2 + (Math.random() - 0.5) * H * 0.5;
+      blob(x, y, 0.7 + Math.random() * 0.9, 0.5 + Math.random() * 0.5, '80,130,190', 0.05 + Math.random() * 0.05);
+    }
+    // the bed falls off a little toward the rails and corners, away from the lamp (on top of the spotlights' own falloff)
+    g.save(); g.scale(1, h / w);
+    const vg = g.createRadialGradient(w / 2, w / 2, w * 0.22, w / 2, w / 2, w * 0.62);
+    vg.addColorStop(0, 'rgba(0,16,6,0)'); vg.addColorStop(1, 'rgba(0,16,6,0.2)');
+    g.fillStyle = vg; g.fillRect(0, 0, w, w); g.restore();
+    // the cloth darkens a touch where it tucks under the cushions
+    for (const [x0, y0, x1, y1] of [[0, 0, 0, 3], [0, H, 0, H - 3]]) {
+      const gr = g.createLinearGradient(x0 * sx, y0 * sy, x1 * sx, y1 * sy);
+      gr.addColorStop(0, 'rgba(0,20,8,0.22)'); gr.addColorStop(1, 'rgba(0,20,8,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, h);
+    }
+    for (const [x0, x1] of [[0, 3], [W, W - 3]]) {
+      const gr = g.createLinearGradient(x0 * sx, 0, x1 * sx, 0);
+      gr.addColorStop(0, 'rgba(0,20,8,0.22)'); gr.addColorStop(1, 'rgba(0,20,8,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, h);
+    }
+    const t = new T.CanvasTexture(c);
+    t.anisotropy = aniso; t.encoding = T.sRGBEncoding;
+    return t;
+  }
+  // varnished wood at 2048×512 (about 30 texels a unit along the rail): broad figure, wandering grain lines and
+  // fine pores, so the rail still reads as wood in the behind-the-cue view where it's right under the camera
   function woodTexture(T, aniso) {
-    const c = Object.assign(document.createElement('canvas'), { width: 1024, height: 256 }), g = c.getContext('2d');
-    const base = g.createLinearGradient(0, 0, 0, 256);
+    const w = 2048, h = 512, c = Object.assign(document.createElement('canvas'), { width: w, height: h }), g = c.getContext('2d');
+    const base = g.createLinearGradient(0, 0, 0, h);
     base.addColorStop(0, '#6a3f1f'); base.addColorStop(0.5, '#7b4a25'); base.addColorStop(1, '#5e3519');
-    g.fillStyle = base; g.fillRect(0, 0, 1024, 256);
-    for (let i = 0; i < 140; i++) {  // grain lines that wander along the board
-      const y0 = Math.random() * 256, amp = 2 + Math.random() * 6, f = 0.004 + Math.random() * 0.01, ph = Math.random() * 7;
-      g.strokeStyle = `rgba(${Math.random() < 0.5 ? '40,20,8' : '150,95,50'}, ${0.08 + Math.random() * 0.22})`;
-      g.lineWidth = 0.6 + Math.random() * 2.2;
-      g.beginPath();
-      for (let x = 0; x <= 1024; x += 8) g.lineTo(x, y0 + Math.sin(x * f + ph) * amp + Math.sin(x * f * 3.1 + ph) * amp * 0.3);
-      g.stroke();
+    g.fillStyle = base; g.fillRect(0, 0, w, h);
+    const wander = (y0, amp, f, ph) => (x) => y0 + Math.sin(x * f + ph) * amp + Math.sin(x * f * 3.1 + ph) * amp * 0.3;
+    for (let i = 0; i < 14; i++) {  // figure: broad, soft bands of darker and lighter wood
+      const y = wander(Math.random() * h, 10 + Math.random() * 20, 0.002 + Math.random() * 0.003, Math.random() * 7);
+      g.strokeStyle = `rgba(${Math.random() < 0.6 ? '45,22,8' : '160,100,55'}, ${0.06 + Math.random() * 0.08})`;
+      g.lineWidth = 12 + Math.random() * 30;
+      g.beginPath(); for (let x = 0; x <= w; x += 16) g.lineTo(x, y(x)); g.stroke();
+    }
+    for (let i = 0; i < 300; i++) {  // grain lines that wander along the board
+      const y = wander(Math.random() * h, 4 + Math.random() * 12, 0.002 + Math.random() * 0.005, Math.random() * 7);
+      g.strokeStyle = `rgba(${Math.random() < 0.5 ? '40,20,8' : '150,95,50'}, ${0.08 + Math.random() * 0.2})`;
+      g.lineWidth = 0.8 + Math.random() * 3.5;
+      g.beginPath(); for (let x = 0; x <= w; x += 8) g.lineTo(x, y(x)); g.stroke();
+    }
+    g.lineCap = 'round';
+    for (let i = 0; i < 5000; i++) {  // pores: short dark flecks along the grain
+      const x = Math.random() * w, y = Math.random() * h, len = 4 + Math.random() * 18;
+      g.strokeStyle = `rgba(30,14,5,${0.1 + Math.random() * 0.2})`; g.lineWidth = 0.7 + Math.random() * 0.8;
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x + len, y + (Math.random() - 0.5) * 1.5); g.stroke();
     }
     const t = new T.CanvasTexture(c);
     t.wrapS = t.wrapT = T.RepeatWrapping; t.anisotropy = aniso; t.encoding = T.sRGBEncoding;
@@ -194,14 +258,14 @@ const Billiards3D = (() => {
 
   function create(stage, b, hooks = {}) {
     const T = window.THREE;
-    const renderer = GL3.renderer({ alpha: true }, { onLost: hooks.onLost });
+    // sharper than the screen on a plain desktop display. GL3 lowers it while balls roll if frames get
+    // slow, and the table at rest (aiming, between shots) is always drawn at the full ratio (renderStill)
+    const renderer = GL3.renderer({ alpha: true }, { onLost: hooks.onLost, cap: Math.min(2, Math.max(window.devicePixelRatio || 1, 1.5)), min: 0.75 });
     if (!renderer) return null;
     renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap;
-    // sharper than the screen on a plain desktop display (GL3 still drops it if frames get slow)
-    renderer.setPixelRatio(Math.min(2, Math.max(window.devicePixelRatio || 1, 1.5)));
     const canvas = renderer.domElement;
     const { W, H, R } = b;
-    const aniso = Math.min(8, renderer.capabilities.getMaxAnisotropy?.() || 1);
+    const aniso = Math.min(16, renderer.capabilities.getMaxAnisotropy?.() || 1);
     // colour managed: sRGB textures and colours, lit in linear light, filmic tone mapping so the lamps'
     // hot spots on the balls and the cloth roll off softly instead of clipping
     renderer.outputEncoding = T.sRGBEncoding;
@@ -219,7 +283,7 @@ const Billiards3D = (() => {
       lamp.position.set(f * W, LAMP_Y, 0); lamp.target.position.set(f * W * 1.15, 0, 0);
       scene.add(lamp, lamp.target);
       if (i !== 1) {
-        lamp.castShadow = true; lamp.shadow.mapSize.set(1024, 1024);
+        lamp.castShadow = true; lamp.shadow.mapSize.set(2048, 2048);
         Object.assign(lamp.shadow.camera, { near: 40, far: 140 });
         lamp.shadow.bias = -0.0006;
       }
@@ -228,10 +292,22 @@ const Billiards3D = (() => {
     // the table, built in table units: shapes are drawn as (x, -y) and turned flat so they extrude upward
     const flat = (pts) => new T.Shape(pts.map(([x, y]) => new T.Vector2(x, -y)));
     const lay = (geo, mat, y = 0) => { const m = new T.Mesh(geo, mat); m.rotation.x = -Math.PI / 2; m.position.y = y; table.add(m); return m; };
-    const FELT = 12;  // table units per tile of the baize texture
-    const [feltMap, feltBump] = feltTextures(T, aniso);
-    feltMap.repeat.set(1 / FELT, 1 / FELT); feltBump.repeat.set(1 / FELT, 1 / FELT);
-    const cloth = new T.MeshStandardMaterial({ map: feltMap, bumpMap: feltBump, bumpScale: 0.09, roughness: 0.93, metalness: 0 });
+    const FELT = FELT_TILE;  // table units per tile of the baize's detail
+    const [feltMap, feltBump] = feltDetail(T, aniso);
+    // wool: rough, with a soft sheen that rises where you look along the cloth (the behind-the-cue view)
+    const wool = (o) => new T.MeshPhysicalMaterial({ bumpScale: 0.045, roughness: 0.9, metalness: 0, sheen: new T.Color(0x3d7a52).convertSRGBToLinear(), ...o });
+    // the bed: detail tiled at FELT units, the colour from feltMacro laid once over the whole table
+    const tiled = (t, u, v) => { const c = t.clone(); c.needsUpdate = true; c.repeat.set(u, v); return c; };
+    const macro = feltMacro(T, aniso, W, H, b.headX);
+    const cloth = wool({ map: tiled(feltMap, 1 / FELT, 1 / FELT), bumpMap: tiled(feltBump, 1 / FELT, 1 / FELT) });
+    cloth.onBeforeCompile = (sh) => {
+      // the shape's uv is (x, -y) in table units, so vUv (after the map's 1/FELT repeat) * FELT/W is 0..1 across
+      sh.uniforms.macroMap = { value: macro };
+      sh.uniforms.macroXf = { value: new T.Vector4(FELT / W, FELT / H, 0, 1) };
+      sh.fragmentShader = 'uniform sampler2D macroMap;\nuniform vec4 macroXf;\n' + sh.fragmentShader.replace('#include <map_fragment>',
+        '#include <map_fragment>\n\tdiffuseColor.rgb *= sRGBToLinear( texture2D( macroMap, vUv * macroXf.xy + macroXf.zw ) ).rgb' +
+        ' * ( 0.5 + 0.6 * texture2D( map, vUv * 0.613 + vec2( 0.37, 0.71 ) ).r );');  // the second, unaligned look at the grain
+    };
     const HOLE = 0.8, ROLL = 0.3;  // the cloth's hole, and the round of its edge (so it reads as cap + 0.5)
     const holes = b.pockets.map(([x, y, cap]) => [x, y, cap + HOLE]);
     lay(new T.ShapeGeometry(flat(outline(0, 0, W, H, holes, false)), 8), cloth).receiveShadow = true;
@@ -252,7 +328,7 @@ const Billiards3D = (() => {
     const netMap = pocketTexture(T, aniso);
     netMap.repeat.set(3, 1);
     const pocketMat = new T.MeshStandardMaterial({ map: netMap, roughness: 0.75, side: T.DoubleSide, envMap: env, envMapIntensity: 0.15 });
-    const lipMat = new T.MeshStandardMaterial({ map: feltMap, bumpMap: feltBump, bumpScale: 0.05, color: 0xb8c4b8, roughness: 0.95, side: T.DoubleSide });
+    const lipMat = wool({ map: tiled(feltMap, 7, 0.4), bumpMap: tiled(feltBump, 7, 0.4), color: 0x146a3b, side: T.DoubleSide });
     for (const [x, y, cap] of b.pockets) {
       const r = cap + HOLE, arc = arcWhere(x, y, r, (qx, qy) => qx > 0 && qx < W && qy > 0 && qy < H);
       if (arc) {  // the cloth's rolled edge: a bullnose from the hole's rim, curling down inside it
@@ -286,7 +362,7 @@ const Billiards3D = (() => {
     // rolls back up to the rail. The profile is swept along each rail; its ends lean back into the pocket jaws.
     const PROFILE = [[0.7, 0], [0.45, 0.55], [0.25, 1.15], [0.11, 1.75], [0.03, 2.35], [0, 2.8], [0.04, 3.08], [0.18, 3.28],
       [0.42, 3.4], [0.8, 3.47], [1.4, 3.52], [CUSH + 0.3, 3.55]];
-    const cushMat = new T.MeshStandardMaterial({ map: feltMap, bumpMap: feltBump, bumpScale: 0.05, color: 0xd6dcd6, roughness: 0.95 });
+    const cushMat = wool({ map: feltMap, bumpMap: feltBump, color: 0x146b3a });  // (its uvs are already in FELT tiles)
     function cushionGeo(p0, p1, out, jaw0, jaw1) {
       const len = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]), u = [(p1[0] - p0[0]) / len, (p1[1] - p0[1]) / len];
       const at = (d, h, end) => {  // a profile point at one end of the cushion, in table space
@@ -555,7 +631,7 @@ const Billiards3D = (() => {
     }
 
     // ---------- each frame
-    let key = '', last = 0;
+    let key = '', last = 0, sharp = false;
     const tmp = new T.Vector3();
     function render(st) {
       const now = performance.now(), dt = Math.min(0.1, (now - last) / 1000); last = now;
@@ -629,9 +705,11 @@ const Billiards3D = (() => {
       } else if (mode === 'table' && fitted) camera.position.copy(fitted.pos), camera.lookAt(0, 0, 0);
       // draw only when something changed
       const k = JSON.stringify([st.balls, s && [s.x, s.y, s.aim, s.power, s.spin, s.english], gd && [gd.mode, gd.g, gd.objPath?.length, gd.cuePath?.length, gd.cuePath?.at(-1)], st.ring, st.call, mode]);
-      if (k === key && !st.animating && !falling.length && !moving && !(st.callAll && st.call == null)) return;
-      key = k;
-      renderer.render(scene, camera);
+      // (once the balls stop, one more frame at full resolution: the shot may have drawn at a lower one)
+      const busy = st.animating || falling.length || moving;
+      if (k === key && !busy && sharp && !(st.callAll && st.call == null)) return;
+      key = k; sharp = !busy;
+      if (busy) renderer.render(scene, camera); else renderer.renderStill(scene, camera);
     }
 
     // screen point -> table units, on the plane through the balls' centres
@@ -647,7 +725,7 @@ const Billiards3D = (() => {
 
     function dispose() {
       scene.traverse((o) => { o.geometry?.dispose(); const m = o.material; if (m) { m.map?.dispose(); m.bumpMap?.dispose(); m.dispose(); } });
-      env.dispose();
+      env.dispose(); macro.dispose();
       renderer.dispose(); canvas.remove();
     }
     return { canvas, resize, render, pick, setMode, dispose, mode: () => mode };
