@@ -42,6 +42,7 @@ class LiarsDice(Game):
         "With wild 1s on, every 1 counts as any face (so you can't bid 1s).",
         "🗿 Palifico (an option): the first time someone is down to one die, they open a special round: 1s aren't wild and every bid keeps the opening face (only the count goes up).",
         "Lose all your dice and you're out. The last player with dice wins.",
+        "With 🎲 Show & reroll on, once a round on your turn you can put some of your dice on show for everyone and reroll the rest, then bid.",
     ]
     name = "Liar's Dice"
     icon = "🤥"
@@ -54,6 +55,7 @@ class LiarsDice(Game):
         "wild": ("1s", [(True, "Wild"), (False, "Not wild")], True),
         "palifico": ("🗿 Palifico", [(False, "Off"), (True, "On: first time down to one die, a special round")], False),
         "exact": ("🎯 Exact calls", [(True, "Allowed"), (False, "Off")], True),
+        "reroll": ("🎲 Show & reroll", [(False, "Off"), (True, "On: once a round, show some dice and reroll the rest")], False),
     }
 
     # -- setup
@@ -89,6 +91,8 @@ class LiarsDice(Game):
         self.palifico = palifico
         for p in self.players():
             p.g.dice = sorted(self.rng.randint(1, 6) for _ in range(p.g.count))
+            p.g.shown = []          # 🎲 dice put on show this round
+            p.g.rerolled = False
         self.bid = None       # [quantity, face, pid]
         self.bids = []
         self.room.add_log(f"🎲 Round {self.round}: everyone rolls. {self.total()} dice on the table.")
@@ -128,6 +132,8 @@ class LiarsDice(Game):
                     raise GameError(f"Palifico: stay on {self.bid[1]}s and raise the count.")
                 raise GameError("Raise the bid: more dice, or the same number of a higher face.")
             return self.place(p, q, f)
+        if t == "reroll":
+            return self.reroll(p, a.get("show"))
         if t in ("liar", "exact"):
             if self.bid is None:
                 raise GameError("There's no bid to call yet: make the first bid.")
@@ -135,6 +141,24 @@ class LiarsDice(Game):
                 raise GameError("Exact calls are off in this game.")
             return self.call(p, t)
         raise GameError("Unknown action.")
+
+    def reroll(self, p, show):
+        """🎲 Put some dice on show for everyone, reroll the rest. Once a round, then bid (the turn stays yours)."""
+        if not self.s.get("reroll"):
+            raise GameError("Show & reroll is off in this game.")
+        if getattr(p.g, "rerolled", False):
+            raise GameError("You've already rerolled this round.")
+        dice = p.g.dice
+        if not (isinstance(show, list) and all(isinstance(i, int) and not isinstance(i, bool) for i in show)
+                and len(set(show)) == len(show) and all(0 <= i < len(dice) for i in show)):
+            raise GameError("Pick dice to show.")
+        if not 0 < len(show) < len(dice):
+            raise GameError("Show at least one die, and keep at least one to reroll.")
+        kept = sorted(dice[i] for i in show)
+        fresh = [self.rng.randint(1, 6) for _ in range(len(dice) - len(kept))]
+        p.g.shown, p.g.rerolled = kept, True
+        p.g.dice = sorted(kept + fresh)
+        self.room.add_log(f"🎲 {p.name} shows {' '.join(FACE[d - 1] for d in kept)} and rerolls {len(fresh)}.", "power")
 
     def place(self, p, q, f):
         self.bid = [q, f, p.id]
@@ -280,6 +304,9 @@ class LiarsDice(Game):
             "bid": self.bid, "bids": self.bids[-8:], "round": self.round,
             "total": self.total(), "wild": self.wild(), "palifico": self.palifico, "exact": self.s["exact"], "low": self.lowest_face(),
             "showdown": self.showdown,
+            "shown": {x.id: list(getattr(x.g, "shown", [])) for x in self.players()},
+            "canReroll": bool(self.s.get("reroll")) and r.turn == p.id and p.id in self.seats and not getattr(p.g, "rerolled", False)
+            and len(getattr(p.g, "dice", [])) > 1,
             # at the end, everyone's dice are shown
             "hands": {x.id: x.g.dice for x in self.players()} if r.phase == "over" else None,
         }}

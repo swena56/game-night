@@ -2565,3 +2565,10 @@ body.calm .hh-seat.moonish { animation: none; }
 .fk-beat { position: absolute; top: -4px; bottom: -4px; width: 2px; background: #fff; box-shadow: 0 0 6px #fff; z-index: 2; }
 .fk-beat::after { content: '🏁'; position: absolute; top: -14px; left: 50%; transform: translateX(-50%); font-size: 11px; font-style: normal; }
 .fk-pig { background: #ff8fab33; border: 1px solid #ff8fab; }
+/* liar's dice: dice on show, and a bump on each raise */
+.liar-shown { display: flex; gap: 2px; justify-content: center; margin-top: 2px; }
+.liar-mine .ya-die.onshow { box-shadow: 0 0 0 2px #ffd166, 0 2px 4px #0008; }
+.liar-reroll { justify-content: center; gap: 8px; margin: 4px 0; }
+.liar-bid.bump { animation: liarBump .35s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes liarBump { 40% { transform: scale(1.12); } }
+body.calm .liar-bid.bump { animation: none; }
