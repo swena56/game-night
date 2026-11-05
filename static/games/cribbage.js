@@ -1,14 +1,14 @@
 // Cribbage: a peg track, the play (count and cards), your hand, and the show's breakdown.
 // Hand buttons are rebuilt only when the hand changes, so taps aren't lost to other players' updates.
 UI.cribbage = (() => {
-  let S, ctx, picked = new Set(), handKey = '', shownScore = {}, backPeg = {}, myCount = 0, countFor = '';
+  let S, ctx, picked = new Set(), handKey = '', shownScore = {}, backPeg = {}, myCount = 0, countFor = '', showKey = '', seqSeen = null, starterSeen, stopShow = () => {};
   const $ = (id) => document.getElementById(id);
   const value = (c) => Math.min('A23456789TJQK'.indexOf(c[0]) + 1, 10);
 
   const face = (card, cls = '') => Cards.face(card, cls);
 
   function mount(main, side) {
-    picked = new Set(); handKey = ''; shownScore = {}; backPeg = {}; render.seenPeg = undefined;
+    picked = new Set(); handKey = ''; shownScore = {}; backPeg = {}; render.seenPeg = undefined; showKey = ''; seqSeen = null; starterSeen = undefined; stopShow();
     main.innerHTML = `<div class="cb">
       <div id="cbTrack" class="cb-track"></div>
       <div class="table cb-table">
@@ -85,36 +85,95 @@ UI.cribbage = (() => {
     }
 
     // middle of the table
-    const st = $('cbStarter'); st.innerHTML = '';
-    st.append(g.starter ? face(g.starter, 'small') : ctx.el('span', 'pc back small'));
-    $('cbCount').textContent = g.stage === 'peg' ? String(g.count) : '–';
+    // the starter is turned over when it's cut (a jack there is "his heels": 2 for the dealer)
+    const st = $('cbStarter');
+    if (g.starter !== starterSeen) {
+      st.innerHTML = '';
+      const back = ctx.el('span', 'pc back small');
+      st.append(back);
+      if (g.starter) {
+        if (starterSeen !== undefined && motionOK()) setTimeout(() => back.isConnected && Cards.flip(back, g.starter, 'small'), 150);
+        else back.replaceWith(face(g.starter, 'small'));
+        if (starterSeen !== undefined) {
+          ctx.sfx('flip');
+          if (g.starter[0] === 'J') setTimeout(() => Kit.callout('His heels! +2', 'gold', { sound: 'good', ms: 1300 }), 450);
+        }
+      }
+      starterSeen = g.starter;
+    }
+    // the running count climbs to each new total
+    const cnt = $('cbCount'), was = +cnt.dataset.v;
+    if (g.stage === 'peg') {
+      if (Number.isFinite(was) && cnt.dataset.v !== '' && g.count > was) Kit.tally(cnt, was, g.count, 350);
+      else cnt.textContent = String(g.count);
+      cnt.dataset.v = g.count;
+      cnt.classList.toggle('hot', g.count >= 25);
+    } else { cnt.textContent = '–'; cnt.dataset.v = ''; cnt.classList.remove('hot'); }
     $('cbCribLabel').textContent = `${dealerName}'s crib`;
     $('cbCrib').textContent = `${g.crib} card${g.crib === 1 ? '' : 's'}`;
+    // the cards played in this count: each new one is tossed on
     const seq = $('cbSeq'); seq.innerHTML = '';
-    for (const card of g.seq) seq.append(face(card, 'small'));
+    const before = seqSeen;
+    g.seq.forEach((card, k) => seq.append(face(card, 'small' + (before && k >= before.length && before.join() === g.seq.slice(0, before.length).join() ? ' toss' : ''))));
+    seqSeen = g.seq.slice();
     $('cbLast').textContent = g.stage === 'peg' ? g.lastPeg : '';
-    // pegging calls: "Fifteen two!", "Thirty-one!", "Pair!" as they're scored
+    // pegging calls: "Fifteen two!", "Thirty-one!", "Pair!" as they're scored; a "Go" is stamped on the count
     if (g.lastPeg && g.lastPeg !== render.seenPeg && render.seenPeg !== undefined && g.stage === 'peg') {
       const why = g.lastPeg.split(' · ')[1] || '';
       const call = /31/.test(why) ? 'Thirty-one!' : /15|fifteen/i.test(why) ? 'Fifteen two!' : /run/i.test(why) ? 'Run!' : /pair|kind/i.test(why) ? 'Pair!' : '';
-      if (call) Kit.callout(call, 'gold', { ms: 1100 });
+      if (call) Kit.callout(call, 'gold', { ms: 1100, sound: /31/.test(why) ? 'fanfare' : 'good' });
     }
+    // the count starting again short of 31 means nobody could play: a "Go"
+    if (before?.length && !g.seq.length && g.stage === 'peg' && Number.isFinite(was) && was > 0 && was < 31) Kit.stamp(cnt, 'Go', 'cool', 900);
     render.seenPeg = g.lastPeg;
 
-    // the show
-    const show = $('cbShow'); show.innerHTML = '';
+    // the show: each hand is counted out item by item ("Fifteen 2", "Run of 3 3"), the total climbing as it goes.
+    // Built once per show so later updates don't restart the count.
+    const show = $('cbShow');
     show.hidden = !g.show.length;
-    for (const h of g.show) {
-      const p = ctx.player(h.who);
-      const box = ctx.el('div', 'cb-showhand');
-      const title = ctx.el('div', 'cb-showtitle');
-      const who = ctx.el('b', '', `${p?.name ?? '?'}${h.crib ? "'s crib" : "'s hand"}`); who.style.color = p?.color ?? '';
-      title.append(who, ctx.el('span', 'cb-total', h.said != null && h.said !== h.total ? `${h.said} → ${h.total}` : `${h.total}`));
-      const cards = ctx.el('div', 'he-cards');
-      for (const card of h.cards) cards.append(face(card, 'small'));
-      if (g.starter) { const s2 = face(g.starter, 'small starter'); cards.append(s2); }
-      box.append(title, cards, ctx.el('small', '', h.items.map(([d, v]) => `${d} ${v}`).join(' · ') || 'Nineteen (nothing!)'));
-      show.append(box);
+    const sk = `${g.deal}:${g.show.map((h) => `${h.who}${h.crib}${h.total}${h.said}`).join()}`;
+    if (sk !== showKey) {
+      const fresh = showKey !== '' && g.show.length > 0;
+      const already = fresh && showKey.split(':')[0] === String(g.deal) ? show.children.length : 0;
+      showKey = sk; stopShow();
+      show.innerHTML = '';
+      const steps = [];
+      for (const [n, h] of g.show.entries()) {
+        const p = ctx.player(h.who);
+        const box = ctx.el('div', 'cb-showhand');
+        const title = ctx.el('div', 'cb-showtitle');
+        const who = ctx.el('b', '', `${p?.name ?? '?'}${h.crib ? "'s crib" : "'s hand"}`); who.style.color = p?.color ?? '';
+        const tot = ctx.el('span', 'cb-total', '0');
+        title.append(who, tot);
+        const cards = ctx.el('div', 'he-cards');
+        for (const card of h.cards) cards.append(face(card, 'small'));
+        if (g.starter) cards.append(face(g.starter, 'small starter'));
+        const list = ctx.el('div', 'cb-items');
+        box.append(title, cards, list);
+        show.append(box);
+        const final = h.said != null && h.said !== h.total ? `${h.said} → ${h.total}` : `${h.total}`;
+        if (!fresh || n < already) {
+          for (const [d, v] of h.items) list.append(ctx.el('span', 'cb-item', `${d} ${v}`));
+          if (!h.items.length) list.append(ctx.el('span', 'cb-item none', 'Nineteen (nothing!)'));
+          tot.textContent = final;
+          continue;
+        }
+        box.classList.add('waiting');
+        let run = 0;
+        steps.push(() => { box.classList.remove('waiting'); box.classList.add('counting'); });
+        for (const [d, v] of h.items) {
+          steps.push(() => {
+            list.append(ctx.el('span', 'cb-item in', `${d} ${v}`));
+            Kit.tally(tot, run, run + v, 250); run += v;
+          });
+        }
+        steps.push(() => {
+          if (!h.items.length) list.append(ctx.el('span', 'cb-item none in', 'Nineteen (nothing!)'));
+          tot.textContent = final; box.classList.remove('counting');
+          if (h.total >= 16) { Kit.flyText(tot, h.total >= 24 ? '🔥 ' + h.total : '' + h.total, 'gold'); ctx.sfx('good'); }
+        });
+      }
+      stopShow = Kit.reveal(steps, 420, (f) => f(), { sound: 'tick' });
     }
 
     // my hand: pick discards, or play a card
