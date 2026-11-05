@@ -7,6 +7,7 @@ every few hands, and a player with no chips left is out. Last player with chips 
 import random
 import time
 from collections import Counter
+from itertools import combinations
 
 from .base import Game, GameError
 
@@ -18,7 +19,8 @@ BLINDS = [(10, 20), (15, 30), (25, 50), (50, 100), (75, 150), (100, 200), (150, 
 HAND_NAMES = ["High card", "Pair", "Two pair", "Three of a kind", "Straight", "Flush", "Full house",
               "Four of a kind", "Straight flush"]
 STREETS = ["preflop", "flop", "turn", "river"]
-PAUSE, SHOWDOWN_PAUSE = 2.5, 5.0     # seconds between hands (longer when cards are shown)
+# seconds between hands by the "Between hands" setting: (everyone folded, cards shown at a showdown)
+PAUSES = {1: (2.5, 5.0), 2: (5.0, 9.0), 3: (9.0, 15.0)}
 REBUY_WAIT = 12.0                    # how long the table waits when a buy-back would keep the game going
 HISTORY = 8                          # past hands kept for the hand-history panel
 TIME_BANK, BANK_STEP = 60, 20        # with a turn timer: extra seconds each player has for the game, used 20 s at a time
@@ -84,6 +86,12 @@ def plural(v):
     return "sixes" if v == 6 else RANK_NAME[v] + "s"
 
 
+def in_words(name):
+    """A hand's name inside a sentence: "Pair of 7s" -> "a pair of 7s", "Kings full of 3s" -> "kings full of 3s"."""
+    low = name[0].lower() + name[1:]
+    return ("a " + low) if name.split()[0].rstrip(",") in ("Pair", "Flush", "Straight", "Royal") else low
+
+
 def describe(cards):
     """A friendly name for the best hand in these cards: "Pair of 7s", "Flush, ace high", "Kings full of 3s"."""
     e = evaluate(cards)
@@ -144,10 +152,12 @@ class Holdem(Game):
     blurb = "No-limit poker: two cards each, five shared, bluff and bet your way to every chip on the table."
     min_players = 2
     max_players = 6
+    badges = {**Game.badges, "quads": ("💎", "Monster hand", "Win a showdown with four of a kind or a straight flush")}
     settings_schema = {
         "chips": ("Starting chips", [(1000, "1,000"), (2000, "2,000"), (5000, "5,000")], 1000),
         "pace": ("Blinds rise", [(6, "⚡ Every 6 hands"), (10, "Every 10 hands"), (15, "🐢 Every 15 hands")], 10),
         "rebuys": ("Buy back in", [(0, "Off"), (1, "💸 Once each"), (3, "💸 Up to 3 times")], 1),
+        "breather": ("Between hands", [(1, "⚡ Quick"), (2, "Normal"), (3, "🐢 Relaxed")], 2),
     }
 
     # -- setup
@@ -164,6 +174,7 @@ class Holdem(Game):
         self.hand_no = 0
         self.dealer = rng.randrange(len(self.seats))
         self.board, self.shown, self.result, self.last_act = [], {}, "", {}
+        self.best5, self.winners = [], []
         self.stage = "done"
         self.room.add_log(f"♠️ Texas Hold'em! Everyone starts with {self.s['chips']:,} chips.", "big")
         self.new_hand()
@@ -247,6 +258,7 @@ class Holdem(Game):
         self.in_hand = list(alive)
         self.dead = 0  # chips from players who left mid-hand stay in the pot
         self.board, self.shown, self.result, self.last_act = [], {}, "", {}
+        self.best5, self.winners = [], []
         for i in self.in_hand:
             p = self.pl(i)
             p.g.cards = [self.deck.pop(), self.deck.pop()]
@@ -275,7 +287,7 @@ class Holdem(Game):
 
     def after_action(self, p):
         if len(self.live()) == 1:
-            return self.award()
+            return self.payout()
         if self.round_done():
             return self.next_street()
         nxt = self.after(p.id, self.can_act())
@@ -287,7 +299,7 @@ class Holdem(Game):
         self.cur_bet, self.acted = 0, set()
         self.min_raise = self.blinds()[1]
         if self.stage == "river":
-            return self.award()
+            return self.payout()
         self.deal_street()
         acting = self.can_act()
         if len(acting) <= 1:  # everyone else is all-in: no more betting
@@ -307,9 +319,9 @@ class Holdem(Game):
             self.pl(i).g.bet = 0
         while self.stage != "river":
             self.deal_street()
-        self.award()
+        self.payout()
 
-    def award(self):
+    def payout(self):
         r = self.room
         live = self.live()
         total = self.pot()
@@ -319,7 +331,7 @@ class Holdem(Game):
             self.result = f"{self.pl(live[0]).name} wins {total:,} (everyone else folded)."
         else:
             ranks = {i: evaluate(self.pl(i).g.cards + self.board) for i in live}
-            self.shown = {i: {"cards": self.pl(i).g.cards, "hand": HAND_NAMES[ranks[i][0]]} for i in live}
+            self.shown = {i: {"cards": self.pl(i).g.cards, "hand": describe(self.pl(i).g.cards + self.board)} for i in live}
             puts = {i: self.pl(i).g.put for i in self.in_hand}
             prev, paid, returned = 0, 0, {}
             levels = sorted({puts[i] for i in live})
@@ -343,10 +355,19 @@ class Holdem(Game):
                     winnings[i] += share + (1 if k < odd else 0)
                 paid += layer
                 prev = lvl
-            parts = [f"{self.pl(i).name} wins {v - returned.get(i, 0):,} with {HAND_NAMES[ranks[i][0]].lower()}"
+            said = {i: in_words(self.shown[i]["hand"]) for i in live}
+            parts = [f"{self.pl(i).name} wins {v - returned.get(i, 0):,} with {said[i]}"
                      for i, v in winnings.items() if v - returned.get(i, 0)]
             parts += [f"{self.pl(i).name} gets {v:,} back" for i, v in returned.items()]
             self.result = "; ".join(parts) + "."
+        self.winners = [i for i, v in winnings.items() if v - (returned.get(i, 0) if len(live) > 1 else 0) > 0]
+        self.best5 = []
+        if len(live) > 1 and self.winners:
+            top = self.winners[0]
+            cards = self.pl(top).g.cards + self.board
+            self.best5 = list(max(combinations(cards, 5), key=evaluate))
+            if ranks[top][0] >= 7:  # four of a kind or a straight flush
+                self.award(top, "quads")
         for i, v in winnings.items():
             self.pl(i).g.chips += v
         r.add_log(f"💰 {self.result}", "big")
@@ -371,7 +392,8 @@ class Holdem(Game):
             r.add_log(f"💸 {names} can buy back in — {int(REBUY_WAIT)}s before the game ends.", "power")
             r.deadline = time.time() + REBUY_WAIT
             return
-        r.deadline = time.time() + (SHOWDOWN_PAUSE if self.shown else PAUSE)
+        self.ready = set()
+        r.deadline = time.time() + PAUSES[self.s.get("breather", 2)][1 if self.shown else 0]
 
     def finish(self):
         alive = self.alive()
@@ -385,6 +407,8 @@ class Holdem(Game):
 
     def act(self, p, a):
         t = a.get("type")
+        if t == "next":
+            return self.next_please(p)
         if t == "rebuy":
             return self.rebuy(p)
         if p.id not in self.seats or p.eliminated:
@@ -473,6 +497,19 @@ class Holdem(Game):
         self.note(p, f"{word} {to:,}" + (" (all-in!)" if p.g.allin else ""), "question")
         self.after_action(p)
 
+    def next_please(self, p):
+        """▶ Next hand: once every person still in the game has asked, the next hand starts right away."""
+        r = self.room
+        if self.stage != "done" or r.phase != "playing" or len(self.alive()) < 2:
+            raise GameError("The next hand is on its way.")
+        if p.id not in self.alive():
+            raise GameError("You're not in the next hand.")
+        self.ready = getattr(self, "ready", set()) | {p.id}
+        people = [i for i in self.alive() if not self.pl(i).bot]
+        if all(i in self.ready for i in people):
+            r.deadline = None
+            self.new_hand()
+
     def on_timeout(self):
         if self.stage == "done":
             return self.new_hand()
@@ -499,9 +536,9 @@ class Holdem(Game):
             self.dead += p.g.put  # the room removes the player next; their chips stay in the pot
             self.in_hand.remove(p.id)
             if len(self.alive()) < 2:
-                return self.award() if len(self.live()) == 1 else self.finish()
+                return self.payout() if len(self.live()) == 1 else self.finish()
             if len(self.live()) == 1:
-                return self.award()
+                return self.payout()
             if was_turn:
                 return self.after_action(p)
         elif len(self.alive()) < 2:
@@ -537,11 +574,13 @@ class Holdem(Game):
             "stage": self.stage, "hand": self.hand_no, "board": self.board, "pot": self.pot() if self.hand_no else 0,
             "seats": seats, "blinds": [sb, bb], "pace": self.s["pace"], "curBet": self.cur_bet if self.hand_no else 0,
             "shown": self.shown, "result": self.result,
+            "best5": getattr(self, "best5", []), "winners": getattr(self, "winners", []), "ready": sorted(getattr(self, "ready", ())) if self.stage == "done" else [],
             "canShow": self.stage == "done" and not self.shown and self.live() == [p.id] and self.room.phase == "playing",
             "history": [{"n": e["n"], "board": e["board"], "result": e["result"], "shown": e["shown"],
                          "mine": e["cards"].get(p.id, [])} for e in getattr(self, "history", [])],
             "myCards": p.g.cards if p.id in self.seats and hasattr(p.g, "cards") else [],
             "myHand": describe(p.g.cards + list(self.board)) if p.id in self.seats and getattr(p.g, "cards", None) else "",
+            "myCat": evaluate(p.g.cards + list(self.board))[0] if p.id in self.seats and getattr(p.g, "cards", None) else None,
             "toCall": max(0, self.cur_bet - me.bet) if me and self.stage != "done" else 0,
             "minRaise": min(self.cur_bet + self.min_raise, me.bet + me.chips) if me and self.stage != "done" else 0,
             "maxRaise": me.bet + me.chips if me else 0, "myBet": me.bet if me else 0,

@@ -187,6 +187,7 @@ class Go(Game):
     icon = "⚫"
     blurb = (f"Surround territory and capture stones. Area scoring, White gets {KOMI} komi. "
              "Capture dead stones before you both pass — what's on the board is what counts.")
+    badges = {**Game.badges, "domination": ("🏯", "Domination", "Win by more than half the board's points (e.g. 41+ on 9×9)")}
     settings_schema = {
         "size": ("Board", [(9, "9×9 (quick)"), (13, "13×13"), (19, "19×19 (full)")], 9),
         "komi": ("Komi (White's bonus)", [(6.5, "6.5"), (7.5, "7.5"), (5.5, "5.5"), (0.5, "0.5")], 6.5),
@@ -323,6 +324,8 @@ class Go(Game):
         black, white = (r.players.get(i) for i in self.seats)
         text = f"Final score — ⚫ {s['b']} : ⚪ {s['w']}."
         winner = black if s["b"] > s["w"] else white
+        if winner and abs(s["b"] - s["w"]) > len(self.board) ** 2 / 2:
+            self.award(winner, "domination")
         r.finish(winner, f"🏆 {winner.name} wins! {text}")
 
     def final_scores(self):

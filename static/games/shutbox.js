@@ -4,14 +4,9 @@
 UI.shutbox = (() => {
   let S, ctx, pick = new Set(), pickKey = '', seenRoll = -1;
   const $ = (id) => document.getElementById(id);
-  const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
+  const PIPS = Dice.PIPS;
 
-  function die(value, cls = '') {
-    const b = ctx.el('span', 'ya-die ' + cls);
-    const on = new Set(PIPS[value]);
-    for (let k = 0; k < 9; k++) b.append(ctx.el('span', on.has(k) ? 'on' : ''));
-    return b;
-  }
+  const die = (value, cls = '', tag = 'span') => Dice.die(value, cls, tag);
 
   function mount(main, side) {
     pick = new Set(); pickKey = ''; seenRoll = -1;
@@ -53,7 +48,10 @@ UI.shutbox = (() => {
     $('sbWho').textContent = sb.stage === 'between' ? `Round ${sb.round} is over` : who ? `${who.name}'s box${cur === S.me.id ? ' (you)' : ''}` : '';
     $('sbWho').style.color = sb.stage === 'between' ? '' : who?.color ?? '';
 
-    const bx = $('sbBox'); bx.innerHTML = '';
+    const bx = $('sbBox');
+    const wasOpen = new Set([...bx.children].filter((b) => !b.classList.contains('shut')).map((b) => +b.textContent));
+    const sameBox = bx.dataset.who === cur && bx.children.length === sb.n;
+    bx.dataset.who = cur; bx.innerHTML = '';
     for (let t = 1; t <= sb.n; t++) {
       const open = box.tiles.includes(t);
       const b = ctx.el('button', 'sb-tile' + (open ? '' : ' shut') + (pick.has(t) ? ' picked' : '') +
@@ -61,15 +59,21 @@ UI.shutbox = (() => {
       b.disabled = !(mine && sb.rolled && open && usable.has(t));
       b.setAttribute('aria-label', `tile ${t}${open ? '' : ', shut'}`);
       b.onclick = () => { pick.has(t) ? pick.delete(t) : pick.add(t); ctx.rerender(); };
+      // a tile just shut flips down on its hinge
+      if (sameBox && !open && wasOpen.has(t)) b.classList.add('flipdown');
       bx.append(b);
     }
+    const flipped = bx.querySelectorAll('.flipdown').length;
+    if (flipped) { for (let k = 0; k < flipped; k++) setTimeout(() => ctx.sfx('place'), k * 110); }
+    if (flipped && !box.tiles.length) setTimeout(() => { Kit.callout('📦 SHUT THE BOX!', 'gold', { sound: 'fanfare', ms: 2000 }); ctx.confetti(); }, 350);
 
     const dc = $('sbDice');
     if (sb.rollId !== seenRoll || !dc.children.length !== !sb.dice.length) {
       const fresh = sb.rollId !== seenRoll && seenRoll !== -1;
       seenRoll = sb.rollId;
       dc.innerHTML = '';
-      for (const v of sb.dice) dc.append(die(v, fresh ? 'roll' : ''));
+      for (const v of sb.dice) dc.append(die(v, ''));
+      if (fresh) Dice.roll(dc.children, { sound: false });
     }
     dc.classList.toggle('faded', !sb.rolled);
 

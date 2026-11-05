@@ -5,7 +5,10 @@ bet) on two cards, or split a pair into two hands (up to four). Go over 21 and y
 (standing on every 17). Beat the dealer and you win your bet; a two-card 21 pays 3 to 2; a tie gets
 your bet back. Split aces get one card each, and a 21 after a split pays even money. Four decks,
 reshuffled when they run low. Most chips after the last
-hand wins (playing alone, finish ahead of the 100 you started with)."""
+hand wins (playing alone, finish ahead of the 100 you started with).
+
+Option: Perfect Pairs, a 5-chip side bet on your first two cards being a pair — 6 to 1 for a mixed pair (red and
+black), 12 to 1 for a coloured pair (same colour, different suits) and 25 to 1 for a perfect pair (same suit)."""
 import random
 import time
 
@@ -17,8 +20,11 @@ START_CHIPS = 100
 BETS = (5, 10, 25, 50, 100)  # the chips a bet is built from
 MIN_BET = 5
 MAX_HANDS = 4      # a seat can split up to three times
+PAIR_BET = 5       # the Perfect Pairs side bet
+PAIR_PAYS = {"perfect": 25, "coloured": 12, "mixed": 6}
 DEALER_STEP = 0.9   # seconds between dealer cards
 SETTLE_SECS = 3.5   # pause on the results
+INSURE_SECS = 12    # how long players get to decide on insurance (without a turn timer)
 
 
 def total(cards):
@@ -31,6 +37,16 @@ def total(cards):
 
 def natural(cards):
     return len(cards) == 2 and total(cards)[0] == 21
+
+
+def pair_kind(cards):
+    """None, or how good a pair the first two cards make (Perfect Pairs)."""
+    a, b = cards[:2]
+    if a[0] != b[0]:
+        return None
+    if a[1] == b[1]:
+        return "perfect"
+    return "coloured" if (a[1] in "HD") == (b[1] in "HD") else "mixed"
 
 
 def value(c):
@@ -50,14 +66,19 @@ class TwentyOne(Game):
         "Get closer to 21 than the dealer without going over. Picture cards are 10, aces 1 or 11.",
         "The dealer draws to 17. Beat them to win your bet; a two-card 21 pays 3 to 2; a tie gives your bet back.",
         "Most chips after the last hand wins. Alone, finish ahead of your starting 100.",
+        "With 👯 Perfect Pairs on, add a 5-chip side bet when you bet: it pays if your first two cards are a pair — 6 to 1 mixed colours, 12 to 1 same colour, 25 to 1 same suit.",
     ]
     name = "Blackjack"
+    badges = {**Game.badges, "charlie": ("🎩", "Five-card Charlie", "Win a hand holding five cards or more"),
+              "perfectpair": ("👯", "Perfect pair", "Hit a perfect pair on the Perfect Pairs side bet")}
     icon = "♦️"
     blurb = "Twenty-One against the dealer: build your bet, then hit, stand, double or split, and leave with the most chips."
     min_players = 1
     max_players = 6
     settings_schema = {
         "hands": ("Hands", [(8, "8"), (5, "5 (quick)"), (12, "12")], 8),
+        "pairs": ("Perfect Pairs side bet", [(False, "Off"), (True, "👯 On")], False),
+        "insurance": ("Insurance", [(False, "Off"), (True, "🛡️ When the dealer shows an ace")], False),
     }
 
     # -- setup
@@ -69,6 +90,7 @@ class TwentyOne(Game):
         self.shoe = []
         self.hand_no = 0
         self.last_bet = [0] * len(seated)
+        self.last_pair = [False] * len(seated)
         self.room.add_log(f"♦️ Blackjack! {self.s['hands']} hands, {START_CHIPS} chips each.", "big")
         self.new_hand()
 
@@ -78,6 +100,12 @@ class TwentyOne(Game):
                               for c, b, d in zip(state.pop("cards"), state["bets"], state.pop("done"))]
             state["cur"] = [0] * len(state["hands"])
         state.setdefault("last_bet", list(state.get("bets", [])))
+        n = len(state.get("seats", []))
+        state.setdefault("pair", [0] * n)
+        state.setdefault("pair_res", [None] * n)
+        state.setdefault("last_pair", [False] * n)
+        state.setdefault("ins", [0] * n)
+        state.setdefault("ins_res", [None] * n)
         self.__dict__.update(state)
 
     def pl(self, i):
@@ -102,6 +130,10 @@ class TwentyOne(Game):
         self.hands = [[] for _ in range(n)]  # per seat: [{"cards", "bet", "done", "res"}], more than one after a split
         self.cur = [0] * n           # the hand each seat is playing
         self.result = [None] * n   # text per seat once settled
+        self.pair = [0] * n          # Perfect Pairs side bets
+        self.pair_res = [None] * n   # [kind or "none", chips won or lost]
+        self.ins = [None] * n        # insurance: None = not asked, 0 = declined, else the stake
+        self.ins_res = [None] * n    # chips won or lost on insurance
         self.dealer = []
         self.stage = "bet"
         r.turn = None
@@ -111,9 +143,11 @@ class TwentyOne(Game):
 
     # -- betting
 
-    def bet(self, i, amount):
+    def bet(self, i, amount, pair=False):
         self.bets[i] = min(amount, self.chips[i])
         self.last_bet[i] = self.bets[i]
+        self.pair[i] = PAIR_BET if pair and self.s["pairs"] and self.bets[i] + PAIR_BET <= self.chips[i] else 0
+        self.last_pair[i] = bool(self.pair[i])
         if all(self.bets[j] or not self.live(j) for j in range(len(self.seats))):
             self.deal()
 
@@ -132,6 +166,55 @@ class TwentyOne(Game):
                     self.hands[i][0]["cards"].append(self.draw())
             self.dealer.append(self.draw())
         self.stage = "play"
+        self.settle_pairs()
+        if self.s.get("insurance") and self.dealer[0][0] == "A":
+            return self.offer_insurance()
+        self.after_peek()
+
+    def ins_stake(self, i):
+        """Insurance costs half the bet (rounded down), if the chips are there on top of the bet."""
+        stake = self.bets[i] // 2
+        return stake if stake and self.chips[i] - self.bets[i] >= stake else 0
+
+    def offer_insurance(self):
+        """The dealer shows an ace: everyone with a bet may insure it before the dealer peeks."""
+        r = self.room
+        self.stage = "insure"
+        for i in range(len(self.seats)):
+            if self.bets[i] and self.ins_stake(i):
+                self.ins[i] = None if not self.auto(i) else 0   # bots play basic strategy: never insure
+            else:
+                self.ins[i] = 0
+        if all(v is not None for v in self.ins):
+            return self.resolve_insurance()
+        r.turn = None
+        r.deadline = time.time() + (r.settings["timer"] or INSURE_SECS)
+        r.add_log("🛡️ The dealer shows an ace: insurance? It costs half your bet and pays 2 to 1 if the dealer has blackjack.", "power")
+
+    def insure(self, i, take):
+        self.ins[i] = self.ins_stake(i) if take else 0
+        if all(v is not None for v in self.ins):
+            self.resolve_insurance()
+
+    def resolve_insurance(self):
+        r = self.room
+        dnat = natural(self.dealer)
+        parts = []
+        for i, stake in enumerate(self.ins):
+            if stake:
+                delta = 2 * stake if dnat else -stake
+                self.chips[i] += delta
+                self.ins_res[i] = delta
+                p = self.pl(i)
+                parts.append(f"{p.name if p else '?'} {'+' if delta > 0 else ''}{delta}")
+        if parts:
+            r.add_log(("🛡️ Insurance pays: " if dnat else "🛡️ No dealer blackjack, insurance lost: ") + " · ".join(parts), "power")
+        self.ins = [v or 0 for v in self.ins]
+        self.stage = "play"
+        self.after_peek()
+
+    def after_peek(self):
+        n = len(self.seats)
         if natural(self.dealer):
             self.room.add_log(f"😮 The dealer has blackjack: {' '.join(pretty(c) for c in self.dealer)}.", "power")
             return self.settle()
@@ -141,6 +224,24 @@ class TwentyOne(Game):
                 p = self.pl(i)
                 self.room.add_log(f"🎉 {p.name if p else '?'} has blackjack!", "power")
         self.next_player(-1)
+
+    def settle_pairs(self):
+        """Perfect Pairs side bets are paid (or lost) as soon as the first two cards are out."""
+        for i in range(len(self.seats)):
+            if not self.pair[i]:
+                continue
+            kind, p = pair_kind(self.hands[i][0]["cards"]), self.pl(i)
+            name = p.name if p else "?"
+            if kind:
+                won = self.pair[i] * PAIR_PAYS[kind]
+                self.chips[i] += won
+                self.pair_res[i] = [kind, won]
+                self.room.add_log(f"👯 {name}'s {kind} pair pays {PAIR_PAYS[kind]} to 1: +{won}!", "power")
+                if kind == "perfect" and p:
+                    self.award(p, "perfectpair")
+            else:
+                self.chips[i] -= self.pair[i]
+                self.pair_res[i] = ["none", -self.pair[i]]
 
     # -- playing
 
@@ -272,6 +373,8 @@ class TwentyOne(Game):
                 else:
                     dh, text = -b, "lost"
                 h["res"] = [text, dh]
+                if dh > 0 and len(h["cards"]) >= 5 and self.pl(i):
+                    self.award(self.pl(i), "charlie")
                 texts.append(text)
                 delta += dh
             self.chips[i] += delta
@@ -315,7 +418,14 @@ class TwentyOne(Game):
                 raise GameError("You're out of chips.")
             if not self.valid_bet(i, amount):
                 raise GameError(f"Bet a multiple of {MIN_BET}, up to your {self.chips[i]} chips.")
-            return self.bet(i, amount)
+            pair = bool(a.get("pair")) and self.s["pairs"]
+            if pair and amount + PAIR_BET > self.chips[i]:
+                raise GameError(f"The {PAIR_BET}-chip pair bet needs chips on top of your bet.")
+            return self.bet(i, amount, pair)
+        if t == "insure":
+            if self.stage != "insure" or self.ins[i] is not None:
+                raise GameError("No insurance to decide on.")
+            return self.insure(i, bool(a.get("take")))
         if t in ("hit", "stand", "double", "split"):
             self.require_turn(p)
             if self.stage != "play":
@@ -339,10 +449,16 @@ class TwentyOne(Game):
             return self.new_hand()
         if self.stage == "dealer":
             return self.dealer_step()
+        if self.stage == "insure":  # anyone who hasn't decided declines
+            self.ins = [0 if v is None else v for v in self.ins]
+            return self.resolve_insurance()
         if self.stage == "bet":
             for i in range(len(self.seats)):
                 if self.live(i) and not self.bets[i]:
-                    self.bet(i, self.bot_bet(i) if self.auto(i) else (self.last_bet[i] or MIN_BET))  # the clock repeats your last bet
+                    if self.auto(i):
+                        self.bet(i, self.bot_bet(i), self.bot_pair(i))
+                    else:  # the clock repeats your last bet
+                        self.bet(i, self.last_bet[i] or MIN_BET, self.last_pair[i])
             return
         i = self.seats.index(r.turn)
         r.add_log(f"⏰ {self.pl(i).name} ran out of time and stands.", "power")
@@ -387,6 +503,10 @@ class TwentyOne(Game):
             "chips": self.chips, "bets": self.bets, "seatHands": hands, "cur": self.cur, "dealer": dealer,
             "dealerTotal": total(self.dealer)[0] if reveal and self.dealer else (total(self.dealer[:1])[0] if self.dealer else 0),
             "result": self.result, "lastBets": self.last_bet, "minBet": MIN_BET, "canDouble": mine and self.can_double(i), "canSplit": mine and self.can_split(i), "betOptions": list(BETS),
+            "pairs": bool(self.s["pairs"]), "pairBet": PAIR_BET, "pair": self.pair, "pairRes": self.pair_res,
+            "lastPairs": self.last_pair, "pairPays": PAIR_PAYS,
+            "insurance": bool(self.s.get("insurance")), "ins": getattr(self, "ins", None), "insRes": getattr(self, "ins_res", None),
+            "insStake": self.ins_stake(i) if i is not None and self.stage == "insure" else 0,
         }}
 
     # -- bots
@@ -412,7 +532,7 @@ class TwentyOne(Game):
         if self.stage == "bet":
             for i in range(len(self.seats)):
                 if self.stage == "bet" and self.live(i) and self.auto(i) and not self.bets[i]:
-                    self.bet(i, self.bot_bet(i))
+                    self.bet(i, self.bot_bet(i), self.bot_pair(i))
             return
         i = self.seats.index(self.room.turn)
         move = self.bot_move(i, self.level(i))
@@ -421,6 +541,9 @@ class TwentyOne(Game):
         if move == "double" and not self.can_double(i):
             move = "hit"
         getattr(self, move)(i)
+
+    def bot_pair(self, i):
+        return self.level(i) == "easy" and random.random() < 0.4  # only the easy bots chase side bets
 
     def bot_bet(self, i):
         lv = self.level(i)

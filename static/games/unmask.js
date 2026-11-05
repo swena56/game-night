@@ -1,5 +1,5 @@
 UI.unmask = (() => {
-  let S, ctx, boardKey = '', accuseMode = false, populated = false, seenNotes = null, sizer = null;
+  let S, ctx, boardKey = '', accuseMode = false, populated = false, seenNotes = null, sizer = null, seenPhase = null;
   // card size, set by pinching the board or the 🔍 buttons, remembered on this device
   // Until the player picks a size, phones fit every face on one screen with the Ask panel just under it.
   let zoom = 92, autoFit = true;
@@ -13,7 +13,8 @@ UI.unmask = (() => {
   function mount(main, side) {
     boardKey = ''; accuseMode = false; populated = false; seenNotes = null;
     main.innerHTML = `<div class="zoom-bar"><span>🔍</span><button id="zoomOut" aria-label="Smaller faces">−</button>
-      <button id="zoomIn" aria-label="Bigger faces">+</button><small>or pinch the board</small></div><div id="board" class="board"></div>`;
+      <button id="zoomIn" aria-label="Bigger faces">+</button><small>or pinch the board</small></div>
+      <div id="umLineup" class="um-lineup" aria-label="Faces still up"></div><div id="umBubble" class="um-bubble" hidden></div><div id="board" class="board"></div>`;
     setZoom(zoom, !autoFit);
     $('#zoomOut').onclick = () => setZoom(cardWidth() / 1.2);
     $('#zoomIn').onclick = () => setZoom(cardWidth() * 1.2);
@@ -102,6 +103,14 @@ UI.unmask = (() => {
     S = s; ctx = c;
     if (!ctx.myTurn) accuseMode = false;
     renderBoard();
+    if (S.phase === 'over' && seenPhase === 'playing') {
+      const u = document.querySelector('#board .card.unmasked');
+      u?.scrollIntoView?.({ block: 'center', behavior: motionOK() ? 'smooth' : 'auto' });
+      ctx.sfx(S.winner === S.me.id ? 'fanfare' : 'thud');
+      const up = S.board.length - S.me.flipped.length, bold = S.winner === S.me.id && up * 3 >= S.board.length;
+      Kit.callout(bold ? '🎲 Bold guess!' : S.winner === S.me.id ? '🎭 Unmasked!' : '🎭 Revealed', S.winner === S.me.id ? 'gold' : 'cool');
+    }
+    seenPhase = S.phase;
     renderIdentity();
     renderAsk();
     renderNotes();
@@ -116,6 +125,7 @@ UI.unmask = (() => {
     if (fresh && S.phase === 'playing') {
       const [text, ans, , q] = n.rows[n.rows.length - 1];
       const ids = q ? misfits({ q, ans }) : [];
+      bubble(text, ans);
       ctx.toast(`“${text}” → ${ans ? 'YES ✅' : 'NO ❌'}`,
         ids.length ? { label: `Flip the ${ids.length} that don't fit`, run: () => flip(ids, true, true) } : null);
     }
@@ -129,6 +139,39 @@ UI.unmask = (() => {
       box.append(row);
     });
     box.append(ctx.el('p', 'hint left', `${n.left} face${n.left === 1 ? '' : 's'} still fit${n.left === 1 ? 's' : ''} everything you know.`));
+  }
+
+  // the latest question, said out loud above the board, with the answer stamped on it
+  let bubbleTimer = null;
+  function bubble(text, ans) {
+    const b = $('#umBubble'); if (!b) return;
+    b.innerHTML = '';
+    b.append(ctx.el('span', 'q', `“${text[0].toUpperCase() + text.slice(1).replace(/\?*$/, '?')}”`), ctx.el('b', ans ? 'yes' : 'no', ans ? 'YES' : 'NO'));
+    b.hidden = false;
+    b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop');
+    ctx.sfx(ans ? 'right' : 'wrong');
+    clearTimeout(bubbleTimer);
+    bubbleTimer = setTimeout(() => { b.hidden = true; }, 3200);
+  }
+
+  // the line-up: a small portrait of every face you haven't flipped, shrinking as you rule them out
+  let lineupKey = '';
+  function renderLineup() {
+    const box = $('#umLineup'); if (!box) return;
+    const up = S.board.filter((f) => !S.me.flipped.includes(f.id));
+    const key = up.map((f) => f.id).join() + S.phase;
+    if (key === lineupKey) return;
+    const before = Kit.snap(box);
+    lineupKey = key;
+    box.hidden = S.phase !== 'playing' || S.me.ghost;
+    box.innerHTML = '';
+    box.append(ctx.el('b', 'n', String(up.length)));
+    for (const f of up) {
+      const m = ctx.el('span', 'um-mini'); m.dataset.k = f.id; m.title = f.name;
+      m.innerHTML = faceSVG(f);
+      box.append(m);
+    }
+    Kit.glide(box, before, 300);
   }
 
   function renderBoard() {
@@ -154,11 +197,17 @@ UI.unmask = (() => {
     }
     for (const c of board.children) {
       const id = +c.dataset.id;
+      if (c.classList.contains('down') !== flipped.has(id) && populated) c.classList.add('turning');
       c.classList.toggle('down', flipped.has(id));
       c.classList.toggle('mine', S.me.secret === id);
       if (badges[id]) c.dataset.badge = badges[id].join(' & '); else delete c.dataset.badge;
+      // the unmasking: the face everyone was after zooms up under a spotlight, once
+      const target = S.reveal?.culprit ?? (S.phase === 'over' ? Object.entries(S.reveal?.secrets || {}).find(([pid]) => pid !== S.me.id)?.[1] : null);
+      c.classList.toggle('unmasked', S.phase === 'over' && id === target);
     }
     board.classList.toggle('accusing', accuseMode);
+    if (board.querySelector('.turning')) { ctx.sfx('flip'); setTimeout(() => board.querySelectorAll('.turning').forEach((c) => c.classList.remove('turning')), 500); }
+    renderLineup();
   }
 
   function renderIdentity() {

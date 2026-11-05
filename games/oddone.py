@@ -29,6 +29,7 @@ class OddOne(Game):
     blurb = "Everyone shares a secret word except one player, who doesn't even know they're odd. Clue, suspect, vote."
     min_players = 3
     max_players = 6
+    badges = {**Game.badges, "ghost": ("🫥", "Invisible", "Be the odd one and get no votes at all")}
     settings_schema = {
         "rounds": ("Rounds", [(3, "3"), (4, "4"), (6, "6")], 4),
         "laps": ("Clues each", [(1, "1"), (2, "2")], 2),
@@ -174,6 +175,8 @@ class OddOne(Game):
         else:
             if oddp:
                 oddp.g.score += 4
+                if not tally.get(self.odd):
+                    self.award(oddp, "ghost")
                 r.add_log(f"🏃 {oddp.name} slipped away with “{self.odd_word}” (everyone else had “{self.common}”). +4", "power")
             self.reveal()
 

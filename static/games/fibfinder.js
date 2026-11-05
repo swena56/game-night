@@ -1,11 +1,11 @@
 // Fib Finder: write a fake answer, then pick the real one.
 UI.fibfinder = (() => {
-  let S, ctx, lastRound = 0;
+  let S, ctx, lastRound = 0, revealed = '', hideTruthUntil = 0;
   const $ = (id) => document.getElementById(id);
   const playing = () => S.phase === 'playing' && !S.me.spectator && !S.me.eliminated;
 
   function mount(main, side) {
-    lastRound = 0;
+    lastRound = 0; revealed = '';
     main.innerHTML = `<div class="fb">
       <div class="fb-head"><span id="fbRound"></span><span id="fbFinal" class="fb-final" hidden>🔥 Double points</span></div>
       <div id="fbFact" class="fb-fact"></div>
@@ -33,7 +33,7 @@ UI.fibfinder = (() => {
   function factLine(f) {
     const box = $('fbFact'); box.innerHTML = '';
     const [before, after = ''] = f.fact.split('____');
-    const truth = f.reveal?.find((o) => o.truth)?.text;
+    const truth = performance.now() < hideTruthUntil ? null : f.reveal?.find((o) => o.truth)?.text;
     box.append(before, ctx.el('span', truth ? 'fb-blank filled' : 'fb-blank', truth ?? '?'), after);
   }
 
@@ -68,8 +68,15 @@ UI.fibfinder = (() => {
         b.disabled = f.mineIdx.includes(i) || !playing();
       });
     } else if (f.reveal) {
+      // the reveal plays out fib by fib, who fell for each, and the truth comes last
+      const rk = `${f.round}`;
+      if (revealed === rk) return paintWaiting(f);
+      const staged = revealed !== '' || box.dataset.key !== '';
+      revealed = rk;
       box.innerHTML = ''; box.dataset.key = '';
-      for (const o of f.reveal) {
+      const order = [...f.reveal].sort((a, b) => (a.truth - b.truth) || (a.pickers.length - b.pickers.length));
+      const cards = [];
+      for (const o of order) {
         const card = ctx.el('div', `fb-res${o.truth ? ' truth' : ''}`);
         card.append(ctx.el('b', '', o.text));
         const by = o.truth ? '✅ The truth' : o.house ? '🏠 House fib'
@@ -83,11 +90,27 @@ UI.fibfinder = (() => {
           row.append(tag);
         }
         card.append(row);
+        if (!o.truth && o.authors.length && o.pickers.length) card.dataset.fooled = `+${2 * o.pickers.length * (f.final ? 2 : 1)}`;
         box.append(card);
+        cards.push(card);
+      }
+      if (staged && motionOK()) {
+        cards.forEach((c2) => c2.classList.add('hidden-card'));
+        hideTruthUntil = performance.now() + (cards.length - 1) * 900;
+        Kit.reveal(cards, 900, (c2) => {
+          c2.classList.remove('hidden-card'); c2.classList.add('flip-in');
+          if (c2.dataset.fooled) Kit.flyText(c2, `🤥 ${c2.dataset.fooled}`, 'gold');
+          if (c2.classList.contains('truth')) { ctx.sfx('fanfare'); hideTruthUntil = 0; factLine(S.fibfinder); }
+        }, { sound: 'flip' });
+        factLine(f);  // the blank stays a mystery until the truth card turns
       }
     } else {
+      revealed = '';
       box.innerHTML = ''; box.dataset.key = '';
     }
+    paintWaiting(f);
+  }
+  function paintWaiting(f) {
     const waiting = f.waiting.map((id) => ctx.player(id)?.name).filter(Boolean);
     $('fbWaiting').textContent = S.phase === 'playing' && waiting.length ? `Waiting for: ${waiting.join(', ')}` : '';
   }

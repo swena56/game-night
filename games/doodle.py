@@ -13,6 +13,7 @@ GRACE_SECS = 9     # extra guessing time once it's finished (hints get stronger)
 REVEAL_SECS = 4.5  # pause on the answer before the next picture
 LOCK_SECS = 3      # lockout after a wrong guess
 HINT_AT, LETTER_AT = 0.5, 0.85  # fraction drawn when blanks / the first letter appear
+EXTRA_LETTERS = 3  # once the picture is done, up to this many more letters show through the last-chance time (a point less each)
 
 
 def norm(text):
@@ -152,6 +153,11 @@ class Doodle(Game):
             at = self.t0 + frac * DRAW_SECS
             if at > self.now():
                 times.append(at)
+        for k in range(1, EXTRA_LETTERS + 1):  # the late letters, spread through the last-chance time
+            at = self.t0 + DRAW_SECS + k * GRACE_SECS / (EXTRA_LETTERS + 1)
+            if at > self.now():
+                times.append(at)
+                break
         return min(times)
 
     # -- clock hooks: the room polls bot_ready/bot_tick; on_timeout fast-forwards (and ends pictures)
@@ -210,6 +216,7 @@ class Doodle(Game):
         if g and is_answer(g, {norm(x) for x in [answer, *aliases]}):
             frac = min(1.0, max(0.0, (self.now() - self.t0) / DRAW_SECS))
             pts = 3 + round(7 * (1 - frac)) + (2 if self.s["mode"] == "all" and not self.solvers else 0)
+            pts = max(1, pts - len(self.extra_letters()))  # the late letters make it easier, so it's worth less
             self.solvers.append((p.id, pts))
             p.g.score += pts
             p.g.got += 1
@@ -252,13 +259,28 @@ class Doodle(Game):
     def meta(self, p):
         return f"{p.g.score} pts" if hasattr(p.g, "score") else ""
 
+    def extra_letters(self):
+        """Letters shown after the picture is finished: one more every quarter of the last-chance time, at
+        spots fixed for the picture, never the whole word."""
+        if self.stage != "draw":
+            return []
+        late = self.now() - (self.t0 + DRAW_SECS)
+        if late <= 0:
+            return []
+        answer = self.pic[0].upper()
+        spots = [i for i, ch in enumerate(answer) if ch != " " and i > 0]
+        random.Random(f"{self.round} {answer}").shuffle(spots)
+        n = min(int(late // (GRACE_SECS / (EXTRA_LETTERS + 1))), EXTRA_LETTERS, max(0, len(spots) - 2))
+        return spots[:n]
+
     def hint(self, frac):
         answer = self.pic[0].upper()
         if self.stage == "reveal":
             return answer
         if frac < HINT_AT:
             return ""
-        return "".join(ch if (ch == " " or (i == 0 and frac >= LETTER_AT)) else "_" for i, ch in enumerate(answer))
+        extra = set(self.extra_letters())
+        return "".join(ch if (ch == " " or (i == 0 and frac >= LETTER_AT) or i in extra) else "_" for i, ch in enumerate(answer))
 
     def view(self, p):
         now = self.now()

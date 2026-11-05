@@ -63,6 +63,8 @@ class Yacht(Game):
     blurb = "The classic dice game: three rolls, hold what you like, and fill twelve boxes for the best total."
     min_players = 1
     max_players = 6
+    badges = {**Game.badges, "yacht": ("⛵", "Yacht!", "Score 50 in the Yacht box"),
+              "captain": ("🧭", "Captain", "Finish a card with 250 points or more")}
     settings_schema = {
         "bonus": ("Upper bonus", [(False, "Off (classic)"), (True, "+35 for 63 in Ones–Sixes")], False),
         "extra": ("Extra Yachts", [(False, "Off (classic)"), (True, "+50 each")], False),
@@ -144,6 +146,10 @@ class Yacht(Game):
             self.room.add_log(f"🎁 {p.name} makes {UPPER_NEED} in Ones–Sixes: +{UPPER_BONUS} bonus!", "big")
         self.last = f"{p.name}: {LABEL[cat]} {pts}"
         big = cat == "yacht" and pts
+        if big:
+            self.award(p, "yacht")
+        if all(v is not None for v in p.g.card.values()) and self.total(p) >= 250:
+            self.award(p, "captain")
         self.room.add_log(f"{'⛵ YACHT! ' if big else '📝 '}{p.name} scores {pts} in {LABEL[cat]} ({' '.join(map(str, self.dice))}).",
                           "big" if big else "question" if pts else "info")
         if all(all(v is not None for v in self.room.players[i].g.card.values()) for i in self.seats if i in self.room.players):

@@ -96,6 +96,18 @@ UI.oware = (() => {
         row.append(b);
       }
     }
+    // captured seeds fly into the mover's store once the sowing has landed
+    if (animate && caught.length) {
+      const mover = sideOf(0).includes(last) ? 0 : 1, store = $(mover === me ? 'owMine' : 'owTheirs');
+      setTimeout(() => {
+        caught.forEach((i, k) => {
+          const seedsEl = document.querySelector(`.ow-pit[data-i="${i}"] .ow-seeds`);
+          Kit.fly(seedsEl, store, { ms: 520, delay: k * 90, scale: 0.4 });
+        });
+        ctx.sfx('chip');
+        setTimeout(() => { store.classList.remove('bump'); void store.offsetWidth; store.classList.add('bump'); ctx.sfx('good'); }, 520 + caught.length * 90);
+      }, done * 1000 + 250);
+    } else if (animate) setTimeout(() => ctx.sfx('place'), done * 1000);
     const them = 1 - me;
     const rival = ctx.player(o.seats[them])?.name ?? 'Rival', rivalShort = rival.replace(/^🤖\s*/, '');
     $('owMine').querySelector('b').textContent = String(o.stores[me]);
@@ -136,5 +148,5 @@ UI.oware = (() => {
         : mine ? ' (captures only happen on their side).' : ' — no capture (it needs to make 2 or 3).');
   }
 
-  return { mount, render };
+  return { mount, render, ownSounds: true };
 })();

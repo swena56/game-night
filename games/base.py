@@ -18,6 +18,9 @@ class Game:
     # key -> (label, [(value, option label), ...], default)
     settings_schema = {}
     replayable = True  # real-time games opt out of move-by-move replays
+    # 🏅 badges a player can earn in this game: key -> (emoji, name, how to earn it); see award().
+    # Every game has "giant" (the room awards it); a game adds its own with badges = {**Game.badges, ...}.
+    badges = {"giant": ("🧠", "Giant slayer", "Win against a hard bot")}
 
     def __init__(self, room):
         self.room = room
@@ -29,9 +32,17 @@ class Game:
             "id": cls.id, "name": cls.name, "icon": cls.icon, "blurb": cls.blurb,
             "category": cls.category, "howto": cls.howto,
             "min": cls.min_players, "max": cls.max_players, "lateJoin": hasattr(cls, "late_join"),
+            "badges": {k: list(v) for k, v in cls.badges.items()},
             "settings": [{"key": k, "label": lbl, "options": opts}
                          for k, (lbl, opts, _) in cls.settings_schema.items()],
         }
+
+    def award(self, p, key):
+        """Give player `p` (a Player or an id) this game's badge `key`; the room counts it for the evening
+        and announces the first one."""
+        award = getattr(self.room, "award", None)  # the rules tests run on small fake rooms
+        if award:
+            award(p, self.id, key)
 
     @classmethod
     def defaults(cls):

@@ -20,6 +20,7 @@ class Heist(Game):
         'Guards fine every grabber 💰2 — but guarding an empty hall costs 💰1. Resting earns 💰1.',
         'Most gold after the last night wins.',
         'Bots have a personality on their chip: 🦊 greedy grabs more, 🐢 cautious rests, 🦉 watchful guards.',
+        'With 🕵️ Inside man on, once a game you can ask, before you choose, how many of the players who have already chosen are grabbing tonight.',
     ]
     name = "Night Heist"
     icon = "🦹"
@@ -27,8 +28,11 @@ class Heist(Game):
              "two grabbers trip the alarm, and guards fine anyone they catch.")
     min_players = 2
     max_players = 6
+    badges = {**Game.badges, "mastermind": ("💎", "Mastermind", "Steal a vault holding 💰20 or more"),
+              "hawk": ("🦅", "Hawk-eyed", "Guard on a night when two or more players grab")}
     settings_schema = {
         "rounds": ("Nights", [(6, "6 nights"), (8, "8 nights"), (10, "10 nights")], 8),
+        "tip": ("Inside man", [(False, "Off"), (True, "🕵️ One tip-off each")], False),
     }
 
     def start(self, seated, rng):
@@ -39,6 +43,7 @@ class Heist(Game):
         self.choices = {}
         self.last = None
         self.nights = []  # every revealed night: {pid: [choice, gold change]}
+        self.tips = {p.id: 1 if self.s.get("tip") else 0 for p in seated}  # 🕵️ inside-man tip-offs left
         # each bot gets a personality, dealt so a table of bots doesn't all play alike
         kinds = list(PERSONAS)
         rng.shuffle(kinds)
@@ -58,15 +63,34 @@ class Heist(Game):
         r.add_log(f"🌙 Night {self.night}/{self.s['rounds']}: 💰{added} more loot — the vault holds 💰{self.pot}.")
 
     def act(self, p, a):
-        if a.get("type") != "choose":
+        if a.get("type") not in ("choose", "tip"):
             raise GameError("Unknown action.")
         if p.id not in self.gold or p.eliminated:
             raise GameError("You're not in this heist.")
+        if a.get("type") == "tip":
+            return self.tip(p)
         choice = a.get("choice")
         if choice not in CHOICES:
             raise GameError("Pick Grab, Guard or Rest.")
         self.choices[p.id] = choice
         self.maybe_resolve()
+
+    def tip(self, p):
+        """🕵️ The inside man: how many of those who've already chosen tonight are grabbing (once a game)."""
+        tips = getattr(self, "tips", {})
+        if not tips.get(p.id):
+            raise GameError("Your inside man has nothing more to tell you.")
+        if p.id in self.choices:
+            raise GameError("Ask before you choose.")
+        chosen = [c for pid, c in self.choices.items() if pid != p.id]
+        if not chosen:
+            raise GameError("Nobody has chosen yet tonight — ask again in a moment.")
+        grabs = chosen.count("grab")
+        tips[p.id] -= 1
+        self.tips = tips
+        self.room.add_log(f"🕵️ Your inside man whispers: {grabs} of the {len(chosen)} who've chosen tonight "
+                          f"{'is' if grabs == 1 else 'are'} grabbing.", "private", to=p.id)
+        self.room.add_log(f"🕵️ {p.name} talked to their inside man.")
 
     def waiting_on(self):
         return [p for p in self.room.contenders() if p.id not in self.choices]
@@ -95,6 +119,9 @@ class Heist(Game):
                 self.gold[i] += share
             self.pot += leftover
             outcome = f"🚨 {names(guard)} caught {names(grab)}! Fines paid: 💰{fines}."
+            if len(grab) >= 2:
+                for i in guard:
+                    self.award(i, "hawk")
         elif guard:
             for i in guard:
                 if self.gold[i]:
@@ -103,6 +130,8 @@ class Heist(Game):
             outcome = f"🥱 {names(guard)} guarded an empty hallway and dropped 💰1 into the vault."
         elif len(grab) == 1:
             outcome = f"💎 {names(grab)} slipped in alone and stole 💰{self.pot}!"
+            if self.pot >= 20:
+                self.award(grab[0], "mastermind")
             self.gold[grab[0]] += self.pot
             self.pot = 0
         elif grab:
@@ -157,6 +186,7 @@ class Heist(Game):
             "mine": self.choices.get(p.id), "last": self.last, "nights": getattr(self, "nights", []),
             "gold": self.gold,
             "waiting": [o.id for o in self.waiting_on()],
+            "tips": getattr(self, "tips", {}).get(p.id, 0),
         }}
 
     # -- bots: everyone moves at once, so all undecided bots choose together

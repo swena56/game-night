@@ -30,6 +30,7 @@ class Trivia(Game):
     name = "Trivia Rush"
     icon = "🧠"
     blurb = "Quick-fire quiz: four answers, one right, and faster right answers score more."
+    badges = {**Game.badges, "on_fire": ("🔥", "On fire", "Get 5 questions right in a row")}
     min_players = 1
     max_players = 6
     settings_schema = {
@@ -173,6 +174,8 @@ class Trivia(Game):
                 pts = (BASE_PTS + round(SPEED_PTS * max(0.0, 1 - ans[1] / secs) / 10) * 10) * mult
                 p.g.right += 1
                 p.g.streak += 1
+                if p.g.streak == 5:
+                    self.award(p, "on_fire")
                 pts += STREAK_PTS * max(0, min(p.g.streak - 2, STREAK_CAP))  # 🔥 3 in a row and up
                 p.g.score += pts
                 self.gained[p.id] = pts

@@ -1,5 +1,5 @@
 UI.heist = (() => {
-  let S, ctx;
+  let S, ctx, seenNight = null, shownPot = null, potTimer = 0;
   const OPTIONS = [
     ['grab', '🦹', 'Grab', 'Steal the whole vault, but only if you are the only grabber and nobody guards.'],
     ['guard', '🛡️', 'Guard', 'Catch grabbers and collect a 💰2 fine from each. Guarding an empty hall costs 💰1.'],
@@ -8,9 +8,15 @@ UI.heist = (() => {
   const ICON = Object.fromEntries(OPTIONS.map(([id, icon]) => [id, icon]));
 
   function mount(main, side) {
+    seenNight = null; shownPot = null;
     main.innerHTML = `<div class="heist">
-      <div class="vault"><div id="hNight"></div><div id="hPot" class="pot"></div></div>
+      <div class="vault" id="hVault"><div class="h-night" aria-hidden="true"><i class="moon"></i><i class="beam"></i></div>
+        <svg class="vault-door" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="46" class="vd-rim"/><circle cx="50" cy="50" r="38" class="vd-face"/>
+          <g class="vd-wheel"><circle cx="50" cy="50" r="12"/><path d="M50 22v56M22 50h56M30 30l40 40M70 30 30 70"/></g>
+          <circle cx="50" cy="50" r="5" class="vd-hub"/></svg>
+        <div class="vault-info"><div id="hNight"></div><div id="hPot" class="pot"></div><div id="hCoins" class="coins"></div></div></div>
       <div id="hChoices" class="h-choices"></div>
+      <div class="row center"><button id="hTip" hidden>🕵️ Ask your inside man</button></div>
       <p id="hWaiting" class="hint"></p>
       <div id="hLast" class="panel"></div>
       <div id="hGrid" class="panel h-grid-wrap" hidden><h3>Night by night</h3><table id="hGridT" class="h-grid"></table></div>
@@ -24,6 +30,7 @@ UI.heist = (() => {
         <li>😴 <b>Rest</b> earns 💰1.</li>
       </ul>
       <p class="hint left">You can change your mind until the last player locks in. Most gold after the final night wins.</p></div>`;
+    main.querySelector('#hTip').onclick = () => ctx.quiet(ctx.act('tip'));
     const box = main.querySelector('#hChoices');
     for (const [id, icon, label, desc] of OPTIONS) {
       const b = document.createElement('button');
@@ -38,30 +45,83 @@ UI.heist = (() => {
     S = s; ctx = c;
     const h = S.heist;
     document.getElementById('hNight').textContent = `🌙 Night ${h.night} of ${h.rounds}`;
-    document.getElementById('hPot').textContent = `💰${h.pot}`;
+    paintPot(h.pot);
     const canPlay = S.phase === 'playing' && !S.me.ghost && !S.me.spectator;
     for (const b of document.querySelectorAll('.h-choice')) {
       b.classList.toggle('on', h.mine === b.dataset.id);
       b.disabled = !canPlay;
     }
+    const tip = document.getElementById('hTip');
+    tip.hidden = !h.tips || !canPlay;
+    tip.disabled = !!h.mine || h.waiting.length >= Object.keys(h.gold).length;  // nobody has chosen yet
+    tip.title = 'Once a game: how many of those who have chosen tonight are grabbing';
     const waiting = h.waiting.map((id) => ctx.player(id)?.name).filter(Boolean);
     document.getElementById('hWaiting').textContent =
       S.phase === 'playing' && waiting.length ? `Waiting for: ${waiting.join(', ')}` : '';
     const last = document.getElementById('hLast');
     last.hidden = !h.last;
-    if (h.last) {
+    const fresh = h.last && seenNight !== null && h.last.night !== seenNight;
+    if (h.last && (fresh || h.last.night !== seenNight || !last.childElementCount)) {
       last.innerHTML = '';
       last.append(ctx.el('h3', '', `Night ${h.last.night} revealed`));
       const row = ctx.el('div', 'reveal-row');
+      const tags = [];
       for (const [pid, choice] of Object.entries(h.last.choices)) {
         const p = ctx.player(pid);
-        const tag = ctx.el('span', 'reveal-tag', `${ICON[choice]} ${p?.name ?? '?'}`);
+        // each choice is a card that turns over in turn: the reveal is the whole game
+        const tag = ctx.el('span', 'reveal-tag h-card' + (fresh && motionOK() ? ' down' : ''));
+        tag.append(ctx.el('b', 'h-front', `${ICON[choice]} ${p?.name ?? '?'}`), ctx.el('b', 'h-back', `❓ ${p?.name ?? '?'}`));
         tag.style.borderColor = p?.color ?? '#777';
-        row.append(tag);
+        tag.dataset.choice = choice;
+        row.append(tag); tags.push(tag);
       }
-      last.append(row, ctx.el('p', '', h.last.text));
+      const text = ctx.el('p', 'h-outcome' + (fresh && motionOK() ? ' wait' : ''), h.last.text);
+      last.append(row, text);
+      if (fresh) Kit.reveal(tags, 550, (t) => t.classList.remove('down'), { done: () => { text.classList.remove('wait'); outcome(h); } });
     }
+    if (h.last) seenNight = h.last.night; else if (seenNight === null) seenNight = 0;
     paintGrid(h);
+  }
+
+  // the night's result lands: an alarm, a catch, a heist, or a quiet night
+  function outcome(h) {
+    const t = h.last.text, vault = document.getElementById('hVault');
+    const flash = (cls) => { vault.classList.remove('alarm', 'caught', 'stolen'); void vault.offsetWidth; vault.classList.add(cls); };
+    if (t.startsWith('🔔')) { flash('alarm'); strobe(); ctx.sfx('alarm'); Kit.callout('🔔 ALARM!', 'bad'); }
+    else if (t.startsWith('🚨')) { flash('caught'); ctx.sfx('alarm'); Kit.callout('🚨 Caught!', 'cool'); }
+    else if (t.startsWith('💎')) {
+      flash('stolen'); ctx.sfx('fanfare'); Kit.callout('💎 HEIST!', 'gold');
+      const thief = Object.entries(h.last.choices).find(([, c]) => c === 'grab')?.[0];
+      if (thief === S.me.id) ctx.confetti();
+    } else if (t.startsWith('🥱')) ctx.sfx('bad');
+    else ctx.sfx('pop');
+  }
+
+  // the alarm: the whole screen strobes red for a moment
+  function strobe() {
+    if (!motionOK()) return;
+    const s = ctx.el('div', 'h-strobe');
+    document.body.append(s);
+    setTimeout(() => s.remove(), 1750);
+  }
+
+  // the pot counts up or down to its new size, with a pile of coins that grows with it
+  function paintPot(pot) {
+    const el = document.getElementById('hPot'), coins = document.getElementById('hCoins');
+    const from = shownPot ?? pot;
+    shownPot = pot;
+    clearInterval(potTimer);
+    if (from === pot || !motionOK()) el.textContent = `💰${pot}`;
+    else {
+      let v = from;
+      potTimer = setInterval(() => { v += Math.sign(pot - v); el.textContent = `💰${v}`; if (v === pot) clearInterval(potTimer); }, Math.max(20, 600 / Math.abs(pot - from)));
+      if (pot > from) ctx.sfx('chip');
+    }
+    const n = Math.min(40, pot);
+    if (coins.childElementCount !== n) {
+      coins.replaceChildren(...Array.from({ length: n }, (_, k) => { const c = ctx.el('i'); c.style.bottom = (k % 8) * 3 + 'px'; c.style.left = Math.floor(k / 8) * 22 + (k % 2) * 4 + 'px'; return c; }));
+    }
+    document.getElementById('hVault').dataset.heat = pot >= 35 ? 3 : pot >= 20 ? 2 : pot >= 10 ? 1 : 0;
   }
 
   // one row per player, one column per night: what they chose and how their gold moved
@@ -96,5 +156,6 @@ UI.heist = (() => {
     : s.heist.mine ? `Locked in ${ICON[s.heist.mine]} — waiting…` : '🌙 Make your move!';
   const myMove = (s) => s.phase === 'playing' && !s.heist.mine && !s.me.spectator;
 
-  return { mount, render, turnText, myMove };
+  const unmount = () => clearInterval(potTimer);
+  return { mount, render, turnText, myMove, unmount };
 })();

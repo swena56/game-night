@@ -11,15 +11,10 @@ UI.rummy = (() => {
   const $ = (id) => document.getElementById(id);
   const joker = (c) => c[0] === 'X';
 
-  function face(card, cls = '') {
-    if (joker(card)) { const f = ctx.el('span', `pc joker ${cls}`); f.append(ctx.el('b', '', '🃏'), ctx.el('i', '', 'wild')); return f; }
-    const f = ctx.el('span', `pc ${'HD'.includes(card[1]) ? 'red' : 'black'} ${cls}`);
-    f.append(ctx.el('b', '', card[0] === 'T' ? '10' : card[0]), ctx.el('i', '', SUIT[card[1]] + '︎'));
-    return f;
-  }
+  const face = (card, cls = '') => (joker(card) ? Cards.joker(cls) : Cards.face(card, cls));
 
   function mount(main, side) {
-    sel = []; staged = []; stageFor = ''; order = []; drag = null;
+    sel = []; staged = []; stageFor = ''; order = []; drag = null; shownMelds = null;
     main.innerHTML = `<div class="ru">
       <div class="ru-top"><div id="ruContract" class="ru-contract"></div>
         <div class="ru-piles"><button id="ruDeck" class="ru-pile"></button><button id="ruDiscard" class="ru-pile"></button></div></div>
@@ -36,7 +31,14 @@ UI.rummy = (() => {
     $('ruSet').onclick = () => stage('set');
     $('ruRun').onclick = () => stage('run');
     $('ruLay').onclick = () => ctx.quiet(ctx.act('laydown', { groups: staged.map(([kind, cards]) => ({ kind, cards })) }));
-    $('ruThrow').onclick = () => { if (sel.length === 1) { const card = sel[0]; sel = []; ctx.quiet(ctx.act('discard', { card })); } };
+    $('ruThrow').onclick = () => {
+      if (sel.length !== 1) return;
+      const card = sel[0]; sel = [];
+      // the card leaves the hand and sails onto the discard pile
+      const from = [...$('ruHand').children].find((b) => b.dataset.card === card)?.firstElementChild;
+      Kit.fly(from, $('ruDiscard').querySelector('.pc') || $('ruDiscard'), { ms: 380, remove: false });
+      ctx.quiet(ctx.act('discard', { card }));
+    };
   }
 
   // ---------- hand order: a multiset kept in step with the server's hand (two decks, so cards repeat)
@@ -123,7 +125,20 @@ UI.rummy = (() => {
     sel = sel.filter((x) => r.hand.includes(x));
     if (r.down[me]) staged = [];
 
-    $('ruContract').textContent = `Hand ${r.handNo}/${r.hands}: ${r.contractText}`;
+    // the contract as a checklist: one box per set and run, ticked as they're staged (or all, once down)
+    const con = $('ruContract'); con.innerHTML = '';
+    con.append(ctx.el('span', '', `Hand ${r.handNo}/${r.hands}: `));
+    const [needSets, needRuns] = r.contract, down = me != null && r.down[me];
+    const stagedSets = staged.filter(([kd]) => kd === 'set').length, stagedRuns = staged.filter(([kd]) => kd === 'run').length;
+    for (let k2 = 0; k2 < needSets; k2++) con.append(ctx.el('span', 'ru-goal' + (down || k2 < stagedSets ? ' done' : ''), '🎯 set'));
+    for (let k2 = 0; k2 < needRuns; k2++) con.append(ctx.el('span', 'ru-goal' + (down || k2 < stagedRuns ? ' done' : ''), '🪜 run'));
+    con.title = r.contractText;
+    // a player laying down: their new melds sweep in
+    const meldCount = r.melds.length;
+    const laid = shownMelds != null && meldCount > shownMelds;
+    if (laid) { ctx.sfx('sweep'); if (r.melds.slice(shownMelds).some((m) => m.owner === me)) Kit.callout('Down!', 'good', { ms: 1000 }); }
+    const freshFrom = laid ? shownMelds : meldCount;
+    shownMelds = meldCount;
     const deck = $('ruDeck'); deck.innerHTML = ''; deck.append(ctx.el('span', 'pc back'), ctx.el('small', '', `${r.deck} left`));
     const dis = $('ruDiscard'); dis.innerHTML = '';
     const tossed = shownTop !== undefined && r.top && r.top !== shownTop;  // a fresh discard lands on the pile
@@ -132,13 +147,23 @@ UI.rummy = (() => {
     deck.disabled = dis.disabled = !myTurn || r.drawn;
     if (!r.top) dis.disabled = true;
 
+    // cards laid off onto a meld since the last look glow for a moment; a player going out gets a callout
+    const added = r.melds.map((m, idx) => {
+      const was = [...(meldCards[idx] || [])], fresh = new Set();
+      if (meldCards[idx]) m.cards.forEach((x, k) => { const at = was.indexOf(x); if (at >= 0) was.splice(at, 1); else fresh.add(k); });
+      return fresh;
+    });
+    meldCards = r.melds.map((m) => [...m.cards]);
+    if (shownCounts && shownNo === r.handNo) r.counts.forEach((n, i) => { if (!n && shownCounts[i]) Kit.callout(i === me ? '🃏 You go out!' : `🃏 ${name(i)} goes out!`, i === me ? 'gold' : 'cool', { sound: i === me ? 'fanfare' : 'sweep', ms: 1600 }); });
+    shownCounts = [...r.counts];
     const melds = $('ruMelds'); melds.innerHTML = '';
     if (!r.melds.length) melds.append(ctx.el('p', 'hint', 'No melds on the table yet.'));
     r.melds.forEach((m, idx) => {
-      const b = ctx.el('button', 'ru-meld' + (myTurn && r.down[me] && sel.length ? ' can' : ''));
+      const b = ctx.el('button', 'ru-meld' + (myTurn && r.down[me] && sel.length ? ' can' : '') + (idx >= freshFrom ? ' fresh' : ''));
+      if (idx >= freshFrom) b.style.animationDelay = (idx - freshFrom) * 0.12 + 's';
       const who = ctx.el('small', '', `${name(m.owner)} · ${m.kind}`);
       const row = ctx.el('span', 'ru-cards');
-      m.cards.forEach((x) => row.append(face(x, 'small')));
+      m.cards.forEach((x, k) => row.append(face(x, 'small' + (added[idx]?.has(k) ? ' laidoff' : ''))));
       b.append(who, row);
       b.disabled = !(myTurn && r.drawn && r.down[me] && sel.length);
       b.onclick = () => { const cards = sel; sel = []; ctx.quiet(ctx.act('add', { meld: idx, cards })); };
@@ -171,7 +196,7 @@ UI.rummy = (() => {
   // #31: cards new to the hand since it was last drawn are dealt in from the deck, one after another (the
   // whole hand at the start of each deal, the drawn card on a turn). A multiset: two decks repeat cards.
   // Opening the page mid-hand shows the hand as it is, unless it was only just dealt.
-  let shown = null, shownNo = null, shownTop, dealing = [], dealStart = 0;  // dealing: [{card, delay}] from dealStart
+  let shown = null, shownNo = null, shownTop, dealing = [], dealStart = 0, shownMelds = null, meldCards = [], shownCounts = null;  // dealing: [{card, delay}] from dealStart
   function freshCards(r) {
     if (shownNo !== r.handNo) {
       const n = r.counts.length, size = r.handNo <= 3 ? 10 : 12;
@@ -242,7 +267,7 @@ UI.rummy = (() => {
     });
   }
 
-  function unmount() { drag?.ghost?.remove(); drag = null; shown = shownNo = null; shownTop = undefined; dealing = []; }
+  function unmount() { drag?.ghost?.remove(); drag = null; shown = shownNo = null; shownTop = undefined; dealing = []; meldCards = []; shownCounts = null; }
 
   return { mount, render, unmount };
 })();

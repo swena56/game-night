@@ -42,6 +42,7 @@ class Qork(Game):
     name = "Qork"
     icon = "🥤"
     blurb = "Doubles or seven? Yank your Qork before the cup slams down."
+    badges = {**Game.badges, "lightning": ("⚡", "Lightning hands", "Escape the cup in under 300 ms")}
     min_players = 2
     max_players = 6
     settings_schema = {
@@ -234,6 +235,8 @@ class Qork(Game):
                 escaped.append(q)
                 q.g.score += 1
                 q.g.escapes += 1
+                if 0 <= y < 300:
+                    self.award(q, "lightning")
             elif slam is not None:
                 trapped.append(q)
             else:

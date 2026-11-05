@@ -24,6 +24,8 @@ class MoonShot(Game):
              "back to the start. Stars boost, meteors knock you back, wormholes swap you with the leader.")
     min_players = 1
     max_players = 6
+    badges = {**Game.badges, "wormhole": ("🌀", "Shortcut", "Swap places with the leader through a wormhole"),
+              "one_shot": ("🌕", "Straight to the moon", "Fly from the launch pad to the moon in one go")}
     settings_schema = {
         "goal": ("Distance", [(30, "Short (30)"), (50, "Classic (50)"), (75, "Long (75)")], 50),
         "hazards": ("Space hazards", [(True, "On"), (False, "Off")], True),
@@ -123,12 +125,15 @@ class MoonShot(Game):
             leader = max(self.seats, key=lambda i: self.pos[i] if i in r.players else -1)
             if leader != p.id and self.pos[leader] > land:
                 self.pos[p.id], self.pos[leader] = self.pos[leader], land
+                self.award(p, "wormhole")
                 msg += f" — 🌀 wormhole! Swapped places with {r.players[leader].name}"
             else:
                 msg += " — 🌀 wormhole, but they're already in the lead"
         r.add_log(msg + ".", "question")
         if self.pos[p.id] >= self.goal:
             self.pos[p.id] = self.goal
+            if fuel >= self.goal:
+                self.award(p, "one_shot")
             if self.solo():
                 return r.finish(p, f"🌕 {p.name} reached the moon on turn {self.turns + 1} of {self.limit()}!")
             return r.finish(p, f"🌕 {p.name} reached the moon!")

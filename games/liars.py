@@ -46,6 +46,8 @@ class LiarsDice(Game):
     name = "Liar's Dice"
     icon = "🤥"
     blurb = "Bluff about the dice under everyone's cups, or call the last bid a lie."
+    badges = {**Game.badges, "spot_on": ("🎯", "Spot on", "Call 🎯 Exact and be right"),
+              "untouchable": ("🛡️", "Untouchable", "Win without losing a single die")}
     min_players = 2
     max_players = 6
     settings_schema = {
@@ -163,6 +165,8 @@ class LiarsDice(Game):
         else:
             hit = n == q
             losers = [x for x in self.players() if x.id != p.id] if hit else [p]
+            if hit:
+                self.award(p, "spot_on")
             r.add_log(f"🎯 {p.name} calls exactly {say(q, f)}: there are {n}" + (" — spot on! Everyone else loses a die." if hit else f". {p.name} loses a die."), "power")
         out = []
         for x in losers:
@@ -178,6 +182,8 @@ class LiarsDice(Game):
         left = self.players()
         if len(left) == 1:
             w = left[0]
+            if w.g.count >= DICE:
+                self.award(w, "untouchable")
             return r.finish(w, f"🏆 {w.name} wins Liar's Dice with {w.g.count} {'die' if w.g.count == 1 else 'dice'} left!")
         # the one who lost a die starts; if they're out (or many lost), the caller does
         nxt = losers[0] if len(losers) == 1 and not losers[0].eliminated else p

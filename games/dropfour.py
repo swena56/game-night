@@ -106,6 +106,8 @@ class DropFour(Game):
         "bombs": ("Bomb discs", [(False, "Off"), (True, "💣 One each")], False),
         "pull": ("Pull-outs", [(False, "Off"), (True, "⬇️ Pull your own disc from the bottom")], False),
     }
+    badges = {**Game.badges, "demolition": ("💥", "Demolition", "Connect four with your own bomb or pull-out"),
+              "gift": ("🎁", "Thanks for that", "Win because a rival's bomb or pull-out connected your four")}
     moves = ()  # [seat, column, bomb?] in order; games saved before the history have none
 
     def start(self, seated, rng):
@@ -174,6 +176,10 @@ class DropFour(Game):
             if line and self.in_play(s):
                 self.line = line
                 w = r.players[self.seats[s]]
+                if how != "drop" and s == seat:
+                    self.award(w, "demolition")
+                elif s != seat:
+                    self.award(w, "gift")
                 text = (f"🏆 {w.name} connects four!" if s == seat else
                         f"💥 {p.name}'s {'bomb' if how == 'bomb' else 'pull'} backfired — {w.name} connects four!")
                 return r.finish(w, text)

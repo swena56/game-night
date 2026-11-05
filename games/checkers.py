@@ -166,6 +166,7 @@ class Checkers(Undo, Game):
     name = "Checkers"
     icon = "⛀"
     blurb = "Jump to capture — captures are compulsory and chain together. Reach the far side to crown a king."
+    badges = {**Game.badges, "triple": ("🦘", "Hop to it", "Win with a triple jump")}
     settings_schema = {
         "kings": ("Kings", [("short", "Classic (one step)"), ("flying", "🦅 Flying")], "short"),
     }
@@ -240,6 +241,8 @@ class Checkers(Undo, Game):
         opp_id = self.seats[1 - self.seats.index(p.id)]
         opp_side = "l" if self.side(p) == "d" else "d"
         if not moves_for(self.board, opp_side, self.flying()):
+            if len(path) >= 4:
+                self.award(p, "triple")
             return r.finish(p, f"🏆 {p.name} wins — {r.players[opp_id].name} has no moves left!")
         if self.quiet >= NO_PROGRESS_LIMIT:
             return r.finish(None, "🤝 Draw — 40 moves each with no capture or crowning.")

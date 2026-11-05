@@ -3,7 +3,7 @@
 UI.qork = (() => {
   let S, ctx, shownNo, shownAt, pressedNo, tumbleTimer, rollTimer;
   const $ = (id) => document.getElementById(id);
-  const PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
+  const PIPS = Dice.PIPS;
   const replay = () => !ctx || ctx.peek == null;
 
   function face(box, v) {
@@ -16,7 +16,9 @@ UI.qork = (() => {
     if (e.key === ' ' && !e.repeat && !/INPUT|TEXTAREA/.test(document.activeElement?.tagName || '')) { e.preventDefault(); press(); }
   }
 
+  let seenRes = null;
   function mount(main, side) {
+    seenRes = null;
     shownNo = -1; shownAt = 0; pressedNo = -1;
     main.innerHTML = `<div class="qk">
       <div id="qkInfo" class="qk-info"></div>
@@ -135,8 +137,20 @@ UI.qork = (() => {
         const tag = pid === g.cupper ? '🥤' : res.escaped.includes(pid) ? '💨' : '🔒';
         const row = ctx.el('div', 'qk-time');
         row.append(ctx.el('span', '', `${tag} ${ctx.player(pid)?.name ?? '?'}`), ctx.el('b', '', `${ms} ms`));
+        // my own best reaction on this device: a new record gets its moment
+        if (pid === S.me.id && !replay()) {
+          let best = null;
+          try { best = JSON.parse(localStorage.getItem('qork.best')); } catch {}
+          if (JSON.stringify(res) !== seenRes && (best == null || ms < best)) {
+            try { localStorage.setItem('qork.best', JSON.stringify(ms)); } catch {}
+            if (best != null) Kit.callout(`⚡ ${ms} ms — new best!`, 'gold', { sound: 'fanfare', ms: 1800 });
+            best = ms;
+          }
+          row.append(ctx.el('small', 'hint', ` · best ${best} ms`));
+        }
         times.append(row);
       }
+      seenRes = JSON.stringify(res);
       for (const pid of res.trapped.filter((id) => !(id in res.times && res.times[id] >= 0))) {
         times.append(ctx.el('div', 'qk-time', `🔒 ${ctx.player(pid)?.name ?? '?'} — didn't move`));
       }

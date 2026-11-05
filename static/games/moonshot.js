@@ -1,11 +1,10 @@
 UI.moonshot = (() => {
-  let S, ctx, track, builtFor = '', shownRoll = '';
+  let S, ctx, track, builtFor = '', shownRoll = '', shownPos = null;
   const TILE = { star: '⭐', meteor: '☄️', wormhole: '🌀' };
-  const DIE = ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
-    builtFor = ''; shownRoll = '';
+    builtFor = ''; shownRoll = ''; shownPos = null;
     // The dice and buttons sit right under the track (not in the side panel), so on a phone they're
     // on screen without scrolling past the board.
     main.innerHTML = `<div class="moon-track"></div>
@@ -40,6 +39,7 @@ UI.moonshot = (() => {
       }
     }
     const cells = track.children;
+    const before = Kit.snap(track);  // where each rocket was, so a move flies cell to cell
     for (const cell of cells) { cell.querySelector('.rockets').innerHTML = ''; cell.classList.remove('preview'); }
     for (const pid of m.seats) {
       const p = ctx.player(pid);
@@ -47,15 +47,27 @@ UI.moonshot = (() => {
       const r = ctx.el('span', 'rocket' + (pid === S.turn ? ' active' : ''), Array.from(p.name.replace('🤖 ', '')).slice(0, 2).join(''));
       r.style.background = p.color;
       r.title = p.name;
+      r.dataset.k = pid;
+      if (m.shields?.[pid]) { r.classList.add('shielded'); r.dataset.shields = '🛡️'.repeat(m.shields[pid]); }
       cells[Math.min(m.pos[pid], m.goal)].querySelector('.rockets').append(r);
     }
     if (m.preview && m.preview.cell <= m.goal) cells[m.preview.cell].classList.add('preview');
 
-    $('msDice').textContent = m.dice ? m.dice.map((d) => DIE[d]).join(' ') : '🎲';
-    const rk = `${S.turn}|${m.fuel}|${m.dice}|${m.pos[S.turn]}`;
-    if (m.dice && shownRoll && rk !== shownRoll) {  // a fresh roll tumbles in
-      const d = $('msDice'); d.classList.remove('roll'); void d.offsetWidth; d.classList.add('roll');
+    Kit.glide(track, before, 650);
+    // what the move did: a flight, a crash to the pad, a boost, a meteor, a wormhole swap
+    if (shownPos) for (const pid of m.seats) {
+      const was = shownPos[pid] ?? 0, now = m.pos[pid] ?? 0, cell = cells[Math.min(now, m.goal)];
+      if (now === was) continue;
+      if (now === 0 && was > 0 && m.dice?.[0] === 1 && m.dice?.[1] === 1) { Kit.callout('💥 CRASH', 'bad'); ctx.sfx('boom'); ctx.buzz(90); }
+      else if (now > was) { ctx.sfx('whoosh'); if (m.tiles[now] === 'star' || m.tiles[now - 5] === 'star') Kit.flyText(cell, '⭐ +5', 'gold'); }
+      else Kit.flyText(cell, m.tiles[now + 5] === 'meteor' ? '☄️ −5' : '🌀', 'bad');
     }
+    shownPos = { ...m.pos };
+    // real dice with pips, tumbling in on a fresh roll
+    const dice = $('msDice');
+    dice.replaceChildren(...(m.dice || [0, 0]).map((v) => Dice.die(v, m.dice ? '' : 'blank')));
+    const rk = `${S.turn}|${m.fuel}|${m.dice}|${m.pos[S.turn]}`;
+    if (m.dice && shownRoll && rk !== shownRoll) Dice.roll(dice.children, { sound: false });
     shownRoll = rk;
     $('msFuel').textContent = `⛽ ${m.fuel} fuel this turn` + (m.turnsLeft != null ? ` · ⏳ ${m.turnsLeft} turn${m.turnsLeft === 1 ? '' : 's'} left` : '');
     const turnPlayer = ctx.player(S.turn);

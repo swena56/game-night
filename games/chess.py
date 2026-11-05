@@ -295,6 +295,8 @@ class Chess(Game):
     name = "Chess"
     icon = "♟️"
     blurb = "The classic, with every rule: castling, en passant, promotion, and draws by stalemate or repetition."
+    badges = {**Game.badges, "quickmate": ("⚡", "Quick mate", "Checkmate within your first 20 moves"),
+              "pawnmate": ("♟", "Humble hero", "Deliver checkmate with a pawn")}
     settings_schema = {
         "clock": ("Clock", [(0, "Untimed"), (180, "⚡ 3 min + 2s"), (300, "5 min"), (600, "10 min + 5s")], 0),
     }
@@ -405,6 +407,10 @@ class Chess(Game):
         if not replies:
             r.add_log(f"{p.name}: {text}{'#' if check else ''}", "question")
             if check:
+                if len(self.sans) <= 40:
+                    self.award(p, "quickmate")
+                if before.b[move[0]][move[1]][1] == "P":
+                    self.award(p, "pawnmate")
                 return r.finish(p, f"♚ Checkmate! {p.name} wins.")
             return r.finish(None, "🤝 Stalemate — it's a draw.")
         r.add_log(f"{p.name}: {text}{'+' if check else ''}", "question")

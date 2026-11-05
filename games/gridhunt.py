@@ -78,6 +78,7 @@ class GridHunt(Game):
     name = "Grid Hunt"
     icon = "🔎"
     blurb = "Race the clock to find words in a shaken letter grid. Words a rival also found don't count."
+    badges = {**Game.badges, "long_word": ("🧵", "Long word", "Find a word of 7+ letters that nobody else found")}
     min_players = 1
     max_players = 6
     settings_schema = {
@@ -231,6 +232,8 @@ class GridHunt(Game):
         for p in live:
             p.g.round_pts = sum(self.points(w) for w in p.g.words if counts[w] == 1)
             p.g.score += p.g.round_pts
+            if any(len(w) >= 7 and counts[w] == 1 for w in p.g.words):
+                self.award(p, "long_word")
         missed = sorted((w for w in self.all if not counts[w]), key=lambda w: (-len(w), w))[:8]
         self.results = {
             "lists": {p.id: [[w, self.points(w), counts[w] > 1] for w in sorted(p.g.words, key=lambda w: (-len(w), w))]

@@ -31,9 +31,13 @@ UI.billiards = (() => {
     // room for the table: the measured stage (below the top bar and chips, above the dock) less the shot
     // controls when they sit under it. The game-info strip goes below and scrolls; the chip on the table
     // says whose turn it is. Held sideways on a phone the controls stand beside the table instead.
+    // Focus mode on a wide screen: the table takes all the height and the info card and (when there is no
+    // room under the table) the shot controls float over it, so the table is as big as the screen allows.
     const css = getComputedStyle(document.documentElement), controls = stage.nextElementSibling;
-    const beside = controls && controls.offsetTop < stage.offsetTop + stage.offsetHeight;
-    const below = beside ? 0 : (controls?.offsetHeight ?? 60) + 10;
+    const fill = !portrait && document.body.classList.contains('focus');
+    const ctlH = controls?.offsetHeight ?? 60;
+    const beside = !fill && controls && controls.offsetTop < stage.offsetTop + stage.offsetHeight;
+    const below = fill ? 14 : beside ? 0 : ctlH + 10;
     const stageH = parseFloat(css.getPropertyValue('--stage-h')), arena = $('arena');
     let availH;
     if (stageH && arena) availH = stageH - (stage.getBoundingClientRect().top - arena.getBoundingClientRect().top) - below - 4;
@@ -45,6 +49,9 @@ UI.billiards = (() => {
     const w = stage.clientWidth || 320;
     const k = portrait ? Math.min(w / shortSide, availH / longSide) : Math.min(w / longSide, availH / shortSide);
     const cw = Math.round((portrait ? shortSide : longSide) * k), ch = Math.round((portrait ? longSide : shortSide) * k);
+    const bl = stage.parentElement;
+    bl.classList.toggle('bl-fill', fill);
+    bl.classList.toggle('bl-over', fill && availH - ch < ctlH + 6);  // no room under the table: the controls float over it
     c.style.width = cw + 'px'; c.style.height = ch + 'px';
     c.width = Math.round(cw * dpr); c.height = Math.round(ch * dpr);
     geo = { k: k * dpr, css: k, portrait, focus: document.body.classList.contains('focus') };
@@ -583,6 +590,9 @@ UI.billiards = (() => {
       if (t > 0.18) aim += held.dir * rate * dt;
     }
     held.last = now;
+    // the floating controls and info card fade while balls roll or the cue is being aimed, so they hide nothing that matters
+    const busy = !!(anim || drag || touches.size), bl = $('blStage')?.parentElement;
+    if (bl && bl.classList.contains('bl-busy') !== busy) bl.classList.toggle('bl-busy', busy);
     draw(); shotSounds();
   }
 

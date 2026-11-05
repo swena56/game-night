@@ -1,6 +1,15 @@
 // Drives the real Game Night UI in jsdom (a simulated, phone-sized browser) against a running server,
 // playing each game through real clicks and reporting any JavaScript errors.
 // Usage: start a server (e.g. PORT=8767 python3 server.py), then in tests/: npm install && BASE=http://localhost:8767 node ui.js [game ...]
+// jsdom's loader makes a fresh keep-alive agent for every resource (~50 scripts a page) and never reuses
+// or closes them; with a few pages opened that left page loads hanging. One shared, pooled agent instead
+// (jsdom picks up this module from the require cache).
+{
+  const http = require('http'), https = require('https'), path = require('path');
+  const factory = path.join(path.dirname(require.resolve('jsdom')), 'jsdom/living/helpers/agent-factory.js');
+  const shared = { http: new http.Agent({ keepAlive: true, maxSockets: 8 }), https: new https.Agent({ keepAlive: true, maxSockets: 8 }) };
+  require.cache[factory] = { id: factory, filename: factory, loaded: true, exports: () => shared };
+}
 const { JSDOM, VirtualConsole } = require('jsdom');
 const BASE = process.env.BASE || 'http://localhost:8767';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -37,7 +46,20 @@ ES.CONNECTING = 0; ES.OPEN = 1; ES.CLOSED = 2;
 // A canvas 2D context that accepts every call and draws nothing (jsdom has no canvas).
 const stubContext = () => new Proxy({}, { get: (t, k) => (k in t ? t[k] : /^create.*Gradient$/.test(k) ? () => ({ addColorStop() {} }) : () => {}), set: (t, k, v) => { t[k] = v; return true; } });
 
+// On a busy host jsdom can take a long time over the page's ~50 scripts, and now and then never fires
+// `load` at all, which used to hang a whole run. Each try gets LOAD_MS (env LOAD_MS overrides); a stuck
+// page is closed and opened again, up to three tries.
+const LOAD_MS = +(process.env.LOAD_MS || 60000);
 async function openPage(stubCanvas = false) {
+  for (let attempt = 1; ; attempt++) {
+    const limit = sleep(LOAD_MS + 5000).then(() => { throw new Error('page never opened'); });
+    try { return await Promise.race([openOnce(stubCanvas), limit]); } catch (e) {
+      if (attempt >= 3) throw e;
+      console.error(`   (page load ${attempt} stalled: ${e.message}; retrying)`);
+    }
+  }
+}
+async function openOnce(stubCanvas) {
   const errors = [];
   const vc = new VirtualConsole();
   vc.on('jsdomError', (e) => { if (!/Could not load img|Not implemented: HTMLCanvasElement/.test(e.message)) errors.push('jsdomError: ' + (e.detail?.stack || e.stack || e.message)); });
@@ -55,7 +77,11 @@ async function openPage(stubCanvas = false) {
       w.AudioContext = undefined;
     },
   });
-  await new Promise((r) => (dom.window.document.readyState === 'complete' ? r() : dom.window.addEventListener('load', r)));
+  const loaded = await Promise.race([
+    new Promise((r) => (dom.window.document.readyState === 'complete' ? r(true) : dom.window.addEventListener('load', () => r(true)))),
+    sleep(LOAD_MS).then(() => false),
+  ]);
+  if (!loaded) { try { dom.window.close(); } catch {} throw new Error(`no load event in ${LOAD_MS / 1000} s`); }
   return { w: dom.window, d: dom.window.document, errors, close: () => { try { dom.window.eval('es && es.close()'); } catch {} dom.window.close(); } };
 }
 
@@ -146,13 +172,21 @@ const MOVES = {
     c.getBoundingClientRect = () => ({ left: 0, top: 0, width: 320, height: 512 });
     for (const type of ['pointerdown', 'pointermove']) c.dispatchEvent(new w.MouseEvent(type, { clientX: 40 + Math.random() * 240, clientY: 280 + Math.random() * 220, buttons: 1 }));
   },
-  riders(d, S, n, w) {  // mix pad taps, swipes and keys
-    if (n % 3 === 0) return d.querySelectorAll('#lrPad button[data-d]')[n % 4]?.dispatchEvent(new w.MouseEvent('pointerdown', { bubbles: true }));
-    if (n % 3 === 1) return w.dispatchEvent(new w.KeyboardEvent('keydown', { code: pick(['ArrowLeft', 'ArrowRight', 'KeyW', 'Space']) }));
-    const st = d.querySelector('#lrStage');
-    st.dispatchEvent(new w.MouseEvent('pointerdown', { clientX: 100, clientY: 100 }));
-    st.dispatchEvent(new w.MouseEvent('pointermove', { clientX: 100 + pick([-40, 40, 0]), clientY: 100 + pick([-40, 40]) }));
-    st.dispatchEvent(new w.MouseEvent('pointerup', {}));
+  riders(d, S, n, w) {  // mix taps (relative-turn mode), swipes anywhere, the boost button and keys
+    const root = d.querySelector('#lrRoot');
+    if (n % 4 === 0) {
+      const tap = d.querySelector('#lrTap');
+      if (!tap.checked) { tap.checked = true; tap.dispatchEvent(new w.Event('change', { bubbles: true })); }
+      root.getBoundingClientRect = () => ({ left: 0, top: 0, width: 320, height: 480 });
+      return root.dispatchEvent(new w.MouseEvent('pointerdown', { bubbles: true, clientX: pick([40, 280]), clientY: 200 }));
+    }
+    if (n % 4 === 1) return w.dispatchEvent(new w.KeyboardEvent('keydown', { code: pick(['ArrowLeft', 'ArrowRight', 'KeyW', 'KeyQ', 'KeyE', 'Space']) }));
+    if (n % 4 === 2) return d.querySelector('#lrBoost')?.dispatchEvent(new w.MouseEvent('pointerdown', { bubbles: true }));
+    const tap = d.querySelector('#lrTap');
+    if (tap.checked) { tap.checked = false; tap.dispatchEvent(new w.Event('change', { bubbles: true })); }
+    root.dispatchEvent(new w.MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 100 }));
+    root.dispatchEvent(new w.MouseEvent('pointermove', { bubbles: true, clientX: 100 + pick([-40, 40, 0]), clientY: 100 + pick([-40, 40]) }));
+    root.dispatchEvent(new w.MouseEvent('pointerup', { bubbles: true }));
   },
   tictactoe(d) { click(pick(enabled(d, '.ttt-cell'))); },
   heist(d) { click(pick(enabled(d, '.h-choice'))); },
