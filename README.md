@@ -89,7 +89,7 @@ port, and `http://localhost` still works on the server's own device.
 
 | Game | Players | What it is | Twist |
 |---|---|---|---|
-| 🚢 **Sea Battle** | 2 | The classic pencil-and-paper fleet hunt: hide 5 ships, then take turns firing. | Firing rules: 1 shot, hit = fire again, or Salvo (1 shot per ship afloat). Optional 📡 sonar counts the ship squares in a 3×3 area. A 12×12 sea with a sixth ship (a Frigate) for longer hunts. |
+| 🚢 **Sea Battle** | 2 | The classic pencil-and-paper fleet hunt: hide 5 ships, then take turns firing. | Firing rules: 1 shot, hit = fire again, or Salvo (1 shot per ship afloat). Optional 📡 sonar counts the ship squares in a 3×3 area. A 12×12 sea with a sixth ship (a Frigate) for longer hunts. 💥 **Torpedo** (off by default): once a game, fire at three squares in a line, across or down, as one shot (bots keep to single shots). |
 | 🔴 **Drop Four** | 2–4 | Gravity four-in-a-row. 3–4 players get a 9×7 board. | Optional 💣 **bomb disc**: it clears its 3×3 neighbourhood and the stack falls, which can complete *someone else's* line. Optional ⬇️ **pull-outs**: take one of your own discs out of the bottom row instead of dropping, and the column slides down. |
 | 🔳 **Dots & Boxes** | 2–6 | The pencil-and-paper classic on a 3×3 to 6×6 grid. Close a box to claim it and move again. On touch screens a line takes two taps (pick, then confirm). | Optional 💎 **gem boxes** worth 3 points. In the endgame, when every line gives boxes away, a ⛓ hint lists the chains and loops left. |
 | ❌ **Tic-Tac-Toe** | 2 | The classic. | 👻 **Vanishing**: you keep only your 3 newest marks, and the oldest fades out. A 4×4 board (four in a row; Vanishing keeps 4). |

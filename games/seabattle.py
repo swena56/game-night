@@ -59,6 +59,7 @@ class SeaBattle(Game):
                                   ("salvo", "Salvo: 1 shot per ship afloat")], "chain"),
         "sonar": ("Sonar", [(True, "📡 One scan each"), (False, "Off")], True),
         "size": ("Sea", [(10, "10×10, 5 ships"), (12, "12×12, 6 ships")], 10),
+        "torpedo": ("Torpedo", [(False, "Off"), (True, "💥 One each: a line of 3")], False),
     }
     n = N  # games saved before the 12×12 sea
 
@@ -76,6 +77,7 @@ class SeaBattle(Game):
             p.g.ships = None   # [{name, cells, hits}]
             p.g.shots = {}     # (r, c) -> "miss" | "hit" | "sunk"  (my shots at the enemy)
             p.g.sonar = 1 if self.s["sonar"] else 0
+            p.g.torpedo = 1 if self.s.get("torpedo") else 0
             p.g.scans = []     # [r, c, count]
         t = self.s["timer"]
         self.room.deadline = time.time() + max(60, 2 * t) if t else None
@@ -129,6 +131,15 @@ class SeaBattle(Game):
             if not p.g.sonar:
                 raise GameError("No sonar left.")
             return self.scan(p, r, c)
+        if t == "torpedo":
+            if not getattr(p.g, "torpedo", 0):
+                raise GameError("No torpedo left.")
+            across = a.get("dir", "h") != "v"
+            line = [(r + (0 if across else k), c + (k if across else 0)) for k in (-1, 0, 1)]
+            line = [(y, x) for y, x in line if 0 <= y < self.n and 0 <= x < self.n and (y, x) not in p.g.shots]
+            if not line:
+                raise GameError("Aim the torpedo at squares you haven't fired at.")
+            return self.torpedo(p, line)
         raise GameError("Unknown action.")
 
     def maybe_begin(self):
@@ -149,6 +160,25 @@ class SeaBattle(Game):
         return 1
 
     def fire(self, p, r, c):
+        hit = self.strike(p, r, c)
+        if hit is not None:
+            self.after_shot(p, hit)
+
+    def torpedo(self, p, line):
+        """💥 Torpedo (room option): once a game, fire at up to three squares in a line as one shot."""
+        p.g.torpedo -= 1
+        self.room.add_log(f"💥 {p.name} launches a torpedo!", "power")
+        hit = False
+        for r, c in line:
+            got = self.strike(p, r, c)
+            if got is None:  # that sank the last ship
+                return
+            hit = hit or got
+        self.last = list(line[len(line) // 2])
+        self.after_shot(p, hit)
+
+    def strike(self, p, r, c):
+        """Fire one shot at (r, c). True for a hit, False for a miss, None when it won the game."""
         room = self.room
         opp = self.opponent(p)
         self.last = [r, c]
@@ -169,11 +199,12 @@ class SeaBattle(Game):
                         self.award(p, "admiral")
                     if len(p.g.shots) <= 2 * sum(len(s["cells"]) for s in opp.g.ships):
                         self.award(p, "eagle")
-                    return room.finish(p, f"🏆 {p.name} sank the whole fleet!")
+                    room.finish(p, f"🏆 {p.name} sank the whole fleet!")
+                    return None
             else:
                 p.g.shots[(r, c)] = "hit"
                 room.add_log(f"{p.name} fires at {cell_name(r, c)} — 🔥 hit!", "question")
-        self.after_shot(p, hit)
+        return hit
 
     def scan(self, p, r, c):
         opp = self.opponent(p)
@@ -242,6 +273,7 @@ class SeaBattle(Game):
                                                                      for i in self.seats if i in room.players},
             "shotsLeft": self.shots_left if room.turn == p.id else 0,
             "sonar": getattr(me.g, "sonar", 0) if me and me.id == p.id else 0,
+            "torpedo": getattr(me.g, "torpedo", 0) if me and me.id == p.id else 0,
             "scans": me.g.scans if me and (me.id == p.id or see_all) else [],
             "last": self.last, "player": me.id if me else None,
         }}
