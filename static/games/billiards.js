@@ -58,15 +58,17 @@ UI.billiards = (() => {
     if (gl) { gl.canvas.style.width = cw + 'px'; gl.canvas.style.height = ch + 'px'; gl.resize(cw, ch, portrait); }
   }
   // table (x, y) -> canvas pixels; portrait puts the head (break end) at the bottom
+  // (with the two-finger zoom applied: the table is drawn zoomed, not the picture scaled, so it stays sharp)
   function toScreen(x, y) {
-    const { k, portrait } = geo, W = S.billiards.W;
-    return portrait ? [(RAIL + y) * k, (RAIL + W - x) * k] : [(RAIL + x) * k, (RAIL + y) * k];
+    const { k, portrait } = geo, W = S.billiards.W, d = k / geo.css;
+    const [px, py] = portrait ? [(RAIL + y) * k, (RAIL + W - x) * k] : [(RAIL + x) * k, (RAIL + y) * k];
+    return [px * view.z + view.x * d, py * view.z + view.y * d];
   }
   function toTable(clientX, clientY) {
     if (view3d && gl) return gl.pick(clientX, clientY) || [-1e3, -1e3];
     const c = $('blCanvas'), r = c.getBoundingClientRect(), W = S.billiards.W;
-    const k = geo.css * (r.width && parseFloat(c.style.width) ? r.width / parseFloat(c.style.width) : 1);  // allow for the zoom
-    const sx = (clientX - r.left) / k - RAIL, sy = (clientY - r.top) / k - RAIL;
+    const k = geo.css * (r.width && parseFloat(c.style.width) ? r.width / parseFloat(c.style.width) : 1);
+    const sx = (clientX - r.left - view.x) / view.z / k - RAIL, sy = (clientY - r.top - view.y) / view.z / k - RAIL;  // undo the zoom
     return geo.portrait ? [W - sy, sx] : [sx, sy];
   }
 
@@ -366,7 +368,9 @@ UI.billiards = (() => {
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.clearRect(0, 0, c.width, c.height);
     // rails, cloth, head line, pockets (drawn in table space)
-    if (geo.portrait) g.setTransform(0, -k, k, 0, RAIL * k, (RAIL + b.W) * k); else g.setTransform(k, 0, 0, k, RAIL * k, RAIL * k);
+    const z = view.z, d = k / geo.css;
+    g.setTransform(z, 0, 0, z, view.x * d, view.y * d);  // the zoom, then table space
+    if (geo.portrait) g.transform(0, -k, k, 0, RAIL * k, (RAIL + b.W) * k); else g.transform(k, 0, 0, k, RAIL * k, RAIL * k);
     g.fillStyle = '#5b3a1e'; roundRect(g, -RAIL, -RAIL, b.W + 2 * RAIL, b.H + 2 * RAIL, 4); g.fill();
     g.fillStyle = '#7a4f2a'; roundRect(g, -RAIL + 1, -RAIL + 1, b.W + 2 * RAIL - 2, b.H + 2 * RAIL - 2, 3.4); g.fill();
     const cloth = g.createRadialGradient(b.W / 2, b.H / 2, 10, b.W / 2, b.H / 2, b.W * 0.6);
@@ -403,7 +407,7 @@ UI.billiards = (() => {
 
     // balls: a playing shot's frame, or the resting table
     const balls = ballsNow();
-    const rpx = R * k;
+    const rpx = R * k * view.z;
     if (!anim && canShoot()) drawGuide(g, rpx);
     const sk = strokeNow();
     if (sk) drawStick(g, [sk.x, sk.y], sk.aim, sk.power, sk.english, rpx);
@@ -857,11 +861,12 @@ UI.billiards = (() => {
   }
 
   // ---------- input
+  // the zoom is drawn, not a CSS scale of the picture: the 3D camera crops to the zoomed part, and the flat view
+  // draws through it (toScreen), so balls and numbers stay sharp at 3×. view: CSS px, canvas point p shows (p - x) / z.
   function applyView() {
-    const c = surf();
-    if (!c) return;
-    c.style.transform = view.z === 1 ? '' : `translate(${view.x}px, ${view.y}px) scale(${view.z})`;
-    $('blZoom').hidden = view.z === 1;
+    if (!surf()) return;
+    if (gl) gl.setZoom(view.z, view.x, view.y);
+    $('blZoom').hidden = view.z === 1;  // (tick draws it next frame)
   }
   // two fingers on the table zoom (1–3×) and pan; the zoom centres on the fingers
   function onTouch(e, phase) {
@@ -951,7 +956,7 @@ UI.billiards = (() => {
     if (gl === undefined) return;  // still loading
     view3d = on && !!gl;
     view = { z: 1, x: 0, y: 0 };
-    for (const c of [$('blCanvas'), gl && gl.canvas]) if (c) c.style.transform = '';
+    if (gl) gl.setZoom(1, 0, 0);
     $('blZoom').hidden = true;
     $('blCanvas').hidden = view3d;
     if (gl) gl.canvas.hidden = !view3d;
