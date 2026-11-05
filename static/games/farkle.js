@@ -1,7 +1,7 @@
 // Farkle: tap scoring dice to set them aside (the live total shows what they're worth), then roll the
 // rest or bank. Dice buttons are built once per roll and updated in place.
 UI.farkle = (() => {
-  let S, ctx, picked = new Set(), rollKey = '', seenEvent = 0;
+  let S, ctx, picked = new Set(), rollKey = '', seenEvent = 0, scoreSeen = {};
   const $ = (id) => document.getElementById(id);
   const PIPS = Dice.PIPS;
   const num = (n) => Number(n || 0).toLocaleString();
@@ -42,10 +42,12 @@ UI.farkle = (() => {
   const die = (value, cls = '') => Dice.die(value, cls, 'button');
 
   function mount(main, side) {
-    picked = new Set(); rollKey = ''; seenEvent = 0;
+    picked = new Set(); rollKey = ''; seenEvent = 0; scoreSeen = {};
     main.innerHTML = `<div class="fk">
       <div id="fkTurn" class="fk-turn"></div>
-      <div id="fkDice" class="ya-dice fk-dice"></div>
+      <div class="ya-tray fk-tray"><div id="fkDice" class="ya-dice fk-dice"></div>
+        <div id="fkAside" class="fk-aside"></div></div>
+      <div id="fkRisk" class="fk-risk"><span class="fk-risk-bar"><i></i></span><small></small></div>
       <div id="fkEvent" class="fk-event"></div>
       <div class="row fk-buttons">
         <button id="fkBest" class="ghost-btn">✨ Pick the best</button>
@@ -84,6 +86,18 @@ UI.farkle = (() => {
     $('fkHint').textContent = !mine ? '' : !f.rolled ? 'Roll to start your turn.'
       : picked.size && !valid ? 'Every die you set aside has to score.'
       : valid ? `Rolling ${left} ${left === 1 ? 'die' : 'dice'}: ${FARKLE_PCT[left]}% chance to farkle.` : 'Tap scoring dice to set them aside, then roll the rest or bank.';
+    // the risk gauge: what's on the line and the chance the next roll farkles (with my picks, or, watching,
+    // after the best keep)
+    const risk = $('fkRisk'), best0 = f.options[0];
+    const next = valid ? left : best0 ? (f.roll.length - best0[1].length || 6) : 0;
+    const onLine = f.turnPts + (valid ? pts : best0 ? best0[0] : 0);
+    risk.hidden = !(S.phase === 'playing' && f.rolled && !f.farkled && next);
+    if (!risk.hidden) {
+      const pct = FARKLE_PCT[next] ?? 0;
+      risk.style.setProperty('--p', pct / 100);
+      risk.classList.toggle('hot', pct >= 40);
+      risk.querySelector('small').textContent = `${num(onLine)} on the line · roll ${next} more: ${pct}% to farkle`;
+    }
   }
 
   function render(s, c) {
@@ -108,6 +122,19 @@ UI.farkle = (() => {
     }
     paint();
 
+    // the dice set aside so far this turn, and how risky the next roll is: shown to the whole table, so
+    // everyone feels it when someone pushes their luck
+    const aside = $('fkAside'), as = f.aside || [];
+    const ak = as.join('');
+    if (aside.dataset.k !== ak) {
+      const grew = aside.dataset.k != null && ak.startsWith(aside.dataset.k) && ak.length > aside.dataset.k.length;
+      const from = grew ? aside.dataset.k.length : as.length;
+      aside.innerHTML = '';
+      as.forEach((v, i) => aside.append(Dice.die(v, 'small' + (i >= from ? ' in' : ''))));
+      aside.dataset.k = ak;
+    }
+    aside.hidden = !as.length;
+
     // the last farkle or bank, shown to everyone
     if (f.event && f.event.id !== seenEvent) {
       seenEvent = f.event.id;
@@ -121,7 +148,7 @@ UI.farkle = (() => {
       if (f.event.kind === 'farkle') {
         // a bust: the dice shake and go grey, with a thud
         const box = $('fkDice'); box.classList.remove('bust', 'shake'); void box.offsetWidth; box.classList.add('bust', 'shake');
-        Kit.callout('FARKLE!', 'bad', { ms: 1300 });
+        Kit.stamp(box, 'Farkle!', 'bad', 1300);
         ctx.sfx('wrong'); if (f.event.by === me) ctx.buzz([40, 40, 80]);
       } else if (f.event.kind === 'bank' && f.event.pts >= 1500) Kit.callout(`🏦 ${num(f.event.pts)}`, 'gold', { ms: 1300 });
       if (f.event.kind === 'hot') {
@@ -148,7 +175,10 @@ UI.farkle = (() => {
         ghost.style.background = p.color;
         bar.append(ghost);
       }
-      row.append(name, bar, ctx.el('span', 'fk-num', num(f.scores[pid])));
+      const n = ctx.el('span', 'fk-num'), was = scoreSeen[pid];
+      if (was != null && was !== f.scores[pid]) Kit.tally(n, was, f.scores[pid], 700); else n.textContent = num(f.scores[pid]);
+      scoreSeen[pid] = f.scores[pid];
+      row.append(name, bar, n);
       sc.append(row);
     }
   }

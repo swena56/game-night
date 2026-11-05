@@ -808,6 +808,19 @@ body.focus #game .layout:has(.bl-busy) > aside { opacity: .2; }
 @keyframes yaFresh { 0% { background: #ffd16688; } 100% { background: transparent; } }
 .ya-box.best { box-shadow: inset 0 0 0 2px #ffd166; } .ya-box.best::after { content: ' ★'; color: #ffd166; }
 /* farkle: a bust greys the dice; the points on the line ghost ahead on the score bar */
+.fk-tray { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.fk-tray .ya-dice { margin: 0; }
+.fk-aside { display: flex; gap: 4px; padding-top: 6px; border-top: 1px dashed #ffffff33; }
+.fk-aside .ya-die.small { --die: 26px; padding: 4px; box-shadow: 0 2px 0 #b9b0cc, 0 3px 6px #0007; }
+.fk-aside .ya-die.in { animation: fkAside .35s cubic-bezier(.2, 1.2, .4, 1) both; }
+@keyframes fkAside { from { transform: translateY(-40px) scale(1.6); opacity: 0; } }
+.fk-risk { display: flex; flex-direction: column; align-items: center; gap: 3px; margin: 2px 0 6px; font-size: 12px; color: var(--muted); }
+.fk-risk-bar { width: min(240px, 70%); height: 8px; border-radius: 4px; background: #ffffff14; overflow: hidden; }
+.fk-risk-bar i { display: block; height: 100%; width: calc(var(--p) * 100%); background: linear-gradient(90deg, #06d6a0, #ffd166 40%, #ef476f);
+  background-size: calc(100% / max(var(--p), .02)) 100%; transition: width .4s; }
+.fk-risk.hot { color: #ff8c8c; }
+.fk-risk.hot .fk-risk-bar i { animation: fkThrob .8s ease-in-out infinite; }
+@keyframes fkThrob { 50% { filter: brightness(1.4); } }
 .fk-dice.bust .ya-die { filter: grayscale(1) brightness(.7); transition: filter .4s .2s; }
 .fk-bar { position: relative; } .fk-ghost { position: absolute; top: 0; bottom: 0; opacity: .35; animation: pulse 1s infinite alternate; }
 /* ship, captain & crew: a slot filling lands with a bounce */

@@ -122,6 +122,7 @@ class Farkle(Game):
 
     def begin(self, pid):
         self.roll, self.turn_pts, self.dice_left, self.rolled, self.kept = [], 0, 6, False, []
+        self.aside = []  # every die set aside this turn, for the table to see (cleared on hot dice)
         self.farkled = False
         self.room.begin_turn(pid)
 
@@ -160,9 +161,11 @@ class Farkle(Game):
         if self.rolled:
             self.turn_pts += pts
             self.kept = [self.roll[i] for i in keep]
+            self.aside = getattr(self, "aside", []) + self.kept
             self.dice_left -= len(keep)
             if self.dice_left == 0:
                 self.dice_left = 6
+                self.aside = []
                 r.add_log(f"🔥 Hot dice! {p.name} rolls all six again with {self.turn_pts:,} on the line.", "power")
                 self.event_id += 1
                 self.event = {"id": self.event_id, "kind": "hot", "by": p.id, "pts": self.turn_pts}
@@ -278,7 +281,7 @@ class Farkle(Game):
             "onBoard": {i: r.players[i].g.on_board for i in self.seats if i in r.players},
             "farkles": {i: r.players[i].g.farkles for i in self.seats if i in r.players},
             "roll": self.roll, "rolled": self.rolled, "turnPts": self.turn_pts, "diceLeft": self.dice_left,
-            "kept": self.kept, "farkled": self.farkled, "final": bool(self.final_from),
+            "kept": self.kept, "aside": getattr(self, "aside", []), "farkled": self.farkled, "final": bool(self.final_from),
             "options": [[pts, idx] for pts, idx in keep_options(self.roll)] if self.rolled else [],
             "event": self.event,
         }}
