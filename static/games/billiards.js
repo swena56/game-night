@@ -755,17 +755,17 @@ UI.billiards = (() => {
   function mode(dst, t, f, vol, tau) {
     const o = actx.createOscillator(), g = actx.createGain();
     o.frequency.value = f * (1 + (Math.random() - 0.5) * 0.04);
-    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + 0.0007); g.gain.setTargetAtTime(0, t + 0.0007, tau);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + 0.0015); g.gain.setTargetAtTime(0, t + 0.0015, tau);  // a soft onset: no tick
     o.connect(g).connect(dst); o.start(t); o.stop(t + tau * 8 + 0.01);
   }
-  // two phenolic balls: a sharp, dry clack. Almost all impact (the balls themselves ring far above hearing),
-  // so it's a hard broadband snap with a little tonal colour, duller and softer for a gentle kiss.
+  // two phenolic balls: a short, rounded clock. Mostly impact with a little tonal body, all of it through a
+  // lowpass so it stays warm rather than glassy; duller and softer still for a gentle kiss.
   function ballClick(dst, t, h) {
-    const vol = 0.06 + 0.55 * h ** 0.8;
-    burst(dst, t, 'bandpass', 2400 + 3200 * h, 0.8, vol * 1.3, 0.0012 + 0.0014 * (1 - h));
-    burst(dst, t, 'highpass', 6000, 0.7, vol * 0.5 * h, 0.0008);
-    for (const [f, a, tau] of [[3150, 0.22, 0.007], [4480, 0.16, 0.005], [5900, 0.1, 0.004]]) mode(dst, t, f, vol * a * (f > 4000 ? 0.15 + 0.85 * h : 0.4 + 0.6 * h), tau);
-    mode(dst, t, 1700, vol * 0.12 * (1 - h), 0.004);
+    const vol = 0.05 + 0.4 * h ** 0.8, lp = actx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 1900 + 1500 * h; lp.Q.value = 0.5; lp.connect(dst);
+    burst(lp, t, 'bandpass', 1100 + 1300 * h, 0.9, vol * 1.1, 0.0008 + 0.0008 * (1 - h));
+    for (const [f, a, tau] of [[1550, 0.2, 0.005], [2300, 0.1, 0.0035], [3000, 0.04, 0.0025]]) mode(lp, t, f, vol * a * (f > 2000 ? 0.2 + 0.8 * h : 0.5 + 0.5 * h), tau);
+    mode(lp, t, 650, vol * 0.14, 0.006);  // the body of the ball
   }
   function clack(e, delay = 0) {
     if (quietNow()) return;
@@ -795,18 +795,18 @@ UI.billiards = (() => {
         const dst = out(panAt(e.p), 0.8), vol = 0.08 + 0.4 * h;
         burst(dst, t, 'bandpass', 1500 + 1500 * h, 1.1, vol * 1.2, 0.0025);
         mode(dst, t, 820, vol * 0.3, 0.012); mode(dst, t, 1640, vol * 0.18, 0.008); mode(dst, t, 190, vol * 0.25, 0.025);
-        if (h > 0.6) burst(dst, t, 'highpass', 4000, 0.7, vol * (h - 0.6) * 1.5, 0.001);
+        if (h > 0.6) burst(dst, t, 'bandpass', 2600, 0.8, vol * (h - 0.6) * 1.2, 0.0008);
       }
     } catch {}
   }
-  // the balls rolling on the cloth: a low rumble that rises and falls with how much is moving
-  function rollTo(level) {
+  // the balls rolling on the cloth: a faint low rumble (kept nearly silent, #56) that rises and falls with how much is moving
+  function rumbleTo(level) {
     if (!roll && level <= 0) return;
     if (!roll) {
       const s = actx.createBufferSource(), fl = actx.createBiquadFilter(), hiss = actx.createBiquadFilter(), g = actx.createGain(), hg = actx.createGain();
       s.buffer = noiseBuf; s.loop = true;
       fl.type = 'lowpass'; fl.frequency.value = 180; fl.Q.value = 0.6;
-      hiss.type = 'bandpass'; hiss.frequency.value = 1800; hiss.Q.value = 0.5; hg.gain.value = 0.02;  // the nap of the cloth
+      hiss.type = 'bandpass'; hiss.frequency.value = 1200; hiss.Q.value = 0.5; hg.gain.value = 0.01;  // the nap of the cloth, barely there
       g.gain.value = 0;
       s.connect(fl).connect(g); s.connect(hiss).connect(hg).connect(g); g.connect(bus.dry);
       s.start();
@@ -821,7 +821,7 @@ UI.billiards = (() => {
   }
   // play each contact once its moment in the shot comes (the draw loop calls this every frame)
   function shotSounds() {
-    if (!anim?.sounds || quietNow()) { if (roll && !roll.off) rollTo(0); return; }
+    if (!anim?.sounds || quietNow()) { if (roll && !roll.off) rumbleTo(0); return; }
     const now = shotTime() - anim.lead;
     for (let n = 0; anim.next < anim.sounds.length && anim.sounds[anim.next].t <= now; ) {
       const e = anim.sounds[anim.next++];
@@ -831,7 +831,7 @@ UI.billiards = (() => {
     }
     if (actx && anim.roll) {
       const f = Math.floor(now * 30), sp = f >= 0 && f < anim.roll.length ? anim.roll[f] : 0;
-      try { rollTo(sp > 0.05 && tableVol ? 0.07 * tableVol * Math.min(1, Math.sqrt(sp / 12)) : 0); } catch {}
+      try { rumbleTo(sp > 0.05 && tableVol ? 0.05 * tableVol * Math.min(1, Math.sqrt(sp / 12)) : 0); } catch {}
     }
   }
 
@@ -1016,7 +1016,7 @@ UI.billiards = (() => {
     stage.addEventListener('pointermove', (e) => onTouch(e, 'move'), true);
     for (const t of ['pointerup', 'pointercancel']) stage.addEventListener(t, (e) => onTouch(e, 'up'), true);
     $('blTableVol').value = pref('table', 'quiet');
-    $('blTableVol').onchange = (e) => { setPref('table', e.target.value); tableVol = TABLE_VOL[e.target.value] ?? 0.5; if (!tableVol && roll) try { rollTo(0); } catch {} };
+    $('blTableVol').onchange = (e) => { setPref('table', e.target.value); tableVol = TABLE_VOL[e.target.value] ?? 0.5; if (!tableVol && roll) try { rumbleTo(0); } catch {} };
     $('blZoom').onclick = () => { view = { z: 1, x: 0, y: 0 }; applyView(); };
     $('blView').onclick = () => { setPref('view', view3d ? '2d' : '3d'); setView(!view3d); };
     $('blCam').onclick = () => setCam(cam === 'cue' ? 'table' : 'cue');
@@ -1102,7 +1102,7 @@ UI.billiards = (() => {
   }
 
   function unmount() {
-    cancelAnimationFrame(raf); cancelAnimationFrame(roRaf); clearTimeout(animEnd); try { if (roll) rollTo(0); } catch {} ro?.disconnect(); setTip = null;
+    cancelAnimationFrame(raf); cancelAnimationFrame(roRaf); clearTimeout(animEnd); try { if (roll) rumbleTo(0); } catch {} ro?.disconnect(); setTip = null;
     if (onKey) { window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', onKeyUp); window.removeEventListener('blur', onKeyUp); }
     onKey = onKeyUp = null; held.dir = 0;
     if (gl) gl.dispose();
