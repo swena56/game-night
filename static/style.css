@@ -513,7 +513,7 @@ body.light #arena .stick-bottom { background: linear-gradient(transparent, #1d17
 .bg-rules { font-size: 13px; }
 
 /* billiards */
-.bl { max-width: 900px; margin: 0 auto; user-select: none; -webkit-user-select: none; }
+.bl { margin: 0 auto; user-select: none; -webkit-user-select: none; }
 .bl-stage { display: flex; justify-content: center; position: relative; overflow: hidden; border-radius: 10px; touch-action: none; }
 .bl-stage canvas { display: block; border-radius: 10px; box-shadow: 0 14px 40px #000a; cursor: crosshair; transform-origin: 0 0; }
 .bl-zoom { position: absolute; top: 8px; right: 8px; padding: 6px 10px; font-size: 13px; background: #000a; color: #fff; z-index: 2; }
@@ -523,6 +523,13 @@ body.light #arena .stick-bottom { background: linear-gradient(transparent, #1d17
 .bl-views button.on { background: #ffb703; color: #000; }
 .bl-rackdone { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(88%, 340px); max-height: 86%; overflow: auto;
   background: #0b1626ee; border: 1px solid #ffffff2a; border-radius: var(--radius); padding: 12px 14px; z-index: 3; animation: bannerIn .4s ease-out; }
+/* whose shot it is and what they're on, over the table's foot so the info strip can scroll away; taps go through */
+.bl-chip { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 2; pointer-events: none; max-width: calc(100% - 16px);
+  display: flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; background: #000b; color: #fff; font-size: 12px; white-space: nowrap; overflow: hidden; }
+.bl-chip b { margin-right: 2px; overflow: hidden; text-overflow: ellipsis; max-width: 12em; }
+.bl-chip em { font-style: normal; color: #ffd166; margin-left: 4px; }
+.bl-chip .bl-dot { width: 16px; height: 16px; font-size: 9px; box-shadow: inset 0 0 0 3px var(--c), inset 0 0 0 8px #fff; }
+.bl-chip .bl-dot.stripe { box-shadow: inset 0 0 0 8px transparent; }
 .bl-rackdone h3 { margin: 0 0 8px; text-align: center; }
 .bl-match { gap: 10px; flex-wrap: wrap; }
 .bl-controls { display: flex; align-items: center; gap: 8px; margin: 10px auto 0; max-width: 640px; }
@@ -564,7 +571,6 @@ body.light #arena .stick-bottom { background: linear-gradient(transparent, #1d17
 .bl-cueball:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 /* the table takes the whole width (#35), so there is no side column: the game info (status, each player's balls),
    the emoji bar and the log sit in a strip under the shot controls. The table is sized to leave room for that strip. */
-body.focus .bl { max-width: none; }
 #game .layout:has(.bl) { grid-template-columns: minmax(0, 1fr); max-width: 1900px; }
 #game .layout:has(.bl) > aside { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; }
 #game .layout:has(.bl) #sideGame { flex: 3 1 420px; min-width: 0; }
@@ -573,6 +579,8 @@ body.focus .bl { max-width: none; }
 .bl-side #blStatus { flex: 1 1 240px; min-width: 0; }
 .bl-side .bl-racks { display: flex; flex-wrap: wrap; margin: 0; }
 .bl-side #blHint { flex-basis: 100%; margin: 0; font-size: 12px; }
+.bl-tablevol { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.bl-tablevol select { font-size: 12px; padding: 2px 4px; }
 body.focus #blHint { display: none; }  /* ❓ has the same how-to; the table gets the room */
 .bl-racks { display: grid; gap: 6px; margin: 8px 0; }
 .bl-keys { opacity: 0.8; }
@@ -1826,3 +1834,13 @@ body.calm::before, body.calm *, body.calm *::before, body.calm *::after { animat
 body.calm .csq .piece.taken { display: none; }
 body.calm .cb-plus { display: none; }
 @media (prefers-reduced-motion: reduce) { .cb-plus { display: none; } }
+
+/* a phone held sideways: the shot controls stand in a column beside the table, which gets the full height */
+@media (orientation: landscape) and (max-height: 520px) {
+  .bl { display: grid; grid-template-columns: minmax(0, 1fr) 168px; gap: 8px; align-items: start; }
+  .bl-controls { margin: 0; max-width: none; flex-wrap: wrap; gap: 6px; }
+  .bl-controls > #blLeft, .bl-controls > #blRight { flex: 1 1 60px; order: 0; padding: 6px 0; }
+  .bl-controls .bl-power { flex: 1 1 100%; order: 1; }
+  .bl-controls .bl-spin { flex: 1 1 100%; width: auto; order: 2; }
+  .bl-controls #blShoot { flex: 1 1 100%; order: 3; padding: 10px; }
+}

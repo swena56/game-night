@@ -19,7 +19,7 @@ UI.billiards = (() => {
   const $ = (id) => document.getElementById(id);
   const COLORS = ['#ffffff', '#f5c518', '#1f5fd1', '#d62828', '#6a2c91', '#f77f00', '#138a36', '#7a1f1f', '#111111'];
   const colorOf = (n) => COLORS[n > 8 ? n - 8 : n];
-  const RAIL = 9;
+  const RAIL = 6;  // the flat view's wooden frame, in table units: thin, so the cloth gets the room
 
   // ---------- geometry: table units <-> canvas pixels
   function layout() {
@@ -28,12 +28,20 @@ UI.billiards = (() => {
     const B = S.billiards, dpr = Math.min(devicePixelRatio || 1, 2);
     const portrait = stage.clientWidth < (window.visualViewport?.height ?? innerHeight) * 0.8;
     const longSide = B.W + 2 * RAIL, shortSide = B.H + 2 * RAIL;
-    // room for the table: the visible height less what sits above it (top bar, chips) and below it
-    // (the shot controls and the game-info strip), so all of it is on screen without scrolling
-    const appH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--app-h')) || innerHeight;
-    const above = stage.getBoundingClientRect().top + scrollY, info = $('sideGame');
-    const below = (stage.nextElementSibling?.offsetHeight ?? 60) + (info?.offsetParent ? info.offsetHeight + 10 : 0) + 30;
-    const availH = Math.max(200, appH - Math.max(40, above) - below);
+    // room for the table: the measured stage (below the top bar and chips, above the dock) less the shot
+    // controls when they sit under it. The game-info strip goes below and scrolls; the chip on the table
+    // says whose turn it is. Held sideways on a phone the controls stand beside the table instead.
+    const css = getComputedStyle(document.documentElement), controls = stage.nextElementSibling;
+    const beside = controls && controls.offsetTop < stage.offsetTop + stage.offsetHeight;
+    const below = beside ? 0 : (controls?.offsetHeight ?? 60) + 10;
+    const stageH = parseFloat(css.getPropertyValue('--stage-h')), arena = $('arena');
+    let availH;
+    if (stageH && arena) availH = stageH - (stage.getBoundingClientRect().top - arena.getBoundingClientRect().top) - below - 4;
+    else {
+      const appH = parseFloat(css.getPropertyValue('--app-h')) || innerHeight;
+      availH = appH - Math.max(40, stage.getBoundingClientRect().top + scrollY) - below - 12;
+    }
+    availH = Math.max(200, availH);
     const w = stage.clientWidth || 320;
     const k = portrait ? Math.min(w / shortSide, availH / longSide) : Math.min(w / longSide, availH / shortSide);
     const cw = Math.round((portrait ? shortSide : longSide) * k), ch = Math.round((portrait ? longSide : shortSide) * k);
@@ -352,8 +360,8 @@ UI.billiards = (() => {
     g.clearRect(0, 0, c.width, c.height);
     // rails, cloth, head line, pockets (drawn in table space)
     if (geo.portrait) g.setTransform(0, -k, k, 0, RAIL * k, (RAIL + b.W) * k); else g.setTransform(k, 0, 0, k, RAIL * k, RAIL * k);
-    g.fillStyle = '#5b3a1e'; roundRect(g, -RAIL, -RAIL, b.W + 2 * RAIL, b.H + 2 * RAIL, 6); g.fill();
-    g.fillStyle = '#7a4f2a'; roundRect(g, -RAIL + 1.5, -RAIL + 1.5, b.W + 2 * RAIL - 3, b.H + 2 * RAIL - 3, 5); g.fill();
+    g.fillStyle = '#5b3a1e'; roundRect(g, -RAIL, -RAIL, b.W + 2 * RAIL, b.H + 2 * RAIL, 4); g.fill();
+    g.fillStyle = '#7a4f2a'; roundRect(g, -RAIL + 1, -RAIL + 1, b.W + 2 * RAIL - 2, b.H + 2 * RAIL - 2, 3.4); g.fill();
     const cloth = g.createRadialGradient(b.W / 2, b.H / 2, 10, b.W / 2, b.H / 2, b.W * 0.6);
     cloth.addColorStop(0, '#1d8a4e'); cloth.addColorStop(1, '#0f5c33');
     g.fillStyle = cloth;
@@ -707,6 +715,10 @@ UI.billiards = (() => {
     return actx;
   }
   const quietNow = () => (typeof prefs !== 'undefined' && !prefs.sound) || document.hidden;
+  // the table's own sounds (balls rolling on the cloth, down the pocket's return) have their own volume, kept
+  // under the clicks: 'normal', 'quiet' (the default) or 'off'
+  const TABLE_VOL = { normal: 1, quiet: 0.5, off: 0 };
+  let tableVol = TABLE_VOL[pref('table', 'quiet')] ?? 0.5;
   // left to right as the table is shown (the flat view turns it on its side in portrait); the 3D camera moves, so it stays centred
   function panAt(p) {
     const b = B();
@@ -761,11 +773,12 @@ UI.billiards = (() => {
         burst(dst, t, 'lowpass', 600 + 600 * fast, 0.8, vol, 0.012);
         mode(dst, t, 105, vol * 0.7, 0.06); mode(dst, t, 185, vol * 0.4, 0.04); mode(dst, t, 340, vol * 0.2, 0.02);
         if (fast > 0.5) [0.035, 0.07].forEach((dt, i) => { burst(dst, t + dt, 'lowpass', 900, 0.8, vol * (0.45 - i * 0.2), 0.006); mode(dst, t + dt, 240, vol * (0.3 - i * 0.12), 0.02); });
-        const t1 = t + 0.18, dur = 0.75, s = actx.createBufferSource(), fl = actx.createBiquadFilter(), g = actx.createGain();
+        if (!tableVol) return;
+        const t1 = t + 0.18, dur = 0.75, lvl = 0.06 * tableVol, s = actx.createBufferSource(), fl = actx.createBiquadFilter(), g = actx.createGain();
         const lfo = actx.createOscillator(), depth = actx.createGain();  // the joins in the gutter make it bump as it rolls
         s.buffer = noiseBuf; s.loop = true; fl.type = 'lowpass'; fl.frequency.value = 320; fl.Q.value = 1.2;
-        lfo.frequency.value = 14 + Math.random() * 6; depth.gain.value = 0.06; lfo.connect(depth).connect(g.gain);
-        g.gain.setValueAtTime(0, t1); g.gain.linearRampToValueAtTime(0.12, t1 + 0.08); g.gain.setValueAtTime(0.12, t1 + dur - 0.25); g.gain.linearRampToValueAtTime(0, t1 + dur);
+        lfo.frequency.value = 14 + Math.random() * 6; depth.gain.value = lvl / 2; lfo.connect(depth).connect(g.gain);
+        g.gain.setValueAtTime(0, t1); g.gain.linearRampToValueAtTime(lvl, t1 + 0.08); g.gain.setValueAtTime(lvl, t1 + dur - 0.25); g.gain.linearRampToValueAtTime(0, t1 + dur);
         s.connect(fl).connect(g).connect(dst); s.start(t1); s.stop(t1 + dur + 0.05); lfo.start(t1); lfo.stop(t1 + dur + 0.05);
         ballClick(dst, t1 + dur - 0.04, 0.18);  // and it bumps into the balls already down
       } else {  // the leather tip on the cue ball: a rounder tok with the cue's shaft in it, a crack on a hard break
@@ -782,8 +795,8 @@ UI.billiards = (() => {
     if (!roll) {
       const s = actx.createBufferSource(), fl = actx.createBiquadFilter(), hiss = actx.createBiquadFilter(), g = actx.createGain(), hg = actx.createGain();
       s.buffer = noiseBuf; s.loop = true;
-      fl.type = 'lowpass'; fl.frequency.value = 220; fl.Q.value = 0.6;
-      hiss.type = 'bandpass'; hiss.frequency.value = 1800; hiss.Q.value = 0.5; hg.gain.value = 0.08;  // the nap of the cloth
+      fl.type = 'lowpass'; fl.frequency.value = 180; fl.Q.value = 0.6;
+      hiss.type = 'bandpass'; hiss.frequency.value = 1800; hiss.Q.value = 0.5; hg.gain.value = 0.02;  // the nap of the cloth
       g.gain.value = 0;
       s.connect(fl).connect(g); s.connect(hiss).connect(hg).connect(g); g.connect(bus.dry);
       s.start();
@@ -808,7 +821,7 @@ UI.billiards = (() => {
     }
     if (actx && anim.roll) {
       const f = Math.floor(now * 30), sp = f >= 0 && f < anim.roll.length ? anim.roll[f] : 0;
-      try { rollTo(sp > 0.05 ? 0.16 * Math.min(1, Math.sqrt(sp / 12)) : 0); } catch {}
+      try { rollTo(sp > 0.05 && tableVol ? 0.07 * tableVol * Math.min(1, Math.sqrt(sp / 12)) : 0); } catch {}
     }
   }
 
@@ -958,6 +971,7 @@ UI.billiards = (() => {
           <button id="blPush" hidden aria-pressed="false" title="9-ball: the first shot after the break may be a push-out. It needn't hit anything; your rival then shoots from there or hands it back.">🔀 Push out</button>
           <button id="blReplay" hidden title="Watch the last shot again, slowed down">⏪ Replay</button>
           <button id="blPass" hidden title="Make your rival shoot from where their push-out left the balls">↩️ Hand it back</button></div>
+        <div id="blChip" class="bl-chip" hidden aria-live="polite"></div>
         <div class="bl-rackdone" id="blRackDone" hidden><h3 id="blRackTitle"></h3><div id="blStand"></div></div></div>
       <div class="bl-controls">
         <button id="blLeft" aria-label="Aim left">◀</button>
@@ -978,6 +992,8 @@ UI.billiards = (() => {
       <div id="blStatus" class="seat-row"></div>
       <div id="blRacks" class="bl-racks"></div>
       <p class="hint left" id="blHint">Drag anywhere on the table to turn the cue around the ball. ◀ ▶ fine-tune. Pull the power bar back and let go to shoot. ✋ With ball in hand, drag the cue ball to move it.</p>
+      <label class="bl-tablevol" title="The balls rolling on the cloth and down the pocket's return. The clicks and thumps are always on (with sound on).">🔈 Table sound
+        <select id="blTableVol"><option value="normal">Normal</option><option value="quiet">Quiet</option><option value="off">Off</option></select></label>
       <p class="hint left bl-keys">Keys: ← → turn the cue (hold to turn faster, Shift for fine aim) · ↑ ↓ or 1–9, 0 power · Space shoots · W A S D move the cue ball in hand · C switches the 3D camera.</p></div>`;
     const c = $('blCanvas');
     c.style.touchAction = 'none';
@@ -989,6 +1005,8 @@ UI.billiards = (() => {
     stage.addEventListener('pointerdown', (e) => onTouch(e, 'down'), true);
     stage.addEventListener('pointermove', (e) => onTouch(e, 'move'), true);
     for (const t of ['pointerup', 'pointercancel']) stage.addEventListener(t, (e) => onTouch(e, 'up'), true);
+    $('blTableVol').value = pref('table', 'quiet');
+    $('blTableVol').onchange = (e) => { setPref('table', e.target.value); tableVol = TABLE_VOL[e.target.value] ?? 0.5; if (!tableVol && roll) try { rollTo(0); } catch {} };
     $('blZoom').onclick = () => { view = { z: 1, x: 0, y: 0 }; applyView(); };
     $('blView').onclick = () => { setPref('view', view3d ? '2d' : '3d'); setView(!view3d); };
     $('blCam').onclick = () => setCam(cam === 'cue' ? 'table' : 'cue');
@@ -1069,7 +1087,7 @@ UI.billiards = (() => {
     // laid out on the next frame: resizing the canvas inside the callback re-triggers the observer and
     // the browser reports "ResizeObserver loop completed with undelivered notifications"
     ro = window.ResizeObserver ? new ResizeObserver(() => { cancelAnimationFrame(roRaf); roRaf = requestAnimationFrame(layout); }) : null;
-    ro?.observe($('blStage')); ro?.observe(side);  // the info strip growing a line shrinks the table to match
+    ro?.observe($('blStage')); ro?.observe($('blStage').nextElementSibling);  // the controls wrapping to two rows shrinks the table
     raf = requestAnimationFrame(tick);
   }
 
@@ -1137,6 +1155,31 @@ UI.billiards = (() => {
       standingsCard($('blStand'), b.standings, { title: `Race to ${b.race}`, note: 'The next rack is coming up. The break alternates.' });
     }
     // each player's remaining balls
+    const onTable = new Set(b.balls.map(([n]) => n));
+    const dots = (row, nums, next) => {
+      for (const n of nums) {
+        const dot = ctx.el('span', 'bl-dot' + (onTable.has(n) ? '' : ' gone') + (n > 8 ? ' stripe' : '') + (n === next ? ' next' : ''), String(n));
+        dot.style.setProperty('--c', colorOf(n));
+        row.append(dot);
+      }
+    };
+    const groupBalls = (g) => (g === 'solids' ? [1, 2, 3, 4, 5, 6, 7] : [9, 10, 11, 12, 13, 14, 15]);
+    // the chip on the table: whose shot, and what they're on, so the strip below can scroll out of sight
+    const chip = $('blChip'), shooter = ctx.player(S.turn);
+    chip.hidden = S.phase !== 'playing' || !!b.between || !shooter;
+    if (!chip.hidden) {
+      chip.innerHTML = '';
+      const name = ctx.el('b', '', shooter.name + (S.turn === me ? ' (you)' : '')); name.style.color = shooter.color;
+      chip.append(name);
+      const g = b.groups[S.turn], up = b.balls.map(([n]) => n);
+      if (b.rules === '9') dots(chip, [b.targets[0]], b.targets[0]);
+      else if (b.targets.length === 1 && b.targets[0] === 8 && g) dots(chip, [8], 8);
+      else if (g) dots(chip, groupBalls(g).filter((n) => up.includes(n)));
+      else chip.append(ctx.el('span', '', b.breaking ? 'to break' : 'open table'));
+      const tag = b.inHand && S.turn === me ? '✋ ball in hand' : b.calling && S.turn === me ? (called == null ? '📣 call the 8' : '📣 8 called')
+        : b.pushChoice === S.turn ? '🔀 push-out' : pushing ? '🔀 pushing' : '';
+      if (tag) chip.append(ctx.el('em', '', tag));
+    }
     const racks = $('blRacks'); racks.innerHTML = '';
     if (b.race > 1) {
       const seats = Object.keys(b.racks || {}), row = ctx.el('div', 'bl-rack bl-match');
@@ -1144,15 +1187,10 @@ UI.billiards = (() => {
       row.append(ctx.el('span', '', seats.map((i) => `${ctx.player(i)?.name ?? '?'} ${b.racks[i]}`).join(' – ')));
       racks.append(row);
     }
-    const onTable = new Set(b.balls.map(([n]) => n));
     if (b.rules === '9') {  // nine-ball: no groups, just the balls still up, lowest (the one to hit) first
       const row = ctx.el('div', 'bl-rack');
       row.append(ctx.el('b', '', 'Up next'));
-      for (let n = 1; n <= 9; n++) {
-        const dot = ctx.el('span', 'bl-dot' + (onTable.has(n) ? '' : ' gone') + (n === 9 ? ' stripe' : '') + (n === b.targets[0] ? ' next' : ''), String(n));
-        dot.style.setProperty('--c', colorOf(n));
-        row.append(dot);
-      }
+      dots(row, [1, 2, 3, 4, 5, 6, 7, 8, 9], b.targets[0]);
       racks.append(row);
     }
     for (const pid of b.rules === '9' ? [] : Object.keys(b.groups).length ? Object.keys(b.groups) : S.players.filter((p) => !p.spectator).map((p) => p.id)) {
@@ -1162,11 +1200,7 @@ UI.billiards = (() => {
       row.append(name);
       const g = b.groups[pid];
       if (!g) row.append(ctx.el('span', 'hint', ' open table'));
-      else for (const n of g === 'solids' ? [1, 2, 3, 4, 5, 6, 7] : [9, 10, 11, 12, 13, 14, 15]) {
-        const dot = ctx.el('span', 'bl-dot' + (onTable.has(n) ? '' : ' gone') + (n > 8 ? ' stripe' : ''), String(n));
-        dot.style.setProperty('--c', colorOf(n));
-        row.append(dot);
-      }
+      else dots(row, groupBalls(g));
       racks.append(row);
     }
     if (mine) $('blHint').textContent = `You have ${mine === 'solids' ? '🔵 solids (1–7)' : '🟠 stripes (9–15)'}. Drag to turn the cue, ◀ ▶ fine-tune.`;
