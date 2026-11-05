@@ -1711,6 +1711,9 @@ body.focus .ra-stage { height: max(220px, calc(var(--room) - 155px)); }
 .rl-pad { touch-action: none; cursor: crosshair; box-shadow: 0 0 0 3px var(--accent); }
 .rl-art { width: min(100%, 320px); }
 .rl-ink { fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+/* at the reveal a drawing draws itself again, stroke by stroke (each path normalised to length 1) */
+.rl-ink.rl-redraw { stroke-dasharray: 1 1; stroke-dashoffset: 1; animation: rlRedraw .3s linear both; }
+@keyframes rlRedraw { to { stroke-dashoffset: 0; } }
 .rl-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center; margin: 8px 0; }
 .rl-inks { display: flex; flex-wrap: wrap; gap: 4px; }
 .rl-swatch { width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 2px solid #fff3; }
