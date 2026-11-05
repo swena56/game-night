@@ -279,7 +279,7 @@ class Holdem(Game):
 
     def after_action(self, p):
         if len(self.live()) == 1:
-            return self.award()
+            return self.payout()
         if self.round_done():
             return self.next_street()
         nxt = self.after(p.id, self.can_act())
@@ -291,7 +291,7 @@ class Holdem(Game):
         self.cur_bet, self.acted = 0, set()
         self.min_raise = self.blinds()[1]
         if self.stage == "river":
-            return self.award()
+            return self.payout()
         self.deal_street()
         acting = self.can_act()
         if len(acting) <= 1:  # everyone else is all-in: no more betting
@@ -311,9 +311,9 @@ class Holdem(Game):
             self.pl(i).g.bet = 0
         while self.stage != "river":
             self.deal_street()
-        self.award()
+        self.payout()
 
-    def award(self):
+    def payout(self):
         r = self.room
         live = self.live()
         total = self.pot()
@@ -511,9 +511,9 @@ class Holdem(Game):
             self.dead += p.g.put  # the room removes the player next; their chips stay in the pot
             self.in_hand.remove(p.id)
             if len(self.alive()) < 2:
-                return self.award() if len(self.live()) == 1 else self.finish()
+                return self.payout() if len(self.live()) == 1 else self.finish()
             if len(self.live()) == 1:
-                return self.award()
+                return self.payout()
             if was_turn:
                 return self.after_action(p)
         elif len(self.alive()) < 2:
