@@ -268,7 +268,21 @@ function mark(p, online = true) {
 const gameInfo = (id = S.gameId) => S.games.find((g) => g.id === id);
 
 // ---------- sound (tiny WebAudio blips, no files)
-let audio;
+let audio, bus;
+// every sound goes through one output: the volume setting, a gentle low-pass that takes the shrill
+// edge off, and a soft compressor so stacked sounds don't spike (#57)
+function out() {
+  audio ||= new (window.AudioContext || window.webkitAudioContext)();
+  if (!bus) {
+    const lp = audio.createBiquadFilter(), comp = audio.createDynamicsCompressor();
+    lp.type = 'lowpass'; lp.frequency.value = 6000; lp.Q.value = 0.5;
+    comp.threshold.value = -18; comp.knee.value = 12; comp.ratio.value = 4; comp.attack.value = 0.003; comp.release.value = 0.15;
+    bus = audio.createGain();
+    bus.connect(lp).connect(comp).connect(audio.destination);
+  }
+  bus.gain.value = Math.max(0, Math.min(100, prefs.volume ?? 70)) / 100;
+  return bus;
+}
 // each lobby group has its own "your turn" chime, so a glance isn't needed to know which game is calling
 const TURN_CHIMES = {
   strategy: [[523, 784], 'sine'], classic: [[660, 880], 'triangle'], cards: [[587, 740, 880], 'triangle'],
@@ -284,7 +298,7 @@ function blip(kind) {
       const o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime + i * 0.11;
       o.frequency.value = f; o.type = chime ? chime[1] : 'triangle';
       g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.15, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
-      o.connect(g).connect(audio.destination); o.start(t); o.stop(t + 0.2);
+      o.connect(g).connect(out()); o.start(t); o.stop(t + 0.2);
     });
   } catch {}
 }
@@ -298,7 +312,7 @@ function slap() {
     for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 3;
     const src = audio.createBufferSource(), f = audio.createBiquadFilter(), g = audio.createGain();
     src.buffer = buf; f.type = 'bandpass'; f.frequency.value = 1800; f.Q.value = 0.7; g.gain.value = 0.5;
-    src.connect(f).connect(g).connect(audio.destination); src.start();
+    src.connect(f).connect(g).connect(out()); src.start();
   } catch {}
 }
 
@@ -308,46 +322,47 @@ function tone(f0, f1, dur, type = 'sine', vol = 0.12, at = 0) {
   const o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime + at;
   o.type = type; o.frequency.setValueAtTime(f0, t); if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, t + dur);
   g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o.connect(g).connect(audio.destination); o.start(t); o.stop(t + dur + 0.02);
+  o.connect(g).connect(out()); o.start(t); o.stop(t + dur + 0.02);
 }
 function noise(dur, freq, q, vol, at = 0) {
   const len = Math.max(1, Math.floor(audio.sampleRate * dur)), buf = audio.createBuffer(1, len, audio.sampleRate), d = buf.getChannelData(0);
   for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2;
   const src = audio.createBufferSource(), f = audio.createBiquadFilter(), g = audio.createGain();
   src.buffer = buf; f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = q; g.gain.value = vol;
-  src.connect(f).connect(g).connect(audio.destination); src.start(audio.currentTime + at);
+  src.connect(f).connect(g).connect(out()); src.start(audio.currentTime + at);
 }
 const SFX = {
   place: () => { tone(320, 180, 0.09, 'sine', 0.16); noise(0.03, 2400, 1.2, 0.25); },          // a piece set down
   capture: () => { tone(260, 120, 0.14, 'triangle', 0.16); noise(0.05, 1500, 0.8, 0.35, 0.02); },
-  card: () => noise(0.08, 1800, 0.7, 0.5),
+  card: () => noise(0.07, 1300, 0.8, 0.3),
   dice: () => { for (let i = 0; i < 5; i++) noise(0.025, 2600 + Math.random() * 1600, 2, 0.35, i * 0.045 + Math.random() * 0.02); },
   pop: () => tone(520, 880, 0.09, 'sine', 0.1),
-  tick: () => tone(1200, 1200, 0.03, 'square', 0.03),
+  tick: () => tone(1100, 1100, 0.03, 'triangle', 0.04),
   good: () => [659, 880].forEach((f, i) => tone(f, f, 0.16, 'triangle', 0.1, i * 0.09)),
-  bad: () => tone(300, 150, 0.25, 'sawtooth', 0.05),
+  bad: () => tone(300, 150, 0.25, 'triangle', 0.08),
   // Paint Blast (#6): a bomb set down, a paint blast, a power-up, catching a rival
   drop: () => { tone(200, 120, 0.08, 'sine', 0.14); noise(0.02, 900, 1, 0.2); },
   boom: () => { noise(0.32, 240, 0.6, 0.9); tone(120, 45, 0.28, 'sine', 0.22); noise(0.1, 2600, 0.8, 0.22, 0.02); },
   pickup: () => [880, 1320].forEach((f, i) => tone(f, f, 0.09, 'triangle', 0.09, i * 0.06)),
   tag: () => [784, 988, 1319].forEach((f, i) => tone(f, f, 0.12, 'triangle', 0.1, i * 0.07)),
   // the shared kit (static/kit.js) and the games' big moments
-  deal: () => { noise(0.05, 2600, 0.9, 0.35); noise(0.04, 1400, 0.7, 0.2, 0.03); },              // a card skimming out
-  flip: () => { noise(0.03, 3000, 1.4, 0.3); tone(700, 900, 0.05, 'sine', 0.05, 0.01); },         // a card or tile turned over
-  chip: () => [0, 0.05, 0.09].forEach((t) => tone(2400 + Math.random() * 600, 1900, 0.04, 'sine', 0.06, t)),
+  deal: () => { noise(0.05, 1800, 0.9, 0.22); noise(0.04, 1000, 0.7, 0.14, 0.03); },              // a card skimming out
+  flip: () => { noise(0.03, 2200, 1.2, 0.2); tone(600, 760, 0.05, 'sine', 0.04, 0.01); },         // a card or tile turned over
+  // clay chips: short muted clacks with a little body, not pings
+  chip: () => [0, 0.06, 0.11].forEach((t) => { noise(0.02, 2000 + Math.random() * 500, 2.5, 0.22, t); tone(900, 700, 0.03, 'triangle', 0.035, t); }),
   settle: () => { tone(180, 120, 0.06, 'sine', 0.14); noise(0.02, 3200, 2, 0.2); },               // dice come to rest
   whoosh: () => noise(0.22, 900, 0.5, 0.35),
   sweep: () => { noise(0.18, 1600, 0.6, 0.35); tone(400, 700, 0.15, 'sine', 0.04); },             // a trick swept up
   thud: () => { tone(110, 50, 0.22, 'sine', 0.3); noise(0.06, 400, 0.8, 0.4); },
   splash: () => { noise(0.3, 700, 0.4, 0.5); tone(500, 200, 0.2, 'sine', 0.05, 0.03); },
-  crack: () => { noise(0.08, 3500, 0.5, 0.6); tone(900, 300, 0.1, 'square', 0.04); },
+  crack: () => { noise(0.08, 2600, 0.6, 0.4); tone(800, 300, 0.1, 'triangle', 0.06); },
   fanfare: () => [523, 659, 784, 1047, 784, 1047].forEach((f, i) => tone(f, f, i > 3 ? 0.3 : 0.14, 'triangle', 0.11, i * 0.1)),
-  alarm: () => [0, 0.22, 0.44].forEach((t) => tone(880, 620, 0.2, 'square', 0.05, t)),
-  tickfast: () => tone(1600, 1600, 0.025, 'square', 0.04),
+  alarm: () => [0, 0.22, 0.44].forEach((t) => tone(880, 620, 0.2, 'triangle', 0.08, t)),
+  tickfast: () => tone(1300, 1300, 0.025, 'triangle', 0.05),
   // a rising note for combos and streaks: sfx('rise', n) climbs a step with each n
   rise: (n = 0) => { const f = 440 * 2 ** (Math.min(n, 12) / 12 * 1.5); tone(f, f * 1.5, 0.12, 'triangle', 0.1); },
-  lock: () => { tone(1200, 1200, 0.03, 'square', 0.05); tone(600, 600, 0.05, 'square', 0.04, 0.03); },
-  wrong: () => { tone(220, 160, 0.18, 'square', 0.05); tone(208, 150, 0.18, 'square', 0.05, 0.02); },
+  lock: () => { tone(1000, 1000, 0.03, 'triangle', 0.06); tone(520, 520, 0.05, 'triangle', 0.06, 0.03); },
+  wrong: () => { tone(220, 160, 0.18, 'triangle', 0.08); tone(208, 150, 0.18, 'triangle', 0.07, 0.02); },
 };
 const CATEGORY_SFX = { strategy: 'place', classic: 'place', cards: 'card', dice: 'dice', words: 'pop', party: 'pop' };
 function sfx(kind, arg) {
@@ -1050,6 +1065,13 @@ function renderPrefs() {
   pick.onchange = () => { prefs.theme = pick.value; store('unmask.prefs', prefs); applyPrefs(); };
   theme.append(pick);
   box.append(theme);
+  const vol = el('label', '', '🔉 Volume');
+  const range = el('input'); range.type = 'range'; range.min = '0'; range.max = '100'; range.step = '5';
+  range.value = String(prefs.volume ?? 70); range.setAttribute('aria-label', 'Volume');
+  range.oninput = () => { prefs.volume = +range.value; store('unmask.prefs', prefs); };
+  range.onchange = () => sfx('chip');  // a sample at the new level
+  vol.append(range);
+  box.append(vol);
   for (const [key, label] of PREFS) {
     const lab = el('label', 'check');
     const cb = el('input'); cb.type = 'checkbox'; cb.checked = prefs[key];

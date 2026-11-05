@@ -430,7 +430,7 @@ Items that become ✅ move into the per-game plan.
    the card games, Yacht, Farkle) using the shared `gridKeys`. **M**
 6. ✅ **🎵 Move sounds:** every move now makes a sound, picked by the game's lobby group: a wooden click for board games, a
    card flick, a dice rattle, a soft pop for word and party games, a capture thud and a little fanfare for big moments. All
-   synthesized; switch them off with 🎵 in the settings (🔊 still mutes everything). Games can ask for one with `ctx.sfx(kind)`.
+   synthesized; switch them off with 🎵 in the settings (🔊 still mutes everything). All of them pass through one output with a 🔉 volume slider, a gentle low-pass and a soft compressor, and the chip, card and tick sounds are soft clacks and swishes rather than pings (#57). Games can ask for one with `ctx.sfx(kind)`.
 7. ✅ **Shared 3D layer** (`static/gl3.js`) for the seven three.js games: three.js loads once, the picture drops to a lower
    resolution when frames get slow and climbs back when they're smooth again, and when a phone throws the GPU away
    (switching apps) the game builds a fresh 3D view instead of freezing on a black one. Camera shake for hits (Sumo, Riders).
