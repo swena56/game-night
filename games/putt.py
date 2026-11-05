@@ -34,7 +34,8 @@ MAX_SPEED = 4.6
 CUP_SPEED = 2.0                # faster than this and the ball lips out
 FRAME = 8                      # record every 8th step (30 fps)
 MAX_STEPS = 240 * 14
-STROKE_CAP = 8
+STROKE_CAP = 8          # the default most a hole can cost
+SAFETY_CAP = 20         # with no limit (#68), a hole still ends here so a lost ball can't stall the game
 HOLE_PAUSE = 4.0               # seconds to read the hole's scores, after the last putt has rolled
 
 
@@ -354,7 +355,7 @@ class Putt(Game):
         "🌀 Time your putt through the windmill's doorway, and hit the ramp hard enough to clear the stream.",
         "Everyone plays the same hole, one stroke each in turn. Balls pass through each other.",
         "🟫 Sand slows the ball, ↗ slopes push it, ⚪ bumpers bounce it, and 💧 water costs a stroke (you replay from where you hit).",
-        f"Hole out in the fewest strokes; {STROKE_CAP} is the most a hole can cost. Lowest total wins.",
+        f"Hole out in the fewest strokes; {STROKE_CAP} is the most a hole can cost (a setting: 6, 10 or ∞, where ⛳ Pick up takes your strokes +1). Lowest total wins.",
     ]
     name = "Putt Party"
     icon = "⛳"
@@ -364,6 +365,7 @@ class Putt(Game):
     badges = {**Game.badges, "ace": ("🎯", "Hole in one", "Sink a putt in a single stroke")}
     settings_schema = {
         "holes": ("Holes", [(6, "6"), (3, "3 (quick)"), (9, "9")], 6),
+        "strokes": ("Stroke limit", [(8, "8"), (6, "6"), (10, "10"), (0, "∞ No limit")], 8),
     }
     low_wins = True  # strokes: the standings card ranks fewest first
 
@@ -392,6 +394,7 @@ class Putt(Game):
         self.balls = [list(self.hole["tee"]) for _ in range(n)]
         self.strokes = [0] * n
         self.holed = [False] * n
+        self.picked = [False] * n   # picked up (no stroke limit only)
         self.shot = None  # {"by", "frames", "result", "id"}
         self.shot_id = getattr(self, "shot_id", 0)
         self.room.add_log(f"⛳ Hole {self.hole_no}/{self.s['holes']}.")
@@ -407,9 +410,22 @@ class Putt(Game):
         d["course"] = None
         return d
 
+    @property
+    def cap(self):
+        """The most a hole can cost, or None with no limit (rooms saved before the setting: 8)."""
+        return self.s.get("strokes", STROKE_CAP) or None
+
     def done(self, i):
         p = self.pl(i)
-        return self.holed[i] or self.strokes[i] >= STROKE_CAP or p is None or p.eliminated
+        picked = getattr(self, "picked", None)
+        return (self.holed[i] or self.strokes[i] >= (self.cap or SAFETY_CAP) or bool(picked and picked[i])
+                or p is None or p.eliminated)
+
+    def hole_score(self, i):
+        """Strokes for the hole: as played if holed; the cap if capped; strokes +1 for picking up with no limit."""
+        if self.holed[i]:
+            return self.strokes[i]
+        return self.cap or self.strokes[i] + 1
 
     def next_turn(self, after):
         n = len(self.seats)
@@ -422,7 +438,7 @@ class Putt(Game):
     def end_hole(self):
         r = self.room
         for i in range(len(self.seats)):
-            self.cards[i].append(self.strokes[i] if self.holed[i] else STROKE_CAP)
+            self.cards[i].append(self.hole_score(i))
         names = [self.pl(i).name if self.pl(i) else "?" for i in range(len(self.seats))]
         r.add_log(f"🏁 Hole {self.hole_no}: " + " · ".join(f"{names[i]} {self.cards[i][-1]}" for i in range(len(self.seats))), "big")
         # Let the last putt roll in on everyone's screen, then show the hole's scores, before moving on:
@@ -459,6 +475,8 @@ class Putt(Game):
         return self.seats.index(p.id) if p.id in self.seats else None
 
     def act(self, p, a):
+        if a.get("type") == "pickup":
+            return self.pickup(p)
         if a.get("type") != "putt":
             raise GameError("Unknown action.")
         self.require_turn(p)
@@ -466,6 +484,20 @@ class Putt(Game):
         if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in (ang, pw)):
             raise GameError("Bad shot.")
         self.putt(self.seat(p), float(ang), max(0.0, min(1.0, float(pw))))
+
+    def pickup(self, p):
+        """With no stroke limit, a player who has had enough picks up: strokes so far +1."""
+        self.require_turn(p)
+        if self.cap:
+            raise GameError(f"Every hole ends at {self.cap} strokes anyway.")
+        i = self.seat(p)
+        if not self.strokes[i]:
+            raise GameError("Have a go first!")
+        if not hasattr(self, "picked"):
+            self.picked = [False] * len(self.seats)
+        self.picked[i] = True
+        self.room.add_log(f"⛳ {p.name} picks up ({self.strokes[i] + 1}).", "question")
+        self.next_turn(i)
 
     def putt(self, i, angle, power):
         start = tuple(self.balls[i])
@@ -487,8 +519,8 @@ class Putt(Game):
             self.room.add_log(f"⛳ {name} holes out in {s}!" + (" 🎯 Hole in one!" if s == 1 else ""), "power" if s <= 2 else "question")
         else:
             self.balls[i] = [end[0], end[1]]
-            if self.strokes[i] >= STROKE_CAP:
-                self.room.add_log(f"🙈 {name} picks up at {STROKE_CAP}.", "question")
+            if self.strokes[i] >= (self.cap or SAFETY_CAP):
+                self.room.add_log(f"🙈 {name} picks up at {self.strokes[i]}.", "question")
             else:
                 self.room.add_log(f"🏌️ {name} putts ({self.strokes[i]}).", "question")
         self.shot_id += 1
@@ -542,7 +574,7 @@ class Putt(Game):
             "hills": h.get("hills", []), "posts": h.get("posts", []), "rocks": h.get("rocks", []),
             "banks": h.get("banks", []), "mills": h.get("mills", []), "millSpeed": MILL_OMEGA, "now": round(time.time(), 3), "cols": COLS, "rows": ROWS, "ball": BALL, "cupR": CUP,
             "balls": self.balls, "strokes": self.strokes, "holed": self.holed, "cards": self.cards,
-            "shot": self.shot, "cap": STROKE_CAP, "between": getattr(self, "between", False),
+            "shot": self.shot, "cap": self.cap, "picked": getattr(self, "picked", None), "between": getattr(self, "between", False),
             "standings": self.standings() if getattr(self, "between", False) and len(self.seats) > 1 else None,
         }}
 

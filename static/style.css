@@ -1604,8 +1604,9 @@ body.focus .pb-stage { height: max(220px, calc(var(--room) - 205px)); }
 
 /* putt party */
 .pp { max-width: 640px; margin: 0 auto; user-select: none; -webkit-user-select: none; overscroll-behavior: none; }
-.pp-hud { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
-.pp-stage { position: relative; height: min(calc(var(--app-h, 100vh) * .64), 640px); border-radius: var(--radius); overflow: hidden;
+.pp-hud { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+.pp-pick { padding: 2px 10px; font-size: 13px; flex: none; }
+.pp-stage { position: relative; height: clamp(240px, calc(var(--room) - 90px), 640px); border-radius: var(--radius); overflow: hidden;
   display: flex; justify-content: center; align-items: center; background: #0c1a2b; }
 .pp-stage canvas { display: block; }
 /* at the top: the tee, and your ball, are at the bottom of the hole */

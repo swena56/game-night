@@ -27,46 +27,59 @@ UI.putt = (() => {
     return h[2] * su * su * sv * sv;
   }
 
-  // a short knock (wall, post, bumper) or a cup rattle, through the app's sound setting
+  // a short knock (wall, post, bumper) or a cup rattle; all putt sounds go through the app's output (the
+  // volume slider and its softening) and follow the sound and move-sound settings
   let actx = null;
+  const quiet = () => typeof prefs !== 'undefined' && (!prefs.sound || prefs.moves === false);
+  function dest() {
+    if (typeof out === 'function') { const o = out(); actx = audio; return o; }
+    actx ||= new (window.AudioContext || window.webkitAudioContext)();
+    return actx.destination;
+  }
   function knock(freq, vol) {
-    if (typeof prefs !== 'undefined' && !prefs.sound) return;
+    if (quiet()) return;
     try {
-      actx ||= new (window.AudioContext || window.webkitAudioContext)();
+      const to = dest();
       const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
       o.type = 'triangle'; o.frequency.setValueAtTime(freq, t); o.frequency.exponentialRampToValueAtTime(freq * 0.6, t + 0.08);
       g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(Math.max(0.002, vol), t + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.1);
-      o.connect(g).connect(actx.destination); o.start(t); o.stop(t + 0.12);
+      o.connect(g).connect(to); o.start(t); o.stop(t + 0.12);
     } catch {}
   }
 
   function splashSound() {
-    if (typeof prefs !== 'undefined' && !prefs.sound) return;
+    if (quiet()) return;
     try {
-      actx ||= new (window.AudioContext || window.webkitAudioContext)();
+      const to = dest();
       const len = Math.floor(actx.sampleRate * 0.35), buf = actx.createBuffer(1, len, actx.sampleRate), d = buf.getChannelData(0);
       for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len) ** 2;
       const src = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain();
       src.buffer = buf; f.type = 'lowpass'; f.frequency.value = 900; g.gain.value = 0.35;
-      src.connect(f).connect(g).connect(actx.destination); src.start();
+      src.connect(f).connect(g).connect(to); src.start();
     } catch {}
   }
   function boing(vol) {
-    if (typeof prefs !== 'undefined' && !prefs.sound) return;
+    if (quiet()) return;
     try {
-      actx ||= new (window.AudioContext || window.webkitAudioContext)();
+      const to = dest();
       const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
       o.type = 'sine'; o.frequency.setValueAtTime(260, t); o.frequency.exponentialRampToValueAtTime(620, t + 0.12); o.frequency.exponentialRampToValueAtTime(380, t + 0.25);
       g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
-      o.connect(g).connect(actx.destination); o.start(t); o.stop(t + 0.32);
+      o.connect(g).connect(to); o.start(t); o.stop(t + 0.32);
     } catch {}
+  }
+
+  // the putter striking the ball: a woody tock, firmer for a harder putt
+  let struckAt = 0;
+  function strike(power) {
+    knock(1050, 0.05 + power * 0.09); knock(520, 0.03 + power * 0.05);
   }
 
   function mount(main, side) {
     gl = null; flat = null; holeKey = ''; aim = null;
     anim = null; queue = []; seenShot = 0; primed = false;
     pts = new Map(); gest = null; behindFor = '';
-    main.innerHTML = `<div class="pp"><div class="pp-hud"><span id="ppHole"></span><span id="ppTurn"></span></div>
+    main.innerHTML = `<div class="pp"><div class="pp-hud"><span id="ppHole"></span><span id="ppTurn"></span><button id="ppPick" class="ghost-btn pp-pick" hidden title="Pick up your ball: this hole costs your strokes so far +1">⛳ Pick up</button></div>
       <div class="pp-stage" id="ppStage"><div class="pp-power" id="ppPower" hidden><span></span></div>
         <div class="pp-cam" id="ppCam" hidden>
           <button data-c="left" title="Turn anticlockwise (←)" aria-label="Turn the course anticlockwise">⟲</button>
@@ -81,7 +94,12 @@ UI.putt = (() => {
       <p id="ppHint" class="hint"></p></div>`;
     side.innerHTML = '<div class="panel"><h3>Scorecard</h3><div id="ppCard" class="pp-card"></div></div>';
     const stage = $('ppStage');
-    main.querySelector('.pp').style.touchAction = 'none';
+    $('ppPick').onclick = async () => {
+      const n = (S.putt.strokes[S.putt.me] ?? 0) + 1;
+      if (await ctx.ask(`Pick up? This hole will cost you ${n}.`, { ok: '⛳ Pick up' })) ctx.quiet(ctx.act('pickup'));
+    };
+    // only the course takes over touches (aiming, turning the view): the page above and below still scrolls (#72)
+    stage.style.touchAction = 'none';
     $('ppCam').addEventListener('pointerdown', (e) => e.stopPropagation());
     $('ppCam').addEventListener('click', (e) => {
       const c = e.target.closest('button')?.dataset.c, v = gl?.view;
@@ -103,7 +121,7 @@ UI.putt = (() => {
       if (pts.size === 2 && gl) { aim = null; $('ppPower').hidden = true; gest = { ...two(), kind: 'two' }; return; }
       if (pts.size > 1) return;
       // a putt starts on your ball (anywhere in the flat view, which has no camera to move)
-      const onBall = !gl || gl.nearBall(e.clientX, e.clientY, GRAB);
+      const onBall = !gl || gl.nearBall(e.clientX, e.clientY, coarse() ? GRAB * 1.4 : GRAB);  // a fingertip is wider than a cursor
       if (e.button === 0 && !e.shiftKey && onBall && myTurn()) {
         skipAhead();  // putting now: any putt still rolling jumps to where it stopped
         aim = { x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY };
@@ -138,7 +156,13 @@ UI.putt = (() => {
       const shot = aimShot();
       aim = null;
       $('ppPower').hidden = true;
-      if (shot && shot.power > 0.03 && myTurn()) ctx.quiet(ctx.act('putt', { angle: +shot.angle.toFixed(4), power: +shot.power.toFixed(3) }));
+      if (shot && shot.power > 0.03 && myTurn()) {
+        // feedback straight away (#73): the tock and a puff at the ball, before the server's roll arrives
+        strike(shot.power); struckAt = performance.now(); ctx.buzz?.(15);
+        const me = S.putt.me;
+        if (gl && me != null) gl.burst(...S.putt.balls[me], 0xffffff, 6, 0.3 + shot.power * 0.4);
+        ctx.quiet(ctx.act('putt', { angle: +shot.angle.toFixed(4), power: +shot.power.toFixed(3) }));
+      }
     };
     stage.addEventListener('pointerup', release);
     stage.addEventListener('pointercancel', (e) => { pts.delete(e.pointerId); gest = null; aim = null; $('ppPower').hidden = true; });
@@ -205,7 +229,9 @@ UI.putt = (() => {
     }
     $('ppHole').textContent = `⛳ Hole ${p.hole} of ${p.holes} · par ${p.par ?? 3}`;
     const turn = p.seats.indexOf(S.turn);
-    $('ppTurn').textContent = p.between ? `Hole ${p.hole} done` : turn >= 0 ? `${turn === p.me ? 'Your' : (ctx.player(S.turn)?.name ?? '?') + "'s"} putt · stroke ${p.strokes[turn] + 1}` : '';
+    $('ppTurn').textContent = p.between ? `Hole ${p.hole} done` : turn >= 0 ? `${turn === p.me ? 'Your' : (ctx.player(S.turn)?.name ?? '?') + "'s"} putt · stroke ${p.strokes[turn] + 1}${p.cap ? ` of ${p.cap}` : ''}` : '';
+    // with no stroke limit (#68), you can give up on a hole once you've had a go
+    $('ppPick').hidden = !(p.cap == null && myTurn() && p.strokes[p.me] > 0);
     hint();
     renderCard();
     renderDone();
@@ -295,6 +321,7 @@ UI.putt = (() => {
   }
 
   function loop(now) {
+    if (!document.getElementById('ppStage')) { raf = 0; return; }  // the game view is gone: stop drawing
     raf = requestAnimationFrame(loop);
     if (!S?.putt) return;
     const p = S.putt, key = `${p.hole}:${JSON.stringify(p.cells)}`;
@@ -304,7 +331,11 @@ UI.putt = (() => {
       (gl || flat).build();
     }
     // play the putts one after another, with their knocks and splashes
-    if (!anim && queue.length) anim = { ...queue.shift(), t0: now, hi: 0, ended: false };
+    if (!anim && queue.length) {
+      anim = { ...queue.shift(), t0: now, hi: 0, ended: false };
+      // the tock for every putt, unless it's the one you just struck yourself (that one already sounded)
+      if (!(anim.by === p.me && now - struckAt < 2500)) strike(0.5);
+    }
     if (anim) {
       const f = ((now - anim.t0) / 1000) * 30;
       // (advance the index outside gl?.effect(): an optional call skips its arguments, which froze the flat view)
