@@ -20,6 +20,7 @@ import time
 import traceback
 import zlib
 from collections import defaultdict, deque
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
@@ -28,7 +29,9 @@ from games import GAME_INFO, GAMES, GameError
 from games.wordsmith import warm_up
 
 PORT = int(os.environ.get("PORT", 8000))
-STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+STATIC_DIR = os.path.join(APP_DIR, "static")
+DATA_DIR = os.path.join(APP_DIR, "data")
 CONTENT_TYPES = {".html": "text/html", ".js": "text/javascript", ".css": "text/css",
                  ".webmanifest": "application/manifest+json", ".png": "image/png", ".svg": "image/svg+xml"}
 MAX_PLAYERS = 6
@@ -59,14 +62,13 @@ AWAY_AFTER = 20                                            # seconds of silence 
 OFFLINE_GRACE = int(os.environ.get("OFFLINE_GRACE", 45))   # seconds before autopilot / host handover
 # A server on another port (e.g. a test server) keeps its own rooms and inbox, so it can't overwrite the live ones.
 _SUFFIX = "" if PORT == 8000 else f"-{PORT}"
-SAVE_FILE = os.environ.get("ROOMS_FILE") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", f"rooms{_SUFFIX}.pickle")
+SAVE_FILE = os.environ.get("ROOMS_FILE") or os.path.join(DATA_DIR, f"rooms{_SUFFIX}.pickle")
 # Bug reports & suggestions: one JSON object per line, plus a small status map.
-FEEDBACK_FILE = os.environ.get("FEEDBACK_FILE") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", f"feedback{_SUFFIX}.jsonl")
+FEEDBACK_FILE = os.environ.get("FEEDBACK_FILE") or os.path.join(DATA_DIR, f"feedback{_SUFFIX}.jsonl")
 FEEDBACK_STATUS = FEEDBACK_FILE.rsplit(".", 1)[0] + "-status.json"
 FEEDBACK_KINDS = ("bug", "idea")
 FEEDBACK_LIMIT = (5, 600)  # at most 5 reports per 10 minutes from one address
 # HTTPS: on by default (SSL=0 turns it off). Without CERT_FILE/KEY_FILE a self-signed certificate is made in data/.
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 LOG_REQUESTS = os.environ.get("LOG_REQUESTS") == "1"
 USE_SSL = os.environ.get("SSL", "1").lower() not in ("0", "off", "no", "false")
 CERT_FILE = os.environ.get("CERT_FILE") or os.path.join(DATA_DIR, "cert.pem")
@@ -115,7 +117,7 @@ class Player:
 
     def __setstate__(self, state):  # rooms saved by older versions lack newer fields
         self.__dict__.update({"last_chat": 0, "played": 0, "streak": 0, "best_streak": 0, "by_game": {},
-                              "points": 0, "quits": 0, "watching": False, "wish": None})
+                              "points": 0, "quits": 0, "watching": False, "wish": None, "badges": {}})
         self.__dict__.update(state)
 
     def human(self):
@@ -161,6 +163,7 @@ class Room:
         self.replay = []       # JSON frames of the current/last game
         self._replay_key = None
         self.saved = {}        # game id -> that game's settings, restored when switching back
+        self.game_no = 0       # counts games started; clients rebuild the game screen for each new one
         self._eid = 0
 
     def __getstate__(self):
@@ -171,7 +174,7 @@ class Room:
 
     def __setstate__(self, state):
         self.__dict__.update({"chat": [], "ready": set(), "votes": {}, "ledger": {}, "history": [], "replay": [],
-                              "_replay_key": None, "saved": {}, "fast": None, "fast_ver": 0})
+                              "_replay_key": None, "saved": {}, "fast": None, "fast_ver": 0, "game_no": 0})
         self.__dict__.update(state)
         for k, (_, _, d) in ROOM_SETTINGS.items():
             self.settings.setdefault(k, d)
@@ -357,7 +360,6 @@ class Room:
         if not p or not badge or p.bot or p.standin:
             return
         k = f"{gid}:{key}"
-        p.badges = getattr(p, "badges", None) or {}
         p.badges[k] = p.badges.get(k, 0) + 1
         if p.badges[k] == 1:
             self.add_log(f"🏅 {p.name} earned {badge[0]} {badge[1]}!", "badge")
@@ -387,133 +389,153 @@ class Room:
     # -- actions
 
     def act(self, p, a):
-        t = a.get("type")
-        if t == "react":
-            if a.get("emoji") not in REACTIONS:
-                raise GameError("Unknown reaction.")
-            self._eid += 1
-            self.reactions = self.reactions[-19:] + [{"id": self._eid, "pid": p.id, "emoji": a["emoji"]}]
-            return
-        if t == "chat":
-            return self.chat_message(p, a.get("text"))
-        if t == "profile":
-            return self.set_profile(p, a.get("name"), a.get("color"))
-        if t == "ready":
-            if self.phase != "over":
-                raise GameError("Not right now.")
-            self.ready ^= {p.id}
-            return
-        if t == "kick":
-            return self.kick(p, a.get("player"))
-        if t == "reset_scores":
-            if p.id != self.host:
-                raise GameError("Only the host can do that.")
-            for o in self.players.values():
-                o.wins = o.played = o.streak = o.best_streak = o.points = o.quits = 0
-                o.by_game = {}
-            self.history = []
-            self.ledger = {}
-            self.add_log(f"{p.name} reset the scoreboard.")
-            return
-        if t == "leave":
-            return self.leave(p)
-        if t == "settings":
-            return self.change_settings(p, a.get("settings") or {})
-        if t == "add_bot":
-            self.require_host(p, "lobby")
-            return self.add_bot(a.get("level"))
-        if t == "remove_bot":
-            self.require_host(p, "lobby")
-            bot = self.players.get(a.get("bot"))
-            if not bot or not bot.bot or bot.standin:
-                raise GameError("No such bot.")
-            self.add_log(f"{bot.name} was unplugged.")
-            return self.remove_player(bot)
-        if t == "watch":  # sit the next games out, or take a seat again (#71)
-            if self.phase != "lobby":
-                raise GameError("Switch between playing and watching in the lobby.")
-            if p.bot:
-                raise GameError("Bots always play.")
-            if a.get("on"):
-                if not p.spectator:
-                    self.add_log(f"👁 {p.name} will watch.")
-                p.spectator = p.watching = True
-                return
-            if p.spectator and len(self.seated()) >= MAX_PLAYERS:
-                raise GameError("The table is full.")
-            if p.spectator:
-                self.add_log(f"🙋 {p.name} will play.")
-            p.spectator = p.watching = False
-            return
-        if t == "wish":  # ask the host for a game; tapping it again takes the request back (#70)
-            if self.phase != "lobby":
-                raise GameError("Ask for a game in the lobby.")
-            gid = a.get("game")
-            if gid not in GAMES:
-                raise GameError("Unknown game.")
-            if p.wish == gid:
-                p.wish = None
-                return
-            p.wish = gid
-            self.add_log(f"🙏 {p.name} would like to play {GAMES[gid].icon} {GAMES[gid].name}.")
-            return
-        if t == "start":
-            self.require_host(p, "lobby")
-            return self.start()
-        if t == "next_vote":  # pick the next game; toggles, and a unanimous vote starts it
-            if self.phase != "over":
-                raise GameError("Voting opens when the game ends.")
-            gid = a.get("game")
-            if gid not in GAMES or not self.fits(gid):
-                raise GameError("That game doesn't fit this many players.")
-            if self.votes.get(p.id) == gid:
-                del self.votes[p.id]
-                return
-            self.votes[p.id] = gid
-            voters = [o.id for o in self.players.values() if not o.bot or o.standin]
-            if all(self.votes.get(i) == gid for i in voters):
-                return self.play_vote()
-            return
-        if t == "play_vote":
-            self.require_host(p, "over")
-            if not self.votes:
-                raise GameError("Nobody has voted yet.")
-            return self.play_vote()
-        if t == "join_game":  # a spectator sits in mid-game, in games that allow it (Game.late_join)
-            if self.phase != "playing":
-                raise GameError("There's no game to join right now.")
-            if not p.spectator:
-                raise GameError("You're already in the game.")
-            if len(self.seated()) >= min(MAX_PLAYERS, self.game.max_players):
-                raise GameError("The table is full. You'll get a seat for the next game.")
-            if not hasattr(self.game, "late_join"):
-                raise GameError(f"{self.game.name} can't take new players mid-game. You'll get a seat for the next one.")
-            p.reset()
-            self.game.late_join(p)
-            p.spectator = p.watching = False
-            self.add_log(f"🙋 {p.name} joins the game!", "big")
-            return
-        if t == "rematch":  # same game, same settings, straight back in
-            self.require_host(p, "over")
-            return self.start()
-        if t == "lobby":
-            self.require_host(p, "over")
-            return self.to_lobby()
-        if t == "end_game":  # the host stops a running game for everyone; nobody gains or loses points
-            self.require_host(p, "playing")
-            self.add_log(f"🛑 {p.name} ended the game.", "big")
-            return self.to_lobby()
+        """Apply one action from player `p`: a room action from ACTIONS, otherwise a move in the running game."""
+        handler = self.ACTIONS.get(a.get("type"))
+        if handler:
+            return handler(self, p, a)
         if self.phase != "playing":
             raise GameError("The game isn't running.")
         if p.spectator:
             raise GameError("Spectators can't play.")
         self.game.act(p, a)
 
-    def require_host(self, p, phase):
+    def require_host(self, p, phase=None):
         if p.id != self.host:
             raise GameError("Only the host can do that.")
-        if self.phase != phase:
+        if phase and self.phase != phase:
             raise GameError("Not right now.")
+
+    def react(self, p, emoji):
+        if emoji not in REACTIONS:
+            raise GameError("Unknown reaction.")
+        self._eid += 1
+        self.reactions = self.reactions[-19:] + [{"id": self._eid, "pid": p.id, "emoji": emoji}]
+
+    def toggle_ready(self, p):
+        if self.phase != "over":
+            raise GameError("Not right now.")
+        self.ready ^= {p.id}
+
+    def reset_scores(self, p):
+        self.require_host(p)
+        for o in self.players.values():
+            o.wins = o.played = o.streak = o.best_streak = o.points = o.quits = 0
+            o.by_game = {}
+        self.history = []
+        self.ledger = {}
+        self.add_log(f"{p.name} reset the scoreboard.")
+
+    def remove_bot(self, p, bot_id):
+        self.require_host(p, "lobby")
+        bot = self.players.get(bot_id)
+        if not bot or not bot.bot or bot.standin:
+            raise GameError("No such bot.")
+        self.add_log(f"{bot.name} was unplugged.")
+        self.remove_player(bot)
+
+    def set_watching(self, p, on):
+        """Sit the next games out, or take a seat again (#71)."""
+        if self.phase != "lobby":
+            raise GameError("Switch between playing and watching in the lobby.")
+        if p.bot:
+            raise GameError("Bots always play.")
+        if on:
+            if not p.spectator:
+                self.add_log(f"👁 {p.name} will watch.")
+            p.spectator = p.watching = True
+            return
+        if p.spectator and len(self.seated()) >= MAX_PLAYERS:
+            raise GameError("The table is full.")
+        if p.spectator:
+            self.add_log(f"🙋 {p.name} will play.")
+        p.spectator = p.watching = False
+
+    def wish(self, p, gid):
+        """Ask the host for a game; asking for it again takes the request back (#70)."""
+        if self.phase != "lobby":
+            raise GameError("Ask for a game in the lobby.")
+        if gid not in GAMES:
+            raise GameError("Unknown game.")
+        if p.wish == gid:
+            p.wish = None
+            return
+        p.wish = gid
+        self.add_log(f"🙏 {p.name} would like to play {GAMES[gid].icon} {GAMES[gid].name}.")
+
+    def vote(self, p, gid):
+        """Pick the next game (game over only); voting again for it takes the vote back, and a unanimous vote starts it."""
+        if self.phase != "over":
+            raise GameError("Voting opens when the game ends.")
+        if gid not in GAMES or not self.fits(gid):
+            raise GameError("That game doesn't fit this many players.")
+        if self.votes.get(p.id) == gid:
+            del self.votes[p.id]
+            return
+        self.votes[p.id] = gid
+        if all(self.votes.get(o.id) == gid for o in self.players.values() if o.human()):
+            self.play_vote()
+
+    def host_play_vote(self, p):
+        self.require_host(p, "over")
+        if not self.votes:
+            raise GameError("Nobody has voted yet.")
+        self.play_vote()
+
+    def join_game(self, p):
+        """A spectator sits in mid-game, in games that allow it (Game.late_join)."""
+        if self.phase != "playing":
+            raise GameError("There's no game to join right now.")
+        if not p.spectator:
+            raise GameError("You're already in the game.")
+        if len(self.seated()) >= min(MAX_PLAYERS, self.game.max_players):
+            raise GameError("The table is full. You'll get a seat for the next game.")
+        if not hasattr(self.game, "late_join"):
+            raise GameError(f"{self.game.name} can't take new players mid-game. You'll get a seat for the next one.")
+        p.reset()
+        self.game.late_join(p)
+        p.spectator = p.watching = False
+        self.add_log(f"🙋 {p.name} joins the game!", "big")
+
+    def end_game(self, p):
+        """The host stops a running game for everyone; nobody gains or loses points."""
+        self.require_host(p, "playing")
+        self.add_log(f"🛑 {p.name} ended the game.", "big")
+        self.to_lobby()
+
+    def host_start(self, p, phase):
+        self.require_host(p, phase)
+        self.start()
+
+    def back_to_lobby(self, p):
+        self.require_host(p, "over")
+        self.to_lobby()
+
+    def host_add_bot(self, p, level):
+        self.require_host(p, "lobby")
+        self.add_bot(level)
+
+    # Room-level actions by type; anything else is a move in the current game.
+    ACTIONS = {
+        "react": lambda r, p, a: r.react(p, a.get("emoji")),
+        "chat": lambda r, p, a: r.chat_message(p, a.get("text")),
+        "profile": lambda r, p, a: r.set_profile(p, a.get("name"), a.get("color")),
+        "ready": lambda r, p, a: r.toggle_ready(p),
+        "kick": lambda r, p, a: r.kick(p, a.get("player")),
+        "reset_scores": lambda r, p, a: r.reset_scores(p),
+        "leave": lambda r, p, a: r.leave(p),
+        "settings": lambda r, p, a: r.change_settings(p, a.get("settings") or {}),
+        "add_bot": lambda r, p, a: r.host_add_bot(p, a.get("level")),
+        "remove_bot": lambda r, p, a: r.remove_bot(p, a.get("bot")),
+        "watch": lambda r, p, a: r.set_watching(p, a.get("on")),
+        "wish": lambda r, p, a: r.wish(p, a.get("game")),
+        "start": lambda r, p, a: r.host_start(p, "lobby"),
+        "next_vote": lambda r, p, a: r.vote(p, a.get("game")),
+        "play_vote": lambda r, p, a: r.host_play_vote(p),
+        "join_game": lambda r, p, a: r.join_game(p),
+        "rematch": lambda r, p, a: r.host_start(p, "over"),  # same game, same settings, straight back in
+        "lobby": lambda r, p, a: r.back_to_lobby(p),
+        "end_game": lambda r, p, a: r.end_game(p),
+    }
 
     def fits(self, gid):
         game = GAMES[gid](self)
@@ -585,7 +607,7 @@ class Room:
         self.votes = {}
         self.replay = []
         self._replay_key = None
-        self.game_no = getattr(self, "game_no", 0) + 1  # clients rebuild the game screen for each new game
+        self.game_no += 1
         game.start(list(seated), random.Random())
         self.snap()
 
@@ -620,8 +642,7 @@ class Room:
         self.add_chat(p, text, ghost)
 
     def kick(self, p, pid):
-        if p.id != self.host:
-            raise GameError("Only the host can do that.")
+        self.require_host(p)
         target = self.players.get(pid)
         if not target or target.id == p.id or (target.bot and not target.standin):
             raise GameError("You can't remove that player.")
@@ -674,7 +695,7 @@ class Room:
             "palette": PLAYER_COLORS,
             "phase": self.phase,
             "settings": self.settings,
-            "gameId": self.settings["game"], "gameNo": getattr(self, "game_no", 0),
+            "gameId": self.settings["game"], "gameNo": self.game_no,
             "games": GAME_INFO,
             "roomSettings": ROOM_SETTINGS_INFO,
             "host": self.host,
@@ -690,7 +711,7 @@ class Room:
                 "bot": None if o.standin else o.bot, "meta": self.game.meta(o) if self.game else "",
                 "standin": o.standin, "away": o.shown_away and not o.standin,
                 "played": o.played, "streak": o.streak, "best": o.best_streak, "byGame": o.by_game,
-                "points": o.points, "quits": o.quits, "badges": getattr(o, "badges", None) or {},
+                "points": o.points, "quits": o.quits, "badges": o.badges,
             } for o in (self.players[i] for i in self.order)],
             "me": {"id": p.id, "name": p.name, "spectator": p.spectator,
                    "eliminated": p.eliminated, "ghost": ghost},
@@ -763,10 +784,16 @@ def auth(room, pid, token):
     return p
 
 
-def do_action(body):
+@contextmanager
+def player_session(body):
+    """Find the room, hold its lock and check the player's token: `with player_session(body) as (room, p):`."""
     room = get_room(body.get("code"))
     with room.cond:
-        p = auth(room, body.get("pid"), body.get("token"))
+        yield room, auth(room, body.get("pid"), body.get("token"))
+
+
+def do_action(body):
+    with player_session(body) as (room, p):
         room.seen(p)
         aid = str(body.get("aid") or "")[:40]
         seen = room.aids.setdefault(p.id, {})
@@ -795,9 +822,7 @@ def do_action(body):
 def peek(body):
     """A read-only question for the current game (e.g. what a half-placed word would score): no state
     changes, no broadcast."""
-    room = get_room(body.get("code"))
-    with room.cond:
-        p = auth(room, body.get("pid"), body.get("token"))
+    with player_session(body) as (room, p):
         game = room.game if room.phase == "playing" else None
         if game is None or not hasattr(game, "peek"):
             raise GameError("Nothing to check right now.")
@@ -806,9 +831,7 @@ def peek(body):
 
 def realtime_input(body):
     """High-rate input for real-time games (paddle positions): no replay frame, no full broadcast."""
-    room = get_room(body.get("code"))
-    with room.cond:
-        p = auth(room, body.get("pid"), body.get("token"))
+    with player_session(body) as (room, p):
         p.last_seen = time.time()
         game = room.game if room.phase == "playing" else None
         if not game or not hasattr(game, "on_input"):
@@ -818,18 +841,14 @@ def realtime_input(body):
 
 
 def status(body):
-    room = get_room(body.get("code"))
-    with room.cond:
-        p = auth(room, body.get("pid"), body.get("token"))
+    with player_session(body) as (room, p):
         if room.seen(p):
             room.bump()
     return {"ok": True}
 
 
 def replay(body):
-    room = get_room(body.get("code"))
-    with room.cond:
-        auth(room, body.get("pid"), body.get("token"))
+    with player_session(body) as (room, _):
         if room.phase == "playing":
             raise GameError("Replays unlock when the game ends.")
         return {"frames": [json.loads(f) for f in room.replay]}
