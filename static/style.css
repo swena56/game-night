@@ -829,8 +829,34 @@ body.focus #game .layout:has(.bl-busy) > aside { opacity: .2; }
 /* liar's dice: each hand starts under a cup that lifts in turn; the count of the bid face climbs */
 .liar-hand { position: relative; }
 .liar-hand.cupped .liar-dice { visibility: hidden; }
-.liar-hand.cupped::after { content: '🥤'; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(180deg); font-size: 26px; }
-.liar-hand:not(.cupped) .liar-dice { animation: pop .3s ease-out; }
+.liar-hand.cupped::after { content: ''; position: absolute; left: calc(5.5em + 24px); top: 50%; width: 60px; height: 36px; transform: translateY(-50%);
+  clip-path: polygon(14% 0, 86% 0, 100% 100%, 0 100%); border-radius: 6px 6px 3px 3px;
+  background: linear-gradient(90deg, #4a2a14, #8b5a2b 40%, #5c3418), linear-gradient(#0000 80%, #000a); box-shadow: inset 0 -4px 0 #3a1f0c; }
+.liar-hand:not(.cupped) .liar-dice { animation: liarLift .45s ease-out; }
+@keyframes liarLift { from { transform: translateY(8px); opacity: 0; } }
+/* rivals' cups across the top: a leather cup in the player's colour band, dice left as pips */
+.liar-table { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.liar-table[hidden] { display: none; }
+.liar-seat { display: grid; justify-items: center; gap: 3px; min-width: 64px; }
+.liar-seat small { font-weight: 700; font-size: 12px; max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.liar-seat.out { opacity: .35; }
+.liar-cup { width: 46px; height: 42px; clip-path: polygon(16% 0, 84% 0, 100% 100%, 0 100%); border-radius: 6px;
+  background: linear-gradient(#0000 18%, var(--c) 18% 28%, #0000 28%), linear-gradient(90deg, #4a2a14, #9a6633 45%, #5c3418);
+  box-shadow: inset 0 -5px 0 #3a1f0c; transform-origin: 50% 100%; }
+.liar-seat.turn .liar-cup { animation: liarWobble 1.2s ease-in-out infinite; }
+.liar-seat.turn small::before { content: '▸ '; }
+@keyframes liarWobble { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-6deg); } 75% { transform: rotate(6deg); } }
+.liar-left { display: flex; gap: 2px; min-height: 7px; }
+.liar-left i { width: 7px; height: 7px; border-radius: 2px; background: #f4efe6; box-shadow: 0 1px 0 #0006; }
+.liar-left i.gone { background: #ef476f; animation: liarGone .9s ease-in forwards; }
+@keyframes liarGone { to { transform: translate(14px, -24px) rotate(200deg); opacity: 0; } }
+.liar-ladder { display: flex; justify-content: center; align-items: center; gap: 4px; flex-wrap: wrap; margin-top: 6px; min-height: 26px; }
+.liar-rung { display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; border-radius: 999px; border: 2px solid var(--line);
+  background: var(--panel); font-size: 13px; opacity: .65; }
+.liar-rung.top { opacity: 1; box-shadow: 0 0 10px #ffd16655; }
+.liar-rung.in { animation: pop .3s ease-out; }
+.liar-rung .ya-die.tiny { --die: 16px; padding: 2px; gap: 1px; border-radius: 4px; box-shadow: none; }
+.liar-step { color: var(--muted); font-size: 12px; }
 .liar-count { font-size: 22px; font-weight: 900; text-align: center; margin: 4px 0; color: #ffd166; }
 .liar-count.over { color: var(--ok); }
 /* fib finder: answers turn over one by one */

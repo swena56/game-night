@@ -1,7 +1,7 @@
 // Liar's Dice: the current bid up top, your hidden dice, then a bid picker (how many, which face) with
 // Liar! and Exact buttons. The last showdown stays on screen with everyone's dice until the next one.
 UI.liars = (() => {
-  let S, ctx, qty = 1, face = 2, bidKey = '', seenShow = null, rolled = -1, reviewOpen = false, revealEnd = 0;
+  let S, ctx, qty = 1, face = 2, bidKey = '', seenShow = null, rolled = -1, reviewOpen = false, revealEnd = 0, seenCounts = null, seenBids = 0;
   const $ = (id) => document.getElementById(id);
   const PIPS = Dice.PIPS;
   const say = (q, f) => (q === 1 ? `one ${f}` : `${q} ${f}s`);
@@ -9,9 +9,11 @@ UI.liars = (() => {
   const die = (value, cls = '', tag = 'span') => Dice.die(value, cls, tag);
 
   function mount(main, side) {
-    qty = 1; face = 2; bidKey = ''; seenShow = null; rolled = -1;
+    qty = 1; face = 2; bidKey = ''; seenShow = null; rolled = -1; seenCounts = null; seenBids = 0;
     main.innerHTML = `<div class="liar">
+      <div id="lrTable" class="liar-table"></div>
       <div id="lrBid" class="liar-bid"></div>
+      <div id="lrLadder" class="liar-ladder"></div>
       <div class="liar-label">Your dice</div>
       <div id="lrMine" class="ya-dice liar-mine"></div>
       <div id="lrPick" class="liar-pick">
@@ -83,6 +85,43 @@ UI.liars = (() => {
     } else {
       bidBox.append(ctx.el('span', 'liar-who', `Round ${l.round} · ${l.total} dice on the table · no bid yet`));
     }
+
+    // everyone else's cup round the table: how many dice each still has, a wobble on whoever's bidding,
+    // and a die knocked out when someone loses one
+    const table = $('lrTable'); table.innerHTML = '';
+    for (const pid of l.seats) {
+      if (pid === S.me.id) continue;
+      const p = ctx.player(pid); if (!p) continue;
+      const n = l.counts[pid] ?? 0;
+      const seat = ctx.el('div', 'liar-seat' + (S.turn === pid ? ' turn' : '') + (n ? '' : ' out'));
+      const cup = ctx.el('div', 'liar-cup'); cup.style.setProperty('--c', p.color);
+      const pips = ctx.el('div', 'liar-left');
+      for (let k = 0; k < n; k++) pips.append(ctx.el('i'));
+      const nm = ctx.el('small', '', p.name); nm.style.color = p.color;
+      seat.append(cup, pips, nm);
+      table.append(seat);
+      if (seenCounts && (seenCounts[pid] ?? n) > n) {
+        const lost = ctx.el('i', 'gone'); pips.append(lost);
+        setTimeout(() => lost.remove(), 900);
+      }
+    }
+    seenCounts = { ...l.counts };
+    table.hidden = !table.children.length;
+
+    // the bids so far this round, oldest first, climbing like a ladder
+    const lad = $('lrLadder'); lad.innerHTML = '';
+    l.bids.slice(-6).forEach(([q, f, pid], k, arr) => {
+      const p = ctx.player(pid), last = k === arr.length - 1;
+      const chip = ctx.el('span', 'liar-rung' + (last ? ' top' : '') + (last && l.bids.length > seenBids ? ' in' : ''));
+      chip.style.borderColor = p?.color ?? '';
+      chip.append(ctx.el('b', '', `${q}×`), die(f, 'tiny'));
+      chip.title = `${p?.name ?? '?'}: ${say(q, f)}`;
+      if (last) chip.classList.toggle('mine', pid === S.me.id);
+      lad.append(chip);
+      if (!last) lad.append(ctx.el('span', 'liar-step', '›'));
+    });
+    if (l.bids.length > 6) lad.prepend(ctx.el('span', 'liar-step', '…'));
+    seenBids = l.bids.length;
 
     const mine = $('lrMine'); mine.innerHTML = '';
     for (const d of l.mine) mine.append(die(d, (l.wild && d === 1 ? 'wild ' : '')));
