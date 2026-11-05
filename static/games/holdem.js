@@ -18,6 +18,8 @@ UI.holdem = (() => {
           <div id="hePot" class="he-pot"></div>
           <div id="heBoard" class="he-board"></div>
           <div id="heResult" class="he-result"></div>
+          <div id="heNext" class="he-next" hidden><span class="he-next-bar"><i></i></span>
+            <button id="heNextBtn">Next hand ▶</button></div>
         </div>
       </div>
       <div class="he-me"><div id="heMyCards" class="he-cards"></div><div id="heMyInfo" class="he-myinfo"></div>
@@ -46,6 +48,7 @@ UI.holdem = (() => {
     $('heFold').onclick = () => go('fold');
     $('heRebuy').onclick = () => go('rebuy');
     $('heShow').onclick = () => go('show');
+    $('heNextBtn').onclick = () => go('next');
     $('heCall').onclick = () => go(S.holdem.toCall ? 'call' : 'check');
     $('heRaise').onclick = () => {
       const h = S.holdem, to = +$('heAmount').value;
@@ -119,9 +122,32 @@ UI.holdem = (() => {
       const w = h.winners[0], target = w === me ? $('heMyCards') : box.querySelector(`[data-id="${w}"]`);
       setTimeout(() => { Kit.fly(pot.querySelector('.chip-stack'), target, { ms: 600 }); ctx.sfx('chip'); }, 700);
       if (w === me) setTimeout(() => ctx.sfx('good'), 1300);
+      // say who won, big, before the next hand (the result line under the board says with what)
+      const names = h.winners.map((id) => (id === me ? 'You' : (ctx.player(id)?.name ?? '?').replace(/^🤖\s*/, '')));
+      Kit.callout(names.length > 1 ? `${names.join(' & ')} split!` : `${names[0]} ${w === me ? 'win' : 'wins'}!`,
+        w === me ? 'gold' : 'cool', { ms: 2200 });
     }
     seenDone = doneKey;
-    $('heResult').textContent = h.stage === 'done' || S.phase === 'over' ? h.result : '';
+    const done = h.stage === 'done' || S.phase === 'over';
+    $('heResult').textContent = done ? h.result : '';
+    $('heResult').classList.toggle('done', done && !!h.result);
+    // between hands: a bar runs down to the next deal, and people still in can skip ahead
+    const between = h.stage === 'done' && S.phase === 'playing' && !h.rebuyWait && S.timeLeft != null;
+    const nx = $('heNext'); nx.hidden = !between;
+    if (between) {
+      const bar = nx.querySelector('i'), barKey = `${h.hand}`;
+      if (bar.dataset.k !== barKey) {
+        bar.dataset.k = barKey;
+        bar.style.animation = 'none'; void bar.offsetWidth;
+        bar.style.animation = `heNext ${Math.max(0.5, S.timeLeft)}s linear forwards`;
+      }
+      const inGame = mine && !mine.out && !ctx.player(me)?.bot && !!ctx.act;
+      const asked = (h.ready || []).includes(me);
+      const btn = $('heNextBtn');
+      btn.hidden = !inGame;
+      btn.disabled = asked;
+      btn.textContent = asked ? 'Waiting for the others…' : 'Next hand ▶';
+    }
 
     $('heShow').hidden = !h.canShow || !ctx.act;
     paintHistory(h);

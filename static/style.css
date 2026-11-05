@@ -1171,6 +1171,12 @@ body.calm .gh-tile.trace { background: linear-gradient(#8ecae6, #4dabf7); }
 .he-board { display: flex; gap: 5px; }
 .he-board .pc { width: clamp(40px, 11vw, 54px); height: clamp(58px, 16vw, 78px); }
 .he-result { min-height: 1.3em; text-align: center; font-weight: 700; font-size: 14px; }
+.he-result.done { font-size: 16px; color: #ffd166; background: #0008; border-radius: 10px; padding: 6px 12px; text-shadow: 0 1px 2px #000; }
+.he-next { display: grid; justify-items: center; gap: 6px; width: min(100%, 280px); }
+.he-next-bar { display: block; width: 100%; height: 4px; border-radius: 2px; background: #fff3; overflow: hidden; }
+.he-next-bar i { display: block; height: 100%; background: var(--accent); transform-origin: left; }
+@keyframes heNext { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.he-next button { padding: 6px 16px; }
 .he-me { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 10px 0 6px; }
 .he-myinfo { font-weight: 700; }
 .he-actions { display: grid; gap: 8px; }
