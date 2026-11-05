@@ -35,6 +35,7 @@ class LastCard(Game):
         '7 = next player draws 2 (stack 7s!), 8 = skip, Q = reverse, J = wild suit.',
         'With 2 or fewer cards, tap “Last card!” — anyone can catch you for +2 if you forget.',
         'First to empty their hand wins.',
+        "With ⚡ Jump-in on, when the top card's twin (same rank, same colour, like 5♥ on 5♦) is in your hand, play it out of turn: play carries on from you.",
     ]
     name = "Last Card"
     icon = "🃏"
@@ -46,6 +47,7 @@ class LastCard(Game):
     settings_schema = {
         "hand": ("Starting hand", [(5, "5 cards"), (7, "7 cards")], 7),
         "actions": ("Action cards", [(True, "On (7·8·Q·J)"), (False, "Off (plain)")], True),
+        "jumpin": ("⚡ Jump-in", [(False, "Off"), (True, "On: snap a twin card out of turn")], False),
     }
 
     def start(self, seated, rng):
@@ -115,6 +117,8 @@ class LastCard(Game):
             return self.declare(p)
         if t == "catch":
             return self.catch(p, self.room.players.get(a.get("player")))
+        if t == "jumpin":
+            return self.jump_in(p, a.get("card"))
         self.require_turn(p)
         if t == "play":
             card = a.get("card")
@@ -153,8 +157,29 @@ class LastCard(Game):
         self.draw_cards(target, CATCH_PENALTY)
         self.room.add_log(f"🚨 {p.name} caught {target.name} not calling “Last card!” — {target.name} draws {CATCH_PENALTY}.", "big")
 
+    def twin(self, card):
+        """⚡ Jump-in: a card that may snap onto the top out of turn (same rank, same colour, not a wild Jack)."""
+        top = self.top()
+        return (self.s.get("jumpin") and not self.penalty and card != top and rank(card) == rank(top)
+                and (suit(card) in "HD") == (suit(top) in "HD") and not (self.s["actions"] and rank(card) == "J"))
+
+    def jump_in(self, p, card):
+        if not self.s.get("jumpin"):
+            raise GameError("Jump-in is off in this game.")
+        if p.eliminated or card not in getattr(p.g, "hand", []):
+            raise GameError("That card isn't in your hand.")
+        if self.room.turn == p.id:
+            raise GameError("It's your turn: just play it.")
+        if not self.twin(card):
+            raise GameError("Only the top card's twin can jump in.")
+        self.room.add_log(f"⚡ {p.name} jumps in!", "power")
+        self.room.turn = p.id  # play carries on from the jumper
+        self.drew = False
+        self.play(p, card)
+
     def play(self, p, card, choose=None):
         r = self.room
+        self.last_by = p.id
         p.g.hand.remove(card)
         self.discard.append(card)
         self.suit = suit(card)
@@ -186,6 +211,27 @@ class LastCard(Game):
         if len(p.g.hand) > 1:
             p.g.declared = False
         self.end_turn(skip)
+
+    def bot_jump(self):
+        """A bot holding the top card's twin may jump in, a moment after the card lands."""
+        if not self.s.get("jumpin") or self.room.phase != "playing":
+            return None
+        key = (len(self.discard), self.top())
+        if getattr(self, "jump_key", None) != key:  # a new top card: each bot decides once
+            self.jump_key = key
+            self.jump_at = None
+            for b in self.room.contenders():
+                if b.bot and not b.standin and b.id != self.room.turn and b.id != getattr(self, "last_by", None):
+                    twins = [c for c in b.g.hand if self.twin(c)]
+                    if twins and random.random() < {"easy": 0.25, "normal": 0.5, "hard": 0.8}[b.bot]:
+                        self.jump_at = (time.time() + random.uniform(0.9, 1.8), b.id, twins[0])
+                        break
+        if self.jump_at and time.time() >= self.jump_at[0]:
+            b = self.room.players.get(self.jump_at[1])
+            if b and self.jump_at[2] in b.g.hand and self.twin(self.jump_at[2]) and self.room.turn != b.id:
+                return b, self.jump_at[2]
+            self.jump_at = None
+        return None
 
     def draw(self, p):
         r = self.room
@@ -242,7 +288,9 @@ class LastCard(Game):
             if hand is not None else None,
             "playable": playable, "drew": self.drew and my_turn, "actions": self.s["actions"],
             "exposed": [i for i in self.seats if i in self.room.players and getattr(self.room.players[i].g, "exposed_at", None)],
-            "seats": self.seats,
+            "seats": self.seats, "lastBy": getattr(self, "last_by", None), "jumpin": bool(self.s.get("jumpin")),
+            "counts": {i: len(self.room.players[i].g.hand) for i in self.seats if i in self.room.players and hasattr(self.room.players[i].g, "hand")},
+            "twins": [c for c in (hand or []) if not my_turn and self.room.phase == "playing" and not p.eliminated and self.twin(c)],
         }}
 
     # -- bots
@@ -259,12 +307,16 @@ class LastCard(Game):
         return None
 
     def bot_ready(self):
-        return super().bot_ready() or self.catchable() is not None
+        return super().bot_ready() or self.catchable() is not None or self.bot_jump() is not None
 
     def bot_tick(self):
         pair = self.catchable()
         if pair:
             return self.catch(*pair)
+        jump = self.bot_jump()
+        if jump:
+            self.jump_at = None
+            return self.jump_in(*jump)
         super().bot_tick()
 
     def bot_turn(self, p):

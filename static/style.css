@@ -2520,3 +2520,17 @@ body.chat-typing .drawer { bottom: var(--kb, 0px) !important; max-height: calc(v
 .ru-recap-pts { font-size: 18px; color: var(--danger); white-space: nowrap; } .ru-recap-pts small { color: var(--muted); font-size: 11px; }
 .ru-recap .ru-cards { flex-wrap: wrap; }
 .ru-recap > button { display: block; margin: 10px auto 0; }
+/* last card: rivals' seats with fans of card backs; a twin you can jump in with */
+.lc-seats { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-bottom: 10px; }
+.lc-seat { flex: none; display: grid; justify-items: center; gap: 1px; padding: 6px 10px 4px; border-radius: 12px; background: #ffffff0a;
+  border: 1.5px solid color-mix(in srgb, var(--c, #888) 55%, transparent); min-width: 76px; font-size: 12px; transition: transform .2s; }
+.lc-seat.up { background: color-mix(in srgb, var(--c, #888) 22%, transparent); transform: translateY(-2px); box-shadow: 0 0 14px color-mix(in srgb, var(--c, #888) 50%, transparent); }
+.lc-seat.exposed small { color: var(--danger); font-weight: 800; }
+.lc-seat small { color: var(--muted); }
+.lc-fan { position: relative; height: 34px; width: 60px; }
+.lc-fan .pc.back.mini { position: absolute; left: 50%; bottom: 0; width: 22px; height: 32px; margin-left: -11px; font-size: 0;
+  transform-origin: 50% 140%; transform: translateX(var(--x, 0px)) rotate(var(--r, 0deg)); box-shadow: -1px 1px 2px #0007; }
+.card-btn.twin { animation: lcTwin .8s ease-in-out infinite alternate; }
+.card-btn.twin .pc { box-shadow: 0 0 0 2px #ffd166, 0 0 14px #ffd166aa; }
+@keyframes lcTwin { to { transform: rotate(var(--rot, 0deg)) translateY(calc(var(--drop, 0px) - 8px)); } }
+body.calm .card-btn.twin { animation: none; }
