@@ -1,12 +1,13 @@
 // Odd One Out: your secret word, the table's clues, then a vote.
 UI.oddone = (() => {
-  let S, ctx, shownVotes = '';
+  let S, ctx, shownVotes = '', seenWord = null, seenClues = -1, hide = false;
   const $ = (id) => document.getElementById(id);
   const playing = () => S.phase === 'playing' && !S.me.spectator && !S.me.eliminated;
 
   function mount(main, side) {
     main.innerHTML = `<div class="oo">
-      <div class="oo-card"><small id="ooLabel">Your secret word</small><b id="ooWord"></b><span id="ooRound" class="oo-round"></span></div>
+      <div id="ooCard" class="oo-card"><small id="ooLabel">Your secret word</small><b id="ooWord"></b><span id="ooRound" class="oo-round"></span>
+        <button id="ooHide" class="oo-hide" type="button" aria-label="Hide my word">🙈</button></div>
       <!-- the clues stay put under the word; what you do now (clue, vote, result) comes after them (#18) -->
       <div class="panel"><h3>Clues</h3><div id="ooClues"></div></div>
       <form id="ooClueForm" class="row oo-form" autocomplete="off" hidden>
@@ -34,8 +35,22 @@ UI.oddone = (() => {
         ctx.quiet(ctx.act(type, { text }).then(() => { $(input).value = ''; }));
       };
     };
+    // 🙈 cover the word so nobody reads it over your shoulder (remembered on this device); tap the card to peek
+    seenWord = null; seenClues = -1;
+    try { hide = localStorage.getItem('oddone.hide') === '1'; } catch {}
+    $('ooHide').onclick = (e) => { e.stopPropagation(); hide = !hide; try { localStorage.setItem('oddone.hide', hide ? '1' : '0'); } catch {} paintCard(); };
+    $('ooCard').addEventListener('pointerdown', () => { if (hide) $('ooCard').classList.add('peek'); });
+    for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) $('ooCard').addEventListener(ev, () => $('ooCard').classList.remove('peek'));
     send('ooClueForm', 'ooClue', 'clue');
     send('ooGuessForm', 'ooGuess', 'guess');
+  }
+
+  function paintCard() {
+    const card = $('ooCard'), mine = !!S?.oddone?.word;
+    card.classList.toggle('covered', hide && mine);
+    $('ooHide').hidden = !mine;
+    $('ooHide').textContent = hide ? '👁' : '🙈';
+    $('ooHide').title = hide ? 'Show my word' : 'Hide my word (hold the card to peek)';
   }
 
   function dot(p) { const d = ctx.el('span', 'mini-disc'); d.style.background = p?.color ?? '#888'; return d; }
@@ -47,6 +62,13 @@ UI.oddone = (() => {
     $('ooLabel').textContent = watching ? 'Watching. The words are' : 'Your secret word';
     $('ooWord').textContent = watching ? (g.common ? `${g.common} · ${g.oddWord}` : '🤫') : g.word.toUpperCase();
     $('ooRound').textContent = `Round ${g.round} of ${g.rounds}`;
+    // a new word: the card turns over to show it
+    const wk = `${g.round}:${g.word}`;
+    if (seenWord !== null && wk !== seenWord && g.word && motionOK()) {
+      const card = $('ooCard'); card.classList.remove('flip'); void card.offsetWidth; card.classList.add('flip'); ctx.sfx('flip');
+    }
+    seenWord = wk;
+    paintCard();
 
     $('ooClueForm').hidden = !(g.stage === 'clue' && ctx.myTurn);
     $('ooGuessForm').hidden = !(g.stage === 'guess' && ctx.myTurn);
@@ -65,6 +87,14 @@ UI.oddone = (() => {
       if (g.stage === 'clue' && S.turn === pid) row.append(ctx.el('span', 'oo-clue pending', '…'));
       box.append(row);
     }
+    // the newest clue pops in like a speech bubble
+    if (seenClues >= 0 && g.clues.length > seenClues) {
+      const [pid] = g.clues[g.clues.length - 1];
+      const bubbles = box.children[g.order.indexOf(pid)]?.querySelectorAll('.oo-clue:not(.pending)');
+      const last = bubbles?.[bubbles.length - 1];
+      if (last) { last.classList.add('said'); ctx.sfx('pop'); }
+    }
+    seenClues = g.clues.length;
 
     // voting
     const voting = g.stage === 'vote';
