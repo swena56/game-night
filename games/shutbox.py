@@ -78,6 +78,7 @@ class ShutBox(Game):
         "Keep rolling and shutting. Once every tile from 7 up is shut you may roll just one die.",
         "When no open tiles add up to your roll, your turn ends: the open tiles are your points.",
         "Shut every tile to shut the box: 0 points. Lowest total after the last round wins. Alone, beat the target.",
+        "With 📦 Shut it, win it on, shutting the box wins the whole game at once.",
     ]
     name = "Shut the Box"
     icon = "📦"
@@ -89,6 +90,7 @@ class ShutBox(Game):
         "tiles": ("Tiles", [(9, "1–9 (classic)"), (12, "1–12 (long)")], 9),
         "rounds": ("Rounds", [(3, "3"), (1, "1"), (5, "5")], 3),
         "onedie": ("One die", [(True, "Allowed once 7 and up are shut"), (False, "Always roll two")], True),
+        "instant": ("📦 Shut it, win it", [(False, "Off"), (True, "On: shutting the box wins the game on the spot")], False),
     }
 
     # -- setup
@@ -210,6 +212,9 @@ class ShutBox(Game):
         self.last = {"by": p.id, "pts": 0, "shut": True}
         self.award(p, "shut")
         self.room.add_log(f"🎉 {p.name} SHUTS THE BOX! 0 points.", "big")
+        if self.s.get("instant") and len(self.seats) > 1:
+            p.g.scores.append(0)
+            return self.room.finish(p, f"📦 {p.name} shut the box and wins on the spot!")
         self.end_box(p)
 
     def end_box(self, p):
