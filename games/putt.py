@@ -61,7 +61,20 @@ def straight_up(path, k):
     return 0 < k < len(path) - 1 and path[k - 1] == (path[k][0], path[k][1] - 1) and path[k + 1] == (path[k][0], path[k][1] + 1)
 
 
-def make_hole(rng):
+# course styles (#70): how often each feature turns up. "classic" is the original mix.
+STYLES = {
+    "classic": {"jump": 0.45, "mill": 0.5, "pond": 0.75, "ponds": 1, "bumpers": (1, 3), "hills": (0, 1, 1, 2), "posts": (0, 1, 1, 2), "rocks": (0, 1, 1)},
+    "water": {"jump": 0.9, "mill": 0.3, "pond": 0.95, "ponds": 3, "bumpers": (1, 2), "hills": (0, 1), "posts": (0, 1), "rocks": (0, 1)},
+    "obstacles": {"jump": 0.3, "mill": 0.95, "pond": 0.5, "ponds": 1, "bumpers": (2, 4), "hills": (0, 1), "posts": (1, 2, 2), "rocks": (1, 1, 2)},
+    "hills": {"jump": 0.35, "mill": 0.3, "pond": 0.6, "ponds": 1, "bumpers": (0, 2), "hills": (2, 3, 3, 4), "posts": (0, 1), "rocks": (0, 1)},
+}
+THEMES = ("day", "sunset", "night", "autumn")  # each hole's sky and scenery in the browser; looks only
+
+
+def make_hole(rng, style="classic"):
+    if style == "mixed":  # a different style each hole
+        style = rng.choice(list(STYLES))
+    st = STYLES.get(style, STYLES["classic"])
     path = walk_path(rng)
     cells = set(path)
     for (x, y) in path[1:-1]:  # widen the fairway here and there
@@ -74,14 +87,14 @@ def make_hole(rng):
     kinds = {}
     # a jump: a ramp, then a stream across the fairway to clear (too slow and you land in the water)
     jump = [k for k in range(2, len(path) - 3) if straight_up(path, k) and straight_up(path, k + 1) and narrow(path[k]) and narrow(path[k + 1])]
-    if jump and rng.random() < 0.45:
+    if jump and rng.random() < st["jump"]:
         k = rng.choice(jump)
         kinds[path[k]], kinds[path[k + 1]] = "ramp", "water"
     # a windmill over a straight, narrow stretch: its blades sweep down through the doorway in turn
     mills = []
     spots = [path[k] for k in range(2, len(path) - 2) if straight_up(path, k) and narrow(path[k]) and path[k] not in kinds
              and kinds.get(path[k - 1]) is None and kinds.get(path[k + 1]) is None]
-    if spots and rng.random() < 0.5:
+    if spots and rng.random() < st["mill"]:
         mills.append(rng.choice(spots))
     busy = set(kinds) | set(mills)
     free_mid = [c for c in mid if c not in busy]
@@ -96,30 +109,30 @@ def make_hole(rng):
     # a pond: a cell off the fairway, touching it
     edge = [(x + dx, y + dy) for x, y in path[2:-1] for dx, dy in ((1, 0), (-1, 0)) if 0 <= x + dx < COLS]
     edge = [c for c in edge if c not in cells]
-    if edge and rng.random() < 0.75:
-        w = rng.choice(edge)
-        cells.add(w)
-        kinds[w] = "water"
+    if edge and rng.random() < st["pond"]:
+        for w in rng.sample(edge, min(len(edge), st["ponds"])):
+            cells.add(w)
+            kinds[w] = "water"
     busy = set(kinds) | set(mills)
     bumpers = []
-    for c in rng.sample(mid, min(len(mid), rng.randint(1, 3))):
+    for c in rng.sample(mid, min(len(mid), rng.randint(*st["bumpers"]))):
         if c not in busy:
             bumpers.append((c[0] + rng.uniform(0.3, 0.7), c[1] + rng.uniform(0.3, 0.7), rng.choice((0.1, 0.13, 0.16))))
     in_cell = lambda objs: {(math.floor(o[0]), math.floor(o[1])) for o in objs}
     # rolling ground: a hump or a bowl filling a whole tile (flat at its edges, so tiles still meet)
     hills = []
     free = [c for c in mid if c not in busy and c not in in_cell(bumpers)]
-    for c in rng.sample(free, min(len(free), rng.choice((0, 1, 1, 2)))):
+    for c in rng.sample(free, min(len(free), rng.choice(st["hills"]))):
         hills.append((c[0], c[1], rng.choice((0.14, 0.14, -0.12))))
     taken = busy | {(h[0], h[1]) for h in hills} | in_cell(bumpers)
     # square posts and rocks: standing on the fairway, off the centre line so there's always a way past
     posts, rocks = [], []
     spots = [c for c in path[2:-2] if c not in taken]
-    for c in rng.sample(spots, min(len(spots), rng.choice((0, 1, 1, 2)))):
+    for c in rng.sample(spots, min(len(spots), rng.choice(st["posts"]))):
         posts.append((c[0] + rng.choice((0.28, 0.72)), c[1] + rng.uniform(0.35, 0.65), 0.09))
     taken |= in_cell(posts)
     spots = [c for c in path[2:-2] if c not in taken]
-    for c in rng.sample(spots, min(len(spots), rng.choice((0, 1, 1)))):
+    for c in rng.sample(spots, min(len(spots), rng.choice(st["rocks"]))):
         rocks.append((c[0] + rng.choice((0.25, 0.75)), c[1] + rng.uniform(0.3, 0.7), rng.choice((0.08, 0.1, 0.12))))
     # banks in the outer corner of a turn: a straight one at 45°, or a curved one
     banks = []
@@ -145,7 +158,7 @@ def make_hole(rng):
     par = 3 + ("ramp" in kinds.values() or bool(mills) or len(path) > 12)
     return {"par": par, "cells": sorted(cells), "kinds": {f"{x},{y}": k for (x, y), k in kinds.items()}, "slope": slope,
             "bumpers": bumpers, "tee": tee, "cup": cup, "path": path, "hills": hills, "posts": posts,
-            "rocks": rocks, "banks": banks, "mills": mills}
+            "rocks": rocks, "banks": banks, "mills": mills, "style": style, "theme": rng.choice(THEMES)}
 
 
 def hill_grad(a, u, v):
@@ -365,6 +378,8 @@ class Putt(Game):
     badges = {**Game.badges, "ace": ("🎯", "Hole in one", "Sink a putt in a single stroke")}
     settings_schema = {
         "holes": ("Holes", [(6, "6"), (3, "3 (quick)"), (9, "9")], 6),
+        "course": ("Course", [("classic", "Classic"), ("mixed", "🎲 Surprise each hole"), ("water", "🌊 Water hazards"),
+                              ("obstacles", "🌀 Obstacle alley"), ("hills", "⛰️ Hills and bowls")], "classic"),
         "strokes": ("Stroke limit", [(8, "8"), (6, "6"), (10, "10"), (0, "∞ No limit")], 8),
     }
     low_wins = True  # strokes: the standings card ranks fewest first
@@ -387,7 +402,7 @@ class Putt(Game):
         self.between = False
         self.mark_round()
         self.hole_no += 1
-        self.hole = make_hole(self.rng)
+        self.hole = make_hole(self.rng, self.s.get("course", "classic"))
         self.pars = getattr(self, "pars", [3] * (self.hole_no - 1)) + [self.hole.get("par", 3)]
         self.course = None
         n = len(self.seats)
@@ -572,7 +587,7 @@ class Putt(Game):
             "cells": h["cells"], "kinds": h["kinds"], "slope": h["slope"], "bumpers": h["bumpers"],
             "tee": h["tee"], "cup": h["cup"], "path": h["path"], "par": h.get("par", 3), "pars": getattr(self, "pars", []),
             "hills": h.get("hills", []), "posts": h.get("posts", []), "rocks": h.get("rocks", []),
-            "banks": h.get("banks", []), "mills": h.get("mills", []), "millSpeed": MILL_OMEGA, "now": round(time.time(), 3), "cols": COLS, "rows": ROWS, "ball": BALL, "cupR": CUP,
+            "banks": h.get("banks", []), "mills": h.get("mills", []), "theme": h.get("theme", "day"), "style": h.get("style", "classic"), "millSpeed": MILL_OMEGA, "now": round(time.time(), 3), "cols": COLS, "rows": ROWS, "ball": BALL, "cupR": CUP,
             "balls": self.balls, "strokes": self.strokes, "holed": self.holed, "cards": self.cards,
             "shot": self.shot, "cap": self.cap, "picked": getattr(self, "picked", None), "between": getattr(self, "between", False),
             "standings": self.standings() if getattr(self, "between", False) and len(self.seats) > 1 else None,

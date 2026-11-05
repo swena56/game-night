@@ -1,4 +1,4 @@
-"""Putt Party stroke limit (#68): 8 by default (the cap scores the hole); 6 or 10; or ∞, where a player
+"""Putt Party stroke limit (#68) and course styles (#70): 8 by default (the cap scores the hole); 6 or 10; or ∞, where a player
 picks up with ⛳ (strokes so far +1) and a safety limit of 20 still ends a lost hole.
 
     python3 tests/putt_strokes.py
@@ -87,6 +87,21 @@ r, g, ann, bo = course(None)
 del r.settings["strokes"]
 del g.picked
 check("old room: cap 8", g.cap == 8 and not g.done(0))
+
+# course styles (#70): classic by default; each style still builds a hole that starts and ends on the fairway
+import random  # noqa: E402
+r, g, ann, bo = course(None)
+check("course defaults to classic", g.hole["style"] == "classic" and g.view(ann)["putt"]["theme"] in putt.THEMES)
+for st in ("classic", "mixed", "water", "obstacles", "hills"):
+    ok = True
+    for seed in range(40):
+        h = putt.make_hole(random.Random(seed), st)
+        cells = {tuple(c) for c in h["cells"]}
+        ok &= tuple(h["path"][0]) in cells and tuple(h["path"][-1]) in cells and h["kinds"].get("%d,%d" % h["path"][-1]) is None
+    check(f"style {st} builds sound holes", ok)
+waters = sum(list(putt.make_hole(random.Random(s), "water")["kinds"].values()).count("water") for s in range(60))
+classic = sum(list(putt.make_hole(random.Random(s), "classic")["kinds"].values()).count("water") for s in range(60))
+check("water style has more water", waters > classic * 2, f"{waters} vs {classic}")
 
 print("\nall ok" if not fails else f"\n{len(fails)} failed: {fails}")
 sys.exit(1 if fails else 0)

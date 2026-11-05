@@ -395,7 +395,8 @@ UI.putt = (() => {
     stage.prepend(renderer.domElement);
     const scene = new T.Scene(); scene.background = new T.Color(0x0c1a2b);
     const camera = new T.PerspectiveCamera(45, 1, 0.05, 120);
-    scene.add(new T.HemisphereLight(0xdff3ff, 0x1d3b1d, 0.75));
+    const hemi = new T.HemisphereLight(0xdff3ff, 0x1d3b1d, 0.75);
+    scene.add(hemi);
     const sun = new T.DirectionalLight(0xffffff, 0.75);
     sun.castShadow = true;
     sun.shadow.mapSize.set(1024, 1024);
@@ -425,6 +426,78 @@ UI.putt = (() => {
       for (let i = 0; i < 300; i++) { g.fillStyle = `rgba(80,40,0,${Math.random() * 0.12})`; g.fillRect(Math.random() * w, Math.random() * h, 6, 1); }
     });
     let course = new T.Group(); scene.add(course);
+
+    // each hole's look (#69): a sky, a horizon haze, the light, and trees, flowers or lanterns around the course.
+    // The server picks the theme; the scenery's places come from the hole, so every phone sees the same course.
+    const THEME = {
+      day: { sky: ['#4ea8ff', '#bfe3ff'], fog: 0xbfe3ff, hemi: [0xdff3ff, 0x1d3b1d, 0.75], sun: [0xffffff, 0.75], rough: 0x1f5130, crown: [0x2d6a4f, 0x40916c, 0x52b788], bloom: [0xffd6e8, 0xfff3b0, 0xffffff] },
+      sunset: { sky: ['#5b3a8c', '#ff9e6d'], fog: 0xf7a072, hemi: [0xffd1a8, 0x2a1d3b, 0.7], sun: [0xffb37a, 0.85], rough: 0x23402b, crown: [0x2f5d46, 0x3f6f4f, 0x5a7d4f], bloom: [0xffb4a2, 0xffd166] },
+      night: { sky: ['#050b1d', '#1b2a4e'], fog: 0x14203d, hemi: [0x8fb3ff, 0x0b1a10, 0.55], sun: [0xbcd2ff, 0.45], rough: 0x0f2a1a, crown: [0x18392b, 0x1f4a37], bloom: [], lamps: true, stars: true },
+      autumn: { sky: ['#7fb4d8', '#f3e1c4'], fog: 0xf0dcc0, hemi: [0xfff0d6, 0x3b2a14, 0.75], sun: [0xfff1d6, 0.8], rough: 0x4a4a22, crown: [0xd9480f, 0xf08c00, 0xe8590c, 0xb08900], bloom: [0xf4a261] },
+    };
+    function skyTex(th) {
+      return canvasTex(T, 4, 256, (g, w, h) => {
+        const gr = g.createLinearGradient(0, 0, 0, h);
+        gr.addColorStop(0, th.sky[0]); gr.addColorStop(0.75, th.sky[1]); gr.addColorStop(1, th.sky[1]);
+        g.fillStyle = gr; g.fillRect(0, 0, w, h);
+      });
+    }
+    function starTex(th) {
+      return canvasTex(T, 256, 256, (g, w, h) => {
+        const gr = g.createLinearGradient(0, 0, 0, h);
+        gr.addColorStop(0, th.sky[0]); gr.addColorStop(1, th.sky[1]);
+        g.fillStyle = gr; g.fillRect(0, 0, w, h);
+        for (let i = 0; i < 140; i++) { g.fillStyle = `rgba(255,255,255,${0.3 + Math.random() * 0.7})`; g.fillRect(Math.random() * w, Math.random() * h * 0.7, 1, 1); }
+      });
+    }
+    const crownGeo = new T.ConeGeometry(0.42, 1.1, 7), trunkGeo = new T.CylinderGeometry(0.06, 0.08, 0.4, 6);
+    const bloomGeo = new T.SphereGeometry(0.04, 6, 4), lampGeo = new T.SphereGeometry(0.08, 10, 8), poleGeo = new T.CylinderGeometry(0.02, 0.02, 0.5, 5);
+    let skyFor = '';
+    function dress(p) {
+      const th = THEME[p.theme] || THEME.day;
+      if (skyFor !== p.theme) {
+        skyFor = p.theme;
+        scene.background?.dispose?.();
+        scene.background = th.stars ? starTex(th) : skyTex(th);
+        scene.fog = new T.Fog(th.fog, 16, 46);
+        hemi.color.setHex(th.hemi[0]); hemi.groundColor.setHex(th.hemi[1]); hemi.intensity = th.hemi[2];
+        sun.color.setHex(th.sun[0]); sun.intensity = th.sun[1];
+        rough.material.color.setHex(th.rough);
+      }
+      // a little random sequence of the hole's own, the same on every phone
+      let seed = (p.hole * 7919 + p.cells.length * 104729 + Math.round(p.cup[0] * 31)) >>> 0;
+      const rnd = () => { seed = (seed + 0x6d2b79f5) >>> 0; let t = seed; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+      const near = (x, y, d) => p.cells.some(([cx, cy]) => x > cx - d && x < cx + 1 + d && y > cy - d && y < cy + 1 + d);
+      const trees = [], blooms = [], lamps = [];
+      for (let y = -3; y < p.rows + 4; y += 0.9) for (let x = -4; x < p.cols + 4; x += 0.9) {
+        const jx = x + rnd() * 0.8, jy = y + rnd() * 0.8;
+        if (near(jx, jy, 0.55)) continue;
+        const r = rnd();
+        // no trees right behind the tee or round the cup: that's where the camera stands to look down the hole
+        const clear = Math.hypot(jx - p.tee[0], jy - p.tee[1]) < 3.2 || Math.hypot(jx - p.cup[0], jy - p.cup[1]) < 1.6;
+        if (r < 0.27 && !clear) trees.push([jx, jy, 0.7 + rnd() * 0.7, Math.floor(rnd() * th.crown.length)]);
+        else if (r < 0.5 && th.bloom.length && near(jx, jy, 1.6)) blooms.push([jx, jy, Math.floor(rnd() * th.bloom.length)]);
+      }
+      if (th.lamps) for (const [x, y] of p.path.filter((_, k) => k % 3 === 1)) {
+        const side = rnd() < 0.5 ? -0.25 : 1.25;
+        if (!near(x + side, y + 0.5, 0.05)) lamps.push([x + side, y + 0.5]);
+      }
+      const m4 = new T.Matrix4(), q = new T.Quaternion(), sc = new T.Vector3(), at = new T.Vector3(), up = new T.Euler();
+      const group = (geo, mat, list, place) => {
+        if (!list.length) return;
+        const im = new T.InstancedMesh(geo, mat, list.length);
+        list.forEach((it, i) => { place(it); m4.compose(at, q.setFromEuler(up), sc); im.setMatrixAt(i, m4); });
+        list.forEach((it, i) => it.color != null && im.setColorAt(i, new T.Color(it.color)));
+        course.add(im);
+      };
+      trees.forEach((t) => (t.color = th.crown[t[3]]));
+      group(trunkGeo, new T.MeshLambertMaterial({ color: 0x5c3d2e }), trees, ([x, y, k]) => { at.set(x, -0.22 + 0.2 * k, -y); sc.set(k, k, k); up.set(0, 0, 0); });
+      group(crownGeo, new T.MeshLambertMaterial({ color: 0xffffff }), trees, ([x, y, k]) => { at.set(x, -0.22 + (0.4 + 0.5) * k, -y); sc.set(k, k, k); up.set(0, x * 3, 0); });
+      blooms.forEach((b) => (b.color = th.bloom[b[2]]));
+      group(bloomGeo, new T.MeshLambertMaterial({ color: 0xffffff }), blooms, ([x, y]) => { at.set(x, -0.19, -y); sc.set(1, 1, 1); up.set(0, 0, 0); });
+      group(poleGeo, new T.MeshLambertMaterial({ color: 0x333a44 }), lamps, ([x, y]) => { at.set(x, 0.03, -y); sc.set(1, 1, 1); up.set(0, 0, 0); });
+      group(lampGeo, new T.MeshBasicMaterial({ color: 0xffe8a3 }), lamps, ([x, y]) => { at.set(x, 0.3, -y); sc.set(1, 1, 1); up.set(0, 0, 0); });
+    }
     const balls = [], ballGeo = new T.SphereGeometry(1, 28, 18);
     let aimLine = null, flag = null, flagBase = null;
     const bumperMeshes = [], effects = [], mills = [];
@@ -461,6 +534,7 @@ UI.putt = (() => {
       const hills = new Set((p.hills || []).map((h) => `${h[0]},${h[1]}`));
       const blades = [];  // grass blades to stand on the fringe and the long grass: [x, y, height]
       mills.length = 0;
+      dress(p);
       for (const [x, y] of p.cells) {
         const kind = p.kinds[`${x},${y}`];
         const color = kind ? COLORS[kind] : COLORS.fair[(x + y) % 2];
