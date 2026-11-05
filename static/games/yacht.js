@@ -24,7 +24,8 @@ UI.yacht = (() => {
       const b = Object.assign(document.createElement('button'), { className: 'ya-die' });  // ctx arrives with the first render
       b.dataset.i = i;
       for (let k = 0; k < 9; k++) b.append(document.createElement('span'));
-      b.onclick = () => { if (canHold()) { hold[i] = !hold[i]; paintDice(); } };
+      // holds go to the server too, so everyone watching sees which dice you're keeping
+      b.onclick = () => { if (canHold()) { hold[i] = !hold[i]; paintDice(); ctx.quiet(ctx.act('hold', { hold })); } };
       dice.append(b);
     }
     $('yaRoll').onclick = () => ctx.quiet(ctx.act('roll', { hold: S.yacht.rolled ? hold : [false, false, false, false, false] }));
@@ -70,12 +71,15 @@ UI.yacht = (() => {
     // a new turn or a new roll: holds start from what the server kept
     const key = `${S.turn}:${y.rollId}`;
     if (key !== holdFor) { holdFor = key; hold = y.rolled ? [...y.held] : [false, false, false, false, false]; }
+    else if (!ctx.myTurn) hold = [...y.held];  // watching: the roller's holds as they tap them
     paintDice(y.rollId !== seenRoll && seenRoll !== 0);
     seenRoll = y.rollId;
 
     const mineTurn = ctx.myTurn && S.phase === 'playing';
-    $('yaRoll').disabled = !mineTurn || y.rollsLeft === 0;
-    $('yaRoll').textContent = !y.rolled ? '🎲 Roll' : y.rollsLeft ? `🎲 Reroll (${y.rollsLeft} left)` : 'No rolls left: pick a box';
+    const stars = y.bonusRolls?.[me] ?? 0;
+    $('yaRoll').disabled = !mineTurn || (y.rollsLeft === 0 && !stars);
+    $('yaRoll').textContent = !y.rolled ? '🎲 Roll' : y.rollsLeft ? `🎲 Reroll (${y.rollsLeft} left)` : stars ? '⭐ Use your bonus roll' : 'No rolls left: pick a box';
+    $('yaRoll').classList.toggle('ya-star', !!(y.rolled && !y.rollsLeft && stars));
     const turnName = ctx.player(S.turn)?.name ?? '';
     $('yaHint').textContent = S.phase !== 'playing' ? y.last : !mineTurn ? `${turnName} is rolling…`
       : !y.rolled ? 'Roll the dice to start your turn.' : 'Tap dice to hold them, reroll, or tap a box below to score.';
@@ -96,7 +100,10 @@ UI.yacht = (() => {
       for (const [cat, label] of y.cats) {
         if (cat === 'full' && y.bonus) extraRow('ya-bonus', `Bonus (${y.need}+)`);
         const tr = ctx.el('tr'); tr.dataset.cat = cat;
-        tr.append(ctx.el('td', '', label));
+        const name = ctx.el('td', '', label);
+        const face = ['ones', 'twos', 'threes', 'fours', 'fives', 'sixes'].indexOf(cat) + 1;
+        if (face) name.prepend(Dice.die(face, 'tiny ya-label-die'));  // a little die on each number row
+        tr.append(name);
         for (const id of seats) {
           const td = ctx.el('td'); td.dataset.id = id;
           if (id === me) {

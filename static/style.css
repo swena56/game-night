@@ -505,6 +505,7 @@ body.light #arena .stick-bottom { background: linear-gradient(transparent, #1d17
 @keyframes diceTumble { 0% { transform: translateY(-30px) rotate(var(--spin, -200deg)) scale(.55); opacity: .4; }
   60% { transform: translateY(3px) rotate(8deg) scale(1.04); opacity: 1; } 100% { transform: none; } }
 .ya-die.small { --die: clamp(26px, 8vw, 34px); box-shadow: 0 2px 0 #b9b0cc, 0 4px 8px #0008; }
+.ya-die.tiny { --die: 18px; padding: 2px; gap: 1px; border-radius: 4px; box-shadow: 0 1px 0 #b9b0cc; display: inline-grid; }
 .ya-die.wild-face, .ya-die.hot { box-shadow: 0 0 0 3px var(--ok), 0 4px 0 #b9b0cc, 0 8px 16px #0008; }
 .dice-cup { animation: cupShake .5s ease-in-out; }
 @keyframes cupShake { 20% { transform: rotate(-9deg) translateX(-4px); } 40% { transform: rotate(8deg) translateX(4px); }
@@ -2572,3 +2573,6 @@ body.calm .hh-seat.moonish { animation: none; }
 .liar-bid.bump { animation: liarBump .35s cubic-bezier(.3, 1.6, .5, 1); }
 @keyframes liarBump { 40% { transform: scale(1.12); } }
 body.calm .liar-bid.bump { animation: none; }
+/* yacht: a die on each number row, and the bonus roll button */
+.ya-label-die { vertical-align: middle; margin-right: 6px; }
+#yaRoll.ya-star { background: linear-gradient(180deg, #ffd166, #f4a261); color: #1a1205; }
