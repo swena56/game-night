@@ -12,9 +12,11 @@ UI.trivia = (() => {
       <div class="dd-bar"><span id="tvBar"></span></div>
       <div id="tvQ" class="tv-q"></div>
       <div id="tvOpts" class="tv-opts"></div>
+      <button id="tvFifty" class="tv-fifty" hidden>✂️ 50:50</button>
       <div id="tvNote" class="tv-note"></div></div>`;
     side.innerHTML = '<div class="panel"><h3>Scores</h3><div id="tvScores"></div><p class="hint left">Right answers score 100, plus up to 100 for speed. The last question counts double.</p></div>';
     tickTimer = setInterval(tick, 150);
+    $('tvFifty').onclick = () => { ctx.sfx('whoosh'); ctx.quiet(ctx.act('fifty')); };
   }
 
   function unmount() { clearInterval(tickTimer); }
@@ -41,8 +43,12 @@ UI.trivia = (() => {
     const opts = $('tvOpts'); opts.innerHTML = '';
     opts.classList.toggle('two', t.options.length === 2);
     const canPick = S.phase === 'playing' && t.stage === 'ask' && t.playing && t.mine == null && !!ctx.act;
+    const cut = new Set(t.cut || []);
+    const picks = rv ? Object.values(rv.picks) : [];
     t.options.forEach((text, i) => {
-      const b = ctx.el('button', `tv-opt c${i}`);
+      const b = ctx.el('button', `tv-opt c${i}` + (cut.has(i) && !rv ? ' cut' : ''));
+      // at the reveal each answer fills with the share of the table that picked it
+      if (rv && picks.length > 1) b.style.setProperty('--share', picks.filter((k) => k === i).length / picks.length);
       b.append(ctx.el('b', '', LETTERS[i]), ctx.el('span', '', text));
       if (t.mine === i) b.classList.add('mine');
       if (rv) {
@@ -57,10 +63,14 @@ UI.trivia = (() => {
           b.append(dots);
         }
       }
-      b.disabled = !canPick;
+      b.disabled = !canPick || (cut.has(i) && !rv);
       b.onclick = () => { ctx.sfx('lock'); ctx.quiet(ctx.act('answer', { i })); };
       opts.append(b);
     });
+    const ff = $('tvFifty');
+    ff.hidden = t.fifty == null || (!t.fifty && !cut.size) || t.options.length < 4 || (!canPick && !cut.size) || !!rv;
+    ff.disabled = !t.fifty || !canPick;
+    ff.textContent = t.fifty ? '✂️ Use your 50:50' : '✂️ 50:50 used';
 
     // the answer lands: a chime or a buzz, and my points float up off my button
     const qk = `${t.n}:${t.stage}`;

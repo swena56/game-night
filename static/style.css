@@ -2063,6 +2063,14 @@ body.focus .sm-stage { height: max(220px, calc(var(--room) - 155px)); }
 .tv-opt.dim, .tv-opt.wrong { opacity: .35; }
 .tv-opt.wrong { text-decoration: line-through; }
 .tv-opt.right { box-shadow: 0 0 0 4px var(--ok), 0 0 18px var(--ok); transform: scale(1.03); }
+/* ✂️ a 50:50 takes two answers away; at the reveal each answer fills with the share of the table that chose it */
+.tv-opt.cut { opacity: .12; filter: grayscale(1); transform: scale(.94); transition: opacity .4s, transform .4s, filter .4s; }
+.tv-opt { position: relative; overflow: hidden; }
+.tv-opt[style*="--share"]::before { content: ''; position: absolute; inset: auto 0 0 0; height: 5px; width: calc(var(--share) * 100%);
+  background: #fffc; border-radius: 0 3px 0 0; animation: tvShare .7s ease-out both; }
+@keyframes tvShare { from { width: 0; } }
+.tv-fifty { display: block; margin: 10px auto 0; border-radius: 999px; padding: 6px 16px; font-weight: 800; }
+.tv-fifty[hidden] { display: none; }
 .tv-who { position: absolute; top: 4px; right: 6px; display: flex; gap: 2px; }
 .tv-who .dot.fastest { outline: 2px solid #ffd166; outline-offset: 1px; animation: ld-pop .4s ease-out; }
 .tv-note { min-height: 2.8em; margin-top: 6px; text-align: center; font-size: 14px; color: var(--muted); }

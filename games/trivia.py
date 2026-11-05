@@ -38,6 +38,7 @@ class Trivia(Game):
         "secs": ("Time to answer", [(15, "15 s"), (20, "20 s"), (10, "10 s")], 15),
         "topic": ("Topic", [("all", "🎲 Everything")] + [(k, v) for k, v in TOPICS.items()], "all"),
         "style": ("Answers", [("four", "Four choices"), ("mixed", "🔀 Mixed with true/false"), ("tf", "✅ True or false")], "four"),
+        "fifty": ("Lifeline", [(False, "None"), (True, "✂️ One 50:50 each")], False),
     }
 
     # -- setup
@@ -146,6 +147,8 @@ class Trivia(Game):
     def act(self, p, a):
         if p.id not in self.ids or p.eliminated:
             raise GameError("You're watching this game.")
+        if a.get("type") == "fifty":
+            return self.fifty(p)
         if a.get("type") != "answer":
             raise GameError("Unknown action.")
         if self.stage != "ask" or self.now() >= self.end:
@@ -158,6 +161,25 @@ class Trivia(Game):
         self.answers[p.id] = (i, self.now() - self.t0)
         if not self.waiting_on():
             self.reveal()
+
+    def fifty(self, p):
+        """✂️ The 50:50 lifeline (room option): once a game, take away two wrong answers on a four-choice
+        question, for this player only."""
+        if not self.s.get("fifty"):
+            raise GameError("No lifelines in this game.")
+        if self.stage != "ask" or self.now() >= self.end:
+            raise GameError("Too late for this one!")
+        if p.id in self.answers:
+            raise GameError("You've already answered.")
+        if getattr(p.g, "fifty", None) is not None:
+            raise GameError("You've used your 50:50.")
+        if len(self.q["options"]) < 4:
+            raise GameError("The 50:50 is for four-choice questions.")
+        wrong = [i for i in range(len(self.q["options"])) if i != self.q["right"]]
+        p.g.fifty = self.n
+        p.g.cut = sorted(self.rng.sample(wrong, 2))
+        self.room.add_log(f"✂️ {p.name} uses their 50:50.")
+        self.sync()
 
     def waiting_on(self):
         return [p for p in self.live() if p.id not in self.answers] if self.stage == "ask" else []
@@ -248,6 +270,9 @@ class Trivia(Game):
             "streak": getattr(p.g, "streak", 0), "right": getattr(p.g, "right", 0),
             "solo": self.solo, "goal": int(-(-len(self.queue) * SOLO_GOAL // 1)),
             "reveal": None,
+            # ✂️ 50:50: whether I still have it, and the two answers it took away on this question
+            "fifty": (getattr(p.g, "fifty", None) is None) if self.s.get("fifty") and p.id in self.ids else None,
+            "cut": getattr(p.g, "cut", []) if getattr(p.g, "fifty", None) == self.n else [],
         }
         if reveal:
             out["reveal"] = {
