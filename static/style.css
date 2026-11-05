@@ -2475,3 +2475,6 @@ body.calm .cb-plus { display: none; }
   .bl-controls .bl-spin { flex: 1 1 100%; width: auto; order: 2; }
   .bl-controls #blShoot { flex: 1 1 100%; order: 3; padding: 10px; }
 }
+/* phone keyboard open while chatting (#61): the sheet rides on top of the keyboard */
+body.chat-typing .drawer { bottom: var(--kb, 0px) !important; max-height: calc(var(--app-h, 100vh) - 12px); padding-bottom: 10px !important; }
+#overBanner.folded .over-head { cursor: pointer; }
