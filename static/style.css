@@ -596,7 +596,7 @@ body.light #arena .stick-bottom { background: linear-gradient(transparent, #1d17
 /* billiards */
 .bl { margin: 0 auto; user-select: none; -webkit-user-select: none; }
 .bl-stage { display: flex; justify-content: center; position: relative; overflow: hidden; border-radius: 10px; touch-action: none; }
-.bl-stage canvas { display: block; border-radius: 10px; box-shadow: 0 14px 40px #000a; cursor: crosshair; transform-origin: 0 0; }
+.bl-stage canvas { display: block; border-radius: 10px; cursor: crosshair; transform-origin: 0 0; }
 .bl-zoom { position: absolute; top: 8px; right: 8px; padding: 6px 10px; font-size: 13px; background: #000a; color: #fff; z-index: 2; }
 .bl-stage canvas[hidden] { display: none; }
 .bl-views { position: absolute; top: 8px; left: 8px; display: flex; gap: 6px; z-index: 2; }
