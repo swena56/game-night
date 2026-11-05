@@ -845,9 +845,6 @@ body.focus #game .layout:has(.bl-busy) > aside { opacity: .2; }
 /* unmask: the face everyone was after, under a spotlight */
 .card.unmasked { z-index: 3; animation: umReveal 1s both cubic-bezier(.3, 1.4, .5, 1); box-shadow: 0 0 0 4px #ffd166, 0 0 40px #ffd166aa; }
 @keyframes umReveal { 0% { transform: scale(1); } 40% { transform: scale(1.35) rotate(-3deg); } 100% { transform: scale(1.12); } }
-/* sumo saucers: the rim flashes red just before the platform shrinks */
-.sm-stage.crumble { animation: smCrumble .5s infinite alternate; }
-@keyframes smCrumble { to { box-shadow: inset 0 0 0 4px #ef476f, inset 0 0 40px #ef476f88; } }
 /* oware: a store swells as captured seeds land in it */
 .ow-store.bump { animation: owBump .45s cubic-bezier(.3, 1.6, .5, 1); }
 @keyframes owBump { 40% { transform: scale(1.18); box-shadow: 0 0 24px #ffd166; } }
@@ -1888,7 +1885,8 @@ body.focus .spire-stage { height: max(240px, calc(var(--room) - 70px)); }
 .sm { max-width: 640px; margin: 0 auto; overscroll-behavior: none; user-select: none; -webkit-user-select: none; }
 .sm-stage { position: relative; height: min(calc(var(--app-h, 100vh) * .62), 600px); border-radius: var(--radius); overflow: hidden;
   display: flex; justify-content: center; align-items: center; background: #05040d; }
-.sm-stage canvas { display: block; }
+/* out of the flow, so a canvas sized for a wider screen can't hold the stage open past the app (#75) */
+.sm-stage canvas { position: absolute; inset: 0; margin: auto; max-width: 100%; max-height: 100%; display: block; }
 .sm-stick { position: absolute; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; border: 2px solid #ffffff55;
   background: #ffffff10; pointer-events: none; }
 .sm-stick span { position: absolute; left: 35px; top: 35px; width: 50px; height: 50px; border-radius: 50%; background: #ffffffaa; }
@@ -1896,6 +1894,8 @@ body.focus .spire-stage { height: max(240px, calc(var(--room) - 70px)); }
 .sm-bar button { min-width: 130px; padding: 14px; font-size: 17px; }
 body.focus .sm { max-width: 900px; }
 body.focus .sm-stage { height: max(220px, calc(var(--room) - 155px)); }
+.sm-flash.dim { font-size: 16px; opacity: .8; letter-spacing: .02em; }
+.sm-ko { font-size: 12px; opacity: .8; margin-right: 6px; }
 
 /* tic-tac-toe */
 .ttt { display: grid; grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr)); gap: 8px; width: min(100%, 560px, var(--room)); margin: 10px auto; }
