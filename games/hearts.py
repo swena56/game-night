@@ -42,6 +42,7 @@ class Hearts(Game):
         "No points on the first trick, and no leading hearts until one has been played.",
         "Optional 💎 J♦: whoever takes the jack of diamonds scores −10 (it counts even when someone shoots the moon).",
         "When someone reaches the target, the lowest score wins.",
+        "With 🌙 Shooter's choice, a moon shot takes whichever helps the shooter more: +26 to everyone else (when that ends the game in their favour, or they lead) or −26 off their own score.",
     ]
     name = "Hearts"
     icon = "♥️"
@@ -53,6 +54,7 @@ class Hearts(Game):
     settings_schema = {
         "target": ("Game to", [(100, "100 points"), (50, "50 points (quick)")], 100),
         "jack": ("Jack of diamonds", [(False, "No bonus"), (True, "💎 J♦ is −10")], False),
+        "moon": ("🌙 Shooting the moon", [("others", "Everyone else +26"), ("choice", "Shooter's choice: +26 to the rest or −26 for you")], "others"),
     }
 
     # -- setup
@@ -177,16 +179,28 @@ class Hearts(Game):
         """Points taken this hand so far: hearts and the queen, less 10 for the J♦ when that option is on."""
         return sum(points(c) for c in self.taken[i]) - (10 if self.jack() and JACK in self.taken[i] else 0)
 
+    def moon_to_others(self, i):
+        """🌙 Shooter's choice, picked for them: +26 to the rest when that ends the game with the shooter
+        lowest, or keeps a leader's lead heading for the finish; otherwise −26 off their own score."""
+        after = [v + (0 if k == i else 26) for k, v in enumerate(self.scores)]
+        if max(after) >= self.s["target"]:
+            return after[i] < min(v for k, v in enumerate(after) if k != i)
+        return self.scores[i] <= min(self.scores)
+
     def end_hand(self):
         r = self.room
         got = [sum(points(c) for c in t) for t in self.taken]
         moon = next((i for i, g in enumerate(got) if g == 26), None)
         if moon is not None:
-            got = [0 if i == moon else 26 for i in range(len(got))]
             m = self.pl(moon)
             if m:
                 self.award(m, "moon")
-            r.add_log(f"🌙 {m.name if m else '?'} shot the moon! Everyone else takes 26.", "big")
+            if self.s.get("moon") == "choice" and not self.moon_to_others(moon):
+                got = [-26 if i == moon else 0 for i in range(len(got))]
+                r.add_log(f"🌙 {m.name if m else '?'} shot the moon and takes 26 off their own score!", "big")
+            else:
+                got = [0 if i == moon else 26 for i in range(len(got))]
+                r.add_log(f"🌙 {m.name if m else '?'} shot the moon! Everyone else takes 26.", "big")
         if self.jack():
             for i, t in enumerate(self.taken):
                 if JACK in t:
@@ -285,6 +299,9 @@ class Hearts(Game):
             "counts": [len(h) for h in self.hands], "trick": [[s, c] for s, c in self.trick],
             "last": self.last_trick, "scores": self.scores, "handNo": self.hand_no,
             "taken": [self.took(k) for k in range(n)], "broken": self.broken, "jack": self.jack(),
+            "queenAt": next((k for k in range(n) if "QS" in self.taken[k]), None),
+            "jackAt": next((k for k in range(n) if JACK in self.taken[k]), None) if self.jack() else None,
+            "hearts": [sum(1 for c in self.taken[k] if c[1] == "H") for k in range(n)],
             "pass": self.passing(), "passed": sorted(self.passes), "myPass": self.passes.get(i) if mine else None,
             "received": getattr(self, "received", {}).get(i) if mine and self.stage == "play" and self.first else None,
             "legal": self.legal(i) if mine and self.stage == "play" and self.room.turn == p.id else [],

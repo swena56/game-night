@@ -2545,3 +2545,11 @@ body.chat-typing .drawer { bottom: var(--kb, 0px) !important; max-height: calc(v
 .card-btn.twin .pc { box-shadow: 0 0 0 2px #ffd166, 0 0 14px #ffd166aa; }
 @keyframes lcTwin { to { transform: rotate(var(--rot, 0deg)) translateY(calc(var(--drop, 0px) - 8px)); } }
 body.calm .card-btn.twin { animation: none; }
+/* hearts: trophies on the seat, and a moon glow on a possible shooter */
+.hh-trophies { display: flex; gap: 2px; justify-content: center; margin-top: 2px; }
+.hh-table .hh-trophies .pc.tiny { width: 18px; height: 25px; } .hh-table .hh-trophies .pc.tiny b, .hh-table .hh-trophies .pc.tiny i { font-size: 9px; }
+.hh-trophies .pc.tiny.court b::before { display: none; }
+.hh-seat.moonish { box-shadow: 0 0 0 2px #c8b6ff, 0 0 18px #c8b6ffaa; animation: hhMoon 1.6s ease-in-out infinite; }
+.hh-seat.moonish::after { content: '🌙'; position: absolute; top: -10px; right: -8px; font-size: 16px; }
+@keyframes hhMoon { 50% { box-shadow: 0 0 0 2px #c8b6ff, 0 0 28px #c8b6ff; } }
+body.calm .hh-seat.moonish { animation: none; }
