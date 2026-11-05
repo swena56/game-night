@@ -9,7 +9,7 @@ UI.yacht = (() => {
     hold = [false, false, false, false, false]; holdFor = null; seenRoll = 0; cardKey = ''; filledSeen = null; filledNow = null;
     main.innerHTML = `<div class="ya">
       <div class="ya-top stick-top">
-        <div id="yaDice" class="ya-dice"></div>
+        <div class="ya-tray"><div id="yaDice" class="ya-dice"></div></div>
         <button id="yaRoll" class="primary big"></button>
         <p id="yaHint" class="hint"></p>
       </div>
@@ -44,9 +44,24 @@ UI.yacht = (() => {
     if (rolling) {
       const moving = [...$('yaDice').children].filter((_, i) => !y.held[i]);
       Dice.roll(moving, { sound: false });
-      // five alike: the moment of the game
-      if (y.dice.every((d) => d === y.dice[0])) setTimeout(() => Kit.callout('⛵ YACHT!', 'gold', { sound: 'fanfare', ms: 1800 }), 450);
+      // five alike: the moment of the game; the other big hands get stamped on the tray as the dice land
+      const name = handName(y.dice);
+      if (name === 'yacht') setTimeout(() => Kit.callout('⛵ YACHT!', 'gold', { sound: 'fanfare', ms: 1800 }), 450);
+      else if (name) setTimeout(() => { Kit.stamp($('yaDice'), name, 'gold', 1000); ctx.sfx('good'); }, 480);
     }
+  }
+
+  // the big hands a roll can show (for the stamp): only the rarer ones, so it stays special
+  function handName(d) {
+    const n = [0, 0, 0, 0, 0, 0, 0];
+    for (const v of d) n[v]++;
+    const counts = n.filter(Boolean).sort((a, b) => b - a), set = n.map((c, v) => (c ? v : 0)).filter(Boolean).join('');
+    if (counts[0] === 5) return 'yacht';
+    if (counts[0] === 4) return 'Four of a kind';
+    if (counts[0] === 3 && counts[1] === 2) return 'Full house';
+    if (set === '23456') return 'Big straight';
+    if (set === '12345') return 'Little straight';
+    return '';
   }
 
   function render(s, c) {
@@ -130,7 +145,11 @@ UI.yacht = (() => {
       const top = Math.max(...Object.values(y.preview));
       for (const b of t.querySelectorAll('.ya-box.preview')) b.classList.toggle('best', top > 0 && +b.textContent === top);
     } else for (const b of t.querySelectorAll('.ya-box.best')) b.classList.remove('best');
-    for (const td of t.querySelectorAll('tr.ya-total td[data-id]')) td.textContent = String(y.totals[td.dataset.id] ?? 0);
+    for (const td of t.querySelectorAll('tr.ya-total td[data-id]')) {
+      const v = y.totals[td.dataset.id] ?? 0, was = td.dataset.v === undefined ? v : +td.dataset.v;
+      if (v !== was) Kit.tally(td, was, v, 700); else td.textContent = String(v);
+      td.dataset.v = v;
+    }
     // the bonus row shows progress (41/63) until it's earned, then +35
     for (const td of t.querySelectorAll('tr.ya-bonus td[data-id]')) {
       const id = td.dataset.id, got = y.upperBonus?.[id];

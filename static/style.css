@@ -2177,7 +2177,14 @@ body.focus .sm-stage { height: max(220px, calc(var(--room) - 155px)); }
 .ya { max-width: 560px; margin: 0 auto; }
 .ya-card { margin-top: 8px; }
 .ya-card td, .ya-card th { padding-block: 3px; }
-.ya-top .ya-dice { margin: 4px 0 8px; }
+.ya-top .ya-dice { margin: 0; }
+/* a felt dice tray with a wooden rim; a held die gets a little HELD tag */
+.ya-tray { margin: 4px auto 8px; padding: 12px 10px 16px; border-radius: 16px; width: fit-content; max-width: 100%;
+  background: radial-gradient(ellipse at 50% 40%, #2f7d5f, #12402f 80%);
+  box-shadow: inset 0 0 0 5px #6b4423, inset 0 0 0 7px #8f5f35, inset 0 6px 18px #000a, 0 4px 12px #0007; }
+.ya-tray .ya-die { position: relative; }
+.ya-tray .ya-die.held::after { content: 'HELD'; position: absolute; left: 50%; bottom: -15px; transform: translateX(-50%);
+  font-size: 9px; font-weight: 900; letter-spacing: .08em; color: #ffd166; }
 .ya-top .hint { margin: 4px 0 0; min-height: 1.2em; }
 .ya-card th.now { text-decoration: underline var(--accent) 2px; }
 .ya-card td:first-child { white-space: nowrap; }
