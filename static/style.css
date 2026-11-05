@@ -531,6 +531,15 @@ body.light #arena .stick-bottom { background: linear-gradient(transparent, #1d17
 .kit-callout.still { animation: fadeOut 1.5s ease-in forwards; }
 @keyframes calloutIn { 0% { transform: translate(-50%, -50%) scale(.3) rotate(-6deg); opacity: 0; } 18% { transform: translate(-50%, -50%) scale(1.12) rotate(1deg); opacity: 1; }
   30% { transform: translate(-50%, -50%) scale(1); } 80% { opacity: 1; } 100% { transform: translate(-50%, -60%) scale(1.04); opacity: 0; } }
+/* a rubber stamp slammed onto a spot: FARKLE, SKIP, FLINCH! */
+.kit-stamp { position: fixed; z-index: 45; transform: translate(-50%, -50%) rotate(-8deg); pointer-events: none; white-space: nowrap;
+  font-size: clamp(20px, 6vw, 34px); font-weight: 900; letter-spacing: .08em; text-transform: uppercase; padding: 2px 12px;
+  color: var(--sc, #ef476f); border: 4px solid currentColor; border-radius: 8px; background: #0009;
+  animation: stampIn 1.1s cubic-bezier(.2, 1.4, .4, 1) forwards; }
+.kit-stamp.good { --sc: #06d6a0; } .kit-stamp.gold { --sc: #ffd166; } .kit-stamp.cool { --sc: #4dabf7; }
+.kit-stamp.still { animation: fadeOut 1.1s ease-in forwards; }
+@keyframes stampIn { 0% { transform: translate(-50%, -50%) rotate(-8deg) scale(2.4); opacity: 0; } 15% { transform: translate(-50%, -50%) rotate(-8deg) scale(.92); opacity: 1; }
+  24% { transform: translate(-50%, -50%) rotate(-8deg) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; } }
 
 /* arena banners and score rows for the real-time games (Light Riders, Paint Blast, Sumo Saucers, Hover Rally) */
 .lr-banner { position: absolute; left: 0; right: 0; top: 42%; text-align: center; font-size: clamp(24px, 8vw, 44px); font-weight: 900; color: #fff;
@@ -768,6 +777,12 @@ body.focus #game .layout:has(.bl-busy) > aside { opacity: .2; }
 .he-meter { display: flex; gap: 2px; margin-top: 4px; height: 8px; width: 140px; }
 .he-meter i { flex: 1; border-radius: 2px; background: #ffffff1a; }
 .he-meter i.on { background: hsl(calc(10 + var(--lvl) * 110), 80%, 55%); }
+.he-odds { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12px; }
+.he-odds-bar { width: 80px; height: 8px; border-radius: 4px; background: #ffffff1a; overflow: hidden; }
+.he-odds-bar::before { content: ''; display: block; height: 100%; width: calc(var(--p, 0) * 100%); border-radius: inherit;
+  background: hsl(var(--h, 60), 80%, 55%); transition: width .5s, background .5s; }
+.he-odds b::after { content: attr(data-unit); }
+.he-odds small { color: var(--muted); }
 /* last card: a stamp on an action card as it lands; a growing penalty */
 #lcTop { position: relative; }
 .lc-stamp { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(-14deg); pointer-events: none; white-space: nowrap;
@@ -793,6 +808,18 @@ body.focus #game .layout:has(.bl-busy) > aside { opacity: .2; }
 @keyframes yaFresh { 0% { background: #ffd16688; } 100% { background: transparent; } }
 .ya-box.best { box-shadow: inset 0 0 0 2px #ffd166; } .ya-box.best::after { content: ' ★'; color: #ffd166; }
 /* farkle: a bust greys the dice; the points on the line ghost ahead on the score bar */
+.fk-tray { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.fk-aside { display: flex; gap: 4px; padding-top: 6px; border-top: 1px dashed #ffffff33; }
+.fk-aside .ya-die.small { --die: 26px; padding: 4px; box-shadow: 0 2px 0 #b9b0cc, 0 3px 6px #0007; }
+.fk-aside .ya-die.in { animation: fkAside .35s cubic-bezier(.2, 1.2, .4, 1) both; }
+@keyframes fkAside { from { transform: translateY(-40px) scale(1.6); opacity: 0; } }
+.fk-risk { display: flex; flex-direction: column; align-items: center; gap: 3px; margin: 2px 0 6px; font-size: 12px; color: var(--muted); }
+.fk-risk-bar { width: min(240px, 70%); height: 8px; border-radius: 4px; background: #ffffff14; overflow: hidden; }
+.fk-risk-bar i { display: block; height: 100%; width: calc(var(--p) * 100%); background: linear-gradient(90deg, #06d6a0, #ffd166 40%, #ef476f);
+  background-size: calc(100% / max(var(--p), .02)) 100%; transition: width .4s; }
+.fk-risk.hot { color: #ff8c8c; }
+.fk-risk.hot .fk-risk-bar i { animation: fkThrob .8s ease-in-out infinite; }
+@keyframes fkThrob { 50% { filter: brightness(1.4); } }
 .fk-dice.bust .ya-die { filter: grayscale(1) brightness(.7); transition: filter .4s .2s; }
 .fk-bar { position: relative; } .fk-ghost { position: absolute; top: 0; bottom: 0; opacity: .35; animation: pulse 1s infinite alternate; }
 /* ship, captain & crew: a slot filling lands with a bounce */
@@ -801,11 +828,38 @@ body.focus #game .layout:has(.bl-busy) > aside { opacity: .2; }
 /* liar's dice: each hand starts under a cup that lifts in turn; the count of the bid face climbs */
 .liar-hand { position: relative; }
 .liar-hand.cupped .liar-dice { visibility: hidden; }
-.liar-hand.cupped::after { content: '🥤'; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(180deg); font-size: 26px; }
-.liar-hand:not(.cupped) .liar-dice { animation: pop .3s ease-out; }
+.liar-hand.cupped::after { content: ''; position: absolute; left: calc(5.5em + 24px); top: 50%; width: 60px; height: 36px; transform: translateY(-50%);
+  clip-path: polygon(14% 0, 86% 0, 100% 100%, 0 100%); border-radius: 6px 6px 3px 3px;
+  background: linear-gradient(90deg, #4a2a14, #8b5a2b 40%, #5c3418), linear-gradient(#0000 80%, #000a); box-shadow: inset 0 -4px 0 #3a1f0c; }
+.liar-hand:not(.cupped) .liar-dice { animation: liarLift .45s ease-out; }
+@keyframes liarLift { from { transform: translateY(8px); opacity: 0; } }
+/* rivals' cups across the top: a leather cup in the player's colour band, dice left as pips */
+.liar-table { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.liar-table[hidden] { display: none; }
+.liar-seat { display: grid; justify-items: center; gap: 3px; min-width: 64px; }
+.liar-seat small { font-weight: 700; font-size: 12px; max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.liar-seat.out { opacity: .35; }
+.liar-cup { width: 46px; height: 42px; clip-path: polygon(16% 0, 84% 0, 100% 100%, 0 100%); border-radius: 6px;
+  background: linear-gradient(#0000 18%, var(--c) 18% 28%, #0000 28%), linear-gradient(90deg, #4a2a14, #9a6633 45%, #5c3418);
+  box-shadow: inset 0 -5px 0 #3a1f0c; transform-origin: 50% 100%; }
+.liar-seat.turn .liar-cup { animation: liarWobble 1.2s ease-in-out infinite; }
+.liar-seat.turn small::before { content: '▸ '; }
+@keyframes liarWobble { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-6deg); } 75% { transform: rotate(6deg); } }
+.liar-left { display: flex; gap: 2px; min-height: 7px; }
+.liar-left i { width: 7px; height: 7px; border-radius: 2px; background: #f4efe6; box-shadow: 0 1px 0 #0006; }
+.liar-left i.gone { background: #ef476f; animation: liarGone .9s ease-in forwards; }
+@keyframes liarGone { to { transform: translate(14px, -24px) rotate(200deg); opacity: 0; } }
+.liar-ladder { display: flex; justify-content: center; align-items: center; gap: 4px; flex-wrap: wrap; margin-top: 6px; min-height: 26px; }
+.liar-rung { display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; border-radius: 999px; border: 2px solid var(--line);
+  background: var(--panel); font-size: 13px; opacity: .65; }
+.liar-rung.top { opacity: 1; box-shadow: 0 0 10px #ffd16655; }
+.liar-rung.in { animation: pop .3s ease-out; }
+.liar-rung .ya-die.tiny { --die: 16px; padding: 2px; gap: 1px; border-radius: 4px; box-shadow: none; }
+.liar-step { color: var(--muted); font-size: 12px; }
 .liar-count { font-size: 22px; font-weight: 900; text-align: center; margin: 4px 0; color: #ffd166; }
 .liar-count.over { color: var(--ok); }
 /* fib finder: answers turn over one by one */
+.fb-res.all { box-shadow: 0 0 0 2px #ffd166, 0 0 16px #ffd16655; }
 .fb-res.hidden-card { visibility: hidden; }
 .fb-res.flip-in { animation: flipIn .5s cubic-bezier(.3, 1.3, .5, 1); }
 /* odd one out: the verdict waits for the votes, then the odd one is spotlit */
@@ -920,13 +974,20 @@ body.focus #game .layout:has(.bl-busy) > aside { opacity: .2; }
 .cb-mid { display: flex; justify-content: space-around; align-items: flex-start; }
 .cb-slot { display: grid; justify-items: center; gap: 2px; }
 .cb-slot small { color: #ffffffaa; font-size: 11px; }
-.cb-count { font-size: 34px; font-weight: 900; color: #ffd166; text-shadow: 0 2px 6px #000; min-width: 2ch; text-align: center; }
+.cb-count { font-size: 34px; font-weight: 900; color: #ffd166; text-shadow: 0 2px 6px #000; min-width: 2ch; text-align: center; transition: color .3s; }
+.cb-count.hot { color: #ff8c42; }
 .cb-crib { font-weight: 700; padding-top: 10px; }
 .cb-seq { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; min-height: 44px; }
 .cb-last { text-align: center; font-weight: 700; min-height: 1.4em; font-size: 14px; }
 .cb-show { display: grid; gap: 8px; }
 .cb-showhand { background: #0006; border-radius: 10px; padding: 8px; }
 .cb-showhand small { color: #ffffffcc; display: block; text-align: center; }
+.cb-showhand.waiting { opacity: .35; }
+.cb-showhand.counting { box-shadow: 0 0 0 2px #ffd16688; }
+.cb-items { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; margin-top: 4px; min-height: 22px; }
+.cb-item { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #ffd16626; color: #ffe8a8; }
+.cb-item.none { background: #ffffff14; color: #fffa; font-weight: 400; }
+.cb-item.in { animation: pop .25s ease-out; }
 .cb-showtitle { display: flex; justify-content: space-between; align-items: center; }
 .cb-total { font-weight: 900; font-size: 20px; color: #ffd166; }
 .cb-countbox { display: grid; justify-items: center; gap: 8px; margin: 10px 0; }
@@ -1110,19 +1171,39 @@ body.calm .gh-tile.trace { background: linear-gradient(#8ecae6, #4dabf7); }
 .gh-list.missed { border-top: 1px solid var(--line); padding-top: 6px; }
 
 /* hearts */
-.hh { width: min(100%, 640px); margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
-.hh-rivals { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
-.hh-rival { background: var(--panel); border-radius: 10px; padding: 6px 10px; display: flex; flex-direction: column; align-items: center; min-width: 80px; }
-.hh-rival.turn { box-shadow: 0 0 0 2px var(--accent); }
-.hh-rival small { color: var(--muted); font-size: 12px; }
-.hh-trick { min-height: 112px; display: flex; gap: 8px; justify-content: center; align-items: center; flex-wrap: wrap;
-  background: radial-gradient(circle, #1f7a4d, #0d3b26); border-radius: 18px; padding: 10px; }
-.hh-slot { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; animation: pop .2s ease-out; }
-.hh-slot.won .pc { box-shadow: 0 0 0 3px var(--accent); }
+.hh { width: min(100%, 640px); margin: 0 auto; display: flex; flex-direction: column; gap: 8px; }
+/* the round table: seats on an oval round the edge (--x/--y from -1 to 1), the trick in the middle */
+.hh-table { position: relative; height: clamp(270px, 62vw, 340px); border-radius: 50% / 42%; padding: 0;
+  box-shadow: inset 0 0 0 7px #5a3a1e, inset 0 0 0 9px #8b5e34, inset 0 0 50px #000a, 0 6px 18px #0007; transition: filter .3s; }
+.hh-table.dark { animation: hhDark .9s ease-out; }
+@keyframes hhDark { 0% { filter: brightness(.45) saturate(.6); } 100% { filter: none; } }
+.hh-seat { position: absolute; left: calc(50% + var(--x) * (50% - 50px)); top: calc(50% + var(--y) * (50% - 30px));
+  transform: translate(-50%, -50%); z-index: 2; background: #0b1f19d9; border-radius: 10px; padding: 4px 8px; min-width: 76px;
+  display: flex; flex-direction: column; align-items: center; line-height: 1.15; box-shadow: 0 2px 8px #0007; white-space: nowrap; }
+.hh-seat.bottom { top: calc(100% - 22px); }
+.hh-seat.turn { box-shadow: 0 0 0 2px var(--accent), 0 0 16px var(--accent); }
+.hh-seat small { color: #cfe; font-size: 11px; opacity: .8; }
+.hh-pips { display: flex; gap: 1px; align-items: center; }
+.hh-pips i { font-style: normal; color: #ff5d73; font-size: 11px; line-height: 1; animation: pop .25s ease-out; }
+.hh-pips small { font-size: 10px; }
+.hh-trick { position: absolute; inset: 0; pointer-events: none; }
+.hh-slot { position: absolute; left: calc(50% + var(--x) * 52px); top: calc(50% + var(--y) * 40px - 6px);
+  transform: translate(-50%, -50%) rotate(var(--r, 0deg)); }
+.hh-slot.in { animation: hhIn .28s cubic-bezier(.2, 1.1, .4, 1); }
+@keyframes hhIn { from { transform: translate(-50%, -50%) translate(calc(var(--x) * 110px), calc(var(--y) * 90px)) rotate(calc(var(--r, 0deg) * 4)) scale(.7); opacity: .3; } }
+.hh-slot.won .pc { box-shadow: 0 0 0 3px var(--accent), 0 0 18px var(--accent); }
 .hh-trick.swept .hh-slot { opacity: 0; transition: opacity .2s .3s; }
+.hh-table .pc { width: 48px; height: 69px; } .hh-table .pc b { font-size: 18px; } .hh-table .pc i { font-size: 19px; }
+.hh-arrow { position: absolute; left: 50%; top: 47%; font-size: 40px; color: #ffd166; text-shadow: 0 2px 8px #000a;
+  transform: translate(-50%, -50%) rotate(var(--deg)); }
+.hh-arrow:not(.sent) { animation: hhNudge 1.1s ease-in-out infinite; }
+.hh-arrow.sent { opacity: .35; }
+@keyframes hhNudge { 50% { transform: translate(-50%, -50%) rotate(var(--deg)) translateY(10px); } }
+.hh-lead { position: absolute; left: 50%; top: 47%; transform: translate(-50%, -50%); color: #fff9; font-size: 13px; }
 .hh-note { min-height: 1.4em; text-align: center; font-size: 13px; color: var(--muted); }
-.hh-hand { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; padding-top: 8px; }
+.hh-hand { padding-top: 8px; }
 .hh-hand .pc { width: 44px; height: 64px; } .hh-hand .pc b { font-size: 17px; } .hh-hand .pc i { font-size: 18px; }
+.hh-hand .card-btn.got .pc { box-shadow: 0 0 0 2px #ffd166, 0 0 12px #ffd166aa; }
 
 /* night heist */
 .heist { max-width: 640px; margin: 0 auto; }
@@ -1350,7 +1431,7 @@ body.calm .gh-tile.trace { background: linear-gradient(#8ecae6, #4dabf7); }
 .lk-tile { width: clamp(22px, 6.5vw, 36px); height: var(--lk-th); display: flex; align-items: center; justify-content: center;
   background: #2a9d8f; border-radius: 4px; font-weight: 900; font-size: clamp(16px, 5vw, 26px); color: #111; }
 .lk-tile.on { background: #fff; }
-.lk-tile.flip { animation: lkflip .5s ease-out; }
+.lk-tile.flip { animation: lkflip .5s ease-out both; }
 @keyframes lkflip { from { transform: rotateY(90deg); background: #ffd166; } to { transform: none; } }
 .lk-keys { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin: 8px 0; }
 .lk-key { padding: 9px 0; font-weight: 800; }
@@ -1427,6 +1508,16 @@ body:not(.calm) .mm-pt.empty.warn { animation: pulse 1.2s ease-in-out infinite a
 .oo { max-width: 640px; margin: 0 auto; }
 .oo-card { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 18px; margin-bottom: 12px;
   background: linear-gradient(135deg, var(--panel2), var(--panel)); border-radius: var(--radius); border: 2px dashed #ffb70366; }
+.oo-card { position: relative; user-select: none; }
+.oo-card.flip { animation: ooFlip .55s cubic-bezier(.3, 1.3, .5, 1); }
+@keyframes ooFlip { 0% { transform: perspective(600px) rotateY(90deg); } 100% { transform: none; } }
+.oo-card.covered:not(.peek) b { filter: blur(14px); opacity: .5; }
+.oo-card.covered:not(.peek)::after { content: '🤫 Hold to peek'; position: absolute; left: 50%; top: 52%; transform: translate(-50%, -50%);
+  font-weight: 800; color: var(--text); text-shadow: 0 2px 6px #000; pointer-events: none; }
+.oo-hide { position: absolute; top: 6px; right: 6px; padding: 2px 8px; font-size: 16px; background: transparent; border: 0; }
+.oo-hide[hidden] { display: none; }
+.oo-clue.said { position: relative; animation: ooSaid .45s cubic-bezier(.3, 1.6, .5, 1); background: var(--accent); color: #111; transition: background 1.5s 1s, color 1.5s 1s; }
+@keyframes ooSaid { from { transform: scale(.3) translateY(10px); opacity: 0; } }
 .oo-card small { color: var(--muted); text-transform: uppercase; letter-spacing: .1em; font-size: 12px; }
 .oo-card b { font-size: 34px; letter-spacing: .04em; color: var(--accent); text-align: center; overflow-wrap: anywhere; }
 .oo-tally { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
@@ -1572,6 +1663,12 @@ body.focus .pp-stage { height: max(240px, calc(var(--room) - 130px)); }
 .qk-rolls { display: flex; flex-wrap: wrap; gap: 6px; }
 .qk-roll { padding: 2px 8px; border-radius: 8px; background: var(--field); font-weight: 700; }
 .qk-roll.hot { background: #ff922b; color: #000; }
+.qk-spark { display: grid; gap: 4px; }
+.qk-sparkrow { display: grid; grid-template-columns: minmax(0, 1fr) 64px 4.2em; align-items: center; gap: 6px; font-size: 13px; }
+.qk-sparkrow span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+.qk-sparkrow b { text-align: right; font-variant-numeric: tabular-nums; }
+.qk-bars { display: flex; align-items: flex-end; gap: 2px; height: 22px; }
+.qk-bars i { flex: 1; border-radius: 2px 2px 0 0; opacity: .85; }
 
 /* hover rally (banners and score rows in section 5) */
 .ra { max-width: 640px; margin: 0 auto; user-select: none; -webkit-user-select: none; overscroll-behavior: none; }
@@ -1613,6 +1710,9 @@ body.focus .ra-stage { height: max(220px, calc(var(--room) - 155px)); }
 .rl-pad { touch-action: none; cursor: crosshair; box-shadow: 0 0 0 3px var(--accent); }
 .rl-art { width: min(100%, 320px); }
 .rl-ink { fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+/* at the reveal a drawing draws itself again, stroke by stroke (each path normalised to length 1) */
+.rl-ink.rl-redraw { stroke-dasharray: 1 1; stroke-dashoffset: 1; animation: rlRedraw .3s linear both; }
+@keyframes rlRedraw { to { stroke-dashoffset: 0; } }
 .rl-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center; margin: 8px 0; }
 .rl-inks { display: flex; flex-wrap: wrap; gap: 4px; }
 .rl-swatch { width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 2px solid #fff3; }
@@ -1794,6 +1894,10 @@ body.kb-open .rl-art { width: min(100%, calc(var(--room) - 140px)); }
 .sea-cell.sunk { background: linear-gradient(160deg, #8a2a2a, #5a1515); }
 .sea-cell.picked { background: var(--accent); }
 .sea-cell.scanned { box-shadow: inset 0 0 0 2px #8ecae6; }
+/* 💥 aiming a torpedo: the three squares it would hit */
+#sbEnemy .sea-cell.aim { box-shadow: inset 0 0 0 3px #ff922b; background: #ff922b55; }
+.sb-tools { justify-content: center; gap: 8px; }
+#sbTorp.on { box-shadow: 0 0 0 3px var(--accent); }
 .sea-cell.last { outline: 2px solid var(--accent); animation: splash .5s ease-out; }
 @keyframes splash { from { transform: scale(1.5); box-shadow: 0 0 0 6px #fff8; } }
 .sea-cell:disabled { opacity: 1; cursor: default; }
@@ -1982,6 +2086,14 @@ body.focus .sm-stage { height: max(220px, calc(var(--room) - 155px)); }
 .tv-opt.dim, .tv-opt.wrong { opacity: .35; }
 .tv-opt.wrong { text-decoration: line-through; }
 .tv-opt.right { box-shadow: 0 0 0 4px var(--ok), 0 0 18px var(--ok); transform: scale(1.03); }
+/* ✂️ a 50:50 takes two answers away; at the reveal each answer fills with the share of the table that chose it */
+.tv-opt.cut { opacity: .12; filter: grayscale(1); transform: scale(.94); transition: opacity .4s, transform .4s, filter .4s; }
+.tv-opt { position: relative; overflow: hidden; }
+.tv-opt[style*="--share"]::before { content: ''; position: absolute; inset: auto 0 0 0; height: 5px; width: calc(var(--share) * 100%);
+  background: #fffc; border-radius: 0 3px 0 0; animation: tvShare .7s ease-out both; }
+@keyframes tvShare { from { width: 0; } }
+.tv-fifty { display: block; margin: 10px auto 0; border-radius: 999px; padding: 6px 16px; font-weight: 800; }
+.tv-fifty[hidden] { display: none; }
 .tv-who { position: absolute; top: 4px; right: 6px; display: flex; gap: 2px; }
 .tv-who .dot.fastest { outline: 2px solid #ffd166; outline-offset: 1px; animation: ld-pop .4s ease-out; }
 .tv-note { min-height: 2.8em; margin-top: 6px; text-align: center; font-size: 14px; color: var(--muted); }
@@ -2135,7 +2247,15 @@ body.focus .sm-stage { height: max(220px, calc(var(--room) - 155px)); }
 .ya { max-width: 560px; margin: 0 auto; }
 .ya-card { margin-top: 8px; }
 .ya-card td, .ya-card th { padding-block: 3px; }
-.ya-top .ya-dice { margin: 4px 0 8px; }
+.ya-top .ya-dice { margin: 0; }
+/* a felt dice tray with a wooden rim; a held die gets a little HELD tag */
+.ya-tray { margin: 4px auto 8px; padding: 12px 10px 16px; border-radius: 16px; width: fit-content; max-width: 100%; min-width: min(100%, 280px); box-sizing: border-box;
+  background: radial-gradient(ellipse at 50% 40%, #2f7d5f, #12402f 80%);
+  box-shadow: inset 0 0 0 5px #6b4423, inset 0 0 0 7px #8f5f35, inset 0 6px 18px #000a, 0 4px 12px #0007; }
+.ya-tray .ya-die { position: relative; }
+.ya-tray > .ya-dice { margin: 0; }
+.ya-tray .ya-die.held::after { content: 'HELD'; position: absolute; left: 50%; bottom: -15px; transform: translateX(-50%);
+  font-size: 9px; font-weight: 900; letter-spacing: .08em; color: #ffd166; }
 .ya-top .hint { margin: 4px 0 0; min-height: 1.2em; }
 .ya-card th.now { text-decoration: underline var(--accent) 2px; }
 .ya-card td:first-child { white-space: nowrap; }
@@ -2210,7 +2330,6 @@ body.focus .sm-stage { height: max(220px, calc(var(--room) - 155px)); }
   .hh-hand, .ru-hand { flex-wrap: nowrap; justify-content: safe center; gap: 0; }
   .hh-hand > * + *, .ru-hand > * + * { margin-left: -10px; }
   .hh-hand > *:hover, .ru-hand > *:focus-visible { z-index: 1; }
-  .hh-trick { min-height: 84px; }
 }
 
 /* focus mode (topbar ▣ button): the board takes the whole screen; Leave/End game stays so nobody is stuck (#10) */

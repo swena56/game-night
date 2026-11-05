@@ -29,7 +29,8 @@ class FibFinder(Game):
     blurb = "Real facts, fake answers. Write a fib that fools your friends, then sniff out the truth."
     min_players = 2
     max_players = 6
-    badges = {**Game.badges, "silver_tongue": ("👅", "Silver tongue", "Fool two or more players with one fib")}
+    badges = {**Game.badges, "silver_tongue": ("👅", "Silver tongue", "Fool two or more players with one fib"),
+              "master_liar": ("🎭", "Master liar", "Fool every other player with one fib (three or more players)")}
     settings_schema = {
         "rounds": ("Rounds", [(5, "5"), (7, "7"), (10, "10")], 7),
         "topic": ("Facts", [("all", "🌍 Everything"), ("animals", "🐾 Animals"), ("science", "🔬 Science & nature"),
@@ -160,6 +161,11 @@ class FibFinder(Game):
                 if len(fooled) >= 2:
                     for a in o["authors"]:
                         self.award(a, "silver_tongue")
+                # 🎭 everyone but the author(s) fell for it
+                others = [q for q in self.live() if q.id not in o["authors"]]
+                if len(others) >= 2 and all(self.picks.get(q.id) is not None and self.options[self.picks[q.id]] is o for q in others):
+                    for a in o["authors"]:
+                        self.award(a, "master_liar")
                 names = " & ".join(r.players[a].name for a in o["authors"] if a in r.players)
                 r.add_log(f"🤥 {names}'s “{o['text']}” fooled {', '.join(fooled)}.", "question")
         self.stage = "reveal"

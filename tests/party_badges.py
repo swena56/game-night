@@ -70,5 +70,22 @@ g.reveal()
 check("a unique 7-letter word earns 🧵 Long word", badges(ann).get("gridhunt:long_word") == 1, str(badges(ann)))
 check("a shared 7-letter word doesn't", not badges(bo).get("gridhunt:long_word") and not badges(cy).get("gridhunt:long_word"))
 
+# ---- Fib Finder: Ann's fib fools both Bo and Cy (🎭 Master liar, and 👅 Silver tongue); Bo's fools nobody
+room, (ann, bo, cy), g = new_room("fibfinder")
+g.options = [{"text": "true thing", "authors": [], "truth": True, "house": False},
+             {"text": "ann fib", "authors": [ann.id], "truth": False, "house": False},
+             {"text": "bo fib", "authors": [bo.id], "truth": False, "house": False}]
+g.picks = {bo.id: 1, cy.id: 1, ann.id: 0}
+g.reveal()
+check("a fib that fools everyone else earns 🎭 Master liar", badges(ann).get("fibfinder:master_liar") == 1, str(badges(ann)))
+check("…and 👅 Silver tongue", badges(ann).get("fibfinder:silver_tongue") == 1)
+check("no 🎭 for a fib nobody chose", not badges(bo).get("fibfinder:master_liar"))
+room, (ann, bo, cy), g = new_room("fibfinder")
+g.options = [{"text": "true thing", "authors": [], "truth": True, "house": False},
+             {"text": "ann fib", "authors": [ann.id], "truth": False, "house": False}]
+g.picks = {bo.id: 1, cy.id: 0}
+g.reveal()
+check("fooling one of two isn't 🎭", not badges(ann).get("fibfinder:master_liar"))
+
 print("\nall passed" if not fails else f"\n{len(fails)} FAILED: {', '.join(fails)}")
 sys.exit(1 if fails else 0)

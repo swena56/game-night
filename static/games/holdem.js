@@ -23,7 +23,7 @@ UI.holdem = (() => {
         </div>
       </div>
       <div class="he-me"><div id="heMyCards" class="he-cards"></div><div class="he-mycol"><div id="heMyInfo" class="he-myinfo"></div>
-        <div id="heMeter" class="he-meter" hidden></div></div></div>
+        <div id="heMeter" class="he-meter" hidden></div><div id="heOdds" class="he-odds" hidden></div></div></div>
       <button id="heRebuy" class="primary big" hidden></button>
       <button id="heShow" hidden>🙂 Show my cards</button>
       <div id="heActions" class="he-actions">
@@ -200,6 +200,21 @@ UI.holdem = (() => {
       meter.title = `${HANDS[k]} (${k + 1} of ${HANDS.length})`;
       meter.style.setProperty('--lvl', k / 8);
     }
+    // 📊 option: my rough chance to win from here, as a bar, counting up or down when a street changes it
+    const odds = $('heOdds'), pct = h.myOdds;
+    odds.hidden = pct == null;
+    if (pct != null) {
+      if (!odds.firstChild) odds.append(ctx.el('span', 'he-odds-bar', ''), ctx.el('b', '', ''), ctx.el('small', '', ''));
+      const [bar, num, word] = odds.children, was = +odds.dataset.v;
+      bar.style.setProperty('--p', pct / 100);
+      bar.style.setProperty('--h', Math.round(pct * 1.2));
+      if (was !== pct) Kit.tally(num, Number.isFinite(was) && odds.dataset.v !== '' ? was : pct, pct, 500);
+      num.dataset.unit = '%';
+      const fair = 100 / (1 + h.seats.filter((x) => x.inHand && !x.folded && x.id !== me).length);
+      word.textContent = pct >= fair * 1.5 ? 'favourite' : pct <= fair * 0.6 ? 'underdog' : 'to win';
+      odds.dataset.v = pct;
+      odds.title = 'Your share of the pot if everyone still in plays it out, from your cards and the board';
+    } else odds.dataset.v = '';
     // my own nameplate: stack and buttons, then my hand's name, my bet as chips, and my time bank
     const info = $('heMyInfo'); info.innerHTML = '';
     info.classList.toggle('folded', !!mine?.folded && h.stage !== 'done');

@@ -158,6 +158,7 @@ class Holdem(Game):
         "pace": ("Blinds rise", [(6, "⚡ Every 6 hands"), (10, "Every 10 hands"), (15, "🐢 Every 15 hands")], 10),
         "rebuys": ("Buy back in", [(0, "Off"), (1, "💸 Once each"), (3, "💸 Up to 3 times")], 1),
         "breather": ("Between hands", [(1, "⚡ Quick"), (2, "Normal"), (3, "🐢 Relaxed")], 2),
+        "odds": ("Win chance", [(False, "Hidden"), (True, "📊 Show my odds")], False),
     }
 
     # -- setup
@@ -580,6 +581,7 @@ class Holdem(Game):
                          "mine": e["cards"].get(p.id, [])} for e in getattr(self, "history", [])],
             "myCards": p.g.cards if p.id in self.seats and hasattr(p.g, "cards") else [],
             "myHand": describe(p.g.cards + list(self.board)) if p.id in self.seats and getattr(p.g, "cards", None) else "",
+            "myOdds": self.my_odds(p),
             "myCat": evaluate(p.g.cards + list(self.board))[0] if p.id in self.seats and getattr(p.g, "cards", None) else None,
             "toCall": max(0, self.cur_bet - me.bet) if me and self.stage != "done" else 0,
             "minRaise": min(self.cur_bet + self.min_raise, me.bet + me.chips) if me and self.stage != "done" else 0,
@@ -595,6 +597,25 @@ class Holdem(Game):
 
     def bot_ready(self):
         return self.stage != "done" and super().bot_ready()
+
+    def my_odds(self, p):
+        """With the 📊 option on: this player's rough share of the pot (0-100) from their own two cards and the
+        board against the hands still in, as the bots judge it. Worked out once per street and table size."""
+        if not self.s.get("odds") or self.stage == "done" or p.id not in self.seats:
+            return None
+        cards = getattr(p.g, "cards", None)
+        if not cards or p.g.folded or p.id not in getattr(self, "in_hand", []):
+            return None
+        opponents = len(self.live()) - 1
+        if opponents < 1:
+            return None
+        key = (self.hand_no, tuple(self.board), opponents)
+        memo = getattr(p.g, "odds_memo", None)
+        if not memo or memo[0] != key:
+            # seeded by the situation, so a re-render can't show a different number for the same spot
+            rng = random.Random(hash((tuple(cards), key)))
+            memo = p.g.odds_memo = (key, round(100 * equity(list(cards), list(self.board), opponents, 300, rng)))
+        return memo[1]
 
     def bot_turn(self, p):
         level = p.bot

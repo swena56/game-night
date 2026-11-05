@@ -156,5 +156,54 @@ const Kit = (() => {
     seen.set(key, v);
     return was !== undefined && was !== v;
   }
-  return { flyText, callout, reveal, snap, glide, fly, changed };
+  // the cards in `cards` that weren't there last time `key` was asked about (null the first time, so a
+  // page load doesn't deal the whole hand in again); duplicates count one by one
+  const hands = new Map();
+  function fresh(key, cards) {
+    const before = hands.get(key);
+    hands.set(key, [...cards]);
+    if (!before) return null;
+    const left = [...before], out = new Set();
+    for (const c of cards) { const at = left.indexOf(c); if (at >= 0) left.splice(at, 1); else out.add(c); }
+    return out;
+  }
+  // lay a row of card buttons out as a fan (.hand.fan in style.css): each one turned a little more the
+  // further it is from the middle; the buttons in `dealt` deal in one after another
+  function fan(hand, dealt = []) {
+    const kids = [...hand.children], mid = (kids.length - 1) / 2, step = Math.min(6, 48 / Math.max(1, kids.length));
+    hand.classList.add('hand', 'fan');
+    kids.forEach((b, k) => {
+      b.style.setProperty('--rot', `${((k - mid) * step).toFixed(1)}deg`);
+      b.style.setProperty('--drop', `${(Math.abs(k - mid) * step * 0.6).toFixed(1)}px`);
+    });
+    dealt.forEach((b, k) => { b.classList.add('dealt'); b.style.setProperty('--deal', `${k * 0.09}s`); });
+    if (dealt.length) ksfx('deal');
+  }
+  // a word stamped onto an element for a moment ("FARKLE", "SKIP", "FLINCH!")
+  function stamp(anchor, text, kind = 'bad', ms = 1100) {
+    if (!anchor?.getBoundingClientRect) return;
+    const r = anchor.getBoundingClientRect();
+    if (!r.width && !r.height) return;
+    const s = el('div', 'kit-stamp ' + kind, text);
+    s.style.left = r.left + r.width / 2 + 'px';
+    s.style.top = r.top + r.height / 2 + 'px';
+    if (!motionOK()) s.classList.add('still');
+    layer().append(s);
+    setTimeout(() => s.remove(), ms);
+  }
+  // count a number shown in `node` up (or down) to `to`
+  function tally(node, from, to, ms = 600) {
+    if (!node) return;
+    const fmt = (v) => Math.round(v).toLocaleString();
+    if (!motionOK() || from === to || from == null) { node.textContent = fmt(to); return; }
+    const t0 = performance.now();
+    const step = (t) => {
+      const k = Math.min(1, (t - t0) / ms);
+      node.textContent = fmt(from + (to - from) * (1 - (1 - k) ** 3));
+      if (k < 1 && node.isConnected) requestAnimationFrame(step);
+    };
+    node.textContent = fmt(from);
+    requestAnimationFrame(step);
+  }
+  return { flyText, callout, reveal, snap, glide, fly, changed, fresh, fan, stamp, tally };
 })();

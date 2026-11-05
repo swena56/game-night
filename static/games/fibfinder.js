@@ -91,6 +91,9 @@ UI.fibfinder = (() => {
         }
         card.append(row);
         if (!o.truth && o.authors.length && o.pickers.length) card.dataset.fooled = `+${2 * o.pickers.length * (f.final ? 2 : 1)}`;
+        // 🎭 a fib every other player fell for
+        const others = S.players.filter((p) => !p.spectator && !o.authors.includes(p.id)).length;
+        if (!o.truth && o.authors.length && others >= 2 && o.pickers.length >= others) { card.dataset.all = '1'; card.classList.add('all'); }
         box.append(card);
         cards.push(card);
       }
@@ -100,6 +103,7 @@ UI.fibfinder = (() => {
         Kit.reveal(cards, 900, (c2) => {
           c2.classList.remove('hidden-card'); c2.classList.add('flip-in');
           if (c2.dataset.fooled) Kit.flyText(c2, `🤥 ${c2.dataset.fooled}`, 'gold');
+          if (c2.dataset.all) { Kit.stamp(c2, 'Fooled everyone!', 'gold', 1300); ctx.sfx('tag'); }
           if (c2.classList.contains('truth')) { ctx.sfx('fanfare'); hideTruthUntil = 0; factLine(S.fibfinder); }
         }, { sound: 'flip' });
         factLine(f);  // the blank stays a mystery until the truth card turns

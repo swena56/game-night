@@ -1,5 +1,5 @@
 UI.seabattle = (() => {
-  let S, ctx, layout = [], pick = 0, horizontal = true, sonarMode = false, layoutFor = '', drag = null, dragged = false, N = 0;  // N: the sea's size (10 or 12)
+  let S, ctx, layout = [], pick = 0, horizontal = true, sonarMode = false, torp = null, layoutFor = '', drag = null, dragged = false, N = 0;  // N: the sea's size (10 or 12)
   const $ = (id) => document.getElementById(id);
   let seenShots = null, seenIncoming = null;
   // a ship drawn as a hull: rounded bow, square stern, joined along its length
@@ -13,7 +13,7 @@ UI.seabattle = (() => {
   }
 
   function mount(main, side) {
-    layout = []; pick = 0; horizontal = true; sonarMode = false; layoutFor = ''; drag = null; dragged = false; N = 0;
+    layout = []; pick = 0; horizontal = true; sonarMode = false; torp = null; layoutFor = ''; drag = null; dragged = false; N = 0;
     seenShots = null; seenIncoming = null; render.sunk = null;
     main.innerHTML = `<div class="seas">
       <div><h3 id="sbEnemyTitle">Enemy waters</h3><div id="sbEnemy" class="sea-grid"></div></div>
@@ -29,7 +29,7 @@ UI.seabattle = (() => {
         </div>
       </div>
       <div id="sbFire">
-        <button id="sbSonar" class="big">📡 Use sonar</button>
+        <div class="row sb-tools"><button id="sbSonar" class="big">📡 Use sonar</button><button id="sbTorp" class="big" hidden>💥 Torpedo</button></div>
         <div id="sbFleets" class="hint left"></div>
       </div></div>`;
     dragToPlace($('sbMine'));
@@ -37,7 +37,24 @@ UI.seabattle = (() => {
     $('sbRandom').onclick = () => { layout = randomLayout(); pick = -1; ctx.rerender(); };
     $('sbClear').onclick = () => { layout = []; pick = 0; ctx.rerender(); };
     $('sbReady').onclick = () => ctx.quiet(ctx.act('place', { ships: layout }));
-    $('sbSonar').onclick = () => { sonarMode = !sonarMode; ctx.rerender(); if (sonarMode) ctx.toast('Tap the centre of the area to scan.'); };
+    $('sbSonar').onclick = () => { sonarMode = !sonarMode; torp = null; ctx.rerender(); if (sonarMode) ctx.toast('Tap the centre of the area to scan.'); };
+    // 💥 torpedo: tap once to aim across, again to aim down, again to put it away; then tap the middle square
+    $('sbTorp').onclick = () => {
+      torp = torp === null ? 'h' : torp === 'h' ? 'v' : null; sonarMode = false; ctx.rerender();
+      if (torp) ctx.toast(`Tap the middle of the line: three squares ${torp === 'h' ? 'across ↔' : 'down ↕'}.`);
+    };
+    // aiming the torpedo: the three squares it would hit light up under the finger or pointer
+    $('sbEnemy').addEventListener('pointerover', (e) => {
+      const cells = [...$('sbEnemy').children];
+      cells.forEach((c) => c.classList.remove('aim'));
+      const i = cells.indexOf(e.target.closest?.('.sea-cell'));
+      if (!torp || i < 0) return;
+      const r = Math.floor(i / N), c = i % N;
+      for (const k of [-1, 0, 1]) {
+        const y = r + (torp === 'v' ? k : 0), x = c + (torp === 'h' ? k : 0);
+        if (y >= 0 && y < N && x >= 0 && x < N) cells[y * N + x].classList.add('aim');
+      }
+    });
   }
 
   function buildGrids(n) {
@@ -128,7 +145,7 @@ UI.seabattle = (() => {
       cell.className = 'sea-cell' + (revealed.has(k) ? ' ship ' + (enemyHull.get(k) || '') : '') + (v === 'sunk' ? ' sunk' : '') + (scanned.has(k) ? ' scanned' : '')
         + (isLast ? ' last' : '') + (isLast && newOut ? (v === 'miss' ? ' plop' : ' boom') : '');
       cell.textContent = v === 'miss' ? '•' : v === 'hit' ? '🔥' : v === 'sunk' ? '✖' : scanCentre.has(k) ? String(scanCentre.get(k)) : '';
-      cell.disabled = !ctx.myTurn || (!!v && !sonarMode);
+      cell.disabled = !ctx.myTurn || (!!v && !sonarMode && !torp);
     }
 
     // sounds: a splash for a miss, a boom for a hit, and a callout when a ship goes down
@@ -159,6 +176,12 @@ UI.seabattle = (() => {
     $('sbSonar').hidden = !sea.sonar;
     $('sbSonar').disabled = !ctx.myTurn;
     $('sbSonar').classList.toggle('on', sonarMode);
+    if (!sea.torpedo || !ctx.myTurn) torp = null;
+    $('sbTorp').hidden = !sea.torpedo;
+    $('sbTorp').disabled = !ctx.myTurn;
+    $('sbTorp').classList.toggle('on', !!torp);
+    $('sbTorp').textContent = torp === 'h' ? '💥 Torpedo ↔' : torp === 'v' ? '💥 Torpedo ↕' : '💥 Torpedo';
+    $('sbEnemy').classList.toggle('torp', !!torp);
     const fleetLine = (ships) => ships.map((s) => (s.sunk ? '✖ ' : '') + s.name).join(' · ');
     $('sbFleets').innerHTML = '';
     $('sbFleets').append(ctx.el('div', '', `Enemy: ${fleetLine(sea.enemy)}`), ctx.el('div', '', `Yours: ${fleetLine(sea.mine)}`));
@@ -214,6 +237,12 @@ UI.seabattle = (() => {
     if (!ctx.myTurn) return;
     const r = Math.floor(i / N), c = i % N;
     if (sonarMode) { sonarMode = false; return ctx.quiet(ctx.act('sonar', { r, c })); }
+    if (torp) {
+      const dir = torp; torp = null;
+      for (const cell of $('sbEnemy').children) cell.classList.remove('aim');
+      ctx.sfx('whoosh');
+      return ctx.quiet(ctx.act('torpedo', { r, c, dir }));
+    }
     ctx.quiet(ctx.act('fire', { r, c }));
   }
 

@@ -2,7 +2,7 @@
 // The server picks where the wheel stops; every client animates the same spin to it.
 UI.lucky = (() => {
   let S, ctx, gfx = null, raf = 0, resizeObs = null;
-  let rest = 0, anim = null, seenSpin = 0, prevBoard = '', cheered = 0;
+  let rest = 0, anim = null, seenSpin = 0, prevBoard = '', cheered = 0, prevBank = null, prevTotal = null, flipAt = {};
   const N = 16, SLICE = (Math.PI * 2) / N;
   const COLORS = ['#e63946', '#f4a261', '#2a9d8f', '#264653', '#e9c46a', '#8338ec', '#3a86ff', '#06d6a0'];
   const SPECIAL = { bust: '#111111', skip: '#6c757d', wild: '#9b5de5', steal: '#f77f00', jackpot: '#ffd60a', vowel: '#00b4d8' };
@@ -165,7 +165,7 @@ UI.lucky = (() => {
 
   // ---------- mount / render
   function mount(main, side) {
-    rest = 0; anim = null; seenSpin = 0; prevBoard = ''; cheered = 0;
+    rest = 0; anim = null; seenSpin = 0; prevBoard = ''; cheered = 0; prevBank = null; prevTotal = null; flipAt = {};
     main.innerHTML = `<div class="lucky">
       <div id="lkStage" class="lk-stage"><div id="lkSvg"></div><div id="lkResult" class="lk-result"></div><div id="lkStand" class="st-float" hidden></div></div>
       <div class="lk-cat" id="lkCat"></div>
@@ -229,17 +229,35 @@ UI.lucky = (() => {
     // board: new letters flip in
     $('lkCat').textContent = `Round ${L.round}/${L.rounds} · ${L.category}`;
     const board = $('lkBoard'); board.innerHTML = '';
-    let k = 0;
+    // newly found letters turn over one after another, each with a click, like a host turning tiles
+    let k = 0, turned = 0;
+    const now = performance.now();
+    if (L.board.length !== prevBoard.length) flipAt = {};
+    const solving = L.stage === 'solved' || S.phase !== 'playing';
     for (const word of L.board.split(' ')) {
       const wEl = ctx.el('div', 'lk-word');
       for (const ch of word) {
         const shown = ch !== '_';
-        const t = ctx.el('span', 'lk-tile' + (shown ? ' on' : '') + (shown && prevBoard && prevBoard[k] === '_' ? ' flip' : ''), shown ? ch : '');
+        const fresh = shown && prevBoard && prevBoard[k] === '_';
+        if (fresh && motionOK()) {
+          const at = turned++ * (solving ? 0.06 : 0.32);
+          flipAt[k] = now + at * 1000;
+          if (!solving) setTimeout(() => ctx.sfx('flip'), at * 1000);
+        }
+        // a tile still turning (its flip may have been scheduled a render or two ago) carries on where it was
+        const turning = shown && flipAt[k] != null && flipAt[k] + 500 > now;
+        const t = ctx.el('span', 'lk-tile' + (shown ? ' on' : '') + (turning ? ' flip' : ''), shown ? ch : '');
+        if (turning) t.style.animationDelay = (flipAt[k] - now) / 1000 + 's';
         wEl.append(t); k++;
       }
       board.append(wEl); k++;
     }
     prevBoard = L.board;
+    // money won this turn floats up off the board
+    if (prevBank && S.turn) {
+      const gain = (L.bank[S.turn] ?? 0) - (prevBank[S.turn] ?? 0);
+      if (gain > 0) setTimeout(() => Kit.flyText(board, `+${num(gain)}`, 'gold'), Math.min(turned, 6) * 320);
+    }
 
     const mine = ctx.myTurn, stage = L.stage;
     const turnName = ctx.player(S.turn)?.name ?? '';
@@ -274,9 +292,13 @@ UI.lucky = (() => {
       const p = ctx.player(pid); if (!p) continue;
       const tr = ctx.el('tr', pid === S.turn ? 'now' : '');
       const n = ctx.el('td', '', p.name); n.style.color = p.color;
-      tr.append(n, ctx.el('td', '', num(L.bank[pid])), ctx.el('td', '', num(L.total[pid])));
+      const bankTd = ctx.el('td', '', num(L.bank[pid])), totalTd = ctx.el('td', '', num(L.total[pid]));
+      if (prevBank && prevBank[pid] !== L.bank[pid]) Kit.tally(bankTd, prevBank[pid] ?? 0, L.bank[pid] ?? 0, 700);
+      if (prevTotal && prevTotal[pid] !== L.total[pid]) Kit.tally(totalTd, prevTotal[pid] ?? 0, L.total[pid] ?? 0, 900);
+      tr.append(n, bankTd, totalTd);
       table.append(tr);
     }
+    prevBank = { ...L.bank }; prevTotal = { ...L.total };
   }
 
   const turnText = (s) => s.phase !== 'playing' ? null

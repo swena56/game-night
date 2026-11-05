@@ -193,14 +193,29 @@ UI.relay = (() => {
     const fresh = shownKey !== String(g.show);
     shownKey = String(g.show);
     const box = $('rlChain'); box.innerHTML = '';
+    // a fresh chain plays out card by card; each drawing re-draws itself stroke by stroke as it appears,
+    // so the next card waits a little longer after a picture
+    let at = 0;
     g.chain.forEach((e, i) => {
       const p = ctx.player(e.by);
       const card = ctx.el('div', 'rl-entry');
-      if (fresh) card.style.animationDelay = `${i * 1.2}s`; else card.style.animation = 'none';
+      const start = at;
+      at += e.kind === 'draw' ? 2.4 : 1.2;
+      if (fresh) card.style.animationDelay = `${start}s`; else card.style.animation = 'none';
       const who = ctx.el('div', 'rl-who');
       const dot = ctx.el('span', 'mini-disc'); dot.style.background = p?.color ?? '#888';
       who.append(dot, `${p?.name ?? '?'} ${e.kind === 'draw' ? 'drew' : i ? 'guessed' : 'wrote'}${e.auto ? ' 🤖' : ''}`);
-      card.append(who, e.kind === 'draw' ? art(e.v, 'rl-art') : ctx.el('div', 'rl-quote', `“${e.v}”`));
+      const shown = e.kind === 'draw' ? art(e.v, 'rl-art') : ctx.el('div', 'rl-quote', `“${e.v}”`);
+      if (e.kind === 'draw' && fresh && motionOK()) {
+        const paths = [...shown.querySelectorAll('path')], per = 1.6 / Math.max(1, paths.length);
+        paths.forEach((pth, k) => {
+          pth.setAttribute('pathLength', '1');
+          pth.classList.add('rl-redraw');
+          pth.style.animationDelay = `${start + 0.35 + k * per}s`;
+          pth.style.animationDuration = `${Math.max(0.12, per * 1.4)}s`;
+        });
+      }
+      card.append(who, shown);
       const n = g.tally?.[i];
       const b = ctx.el('button', 'rl-heart', n ? `❤️ ${n}` : '❤️');
       b.classList.toggle('on', g.myVote === i);
@@ -212,7 +227,7 @@ UI.relay = (() => {
     const texts = g.chain.filter((e) => e.kind === 'text');
     if (texts.length > 1) {  // how far the phrase drifted, once the whole chain is on show
       const sum = ctx.el('p', 'rl-sum', `🌀 Started as “${texts[0].v}”, ended as “${texts.at(-1).v}”.`);
-      if (fresh) sum.style.animationDelay = `${g.chain.length * 1.2}s`; else sum.style.animation = 'none';
+      if (fresh) sum.style.animationDelay = `${at}s`; else sum.style.animation = 'none';
       box.append(sum);
     }
     const save = ctx.el('button', 'ghost-btn rl-save', '💾 Save this chain as a picture');

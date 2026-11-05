@@ -182,6 +182,7 @@ class Spire(Game):
         "powers": ("Power cells", [(True, "On (⚡🛡️💣)"), (False, "Off")], True),
         "board": ("Board", [("tower", "🗼 Tower (wraps around)"), ("flat", "🧱 Flat well (side walls)")], "tower"),
         "pieces": ("Pieces", [("four", "🟦 4 blocks each"), ("mixed", "🧩 Mixed (2, 3 and 5 blocks)")], "four"),
+        "aim": ("Junk goes to", [("random", "🎲 A random rival"), ("leader", "👑 The leader (comeback)")], "random"),
     }
 
     def start(self, seated, rng):
@@ -236,7 +237,12 @@ class Spire(Game):
         foes = [o for o in r.contenders() if o.id != p.id]
         attack = attack_for(rings, combo)
         if attack and foes:
-            target = self.rng.choice(foes)
+            if self.s.get("aim") == "leader":
+                # 👑 comeback: junk lands on whoever has cleared the most rings (a tie is settled at random)
+                top = max(o.g.rings for o in foes)
+                target = self.rng.choice([o for o in foes if o.g.rings == top])
+            else:
+                target = self.rng.choice(foes)
             self.send(target, {"kind": "junk", "n": attack, "from": p.name})
             p.g.sent += attack
             if attack >= 2:

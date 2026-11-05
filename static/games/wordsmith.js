@@ -50,7 +50,14 @@ UI.wordsmith = (() => {
     $('wsPlay').onclick = play;
     $('wsHint').onclick = hint;
     $('wsRecall').onclick = () => { pending = []; selected = null; ctx.rerender(); };
-    $('wsShuffle').onclick = () => { order.sort(() => Math.random() - 0.5); ctx.rerender(); };
+    // shuffle: the tiles slide to their new places instead of jumping
+    $('wsShuffle').onclick = () => {
+      const before = Kit.snap($('wsRack'));
+      for (let k = order.length - 1; k > 0; k--) { const j = Math.floor(Math.random() * (k + 1)); [order[k], order[j]] = [order[j], order[k]]; }
+      ctx.rerender();
+      Kit.glide($('wsRack'), before, 320);
+      ctx.sfx('tick');
+    };
     $('wsPass').onclick = async () => { if (await ctx.ask('Pass your turn?', { ok: 'Pass' })) ctx.quiet(ctx.act('pass')); };
     $('wsSwap').onclick = () => {
       if (!swapMode) { swapMode = true; swapSel.clear(); pending = []; selected = null; ctx.toast('Tap the tiles to swap, then confirm.'); }
@@ -131,6 +138,7 @@ UI.wordsmith = (() => {
     for (const i of order) {
       if (used.has(i) || i >= rack.length) continue;
       const t = ctx.el('button', 'rack-tile' + (selected === i ? ' sel' : '') + (swapSel.has(i) ? ' swap' : ''));
+      t.dataset.k = i;
       face(t, rack[i], rack[i] === BLANK);
       t.onclick = () => { if (skipClick) { skipClick = false; return; } onRack(i); };
       t.addEventListener('pointerdown', (e) => { if (!swapMode) startDrag(e, i, t, -1); });
