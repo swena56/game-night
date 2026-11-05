@@ -479,11 +479,8 @@ window.addEventListener('resize', () => { if (!$('#lobby').hidden) fitPicker(); 
 let pickedGame = null;  // the game this host just tapped, scrolled to once the server confirms it
 
 // arrow keys move between game tiles by where they sit on screen, across categories (#37)
-$('#gamePicker').addEventListener('keydown', (e) => {
-  const dir = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
-  const cur = document.activeElement;
-  if (!dir || !cur?.classList.contains('game-tile')) return;
-  e.preventDefault();
+const ARROWS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+function stepPicker(cur, dir) {
   const mid = (r) => [r.left + r.width / 2, r.top + r.height / 2];
   const [x0, y0] = mid(cur.getBoundingClientRect());
   let best = null, bestScore = Infinity;
@@ -497,6 +494,27 @@ $('#gamePicker').addEventListener('keydown', (e) => {
   }
   best?.focus();
   best?.scrollIntoView?.({ block: 'nearest' });
+  return best;
+}
+$('#gamePicker').addEventListener('keydown', (e) => {
+  const dir = ARROWS[e.key], cur = document.activeElement;
+  if (!dir || !cur?.classList.contains('game-tile')) return;
+  e.preventDefault();
+  stepPicker(cur, dir);
+});
+// ...and anywhere in the lobby, so arrows work straight away after a game (#55): they start from the
+// chosen game. Not while typing, or with chat, settings, the menu or a dialog open; never in a game view.
+document.addEventListener('keydown', (e) => {
+  const dir = ARROWS[e.key];
+  if (!dir || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+  if (!S || S.phase !== 'lobby' || replay || $('#lobby').hidden) return;
+  if (!$('#modal').hidden || !$('#chatPanel').hidden || !$('#prefsPanel').hidden || !$('#gameMenu').hidden) return;
+  const a = document.activeElement;
+  if (a?.closest?.('#gamePicker') || a?.matches?.('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+  const cur = $('#gamePicker .game-tile.on') || $('#gamePicker .game-tile');
+  if (!cur) return;
+  e.preventDefault();
+  if (!stepPicker(cur, dir)) { cur.focus(); cur.scrollIntoView?.({ block: 'nearest' }); }
 });
 
 function renderLobby() {
