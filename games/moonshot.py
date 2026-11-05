@@ -16,6 +16,7 @@ class MoonShot(Game):
         'Roll two dice to build fuel, then Fly to move that far.',
         "Any 1 loses this turn's fuel; double 1s crash you back to the start.",
         'Doubles earn a 🛡️ shield. Stopping on ⭐ +5, ☄️ −5, 🌀 swaps you with the leader.',
+        'With 💥 Bumping on, landing exactly on a rival knocks them back 3.',
         'First to the moon wins. Alone, reach it within a turn limit (4, 6 or 9 turns by distance).',
     ]
     name = "Moon Shot"
@@ -29,6 +30,7 @@ class MoonShot(Game):
     settings_schema = {
         "goal": ("Distance", [(30, "Short (30)"), (50, "Classic (50)"), (75, "Long (75)")], 50),
         "hazards": ("Space hazards", [(True, "On"), (False, "Off")], True),
+        "bump": ("💥 Bumping", [(False, "Off"), (True, "On: land on a rival to knock them back 3")], False),
     }
 
     def start(self, seated, rng):
@@ -129,6 +131,13 @@ class MoonShot(Game):
                 msg += f" — 🌀 wormhole! Swapped places with {r.players[leader].name}"
             else:
                 msg += " — 🌀 wormhole, but they're already in the lead"
+        here = self.pos[p.id]
+        if self.s.get("bump") and 0 < here < self.goal:  # 💥 landing on rivals knocks them back
+            hit = [i for i in self.seats if i != p.id and i in r.players and self.pos[i] == here]
+            for i in hit:
+                self.pos[i] = max(0, here - 3)
+            if hit:
+                msg += f" and 💥 bumped {' & '.join(r.players[i].name for i in hit)} back to {max(0, here - 3)}"
         r.add_log(msg + ".", "question")
         if self.pos[p.id] >= self.goal:
             self.pos[p.id] = self.goal

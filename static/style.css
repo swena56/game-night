@@ -1466,7 +1466,22 @@ body.calm .gh-tile.trace { background: linear-gradient(#8ecae6, #4dabf7); }
 
 /* moon shot */
 .moon-track { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; width: min(100%, 640px); margin: 8px auto;
-  padding: 10px; border-radius: var(--radius); background: radial-gradient(circle at 80% 10%, #3b3170, #0b0918 70%); }
+  padding: 10px; border-radius: var(--radius); position: relative;
+  /* deep space: a nebula, a scatter of stars and the glow of the moon at the top */
+  background:
+    radial-gradient(1px 1px at 12% 18%, #fff, transparent 60%), radial-gradient(1px 1px at 37% 62%, #fffc, transparent 60%),
+    radial-gradient(1.5px 1.5px at 68% 34%, #fff, transparent 60%), radial-gradient(1px 1px at 84% 76%, #fffa, transparent 60%),
+    radial-gradient(1px 1px at 22% 88%, #fff9, transparent 60%), radial-gradient(1.5px 1.5px at 55% 9%, #fff, transparent 60%),
+    radial-gradient(1px 1px at 92% 52%, #fffb, transparent 60%), radial-gradient(1px 1px at 6% 46%, #fff8, transparent 60%),
+    radial-gradient(circle at 85% 0%, #fff6d633, transparent 30%), radial-gradient(ellipse at 20% 70%, #6a4c9355, transparent 55%),
+    radial-gradient(circle at 80% 10%, #3b3170, #0b0918 70%); }
+.ms-cell.pad { background: radial-gradient(circle, #4dabf755, #ffffff10 70%); }
+.ms-cell.moon { background: radial-gradient(circle, #fff6d688, #ffd16622 70%); box-shadow: 0 0 18px #fff6d666; }
+.ms-cell.moon .num { font-size: 190%; filter: drop-shadow(0 0 6px #fff6d6); }
+/* the route bends up at the end of each row */
+.ms-cell.turn-r::after, .ms-cell.turn-l::after { content: ''; position: absolute; top: -5px; width: 2px; height: 6px; background: #ffffff44; }
+.ms-cell.turn-r::after { right: 50%; } .ms-cell.turn-l::after { left: 50%; }
+.moon-panel .ms-risk { margin: 2px 0 0; font-size: 12px; color: #ffb3c6; min-height: 1.2em; }
 .ms-cell { min-height: clamp(34px, 9vw, 58px); border-radius: 8px; background: #ffffff10; position: relative; display: flex; flex-direction: column;
   align-items: center; justify-content: flex-start; padding-top: 2px; font-size: clamp(8px, 2.2vw, 12px); color: var(--muted); }
 .ms-cell.t-star { background: #ffd16633; } .ms-cell.t-meteor { background: #ef476f33; } .ms-cell.t-wormhole { background: #8ecae633; }
