@@ -754,10 +754,7 @@ body.focus #game .layout:has(.bl-busy) > aside { opacity: .2; }
 .ck-tray .mini { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: -5px; box-shadow: 0 1px 2px #0008; }
 .ck-tray .mini.d { background: #222; border: 1px solid #555; } .ck-tray .mini.l { background: #efe2c8; border: 1px solid #b9a37c; }
 .csq .piece { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; filter: drop-shadow(0 3px 2px #0006); }
-/* hold'em: the pot as chips, the winning five lit up, a hand-strength meter */
-.he-pot { display: flex; align-items: center; justify-content: center; gap: 6px; }
-.he-pot-label { font-size: 12px; color: #fffb; text-transform: uppercase; letter-spacing: .1em; }
-.he-bet .chip-stack { flex-direction: row; gap: 4px; } .he-bet .cchip { width: 14px; height: 5px; }
+/* hold'em: the winning five lit up, a hand-strength meter */
 .pc.best { box-shadow: 0 0 0 3px #ffd166, 0 0 16px #ffd166aa; transform: translateY(-4px); }
 .he-seat.winner { box-shadow: 0 0 0 3px #ffd166, 0 0 20px #ffd16688; }
 .he-meter { display: flex; gap: 2px; margin-top: 4px; height: 8px; width: 140px; }
@@ -1174,23 +1171,62 @@ body.calm .gh-tile.trace { background: linear-gradient(#8ecae6, #4dabf7); }
 /* texas hold'em */
 .he { max-width: 680px; margin: 0 auto; }
 .he-table { display: grid; gap: 12px; border-radius: 80px / 50px; padding: 16px 14px; box-shadow: inset 0 0 0 6px #5b3a1e, inset 0 0 0 9px #7a4f2a, 0 10px 30px #000a; }
-.he-seats { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); gap: 8px; }
-.he-seat { background: #0007; border-radius: 12px; padding: 6px; text-align: center; font-size: 12px; border: 2px solid transparent; transition: border-color .2s; }
+.he-seats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 104px), 1fr)); gap: 8px; }
+/* a rival: hole cards, a nameplate under them, then their last action and the chips they have out */
+.he-seat { display: grid; justify-items: center; align-content: start; gap: 4px; min-width: 0; background: #0005; border-radius: 14px;
+  padding: 6px 6px 5px; font-size: 12px; border: 2px solid transparent; transition: border-color .2s, box-shadow .2s; }
 .he-seat.now { border-color: var(--accent); box-shadow: 0 0 14px #ffb70366; }
-.he-seat.folded { opacity: .5; } .he-seat.out { opacity: .3; }
-.he-seat small { display: block; color: var(--muted); }
-.he-seat-top { display: flex; align-items: center; justify-content: center; gap: 4px; flex-wrap: wrap; }
-.he-badge { font-size: 9px; font-weight: 900; background: #fff2; border-radius: 6px; padding: 1px 4px; }
-.he-badge.d { background: #fff; color: #111; border-radius: 50%; padding: 1px 5px; }
-.he-bet { color: var(--accent) !important; font-weight: 800; }
-.he-handname { color: #8ecae6 !important; font-weight: 800; }
-.he-cards { display: flex; gap: 4px; justify-content: center; margin: 4px 0; }
+.he-seat.now .he-plate { border-color: var(--accent); }
+.he-seat.folded .he-cards, .he-seat.folded .he-plate, .he-myinfo.folded .he-plate { opacity: .5; filter: grayscale(.7); }
+.he-seat.out { opacity: .35; }
+.he-seat .pc.small.empty { border-style: dashed; opacity: .35; }
+.he-plate { position: relative; display: flex; align-items: center; gap: 6px; width: 100%; max-width: 180px; min-width: 0; text-align: left;
+  background: linear-gradient(#2b2338, #15111d); border: 1px solid #ffffff26; border-radius: 10px; padding: 4px 8px; box-shadow: 0 2px 6px #0009; }
+.he-plate .avatar { width: 26px; height: 26px; box-shadow: 0 0 0 2px #ffffff30; }
+.he-id { display: grid; flex: 1; min-width: 0; line-height: 1.2; }
+.he-name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.he-sub { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: 12px; }
+.he-stack { font-weight: 800; color: #ffd166; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.he-stack::before { content: ''; display: inline-block; width: 9px; height: 9px; margin-right: 3px; border-radius: 50%; vertical-align: -1px;
+  background: radial-gradient(circle, #e0a400 0 35%, #fff 36% 45%, #e0a400 46%); box-shadow: 0 0 0 1px #0006; }
+.he-blind { flex: none; font-size: 9px; font-weight: 900; line-height: 14px; padding: 0 4px; border-radius: 4px; background: #3a86ff; color: #fff; }
+.he-blind.bb { background: #e85d04; }
+.he-dealer { position: absolute; top: -8px; right: -8px; width: 20px; height: 20px; border-radius: 50%; background: #fff; color: #111;
+  font-size: 11px; font-weight: 900; line-height: 20px; text-align: center; box-shadow: inset 0 0 0 2px #fff, inset 0 0 0 3px #aaa, 0 2px 4px #000a; }
+.he-foot { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px 6px; min-height: 22px; }
+.he-act { font-size: 10px; font-weight: 800; line-height: 16px; padding: 0 7px; border-radius: 999px; text-transform: uppercase; letter-spacing: .05em;
+  background: #ffffff1f; color: #fffd; white-space: nowrap; }
+.he-act.fold { background: #0007; color: #fff9; }
+.he-act.call { background: #2a9d8f; color: #fff; }
+.he-act.bet, .he-act.raise { background: #e85d04; color: #fff; }
+.he-act.allin { background: #d00000; color: #fff; }
+.he-act.now { background: var(--accent); color: #111; animation: pulse 1.2s infinite; }
+.he-handname { color: #8ecae6; font-weight: 800; font-size: 12px; }
+.he-bank { font-size: 12px; color: var(--muted); }
+.he-cards { display: flex; gap: 4px; justify-content: center; margin: 2px 0; }
+/* casino chips seen from the side: striped edges, each chip a hair off the one under it, the amount on a dark pill */
+.he-chips .cchip { --e: #fff; width: 24px; height: 6px; margin-top: -1px; border: 0; border-radius: 2px / 3px;
+  background: linear-gradient(#ffffff59, #0000 45%, #00000045),
+    repeating-linear-gradient(90deg, var(--c) 0 4px, var(--e) 4px 6px, var(--c) 6px 8px);
+  box-shadow: inset 0 -1px 0 #0007, 0 1px 1px #0008; }
+.he-chips .cchip:nth-child(3n+2) { transform: translateX(1px); }
+.he-chips .cchip:nth-child(3n) { transform: translateX(-1px); }
+.he-chips .cchip.white { --c: #f1ede4; --e: #2a6fdb; }
+.he-chips .cchip.gold { --c: #e0a400; --e: #fff6d6; }
+.he-chips b { font-size: 12px; font-weight: 800; line-height: 16px; color: #ffd166; background: #000b; border: 1px solid #ffd16655;
+  border-radius: 999px; padding: 0 6px; text-shadow: none; font-variant-numeric: tabular-nums; }
+.he-bet { flex-direction: row; align-items: flex-end; gap: 4px; }
+.he-pot { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 40px; }
+.he-potchips { display: flex; align-items: flex-end; gap: 3px; }
+.he-potchips .cchip { width: 28px; height: 7px; }
+.he-pot-amt { display: grid; justify-items: center; line-height: 1.1; background: #000b; border: 1px solid #ffd16655; border-radius: 10px; padding: 3px 12px; }
+.he-pot-amt small { font-size: 10px; font-weight: 700; color: #fffa; text-transform: uppercase; letter-spacing: .14em; }
+.he-pot-amt b { font-size: 18px; color: #ffd166; font-variant-numeric: tabular-nums; }
 .he-hist { margin-top: 8px; font-size: 13px; } .he-hist summary { cursor: pointer; font-weight: 700; }
 .he-hand { padding: 4px 0; border-top: 1px solid #ffffff14; }
 .he-hand-top { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; }
 .he-you { margin-left: 6px; opacity: .7; }
 .he-center { display: grid; justify-items: center; gap: 6px; }
-.he-pot { font-weight: 900; font-size: 18px; color: #ffd166; text-shadow: 0 2px 6px #000; }
 .he-board { display: flex; gap: 5px; }
 .he-board .pc { width: clamp(40px, 11vw, 54px); height: clamp(58px, 16vw, 78px); }
 .he-result { min-height: 1.3em; text-align: center; font-weight: 700; font-size: 14px; }
@@ -1201,7 +1237,16 @@ body.calm .gh-tile.trace { background: linear-gradient(#8ecae6, #4dabf7); }
 @keyframes heNext { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 .he-next button { padding: 6px 16px; }
 .he-me { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 10px 0 6px; }
-.he-myinfo { font-weight: 700; }
+.he-mycol { display: grid; gap: 6px; min-width: 0; }
+.he-myinfo { display: grid; gap: 4px; justify-items: start; min-width: 0; font-weight: 700; }
+.he-myinfo .he-plate { max-width: 220px; }
+.he-myinfo .he-foot { justify-content: flex-start; min-height: 0; }
+@media (max-width: 520px) {
+  .he-seats { gap: 6px; }
+  .he-seat .he-plate .avatar { display: none; }
+  .he-plate { padding: 3px 6px; }
+  .he-seat .he-name { font-size: 12px; letter-spacing: -.01em; }
+}
 .he-actions { display: grid; gap: 8px; }
 .he-actions.off { opacity: .45; }
 .he-main > button { flex: 1; font-size: 17px; padding: 12px; }

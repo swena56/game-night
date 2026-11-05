@@ -22,8 +22,8 @@ UI.holdem = (() => {
             <button id="heNextBtn">Next hand ▶</button></div>
         </div>
       </div>
-      <div class="he-me"><div id="heMyCards" class="he-cards"></div><div id="heMyInfo" class="he-myinfo"></div>
-        <div id="heMeter" class="he-meter" hidden></div></div>
+      <div class="he-me"><div id="heMyCards" class="he-cards"></div><div class="he-mycol"><div id="heMyInfo" class="he-myinfo"></div>
+        <div id="heMeter" class="he-meter" hidden></div></div></div>
       <button id="heRebuy" class="primary big" hidden></button>
       <button id="heShow" hidden>🙂 Show my cards</button>
       <div id="heActions" class="he-actions">
@@ -70,32 +70,67 @@ UI.holdem = (() => {
     $('heRaise').textContent = to >= h.maxRaise ? `🔥 All-in ${num(h.maxRaise)}` : `${h.curBet ? 'Raise to' : 'Bet'} ${num(to)}`;
   }
 
+  // a seat's nameplate: avatar, name (cut short with … if long), stack, blinds, and the dealer button
+  function plate(p, st) {
+    const pl = ctx.el('div', 'he-plate');
+    if (p && typeof avatar === 'function') pl.append(avatar(p));
+    const id = ctx.el('div', 'he-id');
+    const name = ctx.el('b', 'he-name', p?.name ?? '?'); name.style.color = p?.color ?? ''; name.title = p?.name ?? '';
+    const row = ctx.el('div', 'he-sub');
+    row.append(ctx.el('span', 'he-stack', st.out ? '💥 out' : num(st.chips)));
+    if (st.sb) row.append(ctx.el('span', 'he-blind', 'SB'));
+    if (st.bb) row.append(ctx.el('span', 'he-blind bb', 'BB'));
+    id.append(name, row); pl.append(id);
+    if (st.button) { const d = ctx.el('span', 'he-dealer', 'D'); d.title = 'Dealer'; pl.append(d); }
+    return pl;
+  }
+  // under the nameplate: the hand they showed, or their latest action and the chips they've bet this round
+  function seatFoot(st, now, h, nowWord = 'Thinking…') {
+    const f = ctx.el('div', 'he-foot');
+    if (h.shown[st.id]) { f.append(ctx.el('span', 'he-handname', h.shown[st.id].hand)); return f; }
+    if (st.out) return f;
+    const word = now ? nowWord : st.allin ? 'All-in' : st.folded ? 'Folded' : h.stage !== 'done' ? actWord(st.last) : '';
+    if (word) f.append(ctx.el('span', 'he-act ' + (now ? 'now' : st.allin ? 'allin' : st.folded ? 'fold' : word.toLowerCase()), word));
+    if (st.bet) f.append(Chips.stack(st.bet, { max: 6, cls: 'he-chips he-bet' }));
+    return f;
+  }
+  const actWord = (last = '') => ({ folds: 'Folded', checks: 'Check', calls: 'Call', bets: 'Bet', raises: 'Raise' })[last.split(' ')[0]] || '';
+  // the pot as a row of columns, one per chip colour, the way a dealer stacks it
+  const DENOMS = [1000, 500, 100, 25, 5, 1];
+  function potChips(amount) {
+    const row = ctx.el('span', 'he-potchips');
+    let left = Math.max(0, Math.round(amount)), cols = 0;
+    for (const v of DENOMS) {
+      const n = Math.floor(left / v);
+      if (!n) continue;
+      left -= n * v;
+      row.append(Chips.stack(n * v, { label: false, max: 8, cls: 'he-chips' }));
+      if (++cols >= 5) break;
+    }
+    return row;
+  }
+
   function render(s, c) {
     S = s; ctx = c;
     const h = S.holdem, me = S.me.id;
     const seat = (id) => h.seats.find((x) => x.id === id);
     const mine = seat(me);
 
-    // rivals around the table
+    // rivals around the table: hole cards over a nameplate (avatar, name, stack, dealer/blind buttons),
+    // then a footer with what they last did and the chips they have out this round
     const box = $('heSeats'); box.innerHTML = '';
     for (const st of h.seats) {
       if (st.id === me) continue;
-      const p = ctx.player(st.id);
-      const el = ctx.el('div', 'he-seat' + (st.id === S.turn ? ' now' : '') + (st.folded ? ' folded' : '') + (st.out ? ' out' : '')
+      const p = ctx.player(st.id), now = st.id === S.turn && h.stage !== 'done';
+      const el = ctx.el('div', 'he-seat' + (now ? ' now' : '') + (st.folded ? ' folded' : '') + (st.out ? ' out' : '')
         + ((h.winners || []).includes(st.id) && h.stage === 'done' ? ' winner' : ''));
       el.dataset.id = st.id;
-      const name = ctx.el('b', '', p?.name ?? '?'); name.style.color = p?.color ?? '';
-      const badges = [st.button ? 'D' : '', st.sb ? 'SB' : '', st.bb ? 'BB' : ''].filter(Boolean);
-      const top = ctx.el('div', 'he-seat-top'); top.append(name);
-      for (const t of badges) top.append(ctx.el('span', 'he-badge' + (t === 'D' ? ' d' : ''), t));
       const cards = ctx.el('div', 'he-cards small');
       const shown = h.shown[st.id]?.cards || h.reveal?.[st.id];
       if (shown) for (const card of shown) cards.append(face(card, 'small' + (h.best5?.includes(card) ? ' best' : '')));
-      else if (st.inHand && !st.folded && !st.out) cards.append(back('small'), back('small'));
-      el.append(top, cards, ctx.el('small', '', st.out ? '💥 out' : `💰${num(st.chips)}${st.allin ? ' · ALL-IN' : ''}`));
-      if (h.shown[st.id]) el.append(ctx.el('small', 'he-handname', h.shown[st.id].hand));
-      else if (st.bet) { const b = ctx.el('small', 'he-bet'); b.append(Chips.stack(st.bet, { max: 5 })); el.append(b); }
-      else if (st.last && h.stage !== 'done') el.append(ctx.el('small', 'he-last', st.last));
+      else if (st.inHand && !st.out) for (let i = 0; i < 2; i++) cards.append(back('small' + (st.folded ? ' mucked' : '')));
+      else for (let i = 0; i < 2; i++) cards.append(ctx.el('span', 'pc small empty'));
+      el.append(cards, plate(p, st), seatFoot(st, now, h));
       box.append(el);
     }
 
@@ -112,7 +147,8 @@ UI.holdem = (() => {
     if (h.board.length > fromCard) for (let k = 0; k < h.board.length - fromCard; k++) setTimeout(() => ctx.sfx('flip'), k * 180);
     seenBoard = h.board.length; seenHand = h.hand;
     const pot = $('hePot'); pot.innerHTML = '';
-    pot.append(Chips.stack(h.pot, { cls: 'big' }), ctx.el('span', 'he-pot-label', 'Pot'));
+    const amt = ctx.el('span', 'he-pot-amt'); amt.append(ctx.el('small', '', 'Pot'), ctx.el('b', '', num(h.pot)));
+    pot.append(potChips(h.pot), amt);
     // chips clink when anyone puts more in; at the end of a hand the pot slides to the winner
     const bets = JSON.stringify(h.seats.map((x) => x.bet));
     if (seenBets && bets !== seenBets && h.seats.some((x, i) => x.bet > (JSON.parse(seenBets)[i] || 0))) ctx.sfx('chip');
@@ -120,7 +156,7 @@ UI.holdem = (() => {
     const doneKey = h.stage === 'done' ? `${h.hand}:${(h.winners || []).join()}` : '';
     if (doneKey && seenDone !== doneKey && seenDone !== null && h.winners?.length) {
       const w = h.winners[0], target = w === me ? $('heMyCards') : box.querySelector(`[data-id="${w}"]`);
-      setTimeout(() => { Kit.fly(pot.querySelector('.chip-stack'), target, { ms: 600 }); ctx.sfx('chip'); }, 700);
+      setTimeout(() => { Kit.fly(pot.querySelector('.he-potchips'), target, { ms: 600 }); ctx.sfx('chip'); }, 700);
       if (w === me) setTimeout(() => ctx.sfx('good'), 1300);
       // say who won, big, before the next hand (the result line under the board says with what)
       const names = h.winners.map((id) => (id === me ? 'You' : (ctx.player(id)?.name ?? '?').replace(/^🤖\s*/, '')));
@@ -164,10 +200,19 @@ UI.holdem = (() => {
       meter.title = `${HANDS[k]} (${k + 1} of ${HANDS.length})`;
       meter.style.setProperty('--lvl', k / 8);
     }
-    $('heMyInfo').textContent = !mine ? '👁 Watching' : mine.out ? '💥 Out of chips' : mine.folded && h.stage !== 'done' ? `Folded · 💰${num(mine.chips)}`
-      : `💰${num(mine.chips)}${mine.bet ? ` · bet ${num(mine.bet)}` : ''}${h.myHand && !mine.folded ? ` · 🃏 ${h.myHand}` : h.shown[me] ? ` · ${h.shown[me].hand}` : ''}`
-        + [mine.button ? ' · 🔘 Dealer' : '', mine.sb ? ' · SB' : '', mine.bb ? ' · BB' : ''].join('')
-        + (h.bank != null ? ` · ⏳ ${h.bank} s bank` : '');
+    // my own nameplate: stack and buttons, then my hand's name, my bet as chips, and my time bank
+    const info = $('heMyInfo'); info.innerHTML = '';
+    info.classList.toggle('folded', !!mine?.folded && h.stage !== 'done');
+    if (!mine || mine.out) info.append(ctx.el('span', 'he-act', !mine ? '👁 Watching' : '💥 Out of chips'));
+    else {
+      const meNow = S.turn === me && h.stage !== 'done';
+      info.append(plate(ctx.player(me), mine));
+      const foot = seatFoot(mine, meNow, { ...h, shown: {} }, 'Your turn');
+      const hand = mine.folded && h.stage !== 'done' ? '' : h.shown[me]?.hand || h.myHand;
+      if (hand) foot.prepend(ctx.el('span', 'he-handname', `🃏 ${hand}`));
+      if (h.bank != null) foot.append(ctx.el('span', 'he-bank', `⏳ ${h.bank} s bank`));
+      info.append(foot);
+    }
 
     // busted with a buy-back left: offer it (the table waits if it would otherwise end)
     const rebuy = !!h.canRebuy && S.phase === 'playing' && !ctx.player(me)?.bot;
