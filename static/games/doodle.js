@@ -109,7 +109,7 @@ UI.doodle = (() => {
     if (seenSolved && solvedKey !== seenSolved && d.solvers.length && seenSolved.split(':')[0] === String(d.round)) {
       const [pid, pts] = d.solvers.at(-1), p = ctx.player(pid);
       if (pid === S.me.id) { ctx.sfx('good'); Kit.callout(`✅ +${pts}`, 'good', { ms: 1100 }); if (d.solvers.length === 1) ctx.confetti(); }
-      else { ctx.sfx('pop'); Kit.flyText(svg, `${p?.name ?? '?'} got it!`, 'info'); }
+      else { ctx.sfx('tag'); Kit.flyText(svg, `${p?.name ?? '?'} got it!`, 'info'); }
     }
     seenSolved = solvedKey;
     const box = $('ddSolvers'); box.innerHTML = '';
@@ -132,5 +132,5 @@ UI.doodle = (() => {
   }
   const myMove = (s) => s.doodle.stage === 'draw' && !s.doodle.solvers.some(([pid]) => pid === s.me.id) && !s.me.spectator;
 
-  return { mount, render, unmount, turnText, myMove };
+  return { mount, render, unmount, turnText, myMove, ownSounds: true };  // wrong guesses stay quiet; a rival's solve has its own sound
 })();

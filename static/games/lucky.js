@@ -160,7 +160,17 @@ UI.lucky = (() => {
     else if (v === 'jackpot') { ctx.sfx('fanfare'); Kit.callout('⚡ JACKPOT', 'gold'); }
     else if (v === 'steal') { ctx.sfx('whoosh'); Kit.callout('🦊 Steal!', 'gold', { ms: 1100 }); }
     else if (v === 'skip') ctx.sfx('thud');
-    else ctx.sfx('good');
+    else ctx.sfx('place');  // a cash wedge is only a chance: a neutral clack, the chime waits for a right letter
+  }
+  // the game plays its own sounds (ownSounds), so the turn's outcome gets one clear cue here
+  let heard = null;
+  function outcomeSound() {
+    const e = S.log?.at(-1);
+    if (!e || e.id === heard) return;
+    const first = heard == null; heard = e.id;
+    if (first || ctx.peek == null) return;
+    if (/^(❌|🙅|🔁|⏰)/.test(e.text)) ctx.sfx('bad');
+    else if (/^✅/.test(e.text)) ctx.sfx('good');
   }
 
   // ---------- mount / render
@@ -227,6 +237,7 @@ UI.lucky = (() => {
     }
 
     // board: new letters flip in
+    outcomeSound();
     $('lkCat').textContent = `Round ${L.round}/${L.rounds} · ${L.category}`;
     const board = $('lkBoard'); board.innerHTML = '';
     // newly found letters turn over one after another, each with a click, like a host turning tiles
@@ -304,5 +315,5 @@ UI.lucky = (() => {
   const turnText = (s) => s.phase !== 'playing' ? null
     : s.lucky.stage === 'wheel' ? '🎡 Spinning…' : s.lucky.stage === 'solved' ? '🎉 Solved!' : null;
   const ownTimer = (s) => s.lucky.stage === 'solved';  // the reveal pause isn't anyone's turn clock
-  return { mount, render, unmount, turnText, ownTimer };
+  return { mount, render, unmount, turnText, ownTimer, ownSounds: true };
 })();
