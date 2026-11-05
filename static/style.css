@@ -2560,3 +2560,8 @@ body.calm .card-btn.twin { animation: none; }
 body.calm .hh-seat.moonish { animation: none; }
 /* hold'em: during an all-in run-out the hand names wait for the last card */
 .he-suspense .he-handname, .he-suspense .he-myhand { visibility: hidden; }
+/* farkle: the score to beat in the final round, and the piggyback offer */
+.fk-bar { position: relative; }
+.fk-beat { position: absolute; top: -4px; bottom: -4px; width: 2px; background: #fff; box-shadow: 0 0 6px #fff; z-index: 2; }
+.fk-beat::after { content: '🏁'; position: absolute; top: -14px; left: 50%; transform: translateX(-50%); font-size: 11px; font-style: normal; }
+.fk-pig { background: #ff8fab33; border: 1px solid #ff8fab; }

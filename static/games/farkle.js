@@ -1,6 +1,7 @@
 // Farkle: tap scoring dice to set them aside (the live total shows what they're worth), then roll the
 // rest or bank. Dice buttons are built once per roll and updated in place.
 UI.farkle = (() => {
+  let finalSeen = null;  // false once a game has been seen before its final round
   let S, ctx, picked = new Set(), rollKey = '', seenEvent = 0, scoreSeen = {};
   const $ = (id) => document.getElementById(id);
   const PIPS = Dice.PIPS;
@@ -53,6 +54,7 @@ UI.farkle = (() => {
         <button id="fkBest" class="ghost-btn">✨ Pick the best</button>
       </div>
       <div class="row fk-actions"><button id="fkRoll" class="primary big"></button><button id="fkBank" class="big"></button></div>
+      <div class="row fk-actions"><button id="fkPig" class="fk-pig" hidden></button></div>
       <p id="fkHint" class="hint"></p>
       <div id="fkScores" class="fk-scores"></div>
     </div>`;
@@ -63,6 +65,7 @@ UI.farkle = (() => {
       <li>Nothing scores? FARKLE: the turn's points are gone.</li></ul></div>`;
     $('fkRoll').onclick = () => ctx.quiet(ctx.act('roll', { keep: S.farkle.rolled ? [...picked] : [] }));
     $('fkBank').onclick = () => ctx.quiet(ctx.act('bank', { keep: [...picked] }));
+    $('fkPig').onclick = () => ctx.quiet(ctx.act('piggy'));
     $('fkBest').onclick = () => { const o = S.farkle.options[0]; if (o) { picked = new Set(o[1]); paint(); } };
   }
 
@@ -81,7 +84,14 @@ UI.farkle = (() => {
     const bankPts = f.turnPts + (valid ? pts : 0);
     const need = !f.onBoard[S.me.id] && f.opening ? f.opening : 0;
     $('fkBank').disabled = !mine || !f.rolled || !valid || bankPts < need;
-    $('fkBank').textContent = `🏦 Bank ${num(bankPts)}` + (need && bankPts < need ? ` (need ${num(need)})` : '');
+    // in the final round, banking only counts if it beats the leader
+    const lead = Math.max(0, ...Object.entries(f.scores).filter(([pid]) => pid !== S.me.id).map(([, v]) => v));
+    const short = f.final && mine ? lead - ((f.scores[S.me.id] || 0) + bankPts) + 1 : 0;
+    $('fkBank').textContent = `🏦 Bank ${num(bankPts)}` + (need && bankPts < need ? ` (need ${num(need)})` : short > 0 ? ` · ${num(short)} short` : '');
+    // 🐷 the last bank's points and dice, up for grabs before you roll
+    const pig = $('fkPig');
+    pig.hidden = !(mine && f.pig && !f.rolled);
+    if (!pig.hidden) pig.textContent = `🐷 Piggyback: ${num(f.pig.pts)} with ${f.pig.dice} dice`;
     $('fkBest').hidden = !mine || !f.rolled;
     $('fkHint').textContent = !mine ? '' : !f.rolled ? 'Roll to start your turn.'
       : picked.size && !valid ? 'Every die you set aside has to score.'
@@ -103,6 +113,7 @@ UI.farkle = (() => {
   function render(s, c) {
     S = s; ctx = c;
     const f = S.farkle, me = S.me.id;
+    if (finalSeen === null) finalSeen = f.final;
     const turnName = ctx.player(S.turn)?.name ?? '';
     $('fkTurn').textContent = S.phase !== 'playing' ? '' : `${S.turn === me ? 'Your' : `${turnName}'s`} turn · ${num(f.turnPts)} on the line`
       + (f.final ? ' · 🏁 final round' : '');
@@ -157,6 +168,10 @@ UI.farkle = (() => {
       }
     }
 
+    // the final round starts: a callout, and a 🏁 line on every bar at the score to beat
+    if (f.final && finalSeen === false) Kit.callout('🏁 Final round!', 'gold', { ms: 1500, sound: 'fanfare' });
+    finalSeen = f.final;
+    const toBeat = f.final ? Math.max(...Object.values(f.scores)) : null;
     // scores: a bar each toward the target
     const sc = $('fkScores'); sc.innerHTML = '';
     for (const pid of f.seats) {
@@ -167,6 +182,7 @@ UI.farkle = (() => {
       const bar = ctx.el('div', 'fk-bar'); const fill = ctx.el('span');
       fill.style.width = `${Math.min(100, (100 * Math.max(0, f.scores[pid])) / f.target)}%`; fill.style.background = p.color;
       bar.append(fill);
+      if (toBeat != null) { const flag = ctx.el('i', 'fk-beat'); flag.style.left = `${Math.min(100, (100 * toBeat) / f.target)}%`; bar.append(flag); }
       // the turn's points on the line show as a ghost extension of the bar
       if (pid === S.turn && f.turnPts > 0 && S.phase === 'playing') {
         const ghost = ctx.el('i', 'fk-ghost');

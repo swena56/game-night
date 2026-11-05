@@ -93,6 +93,7 @@ class Farkle(Game):
         "With all six dice: straight 1–6 or three pairs = 1,500, four of a kind + a pair = 1,500, two triplets = 2,500.",
         "A roll with nothing scoring is a FARKLE: you lose the turn's points. Score all six dice and you roll all six again.",
         "Reach the target and everyone else gets one last turn to beat you.",
+        "With 🐷 Piggyback on, when someone banks with dice still in hand, the next player may take over their points and those dice instead of starting fresh: farkle and it's all gone.",
     ]
     name = "Farkle"
     icon = "🎯"
@@ -104,6 +105,7 @@ class Farkle(Game):
         "target": ("Play to", [(10000, "10,000"), (5000, "5,000")], 10000),
         "opening": ("Get on the board", [(500, "500 in one turn"), (0, "Any score")], 500),
         "triple": ("Three farkles in a row", [(True, "−1,000"), (False, "No penalty")], True),
+        "piggyback": ("🐷 Piggyback", [(False, "Off"), (True, "On: take over the last bank's points and dice")], False),
     }
 
     # -- setup
@@ -124,6 +126,8 @@ class Farkle(Game):
         self.roll, self.turn_pts, self.dice_left, self.rolled, self.kept = [], 0, 6, False, []
         self.aside = []  # every die set aside this turn, for the table to see (cleared on hot dice)
         self.farkled = False
+        self.pig = getattr(self, "next_pig", None) if self.s.get("piggyback") else None  # 🐷 what's on offer
+        self.next_pig = None
         self.room.begin_turn(pid)
 
     # -- actions
@@ -136,6 +140,8 @@ class Farkle(Game):
         keep = a.get("keep")
         if keep is not None and not (isinstance(keep, list) and all(isinstance(i, int) and not isinstance(i, bool) for i in keep)):
             raise GameError("Bad dice.")
+        if t == "piggy":
+            return self.piggyback(p)
         if t == "roll":
             return self.do_roll(p, keep or [])
         if t == "bank":
@@ -155,8 +161,19 @@ class Farkle(Game):
             raise GameError("Every die you set aside must score.")
         return pts
 
+    def piggyback(self, p):
+        """🐷 Take over the last player's banked points and the dice they left, then roll them."""
+        pig = getattr(self, "pig", None)
+        if not pig or self.rolled:
+            raise GameError("Nothing to piggyback on right now.")
+        self.pig = None
+        self.turn_pts, self.dice_left = pig["pts"], pig["dice"]
+        self.room.add_log(f"🐷 {p.name} piggybacks: {pig['pts']:,} on the line with {pig['dice']} dice!", "power")
+        self.do_roll(p, [])
+
     def do_roll(self, p, keep):
         r = self.room
+        self.pig = None  # rolling fresh turns down the piggyback
         pts = self.take(keep)
         if self.rolled:
             self.turn_pts += pts
@@ -199,6 +216,8 @@ class Farkle(Game):
             raise GameError(f"You need {self.s['opening']:,} in one turn to get on the board (you have {pts:,}). Keep rolling!")
         p.g.on_board = True
         p.g.score += pts
+        left = self.dice_left - len(keep)
+        self.next_pig = {"pts": pts, "dice": left or 6, "from": p.name} if self.s.get("piggyback") and len(self.seats) > 1 else None
         p.g.farkles = 0
         r.add_log(f"🏦 {p.name} banks {pts:,} → {p.g.score:,}.", "question")
         self.event_id += 1
@@ -282,6 +301,7 @@ class Farkle(Game):
             "farkles": {i: r.players[i].g.farkles for i in self.seats if i in r.players},
             "roll": self.roll, "rolled": self.rolled, "turnPts": self.turn_pts, "diceLeft": self.dice_left,
             "kept": self.kept, "aside": getattr(self, "aside", []), "farkled": self.farkled, "final": bool(self.final_from),
+            "pig": getattr(self, "pig", None),
             "options": [[pts, idx] for pts, idx in keep_options(self.roll)] if self.rolled else [],
             "event": self.event,
         }}
@@ -290,6 +310,13 @@ class Farkle(Game):
 
     def bot_turn(self, p):
         r = self.room
+        pig = getattr(self, "pig", None)
+        if pig and not self.rolled and p.bot != "easy":
+            pf = ODDS[pig["dice"]][0]
+            if pig["dice"] >= 3 and pf * pig["pts"] < 250:  # a cheap risk for a head start
+                self.piggyback(p)
+                r.bot_at = time.time() + 1.0
+                return
         if not self.rolled:
             self.do_roll(p, [])
             r.bot_at = time.time() + 1.0
