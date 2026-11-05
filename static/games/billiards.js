@@ -723,11 +723,12 @@ UI.billiards = (() => {
   // the break's pile of clicks sits together, and each sound is panned to where on the table it happened.
   let actx = null, bus = null, noiseBuf = null, roll = null;
   function audio() {
-    if (actx) return actx;
-    actx = new (window.AudioContext || window.webkitAudioContext)();
+    if (actx) { if (actx.state === 'suspended') actx.resume(); return actx; }
+    // through the app's output, so the volume setting applies (its own context only if that's missing)
+    actx = typeof out === 'function' ? out().context : new (window.AudioContext || window.webkitAudioContext)();
     const sr = actx.sampleRate, comp = actx.createDynamicsCompressor();
     comp.threshold.value = -16; comp.knee.value = 8; comp.ratio.value = 4; comp.attack.value = 0.001; comp.release.value = 0.12;
-    comp.connect(actx.destination);
+    comp.connect(typeof out === 'function' ? out() : actx.destination);
     noiseBuf = actx.createBuffer(1, sr, sr);
     const nd = noiseBuf.getChannelData(0);
     for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;

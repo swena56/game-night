@@ -105,19 +105,22 @@ UI.sumo = (() => {
   const snd = (() => {
     let a = null, warnAt = 0, bumpAt = 0;
     const on = () => (typeof prefs === 'undefined' || prefs.sound) && !document.hidden;
-    function ac() { a ||= new (window.AudioContext || window.webkitAudioContext)(); if (a.state === 'suspended') a.resume(); return a; }
+    // through the app's output, so the volume setting applies (its own context only if that's missing)
+    const shared = () => typeof out === 'function';
+    function ac() { a ||= shared() ? out().context : new (window.AudioContext || window.webkitAudioContext)(); if (a.state === 'suspended') a.resume(); return a; }
+    const dest = () => (shared() ? out() : a.destination);
     function tone(f0, f1, dur, type, vol, at = 0) {
       const o = a.createOscillator(), g = a.createGain(), t = a.currentTime + at;
       o.type = type; o.frequency.setValueAtTime(f0, t); if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, t + dur);
       g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-      o.connect(g).connect(a.destination); o.start(t); o.stop(t + dur + 0.02);
+      o.connect(g).connect(dest()); o.start(t); o.stop(t + dur + 0.02);
     }
     function noise(dur, f0, f1, q, vol, at = 0) {
       const len = Math.max(1, Math.floor(a.sampleRate * dur)), buf = a.createBuffer(1, len, a.sampleRate), d = buf.getChannelData(0);
       for (let k = 0; k < len; k++) d[k] = (Math.random() * 2 - 1) * Math.sin(Math.PI * k / len);
       const src = a.createBufferSource(), fl = a.createBiquadFilter(), g = a.createGain(), t = a.currentTime + at;
       src.buffer = buf; fl.type = 'bandpass'; fl.Q.value = q; fl.frequency.setValueAtTime(f0, t); fl.frequency.exponentialRampToValueAtTime(f1, t + dur);
-      g.gain.value = vol; src.connect(fl).connect(g).connect(a.destination); src.start(t);
+      g.gain.value = vol; src.connect(fl).connect(g).connect(dest()); src.start(t);
     }
     const HITS = {
       bump: (k = 1) => { tone(150, 60, 0.18, 'sine', 0.12 + 0.2 * k); noise(0.08, 1100, 500, 1, 0.2 + 0.4 * k); },  // k: 0..1 by impulse
