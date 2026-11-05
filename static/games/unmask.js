@@ -1,9 +1,12 @@
 UI.unmask = (() => {
   let S, ctx, boardKey = '', accuseMode = false, populated = false, seenNotes = null, sizer = null, seenPhase = null;
-  // card size, set by pinching the board or the 🔍 buttons, remembered on this device
-  // Until the player picks a size, phones fit every face on one screen with the Ask panel just under it.
-  let zoom = 92, autoFit = true;
-  try { const z = +localStorage.getItem('unmask.zoom'); if (z) { zoom = Math.min(200, Math.max(60, z)); autoFit = false; } } catch {}
+  // face size, as faces per row: − adds a column, + takes one away, pinching picks a count; remembered on
+  // this device. (#60: it used to scale the drawn card width, which the grid stretches back out, so − got stuck.)
+  // Until the player picks, phones fit every face on one screen with the Ask panel just under it.
+  const MIN_COLS = 2, MAX_COLS = 10;
+  let chosenCols = null, shownCols = 0;
+  try { const c = +localStorage.getItem('unmask.cols'); if (c) chosenCols = Math.min(MAX_COLS, Math.max(MIN_COLS, c)); } catch {}
+  const zoom = 92;  // the width a card aims for while the columns are automatic
   const $ = (s) => document.querySelector(s);
 
   const holds = (f, qid) => { const [a, v] = qid.split(':'); return v === 'any' ? f[a] !== 'none' : f[a] === v; };
@@ -13,11 +16,10 @@ UI.unmask = (() => {
   function mount(main, side) {
     boardKey = ''; accuseMode = false; populated = false; seenNotes = null;
     main.innerHTML = `<div class="zoom-bar"><span>🔍</span><button id="zoomOut" aria-label="Smaller faces">−</button>
-      <button id="zoomIn" aria-label="Bigger faces">+</button><small>or pinch the board</small></div>
+      <button id="zoomIn" aria-label="Bigger faces">+</button><small id="zoomInfo">or pinch the board</small></div>
       <div id="umLineup" class="um-lineup" aria-label="Faces still up"></div><div id="umBubble" class="um-bubble" hidden></div><div id="board" class="board"></div>`;
-    setZoom(zoom, !autoFit);
-    $('#zoomOut').onclick = () => setZoom(cardWidth() / 1.2);
-    $('#zoomIn').onclick = () => setZoom(cardWidth() * 1.2);
+    $('#zoomOut').onclick = () => setCols((shownCols || 4) + 1);
+    $('#zoomIn').onclick = () => setCols((shownCols || 4) - 1);
     pinchable($('#board'));
     sizer?.disconnect(); sizer = new ResizeObserver(fitColumns); sizer.observe($('#board'));
     side.innerHTML = `
@@ -44,14 +46,12 @@ UI.unmask = (() => {
     $('#accuseBtn').onclick = () => { accuseMode = !accuseMode; ctx.rerender(); if (accuseMode) ctx.toast('Tap the face you think it is.'); };
   }
 
-  function setZoom(px, chosen = true) {
-    zoom = Math.round(Math.min(200, Math.max(chosen ? 40 : 60, px)));
-    if (chosen) autoFit = false;
-    $('#board')?.style.setProperty('--card', `${zoom}px`);
+  function setCols(n) {
+    const most = Math.min(MAX_COLS, Math.max(MIN_COLS, $('#board')?.children.length || MAX_COLS));
+    chosenCols = Math.min(most, Math.max(MIN_COLS, Math.round(n)));
     fitColumns();
-    if (chosen) try { localStorage.setItem('unmask.zoom', String(zoom)); } catch {}
+    try { localStorage.setItem('unmask.cols', String(chosenCols)); localStorage.removeItem('unmask.zoom'); } catch {}
   }
-  const cardWidth = () => $('#board .card')?.getBoundingClientRect().width || zoom;
   const phone = () => window.matchMedia?.('(max-width: 860px)').matches;
   // the fewest columns that fit all the faces in the room above the Ask panel (a card is about its width + the name tall)
   function autoColumns(b, n, gap) {
@@ -67,7 +67,8 @@ UI.unmask = (() => {
   function fitColumns() {
     const b = $('#board'); if (!b) return;
     const n = b.children.length, gap = 10;
-    const fit = autoFit && phone() && n;
+    if (chosenCols) return showCols(b, Math.min(chosenCols, Math.max(MIN_COLS, n)));
+    const fit = phone() && n;
     const max = fit ? autoColumns(b, n, gap) : Math.max(1, Math.floor((b.clientWidth + gap) / (zoom + gap)));
     let cols = max;
     // fitted: one more column if that fills the last row (fewer would no longer fit)
@@ -79,7 +80,16 @@ UI.unmask = (() => {
         if (score > best) { best = score; cols = c; }
       }
     }
+    showCols(b, cols);
+  }
+  function showCols(b, cols) {
+    shownCols = cols;
     b.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+    b.style.setProperty('--card', `${Math.round((b.clientWidth - 10 * (cols - 1)) / cols) || zoom}px`);  // the 🎭 back scales with it
+    const info = $('#zoomInfo');
+    if (info) info.textContent = `${cols} a row${chosenCols ? '' : ' · pinch or − +'}`;
+    $('#zoomOut') && ($('#zoomOut').disabled = cols >= Math.min(MAX_COLS, b.children.length || MAX_COLS));
+    $('#zoomIn') && ($('#zoomIn').disabled = cols <= MIN_COLS);
   }
 
   function pinchable(board) {
@@ -88,12 +98,13 @@ UI.unmask = (() => {
     const spread = () => { const [a, b] = [...pts.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
     board.addEventListener('pointerdown', (e) => {
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (pts.size === 2) from = { d: spread(), zoom };
+      if (pts.size === 2) from = { d: spread(), cols: shownCols || 4 };
     });
     board.addEventListener('pointermove', (e) => {
       if (!pts.has(e.pointerId)) return;
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (pts.size === 2 && from?.d > 10) setZoom(from.zoom * (spread() / from.d));
+      // spreading the fingers makes faces bigger: fewer of them a row
+      if (pts.size === 2 && from?.d > 10) { const c = Math.round(from.cols * from.d / spread()); if (c !== shownCols) setCols(c); }
     });
     const lift = (e) => { pts.delete(e.pointerId); if (pts.size < 2) from = null; };
     for (const t of ['pointerup', 'pointercancel', 'pointerleave']) board.addEventListener(t, lift);
@@ -182,7 +193,10 @@ UI.unmask = (() => {
       for (const f of S.board) {
         const b = ctx.el('button', 'card'); b.dataset.id = f.id;
         b.innerHTML = faceSVG(f);
-        b.append(ctx.el('span', 'nm', f.name));
+        // gender is an askable trait, so it's marked plainly too (#62)
+        const nm = ctx.el('span', 'nm', f.name);
+        nm.prepend(ctx.el('i', 'g ' + f.gender, f.gender === 'woman' ? '♀' : '♂'));
+        b.append(nm);
         b.onclick = () => onCardClick(f.id);
         board.append(b);
       }

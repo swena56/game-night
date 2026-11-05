@@ -21,7 +21,9 @@ function faceSVG(f) {
   s.push(`<rect x="43" y="64" width="14" height="14" fill="${skin}"/>`);
   s.push(`<ellipse cx="28" cy="50" rx="5" ry="7" fill="${skin}" stroke="${LINE}"/><ellipse cx="72" cy="50" rx="5" ry="7" fill="${skin}" stroke="${LINE}"/>`);
   if (f.earrings === 'yes') s.push(`<circle cx="27" cy="59" r="2.8" fill="#ffd166" stroke="#a37400"/><circle cx="73" cy="59" r="2.8" fill="#ffd166" stroke="#a37400"/>`);
-  s.push(`<ellipse cx="50" cy="48" rx="22" ry="25" fill="${skin}" stroke="${LINE}"/>`);
+  const woman = f.gender === 'woman';  // #15, #62: face shape, lashes and liner, blush, fuller lips; only men grow facial hair
+  if (woman) s.push(`<path d="M28.5 46 Q28.5 23 50 23 Q71.5 23 71.5 46 Q71.5 62 61 69 Q55 73.5 50 73.5 Q45 73.5 39 69 Q28.5 62 28.5 46 Z" fill="${skin}" stroke="${LINE}"/>`);
+  else s.push(`<path d="M27.5 46 Q27.5 23 50 23 Q72.5 23 72.5 46 L72 60 Q71 72 60 73.5 L40 73.5 Q29 72 28 60 Z" fill="${skin}" stroke="${LINE}"/>`);
 
   // hair on top
   const cap = `<path d="M26 50 Q23 18 50 18 Q77 18 74 50 Q70 31 50 29 Q30 31 26 50 Z" fill="${hair}" stroke="${LINE}"/>`;
@@ -42,15 +44,19 @@ function faceSVG(f) {
     s.push(`<ellipse cx="${x}" cy="48" rx="4.6" ry="${big ? 5.6 : 4}" fill="#fff" stroke="${LINE}"/>`,
       `<circle cx="${x}" cy="48.5" r="2.5" fill="${PAL.eye[f.eye_color]}"/><circle cx="${x}" cy="48.5" r="1.1" fill="#111"/>`);
   }
-  const woman = f.gender === 'woman';  // #15: lashes, blush and lip colour; only men grow facial hair
   if (woman) {
+    // thick lashes and a dark lid line read even on a small phone card (they were under a pixel wide)
     const top = 48 - (big ? 5.6 : 4);
-    for (const x of [41, 59])
-      s.push(`<path d="M${x - 3.2} ${top + 0.9} L${x - 5} ${top - 1.6}M${x} ${top} L${x} ${top - 2.8}M${x + 3.2} ${top + 0.9} L${x + 5} ${top - 1.6}" stroke="#1a1a1a" stroke-width="1.3" stroke-linecap="round"/>`);
-    s.push(`<ellipse cx="33.5" cy="57" rx="4" ry="2.4" fill="#ff6f86" opacity=".4"/><ellipse cx="66.5" cy="57" rx="4" ry="2.4" fill="#ff6f86" opacity=".4"/>`);
+    for (const x of [41, 59]) {
+      const out = x < 50 ? -1 : 1;
+      s.push(`<path d="M${x - 5} ${48} Q${x} ${top - 1.2} ${x + 5} ${48}" stroke="#1a1a1a" stroke-width="1.8" fill="none" stroke-linecap="round"/>`,
+        `<path d="M${x + out * 4.6} ${top + 2.2} L${x + out * 7.4} ${top - 1}M${x + out * 2} ${top + 0.4} L${x + out * 3.6} ${top - 2.6}M${x - out * 0.8} ${top - 0.2} L${x - out * 1.2} ${top - 3}" stroke="#1a1a1a" stroke-width="1.9" stroke-linecap="round"/>`);
+    }
+    s.push(`<ellipse cx="34.5" cy="58" rx="4.6" ry="2.8" fill="#ff6f86" opacity=".55"/><ellipse cx="65.5" cy="58" rx="4.6" ry="2.8" fill="#ff6f86" opacity=".55"/>`);
   }
   const by = big ? 37 : 40;
-  s.push(`<path d="M35 ${by} Q41 ${by - 3} 46 ${by}M54 ${by} Q59 ${by - 3} 65 ${by}" stroke="${brow}" stroke-width="2.2" fill="none" stroke-linecap="round"/>`);
+  if (woman) s.push(`<path d="M35 ${by} Q40 ${by - 4.5} 46 ${by - 0.5}M54 ${by - 0.5} Q60 ${by - 4.5} 65 ${by}" stroke="${brow}" stroke-width="1.8" fill="none" stroke-linecap="round"/>`);
+  else s.push(`<path d="M34.5 ${by} Q41 ${by - 2} 46.5 ${by - 0.5}M53.5 ${by - 0.5} Q59 ${by - 2} 65.5 ${by}" stroke="${brow}" stroke-width="3.2" fill="none" stroke-linecap="round"/>`);
   s.push(`<path d="M50 51 Q46.5 57 50 58" stroke="${LINE}" stroke-width="1.5" fill="none"/>`);
 
   // facial hair, glasses, then mouth
@@ -59,8 +65,12 @@ function faceSVG(f) {
   // Sunglasses sit low on the nose, so the eye colour still shows above them (#15).
   if (f.glasses === 'shades') s.push(`<g fill="#1c2433" stroke="#000" stroke-width="1.2"><path d="M33 54 L27.5 50M67 54 L72.5 50" fill="none" stroke-width="1.6"/><path d="M33 52.5 H48 V56 Q48 61 42 61 H38 Q33 61 33 56 Z"/><path d="M52 52.5 H67 V56 Q67 61 62 61 H58 Q52 61 52 56 Z"/><path d="M48 54.5 Q50 53 52 54.5" fill="none" stroke-width="1.8"/><path d="M35 54.5 L39 54.5M54 54.5 L58 54.5" stroke="#fff" stroke-opacity=".35" stroke-width="1"/></g>`);
   const lip = woman ? ['#c2185b', '#8e1046'] : ['#7a2e2e', '#5a1f1f'];
-  if (f.expression === 'smile') s.push(`<path d="M42 63 Q50 71 58 63 Z" fill="${lip[0]}" stroke="${lip[1]}" stroke-width="1.2"/>`);
-  else if (f.expression === 'neutral') s.push(`<path d="M44 65 L56 65" stroke="${woman ? lip[0] : lip[1]}" stroke-width="${woman ? 3 : 2}" stroke-linecap="round"/>`);
+  if (f.expression === 'smile') s.push(woman
+    ? `<path d="M41.5 62.5 Q46 60.5 50 62 Q54 60.5 58.5 62.5 Q50 72 41.5 62.5 Z" fill="${lip[0]}" stroke="${lip[1]}" stroke-width="1.2"/>`
+    : `<path d="M42 63 Q50 71 58 63 Z" fill="${lip[0]}" stroke="${lip[1]}" stroke-width="1.2"/>`);
+  else if (f.expression === 'neutral') s.push(woman
+    ? `<path d="M43 65 Q46.5 62.2 50 63.6 Q53.5 62.2 57 65 Q50 69.4 43 65 Z" fill="${lip[0]}" stroke="${lip[1]}" stroke-width="1"/>`
+    : `<path d="M44 65 L56 65" stroke="${lip[1]}" stroke-width="2" stroke-linecap="round"/>`);
   else s.push(`<ellipse cx="50" cy="66" rx="3.4" ry="4.4" fill="${woman ? lip[0] : lip[1]}"/>`);
   if (f.facial_hair !== 'none') s.push(`<path d="M40 62 Q45 56 50 59 Q55 56 60 62 Q55 60 50 61.5 Q45 60 40 62 Z" fill="${brow}" stroke="${LINE}"/>`);
 
