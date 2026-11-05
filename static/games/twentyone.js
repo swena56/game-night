@@ -118,6 +118,12 @@ UI.twentyone = (() => {
       const head = ctx.el('div', 'to-head');
       const nm = ctx.el('b', '', `${p?.name ?? 'left'}${i === me ? ' (you)' : ''}`); nm.style.color = p?.color ?? 'inherit';
       head.append(nm, t.bets[i] ? Chips.stack(t.bets[i], { max: 6, cls: 'to-bet' }) : ctx.el('span', 'hint', t.stage === 'bet' && t.chips[i] > 0 ? 'betting…' : ''));
+      // insurance: 🛡️ while it's on, then what it paid or cost
+      const ir = t.insRes?.[i], ins = t.ins?.[i];
+      if (ir != null) head.append(ctx.el('span', 'to-pair ' + (ir > 0 ? 'win' : 'lose'), `🛡️ ${ir > 0 ? '+' : ''}${ir}`));
+      else if (t.stage === 'insure' && ins) head.append(ctx.el('span', 'to-pair', `🛡️ ${ins}`));
+      else if (t.stage === 'insure' && ins === null) head.append(ctx.el('span', 'hint', 'deciding…'));
+      if (i === me && ir > 0 && !called.has('i' + t.hand)) { called.add('i' + t.hand); Kit.callout(`Insurance pays! +${ir}`, 'gold', { ms: 1600 }); }
       const pr = t.pairRes?.[i];
       if (t.pair?.[i] && !pr) head.append(ctx.el('span', 'to-pair', `👯 ${t.pair[i]}`));
       if (pr) {
@@ -191,7 +197,15 @@ UI.twentyone = (() => {
       }
       const hs = t.seatHands[me];
       note = hs.length > 1 ? `Hand ${t.cur[me] + 1} of ${hs.length}: you have ${hs[t.cur[me]].total}.` : `You have ${hs[0].total}.`;
-    } else if (playing && t.stage === 'bet') note = t.chips[me] > 0 ? 'Waiting for the other bets…' : 'Out of chips — watching.';
+    } else if (playing && t.stage === 'insure' && t.ins?.[me] === null) {
+      // the dealer shows an ace: insure for half the bet, before the dealer peeks
+      const yes = ctx.el('button', 'primary', `🛡️ Insure (${t.insStake})`), no = ctx.el('button', '', 'No insurance');
+      yes.onclick = () => ctx.quiet(ctx.act('insure', { take: true }));
+      no.onclick = () => ctx.quiet(ctx.act('insure', { take: false }));
+      bar.append(yes, no);
+      note = `The dealer shows an ace. Insurance costs ${t.insStake} and pays ${t.insStake * 2} if the dealer has blackjack.`;
+    } else if (playing && t.stage === 'insure') note = 'Waiting for the others to decide on insurance…';
+    else if (playing && t.stage === 'bet') note = t.chips[me] > 0 ? 'Waiting for the other bets…' : 'Out of chips — watching.';
     else if (t.stage === 'dealer') note = 'The dealer plays…';
     $('toNote').textContent = note;
 
@@ -205,8 +219,10 @@ UI.twentyone = (() => {
     ch.append(ctx.el('div', 'hint left', `Hand ${t.hand} of ${t.hands}`));
   }
 
-  const turnText = (s) => (s.phase === 'playing' && s.twentyone.stage === 'bet' ? (s.twentyone.me != null && !s.twentyone.bets[s.twentyone.me] && s.twentyone.chips[s.twentyone.me] > 0 ? '💰 Place your bet' : '💰 Bets going in…') : null);
-  const myMove = (s) => s.phase === 'playing' && s.twentyone.stage === 'bet' && s.twentyone.me != null && !s.twentyone.bets[s.twentyone.me] && s.twentyone.chips[s.twentyone.me] > 0;
+  const turnText = (s) => (s.phase === 'playing' && s.twentyone.stage === 'insure' ? '🛡️ Insurance?'
+    : s.phase === 'playing' && s.twentyone.stage === 'bet' ? (s.twentyone.me != null && !s.twentyone.bets[s.twentyone.me] && s.twentyone.chips[s.twentyone.me] > 0 ? '💰 Place your bet' : '💰 Bets going in…') : null);
+  const myMove = (s) => s.phase === 'playing' && s.twentyone.stage === 'insure' && s.twentyone.me != null && s.twentyone.ins?.[s.twentyone.me] === null
+    || s.phase === 'playing' && s.twentyone.stage === 'bet' && s.twentyone.me != null && !s.twentyone.bets[s.twentyone.me] && s.twentyone.chips[s.twentyone.me] > 0;
 
   return { mount, render, turnText, myMove };
 })();

@@ -24,6 +24,7 @@ PAIR_BET = 5       # the Perfect Pairs side bet
 PAIR_PAYS = {"perfect": 25, "coloured": 12, "mixed": 6}
 DEALER_STEP = 0.9   # seconds between dealer cards
 SETTLE_SECS = 3.5   # pause on the results
+INSURE_SECS = 12    # how long players get to decide on insurance (without a turn timer)
 
 
 def total(cards):
@@ -77,6 +78,7 @@ class TwentyOne(Game):
     settings_schema = {
         "hands": ("Hands", [(8, "8"), (5, "5 (quick)"), (12, "12")], 8),
         "pairs": ("Perfect Pairs side bet", [(False, "Off"), (True, "👯 On")], False),
+        "insurance": ("Insurance", [(False, "Off"), (True, "🛡️ When the dealer shows an ace")], False),
     }
 
     # -- setup
@@ -102,6 +104,8 @@ class TwentyOne(Game):
         state.setdefault("pair", [0] * n)
         state.setdefault("pair_res", [None] * n)
         state.setdefault("last_pair", [False] * n)
+        state.setdefault("ins", [0] * n)
+        state.setdefault("ins_res", [None] * n)
         self.__dict__.update(state)
 
     def pl(self, i):
@@ -128,6 +132,8 @@ class TwentyOne(Game):
         self.result = [None] * n   # text per seat once settled
         self.pair = [0] * n          # Perfect Pairs side bets
         self.pair_res = [None] * n   # [kind or "none", chips won or lost]
+        self.ins = [None] * n        # insurance: None = not asked, 0 = declined, else the stake
+        self.ins_res = [None] * n    # chips won or lost on insurance
         self.dealer = []
         self.stage = "bet"
         r.turn = None
@@ -161,6 +167,54 @@ class TwentyOne(Game):
             self.dealer.append(self.draw())
         self.stage = "play"
         self.settle_pairs()
+        if self.s.get("insurance") and self.dealer[0][0] == "A":
+            return self.offer_insurance()
+        self.after_peek()
+
+    def ins_stake(self, i):
+        """Insurance costs half the bet (rounded down), if the chips are there on top of the bet."""
+        stake = self.bets[i] // 2
+        return stake if stake and self.chips[i] - self.bets[i] >= stake else 0
+
+    def offer_insurance(self):
+        """The dealer shows an ace: everyone with a bet may insure it before the dealer peeks."""
+        r = self.room
+        self.stage = "insure"
+        for i in range(len(self.seats)):
+            if self.bets[i] and self.ins_stake(i):
+                self.ins[i] = None if not self.auto(i) else 0   # bots play basic strategy: never insure
+            else:
+                self.ins[i] = 0
+        if all(v is not None for v in self.ins):
+            return self.resolve_insurance()
+        r.turn = None
+        r.deadline = time.time() + (r.settings["timer"] or INSURE_SECS)
+        r.add_log("🛡️ The dealer shows an ace: insurance? It costs half your bet and pays 2 to 1 if the dealer has blackjack.", "power")
+
+    def insure(self, i, take):
+        self.ins[i] = self.ins_stake(i) if take else 0
+        if all(v is not None for v in self.ins):
+            self.resolve_insurance()
+
+    def resolve_insurance(self):
+        r = self.room
+        dnat = natural(self.dealer)
+        parts = []
+        for i, stake in enumerate(self.ins):
+            if stake:
+                delta = 2 * stake if dnat else -stake
+                self.chips[i] += delta
+                self.ins_res[i] = delta
+                p = self.pl(i)
+                parts.append(f"{p.name if p else '?'} {'+' if delta > 0 else ''}{delta}")
+        if parts:
+            r.add_log(("🛡️ Insurance pays: " if dnat else "🛡️ No dealer blackjack, insurance lost: ") + " · ".join(parts), "power")
+        self.ins = [v or 0 for v in self.ins]
+        self.stage = "play"
+        self.after_peek()
+
+    def after_peek(self):
+        n = len(self.seats)
         if natural(self.dealer):
             self.room.add_log(f"😮 The dealer has blackjack: {' '.join(pretty(c) for c in self.dealer)}.", "power")
             return self.settle()
@@ -368,6 +422,10 @@ class TwentyOne(Game):
             if pair and amount + PAIR_BET > self.chips[i]:
                 raise GameError(f"The {PAIR_BET}-chip pair bet needs chips on top of your bet.")
             return self.bet(i, amount, pair)
+        if t == "insure":
+            if self.stage != "insure" or self.ins[i] is not None:
+                raise GameError("No insurance to decide on.")
+            return self.insure(i, bool(a.get("take")))
         if t in ("hit", "stand", "double", "split"):
             self.require_turn(p)
             if self.stage != "play":
@@ -391,6 +449,9 @@ class TwentyOne(Game):
             return self.new_hand()
         if self.stage == "dealer":
             return self.dealer_step()
+        if self.stage == "insure":  # anyone who hasn't decided declines
+            self.ins = [0 if v is None else v for v in self.ins]
+            return self.resolve_insurance()
         if self.stage == "bet":
             for i in range(len(self.seats)):
                 if self.live(i) and not self.bets[i]:
@@ -444,6 +505,8 @@ class TwentyOne(Game):
             "result": self.result, "lastBets": self.last_bet, "minBet": MIN_BET, "canDouble": mine and self.can_double(i), "canSplit": mine and self.can_split(i), "betOptions": list(BETS),
             "pairs": bool(self.s["pairs"]), "pairBet": PAIR_BET, "pair": self.pair, "pairRes": self.pair_res,
             "lastPairs": self.last_pair, "pairPays": PAIR_PAYS,
+            "insurance": bool(self.s.get("insurance")), "ins": getattr(self, "ins", None), "insRes": getattr(self, "ins_res", None),
+            "insStake": self.ins_stake(i) if i is not None and self.stage == "insure" else 0,
         }}
 
     # -- bots
