@@ -33,6 +33,7 @@ UI.safecracker = (() => {
       <div id="scOpened" class="sc-opened" hidden></div>
       <div id="scStand" hidden></div>
       <div id="scHistory" class="sc-history"></div>
+      <div id="scFit" class="sc-fit" hidden></div>
       <div class="sc-entry">
         <div id="scSlots" class="sc-slots"></div>
         <div id="scPad" class="sc-pad"></div>
@@ -224,6 +225,18 @@ UI.safecracker = (() => {
       hist.append(box);
     });
     hist.scrollTop = hist.scrollHeight;
+    // how many codes still fit everything revealed: the countdown to the crack
+    const fitBox = $('scFit');
+    fitBox.hidden = g.fit == null;
+    if (g.fit != null) {
+      const was = +fitBox.dataset.n || 0;
+      fitBox.dataset.n = g.fit;
+      fitBox.innerHTML = '';
+      const n = ctx.el('b', '', String(g.fit));
+      fitBox.append('🔐 ', n, g.fit === 1 ? ' code fits every clue: you know it!' : ' codes still fit every clue');
+      if (was && was !== g.fit) Kit.tally(n, was, g.fit, 700);
+      fitBox.classList.toggle('one', g.fit === 1);
+    }
     if (freshRound >= 0) for (let k = 0; k < Math.min(pinK, 12); k++) setTimeout(() => ctx.sfx('tick'), k * 120);
     // cracked: the dial spins and the door swings open
     const opened = !!(g.code || g.opened);

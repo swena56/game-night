@@ -313,6 +313,8 @@ class Safecracker(Game):
             "daily": bool(self.s.get("daily")) and not self.duel,
             "probed": [q.id for q in self.room.seated() if getattr(q.g, "probe", None) is not None],
             "myProbe": list(probe) if probe else None,
+            # 🔐 how many codes still fit every clue revealed so far (the bots' own list)
+            "fit": len(self.consistent(p)) if self.stage == "crack" and self.history and (not self.duel or p.id in self.codes) else None,
             "code": (self.code if not self.duel else [[pid, c] for pid, c in self.codes.items()])
             if self.room.phase == "over" else None,
         }}
