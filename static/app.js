@@ -460,6 +460,9 @@ function onState(s) {
   s.games ??= prev?.games ?? [];  // the server sends the game catalogue once per connection
   S = s; stateAt = performance.now();
   history.replaceState(null, '', '?room=' + s.code);
+  if (s.phase === 'playing' && prev?.phase !== 'playing' && s.gameId) {  // "Played lately" in the lobby (#67), this device only
+    store('recentGames', [s.gameId, ...(load('recentGames') || []).filter((g) => g !== s.gameId)].slice(0, 6));
+  }
   if (prev && prev.phase === 'playing' && s.phase === 'over' && !firstState) {
     blip(s.winner === s.me.id ? 'win' : 'lose');
     if (s.winner === s.me.id) confetti();
@@ -482,10 +485,13 @@ function fitPicker() {
   const most = width ? Math.max(2, Math.floor((width + 8) / tile)) : 4;
   for (const g of document.querySelectorAll('.picker-group')) {
     const n = +g.dataset.count, rows = Math.ceil(n / most);
-    g.style.gridTemplateColumns = `repeat(${Math.ceil(n / rows)}, 1fr)`;
+    // a short group (favourites, played lately) keeps ordinary tile widths instead of stretching
+    g.style.gridTemplateColumns = `repeat(${n < Math.min(most, 4) ? Math.min(most, 4) : Math.ceil(n / rows)}, minmax(0, 1fr))`;
   }
 }
 window.addEventListener('resize', () => { if (!$('#lobby').hidden) fitPicker(); });
+$('#pickerFind').oninput = () => S && renderLobby();
+$('#pickerFits').onclick = () => { store('pickerFits', !load('pickerFits') || null); renderLobby(); };
 let pickedGame = null;  // the game this host just tapped, scrolled to once the server confirms it
 
 // arrow keys move between game tiles by where they sit on screen, across categories (#37)
@@ -536,8 +542,20 @@ function renderLobby() {
   const focused = document.activeElement?.closest?.('#gamePicker .game-tile')?.dataset.game;  // keep keyboard focus across redraws (#37)
   pick.innerHTML = '';
   const seated = S.players.filter((p) => !p.spectator).length;
-  for (const [cat, label] of CATEGORIES) {
-    const games = S.games.filter((g) => g.category === cat);
+  // organising (#67): favourites and lately played on top, a name filter, and "fits us"
+  const query = $('#pickerFind').value.trim().toLowerCase(), onlyFits = !!load('pickerFits');
+  $('#pickerFits').setAttribute('aria-pressed', onlyFits);
+  $('#pickerFits').textContent = `👥 Fits ${seated}`;
+  const fits = (g) => seated >= g.min && seated <= g.max;
+  const shown = S.games.filter((g) => (!query || g.name.toLowerCase().includes(query) || g.category.includes(query)) && (!onlyFits || fits(g) || g.id === S.gameId));
+  const byId = (ids) => ids.map((id) => shown.find((g) => g.id === id)).filter(Boolean);
+  const groups = [['⭐ Favourites', byId(load('favGames') || [])], ['🕘 Played lately', byId(load('recentGames') || [])]];
+  if (query) groups.length = 0;  // while searching, each game shows once
+  for (const [cat, label] of CATEGORIES) groups.push([label, shown.filter((g) => g.category === cat)]);
+  if (!shown.length) pick.append(el('p', 'hint', query ? `No game matches “${query}”.` : 'No game fits this many players.'));
+  for (const [label, list] of groups) {
+    // games that fit the players here come first in each group
+    const games = [...list].sort((a, b) => fits(b) - fits(a));
     if (!games.length) continue;
     const group = el('div', 'picker-group');
     group.dataset.count = games.length;
@@ -570,6 +588,12 @@ function renderLobby() {
   // the chosen game sits above its rules and settings; after the host picks one, bring it into view (#38, #39)
   const chosen = $('#gameChosen'); chosen.innerHTML = '';
   chosen.append(el('span', 'gicon', info.icon), el('b', '', info.name));
+  const favs = load('favGames') || [], fav = favs.includes(S.gameId);
+  const star = el('button', 'ghost-btn fav-btn' + (fav ? ' on' : ''), fav ? '★' : '☆');
+  star.title = fav ? 'Remove from your favourites' : 'Add to your favourites (kept on this device)';
+  star.setAttribute('aria-pressed', fav);
+  star.onclick = () => { store('favGames', fav ? favs.filter((g) => g !== S.gameId) : [S.gameId, ...favs]); renderLobby(); };
+  chosen.append(star);
   $('#settingsHead').textContent = `${info.name} settings`;
   document.title = `${info.name} — Game Night`;
   if (pickedGame && pickedGame === S.gameId) {
