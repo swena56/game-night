@@ -10,7 +10,7 @@ UI.moonshot = (() => {
     main.innerHTML = `<div class="moon-track"></div>
       <div class="panel moon-panel">
         <div id="msDice" class="dice"></div>
-        <div class="moon-info"><div id="msFuel" class="fuel"></div><p id="msPreview" class="preview"></p></div>
+        <div class="moon-info"><div id="msFuel" class="fuel"></div><p id="msRisk" class="ms-risk"></p><p id="msPreview" class="preview"></p></div>
         <div class="row moon-btns"><button id="msRoll" class="primary">🎲 Roll</button><button id="msBank">🚀 Fly!</button></div>
       </div>`;
     side.innerHTML = `<div class="panel">
@@ -31,9 +31,14 @@ UI.moonshot = (() => {
     const key = `${m.goal}:${JSON.stringify(m.tiles)}`;
     if (key !== builtFor) {
       builtFor = key; track.innerHTML = '';
+      // the route snakes up through space: left to right, then back, from Earth at the bottom to the moon
+      const rows = Math.ceil((m.goal + 1) / 10);
       for (let i = 0; i <= m.goal; i++) {
-        const cell = ctx.el('div', 'ms-cell' + (m.tiles[i] ? ' t-' + m.tiles[i] : ''));
-        cell.append(ctx.el('span', 'num', i === 0 ? '🛰️' : i === m.goal ? '🌕' : TILE[m.tiles[i]] ?? i));
+        const cell = ctx.el('div', 'ms-cell' + (m.tiles[i] ? ' t-' + m.tiles[i] : '') + (i === 0 ? ' pad' : i === m.goal ? ' moon' : ''));
+        const row = Math.floor(i / 10), col = row % 2 ? 9 - (i % 10) : i % 10;
+        cell.style.gridRow = String(rows - row); cell.style.gridColumn = String(col + 1);
+        if (i % 10 === 9 && i < m.goal) cell.classList.add(row % 2 ? 'turn-l' : 'turn-r');  // the route bends up here
+        cell.append(ctx.el('span', 'num', i === 0 ? '🌍' : i === m.goal ? '🌕' : TILE[m.tiles[i]] ?? i));
         cell.append(ctx.el('div', 'rockets'));
         track.append(cell);
       }
@@ -78,6 +83,10 @@ UI.moonshot = (() => {
         : `${who} → ${m.preview.cell}${m.preview.tile ? ' ' + m.tileText[m.preview.tile] : ''}`;
     }
     $('msPreview').textContent = preview;
+    // the odds of the next roll: any 1 on two dice is 11 in 36; double 1s are 1 in 36
+    const mine = m.pos[S.turn] ?? 0, shield = m.shields?.[S.turn];
+    $('msRisk').textContent = !ctx.myTurn ? '' : `Next roll: 💨 31% lose ${m.fuel ? `${m.fuel} fuel` : 'the turn'}` +
+      (mine > 0 && !shield ? ' · 💥 3% crash to Earth' : '');
     $('msRoll').disabled = !ctx.myTurn;
     $('msBank').disabled = !ctx.myTurn || !m.fuel;
   }

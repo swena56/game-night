@@ -11,7 +11,8 @@ UI.rummy = (() => {
   const $ = (id) => document.getElementById(id);
   const joker = (c) => c[0] === 'X';
 
-  const face = (card, cls = '') => (joker(card) ? Cards.joker(cls) : Cards.face(card, cls));
+  // two decks: a card code carries its deck as a third character ('5C0'), which isn't part of the face
+  const face = (card, cls = '') => (joker(card) ? Cards.joker(cls) : Cards.face(card.slice(0, 2), cls));
 
   function mount(main, side) {
     sel = []; staged = []; stageFor = ''; order = []; drag = null; shownMelds = null;
@@ -21,6 +22,8 @@ UI.rummy = (() => {
       <div id="ruMelds" class="ru-melds"></div>
       <div id="ruStaged" class="ru-staged"></div>
       <div id="ruNote" class="hh-note"></div>
+      <div class="row ru-extra"><button id="ruHint" class="ghost-btn" hidden>💡 Find my contract</button><button id="ruMayI" class="ghost-btn" hidden>🙋 May I?</button></div>
+      <div id="ruRecap" class="ru-recap" hidden></div>
       <div class="ru-sort" id="ruSort" role="group" aria-label="Sort your hand"></div>
       <div id="ruHand" class="hh-hand ru-hand"></div>
       <div class="row ru-actions"><button id="ruSet">Set</button><button id="ruRun">Run</button>
@@ -28,6 +31,13 @@ UI.rummy = (() => {
     side.innerHTML = '<div class="panel"><h3>Scores</h3><div id="ruScores"></div><p class="hint left">2–9 = 5 · 10–K = 10 · A = 15 · 🃏 = 25. Lowest wins.</p></div>';
     $('ruDeck').onclick = () => ctx.quiet(ctx.act('draw', { from: 'deck' }));
     $('ruDiscard').onclick = () => ctx.quiet(ctx.act('draw', { from: 'discard' }));
+    // 💡 the server looks for the contract in your hand; the cards it finds get staged, ready to lay down
+    $('ruHint').onclick = () => ctx.peek?.({ what: 'contract' }).then((res) => {
+      if (!res?.groups) return ctx.toast('Not in your hand yet. Keep collecting!');
+      staged = res.groups.map((g) => [g.kind, g.cards]); sel = [];
+      ctx.toast('Found it! Draw first, then Lay down.'); ctx.rerender();
+    }).catch((e) => ctx.toast(e.message));
+    $('ruMayI').onclick = () => ctx.quiet(ctx.act('mayi'));
     $('ruSet').onclick = () => stage('set');
     $('ruRun').onclick = () => stage('run');
     $('ruLay').onclick = () => ctx.quiet(ctx.act('laydown', { groups: staged.map(([kind, cards]) => ({ kind, cards })) }));
@@ -191,6 +201,39 @@ UI.rummy = (() => {
 
     if (!drag?.moved) renderHand(r, inStage, myTurn && r.drawn);  // never rebuild the hand under a card being dragged
     renderButtons(r, me, myTurn);
+    $('ruHint').hidden = me == null || r.down[me] || S.phase !== 'playing' || !ctx.peek;
+    const buy = $('ruMayI');
+    buy.hidden = !r.mayi || me == null || S.phase !== 'playing';
+    buy.disabled = !r.canBuy;
+    buy.textContent = `🙋 May I? (${r.buysLeft} left)`;
+    renderRecap(r);
+  }
+
+  // between hands: what everyone was caught holding, and the points it cost them, counted up
+  let recapSeen = null;
+  function renderRecap(r) {
+    const box = $('ruRecap'), rc = r.recap;
+    if (recapSeen === null) { recapSeen = rc?.hand ?? 0; return; }  // opened the page mid-game: no old recap
+    if (!rc || rc.hand <= recapSeen) return;
+    recapSeen = rc.hand;
+    box.innerHTML = ''; box.hidden = false;
+    box.append(ctx.el('h3', '', `Hand ${rc.hand} 🏁 ${rc.out != null ? `${name(rc.out)} went out` : 'called off'}`));
+    rc.cards.forEach((cards, i) => {
+      const row = ctx.el('div', 'ru-recap-row' + (i === rc.out ? ' out' : ''));
+      const cs = ctx.el('span', 'ru-cards');
+      cards.forEach((x) => cs.append(face(x, 'small')));
+      if (!cards.length) cs.append(ctx.el('small', '', '🎉 went out'));
+      const pts = ctx.el('b', 'ru-recap-pts'), n = ctx.el('span', '', '0');
+      pts.append('+', n, ctx.el('small', '', ` (${rc.totals[i]})`));
+      row.append(ctx.el('span', 'ru-recap-name', name(i)), cs, pts);
+      box.append(row);
+      Kit.tally(n, 0, rc.got[i], 900);
+    });
+    const ok = ctx.el('button', 'primary', 'Next hand ▶');
+    ok.onclick = () => { box.hidden = true; };
+    box.append(ok);
+    ctx.sfx('sweep');
+    clearTimeout(renderRecap.t); renderRecap.t = setTimeout(() => { box.hidden = true; }, 9000);
   }
 
   // #31: cards new to the hand since it was last drawn are dealt in from the deck, one after another (the
@@ -267,7 +310,7 @@ UI.rummy = (() => {
     });
   }
 
-  function unmount() { drag?.ghost?.remove(); drag = null; shown = shownNo = null; shownTop = undefined; dealing = []; meldCards = []; shownCounts = null; }
+  function unmount() { recapSeen = null; clearTimeout(renderRecap.t); drag?.ghost?.remove(); drag = null; shown = shownNo = null; shownTop = undefined; dealing = []; meldCards = []; shownCounts = null; }
 
   return { mount, render, unmount };
 })();
