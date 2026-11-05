@@ -1,7 +1,7 @@
 // Qork: the Cupper rolls; on doubles or a seven, Corkers YANK and the Cupper SLAMs.
 // Reaction times are measured here, from the moment the dice land on this screen.
 UI.qork = (() => {
-  let S, ctx, shownNo, shownAt, pressedNo, tumbleTimer, rollTimer;
+  let S, ctx, shownNo, shownAt, pressedNo, tumbleTimer, rollTimer, history = {}, seenFx = null, primed = false;
   const $ = (id) => document.getElementById(id);
   const PIPS = Dice.PIPS;
   const replay = () => !ctx || ctx.peek == null;
@@ -18,7 +18,7 @@ UI.qork = (() => {
 
   let seenRes = null;
   function mount(main, side) {
-    seenRes = null;
+    seenRes = null; history = {}; seenFx = null; primed = false;
     shownNo = -1; shownAt = 0; pressedNo = -1;
     main.innerHTML = `<div class="qk">
       <div id="qkInfo" class="qk-info"></div>
@@ -31,7 +31,8 @@ UI.qork = (() => {
       <div id="qkTimes" class="qk-times"></div>
     </div>`;
     side.innerHTML = `<div class="panel"><h3>Recent rolls</h3><div id="qkRolls" class="qk-rolls"></div>
-      <p class="hint">Triggers: any doubles, or a total of 7. Tap the mat or press Space.</p></div>`;
+      <p class="hint">Triggers: any doubles, or a total of 7. Tap the mat or press Space.</p>
+      <h3>Reactions</h3><div id="qkSpark" class="qk-spark"><p class="hint left">Times show here after each snap.</p></div></div>`;
     $('qkGo').addEventListener('pointerdown', (e) => { e.preventDefault(); press(); });
     $('qkMat').addEventListener('pointerdown', (e) => { e.preventDefault(); press(); });
     $('qkRoll').onclick = () => ctx.quiet(ctx.act('roll'));
@@ -54,7 +55,11 @@ UI.qork = (() => {
     if (g.stage === 'wait' || g.stage === 'result' || pressedNo === g.rollNo) return;
     pressedNo = g.rollNo;
     const ms = g.stage === 'tumble' || shownNo !== g.rollNo ? -1 : performance.now() - shownAt;
-    if (!g.trigger) $('qkMat').classList.add('flinch');
+    const me = role();
+    if (!g.trigger) {
+      $('qkMat').classList.add('flinch');
+      if (!replay()) { Kit.stamp($('qkMat'), 'Flinch!', 'bad', 1000); ctx.sfx('wrong'); ctx.buzz([30, 30, 30]); }
+    } else ctx.sfx(me === 'cup' ? 'thud' : 'whoosh');
     ctx.quiet(ctx.act('yank', { ms: Math.round(ms) }));
     draw();
   }
@@ -65,8 +70,50 @@ UI.qork = (() => {
     if (g.dice && shownNo !== g.rollNo) {
       shownNo = g.rollNo; shownAt = performance.now();
       $('qkMat').classList.remove('flinch');
+      // the trigger itself: a sharp cue at the same moment the dice show it
+      if (g.trigger && !replay()) ctx.sfx('tag');
     }
     draw();
+    effects(g);
+  }
+
+  // when a snap is settled: my fate gets its beat, and everyone's time joins their sparkline
+  function effects(g) {
+    const res = g.result, key = res ? JSON.stringify(res) : null;
+    const first = !primed; primed = true;
+    if (!res || key === seenFx) { if (!res) seenFx = null; return; }
+    seenFx = key;
+    for (const [pid, ms] of Object.entries(res.times)) if (ms >= 0) (history[pid] ||= []).push(ms);
+    for (const pid of Object.keys(history)) history[pid] = history[pid].slice(-8);
+    sparks();
+    if (first || replay()) return;
+    const mat = $('qkMat');
+    if (res.trapped.includes(S.me.id)) { Kit.stamp(mat, 'Trapped!', 'bad', 1100); ctx.sfx('capture'); }
+    else if (res.escaped.includes(S.me.id)) { Kit.stamp(mat, 'Escaped!', 'good', 1100); ctx.sfx('good'); }
+    else if (g.cupper === S.me.id && res.slam != null) {
+      const caught = res.trapped.length;
+      Kit.stamp(mat, caught ? `Caught ${caught}!` : 'Too slow!', caught ? 'gold' : 'cool', 1100);
+      ctx.sfx(caught ? 'good' : 'bad');
+    }
+  }
+
+  // each player's last few reaction times as little bars (taller = slower), with their average
+  function sparks() {
+    const box = $('qkSpark'); if (!box) return;
+    const ids = Object.keys(history).filter((pid) => history[pid].length);
+    if (!ids.length) return;
+    box.replaceChildren();
+    const top = Math.max(600, ...ids.flatMap((pid) => history[pid]));
+    const avg = (a) => Math.round(a.reduce((x, y) => x + y, 0) / a.length);
+    ids.sort((a, b) => avg(history[a]) - avg(history[b]));
+    for (const pid of ids) {
+      const p = ctx.player(pid), row = ctx.el('div', 'qk-sparkrow');
+      const nm = ctx.el('span', '', p?.name ?? '?'); nm.style.color = p?.color ?? '';
+      const bars = ctx.el('span', 'qk-bars');
+      for (const ms of history[pid]) { const b = ctx.el('i'); b.style.height = `${Math.max(8, (100 * ms) / top)}%`; b.style.background = p?.color ?? '#888'; b.title = `${ms} ms`; bars.append(b); }
+      row.append(nm, bars, ctx.el('b', '', `${avg(history[pid])} ms`));
+      box.append(row);
+    }
   }
 
   function draw() {

@@ -860,6 +860,7 @@ body.focus #game .layout:has(.bl-busy) > aside { opacity: .2; }
 .liar-count { font-size: 22px; font-weight: 900; text-align: center; margin: 4px 0; color: #ffd166; }
 .liar-count.over { color: var(--ok); }
 /* fib finder: answers turn over one by one */
+.fb-res.all { box-shadow: 0 0 0 2px #ffd166, 0 0 16px #ffd16655; }
 .fb-res.hidden-card { visibility: hidden; }
 .fb-res.flip-in { animation: flipIn .5s cubic-bezier(.3, 1.3, .5, 1); }
 /* odd one out: the verdict waits for the votes, then the odd one is spotlit */
@@ -1653,6 +1654,12 @@ body.focus .pp-stage { height: max(240px, calc(var(--room) - 130px)); }
 .qk-rolls { display: flex; flex-wrap: wrap; gap: 6px; }
 .qk-roll { padding: 2px 8px; border-radius: 8px; background: var(--field); font-weight: 700; }
 .qk-roll.hot { background: #ff922b; color: #000; }
+.qk-spark { display: grid; gap: 4px; }
+.qk-sparkrow { display: grid; grid-template-columns: minmax(0, 1fr) 64px 4.2em; align-items: center; gap: 6px; font-size: 13px; }
+.qk-sparkrow span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+.qk-sparkrow b { text-align: right; font-variant-numeric: tabular-nums; }
+.qk-bars { display: flex; align-items: flex-end; gap: 2px; height: 22px; }
+.qk-bars i { flex: 1; border-radius: 2px 2px 0 0; opacity: .85; }
 
 /* hover rally (banners and score rows in section 5) */
 .ra { max-width: 640px; margin: 0 auto; user-select: none; -webkit-user-select: none; overscroll-behavior: none; }
