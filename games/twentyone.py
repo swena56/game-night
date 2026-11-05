@@ -79,6 +79,7 @@ class TwentyOne(Game):
         "hands": ("Hands", [(8, "8"), (5, "5 (quick)"), (12, "12")], 8),
         "pairs": ("Perfect Pairs side bet", [(False, "Off"), (True, "👯 On")], False),
         "insurance": ("Insurance", [(False, "Off"), (True, "🛡️ When the dealer shows an ace")], False),
+        "surrender": ("Surrender", [(False, "Off"), (True, "🏳️ Give up half your bet on your first two cards")], False),
     }
 
     # -- setup
@@ -320,6 +321,16 @@ class TwentyOne(Game):
             h["done"] = True
             self.advance(i)
 
+    def can_surrender(self, i):
+        """🏳️ Late surrender: on your first two cards, before a split (the dealer has already checked for blackjack)."""
+        return bool(self.s.get("surrender")) and len(self.hands[i]) == 1 and len(self.hand(i)["cards"]) == 2
+
+    def surrender(self, i):
+        h = self.hand(i)
+        h["done"] = h["surr"] = True
+        self.room.add_log(f"🏳️ {self.label(i)} surrenders on {total(h['cards'])[0]}: half the bet back.", "power")
+        self.advance(i)
+
     def can_double(self, i):
         h = self.hand(i)
         return len(h["cards"]) == 2 and self.chips[i] >= self.committed(i) + h["bet"]
@@ -360,7 +371,9 @@ class TwentyOne(Game):
             texts, delta = [], 0
             for h in self.hands[i]:
                 b, t, nat = h["bet"], total(h["cards"])[0], self.is_natural(i, h)
-                if t > 21:
+                if h.get("surr"):
+                    dh, text = -(b // 2), "surrendered"
+                elif t > 21:
                     dh, text = -b, "bust"
                 elif nat and not dnat:
                     dh, text = b * 3 // 2, "blackjack!"
@@ -426,12 +439,14 @@ class TwentyOne(Game):
             if self.stage != "insure" or self.ins[i] is not None:
                 raise GameError("No insurance to decide on.")
             return self.insure(i, bool(a.get("take")))
-        if t in ("hit", "stand", "double", "split"):
+        if t in ("hit", "stand", "double", "split", "surrender"):
             self.require_turn(p)
             if self.stage != "play":
                 raise GameError("Wait for your turn.")
             if t == "double" and not self.can_double(i):
                 raise GameError("You can only double on your first two cards, with enough chips.")
+            if t == "surrender" and not self.can_surrender(i):
+                raise GameError("You can only surrender on your first two cards.")
             if t == "split" and not self.can_split(i):
                 raise GameError(f"You can split two cards of the same value, up to {MAX_HANDS} hands, with enough chips.")
             return getattr(self, t)(i)
@@ -503,6 +518,9 @@ class TwentyOne(Game):
             "chips": self.chips, "bets": self.bets, "seatHands": hands, "cur": self.cur, "dealer": dealer,
             "dealerTotal": total(self.dealer)[0] if reveal and self.dealer else (total(self.dealer[:1])[0] if self.dealer else 0),
             "result": self.result, "lastBets": self.last_bet, "minBet": MIN_BET, "canDouble": mine and self.can_double(i), "canSplit": mine and self.can_split(i), "betOptions": list(BETS),
+            "canSurrender": mine and self.can_surrender(i),
+            # 💡 the move basic strategy picks for your hand (the hard bot's table); the page shows it if you ask
+            "advice": self.advice(i) if mine else None,
             "pairs": bool(self.s["pairs"]), "pairBet": PAIR_BET, "pair": self.pair, "pairRes": self.pair_res,
             "lastPairs": self.last_pair, "pairPays": PAIR_PAYS,
             "insurance": bool(self.s.get("insurance")), "ins": getattr(self, "ins", None), "insRes": getattr(self, "ins_res", None),
@@ -535,7 +553,7 @@ class TwentyOne(Game):
                     self.bet(i, self.bot_bet(i), self.bot_pair(i))
             return
         i = self.seats.index(self.room.turn)
-        move = self.bot_move(i, self.level(i))
+        move = self.advice(i) if self.level(i) == "hard" else self.bot_move(i, self.level(i))
         if move == "split" and not self.can_split(i):
             move = self.bot_move(i, self.level(i), split=False)
         if move == "double" and not self.can_double(i):
@@ -552,6 +570,17 @@ class TwentyOne(Game):
         if lv == "hard":  # about a tenth of the stack, in fives
             return max(MIN_BET, min(self.chips[i], self.chips[i] // 10 // MIN_BET * MIN_BET))
         return min(self.chips[i], 10)
+
+    def advice(self, i):
+        move = self.bot_move(i, "hard", split=self.can_split(i))
+        if move == "double" and not self.can_double(i):
+            move = "hit"
+        if self.can_surrender(i) and move == "hit":  # basic strategy gives up 16 against 9-A and 15 against 10
+            t, soft = total(self.hand(i)["cards"])
+            d = value(self.dealer[0])
+            if not soft and ((t == 16 and d >= 9) or (t == 15 and d == 10)):
+                move = "surrender"
+        return move
 
     def bot_move(self, i, level, split=True):
         cards = self.hand(i)["cards"]
