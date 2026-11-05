@@ -55,6 +55,9 @@ UI.spire = (() => {
 
   function newState(sp) {
     W = sp.W; H = sp.H; BUF = sp.buffer;
+    // the flat well takes its height from its own shape, so its cells fill a phone's width (#64)
+    const stage = document.getElementById('spStage');
+    if (stage) { stage.classList.toggle('flat', !!sp.flat); stage.style.setProperty('--sp-ar', String(W / (H + 2.5))); }
     const grid = Array.from({ length: H + BUF }, emptyRow);
     const mine = sp.boards[S.me.id];
     if (mine) for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
@@ -96,10 +99,13 @@ UI.spire = (() => {
     st.canHold = false;
   }
 
-  function level() { return Math.max(0, Math.floor((performance.now() - st.start) / 30000)); }
+  // the speed-up comes from the room's setting (#65); older servers sent none: the old steady curve
+  const ramp = () => S.spire.ramp || { every: 30, factor: 0.85, floor: 0.06 };
+  function level() { const e = ramp().every; return e ? Math.max(0, Math.floor((performance.now() - st.start) / (e * 1000))) : 0; }
   function interval() {
-    let ms = S.spire.speed * 1000 * 0.85 ** level();
-    if (performance.now() < st.surgeUntil) ms *= 0.5;
+    const r = ramp();
+    let ms = Math.max(r.floor * 1000, S.spire.speed * 1000 * r.factor ** level());
+    if (performance.now() < st.surgeUntil) ms *= 0.5;  // a rival's ⚡ still bites, even at top speed
     return Math.max(60, ms);
   }
 

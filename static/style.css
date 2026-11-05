@@ -2036,6 +2036,7 @@ body.kb-open .rl-art { width: min(100%, calc(var(--room) - 140px)); }
 body.calm .sp-junk.soon { animation: none; }
 body.focus .spire-wrap { max-width: 900px; }
 body.focus .spire-stage { height: max(240px, calc(var(--room) - 70px)); }
+.spire-stage.flat, body.focus .spire-stage.flat { height: auto; aspect-ratio: var(--sp-ar, .6); max-height: max(260px, calc(var(--room) - 120px)); margin: 0 auto; }
 
 /* sumo saucers (banners and score rows in section 5) */
 .sm { max-width: 640px; margin: 0 auto; overscroll-behavior: none; user-select: none; -webkit-user-select: none; }

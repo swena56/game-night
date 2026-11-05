@@ -36,6 +36,12 @@ POWERS = {"1": "surge", "2": "shield", "3": "blast"}
 ROW_CHARS = set(".j") | set(SHAPES) | set(POWERS)
 SPEEDS = {"chill": 1.0, "normal": 0.75, "fast": 0.5}
 SURGE_SECS = 8
+# the speed-up (#65): seconds per level (0: none), drop-time factor per level, quickest drop (s), bots' pace factor
+RAMPS = {
+    "gentle": {"every": 45, "factor": 0.88, "floor": 0.2, "bot": 0.93},
+    "steady": {"every": 30, "factor": 0.85, "floor": 0.06, "bot": 0.9},
+    "off": {"every": 0, "factor": 1, "floor": 0.06, "bot": 1},
+}
 POWER_CHANCE = 1 / 8
 
 
@@ -182,6 +188,8 @@ class Spire(Game):
         "powers": ("Power cells", [(True, "On (⚡🛡️💣)"), (False, "Off")], True),
         "board": ("Board", [("tower", "🗼 Tower (wraps around)"), ("flat", "🧱 Flat well (side walls)")], "tower"),
         "pieces": ("Pieces", [("four", "🟦 4 blocks each"), ("mixed", "🧩 Mixed (2, 3 and 5 blocks)")], "four"),
+        "ramp": ("Speed-up", [("gentle", "🌱 Gentle (every 45 s, with a top speed)"), ("steady", "📈 Steady (every 30 s, no limit)"),
+                              ("off", "⏸️ Off (start speed all game)")], "gentle"),
         "aim": ("Junk goes to", [("random", "🎲 A random rival"), ("leader", "👑 The leader (comeback)")], "random"),
     }
 
@@ -201,8 +209,14 @@ class Spire(Game):
         r.bot_at = 0
         r.add_log("🗼 Spire Siege! Fill a whole ring to clear it — clear several at once to send junk.", "big")
 
+    def ramp(self):
+        """How the drop speeds up (#65): a level every `every` seconds, each one `factor` times the last, never
+        quicker than `floor` seconds a row. "steady" is the old curve; rooms saved before the setting get it."""
+        return RAMPS[self.s.get("ramp", "steady")]
+
     def level(self):
-        return max(0, int((time.time() - self.t0) // 30))
+        every = self.ramp()["every"]
+        return max(0, int((time.time() - self.t0) // every)) if every else 0
 
     # -- actions from players' browsers
 
@@ -339,7 +353,7 @@ class Spire(Game):
             self.on_clear(o, lines, t.combo, powers)
         if t.overflow():
             return self.knock_out(o)
-        pace = {"easy": 1.6, "normal": 1.05, "hard": 0.62}[o.bot] * (0.9 ** self.level())
+        pace = {"easy": 1.6, "normal": 1.05, "hard": 0.62}[o.bot] * (self.ramp()["bot"] ** self.level())
         if now < g.surge_until:
             pace *= 0.6
         g.next_at = now + max(0.25, pace * random.uniform(0.85, 1.2))
@@ -366,6 +380,6 @@ class Spire(Game):
         return {"spire": {
             "W": W, "H": H, "buffer": BUFFER, "seed": self.seed + (self.seats.index(p.id) if mine else 0),
             "startIn": max(0.0, self.t0 - now), "elapsed": max(0.0, now - self.t0),
-            "speed": SPEEDS[self.s["speed"]], "powers": self.s["powers"], "surgeSecs": SURGE_SECS,
+            "speed": SPEEDS[self.s["speed"]], "ramp": self.ramp(), "powers": self.s["powers"], "surgeSecs": SURGE_SECS,
             "flat": self.s.get("board") == "flat", "pieces": PIECE_SETS[self.s.get("pieces", "mixed")], "boards": boards, "events": p.g.events if mine else [], "playing": mine and not p.eliminated,
         }}
