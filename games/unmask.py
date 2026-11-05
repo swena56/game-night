@@ -144,6 +144,8 @@ CARDS = {
             "desc": "The next opponent in line skips their turn. Free action."},
     "shapeshift": {"name": "Shapeshift", "icon": "🎭", "modes": {"duel"},
                    "desc": "Swap your secret face for another that still matches every answer you've given. Free action."},
+    "bluff": {"name": "Bluff", "icon": "🃏", "modes": {"duel"}, "option": "bluff",
+              "desc": "Your rival's next question about you gets the wrong answer. They'll know you're bluffing, not when it lands. Free action."},
     "eavesdrop": {"name": "Eavesdrop", "icon": "👂", "modes": {"manhunt"},
                   "desc": "Secretly hear the answer to the last question someone else asked. Free action."},
 }
@@ -169,6 +171,7 @@ class Unmask(Game):
         "mode": ("Mode", [("duel", "⚔️ Duel (1v1)"), ("manhunt", "🕵️ Manhunt (1–6)")], "duel"),
         "size": ("Board", [(16, "16 faces"), (24, "24 faces"), (30, "30 faces")], 24),
         "powers": ("Power cards", [(True, "On"), (False, "Off")], True),
+        "bluff": ("🃏 Bluff card (duel)", [(False, "Off"), (True, "On: one answer can be a lie")], False),
     }
 
     def check_players(self, seated):
@@ -193,7 +196,7 @@ class Unmask(Game):
         else:
             self.culprit = rng.randrange(size)
         if self.s["powers"]:
-            pool = [c for c, d in CARDS.items() if self.s["mode"] in d["modes"]]
+            pool = [c for c, d in CARDS.items() if self.s["mode"] in d["modes"] and self.s.get(d.get("option"), True)]
             for p in seated:
                 p.g.cards = rng.sample(pool, 2)
         first = rng.choice(seated)
@@ -255,6 +258,12 @@ class Unmask(Game):
             q.pop("b")
         text = qtext(q)
         ans = evaluate(self.target_face(p), q)
+        opp = r.opponent(p) if self.s["mode"] == "duel" else None
+        if opp and getattr(opp.g, "bluff", False):  # 🃏 the rival's bluff lands on this question
+            opp.g.bluff = False
+            ans = not ans
+            self.lies = getattr(self, "lies", []) + [(opp.name, text, ans)]
+            r.add_log(f"🃏 You lied: “{text}” → {yn(ans)}. {p.name} believes it.", "private", to=opp.id)
         p.g.learned.append((q, ans))
         check = {"q": q, "ans": ans}
         if self.s["mode"] == "duel":
@@ -278,8 +287,10 @@ class Unmask(Game):
                 if len(getattr(p.g, "learned", [])) <= 3:
                     self.award(p, "sharp")
                 self.bold(p)
+                self.own_up()
                 r.finish(p, f"🎯 {p.name} unmasked {opp.name}: it was {truth}! {p.name} wins!")
             else:
+                self.own_up()
                 r.finish(opp, f"💥 {p.name} accused {name}, but it was {truth}. {opp.name} wins!")
             return
         if face == self.culprit:
@@ -298,6 +309,11 @@ class Unmask(Game):
             r.finish(left[0], f"🏆 {left[0].name} is the last hunter standing! (It was {culprit}.)")
         else:
             r.advance()
+
+    def own_up(self):
+        """At the end, every bluff comes out."""
+        for who, text, said in getattr(self, "lies", []):
+            self.room.add_log(f"🃏 {who} bluffed: “{text}” was really {yn(not said)}.", "power")
 
     def bold(self, p):
         """A right accusation with a third of your board still face-up is a bold guess."""
@@ -347,6 +363,11 @@ class Unmask(Game):
             p.g.secret = random.choice(candidates)
             r.add_log(f"🎭 {p.name} shapeshifted! Their secret face changed — but it still matches every answer so far.", "power")
             r.add_log(f"🎭 You are now {self.board[p.g.secret]['name']}.", "private", to=p.id)
+        elif card == "bluff":
+            if getattr(p.g, "bluff", False):
+                raise GameError("Your bluff is already waiting.")
+            p.g.bluff = True
+            r.add_log(f"🃏 {p.name} has a bluff up their sleeve: one of the next answers may be a lie…", "power")
         elif card == "eavesdrop":
             last = next((q for q in reversed(self.questions) if q["asker"] != p.id), None)
             if not last:
@@ -361,7 +382,12 @@ class Unmask(Game):
     # -- bot
 
     def candidates(self, p):
-        return [f for f in self.board if all(evaluate(f, q) == ans for q, ans in p.g.learned)]
+        learned = p.g.learned
+        fits = [f for f in self.board if all(evaluate(f, q) == ans for q, ans in learned)]
+        if fits or not learned:
+            return fits
+        # nobody fits every answer: one was a 🃏 bluff. Keep the faces that fit all answers but one.
+        return [f for f in self.board if sum(evaluate(f, q) != ans for q, ans in learned) == 1]
 
     def bot_turn(self, p):
         r = self.room
@@ -370,6 +396,7 @@ class Unmask(Game):
             ("spyglass", True),
             ("jam", random.random() < 0.35),
             ("shapeshift", mode == "duel" and len(self.board) - len(r.opponent(p).g.flipped) <= 3),
+            ("bluff", random.random() < 0.4),
         ]:
             if wanted and card in p.g.cards and p.bot != "easy":
                 try:
