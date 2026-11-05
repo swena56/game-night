@@ -1885,7 +1885,8 @@ body.focus .spire-stage { height: max(240px, calc(var(--room) - 70px)); }
 .sm { max-width: 640px; margin: 0 auto; overscroll-behavior: none; user-select: none; -webkit-user-select: none; }
 .sm-stage { position: relative; height: min(calc(var(--app-h, 100vh) * .62), 600px); border-radius: var(--radius); overflow: hidden;
   display: flex; justify-content: center; align-items: center; background: #05040d; }
-.sm-stage canvas { display: block; }
+/* out of the flow, so a canvas sized for a wider screen can't hold the stage open past the app (#75) */
+.sm-stage canvas { position: absolute; inset: 0; margin: auto; max-width: 100%; max-height: 100%; display: block; }
 .sm-stick { position: absolute; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; border: 2px solid #ffffff55;
   background: #ffffff10; pointer-events: none; }
 .sm-stick span { position: absolute; left: 35px; top: 35px; width: 50px; height: 50px; border-radius: 50%; background: #ffffffaa; }
