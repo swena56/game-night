@@ -777,6 +777,12 @@ body.focus #game .layout:has(.bl-busy) > aside { opacity: .2; }
 .he-meter { display: flex; gap: 2px; margin-top: 4px; height: 8px; width: 140px; }
 .he-meter i { flex: 1; border-radius: 2px; background: #ffffff1a; }
 .he-meter i.on { background: hsl(calc(10 + var(--lvl) * 110), 80%, 55%); }
+.he-odds { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12px; }
+.he-odds-bar { width: 80px; height: 8px; border-radius: 4px; background: #ffffff1a; overflow: hidden; }
+.he-odds-bar::before { content: ''; display: block; height: 100%; width: calc(var(--p, 0) * 100%); border-radius: inherit;
+  background: hsl(var(--h, 60), 80%, 55%); transition: width .5s, background .5s; }
+.he-odds b::after { content: attr(data-unit); }
+.he-odds small { color: var(--muted); }
 /* last card: a stamp on an action card as it lands; a growing penalty */
 #lcTop { position: relative; }
 .lc-stamp { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(-14deg); pointer-events: none; white-space: nowrap;
