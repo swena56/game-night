@@ -1884,10 +1884,7 @@ body.kb-open .rl-art { width: min(100%, calc(var(--room) - 140px)); }
   .seas.firing > div:nth-child(2) { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 4px 10px; }
   .seas.firing #sbMineTitle { grid-column: 2; grid-row: 1; margin: 0; }
   .seas.firing #sbMine { grid-column: 1; grid-row: 1 / span 2; width: min(42vw, 150px); gap: 1px; padding: 2px; }
-  .seas.firing #sbMine .sea-cell.aim { box-shadow: inset 0 0 0 3px #ff922b; background: #ff922b44; }
-.sb-tools { justify-content: center; gap: 8px; }
-#sbTorp.on, #sbSonar.on { box-shadow: 0 0 0 3px var(--accent); }
-.sea-cell { font-size: 8px; border-radius: 1px; }
+  .seas.firing #sbMine .sea-cell { font-size: 8px; border-radius: 1px; }
 }
 .sea-grid { display: grid; grid-template-columns: repeat(var(--n, 10), minmax(0, 1fr)); gap: 2px; padding: 4px; border-radius: 8px;
   width: min(100%, 420px); margin: 0 auto; background: linear-gradient(160deg, #0f4c75, #0b3a5b); box-shadow: inset 0 0 20px #0006; }
@@ -1897,6 +1894,10 @@ body.kb-open .rl-art { width: min(100%, calc(var(--room) - 140px)); }
 .sea-cell.sunk { background: linear-gradient(160deg, #8a2a2a, #5a1515); }
 .sea-cell.picked { background: var(--accent); }
 .sea-cell.scanned { box-shadow: inset 0 0 0 2px #8ecae6; }
+/* 💥 aiming a torpedo: the three squares it would hit */
+#sbEnemy .sea-cell.aim { box-shadow: inset 0 0 0 3px #ff922b; background: #ff922b55; }
+.sb-tools { justify-content: center; gap: 8px; }
+#sbTorp.on { box-shadow: 0 0 0 3px var(--accent); }
 .sea-cell.last { outline: 2px solid var(--accent); animation: splash .5s ease-out; }
 @keyframes splash { from { transform: scale(1.5); box-shadow: 0 0 0 6px #fff8; } }
 .sea-cell:disabled { opacity: 1; cursor: default; }
