@@ -228,7 +228,7 @@ async function reportDialog(kind = 'bug', draft = '') {
 }
 const logHasEntries = () => $('#log').childElementCount > 0;
 function show(id) {
-  if (id === 'game' && document.body.dataset.screen !== 'game') window.scrollTo(0, 0);  // the lobby may have scrolled
+  if (id === 'game' && document.body.dataset.screen !== 'game' && document.scrollingElement) document.scrollingElement.scrollTop = 0;  // the lobby may have scrolled (#72)
   for (const s of ['loading', 'home', 'lobby', 'game']) $('#' + s).hidden = s !== id;
   if (id !== 'game') { document.body.classList.remove('focus'); closeMenu(); closeSheets(); }
   document.body.dataset.screen = id;
