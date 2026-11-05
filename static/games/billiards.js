@@ -375,10 +375,10 @@ UI.billiards = (() => {
     if (b.edges?.length) {  // the cushion line, with each pocket's jaws angling in to the hole
       g.beginPath();
       for (const [x1, y1, x2, y2] of b.edges) { g.lineTo(x1, y1); g.lineTo(x2, y2); }
-      g.closePath(); g.fill();
+      g.closePath(); g.fill(); clothGrain(g);
       g.strokeStyle = '#0b4a28'; g.lineWidth = 0.8; g.lineJoin = 'round';
       for (const [x1, y1, x2, y2] of b.edges) { g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); }
-    } else g.fillRect(0, 0, b.W, b.H);
+    } else { g.beginPath(); g.rect(0, 0, b.W, b.H); g.fill(); clothGrain(g); }
     g.strokeStyle = '#ffffff33'; g.lineWidth = 0.4;
     g.beginPath(); g.moveTo(b.headX, 0); g.lineTo(b.headX, b.H); g.stroke();
     g.fillStyle = '#ffffff55'; g.beginPath(); g.arc(b.W * 0.73, b.H / 2, 0.7, 0, 7); g.fill();
@@ -575,6 +575,27 @@ UI.billiards = (() => {
     const hx = x - r * 0.5, hy = y - r * 0.5, shine = g.createRadialGradient(hx, hy, 0, hx, hy, r * 0.3);
     shine.addColorStop(0, '#ffffffb0'); shine.addColorStop(0.45, '#ffffff38'); shine.addColorStop(1, '#ffffff00');
     g.fillStyle = shine; g.fillRect(x - r, y - r, 2 * r, 2 * r);
+    g.restore();
+  }
+  // the flat view's baize: a fine grain of light and dark specks at the screen's own pixels, over the cloth just
+  // filled (its path is still current). The tile is made once.
+  let grainTile = null;
+  function clothGrain(g) {
+    if (!g.createPattern) return;
+    if (!grainTile) {
+      const c = document.createElement('canvas'); c.width = c.height = 128;
+      const cg = c.getContext('2d'), im = cg.createImageData?.(128, 128);
+      if (!im) return;
+      for (let i = 0; i < im.data.length; i += 4) {
+        const v = Math.random(), light = v > 0.5;
+        im.data[i] = im.data[i + 1] = im.data[i + 2] = light ? 255 : 0; im.data[i + 3] = Math.abs(v - 0.5) * 34;
+      }
+      cg.putImageData(im, 0, 0);
+      grainTile = g.createPattern(c, 'repeat');
+    }
+    if (!grainTile) return;
+    g.save(); g.clip(); g.setTransform(1, 0, 0, 1, 0, 0);
+    g.fillStyle = grainTile; g.fillRect(0, 0, g.canvas.width, g.canvas.height);
     g.restore();
   }
   function roundRect(g, x, y, w, h, r) {

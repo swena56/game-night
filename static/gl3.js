@@ -4,6 +4,9 @@
 //  - GL3.renderer(opts, hooks): a WebGLRenderer, or null when WebGL is missing, with
 //      * adaptive resolution: the pixel ratio drops a step when frames get slow (phones, big screens)
 //        and creeps back up when they're smooth again, so the game keeps its frame rate;
+//        hooks.cap / hooks.min override the top and bottom of that range, and r.renderStill(scene, camera)
+//        draws one frame at the top of it (not timed): for on-demand games, so the view you look at
+//        between moves is always sharp even when motion runs at a lower resolution;
 //      * context-loss recovery: phones throw the GPU context away when you switch apps; hooks.onLost()
 //        lets the game build a new renderer instead of showing a frozen or black view.
 //  - GL3.shake(camera, amount): a short camera shake for hits; GL3.tickShake(camera, dt) each frame.
@@ -28,8 +31,10 @@
     let r;
     try { r = new T.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', ...opts }); } catch { return null; }
     if (!r.getContext()) { r.dispose(); return null; }
-    let pr = CAP;
+    const cap = hooks.cap ?? CAP, min = hooks.min ?? Math.min(1, cap) * 0.6;
+    let pr = cap, shown = pr;
     r.setPixelRatio(pr);
+    const use = (p) => { if (p !== shown) { shown = p; r.setPixelRatio(p); } };
     // adaptive resolution: watch the time between renders (ignore pauses: on-demand games, hidden tabs)
     let last = 0, sum = 0, n = 0, smooth = 0;
     const render = r.render.bind(r);
@@ -38,13 +43,14 @@
       if (dt > 0 && dt < 120) { sum += dt; n++; }
       if (n >= 90) {
         const avg = sum / n; sum = 0; n = 0;
-        const min = Math.min(1, CAP) * 0.6;
-        if (avg > 24 && pr > min) { pr = Math.max(min, pr - 0.25); r.setPixelRatio(pr); smooth = 0; }
-        else if (avg < 17 && pr < CAP && ++smooth >= 4) { pr = Math.min(CAP, pr + 0.25); r.setPixelRatio(pr); smooth = 0; }
+        if (avg > 24 && pr > min) { pr = Math.max(min, pr - 0.25); smooth = 0; }
+        else if (avg < 17 && pr < cap && ++smooth >= 4) { pr = Math.min(cap, pr + 0.25); smooth = 0; }
       }
+      use(pr);
       return render(scene, camera);
     };
-    r.quality = () => pr;
+    r.renderStill = (scene, camera) => { last = 0; use(cap); return render(scene, camera); };
+    r.quality = () => shown;
     const canvas = r.domElement;
     const lost = (e) => {
       e.preventDefault();
