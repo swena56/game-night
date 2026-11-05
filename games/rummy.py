@@ -154,6 +154,7 @@ class Rummy(Game):
         "Lay down the whole contract at once (select cards, tap Set or Run, then Lay down). After that you can add cards to any meld on the table.",
         "Empty your hand to end it. Everyone else scores what they hold: 2–9 = 5, 10–K = 10, A = 15, joker = 25.",
         "Lowest total after the last hand wins.",
+        "With 🙋 May I? on, before the next player draws you can buy the top discard out of turn; you take a penalty card from the deck with it (3 buys a hand).",
     ]
     name = "Contract Rummy"
     icon = "🀄"
@@ -162,6 +163,7 @@ class Rummy(Game):
     max_players = 6
     settings_schema = {
         "hands": ("Hands", [(7, "All 7 contracts"), (4, "First 4 (quick)")], 7),
+        "mayi": ("🙋 May I?", [(False, "Off"), (True, "On: buy the discard out of turn (+1 penalty card, 3 a hand)")], False),
     }
 
     # -- setup
@@ -195,6 +197,8 @@ class Rummy(Game):
         self.drawn = False
         self.turns = 0
         self.last_hand = None
+        self.buys = [0] * n         # 🙋 May I? buys this hand
+        self.thrower = None         # who threw the top discard (they can't buy it back)
         self.room.add_log(f"🀄 Hand {self.hand_no}: {contract_text(self.k, self.m)}.", "big")
         self.room.begin_turn(self.seats[(self.dealer + 1) % n])
 
@@ -209,7 +213,10 @@ class Rummy(Game):
             c = self.discard.pop()
             self.room.add_log(f"🃏 {p.name if p else '?'} takes the {self.pretty(c)}.", "question")
         else:
+            self.bots_buy()  # passing the discard up gives the bots a chance to call May I?
             if not self.deck:
+                if not self.discard:
+                    raise GameError("No cards left to draw.")
                 top = self.discard.pop()
                 self.deck = self.discard
                 self.rng.shuffle(self.deck)
@@ -256,6 +263,7 @@ class Rummy(Game):
     def throw(self, i, card):
         self.hands[i].remove(card)
         self.discard.append(card)
+        self.thrower = i
         p = self.pl(i)
         self.room.add_log(f"🗑️ {p.name if p else '?'} discards the {self.pretty(card)}.", "question")
         self.end_turn(i)
@@ -280,6 +288,9 @@ class Rummy(Game):
             r.add_log(f"🏁 {names[out]} goes out!", "big")
         r.add_log("🧮 " + " · ".join(f"{names[j]} +{got[j]} ({self.scores[j]})" for j in range(len(got))))
         self.last_hand = got
+        # what everyone was caught holding, for the recap between hands (deal() starts the next hand at once)
+        self.recap = {"hand": self.hand_no, "out": out, "got": got,
+                      "cards": [sorted(h, key=self.sort_key) for h in self.hands], "totals": list(self.scores)}
         if self.hand_no >= self.s["hands"]:
             low = min(self.scores)
             best = [j for j, v in enumerate(self.scores) if v == low]
@@ -300,6 +311,8 @@ class Rummy(Game):
         i = self.seat(p)
         if i is None or p.eliminated:
             raise GameError("You're watching this game.")
+        if a.get("type") == "mayi":
+            return self.may_i(i)
         self.require_turn(p)
         t = a.get("type")
         hand = self.hands[i]
@@ -342,6 +355,48 @@ class Rummy(Game):
             return self.throw(i, c)
         raise GameError("Unknown action.")
 
+    def can_buy(self, i):
+        turn = self.seats.index(self.room.turn) if self.room.turn in self.seats else None
+        return (self.s.get("mayi") and turn is not None and i != turn and not self.drawn and self.discard
+                and getattr(self, "thrower", None) != i and getattr(self, "buys", [0] * len(self.seats))[i] < 3)
+
+    def may_i(self, i):
+        """🙋 May I? Out of turn, before the next player draws: take the top discard, plus a penalty card."""
+        if not self.s.get("mayi"):
+            raise GameError("May I? is off in this game.")
+        if not self.can_buy(i):
+            raise GameError("You can't buy the discard right now.")
+        c = self.discard.pop()
+        self.hands[i].append(c)
+        if not self.deck:
+            self.deck, self.discard = self.discard, []
+            self.rng.shuffle(self.deck)
+        if self.deck:
+            self.hands[i].append(self.deck.pop())
+        self.buys[i] += 1
+        self.thrower = None  # what's left on the pile is an older card
+        p = self.pl(i)
+        self.room.add_log(f"🙋 {p.name if p else '?'}: May I? Buys the {self.pretty(c)} (+1 penalty card).", "power")
+
+    def bots_buy(self):
+        """Before the player whose turn it is draws from the deck, a bot may buy the discard they passed up."""
+        top = self.discard[-1] if self.discard else None
+        if not self.s.get("mayi") or top is None:
+            return
+        for j in range(len(self.seats)):
+            if self.auto(j) and self.pl(j) and self.can_buy(j) and not self.down[j]:
+                level = self.pl(j).bot or "normal"
+                if (is_joker(top) or self.wants(j, top, level)) and random.random() < {"easy": 0.3, "normal": 0.6, "hard": 0.85}[level]:
+                    return self.may_i(j)
+
+    def peek(self, p, a):
+        """💡 Find my contract: the melds in your hand that meet this hand's contract, if there are any."""
+        i = self.seat(p)
+        if a.get("what") != "contract" or i is None or self.down[i]:
+            raise GameError("No hint right now.")
+        found = find_contract(self.hands[i], self.k, self.m)
+        return {"groups": [{"kind": k, "cards": cs} for k, cs in found] if found else None}
+
     def on_timeout(self):
         r = self.room
         i = self.seats.index(r.turn)
@@ -376,6 +431,8 @@ class Rummy(Game):
             "deck": len(self.deck), "melds": self.melds, "down": self.down, "scores": self.scores,
             "handNo": self.hand_no, "hands": self.s["hands"], "contract": [self.k, self.m],
             "contractText": contract_text(self.k, self.m), "drawn": self.drawn and mine, "last": self.last_hand,
+            "recap": getattr(self, "recap", None), "mayi": bool(self.s.get("mayi")),
+            "canBuy": bool(i is not None and self.can_buy(i)), "buysLeft": 3 - getattr(self, "buys", [0] * len(self.seats))[i] if i is not None else 0,
         }}
 
     @staticmethod

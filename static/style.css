@@ -2508,3 +2508,15 @@ body.calm .cb-plus { display: none; }
 /* phone keyboard open while chatting (#61): the sheet rides on top of the keyboard */
 body.chat-typing .drawer { bottom: var(--kb, 0px) !important; max-height: calc(var(--app-h, 100vh) - 12px); padding-bottom: 10px !important; }
 #overBanner.folded .over-head { cursor: pointer; }
+/* contract rummy: hint and May I? row, and the recap between hands */
+.ru-extra { justify-content: center; gap: 8px; margin: 2px 0; }
+.ru-extra button { padding: 4px 12px; font-size: 13px; }
+.ru-recap { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 30; width: min(94vw, 520px); max-height: 80vh; overflow: auto;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; box-shadow: 0 18px 50px #000a; animation: bannerIn .35s ease-out; }
+.ru-recap h3 { margin: 0 0 8px; text-align: center; }
+.ru-recap-row { display: grid; grid-template-columns: 5.5em 1fr auto; align-items: center; gap: 8px; padding: 4px 0; border-top: 1px solid var(--line); }
+.ru-recap-row.out .ru-recap-name { color: var(--ok); }
+.ru-recap-name { font-weight: 700; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ru-recap-pts { font-size: 18px; color: var(--danger); white-space: nowrap; } .ru-recap-pts small { color: var(--muted); font-size: 11px; }
+.ru-recap .ru-cards { flex-wrap: wrap; }
+.ru-recap > button { display: block; margin: 10px auto 0; }
