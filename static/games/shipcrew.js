@@ -14,7 +14,7 @@ UI.shipcrew = (() => {
       <div id="scTurn" class="crew-turn"></div>
       <div id="scSlots" class="crew-slots"></div>
       <div id="scLabel" class="crew-label"></div>
-      <div id="scFree" class="ya-dice crew-free"></div>
+      <div class="ya-tray"><div id="scFree" class="ya-dice crew-free"></div></div>
       <div class="row crew-actions"><button id="scRoll" class="primary big"></button><button id="scDock" class="big">⚓ Dock</button></div>
       <p id="scHint" class="hint"></p>
       <div id="scLast" class="crew-last"></div></div>`;

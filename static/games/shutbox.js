@@ -13,7 +13,7 @@ UI.shutbox = (() => {
     main.innerHTML = `<div class="sb">
       <div id="sbWho" class="sb-who"></div>
       <div id="sbBox" class="sb-box"></div>
-      <div id="sbDice" class="ya-dice sb-dice"></div>
+      <div class="ya-tray"><div id="sbDice" class="ya-dice sb-dice"></div></div>
       <div id="sbSum" class="sb-sum"></div>
       <div class="row sb-actions"><button id="sbRoll2" class="primary big">🎲 Roll</button>
         <button id="sbRoll1" class="big">🎲 One die</button><button id="sbShut" class="primary big">📦 Shut</button></div>
