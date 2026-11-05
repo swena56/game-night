@@ -31,12 +31,19 @@ UI.billiards = (() => {
     // room for the table: the visible height less what sits above it (top bar, chips) and below it
     // (the shot controls and the game-info strip), so all of it is on screen without scrolling
     const appH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--app-h')) || innerHeight;
-    const above = stage.getBoundingClientRect().top + scrollY, info = $('sideGame');
-    const below = (stage.nextElementSibling?.offsetHeight ?? 60) + (info?.offsetParent ? info.offsetHeight + 10 : 0) + 30;
+    const above = stage.getBoundingClientRect().top + scrollY, info = $('sideGame'), ctl = stage.nextElementSibling;
+    // focus mode on a wide screen: the table takes all the height and the info card and (when there is no room under the
+    // table) the shot controls float over it, so the table is as big as the screen allows
+    const fill = !portrait && document.body.classList.contains('focus');
+    const ctlH = ctl?.offsetHeight ?? 60;
+    const below = fill ? 14 : ctlH + (info?.offsetParent ? info.offsetHeight + 10 : 0) + 30;
     const availH = Math.max(200, appH - Math.max(40, above) - below);
     const w = stage.clientWidth || 320;
     const k = portrait ? Math.min(w / shortSide, availH / longSide) : Math.min(w / longSide, availH / shortSide);
     const cw = Math.round((portrait ? shortSide : longSide) * k), ch = Math.round((portrait ? longSide : shortSide) * k);
+    const bl = stage.parentElement;
+    bl.classList.toggle('bl-fill', fill);
+    bl.classList.toggle('bl-over', fill && availH - ch < ctlH + 6);  // no room under the table: the controls float over it
     c.style.width = cw + 'px'; c.style.height = ch + 'px';
     c.width = Math.round(cw * dpr); c.height = Math.round(ch * dpr);
     geo = { k: k * dpr, css: k, portrait, focus: document.body.classList.contains('focus') };
@@ -575,6 +582,9 @@ UI.billiards = (() => {
       if (t > 0.18) aim += held.dir * rate * dt;
     }
     held.last = now;
+    // the floating controls and info card fade while balls roll or the cue is being aimed, so they hide nothing that matters
+    const busy = !!(anim || drag || touches.size), bl = $('blStage')?.parentElement;
+    if (bl && bl.classList.contains('bl-busy') !== busy) bl.classList.toggle('bl-busy', busy);
     draw(); shotSounds();
   }
 

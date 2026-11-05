@@ -654,6 +654,28 @@ body.focus .bl { max-width: none; }
 .bl-side .bl-racks { display: flex; flex-wrap: wrap; margin: 0; }
 .bl-side #blHint { flex-basis: 100%; margin: 0; font-size: 12px; }
 body.focus #blHint { display: none; }  /* ❓ has the same how-to; the table gets the room */
+/* focus mode on a wide screen (.bl-fill, set by billiards.js): the table takes the whole height. The game info turns into a
+   glass card over the top of the table that clicks pass through, and when there is no room under the table (.bl-over)
+   the shot controls float over its bottom edge. Both fade while the cue is aimed or the balls roll (.bl-busy). */
+.bl { position: relative; }
+.bl-over .bl-controls { position: absolute; left: 50%; bottom: 6px; transform: translateX(-50%); width: min(660px, calc(100% - 20px)); max-width: none;
+  margin: 0; padding: 6px 10px; border-radius: 14px; background: #0b0f14b8; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  box-shadow: 0 6px 24px #0008, inset 0 0 0 1px #ffffff14; z-index: 3; transition: opacity .25s; }
+.bl-over .bl-controls > button { padding-block: 7px; }
+.bl-over .bl-controls #blShoot { padding-block: 9px; }
+.bl-over .bl-stroke { height: 34px; }
+.bl-over #blSpinVal { display: none; }
+.bl-over .bl-spin { width: auto; flex-direction: row; gap: 6px; }  /* the slim bar sits on the rail; the cue ball's tip dot shows the spin */
+.bl-busy.bl-over .bl-controls { opacity: .3; }
+.bl-over .bl-controls:hover, .bl-over .bl-controls:focus-within { opacity: 1; }
+body.focus #game .layout:has(.bl-fill) > aside { position: fixed; top: calc(var(--bar-h, 52px) + 10px); left: 50%; transform: translateX(-50%);
+  width: max-content; max-width: min(760px, calc(100vw - 24px)); max-height: none; overflow: visible; z-index: 5; pointer-events: none; transition: opacity .25s; }
+body.focus #game .layout:has(.bl-fill) #sideGame { flex: none; }
+body.focus #game .layout:has(.bl-fill) .bl-side { margin: 0; padding: 4px 12px; border-radius: 12px; background: #0b0f14a6;
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); box-shadow: 0 4px 18px #0007; }
+body.focus #game .layout:has(.bl-fill) .bl-side #blStatus { flex: 0 1 auto; }
+body.focus #game .layout:has(.bl-fill) .bl-keys, body.focus #game .layout:has(.bl-fill) .log-panel { display: none !important; }
+body.focus #game .layout:has(.bl-busy) > aside { opacity: .2; }
 .bl-racks { display: grid; gap: 6px; margin: 8px 0; }
 .bl-keys { opacity: 0.8; }
 @media (hover: none) { .bl-keys { display: none; } }
