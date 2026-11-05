@@ -232,7 +232,7 @@ UI.putt = (() => {
     const p = S.putt, box = $('ppCard'); box.innerHTML = '';
     const t = ctx.el('table', 'scores');
     const head = ctx.el('tr');
-    const live = !p.between;  // between holes, the hole just played is already on the card
+    const live = !p.between && S.phase === 'playing';  // between holes and after the last one, the hole just played is already on the card
     const pars = p.pars || [];
     const played = p.cards[0].length + (live ? 1 : 0);
     head.append(ctx.el('th', '', 'Hole'), ...Array.from({ length: played }, (_, k) => ctx.el('th', k + 1 === p.hole ? 'now' : '', String(k + 1))));
@@ -258,7 +258,7 @@ UI.putt = (() => {
       if (live && p.holed[i]) diff += p.strokes[i] - (pars[p.hole - 1] ?? 3);
       const tot = ctx.el('td');
       tot.append(ctx.el('b', '', String(p.cards[i].reduce((a, b) => a + b, 0) + (live ? p.strokes[i] : 0))));
-      row.append(tot, ctx.el('td', 'pp-topar ' + (diff < 0 ? 'under' : diff > 0 ? 'over' : ''), toPar(diff)));
+      row.append(tot, ctx.el('td', 'pp-topar ' + (diff < 0 ? 'pp-under' : diff > 0 ? 'pp-over' : ''), toPar(diff)));
       t.append(row);
     });
     box.append(t);
