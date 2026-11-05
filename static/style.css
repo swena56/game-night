@@ -1432,7 +1432,7 @@ body.calm .gh-tile.trace { background: linear-gradient(#8ecae6, #4dabf7); }
 .lk-tile { width: clamp(22px, 6.5vw, 36px); height: var(--lk-th); display: flex; align-items: center; justify-content: center;
   background: #2a9d8f; border-radius: 4px; font-weight: 900; font-size: clamp(16px, 5vw, 26px); color: #111; }
 .lk-tile.on { background: #fff; }
-.lk-tile.flip { animation: lkflip .5s ease-out; }
+.lk-tile.flip { animation: lkflip .5s ease-out both; }
 @keyframes lkflip { from { transform: rotateY(90deg); background: #ffd166; } to { transform: none; } }
 .lk-keys { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin: 8px 0; }
 .lk-key { padding: 9px 0; font-weight: 800; }
