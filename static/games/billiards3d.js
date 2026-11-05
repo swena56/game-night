@@ -594,7 +594,14 @@ const Billiards3D = (() => {
 
     // ---------- camera
     const camNow = { pos: new T.Vector3(), look: new T.Vector3() }, camGoal = { pos: new T.Vector3(), look: new T.Vector3() };
-    let size = [300, 150], portrait = false, mode = 'table', fitted = null, settle = 0;
+    let size = [300, 150], portrait = false, mode = 'table', fitted = null, settle = 0, zoom = { z: 1, x: 0, y: 0 };
+    // the lens's crop: the overview's centring offset, and the two-finger zoom (canvas point p shows (p - x) / z),
+    // done by rendering the image z times bigger and showing the part on screen, so it's drawn sharp, not scaled up
+    function crop() {
+      const [w, h] = size, { z, x, y } = zoom, off = mode === 'table' && fitted ? fitted.off : [0, 0];
+      if (z === 1 && !x && !y && !off[0] && !off[1]) camera.clearViewOffset();
+      else camera.setViewOffset(w * z, h * z, off[0] * z - x, off[1] * z - y, w, h);
+    }
     // overview: tilted over the table's near side, far enough back that every rail fits, then centred
     function fitTable() {
       const el = 1.1, dir = portrait ? new T.Vector3(-Math.cos(el), Math.sin(el), 0) : new T.Vector3(0, Math.sin(el), Math.cos(el));
@@ -611,19 +618,22 @@ const Billiards3D = (() => {
       for (let i = 0; i < 30; i++) { const m = (lo + hi) / 2, bx = box(m); if (bx.x1 - bx.x0 > 1.96 || bx.y1 - bx.y0 > 1.96) lo = m; else hi = m; }
       const bx = box(hi);
       fitted = { pos: camera.position.clone(), off: [((bx.x0 + bx.x1) / 2) * size[0] / 2, -((bx.y0 + bx.y1) / 2) * size[1] / 2] };
-      camera.setViewOffset(size[0], size[1], fitted.off[0], fitted.off[1], size[0], size[1]);
+      crop();
     }
     // behind the cue: at least ~56° across, so a tall phone screen still shows the balls either side of the aim
     function cueLens() {
       camera.clearViewOffset(); camera.aspect = size[0] / size[1];
       camera.fov = Math.min(80, Math.max(46, (2 * Math.atan(Math.tan((28 * Math.PI) / 180) / camera.aspect) * 180) / Math.PI));
-      camera.updateProjectionMatrix();
+      crop(); camera.updateProjectionMatrix();
     }
     function resize(w, h, port) {
       size = [Math.max(50, w), Math.max(50, h)]; portrait = port;
       renderer.setSize(size[0], size[1], false);
       if (mode === 'table') fitTable(); else cueLens();
       key = '';
+    }
+    function setZoom(z, x, y) {
+      zoom = { z, x, y }; crop(); camera.updateProjectionMatrix(); key = '';
     }
     function setMode(m) {
       mode = m; key = '';
@@ -728,7 +738,7 @@ const Billiards3D = (() => {
       env.dispose(); macro.dispose();
       renderer.dispose(); canvas.remove();
     }
-    return { canvas, resize, render, pick, setMode, dispose, mode: () => mode };
+    return { canvas, resize, render, pick, setMode, setZoom, dispose, mode: () => mode };
   }
 
   return { create };
