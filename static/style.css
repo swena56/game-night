@@ -858,7 +858,7 @@ body.focus #blHint { display: none; }  /* ❓ has the same how-to; the table get
 .ch-pre { color: var(--accent2); font-weight: 700; }
 /* desktop: the controls sit in the side column, so the board can use the whole height (#69), and its pieces grow with it */
 @media (min-width: 861px) {
-  .chessboard { width: min(100%, 900px, var(--room)); container-type: inline-size; }
+  .chessboard { width: min(100%, 1400px, var(--room)); container-type: inline-size; }
   .piece { font-size: clamp(26px, 9.5cqw, 90px); }
 }
 
@@ -870,7 +870,7 @@ body.focus #blHint { display: none; }  /* ❓ has the same how-to; the table get
 .c3-pad button { width: 32px; height: 32px; padding: 0; border-radius: 8px; font-size: 16px; line-height: 1; background: #0009; color: #fff; border: 1px solid #ffffff2a; opacity: .7; }
 .c3-pad button:hover, .c3-pad button:focus-visible { opacity: 1; }
 /* desktop: the board can use the whole height (#69), like the 2D board */
-@media (min-width: 861px) { .chess3d { width: min(100%, 900px, calc(var(--room) + 10px)); } }
+@media (min-width: 861px) { .chess3d { width: min(100%, 1400px, calc(var(--room) + 10px)); } }
 
 /* cribbage */
 .cb { max-width: 640px; margin: 0 auto; }
@@ -1049,7 +1049,7 @@ body.kb-open .fb-fact { font-size: 16px; padding: 10px; }
 @keyframes goGone { 0% { transform: none; } 30% { transform: translateY(-20%) scale(1.15); } 100% { transform: translateY(-120%) scale(.4); opacity: 0; } }
 .stone.b { background: radial-gradient(circle at 35% 30%, #777, #222 45%, #000 70%); }
 .stone.w { background: radial-gradient(circle at 35% 30%, #fff, #eee 45%, #c9c4b8 80%); }
-@media (min-width: 861px) { .goban { width: min(100%, 900px, var(--room)); } }
+@media (min-width: 861px) { .goban { width: min(100%, 1400px, var(--room)); } }
 
 /* grid hunt */
 .gh { width: min(100%, 460px, calc(var(--room) - 80px)); min-width: min(100%, 300px); margin: 0 auto; }
@@ -2043,7 +2043,7 @@ body.focus .sm-stage { height: max(220px, calc(var(--room) - 155px)); }
 .ws-play.best b::after { content: ' ⭐'; }
 /* desktop: the board can use the whole height (#69), and its letters grow with it */
 @media (min-width: 861px) {
-  .ws-board { width: min(100%, 900px, var(--room)); container-type: inline-size; }
+  .ws-board { width: min(100%, 1400px, var(--room)); container-type: inline-size; }
   .ws-cell { font-size: clamp(7px, 2cqw, 16px); }
   .ws-cell.pstar { font-size: clamp(10px, 3cqw, 24px); }
   .ws-cell.tile { font-size: clamp(12px, 3.6cqw, 32px); }
@@ -2106,6 +2106,11 @@ body.focus .sm-stage { height: max(220px, calc(var(--room) - 155px)); }
 @media (max-width: 400px) { .topbar .logo.small { font-size: 0; } .topbar .logo.small::first-letter { font-size: 20px; } }
 
 @media (min-width: 861px) {
+  /* large screens: the game spans the whole window and the side panel is a slim column at the right edge, so the
+     board gets the room (the old 1300px cap and 340px panel left ~900px for the game however big the screen) */
+  #game .layout { max-width: none; grid-template-columns: minmax(0, 1fr) clamp(260px, 18vw, 300px); gap: 12px; }
+  #game .layout > aside .react-bar button { flex: 1 1 0; min-width: 0; }  /* seven reactions fit the slimmer column */
+  #game .layout > aside .sb-place-actions .row button { font-size: 14px; padding-inline: 4px; }
   #game .layout > aside { position: sticky; top: 64px; max-height: calc(var(--app-h, 100vh) - 76px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 }
 
