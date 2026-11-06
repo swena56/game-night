@@ -5,7 +5,7 @@
 // tap mode, tap the left/right half to turn relative to your bike); your bike turns on screen at
 // once, before the server confirms. Crashes cost a life: the wreck clears and you respawn.
 UI.riders = (() => {
-  let S, ctx, trails = [], live = [], lastTick = 0, tickAt = 0, round = 0, ring = 0;  // ring: 🧱 closed bands
+  let S, ctx, trails = [], live = [], lastTick = 0, tickAt = 0, round = 0, ring = 0, lastTwo = 0;  // ring: 🧱 closed bands
   let gl = null, flat = null, raf = 0, ro = null, keyHandler = null, swipe = null, root = null;
   let pred = null, tapTurn = false, lastCount = '';
   const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];
@@ -151,6 +151,9 @@ UI.riders = (() => {
       events(i, was, live[i]);
     });
     if (data.k !== lastTick) { lastTick = data.k; tickAt = performance.now(); }
+    // three or more started and two are left riding: the showdown
+    const riding = live.filter((L) => L?.alive || L?.respawnAt).length;
+    if (trails.length > 2 && riding === 2 && lastTwo !== round && data.st === 'ride') { lastTwo = round; Kit.callout('⚔️ Last two riders!', 'gold', { ms: 1400 }); ctx.sfx('rise', 8); }
     if ((data.w || 0) > ring) { if (!ring) { Kit.callout('🧱 The walls are closing in!', 'bad', { ms: 1500 }); ctx.sfx('alarm'); } ring = data.w; }
     const L = live[mine()];
     if (pred && L && (L.dir === pred.dir || lastTick > pred.k + 3)) pred = null;
