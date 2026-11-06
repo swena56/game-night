@@ -2703,3 +2703,7 @@ body.calm .ws-cell.justplayed, body.calm .ws-cell.nope { animation: none; }
   animation: ddBubble 2.5s ease-out both; }
 .dd-bubble b { color: #7048e8; }
 @keyframes ddBubble { 0% { opacity: 0; transform: translateY(10px) scale(.8); } 15% { opacity: 1; transform: none; } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-60px); } }
+/* air hockey: a fresh goal slams onto the scoreboard */
+.hk-num.slam { display: inline-block; animation: hkSlam .5s cubic-bezier(.3, 1.6, .5, 1); color: var(--accent); }
+@keyframes hkSlam { 0% { transform: scale(2.4); opacity: 0; } 60% { transform: scale(.9); opacity: 1; } 100% { transform: none; } }
+body.calm .hk-num.slam { animation: none; }
