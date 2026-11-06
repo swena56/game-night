@@ -182,6 +182,7 @@ class Go(Game):
         'Two passes in a row end the game. Stones + territory count; White gets komi (6.5 points unless you change it).',
         'Handicap (an option): Black starts with stones on the star points, White moves first and komi is 0.5. Against a bot, you play Black.',
         '↶ Undo asks your opponent to take back your last move; bots always agree.',
+        '⚔️ Atari Go (an option, for learning): the first capture wins the game.',
     ]
     name = "Go"
     icon = "⚫"
@@ -193,6 +194,7 @@ class Go(Game):
         "komi": ("Komi (White's bonus)", [(6.5, "6.5"), (7.5, "7.5"), (5.5, "5.5"), (0.5, "0.5")], 6.5),
         "handicap": ("Handicap stones for Black", [(0, "None"), (2, "2"), (3, "3"), (4, "4"), (5, "5"), (6, "6 (13×13+)"),
                                                    (9, "9 (13×13+)")], 0),
+        "variant": ("Rules", [("go", "Go"), ("atari", "⚔️ Atari Go: first capture wins")], "go"),
     }
     komi = KOMI  # games saved before the komi setting
     snaps, undo_ask = (), None  # games saved before undo existed have no snapshots
@@ -303,6 +305,8 @@ class Go(Game):
         self.last = [r, c]
         coord = f"{'ABCDEFGHJKLMNOPQRST'[c]}{len(self.board) - r}"
         self.room.add_log(f"{p.name}: {coord}" + (f" — captured {captured}" if captured else ""), "question")
+        if captured and self.s.get("variant") == "atari":
+            return self.room.finish(p, f"⚔️ {p.name} makes the first capture and wins Atari Go!")
         self.room.advance()
 
     def do_pass(self, p):
