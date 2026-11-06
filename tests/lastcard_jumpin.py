@@ -34,6 +34,8 @@ def table(jumpin, seed=2):
     g = r.game
     g.discard = ["5D"]
     g.suit = "D"
+    for p in ps:  # the deal isn't seeded: take out the cards the tests hand out
+        p.g.hand = [c for c in p.g.hand if c not in ("5H", "5S", "5D", "7H", "JH")] or ["2C"]
     return r, g, ps
 
 
