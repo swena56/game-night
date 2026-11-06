@@ -2643,3 +2643,10 @@ body.calm .sea-grid.hit-pulse { animation: none; }
 .bg-cubeblock.flip { animation: bgCube .6s cubic-bezier(.3, 1.4, .5, 1); }
 @keyframes bgCube { 0% { transform: translateX(-50%) rotateY(0) scale(1.4); } 100% { transform: translateX(-50%) rotateY(360deg) scale(1); } }
 body.calm .bg-cubeblock.flip { animation: none; }
+/* checkers: a material bar, and a refused tap shakes the piece */
+.ck-tray { flex-wrap: wrap; }
+.ck-material { flex: 1 0 100%; width: 100%; height: 8px; border-radius: 999px; background: #f4eedd; overflow: hidden; margin-bottom: 6px; box-shadow: inset 0 0 0 1px #0004; }
+.ck-material i { display: block; height: 100%; background: #1c1726; transition: width .4s; }
+.checker.nope { animation: ckNope .35s; }
+@keyframes ckNope { 20%, 60% { transform: translateX(-4px); } 40%, 80% { transform: translateX(4px); } }
+body.calm .checker.nope { animation: none; }
