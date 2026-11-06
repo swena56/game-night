@@ -48,6 +48,7 @@ class Hockey(Game):
     min_players = 2
     max_players = 2
     replayable = False
+    badges = {**Game.badges, "shutout": ("🧤", "Shutout", "Win without letting a goal in")}
     settings_schema = {
         "target": ("First to", [(5, "5 goals"), (7, "7 goals"), (3, "3 goals (quick)")], 5),
         "pucks": ("Pucks", [(1, "🏒 One"), (2, "🏒🏒 Double Trouble")], 1),
@@ -230,6 +231,8 @@ class Hockey(Game):
         name = who.name if who else "?"
         r.add_log(f"🚨 GOAL! {name} scores — {self.score[0]} : {self.score[1]}", "big" if max(self.score) >= self.s["target"] else "power")
         if self.score[scorer] >= self.s["target"]:
+            if min(self.score) == 0 and who:
+                self.award(who, "shutout")
             r.finish(who, f"🏆 {name} wins {max(self.score)}–{min(self.score)}!")
             return True
         self.serve(k, 1 - scorer, now)

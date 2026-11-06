@@ -72,6 +72,7 @@ class Doodle(Game):
     blurb = "A picture draws itself line by line. Shout it — well, type it — before anyone else."
     min_players = 2
     max_players = 6
+    badges = {**Game.badges, "quick": ("⚡", "Quick draw", "Name a picture before a quarter of it is drawn")}
     settings_schema = {
         "pictures": ("Pictures", [(6, "6"), (10, "10"), (15, "15")], 10),
         "mode": ("Scoring", [("all", "🙌 Everyone can score"), ("race", "⚡ First correct only")], "all"),
@@ -223,6 +224,8 @@ class Doodle(Game):
             pts = 3 + round(7 * (1 - frac)) + (2 if self.s["mode"] == "all" and not self.solvers else 0)
             pts = max(1, pts - len(self.extra_letters()))  # the late letters make it easier, so it's worth less
             self.solvers.append((p.id, pts))
+            if frac < 0.25:
+                self.award(p, "quick")
             p.g.score += pts
             p.g.got += 1
             if self.s["mode"] == "race":
