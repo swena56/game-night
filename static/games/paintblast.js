@@ -121,6 +121,7 @@ UI.paintblast = (() => {
       }
       if (parts.length > 400) parts = parts.slice(-400);
     }
+    if (i != null && d.p[i]?.[1] && !prev.p?.[i]?.[1]) { sfx('splash'); ctx?.buzz?.([60, 40, 60]); }  // I got splatted
     if (i != null) {
       const [pos] = d.p[i];
       if (prev.i?.some(([c]) => c === pos) && !d.i.some(([c]) => c === pos)) sfx('pickup');
@@ -233,7 +234,7 @@ UI.paintblast = (() => {
     const sh = now - shakeAt < 260 ? shakeAmp * cell * (1 - (now - shakeAt) / 260) : 0;
     g.setTransform(1, 0, 0, 1, sh ? (Math.random() - 0.5) * 2 * sh : 0, sh ? (Math.random() - 0.5) * 2 * sh : 0);
     g.fillStyle = '#17121f'; g.fillRect(-W, -W, 3 * W, 3 * W);
-    const paint = snap.c;
+    const paint = snap.c, gold = new Set(S.paintblast.gold || []);
     for (let c = 0; c < n * n; c++) {
       const x = (c % n) * cell, y = Math.floor(c / n) * cell, t = snap.t[c];
       if (t === '#') {
@@ -242,10 +243,21 @@ UI.paintblast = (() => {
         continue;
       }
       const owner = parseInt(paint.substr(c * 2, 2), 16);
-      g.fillStyle = owner ? colorOf(owner - 1) : (((c % n) + Math.floor(c / n)) % 2 ? '#221b2f' : '#1e1829');
-      g.globalAlpha = owner ? 0.6 : 1;
+      g.fillStyle = ((c % n) + Math.floor(c / n)) % 2 ? '#221b2f' : '#1e1829';
       g.fillRect(x, y, cell, cell);
-      g.globalAlpha = 1;
+      if (owner) {  // a splat, not a square: a blob with a few drops round it, the same shape every time
+        g.fillStyle = colorOf(owner - 1); g.globalAlpha = 0.72;
+        g.beginPath(); g.arc(x + cell / 2, y + cell / 2, cell * 0.5, 0, 7); g.fill();
+        for (let k = 0; k < 3; k++) {
+          const a = ((c * 7 + k * 13) % 12) * 0.52, rr = cell * (0.48 + ((c + k) % 3) * 0.05);
+          g.beginPath(); g.arc(x + cell / 2 + Math.cos(a) * rr, y + cell / 2 + Math.sin(a) * rr, cell * (0.09 + ((c * k) % 3) * 0.03), 0, 7); g.fill();
+        }
+        g.globalAlpha = 1;
+      }
+      if (gold.has(c)) {  // ⭐ worth 3: a gold frame and star
+        g.strokeStyle = '#ffd166'; g.lineWidth = Math.max(1.5, cell * 0.08); g.strokeRect(x + cell * 0.1, y + cell * 0.1, cell * 0.8, cell * 0.8);
+        g.fillStyle = '#ffd166'; g.font = `${Math.round(cell * 0.4)}px system-ui`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('★', x + cell / 2, y + cell / 2);
+      }
       if (t === '+') {
         g.fillStyle = '#a0703c'; g.fillRect(x + cell * 0.08, y + cell * 0.08, cell * 0.84, cell * 0.84);
         g.strokeStyle = '#6e4a24'; g.lineWidth = Math.max(1, cell * 0.07);
