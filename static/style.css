@@ -2721,3 +2721,11 @@ body.calm .hk-num.slam { animation: none; }
   animation: raMove 1.1s ease-out forwards; }
 #raPlace.up::after { color: #51cf66; } #raPlace.down::after { color: #ff6b6b; }
 @keyframes raMove { 0% { opacity: 0; transform: translateY(-50%) scale(1.6); } 20% { opacity: 1; transform: translateY(-50%); } 100% { opacity: 0; transform: translateY(-120%); } }
+/* last card: the seats in playing order, with the direction of play between them (#75) */
+.lc-seats { align-items: center; }
+.lc-arrow { font-weight: 900; color: var(--muted); font-size: 16px; } .lc-arrow.back { opacity: .5; }
+.lc-seat.me { border-style: dashed; }
+.lc-seat.up small { color: var(--accent); font-weight: 800; }
+/* hold'em: a draining bar under whoever is acting, when there's a turn timer (#76) */
+.he-clock { display: block; flex: 1 0 100%; min-width: 90px; height: 4px; border-radius: 2px; background: #ffffff22; overflow: hidden; margin-top: 3px; }
+.he-clock i { display: block; height: 100%; background: linear-gradient(90deg, var(--danger), var(--accent), var(--ok)); transform-origin: left; }

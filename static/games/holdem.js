@@ -92,6 +92,15 @@ UI.holdem = (() => {
     if (st.out) return f;
     const word = now ? nowWord : st.allin ? 'All-in' : st.folded ? 'Folded' : h.stage !== 'done' ? actWord(st.last) : '';
     if (word) f.append(ctx.el('span', 'he-act ' + (now ? 'now' : st.allin ? 'allin' : st.folded ? 'fold' : word.toLowerCase()), word));
+    // a turn timer: the acting player's time drains away under their name (#76)
+    if (now && S.timeLeft != null && S.settings?.timer && h.stage !== 'done') {
+      const left = Math.max(0, S.timeLeft - (performance.now() - stateAt) / 1000), full = Math.max(left, S.settings.timer);
+      const clock = ctx.el('span', 'he-clock'), bar = ctx.el('i');
+      bar.style.width = `${(100 * left) / full}%`;
+      if (motionOK()) bar.animate([{ width: `${(100 * left) / full}%` }, { width: '0%' }], { duration: left * 1000, fill: 'forwards' });
+      clock.title = `${Math.ceil(left)} s left`;
+      clock.append(bar); f.append(clock);
+    }
     if (st.bet) f.append(Chips.stack(st.bet, { max: 6, cls: 'he-chips he-bet' }));
     return f;
   }
@@ -201,6 +210,8 @@ UI.holdem = (() => {
       btn.hidden = !inGame;
       btn.disabled = asked;
       btn.textContent = asked ? 'Waiting for the others…' : 'Next hand ▶';
+      // ready for the keyboard: Enter or Space deals on (#77), once per hand so it doesn't steal focus later
+      if (inGame && !asked && btn.dataset.focused !== barKey) { btn.dataset.focused = barKey; btn.focus({ preventScroll: true }); }
     }
 
     $('heShow').hidden = !h.canShow || !ctx.act;
@@ -244,6 +255,7 @@ UI.holdem = (() => {
       const hand = mine.folded && h.stage !== 'done' ? '' : h.shown[me]?.hand || h.myHand;
       if (hand) foot.prepend(ctx.el('span', 'he-handname', `🃏 ${hand}`));
       if (h.bank != null) foot.append(ctx.el('span', 'he-bank', `⏳ ${h.bank} s bank`));
+      else if (meNow && !S.settings?.timer) foot.append(ctx.el('span', 'he-bank', '⏳ No turn timer: take your time'));
       info.append(foot);
     }
 
