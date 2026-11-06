@@ -5,7 +5,7 @@
 // tap mode, tap the left/right half to turn relative to your bike); your bike turns on screen at
 // once, before the server confirms. Crashes cost a life: the wreck clears and you respawn.
 UI.riders = (() => {
-  let S, ctx, trails = [], live = [], lastTick = 0, tickAt = 0, round = 0;
+  let S, ctx, trails = [], live = [], lastTick = 0, tickAt = 0, round = 0, ring = 0;  // ring: 🧱 closed bands
   let gl = null, flat = null, raf = 0, ro = null, keyHandler = null, swipe = null, root = null;
   let pred = null, tapTurn = false, lastCount = '';
   const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];
@@ -124,6 +124,7 @@ UI.riders = (() => {
     S = s; ctx = c;
     const r = s.riders;
     const fresh = r.round !== round;
+    ring = r.ring || 0;  // a full view carries the closed band (a new round opens it again)
     round = r.round;
     trails = r.trails.map((t) => [...t]);
     const old = live;
@@ -150,6 +151,7 @@ UI.riders = (() => {
       events(i, was, live[i]);
     });
     if (data.k !== lastTick) { lastTick = data.k; tickAt = performance.now(); }
+    if ((data.w || 0) > ring) { if (!ring) { Kit.callout('🧱 The walls are closing in!', 'bad', { ms: 1500 }); ctx.sfx('alarm'); } ring = data.w; }
     const L = live[mine()];
     if (pred && L && (L.dir === pred.dir || lastTick > pred.k + 3)) pred = null;
     S.riders.stage = data.st;
@@ -302,7 +304,7 @@ UI.riders = (() => {
     const camera = new T.PerspectiveCamera(38, 1, 0.5, 500);
     scene.add(new T.AmbientLight(0xffffff, 0.35));
     const sun = new T.DirectionalLight(0xffffff, 0.5); sun.position.set(-20, 60, 30); scene.add(sun);
-    let n = 0, world = null, ribbons = [], bikes = [], tips = [], drawn = [], pend = [], you = null, arrow = null, sparks = null;
+    let n = 0, world = null, ribbons = [], bikes = [], tips = [], drawn = [], pend = [], you = null, arrow = null, sparks = null, walls = [];
     const segGeo = new T.BoxGeometry(1, 1, 1);
 
     function build() {
@@ -323,8 +325,9 @@ UI.riders = (() => {
       }
       const floor = new T.Mesh(new T.PlaneGeometry(n, n), mat); floor.rotation.x = -Math.PI / 2; world.add(floor);
       const wallMat = new T.MeshStandardMaterial({ color: 0x8ecae6, emissive: 0x8ecae6, emissiveIntensity: 0.9 });
+      walls = [];
       for (const [w, d, x, z] of [[n + 1, 0.5, 0, -half - 0.25], [n + 1, 0.5, 0, half + 0.25], [0.5, n + 1, -half - 0.25, 0], [0.5, n + 1, half + 0.25, 0]]) {
-        const m = new T.Mesh(new T.BoxGeometry(w, 1.2, d), wallMat); m.position.set(x, 0.6, z); world.add(m);
+        const m = new T.Mesh(new T.BoxGeometry(w, 1.2, d), wallMat); m.position.set(x, 0.6, z); world.add(m); walls.push(m);
       }
       ribbons = []; bikes = []; tips = []; drawn = []; pend = [];
       S.riders.seats.forEach((_, i) => {
@@ -487,6 +490,13 @@ UI.riders = (() => {
     function draw(now) {
       if (!world) return;
       const dt = Math.min(0.1, (now - lastDraw) / 1000); lastDraw = now;
+      // 🧱 the walls move in, ring by ring
+      if (walls.length === 4 && walls.ring !== ring) {
+        walls.ring = ring;
+        const h = n / 2 - ring, span = (n - 2 * ring + 1) / (n + 1);
+        walls[0].position.z = -h - 0.25; walls[1].position.z = h + 0.25; walls[2].position.x = -h - 0.25; walls[3].position.x = h + 0.25;
+        walls.forEach((m) => { m.scale.set(m.geometry.parameters.width > 1 ? span : 1, 1, m.geometry.parameters.depth > 1 ? span : 1); m.material.color.setHex(ring ? 0xff6b6b : 0x8ecae6); m.material.emissive.setHex(ring ? 0xff6b6b : 0x8ecae6); });
+      }
       tickBooms(dt); tickSparks(dt);
       const me = S.riders.me;
       trails.forEach((t, i) => {
@@ -548,6 +558,12 @@ UI.riders = (() => {
       const n = S.riders.n;
       if (!canvas.width) resize();
       g.fillStyle = '#05060f'; g.fillRect(0, 0, canvas.width, canvas.height);
+      if (ring) {  // 🧱 the closed band round the edge
+        g.fillStyle = '#ff6b6b33';
+        g.fillRect(0, 0, canvas.width, ring * cell); g.fillRect(0, canvas.height - ring * cell, canvas.width, ring * cell);
+        g.fillRect(0, 0, ring * cell, canvas.height); g.fillRect(canvas.width - ring * cell, 0, ring * cell, canvas.height);
+        g.strokeStyle = '#ff6b6b'; g.lineWidth = 2; g.strokeRect(ring * cell, ring * cell, canvas.width - 2 * ring * cell, canvas.height - 2 * ring * cell);
+      }
       g.strokeStyle = '#1f6fff22'; g.lineWidth = 1;
       for (let k = 0; k <= n; k += 4) { g.beginPath(); g.moveTo(k * cell, 0); g.lineTo(k * cell, canvas.height); g.moveTo(0, k * cell); g.lineTo(canvas.width, k * cell); g.stroke(); }
       trails.forEach((t, i) => {

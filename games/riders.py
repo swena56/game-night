@@ -22,6 +22,8 @@ SYNC_EVERY = 3.0   # seconds between full-view resyncs while riding
 TAIL = 6           # recent cells per rider in each fast update (covers missed updates and boosts)
 
 
+SHRINK_AFTER, SHRINK_EVERY = 60, 2.5  # 🧱 closing arena: seconds of riding before the walls move, then a ring this often
+
 class Riders(Game):
     id = "riders"
     category = "action"
@@ -43,7 +45,13 @@ class Riders(Game):
         "arena": ("Arena", [(44, "Medium"), (32, "Small"), (60, "Large")], 44),
         "speed": ("Speed", [(10, "Normal"), (7, "Chill"), (14, "Fast")], 10),
         "lives": ("Lives", [(3, "3"), (1, "1 (classic)"), (5, "5")], 3),
+        "shrink": ("🧱 Closing arena", [(False, "Off"), (True, f"On: after {SHRINK_AFTER} s the walls close in")], False),
     }
+
+    def walled(self, x, y):
+        """Inside the band the 🧱 closing arena has already walled off."""
+        ring = getattr(self, "ring", 0)
+        return ring > 0 and min(x, y, self.n - 1 - x, self.n - 1 - y) < ring
 
     # -- setup
 
@@ -71,6 +79,7 @@ class Riders(Game):
         self.lives = [self.s.get("lives", 3)] * k
         self.respawn_at, self.ghost, self.grind = [None] * k, [0] * k, [0] * k
         self.tick = 0
+        self.ring, self.ride_at = 0, None
         # spread riders round a circle, each facing the nearest axis toward the centre
         offset = self.rng.random() * 6.283
         for i in range(k):
@@ -132,6 +141,7 @@ class Riders(Game):
             if now >= self.next_at:
                 self.stage = "ride"
                 self.acc = 0.0
+                self.ride_at = now
                 return True
             return False
         if self.stage == "over":
@@ -143,6 +153,13 @@ class Riders(Game):
         for i, at in enumerate(self.respawn_at):
             if at is not None and now >= at:
                 changed |= self.respawn(i)
+        if self.s.get("shrink") and getattr(self, "ride_at", None):  # 🧱 a ring closes every few seconds
+            ring = min(self.n // 2 - 4, max(0, int((now - self.ride_at - SHRINK_AFTER) // SHRINK_EVERY) + 1))
+            if ring > self.ring:
+                if not self.ring:
+                    self.room.add_log("🧱 The arena is closing in!", "power")
+                self.ring = ring
+                changed = True
         self.acc += dt * self.s["speed"]
         while self.acc >= 1 and self.stage == "ride":
             self.acc -= 1
@@ -181,7 +198,7 @@ class Riders(Game):
                 hx, hy = divmod(self.trails[i][-1], self.n)[::-1]
                 dx, dy = DIRS[self.dirs[i]]
                 x, y = hx + dx, hy + dy
-                if not (0 <= x < self.n and 0 <= y < self.n) or self.grid[y * self.n + x]:
+                if not (0 <= x < self.n and 0 <= y < self.n) or self.grid[y * self.n + x] or self.walled(x, y):
                     crashed.add(i)
                 else:
                     targets.setdefault(y * self.n + x, []).append(i)
@@ -252,13 +269,13 @@ class Riders(Game):
         best, best_score = None, -1
         for _ in range(60):
             c = self.rng.randrange(n * n)
-            if self.grid[c] or any(abs(h % n - c % n) + abs(h // n - c // n) < 4 for h in heads):
+            if self.grid[c] or self.walled(c % n, c // n) or any(abs(h % n - c % n) + abs(h // n - c // n) < 4 for h in heads):
                 continue
             score = self.space(c, 200) * 10 + max(self.run(c, d) for d in range(4))
             if score > best_score:
                 best, best_score = c, score
         if best is None:  # nowhere open: try any empty cell at all
-            empty = [c for c in range(n * n) if not self.grid[c]]
+            empty = [c for c in range(n * n) if not self.grid[c] and not self.walled(c % n, c // n)]
             if not empty:
                 self.lives[i] = 0
                 self.check_round(time.time())
@@ -294,7 +311,7 @@ class Riders(Game):
 
     def broadcast(self, now):
         self.room.push_fast({
-            "k": self.tick, "st": self.stage,
+            "k": self.tick, "st": self.stage, "w": getattr(self, "ring", 0),
             "p": [[len(t), int(self.alive[i]), self.dirs[i], self.boosts[i], int(self.boosting[i] > 0),
                    self.lives[i], self.grind[i], *t[-TAIL:]]
                   for i, t in enumerate(self.trails)],
@@ -305,7 +322,7 @@ class Riders(Game):
     def free(self, c, dx, dy):
         """Cell index one step from c, or None if that's a wall or a trail."""
         x, y = c % self.n + dx, c // self.n + dy
-        if 0 <= x < self.n and 0 <= y < self.n and not self.grid[y * self.n + x]:
+        if 0 <= x < self.n and 0 <= y < self.n and not self.grid[y * self.n + x] and not self.walled(x, y):
             return y * self.n + x
         return None
 
@@ -430,6 +447,7 @@ class Riders(Game):
     def view(self, p):
         return {"riders": {
             "n": self.n, "seats": self.seats, "me": self.seat(p), "stage": self.stage, "round": self.round,
+            "ring": getattr(self, "ring", 0),
             "wins": self.wins, "target": self.s["target"], "speed": self.s["speed"], "tick": self.tick,
             "trails": self.trails, "alive": self.alive, "dirs": self.dirs, "boosts": self.boosts,
             "lives": self.lives, "maxLives": self.s.get("lives", 3), "grind": self.grind, "grindFull": GRIND_FULL,
