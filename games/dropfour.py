@@ -95,7 +95,7 @@ class DropFour(Game):
         'Line up four in a row — across, down or diagonally — to win.',
         'With bombs on, a 💣 disc clears its 3×3 area and the stack falls.',
         'With ⬇️ pull-outs on, you may instead take one of your own discs out of the bottom row; the column slides down. A pull that lines up four for you and a rival wins for you.',
-        '3–4 players get a bigger board.',
+        '3–4 players get a bigger board; two players can pick one too (7 × 8 or 7 × 9).',
     ]
     name = "Drop Four"
     icon = "🔴"
@@ -105,6 +105,7 @@ class DropFour(Game):
     settings_schema = {
         "bombs": ("Bomb discs", [(False, "Off"), (True, "💣 One each")], False),
         "pull": ("Pull-outs", [(False, "Off"), (True, "⬇️ Pull your own disc from the bottom")], False),
+        "board": ("Board (2 players)", [("6x7", "6 × 7 (classic)"), ("7x8", "7 × 8"), ("7x9", "7 × 9 (wide)")], "6x7"),
     }
     badges = {**Game.badges, "demolition": ("💥", "Demolition", "Connect four with your own bomb or pull-out"),
               "gift": ("🎁", "Thanks for that", "Win because a rival's bomb or pull-out connected your four")}
@@ -113,7 +114,7 @@ class DropFour(Game):
     def start(self, seated, rng):
         rng.shuffle(seated)
         self.seats = [p.id for p in seated]
-        rows, cols = (6, 7) if len(seated) == 2 else (7, 9)
+        rows, cols = tuple(map(int, self.s.get("board", "6x7").split("x"))) if len(seated) == 2 else (7, 9)
         self.grid = [[None] * cols for _ in range(rows)]
         self.bombs = {p.id: 1 if self.s["bombs"] else 0 for p in seated}
         self.last = None
@@ -204,6 +205,7 @@ class DropFour(Game):
 
     def view(self, p):
         return {"d4": {"grid": self.grid, "seats": self.seats, "last": self.last, "line": self.line,
+                       "me": self.seats.index(p.id) if p.id in self.seats else None,
                        "moves": list(self.moves), "bombs": self.bombs.get(p.id, 0),
                        "pulls": pulls_for(self.grid, self.seats.index(p.id)) if self.s.get("pull") and p.id in self.seats else []}}
 

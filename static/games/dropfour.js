@@ -7,7 +7,10 @@ UI.dropfour = (() => {
     side.innerHTML = `<div class="panel"><div id="d4Info"></div>
       <div id="d4Moves" class="d4-moves"></div>
       <button id="bombBtn" class="danger" hidden>💣 Arm bomb</button>
-      <button id="pullBtn" hidden>⬇️ Pull a disc</button></div>`;
+      <button id="pullBtn" hidden>⬇️ Pull a disc</button>
+      <label class="check d4-warn"><input type="checkbox" id="d4Warn"> ⚠ Show where a rival wins next</label></div>`;
+    try { document.getElementById('d4Warn').checked = !!localStorage.getItem('dropfour.warn'); } catch {}
+    document.getElementById('d4Warn').onchange = (e) => { try { localStorage.setItem('dropfour.warn', e.target.checked ? '1' : ''); } catch {} ctx.rerender(); };
     board = main.querySelector('.d4');
     document.getElementById('bombBtn').onclick = () => { bombArmed = !bombArmed; pullArmed = false; ctx.rerender(); };
     document.getElementById('pullBtn').onclick = () => { pullArmed = !pullArmed; bombArmed = false; ctx.rerender(); };
@@ -46,6 +49,10 @@ UI.dropfour = (() => {
     });
     // the win line lights up disc by disc
     (d.line || []).forEach(([r, c], k) => board.children[r * cols + c]?.style.setProperty('--k', k));
+    // ⚠ (on this device, if asked for) the columns where a rival's next disc makes four
+    const warn = document.getElementById('d4Warn')?.checked && S.phase === 'playing' && d.me != null;
+    const danger = warn ? threats(d.grid, d.me) : new Set();
+    [...board.children].forEach((cell, i) => cell.classList.toggle('danger', Math.floor(i / cols) === 0 && danger.has(i % cols)));
     juice(d, rows, cols);
     board.classList.toggle('armed', bombArmed);
     board.classList.toggle('pulling', pullArmed);
@@ -80,6 +87,26 @@ UI.dropfour = (() => {
     pb.textContent = pullArmed ? '⬇️ Tap one of your bottom discs (tap here to cancel)' : '⬇️ Pull a disc';
   }
 
+  // columns where some rival dropping a disc next would line up four
+  function threats(grid, me) {
+    const rows = grid.length, cols = grid[0].length, out = new Set();
+    const seats = new Set(grid.flat().filter((v) => v != null && v !== me));
+    for (let c = 0; c < cols; c++) {
+      let r = rows - 1; while (r >= 0 && grid[r][c] != null) r--;
+      if (r < 0) continue;
+      for (const s of seats) {
+        const at = (y, x) => y >= 0 && y < rows && x >= 0 && x < cols && (y === r && x === c ? s : grid[y][x]) === s;
+        for (const [dy, dx] of [[0, 1], [1, 0], [1, 1], [1, -1]]) {
+          let n = 1;
+          for (let k = 1; k < 4 && at(r + dy * k, c + dx * k); k++) n++;
+          for (let k = 1; k < 4 && at(r - dy * k, c - dx * k); k++) n++;
+          if (n >= 4) out.add(c);
+        }
+      }
+    }
+    return out;
+  }
+
   // the column under the pointer glows, with a ghost of my disc at the top of it
   function hover(col) {
     const cols = +board.style.getPropertyValue('--cols') || 7;
@@ -96,6 +123,7 @@ UI.dropfour = (() => {
       const [, , how] = moves[n - 1];
       if (how === 'pull' || how === true) {
         ctx.sfx(how === true ? 'boom' : 'whoosh');
+        if (how === true) Kit.callout('💣 BOOM', 'bad', { ms: 1000 });
         if (how === true) { ctx.buzz(60); if (motionOK()) { board.classList.remove('shake'); void board.offsetWidth; board.classList.add('shake'); } }
         // discs that changed after a bomb or pull slide down into place
         const before = prevGrid ? JSON.parse(prevGrid) : null;
@@ -107,7 +135,11 @@ UI.dropfour = (() => {
       } else if (d.last) {
         setTimeout(() => ctx.sfx('place'), (250 + (d.last[0] + 1) * 60));
       }
-      if (d.line) setTimeout(() => ctx.sfx('good'), 500);
+      if (d.line) {
+        setTimeout(() => ctx.sfx('good'), 500);
+        const wonBy = d.grid[d.line[0][0]][d.line[0][1]];
+        setTimeout(() => Kit.callout(wonBy === d.me ? '🔴 Four!' : 'Four in a row', wonBy === d.me ? 'gold' : 'cool', { ms: 1400 }), 650);
+      }
     }
     seenMoves = n; prevGrid = grid;
   }

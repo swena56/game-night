@@ -1067,6 +1067,11 @@ body.kb-open .dd-paper { width: min(100%, calc(var(--room) - 130px), 520px); min
 .d4-cell.settle::after { animation: d4settle .35s cubic-bezier(.5, 0, .75, 1), d4bounce .2s ease-out .35s; }
 @keyframes d4settle { from { transform: translateY(-112%); } }
 .d4-cell:disabled { opacity: 1; cursor: default; }
+/* a glossy moulded panel, and the ⚠ warning over a column a rival wins with */
+.d4 { background: radial-gradient(ellipse at 30% 0%, #ffffff30, transparent 45%), linear-gradient(160deg, #3b6ff0, #1d4ed8 45%, #173ea8); border: 3px solid #102c78; }
+.d4-cell.danger::before { content: '⚠'; position: absolute; top: -2px; left: 50%; transform: translate(-50%, -100%); font-size: 16px; z-index: 2;
+  animation: pulse .8s ease-in-out infinite alternate; filter: drop-shadow(0 0 4px #ff6b6b); }
+.d4-warn { margin-top: 8px; font-size: 13px; }
 .d4.armed { background: #8b1d1d; }
 .d4-moves { display: flex; flex-wrap: wrap; gap: 3px; max-height: 52px; overflow-y: auto; margin: 6px 0; }
 .d4-move { min-width: 20px; height: 20px; padding: 0 4px; border-radius: 10px; background: var(--disc); color: #fff; font: 600 11px/20px system-ui, sans-serif; text-align: center; text-shadow: 0 1px 1px #0008; opacity: .75; }
