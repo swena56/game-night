@@ -2617,3 +2617,18 @@ body.calm .crew-ship.loaded { animation: none; }
 .ld-entry.shake { animation: ldShake .35s; }
 @keyframes ldShake { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
 body.calm .ld-entry.shake { animation: none; }
+/* sea battle: pegs, fleet silhouettes and a pulse when your fleet is hit */
+.sea-cell.peg-miss::after, .sea-cell.peg-hit::after { content: ''; position: absolute; inset: 28%; border-radius: 50%; pointer-events: none; }
+.sea-cell.peg-miss::after { border: 2px solid #f1f5ff; background: #ffffff18; inset: 32%; }
+.sea-cell.peg-hit::after { background: radial-gradient(circle at 35% 30%, #ff9aa8, #e63946 45%, #8d1323); box-shadow: 0 1px 2px #0009, 0 0 6px #ff4d6d88; }
+.sea-cell.sunk.peg-hit::after { background: radial-gradient(circle at 35% 30%, #777, #333 55%, #111); box-shadow: 0 0 0 1px #e63946; }
+.sea-cell { position: relative; }
+.sb-fleet { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0; }
+.sb-fleet small { min-width: 3.6em; color: var(--muted); }
+.sb-hull { display: inline-flex; gap: 1px; padding: 2px 5px; border-radius: 2px 10px 10px 2px; background: #5c6f86; position: relative; }
+.sb-hull i { width: 8px; height: 8px; border-radius: 50%; background: #cfd8e3; }
+.sb-hull i.x { background: #e63946; }
+.sb-hull.sunk { opacity: .5; } .sb-hull.sunk::after { content: ''; position: absolute; left: -2px; right: -2px; top: 50%; height: 2px; background: #ff6b6b; }
+.sea-grid.hit-pulse { animation: sbHit .7s ease-out; }
+@keyframes sbHit { 0% { box-shadow: 0 0 0 0 #e63946; transform: scale(1.04); } 100% { box-shadow: 0 0 0 14px #e6394600; transform: none; } }
+body.calm .sea-grid.hit-pulse { animation: none; }
