@@ -511,7 +511,10 @@ UI.sumo = (() => {
         ghost.add(gh, gd); ghost.visible = false; scene.add(ghost);
         const aim = new T.Mesh(new T.RingGeometry(0.75, 0.95, 32), new T.MeshBasicMaterial({ color: col, transparent: true, opacity: i === S.sumo.me ? 0.9 : 0.35, side: T.DoubleSide, depthWrite: false }));
         aim.rotation.x = -Math.PI / 2; aim.visible = false; scene.add(aim);
-        g.userData = { glow, hull, hullMat, bubble, lights, shadow, ghost, aim, gpos: null, col: '#' + col.getHexString() };
+        // 👑 the crown that floats over whoever leads on rounds won
+        const crown = new T.Sprite(new T.SpriteMaterial({ map: canvasTex(T, 64, (cg, n) => { cg.font = `${n * 0.8}px serif`; cg.textAlign = 'center'; cg.textBaseline = 'middle'; cg.fillText('👑', n / 2, n / 2 + 2); }), transparent: true, depthWrite: false }));
+        crown.scale.setScalar(r * 1.4); crown.position.y = r * 1.5; crown.visible = false; g.add(crown);
+        g.userData = { glow, hull, hullMat, bubble, lights, shadow, ghost, aim, crown, gpos: null, col: '#' + col.getHexString() };
         if (i === S.sumo.me) {
           const mark = new T.Mesh(new T.RingGeometry(r * 1.25, r * 1.45, 32), new T.MeshBasicMaterial({ color: 0xffffff, side: T.DoubleSide }));
           mark.rotation.x = -Math.PI / 2; mark.position.y = -r * 0.3; g.add(mark);
@@ -603,6 +606,9 @@ UI.sumo = (() => {
         g.rotation.z = falling ? g.rotation.z + 0.05 : Math.max(-0.35, Math.min(0.35, -s[2] * 0.04));
         g.rotation.x = falling ? g.rotation.x : Math.max(-0.35, Math.min(0.35, s[3] * 0.04));
         u.glow.visible = !!s[4] || !!(pw & 2);
+        // the crown sits on the one player ahead on rounds won (nobody wears it on a tie)
+        const wins = S.sumo.wins || [], top = Math.max(0, ...wins);
+        if (u.crown) u.crown.visible = top > 0 && wins[i] === top && wins.filter((w) => w === top).length === 1;
         u.glow.material.color.setHex(s[4] ? 0xffffff : 0x3fe0ff);
         // 🪨 heavy: bigger and darker, glowing like hot iron; 🛡️ a bubble
         const big = pw & 1 ? 1.18 : 1;

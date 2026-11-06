@@ -2081,7 +2081,7 @@ body.focus .spire-stage { height: max(240px, calc(var(--room) - 70px)); }
 
 /* sumo saucers (banners and score rows in section 5) */
 .sm { max-width: 640px; margin: 0 auto; overscroll-behavior: none; user-select: none; -webkit-user-select: none; }
-.sm-stage { position: relative; height: min(calc(var(--app-h, 100vh) * .62), 600px); border-radius: var(--radius); overflow: hidden;
+.sm-stage { position: relative; height: clamp(240px, calc(var(--room) - 150px), 600px); border-radius: var(--radius); overflow: hidden;
   display: flex; justify-content: center; align-items: center; background: #05040d; }
 /* out of the flow, so a canvas sized for a wider screen can't hold the stage open past the app (#75) */
 .sm-stage canvas { position: absolute; inset: 0; margin: auto; max-width: 100%; max-height: 100%; display: block; }
