@@ -46,6 +46,25 @@ def minimax(cells, me):
     return best
 
 
+@lru_cache(maxsize=None)
+def minimax_misere(cells, me):
+    """🙃 Misère: whoever makes a line loses, so the scores are turned round."""
+    w, _ = winner_of(cells)
+    if w is not None:
+        return (-1 if w == me else 1), None
+    free = [i for i, v in enumerate(cells) if v is None]
+    if not free:
+        return 0, None
+    best = (-2, None)
+    for i in free:
+        nxt = list(cells)
+        nxt[i] = me
+        score = -minimax_misere(tuple(nxt), 1 - me)[0]
+        if score > best[0]:
+            best = (score, i)
+    return best
+
+
 class TicTacToe(Game):
     id = "tictactoe"
     category = "classic"
@@ -53,13 +72,14 @@ class TicTacToe(Game):
         'Take turns placing your mark.',
         'Three in a row wins (four in a row on the 4×4 board).',
         '👻 Vanishing: you keep only your 3 newest marks (4 on 4×4) — the faded one disappears next.',
+        '🙃 Misère: everything turned round. Whoever completes a line loses.',
     ]
     name = "Tic-Tac-Toe"
     icon = "❌"
     blurb = "Three in a row. Try Vanishing mode: only your 3 newest marks stay on the board."
     badges = {**Game.badges, "vanisher": ("👻", "Now you see me", "Win a Vanishing game")}
     settings_schema = {
-        "variant": ("Variant", [("classic", "Classic"), ("vanishing", "👻 Vanishing")], "classic"),
+        "variant": ("Variant", [("classic", "Classic"), ("vanishing", "👻 Vanishing"), ("misere", "🙃 Misère (a line loses)")], "classic"),
         "size": ("Board", [(3, "3×3"), (4, "4×4 (four in a row)")], 3),
     }
 
@@ -81,6 +101,9 @@ class TicTacToe(Game):
 
     def keep(self):
         return self.n
+
+    def misere(self):
+        return self.s["variant"] == "misere"
 
     def vanishing(self):
         return self.s["variant"] == "vanishing"
@@ -111,6 +134,9 @@ class TicTacToe(Game):
         w, line = winner_of(self.cells)
         if w is not None:
             self.line = line
+            if self.misere():  # 🙃 the one who made the line loses
+                o = r.players.get(self.seats[1 - seat])
+                return r.finish(o, f"🙃 {p.name} made {'three' if self.n == 3 else 'four'} in a row and loses — {o.name if o else '?'} wins!")
             if self.vanishing():
                 self.award(p, "vanisher")
             r.finish(p, f"🏆 {p.name} gets {'three' if self.n == 3 else 'four'} in a row!")
@@ -135,6 +161,11 @@ class TicTacToe(Game):
     def bot_turn(self, p):
         seat = self.seat(p)
         free = [i for i, v in enumerate(self.cells) if v is None]
+        if self.misere():  # make no line of your own; the hard bot plays it perfectly on 3×3
+            if p.bot == "hard" and self.n == 3:
+                return self.move(p, minimax_misere(tuple(self.cells), seat)[1])
+            safe = [i for i in free if winner_of(self.place(self.cells, self.history, seat, i)[0])[0] is None] or free
+            return self.move(p, random.choice(safe if p.bot != "easy" or random.random() < 0.7 else free))
         if p.bot == "hard" and not self.vanishing() and self.n == 3:
             return self.move(p, minimax(tuple(self.cells), seat)[1])
 

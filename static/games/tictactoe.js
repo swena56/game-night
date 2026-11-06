@@ -1,5 +1,5 @@
 UI.tictactoe = (() => {
-  let S, ctx, grid, built = 0, prev = null, last = -1, strike = null, struck = '';
+  let S, ctx, grid, built = 0, prev = null, last = -1, strike = null, struck = '', me = -1;
   // the marks are pen strokes that draw themselves in (Kit.ink: an ✖ is two strokes, a ◯ one loop)
   const SVGNS = 'http://www.w3.org/2000/svg';
   const drawMark = (seat) => Kit.ink(seat);
@@ -20,9 +20,23 @@ UI.tictactoe = (() => {
       const b = document.createElement('button');
       b.className = 'ttt-cell';
       b.onclick = () => ctx.quiet(ctx.act('move', { cell: i }));
+      // a faint ghost of your mark where you're pointing (or focused), before you commit
+      const ghostOn = () => { if (ctx?.myTurn && !b.disabled && me >= 0 && !b.querySelector('.ghost')) { const g = Kit.ink(me, true); g.classList.add('ghost'); b.append(g); } };
+      const ghostOff = () => b.querySelector('.ghost')?.remove();
+      b.onpointerenter = (e) => e.pointerType === 'mouse' && ghostOn();
+      b.onpointerleave = ghostOff; b.onfocus = () => b.matches(':focus-visible') && ghostOn(); b.onblur = ghostOff;
       grid.append(b);
     }
     gridKeys(grid, n);
+    // the grid itself is drawn in pen too, line by line
+    const lines = document.createElementNS(SVGNS, 'svg');
+    lines.setAttribute('viewBox', '0 0 100 100'); lines.setAttribute('preserveAspectRatio', 'none'); lines.setAttribute('class', 'ttt-grid');
+    for (let k = 1; k < n; k++) for (const d of [`M${(100 * k) / n} 3 V97`, `M3 ${(100 * k) / n} H97`]) {
+      const p = document.createElementNS(SVGNS, 'path'); p.setAttribute('d', d); p.setAttribute('pathLength', '100');
+      p.style.animationDelay = `${lines.childElementCount * 0.08}s`;
+      lines.append(p);
+    }
+    grid.append(lines);
   }
 
   function render(s, c) {
@@ -36,7 +50,7 @@ UI.tictactoe = (() => {
     }
     if (t.cells.every((v) => v == null)) last = -1;
     prev = [...t.cells];
-    [...grid.children].forEach((b, i) => {
+    [...grid.querySelectorAll('.ttt-cell')].forEach((b, i) => {  // (the pen overlays aren't cells)
       const v = t.cells[i];
       if (String(v) !== b.dataset.v) {
         b.dataset.v = String(v);
@@ -54,6 +68,10 @@ UI.tictactoe = (() => {
     drawStrike(t, n);
     const lineNew = Kit.changed('ttt-line', t.line || null);
     if (t.line && lineNew) ctx.sfx('crack');
+    // a full board and no line: the cat gets this one
+    const drawn = S.phase === 'over' && !S.winner && !t.line;
+    if (drawn && Kit.changed('ttt-cat', S.gameNo)) { Kit.callout("🐱 Cat's game", 'cool', { ms: 1500 }); ctx.sfx('bad'); }
+    me = t.seats.indexOf(S.me.id);
     const info = document.getElementById('tttInfo'); info.innerHTML = '';
     t.seats.forEach((pid, i) => {
       const p = ctx.player(pid);
