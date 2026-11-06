@@ -2607,3 +2607,8 @@ body.calm .liar-bid.bump { animation: none; }
 body.calm .crew-ship.loaded { animation: none; }
 /* shut the box: the chance a roll leaves you stuck, on each roll button */
 .sb-odds { display: block; font-size: 11px; font-weight: 600; opacity: .8; }
+/* morris: the men still to place, in a row beside the board */
+.mm-res { display: flex; justify-content: center; gap: 3px; min-height: 18px; margin: 4px 0; flex-wrap: wrap; }
+.mm-res-man { width: 16px; height: 16px; border-radius: 50%; box-shadow: 0 2px 3px #0008; }
+.mm-res-man.dark { background: radial-gradient(circle at 35% 30%, #5a4e70, #1c1726 55%, #0c0a12); }
+.mm-res-man.light { background: radial-gradient(circle at 35% 30%, #fff, #f4eedd 60%, #c9bfa4); }

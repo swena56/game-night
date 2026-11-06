@@ -6,6 +6,7 @@ rival man (not one in a mill, unless all of them are). With only 3 men left you 
 point (optional). You lose with fewer than 3 men or no legal move."""
 from functools import partial
 
+from .undo import Undo
 from .base import Game, GameError
 from .search import WIN, best_move
 
@@ -37,16 +38,17 @@ def removable(board, rival, twelve=False):
     return loose or theirs
 
 
-def steps(state, me, fly=True, twelve=False):
-    """(src, dst) pairs, src = -1 for a placement."""
+def steps(state, me, fly=True, twelve=False, lasker=False):
+    """(src, dst) pairs, src = -1 for a placement. Lasker: while men are left to place, you may place or move."""
     board, hand, _ = state
     empty = [i for i, v in enumerate(board) if v is None]
-    if hand[me]:
-        return [(-1, d) for d in empty]
+    places = [(-1, d) for d in empty] if hand[me] else []
+    if hand[me] and not lasker:
+        return places
     mine = [i for i, v in enumerate(board) if v == me]
-    if fly and len(mine) == 3:
+    if fly and len(mine) == 3 and not hand[me]:
         return [(s, d) for s in mine for d in empty]
-    return [(s, d) for s in mine for d in sorted(GEO[twelve][1][s]) if board[d] is None]
+    return places + [(s, d) for s in mine for d in sorted(GEO[twelve][1][s]) if board[d] is None]
 
 
 def moved(board, me, src, dst):
@@ -57,14 +59,14 @@ def moved(board, me, src, dst):
     return b
 
 
-def legal(state, me, fly=True, twelve=False):
+def legal(state, me, fly=True, twelve=False, lasker=False):
     board, hand, quiet = state
     if quiet >= QUIET_LIMIT:
         return []
     if not hand[me] and board.count(me) < 3:
         return []
     out = []
-    for src, dst in steps(state, me, fly, twelve):
+    for src, dst in steps(state, me, fly, twelve, lasker):
         b = moved(board, me, src, dst)
         if any(all(b[j] == me for j in m) for m in GEO[twelve][2][dst]):
             out += [(src, dst, r) for r in removable(b, 1 - me, twelve)]
@@ -86,9 +88,9 @@ def play(state, me, move):
     return (tuple(b), tuple(hand), 0 if rem >= 0 or placing else quiet + 1)
 
 
-def evaluate(state, me, fly=True, twelve=False):
+def evaluate(state, me, fly=True, twelve=False, lasker=False):
     board, hand, quiet = state
-    if not legal(state, me, fly, twelve):
+    if not legal(state, me, fly, twelve, lasker):
         return 0 if quiet >= QUIET_LIMIT or None not in board else -WIN
     men = lambda s: board.count(s) + hand[s]
     score = 30 * (men(me) - men(1 - me))
@@ -99,11 +101,11 @@ def evaluate(state, me, fly=True, twelve=False):
         if vals.count(1 - me) == 2 and vals.count(None) == 1:
             score -= 7
     if not hand[me] and not hand[1 - me]:
-        score += len(steps(state, me, fly, twelve)) - len(steps(state, 1 - me, fly, twelve))
+        score += len(steps(state, me, fly, twelve, lasker)) - len(steps(state, 1 - me, fly, twelve, lasker))
     return score
 
 
-class Morris(Game):
+class Morris(Undo, Game):
     id = "morris"
     category = "classic"
     howto = [
@@ -112,6 +114,8 @@ class Morris(Game):
         "With only 3 men left you can fly to any empty point (if flying is on).",
         "A player with fewer than 3 men, or no legal move, loses.",
         "Twelve Men's Morris (an option): 12 men each, and the corner diagonals are lines too. If the board fills up, it's a draw.",
+        "Lasker Morris (an option): 10 men each, and while you still have men to place you may move one instead.",
+        "↶ Undo asks your rival to take back your last move.",
     ]
     name = "Nine Men's Morris"
     icon = "⚫"
@@ -121,8 +125,9 @@ class Morris(Game):
     badges = {**Game.badges, "untouched": ("🛡️", "Untouched", "Win without losing a single man")}
     settings_schema = {
         "fly": ("Flying with 3 men", [(True, "On"), (False, "Off")], True),
-        "men": ("Men", [(9, "Nine Men's Morris"), (12, "Twelve Men's Morris (diagonals)")], 9),
+        "men": ("Men", [(9, "Nine Men's Morris"), (12, "Twelve Men's Morris (diagonals)"), (10, "Lasker Morris (10 men, place or move)")], 9),
     }
+    lasker = False  # games saved before Lasker Morris
     twelve = False  # games saved before Twelve Men's Morris
 
     def start(self, seated, rng):
@@ -131,7 +136,8 @@ class Morris(Game):
         self.seats = [p.id for p in seated]
         self.fly = self.s["fly"]
         self.twelve = self.s.get("men") == 12
-        men = 12 if self.twelve else MEN
+        self.lasker = self.s.get("men") == 10
+        men = 12 if self.twelve else 10 if self.lasker else MEN
         self.state = ((None,) * 24, (men, men), 0)
         self.last = None
         self.room.add_log(f"⚫ {seated[0].name} (dark) places first; ⚪ {seated[1].name} plays light.", "big")
@@ -141,18 +147,27 @@ class Morris(Game):
         return self.seats.index(p.id) if p.id in self.seats else None
 
     def act(self, p, a):
+        if self.undo_act(p, a.get("type")):
+            return
         if a.get("type") != "move":
             raise GameError("Unknown action.")
         self.require_turn(p)
         mv = a.get("move")
         if not (isinstance(mv, list) and len(mv) == 3 and all(isinstance(v, int) and not isinstance(v, bool) for v in mv)):
             raise GameError("Bad move.")
-        if tuple(mv) not in legal(self.state, self.seat(p), self.fly, self.twelve):
+        if tuple(mv) not in legal(self.state, self.seat(p), self.fly, self.twelve, self.lasker):
             raise GameError("That move isn't allowed.")
         self.move(p, tuple(mv))
 
+    def undo_state(self):
+        return (self.state, self.last)
+
+    def undo_restore(self, state):
+        self.state, self.last = state
+
     def move(self, p, mv):
         me = self.seat(p)
+        self.snapshot(p)
         self.state = play(self.state, me, mv)
         self.last = list(mv)
         src, dst, rem = mv
@@ -162,14 +177,14 @@ class Morris(Game):
         r.add_log(f"{'⚫⚪'[me]} {p.name} {text}" + (f" — mill! Takes {name(rem)}." if rem >= 0 else "."),
                   "power" if rem >= 0 else "question")
         nxt = 1 - me
-        if not legal(self.state, nxt, self.fly, self.twelve):
+        if not legal(self.state, nxt, self.fly, self.twelve, self.lasker):
             if self.state[2] >= QUIET_LIMIT:
                 return r.finish(None, f"🤝 {QUIET_LIMIT} moves without a capture — a draw.")
             if None not in self.state[0]:
                 return r.finish(None, "🤝 The board is full — a draw.")
             q = r.players.get(self.seats[nxt])
             why = "is down to two men" if not self.state[1][nxt] and self.state[0].count(nxt) < 3 else "has no move"
-            if self.state[0].count(me) + self.state[1][me] == (12 if self.twelve else 9):
+            if self.state[0].count(me) + self.state[1][me] == (12 if self.twelve else 10 if self.lasker else 9):
                 self.award(p, "untouched")
             return r.finish(p, f"🏆 {q.name if q else '?'} {why} — {p.name} wins!")
         r.begin_turn(self.seats[nxt])
@@ -186,15 +201,16 @@ class Morris(Game):
         mine = self.room.turn == p.id
         return {"morris": {
             "board": self.state[0], "hand": self.state[1], "seats": self.seats, "me": i, "last": self.last,
-            "legal": [list(m) for m in legal(self.state, i, self.fly, self.twelve)] if mine and i is not None else [],
-            "quiet": self.state[2], "limit": QUIET_LIMIT, "twelve": self.twelve, "fly": self.fly,
+            "legal": [list(m) for m in legal(self.state, i, self.fly, self.twelve, self.lasker)] if mine and i is not None else [],
+            "quiet": self.state[2], "limit": QUIET_LIMIT, "twelve": self.twelve, "fly": self.fly, "lasker": self.lasker,
+            "men": 12 if self.twelve else 10 if self.lasker else MEN, "undo": self.undo_view(p),
         }}
 
     def bot_turn(self, p):
         me = self.seat(p)
         depth, budget, noise = {"easy": (1, 0.3, 40), "normal": (3, 1.0, 6), "hard": (6, 2.5, 0)}[p.bot]
-        self.move(p, best_move(self.state, me, partial(legal, fly=self.fly, twelve=self.twelve), play,
-                               partial(evaluate, fly=self.fly, twelve=self.twelve),
+        self.move(p, best_move(self.state, me, partial(legal, fly=self.fly, twelve=self.twelve, lasker=self.lasker), play,
+                               partial(evaluate, fly=self.fly, twelve=self.twelve, lasker=self.lasker),
                                depth, budget, self.rng, noise))
 
 
