@@ -1,6 +1,7 @@
 // Backgammon: an HTML board drawn from your side (your home board bottom right, whichever colour you
 // play). Tap a checker (or the bar), then a highlighted point or the tray to move. Undo until you end.
 UI.backgammon = (() => {
+  let seenEnd = null, seenCube = null;  // the last game-end line shown; the cube's value last drawn
   let S, ctx, sel = null, seenMoves = null, seenRoll = '', seenOff = null, prevBar = null;
   const $ = (id) => document.getElementById(id);
 
@@ -24,7 +25,7 @@ UI.backgammon = (() => {
     side.innerHTML = `<div class="panel"><ul class="rules bg-rules">
       <li>Tap a checker, then a highlighted point. Doubles move four times.</li>
       <li>A lone checker can be hit to the bar; it must come back in first.</li>
-      <li>All fifteen home? Bear off into the tray on the right.</li>
+      <li>All your checkers home? Bear off into the tray on the right.</li>
       <li>Gammon (they bore none off) = 2 points · backgammon = 3.</li>
       <li>🎲 Before rolling you may double the stakes; your rival takes (and owns the cube) or drops and loses.</li></ul>
       <div id="bgCube" class="bg-cube"></div></div>`;
@@ -60,6 +61,12 @@ UI.backgammon = (() => {
         return ctx.quiet(ctx.act('move', { from: frm, to }));
       }
       sel = sources.has(key) && String(sel) !== key ? (key === 'bar' ? 'bar' : +key) : null;
+      // a checker with only one place to go goes there on the first tap
+      const only = sel != null ? [...new Set(legal.filter(([f]) => String(f) === String(sel)).map(([, t]) => String(t)))] : [];
+      if (only.length === 1) {
+        const frm = sel; sel = null;
+        return ctx.quiet(ctx.act('move', { from: frm, to: only[0] === 'off' ? 'off' : +only[0] }));
+      }
       ctx.rerender();
     };
 
@@ -122,7 +129,12 @@ UI.backgammon = (() => {
         glide(board, glideFrom.get(fromKey(f, mover)), toKey);
         ctx.sfx(String(t) === 'off' ? 'chip' : 'place');
         const victim = mover === 'w' ? 'b' : 'w';
-        if (prevBar && g.bar[victim] > prevBar[victim]) { glide(board, glideFrom.get(toKey), 'bar-' + victim); ctx.sfx('capture'); }
+        if (prevBar && g.bar[victim] > prevBar[victim]) {
+          glide(board, glideFrom.get(toKey), 'bar-' + victim); ctx.sfx('capture');
+          // a hit: your checker sent to the bar, or theirs
+          if (victim === myColor && g.me) { Kit.callout('💥 Hit!', 'bad', { ms: 1000 }); ctx.buzz(70); }
+          else if (g.me) Kit.flyText(board.querySelector(`[data-k="bar-${victim}"]`) || board, 'Hit!', 'good');
+        }
       }
     }
     // dice, buttons, names: real dice with pips, tumbling when they're freshly rolled
@@ -146,7 +158,14 @@ UI.backgammon = (() => {
     if (!g.me) race.lastChild.textContent = `Pips: ${pm}–${po}`;
     // bearing off: each checker into the tray clicks; the last one is a moment
     const offNow = g.off.w + g.off.b;
-    if (seenOff != null && offNow > seenOff && g.off[g.turn === 'w' ? 'b' : 'w'] === 15) Kit.callout('🏁 All home!', 'gold');
+    if (seenOff != null && offNow > seenOff && g.off[g.turn === 'w' ? 'b' : 'w'] === (g.total || 15)) Kit.callout('🏁 All home!', 'gold');
+    // a gammon or backgammon doubles or triples the game: say so
+    const end = S.log.slice(-4).reverse().find((e) => e.text.startsWith('🏁')) || null;
+    if (end && end.id !== seenEnd && seenEnd != null) {
+      if (/ a backgammon/.test(end.text)) Kit.callout('Backgammon ×3', 'gold', { ms: 1800, sound: 'fanfare' });
+      else if (/ a gammon/.test(end.text)) Kit.callout('Gammon ×2', 'gold', { ms: 1600, sound: 'fanfare' });
+    }
+    seenEnd = end?.id ?? seenEnd ?? 0;
     seenOff = offNow;
     prevBar = { ...g.bar };
     const name = (col) => ctx.player(g.names[col])?.name ?? '?';
@@ -157,6 +176,14 @@ UI.backgammon = (() => {
     $('bgRoll').hidden = !mine || g.rolled.length > 0 || answering;
     $('bgDouble').hidden = !g.canDouble;
     $('bgTake').hidden = $('bgDrop').hidden = !answering;
+    // the doubling cube sits on the bar: in the middle until someone owns it, then on their side
+    if (g.cubeOn && !g.crawford) {
+      const owner = g.owner === myColor ? 'bottom' : g.owner ? 'top' : 'bottom';
+      const cube = ctx.el('span', 'bg-cubeblock' + (g.owner ? '' : ' mid') + (seenCube != null && seenCube !== g.cube ? ' flip' : ''), String(g.cube === 1 ? 64 : g.cube));
+      cube.title = `Doubling cube: ${g.cube}`;
+      board.querySelector(`.bg-bar.${owner}`)?.append(cube);
+    }
+    seenCube = g.cube;
     $('bgCube').textContent = !g.cubeOn ? '' : g.crawford ? '🎲 Crawford game: no doubling' : `🎲 Cube: ${g.cube} · ${!g.owner ? 'either player can double'
       : g.owner === myColor && g.me ? 'only you can double' : `only ${name(g.owner)} can double`}`;
     $('bgUndo').hidden = !mine || !g.moves.length;

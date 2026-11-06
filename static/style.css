@@ -2632,3 +2632,13 @@ body.calm .ld-entry.shake { animation: none; }
 .sea-grid.hit-pulse { animation: sbHit .7s ease-out; }
 @keyframes sbHit { 0% { box-shadow: 0 0 0 0 #e63946; transform: scale(1.04); } 100% { box-shadow: 0 0 0 14px #e6394600; transform: none; } }
 body.calm .sea-grid.hit-pulse { animation: none; }
+/* backgammon: the doubling cube on the bar */
+.bg-bar { position: relative; }
+.bg-cubeblock { position: absolute; left: 50%; bottom: 6px; transform: translateX(-50%); width: 24px; height: 24px; border-radius: 4px;
+  display: grid; place-items: center; font: 900 11px system-ui, sans-serif; color: #1a1205; z-index: 2;
+  background: linear-gradient(145deg, #fffaf0, #e9dcc0); box-shadow: inset 0 -2px 0 #0002, 0 2px 4px #0009; }
+.bg-bar.top .bg-cubeblock { bottom: auto; top: 6px; }
+.bg-cubeblock.mid { bottom: auto; top: -12px; }
+.bg-cubeblock.flip { animation: bgCube .6s cubic-bezier(.3, 1.4, .5, 1); }
+@keyframes bgCube { 0% { transform: translateX(-50%) rotateY(0) scale(1.4); } 100% { transform: translateX(-50%) rotateY(360deg) scale(1); } }
+body.calm .bg-cubeblock.flip { animation: none; }

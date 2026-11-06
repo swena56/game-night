@@ -17,6 +17,7 @@ from .base import Game, GameError
 
 WHITE, BLACK = 1, -1
 START = {24: 2, 13: 5, 8: 3, 6: 5}         # White's opening layout; Black mirrors it (point → 25 - point)
+HYPER = {24: 1, 23: 1, 22: 1}             # Hypergammon: three checkers each, on the rival's three deepest points
 # roughly how many of the 36 rolls hit a blot at a given distance (for the bots)
 SHOTS = {1: 11, 2: 12, 3: 14, 4: 15, 5: 15, 6: 17, 7: 6, 8: 6, 9: 5, 10: 3, 11: 2, 12: 3, 15: 1, 16: 1, 18: 1, 20: 1, 24: 1}
 
@@ -24,9 +25,9 @@ SHOTS = {1: 11, 2: 12, 3: 14, 4: 15, 5: 15, 6: 17, 7: 6, 8: 6, 9: 5, 10: 3, 11: 
 # A position is a tuple of 28 ints: [0] unused, [1..24] points (+White / −Black counts),
 # [25] White's bar, [26] Black's bar, [27] packed borne-off counts (White + 16 × Black).
 
-def new_position():
+def new_position(start=START):
     pts = [0] * 28
-    for p, n in START.items():
+    for p, n in start.items():
         pts[p] += n
         pts[25 - p] -= n
     return tuple(pts)
@@ -273,6 +274,7 @@ class Backgammon(Game):
     settings_schema = {
         "match": ("Play", [(1, "One game"), (3, "Match to 3"), (5, "Match to 5")], 1),
         "cube": ("Doubling cube", [(True, "🎲 On"), (False, "Off")], True),
+        "variant": ("Checkers", [("classic", "15 each (classic)"), ("hyper", "⚡ Hypergammon: 3 each")], "classic"),
     }
     cube, owner, offer = 1, None, None  # stakes, who may double next (None = either), a double waiting
     crawford, crawford_done = False, False  # the one game after someone first reaches match point: no doubling
@@ -291,7 +293,7 @@ class Backgammon(Game):
     def new_game(self):
         r = self.room
         self.game_no += 1
-        self.pos = new_position()
+        self.pos = new_position(HYPER if self.hyper() else START)
         self.last_moves, self.plan = [], []
         self.cube, self.owner, self.offer = 1, None, None
         target = self.s["match"]
@@ -414,8 +416,15 @@ class Backgammon(Game):
         self.pos = apply(self.pos, side, frm, to)
         self.dice.remove(die)
         self.turn_moves.append([frm, to, die, hit])
-        if off(self.pos, side) == 15:
+        if off(self.pos, side) == self.total():
             return self.win(side)
+
+    def hyper(self):
+        return self.s.get("variant") == "hyper"
+
+    def total(self):
+        """Checkers each side bears off to win: 15, or 3 in Hypergammon."""
+        return 3 if self.hyper() else 15
 
     def end_turn(self):
         side = self.turn_side
@@ -499,6 +508,7 @@ class Backgammon(Game):
         return {"backgammon": {
             "points": list(self.pos[1:25]), "bar": {"w": bar(self.pos, WHITE), "b": bar(self.pos, BLACK)},
             "off": {"w": off(self.pos, WHITE), "b": off(self.pos, BLACK)},
+            "total": self.total(),
             "me": "w" if mine == WHITE else "b" if mine == BLACK else None,
             "turn": "w" if self.turn_side == WHITE else "b",
             "rolled": self.rolled, "dice": self.dice, "moves": self.turn_moves, "last": self.last_moves,
