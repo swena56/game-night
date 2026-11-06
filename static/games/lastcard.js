@@ -35,17 +35,24 @@ UI.lastcard = (() => {
     if (!ctx.myTurn) pendingJack = null;
     // rivals round the table, each holding a fan of card backs as big as their hand
     const seats = $('lcSeats'); seats.innerHTML = '';
-    for (const pid of g.seats) {
-      if (pid === S.me.id) continue;
+    // seats in playing order, starting from you (or the first seat), with arrows showing which way play goes (#75)
+    const live = g.seats.filter((pid) => g.counts?.[pid] != null);
+    const start = Math.max(0, live.indexOf(S.me.id));
+    const order = [];
+    for (let k = 0; k < live.length; k++) order.push(live[(start + (g.direction === 1 ? k : live.length - k)) % live.length]);
+    order.forEach((pid, at) => {
+      if (at) seats.append(ctx.el('span', 'lc-arrow', g.direction === 1 ? '→' : '←'));
+      const mine = pid === S.me.id;
       const p = ctx.player(pid), n = g.counts?.[pid] ?? 0;
-      const seat = ctx.el('div', 'lc-seat' + (pid === S.turn ? ' up' : '') + (g.exposed.includes(pid) ? ' exposed' : ''));
+      const seat = ctx.el('div', 'lc-seat' + (pid === S.turn ? ' up' : '') + (g.exposed.includes(pid) ? ' exposed' : '') + (mine ? ' me' : ''));
       seat.dataset.pid = pid;
       const fan = ctx.el('span', 'lc-fan'), k = Math.min(n, 9);
       for (let i = 0; i < k; i++) { const b = Cards.back('mini'), o = i - (k - 1) / 2; b.style.setProperty('--r', `${o * 9}deg`); b.style.setProperty('--x', `${o * 4}px`); fan.append(b); }
-      seat.append(fan, ctx.el('b', '', p?.name ?? '?'), ctx.el('small', '', n === 1 ? '1 card!' : `${n} cards`));
+      seat.append(fan, ctx.el('b', '', mine ? 'You' : p?.name ?? '?'), ctx.el('small', '', pid === S.turn ? (mine ? '▶ your turn' : '▶ playing') : n === 1 ? '1 card!' : `${n} cards`));
       if (p) seat.style.setProperty('--c', p.color);
       seats.append(seat);
-    }
+    });
+    if (order.length > 1) seats.append(ctx.el('span', 'lc-arrow back', '↺'));
     const top = $('lcTop');
     const played = shownTop !== undefined && shownTop !== g.top;
     // a rival's card sails from their seat to the pile (yours flies from your hand when you tap it)
