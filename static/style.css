@@ -730,6 +730,7 @@ body.focus #game .layout:has(.bl-busy) > aside { opacity: .2; }
 .bx-box rect { fill: var(--fill); opacity: .55; transform-box: fill-box; transform-origin: center; transition: fill .3s; }
 .bx-box.gem:not(.owned) rect { fill: #8ecae61f; animation: bxgem 2.4s ease-in-out infinite; }
 .bx-box.fresh rect { animation: bxclaim .45s cubic-bezier(.3, 1.6, .5, 1); }
+.bx-box.giveaway rect { fill: #ff4d6d; opacity: .45; animation: pulse .7s ease-in-out infinite alternate; }
 .bx-box text { font-size: .42px; font-weight: 900; fill: #fff; text-anchor: middle; dominant-baseline: middle; pointer-events: none; }
 .bx-box.owned text { text-shadow: 0 0 .1px #0008; }
 @keyframes bxclaim { from { transform: scale(.2); opacity: 0; } }

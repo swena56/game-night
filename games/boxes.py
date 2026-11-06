@@ -27,6 +27,7 @@ class Boxes(Game):
         "size": ("Grid", [(3, "3×3 (quick)"), (4, "4×4"), (5, "5×5"), (6, "6×6 (long)"),
                           ("4x6", "4×6 wide"), ("5x8", "5×8 wide (long)")], 4),
         "gems": ("Gem boxes", [(True, "💎 On"), (False, "Off")], True),
+        "headstart": ("Head start", [(False, "Empty grid"), (True, "✏️ Some safe lines already drawn")], False),
     }
 
     # -- setup
@@ -52,6 +53,8 @@ class Boxes(Game):
         for p in seated:
             p.g.score = 0
             p.g.boxes = 0
+        if self.s.get("headstart"):
+            self.head_start(rng)
         self.room.add_log(f"🔳 {rows}×{cols} boxes. {seated[0].name} draws first.", "big")
         self.room.begin_turn(seated[0].id)
 
@@ -85,6 +88,21 @@ class Boxes(Game):
     def is_drawn(self, line):
         d, r, c = line
         return (self.h if d == "h" else self.v)[r][c] is not None
+
+    def head_start(self, rng):
+        """✏️ Skip the dull opening: a quarter of the lines, drawn at random (by nobody, seat -1), never a box's
+        third side, so the game starts with no box to give away."""
+        sides = lambda box: sum(self.is_drawn(ln) for ln in self.sides_of(box))
+        todo = self.lines()
+        rng.shuffle(todo)
+        want = len(todo) // 4
+        for ln in todo:
+            if want <= 0:
+                break
+            if all(sides(b) < 2 for b in self.boxes_of(ln)):
+                d, r, c = ln
+                (self.h if d == "h" else self.v)[r][c] = -1
+                want -= 1
 
     # -- actions
 
