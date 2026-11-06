@@ -1,5 +1,6 @@
 // Reversi: an 8×8 board; your legal squares glow, the last disc is ringed and flipped discs spin over.
 UI.reversi = (() => {
+  let seenPass = null;
   let S, ctx, board, seen = '', counted = false;
   const $ = (id) => document.getElementById(id);
 
@@ -55,8 +56,12 @@ UI.reversi = (() => {
       b.disabled = !(legal.has(i) && ctx.myTurn);
       const n = ctx.myTurn ? r.flipCounts?.[i] : null;  // flip hint: how many discs this square flips
       if (n) b.dataset.flips = n; else delete b.dataset.flips;
+      // corners can't be flipped back; the squares diagonally next to them hand the corner to your rival
+      b.classList.toggle('corner', [0, 7, 56, 63].includes(i));
+      b.classList.toggle('xsq', [9, 14, 49, 54].includes(i));
+      b.classList.toggle('hole', v === 'x');
       let disc = b.querySelector('.rv-disc');
-      if (v == null) { disc?.remove(); return; }
+      if (v == null || v === 'x') { disc?.remove(); return; }
       if (!disc) { disc = ctx.el('span', 'rv-disc'); b.append(disc); }
       disc.className = 'rv-disc ' + (v === 0 ? 'dark' : 'light') + (fresh && flipped.has(i) ? ' flip' : '') + (fresh && i === r.last ? ' drop' : '');
     });
@@ -66,7 +71,16 @@ UI.reversi = (() => {
       [...flipped].forEach((i) => board.children[i]?.querySelector('.rv-disc')?.style.setProperty('--fd', Math.max(Math.abs(Math.floor(i / 8) - lr), Math.abs(i % 8 - lc)) * 0.07 + 's'));
       if (!first && flipped.size) { ctx.sfx('place'); for (let k = 1; k <= Math.min(flipped.size, 8); k++) setTimeout(() => ctx.sfx('flip'), 80 + k * 70); }
       if (flipped.size >= 6) Kit.callout(`${flipped.size} flips!`, 'gold', { ms: 1100 });
+      // a corner taken: it flashes gold
+      if (!first && [0, 7, 56, 63].includes(r.last)) {
+        const cb = board.children[r.last]; cb.classList.remove('cornered'); void cb.offsetWidth; cb.classList.add('cornered');
+        if (r.board[r.last] === r.me) Kit.flyText(cb, '🏰 Corner!', 'gold');
+      }
     }
+    // a pass: the same player moves twice in a row
+    const passKey = S.log.at(-1)?.text?.startsWith('🚫') ? S.log.at(-1).id : null;
+    if (passKey && passKey !== seenPass && !first) Kit.callout(S.log.at(-1).text.replace(' and passes.', ': pass'), 'cool', { ms: 1300 });
+    seenPass = passKey ?? seenPass;
     // the tug of war: dark's share of the discs on the board
     const total = r.counts[0] + r.counts[1], bar = $('rvBar');
     bar.firstChild.style.width = (total ? (r.counts[0] / total) * 100 : 50) + '%';

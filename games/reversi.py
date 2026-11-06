@@ -24,6 +24,8 @@ CORNERS = {0: (1, 8, 9), 7: (6, 14, 15), 56: (48, 49, 57), 63: (54, 55, 62)}
 PASS = -1
 
 
+HOLE = "x"  # a blocked square: nobody can play there, and it stops a line of flips
+
 def flips(board, me, c):
     """Discs flipped if `me` (0/1) plays at cell c; [] if illegal."""
     if board[c] is not None:
@@ -69,7 +71,7 @@ def evaluate(board, me):
     empties = board.count(None)
     pos = 0
     for c, v in enumerate(board):
-        if v is None:
+        if v is None or v == HOLE:
             continue
         w = WEIGHTS[c]
         # a trap square stops being one once its corner is taken
@@ -92,6 +94,7 @@ class Reversi(Undo, Game):
         "Corners can never be flipped back, so they're worth fighting for.",
         "↶ Undo asks your rival to take back your last move. Flip hints (an option) show how many discs each move would flip.",
         "🏳️ Resign ends the game and your rival wins; the host can then start a rematch.",
+        "⬛ Blocked squares (an option): four squares, placed symmetrically, that nobody can play on; they also stop a line of flips.",
     ]
     name = "Reversi"
     icon = "⚪"
@@ -102,6 +105,7 @@ class Reversi(Undo, Game):
               "landslide": ("⛰️", "Landslide", "Win with 48 discs or more")}
     settings_schema = {
         "hints": ("Flip hints", [(False, "Off"), (True, "Show how many each move flips")], False),
+        "holes": ("Board", [(False, "Classic"), (True, "⬛ Four blocked squares (placed symmetrically)")], False),
     }
 
     def start(self, seated, rng):
@@ -110,6 +114,10 @@ class Reversi(Undo, Game):
         self.seats = [p.id for p in seated]
         b = [None] * (N * N)
         b[27], b[36], b[28], b[35] = 1, 1, 0, 0
+        if self.s.get("holes"):  # ⬛ two random squares and their mirror images through the centre
+            spots = [c for c in range(N * N // 2) if c not in (0, N - 1) and not (2 <= c // N <= 5 and 2 <= c % N <= 5)]
+            for c in rng.sample(spots, 2):
+                b[c] = b[N * N - 1 - c] = HOLE
         self.board = tuple(b)
         self.last, self.flipped = None, []
         self.room.add_log(f"⚫ {seated[0].name} plays dark and moves first; ⚪ {seated[1].name} plays light.", "big")
