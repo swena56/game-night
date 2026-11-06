@@ -30,6 +30,16 @@ def stroke_path(pts):
     return d if len(pts) > 2 else d + f"L{pts[0]} {pts[1] + 0.1}"  # a dot
 
 
+# 🎲 twist cards for drawing steps: [id, what it says]
+TWISTS = [
+    ["line", "〰️ One continuous line: once you lift your finger, that's it"],
+    ["four", "✌️ Four strokes, no more"],
+    ["hand", "✋ Use your other hand"],
+    ["tiny", "🐜 Draw it as small as you can"],
+    ["shapes", "🔺 Only circles, squares and triangles"],
+    ["eyes", "🙈 Look away while you draw"],
+]
+
 class Relay(Game):
     id = "relay"
     category = "party"
@@ -39,6 +49,7 @@ class Relay(Game):
         "You only ever see the entry just before yours.",
         "At the end, each chain is revealed. Vote for your favourite entry (not your own): +1 per vote.",
         "🎯 If a chain ends up close to where it started, everyone in it gets +1.",
+        "🎲 Twist cards (an option): each drawing comes with a twist, like one continuous line, four strokes, or your other hand.",
     ]
     name = "Scribble Relay"
     icon = "🖍️"
@@ -47,6 +58,7 @@ class Relay(Game):
     max_players = 6
     settings_schema = {
         "laps": ("Chain length", [(1, "Once round the table"), (2, "Twice round")], 1),
+        "twists": ("🎲 Twist cards", [(False, "Off"), (True, "On: every drawing comes with a twist")], False),
     }
 
     # -- setup
@@ -86,6 +98,8 @@ class Relay(Game):
         r.bot_at = time.time() + random.uniform(3.0, 6.0) + (4 if self.kind() == "draw" else 0)
         if self.step:
             r.add_log({"draw": "🖍️ Draw what you got!", "caption": "🏷️ What is this drawing?"}[self.kind()])
+        # 🎲 a twist for each drawer this step (one line and four strokes are enforced on the pad)
+        self.twists = {pid: self.rng.choice(TWISTS) for pid in self.ids} if self.s.get("twists") and self.kind() == "draw" else {}
         live = {p.id for p in self.live()}
         for pid in self.ids:
             if pid not in live:
@@ -276,6 +290,7 @@ class Relay(Game):
                 if self.step:
                     prev = self.chains[self.chain_of(p.id)][-1]
                     out["prompt"] = self.public(prev)
+                out["twist"] = getattr(self, "twists", {}).get(p.id)
             out["kinds"] = [self.kind(k) for k in range(self.steps)]  # the road ahead: write, draw, caption, …
         else:
             out["show"] = self.show
