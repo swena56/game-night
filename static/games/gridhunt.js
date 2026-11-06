@@ -1,6 +1,7 @@
 // Grid Hunt: trace words by dragging across tiles (or tapping them one by one; tap the last tile again to
 // send), or type them on a keyboard. The server checks every word against the grid and the dictionary.
 UI.gridhunt = (() => {
+  let turns = 0, frenzyOn = false;  // quarter turns of the grid on this screen; whether the frenzy has been called
   let S, ctx, path = [], typed = '', dragging = false, dragMoved = false, skipClick = false;
   let receivedAt = 0, tickTimer = 0, gridKey = '', note = '', lastTick = 0, seenResults = '';
   const $ = (id) => document.getElementById(id);
@@ -14,13 +15,17 @@ UI.gridhunt = (() => {
     main.innerHTML = `<div class="gh">
       <div class="gh-head"><span id="ghRound"></span><span id="ghLeft" class="gh-left"></span></div>
       <div class="dd-bar"><span id="ghBar"></span></div>
-      <div id="ghGrid" class="gh-grid"></div>
+      <div class="gh-wrap"><div id="ghGrid" class="gh-grid"></div><svg id="ghTrail" class="gh-trail" aria-hidden="true"><polyline/></svg>
+        <button id="ghTurn" class="gh-turn" title="Turn the grid (on your screen only)" aria-label="Turn the grid">⟳</button></div>
       <div class="gh-entry"><button id="ghClear" title="Clear">✕</button><span id="ghWord" class="gh-word"></span><button id="ghSend" class="primary">Send</button></div>
       <div id="ghNote" class="gh-note"></div>
       <div id="ghMine" class="gh-mine"></div>
       <div id="ghStand" hidden></div><div id="ghResults" class="gh-results" hidden></div></div>`;
     side.innerHTML = '<div class="panel"><h3>Words found</h3><div id="ghCounts"></div><p class="hint left">Only the count shows until time is up. Words someone else also found score nothing.</p></div>';
     $('ghClear').onclick = () => { clear(); paint(); };
+    // a quarter turn of the grid, on this screen only: the letters stay upright, and drags still work
+    turns = 0;
+    $('ghTurn').onclick = () => { turns = (turns + 1) % 4; $('ghGrid').style.setProperty('--turn', `${turns * 90}deg`); ctx.sfx('whoosh'); paint(); };
     $('ghSend').onclick = send;
     const grid = $('ghGrid');
     grid.addEventListener('pointerdown', (e) => {
@@ -116,6 +121,11 @@ UI.gridhunt = (() => {
     $('ghGrid').classList.toggle('hurry', hunting && left < 10);
     if (hunting && left < 10 && left > 0 && Math.ceil(left) !== lastTick) { lastTick = Math.ceil(left); ctx.sfx('tickfast'); }
     $('ghLeft').textContent = !hunting ? '' : `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
+    // ⚡ the frenzy: the last seconds count double
+    const fr = hunting && g.frenzy && left <= g.frenzy && left > 0;
+    if (fr && !frenzyOn) Kit.callout('⚡ Frenzy! Double points', 'gold', { ms: 1400, sound: 'rise' });
+    frenzyOn = fr;
+    $('ghGrid').classList.toggle('frenzy', fr);
   }
 
   // the grid highlight and the word being built (local only)
@@ -128,11 +138,21 @@ UI.gridhunt = (() => {
       tiles[i].classList.toggle('head', k >= 0 && k === path.length - 1);
     }
     const w = word();
+    trail();
     $('ghWord').textContent = w || (live() ? 'drag, tap or type' : '');
     $('ghWord').classList.toggle('empty', !w);
     $('ghSend').disabled = !live() || w.length < S.gridhunt.minLen;
     $('ghClear').disabled = !w;
     $('ghNote').textContent = note;
+  }
+
+  // a line through the centres of the traced tiles, so a diagonal path reads at a glance
+  function trail(ids = path) {
+    const svg = $('ghTrail'), grid = $('ghGrid'), line = svg?.firstElementChild;
+    if (!line) return;
+    const box = grid.parentElement.getBoundingClientRect();
+    svg.setAttribute('viewBox', `0 0 ${box.width} ${box.height}`);
+    line.setAttribute('points', ids.map((i) => { const r = grid.children[i]?.getBoundingClientRect(); return r ? `${r.left - box.left + r.width / 2},${r.top - box.top + r.height / 2}` : ''; }).join(' '));
   }
 
   function render(s, c) {
@@ -236,8 +256,9 @@ UI.gridhunt = (() => {
       tiles.forEach((t) => { t.classList.remove('trace'); t.style.removeProperty('--t'); });
       void $('ghGrid').offsetWidth;
       path.forEach((i, k) => { tiles[i].style.setProperty('--t', `${k * 0.18}s`); tiles[i].classList.add('trace'); });
+      trail(path);
       clearTimeout(traceTimer);
-      traceTimer = setTimeout(() => tiles.forEach((t) => t.classList.remove('trace')), path.length * 180 + 1600);
+      traceTimer = setTimeout(() => { tiles.forEach((t) => t.classList.remove('trace')); trail([]); }, path.length * 180 + 1600);
       $('ghGrid').scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
     };
     chip.onclick = go;

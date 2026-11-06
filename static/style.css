@@ -2680,3 +2680,11 @@ body.calm .rv-cell.cornered { animation: none; }
 .ttt-grid path { fill: none; stroke: #ffffff55; stroke-width: 1.4; stroke-linecap: round; vector-effect: non-scaling-stroke; stroke-dasharray: 100; animation: inkDraw .35s ease-out both; }
 .ttt-ink.ghost { opacity: .22; position: absolute; }
 body.calm .ttt-grid path { animation: none; }
+/* grid hunt: the trail through a traced word, the turn button, the frenzy, and a turned grid */
+.gh-wrap { position: relative; }
+.gh-trail { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.gh-trail polyline { fill: none; stroke: #ffd166; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; opacity: .55; }
+.gh-turn { position: absolute; top: -6px; right: -6px; width: 32px; height: 32px; padding: 0; border-radius: 50%; font-size: 18px; z-index: 2; }
+.gh-grid { rotate: var(--turn, 0deg); transition: rotate .35s ease; }
+.gh-grid > * { rotate: calc(-1 * var(--turn, 0deg)); }  /* letters stay upright (rotate adds to any transform) */
+.gh-grid.frenzy { box-shadow: 0 0 0 3px #ffd166, 0 0 26px #ffd16699; }
