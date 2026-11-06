@@ -63,6 +63,8 @@ def one_apart(a, b):
     return len(a) == len(b) and sum(x != y for x, y in zip(a, b)) == 1
 
 
+SPRINT_SECS = 15  # 🏃 what's left on the clock once someone finishes
+
 class Ladder(Game):
     id = "ladder"
     category = "words"
@@ -72,6 +74,7 @@ class Ladder(Game):
         f"Par is the shortest ladder of everyday words. Finishing scores {FINISH}, minus {OVER_PAR} for every step over par; the first to finish gets +{FIRST}.",
         f"Stuck? ↩ takes back a step for free, 🔎 shows which letter to change next for {PEEK} point, and 💡 fills in the next step for {HINT} points.",
         "Most points after the last ladder wins. Alone, finish every ladder to win.",
+        "With 🏃 Sprint on, the first player to the top cuts everyone else's clock to 15 seconds.",
     ]
     name = "Word Ladder"
     icon = "🧗"
@@ -83,7 +86,10 @@ class Ladder(Game):
         "rounds": ("Ladders", [(3, "3"), (5, "5"), (1, "1")], 3),
         "secs": ("Time per ladder", [(90, "90 s"), (120, "2 min"), (60, "60 s")], 90),
         "daily": ("Puzzles", [(False, "🎲 Random"), (True, "📅 Today's ladders (the same everywhere)")], False),
+        "sprint": ("🏃 Sprint", [(False, "Off"), (True, "On: the first to finish cuts everyone else to 15 s")], False),
     }
+    badges = {**Game.badges, "par": ("⛳", "On par", "Climb a ladder in par steps with no hints or peeks"),
+              "eagle": ("🦅", "Under par", "Climb a ladder in fewer steps than par")}
 
     # -- setup
 
@@ -304,6 +310,15 @@ class Ladder(Game):
         self.plans = [x for x in self.plans if x[1] != p.id]
         extra = f", {steps - self.par} over par" if steps > self.par else ", on par!"
         self.room.add_log(f"🏁 {p.name} reached {self.target} in {steps} steps{extra} +{pts}" + (" (first!)" if first else ""), "power")
+        if steps < self.par:
+            self.award(p, "eagle")
+        elif steps == self.par and not self.hints.get(p.id) and not getattr(self, "peeks", {}).get(p.id):
+            self.award(p, "par")
+        # 🏃 sprint: the first one up starts a short clock for everyone still climbing
+        if first and self.s.get("sprint") and self.waiting_on() and self.end - self.now() > SPRINT_SECS:
+            self.end = self.now() + SPRINT_SECS
+            self.room.add_log(f"🏃 Sprint! {SPRINT_SECS} seconds left for everyone else.", "power")
+            self.sync()
         if not self.waiting_on():
             self.reveal()
 

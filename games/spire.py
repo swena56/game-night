@@ -183,6 +183,7 @@ class Spire(Game):
     min_players = 1
     max_players = 6
     replayable = False
+    badges = {**Game.badges, "quad": ("🗼", "Four at once", "Clear four rings with one piece")}
     settings_schema = {
         "speed": ("Start speed", [("chill", "🐢 Chill"), ("normal", "Normal"), ("fast", "🔥 Fast")], "normal"),
         "powers": ("Power cells", [(True, "On (⚡🛡️💣)"), (False, "Off")], True),
@@ -248,6 +249,8 @@ class Spire(Game):
 
     def on_clear(self, p, rings, combo, powers):
         r = self.room
+        if rings >= 4:
+            self.award(p, "quad")
         foes = [o for o in r.contenders() if o.id != p.id]
         attack = attack_for(rings, combo)
         if attack and foes:

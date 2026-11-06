@@ -60,6 +60,7 @@ class SeaBattle(Game):
         "sonar": ("Sonar", [(True, "📡 One scan each"), (False, "Off")], True),
         "size": ("Sea", [(10, "10×10, 5 ships"), (12, "12×12, 6 ships")], 10),
         "torpedo": ("Torpedo", [(False, "Off"), (True, "💥 One each: a line of 3")], False),
+        "bounty": ("📡 Bounty", [(False, "Off"), (True, "On: sinking a ship earns a sonar scan")], False),
     }
     n = N  # games saved before the 12×12 sea
 
@@ -194,6 +195,9 @@ class SeaBattle(Game):
                 for cell in ship["cells"]:
                     p.g.shots[cell] = "sunk"
                 room.add_log(f"{p.name} fires at {cell_name(r, c)} — 💥 sank the {ship['name']}!", "big")
+                if self.s.get("bounty") and any(len(s["hits"]) < len(s["cells"]) for s in opp.g.ships):
+                    p.g.sonar = getattr(p.g, "sonar", 0) + 1  # 📡 the bounty: a scan for the next hunt
+                    room.add_log(f"📡 {p.name} earns a sonar scan.", "power")
                 if all(len(s["hits"]) == len(s["cells"]) for s in opp.g.ships):
                     if not any(len(s["hits"]) == len(s["cells"]) for s in p.g.ships):
                         self.award(p, "admiral")

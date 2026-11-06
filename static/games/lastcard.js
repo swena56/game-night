@@ -9,6 +9,7 @@ UI.lastcard = (() => {
   function mount(main, side) {
     pendingJack = null; shownTop = undefined; shownHand = null;
     main.innerHTML = `<div class="table">
+      <div id="lcSeats" class="lc-seats"></div>
       <div class="pile-row">
         <button id="lcDeck" class="pc back"><b>🎴</b><small id="lcDeckCount"></small></button>
         <div id="lcTop"></div>
@@ -32,8 +33,28 @@ UI.lastcard = (() => {
     S = s; ctx = c;
     const g = S.cards;
     if (!ctx.myTurn) pendingJack = null;
-    const top = $('lcTop'); top.innerHTML = '';
+    // rivals round the table, each holding a fan of card backs as big as their hand
+    const seats = $('lcSeats'); seats.innerHTML = '';
+    for (const pid of g.seats) {
+      if (pid === S.me.id) continue;
+      const p = ctx.player(pid), n = g.counts?.[pid] ?? 0;
+      const seat = ctx.el('div', 'lc-seat' + (pid === S.turn ? ' up' : '') + (g.exposed.includes(pid) ? ' exposed' : ''));
+      seat.dataset.pid = pid;
+      const fan = ctx.el('span', 'lc-fan'), k = Math.min(n, 9);
+      for (let i = 0; i < k; i++) { const b = Cards.back('mini'), o = i - (k - 1) / 2; b.style.setProperty('--r', `${o * 9}deg`); b.style.setProperty('--x', `${o * 4}px`); fan.append(b); }
+      seat.append(fan, ctx.el('b', '', p?.name ?? '?'), ctx.el('small', '', n === 1 ? '1 card!' : `${n} cards`));
+      if (p) seat.style.setProperty('--c', p.color);
+      seats.append(seat);
+    }
+    const top = $('lcTop');
     const played = shownTop !== undefined && shownTop !== g.top;
+    // a rival's card sails from their seat to the pile (yours flies from your hand when you tap it)
+    if (played && g.lastBy && g.lastBy !== S.me.id) {
+      const from = seats.querySelector(`[data-pid="${g.lastBy}"] .lc-fan`);
+      const back = from?.lastElementChild;
+      if (back && top.firstElementChild) Kit.fly(back, top.firstElementChild, { ms: 420 });
+    }
+    top.innerHTML = '';
     top.append(face(g.top, 'big-card' + (played ? ' toss' : '')));
     // action cards land with a stamp and a sound of their own
     if (played) {
@@ -64,13 +85,15 @@ UI.lastcard = (() => {
     if (before && fresh.size) ctx.sfx('deal');
     let dealt = 0;
     for (const [k, card] of cards.entries()) {
-      const ok = g.playable.includes(card);
-      const b = ctx.el('button', 'card-btn' + (ok ? ' ok' : ''));
+      const twin = (g.twins || []).includes(card), ok = g.playable.includes(card) || twin;
+      const b = ctx.el('button', 'card-btn' + (ok ? ' ok' : '') + (twin ? ' twin' : ''));
+      if (twin) b.title = '⚡ Jump in with this twin!';
       b.style.setProperty('--rot', `${((k - mid) * step).toFixed(1)}deg`);
       b.style.setProperty('--drop', `${(Math.abs(k - mid) * step * 0.6).toFixed(1)}px`);
       b.append(face(card));
       if (fresh.has(card)) { b.classList.add('dealt'); b.style.setProperty('--deal', `${dealt++ * 0.12}s`); fresh.delete(card); }
       b.disabled = !ok;
+      b.dataset.card = card;
       b.onclick = () => onCard(card);
       hand.append(b);
     }
@@ -81,7 +104,7 @@ UI.lastcard = (() => {
       pick.append(ctx.el('span', 'hint', 'Jack — choose a suit:'));
       for (const s of 'SHDC') {
         const b = ctx.el('button', 'HD'.includes(s) ? 'red' : '', SUIT[s] + '︎');
-        b.onclick = () => { const card = pendingJack; pendingJack = null; ctx.quiet(ctx.act('play', { card, suit: s })); };
+        b.onclick = () => { const card = pendingJack; pendingJack = null; flyToPile(card); ctx.quiet(ctx.act('play', { card, suit: s })); };
         pick.append(b);
       }
     }
@@ -111,9 +134,19 @@ UI.lastcard = (() => {
   }
 
   function onCard(card) {
-    if (!ctx.myTurn) return;
+    if (!ctx.myTurn) {
+      if ((S.cards.twins || []).includes(card)) { flyToPile(card); ctx.quiet(ctx.act('jumpin', { card })); }
+      return;
+    }
+    if (S.cards.actions && rank(card) === 'J') { pendingJack = card; return ctx.rerender(); }
+    flyToPile(card);
     if (S.cards.actions && rank(card) === 'J') { pendingJack = card; return ctx.rerender(); }
     ctx.quiet(ctx.act('play', { card }));
+  }
+
+  function flyToPile(card) {
+    const from = $('lcHand').querySelector(`[data-card="${card}"] .pc`), to = $('lcTop').firstElementChild;
+    if (from && to) Kit.fly(from, to, { ms: 360, remove: false });
   }
 
   return { mount, render, ownSounds: true };

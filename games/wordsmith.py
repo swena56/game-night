@@ -97,6 +97,7 @@ class Wordsmith(Game):
         'Tap a rack tile, then a square. Words read left→right or top→bottom.',
         'The first word covers the ★. Every word after must connect to the board.',
         'DL/TL multiply a letter, DW/TW the whole word. Using the bounty letter scores +10.',
+        '🎯 Comeback bounty (an option): whoever is behind everyone scores +20 for the bounty letter instead.',
         'Use all 7 tiles in one go for a +40 clean sweep.',
         'With blank tiles on, a blank (?) can be any letter you choose, but it scores 0.',
     ]
@@ -111,6 +112,7 @@ class Wordsmith(Game):
     settings_schema = {
         "bounty": ("Bounty letter", [(True, "On"), (False, "Off")], True),
         "blanks": ("Blank tiles", [(0, "None"), (2, "2 blanks (any letter, 0 points)")], 0),
+        "comeback": ("🎯 Comeback bounty", [(False, "Off"), (True, "On: the bounty is worth double to whoever is last")], False),
     }
 
     def start(self, seated, rng):
@@ -141,7 +143,13 @@ class Wordsmith(Game):
 
     # -- rules
 
-    def check_play(self, placements):
+    def trailing(self, p):
+        """🎯 Comeback (an option): the player strictly behind everyone gets a double bounty."""
+        if not (p and self.s.get("comeback") and len(self.scores) > 1 and p.id in self.scores):
+            return False
+        return all(self.scores[p.id] < v for k, v in self.scores.items() if k != p.id)
+
+    def check_play(self, placements, p=None):
         """placements: [(row, col, letter)]. Returns (score, words, notes) or raises GameError."""
         if not placements:
             raise GameError("Place some tiles first.")
@@ -212,8 +220,9 @@ class Wordsmith(Game):
             total += SWEEP_BONUS
             notes.append(f"🧹 clean sweep +{SWEEP_BONUS}")
         if self.bounty and self.bounty in new.values():
-            total += BOUNTY_BONUS
-            notes.append(f"🎯 bounty {self.bounty} +{BOUNTY_BONUS}")
+            bonus = BOUNTY_BONUS * (2 if self.trailing(p) else 1)
+            total += bonus
+            notes.append(f"🎯 bounty {self.bounty} +{bonus}" + (" (comeback)" if bonus > BOUNTY_BONUS else ""))
         return total, texts, notes
 
     # -- actions
@@ -250,7 +259,7 @@ class Wordsmith(Game):
             score, tiles, texts = max(moves, key=lambda m: m[0])
             return {"tiles": [list(t) for t in tiles], "words": texts, "score": score}
         try:
-            score, texts, notes = self.check_play(self.placements(p, a.get("tiles"))[0])
+            score, texts, notes = self.check_play(self.placements(p, a.get("tiles"))[0], p)
         except GameError as e:
             return {"error": str(e)}
         return {"score": score, "words": texts, "notes": notes}
@@ -277,7 +286,7 @@ class Wordsmith(Game):
         raise GameError("Unknown action.")
 
     def play(self, p, placements, idx):
-        score, texts, notes = self.check_play(placements)
+        score, texts, notes = self.check_play(placements, p)
         if self.by is None:  # a game saved before tiles remembered who played them
             self.by = [[None] * SIZE for _ in range(SIZE)]
         for r, c, ch in placements:

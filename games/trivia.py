@@ -47,7 +47,13 @@ class Trivia(Game):
         self.rng = rng
         self.skew = 0.0  # the bot simulator fast-forwards this virtual clock
         pool = [q for q in QUESTIONS if self.s["topic"] in ("all", q[0])]
-        self.queue = rng.sample(pool, min(self.s["questions"], len(pool)))
+        # questions asked in this room tonight are kept back on a rematch, until the pool runs low
+        seen = getattr(self.room, "trivia_seen", set())
+        fresh = [q for q in pool if q[1] not in seen]
+        if len(fresh) < self.s["questions"]:
+            seen, fresh = set(), pool
+        self.queue = rng.sample(fresh, min(self.s["questions"], len(fresh)))
+        self.room.trivia_seen = seen | {q[1] for q in self.queue}
         self.ids = []
         for p in seated:
             self.late_join(p)

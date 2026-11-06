@@ -103,6 +103,9 @@ UI.checkers = (() => {
         }
         sq.append(disc);
       }
+      // the board's edges carry rank and file labels, like the chessboard's
+      if (i % 8 === 0) sq.append(ctx.el('span', 'coord rank', String(8 - r)));
+      if (i >= 56) sq.append(ctx.el('span', 'coord file', 'abcdefgh'[col]));
     });
     // after every square is drawn, so the ghosts of taken pieces aren't cleared away again
     if (hopper) hopAlong(hopper[0], ck.last, hopper[1], hopping ? 0 : resume);
@@ -117,6 +120,12 @@ UI.checkers = (() => {
     shownKings = kings;
     // pieces taken so far: 12 each to start
     const tray = $('ckTray'); tray.innerHTML = '';
+    // material: a bar split by what each side has left (kings count as one and a half)
+    const worth = (sd) => ck.board.flat().reduce((t, x) => t + (x && x.toLowerCase() === sd ? (x === x.toUpperCase() ? 1.5 : 1) : 0), 0);
+    const wd = worth('d'), wl = worth('l'), bar = ctx.el('div', 'ck-material');
+    const fill = ctx.el('i'); fill.style.width = `${wd + wl ? (100 * wd) / (wd + wl) : 50}%`; bar.append(fill);
+    bar.title = `Material: dark ${wd}, light ${wl}`;
+    tray.append(bar);
     for (const side of ['d', 'l']) {
       const left = ck.board.flat().filter((x) => x && x.toLowerCase() === side).length, lost = 12 - left;
       const span = ctx.el('span', '', `${side === 'd' ? '⚫' : '⚪'} ${left} `);
@@ -153,6 +162,14 @@ UI.checkers = (() => {
       if (path) { sel = null; ctx.quiet(ctx.act('move', { path })); return ctx.rerender(); }
     }
     sel = moves.some((m) => same(m[0], [r, c])) ? [r, c] : null;
+    // tapping one of your pieces that can't move while a capture is due: say why, and shake it
+    const p = S.checkers.board[r][c];
+    if (!sel && p && p.toLowerCase() === S.checkers.me && S.checkers.forced) {
+      ctx.toast('You must capture: use a glowing piece.');
+      const disc = boardEl.children[i]?.querySelector('.checker');
+      if (disc && motionOK()) { disc.classList.remove('nope'); void disc.offsetWidth; disc.classList.add('nope'); }
+      return;
+    }
     ctx.rerender();
   }
 

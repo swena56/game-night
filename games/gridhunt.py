@@ -65,6 +65,8 @@ def value(word):
     return max(1, len(word) - 2)
 
 
+FRENZY_SECS = 15  # ⚡ the end of each round, when words count double (an option)
+
 class GridHunt(Game):
     id = "gridhunt"
     category = "words"
@@ -74,6 +76,8 @@ class GridHunt(Game):
         "Words need 3+ letters on the 4×4 grid, 4+ on the 5×5. Points: length − 2. A word through the ⭐ star tile scores double.",
         "When time is up, a word anyone else also found scores nothing. Find the words nobody else sees!",
         "Alone, every word counts: reach the target score to win.",
+        "With ⚡ Frenzy on, words found in the last 15 seconds of a round score double.",
+        "⟳ turns the grid a quarter turn on your screen only, to see it fresh.",
     ]
     name = "Grid Hunt"
     icon = "🔎"
@@ -86,6 +90,7 @@ class GridHunt(Game):
         "secs": ("Time per round", [(60, "1 min"), (90, "1½ min"), (120, "2 min"), (180, "3 min")], 90),
         "rounds": ("Rounds", [(1, "1"), (2, "2"), (3, "3")], 2),
         "daily": ("Grids", [(False, "🎲 Random"), (True, "📅 Today's grids (the same everywhere)")], False),
+        "frenzy": ("⚡ Frenzy", [(False, "Off"), (True, "On: words found in the last 15 s score double")], False),
     }
 
     # -- setup and clock
@@ -151,6 +156,7 @@ class GridHunt(Game):
         self.results = None
         for p in self.room.contenders():
             p.g.words = []
+            p.g.late = set()
             p.g.round_pts = 0
         self.plan_bots()
         self.room.add_log(f"🔀 Round {self.round}/{self.s['rounds']}: a new grid with {len(self.all)} words in it. Go!")
@@ -198,7 +204,7 @@ class GridHunt(Game):
             _, pid, w = self.plans.pop(0)
             p = self.room.players.get(pid)
             if p and not p.eliminated and w not in p.g.words:
-                p.g.words.append(w)
+                self.add_word(p, w)
         if now >= self.end:
             self.reveal()
 
@@ -221,7 +227,20 @@ class GridHunt(Game):
             raise GameError(f"You already have {w}.")
         if w not in self.all:
             raise GameError(f"{w} isn't in the dictionary." if w not in words() else f"{w} can't be traced on this grid.")
+        self.add_word(p, w)
+
+    def frenzy(self):
+        """⚡ The last FRENZY_SECS of a round, when the option is on."""
+        return bool(self.s.get("frenzy")) and self.stage == "hunt" and self.end - self.now() <= FRENZY_SECS
+
+    def add_word(self, p, w):
         p.g.words.append(w)
+        if self.frenzy():
+            p.g.late = getattr(p.g, "late", set()) | {w}
+
+    def worth(self, p, w):
+        """A word's points for p: doubled if p found it during the frenzy."""
+        return self.points(w) * (2 if w in getattr(p.g, "late", ()) else 1)
 
     def points(self, w):
         return value(w) * (2 if self.all[w] else 1)
@@ -230,13 +249,13 @@ class GridHunt(Game):
         live = self.room.contenders()
         counts = Counter(w for p in live for w in set(p.g.words))
         for p in live:
-            p.g.round_pts = sum(self.points(w) for w in p.g.words if counts[w] == 1)
+            p.g.round_pts = sum(self.worth(p, w) for w in p.g.words if counts[w] == 1)
             p.g.score += p.g.round_pts
             if any(len(w) >= 7 and counts[w] == 1 for w in p.g.words):
                 self.award(p, "long_word")
         missed = sorted((w for w in self.all if not counts[w]), key=lambda w: (-len(w), w))[:8]
         self.results = {
-            "lists": {p.id: [[w, self.points(w), counts[w] > 1] for w in sorted(p.g.words, key=lambda w: (-len(w), w))]
+            "lists": {p.id: [[w, self.worth(p, w), counts[w] > 1] for w in sorted(p.g.words, key=lambda w: (-len(w), w))]
                       for p in live},
             "pts": {p.id: p.g.round_pts for p in live},
             "missed": [[w, self.points(w)] for w in missed],
@@ -294,7 +313,8 @@ class GridHunt(Game):
             "stage": self.stage, "round": self.round, "rounds": self.s["rounds"], "n": self.n,
             "tiles": self.tiles, "star": self.star, "minLen": self.min_len, "total": len(self.all),
             "left": max(0.0, self.end - self.now()), "secs": self.s["secs"],
-            "mine": [[w, self.points(w)] for w in mine],
+            "mine": [[w, self.worth(p, w)] for w in mine],
+            "frenzy": FRENZY_SECS if self.s.get("frenzy") else 0,
             "lengths": self.lengths(mine),
             "counts": {q.id: len(q.g.words) for q in self.room.contenders() if hasattr(q.g, "words")},
             "results": self.results if open_ else None,

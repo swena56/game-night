@@ -127,19 +127,20 @@ def evaluate(b, side):
     return score
 
 
-def negamax(b, side, depth, alpha, beta, deadline, flying=False):
+def negamax(b, side, depth, alpha, beta, deadline, flying=False, give=False):
+    """Give: Giveaway checkers, where running out of pieces or moves wins, so everything is turned round."""
     if time.time() > deadline:
         raise Timeout
     moves = moves_for(b, side, flying)
     if not moves:
-        return -10000 - depth  # no moves = loss (sooner is worse)
+        return (10000 + depth) if give else (-10000 - depth)  # no moves = loss (a win in Giveaway); sooner counts more
     if depth == 0:
-        return evaluate(b, side)
+        return -evaluate(b, side) if give else evaluate(b, side)
     opp = "l" if side == "d" else "d"
     best = -10 ** 9
     for path in moves:
         nb, _, _ = apply(b, path)
-        val = -negamax(nb, opp, depth - 1, -beta, -alpha, deadline, flying)
+        val = -negamax(nb, opp, depth - 1, -beta, -alpha, deadline, flying, give)
         best = max(best, val)
         alpha = max(alpha, val)
         if alpha >= beta:
@@ -162,6 +163,7 @@ class Checkers(Undo, Game):
         '🦅 Flying kings: a king glides any distance along an open diagonal and can jump a piece from afar.',
         'Win by taking every piece or leaving your opponent with no move.',
         '↶ Undo asks your rival to take back your last move; 🤝 you can also offer a draw.',
+        '🎁 Giveaway (an option): everything turned round. The first side with no pieces or no move left wins, and captures are still compulsory.',
     ]
     name = "Checkers"
     icon = "⛀"
@@ -169,9 +171,13 @@ class Checkers(Undo, Game):
     badges = {**Game.badges, "triple": ("🦘", "Hop to it", "Win with a triple jump")}
     settings_schema = {
         "kings": ("Kings", [("short", "Classic (one step)"), ("flying", "🦅 Flying")], "short"),
+        "win": ("To win", [("classic", "Take every piece"), ("give", "🎁 Giveaway: lose all your pieces first")], "classic"),
     }
 
     draw_offer = None  # games saved before draw offers existed
+
+    def give(self):
+        return self.s.get("win") == "give"
 
     def flying(self):
         return self.s.get("kings") == "flying"
@@ -241,6 +247,9 @@ class Checkers(Undo, Game):
         opp_id = self.seats[1 - self.seats.index(p.id)]
         opp_side = "l" if self.side(p) == "d" else "d"
         if not moves_for(self.board, opp_side, self.flying()):
+            if self.give():  # 🎁 giveaway: the side that can't move has got rid of everything, and wins
+                o = r.players[opp_id]
+                return r.finish(o, f"🎁 {o.name} wins Giveaway — no pieces or moves left!")
             if len(path) >= 4:
                 self.award(p, "triple")
             return r.finish(p, f"🏆 {p.name} wins — {r.players[opp_id].name} has no moves left!")
@@ -266,7 +275,7 @@ class Checkers(Undo, Game):
     def bot_turn(self, p):
         side = self.side(p)
         if self.draw_offer and self.draw_offer != p.id:
-            accept = evaluate(self.board, side) < -90  # about a man behind
+            accept = (-1 if self.give() else 1) * evaluate(self.board, side) < -90  # about a man behind
             self.answer_draw(p, accept)
             if accept:
                 return
@@ -280,7 +289,7 @@ class Checkers(Undo, Game):
         best = random.choice(moves)
         for depth in range(1, max_depth + 1):
             try:
-                scored = sorted(((-negamax(apply(self.board, m)[0], opp, depth - 1, -10 ** 9, 10 ** 9, deadline, flying)
+                scored = sorted(((-negamax(apply(self.board, m)[0], opp, depth - 1, -10 ** 9, 10 ** 9, deadline, flying, self.give())
                                   + random.uniform(0, 3), m) for m in moves), key=lambda x: -x[0])
                 best = scored[0][1]
                 moves = [m for _, m in scored]

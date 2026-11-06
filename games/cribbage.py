@@ -92,7 +92,8 @@ class Cribbage(Game):
     blurb = "The classic pegging card game: make fifteens, pairs and runs, and race your peg to 121."
     min_players = 2
     max_players = 3
-    badges = {**Game.badges, "big_hand": ("🃏", "Twenty-plus", "Score 20 or more in one hand at the show")}
+    badges = {**Game.badges, "big_hand": ("🃏", "Twenty-plus", "Score 20 or more in one hand at the show"),
+              "skunk": ("🦨", "Skunk", "Win before a rival reaches the skunk line (30 short of the finish)")}
     settings_schema = {
         "target": ("Game to", [(121, "121 (full)"), (61, "61 (short)")], 121),
         "muggins": ("Counting", [(False, "Hands counted for you"), (True, "🦉 Muggins: count your own")], False),
@@ -132,7 +133,12 @@ class Cribbage(Game):
         if p.g.score >= self.s["target"]:
             p.g.score = min(p.g.score, self.s["target"])
             self.room.add_log(f"🎯 {p.name} scores {points} ({why}) and pegs out!", "big")
-            self.room.finish(p, f"🏆 {p.name} reaches {self.s['target']} and wins Cribbage!")
+            line = self.s["target"] - 30  # the skunk line: a rival short of it was skunked
+            skunked = [o for o in self.players() if o.id != p.id and o.g.score < line]
+            if skunked:
+                self.award(p, "skunk")
+                self.room.add_log(f"🦨 Skunk! {' & '.join(o.name for o in skunked)} never reached {line}.", "power")
+            self.room.finish(p, f"🏆 {p.name} reaches {self.s['target']} and wins Cribbage!" + (" 🦨 A skunk!" if skunked else ""))
             return True
         return False
 
@@ -387,6 +393,10 @@ class Cribbage(Game):
             "show": self.show if self.stage == "show" or over else [],
             "counting": self.stage == "count" and mine and not p.bot and p.id not in (self.claims or {}),
             "deal": self.deal_no,
+            # during the play: what each of your cards would score if you laid it now
+            "pegNow": {c: sum(v for _, v in score_peg(self.seq + [c], self.count + value(c)))
+                       for c in p.g.peg_hand if self.count + value(c) <= 31}
+            if mine and self.stage == "peg" and self.room.turn == p.id else {},
         }}
 
     # -- bots

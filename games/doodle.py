@@ -72,10 +72,16 @@ class Doodle(Game):
     blurb = "A picture draws itself line by line. Shout it — well, type it — before anyone else."
     min_players = 2
     max_players = 6
+    badges = {**Game.badges, "quick": ("⚡", "Quick draw", "Name a picture before a quarter of it is drawn")}
     settings_schema = {
         "pictures": ("Pictures", [(6, "6"), (10, "10"), (15, "15")], 10),
         "mode": ("Scoring", [("all", "🙌 Everyone can score"), ("race", "⚡ First correct only")], "all"),
+        "drawtime": ("Drawing speed", [(18, "Normal (18 s)"), (12, "⚡ Quick (12 s)"), (25, "🐢 Slow (25 s)")], 18),
     }
+
+    def draw_secs(self):
+        """How long each picture takes to draw (the setting; rooms saved before it: 18 s)."""
+        return self.s.get("drawtime", DRAW_SECS)
 
     # -- setup and clock
 
@@ -111,8 +117,8 @@ class Doodle(Game):
         self.pic = DRAWINGS[self.queue[self.round - 1]]
         self.stage = "draw"
         self.t0 = self.now() + 1.0  # a beat to read the category
-        self.per = DRAW_SECS / len(self.pic[3])
-        self.end = self.t0 + DRAW_SECS + GRACE_SECS
+        self.per = self.draw_secs() / len(self.pic[3])
+        self.end = self.t0 + self.draw_secs() + GRACE_SECS
         self.solvers = []  # [(pid, points)] in order
         self.sent = 0  # strokes browsers have been told about; each new one is a clock event
         self.room.deadline = self.end - self.skew
@@ -130,7 +136,7 @@ class Doodle(Game):
                 continue
             mu, wrong = {"easy": (0.85, 0.35), "normal": (0.62, 0.25), "hard": (0.42, 0.15)}[p.bot]
             f = random.gauss(mu, 0.17)
-            at = self.t0 + max(0.12, f) * DRAW_SECS + random.uniform(1.2, 2.8)
+            at = self.t0 + max(0.12, f) * self.draw_secs() + random.uniform(1.2, 2.8)
             if random.random() < wrong and decoys:
                 self.plans.append((max(self.t0 + 2, at - random.uniform(2, 5)), p.id, random.choice(decoys)))
             if at < self.end - 0.5:
@@ -150,11 +156,11 @@ class Doodle(Game):
             times.append(self.t0 + n * self.per)
         times += [t for t, _, _ in self.plans[:1]]
         for frac in (HINT_AT, LETTER_AT):
-            at = self.t0 + frac * DRAW_SECS
+            at = self.t0 + frac * self.draw_secs()
             if at > self.now():
                 times.append(at)
         for k in range(1, EXTRA_LETTERS + 1):  # the late letters, spread through the last-chance time
-            at = self.t0 + DRAW_SECS + k * GRACE_SECS / (EXTRA_LETTERS + 1)
+            at = self.t0 + self.draw_secs() + k * GRACE_SECS / (EXTRA_LETTERS + 1)
             if at > self.now():
                 times.append(at)
                 break
@@ -214,10 +220,12 @@ class Doodle(Game):
         answer, _, aliases, _ = self.pic
         g = norm(text)
         if g and is_answer(g, {norm(x) for x in [answer, *aliases]}):
-            frac = min(1.0, max(0.0, (self.now() - self.t0) / DRAW_SECS))
+            frac = min(1.0, max(0.0, (self.now() - self.t0) / self.draw_secs()))
             pts = 3 + round(7 * (1 - frac)) + (2 if self.s["mode"] == "all" and not self.solvers else 0)
             pts = max(1, pts - len(self.extra_letters()))  # the late letters make it easier, so it's worth less
             self.solvers.append((p.id, pts))
+            if frac < 0.25:
+                self.award(p, "quick")
             p.g.score += pts
             p.g.got += 1
             if self.s["mode"] == "race":
@@ -264,7 +272,7 @@ class Doodle(Game):
         spots fixed for the picture, never the whole word."""
         if self.stage != "draw":
             return []
-        late = self.now() - (self.t0 + DRAW_SECS)
+        late = self.now() - (self.t0 + self.draw_secs())
         if late <= 0:
             return []
         answer = self.pic[0].upper()
@@ -285,7 +293,7 @@ class Doodle(Game):
     def view(self, p):
         now = self.now()
         n = len(self.pic[3]) if self.stage == "reveal" else self.shown()
-        frac = (now - self.t0) / DRAW_SECS
+        frac = (now - self.t0) / self.draw_secs()
         solved = dict(self.solvers)
         return {"doodle": {
             "stage": self.stage, "round": self.round, "rounds": len(self.queue), "category": self.pic[1],
@@ -295,5 +303,5 @@ class Doodle(Game):
             "solvers": [[pid, pts] for pid, pts in self.solvers], "mode": self.s["mode"],
             "standings": self.standings() if self.stage == "reveal" else None,
             "locked": max(0.0, getattr(p.g, "locked", 0) - now), "left": max(0.0, self.end - now),
-            "drawn": min(1.0, max(0.0, frac)) if self.stage == "draw" else 1.0, "secs": DRAW_SECS, "grace": GRACE_SECS,
+            "drawn": min(1.0, max(0.0, frac)) if self.stage == "draw" else 1.0, "secs": self.draw_secs(), "grace": GRACE_SECS,
         }}

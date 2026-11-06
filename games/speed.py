@@ -23,8 +23,9 @@ def rank(c):
     return RANKS.index(c[0])
 
 
-def fits(card, top):
-    return (rank(card) - rank(top)) % 13 in (1, 12)
+def fits(card, top, pairs=False):
+    """One rank up or down (K and A wrap); with 👯 Pairs on, the same rank fits too."""
+    return (rank(card) - rank(top)) % 13 in ((0, 1, 12) if pairs else (1, 12))
 
 
 def pretty(c):
@@ -39,6 +40,7 @@ class Speed(Game):
         "Tap a card in your hand to play it onto a centre pile one rank above or below the top card (suits don't matter; K and A wrap round). If it fits both piles, tap the pile you want.",
         "Your hand refills to 5 from your stock. When nobody can play, fresh cards flip onto both piles.",
         "Empty your hand and stock first to win the round.",
+        "With 👯 Pairs on, a card of the same rank fits as well (a 7 on a 7).",
     ]
     name = "Speed"
     icon = "⚡"
@@ -48,6 +50,7 @@ class Speed(Game):
     replayable = False
     settings_schema = {
         "rounds": ("Match", [(1, "One round"), (2, "Best of 3")], 1),
+        "pairs": ("👯 Pairs", [(False, "Off"), (True, "On: the same rank fits too")], False),
     }
 
     # -- setup
@@ -95,7 +98,7 @@ class Speed(Game):
     # -- the rules
 
     def playable(self, i):
-        return [c for c in self.hand[i] if any(fits(c, pile[-1]) for pile in self.piles)]
+        return [c for c in self.hand[i] if any(fits(c, pile[-1], self.s.get("pairs")) for pile in self.piles)]
 
     def left(self, i):
         return len(self.hand[i]) + len(self.stock[i])
@@ -133,7 +136,7 @@ class Speed(Game):
 
     def play(self, i, card, pile):
         top = self.piles[pile][-1]
-        if not fits(card, top):
+        if not fits(card, top, self.s.get("pairs")):
             raise GameError(f"{pretty(card)} doesn't fit on {pretty(top)}.")
         self.hand[i].remove(card)
         self.piles[pile].append(card)
@@ -229,7 +232,7 @@ class Speed(Game):
 
     def bot_play(self, i):
         p = self.pl(i)
-        options = [(c, k) for c in self.hand[i] for k in (0, 1) if fits(c, self.piles[k][-1])]
+        options = [(c, k) for c in self.hand[i] for k in (0, 1) if fits(c, self.piles[k][-1], self.s.get("pairs"))]
         if not options:
             return
         if p and p.bot == "easy":
@@ -240,7 +243,7 @@ class Speed(Game):
                 c, k = opt
                 rest = [x for x in self.hand[i] if x != c]
                 tops = [c if j == k else self.piles[j][-1] for j in (0, 1)]
-                follow = sum(1 for x in rest if any(fits(x, t) for t in tops))
+                follow = sum(1 for x in rest if any(fits(x, t, self.s.get("pairs")) for t in tops))
                 return follow + self.rng.random() * (0.5 if p and p.bot == "hard" else 2)
             card, pile = max(options, key=score)
         self.play(i, card, pile)
@@ -267,7 +270,7 @@ class Speed(Game):
         me = i if i is not None else 0
         now = self.now()
         return {"speed": {
-            "me": i,
+            "me": i, "pairs": bool(self.s.get("pairs")),
             "seats": self.seats,
             "hand": self.hand[me] if i is not None else [],
             "stock": [len(s) for s in self.stock],

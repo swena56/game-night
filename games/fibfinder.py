@@ -35,7 +35,15 @@ class FibFinder(Game):
         "rounds": ("Rounds", [(5, "5"), (7, "7"), (10, "10")], 7),
         "topic": ("Facts", [("all", "🌍 Everything"), ("animals", "🐾 Animals"), ("science", "🔬 Science & nature"),
                             ("history", "🏛️ History & inventions"), ("words", "🔤 Words & names")], "all"),
+        "pace": ("Pace", [("normal", "Normal (75 s to write, 45 s to pick)"), ("quick", "⚡ Quick (45 s, 25 s)"),
+                          ("relaxed", "🐢 Relaxed (2 min, 1 min)")], "normal"),
     }
+    PACES = {"normal": (WRITE_SECS, PICK_SECS), "quick": (45, 25), "relaxed": (120, 60)}
+
+    def secs(self, stage):
+        """Seconds to write or to pick, by the Pace setting (rooms saved before it: normal)."""
+        write, pick = self.PACES[self.s.get("pace", "normal")]
+        return write if stage == "write" else pick
 
     # -- setup
 
@@ -69,7 +77,7 @@ class FibFinder(Game):
         self.picks = {}     # pid -> option index
         self.stage = "write"
         r.turn = None
-        r.deadline = time.time() + WRITE_SECS
+        r.deadline = time.time() + self.secs("write")
         r.bot_at = time.time() + random.uniform(3.0, 6.0)
         final = " 🔥 Final round: double points!" if self.final() else ""
         r.add_log(f"📜 Fact {self.round}/{len(self.queue)}: {self.fact[0]}{final}", "big")
@@ -133,7 +141,7 @@ class FibFinder(Game):
         self.rng.shuffle(opts)
         self.options = opts
         self.stage = "pick"
-        r.deadline = time.time() + PICK_SECS
+        r.deadline = time.time() + self.secs("pick")
         r.bot_at = time.time() + random.uniform(2.5, 5.0)
         r.add_log(f"🔍 {len(opts)} answers are in. Which one is true?")
 

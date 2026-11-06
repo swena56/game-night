@@ -205,5 +205,18 @@ const Kit = (() => {
     node.textContent = fmt(from);
     requestAnimationFrame(step);
   }
-  return { flyText, callout, reveal, snap, glide, fly, changed, fresh, fan, stamp, tally };
+  // a pen-stroke ✕ (seat 0: two strokes) or ◯ (seat 1: one loop) that draws itself in; `still` skips the drawing
+  // (Tic-Tac-Toe and Ultimate)
+  function ink(seat, still = false) {
+    const NS = 'http://www.w3.org/2000/svg', svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 100 100'); svg.setAttribute('class', 'ttt-ink' + (still || !motionOK() ? ' still' : '')); svg.setAttribute('aria-hidden', 'true');
+    const paths = seat === 0 ? ['M24 24 L76 76', 'M76 24 L24 76'] : ['M50 20 a30 30 0 1 1 -0.1 0'];
+    paths.forEach((d, k) => {
+      const path = document.createElementNS(NS, 'path');
+      path.setAttribute('d', d); path.setAttribute('pathLength', '100'); path.style.animationDelay = k * 0.12 + 's';
+      svg.append(path);
+    });
+    return svg;
+  }
+  return { flyText, callout, reveal, snap, glide, fly, changed, fresh, fan, stamp, tally, ink };
 })();

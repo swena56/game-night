@@ -5,7 +5,7 @@ UI.speed = (() => {
   const SUIT = { S: '♠', H: '♥', D: '♦', C: '♣' };
   const RANKS = 'A23456789TJQK';
   const $ = (id) => document.getElementById(id);
-  const fits = (c, top) => [1, 12].includes((RANKS.indexOf(c[0]) - RANKS.indexOf(top[0]) + 13) % 13);
+  const fits = (c, top) => (S?.speed?.pairs ? [0, 1, 12] : [1, 12]).includes((RANKS.indexOf(c[0]) - RANKS.indexOf(top[0]) + 13) % 13);
 
   const face = (card, cls = '') => Cards.face(card, cls);
 
@@ -24,7 +24,7 @@ UI.speed = (() => {
       <div id="spNote" class="sp-note"></div>
       <div id="spHand" class="sp-row sp-hand"></div>
       <div id="spMine" class="sp-mine"></div></div>`;
-    side.innerHTML = '<div class="panel"><h3>Speed</h3><div id="spScore"></div><p class="hint left">Cards fit one rank up or down, any suit. K and A wrap round. No turns!</p></div>';
+    side.innerHTML = '<div class="panel"><h3>Speed</h3><div id="spScore"></div><p class="hint left" id="spRule">Cards fit one rank up or down, any suit. K and A wrap round. No turns!</p></div>';
     for (const k of [0, 1]) $(`spPile${k}`).onclick = () => { if (chosen) send(chosen, k); };
     tickTimer = setInterval(tick, 200);
   }
@@ -144,12 +144,15 @@ UI.speed = (() => {
         }
       }
       pile.append(face(sp.piles[k], 'big-card' + (fresh ? ' toss' : '')));
+      // the rival's card sails over from their side of the table
+      if (fresh && seen !== -1 && sp.last[0] === them) Kit.fly(top.querySelector('.pc.back:last-child') || top, pile.firstElementChild, { ms: 260 });
       pile.setAttribute('aria-label', `Pile ${k + 1}: ${sp.piles[k][0] === 'T' ? '10' : sp.piles[k][0]} of ${SUIT[sp.piles[k][1]]}`);
       const sideEl = $(`spSide${k}`); sideEl.innerHTML = '';
       if (sp.side[k]) sideEl.append(back(sp.side[k], 'small'));
     }
     seen = sp.seq;
     prevTops = [...sp.piles];
+    if (sp.pairs) $('spRule').textContent = 'Cards fit one rank up or down, or 👯 the same rank, any suit. K and A wrap round. No turns!';
 
     $('spMine').textContent = sp.me == null ? '' : `Your stock: ${sp.stock[me]} · ${sp.hands[me] + sp.stock[me]} cards to go`;
     const score = $('spScore'); score.innerHTML = '';

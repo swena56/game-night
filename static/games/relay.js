@@ -1,5 +1,6 @@
 // Scribble Relay: write / draw / caption on your own phone, then reveal the chains and vote.
 UI.relay = (() => {
+  let handedKey = '', tallied = false, tickTimer = 0, lastTick = 0;
   let S, ctx, pad, padKey = '', strokes = [], cur = null, color = 0, size = 0, ints = 0, shownKey = '';
   const NS = 'http://www.w3.org/2000/svg';
   const INK = ['#1d1a26', '#e63946', '#1d7bd8', '#2a9d4b', '#f4a300', '#8e44ad'];
@@ -53,6 +54,9 @@ UI.relay = (() => {
   function mountPad() {
     pad.addEventListener('pointerdown', (e) => {
       if (!canDraw() || ints >= MAX_INTS) return;
+      // twists the pad can hold you to: one line, or four strokes
+      const tw = S.relay.twist?.[0], limit = tw === 'line' ? 1 : tw === 'four' ? 4 : Infinity;
+      if (strokes.length >= limit) { ctx.toast(tw === 'line' ? '〰️ One line only! Send it as it is.' : '✌️ That was your fourth stroke.'); return; }
       const pt = point(e);
       if (!pt) return;
       e.preventDefault();
@@ -142,9 +146,18 @@ UI.relay = (() => {
     for (const b of document.querySelectorAll('.rl-size')) b.classList.toggle('on', +b.dataset.size === size);
   }
 
+  // the last five seconds of a step tick, if you haven't sent yet
+  function tick() {
+    const g = S?.relay;
+    if (!g || g.stage !== 'play' || g.sent || !playing() || S.timeLeft == null) return;
+    const left = Math.ceil(S.timeLeft - (performance.now() - stateAt) / 1000);
+    if (left <= 5 && left > 0 && left !== lastTick) { lastTick = left; ctx.sfx('tickfast'); }
+  }
+
   function render(s, c) {
     S = s; ctx = c;
     const g = S.relay;
+    if (!tickTimer) tickTimer = setInterval(tick, 250);
     const key = `${g.stage}:${g.step}`;
     if (key !== padKey) { padKey = key; strokes = []; ints = 0; cur = null; $('rlText').value = ''; redraw(); }
     const label = { write: '✍️ Write a phrase', draw: '🖍️ Draw it!', caption: '🏷️ What is this?' };
@@ -170,6 +183,9 @@ UI.relay = (() => {
         caption: `${fromName} drew this. What is it? Your caption goes on to be drawn.${last}`,
       }[g.kind];
       if (playing() && !g.sent) pr.append(ctx.el('p', 'rl-how', how));
+      if (g.twist && g.kind === 'draw' && playing() && !g.sent) pr.append(ctx.el('div', 'rl-twist', `🎲 Twist: ${g.twist[1]}`));
+      // a new step lands on your phone with a whoosh
+      if (key !== handedKey) { if (handedKey && playing()) ctx.sfx('whoosh'); handedKey = key; }
       if (g.prompt?.kind === 'text') pr.append(ctx.el('div', 'rl-quote', `“${g.prompt.v}”`));
       if (g.prompt?.kind === 'draw') pr.append(art(g.prompt.v, 'rl-art'));
       const live = playing() && !g.sent;
@@ -216,14 +232,17 @@ UI.relay = (() => {
         });
       }
       card.append(who, shown);
+      if (fresh) setTimeout(() => ctx.sfx(e.kind === 'draw' ? 'sweep' : 'flip'), start * 1000);
       const n = g.tally?.[i];
       const b = ctx.el('button', 'rl-heart', n ? `❤️ ${n}` : '❤️');
+      if (n && !tallied) setTimeout(() => Kit.stamp(card, `❤️ ${n}`, 'good', 900), 200 + i * 120);
       b.classList.toggle('on', g.myVote === i);
       b.disabled = e.by === S.me.id || !playing();
       b.onclick = () => ctx.quiet(ctx.act('vote', { i }));
       card.append(b);
       box.append(card);
     });
+    tallied = !!g.tally;
     const texts = g.chain.filter((e) => e.kind === 'text');
     if (texts.length > 1) {  // how far the phrase drifted, once the whole chain is on show
       const sum = ctx.el('p', 'rl-sum', `🌀 Started as “${texts[0].v}”, ended as “${texts.at(-1).v}”.`);
@@ -294,5 +313,7 @@ UI.relay = (() => {
   const myMove = (s) => s.phase === 'playing' && !s.me.spectator && !s.me.eliminated
     && (s.relay.stage === 'play' ? !s.relay.sent : s.relay.myVote == null && s.relay.chain.some((e) => e.by !== s.me.id));
 
-  return { mount, render, turnText, myMove };
+  const unmount = () => { clearInterval(tickTimer); tickTimer = 0; handedKey = ''; };
+
+  return { mount, render, unmount, turnText, myMove };
 })();

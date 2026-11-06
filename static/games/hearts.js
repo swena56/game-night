@@ -52,6 +52,18 @@ UI.hearts = (() => {
       for (let k = 0; k < Math.min(Math.max(t, 0), 8); k++) pips.append(ctx.el('i', '', '♥'));
       if (t > 8) pips.append(ctx.el('small', '', `+${t - 8}`));
       box.append(nm, ctx.el('small', '', i === me ? `♥ ${t}` : `🎴 ${h.counts[i]} · ♥ ${t}`), pips);
+      // the Q♠ (and the J♦) sit on the seat of whoever took them, as little cards
+      if (h.queenAt === i || h.jackAt === i) {
+        const trophies = ctx.el('span', 'hh-trophies');
+        if (h.queenAt === i) trophies.append(Cards.face('QS', 'tiny'));
+        if (h.jackAt === i) trophies.append(Cards.face('JD', 'tiny'));
+        box.append(trophies);
+      }
+      // 🌙 someone holding every point taken so far, with most of them in: they may be going for the moon
+      const all = h.taken.reduce((a, b) => a + Math.max(0, b), 0), hs = h.hearts?.[i] ?? 0;
+      if (h.stage === 'play' && h.queenAt === i && hs >= 1 && t + (h.jackAt === i ? 10 : 0) >= 14 && h.hearts.every((x, k) => k === i || !x)) {
+        box.classList.add('moonish'); box.title = '🌙 Holding every point so far: going for the moon?';
+      }
       seats.append(box);
     }
 

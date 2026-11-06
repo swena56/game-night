@@ -4,6 +4,7 @@ import random
 import time
 
 from .base import Game, GameError
+from .undo import Undo
 
 VALUE = {"P": 100, "N": 320, "B": 330, "R": 500, "Q": 900, "K": 0}
 GLYPH = {"K": "♔", "Q": "♕", "R": "♖", "B": "♗", "N": "♘", "P": ""}
@@ -193,8 +194,20 @@ def insufficient(b):
     return len(minors) <= 1
 
 
-def evaluate(b, me):
+HILL = {(3, 3), (3, 4), (4, 3), (4, 4)}  # d5 e5 d4 e4: King of the Hill's centre
+
+
+def on_hill(b, color):
+    return find_king(b, color) in HILL
+
+
+def evaluate(b, me, hill=False):
     score = 0
+    if hill:  # 👑 King of the Hill: a king nearer the centre is worth a lot more
+        for side, sign in ((me, 1), (other(me), -1)):
+            k = find_king(b, side)
+            if k:
+                score += sign * int(40 * (3.5 - (abs(3.5 - k[0]) + abs(3.5 - k[1])) / 2))
     kings, pieces = {}, {"w": 0, "b": 0}
     for r in range(8):
         for c in range(8):
@@ -221,11 +234,13 @@ def evaluate(b, me):
     return score
 
 
-def search(pos, depth, alpha, beta, deadline):
+def search(pos, depth, alpha, beta, deadline, hill=False):
     if time.time() > deadline:
         raise Timeout
+    if hill and on_hill(pos.b, other(pos.turn)):
+        return -MATE  # the side that just moved has climbed the hill
     if depth == 0:
-        return evaluate(pos.b, pos.turn)
+        return evaluate(pos.b, pos.turn, hill)
     moves = pseudo(pos)
     moves.sort(key=lambda m: -VALUE[pos.b[m[2]][m[3]][1]] if pos.b[m[2]][m[3]] else 0)
     best = -MATE * 2
@@ -234,7 +249,7 @@ def search(pos, depth, alpha, beta, deadline):
         if target and target[1] == "K":
             return MATE  # the previous move left a king en prise
         n, _ = apply(pos, m)
-        val = -search(n, depth - 1, -beta, -alpha, deadline)
+        val = -search(n, depth - 1, -beta, -alpha, deadline, hill)
         if val > best:
             best = val
         alpha = max(alpha, val)
@@ -282,7 +297,7 @@ def san(pos, m, after, replies):
     return text
 
 
-class Chess(Game):
+class Chess(Undo, Game):
     id = "chess"
     category = "strategy"
     howto = [
@@ -291,6 +306,8 @@ class Chess(Game):
         'Castling, en passant and promotion all work — you pick the promotion piece.',
         'You can offer a draw or resign from the side panel.',
         'With a clock, your time runs only on your turn; run out and you lose (a draw if your opponent has only a king).',
+        '👑 King of the Hill (an option): walk your king onto one of the four centre squares (d4, e4, d5, e5) to win at once.',
+        '↶ In an untimed game, Undo asks your rival to take back your last move.',
     ]
     name = "Chess"
     icon = "♟️"
@@ -299,6 +316,7 @@ class Chess(Game):
               "pawnmate": ("♟", "Humble hero", "Deliver checkmate with a pawn")}
     settings_schema = {
         "clock": ("Clock", [(0, "Untimed"), (180, "⚡ 3 min + 2s"), (300, "5 min"), (600, "10 min + 5s")], 0),
+        "variant": ("Variant", [("standard", "Standard"), ("hill", "👑 King of the Hill")], "standard"),
     }
     INCREMENT = {180: 2, 300: 0, 600: 5}
     clock, inc, turn_at = None, 0, 0.0  # games saved before clocks existed have none
@@ -350,6 +368,16 @@ class Chess(Game):
             return r.finish(None, f"⏰ {p.name} ran out of time, but {opp.name} can't checkmate — draw.")
         r.finish(opp, f"⏰ {p.name} ran out of time — {opp.name} wins!")
 
+    def hill(self):
+        return self.s.get("variant") == "hill"
+
+    def undo_state(self):
+        return (self.pos, dict(self.seen), self.last, list(self.sans), {k: list(v) for k, v in self.captured.items()})
+
+    def undo_restore(self, state):
+        self.pos, self.seen, self.last, self.sans, self.captured = state
+        self.draw_offer = None
+
     def color(self, p):
         return "wb"[self.seats.index(p.id)] if p.id in self.seats else None
 
@@ -369,6 +397,8 @@ class Chess(Game):
             if not self.draw_offer or self.draw_offer == p.id:
                 raise GameError("There's no draw offer to answer.")
             return self.answer_draw(p, t == "draw_accept")
+        if not self.clock and self.undo_act(p, t):  # take-backs only without a clock
+            return
         if t != "move":
             raise GameError("Unknown action.")
         self.require_turn(p)
@@ -392,6 +422,8 @@ class Chess(Game):
             self.draw_offer = None  # moving on counts as declining
         if self.clock:
             self.clock[p.id] = self.left(p.id) + self.inc
+        else:
+            self.snapshot(p)
         before = self.pos
         self.pos, captured = apply(before, move)
         text = move_text(before, move, captured)
@@ -414,6 +446,8 @@ class Chess(Game):
                 return r.finish(p, f"♚ Checkmate! {p.name} wins.")
             return r.finish(None, "🤝 Stalemate — it's a draw.")
         r.add_log(f"{p.name}: {text}{'+' if check else ''}", "question")
+        if self.hill() and on_hill(self.pos.b, before.turn):
+            return r.finish(p, f"👑 {p.name}'s king takes the hill — {p.name} wins!")
         if self.pos.half >= 100:
             return r.finish(None, "🤝 Draw by the 50-move rule.")
         if self.seen[key] >= 3:
@@ -436,13 +470,14 @@ class Chess(Game):
             "moves": [list(m) for m in moves], "last": self.last, "check": check,
             "captured": self.captured, "drawOffer": self.draw_offer, "sans": list(self.sans),
             "clock": {pid: round(self.left(pid), 1) for pid in self.seats} if self.clock else None, "inc": self.inc,
+            "hill": self.hill(), "undo": None if self.clock else self.undo_view(p),
         }}
 
     # -- bot
 
     def bot_turn(self, p):
         if self.draw_offer and self.draw_offer != p.id:
-            accept = evaluate(self.pos.b, self.pos.turn) < -250
+            accept = evaluate(self.pos.b, self.pos.turn, self.hill()) < -250
             self.answer_draw(p, accept)
             if accept:
                 return
@@ -458,11 +493,11 @@ class Chess(Game):
         for depth in range(1, max_depth + 1):
             try:
                 scored = []
-                ahead = evaluate(self.pos.b, self.pos.turn) > 50
+                ahead = evaluate(self.pos.b, self.pos.turn, self.hill()) > 50
                 for m in moves:
                     n, _ = apply(self.pos, m)
                     repeat = 150 if ahead and n.key() in self.seen else 0  # don't drift into a draw
-                    scored.append((-search(n, depth - 1, -MATE * 2, MATE * 2, deadline)
+                    scored.append((-search(n, depth - 1, -MATE * 2, MATE * 2, deadline, self.hill())
                                    - repeat + random.uniform(0, noise), m))
                 scored.sort(key=lambda x: -x[0])
                 best = scored[0][1]

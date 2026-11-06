@@ -48,10 +48,19 @@ class Hockey(Game):
     min_players = 2
     max_players = 2
     replayable = False
+    badges = {**Game.badges, "shutout": ("🧤", "Shutout", "Win without letting a goal in")}
     settings_schema = {
         "target": ("First to", [(5, "5 goals"), (7, "7 goals"), (3, "3 goals (quick)")], 5),
         "pucks": ("Pucks", [(1, "🏒 One"), (2, "🏒🏒 Double Trouble")], 1),
+        "widen": ("🥅 Leader's goal widens", [(False, "Off"), (True, "On: each goal of lead widens your goal")], False),
     }
+
+    def goal_w(self, seat):
+        """The goal `seat` defends: wider for the leader with 🥅 on (+15% per goal of lead, up to +50%)."""
+        if not self.s.get("widen"):
+            return GOAL
+        lead = self.score[seat] - self.score[1 - seat]
+        return GOAL * min(1.5, 1 + 0.15 * max(0, lead))
 
     # -- setup
 
@@ -175,7 +184,7 @@ class Hockey(Game):
         pk.vy *= decay
         pk.x += pk.vx * h
         pk.y += pk.vy * h
-        in_mouth = abs(pk.x - W / 2) < GOAL / 2
+        in_mouth = abs(pk.x - W / 2) < self.goal_w(1 if pk.y < H / 2 else 0) / 2  # the top goal is seat 1's
         if pk.y < -PUCK:
             return 0
         if pk.y > H + PUCK:
@@ -222,6 +231,8 @@ class Hockey(Game):
         name = who.name if who else "?"
         r.add_log(f"🚨 GOAL! {name} scores — {self.score[0]} : {self.score[1]}", "big" if max(self.score) >= self.s["target"] else "power")
         if self.score[scorer] >= self.s["target"]:
+            if min(self.score) == 0 and who:
+                self.award(who, "shutout")
             r.finish(who, f"🏆 {name} wins {max(self.score)}–{min(self.score)}!")
             return True
         self.serve(k, 1 - scorer, now)
@@ -306,7 +317,7 @@ class Hockey(Game):
 
     def view(self, p):
         return {"hockey": {
-            "W": W, "H": H, "mallet": MALLET, "puck": PUCK, "goal": GOAL, "seats": self.seats, "me": self.seat(p),
+            "W": W, "H": H, "mallet": MALLET, "puck": PUCK, "goal": GOAL, "goals": [self.goal_w(0), self.goal_w(1)], "seats": self.seats, "me": self.seat(p),
             "score": self.score, "target": self.s["target"],
             "pk": [[pk.x, pk.y, pk.vx, pk.vy] for pk in self.pucks], "ml": self.mallets,
         }}

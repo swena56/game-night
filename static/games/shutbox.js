@@ -29,6 +29,16 @@ UI.shutbox = (() => {
     };
   }
 
+  // the chance a roll leaves you stuck: no open tiles add up to it (two dice: 36 rolls; one die: 6)
+  function stuckChance(tiles, dice) {
+    const sums = new Set([0]);
+    for (const t of tiles) for (const v of [...sums]) sums.add(v + t);
+    let bad = 0, all = 0;
+    if (dice === 1) for (let a = 1; a <= 6; a++) { all++; if (!sums.has(a)) bad++; }
+    else for (let a = 1; a <= 6; a++) for (let b = 1; b <= 6; b++) { all++; if (!sums.has(a + b)) bad++; }
+    return Math.round((100 * bad) / all);
+  }
+
   function render(s, c) {
     S = s; ctx = c;
     const sb = S.shutbox, cur = S.turn, box = sb.boxes[cur] || { tiles: [] };
@@ -80,7 +90,10 @@ UI.shutbox = (() => {
     $('sbSum').textContent = sb.rolled && sb.stage === 'play' ? (mine ? `Roll ${total} · picked ${chosen}` : `Rolled ${total}`)
       : sb.stage === 'stuck' && sb.last ? `Rolled ${total}: nothing fits · ${sb.last.pts} points` : '';
     $('sbRoll2').hidden = $('sbRoll1').hidden = !(mine && !sb.rolled);
-    $('sbRoll2').textContent = sb.canOne ? '🎲🎲 Two dice' : '🎲 Roll';
+    // each roll button says how likely it is to leave you stuck
+    const odds = (n) => `${stuckChance(box.tiles, n)}% stuck`;
+    $('sbRoll2').innerHTML = ''; $('sbRoll2').append(sb.canOne ? '🎲🎲 Two dice' : '🎲 Roll', ctx.el('small', 'sb-odds', odds(2)));
+    $('sbRoll1').innerHTML = ''; $('sbRoll1').append('🎲 One die', ctx.el('small', 'sb-odds', odds(1)));
     $('sbRoll1').hidden = !(mine && !sb.rolled && sb.canOne);
     $('sbShut').hidden = !(mine && sb.rolled);
     $('sbShut').disabled = chosen !== total;

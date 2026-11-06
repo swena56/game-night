@@ -126,7 +126,9 @@ UI.seabattle = (() => {
       const k = `${Math.floor(i / N)},${i % N}`, cell = mine[i], s = shipAt.get(k), hit = incoming.get(k);
       cell.className = 'sea-cell' + (s ? ' ship ' + myHull.get(k) : '') + (s && s.sunk ? ' sunk' : '') + (s && placing && s.idx === pick ? ' picked' : '')
         + (newIn && lastIn && `${lastIn[0]},${lastIn[1]}` === k ? (hit === 'miss' ? ' plop' : ' boom') : '');
-      cell.textContent = hit === 'miss' ? '•' : hit ? '🔥' : '';
+      // pegs, not emoji: a white ring for a miss, a red peg for a hit
+      cell.textContent = '';
+      if (hit) { cell.classList.add(hit === 'miss' ? 'peg-miss' : 'peg-hit'); cell.title = hit === 'miss' ? 'Miss' : `Hit${s ? ` on your ${s.name || 'ship'}` : ''}`; }
       cell.disabled = !(placing && playing && !ready);
     }
 
@@ -144,7 +146,8 @@ UI.seabattle = (() => {
       const isLast = sea.last && `${sea.last[0]},${sea.last[1]}` === k;
       cell.className = 'sea-cell' + (revealed.has(k) ? ' ship ' + (enemyHull.get(k) || '') : '') + (v === 'sunk' ? ' sunk' : '') + (scanned.has(k) ? ' scanned' : '')
         + (isLast ? ' last' : '') + (isLast && newOut ? (v === 'miss' ? ' plop' : ' boom') : '');
-      cell.textContent = v === 'miss' ? '•' : v === 'hit' ? '🔥' : v === 'sunk' ? '✖' : scanCentre.has(k) ? String(scanCentre.get(k)) : '';
+      cell.textContent = scanCentre.has(k) && !v ? String(scanCentre.get(k)) : '';
+      if (v) { cell.classList.add(v === 'miss' ? 'peg-miss' : 'peg-hit'); cell.title = v === 'miss' ? 'Miss' : v === 'sunk' ? 'Sunk' : 'Hit'; }
       cell.disabled = !ctx.myTurn || (!!v && !sonarMode && !torp);
     }
 
@@ -153,7 +156,13 @@ UI.seabattle = (() => {
     if (newOut || newIn) {
       const v = newOut ? shots.get(`${sea.last?.[0]},${sea.last?.[1]}`) : lastIn?.[2];
       ctx.sfx(v === 'miss' ? 'splash' : 'boom');
-      if (v !== 'miss' && newIn) ctx.buzz(80);
+      if (v !== 'miss' && newIn) {
+        ctx.buzz(80);
+        // a hit on my fleet: the (small, on a phone) grid pulses and says which ship
+        const grid = $('sbMine'), s = shipAt.get(`${lastIn[0]},${lastIn[1]}`);
+        grid.classList.remove('hit-pulse'); void grid.offsetWidth; grid.classList.add('hit-pulse');
+        Kit.flyText(grid, `Hit on your ${s?.name || sea.mine[s?.idx]?.name || 'ship'}!`, 'bad');
+      }
     }
     if (render.sunk && sunkTheirs > render.sunk[1]) Kit.callout('💥 SUNK!', 'gold');
     else if (render.sunk && sunkMine > render.sunk[0]) Kit.callout('🌊 Ship lost', 'bad');
@@ -182,9 +191,20 @@ UI.seabattle = (() => {
     $('sbTorp').classList.toggle('on', !!torp);
     $('sbTorp').textContent = torp === 'h' ? '💥 Torpedo ↔' : torp === 'v' ? '💥 Torpedo ↕' : '💥 Torpedo';
     $('sbEnemy').classList.toggle('torp', !!torp);
-    const fleetLine = (ships) => ships.map((s) => (s.sunk ? '✖ ' : '') + s.name).join(' · ');
+    // each fleet as ship silhouettes, one segment per square: hit squares of your own ships are marked,
+    // and sunk ships are struck through
+    const fleet = (label, ships, own) => {
+      const row = ctx.el('div', 'sb-fleet'); row.append(ctx.el('small', '', label));
+      for (const sh of ships) {
+        const hull = ctx.el('span', 'sb-hull' + (sh.sunk ? ' sunk' : '')); hull.title = sh.name + (sh.sunk ? ' (sunk)' : '');
+        const hits = own && sh.cells ? sh.cells.filter((x) => incoming.has(x.join())).length : sh.sunk ? sh.size : 0;
+        for (let k = 0; k < (sh.size || sh.cells?.length || 0); k++) hull.append(ctx.el('i', k < hits ? 'x' : ''));
+        row.append(hull);
+      }
+      return row;
+    };
     $('sbFleets').innerHTML = '';
-    $('sbFleets').append(ctx.el('div', '', `Enemy: ${fleetLine(sea.enemy)}`), ctx.el('div', '', `Yours: ${fleetLine(sea.mine)}`));
+    $('sbFleets').append(fleet('Enemy', sea.enemy, false), fleet('Yours', sea.mine, true));
   }
 
   // while placing, a ship can be dragged to a new spot: grab any part of it and it follows your finger,

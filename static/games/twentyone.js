@@ -1,6 +1,8 @@
 // Twenty-One: the dealer's cards on top, every seat's cards and bet below, and a bar with the bet
 // chips (while betting) or Hit / Stand / Double / Split (on your turn). A split seat shows one row per hand.
 UI.twentyone = (() => {
+  let tips = false;
+  try { tips = !!localStorage.getItem('twentyone.tips'); } catch {}
   let S, ctx;
   const $ = (id) => document.getElementById(id);
 
@@ -188,13 +190,20 @@ UI.twentyone = (() => {
       betBar(bar, t, me);
       note = '';
     } else if (playing && t.stage === 'play' && ctx.myTurn) {
-      for (const [type, label, cls] of [['hit', '➕ Hit', 'primary'], ['stand', '✋ Stand', ''], ['double', '💰 Double', ''], ['split', '✂️ Split', '']]) {
+      for (const [type, label, cls] of [['hit', '➕ Hit', 'primary'], ['stand', '✋ Stand', ''], ['double', '💰 Double', ''], ['split', '✂️ Split', ''], ['surrender', '🏳️ Surrender', '']]) {
         if (type === 'split' && !t.canSplit) continue;  // only offered on a pair
+        if (type === 'surrender' && !t.canSurrender) continue;
         const b = ctx.el('button', cls, label);
         if (type === 'double') b.disabled = !t.canDouble;
+        // 💡 basic strategy's pick wears a small tag (off until you turn tips on)
+        if (tips && t.advice === type) { b.classList.add('to-advised'); b.append(ctx.el('small', 'to-tip', '💡')); }
         b.onclick = () => ctx.quiet(ctx.act(type));
         bar.append(b);
       }
+      const tip = ctx.el('button', 'ghost-btn to-tips' + (tips ? ' on' : ''), tips ? '💡 Tips on' : '💡 Tips');
+      tip.title = 'Show which move basic strategy picks';
+      tip.onclick = () => { tips = !tips; try { localStorage.setItem('twentyone.tips', tips ? '1' : ''); } catch {} ctx.rerender(); };
+      bar.append(tip);
       const hs = t.seatHands[me];
       note = hs.length > 1 ? `Hand ${t.cur[me] + 1} of ${hs.length}: you have ${hs[t.cur[me]].total}.` : `You have ${hs[0].total}.`;
     } else if (playing && t.stage === 'insure' && t.ins?.[me] === null) {

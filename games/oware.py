@@ -49,9 +49,16 @@ def apply(state, me, pit):
     return (tuple(new), tuple(stores), 0 if taken else quiet + 1)
 
 
+def half(state):
+    """Half the seeds in play (24 with 4 a pit): more than this wins, exactly this each is a draw."""
+    pits, stores, _ = state
+    return (sum(pits) + sum(stores)) // 2
+
+
 def legal(state, me):
     pits, stores, quiet = state
-    if max(stores) > 24 or stores == (24, 24) or quiet >= QUIET_LIMIT:
+    h = half(state)
+    if max(stores) > h or stores == (h, h) or quiet >= QUIET_LIMIT:
         return []
     mine = [p for p in side(me) if pits[p]]
     if sum(pits[j] for j in side(1 - me)) == 0:  # rival is empty: you must feed them
@@ -62,8 +69,9 @@ def legal(state, me):
 def final(state, me):
     """Stores when the game ends with `me` to move and no legal move: each side keeps its own seeds."""
     pits, stores, _ = state
+    h = half(state)
     stores = list(stores)
-    if max(stores) <= 24 and stores != [24, 24]:
+    if max(stores) <= h and stores != [h, h]:
         for s in (0, 1):
             stores[s] += sum(pits[j] for j in side(s))
     return stores
@@ -90,7 +98,8 @@ class Oware(Undo, Game):
         "If your last seed lands in a rival pit and makes it 2 or 3, you capture those seeds, plus the rival pits just before it that now hold 2 or 3.",
         "With a mouse, point at a pit to see where its seeds would go and what it would capture.",
         "You can't capture every rival seed at once (that captures nothing). If your rival has no seeds, you must give them some.",
-        "25 seeds wins. If nobody can capture any more, each side keeps the seeds in its row.",
+        "More than half the seeds wins (25 of 48). If nobody can capture any more, each side keeps the seeds in its row.",
+        "Seeds per pit (an option): 3 for a quick game (19 of 36 wins) or 5 for a long one (31 of 60).",
         "↶ Undo asks your rival to take back your last move.",
     ]
     name = "Oware"
@@ -99,13 +108,15 @@ class Oware(Undo, Game):
     min_players = 2
     max_players = 2
     badges = {**Game.badges, "harvest": ("🌾", "Big harvest", "Win with 36 seeds or more")}
-    settings_schema = {}
+    settings_schema = {
+        "seeds": ("Seeds per pit", [(4, "4 (classic)"), (3, "3 (quick)"), (5, "5 (long)")], 4),
+    }
 
     def start(self, seated, rng):
         self.rng = rng
         rng.shuffle(seated)
         self.seats = [p.id for p in seated]
-        self.state = ((4,) * 12, (0, 0), 0)
+        self.state = ((self.s.get("seeds", 4),) * 12, (0, 0), 0)
         self.last = None   # [pit, [captured pits], seeds sown]
         self.room.add_log(f"🌰 Oware! {seated[0].name} sows first.", "big")
         self.room.begin_turn(seated[0].id)
@@ -160,7 +171,7 @@ class Oware(Undo, Game):
         if st[0] == st[1]:
             return r.finish(None, f"🤝 A draw, {st[0]}–{st[1]}.")
         w = 0 if st[0] > st[1] else 1
-        if st[w] >= 36:
+        if st[w] * 4 >= 36 * self.s.get("seeds", 4):  # 36 of 48, or the same share of the board
             self.award(self.seats[w], "harvest")
         r.finish(r.players.get(self.seats[w]), f"🏆 {names[w]} wins Oware, {st[w]}–{st[1 - w]}!")
 
@@ -178,6 +189,7 @@ class Oware(Undo, Game):
             "pits": self.state[0], "stores": self.state[1], "seats": self.seats,
             "me": i, "last": self.last,
             "legal": legal(self.state, i) if mine and i is not None else [],
+            "goal": half(self.state) + 1,
             "undo": self.undo_view(p),
         }}
 

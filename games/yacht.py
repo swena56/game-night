@@ -57,6 +57,7 @@ class Yacht(Game):
         "Ones–Sixes: that number's total. Full House: all dice. Four of a Kind: the four. Straights 1–5 or 2–6: 30. Choice: all dice. Yacht (five alike): 50.",
         "Twelve rounds; the highest total wins. Alone, reach 150 to win (175 with the upper bonus on).",
         "Optional bonuses: +35 when Ones–Sixes add up to 63 or more, and +50 for each extra Yacht once your Yacht box holds 50.",
+        "With ⭐ Bonus roll on, everyone has one extra roll for the whole game: spend it on a turn after your third roll.",
     ]
     name = "Yacht"
     icon = "🎲"
@@ -68,6 +69,7 @@ class Yacht(Game):
     settings_schema = {
         "bonus": ("Upper bonus", [(False, "Off (classic)"), (True, "+35 for 63 in Ones–Sixes")], False),
         "extra": ("Extra Yachts", [(False, "Off (classic)"), (True, "+50 each")], False),
+        "bonusroll": ("⭐ Bonus roll", [(False, "Off (classic)"), (True, "One extra roll to use once a game")], False),
     }
 
     # -- setup
@@ -78,6 +80,7 @@ class Yacht(Game):
         for p in seated:
             p.g.card = {c: None for c in CATS}
             p.g.extra = 0  # extra Yachts scored
+            p.g.bonus_rolls = 1 if self.s.get("bonusroll") else 0  # ⭐ one extra roll a game
         self.dice, self.held, self.rolls_left, self.roll_id = [1, 2, 3, 4, 5], [False] * 5, 3, 0
         self.last = ""
         first = rng.choice(seated)
@@ -113,11 +116,21 @@ class Yacht(Game):
             if not (isinstance(hold, list) and len(hold) == 5 and all(isinstance(h, bool) for h in hold)):
                 raise GameError("Bad hold.")
             return self.roll(p, hold)
+        if t == "hold":  # holds shown to the table as they're tapped, before the reroll
+            hold = a.get("hold")
+            if self.rolls_left == 3 or not (isinstance(hold, list) and len(hold) == 5 and all(isinstance(h, bool) for h in hold)):
+                raise GameError("Bad hold.")
+            self.held = list(hold)
+            return
         if t == "score":
             return self.fill(p, a.get("cat"))
         raise GameError("Unknown action.")
 
     def roll(self, p, hold):
+        if self.rolls_left <= 0 and getattr(p.g, "bonus_rolls", 0):  # ⭐ spend the game's bonus roll
+            p.g.bonus_rolls -= 1
+            self.rolls_left = 1
+            self.room.add_log(f"⭐ {p.name} spends their bonus roll!", "power")
         if self.rolls_left <= 0:
             raise GameError("No rolls left: pick a box to score.")
         first = self.rolls_left == 3
@@ -211,6 +224,7 @@ class Yacht(Game):
             "upperBonus": {i: self.upper_bonus(r.players[i]) for i in self.seats if i in r.players},
             "extra": {i: EXTRA_YACHT * getattr(r.players[i].g, "extra", 0) for i in self.seats if i in r.players},
             "target": self.target(),
+            "bonusRolls": {i: getattr(r.players[i].g, "bonus_rolls", 0) for i in self.seats if i in r.players},
         }}
 
     # -- bots

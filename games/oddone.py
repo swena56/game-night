@@ -14,6 +14,8 @@ REVEAL_SECS = 7
 CLUE_RE = re.compile(r"^[A-Za-z][A-Za-z'\-]{0,19}$")
 
 
+BLANK = "🫥"  # the odd one's "word" in 🫥 Blank mode
+
 class OddOne(Game):
     id = "oddone"
     category = "party"
@@ -23,6 +25,7 @@ class OddOne(Game):
         "Then everyone votes for the player they think has the odd word.",
         "Catch the odd one: +2 each. If they escape, they get +4.",
         "A caught odd one can still guess the real word for +3.",
+        "🫥 Blank (an option): the odd one gets no word at all and knows it, so they have to bluff their clues.",
     ]
     name = "Odd One Out"
     icon = "🕵️"
@@ -33,6 +36,7 @@ class OddOne(Game):
     settings_schema = {
         "rounds": ("Rounds", [(3, "3"), (4, "4"), (6, "6")], 4),
         "laps": ("Clues each", [(1, "1"), (2, "2")], 2),
+        "blank": ("🫥 Blank", [(False, "Off: the odd one has a close word"), (True, "On: the odd one has no word, and knows it")], False),
     }
 
     # -- setup
@@ -40,7 +44,13 @@ class OddOne(Game):
     def start(self, seated, rng):
         self.rng = rng
         self.ids = [p.id for p in seated]
-        self.pairs = rng.sample(PAIRS, len(PAIRS))
+        # pairs this room has played tonight wait until the rest have had a turn
+        seen = getattr(self.room, "oddone_seen", set())
+        fresh = [p for p in PAIRS if tuple(p) not in seen]
+        if len(fresh) < self.s["rounds"]:
+            seen, fresh = set(), list(PAIRS)
+        self.pairs = rng.sample(fresh, len(fresh))
+        self.room.oddone_seen = seen | {tuple(p) for p in self.pairs[:self.s["rounds"]]}
         self.round = 0
         self.result = None
         for p in seated:
@@ -69,6 +79,8 @@ class OddOne(Game):
         pair = list(self.pairs[(self.round - 1) % len(self.pairs)])
         self.rng.shuffle(pair)
         self.common, self.odd_word = pair
+        if self.s.get("blank"):
+            self.odd_word = BLANK
         players = self.live()
         self.odd = self.rng.choice(players).id
         for p in players:
@@ -292,6 +304,8 @@ class OddOne(Game):
             self.guess(p, self.bot_guess(p))
 
     def lists(self, p):
+        if p.g.word == BLANK:  # the blank: guess the word from everyone else's clues
+            return WORDS.get(self.best_guess(p), []), []
         mine = WORDS.get(p.g.word, [])
         other = WORDS.get(PARTNER.get(p.g.word), [])
         return mine, [c for c in other if c not in mine]
@@ -334,7 +348,14 @@ class OddOne(Game):
             return flip * s + random.uniform(0, noise)
         return max(others, key=suspicion).id
 
+    def best_guess(self, p):
+        """The word whose clue list matches the table's clues best."""
+        others = [c["text"].lower() for c in self.clues if c["by"] != p.id]
+        return max(WORDS, key=lambda w: (sum(c in WORDS[w] for c in others), random.random()))
+
     def bot_guess(self, p):
+        if p.g.word == BLANK:
+            return self.best_guess(p) if random.random() < {"easy": 0.3, "normal": 0.55, "hard": 0.8}[p.bot] else random.choice(list(WORDS))
         if random.random() < {"easy": 0.35, "normal": 0.6, "hard": 0.85}[p.bot]:
             return PARTNER.get(p.g.word, "something")
         return random.choice(list(WORDS))

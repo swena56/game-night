@@ -135,7 +135,7 @@ UI.qork = (() => {
     call.className = 'qk-call' + (g.trigger ? ' hot' : '');
     call.textContent = g.stage === 'wait' ? (g.cupper === S.me.id ? 'Roll when ready…' : `Waiting for ${cupName} to roll…`)
       : tumbling ? 'Rolling…'
-      : g.trigger ? (g.trigger === 'doubles' ? 'DOUBLES!' : 'SEVEN!')
+      : g.trigger ? (g.trigger === 'doubles' ? 'DOUBLES!' : g.trigger === 'lucky' ? `🍀 LUCKY ${g.lucky}!` : 'SEVEN!')
       : g.dice ? `${g.dice[0] + g.dice[1]} — hold still…` : '';
 
     // the mat: one Qork per Corker, strings out to the edge
@@ -171,8 +171,9 @@ UI.qork = (() => {
     clearTimeout(rollTimer);
     roll.disabled = replay() || (g.canRoll ?? 0) > 0;
     if (!roll.hidden && roll.disabled && !replay()) rollTimer = setTimeout(() => { roll.disabled = false; }, g.canRoll * 1000);
-    $('qkHint').textContent = me === 'cup' ? 'Roll, then SLAM the cup the instant you see doubles or a 7 — but not before!'
-      : me === 'cork' ? 'YANK your Qork the instant you see doubles or a 7. Jumping early costs a point.'
+    const also = g.lucky ? ` or a 🍀 ${g.lucky}` : '';
+    $('qkHint').textContent = me === 'cup' ? `Roll, then SLAM the cup the instant you see doubles, a 7${also} — but not before!`
+      : me === 'cork' ? `YANK your Qork the instant you see doubles, a 7${also}. Jumping early costs a point.`
       : 'You are watching this game.';
 
     // reaction times after a trigger

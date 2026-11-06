@@ -1,6 +1,7 @@
 // Liar's Dice: the current bid up top, your hidden dice, then a bid picker (how many, which face) with
 // Liar! and Exact buttons. The last showdown stays on screen with everyone's dice until the next one.
 UI.liars = (() => {
+  let showPick = null;  // dice chosen to show while picking a Show & reroll
   let S, ctx, qty = 1, face = 2, bidKey = '', seenShow = null, rolled = -1, reviewOpen = false, revealEnd = 0, seenCounts = null, seenBids = 0;
   const $ = (id) => document.getElementById(id);
   const PIPS = Dice.PIPS;
@@ -16,6 +17,7 @@ UI.liars = (() => {
       <div id="lrLadder" class="liar-ladder"></div>
       <div class="liar-label">Your dice</div>
       <div id="lrMine" class="ya-dice liar-mine"></div>
+      <div class="row liar-reroll"><button id="lrReroll" class="ghost-btn" hidden>🎲 Show &amp; reroll</button><button id="lrRerollGo" class="primary" hidden></button></div>
       <div id="lrPick" class="liar-pick">
         <div class="liar-qty"><button id="lrLess" aria-label="Fewer">−</button><b id="lrQty"></b><span>×</span><button id="lrMore" aria-label="More">+</button></div>
         <div id="lrFaces" class="liar-faces"></div>
@@ -29,6 +31,9 @@ UI.liars = (() => {
     $('lrGo').onclick = () => ctx.quiet(ctx.act('bid', { qty, face }));
     $('lrLiar').onclick = () => ctx.quiet(ctx.act('liar', {}));
     $('lrExact').onclick = () => ctx.quiet(ctx.act('exact', {}));
+    // 🎲 pick the dice to put on show, then reroll the rest
+    $('lrReroll').onclick = () => { showPick = showPick ? null : new Set(); ctx.rerender(); };
+    $('lrRerollGo').onclick = () => { const show = [...(showPick || [])]; showPick = null; ctx.quiet(ctx.act('reroll', { show })); };
   }
 
   const legal = (q, f) => {
@@ -99,6 +104,9 @@ UI.liars = (() => {
       for (let k = 0; k < n; k++) pips.append(ctx.el('i'));
       const nm = ctx.el('small', '', p.name); nm.style.color = p.color;
       seat.append(cup, pips, nm);
+      if (l.shown?.[pid]?.length) {  // dice they put on show this round
+        const on = ctx.el('div', 'liar-shown'); l.shown[pid].forEach((d) => on.append(die(d, 'tiny'))); seat.append(on);
+      }
       table.append(seat);
       if (seenCounts && (seenCounts[pid] ?? n) > n) {
         const lost = ctx.el('i', 'gone'); pips.append(lost);
@@ -121,10 +129,25 @@ UI.liars = (() => {
       if (!last) lad.append(ctx.el('span', 'liar-step', '›'));
     });
     if (l.bids.length > 6) lad.prepend(ctx.el('span', 'liar-step', '…'));
+    // a raise: the bid banner jumps (the move sound is the dice group's rattle)
+    if (l.bids.length > seenBids && seenBids > 0) { bidBox.classList.remove('bump'); void bidBox.offsetWidth; bidBox.classList.add('bump'); }
     seenBids = l.bids.length;
 
     const mine = $('lrMine'); mine.innerHTML = '';
-    for (const d of l.mine) mine.append(die(d, (l.wild && d === 1 ? 'wild ' : '')));
+    if (!l.canReroll) showPick = null;
+    const onShow = [...(l.shown?.[S.me.id] || [])];
+    l.mine.forEach((d, i) => {
+      const k = onShow.indexOf(d), shownDie = k >= 0;
+      if (shownDie) onShow.splice(k, 1);
+      const b = die(d, (l.wild && d === 1 ? 'wild ' : '') + (shownDie ? 'onshow ' : '') + (showPick?.has(i) ? 'held ' : ''), showPick ? 'button' : 'span');
+      if (showPick) b.onclick = () => { showPick.has(i) ? showPick.delete(i) : showPick.add(i); ctx.rerender(); };
+      mine.append(b);
+    });
+    $('lrReroll').hidden = !l.canReroll;
+    $('lrReroll').textContent = showPick ? '✕ Cancel' : '🎲 Show & reroll';
+    const go = $('lrRerollGo');
+    go.hidden = !showPick;
+    if (showPick) { const n = showPick.size; go.disabled = !n || n >= l.mine.length; go.textContent = n ? `Show ${n}, reroll ${l.mine.length - n}` : 'Tap dice to show'; }
     if (l.round !== rolled && rolled !== -1) { mine.classList.remove('dice-cup'); void mine.offsetWidth; mine.classList.add('dice-cup'); Dice.roll(mine.children, { sound: false }); }
     rolled = l.round;
     if (!l.mine.length) mine.append(ctx.el('span', 'hint', S.me.spectator || !l.seats.includes(S.me.id) ? 'Watching' : 'Out of dice — watching'));

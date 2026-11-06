@@ -1,7 +1,7 @@
 // Nine Men's Morris: an SVG board of 24 points. Tap a point to place; in the moving phase tap a man,
 // then where it goes. When a move makes a mill, tap the rival man to take. Only legal choices respond.
 UI.morris = (() => {
-  let S, ctx, svg, pick = null, pending = null, seenLast = null, warn = false;
+  let S, ctx, svg, pick = null, pending = null, seenLast = null, warn = false, flyNow = [false, false];
   const MILLS = [[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10, 11], [12, 13, 14], [15, 16, 17], [18, 19, 20], [21, 22, 23],
     [0, 9, 21], [3, 10, 18], [6, 11, 15], [1, 4, 7], [16, 19, 22], [8, 12, 17], [5, 13, 20], [2, 14, 23]];
   const DIAGS = [[0, 3, 6], [2, 5, 8], [21, 18, 15], [23, 20, 17]];
@@ -12,8 +12,11 @@ UI.morris = (() => {
   const at = (i) => [10 + POS[i][0] * 30, 10 + POS[i][1] * 30];
 
   function mount(main, side) {
-    pick = null; pending = null; seenLast = null;
-    main.innerHTML = `<div class="mm"><svg id="mmSvg" class="mm-board" viewBox="0 0 200 200"></svg><p id="mmHint" class="hint"></p></div>`;
+    pick = null; pending = null; seenLast = null; flyNow = [false, false];
+    main.innerHTML = `<div class="mm"><div id="mmRes1" class="mm-res"></div><svg id="mmSvg" class="mm-board" viewBox="0 0 200 200">
+      <defs><radialGradient id="mmDark" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#5a4e70"/><stop offset=".55" stop-color="#1c1726"/><stop offset="1" stop-color="#0c0a12"/></radialGradient>
+      <radialGradient id="mmLight" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#ffffff"/><stop offset=".6" stop-color="#f4eedd"/><stop offset="1" stop-color="#c9bfa4"/></radialGradient></defs></svg>
+      <div id="mmRes0" class="mm-res"></div><p id="mmHint" class="hint"></p><div id="mmUndo" class="row center"></div></div>`;
     side.innerHTML = `<div class="panel"><div id="mmSeats"></div>
       <div class="row"><button id="mmWarn" aria-pressed="false">⚠ Show threats</button></div>
       <p class="hint left">Threats ring the empty points where your rival could finish a mill next move.</p></div>`;
@@ -42,16 +45,16 @@ UI.morris = (() => {
       if (legal.some(([s, d, r]) => s === pending[0] && d === pending[1] && r === i)) send([pending[0], pending[1], i]);
       return;
     }
-    const placing = m.hand[m.me] > 0;
-    if (placing || pick != null) {
-      const src = placing ? -1 : pick;
+    // a placement (with men in hand), or a step from the picked man; in Lasker Morris you may do either
+    const src = pick != null ? pick : m.hand[m.me] > 0 ? -1 : null;
+    if (src != null) {
       const opts = legal.filter(([s, d]) => s === src && d === i);
       if (opts.length) {
         if (opts[0][2] < 0) return send(opts[0]);
         pending = [src, i]; pick = null; return paint();
       }
     }
-    if (!placing && legal.some(([s]) => s === i)) { pick = pick === i ? null : i; return paint(); }
+    if (legal.some(([s]) => s === i)) { pick = pick === i ? null : i; return paint(); }
     pick = null; paint();
   }
 
@@ -83,8 +86,11 @@ UI.morris = (() => {
     const targets = new Set(), sources = new Set(), takes = new Set();
     if (mine) {
       if (pending) legal.filter(([s, d]) => s === pending[0] && d === pending[1]).forEach(([, , r]) => takes.add(r));
-      else if (placing) legal.forEach(([, d]) => targets.add(d));
-      else { legal.forEach(([s]) => sources.add(s)); if (pick != null) legal.filter(([s]) => s === pick).forEach(([, d]) => targets.add(d)); }
+      else {
+        legal.forEach(([s]) => s >= 0 && sources.add(s));
+        if (pick != null) legal.filter(([s]) => s === pick).forEach(([, d]) => targets.add(d));
+        else if (placing) legal.filter(([s]) => s < 0).forEach(([, d]) => targets.add(d));
+      }
     }
     const last = m.last || [-1, -1, -1];
     for (const g of svg.querySelectorAll('.mm-pt')) {
@@ -94,13 +100,13 @@ UI.morris = (() => {
       if (pending && i === pending[0]) v = null;
       const color = v == null ? null : ctx.player(m.seats[v])?.color ?? '#777';
       g.setAttribute('r', v == null ? 5 : 9);
-      g.style.fill = v == null ? '' : v === 0 ? '#1c1726' : '#f4eedd';
+      g.style.fill = v == null ? '' : v === 0 ? 'url(#mmDark)' : 'url(#mmLight)';  // bevelled, lit from the top left
       g.style.stroke = color || '';
       g.setAttribute('class', 'mm-pt' + (v == null ? ' empty' : ' man') + (targets.has(i) ? ' can' : '') + (sources.has(i) ? ' src' : '')
         + (i === pick ? ' picked' : '') + (takes.has(i) ? ' take' : '') + (i === last[1] ? ' last' : '') + (danger.has(i) ? ' warn' : ''));
     }
     $('mmHint').textContent = !mine || S.phase !== 'playing' ? '' : pending ? '🎯 Mill! Tap a rival man to take.'
-      : placing ? `Tap an empty point to place a man (${m.hand[m.me]} left).` : pick != null ? 'Tap where it goes.' : 'Tap one of your men to move it.';
+      : pick != null ? 'Tap where it goes.' : placing ? (m.lasker && sources.size ? `Tap an empty point to place (${m.hand[m.me]} left), or one of your men to move it.` : `Tap an empty point to place a man (${m.hand[m.me]} left).`) : 'Tap one of your men to move it.';
   }
 
   // the move just made: a man glides from where it was, a new mill flashes, a taken man shrinks away
@@ -110,7 +116,12 @@ UI.morris = (() => {
     seenLast = key;
     const [src, dst, take] = m.last;
     const man = svg.querySelector(`.mm-pt[data-i="${dst}"]`);
-    if (motionOK() && man?.animate) {
+    const seat = m.board[dst], reserve = svg.parentElement.querySelector(`.mm-res[data-for="${seat}"]`)?.lastElementChild;
+    if (src < 0 && reserve && motionOK()) {
+      // a placement comes out of the player's reserve beside the board
+      Kit.fly(reserve, man, { ms: 380, remove: false });
+      man.style.opacity = '0'; setTimeout(() => { man.style.opacity = ''; }, 380);
+    } else if (motionOK() && man?.animate) {
       const [x0, y0] = src >= 0 ? at(src) : [at(dst)[0], -20], [x1, y1] = at(dst);
       man.animate([{ transform: `translate(${x0 - x1}px, ${y0 - y1}px)` }, { transform: 'none' }], { duration: src >= 0 ? 320 : 380, easing: 'cubic-bezier(.3, .9, .4, 1)' });
     }
@@ -130,6 +141,15 @@ UI.morris = (() => {
       svg.append(ghost);
       setTimeout(() => ghost.remove(), 700);
       setTimeout(() => ctx.sfx('capture'), 380);
+      Kit.callout(m.board[dst] === m.me ? 'Mill!' : '⚠ Mill', m.board[dst] === m.me ? 'gold' : 'bad', { ms: 1000 });
+    }
+    // a side down to three men (and nothing left to place) may fly
+    for (const sd of [0, 1]) {
+      const n = m.board.filter((v) => v === sd).length;
+      if (m.fly !== false && n === 3 && !m.hand[sd] && flyNow[sd] !== true) {
+        flyNow[sd] = true;
+        Kit.callout(sd === m.me ? '🕊 You can fly!' : `🕊 ${ctx.player(m.seats[sd])?.name ?? '?'} can fly`, 'cool', { ms: 1400 });
+      }
     }
   }
 
@@ -139,6 +159,16 @@ UI.morris = (() => {
     paint();
     animateLast(S.morris);
     const m = S.morris, info = $('mmSeats'); info.innerHTML = '';
+    // each player's men still to place wait in a row beside the board (yours below, your rival's above)
+    const meSeat = m.me ?? 0;
+    for (const sd of [0, 1]) {
+      const box = $(`mmRes${sd === meSeat ? 0 : 1}`);
+      if (box.childElementCount !== m.hand[sd] || box.dataset.for !== String(sd)) {
+        box.dataset.for = sd; box.innerHTML = '';
+        for (let k = 0; k < m.hand[sd]; k++) box.append(ctx.el('i', 'mm-res-man ' + (sd === 0 ? 'dark' : 'light')));
+      }
+    }
+    undoRow($('mmUndo'), m.undo, S, ctx, m.me != null);
     svg.classList.toggle('twelve', !!m.twelve);
     m.seats.forEach((pid, i) => {
       const p = ctx.player(pid), row = ctx.el('div', 'seat-row');

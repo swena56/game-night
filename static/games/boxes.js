@@ -47,6 +47,8 @@ UI.boxes = (() => {
       node('line', { x1, y1, x2, y2, class: 'bx-ink', pathLength: 1 }, g);
       node('line', { x1, y1, x2, y2, class: 'bx-hit' }, g);
       g.onclick = () => tap(d, r, c, g);
+      g.onpointerenter = () => { if (hover()) { hovered = `${d},${r},${c}`; warnFor(hovered); } };
+      g.onpointerleave = () => { if (hovered === `${d},${r},${c}`) { hovered = null; warnFor(picked); } };
     };
     for (let r = 0; r <= rows; r++) for (let c = 0; c < cols; c++) addLine('h', r, c);
     for (let r = 0; r < rows; r++) for (let c = 0; c <= cols; c++) addLine('v', r, c);
@@ -65,6 +67,22 @@ UI.boxes = (() => {
   }
 
   const colorOf = (seat) => ctx.player(S.boxes.seats[seat])?.color ?? '#888';
+
+  // the boxes a line would give away (it would be their third side): tinted red while you consider it
+  let hovered = null;
+  function warnFor(key) {
+    for (const g of svg.querySelectorAll('.bx-box.giveaway')) g.classList.remove('giveaway');
+    const b = S?.boxes;
+    if (!key || !b || !ctx.myTurn) return;
+    const [d, r, c] = key.split(','), R = +r, C = +c;
+    const drawn = (dd, rr, cc) => (dd === 'h' ? b.h : b.v)[rr]?.[cc] != null;
+    const near = d === 'h' ? [[R - 1, C], [R, C]] : [[R, C - 1], [R, C]];
+    for (const [br, bc] of near) {
+      if (br < 0 || bc < 0 || br >= b.rows || bc >= b.cols) continue;
+      const n = [['h', br, bc], ['h', br + 1, bc], ['v', br, bc], ['v', br, bc + 1]].filter(([dd, rr, cc]) => drawn(dd, rr, cc)).length;
+      if (n === 2) svg.querySelector(`.bx-box[data-k="${br},${bc}"]`)?.classList.add('giveaway');
+    }
+  }
 
   function render(s, c) {
     S = s; ctx = c;
@@ -111,6 +129,7 @@ UI.boxes = (() => {
       } else if (lineChanged) { combo = 0; comboBy = null; }
     }
     prev = { h: b.h, v: b.v, owner: b.owner };
+    warnFor(picked || hovered);
 
     const box = $('bxScores'); box.innerHTML = '';
     for (const [i, pid] of b.seats.entries()) {

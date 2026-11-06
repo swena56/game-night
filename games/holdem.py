@@ -19,6 +19,7 @@ BLINDS = [(10, 20), (15, 30), (25, 50), (50, 100), (75, 150), (100, 200), (150, 
 HAND_NAMES = ["High card", "Pair", "Two pair", "Three of a kind", "Straight", "Flush", "Full house",
               "Four of a kind", "Straight flush"]
 STREETS = ["preflop", "flop", "turn", "river"]
+RUNOUT_STEP = 1.1  # seconds between the cards of an all-in run-out on the page
 # seconds between hands by the "Between hands" setting: (everyone folded, cards shown at a showdown)
 PAUSES = {1: (2.5, 5.0), 2: (5.0, 9.0), 3: (9.0, 15.0)}
 REBUY_WAIT = 12.0                    # how long the table waits when a buy-back would keep the game going
@@ -146,6 +147,7 @@ class Holdem(Game):
         "Hands, high to low: straight flush, four of a kind, full house, flush, straight, three of a kind, two pair, pair.",
         "Blinds rise every few hands. Run out of chips and you're out (unless you 💸 buy back in). Last player with chips wins.",
         "With a turn timer, everyone has a 60 s ⏳ time bank: run out of time and it adds 20 s before you're folded.",
+        "With 🎯 Bounties on, whoever wins the pot that knocks a player out collects a bounty of 10% of the starting chips.",
     ]
     name = "Texas Hold'em"
     icon = "♠️"
@@ -159,6 +161,7 @@ class Holdem(Game):
         "rebuys": ("Buy back in", [(0, "Off"), (1, "💸 Once each"), (3, "💸 Up to 3 times")], 1),
         "breather": ("Between hands", [(1, "⚡ Quick"), (2, "Normal"), (3, "🐢 Relaxed")], 2),
         "odds": ("Win chance", [(False, "Hidden"), (True, "📊 Show my odds")], False),
+        "bounty": ("🎯 Bounties", [(False, "Off"), (True, "On: knock a player out, collect 10% of the starting chips")], False),
     }
 
     # -- setup
@@ -260,6 +263,7 @@ class Holdem(Game):
         self.dead = 0  # chips from players who left mid-hand stay in the pot
         self.board, self.shown, self.result, self.last_act = [], {}, "", {}
         self.best5, self.winners = [], []
+        self.runout = None
         for i in self.in_hand:
             p = self.pl(i)
             p.g.cards = [self.deck.pop(), self.deck.pop()]
@@ -316,6 +320,10 @@ class Holdem(Game):
         self.room.add_log(f"{'🎴' if n == 3 else '➕'} {self.stage.title()}: {' '.join(pretty(c) for c in new)}")
 
     def run_out(self):
+        # everyone left is all-in: the hands turn face up, then the rest of the board comes out (the page deals it
+        # card by card from `runout`, so the turn and river land with a pause between them)
+        self.runout = len(self.board)
+        self.room.add_log("🔥 All in! The cards are turned over.", "power")
         for i in self.in_hand:
             self.pl(i).g.bet = 0
         while self.stage != "river":
@@ -383,6 +391,11 @@ class Holdem(Game):
             if p.g.chips == 0 and not p.eliminated:
                 p.eliminated = True
                 r.add_log(f"💥 {p.name} is out of chips!", "power")
+                hunter = self.pl(self.winners[0]) if self.winners and self.winners[0] != i else None
+                if self.s.get("bounty") and hunter and not hunter.eliminated:
+                    prize = self.s["chips"] // 10
+                    hunter.g.chips += prize
+                    r.add_log(f"🎯 Bounty! {hunter.name} collects {prize:,} for knocking out {p.name}.", "big")
         self.stage = "done"
         r.turn = None
         if len(self.alive()) < 2:
@@ -394,7 +407,9 @@ class Holdem(Game):
             r.deadline = time.time() + REBUY_WAIT
             return
         self.ready = set()
-        r.deadline = time.time() + PAUSES[self.s.get("breather", 2)][1 if self.shown else 0]
+        # an all-in run-out is dealt slowly on the page: wait for it before the next hand
+        slow = (5 - self.runout) * RUNOUT_STEP if getattr(self, "runout", None) is not None else 0
+        r.deadline = time.time() + PAUSES[self.s.get("breather", 2)][1 if self.shown else 0] + slow
 
     def finish(self):
         alive = self.alive()
@@ -574,7 +589,7 @@ class Holdem(Game):
         return {"holdem": {
             "stage": self.stage, "hand": self.hand_no, "board": self.board, "pot": self.pot() if self.hand_no else 0,
             "seats": seats, "blinds": [sb, bb], "pace": self.s["pace"], "curBet": self.cur_bet if self.hand_no else 0,
-            "shown": self.shown, "result": self.result,
+            "shown": self.shown, "result": self.result, "runout": getattr(self, "runout", None),
             "best5": getattr(self, "best5", []), "winners": getattr(self, "winners", []), "ready": sorted(getattr(self, "ready", ())) if self.stage == "done" else [],
             "canShow": self.stage == "done" and not self.shown and self.live() == [p.id] and self.room.phase == "playing",
             "history": [{"n": e["n"], "board": e["board"], "result": e["result"], "shown": e["shown"],

@@ -39,6 +39,7 @@ class ShipCrew(Game):
         "No crew after three rolls scores 0. Most cargo after the last round wins.",
         f"Alone, average {SOLO_PER_ROUND} cargo a round to win.",
         "🍺 Pub pot: everyone antes 1 💰 a round and the round's best cargo takes the pot (a tie rolls it over). Most coins wins.",
+        "🏴‍☠️ Raids: dock with 11 or 12 cargo and you plunder 2 from whoever leads (not you).",
     ]
     name = "Ship, Captain & Crew"
     icon = "🚢"
@@ -49,6 +50,7 @@ class ShipCrew(Game):
     settings_schema = {
         "rounds": ("Rounds", [(5, "5"), (3, "3"), (8, "8")], 5),
         "pot": ("Scoring", [(False, "Total cargo"), (True, "🍺 Pub pot")], False),
+        "raid": ("🏴‍☠️ Raids", [(False, "Off"), (True, "On: dock 11 or more to plunder 2 cargo from the leader")], False),
     }
 
     def potted(self):
@@ -166,11 +168,21 @@ class ShipCrew(Game):
         p.g.score += pts
         p.g.best = max(p.g.best, pts)
         p.g.haul = pts
+        raided = None
         if self.loaded():
             r.add_log(f"⚓ {p.name} docks with {pts} cargo → {p.g.score}.", "question")
+            if self.s.get("raid") and pts >= 11 and not self.potted():
+                rivals = [o for o in self.players() if o.id != p.id and o.g.score > 0]
+                leader = max(rivals, key=lambda o: o.g.score, default=None)
+                if leader and leader.g.score >= p.g.score - pts:  # only raid someone ahead of where you were
+                    took = min(2, leader.g.score)
+                    leader.g.score -= took
+                    p.g.score += took
+                    raided = leader.id
+                    r.add_log(f"🏴‍☠️ {p.name} raids {leader.name} for {took} cargo!", "power")
         else:
             r.add_log(f"🌊 {p.name} never found a {NAMES[len(self.found)]}: 0 this turn.", "power")
-        self.last = {"by": p.id, "found": list(self.found), "cargo": list(self.free) if self.loaded() else [], "pts": pts, "n": self.round * 10 + self.turns}
+        self.last = {"by": p.id, "raid": raided, "found": list(self.found), "cargo": list(self.free) if self.loaded() else [], "pts": pts, "n": self.round * 10 + self.turns}
         if pts == 12:
             self.award(p, "full_hold")
         self.turns += 1

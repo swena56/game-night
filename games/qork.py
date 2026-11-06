@@ -19,9 +19,9 @@ REACT = {"easy": (640, 130), "normal": (480, 90), "hard": (350, 60)}   # ms mean
 FLINCH = {"easy": 0.10, "normal": 0.07, "hard": 0.02}                  # on a near miss (6 or 8, or 1 apart)
 
 
-def trigger(dice):
+def trigger(dice, lucky=None):
     a, b = dice
-    return "doubles" if a == b else "seven" if a + b == 7 else None
+    return "doubles" if a == b else "seven" if a + b == 7 else "lucky" if lucky and a + b == lucky else None
 
 
 def near(dice):
@@ -38,6 +38,7 @@ class Qork(Game):
         "Yank before the cup lands: +1. Too slow: you're trapped and the Cupper gets +1 (all trapped: +1 more).",
         "Jumping early on any other roll costs you 1 point — Cuppers too.",
         "The cup passes each round. Most points after everyone has been Cupper wins.",
+        "🍀 Lucky number (an option): each round also draws a lucky total (like 5 or 9) that triggers just like a 7.",
     ]
     name = "Qork"
     icon = "🥤"
@@ -47,6 +48,7 @@ class Qork(Game):
     max_players = 6
     settings_schema = {
         "laps": ("Turns as Cupper", [(1, "1 each"), (2, "2 each"), (3, "3 each")], 2),
+        "lucky": ("🍀 Lucky number", [(False, "Off"), (True, "On: each round adds a third trigger total")], False),
     }
 
     # -- setup and clock
@@ -84,7 +86,9 @@ class Qork(Game):
         self.result = None
         self.plans = []
         self.wait_roll()
-        self.room.add_log(f"🥤 Round {self.round}/{self.rounds}: {self.room.players[self.cupper].name} holds the cup.")
+        self.lucky = self.rng.choice([4, 5, 6, 8, 9, 10]) if self.s.get("lucky") else None
+        self.room.add_log(f"🥤 Round {self.round}/{self.rounds}: {self.room.players[self.cupper].name} holds the cup."
+                          + (f" 🍀 Lucky number: {self.lucky}." if self.lucky else ""))
 
     def wait_roll(self, after=0.0):
         """Waiting for the Cupper to roll (allowed from ok_at)."""
@@ -158,12 +162,12 @@ class Qork(Game):
     def land(self):
         self.dice = self.pending
         self.rolls = (self.rolls + [list(self.dice)])[-8:]
-        kind = trigger(self.dice)
+        kind = trigger(self.dice, getattr(self, "lucky", None))
         a, b = self.dice
         if kind:
             self.stage = "snap"
             self.close_at = self.show_at + WINDOW + SLACK
-            self.room.add_log(f"🎲 {a} + {b} — {'DOUBLES' if kind == 'doubles' else 'SEVEN'}!", "power")
+            self.room.add_log(f"🎲 {a} + {b} — {'DOUBLES' if kind == 'doubles' else 'SEVEN' if kind == 'seven' else f'🍀 LUCKY {a + b}'}!", "power")
         else:
             self.room.add_log(f"🎲 {a} + {b}")
             self.wait_roll(GAP)
@@ -296,7 +300,8 @@ class Qork(Game):
         return {"qork": {
             "stage": self.stage, "round": self.round, "rounds": self.rounds, "cupper": self.cupper,
             "rollNo": self.roll_no, "dice": list(self.dice) if self.dice else None,
-            "trigger": trigger(self.dice) if self.dice else None, "rolls": self.rolls,
+            "trigger": trigger(self.dice, getattr(self, "lucky", None)) if self.dice else None, "rolls": self.rolls,
+            "lucky": getattr(self, "lucky", None),
             "acted": {pid: ms >= 0 and self.stage in ("snap", "result") for pid, ms in self.acted.items()},
             "canRoll": max(0.0, self.ok_at - now) if self.stage in ("wait", "dice") else None,
             "auto": max(0.0, self.auto_at - now) if self.stage in ("wait", "dice") else None,

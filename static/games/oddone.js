@@ -60,7 +60,7 @@ UI.oddone = (() => {
     const g = S.oddone;
     const watching = !g.word;
     $('ooLabel').textContent = watching ? 'Watching. The words are' : 'Your secret word';
-    $('ooWord').textContent = watching ? (g.common ? `${g.common} · ${g.oddWord}` : '🤫') : g.word.toUpperCase();
+    $('ooWord').textContent = watching ? (g.common ? `${g.common} · ${g.oddWord}` : '🤫') : g.word === '🫥' ? "🫥 You're the blank: bluff!" : g.word.toUpperCase();
     $('ooRound').textContent = `Round ${g.round} of ${g.rounds}`;
     // a new word: the card turns over to show it
     const wk = `${g.round}:${g.word}`;

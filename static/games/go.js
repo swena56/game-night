@@ -34,15 +34,26 @@ UI.go = (() => {
         const pt = document.createElement('button');
         pt.className = 'go-pt' + (r === 0 ? ' t' : '') + (r === n - 1 ? ' b' : '') + (c === 0 ? ' l' : '') + (c === n - 1 ? ' r' : '');
         if (stars.includes(r) && stars.includes(c) && (n !== 9 || (r === c || r + c === n - 1))) pt.classList.add('star');
-        pt.onclick = () => ctx.myTurn && ctx.quiet(ctx.act('move', { r, c }));
+        pt.onclick = () => tapPoint(r, c);
         boardEl.append(pt);
       }
     gridKeys(boardEl, n);
   }
 
+  // on a big board on a touch screen, the first tap shows a ghost stone and a second tap on it places it
+  let ghost = null;
+  const confirmTaps = () => size >= 13 && !!window.matchMedia?.('(pointer: coarse)').matches;
+  function tapPoint(r, c) {
+    if (!ctx.myTurn) return;
+    if (confirmTaps() && (!ghost || ghost[0] !== r || ghost[1] !== c)) { ghost = [r, c]; return ctx.rerender(); }
+    ghost = null;
+    ctx.quiet(ctx.act('move', { r, c }));
+  }
+
   function render(s, c) {
     S = s; ctx = c;
     const g = S.go, n = g.board.length;
+    if (!ctx.myTurn) ghost = null;
     if (n !== size) build(n);
     const lastKey = g.last?.join() ?? null, fresh = shownLast !== undefined && lastKey !== shownLast;
     shownLast = lastKey;
@@ -57,6 +68,10 @@ UI.go = (() => {
       pt.setAttribute('aria-label', `${'ABCDEFGHJKLMNOPQRST'[col]}${n - r}, ${v === 'b' ? 'black stone' : v === 'w' ? 'white stone' : area.has(i) ? `${area.get(i) === 'b' ? 'black' : 'white'} territory` : 'empty'}`);
       pt.innerHTML = '';
       pt.disabled = !ctx.myTurn || !!v;
+      // letters along the top and numbers down the left, as players name the points
+      if (r === 0) pt.append(ctx.el('span', 'go-coord file', 'ABCDEFGHJKLMNOPQRST'[col]));
+      if (col === 0) pt.append(ctx.el('span', 'go-coord rank', String(n - r)));
+      if (ghost && ghost[0] === r && ghost[1] === col && !v) pt.append(ctx.el('span', 'go-ghost ' + (g.me || 'b')));
       if (v) {
         const stone = ctx.el('span', 'stone ' + v);
         if (g.last && g.last[0] === r && g.last[1] === col) stone.classList.add('last', ...(fresh ? ['drop'] : []));

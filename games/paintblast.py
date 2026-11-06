@@ -27,6 +27,8 @@ FLOOR, PILLAR, CRATE = 0, 1, 2
 POWERS = {"b": "💣 extra bomb", "r": "🔥 longer blast", "p": "🖌️ paint splash", "k": "👟 kick"}
 
 
+GOLD_POINTS = 3  # ⭐ a gold tile, painted in your colour at the end of the round
+
 class PaintBlast(Game):
     id = "paintblast"
     category = "action"
@@ -49,7 +51,9 @@ class PaintBlast(Game):
         "rounds": ("Rounds", [(2, "2"), (1, "1"), (3, "3")], 2),
         "arena": ("Arena", [(13, "Medium"), (11, "Small"), (15, "Large")], 13),
         "closing": ("Last 15 s", [(True, "🧱 Walls close in"), (False, "Arena stays open")], True),
+        "gold": ("⭐ Gold tiles", [(False, "Off"), (True, "On: a few tiles are worth 3")], False),
     }
+    gold = ()  # cells worth GOLD_POINTS (rounds saved before gold tiles had none)
     closed = 0  # rings of the arena walled off so far (rounds saved before this had none)
     kick = None  # who has picked up 👟 kick this round
 
@@ -77,6 +81,8 @@ class PaintBlast(Game):
         self.round += 1
         self.tiles = self.make_maze()
         self.paint = bytearray(n * n)  # 0 = bare, else seat + 1
+        floor = [c for c in range(n * n) if self.tiles[c] == FLOOR]
+        self.gold = sorted(self.rng.sample(floor, min(len(floor), n // 2))) if self.s.get("gold") else []
         self.bombs = {}    # cell -> [fuse, owner, range]
         self.burn = {}     # cell -> [ticks, owner]
         self.items = {}    # cell -> power kind
@@ -344,7 +350,8 @@ class PaintBlast(Game):
             r.add_log(f"💥 {victim.name if victim else '?'} got caught in their own blast.", "power")
 
     def round_points(self, i):
-        return self.paint.count(i + 1) + TAG_POINTS * self.tags[i]
+        gold = sum(1 for c in self.gold if self.paint[c] == i + 1) * (GOLD_POINTS - 1)  # ⭐ a gold tile is worth 3
+        return self.paint.count(i + 1) + gold + TAG_POINTS * self.tags[i]
 
     def end_round(self, now):
         r = self.room
@@ -520,5 +527,6 @@ class PaintBlast(Game):
             "secs": self.s["secs"], "total": self.total, "tick": TICK, "move": MOVE_TICKS, "fuse": FUSE,
             "countdown": max(0.0, self.next_at - now) if self.stage in ("countdown", "over") else 0,
             "last": getattr(self, "last_points", None) if self.stage == "over" else None,
+            "gold": list(self.gold),
             **self.snapshot(now),
         }}

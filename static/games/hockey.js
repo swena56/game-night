@@ -2,6 +2,7 @@
 // This module draws the table from the viewer's side, predicts the viewer's own mallet so it feels
 // instant, extrapolates the puck between updates, and sends finger positions (~30/s).
 UI.hockey = (() => {
+  let goalsKey = '', prevSc = null;
   let S, ctx, canvas, g2, table = null, raf = 0, ro = null;
   let net = null, me = null, own = null, target = null, oppShown = null, lastSent = 0, lastScore = '', flash = 0;
   let hist = [], replay = null;  // recent frames, and a goal replay being shown
@@ -81,8 +82,8 @@ UI.hockey = (() => {
     neon('#ef476f', u * 0.008, () => t.arc(w / 2, hgt / 2, u * 0.16, 0, 7));
     for (const end of [0, hgt]) neon('#8ecae6', u * 0.007, () => t.arc(w / 2, end, u * 0.24, end ? Math.PI : 0, end ? 2 * Math.PI : Math.PI));
     neon('#8ecae6', u * 0.02, () => t.rect(0, 0, w, hgt));
-    const gw = h.goal * u;
-    for (const [end, mine] of [[0, false], [hgt, true]]) {  // goals: mine at the bottom
+    for (const [end, mine] of [[0, false], [hgt, true]]) {  // goals: mine at the bottom (each can widen for a leader)
+      const seat = mine ? (h.me ?? 0) : 1 - (h.me ?? 0), gw = (h.goals?.[seat] ?? h.goal) * u;
       t.save(); t.fillStyle = mine ? '#06d6a0' : '#ffb703'; t.shadowColor = t.fillStyle; t.shadowBlur = u * 0.06;
       t.fillRect(w / 2 - gw / 2, end ? hgt - u * 0.018 : 0, gw, u * 0.018); t.restore();
     }
@@ -94,6 +95,8 @@ UI.hockey = (() => {
     raf = requestAnimationFrame(loop);
     if (!S?.hockey || !g2 || !canvas.width) return;
     const h = S.hockey;
+    const gk = String(S.hockey.goals);
+    if (gk !== goalsKey) { goalsKey = gk; table = null; }  // a goal widened: redraw the table
     if (!table) table = drawTable();
     if (replay && drawReplay(now)) return;
     const src = net || { pk: h.pk, ml: h.ml, at: now, pause: 0 };
@@ -216,8 +219,15 @@ UI.hockey = (() => {
       const p = ctx.player(h.seats[i]);
       const row = ctx.el('div', 'seat-row');
       const dot = ctx.el('span', 'mini-disc'); dot.style.background = p?.color ?? '#888';
-      row.append(dot, ctx.el('span', 'grow', `${p?.name ?? 'left'}${i === h.me ? ' (you)' : ''}`), ctx.el('b', 'hk-num', String(sc[i])));
+      // a new goal slams the scorer's number in
+      const slam = prevSc && sc[i] > prevSc[i];
+      row.append(dot, ctx.el('span', 'grow', `${p?.name ?? 'left'}${i === h.me ? ' (you)' : ''}`), ctx.el('b', 'hk-num' + (slam ? ' slam' : ''), String(sc[i])));
       box.append(row);
+    }
+    prevSc = [...sc];
+    if (h.goals && h.goals[0] !== h.goals[1] && h.goal) {
+      const lead = h.goals[0] > h.goals[1] ? 0 : 1;
+      box.append(ctx.el('p', 'hint left', `🥅 ${lead === h.me ? 'Your' : `${ctx.player(h.seats[lead])?.name ?? '?'}'s`} goal is ${Math.round((h.goals[lead] / h.goal - 1) * 100)}% wider.`));
     }
     const hot = Math.max(...sc) >= h.target - 1 && Math.max(...sc) < h.target;
     box.append(ctx.el('p', 'hint left' + (hot ? ' hk-hot' : ''), hot ? `🔥 Match point: the puck is faster! First to ${h.target}.` : `First to ${h.target}.`));

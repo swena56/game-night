@@ -80,6 +80,9 @@ UI.cribbage = (() => {
         const plus = ctx.el('span', 'cb-plus', `+${score - was}`); plus.style.left = at(score);
         bar.append(plus);
       } else peg.style.left = at(score);
+      // the skunk line, 30 short of the finish: a rival who hasn't reached it when the game ends is skunked
+      const skunk = ctx.el('span', 'cb-skunk'); skunk.style.left = at(g.target - 30); skunk.title = `Skunk line (${g.target - 30})`;
+      bar.append(skunk);
       lane.append(name, bar, ctx.el('span', 'cb-score', String(g.scores[pid] || 0)));
       track.append(lane);
     }
@@ -202,6 +205,10 @@ UI.cribbage = (() => {
       const card = b.dataset.card;
       b.classList.toggle('ok', discarding ? picked.has(card) : playing && g.count + value(card) <= 31);
       b.disabled = !(discarding || (playing && g.count + value(card) <= 31));
+      // the play: a card that would score right now wears its points (a 15, a pair, a run, 31)
+      const pts = playing ? g.pegNow?.[card] : 0;
+      let tag = b.querySelector('.cb-now');
+      if (pts) { if (!tag) { tag = ctx.el('span', 'cb-now'); b.append(tag); } tag.textContent = `+${pts}`; } else tag?.remove();
     }
     $('cbDiscard').hidden = !discarding;
     const humans = S.players.filter((p) => !p.spectator && !p.bot && !p.eliminated).length;
