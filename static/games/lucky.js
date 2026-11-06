@@ -160,7 +160,11 @@ UI.lucky = (() => {
     else if (v === 'jackpot') { ctx.sfx('fanfare'); Kit.callout('⚡ JACKPOT', 'gold'); }
     else if (v === 'steal') { ctx.sfx('whoosh'); Kit.callout('🦊 Steal!', 'gold', { ms: 1100 }); }
     else if (v === 'skip') ctx.sfx('thud');
-    else ctx.sfx('place');  // a cash wedge is only a chance: a neutral clack, the chime waits for a right letter
+    else {
+      ctx.sfx('place');  // a cash wedge is only a chance: a neutral clack, the chime waits for a right letter
+      const stage = document.getElementById('lkStage');
+      if (stage && typeof v === 'number') Kit.stamp(stage, `💰 ${num(v)}`, 'gold', 900);  // the value it landed on
+    }
   }
   // the game plays its own sounds (ownSounds), so the turn's outcome gets one clear cue here
   let heard = null;
