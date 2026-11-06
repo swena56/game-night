@@ -2688,3 +2688,10 @@ body.calm .ttt-grid path { animation: none; }
 .gh-grid { rotate: var(--turn, 0deg); transition: rotate .35s ease; }
 .gh-grid > * { rotate: calc(-1 * var(--turn, 0deg)); }  /* letters stay upright (rotate adds to any transform) */
 .gh-grid.frenzy { box-shadow: 0 0 0 3px #ffd166, 0 0 26px #ffd16699; }
+/* wordsmith: the word just played glows, a refused play shakes */
+.ws-cell.justplayed { animation: wsGlow 1.6s ease-out; }
+@keyframes wsGlow { 0%, 40% { box-shadow: 0 0 0 2px #ffd166, 0 0 14px #ffd166; } 100% { box-shadow: none; } }
+.ws-cell.nope { animation: wsNope .35s; }
+@keyframes wsNope { 20%, 60% { transform: translateX(-3px); } 40%, 80% { transform: translateX(3px); } }
+.ws-preview.bad { color: var(--danger); font-weight: 700; }
+body.calm .ws-cell.justplayed, body.calm .ws-cell.nope { animation: none; }

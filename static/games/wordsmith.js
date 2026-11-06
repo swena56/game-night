@@ -1,4 +1,5 @@
 UI.wordsmith = (() => {
+  let bagWas = null;  // tiles in the bag at the last look
   let S, ctx, board;
   let pending = [];      // [{r, c, i, as}] tiles placed this turn (i = rack index; as = the letter a blank stands for)
   let selected = null;   // rack index picked up
@@ -130,6 +131,8 @@ UI.wordsmith = (() => {
       if (gain) setTimeout(() => Kit.flyText(board.children[mr * 11 + mc], `+${gain}`, gain >= 40 ? 'gold' : 'good'), w.last.length * 70 + 100);
       if (w.last.length === 7) Kit.callout('🧹 Clean sweep!', 'gold', { sound: 'fanfare' });
       else if (gain >= 50) Kit.callout(`${gain}!`, 'gold', { ms: 1100 });
+      // the word just made glows gold for a moment
+      w.last.forEach(([r, c]) => { const cell = board.children[r * 11 + c]; cell?.classList.remove('justplayed'); void cell?.offsetWidth; cell?.classList.add('justplayed'); });
     }
     if (w.bounty && seenBounty && w.bounty !== seenBounty) { const b = $('wsBounty'); b.classList.remove('flash'); void b.offsetWidth; b.classList.add('flash'); }
     seenBounty = w.bounty;
@@ -147,6 +150,9 @@ UI.wordsmith = (() => {
     if (!rack.length) rackBox.append(ctx.el('span', 'hint', S.me.spectator ? 'Spectating' : 'No tiles'));
 
     $('wsBag').textContent = `👜 ${w.bag} in bag`;
+    // the bag runs dry: from here, the first rack emptied ends the game
+    if (bagWas > 0 && w.bag === 0 && S.phase === 'playing') Kit.callout('👜 The bag is empty!', 'cool', { ms: 1500 });
+    bagWas = w.bag;
     $('wsBounty').textContent = w.bounty ? `🎯 Bounty: ${w.bounty} (+${w.bonuses.bounty})` : '';
     const playing = S.phase === 'playing' && rack.length;
     $('wsBlank').hidden = !unnamed();
@@ -258,8 +264,18 @@ UI.wordsmith = (() => {
     ctx.rerender();
   }
 
+  // a play the server refuses: the placed tiles shake, and the reason shows where the score preview was
   function play() {
-    ctx.act('play', { tiles: pending }).catch(() => {});
+    ctx.act('play', { tiles: pending }).catch((err) => {
+      ctx.sfx('wrong'); ctx.buzz?.(40);
+      const board = document.getElementById('wsBoard') || document.querySelector('.ws-board');
+      for (const t of pending) {
+        const cell = board?.children[t.r * 11 + t.c];
+        if (cell && motionOK()) { cell.classList.remove('nope'); void cell.offsetWidth; cell.classList.add('nope'); }
+      }
+      const box = $('wsPreview');
+      if (box) { box.textContent = `❌ ${err?.message || "That play doesn't work."}`; box.classList.add('bad'); setTimeout(() => box.classList.remove('bad'), 2500); }
+    });
   }
 
   function unmount() { drag?.ghost?.remove(); drag = null; }
