@@ -1223,6 +1223,66 @@ body.calm .gh-tile.trace { background: linear-gradient(#8ecae6, #4dabf7); }
 .hh-hand .pc { width: 44px; height: 64px; } .hh-hand .pc b { font-size: 17px; } .hh-hand .pc i { font-size: 18px; }
 .hh-hand .card-btn.got .pc { box-shadow: 0 0 0 2px #ffd166, 0 0 12px #ffd166aa; }
 
+/* hedgerow */
+.hg-wrap { width: min(100%, 560px, var(--room)); margin: 6px auto; }
+.hg-board { display: block; width: 100%; aspect-ratio: 1; touch-action: manipulation; user-select: none; -webkit-user-select: none; overflow: visible; }
+.hg-rim { fill: #2b3d22; stroke: #4a3520; stroke-width: .14; filter: drop-shadow(0 .2px .5px #000a); }
+.hg-soil { fill: url(#hgSoil); }
+.hg-cell rect { stroke: #5f8a38; stroke-width: .03; transition: fill .2s; }
+.hg-blade { fill: none; stroke: #5c8c34; stroke-width: .022; stroke-linecap: round; opacity: .55; pointer-events: none; }
+.hg-board.live:not(.planting) .hg-cell.target { cursor: pointer; }
+.hg-cell.target rect { fill: #e4f7a0; stroke: #fff; stroke-width: .07; animation: hgPulse 1.1s ease-in-out infinite alternate; }
+.hg-cell.hop rect { fill: #f3dcff; stroke: #c77dff; stroke-dasharray: .14 .1; }
+@keyframes hgPulse { to { fill: #f8ffd8; } }
+.hg-board.planting .hg-cell rect { filter: saturate(.75) brightness(.92); }
+.hg-goal { opacity: .6; } .hg-goal.mine { opacity: 1; filter: drop-shadow(0 0 .12px #fff); }
+.hg-goal-bud { fill: #fff; opacity: .75; }
+.hg-route { fill: none; stroke-width: .09; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: .02 .2; opacity: .75; pointer-events: none; }
+.hg-route.mine { stroke-width: .12; opacity: .9; }
+.hg-route.preview:not(.mine) { opacity: 1; stroke-width: .13; }
+.hg-route-end { opacity: .8; pointer-events: none; }
+.hg-x { fill: #fff6; pointer-events: none; }
+.hg-hshadow { fill: #0006; }
+.hg-hbase { stroke: #0f3a15; stroke-width: .03; }
+.hg-lump { stroke: #1b5e22; stroke-width: .015; }
+.hg-flower { stroke: #fff; stroke-width: .022; }
+.hg-flower-eye { fill: #ffe066; }
+.hg-hedge { pointer-events: none; }
+.hg-hedge.last .hg-hbase { stroke: #ffd166; stroke-width: .05; }
+.hg-hedge.fresh { animation: hgGrow .5s cubic-bezier(.3, 1.6, .5, 1); transform-box: fill-box; transform-origin: center; }
+@keyframes hgGrow { from { transform: scale(.15); opacity: 0; } }
+.hg-ghost { display: none; pointer-events: none; }
+.hg-ghost.on { display: inline; opacity: .7; }
+.hg-ghost.on.picked { opacity: .9; }
+.hg-ghost.on.bad { opacity: .8; }
+.hg-gline { fill: #ffffff26; stroke: #fff; stroke-width: .05; stroke-dasharray: .14 .09; }
+.hg-ghost.picked .hg-gline { stroke: #ffd166; stroke-width: .07; animation: hgMarch .8s linear infinite; }
+.hg-ghost.bad .hg-gline { stroke: #ef476f; fill: #ef476f22; }
+@keyframes hgMarch { to { stroke-dashoffset: -.46; } }
+.hg-ghost.bad .hg-hbase { fill: #ef476f; stroke: #fff; stroke-dasharray: .1 .07; }
+.hg-ghost.bad .hg-lump, .hg-ghost.bad .hg-hshadow { display: none; }
+.hg-chip { pointer-events: none; filter: drop-shadow(0 .04px .08px #000c); }
+.hg-chip rect { stroke: #fff; stroke-width: .04; }
+.hg-chip text { fill: #fff; font: 800 .3px system-ui, sans-serif; text-anchor: middle; dominant-baseline: middle; paint-order: stroke; stroke: #0007; stroke-width: .05; }
+.hg-chip.self rect { stroke-dasharray: .08 .05; }
+.hg-seg { fill: transparent; pointer-events: none; }
+.hg-board.live.planting .hg-seg { pointer-events: all; cursor: pointer; }
+.hg-pawn { transition: transform .35s cubic-bezier(.3, 1.3, .5, 1); pointer-events: none; }
+.hg-pshadow { fill: #0005; }
+.hg-body { stroke: #fff; stroke-width: .06; }
+.hg-ring { fill: none; stroke: #ffd166; stroke-width: .07; opacity: 0; }
+.hg-pawn.now .hg-ring { opacity: 1; animation: hgRing 1s ease-in-out infinite alternate; }
+@keyframes hgRing { to { stroke-width: .03; opacity: .5; } }
+.hg-pawn.gone { opacity: 0; }
+.hg-modes { display: flex; gap: 6px; margin-bottom: 8px; } .hg-modes button { flex: 1; }
+.hg-confirm { display: flex; gap: 6px; margin-bottom: 8px; } .hg-confirm[hidden] { display: none; }
+.hg-confirm #hgPlant { flex: 1; } .hg-confirm button:not(#hgPlant) { flex: 0 0 auto; min-width: 48px; }
+.hg-seat { gap: 8px; } .hg-seat.out { opacity: .45; text-decoration: line-through; }
+.hg-stat { font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.hg-seat.now .grow { font-weight: 800; }
+@media (prefers-reduced-motion: reduce) { .hg-cell.target rect, .hg-ghost.picked .hg-gline, .hg-pawn.now .hg-ring { animation: none; } .hg-pawn { transition: none; } }
+body.calm .hg-cell.target rect, body.calm .hg-pawn.now .hg-ring { animation: none; }
+
 /* night heist */
 .heist { max-width: 640px; margin: 0 auto; }
 .vault { display: flex; align-items: center; justify-content: center; gap: 16px; padding: 14px; border-radius: var(--radius);

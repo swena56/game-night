@@ -156,6 +156,18 @@ const MOVES = {
     if (S.sea.stage === 'placing') { click(d.querySelector('#sbRandom')); return click(d.querySelector('#sbReady')); }
     click(pick(enabled(d, '#sbEnemy .sea-cell')));
   },
+  hedgerow(d, S, n) {  // every 4th turn try a hedge (touch: tap a groove twice, the second tap plants), else move to a glowing square
+    const legal = S.hedgerow.legal || [];
+    if (n % 4 === 1 && legal.length && !d.querySelector('#hgHedge').disabled) {
+      click(d.querySelector('#hgHedge'));
+      const [o, r, c] = pick(legal).split(',');
+      const hit = d.querySelector(`.hg-seg[data-slot="${o},${r},${c}"]`);  // the half-groove nearest that hedge's crossing
+      click(hit); click(hit);
+      if (d.querySelector('#hgGhost.picked') || !d.querySelector('#hgHedge.primary')) return;
+      click(d.querySelector('#hgMove'));
+    }
+    click(pick([...d.querySelectorAll('.hg-cell.target')]));
+  },
   dropfour(d) { click(pick(enabled(d, '.d4-cell'))); },
   boxes(d) { const ln = pick(enabled(d, '.bx-line:not(.drawn)')); click(ln); click(d.querySelector(`.bx-line[data-k="${ln?.dataset.k}"]`)); },  // touch: tap twice
   doodle(d, S, n, w) {
@@ -566,7 +578,7 @@ async function feedbackTour() {
   const lt = await lobbyTour();
   console.log('LOBBY', JSON.stringify(lt));
   for (const g of games.length ? games : Object.keys(MOVES)) {
-    const r = await playSolo(g, g === 'wordsmith' ? 40 : g === 'spire' ? 25 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'cribbage' ? 300 : g === 'yacht' ? 200 : g === 'farkle' ? 240 : g === 'qork' ? 200 : g === 'backgammon' ? 300 : g === 'gridhunt' ? 260 : g === 'paintblast' ? 230 : g === 'sumo' ? 200 : g === 'putt' ? 300 : g === 'rally' ? 150 : g === 'hearts' || g === 'rummy' ? 300 : g === 'twentyone' ? 200 : g === 'speed' ? 150 : g === 'trivia' ? 200 : g === 'ladder' ? 330 : g === 'liars' ? 300 : g === 'shipcrew' || g === 'shutbox' ? 200 : g === 'reversi' || g === 'ultimate' || g === 'oware' || g === 'morris' ? 260 : g === 'safecracker' ? 200 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
+    const r = await playSolo(g, g === 'wordsmith' ? 40 : g === 'spire' ? 25 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'cribbage' ? 300 : g === 'yacht' ? 200 : g === 'farkle' ? 240 : g === 'qork' ? 200 : g === 'backgammon' ? 300 : g === 'gridhunt' ? 260 : g === 'paintblast' ? 230 : g === 'sumo' ? 200 : g === 'putt' ? 300 : g === 'rally' ? 150 : g === 'hearts' || g === 'rummy' ? 300 : g === 'twentyone' ? 200 : g === 'speed' ? 150 : g === 'trivia' ? 200 : g === 'ladder' ? 330 : g === 'liars' ? 300 : g === 'shipcrew' || g === 'shutbox' ? 200 : g === 'reversi' || g === 'hedgerow' || g === 'ultimate' || g === 'oware' || g === 'morris' ? 260 : g === 'safecracker' ? 200 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
     console.log(`\n== ${g}: phase=${r.phase} moves=${r.moves} dialogs=${r.dialogs || 0} screen="${r.screen}" ${r.banner ? `banner="${r.banner}"` : ''}`);
     console.log(`   help: ${r.help} | log ticker: "${r.ticker}"`);
     if (r.replay) console.log(`   replay: ${r.replay}`);

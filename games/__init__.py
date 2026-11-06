@@ -12,6 +12,7 @@ from .fibfinder import FibFinder
 from .go import Go
 from .hearts import Hearts
 from .gridhunt import GridHunt
+from .hedgerow import Hedgerow
 from .heist import Heist
 from .hockey import Hockey
 from .holdem import Holdem
@@ -47,7 +48,7 @@ from .yacht import Yacht
 from .wordsmith import Wordsmith
 
 # Order here is the order of the lobby's game picker.
-GAMES = {g.id: g for g in (Unmask, OddOne, Relay, Trivia, Doodle, Lucky, Spire, Riders, PaintBlast, Sumo, Putt, Rally, Hockey, Billiards, Wordsmith, GridHunt, Safecracker, FibFinder, Ladder, Chess, Checkers, Backgammon, Go, Oware, Reversi, LastCard, Holdem, Cribbage, Hearts, Speed, Rummy, SeaBattle,
+GAMES = {g.id: g for g in (Unmask, OddOne, Relay, Trivia, Doodle, Lucky, Spire, Riders, PaintBlast, Sumo, Putt, Rally, Hockey, Billiards, Wordsmith, GridHunt, Safecracker, FibFinder, Ladder, Chess, Checkers, Backgammon, Go, Oware, Reversi, Hedgerow, LastCard, Holdem, Cribbage, Hearts, Speed, Rummy, SeaBattle,
                            DropFour, Boxes, TicTacToe, Ultimate, Morris, Heist, MoonShot, Yacht, Farkle, Qork, ShipCrew, ShutBox, LiarsDice, TwentyOne)}
 GAME_INFO = [g.info() for g in GAMES.values()]
 
