@@ -2650,3 +2650,9 @@ body.calm .bg-cubeblock.flip { animation: none; }
 .checker.nope { animation: ckNope .35s; }
 @keyframes ckNope { 20%, 60% { transform: translateX(-4px); } 40%, 80% { transform: translateX(4px); } }
 body.calm .checker.nope { animation: none; }
+/* chess: a wooden frame round the 2D board, a gold flash on promotion, the hill in King of the Hill */
+.chessboard:not(.checkers) { border: 10px solid #6b4423; border-radius: 6px; box-shadow: inset 0 0 0 2px #3a2410, 0 10px 26px #0009, 0 0 0 2px #a0703f; }
+.csq.promoted { animation: chPromo 1.2s ease-out; }
+@keyframes chPromo { 0%, 30% { box-shadow: inset 0 0 0 4px #ffd166, inset 0 0 24px #ffd166; } 100% { box-shadow: none; } }
+.csq.hill::before { content: ''; position: absolute; inset: 0; background: radial-gradient(circle, #ffd16644, transparent 70%); pointer-events: none; }
+body.calm .csq.promoted { animation: none; }

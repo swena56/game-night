@@ -1,4 +1,5 @@
 UI.chess = (() => {
+  let prevBoard = null;  // the board before the latest move, to tell castling and promotion apart
   // premove: picked during the rival's turn ([fromR, fromC, toR, toC]), sent the moment it's our turn if it's legal
   let pre = null, preSel = null, arrowFit = null;
   let S, ctx, boardEl, sel = null, promo = null, shownLast, view3d = null, slide = null, clockTimer = 0, clockAt = 0, shownTaken = null, shownW = 0;
@@ -18,6 +19,7 @@ UI.chess = (() => {
       <ol id="chMoves" class="ch-moves"></ol>
       <div id="chPromo" class="row promo" hidden></div>
       <div id="chDraw" class="row"></div>
+      <div id="chUndo" class="row"></div>
       <div class="row"><button id="chResign" class="danger">🏳️ Resign</button></div>
       <div class="row"><button id="chView" hidden></button></div>
       <p class="hint left" id="chViewHint" hidden>3D: tap a piece, then its square. Drag to turn the board (with a mouse, up and down tilts it), right-drag or shift-drag to pan, scroll or pinch to zoom, or use the buttons; double-tap resets.</p></div>`;
@@ -66,6 +68,11 @@ UI.chess = (() => {
     const victim = animate && shownTaken != null && taken > shownTaken
       ? (ch.captured.w.length > shownW ? ['w', ch.captured.w.at(-1)] : ['b', ch.captured.b.at(-1)]) : null;
     shownTaken = taken; shownW = ch.captured.w.length;
+    // what the last move was, from the board before it: castling, a promotion, a king on the hill
+    const moved = animate && prevBoard ? prevBoard[ch.last[0]][ch.last[1]] : null;
+    const castled = moved?.[1] === 'K' && Math.abs(ch.last[1] - ch.last[3]) === 2;
+    const promoted = moved?.[1] === 'P' && ch.board[ch.last[2]][ch.last[3]]?.[1] !== 'P';
+    prevBoard = ch.board.map((row) => [...row]);
     [...boardEl.children].forEach((sq, i) => {
       const [r, col] = rc(i);
       const p = ch.board[r][col];
@@ -76,6 +83,8 @@ UI.chess = (() => {
       if (preSel && preSel[0] === r && preSel[1] === col) sq.classList.add('sel');
       if (pre && ((pre[0] === r && pre[1] === col) || (pre[2] === r && pre[3] === col))) sq.classList.add('premove');
       if (targets.has(r * 8 + col)) sq.classList.add(p ? 'capture' : 'target');
+      if (promoted && ch.last[2] === r && ch.last[3] === col) sq.classList.add('promoted');
+      if (ch.hill && (r === 3 || r === 4) && (col === 3 || col === 4)) sq.classList.add('hill');
       if (!sel && movable.has(r * 8 + col)) sq.classList.add('movable');
       sq.innerHTML = '';
       if (p) {
@@ -96,6 +105,9 @@ UI.chess = (() => {
     drawArrow(ch.last);
     // big moments: check (the king's square pulses) and the end of the game
     if (animate && ch.check && S.phase === 'playing') { Kit.callout('Check!', ch.turnColor === ch.me ? 'bad' : 'gold', { ms: 900 }); ctx.sfx('rise'); }
+    if (castled) { Kit.callout('🏰 Castled', 'cool', { ms: 900 }); ctx.sfx('sweep'); }
+    if (promoted) { Kit.callout(`♛ Promoted to a ${NAME[ch.board[ch.last[2]][ch.last[3]][1]]}!`, 'gold', { ms: 1200 }); ctx.sfx('tag'); }
+    if (S.phase === 'over' && animate && ch.hill && !ch.check && S.winner) Kit.callout('👑 King of the Hill!', S.winner === S.me.id ? 'gold' : 'bad', { sound: S.winner === S.me.id ? 'fanfare' : 'thud', ms: 1800 });
     if (S.phase === 'over' && animate && ch.check) Kit.callout('♚ Checkmate!', S.winner === S.me.id ? 'gold' : 'bad', { sound: S.winner === S.me.id ? 'fanfare' : 'thud', ms: 1800 });
     const mine = ch.me ? (ch.me === 'w' ? '♔ You play White' : '♚ You play Black') : '👁 Watching';
     $('chStatus').textContent = mine + (S.phase === 'playing' ? ` · ${ch.turnColor === 'w' ? 'White' : 'Black'} to move` : '');
@@ -150,6 +162,7 @@ UI.chess = (() => {
       dr.append(b);
     }
     $('chResign').disabled = !playing;
+    if (ch.undo) undoRow($('chUndo'), ch.undo, S, ctx, !!ch.me); else $('chUndo').innerHTML = '';
   }
 
   // the last move as an arrow over the 2D board (squares in display order, so it turns with the board)
