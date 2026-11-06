@@ -2697,3 +2697,9 @@ body.calm .ttt-grid path { animation: none; }
 body.calm .ws-cell.justplayed, body.calm .ws-cell.nope { animation: none; }
 /* scribble relay: a twist card for this drawing */
 .rl-twist { margin: 6px 0; padding: 8px 12px; border-radius: 10px; background: #ffd16622; border: 1px dashed #ffd166; font-weight: 700; text-align: center; }
+/* doodle dash: wrong guesses drift up over the paper */
+.dd-bubble { position: absolute; bottom: 12%; z-index: 3; max-width: 60%; padding: 5px 10px; border-radius: 14px 14px 14px 4px; background: #fff; color: #2b2140;
+  font-size: 13px; box-shadow: 0 3px 10px #0004; pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  animation: ddBubble 2.5s ease-out both; }
+.dd-bubble b { color: #7048e8; }
+@keyframes ddBubble { 0% { opacity: 0; transform: translateY(10px) scale(.8); } 15% { opacity: 1; transform: none; } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-60px); } }

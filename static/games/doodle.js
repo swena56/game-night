@@ -62,8 +62,28 @@ UI.doodle = (() => {
     svg.append(p);
   }
 
+  // wrong guesses float up over the paper as speech bubbles, so everyone sees the table's wild ideas
+  let heard = null;
+  function bubbles() {
+    const fresh = heard == null ? [] : S.log.filter((e) => e.id > heard && e.text.startsWith('❌ '));
+    heard = S.log.at(-1)?.id ?? heard ?? 0;
+    const paper = svg?.parentElement;
+    if (!paper || !motionOK()) return;
+    fresh.slice(-3).forEach((e, k) => {
+      const m = e.text.match(/^❌ (.+?): “(.*)”$/);
+      if (!m) return;
+      const b = ctx.el('div', 'dd-bubble');
+      b.append(ctx.el('b', '', m[1].replace(/^🤖\s*/, '')), ` ${m[2]}?`);
+      b.style.left = `${10 + ((e.id * 37) % 60)}%`;
+      b.style.animationDelay = `${k * 0.25}s`;
+      paper.append(b);
+      setTimeout(() => b.remove(), 2600 + k * 250);
+    });
+  }
+
   function render(s, c) {
-    S = s; ctx = c; receivedAt = performance.now();
+    S = s; ctx = c;
+    bubbles(); receivedAt = performance.now();
     const d = S.doodle;
     if (d.round !== drawnRound || d.strokes.length < drawnCount) {
       // a fresh sheet, with a marker of its own colour (and a slightly wobbly, inky line)
