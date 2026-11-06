@@ -2710,3 +2710,8 @@ body.calm .hk-num.slam { animation: none; }
 /* trivia: the question card takes its topic's colour, with the topic's emoji large behind the text */
 .tv-q { position: relative; overflow: hidden; background: linear-gradient(135deg, hsl(var(--tv-hue, 250) 45% 28%), hsl(var(--tv-hue, 250) 40% 18%)); border-radius: 14px; }
 .tv-q::after { content: attr(data-emoji); position: absolute; right: -6px; bottom: -14px; font-size: 84px; opacity: .14; pointer-events: none; }
+/* fib finder: the fact is a "strange but true" card of old paper */
+.fb-fact { position: relative; background: linear-gradient(180deg, #fbf3df, #efe0bb); color: #3a2a12; box-shadow: 0 8px 20px #0007, inset 0 0 30px #c9a96e55;
+  border: 1px solid #c9a96e; padding-top: 28px; }
+.fb-fact::before { content: '📜 Strange but true'; position: absolute; top: 6px; left: 12px; font: 800 11px system-ui, sans-serif; letter-spacing: .08em;
+  text-transform: uppercase; color: #8a6a3a; }
