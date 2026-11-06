@@ -2612,3 +2612,8 @@ body.calm .crew-ship.loaded { animation: none; }
 .mm-res-man { width: 16px; height: 16px; border-radius: 50%; box-shadow: 0 2px 3px #0008; }
 .mm-res-man.dark { background: radial-gradient(circle at 35% 30%, #5a4e70, #1c1726 55%, #0c0a12); }
 .mm-res-man.light { background: radial-gradient(circle at 35% 30%, #fff, #f4eedd 60%, #c9bfa4); }
+/* word ladder: letters already matching the goal are green; a rejected word shakes the entry */
+.ld-rung .ld-tile.hit, .ld-rung.start .ld-tile.hit { background: #2b8a3e; color: #fff; border-color: #51cf66; }
+.ld-entry.shake { animation: ldShake .35s; }
+@keyframes ldShake { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
+body.calm .ld-entry.shake { animation: none; }

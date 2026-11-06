@@ -32,6 +32,7 @@ UI.ladder = (() => {
     tickTimer = setInterval(tick, 200);
   }
 
+  let lastTick = 0;
   function unmount() { clearInterval(tickTimer); }
 
   const live = () => S?.phase === 'playing' && S.ladder.stage === 'climb' && S.ladder.playing && !S.ladder.done && !!ctx.act;
@@ -40,7 +41,13 @@ UI.ladder = (() => {
     if (!live() || busy) return;
     busy = true;
     ctx.act(type, extra).then(() => { if (clear) $('ldInput').value = ''; })
-      .catch((err) => ctx.toast(err?.message || 'Try another word.'))
+      .catch((err) => {
+        ctx.toast(err?.message || 'Try another word.');
+        if (type === 'step') {  // a word that won't do: the entry shakes and buzzes
+          ctx.sfx('wrong'); ctx.buzz?.(40);
+          const f = $('ldForm'); f.classList.remove('shake'); void f.offsetWidth; f.classList.add('shake');
+        }
+      })
       .finally(() => { busy = false; $('ldInput')?.focus?.(); });
   }
 
@@ -51,17 +58,21 @@ UI.ladder = (() => {
     const climbing = S.phase === 'playing' && l.stage === 'climb';
     $('ldBar').style.width = `${climbing ? (left / l.secs) * 100 : 0}%`;
     $('ldBar').parentElement.classList.toggle('last', climbing && left < 10);
+    // the last ten seconds tick
+    const sec = Math.ceil(left);
+    if (climbing && live() && sec <= 10 && sec > 0 && sec !== lastTick) { lastTick = sec; ctx.sfx('tickfast'); }
   }
 
-  // One row of letter tiles; the letter that changed from `prev` is marked.
-  function rung(word, prev, cls = '') {
+  // One row of letter tiles; the letter that changed from `prev` is marked, and letters already matching the
+  // goal word in the same spot are green, so you can see how close each rung is.
+  function rung(word, prev, cls = '', goal = null) {
     const row = ctx.el('div', `ld-rung ${cls}`);
-    [...word].forEach((ch, i) => row.append(ctx.el('span', prev && prev[i] !== ch ? 'ld-tile new' : 'ld-tile', ch)));
+    [...word].forEach((ch, i) => row.append(ctx.el('span', 'ld-tile' + (prev && prev[i] !== ch ? ' new' : '') + (goal && goal[i] === ch ? ' hit' : ''), ch)));
     return row;
   }
 
   function ladderOf(path, target, box, fresh = -1) {
-    path.forEach((w, i) => box.append(rung(w, i ? path[i - 1] : null, (i === 0 ? 'start' : w === target ? 'goal done' : '') + (i === fresh ? ' fresh' : ''))));
+    path.forEach((w, i) => box.append(rung(w, i ? path[i - 1] : null, (i === 0 ? 'start' : w === target ? 'goal done' : '') + (i === fresh ? ' fresh' : ''), w === target ? null : target)));
   }
 
   function render(s, c) {
@@ -78,6 +89,11 @@ UI.ladder = (() => {
     seenLen = key;
     ladderOf(l.path, l.target, box, fresh);
     if (fresh > 0) ctx.sfx(l.path[fresh] === l.target ? 'fanfare' : 'flip');
+    // reaching the top: how it went
+    if (fresh > 0 && l.path[fresh] === l.target) {
+      const steps = l.path.length - 1, first = !Object.entries(l.progress).some(([pid, [, d]]) => d && pid !== S.me.id);
+      Kit.callout(steps < l.par ? '🦅 Under par!' : steps === l.par ? '⛳ On par!' : first && !l.solo ? '🥇 First up!' : `🏁 ${steps} steps`, steps <= l.par || first ? 'gold' : 'good', { ms: 1400 });
+    }
     // 🔎 a peek: the rung to come, with the letter to change marked
     if (l.peek != null && !l.done) {
       const ghost = ctx.el('div', 'ld-rung ghost');
