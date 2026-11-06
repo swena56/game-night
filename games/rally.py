@@ -200,7 +200,13 @@ class Rally(Game):
         "missiles": ("Items", [(True, "🎁 On (🚀 💣 🛡️)"), (False, "Off (pure racing)")], True),
         "track": ("Track", [("new", "🎲 A new track"), ("daily", "📅 Today's track (the same everywhere, with a best-lap board)")], "new"),
         "features": ("Track features", [(True, "🚧 Ice, narrows and ramps"), (False, "Plain track")], True),
+        "class": ("Class", [(150, "150cc"), (100, "100cc (gentler)"), (200, "200cc (fast!)")], 150),
     }
+    CLASS = {100: 0.82, 150: 1.0, 200: 1.2}
+
+    def k(self):
+        """The speed class: every top speed and the acceleration scale with it."""
+        return self.CLASS.get(self.s.get("class", 150), 1.0)
 
     # -- setup
 
@@ -472,9 +478,9 @@ class Rally(Game):
                 c.s += c.v * dt
                 continue
             c.draft = self.drafting(i)
-            top = BOOST_SPEED if now < c.boost_until else DRAFT_SPEED if c.draft else TOP_SPEED
-            acc = ACCEL * (0.5 if now < c.stall_until else 1.0)
-            c.v = min(top, c.v + acc * dt) if c.v < top else max(top, c.v - ACCEL * 0.6 * dt)
+            top = (BOOST_SPEED if now < c.boost_until else DRAFT_SPEED if c.draft else TOP_SPEED) * self.k()
+            acc = ACCEL * self.k() * (0.5 if now < c.stall_until else 1.0)
+            c.v = min(top, c.v + acc * dt) if c.v < top else max(top, c.v - ACCEL * self.k() * 0.6 * dt)
             if c.air:
                 self.jump(i, p, dt, now)
                 continue
@@ -690,7 +696,7 @@ class Rally(Game):
         p = r.players.get(self.seats[winner])
         if len(self.seats) == 1:
             t = self.crafts[0].finish_time
-            par = self.length * self.s["laps"] / (TOP_SPEED * 0.92)
+            par = self.length * self.s["laps"] / (TOP_SPEED * self.k() * 0.92)
             if t is not None and t <= par:
                 return r.finish(p, f"🏆 {p.name} beats the target time: {t:.1f}s (target {par:.1f}s)!")
             return r.finish(None, f"🛸 {p.name if p else '?'} finished in {t:.1f}s; the target was {par:.1f}s." if t else "🛸 Race over.")
@@ -822,7 +828,7 @@ class Rally(Game):
             "c": self.craft_rows(now), "pickups": self.pickups, "pk": self.pickup_flags(now), "m": self.missile_rows(),
             "mn": self.mine_rows(),
             "countdown": max(0.0, self.next_at - now) if self.stage == "countdown" else 0,
-            "top": TOP_SPEED, "elim": self.elim, "race": self.race_id,
+            "top": TOP_SPEED * self.k(), "elim": self.elim, "race": self.race_id,
             "zones": [[k, r2(a), r2(b)] for k, a, b in self.zones], "hw": [r2(w) for w in self.hw] if self.hw else None,
             "daily": {"date": self.today, "board": list(self.board[:5])} if self.daily else None,
         }}

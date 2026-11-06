@@ -6,6 +6,7 @@
 // craft) and the 💣 mines lying on it. 🚧 Track features come as zones ([kind, from s, to s]: ice, narrow,
 // ramp, gap) with the half-width at every sample; a craft in a jump has its height in row [13].
 UI.rally = (() => {
+  let shownPlace = 0;  // my place at the last look, for the ▲/▼ flash
   let S, ctx, gl = null, flat = null, raf = 0, ro = null, keyDown = null, keyUp = null;
   let crafts = [], gotAt = 0, steerNow = 0, keys = new Set(), touch = null, countdownAt = 0, trackKey = '';
   // ⏱ lap splits and 👻 a ghost of your best lap so far this race (recorded in the browser)
@@ -318,6 +319,12 @@ UI.rally = (() => {
       $('raLap').textContent = mine[12] ? '💥 Out' : mine[6] ? 'Finished!' : r.elim ? `Lap ${mine[5] + 1} · ${crafts.filter((c) => !c[6]).length} left` : `Lap ${Math.min(mine[5] + 1, r.laps)} / ${r.laps}`;
       const place = order().indexOf(r.me) + 1;
       $('raPlace').textContent = `${place}${['st', 'nd', 'rd'][place - 1] || 'th'}`;
+      // gaining or losing a place flashes ▲ or ▼ on it
+      if (shownPlace && place !== shownPlace && r.stage === 'race' && !mine[6] && S.phase === 'playing') {
+        const el = $('raPlace'); el.dataset.move = place < shownPlace ? '▲' : '▼';
+        el.classList.remove('up', 'down'); void el.offsetWidth; el.classList.add(place < shownPlace ? 'up' : 'down');
+      }
+      shownPlace = place;
     } else { $('raLap').textContent = 'Watching'; $('raPlace').textContent = ''; }
     splits();
     daily();
@@ -385,6 +392,8 @@ UI.rally = (() => {
       if (ms < best && laps.length > 1) ctx.sfx?.('good'); else if (!c[6]) snd.play('lap');
       lapRun = { lap: c[5], t0: now, pts: [] };
       splits();
+      // starting the last lap of a race
+      if (!r.elim && !c[6] && c[5] === r.laps - 1) { Kit.callout('🏁 Final lap!', 'gold', { ms: 1400 }); ctx.sfx?.('rise', 6); }
     }
     if (c[6] || r.stage !== 'race' || S.phase !== 'playing') return;
     const last = lapRun.pts.at(-1);
