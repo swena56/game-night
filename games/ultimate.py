@@ -83,6 +83,7 @@ class Ultimate(Undo, Game):
         "If that board is already won or full, they can play anywhere.",
         "Win three small boards in a row to win the game.",
         "↶ Undo asks your rival to take back your last move.",
+        "If nobody can make a line, it's a draw, or, with the 🏆 Most small boards setting, a win for whoever took more boards.",
     ]
     name = "Ultimate Tic-Tac-Toe"
     icon = "#️⃣"
@@ -90,7 +91,9 @@ class Ultimate(Undo, Game):
     min_players = 2
     max_players = 2
     badges = {**Game.badges, "sniper": ("🎯", "No wasted boards", "Win with exactly three small boards")}
-    settings_schema = {}
+    settings_schema = {
+        "tiebreak": ("When no line is left", [("draw", "🤝 It's a draw"), ("boards", "🏆 Most small boards wins")], "draw"),
+    }
 
     def start(self, seated, rng):
         self.rng = rng
@@ -141,6 +144,11 @@ class Ultimate(Undo, Game):
                 self.award(p, "sniper")
             return r.finish(p, f"🏆 {p.name} wins three boards in a row!")
         if not legal(self.state, 1 - me):
+            won = [self.state[1].count(k) for k in (0, 1)]
+            if self.s.get("tiebreak") == "boards" and won[0] != won[1]:
+                k = 0 if won[0] > won[1] else 1
+                w = self.room.players.get(self.seats[k])
+                return r.finish(w, f"🏆 No lines left: {w.name if w else '?'} wins on boards, {max(won)} to {min(won)}!")
             return r.finish(None, "🤝 No lines left to win — a draw.")
         r.begin_turn(self.seats[1 - me])
 

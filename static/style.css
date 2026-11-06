@@ -2104,6 +2104,7 @@ body.focus .sm-stage { height: max(220px, calc(var(--room) - 155px)); }
 .ttt-ink path { fill: none; stroke: currentColor; stroke-width: 11; stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: 0;
   animation: inkDraw .28s ease-out both; }
 @keyframes inkDraw { from { stroke-dashoffset: 100; } }
+.ttt-ink.still path { animation: none; }
 .ttt-strike { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 .ttt-strike path { stroke: #fff; stroke-width: 9px; stroke-linecap: round; fill: none; stroke-dasharray: 100;
   filter: drop-shadow(0 0 3px var(--accent)); animation: inkDraw .45s .1s ease-out both; vector-effect: non-scaling-stroke; }
@@ -2191,6 +2192,10 @@ body.focus .sm-stage { height: max(220px, calc(var(--room) - 155px)); }
 .ut-cell.can { background: #ffb70322; }
 .ut-cell.last { outline: 2px solid var(--accent2); }
 .ut-cell.x, .ut-x { color: #ef476f; } .ut-cell.o, .ut-o { color: #8ecae6; }
+.ut-cell { display: grid; place-items: center; } .ut-cell .ttt-ink { width: 80%; height: 80%; filter: drop-shadow(0 0 3px currentColor); }
+.ut-cell .ttt-ink path { stroke-width: 13; }
+.ut-won .ttt-ink { width: 82%; height: 82%; } .ut-won .ttt-ink path { stroke-width: 9; }
+.ut-big { position: relative; }
 .ut-won { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: clamp(40px, 16vw, 90px);
   font-weight: 900; pointer-events: none; }
 .ut-won.x { color: #ef476f; } .ut-won.o { color: #8ecae6; }

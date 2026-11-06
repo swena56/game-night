@@ -1,18 +1,8 @@
 UI.tictactoe = (() => {
   let S, ctx, grid, built = 0, prev = null, last = -1, strike = null, struck = '';
-  // the marks are drawn as pen strokes that draw themselves in (an ✖ is two strokes, a ◯ one loop)
+  // the marks are pen strokes that draw themselves in (Kit.ink: an ✖ is two strokes, a ◯ one loop)
   const SVGNS = 'http://www.w3.org/2000/svg';
-  function drawMark(seat) {
-    const svg = document.createElementNS(SVGNS, 'svg');
-    svg.setAttribute('viewBox', '0 0 100 100'); svg.setAttribute('class', 'ttt-ink'); svg.setAttribute('aria-hidden', 'true');
-    const paths = seat === 0 ? ['M24 24 L76 76', 'M76 24 L24 76'] : ['M50 20 a30 30 0 1 1 -0.1 0'];
-    paths.forEach((d, k) => {
-      const p = document.createElementNS(SVGNS, 'path');
-      p.setAttribute('d', d); p.setAttribute('pathLength', '100'); p.style.animationDelay = k * 0.12 + 's';
-      svg.append(p);
-    });
-    return svg;
-  }
+  const drawMark = (seat) => Kit.ink(seat);
 
   function mount(main, side) {
     built = 0; prev = null; last = -1;
