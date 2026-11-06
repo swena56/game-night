@@ -37,10 +37,11 @@ r, g, ann = mat(None)
 check("off by default", g.lucky is None and g.view(ann)["qork"]["lucky"] is None)
 r, g, ann = mat(True)
 check("on: a lucky total each round", g.lucky in (4, 5, 6, 8, 9, 10))
+g.roll()  # the cup tumbles...
 g.pending = (1, g.lucky - 1) if g.lucky - 1 != 1 else (2, g.lucky - 2)
 if sum(g.pending) == 7 or g.pending[0] == g.pending[1]:
     g.pending = (1, g.lucky - 1)
-g.land()
+g.land()  # ...and lands on the lucky total
 check("rolling the lucky total opens the snap", g.stage == "snap", (g.pending, g.lucky))
 
 print("\nall ok" if not fails else f"\n{len(fails)} failed: {fails}")
