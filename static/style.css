@@ -739,6 +739,29 @@ body.focus #game .layout:has(.bl-busy) > aside { opacity: .2; }
 .bx-score.now { background: #ffb7031a; box-shadow: inset 0 0 0 1px #ffb70355; }
 .bx-score .grow { flex: 1; }
 
+/* cannon hills */
+.cn { max-width: 720px; margin: 0 auto; user-select: none; -webkit-user-select: none; }
+.cn-hud { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+.cn-stage { position: relative; border-radius: var(--radius); overflow: hidden; background: #0c1a2b; overscroll-behavior: none; }
+.cn-stage canvas { display: block; }
+.cn-done { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(88%, 340px); max-height: 92%; overflow: auto;
+  background: #0b1626ee; border: 1px solid #ffffff2a; border-radius: var(--radius); padding: 10px 14px; z-index: 3; animation: cnIn .4s ease-out; }
+@keyframes cnIn { from { transform: translate(-50%, -56%) scale(.97); opacity: 0; } }
+.cn-done h3 { margin: 0 0 6px; text-align: center; font-size: 16px; }
+.cn-ctl { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 8px; margin-top: 8px; }
+.cn-dial { display: flex; align-items: center; gap: 4px; background: var(--panel); border-radius: 999px; padding: 3px; }
+.cn-dial button { width: 40px; height: 40px; padding: 0; border-radius: 50%; font-size: 18px; touch-action: manipulation; }
+.cn-dial b { min-width: 4.2em; text-align: center; font-variant-numeric: tabular-nums; }
+.cn-fire { min-width: 120px; min-height: 44px; font-size: 16px; }
+.cn-fire.cn-ready { animation: pulse 1.6s infinite; }
+.cn-shells { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 8px; }
+.cn-shell { display: flex; align-items: center; gap: 4px; padding: 5px 10px; border-radius: 999px; font-size: 13px; touch-action: manipulation; }
+.cn-shell.on { box-shadow: inset 0 0 0 2px var(--accent); background: var(--panel2); }
+.cn-shell small { color: var(--muted); }
+.cn-scores td, .cn-scores th { padding: 2px 6px; text-align: center; } .cn-scores td:first-child { text-align: left; }
+.cn-scores tr.now { background: var(--panel2); } .cn-scores tr.cn-out { opacity: .55; }
+@media (max-width: 420px) { .cn-nm { display: none; } .cn-dial button { width: 36px; height: 36px; } }
+
 /* chess & checkers (2D boards) */
 .chessboard { display: grid; grid-template-columns: repeat(8, 1fr); width: min(100%, 560px, var(--room)); margin: 8px auto;
   border: 0; border-radius: 8px; padding: 8px; background: linear-gradient(#3a220c88, #3a220c88), var(--wood); box-shadow: inset 0 1px 0 #ffffff30, 0 12px 30px #0009; }
