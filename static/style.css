@@ -2663,3 +2663,7 @@ body.calm .csq.promoted { animation: none; }
 .go-coord.rank { left: -2px; top: 50%; transform: translate(-100%, -50%); }
 .go-ghost { position: absolute; inset: 8%; border-radius: 50%; z-index: 2; opacity: .55; box-shadow: 0 0 0 2px var(--accent); pointer-events: none; }
 .go-ghost.b { background: #111; } .go-ghost.w { background: #f4f4f4; }
+/* oware: captured seeds pile up in the stores */
+.ow-store { position: relative; }
+.ow-pile { position: absolute; inset: 6px; pointer-events: none; opacity: .9; }
+.ow-pile i { width: 10px !important; height: 10px !important; top: auto !important; transform: translateX(-50%) !important; }

@@ -2,7 +2,7 @@
 // along it and back along the top). Seeds lie scattered in each pit (up to 20, with the count beside);
 // a sowing drops them in one pit at a time along its path (#56).
 UI.oware = (() => {
-  let S, ctx, shownKey = null;
+  let S, ctx, shownKey = null, prevPits = null, fedNote = false;
   const MAX_SHOWN = 20, STEP = 0.11;  // seconds between seeds as a sowing plays out
   const $ = (id) => document.getElementById(id);
 
@@ -77,6 +77,7 @@ UI.oware = (() => {
     const bottom = me === 0 ? [0, 1, 2, 3, 4, 5] : [6, 7, 8, 9, 10, 11];
     const top = (me === 0 ? [6, 7, 8, 9, 10, 11] : [0, 1, 2, 3, 4, 5]).reverse();
     const [last, caught, seeds] = o.last || [-1, [], 0];
+    const them = 1 - me;
     const key = JSON.stringify(o.last) + o.pits.join();
     const animate = shownKey != null && key !== shownKey && seeds > 0;
     shownKey = key;
@@ -108,7 +109,26 @@ UI.oware = (() => {
         setTimeout(() => { store.classList.remove('bump'); void store.offsetWidth; store.classList.add('bump'); ctx.sfx('good'); }, 520 + caught.length * 90);
       }, done * 1000 + 250);
     } else if (animate) setTimeout(() => ctx.sfx('place'), done * 1000);
-    const them = 1 - me;
+    // each seed clicks as it drops in; a big harvest gets its moment
+    if (animate) for (let k = 0; k < Math.min(seeds, 20); k++) setTimeout(() => ctx.sfx('tick'), k * STEP * 1000 + 80);
+    const took = caught.reduce((t, i) => t + (prevPits?.[i] ?? 0) + (drops[i]?.length ?? 0), 0);
+    if (animate && took >= 6) setTimeout(() => Kit.callout(`🌾 ${took} seeds!`, 'gold', { ms: 1300 }), done * 1000 + 700);
+    prevPits = [...o.pits];
+    // your rival's row is empty: this sowing has to give them seeds
+    const rivalRow = (me === 0 ? [6, 7, 8, 9, 10, 11] : [0, 1, 2, 3, 4, 5]).reduce((t, i) => t + o.pits[i], 0);
+    const mustFeed = ctx.myTurn && S.phase === 'playing' && !rivalRow;
+    if (mustFeed && !fedNote) Kit.callout('🤲 Feed your rival!', 'cool', { ms: 1400 });
+    fedNote = mustFeed;
+    // the stores fill with real seeds, as many as each side has captured
+    for (const [id, n] of [['owMine', o.stores[me]], ['owTheirs', o.stores[them]]]) {
+      const store = $(id); let pile = store.querySelector('.ow-seeds');
+      if (!pile) { pile = ctx.el('span', 'ow-seeds ow-pile'); store.prepend(pile); }
+      if (pile.childElementCount !== Math.min(n, 30)) {
+        pile.innerHTML = '';
+        // stacked from the bottom of the store, three abreast, each a little off the line
+        for (let k = 0; k < Math.min(n, 30); k++) { const seed = ctx.el('i'); seed.style.left = `${22 + (k % 3) * 28 + ((k * 7) % 5) - 2}%`; seed.style.bottom = `${6 + Math.floor(k / 3) * 7}%`; pile.append(seed); }
+      }
+    }
     const rival = ctx.player(o.seats[them])?.name ?? 'Rival', rivalShort = rival.replace(/^🤖\s*/, '');
     $('owMine').querySelector('b').textContent = String(o.stores[me]);
     $('owTheirs').querySelector('b').textContent = String(o.stores[them]);
