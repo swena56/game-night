@@ -24,6 +24,7 @@ const PREFS = [
   ['vibrate', '📳 Vibrate (your turn, hits)', true],
   ['motion', '✨ Animations', true],
   ['bubbles', '💬 Chat pop-ups', true],
+  ['tips', '💡 First-time tips for each game', true],
 ];
 
 let session = load('unmask.session');
@@ -165,6 +166,20 @@ function showHelp(id = S?.gameId) {
   const report = el('button', 'ghost-btn', `🐞 Something wrong with ${g.name}? Tell us`);
   report.onclick = () => reportDialog('bug');
   body.prepend(ul); body.append(report);
+  // which variant this table is playing: the settings changed from the defaults, above the rules
+  if (S?.settings && S.gameId === g.id) {
+    const changed = g.settings.filter((f) => !isDefault(f));
+    const box = el('div', 'help-settings');
+    box.append(el('h4', '', '⚙️ Settings in play'));
+    if (!changed.length) box.append(el('p', 'hint left', 'Standard rules: every setting is at its default.'));
+    else {
+      const sl = el('ul', 'rules');
+      for (const f of changed) sl.append(el('li', '', `${f.label}: ${f.options.find(([v]) => sameVal(v, S.settings[f.key]))?.[1] ?? S.settings[f.key]}`));
+      box.append(sl);
+    }
+    body.prepend(box);
+    if (S.phase === 'playing') seenTip(g.id);
+  }
   ask(g.blurb, { title: `${g.icon} How to play ${g.name}`, body, ok: 'Got it', cancel: '' });
 }
 
@@ -448,6 +463,7 @@ addEventListener('beforeunload', (e) => {
 function unmountUI() {
   if (mounted) UI[mounted]?.unmount?.();
   mounted = null;
+  clearHelpHint(); dropTip();
 }
 function leaveLocal() {
   clearTimeout(retryTimer); setBanner(false); stopReplay(false); unmountUI();
@@ -468,7 +484,7 @@ function onState(s) {
     if (s.winner === s.me.id) confetti();
   }
   if (!replay) {
-    if (s.phase === 'lobby') { show('lobby'); renderLobby(); unmountUI(); }
+    if (s.phase === 'lobby') { if (prev?.phase !== 'lobby') pickerFolded = false; show('lobby'); renderLobby(); unmountUI(); }
     else { show('game'); renderGame(); }
   }
   renderReactions();
@@ -493,6 +509,12 @@ window.addEventListener('resize', () => { if (!$('#lobby').hidden) fitPicker(); 
 $('#pickerFind').oninput = () => S && renderLobby();
 $('#pickerFits').onclick = () => { store('pickerFits', !load('pickerFits') || null); renderLobby(); };
 let pickedGame = null;  // the game this host just tapped, scrolled to once the server confirms it
+let pickerFolded = false;  // the host has picked: the picker folds away until 🔄 Change game (or the next lobby visit)
+const unfoldPicker = () => { if (!pickerFolded) return false; pickerFolded = false; renderLobby(); return true; };
+// seats a game is best with: the solo bot count plus you, within the game's limits
+const recSeats = (g) => Math.min(g.max, Math.max(g.min, (SOLO_BOTS[g.id] || 1) + 1));
+const sameVal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+const isDefault = (f, settings = S.settings) => f.default === undefined || sameVal(settings[f.key], f.default);
 
 // arrow keys move between game tiles by where they sit on screen, across categories (#37)
 const ARROWS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
@@ -526,10 +548,11 @@ document.addEventListener('keydown', (e) => {
   if (!S || S.phase !== 'lobby' || replay || $('#lobby').hidden) return;
   if (!$('#modal').hidden || !$('#chatPanel').hidden || !$('#prefsPanel').hidden || !$('#gameMenu').hidden) return;
   const a = document.activeElement;
-  if (a?.closest?.('#gamePicker') || a?.matches?.('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+  if (a?.closest?.('#gamePicker:not(.folded)') || a?.matches?.('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+  e.preventDefault();
+  unfoldPicker();
   const cur = $('#gamePicker .game-tile.on') || $('#gamePicker .game-tile');
   if (!cur) return;
-  e.preventDefault();
   if (!stepPicker(cur, dir)) { cur.focus(); cur.scrollIntoView?.({ block: 'nearest' }); }
 });
 
@@ -577,14 +600,15 @@ function renderLobby() {
       b.setAttribute('aria-pressed', g.id === S.gameId);
       b.dataset.game = g.id;
       b.onclick = () => {
-        if (host) { pickedGame = g.id; quiet(act('settings', { settings: { game: g.id } })); }
+        if (host && g.id === S.gameId) { pickerFolded = true; renderLobby(); $('#gameChosen').scrollIntoView?.({ behavior: 'smooth', block: 'start' }); }
+        else if (host) { pickedGame = g.id; quiet(act('settings', { settings: { game: g.id } })); }
         else quiet(act('wish', { game: g.id }));
       };
       group.append(b);
     }
   }
   fitPicker();
-  if (focused) pick.querySelector(`[data-game="${focused}"]`)?.focus({ preventScroll: true });
+  if (focused && !pickerFolded) pick.querySelector(`[data-game="${focused}"]`)?.focus({ preventScroll: true });
   // the chosen game sits above its rules and settings; after the host picks one, bring it into view (#38, #39)
   const chosen = $('#gameChosen'); chosen.innerHTML = '';
   chosen.append(el('span', 'gicon', info.icon), el('b', '', info.name));
@@ -597,8 +621,19 @@ function renderLobby() {
   $('#settingsHead').textContent = `${info.name} settings`;
   document.title = `${info.name} — Game Night`;
   if (pickedGame && pickedGame === S.gameId) {
-    pickedGame = null;
+    pickedGame = null; pickerFolded = host;
     requestAnimationFrame(() => chosen.scrollIntoView?.({ behavior: 'smooth', block: 'start' }));
+  }
+  // folded: the chosen game heads the lobby with a way back to the full list
+  if (!host) pickerFolded = false;
+  $('#pickerTools').classList.toggle('folded', pickerFolded); pick.classList.toggle('folded', pickerFolded);
+  chosen.classList.toggle('folded', pickerFolded);
+  if (pickerFolded) {
+    const change = el('button', 'change-game', '🔄 Change game');
+    change.title = 'Show all the games again';
+    change.onclick = () => { unfoldPicker(); pick.querySelector(`[data-game="${S.gameId}"]`)?.focus({ preventScroll: true }); };
+    star.after(change);
+    if (focused || document.activeElement?.closest?.('#gamePicker')) change.focus({ preventScroll: true });  // keyboard users land on it
   }
   $('#gameDesc').textContent = info.blurb + (S.gameId === 'unmask' ? ' ' + MODE_DESC[S.settings.mode] : '');
   $('#howto').innerHTML = '';
@@ -645,11 +680,23 @@ function renderLobby() {
     sel.value = JSON.stringify(S.settings[f.key]);
     sel.disabled = !host;
     sel.onchange = () => quiet(act('settings', { settings: { [f.key]: JSON.parse(sel.value) } }));
+    if (!isDefault(f)) { lab.classList.add('changed'); lab.title = 'Changed from the default (' + (f.options.find(([v]) => sameVal(v, f.default))?.[1] ?? '?') + ')'; }
     lab.append(sel); box.append(lab);
   }
+  $('#defaultsBtn').hidden = !host || info.settings.every((f) => isDefault(f));
+  // table size: a Start that says what's missing, and one tap to seat the right number of bots
+  const rec = recSeats(info), short = seated < info.min, over = seated > info.max;
+  const fill = $('#fillBtn');
+  fill.hidden = !host || seated >= rec || seated >= 6;
+  fill.textContent = `🤖 Fill to ${rec} players`;
+  fill.title = `Add ${rec - seated} computer player${rec - seated > 1 ? 's' : ''} (${$('#botLevel').selectedOptions[0]?.textContent || 'Normal'})`;
+  fill.classList.toggle('nudge', short);
   $('#startBtn').hidden = !host; $('#waitHost').hidden = host; $('#botRow').hidden = !host;
   const chosenInfo = gameInfo(S.gameId);
-  $('#startBtn').textContent = chosenInfo ? `▶ Start ${chosenInfo.icon} ${chosenInfo.name}` : 'Start game';
+  $('#startBtn').textContent = !chosenInfo ? 'Start game'
+    : short ? `▶ Start — needs ${info.min === info.max ? info.min : info.min + '+'} players`
+    : over ? `▶ Start — ${info.max} players at most` : `▶ Start ${chosenInfo.icon} ${chosenInfo.name}`;
+  $('#startBtn').classList.toggle('blocked', short || over);
   $('#lobbyReplayBtn').hidden = !S.hasReplay;
   renderScores(host);
 }
@@ -706,6 +753,47 @@ function renderScores(host) {
 // phone's touch and its click loses the tap (bots chat a lot). `force` (ctx.rerender) always redraws.
 let renderedKey = null;
 const renderKey = (view, readOnly) => JSON.stringify(view, (k, v) => (k === 'chat' || k === 'reactions' || k === 'timeLeft' ? undefined : v)) + readOnly;
+// ---------- first-time help: a tip card the first time a game opens on this device, and a nudge
+// towards ❓ when a turn sits idle. Neither blocks the board, so they suit real-time games too.
+const helpHint = { timer: null, on: false, used: false };
+function showTip(view) {
+  $('#tipCard')?.remove();
+  const g = gameInfo(view.gameId);
+  if (!g || !prefs.tips || load('seen:' + g.id) || view.me.spectator || view.phase !== 'playing') return;
+  const compact = g.category === 'action';  // real-time: one short card so the arena stays big
+  const card = el('div', 'tip-card' + (compact ? ' compact' : ''));
+  card.id = 'tipCard'; card.dataset.game = g.id; card.setAttribute('role', 'note');
+  const head = el('div', 'tip-head');
+  head.append(el('b', '', `${g.icon} New to ${g.name}?`), el('p', '', g.blurb));
+  if (!compact && g.howto.length) {
+    const ul = el('ul');
+    for (const line of g.howto.slice(0, 2)) ul.append(el('li', '', line));
+    head.append(ul);
+  }
+  const btns = el('div', 'tip-btns');
+  const rules = el('button', '', '❓ All rules');
+  rules.onclick = () => showHelp(g.id);
+  const ok = el('button', 'primary', 'Got it');
+  ok.onclick = () => seenTip(g.id);
+  btns.append(rules, ok); card.append(head, btns);
+  $('#game .layout > main').prepend(card);
+  $('#helpBtn').classList.add('nudge');
+  restage();
+}
+function seenTip(id) {
+  if (id && $('#tipCard')?.dataset.game === id) store('seen:' + id, 1);
+  dropTip();
+}
+function dropTip() {
+  $('#helpBtn').classList.remove('nudge');
+  if (!$('#tipCard')) return;
+  $('#tipCard').remove();
+  restage();
+}
+// the arena moved: games that size themselves to the screen measure again
+const restage = () => { measureStage(); requestAnimationFrame(() => dispatchEvent(new Event('resize'))); };
+function clearHelpHint() { clearTimeout(helpHint.timer); helpHint.timer = null; helpHint.on = false; }
+
 function renderGame(view = S, readOnly = false, force = false) {
   const ui = UI[view.gameId];
   const ending = view.host === view.me.id && view.phase === 'playing';
@@ -717,7 +805,10 @@ function renderGame(view = S, readOnly = false, force = false) {
     ui.mount($('#arena'), $('#sideGame'));
     mounted = view.gameId; mountedNo = view.gameNo;
     renderedKey = null;  // a fresh mount always draws
+    clearHelpHint(); helpHint.used = false;
+    if (readOnly) dropTip(); else showTip(view);
   }
+  if (!readOnly && view.phase !== 'playing' && $('#tipCard')) seenTip(view.gameId);
   const me = view.me, playing = view.phase === 'playing', myTurn = !readOnly && playing && view.turn === me.id;
   applyFocus(view);
   // spectators can sit in mid-game where the game allows it (Hold'em next hand, party games right away)
@@ -733,7 +824,18 @@ function renderGame(view = S, readOnly = false, force = false) {
   tt.textContent = readOnly ? `▶ Replay — ${playing ? `${turnName}'s turn` : 'final position'}`
     : custom ?? (!playing ? 'Game over' : myTurn ? '✨ Your turn!' : `${turnName}'s turn`);
   tt.classList.toggle('mine', myTurn || (!readOnly && !!ui.myMove?.(view)));
+  if (!myTurn) clearHelpHint();
+  if (helpHint.on) tt.append(el('span', 'help-hint', ' · tap ❓ for help'));
   if (!readOnly) {
+    // a turn that sits idle for a while: once a game, point at ❓ (turn-based games only)
+    if (myTurn && lastTurn !== me.id && !helpHint.used && prefs.tips && info?.category !== 'action') {
+      clearTimeout(helpHint.timer);
+      helpHint.timer = setTimeout(() => {
+        if (!S || S.phase !== 'playing' || S.turn !== S.me.id || replay || mounted !== S.gameId) return;
+        helpHint.on = helpHint.used = true;
+        $('#turnText').append(el('span', 'help-hint', ' · tap ❓ for help'));
+      }, 25000);
+    }
     if (myTurn && lastTurn !== me.id && !firstState) {
       blip('turn');
       flashTurn();
@@ -767,7 +869,11 @@ function renderGame(view = S, readOnly = false, force = false) {
   const lookup = (id) => view.players.find((p) => p.id === id);
   const readOnlyAct = () => { toast('This is a replay.'); return Promise.reject(new Error('replay')); };
   kitMuted = readOnly;
-  ui.render(view, { act: readOnly ? readOnlyAct : act, input: readOnly ? () => {} : input, quiet, toast, el, ask, player: lookup, mark: (id) => mark(lookup(id)), myTurn,
+  // the player's first move (or real-time input) means they've got going: the tip card goes
+  const moved = () => { if ($('#tipCard')) seenTip(view.gameId); };
+  const actTip = (...a) => act(...a).then((r) => { moved(); return r; });
+  const inputTip = (...a) => { moved(); return input(...a); };
+  ui.render(view, { act: readOnly ? readOnlyAct : actTip, input: readOnly ? () => {} : inputTip, quiet, toast, el, ask, player: lookup, mark: (id) => mark(lookup(id)), myTurn,
     peek: readOnly ? null : (extra) => api('/api/peek', { ...session, ...extra }),
     confetti: readOnly ? () => {} : confetti, sfx: readOnly ? () => {} : sfx, buzz: readOnly ? () => {} : buzz, rerender: () => (replay ? showFrame() : renderGame(S, false, true)) });
   shapeDots($('#arena')); shapeDots($('#sideGame'));
@@ -1132,6 +1238,13 @@ function renderPrefs() {
     lab.append(cb, label);
     box.append(lab);
   }
+  const reset = el('button', 'ghost-btn', '💡 Show the first-time tips again');
+  reset.onclick = () => {
+    for (const k of Object.keys(localStorage)) if (k.startsWith('seen:')) store(k, null);
+    if (!prefs.tips) { prefs.tips = true; store('unmask.prefs', prefs); renderPrefs(); }
+    toast('Each game shows its tip again the next time it starts.');
+  };
+  box.append(reset);
 }
 
 // ---------- wiring
@@ -1152,6 +1265,12 @@ async function solo(startNow) {
 $('#soloBtn').onclick = () => solo(true);
 $('#soloSetupBtn').onclick = () => solo(false);
 $('#addBotBtn').onclick = () => quiet(act('add_bot', { level: $('#botLevel').value }));
+$('#fillBtn').onclick = async () => {
+  const need = recSeats(gameInfo()) - S.players.filter((p) => !p.spectator).length;
+  try { for (let i = 0; i < need; i++) await act('add_bot', { level: $('#botLevel').value }); } catch {}
+};
+$('#defaultsBtn').onclick = () => quiet(act('settings', { settings: Object.fromEntries(gameInfo().settings.map((f) => [f.key, f.default])) }));
+$('#botLevel').onchange = () => S && renderLobby();
 $('#joinBtn').onclick = () => api('/api/join', { name: $('#name').value, code: $('#code').value.trim() }).then(enter).catch((e) => toast(e.message));
 $('#code').addEventListener('keydown', (e) => e.key === 'Enter' && $('#joinBtn').click());
 // rename yourself or pick a colour (between games); colours other players have are greyed out

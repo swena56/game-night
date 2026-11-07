@@ -67,8 +67,10 @@
       <div id="botRow" class="row">
         <select id="botLevel"><option value="easy">Easy</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select>
         <button id="addBotBtn">🤖 Add computer player</button>
+        <button id="fillBtn" hidden></button>
       </div>
-      <h3 id="settingsHead">Settings</h3>
+      <div class="settings-head"><h3 id="settingsHead">Settings</h3>
+        <button id="defaultsBtn" class="ghost-btn" hidden title="Put this game's settings back to their defaults (the room settings stay)">↺ Defaults</button></div>
       <div id="settingsBox" class="settings"></div>
       <button id="startBtn" class="primary big">Start game</button>
       <p id="waitHost" class="hint">Waiting for the host to start… Tap a game to ask the host for it.</p>

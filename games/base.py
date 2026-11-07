@@ -33,8 +33,8 @@ class Game:
             "category": cls.category, "howto": cls.howto,
             "min": cls.min_players, "max": cls.max_players, "lateJoin": hasattr(cls, "late_join"),
             "badges": {k: list(v) for k, v in cls.badges.items()},
-            "settings": [{"key": k, "label": lbl, "options": opts}
-                         for k, (lbl, opts, _) in cls.settings_schema.items()],
+            "settings": [{"key": k, "label": lbl, "options": opts, "default": d}
+                         for k, (lbl, opts, d) in cls.settings_schema.items()],
         }
 
     def award(self, p, key):

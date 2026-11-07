@@ -44,7 +44,7 @@ ROOM_SETTINGS = {
     "ghost_chat": ("Ghost & spectator chat", [("private", "👻 Ghosts only during play"), ("open", "💬 Everyone")], "private"),
     "locked": ("Room", [(False, "🔓 Open to join"), (True, "🔒 Locked")], False),
 }
-ROOM_SETTINGS_INFO = [{"key": k, "label": lbl, "options": opts} for k, (lbl, opts, _) in ROOM_SETTINGS.items()]
+ROOM_SETTINGS_INFO = [{"key": k, "label": lbl, "options": opts, "default": d} for k, (lbl, opts, d) in ROOM_SETTINGS.items()]
 CHAT_KEEP = 100
 BANTER = {
     "win": ["gg 😎", "beep boop, victory 🤖", "too easy", "I calculated that 0.3s ago"],

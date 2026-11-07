@@ -154,6 +154,20 @@ button.shake { animation: shake .35s; }
 .plist li { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
 .plist .watch-btn { font-size: 13px; }
 .settings { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+/* a setting the host changed from the game's default gets a dot; ↺ Defaults puts them all back */
+.settings label.changed::before { content: "• "; color: var(--accent); font-weight: 700; }
+.settings-head { display: flex; align-items: center; gap: 8px; }
+.settings-head h3 { flex: 1; }
+#defaultsBtn { font-size: 13px; }
+#botRow { flex-wrap: wrap; }
+#fillBtn { flex: 1 1 100%; order: -1; }
+/* Start when the table doesn't fit the game: still tappable (the server says why), but it looks off */
+#startBtn.blocked { filter: saturate(.35); opacity: .8; }
+/* a gentle pulse on the one thing to do next (fill the table, the ❓ for a new game) */
+.nudge { animation: nudge 1.8s ease-in-out infinite; }
+@keyframes nudge { 50% { box-shadow: 0 0 0 4px #ffb70355, 0 0 16px #ffb70366; } }
+body.calm .nudge { animation: none; box-shadow: 0 0 0 2px #ffb70388; }
+@media (prefers-reduced-motion: reduce) { .nudge { animation: none; box-shadow: 0 0 0 2px #ffb70388; } }
 .join-in { display: block; margin: 8px auto 0; padding: 10px 22px; font-size: 16px; }
 
 /* lobby: game picker */
@@ -195,6 +209,23 @@ button.shake { animation: shake .35s; }
 .game-chosen { display: flex; align-items: center; gap: 10px; margin: 16px 0 0; padding-top: 12px; border-top: 1px solid var(--line);
   font-size: 20px; scroll-margin-top: 12px; }
 .game-chosen .gicon { font-size: 30px; filter: drop-shadow(0 3px 4px #0007); }
+/* once the host picks a game the picker folds away; 🔄 Change game opens it again */
+#pickerTools.folded, #gamePicker.folded { display: none; }
+#lobby .game-chosen.folded { border-top: 0; margin-top: 4px; padding-top: 0; }
+.change-game { font-size: 14px; white-space: nowrap; }
+
+/* first time a game opens on this device: a short card with the gist and the way to the rules */
+.tip-card { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0 0 8px; padding: 10px 12px;
+  background: var(--panel2); border: 1px solid var(--accent); border-radius: 12px; box-shadow: 0 4px 18px #0005; }
+.tip-card .tip-head { flex: 1 1 220px; min-width: 0; }
+.tip-card .tip-head b { display: block; font-size: 15px; }
+.tip-card p { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+.tip-card ul { margin: 4px 0 0; padding-left: 18px; font-size: 13px; }
+.tip-card .tip-btns { display: flex; gap: 6px; margin-left: auto; }
+.tip-card .tip-btns button { padding: 6px 12px; font-size: 13px; }
+.tip-card.compact { padding: 6px 10px; }
+.tip-card.compact p { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.turn .help-hint { font-weight: 400; opacity: .75; font-size: .9em; }
 .game-chosen + #gameDesc { margin-top: 4px; }
 
 /* dialogs */
