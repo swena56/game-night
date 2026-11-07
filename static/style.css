@@ -1501,6 +1501,53 @@ body.calm .hg-cell.target rect, body.calm .hg-pawn.now .hg-ring { animation: non
 .ld-line { margin-top: 2px; font-weight: 700; letter-spacing: .03em; overflow-wrap: anywhere; }
 @keyframes ld-pop { from { transform: scale(.7); } to { transform: scale(1); } }  /* also Trivia Rush's fastest answer */
 
+/* lantern market: a string of paper lanterns over the stall, lots as goods on the counter, bid tiles you tap */
+.lm { display: flex; flex-direction: column; gap: 10px; }
+.lm-string { position: relative; display: flex; justify-content: space-around; height: 34px; margin: 0 8px -4px; border-top: 2px solid #8a6d3b; border-radius: 0 0 50% 50% / 0 0 14px 14px; }
+.lm-string i { width: 16px; height: 22px; margin-top: 2px; border-radius: 45%; background: radial-gradient(circle at 50% 40%, #ffd166, #f3722c 60%, #c1121f); box-shadow: 0 0 12px #ffb70388; animation: lm-sway 3.2s ease-in-out infinite alternate; transform-origin: 50% -4px; }
+.lm-string i:nth-child(2n) { animation-delay: -1.3s; background: radial-gradient(circle at 50% 40%, #fff3b0, #ffb703 60%, #e85d04); }
+.lm-string i:nth-child(3n) { animation-delay: -2.1s; }
+@keyframes lm-sway { from { transform: rotate(-5deg); } to { transform: rotate(5deg); } }
+.lm-stall { background: linear-gradient(180deg, #3a2a1a, #2a1f16); border: 1px solid #8a6d3b66; color: #fbeedd; }
+body.light .lm-stall { background: linear-gradient(180deg, #fff4e0, #f6e2bf); color: #3d2a12; border-color: #c9a46a; }
+.lm-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.lm-worth { font-weight: 800; color: var(--accent); }
+.lm-lots { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; min-height: 92px; }
+.lm-table { display: flex; flex-wrap: wrap; gap: 8px; }
+.lm-lot { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 64px; height: 82px; border-radius: 10px;
+  background: #fffaf0; color: #3d2a12; border: 2px solid #e0b872; box-shadow: 0 3px 0 #b68a4a; }
+.lm-lot .lm-good { font-size: 32px; line-height: 1.1; }
+.lm-lot b { font-size: 18px; }
+.lm-lot.small { width: 44px; height: 56px; opacity: .75; } .lm-lot.small .lm-good { font-size: 22px; } .lm-lot.small b { font-size: 13px; }
+.lm-lot.fresh { animation: lm-drop .45s cubic-bezier(.3, 1.4, .5, 1); }
+@keyframes lm-drop { from { transform: translateY(-40px) rotate(-8deg); opacity: 0; } }
+.lm-next { display: flex; flex-direction: column; align-items: center; gap: 2px; color: inherit; opacity: .9; }
+.lm-tiles { display: grid; grid-template-columns: repeat(var(--n, 10), 1fr); gap: 6px; max-width: 760px; width: 100%; margin: 0 auto; }
+.lm-tile { height: 52px; padding: 0; font-size: 20px; font-weight: 800; border-radius: 8px; background: #f8ecd4; color: #3d2a12; border: 1px solid #c9a46a; box-shadow: 0 3px 0 #9c7440; }
+.lm-tile.on { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 3px #ffb70366, 0 3px 0 #9c7440; }
+.lm-tile.spent { opacity: .22; box-shadow: none; text-decoration: line-through; }
+.lm-lamp.on { background: #f3722c; color: #fff; border-color: #ffd166; box-shadow: 0 0 16px #f3722caa; }
+.lm-reveal { display: inline-flex; align-items: center; gap: 6px; transition: transform .35s, opacity .35s; }
+.lm-reveal .lm-num { display: inline-grid; place-items: center; min-width: 26px; height: 26px; border-radius: 6px; background: #f8ecd4; color: #3d2a12; }
+.lm-reveal.down { transform: rotateX(90deg); opacity: .2; }
+.lm-reveal.clash .lm-num { text-decoration: line-through; background: #ef476f55; color: inherit; }
+.lm-reveal.win { background: #ffb70333; box-shadow: 0 0 12px #ffb70388; }
+.lm-lots-mini { font-size: 22px; margin-bottom: 6px; } .lm-lots-mini small { font-size: 14px; color: var(--muted); }
+.lm-outcome { margin: 8px 0 0; transition: opacity .3s; } .lm-outcome.wait { opacity: 0; }
+.lm-left { width: 100%; border-collapse: collapse; font-size: 13px; }
+.lm-left td { padding: 3px 4px; } .lm-left tr.me { background: #ffffff0a; }
+.lm-name { font-weight: 700; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lm-mini { display: flex; flex-wrap: wrap; gap: 2px; }
+.lm-mini i { font-style: normal; font-size: 11px; min-width: 16px; text-align: center; border-radius: 3px; background: #f8ecd4; color: #3d2a12; }
+.lm-mini i.gone { background: none; color: var(--muted); opacity: .35; }
+.lm-score { text-align: right; white-space: nowrap; font-weight: 700; }
+.lm-hist-wrap { overflow-x: auto; }
+.lm-hist { border-collapse: collapse; font-size: 13px; }
+.lm-hist th, .lm-hist td { padding: 3px 5px; text-align: center; }
+.lm-hist td.won { font-weight: 800; color: var(--accent); outline: 2px solid var(--accent); outline-offset: -3px; border-radius: 6px; }
+@media (max-width: 600px) { .lm-tiles { grid-template-columns: repeat(var(--half, 5), 1fr); } }
+@media (max-width: 480px) { .lm-lot { width: 54px; height: 70px; } .lm-lot .lm-good { font-size: 26px; } .lm-tile { height: 46px; font-size: 18px; } }
+
 /* last card (cards and hands are in section 5) */
 .pile-row { display: flex; gap: 14px; align-items: center; justify-content: center; margin-bottom: 14px; }
 .lc-info { display: flex; flex-direction: column; gap: 4px; min-width: 90px; }
