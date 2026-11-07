@@ -41,6 +41,8 @@ class Lantern(Game):
         "Every tile is used once, win or lose. Most points after the last lot wins.",
         "🏮 Once a game, light your lantern on a bid: if it wins, the lots count double. It burns out either way, "
         "and an unused lantern lights itself on the last lot.",
+        "With market events on, some lots come with a twist: 🎁 a mystery lot keeps its value hidden until someone buys it, "
+        "and 🌧 rain washes the whole table away if nobody buys that round.",
     ]
     name = "Lantern Market"
     icon = "🏮"
@@ -54,13 +56,25 @@ class Lantern(Game):
         "lots": ("Lots", [(10, "10 lots (tiles 1–10)"), (13, "13 lots (tiles 1–13)")], 10),
         "peek": ("Next lot", [(True, "👀 Shown"), (False, "Hidden")], True),
         "lamp": ("Lanterns", [(True, "🏮 One each"), (False, "Off")], True),
+        "events": ("Market events", [(False, "Off"), (True, "🎁🌧 Mystery lots & rain")], False),
     }
+    EVENT_ODDS = 0.3  # with events on, the share of lots (all but the last) that come with one
+
+    # rooms saved before market events existed load without these
+    events, hidden, event, reveals, reads = {}, frozenset(), None, [], {}
 
     def start(self, seated, rng):
         self.rng = rng
         n = self.s["lots"]
         self.deck = list(range(1, n + 1))
         rng.shuffle(self.deck)  # the last item is the next lot up
+        self.events = {}  # lot value -> "mystery" or "rain" (values are unique, so a lot is known by its value)
+        if self.s.get("events"):
+            for v in self.deck[1:]:  # never the last lot, which plays itself
+                if rng.random() < self.EVENT_ODDS:
+                    self.events[v] = rng.choice(("mystery", "rain"))
+        self.hidden = set()  # mystery lots on the table, still unsold
+        self.event = None  # this round's lot's event
         self.table = []
         self.hands = {p.id: list(range(1, n + 1)) for p in seated}
         self.score = {p.id: 0 for p in seated}
@@ -68,7 +82,8 @@ class Lantern(Game):
         self.lamps = {p.id: 1 if self.s.get("lamp", True) else 0 for p in seated}
         self.choices = {}  # pid -> [bid, lit]
         self.rounds = []   # every revealed round: {"table": [...], "bids": {pid: [bid, lit, gain]}, "winner": pid}
-        self.last = None
+        self.reveals = []  # the last two reveals: the auto-played last lot follows the one before in one update
+        self.reads = {}
         self.round = 0
         self.room.add_log(f"🏮 The night market opens: {n} lots, and everyone holds bid tiles 1–{n}.", "big")
         self.new_round()
@@ -82,11 +97,15 @@ class Lantern(Game):
         self.round += 1
         lot = self.deck.pop()
         self.table.append(lot)
+        self.event = self.events.get(lot)
+        if self.event == "mystery":
+            self.hidden = self.hidden | {lot}
         self.choices = {}
         r.turn = None
-        pot = sum(self.table)
-        extra = f" — with {len(self.table) - 1} unsold, the table is worth {pot}" if len(self.table) > 1 else ""
-        r.add_log(f"🏮 Lot {self.round}: {lot_name(lot)}{extra}.")
+        extra = f" — with {len(self.table) - 1} unsold, the table is worth {self.worth_text()}" if len(self.table) > 1 else ""
+        r.add_log(f"🏮 Lot {self.round}: {'🎁 a mystery lot' if lot in self.hidden else lot_name(lot)}{extra}.")
+        if self.event == "rain":
+            r.add_log("🌧 Rain clouds over the market: if nobody buys this round, the whole table washes away.", "power")
         live = self.room.contenders()
         if live and all(len(self.hands[p.id]) == 1 for p in live):  # the last lot: everyone's last tile goes in
             for p in live:
@@ -123,10 +142,11 @@ class Lantern(Game):
         bids = {pid: c[0] for pid, c in self.choices.items()}
         win = winner_of(bids)
         pot = sum(self.table)
-        rec = {"table": list(self.table), "bids": {}, "winner": win}
-        self.reads = getattr(self, "reads", {})
-        reads = getattr(self, "reads", {})
-        rest = self.deck + [pot]
+        auto = all(not self.hands[pid][1:] for pid in self.choices)
+        rec = {"round": self.round, "table": list(self.table), "bids": {}, "winner": win, "pot": pot,
+               "event": self.event, "auto": auto}
+        reads, seen = self.reads, self.bot_pot()
+        rest = self.deck + [seen]
         q = sum(v < pot for v in rest) / max(1, len(rest) - 1)
         for pid, (bid, lit) in self.choices.items():
             h = self.hands[pid]
@@ -147,21 +167,30 @@ class Lantern(Game):
             self.bought[win] += len(self.table)
             rec["bids"][win][2] = gain
             goods = " + ".join(GOODS[v][0] for v in self.table)
+            opened = [v for v in self.table if v in self.hidden]
             text = (f"🏮 {r.players[win].name} buys {goods} with a {bid}{clash}: "
-                    + (f"lantern lit, {pot} doubled to {gain}!" if lit else f"+{gain}."))
+                    + (f"lantern lit, {pot} doubled to {gain}!" if lit else f"+{gain}.")
+                    + "".join(f" 🎁 The mystery was {lot_name(v)}." for v in opened))
+            self.hidden -= set(opened)
             if pot >= 10 and bid <= 3:
                 self.award(win, "bargain")
             if lit and gain >= 20:
                 self.award(win, "bonfire")
             self.table = []
+        elif self.event == "rain" and self.deck:
+            text = f"🤝 Every bid was matched{clash} — nobody buys, and 🌧 the rain washes the table away."
+            rec["washed"] = True
+            self.hidden -= set(self.table)
+            self.table = []
         else:
             text = f"🤝 Every bid was matched{clash} — nobody buys, and the lot stays on the table."
         r.add_log(text, "power")
-        self.last = {"round": self.round, "text": text, "winner": win, "pot": pot, "lots": rec["table"],
-                     "bids": {pid: c[:] for pid, c in self.choices.items()}}
+        rec["text"] = text
         self.rounds.append(rec)
+        self.reveals = self.rounds[-2:]
         self.choices = {}
         if not self.deck:
+            self.hidden = set()
             if self.table:
                 r.add_log(f"🌅 The market closes; nobody takes {' + '.join(lot_name(v) for v in self.table)}.")
             return self.finish()
@@ -206,13 +235,28 @@ class Lantern(Game):
     def final_scores(self):
         return dict(getattr(self, "score", {}))
 
+    def worth_text(self):
+        known = sum(v for v in self.table if v not in self.hidden)
+        return f"{known} + 🎁" if any(v in self.hidden for v in self.table) else str(known)
+
+    def masked(self, rec):
+        """A round as everyone may see it: an unsold mystery lot shows as 0, and the pot only counts what's known."""
+        if not any(v in self.hidden for v in rec["table"]):
+            return rec
+        return {**rec, "table": [0 if v in self.hidden else v for v in rec["table"]],
+                "pot": sum(v for v in rec["table"] if v not in self.hidden)}
+
     def view(self, p):
+        peek = self.deck and self.s.get("peek", True)
+        nxt = self.deck[-1] if peek else None
         return {"lantern": {
-            "round": self.round, "lots": self.s["lots"], "table": self.table,
-            "next": self.deck[-1] if self.deck and self.s.get("peek", True) else None, "left": len(self.deck),
+            "round": self.round, "lots": self.s["lots"], "table": [0 if v in self.hidden else v for v in self.table],
+            "event": self.event if self.room.phase == "playing" else None,
+            "next": (0 if self.events.get(nxt) == "mystery" else nxt) if nxt else None,
+            "nextEvent": self.events.get(nxt) if nxt else None, "left": len(self.deck),
             "hands": self.hands, "score": self.score, "bought": self.bought, "lamps": self.lamps,
             "mine": self.choices.get(p.id), "waiting": [o.id for o in self.waiting_on()],
-            "last": self.last, "rounds": self.rounds[-13:],
+            "reveals": [self.masked(x) for x in self.reveals], "rounds": [self.masked(x) for x in self.rounds[-13:]],
         }}
 
     # -- bots: everyone bids at once, so all undecided bots choose together. Hard-bot tuning (from simulate.py runs):
@@ -250,11 +294,17 @@ class Lantern(Game):
         """How the hard bot expects a rival to bid: like a plain bidder, or at random as often as they have so far."""
         return rng.choice(hand) if rng.random() < (self.MIX if wild is None else wild) else self.guess(hand, pot, rng, self.NOISE, deck)
 
+    def bot_pot(self):
+        """The table's worth as anyone can see it: an unsold mystery lot counts as the average lot nobody has seen."""
+        unseen = self.deck + sorted(self.hidden)
+        guess = sum(unseen) / len(unseen) if unseen else 0
+        return sum(guess if v in self.hidden else v for v in self.table)
+
     def plain_lamp(self, hand, bid, pot, deck):
         return pot >= 0.75 * max(deck + [pot]) and bid >= hand[-min(2, len(hand))]
 
     def bot_choice(self, p):
-        hand, pot, lamp = self.hands[p.id], sum(self.table), self.lamps.get(p.id)
+        hand, pot, lamp = self.hands[p.id], self.bot_pot(), self.lamps.get(p.id)
         rng = random.Random()
         if p.bot == "easy":
             return [rng.choice(hand), bool(lamp and rng.random() < 0.12)]
@@ -266,7 +316,7 @@ class Lantern(Game):
     def lookahead_choice(self, p, rng):
         """Hard: for every tile, the chance it wins this lot against rivals bidding the way they have so far
         (sampled), weighed against what the tile is worth later: its share of the market still to come."""
-        me, hand, lamp, pot = p.id, self.hands[p.id], self.lamps.get(p.id), sum(self.table)
+        me, hand, lamp, pot = p.id, self.hands[p.id], self.lamps.get(p.id), self.bot_pot()
         rivals = [o.id for o in self.room.contenders() if o.id != me]
         wild = {o: self.wildness(o) for o in rivals}
         tries, wins = 400, {b: 0 for b in hand}

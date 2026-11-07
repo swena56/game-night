@@ -56,7 +56,7 @@ check("tiles are spent win or lose", 8 not in g.hands[ann.id] and 8 not in g.han
 g.table = [9]
 for p, b in ((ann, 5), (bo, 5), (cy, 5)):
     g.act(p, {"type": "bid", "bid": b})
-check("all matched: the lot stays and the next joins it", len(g.table) == 2 and g.table[0] == 9 and g.last["winner"] is None, g.table)
+check("all matched: the lot stays and the next joins it", len(g.table) == 2 and g.table[0] == 9 and g.reveals[-1]["winner"] is None, g.table)
 
 pot = sum(g.table)
 g.act(ann, {"type": "bid", "bid": 10, "lit": True})
@@ -73,6 +73,30 @@ while room.phase == "playing" and len(g.hands[ann.id]) > 1:
             g.act(p, {"type": "bid", "bid": g.hands[p.id][0]})
 check("the last lot plays itself and the market closes", room.phase == "over" and not g.deck, room.phase)
 check("an unused lantern lights itself on the last lot", g.lamps[cy.id] == 0)
+check("both final reveals are kept: the auto-played last lot follows the one before",
+      [x["round"] for x in g.reveals] == [9, 10] and g.reveals[1]["auto"] and not g.reveals[0]["auto"], g.reveals)
+
+# market events: a mystery lot stays hidden (from views and bots) until bought; rain washes an unsold table away
+room, (ann, bo, cy), g = new_room()
+g.table, g.deck, g.hidden, g.event = [4], [1, 2, 3, 5, 6, 7, 8, 9, 10], set(), None
+g.events = {10: "mystery"}
+g.act(ann, {"type": "bid", "bid": 3}); g.act(bo, {"type": "bid", "bid": 3}); g.act(cy, {"type": "bid", "bid": 3})
+v = g.view(ann)["lantern"]
+check("a mystery lot is hidden in the view", 10 in g.table and 0 in v["table"] and 10 not in v["table"], v["table"])
+check("the hidden value doesn't leak through the reveals or the log",
+      all(10 not in x["table"] and x["pot"] < 10 for x in v["reveals"]) and not any("Compass" in str(e) for e in room.log), v["reveals"])
+check("bots price a mystery lot at the average unseen lot", abs(g.bot_pot() - (4 + sum(g.deck + [10]) / (len(g.deck) + 1))) < 1e-9)
+g.act(ann, {"type": "bid", "bid": 9}); g.act(bo, {"type": "bid", "bid": 1}); g.act(cy, {"type": "bid", "bid": 2})
+check("buying a mystery lot reveals it", g.score[ann.id] == 4 + 10 and not g.hidden and "Compass" in g.reveals[-1]["text"], g.reveals[-1])
+g.table, g.event = [9, 6], "rain"
+g.act(ann, {"type": "bid", "bid": 8}); g.act(bo, {"type": "bid", "bid": 8}); g.act(cy, {"type": "bid", "bid": 8})
+check("rain washes an unsold table away", g.reveals[-1].get("washed") and len(g.table) == 1, g.table)
+room = server.Room("EVT")
+for x in ("Ann", "Bo"):
+    room.add_player(x)
+room.switch_game("lantern"); room.settings["events"] = True; room.start()
+g = room.game
+check("events never land on the last lot", g.deck[0] not in g.events and set(g.events.values()) <= {"mystery", "rain"})
 
 room, (ann, bo), g = new_room(2)
 room.deadline = 1
