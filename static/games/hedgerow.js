@@ -3,7 +3,7 @@ UI.hedgerow = (() => {
   // Hedges sit centred on a groove crossing: crossing (r, c) lies between rows r, r+1 and columns c, c+1, and
   // hedge "h,r,c" runs left–right through it, "v,r,c" up–down. Tapping a groove picks the hedge centred on the
   // nearest crossing; the preview shows how many steps it costs each rival (worked out here, in the browser).
-  let S, ctx, svg, built = '', mode = 'move', ghost = null, hovered = null, prev = null, lastO = 'h', turnDeg = 0;
+  let S, ctx, svg, built = '', mode = 'move', ghost = null, hovered = null, prev = null, lastO = 'h', turnDeg = 0, warned = new Set();
   const NS = 'http://www.w3.org/2000/svg', G = 0.3, P = 1 + G;
   const TURN = { S: 0, N: 180, W: -90, E: 90 };
   const STEPS = [[-1, 0], [1, 0], [0, -1], [0, 1]];
@@ -70,7 +70,7 @@ UI.hedgerow = (() => {
   // ---- building the board
 
   function mount(main, side) {
-    built = ''; mode = 'move'; ghost = null; hovered = null; prev = null;
+    built = ''; mode = 'move'; ghost = null; hovered = null; prev = null; warned = new Set();
     main.innerHTML = '<div class="hg-wrap"><svg class="hg-board" id="hgSvg"></svg></div>';
     side.innerHTML = `<div class="panel">
       <div class="hg-modes"><button id="hgMove">🐾 Move</button><button id="hgHedge">🌿 Hedge</button></div>
@@ -124,6 +124,7 @@ UI.hedgerow = (() => {
     node('g', { id: 'hgCross' }, root);
     node('g', { id: 'hgHedges' }, root);
     node('g', { id: 'hgGhost', class: 'hg-ghost' }, root);
+    node('g', { id: 'hgPrints' }, root);
     node('g', { id: 'hgPawns' }, root);
     // tap targets, live only while planting: each groove piece is split in half, and each half belongs to the
     // hedge centred on the crossing nearest it; the crossings themselves sit on top
@@ -331,7 +332,8 @@ UI.hedgerow = (() => {
       if (x.out) continue;
       const t = 0.3, o = -0.5, far = W + 0.2;
       const at = { S: [0, o, W, t], N: [0, far, W, t], W: [far, 0, t, W], E: [o, 0, t, W] }[x.side];
-      node('rect', { x: at[0], y: at[1], width: at[2], height: at[3], rx: t / 2, fill: colorOf(x.id), class: 'hg-goal' + (x.id === S.me.id ? ' mine' : '') }, goals);
+      const close = S.phase === 'playing' && x.dist != null && x.dist <= 2;  // nearly home: the bed pulses
+      node('rect', { x: at[0], y: at[1], width: at[2], height: at[3], rx: t / 2, fill: colorOf(x.id), class: 'hg-goal' + (x.id === S.me.id ? ' mine' : '') + (close ? ' close' : '') }, goals);
       const along = at[2] > at[3];
       for (let i = 0; i < n; i++) {
         const cx = along ? i * P + 0.5 : at[0] + t / 2, cy = along ? at[1] + t / 2 : i * P + 0.5;
@@ -391,9 +393,16 @@ UI.hedgerow = (() => {
       if (was && was !== x.pos.join(',')) {
         ctx.sfx(g.last?.kind === 'hop' ? 'whoosh' : 'place');
         if (g.last?.kind === 'hop') Kit.flyText(e, '🐇 hop!', 'good');
+        print(was, x.id);
       }
+      // a rival's hedge just made your way home longer
+      const before = prev?.dist[x.id];
+      if (x.id === S.me.id && g.last?.kind === 'hedge' && prev && prev.hedges < g.hedges.length && before != null && x.dist > before)
+        { Kit.flyText(e, `+${x.dist - before} steps`, 'bad'); ctx.sfx('groan'); }
     }
-    prev = { hedges: g.hedges.length, pos: Object.fromEntries(g.seats.map((x) => [x.id, x.pos.join(',')])) };
+    nearlyHome(g);
+    prev = { hedges: g.hedges.length, pos: Object.fromEntries(g.seats.map((x) => [x.id, x.pos.join(',')])),
+      dist: Object.fromEntries(g.seats.map((x) => [x.id, x.dist])) };
 
     // side panel
     $('hgMove').classList.toggle('primary', mode === 'move');
@@ -411,6 +420,36 @@ UI.hedgerow = (() => {
       box.append(row);
     }
     paintGhost();
+  }
+
+  // a paw print where a pawn just stood, fading out
+  function print(cell, id) {
+    const box = $('hgPrints'); if (!box) return;
+    const [r, c] = cell.split(',').map(Number);
+    const e = node('g', { class: 'hg-print' }, box);
+    node('circle', { cx: c * P + 0.5, cy: r * P + 0.55, r: 0.13, fill: colorOf(id) }, e);
+    for (const [dx, dy] of [[-0.15, -0.14], [-0.05, -0.22], [0.06, -0.22], [0.16, -0.14]])
+      node('circle', { cx: c * P + 0.5 + dx, cy: r * P + 0.5 + dy, r: 0.05, fill: colorOf(id) }, e);
+    setTimeout(() => e.remove(), 2600);
+  }
+
+  // one step from home: say so, once per racer per race (two steps away is a warning about a rival)
+  function nearlyHome(g) {
+    if (S.phase !== 'playing' || !prev) return;
+    for (const x of g.seats) {
+      const before = prev.dist[x.id];
+      if (x.out || x.dist == null || before == null || x.dist >= before) continue;
+      const mine = x.id === S.me.id, name = ctx.player(x.id)?.name ?? '?';
+      if (x.dist === 1 && !warned.has(x.id + ':1')) {
+        warned.add(x.id + ':1');
+        Kit.callout(mine ? '🏁 One step from home!' : `⚠️ ${name} is one step from home!`, mine ? 'gold' : 'bad', { ms: 1400 });
+        ctx.sfx(mine ? 'rise' : 'alarm', 6);
+      } else if (x.dist === 2 && !mine && !warned.has(x.id + ':2')) {
+        warned.add(x.id + ':2');
+        const me = g.seats.find((y) => y.id === S.me.id);
+        if (me && !me.out && me.hedges) Kit.callout(`⚠️ ${name} is 2 steps from home`, 'cool', { ms: 1300 });
+      }
+    }
   }
 
   return { mount, render };

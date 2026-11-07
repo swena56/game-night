@@ -8,11 +8,14 @@ UI.riders = (() => {
   let S, ctx, trails = [], live = [], lastTick = 0, tickAt = 0, round = 0, ring = 0, lastTwo = 0;  // ring: 🧱 closed bands
   let gl = null, flat = null, raf = 0, ro = null, keyHandler = null, swipe = null, root = null;
   let pred = null, tapTurn = false, lastCount = '';
+  let items = new Map(), slow = [], grabsSeen = new Set();  // 🎁 power-ups on the grid (cell → kind), 🐌 slowed riders
+  const ITEM = { bolt: ['⚡', '#ffd166'], slow: ['🐌', '#8ce99a'], life: ['❤️', '#ff6b8b'], cut: ['✂️', '#a5d8ff'] };
   const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
     S = null; trails = []; live = []; round = 0; gl = null; flat = null; pred = null; lastCount = '';
+    items = new Map(); slow = []; grabsSeen = new Set();
     tapTurn = !!load('riders.tapTurn');
     main.innerHTML = `<div class="lr" id="lrRoot"><div class="lr-stage" id="lrStage">
         <div class="lr-hud" id="lrHud"></div>
@@ -83,6 +86,7 @@ UI.riders = (() => {
   }
 
   const mine = () => S?.riders?.me;
+  const riding = () => S?.phase === 'playing' && S.riders.stage === 'ride';
   const canSteer = () => mine() != null && S.phase === 'playing' && S.riders.stage !== 'over' && live[mine()]?.alive;
   // the way my bike is heading on screen: the last turn I sent, until the server confirms or drops it
   const myDir = () => pred?.dir ?? live[mine()]?.dir ?? 0;
@@ -120,6 +124,25 @@ UI.riders = (() => {
     if (me && now.alive && was.alive && now.boosts > was.boosts && !now.boosting) { snd.play('earn'); (gl || flat)?.grind?.(i); }
   }
 
+  // 🎁 someone rode over a power-up: say so (loudest when it's yours, or when it slows you)
+  function grabs(list, quietly) {
+    for (const [k, i, kind] of list || []) {
+      const key = `${round}:${k}:${i}:${kind}`;
+      if (grabsSeen.has(key)) continue;
+      grabsSeen.add(key);
+      if (quietly) continue;
+      const me = mine(), name = i === me ? 'You' : ctx.player(S.riders.seats[i])?.name ?? '?';
+      (gl || flat)?.grab?.(i, kind);
+      if (i === me) {
+        Kit.callout({ bolt: '⚡ Boosts refilled!', slow: '🐌 Slow-mo! Everyone else crawls', life: '❤️ Extra life!', cut: '✂️ Trail cut in half!' }[kind], 'gold', { ms: 1300 });
+        snd.play('earn'); buzz(25);
+      } else if (kind === 'slow' && me != null && live[me]?.alive) {
+        Kit.callout(`🐌 ${name} slowed you down!`, 'bad', { ms: 1300 });
+        snd.play('slow');
+      } else snd.play('ping');
+    }
+  }
+
   function render(s, c) {
     S = s; ctx = c;
     const r = s.riders;
@@ -131,7 +154,9 @@ UI.riders = (() => {
     live = r.alive.map((a, i) => ({ alive: a, dir: r.dirs[i], boosts: r.boosts[i], boosting: false,
       lives: r.lives?.[i] ?? 1, grind: r.grind?.[i] ?? 0, respawnAt: r.respawning?.[i] != null ? performance.now() + r.respawning[i] * 1000 : null }));
     if (!fresh) live.forEach((L, i) => { events(i, old[i], L); if (old[i]?.boosting) L.boosting = true; });
-    else pred = null;
+    else { pred = null; grabsSeen = new Set(); }
+    items = new Map(r.items || []); slow = r.slow || [];
+    grabs(r.grabs, fresh || !old.length);
     lastTick = r.tick; tickAt = performance.now();
     if (fresh) (gl || flat)?.reset(); else (gl || flat)?.sync();
     S.countdownAt = performance.now() + r.countdown * 1000;
@@ -143,14 +168,23 @@ UI.riders = (() => {
     if (!S || data.k < lastTick) return;  // a new round starts with a full view
     data.p.forEach(([len, alive, dir, boosts, boosting, lives, grind, ...tail], i) => {
       const t = trails[i]; if (!t) return;
-      if (len < t.length) t.length = 0;  // the trail was wiped (a crash with lives left, or a respawn)
-      for (let idx = Math.max(t.length, len - tail.length); idx < len; idx++) t.push(tail[idx - (len - tail.length)]);
+      // the newest cells line up with what we hold (cells never repeat within a trail), so this also
+      // follows a ✂️ cut, which drops cells from the start
+      const at = tail.length ? t.lastIndexOf(tail[0]) : -1;
+      if (at >= 0 && t.length - at <= tail.length + 1) { t.length = at; t.push(...tail); if (t.length > len) t.splice(0, t.length - len); }
+      else {
+        if (len < t.length) t.length = 0;  // the trail was wiped (a crash with lives left, or a respawn)
+        for (let idx = Math.max(t.length, len - tail.length); idx < len; idx++) t.push(tail[idx - (len - tail.length)]);
+      }
       const was = live[i];
       live[i] = { alive: !!alive, dir, boosts, boosting: !!boosting, lives, grind, respawnAt: was?.respawnAt ?? null };
       if (alive) live[i].respawnAt = null;
       events(i, was, live[i]);
     });
     if (data.k !== lastTick) { lastTick = data.k; tickAt = performance.now(); }
+    if (data.it) items = new Map(data.it);
+    if (data.sl) slow = data.sl;
+    grabs(data.gr);
     // three or more started and two are left riding: the showdown
     const riding = live.filter((L) => L?.alive || L?.respawnAt).length;
     if (trails.length > 2 && riding === 2 && lastTwo !== round && data.st === 'ride') { lastTwo = round; Kit.callout('⚔️ Last two riders!', 'gold', { ms: 1400 }); ctx.sfx('rise', 8); }
@@ -173,12 +207,13 @@ UI.riders = (() => {
     b.hidden = r.me == null;
     $('lrPad').hidden = r.me == null;
     // fast updates arrive every tick: only rebuild the panels when something on them changed (#32)
-    const key = JSON.stringify([r.round, r.stage, r.wins, r.seats, r.me, live.map((L) => [L?.alive, L?.lives, L?.respawnAt != null])]);
+    const key = JSON.stringify([r.round, r.stage, r.wins, r.seats, r.me, slow, live.map((L) => [L?.alive, L?.lives, L?.respawnAt != null])]);
     if (key === sideKey && box.childElementCount) return;
     sideKey = key;
     const lifeText = (i) => (r.maxLives > 1 ? ' ' + '♥'.repeat(Math.max(0, live[i]?.lives ?? 0)) : '');
     box.innerHTML = '';
     box.append(ctx.el('div', 'hint left', `Round ${r.round} · first to ${r.target}${r.maxLives > 1 ? ` · ${r.maxLives} lives` : ''}`));
+    if (r.pickups) box.append(ctx.el('div', 'hint left', '🎁 Ride over power-ups: ⚡ boosts back · 🐌 rivals crawl · ❤️ a life · ✂️ half your trail gone'));
     const hud = $('lrHud'); hud.innerHTML = '';
     r.seats.forEach((pid, i) => {
       const p = ctx.player(pid), L = live[i];
@@ -190,7 +225,7 @@ UI.riders = (() => {
       box.append(row);
       const chip = ctx.el('span', 'lr-chip' + (i === r.me ? ' me' : '') + (out ? ' out' : ''));
       const c = ctx.el('i'); c.style.background = colorOf(i); c.style.boxShadow = `0 0 6px ${colorOf(i)}`;
-      chip.append(c, ctx.el('span', '', `${i === r.me ? 'You' : (p?.name ?? '—').slice(0, 8)} ${'★'.repeat(r.wins[i])}${lifeText(i)}${L?.alive ? '' : out ? ' 💥' : ' ⟳'}`));
+      chip.append(c, ctx.el('span', '', `${i === r.me ? 'You' : (p?.name ?? '—').slice(0, 8)} ${'★'.repeat(r.wins[i])}${lifeText(i)}${L?.alive ? (slow[i] ? ' 🐌' : '') : out ? ' 💥' : ' ⟳'}`));
       hud.append(chip);
     });
   }
@@ -201,8 +236,9 @@ UI.riders = (() => {
     const n = S.riders.n, c = t[t.length - 1], x = c % n, y = Math.floor(c / n);
     const L = live[i];
     if (!L?.alive || S.riders.stage !== 'ride') return [x, y];
-    const per = 1000 / S.riders.speed;
-    const f = Math.min(0.85, ((now - tickAt) / per) * (L.boosting ? 2 : 1));
+    const per = 1000 / S.riders.speed, step = (now - tickAt) / per;
+    // 🐌 a slowed rider moves on even ticks only: spread its glide over two ticks
+    const f = Math.min(0.85, slow[i] ? ((lastTick % 2) + step) / 2 : step * (L.boosting ? 2 : 1));
     const [dx, dy] = DIRS[headDir(i)];
     return [x + dx * f, y + dy * f];
   }
@@ -216,7 +252,11 @@ UI.riders = (() => {
     const left = ((S.countdownAt ?? 0) - now) / 1000;
     let text = '', small = false;
     if (S.phase === 'playing' && r.stage === 'countdown') text = left > 0 ? String(Math.ceil(left)) : 'GO!';
-    else if (S.phase === 'playing' && r.stage === 'over') text = 'Round over';
+    else if (S.phase === 'playing' && r.stage === 'over') {
+      const w = live.findIndex((L) => L?.alive);
+      text = w < 0 ? '🤝 Draw' : w === r.me ? '🏁 You take the round!' : `🏁 ${ctx.player(r.seats[w])?.name ?? '?'} takes it`;
+      small = text.length > 14;
+    }
     else if (S.phase === 'playing' && me && !me.alive) {
       small = true;
       text = me.respawnAt != null ? `💥 Respawning in ${Math.max(0, (me.respawnAt - now) / 1000).toFixed(1)}` : '💥 Out — watching';
@@ -261,6 +301,8 @@ UI.riders = (() => {
       earn: () => [880, 1320].forEach((f, k) => tone(f, f, 0.09, 'triangle', 0.08, k * 0.06)),
       beep: () => tone(660, 660, 0.14, 'square', 0.05),
       go: () => tone(1320, 1320, 0.35, 'square', 0.06),
+      slow: () => tone(500, 140, 0.5, 'sawtooth', 0.05),
+      ping: () => tone(1180, 1180, 0.07, 'triangle', 0.03),
     };
     function play(kind) { if (on()) try { ac(); HITS[kind](); } catch {} }
     // the hum: two detuned saws through a low-pass, higher while boosting; silent unless you're riding
@@ -309,9 +351,40 @@ UI.riders = (() => {
     const sun = new T.DirectionalLight(0xffffff, 0.5); sun.position.set(-20, 60, 30); scene.add(sun);
     let n = 0, world = null, ribbons = [], bikes = [], tips = [], drawn = [], pend = [], you = null, arrow = null, sparks = null, walls = [];
     const segGeo = new T.BoxGeometry(1, 1, 1);
+    // 🎁 power-ups: a floating badge per item (one texture per kind)
+    const itemTex = {}, itemSprites = new Map();
+    function badge(kind) {
+      if (itemTex[kind]) return itemTex[kind];
+      const c = document.createElement('canvas'); c.width = c.height = 128;
+      const g = c.getContext('2d'), [icon, col] = ITEM[kind];
+      if (g) {
+        g.fillStyle = col; g.beginPath(); g.arc(64, 64, 56, 0, 6.283); g.fill();
+        g.strokeStyle = '#fff'; g.lineWidth = 8; g.stroke();
+        g.font = '70px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(icon, 64, 70);
+      }
+      return (itemTex[kind] = new T.CanvasTexture(c));
+    }
+    function drawItems(now) {
+      for (const [c, sp] of itemSprites) {
+        if (items.get(c) === sp.userData.kind) continue;
+        world.remove(sp); sp.material.dispose(); itemSprites.delete(c);
+      }
+      for (const [c, kind] of items) {
+        let sp = itemSprites.get(c);
+        if (!sp) {
+          sp = new T.Sprite(new T.SpriteMaterial({ map: badge(kind), depthWrite: false, transparent: true }));
+          sp.userData.kind = kind; const [x, z] = at(c); sp.position.set(x, 1.3, z);
+          world.add(sp); itemSprites.set(c, sp);
+        }
+        sp.position.y = 1.4 + 0.3 * Math.sin(now / 300 + c);
+        sp.scale.setScalar(3.2 + 0.3 * Math.sin(now / 170 + c));
+      }
+    }
 
     function build() {
       if (world) scene.remove(world);
+      for (const sp of itemSprites.values()) sp.material.dispose();
+      itemSprites.clear();
       world = new T.Group(); scene.add(world);
       n = S.riders.n;
       const half = n / 2;
@@ -378,7 +451,7 @@ UI.riders = (() => {
       if (!world || S.riders.n !== n || ribbons.length !== trails.length) return build();
       trails.forEach((t, i) => {
         const inst = ribbons[i];
-        inst.material.opacity = live[i]?.alive ? 0.9 : 0.3;
+        inst.material.opacity = live[i]?.alive || !riding() ? 0.9 : 0.3;  // the final board stays lit (#79)
         if (t.length < drawn[i]) { drawn[i] = 0; inst.count = 0; }
         if (t.length === drawn[i]) return;
         const from = Math.max(1, drawn[i]);
@@ -417,7 +490,7 @@ UI.riders = (() => {
     // 💥 a crash: sparks in the rider's colour, a shockwave ring, and a shake when it's you
     const booms = [];
     let lastDraw = 0;
-    function ring(x, z, color, grow) {
+    function ringFx(x, z, color, grow) {
       const m = new T.Mesh(new T.RingGeometry(0.6, 0.9, 40), new T.MeshBasicMaterial({ color, transparent: true, side: T.DoubleSide }));
       m.rotation.x = -Math.PI / 2; m.position.set(x, 0.05, z); m.userData.grow = grow;
       world.add(m); return m;
@@ -433,14 +506,14 @@ UI.riders = (() => {
       const geo = new T.BufferGeometry(); geo.setAttribute('position', new T.BufferAttribute(pos, 3));
       const pts = new T.Points(geo, new T.PointsMaterial({ color, size: 0.45, transparent: true }));
       world.add(pts);
-      booms.push({ pts, ring: ring(bike.position.x, bike.position.z, color, 9), vel, t: 0 });
+      booms.push({ pts, ring: ringFx(bike.position.x, bike.position.z, color, 9), vel, t: 0 });
       if (i === S.riders.me) GL3.shake(camera, 1.1);
     }
     // ⟳ a respawn: a ring that closes in on the new spot
     function pulse(i) {
       const t = trails[i]; if (!world || !t?.length) return;
       const [x, z] = at(t[t.length - 1]);
-      booms.push({ pts: null, ring: ring(x, z, new T.Color(colorOf(i)), -0.6), vel: [], t: 0 });
+      booms.push({ pts: null, ring: ringFx(x, z, new T.Color(colorOf(i)), -0.6), vel: [], t: 0 });
       booms.at(-1).ring.scale.setScalar(6);
     }
     function grind(i) {
@@ -453,6 +526,19 @@ UI.riders = (() => {
         const ang = Math.random() * 6.283, sp = 1 + Math.random() * 3;
         sparks.vel[j] = [Math.cos(ang) * sp, 2 + Math.random() * 3, Math.sin(ang) * sp, 0.5];
       }
+    }
+    // 🎁 a grab: a burst and a ring in the item's colour
+    function grab3d(i, kind) {
+      const bike = bikes[i]; if (!sparks || !bike) return;
+      const a = sparks.pts.geometry.attributes, color = new T.Color(ITEM[kind][1]);
+      for (let k = 0; k < 24; k++) {
+        const j = sparks.next; sparks.next = (j + 1) % sparks.vel.length;
+        a.position.array.set([bike.position.x, 0.8, bike.position.z], j * 3);
+        a.color.array.set([color.r, color.g, color.b], j * 3);
+        const ang = Math.random() * 6.283, sp = 3 + Math.random() * 5;
+        sparks.vel[j] = [Math.cos(ang) * sp, 4 + Math.random() * 5, Math.sin(ang) * sp, 0.8];
+      }
+      booms.push({ pts: null, ring: ringFx(bike.position.x, bike.position.z, color, 7), vel: [], t: 0 });
     }
     function tickSparks(dt) {
       if (!sparks) return;
@@ -500,7 +586,7 @@ UI.riders = (() => {
         walls[0].position.z = -h - 0.25; walls[1].position.z = h + 0.25; walls[2].position.x = -h - 0.25; walls[3].position.x = h + 0.25;
         walls.forEach((m) => { m.scale.set(m.geometry.parameters.width > 1 ? span : 1, 1, m.geometry.parameters.depth > 1 ? span : 1); m.material.color.setHex(ring ? 0xff6b6b : 0x8ecae6); m.material.emissive.setHex(ring ? 0xff6b6b : 0x8ecae6); });
       }
-      tickBooms(dt); tickSparks(dt);
+      tickBooms(dt); tickSparks(dt); drawItems(now);
       const me = S.riders.me;
       trails.forEach((t, i) => {
         const pos = headPos(i, now), bike = bikes[i], tip = tips[i];
@@ -540,7 +626,7 @@ UI.riders = (() => {
     }
     function dispose() { renderer.dispose(); renderer.domElement.remove(); }
     if (S) build();
-    return { sync, reset, resize, draw, dispose, crash, pulse, grind };
+    return { sync, reset, resize, draw, dispose, crash, pulse, grind, grab: grab3d };
   }
 
   // ---------- flat fallback
@@ -572,7 +658,7 @@ UI.riders = (() => {
       trails.forEach((t, i) => {
         if (!t.length) return;
         const color = colorOf(i), alive = live[i]?.alive;
-        g.save(); g.strokeStyle = color; g.globalAlpha = alive ? 1 : 0.35; g.lineWidth = cell * 0.45; g.lineJoin = g.lineCap = 'round';
+        g.save(); g.strokeStyle = color; g.globalAlpha = alive || !riding() ? 1 : 0.35; g.lineWidth = cell * 0.45; g.lineJoin = g.lineCap = 'round';
         g.shadowColor = color; g.shadowBlur = cell * 1.5;
         g.beginPath();
         t.forEach((c, k) => { const x = (c % n + 0.5) * cell, y = (Math.floor(c / n) + 0.5) * cell; k ? g.lineTo(x, y) : g.moveTo(x, y); });
@@ -595,6 +681,16 @@ UI.riders = (() => {
           g.restore();
         }
       });
+      if (items.size) {  // 🎁 power-ups
+        g.save(); g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = `${Math.round(cell * 1.5)}px sans-serif`;
+        for (const [c, kind] of items) {
+          const x = (c % n + 0.5) * cell, y = (Math.floor(c / n) + 0.5) * cell, r = cell * (1.1 + 0.12 * Math.sin(now / 170 + c));
+          g.fillStyle = ITEM[kind][1]; g.strokeStyle = '#fff'; g.lineWidth = Math.max(1.5, cell * 0.15);
+          g.beginPath(); g.arc(x, y, r, 0, 6.283); g.fill(); g.stroke();
+          g.fillText(ITEM[kind][0], x, y + cell * 0.08);
+        }
+        g.restore();
+      }
       for (let k = glints.length - 1; k >= 0; k--) {
         const [x, y, born] = glints[k], age = (now - born) / 400;
         if (age > 1) { glints.splice(k, 1); continue; }
@@ -607,7 +703,8 @@ UI.riders = (() => {
       for (let k = 0; k < 3; k++) glints.push([(pos[0] + 0.5 + (Math.random() - 0.5)) * cell, (pos[1] + 0.5 + (Math.random() - 0.5)) * cell, performance.now()]);
     }
     resize();
-    return { sync() {}, reset: resize, resize, draw, grind };
+    const grab = (i) => { for (let k = 0; k < 4; k++) grind(i); };
+    return { sync() {}, reset: resize, resize, draw, grind, grab };
   }
 
   const turnText = (s) => (s.phase === 'playing' ? `🏍️ Round ${s.riders.round} — first to ${s.riders.target}` : null);

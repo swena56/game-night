@@ -141,6 +141,7 @@ class Room:
         self.cond = threading.Condition()
         self.version = 0
         self.fast, self.fast_ver = None, 0  # real-time side channel (see push_fast)
+        self.no_bump = False  # a game sets this when an action only changed what push_fast already sent
         self.players = {}
         self.order = []
         self.host = None
@@ -174,7 +175,7 @@ class Room:
 
     def __setstate__(self, state):
         self.__dict__.update({"chat": [], "ready": set(), "votes": {}, "ledger": {}, "history": [], "replay": [],
-                              "_replay_key": None, "saved": {}, "fast": None, "fast_ver": 0, "game_no": 0})
+                              "_replay_key": None, "saved": {}, "fast": None, "fast_ver": 0, "game_no": 0, "no_bump": False})
         self.__dict__.update(state)
         for k, (_, _, d) in ROOM_SETTINGS.items():
             self.settings.setdefault(k, d)
@@ -794,7 +795,7 @@ def player_session(body):
 
 def do_action(body):
     with player_session(body) as (room, p):
-        room.seen(p)
+        back = room.seen(p)
         aid = str(body.get("aid") or "")[:40]
         seen = room.aids.setdefault(p.id, {})
         if aid in seen:  # a retry of a request we already handled
@@ -815,7 +816,9 @@ def do_action(body):
         if not any(o.human() for o in room.players.values()):
             with ROOMS_LOCK:
                 ROOMS.pop(room.code, None)
-        room.bump()
+        if back or not room.no_bump:
+            room.bump()
+        room.no_bump = False
     return {"ok": True}
 
 
@@ -977,7 +980,9 @@ def ticker():
                         if now >= room.bot_at and game.bot_ready():
                             game.bot_tick()
                             room.snap()
-                            room.bump()
+                            if not room.no_bump:
+                                room.bump()
+                            room.no_bump = False
                         elif room.deadline and now > room.deadline:
                             game.on_timeout()
                             room.snap()

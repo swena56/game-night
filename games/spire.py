@@ -231,7 +231,7 @@ class Spire(Game):
                 raise GameError("Bad board.")
             p.g.rows = rows
             p.g.shield = max(0, min(9, int(a.get("shield") or 0)))
-            return
+            return self.quiet_boards()
         if t == "clear":
             rings, combo = a.get("rings"), a.get("combo")
             powers = [x for x in a.get("powers") or [] if x in POWERS.values()][:5]
@@ -299,9 +299,30 @@ class Spire(Game):
 
     def bot_tick(self):
         now = time.time()
-        for o in self.room.contenders():
-            if o.bot and now >= o.g.next_at and self.room.phase == "playing":
+        r = self.room
+        before = (r._eid, r.phase, sum(o.g.rings for o in r.contenders()))
+        for o in r.contenders():
+            if o.bot and now >= o.g.next_at and r.phase == "playing":
                 self.bot_step(o, now)
+        # a bot that only placed a piece changes nothing but its board: no full broadcast (#78)
+        if r.phase == "playing" and before == (r._eid, r.phase, sum(o.g.rings for o in r.contenders())):
+            self.quiet_boards()
+
+    def boards(self):
+        out = {}
+        for i in self.seats:
+            o = self.room.players.get(i)
+            if o:
+                out[i] = {"rows": o.g.rows, "rings": o.g.rings, "sent": o.g.sent,
+                          "shield": o.g.shield, "alive": not o.eliminated}
+        return out
+
+    def quiet_boards(self):
+        """Boards change several times a second late in a game. Re-sending every player's full view
+        each time (and re-rendering every page) made long games lag (#78): send just the boards on
+        the fast channel, and skip the full broadcast."""
+        self.room.push_fast({"boards": self.boards()})
+        self.room.no_bump = True
 
     def bot_step(self, o, now):
         g = o.g
@@ -373,12 +394,7 @@ class Spire(Game):
 
     def view(self, p):
         now = time.time()
-        boards = {}
-        for i in self.seats:
-            o = self.room.players.get(i)
-            if o:
-                boards[i] = {"rows": o.g.rows, "rings": o.g.rings, "sent": o.g.sent,
-                             "shield": o.g.shield, "alive": not o.eliminated}
+        boards = self.boards()
         mine = p.id in self.seats
         return {"spire": {
             "W": W, "H": H, "buffer": BUFFER, "seed": self.seed + (self.seats.index(p.id) if mine else 0),
