@@ -1810,6 +1810,47 @@ body.focus .pb-stage { height: max(220px, calc(var(--room) - 205px)); }
 .pb-dpad span.on { color: #fff; background: #ffffff22; text-shadow: 0 0 10px var(--accent); }
 .pb-bomb { width: 104px; height: 104px; border-radius: 50%; font-size: 40px; padding: 0; touch-action: none; flex: none; }
 
+/* prism pop: a square gem board on a canvas, a clock bar and score above it, rival minis in the side panel */
+.pz-wrap { width: min(100%, 540px, calc(var(--app-h, 100vh) - 200px)); min-width: min(100%, 260px); margin: 0 auto; }
+.pz-top { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; font-weight: 900; }
+.pz-clock { font-variant-numeric: tabular-nums; min-width: 3.2em; color: var(--muted); }
+.pz-timebar { flex: 1; height: 8px; border-radius: 4px; background: #ffffff14; overflow: hidden; }
+.pz-timebar i { display: block; height: 100%; width: 100%; border-radius: 4px; background: linear-gradient(90deg, #a64dff, #2fd0ff, #16c66b);
+  transition: width .25s linear; }
+.pz-timebar i.low { background: linear-gradient(90deg, #ff4d6d, #ffb21a); animation: pzLow .5s infinite alternate; }
+@keyframes pzLow { to { filter: brightness(1.5); } }
+.pz-score { font-size: 24px; min-width: 4em; text-align: right; font-variant-numeric: tabular-nums;
+  background: linear-gradient(90deg, #ffd166, #ff8fd8); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.pz-score.bump { animation: pzBump .35s ease-out; }
+@keyframes pzBump { 40% { transform: scale(1.18); } }
+.pz-stage { position: relative; border-radius: 16px; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none;
+  box-shadow: 0 10px 30px #0008, 0 0 0 2px #ffffff12, 0 0 40px #7b5cff33; background: #15142c; }
+.pz-stage canvas { display: block; width: 100%; aspect-ratio: 1; cursor: pointer; outline: none; }
+.pz-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; padding: 4px; aspect-ratio: 1; }
+.pz-cell { padding: 0; aspect-ratio: 1; font-size: clamp(14px, 5vw, 26px); background: #ffffff10; border-radius: 6px; }
+.pz-cell.sel { outline: 2px solid #ffd166; } .pz-cell.ice { background: #9fdcff55; }
+.pz-count { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 96px; font-weight: 900;
+  color: #fff; text-shadow: 0 0 30px #a64dff, 0 0 60px #2fd0ff; pointer-events: none; background: #0006; }
+.pz-hit { position: absolute; left: 0; right: 0; top: 42%; text-align: center; font-size: 26px; font-weight: 900; pointer-events: none; opacity: 0; }
+.pz-hit.frost { color: #bfeaff; text-shadow: 0 0 16px #2fd0ff, 0 2px 0 #0009; }
+.pz-hit.stone { color: #e6ded6; text-shadow: 0 0 16px #000, 0 2px 0 #0009; }
+.pz-hit.on { animation: pzHit 1.3s ease-out; }
+@keyframes pzHit { 0% { opacity: 0; transform: scale(1.6); } 12% { opacity: 1; transform: scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: translateY(-20px); } }
+.pz-over { position: absolute; left: 0; right: 0; top: 40%; text-align: center; font-size: 26px; font-weight: 900; padding: 14px;
+  background: #000b; pointer-events: none; }
+.pz-rivals { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
+.pz-rival { display: flex; align-items: center; gap: 8px; background: #ffffff08; border-radius: 10px; padding: 5px 8px; }
+.pz-rival canvas { width: 46px; height: 46px; border-radius: 5px; flex: none; }
+.pz-rival .pz-info { display: flex; flex-direction: column; min-width: 0; font-size: 13px; }
+.pz-rival .pz-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pz-rival b { font-variant-numeric: tabular-nums; } .pz-rival small { color: var(--muted); }
+.pz-rival.me { outline: 1px solid var(--accent); } .pz-rival.down { opacity: .45; }
+.pz-rival.hit { animation: pzRivalHit .9s ease-out; }
+@keyframes pzRivalHit { 0%, 40% { background: #2fd0ff44; box-shadow: 0 0 14px #2fd0ff88; } }
+body.calm .pz-rival.hit, body.calm .pz-timebar i.low { animation: none; }
+body.focus .pz-wrap { width: min(100%, 680px, calc(var(--room, 100vh) - 60px)); }
+@media (max-width: 700px) { .pz-rivals { flex-direction: row; flex-wrap: wrap; } .pz-rival { flex: 1 1 140px; } }
+
 /* putt party */
 .pp { max-width: 640px; margin: 0 auto; user-select: none; -webkit-user-select: none; overscroll-behavior: none; }
 .pp-hud { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
