@@ -23,6 +23,29 @@ UI.prism = (() => {
     if (specials.includes('prism') || specials.includes('combo') || cascade >= 5) { stones = 2 + (cascade >= 6 ? 1 : 0); if (cascade < 5) frost = 0; }
     return [frost, stones];
   }
+  // 🔥 fever, ⏱ rush and 🛡 parry (mirrors games/prism.py)
+  const FEVER_DRAIN = 6, FEVER_MS = 6000, RUSH_MS = 10000, PARRY_MS = 3000;
+  const feverFill = (cascade) => (cascade >= 1 ? 22 + 10 * (cascade - 1) : 0);
+  const bursts = (cascade, fired) => cascade >= 3 || fired.length > 0;
+  // 💠 rank from lifetime XP; each rank unlocks the board theme at the same index
+  const RANKS = [[0, 'Quartz', '🤍'], [1000, 'Topaz', '🧡'], [3000, 'Amethyst', '💜'], [7000, 'Sapphire', '💙'],
+    [15000, 'Emerald', '💚'], [30000, 'Ruby', '❤️'], [60000, 'Diamond', '💎']];
+  const THEMES = [
+    { name: 'Night', bg: ['#24204a', '#101326'], mote: '#b8a6ff', glow: '#7b5cff' },
+    { name: 'Topaz Dawn', bg: ['#4a2a1a', '#1c1020'], mote: '#ffd08a', glow: '#ffb21a' },
+    { name: 'Amethyst Haze', bg: ['#3a1550', '#140a26'], mote: '#e0a8ff', glow: '#a64dff' },
+    { name: 'Deep Sea', bg: ['#0c3550', '#06121f'], mote: '#8be9ff', glow: '#2fd0ff' },
+    { name: 'Emerald Grove', bg: ['#0f3d2a', '#06140f'], mote: '#9dff8a', glow: '#16c66b' },
+    { name: 'Ruby Ember', bg: ['#4a0f1c', '#160609'], mote: '#ffb09a', glow: '#ff3b5c' },
+    { name: 'Diamond Starfield', bg: ['#1a1a2e', '#000008'], mote: '#ffffff', glow: '#e3e7f5' },
+  ];
+  const rankOf = (xp) => { let r = 0; RANKS.forEach(([min], i) => { if (xp >= min) r = i; }); return r; };
+  const pdata = () => { try { return Profile.gameData('prism'); } catch { return {}; } };
+  const psave = (d) => { try { Profile.saveGameData('prism', d); } catch {} };
+  let themeNow = null;   // cached: the frame loop asks every frame
+  const theme = () => themeNow ||= (() => { const d = pdata(), i = d.theme | 0; return THEMES[i <= rankOf(d.xp || 0) ? i : 0]; })();
+  const GOAL_TEXT = { score: ['Score', '💎'], colour: ['Pop', ''], thaw: ['Thaw', '🧊'], stones: ['Break', '🪨'], make: ['Make', '⚡💥🌈'], prism: ['Make', '🌈'] };
+  const NAMES = ['ruby', 'sapphire', 'emerald', 'topaz', 'amethyst', 'pearl'];
   function mulberry32(a) {
     return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a);
       t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -192,7 +215,7 @@ UI.prism = (() => {
   const HEAT = ['#ffffff', '#ffffff', '#8be9ff', '#9dff8a', '#ffd166', '#ff8a3d', '#ff4d6d', '#ff5cf4'];
   const $ = (id) => document.getElementById(id);
 
-  let S, ctx, st = null, cv = null, c2 = null, dpr = 1, cs = 40, size = 320, sprites = [], stoneSprite = null;
+  let S, ctx, st = null, cv = null, c2 = null, dpr = 1, cs = 40, size = 320, sprites = [], stoneSprite = null, specSprites = { h: [], v: [], n: [] };
   let raf = 0, resizeObs = null, keyHandler = null, clock = null, hintTimer = null;
 
   function shapePath(p, k, cx, cy, r) {
@@ -246,6 +269,38 @@ UI.prism = (() => {
     p.fillStyle = 'rgba(40,35,32,0.5)';
     [[0.4, 0.58, 0.06], [0.62, 0.44, 0.05], [0.55, 0.66, 0.035]].forEach(([x, y, r]) => { p.beginPath(); p.arc(s * x, s * y, s * r, 0, Math.PI * 2); p.fill(); });
     stoneSprite = c;
+    // ⚡ beams: a bright band with arrow tips across the gem; 💥 novas: a white star core in a ring
+    specSprites = { h: [], v: [], n: [] };
+    for (let k = 0; k < 6; k++) {
+      const [base, light, dark] = COLORS[k];
+      for (const sp of ['h', 'v']) {
+        const b = document.createElement('canvas'); b.width = b.height = s;
+        const q = b.getContext('2d');
+        q.drawImage(sprites[k], 0, 0);
+        q.translate(s / 2, s / 2); if (sp === 'v') q.rotate(Math.PI / 2);
+        const w = s * 0.44, h = s * 0.13;
+        const band = q.createLinearGradient(0, -h, 0, h);
+        band.addColorStop(0, light); band.addColorStop(0.5, '#ffffff'); band.addColorStop(1, light);
+        q.fillStyle = band; q.strokeStyle = dark; q.lineWidth = Math.max(1, s * 0.02);
+        q.beginPath(); q.moveTo(-w, 0); q.lineTo(-w + h * 1.3, -h); q.lineTo(w - h * 1.3, -h); q.lineTo(w, 0); q.lineTo(w - h * 1.3, h); q.lineTo(-w + h * 1.3, h); q.closePath();
+        q.fill(); q.stroke();
+        q.fillStyle = base; q.globalAlpha = 0.8;
+        for (const t of [-0.5, 0, 0.5]) { q.beginPath(); q.moveTo(w * t + h * 0.45, 0); q.lineTo(w * t - h * 0.2, -h * 0.6); q.lineTo(w * t - h * 0.2, h * 0.6); q.closePath(); q.fill(); }
+        specSprites[sp].push(b);
+      }
+      const n = document.createElement('canvas'); n.width = n.height = s;
+      const q = n.getContext('2d');
+      q.drawImage(sprites[k], 0, 0);
+      const cx = s / 2, cy = s / 2, glow = q.createRadialGradient(cx, cy, 0, cx, cy, s * 0.3);
+      glow.addColorStop(0, '#ffffff'); glow.addColorStop(0.35, light); glow.addColorStop(1, 'rgba(255,255,255,0)');
+      q.fillStyle = glow; q.beginPath(); q.arc(cx, cy, s * 0.3, 0, Math.PI * 2); q.fill();
+      q.fillStyle = '#fff'; q.beginPath();
+      for (let t = 0; t < 16; t++) { const a = -Math.PI / 2 + t * Math.PI / 8, r = t % 2 ? s * 0.07 : s * (t % 4 ? 0.15 : 0.22); q[t ? 'lineTo' : 'moveTo'](cx + Math.cos(a) * r, cy + Math.sin(a) * r); }
+      q.closePath(); q.fill();
+      q.strokeStyle = dark; q.lineWidth = Math.max(1, s * 0.025); q.beginPath(); q.arc(cx, cy, s * 0.4, 0, Math.PI * 2); q.stroke();
+      q.strokeStyle = light; q.lineWidth = Math.max(1, s * 0.015); q.stroke();
+      specSprites.n.push(n);
+    }
   }
 
   // ---------- animation state
@@ -293,17 +348,17 @@ UI.prism = (() => {
     if (ch === EMPTY) return;
     if (ch === STONE) { if (stoneSprite) p.drawImage(stoneSprite, x - half, y - half, cs * scale, cs * scale); return; }
     if (ch === PRISM) { drawPrism(p, x, y, cs * 0.36 * scale, t); return; }
-    const k = kind(ch);
-    if (sprites[k]) p.drawImage(sprites[k], x - half, y - half, cs * scale, cs * scale);
-    const sp = special(ch), [base, light] = COLORS[k];
+    const k = kind(ch), sp = special(ch), [base, light] = COLORS[k];
+    const sprite = (sp && specSprites[sp]?.[k]) || sprites[k];
+    if (sprite) p.drawImage(sprite, x - half, y - half, cs * scale, cs * scale);
     if (sp === 'h' || sp === 'v') {
+      // a light pulse running along the band
       p.save(); p.translate(x, y); if (sp === 'v') p.rotate(Math.PI / 2);
-      const w = cs * 0.42 * scale, glow = 0.65 + 0.35 * Math.sin(t / 160 + i);
+      const w = cs * 0.42 * scale, run = ((t / 500 + i * 0.13) % 1) * 2 - 1;
       p.globalCompositeOperation = 'lighter';
-      p.fillStyle = `rgba(255,255,255,${0.55 * glow})`;
-      p.fillRect(-w, -cs * 0.11 * scale, w * 2, cs * 0.06 * scale); p.fillRect(-w, cs * 0.05 * scale, w * 2, cs * 0.06 * scale);
-      p.fillStyle = light;
-      for (const s of [-1, 1]) { p.beginPath(); p.moveTo(s * w * 1.12, 0); p.lineTo(s * w * 0.82, -cs * 0.09); p.lineTo(s * w * 0.82, cs * 0.09); p.closePath(); p.fill(); }
+      const g2 = p.createRadialGradient(run * w, 0, 0, run * w, 0, cs * 0.2 * scale);
+      g2.addColorStop(0, 'rgba(255,255,255,0.8)'); g2.addColorStop(1, 'rgba(255,255,255,0)');
+      p.fillStyle = g2; p.fillRect(-w, -cs * 0.2 * scale, w * 2, cs * 0.4 * scale);
       p.restore();
     } else if (sp === 'n') {
       const pulse = 0.5 + 0.5 * Math.sin(t / 220 + i);
@@ -346,14 +401,17 @@ UI.prism = (() => {
     p.beginPath(); p.moveTo(x - h * 0.7, y - h * 0.2); p.lineTo(x - h * 0.2, y - h * 0.7); p.moveTo(x - h * 0.6, y + h * 0.3); p.lineTo(x + h * 0.3, y - h * 0.6); p.stroke();
     p.restore();
   }
-  let bgCache = null;
+  let bgCache = null, bgTheme = null, motes = [];
   function drawBoardBg(p) {
-    if (!bgCache || bgCache.width !== cv.width) {
+    const th = theme();
+    if (!bgCache || bgCache.width !== cv.width || bgTheme !== th) {
+      bgTheme = th;
+      $('pzStage')?.style.setProperty('--pz-glow', th.glow);
       bgCache = document.createElement('canvas'); bgCache.width = cv.width; bgCache.height = cv.height;
       const b = bgCache.getContext('2d');
       if (b) {
         const grad = b.createLinearGradient(0, 0, cv.width, cv.height);
-        grad.addColorStop(0, '#24204a'); grad.addColorStop(1, '#101326');
+        grad.addColorStop(0, th.bg[0]); grad.addColorStop(1, th.bg[1]);
         b.fillStyle = grad; b.fillRect(0, 0, cv.width, cv.height);
         for (let i = 0; i < N * N; i++) {
           const x = (i % N) * cs, y = ((i / N) | 0) * cs;
@@ -365,6 +423,30 @@ UI.prism = (() => {
       }
     }
     p.drawImage(bgCache, 0, 0);
+  }
+  // drifting light motes behind the gems (the board is never quite still)
+  function drawMotes(p, t, dt) {
+    if (!motion()) return;
+    if (motes.length !== 24) {
+      motes = Array.from({ length: 24 }, () => ({ x: Math.random(), y: Math.random(), r: 0.02 + Math.random() * 0.05,
+        vx: (Math.random() - 0.5) * 0.02, vy: -0.01 - Math.random() * 0.025, ph: Math.random() * 6 }));
+    }
+    const fever = st && now() < st.fever.until;
+    p.save(); p.globalCompositeOperation = 'lighter'; p.fillStyle = fever ? '#ff8fd8' : bgTheme?.mote || '#fff';
+    for (const m of motes) {
+      m.x += m.vx * dt * (fever ? 4 : 1); m.y += m.vy * dt * (fever ? 4 : 1);
+      if (m.y < -0.05) { m.y = 1.05; m.x = Math.random(); }
+      if (m.x < -0.05) m.x = 1.05; else if (m.x > 1.05) m.x = -0.05;
+      p.globalAlpha = 0.12 + 0.12 * Math.sin(t / 700 + m.ph);
+      p.beginPath(); p.arc(m.x * cv.width, m.y * cv.height, m.r * cs, 0, Math.PI * 2); p.fill();
+    }
+    p.restore();
+  }
+  // a 4-point star glint
+  function glint(p, x, y, r, a) {
+    p.save(); p.globalCompositeOperation = 'lighter'; p.globalAlpha = a; p.fillStyle = '#fff';
+    p.beginPath(); p.moveTo(x, y - r); p.quadraticCurveTo(x, y, x + r, y); p.quadraticCurveTo(x, y, x, y + r);
+    p.quadraticCurveTo(x, y, x - r, y); p.quadraticCurveTo(x, y, x, y - r); p.fill(); p.restore();
   }
 
   function frame(t) {
@@ -390,6 +472,7 @@ UI.prism = (() => {
     p.clearRect(0, 0, cv.width, cv.height);
     if (shake > 0.3) { p.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake); shake *= Math.pow(0.002, dt); busy = true; } else shake = 0;
     drawBoardBg(p);
+    drawMotes(p, t, dt);
     // a slow diagonal sheen across the board while things are moving
     const sx = ((t / 9) % (cv.width * 3)) - cv.width;
     const sheen = p.createLinearGradient(sx, 0, sx + cv.width * 0.5, cv.height);
@@ -403,7 +486,13 @@ UI.prism = (() => {
       p.fillStyle = rg; p.fillRect(x - cs * 0.62, y - cs * 0.62, cs * 1.24, cs * 1.24);
     };
     if (hint) { const a = 0.25 + 0.25 * Math.sin(t / 180); hint.forEach((i) => glowAt(i, 'rgba(255,255,255,A)', a)); busy = true; }
-    if (sel != null) { glowAt(sel, 'rgba(255,230,140,A)', 0.55 + 0.25 * Math.sin(t / 120)); busy = true; }
+    if (sel != null) {
+      glowAt(sel, 'rgba(255,230,140,A)', 0.4 + 0.2 * Math.sin(t / 120));
+      const [x, y] = cellXY(sel);
+      p.save(); p.strokeStyle = '#ffe48c'; p.lineWidth = Math.max(2, cs * 0.05); p.setLineDash([cs * 0.16, cs * 0.1]); p.lineDashOffset = -t / 30;
+      p.beginPath(); p.arc(x, y, cs * 0.47, 0, Math.PI * 2); p.stroke(); p.restore();
+      busy = true;
+    }
     // gems
     for (let i = 0; i < N * N; i++) {
       const ch = g[i], c = cells[i];
@@ -423,6 +512,15 @@ UI.prism = (() => {
       if (FROZEN.includes(ch)) { const grow = c.ice ? Math.min(1, (t - c.ice) / 380) : 1; if (grow < 1) busy = true; drawIce(p, 0, 0, 0.6 + 0.4 * grow); }
       p.restore();
       if (special(ch) || ch === PRISM) busy = true; // specials shimmer
+    }
+    // twinkle: now and then a resting gem catches the light
+    if (motion() && st) {
+      if (!st.tw || t - st.tw.t0 > 700) {
+        const i = Math.floor(Math.random() * N * N);
+        st.tw = { i: PLAIN.includes(g[i]) && !cells[i].oy ? i : null, t0: t };
+      }
+      const k = (t - st.tw.t0) / 320;
+      if (st.tw.i != null && k < 1) { const [x, y] = cellXY(st.tw.i); glint(p, x - cs * 0.14, y - cs * 0.16, cs * 0.2 * Math.sin(k * Math.PI), 0.9); }
     }
     // popping gems: swell and burn white, then vanish into shards
     pops = pops.filter((q) => t - q.t0 < q.dur);
@@ -469,6 +567,18 @@ UI.prism = (() => {
           const cx = x0 + (mx - x0) * part, cy = y0 + (my - y0) * part;
           p.quadraticCurveTo(cx, cy, ex, ey); p.stroke();
         });
+      } else if (f.type === 'zap') {
+        // lightning through the matched gems, re-jagged every frame
+        p.globalAlpha = 1 - k; p.lineJoin = 'round';
+        for (const [w, col] of [[cs * 0.09, '#6fd3ff'], [cs * 0.035, '#ffffff']]) {
+          p.strokeStyle = col; p.lineWidth = w; p.beginPath();
+          f.pts.forEach(([x, y], n) => {
+            if (!n) { p.moveTo(x, y); return; }
+            const [px, py] = f.pts[n - 1];
+            p.lineTo((px + x) / 2 + (Math.random() - 0.5) * cs * 0.35, (py + y) / 2 + (Math.random() - 0.5) * cs * 0.35); p.lineTo(x, y);
+          });
+          p.stroke();
+        }
       } else if (f.type === 'birth') {
         const [x, y] = cellXY(f.i), r = cs * (0.3 + 1.1 * k);
         const rg = p.createRadialGradient(x, y, 0, x, y, r);
@@ -526,8 +636,10 @@ UI.prism = (() => {
     }
     if (flash > 0.02) { p.setTransform(1, 0, 0, 1, 0, 0); p.fillStyle = `rgba(255,255,255,${flash})`; p.fillRect(0, 0, cv.width, cv.height); flash *= Math.pow(0.004, dt); busy = true; } else flash = 0;
     if (busy || st.busy) kick();
+    else if (motion() && !st.over) { clearTimeout(idleT); idleT = setTimeout(kick, 50); }  // ~20 fps while idle: motes and glints
   }
-  function kick() { if (!raf && c2) raf = requestAnimationFrame(frame); }
+  let idleT = 0;
+  function kick() { if (!raf && c2) { clearTimeout(idleT); raf = requestAnimationFrame(frame); } }
 
   // ---------- moves, step by step with effects
   function waitFall(drop) {
@@ -557,6 +669,7 @@ UI.prism = (() => {
     if (out.born.length) ctx.sfx?.('pickup');
     if (pts) floatText(center, `+${pts}`, step);
     ctx.sfx?.('rise', Math.min(12, step * 2));
+    heat(step);
     if (step >= 2 && out.popped.length) buzz?.(step >= 4 ? [30, 20, 50] : 18);
     if (step >= 3) {
       const word = step >= 6 ? 'PRISMATIC!' : step >= 5 ? 'DAZZLING!' : step >= 4 ? 'BRILLIANT!' : 'SPARKLING!';
@@ -565,6 +678,16 @@ UI.prism = (() => {
     }
     kick();
     await sleep(260);
+  }
+  // the board's frame glows hotter with each cascade step, then cools
+  const HEAT_COL = ['', '#7b5cff', '#2fd0ff', '#16c66b', '#ffd166', '#ff8a3d', '#ff4d6d', '#ff5cf4'];
+  let heatT = 0;
+  function heat(step) {
+    const stage = $('pzStage');
+    if (!stage || !motion()) return;
+    stage.style.setProperty('--pz-heat', HEAT_COL[Math.min(step, HEAT_COL.length - 1)]);
+    stage.classList.add('heat');
+    clearTimeout(heatT); heatT = setTimeout(() => stage.classList.remove('heat'), 900);
   }
   const centerOf = (list) => {
     if (!list.length) return [cv ? cv.width / 2 : 0, cv ? cv.height / 2 : 0];
@@ -589,6 +712,21 @@ UI.prism = (() => {
     for (const c of [cells[a], cells[b]]) { c.ox = 0; c.oy = 0; }
   }
 
+  // points multiplier: 🔥 fever ×2, the final ⏱ RUSH ×2 (they stack)
+  const feverOn = () => !!st && now() < st.fever.until;
+  const rushOn = () => !!st && S?.prism?.mode !== 'levels' && st.endAt - now() < RUSH_MS && st.endAt - now() > 0;
+  const mult = () => (feverOn() ? 2 : 1) * (rushOn() ? 2 : 1);
+  function feverMeter() {
+    const f = st.fever, t = now();
+    f.meter = Math.max(0, f.meter - FEVER_DRAIN * (t - f.t) / 1000); f.t = t;
+    return f.meter;
+  }
+  // what a move did, for the recap and the level goals
+  function track(out) {
+    st.stats.popped += out.popped.length;
+    if (st.lv?.def.goal === 'colour') st.lv.colour += out.popped.filter(([, ch]) => kind(ch) === st.lv.def.colour).length;
+  }
+
   async function runMove(a, b) {
     if (!st || st.busy || !canPlay()) return;
     hint = null; lastAct = now();
@@ -597,6 +735,8 @@ UI.prism = (() => {
     try {
       ctx.sfx?.('flip');
       if (!what) { ctx.sfx?.('wrong'); await animSwap(a, b, true); return; }
+      if (st.lv) st.lv.left--;
+      const m = mult();
       await animSwap(a, b, false);
       const fired = [], madeList = [];
       let pts = 0, step = 0;
@@ -632,8 +772,9 @@ UI.prism = (() => {
         // a prism blast pops its colour one by one, outward from the prism
         if (what === 'prism') { const pr = blasts[0].i; out.order = new Map([...area].map((j) => [j, Math.hypot(j % N - pr % N, ((j / N) | 0) - ((pr / N) | 0)) * 45])); }
         step = 1;
-        const p = remove(area, step, [], out);
+        const p = remove(area, step, [], out) * m;
         pts += p;
+        track(out);
         await animStep(out, step, p, centerOf([...area]));
         if (what === 'prism') await sleep(200);
         await waitFall(gravity());
@@ -648,16 +789,18 @@ UI.prism = (() => {
         let clear = new Set();
         const created = [];
         for (const gr of gs) {
-          const m = made(gr, prefer);
-          if (m) { created.push(m); madeList.push(m[0] === PRISM ? 'prism' : NOVA.includes(m[0]) ? 'nova' : 'beam'); }
+          const md = made(gr, prefer);
+          if (md) { created.push(md); madeList.push(md[0] === PRISM ? 'prism' : NOVA.includes(md[0]) ? 'nova' : 'beam'); }
           gr.cells.forEach((c) => clear.add(c));
+          if (motion()) for (const [run] of gr.runs) fx.push({ type: 'zap', pts: run.map(cellXY), t0: now(), dur: 200 });
         }
         const fxl = [];
         clear = explode(clear, fired, fxl);
         showBlasts(fxl, now());
         const out = { popped: [], broke: [], thawed: [], born: [] };
-        const p = remove(clear, step, created, out);
+        const p = remove(clear, step, created, out) * m;
         pts += p;
+        track(out);
         await animStep(out, step, p, centerOf([...clear]));
         await waitFall(gravity());
         prefer = [];
@@ -665,12 +808,14 @@ UI.prism = (() => {
       if (!moves().length) await reshuffle();
       st.score += pts;
       scoreTo(st.score);
+      afterMove(step, fired, madeList);
       push();
       if (step >= 3 || fired.length || madeList.length) {
         ctx.quiet(ctx.act('burst', { cascade: step, specials: fired, made: madeList }));
         const [frost, stones] = S?.prism?.attacks && Object.keys(S.prism.boards).length > 1 ? attackFor(step, fired) : [0, 0];
         if ((frost || stones) && now() >= (st.attackAt || 0)) {
           st.attackAt = now() + 5000;
+          st.stats.sent += frost + stones;
           const w = [frost && `🧊×${frost}`, stones && `🪨×${stones}`].filter(Boolean).join(' ');
           try { Kit.flyText($('pzScore'), `${w} sent!`, 'gold'); } catch {}
           ctx.sfx?.('whoosh');
@@ -681,6 +826,34 @@ UI.prism = (() => {
       kick();
       armHint();
     }
+  }
+
+  // after each move: stats, 🔥 fever, 🛡 parry, personal best, 🎯 level goal
+  function afterMove(step, fired, madeList) {
+    const s = st.stats;
+    s.best = Math.max(s.best, step); s.made += madeList.length; s.moves++;
+    if (!feverOn() && step >= 1) {
+      st.fever.meter = feverMeter() + feverFill(step);
+      if (st.fever.meter >= 100) {
+        st.fever.meter = 0; st.fever.until = now() + FEVER_MS; s.fevers++;
+        try { Kit.callout('🔥 FEVER ×2!', 'gold'); } catch {}
+        ctx.sfx?.('fanfare');
+      }
+    }
+    if (bursts(step, fired) && st.incoming.length) parry();
+    if (!st.lv && st.pb > 0 && !st.pbShown && st.score > st.pb) {
+      st.pbShown = true;
+      try { Kit.callout('🏅 New best!', 'gold'); } catch {}
+      ctx.sfx?.('pickup');
+    }
+    if (st.lv) {
+      const lv = st.lv;
+      lv.made += madeList.length; lv.prisms += madeList.filter((x) => x === 'prism').length;
+      renderGoal();
+      if (goalProgress() >= lv.def.target) endLevel(true);
+      else if (lv.left <= 0) endLevel(false);
+    }
+    updateHud();
   }
 
   async function reshuffle() {
@@ -724,14 +897,53 @@ UI.prism = (() => {
     push();
     kick();
   }
-  function applyEvents(events) {
+  // an attack first hangs over the board for PARRY_MS: a ×3 cascade or a special in time shatters it
+  function applyEvents(events, land = false) {
+    let any = false;
     for (const ev of events) {
       if (ev.id <= st.applied) continue;
       st.applied = ev.id;
-      st.queue.push(ev);
+      st.incoming.push({ ...ev, at: now() + (land ? 0 : PARRY_MS) });
+      st.stats.got += Math.max(0, ev.n | 0);
+      any = true;
     }
     try { sessionStorage.setItem(st.appliedKey, st.applied); } catch {}
+    if (!any) return;
+    renderWarn();
+    if (!land) { ctx.sfx?.('tickfast'); buzz?.(25); }
+    setTimeout(landDue, land ? 0 : PARRY_MS + 30);
+  }
+  function landDue() {
+    if (!st) return;
+    const t = now(), due = st.incoming.filter((e) => e.at <= t);
+    if (!due.length) return;
+    st.incoming = st.incoming.filter((e) => e.at > t);
+    st.queue.push(...due);
+    renderWarn();
     flushEvents();
+  }
+  function parry() {
+    const q = st.incoming.splice(0), n = q.reduce((a, e) => a + (e.n | 0), 0);
+    st.stats.parried += n;
+    renderWarn();
+    try { Kit.callout('🛡 PARRIED!', 'good'); } catch {}
+    ctx.sfx?.('crack'); buzz?.(30);
+    for (let x = 0; x < N; x++) iceParts(x, q.some((e) => e.kind === 'stone') ? '#cfc6bd' : '#d8f3ff');
+    ctx.quiet(ctx.act('parry', { n: q.length, from: q.map((e) => e.fromId).filter(Boolean) }));
+  }
+  function renderWarn() {
+    const box = $('pzWarn');
+    if (!box) return;
+    box.innerHTML = '';
+    const t = now();
+    for (const e of st.incoming) {
+      const chip = ctx.el('div', 'pz-warn-chip ' + e.kind, `${e.kind === 'frost' ? '🧊' : '🪨'}×${e.n} from ${e.from}`);
+      const bar = document.createElement('i');
+      bar.style.animationDuration = Math.max(0, e.at - t) + 'ms';
+      chip.append(bar);
+      box.append(chip);
+    }
+    if (st.incoming.length) box.append(ctx.el('div', 'pz-warn-tip', 'Chain ×3 or set off a special to shatter it!'));
   }
 
   // ---------- sync with the server
@@ -742,7 +954,8 @@ UI.prism = (() => {
     st.pushed = rows; st.pushedScore = st.score;
     ctx.quiet(ctx.act('board', { rows, score: st.score }));
   }
-  const canPlay = () => !!(S?.prism?.playing && st && !st.over && now() >= (st.startAt || 0) - 50 && st.endAt - now() > 0);
+  const canPlay = () => !!(S?.prism?.playing && st && !st.over
+    && (S.prism.mode === 'levels' ? st.lv && !st.lv.over : now() >= (st.startAt || 0) - 50 && st.endAt - now() > 0));
 
   let shownScore = 0, scoreRaf = 0;
   function scoreTo(v) {
@@ -825,33 +1038,238 @@ UI.prism = (() => {
     kinds = pz.kinds || 6;
     const mine = pz.boards[S.me.id];
     const appliedKey = `pz.applied.${S.code || ''}.${pz.seed}`;
-    let applied = null;
+    let applied = null, pb = null;
     try { applied = sessionStorage.getItem(appliedKey); } catch {}
+    try { pb = Profile.best('prism'); } catch {}
     st = { seed: pz.seed, score: mine?.score || 0, applied: applied != null ? +applied : Math.max(0, ...pz.events.map((e) => e.id)),
-      appliedKey, queue: [], busy: false, pushed: mine?.rows, pushedScore: mine?.score || 0, endAt: now() + pz.timeLeft * 1000, over: false, lastT: 0 };
+      appliedKey, queue: [], incoming: [], busy: false, pushed: mine?.rows, pushedScore: mine?.score || 0, endAt: now() + pz.timeLeft * 1000, over: false, lastT: 0,
+      fever: { meter: 0, until: 0, t: now() }, hintAt: 0, pb, pbShown: false, rushShown: false, lv: null,
+      stats: { best: 0, popped: 0, made: 0, fevers: 0, sent: 0, got: 0, parried: 0, moves: 0 } };
     rng = mulberry32((pz.seed ^ (st.score * 2654435761)) >>> 0);
     g = (mine?.rows || ''.padEnd(N * N, 'a')).split('');
     if (g.length !== N * N) g = Array(N * N).fill('a');
     if (g.includes(EMPTY)) g = g.map((c) => (c === EMPTY ? newGem() : c));
+    if (pz.mode === 'levels' && pz.level) {
+      const def = pz.levels[pz.level - 1];
+      st.lv = { n: pz.level, def, left: def.moves, frozen0: count(FROZEN), stones0: count(STONE), colour: 0, made: 0, prisms: 0, over: false };
+    }
     cells = vis(); pops = []; fx = []; parts = []; texts = []; sel = null; hint = null;
+    for (const k of Object.keys(prevHits)) delete prevHits[k];
+    for (const k of Object.keys(prevScore)) delete prevScore[k];
     shownScore = st.score;
     const sc = $('pzScore'); if (sc) sc.textContent = st.score.toLocaleString();
+    const over = $('pzOver'); if (over) { over.hidden = true; over.className = 'pz-over'; over.innerHTML = ''; }
+    renderWarn();
     renderGrid();
+    renderGoal();
     armHint();
+  }
+  const count = (chars) => g.filter((c) => chars.includes(c)).length;
+
+  // ---------- 🎯 levels
+  function goalTarget() {
+    const lv = st.lv;
+    return lv.def.goal === 'thaw' ? lv.frozen0 : lv.def.goal === 'stones' ? lv.stones0 : lv.def.target;
+  }
+  function goalProgress() {
+    const lv = st.lv, goal = lv.def.goal;
+    const v = goal === 'score' ? st.score : goal === 'colour' ? lv.colour : goal === 'thaw' ? lv.frozen0 - count(FROZEN)
+      : goal === 'stones' ? lv.stones0 - count(STONE) : goal === 'make' ? lv.made : lv.prisms;
+    return Math.min(goalTarget(), Math.max(0, v));
+  }
+  function goalLabel(def, target = def.target) {
+    const [verb, icon] = GOAL_TEXT[def.goal];
+    if (def.goal === 'colour') return `${verb} ${target} ${NAMES[def.colour]} ${GLYPH[def.colour]}`;
+    if (def.goal === 'score') return `${verb} ${target.toLocaleString()} ${icon}`;
+    if (def.goal === 'make') return `${verb} ${target} specials ${icon}`;
+    if (def.goal === 'prism') return `${verb} ${target} prism${target > 1 ? 's' : ''} ${icon}`;
+    return `${verb} ${target} ${icon}`;
+  }
+  function renderGoal() {
+    const box = $('pzGoal');
+    if (!box) return;
+    box.hidden = !st?.lv;
+    if (!st?.lv) return;
+    const lv = st.lv, have = goalProgress(), want = goalTarget();
+    box.innerHTML = '';
+    box.append(ctx.el('b', '', `🎯 ${lv.n}`), ctx.el('span', '', goalLabel(lv.def, want)), ctx.el('b', 'pz-goal-n', `${have.toLocaleString()} / ${want.toLocaleString()}`));
+    box.style.setProperty('--p', Math.round(100 * have / Math.max(1, want)) + '%');
+    if (lv.def.goal === 'colour') box.querySelector('span').style.color = COLORS[lv.def.colour][0];
+  }
+  const starStr = (n) => '★'.repeat(n) + '☆'.repeat(3 - n);
+  function endLevel(won) {
+    const lv = st.lv;
+    lv.over = true; sel = null; hint = null;
+    const frac = lv.left / lv.def.moves, stars = won ? (frac >= 0.4 ? 3 : frac >= 0.15 ? 2 : 1) : 0;
+    const d = pdata(); d.levels ||= {};
+    const old = d.levels[lv.n] || 0;
+    let xp = 0;
+    if (stars > old) { d.levels[lv.n] = stars; xp = 100 * (stars - old); }
+    psave(d);
+    if (xp) addXP(xp);
+    ctx.quiet(ctx.act('levelEnd', { n: lv.n, stars, score: st.score }));
+    ctx.sfx?.(won ? 'fanfare' : 'wrong');
+    const over = $('pzOver');
+    over.hidden = false; over.className = 'pz-over pz-card';
+    over.innerHTML = '';
+    over.append(ctx.el('h3', '', won ? `🎯 Level ${lv.n} cleared!` : `So close! Level ${lv.n}`));
+    if (won) over.append(ctx.el('div', 'pz-stars', starStr(stars)));
+    over.append(ctx.el('p', '', won ? `${lv.left} move${lv.left === 1 ? '' : 's'} to spare · ${st.score.toLocaleString()} points`
+      : `${goalProgress().toLocaleString()} of ${goalTarget().toLocaleString()} — out of moves`));
+    if (xp) over.append(ctx.el('p', 'pz-xpline', `+${xp} XP`));
+    const row = ctx.el('div', 'pz-btns');
+    const go = (label, cls, fn) => { const b = ctx.el('button', cls, label); b.onclick = fn; row.append(b); return b; };
+    if (won && lv.n < S.prism.levels.length) go(`Next ▶`, 'primary', () => ctx.act('level', { n: lv.n + 1 }));
+    go('↻ Retry', won ? '' : 'primary', () => ctx.act('level', { n: lv.n }));
+    go('🗺 Levels', '', () => ctx.act('map'));
+    over.append(row);
+    updateHud(); kick();
+  }
+  function renderMap(pz) {
+    const box = $('pzMap');
+    if (!box) return;
+    box.hidden = !(pz.mode === 'levels' && !pz.level && pz.playing);
+    if (box.hidden) return;
+    const done = pdata().levels || {};
+    box.innerHTML = '';
+    const total = Object.values(done).reduce((a, b) => a + b, 0);
+    box.append(ctx.el('h3', '', `🎯 Pick a level · ${total}/${pz.levels.length * 3}★`));
+    const WORLDS = ['🌱 Sprout', '🌊 Tide', '🔥 Ember', '💎 Crown'];
+    pz.levels.forEach((def, k) => {
+      const n = k + 1;
+      if (k % 6 === 0) box.append(ctx.el('div', 'pz-world', WORLDS[k / 6] || ''));
+      const open = n === 1 || (done[n - 1] || 0) > 0 || (done[n] || 0) > 0;
+      const b = ctx.el('button', 'pz-lv' + (open ? '' : ' locked') + (done[n] ? ' done' : ''));
+      b.append(ctx.el('b', '', open ? String(n) : '🔒'), ctx.el('small', '', done[n] ? starStr(done[n]) : open ? goalLabel(def).replace(/^\S+ /, '') : ''));
+      b.title = goalLabel(def) + ` in ${def.moves} moves`;
+      b.disabled = !open;
+      b.onclick = () => ctx.act('level', { n });
+      box.append(b);
+    });
+  }
+
+  // ---------- 💠 XP and board themes
+  function addXP(n) {
+    if (!(n > 0)) return;
+    const d = pdata(), before = rankOf(d.xp || 0);
+    d.xp = (d.xp || 0) + n;
+    psave(d);
+    const after = rankOf(d.xp);
+    if (after > before) {
+      const [, name, emo] = RANKS[after];
+      setTimeout(() => { try { Kit.callout(`${emo} Rank up: ${name}!`, 'gold'); } catch {} ctx.sfx?.('fanfare'); ctx.toast?.(`${emo} ${name} rank — the ${THEMES[after].name} board is yours. Pick it under the rivals.`); }, 1600);
+    }
+    renderThemes(); updateHud();
+  }
+  function renderThemes() {
+    const box = $('pzThemes');
+    if (!box) return;
+    const d = pdata(), r = rankOf(d.xp || 0), cur = THEMES.indexOf(theme());
+    box.innerHTML = '';
+    box.append(ctx.el('div', 'pz-themes-h', `${RANKS[r][2]} ${RANKS[r][1]} · ${(d.xp || 0).toLocaleString()} XP` + (r < RANKS.length - 1 ? ` · next ${RANKS[r + 1][1]} at ${RANKS[r + 1][0].toLocaleString()}` : '')));
+    const row = ctx.el('div', 'pz-swatches');
+    THEMES.forEach((th, i) => {
+      const b = ctx.el('button', 'pz-swatch' + (i === cur ? ' on' : '') + (i > r ? ' locked' : ''), i > r ? '🔒' : '');
+      b.style.background = `linear-gradient(135deg, ${th.bg[0]}, ${th.bg[1]})`;
+      b.style.borderColor = th.glow;
+      b.title = i > r ? `${th.name}: reach ${RANKS[i][1]} (${RANKS[i][0].toLocaleString()} XP)` : th.name;
+      b.setAttribute('aria-label', b.title);
+      b.disabled = i > r;
+      b.onclick = () => { const dd = pdata(); dd.theme = i; psave(dd); themeNow = null; renderThemes(); kick(); };
+      row.append(b);
+    });
+    box.append(row);
+  }
+
+  // ---------- race recap
+  function buildRecap(pz, me) {
+    const over = $('pzOver');
+    if (st.recapped) return;
+    st.recapped = true;
+    const xp = Math.round(st.score / 10);
+    const ranked = Object.entries(pz.boards).sort((a, b) => b[1].score - a[1].score), place = ranked.findIndex(([id]) => id === S.me.id) + 1;
+    const ord = (n) => n + (n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th');
+    over.hidden = false; over.className = 'pz-over pz-card';
+    over.innerHTML = '';
+    const fold = ctx.el('button', 'pz-fold', '▾');
+    fold.title = 'Fold the recap'; fold.setAttribute('aria-label', fold.title);
+    fold.onclick = () => { over.classList.toggle('folded'); fold.textContent = over.classList.contains('folded') ? '▴' : '▾'; };
+    over.append(fold, ctx.el('h3', '', S.winner === S.me.id ? '🏆 You win!' : ranked.length > 1 ? `⏱️ Time! ${ord(place)} of ${ranked.length}` : '⏱️ Time!'));
+    over.append(ctx.el('div', 'pz-big', me.score.toLocaleString()));
+    if (st.pb != null && me.score > st.pb) over.append(ctx.el('div', 'pz-xpline', `🏅 New best (was ${st.pb.toLocaleString()})`));
+    const s = st.stats, grid = ctx.el('div', 'pz-stats');
+    const rows = [['Best cascade', s.best ? `×${s.best}` : '—'], ['Gems popped', s.popped], ['Specials made', s.made], ['🔥 Fevers', s.fevers]];
+    if (pz.attacks && ranked.length > 1) rows.push(['Attacks sent', s.sent], ['Attacks taken', s.got], ['🛡 Shattered', s.parried]);
+    for (const [k, v] of rows) grid.append(ctx.el('span', '', k), ctx.el('b', '', String(v)));
+    over.append(grid);
+    // XP once per round, even if the page reloads on the recap
+    const d = pdata(), key = `${S.code || ''}.${pz.seed}`, before = d.xp || 0, fresh = d.xpKey !== key;
+    if (fresh) { d.xpKey = key; psave(d); addXP(xp); }
+    const after = before + (fresh ? xp : 0), r = rankOf(after), lo = RANKS[r][0], hi = RANKS[r + 1]?.[0];
+    const bar = ctx.el('div', 'pz-xpbar'); const fill = document.createElement('i');
+    fill.style.width = (hi ? Math.round(100 * (after - lo) / (hi - lo)) : 100) + '%'; bar.append(fill);
+    over.append(ctx.el('div', 'pz-xpline', `+${xp.toLocaleString()} XP · ${RANKS[r][2]} ${RANKS[r][1]}`), bar);
+  }
+
+  // ---------- HUD
+  function updateHud() {
+    if (!st) return;
+    const pz = S?.prism, fe = $('pzFever'), stage = $('pzStage');
+    const on = feverOn(), meter = on ? 100 * (st.fever.until - now()) / FEVER_MS : feverMeter();
+    if (fe) { fe.firstChild.style.width = Math.max(0, Math.min(100, meter)) + '%'; fe.classList.toggle('on', on); }
+    const rush = rushOn() && pz?.playing;
+    if (rush && !st.rushShown && !st.over) { st.rushShown = true; try { Kit.callout('⏱ RUSH! ×2', 'gold'); } catch {} ctx.sfx?.('rise', 10); }
+    stage?.classList.toggle('fever', on); stage?.classList.toggle('rush', !!rush);
+    const m = mult(), mt = $('pzMult');
+    if (mt) mt.textContent = m > 1 && canPlay() ? `×${m}` : on ? '🔥' : '';
+    const pb = $('pzPB');
+    if (pb) pb.textContent = st.lv || pz?.mode === 'levels' ? '' : st.pb ? `best ${st.pb.toLocaleString()}` : '';
+    const hb = $('pzHintBtn');
+    if (hb) { const left = st.hintAt - now(); hb.disabled = left > 0 || !canPlay(); hb.style.setProperty('--cd', Math.max(0, left / 15000)); }
+    const rk = $('pzRank');
+    if (rk) { const r = rankOf(pdata().xp || 0); rk.textContent = `${RANKS[r][2]} ${RANKS[r][1]}`; }
+  }
+  function useHint() {
+    if (!st || !canPlay() || st.busy || now() < st.hintAt) return;
+    const m = moves();
+    if (!m.length) return;
+    hint = m[Math.floor(Math.random() * m.length)];
+    st.hintAt = now() + 15000;
+    ctx.sfx?.('tick'); updateHud(); kick();
   }
 
   // ---------- side panel: rival minis
-  const prevHits = {};
+  const prevHits = {}, prevScore = {};
+  function comet(from, to, text) {
+    if (!from || !to || !motion() || !Element.prototype.animate) return;
+    const a = from.getBoundingClientRect(), b = to.getBoundingClientRect();
+    if (!a.width || !b.width) return;
+    const x0 = a.left + a.width / 2, y0 = a.top + a.height / 2, x1 = b.left + b.width / 2, y1 = b.top + b.height / 2;
+    const c = ctx.el('div', 'pz-comet', text);
+    c.style.left = x0 + 'px'; c.style.top = y0 + 'px';
+    document.body.append(c);
+    const anim = c.animate([
+      { transform: 'translate(-50%,-50%) scale(.6)', opacity: 0 },
+      { transform: `translate(calc(-50% + ${(x1 - x0) * 0.5}px), calc(-50% + ${(y1 - y0) * 0.5 - 40}px)) scale(1.3)`, opacity: 1, offset: 0.5 },
+      { transform: `translate(calc(-50% + ${x1 - x0}px), calc(-50% + ${y1 - y0}px)) scale(.8)`, opacity: 0.2 },
+    ], { duration: 700, easing: 'ease-in-out' });
+    anim.onfinish = () => c.remove();
+    setTimeout(() => c.remove(), 1200);
+  }
   function renderRivals() {
     const box = $('pzRivals');
     if (!box) return;
     box.innerHTML = '';
     const entries = Object.entries(S.prism.boards).sort((a, b) => b[1].score - a[1].score);
+    const hitNow = [];
     entries.forEach(([pid, b], rank) => {
       const p = ctx.player(pid);
       const card = ctx.el('div', 'pz-rival' + (pid === S.me.id ? ' me' : '') + (b.alive ? '' : ' down'));
-      if (prevHits[pid] != null && b.hits > prevHits[pid]) card.classList.add('hit');
+      card.dataset.pid = pid;
+      if (prevHits[pid] != null && b.hits > prevHits[pid]) { card.classList.add('hit'); hitNow.push([pid, b.lastFrom]); }
       prevHits[pid] = b.hits;
+      if (prevScore[pid] != null && b.score > prevScore[pid] && pid !== S.me.id && motion()) card.append(ctx.el('span', 'pz-plus', `+${(b.score - prevScore[pid]).toLocaleString()}`));
+      prevScore[pid] = b.score;
       const c = document.createElement('canvas'); c.width = c.height = N * 7;
       const m = c.getContext('2d');
       if (m) {
@@ -866,14 +1284,27 @@ UI.prism = (() => {
       const label = ctx.el('div', 'pz-name', `${rank === 0 && b.score > 0 ? '👑 ' : ''}${p?.name ?? '?'}`);
       label.style.color = p?.color ?? '';
       card.append(c, ctx.el('div', 'pz-info'));
-      card.lastChild.append(label, ctx.el('b', '', b.score.toLocaleString()), ctx.el('small', '', b.sent ? `sent ${b.sent}` : ''));
+      card.lastChild.append(label, ctx.el('b', '', b.score.toLocaleString()),
+        ctx.el('small', '', [b.sent ? `sent ${b.sent}` : '', b.parried ? `🛡 ${b.parried}` : ''].filter(Boolean).join(' · ')));
       box.append(card);
     });
+    // attacks fly from the sender to the target (my own board stands in for my card)
+    const at = (pid) => (pid === S.me.id && S.prism.playing ? $('pzStage') : [...box.children].find((c) => c.dataset.pid === pid));
+    for (const [pid, from] of hitNow) if (from) comet(at(from), at(pid), '☄️');
   }
 
   function tickClock() {
     if (!st || !S?.prism) return;
-    const pz = S.prism, left = Math.max(0, (st.endAt - now()) / 1000);
+    const pz = S.prism;
+    if (pz.mode === 'levels') {
+      const cnt = $('pzCount'); if (cnt) cnt.hidden = true;
+      const txt = $('pzClock'), bar = $('pzTime');
+      if (txt) txt.textContent = st.lv ? `👣 ${st.lv.left}` : '🎯';
+      if (bar) { bar.style.width = st.lv ? (100 * goalProgress() / Math.max(1, goalTarget())) + '%' : '0%'; bar.classList.remove('low'); }
+      updateHud();
+      return;
+    }
+    const left = Math.max(0, (st.endAt - now()) / 1000);
     const bar = $('pzTime'), txt = $('pzClock'), cnt = $('pzCount');
     const startIn = Math.max(0, st.startAt - now()) / 1000;
     if (cnt) { cnt.hidden = !(startIn > 0 && pz.playing); cnt.textContent = startIn > 0 ? String(Math.ceil(startIn)) : ''; }
@@ -881,23 +1312,32 @@ UI.prism = (() => {
     if (txt) txt.textContent = `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
     if (left < 10 && left > 0 && pz.playing && Math.floor(left) !== st.lastBeep) { st.lastBeep = Math.floor(left); ctx.sfx?.('tickfast'); }
     if (left <= 0 && !st.over) { st.over = true; sel = null; hint = null; kick(); }
+    landDue();
+    updateHud();
   }
 
   function mount(main, side) {
-    S = null; st = null; c2 = null;
+    S = null; st = null; c2 = null; themeNow = null;
     main.innerHTML = `<div class="pz-wrap">
       <div class="pz-top"><span class="pz-clock" id="pzClock">0:00</span><div class="pz-timebar"><i id="pzTime"></i></div>
-        <span class="pz-score" id="pzScore">0</span></div>
+        <button class="pz-hintbtn" id="pzHintBtn" title="Show me a move (every 15 s)" aria-label="Show me a move">💡</button>
+        <div class="pz-scorebox"><span class="pz-score" id="pzScore">0</span><small class="pz-pb" id="pzPB"></small></div></div>
+      <div class="pz-sub"><span class="pz-rank" id="pzRank"></span><div class="pz-fever" id="pzFever" title="🔥 Fever: quick matches fill it; full = double points for 6 s"><i></i></div><span class="pz-mult" id="pzMult"></span></div>
+      <div id="pzGoal" class="pz-goal" hidden></div>
       <div id="pzStage" class="pz-stage"><canvas id="pzCanvas" tabindex="0" aria-label="Your gem board"></canvas><div id="pzGrid" class="pz-grid" hidden></div>
+        <div id="pzWarn" class="pz-warn"></div><div id="pzMap" class="pz-map" hidden></div>
         <div id="pzCount" class="pz-count" hidden></div><div id="pzBanner" class="pz-hit"></div><div id="pzOver" class="pz-over" hidden></div></div></div>`;
     side.innerHTML = `<div class="panel">
       <div id="pzStatus" class="seat-row"></div>
       <div id="pzRivals" class="pz-rivals"></div>
-      <p class="hint left">Tap a gem, then a neighbour, or swipe it. ⌨️ Arrows move, Enter/Space picks.<br>
-      4 in a row ⚡ · L or T 💥 · 5 in a row 🌈 · swap two specials for a bigger blast.</p></div>`;
+      <div id="pzLevelSide"></div>
+      <div id="pzThemes" class="pz-themes"></div>
+      <p class="hint left">Tap a gem, then a neighbour, or swipe it. ⌨️ Arrows move, Enter/Space picks, H shows a move.<br>
+      4 in a row ⚡ · L or T 💥 · 5 in a row 🌈 · swap two specials for a bigger blast. Quick matches fill 🔥 fever: double points.</p></div>`;
     cv = $('pzCanvas');
     c2 = cv.getContext?.('2d') || null;
     if (!c2) { cv.hidden = true; $('pzGrid').hidden = false; }
+    $('pzHintBtn').onclick = useHint;
     let start = null;
     cv.onpointerdown = (e) => {
       const i = cellAt(e); if (i == null) return;
@@ -927,6 +1367,7 @@ UI.prism = (() => {
         else { const x = Math.max(0, Math.min(N - 1, cursor % N + d[0])), y = Math.max(0, Math.min(N - 1, ((cursor / N) | 0) + d[1])); cursor = y * N + x; }
         kick();
       } else if ((e.key === 'Enter' || e.key === ' ') && cursor != null) { e.preventDefault(); tap(cursor); }
+      else if (e.key === 'h' || e.key === 'H') useHint();
       else if (e.key === 'Escape') { sel = null; kick(); }
     };
     addEventListener('keydown', keyHandler);
@@ -939,7 +1380,7 @@ UI.prism = (() => {
   function unmount() {
     cancelAnimationFrame(raf); raf = 0;
     cancelAnimationFrame(scoreRaf);
-    clearInterval(clock); clearTimeout(hintTimer);
+    clearInterval(clock); clearTimeout(hintTimer); clearTimeout(idleT); clearTimeout(heatT);
     if (keyHandler) removeEventListener('keydown', keyHandler);
     resizeObs?.disconnect();
     falling = null; st = null; c2 = null; cv = null;
@@ -947,36 +1388,56 @@ UI.prism = (() => {
 
   function render(s, c) {
     S = s; ctx = c;
-    const pz = S.prism;
+    const pz = S.prism, levels = pz.mode === 'levels';
     if (!st || st.seed !== pz.seed) newState(pz);
-    st.endAt = now() + pz.timeLeft * 1000;
-    st.startAt = now() + pz.startIn * 1000;
-    if (pz.startIn > 0 && !st.countdown) { st.countdown = true; setTimeout(() => { kick(); armHint(); }, pz.startIn * 1000); }
+    if (!levels) {
+      st.endAt = now() + pz.timeLeft * 1000;
+      st.startAt = now() + pz.startIn * 1000;
+      if (pz.startIn > 0 && !st.countdown) { st.countdown = true; setTimeout(() => { kick(); armHint(); }, pz.startIn * 1000); }
+    }
     if (pz.playing) applyEvents(pz.events);
     if (!pz.playing) { st.over = true; sel = null; hint = null; }
     const me = pz.boards[S.me.id];
-    $('pzStatus').textContent = me ? `💎 ${me.score.toLocaleString()} points${me.sent ? ` · sent ${me.sent} attacks` : ''}` : '👁 Watching the race';
+    if (levels) {
+      const done = pdata().levels || {}, total = Object.values(done).reduce((a, b) => a + b, 0);
+      $('pzStatus').textContent = `🎯 ${total}★ of ${pz.levels.length * 3} · ` + (pz.level ? `level ${pz.level}` : 'choosing a level');
+    } else $('pzStatus').textContent = me ? `💎 ${me.score.toLocaleString()} points${me.sent ? ` · sent ${me.sent} attacks` : ''}` : '👁 Watching the race';
     if (!me) { // spectators see the leader's board
       const lead = Object.entries(pz.boards).sort((a, b) => b[1].score - a[1].score)[0];
       if (lead && !st.busy) { g = lead[1].rows.split(''); $('pzScore').textContent = lead[1].score.toLocaleString(); renderGrid(); }
     }
     const over = $('pzOver');
-    if (S.phase === 'over' && me) {
-      over.hidden = false;
-      over.textContent = S.winner === S.me.id ? `🏆 You win with ${me.score.toLocaleString()}!` : `⏱️ Time! ${me.score.toLocaleString()} points`;
-    } else over.hidden = true;
+    if (levels && !pz.level) st.lv = null;   // back on the map
+    if (levels) {
+      if (!st.lv?.over) { over.hidden = true; over.innerHTML = ''; }
+      renderMap(pz);
+      const ls = $('pzLevelSide');
+      if (ls && !ls.firstChild && me && pz.playing) {
+        const b = ctx.el('button', '', '✅ Done for now');
+        b.onclick = () => ctx.act('quit');
+        ls.append(b);
+      }
+      if (ls && !pz.playing) ls.innerHTML = '';
+    } else if (S.phase === 'over' && me) buildRecap(pz, me);
+    else { over.hidden = true; }
     tickClock();
-    renderRivals();
+    if (!levels) renderRivals(); else $('pzRivals').innerHTML = '';
+    if (!$('pzThemes').firstChild) renderThemes();
+    renderGoal();
     kick();
   }
 
   const turnText = (s) => s.phase !== 'playing' ? null
     : !s.prism.playing ? '💎 Watching the race'
+    : s.prism.mode === 'levels' ? (s.prism.level ? `🎯 Level ${s.prism.level}` : '🎯 Pick a level')
     : s.prism.startIn > 0 ? '💎 Get ready…' : '💎 Match fast — chain cascades!';
 
-  // test hooks: a legal move and the keyboard cursor; an attack as if a rival had sent it
-  const testState = () => ({ move: st && !st.busy ? moves()[0] || null : null, cursor, busy: !!st?.busy, rows: g.join(''), score: st?.score });
-  const testHit = (kind_, n) => st && applyEvents([{ id: st.applied + 1, kind: kind_, n, from: 'Test' }]);
+  // test hooks: a legal move and the keyboard cursor; an attack as if a rival had sent it (lands at once, or
+  // after the parry warning with warn=true)
+  const testState = () => ({ move: st && !st.busy ? moves()[0] || null : null, cursor, busy: !!st?.busy, rows: g.join(''), score: st?.score,
+    level: st?.lv ? { n: st.lv.n, left: st.lv.left, over: st.lv.over, have: goalProgress(), want: goalTarget() } : null,
+    fever: st ? { meter: feverMeter(), on: feverOn() } : null, incoming: st?.incoming.length || 0, stats: st?.stats });
+  const testHit = (kind_, n, warn = false) => st && applyEvents([{ id: st.applied + 1, kind: kind_, n, from: 'Test' }], !warn);
   const testBoard = (rows) => { if (st && rows.length === N * N) { g = rows.split(''); kick(); } };
   return { mount, render, unmount, turnText, focus: true, testState, testHit, testBoard };
 })();

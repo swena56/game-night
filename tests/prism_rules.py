@@ -13,7 +13,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 import server  # noqa: E402
 from games.base import GameError  # noqa: E402
-from games.prism import N, Board, attack_for, bot_move, kind, PRISM, STONE  # noqa: E402
+from games.prism import N, Board, attack_for, bot_move, kind, PRISM, STONE, FROZEN, LEVELS, fever_fill, bursts  # noqa: E402
 
 fails = []
 
@@ -199,6 +199,58 @@ check("a tie has no winner", room.phase == "over" and room.winner is None)
 room, (ann, bo), game = new_room(2)
 game.t0 = time.time() + 3
 check("moves are refused during the countdown", refused(game, ann, {"type": "board", "rows": ann.g.rows, "score": 10}))
+
+# -- 🔥 fever, ⏱ rush, 🛡 parry
+check("fever fills more for cascades", fever_fill(1) == 22 and fever_fill(3) == 42 and fever_fill(0) == 0)
+check("a ×3 cascade or a special shatters an attack", bursts(3, []) and bursts(1, ["beam"]) and not bursts(2, []))
+room, (ann, bo), game = new_room(2)
+check("no multiplier at the start", game.mult(bo.g, time.time()) == 1)
+bo.g.fever_until = bo.g.vt + 5
+check("fever doubles a bot's points", game.mult(bo.g, time.time()) == 2)
+room.deadline = time.time() + 5
+check("rush stacks on fever in the last 10 s", game.mult(bo.g, time.time()) == 4)
+
+room, (ann, bo), game = new_room(2)
+bo.bot = "hard"
+game.bot_step(bo, time.time())   # its board is set up
+game.act(ann, {"type": "burst", "cascade": 4, "specials": [], "made": []})
+ev = bo.g.events[0]
+check("an attack lands after a warning", ev["at"] > time.time() + 2)
+check("the view says who hit whom", game.view(ann)["prism"]["boards"][bo.id]["lastFrom"] == ann.id)
+game.bot_step(bo, time.time())
+check("a bot doesn't take an attack before the warning runs out", bo.g.applied < ev["id"] or bo.g.parried > 0)
+# force the warning to be over: the next step takes it unless it was shattered already
+ev["at"] = time.time() - 1
+if bo.g.applied < ev["id"]:
+    game.bot_step(bo, time.time())
+check("then it lands (or was shattered)", bo.g.applied >= ev["id"])
+room, (ann, bo), game = new_room(2)
+check("a bad parry is refused", refused(game, ann, {"type": "parry", "n": 0}) and refused(game, ann, {"type": "parry", "n": True}))
+game.act(ann, {"type": "parry", "n": 1, "from": [bo.id, "nobody"]})
+check("a parry is counted and logged", ann.g.parried == 1 and "shattered Bo's attack" in room.log[-1]["text"])
+
+# -- 🎯 levels
+check("24 levels, each reachable", len(LEVELS) == 24 and all(d[3] == 0 or d[0] != "thaw" or d[3] >= d[1] for d in LEVELS))
+room, (ann,), game = new_room(1, mode="levels")
+check("levels: no clock", game.levels and room.deadline is None)
+v = game.view(ann)["prism"]
+check("levels: the view lists them and starts on the map", v["mode"] == "levels" and v["level"] == 0 and len(v["levels"]) == 24 and not v["attacks"])
+check("a level that doesn't exist is refused", refused(game, ann, {"type": "level", "n": 0}) and refused(game, ann, {"type": "level", "n": 25}))
+game.act(ann, {"type": "level", "n": 13})
+check("level 13 starts with 14 frozen gems", sum(c in FROZEN for c in ann.g.rows) == 14 and ann.g.level == 13)
+seed1 = game.view(ann)["prism"]["seed"]
+game.act(ann, {"type": "level", "n": 16})
+check("level 16 starts with 8 stones", ann.g.rows.count(STONE) == 8 and game.view(ann)["prism"]["seed"] != seed1)
+check("a result for another level is refused", refused(game, ann, {"type": "levelEnd", "n": 3, "stars": 2, "score": 0}))
+game.act(ann, {"type": "levelEnd", "n": 16, "stars": 2, "score": 900})
+check("a cleared level is logged", ann.g.stars == {16: 2} and "level 16" in room.log[-1]["text"])
+game.act(ann, {"type": "map"})
+check("back to the map", game.view(ann)["prism"]["level"] == 0)
+check("levels don't count as a race score", game.final_scores() == {})
+game.act(ann, {"type": "quit"})
+check("done ends the game", room.phase == "over")
+room, (ann, bo), game = new_room(2, mode="levels")
+check("levels with two players falls back to a race", not game.levels and room.deadline and refused(game, ann, {"type": "level", "n": 1}))
 
 print()
 print(f"{len(fails)} failed" if fails else "all ok")

@@ -26,7 +26,7 @@ SPECIAL_KINDS = ("beam", "nova", "prism", "combo")
 GEM_PTS, STONE_PTS = 10, 20
 MAKE_PTS = {"beam": 60, "nova": 100, "prism": 200}
 MAX_GAIN = 60000          # the most one board report may add to a score
-PACE = {"easy": 4.0, "normal": 2.4, "hard": 1.5}   # seconds a bot thinks per move
+PACE = {"easy": 4.0, "normal": 2.4, "hard": 1.8}   # seconds a bot thinks per move
 # a player's screen spends this long on each cascade step (pop + fall) and on a blast before the next move,
 # so a bot's clock pays it too
 STEP_SECS, BLAST_SECS = 0.35, 0.4
@@ -69,6 +69,38 @@ def attack_for(cascade, specials):
 
 
 ATTACK_GAP = 5.0
+PARRY_SECS = 3.0          # an attack shows a warning this long before it lands; a burst in time shatters it
+# 🔥 fever: each scoring move fills the meter (more for cascades), it drains over time, and a full meter gives
+# FEVER_SECS of double points. The last RUSH_SECS of a race score double too (they stack). Mirrored in prism.js.
+FEVER_DRAIN, FEVER_SECS, RUSH_SECS = 6.0, 6.0, 10.0
+
+
+def fever_fill(cascade):
+    return 22 + 10 * (cascade - 1) if cascade >= 1 else 0
+
+
+def bursts(cascade, fired):
+    """Is a move big enough to shatter an incoming attack (a ×3+ cascade or any special set off)?"""
+    return cascade >= 3 or bool(fired)
+
+
+# 🎯 solo levels: (goal, target, moves, frozen, stones, kinds, colour). Goals: score, colour (pop gems of one
+# colour), thaw (free every frozen gem), stones (break every stone), make (make specials), prism (make 🌈).
+# The browser gets them in the view.
+LEVELS = [
+    # 🌱 world 1
+    ("score", 1200, 20, 0, 0, 6, None), ("colour", 20, 18, 0, 0, 6, 0), ("thaw", 6, 20, 6, 0, 6, None),
+    ("score", 2500, 20, 0, 0, 6, None), ("make", 2, 20, 0, 0, 6, None), ("stones", 4, 22, 0, 4, 6, None),
+    # 🌊 world 2
+    ("thaw", 10, 20, 10, 0, 6, None), ("colour", 30, 20, 0, 0, 6, 1), ("score", 4000, 20, 0, 0, 6, None),
+    ("stones", 6, 20, 4, 6, 6, None), ("make", 3, 18, 0, 0, 6, None), ("prism", 1, 25, 0, 0, 5, None),
+    # 🔥 world 3
+    ("thaw", 14, 20, 14, 0, 6, None), ("score", 5000, 18, 0, 0, 6, None), ("colour", 35, 18, 0, 0, 6, 2),
+    ("stones", 8, 20, 0, 8, 6, None), ("make", 4, 18, 0, 0, 6, None), ("score", 7000, 20, 6, 0, 6, None),
+    # 💎 world 4
+    ("thaw", 18, 20, 18, 4, 6, None), ("colour", 40, 18, 6, 0, 6, 4), ("stones", 10, 20, 0, 10, 6, None),
+    ("prism", 2, 25, 0, 0, 5, None), ("score", 9000, 18, 0, 4, 6, None), ("thaw", 20, 22, 20, 6, 6, None),
+]
 
 
 class Board:
@@ -416,7 +448,9 @@ class Prism(Game):
         'Tap a gem, then a neighbour (or swipe it). ⌨️ Arrow keys move, Enter or Space picks.',
         '4 in a row makes a ⚡ beam (clears a row or column), an L or T makes a 💥 nova (clears around it), 5 in a row makes a 🌈 prism: swap it with a gem to clear that colour.',
         'Swap two specials together for a bigger blast. Cascades raise the multiplier: ×2, ×3…',
-        'Big plays send 🧊 frost (frozen gems can\'t move) and 🪨 stones to a rival: a match next to them breaks them. Highest score when the clock runs out wins.',
+        'Big plays send 🧊 frost (frozen gems can\'t move) and 🪨 stones to a rival: a match next to them breaks them. An attack shows a warning first: a ×3 cascade or a special before it lands 🛡 shatters it. Highest score when the clock runs out wins.',
+        'Quick matches fill the 🔥 fever meter: when it\'s full, points count double for 6 seconds. The last 10 seconds are a RUSH: double points again (they stack).',
+        '🎯 Levels mode (one player): reach each level\'s goal before your moves run out. More moves left = more ★.',
     ]
     name = "Prism Pop"
     icon = "💎"
@@ -425,10 +459,14 @@ class Prism(Game):
     min_players = 1
     max_players = 6
     replayable = False
+    levels = False   # 🎯 levels mode (one player, no clock); set in start()
     badges = {**Game.badges,
               "cascade5": ("🌊", "Waterfall", "Set off a ×5 cascade"),
-              "prism": ("🌈", "Prism maker", "Make a 🌈 prism gem")}
+              "prism": ("🌈", "Prism maker", "Make a 🌈 prism gem"),
+              "parry": ("🛡", "Shatterproof", "Shatter an incoming attack"),
+              "levels": ("👑", "Prism master", "Clear all 24 🎯 levels")}
     settings_schema = {
+        "mode": ("Mode", [("race", "⏱️ Race"), ("levels", "🎯 Levels (one player)")], "race"),
         "length": ("Round", [(60, "⏱️ 60 s"), (90, "⏱️ 90 s"), (120, "⏱️ 2 min")], 90),
         "attacks": ("Attacks", [(True, "On (🧊 frost, 🪨 stones)"), (False, "Off (pure score race)")], True),
         "aim": ("Attacks go to", [("random", "🎲 A random rival"), ("leader", "👑 The leader (comeback)")], "random"),
@@ -441,6 +479,12 @@ class Prism(Game):
         self.t0 = time.time() + 3.5  # countdown
         self.seats = [p.id for p in seated]
         self.eid = 0
+        r = self.room
+        self.levels = self.s.get("mode") == "levels" and len(seated) == 1 and not seated[0].bot
+        if self.s.get("mode") == "levels" and not self.levels:
+            r.add_log("🎯 Levels are for one player on their own — playing a race instead.")
+        if self.levels:
+            self.t0 = time.time()
         kinds = self.kinds()
         for p in seated:
             g = p.g
@@ -448,11 +492,16 @@ class Prism(Game):
             g.rows = Board(random.Random(self.seed + self.seats.index(p.id)), kinds).rows()
             g.score, g.sent, g.best, g.events, g.applied = 0, 0, 0, [], 0
             g.next_at, g.vt = self.t0 + random.uniform(0.8, 1.6), 0.0
-        r = self.room
+            g.fever, g.fever_until, g.parried, g.hits, g.last_from = 0.0, 0.0, 0, 0, None
+            g.level, g.runs, g.stars = 0, 0, {}
         r.turn = None
-        r.deadline = self.t0 + self.length()
         r.bot_at = 0
-        r.add_log(f"💎 Prism Pop! {self.length()} seconds — line up 3+ gems, chain cascades, top score wins.", "big")
+        if self.levels:
+            r.deadline = None
+            r.add_log("🎯 Prism Pop levels! Pick a level and reach its goal before your moves run out.", "big")
+        else:
+            r.deadline = self.t0 + self.length()
+            r.add_log(f"💎 Prism Pop! {self.length()} seconds — line up 3+ gems, chain cascades, top score wins.", "big")
 
     def kinds(self):
         return 5 if self.s.get("gems") == 5 else 6
@@ -466,6 +515,9 @@ class Prism(Game):
             p = self.room.players.get(i)
             if p and hasattr(p.g, "next_at"):
                 p.g.next_at += shift
+                for ev in p.g.events:
+                    if "at" in ev:
+                        ev["at"] += shift
 
     # -- actions from players' browsers
 
@@ -483,6 +535,15 @@ class Prism(Game):
                 raise GameError("Bad score.")
             p.g.rows, p.g.score = rows, score
             return
+        if t == "parry":
+            n, src = a.get("n"), a.get("from") or []
+            if not (isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= 20) or not isinstance(src, list):
+                raise GameError("Bad parry.")
+            return self.on_parry(p, n, [i for i in src if i in self.seats and i != p.id][:6])
+        if t in ("level", "levelEnd", "map", "quit"):
+            if not self.levels:
+                raise GameError("Not a levels game.")
+            return self.level_act(p, t, a)
         if t == "burst":
             cascade, specials = a.get("cascade"), a.get("specials") or []
             made = a.get("made") or []
@@ -497,8 +558,48 @@ class Prism(Game):
 
     def send(self, o, event):
         self.eid += 1
-        o.g.events = (o.g.events + [{**event, "id": self.eid}])[-30:]
+        o.g.events = (o.g.events + [{**event, "id": self.eid, "at": time.time() + PARRY_SECS}])[-30:]
         o.g.hits = getattr(o.g, "hits", 0) + 1
+        o.g.last_from = event.get("fromId")
+
+    def on_parry(self, p, n, src):
+        p.g.parried += n
+        self.award(p, "parry")
+        names = [self.room.players[i].name for i in dict.fromkeys(src) if i in self.room.players]
+        who = f"{' and '.join(names)}'s attack" if names else "an attack"
+        self.room.add_log(f"🛡 {p.name} shattered {who}!", "question")
+
+    # -- 🎯 levels
+    def level_act(self, p, t, a):
+        g, r = p.g, self.room
+        if t == "quit":
+            done = sum(1 for v in g.stars.values() if v)
+            stars = sum(g.stars.values())
+            return r.finish(None, f"🎯 {p.name} cleared {done} level{'s' if done != 1 else ''} ({stars}★) this time.")
+        if t == "map":
+            g.level = 0
+            return
+        n = a.get("n")
+        if not (isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= len(LEVELS)):
+            raise GameError("No such level.")
+        if t == "levelEnd":
+            stars, score = a.get("stars"), a.get("score")
+            if n != g.level or not (isinstance(stars, int) and not isinstance(stars, bool) and 0 <= stars <= 3):
+                raise GameError("Bad level result.")
+            g.stars[n] = max(stars, g.stars.get(n, 0))
+            if stars:
+                r.add_log(f"🎯 {p.name} cleared level {n} {'★' * stars}{'☆' * (3 - stars)}", "question")
+                if n == len(LEVELS):
+                    self.award(p, "levels")
+            return
+        goal, target, moves_, frozen, stones, kinds, colour = LEVELS[n - 1]
+        b = Board(random.Random(self.seed + n), kinds)
+        if frozen:
+            b.freeze(frozen)
+        if stones:
+            b.stones(stones)
+        g.rows, g.score, g.level = b.rows(), 0, n
+        g.runs += 1
 
     def on_burst(self, p, cascade, specials, made):
         r = self.room
@@ -587,9 +688,12 @@ class Prism(Game):
             g.board = Board(random.Random(self.rng.getrandbits(30)), self.kinds(), g.rows)
             g.applied = max([e["id"] for e in g.events], default=0)  # a stand-in starts fresh
         b = g.board
+        # attacks land once their warning runs out (events come in id order, so stop at the first one still due)
         for ev in g.events:
             if ev["id"] <= g.applied:
                 continue
+            if ev.get("at", 0) > now:
+                break
             g.applied = ev["id"]
             (b.freeze if ev["kind"] == "frost" else b.stones)(ev["n"])
         pace = PACE.get(o.bot, 2.4) * random.uniform(0.8, 1.25)
@@ -597,25 +701,47 @@ class Prism(Game):
         if not move:
             b.shuffle()
         else:
+            mult = self.mult(g, now)
             res = b.play(*move)
             if res:
                 # the moves' animations take time on a player's screen; bots wait for them too
                 pace += STEP_SECS * res["cascade"] + BLAST_SECS * len(res["fired"])
-                g.score += res["pts"]
+                g.score += res["pts"] * mult
+                if g.vt >= g.fever_until:
+                    g.fever += fever_fill(res["cascade"])
+                    if g.fever >= 100:
+                        g.fever, g.fever_until = 0.0, g.vt + pace + FEVER_SECS
+                if bursts(res["cascade"], res["fired"]):
+                    pending = [e for e in g.events if e["id"] > g.applied]
+                    if pending:   # shattered in time, like a player's parry
+                        g.applied = pending[-1]["id"]
+                        self.on_parry(o, len(pending), [e.get("fromId") for e in pending])
                 if res["cascade"] >= 3 or res["fired"] or res["made"]:
                     self.on_burst(o, res["cascade"], res["fired"], res["made"])
         g.vt += pace
+        g.fever = max(0.0, g.fever - FEVER_DRAIN * pace)
         g.next_at = now + pace
         g.rows = b.rows()
+
+    def mult(self, g, now):
+        """Points multiplier for a bot's move: 🔥 fever ×2 (on its own clock), the final RUSH ×2."""
+        m = 2 if g.vt < g.fever_until else 1
+        if self.room.deadline and now >= self.room.deadline - RUSH_SECS:
+            m *= 2
+        return m
 
     # -- view
 
     def meta(self, p):
         if not hasattr(p.g, "score"):
             return ""
+        if self.levels:
+            return f"🎯 Level {p.g.level}" if p.g.level else "🎯 Choosing a level"
         return f"💎 {p.g.score:,}"
 
     def final_scores(self):
+        if self.levels:   # a level's score isn't a race score: keep it out of personal bests
+            return {}
         return {i: self.room.players[i].g.score for i in self.seats if i in self.room.players}
 
     def view(self, p):
@@ -624,12 +750,22 @@ class Prism(Game):
         for i in self.seats:
             o = self.room.players.get(i)
             if o:
-                boards[i] = {"rows": o.g.rows, "score": o.g.score, "sent": o.g.sent, "hits": getattr(o.g, "hits", 0), "alive": not o.eliminated}
+                boards[i] = {"rows": o.g.rows, "score": o.g.score, "sent": o.g.sent, "hits": o.g.hits,
+                             "lastFrom": o.g.last_from, "parried": o.g.parried, "alive": not o.eliminated}
         mine = p.id in self.seats
-        return {"prism": {
+        out = {
             "N": N, "kinds": self.kinds(), "seed": self.seed + (self.seats.index(p.id) if mine else 0),
             "startIn": max(0.0, self.t0 - now), "timeLeft": max(0.0, (self.room.deadline or now) - now) if self.room.phase == "playing" else 0,
-            "length": self.length(), "attacks": bool(self.s.get("attacks", True)),
+            "length": self.length(), "attacks": bool(self.s.get("attacks", True)) and not self.levels,
             "boards": boards, "events": p.g.events if mine else [],
             "playing": mine and not p.eliminated and self.room.phase == "playing",
-        }}
+            "mode": "levels" if self.levels else "race",
+        }
+        if self.levels:
+            o = self.room.players.get(self.seats[0])
+            lv = o.g.level if o else 0
+            out.update(level=lv, runs=o.g.runs if o else 0, seed=self.seed + 7919 * (o.g.runs if o else 0),
+                       kinds=LEVELS[lv - 1][5] if lv else self.kinds(),
+                       levels=[{"goal": d[0], "target": d[1], "moves": d[2], "frozen": d[3], "stones": d[4],
+                                "kinds": d[5], "colour": d[6]} for d in LEVELS])
+        return {"prism": out}

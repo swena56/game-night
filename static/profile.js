@@ -127,6 +127,8 @@ const Profile = (() => {
         const tr = el('tr');
         tr.append(el('td', '', label(gid)), el('td', 'rec-stars', starText(g.stars || 0)), el('td', '', g.played), el('td', '', g.wins),
           el('td', '', g.best != null ? fmt(g.best) : ''));
+        const lv = g.data?.levels && Object.values(g.data.levels).reduce((a, b) => a + b, 0);
+        if (lv) tr.lastChild.append(el('div', 'hint', `🎯 ${lv}★`));
         t.append(tr);
       }
       body.append(el('h4', '', '🎮 By game'), t);
@@ -156,5 +158,10 @@ const Profile = (() => {
 
   // "new" tags only mean something once a few games have been tried
   const showNew = () => triedCount() >= 3;
-  return { onState, overLine, show, suggest, stars, tried, starText, showNew };
+  // per-game extras a game keeps on this device (Prism Pop: 🎯 level stars, XP, board theme)
+  const best = (gid) => get().games[gid]?.best ?? null;
+  const gameData = (gid) => ({ ...(get().games[gid]?.data || {}) });
+  function saveGameData(gid, data) { const p = get(); (p.games[gid] ||= { played: 0, wins: 0 }).data = data; store(KEY, p); }
+
+  return { onState, overLine, show, suggest, stars, tried, starText, showNew, best, gameData, saveGameData };
 })();
