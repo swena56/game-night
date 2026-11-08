@@ -39,6 +39,10 @@
         <button id="soloBtn" class="big">🤖 Play solo</button>
         <button id="soloSetupBtn" class="big" title="Add the bots, then change the game's options in the lobby before starting">⚙️ Options first</button>
       </div>
+      <div class="row solo-row">
+        <button id="newGameBtn" class="ghost-btn" title="Pick a game you haven't played yet (or one with the fewest ★)">🎲 Something new</button>
+        <button id="recordBtn" class="ghost-btn" title="Your games, wins, ★ bot-ladder stars and badges, kept on this device">🏆 My record</button>
+      </div>
       <div class="or">or join a friend</div>
       <div class="row">
         <input id="code" maxlength="4" placeholder="CODE" class="code-input" autocapitalize="characters">
@@ -82,6 +86,7 @@
         <ol id="history" class="history"></ol>
         <button id="resetScoresBtn" class="ghost-btn" hidden>Reset scoreboard</button>
       </div>
+      <button id="lobbyRecordBtn" class="ghost-btn">🏆 My record</button>
       <button id="leaveBtn" class="ghost-btn">Leave room</button>
     </div>
   </section>
@@ -239,6 +244,7 @@
   <script src="/games/spire.js"></script>
   <script src="/games/lucky.js"></script>
   <script src="/qr.js"></script>
+  <script src="/profile.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>

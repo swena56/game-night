@@ -2906,3 +2906,25 @@ body.calm .hk-num.slam { animation: none; }
 /* hold'em: a draining bar under whoever is acting, when there's a turn timer (#76) */
 .he-clock { display: block; flex: 1 0 100%; min-width: 90px; height: 4px; border-radius: 2px; background: #ffffff22; overflow: hidden; margin-top: 3px; }
 .he-clock i { display: block; height: 100%; background: linear-gradient(90deg, var(--danger), var(--accent), var(--ok)); transform-origin: left; }
+
+/* 🏆 My record (static/profile.js): ladder stars and "new" tags on game tiles, and the record dialog */
+.game-tile .tile-stars { position: absolute; top: 3px; left: 5px; font-size: 10px; letter-spacing: -1px; color: var(--accent); }
+.game-tile .tile-new { position: absolute; top: 4px; left: 5px; font-size: 9px; font-weight: 700; text-transform: uppercase;
+  color: var(--accent2); letter-spacing: .5px; }
+.record { text-align: left; }
+.record h4 { margin: 14px 0 6px; }
+.rec-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; text-align: center; }
+.rec-stat b { display: block; font-size: 20px; }
+.rec-stat small { color: var(--muted); font-size: 11px; }
+.rec-miles { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; font-size: 12px; }
+.rec-miles span { padding: 2px 8px; border-radius: 99px; border: 1px solid var(--muted); opacity: .45; filter: grayscale(1); }
+.rec-miles span.got { opacity: 1; filter: none; border-color: var(--accent); }
+.rec-badges { display: flex; flex-wrap: wrap; gap: 6px; font-size: 20px; }
+.rec-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.rec-table th { color: var(--muted); font-weight: 400; font-size: 11px; text-align: right; }
+.rec-table td { padding: 3px 4px; border-top: 1px solid var(--panel2); text-align: right; }
+.rec-table td:first-child, .rec-table th:first-child { text-align: left; }
+.rec-table .rec-stars { color: var(--accent); letter-spacing: -1px; white-space: nowrap; }
+.rec-fresh { display: flex; flex-wrap: wrap; gap: 5px; }
+.rec-fresh .chip-btn, .rec-fresh span { font-size: 12px; }
+#lobbyRecordBtn { display: block; margin: 8px auto 0; }

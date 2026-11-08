@@ -341,9 +341,11 @@ class Room:
                 p.streak = 0
         info = GAMES[gid]
         self.history.append({
-            "game": gid, "icon": info.icon, "name": info.name, "at": time.time(), "text": text,
-            "winner": winner.name if winner else None,
-            "players": [{"name": p.name, "color": p.color, "score": scores.get(p.id), "pts": p.last_pts,
+            "game": gid, "icon": info.icon, "name": info.name, "at": time.time(), "text": text, "no": self.game_no,
+            "winner": winner.name if winner else None, "low": bool(getattr(info, "low_wins", False)),
+            # id and bot level let each device keep its own lifetime record (static/profile.js)
+            "players": [{"id": p.id, "bot": None if p.standin else p.bot,
+                         "name": p.name, "color": p.color, "score": scores.get(p.id), "pts": p.last_pts,
                          "won": bool(winner and p.id == winner.id)} for p in seated],
         })
         self.history = self.history[-30:]

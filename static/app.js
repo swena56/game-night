@@ -249,7 +249,7 @@ function show(id) {
   document.body.dataset.screen = id;
   if (id !== 'loading') clearTimeout(show.slow);
   $('#fabs').hidden = id === 'home';
-  if (id === 'home') { $('#chatPanel').hidden = true; document.title = 'Game Night'; }
+  if (id === 'home') { $('#chatPanel').hidden = true; document.title = 'Game Night'; if (typeof fillSoloGames === 'function') fillSoloGames(); }
 }
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 const player = (id) => S.players.find((p) => p.id === id);
@@ -479,6 +479,8 @@ function onState(s) {
   if (s.phase === 'playing' && prev?.phase !== 'playing' && s.gameId) {  // "Played lately" in the lobby (#67), this device only
     store('recentGames', [s.gameId, ...(load('recentGames') || []).filter((g) => g !== s.gameId)].slice(0, 6));
   }
+  const news = Profile.onState(s);  // 🏆 lifetime record on this device: a new ★, personal best or milestone
+  if (news.length) setTimeout(() => toast(news.join(' · ')), 1500);
   if (prev && prev.phase === 'playing' && s.phase === 'over' && !firstState) {
     blip(s.winner === s.me.id ? 'win' : 'lose');
     if (s.winner === s.me.id) confetti();
@@ -572,6 +574,7 @@ function renderLobby() {
   const fits = (g) => seated >= g.min && seated <= g.max;
   const shown = S.games.filter((g) => (!query || g.name.toLowerCase().includes(query) || g.category.includes(query)) && (!onlyFits || fits(g) || g.id === S.gameId));
   const byId = (ids) => ids.map((id) => shown.find((g) => g.id === id)).filter(Boolean);
+  const newTags = Profile.showNew();
   const groups = [['⭐ Favourites', byId(load('favGames') || [])], ['🕘 Played lately', byId(load('recentGames') || [])]];
   if (query) groups.length = 0;  // while searching, each game shows once
   for (const [cat, label] of CATEGORIES) groups.push([label, shown.filter((g) => g.category === cat)]);
@@ -590,6 +593,10 @@ function renderLobby() {
         + (S.me && wishers.some((p) => p.id === S.me.id) ? ' wished' : ''));
       b.append(el('span', 'gicon', g.icon), el('b', '', g.name),
         el('small', '', fit || (g.min === g.max ? `${g.min} players` : `${g.min}–${g.max} players`)));
+      // this device's ★ bot-ladder stars, or a "new" tag for a game never finished here
+      const st = Profile.stars(g.id);
+      if (st) b.append(el('span', 'tile-stars', Profile.starText(st)));
+      else if (newTags && !Profile.tried(g.id)) b.append(el('span', 'tile-new', 'new'));
       // players ask the host for games; the host sees who asked (#70)
       if (wishers.length) {
         const w = el('span', 'wishes', `🙏${wishers.length > 1 ? ' ' + wishers.length : ''}`);
@@ -915,6 +922,7 @@ function renderOver() {
     scored.length ? [...scored].sort((a, b) => b.score - a.score).map((x) => `${x.name}: ${fmtNum(x.score)}`).join(' · ') : '',
     w?.streak > 1 ? `🔥 ${w.id === me.id ? 'You have' : w.name + ' has'} won ${w.streak} in a row` : '',
     roomRecord(last),
+    Profile.overLine(S),
   ].filter(Boolean).join(' — ');
   const readyNames = S.ready.map((id) => player(id)?.name).filter(Boolean);
   $('#rematchBtn').hidden = !host; $('#lobbyBtn').hidden = !host;
@@ -1249,8 +1257,22 @@ function renderPrefs() {
 
 // ---------- wiring
 $('#name').value = load('unmask.name') || '';
-for (const [id, label] of SOLO_GAMES) { const o = el('option', '', label); o.value = id; $('#soloGame').append(o); }
-$('#soloGame').value = load('unmask.soloGame') || 'unmask';
+// solo choices carry this device's ★ bot-ladder stars, and "new" for games never finished here
+function fillSoloGames() {
+  const sel = $('#soloGame'), was = sel.value, newTags = Profile.showNew();
+  sel.innerHTML = '';
+  for (const [id, label] of SOLO_GAMES) {
+    const st = Profile.stars(id);
+    const o = el('option', '', label + (st ? '  ' + Profile.starText(st) : newTags && !Profile.tried(id) ? '  · new' : ''));
+    o.value = id; sel.append(o);
+  }
+  sel.value = was || load('unmask.soloGame') || 'unmask';
+}
+fillSoloGames();
+const pickSolo = (id) => { $('#soloGame').value = id; store('unmask.soloGame', id); $('#soloGame').focus(); };
+$('#newGameBtn').onclick = () => { const id = Profile.suggest(); pickSolo(id); toast(`How about ${$('#soloGame').selectedOptions[0].textContent.replace(/ {2}.*/, '')}?`); };
+$('#recordBtn').onclick = () => Profile.show(pickSolo);
+$('#lobbyRecordBtn').onclick = () => Profile.show();
 $('#createBtn').onclick = () => api('/api/create', { name: $('#name').value }).then(enter).catch((e) => toast(e.message));
 // Play solo starts at once; Options first stops in the lobby (bots seated) to change settings before Start.
 async function solo(startNow) {
