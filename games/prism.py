@@ -26,7 +26,11 @@ SPECIAL_KINDS = ("beam", "nova", "prism", "combo")
 GEM_PTS, STONE_PTS = 10, 20
 MAKE_PTS = {"beam": 60, "nova": 100, "prism": 200}
 MAX_GAIN = 60000          # the most one board report may add to a score
-PACE = {"easy": 2.8, "normal": 1.6, "hard": 1.1}   # seconds a bot takes per move
+PACE = {"easy": 4.0, "normal": 2.4, "hard": 1.5}   # seconds a bot thinks per move
+# a player's screen spends this long on each cascade step (pop + fall) and on a blast before the next move,
+# so a bot's clock pays it too
+STEP_SECS, BLAST_SECS = 0.35, 0.4
+ATTACK_ODDS = {"easy": 0.0, "normal": 0.5, "hard": 1.0}   # how often a bot's big play really attacks
 
 
 def kind(ch):
@@ -377,14 +381,15 @@ class Board:
 
 
 def bot_move(board, level, rng):
-    """Pick a move for a bot: easy plays any match, normal the best first clear, hard looks at the whole
-    cascade it can see (no peeking at gems that haven't fallen yet) and likes specials, attacks and low moves."""
+    """Pick a move for a bot: easy plays any match it sees, normal one of its three best first clears, hard
+    looks at the whole cascade it can see (no peeking at gems that haven't fallen yet) and likes specials,
+    attacks and low moves."""
     moves = board.moves()
     if not moves:
         return None
-    if level == "easy" and rng.random() < 0.6:
+    if level == "easy":
         return rng.choice(moves)
-    best, best_score = None, None
+    ranked = []
     for a, b in moves:
         sim = Board(random.Random(0), board.kinds)
         sim.g = list(board.g)
@@ -396,10 +401,11 @@ def bot_move(board, level, rng):
             score = res["pts"] + 40 * len(res["made"]) + 30 * (frost + 2 * stones) + 4 * (max(a, b) // N)
         else:
             score = res["pts"] if res["cascade"] <= 1 else res["pts"] * 0.6
-        score += rng.random() * (40 if level == "easy" else 15)
-        if best_score is None or score > best_score:
-            best, best_score = (a, b), score
-    return best
+        ranked.append((score + rng.random() * 15, (a, b)))
+    if not ranked:
+        return None
+    ranked.sort(reverse=True)
+    return (rng.choice(ranked[:3]) if level != "hard" else ranked[0])[1]
 
 
 class Prism(Game):
@@ -505,6 +511,8 @@ class Prism(Game):
                 r.add_log(f"🌊 {p.name} set off a ×{cascade} cascade!", "question")
             return
         frost, stones = attack_for(cascade, specials)
+        if p.bot and self.rng.random() >= ATTACK_ODDS.get(p.bot, 1.0):
+            frost = stones = 0
         foes = [o for o in r.contenders() if o.id != p.id]
         now = time.time()
         if not (frost or stones) or not foes or now < getattr(p.g, "attack_at", 0):
@@ -532,6 +540,9 @@ class Prism(Game):
         if r.phase != "playing":
             return
         scores = {i: r.players[i].g.score for i in self.seats if i in r.players}
+        # one line per round in the server log, to tune the bots against what people really score
+        print(f"[prism] {self.length()}s {self.kinds()} gems: " + ", ".join(
+            f"{r.players[i].bot + ' bot' if r.players[i].bot else 'human'} {s}" for i, s in scores.items()), flush=True)
         if len(self.seats) == 1:
             pid = self.seats[0]
             p = r.players.get(pid)
@@ -581,18 +592,20 @@ class Prism(Game):
                 continue
             g.applied = ev["id"]
             (b.freeze if ev["kind"] == "frost" else b.stones)(ev["n"])
-        pace = PACE.get(o.bot, 1.6)
-        g.vt += pace
-        g.next_at = now + pace * random.uniform(0.8, 1.25)
+        pace = PACE.get(o.bot, 2.4) * random.uniform(0.8, 1.25)
         move = bot_move(b, o.bot, self.rng)
         if not move:
             b.shuffle()
         else:
             res = b.play(*move)
             if res:
+                # the moves' animations take time on a player's screen; bots wait for them too
+                pace += STEP_SECS * res["cascade"] + BLAST_SECS * len(res["fired"])
                 g.score += res["pts"]
                 if res["cascade"] >= 3 or res["fired"] or res["made"]:
                     self.on_burst(o, res["cascade"], res["fired"], res["made"])
+        g.vt += pace
+        g.next_at = now + pace
         g.rows = b.rows()
 
     # -- view

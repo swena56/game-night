@@ -164,6 +164,19 @@ room, (ann, bo, cy), game = new_room(attacks=False)
 game.act(ann, {"type": "burst", "cascade": 6, "specials": ["combo"], "made": []})
 check("with attacks off nothing is sent", not bo.g.events and not cy.g.events)
 
+room, (ann, bo, cy), game = new_room()
+ann.bot = "easy"
+for _ in range(5):
+    ann.g.attack_at = 0
+    game.on_burst(ann, 6, ["combo"], [])
+check("easy bots never attack", not bo.g.events and not cy.g.events)
+ann.bot = "normal"
+for _ in range(40):
+    ann.g.attack_at = 0
+    game.on_burst(ann, 3, [], [])
+n = len(bo.g.events) + len(cy.g.events)
+check("normal bots attack about half the time", 8 <= n <= 32, str(n))
+
 room, (ann, bo, cy), game = new_room(aim="leader")
 cy.g.score = 900
 for _ in range(4):
