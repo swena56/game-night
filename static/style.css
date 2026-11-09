@@ -1373,6 +1373,17 @@ body.calm .hg-cell.target rect, body.calm .hg-pawn.now .hg-ring { animation: non
 .h-card .avatar { width: 22px; height: 22px; border-radius: 50%; overflow: hidden; flex: none; margin-left: -6px; }
 .h-card .avatar svg { width: 100%; height: 100%; display: block; }
 .h-cashout { margin-top: 4px; padding: 3px 10px; font-size: 13px; }
+/* 🔦 last thief standing: heat pips, public tails, the informant's picker */
+.h-lms { margin: 8px auto; text-align: center; }
+.h-heat { display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; border-radius: 999px; background: var(--panel2); }
+.h-heat span { min-width: 1.2em; color: var(--muted); }
+.h-heat.hot { box-shadow: 0 0 0 2px var(--danger); }
+.h-heat small { color: var(--danger); }
+.h-tail { margin: 4px 0; font-size: 14px; color: var(--muted); }
+.h-tail.me { color: var(--danger); font-weight: 700; }
+.h-broke { color: var(--danger); }
+.h-tail-btn { margin: 3px; border: 2px solid var(--line, #777); }
+.h-grid .h-name.out { opacity: .55; text-decoration: line-through; }
 .h-card.down .h-front { transform: rotateY(-180deg); } .h-card.down .h-back { transform: none; }
 .h-card[data-choice="grab"]:not(.down) { background: #ef476f22; } .h-card[data-choice="guard"]:not(.down) { background: #4dabf722; }
 .h-outcome.wait { visibility: hidden; }
