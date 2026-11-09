@@ -413,22 +413,44 @@ UI.spire = (() => {
     drawMini($('spNext'), st.next);
     drawMini($('spHold'), st.held, !st.canHold);
   }
+  // rival towers: one card per player, redrawn in place only when its board changed (boards arrive
+  // several times a second late in a game, on the fast channel: #78)
   function renderRivals() {
-    const box = $('spRivals'); box.innerHTML = '';
-    for (const [pid, b] of Object.entries(S.spire.boards)) {
-      const p = ctx.player(pid);
-      const card = ctx.el('div', 'rival' + (b.alive ? '' : ' down') + (pid === S.me.id ? ' me' : ''));
-      const cv = document.createElement('canvas'); cv.width = W * 5; cv.height = H * 5;
-      const g = cv.getContext('2d');
-      if (g) for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-        const ch = b.rows[y * W + x];
-        if (ch !== '.') { g.fillStyle = COLORS[ch] || '#888'; g.fillRect(x * 5, (H - 1 - y) * 5, 4, 4); }
+    const box = $('spRivals'); if (!box) return;
+    const ids = Object.keys(S.spire.boards);
+    if (box.dataset.ids !== ids.join()) { box.innerHTML = ''; box.dataset.ids = ids.join(); }
+    for (const pid of ids) {
+      const b = S.spire.boards[pid], p = ctx.player(pid);
+      let card = box.querySelector(`[data-pid="${CSS.escape(pid)}"]`);
+      if (!card) {
+        card = ctx.el('div', 'rival'); card.dataset.pid = pid;
+        const cv = document.createElement('canvas'); cv.width = W * 5; cv.height = H * 5;
+        card.append(cv, ctx.el('div'), ctx.el('small'));
+        box.append(card);
       }
-      const label = ctx.el('div', '', `${p?.name ?? '?'}${b.alive ? '' : ' 💥'}`);
+      card.className = 'rival' + (b.alive ? '' : ' down') + (pid === S.me.id ? ' me' : '');
+      const [cv, label, small] = card.children;
+      if (cv.dataset.rows !== b.rows) {
+        cv.dataset.rows = b.rows;
+        const g = cv.getContext('2d');
+        if (g) {
+          g.clearRect(0, 0, cv.width, cv.height);
+          for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+            const ch = b.rows[y * W + x];
+            if (ch !== '.') { g.fillStyle = COLORS[ch] || '#888'; g.fillRect(x * 5, (H - 1 - y) * 5, 4, 4); }
+          }
+        }
+      }
+      label.textContent = `${p?.name ?? '?'}${b.alive ? '' : ' 💥'}`;
       label.style.color = p?.color ?? '';
-      card.append(cv, label, ctx.el('small', '', `${b.rings} rings · ${b.sent} sent${b.shield ? ' · 🛡️' + b.shield : ''}`));
-      box.append(card);
+      small.textContent = `${b.rings} rings · ${b.sent} sent${b.shield ? ' · 🛡️' + b.shield : ''}`;
     }
+  }
+  // the fast channel: rivals' boards between full updates
+  function fast(data) {
+    if (!S?.spire || !data.boards) return;
+    S.spire.boards = { ...S.spire.boards, ...data.boards };
+    renderRivals();
   }
 
   // a ring clear: a flash, a named callout (bigger for more rings and for combos), a buzz, and a
@@ -541,5 +563,5 @@ UI.spire = (() => {
 
   // (test hook: junk arriving from a rival, as if a clear had sent it)
   const testJunk = (n) => st && applyEvents([{ id: st.applied + 1, kind: 'junk', n, from: 'Test' }]);
-  return { mount, render, unmount, turnText, focus: true, testJunk, testState: () => ({ inc: st?.incoming, now: performance.now(), dead: st?.dead }) };
+  return { mount, render, unmount, fast, turnText, focus: true, testJunk, testState: () => ({ inc: st?.incoming, now: performance.now(), dead: st?.dead }) };
 })();

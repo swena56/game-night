@@ -214,7 +214,8 @@ UI.cannon = (() => {
     const a = aim.angle;
     $('cnAng').textContent = a <= 90 ? `${a}° ↗` : `${180 - a}° ↖`;
     $('cnPow').textContent = `${Math.round(aim.power * 100)}%`;
-    const playing = mine() != null && S.phase === 'playing';
+    // out this round: the aiming controls step aside until the next round (the hint says why)
+    const playing = mine() != null && S.phase === 'playing' && (alive(c.me) || c.between);
     $('cnCtl').hidden = !playing;
     $('cnShells').hidden = !playing;
     $('cnCtl').querySelectorAll('[data-k]').forEach((b) => { b.disabled = !canAim(); });
@@ -305,8 +306,9 @@ UI.cannon = (() => {
       for (let k = 0; k < anim.booms.length; k++) {
         const b = anim.booms[k];
         if (frame < b.at) break;
+        const was = tanks;
         terrain = b.terrain; tanks = b.tanks;
-        if (k >= anim.done) { anim.done = k + 1; boom(b, now); }
+        if (k >= anim.done) { anim.done = k + 1; boom(b, now, was); }
       }
       const last = Math.max(0, ...anim.paths.map((p) => p.at + p.f.length));
       if (frame > last + 30) {
@@ -317,7 +319,32 @@ UI.cannon = (() => {
     if (g2) draw(now, terrain, tanks, frame);
   }
 
-  function boom(b, now) {
+  // what a blast means, said out loud: a knockout beats a direct hit beats an own goal beats a near miss
+  function callBoom(b, was) {
+    const c = C(), me = c?.me, name = (j) => (j === me ? 'You' : ctx.player(c.seats[j])?.name ?? '?');
+    if (!c || !was) return;
+    const hurt = new Map(b.dmg);
+    const ko = [...hurt.keys()].filter((j) => was[j]?.[2] > 0 && b.tanks[j]?.[2] <= 0);
+    if (ko.length) {
+      const who = ko.map(name).join(' & ');
+      Kit.callout(ko.includes(me) ? '💀 Your cannon is down!' : `💀 ${who} ${ko.length > 1 ? 'are' : 'is'} knocked out!`, ko.includes(me) ? 'bad' : 'gold', { ms: 1600 });
+      ctx.sfx('boom');
+      return;
+    }
+    if (b.hit != null && b.hit !== b.by && hurt.get(b.hit) > 0) {
+      Kit.callout(b.by === me ? '🎯 Direct hit!' : b.hit === me ? '🎯 You took a direct hit!' : `🎯 Direct hit on ${name(b.hit)}!`, b.hit === me ? 'bad' : 'gold', { ms: 1200 });
+      return;
+    }
+    if (hurt.get(b.by) > 0 && b.by === me) { Kit.callout('🙃 Own goal!', 'cool', { ms: 1100 }); return; }
+    // a near miss: nobody hurt, but the blast landed close to a cannon
+    if (!hurt.size && b.shell !== 'dirt') {
+      const near = was.findIndex((t, j) => t[2] > 0 && j !== b.by && Math.hypot(t[0] - b.x, t[1] + 4 - b.y) < b.r + 14);
+      if (near >= 0) fx.push({ kind: 'num', x: was[near][0], y: was[near][1] + 22, text: near === me ? '😅 Phew!' : '😬 So close!', t0: performance.now(), color: '#fff' });
+    }
+  }
+
+  function boom(b, now, was) {
+    callBoom(b, was);
     crump(b.r);
     shake = Math.max(shake, b.shell === 'dirt' ? 3 : b.r / 3);
     fx.push({ kind: b.shell === 'dirt' ? 'dirt' : b.kind === 'water' ? 'splash' : 'blast', x: b.x, y: b.y, r: b.r, t0: now });

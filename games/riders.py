@@ -23,6 +23,15 @@ TAIL = 6           # recent cells per rider in each fast update (covers missed u
 
 
 SHRINK_AFTER, SHRINK_EVERY = 60, 2.5  # 🧱 closing arena: seconds of riding before the walls move, then a ring this often
+# 🎁 power-ups (#80): the first appears this long after GO, then one more every ITEM_EVERY s, up to ITEM_MAX on the grid
+ITEM_FIRST, ITEM_EVERY, ITEM_MAX = 3.0, 4.0, 3
+SLOW_TICKS = 40    # 🐌: rivals move every other tick for this many ticks (4 s at normal speed)
+ITEMS = {  # kind: (icon, what the log says it did)
+    "bolt": ("⚡", "boosts refilled"),
+    "slow": ("🐌", "everyone else crawls for a moment"),
+    "life": ("❤️", "an extra life"),
+    "cut": ("✂️", "half their trail vanishes"),
+}
 
 class Riders(Game):
     id = "riders"
@@ -46,6 +55,7 @@ class Riders(Game):
         "speed": ("Speed", [(10, "Normal"), (7, "Chill"), (14, "Fast")], 10),
         "lives": ("Lives", [(3, "3"), (1, "1 (classic)"), (5, "5")], 3),
         "shrink": ("🧱 Closing arena", [(False, "Off"), (True, f"On: after {SHRINK_AFTER} s the walls close in")], False),
+        "pickups": ("🎁 Power-ups", [(False, "Off"), (True, "On: grab ⚡ boosts, 🐌 slow-mo, ❤️ lives and ✂️ trail cuts")], False),
     }
 
     def walled(self, x, y):
@@ -80,6 +90,7 @@ class Riders(Game):
         self.respawn_at, self.ghost, self.grind = [None] * k, [0] * k, [0] * k
         self.tick = 0
         self.ring, self.ride_at = 0, None
+        self.items, self.item_at, self.slow, self.grabs = {}, None, [0] * k, []
         # spread riders round a circle, each facing the nearest axis toward the centre
         offset = self.rng.random() * 6.283
         for i in range(k):
@@ -101,6 +112,48 @@ class Riders(Game):
         c = y * self.n + x
         self.grid[c] = i + 1
         self.trails[i].append(c)
+        kind = self.items.pop(c, None) if getattr(self, "items", None) else None
+        if kind:
+            self.grab(i, kind)
+
+    # -- 🎁 power-ups
+
+    def grab(self, i, kind):
+        if kind == "bolt":
+            self.boosts[i] = BOOSTS
+        elif kind == "slow":
+            for j in range(len(self.seats)):
+                if j != i and self.alive[j]:
+                    self.slow[j] = SLOW_TICKS
+        elif kind == "life":
+            self.lives[i] = min(self.lives[i] + 1, self.s.get("lives", 3) + 2)
+        elif kind == "cut":
+            t = self.trails[i]
+            k = len(t) // 2 if len(t) >= 8 else 0
+            for c in t[:k]:
+                self.grid[c] = 0
+            self.trails[i] = t[k:]
+        self.grabs = (self.grabs + [[self.tick, i, kind]])[-6:]
+        p = self.room.players.get(self.seats[i])
+        icon, what = ITEMS[kind]
+        self.room.add_log(f"{icon} {p.name if p else '?'} grabbed {icon}: {what}!", "power")
+
+    def spawn_item(self, now):
+        """Drop a power-up on an open cell away from every rider's head."""
+        n = self.n
+        heads = [self.trails[j][-1] for j in range(len(self.seats)) if self.alive[j] and self.trails[j]]
+        for _ in range(40):
+            x, y = self.rng.randrange(2, n - 2), self.rng.randrange(2, n - 2)
+            c = y * n + x
+            if self.grid[c] or c in self.items or self.walled(x, y) or min(x, y, n - 1 - x, n - 1 - y) < self.ring + 2:
+                continue
+            if any(abs(h % n - x) + abs(h // n - y) < 6 for h in heads):
+                continue
+            # boosts and slow-mo turn up most; lives only matter with lives to lose
+            kinds = ["bolt", "bolt", "slow", "slow", "cut", "cut", "life"]
+            self.items[c] = self.rng.choice(kinds)
+            return True
+        return False
 
     def seat(self, p):
         return self.seats.index(p.id) if p.id in self.seats else None
@@ -160,6 +213,15 @@ class Riders(Game):
                     self.room.add_log("🧱 The arena is closing in!", "power")
                 self.ring = ring
                 changed = True
+        if self.s.get("pickups") and self.ride_at:
+            if self.item_at is None:
+                self.item_at = self.ride_at + ITEM_FIRST
+            if now >= self.item_at:
+                self.item_at = now + ITEM_EVERY
+                if len(self.items) < ITEM_MAX and self.spawn_item(now):
+                    changed = True
+            for c in [c for c in self.items if self.walled(c % self.n, c // self.n)]:
+                del self.items[c]
         self.acc += dt * self.s["speed"]
         while self.acc >= 1 and self.stage == "ride":
             self.acc -= 1
@@ -188,6 +250,12 @@ class Riders(Game):
         holding = {i for i in range(len(self.seats)) if self.ghost[i]}
         for i in holding:
             self.ghost[i] -= 1
+        grabbed = len(self.grabs)
+        for i in range(len(self.seats)):  # 🐌 slowed riders move on even ticks only
+            if self.slow[i]:
+                self.slow[i] -= 1
+                if self.tick % 2 and self.alive[i]:
+                    holding.add(i)
         for sub in range(2):
             movers = [i for i in range(len(self.seats))
                       if self.alive[i] and i not in crashed and i not in holding and (sub == 0 or self.boosting[i])]
@@ -218,11 +286,11 @@ class Riders(Game):
                     self.grind[i] = 0
                     self.boosts[i] = min(BOOSTS, self.boosts[i] + 1)
         if not crashed:
-            return False
+            return len(self.grabs) != grabbed  # a grab (✂️ a cut trail): everyone gets a full view
         names = []
         for i in crashed:
             self.alive[i] = False
-            self.boosting[i] = self.grind[i] = 0
+            self.boosting[i] = self.grind[i] = self.slow[i] = 0
             self.queue[i].clear()
             self.lives[i] -= 1
             p = self.room.players.get(self.seats[i])
@@ -312,6 +380,8 @@ class Riders(Game):
     def broadcast(self, now):
         self.room.push_fast({
             "k": self.tick, "st": self.stage, "w": getattr(self, "ring", 0),
+            "it": [[c, k] for c, k in getattr(self, "items", {}).items()],
+            "sl": [int(x > 0) for x in getattr(self, "slow", [])], "gr": getattr(self, "grabs", []),
             "p": [[len(t), int(self.alive[i]), self.dirs[i], self.boosts[i], int(self.boosting[i] > 0),
                    self.lives[i], self.grind[i], *t[-TAIL:]]
                   for i, t in enumerate(self.trails)],
@@ -399,6 +469,13 @@ class Riders(Game):
                     score -= 40 if level == "normal" else 100000
             if o == d:
                 score += 3  # a little preference for going straight
+            if self.items:  # 🎁 a power-up straight ahead is worth a small detour
+                c, k = nxt, 0
+                while c is not None and k < 10:
+                    if c in self.items:
+                        score += (30 if level == "normal" else 60) - 2 * k
+                        break
+                    c, k = self.free(c, *DIRS[o]), k + 1
             if level == "hard" and len(others) == 1:  # in a duel, crowd the rival a bit
                 near = min(others, key=lambda h: abs(h % self.n - nxt % self.n) + abs(h // self.n - nxt // self.n))
                 score -= (abs(near % self.n - nxt % self.n) + abs(near // self.n - nxt // self.n)) * 0.3
@@ -448,6 +525,8 @@ class Riders(Game):
         return {"riders": {
             "n": self.n, "seats": self.seats, "me": self.seat(p), "stage": self.stage, "round": self.round,
             "ring": getattr(self, "ring", 0),
+            "items": [[c, k] for c, k in getattr(self, "items", {}).items()], "pickups": bool(self.s.get("pickups")),
+            "slow": [int(x > 0) for x in getattr(self, "slow", [0] * len(self.seats))], "grabs": getattr(self, "grabs", []),
             "wins": self.wins, "target": self.s["target"], "speed": self.s["speed"], "tick": self.tick,
             "trails": self.trails, "alive": self.alive, "dirs": self.dirs, "boosts": self.boosts,
             "lives": self.lives, "maxLives": self.s.get("lives", 3), "grind": self.grind, "grindFull": GRIND_FULL,

@@ -1,5 +1,5 @@
 UI.lantern = (() => {
-  let S, ctx, lit = false, seenRound = null, playing = [];
+  let S, ctx, lit = false, seenRound = null, playing = [], wasWaiting = null;
   const GOODS = { 1: ['🥚', 'Eggs'], 2: ['🍋', 'Lemons'], 3: ['🧄', 'Garlic'], 4: ['🍯', 'Honey'], 5: ['🧶', 'Yarn'], 6: ['🫖', 'Teapot'], 7: ['🪁', 'Kite'],
     8: ['🏺', 'Vase'], 9: ['🪔', 'Oil lamp'], 10: ['🧭', 'Compass'], 11: ['🪞', 'Mirror'], 12: ['💍', 'Ring'], 13: ['👑', 'Crown'],
     0: ['🎁', 'Mystery lot'] };  // 0: a mystery lot, its value hidden until someone buys it
@@ -8,9 +8,9 @@ UI.lantern = (() => {
   const goods = (v) => GOODS[v][0];
 
   function mount(main, side) {
-    lit = false; seenRound = null; playing.forEach((f) => f()); playing = [];
+    lit = false; seenRound = null; playing.forEach((f) => f()); playing = []; wasWaiting = null;
     main.innerHTML = `<div class="lm">
-      <div class="lm-string" aria-hidden="true">${'<i></i>'.repeat(7)}</div>
+      <div class="lm-string" id="lmString" aria-hidden="true">${'<i></i>'.repeat(7)}</div>
       <div class="lm-stall panel">
         <div class="lm-head"><b id="lmRound"></b><span id="lmWorth" class="lm-worth"></span></div>
         <div class="lm-lots"><div id="lmTable" class="lm-table"></div><div id="lmNext" class="lm-next"></div></div>
@@ -39,6 +39,7 @@ UI.lantern = (() => {
       <p class="hint left">You can change your bid until the last player locks in.</p></div>`;
     main.querySelector('#lmLamp').onclick = () => {
       lit = !lit;
+      ctx.sfx(lit ? 'rise' : 'tick', 4);
       const mine = S?.lantern?.mine;
       if (mine) ctx.quiet(ctx.act('bid', { bid: mine[0], lit }));
       else paint();
@@ -67,9 +68,34 @@ UI.lantern = (() => {
     if (rule) rule.hidden = !S.settings?.events;
   }
 
+  // the string of lanterns over the stall: one per trader in their colour. It glows once they've bid
+  // (dim while you wait for them), and goes dark once their 🏮 has burned
+  function paintString(L, playing) {
+    const box = document.getElementById('lmString'); if (!box) return;
+    const ids = Object.keys(L.hands);
+    if (box.dataset.ids !== ids.join()) {
+      box.dataset.ids = ids.join();
+      box.replaceChildren(...ids.map((id) => { const i = document.createElement('i'); i.dataset.id = id; return i; }));
+    }
+    const waiting = new Set(L.waiting);
+    for (const i of box.children) {
+      const id = i.dataset.id, p = ctx.player(id);
+      i.style.setProperty('--c', p?.color ?? '#ffb703');
+      i.dataset.n = (p?.name ?? '?').replace(/^🤖\s*/, '').slice(0, 1).toUpperCase();
+      const wait = playing && waiting.has(id);
+      if (wasWaiting?.has(id) && !wait && playing && motionOK()) { i.classList.remove('pop'); void i.offsetWidth; i.classList.add('pop'); }
+      i.classList.toggle('wait', wait);
+      i.classList.toggle('spent', !L.lamps[id]);
+      i.classList.toggle('me', id === S.me.id);
+      i.title = `${p?.name ?? '?'}: ${wait ? 'still choosing' : playing ? 'bid placed' : 'done'}${L.lamps[id] ? '' : ' · lantern used'}`;
+    }
+    wasWaiting = waiting;
+  }
+
   function paint() {
     const L = S.lantern, me = S.me.id;
     const playing = S.phase === 'playing';
+    paintString(L, playing);
     document.getElementById('lmRound').textContent = playing ? `🏮 Lot ${L.round} of ${L.lots}` : '🌅 The market has closed';
     const worth = L.table.reduce((a, b) => a + b, 0), gift = L.table.includes(0);
     const val = worth ? `⭐${worth}${gift ? ' + 🎁' : ''}` : '🎁 ?';
@@ -108,7 +134,7 @@ UI.lantern = (() => {
       tiles.replaceChildren(...Array.from({ length: L.lots }, (_, k) => {
         const b = ctx.el('button', 'lm-tile', String(k + 1));
         b.dataset.v = k + 1;
-        b.onclick = () => ctx.quiet(ctx.act('bid', { bid: k + 1, lit }));
+        b.onclick = () => { ctx.sfx('lock'); ctx.quiet(ctx.act('bid', { bid: k + 1, lit })); };
         return b;
       }));
     }

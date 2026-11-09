@@ -1331,6 +1331,11 @@ body.calm .gh-tile.trace { background: linear-gradient(#8ecae6, #4dabf7); }
 .hg-modes { display: flex; gap: 6px; margin-bottom: 8px; } .hg-modes button { flex: 1; }
 .hg-confirm { display: flex; gap: 6px; margin-bottom: 8px; } .hg-confirm[hidden] { display: none; }
 .hg-confirm #hgPlant { flex: 1; } .hg-confirm button:not(#hgPlant) { flex: 0 0 auto; min-width: 48px; }
+.hg-goal.close { animation: hgClose .7s ease-in-out infinite alternate; }
+@keyframes hgClose { to { opacity: .55; filter: brightness(1.5); } }
+.hg-print { opacity: .5; animation: hgPrint 2.6s ease-out forwards; pointer-events: none; }
+@keyframes hgPrint { to { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .hg-goal.close { animation: none; filter: brightness(1.4); } }
 .hg-seat { gap: 8px; } .hg-seat.out { opacity: .45; text-decoration: line-through; }
 .hg-stat { font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .hg-seat.now .grow { font-weight: 800; }
@@ -1507,6 +1512,14 @@ body.calm .hg-cell.target rect, body.calm .hg-pawn.now .hg-ring { animation: non
 .lm-string i { width: 16px; height: 22px; margin-top: 2px; border-radius: 45%; background: radial-gradient(circle at 50% 40%, #ffd166, #f3722c 60%, #c1121f); box-shadow: 0 0 12px #ffb70388; animation: lm-sway 3.2s ease-in-out infinite alternate; transform-origin: 50% -4px; }
 .lm-string i:nth-child(2n) { animation-delay: -1.3s; background: radial-gradient(circle at 50% 40%, #fff3b0, #ffb703 60%, #e85d04); }
 .lm-string i:nth-child(3n) { animation-delay: -2.1s; }
+/* one lantern per trader (lantern.js paintString): their colour, lit once they've bid, dark once the 🏮 is used */
+.lm-string i[data-id] { position: relative; background: radial-gradient(circle at 50% 40%, #fff3b0, var(--c) 62%, #00000066); box-shadow: 0 0 12px var(--c); transition: opacity .3s, box-shadow .3s; }
+.lm-string i[data-id]::after { content: attr(data-n); position: absolute; top: 24px; left: 50%; transform: translateX(-50%); font: 700 10px/1 system-ui, sans-serif; color: var(--muted); font-style: normal; }
+.lm-string i[data-id].me::after { color: var(--text); }
+.lm-string i[data-id].wait { opacity: .6; box-shadow: 0 0 4px var(--c); filter: saturate(.6); }
+.lm-string i[data-id].spent { background: radial-gradient(circle at 50% 40%, #6b5a45, #2e2116 70%); box-shadow: inset 0 0 0 2px var(--c); }
+.lm-string i[data-id].pop { animation: lm-pop .5s ease-out, lm-sway 3.2s ease-in-out .5s infinite alternate; }
+@keyframes lm-pop { 40% { transform: scale(1.45); box-shadow: 0 0 22px var(--c); } }
 @keyframes lm-sway { from { transform: rotate(-5deg); } to { transform: rotate(5deg); } }
 .lm-stall { background: linear-gradient(180deg, #3a2a1a, #2a1f16); border: 1px solid #8a6d3b66; color: #fbeedd; }
 body.light .lm-stall { background: linear-gradient(180deg, #fff4e0, #f6e2bf); color: #3d2a12; border-color: #c9a46a; }
