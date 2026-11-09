@@ -17,6 +17,7 @@ UI.heist = (() => {
         <div class="vault-info"><div id="hNight"></div><div id="hPot" class="pot"></div><div id="hCoins" class="coins"></div></div></div>
       <div id="hChoices" class="h-choices"></div>
       <div class="row center"><button id="hTip" hidden>🕵️ Ask your inside man</button></div>
+      <div id="hLms" class="h-lms" hidden></div>
       <p id="hWaiting" class="hint"></p>
       <div id="hLast" class="panel"></div>
       <div id="hGrid" class="panel h-grid-wrap" hidden><h3>Night by night</h3><table id="hGridT" class="h-grid"></table></div>
@@ -29,7 +30,12 @@ UI.heist = (() => {
         <li>🛡️ <b>Guards</b> fine every grabber 💰2.</li>
         <li>😴 <b>Rest</b> earns 💰1.</li>
       </ul>
-      <p class="hint left">You can change your mind until the last player locks in. Most gold after the final night wins.</p></div>`;
+      <ul class="rules" id="hRuleLms" hidden>
+        <li>🔥 Get caught <b>3 times</b> and you're arrested.</li>
+        <li>💸 From night 6 everyone pays <b>rent</b> into the vault, rising every 4 nights. Can't pay? Busted.</li>
+        <li>👻 Arrested players <b>tail</b> someone each night, in the open: grab while tailed and it's 🔥1.</li>
+      </ul>
+      <p class="hint left" id="hRuleEnd">You can change your mind until the last player locks in. Most gold after the final night wins.</p></div>`;
     main.querySelector('#hTip').onclick = () => ctx.quiet(ctx.act('tip'));
     const box = main.querySelector('#hChoices');
     for (const [id, icon, label, desc] of OPTIONS) {
@@ -46,7 +52,13 @@ UI.heist = (() => {
     const h = S.heist;
     const two = document.getElementById('hRuleTwo');
     if (two && h.crew) two.innerHTML = '🤝 <b>Two grabbers</b> split the vault; <b>three or more</b> trip the alarm.';
-    document.getElementById('hNight').textContent = h.rounds ? `🌙 Night ${h.night} of ${h.rounds}` : `🌙 Night ${h.night} · ♾️`;
+    document.getElementById('hNight').textContent = h.rounds ? `🌙 Night ${h.night} of ${h.rounds}`
+      : h.lms ? `🌙 Night ${h.night} · 🔦 ${h.rent ? `rent 💰${h.rent}` : 'rent from night 6'}` : `🌙 Night ${h.night} · ♾️`;
+    if (h.lms) {
+      document.getElementById('hRuleLms').hidden = false;
+      document.getElementById('hRuleEnd').textContent = 'You can change your mind until the last player locks in. The last thief still free wins.';
+    }
+    paintLms(h);
     // ♾️ endless: the host decides when everyone cashes out (#63)
     let out = document.getElementById('hCashout');
     if (!h.rounds && h.host && S.phase === 'playing' && h.night > 1) {
@@ -65,7 +77,7 @@ UI.heist = (() => {
     }
     const tip = document.getElementById('hTip');
     tip.hidden = !h.tips || !canPlay;
-    tip.disabled = !!h.mine || h.waiting.length >= Object.keys(h.gold).length;  // nobody has chosen yet
+    tip.disabled = !!h.mine || h.waiting.length >= Object.keys(h.gold).length - (h.out || []).length;  // nobody has chosen yet
     tip.title = 'Once a game: how many of those who have chosen tonight are grabbing';
     const waiting = h.waiting.map((id) => ctx.player(id)?.name).filter(Boolean);
     document.getElementById('hWaiting').textContent =
@@ -97,6 +109,41 @@ UI.heist = (() => {
     }
     if (h.last) seenNight = h.last.night; else if (seenNight === null) seenNight = 0;
     paintGrid(h);
+  }
+
+  // 🔦 last thief standing: your heat, who's being tailed, and (once you're arrested) whom to tail
+  function paintLms(h) {
+    const box = document.getElementById('hLms');
+    box.hidden = !h.lms || S.phase !== 'playing';
+    if (box.hidden) return;
+    box.innerHTML = '';
+    const out = new Set(h.out || []), mineOut = out.has(S.me.id);
+    if (!mineOut && h.heat[S.me.id] !== undefined) {
+      const heat = h.heat[S.me.id];
+      const pips = ctx.el('div', 'h-heat' + (heat >= h.heat_out - 1 ? ' hot' : ''));
+      pips.append(ctx.el('b', '', 'Heat '), ...Array.from({ length: h.heat_out }, (_, k) => ctx.el('span', k < heat ? 'on' : '', k < heat ? '🔥' : '·')));
+      if (heat >= h.heat_out - 1) pips.append(ctx.el('small', '', ' one more catch and you\'re arrested'));
+      box.append(pips);
+      const due = h.rent || h.next_rent;
+      if (due && (h.gold[S.me.id] ?? 0) < due) box.append(ctx.el('p', 'hint h-broke', `💸 Rent ${h.rent ? 'tonight' : 'tomorrow'} is 💰${due} and you have 💰${h.gold[S.me.id]}: rest, grab or be busted.`));
+    }
+    for (const [ghost, target] of Object.entries(h.tails || {})) {
+      const t = target === S.me.id ? 'you' : ctx.player(target)?.name;
+      box.append(ctx.el('p', 'h-tail' + (target === S.me.id ? ' me' : ''), `👻 ${ctx.player(ghost)?.name ?? '?'} is tailing ${t} tonight`));
+    }
+    if (mineOut && !h.my_tail) {
+      box.append(ctx.el('p', 'hint', '🚔 You\'re out, but not done: 👻 tail someone tonight. Everyone sees it, and if they grab, it\'s 🔥1.'));
+      const row = ctx.el('div', 'row center wrap');
+      for (const pid of Object.keys(h.gold)) {
+        if (out.has(pid)) continue;
+        const p = ctx.player(pid);
+        const b = ctx.el('button', 'h-tail-btn', `👻 ${p?.name ?? '?'} · 💰${h.gold[pid]}${h.heat[pid] ? ' · ' + '🔥'.repeat(h.heat[pid]) : ''}`);
+        if (p?.color) b.style.borderColor = p.color;
+        b.onclick = () => ctx.quiet(ctx.act('tail', { target: pid }));
+        row.append(b);
+      }
+      box.append(row);
+    }
   }
 
   // the night's result lands: an alarm, a catch, a heist, or a quiet night
@@ -160,7 +207,9 @@ UI.heist = (() => {
     for (const pid of Object.keys(h.gold)) {
       const p = ctx.player(pid); if (!p) continue;
       const tr = ctx.el('tr');
-      const name = ctx.el('td', 'h-name', p.name); name.style.color = p.color;
+      const gone = (h.out || []).includes(pid);
+      const name = ctx.el('td', 'h-name' + (gone ? ' out' : ''), (gone ? '🚔 ' : '') + p.name + (h.lms && h.heat[pid] && !gone ? ' ' + '🔥'.repeat(h.heat[pid]) : ''));
+      name.style.color = p.color;
       tr.append(name);
       for (const n of nights) {
         const [choice, delta] = n[pid] || [];
@@ -175,9 +224,11 @@ UI.heist = (() => {
   }
 
   const turnText = (s) => s.phase !== 'playing' ? null
+    : s.heist.lms && (s.heist.out || []).includes(s.me.id) ? (s.heist.my_tail ? '👻 Tailing — wait for the night' : '👻 Pick someone to tail')
     : s.me.ghost || s.me.spectator ? '🌙 Watching the heist'
     : s.heist.mine ? `Locked in ${ICON[s.heist.mine]} — waiting…` : '🌙 Make your move!';
-  const myMove = (s) => s.phase === 'playing' && !s.heist.mine && !s.me.spectator;
+  const myMove = (s) => s.phase === 'playing' && ((s.heist.out || []).includes(s.me.id)
+    ? s.heist.lms && !s.heist.my_tail : !s.heist.mine && !s.me.spectator && !s.me.ghost);
 
   const unmount = () => clearInterval(potTimer);
   return { mount, render, turnText, myMove, unmount };
