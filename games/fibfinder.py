@@ -100,7 +100,9 @@ class FibFinder(Game):
             text = a.get("text")
             if not isinstance(text, str) or not text.strip() or len(text.strip()) > 40:
                 raise GameError("Write a fake answer (up to 40 characters).")
-            text = " ".join(text.split())
+            text = self.house_style(" ".join(text.split()))
+            if not text:
+                raise GameError("Write a fake answer (up to 40 characters).")
             if any(same(text, x) for x in self.truths()):
                 raise GameError("🤫 That's actually the real answer! Write a fake one.")
             self.fibs[p.id] = text
@@ -116,6 +118,17 @@ class FibFinder(Game):
             self.picks[p.id] = i
             return self.maybe_next()
         raise GameError("Unknown action.")
+
+    def house_style(self, text):
+        """Make a typed fib look like the truth and the decoys, so a phone's auto-capital or a full stop
+        doesn't give away which answers people wrote (#85): the first letter follows the truth's case,
+        and closing full stops / exclamation marks go. Words like 'NASA' or 'iPhone' are left alone."""
+        text = text.rstrip(" .!")
+        truth = self.fact[1]
+        first = text.split(" ")[0] if text else ""
+        if first[:1].isalpha() and truth[:1].isalpha() and (first[1:] == first[1:].lower()):
+            text = (text[0].upper() if truth[0].isupper() else text[0].lower()) + text[1:]
+        return text
 
     def waiting_on(self):
         done = self.fibs if self.stage == "write" else self.picks if self.stage == "pick" else None

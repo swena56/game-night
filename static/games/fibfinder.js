@@ -10,7 +10,7 @@ UI.fibfinder = (() => {
       <div class="fb-head"><span id="fbRound"></span><span id="fbFinal" class="fb-final" hidden>🔥 Double points</span></div>
       <div id="fbFact" class="fb-fact"></div>
       <form id="fbForm" class="fb-form" autocomplete="off" hidden>
-        <div class="row"><input id="fbFib" maxlength="40" placeholder="A fake answer that sounds true" enterkeyhint="send">
+        <div class="row"><input id="fbFib" maxlength="40" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="A fake answer that sounds true" enterkeyhint="send">
         <button class="primary">Submit</button></div>
         <p id="fbMine" class="hint left"></p>
       </form>
