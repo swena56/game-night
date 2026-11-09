@@ -178,9 +178,12 @@
   <!-- IN-APP DIALOG (replaces confirm/prompt) -->
   <div id="modal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="modalText">
     <div class="modal-card">
-      <h3 id="modalTitle" hidden></h3>
-      <p id="modalText"></p>
-      <div id="modalBody"></div>
+      <button id="modalX" class="icon-btn modal-x" aria-label="Close" title="Close">✕</button>
+      <div class="modal-scroll">
+        <h3 id="modalTitle" hidden></h3>
+        <p id="modalText"></p>
+        <div id="modalBody"></div>
+      </div>
       <div class="row"><button id="modalCancel">Cancel</button><button id="modalOk" class="primary">OK</button></div>
     </div>
   </div>

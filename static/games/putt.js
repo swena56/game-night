@@ -205,6 +205,9 @@ UI.putt = (() => {
   const skipAhead = () => { anim = null; queue = []; };
   const colorOf = (i) => ctx.player(S.putt.seats[i])?.color ?? '#fff';
 
+  // aim colour by power (#82): green for a tap, amber mid-way, red at full power
+  const powerHue = (t) => (1 - Math.min(1, Math.max(0, t))) * 120;
+  const powerCss = (t, a = 1) => `hsla(${powerHue(t).toFixed(0)}, 90%, 55%, ${a})`;
   // the drag, turned into a course direction (server x/y) and a power 0..1; full power is a short pull
   function aimShot() {
     if (!aim) return null;
@@ -362,7 +365,11 @@ UI.putt = (() => {
     const shot = aimShot();
     const bar = $('ppPower');
     bar.hidden = !shot;
-    if (shot) bar.firstElementChild.style.width = `${shot.power * 100}%`;
+    if (shot) {
+      const fill = bar.firstElementChild;
+      fill.style.width = `${shot.power * 100}%`;
+      fill.style.background = powerCss(shot.power); fill.style.boxShadow = `0 0 10px ${powerCss(shot.power, 0.8)}`;
+    }
     (gl || flat)?.draw(now, shot);
     hint();  // the putts finish rolling here, not in render
   }
@@ -499,7 +506,13 @@ UI.putt = (() => {
       group(lampGeo, new T.MeshBasicMaterial({ color: 0xffe8a3 }), lamps, ([x, y]) => { at.set(x, 0.3, -y); sc.set(1, 1, 1); up.set(0, 0, 0); });
     }
     const balls = [], ballGeo = new T.SphereGeometry(1, 28, 18);
-    let aimLine = null, flag = null, flagBase = null;
+    let flag = null, flagBase = null;
+    // aim guide (#82): dots that drift out from the ball and shrink toward an arrowhead, all in the power colour
+    const AIM_DOTS = 12, aimMat = new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95 });
+    const aimDots = [], dotGeo = new T.SphereGeometry(1, 10, 8);
+    for (let k = 0; k < AIM_DOTS; k++) { const m = new T.Mesh(dotGeo, aimMat); m.visible = false; scene.add(m); aimDots.push(m); }
+    const headGeo = new T.ConeGeometry(0.09, 0.22, 14); headGeo.rotateZ(-Math.PI / 2);  // points along +x
+    const aimHead = new T.Mesh(headGeo, aimMat); aimHead.visible = false; scene.add(aimHead);
     const bumperMeshes = [], effects = [], mills = [];
     // a ring on the ground under your own ball, so you can find it (every ball starts on the same tee)
     const ring = new T.Mesh(new T.RingGeometry(0.1, 0.14, 32), new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, side: T.DoubleSide }));
@@ -891,22 +904,28 @@ UI.putt = (() => {
         e.step(Math.min(1, e.t / e.dur), dt);
         if (e.t >= e.dur) { e.done(); effects.splice(k, 1); }
       }
-      if (aimLine) { scene.remove(aimLine); aimLine.geometry.dispose(); aimLine = null; }
       const me = p.me;
       ring.visible = me != null && !(p.holed[me] && !rolling());
       if (ring.visible) {
         const at = ballPos(me, now);
         ring.position.copy(W(at[0], at[1])).setY(groundH(at[0], at[1]) + 0.006);
-        ring.scale.setScalar(myTurn() ? 1 + 0.15 * Math.sin(now / 250) : 1);  // pulses on your turn
+        // pulses on your turn; while aiming it swells and takes the power colour
+        ring.scale.setScalar(shot ? 1 + 0.6 * shot.power : myTurn() ? 1 + 0.15 * Math.sin(now / 250) : 1);
+        ring.material.color.setHSL(shot ? powerHue(shot.power) / 360 : 0, shot ? 0.9 : 0, shot ? 0.55 : 1);
       }
-      if (shot && me != null) {
-        const [bx, by] = p.balls[me], len = 0.4 + shot.power * 2.2, line = [];
-        for (let k = 0; k <= 12; k++) {  // the aim line hugs the ground over hills
-          const x = bx + Math.cos(shot.angle) * len * k / 12, y = by + Math.sin(shot.angle) * len * k / 12;
-          line.push(W(x, y).setY(groundH(x, y) + 0.04));
-        }
-        aimLine = new T.Line(new T.BufferGeometry().setFromPoints(line), new T.LineBasicMaterial({ color: 0xffffff }));
-        scene.add(aimLine);
+      const aiming = !!(shot && me != null);
+      aimDots.forEach((m) => { m.visible = false; }); aimHead.visible = aiming;
+      if (aiming) {
+        aimMat.color.setHSL(powerHue(shot.power) / 360, 0.9, 0.55);
+        const [bx, by] = p.balls[me], len = 0.4 + shot.power * 2.2, c = Math.cos(shot.angle), sn = Math.sin(shot.angle);
+        const at = (f, lift) => { const x = bx + c * len * f, y = by + sn * len * f; return W(x, y).setY(groundH(x, y) + lift); };
+        const drift = (now / 500) % 1;  // the dots creep outward, the way the ball will go
+        aimDots.forEach((m, k) => {
+          const f = (k + drift) / AIM_DOTS;
+          if (f < 0.1 || f > 0.9) return;  // clear of the ball and the arrowhead
+          m.visible = true; m.position.copy(at(f, 0.05)); m.scale.setScalar(0.06 - 0.028 * f);
+        });
+        aimHead.position.copy(at(0.97, 0.06)); aimHead.rotation.set(0, shot.angle, 0);
       }
       renderer.render(scene, camera);
     }
@@ -965,10 +984,18 @@ UI.putt = (() => {
         g.fillStyle = colorOf(i); g.strokeStyle = i === p.me ? '#fff' : '#000'; g.lineWidth = 2;
         g.beginPath(); g.arc(X(at[0]), Y(at[1]), Math.max(4, p.ball * k * 1.3), 0, 7); g.fill(); g.stroke();
       });
-      if (shot && p.me != null) {
+      if (shot && p.me != null) {  // a dotted guide with an arrowhead, in the power colour (#82)
         const [bx, by] = p.balls[p.me], len = 0.4 + shot.power * 2.2;
-        g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.moveTo(X(bx), Y(by));
-        g.lineTo(X(bx + Math.cos(shot.angle) * len), Y(by + Math.sin(shot.angle) * len)); g.stroke();
+        const x0 = X(bx), y0 = Y(by), x1 = X(bx + Math.cos(shot.angle) * len), y1 = Y(by + Math.sin(shot.angle) * len);
+        const dx = x1 - x0, dy = y1 - y0, L = Math.hypot(dx, dy) || 1, ux = dx / L, uy = dy / L, head = Math.max(8, 0.35 * k);
+        g.save();
+        g.strokeStyle = g.fillStyle = powerCss(shot.power); g.shadowColor = powerCss(shot.power, 0.7); g.shadowBlur = 8;
+        g.lineWidth = Math.max(3, 0.08 * k); g.lineCap = 'round'; g.setLineDash([0.1, g.lineWidth * 2.2]); g.lineDashOffset = -now / 40;
+        g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1 - ux * head, y1 - uy * head); g.stroke();
+        g.setLineDash([]); g.beginPath(); g.moveTo(x1, y1);
+        g.lineTo(x1 - ux * head - uy * head * 0.55, y1 - uy * head + ux * head * 0.55);
+        g.lineTo(x1 - ux * head + uy * head * 0.55, y1 - uy * head - ux * head * 0.55); g.closePath(); g.fill();
+        g.restore();
       }
     }
     resize();

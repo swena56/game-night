@@ -235,7 +235,12 @@ body.calm .nudge { animation: none; box-shadow: 0 0 0 2px #ffb70388; }
   box-shadow: 0 20px 60px #000c; animation: pop .15s ease-out; }
 .modal-card h3 { color: var(--text); text-transform: none; letter-spacing: 0; font-size: 18px; }
 .modal-card p { margin: 0 0 12px; font-size: 16px; }
-.modal-card .row { margin-top: 14px; }
+.modal-card .row { margin-top: 14px; flex: none; }
+/* long dialogs (help with rules + settings + badges) scroll inside the card; the buttons always stay on screen (#84) */
+.modal-card { position: relative; display: flex; flex-direction: column; max-height: calc(100vh - 32px); max-height: calc(100dvh - 32px); }
+.modal-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin-right: -6px; padding-right: 6px; }
+.modal-x { position: absolute; top: 6px; right: 6px; z-index: 1; font-size: 16px; color: var(--muted); }
+#modalTitle, #modalText { padding-right: 28px; }
 .modal-card .rules { font-size: 14px; line-height: 1.5; }
 .invite { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .invite-qr { display: block; width: min(240px, 70vw); height: auto; border-radius: 10px; }
@@ -3033,3 +3038,4 @@ body.calm .hk-num.slam { animation: none; }
 .rec-fresh { display: flex; flex-wrap: wrap; gap: 5px; }
 .rec-fresh .chip-btn, .rec-fresh span { font-size: 12px; }
 #lobbyRecordBtn { display: block; margin: 8px auto 0; }
+#overBanner:not(.folded) #overFold { font-size: 14px; white-space: nowrap; border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; }

@@ -114,7 +114,25 @@ const input = (() => {
   };
   return send;
 })();
-// In-app dialog: resolves true (OK) or false (Cancel, Escape, tap outside).
+// Phone Back button: while a dialog or the results banner is open, one extra history entry stands guard,
+// so Back closes the newest overlay instead of leaving the app (#81).
+const backNav = { stack: [], guard: 'off' };  // guard: off | on | leaving (a history.back() not yet popped)
+function backOpen(close) {
+  backNav.stack.push(close);
+  if (backNav.guard === 'off') try { history.pushState({ gnOverlay: 1 }, ''); backNav.guard = 'on'; } catch {}
+}
+function backClosed(close) {
+  const i = backNav.stack.lastIndexOf(close);
+  if (i >= 0) backNav.stack.splice(i, 1);
+  if (!backNav.stack.length && backNav.guard === 'on') { backNav.guard = 'leaving'; history.back(); }
+}
+addEventListener('popstate', () => {
+  const was = backNav.guard;
+  backNav.guard = 'off';
+  if (was === 'on') backNav.stack.pop()?.();
+  if (backNav.stack.length) try { history.pushState({ gnOverlay: 1 }, ''); backNav.guard = 'on'; } catch {}
+});
+// In-app dialog: resolves true (OK) or false (Cancel, ✕, Escape, Back, tap outside).
 function ask(text, { ok = 'OK', cancel = 'Cancel', danger = false, title = '', body = null } = {}) {
   ask.close?.(false);  // a newer question replaces an unanswered one
   return new Promise((resolve) => {
@@ -133,8 +151,9 @@ function ask(text, { ok = 'OK', cancel = 'Cancel', danger = false, title = '', b
       const i = f.indexOf(document.activeElement);
       if (e.shiftKey && i <= 0) { e.preventDefault(); f.at(-1).focus(); } else if (!e.shiftKey && i === f.length - 1) { e.preventDefault(); f[0].focus(); }
     };
+    const back = () => done(false);
     const done = (v) => {
-      m.hidden = true; ask.close = null;
+      m.hidden = true; ask.close = null; backClosed(back);
       document.removeEventListener('keydown', key);
       if (before?.isConnected && document.contains(before)) try { before.focus({ preventScroll: true }); } catch {}
       resolve(v);
@@ -143,8 +162,10 @@ function ask(text, { ok = 'OK', cancel = 'Cancel', danger = false, title = '', b
     document.addEventListener('keydown', key);
     $('#modalOk').onclick = () => done(true);
     $('#modalCancel').onclick = () => done(false);
+    $('#modalX').onclick = () => done(false);
     m.onclick = (e) => { if (e.target === m) done(false); };
-    m.hidden = false;
+    m.hidden = false; backOpen(back);
+    $('#modalBody').parentElement.scrollTop = 0;
     $('#modalOk').focus();
   });
 }
@@ -468,6 +489,7 @@ function unmountUI() {
 function leaveLocal() {
   clearTimeout(retryTimer); setBanner(false); stopReplay(false); unmountUI();
   if (es) es.close(); es = null; session = null; S = null; lastChatId = null; unread = 0; renderChat.key = null;
+  $('#overBanner').hidden = true; syncOverBack();
   store('unmask.session', null); history.replaceState(null, '', '/'); show('home');
 }
 
@@ -888,6 +910,7 @@ function renderGame(view = S, readOnly = false, force = false) {
 
   const wasHidden = $('#overBanner').hidden;
   $('#overBanner').hidden = readOnly || view.phase !== 'over';
+  syncOverBack();
   if (!readOnly && view.phase === 'over') {
     renderOver();
     // as the results appear, focus the main button so Enter starts the next round
@@ -930,7 +953,7 @@ function renderOver() {
   $('#readyBtn').hidden = !S.players.some((p) => p.id !== me.id && !p.bot);
   const folded = overFoldedAt === S.history.length;  // folding lasts for this game's results only
   $('#overBanner').classList.toggle('folded', folded);
-  $('#overFold').textContent = folded ? '▾' : '▴';
+  $('#overFold').textContent = folded ? '▾' : '▴ Board';  // spelled out while open: the way back to the board (#81)
   $('#overFold').ariaExpanded = String(!folded);
   $('#readyBtn').textContent = S.ready.includes(me.id) ? '✋ Ready!' : "🙋 I'm in!";
   $('#readyBtn').classList.toggle('on', S.ready.includes(me.id));
@@ -938,6 +961,14 @@ function renderOver() {
   $('#overWait').textContent = (readyNames.length ? `Ready for more: ${readyNames.join(', ')}. ` : '')
     + (host ? '' : 'Waiting for the host…');
   renderVote(host);
+  syncOverBack();
+}
+// the open (unfolded) results banner is an overlay the phone's Back button folds
+const foldOver = () => setOverFold(true);
+function syncOverBack() {
+  const open = !$('#overBanner').hidden && !$('#overBanner').classList.contains('folded');
+  const held = backNav.stack.includes(foldOver);
+  if (open && !held) backOpen(foldOver); else if (!open && held) backClosed(foldOver);
 }
 
 // Next-game vote: a few suggestions that fit the table (games with votes first), plus every other fitting

@@ -969,7 +969,25 @@ UI.rally = (() => {
       }
       return { size, draw };
     })();
-    const ghostShip = new T.Mesh(new T.BoxGeometry(1.4, 0.35, 0.9), new T.MeshBasicMaterial({ color: 0xbfe9ff, transparent: true, opacity: 0.3, depthWrite: false }));
+    // 👻 the ghost of your best lap: the same hull as the racers, in see-through pale blue with glowing edges (#83)
+    const ghostMat = new T.MeshBasicMaterial({ color: 0xbfe9ff, transparent: true, opacity: 0.3, depthWrite: false });
+    const ghostEdge = new T.LineBasicMaterial({ color: 0xe6f7ff, transparent: true, opacity: 0.6, depthWrite: false });
+    const ghostShip = (() => {
+      const g = new T.Group();
+      const part = (geo, x = 0, y = 0, z = 0) => {
+        const m = new T.Mesh(geo, ghostMat); m.position.set(x, y, z);
+        const e = new T.LineSegments(new T.EdgesGeometry(geo, 30), ghostEdge); e.position.copy(m.position);
+        g.add(m, e);
+      };
+      part(new T.BoxGeometry(1.3, 0.26, 0.8));
+      const noseGeo = new T.ConeGeometry(0.56, 0.9, 4); noseGeo.rotateY(Math.PI / 4); noseGeo.rotateZ(-Math.PI / 2); noseGeo.scale(1, 0.45, 1);
+      part(noseGeo, 1.1);
+      const cockpitGeo = new T.SphereGeometry(0.3, 12, 8); cockpitGeo.scale(1.5, 0.6, 0.9);
+      const cockpit = new T.Mesh(cockpitGeo, ghostMat); cockpit.position.set(0.25, 0.15, 0); g.add(cockpit);
+      part(new T.BoxGeometry(0.45, 0.35, 0.05), -0.45, 0.3);
+      for (const z of [-0.5, 0.5]) { const pod = new T.CylinderGeometry(0.15, 0.19, 0.9, 10); pod.rotateZ(Math.PI / 2); part(pod, -0.25, 0, z); }
+      return g;
+    })();
     ghostShip.visible = false; scene.add(ghostShip);
     // chase camera: eases after the craft, widens its view with speed, drops lower on boost and banks with the lean
     const cam = { ready: false, pos: new T.Vector3(), look: new T.Vector3(), boost: 0 }, want = new T.Vector3();
@@ -987,7 +1005,7 @@ UI.rally = (() => {
       cheer(now, dt);
       drawMissiles(now); drawMines(now);
       ghostShip.visible = !!gp;
-      if (gp) { ghostShip.position.copy(V(gp, 0.45)); ghostShip.rotation.y = Math.atan2(gp.uy, gp.ux); ghostShip.material.opacity = 0.22 + 0.08 * Math.sin(now / 150); }
+      if (gp) { ghostShip.position.copy(V(gp, 0.45)); ghostShip.rotation.y = Math.atan2(gp.uy, gp.ux); const f = Math.sin(now / 150); ghostMat.opacity = 0.22 + 0.08 * f; ghostEdge.opacity = 0.5 + 0.2 * f; }
       ships.forEach((g, i) => {
         const c = crafts[i], u = g.userData; if (!c) return;
         // glide sideways toward the server's offset rather than jumping each update; its rate of change is the lean
