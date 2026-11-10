@@ -397,18 +397,11 @@ UI.putt = (() => {
     let renderer;
     renderer = GL3.renderer({}, { onLost: () => lost(stage) });
     if (!renderer) return null;
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = T.PCFSoftShadowMap;
     stage.prepend(renderer.domElement);
     const scene = new T.Scene(); scene.background = new T.Color(0x0c1a2b);
     const camera = new T.PerspectiveCamera(45, 1, 0.05, 120);
-    const hemi = new T.HemisphereLight(0xdff3ff, 0x1d3b1d, 0.75);
-    scene.add(hemi);
-    const sun = new T.DirectionalLight(0xffffff, 0.75);
-    sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
-    sun.shadow.bias = -0.0005;
-    scene.add(sun, sun.target);
+    const stg = GL3.stage(renderer, scene, { exposure: 1.1, hemi: [0xdff3ff, 0x1d3b1d, 0.75], key: { i: 0.75, area: 10, near: 1, far: 25 } });
+    const hemi = stg.hemi, sun = stg.key;
     // the rough around the course, so the fairway doesn't float in space
     const rough = new T.Mesh(new T.PlaneGeometry(80, 80), new T.MeshStandardMaterial({ color: 0x173d27, roughness: 1 }));
     rough.rotation.x = -Math.PI / 2; rough.position.y = -0.22; rough.receiveShadow = true; scene.add(rough);
@@ -929,7 +922,7 @@ UI.putt = (() => {
       }
       renderer.render(scene, camera);
     }
-    function dispose() { renderer.dispose(); renderer.domElement.remove(); }
+    function dispose() { stg.dispose(); renderer.dispose(); renderer.domElement.remove(); }
     return { build, draw, resize, dispose, screenDir, nearBall, ballOnScreen, effect, burst, view: viewApi };
   }
 

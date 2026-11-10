@@ -451,10 +451,9 @@ UI.rally = (() => {
     const renderer = GL3.renderer({}, { onLost: () => lost(stage) });
     if (!renderer) return null;
     stage.prepend(renderer.domElement);
-    const scene = new T.Scene(); scene.background = new T.Color(0x070512); scene.fog = new T.Fog(0x070512, 40, 140);
+    const scene = new T.Scene(); scene.background = new T.Color(0x070512);
     const camera = new T.PerspectiveCamera(65, 1, 0.1, 400);
-    scene.add(new T.HemisphereLight(0xbfd9ff, 0x221133, 0.8));
-    const sun = new T.DirectionalLight(0xffffff, 0.7); sun.position.set(20, 40, 10); scene.add(sun);  // gives the hulls some shape
+    const stg = GL3.stage(renderer, scene, { exposure: 1.1, fog: [0x070512, 40, 140], hemi: [0xbfd9ff, 0x221133, 0.8], key: { i: 0.7, pos: [20, 40, 10], shadow: false } });
     const grid = new T.GridHelper(260, 52, 0x3a2a6a, 0x1c1438); grid.position.y = -0.05; scene.add(grid);
     // the sky: a dome glowing violet at the horizon and black overhead, stars, and a ringed planet; it rides
     // along with the camera so it's always far away, and the fog leaves it alone
@@ -1080,7 +1079,7 @@ UI.rally = (() => {
       tickParts(dt);
       renderer.render(scene, camera);
     }
-    function dispose() { renderer.dispose(); renderer.domElement.remove(); stage.querySelector('.ra-mini')?.remove(); }
+    function dispose() { stg.dispose(); renderer.dispose(); renderer.domElement.remove(); stage.querySelector('.ra-mini')?.remove(); }
     return { build, draw, resize, dispose, fx };
   }
 

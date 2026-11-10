@@ -262,15 +262,14 @@ UI.spire = (() => {
     const stage = $('spStage');
     const renderer = GL3.renderer({ alpha: true }, { onLost: () => {
       if (!gfx || gfx.renderer !== renderer) return;
-      renderer.dispose(); renderer.domElement.remove(); gfx = null;
+      gfx.stg?.dispose(); renderer.dispose(); renderer.domElement.remove(); gfx = null;
       if (stage.isConnected) { initThree(); resize(); }
     } });
     if (!renderer) return;
     stage.prepend(renderer.domElement);
     const scene = new T.Scene();
     const camera = new T.PerspectiveCamera(42, 1, 0.1, 200);
-    scene.add(new T.AmbientLight(0xffffff, 0.55));
-    const sun = new T.DirectionalLight(0xffffff, 0.85); sun.position.set(6, 30, 20); scene.add(sun);
+    const stg = GL3.stage(renderer, scene, { exposure: 1.1, hemi: [0xd8ccff, 0x1a1030, 0.7], key: { i: 0.85, pos: [6, 30, 20], shadow: false } });
     const rim = new T.PointLight(0x8e7dff, 0.8, 80); rim.position.set(-12, 10, -10); scene.add(rim);
     const R = W / (2 * Math.PI) + 0.45, arc = (2 * Math.PI * R) / W;
     const tower = new T.Group(); scene.add(tower);
@@ -291,7 +290,7 @@ UI.spire = (() => {
     const stars = new T.Points(new T.BufferGeometry().setAttribute('position', new T.Float32BufferAttribute(
       Array.from({ length: 900 }, () => (Math.random() - 0.5) * 160), 3)), new T.PointsMaterial({ color: 0x9a8fd8, size: 0.25 }));
     scene.add(stars);
-    gfx = { T, renderer, scene, camera, tower, settled, piece, ghost, R, dummy: new T.Object3D(), color: new T.Color(), stars };
+    gfx = { T, renderer, scene, camera, tower, settled, piece, ghost, R, dummy: new T.Object3D(), color: new T.Color(), stars, stg };
     resize();
   }
 
@@ -536,7 +535,7 @@ UI.spire = (() => {
     clearInterval(repeat);
     if (keyHandler) removeEventListener('keydown', keyHandler);
     resizeObs?.disconnect();
-    if (gfx) { gfx.renderer.dispose(); gfx = null; }
+    if (gfx) { gfx.stg?.dispose(); gfx.renderer.dispose(); gfx = null; }
     st = null;
   }
 

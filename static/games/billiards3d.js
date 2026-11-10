@@ -227,10 +227,10 @@ const Billiards3D = (() => {
   }
 
   // a dim room with the pool lamp's three bright shades (where the scene's lamps are), for the balls' and
-  // rails' reflections. Colours are given linear: this scene is rendered straight into the environment map.
+  // rails' reflections (colours are managed by GL3: written as on screen, stored linear).
   const LAMPS = [-0.33, 0, 0.33], LAMP_Y = 72;  // shades along the table's length (× its width), and their height
   function lampRoom(T, renderer, W) {
-    const room = new T.Scene(), lin = (hex) => new T.Color(hex).convertSRGBToLinear();
+    const room = new T.Scene(), lin = (hex) => new T.Color(hex);
     room.add(new T.Mesh(new T.BoxGeometry(400, 200, 300), new T.MeshBasicMaterial({ color: lin(0x1c1511), side: T.BackSide })));
     for (const f of LAMPS) {
       // a glowing disc under each shade, with the shade's dark rim around it
@@ -262,7 +262,7 @@ const Billiards3D = (() => {
     // slow, and the table at rest (aiming, between shots) is always drawn at the full ratio (renderStill)
     const renderer = GL3.renderer({ alpha: true }, { onLost: hooks.onLost, cap: Math.min(2, Math.max(window.devicePixelRatio || 1, 1.5)), min: 0.75 });
     if (!renderer) return null;
-    renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap;
+    renderer.shadowMap.enabled = GL3.level() !== 'low'; renderer.shadowMap.type = T.PCFSoftShadowMap;  // 🎨 Low: no shadows
     const canvas = renderer.domElement;
     const { W, H, R } = b;
     const aniso = Math.min(16, renderer.capabilities.getMaxAnisotropy?.() || 1);
@@ -295,7 +295,7 @@ const Billiards3D = (() => {
     const FELT = FELT_TILE;  // table units per tile of the baize's detail
     const [feltMap, feltBump] = feltDetail(T, aniso);
     // wool: rough, with a soft sheen that rises where you look along the cloth (the behind-the-cue view)
-    const wool = (o) => new T.MeshPhysicalMaterial({ bumpScale: 0.045, roughness: 0.9, metalness: 0, sheen: new T.Color(0x3d7a52).convertSRGBToLinear(), ...o });
+    const wool = (o) => new T.MeshPhysicalMaterial({ bumpScale: 0.045, roughness: 0.9, metalness: 0, sheen: new T.Color(0x3d7a52), ...o });
     // the bed: detail tiled at FELT units, the colour from feltMacro laid once over the whole table
     const tiled = (t, u, v) => { const c = t.clone(); c.needsUpdate = true; c.repeat.set(u, v); return c; };
     const macro = feltMacro(T, aniso, W, H, b.headX);
@@ -588,7 +588,6 @@ const Billiards3D = (() => {
       const m = o.material;
       if (!m || m.userData.lin) return;
       m.userData.lin = true;
-      m.color?.convertSRGBToLinear();
       if (overlays.has(m) || (m.isMeshBasicMaterial && m.depthWrite === false && m !== blotMat)) m.toneMapped = false;
     });
 
@@ -679,7 +678,7 @@ const Billiards3D = (() => {
         aimLine.set(cx + ((gx - cx) / L) * R, cy + ((gy - cy) / L) * R, cx + (gx - cx) * k, cy + (gy - cy) * k, 0.45);
         if (light) {
           ghost.visible = true; ghost.position.set(gx, R, gy);
-          ghost.material.color.set(0xffffff).convertSRGBToLinear(); ghost.material.opacity = 0.18;
+          ghost.material.color.set(0xffffff); ghost.material.opacity = 0.18;
           if (gd.ball) {
             const [bx, by] = gd.ball, nx = bx - gx, ny = by - gy, n = Math.hypot(nx, ny) || 1;
             objLine.set(bx, by, bx + (nx / n) * 9, by + (ny / n) * 9, 0.4);
@@ -687,7 +686,7 @@ const Billiards3D = (() => {
         } else if (full) {
           ghost.visible = true; ghost.position.set(gx, R, gy);
           // red: the cue ball would drop; fainter: it runs out of pace and stops here
-          ghost.material.color.set(gd.scratch ? 0xef476f : 0xffffff).convertSRGBToLinear(); ghost.material.opacity = gd.stop ? 0.12 : 0.22;
+          ghost.material.color.set(gd.scratch ? 0xef476f : 0xffffff); ghost.material.opacity = gd.stop ? 0.12 : 0.22;
           if (gd.objPath || gd.cuePath) {  // the engine's own prediction: the paths really taken
             if (gd.objPath) objPath.set(gd.objPath, 0.5);
             if (gd.cuePath) cuePath.set(gd.cuePath, 0.4);

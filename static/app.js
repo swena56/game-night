@@ -1234,7 +1234,7 @@ const fmtNum = (n) => (typeof n === 'number' ? n.toLocaleString() : n);
 function confetti() {
   if (!motionOK()) return;
   const colors = ['#ffb703', '#ef476f', '#06d6a0', '#8ecae6', '#cc5de8', '#fff'];
-  for (let i = 0; i < 70; i++) {
+  for (let i = 0, n = gfxLevel() === 'low' ? 28 : 70; i < n; i++) {
     const c = el('div', 'confetti');
     c.style.left = Math.random() * 100 + '%';
     c.style.background = colors[i % colors.length];
@@ -1249,12 +1249,26 @@ function confetti() {
 
 // ---------- personal settings
 const THEMES = [['dark', '🌙 Dark'], ['light', '☀️ Light'], ['system', '🌓 Match my phone']];
+// 🎨 Graphics: Auto turns shadows, reflections and extra particles off on a weak device (few cores or little
+// memory, data saver, or a 3D game that had to drop its resolution to keep up: GL3.strained)
+const GFX = [['auto', '🪄 Auto'], ['high', '✨ High (shadows, reflections, more particles)'], ['low', '🔋 Low (smoother, saves battery)']];
+const AUTO_LOW = (navigator.deviceMemory || 8) <= 2 || (navigator.hardwareConcurrency || 8) <= 2 || !!navigator.connection?.saveData;
+function gfxLevel() {
+  const g = prefs.gfx || 'auto';
+  if (g !== 'auto') return g;
+  return AUTO_LOW || window.GL3?.strained?.() ? 'low' : 'high';
+}
 const lightQuery = window.matchMedia?.('(prefers-color-scheme: light)');
 function applyPrefs() {
   document.body.classList.toggle('calm', !prefs.motion);
   const light = prefs.theme === 'light' || (prefs.theme === 'system' && !!lightQuery?.matches);
   document.body.classList.toggle('light', light);
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', light ? '#f4f1fa' : '#16131f');
+  const low = gfxLevel() === 'low';
+  if (document.body.classList.contains('lowgfx') !== low) {
+    document.body.classList.toggle('lowgfx', low);
+    window.dispatchEvent(new CustomEvent('gfxchange', { detail: low ? 'low' : 'high' }));
+  }
 }
 lightQuery?.addEventListener?.('change', applyPrefs);
 function renderPrefs() {
@@ -1266,6 +1280,16 @@ function renderPrefs() {
   pick.onchange = () => { prefs.theme = pick.value; store('unmask.prefs', prefs); applyPrefs(); };
   theme.append(pick);
   box.append(theme);
+  const gfx = el('label', '', '🎨 Graphics');
+  const gpick = el('select');
+  for (const [k, label] of GFX) gpick.append(Object.assign(el('option', '', label), { value: k }));
+  gpick.value = prefs.gfx || 'auto';
+  gpick.onchange = () => {
+    prefs.gfx = gpick.value; store('unmask.prefs', prefs); applyPrefs();
+    if (S?.game) toast('3D games use the new setting from their next start.');
+  };
+  gfx.append(gpick);
+  box.append(gfx);
   const vol = el('label', '', '🔉 Volume');
   const range = el('input'); range.type = 'range'; range.min = '0'; range.max = '100'; range.step = '5';
   range.value = String(prefs.volume ?? 70); range.setAttribute('aria-label', 'Volume');

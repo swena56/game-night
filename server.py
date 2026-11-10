@@ -33,7 +33,8 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(APP_DIR, "static")
 DATA_DIR = os.path.join(APP_DIR, "data")
 CONTENT_TYPES = {".html": "text/html", ".js": "text/javascript", ".css": "text/css",
-                 ".webmanifest": "application/manifest+json", ".png": "image/png", ".svg": "image/svg+xml"}
+                 ".webmanifest": "application/manifest+json", ".png": "image/png", ".svg": "image/svg+xml",
+                 ".woff2": "font/woff2"}
 MAX_PLAYERS = 6
 # Overall points for the evening: a win, playing a game to the end, and walking out of a live game.
 POINTS_WIN, POINTS_PLAYED, POINTS_QUIT = 3, 1, -2
@@ -1121,7 +1122,7 @@ class Handler(BaseHTTPRequestHandler):
         if gz is not None and self.gzip_ok():
             body = gz
         self.send_response(200)
-        self.send_header("Content-Type", ctype if ctype.startswith("image/") else ctype + "; charset=utf-8")
+        self.send_header("Content-Type", ctype if ctype.startswith(("image/", "font/")) else ctype + "; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-cache")
         self.send_header("ETag", etag)
