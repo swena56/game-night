@@ -186,11 +186,19 @@ class LiarsDice(Game):
             losers = [bidder] if lie and bidder else [p]
             verdict = f"there are {n} — " + (f"{bidder.name if bidder else '?'} was bluffing!" if lie else f"the bid holds, {p.name} was wrong!")
             r.add_log(f"🤥 {p.name} calls {bidder.name if bidder else '?'} a liar on {say(q, f)}: {verdict}", "power")
+            own = sum(1 for d in hands.get(by, []) if d == f or (self.wild() and d == 1))
+            if lie and bidder and not own:
+                self.moment(f"🎭 {bidder.name} held none of them — a pure bluff, caught!", "gold", "tag")
+            elif lie and bidder:
+                self.moment(f"🤥 {bidder.name} was bluffing!", "cool", "tag")
+            else:
+                self.moment(f"😬 {p.name} called it wrong", "bad", "wrong")
         else:
             hit = n == q
             losers = [x for x in self.players() if x.id != p.id] if hit else [p]
             if hit:
                 self.award(p, "spot_on")
+                self.moment(f"🎯 {p.name}: SPOT ON! Everyone else loses a die", "gold", "fanfare")
             r.add_log(f"🎯 {p.name} calls exactly {say(q, f)}: there are {n}" + (" — spot on! Everyone else loses a die." if hit else f". {p.name} loses a die."), "power")
         out = []
         for x in losers:

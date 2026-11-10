@@ -184,6 +184,7 @@ class Farkle(Game):
                 self.dice_left = 6
                 self.aside = []
                 r.add_log(f"🔥 Hot dice! {p.name} rolls all six again with {self.turn_pts:,} on the line.", "power")
+                self.moment(f"🔥 {p.name}: HOT DICE", "gold", "tag")
                 self.event_id += 1
                 self.event = {"id": self.event_id, "kind": "hot", "by": p.id, "pts": self.turn_pts}
         self.roll = [self.rng.randint(1, 6) for _ in range(self.dice_left)]
@@ -197,6 +198,8 @@ class Farkle(Game):
         p.g.farkles += 1
         lost = self.turn_pts
         r.add_log(f"💥 FARKLE! {p.name} rolls {' '.join(map(str, self.roll))}" + (f" and loses {lost:,}." if lost else "."), "power")
+        if lost >= 1000:
+            self.moment(f"💥 {p.name} farkles away {lost:,}!", "bad", "groan")
         self.farkled = True
         self.event_id += 1
         self.event = {"id": self.event_id, "kind": "farkle", "by": p.id, "roll": self.roll, "lost": lost}
@@ -224,6 +227,8 @@ class Farkle(Game):
         self.event = {"id": self.event_id, "kind": "bank", "by": p.id, "pts": pts}
         if pts >= 3000:
             self.award(p, "vault")
+        if pts >= 2000:
+            self.moment(f"🏦 {p.name} banks {pts:,}!", "gold", "fanfare")
         if p.g.score >= self.s["target"] and self.final_from is None and len(self.seats) > 1:
             self.final_from = p.id
             r.add_log(f"🏁 {p.name} reaches {self.s['target']:,}! Everyone else gets one last turn.", "big")

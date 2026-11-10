@@ -407,6 +407,13 @@ class Cannon(Game):
             names.append(f"{'themselves' if j == by else self.name_of(j)} −{n}")
         if hurt:
             self.room.add_log(f"💥 {self.name_of(by)} hits " + ", ".join(names) + ("  🎯 Direct hit!" if b["hit"] is not None and b["hit"] != by else ""), "power")
+            others = [j for j, n in hurt if j != by]
+            if len(others) >= 2:
+                self.moment(f"💥 {self.name_of(by)}: DOUBLE HIT", "gold", "boom")
+            elif b["hit"] is not None and b["hit"] != by:
+                self.moment(f"🎯 {self.name_of(by)}: DIRECT HIT", "gold", "boom")
+            elif not others:
+                self.moment(f"🤕 {self.name_of(by)} shelled themselves", "bad", None)
         elif shell == "dirt":
             self.room.add_log(f"🪨 {self.name_of(by)} heaps up a mound.", "info")
         elif b["kind"] == "water":

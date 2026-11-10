@@ -143,6 +143,12 @@ class TicTacToe(Game):
         elif None not in self.cells or self.moves >= MOVE_LIMIT:
             r.finish(None, "🤝 It's a draw.")
         else:
+            if not self.misere() and not self.vanishing():
+                lines = LINES if self.n == 3 else LINES4
+                forks = sum(1 for ln in lines if sum(self.cells[k] == seat for k in ln) == self.n - 1
+                            and all(self.cells[k] in (seat, None) for k in ln))
+                if forks >= 2:
+                    self.moment(f"🍴 {p.name}: a fork!", "gold", "tag")
             r.advance()
 
     def meta(self, p):

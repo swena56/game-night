@@ -595,6 +595,8 @@ class Billiards(Game):
         elif scored:
             self.last = f"✅ {p.name} sank {names}."
             r.add_log(f"✅ {p.name} sank {names}{' on the break' if breaking else ''} and shoots again.", "question")
+            if len(objects) >= 2:
+                self.moment(f"🎱 {p.name}: {len(objects)} balls in one shot!", "gold", "tag")
             r.begin_turn(p.id)
         else:
             self.last = f"{p.name} sank {names}, not theirs." if objects else f"{p.name} missed."
@@ -651,6 +653,8 @@ class Billiards(Game):
         elif objects:
             self.last = f"✅ {p.name} sank {names}."
             r.add_log(f"✅ {p.name} sank {names}{' on the break' if breaking else ''} and shoots again.", "question")
+            if len(objects) >= 2:
+                self.moment(f"🎱 {p.name}: {len(objects)} balls in one shot!", "gold", "tag")
             r.begin_turn(p.id)
         else:
             self.last = f"{p.name} missed."

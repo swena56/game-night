@@ -246,6 +246,7 @@ class Rummy(Game):
                 self.hands[i].remove(c)
             self.melds.append({"kind": kind, "cards": run_order(cs) if kind == "run" else cs, "owner": i})
         self.down[i] = True
+        self.down_turn = (i, self.turns)
         p = self.pl(i)
         self.room.add_log(f"🎉 {p.name if p else '?'} lays down the contract!", "power")
 
@@ -286,6 +287,10 @@ class Rummy(Game):
         names = [self.pl(j).name if self.pl(j) else "?" for j in range(len(self.seats))]
         if out is not None:
             r.add_log(f"🏁 {names[out]} goes out!", "big")
+            if getattr(self, "down_turn", None) == (out, self.turns - 1):  # laid down and went out in the same turn
+                self.moment(f"🀄 {names[out]}: RUMMY! Down and out in one turn", "gold", "fanfare")
+            else:
+                self.moment(f"🏁 {names[out]} goes out", "cool", "tag")
         r.add_log("🧮 " + " · ".join(f"{names[j]} +{got[j]} ({self.scores[j]})" for j in range(len(got))))
         self.last_hand = got
         # what everyone was caught holding, for the recap between hands (deal() starts the next hand at once)

@@ -177,6 +177,15 @@ class Morris(Undo, Game):
         r.add_log(f"{'⚫⚪'[me]} {p.name} {text}" + (f" — mill! Takes {name(rem)}." if rem >= 0 else "."),
                   "power" if rem >= 0 else "question")
         nxt = 1 - me
+        if rem >= 0:
+            board = self.state[0]
+            mills = sum(1 for m in GEO[self.twelve][2][dst] if all(board[j] == me for j in m))
+            left = board.count(nxt) + self.state[1][nxt]
+            q = r.players.get(self.seats[nxt])
+            if mills >= 2:
+                self.moment(f"⚡ {p.name}: DOUBLE MILL!", "gold", "capture")
+            elif left == 3 and q:
+                self.moment(f"⚠️ {q.name} is down to three men", "bad", "capture")
         if not legal(self.state, nxt, self.fly, self.twelve, self.lasker):
             if self.state[2] >= QUIET_LIMIT:
                 return r.finish(None, f"🤝 {QUIET_LIMIT} moves without a capture — a draw.")

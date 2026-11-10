@@ -1026,10 +1026,13 @@ function renderLog(ui, view) {
     const fresh = lastLogId && !replay && !firstState ? view.log.filter((e) => e.id > lastLogId) : [];
     const mine = fresh.find((e) => e.kind === 'badge' && e.text.startsWith(`🏅 ${S.me.name} earned`));
     if (mine) { sfx('fanfare'); toast(mine.text.replace(`${S.me.name} earned`, 'You earned')); }
+    // ✨ moments (room.moment on the server): a callout across the screen, the newest one if several landed at once
+    const moment = fresh.filter((e) => e.kind === 'moment').at(-1);
+    if (moment && typeof Kit !== 'undefined') Kit.callout(moment.text, moment.tone || 'gold', { ms: 1700, sound: moment.sound || null });
     if (lastLogId && !replay && !firstState && view.phase === 'playing' && !ui.ownSounds) {
       const e = view.log.at(-1), cat = gameInfo(view.gameId)?.category;
       const sad = /nobody|never|bust|💀|timed? out|ran out|gave up|forfeit/i.test(e.text);
-      if (cat !== 'action') sfx(e.kind === 'big' ? (sad ? 'bad' : 'good') : /captur|takes|jump|hit|sunk|bust|farkle/i.test(e.text) && cat !== 'words' ? 'capture' : CATEGORY_SFX[cat]);
+      if (cat !== 'action' && e.kind !== 'moment') sfx(e.kind === 'big' ? (sad ? 'bad' : 'good') : /captur|takes|jump|hit|sunk|bust|farkle/i.test(e.text) && cat !== 'words' ? 'capture' : CATEGORY_SFX[cat]);
     }
     lastLogId = newestId;
   }

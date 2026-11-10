@@ -304,6 +304,7 @@ body.calm .nudge { animation: none; box-shadow: 0 0 0 2px #ffb70388; }
 .entry.private { background: #06d6a022; border: 1px dashed var(--ok); }
 .entry.power { background: #cc5de822; }
 .entry.big { background: #ffb70322; font-weight: 700; }
+.entry.moment { background: linear-gradient(90deg, #ffb70333, #ffb70311); font-weight: 700; }
 .entry.badge { background: linear-gradient(90deg, #ffd16633, #06d6a022); font-weight: 700; }
 .badge-shelf { font-size: 16px; letter-spacing: 1px; white-space: normal; } .badge-shelf span { cursor: help; }
 .badge-list li { opacity: .65; } .badge-list li.got { opacity: 1; font-weight: 700; } .badge-list li.got::after { content: ' ✓'; color: var(--ok); }
@@ -934,6 +935,7 @@ body.focus #game .layout:has(.bl-busy) > aside { opacity: .2; }
 @keyframes ooReveal { from { opacity: 0; transform: scale(.7); filter: blur(4px); } }
 .oo-trow.spot { animation: ooSpot 1.2s ease-out; }
 @keyframes ooSpot { 0% { box-shadow: 0 0 0 0 #ffd166; } 30% { box-shadow: 0 0 0 4px #ffd166, 0 0 30px #ffd166; } 100% { box-shadow: none; } }
+.ws-best { margin: 0 0 6px; padding: 4px 8px; border-left: 3px solid var(--accent); background: #ffb70311; border-radius: 6px; font-weight: 700; font-size: 13px; }
 /* wordsmith: a new word's tiles snap down one by one; the bounty letter flashes when it changes */
 .ws-cell.snap { animation: wsSnap .35s both cubic-bezier(.3, 1.6, .5, 1); }
 @keyframes wsSnap { from { transform: translateY(-14px) scale(1.4); opacity: 0; box-shadow: 0 10px 14px #0008; } }
@@ -1165,6 +1167,8 @@ body.kb-open .dd-paper { width: min(100%, calc(var(--room) - 130px), 520px); min
 .fk-rules { font-size: 13px; }
 
 /* fib finder */
+.fb-sure { display: flex; align-items: center; gap: 6px; justify-content: center; margin-top: 8px; font-size: 13px; color: var(--muted); cursor: pointer; }
+.fb-sure input { width: 18px; height: 18px; accent-color: var(--accent); }
 .fb { max-width: 640px; margin: 0 auto; }
 .fb-head { display: flex; justify-content: space-between; color: var(--muted); margin-bottom: 6px; }
 .fb-final { color: var(--accent); font-weight: 700; }
@@ -1351,6 +1355,8 @@ body.calm .hg-cell.target rect, body.calm .hg-pawn.now .hg-ring { animation: non
 .heist { max-width: 640px; margin: 0 auto; }
 .vault { display: flex; align-items: center; justify-content: center; gap: 16px; padding: 14px; border-radius: var(--radius);
   background: radial-gradient(circle, #3d2f66, #1a1430); margin-bottom: 12px; transition: box-shadow .5s; }
+.vault.fullmoon .h-night .moon { transform: scale(1.6); filter: brightness(1.35) drop-shadow(0 0 14px #fff8); }
+.vault.fullmoon { outline: 2px solid #cfe7ff55; }
 .vault[data-heat="1"] { box-shadow: 0 0 18px #ffb70344; } .vault[data-heat="2"] { box-shadow: 0 0 28px #ffb70377; }
 .vault[data-heat="3"] { box-shadow: 0 0 40px #ff7b00aa; animation: pulse 1.4s infinite alternate; }
 .vault .pot { font-size: 46px; font-weight: 900; color: var(--accent); font-variant-numeric: tabular-nums; }
@@ -3020,6 +3026,7 @@ body.calm .ws-cell.justplayed, body.calm .ws-cell.nope { animation: none; }
 body.calm .hk-num.slam { animation: none; }
 /* trivia: the question card takes its topic's colour, with the topic's emoji large behind the text */
 .tv-q { position: relative; overflow: hidden; background: linear-gradient(135deg, hsl(var(--tv-hue, 250) 45% 28%), hsl(var(--tv-hue, 250) 40% 18%)); border-radius: 14px; }
+.tv-q.double { box-shadow: 0 0 0 2px #ffb703, 0 0 22px #ffb70366; }
 .tv-q::after { content: attr(data-emoji); position: absolute; right: -6px; bottom: -14px; font-size: 84px; opacity: .14; pointer-events: none; }
 /* fib finder: the fact is a "strange but true" card of old paper */
 .fb-fact { position: relative; background: linear-gradient(180deg, #fbf3df, #efe0bb); color: #3a2a12; box-shadow: 0 8px 20px #0007, inset 0 0 30px #c9a96e55;

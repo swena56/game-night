@@ -157,6 +157,13 @@ class Yacht(Game):
             self.room.add_log(f"⛵⛵ Another Yacht for {p.name}: +{EXTRA_YACHT}!", "big")
         if self.upper_bonus(p) and not had_bonus:
             self.room.add_log(f"🎁 {p.name} makes {UPPER_NEED} in Ones–Sixes: +{UPPER_BONUS} bonus!", "big")
+            self.moment(f"🎁 {p.name}: upper bonus +{UPPER_BONUS}", "gold", "good")
+        if cat == "yacht" and pts:
+            self.moment(f"⛵ {p.name}: YACHT!", "gold", "fanfare")
+        elif cat in ("big", "little") and pts:
+            self.moment(f"🎲 {p.name}: {LABEL[cat].lower()}!", "cool", "good")
+        elif cat == "four" and pts and len(set(self.dice)) == 1:
+            self.moment(f"🎲 {p.name} puts five of a kind in Four of a Kind", "cool", "good")
         self.last = f"{p.name}: {LABEL[cat]} {pts}"
         big = cat == "yacht" and pts
         if big:

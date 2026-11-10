@@ -165,6 +165,10 @@ class Hearts(Game):
         w = self.pl(win)
         r.add_log(f"🃏 {' '.join(pretty(c) for c in cards)} → {w.name if w else '?'}" + (f" ({pts:+})" if pts else ""),
                   "power" if pts else "question")
+        if QUEEN in cards and w:
+            self.moment(f"👑 {w.name} takes the Queen (+13)", "bad", "groan")
+        elif self.jack() and JACK in cards and w:
+            self.moment(f"💎 {w.name} takes the J♦ (−10)", "good", "good")
         self.last_trick = {"cards": [[s, c] for s, c in self.trick], "winner": win}
         self.trick = []
         self.first = False
@@ -198,9 +202,11 @@ class Hearts(Game):
             if self.s.get("moon") == "choice" and not self.moon_to_others(moon):
                 got = [-26 if i == moon else 0 for i in range(len(got))]
                 r.add_log(f"🌙 {m.name if m else '?'} shot the moon and takes 26 off their own score!", "big")
+                self.moment(f"🌙 {m.name if m else '?'} SHOT THE MOON", "gold", "fanfare")
             else:
                 got = [0 if i == moon else 26 for i in range(len(got))]
                 r.add_log(f"🌙 {m.name if m else '?'} shot the moon! Everyone else takes 26.", "big")
+                self.moment(f"🌙 {m.name if m else '?'} SHOT THE MOON", "gold", "fanfare")
         if self.jack():
             for i, t in enumerate(self.taken):
                 if JACK in t:

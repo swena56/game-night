@@ -23,7 +23,7 @@ class OddOne(Game):
         "Everyone gets a secret word, but one player's word is slightly different. Nobody knows who.",
         "Take turns giving a one-word clue about your word. Don't make it too obvious!",
         "Then everyone votes for the player they think has the odd word.",
-        "Catch the odd one: +2 each. If they escape, they get +4.",
+        "Catch the odd one: +2 each. If they escape, they get +4, and 🐐 an innocent who took the most votes gets +1.",
         "A caught odd one can still guess the real word for +3.",
         "🫥 Blank (an option): the odd one gets no word at all and knows it, so they have to bluff their clues.",
     ]
@@ -179,6 +179,14 @@ class OddOne(Game):
                 r.players[pid].g.score += 2 if caught else 1
         shown = ", ".join(f"{r.players[pid].name} {n}" for pid, n in sorted(tally.items(), key=lambda x: -x[1]) if pid in r.players)
         r.add_log(f"🗳️ Votes: {shown or 'none'}", "question")
+        if len(tally) == 1 and top >= 3:
+            self.moment("🗳️ UNANIMOUS!", "gold" if caught else "bad", "tag")
+        # 🐐 a scapegoat: an innocent who drew every vote gets a point for the trouble
+        if not caught and len(leaders) == 1 and leaders[0] != self.odd and top >= 2 and leaders[0] in r.players:
+            goat = r.players[leaders[0]]
+            if hasattr(goat.g, "score"):
+                goat.g.score += 1
+                r.add_log(f"🐐 {goat.name} was the scapegoat — wrongly accused, +1.", "power")
         self.result = {"votes": tally, "caught": caught, "guess": None, "guessed": False}
         if caught and oddp:
             r.add_log(f"🎯 Caught! {oddp.name} had the odd word “{self.odd_word}”. Last chance: guess the real word.", "power")

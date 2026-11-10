@@ -155,6 +155,10 @@ class Reversi(Undo, Game):
         self.board = play(self.board, me, c)
         self.last = c
         self.room.add_log(f"{'⚫⚪'[me]} {p.name}: {'abcdefgh'[c % N]}{c // N + 1}, flipping {len(self.flipped)}.", "question")
+        if len(self.flipped) >= 8:
+            self.moment(f"🌊 {p.name} flips {len(self.flipped)}!", "gold", "capture")
+        elif c in (0, N - 1, N * (N - 1), N * N - 1):
+            self.moment(f"📐 {p.name} takes a corner", "cool", "lock")
         self.next_turn(me)
 
     def next_turn(self, me):

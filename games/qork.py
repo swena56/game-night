@@ -247,6 +247,17 @@ class Qork(Game):
                 frozen.append(q)
         gain = len(trapped) + (1 if trapped and len(trapped) == len(corkers) and len(corkers) > 1 else 0)
         cup.g.score += gain
+        # ⚡ the night's fastest escape (kept on the room, so it carries across rematches)
+        best = getattr(r, "qork_best", None)
+        for q in escaped:
+            y = self.acted.get(q.id)
+            if y is not None and y >= 0 and (best is None or y < best[0]):
+                if best is not None:
+                    self.moment(f"⚡ {q.name}: {int(y)} ms — fastest tonight!", "gold", "tag")
+                best = (y, q.name)
+        r.qork_best = best
+        if gain > len(trapped):
+            self.moment(f"🧹 {cup.name}: CLEAN SWEEP!", "gold", "fanfare")
         cup.g.traps += len(trapped)
         names = lambda qs: ", ".join(q.name for q in qs)
         if slam is None:

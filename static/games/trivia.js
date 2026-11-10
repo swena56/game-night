@@ -35,7 +35,8 @@ UI.trivia = (() => {
   function render(s, c) {
     S = s; ctx = c; receivedAt = performance.now();
     const t = S.trivia, rv = t.reveal;
-    $('tvNum').textContent = `Q${t.n}/${t.total}${t.final ? ' · 🔥 double points' : ''}`;
+    $('tvNum').textContent = `Q${t.n}/${t.total}${t.final ? ' · 🔥 double points' : t.double ? ' · 🎲 double points' : ''}`;
+    $('tvQ').classList.toggle('double', !!(t.final || t.double));
     $('tvTopic').textContent = t.topic;
     // each topic tints the question card, with its emoji large in the corner
     const hue = [...t.topic].reduce((h, ch) => (h * 31 + ch.codePointAt(0)) % 360, 7);

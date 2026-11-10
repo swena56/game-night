@@ -146,7 +146,9 @@ UI.spire = (() => {
       const blocked = counter(full.length + Math.max(0, st.combo - 1));
       if (blocked) ctx.toast(`🧱 Blocked ${blocked} incoming junk!`);
       if (powers.length) ctx.toast(powers.map((p) => `${POWER_ICON[p]} ${p}!`).join(' '));
-      ctx.quiet(ctx.act('clear', { rings: full.length, combo: st.combo, powers }));
+      const perfect = !st.grid.some((row) => row.some(Boolean));  // ✨ nothing left standing
+      if (perfect) { ctx.sfx('fanfare'); try { Kit.callout('✨ PERFECT CLEAR', 'gold'); } catch {} }
+      ctx.quiet(ctx.act('clear', { rings: full.length, combo: st.combo, powers, perfect }));
     }
     st.dirty = true;
     if (st.grid.slice(H).some((row) => row.some(Boolean))) return die();

@@ -64,10 +64,16 @@ UI.speed = (() => {
 
   const live = () => S?.phase === 'playing' && S.speed.stage === 'play' && S.speed.me != null && !!ctx.act;
 
+  let runAt = 0, run = 0;  // 🔥 cards slapped in quick succession
   function send(card, pile) {
     chosen = null;
     paint();
-    ctx.act('play', { card, pile }).catch((err) => { ctx.toast(err?.message || 'Too slow!'); });
+    ctx.act('play', { card, pile }).then(() => {
+      const now = performance.now();
+      run = now - runAt < 2200 ? run + 1 : 1;
+      runAt = now;
+      if (run >= 3) { try { Kit.callout(`🔥 COMBO ×${run}`, run >= 5 ? 'gold' : 'good', { ms: 800 }); } catch {} if (run === 3 || run === 5) ctx.sfx('tag'); }
+    }).catch((err) => { ctx.toast(err?.message || 'Too slow!'); });
   }
 
   function tap(card) {

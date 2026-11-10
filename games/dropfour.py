@@ -184,6 +184,14 @@ class DropFour(Game):
                 text = (f"🏆 {w.name} connects four!" if s == seat else
                         f"💥 {p.name}'s {'bomb' if how == 'bomb' else 'pull'} backfired — {w.name} connects four!")
                 return r.finish(w, text)
+        if how == "drop":  # ⚡ two columns that would connect four next turn: a double threat
+            threats = 0
+            for c in range(len(self.grid[0])):
+                g2, _ = apply_drop(self.grid, c, seat)
+                if g2 and find_line(g2, seat):
+                    threats += 1
+            if threats >= 2 and len(self.moves) > 4:
+                self.moment(f"⚡ {p.name}: double threat!", "gold", "tag")
         if all(v is not None for v in self.grid[0]):
             nxt = self.next_seat(seat)
             if not (self.s.get("pull") and nxt is not None and pulls_for(self.grid, nxt)):

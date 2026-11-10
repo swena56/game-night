@@ -54,6 +54,7 @@ class Relay(Game):
     name = "Scribble Relay"
     icon = "🖍️"
     blurb = "Write, draw, caption, draw… on your own phone. Watch the phrases fall apart, then vote for the best bits."
+    badges = {**Game.badges, "masterpiece": ("🖼️", "Masterpiece", "Your entry takes the hearts of half the table or more")}
     min_players = 3
     max_players = 6
     settings_schema = {
@@ -241,6 +242,12 @@ class Relay(Game):
             stars = [r.players[chain[i]["by"]].name for i, n in tally.items() if n == best and chain[i]["by"] in r.players]
             if stars:
                 r.add_log(f"⭐ Crowd favourite: {', '.join(stars)} ({best} vote{'s' * (best > 1)})")
+                if len(stars) == 1 and best >= 2:
+                    self.moment(f"⭐ {stars[0]}'s was the favourite", "gold", "tag")
+                if len(stars) == 1 and best * 2 >= len(self.voters()) and len(self.voters()) >= 3:
+                    winner = next((i for i, n in tally.items() if n == best), None)
+                    if winner is not None:
+                        self.award(chain[winner]["by"], "masterpiece")
         self.next_chain()
 
     def finish(self):

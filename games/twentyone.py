@@ -224,6 +224,7 @@ class TwentyOne(Game):
                 self.hands[i][0]["done"] = True
                 p = self.pl(i)
                 self.room.add_log(f"🎉 {p.name if p else '?'} has blackjack!", "power")
+                self.moment(f"♦️ {p.name if p else '?'}: BLACKJACK!", "gold", "fanfare")
         self.next_player(-1)
 
     def settle_pairs(self):
@@ -395,6 +396,8 @@ class TwentyOne(Game):
             p = self.pl(i)
             parts.append(f"{p.name if p else '?'} {'+' if delta >= 0 else ''}{delta}")
         r.add_log(f"🧮 Dealer {d}{' (bust)' if d > 21 else ''}: " + " · ".join(parts), "big")
+        if d > 21 and any(h["res"][0] == "won" for i in range(len(self.seats)) for h in self.hands[i] if self.bets[i]):
+            self.moment(f"🎩 Dealer busts on {d}!", "good", "cheer")
         self.stage = "settle"
         r.turn = None
         r.deadline = time.time() + SETTLE_SECS

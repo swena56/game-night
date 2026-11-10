@@ -532,6 +532,15 @@ class Putt(Game):
             if s == 1:
                 self.award(self.seats[i], "ace")
             self.room.add_log(f"⛳ {name} holes out in {s}!" + (" 🎯 Hole in one!" if s == 1 else ""), "power" if s <= 2 else "question")
+            par = self.hole.get("par", 3)
+            if s == 1:
+                self.moment(f"🎯 {name}: HOLE IN ONE!", "gold", "fanfare")
+            elif s <= par - 2:
+                self.moment(f"🦅 {name}: eagle!", "gold", "fanfare")
+            elif s == par - 1:
+                self.moment(f"🐦 {name}: birdie", "good", "good")
+            elif s >= 8:
+                self.moment(f"⛄ {name}: a snowman ({s})", "bad", None)
         else:
             self.balls[i] = [end[0], end[1]]
             if self.strokes[i] >= (self.cap or SAFETY_CAP):

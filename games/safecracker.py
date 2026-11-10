@@ -29,7 +29,7 @@ class Safecracker(Game):
         "Everyone cracks the same hidden colour code. Each round, tap colours to build a guess and lock it in.",
         "When everyone has locked in, all guesses are revealed: ● a right colour in the right spot, ○ a right colour in the wrong spot.",
         "Use your rivals' clues as well as your own.",
-        "Crack it alone for 3 points, or 2 if others crack it in the same round. If nobody does before the rounds run out, the closest guess gets 1.",
+        "Crack it alone for 3 points, or 2 if others crack it in the same round. If nobody does before the rounds run out, the closest guess gets 1. 🔥 Crack safes alone back to back for +1 each.",
         "Once per safe, 🔍 Probe a colour to learn privately how many of it the code holds. It costs a point if you crack that safe.",
         "Most points after the last safe wins. Alone, crack every safe.",
         "⚔️ Duel (2 players): each of you secretly sets a code, then you race to crack each other's.",
@@ -220,8 +220,18 @@ class Safecracker(Game):
             if self.round <= 3:
                 self.award(p, "quick")
             pts = (3 if alone else 2) - (1 if p.g.probe else 0)
+            # 🔥 on a roll: cracking two safes in a row alone pays one more each time
+            p.g.run = getattr(p.g, "run", 0) + 1 if alone else 0
+            hot = alone and p.g.run >= 2 and len(self.room.seated()) > 1
+            if hot:
+                pts += 1
             p.g.score += pts
-            parts.append(f"{p.name} +{pts}{' (probed)' if p.g.probe else ''}")
+            parts.append(f"{p.name} +{pts}{' (probed)' if p.g.probe else ''}{' 🔥 on a roll' if hot else ''}")
+            if hot:
+                self.moment(f"🔥 {p.name}: {p.g.run} safes in a row! +1", "gold", "tag")
+        for q in self.room.contenders():
+            if q not in crackers and hasattr(q.g, "run"):
+                q.g.run = 0
         self.end_safe(f"🔓 {' & '.join(p.name for p in crackers)} cracked safe {self.safe} in {rounds}! "
                       + ("" if len(self.room.seated()) == 1 else " · ".join(parts)))
 

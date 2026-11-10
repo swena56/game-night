@@ -141,6 +141,8 @@ class Boxes(Game):
             pts = sum(self.value(b) for b in won)
             gem = " 💎" if any(self.value(b) > 1 for b in won) else ""
             self.room.add_log(f"{p.name} closes {len(won)} box{'es' if len(won) > 1 else ''}{gem} (+{pts}) and goes again.", "question")
+            if self.run >= 4 and self.run - len(won) < 4:
+                self.moment(f"⛓ {p.name} is on a chain!", "gold", "tag")
         else:
             self.room.add_log(f"{p.name} draws {where}", "question")
         if all(v is not None for row in self.owner for v in row):

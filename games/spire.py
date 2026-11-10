@@ -171,7 +171,7 @@ class Spire(Game):
     howto = [
         'Pieces fall onto a tower that wraps all the way around.',
         '← → move around the tower, ↑ rotate, Space drops. On phones: swipe, tap, swipe down.',
-        'Fill a whole ring to clear it. Clear 2+ at once to send junk rings to a rival. Junk sent to you waits 3 s on the 🧱 meter: clear rings to block it.',
+        'Fill a whole ring to clear it. ✨ Clear your whole tower in one go and every rival gets junk. Clear 2+ at once to send junk rings to a rival. Junk sent to you waits 3 s on the 🧱 meter: clear rings to block it.',
         'Glowing power cells: ⚡ speed rivals up, 🛡️ block junk, 💣 blast your bottom rings.',
         'Hold (C, Shift, ⇄ or swipe up) parks the falling piece for later, once per piece.',
         'Prefer an upright board? Pick 🧱 Flat well. Want odd shapes? Pick the 🧩 Mixed set (2, 3 and 5 blocks).',
@@ -183,7 +183,8 @@ class Spire(Game):
     min_players = 1
     max_players = 6
     replayable = False
-    badges = {**Game.badges, "quad": ("🗼", "Four at once", "Clear four rings with one piece")}
+    badges = {**Game.badges, "quad": ("🗼", "Four at once", "Clear four rings with one piece"),
+              "perfect": ("✨", "Perfect clear", "Clear your whole tower with one piece")}
     settings_schema = {
         "speed": ("Start speed", [("chill", "🐢 Chill"), ("normal", "Normal"), ("fast", "🔥 Fast")], "normal"),
         "powers": ("Power cells", [(True, "On (⚡🛡️💣)"), (False, "Off")], True),
@@ -238,6 +239,8 @@ class Spire(Game):
             if not (isinstance(rings, int) and 1 <= rings <= 5 and isinstance(combo, int) and 0 <= combo <= 50):
                 raise GameError("Bad clear.")
             p.g.rings += rings
+            if a.get("perfect") is True and rings >= 1:
+                return self.perfect_clear(p, rings, combo, powers)
             return self.on_clear(p, rings, combo, powers)
         if t == "topout":
             return self.knock_out(p)
@@ -246,6 +249,21 @@ class Spire(Game):
     def send(self, o, event):
         self.eid += 1
         o.g.events = (o.g.events + [{**event, "id": self.eid}])[-30:]
+
+    PERFECT_JUNK = 2  # ✨ a perfect clear lands this much junk on every rival, on top of the clear's own attack
+
+    def perfect_clear(self, p, rings, combo, powers):
+        """✨ The tower is empty after this piece: every rival gets junk and the table hears about it."""
+        r = self.room
+        self.award(p, "perfect")
+        foes = [o for o in r.contenders() if o.id != p.id]
+        for o in foes:
+            self.send(o, {"kind": "junk", "n": self.PERFECT_JUNK, "from": p.name})
+            p.g.sent += self.PERFECT_JUNK
+        self.moment(f"✨ {p.name}: PERFECT CLEAR", "gold", "fanfare")
+        if foes:
+            r.add_log(f"✨ {p.name} cleared the whole tower → {self.PERFECT_JUNK} junk at everyone!", "power")
+        self.on_clear(p, rings, combo, powers)
 
     def on_clear(self, p, rings, combo, powers):
         r = self.room

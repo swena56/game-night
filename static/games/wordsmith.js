@@ -75,6 +75,7 @@ UI.wordsmith = (() => {
     box.innerHTML = '';
     if (!plays.length) { box.append(ctx.el('p', 'hint left', 'Words played show up here.')); return; }
     const best = Math.max(...plays.map((x) => x[2]));
+    if (S.ws.best) { const [bp, bw, bs] = S.ws.best, who = ctx.player(bp); const line = ctx.el('p', 'ws-best', `📖 Word of the game: ${bw} (${bs}) · ${who?.name ?? '?'}`); if (who?.color) line.style.borderColor = who.color; box.append(line); }
     for (const [pid, words, pts] of [...plays].reverse()) {
       const p = ctx.player(pid);
       const row = ctx.el('div', 'ws-play' + (pts && pts === best ? ' best' : ''));

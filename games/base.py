@@ -44,6 +44,15 @@ class Game:
         if award:
             award(p, self.id, key)
 
+    def moment(self, text, tone="gold", sound=None, to=None):
+        """✨ A moment for the table: a log line that also pops up as a callout on every screen
+        (Room.moment). tone: gold | good | bad | cool; sound: an SFX name or None."""
+        m = getattr(self.room, "moment", None)  # the rules tests run on small fake rooms
+        if m:
+            m(text, tone, sound, to)
+        else:
+            self.room.add_log(text, "big")
+
     @classmethod
     def defaults(cls):
         return {k: d for k, (_, _, d) in cls.settings_schema.items()}

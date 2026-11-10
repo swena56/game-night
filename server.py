@@ -260,6 +260,12 @@ class Room:
                          "check": check, "helper": helper})
         self.log = self.log[-150:]
 
+    def moment(self, text, tone="gold", sound=None, to=None):
+        """✨ A moment: logged like a big line and popped up as a callout across every screen that gets it
+        (renderLog in app.js). tone: gold | good | bad | cool; sound: an SFX name or None. Keep the text short."""
+        self.add_log(text, "moment", to=to)
+        self.log[-1].update(tone=tone, sound=sound)
+
     def seated(self):
         return [self.players[i] for i in self.order if not self.players[i].spectator]
 

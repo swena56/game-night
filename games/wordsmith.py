@@ -304,6 +304,12 @@ class Wordsmith(Game):
         extra = f" ({', '.join(notes)})" if notes else ""
         self.room.add_log(f"{p.name} played {', '.join(texts)} for {score}{extra}.", "question")
         self.note_play(p, ", ".join(texts), score)
+        # 📖 word of the game: the best play so far changes hands, and the table hears about it
+        best = getattr(self, "best", None)
+        if score >= 24 and (not best or score > best[2]):
+            self.best = [p.id, max(texts, key=len), score]
+            if best:
+                self.moment(f"📖 {max(texts, key=len)} · {score} — best play yet!", "gold", "tag")
         if not p.g.rack and not self.bag:
             return self.end_game(p)
         self.next_turn()
@@ -364,7 +370,7 @@ class Wordsmith(Game):
             "grid": self.grid, "premiums": PREMIUMS, "values": {**VALUES, BLANK: 0}, "bag": len(self.bag),
             "bounty": self.bounty, "last": self.last, "scores": self.scores, "by": self.by,
             "rack": getattr(p.g, "rack", None), "plays": getattr(self, "plays", [])[-12:],
-            "bonuses": {"sweep": SWEEP_BONUS, "bounty": BOUNTY_BONUS},
+            "bonuses": {"sweep": SWEEP_BONUS, "bounty": BOUNTY_BONUS}, "best": getattr(self, "best", None),
         }}
 
     # -- bot

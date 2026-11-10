@@ -394,6 +394,8 @@ class Backgammon(Game):
             return level == "easy" or mine <= theirs * (1.2 if level == "hard" else 1.25)
         return level != "easy" and mine <= theirs * (0.9 if level == "hard" else 0.85)
 
+    closed_called = None
+
     def roll(self):
         if self.rolled:
             raise GameError("You've already rolled.")
@@ -432,6 +434,12 @@ class Backgammon(Game):
             desc = " ".join(f"{self.label(f, side)}/{self.label(t, side)}{'*' if h else ''}" for f, t, _, h in self.turn_moves)
             self.room.add_log(f"{'⚪' if side == WHITE else '⚫'} {self.name_of(side)}: {desc}",
                               "question" if any(m[3] for m in self.turn_moves) else "info")
+        hits = sum(1 for m in self.turn_moves if m[3])
+        if hits >= 2:
+            self.moment(f"💥 {self.name_of(side)} hits {'two' if hits == 2 else hits}!", "gold", "capture")
+        elif all(self.pos[i] * side >= 2 for i in range(1, 25) if home(i, side)) and not getattr(self, "closed_called", None) == side:
+            self.closed_called = side  # 🔒 every home point made (once per game per side)
+            self.moment(f"🔒 {self.name_of(side)} closes the board!", "cool", "lock")
         self.last_moves = self.turn_moves
         self.begin(-side)
 

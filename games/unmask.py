@@ -233,6 +233,11 @@ class Unmask(Game):
                 p.g.flipped |= ids
             else:
                 p.g.flipped -= ids
+            # 🔎 closing in: the table hears when someone is down to their last two faces
+            left = len(self.board) - len(p.g.flipped)
+            if 0 < left <= 2 and not getattr(p.g, "close_called", False) and len(self.board) > 4 and len(self.room.contenders()) > 1:
+                p.g.close_called = True
+                self.moment(f"🔎 {p.name} is down to {left} face{'s' * (left > 1)}!", "cool", "tickfast")
             return
         self.require_turn(p)
         if t == "ask":
