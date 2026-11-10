@@ -8,6 +8,7 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icons/icon-192.png">
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="preload" href="/fonts/baloo2-800-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
@@ -28,6 +29,7 @@
     <div class="panel narrow">
       <h1 class="logo">🎲 Game Night</h1>
       <p class="tag">50 games · play with friends or bots</p>
+      <div class="home-icons" aria-hidden="true"><div id="homeIcons"></div></div>
       <label>Your name <input id="name" maxlength="16" autocomplete="nickname" placeholder="e.g. Sam"></label>
       <button id="createBtn" class="primary big">Create a room</button>
       <div class="or">or play solo against bots</div>
@@ -110,6 +112,7 @@
     <div id="overBanner" class="over" hidden>
       <div class="over-head"><div id="overText"></div>
         <button id="overFold" class="icon-btn" aria-expanded="true" title="Fold the results to see the board">▴</button></div>
+      <div id="overPodium" class="podium" hidden></div>
       <div id="overScores" class="over-scores"></div>
       <div id="overVote" class="over-vote"></div>
       <div class="over-actions">

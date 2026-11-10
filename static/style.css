@@ -52,6 +52,9 @@ body.light .logo { background-image: linear-gradient(90deg, #e09a00, #e0457b, #1
 
 /* ======================================================================== 2. Base */
 * { box-sizing: border-box; }
+/* the display face (static/fonts, OFL): the logo, callouts, big numbers; body text stays the system font */
+@font-face { font-family: 'Baloo 2'; font-style: normal; font-weight: 800; font-display: swap; src: url(/fonts/baloo2-800-latin.woff2) format('woff2'); }
+:root { --font-display: 'Baloo 2', system-ui, -apple-system, "Segoe UI", sans-serif; }
 body { margin: 0; background: var(--bg) radial-gradient(circle at 20% 0, var(--glow) 0, transparent 60%); color: var(--text);
   font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; min-height: 100vh; min-height: 100dvh; }
 /* the slowly drifting ambient background */
@@ -137,18 +140,24 @@ button.shake { animation: shake .35s; }
 .spinner { width: 44px; height: 44px; margin: 0 auto 12px; border-radius: 50%; border: 4px solid var(--panel2); border-top-color: var(--accent); animation: spin .9s linear infinite; }
 
 /* home */
-.logo { font-size: 40px; text-align: center; letter-spacing: -.02em; font-weight: 900;
+.logo { font-size: 44px; text-align: center; letter-spacing: 0; font-weight: 800; font-family: var(--font-display);
   background: linear-gradient(90deg, #ffd166, #ff8fab, #8ecae6, #ffd166); background-size: 300% 100%; -webkit-background-clip: text;
   background-clip: text; color: transparent; animation: sheen 8s linear infinite; }
 .logo.small { font-size: 18px; }
 .tag { text-align: center; color: var(--muted); margin-top: 0; }
+/* the games' icons drifting under the tagline, faded at the sides */
+.home-icons { overflow: hidden; margin: -4px -14px 10px; -webkit-mask: linear-gradient(90deg, #0000, #000 18%, #000 82%, #0000); mask: linear-gradient(90deg, #0000, #000 18%, #000 82%, #0000); }
+.home-icons > div { display: flex; gap: 14px; width: max-content; padding: 4px 0; font-size: 24px; animation: iconDrift 90s linear infinite; filter: drop-shadow(0 3px 4px #0007); }
+.home-icons span { flex: none; opacity: .85; }
+@keyframes iconDrift { to { transform: translateX(-50%); } }
+body.calm .home-icons > div { animation: none; }
 .or { text-align: center; color: var(--muted); margin: 14px 0 4px; font-size: 13px; }
 .solo { margin-top: 10px; }
 .code-input { text-transform: uppercase; letter-spacing: .3em; text-align: center; font-weight: 700; }
 
 /* lobby: room code, players, settings */
 .room-code { text-align: center; font-size: 18px; }
-.room-code b { font-size: 38px; letter-spacing: .2em; color: var(--accent); display: block; }
+.room-code b { font-size: 40px; letter-spacing: .18em; color: var(--accent); display: block; font-family: var(--font-display); font-weight: 800; line-height: 1.1; }
 #shareBtn { display: block; margin: 0 auto 8px; }
 .plist { list-style: none; padding: 0; margin: 0 0 8px; }
 .plist li { display: flex; align-items: center; gap: 8px; padding: 6px 0; }
@@ -179,12 +188,18 @@ body.calm .nudge { animation: none; box-shadow: 0 0 0 2px #ffb70388; }
 .chip-btn[aria-pressed="true"] { border-color: var(--accent); background: #ffb7031a; color: var(--accent); }
 .game-chosen .fav-btn { margin-left: auto; font-size: 22px; line-height: 1; }
 .game-chosen .fav-btn.on { color: var(--accent); }
-.picker-group { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
-.game-tile { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 6px; position: relative;
+.picker-group { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; --tint: var(--accent); }
+.picker-group[data-cat="party"] { --tint: #ef476f; } .picker-group[data-cat="action"] { --tint: #ffb703; } .picker-group[data-cat="strategy"] { --tint: #06d6a0; }
+.picker-group[data-cat="classic"] { --tint: #8ecae6; } .picker-group[data-cat="cards"] { --tint: #cc5de8; } .picker-group[data-cat="dice"] { --tint: #ff8fab; }
+.picker-group[data-cat="words"] { --tint: #4dabf7; }
+.game-tile { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 6px 8px; position: relative;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--tint) 13%, var(--panel2)), var(--panel2) 70%); border-color: color-mix(in srgb, var(--tint) 30%, var(--line));
   transition: transform .15s, box-shadow .2s; }
-.game-tile .gicon { font-size: 26px; filter: drop-shadow(0 3px 4px #0007); }
+.game-tile .gicon { font-size: 26px; width: 48px; height: 48px; display: grid; place-items: center; border-radius: 50%; line-height: 1;
+  background: radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--tint) 34%, #0000), color-mix(in srgb, var(--tint) 12%, #0000) 72%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tint) 35%, #0000); filter: drop-shadow(0 3px 4px #0007); }
 .game-tile small { color: var(--muted); font-size: 11px; }
-.game-tile.on { border: 2px solid var(--accent); background: #ffb7031a; box-shadow: 0 0 0 1px var(--accent), 0 0 18px #ffb70340; }
+.game-tile.on { border: 2px solid var(--accent); background: linear-gradient(180deg, color-mix(in srgb, var(--tint) 22%, var(--panel2)), #ffb7031a); box-shadow: 0 0 0 1px var(--accent), 0 0 18px #ffb70340; }
 .game-tile:disabled { opacity: .35; }
 .game-tile.on:disabled { opacity: 1; }
 .game-tile .wishes { position: absolute; top: 3px; right: 4px; font-size: 11px; font-weight: 700; }
@@ -198,7 +213,7 @@ body.calm .nudge { animation: none; box-shadow: 0 0 0 2px #ffb70388; }
 @media (max-width: 600px) {
   .picker-group { gap: 6px; }
   .game-tile { padding: 7px 3px 6px; gap: 1px; border-radius: 10px; }
-  .game-tile .gicon { font-size: 22px; }
+  .game-tile .gicon { font-size: 22px; width: 40px; height: 40px; }
   .game-tile b { font-size: 12px; line-height: 1.2; }
   .game-tile:not(.nofit) small { display: none; }
   .game-tile small { font-size: 10px; }
@@ -217,6 +232,9 @@ body.calm .nudge { animation: none; box-shadow: 0 0 0 2px #ffb70388; }
 /* first time a game opens on this device: a short card with the gist and the way to the rules */
 .tip-card { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0 0 8px; padding: 10px 12px;
   background: var(--panel2); border: 1px solid var(--accent); border-radius: 12px; box-shadow: 0 4px 18px #0005; }
+.tip-card .tip-icon { flex: none; width: 44px; height: 44px; display: grid; place-items: center; font-size: 24px; border-radius: 50%; line-height: 1;
+  background: radial-gradient(circle at 50% 35%, #ffb70355, #ffb70318 72%); box-shadow: inset 0 0 0 1px #ffb70355; filter: drop-shadow(0 2px 3px #0007); }
+.tip-card.compact .tip-icon { width: 36px; height: 36px; font-size: 20px; }
 .tip-card .tip-head { flex: 1 1 220px; min-width: 0; }
 .tip-card .tip-head b { display: block; font-size: 15px; }
 .tip-card p { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
@@ -262,7 +280,7 @@ body.calm .nudge { animation: none; box-shadow: 0 0 0 2px #ffb70388; }
 /* top bar: one line however long the turn text is */
 .topbar { display: flex; align-items: center; gap: 10px; padding: 6px 12px; background: var(--bar); position: sticky; top: 0; z-index: 6; backdrop-filter: blur(6px);
   padding-top: max(6px, env(safe-area-inset-top)); padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
-.turn { flex: 1; text-align: center; font-weight: 700; }
+.turn { flex: 1; text-align: center; font-weight: 800; font-family: var(--font-display); font-size: 17px; }
 /* your turn: pulses a few times to catch the eye, then stays lit */
 .turn.mine { color: var(--accent); animation: pulse 1.4s 3; }
 /* the ⋯ menu: bigger board, full screen, chat, settings, leave */
@@ -292,7 +310,9 @@ body.calm .nudge { animation: none; box-shadow: 0 0 0 2px #ffb70388; }
 .chip { background: var(--panel); border-radius: 999px; padding: 5px 12px; display: flex; gap: 6px; align-items: center; font-size: 13px; border: 2px solid transparent; }
 .chip b { max-width: 12ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chip.me { background: var(--panel2); }
+.chip .avatar { box-shadow: 0 0 0 2px var(--pc, #0004); }
 .chip.turn-now { border-color: var(--accent); box-shadow: 0 0 12px #ffb70366; animation: glow 1.6s ease-in-out infinite; }
+.chip.turn-now .avatar { box-shadow: 0 0 0 2px var(--pc, #0004), 0 0 0 4px #ffb70366; }
 @keyframes glow { 50% { box-shadow: 0 0 2px #ffb70322; } }
 .chip.out { opacity: .5; text-decoration: line-through; }
 .chip .meta { color: var(--muted); }
@@ -370,9 +390,22 @@ body.calm .nudge { animation: none; box-shadow: 0 0 0 2px #ffb70388; }
 #overBanner:not([hidden]) { animation: overIn .4s cubic-bezier(.2, 1.4, .4, 1); }
 #overBanner.won { background: linear-gradient(100deg, #ffb70340, #06d6a033, #ffb70340), var(--panel); background-size: 200% 100%; animation: overIn .4s cubic-bezier(.2, 1.4, .4, 1), sheen 5s linear infinite; }
 @keyframes overIn { from { transform: translate(-50%, -50%) scale(.9); opacity: 0; } }
+/* the podium: avatars of the top three, the winner up a step with a crown */
+.podium { display: flex; justify-content: center; align-items: flex-end; gap: 14px; padding: 2px 0 4px; font-weight: 400; }
+.pod { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 72px; font-size: 13px; }
+.pod b { max-width: 11ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pc); }
+.pod small { color: var(--muted); font-family: var(--font-display); font-weight: 800; font-size: 13px; }
+.pod-face { position: relative; padding: 4px; border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--pc) 35%, #0000), #0000 70%); }
+.pod .avatar { display: block; width: 44px; height: 44px; box-shadow: 0 0 0 3px var(--pc), 0 6px 16px #000a; }
+.pod-1 .avatar { width: 64px; height: 64px; }
+.pod-1 .pod-face { margin-bottom: 10px; animation: podUp .6s cubic-bezier(.2, 1.4, .4, 1) both; }
+.pod-crown { position: absolute; top: -14px; left: 50%; transform: translateX(-50%); font-size: 22px; animation: crownIn .5s .35s cubic-bezier(.2, 1.6, .4, 1) both; filter: drop-shadow(0 2px 3px #0008); }
+@keyframes podUp { from { transform: translateY(16px) scale(.8); opacity: 0; } }
+@keyframes crownIn { from { transform: translate(-50%, -14px) scale(0); opacity: 0; } }
+#overBanner.folded .podium { display: none; }
 /* folded: a slim bar at the top, no dimming, so the board can be looked over */
 #overBanner.folded { top: calc(var(--bar-h, 52px) + 8px); transform: translateX(-50%); box-shadow: 0 6px 20px #0009; animation: none; }
-.over-head { display: flex; align-items: center; gap: 8px; }
+.over-head { display: flex; align-items: center; gap: 8px; font-family: var(--font-display); font-weight: 800; font-size: 20px; }
 .over-head #overText { flex: 1; }
 .over-head .icon-btn { font-size: 18px; color: var(--muted); }
 #overBanner.folded > :not(.over-head) { display: none; }
@@ -405,6 +438,8 @@ body.replaying .layout { padding-bottom: 190px; }  /* the bar covers the bottom 
 .scores { width: 100%; border-collapse: collapse; font-size: 14px; }
 .scores th, .scores td { padding: 5px 6px; text-align: center; border-bottom: 1px solid var(--line); }
 .scores th:first-child, .scores td:first-child { text-align: left; font-weight: 700; }
+.scores td.pts { position: relative; font-family: var(--font-display); font-weight: 800; font-size: 16px; }
+.scores .pts-bar { position: absolute; left: 6px; right: 6px; bottom: 1px; height: 3px; border-radius: 2px; opacity: .8; width: calc(var(--w, 0%) - 12px); min-width: 4px; }
 .history { padding-left: 20px; margin: 0 0 8px; font-size: 14px; }
 .history li { margin-bottom: 6px; }
 
@@ -424,9 +459,9 @@ body.replaying .layout { padding-bottom: 190px; }  /* the bar covers the bottom 
 .st-row:last-of-type { border-bottom: 0; }
 .st-row.me { background: #ffffff0d; border-radius: 6px; }
 .st-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; gap: 6px; align-items: center; }
-.st-gain { font-weight: 800; color: var(--muted); text-align: right; }
+.st-gain { font-weight: 800; font-family: var(--font-display); color: var(--muted); text-align: right; }
 .st-gain.up { color: var(--ok); animation: pop .4s ease-out; } .st-gain.down { color: var(--danger); }
-.st-total { text-align: right; min-width: 3ch; }
+.st-total { text-align: right; min-width: 3ch; font-family: var(--font-display); font-weight: 800; }
 .st-move { font-size: 12px; font-weight: 800; } .st-move.up { color: var(--ok); } .st-move.down { color: var(--danger); }
 .st-note { margin: 6px 0 0; text-align: center; }
 /* Lucky Letters keeps a steady board (#61): its card floats over the wheel instead of pushing the page */
@@ -567,7 +602,7 @@ body.light #arena .stick-bottom { background: linear-gradient(transparent, #1d17
 .chip-stack.big .cchip { width: 30px; height: 9px; margin-top: -4px; }
 
 /* "+38" rising from where it was scored, and a big word across the screen */
-.fly-text { position: fixed; z-index: 45; transform: translate(-50%, -50%); font-weight: 900; font-size: 22px; pointer-events: none;
+.fly-text { position: fixed; z-index: 45; transform: translate(-50%, -50%); font-weight: 800; font-family: var(--font-display); font-size: 24px; pointer-events: none;
   text-shadow: 0 2px 6px #000c; animation: flyUp 1.2s ease-out forwards; white-space: nowrap; }
 .fly-text.good { color: #06d6a0; } .fly-text.bad { color: #ef476f; } .fly-text.gold { color: #ffd166; } .fly-text.info { color: #fff; }
 .fly-text.still { animation: fadeOut 1.2s ease-in forwards; }
@@ -576,7 +611,7 @@ body.light #arena .stick-bottom { background: linear-gradient(transparent, #1d17
 @keyframes fadeOut { 70% { opacity: 1; } 100% { opacity: 0; } }
 .kit-callout { position: fixed; z-index: 46; left: 50%; top: 38%; transform: translate(-50%, -50%); pointer-events: none;
   width: max-content; max-width: 92vw; text-align: center; line-height: 1.1; overflow-wrap: anywhere;
-  font-size: clamp(28px, 9vw, 64px); font-weight: 900; letter-spacing: .04em; color: #fff;
+  font-size: clamp(28px, 9vw, 64px); font-weight: 800; font-family: var(--font-display); letter-spacing: .02em; color: #fff;
   text-shadow: 0 0 20px var(--cc, #ffb703), 0 0 50px var(--cc, #ffb703), 0 4px 0 #0008; animation: calloutIn 1.5s cubic-bezier(.2, 1.3, .4, 1) forwards; }
 .kit-callout.gold { --cc: #ffb703; } .kit-callout.good { --cc: #06d6a0; } .kit-callout.bad { --cc: #ef476f; } .kit-callout.cool { --cc: #4dabf7; }
 .kit-callout.still { animation: fadeOut 1.5s ease-in forwards; }
@@ -584,7 +619,7 @@ body.light #arena .stick-bottom { background: linear-gradient(transparent, #1d17
   30% { transform: translate(-50%, -50%) scale(1); } 80% { opacity: 1; } 100% { transform: translate(-50%, -60%) scale(1.04); opacity: 0; } }
 /* a rubber stamp slammed onto a spot: FARKLE, SKIP, FLINCH! */
 .kit-stamp { position: fixed; z-index: 45; transform: translate(-50%, -50%) rotate(-8deg); pointer-events: none; white-space: nowrap;
-  font-size: clamp(20px, 6vw, 34px); font-weight: 900; letter-spacing: .08em; text-transform: uppercase; padding: 2px 12px;
+  font-size: clamp(20px, 6vw, 34px); font-weight: 800; font-family: var(--font-display); letter-spacing: .06em; text-transform: uppercase; padding: 2px 12px;
   color: var(--sc, #ef476f); border: 4px solid currentColor; border-radius: 8px; background: #0009;
   animation: stampIn 1.1s cubic-bezier(.2, 1.4, .4, 1) forwards; }
 .kit-stamp.good { --sc: #06d6a0; } .kit-stamp.gold { --sc: #ffd166; } .kit-stamp.cool { --sc: #4dabf7; }
@@ -593,7 +628,7 @@ body.light #arena .stick-bottom { background: linear-gradient(transparent, #1d17
   24% { transform: translate(-50%, -50%) rotate(-8deg) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; } }
 
 /* arena banners and score rows for the real-time games (Light Riders, Paint Blast, Sumo Saucers, Hover Rally) */
-.lr-banner { position: absolute; left: 0; right: 0; top: 42%; text-align: center; font-size: clamp(24px, 8vw, 44px); font-weight: 900; color: #fff;
+.lr-banner { position: absolute; left: 0; right: 0; top: 42%; text-align: center; font-size: clamp(24px, 8vw, 44px); font-weight: 800; font-family: var(--font-display); color: #fff;
   text-shadow: 0 0 18px #8ecae6, 0 0 40px #1f6fff; pointer-events: none; letter-spacing: .06em; }
 .lr-banner.small { font-size: 22px; top: 18%; }
 .lr-row.out { opacity: .5; }
