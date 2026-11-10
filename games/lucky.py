@@ -21,6 +21,7 @@ WEDGE_LABEL = {"bust": "💀 BUST", "skip": "⛔ SKIP", "wild": "🎁 WILD", "st
 SPIN_SECS = 4.0
 STEAL = 500
 SOLVE_MIN = 1000
+MIND_READER = 500  # 🔮 solving with at least half of the letters still hidden
 VOWEL_COST = 250   # with the Buy-a-vowel setting, paid from your round bank
 REVEAL_SECS = 4.5  # a solved puzzle stays up (and is celebrated) before the next round
 
@@ -73,11 +74,13 @@ class Lucky(Game):
         "Right? Keep going: spin again or solve. Wrong or already called? Next player.",
         "Vowels: land on ✨ VOWEL, or (if the setting is on) 💰 buy one for 250 from your round bank. 💀 BUST wipes your round bank.",
         "🎁 WILD reveals a free letter, 🦊 STEAL takes 500 from the leader, ⚡ JACKPOT wins the pot.",
+        f"🔮 Solve while half the letters or more are still hidden for +{MIND_READER}.",
         "Solve on your turn to bank your round (at least 1000). Most points after the last round wins.",
     ]
     name = "Lucky Letters"
     icon = "🎡"
     blurb = "Spin the 3D prize wheel, call letters and solve the hidden phrase before your rivals do."
+    badges = {**Game.badges, "mind_reader": ("🔮", "Mind reader", "Solve a puzzle with half its letters or more still hidden")}
     min_players = 2
     max_players = 6
     settings_schema = {
@@ -286,10 +289,18 @@ class Lucky(Game):
             r.add_log(f"🙅 {p.name} guessed “{str(guess)[:60]}” — not quite.", "power")
             return self.next_player()
         won = max(self.bank[p.id], SOLVE_MIN)
+        letters = [ch for ch in self.answer if ch.isalpha()]
+        hidden = sum(1 for ch in letters if ch not in self.called)
+        mind = letters and hidden * 2 >= len(letters)
+        if mind:  # 🔮 half the phrase or more was still blank
+            won += MIND_READER
+            self.award(p, "mind_reader")
         self.total[p.id] += won
         self.last_answer = {"category": self.category, "answer": self.answer, "by": p.name, "won": won}
         self.called |= set(self.answer)
-        r.add_log(f"🎉 {p.name} solved it: “{self.answer}” and banks {won:,}!", "big")
+        r.add_log(f"🎉 {p.name} solved it: “{self.answer}” and banks {won:,}!" + (f" 🔮 Mind reader: {hidden} letters were still hidden, +{MIND_READER}." if mind else ""), "big")
+        if mind:
+            r.moment(f"🔮 MIND READER +{MIND_READER}", "gold", "fanfare")
         if self.round >= self.s["rounds"]:
             return self.finish()
         self.stage = "solved"  # on_timeout starts the next round once everyone has seen the answer

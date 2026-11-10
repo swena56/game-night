@@ -12,6 +12,7 @@ from .wordsmith import words
 
 REVEAL_SECS = 10   # pause on the results between rounds
 MAX_LEN = 11       # the dictionary's longest words
+LONGEST_BONUS = 3  # 🧵 for the round's longest word that nobody else found (5+ letters, no tie)
 # English-ish letter weights; Q always comes as QU
 WEIGHTS = {"E": 12, "A": 9, "I": 8, "O": 8, "T": 8, "N": 7, "R": 7, "S": 7, "L": 5, "U": 4, "D": 4, "C": 4,
            "H": 3, "M": 3, "P": 3, "G": 3, "B": 2, "Y": 2, "F": 2, "W": 2, "K": 1, "V": 1,
@@ -74,6 +75,7 @@ class GridHunt(Game):
         "Everyone hunts in the same letter grid at the same time.",
         "Trace a word through touching tiles (diagonals too, no tile twice): drag across them, or tap them one by one and tap the last tile again to send. On a keyboard, just type.",
         "Words need 3+ letters on the 4×4 grid, 4+ on the 5×5. Points: length − 2. A word through the ⭐ star tile scores double.",
+        f"🧵 The round's longest word that nobody else found (5+ letters) earns +{LONGEST_BONUS}.",
         "When time is up, a word anyone else also found scores nothing. Find the words nobody else sees!",
         "Alone, every word counts: reach the target score to win.",
         "With ⚡ Frenzy on, words found in the last 15 seconds of a round score double.",
@@ -250,15 +252,25 @@ class GridHunt(Game):
         counts = Counter(w for p in live for w in set(p.g.words))
         for p in live:
             p.g.round_pts = sum(self.worth(p, w) for w in p.g.words if counts[w] == 1)
-            p.g.score += p.g.round_pts
             if any(len(w) >= 7 and counts[w] == 1 for w in p.g.words):
                 self.award(p, "long_word")
+        # 🧵 the longest unique word of the round earns a bonus (one holder only, and 5+ letters)
+        uniq = sorted(((len(w), w, p) for p in live for w in set(p.g.words) if counts[w] == 1), key=lambda x: (-x[0], x[1]))
+        self.longest = None
+        if uniq and uniq[0][0] >= 5 and (len(uniq) == 1 or uniq[1][0] < uniq[0][0]) and len(live) > 1:
+            n, w, p = uniq[0]
+            p.g.round_pts += LONGEST_BONUS
+            self.longest = [p.id, w]
+            self.room.moment(f"🧵 {p.name}: {w.upper()} · longest word +{LONGEST_BONUS}", "gold", "tag")
+        for p in live:
+            p.g.score += p.g.round_pts
         missed = sorted((w for w in self.all if not counts[w]), key=lambda w: (-len(w), w))[:8]
         self.results = {
             "lists": {p.id: [[w, self.worth(p, w), counts[w] > 1] for w in sorted(p.g.words, key=lambda w: (-len(w), w))]
                       for p in live},
             "pts": {p.id: p.g.round_pts for p in live},
             "missed": [[w, self.points(w)] for w in missed],
+            "longest": self.longest,
         }
         ranked = sorted(live, key=lambda q: -q.g.round_pts)
         self.room.add_log(f"⏱️ Time! Round {self.round}: " + " · ".join(f"{q.name} +{q.g.round_pts}" for q in ranked)

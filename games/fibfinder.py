@@ -13,6 +13,7 @@ PICK_SECS = 45
 REVEAL_SECS = 9
 MIN_OPTIONS = 4
 TRUTH_PTS, FOOL_PTS = 3, 2
+SURE_WIN, SURE_LOSS = 5, 2  # ✌️ a "sure" pick: the truth pays this instead of TRUTH_PTS, a miss costs this
 
 
 class FibFinder(Game):
@@ -21,7 +22,7 @@ class FibFinder(Game):
     howto = [
         "A strange-but-true fact appears with a word missing.",
         "Everyone secretly writes a fake answer that sounds true.",
-        f"Then pick which answer you think is real: +{TRUTH_PTS} for the truth.",
+        f"Then pick which answer you think is real: +{TRUTH_PTS} for the truth. ✌️ Sure of it? Double down: +{SURE_WIN} if you're right, −{SURE_LOSS} if you're fooled.",
         f"+{FOOL_PTS} for every player who falls for your fib. The last round counts double.",
     ]
     name = "Fib Finder"
@@ -69,6 +70,7 @@ class FibFinder(Game):
         self.ids.append(p.id)
 
     def new_round(self):
+        self.sure = set()
         r = self.room
         self.round += 1
         self.fact = FACTS[self.queue[self.round - 1]]
@@ -116,6 +118,8 @@ class FibFinder(Game):
             if p.id in self.options[i]["authors"]:
                 raise GameError("That's your own fib!")
             self.picks[p.id] = i
+            sure = getattr(self, "sure", set())
+            self.sure = (sure | {p.id}) if a.get("sure") else (sure - {p.id})
             return self.maybe_next()
         raise GameError("Unknown action.")
 
@@ -163,19 +167,27 @@ class FibFinder(Game):
         mult = 2 if self.final() else 1
         truth = next(i for i, o in enumerate(self.options) if o["truth"])
         found = []
+        sure = getattr(self, "sure", set())
+        burned = []
         for pid, i in self.picks.items():
             p = r.players.get(pid)
             if not p:
                 continue
             if i == truth:
-                p.g.score += TRUTH_PTS * mult
-                found.append(p.name)
+                p.g.score += (SURE_WIN if pid in sure else TRUTH_PTS) * mult
+                found.append(p.name + (" ✌️" if pid in sure else ""))
+            elif pid in sure:
+                p.g.score -= SURE_LOSS * mult
+                burned.append(p.name)
             for aid in self.options[i]["authors"]:
                 a = r.players.get(aid)
                 if a:
                     a.g.score += FOOL_PTS * mult
                     a.g.fooled += 1
-        r.add_log(f"✅ The truth: “{self.fact[1]}”. " + (f"Found by {', '.join(found)}." if found else "Nobody found it!"), "power")
+        r.add_log(f"✅ The truth: “{self.fact[1]}”. " + (f"Found by {', '.join(found)}." if found else "Nobody found it!")
+                  + (f" ✌️ {', '.join(burned)} doubled down and lost {SURE_LOSS * mult}." if burned else ""), "power")
+        if burned:
+            r.moment(f"✌️💥 {', '.join(burned)}: so sure, so wrong", "bad", "wrong")
         for o in self.options:
             fooled = [r.players[pid].name for pid, i in self.picks.items() if self.options[i] is o and pid in r.players]
             if o["authors"] and fooled:
@@ -241,7 +253,8 @@ class FibFinder(Game):
         r = self.room
         out = {
             "stage": self.stage, "round": self.round, "rounds": len(self.queue), "final": self.final(),
-            "fact": self.fact[0], "mine": self.fibs.get(p.id), "myPick": self.picks.get(p.id),
+            "fact": self.fact[0], "mine": self.fibs.get(p.id), "myPick": self.picks.get(p.id), "mySure": p.id in getattr(self, "sure", set()),
+            "sure": sorted(getattr(self, "sure", set())) if self.stage == "reveal" or r.phase == "over" else [],
             "waiting": [q.id for q in self.waiting_on()],
             "options": [], "mineIdx": [], "reveal": None,
         }
@@ -276,8 +289,13 @@ class FibFinder(Game):
         Hard bots are suspicious of answers that sound like nobody's real guess."""
         cands = [i for i, o in enumerate(self.options) if p.id not in o["authors"]]
         truth = next(i for i, o in enumerate(self.options) if o["truth"])
+        self.sure = getattr(self, "sure", set()) - {p.id}
         if random.random() < {"easy": 0.2, "normal": 0.35, "hard": 0.5}[p.bot]:
+            if random.random() < {"easy": 0.15, "normal": 0.3, "hard": 0.45}[p.bot]:
+                self.sure = self.sure | {p.id}  # ✌️ sure of it
             return truth
+        if p.bot == "easy" and random.random() < 0.12:
+            self.sure = self.sure | {p.id}  # ✌️ sure of the wrong thing
         if p.bot == "hard":
             known = {norm(x) for x in [self.fact[1], *self.fact[3]]}
             plausible = [i for i in cands if norm(self.options[i]["text"]) in known]

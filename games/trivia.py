@@ -23,7 +23,7 @@ class Trivia(Game):
     howto = [
         "Everyone gets the same question at the same time, with four answers to pick from.",
         f"A right answer scores {BASE_PTS}, plus up to {SPEED_PTS} more the faster you are. A wrong one scores nothing.",
-        "You can't change your answer, so be quick but sure. The last question counts double.",
+        "You can't change your answer, so be quick but sure. The last question counts double, and so does one surprise 🎲 Double question along the way.",
         f"🔥 Streaks pay: from your 3rd right answer in a row, +{STREAK_PTS} more for each (up to +{STREAK_PTS * STREAK_CAP}).",
         f"Most points wins. Alone, get {round(SOLO_GOAL * 100)}% right to win.",
     ]
@@ -59,6 +59,8 @@ class Trivia(Game):
             self.late_join(p)
         self.solo = len(seated) == 1
         self.n = 0
+        # 🎲 one question somewhere in the middle is announced as a Double just as it comes up
+        self.double = rng.randint(2, len(self.queue) - 1) if len(self.queue) >= 4 else 0
         self.room.turn = None
         self.room.bot_at = 0
         topic = TOPICS.get(self.s["topic"], "🎲 Everything")
@@ -82,6 +84,10 @@ class Trivia(Game):
 
     def final(self):
         return self.n == len(self.queue)
+
+    def doubled(self):
+        """🔥 the last question and 🎲 the surprise Double both score twice."""
+        return self.final() or self.n == getattr(self, "double", 0)
 
     def next_question(self):
         self.n += 1
@@ -109,9 +115,11 @@ class Trivia(Game):
                 self.plans.append((self.t0 + min(self.s["secs"] - 0.5, self.rng.uniform(lo, hi) * self.s["secs"] / 15), p.id, pick))
         self.plans.sort()
         self.sync()
-        final = " 🔥 Double points!" if self.final() else ""
+        final = " 🔥 Double points!" if self.final() else " 🎲 Double points!" if self.doubled() else ""
         claim = f" → {self.q['claim']}: true or false?" if "claim" in self.q else ""
         self.room.add_log(f"❓ Q{self.n}/{len(self.queue)} · {TOPICS[topic]}: {text}{claim}{final}", "question")
+        if self.doubled() and not self.final():
+            self.room.moment("🎲 DOUBLE QUESTION", "gold", "tag")
 
     def sync(self):
         self.room.deadline = self.next_event() - self.skew
@@ -192,7 +200,7 @@ class Trivia(Game):
 
     def reveal(self):
         r = self.room
-        mult = 2 if self.final() else 1
+        mult = 2 if self.doubled() else 1
         secs = self.s["secs"]
         right = self.q["right"]
         got = []
@@ -266,7 +274,7 @@ class Trivia(Game):
         reveal = self.stage == "reveal" or self.room.phase == "over"
         mine = self.answers.get(p.id)
         out = {
-            "stage": self.stage, "n": self.n, "total": len(self.queue), "final": self.final(),
+            "stage": self.stage, "n": self.n, "total": len(self.queue), "final": self.final(), "double": self.doubled() and not self.final(),
             "topic": TOPICS[self.q["topic"]], "text": self.q["text"], "options": self.q["options"],
             "claim": self.q.get("claim"),
             "mine": mine[0] if mine else None,

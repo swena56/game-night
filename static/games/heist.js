@@ -52,8 +52,13 @@ UI.heist = (() => {
     const h = S.heist;
     const two = document.getElementById('hRuleTwo');
     if (two && h.crew) two.innerHTML = '🤝 <b>Two grabbers</b> split the vault; <b>three or more</b> trip the alarm.';
-    document.getElementById('hNight').textContent = h.rounds ? `🌙 Night ${h.night} of ${h.rounds}`
-      : h.lms ? `🌙 Night ${h.night} · 🔦 ${h.rent ? `rent 💰${h.rent}` : 'rent from night 6'}` : `🌙 Night ${h.night} · ♾️`;
+    const moon = h.moon ? '🌕' : '🌙';
+    document.getElementById('hNight').textContent = (h.rounds ? `${moon} Night ${h.night} of ${h.rounds}`
+      : h.lms ? `${moon} Night ${h.night} · 🔦 ${h.rent ? `rent 💰${h.rent}` : 'rent from night 6'}` : `${moon} Night ${h.night} · ♾️`)
+      + (h.moon ? ` · full moon: fines 💰${h.fine}` : h.moon_next ? ' · 🌕 full moon tomorrow' : '');
+    document.getElementById('hVault').classList.toggle('fullmoon', !!h.moon);
+    const guardBtn = document.querySelector('.h-choice[data-id="guard"] small');
+    if (guardBtn) guardBtn.textContent = `Catch grabbers and collect a 💰${h.fine || 2} fine from each. Guarding an empty hall costs 💰1.`;
     if (h.lms) {
       document.getElementById('hRuleLms').hidden = false;
       document.getElementById('hRuleEnd').textContent = 'You can change your mind until the last player locks in. The last thief still free wins.';

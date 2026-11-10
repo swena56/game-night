@@ -228,6 +228,11 @@ class Doodle(Game):
                 self.award(p, "quick")
             p.g.score += pts
             p.g.got += 1
+            # 🔥 on a roll: the third picture in a row pays one more, and the table hears about it
+            p.g.run = getattr(p.g, "run", 0) + 1
+            if p.g.run >= 3:
+                p.g.score += 1
+                self.room.moment(f"🔥 {p.name}: {p.g.run} in a row! +1", "gold", "tag")
             if self.s["mode"] == "race":
                 return self.reveal(p)
             self.room.add_log(f"✅ {p.name} got it! +{pts}", "power")
@@ -239,6 +244,10 @@ class Doodle(Game):
 
     def reveal(self, winner):
         answer = self.pic[0]
+        got = {pid for pid, _ in self.solvers}
+        for q in self.room.contenders():
+            if q.id not in got and hasattr(q.g, "run"):
+                q.g.run = 0
         if self.s["mode"] == "race" and winner:
             pts = dict(self.solvers)[winner.id]
             self.room.add_log(f"⚡ {winner.name} got it first — it's a {answer}! +{pts}", "big")

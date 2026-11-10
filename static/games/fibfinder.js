@@ -59,14 +59,21 @@ UI.fibfinder = (() => {
         f.options.forEach((text, i) => {
           const b = ctx.el('button', 'fb-opt', text);
           if (f.mineIdx.includes(i)) b.append(ctx.el('small', '', ' (your fib)'));
-          b.onclick = () => ctx.quiet(ctx.act('pick', { i }));
+          b.onclick = () => ctx.quiet(ctx.act('pick', { i, sure: !!$('fbSure')?.checked }));
           box.append(b);
         });
+        // ✌️ double down: +5 for the truth, −2 if fooled; toggling after a pick re-sends the pick
+        const sure = ctx.el('label', 'fb-sure');
+        const cb = ctx.el('input'); cb.type = 'checkbox'; cb.id = 'fbSure'; cb.checked = !!f.mySure;
+        cb.onchange = () => { if (S.fibfinder.myPick != null) ctx.quiet(ctx.act('pick', { i: S.fibfinder.myPick, sure: cb.checked })); };
+        sure.append(cb, ctx.el('span', '', ' ✌️ Sure of it? +5 if right, −2 if fooled'));
+        box.append(sure);
       }
-      [...box.children].forEach((b, i) => {
+      [...box.querySelectorAll('.fb-opt')].forEach((b, i) => {
         b.classList.toggle('on', f.myPick === i);
         b.disabled = f.mineIdx.includes(i) || !playing();
       });
+      const sureBox = $('fbSure'); if (sureBox) { sureBox.disabled = !playing(); if (document.activeElement !== sureBox) sureBox.checked = !!f.mySure; }
     } else if (f.reveal) {
       // the reveal plays out fib by fib, who fell for each, and the truth comes last
       const rk = `${f.round}`;
@@ -85,8 +92,10 @@ UI.fibfinder = (() => {
         const row = ctx.el('div', 'reveal-row');
         for (const pid of o.pickers) {
           const p = ctx.player(pid);
-          const tag = ctx.el('span', 'reveal-tag', p?.name ?? '?');
+          const sure = (f.sure || []).includes(pid);  // ✌️ doubled down on this answer
+          const tag = ctx.el('span', 'reveal-tag', (p?.name ?? '?') + (sure ? ' ✌️' : ''));
           tag.style.borderColor = p?.color ?? '#777';
+          if (sure) tag.title = o.truth ? 'Doubled down: +5' : 'Doubled down: −2';
           row.append(tag);
         }
         card.append(row);

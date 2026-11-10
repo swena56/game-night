@@ -7,6 +7,7 @@ from .base import Game, GameError
 
 CHOICES = {"grab": "🦹", "guard": "🛡️", "rest": "😴"}
 FINE = 2
+MOON_FINE = 4  # 🌕 on a full-moon night the loot that arrives is doubled and so are the fines
 MAX_NIGHTS = 99  # ♾️ endless nights (#63) run until the host cashes out, or this night at the latest
 LMS = -1  # 🔦 last thief standing: the "rounds" value for play-until-one-is-left
 HEAT_OUT = 3  # 🔥 caught this many times and you're arrested
@@ -23,6 +24,7 @@ class Heist(Game):
         'Each night, everyone secretly chooses Grab, Guard or Rest.',
         'A lone grabber steals the whole vault; two grabbers trip the alarm.',
         'Guards fine every grabber 💰2 — but guarding an empty hall costs 💰1. Resting earns 💰1.',
+        '🌕 One night is a full moon, announced the night before: twice the loot arrives and guards fine 💰4.',
         'Most gold after the last night wins. With ♾️ endless nights, play on until the host taps 🏁 Cash out.',
         'With 🤝 Crews, two grabbers split the vault between them; three or more trip the alarm.',
         'Bots have a personality on their chip: 🦊 greedy grabs more, 🐢 cautious rests, 🦉 watchful guards.',
@@ -58,6 +60,8 @@ class Heist(Game):
         self.heat = {p.id: 0 for p in seated}  # 🔦 last thief standing: catches so far
         self.tails = {}  # 👻 informant id -> the player they're tailing tonight
         self.tips = {p.id: 1 if self.s.get("tip") else 0 for p in seated}  # 🕵️ inside-man tip-offs left
+        # 🌕 the full moon: one night in the middle of a fixed heist; every 5th night when there's no last night
+        self.moon = rng.randint(3, self.limit - 1) if self.limit >= 4 else 0
         # each bot gets a personality, dealt so a table of bots doesn't all play alike
         kinds = list(PERSONAS)
         rng.shuffle(kinds)
@@ -76,6 +80,14 @@ class Heist(Game):
         """The last night, or 0 when the game has none (♾️ endless, 🔦 last thief standing)."""
         return max(0, self.s["rounds"])
 
+    def full_moon(self, night=None):
+        night = self.night if night is None else night
+        moon = getattr(self, "moon", 0)
+        return night == moon if self.limit else night > 1 and night % 5 == 0
+
+    def fine(self):
+        return MOON_FINE if self.full_moon() else FINE
+
     def rent(self, night=None):
         night = self.night if night is None else night
         return 0 if not self.lms or night < RENT_FROM else 1 + (night - RENT_FROM) // RENT_STEP
@@ -83,7 +95,7 @@ class Heist(Game):
     def new_night(self):
         r = self.room
         self.night += 1
-        added = self.rng.randint(2, 6)
+        added = self.rng.randint(2, 6) * (2 if self.full_moon() else 1)
         self.pot += added
         self.choices = {}
         self.tails = {}
@@ -94,7 +106,12 @@ class Heist(Game):
             r.bot_at += 5  # 👻 give an arrested player time to pick whom to tail before the bots move
         of = f"/{self.limit}" if self.limit else ""
         rent = f" 🔦 Rent tonight: 💰{self.rent()}." if self.rent() else ""
-        r.add_log(f"🌙 Night {self.night}{of}: 💰{added} more loot — the vault holds 💰{self.pot}.{rent}")
+        moon = "🌕" if self.full_moon() else "🌙"
+        r.add_log(f"{moon} Night {self.night}{of}: 💰{added} more loot — the vault holds 💰{self.pot}.{rent}")
+        if self.full_moon():
+            r.moment(f"🌕 FULL MOON · fines 💰{MOON_FINE}", "cool", "alarm")
+        elif self.full_moon(self.night + 1):
+            r.add_log(f"🌕 Tomorrow is a full moon: double loot arrives, and guards fine 💰{MOON_FINE}.", "power")
 
     def act(self, p, a):
         if a.get("type") == "cashout":  # ♾️ endless nights: the host ends the heist, most gold wins
@@ -170,7 +187,7 @@ class Heist(Game):
             hot.update(grab)
             fines = 0
             for i in grab:
-                paid = min(FINE, self.gold[i])
+                paid = min(self.fine(), self.gold[i])
                 self.gold[i] -= paid
                 fines += paid
             share, leftover = divmod(fines, len(guard))
@@ -291,7 +308,7 @@ class Heist(Game):
 
     def view(self, p):
         return {"heist": {
-            "night": self.night, "rounds": self.limit, "lms": self.lms, "rent": self.rent(),
+            "night": self.night, "rounds": self.limit, "lms": self.lms, "rent": self.rent(), "moon": self.full_moon(), "moon_next": self.full_moon(self.night + 1), "fine": self.fine(),
             "next_rent": self.rent(self.night + 1) if self.lms else 0, "heat": getattr(self, "heat", {}), "heat_out": HEAT_OUT,
             "out": [i for i in self.gold if self.room.players.get(i) and self.room.players[i].eliminated],
             "tails": getattr(self, "tails", {}), "my_tail": getattr(self, "tails", {}).get(p.id), "host": self.room.host == p.id, "crew": self.s.get("style") == "crew", "pot": self.pot,
@@ -333,7 +350,7 @@ class Heist(Game):
             leader = max(self.gold, key=self.gold.get)
             if leader == p.id and self.limit and self.night >= self.limit - 1:
                 return "rest" if self.pot < 6 else "guard"  # protect the lead
-            if self.gold[p.id] < FINE:
+            if self.gold[p.id] < self.fine():
                 grab *= 1.3  # nothing to lose
         if self.lms:
             heat = self.heat[p.id]
@@ -343,6 +360,8 @@ class Heist(Game):
                 grab *= 0.3 if self.gold[p.id] >= self.rent(self.night + 1) * 2 else 0.8  # one more catch ends it
             if self.gold[p.id] < self.rent(self.night + 1) + 1:
                 grab *= 1.6  # rent's due: need loot
+        if self.full_moon():  # 🌕 bigger fines make guarding pay and grabbing dearer
+            guard, grab = guard * 1.4, grab * 0.85
         kind = getattr(self, "persona", {}).get(p.id)
         if kind:
             grab, guard = grab * PERSONAS[kind][1], guard * PERSONAS[kind][2]
