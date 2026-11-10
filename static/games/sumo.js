@@ -329,8 +329,9 @@ UI.sumo = (() => {
     stage.prepend(renderer.domElement);
     const scene = new T.Scene(); scene.background = new T.Color(0x05040d);
     const camera = new T.PerspectiveCamera(42, 1, 0.5, 600);
-    scene.add(new T.HemisphereLight(0xbfd9ff, 0x221133, 0.75));
-    const sun = new T.DirectionalLight(0xffffff, 0.8); sun.position.set(-8, 20, 10); scene.add(sun);
+    const R0 = S?.sumo?.R0 ?? 10;
+    // saucers throw soft shadows on the deck (not on 🎨 Low)
+    const stg = GL3.stage(renderer, scene, { exposure: 1.1, hemi: [0xbfd9ff, 0x221133, 0.75], key: { i: 0.8, pos: [-8, 20, 10], area: R0 * 1.6, near: 2, far: 60 } });
     // the sky: a nebula dome, slowly turning stars and a ringed planet far below the platform
     const sky = new T.Group(); scene.add(sky);
     {
@@ -357,7 +358,6 @@ UI.sumo = (() => {
       pring.rotation.x = Math.PI / 2.3; planet.add(pring);
       planet.position.set(60, -140, -120); sky.add(planet);
     }
-    const R0 = S?.sumo?.R0 ?? 10;
     const platform = new T.Group(); scene.add(platform);
     // the deck: glowing panel lines on a dark metal plate (a tiling canvas texture, no image files)
     const deckTex = canvasTex(T, 128, (g, n) => {
@@ -372,7 +372,7 @@ UI.sumo = (() => {
     const discTex = deckTex.clone(); discTex.needsUpdate = true; discTex.repeat.set(R0 / 2, R0 / 2);
     const discTop = topMat.clone(); discTop.map = discTex;
     const disc = new T.Mesh(new T.CylinderGeometry(R0, R0 * 0.8, 1.2, 64), [sideMat, discTop, sideMat]);
-    disc.position.y = -0.6; platform.add(disc);
+    disc.position.y = -0.6; disc.receiveShadow = true; platform.add(disc);
     // underside glow, so the platform reads as hovering
     const under = new T.Mesh(new T.CircleGeometry(R0 * 0.75, 48), new T.MeshBasicMaterial({ color: 0x5a3cff, transparent: true, opacity: 0.35, side: T.DoubleSide, depthWrite: false }));
     under.rotation.x = Math.PI / 2; under.position.y = -1.25; platform.add(under);
@@ -491,7 +491,7 @@ UI.sumo = (() => {
       while (saucers.length < S.sumo.seats.length) {
         const i = saucers.length, g = new T.Group(), r = S.sumo.saucer, col = new T.Color(colorOf(i));
         const hullMat = new T.MeshStandardMaterial({ color: col, metalness: 0.5, roughness: 0.35, emissive: 0x000000 });
-        const hull = new T.Mesh(body, hullMat);
+        const hull = new T.Mesh(body, hullMat); hull.castShadow = true;
         hull.scale.set(r, r * 0.32, r);
         const top = new T.Mesh(dome, new T.MeshStandardMaterial({ color: 0xdff6ff, transparent: true, opacity: 0.75, roughness: 0.1 }));
         top.scale.setScalar(r * 1.1); top.position.y = r * 0.15;
@@ -685,7 +685,7 @@ UI.sumo = (() => {
     }
     function dispose() {
       for (const r of rings) r.m.material.dispose();
-      renderer.dispose(); renderer.domElement.remove();
+      stg.dispose(); renderer.dispose(); renderer.domElement.remove();
     }
     resize();
     return { draw, resize, dispose, shake: (a) => GL3.shake(camera, a), hit, ring, burst, shatter, crumble, fall, pick, pop };

@@ -59,7 +59,7 @@ UI.lucky = (() => {
     const T = window.THREE, stage = $('lkStage');
     const renderer = GL3.renderer({ alpha: true }, { onLost: () => {
       if (!gfx || gfx.renderer !== renderer) return;
-      renderer.dispose(); renderer.domElement.remove(); gfx = null;
+      gfx.stg?.dispose(); renderer.dispose(); renderer.domElement.remove(); gfx = null;
       if (stage.isConnected) { initThree(); resize(); }
     } });
     if (!renderer) return;
@@ -68,7 +68,7 @@ UI.lucky = (() => {
     stage.prepend(renderer.domElement);
     const scene = new T.Scene(), camera = new T.PerspectiveCamera(38, 1, 0.1, 100);
     camera.position.set(0, -1.2, 15); camera.lookAt(0, 0.2, 0);
-    scene.add(new T.AmbientLight(0xffffff, 0.6));
+    const stg = GL3.stage(renderer, scene, { exposure: 1.1, hemi: [0xffffff, 0x5a4630, 0.6], key: false });  // the room shows in the gold rim
     const key = new T.SpotLight(0xffffff, 1.0, 60, Math.PI / 5, 0.4); key.position.set(4, 8, 14); scene.add(key);
     const wheel = new T.Group(); scene.add(wheel);
     const face = new T.Mesh(new T.CircleGeometry(5, 96), new T.MeshStandardMaterial({ map: tex, roughness: 0.55 }));
@@ -86,7 +86,7 @@ UI.lucky = (() => {
     hub.rotation.x = Math.PI / 2; hub.position.z = 0.5; wheel.add(hub);
     const pointer = new T.Mesh(new T.ConeGeometry(0.45, 1.1, 24), new T.MeshStandardMaterial({ color: 0xef476f, metalness: 0.3 }));
     pointer.rotation.z = Math.PI; pointer.position.set(0, 5.45, 0.8); scene.add(pointer);
-    gfx = { renderer, scene, camera, wheel, pointer };
+    gfx = { renderer, scene, camera, wheel, pointer, stg };
     $('lkSvg').hidden = true;
     resize();
   }
@@ -211,7 +211,7 @@ UI.lucky = (() => {
   function unmount() {
     cancelAnimationFrame(raf);
     resizeObs?.disconnect();
-    if (gfx) { gfx.renderer.dispose(); gfx = null; }
+    if (gfx) { gfx.stg?.dispose(); gfx.renderer.dispose(); gfx = null; }
   }
 
   function render(s, c) {

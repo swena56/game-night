@@ -262,15 +262,14 @@ UI.spire = (() => {
     const stage = $('spStage');
     const renderer = GL3.renderer({ alpha: true }, { onLost: () => {
       if (!gfx || gfx.renderer !== renderer) return;
-      renderer.dispose(); renderer.domElement.remove(); gfx = null;
+      gfx.stg?.dispose(); renderer.dispose(); renderer.domElement.remove(); gfx = null;
       if (stage.isConnected) { initThree(); resize(); }
     } });
     if (!renderer) return;
     stage.prepend(renderer.domElement);
     const scene = new T.Scene();
     const camera = new T.PerspectiveCamera(42, 1, 0.1, 200);
-    scene.add(new T.AmbientLight(0xffffff, 0.55));
-    const sun = new T.DirectionalLight(0xffffff, 0.85); sun.position.set(6, 30, 20); scene.add(sun);
+    const stg = GL3.stage(renderer, scene, { exposure: 1.1, hemi: [0xd8ccff, 0x1a1030, 0.7], key: { i: 0.85, pos: [6, 30, 20], shadow: false } });
     const rim = new T.PointLight(0x8e7dff, 0.8, 80); rim.position.set(-12, 10, -10); scene.add(rim);
     const R = W / (2 * Math.PI) + 0.45, arc = (2 * Math.PI * R) / W;
     const tower = new T.Group(); scene.add(tower);
@@ -282,16 +281,27 @@ UI.spire = (() => {
     const danger = new T.Mesh(new T.TorusGeometry(R + 0.55, 0.05, 8, 64), new T.MeshBasicMaterial({ color: 0xef476f }));
     danger.rotation.x = Math.PI / 2; danger.position.y = H; tower.add(danger);
     const geo = new T.BoxGeometry(arc * 0.92, 0.92, 0.9);
+    // a bevel on every block face: a lit edge and a shaded rim, drawn once and tinted by the block's colour
+    const bevel = (() => {
+      const c = document.createElement('canvas'); c.width = c.height = 64;
+      const g = c.getContext('2d'); if (!g) return null;
+      g.fillStyle = '#fff'; g.fillRect(0, 0, 64, 64);
+      const gr = g.createLinearGradient(0, 0, 64, 64); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(1, 'rgba(0,0,0,0.22)');
+      g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+      g.strokeStyle = 'rgba(0,0,0,0.38)'; g.lineWidth = 6; g.strokeRect(3, 3, 58, 58);
+      g.strokeStyle = 'rgba(255,255,255,0.55)'; g.lineWidth = 2; g.strokeRect(7, 7, 50, 50);
+      return new T.CanvasTexture(c);
+    })();
     const make = (n, mat) => { const m = new T.InstancedMesh(geo, mat, n); m.instanceMatrix.setUsage(T.DynamicDrawUsage); tower.add(m); return m; };
-    const settled = make(W * (H + BUF), new T.MeshStandardMaterial({ roughness: 0.35, metalness: 0.1 }));
-    const piece = make(5, new T.MeshStandardMaterial({ roughness: 0.25, emissive: 0x222222 }));
+    const settled = make(W * (H + BUF), new T.MeshStandardMaterial({ roughness: 0.35, metalness: 0.1, map: bevel }));
+    const piece = make(5, new T.MeshStandardMaterial({ roughness: 0.25, emissive: 0x222222, map: bevel }));
     const ghost = make(5, new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3, depthWrite: false }));
     // Create the per-instance colour buffers before the first frame so the shaders include them.
     for (const m of [settled, piece]) { m.setColorAt(0, new T.Color(0xffffff)); m.count = 0; }
     const stars = new T.Points(new T.BufferGeometry().setAttribute('position', new T.Float32BufferAttribute(
       Array.from({ length: 900 }, () => (Math.random() - 0.5) * 160), 3)), new T.PointsMaterial({ color: 0x9a8fd8, size: 0.25 }));
     scene.add(stars);
-    gfx = { T, renderer, scene, camera, tower, settled, piece, ghost, R, dummy: new T.Object3D(), color: new T.Color(), stars };
+    gfx = { T, renderer, scene, camera, tower, settled, piece, ghost, R, dummy: new T.Object3D(), color: new T.Color(), stars, stg };
     resize();
   }
 
@@ -536,7 +546,7 @@ UI.spire = (() => {
     clearInterval(repeat);
     if (keyHandler) removeEventListener('keydown', keyHandler);
     resizeObs?.disconnect();
-    if (gfx) { gfx.renderer.dispose(); gfx = null; }
+    if (gfx) { gfx.stg?.dispose(); gfx.renderer.dispose(); gfx = null; }
     st = null;
   }
 

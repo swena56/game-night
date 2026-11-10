@@ -25,7 +25,7 @@ UI.billiards = (() => {
   function layout() {
     const c = $('blCanvas'), stage = $('blStage');
     if (!c || !S) return;
-    const B = S.billiards, dpr = Math.min(devicePixelRatio || 1, 2);
+    const B = S.billiards, dpr = Fx2D.dpr();
     const portrait = stage.clientWidth < (window.visualViewport?.height ?? innerHeight) * 0.8;
     const longSide = B.W + 2 * RAIL, shortSide = B.H + 2 * RAIL;
     // room for the table: the measured stage (below the top bar and chips, above the dock) less the shot

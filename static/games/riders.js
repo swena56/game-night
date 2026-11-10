@@ -345,10 +345,11 @@ UI.riders = (() => {
     renderer = GL3.renderer({}, { onLost: () => lost(stage) });
     if (!renderer) return null;
     stage.prepend(renderer.domElement);
-    const scene = new T.Scene(); scene.background = new T.Color(0x05060f); scene.fog = new T.Fog(0x05060f, 80, 220);
+    const scene = new T.Scene();
     const camera = new T.PerspectiveCamera(38, 1, 0.5, 500);
-    scene.add(new T.AmbientLight(0xffffff, 0.35));
-    const sun = new T.DirectionalLight(0xffffff, 0.5); sun.position.set(-20, 60, 30); scene.add(sun);
+    // a night sky that rides with the camera, the arena floor fading into it
+    const stg = GL3.stage(renderer, scene, { exposure: 1.05, sky: { bottom: 0x05060f, horizon: 0x16214d, top: 0x02030a, stars: 500, radius: 300 },
+      fog: [0x05060f, 80, 220], hemi: [0x9fb4ff, 0x0a0a1a, 0.5], key: { i: 0.5, pos: [-20, 60, 30], shadow: false } });
     let n = 0, world = null, ribbons = [], bikes = [], tips = [], drawn = [], pend = [], you = null, arrow = null, sparks = null, walls = [];
     const segGeo = new T.BoxGeometry(1, 1, 1);
     // 🎁 power-ups: a floating badge per item (one texture per kind)
@@ -621,10 +622,11 @@ UI.riders = (() => {
       }
       camera.lookAt(look);
       GL3.tickShake(camera, dt);
+      stg.follow(camera);
       renderer.render(scene, camera);
       pend = [];
     }
-    function dispose() { renderer.dispose(); renderer.domElement.remove(); }
+    function dispose() { stg.dispose(); renderer.dispose(); renderer.domElement.remove(); }
     if (S) build();
     return { sync, reset, resize, draw, dispose, crash, pulse, grind, grab: grab3d };
   }

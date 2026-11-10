@@ -4,13 +4,13 @@
 // shell and 🔥 Fire. Your last shot's path stays as a dashed line so you can adjust for the wind.
 UI.cannon = (() => {
   let S, ctx, cv = null, g2 = null, raf = 0, ro = null, onKey = null;
-  let anim = null, queue = [], seenShot = 0, primed = false, fx = [], shake = 0;
+  let anim = null, queue = [], seenShot = 0, primed = false, fx = [], pfx = Fx2D.create({ cap: 240 }), lastFrame = 0;
   let aim = { angle: 45, power: 0.6, shell: 'shell', set: false }, drag = null, hold = null, roundKey = '';
   const $ = (id) => document.getElementById(id);
   const THEMES = {
-    rolling: { sky: ['#5fa8e6', '#bfe3ff'], earth: ['#7a5232', '#4e321d'], top: '#4caf50', sea: '#2f6fb3' },
-    mountains: { sky: ['#3b2a5a', '#f2a65a'], earth: ['#6b6370', '#3d3842'], top: '#e8e8f0', sea: '#2a4f7a' },
-    islands: { sky: ['#4cc3e0', '#e4f8ff'], earth: ['#c8a165', '#8a6a3a'], top: '#5fbf5a', sea: '#1d8fb8' },
+    rolling: { sky: ['#5fa8e6', '#bfe3ff'], earth: ['#7a5232', '#4e321d'], top: '#4caf50', sea: '#2f6fb3', sun: ['#fff4b0', 0.2], cloud: 'rgba(255,255,255,0.85)' },
+    mountains: { sky: ['#3b2a5a', '#f2a65a'], earth: ['#6b6370', '#3d3842'], top: '#e8e8f0', sea: '#2a4f7a', sun: ['#ffb37a', 0.62], cloud: 'rgba(255,220,200,0.45)' },
+    islands: { sky: ['#4cc3e0', '#e4f8ff'], earth: ['#c8a165', '#8a6a3a'], top: '#5fbf5a', sea: '#1d8fb8', sun: ['#fff9d0', 0.16], cloud: 'rgba(255,255,255,0.9)' },
   };
 
   // -- sound: a thump to fire, a crump for a blast; through the app's output (volume, softening)
@@ -47,7 +47,7 @@ UI.cannon = (() => {
   // -- set-up
 
   function mount(main, side) {
-    anim = null; queue = []; seenShot = 0; primed = false; fx = []; shake = 0; drag = null; roundKey = '';
+    anim = null; queue = []; seenShot = 0; primed = false; fx = []; pfx.clear(); drag = null; roundKey = '';
     aim = { angle: 45, power: 0.6, shell: 'shell', set: false };
     main.innerHTML = `<div class="cn"><div class="cn-hud"><span id="cnRound"></span><span id="cnTurn"></span></div>
       <div class="cn-stage" id="cnStage"><canvas id="cnCanvas" aria-label="The range: hills and cannons"></canvas>
@@ -134,10 +134,10 @@ UI.cannon = (() => {
     const stage = $('cnStage');
     if (!stage || !cv) return;
     const w = stage.clientWidth || 320, c = S?.cannon, h = Math.round(w * ((c?.h ?? 180) / (c?.w ?? 320)));
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    cv.style.width = `${w}px`; cv.style.height = `${h}px`;
-    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+    Fx2D.fit(cv, w, h);
   }
+  // range coordinates → canvas pixels (for the effects kit); s = pixels per range unit
+  const px = (x, y) => { const c = C(), s = cv.width / c.w; return [x * s, (c.h - y) * s]; };
 
   // -- state
 
@@ -339,23 +339,23 @@ UI.cannon = (() => {
     // a near miss: nobody hurt, but the blast landed close to a cannon
     if (!hurt.size && b.shell !== 'dirt') {
       const near = was.findIndex((t, j) => t[2] > 0 && j !== b.by && Math.hypot(t[0] - b.x, t[1] + 4 - b.y) < b.r + 14);
-      if (near >= 0) fx.push({ kind: 'num', x: was[near][0], y: was[near][1] + 22, text: near === me ? '😅 Phew!' : '😬 So close!', t0: performance.now(), color: '#fff' });
+      if (near >= 0) { const [x, y] = px(was[near][0], was[near][1] + 22), s = cv.width / C().w; pfx.text(x, y, near === me ? '😅 Phew!' : '😬 So close!', { color: '#fff', size: Math.max(13, 6 * s), ms: 1400, rise: 14 * s }); }
     }
   }
 
   function boom(b, now, was) {
     callBoom(b, was);
     crump(b.r);
-    shake = Math.max(shake, b.shell === 'dirt' ? 3 : b.r / 3);
+    const s = cv.width / C().w, dpr = cv.width / (cv.clientWidth || cv.width || 1), [bx, by] = px(b.x, b.y);
+    pfx.shake((b.shell === 'dirt' ? 3 : b.r / 3) * dpr);
     fx.push({ kind: b.shell === 'dirt' ? 'dirt' : b.kind === 'water' ? 'splash' : 'blast', x: b.x, y: b.y, r: b.r, t0: now });
-    const n = b.shell === 'dirt' ? 26 : 18;
-    for (let k = 0; k < n; k++) {
-      const a = Math.random() * Math.PI, v = 20 + Math.random() * 50;
-      fx.push({ kind: 'bit', x: b.x, y: b.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, t0: now, water: b.kind === 'water' });
-    }
+    // clods of earth (or spray) thrown up, and a puff of smoke that drifts off
+    const water = b.kind === 'water';
+    pfx.burst(bx, by, b.shell === 'dirt' ? 26 : 18, { color: water ? '#e4f8ffcc' : '#5a3d22', dir: -Math.PI / 2, spread: Math.PI, speed: [20 * s, 70 * s], gravity: 60 * s, drag: 0, size: [1.2 * s, 2.2 * s], life: 1.1, spin: 6 });
+    if (!water) pfx.smoke(bx, by, 6, { color: b.shell === 'dirt' ? '#a08060' : '#4a4a4a', size: [b.r * s * 0.25, b.r * s * 0.45], speed: [4 * s, 14 * s], rise: 18 * s, life: [0.8, 1.4], grow: 1.8 });
     for (const [j, n2] of b.dmg) {
-      const t = b.tanks[j];
-      fx.push({ kind: 'num', x: t[0], y: t[1] + 16, text: `−${n2}`, t0: now, color: colorOf(j) });
+      const t = b.tanks[j], [tx, ty] = px(t[0], t[1] + 16);
+      pfx.text(tx, ty, `−${n2}`, { color: '#ff5d5d', size: Math.max(13, 6 * s), ms: 1400, rise: 14 * s });
       if (j === C()?.me && typeof buzz === 'function') buzz([40, 30, 60]);
     }
   }
@@ -366,12 +366,13 @@ UI.cannon = (() => {
     const s = (cv.width / W);
     const X = (x) => x * s, Y = (y) => (H - y) * s;
     g2.setTransform(1, 0, 0, 1, 0, 0);
-    shake *= 0.9;
-    if (shake > 0.2) g2.translate((Math.random() - 0.5) * shake * dpr, (Math.random() - 0.5) * shake * dpr);
+    pfx.step((now - lastFrame) / 1000); lastFrame = now;
+    pfx.begin(g2);
     // sky
     const sky = g2.createLinearGradient(0, 0, 0, cv.height);
     sky.addColorStop(0, th.sky[0]); sky.addColorStop(1, th.sky[1]);
     g2.fillStyle = sky; g2.fillRect(-20, -20, cv.width + 40, cv.height + 40);
+    skyScene(c, th, now, s);
     // the ground
     g2.beginPath();
     g2.moveTo(0, cv.height + 20);
@@ -380,10 +381,27 @@ UI.cannon = (() => {
     const earth = g2.createLinearGradient(0, Y(H * 0.6), 0, cv.height);
     earth.addColorStop(0, th.earth[0]); earth.addColorStop(1, th.earth[1]);
     g2.fillStyle = earth; g2.fill();
+    // dirt and stones in the hillside: short dark dashes, the same every frame
+    g2.strokeStyle = '#00000033'; g2.lineWidth = Math.max(1, s * 0.6); g2.beginPath();
+    for (let x = 3; x < W; x += 5) {
+      const d = 4 + ((x * 7919) % 23), len = 1.5 + ((x * 104729) % 4);
+      if (terrain[x] - d < c.water) continue;
+      g2.moveTo(X(x), Y(terrain[x] - d)); g2.lineTo(X(x + len), Y(terrain[x] - d - 0.3));
+    }
+    g2.stroke();
     g2.strokeStyle = th.top; g2.lineWidth = Math.max(2, s * 1.6); g2.lineJoin = 'round';
     g2.beginPath();
     for (let x = 0; x < W; x++) { if (terrain[x] < c.water) { g2.moveTo(X(x + 1), Y(terrain[x])); continue; } g2.lineTo(X(x), Y(terrain[x])); g2.lineTo(X(x + 1), Y(terrain[x])); }
     g2.stroke();
+    // tufts of grass (or snow lumps) along the top, leaning with the wind
+    g2.lineWidth = Math.max(1, s * 0.5); g2.lineCap = 'round'; g2.beginPath();
+    const lean = (c.wind || 0) * 0.15 * s;
+    for (let x = 1; x < W; x += 3) {
+      if (terrain[x] < c.water) continue;
+      const hgt = (1.5 + ((x * 31) % 3)) * s, tx = X(x + 0.5), ty = Y(terrain[x]);
+      g2.moveTo(tx, ty); g2.lineTo(tx + lean + ((x * 13) % 3 - 1) * s * 0.3, ty - hgt);
+    }
+    g2.stroke(); g2.lineCap = 'butt';
     // the sea
     g2.fillStyle = th.sea + 'dd';
     g2.fillRect(0, Y(c.water), cv.width, cv.height - Y(c.water) + 20);
@@ -417,6 +435,25 @@ UI.cannon = (() => {
       }
     }
     drawFx(now, s, X, Y, dpr);
+    pfx.draw(g2); pfx.end(g2);
+  }
+
+  // the sun (low and orange over the mountains) and a few clouds drifting with the wind
+  function skyScene(c, th, now, s) {
+    const [col, yf] = th.sun || ['#fff4b0', 0.2], sx = cv.width * 0.8, sy = cv.height * yf, r = 7 * s;
+    const glow = g2.createRadialGradient(sx, sy, r * 0.6, sx, sy, r * 4);
+    glow.addColorStop(0, col + 'aa'); glow.addColorStop(1, col + '00');
+    g2.fillStyle = glow; g2.fillRect(sx - r * 4, sy - r * 4, r * 8, r * 8);
+    g2.fillStyle = col; g2.beginPath(); g2.arc(sx, sy, r, 0, 7); g2.fill();
+    g2.fillStyle = th.cloud || 'rgba(255,255,255,0.85)';
+    const drift = now * 0.012 * (1 + (c.wind || 0) * 0.08);
+    for (let k = 0; k < 5; k++) {
+      const w = (28 + k * 9) * s, y = cv.height * (0.08 + k * 0.07), speed = 1 + k * 0.25;
+      const x = ((k * 1370 + drift * speed) % (cv.width + w * 2)) - w;
+      g2.beginPath();
+      g2.arc(x, y, w * 0.22, 0, 7); g2.arc(x + w * 0.22, y - w * 0.1, w * 0.28, 0, 7); g2.arc(x + w * 0.48, y, w * 0.24, 0, 7); g2.arc(x + w * 0.25, y + w * 0.06, w * 0.2, 0, 7);
+      g2.fill();
+    }
   }
 
   function drawWind(c, s) {
@@ -486,7 +523,7 @@ UI.cannon = (() => {
   }
 
   function drawFx(now, s, X, Y, dpr) {
-    fx = fx.filter((f) => now - f.t0 < (f.kind === 'num' ? 1400 : f.kind === 'bit' ? 1100 : 600));
+    fx = fx.filter((f) => now - f.t0 < 600);
     for (const f of fx) {
       const t = (now - f.t0) / 1000;
       if (f.kind === 'blast' || f.kind === 'splash' || f.kind === 'dirt') {
@@ -497,16 +534,6 @@ UI.cannon = (() => {
         else if (f.kind === 'splash') { grad.addColorStop(0, '#ffffff'); grad.addColorStop(1, '#4cc3e000'); }
         else { grad.addColorStop(0, '#b08850'); grad.addColorStop(1, '#6b4a2a00'); }
         g2.fillStyle = grad; g2.beginPath(); g2.arc(X(f.x), Y(f.y), f.r * s * (0.6 + k * 0.6), 0, 7); g2.fill();
-        g2.globalAlpha = 1;
-      } else if (f.kind === 'bit') {
-        const x = f.x + f.vx * t, y = f.y + f.vy * t - 30 * t * t;
-        g2.fillStyle = f.water ? '#e4f8ffcc' : '#5a3d22';
-        g2.fillRect(X(x), Y(y), 1.6 * s, 1.6 * s);
-      } else if (f.kind === 'num') {
-        g2.globalAlpha = Math.max(0, 1 - t / 1.4);
-        g2.font = `800 ${Math.max(13, 6 * s)}px system-ui, sans-serif`; g2.textAlign = 'center'; g2.textBaseline = 'middle';
-        g2.fillStyle = '#000b'; g2.fillText(f.text, X(f.x) + 1.5, Y(f.y + t * 10) + 1.5);
-        g2.fillStyle = '#ff5d5d'; g2.fillText(f.text, X(f.x), Y(f.y + t * 10));
         g2.globalAlpha = 1;
       }
     }

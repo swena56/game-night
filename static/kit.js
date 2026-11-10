@@ -10,6 +10,36 @@ const Cards = (() => {
   // card codes are rank + suit: 'TD', 'QS', 'AH' (Last Card may write '10H'); 'JK…' is a joker
   const rankOf = (c) => { const r = c.slice(0, -1); return r === 'T' ? '10' : r; };
   const suitOf = (c) => c.slice(-1);
+  // the pips of a number card on a 60×90 face (x, y); pips on the lower half are turned round, as on a real card
+  const L = 17, C = 30, R = 43, Y4 = [17, 35.7, 54.3, 73];
+  const sides = (ys) => ys.flatMap((y) => [[L, y], [R, y]]);
+  const PIPS = {
+    A: [[C, 45]], 2: [[C, 17], [C, 73]], 3: [[C, 17], [C, 45], [C, 73]], 4: sides([17, 73]), 5: [...sides([17, 73]), [C, 45]],
+    6: sides([17, 45, 73]), 7: [...sides([17, 45, 73]), [C, 31]], 8: [...sides([17, 45, 73]), [C, 31], [C, 59]],
+    9: [...sides(Y4), [C, 45]], 10: [...sides(Y4), [C, 26], [C, 64]],
+  };
+  const COURT = { K: '♚', Q: '♛', J: '⚔' };
+  const NS = 'http://www.w3.org/2000/svg';
+  const svgText = (x, y, size, str, rot = false) => {
+    const t = document.createElementNS(NS, 'text');
+    t.setAttribute('x', x); t.setAttribute('y', y); t.setAttribute('font-size', size);
+    if (rot) t.setAttribute('transform', `rotate(180 ${x} ${y})`);
+    t.textContent = str;
+    return t;
+  };
+  // the face art: pips laid out as on a real card (the ace one big pip), court cards a framed figure
+  function pips(r, g) {
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('viewBox', '0 0 60 90'); svg.setAttribute('class', 'pips'); svg.setAttribute('aria-hidden', 'true');
+    if (PIPS[r]) for (const [x, y] of PIPS[r]) svg.append(svgText(x, y, r === 'A' ? 40 : 14, g, y > 45));
+    else {
+      const frame = document.createElementNS(NS, 'rect');
+      frame.setAttribute('x', 9); frame.setAttribute('y', 9); frame.setAttribute('width', 42); frame.setAttribute('height', 72); frame.setAttribute('rx', 3);
+      frame.setAttribute('fill', 'none'); frame.setAttribute('stroke', 'currentColor'); frame.setAttribute('stroke-width', 1.2); frame.setAttribute('opacity', 0.7);
+      svg.append(frame, svgText(30, 45, 32, COURT[r] || r), svgText(30, 21, 11, g), svgText(30, 69, 11, g, true));
+    }
+    return svg;
+  }
   function face(card, cls = '') {
     if (card === '??') return back(cls);
     const r = rankOf(card), s = suitOf(card), g = SUIT_GLYPH[s] || s;
@@ -17,7 +47,7 @@ const Cards = (() => {
     f.dataset.ix = r + g;                       // the corner indices (drawn by CSS, not in textContent)
     if ('JQK'.includes(r)) f.classList.add('court', 'court-' + r);
     else if (r === 'A') f.classList.add('ace');
-    f.append(el('b', '', r), el('i', '', g + '︎'));
+    f.append(el('b', '', r), el('i', '', g + '︎'), pips(r, g));  // b and i show on the small sizes, the pips on the rest
     return f;
   }
   function joker(cls = '') {

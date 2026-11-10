@@ -607,6 +607,7 @@ function renderLobby() {
     if (!games.length) continue;
     const group = el('div', 'picker-group');
     group.dataset.count = games.length;
+    group.dataset.cat = CATEGORIES.find(([, l]) => l === label)?.[0] || '';
     pick.append(el('div', 'picker-cat', label), group);
     for (const g of games) {
       const fit = seated < g.min ? `needs ${g.min}+` : seated > g.max ? `max ${g.max}` : '';
@@ -754,16 +755,19 @@ function renderScores(host) {
     head.append(el('th', '', 'Player'), el('th', '', '⭐'), el('th', '', '🏆'), el('th', '', 'Played'), el('th', '', '🔥 Best'), el('th', '', '🏅'),
       ...games.map((g) => el('th', '', gameInfo(g)?.icon ?? g)));
     t.append(head);
-    for (const p of [...played].sort((a, b) => b.points - a.points || b.wins - a.wins || a.played - b.played)) {
+    const ranked = [...played].sort((a, b) => b.points - a.points || b.wins - a.wins || a.played - b.played);
+    const top = Math.max(1, ...ranked.map((p) => p.points));
+    ranked.forEach((p, rank) => {
       const tr = el('tr');
-      const name = el('td', '', p.name); name.style.color = p.color;
+      const name = el('td', '', (p.points > 0 ? ['🥇 ', '🥈 ', '🥉 '][rank] || '' : '') + p.name); name.style.color = p.color;
       const pts = el('td', 'pts', String(p.points));
+      if (p.points > 0) { const bar = el('i', 'pts-bar'); bar.style.setProperty('--w', `${Math.round((100 * p.points) / top)}%`); bar.style.background = p.color; pts.append(bar); }
       if (p.quits) pts.title = `${p.quits} walk-out${p.quits > 1 ? 's' : ''} (${p.quits * -2} ⭐)`;
       tr.append(name, pts, el('td', '', p.wins), el('td', '', p.played),
         el('td', '', p.best + (p.streak > 1 ? ` (now ${p.streak})` : '')), badgeShelf(p),
         ...games.map((g) => el('td', '', p.byGame[g] || '')));
       t.append(tr);
-    }
+    });
     board.append(t);
   }
   const hist = $('#history'); hist.innerHTML = '';
@@ -793,7 +797,8 @@ function showTip(view) {
   const card = el('div', 'tip-card' + (compact ? ' compact' : ''));
   card.id = 'tipCard'; card.dataset.game = g.id; card.setAttribute('role', 'note');
   const head = el('div', 'tip-head');
-  head.append(el('b', '', `${g.icon} New to ${g.name}?`), el('p', '', g.blurb));
+  card.append(el('span', 'tip-icon', g.icon));
+  head.append(el('b', '', `New to ${g.name}?`), el('p', '', g.blurb));
   if (!compact && g.howto.length) {
     const ul = el('ul');
     for (const line of g.howto.slice(0, 2)) ul.append(el('li', '', line));
@@ -882,7 +887,7 @@ function renderGame(view = S, readOnly = false, force = false) {
     chips.dataset.key = chipKey; chips.innerHTML = '';
     for (const p of view.players) {
       const c = el('div', 'chip' + (p.id === view.turn ? ' turn-now' : '') + (p.eliminated ? ' out' : '') + (p.id === me.id ? ' me' : ''));
-      c.title = p.name;
+      c.title = p.name; c.style.setProperty('--pc', p.color || '#888');
       c.append(avatar(p), mark(p, p.online), el('b', '', p.name));
       const bits = [p.spectator ? '👁 watching' : p.meta, p.played || p.points ? '⭐' + p.points : '', p.streak > 1 ? '🔥' + p.streak : '', p.eliminated ? '👻' : '',
         p.standin ? '🤖 autopilot' : p.away ? '📡 away' : ''].filter(Boolean);
@@ -940,6 +945,7 @@ function renderOver() {
   const last = S.history.at(-1);
   const scored = last?.players.filter((x) => x.score != null) ?? [];
   const mineRow = last?.players.find((x) => x.name === me.name);
+  renderPodium(w, scored);
   $('#overScores').textContent = [
     mineRow?.pts ? `You earned +${mineRow.pts} ⭐ (now ${player(me.id)?.points ?? 0})` : '',
     scored.length ? [...scored].sort((a, b) => b.score - a.score).map((x) => `${x.name}: ${fmtNum(x.score)}`).join(' · ') : '',
@@ -962,6 +968,25 @@ function renderOver() {
     + (host ? '' : 'Waiting for the host…');
   renderVote(host);
   syncOverBack();
+}
+// the podium: the winner in the middle, up a step, with the runners-up either side (by score when the game
+// keeps one, else just the winner)
+function renderPodium(w, scored) {
+  const box = $('#overPodium'); box.innerHTML = '';
+  const byName = (n) => S.players.find((p) => p.name === n);
+  let places = scored.length > 1 ? [...scored].sort((a, b) => b.score - a.score).slice(0, 3).map((x) => ({ p: byName(x.name) || { name: x.name }, score: fmtNum(x.score) }))
+    : w ? [{ p: w, score: '' }] : [];
+  if (!places.length) { box.hidden = true; return; }
+  box.hidden = false;
+  const order = places.length === 3 ? [1, 0, 2] : places.length === 2 ? [0, 1] : [0];
+  for (const k of order) {
+    const { p, score } = places[k], col = el('div', 'pod pod-' + (k + 1));
+    col.style.setProperty('--pc', p.color || '#888');
+    const face = el('div', 'pod-face'); face.append(avatar(p));
+    if (k === 0) face.append(el('span', 'pod-crown', '👑'));
+    col.append(face, el('b', '', p.name), el('small', '', score || ['Winner', '2nd', '3rd'][k]));
+    box.append(col);
+  }
 }
 // the open (unfolded) results banner is an overlay the phone's Back button folds
 const foldOver = () => setOverFold(true);
@@ -1234,7 +1259,7 @@ const fmtNum = (n) => (typeof n === 'number' ? n.toLocaleString() : n);
 function confetti() {
   if (!motionOK()) return;
   const colors = ['#ffb703', '#ef476f', '#06d6a0', '#8ecae6', '#cc5de8', '#fff'];
-  for (let i = 0; i < 70; i++) {
+  for (let i = 0, n = gfxLevel() === 'low' ? 28 : 70; i < n; i++) {
     const c = el('div', 'confetti');
     c.style.left = Math.random() * 100 + '%';
     c.style.background = colors[i % colors.length];
@@ -1249,12 +1274,26 @@ function confetti() {
 
 // ---------- personal settings
 const THEMES = [['dark', '🌙 Dark'], ['light', '☀️ Light'], ['system', '🌓 Match my phone']];
+// 🎨 Graphics: Auto turns shadows, reflections and extra particles off on a weak device (few cores or little
+// memory, data saver, or a 3D game that had to drop its resolution to keep up: GL3.strained)
+const GFX = [['auto', '🪄 Auto'], ['high', '✨ High (shadows, reflections, more particles)'], ['low', '🔋 Low (smoother, saves battery)']];
+const AUTO_LOW = (navigator.deviceMemory || 8) <= 2 || (navigator.hardwareConcurrency || 8) <= 2 || !!navigator.connection?.saveData;
+function gfxLevel() {
+  const g = prefs.gfx || 'auto';
+  if (g !== 'auto') return g;
+  return AUTO_LOW || window.GL3?.strained?.() ? 'low' : 'high';
+}
 const lightQuery = window.matchMedia?.('(prefers-color-scheme: light)');
 function applyPrefs() {
   document.body.classList.toggle('calm', !prefs.motion);
   const light = prefs.theme === 'light' || (prefs.theme === 'system' && !!lightQuery?.matches);
   document.body.classList.toggle('light', light);
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', light ? '#f4f1fa' : '#16131f');
+  const low = gfxLevel() === 'low';
+  if (document.body.classList.contains('lowgfx') !== low) {
+    document.body.classList.toggle('lowgfx', low);
+    window.dispatchEvent(new CustomEvent('gfxchange', { detail: low ? 'low' : 'high' }));
+  }
 }
 lightQuery?.addEventListener?.('change', applyPrefs);
 function renderPrefs() {
@@ -1266,6 +1305,16 @@ function renderPrefs() {
   pick.onchange = () => { prefs.theme = pick.value; store('unmask.prefs', prefs); applyPrefs(); };
   theme.append(pick);
   box.append(theme);
+  const gfx = el('label', '', '🎨 Graphics');
+  const gpick = el('select');
+  for (const [k, label] of GFX) gpick.append(Object.assign(el('option', '', label), { value: k }));
+  gpick.value = prefs.gfx || 'auto';
+  gpick.onchange = () => {
+    prefs.gfx = gpick.value; store('unmask.prefs', prefs); applyPrefs();
+    if (S?.game) toast('3D games use the new setting from their next start.');
+  };
+  gfx.append(gpick);
+  box.append(gfx);
   const vol = el('label', '', '🔉 Volume');
   const range = el('input'); range.type = 'range'; range.min = '0'; range.max = '100'; range.step = '5';
   range.value = String(prefs.volume ?? 70); range.setAttribute('aria-label', 'Volume');
@@ -1301,6 +1350,12 @@ function fillSoloGames() {
     o.value = id; sel.append(o);
   }
   sel.value = was || load('unmask.soloGame') || 'unmask';
+  // the icon strip under the tagline: every game's icon drifting by (twice over, so the loop is seamless)
+  const strip = $('#homeIcons');
+  if (strip && !strip.childElementCount) {
+    const icons = SOLO_GAMES.map(([, label]) => label.split(' ')[0]);
+    for (const ic of [...icons, ...icons]) strip.append(el('span', '', ic));
+  }
 }
 fillSoloGames();
 const pickSolo = (id) => { $('#soloGame').value = id; store('unmask.soloGame', id); $('#soloGame').focus(); };

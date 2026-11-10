@@ -100,10 +100,11 @@ UI.paintblast = (() => {
   }
 
   // ---------- juice (#6): sounds, paint splatter, a shake for a blast close by, +10 when you catch someone
-  let parts = [], floats = [], shakeAt = 0, shakeAmp = 0;
+  let pfx = Fx2D.create({ cap: 400 }), lastFrame = 0;
   function events(prev, d, now) {
     const i = me(), n = S?.paintblast?.n;
     if (!n || prev?.rd !== d.rd) return;
+    const cell = (canvas?.width || 0) / n;
     const sfx = (k) => ctx?.sfx?.(k);
     const had = (list, c) => list?.some((x) => x[0] === c);
     if (d.b.some(([c]) => !had(prev.b, c))) sfx('drop');
@@ -112,14 +113,11 @@ UI.paintblast = (() => {
       sfx('boom');
       const mine = i != null ? d.p[i][0] : null;
       for (const [c, owner] of lit) {
-        const x = (c % n) + 0.5, y = Math.floor(c / n) + 0.5;
-        for (let k = 0; k < 4; k++) {
-          const a = Math.random() * 7, v = 1.5 + Math.random() * 3;
-          parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, at: now, life: 380 + Math.random() * 300, color: colorOf(owner), r: 0.06 + Math.random() * 0.08 });
-        }
-        if (mine != null && Math.abs((mine % n) - (c % n)) + Math.abs(Math.floor(mine / n) - Math.floor(c / n)) <= 2) { shakeAt = now; shakeAmp = 0.12; }
+        const x = ((c % n) + 0.5) * cell, y = (Math.floor(c / n) + 0.5) * cell;
+        // paint splatter flying out of the blast, skidding to a stop
+        pfx.splat(x, y, 4, { color: colorOf(owner), speed: [cell * 1.5, cell * 4.5], drag: 3, size: [cell * 0.06, cell * 0.14], life: [0.38, 0.68] });
+        if (mine != null && Math.abs((mine % n) - (c % n)) + Math.abs(Math.floor(mine / n) - Math.floor(c / n)) <= 2) pfx.shake(0.12 * cell);
       }
-      if (parts.length > 400) parts = parts.slice(-400);
     }
     if (i != null && d.p[i]?.[1] && !prev.p?.[i]?.[1]) { sfx('splash'); ctx?.buzz?.([60, 40, 60]); }  // I got splatted
     if (i != null) {
@@ -131,7 +129,7 @@ UI.paintblast = (() => {
         if (fire?.[1] !== i) return;
         sfx('tag');
         const c = prev.p[j][0];
-        floats.push({ x: (c % n) + 0.5, y: Math.floor(c / n) + 0.3, at: now, text: '+10' });
+        pfx.text(((c % n) + 0.5) * cell, (Math.floor(c / n) + 0.3) * cell, '+10', { kind: 'gold', size: cell * 0.6, rise: cell * 0.8 });
       });
     }
   }
@@ -195,10 +193,9 @@ UI.paintblast = (() => {
 
   function resize() {
     if (!canvas || !g) return;
-    const stage = $('pbStage'), dpr = Math.min(devicePixelRatio || 1, 2);
+    const stage = $('pbStage');
     const size = Math.max(160, Math.min(stage.clientWidth || 320, stage.clientHeight || 320));
-    canvas.style.width = canvas.style.height = `${size}px`;
-    canvas.width = canvas.height = Math.round(size * dpr);
+    Fx2D.fit(canvas, size, size);
   }
 
   // where player i is drawn: gliding from the previous tile for one step's time
@@ -231,20 +228,24 @@ UI.paintblast = (() => {
     const n = S.paintblast.n;
     if (!canvas.width) resize();
     const W = canvas.width, cell = W / n;
-    const sh = now - shakeAt < 260 ? shakeAmp * cell * (1 - (now - shakeAt) / 260) : 0;
-    g.setTransform(1, 0, 0, 1, sh ? (Math.random() - 0.5) * 2 * sh : 0, sh ? (Math.random() - 0.5) * 2 * sh : 0);
+    pfx.step((now - lastFrame) / 1000); lastFrame = now;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    pfx.begin(g);
     g.fillStyle = '#17121f'; g.fillRect(-W, -W, 3 * W, 3 * W);
     const paint = snap.c, gold = new Set(S.paintblast.gold || []);
     for (let c = 0; c < n * n; c++) {
       const x = (c % n) * cell, y = Math.floor(c / n) * cell, t = snap.t[c];
-      if (t === '#') {
+      if (t === '#') {  // a pillar: lit top, shaded sides, a dark foot
         g.fillStyle = '#4a4063'; g.fillRect(x + 1, y + 1, cell - 2, cell - 2);
-        g.fillStyle = '#6b5f8a'; g.fillRect(x + 1, y + 1, cell - 2, cell * 0.28);
+        g.fillStyle = '#7a6d9c'; g.fillRect(x + 1, y + 1, cell - 2, cell * 0.26);
+        g.fillStyle = '#5a4f78'; g.fillRect(x + 1, y + cell * 0.27, cell * 0.12, cell * 0.73);
+        g.fillStyle = '#2f2745'; g.fillRect(x + 1, y + cell * 0.86, cell - 2, cell * 0.14);
         continue;
       }
       const owner = parseInt(paint.substr(c * 2, 2), 16);
       g.fillStyle = ((c % n) + Math.floor(c / n)) % 2 ? '#221b2f' : '#1e1829';
       g.fillRect(x, y, cell, cell);
+      g.fillStyle = '#ffffff07'; g.fillRect(x, y, cell, 1.5);  // a hairline of light on each tile
       if (owner) {  // a splat, not a square: a blob with a few drops round it, the same shape every time
         g.fillStyle = colorOf(owner - 1); g.globalAlpha = 0.72;
         g.beginPath(); g.arc(x + cell / 2, y + cell / 2, cell * 0.5, 0, 7); g.fill();
@@ -258,8 +259,10 @@ UI.paintblast = (() => {
         g.strokeStyle = '#ffd166'; g.lineWidth = Math.max(1.5, cell * 0.08); g.strokeRect(x + cell * 0.1, y + cell * 0.1, cell * 0.8, cell * 0.8);
         g.fillStyle = '#ffd166'; g.font = `${Math.round(cell * 0.4)}px system-ui`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('★', x + cell / 2, y + cell / 2);
       }
-      if (t === '+') {
+      if (t === '+') {  // a crate: planks with a lit top edge, a frame and a brace
         g.fillStyle = '#a0703c'; g.fillRect(x + cell * 0.08, y + cell * 0.08, cell * 0.84, cell * 0.84);
+        g.fillStyle = '#7c5428'; for (let k = 1; k < 4; k++) g.fillRect(x + cell * 0.08, y + cell * (0.08 + k * 0.21), cell * 0.84, Math.max(1, cell * 0.025));
+        g.fillStyle = '#c99358'; g.fillRect(x + cell * 0.08, y + cell * 0.08, cell * 0.84, Math.max(1, cell * 0.05));
         g.strokeStyle = '#6e4a24'; g.lineWidth = Math.max(1, cell * 0.07);
         g.strokeRect(x + cell * 0.14, y + cell * 0.14, cell * 0.72, cell * 0.72);
         g.beginPath(); g.moveTo(x + cell * 0.14, y + cell * 0.14); g.lineTo(x + cell * 0.86, y + cell * 0.86); g.stroke();
@@ -291,6 +294,9 @@ UI.paintblast = (() => {
     for (const [c, fuse, owner] of snap.b) {
       const x = (c % n + 0.5) * cell, y = (Math.floor(c / n) + 0.5) * cell;
       const pulse = 1 + 0.08 * Math.sin(now / (fuse < 12 ? 40 : 120));
+      const glow = g.createRadialGradient(x, y, cell * 0.2, x, y, cell * 0.75 * pulse);  // the fuse light on the floor
+      glow.addColorStop(0, fuse < 12 ? 'rgba(255,77,77,0.45)' : 'rgba(255,209,102,0.3)'); glow.addColorStop(1, 'rgba(255,160,80,0)');
+      g.fillStyle = glow; g.fillRect(x - cell, y - cell, cell * 2, cell * 2);
       g.fillStyle = '#111'; g.beginPath(); g.arc(x, y, cell * 0.36 * pulse, 0, 7); g.fill();
       g.strokeStyle = colorOf(owner); g.lineWidth = cell * 0.1; g.stroke();
       g.fillStyle = fuse < 12 ? '#ff4d4d' : '#ffd166'; g.beginPath(); g.arc(x + cell * 0.22, y - cell * 0.26, cell * 0.09, 0, 7); g.fill();
@@ -300,26 +306,14 @@ UI.paintblast = (() => {
       const at = where(i, now, n); if (!at) return;
       if (shield && Math.floor(now / 120) % 2) return;  // blink while protected
       const x = (at[0] + 0.5) * cell, y = (at[1] + 0.5) * cell;
+      const under = g.createRadialGradient(x, y + cell * 0.1, cell * 0.2, x, y + cell * 0.1, cell * 0.7);  // underglow in the player's colour
+      under.addColorStop(0, colorOf(i) + '66'); under.addColorStop(1, colorOf(i) + '00');
+      g.fillStyle = under; g.fillRect(x - cell, y - cell, cell * 2, cell * 2);
       g.fillStyle = colorOf(i); g.strokeStyle = i === S.paintblast.me ? '#fff' : '#000a'; g.lineWidth = cell * 0.09;
       g.beginPath(); g.arc(x, y, cell * 0.38, 0, 7); g.fill(); g.stroke();
       g.fillStyle = '#fff'; g.beginPath(); g.arc(x - cell * 0.12, y - cell * 0.08, cell * 0.08, 0, 7); g.arc(x + cell * 0.12, y - cell * 0.08, cell * 0.08, 0, 7); g.fill();
     });
-    // paint splatter flying out of each blast, slowing as it goes
-    parts = parts.filter((p) => now - p.at < p.life);
-    for (const p of parts) {
-      const t = (now - p.at) / 1000, k = 1 - (now - p.at) / p.life, drag = 1 - Math.exp(-3 * t);
-      g.globalAlpha = 0.85 * k; g.fillStyle = p.color;
-      g.beginPath(); g.arc((p.x + (p.vx / 3) * drag) * cell, (p.y + (p.vy / 3) * drag) * cell, p.r * cell * (0.6 + 0.4 * k), 0, 7); g.fill();
-    }
-    g.globalAlpha = 1;
-    floats = floats.filter((f) => now - f.at < 900);
-    for (const f of floats) {
-      const k = (now - f.at) / 900;
-      g.globalAlpha = 1 - k * k; g.font = `bold ${Math.round(cell * 0.6)}px system-ui, sans-serif`;
-      g.lineWidth = cell * 0.12; g.strokeStyle = '#000a'; g.fillStyle = '#ffd166';
-      g.strokeText(f.text, f.x * cell, (f.y - 0.8 * k) * cell); g.fillText(f.text, f.x * cell, (f.y - 0.8 * k) * cell);
-    }
-    g.globalAlpha = 1;
+    pfx.draw(g); pfx.end(g);  // paint splatter and +10s
     g.setTransform(1, 0, 0, 1, 0, 0);
   }
 

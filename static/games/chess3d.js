@@ -9,16 +9,11 @@ const Chess3D = (() => {
     const T = window.THREE;
     const renderer = GL3.renderer({ alpha: true }, { onLost });
     if (!renderer) return null;
-    renderer.shadowMap.enabled = true;
     stage.append(renderer.domElement);
 
     const scene = new T.Scene(), camera = new T.PerspectiveCamera(36, 1, 0.1, 100);
-    scene.add(new T.HemisphereLight(0xfff4e0, 0x302040, 0.75));
-    const sun = new T.DirectionalLight(0xffffff, 0.8);
-    sun.position.set(-4, 10, 6); sun.castShadow = true;
-    sun.shadow.mapSize.set(1024, 1024);
-    Object.assign(sun.shadow.camera, { left: -6, right: 6, top: 6, bottom: -6 });
-    scene.add(sun);
+    // on-demand: shadows are redrawn only on frames that change something (stg.relight)
+    const stg = GL3.stage(renderer, scene, { exposure: 1.1, still: true, hemi: [0xfff4e0, 0x302040, 0.75], key: { i: 0.8, pos: [-4, 10, 6], area: 6, near: 1, far: 30 } });
 
     // board: frame + 64 tiles (tile index = 2D board's display index: row 0 is the far side)
     const frame = new T.Mesh(new T.BoxGeometry(9, 0.4, 9), new T.MeshStandardMaterial({ color: 0x5b3a1e, roughness: 0.6 }));
@@ -76,7 +71,7 @@ const Chess3D = (() => {
         if (t >= 1) anim = null;
         dirty = true;
       }
-      if (dirty) { place(); renderer.render(scene, camera); dirty = false; }
+      if (dirty) { place(); stg.relight(); renderer.render(scene, camera); dirty = false; }
       if (anim) kick();
     }
     const kick = () => { if (!raf) raf = requestAnimationFrame(frameLoop); };
@@ -178,7 +173,7 @@ const Chess3D = (() => {
 
     function dispose() {
       cancelAnimationFrame(raf); ro?.disconnect();
-      renderer.dispose(); el.remove(); pad.remove();
+      stg.dispose(); renderer.dispose(); el.remove(); pad.remove();
     }
     return { sync, dispose };
   }
