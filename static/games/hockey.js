@@ -4,7 +4,8 @@
 UI.hockey = (() => {
   let goalsKey = '', prevSc = null;
   let S, ctx, canvas, g2, table = null, raf = 0, ro = null;
-  let net = null, me = null, own = null, target = null, oppShown = null, lastSent = 0, lastScore = '', flash = 0;
+  let net = null, me = null, own = null, target = null, oppShown = null, lastSent = 0, lastScore = '';
+  const pfx = Fx2D.create({ cap: 120 }); let lastFrame = 0;
   let hist = [], replay = null;  // recent frames, and a goal replay being shown
   const trail = [];
   const SPEED = 4.0;  // must match MALLET_SPEED in games/hockey.py
@@ -60,9 +61,7 @@ UI.hockey = (() => {
     if (!stage || !S?.hockey) return;
     const h = S.hockey, ratio = h.H / h.W;
     const width = Math.min(stage.clientWidth || 320, (window.innerHeight - (document.body.classList.contains('focus') ? 70 : 150)) / ratio, 520);
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.style.width = `${width}px`; canvas.style.height = `${width * ratio}px`;
-    canvas.width = Math.round(width * dpr); canvas.height = Math.round(width * ratio * dpr);
+    Fx2D.fit(canvas, width, width * ratio);
     table = null;  // redraw the static table art at the new size
   }
 
@@ -116,6 +115,8 @@ UI.hockey = (() => {
     oppShown = oppShown ? [oppShown[0] + (opp[0] - oppShown[0]) * 0.35, oppShown[1] + (opp[1] - oppShown[1]) * 0.35] : [...opp];
 
     g2.clearRect(0, 0, canvas.width, canvas.height);
+    pfx.step((now - lastFrame) / 1000); lastFrame = now;
+    pfx.begin(g2);
     if (table) g2.drawImage(table, 0, 0);
     const u = canvas.width / h.W;
     for (const [i, pk] of src.pk.entries()) {
@@ -143,9 +144,7 @@ UI.hockey = (() => {
     drawMallet(oppShown, colorOf(h.me == null ? 1 : oppIdx));
     drawMallet(h.me != null ? own : src.ml[0], colorOf(h.me ?? 0));
 
-    if (flash > now) {  // goal flash
-      g2.fillStyle = `rgba(255,183,3,${((flash - now) / 600) * 0.35})`; g2.fillRect(0, 0, canvas.width, canvas.height);
-    }
+    pfx.draw(g2); pfx.end(g2);  // the goal: a flash, a ring and sparks from the goal mouth
     const banner = $('hkBanner');
     const pause = src.pause ? src.pause - (now - src.at) / 1000 : 0;
     banner.hidden = !(pause > 0 && S.phase === 'playing');
@@ -200,9 +199,15 @@ UI.hockey = (() => {
     net = { ...data, at: performance.now() };
     const sc = data.sc.join(':');
     if (lastScore && sc !== lastScore) {
-      flash = performance.now() + 600; buzz(120);
+      buzz(120);
       // the goal horn, and a cheer when it's mine
       const was = lastScore.split(':').map(Number), scorer = data.sc.findIndex((v, i) => v > was[i]);
+      if (h && canvas?.width) {  // seat 0 defends the far goal (y = H), so a goal by 0 lands at y = 0
+        const [gx, gy] = toScreen(h.W / 2, scorer === 0 ? 0 : h.H), u = canvas.width;
+        pfx.flash('#ffb703', 0.3, 600);
+        pfx.ring(gx, gy, { r0: u * 0.03, r1: u * 0.5, color: '#ffd166', width: u * 0.02, life: 0.6 });
+        pfx.spark(gx, gy, 28, { color: '#ffd166', speed: [u * 0.3, u * 1.1], size: [u * 0.008, u * 0.016], dir: gy < canvas.height / 2 ? Math.PI / 2 : -Math.PI / 2, spread: Math.PI * 1.2 });
+      }
       // a cheer for the scorer, a groan for the one scored on; watchers get the neutral horn
       ctx.sfx(h?.me == null || h.me < 0 ? 'alarm' : scorer === h.me ? 'cheer' : 'groan');
       if (h && Math.max(...data.sc) === h.target - 1 && Math.max(...was) < h.target - 1) setTimeout(() => Kit.callout('🔥 Match point', 'gold', { ms: 1400 }), 900);

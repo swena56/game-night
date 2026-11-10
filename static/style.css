@@ -535,6 +535,13 @@ body.light #arena .stick-bottom { background: linear-gradient(transparent, #1d17
 .pc.small.back, .pc.tiny.back { box-shadow: inset 0 0 0 2px #fff, 0 1px 3px #0008; }
 .pc.flip-in { animation: flipIn .45s cubic-bezier(.3, 1.3, .5, 1); }
 @keyframes flipIn { 0% { transform: rotateY(90deg) scale(1.05); } 100% { transform: none; } }
+/* the face art (an SVG that scales with the card): pips laid out as on a real card, court cards a framed
+   figure; the small and tiny sizes keep the plain rank + suit */
+.pc .pips { display: none; }
+.pc:not(.small):not(.tiny):not(.back):not(.joker) .pips { display: block; position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.pc:not(.small):not(.tiny):not(.back):not(.joker) > b, .pc:not(.small):not(.tiny):not(.back):not(.joker) > i { display: none; }
+.pc .pips text { fill: currentColor; font-weight: 800; text-anchor: middle; dominant-baseline: central; font-family: system-ui, "Segoe UI Symbol", sans-serif; }
+.pc.court .pips text { font-weight: 900; }
 .kit-ghost { transition: none !important; }
 
 /* dice: a tumble with a bounce, each die landing a beat after the last (--i), spinning its own way (--spin) */

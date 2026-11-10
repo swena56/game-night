@@ -306,7 +306,7 @@ UI.prism = (() => {
   // ---------- animation state
   const vis = () => Array.from({ length: N * N }, () => ({ ox: 0, oy: 0, vy: 0, land: 0, born: 0, ice: 0 }));
   let cells = vis();
-  let pops = [], fx = [], parts = [], texts = [], shake = 0, flash = 0, sel = null, cursor = null, hint = null, lastAct = 0;
+  let pops = [], fx = [], pfx = Fx2D.create({ cap: 320 }), sel = null, cursor = null, hint = null, lastAct = 0;
   let falling = null, swapAnim = null;
   const motion = () => (typeof motionOK === 'function' ? motionOK() : true);
   const sleep = (ms) => new Promise((r) => setTimeout(r, motion() ? ms : Math.min(ms, 60)));
@@ -314,33 +314,21 @@ UI.prism = (() => {
   const now = () => performance.now();
 
   function burstParts(i, ch, big = 1) {
-    if (!motion() || !c2) return;
+    if (!c2) return;
     const [x, y] = cellXY(i), k = kind(ch), col = k == null ? ['#bbb', '#fff', '#555'] : COLORS[k];
-    const n = Math.round(10 * big);
-    for (let t = 0; t < n && parts.length < 320; t++) {
-      const a = Math.random() * Math.PI * 2, v = cs * (2.5 + Math.random() * 4.5) * big;
-      parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - cs * 2, life: 0, max: 0.5 + Math.random() * 0.45,
-        size: cs * (0.07 + Math.random() * 0.08), rot: Math.random() * 6, vr: (Math.random() - 0.5) * 14,
-        color: Math.random() < 0.3 ? col[1] : col[0], kind: 'shard' });
-    }
-    for (let t = 0; t < 5 * big && parts.length < 320; t++) {
-      const a = Math.random() * Math.PI * 2, v = cs * (1 + Math.random() * 2.5);
-      parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0, max: 0.35 + Math.random() * 0.4, size: cs * (0.05 + Math.random() * 0.06), color: col[1], kind: 'spark' });
-    }
+    pfx.burst(x, y, Math.round(10 * big), { colors: [col[0], col[0], col[1]], speed: [cs * 2.5 * big, cs * 7 * big], up: cs * 2, gravity: cs * 22, drag: 0.9,
+      size: [cs * 0.07, cs * 0.15], life: [0.5, 0.95] });
+    pfx.spark(x, y, Math.round(5 * big), { color: col[1], speed: [cs, cs * 3.5], size: [cs * 0.05, cs * 0.11] });
   }
   function iceParts(i, color = '#d8f3ff') {
-    if (!motion()) return;
     const [x, y] = cellXY(i);
-    for (let t = 0; t < 9 && parts.length < 320; t++) {
-      const a = Math.random() * Math.PI * 2, v = cs * (2 + Math.random() * 3);
-      parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - cs, life: 0, max: 0.55, size: cs * 0.09, rot: Math.random() * 6, vr: 8, color, kind: 'shard' });
-    }
+    pfx.burst(x, y, 9, { color, speed: [cs * 2, cs * 5], up: cs, gravity: cs * 22, size: cs * 0.09, life: 0.55, spin: 8 });
   }
   function floatText(i, text, step) {
     const [x, y] = Array.isArray(i) ? i : cellXY(i);
-    texts.push({ x, y, text, color: HEAT[Math.min(step, HEAT.length - 1)], t0: now(), big: step >= 3 ? 1.35 : 1 });
+    pfx.text(x, y, text, { color: HEAT[Math.min(step, HEAT.length - 1)], size: cs * 0.42, big: step >= 3 ? 1.35 : 1, rise: cs * 0.9 });
   }
-  function doShake(n) { if (motion()) shake = Math.max(shake, cs * 0.12 * n); }
+  function doShake(n) { pfx.shake(cs * 0.12 * n); }
 
   // ---------- drawing
   function drawGem(p, ch, x, y, scale, t, i) {
@@ -470,7 +458,8 @@ UI.prism = (() => {
     const p = c2;
     p.setTransform(1, 0, 0, 1, 0, 0);
     p.clearRect(0, 0, cv.width, cv.height);
-    if (shake > 0.3) { p.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake); shake *= Math.pow(0.002, dt); busy = true; } else shake = 0;
+    if (pfx.step(dt)) busy = true;
+    pfx.begin(p);
     drawBoardBg(p);
     drawMotes(p, t, dt);
     // a slow diagonal sheen across the board while things are moving
@@ -593,48 +582,14 @@ UI.prism = (() => {
       p.restore();
       busy = true;
     }
-    // shards (fall) and sparks (glow)
-    if (parts.length) {
-      busy = true;
-      parts = parts.filter((q) => (q.life += dt) < q.max);
-      for (const q of parts) {
-        const k = q.life / q.max;
-        q.x += q.vx * dt; q.y += q.vy * dt;
-        if (q.kind === 'shard') {
-          q.vy += cs * 22 * dt; q.vx *= 0.985; q.rot += q.vr * dt;
-          p.save(); p.globalAlpha = 1 - k * k; p.fillStyle = q.color; p.translate(q.x, q.y); p.rotate(q.rot);
-          p.beginPath(); p.moveTo(0, -q.size); p.lineTo(q.size * 0.7, q.size * 0.6); p.lineTo(-q.size * 0.7, q.size * 0.6); p.closePath(); p.fill();
-          p.restore();
-        } else {
-          q.vx *= 0.94; q.vy *= 0.94;
-          p.save(); p.globalCompositeOperation = 'lighter'; p.globalAlpha = 1 - k; p.fillStyle = q.color;
-          const r = q.size * (1 + k);
-          p.beginPath(); p.moveTo(q.x, q.y - r * 2); p.lineTo(q.x + r * 0.5, q.y); p.lineTo(q.x, q.y + r * 2); p.lineTo(q.x - r * 0.5, q.y); p.closePath(); p.fill();
-          p.beginPath(); p.moveTo(q.x - r * 2, q.y); p.lineTo(q.x, q.y + r * 0.5); p.lineTo(q.x + r * 2, q.y); p.lineTo(q.x, q.y - r * 0.5); p.closePath(); p.fill();
-          p.restore();
-        }
-      }
-    }
-    // floating points
-    texts = texts.filter((q) => t - q.t0 < 900);
-    for (const q of texts) {
-      const k = (t - q.t0) / 900, pop = k < 0.15 ? 0.6 + k / 0.15 * 0.6 : 1.2 - Math.min(0.2, (k - 0.15));
-      p.save();
-      p.globalAlpha = k > 0.6 ? 1 - (k - 0.6) / 0.4 : 1;
-      p.font = `900 ${Math.round(cs * 0.42 * q.big * pop)}px system-ui, sans-serif`; p.textAlign = 'center'; p.textBaseline = 'middle';
-      p.lineWidth = cs * 0.09; p.strokeStyle = 'rgba(10,8,30,0.85)'; p.lineJoin = 'round';
-      const y = q.y - k * cs * 0.9;
-      p.strokeText(q.text, q.x, y); p.fillStyle = q.color; p.fillText(q.text, q.x, y);
-      p.restore();
-      busy = true;
-    }
+    pfx.draw(p);  // shards, sparks and the floating points
     // keyboard cursor
     if (cursor != null) {
       const x = (cursor % N) * cs, y = ((cursor / N) | 0) * cs;
       p.save(); p.strokeStyle = 'rgba(255,255,255,0.9)'; p.lineWidth = Math.max(2, cs * 0.05); p.setLineDash([cs * 0.12, cs * 0.08]);
       p.strokeRect(x + cs * 0.06, y + cs * 0.06, cs * 0.88, cs * 0.88); p.restore();
     }
-    if (flash > 0.02) { p.setTransform(1, 0, 0, 1, 0, 0); p.fillStyle = `rgba(255,255,255,${flash})`; p.fillRect(0, 0, cv.width, cv.height); flash *= Math.pow(0.004, dt); busy = true; } else flash = 0;
+    pfx.end(p);  // the flash
     if (busy || st.busy) kick();
     else if (motion() && !st.over) { clearTimeout(idleT); idleT = setTimeout(kick, 50); }  // ~20 fps while idle: motes and glints
   }
@@ -653,7 +608,7 @@ UI.prism = (() => {
       const k = kind(b.ch);
       if (b.sp === 'h' || b.sp === 'v') { fx.push({ type: 'beam', i: b.i, dir: b.sp, k, t0: t, dur: 520 }); ctx.sfx?.('sweep'); }
       else if (b.sp === 'n') { fx.push({ type: 'ring', i: b.i, r: 1.9, color: COLORS[k][0], t0: t, dur: 520 }); doShake(1.2); ctx.sfx?.('boom'); }
-      else if (b.sp === 'p') { fx.push({ type: 'arc', i: b.i, to: b.area.filter((j) => j !== b.i).slice(0, 24), t0: t, dur: 700 }); flash = Math.max(flash, 0.35); ctx.sfx?.('tag'); }
+      else if (b.sp === 'p') { fx.push({ type: 'arc', i: b.i, to: b.area.filter((j) => j !== b.i).slice(0, 24), t0: t, dur: 700 }); pfx.flash('#fff', 0.35, 700); ctx.sfx?.('tag'); }
     }
   }
   async function animStep(out, step, pts, center) {
@@ -754,7 +709,7 @@ UI.prism = (() => {
           const pair = new Set([sa, sb]);
           area = new Set();
           const box = (r) => { for (let yy = y - r; yy <= y + r; yy++) for (let xx = x - r; xx <= x + r; xx++) if (xx >= 0 && xx < N && yy >= 0 && yy < N) area.add(yy * N + xx); };
-          if (pair.has('p')) { for (let i = 0; i < N * N; i++) area.add(i); flash = 0.8; }
+          if (pair.has('p')) { for (let i = 0; i < N * N; i++) area.add(i); pfx.flash('#fff', 0.8, 700); }
           else if (pair.size === 1 && pair.has('n')) box(2);
           else if (pair.has('n')) { for (let t = 0; t < N; t++) for (let d = -1; d <= 1; d++) { if (x + d >= 0 && x + d < N) area.add(t * N + x + d); if (y + d >= 0 && y + d < N) area.add((y + d) * N + t); } }
           else { for (let t = 0; t < N; t++) { area.add(y * N + t); area.add(t * N + x); } }
@@ -763,7 +718,7 @@ UI.prism = (() => {
           fx.push({ type: 'beam', i: b, dir: 'h', k, t0: now(), dur: 560 }, { type: 'beam', i: b, dir: 'v', k, t0: now(), dur: 560 });
           g[a] = g[b] = EMPTY;
           fired.push('combo');
-          doShake(3); ctx.sfx?.('boom'); flash = Math.max(flash, 0.4);
+          doShake(3); ctx.sfx?.('boom'); pfx.flash('#fff', 0.4, 700);
         }
         const fxl = [];
         area = explode(area, fired, fxl);
@@ -858,7 +813,7 @@ UI.prism = (() => {
 
   async function reshuffle() {
     shuffle();
-    flash = Math.max(flash, 0.5);
+    pfx.flash('#fff', 0.5, 700);
     for (let i = 0; i < N * N; i++) { cells[i].born = now() + Math.random() * 200; }
     floatText([cv ? cv.width / 2 : 0, cv ? cv.height / 2 : 0], 'No moves — shuffle!', 2);
     ctx.sfx?.('whoosh');
@@ -1025,9 +980,7 @@ UI.prism = (() => {
     const stage = $('pzStage');
     const w = Math.max(160, Math.floor(stage.clientWidth || 320));
     size = w;
-    dpr = Math.min(2, window.devicePixelRatio || 1);
-    cv.width = cv.height = Math.round(size * dpr);
-    cv.style.width = cv.style.height = size + 'px';
+    dpr = Fx2D.fit(cv, size, size);
     cs = cv.width / N;
     bgCache = null;
     buildSprites();
@@ -1053,7 +1006,7 @@ UI.prism = (() => {
       const def = pz.levels[pz.level - 1];
       st.lv = { n: pz.level, def, left: def.moves, frozen0: count(FROZEN), stones0: count(STONE), colour: 0, made: 0, prisms: 0, over: false };
     }
-    cells = vis(); pops = []; fx = []; parts = []; texts = []; sel = null; hint = null;
+    cells = vis(); pops = []; fx = []; pfx.clear(); sel = null; hint = null;
     for (const k of Object.keys(prevHits)) delete prevHits[k];
     for (const k of Object.keys(prevScore)) delete prevScore[k];
     shownScore = st.score;
