@@ -154,7 +154,8 @@ class Holdem(Game):
     blurb = "No-limit poker: two cards each, five shared, bluff and bet your way to every chip on the table."
     min_players = 2
     max_players = 6
-    badges = {**Game.badges, "quads": ("💎", "Monster hand", "Win a showdown with four of a kind or a straight flush")}
+    badges = {**Game.badges, "quads": ("💎", "Monster hand", "Win a showdown with four of a kind or a straight flush"),
+              "badbeat": ("😵", "Bad beat", "Lose a showdown holding three of a kind or better")}
     settings_schema = {
         "chips": ("Starting chips", [(1000, "1,000"), (2000, "2,000"), (5000, "5,000")], 1000),
         "pace": ("Blinds rise", [(6, "⚡ Every 6 hands"), (10, "Every 10 hands"), (15, "🐢 Every 15 hands")], 10),
@@ -377,6 +378,14 @@ class Holdem(Game):
             self.best5 = list(max(combinations(cards, 5), key=evaluate))
             if ranks[top][0] >= 7:  # four of a kind or a straight flush
                 self.award(top, "quads")
+            # 😵 a bad beat: lost a showdown holding three of a kind or better
+            beaten = [i for i in live if i not in self.winners and ranks[i][0] >= 3]
+            for i in beaten:
+                self.award(i, "badbeat")
+            if beaten:
+                r.moment(f"😵 {' & '.join(self.pl(i).name for i in beaten)}: bad beat with {said[beaten[0]]}", "bad", "groan")
+            elif ranks[top][0] >= 5:  # a flush or better takes it
+                r.moment(f"🃏 {self.pl(top).name}: {said[top]}!", "gold", "cheer")
         for i, v in winnings.items():
             self.pl(i).g.chips += v
         r.add_log(f"💰 {self.result}", "big")

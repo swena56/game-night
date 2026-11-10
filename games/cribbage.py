@@ -189,6 +189,7 @@ class Cribbage(Game):
         r.add_log(f"✂️ The starter is {pretty(self.starter)}.")
         if self.starter[0] == "J":
             r.add_log(f"🎩 His heels! {dealer.name} scores 2.", "question")
+            r.moment(f"🎩 His heels: {dealer.name} +2", "cool", "good")
             if self.peg(dealer, 2, "his heels"):
                 return
         for p in self.players():
@@ -297,6 +298,10 @@ class Cribbage(Game):
             total = sum(v for _, v in items)
             if total >= 20:
                 self.award(p, "big_hand")
+            if total >= 24:
+                r.moment(f"🎆 {p.name}: a {total} hand!" if total < 29 else f"🎆 {p.name}: TWENTY-NINE!", "gold", "fanfare")
+            elif total >= 16:
+                r.moment(f"🃏 {p.name}: {total} in hand", "cool", "good")
             said = claims.get(pid, total)
             self.show.append({"who": pid, "crib": False, "cards": p.g.hand, "items": items, "total": total,
                               "said": said if pid in claims else None})

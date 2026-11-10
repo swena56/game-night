@@ -156,6 +156,7 @@ class LastCard(Game):
         target.g.exposed_at = None
         self.draw_cards(target, CATCH_PENALTY)
         self.room.add_log(f"🚨 {p.name} caught {target.name} not calling “Last card!” — {target.name} draws {CATCH_PENALTY}.", "big")
+        self.room.moment(f"🚨 {p.name} caught {target.name}!", "bad", "alarm")
 
     def twin(self, card):
         """⚡ Jump-in: a card that may snap onto the top out of turn (same rank, same colour, not a wild Jack)."""
@@ -190,6 +191,7 @@ class LastCard(Game):
                 self.penalty += 2
                 if self.penalty >= 6:
                     self.award(p, "stack")
+                    self.room.moment(f"🥞 {p.name} stacks it to {self.penalty}!", "gold", "tag")
                 extra = f" — next player draws {self.penalty} (or plays a 7)"
             elif k == "8":
                 skip = True
@@ -239,6 +241,8 @@ class LastCard(Game):
             n, self.penalty = self.penalty, 0
             self.draw_cards(p, n)
             r.add_log(f"{p.name} draws {n} cards.", "power")
+            if n >= 4:
+                r.moment(f"😱 {p.name} draws {n}!", "bad", "wrong")
             p.g.declared, p.g.exposed_at = False, None
             return self.end_turn()
         got = self.draw_cards(p, 1)

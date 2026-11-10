@@ -103,6 +103,7 @@ class Sumo(Game):
     name = "Sumo Saucers"
     icon = "🪐"
     blurb = "Shove rival hover saucers off a shrinking platform in space. Last one floating wins."
+    badges = {**Game.badges, "double_ko": ("💥", "Double KO", "Knock two saucers off in one round")}
     min_players = 2
     max_players = 6
     replayable = False
@@ -142,6 +143,7 @@ class Sumo(Game):
     def new_round(self, now):
         k = len(self.seats)
         self.round += 1
+        self.rko = [0] * k  # 💥 knockouts this round
         self.radius = self.target = RADIUS
         arena = self.s.get("arena", "disc")
         self.pit = PIT if arena == "ring" or (arena == "mix" and self.round % 2 == 0) else 0.0
@@ -472,6 +474,12 @@ class Sumo(Game):
                 q = r.players.get(self.seats[by]) if by is not None else None
                 if by is not None:
                     self.kos[by] += 1
+                    rko = getattr(self, "rko", None) or [0] * len(self.seats)
+                    rko[by] += 1
+                    self.rko = rko
+                    if rko[by] == 2 and q:
+                        self.award(q, "double_ko")
+                        r.moment(f"💥 {q.name}: DOUBLE KO!", "gold", "boom")
                 ghost = "👻 " if by is not None and self.saucers[by].out else ""
                 r.add_log(f"🕳️ {ghost}{q.name} knocked {p.name if p else '?'} off!" if q else
                           f"🕳️ {p.name if p else '?'} drifted off the edge.", "power")

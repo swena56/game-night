@@ -596,14 +596,23 @@ class Rally(Game):
             return False
         ms, c.lap_t0 = round((now - c.lap_t0) * 1000), now
         c.best_lap = ms if c.best_lap is None else min(c.best_lap, ms)
+        # ⏱ the fastest lap of this race changes hands (from the second lap timed on, so the first isn't trivially it)
+        fast = getattr(self, "fastest", None)
+        called = False
+        if fast is None:
+            self.fastest = (ms, i)
+        elif ms < fast[0]:
+            self.fastest = (ms, i)
+            self.room.moment(f"⏱ {p.name}: fastest lap {ms / 1000:.2f}s", "cool", "tag")
+            called = True
         if not self.daily or p.bot:
-            return False
+            return called
         place, self.board = add_to_board(self.today, p.name, ms)
         if place == 1:
             self.room.add_log(f"⭐ {p.name} sets today's best lap: {ms / 1000:.2f}s!", "big")
         elif place:
             self.room.add_log(f"📅 {p.name}'s {ms / 1000:.2f}s lap is {self.ordinal(place)} on today's board.")
-        return place is not None
+        return place is not None or called
 
     def launches(self, now):
         """GO: a boost pressed just before it gives a start boost, one pressed too early stalls.

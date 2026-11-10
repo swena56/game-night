@@ -157,6 +157,11 @@ class Oware(Undo, Game):
         num = pit + 1 if me == 0 else pit - 5
         self.room.add_log(f"🌰 {p.name} sows {seeds} from pit {num}" + (f" and captures {took}!" if took else "."),
                           "power" if took else "question")
+        total = 12 * self.s.get("seeds", 4)
+        if took and new[1][me] * 2 > total and before * 2 <= total:
+            self.room.moment(f"🏁 {p.name} passes {total // 2} seeds — clinched!", "gold", "fanfare")
+        elif took >= 6:
+            self.room.moment(f"🌾 {p.name} harvests {took} seeds!", "gold", "capture")
         nxt = 1 - me
         if not legal(self.state, nxt):
             return self.end(nxt)

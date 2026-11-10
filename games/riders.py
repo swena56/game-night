@@ -247,6 +247,7 @@ class Riders(Game):
             if self.queue[i]:
                 self.dirs[i] = self.queue[i].popleft()
         crashed = set()
+        cutter = {}  # crashed rider -> whose trail they hit (✂️ credit)
         holding = {i for i in range(len(self.seats)) if self.ghost[i]}
         for i in holding:
             self.ghost[i] -= 1
@@ -268,6 +269,8 @@ class Riders(Game):
                 x, y = hx + dx, hy + dy
                 if not (0 <= x < self.n and 0 <= y < self.n) or self.grid[y * self.n + x] or self.walled(x, y):
                     crashed.add(i)
+                    if 0 <= x < self.n and 0 <= y < self.n and self.grid[y * self.n + x] and self.grid[y * self.n + x] - 1 != i:
+                        cutter[i] = self.grid[y * self.n + x] - 1
                 else:
                     targets.setdefault(y * self.n + x, []).append(i)
             for c, who in targets.items():
@@ -305,6 +308,13 @@ class Riders(Game):
                 name += " (out)"
             names.append(name)
         self.room.add_log(f"💥 {' and '.join(names)} crashed!", "power")
+        for i, k in cutter.items():  # ✂️ whose wall did it
+            kp = self.room.players.get(self.seats[k])
+            vp = self.room.players.get(self.seats[i])
+            if kp and vp and self.alive[k]:
+                self.kills = getattr(self, "kills", None) or [0] * len(self.seats)
+                self.kills[k] += 1
+                self.room.moment(f"✂️ {kp.name} cut {vp.name} off!", "cool", "crack")
         self.check_round(now)
         return True
 
@@ -524,7 +534,7 @@ class Riders(Game):
     def view(self, p):
         return {"riders": {
             "n": self.n, "seats": self.seats, "me": self.seat(p), "stage": self.stage, "round": self.round,
-            "ring": getattr(self, "ring", 0),
+            "ring": getattr(self, "ring", 0), "kills": getattr(self, "kills", None) or [0] * len(self.seats),
             "items": [[c, k] for c, k in getattr(self, "items", {}).items()], "pickups": bool(self.s.get("pickups")),
             "slow": [int(x > 0) for x in getattr(self, "slow", [0] * len(self.seats))], "grabs": getattr(self, "grabs", []),
             "wins": self.wins, "target": self.s["target"], "speed": self.s["speed"], "tick": self.tick,

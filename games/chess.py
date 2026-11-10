@@ -312,7 +312,8 @@ class Chess(Undo, Game):
     name = "Chess"
     icon = "♟️"
     blurb = "The classic, with every rule: castling, en passant, promotion, and draws by stalemate or repetition."
-    badges = {**Game.badges, "quickmate": ("⚡", "Quick mate", "Checkmate within your first 20 moves"),
+    badges = {**Game.badges, "sneaky": ("🤫", "Sneaky", "Capture en passant"),
+              "quickmate": ("⚡", "Quick mate", "Checkmate within your first 20 moves"),
               "pawnmate": ("♟", "Humble hero", "Deliver checkmate with a pawn")}
     settings_schema = {
         "clock": ("Clock", [(0, "Untimed"), (180, "⚡ 3 min + 2s"), (300, "5 min"), (600, "10 min + 5s")], 0),
@@ -429,6 +430,11 @@ class Chess(Undo, Game):
         text = move_text(before, move, captured)
         if captured:
             self.captured[captured[0]].append(captured[1])
+            if before.b[move[2]][move[3]] is None:  # 🤫 a pawn took a pawn that had just passed it
+                self.award(p, "sneaky")
+                r.moment(f"🤫 {p.name}: en passant!", "cool", "capture")
+            elif captured[1] == "Q":
+                r.moment(f"👑 {p.name} takes the queen!", "gold", "capture")
         self.last = list(move[:4])
         key = self.pos.key()
         self.seen[key] = self.seen.get(key, 0) + 1

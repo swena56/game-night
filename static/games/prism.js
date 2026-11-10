@@ -1262,6 +1262,13 @@ UI.prism = (() => {
     box.innerHTML = '';
     const entries = Object.entries(S.prism.boards).sort((a, b) => b[1].score - a[1].score);
     const hitNow = [];
+    // 👑 the lead changes hands (after the opening seconds, and only while the race is on)
+    const lead = entries[0]?.[1].score > 0 ? entries[0][0] : null;
+    if (lead && renderRivals.lead && lead !== renderRivals.lead && S.phase === 'playing' && S.prism.playing && entries.length > 1) {
+      const lp = ctx.player(lead);
+      try { Kit.callout(lead === S.me.id ? '👑 You take the lead!' : `👑 ${lp?.name ?? '?'} takes the lead`, lead === S.me.id ? 'gold' : 'cool', { ms: 1300 }); } catch {}
+    }
+    renderRivals.lead = lead;
     entries.forEach(([pid, b], rank) => {
       const p = ctx.player(pid);
       const card = ctx.el('div', 'pz-rival' + (pid === S.me.id ? ' me' : '') + (b.alive ? '' : ' down'));

@@ -48,7 +48,8 @@ class Hockey(Game):
     min_players = 2
     max_players = 2
     replayable = False
-    badges = {**Game.badges, "shutout": ("🧤", "Shutout", "Win without letting a goal in")}
+    badges = {**Game.badges, "shutout": ("🧤", "Shutout", "Win without letting a goal in"),
+              "hattrick": ("🎩", "Hat-trick", "Score three goals in a row")}
     settings_schema = {
         "target": ("First to", [(5, "5 goals"), (7, "7 goals"), (3, "3 goals (quick)")], 5),
         "pucks": ("Pucks", [(1, "🏒 One"), (2, "🏒🏒 Double Trouble")], 1),
@@ -202,10 +203,13 @@ class Hockey(Game):
                     pk.vx -= (1 + HIT_BOUNCE) * dot * nx
                     pk.vy -= (1 + HIT_BOUNCE) * dot * ny
                     self.hits += 1
+                    pk.banked = 0  # a fresh touch: a goal from here is a bank shot only if it bounces first
         if pk.x < PUCK:
             pk.x, pk.vx = PUCK, abs(pk.vx) * WALL_BOUNCE
+            pk.banked = getattr(pk, "banked", 0) + 1
         elif pk.x > W - PUCK:
             pk.x, pk.vx = W - PUCK, -abs(pk.vx) * WALL_BOUNCE
+            pk.banked = getattr(pk, "banked", 0) + 1
         if not in_mouth:
             if pk.y < PUCK:
                 pk.y, pk.vy = PUCK, abs(pk.vy) * WALL_BOUNCE
@@ -230,6 +234,17 @@ class Hockey(Game):
         who = r.players.get(self.seats[scorer])
         name = who.name if who else "?"
         r.add_log(f"🚨 GOAL! {name} scores — {self.score[0]} : {self.score[1]}", "big" if max(self.score) >= self.s["target"] else "power")
+        banked = getattr(self.pucks[k], "banked", 0) if k < len(self.pucks) else 0
+        run = getattr(self, "run", [None, 0])
+        run = [scorer, run[1] + 1] if run[0] == scorer else [scorer, 1]
+        self.run = run
+        if run[1] == 3 and self.score[scorer] < self.s["target"]:
+            self.award(who, "hattrick")
+            r.moment(f"🎩 {name}: HAT-TRICK!", "gold", "cheer")
+        elif banked >= 2:
+            r.moment(f"🏒 {name}: double bank shot!", "gold", None)
+        elif banked:
+            r.moment(f"🏒 {name}: bank shot!", "cool", None)
         if self.score[scorer] >= self.s["target"]:
             if min(self.score) == 0 and who:
                 self.award(who, "shutout")

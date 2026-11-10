@@ -35,7 +35,7 @@ class PaintBlast(Game):
     howto = [
         "Move with a swipe-and-hold on the arena, the arrows, or the keyboard (arrows / WASD). Tap the arena, 💣 or Space to drop a bomb.",
         "A bomb blasts in a straight line in all four directions. It breaks the first crate it meets and paints every tile it touches in your colour.",
-        "Caught in a blast? You're stunned for 3 s and respawn at home. Catching a rival scores +10.",
+        "Caught in a blast? You're stunned for 3 s and respawn at home. Catching a rival scores +10, and 💥 two in one blast +10 more.",
         "Crates hide 💣 more bombs, 🔥 longer blasts, 🖌️ paint splashes and 👟 kick: walk into a bomb to send it sliding.",
         "When the clock runs out, every tile in your colour is a point. Most points after the last round wins.",
         "🧱 In the last 15 s the walls close in, one ring at a time. Paint under them still counts.",
@@ -346,6 +346,12 @@ class PaintBlast(Game):
             self.tags[by] += 1
             hunter = r.players.get(self.seats[by])
             r.add_log(f"💥 {hunter.name if hunter else '?'} caught {victim.name if victim else '?'}! +{TAG_POINTS}", "power")
+            # 💥 double splat: a second rival caught in the same tick's blasts pays a tag more
+            last = getattr(self, "last_tag", None)
+            if last and last[0] == by and last[1] == self.tick:
+                self.tags[by] += 1
+                r.moment(f"💥 {hunter.name if hunter else '?'}: DOUBLE SPLAT +{TAG_POINTS}", "gold", "boom")
+            self.last_tag = (by, self.tick)
         else:
             r.add_log(f"💥 {victim.name if victim else '?'} got caught in their own blast.", "power")
 
