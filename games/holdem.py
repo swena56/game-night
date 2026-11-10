@@ -383,9 +383,9 @@ class Holdem(Game):
             for i in beaten:
                 self.award(i, "badbeat")
             if beaten:
-                r.moment(f"😵 {' & '.join(self.pl(i).name for i in beaten)}: bad beat with {said[beaten[0]]}", "bad", "groan")
+                self.moment(f"😵 {' & '.join(self.pl(i).name for i in beaten)}: bad beat with {said[beaten[0]]}", "bad", "groan")
             elif ranks[top][0] >= 5:  # a flush or better takes it
-                r.moment(f"🃏 {self.pl(top).name}: {said[top]}!", "gold", "cheer")
+                self.moment(f"🃏 {self.pl(top).name}: {said[top]}!", "gold", "cheer")
         for i, v in winnings.items():
             self.pl(i).g.chips += v
         r.add_log(f"💰 {self.result}", "big")

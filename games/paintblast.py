@@ -350,7 +350,7 @@ class PaintBlast(Game):
             last = getattr(self, "last_tag", None)
             if last and last[0] == by and last[1] == self.tick:
                 self.tags[by] += 1
-                r.moment(f"💥 {hunter.name if hunter else '?'}: DOUBLE SPLAT +{TAG_POINTS}", "gold", "boom")
+                self.moment(f"💥 {hunter.name if hunter else '?'}: DOUBLE SPLAT +{TAG_POINTS}", "gold", "boom")
             self.last_tag = (by, self.tick)
         else:
             r.add_log(f"💥 {victim.name if victim else '?'} got caught in their own blast.", "power")

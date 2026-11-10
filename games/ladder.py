@@ -311,9 +311,9 @@ class Ladder(Game):
         extra = f", {steps - self.par} over par" if steps > self.par else ", on par!"
         self.room.add_log(f"🏁 {p.name} reached {self.target} in {steps} steps{extra} +{pts}" + (" (first!)" if first else ""), "power")
         if first:
-            self.room.moment(f"🏁 {p.name} topped out first!", "cool", "tag")
+            self.moment(f"🏁 {p.name} topped out first!", "cool", "tag")
         if steps < self.par:
-            self.room.moment(f"🦅 {p.name}: {self.par - steps} under par!", "gold", "fanfare")
+            self.moment(f"🦅 {p.name}: {self.par - steps} under par!", "gold", "fanfare")
         if steps < self.par:
             self.award(p, "eagle")
         elif steps == self.par and not self.hints.get(p.id) and not getattr(self, "peeks", {}).get(p.id):

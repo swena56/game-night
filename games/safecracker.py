@@ -228,7 +228,7 @@ class Safecracker(Game):
             p.g.score += pts
             parts.append(f"{p.name} +{pts}{' (probed)' if p.g.probe else ''}{' 🔥 on a roll' if hot else ''}")
             if hot:
-                self.room.moment(f"🔥 {p.name}: {p.g.run} safes in a row! +1", "gold", "tag")
+                self.moment(f"🔥 {p.name}: {p.g.run} safes in a row! +1", "gold", "tag")
         for q in self.room.contenders():
             if q not in crackers and hasattr(q.g, "run"):
                 q.g.run = 0

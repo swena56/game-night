@@ -109,7 +109,7 @@ class Heist(Game):
         moon = "🌕" if self.full_moon() else "🌙"
         r.add_log(f"{moon} Night {self.night}{of}: 💰{added} more loot — the vault holds 💰{self.pot}.{rent}")
         if self.full_moon():
-            r.moment(f"🌕 FULL MOON · fines 💰{MOON_FINE}", "cool", "alarm")
+            self.moment(f"🌕 FULL MOON · fines 💰{MOON_FINE}", "cool", "alarm")
         elif self.full_moon(self.night + 1):
             r.add_log(f"🌕 Tomorrow is a full moon: double loot arrives, and guards fine 💰{MOON_FINE}.", "power")
 

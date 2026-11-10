@@ -436,10 +436,10 @@ class Backgammon(Game):
                               "question" if any(m[3] for m in self.turn_moves) else "info")
         hits = sum(1 for m in self.turn_moves if m[3])
         if hits >= 2:
-            self.room.moment(f"💥 {self.name_of(side)} hits {'two' if hits == 2 else hits}!", "gold", "capture")
+            self.moment(f"💥 {self.name_of(side)} hits {'two' if hits == 2 else hits}!", "gold", "capture")
         elif all(self.pos[i] * side >= 2 for i in range(1, 25) if home(i, side)) and not getattr(self, "closed_called", None) == side:
             self.closed_called = side  # 🔒 every home point made (once per game per side)
-            self.room.moment(f"🔒 {self.name_of(side)} closes the board!", "cool", "lock")
+            self.moment(f"🔒 {self.name_of(side)} closes the board!", "cool", "lock")
         self.last_moves = self.turn_moves
         self.begin(-side)
 

@@ -205,6 +205,8 @@ class ShutBox(Game):
         self.rolled = False
         if p.g.tiles:
             self.room.add_log(f"📦 {p.name} shuts {' + '.join(map(str, sorted(tiles, reverse=True)))}.", "question")
+            if len(p.g.tiles) == 1:
+                self.moment(f"📦 {p.name}: one tile left — the {p.g.tiles[0]}!", "cool", "tickfast")
             if self.room.settings["timer"]:
                 self.room.begin_turn(p.id)  # a fresh clock for the next roll
             return
@@ -212,6 +214,7 @@ class ShutBox(Game):
         self.last = {"by": p.id, "pts": 0, "shut": True}
         self.award(p, "shut")
         self.room.add_log(f"🎉 {p.name} SHUTS THE BOX! 0 points.", "big")
+        self.moment(f"📦 {p.name} SHUTS THE BOX!", "gold", "fanfare")
         if self.s.get("instant") and len(self.seats) > 1:
             p.g.scores.append(0)
             return self.room.finish(p, f"📦 {p.name} shut the box and wins on the spot!")

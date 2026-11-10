@@ -188,9 +188,13 @@ class SeaBattle(Game):
             p.g.shots[(r, c)] = "miss"
             room.add_log(f"{p.name} fires at {cell_name(r, c)} — 💦 miss.")
             hit = False
+            p.g.run = 0
         else:
             ship["hits"].add((r, c))
             hit = True
+            p.g.run = getattr(p.g, "run", 0) + 1  # 🔥 hits in a row
+            if p.g.run == 3:
+                self.moment(f"🔥 {p.name}: three hits running!", "gold", "boom")
             if len(ship["hits"]) == len(ship["cells"]):
                 for cell in ship["cells"]:
                     p.g.shots[cell] = "sunk"
@@ -205,6 +209,8 @@ class SeaBattle(Game):
                         self.award(p, "eagle")
                     room.finish(p, f"🏆 {p.name} sank the whole fleet!")
                     return None
+                if sum(1 for s_ in opp.g.ships if len(s_["hits"]) < len(s_["cells"])) == 1:
+                    self.moment(f"🚨 {opp.name} is down to one ship!", "bad", "alarm")
             else:
                 p.g.shots[(r, c)] = "hit"
                 room.add_log(f"{p.name} fires at {cell_name(r, c)} — 🔥 hit!", "question")

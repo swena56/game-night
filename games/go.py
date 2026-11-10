@@ -306,7 +306,7 @@ class Go(Game):
         coord = f"{'ABCDEFGHJKLMNOPQRST'[c]}{len(self.board) - r}"
         self.room.add_log(f"{p.name}: {coord}" + (f" — captured {captured}" if captured else ""), "question")
         if captured >= 4 and self.s.get("variant") != "atari":
-            self.room.moment(f"{'⚫' if color == 'b' else '⚪'} {p.name} captures {captured} stones!", "gold", "capture")
+            self.moment(f"{'⚫' if color == 'b' else '⚪'} {p.name} captures {captured} stones!", "gold", "capture")
         if captured and self.s.get("variant") == "atari":
             return self.room.finish(p, f"⚔️ {p.name} makes the first capture and wins Atari Go!")
         self.room.advance()

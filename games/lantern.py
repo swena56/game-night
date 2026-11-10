@@ -177,14 +177,14 @@ class Lantern(Game):
             if lit and gain >= 20:
                 self.award(win, "bonfire")
             if lit:
-                r.moment(f"🏮 {r.players[win].name}: lantern lit, {pot} → {gain}!", "gold", "fanfare")
+                self.moment(f"🏮 {r.players[win].name}: lantern lit, {pot} → {gain}!", "gold", "fanfare")
             elif pot >= 10 and bid <= 3:
-                r.moment(f"🤑 {r.players[win].name}: a {bid} buys {pot}!", "gold", "tag")
+                self.moment(f"🤑 {r.players[win].name}: a {bid} buys {pot}!", "gold", "tag")
             self.table = []
         elif self.event == "rain" and self.deck:
             text = f"🤝 Every bid was matched{clash} — nobody buys, and 🌧 the rain washes the table away."
             rec["washed"] = True
-            r.moment(f"🌧 Washed out: {pot} down the drain", "bad", "splash")
+            self.moment(f"🌧 Washed out: {pot} down the drain", "bad", "splash")
             self.hidden -= set(self.table)
             self.table = []
         else:

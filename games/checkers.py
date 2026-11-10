@@ -245,11 +245,11 @@ class Checkers(Undo, Game):
         extra = (f" — captured {taken}" if taken else "") + (" 👑 crowned!" if promoted else "")
         r.add_log(f"{p.name}: {text}{extra}", "question")
         if len(path) >= 4:
-            r.moment(f"🦘 {p.name}: TRIPLE JUMP!", "gold", "capture")
+            self.moment(f"🦘 {p.name}: TRIPLE JUMP!", "gold", "capture")
         elif len(path) == 3:
-            r.moment(f"🦘 {p.name}: double jump!", "cool", "capture")
+            self.moment(f"🦘 {p.name}: double jump!", "cool", "capture")
         elif promoted:
-            r.moment(f"👑 {p.name} crowns a king", "gold", "good")
+            self.moment(f"👑 {p.name} crowns a king", "gold", "good")
         opp_id = self.seats[1 - self.seats.index(p.id)]
         opp_side = "l" if self.side(p) == "d" else "d"
         if not moves_for(self.board, opp_side, self.flying()):

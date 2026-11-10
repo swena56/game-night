@@ -112,6 +112,8 @@ class MoonShot(Game):
         land = self.pos[p.id] + fuel
         self.pos[p.id] = land
         msg = f"🚀 {p.name} flew {fuel} to {min(land, self.goal)}"
+        if fuel >= 15 and land < self.goal:
+            self.moment(f"🚀 {p.name} flies {fuel}!", "gold", "whoosh")
         kind = self.tiles.get(land)
         if kind == "star":
             self.pos[p.id] += 5
@@ -128,6 +130,7 @@ class MoonShot(Game):
             if leader != p.id and self.pos[leader] > land:
                 self.pos[p.id], self.pos[leader] = self.pos[leader], land
                 self.award(p, "wormhole")
+                self.moment(f"🌀 {p.name} swaps places with {r.players[leader].name}!", "gold", "whoosh")
                 msg += f" — 🌀 wormhole! Swapped places with {r.players[leader].name}"
             else:
                 msg += " — 🌀 wormhole, but they're already in the lead"

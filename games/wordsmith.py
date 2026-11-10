@@ -309,7 +309,7 @@ class Wordsmith(Game):
         if score >= 24 and (not best or score > best[2]):
             self.best = [p.id, max(texts, key=len), score]
             if best:
-                self.room.moment(f"📖 {max(texts, key=len)} · {score} — best play yet!", "gold", "tag")
+                self.moment(f"📖 {max(texts, key=len)} · {score} — best play yet!", "gold", "tag")
         if not p.g.rack and not self.bag:
             return self.end_game(p)
         self.next_turn()

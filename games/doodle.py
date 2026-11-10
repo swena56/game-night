@@ -232,7 +232,7 @@ class Doodle(Game):
             p.g.run = getattr(p.g, "run", 0) + 1
             if p.g.run >= 3:
                 p.g.score += 1
-                self.room.moment(f"🔥 {p.name}: {p.g.run} in a row! +1", "gold", "tag")
+                self.moment(f"🔥 {p.name}: {p.g.run} in a row! +1", "gold", "tag")
             if self.s["mode"] == "race":
                 return self.reveal(p)
             self.room.add_log(f"✅ {p.name} got it! +{pts}", "power")

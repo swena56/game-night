@@ -136,6 +136,9 @@ class Ultimate(Undo, Game):
         b = c // 9
         if before[b] is None and self.state[1][b] in (0, 1):
             r.add_log(f"{'✕◯'[me]} {p.name} wins board {b + 1}!", "power")
+            won = self.state[1].count(me)
+            if big_result(self.state[1]) not in (0, 1):
+                self.moment(f"{'✕◯'[me]} {p.name} takes board {b + 1}" + (f" · {won} boards" if won > 1 else ""), "cool", "good")
         else:
             r.add_log(f"{'✕◯'[me]} {p.name} plays board {b + 1}, square {c % 9 + 1}.", "question")
         res = big_result(self.state[1])

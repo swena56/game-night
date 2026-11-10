@@ -187,7 +187,7 @@ class FibFinder(Game):
         r.add_log(f"✅ The truth: “{self.fact[1]}”. " + (f"Found by {', '.join(found)}." if found else "Nobody found it!")
                   + (f" ✌️ {', '.join(burned)} doubled down and lost {SURE_LOSS * mult}." if burned else ""), "power")
         if burned:
-            r.moment(f"✌️💥 {', '.join(burned)}: so sure, so wrong", "bad", "wrong")
+            self.moment(f"✌️💥 {', '.join(burned)}: so sure, so wrong", "bad", "wrong")
         for o in self.options:
             fooled = [r.players[pid].name for pid, i in self.picks.items() if self.options[i] is o and pid in r.players]
             if o["authors"] and fooled:

@@ -119,7 +119,7 @@ class Trivia(Game):
         claim = f" → {self.q['claim']}: true or false?" if "claim" in self.q else ""
         self.room.add_log(f"❓ Q{self.n}/{len(self.queue)} · {TOPICS[topic]}: {text}{claim}{final}", "question")
         if self.doubled() and not self.final():
-            self.room.moment("🎲 DOUBLE QUESTION", "gold", "tag")
+            self.moment("🎲 DOUBLE QUESTION", "gold", "tag")
 
     def sync(self):
         self.room.deadline = self.next_event() - self.skew

@@ -314,7 +314,7 @@ class Riders(Game):
             if kp and vp and self.alive[k]:
                 self.kills = getattr(self, "kills", None) or [0] * len(self.seats)
                 self.kills[k] += 1
-                self.room.moment(f"✂️ {kp.name} cut {vp.name} off!", "cool", "crack")
+                self.moment(f"✂️ {kp.name} cut {vp.name} off!", "cool", "crack")
         self.check_round(now)
         return True
 

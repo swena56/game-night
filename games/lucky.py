@@ -300,7 +300,7 @@ class Lucky(Game):
         self.called |= set(self.answer)
         r.add_log(f"🎉 {p.name} solved it: “{self.answer}” and banks {won:,}!" + (f" 🔮 Mind reader: {hidden} letters were still hidden, +{MIND_READER}." if mind else ""), "big")
         if mind:
-            r.moment(f"🔮 MIND READER +{MIND_READER}", "gold", "fanfare")
+            self.moment(f"🔮 MIND READER +{MIND_READER}", "gold", "fanfare")
         if self.round >= self.s["rounds"]:
             return self.finish()
         self.stage = "solved"  # on_timeout starts the next round once everyone has seen the answer

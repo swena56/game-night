@@ -260,7 +260,7 @@ class Spire(Game):
         for o in foes:
             self.send(o, {"kind": "junk", "n": self.PERFECT_JUNK, "from": p.name})
             p.g.sent += self.PERFECT_JUNK
-        r.moment(f"✨ {p.name}: PERFECT CLEAR", "gold", "fanfare")
+        self.moment(f"✨ {p.name}: PERFECT CLEAR", "gold", "fanfare")
         if foes:
             r.add_log(f"✨ {p.name} cleared the whole tower → {self.PERFECT_JUNK} junk at everyone!", "power")
         self.on_clear(p, rings, combo, powers)

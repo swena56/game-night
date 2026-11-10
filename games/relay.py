@@ -243,7 +243,7 @@ class Relay(Game):
             if stars:
                 r.add_log(f"⭐ Crowd favourite: {', '.join(stars)} ({best} vote{'s' * (best > 1)})")
                 if len(stars) == 1 and best >= 2:
-                    r.moment(f"⭐ {stars[0]}'s was the favourite", "gold", "tag")
+                    self.moment(f"⭐ {stars[0]}'s was the favourite", "gold", "tag")
                 if len(stars) == 1 and best * 2 >= len(self.voters()) and len(self.voters()) >= 3:
                     winner = next((i for i, n in tally.items() if n == best), None)
                     if winner is not None:

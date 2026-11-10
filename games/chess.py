@@ -432,9 +432,9 @@ class Chess(Undo, Game):
             self.captured[captured[0]].append(captured[1])
             if before.b[move[2]][move[3]] is None:  # 🤫 a pawn took a pawn that had just passed it
                 self.award(p, "sneaky")
-                r.moment(f"🤫 {p.name}: en passant!", "cool", "capture")
+                self.moment(f"🤫 {p.name}: en passant!", "cool", "capture")
             elif captured[1] == "Q":
-                r.moment(f"👑 {p.name} takes the queen!", "gold", "capture")
+                self.moment(f"👑 {p.name} takes the queen!", "gold", "capture")
         self.last = list(move[:4])
         key = self.pos.key()
         self.seen[key] = self.seen.get(key, 0) + 1

@@ -261,7 +261,7 @@ class GridHunt(Game):
             n, w, p = uniq[0]
             p.g.round_pts += LONGEST_BONUS
             self.longest = [p.id, w]
-            self.room.moment(f"🧵 {p.name}: {w.upper()} · longest word +{LONGEST_BONUS}", "gold", "tag")
+            self.moment(f"🧵 {p.name}: {w.upper()} · longest word +{LONGEST_BONUS}", "gold", "tag")
         for p in live:
             p.g.score += p.g.round_pts
         missed = sorted((w for w in self.all if not counts[w]), key=lambda w: (-len(w), w))[:8]

@@ -479,7 +479,7 @@ class Sumo(Game):
                     self.rko = rko
                     if rko[by] == 2 and q:
                         self.award(q, "double_ko")
-                        r.moment(f"💥 {q.name}: DOUBLE KO!", "gold", "boom")
+                        self.moment(f"💥 {q.name}: DOUBLE KO!", "gold", "boom")
                 ghost = "👻 " if by is not None and self.saucers[by].out else ""
                 r.add_log(f"🕳️ {ghost}{q.name} knocked {p.name if p else '?'} off!" if q else
                           f"🕳️ {p.name if p else '?'} drifted off the edge.", "power")

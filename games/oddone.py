@@ -180,7 +180,7 @@ class OddOne(Game):
         shown = ", ".join(f"{r.players[pid].name} {n}" for pid, n in sorted(tally.items(), key=lambda x: -x[1]) if pid in r.players)
         r.add_log(f"🗳️ Votes: {shown or 'none'}", "question")
         if len(tally) == 1 and top >= 3:
-            r.moment("🗳️ UNANIMOUS!", "gold" if caught else "bad", "tag")
+            self.moment("🗳️ UNANIMOUS!", "gold" if caught else "bad", "tag")
         # 🐐 a scapegoat: an innocent who drew every vote gets a point for the trouble
         if not caught and len(leaders) == 1 and leaders[0] != self.odd and top >= 2 and leaders[0] in r.players:
             goat = r.players[leaders[0]]

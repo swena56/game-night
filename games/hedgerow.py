@@ -205,7 +205,7 @@ class Hedgerow(Game):
         verb = {"step": "steps", "jump": "leaps", "hop": "🐇 hops through a hedge"}[how]
         self.room.add_log(f"{p.name} {verb} to {self.label(cell)}", "power" if how == "hop" else "question")
         if how == "hop":
-            self.room.moment(f"🐇 {p.name} hops through the hedge!", "cool", "whoosh")
+            self.moment(f"🐇 {p.name} hops through the hedge!", "cool", "whoosh")
         if self.at_goal(p.g.side, cell):
             return self.room.finish(p, f"🏆 {p.name} makes it across the garden and wins!")
         self.next_turn()
@@ -224,7 +224,7 @@ class Hedgerow(Game):
         if gain >= 6:
             self.award(p, "detour")
         if gain >= 4:
-            self.room.moment(f"🌀 {p.name}: +{gain} steps the long way round", "gold", "tag")
+            self.moment(f"🌀 {p.name}: +{gain} steps the long way round", "gold", "tag")
         self.next_turn()
 
     def next_turn(self):

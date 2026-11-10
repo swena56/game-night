@@ -240,11 +240,11 @@ class Hockey(Game):
         self.run = run
         if run[1] == 3 and self.score[scorer] < self.s["target"]:
             self.award(who, "hattrick")
-            r.moment(f"🎩 {name}: HAT-TRICK!", "gold", "cheer")
+            self.moment(f"🎩 {name}: HAT-TRICK!", "gold", "cheer")
         elif banked >= 2:
-            r.moment(f"🏒 {name}: double bank shot!", "gold", None)
+            self.moment(f"🏒 {name}: double bank shot!", "gold", None)
         elif banked:
-            r.moment(f"🏒 {name}: bank shot!", "cool", None)
+            self.moment(f"🏒 {name}: bank shot!", "cool", None)
         if self.score[scorer] >= self.s["target"]:
             if min(self.score) == 0 and who:
                 self.award(who, "shutout")

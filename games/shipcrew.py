@@ -159,6 +159,8 @@ class ShipCrew(Game):
                 self.found.append(NEED[len(self.found)])
             text = " ".join(map(str, sorted(self.found + self.free, reverse=True)))
             self.room.add_log(f"🎲 {p.name} rolls {text}" + (f": {', '.join(got)}!" if got else "") + (f" Cargo {sum(self.free)}." if self.loaded() else ""))
+            if len(got) == 3:
+                self.moment(f"⚓ {p.name}: ship, captain and crew in one roll!", "gold", "tag")
         if self.rolls >= ROLLS:
             self.end_turn(p)
 
@@ -185,6 +187,7 @@ class ShipCrew(Game):
         self.last = {"by": p.id, "raid": raided, "found": list(self.found), "cargo": list(self.free) if self.loaded() else [], "pts": pts, "n": self.round * 10 + self.turns}
         if pts == 12:
             self.award(p, "full_hold")
+            self.moment(f"📦 {p.name}: FULL HOLD, 12 cargo!", "gold", "fanfare")
         self.turns += 1
         live = self.players()
         if self.turns >= len(live):

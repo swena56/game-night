@@ -603,7 +603,7 @@ class Rally(Game):
             self.fastest = (ms, i)
         elif ms < fast[0]:
             self.fastest = (ms, i)
-            self.room.moment(f"⏱ {p.name}: fastest lap {ms / 1000:.2f}s", "cool", "tag")
+            self.moment(f"⏱ {p.name}: fastest lap {ms / 1000:.2f}s", "cool", "tag")
             called = True
         if not self.daily or p.bot:
             return called

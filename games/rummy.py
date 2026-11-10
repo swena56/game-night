@@ -288,9 +288,9 @@ class Rummy(Game):
         if out is not None:
             r.add_log(f"🏁 {names[out]} goes out!", "big")
             if getattr(self, "down_turn", None) == (out, self.turns - 1):  # laid down and went out in the same turn
-                r.moment(f"🀄 {names[out]}: RUMMY! Down and out in one turn", "gold", "fanfare")
+                self.moment(f"🀄 {names[out]}: RUMMY! Down and out in one turn", "gold", "fanfare")
             else:
-                r.moment(f"🏁 {names[out]} goes out", "cool", "tag")
+                self.moment(f"🏁 {names[out]} goes out", "cool", "tag")
         r.add_log("🧮 " + " · ".join(f"{names[j]} +{got[j]} ({self.scores[j]})" for j in range(len(got))))
         self.last_hand = got
         # what everyone was caught holding, for the recap between hands (deal() starts the next hand at once)
