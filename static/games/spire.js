@@ -281,9 +281,20 @@ UI.spire = (() => {
     const danger = new T.Mesh(new T.TorusGeometry(R + 0.55, 0.05, 8, 64), new T.MeshBasicMaterial({ color: 0xef476f }));
     danger.rotation.x = Math.PI / 2; danger.position.y = H; tower.add(danger);
     const geo = new T.BoxGeometry(arc * 0.92, 0.92, 0.9);
+    // a bevel on every block face: a lit edge and a shaded rim, drawn once and tinted by the block's colour
+    const bevel = (() => {
+      const c = document.createElement('canvas'); c.width = c.height = 64;
+      const g = c.getContext('2d'); if (!g) return null;
+      g.fillStyle = '#fff'; g.fillRect(0, 0, 64, 64);
+      const gr = g.createLinearGradient(0, 0, 64, 64); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(1, 'rgba(0,0,0,0.22)');
+      g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+      g.strokeStyle = 'rgba(0,0,0,0.38)'; g.lineWidth = 6; g.strokeRect(3, 3, 58, 58);
+      g.strokeStyle = 'rgba(255,255,255,0.55)'; g.lineWidth = 2; g.strokeRect(7, 7, 50, 50);
+      return new T.CanvasTexture(c);
+    })();
     const make = (n, mat) => { const m = new T.InstancedMesh(geo, mat, n); m.instanceMatrix.setUsage(T.DynamicDrawUsage); tower.add(m); return m; };
-    const settled = make(W * (H + BUF), new T.MeshStandardMaterial({ roughness: 0.35, metalness: 0.1 }));
-    const piece = make(5, new T.MeshStandardMaterial({ roughness: 0.25, emissive: 0x222222 }));
+    const settled = make(W * (H + BUF), new T.MeshStandardMaterial({ roughness: 0.35, metalness: 0.1, map: bevel }));
+    const piece = make(5, new T.MeshStandardMaterial({ roughness: 0.25, emissive: 0x222222, map: bevel }));
     const ghost = make(5, new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3, depthWrite: false }));
     // Create the per-instance colour buffers before the first frame so the shaders include them.
     for (const m of [settled, piece]) { m.setColorAt(0, new T.Color(0xffffff)); m.count = 0; }

@@ -73,6 +73,9 @@ UI.hockey = (() => {
     const bg = t.createLinearGradient(0, 0, w, hgt);
     bg.addColorStop(0, '#0d2a4a'); bg.addColorStop(1, '#081a30');
     t.fillStyle = bg; t.fillRect(0, 0, w, hgt);
+    const sheen = t.createLinearGradient(0, 0, w, hgt * 0.7);  // a glossy sweep across the surface
+    sheen.addColorStop(0, '#ffffff00'); sheen.addColorStop(0.45, '#ffffff0a'); sheen.addColorStop(0.55, '#ffffff0a'); sheen.addColorStop(1, '#ffffff00');
+    t.fillStyle = sheen; t.fillRect(0, 0, w, hgt);
     t.fillStyle = '#ffffff10';  // air holes
     const step = u * 0.05;
     for (let y = step / 2; y < hgt; y += step) for (let x = step / 2; x < w; x += step) { t.beginPath(); t.arc(x, y, u * 0.004, 0, 7); t.fill(); }

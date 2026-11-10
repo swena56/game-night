@@ -675,7 +675,10 @@ const Billiards3D = (() => {
         const [cx, cy] = gd.cue, [gx, gy] = gd.g, full = gd.mode === 'full', L = Math.hypot(gx - cx, gy - cy) || 1;
         const light = gd.mode === 'light';  // #50: the ghost ball and a short hint of the object ball's line
         const k = full || light ? 1 : Math.min(1, 26 / L);
-        aimLine.set(cx + ((gx - cx) / L) * R, cy + ((gy - cy) / L) * R, cx + (gx - cx) * k, cy + (gy - cy) * k, 0.45);
+        // the aim line shows the power (#82): thin and green for a soft touch, thick and red for a break
+        const pw = Math.min(1, Math.max(0, s?.power ?? 0.5));
+        aimLine.children[0].material.color.setHSL(0.36 * (1 - pw), 0.95, 0.62).convertSRGBToLinear();
+        aimLine.set(cx + ((gx - cx) / L) * R, cy + ((gy - cy) / L) * R, cx + (gx - cx) * k, cy + (gy - cy) * k, 0.3 + pw * 0.55);
         if (light) {
           ghost.visible = true; ghost.position.set(gx, R, gy);
           ghost.material.color.set(0xffffff); ghost.material.opacity = 0.18;

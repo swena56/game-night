@@ -8,9 +8,9 @@ UI.cannon = (() => {
   let aim = { angle: 45, power: 0.6, shell: 'shell', set: false }, drag = null, hold = null, roundKey = '';
   const $ = (id) => document.getElementById(id);
   const THEMES = {
-    rolling: { sky: ['#5fa8e6', '#bfe3ff'], earth: ['#7a5232', '#4e321d'], top: '#4caf50', sea: '#2f6fb3' },
-    mountains: { sky: ['#3b2a5a', '#f2a65a'], earth: ['#6b6370', '#3d3842'], top: '#e8e8f0', sea: '#2a4f7a' },
-    islands: { sky: ['#4cc3e0', '#e4f8ff'], earth: ['#c8a165', '#8a6a3a'], top: '#5fbf5a', sea: '#1d8fb8' },
+    rolling: { sky: ['#5fa8e6', '#bfe3ff'], earth: ['#7a5232', '#4e321d'], top: '#4caf50', sea: '#2f6fb3', sun: ['#fff4b0', 0.2], cloud: 'rgba(255,255,255,0.85)' },
+    mountains: { sky: ['#3b2a5a', '#f2a65a'], earth: ['#6b6370', '#3d3842'], top: '#e8e8f0', sea: '#2a4f7a', sun: ['#ffb37a', 0.62], cloud: 'rgba(255,220,200,0.45)' },
+    islands: { sky: ['#4cc3e0', '#e4f8ff'], earth: ['#c8a165', '#8a6a3a'], top: '#5fbf5a', sea: '#1d8fb8', sun: ['#fff9d0', 0.16], cloud: 'rgba(255,255,255,0.9)' },
   };
 
   // -- sound: a thump to fire, a crump for a blast; through the app's output (volume, softening)
@@ -372,6 +372,7 @@ UI.cannon = (() => {
     const sky = g2.createLinearGradient(0, 0, 0, cv.height);
     sky.addColorStop(0, th.sky[0]); sky.addColorStop(1, th.sky[1]);
     g2.fillStyle = sky; g2.fillRect(-20, -20, cv.width + 40, cv.height + 40);
+    skyScene(c, th, now, s);
     // the ground
     g2.beginPath();
     g2.moveTo(0, cv.height + 20);
@@ -380,10 +381,27 @@ UI.cannon = (() => {
     const earth = g2.createLinearGradient(0, Y(H * 0.6), 0, cv.height);
     earth.addColorStop(0, th.earth[0]); earth.addColorStop(1, th.earth[1]);
     g2.fillStyle = earth; g2.fill();
+    // dirt and stones in the hillside: short dark dashes, the same every frame
+    g2.strokeStyle = '#00000033'; g2.lineWidth = Math.max(1, s * 0.6); g2.beginPath();
+    for (let x = 3; x < W; x += 5) {
+      const d = 4 + ((x * 7919) % 23), len = 1.5 + ((x * 104729) % 4);
+      if (terrain[x] - d < c.water) continue;
+      g2.moveTo(X(x), Y(terrain[x] - d)); g2.lineTo(X(x + len), Y(terrain[x] - d - 0.3));
+    }
+    g2.stroke();
     g2.strokeStyle = th.top; g2.lineWidth = Math.max(2, s * 1.6); g2.lineJoin = 'round';
     g2.beginPath();
     for (let x = 0; x < W; x++) { if (terrain[x] < c.water) { g2.moveTo(X(x + 1), Y(terrain[x])); continue; } g2.lineTo(X(x), Y(terrain[x])); g2.lineTo(X(x + 1), Y(terrain[x])); }
     g2.stroke();
+    // tufts of grass (or snow lumps) along the top, leaning with the wind
+    g2.lineWidth = Math.max(1, s * 0.5); g2.lineCap = 'round'; g2.beginPath();
+    const lean = (c.wind || 0) * 0.15 * s;
+    for (let x = 1; x < W; x += 3) {
+      if (terrain[x] < c.water) continue;
+      const hgt = (1.5 + ((x * 31) % 3)) * s, tx = X(x + 0.5), ty = Y(terrain[x]);
+      g2.moveTo(tx, ty); g2.lineTo(tx + lean + ((x * 13) % 3 - 1) * s * 0.3, ty - hgt);
+    }
+    g2.stroke(); g2.lineCap = 'butt';
     // the sea
     g2.fillStyle = th.sea + 'dd';
     g2.fillRect(0, Y(c.water), cv.width, cv.height - Y(c.water) + 20);
@@ -418,6 +436,24 @@ UI.cannon = (() => {
     }
     drawFx(now, s, X, Y, dpr);
     pfx.draw(g2); pfx.end(g2);
+  }
+
+  // the sun (low and orange over the mountains) and a few clouds drifting with the wind
+  function skyScene(c, th, now, s) {
+    const [col, yf] = th.sun || ['#fff4b0', 0.2], sx = cv.width * 0.8, sy = cv.height * yf, r = 7 * s;
+    const glow = g2.createRadialGradient(sx, sy, r * 0.6, sx, sy, r * 4);
+    glow.addColorStop(0, col + 'aa'); glow.addColorStop(1, col + '00');
+    g2.fillStyle = glow; g2.fillRect(sx - r * 4, sy - r * 4, r * 8, r * 8);
+    g2.fillStyle = col; g2.beginPath(); g2.arc(sx, sy, r, 0, 7); g2.fill();
+    g2.fillStyle = th.cloud || 'rgba(255,255,255,0.85)';
+    const drift = now * 0.012 * (1 + (c.wind || 0) * 0.08);
+    for (let k = 0; k < 5; k++) {
+      const w = (28 + k * 9) * s, y = cv.height * (0.08 + k * 0.07), speed = 1 + k * 0.25;
+      const x = ((k * 1370 + drift * speed) % (cv.width + w * 2)) - w;
+      g2.beginPath();
+      g2.arc(x, y, w * 0.22, 0, 7); g2.arc(x + w * 0.22, y - w * 0.1, w * 0.28, 0, 7); g2.arc(x + w * 0.48, y, w * 0.24, 0, 7); g2.arc(x + w * 0.25, y + w * 0.06, w * 0.2, 0, 7);
+      g2.fill();
+    }
   }
 
   function drawWind(c, s) {
