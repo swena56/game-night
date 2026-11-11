@@ -29,7 +29,14 @@ port, and `http://localhost` still works on the server's own device.
 **🎨 Graphics** (in ⚙️ settings): *Auto*, *High* or *Low*. The 3D games share one look (filmic tone mapping, a room
 for metal and glass to reflect, soft shadows); Low turns the shadows, reflections and extra particles off and drops the
 resolution, and Auto does that on its own on a weak phone or once a 3D game has had to slow down. The display face is
-Baloo 2 (`static/fonts`, OFL); playing cards carry real pip layouts and framed court cards.
+Baloo 2 (`static/fonts`, OFL).
+
+**🂠 Playing cards** (`Cards` in `static/kit.js`, used by all nine card games) are one SVG per card, built once and
+cloned: suits are drawn shapes (not font glyphs, so every phone shows the same thing), number cards have real pip
+layouts, aces a large pip, and the court cards are original drawn figures, two-ended as on a real deck. One knob,
+`--cw` (the card's width), sizes everything; cards 52 px wide or narrower (solitaire columns on a phone, small and tiny
+cards) switch by container query to a big rank and suit that stay readable when cards overlap. **Card backs** (in ⚙️
+settings) come in midnight blue, ruby, emerald and onyx & gold.
 
 ## The games
 
@@ -82,7 +89,7 @@ Baloo 2 (`static/fonts`, OFL); playing cards carry real pip layouts and framed c
 | ⚪ **Reversi** | 2 | The 19th-century public-domain disc-flipping game on 8×8: trap a line of rival discs to flip them. Passes when you can't move. | Legal squares glow, and flipped discs spin over. Optional flip hints show how many discs each square would flip. ↶ Undo requests. ⬛ **Blocked squares** (a Board choice): four squares, placed symmetrically, that nobody can play on and that stop a line of flips. Corners are outlined and the squares that give them away marked ×; a corner taken flashes gold, and a pass gets a callout. Flipping 8+ and taking a corner are called out. |
 | 🌿 **Hedgerow** | 2–4 | An original garden-maze race (in the pawn-and-wall genre): step your pawn to the far edge or plant a two-square hedge to send rivals the long way round; a hedge may never seal anyone in. Face-to-face pawns leap or slip diagonally. 9×9 or 7×7; 10 hedges each for two players, 5 each for three or four. | 🐇 **Hop** (on by default): once a game, step straight through a hedge. The board turns so your pawn starts at the bottom; faint dots show your shortest route; move targets glow, and a hedge you're placing shows as a ghost (red where it isn't allowed). A hedge that adds 2+ steps to a rival flies a +N. Hops and detours of 4+ steps are called out. |
 
-### 🃏 Cards (6)
+### 🃏 Cards (8)
 
 | Game | Players | What it is | Twist |
 |---|---|---|---|
@@ -93,6 +100,8 @@ Baloo 2 (`static/fonts`, OFL); playing cards carry real pip layouts and framed c
 | ♥️ **Hearts** | 3–6 | The traditional trick-dodging game: pass three, follow suit, avoid hearts (1) and the Q♠ (13), or shoot the moon. Game to 100 or 50, lowest wins. | No points on the first trick, hearts must be broken before they're led. With 3, 5 or 6 players low cards are removed so the deal is even. Optional 💎 J♦ worth −10. Everyone sits round an oval table and plays each card in front of themselves; an arrow points at whoever gets your passed cards, and the cards passed to you glow. 🌙 **Shooter's choice** (off by default): a moon shot takes −26 off the shooter instead of +26 to the rest, unless +26 wins them the game or they lead. The Q♠ and J♦ sit on the seat of whoever took them, and a seat holding every point so far glows with a 🌙. The Queen landing and moon shots are called out. |
 | ⚡ **Speed** | 2 | The traditional two-player race card game (also called Spit), in real time: no turns, both players slap cards one rank up or down onto two centre piles. | Kings and aces wrap round. When nobody can play, fresh cards flip from the side piles. First to empty hand and stock wins; one round or best of 3. 👯 **Pairs** (off by default): a card of the same rank fits too. The centre piles are real stacks on a wood-rimmed table, and the rival's cards fly onto them. 🔥 Three cards slapped in quick succession is a combo. |
 | 🀄 **Contract Rummy** | 2–6 | The traditional rummy game where each hand has a contract (two sets of 3; a set and a run of 4; … three runs of 4), with two decks and four wild jokers. The answer to #39. | Lay down the whole contract at once, then add to anyone's melds. Cards left in hand count against you; lowest total after 7 (or 4) hands wins. 🙋 **May I?** (off by default): before the next player draws, buy the top discard out of turn and take a penalty card with it (3 buys a hand). 💡 Find my contract stages the melds in your hand. Between hands, a recap shows what everyone was caught holding. 🀄 Laying down and going out in the same turn is a RUMMY. |
+| ♣️ **Solitaire** (Klondike) | 1–6 | The traditional patience: seven columns with only their top cards face up, a stock to turn one or three cards at a time (unlimited passes), and four foundations built up by suit from the ace. Kings alone fill an empty column; a foundation card may come back down. | A **same-deal race**: everyone plays their own copy of the same deal at once (alone, it's plain solitaire). 1 point per card home, +10 for clearing it, +5 for clearing it first; 💡 hint −1, ↩ undo free, 🏳️ ends your deal early and banks your cards. Drag a card (its run comes with it), or tap it and tap where it goes; tapping it again sends it to its best spot. ⏫ sends everything it can home, and glows to finish the deal once everything is face up. 1 or 3 deals of 5, 8 or 12 minutes; 📅 today's deals are the same everywhere. A clear bounces the deck off the foundations. 🎩 badge: clear a deal drawing three. |
+| 🗃️ **FreeCell** | 1–6 | The traditional open patience: all 52 cards face up in eight columns, four free cells, four foundations. Almost every deal can be won. | The same same-deal race and scoring as Solitaire. Runs move in one go when there's room for them ((free cells + 1) × 2 per empty column; the note under the board says how many), and safe cards fly home on their own (a setting). 🧊 badge: clear a deal without touching a free cell. |
 
 ### ✏️ Quick classics (6)
 
@@ -148,6 +157,8 @@ Every game has **Easy / Normal / Hard bots**:
 - **Hearts:** bots pass their most dangerous cards (high spades, high hearts, cards from short suits), duck under the winning card when they can, win clean tricks when they play last, and dump the Q♠ and high hearts when void. Hard also avoids leading or taking high spades while the queen is out. Hard and normal finish about even; both beat easy.
 - **Blackjack:** hard plays full basic strategy (soft totals, doubles and pair splits), normal a simplified version that splits only aces and 8s, easy hits below 15. Over a few hands it's mostly luck, as at a real table.
 - **Speed:** bots play at a human pace (about 2 s a card for easy, 1.2 s for normal, 0.8 s for hard). Normal and hard prefer plays that leave another card playable straight after.
+- **FreeCell:** bots solve the deal before they start (a best-first search over whole-run moves with a time budget: hard 1.8 s, normal 0.4 s, easy a glance), then play the plan out at a human pace (hard ≈ 1.6 s a move, normal 2.6 s, easy 3.4 s). Without a plan they play the best-looking move and call it a day when stuck. Seeded tests: hard clears 6 of 6 deals.
+- **Solitaire:** bots play fair, from what anyone could see (never the face-down cards or the stock): aces and twos home at once, uncover the deepest column first, move part of a run to free a card for home, empty a column only for a waiting king, and draw when there's nothing better; a full pass of the stock with nothing to play and they call it a day. Easy and normal sometimes draw past a good move. Drawing one, normal and hard clear about a third of deals.
 - **Trivia Rush:** bots "know" an answer with some chance (45% easy, 62% normal, 80% hard) and otherwise guess; harder bots also answer faster.
 - **Contract Rummy:** bots search their hand for the contract (every way of making 3-card sets and 4-card runs, jokers included, both copies of a card), take the discard only when it completes the contract or helps and they wouldn't throw it straight back, and discard the card that helps least (pairs for set contracts, same-suit neighbours for run contracts). After laying down they add every card that fits. Hard beat normal 9–6 and normal beat easy 12–3.
 - **Putt Party:** bots try 25 (easy) to 160 (hard) putts aimed at the cup and along the fairway in the real physics, keep the one that ends nearest the cup along the fairway, then add aim and power error by level.
@@ -313,6 +324,7 @@ python3 tests/blackjack_bets.py                             # Blackjack bets: bu
 python3 tests/unmask_rules.py                              # Unmask: the 🎲 Bold guess badge
 python3 tests/ladder_rules.py                              # Word Ladder: 🔎 peek, once per step, a point off the finish
 python3 tests/heist_rules.py                               # Night Heist: the 🕵️ inside man tip-off
+python3 tests/patience_rules.py                            # FreeCell + Solitaire: same deal, rules, hidden cards, scoring, bots
 python3 tests/lantern_rules.py                             # Lantern Market: unique bids, carry-over, lantern, last lot, events
 python3 tests/prism_rules.py                               # Prism Pop: matches, specials, combos, cascades, frost/stones, act validation
 python3 tests/doodle_rules.py                              # Doodle Dash: late letters in the last-chance time
