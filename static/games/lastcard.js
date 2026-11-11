@@ -11,7 +11,7 @@ UI.lastcard = (() => {
     main.innerHTML = `<div class="table">
       <div id="lcSeats" class="lc-seats"></div>
       <div class="pile-row">
-        <button id="lcDeck" class="pc back"><b>🎴</b><small id="lcDeckCount"></small></button>
+        <button id="lcDeck" class="pc back" aria-label="Draw a card"><small id="lcDeckCount"></small></button>
         <div id="lcTop"></div>
         <div id="lcInfo" class="lc-info"></div>
       </div>

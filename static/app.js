@@ -9,7 +9,7 @@ const $ = (s) => document.querySelector(s);
 const REACTIONS = ['😂', '😱', '🤔', '😏', '🔥', '👀', '🙈', '🎉'];
 const QUICK_CHAT = ['gg', 'nice! 👏', 'hmm… 🤔', 'your turn 😴', 'rematch? 🔁', 'no way 😱'];
 const SOLO_GAMES = [['unmask', '🎭 Unmask'], ['oddone', '🕵️ Odd One Out'], ['relay', '🖍️ Scribble Relay'], ['trivia', '🧠 Trivia Rush'], ['fibfinder', '🤥 Fib Finder'], ['ladder', '🧗 Word Ladder'], ['doodle', '✏️ Doodle Dash'], ['lucky', '🎡 Lucky Letters'], ['wordsmith', '🔤 Wordsmith'], ['gridhunt', '🔎 Grid Hunt'], ['safecracker', '🔐 Safecracker'], ['chess', '♟️ Chess'], ['checkers', '⛀ Checkers'], ['backgammon', '🔺 Backgammon'], ['oware', '🌰 Oware'], ['reversi', '⚪ Reversi'], ['hedgerow', '🌿 Hedgerow'],
-  ['go', '⚫ Go'], ['lastcard', '🃏 Last Card'], ['holdem', "♠️ Texas Hold'em"], ['cribbage', '📍 Cribbage'], ['hearts', '♥️ Hearts'], ['speed', '⚡ Speed'], ['twentyone', '♦️ Blackjack'], ['rummy', '🀄 Contract Rummy'], ['seabattle', '🚢 Sea Battle'], ['dropfour', '🔴 Drop Four'],
+  ['go', '⚫ Go'], ['lastcard', '🃏 Last Card'], ['holdem', "♠️ Texas Hold'em"], ['cribbage', '📍 Cribbage'], ['hearts', '♥️ Hearts'], ['speed', '⚡ Speed'], ['twentyone', '♦️ Blackjack'], ['rummy', '🀄 Contract Rummy'], ['klondike', '♣️ Solitaire'], ['freecell', '🗃️ FreeCell'], ['seabattle', '🚢 Sea Battle'], ['dropfour', '🔴 Drop Four'],
   ['boxes', '🔳 Dots & Boxes'], ['tictactoe', '❌ Tic-Tac-Toe'], ['ultimate', '#️⃣ Ultimate Tic-Tac-Toe'], ['morris', "⚫ Nine Men's Morris"], ['heist', '🦹 Night Heist'], ['lantern', '🏮 Lantern Market'], ['moonshot', '🚀 Moon Shot'], ['yacht', '🎲 Yacht'], ['farkle', '🎯 Farkle'], ['qork', '🥤 Qork'], ['shipcrew', '🚢 Ship, Captain & Crew'], ['shutbox', '📦 Shut the Box'], ['liars', '🤥 Liar\'s Dice'], ['spire', '🗼 Spire Siege'], ['prism', '💎 Prism Pop'], ['hockey', '🏒 Air Hockey'], ['billiards', '🎱 Billiards'], ['riders', '🏍️ Light Riders'], ['paintblast', '🎨 Paint Blast'], ['sumo', '🪐 Sumo Saucers'], ['putt', '⛳ Putt Party'], ['rally', '🛸 Hover Rally'], ['cannon', '💥 Cannon Hills']];
 const CATEGORIES = [['party', '🎉 Party'], ['action', '⚡ Action'], ['strategy', '♟️ Strategy'], ['classic', '✏️ Quick classics'],
   ['cards', '🃏 Cards'], ['dice', '🎲 Dice & casino'], ['words', '🔤 Words & puzzles']];
@@ -1277,6 +1277,7 @@ const THEMES = [['dark', '🌙 Dark'], ['light', '☀️ Light'], ['system', '�
 // 🎨 Graphics: Auto turns shadows, reflections and extra particles off on a weak device (few cores or little
 // memory, data saver, or a 3D game that had to drop its resolution to keep up: GL3.strained)
 const GFX = [['auto', '🪄 Auto'], ['high', '✨ High (shadows, reflections, more particles)'], ['low', '🔋 Low (smoother, saves battery)']];
+const CARD_BACKS = [['blue', '🔵 Midnight blue'], ['red', '🔴 Ruby'], ['green', '🟢 Emerald'], ['night', '⚫ Onyx & gold']];
 const AUTO_LOW = (navigator.deviceMemory || 8) <= 2 || (navigator.hardwareConcurrency || 8) <= 2 || !!navigator.connection?.saveData;
 function gfxLevel() {
   const g = prefs.gfx || 'auto';
@@ -1288,6 +1289,7 @@ function applyPrefs() {
   document.body.classList.toggle('calm', !prefs.motion);
   const light = prefs.theme === 'light' || (prefs.theme === 'system' && !!lightQuery?.matches);
   document.body.classList.toggle('light', light);
+  document.body.dataset.back = prefs.cardBack || 'blue';   // the colour of every card back (style.css)
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', light ? '#f4f1fa' : '#16131f');
   const low = gfxLevel() === 'low';
   if (document.body.classList.contains('lowgfx') !== low) {
@@ -1315,6 +1317,13 @@ function renderPrefs() {
   };
   gfx.append(gpick);
   box.append(gfx);
+  const backs = el('label', '', '🂠 Card backs');
+  const bpick = el('select');
+  for (const [k, label] of CARD_BACKS) bpick.append(Object.assign(el('option', '', label), { value: k }));
+  bpick.value = prefs.cardBack || 'blue';
+  bpick.onchange = () => { prefs.cardBack = bpick.value; store('unmask.prefs', prefs); applyPrefs(); };
+  backs.append(bpick);
+  box.append(backs);
   const vol = el('label', '', '🔉 Volume');
   const range = el('input'); range.type = 'range'; range.min = '0'; range.max = '100'; range.step = '5';
   range.value = String(prefs.volume ?? 70); range.setAttribute('aria-label', 'Volume');

@@ -10,7 +10,17 @@ const Cards = (() => {
   // card codes are rank + suit: 'TD', 'QS', 'AH' (Last Card may write '10H'); 'JK…' is a joker
   const rankOf = (c) => { const r = c.slice(0, -1); return r === 'T' ? '10' : r; };
   const suitOf = (c) => c.slice(-1);
-  // the pips of a number card on a 60×90 face (x, y); pips on the lower half are turned round, as on a real card
+  // Each face is one SVG on a 250×350 card, built once per card and cloned after that. Suits are drawn
+  // shapes (not font glyphs), so they look the same on every phone. The SVG holds two layouts: `.full`
+  // (corner indices, real pip layout, drawn court figures) and `.cmp` (a big rank and suit for narrow
+  // cards); style.css picks one with a container query on the card's width.
+  const SUIT = {   // each in a 100×100 box
+    H: 'M50 90C22 68 5 50 5 30 5 15 16 5 29 5c10 0 17 6 21 14 4-8 11-14 21-14 13 0 24 10 24 25 0 20-17 38-45 60z',
+    D: 'M50 3Q67 30 88 50 67 70 50 97 33 70 12 50 33 30 50 3z',
+    S: 'M50 4C33 26 6 40 6 61c0 13 10 22 22 22 9 0 15-4 19-10-1 10-6 17-14 23h34c-8-6-13-13-14-23 4 6 10 10 19 10 12 0 22-9 22-22C94 40 67 26 50 4z',
+    C: 'M50 8a19 19 0 1 1 0 38a19 19 0 1 1 0-38zM28 38a19 19 0 1 1 0 38a19 19 0 1 1 0-38zM72 38a19 19 0 1 1 0 38a19 19 0 1 1 0-38zM43 42h14v18H43zM46 58c0 16-5 28-14 36h36c-9-8-14-20-14-36z',
+  };
+  // pip spots on a 60×90 grid (x, y), mapped onto the card's pip box; lower-half pips are turned round
   const L = 17, C = 30, R = 43, Y4 = [17, 35.7, 54.3, 73];
   const sides = (ys) => ys.flatMap((y) => [[L, y], [R, y]]);
   const PIPS = {
@@ -18,43 +28,99 @@ const Cards = (() => {
     6: sides([17, 45, 73]), 7: [...sides([17, 45, 73]), [C, 31]], 8: [...sides([17, 45, 73]), [C, 31], [C, 59]],
     9: [...sides(Y4), [C, 45]], 10: [...sides(Y4), [C, 26], [C, 64]],
   };
-  const COURT = { K: '♚', Q: '♛', J: '⚔' };
-  const NS = 'http://www.w3.org/2000/svg';
-  const svgText = (x, y, size, str, rot = false) => {
-    const t = document.createElementNS(NS, 'text');
-    t.setAttribute('x', x); t.setAttribute('y', y); t.setAttribute('font-size', size);
-    if (rot) t.setAttribute('transform', `rotate(180 ${x} ${y})`);
-    t.textContent = str;
-    return t;
+  const pip = (s, cx, cy, size, flip = false) =>
+    `<path d="${SUIT[s]}" transform="translate(${cx - size / 2} ${cy - size / 2}) scale(${size / 100})${flip ? ' rotate(180 50 50)' : ''}"/>`;
+  // a court figure from the waist up, in a 154×135 box whose bottom edge is the card's middle; the
+  // card shows it twice, the second turned round, as real court cards do
+  const SKIN = '#f6d2ad', INK = '#3b2718', GOLD = '#e8b847', GOLD2 = '#9c7414', CREAM = '#fbf3dc';
+  const bust = (r) => {
+    const face = `<path d="M70 70h14v20H70z" fill="${SKIN}"/>
+      <ellipse cx="77" cy="58" rx="19" ry="22" fill="${SKIN}" stroke="${INK}" stroke-width="1.6"/>
+      <circle cx="70" cy="56" r="2.3" fill="${INK}"/><circle cx="84" cy="56" r="2.3" fill="${INK}"/>
+      <path d="M76 58q-2 6 1 7" fill="none" stroke="${INK}" stroke-width="1.3"/>`;
+    const robe = `<path d="M8 135c4-34 32-47 69-47s65 13 69 47z" fill="currentColor"/>
+      <path d="M77 90 58 135M77 90l19 45" stroke="${GOLD}" stroke-width="7"/>
+      <path d="M8 135c4-34 32-47 69-47s65 13 69 47" fill="none" stroke="${INK}" stroke-width="1.6"/>
+      <path d="M22 118h20M112 118h20" stroke="var(--acc)" stroke-width="9" stroke-linecap="round"/>
+      <ellipse cx="77" cy="91" rx="25" ry="7" fill="${CREAM}" stroke="${INK}" stroke-width="1.2"/>`;
+    if (r === 'K') return robe + face + `
+      <path d="M58 60c2 22 11 31 19 31s17-9 19-31c-5 9-12 12-19 12s-14-3-19-12z" fill="#7a4a22" stroke="${INK}" stroke-width="1.2"/>
+      <path d="M69 68q8-5 16 0" fill="none" stroke="${INK}" stroke-width="1.5"/>
+      <path d="M55 40 57 13l10 14 10-20 10 20 10-14 2 27z" fill="${GOLD}" stroke="${GOLD2}" stroke-width="1.6"/>
+      <circle cx="77" cy="30" r="3.4" fill="var(--acc)"/><circle cx="64" cy="33" r="2.4" fill="#d6304a"/><circle cx="90" cy="33" r="2.4" fill="#d6304a"/>
+      <path d="M128 135V66" stroke="${GOLD2}" stroke-width="5"/><circle cx="128" cy="62" r="7" fill="${GOLD}" stroke="${GOLD2}" stroke-width="1.5"/>
+      <path d="M121 62h14M128 55v14" stroke="${GOLD2}" stroke-width="1.5"/>`;
+    if (r === 'Q') return robe + `
+      <path d="M57 62c-6-26 6-36 20-36s26 10 20 36c4 18 8 28 2 40l-9-32c1-17-4-26-13-26s-14 9-13 26l-9 32c-6-12-2-22 2-40z" fill="#b8632a" stroke="${INK}" stroke-width="1.2"/>`
+      + face + `<path d="M71 71q6 4 12 0" fill="none" stroke="#c0392b" stroke-width="2"/>
+      <path d="M60 34l6-12 6 8 5-13 5 13 6-8 6 12z" fill="${GOLD}" stroke="${GOLD2}" stroke-width="1.5"/><circle cx="77" cy="28" r="2.6" fill="var(--acc)"/>
+      <path d="M126 135c-2-20 2-34 0-44" stroke="#3f8f4a" stroke-width="3" fill="none"/>
+      <g fill="#e2557a" stroke="${INK}" stroke-width="1"><circle cx="126" cy="80" r="6"/><circle cx="134" cy="87" r="6"/><circle cx="118" cy="87" r="6"/><circle cx="126" cy="94" r="6"/></g>
+      <circle cx="126" cy="87" r="4" fill="${GOLD}"/>`;
+    return robe + face + `
+      <path d="M58 46c3-8 9-12 19-12s16 4 19 12c-4 3-8 4-8 10-2-8-6-10-11-10s-9 2-11 10c0-6-4-7-8-10z" fill="#d09a3c" stroke="${INK}" stroke-width="1.1"/>
+      <path d="M71 70h12" stroke="${INK}" stroke-width="1.5"/>
+      <path d="M52 44c0-22 50-22 50 0l4 3H48z" fill="var(--acc)" stroke="${INK}" stroke-width="1.4"/>
+      <path d="M50 44h54" stroke="${GOLD}" stroke-width="4"/>
+      <path d="M98 34c18-16 34-26 46-30-8 14-24 26-42 34z" fill="${GOLD}" stroke="${GOLD2}" stroke-width="1.2"/>
+      <path d="M24 135V60" stroke="#8a8f98" stroke-width="4"/><path d="M24 52l-9 16h18z" fill="#c9ced6" stroke="#5c626b" stroke-width="1.2"/>`;
   };
-  // the face art: pips laid out as on a real card (the ace one big pip), court cards a framed figure
-  function pips(r, g) {
-    const svg = document.createElementNS(NS, 'svg');
-    svg.setAttribute('viewBox', '0 0 60 90'); svg.setAttribute('class', 'pips'); svg.setAttribute('aria-hidden', 'true');
-    if (PIPS[r]) for (const [x, y] of PIPS[r]) svg.append(svgText(x, y, r === 'A' ? 40 : 14, g, y > 45));
-    else {
-      const frame = document.createElementNS(NS, 'rect');
-      frame.setAttribute('x', 9); frame.setAttribute('y', 9); frame.setAttribute('width', 42); frame.setAttribute('height', 72); frame.setAttribute('rx', 3);
-      frame.setAttribute('fill', 'none'); frame.setAttribute('stroke', 'currentColor'); frame.setAttribute('stroke-width', 1.2); frame.setAttribute('opacity', 0.7);
-      svg.append(frame, svgText(30, 45, 32, COURT[r] || r), svgText(30, 21, 11, g), svgText(30, 69, 11, g, true));
+  const cache = new Map();
+  function art(r, s) {
+    const key = r + s;
+    if (cache.has(key)) return cache.get(key);
+    const corner = `<text x="27" y="52" class="ix">${r}</text>${pip(s, 27, 77, 30)}`;
+    let mid = '';
+    if (PIPS[r] && r !== 'A') for (const [x, y] of PIPS[r]) mid += pip(s, 125 + (x - 30) * 3.8, 175 + (y - 45) * 4.45, 50, y > 45);
+    else if (r === 'A') {
+      mid = pip(s, 125, 175, s === 'S' ? 128 : 104)
+        + (s === 'S' ? `<path d="M125 128c-14 18-26 26-26 40 0 6 4 10 10 10" fill="none" stroke="#fff" stroke-width="3" opacity=".55"/>
+          <circle cx="125" cy="175" r="78" fill="none" stroke="currentColor" stroke-width="2" opacity=".35"/>` : '');
+    } else {
+      mid = `<rect x="47" y="38" width="156" height="274" rx="10" class="frame"/>
+        <svg x="48" y="40" width="154" height="135" viewBox="0 0 154 135" overflow="hidden">${bust(r)}</svg>
+        <g transform="rotate(180 125 175)"><svg x="48" y="40" width="154" height="135" viewBox="0 0 154 135" overflow="hidden">${bust(r)}</svg></g>
+        <path d="M48 175h154" stroke="${GOLD2}" stroke-width="2"/>
+        ${pip(s, 64, 58, 24)}${pip(s, 186, 292, 24, true)}`;
     }
-    return svg;
+    const svg = `<svg class="face" viewBox="0 0 250 350" aria-hidden="true">
+      <g class="full">${corner}<g transform="rotate(180 125 175)">${corner}</g>${mid}</g>
+      <g class="cmp"><text x="14" y="92" class="ix big${r === '10' ? ' ten' : ''}">${r}</text>${pip(s, 200, 52, 62)}${pip(s, 125, 238, 150)}</g></svg>`;
+    const t = document.createElement('template');
+    t.innerHTML = svg;
+    const node = t.content.firstElementChild;
+    cache.set(key, node);
+    return node;
   }
   function face(card, cls = '') {
     if (card === '??') return back(cls);
+    if (card.startsWith('JK')) return joker(cls);
     const r = rankOf(card), s = suitOf(card), g = SUIT_GLYPH[s] || s;
     const f = el('span', `pc ${'HD'.includes(s) ? 'red' : 'black'} ${cls}`);
-    f.dataset.ix = r + g;                       // the corner indices (drawn by CSS, not in textContent)
+    f.dataset.face = r + s;
+    f.setAttribute('aria-label', `${r}${g}`);
     if ('JQK'.includes(r)) f.classList.add('court', 'court-' + r);
     else if (r === 'A') f.classList.add('ace');
-    f.append(el('b', '', r), el('i', '', g + '︎'), pips(r, g));  // b and i show on the small sizes, the pips on the rest
+    // b and i: the plain rank + suit, shown only at the tiny size (and read by screen readers and tests)
+    f.append(el('b', '', r), el('i', '', g + '︎'));
+    if (SUIT[s]) f.append(art(r, s).cloneNode(true));
     return f;
   }
   function joker(cls = '') {
     const f = el('span', `pc joker ${cls}`);
     f.append(el('b', '', '🃏'), el('i', '', 'wild'));
+    if (!cache.has('JK')) {
+      const t = document.createElement('template');
+      t.innerHTML = `<svg class="face" viewBox="0 0 250 350" aria-hidden="true">
+        <path d="M125 92l20 46 50 4-38 32 12 49-44-27-44 27 12-49-38-32 50-4z" fill="${GOLD}" stroke="${GOLD2}" stroke-width="3"/>
+        <circle cx="125" cy="168" r="14" fill="currentColor"/>
+        <text x="125" y="300" class="ix jk">JOKER</text><text x="125" y="62" class="ix jk">WILD</text></svg>`;
+      cache.set('JK', t.content.firstElementChild);
+    }
+    f.append(cache.get('JK').cloneNode(true));
     return f;
   }
+  // the back is all CSS (style.css), so the backs games build themselves look the same
   function back(cls = '', label = null) {
     const f = el('span', `pc back ${cls}`);
     if (label != null) f.append(el('small', '', String(label)));
@@ -67,7 +133,13 @@ const Cards = (() => {
     node.replaceWith(f);
     return f;
   }
-  return { face, joker, back, flip, rankOf, suitOf };
+  // a bare suit shape (an empty foundation's watermark, a suit in a label)
+  function suit(s, cls = '') {
+    const t = document.createElement('template');
+    t.innerHTML = `<svg class="suit ${cls}" viewBox="0 0 100 100" aria-hidden="true"><path d="${SUIT[s] || ''}"/></svg>`;
+    return t.content.firstElementChild;
+  }
+  return { face, joker, back, flip, suit, rankOf, suitOf };
 })();
 
 const Dice = (() => {
