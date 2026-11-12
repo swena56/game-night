@@ -342,6 +342,28 @@ const MOVES = {
   },
   freecell(d, S, n, w) { patienceMove('freecell', 'fc', d, S, n, w); },
   klondike(d, S, n, w) { patienceMove('klondike', 'kl', d, S, n, w); },
+  sudoku(d, S, n, w) {
+    // Mostly hints; now and then a digit typed into an empty cell (often wrong, which must bounce off).
+    const v = S.sudoku;
+    if (n % 3 !== 1) return click(d.querySelector('#sdHint'));
+    const empty = [...d.querySelectorAll('#sdBoard .sd-cell')].filter((c) => !v.grid[+c.dataset.i]);
+    if (!empty.length) return;
+    click(pick(empty));
+    if (n % 6 === 4) { click(d.querySelector('#sdPencil')); click(pick(enabled(d, '#sdPad .sd-key'))); return click(d.querySelector('#sdPencil')); }
+    click(pick(enabled(d, '#sdPad .sd-key')));
+  },
+  wordsearch(d, S, n, w) {
+    // Find an open word in the grid the way a person would (scan every line), then tap its first and last letters.
+    const v = S.wordsearch, N = v.size, cells = [...d.querySelectorAll('#wfGrid .wf-cell')];
+    const tap = (el) => { for (const t of ['pointerdown', 'pointerup']) el.dispatchEvent(new w.MouseEvent(t, { bubbles: true, cancelable: true, button: 0 })); };
+    if (n % 7 === 3) return tap(pick(cells)), tap(pick(cells));   // a miss
+    const open = v.words.filter((x) => !(x in v.owners));
+    for (const word of open) for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) for (const [dr, dc] of [[0, 1], [1, 0], [1, 1], [-1, 1], [0, -1], [-1, 0], [-1, -1], [1, -1]]) {
+      let k = 0;
+      while (k < word.length && v.grid[r + dr * k]?.[c + dc * k] === word[k]) k++;
+      if (k === word.length) { tap(cells[r * N + c]); tap(cells[(r + dr * (k - 1)) * N + c + dc * (k - 1)]); return; }
+    }
+  },
   ladder(d, S, n, w) {
     // Mostly hints (always a legal step); sometimes a typed word (often rejected) or a step back.
     const r = Math.random();
@@ -498,7 +520,7 @@ async function playSolo(game, seconds = 60) {
       || (game === 'relay' && (s.relay.stage === 'play' ? !s.relay.sent : s.relay.myVote == null)) || (game === 'seabattle' && s.sea.stage === 'placing' && !s.sea.ready[s.me.id])
       || (game === 'spire' && s.spire.playing && s.spire.startIn <= 0) || (game === 'prism' && s.prism.playing && s.prism.startIn <= 0) || (game === 'safecracker' && ['crack', 'set'].includes(s.safecracker.stage) && !s.safecracker.mine) || (game === 'gridhunt' && s.gridhunt.stage === 'hunt')
       || (game === 'doodle' && s.doodle.stage === 'draw' && !s.doodle.solvers.some(([p]) => p === s.me.id)) || game === 'hockey' || (game === 'riders' && s.riders.stage === 'ride') || (game === 'paintblast' && s.paintblast.st === 'play') || (game === 'sumo' && s.sumo.stage === 'play') || (game === 'cannon' && s.cannon.volley && !s.cannon.between && s.cannon.me != null && s.cannon.tanks[s.cannon.me]?.[2] > 0 && !s.cannon.locked.includes(s.cannon.me)) || (game === 'rally' && s.rally.stage === 'race') || (game === 'hearts' && s.hearts.stage === 'pass' && !s.hearts.myPass) || (game === 'speed' && s.speed.stage === 'play') || (game === 'trivia' && s.trivia.stage === 'ask' && s.trivia.mine == null) || (game === 'ladder' && s.ladder.stage === 'climb' && !s.ladder.done)
-      || ((game === 'freecell' || game === 'klondike') && s[game].stage === 'play' && s[game].playing && !s[game].done && !s[game].banked)
+      || ((game === 'freecell' || game === 'klondike' || game === 'sudoku' || game === 'wordsearch') && s[game].stage === 'play' && s[game].playing && !s[game].done && !s[game].banked)
       || (game === 'qork' && (s.qork.stage === 'snap' ? !(s.me.id in s.qork.acted) : s.qork.cupper === s.me.id && ['wait', 'dice'].includes(s.qork.stage)))
       || (game === 'twentyone' && s.twentyone.stage === 'bet' && !s.twentyone.bets[s.twentyone.me] && s.twentyone.chips[s.twentyone.me] > 0);
     if (game === 'lucky' && s.lucky.stage === 'wheel') { await sleep(300); continue; }
@@ -630,7 +652,7 @@ async function feedbackTour() {
   const lt = await lobbyTour();
   console.log('LOBBY', JSON.stringify(lt));
   for (const g of games.length ? games : Object.keys(MOVES)) {
-    const r = await playSolo(g, g === 'wordsmith' ? 40 : g === 'spire' ? 25 : g === 'prism' ? 110 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'cribbage' ? 300 : g === 'yacht' ? 200 : g === 'farkle' ? 240 : g === 'qork' ? 200 : g === 'backgammon' ? 300 : g === 'gridhunt' ? 260 : g === 'paintblast' ? 230 : g === 'sumo' ? 200 : g === 'putt' ? 300 : g === 'cannon' ? 240 : g === 'rally' ? 150 : g === 'hearts' || g === 'rummy' ? 300 : g === 'twentyone' ? 200 : g === 'speed' ? 150 : g === 'trivia' ? 200 : g === 'ladder' ? 330 : g === 'freecell' || g === 'klondike' ? 300 : g === 'liars' ? 300 : g === 'shipcrew' || g === 'shutbox' ? 200 : g === 'reversi' || g === 'hedgerow' || g === 'ultimate' || g === 'oware' || g === 'morris' ? 260 : g === 'safecracker' ? 200 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
+    const r = await playSolo(g, g === 'wordsmith' ? 40 : g === 'spire' ? 25 : g === 'prism' ? 110 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'cribbage' ? 300 : g === 'yacht' ? 200 : g === 'farkle' ? 240 : g === 'qork' ? 200 : g === 'backgammon' ? 300 : g === 'gridhunt' ? 260 : g === 'paintblast' ? 230 : g === 'sumo' ? 200 : g === 'putt' ? 300 : g === 'cannon' ? 240 : g === 'rally' ? 150 : g === 'hearts' || g === 'rummy' ? 300 : g === 'twentyone' ? 200 : g === 'speed' ? 150 : g === 'trivia' ? 200 : g === 'ladder' ? 330 : g === 'freecell' || g === 'klondike' ? 300 : g === 'sudoku' ? 120 : g === 'wordsearch' ? 150 : g === 'liars' ? 300 : g === 'shipcrew' || g === 'shutbox' ? 200 : g === 'reversi' || g === 'hedgerow' || g === 'ultimate' || g === 'oware' || g === 'morris' ? 260 : g === 'safecracker' ? 200 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
     console.log(`\n== ${g}: phase=${r.phase} moves=${r.moves} dialogs=${r.dialogs || 0} screen="${r.screen}" ${r.banner ? `banner="${r.banner}"` : ''}`);
     console.log(`   help: ${r.help} | log ticker: "${r.ticker}"`);
     if (r.replay) console.log(`   replay: ${r.replay}`);
