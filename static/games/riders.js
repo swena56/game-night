@@ -155,6 +155,7 @@ UI.riders = (() => {
       lives: r.lives?.[i] ?? 1, grind: r.grind?.[i] ?? 0, respawnAt: r.respawning?.[i] != null ? performance.now() + r.respawning[i] * 1000 : null }));
     if (!fresh) live.forEach((L, i) => { events(i, old[i], L); if (old[i]?.boosting) L.boosting = true; });
     else { pred = null; grabsSeen = new Set(); }
+    nudges = [];
     items = new Map(r.items || []); slow = r.slow || [];
     grabs(r.grabs, fresh || !old.length);
     lastTick = r.tick; tickAt = performance.now();
@@ -166,6 +167,7 @@ UI.riders = (() => {
 
   function fast(data) {
     if (!S || data.k < lastTick) return;  // a new round starts with a full view
+    const t0 = performance.now(), drawn = noteHeads(t0);
     data.p.forEach(([len, alive, dir, boosts, boosting, lives, grind, ...tail], i) => {
       const t = trails[i]; if (!t) return;
       // the newest cells line up with what we hold (cells never repeat within a trail), so this also
@@ -182,6 +184,7 @@ UI.riders = (() => {
       events(i, was, live[i]);
     });
     if (data.k !== lastTick) { lastTick = data.k; tickAt = performance.now(); }
+    nudgeHeads(drawn, t0);
     if (data.it) items = new Map(data.it);
     if (data.sl) slow = data.sl;
     grabs(data.gr);
@@ -231,16 +234,38 @@ UI.riders = (() => {
   }
 
   // where a rider's bike is drawn: past its last cell by the fraction of a tick that has elapsed
-  function headPos(i, now) {
+  function rawHead(i, now) {
     const t = trails[i]; if (!t?.length) return null;
     const n = S.riders.n, c = t[t.length - 1], x = c % n, y = Math.floor(c / n);
     const L = live[i];
     if (!L?.alive || S.riders.stage !== 'ride') return [x, y];
     const per = 1000 / S.riders.speed, step = (now - tickAt) / per;
     // 🐌 a slowed rider moves on even ticks only: spread its glide over two ticks
-    const f = Math.min(0.85, slow[i] ? ((lastTick % 2) + step) / 2 : step * (L.boosting ? 2 : 1));
+    const f = slow[i] ? ((lastTick % 2) + step) / 2 : step * (L.boosting ? 2 : 1);
+    // A late update (#87, "lag spikes"): keep gliding instead of freezing at the cell's edge, easing to a stop
+    // a little way into the next cell, so a short hiccup reads as a stumble rather than a stop-and-jump.
+    const g = f < 0.8 ? f : 0.8 + 0.6 * (1 - Math.exp(-(f - 0.8) / 0.6));
     const [dx, dy] = DIRS[headDir(i)];
-    return [x + dx * f, y + dy * f];
+    return [x + dx * g, y + dy * g];
+  }
+  // When an update lands, the head's true spot can differ from where it was drawn a moment ago (a late or
+  // bunched-up packet). Rather than snap, carry the difference and let it fade out over ~70 ms.
+  let nudges = [];
+  function noteHeads(now) { return trails.map((_, i) => headPos(i, now)); }
+  function nudgeHeads(before, now) {
+    nudges = trails.map((_, i) => {
+      const a = before[i], b = rawHead(i, now);
+      if (!a || !b || !live[i]?.alive) return null;
+      const ox = a[0] - b[0], oy = a[1] - b[1];
+      return Math.abs(ox) + Math.abs(oy) < 2.5 ? { ox, oy, at: now } : null;  // a respawn or wipe: jump
+    });
+  }
+  function headPos(i, now) {
+    const p = rawHead(i, now), k = nudges[i];
+    if (!p || !k) return p;
+    const w = Math.exp(-(now - k.at) / 70);
+    if (w < 0.02) { nudges[i] = null; return p; }
+    return [p[0] + k.ox * w, p[1] + k.oy * w];
   }
   const headDir = (i) => (i === mine() ? myDir() : live[i]?.dir ?? 0);
 

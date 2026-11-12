@@ -482,6 +482,24 @@ addEventListener('online', () => { if (session) connect(); });
 addEventListener('beforeunload', (e) => {
   if (S?.phase === 'playing' && !S.me.spectator && !S.me.eliminated) { e.preventDefault(); e.returnValue = ''; }  // desktop: confirm leaving
 });
+// ---------- game screens load on demand: the page opens with the shell only, and each game's script arrives
+// the first time that game is picked or shown (it used to be 50+ scripts, ~1 MB, before the first screen).
+const UI_EXTRA = { billiards: ['billiards3d'], chess: ['chess3d'] };  // helpers a game's screen needs first
+const uiLoads = {};
+function needUI(id) {
+  if (!id || UI[id]) return Promise.resolve();
+  return (uiLoads[id] ??= Promise.all([...(UI_EXTRA[id] || []), id].map((f) => new Promise((ok, fail) => {
+    const sc = document.createElement('script');
+    sc.src = `/games/${f}.js`;
+    sc.async = false;  // run in order: a 3D helper before the game that uses it
+    sc.onload = ok;
+    sc.onerror = () => { sc.remove(); fail(new Error(f)); };
+    document.head.append(sc);
+  }))).then(() => { if (!UI[id]) throw new Error(id); }).catch((e) => { delete uiLoads[id]; throw e; }));
+}
+// what the lobby is about to play: fetch it while people get ready, so Start is instant
+const prefetchUI = (id) => setTimeout(() => needUI(id).catch(() => {}), 400);
+
 function unmountUI() {
   if (mounted) UI[mounted]?.unmount?.();
   mounted = null;
@@ -509,7 +527,7 @@ function onState(s) {
     if (s.winner === s.me.id) confetti();
   }
   if (!replay) {
-    if (s.phase === 'lobby') { if (prev?.phase !== 'lobby') pickerFolded = false; show('lobby'); renderLobby(); unmountUI(); }
+    if (s.phase === 'lobby') { if (prev?.phase !== 'lobby') pickerFolded = false; show('lobby'); renderLobby(); unmountUI(); prefetchUI(s.gameId); }
     else { show('game'); renderGame(); }
   }
   renderReactions();
@@ -831,6 +849,26 @@ function clearHelpHint() { clearTimeout(helpHint.timer); helpHint.timer = null; 
 
 function renderGame(view = S, readOnly = false, force = false) {
   const ui = UI[view.gameId];
+  if (!ui) {  // its script is still on the way: a placeholder now, the real screen as soon as it lands
+    if (mounted) unmountUI();
+    const arena = $('#arena');
+    if (!arena.querySelector('.ui-loading')) {
+      arena.innerHTML = ''; $('#sideGame').innerHTML = '';
+      arena.append(el('div', 'ui-loading', `${gameInfo(view.gameId)?.icon ?? '🎲'} Loading…`));
+    }
+    needUI(view.gameId).then(() => {
+      if (replay) showFrame();
+      else if (S && S.phase !== 'lobby' && S.gameId === view.gameId) renderGame(S, false, true);
+    }, () => {
+      const box = arena.querySelector('.ui-loading');
+      if (!box) return;
+      box.textContent = "Couldn't load this game. ";
+      const again = el('button', 'ghost-btn', 'Try again');
+      again.onclick = () => { box.remove(); renderGame(S, false, true); };
+      box.append(again);
+    });
+    return;
+  }
   const ending = view.host === view.me.id && view.phase === 'playing';
   $('#quitLabel').textContent = ending ? 'End game' : 'Leave game';
   $('#quitBtn').firstChild.textContent = ending ? '🏠' : '🚪';
