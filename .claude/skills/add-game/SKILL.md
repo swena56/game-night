@@ -151,7 +151,8 @@ Guidelines:
   Dispose the renderer in `unmount`.
 
 Wire-up:
-- `static/index.html`: add `<script src="/games/<id>.js"></script>` next to the others.
+- No `<script>` tag: game screens load on demand (`needUI` in `static/app.js`). If your screen needs a helper file
+  loaded first (like `billiards3d.js`), add it to `UI_EXTRA` in `static/app.js`.
 - `static/app.js`: add `['<id>', '<icon> <Name>']` to `SOLO_GAMES`, and an entry in `SOLO_BOTS` if
   solo play needs more than one bot.
 - `static/style.css`: add a `/* <name> */` section under *6. Games, A to Z*, in A-to-Z order of
@@ -169,7 +170,10 @@ python3 .claude/skills/add-game/scripts/simulate.py <id> --players 3 --runs 20  
 node --check static/games/<id>.js && node --check static/app.js
 ```
 
-`simulate.py` plays bot-only games through the real `Room`. It fails if a game stalls or a view
+`simulate.py` plays bot-only games through the real `Room` (holding the room lock, as the live server does). It skips
+bot thinking time, so for speed games (Word Bomb) it can't judge balance: model turn times instead (see the BOT note in
+`games/wordbomb.py`).
+`simulate.py` It fails if a game stalls or a view
 can't be serialised, and it reports winners by bot level, so check that hard beats easy. It also
 accepts a file path (`simulate.py games/mygame.py`) to test a module before registering it.
 

@@ -53,9 +53,10 @@ from .ultimate import Ultimate
 from .unmask import Unmask
 from .yacht import Yacht
 from .wordsmith import Wordsmith
+from .wordbomb import WordBomb
 
 # Order here is the order of the lobby's game picker.
-GAMES = {g.id: g for g in (Unmask, OddOne, Relay, Trivia, Doodle, Lucky, Spire, Prism, Riders, PaintBlast, Sumo, Putt, Rally, Hockey, Billiards, Cannon, Wordsmith, GridHunt, WordSearch, Safecracker, FibFinder, Ladder, Chess, Checkers, Backgammon, Go, Oware, Reversi, Hedgerow, LastCard, Lantern, Holdem, Cribbage, Hearts, Speed, Rummy, Klondike, FreeCell, SeaBattle,
+GAMES = {g.id: g for g in (Unmask, OddOne, Relay, Trivia, Doodle, Lucky, Spire, Prism, Riders, PaintBlast, Sumo, Putt, Rally, Hockey, Billiards, Cannon, Wordsmith, WordBomb, GridHunt, WordSearch, Safecracker, FibFinder, Ladder, Chess, Checkers, Backgammon, Go, Oware, Reversi, Hedgerow, LastCard, Lantern, Holdem, Cribbage, Hearts, Speed, Rummy, Klondike, FreeCell, SeaBattle,
                            DropFour, Boxes, TicTacToe, Ultimate, Morris, Sudoku, Heist, MoonShot, Yacht, Farkle, Qork, ShipCrew, ShutBox, LiarsDice, TwentyOne)}
 GAME_INFO = [g.info() for g in GAMES.values()]
 

@@ -51,12 +51,13 @@ settings) come in midnight blue, ruby, emerald and onyx & gold.
 | ✏️ **Doodle Dash** | 2–6 | The computer draws a picture one line at a time (199 original line drawings in 8 categories) and everyone types guesses at once. Earlier guesses score more. | Letter blanks appear halfway through, then the first letter. A wrong guess locks you out for 3 s. Typos, plurals and synonyms are accepted. Scoring: everyone can score (the first gets +2), or ⚡ first correct only. Strokes reach the browser only as they're drawn, so nobody can peek. Once the picture is finished, up to three more letters show through the last seconds, each a point off a correct guess. **Drawing speed**: 18 s (default), ⚡ 12 s or 🐢 25 s a picture. Wrong guesses drift up over the paper as speech bubbles, and a rival's solve has its own sound. 🔥 Name three pictures in a row and the third pays +1. |
 | 🦹 **Night Heist** *(the surprise)* | 2–6 | A simultaneous bluffing game. Each night everyone secretly picks **Grab**, **Guard** or **Rest**, then all choices are revealed together. | A lone grabber steals the whole vault. Two grabbers trip the alarm and the loot grows. Guards fine grabbers 💰2 each, and guarding an empty hall costs 💰1. Reading the table is the whole game. Option 🕵️ **Inside man**: once a game, before you choose, learn how many of those who've already chosen are grabbing. ♾️ **Endless** nights (a Nights choice): play on until the host taps 🏁 Cash out (most gold wins). 🤝 **Crews** (off by default): two grabbers split the vault, three or more trip the alarm. 🌕 One night is a **full moon**, announced the night before: twice the loot arrives and guards fine 💰4 (bots guard more). |
 
-### 🔤 Words & puzzles (6)
+### 🔤 Words & puzzles (8)
 
 | Game | Players | What it is | Twist |
 |---|---|---|---|
 | 🎡 **Lucky Letters** | 2–6 | Spin a **3D prize wheel** (three.js), call consonants, solve the hidden phrase. 78 original puzzles in 8 categories. | Vowels can only be called by landing on ✨ VOWEL. Special wedges: 💀 Bust, ⛔ Skip, 🎁 Wild (a free letter), 🦊 Steal (take 500 from the leader), and a growing ⚡ Jackpot. The server picks where the wheel stops, and every phone animates the same spin. 🔮 **Mind reader**: solve while half the letters or more are still hidden for +500 and a badge. |
 | 🔤 **Wordsmith** | 2–4 | Crossword tile game on an original 11×11 board (80 tiles, ENABLE dictionary). | A **bounty letter** rerolls every turn (+10). Using all 7 tiles is a **clean sweep** (+40). Optional **blank tiles**: 2 that can be any letter and score 0. 🎯 **Comeback bounty** (off by default): the bounty letter scores double for whoever is behind everyone. The word just played glows, a refused play shakes and says why, and the bag running dry gets a callout. 📖 The **word of the game** (the best single play so far) is tracked and called out when it changes hands. |
+| 💣 **Word Bomb** | 2–6 | A party word race: the bomb shows 2–3 letters (ING, PL, OUS…) and whoever holds it types a real word containing them, then presses Enter to pass it on. Everyone watches the holder's letters appear as they type. | The **fuse is hidden** and different every bomb: when it runs out in your hands you lose a ♥, and the last player with a heart wins. Words can't repeat in a game. 🔤 Use every letter A–Y (J, Q, X, Z don't count) to win a ♥ back; 📏 a word of 9+ letters adds 2 s to the fuse. Hearts 2–4, fuse short/normal/long, and easy/normal/hard letter chunks. Badges: 😅 close call, 🔤 alphabet, 📏 a 12+ letter word. |
 | 🔎 **Grid Hunt** | 2–6 | Timed word hunt: everyone searches the same freshly shaken 4×4 or 5×5 letter grid at once, tracing words through touching tiles. Drag, tap, or type. | When time runs out the lists are compared, and **a word a rival also found scores nothing**. A ⭐ star tile doubles words through it. The grid is reshaken until it holds plenty of words, and the results show the longest ones nobody found. 📅 Today's grids (an option) are the same in every room. ⚡ **Frenzy** (off by default): words found in the last 15 seconds score double. A trail joins the tiles of the word you trace, and ⟳ turns the grid on your screen only. 🧵 The round's longest word that nobody else found (5+ letters) earns +3. |
 | 🔍 **Word Search** | 1–6 | The puzzle-page classic: a themed letter grid (Animals, Space, Kitchen, …) with words hidden in straight lines. Drag across a word, or tap its first and last letters. | 🏴 **Grab** (default): one shared grid, and a word goes to whoever circles it first (a point per letter, scored at once). 🏁 **Race**: everyone has their own copy; a point per letter, +10 for finding them all, +5 for first. 8×8, 10×10 or 12×12; words run across and down, add diagonals (default), or any way including backwards. 💡 shows where a word starts for 2 points. Filler letters come from the theme's own words, every word hides exactly once, and grey lines show the missed words afterwards. 📅 Today's grids option. 🧹 badge: grab more than half a shared grid. |
 | 🔐 **Safecracker** | 1–6 | Code-breaking: crack a hidden 4- or 5-peg colour code from ● (right spot) and ○ (wrong spot) hints. | **Everyone cracks the same safe at once**: guesses are locked in secretly, then all are revealed, so rivals' clues help you too. Crack it alone for 3, share the crack for 2. A private 🔍 probe per safe counts one colour, for a point. Pegs show numbers as well as colours. 📅 Today's safes (an option): the same codes in every room that day, with a day streak kept on your device. After each reveal, 🔐 a counter shows how many codes still fit every clue, and the history reads like a ledger with the newest round outlined. 🔥 Crack safes alone back to back for +1 each. |
@@ -153,6 +154,7 @@ Every game has **Easy / Normal / Hard bots**:
 - **Texas Hold'em:** bots estimate their share of the pot by simulating random runouts from their own two cards and the board only (no peeking), against the number of players still in. They compare that with the pot odds, raise strong hands by ½ to 1 pot, and stronger bots bluff now and then and shove the nuts on the river. Easy bots misjudge their hands and call too loosely.
 - **Grid Hunt:** the server solves every grid (a dictionary walk with prefix pruning). Each bot "spots" a share of the words at random moments, fewer of the long ones: about 5% (easy), 9% (normal) or 15% (hard) of the grid, so a quick human beats easy and normal bots.
 - **Word Search:** a bot "spots" one open word at a time (longer words catch its eye first): about every 16 s (easy), 10 s (normal) or 6.5 s (hard), slower on bigger grids and when words run backwards.
+- **Word Bomb:** a bot picks an unplayed dictionary word containing the letters (easy: short words; hard: longer words with the letters it still needs for 🔤), thinks for 3–7.5 s (easy), 2.5–5.5 s (normal) or 1.8–3.8 s (hard) and types it key by key; now and then it freezes on rare letters (18% / 9% / 5%) and the bomb goes off. Tuned so a human averaging ~4.5 s a word wins ~70% / ~50% / ~25% against two bots.
 - **Safecracker:** bots keep the list of codes that fit every revealed clue. Normal guesses one of them at random; hard picks among the guesses that would split the rest most evenly and only spends its probe when the answer should pin the code down; easy mostly tracks its own clues only. Because every clue is shared, hard and normal finish about even, both far ahead of easy.
 - **Backgammon:** bots list every distinct end-of-turn position and score it on pip count, borne-off and hit checkers, points made (home board weighted), blots weighed by how many enemy rolls hit them, and primes. The hard bot then checks its top four against all 21 enemy rolls and the enemy's best reply to each; normal sometimes settles for its second-best play. Hard beat normal 46–14 and normal beat easy 52–8 in simulation.
 - **Oware, Reversi, Ultimate Tic-Tac-Toe, Nine Men's Morris:** one shared search (`games/search.py`): negamax with alpha-beta and iterative deepening under a time budget (hard: 2.5 s, 6–9 moves deep; normal: 3–4 deep; easy: 1 deep with noise). Each game adds its own evaluation: Oware weighs captured seeds, seeds at home and rival pits sitting on 1–2; Reversi uses square weights (corners high, the squares next to an empty corner low), mobility and, near the end, disc count; Ultimate scores open two-in-a-rows on the big and small boards; Morris counts men, open two-man lines and mobility. Hard beat easy 6–0 in every one.
@@ -239,6 +241,10 @@ static/games/<game>.js   UI module: mount(main, side) + render(state, ctx)
   games (Night Heist) override `bot_ready` / `bot_tick` / `on_timeout` instead.
 - Leaving mid-game is handled once for every game: you forfeit, and the game continues
   if enough players remain.
+- **Game screens load on demand.** `index.html` loads only the shell (kit, fx2d, patience, gl3, faces,
+  qr, profile, app); `needUI(id)` in `app.js` fetches `/games/<id>.js` the first time that game is shown
+  (and the lobby prefetches the picked game). A screen that needs a helper file first is listed in
+  `UI_EXTRA` (Billiards → `billiards3d.js`, Chess → `chess3d.js`).
 
 ### Adding a game
 
@@ -255,7 +261,8 @@ python3 .claude/skills/add-game/scripts/simulate.py games/mygame.py   # before r
 ```
 
 In short: a `Game` subclass in `games/<id>.py`, registered in `games/__init__.py`; a
-`UI.<id> = { mount, render }` module in `static/games/<id>.js` with its `<script>` tag; then the
+`UI.<id> = { mount, render }` module in `static/games/<id>.js` (no `<script>` tag: game screens load on
+demand, see below); then the
 simulator, `node --check`, and the jsdom UI test in `tests/`.
 
 ## Real-time games
@@ -313,8 +320,17 @@ or the ❓ How-to-play dialog during a game ("Something wrong with …?").
 | **A move sent during an outage** | Each move carries a unique ID and is retried automatically (4 tries). The server applies each ID only once, so a move can never happen twice. |
 | **Player drops out mid-game** | The page reports presence every 10s. After 20s of silence the player shows 📡 *away*. After 45s (`OFFLINE_GRACE`), a 🤖 **autopilot** plays their turns so the table isn't stuck, and they take over again the moment they're back. |
 | **Host drops out** | After 45s, hosting passes to a player who is online. |
-| **Server restart or crash** | Rooms are saved to `data/rooms.pickle` every few seconds and restored at startup. Turn timers restart in full. Open pages reconnect on their own. |
+| **Server restart or crash** | Rooms are saved to `data/rooms.pickle` every few seconds (only rooms that changed are re-saved) and restored at startup. Turn timers restart in full. Open pages reconnect on their own. A game saved by older code that no longer fits goes back to the lobby with a note instead of crashing. |
+| **A bug in a game** | A move that hits one gets an error message at once (500 with `bug: true`, not retried), and the room carries on. A view that fails is skipped for that update; the live stream stays open. Tracebacks are printed at most once a minute per spot; routine disconnects aren't logged. |
 | **Room really gone** | Only a definite "room not found / not in this room" answer from the server clears your saved seat. Network errors never do. |
+
+## Server health (for lag reports)
+
+On the device running the server, `curl localhost:8000/api/health` shows the live numbers: the 60 fps frame clock's
+gaps (p50/p95/max over the last minute), room-save times, garbage-collector pauses, the slowest bot moves, rooms,
+open streams, threads and memory. Any frame gap over 60 ms, save over 40 ms, GC pause over 40 ms or bot move over
+100 ms also prints a `[slow]` line in `data/server.log`, so a "lag spike" report can be matched to its cause.
+`tests/perf_bench.py` measures the same numbers with busy bot-only rooms.
 
 ## Testing
 
@@ -325,6 +341,9 @@ node --check static/app.js                                  # real syntax check 
 python3 tests/billiards_physics.py                          # billiards shot engine, and the aim guide's copy of it
 python3 tests/billiards_rules.py                            # billiards rules (push-outs, fouls, breaks) on a scripted engine
 python3 tests/blackjack_bets.py                             # Blackjack bets: built from chips, all-in, last bet repeated, Perfect Pairs
+python3 tests/stability.py                                  # server keeps going: broken restored games, failing views/saves, 500s
+python3 tests/perf_bench.py 20                              # frame-clock gaps, save and GC times with busy rooms (one core: keep short)
+python3 tests/wordbomb_rules.py                            # Word Bomb: chunks, hidden fuse, hearts, 🔤 alphabet, 📏 long words, bots
 python3 tests/unmask_rules.py                              # Unmask: the 🎲 Bold guess badge
 python3 tests/ladder_rules.py                              # Word Ladder: 🔎 peek, once per step, a point off the finish
 python3 tests/heist_rules.py                               # Night Heist: the 🕵️ inside man tip-off

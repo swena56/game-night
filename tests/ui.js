@@ -118,6 +118,7 @@ function patienceMove(key, P, d, S, n, w) {
   tap(slot.querySelector('.pc:last-child') || slot);
 }
 
+let WB_WORDS = null;   // the dictionary, for Word Bomb moves
 const MOVES = {
   oddone(d, S, n, w) {
     if (S.oddone.stage === 'vote') return click(pick(enabled(d, '.oo-vote')));
@@ -374,6 +375,16 @@ const MOVES = {
       return d.querySelector('#ldForm').dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
     }
     click(d.querySelector('#ldHint'));
+  },
+  wordbomb(d, S, n, w) {
+    // Type a dictionary word with the bomb's letters (now and then a bad one, to see it refused), key by key.
+    if (S.wordbomb.holder !== S.me.id || S.wordbomb.stage !== 'lit') return;
+    WB_WORDS ??= require('fs').readFileSync(require('path').join(__dirname, '..', 'data', 'words.txt'), 'utf8').split('\n').map((x) => x.trim().toUpperCase());
+    const fits = WB_WORDS.filter((x) => x.includes(S.wordbomb.chunk) && x.length >= 3 && x.length <= 8);
+    const word = Math.random() < 0.15 ? 'ZZ' + S.wordbomb.chunk + 'QX' : fits[Math.floor(Math.random() * fits.length)];
+    const inp = d.querySelector('#wbInput');
+    for (let k = 1; k <= word.length; k++) { inp.value = word.slice(0, k); inp.dispatchEvent(new w.Event('input', { bubbles: true })); }
+    d.querySelector('#wbForm').dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
   },
   speed(d, S, n, w) {  // play a fitting card; when it fits both piles, tap a lifted pile
     const ok = [...d.querySelectorAll('#spHand .card-btn.ok:not(:disabled)')];
@@ -652,7 +663,7 @@ async function feedbackTour() {
   const lt = await lobbyTour();
   console.log('LOBBY', JSON.stringify(lt));
   for (const g of games.length ? games : Object.keys(MOVES)) {
-    const r = await playSolo(g, g === 'wordsmith' ? 40 : g === 'spire' ? 25 : g === 'prism' ? 110 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'cribbage' ? 300 : g === 'yacht' ? 200 : g === 'farkle' ? 240 : g === 'qork' ? 200 : g === 'backgammon' ? 300 : g === 'gridhunt' ? 260 : g === 'paintblast' ? 230 : g === 'sumo' ? 200 : g === 'putt' ? 300 : g === 'cannon' ? 240 : g === 'rally' ? 150 : g === 'hearts' || g === 'rummy' ? 300 : g === 'twentyone' ? 200 : g === 'speed' ? 150 : g === 'trivia' ? 200 : g === 'ladder' ? 330 : g === 'freecell' || g === 'klondike' ? 300 : g === 'sudoku' ? 120 : g === 'wordsearch' ? 150 : g === 'liars' ? 300 : g === 'shipcrew' || g === 'shutbox' ? 200 : g === 'reversi' || g === 'hedgerow' || g === 'ultimate' || g === 'oware' || g === 'morris' ? 260 : g === 'safecracker' ? 200 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
+    const r = await playSolo(g, g === 'wordsmith' ? 40 : g === 'spire' ? 25 : g === 'prism' ? 110 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'cribbage' ? 300 : g === 'yacht' ? 200 : g === 'farkle' ? 240 : g === 'qork' ? 200 : g === 'backgammon' ? 300 : g === 'gridhunt' ? 260 : g === 'paintblast' ? 230 : g === 'sumo' ? 200 : g === 'putt' ? 300 : g === 'cannon' ? 240 : g === 'rally' ? 150 : g === 'hearts' || g === 'rummy' ? 300 : g === 'twentyone' ? 200 : g === 'speed' ? 150 : g === 'trivia' ? 200 : g === 'ladder' ? 330 : g === 'freecell' || g === 'klondike' ? 300 : g === 'sudoku' ? 120 : g === 'wordsearch' ? 150 : g === 'wordbomb' ? 200 : g === 'liars' ? 300 : g === 'shipcrew' || g === 'shutbox' ? 200 : g === 'reversi' || g === 'hedgerow' || g === 'ultimate' || g === 'oware' || g === 'morris' ? 260 : g === 'safecracker' ? 200 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
     console.log(`\n== ${g}: phase=${r.phase} moves=${r.moves} dialogs=${r.dialogs || 0} screen="${r.screen}" ${r.banner ? `banner="${r.banner}"` : ''}`);
     console.log(`   help: ${r.help} | log ticker: "${r.ticker}"`);
     if (r.replay) console.log(`   replay: ${r.replay}`);

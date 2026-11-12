@@ -28,6 +28,7 @@ from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
 
 from games import GAME_INFO, GAMES, GameError
+from games import wordbomb
 from games.wordsmith import warm_up, words
 
 PORT = int(os.environ.get("PORT", 8000))
@@ -174,6 +175,7 @@ def settle_gc():
     generation, so full collections skip the long-lived start-up objects (in tests/perf_bench.py the worst
     pause fell from ~24 ms to ~13 ms; every ms counts against the 16.7 ms frame clock)."""
     words()
+    wordbomb.prepare()   # 💣 Word Bomb's chunk counts: also long-lived
     gc.collect()
     gc.freeze()
 

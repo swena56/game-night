@@ -2749,6 +2749,71 @@ body.focus .sd { --sdw: min(100%, 640px, max(260px, calc(var(--room) - 175px)));
 .um-note.new { animation: um-new 2.4s ease-out; }  /* the answer that just came in (#14) */
 @keyframes um-new { from { background: #ffd16655; } to { background: transparent; } }
 
+/* word bomb: the seats in a ring round the bomb; the holder's typing shows under their seat */
+.wb { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; }
+.wb-head { display: flex; justify-content: space-between; width: min(100%, 460px); font-weight: 700; }
+.wb-used { color: var(--muted); font-weight: 400; font-size: .9rem; }
+.wb-table { position: relative; width: min(100%, 460px, calc(100vh - 290px)); min-width: 260px; aspect-ratio: 1; border-radius: 50%;
+  background: var(--panel2); background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--panel2) 85%, #ff922b 15%), var(--panel) 70%);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--text) 8%, transparent); }
+.wb-table.shake { animation: wb-quake .5s; }
+@keyframes wb-quake { 20% { transform: translate(-6px, 3px); } 40% { transform: translate(5px, -4px); } 60% { transform: translate(-3px, -2px); } 80% { transform: translate(2px, 2px); } }
+.wb-core { position: absolute; left: 50%; top: 50%; width: 34%; aspect-ratio: 1; transform: translate(-50%, -50%); border-radius: 50%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 2;
+  background: radial-gradient(circle at 35% 30%, #5b5568, #1d1a24 70%); box-shadow: 0 6px 18px #0008, inset -6px -8px 16px #0006;
+  color: #fff; transition: transform .2s; }
+.wb-core b { font-size: clamp(1.4rem, 7vw, 2.4rem); letter-spacing: .06em; text-shadow: 0 0 10px #ffb347; line-height: 1; }
+.wb-core small { font-size: .72rem; opacity: .8; margin-top: 4px; max-width: 90%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-core.mine { box-shadow: 0 0 0 3px #ffb347, 0 0 26px #ff922b99, inset -6px -8px 16px #0006; animation: wb-throb .9s ease-in-out infinite; }
+@keyframes wb-throb { 50% { transform: translate(-50%, -50%) scale(1.05); } }
+.wb-core.dark b { text-shadow: none; }
+.wb-core.blast { animation: wb-blast .7s ease-out; }
+@keyframes wb-blast { 0% { box-shadow: 0 0 0 0 #ffd43b, 0 0 0 0 #ff6b6b; } 30% { box-shadow: 0 0 0 30px #ffd43b55, 0 0 60px 50px #ff6b6b88; transform: translate(-50%, -50%) scale(1.25); }
+  100% { box-shadow: 0 0 0 60px #ffd43b00, 0 0 80px 70px #ff6b6b00; } }
+/* the fuse: a short cord with a spark that only flickers (it never shows how long is left) */
+.wb-fuse { position: absolute; top: -14%; right: 6%; width: 22%; height: 22%; border-top: 3px solid #c9a46a; border-right: 3px solid #c9a46a;
+  border-radius: 0 60% 0 0; }
+.wb-fuse i { position: absolute; right: -7px; top: -9px; width: 12px; height: 12px; border-radius: 50%;
+  background: radial-gradient(circle, #fff 0 25%, #ffd43b 40%, #ff922b 60%, transparent 70%); animation: wb-spark .18s steps(2) infinite; }
+.wb-core.dark .wb-fuse i { display: none; }
+@keyframes wb-spark { 50% { transform: scale(1.5) rotate(45deg); opacity: .75; } }
+/* points from the bomb (its bottom end sits on the centre) towards the holder's seat */
+.wb-arrow { position: absolute; left: 50%; top: 14%; width: 0; height: 36%; transform-origin: 50% 100%; pointer-events: none; z-index: 1;
+  transition: transform .25s ease-out; }
+.wb-arrow::before { content: ''; position: absolute; left: -3px; top: 0; width: 6px; height: 72%; border-radius: 3px;
+  background: linear-gradient(to top, transparent, #ffb34799); }
+.wb-seat { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 1px;
+  max-width: 34%; padding: 4px 8px; border-radius: 12px; background: var(--panel); border: 2px solid var(--pc); z-index: 3;
+  box-shadow: 0 2px 8px #0005; transition: transform .2s; text-align: center; }
+.wb-seat.holding { transform: translate(-50%, -50%) scale(1.08); box-shadow: 0 0 0 3px #ffb34788, 0 0 18px #ff922b77; }
+.wb-seat.out { opacity: .45; filter: grayscale(.8); }
+.wb-seat.me .wb-name::after { content: ' (you)'; font-weight: 400; color: var(--muted); }
+.wb-name { font-size: .8rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wb-hearts { color: #ff6b6b; font-size: .8rem; letter-spacing: 1px; }
+.wb-word { font-weight: 700; font-size: .85rem; letter-spacing: .04em; max-width: 100%; overflow-wrap: anywhere; line-height: 1.15; }
+.wb-word mark { background: #ffb34755; color: inherit; border-radius: 3px; padding: 0 1px; }
+.wb-word.typing { color: var(--text); }
+.wb-word.typing:not(.dots)::after { content: '▏'; animation: wb-caret .8s steps(1) infinite; }
+@keyframes wb-caret { 50% { opacity: 0; } }
+.wb-word.played { color: var(--muted); font-weight: 600; }
+.wb-word.no { color: #ff6b6b; text-decoration: line-through; animation: shake .35s; }
+.wb-entry { display: flex; gap: 6px; width: min(100%, 460px); }
+.wb-entry input { flex: 1; min-width: 0; font-size: 1.2rem; text-transform: uppercase; letter-spacing: .06em; padding: 10px 12px; }
+.wb-entry input[readonly] { opacity: .55; }
+.wb-entry.shake { animation: shake .35s; }
+.wb-note { min-height: 1.3em; font-size: .9rem; color: var(--muted); text-align: center; }
+.wb-alpha { display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; width: min(100%, 460px); }
+.wb-alpha span { width: 1.45em; text-align: center; border-radius: 4px; font-size: .78rem; font-weight: 700; padding: 2px 0;
+  background: var(--panel2); color: var(--muted); }
+.wb-alpha span.on { background: #20c99733; color: var(--text); }
+.wb-row { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; padding: 4px 6px; border-radius: 8px; }
+.wb-row.holding { background: #ffb34722; }
+.wb-row .wb-count { grid-column: 1 / -1; font-size: .78rem; color: var(--muted); }
+/* phones: smaller seats; while the keyboard is up the table shrinks so the entry stays on screen */
+@media (max-width: 520px) { .wb-seat { padding: 3px 5px; max-width: 38%; } .wb-name, .wb-word { font-size: .72rem; } }
+body.kb-open .wb-table { width: min(100%, 300px, calc(100vh - 200px)); }
+body.kb-open .wb-alpha, body.kb-open .wb-head { display: none; }
+
 /* word search */
 .wf { --wfw: min(100%, 560px, max(260px, calc(var(--room) - 190px))); width: 100%; max-width: 760px; margin: 0 auto; padding: 8px 6px 4px;
   user-select: none; -webkit-user-select: none; }

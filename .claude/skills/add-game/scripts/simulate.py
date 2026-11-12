@@ -65,12 +65,13 @@ def play(game_id, players, settings, levels):
             if hasattr(p.g, "next_at"):
                 p.g.next_at = 0
         room.bot_at = 0
-        if room.game.bot_ready():
-            room.game.bot_tick()
-        elif room.deadline:
-            room.game.on_timeout()
-        else:
-            raise RuntimeError(f"stalled: no bot can move and no timer is set (turn={room.turn})")
+        with room.cond:  # as on the live server (ticker); push_fast from a bot move needs the lock
+            if room.game.bot_ready():
+                room.game.bot_tick()
+            elif room.deadline:
+                room.game.on_timeout()
+            else:
+                raise RuntimeError(f"stalled: no bot can move and no timer is set (turn={room.turn})")
         room.snap()
         if steps % 5 == 0:  # every view must serialise for every viewer
             for p in room.players.values():
