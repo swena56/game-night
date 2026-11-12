@@ -751,7 +751,7 @@ class Prism(Game):
             o = self.room.players.get(i)
             if o:
                 boards[i] = {"rows": o.g.rows, "score": o.g.score, "sent": o.g.sent, "hits": o.g.hits,
-                             "lastFrom": o.g.last_from, "parried": o.g.parried, "alive": not o.eliminated}
+                             "lastFrom": getattr(o.g, "last_from", None), "parried": getattr(o.g, "parried", 0), "alive": not o.eliminated}
         mine = p.id in self.seats
         out = {
             "N": N, "kinds": self.kinds(), "seed": self.seed + (self.seats.index(p.id) if mine else 0),

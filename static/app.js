@@ -76,7 +76,8 @@ async function api(path, body) {
     throw Object.assign(new Error("Can't reach the server."), { network: true });
   }
   const j = await r.json().catch(() => ({ error: 'Bad response' }));
-  if (!r.ok) throw Object.assign(new Error(j.error || 'Request failed'), { network: r.status >= 500 });
+  // 5xx from a proxy or a restarting server is worth retrying; a bug in the game (j.bug) isn't
+  if (!r.ok) throw Object.assign(new Error(j.error || 'Request failed'), { network: r.status >= 500 && !j.bug });
   return j;
 }
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 10);

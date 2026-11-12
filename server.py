@@ -7,6 +7,7 @@ http://localhost:8000. Friends on the same network join via your LAN IP.
 Transport: clients POST actions to /api/action and receive their own
 per-player view of the room over Server-Sent Events (/api/events).
 """
+import gc
 import json
 import os
 import pickle
@@ -15,6 +16,7 @@ import secrets
 import socket
 import ssl
 import subprocess
+import sys
 import threading
 import time
 import traceback
@@ -26,7 +28,7 @@ from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
 
 from games import GAME_INFO, GAMES, GameError
-from games.wordsmith import warm_up
+from games.wordsmith import warm_up, words
 
 PORT = int(os.environ.get("PORT", 8000))
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -134,6 +136,74 @@ class Player:
 
 def default_settings(game_id):
     return {"game": game_id, **{k: d for k, (_, _, d) in ROOM_SETTINGS.items()}, **GAMES[game_id].defaults()}
+
+
+# ---------------------------------------------------------------- health
+# Timing numbers for GET /api/health (localhost only) and the "[slow]" log lines, so a lag report can be
+# matched to a cause: frame-clock gaps, room saves and garbage-collector pauses.
+SLOW_FRAME, SLOW_SAVE, SLOW_GC, SLOW_BOT = 0.060, 0.040, 0.040, 0.100
+STATS = {"frame_gaps": deque(maxlen=3600), "frame_late": 0, "saves": deque(maxlen=100), "gc": deque(maxlen=200), "bots": deque(maxlen=300),
+         "streams": 0, "started": time.time(), "slow_logged": 0.0}
+_gc_t0 = [0.0]
+STATS_LOCK = threading.Lock()
+
+
+def slow(what):
+    """One "[slow]" line, at most every 2 s (a stall shows several symptoms at once)."""
+    now = time.time()
+    if now - STATS["slow_logged"] > 2:
+        STATS["slow_logged"] = now
+        print(f"[slow] {time.strftime('%H:%M:%S')} {what}", flush=True)
+
+
+def _gc_watch(phase, info):
+    if phase == "start":
+        _gc_t0[0] = time.perf_counter()
+    else:
+        dt = time.perf_counter() - _gc_t0[0]
+        STATS["gc"].append((info.get("generation"), dt))
+        if dt > SLOW_GC:
+            slow(f"gc gen{info.get('generation')} {dt * 1000:.0f} ms")
+
+
+gc.callbacks.append(_gc_watch)
+
+
+def settle_gc():
+    """Once the dictionary (and other start-up data) is loaded, move everything alive into the GC's permanent
+    generation, so full collections skip the long-lived start-up objects (in tests/perf_bench.py the worst
+    pause fell from ~24 ms to ~13 ms; every ms counts against the 16.7 ms frame clock)."""
+    words()
+    gc.collect()
+    gc.freeze()
+
+
+def _pct(xs, q):
+    xs = sorted(xs)
+    return round(xs[min(len(xs) - 1, int(q * len(xs)))] * 1000, 1) if xs else None
+
+
+def health():
+    try:
+        with open("/proc/self/statm") as f:
+            rss = int(f.read().split()[1]) * os.sysconf("SC_PAGE_SIZE") // (1 << 20)
+    except (OSError, ValueError):
+        rss = None
+    gaps, saves, gcs, bots = list(STATS["frame_gaps"]), list(STATS["saves"]), list(STATS["gc"]), list(STATS["bots"])
+    return {
+        "uptime": round(time.time() - STATS["started"]),
+        "rooms": len(ROOMS), "playing": sum(1 for r in list(ROOMS.values()) if r.phase == "playing"),
+        "streams": STATS["streams"], "threads": threading.active_count(), "rssMB": rss,
+        "frameMs": {"p50": _pct(gaps, .5), "p95": _pct(gaps, .95), "max": _pct(gaps, 1), "n": len(gaps),
+                    "late": STATS["frame_late"]},
+        "saveMs": {"last": round(saves[-1][0] * 1000, 1) if saves else None, "p95": _pct([s[0] for s in saves], .95),
+                   "max": _pct([s[0] for s in saves], 1), "pickled": saves[-1][1] if saves else None,
+                   "bytes": saves[-1][2] if saves else None},
+        "botMs": {"p95": _pct([b[0] for b in bots], .95), "max": _pct([b[0] for b in bots], 1),
+                  "slowest": max(bots, default=(0, None))[1]},
+        "gcMs": {"p95": _pct([g[1] for g in gcs], .95), "max": _pct([g[1] for g in gcs], 1),
+                 "gen2": sum(1 for g in gcs if g[0] == 2), "frozen": gc.get_freeze_count()},
+    }
 
 
 class Room:
@@ -393,7 +463,8 @@ class Room:
         if key == self._replay_key:
             return
         self._replay_key = key
-        self.replay.append(json.dumps(v))
+        # Kept compressed: a long game's 500 frames are mostly the same view again (~8x smaller).
+        self.replay.append(zlib.compress(json.dumps(v, separators=(",", ":")).encode(), 6))
         self.replay = self.replay[-500:]
 
     # -- actions
@@ -863,7 +934,8 @@ def replay(body):
     with player_session(body) as (room, _):
         if room.phase == "playing":
             raise GameError("Replays unlock when the game ends.")
-        return {"frames": [json.loads(f) for f in room.replay]}
+        # rooms saved before frames were compressed hold plain JSON strings
+        return {"frames": [json.loads(zlib.decompress(f) if isinstance(f, bytes) else f) for f in room.replay]}
 
 
 FEEDBACK_LOCK = threading.Lock()
@@ -940,15 +1012,57 @@ def set_feedback_status(body):
     return {"ok": True}
 
 
+_SAVED = {}   # code -> (room version, pickled room): an unchanged room isn't pickled again
+
+
 def save_rooms():
-    data = {}
+    t0 = time.perf_counter()
+    data, fresh = {}, 0
     for code, room in list(ROOMS.items()):
-        with room.cond:
-            data[code] = pickle.dumps(room)
+        hit = _SAVED.get(code)
+        if hit and hit[0] == room.version:
+            data[code] = hit[1]
+            continue
+        try:
+            with room.cond:
+                ver, blob = room.version, pickle.dumps(room)
+        except Exception:
+            # One room that can't be saved mustn't stop the others being saved: keep its last good copy.
+            traceback.print_exc()
+            print(f"Could not save room {code} ({room.settings.get('game')}); keeping its last saved copy.")
+            if hit:
+                data[code] = hit[1]
+            continue
+        _SAVED[code] = (ver, blob)
+        data[code] = blob
+        fresh += 1
+    for code in set(_SAVED) - set(data):
+        del _SAVED[code]
     tmp = SAVE_FILE + ".tmp"
     with open(tmp, "wb") as f:
         pickle.dump(data, f)
     os.replace(tmp, SAVE_FILE)
+    dt = time.perf_counter() - t0
+    STATS["saves"].append((dt, fresh, sum(map(len, data.values()))))
+    if dt > SLOW_SAVE:
+        slow(f"save {dt * 1000:.0f} ms ({len(data)} rooms)")
+
+
+def check_restored(room):
+    """A game saved by older code can lack state the new code expects. Try every player's view now: if the game
+    can't show itself, send the room back to the lobby (players, scores and history stay) instead of letting it
+    crash every update."""
+    if room.phase != "playing" or not room.game:
+        return
+    try:
+        for p in [*room.players.values(), REPLAY_VIEWER]:
+            room.view(p)
+    except Exception:
+        traceback.print_exc()
+        print(f"Room {room.code}: its {room.settings.get('game')} game doesn't fit the new code; back to the lobby.")
+        room.to_lobby()
+        room.add_log("♻️ Game Night was updated, so this game couldn't carry on. Start a new one!", "big")
+        room.version += 1
 
 
 def load_rooms():
@@ -957,7 +1071,14 @@ def load_rooms():
         with open(SAVE_FILE, "rb") as f:
             data = pickle.load(f)
         for code, blob in data.items():
-            ROOMS[code] = pickle.loads(blob)
+            try:
+                room = pickle.loads(blob)
+            except Exception:
+                traceback.print_exc()
+                print(f"Could not restore room {code}; skipping it.")
+                continue
+            ROOMS[code] = room
+            check_restored(room)
     except FileNotFoundError:
         pass
     except Exception:
@@ -987,7 +1108,12 @@ def ticker():
                 if game:
                     try:
                         if now >= room.bot_at and game.bot_ready():
+                            t0 = time.perf_counter()
                             game.bot_tick()
+                            dt = time.perf_counter() - t0
+                            STATS["bots"].append((dt, game.id))
+                            if dt > SLOW_BOT:
+                                slow(f"bot move {game.id} {dt * 1000:.0f} ms")
                             room.snap()
                             if not room.no_bump:
                                 room.bump()
@@ -1013,9 +1139,24 @@ def ticker():
 
 def frame_ticker():
     """60 fps for real-time games that define frame(now) (server-side physics, e.g. Air Hockey)."""
+    step = 1 / 60
+    last = due = time.time()
     while True:
-        time.sleep(1 / 60)
+        # Sleep to an absolute schedule: time spent on frames doesn't push every later frame back. After a
+        # long stall, start the schedule again from now rather than running the missed frames in a burst.
+        due += step
         now = time.time()
+        if due < now - 0.1:
+            due = now
+        if due > now:
+            time.sleep(due - now)
+        now = time.time()
+        gap, last = now - last, now
+        STATS["frame_gaps"].append(gap)
+        if gap > SLOW_FRAME:
+            STATS["frame_late"] += 1
+            if any(r.phase == "playing" and hasattr(r.game, "frame") for r in list(ROOMS.values())):
+                slow(f"frame gap {gap * 1000:.0f} ms")
         for room in list(ROOMS.values()):
             game = room.game if room.phase == "playing" else None
             if game is None or not hasattr(game, "frame"):
@@ -1052,7 +1193,7 @@ def static_body(fname, ctype):
 
 
 class Handler(BaseHTTPRequestHandler):
-    files = static_files()
+    files, scanned = static_files(), 0.0
     # Keep-alive: a phone reuses one TLS connection for its requests instead of a fresh handshake each time.
     protocol_version = "HTTP/1.1"
     disable_nagle_algorithm = True   # small live updates go out at once instead of waiting to batch
@@ -1103,11 +1244,17 @@ class Handler(BaseHTTPRequestHandler):
             if not self.local():
                 return self.send_json(403, {"error": "Open the feedback inbox on the device running the server."})
             return self.send_json(200, list_feedback())
+        if url.path == "/api/health":
+            if not self.local():
+                return self.send_json(403, {"error": "Health numbers are for the device running the server."})
+            return self.send_json(200, health())
         if url.path == "/api/events":
             return self.events(parse_qs(url.query))
         if url.path not in self.files:
-            # a file added since the server started (e.g. a new static/gl3.js): rescan before giving up
-            Handler.files = static_files()
+            # a file added since the server started (e.g. a new static/gl3.js): rescan before giving up,
+            # at most every few seconds (a scanner probing random paths mustn't make every miss a disk walk)
+            if time.time() - Handler.scanned > 5:
+                Handler.files, Handler.scanned = static_files(), time.time()
             if url.path not in self.files:
                 return self.send_json(404, {"error": "Not found"})
         fname, ctype = self.files[url.path]
@@ -1143,6 +1290,7 @@ class Handler(BaseHTTPRequestHandler):
         if not route or length > 10_000:
             self.close_connection = True   # the unread body would otherwise be parsed as the next request
             return self.send_json(404 if not route else 413, {"error": "Not found" if not route else "Too large"})
+        body = None
         try:
             body = json.loads(self.rfile.read(length) or b"{}")
             if not isinstance(body, dict):
@@ -1152,6 +1300,12 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(400, {"error": str(e)})
         except json.JSONDecodeError:
             self.send_json(400, {"error": "Bad JSON."})
+        except (ConnectionError, TimeoutError):
+            raise
+        except Exception:
+            # A bug in a game: say so (the page shows the message) rather than dropping the connection.
+            report_bug(f"POST {urlparse(self.path).path} code={body.get('code') if isinstance(body, dict) else None}")
+            self.send_json(500, {"error": "Something went wrong — try again.", "bug": True})
 
     def events(self, q):
         first = lambda k: (q.get(k) or [""])[0]
@@ -1177,6 +1331,8 @@ class Handler(BaseHTTPRequestHandler):
         with room.cond:
             room.connected(p)
             room.bump()
+        with STATS_LOCK:
+            STATS["streams"] += 1
         last, last_fast = -1, room.fast_ver
         sent_games = False
         try:
@@ -1188,7 +1344,14 @@ class Handler(BaseHTTPRequestHandler):
                         break
                     payload = None
                     if room.version != last:
-                        v = room.view(p)
+                        try:
+                            v = room.view(p)
+                        except Exception:
+                            # A game's view is broken (e.g. a room saved by older code): keep the stream open and
+                            # wait for the next version instead of dying and being reopened into the same crash.
+                            report_bug(f"view room={room.code} game={room.settings.get('game')}")
+                            last = room.version
+                            continue
                         # The game catalogue (~45 KB) never changes while the server runs: send it once per
                         # stream, and the page keeps it (app.js onState).
                         if sent_games:
@@ -1211,6 +1374,8 @@ class Handler(BaseHTTPRequestHandler):
         except OSError:
             pass
         finally:
+            with STATS_LOCK:
+                STATS["streams"] -= 1
             with room.cond:
                 room.disconnected(p)
                 room.bump()
@@ -1235,10 +1400,34 @@ def lan_url():
     return _LAN[1]
 
 
+_BUGS = {}   # where a bug was raised -> last time its traceback was printed
+
+
+def report_bug(where):
+    """Print the current exception's traceback, at most once a minute per spot (a broken view is hit by every
+    update to every player, and the log must stay readable)."""
+    tb = traceback.extract_tb(sys.exc_info()[2])
+    key = (where.split(" ")[0], tb[-1].filename, tb[-1].lineno) if tb else where
+    now = time.time()
+    if now - _BUGS.get(key, 0) > 60:
+        _BUGS[key] = now
+        print(f"⚠️  {time.strftime('%H:%M:%S')} bug in {where}:", flush=True)
+        traceback.print_exc()
+
+
+# A visitor closing the tab or losing signal mid-request: routine, not worth a traceback in the log.
+CLIENT_GONE = (ConnectionError, TimeoutError, ssl.SSLError)
+
+
 class GameServer(ThreadingHTTPServer):
     """Serves HTTPS and plain HTTP on one port: each connection's first byte says which (0x16 starts a TLS handshake)."""
     daemon_threads = True
     ssl_context = None
+
+    def handle_error(self, request, client_address):
+        if isinstance(sys.exc_info()[1], CLIENT_GONE):
+            return
+        super().handle_error(request, client_address)
 
     def finish_request(self, request, client_address):
         if not self.ssl_context:
@@ -1287,6 +1476,7 @@ SCHEME = "https" if SSL_CONTEXT else "http"
 
 if __name__ == "__main__":
     warm_up()
+    threading.Thread(target=settle_gc, daemon=True).start()
     load_rooms()
     if ROOMS:
         print(f"Restored {len(ROOMS)} room(s) from the last run.")
