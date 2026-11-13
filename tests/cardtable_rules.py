@@ -126,8 +126,28 @@ g.end_hand()
 check("knock out whist: no tricks knocks you out", g.knocked == [False, False, True])
 check("knock out whist: most tricks picks trumps", g.chooser == 0)
 
+# -- Bridge: the declarer plays dummy's cards
+room, ann = room_for("bridge", n=4)
+g = room.game
+me = g.seat(ann)
+g.calls = []
+g.stage = "bid"
+g.calls = [(me, "1S"), ((me + 1) % 4, "P"), ((me + 2) % 4, "P"), ((me + 3) % 4, "P")]
+g.won_auction()
+check("bridge: the first to name the strain declares", g.declarer == me and g.dummy == (me + 2) % 4)
+lead = (me + 1) % 4
+g.play(lead, g.legal(lead)[0])
+check("bridge: dummy's turn goes to the declarer", room.turn == ann.id and g.cur == g.dummy)
+v = room.view(ann)["bridge"]
+check("bridge: the declarer sees dummy's cards to play", v.get("rows") and set(m["card"] for m in v["moves"]) <= set(g.hands[g.dummy]))
+c = g.legal(g.dummy)[0]
+room.game.act(ann, {"type": "play", "card": c})
+check("bridge: the declarer plays dummy's card", c not in g.hands[g.dummy] and g.cur == (me + 3) % 4)
+check("bridge: contract scores", server.GAMES["bridge"] and __import__("games.bridge", fromlist=["x"]).contract_score(4, "S", 0, False, 10) == 420
+      and __import__("games.bridge", fromlist=["x"]).contract_score(3, "N", 1, True, 7) == -500)
+
 # -- every game runs bot-only to the end with every view serialising
-for gid, n in [("cheat", 3), ("president", 4), ("spoons", 4), ("kowhist", 3), ("spades", 4), ("ohhell", 4), ("euchre", 4)]:
+for gid, n in [("cheat", 3), ("president", 4), ("spoons", 4), ("kowhist", 3), ("spades", 4), ("ohhell", 4), ("euchre", 4), ("bridge", 4), ("canasta", 2), ("bezique", 2)]:
     room = server.Room("SIM")
     h = room.add_player("Host")
     room.settings = server.default_settings(gid)
