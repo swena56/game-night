@@ -28,10 +28,13 @@ class Ratscrew(CardGame):
         "👋 Slap when the top two match (double) or the top card matches the one two below (sandwich). First slap takes the pile.",
         "Slap wrong and you burn a card under the pile.",
         "Run out and you're out. Collect every card to win.",
+        "Variants: Beggar My Neighbour (face cards, no slaps), Slap Jack (no face cards; slap every jack), Snap (no face cards; slap pairs).",
     ]
     min_players, max_players = 2, 6
     badges = {**CardGame.badges, "fast": ("👋", "Fastest hand", "Win five slaps in one game")}
-    settings_schema = {"slaps": ("Slaps", [("both", "Doubles and sandwiches"), ("doubles", "Doubles only")], "both"),
+    settings_schema = {"variant": ("Game", [("ratscrew", "Egyptian Ratscrew"), ("beggar", "Beggar My Neighbour: face cards, no slaps"),
+                                            ("slapjack", "Slap Jack: slap the jacks"), ("snap", "Snap: slap pairs, no face cards")], "ratscrew"),
+                       "slaps": ("Slaps", [("both", "Doubles and sandwiches"), ("doubles", "Doubles only")], "both"),
                        "limit": ("Time limit", [(300, "5 minutes, then most cards"), (600, "10 minutes"), (0, "None")], 300)}
 
     def start(self, seated, rng):
@@ -46,7 +49,8 @@ class Ratscrew(CardGame):
         self.react = {}
         self.flips = 0
         self.ends = time.time() + self.s["limit"] if self.s.get("limit") else None
-        self.room.add_log("🐀 Egyptian Ratscrew: flip, answer face cards, and 👋 slap doubles and sandwiches!", "big")
+        self.room.add_log({"beggar": "🐀 Beggar My Neighbour: flip, and answer the face cards!", "slapjack": "🐀 Slap Jack: flip, and 👋 slap every jack!",
+                           "snap": "🐀 Snap: flip, and 👋 slap two of a kind!"}.get(self.variant(), "🐀 Egyptian Ratscrew: flip, answer face cards, and 👋 slap doubles and sandwiches!"), "big")
         self.stage = "flip"
         self.to(rng.randrange(self.n))
 
@@ -56,8 +60,18 @@ class Ratscrew(CardGame):
     def alive(self):
         return [k for k in range(self.n) if self.piles[k]]
 
+    def variant(self):
+        return self.s.get("variant", "ratscrew")
+
     def slappable(self):
         p = self.pile
+        v = self.variant()
+        if v == "beggar":
+            return None
+        if v == "slapjack":
+            return "jack" if p and rank(p[-1]) == "J" else None
+        if v == "snap":
+            return "pair" if len(p) >= 2 and rank(p[-1]) == rank(p[-2]) else None
         if len(p) >= 2 and rank(p[-1]) == rank(p[-2]):
             return "double"
         if self.s.get("slaps", "both") == "both" and len(p) >= 3 and rank(p[-1]) == rank(p[-3]):
@@ -74,7 +88,7 @@ class Ratscrew(CardGame):
         self.last_flip = time.time()
         self.flipper = i
         r = rank(c)
-        if r in TRIES:
+        if r in TRIES and self.variant() in ("ratscrew", "beggar"):
             self.challenge = {"by": i, "left": TRIES[r]}
             nxt = self.next_alive(i)
         elif self.challenge:
@@ -230,7 +244,8 @@ class Ratscrew(CardGame):
         t = {"info": info, "piles": [{"cards": self.pile[-3:], "fan": True, "label": label}],
              "banner": self.flash or (f"Answer within {ch['left']}!" if ch and self.stage == "flip" else None),
              "scores": {"title": "Cards", "rows": [{"seat": k, "value": len(self.piles[k])} for k in sorted(range(self.n), key=lambda k: -len(self.piles[k]))],
-                        "hint": "Slap doubles (7 7)" + (" and sandwiches (7 4 7)" if self.s.get("slaps", "both") == "both" else "") + "."}}
+                        "hint": {"beggar": "Face cards demand an answer: J 1, Q 2, K 3, A 4.", "slapjack": "Slap every jack!", "snap": "Slap two of a kind in a row!"}.get(
+                            self.variant(), "Slap doubles (7 7)" + (" and sandwiches (7 4 7)" if self.s.get("slaps", "both") == "both" else "") + ".")}}
         if self.ends:
             t["scores"]["hint"] += f" {max(0, int(self.ends - time.time())) // 60}:{max(0, int(self.ends - time.time())) % 60:02d} left."
         if i is None:
@@ -239,7 +254,7 @@ class Ratscrew(CardGame):
         if self.stage == "flip" and self.room.turn == p.id and self.piles[i]:
             btns.append({"label": "🂠 Flip", "a": {"type": "flip"}, "kind": "primary big"})
             t["turnText"] = "🂠 Flip!" if not ch else f"🂠 Answer the face card ({ch['left']} left)"
-        if self.piles[i] or self.slappable():
+        if (self.piles[i] or self.slappable()) and self.variant() != "beggar":
             btns.append({"label": "👋 SLAP", "a": {"type": "slap"}, "kind": "slap"})
         t["buttons"] = btns
         t["piles"].insert(0, {"cards": ["??"] if self.piles[i] else [], "count": len(self.piles[i]), "label": "Your stack", "corner": True})
