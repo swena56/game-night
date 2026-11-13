@@ -118,6 +118,31 @@ function patienceMove(key, P, d, S, n, w) {
   tap(slot.querySelector('.pc:last-child') || slot);
 }
 
+// the 🃏 card-table games (static/cardtable.js) share one driver: pick cards and confirm, tap a playable
+// card (and a choice if one appears), or press one of the buttons
+const CT_GAMES = new Set(['cheat']);
+function ctMove(game, d, S) {
+  const t = S[game], root = d.querySelector(`.ct-${game}`);
+  if (!root) return;
+  const cards = [...root.querySelectorAll('.ct-hand .card-btn:not(:disabled), .ct-rows .card-btn:not(:disabled)')];
+  const btns = [...root.querySelectorAll('.ct-btns button:not(:disabled)')];
+  if (t.pick) {
+    const n = Math.max(t.pick.min ?? 1, 1 + Math.floor(Math.random() * Math.min(2, t.pick.max)));
+    for (let k = 0; k < n; k++) { const c = [...root.querySelectorAll('.ct-hand .card-btn:not(:disabled):not(.picked), .ct-rows .card-btn:not(:disabled):not(.picked)')]; if (c.length) click(pick(c)); }
+    const go = root.querySelector('.ct-btns button.primary');
+    if (go && !go.disabled) return click(go);
+  }
+  if (t.moves?.length && cards.length && (!btns.length || Math.random() < 0.7)) {
+    click(pick(cards));
+    const ch = [...root.querySelectorAll('.ct-choice button.primary')];
+    if (ch.length) click(pick(ch));
+    return;
+  }
+  const piles = [...root.querySelectorAll('.ct-pile.tap')];
+  if (piles.length && (!btns.length || Math.random() < 0.5)) return click(pick(piles));
+  if (btns.length) return click(pick(btns));
+}
+
 let WB_WORDS = null;   // the dictionary, for Word Bomb moves
 const MOVES = {
   oddone(d, S, n, w) {
@@ -533,9 +558,10 @@ async function playSolo(game, seconds = 60) {
       || (game === 'doodle' && s.doodle.stage === 'draw' && !s.doodle.solvers.some(([p]) => p === s.me.id)) || game === 'hockey' || (game === 'riders' && s.riders.stage === 'ride') || (game === 'paintblast' && s.paintblast.st === 'play') || (game === 'sumo' && s.sumo.stage === 'play') || (game === 'cannon' && s.cannon.volley && !s.cannon.between && s.cannon.me != null && s.cannon.tanks[s.cannon.me]?.[2] > 0 && !s.cannon.locked.includes(s.cannon.me)) || (game === 'rally' && s.rally.stage === 'race') || (game === 'hearts' && s.hearts.stage === 'pass' && !s.hearts.myPass) || (game === 'speed' && s.speed.stage === 'play') || (game === 'trivia' && s.trivia.stage === 'ask' && s.trivia.mine == null) || (game === 'ladder' && s.ladder.stage === 'climb' && !s.ladder.done)
       || ((game === 'freecell' || game === 'klondike' || game === 'sudoku' || game === 'wordsearch') && s[game].stage === 'play' && s[game].playing && !s[game].done && !s[game].banked)
       || (game === 'qork' && (s.qork.stage === 'snap' ? !(s.me.id in s.qork.acted) : s.qork.cupper === s.me.id && ['wait', 'dice'].includes(s.qork.stage)))
+      || (CT_GAMES.has(game) && s[game]?.mine)
       || (game === 'twentyone' && s.twentyone.stage === 'bet' && !s.twentyone.bets[s.twentyone.me] && s.twentyone.chips[s.twentyone.me] > 0);
     if (game === 'lucky' && s.lucky.stage === 'wheel') { await sleep(300); continue; }
-    if (mine) { try { MOVES[game](d, s, report.moves, w); report.moves++; } catch (e) { errors.push('driver: ' + e.stack); } }
+    if (mine) { try { (MOVES[game] || ((d2, s2) => ctMove(game, d2, s2)))(d, s, report.moves, w); report.moves++; } catch (e) { errors.push('driver: ' + e.stack); } }
     await sleep(60);
     // the server turned a press away as unknown: the game's action never reached it (Qork #11)
     const t = d.querySelector('#toast'); if (!t.hidden && /Unknown/.test(t.textContent) && !report.notes.includes('toast: ' + t.textContent)) report.notes.push('toast: ' + t.textContent);
@@ -663,7 +689,7 @@ async function feedbackTour() {
   const lt = await lobbyTour();
   console.log('LOBBY', JSON.stringify(lt));
   for (const g of games.length ? games : Object.keys(MOVES)) {
-    const r = await playSolo(g, g === 'wordsmith' ? 40 : g === 'spire' ? 25 : g === 'prism' ? 110 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'cribbage' ? 300 : g === 'yacht' ? 200 : g === 'farkle' ? 240 : g === 'qork' ? 200 : g === 'backgammon' ? 300 : g === 'gridhunt' ? 260 : g === 'paintblast' ? 230 : g === 'sumo' ? 200 : g === 'putt' ? 300 : g === 'cannon' ? 240 : g === 'rally' ? 150 : g === 'hearts' || g === 'rummy' ? 300 : g === 'twentyone' ? 200 : g === 'speed' ? 150 : g === 'trivia' ? 200 : g === 'ladder' ? 330 : g === 'freecell' || g === 'klondike' ? 300 : g === 'sudoku' ? 120 : g === 'wordsearch' ? 150 : g === 'wordbomb' ? 200 : g === 'liars' ? 300 : g === 'shipcrew' || g === 'shutbox' ? 200 : g === 'reversi' || g === 'hedgerow' || g === 'ultimate' || g === 'oware' || g === 'morris' ? 260 : g === 'safecracker' ? 200 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
+    const r = await playSolo(g, CT_GAMES.has(g) ? 240 : g === 'wordsmith' ? 40 : g === 'spire' ? 25 : g === 'prism' ? 110 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'cribbage' ? 300 : g === 'yacht' ? 200 : g === 'farkle' ? 240 : g === 'qork' ? 200 : g === 'backgammon' ? 300 : g === 'gridhunt' ? 260 : g === 'paintblast' ? 230 : g === 'sumo' ? 200 : g === 'putt' ? 300 : g === 'cannon' ? 240 : g === 'rally' ? 150 : g === 'hearts' || g === 'rummy' ? 300 : g === 'twentyone' ? 200 : g === 'speed' ? 150 : g === 'trivia' ? 200 : g === 'ladder' ? 330 : g === 'freecell' || g === 'klondike' ? 300 : g === 'sudoku' ? 120 : g === 'wordsearch' ? 150 : g === 'wordbomb' ? 200 : g === 'liars' ? 300 : g === 'shipcrew' || g === 'shutbox' ? 200 : g === 'reversi' || g === 'hedgerow' || g === 'ultimate' || g === 'oware' || g === 'morris' ? 260 : g === 'safecracker' ? 200 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
     console.log(`\n== ${g}: phase=${r.phase} moves=${r.moves} dialogs=${r.dialogs || 0} screen="${r.screen}" ${r.banner ? `banner="${r.banner}"` : ''}`);
     console.log(`   help: ${r.help} | log ticker: "${r.ticker}"`);
     if (r.replay) console.log(`   replay: ${r.replay}`);

@@ -637,6 +637,71 @@ body.lowgfx .pc:not(.back):not(.empty) { background: #fbf8ef; box-shadow: inset 
 .shake { animation: jolt .35s; }
 @keyframes jolt { 20% { transform: translate(-6px, 2px); } 40% { transform: translate(5px, -3px); } 60% { transform: translate(-4px, 1px); } 80% { transform: translate(3px, 0); } }
 
+/* the 🃏 card table (static/cardtable.js): Cheat, President, Spades and the other games on games/cardbase.py.
+   Seats on an oval (--x/--y from -1 to 1) as in Hearts, the trick or the piles in the middle, my hand below */
+.ct { width: min(100%, 640px); margin: 0 auto; display: flex; flex-direction: column; gap: 8px; }
+.ct-table { position: relative; height: clamp(270px, 62vw, 340px); border-radius: 50% / 42%; padding: 0;
+  box-shadow: inset 0 0 0 7px #5a3a1e, inset 0 0 0 9px #8b5e34, inset 0 0 50px #000a, 0 6px 18px #0007; }
+.ct-seat { position: absolute; left: calc(50% + var(--x) * (50% - 50px)); top: calc(50% + var(--y) * (50% - 30px));
+  transform: translate(-50%, -50%); z-index: 2; background: #0b1f19d9; border-radius: 10px; padding: 4px 8px; min-width: 76px; max-width: 46%;
+  display: flex; flex-direction: column; align-items: center; line-height: 1.15; box-shadow: 0 2px 8px #0007; white-space: nowrap; }
+.ct-seat.bottom { top: calc(100% - 22px); }
+.ct-seat.turn { box-shadow: 0 0 0 2px var(--accent), 0 0 16px var(--accent); }
+.ct-seat.out { opacity: .45; filter: grayscale(.8); }
+.ct-seat b { overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.ct-seat small { color: #cfe; font-size: 11px; opacity: .85; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.ct-show { display: flex; gap: 1px; margin-top: 2px; flex-wrap: wrap; justify-content: center; max-width: 130px; }
+.ct-show .pc.tiny { --cw: 18px; }
+.ct-trick { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.ct-slot { position: absolute; left: calc(50% + var(--x) * 52px); top: calc(50% + var(--y) * 40px - 6px);
+  transform: translate(-50%, -50%) rotate(var(--r, 0deg)); }
+.ct-slot.in { animation: ctIn .28s cubic-bezier(.2, 1.1, .4, 1); }
+@keyframes ctIn { from { transform: translate(-50%, -50%) translate(calc(var(--x) * 110px), calc(var(--y) * 90px)) rotate(calc(var(--r, 0deg) * 4)) scale(.7); opacity: .3; } }
+.ct-slot.won .pc { box-shadow: 0 0 0 3px var(--accent), 0 0 18px var(--accent); }
+.ct-trick.swept .ct-slot { opacity: 0; transition: opacity .2s .3s; }
+.ct-table .pc { --cw: 44px; }
+.ct-mid { position: absolute; left: 50%; top: 47%; transform: translate(-50%, -50%); display: flex; flex-direction: column;
+  align-items: center; gap: 6px; max-width: 64%; z-index: 1; }
+.ct-mid.with-trick { opacity: .35; }
+.ct-banner { color: #fff; font-weight: 800; text-align: center; text-shadow: 0 2px 6px #000a; font-size: 15px; }
+.ct-piles { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; align-items: flex-end; }
+.ct-pile { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 0; border: 0;
+  background: none; color: #fff; font: inherit; }
+.ct-pile small { font-size: 11px; color: #cfe; max-width: 110px; text-align: center; }
+.ct-pile.tap .pc { box-shadow: 0 0 0 2px var(--accent), 0 3px 8px #0008; }
+.ct-pile.glow .pc:last-child { box-shadow: 0 0 0 3px #ffd166, 0 0 16px #ffd166aa; }
+.ct-stack { display: flex; }
+.ct-stack .pc + .pc { margin-left: calc(var(--cw) * -1); }
+.ct-pile.fan .ct-stack .pc + .pc { margin-left: calc(var(--cw) * -.62); }
+.ct-count { position: absolute; top: -6px; right: -8px; background: #000c; color: #fff; border-radius: 9px; font-size: 11px;
+  padding: 1px 6px; font-weight: 700; z-index: 2; }
+.ct-corner { position: absolute; right: 8%; top: 9%; display: flex; gap: 8px; align-items: flex-start; z-index: 1; }
+.ct-corner .pc { --cw: 30px; }
+.ct-trumpbox { display: flex; flex-direction: column; align-items: center; gap: 1px; background: #0006; border-radius: 8px; padding: 4px 6px; }
+.ct-trumpbox small { font-size: 10px; color: #cfe; }
+.ct-suit { width: 24px; height: 24px; fill: currentColor; }
+.ct-suit.red { color: #ff5d73; } .ct-suit.black { color: #fff; }
+.ct-note { min-height: 1.4em; text-align: center; font-size: 13px; color: var(--muted); }
+.ct-rows { display: flex; flex-direction: column; gap: 4px; align-items: center; }
+.ct-row { display: flex; align-items: center; gap: 8px; }
+.ct-row small { color: var(--muted); font-size: 11px; min-width: 52px; text-align: right; }
+.ct-rowcards { display: flex; gap: 4px; }
+.ct-rowcards .pc { --cw: 38px; }
+.ct-hand { padding-top: 8px; }
+.ct-hand .pc { --cw: 46px; }
+.card-btn.picked { transform: translateY(-16px); }
+.hand.fan .card-btn.picked { transform: rotate(var(--rot, 0deg)) translateY(calc(var(--drop, 0px) - 20px)); }
+.card-btn.picked .pc { box-shadow: 0 0 0 3px #ffd166, 0 0 14px #ffd166aa; }
+.ct-choice, .ct-btns { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+.ct-choice:empty, .ct-btns:empty { display: none; }
+.ct-btns button.slap { font-size: 22px; padding: 14px 30px; background: #e63946; color: #fff; }
+@media (max-width: 420px) {
+  .ct-table { height: clamp(250px, 78vw, 320px); }
+  .ct-seat { min-width: 64px; padding: 3px 6px; }
+  .ct-table .pc { --cw: 40px; }
+  .ct-hand .pc { --cw: 42px; }
+}
+
 /* ======================================================================== 6. Games, A to Z */
 
 /* backgammon */
