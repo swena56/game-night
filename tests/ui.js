@@ -120,7 +120,7 @@ function patienceMove(key, P, d, S, n, w) {
 
 // the 🃏 card-table games (static/cardtable.js) share one driver: pick cards and confirm, tap a playable
 // card (and a choice if one appears), or press one of the buttons
-const CT_GAMES = new Set(['cheat', 'president', 'spoons']);
+const CT_GAMES = new Set(['cheat', 'president', 'spoons', 'kowhist', 'spades', 'ohhell', 'euchre', 'gops', 'scopa', 'gin', 'germanwhist', 'fantan', 'palace', 'ratscrew', 'nertz']);
 function ctMove(game, d, S) {
   const t = S[game], root = d.querySelector(`.ct-${game}`);
   if (!root) return;
@@ -329,6 +329,13 @@ const MOVES = {
       const take = [...d.querySelectorAll('.mm-pt.take')], can = [...d.querySelectorAll('.mm-pt.can')], src = [...d.querySelectorAll('.mm-pt.src')];
       if (take.length) tap(pick(take)); else if (can.length) tap(pick(can)); else if (src.length) tap(pick(src)); else return;
     }
+  },
+  ratscrew(d, S) {
+    // slap only real doubles and sandwiches (read off the pile's cards), otherwise flip
+    const root = d.querySelector('.ct-ratscrew'), ranks = [...root.querySelectorAll('.ct-piles .pc')].map((c) => c.dataset.face?.slice(0, -1));
+    const n = ranks.length, slap = root.querySelector('.ct-btns button.slap'), flip = root.querySelector('.ct-btns button.primary');
+    if (slap && n >= 2 && (ranks[n - 1] === ranks[n - 2] || (n >= 3 && ranks[n - 1] === ranks[n - 3]))) return click(slap);
+    if (flip) click(flip);
   },
   hearts(d, S) {
     if (S.hearts.stage === 'pass') {

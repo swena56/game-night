@@ -210,5 +210,6 @@ class CardGame(Game):
         best = max(scores) if high else min(scores)
         top = [k for k, v in enumerate(scores) if v == best]
         if len(top) == 1:
-            return self.room.finish(self.pl(top[0]), f"🏆 {self.nm(top[0])} wins {self.name} with {best} {what}!")
+            unit = what[:-1] if best in (1, -1) and what.endswith("s") else what
+            return self.room.finish(self.pl(top[0]), f"🏆 {self.nm(top[0])} wins {self.name} with {best} {unit}!")
         return self.room.finish(None, f"🤝 A tie at {best} between {' & '.join(self.nm(k) for k in top)}.")

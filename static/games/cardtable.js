@@ -131,7 +131,7 @@ var CardTable = window.CardTable || (() => {   // var: several games load this h
         const on = pick ? picked.includes(key) : choice === key;
         const can = tappable(key) && !(pick?.same && picked.length && !picked.includes(key) && card.slice(0, -1) !== pickedRank());
         const b = ctx.el('button', 'card-btn' + (on || (!pick && can) ? ' ok' : '') + (on && pick ? ' picked' : ''));
-        b.append(Cards.face(card));
+        b.append(card ? Cards.face(card) : ctx.el('span', 'pc empty'));
         b.disabled = !can;
         b.onclick = () => {
           if (pick) {
