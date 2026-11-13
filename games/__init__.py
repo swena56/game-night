@@ -15,6 +15,9 @@ from .sudoku import Sudoku
 from .wordsearch import WordSearch
 from .go import Go
 from .hearts import Hearts
+from .sixtysix import SixtySix
+from .ninetynine import NinetyNine
+from .war import War
 from .spite import Spite
 from .cassino import Cassino
 from .oldmaid import OldMaid
@@ -80,7 +83,7 @@ from .wordsmith import Wordsmith
 from .wordbomb import WordBomb
 
 # Order here is the order of the lobby's game picker.
-GAMES = {g.id: g for g in (Unmask, OddOne, Relay, Trivia, Doodle, Lucky, Spire, Prism, Riders, PaintBlast, Sumo, Putt, Rally, Hockey, Billiards, Cannon, Wordsmith, WordBomb, GridHunt, WordSearch, Safecracker, FibFinder, Ladder, Chess, Checkers, Backgammon, Go, Oware, Reversi, Hedgerow, LastCard, Lantern, Holdem, Cribbage, Hearts, Speed, Rummy, Klondike, FreeCell, Cheat, President, Spoons, KnockOutWhist, Spades, OhHell, Euchre, Gops, Scopa, Gin, GermanWhist, FanTan, Palace, Ratscrew, Nertz, Whist, Briscola, Blitz, Ranter, BigTwo, GoFish, OldMaid, Cassino, Spite, SeaBattle,
+GAMES = {g.id: g for g in (Unmask, OddOne, Relay, Trivia, Doodle, Lucky, Spire, Prism, Riders, PaintBlast, Sumo, Putt, Rally, Hockey, Billiards, Cannon, Wordsmith, WordBomb, GridHunt, WordSearch, Safecracker, FibFinder, Ladder, Chess, Checkers, Backgammon, Go, Oware, Reversi, Hedgerow, LastCard, Lantern, Holdem, Cribbage, Hearts, Speed, Rummy, Klondike, FreeCell, Cheat, President, Spoons, KnockOutWhist, Spades, OhHell, Euchre, Gops, Scopa, Gin, GermanWhist, FanTan, Palace, Ratscrew, Nertz, Whist, Briscola, Blitz, Ranter, BigTwo, GoFish, OldMaid, Cassino, Spite, War, NinetyNine, SixtySix, SeaBattle,
                            DropFour, Boxes, TicTacToe, Ultimate, Morris, Sudoku, Heist, MoonShot, Yacht, Farkle, Qork, ShipCrew, ShutBox, LiarsDice, TwentyOne)}
 GAME_INFO = [g.info() for g in GAMES.values()]
 
