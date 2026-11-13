@@ -97,6 +97,86 @@ def combos(hand):
     return out
 
 
+# -- Tiến Lên (Thirteen): suits ♠ < ♣ < ♦ < ♥; singles, pairs, threes, fours, runs of 3+ and runs of 3+ pairs
+TL_SUITS = "SCDH"
+
+
+def tval(c):
+    return ORDER.index(rank(c)) * 4 + TL_SUITS.index(suit(c))
+
+
+def tjudge(cards):
+    """(type, length, key) for a legal Tiến Lên play, or None."""
+    n = len(cards)
+    if not n:
+        return None
+    rs = [rank(c) for c in cards]
+    top = max(tval(c) for c in cards)
+    if len(set(rs)) == 1 and n <= 4:
+        return (["single", "pair", "three", "four"][n - 1], n, top)
+    idx = sorted(ORDER.index(r) for r in rs)
+    if "2" in rs:
+        return None
+    if n >= 3 and len(set(idx)) == n and idx[-1] - idx[0] == n - 1:
+        return ("run", n, top)
+    if n >= 6 and n % 2 == 0:
+        pairs = idx[::2]
+        if all(idx[2 * k] == idx[2 * k + 1] for k in range(n // 2)) and len(set(pairs)) == n // 2 and pairs[-1] - pairs[0] == n // 2 - 1:
+            return ("pairs", n, top)
+    return None
+
+
+def tbeats(new, old):
+    a, b = tjudge(new), tjudge(old)
+    if not a or not b:
+        return False
+    if a[0] == b[0] and a[1] == b[1]:
+        return a[2] > b[2]
+    # bombs: a four or three pairs in a row beat a single 2; four pairs in a row beat a pair of 2s
+    two = all(rank(c) == "2" for c in old)
+    if two and b[0] == "single" and (a[0] == "four" or (a[0] == "pairs" and a[1] >= 6)):
+        return True
+    if two and b[0] == "pair" and a[0] == "pairs" and a[1] >= 8:
+        return True
+    return False
+
+
+def tcombos(hand):
+    hand = sorted(hand, key=tval)
+    by = {}
+    for c in hand:
+        by.setdefault(rank(c), []).append(c)
+    out = [[c] for c in hand]
+    for cs in by.values():
+        for k in (2, 3, 4):
+            out += [list(x) for x in itertools.islice(itertools.combinations(cs, k), 6)]
+    ranks = [r for r in ORDER[:-1] if r in by]
+    for a in range(len(ORDER) - 1):
+        for length in range(3, 13):
+            rr = ORDER[a:a + length]
+            if len(rr) < length or "2" in rr or not all(r in by for r in rr):
+                break
+            out.append([by[r][0] for r in rr])
+            out.append([by[r][-1] for r in rr])
+            if all(len(by[r]) >= 2 for r in rr):
+                out.append([c for r in rr for c in by[r][:2]])
+    seen, uniq = set(), []
+    for c in out:
+        key = tuple(sorted(c))
+        if key not in seen and tjudge(c):
+            seen.add(key)
+            uniq.append(c)
+    return uniq
+
+
+def tdescribe(cards):
+    j = tjudge(cards)
+    if not j:
+        return show(cards)
+    name = {"run": f"run of {j[1]}", "pairs": f"{j[1] // 2} pairs in a row"}.get(j[0], j[0])
+    return f"{name}: {show(cards)}"
+
+
 def beats(new, old):
     a, b = judge(new), judge(old)
     if not a or not b or a[0] != b[0]:
@@ -122,10 +202,12 @@ class BigTwo(CardGame):
         "Five-card hands: straight < flush < full house < four of a kind (+1) < straight flush.",
         "Pass if you can't or won't (you can still play next time round). Everyone passes: the last player leads anything.",
         "First out wins the round. Cards left are penalties (×2 with 10+, ×3 with 13). Lowest total wins.",
+        "🇻🇳 Tiến Lên: suits ♠ < ♣ < ♦ < ♥, the 3♠ leads; play singles to fours, runs of 3+ or 3+ pairs in a row (no 2s in runs). Beat the same kind and length. A four, or three pairs in a row, bombs a single 2. Pass and you sit out until the pile clears.",
     ]
     min_players, max_players = 2, 4
     badges = {**CardGame.badges, "dragon": ("🐉", "Dragon", "Play a straight flush")}
-    settings_schema = {"rounds": ("Rounds", [(3, "3 rounds"), (1, "1 round"), (5, "5 rounds")], 3)}
+    settings_schema = {"rounds": ("Rounds", [(3, "3 rounds"), (1, "1 round"), (5, "5 rounds")], 3),
+                       "rules": ("Rules", [("bigtwo", "Big Two: poker hands"), ("tienlen", "🇻🇳 Tiến Lên: runs and bombs")], "bigtwo")}
 
     def start(self, seated, rng):
         self.seat_up(seated, rng)
@@ -134,31 +216,48 @@ class BigTwo(CardGame):
         self.room.add_log(f"🐉 Big Two: {self.s['rounds']} round{'s' if self.s['rounds'] > 1 else ''}. 3♦ leads.", "big")
         self.deal()
 
+    def tl(self):
+        return self.s.get("rules") == "tienlen"
+
+    def J(self, cards):
+        return tjudge(cards) if self.tl() else judge(cards)
+
+    def B(self, new, old):
+        return tbeats(new, old) if self.tl() else beats(new, old)
+
+    def D(self, cards):
+        return tdescribe(cards) if self.tl() else describe(cards)
+
+    def V(self, c):
+        return tval(c) if self.tl() else val(c)
+
     def deal(self):
         self.round += 1
         cards = deck()
         self.rng.shuffle(cards)
-        self.hands = [sorted(cards[k * 13:(k + 1) * 13], key=val) for k in range(self.n)]
+        self.hands = [sorted(cards[k * 13:(k + 1) * 13], key=self.V) for k in range(self.n)]
         self.lastplay = None          # [seat, cards]
         self.passes = 0
+        self.passed = set()
         self.first = True
         self.stage = "play"
-        lead = next((k for k in range(self.n) if "3D" in self.hands[k]), None)
+        low = "3S" if self.tl() else "3D"
+        lead = next((k for k in range(self.n) if low in self.hands[k]), None)
         if lead is None:   # fewer than four players: the lowest card leads
-            lead = min(range(self.n), key=lambda k: val(self.hands[k][0]))
+            lead = min(range(self.n), key=lambda k: self.V(self.hands[k][0]))
             self.opening = self.hands[lead][0]
         else:
-            self.opening = "3D"
+            self.opening = low
         self.room.add_log(f"🃏 Round {self.round}: {self.nm(lead)} leads (holding {show([self.opening])}).")
         self.to(lead)
 
     def legal(self, i, cards):
-        if not judge(cards):
-            return "That isn't a single, pair, three or five-card hand."
+        if not self.J(cards):
+            return "That isn't a run, pairs in a row, or one to four of a kind." if self.tl() else "That isn't a single, pair, three or five-card hand."
         if self.first and self.opening not in cards:
             return f"The first play must include the {show([self.opening])}."
-        if self.lastplay and not beats(cards, self.lastplay[1]):
-            return f"Beat {describe(self.lastplay[1])} with {len(self.lastplay[1])} card{'s' if len(self.lastplay[1]) > 1 else ''}."
+        if self.lastplay and not self.B(cards, self.lastplay[1]):
+            return f"Beat {self.D(self.lastplay[1])} with {len(self.lastplay[1])} card{'s' if len(self.lastplay[1]) > 1 else ''}."
         return None
 
     def play(self, i, cards):
@@ -167,26 +266,40 @@ class BigTwo(CardGame):
         self.first = False
         self.lastplay = [i, cards]
         self.passes = 0
-        j = judge(cards)
-        if j[0] == 5 and j[1] == 4:
+        j = self.J(cards)
+        if not self.tl() and j[0] == 5 and j[1] == 4:
             if self.pl(i):
                 self.award(self.pl(i), "dragon")
             self.moment(f"🐉 Straight flush from {self.nm(i)}!", "gold", "fanfare")
-        self.room.add_log(f"🂠 {self.nm(i)}: {describe(cards)}")
+        self.room.add_log(f"🂠 {self.nm(i)}: {self.D(cards)}")
         if not self.hands[i]:
             return self.end_round(i)
+        if self.tl():
+            nxt = next(((i + k) % self.n for k in range(1, self.n) if (i + k) % self.n not in self.passed), None)
+            return self.clear(i) if nxt is None else self.to(nxt)
         self.to(self.next_seat(i))
 
     def do_pass(self, i):
         self.passes += 1
+        self.passed.add(i)
         self.room.add_log(f"✋ {self.nm(i)} passes.")
+        w = self.lastplay[0]
+        if self.tl():
+            # Tiến Lên: a pass sits you out until the pile clears
+            nxt = next(((i + k) % self.n for k in range(1, self.n) if (i + k) % self.n not in self.passed and (i + k) % self.n != w), None)
+            if nxt is None:
+                return self.clear(w)
+            return self.to(nxt)
         if self.passes >= self.n - 1:
-            w = self.lastplay[0]
-            self.lastplay = None
-            self.passes = 0
-            self.room.add_log(f"🧹 {self.nm(w)} leads again.")
-            return self.to(w)
+            return self.clear(w)
         self.to(self.next_seat(i))
+
+    def clear(self, w):
+        self.lastplay = None
+        self.passes = 0
+        self.passed = set()
+        self.room.add_log(f"🧹 {self.nm(w)} leads again.")
+        self.to(w)
 
     def end_round(self, w):
         pen = []
@@ -229,22 +342,23 @@ class BigTwo(CardGame):
         if self.stage != "play":
             return
         hand = self.hands[i]
-        opts = [c for c in combos(hand) if not self.legal(i, c)]
+        opts = [c for c in (tcombos(hand) if self.tl() else combos(hand)) if not self.legal(i, c)]
         if not opts:
             return self.do_pass(i)
         if level == "easy":
             if self.lastplay and random.random() < 0.25:
                 return self.do_pass(i)
-            return self.play(i, random.choice(opts) if random.random() < 0.4 else min(opts, key=lambda c: (judge(c)[1], judge(c)[2])))
+            return self.play(i, random.choice(opts) if random.random() < 0.4 else min(opts, key=lambda c: (self.J(c)[1], self.J(c)[2])))
         count = {}
         for c in hand:
             count[rank(c)] = count.get(rank(c), 0) + 1
 
         def cost(cs):
-            j = judge(cs)
+            j = self.J(cs)
             broken = sum(1 for r in {rank(c) for c in cs} if count[r] > sum(1 for c in cs if rank(c) == r)) if len(cs) < 5 else 0
             twos = sum(1 for c in cs if rank(c) == "2")
-            v = (j[1] * 60 + j[2]) / (len(cs) ** 0.5) + broken * 25 + twos * (40 if level == "hard" and len(hand) > 6 else 10)
+            strength = (j[1] * 60 + j[2]) if not self.tl() else max(self.V(c) for c in cs)
+            v = strength / (len(cs) ** 0.5) + broken * 25 + twos * (40 if level == "hard" and len(hand) > 6 else 10)
             return v - len(cs) * (8 if not self.lastplay else 0)
         best = min(opts, key=cost)
         if self.lastplay and level == "hard" and len(hand) > 5 and all(rank(c) == "2" for c in best) and len(self.lastplay[1]) == 1:
@@ -263,17 +377,17 @@ class BigTwo(CardGame):
         return {pid: -self.scores[k] for k, pid in enumerate(self.seats)}
 
     def table(self, p, i):
-        info = [{"count": len(self.hands[k]), "tags": [f"{self.scores[k]} pen"]} for k in range(self.n)]
+        info = [{"count": len(self.hands[k]), "tags": [f"{self.scores[k]} pen"] + (["✋"] if self.tl() and k in self.passed else [])} for k in range(self.n)]
         lp = self.lastplay
         t = {"info": info, "hand": self.hands[i] if i is not None else [],
-             "piles": [{"cards": lp[1] if lp else [], "fan": True, "label": f"{self.nm(lp[0])}: {describe(lp[1]).split(':')[0]}" if lp else "Lead anything"}],
+             "piles": [{"cards": lp[1] if lp else [], "fan": True, "label": f"{self.nm(lp[0])}: {self.D(lp[1]).split(':')[0]}" if lp else "Lead anything"}],
              "scores": {"title": "Penalty points", "rows": [{"seat": k, "value": self.scores[k]} for k in sorted(range(self.n), key=lambda k: self.scores[k])],
-                        "hint": f"Round {self.round} of {self.s['rounds']}. ♦ < ♣ < ♥ < ♠. Lowest total wins."}}
+                        "hint": f"Round {self.round} of {self.s['rounds']}. {'♠ < ♣ < ♦ < ♥' if self.tl() else '♦ < ♣ < ♥ < ♠'}. Lowest total wins."}}
         if i is not None and self.stage == "play" and self.room.turn == p.id:
-            t["pick"] = {"act": "play", "min": 1, "max": 5, "label": "Play"}
+            t["pick"] = {"act": "play", "min": 1, "max": 13 if self.tl() else 5, "label": "Play"}
             if lp:
                 t["buttons"] = [{"label": "✋ Pass", "a": {"type": "pass"}}]
-                t["note"] = f"Beat the {describe(lp[1]).split(':')[0]} with {len(lp[1])} card{'s' if len(lp[1]) > 1 else ''}, or pass."
+                t["note"] = f"Beat the {self.D(lp[1]).split(':')[0]} with {len(lp[1])} card{'s' if len(lp[1]) > 1 else ''}, or pass."
             else:
                 t["note"] = "Your lead: any single, pair, three or five-card hand" + (f" with the {show([self.opening])}." if self.first else ".")
             t["turnText"] = "🐉 Your play"
