@@ -120,7 +120,7 @@ function patienceMove(key, P, d, S, n, w) {
 
 // the 🃏 card-table games (static/cardtable.js) share one driver: pick cards and confirm, tap a playable
 // card (and a choice if one appears), or press one of the buttons
-const CT_GAMES = new Set(['cheat', 'president', 'spoons', 'kowhist', 'spades', 'ohhell', 'euchre', 'gops', 'scopa', 'gin', 'germanwhist', 'fantan', 'palace', 'ratscrew', 'nertz', 'whist', 'briscola', 'blitz', 'ranter', 'bigtwo', 'gofish', 'oldmaid', 'cassino', 'spite', 'war', 'ninetynine', 'sixtysix']);
+const CT_GAMES = new Set(['cheat', 'president', 'spoons', 'kowhist', 'spades', 'ohhell', 'euchre', 'gops', 'scopa', 'gin', 'germanwhist', 'fantan', 'palace', 'ratscrew', 'nertz', 'whist', 'briscola', 'blitz', 'ranter', 'bigtwo', 'gofish', 'oldmaid', 'cassino', 'spite', 'war', 'ninetynine', 'sixtysix', 'pitch', 'ecarte', 'fivehundred']);
 function ctMove(game, d, S) {
   const t = S[game], root = d.querySelector(`.ct-${game}`);
   if (!root) return;
