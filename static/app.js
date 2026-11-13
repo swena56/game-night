@@ -9,11 +9,11 @@ const $ = (s) => document.querySelector(s);
 const REACTIONS = ['😂', '😱', '🤔', '😏', '🔥', '👀', '🙈', '🎉'];
 const QUICK_CHAT = ['gg', 'nice! 👏', 'hmm… 🤔', 'your turn 😴', 'rematch? 🔁', 'no way 😱'];
 const SOLO_GAMES = [['unmask', '🎭 Unmask'], ['oddone', '🕵️ Odd One Out'], ['relay', '🖍️ Scribble Relay'], ['trivia', '🧠 Trivia Rush'], ['fibfinder', '🤥 Fib Finder'], ['ladder', '🧗 Word Ladder'], ['doodle', '✏️ Doodle Dash'], ['lucky', '🎡 Lucky Letters'], ['wordsmith', '🔤 Wordsmith'], ['wordbomb', '💣 Word Bomb'], ['gridhunt', '🔎 Grid Hunt'], ['wordsearch', '🔍 Word Search'], ['safecracker', '🔐 Safecracker'], ['chess', '♟️ Chess'], ['checkers', '⛀ Checkers'], ['backgammon', '🔺 Backgammon'], ['oware', '🌰 Oware'], ['reversi', '⚪ Reversi'], ['hedgerow', '🌿 Hedgerow'],
-  ['go', '⚫ Go'], ['lastcard', '🃏 Last Card'], ['holdem', "♠️ Texas Hold'em"], ['cribbage', '📍 Cribbage'], ['hearts', '♥️ Hearts'], ['speed', '⚡ Speed'], ['twentyone', '♦️ Blackjack'], ['rummy', '🀄 Contract Rummy'], ['klondike', '♣️ Solitaire'], ['freecell', '🗃️ FreeCell'], ['cheat', '🙊 Cheat'], ['seabattle', '🚢 Sea Battle'], ['dropfour', '🔴 Drop Four'],
+  ['go', '⚫ Go'], ['lastcard', '🃏 Last Card'], ['holdem', "♠️ Texas Hold'em"], ['cribbage', '📍 Cribbage'], ['hearts', '♥️ Hearts'], ['speed', '⚡ Speed'], ['twentyone', '♦️ Blackjack'], ['rummy', '🀄 Contract Rummy'], ['klondike', '♣️ Solitaire'], ['freecell', '🗃️ FreeCell'], ['cheat', '🙊 Cheat'], ['president', '👑 President'], ['seabattle', '🚢 Sea Battle'], ['dropfour', '🔴 Drop Four'],
   ['boxes', '🔳 Dots & Boxes'], ['tictactoe', '❌ Tic-Tac-Toe'], ['ultimate', '#️⃣ Ultimate Tic-Tac-Toe'], ['morris', "⚫ Nine Men's Morris"], ['sudoku', '🔢 Sudoku'], ['heist', '🦹 Night Heist'], ['lantern', '🏮 Lantern Market'], ['moonshot', '🚀 Moon Shot'], ['yacht', '🎲 Yacht'], ['farkle', '🎯 Farkle'], ['qork', '🥤 Qork'], ['shipcrew', '🚢 Ship, Captain & Crew'], ['shutbox', '📦 Shut the Box'], ['liars', '🤥 Liar\'s Dice'], ['spire', '🗼 Spire Siege'], ['prism', '💎 Prism Pop'], ['hockey', '🏒 Air Hockey'], ['billiards', '🎱 Billiards'], ['riders', '🏍️ Light Riders'], ['paintblast', '🎨 Paint Blast'], ['sumo', '🪐 Sumo Saucers'], ['putt', '⛳ Putt Party'], ['rally', '🛸 Hover Rally'], ['cannon', '💥 Cannon Hills']];
 const CATEGORIES = [['party', '🎉 Party'], ['action', '⚡ Action'], ['strategy', '♟️ Strategy'], ['classic', '✏️ Quick classics'],
   ['cards', '🃏 Cards'], ['dice', '🎲 Dice & casino'], ['words', '🔤 Words & puzzles']];
-const SOLO_BOTS = { cheat: 3, wordbomb: 2, cannon: 2, rally: 3, hearts: 3, twentyone: 2, rummy: 2, sumo: 3, paintblast: 3, gridhunt: 2, safecracker: 2, oddone: 3, relay: 3, fibfinder: 3, trivia: 3, ladder: 2, liars: 3, riders: 3, doodle: 2, heist: 3, lantern: 3, moonshot: 2, lastcard: 2, holdem: 3, spire: 2, prism: 2, lucky: 2, qork: 3 };
+const SOLO_BOTS = { president: 3, cheat: 3, wordbomb: 2, cannon: 2, rally: 3, hearts: 3, twentyone: 2, rummy: 2, sumo: 3, paintblast: 3, gridhunt: 2, safecracker: 2, oddone: 3, relay: 3, fibfinder: 3, trivia: 3, ladder: 2, liars: 3, riders: 3, doodle: 2, heist: 3, lantern: 3, moonshot: 2, lastcard: 2, holdem: 3, spire: 2, prism: 2, lucky: 2, qork: 3 };
 const MODE_DESC = {
   duel: 'Duel: each of you hides a face. Questions are answered automatically and truthfully. A wrong accusation loses.',
   manhunt: 'Manhunt: everyone hunts the same hidden culprit. Your question is public, but only you hear the answer. Guess wrong and you become a ghost 👻.',
@@ -484,7 +484,7 @@ addEventListener('beforeunload', (e) => {
 });
 // ---------- game screens load on demand: the page opens with the shell only, and each game's script arrives
 // the first time that game is picked or shown (it used to be 50+ scripts, ~1 MB, before the first screen).
-const UI_EXTRA = { cheat: ['cardtable'], billiards: ['billiards3d'], chess: ['chess3d'] };  // helpers a game's screen needs first
+const UI_EXTRA = { president: ['cardtable'], cheat: ['cardtable'], billiards: ['billiards3d'], chess: ['chess3d'] };  // helpers a game's screen needs first
 const uiLoads = {};
 function needUI(id) {
   if (!id || UI[id]) return Promise.resolve();

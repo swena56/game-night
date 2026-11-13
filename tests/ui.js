@@ -120,7 +120,7 @@ function patienceMove(key, P, d, S, n, w) {
 
 // the 🃏 card-table games (static/cardtable.js) share one driver: pick cards and confirm, tap a playable
 // card (and a choice if one appears), or press one of the buttons
-const CT_GAMES = new Set(['cheat']);
+const CT_GAMES = new Set(['cheat', 'president']);
 function ctMove(game, d, S) {
   const t = S[game], root = d.querySelector(`.ct-${game}`);
   if (!root) return;
