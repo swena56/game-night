@@ -120,7 +120,7 @@ function patienceMove(key, P, d, S, n, w) {
 
 // the 🃏 card-table games (static/cardtable.js) share one driver: pick cards and confirm, tap a playable
 // card (and a choice if one appears), or press one of the buttons
-const CT_GAMES = new Set(['cheat', 'president', 'spoons', 'kowhist', 'spades', 'ohhell', 'euchre', 'gops', 'scopa', 'gin', 'germanwhist', 'fantan', 'palace', 'ratscrew', 'nertz', 'whist', 'briscola', 'blitz', 'ranter', 'bigtwo', 'gofish', 'oldmaid', 'cassino', 'spite', 'war', 'ninetynine', 'sixtysix', 'pitch', 'ecarte', 'fivehundred']);
+const CT_GAMES = new Set(['cheat', 'president', 'spoons', 'kowhist', 'spades', 'ohhell', 'euchre', 'gops', 'scopa', 'gin', 'germanwhist', 'fantan', 'palace', 'ratscrew', 'nertz', 'whist', 'briscola', 'blitz', 'ranter', 'bigtwo', 'gofish', 'oldmaid', 'cassino', 'spite', 'war', 'ninetynine', 'sixtysix', 'pitch', 'ecarte', 'fivehundred', 'canasta']);
 function ctMove(game, d, S) {
   const t = S[game], root = d.querySelector(`.ct-${game}`);
   if (!root) return;
@@ -131,8 +131,8 @@ function ctMove(game, d, S) {
   if (t.pick) {
     const n = Math.max(t.pick.min ?? 1, 1 + Math.floor(Math.random() * Math.min(2, t.pick.max)));
     for (let k = 0; k < n; k++) { const c = [...root.querySelectorAll('.ct-hand .card-btn:not(:disabled):not(.picked), .ct-rows .card-btn:not(:disabled):not(.picked)')]; if (c.length) click(pick(c)); }
-    const go = root.querySelector('.ct-btns button.primary');
-    if (go && !go.disabled) return click(go);
+    const go = [...root.querySelectorAll('.ct-btns button.primary:not(:disabled)')];
+    if (go.length) return click(pick(go));
   }
   if (t.moves?.length && cards.length && (!btns.length || Math.random() < (game === 'spoons' ? 0.97 : 0.7))) {
     click(pick(cards));

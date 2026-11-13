@@ -184,6 +184,13 @@ var CardTable = window.CardTable || (() => {   // var: several games load this h
         b.disabled = picked.length < (pick.min ?? 1) || picked.length > pick.max;
         b.onclick = () => { const cards = picked.slice(); picked = []; ctx.sfx('card'); send({ type: pick.act, cards, ...(pick.extra || {}) }); };
         R.btns.append(b);
+        // the same picked cards can go to another action (Canasta: meld them, or discard one)
+        for (const alt of pick.alts || []) {
+          const a = ctx.el('button', 'primary big alt', alt.label);
+          a.disabled = picked.length < (alt.min ?? 1) || picked.length > (alt.max ?? pick.max);
+          a.onclick = () => { const cards = picked.slice(); picked = []; ctx.sfx('card'); send({ type: alt.act, cards, ...(alt.extra || {}) }); };
+          R.btns.append(a);
+        }
       }
       for (const btn of t.buttons || []) {
         const b = ctx.el('button', (btn.kind || '') + (btn.big ? ' big' : ''), btn.label);
