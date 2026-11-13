@@ -198,6 +198,11 @@ class CardGame(Game):
         t = {"seats": self.seats, "me": i, "n": self.n, "stage": self.stage,
              "mine": i is not None and i in self.waiting, "waiting": sorted(self.waiting)}
         t.update(self.table(p, i))
+        if self.room.turn is None and "turnText" not in t and self.room.phase == "playing":
+            if self.waiting:
+                t["turnText"] = "⏳ Waiting for " + ", ".join(self.nm(k) for k in sorted(self.waiting))
+            else:
+                t["turnText"] = "…"
         return {self.id: t}
 
     def win_by_score(self, scores, high=True, what="points"):

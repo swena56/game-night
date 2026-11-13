@@ -120,19 +120,21 @@ function patienceMove(key, P, d, S, n, w) {
 
 // the 🃏 card-table games (static/cardtable.js) share one driver: pick cards and confirm, tap a playable
 // card (and a choice if one appears), or press one of the buttons
-const CT_GAMES = new Set(['cheat', 'president']);
+const CT_GAMES = new Set(['cheat', 'president', 'spoons']);
 function ctMove(game, d, S) {
   const t = S[game], root = d.querySelector(`.ct-${game}`);
   if (!root) return;
   const cards = [...root.querySelectorAll('.ct-hand .card-btn:not(:disabled), .ct-rows .card-btn:not(:disabled)')];
   const btns = [...root.querySelectorAll('.ct-btns button:not(:disabled)')];
+  const slap = root.querySelector('.ct-btns button.slap');
+  if (slap) return click(slap);
   if (t.pick) {
     const n = Math.max(t.pick.min ?? 1, 1 + Math.floor(Math.random() * Math.min(2, t.pick.max)));
     for (let k = 0; k < n; k++) { const c = [...root.querySelectorAll('.ct-hand .card-btn:not(:disabled):not(.picked), .ct-rows .card-btn:not(:disabled):not(.picked)')]; if (c.length) click(pick(c)); }
     const go = root.querySelector('.ct-btns button.primary');
     if (go && !go.disabled) return click(go);
   }
-  if (t.moves?.length && cards.length && (!btns.length || Math.random() < 0.7)) {
+  if (t.moves?.length && cards.length && (!btns.length || Math.random() < (game === 'spoons' ? 0.97 : 0.7))) {
     click(pick(cards));
     const ch = [...root.querySelectorAll('.ct-choice button.primary')];
     if (ch.length) click(pick(ch));
