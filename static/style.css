@@ -2879,6 +2879,31 @@ body.focus .sd { --sdw: min(100%, 640px, max(260px, calc(var(--room) - 175px)));
 body.kb-open .wb-table { width: min(100%, 300px, calc(100vh - 200px)); }
 body.kb-open .wb-alpha, body.kb-open .wb-head { display: none; }
 
+/* whisker run: the maze fills the room above the arrow pad; scores float over it */
+.wk { --padH: 0px; position: relative; margin: 0 auto; display: flex; flex-direction: column; align-items: center; gap: 6px;
+  overscroll-behavior: none; user-select: none; -webkit-user-select: none; touch-action: none; }
+.wk:has(.wk-pad:not([hidden])) { --padH: 128px; }
+.wk-stage { position: relative; width: 100%; height: max(220px, calc(var(--room) - 8px - var(--padH))); border-radius: var(--radius); overflow: hidden;
+  background: #16100a; box-shadow: inset 0 0 0 1px #6cc07033, 0 12px 30px #000a; touch-action: none; }
+.wk-stage > canvas { display: block; width: 100%; height: 100%; }
+.wk-hud { position: absolute; top: 6px; left: 6px; right: 6px; z-index: 2; display: flex; flex-wrap: wrap; gap: 4px; pointer-events: none; }
+.wk-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; background: #000b; color: #fff; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.wk-chip.me { box-shadow: 0 0 0 2px #ffd166cc; }
+.wk-chip.out { opacity: .45; }
+.wk-time { background: #3a2a1ccc; }
+.wk-time.low { background: #b33a3acc; animation: wkLow .5s ease-in-out infinite alternate; }
+@keyframes wkLow { to { transform: scale(1.08); } }
+.wk-banner { position: absolute; left: 0; right: 0; top: 36%; z-index: 2; text-align: center; pointer-events: none; color: #fff;
+  font-family: var(--font-display); font-weight: 800; font-size: clamp(30px, 10vw, 56px); text-shadow: 0 3px 12px #000, 0 0 2px #000; }
+.wk-banner small { display: block; margin-top: 4px; font-size: clamp(14px, 4vw, 19px); font-weight: 700; }
+.wk-pad { display: grid; grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(3, 38px); gap: 4px; touch-action: none; }
+.wk-pad[hidden] { display: none; }
+.wk-pad button { padding: 0; font-size: 18px; background: #3a2a1c; color: #ffd166; border: 1px solid #6cc07055; border-radius: 10px; }
+.wk-pad button:active { background: #5a4029; transform: scale(.94); }
+.wk-me { display: flex; align-items: center; justify-content: center; font-size: 22px; }
+.wk-row.out { opacity: .5; }
+.wk-row .grow { flex: 1; }
+
 /* word search */
 .wf { --wfw: min(100%, 560px, max(260px, calc(var(--room) - 190px))); width: 100%; max-width: 760px; margin: 0 auto; padding: 8px 6px 4px;
   user-select: none; -webkit-user-select: none; }
