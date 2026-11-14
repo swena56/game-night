@@ -13,6 +13,7 @@ from .fibfinder import FibFinder
 from .freecell import FreeCell
 from .sudoku import Sudoku
 from .wordsearch import WordSearch
+from .garden import Garden
 from .go import Go
 from .hearts import Hearts
 from .piquet import Piquet
@@ -57,6 +58,7 @@ from .president import President
 from .cheat import Cheat
 from .gridhunt import GridHunt
 from .hedgerow import Hedgerow
+from .realm import Realm
 from .heist import Heist
 from .hockey import Hockey
 from .klondike import Klondike
@@ -97,7 +99,7 @@ from .wordbomb import WordBomb
 from .whisker import Whisker
 
 # Order here is the order of the lobby's game picker.
-GAMES = {g.id: g for g in (Unmask, OddOne, Relay, Trivia, Doodle, Lucky, Spire, Prism, Riders, Whisker, PaintBlast, Sumo, Putt, Rally, Hockey, Billiards, Cannon, Wordsmith, WordBomb, GridHunt, WordSearch, Safecracker, FibFinder, Ladder, Chess, Checkers, Backgammon, Go, Oware, Reversi, Hedgerow, LastCard, Lantern, Holdem, Cribbage, Hearts, Speed, Rummy, Klondike, FreeCell, Cheat, President, Spoons, KnockOutWhist, Spades, OhHell, Euchre, Gops, Scopa, Gin, GermanWhist, FanTan, Palace, Ratscrew, Nertz, Whist, Briscola, Blitz, Ranter, BigTwo, GoFish, OldMaid, Cassino, Spite, War, NinetyNine, SixtySix, Pitch, Ecarte, FiveHundred, Canasta, Eleusis, Mao, Belote, Pinochle, Bezique, Bridge, Truc, Skat, Piquet, SeaBattle,
+GAMES = {g.id: g for g in (Unmask, OddOne, Relay, Trivia, Doodle, Lucky, Spire, Prism, Riders, Whisker, PaintBlast, Sumo, Putt, Rally, Hockey, Billiards, Cannon, Wordsmith, WordBomb, GridHunt, WordSearch, Garden, Safecracker, FibFinder, Ladder, Chess, Checkers, Backgammon, Go, Oware, Reversi, Hedgerow, Realm, LastCard, Lantern, Holdem, Cribbage, Hearts, Speed, Rummy, Klondike, FreeCell, Cheat, President, Spoons, KnockOutWhist, Spades, OhHell, Euchre, Gops, Scopa, Gin, GermanWhist, FanTan, Palace, Ratscrew, Nertz, Whist, Briscola, Blitz, Ranter, BigTwo, GoFish, OldMaid, Cassino, Spite, War, NinetyNine, SixtySix, Pitch, Ecarte, FiveHundred, Canasta, Eleusis, Mao, Belote, Pinochle, Bezique, Bridge, Truc, Skat, Piquet, SeaBattle,
                            DropFour, Boxes, TicTacToe, Ultimate, Morris, Sudoku, Heist, MoonShot, Yacht, Farkle, Qork, ShipCrew, ShutBox, LiarsDice, TwentyOne)}
 GAME_INFO = [g.info() for g in GAMES.values()]
 

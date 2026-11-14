@@ -336,6 +336,34 @@ const MOVES = {
   oware(d) { click(pick([...d.querySelectorAll('.ow-pit.can:not(:disabled)')])); },
   reversi(d) { click(pick([...d.querySelectorAll('.rv-cell.can')])); },
   ultimate(d) { click(pick([...d.querySelectorAll('.ut-cell.can')])); },
+  realm(d, S, n) {  // draft all onto one land; attack (blitz) from a land with a rival neighbour; move in; end the turn
+    const m = S.realm, btns = [...d.querySelectorAll('#rwBar button:not(:disabled)')];
+    const b = (t) => btns.find((x) => x.textContent.includes(t));
+    if (n % 6 === 2) {  // follow the 💡 advisor now and then
+      const tog = d.querySelector('#rwBar .rw-advtog');
+      if (tog && !tog.classList.contains('on')) click(tog);
+      const go = d.querySelector('#rwBar .rw-advdo');
+      if (go) return click(go);
+    }
+    if (m.phase === 'claim') return click(pick([...d.querySelectorAll('#rwMap .rw-node.can')]));
+    if (m.phase === 'draft') {
+      if (b('Trade')) return click(b('Trade'));
+      if (n % 7 === 3 && b('Fort')) { click(b('Fort')); return click(pick([...d.querySelectorAll('#rwMap .rw-node.can')])); }
+      if (n % 9 === 5 && b('Undo')) return click(b('Undo'));
+      click(b('All'));
+      return click(pick([...d.querySelectorAll('#rwMap .rw-node.can')]));
+    }
+    if (m.phase === 'occupy') return click(b('Move in'));
+    if (m.phase === 'fortify' || n % 5 === 4) return click(b('End turn'));
+    if (b('Blitz')) return click(b('Blitz'));
+    for (const g of d.querySelectorAll('#rwMap .rw-node.mine.can')) {
+      click(g);
+      const t = d.querySelector('#rwMap .rw-node.target');
+      if (t) return click(t);
+      click(g);  // no rival next to it: let go and try the next
+    }
+    click(b('End turn'));
+  },
   morris(d, S, n, w) {  // place, or pick a man then a point; take a man after a mill
     const tap = (el) => el.dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
     for (let k = 0; k < 3; k++) {
@@ -411,6 +439,18 @@ const MOVES = {
       while (k < word.length && v.grid[r + dr * k]?.[c + dc * k] === word[k]) k++;
       if (k === word.length) { tap(cells[r * N + c]); tap(cells[(r + dr * (k - 1)) * N + c + dc * (k - 1)]); return; }
     }
+  },
+  garden(d, S, n, w) {
+    // The driver can't see the answers: it spells random 3–4 letter tries from the ring (plenty are bonus
+    // words, which earn drops), and spends drops on hints, which fill the garden in the end.
+    const v = S.garden;
+    if (v.drops > 0 && n % 3 === 2 && !v.done) return click(d.querySelector('#gdHint'));
+    if (!v.drops && n % 25 === 24) return click(d.querySelector('#gdBank'));   // out of hints: rest
+    const tap = (el) => { for (const t of ['pointerdown', 'pointerup']) el.dispatchEvent(new w.MouseEvent(t, { bubbles: true, cancelable: true, button: 0 })); };
+    const ls = [...d.querySelectorAll('#gdRing .gd-l')].sort(() => Math.random() - 0.5).slice(0, 3 + (n % 2));
+    click(d.querySelector('#gdClear'));
+    for (const el of ls) tap(el);
+    click(d.querySelector('#gdPlant'));
   },
   ladder(d, S, n, w) {
     // Mostly hints (always a legal step); sometimes a typed word (often rejected) or a step back.
@@ -578,7 +618,7 @@ async function playSolo(game, seconds = 60) {
       || (game === 'relay' && (s.relay.stage === 'play' ? !s.relay.sent : s.relay.myVote == null)) || (game === 'seabattle' && s.sea.stage === 'placing' && !s.sea.ready[s.me.id])
       || (game === 'spire' && s.spire.playing && s.spire.startIn <= 0) || (game === 'prism' && s.prism.playing && s.prism.startIn <= 0) || (game === 'safecracker' && ['crack', 'set'].includes(s.safecracker.stage) && !s.safecracker.mine) || (game === 'gridhunt' && s.gridhunt.stage === 'hunt')
       || (game === 'doodle' && s.doodle.stage === 'draw' && !s.doodle.solvers.some(([p]) => p === s.me.id)) || game === 'hockey' || (game === 'riders' && s.riders.stage === 'ride') || (game === 'whisker' && s.whisker.stage === 'play') || (game === 'paintblast' && s.paintblast.st === 'play') || (game === 'sumo' && s.sumo.stage === 'play') || (game === 'cannon' && s.cannon.volley && !s.cannon.between && s.cannon.me != null && s.cannon.tanks[s.cannon.me]?.[2] > 0 && !s.cannon.locked.includes(s.cannon.me)) || (game === 'rally' && s.rally.stage === 'race') || (game === 'hearts' && s.hearts.stage === 'pass' && !s.hearts.myPass) || (game === 'speed' && s.speed.stage === 'play') || (game === 'trivia' && s.trivia.stage === 'ask' && s.trivia.mine == null) || (game === 'ladder' && s.ladder.stage === 'climb' && !s.ladder.done)
-      || ((game === 'freecell' || game === 'klondike' || game === 'sudoku' || game === 'wordsearch') && s[game].stage === 'play' && s[game].playing && !s[game].done && !s[game].banked)
+      || ((game === 'freecell' || game === 'klondike' || game === 'sudoku' || game === 'wordsearch' || game === 'garden') && s[game].stage === 'play' && s[game].playing && !s[game].done && !s[game].banked)
       || (game === 'qork' && (s.qork.stage === 'snap' ? !(s.me.id in s.qork.acted) : s.qork.cupper === s.me.id && ['wait', 'dice'].includes(s.qork.stage)))
       || (CT_GAMES.has(game) && s[game]?.mine)
       || (game === 'twentyone' && s.twentyone.stage === 'bet' && !s.twentyone.bets[s.twentyone.me] && s.twentyone.chips[s.twentyone.me] > 0);
@@ -711,7 +751,7 @@ async function feedbackTour() {
   const lt = await lobbyTour();
   console.log('LOBBY', JSON.stringify(lt));
   for (const g of games.length ? games : Object.keys(MOVES)) {
-    const r = await playSolo(g, CT_GAMES.has(g) ? 240 : g === 'wordsmith' ? 40 : g === 'spire' ? 25 : g === 'prism' ? 110 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'cribbage' ? 300 : g === 'yacht' ? 200 : g === 'farkle' ? 240 : g === 'qork' ? 200 : g === 'backgammon' ? 300 : g === 'gridhunt' ? 260 : g === 'paintblast' ? 230 : g === 'sumo' ? 200 : g === 'putt' ? 300 : g === 'cannon' ? 240 : g === 'rally' ? 150 : g === 'whisker' ? 120 : g === 'hearts' || g === 'rummy' ? 300 : g === 'twentyone' ? 200 : g === 'speed' ? 150 : g === 'trivia' ? 200 : g === 'ladder' ? 330 : g === 'freecell' || g === 'klondike' ? 300 : g === 'sudoku' ? 120 : g === 'wordsearch' ? 150 : g === 'wordbomb' ? 200 : g === 'liars' ? 300 : g === 'shipcrew' || g === 'shutbox' ? 200 : g === 'reversi' || g === 'hedgerow' || g === 'ultimate' || g === 'oware' || g === 'morris' ? 260 : g === 'safecracker' ? 200 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
+    const r = await playSolo(g, CT_GAMES.has(g) ? 240 : g === 'wordsmith' ? 40 : g === 'spire' ? 25 : g === 'prism' ? 110 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'cribbage' ? 300 : g === 'yacht' ? 200 : g === 'farkle' ? 240 : g === 'qork' ? 200 : g === 'backgammon' ? 300 : g === 'gridhunt' ? 260 : g === 'paintblast' ? 230 : g === 'sumo' ? 200 : g === 'putt' ? 300 : g === 'cannon' ? 240 : g === 'rally' ? 150 : g === 'whisker' ? 120 : g === 'hearts' || g === 'rummy' ? 300 : g === 'twentyone' ? 200 : g === 'speed' ? 150 : g === 'trivia' ? 200 : g === 'ladder' ? 330 : g === 'freecell' || g === 'klondike' ? 300 : g === 'sudoku' ? 120 : g === 'wordsearch' ? 150 : g === 'garden' ? 200 : g === 'wordbomb' ? 200 : g === 'liars' ? 300 : g === 'shipcrew' || g === 'shutbox' ? 200 : g === 'reversi' || g === 'hedgerow' || g === 'ultimate' || g === 'oware' || g === 'morris' || g === 'realm' ? 260 : g === 'safecracker' ? 200 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
     console.log(`\n== ${g}: phase=${r.phase} moves=${r.moves} dialogs=${r.dialogs || 0} screen="${r.screen}" ${r.banner ? `banner="${r.banner}"` : ''}`);
     console.log(`   help: ${r.help} | log ticker: "${r.ticker}"`);
     if (r.replay) console.log(`   replay: ${r.replay}`);
