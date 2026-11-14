@@ -21,6 +21,11 @@ class PuzzleRace(Game):
     replayable = False   # many small moves; the log keeps the story
     noun = "puzzle"
     BOT = {"easy": 9.0, "normal": 6.0, "hard": 3.5}   # seconds per bot move (± 30%)
+    first_bonus = FIRST   # 0 for games with no race to finish first
+    NO_CLOCK = 6 * 3600   # what a "secs" setting of 0 (no clock) means
+
+    def round_secs(self):
+        return self.s["secs"] or self.NO_CLOCK
 
     # -- for subclasses
     def new_puzzle(self, rng):
@@ -111,7 +116,7 @@ class PuzzleRace(Game):
         self.plans = []
         self.stage = "play"
         self.t0 = self.now()
-        self.end = self.t0 + self.s["secs"]
+        self.end = self.t0 + self.round_secs()
         for p in self.live():
             if p.bot:
                 self.plan(p)
@@ -197,7 +202,7 @@ class PuzzleRace(Game):
             return
         secs = self.now() - self.t0
         self.done[p.id] = secs
-        first = len(self.done) == 1 and not self.solo
+        first = len(self.done) == 1 and not self.solo and self.first_bonus
         p.g.cleared += 1
         p.g.secs += secs
         self.plans = [x for x in self.plans if x[1] != p.id]
@@ -231,9 +236,9 @@ class PuzzleRace(Game):
         for p in self.live():
             pts = self.points(p) if p.id in self.st else 0
             if p.id in self.done:
-                pts += CLEAR + (FIRST if p.id == first else 0)
+                pts += CLEAR + (self.first_bonus if p.id == first else 0)
             else:
-                p.g.secs += self.s["secs"]
+                p.g.secs += self.round_secs()
             pts = max(0, pts)
             if not self.scored_live():
                 p.g.score += pts
@@ -291,7 +296,7 @@ class PuzzleRace(Game):
             "stage": self.stage, "round": self.round, "rounds": self.s["rounds"],
             "done": p.id in self.done, "banked": p.id in self.banked,
             "playing": p.id in self.ids and not p.eliminated,
-            "left": max(0.0, self.end - self.now()), "secs": self.s["secs"] if self.stage == "play" else REVEAL_SECS,
+            "left": max(0.0, self.end - self.now()), "secs": self.round_secs() if self.stage == "play" else REVEAL_SECS,
             "rivals": [{"id": q.id, "prog": self.progress(q.id) if q.id in self.st else [0, 1],
                         "done": round(self.done[q.id]) if q.id in self.done else None, "banked": q.id in self.banked,
                         "score": q.g.score}

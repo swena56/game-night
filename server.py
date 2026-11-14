@@ -28,7 +28,7 @@ from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
 
 from games import GAME_INFO, GAMES, GameError
-from games import wordbomb
+from games import garden, wordbomb
 from games.wordsmith import warm_up, words
 
 PORT = int(os.environ.get("PORT", 8000))
@@ -176,6 +176,7 @@ def settle_gc():
     pause fell from ~24 ms to ~13 ms; every ms counts against the 16.7 ms frame clock)."""
     words()
     wordbomb.prepare()   # 💣 Word Bomb's chunk counts: also long-lived
+    garden.bases()       # 🌻 Word Garden's letter rings
     gc.collect()
     gc.freeze()
 
