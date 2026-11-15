@@ -1,0 +1,6 @@
+Tesseract.js OCR, used only by the 🔵 Bingo tools card scanner (static/games/bingoscan.js), loaded on demand.
+  tesseract.min.js, worker.min.js        tesseract.js 5.1.1 (npm), Apache-2.0 (LICENSE)
+  tesseract-core-simd-lstm.wasm.js       tesseract.js-core 5.1.1 (npm), Apache-2.0
+  eng.traineddata.gz                     @tesseract.js-data/eng 1.0.0, 4.0.0_best_int, Apache-2.0
+Only the SIMD LSTM core is vendored (every current browser has WASM SIMD); without it the scanner says so and
+the card is typed in instead.

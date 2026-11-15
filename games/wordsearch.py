@@ -130,14 +130,14 @@ class WordSearch(PuzzleRace):
         "🏴 Grab: one shared grid, and each word belongs to whoever circles it first. 🏁 Race: everyone has their own copy.",
         "A word scores a point per letter. 💡 shows where a word starts, for 2 points.",
         "In 🏁 Race, finding every word scores +10, and +5 more for being first. Most points after the last grid wins.",
-        "Alone, find every word before the clock runs out to win.",
+        "Alone, find every word before the clock runs out to win (or just find them all, with 🌿 No clock).",
     ]
     settings_schema = {
         "mode": ("Mode", [("grab", "🏴 Grab: first to find a word takes it"), ("race", "🏁 Race: everyone finds every word")], "grab"),
         "size": ("Grid", [(10, "10×10"), (8, "8×8"), (12, "12×12")], 10),
         "dirs": ("Words run", [("normal", "Across, down and diagonally"), ("easy", "Only across and down"), ("hard", "Any way, backwards too")], "normal"),
         "rounds": ("Grids", [(3, "3"), (1, "1"), (5, "5")], 3),
-        "secs": ("Time per grid", [(180, "3 min"), (120, "2 min"), (300, "5 min")], 180),
+        "secs": ("Time per grid", [(180, "3 min"), (120, "2 min"), (300, "5 min"), (0, "🌿 No clock")], 180),
         "daily": ("Puzzles", [(False, "🎲 Random"), (True, "📅 Today's grids (the same everywhere)")], False),
     }
     badges = {**PuzzleRace.badges, "sweep": ("🧹", "Clean sweep", "Grab more than half the words of a shared grid")}

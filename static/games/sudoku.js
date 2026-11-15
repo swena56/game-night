@@ -98,7 +98,8 @@ UI.sudoku = (() => {
   function tick() {
     if (!v || !$('sdBar')) return;
     const left = Math.max(0, v.left - (performance.now() - receivedAt) / 1000);
-    const playing = S.phase === 'playing' && v.stage === 'play';
+    const playing = S.phase === 'playing' && v.stage === 'play' && v.clock !== false;
+    $('sdBar').parentElement.hidden = S.phase === 'playing' && v.stage === 'play' && v.clock === false;
     $('sdBar').style.width = `${playing ? (left / v.secs) * 100 : 0}%`;
     $('sdBar').parentElement.classList.toggle('last', playing && left < 30);
     const m = Math.floor(left / 60), s = Math.floor(left % 60);
@@ -219,6 +220,8 @@ UI.sudoku = (() => {
     $('sdPencil').classList.toggle('pt-glow', pencil);
     $('sdPencil').setAttribute('aria-pressed', String(pencil));
     $('sdPencil').disabled = $('sdHint').disabled = $('sdBank').disabled = !can;
+    if (v.hintsLeft === 0) $('sdHint').disabled = true;
+    $('sdHint').querySelector('small').textContent = v.hintsLeft == null ? 'Hint' : `Hint (${v.hintsLeft})`;
     $('sdErase').disabled = !can || !(sel >= 0 && notes[sel]);
     $('sdRoot').classList.toggle('off', !can);
 

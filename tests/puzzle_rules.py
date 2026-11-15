@@ -83,6 +83,27 @@ G.bank(room.players[[p for p in room.players if p != ann.id][0]])
 check("sudoku: score = right digits − slips − hints + finish + first", ann.g.score == pts, f"{ann.g.score} vs {pts}")
 check("sudoku: the solution shows after the puzzle", G.view(ann)["sudoku"]["sol"] == G.sol)
 
+# -- sudoku hint caps and no clock
+room, ann = room_for("sudoku", bots=("easy",), hints=1, secs=0)
+G = room.game
+v = G.view(ann)["sudoku"]
+check("sudoku no clock: the view says so, and the round runs for hours", v["clock"] is False and v["left"] > 3600)
+check("sudoku hints=1: the view counts it", v["hintsLeft"] == 1)
+room.act(ann, {"type": "hint"})
+check("sudoku hints=1: one hint taken", G.view(ann)["sudoku"]["hintsLeft"] == 0)
+refused("sudoku hints=1: a second hint is refused", lambda: room.act(ann, {"type": "hint"}))
+room, ann = room_for("sudoku", bots=("easy",), hints=0)
+refused("sudoku hints off: no hint at all", lambda: room.act(ann, {"type": "hint"}))
+room, ann = room_for("sudoku", bots=("easy",), hints=-1)
+for _ in range(5):
+    room.act(ann, {"type": "hint"})
+check("sudoku unlimited hints", room.game.view(ann)["sudoku"]["hintsLeft"] is None and room.game.st[ann.id]["hints"] == 5)
+room, ann = room_for("sudoku")
+v = room.game.view(ann)["sudoku"]
+check("sudoku default: 3 hints and a clock", v["hintsLeft"] == 3 and v["clock"] is True, str((v["hintsLeft"], v["clock"])))
+room, ann = room_for("wordsearch", secs=0)
+check("word search no clock", room.game.view(ann)["wordsearch"]["clock"] is False)
+
 # -- word search grids
 for i in range(60):
     size = (8, 10, 12)[i % 3]

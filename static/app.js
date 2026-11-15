@@ -8,12 +8,12 @@
 const $ = (s) => document.querySelector(s);
 const REACTIONS = ['😂', '😱', '🤔', '😏', '🔥', '👀', '🙈', '🎉'];
 const QUICK_CHAT = ['gg', 'nice! 👏', 'hmm… 🤔', 'your turn 😴', 'rematch? 🔁', 'no way 😱'];
-const SOLO_GAMES = [['unmask', '🎭 Unmask'], ['oddone', '🕵️ Odd One Out'], ['relay', '🖍️ Scribble Relay'], ['trivia', '🧠 Trivia Rush'], ['fibfinder', '🤥 Fib Finder'], ['ladder', '🧗 Word Ladder'], ['doodle', '✏️ Doodle Dash'], ['lucky', '🎡 Lucky Letters'], ['wordsmith', '🔤 Wordsmith'], ['wordbomb', '💣 Word Bomb'], ['gridhunt', '🔎 Grid Hunt'], ['wordsearch', '🔍 Word Search'], ['garden', '🌻 Word Garden'], ['safecracker', '🔐 Safecracker'], ['chess', '♟️ Chess'], ['checkers', '⛀ Checkers'], ['backgammon', '🔺 Backgammon'], ['oware', '🌰 Oware'], ['reversi', '⚪ Reversi'], ['hedgerow', '🌿 Hedgerow'], ['realm', '⚔️ Realm Wars'],
+const SOLO_GAMES = [['unmask', '🎭 Unmask'], ['oddone', '🕵️ Odd One Out'], ['relay', '🖍️ Scribble Relay'], ['trivia', '🧠 Trivia Rush'], ['fibfinder', '🤥 Fib Finder'], ['ladder', '🧗 Word Ladder'], ['doodle', '✏️ Doodle Dash'], ['bingo', '🔵 Bingo Bash'], ['lucky', '🎡 Lucky Letters'], ['wordsmith', '🔤 Wordsmith'], ['wordbomb', '💣 Word Bomb'], ['gridhunt', '🔎 Grid Hunt'], ['wordsearch', '🔍 Word Search'], ['garden', '🌻 Word Garden'], ['safecracker', '🔐 Safecracker'], ['chess', '♟️ Chess'], ['checkers', '⛀ Checkers'], ['backgammon', '🔺 Backgammon'], ['oware', '🌰 Oware'], ['reversi', '⚪ Reversi'], ['hedgerow', '🌿 Hedgerow'], ['realm', '⚔️ Realm Wars'],
   ['go', '⚫ Go'], ['lastcard', '🃏 Last Card'], ['holdem', "♠️ Texas Hold'em"], ['cribbage', '📍 Cribbage'], ['hearts', '♥️ Hearts'], ['speed', '⚡ Speed'], ['twentyone', '♦️ Blackjack'], ['rummy', '🀄 Contract Rummy'], ['klondike', '♣️ Solitaire'], ['freecell', '🗃️ FreeCell'], ['cheat', '🙊 Cheat'], ['president', '👑 President'], ['spoons', '🥄 Spoons'], ['kowhist', '🥊 Knock Out Whist'], ['spades', '♠️ Spades'], ['ohhell', '🔥 Oh Hell'], ['euchre', '🃎 Euchre'], ['gops', '🎯 GOPS'], ['scopa', '🧹 Scopa'], ['gin', '🍸 Gin Rummy'], ['germanwhist', '🦅 German Whist'], ['fantan', '🪭 Fan Tan'], ['palace', '🏰 Palace'], ['ratscrew', '🐀 Egyptian Ratscrew'], ['nertz', '🏁 Nertz'], ['whist', '🎩 Whist'], ['briscola', '🍷 Briscola'], ['blitz', '⚡ Blitz'], ['ranter', '🔄 Ranter-Go-Round'], ['bigtwo', '🐉 Big Two'], ['gofish', '🐟 Go Fish'], ['oldmaid', '👵 Old Maid'], ['cassino', '🎰 Cassino'], ['spite', '😈 Spite & Malice'], ['war', '⚔️ War'], ['ninetynine', '💯 Ninety-Nine'], ['sixtysix', '6️⃣ Sixty-Six'], ['pitch', '⚾ Pitch'], ['ecarte', '🎩 Écarté'], ['fivehundred', '5️⃣ Five Hundred'], ['canasta', '🧺 Canasta'], ['eleusis', '🔮 Eleusis'], ['mao', '🤐 Mao'], ['belote', '🥖 Belote'], ['pinochle', '💍 Pinochle'], ['bezique', '🎴 Bezique'], ['bridge', '🌉 Bridge'], ['truc', '🗡️ Truc'], ['skat', '🍺 Skat'], ['piquet', '⚜️ Piquet'], ['seabattle', '🚢 Sea Battle'], ['dropfour', '🔴 Drop Four'],
-  ['boxes', '🔳 Dots & Boxes'], ['tictactoe', '❌ Tic-Tac-Toe'], ['ultimate', '#️⃣ Ultimate Tic-Tac-Toe'], ['morris', "⚫ Nine Men's Morris"], ['sudoku', '🔢 Sudoku'], ['heist', '🦹 Night Heist'], ['lantern', '🏮 Lantern Market'], ['moonshot', '🚀 Moon Shot'], ['yacht', '🎲 Yacht'], ['farkle', '🎯 Farkle'], ['qork', '🥤 Qork'], ['shipcrew', '🚢 Ship, Captain & Crew'], ['shutbox', '📦 Shut the Box'], ['liars', '🤥 Liar\'s Dice'], ['spire', '🗼 Spire Siege'], ['prism', '💎 Prism Pop'], ['hockey', '🏒 Air Hockey'], ['billiards', '🎱 Billiards'], ['riders', '🏍️ Light Riders'], ['whisker', '🐭 Whisker Run'], ['paintblast', '🎨 Paint Blast'], ['sumo', '🪐 Sumo Saucers'], ['putt', '⛳ Putt Party'], ['rally', '🛸 Hover Rally'], ['cannon', '💥 Cannon Hills']];
+  ['boxes', '🔳 Dots & Boxes'], ['tictactoe', '❌ Tic-Tac-Toe'], ['ultimate', '#️⃣ Ultimate Tic-Tac-Toe'], ['morris', "⚫ Nine Men's Morris"], ['sudoku', '🔢 Sudoku'], ['kindred', '🦋 Kindred'], ['heist', '🦹 Night Heist'], ['lantern', '🏮 Lantern Market'], ['moonshot', '🚀 Moon Shot'], ['yacht', '🎲 Yacht'], ['farkle', '🎯 Farkle'], ['qork', '🥤 Qork'], ['shipcrew', '🚢 Ship, Captain & Crew'], ['shutbox', '📦 Shut the Box'], ['liars', '🤥 Liar\'s Dice'], ['midnight', '🕛 Midnight'], ['mia', '🎭 Mia'], ['squares', '🧮 Dice Squares'], ['brawl', '⚔️ Dice Brawl'], ['derby', '🏇 Dice Derby'], ['spire', '🗼 Spire Siege'], ['prism', '💎 Prism Pop'], ['marble', '🌀 Marble Rush'], ['hockey', '🏒 Air Hockey'], ['billiards', '🎱 Billiards'], ['riders', '🏍️ Light Riders'], ['whisker', '🐭 Whisker Run'], ['paintblast', '🎨 Paint Blast'], ['sumo', '🪐 Sumo Saucers'], ['putt', '⛳ Putt Party'], ['rally', '🛸 Hover Rally'], ['cannon', '💥 Cannon Hills']];
 const CATEGORIES = [['party', '🎉 Party'], ['action', '⚡ Action'], ['strategy', '♟️ Strategy'], ['classic', '✏️ Quick classics'],
   ['cards', '🃏 Cards'], ['dice', '🎲 Dice & casino'], ['words', '🔤 Words & puzzles']];
-const SOLO_BOTS = { whisker: 2, realm: 3, skat: 2, bridge: 3, pinochle: 3, belote: 3, mao: 2, eleusis: 2, fivehundred: 3, pitch: 3, ninetynine: 2, oldmaid: 3, gofish: 2, bigtwo: 3, ranter: 3, blitz: 3, whist: 3, nertz: 2, ratscrew: 2, palace: 3, fantan: 3, euchre: 3, ohhell: 3, spades: 3, kowhist: 3, spoons: 3, president: 3, cheat: 3, wordbomb: 2, cannon: 2, rally: 3, hearts: 3, twentyone: 2, rummy: 2, sumo: 3, paintblast: 3, gridhunt: 2, safecracker: 2, oddone: 3, relay: 3, fibfinder: 3, trivia: 3, ladder: 2, liars: 3, riders: 3, doodle: 2, heist: 3, lantern: 3, moonshot: 2, lastcard: 2, holdem: 3, spire: 2, prism: 2, lucky: 2, qork: 3 };
+const SOLO_BOTS = { marble: 2, bingo: 3, mia: 2, brawl: 2, derby: 2, whisker: 2, realm: 3, skat: 2, bridge: 3, pinochle: 3, belote: 3, mao: 2, eleusis: 2, fivehundred: 3, pitch: 3, ninetynine: 2, oldmaid: 3, gofish: 2, bigtwo: 3, ranter: 3, blitz: 3, whist: 3, nertz: 2, ratscrew: 2, palace: 3, fantan: 3, euchre: 3, ohhell: 3, spades: 3, kowhist: 3, spoons: 3, president: 3, cheat: 3, wordbomb: 2, cannon: 2, rally: 3, hearts: 3, twentyone: 2, rummy: 2, sumo: 3, paintblast: 3, gridhunt: 2, safecracker: 2, oddone: 3, relay: 3, fibfinder: 3, trivia: 3, ladder: 2, liars: 3, riders: 3, doodle: 2, heist: 3, lantern: 3, moonshot: 2, lastcard: 2, holdem: 3, spire: 2, prism: 2, lucky: 2, qork: 3 };
 const MODE_DESC = {
   duel: 'Duel: each of you hides a face. Questions are answered automatically and truthfully. A wrong accusation loses.',
   manhunt: 'Manhunt: everyone hunts the same hidden culprit. Your question is public, but only you hear the answer. Guess wrong and you become a ghost 👻.',
@@ -266,11 +266,12 @@ async function reportDialog(kind = 'bug', draft = '') {
 const logHasEntries = () => $('#log').childElementCount > 0;
 function show(id) {
   if (id === 'game' && document.body.dataset.screen !== 'game' && document.scrollingElement) document.scrollingElement.scrollTop = 0;  // the lobby may have scrolled (#72)
-  for (const s of ['loading', 'home', 'lobby', 'game']) $('#' + s).hidden = s !== id;
+  for (const s of ['loading', 'home', 'lobby', 'game', 'bingoTools']) $('#' + s).hidden = s !== id;
+  if (id !== 'bingoTools' && $('#bingoTools').childElementCount) UI.bingotools?.close();
   if (id !== 'game') { document.body.classList.remove('focus'); closeMenu(); closeSheets(); }
   document.body.dataset.screen = id;
   if (id !== 'loading') clearTimeout(show.slow);
-  $('#fabs').hidden = id === 'home';
+  $('#fabs').hidden = id === 'home' || id === 'bingoTools';
   if (id === 'home') { $('#chatPanel').hidden = true; document.title = 'Game Night'; if (typeof fillSoloGames === 'function') fillSoloGames(); }
 }
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
@@ -484,7 +485,7 @@ addEventListener('beforeunload', (e) => {
 });
 // ---------- game screens load on demand: the page opens with the shell only, and each game's script arrives
 // the first time that game is picked or shown (it used to be 50+ scripts, ~1 MB, before the first screen).
-const UI_EXTRA = { whist: ['cardtable'], piquet: ['cardtable'], skat: ['cardtable'], truc: ['cardtable'], bridge: ['cardtable'], bezique: ['cardtable'], pinochle: ['cardtable'], belote: ['cardtable'], mao: ['cardtable'], eleusis: ['cardtable'], canasta: ['cardtable'], fivehundred: ['cardtable'], ecarte: ['cardtable'], pitch: ['cardtable'], sixtysix: ['cardtable'], ninetynine: ['cardtable'], war: ['cardtable'], spite: ['cardtable'], cassino: ['cardtable'], oldmaid: ['cardtable'], gofish: ['cardtable'], bigtwo: ['cardtable'], ranter: ['cardtable'], blitz: ['cardtable'], briscola: ['cardtable'], nertz: ['cardtable'], ratscrew: ['cardtable'], palace: ['cardtable'], fantan: ['cardtable'], germanwhist: ['cardtable'], gin: ['cardtable'], scopa: ['cardtable'], gops: ['cardtable'], euchre: ['cardtable'], ohhell: ['cardtable'], spades: ['cardtable'], kowhist: ['cardtable'], spoons: ['cardtable'], president: ['cardtable'], cheat: ['cardtable'], billiards: ['billiards3d'], chess: ['chess3d'] };  // helpers a game's screen needs first
+const UI_EXTRA = { whist: ['cardtable'], piquet: ['cardtable'], skat: ['cardtable'], truc: ['cardtable'], bridge: ['cardtable'], bezique: ['cardtable'], pinochle: ['cardtable'], belote: ['cardtable'], mao: ['cardtable'], eleusis: ['cardtable'], canasta: ['cardtable'], fivehundred: ['cardtable'], ecarte: ['cardtable'], pitch: ['cardtable'], sixtysix: ['cardtable'], ninetynine: ['cardtable'], war: ['cardtable'], spite: ['cardtable'], cassino: ['cardtable'], oldmaid: ['cardtable'], gofish: ['cardtable'], bigtwo: ['cardtable'], ranter: ['cardtable'], blitz: ['cardtable'], briscola: ['cardtable'], nertz: ['cardtable'], ratscrew: ['cardtable'], palace: ['cardtable'], fantan: ['cardtable'], germanwhist: ['cardtable'], gin: ['cardtable'], scopa: ['cardtable'], gops: ['cardtable'], euchre: ['cardtable'], ohhell: ['cardtable'], spades: ['cardtable'], kowhist: ['cardtable'], spoons: ['cardtable'], president: ['cardtable'], cheat: ['cardtable'], billiards: ['billiards3d'], chess: ['chess3d'], bingo: ['bingokit'], bingotools: ['bingokit'] };  // helpers a game's screen needs first
 const uiLoads = {};
 function needUI(id) {
   if (!id || UI[id]) return Promise.resolve();
@@ -538,17 +539,137 @@ function onState(s) {
 // ---------- lobby
 // Each category gets as few rows as fit, then the columns that fill those rows most evenly
 // (8 games on a 4-wide screen: 4 + 4; 6 games: 3 + 3, never 4 + 2).
-function fitPicker() {
-  const width = $('#gamePicker').clientWidth;
+function fitPicker(pick = $('#gamePicker')) {
+  const width = pick.clientWidth;
   const tile = window.matchMedia?.('(max-width: 600px)').matches ? 78 : 104;  // phones get compact tiles (style.css)
   const most = width ? Math.max(2, Math.floor((width + 8) / tile)) : 4;
-  for (const g of document.querySelectorAll('.picker-group')) {
+  for (const g of pick.querySelectorAll('.picker-group')) {
     const n = +g.dataset.count, rows = Math.ceil(n / most);
     // a short group (favourites, played lately) keeps ordinary tile widths instead of stretching
     g.style.gridTemplateColumns = `repeat(${n < Math.min(most, 4) ? Math.min(most, 4) : Math.ceil(n / rows)}, minmax(0, 1fr))`;
   }
 }
-window.addEventListener('resize', () => { if (!$('#lobby').hidden) fitPicker(); });
+
+// ---------- the game picker (#67, #98), shared by the lobby, the home screen's sheet and the game-over "More games…"
+const PICKER_SORTS = [['type', '📂 Type'], ['az', '🔤 A–Z'], ['recent', '🕘 Recent'], ['most', '🔥 Most played'], ['untried', '✨ Untried']];
+let familyOrder = {};  // category -> its families in order, from /api/games
+let catalog = null;    // the slim catalogue, for screens without a room (the home screen)
+function loadCatalog() {
+  if (catalog) return Promise.resolve(catalog);
+  return fetch('/api/games').then((r) => r.json()).then((d) => { familyOrder = d.families || {}; return (catalog = d.games); });
+}
+loadCatalog().then(() => { if (S?.phase === 'lobby' && !$('#lobby').hidden) renderLobby(); }).catch(() => {});
+const playersText = (g) => (g.min === g.max ? `${g.min} players` : `${g.min}–${g.max} players`);
+// one game tile: icon, name, players (or why it doesn't fit), this device's ★ stars or a "new" tag
+function gameTile(g, seated, current, newTags = Profile.showNew()) {
+  const fit = !seated ? '' : seated < g.min ? `needs ${g.min}+` : seated > g.max ? `max ${g.max}` : '';
+  const b = el('button', 'game-tile' + (g.id === current ? ' on' : '') + (fit ? ' nofit' : ''));
+  b.append(el('span', 'gicon', g.icon), el('b', '', g.name), el('small', '', fit || playersText(g)));
+  const st = Profile.stars(g.id);
+  if (st) b.append(el('span', 'tile-stars', Profile.starText(st)));
+  else if (newTags && !Profile.tried(g.id)) b.append(el('span', 'tile-new', 'new'));
+  b.setAttribute('aria-pressed', g.id === current);
+  b.dataset.game = g.id;
+  return b;
+}
+// the sort chips, and (sorted by type) a row of category chips that jump to their group
+function renderPickerBar(bar, pick, redraw) {
+  const sort = load('pickerSort') || 'type';
+  bar.innerHTML = '';
+  const sorts = el('div', 'picker-sorts');
+  sorts.setAttribute('role', 'group'); sorts.setAttribute('aria-label', 'Sort the games');
+  for (const [key, label] of PICKER_SORTS) {
+    const c = el('button', 'chip-btn', label);
+    c.setAttribute('aria-pressed', key === sort);
+    c.onclick = () => { store('pickerSort', key === 'type' ? null : key); redraw(); };
+    sorts.append(c);
+  }
+  bar.append(sorts);
+  if (sort !== 'type') return;
+  const jump = el('div', 'picker-jump');
+  for (const [cat, label] of CATEGORIES) {
+    const c = el('button', 'chip-btn', label.split(' ')[0]);
+    c.title = c.ariaLabel = 'Jump to ' + label.replace(/^\S+ /, '');
+    c.onclick = () => pick.querySelector(`.picker-cat[data-cat="${cat}"]`)?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    jump.append(c);
+  }
+  bar.append(jump);
+}
+// fills `pick` with the games in groups; tile(b, g) wires each tile (clicks, wishes)
+function renderPickerGrid(pick, { games, seated = 0, current = null, query = '', onlyFits = false, tile }) {
+  pick.innerHTML = '';
+  query = query.trim().toLowerCase();
+  const sort = load('pickerSort') || 'type';
+  const fits = (g) => !seated || (seated >= g.min && seated <= g.max);
+  const shown = games.filter((g) => (!query || g.name.toLowerCase().includes(query) || g.category.includes(query) || (g.family || '').toLowerCase().includes(query))
+    && (!onlyFits || fits(g) || g.id === current));
+  const byId = (ids) => ids.map((id) => shown.find((g) => g.id === id)).filter(Boolean);
+  const newTags = Profile.showNew();
+  const groups = [];  // [label, games, category, sub-header?]
+  if (sort === 'type') {
+    if (!query) groups.push(['⭐ Favourites', byId(load('favGames') || [])], ['🕘 Played lately', byId(load('recentGames') || [])]);
+    for (const [cat, label] of CATEGORIES) {
+      const list = shown.filter((g) => g.category === cat);
+      const fams = [...new Set([...(familyOrder[cat] || []), ...list.map((g) => g.family).filter(Boolean)])];
+      if (!fams.length || query) { groups.push([label, list, cat]); continue; }
+      groups.push([label, [], cat]);  // the category's header, then a small one per family
+      for (const f of fams) groups.push([f, list.filter((g) => g.family === f), cat, true]);
+      groups.push(['Other', list.filter((g) => !g.family), cat, true]);
+    }
+  } else {
+    const recent = load('recentGames') || [];
+    const key = {
+      az: (a, b) => a.name.localeCompare(b.name),
+      recent: (a, b) => ((recent.indexOf(a.id) + 1 || 99) - (recent.indexOf(b.id) + 1 || 99))
+        || Profile.lastAt(b.id).localeCompare(Profile.lastAt(a.id)) || a.name.localeCompare(b.name),
+      most: (a, b) => Profile.played(b.id) - Profile.played(a.id) || a.name.localeCompare(b.name),
+      untried: (a, b) => Profile.tried(a.id) - Profile.tried(b.id) || Profile.stars(a.id) - Profile.stars(b.id) || a.name.localeCompare(b.name),
+    }[sort] || ((a, b) => a.name.localeCompare(b.name));
+    groups.push([`${PICKER_SORTS.find(([k]) => k === sort)?.[1] || ''} · ${shown.length} games`, [...shown].sort(key), '', false, true]);
+  }
+  if (!shown.length) pick.append(el('p', 'hint', query ? `No game matches “${query}”.` : 'No game fits this many players.'));
+  for (const [label, list, cat, sub, flat] of groups) {
+    // games that fit the players here come first in each group (a flat sort keeps its own order)
+    const gs = flat ? list : [...list].sort((a, b) => fits(b) - fits(a));
+    if (!gs.length && !(cat && !sub && groups.some(([, l, c, s]) => s && c === cat && l.length))) continue;
+    const head = el('div', sub ? 'picker-cat picker-sub' : 'picker-cat', label);
+    if (cat && !sub) head.dataset.cat = cat;
+    pick.append(head);
+    if (!gs.length) continue;
+    const group = el('div', 'picker-group');
+    group.dataset.count = gs.length;
+    group.dataset.cat = cat || '';
+    pick.append(group);
+    for (const g of gs) { const b = gameTile(g, seated, current, newTags); tile?.(b, g); group.append(b); }
+  }
+  fitPicker(pick);
+}
+// the picker in a dialog, for the home screen and the game-over panel: resolves with a game id, or null
+async function pickGameSheet({ title = '🎮 Choose a game', current = null, seated = 0 } = {}) {
+  let games = S?.games?.length ? S.games : null;
+  if (!games) {
+    try { games = await loadCatalog(); } catch { games = SOLO_GAMES.map(([id, label]) => ({ id, icon: label.split(' ')[0], name: label.replace(/^\S+ /, ''), category: '', min: 1, max: 6 })); }
+  }
+  const body = el('div', 'picker-sheet');
+  const find = el('input'); find.type = 'search'; find.placeholder = '🔎 Find a game'; find.autocomplete = 'off';
+  find.setAttribute('aria-label', 'Find a game');
+  const bar = el('div', 'picker-bar'), pick = el('div', 'picker');
+  body.append(find, bar, pick);
+  let chosen = null;
+  const draw = () => {
+    renderPickerBar(bar, pick, draw);
+    renderPickerGrid(pick, { games, seated, current, query: find.value, tile: (b, g) => { b.onclick = () => { chosen = g.id; ask.close?.(true); }; } });
+  };
+  find.oninput = draw;
+  $('#modal').classList.add('sheet');
+  const shown = ask('', { title, ok: 'Close', cancel: '', body });
+  draw();
+  requestAnimationFrame(() => { fitPicker(pick); pick.querySelector('.game-tile.on')?.scrollIntoView?.({ block: 'center' }); });
+  await shown;
+  $('#modal').classList.remove('sheet');
+  return chosen;
+}
+window.addEventListener('resize', () => { if (!$('#lobby').hidden) fitPicker(); for (const p of document.querySelectorAll('.picker-sheet .picker')) fitPicker(p); });
 $('#pickerFind').oninput = () => S && renderLobby();
 $('#pickerFits').onclick = () => { store('pickerFits', !load('pickerFits') || null); renderLobby(); };
 let pickedGame = null;  // the game this host just tapped, scrolled to once the server confirms it
@@ -606,39 +727,17 @@ function renderLobby() {
 
   const pick = $('#gamePicker');
   const focused = document.activeElement?.closest?.('#gamePicker .game-tile')?.dataset.game;  // keep keyboard focus across redraws (#37)
-  pick.innerHTML = '';
   const seated = S.players.filter((p) => !p.spectator).length;
-  // organising (#67): favourites and lately played on top, a name filter, and "fits us"
-  const query = $('#pickerFind').value.trim().toLowerCase(), onlyFits = !!load('pickerFits');
+  // organising (#67, #98): favourites and lately played on top, families inside Cards and Dice, sorts, a name filter, "fits us"
+  const onlyFits = !!load('pickerFits');
   $('#pickerFits').setAttribute('aria-pressed', onlyFits);
   $('#pickerFits').textContent = `👥 Fits ${seated}`;
-  const fits = (g) => seated >= g.min && seated <= g.max;
-  const shown = S.games.filter((g) => (!query || g.name.toLowerCase().includes(query) || g.category.includes(query)) && (!onlyFits || fits(g) || g.id === S.gameId));
-  const byId = (ids) => ids.map((id) => shown.find((g) => g.id === id)).filter(Boolean);
-  const newTags = Profile.showNew();
-  const groups = [['⭐ Favourites', byId(load('favGames') || [])], ['🕘 Played lately', byId(load('recentGames') || [])]];
-  if (query) groups.length = 0;  // while searching, each game shows once
-  for (const [cat, label] of CATEGORIES) groups.push([label, shown.filter((g) => g.category === cat)]);
-  if (!shown.length) pick.append(el('p', 'hint', query ? `No game matches “${query}”.` : 'No game fits this many players.'));
-  for (const [label, list] of groups) {
-    // games that fit the players here come first in each group
-    const games = [...list].sort((a, b) => fits(b) - fits(a));
-    if (!games.length) continue;
-    const group = el('div', 'picker-group');
-    group.dataset.count = games.length;
-    group.dataset.cat = CATEGORIES.find(([, l]) => l === label)?.[0] || '';
-    pick.append(el('div', 'picker-cat', label), group);
-    for (const g of games) {
-      const fit = seated < g.min ? `needs ${g.min}+` : seated > g.max ? `max ${g.max}` : '';
+  renderPickerBar($('#pickerBar'), pick, () => renderLobby());
+  renderPickerGrid(pick, {
+    games: S.games, seated, current: S.gameId, query: $('#pickerFind').value, onlyFits,
+    tile: (b, g) => {
       const wishers = S.players.filter((p) => p.wish === g.id);
-      const b = el('button', 'game-tile' + (g.id === S.gameId ? ' on' : '') + (fit ? ' nofit' : '')
-        + (S.me && wishers.some((p) => p.id === S.me.id) ? ' wished' : ''));
-      b.append(el('span', 'gicon', g.icon), el('b', '', g.name),
-        el('small', '', fit || (g.min === g.max ? `${g.min} players` : `${g.min}–${g.max} players`)));
-      // this device's ★ bot-ladder stars, or a "new" tag for a game never finished here
-      const st = Profile.stars(g.id);
-      if (st) b.append(el('span', 'tile-stars', Profile.starText(st)));
-      else if (newTags && !Profile.tried(g.id)) b.append(el('span', 'tile-new', 'new'));
+      if (S.me && wishers.some((p) => p.id === S.me.id)) b.classList.add('wished');
       // players ask the host for games; the host sees who asked (#70)
       if (wishers.length) {
         const w = el('span', 'wishes', `🙏${wishers.length > 1 ? ' ' + wishers.length : ''}`);
@@ -646,16 +745,13 @@ function renderLobby() {
         b.append(w);
       }
       b.title = host ? '' : g.id === S.gameId ? 'The host picked this game' : 'Ask the host for this game (tap again to take it back)';
-      b.setAttribute('aria-pressed', g.id === S.gameId);
-      b.dataset.game = g.id;
       b.onclick = () => {
         if (host && g.id === S.gameId) { pickerFolded = true; renderLobby(); $('#gameChosen').scrollIntoView?.({ behavior: 'smooth', block: 'start' }); }
         else if (host) { pickedGame = g.id; quiet(act('settings', { settings: { game: g.id } })); }
         else quiet(act('wish', { game: g.id }));
       };
-      group.append(b);
-    }
-  }
+    },
+  });
   fitPicker();
   if (focused && !pickerFolded) pick.querySelector(`[data-game="${focused}"]`)?.focus({ preventScroll: true });
   // the chosen game sits above its rules and settings; after the host picks one, bring it into view (#38, #39)
@@ -675,7 +771,7 @@ function renderLobby() {
   }
   // folded: the chosen game heads the lobby with a way back to the full list
   if (!host) pickerFolded = false;
-  $('#pickerTools').classList.toggle('folded', pickerFolded); pick.classList.toggle('folded', pickerFolded);
+  $('#pickerTools').classList.toggle('folded', pickerFolded); $('#pickerBar').classList.toggle('folded', pickerFolded); pick.classList.toggle('folded', pickerFolded);
   chosen.classList.toggle('folded', pickerFolded);
   if (pickerFolded) {
     const change = el('button', 'change-game', '🔄 Change game');
@@ -889,7 +985,15 @@ function renderGame(view = S, readOnly = false, force = false) {
   const canJoin = !readOnly && playing && me.spectator && info?.lateJoin && seatedNow < Math.min(6, info.max);
   $('#joinInBtn').hidden = !canJoin;
   if (canJoin) $('#joinInBtn').textContent = `🙋 Join in${view.gameId === 'holdem' ? ' from the next hand' : ''}`;
-  $('#gameCode').textContent = `${gameInfo(view.gameId).icon} ${S.code}`;
+  const gc = $('#gameCode'), gcKey = `${view.gameId} ${S.code}`;
+  if (gc.dataset.key !== gcKey) {   // icon + room code, with the game's name under it (#92)
+    gc.dataset.key = gcKey;
+    gc.innerHTML = '<span class="gc-top"><span class="gc-icon"></span> <span class="gc-code"></span></span><small class="gc-name"></small>';
+    gc.querySelector('.gc-icon').textContent = info.icon;
+    gc.querySelector('.gc-code').textContent = S.code;
+    gc.querySelector('.gc-name').textContent = info.name;
+    gc.title = `${info.name} · room ${S.code}`;
+  }
 
   const tt = $('#turnText');
   const custom = readOnly ? null : ui.turnText?.(view);
@@ -958,7 +1062,7 @@ function renderGame(view = S, readOnly = false, force = false) {
   if (!readOnly && view.phase === 'over') {
     renderOver();
     // as the results appear, focus the main button so Enter starts the next round
-    if (wasHidden) [$('#rematchBtn'), $('#readyBtn')].find((b) => !b.hidden)?.focus({ preventScroll: true });
+    if (wasHidden) [$('#rematchBtn'), $('#readyBtn'), $('#lobbyBtn')].find((b) => !b.hidden)?.focus({ preventScroll: true });
   }
 }
 
@@ -985,17 +1089,37 @@ function renderOver() {
   const scored = last?.players.filter((x) => x.score != null) ?? [];
   const mineRow = last?.players.find((x) => x.name === me.name);
   renderPodium(w, scored);
-  $('#overScores').textContent = [
+  // the scores as a small table, best first; the extra lines (stars earned, streaks, records) under it (#93)
+  const box = $('#overScores'); box.innerHTML = '';
+  if (scored.length > 1) {
+    const tbl = el('ol', 'over-table');
+    [...scored].sort((a, b) => (last.low ? a.score - b.score : b.score - a.score)).forEach((x) => {
+      const li = el('li', x.name === me.name ? 'me' : '');
+      li.append(el('span', 'ot-name', x.name), el('b', '', fmtNum(x.score)));
+      tbl.append(li);
+    });
+    box.append(tbl);
+  }
+  const notes = [
     mineRow?.pts ? `You earned +${mineRow.pts} ⭐ (now ${player(me.id)?.points ?? 0})` : '',
-    scored.length ? [...scored].sort((a, b) => b.score - a.score).map((x) => `${x.name}: ${fmtNum(x.score)}`).join(' · ') : '',
     w?.streak > 1 ? `🔥 ${w.id === me.id ? 'You have' : w.name + ' has'} won ${w.streak} in a row` : '',
     roomRecord(last),
     Profile.overLine(S),
-  ].filter(Boolean).join(' — ');
+  ].filter(Boolean);
+  for (const n of notes) box.append(el('div', 'over-note', n));
   const readyNames = S.ready.map((id) => player(id)?.name).filter(Boolean);
+  const others = S.players.some((p) => p.id !== me.id && !p.bot);
   $('#rematchBtn').hidden = !host; $('#lobbyBtn').hidden = !host;
   // "I'm in!" tells other people you want another round; alone with bots there's nobody to tell
-  $('#readyBtn').hidden = !S.players.some((p) => p.id !== me.id && !p.bot);
+  $('#readyBtn').hidden = !others;
+  // one main action (#93): a game picked for next time (solo), the vote winner (host, once anyone voted), else Rematch
+  const votes = S.votes || {};
+  if (overPick && (overPick.at !== S.history.length || others)) overPick = null;
+  const pickG = overPick && gameInfo(overPick.game);
+  $('#playPickBtn').hidden = !(host && pickG);
+  if (pickG) $('#playPickBtn').textContent = `▶ Play ${pickG.icon} ${pickG.name}`;
+  $('#playVoteBtn').hidden = !(host && others && Object.keys(votes).length);
+  $('#rematchBtn').className = $('#playPickBtn').hidden && $('#playVoteBtn').hidden ? 'primary' : '';
   const folded = overFoldedAt === S.history.length;  // folding lasts for this game's results only
   $('#overBanner').classList.toggle('folded', folded);
   $('#overFold').textContent = folded ? '▾' : '▴ Board';  // spelled out while open: the way back to the board (#81)
@@ -1004,8 +1128,8 @@ function renderOver() {
   $('#readyBtn').classList.toggle('on', S.ready.includes(me.id));
   $('#replayBtn').hidden = !S.hasReplay;
   $('#overWait').textContent = (readyNames.length ? `Ready for more: ${readyNames.join(', ')}. ` : '')
-    + (host ? '' : 'Waiting for the host…');
-  renderVote(host);
+    + (host ? '' : 'The host starts the next game. Your vote below counts 🗳️');
+  renderVote(host, others);
   syncOverBack();
 }
 // the podium: the winner in the middle, up a step, with the runners-up either side (by score when the game
@@ -1035,41 +1159,64 @@ function syncOverBack() {
   if (open && !held) backOpen(foldOver); else if (!open && held) backClosed(foldOver);
 }
 
-// Next-game vote: a few suggestions that fit the table (games with votes first), plus every other fitting
-// game in a drop-down. Tap again to take a vote back. A unanimous vote starts the game on the server.
-function renderVote(host) {
+// Next-game vote (#93): four suggestion tiles that fit the table (voted games first, then favourites and games
+// played lately here, then a shuffle of ones not played tonight), and "More games…" for the full picker.
+// With other people, a tap is a vote (tap again to take it back; a unanimous vote starts the game on the server).
+// Alone with bots, a tap only picks: the main button turns into "▶ Play …", so nothing starts by surprise.
+let overPick = null;      // { game, at: S.history.length } chosen alone for the next game
+let overNextOpen = null;  // { at, open }: the 🗳️ section's fold, for this game's results only
+function renderVote(host, others) {
   const box = $('#overVote'); box.innerHTML = '';
   const seated = S.players.filter((p) => !p.spectator).length;
   const fit = S.games.filter((g) => g.min <= seated && seated <= g.max);
-  const votes = S.votes || {}, mine = votes[S.me.id];
-  const count = (id) => Object.values(votes).filter((v) => v === id).length;
-  const recent = S.history.slice(-4).map((h) => h.game);
-  // suggestions: voted games, then ones not played lately, in a shuffle that stays put until the next game
+  const votes = S.votes || {}, mine = others ? votes[S.me.id] : overPick?.game;
+  const voters = (id) => Object.entries(votes).filter(([, v]) => v === id).map(([pid]) => player(pid)).filter(Boolean);
+  const tonight = S.history.map((h) => h.game);
   let seed = S.history.length * 7919 + 13;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  const fresh = fit.filter((g) => !recent.includes(g.id)).map((g) => [rnd(), g]).sort((a, b) => a[0] - b[0]).map(([, g]) => g);
-  const picks = [...fit.filter((g) => count(g.id)), ...fresh, ...fit].filter((g, i, all) => all.indexOf(g) === i).slice(0, 5);
-  box.append(el('div', 'hint left', '🗳️ Vote for the next game'));
-  const row = el('div', 'vote-row');
-  const vote = (id) => quiet(act('next_vote', { game: id }));
+  const fresh = fit.filter((g) => !tonight.includes(g.id)).map((g) => [rnd(), g]).sort((a, b) => a[0] - b[0]).map(([, g]) => g);
+  const mineFirst = (ids) => ids.map((id) => fit.find((g) => g.id === id)).filter(Boolean);
+  const picked = mine ? fit.filter((g) => g.id === mine) : [];
+  const picks = [...picked, ...fit.filter((g) => voters(g.id).length), ...mineFirst(load('favGames') || []), ...mineFirst(load('recentGames') || []), ...fresh, ...fit]
+    .filter((g, i, all) => all.indexOf(g) === i && g.id !== S.gameId).slice(0, 4);
+  const nVotes = Object.keys(votes).length;
+  if (overNextOpen?.at !== S.history.length) overNextOpen = { at: S.history.length, open: others };
+  const det = el('details', 'over-next');
+  det.open = overNextOpen.open || !!mine;
+  det.ontoggle = () => { overNextOpen.open = det.open; };
+  const sum = el('summary', '', others ? `🗳️ Vote for the next game${nVotes ? ` · ${nVotes} vote${nVotes > 1 ? 's' : ''}` : ''}` : '🎮 Something else next?');
+  det.append(sum);
+  const choose = (id) => {
+    if (others) return quiet(act('next_vote', { game: id }));
+    overPick = overPick?.game === id ? null : { game: id, at: S.history.length };
+    renderOver();
+    if (overPick) $('#playPickBtn').focus({ preventScroll: true });
+  };
+  const grid = el('div', 'next-grid'), favs = load('favGames') || [], newTags = Profile.showNew();
   for (const g of picks) {
-    const n = count(g.id);
-    const b = el('button', 'vote-chip' + (mine === g.id ? ' on' : ''), `${g.icon} ${g.name}${n ? ` · ${n}` : ''}`);
-    b.title = Object.entries(votes).filter(([, v]) => v === g.id).map(([pid]) => player(pid)?.name).filter(Boolean).join(', ');
-    b.onclick = () => vote(g.id);
-    row.append(b);
+    const vs = voters(g.id);
+    const b = el('button', 'next-tile' + (mine === g.id ? ' on' : ''));
+    b.setAttribute('aria-pressed', mine === g.id);
+    const txt = el('span', 'nt-text');
+    const tag = favs.includes(g.id) ? '⭐ favourite' : newTags && !Profile.tried(g.id) ? '✨ new to you' : playersText(g);
+    txt.append(el('b', '', g.name), el('small', '', tag));
+    b.append(el('span', 'gicon', g.icon), txt);
+    if (vs.length) {
+      const who = el('span', 'nt-votes');
+      for (const p of vs.slice(0, 4)) who.append(avatar(p));
+      who.title = 'Voted: ' + vs.map((p) => p.name).join(', ');
+      b.append(who);
+    }
+    b.onclick = () => choose(g.id);
+    grid.append(b);
   }
-  const more = el('select', 'vote-more');
-  more.append(Object.assign(el('option', '', '➕ Other game…'), { value: '' }));
-  for (const g of fit.filter((g) => !picks.includes(g))) more.append(Object.assign(el('option', '', `${g.icon} ${g.name}`), { value: g.id }));
-  more.onchange = () => { if (more.value) vote(more.value); };
-  if (more.options.length > 1) row.append(more);
-  box.append(row);
-  if (host && Object.keys(votes).length) {
-    const play = el('button', 'primary', '▶ Play the vote winner');
-    play.onclick = () => quiet(act('play_vote'));
-    box.append(play);
-  }
+  const more = el('button', 'next-more', '➕ More games…');
+  more.onclick = async () => {
+    const id = await pickGameSheet({ title: others ? '🗳️ Vote for a game' : '🎮 Next game', seated, current: mine });
+    if (id && S?.phase === 'over') { if (!others && overPick?.game === id) return; choose(id); }
+  };
+  det.append(grid, more);
+  box.append(det);
 }
 
 function renderLog(ui, view) {
@@ -1398,6 +1545,8 @@ function fillSoloGames() {
     o.value = id; sel.append(o);
   }
   sel.value = was || load('unmask.soloGame') || 'unmask';
+  showSoloPick();
+  $('#gameCount').textContent = SOLO_GAMES.length;
   // the icon strip under the tagline: every game's icon drifting by (twice over, so the loop is seamless)
   const strip = $('#homeIcons');
   if (strip && !strip.childElementCount) {
@@ -1405,10 +1554,27 @@ function fillSoloGames() {
     for (const ic of [...icons, ...icons]) strip.append(el('span', '', ic));
   }
 }
+// the home screen's game button opens the full picker (#98); the hidden select keeps the value
+function showSoloPick() {
+  const o = $('#soloGame').selectedOptions[0], b = $('#soloPick');
+  if (!o || !b) return;
+  b.innerHTML = '';
+  const [icon, ...name] = o.textContent.split(' ');
+  b.append(el('span', 'gicon', icon), el('b', '', name.join(' ').replace(/ {2}.*/, '').trim()), el('small', '', '▾ Choose'));
+}
 fillSoloGames();
-const pickSolo = (id) => { $('#soloGame').value = id; store('unmask.soloGame', id); $('#soloGame').focus(); };
+const pickSolo = (id) => { $('#soloGame').value = id; store('unmask.soloGame', id); showSoloPick(); $('#soloPick').focus(); };
+$('#soloPick').onclick = async () => { const id = await pickGameSheet({ current: $('#soloGame').value }); if (id) pickSolo(id); };
 $('#newGameBtn').onclick = () => { const id = Profile.suggest(); pickSolo(id); toast(`How about ${$('#soloGame').selectedOptions[0].textContent.replace(/ {2}.*/, '')}?`); };
 $('#recordBtn').onclick = () => Profile.show(pickSolo);
+// 🔵 Bingo tools: a local-only screen (no room); Back returns home
+$('#bingoToolsBtn').onclick = () => needUI('bingotools').then(() => {
+  let open = true;
+  const onBack = () => { if (!open) return; open = false; show('home'); };
+  show('bingoTools');
+  backOpen(onBack);
+  UI.bingotools.open($('#bingoTools'), { toast, sfx, confetti, ask, back: () => { if (!open) return; open = false; backClosed(onBack); show('home'); } });
+}).catch(() => toast('The Bingo tools did not load: check the connection.'));
 $('#lobbyRecordBtn').onclick = () => Profile.show();
 $('#createBtn').onclick = () => api('/api/create', { name: $('#name').value }).then(enter).catch((e) => toast(e.message));
 // Play solo starts at once; Options first stops in the lobby (bots seated) to change settings before Start.
@@ -1479,6 +1645,8 @@ $('#shareBtn').onclick = () => {
 };
 $('#startBtn').onclick = () => quiet(act('start'));
 $('#rematchBtn').onclick = () => quiet(act('rematch'));
+$('#playPickBtn').onclick = () => { if (overPick) quiet(act('next_vote', { game: overPick.game })); };
+$('#playVoteBtn').onclick = () => quiet(act('play_vote'));
 $('#lobbyBtn').onclick = () => quiet(act('lobby'));
 $('#readyBtn').onclick = () => quiet(act('ready'));
 $('#replayBtn').onclick = startReplay;

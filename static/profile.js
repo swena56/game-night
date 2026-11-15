@@ -163,5 +163,9 @@ const Profile = (() => {
   const gameData = (gid) => ({ ...(get().games[gid]?.data || {}) });
   function saveGameData(gid, data) { const p = get(); (p.games[gid] ||= { played: 0, wins: 0 }).data = data; store(KEY, p); }
 
-  return { onState, overLine, show, suggest, stars, tried, starText, showNew, best, gameData, saveGameData };
+  // for the picker's sorts (#98): how often, and when last, this device finished a game
+  const played = (gid) => get().games[gid]?.played || 0;
+  const lastAt = (gid) => get().games[gid]?.lastAt || '';
+
+  return { onState, overLine, show, suggest, stars, tried, starText, showNew, best, gameData, saveGameData, played, lastAt };
 })();

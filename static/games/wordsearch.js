@@ -137,7 +137,8 @@ UI.wordsearch = (() => {
   function tick() {
     if (!v || !$('wfBar')) return;
     const left = Math.max(0, v.left - (performance.now() - receivedAt) / 1000);
-    const playing = S.phase === 'playing' && v.stage === 'play';
+    const playing = S.phase === 'playing' && v.stage === 'play' && v.clock !== false;
+    $('wfBar').parentElement.hidden = S.phase === 'playing' && v.stage === 'play' && v.clock === false;
     $('wfBar').style.width = `${playing ? (left / v.secs) * 100 : 0}%`;
     $('wfBar').parentElement.classList.toggle('last', playing && left < 20);
     const m = Math.floor(left / 60), s = Math.floor(left % 60);

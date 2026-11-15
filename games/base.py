@@ -9,6 +9,7 @@ class GameError(Exception):
 class Game:
     id = ""
     category = ""   # party | action | strategy | classic | cards | dice | words (lobby groups)
+    family = ""     # an optional subgroup inside a big category (Cards: trick-taking, shedding…); see games/__init__.py
     howto = []      # a few short how-to-play lines
     name = ""
     icon = ""
@@ -30,7 +31,7 @@ class Game:
     def info(cls):
         return {
             "id": cls.id, "name": cls.name, "icon": cls.icon, "blurb": cls.blurb,
-            "category": cls.category, "howto": cls.howto,
+            "category": cls.category, "family": cls.family, "howto": cls.howto,
             "min": cls.min_players, "max": cls.max_players, "lateJoin": hasattr(cls, "late_join"),
             "badges": {k: list(v) for k, v in cls.badges.items()},
             "settings": [{"key": k, "label": lbl, "options": opts, "default": d}

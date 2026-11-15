@@ -1,10 +1,16 @@
 from .backgammon import Backgammon
 from .base import Game, GameError
+from .midnight import Midnight
+from .mia import Mia
+from .squares import Squares
+from .brawl import Brawl
+from .derby import Derby
 from .billiards import Billiards
 from .cannon import Cannon
 from .boxes import Boxes
 from .checkers import Checkers
 from .cribbage import Cribbage
+from .bingo import Bingo
 from .doodle import Doodle
 from .farkle import Farkle
 from .chess import Chess
@@ -68,6 +74,7 @@ from .lantern import Lantern
 from .lastcard import LastCard
 from .liars import LiarsDice
 from .lucky import Lucky
+from .marble import Marble
 from .morris import Morris
 from .moonshot import MoonShot
 from .oddone import OddOne
@@ -97,10 +104,31 @@ from .yacht import Yacht
 from .wordsmith import Wordsmith
 from .wordbomb import WordBomb
 from .whisker import Whisker
+from .kindred import Kindred
 
 # Order here is the order of the lobby's game picker.
-GAMES = {g.id: g for g in (Unmask, OddOne, Relay, Trivia, Doodle, Lucky, Spire, Prism, Riders, Whisker, PaintBlast, Sumo, Putt, Rally, Hockey, Billiards, Cannon, Wordsmith, WordBomb, GridHunt, WordSearch, Garden, Safecracker, FibFinder, Ladder, Chess, Checkers, Backgammon, Go, Oware, Reversi, Hedgerow, Realm, LastCard, Lantern, Holdem, Cribbage, Hearts, Speed, Rummy, Klondike, FreeCell, Cheat, President, Spoons, KnockOutWhist, Spades, OhHell, Euchre, Gops, Scopa, Gin, GermanWhist, FanTan, Palace, Ratscrew, Nertz, Whist, Briscola, Blitz, Ranter, BigTwo, GoFish, OldMaid, Cassino, Spite, War, NinetyNine, SixtySix, Pitch, Ecarte, FiveHundred, Canasta, Eleusis, Mao, Belote, Pinochle, Bezique, Bridge, Truc, Skat, Piquet, SeaBattle,
-                           DropFour, Boxes, TicTacToe, Ultimate, Morris, Sudoku, Heist, MoonShot, Yacht, Farkle, Qork, ShipCrew, ShutBox, LiarsDice, TwentyOne)}
+GAMES = {g.id: g for g in (Unmask, OddOne, Relay, Trivia, Doodle, Bingo, Lucky, Spire, Prism, Marble, Riders, Whisker, PaintBlast, Sumo, Putt, Rally, Hockey, Billiards, Cannon, Wordsmith, WordBomb, GridHunt, WordSearch, Garden, Safecracker, FibFinder, Ladder, Chess, Checkers, Backgammon, Go, Oware, Reversi, Hedgerow, Kindred, Realm, LastCard, Lantern, Holdem, Cribbage, Hearts, Speed, Rummy, Klondike, FreeCell, Cheat, President, Spoons, KnockOutWhist, Spades, OhHell, Euchre, Gops, Scopa, Gin, GermanWhist, FanTan, Palace, Ratscrew, Nertz, Whist, Briscola, Blitz, Ranter, BigTwo, GoFish, OldMaid, Cassino, Spite, War, NinetyNine, SixtySix, Pitch, Ecarte, FiveHundred, Canasta, Eleusis, Mao, Belote, Pinochle, Bezique, Bridge, Truc, Skat, Piquet, SeaBattle,
+                           DropFour, Boxes, TicTacToe, Ultimate, Morris, Sudoku, Heist, MoonShot, Yacht, Farkle, Qork, ShipCrew, ShutBox, LiarsDice, Midnight, Mia, Squares, Brawl, Derby, TwentyOne)}
+# Subgroups for the two big categories (#98): the picker shows them as small headers, in this order.
+FAMILIES = {
+    "cards": [("Trick-taking", "hearts kowhist spades ohhell euchre germanwhist whist ninetynine pitch fivehundred bridge"),
+              ("European classics", "briscola sixtysix ecarte belote pinochle bezique truc skat piquet scopa cassino"),
+              ("Shedding & climbing", "lastcard cheat president fantan palace bigtwo mao eleusis"),
+              ("Rummy & sets", "rummy gin canasta blitz cribbage"),
+              ("Fast & family", "speed spoons nertz ratscrew war gofish oldmaid ranter"),
+              ("Patience", "klondike freecell spite"),
+              ("Bluff & bid", "holdem gops lantern")],
+    "dice": [("Push your luck", "moonshot farkle midnight shipcrew brawl"),
+             ("Score sheets", "yacht squares shutbox"),
+             ("Bluff & bet", "liars mia qork derby twentyone")],
+}
+for _cat, _fams in FAMILIES.items():
+    for _fam, _ids in _fams:
+        for _id in _ids.split():
+            assert GAMES[_id].category == _cat, _id
+            GAMES[_id].family = _fam
 GAME_INFO = [g.info() for g in GAMES.values()]
+# the home screen's picker needs only this much of the catalogue (served at /api/games)
+GAME_LIST = [{k: i[k] for k in ("id", "name", "icon", "blurb", "category", "family", "min", "max")} for i in GAME_INFO]
 
-__all__ = ["GAMES", "GAME_INFO", "Game", "GameError"]
+__all__ = ["GAMES", "GAME_INFO", "GAME_LIST", "FAMILIES", "Game", "GameError"]

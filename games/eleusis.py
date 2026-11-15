@@ -54,8 +54,9 @@ class Eleusis(CardGame):
     icon = "🔮"
     blurb = "Crack the secret rule from the cards it accepts and rejects. Shed your hand, or name the rule."
     howto = [
-        "A secret rule decides which card may follow the last one in the line: one of the twenty in the list.",
-        "Play a card. Accepted: it joins the line. Rejected: it's shown under the line and you draw two.",
+        "Nobody knows the rule: the game picks one secretly, from the list under \"Cards left\". It looks at your card and the last accepted card in the line.",
+        "Example: if the rule is \"Alternate red and black\", after 7♠ a 4♥ is accepted, then 9♥ is rejected (red after red).",
+        "On your turn, play a card as a guess. Accepted: it joins the line. Rejected: it's shown under the line and you draw two. Each answer is a clue that rules some of the list out.",
         "\"No play\" if nothing fits: right, and your hand shrinks by four; wrong, and you draw three.",
         "🔮 Name the rule (once): right, you shed three cards and keep it secret. Wrong: it's crossed off and you draw three.",
         "Empty your hand to win, or have the fewest cards when the stock runs out.",

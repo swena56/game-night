@@ -265,6 +265,10 @@ const MOVES = {
     stage.dispatchEvent(new w.MouseEvent('pointerup', { bubbles: true, clientX: 100, clientY: 100 }));
   },
   tictactoe(d) { click(pick(enabled(d, '.ttt-cell'))); },
+  kindred(d) {  // a square for the piece in hand (if placing), then a piece to hand over
+    const cells = enabled(d, '.kn-cell'); if (cells.length) click(pick(cells));
+    const pieces = enabled(d, '.kn-pp'); if (pieces.length) click(pick(pieces));
+  },
   heist(d) { click(pick(enabled(d, '.h-choice'))); },
   lantern(d) { click(pick(enabled(d, '.lm-tile'))); },
   moonshot(d, S) { click(S.moon.fuel >= 12 ? d.querySelector('#msBank') : d.querySelector('#msRoll')); },
@@ -395,6 +399,50 @@ const MOVES = {
     if (Math.random() < 0.3) click(d.querySelector('#lrMore'));
     const g2 = d.querySelector('#lrGo');
     click(g2.disabled ? liar : g2);
+  },
+  midnight(d) {  // roll, or keep a die or two and roll on
+    const roll = d.querySelector('#mdRoll');
+    if (!roll) return;
+    if (!roll.hidden) return click(roll);
+    const dice = [...d.querySelectorAll('#mdDice .ya-die:not(:disabled)')];
+    if (!dice.length) return;
+    click(dice[0]);
+    if (dice.length > 1 && Math.random() < 0.4) click(d.querySelectorAll('#mdDice .ya-die')[1]);
+    click(d.querySelector('#mdKeep'));
+  },
+  mia(d) {  // roll / believe, sometimes lift; announce from the ladder
+    const roll = d.querySelector('#miaRoll'), lift = d.querySelector('#miaLift'), conc = d.querySelector('#miaConcede');
+    if (!roll) return;
+    if (!d.querySelector('#miaSay').hidden) {
+      if (Math.random() < 0.3) { const s = [...d.querySelectorAll('.mia-step:not(:disabled)')]; if (s.length) click(s[Math.floor(Math.random() * Math.min(3, s.length))]); }
+      return click(d.querySelector('#miaSay'));
+    }
+    if (!conc.hidden) return click(Math.random() < 0.5 ? conc : lift);
+    if (!lift.hidden && (Math.random() < 0.3 || roll.hidden)) return click(lift);
+    if (!roll.hidden) click(roll);
+  },
+  bingo(d, S) {  // pick cards and get ready; then daub a glowing called number, and claim when BINGO! lights up
+    if (S.bingo.stage === 'deal') return click(enabled(d, '#bgoReady')[0]);
+    const hot = d.querySelector('#bgoBingo.hot:not(:disabled)');
+    if (hot) return click(hot);
+    click(pick([...d.querySelectorAll('.bgo-cell.called:not(.d)')]));
+  },
+  squares(d) { const cells = [...d.querySelectorAll('.dsq-cell:not(:disabled)')]; if (cells.length) click(pick(cells)); },
+  brawl(d) {  // roll, hold a die now and then, fight
+    const roll = d.querySelector('#brwRoll'), fight = d.querySelector('#brwFight');
+    if (!roll) return;
+    if (!fight.hidden && (roll.hidden || Math.random() < 0.4)) return click(fight);
+    const free = [...d.querySelectorAll('.brw-die:not(:disabled)')];
+    if (free.length && Math.random() < 0.5) click(free[0]);
+    const r2 = d.querySelector('#brwRoll');
+    click(r2.disabled ? d.querySelector('#brwFight') : r2);
+  },
+  derby(d) {  // roll, then tap the three dice in some order and go
+    const roll = d.querySelector('#dbyRoll');
+    if (!roll) return;
+    if (!roll.hidden) return click(roll);
+    for (let k = 0; k < 3; k++) { const f = [...d.querySelectorAll('#dbyDice .ya-die:not(:disabled)')]; if (f.length) click(pick(f)); }
+    click(d.querySelector('#dbyGo'));
   },
   shipcrew(d) {
     const roll = d.querySelector('#scRoll'), dock = d.querySelector('#scDock');
@@ -594,6 +642,16 @@ const MOVES = {
     walk(t.move[0]); key('Enter'); walk(t.move[1]); key('Enter');
     if (!w.UI.prism.testState().busy && w.UI.prism.testState().score === before) throw new Error(`the swap ${t.move} did nothing`);
   },
+  marble(d, S, n, w) {   // roll about with the keys a moment, then (once a real run could have got there) drop on the goal
+    const t = w.UI.marble.testState(), m = S.marble;
+    if (!t || !t.racing || t.done) return;
+    const k = `${m.round}`;
+    if (w.__mbRound !== k) { w.__mbRound = k; w.__mbAt = Date.now(); }
+    const key = (type, k2) => w.dispatchEvent(new w.KeyboardEvent(type, { key: k2, bubbles: true }));
+    const dir = pick(['ArrowRight', 'ArrowDown']);
+    key('keydown', dir); setTimeout(() => key('keyup', dir), 250);
+    if (Date.now() - w.__mbAt > (m.course.path.length / 6 + 1) * 1000) w.UI.marble.testWarp(m.course.goal[0] + 0.5, m.course.goal[1] + 0.5);
+  },
   spire(d, S, n, w) {
     const key = (k) => w.dispatchEvent(new w.KeyboardEvent('keydown', { key: k, bubbles: true }));
     key(pick(['ArrowLeft', 'ArrowRight', 'ArrowUp', ' ', ' ', 'c']));
@@ -603,7 +661,7 @@ const MOVES = {
 const UI_MINE = (f) => (f.stage === 'write' && !f.mine) || (f.stage === 'pick' && f.myPick == null);
 
 async function playSolo(game, seconds = 60) {
-  const { w, d, errors, close } = await openPage(game === 'hockey' || game === 'riders' || game === 'whisker' || game === 'paintblast' || game === 'sumo' || game === 'putt' || game === 'rally' || game === 'prism');
+  const { w, d, errors, close } = await openPage(game === 'hockey' || game === 'riders' || game === 'whisker' || game === 'paintblast' || game === 'sumo' || game === 'putt' || game === 'rally' || game === 'prism' || game === 'marble');
   const S = () => w.eval('S');
   const report = { game, moves: 0, phase: null, notes: [] };
   d.querySelector('#name').value = 'Tester';
@@ -614,9 +672,9 @@ async function playSolo(game, seconds = 60) {
   const end = Date.now() + seconds * 1000;
   while (Date.now() < end && S()?.phase === 'playing') {
     const s = S();
-    const mine = s.turn === s.me.id || (game === 'heist' && !s.heist.mine) || (game === 'lantern' && !s.lantern.mine) || (game === 'oddone' && s.oddone.stage === 'vote' && !s.oddone.myVote) || (game === 'fibfinder' && UI_MINE(s.fibfinder)) || (game === 'holdem' && s.holdem.canRebuy) || (game === 'cribbage' && s.cribbage.stage === 'discard' && s.cribbage.discarded[s.me.id] === false)
+    const mine = s.turn === s.me.id || (game === 'heist' && !s.heist.mine) || (game === 'lantern' && !s.lantern.mine) || (game === 'squares' && !s.squares.mine) || (game === 'bingo' && !!s.bingo.cards && (s.bingo.stage === 'call' || !s.bingo.ready)) || (game === 'oddone' && s.oddone.stage === 'vote' && !s.oddone.myVote) || (game === 'fibfinder' && UI_MINE(s.fibfinder)) || (game === 'holdem' && s.holdem.canRebuy) || (game === 'cribbage' && s.cribbage.stage === 'discard' && s.cribbage.discarded[s.me.id] === false)
       || (game === 'relay' && (s.relay.stage === 'play' ? !s.relay.sent : s.relay.myVote == null)) || (game === 'seabattle' && s.sea.stage === 'placing' && !s.sea.ready[s.me.id])
-      || (game === 'spire' && s.spire.playing && s.spire.startIn <= 0) || (game === 'prism' && s.prism.playing && s.prism.startIn <= 0) || (game === 'safecracker' && ['crack', 'set'].includes(s.safecracker.stage) && !s.safecracker.mine) || (game === 'gridhunt' && s.gridhunt.stage === 'hunt')
+      || (game === 'spire' && s.spire.playing && s.spire.startIn <= 0) || (game === 'prism' && s.prism.playing && s.prism.startIn <= 0) || (game === 'marble' && s.marble.playing) || (game === 'safecracker' && ['crack', 'set'].includes(s.safecracker.stage) && !s.safecracker.mine) || (game === 'gridhunt' && s.gridhunt.stage === 'hunt')
       || (game === 'doodle' && s.doodle.stage === 'draw' && !s.doodle.solvers.some(([p]) => p === s.me.id)) || game === 'hockey' || (game === 'riders' && s.riders.stage === 'ride') || (game === 'whisker' && s.whisker.stage === 'play') || (game === 'paintblast' && s.paintblast.st === 'play') || (game === 'sumo' && s.sumo.stage === 'play') || (game === 'cannon' && s.cannon.volley && !s.cannon.between && s.cannon.me != null && s.cannon.tanks[s.cannon.me]?.[2] > 0 && !s.cannon.locked.includes(s.cannon.me)) || (game === 'rally' && s.rally.stage === 'race') || (game === 'hearts' && s.hearts.stage === 'pass' && !s.hearts.myPass) || (game === 'speed' && s.speed.stage === 'play') || (game === 'trivia' && s.trivia.stage === 'ask' && s.trivia.mine == null) || (game === 'ladder' && s.ladder.stage === 'climb' && !s.ladder.done)
       || ((game === 'freecell' || game === 'klondike' || game === 'sudoku' || game === 'wordsearch' || game === 'garden') && s[game].stage === 'play' && s[game].playing && !s[game].done && !s[game].banked)
       || (game === 'qork' && (s.qork.stage === 'snap' ? !(s.me.id in s.qork.acted) : s.qork.cupper === s.me.id && ['wait', 'dice'].includes(s.qork.stage)))
@@ -654,8 +712,15 @@ async function playSolo(game, seconds = 60) {
     await waitFor(() => d.querySelector('#chatList').textContent.includes('gg from the test'), 5000) || report.notes.push('chat message never appeared');
     click(d.querySelector('#prefsBtn')); report.prefs = d.querySelectorAll('#prefsList input').length;
     // next-game vote: suggestions render (voting itself would start another game, so it's checked server-side)
-    report.vote = d.querySelectorAll('#overVote .vote-chip').length;
+    report.vote = d.querySelectorAll('#overVote .next-tile').length;
     if (!report.vote) report.notes.push('no next-game vote choices');
+    // alone with bots a tile only picks the next game (#93): nothing starts until ▶ Play
+    if (report.vote && !S().players.some((p) => !p.bot && p.id !== S().me.id)) {
+      click(d.querySelector('#overVote .next-tile')); await sleep(400);
+      if (S().phase !== 'over') report.notes.push('a solo next-game tile started a game straight away');
+      if (d.querySelector('#playPickBtn').hidden) report.notes.push('no ▶ Play button after picking a next game');
+      click(d.querySelector('#overVote .next-tile.on')); await sleep(100);  // take it back
+    }
     // rematch, then back to lobby
     click(d.querySelector('#rematchBtn'));
     await waitFor(() => S().phase === 'playing', 8000) || report.notes.push('rematch did not start');
@@ -683,6 +748,14 @@ async function lobbyTour() {
   const qr = d.querySelectorAll('#modalBody .invite-qr path').length === 1 && d.querySelector('#modalBody input')?.value.includes('?room=');
   const cats = [...d.querySelectorAll('#gamePicker .picker-cat')].map((x) => x.textContent).join(' ');
   const nofit = [...d.querySelectorAll('#gamePicker .nofit small')].map((x) => x.textContent).join(',');
+  // #98: families inside Cards and Dice, a jump row, and the A–Z sort as one flat list
+  if (!d.querySelector('#gamePicker .picker-sub')) notes.push('no family sub-headers in the picker');
+  if (!d.querySelectorAll('#pickerBar .picker-jump .chip-btn').length) notes.push('no category jump chips');
+  const az = [...d.querySelectorAll('#pickerBar .picker-sorts .chip-btn')].find((b) => b.textContent.includes('A–Z'));
+  click(az); await sleep(200);
+  const names = [...d.querySelectorAll('#gamePicker .game-tile b')].map((b) => b.textContent);
+  if (names.length !== S().games.length || names.join() !== [...names].sort((a, b) => a.localeCompare(b)).join()) notes.push('A–Z sort is not one alphabetical list');
+  click([...d.querySelectorAll('#pickerBar .picker-sorts .chip-btn')][0]); await sleep(200);
   const howto = d.querySelectorAll('#howto li').length;
   click(d.querySelector('#leaveBtn')); await sleep(200);
   const leaveDialog = d.querySelector('#modalText').textContent; click(d.querySelector('#modalCancel'));
@@ -751,7 +824,7 @@ async function feedbackTour() {
   const lt = await lobbyTour();
   console.log('LOBBY', JSON.stringify(lt));
   for (const g of games.length ? games : Object.keys(MOVES)) {
-    const r = await playSolo(g, CT_GAMES.has(g) ? 240 : g === 'wordsmith' ? 40 : g === 'spire' ? 25 : g === 'prism' ? 110 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'cribbage' ? 300 : g === 'yacht' ? 200 : g === 'farkle' ? 240 : g === 'qork' ? 200 : g === 'backgammon' ? 300 : g === 'gridhunt' ? 260 : g === 'paintblast' ? 230 : g === 'sumo' ? 200 : g === 'putt' ? 300 : g === 'cannon' ? 240 : g === 'rally' ? 150 : g === 'whisker' ? 120 : g === 'hearts' || g === 'rummy' ? 300 : g === 'twentyone' ? 200 : g === 'speed' ? 150 : g === 'trivia' ? 200 : g === 'ladder' ? 330 : g === 'freecell' || g === 'klondike' ? 300 : g === 'sudoku' ? 120 : g === 'wordsearch' ? 150 : g === 'garden' ? 200 : g === 'wordbomb' ? 200 : g === 'liars' ? 300 : g === 'shipcrew' || g === 'shutbox' ? 200 : g === 'reversi' || g === 'hedgerow' || g === 'ultimate' || g === 'oware' || g === 'morris' || g === 'realm' ? 260 : g === 'safecracker' ? 200 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
+    const r = await playSolo(g, CT_GAMES.has(g) ? 240 : g === 'wordsmith' ? 40 : g === 'bingo' ? 300 : g === 'spire' ? 25 : g === 'prism' ? 110 : g === 'marble' ? 150 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'cribbage' ? 300 : g === 'yacht' ? 200 : g === 'farkle' ? 240 : g === 'qork' ? 200 : g === 'backgammon' ? 300 : g === 'gridhunt' ? 260 : g === 'paintblast' ? 230 : g === 'sumo' ? 200 : g === 'putt' ? 300 : g === 'cannon' ? 240 : g === 'rally' ? 150 : g === 'whisker' ? 120 : g === 'hearts' || g === 'rummy' ? 300 : g === 'twentyone' ? 200 : g === 'speed' ? 150 : g === 'trivia' ? 200 : g === 'ladder' ? 330 : g === 'freecell' || g === 'klondike' ? 300 : g === 'sudoku' ? 120 : g === 'wordsearch' ? 150 : g === 'garden' ? 200 : g === 'wordbomb' ? 200 : g === 'liars' ? 300 : g === 'shipcrew' || g === 'shutbox' || g === 'midnight' || g === 'mia' || g === 'brawl' || g === 'derby' ? 200 : g === 'squares' ? 120 : g === 'kindred' ? 200 : g === 'reversi' || g === 'hedgerow' || g === 'ultimate' || g === 'oware' || g === 'morris' || g === 'realm' ? 260 : g === 'safecracker' ? 200 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
     console.log(`\n== ${g}: phase=${r.phase} moves=${r.moves} dialogs=${r.dialogs || 0} screen="${r.screen}" ${r.banner ? `banner="${r.banner}"` : ''}`);
     console.log(`   help: ${r.help} | log ticker: "${r.ticker}"`);
     if (r.replay) console.log(`   replay: ${r.replay}`);

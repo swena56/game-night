@@ -28,13 +28,14 @@
   <section id="home" class="screen center" hidden>
     <div class="panel narrow">
       <h1 class="logo">🎲 Game Night</h1>
-      <p class="tag">98 games · play with friends or bots</p>
+      <p class="tag"><span id="gameCount">105</span> games · play with friends or bots</p>
       <div class="home-icons" aria-hidden="true"><div id="homeIcons"></div></div>
       <label>Your name <input id="name" maxlength="16" autocomplete="nickname" placeholder="e.g. Sam"></label>
       <button id="createBtn" class="primary big">Create a room</button>
       <div class="or">or play solo against bots</div>
       <div class="row">
-        <select id="soloGame"></select>
+        <select id="soloGame" hidden></select>
+        <button id="soloPick" class="solo-pick" title="Choose a game: search, sort, favourites" aria-haspopup="dialog"></button>
         <select id="soloLevel"><option value="easy">Easy</option><option value="normal" selected>Normal</option><option value="hard">Hard</option></select>
       </div>
       <div class="row solo-row">
@@ -45,6 +46,7 @@
         <button id="newGameBtn" class="ghost-btn" title="Pick a game you haven't played yet (or one with the fewest ★)">🎲 Something new</button>
         <button id="recordBtn" class="ghost-btn" title="Your games, wins, ★ bot-ladder stars and badges, kept on this device">🏆 My record</button>
       </div>
+      <button id="bingoToolsBtn" class="ghost-btn bingo-tools-btn" title="For bingo in real life: track your paper cards, or be the caller">🔵 Bingo tools: paper cards &amp; caller</button>
       <div class="or">or join a friend</div>
       <div class="row">
         <input id="code" maxlength="4" placeholder="CODE" class="code-input" autocapitalize="characters">
@@ -64,6 +66,7 @@
         <input id="pickerFind" type="search" placeholder="🔎 Find a game" aria-label="Find a game" autocomplete="off">
         <button id="pickerFits" class="chip-btn" aria-pressed="false" title="Show only games for the players here">👥 Fits us</button>
       </div>
+      <div id="pickerBar" class="picker-bar"></div>
       <div id="gamePicker" class="picker" aria-label="Games (arrow keys move, Enter picks)"></div>
       <div id="gameChosen" class="game-chosen"></div>
       <p id="gameDesc" class="hint"></p>
@@ -94,6 +97,9 @@
   </section>
 
   <!-- GAME -->
+  <!-- 🔵 BINGO TOOLS (static/games/bingotools.js, local only) -->
+  <section id="bingoTools" class="screen" hidden></section>
+
   <section id="game" class="screen" hidden>
     <header class="topbar">
       <span class="logo small" id="gameCode"></span>
@@ -114,14 +120,16 @@
         <button id="overFold" class="icon-btn" aria-expanded="true" title="Fold the results to see the board">▴</button></div>
       <div id="overPodium" class="podium" hidden></div>
       <div id="overScores" class="over-scores"></div>
-      <div id="overVote" class="over-vote"></div>
       <div class="over-actions">
+        <button id="playPickBtn" class="primary" hidden></button>
+        <button id="playVoteBtn" class="primary" hidden>▶ Play the vote winner</button>
         <button id="rematchBtn" class="primary">🔁 Rematch</button>
-        <button id="lobbyBtn">🏠 Lobby</button>
         <button id="readyBtn">🙋 I'm in!</button>
+        <button id="lobbyBtn">🏠 Lobby</button>
         <button id="replayBtn">▶ Replay</button>
       </div>
       <span id="overWait" class="hint"></span>
+      <div id="overVote" class="over-vote"></div>
     </div>
     <button id="joinInBtn" class="primary join-in" hidden></button>
     <div class="layout">

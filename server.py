@@ -27,7 +27,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
 
-from games import GAME_INFO, GAMES, GameError
+from games import FAMILIES, GAME_INFO, GAME_LIST, GAMES, GameError
 from games import garden, wordbomb
 from games.wordsmith import warm_up, words
 
@@ -37,7 +37,7 @@ STATIC_DIR = os.path.join(APP_DIR, "static")
 DATA_DIR = os.path.join(APP_DIR, "data")
 CONTENT_TYPES = {".html": "text/html", ".js": "text/javascript", ".css": "text/css",
                  ".webmanifest": "application/manifest+json", ".png": "image/png", ".svg": "image/svg+xml",
-                 ".woff2": "font/woff2"}
+                 ".woff2": "font/woff2", ".gz": "application/octet-stream"}  # .gz: the OCR model (static/vendor/tesseract)
 MAX_PLAYERS = 6
 # Overall points for the evening: a win, playing a game to the end, and walking out of a live game.
 POINTS_WIN, POINTS_PLAYED, POINTS_QUIT = 3, 1, -2
@@ -1251,6 +1251,8 @@ class Handler(BaseHTTPRequestHandler):
             if not self.local():
                 return self.send_json(403, {"error": "Health numbers are for the device running the server."})
             return self.send_json(200, health())
+        if url.path == "/api/games":  # the catalogue for the home screen's game picker (#98)
+            return self.send_json(200, {"games": GAME_LIST, "families": {c: [f for f, _ in fs] for c, fs in FAMILIES.items()}})
         if url.path == "/api/events":
             return self.events(parse_qs(url.query))
         if url.path not in self.files:

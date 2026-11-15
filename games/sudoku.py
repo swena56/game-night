@@ -156,20 +156,21 @@ class Sudoku(PuzzleRace):
     howto = [
         "Fill every row, column and box with each digit once. Everyone gets the same puzzle.",
         "Tap a cell, then a digit. A right digit scores 1 point and stays; a wrong one costs 1 point and bounces off.",
-        "✏️ switches to pencil marks: small notes only you can see. 💡 fills in a cell that can be worked out, for 1 point.",
+        "✏️ switches to pencil marks: small notes only you can see. 💡 fills in a cell that can be worked out, for 1 point (3 per puzzle unless the host changes it).",
         "Finishing the grid scores +10, and +5 more for finishing first. Most points after the last puzzle wins.",
-        "Alone, finish every puzzle before the clock runs out to win.",
+        "Alone, finish every puzzle before the clock runs out to win (or just finish them, with 🌿 No clock).",
     ]
     settings_schema = {
         "size": ("Grid", [(9, "9×9"), (6, "6×6 mini")], 9),
         "level": ("Difficulty", [("easy", "Easy"), ("medium", "Medium"), ("hard", "Hard")], "easy"),
         "rounds": ("Puzzles", [(1, "1"), (2, "2"), (3, "3")], 1),
-        "secs": ("Time per puzzle", [(900, "15 min"), (600, "10 min"), (1200, "20 min"), (300, "5 min")], 900),
+        "secs": ("Time per puzzle", [(900, "15 min"), (600, "10 min"), (1200, "20 min"), (300, "5 min"), (0, "🌿 No clock")], 900),
+        "hints": ("💡 Hints per puzzle", [(3, "3"), (1, "1"), (5, "5"), (0, "None"), (-1, "Unlimited")], 3),
         "daily": ("Puzzles", [(False, "🎲 Random"), (True, "📅 Today's puzzles (the same everywhere)")], False),
     }
     badges = {**PuzzleRace.badges, "clean": ("✨", "Clean sheet", "Finish a 9×9 grid with no mistakes and no hints")}
     # seconds a bot spends per digit, before the puzzle's difficulty and size
-    BOT = {"easy": 11.0, "normal": 7.0, "hard": 4.0}
+    BOT = {"easy": 18.0, "normal": 11.0, "hard": 6.0}
     SLOW = {"easy": 1.0, "medium": 1.35, "hard": 1.8}
 
     def new_puzzle(self, rng):
@@ -214,6 +215,8 @@ class Sudoku(PuzzleRace):
                 raise GameError(f"Digits go from 1 to {self.n}.")
             self.put(st, i, d)
         elif kind == "hint":
+            if self.hints_left(st) == 0:
+                raise GameError("No hints left for this puzzle." if self.s.get("hints", 3) else "Hints are off in this game.")
             s = single_step(st["g"], Shape(self.n), 2)
             i = s[0] if s else next(k for k, v in enumerate(st["g"]) if not v)
             st["g"][i] = self.sol[i]
@@ -222,6 +225,11 @@ class Sudoku(PuzzleRace):
             st["seq"] += 1
         else:
             raise GameError("Unknown action.")
+
+    def hints_left(self, st):
+        """Hints this player can still take on this puzzle; None = unlimited."""
+        cap = self.s.get("hints", 3)
+        return None if cap is None or cap < 0 else max(0, cap - st["hints"])
 
     def put(self, st, i, d):
         if st["g"][i]:
@@ -239,7 +247,7 @@ class Sudoku(PuzzleRace):
     # -- bots: they work the grid with the same logic a person would
 
     def bot_pace(self, p, st):
-        base = self.BOT.get(p.bot or "normal", 7.0) * self.SLOW.get(getattr(self, "level", "easy"), 1.0)
+        base = self.BOT.get(p.bot or "normal", 11.0) * self.SLOW.get(getattr(self, "level", "easy"), 1.0)
         if getattr(self, "n", 9) == 6:
             base *= 0.7
         return base * self.rng.uniform(0.7, 1.3)
@@ -272,6 +280,7 @@ class Sudoku(PuzzleRace):
                "grid": st["g"] if st else self.puzzle,
                "wrong": st["wrong"] if st else 0, "hints": st["hints"] if st else 0, "mine": st["mine"] if st else 0,
                "miss": st["miss"] if st else None, "hint": st["hint"] if st else None, "seq": st["seq"] if st else 0,
+               "hintsLeft": self.hints_left(st) if st else None,
                "sol": None}
         if self.stage == "reveal" or self.room.phase == "over":
             out["sol"] = self.sol
