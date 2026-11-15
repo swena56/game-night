@@ -1,13 +1,13 @@
 // Dice Derby: six lanes with a horse each, your secret tickets, and three dice. Tap the dice in order:
 // the first gallops +2, the second trots +1, and the last one stumbles −1. Ghost marks preview the move.
 UI.derby = (() => {
-  let S, ctx, order = [], turnKey = '', rollKey = '', seenResult = -1;
+  let S, ctx, order = [], turnKey = '', rollKey = '', seenResult = -1, lastPos = {};
   const $ = (id) => document.getElementById(id);
   const JOBS = [['+2', 'gallop'], ['+1', 'trot'], ['−1', 'stumble']];
   const STEP = [2, 1, -1];
 
   function mount(main, side) {
-    order = []; turnKey = ''; rollKey = ''; seenResult = -1;
+    order = []; turnKey = ''; rollKey = ''; seenResult = -1; lastPos = {};
     main.innerHTML = `<div class="dby">
       <div id="dbyTurn" class="dby-turn"></div>
       <div id="dbyTrack" class="dby-track"></div>
@@ -40,7 +40,9 @@ UI.derby = (() => {
     const trail = Object.fromEntries((d.trail || []).map(([h, st]) => [h, st]));
     const tickets = d.tickets || [];
 
+    // horses are drawn fresh each time, so each one runs (its `left`) from where it stood last time
     const track = $('dbyTrack'); track.innerHTML = '';
+    if (lastPos.race !== d.race) lastPos = { race: d.race };  // a new race lines up at the start without running back
     for (let h = 1; h <= 6; h++) {
       const lane = ctx.el('div', 'dby-lane' + (tickets.includes(h) ? ' mine' : ''));
       lane.style.setProperty('--hue', `${(h - 1) * 60}`);
@@ -53,6 +55,8 @@ UI.derby = (() => {
       const horse = ctx.el('span', 'dby-horse' + (trail[h] ? (trail[h] > 0 ? ' fwd' : ' back') : '') + (d.places[h] === 0 && d.pos[h] ? ' lead' : ''), '🏇');
       horse.style.left = pct(d.pos[h]);
       run.append(horse);
+      if (lastPos[h] != null && lastPos[h] !== d.pos[h] && motionOK()) horse.animate?.([{ left: pct(lastPos[h]) }, { left: pct(d.pos[h]) }], { duration: 560, easing: 'cubic-bezier(.3, 1.2, .5, 1)' });
+      lastPos[h] = d.pos[h];
       lane.append(run, ctx.el('span', 'dby-pos', tickets.includes(h) ? `🎟️ ${d.pos[h]}` : String(d.pos[h])));
       track.append(lane);
     }
@@ -103,14 +107,9 @@ UI.derby = (() => {
       }
     }
 
-    const box = $('dbyScores'); box.innerHTML = '';
-    for (const pid of d.seats) {
-      const p = ctx.player(pid); if (!p) continue;
-      const row = ctx.el('div', 'seat-row' + (S.turn === pid ? ' turn' : ''));
-      const dot = ctx.el('span', 'dot'); dot.style.background = p.color;
-      row.append(dot, ctx.el('span', '', `${p.name}: ${d.scores[pid] ?? 0}`));
-      box.append(row);
-    }
+    Kit.scoreboard($('dbyScores'), d.seats.filter((pid) => ctx.player(pid)).map((pid) => ({
+      p: ctx.player(pid), score: d.scores[pid] ?? 0, me: pid === S.me.id, turn: S.turn === pid,
+    })), { lead: true });
   }
 
   const turnText = (s) => s.phase !== 'playing' || s.turn !== s.me.id ? null : s.derby.dice.length ? '🏇 Give each die a job' : '🏇 Roll!';

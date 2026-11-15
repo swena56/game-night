@@ -60,3 +60,31 @@
   .ct-table .pc { --cw: 40px; }
   .ct-hand .pc { --cw: 42px; }
 }
+/* round L: a rail round the felt, seat plates with the player's face, rivals' hands as little fans of backs,
+   the seat on turn breathing gold, and a flare on the plate that takes a trick */
+.ct-table::before { content: ''; position: absolute; inset: 14px; border-radius: inherit; pointer-events: none;
+  border: 1px solid #ffffff1c; box-shadow: inset 0 0 0 1px #0003; }
+.ct-table::after { content: '♠ ♥ ♣ ♦'; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); pointer-events: none;
+  font: 800 clamp(18px, 6vw, 28px) var(--font-display); letter-spacing: .3em; color: #ffffff0d; white-space: nowrap; }
+.ct-seat { border: 1px solid color-mix(in srgb, var(--pc, #888) 45%, transparent); background: linear-gradient(180deg, #123128e8, #0a1d17e8);
+  padding: 3px 8px 4px 4px; gap: 2px; }
+.ct-who { display: flex; align-items: center; gap: 5px; max-width: 100%; min-width: 0; }
+.ct-who .avatar { width: 24px; height: 24px; box-shadow: 0 0 0 2px var(--pc, #888); }
+.ct-who b { min-width: 0; }
+.ct-backs { position: relative; display: flex; align-items: center; height: 20px; padding-left: 2px; }
+.ct-backs .pc.back { --cw: 13px; margin-left: -8px; transform: rotate(calc((var(--k, 0) - 1) * 10deg)); box-shadow: 0 1px 2px #0008; }
+.ct-backs .pc.back:first-child { margin-left: 0; --k: 0; } .ct-backs .pc.back:nth-child(2) { --k: 1; } .ct-backs .pc.back:nth-child(3) { --k: 2; }
+.ct-backs i { margin-left: 5px; font-style: normal; font-weight: 800; font-size: var(--fs-xs); color: #e6fff6; font-variant-numeric: tabular-nums; }
+.ct-seat.turn { border-color: var(--accent); animation: ctTurn 1.8s ease-in-out infinite; }
+@keyframes ctTurn { 50% { box-shadow: 0 0 0 3px var(--accent-a40), 0 0 22px var(--accent-a40); } }
+.ct-seat.took::after { content: ''; position: absolute; inset: -4px; border-radius: 14px; pointer-events: none;
+  border: 2px solid #ffd166; animation: ctTook .9s ease-out forwards; }
+@keyframes ctTook { from { opacity: 1; transform: scale(.9); box-shadow: 0 0 18px #ffd166; } to { opacity: 0; transform: scale(1.25); box-shadow: 0 0 0 #ffd16600; } }
+.ct-slot .pc { box-shadow: inset 0 0 0 1px #00000026, 0 2px 3px #0006, 0 8px 14px #0005; }
+body.lowgfx .ct-seat.turn { animation: none; box-shadow: 0 0 0 2px var(--accent); }
+body.lowgfx .ct-table::after { display: none; }
+/* seat plates stay inside the oval on a phone: a smaller face, a capped name, plates pulled in from the edge */
+.ct-seat { left: calc(50% + var(--x) * (50% - 62px)); max-width: 132px; }
+.ct-who b { max-width: 10ch; font-size: var(--fs-sm); }
+@media (max-width: 420px) { .ct-who .avatar { width: 20px; height: 20px; } .ct-seat { max-width: 118px; } .ct-who b { max-width: 8ch; } }
+.ct-badge { flex: none; font-size: var(--fs-xs); }

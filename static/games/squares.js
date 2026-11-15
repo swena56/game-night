@@ -5,7 +5,7 @@ UI.squares = (() => {
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
-    die = 0; rollKey = '';
+    die = 0; rollKey = ''; Kit.reset('dsq:');
     main.innerHTML = `<div class="dsq">
       <div id="dsqTurn" class="dsq-turn"></div>
       <div id="dsqRoll" class="ya-dice dsq-roll"></div>
@@ -44,10 +44,12 @@ UI.squares = (() => {
     const grid = $('dsqGrid'); grid.innerHTML = '';
     grid.style.setProperty('--n', n);
     const mine = q.grid || Array(n * n).fill(0);
+    const done = [];   // lines finished by this placement: they pop, and a big hand gets a callout
     const res = (k) => {
       const r = q.lines?.[k];
       const box = ctx.el('div', 'dsq-res' + (r ? (r[1] >= 12 ? ' big' : r[1] ? ' ok' : ' zero') : ''));
       if (r) { box.append(ctx.el('b', '', String(r[1]))); box.title = r[0]; box.append(ctx.el('small', '', r[0])); }
+      Kit.onNew(`dsq:${S.gameNo}:${k}`, r ? r[1] : null, () => { box.classList.add('new'); done.push([box, r]); });
       return box;
     };
     for (let r = 0; r < n; r++) {
@@ -64,18 +66,17 @@ UI.squares = (() => {
     }
     for (let col = 0; col < n; col++) grid.append(res(n + col));
     grid.append(ctx.el('div', 'dsq-total', String(q.scores[S.me.id] ?? '')));
+    for (const [box, r] of done) if (r[1]) Kit.flyText(box, `+${r[1]}`, r[1] >= 12 ? 'gold' : 'good');
+    const best = done.filter(([, r]) => r[1] >= 12).sort((a, b) => b[1][1] - a[1][1])[0];
+    if (best) Kit.callout(`${best[1][0]}!`, 'gold', { sound: 'good', ms: 1300 });
 
     $('dsqHint').textContent = !playing || !q.grid ? '' : q.placed ? 'Placed — the next roll comes when everyone is in.'
       : q.dice.length > 1 ? 'Pick a die, then tap an empty square.' : 'Tap an empty square for this roll.';
 
-    const box = $('dsqScores'); box.innerHTML = '';
-    for (const pid of q.seats) {
-      const p = ctx.player(pid); if (!p) continue;
-      const row = ctx.el('div', 'seat-row' + (playing && q.waiting.includes(pid) ? ' turn' : ''));
-      const dot = ctx.el('span', 'dot'); dot.style.background = p.color;
-      row.append(dot, ctx.el('span', '', `${p.name}: ${q.scores[pid] ?? 0}`));
-      box.append(row);
-    }
+    const box = $('dsqScores');
+    Kit.scoreboard(box, q.seats.filter((pid) => ctx.player(pid)).map((pid) => ({
+      p: ctx.player(pid), score: q.scores[pid] ?? 0, me: pid === S.me.id, turn: playing && q.waiting.includes(pid),
+    })), { lead: true });
     if (q.solo) box.append(ctx.el('div', 'hint left', `Solo goal: ${q.goal}`));
     const hands = $('dsqHands'); hands.innerHTML = '';
     for (const [lbl, pts] of q.hands) {

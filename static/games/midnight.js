@@ -5,10 +5,10 @@ UI.midnight = (() => {
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
-    pick = new Set(); rollKey = ''; seenLast = -1;
+    pick = new Set(); rollKey = ''; seenLast = -1; Kit.reset('md:');
     main.innerHTML = `<div class="md">
       <div id="mdTurn" class="md-turn"></div>
-      <div class="md-clock" aria-hidden="true"><div id="mdHand" class="md-hand"></div><span>12</span></div>
+      <div class="md-clock" aria-hidden="true"><i class="md-ticks"></i><div id="mdHand" class="md-hand"></div><span>12</span><b class="md-moon">🌙</b></div>
       <div class="md-quals"><div id="mdQ1" class="md-q"></div><div id="mdQ4" class="md-q"></div><div id="mdPts" class="md-pts"></div></div>
       <div id="mdKept" class="ya-dice md-kept"></div>
       <div class="ya-tray"><div id="mdDice" class="ya-dice"></div></div>
@@ -35,6 +35,7 @@ UI.midnight = (() => {
 
     for (const [id, v, have] of [['mdQ1', 1, m.h1], ['mdQ4', 4, m.h4]]) {
       const q = $(id); q.innerHTML = ''; q.classList.toggle('got', have);
+      Kit.onNew(`md:${id}`, `${S.turn}|${m.round}|${!!have}`, () => { if (have) { q.classList.remove('lit'); void q.offsetWidth; q.classList.add('lit'); } });
       q.append(have ? Dice.die(v, 'small') : ctx.el('span', 'md-need', String(v)), ctx.el('small', '', have ? 'got it' : `need a ${v}`));
     }
     $('mdPts').textContent = `${m.pts} pts` + (m.h1 && m.h4 ? '' : ' (if you qualify)');
@@ -84,14 +85,10 @@ UI.midnight = (() => {
       last.append(line);
     }
 
-    const box = $('mdScores'); box.innerHTML = '';
-    for (const pid of m.seats) {
-      const p = ctx.player(pid); if (!p) continue;
-      const row = ctx.el('div', 'seat-row' + (S.turn === pid ? ' turn' : ''));
-      const dot = ctx.el('span', 'dot'); dot.style.background = p.color;
-      row.append(dot, ctx.el('span', '', m.moons ? `${p.name}: ${m.moons[pid] ?? 0} 🌙 · ${m.scores[pid] ?? 0}` : `${p.name}: ${m.scores[pid] ?? 0}`));
-      box.append(row);
-    }
+    const box = $('mdScores');
+    Kit.scoreboard(box, m.seats.filter((pid) => ctx.player(pid)).map((pid) => ({
+      p: ctx.player(pid), score: m.scores[pid] ?? 0, note: m.moons ? `${m.moons[pid] ?? 0} 🌙` : '', me: pid === S.me.id, turn: S.turn === pid,
+    })), { lead: true });
     if (m.solo) box.append(ctx.el('div', 'hint left', `Solo goal: ${m.goal}`));
     if (m.solo && m.seats[0] === S.me.id && !!ctx.act) soloBest($('mdBest'), `midnight.best.${m.rounds}`, `${S.code}#${S.gameNo}`, m.scores[S.me.id] ?? 0, S.phase === 'over', { fmt: (v) => `${v} pts` });
   }

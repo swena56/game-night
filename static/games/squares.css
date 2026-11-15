@@ -28,3 +28,16 @@
 @media (max-width: 560px) {
   .dsq-res small { display: none; }
 }
+/* round L: a die written into a square drops in; a finished line pops; the grid is a dark slate with an inner light */
+.dsq-grid { background: linear-gradient(180deg, var(--tint-2), transparent 40%), var(--panel); box-shadow: var(--sh-2), inset 0 1px 0 var(--tint-2); }
+.dsq-cell { transition: border-color .15s, background-color .15s, transform .12s; }
+.dsq-cell:not(:disabled) { background: color-mix(in srgb, var(--accent) 6%, var(--field)); border-style: dashed; }
+.dsq-cell.recent { box-shadow: 0 0 0 2px var(--accent-a40), 0 0 14px var(--accent-a40); }
+.dsq-cell.recent .ya-die { animation: dsqDrop .45s cubic-bezier(.2, 1.4, .4, 1); }
+@keyframes dsqDrop { from { transform: translateY(-18px) scale(1.35) rotate(-14deg); opacity: 0; } }
+.dsq-res { transition: background-color .3s; }
+.dsq-res.new { animation: dsqLine .7s cubic-bezier(.2, 1.5, .4, 1); }
+@keyframes dsqLine { 0% { transform: scale(.4); } 50% { transform: scale(1.18); box-shadow: 0 0 18px var(--accent-a40); } }
+.dsq-res.big.new { animation: dsqLine .7s cubic-bezier(.2, 1.5, .4, 1), dsqGlow 1.6s ease-in-out 2; }
+@keyframes dsqGlow { 50% { box-shadow: 0 0 0 2px #ffd166, 0 0 20px #ffd16699; } }
+.dsq-total { font-family: var(--font-display); font-size: var(--fs-xl); text-shadow: 0 0 12px var(--accent-a40); }

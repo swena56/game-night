@@ -13,7 +13,7 @@ UI.mia = (() => {
     main.innerHTML = `<div class="mia">
       <div id="miaTurn" class="mia-turn"></div>
       <div id="miaCall" class="mia-call"></div>
-      <div class="mia-table"><div id="miaCup" class="mia-cup" aria-hidden="true"></div><div id="miaDice" class="ya-dice mia-dice"></div></div>
+      <div class="mia-table"><div id="miaCup" class="mia-cup" aria-hidden="true"><i class="mia-rim"></i></div><div id="miaDice" class="ya-dice mia-dice"></div></div>
       <div id="miaReveal" class="mia-reveal"></div>
       <div class="row mia-actions"><button id="miaRoll" class="primary big">🥤 Roll</button><button id="miaLift" class="big danger">🫳 Lift the cup</button><button id="miaConcede" class="big">🏳️ Concede 1 ❤️</button></div>
       <div id="miaLadder" class="mia-ladder"></div>
@@ -63,6 +63,11 @@ UI.mia = (() => {
       const r = m.reveal, loser = ctx.player(r.loser), by = ctx.player(r.by);
       if (r.n !== seenReveal && seenReveal !== -1) {
         Kit.callout(r.honest === null ? '🏳️ Conceded' : r.honest ? '✅ True!' : '🤥 A bluff!', r.honest === false ? 'good' : 'gold', { ms: 1300, sound: 'whoosh' });
+        setTimeout(() => {
+          if (!$('miaLives')) return;
+          Kit.stamp(document.querySelector('.mia-table'), r.honest === null ? 'Conceded' : r.honest ? 'True!' : 'Bluff!', r.honest === false ? 'bad' : 'good');
+          Kit.flyText($('miaLives').querySelector(`[data-pid="${r.loser}"]`), `−${r.cost} ❤️`, 'bad');
+        }, 350);
       }
       seenReveal = r.n;
       const line = ctx.el('div', 'mia-revline');
@@ -99,15 +104,13 @@ UI.mia = (() => {
       : st === 'decide' ? (m.claim === 21 ? 'Nothing beats a Mia. Lift it (2 ❤️ on the line) or concede 1.' : `Believe it and you must beat ${long(m.claim)}.`)
       : st === 'claim' ? 'Your true roll is outlined. Say anything higher than the last call.' : 'Shake the cup to open the round.';
 
-    const lives = $('miaLives'); lives.innerHTML = '';
-    for (const pid of m.seats) {
-      const p = ctx.player(pid); if (!p) continue;
+    const lives = $('miaLives');
+    Kit.scoreboard(lives, m.seats.filter((pid) => ctx.player(pid)).map((pid) => {
       const n = m.lives[pid] ?? 0;
-      const row = ctx.el('div', 'seat-row' + (S.turn === pid ? ' turn' : '') + (n ? '' : ' out'));
-      const dot = ctx.el('span', 'dot'); dot.style.background = p.color;
-      row.append(dot, ctx.el('span', '', `${p.name} `), ctx.el('span', 'mia-hearts', n ? '❤️'.repeat(n) + '🤍'.repeat(Math.max(0, m.maxLives - n)) : '☠️'));
-      lives.append(row);
-    }
+      return { p: ctx.player(pid), score: n, me: pid === S.me.id, turn: S.turn === pid, out: !n };
+    }), { fmt: (r) => (r.score ? '❤️'.repeat(r.score) + '🤍'.repeat(Math.max(0, m.maxLives - r.score)) : '☠️') });
+    [...lives.children].forEach((row, k) => { row.dataset.pid = m.seats.filter((pid) => ctx.player(pid))[k]; });
+    lives.querySelectorAll('.kit-sb-score').forEach((b) => b.classList.add('mia-hearts'));
     const calls = $('miaCalls'); calls.innerHTML = '';
     for (const [pid, v] of m.calls) calls.append(ctx.el('li', '', `${ctx.player(pid)?.name ?? '?'}: ${long(v)}`));
   }

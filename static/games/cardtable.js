@@ -46,11 +46,23 @@ var CardTable = window.CardTable || (() => {   // var: several games load this h
         const box = ctx.el('div', 'ct-seat' + (S.turn === t.seats[i] || t.waiting?.includes(i) ? ' turn' : '') + (at.k === 0 ? ' bottom' : '') + (inf.out ? ' out' : ''));
         box.dataset.seat = i;
         place(box, at);
-        const nm = ctx.el('b', '', name(i) + (inf.badge ? ' ' + inf.badge : ''));
+        box.style.setProperty('--pc', p?.color ?? '#888');
+        const head = ctx.el('span', 'ct-who');
+        if (p && typeof avatar === 'function') head.append(avatar(p));
+        const nm = ctx.el('b', '', name(i));
         nm.style.color = p?.color ?? 'inherit';
-        box.append(nm);
-        const bits = [...(inf.count != null && i !== t.me ? [`🎴 ${inf.count}`] : []), ...(inf.tags || [])];
-        if (bits.length) box.append(ctx.el('small', '', bits.join(' · ')));
+        head.append(nm);
+        if (inf.badge) head.append(ctx.el('span', 'ct-badge', inf.badge));  // a team or role mark: never cut off with a long name
+        box.append(head);
+        // a rival's hand as a little fan of card backs with the count on it
+        if (inf.count != null && i !== t.me) {
+          const backs = ctx.el('span', 'ct-backs');
+          for (let k = 0; k < Math.min(3, inf.count); k++) backs.append(ctx.el('span', 'pc back'));
+          backs.append(ctx.el('i', '', String(inf.count)));
+          backs.title = `${inf.count} card${inf.count === 1 ? '' : 's'}`;
+          box.append(backs);
+        }
+        if (inf.tags?.length) box.append(ctx.el('small', '', inf.tags.join(' · ')));
         if (inf.show?.length && i !== t.me) {
           const row = ctx.el('span', 'ct-show');
           for (const card of inf.show) row.append(Cards.face(card, 'tiny'));
@@ -83,6 +95,8 @@ var CardTable = window.CardTable || (() => {   // var: several games load this h
           [...R.trick.querySelectorAll('.pc')].forEach((card, k) => Kit.fly(card, target, { ms: 420, delay: k * 50, scale: 0.4 }));
           R.trick.classList.add('swept');
           ctx.sfx('sweep');
+          // the winner's plate flares as the cards land on it
+          if (target && motionOK()) { target.classList.remove('took'); void target.offsetWidth; target.classList.add('took'); }
         }, 800);
       } else R.trick.classList.remove('swept');
       seenLast = lastKey ?? seenLast ?? ''; seenTrick = trick.length;
@@ -201,14 +215,11 @@ var CardTable = window.CardTable || (() => {   // var: several games load this h
 
     function scores() {
       const sc = t.scores;
-      R.scores.innerHTML = '';
       R.st.textContent = sc?.title || 'Scores';
-      for (const row of sc?.rows || []) {
-        const line = ctx.el('div', 'seat-row');
-        const dot = ctx.el('span', 'mini-disc'); dot.style.background = ctx.player(t.seats[row.seat])?.color ?? '#777';
-        line.append(dot, ctx.el('span', 'grow', `${name(row.seat) === 'You' ? ctx.player(t.seats[row.seat])?.name + ' (you)' : name(row.seat)}${row.sub ? ' · ' + row.sub : ''}`), ctx.el('b', '', String(row.value)));
-        R.scores.append(line);
-      }
+      Kit.scoreboard(R.scores, (sc?.rows || []).map((row) => ({
+        p: ctx.player(t.seats[row.seat]), score: row.value, note: row.sub || '', me: row.seat === t.me,
+        turn: S.turn === t.seats[row.seat], out: !!t.info?.[row.seat]?.out,
+      })));
       R.hint.textContent = sc?.hint || '';
     }
 

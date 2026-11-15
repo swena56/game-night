@@ -34,3 +34,14 @@
   .dby-lane { height: 30px; }
   .dby-horse { font-size: 20px; }
 }
+/* round L: turf with mown stripes, a white rail, a chequered finish post; a horse glides to its new spot (Kit.glide) */
+.dby-track { background: repeating-linear-gradient(90deg, #2f7d3f 0 24px, #2a7139 24px 48px); box-shadow: inset 0 0 0 3px #f4f1e8, inset 0 0 18px #0007, var(--sh-2); }
+.dby-lane { border-bottom: 1px dashed #ffffff30; }
+.dby-run { border-right: 0; }
+.dby-run::after { content: ''; position: absolute; right: -14px; top: -2px; bottom: -2px; width: 10px;
+  background: conic-gradient(#fff 25%, #111 0 50%, #fff 0 75%, #111 0) 0 0 / 10px 10px; box-shadow: 0 0 6px #0008; }
+.dby-num { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; font-weight: 800; font-size: var(--fs-xs);
+  color: #fff; background: hsl(var(--hue) 70% 42%); box-shadow: 0 0 0 2px #fff, 0 2px 4px #0008; }
+.dby-horse { filter: drop-shadow(0 3px 2px #0008); }
+.dby-horse.lead { filter: drop-shadow(0 0 6px #ffd166) drop-shadow(0 3px 2px #0008); }
+.dby-run { margin-left: 12px; }

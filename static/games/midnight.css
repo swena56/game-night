@@ -17,3 +17,24 @@
 .md-actions { justify-content: center; gap: 8px; }
 .md-last { margin-top: 10px; min-height: 1.4em; font-size: 14px; }
 .md-lastline { display: inline-flex; align-items: center; gap: 3px; flex-wrap: wrap; justify-content: center; }
+/* round L: Midnight's own night: a deep-blue tray under a scatter of stars, a clock face with hour ticks that glows
+   as it nears 12, and qualifier slots that light up when the 1 and the 4 are caught */
+.md { --night: #0d1838; width: min(100%, 520px); margin: 0 auto; }
+.md .ya-tray { background: radial-gradient(1.5px 1.5px at 12% 22%, #fff9, #0000), radial-gradient(1px 1px at 38% 70%, #fff8, #0000),
+    radial-gradient(1.5px 1.5px at 66% 18%, #fffa, #0000), radial-gradient(1px 1px at 84% 62%, #fff7, #0000), radial-gradient(1px 1px at 22% 85%, #fff6, #0000),
+    radial-gradient(ellipse at 50% 0, #2a3f86, var(--night) 70%);
+  box-shadow: inset 0 0 0 2px #3c4f8f, inset 0 6px 18px #0009, 0 6px 18px #0007; border: 0; }
+.md-clock { width: 76px; height: 76px; background: radial-gradient(circle at 50% 40%, #22346e, var(--night) 72%);
+  box-shadow: 0 0 0 3px #ffd16699, 0 0 22px #ffd16633, inset 0 0 12px #000a; }
+.md-ticks { position: absolute; inset: 5px; border-radius: 50%; pointer-events: none;
+  background: repeating-conic-gradient(from -1deg, #ffd166aa 0 2deg, #0000 2deg 30deg); -webkit-mask: radial-gradient(#0000 62%, #000 64%); mask: radial-gradient(#0000 62%, #000 64%); }
+.md-hand { height: 28px; box-shadow: 0 0 6px #ffd166; }
+.md-hand::after { content: ''; position: absolute; left: 50%; bottom: -5px; width: 9px; height: 9px; margin-left: -4.5px; border-radius: 50%; background: #ffd166; }
+.md-moon { position: absolute; right: -10px; top: -8px; font-size: 18px; filter: drop-shadow(0 0 6px #ffd166aa); }
+.md-q { background: linear-gradient(180deg, #1a2a5c, var(--night)); border: 1px solid #3c4f8f; transition: box-shadow .3s; }
+.md-q.got { box-shadow: 0 0 0 2px #7fd890, 0 0 14px #7fd89055; }
+.md-q.lit { animation: mdLit .8s cubic-bezier(.2, 1.5, .4, 1); }
+@keyframes mdLit { 40% { transform: scale(1.15); box-shadow: 0 0 0 3px #7fd890, 0 0 28px #7fd890; } }
+.md-pts { font-family: var(--font-display); font-size: var(--fs-xl); color: #ffd166; text-shadow: 0 0 12px #ffd16655; }
+.md-six { box-shadow: 0 0 0 2px #ffd166, 0 2px 0 #b9b0cc, 0 4px 8px #0008; }
+.md-pts { font-size: var(--fs-lg); line-height: 1.2; }

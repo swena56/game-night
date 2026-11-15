@@ -28,3 +28,16 @@
 .mia-say { margin-top: 4px; }
 .mia-hearts { font-size: 13px; letter-spacing: -1px; }
 .mia-calls { margin: 4px 0 8px 18px; padding: 0; font-size: 13px; }
+/* round L: a leather dice cup with stitched bands and a rim, a soft shadow on the felt; the call as a speech bubble */
+.mia-call { display: inline-block; padding: 4px 14px; border-radius: var(--r-lg); background: var(--panel); box-shadow: var(--sh-1); position: relative; }
+.mia-call::after { content: ''; position: absolute; left: 50%; bottom: -7px; margin-left: -7px; border: 7px solid transparent; border-bottom: 0; border-top-color: var(--panel); }
+.mia-table { box-shadow: inset 0 4px 14px #000a, 0 0 0 6px #4a2a12, 0 0 0 8px #7a4a22, 0 8px 18px #0008; }
+.mia-cup { width: 104px; height: 118px; border-radius: 14px 14px 34px 34px / 10px 10px 26px 26px;
+  background: repeating-linear-gradient(180deg, #0000 0 26px, #2a1206aa 26px 29px, #c98b5a33 29px 30px),
+    linear-gradient(90deg, #4a230d, #9a5427 38%, #b8693a 48%, #6b3818 80%, #3d1c08); box-shadow: inset 0 -8px 0 #2a1206, 0 12px 16px -4px #000c; }
+.mia-cup .mia-rim { position: absolute; left: -4px; right: -4px; bottom: -6px; height: 16px; border-radius: 50%;
+  background: linear-gradient(180deg, #c27a45, #5a2a10); box-shadow: 0 3px 6px #000a; }
+.mia-cup::before { content: ''; position: absolute; left: 50%; bottom: -16px; width: 130px; height: 22px; margin-left: -65px; border-radius: 50%;
+  background: radial-gradient(#000a, #0000 70%); z-index: -1; }
+.mia-cup.shaken { animation: miaShake .6s ease-in-out 2; }
+.mia-hearts { letter-spacing: -2px; font-family: inherit; font-size: 12px; }
