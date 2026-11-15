@@ -3,7 +3,7 @@
 // Garden words fill in; other real words are bonus words. No clock by default, and a word that isn't
 // in the dictionary only gets a gentle note.
 UI.garden = (() => {
-  let S, ctx, v, receivedAt = 0, tickTimer = 0, busy = false;
+  let S, ctx, v, clk = null, busy = false;
   let sel = [], drag = null, order = null, seenKey = '', seenSeq = -1, seenFound = null, note = '', noteKind = '';
   const $ = (id) => document.getElementById(id);
 
@@ -44,10 +44,10 @@ UI.garden = (() => {
       if (await ctx.ask('Rest for this garden? You keep your words, and the garden ends once the others are done.', { ok: '🏳️ Rest' })) send('bank', {});
     };
     window.addEventListener('keydown', key);
-    tickTimer = setInterval(tick, 500);
+    clk = Kit.clock($('gdBar'), $('gdClock'), { warn: 0, every: 500 });
   }
 
-  function unmount() { clearInterval(tickTimer); window.removeEventListener('keydown', key); }
+  function unmount() { clk?.stop(); window.removeEventListener('keydown', key); }
 
   const playing = () => S?.phase === 'playing' && v?.stage === 'play' && v.playing && !v.banked && !!ctx?.act;
   const live = () => playing() && !v.done;             // still growing this garden
@@ -218,7 +218,7 @@ UI.garden = (() => {
   // -- state
 
   function render(s, c) {
-    S = s; ctx = c; v = S.garden; receivedAt = performance.now();
+    S = s; ctx = c; v = S.garden;
     if (!v) return;
     const key = `${v.round}:${v.ring}:${v.h}x${v.w}`;
     const newGarden = key !== seenKey;
@@ -264,7 +264,7 @@ UI.garden = (() => {
     if (newGarden && v.stage === 'play' && v.round === 1 && !v.bonus.length && v.found === 0) say('Drag across the letters, or tap them, to spell a word.', '');
     paintNote();
     racers();
-    tick();
+    clk.set({ left: v.left, secs: v.secs, on: S.phase === 'playing' && v.stage === 'play' && v.clock });
   }
 
   function paintNote() {
@@ -301,14 +301,6 @@ UI.garden = (() => {
     $('gdHelp').textContent = `Garden words: a point a letter. Bonus words: 1 (2 for 6+ letters), and every ${v.dropEvery} earn a 💧. Growing the whole garden: +10. ${v.clock ? '' : 'No clock: take your time.'}`;
   }
 
-  function tick() {
-    if (!v || !$('gdBar')) return;
-    const left = Math.max(0, v.left - (performance.now() - receivedAt) / 1000);
-    const on = S.phase === 'playing' && v.stage === 'play' && v.clock;
-    $('gdBar').style.width = `${on ? (left / v.secs) * 100 : 0}%`;
-    const m = Math.floor(left / 60), s = Math.floor(left % 60);
-    $('gdClock').textContent = on ? `${m}:${String(s).padStart(2, '0')}` : '';
-  }
 
   const turnText = (s) => {
     const x = s.garden;

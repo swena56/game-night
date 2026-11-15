@@ -2,7 +2,7 @@
 // each digit against the solution: right ones stay, wrong ones bounce off and cost a point. Pencil marks
 // (✏️) live only in this browser, and clear themselves as digits land around them.
 UI.sudoku = (() => {
-  let S, ctx, v, receivedAt = 0, tickTimer = 0, lastTick = 0, busy = false;
+  let S, ctx, v, clk = null, busy = false;
   let sel = -1, pencil = false, notes = {}, notesKey = '', seenSeq = -1, seenKey = '', seenDone = false, units = null;
   const $ = (id) => document.getElementById(id);
 
@@ -37,10 +37,10 @@ UI.sudoku = (() => {
       if (await ctx.ask('Call it a day? You keep the points you have, but can\'t fill in more of this grid.', { ok: '🏳️ Done' })) send('bank', {});
     };
     window.addEventListener('keydown', key);
-    tickTimer = setInterval(tick, 250);
+    clk = Kit.clock($('sdBar'), $('sdClock'), { warn: 30, beep: live, sfx: (k) => ctx.sfx(k) });
   }
 
-  function unmount() { clearInterval(tickTimer); window.removeEventListener('keydown', key); }
+  function unmount() { clk?.stop(); window.removeEventListener('keydown', key); }
 
   const live = () => S?.phase === 'playing' && v?.stage === 'play' && v.playing && !v.done && !v.banked && !!ctx.act;
 
@@ -95,21 +95,9 @@ UI.sudoku = (() => {
     return u;
   }
 
-  function tick() {
-    if (!v || !$('sdBar')) return;
-    const left = Math.max(0, v.left - (performance.now() - receivedAt) / 1000);
-    const playing = S.phase === 'playing' && v.stage === 'play' && v.clock !== false;
-    $('sdBar').parentElement.hidden = S.phase === 'playing' && v.stage === 'play' && v.clock === false;
-    $('sdBar').style.width = `${playing ? (left / v.secs) * 100 : 0}%`;
-    $('sdBar').parentElement.classList.toggle('last', playing && left < 30);
-    const m = Math.floor(left / 60), s = Math.floor(left % 60);
-    $('sdClock').textContent = playing ? `${m}:${String(s).padStart(2, '0')}` : '';
-    const sec = Math.ceil(left);
-    if (playing && live() && sec <= 10 && sec > 0 && sec !== lastTick) { lastTick = sec; ctx.sfx('tickfast'); }
-  }
 
   function render(s, c) {
-    S = s; ctx = c; v = S.sudoku; receivedAt = performance.now();
+    S = s; ctx = c; v = S.sudoku;
     if (!v) return;
     const key = `${v.round}:${v.puzzle.join('')}`;
     if (key !== notesKey) { notesKey = key; notes = {}; sel = -1; seenSeq = -1; seenDone = false; units = unitsOf(v.n, v.bh, v.bw); }
@@ -130,7 +118,8 @@ UI.sudoku = (() => {
     seenDone = v.done;
     draw();
     racers();
-    tick();
+    const timed = S.phase === 'playing' && v.stage === 'play';
+    clk.set({ left: v.left, secs: v.secs, on: timed && v.clock !== false, hide: timed && v.clock === false });
   }
 
   // what the last move did: a wrong digit shakes its cell; a finished row, column or box glows

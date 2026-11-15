@@ -3,7 +3,7 @@
 // the first letter and then the last. The server checks the word; found words stay circled in the
 // finder's colour. In 🏴 Grab everyone shares the grid, so rivals' finds appear (and vanish from the list).
 UI.wordsearch = (() => {
-  let S, ctx, v, receivedAt = 0, tickTimer = 0, lastTick = 0, busy = false;
+  let S, ctx, v, clk = null, busy = false;
   let anchor = null, drag = null, seenOwners = null, seenKey = '';
   const $ = (id) => document.getElementById(id);
   const NS = 'http://www.w3.org/2000/svg';
@@ -34,10 +34,10 @@ UI.wordsearch = (() => {
       if (!live()) return;
       if (await ctx.ask('Call it a day? You keep the words you\'ve found but can\'t find more in this grid.', { ok: '🏳️ Done' })) send('bank', {});
     };
-    tickTimer = setInterval(tick, 250);
+    clk = Kit.clock($('wfBar'), $('wfClock'), { warn: 20, beep: live, sfx: (k) => ctx.sfx(k) });
   }
 
-  function unmount() { clearInterval(tickTimer); }
+  function unmount() { clk?.stop(); }
 
   const live = () => S?.phase === 'playing' && v?.stage === 'play' && v.playing && !v.done && !v.banked && !!ctx.act;
 
@@ -134,21 +134,9 @@ UI.wordsearch = (() => {
     if (anchor && !drag && !pinA) $('wfGrid').children[anchor[0] * v.size + anchor[1]]?.classList.add('anchor');
   }
 
-  function tick() {
-    if (!v || !$('wfBar')) return;
-    const left = Math.max(0, v.left - (performance.now() - receivedAt) / 1000);
-    const playing = S.phase === 'playing' && v.stage === 'play' && v.clock !== false;
-    $('wfBar').parentElement.hidden = S.phase === 'playing' && v.stage === 'play' && v.clock === false;
-    $('wfBar').style.width = `${playing ? (left / v.secs) * 100 : 0}%`;
-    $('wfBar').parentElement.classList.toggle('last', playing && left < 20);
-    const m = Math.floor(left / 60), s = Math.floor(left % 60);
-    $('wfClock').textContent = playing ? `${m}:${String(s).padStart(2, '0')}` : '';
-    const sec = Math.ceil(left);
-    if (playing && live() && sec <= 10 && sec > 0 && sec !== lastTick) { lastTick = sec; ctx.sfx('tickfast'); }
-  }
 
   function render(s, c) {
-    S = s; ctx = c; v = S.wordsearch; receivedAt = performance.now();
+    S = s; ctx = c; v = S.wordsearch;
     if (!v) return;
     const n = v.size, key = `${v.round}:${v.grid.join('')}`;
     if (key !== seenKey) { seenKey = key; seenOwners = null; anchor = null; drag = null; }
@@ -211,7 +199,8 @@ UI.wordsearch = (() => {
       ? `🏴 Grab: one shared grid, and a word is yours if you circle it first. A point per letter; 💡 costs ${v.hintCost}.`
       : `🏁 Race: everyone has their own copy. A point per letter, +10 for finding them all, +5 for being first; 💡 costs ${v.hintCost}.`;
     racers();
-    tick();
+    const timed = S.phase === 'playing' && v.stage === 'play';
+    clk.set({ left: v.left, secs: v.secs, on: timed && v.clock !== false, hide: timed && v.clock === false });
   }
 
   function racers() {

@@ -3,7 +3,6 @@
 UI.brawl = (() => {
   let S, ctx, hold = new Set(), target = null, turnKey = '', rollKey = '', seenLast = -1;
   const $ = (id) => document.getElementById(id);
-  const FACE = { 1: '💀', 2: '⚔️', 3: '⚔️', 4: '💥', 5: '🛡️', 6: '❤️' };
   const NAME = { 1: 'skull', 2: 'sword', 3: 'sword', 4: 'smash', 5: 'shield', 6: 'heart' };
 
   function mount(main, side) {
@@ -16,7 +15,8 @@ UI.brawl = (() => {
       <div class="row brw-actions"><button id="brwRoll" class="primary big"></button><button id="brwFight" class="big danger"></button></div>
       <p id="brwHint" class="hint"></p>
       <div id="brwLast" class="brw-last"></div></div>`;
-    side.innerHTML = `<div class="panel"><h3>The faces</h3><p class="hint left">💀 skull (locks; three backfire −2 ❤️) · ⚔️ sword ×2 (1 hit) · 💥 smash (2 hits; three hit everyone) · 🛡️ shield (blocks 1 until your next turn) · ❤️ heart (heals 1)</p></div>`;
+    const face = (n, f, text) => `<li><span class="brw-die mini f${f}">${Dice.art(n)}</span><span>${text}</span></li>`;
+    side.innerHTML = `<div class="panel"><h3>The faces</h3><ul class="brw-legend">${face('skull', 1, '<b>Skull</b>: locks. Three backfire: −2 ❤️')}${face('sword', 2, '<b>Sword</b> (two faces): 1 hit')}${face('smash', 4, '<b>Smash</b>: 2 hits. Three hit everyone')}${face('shield', 5, '<b>Shield</b>: blocks 1 until your next turn')}${face('heart', 6, '<b>Heart</b>: heals 1')}</ul></div>`;
     $('brwRoll').onclick = () => ctx.quiet(ctx.act('roll', { hold: [...hold] }));
     $('brwFight').onclick = () => ctx.quiet(ctx.act('fight', { target }));
   }
@@ -65,7 +65,8 @@ UI.brawl = (() => {
     const canHold = mine && b.dice.length && b.rolls < b.maxRolls;
     const nodes = b.dice.map((v, i) => {
       const skull = v === 1;
-      const d = ctx.el('button', 'brw-die f' + v + (skull ? ' locked' : hold.has(i) ? ' held' : ''), FACE[v]);
+      const d = ctx.el('button', 'brw-die f' + v + (skull ? ' locked' : hold.has(i) ? ' held' : ''));
+      d.innerHTML = Dice.art(NAME[v]);
       d.disabled = !canHold || skull;
       d.setAttribute('aria-label', `${NAME[v]}${skull ? ', locked' : hold.has(i) ? ', held' : ''}`);
       d.onclick = () => { hold.has(i) ? hold.delete(i) : hold.add(i); render(S, ctx); };

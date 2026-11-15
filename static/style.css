@@ -542,6 +542,16 @@ body.replaying .layout { padding-bottom: 190px; }  /* the bar covers the bottom 
 .dot.shaped, .mini-disc.shaped { width: auto; height: auto; min-width: 1em; background: none !important; box-shadow: none; border: 0;
   font-size: var(--fs-sm); line-height: 1; text-align: center; text-shadow: 0 0 1px #0008; }
 .seat-row { display: flex; align-items: center; gap: 8px; font-weight: 700; padding: 3px 0; }
+/* Kit.scoreboard: a standings row per player, avatar ringed in their colour; the player on turn gets a gold edge, the leader a crown */
+.kit-sb { gap: var(--s3); padding: var(--s1) var(--s3) var(--s1) var(--s1); margin-bottom: 3px; border-radius: var(--r-pill); background: var(--tint-1);
+  border: 1px solid transparent; transition: border-color .2s, background-color .2s; }
+.kit-sb .avatar { width: 26px; height: 26px; box-shadow: 0 0 0 2px var(--pc); }
+.kit-sb-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kit-sb-note { color: var(--muted); font-weight: 400; font-size: var(--fs-xs); white-space: nowrap; }
+.kit-sb-score { font-family: var(--font-display); font-size: var(--fs-md); font-variant-numeric: tabular-nums; min-width: 2ch; text-align: right; }
+.kit-sb-score.lead::before { content: '👑 '; font-size: .8em; }
+.kit-sb.turn { border-color: var(--accent); background: var(--accent-a10); }
+.kit-sb.me .kit-sb-name::after { content: ' (you)'; color: var(--muted); font-weight: 400; font-size: var(--fs-xs); }
 
 /* player avatars: a face from the Unmask generator, picked by name */
 .avatar { flex: none; width: 22px; height: 22px; border-radius: 50%; overflow: hidden; box-shadow: 0 0 0 1px #0004; }
@@ -559,6 +569,12 @@ body.replaying .layout { padding-bottom: 190px; }  /* the bar covers the bottom 
 .dd-bar { height: 8px; background: var(--panel); border-radius: var(--r-pill); overflow: hidden; width: min(100%, 520px); margin: 10px auto 6px; }
 .dd-bar span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent2), var(--accent)); transition: width .2s linear; }
 .dd-bar.last span { background: var(--danger); }
+/* the clock shimmers as it runs down, and pulses in its last seconds */
+.dd-bar { box-shadow: inset 0 1px 2px #0006; }
+.dd-bar span { position: relative; border-radius: inherit; box-shadow: 0 0 8px var(--accent-a40); }
+.dd-bar.last span { animation: pulse .8s ease-in-out infinite; box-shadow: 0 0 10px var(--danger-a20); }
+/* picture dice (Dice.art): the drawing fills the die face */
+.die-art { width: 78%; height: 78%; display: block; filter: drop-shadow(0 1px 0 #fff8); }
 
 /* the green card table, playing cards and a hand of them (Last Card, Hearts, Hold'em, Cribbage, Speed, Twenty-One, Rummy) */
 .table { background: radial-gradient(circle at 50% 35%, #2a8a6a, #0e3b2e 75%); border-radius: var(--radius); padding: 14px; box-shadow: inset 0 0 40px #0008; }

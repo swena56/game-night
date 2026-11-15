@@ -164,7 +164,23 @@ const Dice = (() => {
       n.classList.remove('roll'); void n.offsetWidth; n.classList.add('roll');
     });
   }
-  return { PIPS, die, set, roll };
+  // drawn faces for picture dice (Dice Brawl): an SVG on a 100×100 grid, outlined so it reads on any die colour
+  const ART = {
+    skull: '<path d="M50 12C29 12 16 27 16 45c0 11 5 19 12 23v14h44V68c7-4 12-12 12-23 0-18-13-33-34-33z" fill="#2b2735" stroke="#000" stroke-width="3"/>'
+      + '<ellipse cx="37" cy="46" rx="9" ry="10" fill="#f4f1fa"/><ellipse cx="63" cy="46" rx="9" ry="10" fill="#f4f1fa"/><path d="M45 64l5-9 5 9z" fill="#f4f1fa"/>'
+      + '<path d="M38 72v10M50 72v10M62 72v10" stroke="#f4f1fa" stroke-width="4"/>',
+    sword: '<path d="M80 12h8v8L46 62l-8-8z" fill="#cfd8e3" stroke="#3b4252" stroke-width="3" stroke-linejoin="round"/><path d="M84 16L42 58" stroke="#fff" stroke-width="2" opacity=".7"/>'
+      + '<path d="M28 50l22 22-6 6-22-22z" fill="#d4a017" stroke="#6b4d00" stroke-width="3" stroke-linejoin="round"/><path d="M33 67L18 82" stroke="#7a4a1e" stroke-width="9" stroke-linecap="round"/>'
+      + '<circle cx="15" cy="85" r="6" fill="#d4a017" stroke="#6b4d00" stroke-width="3"/>',
+    smash: '<path d="M50 6l9 23 23-11-11 23 24 10-25 7 8 25-21-14-12 23-5-25-26 4 17-19-19-17 26 1z" fill="#ff8a1f" stroke="#a33b00" stroke-width="3" stroke-linejoin="round"/>'
+      + '<path d="M50 30l5 12 12-5-6 12 12 5-13 3 4 13-11-7-6 12-3-13-13 2 9-10-10-9 14 1z" fill="#ffe066"/>',
+    shield: '<path d="M50 10l34 12v24c0 23-15 37-34 46C31 83 16 69 16 46V22z" fill="#3a86ff" stroke="#123f8a" stroke-width="4" stroke-linejoin="round"/>'
+      + '<path d="M50 20l24 9v17c0 17-10 27-24 34z" fill="#8ec5ff"/><path d="M50 10v82" stroke="#123f8a" stroke-width="3"/>',
+    heart: '<path d="M50 86C19 64 12 47 12 34c0-13 10-22 22-22 8 0 13 4 16 10 3-6 8-10 16-10 12 0 22 9 22 22 0 13-7 30-38 52z" fill="#ef476f" stroke="#8f1736" stroke-width="3.5" stroke-linejoin="round"/>'
+      + '<path d="M26 30c2-7 9-9 14-6" stroke="#fff" stroke-width="5" stroke-linecap="round" fill="none" opacity=".7"/>',
+  };
+  const art = (name) => `<svg class="die-art" viewBox="0 0 100 100" aria-hidden="true">${ART[name] || ''}</svg>`;
+  return { PIPS, die, set, roll, ART, art };
 })();
 
 const Chips = (() => {
@@ -320,5 +336,57 @@ const Kit = (() => {
     });
     return svg;
   }
-  return { flyText, callout, reveal, snap, glide, fly, changed, fresh, fan, stamp, tally, ink };
+  // a result that's new since the last render (a roll, a scored hand): fn(n, was) runs only when n changes, and never
+  // on the first sight of `key` after reset(key) (a page load or a fresh mount mustn't replay the last result)
+  const marks = new Map();
+  function onNew(key, n, fn) {
+    const had = marks.has(key), was = marks.get(key);
+    marks.set(key, n);
+    if (had && n != null && n !== was) fn(n, was);
+  }
+  const reset = (prefix) => { for (const k of [...marks.keys()]) if (k.startsWith(prefix)) marks.delete(k); };
+  // a countdown bar (.dd-bar > span) and an m:ss label that run between server updates. set({ left, secs, on, hide })
+  // after each state; `beep()` says whether the last ten seconds should tick (sound through `sfx`, the game's ctx.sfx)
+  function clock(bar, label, { warn = 20, every = 250, beep = null, sfx = null } = {}) {
+    let left = 0, secs = 1, on = false, at = 0, lastSec = 0;
+    const draw = () => {
+      if (!bar.isConnected) return;
+      const l = Math.max(0, left - (performance.now() - at) / 1000);
+      bar.style.width = `${on ? (l / secs) * 100 : 0}%`;
+      bar.parentElement?.classList.toggle('last', on && l < warn);
+      if (label) label.textContent = on ? `${Math.floor(l / 60)}:${String(Math.floor(l % 60)).padStart(2, '0')}` : '';
+      const sec = Math.ceil(l);
+      if (on && sec <= 10 && sec > 0 && sec !== lastSec && beep?.()) { lastSec = sec; (sfx || ksfx)('tickfast'); }
+    };
+    const timer = setInterval(draw, every);
+    return {
+      set(o) {
+        left = o.left ?? 0; secs = o.secs || 1; on = !!o.on; at = performance.now();
+        if (o.hide != null && bar.parentElement) bar.parentElement.hidden = !!o.hide;
+        draw();
+      },
+      stop: () => clearInterval(timer),
+    };
+  }
+  // the players' standings as rows: avatar (or a colour dot), name, score; the player on turn lit, the out ones dimmed.
+  // rows: [{ p (a player), score, note, turn, out, me }]; `fmt(row)` can return the score text; `lead` crowns the
+  // highest score (only for games where high is good)
+  function scoreboard(box, rows, { fmt = null, avatars = true, lead = false } = {}) {
+    box.replaceChildren();
+    const top = Math.max(...rows.map((r) => (typeof r.score === 'number' ? r.score : -Infinity)));
+    for (const r of rows) {
+      const row = el('div', 'seat-row kit-sb' + (r.turn ? ' turn' : '') + (r.out ? ' out' : '') + (r.me ? ' me' : ''));
+      row.style.setProperty('--pc', r.p?.color ?? '#888');
+      if (avatars && typeof avatar === 'function') row.append(avatar(r.p));
+      else { const d = el('span', 'dot'); d.style.background = r.p?.color ?? '#888'; row.append(d); }
+      const name = el('span', 'kit-sb-name', r.p?.name ?? '?');
+      row.append(name);
+      if (r.note) row.append(el('small', 'kit-sb-note', r.note));
+      const sc = el('b', 'kit-sb-score' + (lead && r.score === top && rows.length > 1 && top > 0 ? ' lead' : ''), fmt ? fmt(r) : String(r.score ?? ''));
+      row.append(sc);
+      box.append(row);
+    }
+    return box;
+  }
+  return { flyText, callout, reveal, snap, glide, fly, changed, fresh, fan, stamp, tally, ink, onNew, reset, clock, scoreboard };
 })();
