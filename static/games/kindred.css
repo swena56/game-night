@@ -1,0 +1,41 @@
+/* kindred: this game's own rules, loaded with static/games/kindred.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+.kn { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; }
+.kn-top { width: min(100%, 440px); }
+.kn-seats { display: flex; gap: 8px; align-items: center; }
+.kn-seat { flex: 1; min-width: 0; display: flex; justify-content: space-between; gap: 6px; padding: 6px 10px; border-radius: 10px; background: var(--panel2); border: 1px solid var(--line); }
+.kn-seat.turn { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.kn-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kn-seat b { font-family: var(--font-display); font-size: 18px; }
+.kn-round { flex: none; font-size: 12px; color: var(--muted); }
+.kn-hand { width: min(100%, 440px); display: flex; align-items: center; gap: 10px; min-height: 60px; }
+.kn-inhand { flex: none; width: 58px; height: 58px; padding: 4px; border-radius: 12px; background: #ffffff10; border: 2px dashed var(--accent); }
+.kn-say { display: flex; flex-direction: column; gap: 2px; font-size: 15px; }
+.kn-say small { color: var(--muted); font-size: 12px; }
+.kn-piece { width: 100%; height: 100%; display: block; filter: drop-shadow(0 2px 2px #0008); }
+.kn-board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; width: min(100%, 440px, calc(100dvh - 330px)); min-width: 240px;
+  padding: 8px; border-radius: 16px; background: linear-gradient(160deg, #3a2a52, #22193a); box-shadow: inset 0 0 0 2px #ffffff14, 0 8px 24px #0007; }
+.kn-cell { aspect-ratio: 1; padding: 8%; position: relative; border-radius: 12px; background: #ffffff0d; border: 1px solid #ffffff1a; }
+.kn-cell:disabled { opacity: 1; }
+.kn-cell.can { background: #ffffff1a; border-color: #ffffff40; cursor: pointer; }
+.kn-cell.glow.kin, .kn-cell.kin { background: #ffd16633; box-shadow: inset 0 0 0 2px #ffd166, 0 0 14px #ffd16680; }
+.kn-cell.pulse { animation: knPulse .9s ease-out 2; }
+@keyframes knPulse { 50% { transform: scale(1.08); } }
+@media (prefers-reduced-motion: reduce) {
+  .kn-cell.pulse { animation: none; }
+}
+.kn-lastline { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; font-size: 13px; }
+.kn-ll { color: var(--muted); line-height: 1.3; }
+.kn-ll.kin { color: #ffd166; }
+.kn-cell.last { box-shadow: inset 0 0 0 2px #ffffffa0; }
+.kn-cell.glow { background: #06d6a033; box-shadow: inset 0 0 0 2px #06d6a0, 0 0 12px #06d6a060; }
+.kn-gain { position: absolute; right: 4px; bottom: 2px; font-size: 13px; font-weight: 800; color: #06d6a0; }
+.kn-poolhead { font-size: 13px; color: var(--muted); width: min(100%, 440px); }
+.kn-pool { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 4px; width: min(100%, 440px); }
+.kn-pp { aspect-ratio: 1; padding: 5px; position: relative; border-radius: 8px; background: var(--panel2); }
+.kn-pp:disabled { opacity: .8; }
+.kn-pp.can { border-color: var(--accent); }
+.kn-risk { position: absolute; top: -6px; right: -4px; font-size: 11px; font-weight: 800; padding: 0 4px; border-radius: 999px; background: #ef476f; color: #fff; }
+.kn-risk.safe { background: #06d6a0; color: #032; }
+.kn-risk.hot { background: #d00000; }
+.kn-stand { margin: 8px 0; }

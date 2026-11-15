@@ -1,0 +1,30 @@
+/* squares: this game's own rules, loaded with static/games/squares.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+.dsq { width: min(100%, 480px, calc(var(--room, 100vh) - 40px)); margin: 0 auto; text-align: center; }
+.dsq-turn { font-size: 13px; color: var(--muted); min-height: 1.3em; }
+.dsq-roll { min-height: clamp(50px, 15vw, 70px); }
+.dsq-grid { display: grid; grid-template-columns: repeat(var(--n, 4), minmax(0, 1fr)) minmax(0, .9fr); gap: 4px; padding: 8px;
+  border-radius: var(--radius); background: var(--panel); }
+.dsq-cell { aspect-ratio: 1; padding: 0; display: grid; place-items: center; border-radius: 10px; background: var(--field); border: 2px solid var(--line); }
+.dsq-cell:not(:disabled):hover { border-color: var(--accent); }
+.dsq-cell:disabled { opacity: 1; cursor: default; }
+.dsq-cell.recent { border-color: var(--accent); }
+.dsq-empty { width: 40%; height: 40%; border-radius: 50%; background: var(--line); opacity: .4; }
+.dsq-res { display: grid; place-items: center; align-content: center; border-radius: 10px; font-size: 11px; color: var(--muted); min-height: 30px; }
+.dsq-res b { font-size: 18px; color: var(--text); }
+.dsq-res small { line-height: 1.1; }
+.dsq-res.ok { background: #06d6a022; }
+.dsq-res.big { background: #ffd16633; }
+.dsq-res.big b { color: #ffd166; }
+.dsq-res.zero b { color: var(--muted); }
+.dsq-total { display: grid; place-items: center; font-weight: 900; font-size: 18px; color: var(--accent); }
+.dsq-hands { width: 100%; font-size: 13px; border-collapse: collapse; }
+.dsq-hands td:last-child { text-align: right; font-weight: 800; }
+.dsq-rivals { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+.dsq-rival { font-size: 12px; font-weight: 700; }
+.dsq-mini { display: grid; grid-template-columns: repeat(var(--n, 4), 14px); gap: 2px; margin-top: 2px; }
+.dsq-mini span { width: 14px; height: 14px; border-radius: 3px; background: var(--field); font-size: 10px; line-height: 14px; text-align: center; }
+.dsq-mini span.on { background: #fff; color: #111; }
+@media (max-width: 560px) {
+  .dsq-res small { display: none; }
+}

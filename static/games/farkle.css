@@ -1,0 +1,43 @@
+/* farkle: this game's own rules, loaded with static/games/farkle.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+.fk-tray { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.fk-aside { display: flex; gap: 4px; padding-top: 6px; border-top: 1px dashed #ffffff33; }
+.fk-risk { display: flex; flex-direction: column; align-items: center; gap: 3px; margin: 2px 0 6px; font-size: 12px; color: var(--muted); }
+.fk-risk-bar { width: min(240px, 70%); height: 8px; border-radius: 4px; background: #ffffff14; overflow: hidden; }
+.fk-risk-bar i { display: block; height: 100%; width: calc(var(--p) * 100%); background: linear-gradient(90deg, #06d6a0, #ffd166 40%, #ef476f);
+  background-size: calc(100% / max(var(--p), .02)) 100%; transition: width .4s; }
+.fk-risk.hot { color: #ff8c8c; }
+.fk-risk.hot .fk-risk-bar i { animation: fkThrob .8s ease-in-out infinite; }
+@keyframes fkThrob { 50% { filter: brightness(1.4); } }
+.fk-bar { position: relative; }
+.fk-ghost { position: absolute; top: 0; bottom: 0; opacity: .35; animation: pulse 1s infinite alternate; }
+.fk-turn { text-align: center; font-weight: 800; margin: 4px 0; }
+.fk-dice { flex-wrap: wrap; min-height: 86px; gap: clamp(4px, 1.6vw, 12px); }
+.fk-event { text-align: center; font-weight: 800; min-height: 1.5em; opacity: 0; transition: opacity .3s; }
+.fk-event.show { opacity: 1; animation: bannerIn .4s ease-out; }
+.fk-event.farkle { color: var(--danger); }
+.fk-event.bank { color: var(--ok); }
+.fk-event.hot { color: #ff8c1a; }
+.fk-dice.hot > * { animation: hotDice 1.2s ease-out; }
+@keyframes hotDice { 0% { box-shadow: 0 0 0 0 #ff8c1a00; } 25% { box-shadow: 0 0 18px 6px #ff8c1acc; transform: translateY(-6px) rotate(-8deg); } 100% { box-shadow: 0 0 0 0 #ff8c1a00; } }
+.fk-buttons { justify-content: center; margin: 2px 0; min-height: 40px; }
+/* ✨ Pick the best comes and goes (#18) */
+.fk-buttons > * { flex: none; }
+.fk-actions > button { font-size: 16px; }
+@media (max-width: 560px) {
+  .fk-actions { min-height: 71px; }
+  .fk-event { min-height: 2.8em; display: grid; place-items: center; }
+}
+.fk-scores { display: grid; gap: 6px; margin-top: 10px; }
+.fk-row { display: grid; grid-template-columns: minmax(70px, 30%) 1fr 64px; align-items: center; gap: 8px; font-size: 13px; }
+.fk-row b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fk-row.now b { text-decoration: underline var(--accent) 2px; }
+.fk-bar { height: 12px; border-radius: 999px; background: #ffffff10; overflow: hidden; }
+.fk-bar span { display: block; height: 100%; border-radius: 999px; transition: width .5s; }
+.fk-num { text-align: right; font-weight: 900; font-variant-numeric: tabular-nums; }
+.fk-rules { font-size: 13px; }
+/* farkle: the score to beat in the final round, and the piggyback offer */
+.fk-bar { position: relative; }
+.fk-beat { position: absolute; top: -4px; bottom: -4px; width: 2px; background: #fff; box-shadow: 0 0 6px #fff; z-index: 2; }
+.fk-beat::after { content: '🏁'; position: absolute; top: -14px; left: 50%; transform: translateX(-50%); font-size: var(--fs-xs); font-style: normal; }
+.fk-pig { background: #ff8fab33; border: 1px solid #ff8fab; }

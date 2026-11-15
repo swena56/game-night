@@ -1,0 +1,60 @@
+/* wordsmith: this game's own rules, loaded with static/games/wordsmith.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+.ws-best { margin: 0 0 6px; padding: 4px 8px; border-left: 3px solid var(--accent); background: #ffb70311; border-radius: 6px; font-weight: 700; font-size: 13px; }
+.ws-cell.snap { animation: wsSnap .35s both cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes wsSnap { from { transform: translateY(-14px) scale(1.4); opacity: 0; box-shadow: 0 10px 14px #0008; } }
+/* wordsmith */
+.ws-board { display: grid; grid-template-columns: repeat(11, 1fr); gap: 2px; width: min(100%, 560px, var(--room)); margin: 6px auto;
+  background: #0e3b2e; padding: 4px; border-radius: 10px; }
+.ws-cell { aspect-ratio: 1; padding: 0; border: 0; border-radius: 4px; background: #1f6b52; color: #ffffffb0;
+  font-size: clamp(7px, 2vw, 11px); font-weight: 700; position: relative; }
+.ws-cell.p2L { background: #3a8fd1; }
+.ws-cell.p3L { background: #1d4ed8; }
+.ws-cell.p2W { background: #d96a8a; }
+.ws-cell.p3W { background: #c0392b; }
+.ws-cell.pstar { background: #d4a017; font-size: clamp(10px, 3vw, 16px); }
+.ws-cell.tile, .rack-tile { background: linear-gradient(160deg, #fbedc9, #ecd49c); color: #2b1d0e; font-size: clamp(12px, 3.6vw, 20px); font-weight: 800; box-shadow: inset 0 -2px 0 #0003; }
+.ws-cell.tile { box-shadow: inset 0 -4px 0 var(--by, #0003); }
+/* the bar shows who played the tile */
+.ws-cell sub, .rack-tile sub { position: absolute; right: 2px; bottom: 1px; font-size: 40%; }
+.ws-cell.tile, .rack-tile { box-shadow: inset 0 -2px 0 #0003, inset 0 1px 0 #ffffffb0, 0 1px 3px #0007; }
+.ws-cell.tile.pending { background: #fff8e6; outline: 3px dashed var(--by); outline-offset: -3px; transform: translateY(-2px);
+  box-shadow: 0 4px 8px #0008; z-index: 1; }
+.ws-cell.tile.last { box-shadow: inset 0 0 0 2px #ef476f, inset 0 -4px 0 var(--by, #0003); }
+.rack-tile { width: 42px; height: 42px; padding: 0; border-radius: 6px; position: relative; border: 0; font-size: 22px; }
+.ws-preview { min-height: 1.4em; font-size: 13px; font-weight: 700; margin: 4px 0; }
+.ws-preview.good { color: var(--ok); }
+.ws-preview.bad { color: #ff8a8a; }
+.rack-tile.sel { transform: translateY(-6px); outline: 3px solid var(--accent); }
+.rack-tile.swap { outline: 3px dashed var(--danger); opacity: .7; }
+.ws-cell.tile.blank, .rack-tile.blank { color: #8a6a3a; font-style: italic; }
+/* a blank: its letter, no points */
+.ws-blank { margin: 6px 0; }
+.ws-letters { display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 4px; }
+.ws-letters button { padding: 6px 0; font-weight: 800; }
+.ws-info { display: flex; justify-content: space-between; color: var(--muted); font-size: 13px; }
+/* drag and drop */
+.rack-tile, .ws-cell.pending { touch-action: none; }
+.rack-tile.lifted, .ws-cell.lifted { opacity: .3; }
+.ws-cell.drop { outline: 3px solid var(--accent); outline-offset: -2px; }
+.ws-ghost { position: fixed; z-index: 60; pointer-events: none; width: 40px; height: 40px; display: flex; align-items: center;
+  justify-content: center; border-radius: 6px; transform: scale(1.15); box-shadow: 0 10px 22px #000a; }
+/* turn history */
+.ws-plays { max-height: 220px; overflow-y: auto; font-size: 13px; }
+.ws-play { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; border-bottom: 1px solid #ffffff0d; }
+.ws-play .who { flex: 0 0 auto; max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+.ws-play .words { flex: 1; text-transform: uppercase; letter-spacing: .04em; overflow-wrap: anywhere; }
+.ws-play.best b::after { content: ' ⭐'; }
+@media (min-width: 861px) {
+  .ws-board { width: min(100%, 1400px, var(--room)); container-type: inline-size; }
+  .ws-cell { font-size: clamp(7px, 2cqw, 16px); }
+  .ws-cell.pstar { font-size: clamp(10px, 3cqw, 24px); }
+  .ws-cell.tile { font-size: clamp(12px, 3.6cqw, 32px); }
+}
+/* wordsmith: the word just played glows, a refused play shakes */
+.ws-cell.justplayed { animation: wsGlow 1.6s ease-out; }
+@keyframes wsGlow { 0%, 40% { box-shadow: 0 0 0 2px #ffd166, 0 0 14px #ffd166; } 100% { box-shadow: none; } }
+.ws-cell.nope { animation: wsNope .35s; }
+@keyframes wsNope { 20%, 60% { transform: translateX(-3px); } 40%, 80% { transform: translateX(3px); } }
+.ws-preview.bad { color: var(--danger); font-weight: 700; }
+body.calm .ws-cell.justplayed, body.calm .ws-cell.nope { animation: none; }

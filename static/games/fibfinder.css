@@ -1,0 +1,23 @@
+/* fibfinder: this game's own rules, loaded with static/games/fibfinder.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+.fb-res.all { box-shadow: 0 0 0 2px #ffd166, 0 0 16px #ffd16655; }
+.fb-res.hidden-card { visibility: hidden; }
+.fb-sure { display: flex; align-items: center; gap: 6px; justify-content: center; margin-top: 8px; font-size: 13px; color: var(--muted); cursor: pointer; }
+.fb-sure input { width: 18px; height: 18px; accent-color: var(--accent); }
+.fb { max-width: 640px; margin: 0 auto; }
+.fb-head { display: flex; justify-content: space-between; color: var(--muted); margin-bottom: 6px; }
+.fb-final { color: var(--accent); font-weight: 700; }
+.fb-fact { background: var(--panel); border-radius: var(--radius); padding: 18px; font-size: 20px; line-height: 1.5; margin-bottom: 12px; }
+.fb-blank { display: inline-block; min-width: 90px; text-align: center; border-bottom: 3px solid var(--accent); color: var(--accent); font-weight: 800; padding: 0 6px; }
+.fb-blank.filled { color: var(--ok); border-color: var(--ok); }
+.fb-options { display: grid; gap: 8px; }
+.fb-opt { font-size: 17px; padding: 12px; text-align: left; }
+.fb-opt small { color: var(--muted); }
+.fb-res { background: var(--panel); border-radius: var(--radius); padding: 10px 12px; border: 2px solid transparent; display: grid; gap: 4px; }
+.fb-res.truth { border-color: var(--ok); background: #06d6a01a; }
+.fb-res small { color: var(--muted); }
+/* fib finder: the fact is a "strange but true" card of old paper */
+.fb-fact { position: relative; background: linear-gradient(180deg, #fbf3df, #efe0bb); color: #3a2a12; box-shadow: 0 8px 20px #0007, inset 0 0 30px #c9a96e55;
+  border: 1px solid #c9a96e; padding-top: 28px; }
+.fb-fact::before { content: '📜 Strange but true'; position: absolute; top: 6px; left: 12px; font: 800 11px system-ui, sans-serif; letter-spacing: .08em;
+  text-transform: uppercase; color: #8a6a3a; }

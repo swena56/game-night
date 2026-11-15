@@ -1,0 +1,60 @@
+/* heist: this game's own rules, loaded with static/games/heist.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+.vault.fullmoon .h-night .moon { transform: scale(1.6); filter: brightness(1.35) drop-shadow(0 0 14px #fff8); }
+.vault-info { text-align: center; }
+.vault-door { width: clamp(70px, 22vw, 110px); flex: none; filter: drop-shadow(0 4px 8px #0009); }
+.vd-rim { fill: #5b6170; stroke: #2a2d36; stroke-width: 3; }
+.vd-face { fill: #8a91a3; stroke: #4a4f5c; stroke-width: 2; }
+.vd-wheel { fill: none; stroke: #2a2d36; stroke-width: 4; stroke-linecap: round; transform-origin: 50px 50px; transition: transform 1s cubic-bezier(.3, 1.3, .5, 1); }
+.vd-hub { fill: #ffd166; }
+.vault.stolen .vd-wheel { transform: rotate(540deg); }
+.h-card { position: relative; display: inline-grid; perspective: 400px; }
+.h-card > b { grid-area: 1 / 1; backface-visibility: hidden; transition: transform .45s cubic-bezier(.3, 1.3, .5, 1); font-weight: inherit; }
+.h-card .h-back { transform: rotateY(180deg); }
+.h-card > b { display: inline-flex; align-items: center; gap: 5px; }
+.h-card .avatar { width: 22px; height: 22px; border-radius: 50%; overflow: hidden; flex: none; margin-left: -6px; }
+.h-card .avatar svg { width: 100%; height: 100%; display: block; }
+.h-cashout { margin-top: 4px; padding: 3px 10px; font-size: 13px; }
+.h-lms { margin: 8px auto; text-align: center; }
+.h-heat { display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; border-radius: 999px; background: var(--panel2); }
+.h-heat span { min-width: 1.2em; color: var(--muted); }
+.h-heat.hot { box-shadow: 0 0 0 2px var(--danger); }
+.h-heat small { color: var(--danger); }
+.h-tail { margin: 4px 0; font-size: 14px; color: var(--muted); }
+.h-tail.me { color: var(--danger); font-weight: 700; }
+.h-broke { color: var(--danger); }
+.h-tail-btn { margin: 3px; border: 2px solid var(--line, #777); }
+.h-grid .h-name.out { opacity: .55; text-decoration: line-through; }
+.h-card.down .h-front { transform: rotateY(-180deg); }
+.h-card.down .h-back { transform: none; }
+.h-card[data-choice="grab"]:not(.down) { background: #ef476f22; }
+.h-card[data-choice="guard"]:not(.down) { background: #4dabf722; }
+.h-outcome.wait { visibility: hidden; }
+.h-choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.h-choice { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 8px; text-align: center; }
+.h-choice small { color: var(--muted); font-size: 11px; }
+.h-choice .big-icon { font-size: 36px; }
+.h-choice.on { border: 2px solid var(--accent); background: #ffb70322; }
+.h-grid-wrap { overflow-x: auto; }
+.h-grid { border-collapse: collapse; font-size: 13px; }
+.h-grid th, .h-grid td { padding: 3px 5px; text-align: center; white-space: nowrap; }
+.h-grid td small { display: block; font-size: 10px; font-weight: 700; }
+.h-grid td.up small { color: var(--ok); }
+.h-grid td.down small { color: var(--danger); }
+.h-grid .h-name { text-align: left; max-width: 7em; overflow: hidden; text-overflow: ellipsis; font-weight: 700; }
+.h-grid .h-total { font-weight: 800; }
+@media (max-width: 480px) {
+  .h-choice small { display: none; }
+}
+.h-night { position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: radial-gradient(1px 1px at 12% 20%, #fff8, transparent), radial-gradient(1px 1px at 30% 70%, #fff6, transparent), radial-gradient(1.5px 1.5px at 55% 15%, #fff9, transparent),
+    radial-gradient(1px 1px at 78% 40%, #fff7, transparent), radial-gradient(1px 1px at 90% 80%, #fff5, transparent), radial-gradient(1px 1px at 65% 88%, #fff6, transparent),
+    linear-gradient(transparent 70%, #0a0818 70%) , linear-gradient(#141033, #251a4a); }
+.h-night .moon { position: absolute; top: 10px; right: 14px; width: 22px; height: 22px; border-radius: 50%; box-shadow: -6px 3px 0 0 #f6e7b0; }
+.h-night .beam { position: absolute; left: 50%; top: -40%; width: 120%; height: 180%; transform-origin: 50% 0; margin-left: -60%;
+  background: conic-gradient(from 168deg at 50% 0, transparent 0deg, #fff3c455 6deg, #fff3c422 14deg, transparent 24deg); animation: hSweep 6s ease-in-out infinite alternate; }
+@keyframes hSweep { from { transform: rotate(-38deg); } to { transform: rotate(38deg); } }
+.h-strobe { position: fixed; inset: 0; z-index: 35; pointer-events: none; background: radial-gradient(circle, #ff1f3d00 30%, #ff1f3d 100%); animation: hStrobe .55s ease-in-out 3; opacity: 0; }
+@keyframes hStrobe { 50% { opacity: .35; } }
+.h-night { transition: opacity .3s; }
+.vault.alarm .h-night, .vault.caught .h-night { opacity: .2; }

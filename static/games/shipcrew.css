@@ -1,0 +1,33 @@
+/* shipcrew: this game's own rules, loaded with static/games/shipcrew.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+/* ship, captain & crew: a slot filling lands with a bounce */
+.crew-slot.landed { animation: crewIn .5s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes crewIn { 0% { transform: scale(.6); box-shadow: 0 0 0 0 #06d6a0; } 50% { box-shadow: 0 0 0 8px #06d6a055; } }
+.crew-turn { font-size: 13px; color: var(--muted); min-height: 1.3em; }
+.crew-slots { display: flex; justify-content: center; gap: 10px; margin: 10px 0 4px; }
+.crew-slot { display: grid; justify-items: center; gap: 4px; padding: 8px; border-radius: var(--radius); background: var(--panel); min-width: 76px; }
+.crew-slot small { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.crew-slot.got { box-shadow: 0 0 0 2px #7fd890; }
+.crew-slot.next { box-shadow: 0 0 0 2px var(--accent); }
+.crew-empty { width: clamp(40px, 12vw, 52px); aspect-ratio: 1; display: grid; place-items: center; border: 2px dashed #ffffff40; border-radius: 18%; font-size: 20px; font-weight: 900; color: #ffffff60; }
+.crew-label { min-height: 1.4em; font-weight: 800; margin-top: 8px; }
+.crew-free { min-height: clamp(50px, 15vw, 70px); }
+.crew-actions { justify-content: center; gap: 8px; }
+.crew-last { margin-top: 10px; min-height: 1.4em; font-size: 14px; }
+.crew-lastline.fresh { animation: lr-flash .8s ease-out; border-radius: 8px; }
+.crew-pot { margin-top: 6px; font-weight: 800; color: #ffd166; }
+/* ship, captain & crew: the ship builds up as the 6, 5 and 4 are found */
+.crew-ship { display: block; width: min(100%, 260px); margin: 0 auto -6px; }
+.crew-ship .sea { fill: #1d4e89; opacity: .8; }
+.crew-ship .part { opacity: .12; transition: opacity .4s, transform .5s cubic-bezier(.3, 1.5, .5, 1); transform-box: fill-box; transform-origin: 50% 100%; }
+.crew-ship .part.on { opacity: 1; }
+.crew-ship .hull path { fill: #8b5a2b; stroke: #3d2410; stroke-width: 1.5; }
+.crew-ship .hull .trim { fill: none; stroke: #e9c46a; stroke-width: 2; }
+.crew-ship .pole { stroke: #5c3a21; stroke-width: 3; }
+.crew-ship .sail, .crew-ship .sail2 { fill: #f8f4e3; stroke: #b8b09a; }
+.crew-ship .flag { fill: #e63946; }
+.crew-ship .crew circle { fill: #ffd6a5; stroke: #5c3a21; }
+.crew-ship .part:not(.on) { transform: translateY(6px); }
+.crew-ship.loaded { animation: crewBob 2.4s ease-in-out infinite; }
+@keyframes crewBob { 50% { transform: translateY(-3px) rotate(-1deg); } }
+body.calm .crew-ship.loaded { animation: none; }

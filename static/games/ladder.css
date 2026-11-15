@@ -1,0 +1,41 @@
+/* ladder: this game's own rules, loaded with static/games/ladder.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+/* word ladder: a mini ladder per climber */
+.ld-mini { display: inline-flex; flex-direction: column-reverse; gap: 2px; padding: 0 3px; border-left: 2px solid #ffffff40; border-right: 2px solid #ffffff40; }
+.ld-mini i { display: block; width: 14px; height: 2px; background: #ffffff25; transition: background .3s; }
+.ld-mini i.on { background: var(--c); box-shadow: 0 0 4px var(--c); }
+.ld-mini.done { border-color: var(--ok); }
+.ld-mini.done::before { content: '🏁'; font-size: 10px; order: 99; }
+.ld-head { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; color: var(--muted); }
+.ld-par { font-weight: 800; color: var(--text); }
+.ld-ladder { display: flex; flex-direction: column; align-items: center; gap: 5px; margin-top: 8px; }
+.ld-rung { display: flex; gap: 5px; position: relative; }
+.ld-rung + .ld-rung::before { content: ''; position: absolute; left: -14px; right: -14px; top: -5px; height: 4px; border-radius: 2px; background: linear-gradient(#b08556, #7a5731); box-shadow: 0 1px 2px #0007; opacity: .85; }
+.ld-tile { width: clamp(36px, 11vw, 48px); aspect-ratio: 1; display: grid; place-items: center; font-size: clamp(18px, 6vw, 26px); font-weight: 900;
+  border-radius: 9px; background: linear-gradient(#fbf5e6, #e9dfc4); color: #2a2238; box-shadow: inset 0 -3px 0 #0002, 0 2px 4px #0006; }
+.ld-tile.new { background: linear-gradient(#ffd166, var(--accent)); animation: ld-pop .25s ease-out; }
+.ld-rung.start .ld-tile { background: linear-gradient(#cfe8ff, #9cc7f0); }
+.ld-rung.goal .ld-tile { background: linear-gradient(#c9f5d0, #7fd890); }
+.ld-goal { margin-top: 10px; opacity: .85; }
+.ld-entry { display: flex; gap: 6px; justify-content: center; margin-top: 10px; }
+.ld-entry[hidden] { display: none; }
+.ld-entry.off { visibility: hidden; }
+.ld-entry input { width: 7.5em; text-align: center; text-transform: uppercase; font-size: 20px; font-weight: 800; letter-spacing: .1em; }
+.ld-note { min-height: 1.4em; text-align: center; font-size: 13px; margin-top: 6px; }
+.ld-reveal { display: grid; gap: 6px; margin-top: 10px; }
+.ld-card { background: var(--panel); border-radius: var(--radius); padding: 8px 10px; font-size: 13px; }
+.ld-line { margin-top: 2px; font-weight: 700; letter-spacing: .03em; overflow-wrap: anywhere; }
+.ld-ladder:not(.ld-goal) { width: fit-content; margin: 8px auto 0; padding: 0 16px 4px; position: relative;
+  border-left: 5px solid #8b6b45; border-right: 5px solid #8b6b45; border-radius: var(--r-xs); box-shadow: inset 6px 0 6px -6px #0008, inset -6px 0 6px -6px #0008; }
+.ld-rung + .ld-rung::before { left: -16px; right: -16px; opacity: .8; }
+.ld-rung.fresh .ld-tile.new { animation: ldFlip .45s cubic-bezier(.3, 1.4, .5, 1); }
+@keyframes ldFlip { from { transform: perspective(200px) rotateX(-100deg); } }
+.ld-rung.fresh { animation: ldClimb .35s ease-out; }
+@keyframes ldClimb { from { transform: translateY(14px); opacity: .3; } }
+.ld-rung.ghost .ld-tile { background: none; border: 2px dashed #ffffff40; color: #ffffff60; box-shadow: none; }
+.ld-rung.ghost .ld-tile.peek { border-color: #ffd166; color: #ffd166; animation: ldPeek .8s ease-in-out infinite alternate; }
+/* word ladder: letters already matching the goal are green; a rejected word shakes the entry */
+.ld-rung .ld-tile.hit, .ld-rung.start .ld-tile.hit { background: #2b8a3e; color: #fff; border-color: #51cf66; }
+.ld-entry.shake { animation: ldShake .35s; }
+@keyframes ldShake { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
+body.calm .ld-entry.shake { animation: none; }

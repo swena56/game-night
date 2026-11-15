@@ -1,0 +1,100 @@
+/* billiards: this game's own rules, loaded with static/games/billiards.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+.bl-stage { display: flex; justify-content: center; position: relative; overflow: hidden; border-radius: 10px; touch-action: none; }
+.bl-stage canvas { display: block; border-radius: 10px; cursor: crosshair; transform-origin: 0 0; }
+.bl-zoom { position: absolute; top: 8px; right: 8px; padding: 6px 10px; font-size: 13px; background: #000a; color: #fff; z-index: 2; }
+.bl-stage canvas[hidden] { display: none; }
+.bl-views { position: absolute; top: 8px; left: 8px; display: flex; gap: 6px; z-index: 2; }
+.bl-views button { padding: 6px 10px; font-size: 13px; background: #000a; color: #fff; }
+.bl-views button.on { background: #ffb703; color: #000; }
+.bl-rackdone { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(88%, 340px); max-height: 86%; overflow: auto;
+  background: #0b1626ee; border: 1px solid #ffffff2a; border-radius: var(--radius); padding: 12px 14px; z-index: 3; animation: bannerIn .4s ease-out; }
+/* whose shot it is and what they're on, over the table's foot so the info strip can scroll away; taps go through */
+.bl-chip { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 2; pointer-events: none; max-width: calc(100% - 16px);
+  display: flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; background: #000b; color: #fff; font-size: 12px; white-space: nowrap; overflow: hidden; }
+.bl-chip b { margin-right: 2px; overflow: hidden; text-overflow: ellipsis; max-width: 12em; }
+.bl-chip em { font-style: normal; color: #ffd166; margin-left: 4px; }
+.bl-chip .bl-dot { width: 16px; height: 16px; font-size: 9px; box-shadow: inset 0 0 0 3px var(--c), inset 0 0 0 8px #fff; }
+.bl-chip .bl-dot.stripe { box-shadow: inset 0 0 0 8px transparent; }
+.bl-rackdone h3 { margin: 0 0 8px; text-align: center; }
+.bl-match { gap: 10px; flex-wrap: wrap; }
+.bl-controls { display: flex; align-items: center; gap: 8px; margin: 10px auto 0; max-width: 640px; }
+.bl-controls > button { flex: none; min-width: 48px; font-size: 20px; padding: 10px 0; touch-action: manipulation; }
+.bl-controls #blShoot { min-width: 96px; font-size: 16px; padding: 12px 10px; }
+.bl-power { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; margin: 0; color: var(--text); font-weight: 700; }
+/* the stroke bar (#48): a cue whose tip rests at the right; pulling back (left) opens the coloured gap = power */
+.bl-stroke { --p: .55; flex: 1; position: relative; height: 40px; border-radius: 10px; overflow: hidden; cursor: ew-resize; touch-action: none;
+  background: #ffffff10; box-shadow: inset 0 0 0 1px #ffffff1c; }
+.bl-stroke > i { position: absolute; right: 0; top: 0; bottom: 0; width: calc(var(--p) * 100%);
+  background: linear-gradient(90deg, #e63946, #ffb703 45%, #52b788); opacity: .55; }
+.bl-cuestick { position: absolute; top: 50%; height: 8px; margin-top: -4px; right: calc(var(--p) * 100% + 4px); width: 140%; border-radius: 4px 3px 3px 4px;
+  background: linear-gradient(90deg, #3b2412 0 55%, #c89b62 55% 97%, #f4f1e8 97% 99%, #3a86ff 99%); box-shadow: 0 2px 4px #0008; pointer-events: none; }
+.bl-marks { position: absolute; inset: 0; display: flex; pointer-events: none; }
+.bl-marks em { flex: 1; font-style: normal; font-size: 10px; font-weight: 600; color: #fff9; text-align: center; padding-top: 1px;
+  border-right: 1px dashed #ffffff26; text-shadow: 0 1px 2px #000; }
+.bl-marks em:last-child { border-right: 0; }
+.bl-stroke.pulling { box-shadow: inset 0 0 0 2px var(--accent); }
+.bl-stroke.cancel { box-shadow: inset 0 0 0 2px #e63946; }
+.bl-stroke.cancel > i { opacity: .15; }
+.bl-stroke.off { opacity: .45; cursor: default; }
+.bl-stroke input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.bl-stroke:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bl-power b { min-width: 3.2em; text-align: right; font-variant-numeric: tabular-nums; }
+/* a fixed width, so a longer spin label doesn't slide the pad sideways under the finger */
+.bl-spin { flex: none; width: 92px; display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.bl-spin small { font-size: 10px; color: var(--muted); white-space: nowrap; max-width: 92px; overflow: hidden; text-overflow: ellipsis; }
+.bl-elev { display: flex; align-items: center; gap: 2px; font-size: 10px; color: var(--muted); max-width: 92px; }
+.bl-elev input { width: 52px; min-width: 0; margin: 0; }
+.bl-elev span { min-width: 22px; text-align: right; }
+.bl-cueball { width: 40px; height: 40px; border-radius: 50%; position: relative; cursor: crosshair; touch-action: none;
+  background: radial-gradient(circle at 35% 30%, #fff, #e9e7dc 55%, #b9b6a8); box-shadow: 0 2px 6px #0008, inset 0 0 0 1px #0003; }
+.bl-cueball::before, .bl-cueball::after { content: ''; position: absolute; background: #0002; }
+.bl-cueball::before { left: 50%; top: 14%; bottom: 14%; width: 1px; }
+.bl-cueball::after { top: 50%; left: 14%; right: 14%; height: 1px; }
+.bl-cueball i { position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%;
+  background: #3a86ff; box-shadow: 0 0 0 2px #fff, 0 0 6px #3a86ff; transition: left .08s, top .08s; }
+.bl-cueball.off { opacity: .45; cursor: default; }
+.bl-cueball:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.bl-side { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; padding: 8px 12px; }
+.bl-side #blStatus { flex: 1 1 240px; min-width: 0; }
+.bl-side .bl-racks { display: flex; flex-wrap: wrap; margin: 0; }
+.bl-side #blHint { flex-basis: 100%; margin: 0; font-size: 12px; }
+.bl-tablevol { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.bl-tablevol select { font-size: 12px; padding: 2px 4px; }
+.bl-over .bl-controls { position: absolute; left: 50%; bottom: 6px; transform: translateX(-50%); width: min(660px, calc(100% - 20px)); max-width: none;
+  margin: 0; padding: 6px 10px; border-radius: 14px; background: #0b0f14b8; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+  box-shadow: 0 6px 24px #0008, inset 0 0 0 1px #ffffff14; z-index: 3; transition: opacity .25s; }
+.bl-over .bl-controls > button { padding-block: 7px; }
+.bl-over .bl-controls #blShoot { padding-block: 9px; }
+.bl-over .bl-stroke { height: 34px; }
+.bl-over #blSpinVal { display: none; }
+.bl-over .bl-spin { width: auto; flex-direction: row; gap: 6px; }
+.bl-busy.bl-over .bl-controls { opacity: .3; }
+.bl-over .bl-controls:hover, .bl-over .bl-controls:focus-within { opacity: 1; }
+body.focus #game .layout:has(.bl-fill) > aside { position: fixed; top: calc(var(--bar-h, 52px) + 10px); left: 50%; transform: translateX(-50%);
+  width: max-content; max-width: min(760px, calc(100vw - 24px)); max-height: none; overflow: visible; z-index: 5; pointer-events: none; transition: opacity .25s; }
+body.focus #game .layout:has(.bl-fill) #sideGame { flex: none; }
+body.focus #game .layout:has(.bl-fill) .bl-side { margin: 0; padding: 4px 12px; border-radius: 12px; background: #0b0f14a6;
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); box-shadow: 0 4px 18px #0007; }
+body.focus #game .layout:has(.bl-fill) .bl-side #blStatus { flex: 0 1 auto; }
+body.focus #game .layout:has(.bl-busy) > aside { opacity: .2; }
+.bl-racks { display: grid; gap: 6px; margin: 8px 0; }
+.bl-keys { opacity: 0.8; }
+@media (hover: none) {
+  .bl-keys { display: none; }
+}
+.bl-rack { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; padding: 6px 8px; border-radius: 10px; background: #ffffff08; }
+.bl-rack.now { background: #ffb7031a; }
+.bl-rack b { margin-right: 6px; }
+.bl-dot { width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 900; color: #111; background: var(--c); box-shadow: inset 0 0 0 5px var(--c), inset 0 0 0 11px #fff; }
+.bl-dot.stripe { background: linear-gradient(#fbfbf2 22%, var(--c) 22% 78%, #fbfbf2 78%); box-shadow: inset 0 0 0 11px transparent; }
+.bl-dot.gone { opacity: .22; }
+.bl-dot.next { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (orientation: landscape) and (max-height: 520px) {
+  .bl-controls { margin: 0; max-width: none; flex-wrap: wrap; gap: 6px; }
+  .bl-controls > #blLeft, .bl-controls > #blRight { flex: 1 1 60px; order: 0; padding: 6px 0; }
+  .bl-controls .bl-power { flex: 1 1 100%; order: 1; }
+  .bl-controls .bl-spin { flex: 1 1 100%; width: auto; order: 2; }
+  .bl-controls #blShoot { flex: 1 1 100%; order: 3; padding: 10px; }
+}

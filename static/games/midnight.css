@@ -1,0 +1,19 @@
+/* midnight: this game's own rules, loaded with static/games/midnight.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+.md-turn { font-size: 13px; color: var(--muted); min-height: 1.3em; }
+.md-clock { position: relative; width: 64px; height: 64px; margin: 6px auto; border-radius: 50%; background: radial-gradient(#2c2540, #16131f);
+  box-shadow: 0 0 0 3px #ffd16688, inset 0 0 10px #000; }
+.md-clock span { position: absolute; top: 4px; left: 0; right: 0; font-size: 11px; font-weight: 900; color: #ffd166; }
+.md-hand { position: absolute; left: 50%; bottom: 50%; width: 3px; height: 24px; margin-left: -1.5px; border-radius: 2px; background: #ffd166;
+  transform-origin: bottom center; transform: rotate(var(--turn, -180deg)); transition: transform .6s cubic-bezier(.3, 1.3, .5, 1); }
+.md-hand.dead { background: var(--muted); }
+.md-quals { display: flex; justify-content: center; align-items: center; gap: 10px; margin: 6px 0; }
+.md-q { display: grid; justify-items: center; gap: 2px; padding: 6px 10px; border-radius: var(--radius); background: var(--panel); min-width: 64px; }
+.md-q.got { box-shadow: 0 0 0 2px #7fd890; }
+.md-q small { font-size: 11px; color: var(--muted); }
+.md-need { width: clamp(26px, 8vw, 34px); aspect-ratio: 1; display: grid; place-items: center; border: 2px dashed #ffffff50; border-radius: 18%; font-weight: 900; color: #ffffff80; }
+.md-pts { font-weight: 900; font-size: 18px; }
+.md-kept { margin: 4px 0; }
+.md-actions { justify-content: center; gap: 8px; }
+.md-last { margin-top: 10px; min-height: 1.4em; font-size: 14px; }
+.md-lastline { display: inline-flex; align-items: center; gap: 3px; flex-wrap: wrap; justify-content: center; }

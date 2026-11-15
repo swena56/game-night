@@ -1,0 +1,5 @@
+/* chess3d: this game's own rules, loaded with static/games/chess3d.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+.c3-pad { position: absolute; right: 6px; bottom: 6px; display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; max-width: calc(100% - 12px); z-index: 1; }
+.c3-pad button { width: 32px; height: 32px; padding: 0; border-radius: 8px; font-size: 16px; line-height: 1; background: #0009; color: #fff; border: 1px solid #ffffff2a; opacity: .7; }
+.c3-pad button:hover, .c3-pad button:focus-visible { opacity: 1; }

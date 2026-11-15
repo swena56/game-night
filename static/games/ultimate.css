@@ -1,0 +1,29 @@
+/* ultimate: this game's own rules, loaded with static/games/ultimate.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+.ut { width: min(100%, 520px, calc(var(--room) - 40px)); min-width: min(100%, 280px); margin: 0 auto; }
+.ut-big { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 8px; border-radius: 14px; background: var(--line); }
+.ut-small { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; padding: 4px; border-radius: 8px; background: var(--panel); position: relative; transition: box-shadow .2s; }
+.ut-small.open { box-shadow: 0 0 0 3px var(--accent); }
+.ut-small.done .ut-cell { opacity: .35; }
+.ut-cell { aspect-ratio: 1; padding: 0; border: 0; border-radius: 4px; background: var(--panel2); font-size: clamp(12px, 4vw, 22px); font-weight: 900; }
+.ut-cell:disabled { opacity: 1; cursor: default; }
+.ut-cell.can { background: #ffb70322; }
+.ut-cell.last { outline: 2px solid var(--accent2); }
+.ut-cell.x, .ut-x { color: #ef476f; }
+.ut-cell.o, .ut-o { color: #8ecae6; }
+.ut-cell { display: grid; place-items: center; box-shadow: inset 0 1px 0 #ffffff10, inset 0 -2px 0 #00000030; }
+.ut-big { position: relative; }
+.ut-won { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: clamp(40px, 16vw, 90px);
+  font-weight: 900; pointer-events: none; }
+.ut-won.x { color: #ef476f; }
+.ut-won.o { color: #8ecae6; }
+.ut-won.stamp { animation: utStamp .45s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes utStamp { from { transform: scale(2.4) rotate(-15deg); opacity: 0; } }
+.ut-cell.fresh { animation: markIn .3s cubic-bezier(.3, 1.8, .5, 1); }
+.ut-small.sent { animation: utSent .6s ease-out; z-index: 1; }
+@keyframes utSent { 30% { transform: scale(1.08); box-shadow: 0 0 0 4px var(--accent), 0 0 30px var(--accent); } }
+.ut-small.threat-x::before, .ut-small.threat-o::before { content: '⚠'; position: absolute; top: -8px; right: -6px; z-index: 2; font-size: 13px;
+  width: 20px; height: 20px; line-height: 20px; text-align: center; border-radius: 50%; color: #fff; }
+.ut-small.threat-x::before { background: #ef476f; }
+.ut-small.threat-o::before { background: #3a8fd1; }
+.ut-small.threat-x.threat-o::before { background: linear-gradient(90deg, #ef476f 50%, #3a8fd1 50%); }

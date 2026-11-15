@@ -1,0 +1,30 @@
+/* mia: this game's own rules, loaded with static/games/mia.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+.mia-turn { font-size: 13px; color: var(--muted); min-height: 1.3em; }
+.mia-call { font-size: 18px; min-height: 1.6em; margin: 6px 0; }
+.mia-value { font-size: 26px; font-weight: 900; color: var(--accent); }
+.mia-value.mia-mia { color: #ff8fa3; text-shadow: 0 0 12px #ef476f88; }
+.mia-table { position: relative; display: grid; place-items: center; min-height: 140px; margin: 8px auto; width: min(100%, 320px);
+  border-radius: 50%; background: var(--felt); box-shadow: inset 0 4px 14px #000a; }
+.mia-cup { position: absolute; width: 110px; height: 110px; border-radius: 18px 18px 40px 40px / 18px 18px 30px 30px; z-index: 2;
+  background: linear-gradient(90deg, #5a2e14, #8b4a22 40%, #6b3818); box-shadow: inset 0 -10px 0 #3a1c0a, 0 8px 14px #000a;
+  transition: transform .45s cubic-bezier(.3, 1.3, .5, 1), opacity .3s; }
+.mia-cup.up { transform: translate(90px, -40px) rotate(25deg); opacity: .35; }
+.mia-cup.shaken { animation: miaShake .6s ease-in-out; }
+@keyframes miaShake { 20%, 60% { transform: rotate(-8deg); } 40%, 80% { transform: rotate(8deg); } }
+.mia-dice { margin: 0; flex-wrap: wrap; z-index: 1; }
+.mia-mine { flex-basis: 100%; font-weight: 800; color: #fff; text-shadow: 0 1px 2px #000; }
+.mia-reveal { min-height: 1.6em; font-size: 14px; }
+.mia-revline { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: center; }
+.mia-loss { font-weight: 800; color: var(--danger); }
+.mia-actions { justify-content: center; gap: 8px; flex-wrap: wrap; }
+.mia-ladder { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; margin: 10px 0; }
+.mia-step { padding: 8px 2px; font-weight: 800; font-size: 14px; }
+.mia-step.dbl { background: var(--panel2); }
+.mia-step.top { grid-column: span 7; }
+.mia-step.truth { box-shadow: 0 0 0 2px #06d6a0; }
+.mia-step.on { background: var(--accent); color: #111; }
+.mia-step:disabled { opacity: .25; }
+.mia-say { margin-top: 4px; }
+.mia-hearts { font-size: 13px; letter-spacing: -1px; }
+.mia-calls { margin: 4px 0 8px 18px; padding: 0; font-size: 13px; }

@@ -1,0 +1,40 @@
+/* moonshot: this game's own rules, loaded with static/games/moonshot.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+/* moon shot */
+.moon-track { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; width: min(100%, 640px); margin: 8px auto;
+  padding: 10px; border-radius: var(--radius); position: relative;
+  /* deep space: a nebula, a scatter of stars and the glow of the moon at the top */
+  background:
+    radial-gradient(1px 1px at 12% 18%, #fff, transparent 60%), radial-gradient(1px 1px at 37% 62%, #fffc, transparent 60%),
+    radial-gradient(1.5px 1.5px at 68% 34%, #fff, transparent 60%), radial-gradient(1px 1px at 84% 76%, #fffa, transparent 60%),
+    radial-gradient(1px 1px at 22% 88%, #fff9, transparent 60%), radial-gradient(1.5px 1.5px at 55% 9%, #fff, transparent 60%),
+    radial-gradient(1px 1px at 92% 52%, #fffb, transparent 60%), radial-gradient(1px 1px at 6% 46%, #fff8, transparent 60%),
+    radial-gradient(circle at 85% 0%, #fff6d633, transparent 30%), radial-gradient(ellipse at 20% 70%, #6a4c9355, transparent 55%),
+    radial-gradient(circle at 80% 10%, #3b3170, #0b0918 70%); }
+.ms-cell.pad { background: radial-gradient(circle, #4dabf755, #ffffff10 70%); }
+.ms-cell.moon { background: radial-gradient(circle, #fff6d688, #ffd16622 70%); box-shadow: 0 0 18px #fff6d666; }
+.ms-cell.moon .num { font-size: 190%; filter: drop-shadow(0 0 6px #fff6d6); }
+.ms-cell.turn-r::after, .ms-cell.turn-l::after { content: ''; position: absolute; top: -5px; width: 2px; height: 6px; background: #ffffff44; }
+.ms-cell.turn-r::after { right: 50%; }
+.ms-cell.turn-l::after { left: 50%; }
+.moon-panel .ms-risk { margin: 2px 0 0; font-size: 12px; color: #ffb3c6; min-height: 1.2em; }
+.ms-cell { min-height: clamp(34px, 9vw, 58px); border-radius: 8px; background: linear-gradient(180deg, #ffffff16, #ffffff0a); box-shadow: inset 0 1px 0 #ffffff1a, inset 0 -1px 0 #00000030; position: relative; display: flex; flex-direction: column;
+  align-items: center; justify-content: flex-start; padding-top: 2px; font-size: clamp(8px, 2.2vw, 12px); color: var(--muted); }
+.ms-cell.t-star { background: #ffd16633; }
+.ms-cell.t-meteor { background: #ef476f33; }
+.ms-cell.t-wormhole { background: #8ecae633; }
+.ms-cell.preview { outline: 2px dashed var(--accent); }
+.ms-cell .num { font-size: 120%; }
+.rockets { display: flex; flex-wrap: wrap; justify-content: center; gap: 1px; }
+.moon-panel { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 4px 12px; width: min(100%, 640px); margin: 0 auto 12px; }
+.moon-panel .dice { display: flex; justify-content: center; gap: 10px; }
+.moon-panel .fuel { font-weight: 700; font-size: 18px; }
+.moon-panel .preview { margin: 2px 0 0; min-height: 1.4em; color: var(--muted); }
+.moon-btns { grid-column: 1 / -1; margin: 0; }
+@media (max-width: 860px) {
+  .moon-panel { position: sticky; bottom: 8px; z-index: 4; }
+}
+.moon-panel .dice.roll { animation: yaroll .45s cubic-bezier(.3, 1.4, .5, 1); }
+@media (max-width: 560px) {
+  .moon-track { gap: 3px; padding: 6px; }
+}

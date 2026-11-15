@@ -1,0 +1,31 @@
+/* lastcard: this game's own rules, loaded with static/games/lastcard.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+.lc-stamp { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(-14deg); pointer-events: none; white-space: nowrap;
+  font-size: 22px; font-weight: 900; padding: 2px 8px; border: 3px solid currentColor; border-radius: 8px; background: #fffd;
+  animation: lcStamp 1.4s ease-out forwards; }
+.lc-stamp.bad { color: #d62828; }
+.lc-stamp.cool { color: #1d4ed8; }
+@keyframes lcStamp { 0% { transform: translate(-50%, -50%) rotate(-14deg) scale(2.5); opacity: 0; } 15% { transform: translate(-50%, -50%) rotate(-14deg) scale(1); opacity: 1; }
+  75% { opacity: 1; } 100% { opacity: 0; } }
+.lc-dir.rev { color: var(--accent); }
+.pile-row { display: flex; gap: 14px; align-items: center; justify-content: center; margin-bottom: 14px; }
+.lc-info { display: flex; flex-direction: column; gap: 4px; min-width: 90px; }
+.chip-suit { background: #fff; color: #111; border-radius: 8px; padding: 2px 8px; font-weight: 800; text-align: center; }
+.chip-suit.red { color: #d62828; }
+.suit-pick button { font-size: 24px; color: #111; background: #fff; }
+.suit-pick button.red { color: #d62828; }
+.lc-seats { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-bottom: 10px; }
+.lc-seat { flex: none; display: grid; justify-items: center; gap: 1px; padding: 6px 10px 4px; border-radius: var(--r-md); background: var(--tint-1);
+  border: 1.5px solid color-mix(in srgb, var(--c, #888) 55%, transparent); min-width: 76px; font-size: var(--fs-xs); transition: transform .2s; }
+.lc-seat.up { background: color-mix(in srgb, var(--c, #888) 22%, transparent); transform: translateY(-2px); box-shadow: 0 0 14px color-mix(in srgb, var(--c, #888) 50%, transparent); }
+.lc-seat.exposed small { color: var(--danger); font-weight: 800; }
+.lc-seat small { color: var(--muted); }
+.lc-fan { position: relative; height: 34px; width: 60px; }
+.lc-fan .pc.back.mini { --cw: 22px; position: absolute; left: 50%; bottom: 0; margin-left: -11px; font-size: 0;
+  transform-origin: 50% 140%; transform: translateX(var(--x, 0px)) rotate(var(--r, 0deg)); box-shadow: -1px 1px 2px #0007; }
+/* last card: the seats in playing order, with the direction of play between them (#75) */
+.lc-seats { align-items: center; }
+.lc-arrow { font-weight: 900; color: var(--muted); font-size: 16px; }
+.lc-arrow.back { opacity: .5; }
+.lc-seat.me { border-style: dashed; }
+.lc-seat.up small { color: var(--accent); font-weight: 800; }

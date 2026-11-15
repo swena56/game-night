@@ -1,0 +1,7 @@
+/* klondike: this game's own rules, loaded with static/games/klondike.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+.pt-stock { cursor: pointer; display: grid; place-items: center; font-size: calc(var(--cw) * .5); color: #ffffff70; }
+.pt-stock .pc { cursor: pointer; }
+.pt-stock .pc.back small { position: absolute; bottom: 6%; font-size: max(10px, calc(var(--cw) * .2)); }
+.pt-waste { grid-column: span 2; width: auto; background: none; box-shadow: none; }
+.pt-waste .pc.pt-dim { cursor: default; filter: brightness(.96); }

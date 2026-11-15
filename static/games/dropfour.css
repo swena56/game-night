@@ -1,0 +1,33 @@
+/* dropfour: this game's own rules, loaded with static/games/dropfour.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+/* drop four */
+.d4 { display: grid; grid-template-columns: repeat(var(--cols), 1fr); gap: 5px; padding: 8px; border-radius: 16px;
+  width: min(100%, 560px, calc((var(--room) - 20px) * 1.15)); margin: 10px auto;
+  background: linear-gradient(160deg, #3b6ff0, #1d4ed8 45%, #173ea8); box-shadow: inset 0 2px 0 #ffffff40, inset 0 -4px 0 #0003, 0 12px 30px #0008; }
+.d4-cell { aspect-ratio: 1; border-radius: 50%; padding: 0; border: 0; background: var(--bg); position: relative; box-shadow: inset 0 3px 6px #000a; }
+.d4-cell::after { content: ''; position: absolute; inset: 6%; border-radius: 50%; background: var(--disc); transition: background .2s; }
+.d4-cell.filled::after { background: radial-gradient(circle at 35% 30%, #ffffff70, transparent 42%), var(--disc);
+  box-shadow: inset 0 -4px 0 #0004, inset 0 0 0 3px #0002, inset 0 2px 3px #ffffff50; }
+/* a disc falls into place and bounces */
+.d4-cell.last::after { outline: 0; box-shadow: inset 0 -4px 0 #0004, 0 0 0 3px #fff, 0 0 14px #fff8;
+  animation: d4drop calc(.25s + var(--fall, 1) * .06s) cubic-bezier(.5, 0, .75, 1), d4bounce .25s ease-out calc(.25s + var(--fall, 1) * .06s); }
+@keyframes d4drop { from { transform: translateY(calc(var(--fall, 1) * -112%)); } }
+@keyframes d4bounce { 40% { transform: translateY(-9%); } }
+.d4-cell.pullable::after { outline: 3px dashed #fff; outline-offset: 2px; animation: pulse 1s ease-in-out infinite alternate; }
+.d4.pulling .d4-cell:disabled { opacity: .55; }
+.d4-cell.win::after { animation: d4win .9s calc(var(--k, 0) * .12s) both, pulse .8s calc(.9s + var(--k, 0) * .12s) infinite; outline: 3px solid var(--accent); }
+@keyframes d4win { 0% { transform: scale(1); } 40% { transform: scale(1.22); box-shadow: 0 0 22px #fff; } 100% { transform: scale(1); } }
+.d4-cell.col-hot { background: color-mix(in srgb, var(--bg), #fff 10%); }
+.d4-cell.col-hot:not(.filled)::after { background: color-mix(in srgb, var(--mine, #fff), transparent 82%); }
+.d4-cell.settle::after { animation: d4settle .35s cubic-bezier(.5, 0, .75, 1), d4bounce .2s ease-out .35s; }
+@keyframes d4settle { from { transform: translateY(-112%); } }
+.d4-cell:disabled { opacity: 1; cursor: default; }
+/* a glossy moulded panel, and the ⚠ warning over a column a rival wins with */
+.d4 { background: radial-gradient(ellipse at 30% 0%, #ffffff30, transparent 45%), linear-gradient(160deg, #3b6ff0, #1d4ed8 45%, #173ea8); border: 3px solid #102c78; }
+.d4-cell.danger::before { content: '⚠'; position: absolute; top: -2px; left: 50%; transform: translate(-50%, -100%); font-size: 16px; z-index: 2;
+  animation: pulse .8s ease-in-out infinite alternate; filter: drop-shadow(0 0 4px #ff6b6b); }
+.d4-warn { margin-top: 8px; font-size: 13px; }
+.d4.armed { background: #8b1d1d; }
+.d4-moves { display: flex; flex-wrap: wrap; gap: 3px; max-height: 52px; overflow-y: auto; margin: 6px 0; }
+.d4-move { min-width: 20px; height: 20px; padding: 0 4px; border-radius: 10px; background: var(--disc); color: #fff; font: 600 11px/20px system-ui, sans-serif; text-align: center; text-shadow: 0 1px 1px #0008; opacity: .75; }
+.d4-move.now { opacity: 1; box-shadow: 0 0 0 2px #fff; }

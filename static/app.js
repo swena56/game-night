@@ -487,16 +487,33 @@ addEventListener('beforeunload', (e) => {
 // the first time that game is picked or shown (it used to be 50+ scripts, ~1 MB, before the first screen).
 const UI_EXTRA = { whist: ['cardtable'], piquet: ['cardtable'], skat: ['cardtable'], truc: ['cardtable'], bridge: ['cardtable'], bezique: ['cardtable'], pinochle: ['cardtable'], belote: ['cardtable'], mao: ['cardtable'], eleusis: ['cardtable'], canasta: ['cardtable'], fivehundred: ['cardtable'], ecarte: ['cardtable'], pitch: ['cardtable'], sixtysix: ['cardtable'], ninetynine: ['cardtable'], war: ['cardtable'], spite: ['cardtable'], cassino: ['cardtable'], oldmaid: ['cardtable'], gofish: ['cardtable'], bigtwo: ['cardtable'], ranter: ['cardtable'], blitz: ['cardtable'], briscola: ['cardtable'], nertz: ['cardtable'], ratscrew: ['cardtable'], palace: ['cardtable'], fantan: ['cardtable'], germanwhist: ['cardtable'], gin: ['cardtable'], scopa: ['cardtable'], gops: ['cardtable'], euchre: ['cardtable'], ohhell: ['cardtable'], spades: ['cardtable'], kowhist: ['cardtable'], spoons: ['cardtable'], president: ['cardtable'], cheat: ['cardtable'], billiards: ['billiards3d'], chess: ['chess3d'], bingo: ['bingokit'], bingotools: ['bingokit'] };  // helpers a game's screen needs first
 const uiLoads = {};
+// each game's own CSS (static/games/<file>.css, split out of style.css) arrives with its script. A missing file
+// (a game with no rules of its own) or a slow one never holds the game up: the board just draws unstyled for a moment.
+const GAME_CSS = new Set(window.GAME_CSS || []);
+const cssLoads = {};
+function needCSS(f) {
+  if (!GAME_CSS.has(f)) return Promise.resolve();
+  return (cssLoads[f] ??= new Promise((ok) => {
+    const ln = document.createElement('link');
+    ln.rel = 'stylesheet'; ln.href = `/games/${f}.css`;
+    ln.onload = ok; ln.onerror = () => { ln.remove(); delete cssLoads[f]; ok(); };
+    setTimeout(ok, 4000);
+    document.head.append(ln);
+  }));
+}
 function needUI(id) {
-  if (!id || UI[id]) return Promise.resolve();
-  return (uiLoads[id] ??= Promise.all([...(UI_EXTRA[id] || []), id].map((f) => new Promise((ok, fail) => {
+  if (!id) return Promise.resolve();
+  const files = [...(UI_EXTRA[id] || []), id];
+  const css = Promise.all(files.map(needCSS));
+  if (UI[id]) return css;
+  return (uiLoads[id] ??= Promise.all([css, ...files.map((f) => new Promise((ok, fail) => {
     const sc = document.createElement('script');
     sc.src = `/games/${f}.js`;
     sc.async = false;  // run in order: a 3D helper before the game that uses it
     sc.onload = ok;
     sc.onerror = () => { sc.remove(); fail(new Error(f)); };
     document.head.append(sc);
-  }))).then(() => { if (!UI[id]) throw new Error(id); }).catch((e) => { delete uiLoads[id]; throw e; }));
+  }))]).then(() => { if (!UI[id]) throw new Error(id); }).catch((e) => { delete uiLoads[id]; throw e; }));
 }
 // what the lobby is about to play: fetch it while people get ready, so Start is instant
 const prefetchUI = (id) => setTimeout(() => needUI(id).catch(() => {}), 400);

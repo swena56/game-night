@@ -1,0 +1,83 @@
+/* safecracker: this game's own rules, loaded with static/games/safecracker.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+/* safecracker: clue pins drop in one by one; an opened safe shows its door swinging open */
+.sc-pin.drop { animation: scDrop .3s both cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes scDrop { from { transform: translateY(-10px) scale(1.6); opacity: 0; } }
+.sc-door { display: inline-block; width: 34px; height: 34px; margin-right: 8px; vertical-align: middle; border-radius: 6px; position: relative;
+  background: linear-gradient(145deg, #9aa3b5, #5b6170); box-shadow: inset 0 0 0 3px #2a2d36; transform-origin: left center;
+  animation: scDoor 1.4s .5s both cubic-bezier(.3, 1.2, .5, 1); }
+.sc-dial { position: absolute; inset: 9px; border-radius: 50%; border: 3px solid #2a2d36; border-top-color: #ffd166; animation: spin .5s 1 linear; }
+@keyframes scDoor { 0% { transform: perspective(200px) rotateY(0); } 100% { transform: perspective(200px) rotateY(-70deg); } }
+.sc-head { display: flex; justify-content: space-between; font-weight: 700; margin-bottom: 6px; }
+.sc-head span:last-child { color: var(--muted); font-weight: 400; }
+.sc-peg { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%;
+  font-weight: 800; font-size: 14px; color: #1b1300; box-shadow: inset 0 -3px 0 #0003, inset 0 2px 0 #fff6; flex: none; }
+.sc-peg.small { width: 22px; height: 22px; font-size: 11px; }
+.sc-peg.empty { background: var(--field); box-shadow: inset 0 2px 6px #000a; border: 2px dashed var(--line); }
+.sc-peg.pad { width: 44px; height: 44px; font-size: 16px; cursor: pointer; transition: transform .1s; }
+.sc-peg.pad:active { transform: scale(.9); }
+.sc-peg.pad.off { opacity: .3; cursor: default; }
+.sc-peg.pad.probing { outline: 2px dashed var(--accent2); outline-offset: 2px; }
+.sc-notes { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0; }
+.sc-peg.note { cursor: pointer; }
+.sc-peg.note-out, .sc-peg.note-in { position: relative; }
+.sc-peg.note-out { opacity: .4; }
+.sc-peg.note-out::after, .sc-peg.note-in::after { position: absolute; right: -4px; top: -6px; font-size: 13px; font-weight: 900; text-shadow: 0 1px 2px #000; }
+.sc-peg.note-out::after { content: "✗"; color: #ff8a8a; }
+.sc-peg.note-in::after { content: "✓"; color: #7dffb0; }
+.sc-opened { display: flex; align-items: center; gap: 6px; justify-content: center; padding: 8px; margin-bottom: 8px;
+  background: #06d6a01a; border: 1px solid var(--ok); border-radius: var(--radius); font-weight: 700; flex-wrap: wrap; }
+.sc-opened > div { display: flex; align-items: center; gap: 4px; }
+/* a fixed height, not a max: the colour pad below it stays put as guesses pile up (#18) */
+.sc-history { height: min(36vh, 300px); overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 2px; }
+.sc-round { display: flex; gap: 8px; background: var(--panel); border-radius: 10px; padding: 6px 8px; }
+/* the history reads like a ledger: alternate rounds shaded, the newest one stands out */
+.sc-round:nth-child(even) { background: color-mix(in srgb, var(--panel) 80%, #fff 4%); }
+.sc-round:last-child { box-shadow: 0 0 0 1.5px var(--accent); }
+.sc-round:last-child .sc-rnum { color: var(--accent); }
+.sc-fit { text-align: center; margin: 6px 0; font-size: 14px; color: var(--muted); }
+.sc-fit b { color: var(--text, #fff); font-size: 18px; font-variant-numeric: tabular-nums; }
+.sc-fit.one { color: var(--ok); font-weight: 700; }
+.sc-rnum { color: var(--muted); font-size: 12px; min-width: 16px; padding-top: 4px; }
+.sc-rows { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.sc-row { display: flex; align-items: center; gap: 8px; }
+.sc-row.me .sc-who { font-weight: 800; }
+.sc-row.theirs { opacity: .72; }
+/* a duel rival's guess at your code */
+.sc-who { width: 70px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; border-left: 3px solid; padding-left: 5px; }
+.sc-code { display: flex; gap: 3px; }
+.sc-pins { display: flex; flex-wrap: wrap; gap: 3px; max-width: 60px; }
+.sc-pin { display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--text); vertical-align: middle; }
+.sc-pin.on { background: var(--text); }
+.sc-none { color: var(--muted); }
+.sc-entry { margin-top: 10px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.sc-slots { display: flex; gap: 8px; }
+.sc-slots .sc-peg { width: 44px; height: 44px; font-size: 16px; }
+.sc-slots .sc-peg.slot[role=button] { cursor: pointer; }
+.sc-slots .sc-peg.sel { outline: 3px solid var(--accent); outline-offset: 3px; }
+/* a colour already in a no-repeat guess: still tappable, to swap it into the selected spot (#41) */
+.sc-peg.pad.used { opacity: .55; box-shadow: inset 0 0 0 3px #0006; }
+.sc-pad { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.sc-actions { justify-content: center; }
+.sc-actions button.on { outline: 2px solid var(--accent2); }
+.sc-status { min-height: 1.4em; color: var(--muted); font-size: 13px; text-align: center; }
+/* safecracker: a vault door whose dial turns with every guess; it swings open when the safe is cracked */
+.sc-head { align-items: center; gap: 10px; }
+.sc-vault { width: 46px; height: 46px; flex: none; overflow: visible; }
+.sc-vault .frame { fill: #2b2f36; stroke: #12151a; stroke-width: 2; }
+.sc-vault .door { transform-origin: 6px 32px; transition: transform .9s cubic-bezier(.5, -.3, .3, 1.2); }
+.sc-vault .plate { fill: #9aa3ad; stroke: #5d6670; stroke-width: 2; }
+.sc-vault .ring { fill: none; stroke: #c9d0d8; stroke-width: 1.5; stroke-dasharray: 2 3; }
+.sc-vault .bolts rect { fill: #e2b53c; transition: transform .4s; }
+.sc-vault.open .bolts rect:nth-child(1) { transform: translateX(7px); }
+.sc-vault.open .bolts rect:nth-child(2) { transform: translateX(-7px); }
+.sc-vault.open .bolts rect:nth-child(3) { transform: translateY(7px); }
+.sc-vault.open .bolts rect:nth-child(4) { transform: translateY(-7px); }
+.sc-vault .dial { transform-origin: 32px 32px; transform: rotate(var(--turn, 0deg)); transition: transform .9s cubic-bezier(.3, 1.4, .5, 1); }
+.sc-vault .dial circle:first-child { fill: #3d434c; stroke: #c9d0d8; stroke-width: 1.5; }
+.sc-vault .dial path { stroke: #c9d0d8; stroke-width: 1.5; }
+.sc-vault .dial .notch { fill: #ffd166; }
+.sc-vault.open .door { transform: scaleX(.3) skewY(-10deg); transition-delay: .35s; }
+.sc-vault.open .frame { fill: #111; }
+.sc-head .grow { flex: 1; min-width: 0; }
+.sc-streak { color: #ffd166; font-weight: 700; }

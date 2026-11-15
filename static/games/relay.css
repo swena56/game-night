@@ -1,0 +1,34 @@
+/* relay: this game's own rules, loaded with static/games/relay.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+.rl-head { display: flex; justify-content: space-between; color: var(--muted); margin-bottom: 8px; }
+.rl-task { color: var(--accent); font-weight: 700; }
+.rl-quote { background: var(--panel); border-radius: var(--radius); padding: 14px; font-size: 20px; text-align: center; overflow-wrap: anywhere; }
+.rl-prompt { margin-bottom: 10px; }
+.rl-how { margin: 0 0 8px; text-align: center; }
+.rl-dot { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; font-size: 13px; margin-right: 3px; background: var(--panel); opacity: .45; }
+.rl-dot.done { opacity: .8; }
+.rl-dot.on { opacity: 1; box-shadow: 0 0 0 2px var(--accent); }
+.rl-head { align-items: center; gap: 8px; flex-wrap: wrap; }
+.rl-sum { text-align: center; color: var(--muted); animation: rlin .5s both; }
+.rl-pad, .rl-art { display: block; width: min(100%, 460px, calc(var(--room) - 110px)); aspect-ratio: 1; margin: 0 auto;
+  background: repeating-linear-gradient(0deg, #0000 0 23px, #8ecae61c 23px 24px), linear-gradient(160deg, #fffdf6, #f5eee0); border-radius: var(--radius); box-shadow: 0 8px 24px #0007; }
+.rl-pad { touch-action: none; cursor: crosshair; box-shadow: 0 0 0 3px var(--accent), 0 8px 24px #0007; }
+.rl-art { width: min(100%, 320px); }
+.rl-ink { fill: none; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.rl-ink.rl-redraw { stroke-dasharray: 1 1; stroke-dashoffset: 1; animation: rlRedraw .3s linear both; }
+@keyframes rlRedraw { to { stroke-dashoffset: 0; } }
+.rl-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center; margin: 8px 0; }
+.rl-inks { display: flex; flex-wrap: wrap; gap: 4px; }
+.rl-swatch { width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 2px solid #fff3; }
+.rl-swatch.on { border: 3px solid #fff; transform: scale(1.12); }
+.rl-size { width: 30px; height: 30px; padding: 0; border-radius: 50%; display: grid; place-items: center; }
+.rl-size span { display: block; border-radius: 50%; background: var(--text); }
+.rl-size.on { outline: 2px solid #fff; }
+.rl-save { margin-top: 10px; }
+.rl-chain { display: grid; gap: 10px; }
+.rl-entry { background: var(--panel); border-radius: var(--radius); padding: 10px; display: grid; gap: 8px; animation: rlin .5s both; }
+.rl-who { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+.rl-heart { justify-self: end; }
+@keyframes rlin { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+/* scribble relay: a twist card for this drawing */
+.rl-twist { margin: 6px 0; padding: 8px 12px; border-radius: var(--r-md); background: #ffd16622; border: 1px dashed #ffd166; font-weight: 700; text-align: center; }

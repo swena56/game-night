@@ -1,0 +1,15 @@
+/* hockey: this game's own rules, loaded with static/games/hockey.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+/* air hockey */
+.hk { display: flex; justify-content: center; }
+.hk-stage { position: relative; display: flex; justify-content: center; width: 100%; }
+.hk-stage canvas { display: block; border-radius: 18px; box-shadow: 0 0 0 4px #1b3a5c, 0 0 30px #8ecae655, 0 14px 40px #000a; cursor: none; }
+.hk-banner { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 40px; font-weight: 900; color: #fff;
+  text-shadow: 0 0 20px var(--accent); pointer-events: none; animation: pulse .6s infinite; }
+.hk-score .grow { flex: 1; }
+.hk-hot { color: #ffb703 !important; font-weight: 800; animation: pulse 1s infinite alternate; }
+.hk-num { font-size: 26px; font-variant-numeric: tabular-nums; }
+/* air hockey: a fresh goal slams onto the scoreboard */
+.hk-num.slam { display: inline-block; animation: hkSlam .5s cubic-bezier(.3, 1.6, .5, 1); color: var(--accent); }
+@keyframes hkSlam { 0% { transform: scale(2.4); opacity: 0; } 60% { transform: scale(.9); opacity: 1; } 100% { transform: none; } }
+body.calm .hk-num.slam { animation: none; }

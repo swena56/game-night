@@ -1253,6 +1253,17 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(200, health())
         if url.path == "/api/games":  # the catalogue for the home screen's game picker (#98)
             return self.send_json(200, {"games": GAME_LIST, "families": {c: [f for f, _ in fs] for c, fs in FAMILIES.items()}})
+        if url.path == "/games/css.js":  # which games have their own stylesheet (static/games/*.css): app.js needUI loads only those
+            if time.time() - Handler.scanned > 5:
+                Handler.files, Handler.scanned = static_files(), time.time()
+            names = sorted(p[7:-4] for p in self.files if p.startswith("/games/") and p.endswith(".css"))
+            body = ("window.GAME_CSS = " + json.dumps(names) + ";\n").encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/javascript; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-cache")
+            self.end_headers()
+            return self.wfile.write(body)
         if url.path == "/api/events":
             return self.events(parse_qs(url.query))
         if url.path not in self.files:

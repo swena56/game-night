@@ -1,0 +1,48 @@
+/* marble: this game's own rules, loaded with static/games/marble.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+/* marble rush: the tilting maze fills the stage; a drag anywhere is the stick, the HUD rides on top */
+.mb-wrap { display: flex; flex-direction: column; gap: 8px; }
+.mb-stage { position: relative; height: min(calc(var(--app-h, 100vh) * .66), 640px, 100vw); border-radius: var(--radius); overflow: hidden;
+  touch-action: none; user-select: none; -webkit-user-select: none; background: radial-gradient(ellipse at 50% 20%, #6a8fd6, #1b2a5c 80%); }
+.mb-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.mb-hud { position: absolute; top: 8px; left: 8px; right: 8px; display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  pointer-events: none; font-weight: 700; font-size: 14px; color: #fff; text-shadow: 0 1px 3px #000a; }
+.mb-hud > span { background: #0006; padding: 3px 9px; border-radius: 999px; }
+.mb-hud > span:empty { display: none; }
+.mb-clock { font-variant-numeric: tabular-nums; font-size: 17px; }
+.mb-clock.late { color: #ffb4b4; }
+.mb-count { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none;
+  font-size: 76px; font-weight: 800; color: #fff; text-shadow: 0 4px 18px #0009; }
+.mb-toast { position: absolute; left: 50%; top: 22%; transform: translate(-50%, 0) scale(.9); opacity: 0; pointer-events: none;
+  background: #000a; color: #fff; padding: 6px 14px; border-radius: 999px; font-weight: 700; transition: opacity .2s, transform .2s; }
+.mb-toast.on { opacity: 1; transform: translate(-50%, 0) scale(1); }
+.mb-banner { position: absolute; left: 8px; right: 8px; bottom: 10px; text-align: center; pointer-events: none;
+  background: #000b; color: #fff; padding: 8px 12px; border-radius: 12px; font-weight: 700; }
+.mb-stick { position: absolute; width: 76px; height: 76px; margin: -38px 0 0 -38px; border-radius: 50%; pointer-events: none;
+  border: 2px solid #fff8; background: #ffffff1f; }
+.mb-stick i { position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%; background: #fffc; }
+.mb-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mb-tiltbtn.on { background: var(--accent); color: #fff; }
+.mb-turbo { font-size: 16px; padding: 10px 18px; }
+.mb-perks { pointer-events: auto; margin-top: 8px; }
+.mb-perks-head { font-size: 14px; margin-bottom: 6px; }
+.mb-perk-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.mb-perk { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; min-height: 44px; background: var(--panel2); }
+.mb-perk.on { border: 2px solid var(--accent); background: #ffb70333; }
+.mb-perk-icon { font-size: 24px; }
+.mb-perk b { font-size: 13px; }
+.mb-perk small { font-size: 10px; line-height: 1.2; color: var(--muted); font-weight: 400; }
+.mb-rivals { display: flex; flex-direction: column; gap: 6px; }
+.mb-row { display: grid; grid-template-columns: minmax(0, 8em) 1fr auto; gap: 8px; align-items: center; font-size: 14px; }
+.mb-row.me .mb-name { font-weight: 800; }
+.mb-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: flex; align-items: center; gap: 5px; }
+.mb-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.mb-prog { height: 8px; border-radius: 4px; background: #8884; overflow: hidden; }
+.mb-prog i { display: block; height: 100%; border-radius: 4px; transition: width .25s linear; }
+.mb-time { font-variant-numeric: tabular-nums; font-size: 13px; }
+.mb-stand { margin-top: 10px; }
+body.focus .mb-stage { height: max(260px, calc(var(--room) - 80px)); }
+@media (max-width: 600px) {
+  .mb-hint { display: none; }
+  .mb-count { font-size: 60px; }
+}

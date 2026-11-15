@@ -1,0 +1,26 @@
+/* shutbox: this game's own rules, loaded with static/games/shutbox.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+.sb-who { font-weight: 800; min-height: 1.4em; }
+.sb-box { width: 100%; display: grid; grid-template-columns: repeat(var(--sb-n, 9), minmax(0, 1fr)); gap: 4px; padding: 10px 8px 14px;
+  border-radius: 14px; background: linear-gradient(#7a4a24, #4e2c12); box-shadow: inset 0 3px 0 #ffffff22, 0 8px 18px #0008; }
+.sb-box:has(> :nth-child(10)) { --sb-n: 12; }
+.sb-tile { aspect-ratio: 2 / 3; padding: 0; border: 0; border-radius: 5px; font-weight: 900; font-size: clamp(14px, 4.4vw, 26px);
+  background: linear-gradient(#fbf3df, #e4d3ad); color: #3a2410; box-shadow: 0 3px 0 #a88a58; transition: transform .2s, background .2s; }
+.sb-tile:disabled { opacity: 1; cursor: default; }
+.sb-tile.dim { opacity: .45; }
+.sb-tile.picked { transform: translateY(-6px); background: linear-gradient(#ffe08a, #f2b632); box-shadow: 0 0 0 3px var(--accent), 0 3px 0 #a88a58; }
+.sb-tile.shut { background: #2a170a; color: #ffffff2e; box-shadow: inset 0 3px 6px #000a; transform: none; }
+.sb-box { perspective: 600px; background: linear-gradient(#5a321066, #2a170a99), var(--wood); }
+.sb-tile.flipdown { animation: sbFlip .45s cubic-bezier(.5, 0, .7, 1); transform-origin: 50% 100%; }
+@keyframes sbFlip { 0% { transform: rotateX(0); background: linear-gradient(#fbf3df, #e4d3ad); color: #3a2410; }
+  60% { transform: rotateX(80deg); } 100% { transform: rotateX(0); } }
+.sb-dice { min-height: clamp(50px, 15vw, 70px); }
+.sb-dice.faded { opacity: .45; }
+.sb-sum { font-weight: 800; min-height: 1.3em; }
+.sb-actions { justify-content: center; min-height: 52px; }
+.sb-row { padding: 6px 0; border-bottom: 1px solid var(--line); }
+.sb-mini { display: flex; gap: 2px; margin: 4px 0; }
+.sb-mini span { flex: 1; text-align: center; font-size: 11px; font-weight: 800; border-radius: 3px; background: #e4d3ad; color: #3a2410; }
+.sb-mini span.shut { background: transparent; color: #ffffff30; }
+/* shut the box: the chance a roll leaves you stuck, on each roll button */
+.sb-odds { display: block; font-size: var(--fs-xs); font-weight: 600; opacity: .8; }

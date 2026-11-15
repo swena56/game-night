@@ -1,0 +1,33 @@
+/* doodle: this game's own rules, loaded with static/games/doodle.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+.dd-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.dd-cat { font-weight: 800; color: var(--accent); letter-spacing: .03em; }
+.dd-round { color: var(--muted); font-size: 13px; }
+.dd-paper { position: relative; width: min(100%, calc(var(--room) - 180px), 520px); min-width: 220px; aspect-ratio: 1; margin: 0 auto; border-radius: 12px;
+  background: repeating-linear-gradient(0deg, #0000 0 23px, #8ecae622 23px 24px), linear-gradient(160deg, #fffdf6, #f3ecdc);
+  box-shadow: 0 10px 30px #0008, inset 0 0 0 1px #0001; transform: rotate(-.6deg); }
+.dd-paper svg { display: block; width: 100%; height: 100%; }
+.dd-ink { fill: none; stroke: var(--ink, #2b2140); stroke-width: 2.6; filter: url(#ddMarker); stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; }
+.dd-wait { position: absolute; inset: 0; display: grid; place-items: center; color: #8a8199; font-size: 20px; animation: pulse 1.2s infinite; pointer-events: none; }
+.dd-answer { position: absolute; left: 8%; right: 8%; bottom: 5%; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 8px 10px; border-radius: 12px; background: #fffdf6f2; color: #2b2140; box-shadow: 0 6px 18px #0005, inset 0 0 0 2px #ef476f55;
+  animation: bannerIn .5s cubic-bezier(.2, 1.4, .4, 1); transform: rotate(-2deg); text-align: center; }
+.dd-card-cat { font-size: 12px; font-weight: 700; color: #6b5a8a; }
+.dd-card-word { font-size: clamp(24px, 7vw, 40px); font-weight: 900; color: #ef476f; line-height: 1.1; }
+.dd-card-who { font-size: 13px; font-weight: 700; }
+.dd-hint { display: flex; flex-wrap: wrap; justify-content: center; gap: 5px; min-height: 34px; margin: 4px 0; }
+.dd-hint span { width: 24px; height: 30px; border-bottom: 3px solid var(--muted); text-align: center; font-weight: 900; font-size: 22px; }
+.dd-hint span.gap { border: 0; width: 12px; }
+.dd-hint span.letter { color: var(--accent); }
+.dd-hint.reveal span { color: var(--ok); border-color: var(--ok); animation: markIn .3s backwards; }
+.dd-form input { flex: 3; font-size: 18px; }
+.dd-status { text-align: center; min-height: 1.4em; font-weight: 700; }
+/* doodle dash: a late letter drops into its blank */
+.dd-hint .letter.late { animation: ddLate .5s cubic-bezier(.3, 1.6, .5, 1); color: #ffd166; }
+@keyframes ddLate { from { transform: translateY(-14px) scale(1.4); opacity: 0; } }
+/* doodle dash: wrong guesses drift up over the paper */
+.dd-bubble { position: absolute; bottom: 12%; z-index: 3; max-width: 60%; padding: 5px 10px; border-radius: var(--radius) 14px 14px 4px; background: #fff; color: #2b2140;
+  font-size: var(--fs-sm); box-shadow: 0 3px 10px #0004; pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  animation: ddBubble 2.5s ease-out both; }
+.dd-bubble b { color: #7048e8; }
+@keyframes ddBubble { 0% { opacity: 0; transform: translateY(10px) scale(.8); } 15% { opacity: 1; transform: none; } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-60px); } }

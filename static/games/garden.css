@@ -1,0 +1,40 @@
+/* garden: this game's own rules, loaded with static/games/garden.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+.gd-plot { width: fit-content; max-width: 100%; margin: 6px auto 0; padding: 10px; border-radius: 16px;
+  background: radial-gradient(circle at 30% 20%, #4f8a4a, #2c5b33 80%); box-shadow: inset 0 2px 10px #0004, 0 3px 10px #0003; }
+.gd-grid { --cs: max(18px, min(36px, calc((min(100vw, 600px) - 48px) / var(--gw, 7)), calc((var(--room) - 300px) / var(--gh, 7))));
+  display: grid; grid-template-columns: repeat(var(--gw, 7), var(--cs)); grid-template-rows: repeat(var(--gh, 7), var(--cs)); gap: 3px; }
+.gd-c { display: grid; place-items: center; border-radius: 7px; background: #f6efd9; box-shadow: inset 0 -3px 0 #d9ccaa;
+  color: #2f4a2a; font: 700 calc(var(--cs) * .58)/1 var(--font-display, system-ui); text-transform: uppercase; }
+.gd-c.gd-x { background: none; box-shadow: none; }
+.gd-c.got { background: #fff6c9; box-shadow: inset 0 -3px 0 #e2c35a, 0 0 0 1px #f5d77a; }
+.gd-c.drop { background: #d8eefc; box-shadow: inset 0 -3px 0 #8ec2e6; color: #1d4e6e; }
+.gd-c.missed { color: #8b8a7a; background: #ebe4cf; }
+.gd-c.bloom { animation: gdBloom .55s ease-out; }
+@keyframes gdBloom { 0% { transform: scale(.4) rotate(-8deg); background: #b8f0a0; } 60% { transform: scale(1.12); } 100% { transform: none; } }
+.gd-word { min-height: 32px; margin: 8px auto 0; text-align: center; color: var(--text); letter-spacing: .14em;
+  font: 700 24px/32px var(--font-display, system-ui); }
+.gd-word.nope { animation: jolt .35s; color: var(--muted); }
+.gd-ring { position: relative; width: min(230px, 62vw, max(150px, calc(var(--room) * .36))); aspect-ratio: 1; margin: 2px auto 0;
+  border-radius: 50%; background: radial-gradient(circle, #fff8e6 0 55%, #f1e4c2 100%); box-shadow: 0 0 0 5px #6aa65f55, 0 4px 14px #0003;
+  touch-action: none; user-select: none; -webkit-user-select: none; }
+.gd-ink { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.gd-ink polyline { fill: none; stroke: #5fa35a; stroke-width: 3.2; stroke-linecap: round; stroke-linejoin: round; opacity: .75; }
+.gd-l { position: absolute; width: 23%; aspect-ratio: 1; transform: translate(-50%, -50%); border-radius: 50%; padding: 0; border: 0;
+  background: #fff; color: #2f4a2a; box-shadow: 0 2px 0 #d9ccaa, 0 3px 8px #0002; font: 700 clamp(18px, 6vw, 26px)/1 var(--font-display, system-ui);
+  touch-action: none; transition: background .12s, transform .12s; }
+.gd-l.on { background: #7cc36e; color: #fff; transform: translate(-50%, -50%) scale(1.08); box-shadow: 0 2px 0 #4c8a42; }
+.gd-mid { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: 20%; aspect-ratio: 1; border-radius: 50%; padding: 0;
+  border: 0; background: #0000; font-size: clamp(16px, 5vw, 22px); opacity: .7; }
+.gd-note.good { color: var(--ok); }
+.gd-note.bonus { color: var(--accent2); }
+.gd-note.soft { color: var(--muted); }
+.gd-bonus { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 5px; width: min(100%, 520px); margin: 4px auto 0; }
+.gd-bl { flex-basis: 100%; text-align: center; color: var(--muted); font-size: 11px; font-weight: 700; }
+.gd-bw { padding: 2px 8px; border-radius: 99px; background: var(--panel2); color: var(--text); font: 700 12px/1.4 var(--font-display, system-ui); letter-spacing: .04em; }
+.gd.over .gd-ring { opacity: .45; }
+body.calm .gd-c.bloom, body.calm .gd-word.nope { animation: none; }
+@media (max-width: 420px) {
+  .gd-plot { padding: 7px; }
+  .gd-word { margin-top: 4px; font-size: 21px; }
+}

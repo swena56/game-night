@@ -1,0 +1,27 @@
+/* boxes: this game's own rules, loaded with static/games/boxes.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+/* dots & boxes */
+.bx-wrap { --ar: 1; width: min(100%, calc(560px * var(--ar)), calc(var(--room) * var(--ar))); margin: 8px auto; padding: 10px; border-radius: var(--radius);
+  background: radial-gradient(circle at 30% 20%, #2e2747, #15111f 80%); box-shadow: inset 0 0 0 1px #ffffff12, 0 10px 30px #0008; }
+.bx-board { display: block; width: 100%; height: auto; aspect-ratio: var(--ar); overflow: visible; }
+.bx-dot { fill: #f3eefc; filter: drop-shadow(0 0 .04px #fff); }
+.bx-ink { stroke: #ffffff14; stroke-width: .07; stroke-linecap: round; stroke-dasharray: .06 .1; transition: stroke .2s; }
+.bx-hit { stroke: transparent; stroke-width: .42; cursor: default; }
+.bx-board.live .bx-line:not(.drawn) .bx-hit { cursor: pointer; }
+.bx-board.live .bx-line:not(.drawn):hover .bx-ink { stroke: var(--mine); stroke-dasharray: none; opacity: .55; }
+.bx-line.picked .bx-ink { stroke: var(--mine); stroke-dasharray: none; stroke-width: .1; animation: pulse .7s infinite; }
+.bx-line.drawn .bx-ink { stroke: var(--ink); stroke-width: .11; stroke-dasharray: none; filter: drop-shadow(0 0 .05px var(--ink)); }
+.bx-line.drawn.fresh .bx-ink { stroke-dasharray: 1; animation: bxdraw .35s ease-out; }
+.bx-line.last .bx-ink { stroke-width: .15; }
+@keyframes bxdraw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+.bx-box rect { fill: var(--fill); opacity: .55; transform-box: fill-box; transform-origin: center; transition: fill .3s; }
+.bx-box.gem:not(.owned) rect { fill: #8ecae61f; animation: bxgem 2.4s ease-in-out infinite; }
+.bx-box.fresh rect { animation: bxclaim .45s cubic-bezier(.3, 1.6, .5, 1); }
+.bx-box.giveaway rect { fill: #ff4d6d; opacity: .45; animation: pulse .7s ease-in-out infinite alternate; }
+.bx-box text { font-size: .42px; font-weight: 900; fill: #fff; text-anchor: middle; dominant-baseline: middle; pointer-events: none; }
+.bx-box.owned text { text-shadow: 0 0 .1px #0008; }
+@keyframes bxclaim { from { transform: scale(.2); opacity: 0; } }
+@keyframes bxgem { 50% { fill: #8ecae640; } }
+.bx-score { padding: 5px 8px; border-radius: 10px; }
+.bx-score.now { background: #ffb7031a; box-shadow: inset 0 0 0 1px #ffb70355; }
+.bx-score .grow { flex: 1; }

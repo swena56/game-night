@@ -1,0 +1,13 @@
+/* sumo: this game's own rules, loaded with static/games/sumo.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+/* sumo saucers (banners and score rows in section 5) */
+.sm { max-width: 640px; margin: 0 auto; overscroll-behavior: none; user-select: none; -webkit-user-select: none; }
+.sm-stage { position: relative; height: clamp(240px, calc(var(--room) - 150px), 600px); border-radius: var(--radius); overflow: hidden;
+  display: flex; justify-content: center; align-items: center; background: #05040d; }
+.sm-stage canvas { position: absolute; inset: 0; margin: auto; max-width: 100%; max-height: 100%; display: block; }
+.sm-stick { position: absolute; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; border: 2px solid #ffffff55;
+  background: #ffffff10; pointer-events: none; }
+.sm-stick span { position: absolute; left: 35px; top: 35px; width: 50px; height: 50px; border-radius: 50%; background: #ffffffaa; }
+body.focus .sm-stage { height: max(220px, calc(var(--room) - 155px)); }
+.sm-flash.dim { font-size: 16px; opacity: .8; letter-spacing: .02em; }
+.sm-ko { font-size: 12px; opacity: .8; margin-right: 6px; }

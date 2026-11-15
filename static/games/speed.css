@@ -1,0 +1,20 @@
+/* speed: this game's own rules, loaded with static/games/speed.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+.sp-row { display: flex; gap: 4px; justify-content: center; align-items: center; flex-wrap: wrap; min-height: 46px; }
+.sp-who { width: 100%; text-align: center; font-weight: 700; font-size: 13px; }
+.sp-table { display: flex; gap: 10px; justify-content: center; align-items: center; padding: 14px 8px; border-radius: 16px;
+  background: radial-gradient(ellipse at center, #1f6b45, #134a2f); box-shadow: inset 0 0 18px #0008; }
+.sp-side { width: 34px; display: flex; justify-content: center; }
+.sp-pile { padding: 0; border: 0; background: none; border-radius: 10px; transition: transform .12s; }
+.sp-table { background: radial-gradient(ellipse at center, #22774c, #134a2f 70%, #0e3a25); border: 6px solid #5c3a21; box-shadow: inset 0 0 22px #000a, 0 6px 16px #0007; }
+.sp-pile:disabled { opacity: 1; }
+.sp-pile.target { transform: scale(1.06); }
+.sp-pile.target .pc { box-shadow: 0 0 0 4px var(--accent), 0 4px 12px #000a; }
+.sp-note { min-height: 1.4em; text-align: center; font-size: 13px; color: var(--muted); }
+.sp-hand { gap: 6px; padding-top: 8px; }
+.sp-ghost { position: fixed; z-index: 60; pointer-events: none; transform: rotate(-6deg) scale(1.08); box-shadow: 0 12px 24px #000a; }
+.sp-pile.over { transform: scale(1.1); }
+.sp-pile.near .pc { animation: spNear .5s; }
+@keyframes spNear { 30% { box-shadow: 0 0 0 4px #ef476f, 0 0 18px #ef476f; } }
+.sp-pile.over .pc { box-shadow: 0 0 0 4px #fff, 0 4px 12px #000a; }
+.sp-mine { text-align: center; font-size: 12px; color: var(--muted); }

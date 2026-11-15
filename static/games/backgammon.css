@@ -1,0 +1,67 @@
+/* backgammon: this game's own rules, loaded with static/games/backgammon.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+.bg-info { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 30px; /* dice come and go (#18) */ font-size: 13px; font-weight: 700; margin: 4px 2px; }
+.bg-board { --ck: min(30px, 6.4vw); display: grid; grid-template-columns: 1fr calc(var(--ck) + 6px) 1fr calc(var(--ck) + 4px);
+  grid-template-rows: 1fr 1fr; gap: 0 4px; padding: 8px; border-radius: 12px; height: min(calc(var(--ck) * 11.5), calc(var(--room) - 110px));
+  min-height: 240px; background: linear-gradient(#4a2a0e66, #4a2a0e66), var(--wood); box-shadow: inset 0 0 0 3px #4a2e16, 0 10px 30px #000a; }
+.bg-half { display: grid; grid-template-columns: repeat(6, 1fr); background: radial-gradient(ellipse at 50% 50%, #137043, #0b4a2a); border-radius: 4px; box-shadow: inset 0 0 12px #0008; }
+.bg-half:nth-child(5), .bg-half:nth-child(7) { border-top: 2px solid #4a2e16; }
+.bg-pt { position: relative; padding: 0; border: 0; border-radius: 0; background: none; display: flex; flex-direction: column;
+  align-items: center; overflow: hidden; min-width: 0; }
+.bg-pt::before { content: ''; position: absolute; inset: 0 8%; background: var(--tri); opacity: .9; }
+.bg-pt.top::before { clip-path: polygon(0 0, 100% 0, 50% 88%); }
+.bg-pt.bottom { flex-direction: column-reverse; }
+.bg-pt.bottom::before { clip-path: polygon(0 100%, 100% 100%, 50% 12%); }
+.bg-pt.odd { --tri: linear-gradient(#f3e6bd, #d9c48c); }
+.bg-pt.even { --tri: linear-gradient(#b02a2f, #7f1a1e); }
+.bg-pt.bottom.odd { --tri: linear-gradient(#d9c48c, #f3e6bd); }
+.bg-pt.bottom.even { --tri: linear-gradient(#7f1a1e, #b02a2f); }
+.bg-half { box-shadow: inset 0 0 24px #0009, inset 0 0 0 1px #ffffff10; }
+.bg-ck { box-shadow: inset 0 2px 2px #fff5, inset 0 -3px 0 #0004, inset 0 0 0 2px #00000018, 0 2px 3px #0008; }
+.bg-stack { position: relative; display: flex; flex-direction: inherit; align-items: center; gap: 1px; padding: 2px 0; z-index: 1; }
+.bg-ck { width: var(--ck); height: var(--ck); border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 900; flex: none;
+  box-shadow: inset 0 -3px 0 #0004, 0 2px 3px #0008; }
+.bg-ck.w { background: radial-gradient(circle at 35% 30%, #fff, #ddd 60%, #bbb); color: #222; }
+.bg-ck.b { background: radial-gradient(circle at 35% 30%, #555, #1a1a1a 65%); color: #eee; }
+.bg-num { position: absolute; font-size: 9px; color: #fff8; z-index: 1; }
+.bg-pt.top .bg-num { bottom: 1px; }
+.bg-pt.bottom .bg-num { top: 1px; }
+.bg-pt.src .bg-stack .bg-ck:last-child { box-shadow: 0 0 0 3px var(--accent), 0 0 10px var(--accent); }
+.bg-pt.bottom.src .bg-stack .bg-ck:last-child { box-shadow: 0 0 0 3px var(--accent), 0 0 10px var(--accent); }
+.bg-pt.sel { background: #ffb70333; }
+.bg-pt.dest::after { content: ''; position: absolute; left: 50%; width: 40%; aspect-ratio: 1; border-radius: 50%; transform: translateX(-50%);
+  background: var(--ok); box-shadow: 0 0 10px var(--ok); z-index: 2; animation: pulse 1s infinite; }
+.bg-pt.top.dest::after { bottom: 8%; }
+.bg-pt.bottom.dest::after { top: 8%; }
+.bg-pt.last::before { filter: brightness(1.35); }
+.bg-pt:disabled, .bg-bar:disabled, .bg-off:disabled { opacity: 1; cursor: default; }
+.bg-bar { padding: 2px 0; border: 0; border-radius: 4px; background: #4a2e16; display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.bg-bar.top { justify-content: flex-start; }
+.bg-bar.bottom { justify-content: flex-end; flex-direction: column-reverse; }
+.bg-bar.src, .bg-bar.sel { box-shadow: inset 0 0 0 2px var(--accent); }
+.bg-off { padding: 3px 2px; border: 0; border-radius: 4px; background: #2a1a0c; display: flex; flex-direction: column; gap: 1px; }
+.bg-off.bottom { flex-direction: column-reverse; }
+.bg-off.dest { box-shadow: inset 0 0 0 2px var(--ok), 0 0 10px var(--ok); }
+.bg-slab { height: 5px; border-radius: 2px; }
+.bg-slab.w { background: #eee; }
+.bg-slab.b { background: #111; outline: 1px solid #555; }
+.bg-dice { display: flex; gap: 5px; }
+.bg-die.theirs { background: linear-gradient(145deg, #3a3a3a, #161616); box-shadow: 0 2px 0 #000, 0 4px 8px #0008; }
+.bg-die.theirs span.on { background: radial-gradient(circle at 35% 35%, #fff, #bbb); }
+.bg-die.used { opacity: .3; }
+.bg-race { position: relative; height: 16px; border-radius: 8px; overflow: hidden; background: #111; margin: 2px 2px 4px; box-shadow: inset 0 0 0 1px #ffffff1a; }
+.bg-race i { position: absolute; inset: 0 auto 0 0; transition: width .5s; }
+.bg-race i.me-w { background: linear-gradient(90deg, #ddd, #fff); }
+.bg-race i.me-b { background: linear-gradient(90deg, #444, #666); }
+.bg-race b { position: relative; display: block; text-align: center; font-size: 11px; line-height: 16px; color: #fff; mix-blend-mode: difference; }
+.bg-actions > button[hidden] { display: none; }
+.bg-cube { margin-top: 8px; font-weight: 700; color: #ffd166; }
+.bg-rules { font-size: 13px; }
+.bg-bar { position: relative; }
+.bg-cubeblock { position: absolute; left: 50%; bottom: 6px; transform: translateX(-50%); width: 24px; height: 24px; border-radius: var(--r-xs);
+  display: grid; place-items: center; font: 900 11px system-ui, sans-serif; color: #1a1205; z-index: 2;
+  background: linear-gradient(145deg, #fffaf0, #e9dcc0); box-shadow: inset 0 -2px 0 #0002, 0 2px 4px #0009; }
+.bg-bar.top .bg-cubeblock { bottom: auto; top: 6px; }
+.bg-cubeblock.mid { bottom: auto; top: -12px; }
+.bg-cubeblock.flip { animation: bgCube .6s cubic-bezier(.3, 1.4, .5, 1); }
+body.calm .bg-cubeblock.flip { animation: none; }

@@ -1,0 +1,22 @@
+/* riders: this game's own rules, loaded with static/games/riders.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+.lr-stage { position: relative; height: max(220px, calc(var(--room) - 8px)); border-radius: var(--radius); overflow: hidden; display: flex; justify-content: center; align-items: center;
+  background: #05060f; box-shadow: inset 0 0 0 1px #8ecae633, 0 0 30px #1f6fff33, 0 12px 30px #000a; }
+.lr-stage > canvas { display: block; width: 100%; height: 100%; }
+.lr-hud { position: absolute; top: 8px; left: 8px; right: 8px; z-index: 2; display: flex; flex-wrap: wrap; gap: 4px; pointer-events: none; }
+.lr-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; background: #000a; color: #fff; font-size: 13px; font-weight: 700; white-space: nowrap; }
+.lr-chip i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.lr-chip.me { box-shadow: 0 0 0 2px #fffb; }
+.lr-chip.out { opacity: .45; }
+.lr-boost { --g: 0; position: absolute; right: 14px; bottom: 14px; z-index: 2; width: 76px; height: 76px; padding: 0; border: 0; border-radius: 50%;
+  font-size: 20px; font-weight: 900; color: #fff; touch-action: none;
+  background: radial-gradient(closest-side, #1f6fff 82%, transparent 84%), conic-gradient(#ffd166 calc(var(--g) * 1turn), #ffffff33 0);
+  box-shadow: 0 0 18px #1f6fff99; }
+.lr-boost:disabled { opacity: .45; box-shadow: none; }
+.lr-pad { position: absolute; left: 12px; bottom: 12px; z-index: 2; display: none; grid-template-columns: repeat(3, 40px); gap: 4px; opacity: .7; }
+.lr-pad[hidden] { display: none !important; }
+.lr-pad button { height: 36px; padding: 0; font-size: 16px; background: #000a; color: #fff; }
+.lr-pad:hover { opacity: 1; }
+@media (hover: hover) and (pointer: fine) {
+  .lr-pad { display: grid; }
+}

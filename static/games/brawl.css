@@ -1,0 +1,32 @@
+/* brawl: this game's own rules, loaded with static/games/brawl.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+/* dice brawl: the ring of brawlers with health bars, emoji combat dice */
+.brw { width: min(100%, 560px); margin: 0 auto; text-align: center; }
+.brw-turn { font-size: 13px; color: var(--muted); min-height: 1.3em; }
+.brw-ring { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 8px 0; }
+.brw-fighter { flex: 1 1 140px; max-width: 180px; display: grid; gap: 4px; padding: 8px 10px; border-radius: var(--radius); background: var(--panel);
+  border: 2px solid transparent; text-align: left; position: relative; color: var(--text); }
+.brw-fighter:disabled { opacity: 1; cursor: default; }
+.brw-fighter.turn { border-color: var(--accent); }
+.brw-fighter.target { border-color: var(--danger); box-shadow: 0 0 0 3px #ef476f55; }
+.brw-fighter.out { opacity: .4; filter: grayscale(1); }
+.brw-bar { height: 8px; border-radius: 4px; background: var(--field); overflow: hidden; }
+.brw-bar i { display: block; height: 100%; background: linear-gradient(90deg, #06d6a0, #7fd890); transition: width .4s ease; }
+.brw-bar i.low { background: linear-gradient(90deg, #ef476f, #ff8fa3); }
+.brw-hp { font-size: 13px; font-weight: 700; }
+.brw-aim { position: absolute; top: 6px; right: 8px; font-weight: 900; color: var(--danger); }
+.brw-tally { min-height: 1.4em; font-weight: 800; margin: 4px 0; }
+.brw-dice { display: flex; justify-content: center; gap: clamp(6px, 2vw, 10px); margin: 8px 0 12px; min-height: clamp(50px, 14vw, 64px); }
+.brw-die { --die: clamp(50px, 14vw, 64px); width: var(--die); height: var(--die); border-radius: 18%; display: grid; place-items: center; padding: 0;
+  font-size: calc(var(--die) * .5); background: linear-gradient(145deg, #fff, #e6e0f0); box-shadow: 0 4px 0 #b9b0cc, 0 8px 14px #0008; border: 0;
+  transition: transform .15s; color: #222; }
+.brw-die:disabled { opacity: 1; cursor: default; }
+.brw-die.held { transform: translateY(-8px); box-shadow: 0 0 0 3px var(--accent), 0 4px 0 #b9b0cc, 0 12px 18px #0009; }
+.brw-die.locked { background: linear-gradient(145deg, #4a4458, #2c2838); box-shadow: 0 0 0 2px #ef476f88, 0 4px 0 #1a1722; }
+.brw-die.blank { opacity: .25; color: #888; }
+.brw-die.f4 { background: linear-gradient(145deg, #ffe7b0, #ffc65c); }
+.brw-die.f5 { background: linear-gradient(145deg, #d8ecff, #a9cff5); }
+.brw-die.f6 { background: linear-gradient(145deg, #ffe0e8, #ffb3c4); }
+.brw-die.roll { animation: diceTumble .55s calc(var(--i, 0) * 40ms) both cubic-bezier(.25, 1.35, .45, 1); }
+.brw-actions { justify-content: center; gap: 8px; }
+.brw-last { margin-top: 10px; min-height: 1.4em; font-size: 14px; }

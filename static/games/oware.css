@@ -1,0 +1,42 @@
+/* oware: this game's own rules, loaded with static/games/oware.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+.ow-store.bump { animation: owBump .45s cubic-bezier(.3, 1.6, .5, 1); }
+.ow { display: flex; align-items: stretch; gap: 8px; width: min(100%, 640px); margin: 8px auto; }
+.ow-board { flex: 1; display: flex; flex-direction: column; gap: 8px; padding: 10px; border-radius: 22px;
+  background: linear-gradient(160deg, #8a5a2b, #5e3a17); box-shadow: inset 0 2px 6px #fff3, 0 8px 24px #0009; }
+.ow-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.ow-pit { aspect-ratio: 1; border-radius: 50%; padding: 0; border: 0; background: radial-gradient(circle at 50% 35%, #3e260e, #26170a);
+  box-shadow: inset 0 3px 8px #000b; position: relative; min-width: 0; min-height: 0; overflow: hidden; }
+.ow-pit:disabled { opacity: 1; cursor: default; }
+.ow-pit.can { box-shadow: inset 0 3px 8px #000b, 0 0 0 3px var(--accent); }
+.ow-pit.last { box-shadow: inset 0 3px 8px #000b, 0 0 0 3px var(--accent2); }
+.ow-pit.caught { animation: pulse 1s var(--cd, 0s) 2; }
+.ow-seeds { position: absolute; inset: 6%; pointer-events: none; }
+.ow-seeds i { position: absolute; width: 15%; height: 15%; border-radius: 50%; transform: translate(-50%, -50%);
+  background: radial-gradient(circle at 35% 35%, #f6e7c1, #b48a4a); box-shadow: 0 1px 1px #0008; }
+.ow-seeds i.drop { animation: owDrop .32s cubic-bezier(.3, 1.5, .5, 1) var(--d, 0s) backwards; }
+.ow-seeds i:nth-child(3n) { background: radial-gradient(circle at 35% 35%, #efd9ad, #9c7439); }
+.ow-seeds i:nth-child(3n + 1) { background: radial-gradient(circle at 35% 35%, #fff1cf, #c29a5a); }
+.ow-pit { box-shadow: inset 0 3px 8px #000b, inset 0 -1px 0 #ffffff1f; }
+.ow-board { background: repeating-linear-gradient(80deg, #0000 0 9px, #00000014 9px 11px, #0000 11px 21px), linear-gradient(160deg, #8a5a2b, #5e3a17); }
+@keyframes owDrop { from { transform: translate(-50%, -180%) scale(.4); opacity: 0; } }
+.ow-seeds b { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #fff;
+  text-shadow: 0 0 4px #000, 0 0 8px #000; }
+.ow-pit small { position: absolute; bottom: -2px; right: 2px; font-size: 10px; color: #f6e7c1aa; }
+.ow-store { width: 44px; border-radius: 22px; background: #26170a; color: #f6e7c1; font-size: 22px; font-weight: 900;
+  display: flex; align-items: center; justify-content: center; box-shadow: inset 0 3px 8px #000b; }
+.ow-store#owMine { border: 2px solid var(--accent); }
+/* two lines, so the move preview doesn't push the page about (#18, #16) */
+.ow-mid { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.ow-label { font-size: 12px; color: var(--muted); padding: 0 12px; }
+.ow-label:first-child { text-align: right; }
+.ow-store { flex-direction: column; gap: 2px; }
+.ow-store small { font-size: 10px; font-weight: 600; color: #f6e7c1aa; max-width: 40px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ow-pit .ow-num { position: absolute; top: 1px; left: 50%; transform: translateX(-50%); font-size: 9px; font-style: normal; color: #f6e7c166; }
+.ow-pit.gets { background: radial-gradient(circle at 50% 35%, #5a3a16, #2f1c0b); }
+.ow-pit.lands { box-shadow: inset 0 3px 8px #000b, 0 0 0 3px #fff; }
+.ow-pit.takes { box-shadow: inset 0 3px 8px #000b, 0 0 0 3px var(--good, #4ade80), 0 0 14px var(--good, #4ade80); }
+/* oware: captured seeds pile up in the stores */
+.ow-store { position: relative; }
+.ow-pile { position: absolute; inset: 6px; pointer-events: none; opacity: .9; }
+.ow-pile i { width: 10px !important; height: 10px !important; top: auto !important; transform: translateX(-50%) !important; }

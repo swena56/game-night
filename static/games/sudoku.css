@@ -1,0 +1,43 @@
+/* sudoku: this game's own rules, loaded with static/games/sudoku.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+.sd-board { display: grid; grid-template-columns: repeat(var(--n, 9), 1fr); width: var(--sdw); margin: 6px auto 0; padding: 3px;
+  background: var(--ink); border-radius: 10px; box-shadow: 0 6px 22px #0008; container-type: inline-size; }
+.sd-cell { position: relative; aspect-ratio: 1; min-width: 0; padding: 0; border: 0; border-radius: 0; margin: 0;
+  border-right: 1px solid #1d274233; border-bottom: 1px solid #1d274233; background: var(--paper); color: var(--ink);
+  font: 600 min(6.4cqi, 34px)/1 var(--font-display, system-ui); display: grid; place-items: center; cursor: pointer;
+  transition: background .12s; touch-action: manipulation; }
+.sd-board.mini .sd-cell { font-size: min(9.5cqi, 44px); }
+.sd-cell.bx-r { border-right: 2.5px solid var(--ink); }
+.sd-cell.bx-b { border-bottom: 2.5px solid var(--ink); }
+.sd-cell.given { font-weight: 800; }
+.sd-cell.mine { color: var(--pen); font-weight: 600; }
+.sd-cell.peer { background: #ece6d4; }
+.sd-cell.same { background: #ffe7a3; }
+.sd-cell.sel { background: #ffd166; box-shadow: inset 0 0 0 2px #b7791f; z-index: 1; }
+.sd-cell.hinted { color: #a15c00; animation: sdPop .5s both; }
+.sd-cell.missed { color: #d43c5b; font-weight: 500; opacity: .85; }
+.sd-cell.bad { animation: jolt .35s; }
+.sd-cell.bad::after { content: attr(data-miss); position: absolute; inset: 0; display: grid; place-items: center; color: #e23a5e;
+  background: #ffd9e0; animation: sdMiss .9s both; pointer-events: none; }
+.sd-cell.wave { animation: sdWave .55s both; }
+.sd-notes { display: grid; grid-template-columns: repeat(3, 1fr); width: 100%; height: 100%; padding: 1px; }
+.sd-notes i { font: 600 min(2.2cqi, 12px)/1 system-ui; color: #5b6478; display: grid; place-items: center; font-style: normal; }
+.sd-board.mini .sd-notes i { font-size: min(3.2cqi, 15px); }
+.sd-pad { display: grid; grid-template-columns: repeat(var(--n, 9), 1fr); gap: 4px; width: var(--sdw); margin: 8px auto 0; }
+.sd-pad:has(> :nth-child(6):last-child) { --n: 6; }
+.sd-key { display: flex; flex-direction: column; align-items: center; padding: 5px 0 3px; min-width: 0; border-radius: 9px; line-height: 1;
+  background: var(--panel2); color: var(--text); touch-action: manipulation; }
+.sd-key b { font: 700 22px/1 var(--font-display, system-ui); }
+.sd-key small { font-size: 10px; opacity: .6; margin-top: 2px; }
+.sd-key.all { opacity: .35; }
+.sd-pad.pencil .sd-key { background: #2f3b5c; color: #cfe0ff; }
+.sd-pad.pencil .sd-key b { font-size: 16px; font-weight: 600; }
+.sd.off .sd-key, .sd.off .sd-cell { cursor: default; }
+@keyframes sdPop { from { transform: scale(1.35); background: #ffe08a; } }
+@keyframes sdMiss { 0% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes sdWave { 40% { background: #c9f2dc; transform: scale(1.06); } }
+body.calm .sd-cell.wave, body.calm .sd-cell.hinted { animation: none; }
+@media (max-width: 420px) {
+  .sd-key b { font-size: 19px; }
+  .sd-pad { gap: 3px; }
+}

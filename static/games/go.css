@@ -1,0 +1,46 @@
+/* go: this game's own rules, loaded with static/games/go.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+.goban { display: grid; grid-template-columns: repeat(var(--n), 1fr); width: min(100%, 560px, var(--room)); margin: 8px auto;
+  background: repeating-linear-gradient(87deg, #0000 0 7px, #8a5a1a10 7px 9px, #0000 9px 15px),
+  radial-gradient(ellipse at 30% 20%, #e8c473, #d0a14c 70%); padding: 2%; border-radius: 6px; box-shadow: inset 0 1px 0 #fff5, 0 12px 30px #0009; }
+.go-pt { aspect-ratio: 1; position: relative; padding: 0; border: 0; border-radius: 0; background: none; }
+.go-pt::before { content: ''; position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: #3b2a12; }
+.go-pt::after { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: #3b2a12; }
+.go-pt.l::before { left: 50%; }
+.go-pt.r::before { right: 50%; }
+.go-pt.t::after { top: 50%; }
+.go-pt.b::after { bottom: 50%; }
+.go-pt.star { background: radial-gradient(circle, #3b2a12 12%, transparent 13%); }
+.go-pt:disabled { opacity: 1; cursor: default; }
+.stone, .ghost-stone { position: absolute; inset: 4%; border-radius: 50%; z-index: 1; }
+.ghost-stone { opacity: 0; }
+.go-pt:hover .ghost-stone { opacity: .35; }
+.ghost-stone.b { background: #000; }
+.ghost-stone.w { background: #fff; }
+.go-area { position: absolute; inset: 34%; border-radius: 2px; z-index: 1; opacity: .8; pointer-events: none; }
+.go-area.b { background: #111; }
+.go-area.w { background: #fff; box-shadow: 0 0 0 1px #0006; }
+.go-area.fill { animation: goFill .4s both cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes goFill { from { transform: scale(0); opacity: 0; } }
+.stone.go-gone { animation: goGone .6s ease-in forwards; pointer-events: none; z-index: 2; }
+.go-bowls { display: flex; gap: 10px; justify-content: center; margin: 8px 0; }
+.go-bowl { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.go-bowl > span { position: relative; display: block; width: 64px; height: 40px; border-radius: 50% / 0 0 100% 100%;
+  background: radial-gradient(ellipse at 50% 0%, #6b4419 0 45%, #9c6a2c 46%, #5a3812 100%); box-shadow: inset 0 3px 0 #c58f4b, 0 4px 8px #0007; }
+.go-bowl > span .stone { inset: auto; width: 13px; height: 13px; left: var(--x); top: var(--y); transform: translate(-50%, -50%); }
+.go-bowl > b { font-size: .85em; }
+.go-bowl.bump > span { animation: owBump .45s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes goGone { 0% { transform: none; } 30% { transform: translateY(-20%) scale(1.15); } 100% { transform: translateY(-120%) scale(.4); opacity: 0; } }
+.goban { background: repeating-linear-gradient(87deg, #0000 0 7px, #8a5a1a14 7px 9px, #0000 9px 15px), repeating-linear-gradient(91deg, #0000 0 23px, #6b44101a 23px 25px, #0000 25px 41px),
+  radial-gradient(ellipse at 30% 20%, #e8c473, #d0a14c 70%); }
+@media (min-width: 861px) {
+  .goban { width: min(100%, 1400px, var(--room)); }
+}
+/* go: coordinates on the edges, a thick wooden border, and the ghost stone of a first tap */
+.goban { border: 10px solid #b07a3c; border-radius: var(--r-sm); box-shadow: inset 0 0 0 1px #6b4423, 0 10px 24px #0008; }
+.go-coord { position: absolute; font: 700 9px system-ui, sans-serif; color: #5b3a16; pointer-events: none; z-index: 1; line-height: 1; }
+.go-coord.file { top: -1px; left: 50%; transform: translate(-50%, -100%); }
+.go-coord.rank { left: -2px; top: 50%; transform: translate(-100%, -50%); }
+.go-ghost { position: absolute; inset: 8%; border-radius: 50%; z-index: 2; opacity: .55; box-shadow: 0 0 0 2px var(--accent); pointer-events: none; }
+.go-ghost.b { background: #111; }
+.go-ghost.w { background: #f4f4f4; }

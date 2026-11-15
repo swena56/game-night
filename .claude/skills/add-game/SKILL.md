@@ -155,11 +155,14 @@ Wire-up:
   loaded first (like `billiards3d.js`), add it to `UI_EXTRA` in `static/app.js`.
 - `static/app.js`: add `['<id>', '<icon> <Name>']` to `SOLO_GAMES`, and an entry in `SOLO_BOTS` if
   solo play needs more than one bot.
-- `static/style.css`: add a `/* <name> */` section under *6. Games, A to Z*, in A-to-Z order of
-  the game id, holding all of the game's rules (its phone, focus-mode and keyboard-open rules too).
-  Pick a class prefix no other game uses (`grep -n '\.<prefix>[-{ .]' static/style.css`): `.sc` and `.lr`
-  are already shared by two games each. Reuse the CSS variables (`--panel`, `--accent`, …) and the
-  shared pieces in section 5 (cards, dice, timer bar, arena banners).
+- `static/games/<id>.css`: all of the game's own rules (its phone, focus-mode and keyboard-open rules
+  too), starting with a one-line `/* <id>: … */` comment. `needUI` in `app.js` loads it with the script
+  (the server lists which games have one at `/games/css.js`; a new file shows up within seconds), and it
+  comes after `static/style.css`, so a rule here beats a shell rule of equal specificity.
+  Pick a class prefix no other game uses (`grep -rn '\.<prefix>[-{ .]' static/style.css static/games/*.css`).
+  Reuse the tokens (`--panel`, `--accent`, `--accent-a20`, `--s3`, `--r-md`, `--sh-2`, …) and the
+  shared pieces in style.css section 5 (cards, dice, timer bar, arena banners). Rules several games
+  share stay in style.css section 6.
 - Bump the game count in the home-screen tagline (`index.html`, the `.tag` paragraph).
 
 ## Step 4: Test, in this order

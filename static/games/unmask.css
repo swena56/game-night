@@ -1,0 +1,37 @@
+/* unmask: this game's own rules, loaded with static/games/unmask.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first. */
+.zoom-bar { display: flex; align-items: center; gap: 6px; justify-content: flex-end; margin-bottom: 6px; font-size: 13px; }
+.zoom-bar button { width: 34px; height: 30px; padding: 0; font-size: 18px; line-height: 1; }
+.zoom-bar small { color: var(--muted); }
+.zoom-bar button:disabled { opacity: .35; }
+.identity { display: flex; gap: 12px; align-items: center; }
+@media (max-width: 860px) {
+  .identity { padding: 6px 10px; gap: 10px; font-size: 14px; margin-bottom: 8px; }
+}
+.pcard { background: linear-gradient(135deg, #3b2d5c, #2a2140); border: 1px solid #5a4a86; border-radius: 10px; padding: 8px 10px; display: flex; gap: 10px; align-items: center; }
+.pcard b { display: block; color: var(--text); font-size: 14px; }
+.pcard button { padding: 6px 10px; }
+/* your clues */
+.um-notes { font-size: 13px; max-height: 240px; overflow-y: auto; }
+.um-note { display: flex; gap: 8px; align-items: baseline; padding: 3px 0; border-bottom: 1px solid #ffffff0d; }
+.um-note .q { flex: 1; }
+.um-note b.yes { color: #57cc99; }
+.um-note b.no { color: #ef476f; }
+.um-note small { min-width: 2.6em; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+.um-note.best small { color: var(--accent); font-weight: 700; }
+.um-note.new { animation: um-new 2.4s ease-out; }
+/* the answer that just came in (#14) */
+@keyframes um-new { from { background: #ffd16655; } to { background: transparent; } }
+.um-bubble { position: fixed; z-index: 30; left: 50%; top: calc(var(--bar-h, 52px) + 64px); transform: translateX(-50%); width: max-content; max-width: calc(100vw - 32px);
+  display: flex; align-items: center; gap: 10px; padding: 8px 14px; border-radius: 16px; background: #fff; color: #222; font-weight: 700; box-shadow: var(--sh-1); pointer-events: none; }
+.um-bubble::after { content: ''; position: absolute; left: 24px; bottom: -8px; border: 8px solid transparent; border-bottom: 0; border-top-color: #fff; }
+.um-bubble b { padding: 2px 8px; border-radius: var(--r-sm); color: #fff; transform: rotate(-6deg); }
+.um-bubble b.yes { background: var(--ok); }
+.um-bubble b.no { background: var(--danger); }
+.um-bubble.pop { animation: umPop .4s cubic-bezier(.2, 1.5, .4, 1); }
+@keyframes umPop { from { transform: translateX(-50%) scale(.6) translateY(10px); opacity: 0; } }
+.um-lineup { display: flex; align-items: center; margin: -32px 0 8px; min-height: 22px; max-width: calc(100% - 190px); overflow: hidden; }
+.um-lineup .n { min-width: 26px; margin-right: 4px; text-align: center; font-size: var(--fs-md); color: #ffd166; }
+.um-mini { flex: none; width: 20px; height: 20px; margin-left: -7px; border-radius: 50%; overflow: hidden; background: #fff; box-shadow: 0 0 0 1.5px var(--bg, #16131f); }
+.um-mini:nth-child(2) { margin-left: 0; }
+.um-mini svg { width: 100%; height: 100%; display: block; }
