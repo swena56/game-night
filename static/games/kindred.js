@@ -1,8 +1,8 @@
 // 🦋 Kindred: a 4×4 board of SVG pieces (☀️/🌙 colour, ●/■ shape, big/small, ✦ starred/plain).
-// Your turn: tap a square for the piece in your hand (each square shows what it would score), then tap the
-// piece your rival must place next (each one shows the most your rival could score with it).
+// Your turn: tap a square and the piece in your hand lands there at once (each square shows what it would
+// score), then tap the piece your rival must place next (each one shows the most your rival could score with it).
 UI.kindred = (() => {
-  let S, ctx, cellSel = null, seen = '';
+  let S, ctx, seen = '';
   const $ = (id) => document.getElementById(id);
   const BITS = [[1, 'big', 'small'], [2, 'moon', 'sun'], [4, 'square', 'round'], [8, 'starred', 'plain']];
   const name = (p) => BITS.map(([b, a, z]) => (p & b ? a : z)).join(' ');
@@ -43,7 +43,7 @@ UI.kindred = (() => {
   const bestReply = (board, lines, piece) => Math.max(0, ...board.map((v, c) => (v == null ? gainAt(board, lines, c, piece) : 0)));
 
   function mount(main, side) {
-    cellSel = null; seen = '';
+    seen = '';
     main.innerHTML = `<div class="kn">
       <div class="kn-top"><div id="knSeats" class="kn-seats"></div></div>
       <div id="knHand" class="kn-hand"></div>
@@ -52,6 +52,7 @@ UI.kindred = (() => {
       <div id="knPool" class="kn-pool"></div></div>`;
     side.innerHTML = `<div class="panel"><h3>🦋 Scoring a line</h3>
       <p class="hint left">Per trait: <b>4 alike = 2</b>, <b>3 alike = 1</b>, 2–2 = 0. Up to 8 a line.</p>
+      <div id="knLast" class="kn-lastline" hidden></div>
       <div id="knStand" class="kn-stand" hidden></div>
       <div class="row"><button id="knResign" class="danger">🏳️ Resign</button></div></div>`;
     const board = $('knBoard');
@@ -69,29 +70,24 @@ UI.kindred = (() => {
   const placing = () => ctx.myTurn && k().stage === 'place' && k().hand != null;
   const lastMove = () => k().board.filter((v) => v == null).length === 1;
 
+  // one tap places (the server scores it straight away); handing over a piece is the second step
   function tapCell(c) {
     if (!placing() || k().board[c] != null) return;
-    if (lastMove()) return send(c, null);  // the last square: nothing left to hand over
-    cellSel = cellSel === c ? null : c;
-    render(S, ctx);
+    send(c, null);
   }
   function tapPiece(p) {
     if (!ctx.myTurn) return;
-    const kd = k();
-    if (kd.stage === 'give') return send(null, p);
-    if (kd.stage === 'place' && cellSel != null) send(cellSel, p);
+    if (k().stage === 'give') send(null, p);
     else ctx.toast('First tap a square for your piece.');
   }
   function send(cell, give) {
     const a = {}; if (cell != null) a.cell = cell; if (give != null) a.give = give;
-    cellSel = null;
     ctx.quiet(ctx.act('move', a));
   }
 
   function render(s, c) {
     S = s; ctx = c;
     const kd = k(), board = $('knBoard');
-    if (!placing()) cellSel = null;
     // seats and scores
     const seats = $('knSeats'); seats.innerHTML = '';
     kd.seats.forEach((pid, i) => {
@@ -107,8 +103,11 @@ UI.kindred = (() => {
     let say;
     if (kd.stage === 'between') say = '📊 Board full! The next one starts in a moment.';
     else if (S.phase !== 'playing') say = '';
-    else if (kd.stage === 'give') say = ctx.myTurn ? `🎁 You give first: tap a piece below for ${rival} to place.` : `🎁 ${mover} is choosing your first piece…`;
-    else if (ctx.myTurn) say = cellSel == null ? (lastMove() ? 'Last square: tap it to place your piece.' : '① Tap a square for this piece (the numbers are what it scores).') : `② Now tap the piece ${rival} must place next.`;
+    else if (kd.stage === 'give') {
+      const first = kd.board.every((v) => v == null);
+      say = ctx.myTurn ? (first ? `🎁 You give first: tap a piece below for ${rival} to place.` : `② Now hand ${rival} a piece: tap it below.`)
+        : first ? `🎁 ${mover} is choosing your first piece…` : `🎁 ${mover} is choosing your next piece…`;
+    } else if (ctx.myTurn) say = lastMove() ? 'Last square: tap it to place your piece.' : '① Tap a square: your piece lands there (the numbers are what it scores).';
     else say = `${mover} is placing…`;
     if (kd.hand != null && kd.stage === 'place') {
       const box = ctx.el('div', 'kn-inhand');
@@ -123,17 +122,18 @@ UI.kindred = (() => {
     const isNew = fresh !== seen && seen !== '';
     seen = fresh;
     const glow = new Set((kd.scored || []).filter((x) => x.pts > 0).flatMap((x) => x.cells));
+    const kinCells = new Set((kd.scored || []).filter((x) => x.kin?.length).flatMap((x) => x.cells));
     [...board.children].forEach((b, i) => {
       const v = kd.board[i];
       b.innerHTML = '';
       b.classList.toggle('last', i === kd.last);
       b.classList.toggle('glow', glow.has(i));
-      b.classList.toggle('sel', i === cellSel);
+      b.classList.toggle('kin', kinCells.has(i));
+      if (isNew && kinCells.has(i)) { b.classList.remove('pulse'); void b.offsetWidth; b.classList.add('pulse'); }
       const can = placing() && v == null;
       b.classList.toggle('can', can);
       b.disabled = !can;
       if (v != null) b.append(pieceSvg(v));
-      else if (i === cellSel) { const g = pieceSvg(kd.hand); g.classList.add('ghost'); b.append(g); }
       if (can) {
         const n = gainAt(kd.board, kd.lines, i, kd.hand);
         if (n) b.append(ctx.el('span', 'kn-gain', `+${n}`));
@@ -142,12 +142,12 @@ UI.kindred = (() => {
     if (isNew && kd.last != null) {
       ctx.sfx?.('place');
       const pts = (kd.scored || []).reduce((t, x) => t + x.pts, 0);
-      if (pts && typeof Kit !== 'undefined') Kit.flyText(board.children[kd.last], `+${pts}`, pts >= 5 ? 'gold' : 'good');
+      const kin = (kd.scored || []).flatMap((x) => x.kin || []);
+      if (pts && typeof Kit !== 'undefined') Kit.flyText(board.children[kd.last], kin.length ? `${kin[0]} +${pts}` : `+${pts}`, pts >= 5 || kin.length ? 'gold' : 'good');
     }
     // the pool: pieces left to hand over; while choosing, each shows the most the rival could score with it
     const pool = $('knPool'); pool.innerHTML = '';
-    const choosing = ctx.myTurn && (kd.stage === 'give' || (kd.stage === 'place' && cellSel != null));
-    const after = kd.board.slice(); if (cellSel != null) after[cellSel] = kd.hand;
+    const choosing = ctx.myTurn && kd.stage === 'give';
     $('knPoolHead').textContent = choosing ? `Hand ${rival} a piece: the number is the most they could score with it` : `Pieces left (${kd.pool.length})`;
     for (const p of kd.pool) {
       const b = ctx.el('button', 'kn-pp' + (choosing ? ' can' : ''));
@@ -155,11 +155,26 @@ UI.kindred = (() => {
       b.setAttribute('aria-label', name(p));
       b.append(pieceSvg(p));
       if (choosing) {
-        const n = bestReply(after, kd.lines, p);
+        const n = bestReply(kd.board, kd.lines, p);
         b.append(ctx.el('span', 'kn-risk' + (n >= 4 ? ' hot' : n ? '' : ' safe'), n ? `+${n}` : '0'));
       }
       b.onclick = () => tapPiece(p);
       pool.append(b);
+    }
+    // the last finished line(s), trait by trait, so the score makes sense
+    const ll = $('knLast'), sc = (kd.scored || []);
+    ll.hidden = !sc.length || kd.last == null;
+    if (sc.length) {
+      ll.innerHTML = '';
+      ll.append(ctx.el('b', '', `Last placement: +${sc.reduce((t, x) => t + x.pts, 0)}`));
+      for (const x of sc) {
+        const ps = x.cells.map((c) => kd.board[c]);
+        const parts = BITS.map(([b, a, z]) => {
+          const n = ps.filter((v) => v & b).length;
+          return n === 2 ? `${a}/${z} split 0` : `${Math.max(n, 4 - n)} ${n > 2 ? a : z} +${Math.abs(n - 2)}`;
+        });
+        ll.append(ctx.el('div', 'kn-ll' + (x.kin?.length ? ' kin' : ''), `${x.kin?.length ? x.kin.join(', ') + ' · ' : ''}${parts.join(' · ')} = ${x.pts}`));
+      }
     }
     // between boards: the standings card
     const st = $('knStand');

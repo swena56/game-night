@@ -35,6 +35,22 @@ def shared(pieces):
     return pts
 
 
+KIN = [(1, "⬆ all big", "· all small"), (2, "🌙 all moon", "☀️ all sun"), (4, "■ all square", "● all round"),
+       (8, "✦ all starred", "○ all plain")]
+
+
+def kin_traits(pieces):
+    """Labels for the traits all four pieces of a full line share, e.g. ["✦ all starred"]."""
+    out = []
+    for bit, yes, no in KIN:
+        k = sum(1 for p in pieces if p & bit)
+        if k == len(pieces):
+            out.append(yes)
+        elif k == 0:
+            out.append(no)
+    return out
+
+
 def gain(board, through, cell, piece):
     """Points for placing `piece` at `cell`, and the lines it completes [(cells, points)]."""
     pts, done = 0, []
@@ -62,11 +78,11 @@ class Kindred(Game):
     blurb = "Place the piece your rival hands you, then pick theirs. Fill a line of look-alikes to score."
     howto = [
         "16 pieces, each a mix of four traits: ☀️ sun or 🌙 moon, ● round or ■ square, big or small, ✦ starred or plain.",
-        "Your turn: place the piece your rival handed you on any empty square, then tap the piece they must place next.",
+        "Your turn: tap an empty square and the piece your rival handed you lands there (the numbers show what it scores). Then tap the piece they must place next.",
         "Fill the last gap of a row, column or long diagonal and you score it, trait by trait: all four alike 2 points, three alike 1, a 2–2 split 0.",
         "Example: big ☀️●, small ☀️■, big ☀️■✦, big ☀️● → sun 4 alike (2) + big 3 alike (1) + round 3 alike (1) + plain 3 alike (1) = 5 points.",
         "So hand your rival a piece that splits the traits 2–2 wherever they could finish a line, and keep the good ones for yourself.",
-        "The board always fills up. Highest total after the rounds wins; who gives first takes turns.",
+        "No instant win: every finished line pays points, and the board always fills up. Highest total after the rounds wins; who gives first takes turns.",
     ]
     min_players = 2
     max_players = 2
@@ -126,37 +142,31 @@ class Kindred(Game):
         cell, give = a.get("cell"), a.get("give")
         ok_int = lambda v: isinstance(v, int) and not isinstance(v, bool)
         if self.stage == "place":
+            # a square alone places (then the same player hands over); a square + a piece does both at once
             if not ok_int(cell) or not 0 <= cell < N * N or self.board[cell] is not None:
                 raise GameError("Pick an empty square.")
-        elif self.stage != "give":
+            last = len(self.empties()) == 1
+            if give is not None and not last and (not ok_int(give) or give not in self.pool()):
+                raise GameError("Pick a piece to hand over.")
+            return self.move(p, cell, None if last else give)
+        if self.stage != "give":
             raise GameError("Wait for the next board.")
-        last = self.stage == "place" and len(self.empties()) == 1
-        if not last and (not ok_int(give) or give not in self.pool()):
+        if cell is not None:
             raise GameError("Pick a piece to hand over.")
-        self.move(p, cell if self.stage == "place" else None, None if last else give)
+        if not ok_int(give) or give not in self.pool():
+            raise GameError("Pick a piece to hand over.")
+        self.move(p, None, give)
 
     def move(self, p, cell, give):
         r = self.room
         me = self.seat(p)
         if cell is not None:
-            pts, done = gain(self.board, self.through, cell, self.hand)
-            self.board[cell] = self.hand
-            self.last, self.scored = cell, [{"cells": ln, "pts": k} for ln, k in done]
-            self.scores[me] += pts
-            where = "abcd"[cell % N] + str(cell // N + 1)
-            line = f"{p.name} places {piece_icon(self.hand)} at {where}"
-            if done:
-                line += ", finishing " + " + ".join(f"{k}" for _, k in done) + f" → +{pts}"
-            r.add_log(line + ".", "question")
-            if pts >= 10:
-                self.award(p, "triple")
-                self.moment(f"✨ {p.name} scores {pts} with one piece!", "gold", "fanfare")
-            elif any(k >= 7 for _, k in done):
-                self.award(p, "kin")
-                self.moment(f"🦋 True kin! {p.name} finishes a {max(k for _, k in done)}-point line", "gold", "fanfare")
-            elif pts >= 5:
-                self.moment(f"🦋 +{pts} for {p.name}", "good", "coin")
-            self.hand = None
+            self.place(p, cell)
+            if not self.empties():
+                return self.end_round()
+            if give is None:
+                self.stage = "give"   # same player, same turn clock: now hand a piece over
+                return
         if give is not None:
             self.hand = give
             self.stage = "place"
@@ -164,6 +174,35 @@ class Kindred(Game):
             r.add_log(f"🎁 {p.name} hands {q.name if q else '?'} {piece_icon(give)} ({piece_name(give)}).", "info")
             return r.begin_turn(self.seats[1 - me])
         self.end_round()
+
+    def place(self, p, cell):
+        r = self.room
+        pts, done = gain(self.board, self.through, cell, self.hand)
+        self.board[cell] = self.hand
+        self.scored = []
+        for ln, k in done:
+            self.scored.append({"cells": ln, "pts": k, "kin": kin_traits([self.board[c] for c in ln])})
+        self.last = cell
+        self.scores[self.seat(p)] += pts
+        where = "abcd"[cell % N] + str(cell // N + 1)
+        line = f"{p.name} places {piece_icon(self.hand)} at {where}"
+        if done:
+            parts = [f"{x['pts']}" + (f" ({', '.join(x['kin'])})" if x["kin"] else "") for x in self.scored]
+            line += ", finishing " + " + ".join(parts) + f" → +{pts}"
+        r.add_log(line + ".", "question")
+        kin = [t for x in self.scored for t in x["kin"]]
+        if pts >= 10:
+            self.award(p, "triple")
+            self.moment(f"✨ {p.name} scores {pts} with one piece!", "gold", "fanfare")
+        elif any(k >= 7 for _, k in done):
+            self.award(p, "kin")
+            self.moment(f"🦋 True kin! {p.name} finishes a {max(k for _, k in done)}-point line", "gold", "fanfare")
+        elif kin:
+            t = kin[0]
+            self.moment(f"{t.split(' ', 1)[0]} {t.split(' ', 1)[1].capitalize()}! +{pts} for {p.name}", "good", "coin")
+        elif pts >= 5:
+            self.moment(f"🦋 +{pts} for {p.name}", "good", "coin")
+        self.hand = None
 
     def end_round(self):
         r = self.room

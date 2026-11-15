@@ -2184,13 +2184,18 @@ body.calm .hg-cell.target rect, body.calm .hg-pawn.now .hg-ring { animation: non
 .kn-say { display: flex; flex-direction: column; gap: 2px; font-size: 15px; }
 .kn-say small { color: var(--muted); font-size: 12px; }
 .kn-piece { width: 100%; height: 100%; display: block; filter: drop-shadow(0 2px 2px #0008); }
-.kn-piece.ghost { opacity: .55; }
 .kn-board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; width: min(100%, 440px, calc(100dvh - 330px)); min-width: 240px;
   padding: 8px; border-radius: 16px; background: linear-gradient(160deg, #3a2a52, #22193a); box-shadow: inset 0 0 0 2px #ffffff14, 0 8px 24px #0007; }
 .kn-cell { aspect-ratio: 1; padding: 8%; position: relative; border-radius: 12px; background: #ffffff0d; border: 1px solid #ffffff1a; }
 .kn-cell:disabled { opacity: 1; }
 .kn-cell.can { background: #ffffff1a; border-color: #ffffff40; cursor: pointer; }
-.kn-cell.sel { border: 2px solid var(--accent); background: #ffb70326; }
+.kn-cell.glow.kin, .kn-cell.kin { background: #ffd16633; box-shadow: inset 0 0 0 2px #ffd166, 0 0 14px #ffd16680; }
+.kn-cell.pulse { animation: knPulse .9s ease-out 2; }
+@keyframes knPulse { 50% { transform: scale(1.08); } }
+@media (prefers-reduced-motion: reduce) { .kn-cell.pulse { animation: none; } }
+.kn-lastline { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; font-size: 13px; }
+.kn-ll { color: var(--muted); line-height: 1.3; }
+.kn-ll.kin { color: #ffd166; }
 .kn-cell.last { box-shadow: inset 0 0 0 2px #ffffffa0; }
 .kn-cell.glow { background: #06d6a033; box-shadow: inset 0 0 0 2px #06d6a0, 0 0 12px #06d6a060; }
 .kn-gain { position: absolute; right: 4px; bottom: 2px; font-size: 13px; font-weight: 800; color: #06d6a0; }
