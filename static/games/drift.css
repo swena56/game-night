@@ -1,0 +1,36 @@
+/* drift: Sky Drift's own rules, loaded with static/games/drift.js (needUI in app.js). */
+.sk { max-width: 760px; margin: 0 auto; user-select: none; -webkit-user-select: none; }
+.sk-hud { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+.sk-stage { position: relative; height: min(56vh, 520px); min-height: 280px; border-radius: var(--r-md, var(--radius)); overflow: hidden;
+  background: #9cc3e0; overscroll-behavior: none; box-shadow: var(--sh-2, none); cursor: grab; }
+.sk-stage canvas { display: block; width: 100%; height: 100%; }
+.sk-gauge { position: absolute; left: 8px; top: 8px; z-index: 2; display: flex; flex-direction: column; gap: 3px; pointer-events: none; }
+.sk-layer { display: flex; gap: 6px; align-items: center; padding: 2px 8px 2px 6px; border-radius: 999px; font-size: 12px; color: #fff;
+  background: #0b1626b0; border-left: 4px solid var(--lc); }
+.sk-layer.me { box-shadow: 0 0 0 2px #fff; }
+.sk-layer .sk-ln { min-width: 2.6em; opacity: .85; }
+.sk-layer em { font-style: normal; color: #ffd166; font-size: 11px; }
+.sk-pop { position: absolute; left: 50%; top: 34%; transform: translate(-50%, -50%); z-index: 3; pointer-events: none;
+  font: 900 34px/1 var(--font-display, sans-serif); color: #fff; text-shadow: 0 3px 0 #0006, 0 0 16px #ffd166; animation: skPop 1.4s ease-out forwards; }
+@keyframes skPop { 0% { transform: translate(-50%, -30%) scale(.5); opacity: 0; } 20% { transform: translate(-50%, -50%) scale(1.1); opacity: 1; } 100% { transform: translate(-50%, -90%); opacity: 0; } }
+.sk-ctl { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; transition: opacity .2s; }
+.sk-ctl.sk-off { opacity: .5; }
+.sk-picks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.sk-picks button { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; border-radius: var(--r-md, 12px);
+  border-bottom: 4px solid var(--lc, var(--accent)); touch-action: manipulation; min-height: 52px; }
+.sk-picks button small { font-size: 11px; color: var(--muted); }
+.sk-picks button.on { background: var(--accent); color: #fff; }
+.sk-picks button.on small { color: #fffc; }
+.sk-row { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+.sk-burn.on { box-shadow: inset 0 0 0 2px #ff8c42; background: #ff8c4222; }
+.sk-go { min-width: 140px; min-height: 44px; font-size: 16px; }
+.sk-go.sk-ready { animation: pulse 1.6s infinite; }
+.sk-board { display: flex; flex-direction: column; gap: 4px; }
+.sk-brow { display: grid; grid-template-columns: 1fr auto auto auto 1.4em; gap: 8px; align-items: center; font-size: 13px; padding: 3px 6px; border-radius: 8px; }
+.sk-brow.me { background: var(--panel2); }
+.sk-bname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+.sk-bl { color: var(--muted); font-size: 11px; }
+@media (max-width: 420px) {
+  .sk-stage { height: 48vh; }
+  .sk-layer { font-size: 11px; }
+}
