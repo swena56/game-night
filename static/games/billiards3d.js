@@ -40,6 +40,7 @@ const Billiards3D = (() => {
     for (const u of [256, 768]) {
       if (n === 0) { g.fillStyle = '#c1121f'; g.beginPath(); g.arc(u, 256, 18, 0, 7); g.fill(); continue; }
       g.fillStyle = '#fbfbf2'; g.beginPath(); g.ellipse(u, 256, 76, 72, 0, 0, 7); g.fill();
+      g.strokeStyle = 'rgba(0,0,0,0.18)'; g.lineWidth = 3; g.stroke();  // the spot's printed edge
       g.fillStyle = '#111'; g.font = 'bold 88px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
       g.fillText(String(n), u, 262);
       if (n === 6 || n === 9) g.fillRect(u - 24, 300, 48, 8);  // underline tells a 6 from a 9
@@ -246,6 +247,39 @@ const Billiards3D = (() => {
     pm.dispose();
     room.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); });
     return env;
+  }
+
+  // the cue's maple shaft: pale wood with faint grain running along it (canvas x goes round the shaft, y along it)
+  function mapleTexture(T) {
+    const c = Object.assign(document.createElement('canvas'), { width: 64, height: 512 }), g = c.getContext('2d');
+    const base = g.createLinearGradient(0, 0, 0, 512);
+    base.addColorStop(0, '#efd9ac'); base.addColorStop(1, '#d9b277');
+    g.fillStyle = base; g.fillRect(0, 0, 64, 512);
+    for (let i = 0; i < 26; i++) {
+      const x0 = Math.random() * 64, amp = 1 + Math.random() * 3, f = 0.004 + Math.random() * 0.01, ph = Math.random() * 7;
+      g.strokeStyle = `rgba(${Math.random() < 0.6 ? '120,80,40' : '255,240,210'},${0.06 + Math.random() * 0.1})`; g.lineWidth = 0.5 + Math.random() * 1.2;
+      g.beginPath(); for (let y = 0; y <= 512; y += 8) g.lineTo(x0 + Math.sin(y * f + ph) * amp, y); g.stroke();
+    }
+    const t = new T.CanvasTexture(c);
+    t.wrapS = t.wrapT = T.RepeatWrapping;
+    return t;
+  }
+  // a canvas of white whose alpha rises along x (0 → 1), or across y fades out at both edges (soft lines)
+  function alphaTexture(T, along) {
+    const c = Object.assign(document.createElement('canvas'), { width: along ? 64 : 4, height: along ? 4 : 32 }), g = c.getContext('2d');
+    const gr = along ? g.createLinearGradient(0, 0, 64, 0) : g.createLinearGradient(0, 0, 0, 32);
+    if (along) { gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(1, 'rgba(255,255,255,1)'); }
+    else { gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(0.3, 'rgba(255,255,255,1)'); gr.addColorStop(0.7, 'rgba(255,255,255,1)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); }
+    g.fillStyle = gr; g.fillRect(0, 0, c.width, c.height);
+    return new T.CanvasTexture(c);
+  }
+  // a soft round glow, for glints and puffs
+  function glowTexture(T) {
+    const c = Object.assign(document.createElement('canvas'), { width: 64, height: 64 }), g = c.getContext('2d');
+    const r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(0.35, 'rgba(255,255,255,0.45)'); r.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = r; g.fillRect(0, 0, 64, 64);
+    return new T.CanvasTexture(c);
   }
 
   function dashTexture(T) {
@@ -457,12 +491,24 @@ const Billiards3D = (() => {
 
     // rail diamonds (inlaid mother-of-pearl), head string and foot spot
     const pearl = new T.MeshStandardMaterial({ color: 0xf3ead2, roughness: 0.2, envMap: env, envMapIntensity: 0.8 });
-    const dGeo = new T.CircleGeometry(0.75, 4);  // a diamond: a four-sided circle
+    const dGeo = new T.CircleGeometry(0.75, 4), bGeo = new T.RingGeometry(0.75, 0.98, 4);  // a diamond: a four-sided circle, in a brass setting
+    const brass = new T.MeshStandardMaterial({ color: 0xc9a14e, metalness: 0.85, roughness: 0.32, envMap: env, envMapIntensity: 1.1 });
     for (const d of [0.25, 0.5, 0.75]) {
       for (const [x, y] of [[W * d / 2, -RAIL / 2 - 1], [W / 2 + W * d / 2, -RAIL / 2 - 1], [W * d / 2, H + RAIL / 2 + 1], [W / 2 + W * d / 2, H + RAIL / 2 + 1], [-RAIL / 2 - 1, H * d], [W + RAIL / 2 + 1, H * d]]) {
-        const m = lay(dGeo, pearl, RAIL_TOP + 0.02); m.position.set(x, RAIL_TOP + 0.02, y); m.scale.set(0.8, 1.3, 1);
-        if (x < 0 || x > W) m.rotation.z = Math.PI / 2;
+        for (const [geo, mat] of [[dGeo, pearl], [bGeo, brass]]) {
+          const m = lay(geo, mat, RAIL_TOP + 0.02); m.position.set(x, RAIL_TOP + 0.02, y); m.scale.set(0.8, 1.3, 1);
+          if (x < 0 || x > W) m.rotation.z = Math.PI / 2;
+        }
       }
+    }
+    // the table's shadow on the floor, round its edges (the page shows through beyond it)
+    {
+      const c = Object.assign(document.createElement('canvas'), { width: 128, height: 128 }), g = c.getContext('2d');
+      const r = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+      r.addColorStop(0, 'rgba(0,0,0,0.6)'); r.addColorStop(0.6, 'rgba(0,0,0,0.45)'); r.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = r; g.fillRect(0, 0, 128, 128);
+      const m = lay(new T.PlaneGeometry(W + 110, H + 90), new T.MeshBasicMaterial({ map: new T.CanvasTexture(c), transparent: true, depthWrite: false }), -30);
+      m.position.set(W / 2, -30, H / 2);
     }
     const chalk = new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.22, depthWrite: false });
     lay(new T.PlaneGeometry(0.4, H), chalk, 0.02).position.set(b.headX, 0.02, H / 2);
@@ -508,8 +554,8 @@ const Billiards3D = (() => {
 
     // cue stick: shaft, dark butt, white ferrule, blue tip. It points along +x in its group, tip at the origin.
     const stick = new T.Group(), tilt = new T.Group(); stick.add(tilt); table.add(stick);
-    const part = (r0, r1, len, at, color, rough = 0.5) => {
-      const m = new T.Mesh(new T.CylinderGeometry(r0, r1, len, 32), new T.MeshStandardMaterial({ color, roughness: rough }));
+    const part = (r0, r1, len, at, color, rough = 0.5, more = {}) => {
+      const m = new T.Mesh(new T.CylinderGeometry(r0, r1, len, 32), new T.MeshStandardMaterial({ color, roughness: rough, ...more }));
       // the cylinder's top (r0) turns to face the tip (+x), so each piece widens toward the butt
       m.rotation.z = -Math.PI / 2; m.position.x = -(at + len / 2); m.castShadow = true; tilt.add(m);
       return m;
@@ -520,12 +566,22 @@ const Billiards3D = (() => {
     const dome = new T.Mesh(new T.SphereGeometry(0.47, 32, 12, 0, Math.PI * 2, 0, Math.PI / 2), new T.MeshStandardMaterial({ color: tipBlue, roughness: 0.95 }));
     dome.rotation.z = -Math.PI / 2; dome.scale.set(1, 0.3, 1); dome.position.x = -0.12; tilt.add(dome);
     part(0.5, 0.53, 2.2, 0.57, 0xf6f4ee, 0.25);
-    part(0.53, 0.95, 82, 2.77, 0xe8c88f, 0.4); part(0.95, 1.25, 56, 84.77, 0x2b1a10, 0.35); part(1.25, 1.25, 1.2, 140.77, 0x111111);
+    const maple = mapleTexture(T);
+    part(0.53, 0.95, 82, 2.77, 0xffffff, 0.35, { map: maple, envMap: env, envMapIntensity: 0.5 });
+    const buttR = (d) => 0.95 + (0.3 * (d - 84.77)) / 56;  // the butt's radius d from the tip
+    const varnish = { envMap: env, envMapIntensity: 0.6 };
+    part(buttR(84.77) + 0.02, buttR(85.77) + 0.02, 1, 84.77, 0xf0ece0, 0.3, varnish);  // the joint
+    part(buttR(85.77), buttR(110), 24.23, 85.77, 0x3a1f0f, 0.3, varnish);  // the forearm
+    part(buttR(110), buttR(128), 18, 110, 0x1b1b20, 0.85);  // the wrap
+    part(buttR(128) + 0.03, buttR(128.8) + 0.03, 0.8, 128, 0xc9a14e, 0.3, { metalness: 0.85, envMap: env, envMapIntensity: 1 });  // a brass ring
+    part(buttR(128.8), buttR(140.77), 11.97, 128.8, 0x2b160a, 0.3, varnish);  // the sleeve
+    part(1.25, 1.25, 1.2, 140.77, 0x111111);
     tilt.rotation.z = -0.09;  // butt raised over the rails
 
     // aim guide: flat strips just above the cloth (a dashed texture for the aim line), a ghost ball, rings
+    const soft = alphaTexture(T, false);  // the guide's lines fade out at their edges instead of stopping hard
     const strip = (color, opacity, dashed) => {
-      const mat = new T.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, map: dashed ? dashTexture(T) : null });
+      const mat = new T.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, map: dashed ? dashTexture(T) : null, alphaMap: soft });
       const m = new T.Mesh(new T.PlaneGeometry(1, 1), mat); m.rotation.x = -Math.PI / 2; m.renderOrder = 2;
       const g = new T.Group(); g.add(m); table.add(g); g.visible = false;
       g.set = (ax, ay, bx, by, w) => {
@@ -540,7 +596,7 @@ const Billiards3D = (() => {
     // a ribbon along a path (the engine's predicted paths bend with spin and off cushions); rebuilt only
     // when it's handed a new path
     const ribbon = (color, opacity, dashed) => {
-      const mat = new T.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, side: T.DoubleSide, map: dashed ? dashTexture(T) : null });
+      const mat = new T.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, side: T.DoubleSide, map: dashed ? dashTexture(T) : null, alphaMap: soft });
       const m = new T.Mesh(new T.BufferGeometry(), mat);
       m.renderOrder = 2; m.visible = false; m.frustumCulled = false; table.add(m);
       m.set = (pts, w) => {
@@ -574,6 +630,21 @@ const Billiards3D = (() => {
     const objPath = ribbon(0xffd166, 0.9, false), cuePath = ribbon(0xbfe9ff, 0.8, true);
     const ghost = new T.Mesh(ballGeo, new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.22, depthWrite: false }));
     table.add(ghost);
+    // a bright rim round the ghost ball: its back faces, a little larger, show only at the edge
+    const ghostRim = new T.Mesh(ballGeo, new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5, depthWrite: false, side: T.BackSide }));
+    ghostRim.scale.setScalar(1.09); ghost.add(ghostRim);
+    // an arrowhead at the end of the object ball's line
+    const arrowShape = new T.Shape([new T.Vector2(1.6, 0), new T.Vector2(-0.6, 1.05), new T.Vector2(-0.2, 0), new T.Vector2(-0.6, -1.05)]);
+    const arrow = new T.Mesh(new T.ShapeGeometry(arrowShape), new T.MeshBasicMaterial({ color: 0xffd166, transparent: true, opacity: 0.95, depthWrite: false, side: T.DoubleSide }));
+    arrow.rotation.order = 'YXZ'; arrow.renderOrder = 3; arrow.visible = false; table.add(arrow);
+    const pointArrow = (pts) => {  // at the last point of a path, pointing along its last stretch
+      const b = pts[pts.length - 1];
+      let a = pts[pts.length - 2];
+      for (let i = pts.length - 2; i >= 0 && Math.hypot(b[0] - pts[i][0], b[1] - pts[i][1]) < 1; i--) a = pts[i];
+      if (!a) return;
+      arrow.visible = true; arrow.position.set(b[0], 0.1, b[1]);
+      arrow.rotation.set(-Math.PI / 2, -Math.atan2(b[1] - a[1], b[0] - a[0]), 0);
+    };
     const ringMesh = (r0, r1, color) => {
       const m = new T.Mesh(new T.RingGeometry(r0, r1, 64), new T.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, depthWrite: false, side: T.DoubleSide }));
       m.rotation.x = -Math.PI / 2; m.renderOrder = 3; m.visible = false; table.add(m); return m;
@@ -583,13 +654,101 @@ const Billiards3D = (() => {
 
     // the colours above were picked as sRGB: light works in linear, so convert them once; the overlays (aim
     // guide, ghost ball, rings) skip tone mapping so they keep exactly the colours picked
-    const overlays = new Set([ghost.material, handRing.material, objPath.material, cuePath.material, ...callRings.map((m) => m.material)]);
+    const overlays = new Set([ghost.material, ghostRim.material, arrow.material, handRing.material, objPath.material, cuePath.material, ...callRings.map((m) => m.material)]);
     scene.traverse((o) => {
       const m = o.material;
       if (!m || m.userData.lin) return;
       m.userData.lin = true;
       if (overlays.has(m) || (m.isMeshBasicMaterial && m.depthWrite === false && m !== blotMat)) m.toneMapped = false;
     });
+
+    // ---------- the shot's life (not on 🎨 Low): a glint where balls meet, chalk off the tip, dust off the
+    // cushions, a ring round the pocket a ball drops into, and short streaks behind fast balls
+    const fine = GL3.level() !== 'low', glow = glowTexture(T), fade = alphaTexture(T, true);
+    const parts = [], spares = [], potRings = [];
+    function puff(x, y, h, color, n, size, speed, life, rise, additive) {
+      for (let i = 0; i < n; i++) {
+        let sp = spares.pop();
+        if (!sp) { sp = new T.Sprite(new T.SpriteMaterial({ map: glow, transparent: true, depthWrite: false, toneMapped: false })); sp.renderOrder = 4; table.add(sp); }
+        sp.material.color.set(color); sp.material.blending = additive ? T.AdditiveBlending : T.NormalBlending; sp.visible = true;
+        const a = Math.random() * Math.PI * 2, v = speed * (0.4 + Math.random() * 0.6);
+        sp.position.set(x, h, y);
+        parts.push({ sp, vx: Math.cos(a) * v, vz: Math.sin(a) * v, vy: rise * (0.5 + Math.random() * 0.5), t: 0, max: life * (0.7 + Math.random() * 0.6),
+          s0: size * 0.6, s1: size * (1.3 + Math.random() * 0.7), a0: additive ? 0.9 : 0.55 });
+      }
+    }
+    function effect(e, aim) {
+      if (!e.p || !fine) return;
+      const h = Math.min(1, e.v / 12), [x, y] = e.p;
+      if (e.kind === 'pocket') {
+        const [px, py, cap] = b.pockets.reduce((a, q) => (Math.hypot(q[0] - x, q[1] - y) < Math.hypot(a[0] - x, a[1] - y) ? q : a));
+        let m = potRings.find((r) => !r.visible);
+        if (!m) { m = ringMesh(1, 1.25, 0xffd166); m.material.toneMapped = false; potRings.push(m); }
+        m.position.set(px, RAIL_TOP + 0.4, py); m.userData = { t: 0, r: cap + 1.2 }; m.scale.setScalar(cap + 1.2); m.visible = true;
+      } else if (e.kind === 'ball') {
+        if (h > 0.1) puff(x, y, R, 0xfff2d0, 1, R * (1.2 + 1.8 * h), 0, 0.2, 0, true);
+        if (h > 0.35) puff(x, y, R, 0xffffff, 1 + Math.round(h * 3), R * 0.35, 12 + 30 * h, 0.3, 3, true);
+      } else if (e.kind === 'rail') {
+        if (h > 0.25) puff(x, y, R * 0.5, 0xcdeedd, 2, R * 0.8, 3, 0.55, 1.5, false);
+      } else {  // the tip on the cue ball: a puff of blue chalk, and the break shakes the room a little
+        const cx = aim == null ? x : x - Math.cos(aim) * R, cy = aim == null ? y : y - Math.sin(aim) * R;
+        puff(cx, cy, R, 0x86a8e6, 3 + Math.round(h * 3), R * 0.5, 4 + 10 * h, 0.65, 2, false);
+        if (h > 0.45) puff(cx, cy, R, 0xffffff, 1, R * 1.4, 0, 0.12, 0, true);
+        if (h > 0.7) GL3.shake(camera, 0.4 + (h - 0.7) * 1.5);
+      }
+    }
+    function stepFx(dt) {
+      for (let i = parts.length - 1; i >= 0; i--) {
+        const p = parts[i];
+        p.t += dt;
+        if (p.t >= p.max) { p.sp.visible = false; spares.push(p.sp); parts.splice(i, 1); continue; }
+        const k = p.t / p.max, drag = Math.exp(-3 * dt);
+        p.vx *= drag; p.vz *= drag; p.vy *= drag;
+        p.sp.position.x += p.vx * dt; p.sp.position.y += p.vy * dt; p.sp.position.z += p.vz * dt;
+        const sz = p.s0 + (p.s1 - p.s0) * k;
+        p.sp.scale.set(sz, sz, 1); p.sp.material.opacity = p.a0 * (1 - k) ** 1.5;
+      }
+      let rings = false;
+      for (const m of potRings) {
+        if (!m.visible) continue;
+        const k = (m.userData.t += dt) / 0.5;
+        if (k >= 1) { m.visible = false; continue; }
+        rings = true; m.scale.setScalar(m.userData.r * (1 + k * 0.5)); m.material.opacity = 0.9 * (1 - k);
+      }
+      return parts.length > 0 || rings;
+    }
+    // a streak behind each fast ball: its last tenth of a second, widening and brightening toward the ball
+    const trails = new Map();
+    function trail(n, x, y, now, on) {
+      let t = trails.get(n);
+      if (!t) {
+        if (!on) return false;
+        const mat = new T.MeshBasicMaterial({ color: COLORS[n > 8 ? n - 8 : n], map: fade, transparent: true, opacity: 0.3, depthWrite: false, toneMapped: false, side: T.DoubleSide });
+        const m = new T.Mesh(new T.BufferGeometry(), mat);
+        m.frustumCulled = false; m.renderOrder = 1; m.visible = false; table.add(m);
+        trails.set(n, (t = { m, pts: [] }));
+      }
+      if (!on) { t.pts.length = 0; t.m.visible = false; return false; }
+      const l = t.pts[t.pts.length - 1];
+      if (!l || l[0] !== x || l[1] !== y) t.pts.push([x, y, now]);
+      while (t.pts.length && t.pts[0][2] < now - 110) t.pts.shift();
+      const P = t.pts, len = P.length > 2 ? Math.hypot(x - P[0][0], y - P[0][1]) : 0;
+      t.m.visible = len > R * 2.5;
+      if (!t.m.visible) return P.length > 1;
+      const pos = [], uv = [], idx = [];
+      P.forEach((q, i) => {
+        const a = P[Math.max(0, i - 1)], c = P[Math.min(P.length - 1, i + 1)], f = i / (P.length - 1);
+        const tl = Math.hypot(c[0] - a[0], c[1] - a[1]) || 1, w = R * 0.85 * f, nx = (-(c[1] - a[1]) / tl) * w, ny = ((c[0] - a[0]) / tl) * w;
+        pos.push(q[0] + nx, R, q[1] + ny, q[0] - nx, R, q[1] - ny); uv.push(f, 0, f, 1);
+        if (i) idx.push(2 * i - 2, 2 * i - 1, 2 * i, 2 * i - 1, 2 * i + 1, 2 * i);
+      });
+      t.m.material.opacity = 0.32 * Math.min(1, len / (R * 7));
+      t.m.geometry.dispose(); t.m.geometry = new T.BufferGeometry();
+      t.m.geometry.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
+      t.m.geometry.setAttribute('uv', new T.Float32BufferAttribute(uv, 2));
+      t.m.geometry.setIndex(idx);
+      return true;
+    }
 
     // ---------- camera
     const camNow = { pos: new T.Vector3(), look: new T.Vector3() }, camGoal = { pos: new T.Vector3(), look: new T.Vector3() };
@@ -646,20 +805,31 @@ const Billiards3D = (() => {
       const now = performance.now(), dt = Math.min(0.1, (now - last) / 1000); last = now;
       // balls
       const seen = new Set();
-      for (const [n, x, y] of st.balls) { const o = ball(n); o.m.visible = o.shadow.visible = true; o.falling = false; roll(o, x, y); seen.add(n); }
+      let streaks = false;
+      const trailsOn = fine && st.animating && !(window.motionOK && !motionOK());
+      for (const [n, x, y] of st.balls) {
+        const o = ball(n); o.m.visible = o.shadow.visible = true; o.falling = false; roll(o, x, y); seen.add(n);
+        if (trail(n, x, y, now, trailsOn)) streaks = true;
+      }
+      for (const [n] of trails) if (!seen.has(n)) trail(n, 0, 0, now, false);
       for (const [n, o] of balls) {
         if (seen.has(n) || !o.m.visible || o.falling) continue;
         o.shadow.visible = false;
         if (st.animating && o.x != null) {  // gone mid-shot: it dropped into the nearest pocket
           const p = b.pockets.reduce((a, q) => (Math.hypot(q[0] - o.x, q[1] - o.y) < Math.hypot(a[0] - o.x, a[1] - o.y) ? q : a));
-          falling.push({ o, from: [o.x, o.y], to: p, t0: now }); o.falling = true;
+          falling.push({ o, from: [o.x, o.y], to: p, t0: now, at: [o.x, o.y] }); o.falling = true;
         } else o.m.visible = false;
         o.x = null;
       }
       for (let i = falling.length - 1; i >= 0; i--) {
-        const f = falling[i], t = Math.min(1, (now - f.t0) / 380);
+        const f = falling[i], t = Math.min(1, (now - f.t0) / 560);
         if (!f.o.falling) { falling.splice(i, 1); continue; }  // back on the table (the 8 on the break)
-        f.o.m.position.set(f.from[0] + (f.to[0] - f.from[0]) * Math.min(1, t * 1.6), R - t * t * 9, f.from[1] + (f.to[1] - f.from[1]) * Math.min(1, t * 1.6));
+        // it runs on over the lip into the jaws, then drops into the bag, still turning
+        const run = 1 - (1 - Math.min(1, t / 0.45)) ** 2, drop = Math.max(0, (t - 0.18) / 0.82);
+        const x = f.from[0] + (f.to[0] - f.from[0]) * run, y = f.from[1] + (f.to[1] - f.from[1]) * run, dx = x - f.at[0], dy = y - f.at[1], d = Math.hypot(dx, dy);
+        if (d > 0.005) { axis.set(dy / d, 0, -dx / d); qd.setFromAxisAngle(axis, d / R); f.o.m.quaternion.premultiply(qd); }
+        f.at = [x, y];
+        f.o.m.position.set(x, R - drop * drop * (R + 2.05), y);
         if (t >= 1) { f.o.m.visible = false; f.o.falling = false; falling.splice(i, 1); }
       }
       // cue stick and guide
@@ -670,7 +840,7 @@ const Billiards3D = (() => {
         tilt.position.set(-(R + 0.6 + s.power * 14), s.spin * R * 0.55, s.english * R * 0.55);
       }
       const gd = st.guide;
-      aimLine.visible = objLine.visible = cueLine.visible = objPath.visible = cuePath.visible = ghost.visible = false;
+      aimLine.visible = objLine.visible = cueLine.visible = objPath.visible = cuePath.visible = ghost.visible = arrow.visible = false;
       if (gd && gd.mode !== 'off') {
         const [cx, cy] = gd.cue, [gx, gy] = gd.g, full = gd.mode === 'full', L = Math.hypot(gx - cx, gy - cy) || 1;
         const light = gd.mode === 'light';  // #50: the ghost ball and a short hint of the object ball's line
@@ -678,26 +848,29 @@ const Billiards3D = (() => {
         // the aim line shows the power (#82): thin and green for a soft touch, thick and red for a break
         const pw = Math.min(1, Math.max(0, s?.power ?? 0.5));
         aimLine.children[0].material.color.setHSL(0.36 * (1 - pw), 0.95, 0.62).convertSRGBToLinear();
-        aimLine.set(cx + ((gx - cx) / L) * R, cy + ((gy - cy) / L) * R, cx + (gx - cx) * k, cy + (gy - cy) * k, 0.3 + pw * 0.55);
+        aimLine.set(cx + ((gx - cx) / L) * R, cy + ((gy - cy) / L) * R, cx + (gx - cx) * k, cy + (gy - cy) * k, 0.45 + pw * 0.7);
         if (light) {
           ghost.visible = true; ghost.position.set(gx, R, gy);
-          ghost.material.color.set(0xffffff); ghost.material.opacity = 0.18;
+          ghost.material.color.set(0xffffff); ghost.material.opacity = 0.18; ghostRim.material.color.set(0xffffff);
           if (gd.ball) {
             const [bx, by] = gd.ball, nx = bx - gx, ny = by - gy, n = Math.hypot(nx, ny) || 1;
-            objLine.set(bx, by, bx + (nx / n) * 9, by + (ny / n) * 9, 0.4);
+            objLine.set(bx, by, bx + (nx / n) * 9, by + (ny / n) * 9, 0.6);
+            pointArrow([[bx, by], [bx + (nx / n) * 9, by + (ny / n) * 9]]);
           }
         } else if (full) {
           ghost.visible = true; ghost.position.set(gx, R, gy);
           // red: the cue ball would drop; fainter: it runs out of pace and stops here
           ghost.material.color.set(gd.scratch ? 0xef476f : 0xffffff); ghost.material.opacity = gd.stop ? 0.12 : 0.22;
+          ghostRim.material.color.set(gd.scratch ? 0xef476f : 0xffffff); ghostRim.material.opacity = gd.stop ? 0.25 : 0.5;
           if (gd.objPath || gd.cuePath) {  // the engine's own prediction: the paths really taken
-            if (gd.objPath) objPath.set(gd.objPath, 0.5);
-            if (gd.cuePath) cuePath.set(gd.cuePath, 0.4);
+            if (gd.objPath) { objPath.set(gd.objPath, 0.7); if (gd.objPath.length > 1) pointArrow(gd.objPath); }
+            if (gd.cuePath) cuePath.set(gd.cuePath, 0.55);
           } else if (gd.ball) {
             const [bx, by] = gd.ball, nx = bx - gx, ny = by - gy, n = Math.hypot(nx, ny) || 1;
-            objLine.set(bx, by, bx + (nx / n) * 28, by + (ny / n) * 28, 0.5);
+            objLine.set(bx, by, bx + (nx / n) * 28, by + (ny / n) * 28, 0.7);
+            pointArrow([[bx, by], [bx + (nx / n) * 28, by + (ny / n) * 28]]);
           }
-          if (gd.deflect) cueLine.set(gx, gy, gx + gd.deflect[0], gy + gd.deflect[1], 0.4);
+          if (gd.deflect) cueLine.set(gx, gy, gx + gd.deflect[0], gy + gd.deflect[1], 0.55);
         }
       }
       handRing.visible = !!st.ring;
@@ -715,10 +888,12 @@ const Billiards3D = (() => {
         camera.position.copy(camNow.pos); camera.lookAt(camNow.look);
         moving = camNow.pos.distanceToSquared(camGoal.pos) > 0.0004 || camNow.look.distanceToSquared(camGoal.look) > 0.0004;
       } else if (mode === 'table' && fitted) camera.position.copy(fitted.pos), camera.lookAt(0, 0, 0);
+      const fxOn = stepFx(dt), shaking = !!camera.userData.shake;
+      if (shaking) GL3.tickShake(camera, dt);
       // draw only when something changed
       const k = JSON.stringify([st.balls, s && [s.x, s.y, s.aim, s.power, s.spin, s.english], gd && [gd.mode, gd.g, gd.objPath?.length, gd.cuePath?.length, gd.cuePath?.at(-1)], st.ring, st.call, mode]);
       // (once the balls stop, one more frame at full resolution: the shot may have drawn at a lower one)
-      const busy = st.animating || falling.length || moving;
+      const busy = st.animating || falling.length || moving || fxOn || shaking || streaks;
       if (k === key && !busy && sharp && !(st.callAll && st.call == null)) return;
       key = k; sharp = !busy;
       if (busy) renderer.render(scene, camera); else renderer.renderStill(scene, camera);
@@ -737,10 +912,10 @@ const Billiards3D = (() => {
 
     function dispose() {
       scene.traverse((o) => { o.geometry?.dispose(); const m = o.material; if (m) { m.map?.dispose(); m.bumpMap?.dispose(); m.dispose(); } });
-      env.dispose(); macro.dispose();
+      env.dispose(); macro.dispose(); glow.dispose(); fade.dispose(); soft.dispose(); maple.dispose();
       renderer.dispose(); canvas.remove();
     }
-    return { canvas, resize, render, pick, setMode, setZoom, dispose, mode: () => mode };
+    return { canvas, resize, render, pick, setMode, setZoom, dispose, effect, mode: () => mode };
   }
 
   return { create };
