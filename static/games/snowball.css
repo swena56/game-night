@@ -1,0 +1,23 @@
+/* snowball: this game's own rules, loaded with static/games/snowball.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first (banners and score rows in section 5). */
+.sw { max-width: 760px; margin: 0 auto; overscroll-behavior: none; user-select: none; -webkit-user-select: none; }
+.sw-stage { position: relative; height: clamp(260px, calc(var(--room) - 150px), 620px); border-radius: var(--radius); overflow: hidden;
+  display: flex; justify-content: center; align-items: center; background: #dfe9f5; }
+.sw-stage canvas { position: absolute; inset: 0; margin: auto; max-width: 100%; max-height: 100%; display: block; }
+.sw-hud { position: absolute; top: 8px; left: 8px; right: 8px; display: flex; justify-content: space-between; z-index: 2; pointer-events: none;
+  font-weight: 800; font-family: var(--font-display); color: #1d2b44; text-shadow: 0 1px 0 #fff8; }
+.sw-hud span { background: #ffffffb8; border-radius: 999px; padding: 2px 10px; }
+.sw-hud span:empty { display: none; }
+.sw-hurry { color: #c8102e; animation: sw-pulse .5s ease-in-out infinite alternate; }
+@keyframes sw-pulse { to { transform: scale(1.08); } }
+.sw-stick { position: absolute; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; border: 2px solid #1d2b4455;
+  background: #ffffff30; pointer-events: none; z-index: 2; }
+.sw-stick span { position: absolute; left: 35px; top: 35px; width: 50px; height: 50px; border-radius: 50%; background: #1d2b4480; }
+.sw-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); margin-top: var(--s2); }
+.sw-bar button { min-width: 150px; min-height: 52px; font-size: 18px; touch-action: none; transition: transform .1s, box-shadow .15s; }
+.sw-bar button.sw-packing { transform: scale(.96); }
+.sw-bar button.sw-big { box-shadow: 0 0 0 4px #9ad0ff, 0 0 18px #9ad0ff; }
+.sw-flash { color: #fff; text-shadow: 0 2px 6px #1d2b44cc; }
+.sw-pipline { font-size: 11px; letter-spacing: 1px; color: #3a8dff; margin-right: 6px; }
+body.focus .sw-stage { height: max(240px, calc(var(--room) - 160px)); }
+@media (prefers-reduced-motion: reduce) { .sw-hurry { animation: none; } }
