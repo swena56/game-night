@@ -1,0 +1,44 @@
+/* lanes: Lane Night's own rules, loaded with static/games/lanes.js (needUI in app.js). */
+.ln { max-width: 720px; margin: 0 auto; user-select: none; -webkit-user-select: none; }
+.ln-hud { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+.ln-hud .ln-cosmic { color: #d38bff; font-weight: 700; text-shadow: 0 0 8px #b14cff; }
+.ln-rivals { display: flex; gap: 6px; overflow-x: auto; margin-bottom: 6px; scrollbar-width: none; }
+.ln-rival { position: relative; display: inline-flex; gap: 6px; align-items: center; padding: 3px 10px; border-radius: 999px; font-size: 12px;
+  background: var(--panel); border-left: 3px solid var(--c, var(--accent)); white-space: nowrap; }
+.ln-rival .ln-pop { font-style: normal; font-weight: 800; color: #ffd23f; animation: lnPop .5s ease-out; }
+@keyframes lnPop { from { transform: scale(2); opacity: 0; } }
+.ln-stage { position: relative; height: min(58vh, 540px); min-height: 280px; border-radius: var(--r-md, var(--radius)); overflow: hidden;
+  background: #0e0a1c; overscroll-behavior: none; box-shadow: var(--sh-2, none); cursor: grab; }
+.ln-stage canvas { display: block; width: 100%; height: 100%; }
+.ln-word { position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%); z-index: 3; pointer-events: none;
+  font: 900 44px/1 var(--font-display, sans-serif); color: #fff; text-shadow: 0 3px 0 #0006, 0 0 18px #fff8; animation: lnWord 1.5s ease-out forwards; }
+.ln-word.strike { color: #ffd23f; text-shadow: 0 3px 0 #7a4b00, 0 0 24px #ffb000; }
+.ln-word.spare { color: #7ee0ff; text-shadow: 0 3px 0 #08465c, 0 0 20px #4cc9f0; }
+@keyframes lnWord { 0% { transform: translate(-50%, -50%) scale(.4); opacity: 0; } 15% { transform: translate(-50%, -50%) scale(1.1); opacity: 1; } 75% { opacity: 1; } 100% { transform: translate(-50%, -70%) scale(1); opacity: 0; } }
+.ln-power { position: absolute; right: 10px; bottom: 12px; width: 12px; height: 40%; border-radius: 6px; background: #ffffff22; z-index: 2; display: flex; align-items: flex-end; overflow: hidden; }
+.ln-power span { display: block; width: 100%; border-radius: 6px; }
+.ln-ctl { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.ln-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; }
+.ln-lbl { font-size: 13px; color: var(--muted); min-width: 4.6em; }
+.ln-dial { display: flex; align-items: center; gap: 4px; background: var(--panel); border-radius: 999px; padding: 3px; }
+.ln-dial button { width: 40px; height: 40px; padding: 0; border-radius: 50%; font-size: 16px; touch-action: manipulation; }
+.ln-dial b { min-width: 4.4em; text-align: center; font-variant-numeric: tabular-nums; }
+.ln-row input[type=range] { flex: 1; min-width: 130px; max-width: 300px; accent-color: var(--accent); }
+.ln-spinv { min-width: 5.2em; font-size: 13px; }
+.ln-end { color: var(--muted); }
+.ln-saver.on { box-shadow: inset 0 0 0 2px #ffd23f; background: #ffd23f22; }
+.ln-sheet { overflow-x: auto; }
+.ln-tab { border-collapse: collapse; font-size: 12px; }
+.ln-tab th, .ln-tab td { border: 1px solid #ffffff1c; padding: 1px 3px; text-align: center; min-width: 1.9em; }
+.ln-tab .ln-nm { text-align: left; max-width: 6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ln-tab .ln-cos { color: #d38bff; }
+.ln-tab tr.me { background: var(--panel2); }
+.ln-tab td.now { box-shadow: inset 0 0 0 2px var(--accent); }
+.ln-balls { font-size: 11px; color: var(--muted); white-space: nowrap; }
+.ln-cum { font-weight: 700; }
+.ln-tot { font-weight: 800; }
+@media (max-width: 420px) {
+  .ln-stage { height: 50vh; }
+  .ln-lbl { min-width: 0; }
+  .ln-word { font-size: 36px; }
+}
