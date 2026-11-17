@@ -1,0 +1,53 @@
+/* midway: Midway Night's own rules, loaded with static/games/midway.js (needUI in app.js). */
+.mw { max-width: 720px; margin: 0 auto; user-select: none; -webkit-user-select: none; }
+.mw-stage { position: relative; height: min(62vh, 560px); min-height: 290px; border-radius: var(--r-md, var(--radius)); overflow: hidden;
+  background: #1d1030; overscroll-behavior: none; box-shadow: var(--sh-2, none); cursor: grab; }
+.mw-stage canvas { display: block; width: 100%; height: 100%; }
+.mw-hud, .mw-sub { position: absolute; left: 8px; right: 8px; z-index: 2; display: flex; flex-wrap: wrap; gap: 4px 8px; font-size: 13px; pointer-events: none; }
+.mw-hud { top: 8px; justify-content: space-between; }
+.mw-sub { top: 38px; }
+.mw-hud span, .mw-sub span { background: #140a24c0; color: #fff; border-radius: 999px; padding: 3px 10px; }
+.mw-hud span:empty, .mw-sub span:empty { display: none; }
+.mw-clock { font-variant-numeric: tabular-nums; font-weight: 700; }
+.mw-clock.low { background: #c0263acc !important; animation: pulse 1s infinite; }
+.mw-balls { letter-spacing: 2px; color: #ffd6a0 !important; }
+.mw-hot { background: #e8593ccc !important; font-weight: 700; }
+.mw-jack { color: #ffd23f !important; }
+.mw-jack.taken { color: #c9b8e0 !important; }
+.mw-watch { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 2; background: #140a24d0; border-radius: 999px;
+  padding: 3px 12px; font-size: 13px; font-weight: 700; pointer-events: none; white-space: nowrap; }
+.mw-count { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); z-index: 3; font-size: clamp(56px, 18vw, 110px); font-weight: 800;
+  color: #ffd23f; text-shadow: 0 4px 0 #0009, 0 0 26px #ff7a3a99; pointer-events: none; }
+.mw-pop { position: absolute; left: 50%; top: 24%; transform: translateX(-50%); z-index: 3; font-size: clamp(26px, 8vw, 48px); font-weight: 800; white-space: nowrap;
+  text-shadow: 0 2px 0 #000a, 0 0 18px #000a; pointer-events: none; }
+.mw-pop-in { animation: mwPop 1.3s ease-out both; }
+@keyframes mwPop { 0% { transform: translateX(-50%) scale(.4); opacity: 0; } 14% { transform: translateX(-50%) scale(1.15); opacity: 1; } 24% { transform: translateX(-50%) scale(1); } 80% { opacity: 1; } 100% { transform: translate(-50%, -18px); opacity: 0; } }
+.mw-done { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(88%, 340px); max-height: 92%; overflow: auto;
+  background: #140a24ee; color: #fff; border: 1px solid #ffd23f44; border-radius: var(--radius); padding: 10px 14px; z-index: 4; animation: mwIn .4s ease-out; cursor: default; }
+@keyframes mwIn { from { transform: translate(-50%, -56%) scale(.97); opacity: 0; } }
+.mw-done h3 { margin: 0 0 6px; text-align: center; font-size: 16px; }
+.mw-ctl { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; margin-top: 8px; transition: opacity .2s; }
+.mw-ctl.mw-off { opacity: .45; }
+.mw-ctl button { min-width: 40px; height: 42px; padding: 0 10px; border-radius: 999px; font-size: 15px; touch-action: manipulation; }
+.mw-meter { width: 14px; height: 42px; border-radius: 7px; background: var(--panel); position: relative; overflow: hidden; border: 1px solid #ffffff22; }
+.mw-meter i { position: absolute; left: 0; right: 0; bottom: 0; background: linear-gradient(#ff5a3c, #ffd23f 50%, #3ddc97); background-size: 100% 42px; background-position: bottom; }
+.mw-ctl .mw-go { min-width: 118px; font-size: 16px; }
+.mw-go.mw-ready { animation: pulse 1.6s infinite; }
+.mw-race { display: flex; flex-direction: column; gap: 4px; }
+.mw-row { display: grid; grid-template-columns: minmax(0, 6em) 1fr auto; grid-template-rows: auto auto; gap: 0 8px; align-items: center; padding: 4px 6px;
+  border-radius: var(--r-sm, 8px); cursor: pointer; }
+.mw-row.on { background: var(--panel2); }
+.mw-row.out { opacity: .5; }
+.mw-nm { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mw-bar { height: 8px; border-radius: 4px; background: #ffffff14; overflow: hidden; }
+.mw-bar i { display: block; height: 100%; transition: width .5s; }
+.mw-row b { font-variant-numeric: tabular-nums; text-align: right; }
+.mw-row small { grid-column: 1 / -1; color: var(--muted); font-size: 10px; letter-spacing: 1px; }
+.mw-feed { margin-top: 8px; font-size: 12px; display: flex; flex-direction: column; gap: 2px; color: var(--muted); }
+.mw-f.gold { color: #ffd23f; }
+@media (max-width: 420px) {
+  .mw-stage { height: 56vh; }
+  .mw-ctl button { min-width: 36px; height: 40px; padding: 0 8px; }
+  .mw-ctl .mw-go { min-width: 100px; }
+}
+@media (prefers-reduced-motion: reduce) { .mw-pop-in, .mw-done, .mw-go.mw-ready, .mw-clock.low { animation: none; } }
