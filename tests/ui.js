@@ -580,6 +580,11 @@ const MOVES = {
     wt.value = String(25 + Math.round(Math.random() * 40)); wt.dispatchEvent(new w.Event('input', { bubbles: true }));
     click(d.querySelector('#icThrow'));
   },
+  archery(d, S, n, w) {  // nudge the sight a few steps, sometimes take the steady breath, then loose
+    for (let k = 0; k < 1 + (n % 4); k++) click(pick([...d.querySelectorAll('#arCtl [data-n]')]));
+    if (n % 5 === 3) click(d.querySelector('#arBreath'));
+    click(d.querySelector('#arLoose'));
+  },
   wobble(d, S, n, w) {  // pick the next player's block when it's our gift, else nudge the ghost about and place it
     const gift = [...d.querySelectorAll('#wbPicks button')];
     if (gift.length && !d.querySelector('#wbGift').hidden) return click(pick(gift));
@@ -870,7 +875,7 @@ async function feedbackTour() {
   const lt = await lobbyTour();
   console.log('LOBBY', JSON.stringify(lt));
   for (const g of games.length ? games : Object.keys(MOVES)) {
-    const r = await playSolo(g, CT_GAMES.has(g) ? 240 : g === 'wordsmith' ? 40 : g === 'bingo' ? 300 : g === 'spire' ? 25 : g === 'prism' ? 110 : g === 'marble' ? 150 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'cribbage' ? 300 : g === 'yacht' ? 200 : g === 'farkle' ? 240 : g === 'qork' ? 200 : g === 'backgammon' ? 300 : g === 'gridhunt' ? 260 : g === 'paintblast' ? 230 : g === 'sumo' ? 200 : g === 'snowball' ? 200 : g === 'putt' ? 300 : g === 'cannon' ? 240 : g === 'stones' ? 300 : g === 'lanes' ? 300 : g === 'wobble' ? 300 : g === 'drift' ? 200 : g === 'rally' ? 150 : g === 'whisker' ? 120 : g === 'hearts' || g === 'rummy' ? 300 : g === 'twentyone' ? 200 : g === 'speed' ? 150 : g === 'trivia' ? 200 : g === 'ladder' ? 330 : g === 'freecell' || g === 'klondike' ? 300 : g === 'sudoku' ? 120 : g === 'wordsearch' ? 150 : g === 'garden' ? 200 : g === 'wordbomb' ? 200 : g === 'liars' ? 300 : g === 'shipcrew' || g === 'shutbox' || g === 'midnight' || g === 'mia' || g === 'brawl' || g === 'derby' ? 200 : g === 'squares' ? 120 : g === 'kindred' ? 200 : g === 'reversi' || g === 'hedgerow' || g === 'ultimate' || g === 'oware' || g === 'morris' || g === 'realm' ? 260 : g === 'safecracker' ? 200 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
+    const r = await playSolo(g, CT_GAMES.has(g) ? 240 : g === 'wordsmith' ? 40 : g === 'bingo' ? 300 : g === 'spire' ? 25 : g === 'prism' ? 110 : g === 'marble' ? 150 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'cribbage' ? 300 : g === 'yacht' ? 200 : g === 'farkle' ? 240 : g === 'qork' ? 200 : g === 'backgammon' ? 300 : g === 'gridhunt' ? 260 : g === 'paintblast' ? 230 : g === 'sumo' ? 200 : g === 'snowball' ? 200 : g === 'putt' ? 300 : g === 'cannon' ? 240 : g === 'stones' ? 300 : g === 'archery' ? 240 : g === 'lanes' ? 300 : g === 'wobble' ? 300 : g === 'drift' ? 200 : g === 'rally' ? 150 : g === 'whisker' ? 120 : g === 'hearts' || g === 'rummy' ? 300 : g === 'twentyone' ? 200 : g === 'speed' ? 150 : g === 'trivia' ? 200 : g === 'ladder' ? 330 : g === 'freecell' || g === 'klondike' ? 300 : g === 'sudoku' ? 120 : g === 'wordsearch' ? 150 : g === 'garden' ? 200 : g === 'wordbomb' ? 200 : g === 'liars' ? 300 : g === 'shipcrew' || g === 'shutbox' || g === 'midnight' || g === 'mia' || g === 'brawl' || g === 'derby' ? 200 : g === 'squares' ? 120 : g === 'kindred' ? 200 : g === 'reversi' || g === 'hedgerow' || g === 'ultimate' || g === 'oware' || g === 'morris' || g === 'realm' ? 260 : g === 'safecracker' ? 200 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
     console.log(`\n== ${g}: phase=${r.phase} moves=${r.moves} dialogs=${r.dialogs || 0} screen="${r.screen}" ${r.banner ? `banner="${r.banner}"` : ''}`);
     console.log(`   help: ${r.help} | log ticker: "${r.ticker}"`);
     if (r.replay) console.log(`   replay: ${r.replay}`);
