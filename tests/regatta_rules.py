@@ -77,6 +77,22 @@ g.shift_at = clock + 999
 clock = run(g, r, 6, clock)
 check("a boat across the wind picks up speed", A.v > 4, f"{A.v:.2f}")
 check("a boat into the wind stalls (in irons)", B.v < 0.6 and B.irons, f"{B.v:.2f}")
+# #150: a pointed heading: the helm turns to it and holds it; a rudder input or a tack takes over
+A.x, A.y, A.h, A.v = -40, 0, 0.0, 4.0
+g.on_input(a, {"head": 0.6})
+check("head sets a goal", A.goal is not None and abs(A.goal - 0.6) < 1e-9 and A.steer == 0)
+clock = run(g, r, 2.5, clock)
+check("the boat turns to the pointed heading and holds it", abs(R.wrap(A.h - 0.6)) < 0.02, f"{A.h:.3f}")
+try:
+    g.on_input(a, {"head": float("inf")})
+    check("bad heading refused", False)
+except GameError:
+    check("bad heading refused", True)
+g.on_input(a, {"steer": 0.5})
+check("a rudder input clears the goal", A.goal is None)
+g.on_input(a, {"head": 0.3}); g.tack(0)
+check("a tack clears the goal", A.goal is None and A.auto is not None)
+A.auto = None; A.steer = 0.0
 # a tack mirrors the heading across the wind and costs speed
 A.h = g.wind_dir + math.radians(50)
 A.v = 4.0

@@ -638,9 +638,11 @@ function showTip(view) {
   const head = el('div', 'tip-head');
   card.append(el('span', 'tip-icon', g.icon));
   head.append(el('b', '', `New to ${g.name}?`), el('p', '', g.blurb));
-  if (!compact && g.howto.length) {
+  // (an action game can still ask for a line or two of how-to: tip_lines on the server, #150)
+  const lines = g.tipLines ?? (compact ? 0 : 2);
+  if (lines && g.howto.length) {
     const ul = el('ul');
-    for (const line of g.howto.slice(0, 2)) ul.append(el('li', '', line));
+    for (const line of g.howto.slice(0, lines)) ul.append(el('li', '', line));
     head.append(ul);
   }
   const btns = el('div', 'tip-btns');

@@ -26,6 +26,7 @@
 .rg-ctl { display: flex; justify-content: center; gap: 8px; margin-top: 8px; }
 .rg-ctl button { min-width: 64px; height: 50px; border-radius: 999px; font-size: 20px; touch-action: none; -webkit-touch-callout: none; }
 .rg-ctl .rg-tack { min-width: 130px; font-size: 17px; font-weight: 700; }
+.rg-ctl .rg-tack.rg-pulse { animation: pulse 1.2s infinite; background: var(--accent); color: var(--accent-ink, #fff); }
 .rg-seats { display: flex; flex-direction: column; gap: 3px; }
 .rg-row { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; padding: 4px 6px; border-radius: var(--r-sm, 8px); }
 .rg-row.on { background: var(--panel2); }

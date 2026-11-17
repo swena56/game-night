@@ -71,10 +71,13 @@ def make_course(rng, marks):
 
 
 class Boat:
+    goal = None                   # (boats pickled before #150 have no goal)
+
     def __init__(self, x, y, h):
         self.x, self.y, self.h, self.v = x, y, h, 0.0
         self.steer = 0.0
         self.auto = None          # a heading the boat is turning to by itself (⟲ Tack)
+        self.goal = None          # a heading the player pointed at (drag to steer, #150): the helm turns to it and holds
         self.mark = 0             # next buoy (len(marks) = the finish)
         self.done_at = 0.0
         self.place = 0
@@ -91,9 +94,10 @@ class Regatta(Game):
     category = "action"
     family = None
     replayable = False
+    tip_lines = 2
     howto = [
-        "Everyone sails the same course at once. Drag sideways (or ← →) to steer; the wind fills your sail.",
-        "You're fastest across the wind and can't sail straight into it: within about 40° you stall, in irons. Zig-zag upwind, tacking from side to side (⟲ Tack, or Space, does it for you).",
+        "Everyone sails the same course at once. Drag sideways to point the boat (the white arrow shows where), or hold ◀ ▶. Follow the gold arrow to the next buoy.",
+        "You can't sail into the red wedge (straight into the wind): you stall, in irons. Zig-zag upwind, tacking from side to side (⟲ Tack, or Space, does it for you).",
         "Round each buoy in order (pass close by it, the glowing one is next), then cross the finish line between the flags.",
         "Watch the wind arrow: it shifts. Dark gust patches give 30 % more wind; sailing just downwind of a rival's sail costs you a quarter of your speed.",
         "Finishing order scores 10/7/5/3/2/1; the race ends 20 s after the winner.",
@@ -143,7 +147,7 @@ class Regatta(Game):
         # boats line up behind the start line, sailing across the wind
         for i in range(n):
             b0 = self.boats[i]
-            b = Boat(-22 + 44 * (i + 0.5) / n, -8.0, math.radians(90 + rng.choice((55, -55))))
+            b = Boat(-22 + 44 * (i + 0.5) / n, -8.0, math.radians(90 + rng.choice((75, -75))))
             b.pts, b.wins = b0.pts, b0.wins
             b.v = 1.5
             self.boats[i] = b
@@ -206,6 +210,14 @@ class Regatta(Game):
             b.steer = max(-1.0, min(1.0, float(st)))
             if abs(b.steer) > 0.2:
                 b.auto = None
+            b.goal = None
+        hd = a.get("head")
+        if hd is not None:
+            if not isinstance(hd, (int, float)) or isinstance(hd, bool) or not math.isfinite(hd):
+                raise GameError("Bad heading.")
+            b.goal = wrap(float(hd))
+            b.auto = None
+            b.steer = 0.0
         if a.get("tack") is not None:
             if a["tack"] is not True:
                 raise GameError("Bad tack.")
@@ -216,6 +228,7 @@ class Regatta(Game):
         b = self.boats[i]
         # mirror the heading across the wind's line
         b.auto = wrap(2 * self.wind_to() - b.h)
+        b.goal = None
         if abs(wrap(b.auto - b.h)) < 0.05:
             b.auto = None
 
@@ -320,6 +333,9 @@ class Regatta(Game):
                 b.h = wrap(b.h + turn)
                 if abs(d) < 0.03:
                     b.auto = None
+            elif b.goal is not None:
+                d = wrap(b.goal - b.h)
+                b.h = wrap(b.h + max(-rate * dt, min(rate * dt, d)))
             else:
                 b.h = wrap(b.h + b.steer * rate * dt)
             # the wind on the sail
@@ -335,7 +351,8 @@ class Regatta(Game):
             b.irons = twa < NOGO
             k = ACCEL * dt * (1.0 if target > b.v else 1.6)
             b.v += (target - b.v) * min(1.0, k)
-            b.v -= abs(b.steer if b.auto is None else 0.6) * 0.25 * b.v * dt     # the rudder drags
+            helm = 0.6 if b.auto is not None else min(1.0, abs(wrap(b.goal - b.h)) / 0.35) if b.goal is not None else abs(b.steer)
+            b.v -= helm * 0.25 * b.v * dt     # the rudder drags
             b.v = max(0.0, b.v)
             vx, vy = math.cos(b.h) * b.v, math.sin(b.h) * b.v
             if b.irons:
@@ -521,6 +538,7 @@ class Regatta(Game):
             return
         d = wrap(want - b.h)
         b.steer = max(-1.0, min(1.0, d * 2.4 * over))
+        b.goal = None
 
     def bot_ready(self):
         return False   # bots think inside frame()

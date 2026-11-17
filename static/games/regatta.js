@@ -4,6 +4,8 @@
 UI.regatta = (() => {
   let S, ctx, snap = null, gotAt = 0, gl = null, flat = null, raf = 0, ro = null, keyFn = null, keyUp = null;
   let steer = 0, drag = null, keys = new Set(), lastSent = 0, sentSteer = 0, lastSeq = -1, flash = null, sideAt = 0, holdBtn = 0;
+  // #150: drag points the boat: goal = the heading you pointed at (shown as a white arrow until the boat gets there)
+  let goal = null, goalShow = 0, sentHead = null, headAt = 0;
   const $ = (id) => document.getElementById(id);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const wrap = (a) => ((a + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
@@ -14,7 +16,7 @@ UI.regatta = (() => {
   const playing = () => S?.phase === 'playing' && me() != null && snap?.st === 'race' && !snap.b[me()][5];
 
   function mount(main, side) {
-    S = null; snap = null; gl = null; flat = null; steer = 0; drag = null; keys = new Set(); lastSeq = -1; flash = null; holdBtn = 0;
+    S = null; snap = null; gl = null; flat = null; steer = 0; drag = null; keys = new Set(); lastSeq = -1; flash = null; holdBtn = 0; goal = null; sentHead = null;
     main.innerHTML = `<div class="rg"><div class="rg-stage" id="rgStage">
         <div class="rg-hud"><span id="rgPos"></span><span id="rgClock" class="rg-clock"></span></div>
         <div class="rg-sub"><span id="rgNext"></span><span id="rgSpd"></span></div>
@@ -39,15 +41,20 @@ UI.regatta = (() => {
     stage.addEventListener('pointerdown', (e) => {
       if (e.target.closest('button, .rg-done')) return;
       try { stage.setPointerCapture(e.pointerId); } catch {}
-      drag = { id: e.pointerId, x: e.clientX };
+      const m = myBoat();
+      drag = { id: e.pointerId, x: e.clientX, h0: goal ?? m?.h ?? 0 };
     });
     stage.addEventListener('pointermove', (e) => {
-      if (!drag || drag.id !== e.pointerId) return;
+      if (!drag || drag.id !== e.pointerId || drag.dead) return;
       const w = stage.clientWidth || 300;
-      drag.s = clamp(-(e.clientX - drag.x) / (w * 0.25), -1, 1);     // drag right: turn right (a negative turn)
-      update();
+      // drag right: point to the right (a smaller heading); half the stage's width turns you about 100°
+      const dx = e.clientX - drag.x;
+      if (Math.abs(dx) < 4 && goal == null) return;
+      goal = wrap(drag.h0 - clamp(dx / (w * 0.5), -1.6, 1.6) * 1.75);
+      goalShow = performance.now();
+      sendHead();
     });
-    const end = (e) => { if (drag && (!e || drag.id === e.pointerId)) { drag = null; update(true); } };
+    const end = (e) => { if (drag && (!e || drag.id === e.pointerId)) { drag = null; sendHead(true); } };
     stage.addEventListener('pointerup', end); stage.addEventListener('pointercancel', end);
     keyFn = (e) => {
       if (!V() || e.target.closest?.('input, textarea, select') || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -71,12 +78,22 @@ UI.regatta = (() => {
   }
 
   // ---------- steering
+  function myBoat() { return me() != null && snap ? boats(performance.now())[me()] : null; }
+  function sendHead(force) {
+    if (goal == null || !playing()) return;
+    const now = performance.now();
+    if (sentHead != null && Math.abs(wrap(goal - sentHead)) < 0.02) return;
+    if (!force && now - headAt < 60) return;
+    sentHead = goal; headAt = now;
+    ctx.input({ head: +goal.toFixed(3) }, force);
+  }
   function update(force) {
-    let s = drag?.s ?? 0;
+    let s = 0;
     if (keys.has('arrowleft') || keys.has('a')) s = 1;
     if (keys.has('arrowright') || keys.has('d')) s = -1;
     if (holdBtn) s = holdBtn;
     steer = s;
+    if (s) { goal = null; sentHead = null; }   // ◀ ▶ and the keys steer by rate, as before
     if (!playing()) return;
     const now = performance.now();
     if (force || (Math.abs(steer - sentSteer) > 0.06 && now - lastSent > 60)) {
@@ -84,7 +101,11 @@ UI.regatta = (() => {
       ctx.input({ steer: +steer.toFixed(3) }, force);
     }
   }
-  function tack() { if (playing()) { ctx.input({ tack: true }, true); SND.luff(); ctx.buzz?.(10); } }
+  function tack() {
+    if (!playing()) return;
+    goal = null; sentHead = null; if (drag) drag.dead = true;   // a tack takes the helm; lift your finger to point again
+    ctx.input({ tack: true }, true); SND.luff(); ctx.buzz?.(10);
+  }
 
   // ---------- sound: out on the water
   const AT = { room: 'outdoor', send: 0.25 };
@@ -130,7 +151,8 @@ UI.regatta = (() => {
     snap = { st: d.st, race: d.race, go: d.go, rt: d.rt, gr: d.gr, nx: d.nx, w: d.w, g: d.g, b: d.b };
     gotAt = performance.now();
     Object.assign(V(), { st: d.st, b: d.b, w: d.w, g: d.g });
-    if (was === 'countdown' && d.st === 'race') { SND.gun(); if (steer) update(true); }
+    if (was === 'countdown' && d.st === 'race') { SND.gun(); if (steer) update(true); else if (goal != null) { sentHead = null; sendHead(true); } }
+    if (d.st !== 'race' && was === 'race') { goal = null; sentHead = null; }
   }
 
   function showFlash(text, ms = 1600) { flash = { text, until: performance.now() + ms }; }
@@ -184,14 +206,17 @@ UI.regatta = (() => {
 
   function hint() {
     const t = S.phase !== 'playing' ? '' : me() == null ? 'Watch the fleet.' : snap?.st === 'countdown' ? 'Get ready: the first buoy is upwind, so you will need to zig-zag.'
-      : 'Drag sideways (or ← →) to steer. Stay over 40° off the wind; ⟲ Tack to zig-zag upwind. Round the glowing buoy.';
+      : 'Drag sideways to point the boat (white arrow). Follow the gold arrow to the buoy; keep out of the red wedge (the wind) and ⟲ Tack to zig-zag upwind.';
     if ($('rgHint').textContent !== t) $('rgHint').textContent = t;
   }
 
   // the little north-up map in the corner
   function miniMap(bs) {
     const c = $('rgMap'), g = c?.getContext?.('2d'); if (!g) return;
-    const v = V(), M = v.course.marks, w = c.width;
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+    if (c.width !== Math.round(120 * dpr)) { c.width = c.height = Math.round(120 * dpr); }
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const v = V(), M = v.course.marks, w = 120;
     const xs = [...M.map((m) => m[0]), -30, 30], ys = [...M.map((m) => m[1]), -20];
     const x0 = Math.min(...xs) - 12, x1 = Math.max(...xs) + 12, y0 = Math.min(...ys) - 8, y1 = Math.max(...ys) + 12;
     const k = (w - 10) / Math.max(x1 - x0, y1 - y0), ox = (w - (x1 - x0) * k) / 2, oy = (w - (y1 - y0) * k) / 2;
@@ -214,7 +239,9 @@ UI.regatta = (() => {
     const rt = snap.st === 'race' ? snap.rt + el : 0;
     const ck = snap.st === 'race' ? (snap.gr >= 0 ? `⏱ ${Math.max(0, Math.ceil(snap.gr - el))} s left` : `⏱ ${Math.floor(rt / 60)}:${String(Math.floor(rt % 60)).padStart(2, '0')}`) : '';
     if ($('rgClock').textContent !== ck) $('rgClock').textContent = ck;
-    $('rgNext').textContent = m && !m.place ? (m.mark < v.course.marks.length ? `🟠 Buoy ${m.mark + 1}` : '🏁 To the finish') : '';
+    const nav = m && !m.place ? navOf(m) : null;
+    $('rgNext').textContent = nav ? `${m.mark < v.course.marks.length ? `🟠 Buoy ${m.mark + 1}` : '🏁 Finish'} · ${Math.round(nav.dist)} m ${ARROWS[Math.round(wrap(nav.rel) / (Math.PI / 4) + 8) % 8]}${nav.upwind ? ' · upwind, zig-zag' : ''}` : '';
+    $('rgTack').classList.toggle('rg-pulse', !!nav?.tackNow && snap.st === 'race');
     $('rgSpd').textContent = m ? `${(m.v * 1.94).toFixed(1)} kn${m.gust ? ' 💨' : ''}${m.shadow ? ' 🌫' : ''}` : '';
     const warn = $('rgWarn'), w = m && !m.place && snap.st === 'race' ? (m.irons ? '⚠ In irons! Turn away from the wind' : m.shadow ? '🌫 In a rival\'s wind shadow' : '') : '';
     warn.hidden = !w; if (w && warn.textContent !== w) warn.textContent = w;
@@ -224,6 +251,18 @@ UI.regatta = (() => {
     const fl = $('rgFlash');
     if (flash && now < flash.until) { if (fl.textContent !== flash.text) { fl.textContent = flash.text; fl.classList.remove('rg-in'); void fl.offsetWidth; fl.classList.add('rg-in'); } fl.hidden = false; } else fl.hidden = true;
     $('rgTack').disabled = !playing();
+  }
+
+  // where to go next, seen from your boat: distance, bearing relative to your bow, and whether a tack points closer
+  const ARROWS = ['↑', '↖', '←', '↙', '↓', '↘', '→', '↗'];
+  function navOf(m) {
+    const v = V(), M = v.course.marks;
+    const [tx, ty] = m.mark < M.length ? M[m.mark] : [0, v.course.finish[0][1]];
+    const bt = Math.atan2(ty - m.y, tx - m.x), from = snap.w[0], nogo = (v.nogo || 38) * Math.PI / 180;
+    const upwind = Math.abs(wrap(bt - from)) < nogo + 0.08;
+    const mirror = wrap(2 * (from + Math.PI) - m.h);
+    const tackNow = upwind && Math.abs(wrap(m.h - from)) < nogo + 0.5 && Math.abs(wrap(bt - mirror)) + 0.15 < Math.abs(wrap(bt - m.h));
+    return { dist: Math.hypot(tx - m.x, ty - m.y), bt, rel: bt - m.h, upwind, tackNow, tx, ty };
   }
 
   function loop(now) {
@@ -237,7 +276,8 @@ UI.regatta = (() => {
     const on = S.phase === 'playing' && !S.paused;
     window.Snd?.bed('rg.water', waterBed).set(on && m ? clamp(m.v / 6, 0.15, 1) : on ? 0.3 : 0);
     window.Snd?.bed('rg.wind', windBed).set(on ? clamp(snap.w[1] / 8, 0.3, 1.2) : 0);
-    (gl || flat)?.draw(now, { bs, m, snap, V: V() });
+    if (goal != null && m && !drag && Math.abs(wrap(goal - m.h)) < 0.04 && now - goalShow > 800) goal = null;   // got there: hide the arrow (the boat holds the heading)
+    (gl || flat)?.draw(now, { bs, m, snap, V: V(), nav: m && !m.place && snap.st !== 'results' ? navOf(m) : null, goal, dragging: !!drag });
   }
 
   // ---------- three.js: course x is world x, course y is world -z (north is away from the start)
@@ -336,6 +376,25 @@ UI.regatta = (() => {
       return (boatMs[i] = { g, roll, boomPivot, jibPivot, wake, tag });
     }
 
+    // #150 guides round your own boat: the no-go wedge (red, into the wind) with a wind chevron, a gold arrow to the
+    // next buoy and a white arrow for the heading you pointed at. All lie flat on the water; course angle = rotation.y.
+    const flatMesh = (geo, mat) => { const m = new T.Mesh(geo, mat); m.rotation.x = -Math.PI / 2; return m; };
+    const arrowGeo = (len, wid, head) => { const sh = new T.Shape(); sh.moveTo(0, -wid / 2); sh.lineTo(len - head, -wid / 2); sh.lineTo(len - head, -wid * 1.6); sh.lineTo(len, 0); sh.lineTo(len - head, wid * 1.6); sh.lineTo(len - head, wid / 2); sh.lineTo(0, wid / 2); sh.closePath(); return new T.ShapeGeometry(sh); };
+    const NOGO = (V().nogo || 38) * Math.PI / 180;
+    const wedge = new T.Group(); wedge.position.y = 0.07; scene3.add(wedge);
+    const wedgeMat = new T.MeshBasicMaterial({ color: 0xff3a3a, transparent: true, opacity: 0.3, depthWrite: false, toneMapped: false, fog: false });
+    wedge.add(flatMesh(new T.CircleGeometry(13, 24, -NOGO, 2 * NOGO), wedgeMat));
+    const windMat = new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, depthWrite: false, toneMapped: false, fog: false });
+    for (const r of [8.5, 11.5]) { const ch = flatMesh(arrowGeo(2.2, 0.35, 1.0), windMat); ch.position.x = r; ch.rotation.z = Math.PI; wedge.add(ch); }   // chevrons blowing toward you
+    const toMark = new T.Group(); scene3.add(toMark);
+    const markArrowMat = new T.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.95, depthWrite: false, toneMapped: false, fog: false });
+    const markArrow = flatMesh(arrowGeo(4.2, 0.7, 1.7), markArrowMat); markArrow.position.set(4.5, 0, 0); toMark.add(markArrow);
+    markArrow.renderOrder = 3;
+    toMark.position.y = 0.1;
+    const aim = new T.Group(); aim.position.y = 0.12; scene3.add(aim);
+    const aimMat = new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthWrite: false, toneMapped: false, fog: false });
+    const aimArrow = flatMesh(arrowGeo(9.5, 0.3, 1.6), aimMat); aimArrow.position.x = 3.2; aimArrow.renderOrder = 4; aim.add(aimArrow);
+
     function resize() {
       const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
       renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
@@ -371,10 +430,25 @@ UI.regatta = (() => {
         m.wake.material.opacity = clamp(b.v / 8, 0, 0.4); m.wake.scale.x = 0.4 + b.v / 10;
         m.tag.visible = b.i !== me();
       }
+      const mine = sc.m && !sc.m.place && sc.snap.st !== 'results';
+      wedge.visible = toMark.visible = !!mine;
+      aim.visible = !!mine && sc.goal != null;
+      if (mine) {
+        const pos = W(sc.m.x, sc.m.y);
+        wedge.position.set(pos.x, 0.07, pos.z); wedge.rotation.y = wdir;
+        const twa = Math.abs(wrap(sc.m.h - wdir));
+        const near = sc.m.irons ? 1 : clamp((NOGO + 0.2 - twa) / 0.2, 0, 1);
+        wedgeMat.color.setHex(sc.m.irons ? 0xff2a2a : near > 0 ? 0xffa030 : 0xff3a3a);
+        wedgeMat.opacity = 0.28 + 0.2 * near * (0.6 + 0.4 * Math.sin(now / 120));
+        windMat.opacity = 0.6 + 0.25 * Math.sin(now / 400);
+        if (sc.nav) { toMark.position.set(pos.x, 0.1, pos.z); toMark.rotation.y = sc.nav.bt; markArrowMat.opacity = 0.8 + 0.2 * Math.sin(now / 250); }
+        toMark.visible = !!sc.nav;
+        if (sc.goal != null) { aim.position.set(pos.x, 0.12, pos.z); aim.rotation.y = sc.goal; }
+      }
       // the camera: behind your boat (a little to windward), turning with it; a high view for watchers
       const focus = sc.m ?? sc.bs[0];
       if (focus) {
-        const k = cam.init ? 1 - Math.exp(-dt * 1.8) : 1;
+        const k = cam.init ? 1 - Math.exp(-dt * (sc.dragging ? 0.9 : 1.8)) : 1;
         cam.yaw += wrap(focus.h - cam.yaw) * k;
         const back = 24, up = 12, f = W(focus.x, focus.y);
         const want = f.clone().add(new T.Vector3(-Math.cos(cam.yaw) * back, up, Math.sin(cam.yaw) * back));
@@ -423,6 +497,12 @@ UI.regatta = (() => {
       const my = sc.m ? sc.m.mark : 0;
       M.forEach(([x, y], n) => { if (n === my) { g.beginPath(); g.arc(X(x), Y(y), v.markR * k, 0, 7); g.strokeStyle = '#ffd23f88'; g.lineWidth = 2; g.stroke(); } g.beginPath(); g.arc(X(x), Y(y), Math.max(4, 1.2 * k), 0, 7); g.fillStyle = n === my ? '#ffd23f' : '#ff7a1a'; g.fill(); g.fillStyle = '#fff'; g.font = '12px system-ui'; g.fillText(String(n + 1), X(x) + 7, Y(y) + 4); });
       const [[fx0, fy], [fx1]] = v.course.finish; g.setLineDash([4, 4]); g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.moveTo(X(fx0), Y(fy)); g.lineTo(X(fx1), Y(fy)); g.stroke(); g.setLineDash([]);
+      if (sc.m && !sc.m.place && sc.snap.st !== 'results') {
+        const bx = X(sc.m.x), by = Y(sc.m.y), from = sc.snap.w[0], ng = (v.nogo || 38) * Math.PI / 180, R = Math.max(30, 11 * k);
+        g.fillStyle = sc.m.irons ? '#ff2a2a55' : '#ff3a3a33'; g.beginPath(); g.moveTo(bx, by); g.arc(bx, by, R, -from - ng, -from + ng); g.closePath(); g.fill();
+        if (sc.nav) { g.strokeStyle = '#ffd23fcc'; g.lineWidth = 2; g.setLineDash([6, 5]); g.beginPath(); g.moveTo(bx, by); g.lineTo(X(sc.nav.tx), Y(sc.nav.ty)); g.stroke(); g.setLineDash([]); }
+        if (sc.goal != null) { g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.moveTo(bx, by); g.lineTo(bx + Math.cos(sc.goal) * R * 1.1, by - Math.sin(sc.goal) * R * 1.1); g.stroke(); }
+      }
       for (const b of sc.bs) {
         const s = Math.max(6, 3 * k);
         g.save(); g.translate(X(b.x), Y(b.y)); g.rotate(-b.h);
