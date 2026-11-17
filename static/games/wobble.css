@@ -1,0 +1,48 @@
+/* wobble: Wobble Tower's own rules, loaded with static/games/wobble.js (needUI in app.js). */
+.wb { max-width: 720px; margin: 0 auto; user-select: none; -webkit-user-select: none; }
+.wb-hud { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin-bottom: 6px; flex-wrap: wrap; }
+.wb-hud .wb-gusting { color: #9ad7ff; font-weight: 700; animation: pulse 1.2s infinite; }
+.wb-stage { position: relative; height: min(60vh, 540px); min-height: 280px; border-radius: var(--r-md, var(--radius)); overflow: hidden;
+  background: #140d18; overscroll-behavior: none; box-shadow: var(--sh-2, none); }
+.wb-stage canvas { display: block; width: 100%; height: 100%; }
+.wb-meter { position: absolute; left: 10px; top: 10px; bottom: 54px; width: 14px; z-index: 2; border-radius: 999px;
+  background: #ffffff1c; border: 1px solid #ffffff33; overflow: hidden; display: flex; align-items: flex-end; }
+.wb-meter i { display: block; width: 100%; height: 0; transition: height .25s ease-out, background .25s; border-radius: 999px; }
+.wb-meter b { position: absolute; bottom: -2px; left: 50%; transform: translate(-50%, 100%); font-size: 14px; }
+.wb-meter.wb-danger { animation: wbShake .35s infinite; border-color: #ff8c42; }
+@keyframes wbShake { 50% { transform: translateX(1.5px); } }
+.wb-block { position: absolute; left: 32px; top: 8px; z-index: 2; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  font-size: 13px; padding: 3px 10px 3px 4px; border-radius: 999px; background: #0d0a14b8; color: #f6ead8; max-width: calc(100% - 120px); }
+.wb-block:empty { display: none; }
+.wb-warn { color: #ff8c8c; }
+.wb-view { position: absolute; top: 8px; right: 8px; z-index: 2; padding: 4px 10px; font-size: 13px; }
+.wb-gift { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); width: min(94%, 400px); z-index: 3;
+  background: #1a1220ee; border: 1px solid #ffffff2a; border-radius: var(--radius); padding: 8px 10px 10px; animation: wbIn .35s ease-out; }
+@keyframes wbIn { from { transform: translate(-50%, 12px); opacity: 0; } }
+.wb-gift h3 { margin: 0 0 6px; text-align: center; font-size: 15px; }
+.wb-picks { display: flex; gap: 8px; justify-content: center; }
+.wb-pick { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 4px; min-height: 76px; font-size: 13px; touch-action: manipulation; }
+.wb-pick:hover, .wb-pick:focus-visible { outline: 2px solid var(--accent); }
+.wb-ctl { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 8px; flex-wrap: wrap; transition: opacity .2s; }
+.wb-ctl.wb-off { opacity: .45; }
+.wb-pad { display: grid; grid-template-columns: repeat(3, 42px); grid-template-rows: repeat(3, 34px); gap: 2px;
+  grid-template-areas: ". u ." "l . r" ". d ."; }
+.wb-pad button { padding: 0; border-radius: 10px; font-size: 15px; touch-action: manipulation; }
+.wb-pad [data-m="0,-1"] { grid-area: u; } .wb-pad [data-m="-1,0"] { grid-area: l; }
+.wb-pad [data-m="1,0"] { grid-area: r; } .wb-pad [data-m="0,1"] { grid-area: d; }
+.wb-rot { min-height: 44px; padding: 0 14px; }
+.wb-place { min-width: 120px; min-height: 48px; font-size: 16px; }
+.wb-place.wb-ready { animation: pulse 1.6s infinite; }
+.wb-scores td { padding: 3px 6px; }
+.wb-scores tr.now { background: var(--panel2); }
+.wb-scores tr.wb-out { opacity: .5; }
+.wb-lives { letter-spacing: -2px; font-size: 12px; }
+.wb-h { margin-top: 12px; }
+.wb-next { display: flex; gap: 6px; flex-wrap: wrap; }
+.wb-chip { display: flex; align-items: center; gap: 4px; font-size: 12px; background: var(--panel2); border-radius: 999px; padding: 2px 8px 2px 4px; }
+.wb-ico { display: block; flex: none; }
+@media (max-width: 420px) {
+  .wb-stage { height: 52vh; }
+  .wb-pad { grid-template-columns: repeat(3, 38px); grid-template-rows: repeat(3, 32px); }
+  .wb-ctl { gap: 10px; }
+}
