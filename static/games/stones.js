@@ -91,7 +91,7 @@ UI.stones = (() => {
   function throwNow() {
     if (!myTurn() || busy()) return;
     thrownAt = performance.now();
-    ctx.sfx?.('whoosh'); ctx.buzz?.(15);
+    SND.push(true); ctx.buzz?.(15);
     ctx.quiet(ctx.act('throw', { aim: +aim.toFixed(3), weight: +weight.toFixed(3), curl, sweep }));
   }
 
@@ -217,20 +217,69 @@ UI.stones = (() => {
     } catch {}
   }
 
+  // ---------- #121 the stones' own sounds, on the shared Snd kit (static/sfx.js), in a big cold arena: the push
+  // out of the hack, a granite rumble on the pebble that follows the fastest stone, and a hard "clock" when two
+  // stones meet (louder the harder they hit), panned across the sheet
+  const ARENA = { room: 'arena', send: 0.7 };
+  const snd = (fn, pan = 0, vol = 1) => window.Snd?.play((t, K) => fn(t, K, K.at({ ...ARENA, pan, vol })));
+  const SND = {
+    push: (mine) => snd((t, K, d) => {
+      K.burst(d, t, { type: 'lowpass', f: 500, q: 0.7, vol: mine ? 0.3 : 0.15, tau: 0.03, buf: 'brown' });
+      K.mode(d, t, 70, mine ? 0.18 : 0.08, 0.08);
+      K.burst(d, t + 0.05, { type: 'bandpass', f: 1200, f1: 600, q: 0.6, vol: mine ? 0.06 : 0.03, tau: 0.08, dur: 0.4, attack: 0.05 });
+    }),
+    clock: (hard, x) => snd((t, K, d) => {
+      const v = 0.25 + 0.75 * hard;
+      K.burst(d, t, { type: 'bandpass', f: 2800 + 1200 * hard, q: 1.2, vol: 0.4 * v, tau: 0.003 });
+      K.mode(d, t, 720, 0.16 * v, 0.02); K.mode(d, t, 1530, 0.08 * v, 0.012); K.mode(d, t, 2650, 0.04 * v, 0.007);
+      K.mode(d, t, 260, 0.07 * v, 0.03);
+    }, Math.max(-0.8, Math.min(0.8, x / 2.2)), 1),
+  };
+  const slideBed = (K, dst) => {
+    const A = K.ctx, src = K.loopSrc('brown'), lp = A.createBiquadFilter(), g = A.createGain(), o = A.createOscillator(), og = A.createGain();
+    const hiss = K.loopSrc('white'), bp = A.createBiquadFilter(), hg = A.createGain();
+    lp.type = 'lowpass'; lp.frequency.value = 200; lp.Q.value = 1; o.type = 'sine'; o.frequency.value = 48; og.gain.value = 0.3; g.gain.value = 0;
+    bp.type = 'bandpass'; bp.frequency.value = 2400; bp.Q.value = 0.8; hg.gain.value = 0.05;  // the pebble under the running band
+    src.connect(lp).connect(g); o.connect(og).connect(g); hiss.connect(bp).connect(hg).connect(g);
+    const room = K.at({ ...ARENA, send: 0.4 });
+    g.connect(room); o.start();
+    return {
+      set(l) { const t = A.currentTime; g.gain.setTargetAtTime(0.16 * l, t, 0.08); lp.frequency.setTargetAtTime(150 + 200 * l, t, 0.1); o.frequency.setTargetAtTime(40 + 18 * l, t, 0.1); },
+      stop() { try { src.stop(); hiss.stop(); o.stop(); } catch {} },
+    };
+  };
+  // how fast the fastest stone is going in this frame of the throw (0..1)
+  function slideLevel(shot, f) {
+    let best = 0;
+    for (const tr of shot.tracks) {
+      const k = Math.floor(f - tr.s);
+      if (k < 1 || k >= tr.f.length) continue;
+      const [x0, y0] = tr.f[k - 1], [x1, y1] = tr.f[k];
+      best = Math.max(best, Math.hypot(x1 - x0, y1 - y0) * FPS);
+    }
+    return Math.min(1, best / 3.2);
+  }
+
   function loop(now) {
-    if (!$('icStage')) { raf = 0; brush(0); return; }
+    if (!$('icStage')) { raf = 0; brush(0); window.Snd?.bed('st.slide').set(0); return; }
     raf = requestAnimationFrame(loop);
     if (!S?.stones) return;
     if (!anim && queue.length) {
       const shot = queue.shift();
       anim = { shot, t0: now, hits: shot.tracks.filter((t) => t.s > 0).map((t) => t.s).sort((a, b) => a - b), hi: 0, sw: 0 };
-      if (!(shot.by === S.stones.me && now - thrownAt < 3000)) ctx.sfx?.('whoosh');
+      if (!(shot.by === S.stones.me && now - thrownAt < 3000)) SND.push(false);
     }
     if (anim) {
       const f = ((now - anim.t0) / 1000) * FPS;
-      while (anim.hi < anim.hits.length && anim.hits[anim.hi] <= f) { anim.hi++; ctx.sfx?.('crack'); gl?.spark(anim.shot, anim.hits[anim.hi - 1]); }
+      while (anim.hi < anim.hits.length && anim.hits[anim.hi] <= f) {
+        const hf = anim.hits[anim.hi++], tr = anim.shot.tracks.find((t) => t.s === hf);
+        const sp = tr && tr.f.length > 1 ? Math.hypot(tr.f[1][0] - tr.f[0][0], tr.f[1][1] - tr.f[0][1]) * FPS : 1;
+        SND.clock(Math.min(1, sp / 2.2), tr?.f?.[0]?.[0] ?? 0);
+        gl?.spark(anim.shot, hf);
+      }
+      window.Snd?.bed('st.slide', slideBed).set(slideLevel(anim.shot, f));
       brush(anim.shot.sweep && f > 8 && f < anim.shot.frames * 0.8 ? anim.shot.sweep : 0);
-      if (f >= anim.shot.frames + 12) { anim = null; brush(0); controls(); hint(); }
+      if (f >= anim.shot.frames + 12) { anim = null; brush(0); window.Snd?.bed('st.slide').set(0); controls(); hint(); }
     }
     $('icDone').hidden = !S.stones.between || busy();
     // on-demand drawing: every frame while anything moves, otherwise ~15 fps for the glows
@@ -265,23 +314,49 @@ UI.stones = (() => {
     stg.key.target.position.set(0, 0, -sh.tee);
     const low = stg.low;
     const len = sh.end + 3;
-    // the ice: pebbled white with the lines and the house painted under it
-    const iceTex = canvasTex(T, 256, 2048, (g, w, h) => {
-      const k = h / len, X = (x) => (x / (2 * sh.half) + 0.5) * w, Y = (y) => h - (y + 2) * k;
+    // #120 the ice: a white sheet with the lines and the house painted under a layer of clear ice (their edges
+    // a touch soft, a faint blue cast over them), fine pebble everywhere, frost built up along the boards, and
+    // a worn, glossier path down the middle where the stones run. On fine graphics it's a clear coat over a
+    // frosted base: the lamps make sharp highlights on the pebble, and the stones show in it (below).
+    const TW = low ? 256 : 512, TH = low ? 2048 : 4096;
+    const iceTex = canvasTex(T, TW, TH, (g, w, h) => {
+      const k = h / len, X = (x) => (x / (2 * sh.half) + 0.5) * w, Y = (y) => h - (y + 2) * k, q = w / 256;
       const gr = g.createLinearGradient(0, 0, w, 0);
-      gr.addColorStop(0, '#dfe8f0'); gr.addColorStop(0.5, '#f7fbff'); gr.addColorStop(1, '#dfe8f0');
+      gr.addColorStop(0, '#e9f0f6'); gr.addColorStop(0.08, '#eef4fa'); gr.addColorStop(0.5, '#f8fbff'); gr.addColorStop(0.92, '#eef4fa'); gr.addColorStop(1, '#e9f0f6');
       g.fillStyle = gr; g.fillRect(0, 0, w, h);
-      for (let i = 0; i < 9000; i++) { g.fillStyle = `rgba(150,175,200,${Math.random() * 0.12})`; g.fillRect(Math.random() * w, Math.random() * h, 1, 1); }
       const ring = (r, col) => { g.fillStyle = col; g.beginPath(); g.ellipse(X(0), Y(sh.tee), r / (2 * sh.half) * w, r * k, 0, 0, 7); g.fill(); };
-      ring(sh.house, '#2f6fd1'); ring(1.22, '#f7fbff'); ring(0.61, '#d83a3a'); ring(0.15, '#f7fbff');
-      g.fillStyle = '#d83a3a'; g.fillRect(0, Y(sh.hog) - 3, w, 6);           // the hog line
-      g.fillStyle = '#d83a3a'; g.fillRect(0, Y(7) - 2, w, 4);                // the near hog line, for looks
-      g.fillStyle = '#26324a'; g.fillRect(0, Y(sh.tee) - 1, w, 2);           // the tee line
-      g.fillRect(0, Y(sh.back) - 1, w, 2);                                   // the back line
-      g.fillRect(w / 2 - 1, Y(sh.end), 2, Y(sh.start) - Y(sh.end));          // the centre line
-      g.fillStyle = '#26324a'; g.fillRect(w / 2 - 8, Y(0.2), 16, 6);         // the hack
+      g.filter = 'blur(0.6px)';
+      ring(sh.house, '#2c68c9'); ring(1.22, '#f7fbff'); ring(0.61, '#d23636'); ring(0.15, '#f7fbff');
+      g.filter = 'none';
+      // the path: the pebble's worn a little flatter (and so a touch greyer) where the stones run
+      const pg = g.createLinearGradient(X(-0.9), 0, X(0.9), 0);
+      pg.addColorStop(0, 'rgba(170,190,210,0)'); pg.addColorStop(0.5, 'rgba(170,190,210,.10)'); pg.addColorStop(1, 'rgba(170,190,210,0)');
+      g.fillStyle = pg; g.fillRect(X(-0.9), Y(sh.end), X(0.9) - X(-0.9), Y(sh.start) - Y(sh.end));
+      // frost along the boards
+      for (const side of [0, 1]) {
+        const fg = g.createLinearGradient(side ? w : 0, 0, side ? w - 22 * q : 22 * q, 0);
+        fg.addColorStop(0, 'rgba(255,255,255,.95)'); fg.addColorStop(1, 'rgba(255,255,255,0)');
+        g.fillStyle = fg; g.fillRect(side ? w - 22 * q : 0, 0, 22 * q, h);
+        for (let i = 0; i < 1400 * q; i++) { const d = Math.random() ** 2 * 26 * q; g.fillStyle = `rgba(255,255,255,${0.3 + Math.random() * 0.5})`; g.fillRect(side ? w - d : d, Math.random() * h, 1.5 * q, 1.5 * q); }
+      }
+      // the pebble: fine frozen droplets, each a dot with a bright side
+      for (let i = 0; i < 26000 * q; i++) {
+        const x = Math.random() * w, y = Math.random() * h;
+        g.fillStyle = `rgba(140,165,195,${Math.random() * 0.13})`; g.fillRect(x, y, q, q);
+        if (i % 4 === 0) { g.fillStyle = `rgba(255,255,255,${Math.random() * 0.5})`; g.fillRect(x - q * 0.5, y - q * 0.5, q * 0.7, q * 0.7); }
+      }
+      g.fillStyle = '#d83a3a'; g.fillRect(0, Y(sh.hog) - 4 * q, w, 8 * q);   // the hog line
+      g.fillStyle = '#d83a3a'; g.fillRect(0, Y(7) - 3 * q, w, 6 * q);        // the near hog line, for looks
+      g.fillStyle = '#26324a'; g.fillRect(0, Y(sh.tee) - 1.5 * q, w, 3 * q); // the tee line
+      g.fillRect(0, Y(sh.back) - 1.5 * q, w, 3 * q);                         // the back line
+      g.fillRect(w / 2 - q, Y(sh.end), 2 * q, Y(sh.start) - Y(sh.end));      // the centre line
+      g.fillStyle = '#26324a'; g.fillRect(w / 2 - 8 * q, Y(0.2), 16 * q, 6 * q);  // the hack
+      g.fillStyle = 'rgba(150,190,240,.05)'; g.fillRect(0, 0, w, h);            // the clear ice over it all
     });
-    const ice = new T.Mesh(new T.PlaneGeometry(2 * sh.half, len), new T.MeshStandardMaterial({ map: iceTex, roughness: 0.22, metalness: 0 }));
+    const iceMat = !low && T.MeshPhysicalMaterial
+      ? new T.MeshPhysicalMaterial({ map: iceTex, roughness: 0.6, metalness: 0, clearcoat: 0.45, clearcoatRoughness: 0.1, envMapIntensity: 0.55 })
+      : new T.MeshStandardMaterial({ map: iceTex, roughness: 0.22, metalness: 0 });
+    const ice = new T.Mesh(new T.PlaneGeometry(2 * sh.half, len), iceMat);
     ice.rotation.x = -Math.PI / 2; ice.position.set(0, 0, -(len / 2 - 2)); ice.receiveShadow = true; scene.add(ice);
     // the boards down both sides and across the back, and a dark arena floor beyond them
     const boardMat = new T.MeshStandardMaterial({ color: 0x1d2a44, roughness: 0.6 });
@@ -307,10 +382,16 @@ UI.stones = (() => {
     const floor = new T.Mesh(new T.PlaneGeometry(40, len + 20), new T.MeshStandardMaterial({ color: 0x0d1424, roughness: 0.9 }));
     floor.rotation.x = -Math.PI / 2; floor.position.set(0, -0.02, -(len / 2 - 2)); scene.add(floor);
     // arena lights hanging over the sheet
-    const lampMat = new T.MeshBasicMaterial({ color: 0xfff6e0 });
+    const lampMat = new T.MeshBasicMaterial({ color: 0xfff6e0, toneMapped: false });
     for (let z = 2; z < len; z += 5) {
-      const l = new T.Mesh(new T.BoxGeometry(1.4, 0.05, 0.25), lampMat); l.position.set(0, 7, -z); scene.add(l);
+      const l = new T.Mesh(new T.BoxGeometry(2.2, 0.05, 0.4), lampMat); l.position.set(0, 7, -z); scene.add(l);
     }
+    // the stones' reflections in the clear coat (fine graphics): a faint mirrored copy, drawn only where the ice
+    // shows (a stencil: the ice marks its pixels, the stones unmark theirs)
+    const stencil = (m, ref, func, op) => Object.assign(m, { stencilWrite: true, stencilRef: ref, stencilFunc: func, stencilZPass: op, stencilFail: T.KeepStencilOp, stencilZFail: T.KeepStencilOp });
+    const mirror = low ? null : new T.Group();
+    if (mirror) { mirror.scale.y = -1; scene.add(mirror); stencil(iceMat, 1, T.AlwaysStencilFunc, T.ReplaceStencilOp); }
+    const ghostOf = (m) => stencil(new T.MeshBasicMaterial({ map: m.map || null, color: m.color ? m.color.clone() : 0xffffff, transparent: true, opacity: 0.22, depthTest: false, depthWrite: false }), 1, T.EqualStencilFunc, T.KeepStencilOp);
 
     // stones: a granite body, a coloured band and a handle in the player's colour
     const R = sh.r;
@@ -347,6 +428,14 @@ UI.stones = (() => {
       mark.rotation.x = -Math.PI / 2; mark.position.y = 0.006; mark.visible = false; mark.name = 'mark'; grp.add(mark);
       grp.userData = { o: s.o, hot: !!s.hot };
       scene.add(grp);
+      if (mirror) {
+        const twin = new T.Group();
+        for (const c of [body, band, goose, handle]) {
+          stencil(c.material, 0, T.AlwaysStencilFunc, T.ReplaceStencilOp);
+          const g2 = new T.Mesh(c.geometry, ghostOf(c.material)); g2.position.copy(c.position); g2.renderOrder = 2; twin.add(g2);
+        }
+        mirror.add(twin); grp.userData.twin = twin;
+      }
       return grp;
     }
     // the skip's broom: where the thrower aims
@@ -394,6 +483,8 @@ UI.stones = (() => {
         seenIds.add(s.id);
         m.position.set(s.x, s.gone ? -s.gone * 0.15 : 0, -s.y);
         m.visible = !(s.gone >= 1);
+        const tw = m.userData.twin;
+        if (tw) { tw.position.copy(m.position); tw.rotation.copy(m.rotation); tw.visible = m.visible && !s.gone; }
         if (s.moving) m.rotation.y += (s.fresh ? (anim?.shot.curl ?? 1) : 0.4) * -dt * 1.6;
         const glow = m.getObjectByName('glow');
         if (glow) glow.material.opacity = 0.6 + 0.4 * Math.sin(now / 220);
@@ -401,7 +492,7 @@ UI.stones = (() => {
         mark.visible = v.between && !busy() && counted.has(s.id);
         if (mark.visible) mark.scale.setScalar(1 + 0.12 * Math.sin(now / 180));
       }
-      for (const [id, m] of meshes) if (!seenIds.has(id)) { scene.remove(m); m.traverse((o) => { if (o.material && o.material !== bodyMat && !o.material.map) o.material.dispose(); }); meshes.delete(id); }
+      for (const [id, m] of meshes) if (!seenIds.has(id)) { scene.remove(m); if (m.userData.twin) { mirror.remove(m.userData.twin); m.userData.twin.traverse((o) => o.material?.dispose?.()); } m.traverse((o) => { if (o.material && o.material !== bodyMat && !o.material.map) o.material.dispose(); }); meshes.delete(id); }
       // the broom while you aim
       const aiming = myTurn() && !busy();
       broom.visible = aimLine.visible = aiming;
