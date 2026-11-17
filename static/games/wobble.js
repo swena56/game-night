@@ -6,7 +6,7 @@
 // and plays back here: everything above that block swings over the edge, then tumbles off the table.
 UI.wobble = (() => {
   let S, ctx, gl = null, flat = null, raf = 0, ro = null, primed = false, seen = 0, lastDraw = 0;
-  let gx = 0, gz = 0, grot = 0, view = 0;   // the ghost (position, quarter turns) and the camera's quarter turn
+  let gx = 0, gz = 0, grot = 0, yaw = 0;    // the ghost (position, eighth turns) and where the camera stands round the tower (#124)
   let fall = null;                           // the topple being played: {f, t0}
   let ghostFor = '';
   const $ = (id) => document.getElementById(id);
@@ -20,29 +20,59 @@ UI.wobble = (() => {
   const busy = () => !!fall;
 
   // ---------- statics: the same model as games/wobble.py
-  const EPS = 1e-6;
-  function parts(shape, x, z, r) {
-    const out = [];
-    for (let [cx, cz, w, d] of V().shapes[shape].parts) {
-      for (let k = 0; k < (r % 4); k++) [cx, cz, w, d] = [-cz, cx, d, w];
-      out.push([x + cx - w / 2, z + cz - d / 2, x + cx + w / 2, z + cz + d / 2]);
+  const EPS = 1e-6, C45 = Math.SQRT1_2;
+  // (#125) a turn r counts eighths: r >> 1 quarter turns of the parts, then 45° more for an odd r. Footprints are
+  // convex counter-clockwise polygons; rects() are the parts square to the block (for drawing it).
+  function rects(shape, r) {
+    return V().shapes[shape].parts.map(([cx, cz, w, d]) => {
+      for (let k = 0; k < ((r >> 1) % 4); k++) [cx, cz, w, d] = [-cz, cx, d, w];
+      return [cx - w / 2, cz - d / 2, cx + w / 2, cz + d / 2];
+    });
+  }
+  function poly([x0, z0, x1, z1], x, z, r) {
+    let pts = [[x0, z0], [x1, z0], [x1, z1], [x0, z1]];
+    if (r % 2) pts = pts.map(([px, pz]) => [px * C45 - pz * C45, px * C45 + pz * C45]);
+    return pts.map(([px, pz]) => [x + px, z + pz]);
+  }
+  const parts = (shape, x, z, r) => rects(shape, r).map((rc) => poly(rc, x, z, r));
+  const area = (pg) => pg.reduce((a, p, k) => { const q = pg[(k + 1) % pg.length]; return a + p[0] * q[1] - q[0] * p[1]; }, 0) / 2;
+  const squared = (pg) => Math.abs(pg[0][1] - pg[1][1]) < 1e-9 && Math.abs(pg[1][0] - pg[2][0]) < 1e-9 && Math.abs(pg[2][1] - pg[3][1]) < 1e-9 && pg[0][0] < pg[1][0] && pg[1][1] < pg[2][1];
+  function inter(subj, clip) {
+    const bx = (pg, i, f) => f(...pg.map((p) => p[i]));
+    if (bx(subj, 0, Math.max) <= bx(clip, 0, Math.min) + EPS || bx(clip, 0, Math.max) <= bx(subj, 0, Math.min) + EPS
+      || bx(subj, 1, Math.max) <= bx(clip, 1, Math.min) + EPS || bx(clip, 1, Math.max) <= bx(subj, 1, Math.min) + EPS) return null;
+    if (subj.length === 4 && clip.length === 4 && squared(subj) && squared(clip)) {
+      const x0 = Math.max(subj[0][0], clip[0][0]), z0 = Math.max(subj[0][1], clip[0][1]), x1 = Math.min(subj[2][0], clip[2][0]), z1 = Math.min(subj[2][1], clip[2][1]);
+      return x1 - x0 > EPS && z1 - z0 > EPS ? [[x0, z0], [x1, z0], [x1, z1], [x0, z1]] : null;
     }
-    return out;
+    let out = subj.slice();
+    for (let k = 0; k < clip.length && out.length; k++) {
+      const [ax, az] = clip[k], [bx2, bz] = clip[(k + 1) % clip.length];
+      const side = (p) => (bx2 - ax) * (p[1] - az) - (bz - az) * (p[0] - ax);
+      const inp = out; out = [];
+      let prev = inp[inp.length - 1], sp = side(prev);
+      for (const cur of inp) {
+        const sc = side(cur);
+        if ((sc >= -EPS) !== (sp >= -EPS)) { const t = sp / (sp - sc); out.push([prev[0] + t * (cur[0] - prev[0]), prev[1] + t * (cur[1] - prev[1])]); }
+        if (sc >= -EPS) out.push(cur);
+        prev = cur; sp = sc;
+      }
+    }
+    return out.length >= 3 && area(out) > 1e-5 ? out : null;
   }
-  function inter(a, b) {
-    const x0 = Math.max(a[0], b[0]), z0 = Math.max(a[1], b[1]), x1 = Math.min(a[2], b[2]), z1 = Math.min(a[3], b[3]);
-    return x1 - x0 > EPS && z1 - z0 > EPS ? [x0, z0, x1, z1] : null;
-  }
+  // a support patch: a polygon (or a rectangle, from a tower set before 45° turns)
+  const asPoly = (p) => (typeof p[0] === 'number' ? [[p[0], p[1]], [p[2], p[1]], [p[2], p[3]], [p[0], p[3]]] : p);
   function tops(b) {
     const sh = V().shapes[b.s], top = b.y + sh.h, R = V().k.ridge;
-    return parts(b.s, b.x, b.z, b.r).map((rc) => {
-      if (!sh.roof) return [rc, top, rc];
-      const cx = (rc[0] + rc[2]) / 2, cz = (rc[1] + rc[3]) / 2;
-      return [rc, top, rc[2] - rc[0] >= rc[3] - rc[1] ? [rc[0], cz - R / 2, rc[2], cz + R / 2] : [cx - R / 2, rc[1], cx + R / 2, rc[3]]];
+    return rects(b.s, b.r).map((rc) => {
+      const pg = poly(rc, b.x, b.z, b.r);
+      if (!sh.roof) return [pg, top, pg];
+      const [x0, z0, x1, z1] = rc, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+      return [pg, top, poly(x1 - x0 >= z1 - z0 ? [x0, cz - R / 2, x1, cz + R / 2] : [cx - R / 2, z0, cx + R / 2, z1], b.x, b.z, b.r)];
     });
   }
   function land(tower, shape, x, z, r) {
-    const mine = parts(shape, x, z, r), P = V().k.plinth, pl = [-P, -P, P, P];
+    const mine = parts(shape, x, z, r), P = V().k.plinth, pl = [[-P, -P], [P, -P], [P, P], [-P, P]];
     const surf = [[-1, pl, 0, pl]];
     tower.forEach((b, k) => { for (const [rc, top, carry] of tops(b)) surf.push([k, rc, top, carry]); });
     let y = null;
@@ -55,11 +85,28 @@ UI.wobble = (() => {
     }
     return { y, sup };
   }
+  function pcent(pg) {
+    let a = 0, cx = 0, cz = 0;
+    pg.forEach(([x0, z0], k) => { const [x1, z1] = pg[(k + 1) % pg.length], c = x0 * z1 - x1 * z0; a += c; cx += (x0 + x1) * c; cz += (z0 + z1) * c; });
+    if (Math.abs(a) < 1e-12) return [0, pg.reduce((s, p) => s + p[0], 0) / pg.length, pg.reduce((s, p) => s + p[1], 0) / pg.length];
+    return [Math.abs(a) / 2, cx / (3 * a), cz / (3 * a)];
+  }
   function centroid(b) {
     let m = 0, cx = 0, cz = 0;
-    for (const [x0, z0, x1, z1] of parts(b.s, b.x, b.z, b.r)) { const a = (x1 - x0) * (z1 - z0); m += a; cx += a * (x0 + x1) / 2; cz += a * (z0 + z1) / 2; }
+    for (const pg of parts(b.s, b.x, b.z, b.r)) { const [a, px, pz] = pcent(pg); m += a; cx += a * px; cz += a * pz; }
     const sh = V().shapes[b.s];
     return [m * sh.h * (sh.roof ? 0.5 : 1), cx / m, cz / m];
+  }
+  function nearestIn(pg, X, Z) {
+    const n = pg.length;
+    if (pg.every((p, k) => { const q = pg[(k + 1) % n]; return (q[0] - p[0]) * (Z - p[1]) - (q[1] - p[1]) * (X - p[0]) >= -EPS; })) return [X, Z];
+    let best = 1e18, bp = [X, Z];
+    pg.forEach(([ax, az], k) => {
+      const [bx2, bz] = pg[(k + 1) % n], ex = bx2 - ax, ez = bz - az, l2 = ex * ex + ez * ez;
+      const t = l2 < 1e-12 ? 0 : Math.max(0, Math.min(1, ((X - ax) * ex + (Z - az) * ez) / l2)), px = ax + t * ex, pz = az + t * ez, d = (px - X) ** 2 + (pz - Z) ** 2;
+      if (d < best) { best = d; bp = [px, pz]; }
+    });
+    return bp;
   }
   function hull(pts) {
     pts = [...new Map(pts.map((p) => [p.join(','), p])).values()].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
@@ -81,7 +128,7 @@ UI.wobble = (() => {
       let M = m, X = m * cx, Z = m * cz;
       for (const [lm, lx, lz] of loads[i]) { M += lm; X += lm * lx; Z += lm * lz; }
       X /= M; Z /= M;
-      const poly = hull(b.sup.flatMap(([, [x0, z0, x1, z1]]) => [[x0, z0], [x1, z0], [x1, z1], [x0, z1]]));
+      const patches = b.sup.map(([k, p]) => [k, asPoly(p)]), poly = hull(patches.flatMap(([, pg]) => pg));
       let d = -1;
       if (poly.length >= 3) {
         d = 1e9;
@@ -91,9 +138,9 @@ UI.wobble = (() => {
         }
       }
       worst = Math.min(worst, d);
-      const sup = b.sup;
+      const sup = patches;
       if (!sup.length) continue;
-      const cents = sup.map(([, r]) => [(r[0] + r[2]) / 2, (r[1] + r[3]) / 2]);
+      const cents = sup.map(([, pg]) => pcent(pg).slice(1));
       let ws;
       if (sup.length === 1) ws = [1];
       else if (sup.length === 2) {
@@ -104,7 +151,7 @@ UI.wobble = (() => {
         const inv = cents.map(([px, pz]) => 1 / (Math.hypot(X - px, Z - pz) + 0.05)), s = inv.reduce((a, b) => a + b, 0);
         ws = inv.map((v) => v / s);
       }
-      sup.forEach(([k, r], j) => { if (k >= 0 && ws[j] > 0) loads[k].push([M * ws[j], Math.min(r[2], Math.max(r[0], X)), Math.min(r[3], Math.max(r[1], Z))]); });
+      sup.forEach(([k, pg], j) => { if (k >= 0 && ws[j] > 0) loads[k].push([M * ws[j], ...nearestIn(pg, X, Z)]); });
     }
     return worst === 1e9 ? 1 : worst;
   }
@@ -124,12 +171,12 @@ UI.wobble = (() => {
 
   // ---------- the screen
   function mount(main, side) {
-    gl = null; flat = null; fall = null; primed = false; seen = 0; view = 0; ghostFor = '';
+    gl = null; flat = null; fall = null; primed = false; seen = 0; yaw = 0; ghostFor = '';
     main.innerHTML = `<div class="wb"><div class="wb-hud"><span id="wbTower"></span><span id="wbGust"></span></div>
       <div class="wb-stage" id="wbStage">
         <div class="wb-meter" id="wbMeter" title="Wobble meter: how close the tower is to going over"><i id="wbFill"></i><b>📏</b></div>
         <div class="wb-block" id="wbBlock"></div>
-        <button class="wb-view ghost-btn" id="wbView" title="Walk round the tower">↻ View</button>
+        <div class="wb-view" id="wbView"><button class="ghost-btn" data-yaw="1" title="Walk round the tower to the left" aria-label="Turn the view left">⟲</button><button class="ghost-btn" data-yaw="-1" title="Walk round the tower to the right" aria-label="Turn the view right">⟳</button></div>
         <div class="wb-gift" id="wbGift" hidden><h3>🎁 Pick <span id="wbGiftTo"></span>'s block</h3><div class="wb-picks" id="wbPicks"></div></div>
       </div>
       <div class="wb-ctl" id="wbCtl">
@@ -138,7 +185,7 @@ UI.wobble = (() => {
           <button data-m="-1,0" aria-label="Left">◀</button><button data-m="1,0" aria-label="Right">▶</button>
           <button data-m="0,1" aria-label="Towards you">▼</button>
         </div>
-        <button class="wb-rot" id="wbRot" title="Turn the block">⟳ Turn</button>
+        <button class="wb-rot" id="wbRot" title="Turn the block 45°">⟳ Turn</button>
         <button class="wb-place" id="wbPlace">🧱 Place</button>
       </div>
       <p id="wbHint" class="hint"></p></div>`;
@@ -148,11 +195,11 @@ UI.wobble = (() => {
       const b = e.target.closest('button');
       if (!b || !placing() || busy()) return;
       if (b.dataset.m) { const [dx, dz] = b.dataset.m.split(',').map(Number); nudge(dx, dz); }
-      else if (b.id === 'wbRot') { grot = (grot + 1) % (V().current === 'ell' ? 4 : 2); ctx.sfx?.('tick'); }
+      else if (b.id === 'wbRot') { grot = (grot + 1) % (V().current === 'ell' ? 8 : 4); ctx.sfx?.('tick'); }
       else if (b.id === 'wbPlace') return placeNow();
       controls();
     });
-    $('wbView').onclick = () => { view = (view + 1) % 4; controls(); };
+    $('wbView').onclick = (e) => { const b = e.target.closest('button[data-yaw]'); if (b) { yaw = Math.round(yaw / (Math.PI / 4)) * (Math.PI / 4) + +b.dataset.yaw * Math.PI / 4; controls(); } };
     $('wbPicks').addEventListener('click', (e) => {
       const b = e.target.closest('button[data-k]');
       if (!b || !gifting()) return;
@@ -162,35 +209,47 @@ UI.wobble = (() => {
     // drag (or tap) on the stage to move the ghost there
     stage.style.touchAction = 'none';
     let dragging = false;
+    const fingers = new Map();
+    let twist = null;  // two fingers: {a: their angle, yaw: the view's yaw then}
+    const fAngle = () => { const [p, q] = [...fingers.values()]; return Math.atan2(q[1] - p[1], q[0] - p[0]); };
     const move = (e) => {
       const at = (gl || flat)?.pick?.(e.clientX, e.clientY);
       if (!at) return;
       const R = V().k.reach, sn = V().k.snap;
-      const nx = Math.max(-R, Math.min(R, Math.round(at[0] / sn) * sn)), nz = Math.max(-R, Math.min(R, Math.round(at[1] / sn) * sn));
+      const nx = +Math.max(-R, Math.min(R, Math.round(at[0] / sn) * sn)).toFixed(2), nz = +Math.max(-R, Math.min(R, Math.round(at[1] / sn) * sn)).toFixed(2);
       if (nx !== gx || nz !== gz) { gx = nx; gz = nz; controls(); }
     };
     stage.addEventListener('pointerdown', (e) => {
-      if (!placing() || busy() || e.target.closest('button, .wb-gift')) return;
-      dragging = true; try { stage.setPointerCapture(e.pointerId); } catch {} move(e);
+      if (e.target.closest('button, .wb-gift')) return;
+      fingers.set(e.pointerId, [e.clientX, e.clientY]);
+      try { stage.setPointerCapture(e.pointerId); } catch {}
+      if (fingers.size === 2 && gl) { dragging = false; twist = { a: fAngle(), yaw }; return; }
+      if (!placing() || busy()) return;
+      dragging = true; move(e);
     });
-    stage.addEventListener('pointermove', (e) => { if (dragging) move(e); });
-    const stop = () => { dragging = false; };
+    stage.addEventListener('pointermove', (e) => {
+      if (fingers.has(e.pointerId)) fingers.set(e.pointerId, [e.clientX, e.clientY]);
+      if (twist && fingers.size === 2) { let d = fAngle() - twist.a; d = Math.atan2(Math.sin(d), Math.cos(d)); yaw = twist.yaw + d; return; }
+      if (dragging) move(e);
+    });
+    const stop = (e) => { fingers.delete(e.pointerId); if (fingers.size < 2) twist = null; dragging = false; };
     stage.addEventListener('pointerup', stop); stage.addEventListener('pointercancel', stop);
     ro = window.ResizeObserver ? new ResizeObserver(() => (gl || flat)?.resize()) : null;
     ro?.observe(stage);
     GL3.load().then(() => { if (stage.isConnected && !gl) gl = make3d(stage); }).catch(() => {})
-      .finally(() => { if (stage.isConnected && !gl && !flat) flat = make2d(stage); if ($('wbView')) { $('wbView').hidden = !gl; if (!gl) view = 0; } });
+      .finally(() => { if (stage.isConnected && !gl && !flat) flat = make2d(stage); if ($('wbView')) { $('wbView').hidden = !gl; if (!gl) yaw = 0; } });
     raf = requestAnimationFrame(loop);
   }
 
   function unmount() { cancelAnimationFrame(raf); raf = 0; ro?.disconnect(); gl?.dispose(); gl = null; flat = null; }
 
-  // ◀ ▶ ▲ ▼ move relative to where the camera stands
+  // ◀ ▶ ▲ ▼ move relative to where the camera stands (diagonally on the grid when it stands at a slant)
   function nudge(dx, dz) {
-    const sn = V().k.snap, R = V().k.reach;
-    for (let k = 0; k < view; k++) [dx, dz] = [-dz, dx];
-    gx = Math.max(-R, Math.min(R, gx + dx * sn));
-    gz = Math.max(-R, Math.min(R, gz + dz * sn));
+    const sn = V().k.snap, R = V().k.reach, c = Math.cos(yaw), s2 = Math.sin(yaw);
+    const rx = dx * c - dz * s2, rz = dx * s2 + dz * c;  // (as a quarter turn of the view used to turn [dx, dz] → [-dz, dx])
+    const mx = Math.abs(rx) > 0.38 ? Math.sign(rx) : 0, mz = Math.abs(rz) > 0.38 ? Math.sign(rz) : 0;
+    gx = +Math.max(-R, Math.min(R, gx + mx * sn)).toFixed(2);
+    gz = +Math.max(-R, Math.min(R, gz + mz * sn)).toFixed(2);
     ctx.sfx?.('tick');
   }
 
@@ -209,7 +268,7 @@ UI.wobble = (() => {
     grot = 0;
     const top = v.tower.reduce((a, b) => (!a || b.y + v.shapes[b.s].h > a.y + v.shapes[a.s].h ? b : a), null);
     const sn = v.k.snap;
-    gx = top ? Math.round(top.x / sn) * sn : 0; gz = top ? Math.round(top.z / sn) * sn : 0;
+    gx = top ? +(Math.round(top.x / sn) * sn).toFixed(2) : 0; gz = top ? +(Math.round(top.z / sn) * sn).toFixed(2) : 0;
   }
 
   function controls() {
@@ -254,10 +313,11 @@ UI.wobble = (() => {
     hint();
   }
 
-  // the camera looks at the tower from +z when view = 0, so +x is right and -z is away
+  // the camera looks at the tower from +z when yaw = 0, so +x is right and -z is away
   function arrow(d) {
     let [x, z] = d;
-    for (let k = 0; k < (4 - view) % 4; k++) [x, z] = [-z, x];
+    const c = Math.cos(yaw), s2 = Math.sin(yaw);
+    [x, z] = [x * c + z * s2, -x * s2 + z * c];
     const a = Math.round(Math.atan2(z, x) / (Math.PI / 4));
     return ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗'][(a + 8) % 8];
   }
@@ -319,7 +379,7 @@ UI.wobble = (() => {
     const iso = (x, y, z) => [(x - z) * 0.8, (x + z) * 0.42 - y * 0.9];
     // fit the drawing: small blocks are drawn as big as long ones (the name says which is which)
     let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
-    for (const [a, c, e, f] of parts(shape, 0, 0, 0)) {
+    for (const [a, c, e, f] of rects(shape, 0)) {
       for (const [x, z] of [[a, c], [e, c], [e, f], [a, f]]) for (const y of [0, Math.min(sh.h, 2)]) {
         const [u, w] = iso(x, y, z); x0 = Math.min(x0, u); x1 = Math.max(x1, u); y0 = Math.min(y0, w); y1 = Math.max(y1, w);
       }
@@ -329,7 +389,7 @@ UI.wobble = (() => {
     svg.setAttribute('width', px); svg.setAttribute('height', Math.round(px / 1.1)); svg.classList.add('wb-ico');
     const poly = (pts, fill) => { const p = document.createElementNS(NS, 'polygon'); p.setAttribute('points', pts.map((q) => iso(...q).join(',')).join(' ')); p.setAttribute('fill', fill); p.setAttribute('stroke', '#3b2414'); p.setAttribute('stroke-width', '0.06'); p.setAttribute('stroke-linejoin', 'round'); svg.append(p); };
     const h = Math.min(sh.h, 2) * 1.0;
-    const ps = parts(shape, 0, 0, 0).sort((a, b) => (a[0] + a[1]) - (b[0] + b[1]));
+    const ps = rects(shape, 0).sort((a, b) => (a[0] + a[1]) - (b[0] + b[1]));
     for (const [x0, z0, x1, z1] of ps) {
       if (sh.roof) {
         const cz = (z0 + z1) / 2;
@@ -445,12 +505,14 @@ UI.wobble = (() => {
     }
     // one group per block, its origin at the block's centroid footprint centre and its bottom
     function blockMesh(b, mat) {
-      const grp = new T.Group(), sh = V().shapes[b.s];
-      for (const [x0, z0, x1, z1] of parts(b.s, 0, 0, b.r)) {
+      const grp = new T.Group(), inner = new T.Group(), sh = V().shapes[b.s];
+      inner.rotation.y = b.r % 2 ? -Math.PI / 4 : 0;  // (#125) an odd turn is 45° more
+      grp.add(inner);
+      for (const [x0, z0, x1, z1] of rects(b.s, b.r)) {
         const m = new T.Mesh(partGeo(x1 - x0, z1 - z0, sh.h, sh.roof), mat || matFor(b.o));
         m.position.set((x0 + x1) / 2, sh.h / 2, (z0 + z1) / 2);
         m.castShadow = !mat; m.receiveShadow = !mat;
-        grp.add(m);
+        inner.add(m);
       }
       return grp;
     }
@@ -575,7 +637,8 @@ UI.wobble = (() => {
       if (aiming && !ghost) {
         ghostKey = `${v.current}|${grot}`;
         ghost = blockMesh({ s: v.current, r: grot, o: 0 }, ghostMat); scene.add(ghost);
-        for (const [x0, z0, x1, z1] of parts(v.current, 0, 0, grot)) {
+        foot.rotation.y = grot % 2 ? -Math.PI / 4 : 0;
+        for (const [x0, z0, x1, z1] of rects(v.current, grot)) {
           const s = new T.Mesh(new T.PlaneGeometry(x1 - x0, z1 - z0), shadowMat); s.rotation.x = -Math.PI / 2;
           s.position.set((x0 + x1) / 2, 0, (z0 + z1) / 2); foot.add(s);
         }
@@ -621,7 +684,7 @@ UI.wobble = (() => {
       const tall = camera.aspect < 0.8;
       const top = Math.max(H, (p?.y ?? 0) + 1.5, 2);
       const dist = (tall ? 12 : 9) + top * (tall ? 1.15 : 0.8);
-      const want = view * Math.PI / 2 + (placing() ? 0 : Math.sin(now / 9000) * 0.35);
+      const want = yaw + (placing() ? 0 : Math.sin(now / 9000) * 0.35);
       let dy = want - cam.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       const k = 1 - Math.exp(-dt * 3);
       cam.yaw += dy * k;
@@ -686,18 +749,19 @@ UI.wobble = (() => {
         g.globalAlpha = 1 - fade;
         const c = colorOf(b.o), lift = (b.y + v.shapes[b.s].h) / H;
         const ox = fall ? fall.f.dir[0] * sl : 0, oz = fall ? fall.f.dir[1] * sl : 0;
-        for (const [x0, z0, x1, z1] of parts(b.s, b.x + ox, b.z + oz, b.r)) {
-          g.fillStyle = c; g.fillRect(X(x0), Z(z0), (x1 - x0) * k, (z1 - z0) * k);
-          g.fillStyle = `rgba(255,255,255,${0.35 * lift})`; g.fillRect(X(x0), Z(z0), (x1 - x0) * k, (z1 - z0) * k);
-          g.strokeStyle = '#2a1a10'; g.lineWidth = 2; g.strokeRect(X(x0), Z(z0), (x1 - x0) * k, (z1 - z0) * k);
-          if (v.shapes[b.s].roof) { g.strokeStyle = '#fff8'; g.beginPath(); if (x1 - x0 >= z1 - z0) { g.moveTo(X(x0), Z((z0 + z1) / 2)); g.lineTo(X(x1), Z((z0 + z1) / 2)); } else { g.moveTo(X((x0 + x1) / 2), Z(z0)); g.lineTo(X((x0 + x1) / 2), Z(z1)); } g.stroke(); }
+        for (const [rc, , carry] of tops({ ...b, x: b.x + ox, z: b.z + oz })) {
+          const path = () => { g.beginPath(); rc.forEach(([x, z], j) => (j ? g.lineTo(X(x), Z(z)) : g.moveTo(X(x), Z(z)))); g.closePath(); };
+          path(); g.fillStyle = c; g.fill();
+          g.fillStyle = `rgba(255,255,255,${0.35 * lift})`; g.fill();
+          g.strokeStyle = '#2a1a10'; g.lineWidth = 2; g.stroke();
+          if (v.shapes[b.s].roof) { g.fillStyle = '#fff8'; g.beginPath(); carry.forEach(([x, z], j) => (j ? g.lineTo(X(x), Z(z)) : g.moveTo(X(x), Z(z)))); g.closePath(); g.fill(); }
         }
         g.globalAlpha = 1;
       });
       if (placing() && !busy()) {
         const p = preview();
         g.setLineDash([6, 4]); g.lineWidth = 3; g.strokeStyle = p ? meterColor(p.m) : '#9aa3b5';
-        for (const [x0, z0, x1, z1] of parts(v.current, gx, gz, grot)) g.strokeRect(X(x0), Z(z0), (x1 - x0) * k, (z1 - z0) * k);
+        for (const pg of parts(v.current, gx, gz, grot)) { g.beginPath(); pg.forEach(([x, z], j) => (j ? g.lineTo(X(x), Z(z)) : g.moveTo(X(x), Z(z)))); g.closePath(); g.stroke(); }
         g.setLineDash([]);
       }
     }

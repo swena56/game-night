@@ -15,7 +15,8 @@
   font-size: 13px; padding: 3px 10px 3px 4px; border-radius: 999px; background: #0d0a14b8; color: #f6ead8; max-width: calc(100% - 120px); }
 .wb-block:empty { display: none; }
 .wb-warn { color: #ff8c8c; }
-.wb-view { position: absolute; top: 8px; right: 8px; z-index: 2; padding: 4px 10px; font-size: 13px; }
+.wb-view { position: absolute; top: 8px; right: 8px; z-index: 2; display: flex; gap: 4px; }
+.wb-view button { width: 40px; height: 40px; padding: 0; border-radius: 50%; font-size: 18px; touch-action: manipulation; }
 .wb-gift { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); width: min(94%, 400px); z-index: 3;
   background: #1a1220ee; border: 1px solid #ffffff2a; border-radius: var(--radius); padding: 8px 10px 10px; animation: wbIn .35s ease-out; }
 @keyframes wbIn { from { transform: translate(-50%, 12px); opacity: 0; } }

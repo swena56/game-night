@@ -307,7 +307,9 @@ class Room:
         # the only human in a game against bots went quiet: pause it for them instead of an autopilot (#119)
         if self.phase == "playing" and not self.paused:
             hs = self.humans()
-            if len(hs) == 1 and not hs[0].standin and hs[0].silent_for(now) > AWAY_AFTER:
+            # (after the same grace as the autopilot: a busy page can miss a heartbeat or two; switching away is
+            # caught by the page itself within seconds)
+            if len(hs) == 1 and not hs[0].standin and hs[0].silent_for(now) > OFFLINE_GRACE:
                 self.pause(hs[0], auto=True)
                 changed = True
         if self.phase == "playing" and not self.paused:

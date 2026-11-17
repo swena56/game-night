@@ -80,7 +80,7 @@ check("lifted", not r.paused)
 
 # auto-pause: the only human goes quiet → paused (not autopilot); with two humans, autopilot as before
 r, (ann,) = room("lanes")
-ann.last_seen = time.time() - 30
+ann.last_seen = time.time() - 60
 check("a quiet lone human pauses the game", r.check_offline(time.time()) and r.paused and not ann.standin and "away" in r.log[-1]["text"])
 r.seen(ann)
 check("coming back leaves it paused (Resume is theirs)", r.paused and not ann.standin)

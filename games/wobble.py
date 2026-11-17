@@ -16,7 +16,7 @@ from .base import Game, GameError
 
 PLINTH = 2.0          # the plinth: x and z from -2 to 2, top at y = 0
 REACH = 3.0           # a block's centre may be set this far out
-SNAP = 0.25           # positions snap to this grid
+SNAP = 0.1            # positions snap to this grid (#125: finer than the 0.25 it was)
 RIDGE = 0.2           # a roof only carries what rests on its ridge (this wide)
 SHAKE = 0.012         # hands shake: σ of the slip = SHAKE × the landing height
 GUST_EVERY = 4        # every 4th placement is a gust turn
@@ -41,48 +41,112 @@ SIMPLE = ["cube", "cube", "plank", "plank", "slab", "beam", "pillar", "pillar"]
 
 
 def rots(shape):
-    """The distinct rotations of a shape (quarter turns)."""
-    return (0, 1, 2, 3) if shape == "ell" else (0, 1)
+    """The distinct turns of a shape, in eighths (45° steps; #125). Every block but the ell looks the same turned
+    half way round."""
+    return tuple(range(8)) if shape == "ell" else (0, 1, 2, 3)
+
+
+C45 = math.sqrt(0.5)
+
+
+def rects(shape, r):
+    """The block's parts as rectangles around its centre, turned r // 2 quarter turns (before any 45°)."""
+    out = []
+    for cx, cz, w, d in SHAPES[shape]["parts"]:
+        for _ in range((r // 2) % 4):
+            cx, cz, w, d = -cz, cx, d, w
+        out.append((cx - w / 2, cz - d / 2, cx + w / 2, cz + d / 2))
+    return out
+
+
+def poly(rc, x, z, r):
+    """A local rectangle as a counter-clockwise polygon on the table: turned 45° more for an odd r, then moved to (x, z)."""
+    x0, z0, x1, z1 = rc
+    pts = [(x0, z0), (x1, z0), (x1, z1), (x0, z1)]
+    if r % 2:
+        pts = [(px * C45 - pz * C45, px * C45 + pz * C45) for px, pz in pts]
+    return [(x + px, z + pz) for px, pz in pts]
 
 
 def parts(shape, x, z, r):
-    """The block's footprint rectangles [(x0, z0, x1, z1)]."""
-    out = []
-    for cx, cz, w, d in SHAPES[shape]["parts"]:
-        for _ in range(r % 4):
-            cx, cz, w, d = -cz, cx, d, w
-        out.append((x + cx - w / 2, z + cz - d / 2, x + cx + w / 2, z + cz + d / 2))
-    return out
+    """The block's footprint: one convex polygon per part."""
+    return [poly(rc, x, z, r) for rc in rects(shape, r)]
 
 
-def inter(a, b):
-    x0, z0, x1, z1 = max(a[0], b[0]), max(a[1], b[1]), min(a[2], b[2]), min(a[3], b[3])
-    return (x0, z0, x1, z1) if x1 - x0 > EPS and z1 - z0 > EPS else None
+def area(pg):
+    return 0.5 * sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(pg, pg[1:] + pg[:1]))
+
+
+def squared(pg):
+    """A rectangle square to the table, corners in poly()'s order (min corner first)."""
+    return (abs(pg[0][1] - pg[1][1]) < 1e-9 and abs(pg[1][0] - pg[2][0]) < 1e-9 and abs(pg[2][1] - pg[3][1]) < 1e-9
+            and pg[0][0] < pg[1][0] and pg[1][1] < pg[2][1])
+
+
+def inter(subj, clipper):
+    """Where two convex counter-clockwise polygons overlap (Sutherland–Hodgman), or None when they only touch.
+    (Quick ways out for boxes that are far apart, or both square to the table, keep the bots' search cheap.)"""
+    if (max(p[0] for p in subj) <= min(p[0] for p in clipper) + EPS or max(p[0] for p in clipper) <= min(p[0] for p in subj) + EPS
+            or max(p[1] for p in subj) <= min(p[1] for p in clipper) + EPS or max(p[1] for p in clipper) <= min(p[1] for p in subj) + EPS):
+        return None
+    if len(subj) == 4 and len(clipper) == 4 and squared(subj) and squared(clipper):
+        x0, z0 = max(subj[0][0], clipper[0][0]), max(subj[0][1], clipper[0][1])
+        x1, z1 = min(subj[2][0], clipper[2][0]), min(subj[2][1], clipper[2][1])
+        return [(x0, z0), (x1, z0), (x1, z1), (x0, z1)] if x1 - x0 > EPS and z1 - z0 > EPS else None
+    out = list(subj)
+    n = len(clipper)
+    for k in range(n):
+        if not out:
+            return None
+        (ax, az), (bx, bz) = clipper[k], clipper[(k + 1) % n]
+        side = lambda p: (bx - ax) * (p[1] - az) - (bz - az) * (p[0] - ax)  # noqa: E731
+        inp, out = out, []
+        prev = inp[-1]
+        sp = side(prev)
+        for cur in inp:
+            sc = side(cur)
+            if (sc >= -EPS) != (sp >= -EPS):
+                t = sp / (sp - sc)
+                out.append((prev[0] + t * (cur[0] - prev[0]), prev[1] + t * (cur[1] - prev[1])))
+            if sc >= -EPS:
+                out.append(cur)
+            prev, sp = cur, sc
+    return out if len(out) >= 3 and area(out) > 1e-5 else None
+
+
+def as_poly(p):
+    """A support patch: a polygon (or, from towers saved before 45° turns, a rectangle)."""
+    if p and not isinstance(p[0], (list, tuple)):
+        x0, z0, x1, z1 = p
+        return [(x0, z0), (x1, z0), (x1, z1), (x0, z1)]
+    return [tuple(q) for q in p]
 
 
 def tops(b):
-    """[(rect, top y, rect that actually carries weight)] for a placed block."""
+    """[(footprint, top y, what actually carries weight)] for a placed block."""
     sh = SHAPES[b["s"]]
     top = b["y"] + sh["h"]
     out = []
-    for rc in parts(b["s"], b["x"], b["z"], b["r"]):
+    for rc in rects(b["s"], b["r"]):
+        pg = poly(rc, b["x"], b["z"], b["r"])
         if sh.get("roof"):  # only the ridge, along the long side, carries anything
-            cx, cz = (rc[0] + rc[2]) / 2, (rc[1] + rc[3]) / 2
-            if rc[2] - rc[0] >= rc[3] - rc[1]:
-                ridge = (rc[0], cz - RIDGE / 2, rc[2], cz + RIDGE / 2)
-            else:
-                ridge = (cx - RIDGE / 2, rc[1], cx + RIDGE / 2, rc[3])
-            out.append((rc, top, ridge))
+            x0, z0, x1, z1 = rc
+            cx, cz = (x0 + x1) / 2, (z0 + z1) / 2
+            ridge = (x0, cz - RIDGE / 2, x1, cz + RIDGE / 2) if x1 - x0 >= z1 - z0 else (cx - RIDGE / 2, z0, cx + RIDGE / 2, z1)
+            out.append((pg, top, poly(ridge, b["x"], b["z"], b["r"])))
         else:
-            out.append((rc, top, rc))
+            out.append((pg, top, pg))
     return out
 
 
+PLINTH_POLY = [(-PLINTH, -PLINTH), (PLINTH, -PLINTH), (PLINTH, PLINTH), (-PLINTH, PLINTH)]
+
+
 def land(tower, shape, x, z, r):
-    """Where a block set here comes to rest: (y, [[supporter index or -1, patch rect], ...]), or None when
+    """Where a block set here comes to rest: (y, [[supporter index or -1, patch polygon], ...]), or None when
     nothing is under it."""
     mine = parts(shape, x, z, r)
-    surf = [(-1, (-PLINTH, -PLINTH, PLINTH, PLINTH), 0.0, (-PLINTH, -PLINTH, PLINTH, PLINTH))]
+    surf = [(-1, PLINTH_POLY, 0.0, PLINTH_POLY)]
     for k, b in enumerate(tower):
         surf += [(k, rc, top, carry) for rc, top, carry in tops(b)]
     y = None
@@ -98,19 +162,50 @@ def land(tower, shape, x, z, r):
                 if inter(m, rc):
                     p = inter(m, carry)
                     if p:
-                        sup.append([k, [round(v, 4) for v in p]])
+                        sup.append([k, [[round(v, 4) for v in q] for q in p]])
     return y, sup
+
+
+def pcent(pg):
+    """A polygon's area and centroid."""
+    a = cx = cz = 0.0
+    for (x0, z0), (x1, z1) in zip(pg, pg[1:] + pg[:1]):
+        c = x0 * z1 - x1 * z0
+        a += c
+        cx += (x0 + x1) * c
+        cz += (z0 + z1) * c
+    if abs(a) < 1e-12:
+        n = len(pg)
+        return 0.0, sum(p[0] for p in pg) / n, sum(p[1] for p in pg) / n
+    return abs(a) / 2, cx / (3 * a), cz / (3 * a)
 
 
 def centroid(shape, x, z, r):
     m = cx = cz = 0.0
-    for x0, z0, x1, z1 in parts(shape, x, z, r):
-        a = (x1 - x0) * (z1 - z0)
+    for pg in parts(shape, x, z, r):
+        a, px, pz = pcent(pg)
         m += a
-        cx += a * (x0 + x1) / 2
-        cz += a * (z0 + z1) / 2
+        cx += a * px
+        cz += a * pz
     h = SHAPES[shape]["h"] * (0.5 if SHAPES[shape].get("roof") else 1.0)
     return m * h, cx / m, cz / m
+
+
+def nearest_in(pg, X, Z):
+    """The point of polygon pg nearest (X, Z): the point itself when it's inside."""
+    n = len(pg)
+    if all((pg[(k + 1) % n][0] - pg[k][0]) * (Z - pg[k][1]) - (pg[(k + 1) % n][1] - pg[k][1]) * (X - pg[k][0]) >= -EPS for k in range(n)):
+        return X, Z  # (patches are convex and counter-clockwise already)
+    best, bp = 1e18, (X, Z)
+    for (ax, az), (bx, bz) in zip(pg, pg[1:] + pg[:1]):
+        ex, ez = bx - ax, bz - az
+        l2 = ex * ex + ez * ez
+        t = 0.0 if l2 < 1e-12 else max(0.0, min(1.0, ((X - ax) * ex + (Z - az) * ez) / l2))
+        px, pz = ax + t * ex, az + t * ez
+        d = (px - X) ** 2 + (pz - Z) ** 2
+        if d < best:
+            best, bp = d, (px, pz)
+    return bp
 
 
 def hull(pts):
@@ -165,12 +260,11 @@ def check(tower, gust=(0.0, 0.0)):
             Z += lm * lz
         X /= M
         Z /= M
-        pts = []
-        for _, (x0, z0, x1, z1) in b["sup"]:
-            pts += [(x0, z0), (x1, z0), (x1, z1), (x0, z1)]
-        poly = hull(pts)
-        if len(poly) >= 3:
-            d, edge = inside(poly, X, Z)
+        patches = [(k, as_poly(p)) for k, p in b["sup"]]
+        pts = [q for _, pg in patches for q in pg]
+        ph = hull(pts)
+        if len(ph) >= 3:
+            d, edge = inside(ph, X, Z)
         else:   # nothing carries it: it slides off a roof
             d, edge = -1.0, None
         worst = min(worst, d)
@@ -183,10 +277,10 @@ def check(tower, gust=(0.0, 0.0)):
             fails.append({"i": i, "pivot": [[round(v, 3) for v in p] for p in pivot], "dir": [round(v, 3) for v in dr],
                           "y": b["y"], "d": d})
         # hand the load down to whatever carries it
-        sup = b["sup"]
+        sup = patches
         if not sup:
             continue
-        cents = [((r[0] + r[2]) / 2, (r[1] + r[3]) / 2) for _, r in sup]
+        cents = [pcent(pg)[1:] for _, pg in sup]
         if len(sup) == 1:
             ws = [1.0]
         elif len(sup) == 2:
@@ -199,9 +293,9 @@ def check(tower, gust=(0.0, 0.0)):
             inv = [1 / (math.hypot(X - px, Z - pz) + 0.05) for px, pz in cents]
             s = sum(inv)
             ws = [v / s for v in inv]
-        for (k, r), w in zip(sup, ws):
+        for (k, pg), w in zip(sup, ws):
             if k >= 0 and w > 0:
-                loads[k].append((M * w, min(r[2], max(r[0], X)), min(r[3], max(r[1], Z))))
+                loads[k].append((M * w, *nearest_in(pg, X, Z)))
     fail = None
     if fails:
         f = min(fails, key=lambda f: (f["y"], f["d"]))
@@ -230,7 +324,7 @@ class Wobble(Game):
     category = "party"
     family = None
     howto = [
-        "Take turns setting a block on the tower: drag it (or nudge ◀ ▶ ▲ ▼), ⟳ turn it, then 🧱 Place. It drops onto whatever is highest under it.",
+        "Take turns setting a block on the tower: drag it (or nudge ◀ ▶ ▲ ▼), ⟳ turn it (in 45° steps), then 🧱 Place. It drops onto whatever is highest under it.",
         "Every block's weight, and everything resting on it, must sit over what holds it up. The 📏 wobble meter shows how close the tower is to going over.",
         "🎁 After you place, pick which of the next three blocks the next player has to set. Hand them something awkward!",
         "Topple the tower and you lose a ❤️ (the tower starts again). Hands shake more the higher it gets, and 🌬 gusts lean it every fourth turn.",
@@ -321,7 +415,7 @@ class Wobble(Game):
             x, z, r = a.get("x"), a.get("z"), a.get("rot", 0)
             if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in (x, z)):
                 raise GameError("Bad spot.")
-            if not isinstance(r, int) or isinstance(r, bool) or r not in range(4):
+            if not isinstance(r, int) or isinstance(r, bool) or r not in range(8):
                 raise GameError("Bad turn.")
             if abs(x) > REACH or abs(z) > REACH or not snapped(x) or not snapped(z):
                 raise GameError("Bad spot.")
@@ -505,11 +599,15 @@ class Wobble(Game):
 
     # -- bots: try every snapped spot and turn, keep the steadiest (or a star when it's safe enough)
 
-    def spots(self, shape, tower, step):
+    def spots(self, shape, tower, step, eighths=False):
+        """Every spot on a grid of `step`, each turn (only quarter turns unless eighths: the 45° ones double the
+        search, so only the hard bot and its finishing touch look at them)."""
         out = []
         top = height(tower)
         k = int(REACH / step)
         for r in rots(shape):
+            if r % 2 and not eighths:
+                continue
             for ix in range(-k, k + 1):
                 for iz in range(-k, k + 1):
                     x, z = ix * step, iz * step
@@ -544,7 +642,7 @@ class Wobble(Game):
         rng = random
         shape = self.current
         gust = self.gust_now() if level != "easy" else (0.0, 0.0)
-        cands, _ = self.spots(shape, self.tower, 0.5)
+        cands, _ = self.spots(shape, self.tower, 0.5, eighths=level == "hard" and len(self.tower) < 6)
         robust = level == "hard"
         rated = []
         for x, z, r, got in cands:
@@ -572,8 +670,15 @@ class Wobble(Game):
             # refine on the fine grid around the best coarse spot
             m0, top0, x0, z0, r0 = pick
             bv = val(pick)
-            for dx in (-0.25, 0, 0.25):
-                for dz in (-0.25, 0, 0.25):
+            for r1 in ((r0 + 1) % 8, (r0 - 1) % 8):  # the best spot turned an eighth either way
+                got = land(self.tower, shape, x0, z0, r1)
+                if got:
+                    c = (*self.rate(self.tower, shape, x0, z0, r1, got, gust, True), x0, z0, r1)
+                    if val(c) > bv:
+                        pick, bv = c, val(c)
+            m0, top0, x0, z0, r0 = pick
+            for dx in (-0.2, 0, 0.2):
+                for dz in (-0.2, 0, 0.2):
                     x, z = x0 + dx, z0 + dz
                     if (dx or dz) and abs(x) <= REACH and abs(z) <= REACH:
                         got = land(self.tower, shape, x, z, r0)

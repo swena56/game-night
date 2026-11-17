@@ -95,8 +95,20 @@ check("a gust cuts a tower's margin", windy < calm - 0.1, f"{calm:.2f} → {wind
 r, g, (ann, bo) = game(2, gusts="off")
 me = next(p for p in (ann, bo) if p.id == r.turn)
 other = bo if me is ann else ann
+# 45° turns (#125): a footprint turned an eighth is a diamond, and the statics still hold
+d = W.parts("cube", 0, 0, 1)[0]
+check("a cube turned 45° is a diamond", abs(max(p[0] for p in d) - 0.7071) < 1e-3 and abs(W.area(d) - 1) < 1e-6)
+t = put([], "pillar", 0, 0)
+t = put(t, "slab", 0, 0, 1)
+check("a slab turned 45° sits centred on a pillar", t[1]["y"] == 2.0 and W.check(t)["margin"] > 0.4, f"{W.check(t)['margin']:.2f}")
+t2 = put(put([], "pillar", 0, 0), "plank", 0.3, 0.3, 1)
+check("a plank turned 45° and hung off a pillar's corner holds while its middle is over the pillar", W.check(t2)["margin"] > 0, f"{W.check(t2)['margin']:.2f}")
+t3 = put(put([], "pillar", 0, 0), "plank", 1.1, 1.1, 1)
+check("…and topples once its middle is past it", W.check(t3)["fail"] is not None)
+check("the overlap of a diamond and a square is an octagon", len(W.inter(W.parts("cube", 0, 0, 1)[0], W.parts("cube", 0, 0, 0)[0])) == 8)
+check("an ell has eight distinct turns", W.rots("ell") == tuple(range(8)) and W.rots("cube") == (0, 1, 2, 3))
 check("not your turn is refused", refused(g, other, {"type": "place", "x": 0, "z": 0, "rot": 0}) is not None)
-for bad in ({"x": 9}, {"x": 0.1}, {"x": "a"}, {"x": float("nan")}, {"rot": 4}, {"rot": True}, {"x": 3, "z": 3}):
+for bad in ({"x": 9}, {"x": 0.15}, {"x": "a"}, {"x": float("nan")}, {"rot": 8}, {"rot": True}, {"x": 3, "z": 3}):
     check(f"bad placement refused {bad}", refused(g, me, {"type": "place", "x": 0, "z": 0, "rot": 0, **bad}) is not None)
 check("you can't gift before you place", refused(g, me, {"type": "gift", "pick": 0}) is not None)
 g.current = "cube"
@@ -115,7 +127,7 @@ g.current = "plank"
 g.tower = put([], "pillar", 0, 0)
 g.ready_at = 0
 lives = g.lives[g.seat(other)]
-g.act(other, {"type": "place", "x": 1.25, "z": 0, "rot": 0})
+g.act(other, {"type": "place", "x": 1.3, "z": 0, "rot": 0})
 check("a topple costs a life", g.lives[g.seat(other)] == lives - 1)
 check("…the tower starts again", g.tower == [] and g.last["fall"] and len(g.last["fall"]["tower"]) == 2)
 check("…and you still pick the next block", g.phase == "gift" and r.turn == other.id)
@@ -126,7 +138,7 @@ g.ready_at = 0
 g.lives[g.seat(me)] = 1
 g.current = "plank"
 g.tower = put([], "pillar", 0, 0)
-g.act(me, {"type": "place", "x": 1.25, "z": 0, "rot": 0})
+g.act(me, {"type": "place", "x": 1.3, "z": 0, "rot": 0})
 check("losing the last life ends a 2-player game", r.phase == "over" and r.winner == other.id, f"{r.phase} {r.winner}")
 
 # gusts: forecast, then they lean on the placement
