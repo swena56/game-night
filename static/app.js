@@ -49,6 +49,7 @@ let replay = null;          // { frames, i, timer } while watching a replay
 // The last few JavaScript errors, so a bug report can say what actually broke.
 const recentErrors = [];
 function noteError(message, where) {
+  if (/ResizeObserver loop/.test(String(message))) return;   // harmless browser noise, not a bug (#138)
   recentErrors.push({ message: String(message).slice(0, 200), where, at: new Date().toISOString() });
   if (recentErrors.length > 5) recentErrors.shift();
 }

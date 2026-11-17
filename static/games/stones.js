@@ -299,7 +299,7 @@ UI.stones = (() => {
 
   function make3d(stage) {
     const T = window.THREE;
-    const renderer = GL3.renderer({}, { onLost: () => { gl?.dispose(); gl = make3d(stage); } });
+    const renderer = GL3.renderer({}, { onLost: () => GL3.revive(stage, { build: () => { gl?.dispose(); gl = null; return (gl = make3d(stage)); }, flat: () => { flat ||= make2d(stage); }, unflat: () => { flat?.dispose?.(); flat = null; } }) });
     if (!renderer) return null;
     stage.prepend(renderer.domElement);
     const sh = S?.stones?.sheet || { half: 2.2, start: 1, hog: 21, tee: 28, house: 1.83, back: 29.83, end: 31, r: 0.145 };

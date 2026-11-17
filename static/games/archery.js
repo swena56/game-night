@@ -72,8 +72,8 @@ UI.archery = (() => {
     stage.addEventListener('pointercancel', () => { hold = null; });
     ro = window.ResizeObserver ? new ResizeObserver(() => (gl || flat)?.resize()) : null;
     ro?.observe(stage);
-    GL3.load().then(() => { if (stage.isConnected && !gl) gl = make3d(stage); }).catch(() => {})
-      .finally(() => { if (stage.isConnected && !gl && !flat) flat = make2d(stage); });
+    GL3.load().then(() => { if (stage.isConnected && !gl) GL3.revive(stage, { build: () => (gl = make3d(stage)), flat: () => { flat ||= make2d(stage); }, unflat: () => { flat?.dispose?.(); flat = null; } }); })
+      .catch(() => { if (stage.isConnected && !gl && !flat) flat = make2d(stage); });
     raf = requestAnimationFrame(loop);
   }
 
@@ -323,7 +323,7 @@ UI.archery = (() => {
   const CY = 1.3;
   function make3d(stage) {
     const T = window.THREE;
-    const renderer = GL3.renderer({}, { onLost: () => { gl?.dispose(); gl = make3d(stage); } });
+    const renderer = GL3.renderer({}, { onLost: () => GL3.revive(stage, { build: () => { gl?.dispose(); gl = null; return (gl = make3d(stage)); }, flat: () => { flat ||= make2d(stage); }, unflat: () => { flat?.dispose?.(); flat = null; } }) });
     if (!renderer) return null;
     const canvas = renderer.domElement;
     stage.prepend(canvas);

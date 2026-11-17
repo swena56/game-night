@@ -351,7 +351,7 @@ UI.rapids = (() => {
   function make3d(stage) {
     const T = window.THREE;
     if (!C) return null;
-    const renderer = GL3.renderer({}, { onLost: () => { if (!stage.isConnected) return; gl?.dispose(); gl = make3d(stage); if (!gl) flat ||= make2d(stage); } });
+    const renderer = GL3.renderer({}, { onLost: () => GL3.revive(stage, { build: () => { gl?.dispose(); gl = null; return (gl = make3d(stage)); }, flat: () => { flat ||= make2d(stage); }, unflat: () => { flat?.dispose?.(); flat = null; } }) });
     if (!renderer) return null;
     stage.prepend(renderer.domElement);
     const v0 = V(), L = C.len, rnd = rand(v0.seed || 1);

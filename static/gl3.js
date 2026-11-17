@@ -16,6 +16,7 @@
 //  - GL3.stage(renderer, scene, opts): one call for the look every 3D game shares: sRGB output, ACES filmic tone
 //      mapping, a hemisphere light and a key light (with soft shadows unless Low), a room environment so metal
 //      and glossy materials have something to reflect (skipped on Low), and optionally a sky dome with stars.
+//  - GL3.revive(stage, { build, flat, unflat }): rebuild 3D after a lost context, falling back to flat and retrying.
 //  - GL3.strained(): true once a renderer had to sit at its lowest resolution for a while: Auto graphics go Low.
 //  - GL3.shake(camera, amount): a short camera shake for hits; GL3.tickShake(camera, dt) each frame.
 (function () {
@@ -102,8 +103,35 @@
     };
     canvas.addEventListener('webglcontextlost', lost);
     const dispose = r.dispose.bind(r);
-    r.dispose = () => { canvas.removeEventListener('webglcontextlost', lost); dispose(); };
+    // #148: let the GPU context go now, not whenever the canvas is garbage collected: phones allow only a few live
+    // contexts, and a long evening of 3D games ran out, so the next game's 3D failed and it fell back to flat
+    r.dispose = () => { canvas.removeEventListener('webglcontextlost', lost); dispose(); try { r.forceContextLoss(); } catch {} };
     return r;
+  }
+
+  // #148: after a lost GPU context, rebuild the 3D view; when that fails (phones often refuse a new context straight
+  // away), show the flat view and keep trying 3D again: on a back-off (2, 5, 10 s, then every 30 s) and whenever the
+  // page comes back into view. o.build() makes the 3D view (truthy when it worked), o.flat() the flat one, and
+  // o.unflat() forgets it; the flat view's canvases are removed here once 3D is back.
+  function revive(stage, o, k = 0, flatEls = null) {
+    if (!stage.isConnected) return;
+    let ok = false;
+    try { ok = !!o.build(); } catch { ok = false; }
+    if (ok) {
+      if (flatEls) { for (const c of flatEls) c.remove(); o.unflat?.(); }
+      return;
+    }
+    if (!flatEls) {
+      const before = new Set(stage.children);
+      o.flat();
+      flatEls = [...stage.children].filter((c) => !before.has(c));
+    }
+    let t = 0;
+    const vis = () => { if (!document.hidden) again(); };
+    const again = () => { clearTimeout(t); document.removeEventListener('visibilitychange', vis); revive(stage, o, k + 1, flatEls); };
+    if (k >= 8) return;   // about three minutes of trying: this device isn't giving us 3D
+    t = setTimeout(again, [2000, 5000, 10000][k] ?? 30000);
+    document.addEventListener('visibilitychange', vis);
   }
 
   // A dim room with a bright ceiling panel, baked into an environment map: what glossy and metal surfaces
@@ -212,5 +240,5 @@
     camera.userData.shake = s > 0.02 ? s * Math.exp(-dt * 7) : 0;
   }
 
-  window.GL3 = { load, renderer, stage, sky, roomEnv, strained, shake, tickShake, level };
+  window.GL3 = { load, renderer, stage, sky, roomEnv, strained, shake, tickShake, level, revive };
 })();
