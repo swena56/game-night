@@ -1,0 +1,576 @@
+// Moon Lander: everyone flies at once. This module flies my lander locally on the same fixed 30 Hz tick as the
+// server (games/lander.py: the angle moves in whole steps and the sine/cosine table comes from the server, so both
+// sides do exactly the same arithmetic), records the input log, and sends it on touchdown; the server replays it
+// and its verdict is final. Rivals are ghost landers: positions arrive ~10 times a second over the fast channel.
+// Controls: hold 🔥 (or ↑ / W / Space) to burn, ◀ ▶ (or ← → / A D) to lean.
+UI.lander = (() => {
+  let S, ctx, V = null, gl = null, flat = null, raf = 0, ro = null, keyDown = null, keyUp = null;
+  let fl = null, roundKey = '', held = { l: false, r: false, up: false }, keys = new Set(), posAt = 0, sent = false;
+  let ghosts = {}, ghostAt = 0, flash = null, lastCd = 0, beeped = 0;
+  const $ = (id) => document.getElementById(id);
+  const calm = () => document.body.classList.contains('calm');
+
+  function mount(main, side) {
+    V = null; gl = null; flat = null; fl = null; roundKey = ''; held = { l: false, r: false, up: false }; keys = new Set(); ghosts = {}; flash = null; sent = false;
+    main.innerHTML = `<div class="ml"><div class="ml-stage" id="mlStage">
+        <canvas class="ml-map" id="mlMap"></canvas>
+        <div class="ml-hud" id="mlHud"><span id="mlAlt"></span><span id="mlVy"></span><span id="mlVx"></span><span id="mlAng"></span></div>
+        <div class="ml-fuel"><i id="mlFuel"></i><b id="mlFuelT"></b></div>
+        <div class="ml-count" id="mlCount" hidden></div>
+        <div class="ml-pop" id="mlPop" hidden></div>
+        <div class="ml-done" id="mlDone" hidden><h3 id="mlDoneTitle"></h3><div id="mlStand"></div></div>
+      </div>
+      <div class="ml-ctl" id="mlCtl">
+        <button data-k="l" aria-label="Lean left">◀</button>
+        <button data-k="up" class="ml-burn" aria-label="Burn">🔥 Burn</button>
+        <button data-k="r" aria-label="Lean right">▶</button>
+      </div>
+      <p id="mlHint" class="hint"></p></div>`;
+    side.innerHTML = '<div class="panel"><h3>🚀 Points</h3><div id="mlRace"></div><p class="hint left">Hold 🔥 to burn, ◀ ▶ to lean. Keyboard: ↑ / W / Space and ← → / A D.</p></div>';
+    main.querySelector('.ml').style.touchAction = 'none';
+    for (const b of main.querySelectorAll('#mlCtl button')) {
+      const k = b.dataset.k;
+      const on = (e) => { e.preventDefault(); try { b.setPointerCapture(e.pointerId); } catch {} held[k] = true; b.classList.add('on'); };
+      const off = () => { held[k] = false; b.classList.remove('on'); };
+      b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('lostpointercapture', off);
+      b.addEventListener('contextmenu', (e) => e.preventDefault());
+    }
+    const KEYS = { ArrowLeft: 'l', KeyA: 'l', ArrowRight: 'r', KeyD: 'r', ArrowUp: 'up', KeyW: 'up', Space: 'up' };
+    keyDown = (e) => { if (e.target?.closest?.('input, textarea, select')) return; if (KEYS[e.code]) { e.preventDefault(); keys.add(KEYS[e.code]); } };
+    keyUp = (e) => { if (KEYS[e.code]) keys.delete(KEYS[e.code]); };
+    addEventListener('keydown', keyDown); addEventListener('keyup', keyUp);
+    const stage = $('mlStage');
+    ro = window.ResizeObserver ? new ResizeObserver(() => (gl || flat)?.resize()) : null;
+    ro?.observe(stage);
+    const revive = { build: () => (gl = make3d(stage)), flat: () => { flat ||= make2d(stage); }, unflat: () => { flat?.dispose?.(); flat = null; } };
+    GL3.load().then(() => { if (stage.isConnected && !gl && V) GL3.revive(stage, revive); else if (stage.isConnected && !V) mount.pend = revive; })
+      .catch(() => { if (stage.isConnected && !gl && !flat) flat = make2d(stage); });
+    raf = requestAnimationFrame(loop);
+  }
+
+  function unmount() {
+    cancelAnimationFrame(raf); ro?.disconnect();
+    window.Snd?.bed('lander.engine').set(0);
+    removeEventListener('keydown', keyDown); removeEventListener('keyup', keyUp);
+    gl?.dispose(); gl = null; flat = null;
+  }
+
+  const me = () => V?.me;
+  const mine = () => (V && V.me != null ? V.fliers[V.me] : null);
+  const colorOf = (i) => ctx.player(V.seats[i])?.color ?? '#888';
+  const nameOf = (i) => ctx.player(V.seats[i])?.name ?? '?';
+  const G = () => V.geo;
+  function groundOf(v, x) {
+    const g = v.geo, h = v.h;
+    let i = Math.floor(x / g.seg); i = Math.max(0, Math.min(h.length - 2, i));
+    const f = x / g.seg - i;
+    return h[i] + (h[i + 1] - h[i]) * f;
+  }
+  const ground = (x) => groundOf(V, x);
+  // one tick, exactly as games/lander.py fly() steps (the same operations in the same order)
+  function tick(f, g, bits) {
+    const thrust = bits & 1, rot = (bits >> 1) - 1;
+    f.k = Math.max(-g.kMax, Math.min(g.kMax, f.k + rot));
+    const on = !!(thrust && f.fuel > 0);
+    if (on) { f.vx += g.sin[f.k + g.kMax] * g.thrust * g.dt; f.vy += g.cos[f.k + g.kMax] * g.thrust * g.dt; f.fuel -= 1; }
+    f.vy -= g.g * g.dt;
+    f.x += f.vx * g.dt; f.y += f.vy * g.dt;
+    if (f.x < 1) { f.x = 1; f.vx = 0; } else if (f.x > g.w - 1) { f.x = g.w - 1; f.vx = 0; }
+    if (f.y > g.ceiling) { f.y = g.ceiling; f.vy = Math.min(f.vy, 0); }
+    return on;
+  }
+  // a whole flight from an input log (the rules test checks this against the server's replay)
+  function replay(v, log, fuel) {
+    const g = v.geo, f = { x: v.start[0], vx: v.start[1], y: g.startY, vy: 0, k: 0, fuel };
+    let bits = 2, li = 0;
+    for (let t = 0; t < g.maxTicks; t++) {
+      while (li < log.length && log[li][0] <= t) bits = log[li++][1];
+      tick(f, g, bits);
+      if (f.y <= groundOf(v, f.x)) return { ...judgeOf(v, f.x, f.vx, f.vy, f.k), ticks: t + 1, x: f.x, vx: f.vx, vy: f.vy, k: f.k, fuel: f.fuel };
+    }
+    return { how: 'lost', pad: -1, pts: 0, ticks: g.maxTicks, x: f.x, vx: f.vx, vy: f.vy, k: f.k, fuel: f.fuel };
+  }
+  // a touchdown's verdict, as the server judges it (games/lander.py judge)
+  const judge = (x, vx, vy, k) => judgeOf(V, x, vx, vy, k);
+  function judgeOf(V, x, vx, vy, k) {
+    const g = V.geo;
+    for (let n = 0; n < V.pads.length; n++) {
+      const [l, r, , mult] = V.pads[n];
+      if (l + g.foot <= x && x <= r - g.foot) {
+        const ok = -vy <= g.vyOk && Math.abs(vx) <= g.vxOk && Math.abs(k) * g.rot <= g.angOk;
+        if (!ok) return { how: 'crash', pad: n, pts: 0 };
+        const soft = Math.max(0, 1 - (-vy) / g.vyOk), half = (r - l) / 2 - g.foot, prec = half > 0 ? Math.max(0, 1 - Math.abs(x - (l + r) / 2) / half) : 1;
+        return { how: 'land', pad: n, pts: Math.round(mult * (50 + 30 * soft + 20 * prec)), soft, prec };
+      }
+    }
+    return { how: 'crash', pad: -1, pts: 0 };
+  }
+
+  // ---------- my flight: fixed ticks from the round's start, exactly as games/lander.py fly() steps
+  function newFlight(startAt) {
+    const g = G();
+    return { x: V.start[0], vx: V.start[1], y: g.startY, vy: 0, k: 0, fuel: mine().tank, t: 0, at: startAt, bits: null, log: [], on: false, done: null, trail: [] };
+  }
+  function input() {
+    const l = held.l || keys.has('l'), r = held.r || keys.has('r'), up = held.up || keys.has('up');
+    return { thrust: up ? 1 : 0, rot: (r ? 1 : 0) - (l ? 1 : 0) };
+  }
+  function stepFlight(now) {
+    if (!fl || fl.done) return;
+    const g = G(), want = Math.min(g.maxTicks, Math.floor((now - fl.at) / 1000 / g.dt));
+    let n = 0;
+    while (fl.t < want && !fl.done && n++ < 12) {
+      const { thrust, rot } = input(), bits = thrust + 2 * (rot + 1);
+      if (bits !== fl.bits) { fl.log.push([fl.t, bits]); fl.bits = bits; }
+      fl.on = tick(fl, g, bits);
+      if (fl.t % 6 === 0) { fl.trail.push([fl.x, fl.y]); if (fl.trail.length > 80) fl.trail.shift(); }
+      const gy = ground(fl.x);
+      fl.t++;
+      if (fl.y <= gy) { touchdown(gy); break; }
+    }
+    if (!fl.done && fl.t >= g.maxTicks) { fl.done = { how: 'lost', pts: 0, pad: -1 }; send(); }
+  }
+  function touchdown(gy) {
+    const v = { vx: fl.vx, vy: fl.vy, k: fl.k };
+    fl.done = { ...judge(fl.x, fl.vx, fl.vy, fl.k), ...v };
+    fl.y = gy;
+    if (fl.done.how === 'land') {
+      fl.k = fl.k; fl.vx = fl.vy = 0;
+      const mult = V.pads[fl.done.pad][3];
+      SN.touch(); setTimeout(() => SN.chime(mult), 250);
+      showFlash(`🛬 ×${mult} landing! +${fl.done.pts}`, 2600, 'good');
+      ctx.buzz?.([30, 40, 30]);
+      (gl || flat)?.dust(fl.x, gy, 30);
+    } else {
+      SN.crash(); ctx.buzz?.([120, 60, 200]);
+      showFlash(fl.done.pad < 0 ? '💥 Crashed: missed the pads' : -fl.vy > G().vyOk ? '💥 Crashed: too fast' : Math.abs(fl.vx) > G().vxOk ? '💥 Crashed: sliding' : '💥 Crashed: tilted', 2600, 'bad');
+      (gl || flat)?.boom(fl.x, gy);
+      gl?.shake(0.6);
+    }
+    send();
+  }
+  function send() {
+    if (sent) return;
+    sent = true;
+    ctx.act('land', { log: fl.log }).catch((e) => ctx.toast?.(e?.message || 'Could not send your landing.'));
+  }
+
+  // ---------- state
+  function render(s, c) {
+    S = s; ctx = c; V = s.lander;
+    const key = `${V.round}`;
+    if (key !== roundKey) { roundKey = key; fl = null; sent = false; ghosts = {}; beeped = 0; (gl || flat)?.rebuild?.(); }
+    const my = mine();
+    if (V.stage === 'count' && my && !fl && !my.out) fl = newFlight(performance.now() + V.startIn * 1000);
+    else if (V.stage === 'fly' && my && !fl && my.res == null && !my.out) fl = newFlight(performance.now() - V.flown * 1000);
+    if (!gl && !flat && mount.pend) { const p = mount.pend; mount.pend = null; GL3.revive($('mlStage'), p); }
+    renderSide();
+  }
+
+  function fast(d) {
+    if (!V || d.rd !== V.round) return;
+    const now = performance.now();
+    for (const [k, g] of Object.entries(d.gh || {})) {
+      const i = +k; if (i === me()) continue;
+      const o = ghosts[i];
+      ghosts[i] = { from: o ? o.cur(now) : g, to: g, at: now, cur(t) { const f = Math.min(1, (t - this.at) / 110); return [this.from[0] + (this.to[0] - this.from[0]) * f, this.from[1] + (this.to[1] - this.from[1]) * f, this.to[2], this.to[3]]; } };
+    }
+    for (const k of Object.keys(ghosts)) if (!(k in (d.gh || {}))) delete ghosts[k];
+    ghostAt = now;
+  }
+
+  function renderSide() {
+    const box = $('mlRace'); if (!box) return;
+    box.innerHTML = '';
+    const order = V.seats.map((_, i) => i).sort((a, b) => V.fliers[b].points - V.fliers[a].points);
+    for (const i of order) {
+      const f = V.fliers[i], row = ctx.el('div', 'seat-row lr-row' + (f.out ? ' out' : ''));
+      const dot = ctx.el('span', 'mini-disc'); dot.style.background = colorOf(i);
+      const r = f.res, what = !r ? (V.stage === 'fly' ? '…flying' : '') : r.how === 'land' ? `×${V.pads[r.pad][3]} +${r.pts}` : r.how === 'crash' ? '💥' : '🛰️';
+      row.append(dot, ctx.el('span', 'grow', `${nameOf(i)}${i === V.me ? ' (you)' : ''}`), ctx.el('span', 'ml-what', what), ctx.el('b', '', `${f.points}`));
+      box.append(row);
+    }
+    const show = V.stage === 'between' && !!V.standings;
+    $('mlDone').hidden = !show;
+    if (show) {
+      $('mlDoneTitle').textContent = `🌕 Round ${V.round} done`;
+      standingsCard($('mlStand'), V.standings, { title: '🚀 Points', note: V.round < V.rounds ? 'Next moon in a moment…' : 'That was the last round!' });
+    }
+    $('mlCtl').classList.toggle('ml-off', !(fl && !fl.done && V.stage === 'fly'));
+    $('mlCtl').hidden = V.me == null;
+  }
+
+  // ---------- sound: a rocket in a vacuum is silent, so this is what you'd hear in the cabin
+  const snd = (fn) => window.Snd?.play((t, K) => fn(t, K, K.at({ room: 'room', send: 0.25 })));
+  const SN = {
+    touch: () => snd((t, K, d) => { K.burst(d, t, { type: 'lowpass', f: 300, q: 0.7, vol: 0.4, tau: 0.05, buf: 'brown' }); K.mode(d, t, 70, 0.2, 0.08); [0, 0.07].forEach((dt) => K.burst(d, t + dt, { type: 'bandpass', f: 1600, q: 2, vol: 0.08, tau: 0.01 })); }),
+    chime: (m) => snd((t, K, d) => { [523, 659, 784, 1047].slice(0, m + 1).forEach((f, n) => K.mode(d, t + n * 0.09, f, 0.08, 0.25)); }),
+    crash: () => snd((t, K, d) => {
+      K.mode(d, t, 48, 0.4, 0.2, { f1: 30 }); K.burst(d, t, { type: 'lowpass', f: 600, f1: 120, q: 0.7, vol: 0.7, tau: 0.25, dur: 1.2, buf: 'brown' });
+      for (let n = 0; n < 8; n++) K.burst(d, t + 0.05 + n * K.R(0.04, 0.1), { type: 'bandpass', f: K.R(1500, 4000), q: 2, vol: 0.08, tau: 0.01 });
+    }),
+    beep: (hi) => snd((t, K, d) => K.sweep(d, t, { f0: hi ? 1320 : 880, f1: hi ? 1320 : 880, dur: 0.09, vol: 0.05, type: 'square', attack: 0.004 })),
+  };
+  const engineBed = (K, dst) => {
+    const A = K.ctx, src = K.loopSrc('brown'), lp = A.createBiquadFilter(), g = A.createGain(), hum = A.createOscillator(), hg = A.createGain();
+    lp.type = 'lowpass'; lp.frequency.value = 420; g.gain.value = 0; hum.type = 'sawtooth'; hum.frequency.value = 55; hg.gain.value = 0;
+    src.connect(lp).connect(g).connect(dst); hum.connect(hg).connect(dst); hum.start();
+    return { set(l) { g.gain.setTargetAtTime(0.35 * l, A.currentTime, 0.04); hg.gain.setTargetAtTime(0.012 * l, A.currentTime, 0.05); }, stop() { try { src.stop(); hum.stop(); } catch {} } };
+  };
+
+  function showFlash(text, ms = 1500, tone = '') {
+    flash = { text, until: performance.now() + ms, tone };
+    const el = $('mlPop'); if (!el) return;
+    el.textContent = text; el.hidden = false; el.className = `ml-pop ml-pop-in ${tone}`;
+    void el.offsetWidth;
+  }
+
+  function loop(now) {
+    raf = requestAnimationFrame(loop);
+    if (!V) return;
+    stepFlight(now);
+    (gl || flat)?.draw(now);
+    const g = G(), playing = S.phase === 'playing' && !S.paused;
+    window.Snd?.bed('lander.engine', engineBed).set(playing && fl && !fl.done && fl.on ? 1 : 0);
+    // post my position for the others' ghosts (about 7 times a second)
+    if (fl && !fl.done && V.stage === 'fly' && now - posAt > 140) { posAt = now; ctx.input({ at: [+fl.x.toFixed(2), +fl.y.toFixed(2), fl.k, fl.on ? 1 : 0] }); }
+    // the countdown
+    const cd = V.stage === 'count' && fl ? (fl.at - now) / 1000 : 0, c = Math.ceil(cd);
+    $('mlCount').hidden = !(V.stage === 'count' && S.phase === 'playing');
+    $('mlCount').textContent = cd > 0 ? String(c) : 'GO';
+    if (c !== lastCd) { if (c > 0 && c <= 3) ctx.sfx?.('tick'); lastCd = c; }
+    if (flash && now > flash.until) { flash = null; $('mlPop').hidden = true; }
+    // gauges: green when inside the landing limits
+    const hud = $('mlHud');
+    if (fl) {
+      const alt = Math.max(0, fl.y - ground(fl.x)), vy = -fl.vy, vx = Math.abs(fl.vx), ang = Math.abs(fl.k) * g.rot;
+      const set = (id, text, ok) => { const e = $(id); e.textContent = text; e.className = ok ? 'ok' : 'bad'; };
+      set('mlAlt', `⬇ ${alt.toFixed(0)} m`, alt > 15 || vy <= g.vyOk);
+      set('mlVy', `↓ ${vy.toFixed(1)}`, vy <= g.vyOk);
+      set('mlVx', `↔ ${vx.toFixed(1)}`, vx <= g.vxOk);
+      set('mlAng', `∠ ${Math.round(ang * 57.3)}°`, ang <= g.angOk);
+      hud.hidden = false;
+      const fuelS = fl.fuel / 30;
+      $('mlFuel').style.width = `${Math.min(100, (fl.fuel / g.tankMax) * 100)}%`;
+      $('mlFuel').classList.toggle('low', fuelS < 4);
+      $('mlFuelT').textContent = `⛽ ${fuelS.toFixed(1)}s`;
+      if (!fl.done && fuelS < 4 && fuelS > 0 && fl.on && now - beeped > 600) { beeped = now; SN.beep(fuelS < 2); }
+    } else {
+      hud.hidden = true;
+      const f = mine();
+      $('mlFuelT').textContent = f ? `⛽ ${(f.fuel / 30).toFixed(1)}s` : '';
+      $('mlFuel').style.width = f ? `${Math.min(100, (f.fuel / g.tankMax) * 100)}%` : '0';
+    }
+    drawMap(now);
+    const my = mine();
+    $('mlHint').textContent = S.phase !== 'playing' ? '' : V.stage === 'count' ? `Round ${V.round} of ${V.rounds}: pick a pad — ×3 is narrow and high.`
+      : fl && !fl.done ? (fl.fuel <= 0 ? '⛽ Out of fuel!' : 'Gentle now: green gauges mean a safe touchdown.')
+      : my?.res ? 'Watching the others come down…' : V.me == null ? 'Watching.' : '';
+    if (now - (loop.side || 0) > 400) { loop.side = now; renderSide(); }
+  }
+
+  // a strip map across the top: the whole moon, the pads, me and the ghosts
+  function drawMap(now) {
+    const c = $('mlMap'); if (!c) return;
+    const g = c.getContext?.('2d'); if (!g) return;
+    const w = c.clientWidth || 300, h = c.clientHeight || 40, dpr = Math.min(2, devicePixelRatio || 1);
+    if (c.width !== Math.round(w * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+    const W = c.width, H = c.height, sx = W / G().w, top = G().ceiling * 0.62, sy = H / top;
+    g.clearRect(0, 0, W, H);
+    g.fillStyle = '#9aa3b3'; g.beginPath(); g.moveTo(0, H);
+    V.h.forEach((y, i) => g.lineTo(i * G().seg * sx, H - y * sy));
+    g.lineTo(W, H); g.fill();
+    for (const [l, r, y, m] of V.pads) {
+      g.fillStyle = m === 3 ? '#ff5d8f' : m === 2 ? '#ffd23f' : '#5ce1a0'; g.fillRect(l * sx, H - y * sy - 2 * dpr, (r - l) * sx, 3 * dpr);
+    }
+    const dot = (x, y, col, r) => { g.fillStyle = col; g.beginPath(); g.arc(x * sx, Math.max(r, H - Math.min(top, y) * sy), r, 0, 7); g.fill(); };
+    for (const [i, o] of Object.entries(ghosts)) { const p = o.cur(now); dot(p[0], p[1], colorOf(+i), 2.5 * dpr); }
+    if (fl) dot(fl.x, fl.y, '#ffffff', 3.5 * dpr);
+  }
+
+  // ---------- three.js moon
+  function canvasTex(T, w, h, draw) {
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const g = c.getContext('2d'); if (g) draw(g, w, h);
+    return new T.CanvasTexture(c);
+  }
+
+  function make3d(stage) {
+    const T = window.THREE;
+    const renderer = GL3.renderer({}, { onLost: () => GL3.revive(stage, { build: () => { gl?.dispose(); gl = null; return (gl = make3d(stage)); }, flat: () => { flat ||= make2d(stage); }, unflat: () => { flat?.dispose?.(); flat = null; } }) });
+    if (!renderer) return null;
+    stage.prepend(renderer.domElement);
+    const scene = new T.Scene();
+    const camera = new T.PerspectiveCamera(45, 1, 0.5, 900);
+    const stg = GL3.stage(renderer, scene, {
+      exposure: 1.0, hemi: [0x8090b0, 0x111118, 0.35],
+      key: { i: 1.6, color: 0xfff6e8, pos: [-40, 60, 30], area: 50, near: 5, far: 200, map: 1024 },
+      sky: { top: 0x000005, horizon: 0x05060f, bottom: 0x05060f, band: 0.08, stars: 600, radius: 600 },
+      env: { accent: 0x445577, walls: 0x05060a, lamp: 0xffffff, glow: 1.2 },
+    });
+    const low = stg.low;
+    // the Earth, hanging in the black
+    const earthTex = canvasTex(T, 256, 128, (g, w, h) => {
+      g.fillStyle = '#1d4f9c'; g.fillRect(0, 0, w, h);
+      for (let k = 0; k < 18; k++) { g.fillStyle = '#3f8a4c'; g.beginPath(); g.ellipse(Math.random() * w, h * (0.2 + Math.random() * 0.6), 6 + Math.random() * 22, 4 + Math.random() * 12, Math.random() * 3, 0, 7); g.fill(); }
+      for (let k = 0; k < 40; k++) { g.fillStyle = 'rgba(255,255,255,0.75)'; g.beginPath(); g.ellipse(Math.random() * w, Math.random() * h, 8 + Math.random() * 30, 1.5 + Math.random() * 4, 0, 0, 7); g.fill(); }
+    });
+    const earth = new T.Mesh(new T.SphereGeometry(22, 32, 20), new T.MeshStandardMaterial({ map: earthTex, roughness: 0.8, emissive: 0x112244, emissiveIntensity: 0.35 }));
+    earth.position.set(-120, 210, -480); scene.add(earth);
+    // regolith texture
+    const rego = canvasTex(T, 256, 256, (g, w, h) => {
+      g.fillStyle = '#8b8d94'; g.fillRect(0, 0, w, h);
+      for (let k = 0; k < 5000; k++) { const v = 110 + Math.random() * 60 | 0; g.fillStyle = `rgb(${v},${v},${v + 4})`; g.fillRect(Math.random() * w, Math.random() * h, 1.5, 1.5); }
+      for (let k = 0; k < 40; k++) { const x = Math.random() * w, y = Math.random() * h, r = 2 + Math.random() * 10; g.strokeStyle = 'rgba(40,40,46,0.35)'; g.lineWidth = 1.5; g.beginPath(); g.arc(x, y, r, 0, 7); g.stroke(); g.fillStyle = 'rgba(60,60,66,0.25)'; g.beginPath(); g.arc(x + 0.5, y + 0.5, r * 0.8, 0, 7); g.fill(); }
+    });
+    rego.wrapS = rego.wrapT = T.RepeatWrapping; rego.repeat.set(14, 6);
+    const groundMat = new T.MeshStandardMaterial({ map: rego, roughness: 0.95, color: 0xb8bac2, flatShading: true, vertexColors: true });
+    const padLegMat = new T.MeshStandardMaterial({ map: rego, roughness: 0.95, color: 0xb8bac2, flatShading: true });
+    const world = new T.Group(); scene.add(world);
+    let terrain = null, padObjs = [];
+    // craters: a few dents in the scenery away from the flight line
+    function build() {
+      if (terrain) { world.remove(terrain); terrain.geometry.dispose(); }
+      for (const p of padObjs) { world.remove(p); p.traverse((m) => { m.geometry?.dispose(); if (m.material?.map) m.material.map.dispose(); }); }
+      padObjs = [];
+      const g = G(), h = V.h, nx = h.length, zs = [];
+      for (let z = -70; z <= 14; z += z < -20 ? 6 : 2) zs.push(z);
+      const seed = V.round * 977;
+      const rnd = (a) => { const s = Math.sin(a * 12.9898 + seed) * 43758.5453; return s - Math.floor(s); };
+      const craters = [];
+      for (let k = 0; k < 14; k++) craters.push([rnd(k) * g.w, -6 - rnd(k + 50) * 55, 3 + rnd(k + 90) * 9]);
+      const pos = [], idx = [], uv = [], cols = [];
+      for (let j = 0; j < zs.length; j++) {
+        const z = zs[j];
+        for (let i = 0; i < nx; i++) {
+          const x = i * g.seg;
+          let y = h[i];
+          const off = Math.max(0, Math.abs(z) - 3);
+          if (off > 0) {
+            // behind the flight line the ground falls away a little (the line you land on stays the skyline); in front it drops
+            const back = z < 0 ? -Math.min(14, off * 0.35) + 5 * Math.max(0, Math.sin(x / 21 + seed)) * Math.min(1, off / 40) : -off * 0.4;
+            y += back + Math.sin(x * 0.31 + z * 0.17 + seed) * Math.min(2.5, off * 0.2);
+            for (const [cx, cz, cr] of craters) {
+              const d = Math.hypot(x - cx, z - cz);
+              if (d < cr * 1.4) y += d < cr ? -Math.cos((d / cr) * Math.PI / 2) * cr * 0.35 : Math.sin(((d - cr) / (cr * 0.4)) * Math.PI) * cr * 0.12;
+            }
+          }
+          pos.push(x, y, z); uv.push(x / g.w, (z + 70) / 84);
+          const shade = z < -3 ? Math.max(0.38, 1 - (-3 - z) / 60) : z > 3 ? Math.max(0.6, 1 - (z - 3) / 20) : 1;   // the flight line brightest
+          cols.push(shade, shade, shade * 1.02);
+        }
+      }
+      for (let j = 0; j < zs.length - 1; j++) for (let i = 0; i < nx - 1; i++) {
+        const a = j * nx + i, b = a + 1, c = a + nx, d = c + 1;
+        idx.push(a, c, b, b, c, d);
+      }
+      const geo = new T.BufferGeometry();
+      geo.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new T.Float32BufferAttribute(uv, 2)); geo.setAttribute('color', new T.Float32BufferAttribute(cols, 3));
+      geo.setIndex(idx); geo.computeVertexNormals();
+      terrain = new T.Mesh(geo, groundMat); terrain.receiveShadow = true; world.add(terrain);
+      // pads: a slab with blinking edge lights and a big ×n sign
+      const padCol = { 1: '#5ce1a0', 2: '#ffd23f', 3: '#ff5d8f' };
+      for (const [l, r, y, m] of V.pads) {
+        const grp = new T.Group();
+        const slab = new T.Mesh(new T.BoxGeometry(r - l, 0.35, 6), new T.MeshStandardMaterial({ color: 0x9aa0aa, metalness: 0.6, roughness: 0.4 }));
+        slab.position.set((l + r) / 2, y - 0.12, 0); slab.receiveShadow = true; slab.castShadow = !low; grp.add(slab);
+        if (m === 3) { const leg = new T.Mesh(new T.BoxGeometry(r - l - 0.6, 6, 5), padLegMat); leg.position.set((l + r) / 2, y - 3.3, 0); grp.add(leg); }
+        const lightMat = new T.MeshBasicMaterial({ color: padCol[m] });
+        for (const x of [l + 0.3, r - 0.3]) for (const z of [-2.8, 2.8]) { const b = new T.Mesh(new T.SphereGeometry(0.18, 8, 6), lightMat); b.position.set(x, y + 0.15, z); grp.add(b); }
+        const stripe = new T.Mesh(new T.PlaneGeometry(r - l - 0.4, 0.5), lightMat); stripe.rotation.x = -Math.PI / 2; stripe.position.set((l + r) / 2, y + 0.07, 2.4); grp.add(stripe);
+        const sign = new T.Sprite(new T.SpriteMaterial({ map: canvasTex(T, 128, 64, (g, w, hh) => { g.fillStyle = padCol[m]; g.font = 'bold 52px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.shadowColor = '#000'; g.shadowBlur = 8; g.fillText(`×${m}`, w / 2, hh / 2); }), depthTest: false, transparent: true }));
+        sign.position.set((l + r) / 2, y + 3.2, 0); sign.scale.set(6, 3, 1); sign.userData.m = m; grp.add(sign);
+        grp.userData = { lightMat, m };
+        world.add(grp); padObjs.push(grp);
+      }
+      stg.relight?.();
+    }
+    // the lander: gold-foil descent stage, a silver cabin, four legs, an engine bell and a flame
+    function makeLander(col, ghost) {
+      const grp = new T.Group();
+      const op = ghost ? { transparent: true, opacity: 0.45, depthWrite: false } : {};
+      const foil = new T.MeshStandardMaterial({ color: ghost ? col : 0xd9a63a, metalness: ghost ? 0.1 : 0.85, roughness: 0.35, ...op });
+      const silver = new T.MeshStandardMaterial({ color: ghost ? col : 0xdfe3ea, metalness: ghost ? 0.1 : 0.7, roughness: 0.3, ...op });
+      const body = new T.Mesh(new T.CylinderGeometry(0.9, 1.0, 0.9, 8), foil); body.position.y = 1.15; grp.add(body);
+      const cab = new T.Mesh(new T.CylinderGeometry(0.62, 0.8, 0.8, 6), silver); cab.position.y = 2.0; grp.add(cab);
+      const win = new T.Mesh(new T.BoxGeometry(0.4, 0.22, 0.1), new T.MeshBasicMaterial({ color: ghost ? col : 0x1a2a44, ...op })); win.position.set(0, 2.1, 0.62); grp.add(win);
+      const band = new T.Mesh(new T.TorusGeometry(0.93, 0.07, 6, 16), new T.MeshStandardMaterial({ color: col, ...op })); band.rotation.x = Math.PI / 2; band.position.y = 1.55; grp.add(band);
+      const legMat = silver;
+      for (let n = 0; n < 4; n++) {
+        const a = n * Math.PI / 2 + Math.PI / 4, lx = Math.cos(a), lz = Math.sin(a);
+        const leg = new T.Mesh(new T.CylinderGeometry(0.05, 0.05, 1.3, 5), legMat);
+        leg.position.set(lx * 1.05, 0.6, lz * 1.05); leg.rotation.set(lz * 0.5, 0, -lx * 0.5); grp.add(leg);
+        const pad = new T.Mesh(new T.CylinderGeometry(0.22, 0.24, 0.06, 8), legMat); pad.position.set(lx * 1.35, 0.03, lz * 1.35); grp.add(pad);
+      }
+      const bell = new T.Mesh(new T.CylinderGeometry(0.22, 0.42, 0.45, 10, 1, true), new T.MeshStandardMaterial({ color: 0x555a66, metalness: 0.8, roughness: 0.4, side: T.DoubleSide, ...op })); bell.position.y = 0.55; grp.add(bell);
+      const flame = new T.Mesh(new T.ConeGeometry(0.35, 1.8, 12, 1, true), new T.MeshBasicMaterial({ color: 0xffb347, transparent: true, opacity: ghost ? 0.5 : 0.9, blending: T.AdditiveBlending, depthWrite: false }));
+      flame.rotation.x = Math.PI; flame.position.y = -0.4; flame.visible = false; grp.add(flame);
+      const core = new T.Mesh(new T.ConeGeometry(0.16, 1.0, 10, 1, true), new T.MeshBasicMaterial({ color: 0xbfe6ff, transparent: true, opacity: 0.9, blending: T.AdditiveBlending, depthWrite: false }));
+      core.rotation.x = Math.PI; core.position.y = 0.0; flame.add(core); core.position.y = -0.3;
+      grp.traverse((m) => { if (m.isMesh && !ghost && m !== flame && m !== core) m.castShadow = !low; });
+      grp.userData = { flame };
+      return grp;
+    }
+    const mine3 = makeLander(0xffc83d, false); world.add(mine3);
+    const ring = new T.Mesh(new T.RingGeometry(1.5, 1.75, 32), new T.MeshBasicMaterial({ color: 0xffc83d, transparent: true, opacity: 0.7, depthWrite: false }));
+    ring.rotation.x = -Math.PI / 2; world.add(ring);
+    const ghost3 = {};
+    // exhaust and dust: one particle pool
+    const NP = 500, pPos = new Float32Array(NP * 3), pCol = new Float32Array(NP * 3), pVel = new Float32Array(NP * 3), pLife = new Float32Array(NP);
+    let pNext = 0;
+    const pGeo = new T.BufferGeometry();
+    pGeo.setAttribute('position', new T.BufferAttribute(pPos, 3)); pGeo.setAttribute('color', new T.BufferAttribute(pCol, 3));
+    const pts = new T.Points(pGeo, new T.PointsMaterial({ size: 0.35, vertexColors: true, transparent: true, depthWrite: false, blending: T.AdditiveBlending }));
+    pts.frustumCulled = false; world.add(pts);
+    for (let k = 0; k < NP; k++) pPos[k * 3 + 1] = -999;
+    const tmpC = new T.Color();
+    function emit(x, y, z, vx, vy, vz, col, life, spread = 1) {
+      const j = pNext; pNext = (pNext + 1) % NP;
+      pPos[j * 3] = x; pPos[j * 3 + 1] = y; pPos[j * 3 + 2] = z;
+      pVel[j * 3] = vx + (Math.random() - 0.5) * spread; pVel[j * 3 + 1] = vy + (Math.random() - 0.5) * spread; pVel[j * 3 + 2] = vz + (Math.random() - 0.5) * spread;
+      tmpC.set(col); pCol[j * 3] = tmpC.r; pCol[j * 3 + 1] = tmpC.g; pCol[j * 3 + 2] = tmpC.b;
+      pLife[j] = life;
+    }
+    function tickParts(dt) {
+      for (let j = 0; j < NP; j++) {
+        if (pLife[j] <= 0) continue;
+        pLife[j] -= dt;
+        if (pLife[j] <= 0) { pPos[j * 3 + 1] = -999; continue; }
+        pVel[j * 3 + 1] -= 1.62 * dt;
+        pPos[j * 3] += pVel[j * 3] * dt; pPos[j * 3 + 1] += pVel[j * 3 + 1] * dt; pPos[j * 3 + 2] += pVel[j * 3 + 2] * dt;
+        const gy = ground(Math.max(0, Math.min(G().w, pPos[j * 3])));
+        if (pPos[j * 3 + 1] < gy && Math.abs(pPos[j * 3 + 2]) < 3) { pPos[j * 3 + 1] = gy; pVel[j * 3 + 1] *= -0.2; pVel[j * 3] *= 0.6; }
+        const f = Math.min(1, pLife[j] * 2); pCol[j * 3] *= 0.985 + 0.015 * f; pCol[j * 3 + 1] *= 0.97; pCol[j * 3 + 2] *= 0.97;
+      }
+      pGeo.attributes.position.needsUpdate = true; pGeo.attributes.color.needsUpdate = true;
+    }
+    function dust(x, y, n) { if (calm()) n = Math.ceil(n / 3); for (let k = 0; k < n; k++) { const a = Math.random() * 6.283; emit(x, y + 0.2, 0, Math.cos(a) * 4, Math.random() * 1.5, Math.sin(a) * 4, '#8a8a90', 1.2 + Math.random(), 0.5); } }
+    function boom(x, y) {
+      const n = calm() ? 30 : 110;
+      for (let k = 0; k < n; k++) { const a = Math.random() * 6.283, e = Math.random() * 1.4, s = 3 + Math.random() * 9; emit(x, y + 1, 0, Math.cos(a) * Math.cos(e) * s, Math.sin(e) * s, Math.sin(a) * Math.cos(e) * s, k % 3 ? '#ffb347' : '#ffffff', 0.8 + Math.random() * 1.2, 0.5); }
+    }
+
+    let aspect = 1, lastDraw = 0, camX = V ? G().w / 2 : 80, camY = 60, camD = 120;
+    function resize() {
+      const w = stage.clientWidth || 320, h = stage.clientHeight || 320;
+      renderer.setSize(w, h); camera.aspect = aspect = w / h; camera.updateProjectionMatrix();
+    }
+    const tv = () => Math.tan((camera.fov * Math.PI) / 360);
+    function draw(now) {
+      if (!V) return;
+      if (!terrain || build.round !== V.round) { build.round = V.round; build(); }
+      const dt = Math.min(0.1, (now - lastDraw) / 1000); lastDraw = now;
+      const g = G();
+      // camera: the whole moon before the start, then riding with my lander (closer as it gets low)
+      let tx, ty, td;
+      if (fl && V.stage !== 'between') {
+        const alt = Math.max(0, fl.y - ground(fl.x));
+        td = Math.max(20, Math.min(70, 18 + alt * 0.55)); tx = fl.x; ty = fl.y - Math.min(alt, td * tv()) * 0.45;
+        if (fl.done) { td = 46; ty = fl.y + 6; }   // down (or in pieces): pull back to watch the others come in
+        if (V.stage === 'count') { td = Math.max(g.w * 0.5 / (tv() * aspect), 60) ; tx = g.w / 2; ty = 45; }
+      } else {
+        td = Math.max(g.w * 0.52 / (tv() * aspect), 70); tx = g.w / 2; ty = 40;
+      }
+      const ease = Math.min(1, dt * (V.stage === 'count' ? 1.2 : 3));
+      camX += (tx - camX) * ease; camY += (ty - camY) * ease; camD += (td - camD) * Math.min(1, dt * 1.6);
+      camera.position.set(camX, camY + camD * 0.22, camD); camera.lookAt(camX, camY, 0);
+      GL3.tickShake(camera, dt); stg.follow(camera);
+      // the key light's shadow box rides along
+      if (stg.key) { stg.key.position.set(camX - 40, 60, 30); stg.key.target.position.set(camX, 20, 0); }
+      // my lander
+      mine3.visible = !!fl && !(fl.done && fl.done.how === 'crash');
+      if (fl) {
+        mine3.position.set(fl.x, fl.y, 0); mine3.rotation.z = -fl.k * g.rot;
+        const fla = mine3.userData.flame; fla.visible = !fl.done && fl.on;
+        if (fla.visible) { fla.scale.set(1, 0.8 + Math.random() * 0.5, 1); if (!calm()) {
+          const s = g.sin[fl.k + g.kMax], c = g.cos[fl.k + g.kMax];
+          for (let k = 0; k < 3; k++) emit(fl.x - s * 0.8, fl.y + 0.2 - c * 0.8, (Math.random() - 0.5) * 0.4, -s * 14 + fl.vx, -c * 14 + fl.vy, 0, k ? '#ffb347' : '#fff1c1', 0.35 + Math.random() * 0.25, 2);
+          const alt = fl.y - ground(fl.x);
+          if (alt < 12 && Math.random() < 0.8) dust(fl.x + (Math.random() - 0.5) * 3, ground(fl.x), 2);
+        } }
+        ring.visible = !fl.done; ring.position.set(fl.x, ground(fl.x) + 0.08, 0);
+        ring.material.opacity = 0.35 + 0.35 * Math.max(0, 1 - (fl.y - ground(fl.x)) / 40);
+      } else ring.visible = false;
+      // ghosts: each rival a little behind the flight line so they don't sit on top of me
+      for (const [k, o] of Object.entries(ghosts)) {
+        const i = +k;
+        let gh = ghost3[i];
+        if (!gh) { gh = ghost3[i] = makeLander(colorOf(i), true); world.add(gh); }
+        const p = o.cur(now);
+        gh.visible = true; gh.position.set(p[0], p[1], -3 - (i % 3) * 2.2); gh.rotation.z = -p[2] * g.rot;
+        gh.userData.flame.visible = !!p[3]; if (p[3]) gh.userData.flame.scale.set(1, 0.8 + Math.random() * 0.5, 1);
+      }
+      for (const [k, gh] of Object.entries(ghost3)) if (!ghosts[k]) gh.visible = false;
+      // pad lights blink
+      const blink = Math.floor(now / 500) % 2;
+      for (const p of padObjs) p.userData.lightMat.color.set(blink ? (p.userData.m === 3 ? 0xff5d8f : p.userData.m === 2 ? 0xffd23f : 0x5ce1a0) : 0x333333);
+      earth.rotation.y += dt * 0.02;
+      tickParts(dt);
+      renderer.render(scene, camera);
+    }
+    const shake = (a) => GL3.shake(camera, a);
+    function dispose() { stg.dispose(); renderer.dispose(); renderer.domElement.remove(); }
+    resize();
+    return { draw, resize, dispose, shake, dust, boom, rebuild() { build.round = -1; } };
+  }
+
+  // ---------- flat fallback: a side view riding with my lander
+  function make2d(stage) {
+    const canvas = document.createElement('canvas'); canvas.className = 'ml-flat'; stage.prepend(canvas);
+    const g = canvas.getContext('2d');
+    if (!g) { stage.append('Your browser cannot draw this game.'); return null; }
+    const pops = [];
+    const stars = Array.from({ length: 90 }, () => [Math.random(), Math.random()]);
+    function resize() {
+      const dpr = Math.min(devicePixelRatio || 1, 2);
+      canvas.width = Math.round((stage.clientWidth || 320) * dpr); canvas.height = Math.round((stage.clientHeight || 300) * dpr);
+      canvas.style.width = '100%'; canvas.style.height = '100%';
+    }
+    function draw(now) {
+      if (!V) return;
+      if (!canvas.width) resize();
+      const W = canvas.width, H = canvas.height, gg = G();
+      const alt = fl ? Math.max(0, fl.y - ground(fl.x)) : 60;
+      const span = fl && V.stage === 'fly' ? Math.max(40, Math.min(110, 40 + alt * 1.1)) : gg.w;
+      const k = W / span, cx = fl && V.stage === 'fly' ? fl.x : gg.w / 2, cy = fl && V.stage === 'fly' ? fl.y - alt * 0.4 : 40;
+      const X = (x) => W / 2 + (x - cx) * k, Y = (y) => H * 0.55 - (y - cy) * k;
+      g.fillStyle = '#05060f'; g.fillRect(0, 0, W, H);
+      g.fillStyle = '#ffffffaa'; for (const [a, b] of stars) g.fillRect(a * W, b * H, 1.5, 1.5);
+      g.fillStyle = '#8b8d94'; g.beginPath(); g.moveTo(X(0), H);
+      V.h.forEach((y, i) => g.lineTo(X(i * gg.seg), Y(y)));
+      g.lineTo(X(gg.w), H); g.fill();
+      for (const [l, r, y, m] of V.pads) {
+        g.fillStyle = m === 3 ? '#ff5d8f' : m === 2 ? '#ffd23f' : '#5ce1a0'; g.fillRect(X(l), Y(y) - 3, (r - l) * k, 4);
+        g.font = `bold ${Math.max(12, 2.2 * k)}px sans-serif`; g.textAlign = 'center'; g.fillText(`×${m}`, X((l + r) / 2), Y(y) - 8);
+      }
+      const lander = (x, y, kk, on, col, a) => {
+        g.save(); g.globalAlpha = a; g.translate(X(x), Y(y)); g.rotate(kk * gg.rot);
+        const s = Math.max(6, k * 1.1);
+        g.fillStyle = col; g.fillRect(-s, -s * 1.8, s * 2, s * 1.2);
+        g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); g.moveTo(-s, -s * 0.6); g.lineTo(-s * 1.4, 0); g.moveTo(s, -s * 0.6); g.lineTo(s * 1.4, 0); g.stroke();
+        if (on) { g.fillStyle = '#ffb347'; g.beginPath(); g.moveTo(-s * 0.4, -s * 0.5); g.lineTo(0, s * (1 + Math.random() * 0.6)); g.lineTo(s * 0.4, -s * 0.5); g.fill(); }
+        g.restore();
+      };
+      for (const [i, o] of Object.entries(ghosts)) { const p = o.cur(now); lander(p[0], p[1], p[2], p[3], colorOf(+i), 0.45); }
+      if (fl && !(fl.done && fl.done.how === 'crash')) lander(fl.x, fl.y, fl.k, !fl.done && fl.on, '#d9a63a', 1);
+      for (let j = pops.length - 1; j >= 0; j--) {
+        const p = pops[j], t = (now - p.at) / 700;
+        if (t >= 1) { pops.splice(j, 1); continue; }
+        g.globalAlpha = 1 - t; g.strokeStyle = p.col; g.lineWidth = 3;
+        g.beginPath(); g.arc(X(p.x), Y(p.y), (1 + t * p.size) * k, 0, 7); g.stroke();
+      }
+      g.globalAlpha = 1;
+    }
+    resize();
+    return {
+      draw, resize, dispose() { canvas.remove(); },
+      dust: (x, y) => pops.push({ x, y, col: '#aaa', size: 3, at: performance.now() }),
+      boom: (x, y) => pops.push({ x, y, col: '#ffb347', size: 8, at: performance.now() }),
+    };
+  }
+
+  const turnText = (s) => (s.phase === 'playing' ? `🚀 Moon Lander — round ${s.lander.round} of ${s.lander.rounds}` : null);
+  const myMove = (s) => s.phase === 'playing' && s.lander.stage === 'fly' && s.lander.me != null && !s.lander.fliers[s.lander.me]?.res;
+
+  return { mount, render, unmount, fast, turnText, myMove, focus: true, replay };
+})();

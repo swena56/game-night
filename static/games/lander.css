@@ -1,0 +1,36 @@
+/* lander: Moon Lander's own rules, loaded with static/games/lander.js (needUI in app.js). Shared pieces and the
+   theme tokens live in static/style.css, which always loads first. */
+.ml { max-width: 760px; margin: 0 auto; overscroll-behavior: none; user-select: none; -webkit-user-select: none; }
+.ml-stage { position: relative; height: clamp(300px, calc(var(--room) - 170px), 640px); border-radius: var(--radius); overflow: hidden; background: #05060f; }
+.ml-stage > canvas:not(.ml-map) { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.ml-map { position: absolute; top: 6px; left: 8px; right: 8px; width: calc(100% - 16px); height: 38px; z-index: 2; pointer-events: none;
+  background: #ffffff0d; border-radius: 8px; }
+.ml-hud { position: absolute; top: 50px; left: 8px; display: flex; flex-direction: column; gap: 4px; z-index: 2; pointer-events: none;
+  font: 800 14px/1.2 var(--font-display); font-variant-numeric: tabular-nums; }
+.ml-hud[hidden] { display: none; }
+.ml-hud span { background: #000a; border-radius: 999px; padding: 2px 9px; border: 1px solid transparent; }
+.ml-hud span.ok { color: #7dffb2; border-color: #7dffb244; }
+.ml-hud span.bad { color: #ff8a8a; border-color: #ff8a8a44; }
+.ml-fuel { position: absolute; top: 50px; right: 8px; width: 110px; height: 22px; border-radius: 999px; background: #000a; overflow: hidden; z-index: 2; pointer-events: none; border: 1px solid #ffffff33; }
+.ml-fuel i { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #ffb347, #ffd23f); transition: width .1s; }
+.ml-fuel i.low { background: linear-gradient(90deg, #ff3d5a, #ff8a5a); }
+.ml-fuel b { position: relative; display: block; text-align: center; font: 800 13px/22px var(--font-display); color: #fff; text-shadow: 0 1px 2px #000; }
+.ml-count { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); z-index: 3; font-size: clamp(56px, 18vw, 110px); font-weight: 800;
+  color: #fff; text-shadow: 0 4px 0 #0006, 0 0 26px #7fa7ff99; pointer-events: none; }
+.ml-pop { position: absolute; left: 50%; top: 26%; transform: translateX(-50%); z-index: 3; font-size: clamp(22px, 7vw, 40px); font-weight: 800; white-space: nowrap;
+  color: #fff; text-shadow: 0 2px 0 #000a, 0 0 18px #000a; pointer-events: none; }
+.ml-pop.good { color: #7dffb2; } .ml-pop.bad { color: #ff8a8a; }
+.ml-pop-in { animation: mlPop 2.4s ease-out both; }
+@keyframes mlPop { 0% { transform: translateX(-50%) scale(.4); opacity: 0; } 10% { transform: translateX(-50%) scale(1.12); opacity: 1; } 18% { transform: translateX(-50%) scale(1); } 85% { opacity: 1; } 100% { transform: translate(-50%, -18px); opacity: 0; } }
+.ml-done { position: absolute; left: 50%; top: 52%; transform: translate(-50%, -50%); width: min(88%, 340px); max-height: 80%; overflow: auto;
+  background: #0b1020ee; color: #fff; border: 1px solid #ffffff33; border-radius: var(--radius); padding: 10px 14px; z-index: 4; }
+.ml-done h3 { margin: 0 0 6px; text-align: center; font-size: 16px; }
+.ml-ctl { display: grid; grid-template-columns: 1fr 1.6fr 1fr; gap: 8px; margin-top: 8px; transition: opacity .2s; touch-action: none; }
+.ml-ctl[hidden] { display: none; }
+.ml-ctl button { min-height: 60px; font-size: 24px; touch-action: none; }
+.ml-ctl .ml-burn { font-size: 20px; background: linear-gradient(#ff9a3d, #e8673a); color: #fff; border: 0; }
+.ml-ctl button.on { transform: scale(.96); filter: brightness(1.2); box-shadow: 0 0 0 3px #ffd23f88; }
+.ml-ctl.ml-off { opacity: .45; }
+.ml-what { font-size: 12px; opacity: .8; margin-right: 6px; }
+body.focus .ml-stage { height: max(260px, calc(var(--room) - 190px)); }
+@media (prefers-reduced-motion: reduce) { .ml-pop-in { animation: none; } }
