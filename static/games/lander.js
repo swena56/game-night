@@ -369,20 +369,46 @@ UI.lander = (() => {
     });
     const earth = new T.Mesh(new T.SphereGeometry(22, 32, 20), new T.MeshStandardMaterial({ map: earthTex, roughness: 0.8, emissive: 0x112244, emissiveIntensity: 0.35 }));
     earth.position.set(-120, 210, -480); scene.add(earth);
+    const halo = new T.Sprite(new T.SpriteMaterial({ map: canvasTex(T, 128, 128, (g, w, h) => {
+      const gr = g.createRadialGradient(w / 2, h / 2, w * 0.3, w / 2, h / 2, w / 2); gr.addColorStop(0, 'rgba(120,180,255,0.55)'); gr.addColorStop(1, 'rgba(60,120,255,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, w, h);
+    }), transparent: true, depthWrite: false, blending: T.AdditiveBlending }));
+    halo.scale.setScalar(64); halo.position.copy(earth.position).add(new T.Vector3(0, 0, -2)); scene.add(halo);
+    // gold foil: crinkled patches, so the light breaks up across the descent stage
+    const foilTex = canvasTex(T, 256, 256, (g, w, h) => {
+      g.fillStyle = '#c99630'; g.fillRect(0, 0, w, h);
+      for (let k = 0; k < 160; k++) {
+        const x = Math.random() * w, y = Math.random() * h, l = 150 + Math.random() * 100 | 0;
+        g.fillStyle = `rgba(${l},${l * 0.72 | 0},${l * 0.25 | 0},0.55)`; g.beginPath(); g.moveTo(x, y);
+        for (let n = 0; n < 4; n++) g.lineTo(x + (Math.random() - 0.5) * 40, y + (Math.random() - 0.5) * 40);
+        g.fill();
+      }
+    });
     // regolith texture
-    const rego = canvasTex(T, 256, 256, (g, w, h) => {
+    const rego = canvasTex(T, 512, 512, (g, w, h) => {
       g.fillStyle = '#8b8d94'; g.fillRect(0, 0, w, h);
-      for (let k = 0; k < 5000; k++) { const v = 110 + Math.random() * 60 | 0; g.fillStyle = `rgb(${v},${v},${v + 4})`; g.fillRect(Math.random() * w, Math.random() * h, 1.5, 1.5); }
+      for (let k = 0; k < 16000; k++) { const v = 110 + Math.random() * 60 | 0; g.fillStyle = `rgb(${v},${v},${v + 4})`; g.fillRect(Math.random() * w, Math.random() * h, 1.5, 1.5); }
       for (let k = 0; k < 40; k++) { const x = Math.random() * w, y = Math.random() * h, r = 2 + Math.random() * 10; g.strokeStyle = 'rgba(40,40,46,0.35)'; g.lineWidth = 1.5; g.beginPath(); g.arc(x, y, r, 0, 7); g.stroke(); g.fillStyle = 'rgba(60,60,66,0.25)'; g.beginPath(); g.arc(x + 0.5, y + 0.5, r * 0.8, 0, 7); g.fill(); }
     });
-    rego.wrapS = rego.wrapT = T.RepeatWrapping; rego.repeat.set(14, 6);
-    const groundMat = new T.MeshStandardMaterial({ map: rego, roughness: 0.95, color: 0xb8bac2, vertexColors: true });
+    rego.wrapS = rego.wrapT = T.RepeatWrapping; rego.repeat.set(14, 6); rego.anisotropy = low ? 1 : Math.min(8, renderer.capabilities.getMaxAnisotropy?.() || 1);
+    // a height map for the grain: little crater rims and pebbles that catch the low sun
+    const bump = low ? null : canvasTex(T, 512, 512, (g, w, h) => {
+      g.fillStyle = '#808080'; g.fillRect(0, 0, w, h);
+      for (let k = 0; k < 9000; k++) { const v = 90 + Math.random() * 80 | 0; g.fillStyle = `rgb(${v},${v},${v})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
+      for (let k = 0; k < 70; k++) {
+        const x = Math.random() * w, y = Math.random() * h, r = 3 + Math.random() * 16;
+        const gr = g.createRadialGradient(x, y, 0, x, y, r * 1.3); gr.addColorStop(0, 'rgba(40,40,40,0.8)'); gr.addColorStop(0.75, 'rgba(70,70,70,0.4)'); gr.addColorStop(0.85, 'rgba(200,200,200,0.6)'); gr.addColorStop(1, 'rgba(128,128,128,0)');
+        g.fillStyle = gr; g.beginPath(); g.arc(x, y, r * 1.3, 0, 7); g.fill();
+      }
+    });
+    if (bump) { bump.wrapS = bump.wrapT = T.RepeatWrapping; bump.repeat.copy(rego.repeat); }
+    const groundMat = new T.MeshStandardMaterial({ map: rego, roughness: 0.95, color: 0xb8bac2, vertexColors: true, bumpMap: bump, bumpScale: 0.5 });
     const padLegMat = new T.MeshStandardMaterial({ map: rego, roughness: 0.95, color: 0xb8bac2, flatShading: true });
     const world = new T.Group(); scene.add(world);
     const beaconMat = new T.MeshBasicMaterial({ color: 0xff4040 }); beaconMat.shared = true;
     let terrain = null, padObjs = [], extras = new T.Group();
     world.add(extras);
-    const disposeTree = (o) => o.traverse((m) => { m.geometry?.dispose(); if (m.material && !m.material.shared) { m.material.map?.dispose(); m.material.dispose?.(); } });
+    const disposeTree = (o) => o.traverse((m) => { m.geometry?.dispose(); if (m.material && !m.material.shared) { if (m.material.map !== glowTex) m.material.map?.dispose(); m.material.dispose?.(); } });
     const rockGeo = new T.IcosahedronGeometry(1, 0), rockMat = new T.MeshStandardMaterial({ map: rego, color: 0x9a9ca4, roughness: 1, flatShading: true });
     rockMat.shared = true;
     // the scenery: the flight line in the middle, the moon running on past both ends and away behind, ridges on the horizon
@@ -409,7 +435,7 @@ UI.lander = (() => {
         const off = Math.max(0, Math.abs(z) - 3);
         if (off > 0) {
           // behind the flight line the ground falls away a little (the line you land on stays the skyline); in front it drops
-          const back = z < 0 ? -Math.min(16, off * 0.3) + 7 * Math.max(0, Math.sin(x / 21 + seed)) * Math.min(1, off / 40) : -off * 0.4;
+          const back = z < 0 ? -Math.min(16, off * 0.3) + 7 * Math.max(0, Math.sin(x / 21 + seed)) * Math.min(1, off / 40) : -Math.min(off, 11) * 0.4 - Math.max(0, off - 11) * 0.6;
           y += back + Math.sin(x * 0.31 + z * 0.17 + seed) * Math.min(2.5, off * 0.2);
           for (const [cx, cz, cr] of craters) {
             const d = Math.hypot(x - cx, z - cz);
@@ -424,11 +450,11 @@ UI.lander = (() => {
       for (let i = 0; i < h.length; i++) xs.push(i * g.seg);
       for (let x = g.w + 4; x <= g.w + 160; x += 4) xs.push(x);
       const zs = [];
-      for (let z = -150; z <= 14; z += z < -70 ? 10 : z < -20 ? 5 : 2) zs.push(z);
+      for (let z = -150; z <= 60; z += z < -70 ? 10 : z < -20 ? 5 : z < 14 ? 2 : 6) zs.push(z);
       const nx = xs.length, pos = [], idx = [], uv = [], cols = [];
       for (const z of zs) for (const x of xs) {
         const y = heightAt(x, z);
-        pos.push(x, y, z); uv.push((x + 160) / (g.w + 320) * 2.4, (z + 150) / 164 * 2);
+        pos.push(x, y, z); uv.push((x + 160) / (g.w + 320) * 2.4, (z + 150) / 164 * 2);   // (v runs past 2 in front: the texture repeats)
         const inside = x >= 0 && x <= g.w;
         let shade = z < -3 ? Math.max(0.2, 1 - (-3 - z) / 65) : z > 3 ? Math.max(0.6, 1 - (z - 3) / 20) : 1;   // the flight line brightest
         if (!inside) shade *= 0.82;
@@ -486,7 +512,11 @@ UI.lander = (() => {
         const stripe = new T.Mesh(new T.PlaneGeometry(r - l - 0.4, 0.5), lightMat); stripe.rotation.x = -Math.PI / 2; stripe.position.set((l + r) / 2, y + 0.07, 2.4); grp.add(stripe);
         const sign = new T.Sprite(new T.SpriteMaterial({ map: canvasTex(T, 128, 64, (g, w, hh) => { g.fillStyle = padCol[m]; g.font = 'bold 52px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.shadowColor = '#000'; g.shadowBlur = 8; g.fillText(`×${m}`, w / 2, hh / 2); }), depthTest: false, transparent: true }));
         sign.position.set((l + r) / 2, y + 3.2, 0); sign.scale.set(6, 3, 1); sign.userData.m = m; grp.add(sign);
-        grp.userData = { lightMat, m };
+        if (!low) for (const x of [l + 0.3, r - 0.3]) for (const z of [-2.8, 2.8]) {
+          const gs = new T.Sprite(new T.SpriteMaterial({ map: glowTex, color: padCol[m], transparent: true, depthWrite: false, blending: T.AdditiveBlending }));
+          gs.position.set(x, y + 0.2, z); gs.scale.setScalar(1.6); grp.add(gs); (grp.glows ||= []).push(gs);
+        }
+        grp.userData = { lightMat, m, glows: grp.glows || [], l, r };
         world.add(grp); padObjs.push(grp);
       }
       stg.relight?.();
@@ -495,7 +525,7 @@ UI.lander = (() => {
     function makeLander(col, ghost) {
       const grp = new T.Group();
       const op = ghost ? { transparent: true, opacity: 0.45, depthWrite: false } : {};
-      const foil = new T.MeshStandardMaterial({ color: ghost ? col : 0xd9a63a, metalness: ghost ? 0.1 : 0.85, roughness: 0.35, ...op });
+      const foil = new T.MeshStandardMaterial({ color: ghost ? col : 0xffffff, map: ghost ? null : foilTex, bumpMap: ghost || low ? null : foilTex, bumpScale: 0.04, metalness: ghost ? 0.1 : 0.85, roughness: 0.32, ...op });
       const silver = new T.MeshStandardMaterial({ color: ghost ? col : 0xdfe3ea, metalness: ghost ? 0.1 : 0.7, roughness: 0.3, ...op });
       const body = new T.Mesh(new T.CylinderGeometry(0.9, 1.0, 0.9, 8), foil); body.position.y = 1.15; grp.add(body);
       const cab = new T.Mesh(new T.CylinderGeometry(0.62, 0.8, 0.8, 6), silver); cab.position.y = 2.0; grp.add(cab);
@@ -514,7 +544,19 @@ UI.lander = (() => {
       const core = new T.Mesh(new T.ConeGeometry(0.16, 1.0, 10, 1, true), new T.MeshBasicMaterial({ color: 0xbfe6ff, transparent: true, opacity: 0.9, blending: T.AdditiveBlending, depthWrite: false }));
       core.rotation.x = Math.PI; core.position.y = 0.0; flame.add(core); core.position.y = -0.3;
       grp.traverse((m) => { if (m.isMesh && !ghost && m !== flame && m !== core) m.castShadow = !low; });
-      grp.userData = { flame };
+      // a ladder down the front leg, an antenna dish, four thruster quads
+      const rail = new T.CylinderGeometry(0.025, 0.025, 1.0, 4);
+      for (const dx of [-0.13, 0.13]) { const r = new T.Mesh(rail, silver); r.position.set(dx, 0.75, 1.02); r.rotation.x = -0.35; grp.add(r); }
+      for (let n = 0; n < 4; n++) { const st = new T.Mesh(new T.BoxGeometry(0.28, 0.03, 0.05), silver); st.position.set(0, 0.42 + n * 0.22, 0.9 + n * 0.08); grp.add(st); }
+      const mast = new T.Mesh(new T.CylinderGeometry(0.03, 0.03, 0.6, 4), silver); mast.position.set(0.35, 2.65, -0.2); grp.add(mast);
+      const dish = new T.Mesh(new T.SphereGeometry(0.28, 12, 6, 0, Math.PI * 2, 0, Math.PI / 3), new T.MeshStandardMaterial({ color: ghost ? col : 0xf2f2f2, metalness: 0.3, roughness: 0.4, side: T.DoubleSide, ...op }));
+      dish.position.set(0.35, 2.95, -0.2); dish.rotation.set(-0.6, 0, 0.5); grp.add(dish);
+      const rcs = [];
+      for (const sx of [-1, 1]) {
+        const q = new T.Mesh(new T.BoxGeometry(0.14, 0.2, 0.2), silver); q.position.set(sx * 0.78, 2.0, 0); grp.add(q);
+        rcs.push(q);
+      }
+      grp.userData = { flame, rcs };
       return grp;
     }
     const mine3 = makeLander(0xffc83d, false); world.add(mine3);
@@ -593,7 +635,19 @@ UI.lander = (() => {
     const scorchMat = new T.MeshBasicMaterial({ map: scorchTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
     const ringMat = () => new T.MeshBasicMaterial({ color: 0xffc070, transparent: true, opacity: 0.9, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide });
     const ringGeo = new T.RingGeometry(0.85, 1, 48), shardGeo = new T.TetrahedronGeometry(0.28, 0), unit = new T.PlaneGeometry(1, 1);
-    const flashLight = new T.PointLight(0xffa850, 0, 40, 2); world.add(flashLight);
+    // one point light (each one costs every lit pixel): the engine's glow on the ground, or a crash's flash
+    const flashLight = low ? null : new T.PointLight(0xffa850, 0, 34, 2);
+    if (flashLight) world.add(flashLight);
+    let flashing = 0;
+    const nozzle = new T.Sprite(new T.SpriteMaterial({ map: glowTex, color: 0xffc080, transparent: true, depthWrite: false, blending: T.AdditiveBlending }));
+    nozzle.position.set(0, 0.1, 0); nozzle.scale.setScalar(2.4); nozzle.visible = false; mine3.add(nozzle);
+    // a soft shadow straight below: the best way to judge height near the ground
+    const blob = new T.Mesh(new T.CircleGeometry(1, 28), new T.MeshBasicMaterial({ map: canvasTex(T, 64, 64, (g, w, h) => {
+      const gr = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); gr.addColorStop(0, 'rgba(0,0,0,0.9)'); gr.addColorStop(0.6, 'rgba(0,0,0,0.5)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, w, h);
+    }), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1 }));
+    blob.rotation.x = -Math.PI / 2; world.add(blob);
+    const trails = {};
     const wreck = new T.Group(); world.add(wreck);
     const fx = [], bits = [];
     const wp = new T.Vector3(), wq = new T.Quaternion();
@@ -605,7 +659,7 @@ UI.lander = (() => {
         sp.position.set(x, y + 1, z); sp.scale.setScalar(0.1); world.add(sp);
         fx.push({ m: sp, t: 0, life, kind: 'ball', size });
       }
-      if (!small) { flashLight.position.set(x, y + 2.5, z + 1); flashLight.intensity = low ? 0 : 6; }
+      if (!small && flashLight) { flashLight.position.set(x, y + 2.5, z + 1); flashLight.intensity = 7; flashing = 1; }
       // a shockwave ring racing across the ground
       const ring = new T.Mesh(ringGeo, ringMat()); ring.rotation.x = -Math.PI / 2; ring.position.set(x, y + 0.12, z); world.add(ring);
       fx.push({ m: ring, t: 0, life: 0.9, kind: 'ring', size: small ? 7 : 15 });
@@ -642,7 +696,7 @@ UI.lander = (() => {
         else { f.m.scale.setScalar(0.5 + f.size * (1 - (1 - u) ** 2)); f.m.material.opacity = 0.9 * (1 - u); }
         if (u >= 1) { world.remove(f.m); f.m.material.dispose(); fx.splice(k, 1); }
       }
-      if (flashLight.intensity > 0) flashLight.intensity = Math.max(0, flashLight.intensity - dt * 14);
+      if (flashing && flashLight) { flashLight.intensity = Math.max(0, flashLight.intensity - dt * 12); if (!flashLight.intensity) flashing = 0; }
       for (const b of bits) {
         if (b.rest) continue;
         const p = b.m.position;
@@ -697,9 +751,25 @@ UI.lander = (() => {
           const alt = fl.y - ground(fl.x);
           if (alt < 12 && Math.random() < 0.8) dust(fl.x + (Math.random() - 0.5) * 3, ground(fl.x), 2);
         } }
+        nozzle.visible = fla.visible; if (nozzle.visible) nozzle.scale.setScalar(2 + Math.random() * 0.8);
+        if (flashLight && !flashing) {
+          const s0 = g.sin[fl.k + g.kMax], c0 = g.cos[fl.k + g.kMax];
+          flashLight.position.set(fl.x - s0 * 1.2, fl.y - c0 * 1.2 + 0.3, 0.4); flashLight.intensity = fla.visible ? 3.5 + Math.random() : 0;
+        }
+        // thruster puffs when leaning
+        const rot = fl.done || fl.bits == null ? 0 : (fl.bits >> 1) - 1;
+        if (rot && !calm() && Math.random() < 0.7) {
+          const side = rot > 0 ? -1 : 1, c = Math.cos(fl.k * g.rot), s = Math.sin(fl.k * g.rot);
+          const lx = side * 0.9, ly = 2.0, wx = fl.x + lx * c + ly * s, wy = fl.y - lx * s + ly * c;
+          kick(wx, wy, 0.3, side * 3 * c + fl.vx, -side * 3 * s + fl.vy, (Math.random() - 0.5), 0.25, 0.95);
+        }
+        const galt = Math.max(0, fl.y - ground(fl.x));
+        blob.visible = !(fl.done && fl.done.how === 'crash') && galt < 60;
+        blob.position.set(fl.x, ground(fl.x) + 0.06, 0); blob.scale.setScalar(1.5 + galt * 0.05);
+        blob.material.opacity = 0.75 * Math.max(0, 1 - galt / 60);
         ring.visible = !fl.done; ring.position.set(fl.x, ground(fl.x) + 0.08, 0);
         ring.material.opacity = 0.35 + 0.35 * Math.max(0, 1 - (fl.y - ground(fl.x)) / 40);
-      } else ring.visible = false;
+      } else { ring.visible = false; blob.visible = false; nozzle.visible = false; if (flashLight && !flashing) flashLight.intensity = 0; }
       // ghosts: each rival a little behind the flight line so they don't sit on top of me
       for (const [k, o] of Object.entries(ghosts)) {
         const i = +k;
@@ -707,13 +777,29 @@ UI.lander = (() => {
         if (!gh) { gh = ghost3[i] = makeLander(colorOf(i), true); world.add(gh); }
         const p = o.cur(now);
         gh.visible = true; gh.position.set(p[0], p[1], -3 - (i % 3) * 2.2); gh.rotation.z = -p[2] * g.rot;
+        let tr = trails[i];
+        if (!tr) {
+          const tg = new T.BufferGeometry(); tg.setAttribute('position', new T.BufferAttribute(new Float32Array(48 * 3), 3)); tg.setDrawRange(0, 0);
+          tr = trails[i] = { line: new T.Line(tg, new T.LineBasicMaterial({ color: colorOf(i), transparent: true, opacity: 0.35, depthWrite: false })), pts: [], at: 0 };
+          tr.line.frustumCulled = false; world.add(tr.line);
+        }
+        if (now - tr.at > 150) {
+          tr.at = now; tr.pts.push([p[0], p[1] + 1.2, gh.position.z]); if (tr.pts.length > 48) tr.pts.shift();
+          const a = tr.line.geometry.attributes.position; tr.pts.forEach((q, n) => a.setXYZ(n, q[0], q[1], q[2])); a.needsUpdate = true; tr.line.geometry.setDrawRange(0, tr.pts.length);
+        }
+        tr.line.visible = true;
         gh.userData.flame.visible = !!p[3]; if (p[3]) gh.userData.flame.scale.set(1, 0.8 + Math.random() * 0.5, 1);
       }
       for (const [k, gh] of Object.entries(ghost3)) if (!ghosts[k]) gh.visible = false;
+      for (const [k, tr] of Object.entries(trails)) if (!ghosts[k] || V.stage !== 'fly') { tr.line.visible = false; tr.pts.length = 0; }
       // pad lights blink
       const blink = Math.floor(now / 500) % 2;
       beaconMat.color.setHex(Math.floor(now / 700) % 2 ? 0xff4040 : 0x401010);
-      for (const p of padObjs) p.userData.lightMat.color.set(blink ? (p.userData.m === 3 ? 0xff5d8f : p.userData.m === 2 ? 0xffd23f : 0x5ce1a0) : 0x333333);
+      for (const p of padObjs) {
+        const u = p.userData, over = fl && !fl.done && fl.x >= u.l && fl.x <= u.r, lit = blink || over;
+        u.lightMat.color.set(lit ? (u.m === 3 ? 0xff5d8f : u.m === 2 ? 0xffd23f : 0x5ce1a0) : 0x333333);
+        for (const gs of u.glows) { gs.visible = lit; gs.scale.setScalar(over ? 2.2 + Math.sin(now / 120) * 0.4 : 1.6); }
+      }
       earth.rotation.y += dt * 0.02;
       tickParts(dt); tickDust(dt); tickFx(dt);
       renderer.render(scene, camera);
