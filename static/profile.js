@@ -101,6 +101,7 @@ const Profile = (() => {
     const played = games.reduce((s, [, g]) => s + g.played, 0), wins = games.reduce((s, [, g]) => s + g.wins, 0);
     const starSum = games.reduce((s, [, g]) => s + (g.stars || 0), 0);
     const body = el('div', 'record');
+    body.append(iconPicker());
     const stat = (big, small) => { const d = el('div', 'rec-stat'); d.append(el('b', '', big), el('small', '', small)); return d; };
     const head = el('div', 'rec-stats');
     head.append(stat(played, 'games'), stat(played ? Math.round((100 * wins) / played) + '%' : '–', `won (${wins})`),
@@ -146,6 +147,43 @@ const Profile = (() => {
     }
     body.append(el('p', 'hint', `Kept on this device since ${p.since}.`));
     return ask('', { title: '🏆 My record', body, ok: 'Close', cancel: '' });
+  }
+
+  // #144 pick your icon: Auto (the face your name gives you), a page of generated faces (🎲 for another page) or an
+  // emoji. Kept on this device; app.js sends it to every room you're in.
+  const EMOJI = ['🦊', '🐼', '🐸', '🐙', '🦁', '🐯', '🐨', '🐵', '🦄', '🐲', '🐧', '🦉', '🐢', '🦖', '🐝', '🦋', '🐳', '🦈', '🐺', '🐱',
+    '🐶', '🐰', '🦝', '🦔', '🍄', '🌵', '🌻', '🍀', '🔥', '⭐', '🌙', '⚡', '🎸', '🎲', '🚀', '👾', '🤖', '👻', '🎃', '🍕'];
+  let facePage = 0;
+  function iconPicker() {
+    const box = el('div', 'icon-box'), cur = load('gn.icon') || '';
+    box.append(el('h4', '', '🙂 Your icon'));
+    const grid = el('div', 'icon-pick');
+    const pickBtn = (val, fill, title) => {
+      const b = el('button', val === cur ? 'on' : ''); b.type = 'button'; b.title = title;
+      if (typeof fill === 'string') b.textContent = fill; else b.append(fill);
+      b.onclick = () => {
+        store('gn.icon', val || null);
+        grid.querySelectorAll('button').forEach((x) => x.classList.remove('on')); b.classList.add('on');
+        if (typeof S !== 'undefined' && S) { iconSentAt = 0; syncIcon(S); }
+      };
+      return b;
+    };
+    const auto = pickBtn('', 'Auto', 'The face your name gives you'); auto.classList.add('auto'); grid.append(auto);
+    const faces = el('span'); faces.style.display = 'contents';
+    const fillFaces = () => {
+      faces.innerHTML = '';
+      for (let k = 0; k < 12; k++) {
+        const val = `f:${facePage * 12 + k}`, f = el('span'); f.innerHTML = faceSVG(avatarFace(val));
+        faces.append(pickBtn(val, f.firstChild, 'A face'));
+      }
+    };
+    if (typeof faceSVG === 'function') { fillFaces(); grid.append(faces); }
+    const more = el('button', 'auto', '🎲'); more.type = 'button'; more.title = 'More faces';
+    more.onclick = () => { facePage = (facePage + 1) % 800; fillFaces(); };
+    grid.append(more);
+    for (const e of EMOJI) grid.append(pickBtn(e, e, 'Use ' + e));
+    box.append(grid);
+    return box;
   }
 
   // a random game not tried yet, else one with the fewest stars

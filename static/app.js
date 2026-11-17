@@ -292,8 +292,10 @@ function shapeDots(root) {
 const avatarCache = new Map();
 function avatar(p) {
   const a = el('span', 'avatar');
-  if (typeof faceSVG === 'function' && p?.name) {
-    const key = p.name.replace(/^🤖\s*/, '');
+  if (p?.icon && !p.icon.startsWith('f:')) {   // #144 an emoji icon on a disc in the player's colour
+    a.classList.add('avatar-emoji'); a.textContent = p.icon; a.style.setProperty('--ac', p.color || '#888');
+  } else if (typeof faceSVG === 'function' && p?.name) {
+    const key = p.icon || p.name.replace(/^🤖\s*/, '');
     if (!avatarCache.has(key)) avatarCache.set(key, faceSVG(avatarFace(key)));
     a.innerHTML = avatarCache.get(key);
   }
@@ -545,10 +547,19 @@ function leaveLocal() {
   store('unmask.session', null); history.replaceState(null, '', '/'); show('home');
 }
 
+// #144 the icon picked on this device goes to every room you're in (and again whenever you change it)
+let iconSentAt = 0;
+function syncIcon(s) {
+  const want = load('gn.icon') || null, mine = s.players?.find((p) => p.id === s.me?.id);
+  if (!mine || (mine.icon || null) === want || Date.now() - iconSentAt < 5000) return;
+  iconSentAt = Date.now();
+  quiet(act('icon', { icon: want || '' }));
+}
 function onState(s) {
   const prev = S;
   s.games ??= prev?.games ?? [];  // the server sends the game catalogue once per connection
   S = s; stateAt = performance.now();
+  syncIcon(s);
   history.replaceState(null, '', '?room=' + s.code);
   if (s.phase === 'playing' && prev?.phase !== 'playing' && s.gameId) {  // "Played lately" in the lobby (#67), this device only
     store('recentGames', [s.gameId, ...(load('recentGames') || []).filter((g) => g !== s.gameId)].slice(0, 6));

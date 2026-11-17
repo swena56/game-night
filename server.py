@@ -107,6 +107,7 @@ class Player:
         self.wins = 0
         self.bot = None  # difficulty level for computer players
         self.standin = False  # a bot is playing for this human while they're offline
+        self.icon = None  # #144 a picked avatar: 'f:<n>' (a generated face) or an emoji; None = the face from the name
         self.last_seen = time.time()
         self.shown_away = False
         self.last_chat = 0
@@ -639,6 +640,7 @@ class Room:
         "react": lambda r, p, a: r.react(p, a.get("emoji")),
         "chat": lambda r, p, a: r.chat_message(p, a.get("text")),
         "profile": lambda r, p, a: r.set_profile(p, a.get("name"), a.get("color")),
+        "icon": lambda r, p, a: r.set_icon(p, a.get("icon")),
         "ready": lambda r, p, a: r.toggle_ready(p),
         "kick": lambda r, p, a: r.kick(p, a.get("player")),
         "reset_scores": lambda r, p, a: r.reset_scores(p),
@@ -794,6 +796,18 @@ class Room:
             self.add_log(f"✏️ {p.name} is now {name}.")
         p.name, p.color = name, color
 
+    def set_icon(self, p, icon):
+        """#144 pick your avatar: a generated face ('f:<0–9999>') or one emoji; empty goes back to the face from your name."""
+        if icon in (None, ""):
+            p.icon = None
+            return
+        ok = isinstance(icon, str) and (
+            (icon.startswith("f:") and icon[2:].isdigit() and 1 <= len(icon) - 2 <= 4)
+            or (len(icon) <= 8 and not any(c.isascii() or c.isspace() for c in icon)))
+        if not ok:
+            raise GameError("Pick one of the icons.")
+        p.icon = icon
+
     def chat_message(self, p, text):
         text = " ".join(str(text or "").split())[:200]
         if not text:
@@ -871,7 +885,7 @@ class Room:
             "reactions": self.reactions,
             "log": [e for e in self.log if e["to"] is None or e["to"] == p.id or see_all][-80:],
             "players": [{
-                "id": o.id, "name": o.name, "color": o.color, "spectator": o.spectator,
+                "id": o.id, "name": o.name, "color": o.color, "icon": getattr(o, "icon", None), "spectator": o.spectator,
                 "watching": o.watching, "wish": o.wish,
                 "eliminated": o.eliminated, "online": not o.shown_away, "wins": o.wins,
                 "bot": None if o.standin else o.bot, "meta": self.game.meta(o) if self.game else "",

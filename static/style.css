@@ -562,6 +562,18 @@ body.replaying .layout { padding-bottom: 190px; }  /* the bar covers the bottom 
 /* player avatars: a face from the Unmask generator, picked by name */
 .avatar { flex: none; width: 22px; height: 22px; border-radius: 50%; overflow: hidden; box-shadow: 0 0 0 1px #0004; }
 .avatar svg { display: block; width: 100%; height: 100%; }
+.avatar-emoji { display: inline-grid; place-items: center; background: radial-gradient(circle at 35% 30%, #fff6, transparent 60%), var(--ac, #888);
+  font-size: 13px; line-height: 1; }
+.pod .avatar-emoji { font-size: 26px; }
+.pod-1 .avatar-emoji { font-size: 38px; }
+.plist .avatar-emoji { font-size: 20px; }
+.kit-sb .avatar-emoji, .ct-who .avatar-emoji { font-size: 15px; }
+/* #144 the icon picker in 🏆 My record */
+.icon-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); gap: 6px; margin: 6px 0 10px; }
+.icon-pick button { width: 40px; height: 40px; padding: 0; border-radius: 50%; display: grid; place-items: center; font-size: 22px; overflow: hidden; border: 2px solid transparent; background: var(--panel2); }
+.icon-pick button svg { width: 100%; height: 100%; display: block; }
+.icon-pick button.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-a40); }
+.icon-pick .auto { font-size: 11px; font-weight: 700; }
 .plist .avatar { width: 34px; height: 34px; box-shadow: 0 0 0 2px var(--pc, #0004); }
 .chip.out .avatar { filter: grayscale(1); opacity: .6; }
 
