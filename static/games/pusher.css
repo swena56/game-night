@@ -1,0 +1,24 @@
+/* pusher: Coin Cascade's own rules, loaded with static/games/pusher.js (needUI in app.js). Shared pieces and the
+   theme tokens live in static/style.css, which always loads first. */
+.cc { max-width: 760px; margin: 0 auto; user-select: none; -webkit-user-select: none; }
+.cc-stage { position: relative; height: clamp(300px, calc(var(--room) - 170px), 640px); border-radius: var(--radius); overflow: hidden;
+  display: flex; justify-content: center; align-items: center; background: #150a22; }
+.cc-stage canvas { position: absolute; inset: 0; margin: auto; max-width: 100%; max-height: 100%; display: block; }
+.cc-hud { position: absolute; top: 8px; left: 8px; right: 8px; display: flex; justify-content: space-between; z-index: 2; pointer-events: none;
+  font: 800 15px/1.2 var(--font-display); color: #fff3dc; }
+.cc-hud span { background: #150a22b0; border-radius: 999px; padding: 3px 10px; }
+.cc-hud span:empty { display: none; }
+.cc-pop { position: absolute; left: 50%; top: 30%; transform: translateX(-50%); z-index: 3; font-size: clamp(22px, 7vw, 40px); font-weight: 800; white-space: nowrap;
+  color: #ffd23f; text-shadow: 0 2px 0 #000a, 0 0 18px #ff4fa0aa; pointer-events: none; }
+.cc-pop-in { animation: ccPop 1.7s ease-out both; }
+@keyframes ccPop { 0% { transform: translateX(-50%) scale(.4); opacity: 0; } 14% { transform: translateX(-50%) scale(1.12); opacity: 1; } 24% { transform: translateX(-50%) scale(1); } 80% { opacity: 1; } 100% { transform: translate(-50%, -18px); opacity: 0; } }
+.cc-ctl { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
+.cc-ctl[hidden] { display: none; }
+.cc-ctl input[type=range] { flex: 1; min-width: 0; accent-color: #ffd23f; height: 32px; }
+.cc-ctl button { min-width: 130px; min-height: 52px; font-size: 18px; }
+.cc-ctl button.cc-ready { animation: ccGlow .7s ease-in-out infinite alternate; }
+@keyframes ccGlow { to { box-shadow: 0 0 0 4px #ffd23f, 0 0 18px #ffd23f; } }
+.cc-left { font-size: 12px; opacity: .75; margin-right: 6px; }
+.cc-now { box-shadow: inset 3px 0 0 var(--accent); }
+body.focus .cc-stage { height: max(260px, calc(var(--room) - 190px)); }
+@media (prefers-reduced-motion: reduce) { .cc-pop-in, .cc-ctl button.cc-ready { animation: none; } }
