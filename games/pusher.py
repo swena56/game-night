@@ -27,7 +27,8 @@ R_COIN, R_MEGA = 0.3, 0.52
 STEP = 1 / 20
 SIM_T, SHAKE_T = 4.8, 2.4    # seconds a drop runs (a shake adds a stroke)
 FRAME_EVERY = 2              # record motion every n steps (10 a second)
-ITERS = 3
+ITERS = 14                   # solver passes a step at most (it stops once nothing overlaps more than SLOP)
+SLOP = 0.008
 CELL = 1.1
 START_COINS, START_STARS = 72, 3
 STAR_EVERY = 3               # a new ⭐ drops in the back every n turns
@@ -37,7 +38,7 @@ BONUSES = ("guard", "shake", "mega")
 BONUS_NAMES = {"guard": "🧱 side guards", "shake": "🫨 shake", "mega": "🪙 mega coin"}
 GUARD_DROPS = 3
 HANDFUL, GAP_T = 3, 0.3          # coins a turn, seconds between them
-SPREAD = (0.0, -0.22, 0.22)      # each coin's offset from the aim
+SPREAD = (0.0, -0.42, 0.42)      # each coin's offset from the aim (#154: wide enough that they don't land on each other)
 BOT = {"easy": 3, "normal": 8, "hard": 18}     # candidate drops tried
 BOT_RIVAL = {"easy": 0.0, "normal": 0.1, "hard": 0.3}  # how much a coin into a rival's tray counts against
 
@@ -60,6 +61,31 @@ def owner_of(x, n):
     return max(0, min(n - 1, k))
 
 
+def clamp_coin(c, face, guard):
+    """The shelf's face and the side walls (where there are walls) hold a coin back."""
+    if c[2] - c[3] < face:
+        c[2] = face + c[3]
+    if c[2] < GAP_Y or guard:
+        lim = HW - c[3]
+        if c[1] < -lim:
+            c[1] = -lim
+        elif c[1] > lim:
+            c[1] = lim
+
+
+def landing(coins, x, r, face):
+    """Where a dropped coin settles (#154): the first free spot in front of the shelf's face under the chute, not
+    on top of a coin already lying there (a deep pile leaves it at the face, to be shoved)."""
+    y = face + r + 0.02
+    for _ in range(30):
+        if all((c[1] - x) ** 2 + (c[2] - y) ** 2 >= (c[3] + r) ** 2 for c in coins):
+            return y
+        y += 0.06
+        if y > EDGE - r - 0.3:
+            break
+    return face + r + 0.02
+
+
 def simulate(coins, phase, n, guard=False, extra=0.0, frames=True, adds=()):
     """Run the machine for SIM_T (+ extra) seconds from `phase`. coins: [[id, x, y, r, kind], …] (changed in place;
     fallen coins removed). adds: [(t, x, r, kind, id)] coins dropped in during the run (each lands just in front
@@ -75,18 +101,12 @@ def simulate(coins, phase, n, guard=False, extra=0.0, frames=True, adds=()):
         face = face_at(phase + t / PERIOD)
         while pending and pending[0][0] <= t:
             _, ax, ar, ak, aid = pending.pop(0)
-            coins.append([aid, ax, face + ar + 0.02, ar, ak])
-        for _ in range(ITERS):
+            coins.append([aid, ax, landing(coins, ax, ar, face), ar, ak])
+        for it in range(ITERS):
             # the face and the walls
             for c in coins:
-                if c[2] - c[3] < face:
-                    c[2] = face + c[3]
-                if c[2] < GAP_Y or guard:
-                    lim = HW - c[3]
-                    if c[1] < -lim:
-                        c[1] = -lim
-                    elif c[1] > lim:
-                        c[1] = lim
+                clamp_coin(c, face, guard)
+            worst = 0.0
             # coins shove each other apart (a coin pressed against the face only moves sideways and forward)
             grid = {}
             for k, c in enumerate(coins):
@@ -111,6 +131,8 @@ def simulate(coins, phase, n, guard=False, extra=0.0, frames=True, adds=()):
                         if d2 == 0:
                             dx, dy = 0.0, 1.0
                         over = rr - d
+                        if over > worst:
+                            worst = over
                         nx, ny = dx / d, dy / d
                         # the heavier coin gives less
                         wa = cb[3] * cb[3] / (ca[3] * ca[3] + cb[3] * cb[3])
@@ -124,6 +146,11 @@ def simulate(coins, phase, n, guard=False, extra=0.0, frames=True, adds=()):
                         ca[2] -= ny * over * wa
                         cb[1] += nx * over * (1 - wa)
                         cb[2] += ny * over * (1 - wa)
+            if worst < SLOP:
+                break
+        # #154: no coin ends a step behind the face or through a wall
+        for c in coins:
+            clamp_coin(c, face, guard)
         # over the edge?
         keep = []
         for c in coins:
@@ -184,7 +211,7 @@ class Pusher(Game):
         self.coins = []
         # a packed pile to start: a loose honeycomb of coins in front of the shelf, a few prizes among them
         spots = []
-        row, y = 0, EDGE - 0.14                       # the front row teeters on the edge
+        row, y = 0, EDGE - 0.2                        # the front row teeters on the edge
         while y > FACE[1] + R_COIN + 0.1:
             x = -HW + R_COIN + (0.3 if row % 2 else 0.0)
             while x <= HW - R_COIN + 1e-9:
@@ -245,9 +272,10 @@ class Pusher(Game):
     def handful(self, i, xf, phase, ids=True):
         """The coins of one turn: HANDFUL of them a moment apart round the aim (the first is the mega coin, if any)."""
         out = []
+        mid = xf * (HW - R_COIN - max(SPREAD))       # the aim keeps the whole handful between the walls
         for k in range(HANDFUL):
             rad = R_MEGA if (k == 0 and self.mega[i]) else R_COIN
-            x = max(-(HW - rad), min(HW - rad, xf * (HW - rad) + SPREAD[k]))
+            x = max(-(HW - rad), min(HW - rad, mid + SPREAD[k]))
             cid = (self.coin_id + 1 + k) if ids else -1 - k
             out.append((round(GAP_T * k + STEP * 0.5, 3), round(x, 3), rad, 2 if rad == R_MEGA else 0, cid))
         return out
@@ -261,7 +289,7 @@ class Pusher(Game):
         # a bell under one of the coins?
         bonus = None
         for t, x, rad, _, _ in adds:
-            y = face_at(phase + t / PERIOD) + rad + 0.02
+            y = face_at((phase + t / PERIOD) % 1.0) + rad + 0.02
             if any(math.hypot(x - bx, y - by) < BELL_R + rad * 0.5 for bx, by in BELLS):
                 bonus = self.rng.choice(BONUSES)
                 break
@@ -438,5 +466,5 @@ class Pusher(Game):
             "points": self.points, "left": self.left, "stars": self.stars, "guard": self.guard, "mega": self.mega,
             "shot": self.shot, "busy": round(max(0.0, self.busy_until - now), 2), "drops": self.drops,
             "geo": {"hw": HW, "edge": EDGE, "face": FACE, "period": PERIOD, "gapY": GAP_Y, "r": R_COIN, "rMega": R_MEGA,
-                    "bells": BELLS, "bellR": BELL_R, "simT": SIM_T},
+                    "bells": BELLS, "bellR": BELL_R, "simT": SIM_T, "spread": SPREAD, "gapT": GAP_T},
         }}

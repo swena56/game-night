@@ -27,8 +27,14 @@ UI.pusher = (() => {
     stage.style.touchAction = 'none';
     $('ccAim').addEventListener('input', (e) => { aim = e.target.value / 100; });
     $('ccDrop').addEventListener('click', drop);
-    stage.addEventListener('pointerdown', (e) => { if (!canDrop()) return; dragX = { x: e.clientX, a: aim, w: stage.clientWidth }; try { stage.setPointerCapture(e.pointerId); } catch {} });
-    stage.addEventListener('pointermove', (e) => { if (!dragX) return; aim = Math.max(-1, Math.min(1, dragX.a + (e.clientX - dragX.x) / (dragX.w * 0.4))); $('ccAim').value = Math.round(aim * 100); });
+    // #154: the chute goes where your finger is on the machine (the view maps the screen onto the playfield)
+    const aimAt = (e) => {
+      const x = (gl || flat)?.pick?.(e.clientX, e.clientY);
+      if (x == null) return;
+      aim = Math.max(-1, Math.min(1, x / aimLim())); $('ccAim').value = Math.round(aim * 100);
+    };
+    stage.addEventListener('pointerdown', (e) => { if (!canDrop()) return; dragX = true; aimAt(e); try { stage.setPointerCapture(e.pointerId); } catch {} });
+    stage.addEventListener('pointermove', (e) => { if (dragX) aimAt(e); });
     const up = () => { dragX = null; };
     stage.addEventListener('pointerup', up); stage.addEventListener('pointercancel', up);
     keyDown = (e) => {
@@ -49,6 +55,7 @@ UI.pusher = (() => {
   function unmount() {
     cancelAnimationFrame(raf); ro?.disconnect();
     removeEventListener('keydown', keyDown);
+    window.Snd?.bed('cc.motor').set(0);
     gl?.dispose(); gl = null; flat = null;
   }
 
@@ -60,8 +67,23 @@ UI.pusher = (() => {
   const ownerOf = (x) => Math.max(0, Math.min(V.seats.length - 1, Math.floor((x + G().hw) / (2 * G().hw / V.seats.length))));
   const myTurn = () => S?.phase === 'playing' && V?.me != null && S.turn === V.seats[V.me];
   const canDrop = () => myTurn() && !anim && !pend && V.left[V.me] > 0;
+  // the handful the server will drop for this aim (games/pusher.py handful()): centre, then either side
+  const spreadMax = () => Math.max(...(G().spread || [0, -0.22, 0.22]));
+  const aimLim = () => G().hw - G().r - spreadMax();
+  function handfulAt(a, ph) {
+    const g = G(), mid = a * aimLim(), mega = V.me != null && V.mega[V.me];
+    return (g.spread || [0, -0.22, 0.22]).map((sp, k) => {
+      const r = k === 0 && mega ? g.rMega : g.r, x = Math.max(-(g.hw - r), Math.min(g.hw - r, mid + sp)), t = (g.gapT ?? 0.3) * k;
+      const y = faceAt((((ph + t / g.period) % 1) + 1) % 1) + r + 0.02;
+      return { x, y, r, bell: g.bells.some(([bx, by]) => Math.hypot(x - bx, y - by) < g.bellR + r * 0.5) };
+    });
+  }
   function shelfPhase(now) {
-    if (anim) return anim.phase + Math.min(anim.dur, (now - anim.t0) / 1000) / G().period;
+    if (anim) {
+      // #154: ease from where the idle shelf was over to the drop's own stroke, instead of jumping
+      const t = Math.min(anim.dur, (now - anim.t0) / 1000), u = Math.min(1, t / 0.45);
+      return anim.phase + t / G().period + anim.ofs * (1 - u * u * (3 - 2 * u));
+    }
     return idle.phase + (now - idle.at) / 1000 / G().period;
   }
 
@@ -95,11 +117,38 @@ UI.pusher = (() => {
     if (!fr && now - pend.at < 700) return;
     const sh = pend.shot;
     if (!fr) { snap(pend.coins); shown = pend.points; pend = null; idle = { phase: 0.5, at: now }; return; }
-    anim = { no: pend.no, t0: now, dur: sh.dur, phase: sh.phase, frames: fr, fi: 0, adds: sh.adds.map((a) => ({ t: a[0], x: a[1], r: a[2], k: a[3], id: a[4], on: false })),
+    const was = shelfPhase(now), ofs = ((((was - sh.phase) % 1) + 1.5) % 1) - 0.5;
+    anim = { no: pend.no, t0: now, dur: sh.dur, phase: sh.phase, ofs, tracks: tracksOf(fr, sh), adds: sh.adds.map((a) => ({ t: a[0], x: a[1], r: a[2], k: a[3], id: a[4], on: false })),
       falls: sh.falls.map((f) => ({ id: f[0], k: f[1], x: f[2], own: f[3], t: f[4], done: false })), end: { coins: pend.coins, points: pend.points }, by: sh.by, bonus: sh.bonus, gain: sh.gain };
     shown = pend.points.map((p, i) => p - (sh.gain[i] || 0));
     pend = null;
     if (sh.bonus) setTimeout(() => { SN.bell(); popText(`🔔 ${({ guard: '🧱 Side guards!', shake: '🫨 Shake!', mega: '🪙 Mega coin next turn!' })[sh.bonus]}`); }, 500);
+  }
+  // #154: each coin's path through the drop as keyframes [t, x, y], played back by time (the old chase lagged behind
+  // the shelf by about a coin, so the shelf's face cut into the coins it pushed). Frames only list coins that moved, so
+  // a coin that sat still and then moves gets a hold key one frame before.
+  function tracksOf(frames, sh) {
+    const tr = new Map(), step = frames.length > 1 ? frames[1][0] - frames[0][0] : 0.1;
+    for (const [id, c] of disp) tr.set(id, [[0, c.x, c.y]]);
+    for (const [t, moved] of frames) {
+      for (const [id, x, y] of moved) {
+        let k = tr.get(id);
+        if (!k) { const a = sh.adds.find((q) => q[4] === id); k = [[a ? a[0] : t, x, y]]; tr.set(id, k); }
+        const last = k[k.length - 1];
+        if (t - last[0] > step * 1.5) k.push([t - step, last[1], last[2]]);
+        k.push([t, x, y]);
+      }
+    }
+    return tr;
+  }
+  function sample(c, k, t) {
+    let j = c.ti || 0;
+    while (j + 1 < k.length && k[j + 1][0] <= t) j++;
+    c.ti = j;
+    const a = k[j], b = k[j + 1];
+    if (!b || t <= a[0]) { c.x = a[1]; c.y = a[2]; return; }
+    const u = (t - a[0]) / (b[0] - a[0]);
+    c.x = a[1] + (b[1] - a[1]) * u; c.y = a[2] + (b[2] - a[2]) * u;
   }
   function stepAnim(now, dt) {
     if (!anim) return;
@@ -107,35 +156,33 @@ UI.pusher = (() => {
     for (const a of anim.adds) {
       if (!a.on && t >= a.t - 0.35) {
         a.on = true;
-        const y = faceAt(anim.phase + a.t / g.period) + a.r + 0.02;
-        disp.set(a.id, { x: a.x, y, r: a.r, k: a.k, tx: a.x, ty: y, h: 3, drop: a.t });
+        const k = anim.tracks.get(a.id), y = k ? k[0][2] : faceAt(anim.phase + a.t / g.period) + a.r + 0.02;
+        disp.set(a.id, { x: k ? k[0][1] : a.x, y, r: a.r, k: a.k, h: 3, drop: a.t, spin: Math.random() * TAU });
       }
-    }
-    while (anim.fi < anim.frames.length && anim.frames[anim.fi][0] <= t) {
-      for (const [id, x, y] of anim.frames[anim.fi][1]) { const c = disp.get(id); if (c) { c.tx = x; c.ty = y; } }
-      anim.fi++;
     }
     for (const f of anim.falls) {
       if (!f.done && t >= f.t) {
         f.done = true;
         const c = disp.get(f.id);
         disp.delete(f.id);
-        fallers.push({ x: c ? c.x : f.x, y: c ? c.y : g.edge, r: c ? c.r : g.r, k: f.k, own: f.own, at: now });
+        fallers.push({ x: c ? c.x : f.x, y: c ? c.y : g.edge, r: c ? c.r : g.r, k: f.k, own: f.own, at: now, id: f.id });
+        const pan = (c ? c.x : f.x) / g.hw;
         if (f.own >= 0) {
           shown[f.own] = (shown[f.own] || 0) + (f.k === 1 ? 3 : 1);
-          if (f.own === me()) SN.tray(f.k === 1); else SN.clink(0.4);
+          SN.tray(f.k === 1, pan, f.own === me() ? 1 : 0.55);
           if (f.k === 1) popText(`⭐ +3 ${f.own === me() ? 'for you!' : nameOf(f.own)}`);
-        } else SN.gutter();
+        } else SN.gutter(pan);
       }
     }
-    for (const c of disp.values()) {
+    for (const [id, c] of disp) {
       if (c.h > 0) {
-        const left = (c.drop ?? 0) - t;
-        c.h = Math.max(0, Math.min(3, left * 8.5));
-        if (c.h === 0 && c.drop != null) { c.drop = null; SN.clink(1); (gl || flat)?.sparkle(c.x, c.y); }
+        // falling from the chute: gravity, not a straight line
+        const left = Math.max(0, (c.drop ?? 0) - t);
+        c.h = Math.min(3, 24 * left * left);
+        if (c.h === 0 && c.drop != null) { c.drop = null; c.landAt = now; SN.land(c.x / g.hw, c.k === 2); (gl || flat)?.sparkle(c.x, c.y); }
       }
-      const e = Math.min(1, dt * 14);
-      c.x += (c.tx - c.x) * e; c.y += (c.ty - c.y) * e;
+      const k = anim.tracks.get(id);
+      if (k) sample(c, k, t);
     }
     if (t >= anim.dur + 0.5) {
       const g2 = anim.gain || [];
@@ -171,16 +218,48 @@ UI.pusher = (() => {
     clearTimeout(popText.t); popText.t = setTimeout(() => { el.hidden = true; }, 1700);
   }
 
-  // ---------- sound: coins on metal, in a small arcade
-  const snd = (fn) => window.Snd?.play((t, K) => fn(t, K, K.at({ room: 'room', send: 0.6 })));
+  // ---------- sound: coins on metal, in a small arcade (#155: struck metal, not beeps)
+  // A coin strike: a very short bright tick, a few inharmonic rings that die in tens of milliseconds (a coin's own
+  // partials sit high and aren't in tune), and for a coin landing flat a dull thud of the plate under it.
+  // Cascades are spread over their real times and a few voices at most sound at once.
+  let voices = [];
+  const snd = (fn, pan = 0, delay = 0) => {
+    const now = performance.now();
+    voices = voices.filter((v) => now - v < 60);
+    if (voices.length >= 4) return;
+    voices.push(now);
+    window.Snd?.play((t, K) => fn(t + delay, K, K.at({ room: 'room', send: 0.35, pan: Math.max(-0.8, Math.min(0.8, pan)) })));
+  };
+  const strike = (K, d, t, h, pitch = 1) => {
+    K.burst(d, t, { type: 'bandpass', f: 3500 + 3500 * h, q: 0.8, vol: 0.05 + 0.1 * h, tau: 0.0012 });
+    [[4180, 0.05, 0.03], [6230, 0.035, 0.02], [8770, 0.022, 0.012], [11400, 0.012, 0.008]].forEach(([f, v, tau]) => K.mode(d, t, f * pitch * K.R(0.985, 1.015), v * (0.35 + 0.65 * h), tau));
+  };
   const SN = {
-    clink: (v = 1) => snd((t, K, d) => { [3100, 4700, 6900].forEach((f, n) => K.mode(d, t, f * K.R(0.97, 1.03), (0.05 - n * 0.012) * v, 0.04 + n * 0.01)); K.burst(d, t, { type: 'highpass', f: 5000, q: 0.7, vol: 0.05 * v, tau: 0.004 }); }),
-    tray: (star) => snd((t, K, d) => {
-      for (let n = 0; n < 3; n++) [2600, 3900, 5600].forEach((f, m) => K.mode(d, t + n * 0.05, f * K.R(0.95, 1.05), 0.05 - m * 0.012, 0.05));
-      if (star) [784, 1047, 1319].forEach((f, n) => K.mode(d, t + 0.1 + n * 0.07, f, 0.07, 0.2));
-    }),
-    gutter: () => snd((t, K, d) => { K.burst(d, t, { type: 'bandpass', f: 1500, f1: 400, q: 1, vol: 0.06, tau: 0.08, dur: 0.3 }); }),
-    bell: () => snd((t, K, d) => { [1175, 2350, 3520].forEach((f, n) => K.mode(d, t, f, 0.1 - n * 0.025, 0.5)); }),
+    land: (pan, mega) => snd((t, K, d) => {
+      strike(K, d, t, 0.45, mega ? 0.72 : K.R(0.96, 1.04));
+      K.burst(d, t, { type: 'lowpass', f: 700, q: 0.7, vol: mega ? 0.16 : 0.09, tau: 0.012, buf: 'brown' });
+      K.mode(d, t, mega ? 190 : 260, mega ? 0.06 : 0.035, 0.03);
+      strike(K, d, t + K.R(0.04, 0.07), 0.15, K.R(0.95, 1.05));     // a little bounce
+    }, pan),
+    tray: (star, pan, v) => snd((t, K, d) => {
+      const n = 2 + Math.floor(Math.random() * 2);
+      for (let k = 0; k < n; k++) strike(K, d, t + k * K.R(0.03, 0.06), (0.8 - k * 0.25) * v, K.R(0.94, 1.06));
+      K.mode(d, t, 520, 0.035 * v, 0.07); K.mode(d, t, 830, 0.018 * v, 0.05);   // the tray's own tin ring
+      if (star) [784, 1047, 1319].forEach((f, k) => K.mode(d, t + 0.1 + k * 0.07, f, 0.06, 0.2));
+    }, pan, Math.random() * 0.05),
+    gutter: (pan) => snd((t, K, d) => {
+      for (let k = 0; k < 4; k++) strike(K, d, t + k * K.R(0.05, 0.09), 0.25 - k * 0.05, K.R(0.8, 0.9));
+      K.burst(d, t, { type: 'lowpass', f: 900, f1: 300, q: 0.9, vol: 0.05, tau: 0.12, dur: 0.35, buf: 'brown' });
+      K.mode(d, t + 0.3, 140, 0.05, 0.05);
+    }, pan),
+    bell: () => snd((t, K, d) => { [1175, 2350, 3520].forEach((f, n) => K.mode(d, t, f, 0.08 - n * 0.02, 0.5)); }),
+  };
+  // the machine's motor, and the shelf scraping coins as it pushes
+  const motorBed = (K, dst) => {
+    const A = K.ctx, src = K.loopSrc('brown'), lp = A.createBiquadFilter(), g = A.createGain(), hum = A.createOscillator(), hg = A.createGain();
+    lp.type = 'lowpass'; lp.frequency.value = 260; g.gain.value = 0; hum.type = 'triangle'; hum.frequency.value = 58; hg.gain.value = 0;
+    src.connect(lp).connect(g).connect(dst); hum.connect(hg).connect(dst); hum.start();
+    return { set(l, x = 0) { g.gain.setTargetAtTime(0.02 * l * (0.5 + x), A.currentTime, 0.15); hg.gain.setTargetAtTime(0.006 * l, A.currentTime, 0.3); lp.frequency.setTargetAtTime(220 + 260 * x, A.currentTime, 0.15); }, stop() { try { src.stop(); hum.stop(); } catch {} } };
   };
 
   function loop(now) {
@@ -189,6 +268,8 @@ UI.pusher = (() => {
     const dt = Math.min(0.1, (now - (loop.last || now)) / 1000); loop.last = now;
     startAnim(now);
     stepAnim(now, dt);
+    const sp = Math.abs(Math.sin(TAU * shelfPhase(now)));     // the stroke's speed, 0..1
+    window.Snd?.bed('cc.motor', motorBed).set(S?.phase === 'playing' && !S.paused ? 1 : 0, anim ? sp : sp * 0.4);
     (gl || flat)?.draw(now, dt);
     if (now - (loop.side || 0) > 300) { loop.side = now; renderSide(); }
   }
@@ -279,18 +360,48 @@ UI.pusher = (() => {
     const shelfTop = new T.Mesh(new T.BoxGeometry(2 * HW - 0.02, 0.5, 3.2), new T.MeshStandardMaterial({ color: 0x2a2f3a, metalness: 0.5, roughness: 0.4 }));
     shelfTop.position.set(0, 0.25, -1.6); shelfTop.castShadow = !low; shelfTop.receiveShadow = true; shelf.add(shelfTop);
     const faceBar = new T.Mesh(new T.BoxGeometry(2 * HW, 0.5, 0.08), chrome); faceBar.position.set(0, 0.25, -0.04); shelf.add(faceBar);
-    // coins
-    const coinGeo = new T.CylinderGeometry(1, 1, 0.07, 28);
-    const gold = new T.MeshStandardMaterial({ color: 0xffcf5a, metalness: 0.7, roughness: 0.32, emissive: 0x3a2400, emissiveIntensity: 0.6 });
-    const MAXC = 220, coins = new T.InstancedMesh(coinGeo, gold, MAXC); coins.castShadow = !low; coins.receiveShadow = true; coins.frustumCulled = false; scene.add(coins);
-    const starTop = canvasTex(T, 128, 128, (g, w) => {
-      g.fillStyle = '#e8e0ff'; g.beginPath(); g.arc(w / 2, w / 2, w / 2, 0, 7); g.fill();
-      g.fillStyle = '#ff4fa0'; g.beginPath();
-      for (let k = 0; k < 10; k++) { const a = -Math.PI / 2 + k * Math.PI / 5, r = k % 2 ? w * 0.18 : w * 0.42; g.lineTo(w / 2 + Math.cos(a) * r, w / 2 + Math.sin(a) * r); }
+    // coins (#156): a turned profile (a raised rim, a sunken field, a bevelled edge) mapped from above, so one face
+    // texture embosses both sides and its outer ring reeds the edge; three batches: plain, mega and ⭐ prize coins
+    const prof = [[0, 0.03], [0.74, 0.03], [0.79, 0.044], [0.9, 0.05], [0.97, 0.046], [1, 0.034], [1, -0.034], [0.97, -0.046], [0.9, -0.05], [0.79, -0.044], [0.74, -0.03], [0, -0.03]];
+    const coinGeo = new T.LatheGeometry(prof.slice().reverse().map(([r, y]) => new T.Vector2(r, y)), low ? 24 : 40);
+    { const pa = coinGeo.attributes.position, uv = coinGeo.attributes.uv; for (let n = 0; n < pa.count; n++) uv.setXY(n, 0.5 + pa.getX(n) * 0.5, 0.5 - pa.getZ(n) * 0.5); }
+    const faceTex = (paint, size = low ? 256 : 512) => {
+      const t = canvasTex(T, size, size, (g, w) => {
+        const c = w / 2;
+        g.fillStyle = '#7a7a7a'; g.fillRect(0, 0, w, w);
+        // reeding round the very edge
+        g.save(); g.translate(c, c); for (let k = 0; k < 120; k++) { g.rotate(TAU / 120); g.fillStyle = k % 2 ? '#3a3a3a' : '#d8d8d8'; g.fillRect(c * 0.955, -c * 0.03, c * 0.05, c * 0.06); } g.restore();
+        // the rim (bright, raised) and a ring of dots inside it
+        g.strokeStyle = '#e0e0e0'; g.lineWidth = c * 0.12; g.beginPath(); g.arc(c, c, c * 0.86, 0, TAU); g.stroke();
+        g.fillStyle = '#c8c8c8'; for (let k = 0; k < 28; k++) { const a = k / 28 * TAU; g.beginPath(); g.arc(c + Math.cos(a) * c * 0.68, c + Math.sin(a) * c * 0.68, c * 0.025, 0, TAU); g.fill(); }
+        paint(g, c);
+      });
+      t.anisotropy = 4; return t;
+    };
+    const plainFace = faceTex((g, c) => {
+      // a sunburst round a raised disc with a big "1"
+      g.strokeStyle = '#9a9a9a'; g.lineWidth = c * 0.02; for (let k = 0; k < 24; k++) { const a = k / 24 * TAU; g.beginPath(); g.moveTo(c + Math.cos(a) * c * 0.36, c + Math.sin(a) * c * 0.36); g.lineTo(c + Math.cos(a) * c * 0.6, c + Math.sin(a) * c * 0.6); g.stroke(); }
+      g.fillStyle = '#b8b8b8'; g.beginPath(); g.arc(c, c, c * 0.34, 0, TAU); g.fill();
+      g.fillStyle = '#f0f0f0'; g.font = `900 ${Math.round(c * 0.5)}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('1', c, c * 1.04);
+    });
+    const megaFace = faceTex((g, c) => {
+      g.fillStyle = '#b8b8b8'; g.beginPath(); g.arc(c, c, c * 0.56, 0, TAU); g.fill();
+      g.fillStyle = '#f0f0f0'; g.font = `900 ${Math.round(c * 0.62)}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('M', c, c * 1.05);
+    });
+    const starFace = faceTex((g, c) => {
+      g.fillStyle = '#f0f0f0'; g.beginPath();
+      for (let k = 0; k < 10; k++) { const a = -Math.PI / 2 + k * Math.PI / 5, r = k % 2 ? c * 0.26 : c * 0.6; g.lineTo(c + Math.cos(a) * r, c + Math.sin(a) * r); }
       g.fill();
     });
-    const starMats = [new T.MeshStandardMaterial({ color: 0xd9d2ff, metalness: 0.9, roughness: 0.25 }), new T.MeshStandardMaterial({ map: starTop, metalness: 0.4, roughness: 0.3 }), new T.MeshStandardMaterial({ color: 0xd9d2ff, metalness: 0.9, roughness: 0.25 })];
-    const starMeshes = new Map();
+    // the colour: gold metal, a touch darker in the sunken parts (the same picture, as a tint)
+    const metal = (color, face, o = {}) => (low
+      ? new T.MeshStandardMaterial({ color, map: face, bumpMap: face, bumpScale: 1.2, metalness: 0.6, roughness: 0.35, emissive: color, emissiveIntensity: 0.18, ...o })
+      : new T.MeshPhysicalMaterial({ color, map: face, bumpMap: face, bumpScale: 1.6, metalness: 1, roughness: 0.3, clearcoat: 0.35, clearcoatRoughness: 0.25, emissive: color, emissiveIntensity: 0.06, ...o }));
+    for (const t of [plainFace, megaFace, starFace]) t.colorSpace = T.SRGBColorSpace;
+    const gold = metal(0xffd36a, plainFace), megaMat = metal(0xffb84a, megaFace), starMat = metal(0xd9c8ff, starFace, { emissive: 0xff4fa0, emissiveIntensity: low ? 0.25 : 0.12 });
+    const MAXC = 220, coins = new T.InstancedMesh(coinGeo, gold, MAXC); coins.castShadow = !low; coins.receiveShadow = true; coins.frustumCulled = false; scene.add(coins);
+    const megas = new T.InstancedMesh(coinGeo, megaMat, 12); megas.castShadow = !low; megas.frustumCulled = false; scene.add(megas);
+    const stars = new T.InstancedMesh(coinGeo, starMat, 24); stars.castShadow = !low; stars.frustumCulled = false; scene.add(stars);
     const decor = new T.InstancedMesh(coinGeo, gold, 26);
     for (let k = 0; k < 26; k++) { m4.compose(new T.Vector3((Math.random() - 0.5) * (2 * HW - 0.8), 0.54 + (k % 3) * 0.07, -0.4 - Math.random() * 2.6), new T.Quaternion().setFromEuler(new T.Euler((Math.random() - 0.5) * 0.3, 0, (Math.random() - 0.5) * 0.3)), new T.Vector3(0.3, 1, 0.3)); decor.setMatrixAt(k, m4); }
     shelf.add(decor);
@@ -307,7 +418,9 @@ UI.pusher = (() => {
     const slot = new T.Mesh(new T.BoxGeometry(0.66, 0.06, 0.12), new T.MeshBasicMaterial({ color: 0x111111 })); slot.position.set(0, 2.18, 0); chute.add(slot);
     const guide = new T.Mesh(new T.CylinderGeometry(0.015, 0.015, 2, 6), new T.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.6 })); guide.position.y = 1.0; chute.add(guide);
     const rail = new T.Mesh(new T.CylinderGeometry(0.04, 0.04, 2 * HW, 8), chrome); rail.rotation.z = Math.PI / 2; rail.position.set(0, 2.2, 0.3); scene.add(rail);
-    const aimDot = new T.Mesh(new T.RingGeometry(0.22, 0.3, 24), new T.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.8, depthWrite: false })); aimDot.rotation.x = -Math.PI / 2; scene.add(aimDot);
+    // #154: where the handful lands: a ring per coin, green over a bell, and a faint strip across the reachable width
+    const aimDots = [0, 1, 2].map(() => { const m = new T.Mesh(new T.RingGeometry(0.8, 1, 32), new T.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.85, depthWrite: false })); m.rotation.x = -Math.PI / 2; m.renderOrder = 2; scene.add(m); return m; });
+    const strip = new T.Mesh(new T.PlaneGeometry(1, 1), new T.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.12, depthWrite: false })); strip.rotation.x = -Math.PI / 2; scene.add(strip);
     // sparkles: one additive particle pool
     const NP = 220, pPos = new Float32Array(NP * 3), pVel = new Float32Array(NP * 3), pLife = new Float32Array(NP);
     const pGeo = new T.BufferGeometry(); pGeo.setAttribute('position', new T.BufferAttribute(pPos, 3));
@@ -331,44 +444,51 @@ UI.pusher = (() => {
       const d = Math.max(hw / (tv * aspect), 5.2 / tv) * 1.0;
       camera.position.set(0, d * 0.78, EDGE * 0.5 + d * 0.66); camera.lookAt(0, -0.2, EDGE * 0.42);
     }
-    const q = new T.Quaternion(), sc = new T.Vector3(), ps = new T.Vector3(), tilt = new T.Euler();
+    const q = new T.Quaternion(), sc = new T.Vector3(), ps = new T.Vector3(), tilt = new T.Euler(), UPV = new T.Vector3(0, 1, 0), spinQ = new T.Quaternion();
+    const ray = new T.Raycaster(), plane = new T.Plane(new T.Vector3(0, 1, 0), 0), hit = new T.Vector3();
+    const nk = [0, 0, 0], batch = [coins, megas, stars], cap = [MAXC, 12, 24];
+    const put = (kind) => { const b = kind === 2 ? 1 : kind === 1 ? 2 : 0; if (nk[b] >= cap[b]) return; batch[b].setMatrixAt(nk[b]++, m4.compose(ps, q, sc)); };
+    const HALF = 0.05;   // half the coin's thickness at scale 1
     function draw(now, dt) {
       place();
-      const ph = shelfPhase(now);
+      const ph = shelfPhase(now), gp = g0.gapY;
       shelf.position.z = faceAt(ph);
-      // coins
-      let k = 0;
-      const seenStars = new Set();
+      nk[0] = nk[1] = nk[2] = 0;
       for (const [id, c] of disp) {
-        if (c.k === 1) {
-          let m = starMeshes.get(id);
-          if (!m) { m = new T.Mesh(coinGeo, starMats); m.castShadow = !low; scene.add(m); starMeshes.set(id, m); }
-          m.scale.set(c.r, 1, c.r); m.position.set(c.x, 0.035 + c.h, c.y); seenStars.add(id);
-          continue;
-        }
-        if (k >= MAXC) continue;
-        ps.set(c.x, 0.035 + c.h + (c.k === 2 ? 0.02 : 0), c.y); sc.set(c.r, c.k === 2 ? 1.6 : 1, c.r);
-        tilt.set(c.h > 0 ? 0.6 : 0, (id * 1.7) % TAU, 0); q.setFromEuler(tilt);
-        coins.setMatrixAt(k++, m4.compose(ps, q, sc));
+        const th = c.k === 2 ? 1.5 : 1;
+        // teetering: a coin hanging over the lip (or a side gap) tips toward the drop
+        const over = Math.max(0, c.y - (EDGE - c.r)) / c.r, side = c.y >= gp ? Math.max(0, Math.abs(c.x) - (HW - c.r)) / c.r : 0;
+        const landed = c.landAt ? Math.min(1, (now - c.landAt) / 250) : 1;
+        ps.set(c.x, HALF * th + c.h - (over + side) * c.r * 0.25, c.y);
+        sc.set(c.r, th, c.r);
+        tilt.set((c.h > 0 ? 0.55 * c.h / 3 : 0.12 * (1 - landed) * Math.sin(landed * 9)) + over * 0.35, 0, -Math.sign(c.x) * side * 0.35);
+        q.setFromEuler(tilt).multiply(spinQ.setFromAxisAngle(UPV, c.spin ?? (id * 2.39996) % TAU));
+        put(c.k);
       }
-      // coins tipping over the edge into a tray (or off a side into the gutter)
+      // coins going over: they tip off the lip, fall with gravity and land in the tray (or bounce down the gutter)
       for (let j = fallers.length - 1; j >= 0; j--) {
         const f = fallers[j], t = (now - f.at) / 1000;
-        if (t > 0.7) { fallers.splice(j, 1); continue; }
-        const side = f.own < 0 ? Math.sign(f.x) : 0;
-        ps.set(f.x + side * t * 2, 0.035 - 4.9 * t * t * 1.6, f.own < 0 ? f.y : f.y + 0.6 * t + 0.1);
-        sc.set(f.r, 1, f.r); tilt.set(t * 6, 0, side * t * 4); q.setFromEuler(tilt);
-        if (k < MAXC) coins.setMatrixAt(k++, m4.compose(ps, q, sc));
-        if (t < 0.05 && f.own >= 0) sparkle(f.x, EDGE, 4);
+        if (t > 1.6) { fallers.splice(j, 1); continue; }
+        const gut = f.own < 0, sgn = Math.sign(f.x) || 1, floor = gut ? -0.05 : -0.72;
+        const fall = Math.min(t, 0.55), y = HALF - 0.5 * 9.8 * fall * fall * 0.9;
+        const shrink = t > 1.1 ? Math.max(0, 1 - (t - 1.1) / 0.5) : 1;
+        if (gut) ps.set(f.x + sgn * Math.min(t, 0.35) * 1.4, Math.max(floor, y), f.y + Math.max(0, t - 0.3) * 1.2);
+        else ps.set(f.x, Math.max(floor, y), f.y + Math.min(t, 0.4) * 1.1 + 0.05);
+        const flat = y <= floor;
+        sc.set(f.r * shrink, f.k === 2 ? 1.5 : 1, f.r * shrink);
+        q.setFromEuler(tilt.set(flat ? 0.15 : Math.min(1.2, t * 5), (f.id * 2.39996) % TAU, gut ? -sgn * Math.min(1.2, t * 4) * (flat ? 0.2 : 1) : 0));
+        put(f.k);
+        if (t < 0.05 && !gut) sparkle(f.x, EDGE, 4);
       }
-      coins.count = k; coins.instanceMatrix.needsUpdate = true;
-      for (const [id, m] of starMeshes) if (!seenStars.has(id)) { scene.remove(m); starMeshes.delete(id); }
+      for (let b = 0; b < 3; b++) { batch[b].count = nk[b]; batch[b].instanceMatrix.needsUpdate = true; }
       // chute: on my turn it follows my aim; on someone else's turn it rides over to where they dropped
       const tx = anim ? (anim.adds[0]?.x ?? 0) : myTurn() ? aim * (HW - g0.r) : (chute.position.x * 0.98);
       chute.position.x += (tx - chute.position.x) * Math.min(1, dt * 10);
-      aimDot.visible = myTurn() && !anim;
-      aimDot.position.set(aim * (HW - g0.r), 0.01, faceAt(((ph % 1) + 1) % 1) + g0.r + 0.02);
-      aimDot.material.color.set(g0.bells.some(([bx, by]) => Math.hypot(aimDot.position.x - bx, aimDot.position.z - by) < g0.bellR + g0.r * 0.5) ? 0x7dffb2 : 0xffd23f);
+      const showAim = myTurn() && !anim && !pend;
+      const hf = showAim ? handfulAt(aim, ((ph % 1) + 1) % 1) : [];
+      aimDots.forEach((m, n) => { const a = hf[n]; m.visible = !!a; if (!a) return; m.position.set(a.x, 0.012, a.y); m.scale.setScalar(a.r); m.material.color.set(a.bell ? 0x7dffb2 : 0xffd23f); m.material.opacity = n ? 0.6 : 0.9; });
+      strip.visible = showAim;
+      if (showAim) { const lim = HW; strip.scale.set(2 * lim, 0.62, 1); strip.position.set(0, 0.008, faceAt(((ph % 1) + 1) % 1) + g0.r + 0.02); }
       guide.material.opacity = myTurn() ? 0.6 : 0;
       const by = anim ? anim.by : V.seats.indexOf(S.turn);
       guards.forEach((m) => { m.visible = by >= 0 && V.guard[by] > 0; });
@@ -389,7 +509,13 @@ UI.pusher = (() => {
     }
     function dispose() { stg.dispose(); renderer.dispose(); renderer.domElement.remove(); }
     resize();
-    return { draw, resize, dispose, sparkle };
+    // the playfield x under a point on the screen (for aiming with a finger)
+    function pick(cx, cy) {
+      const r = renderer.domElement.getBoundingClientRect();
+      ray.setFromCamera({ x: ((cx - r.left) / r.width) * 2 - 1, y: -((cy - r.top) / r.height) * 2 + 1 }, camera);
+      return ray.ray.intersectPlane(plane, hit) ? hit.x : null;
+    }
+    return { draw, resize, dispose, sparkle, pick };
   }
 
   // ---------- flat fallback: the playfield from above (the edge at the bottom)
@@ -415,15 +541,28 @@ UI.pusher = (() => {
       g.fillStyle = '#2a2f3a'; g.fillRect(X(-gg.hw), Y(-0.6), 2 * gg.hw * k, (face + 0.6) * k);
       g.fillStyle = '#e8ecf2'; g.fillRect(X(-gg.hw), Y(face) - 2, 2 * gg.hw * k, 3);
       for (const c of disp.values()) {
-        g.fillStyle = c.k === 1 ? '#d9d2ff' : '#f2c14e'; g.strokeStyle = c.k === 1 ? '#ff4fa0' : '#a07a1a'; g.lineWidth = 1.5;
-        g.globalAlpha = c.h > 0 ? 0.5 : 1;
-        g.beginPath(); g.arc(X(c.x), Y(c.y), c.r * k, 0, 7); g.fill(); g.stroke();
+        // #156: a rim, an inner ring and the coin's mark
+        const cx = X(c.x), cy = Y(c.y), R = c.r * k * (1 + c.h * 0.12);
+        g.globalAlpha = c.h > 0 ? 0.6 : 1;
+        g.fillStyle = c.k === 1 ? '#d9c8ff' : c.k === 2 ? '#f0a83a' : '#f2c14e'; g.strokeStyle = c.k === 1 ? '#ff4fa0' : '#8a6410'; g.lineWidth = Math.max(1, R * 0.14);
+        g.beginPath(); g.arc(cx, cy, R, 0, 7); g.fill(); g.stroke();
+        g.strokeStyle = c.k === 1 ? '#ff4fa088' : '#a07a1a99'; g.lineWidth = Math.max(1, R * 0.07); g.beginPath(); g.arc(cx, cy, R * 0.66, 0, 7); g.stroke();
+        if (R > 6) { g.fillStyle = c.k === 1 ? '#ff4fa0' : '#8a6410'; g.font = `900 ${Math.round(R * 0.9)}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(c.k === 1 ? '★' : c.k === 2 ? 'M' : '1', cx, cy + R * 0.05); }
       }
       g.globalAlpha = 1;
-      if (myTurn() && !anim) { g.strokeStyle = '#ffd23f'; g.lineWidth = 2; g.beginPath(); g.arc(X(aim * (gg.hw - gg.r)), Y(faceAt(shelfPhase(now)) + gg.r), gg.r * k, 0, 7); g.stroke(); }
+      if (myTurn() && !anim && !pend) {
+        const ph = ((shelfPhase(now) % 1) + 1) % 1;
+        g.fillStyle = '#ffd23f22'; g.fillRect(X(-gg.hw), Y(faceAt(ph)), 2 * gg.hw * k, 2 * gg.r * k + 2);
+        handfulAt(aim, ph).forEach((a, n) => { g.strokeStyle = a.bell ? '#7dffb2' : '#ffd23f'; g.globalAlpha = n ? 0.65 : 1; g.lineWidth = 2; g.beginPath(); g.arc(X(a.x), Y(a.y), a.r * k, 0, 7); g.stroke(); });
+        g.globalAlpha = 1;
+      }
     }
     resize();
-    return { draw, resize, dispose() { canvas.remove(); }, sparkle() {} };
+    function pick(px) {
+      const r = canvas.getBoundingClientRect(), gg = G(), k = r.width / (2 * gg.hw + 1);
+      return (px - r.left - r.width / 2) / k;
+    }
+    return { draw, resize, dispose() { canvas.remove(); }, sparkle() {}, pick };
   }
 
   const turnText = (s) => (s.phase === 'playing' ? (s.turn && s.pusher.me != null && s.turn === s.pusher.seats[s.pusher.me] ? '🪙 Your drop!' : '🪙 Coin Cascade') : null);

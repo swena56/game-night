@@ -49,9 +49,9 @@ check("frames are recorded", len(frames) > 10 and all(isinstance(f[1], list) for
 ok = True
 for a in range(len(col)):
     for b in range(a + 1, len(col)):
-        if math.hypot(col[a][1] - col[b][1], col[a][2] - col[b][2]) < col[a][3] + col[b][3] - 0.05:
+        if math.hypot(col[a][1] - col[b][1], col[a][2] - col[b][2]) < col[a][3] + col[b][3] - 0.015:
             ok = False
-check("no two coins left deep inside each other", ok)
+check("no two coins left overlapping (#154)", ok)
 
 # open sides lose coins near the front; guards keep them
 side = [[1, P.HW + 0.2, P.GAP_Y + 0.5, P.R_COIN, 0]]
