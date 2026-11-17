@@ -1,6 +1,7 @@
-"""Tide Castles rules: waves lose force a square and flow round things, walls and towers wear only when hit harder
-than they're tall, moats soak once a tide, water on the keep ends its scoring for the tide, shells wash away, sand
-and building rules (costs, wall→tower, take-backs, the keep's once-a-tide move), rivals' beaches stay hidden while
+"""Tide Castles rules: waves lose force a square and flow round things, walls and towers wear only when hit at least
+two harder than they're tall (more levels for harder hits), moats soak once a tide, water on the keep knocks off its
+strength until it falls, shells wash away, sand and building rules (costs, wall→tower, piling to 4, take-backs that
+restore what stood before, the keep's once-a-tide move), rivals' beaches stay hidden while
 building, everyone gets the same waves, bots build legally, and whole games finish.
 
     python3 tests/tide_rules.py
@@ -27,31 +28,41 @@ def check(name, ok, detail=""):
 
 # -- the water
 p = T.new_plot()
-waves, survived = T.run_tide(p, [T.KEEP_ROW, T.KEEP_ROW + 1, 1, 1, 1])
+waves, survived, hp = T.run_tide(p, [T.KEEP_ROW, T.KEEP_ROW + 1, 1, 1, 1])
 check("a wave reaches as many rows as its force", max(r for r, c, f in waves[0]["wet"]) == T.KEEP_ROW - 1 and not waves[0]["keep"])
-check("one more and it hits an open keep", waves[1]["keep"] and survived == 1)
+check("one more and it reaches the keep (a trickle does no harm)", waves[1]["keep"] and waves[1]["dmg"] == T.keep_dmg(1) == 0)
+p = T.new_plot()
+waves, survived, hp = T.run_tide(p, [T.KEEP_ROW + 8] * 5)
+check("a strong wave knocks a third of its force off the keep", waves[0]["dmg"] == 3 and waves[0]["hp"] == T.KEEP_HP - 3, f"{waves[0]['dmg']}")
+check("…until it falls", hp == 0 and survived == (T.KEEP_HP + 2) // 3 - 1, f"{survived}")
 
 p = T.new_plot()
 for c in range(T.COLS):
     p["g"][2][c] = ("wall", 1)
-waves, survived = T.run_tide(p, [5])
+waves, survived, hp = T.run_tide(p, [5])
 check("a wall row stops the water", all(r < 2 for r, c, f in waves[0]["wet"]))
-check("hit harder than its height, a wall wears away", all(p["g"][2][c] is None for c in range(T.COLS)))
+check("hit 2 harder than its height, a wall wears away", all(p["g"][2][c] is None for c in range(T.COLS)))
 p = T.new_plot()
 for c in range(T.COLS):
     p["g"][3][c] = ("wall", 1)
-T.run_tide(p, [4])   # arrives at row 3 with force 1: not harder than the wall
-check("a wall hit gently stays", all(p["g"][3][c] == ("wall", 1) for c in range(T.COLS)))
+T.run_tide(p, [5])   # arrives at row 3 with force 2: only 1 harder than the wall
+check("a wall hit only a little harder stays (#157)", all(p["g"][3][c] == ("wall", 1) for c in range(T.COLS)))
 p = T.new_plot()
 for c in range(T.COLS):
     p["g"][1][c] = ("tower", 2)
-T.run_tide(p, [6])
+T.run_tide(p, [5])   # force 4 at row 1: 2 harder than the tower
 check("a tower wears down to a wall", all(p["g"][1][c] == ("wall", 1) for c in range(T.COLS)))
+p = T.new_plot()
+for c in range(T.COLS):
+    p["g"][1][c] = ("tower", 4)
+T.run_tide(p, [10])  # force 9 at row 1: 5 harder: two levels
+check("a much harder hit wears two levels off", all(p["g"][1][c] == ("tower", 2) for c in range(T.COLS)))
+check("wear: none, one, two levels", (T.wear(5, 4), T.wear(6, 4), T.wear(9, 4), T.wear(30, 2)) == (0, 1, 2, 2))
 
 # water flows round a single wall
 p = T.new_plot()
 p["g"][1][3] = ("wall", 1)
-waves, _ = T.run_tide(p, [5])
+waves, _, _ = T.run_tide(p, [5])
 wet = {(r, c) for r, c, f in waves[0]["wet"]}
 check("water flows round a lone wall", (2, 3) in wet)
 
@@ -59,7 +70,7 @@ check("water flows round a lone wall", (2, 3) in wet)
 p = T.new_plot()
 for c in range(T.COLS):
     p["g"][1][c] = ("moat", 0)
-waves, _ = T.run_tide(p, [6, 6])
+waves, _, _ = T.run_tide(p, [6, 6])
 check("dry moats soak the wave", not any(r >= 2 for r, c, f in waves[0]["wet"]) and len(waves[0]["soak"]) == T.COLS)
 check("full moats let the next one through", any(r >= 2 for r, c, f in waves[1]["wet"]))
 
@@ -67,10 +78,10 @@ check("full moats let the next one through", any(r >= 2 for r, c, f in waves[1][
 p = T.new_plot()
 p["g"][0][0] = ("shell", 0)
 p["g"][T.KEEP_ROW][0] = ("shell", 0)
-waves, survived = T.run_tide(p, [3, 3, 3, 3, 3])
-pts, shells = T.score_tide(p, survived)
+waves, survived, hp = T.run_tide(p, [3, 3, 3, 3, 3])
+pts, shells = T.score_tide(p, survived, hp)
 check("a shell the water reaches is gone, one it doesn't stays", p["g"][0][0] is None and p["g"][T.KEEP_ROW][0] == ("shell", 0))
-check("five dry waves and a shell score 53", pts == 5 * T.WAVE_PTS + T.SHELL_PTS and survived == 5, f"{pts}")
+check("five waves standing, full strength and a shell", pts == 5 * T.WAVE_PTS + T.KEEP_HP + T.SHELL_PTS and survived == 5, f"{pts}")
 
 # forecasts rise, the last is the big one
 f1, f3 = T.forecast(random.Random(1), 0), T.forecast(random.Random(1), 2)
@@ -96,8 +107,16 @@ g.act(a, {"type": "build", "r": 3, "c": 2, "item": "wall"})
 check("a wall costs 1", g.left[0] == g.sand - 1)
 g.act(a, {"type": "build", "r": 3, "c": 2, "item": "tower"})
 check("piling a wall into a tower costs 1 more", g.plots[0]["g"][3][2] == ("tower", 2) and g.left[0] == g.sand - 2)
+g.act(a, {"type": "build", "r": 3, "c": 2, "item": "tower"})
+g.act(a, {"type": "build", "r": 3, "c": 2, "item": "tower"})
+check("piling up to 4 high, 1 a level", g.plots[0]["g"][3][2] == ("tower", 4) and g.left[0] == g.sand - 4)
+try:
+    g.act(a, {"type": "build", "r": 3, "c": 2, "item": "tower"})
+    check("no higher than 4", False)
+except GameError:
+    check("no higher than 4", True)
 g.act(a, {"type": "clear", "r": 3, "c": 2})
-check("taking it back refunds the tower", g.left[0] == g.sand and g.plots[0]["g"][3][2] is None)
+check("taking it back refunds every level", g.left[0] == g.sand and g.plots[0]["g"][3][2] is None)
 for bad, why in (({"type": "build", "r": 9, "c": 0, "item": "wall"}, "off the beach"),
                  ({"type": "build", "r": T.KEEP_ROW, "c": g.plots[0]["keep"], "item": "wall"}, "on the keep"),
                  ({"type": "build", "r": 0, "c": 0, "item": "cannon"}, "a cannon"),
@@ -144,6 +163,13 @@ try:
     check("last tide's walls can't be taken back", g.plots[0]["g"][0][5] is not None and False)
 except GameError:
     check("last tide's walls can't be taken back", True)
+# piling onto last tide's wall, then taking it back, returns just that sand and leaves the old wall (#157 exploit)
+g.left[0] = 5
+g.plots[0]["g"][0][5] = ("wall", 1)        # (as if last tide's wall still stood)
+g.act(a, {"type": "build", "r": 0, "c": 5, "item": "tower"})
+g.act(a, {"type": "clear", "r": 0, "c": 5})
+check("a take-back on an old wall refunds only what was spent and keeps the wall", g.left[0] == 5 and g.plots[0]["g"][0][5] == ("wall", 1), f"{g.left[0]} {g.plots[0]['g'][0][5]}")
+g.left[0] = g.sand
 
 # bots build legally and finish
 for nb in (2, 5):

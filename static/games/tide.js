@@ -6,26 +6,27 @@
 // filling, shells washed off, keeps falling.
 UI.tide = (() => {
   let S, ctx, V = null, gl = null, flat = null, raf = 0, ro = null, tool = 'wall', gotAt = 0, all = false;
-  let disp = [], dispKey = '', flash = null;
+  let disp = [], dispKey = '', flash = null, test = false, cursor = null;
   const $ = (id) => document.getElementById(id);
   const calm = () => document.body.classList.contains('calm');
   const TOOLS = [['wall', '🧱', 'Wall'], ['tower', '🗼', 'Tower'], ['moat', '🕳️', 'Moat'], ['shell', '🐚', 'Shell'], ['keep', '🏰', 'Keep']];
 
   function mount(main, side) {
-    V = null; gl = null; flat = null; tool = 'wall'; all = false; disp = []; dispKey = ''; flash = null;
+    V = null; gl = null; flat = null; tool = 'wall'; all = false; disp = []; dispKey = ''; flash = null; test = false; cursor = null;
     main.innerHTML = `<div class="tc"><div class="tc-stage" id="tcStage">
         <div class="tc-hud"><span id="tcTide"></span><span id="tcClock"></span></div>
         <div class="tc-fore" id="tcFore"></div>
         <div class="tc-pop" id="tcPop" hidden></div>
         <button class="tc-all" id="tcAll" title="See every beach">👀 All</button>
       </div>
-      <div class="tc-tools" id="tcTools">${TOOLS.map(([k, ic, nm]) => `<button data-t="${k}" title="${nm}"><b>${ic}</b><small>${nm}${k !== 'keep' ? ` ${'•'.repeat(k === 'tower' ? 2 : 1)}` : ''}</small></button>`).join('')}
-        <span class="tc-sand" id="tcSand"></span><button class="primary tc-ready" id="tcReady">✅ Ready</button></div>
+      <div class="tc-tools" id="tcTools">${TOOLS.map(([k, ic, nm]) => `<button data-t="${k}" title="${nm}"><b>${ic}</b><small>${nm}${k !== 'keep' ? ` ${'•'.repeat(k === 'tower' ? 2 : 1)}${k === 'tower' ? '+' : ''}` : ''}</small></button>`).join('')}
+        <span class="tc-sand" id="tcSand"></span><button class="tc-test" id="tcTest" title="Show where the biggest wave would reach">🔍 Test</button><button class="primary tc-ready" id="tcReady">✅ Ready</button></div>
       <p id="tcHint" class="hint"></p></div>`;
-    side.innerHTML = '<div class="panel"><h3>🏖️ Beaches</h3><div id="tcRace"></div><p class="hint left">Tap a tool, then squares of your beach. Tap something you built this tide to take it back. Each dry wave scores 10, each shell left 3.</p></div>';
+    side.innerHTML = '<div class="panel"><h3>🏖️ Beaches</h3><div id="tcRace"></div><p class="hint left">Tap a tool, then squares of your beach. 🗼 on a wall or tower piles it higher (up to 4). Tap something you built this tide to take it back. 🔍 Test shows where the biggest wave would reach. Each wave your keep stands scores 6, its strength left scores too, each shell 3.</p></div>';
     $('tcTools').addEventListener('click', (e) => {
       const b = e.target.closest('button'); if (!b) return;
       if (b.id === 'tcReady') return ctx.act('done').catch((er) => ctx.toast?.(er?.message || 'Not now.'));
+      if (b.id === 'tcTest') { test = !test; renderSide(); return; }
       tool = b.dataset.t; renderSide();
     });
     $('tcAll').addEventListener('click', () => { all = !all; $('tcAll').classList.toggle('on', all); });
@@ -55,9 +56,11 @@ UI.tide = (() => {
     if (!building()) return;
     const mine = V.plots[V.me]; if (!mine) return;
     const cell = mine.g[r][c], placed = V.placed.some(([pr, pc]) => pr === r && pc === c);
+    const pile = tool === 'tower' && cell && (cell[0] === 'wall' || cell[0] === 'tower') && cell[1] < (G().maxH || 2);
     let p;
+    cursor = { r, c, at: performance.now() };
     if (tool === 'keep') p = ctx.act('keep', { r, c });
-    else if (cell && placed && !(cell[0] === 'wall' && tool === 'tower')) p = ctx.act('clear', { r, c });
+    else if (cell && placed && !pile) p = ctx.act('clear', { r, c });
     else p = ctx.act('build', { r, c, item: tool });
     p.then(() => { SN.pat(); ctx.buzz?.(8); }).catch((e) => { ctx.toast?.(e?.message || 'Not there.'); });
   }
@@ -81,20 +84,44 @@ UI.tide = (() => {
       disp = V.before.map((p, i) => {
         if (!p) return null;
         const q = clone(p), res = V.result?.[i];
-        q.filled = new Set(); q.fallen = false;
+        q.filled = new Set(); q.fallen = false; q.hp = G().keepHp ?? 10; q.wet = new Set();
         for (let w = 0; w < upto && res; w++) {
           const wave = res.waves[w];
-          for (const [r, c, , worn] of wave.hit) if (worn) { const cell = q.g[r][c]; if (cell) { cell[1] -= 1; if (cell[1] <= 0) q.g[r][c] = null; else cell[0] = 'wall'; } }
-          for (const [r, c] of wave.wet) if (q.g[r][c]?.[0] === 'shell') q.g[r][c] = null;
+          for (const [r, c, , worn] of wave.hit) if (worn) { const cell = q.g[r][c]; if (cell) { cell[1] -= worn; if (cell[1] <= 0) q.g[r][c] = null; else cell[0] = cell[1] >= 2 ? 'tower' : 'wall'; } }
+          for (const [r, c] of wave.wet) { q.wet.add(`${r},${c}`); if (q.g[r][c]?.[0] === 'shell') q.g[r][c] = null; }
           for (const [r, c] of wave.soak) q.filled.add(`${r},${c}`);
-          if (wave.keep) q.fallen = true;
+          if (wave.hp != null) q.hp = wave.hp;
+          if (wave.hp != null ? wave.hp <= 0 : wave.keep) q.fallen = true;
         }
         return q;
       });
     }
     return disp;
   }
-  const clone = (p) => ({ g: p.g.map((row) => row.map((c) => (c ? [c[0], c[1]] : null))), keep: p.keep, filled: new Set(), fallen: false });
+  const clone = (p) => ({ g: p.g.map((row) => row.map((c) => (c ? [c[0], c[1]] : null))), keep: p.keep, filled: new Set(), fallen: false, hp: V?.geo?.keepHp ?? 10, wet: new Set() });
+
+  // #157 🔍 Test: the biggest wave of the forecast rolled up my beach as it stands now (games/tide.py run_tide, one
+  // wave, nothing worn): the squares it reaches with their force, what it would wear and what the keep would lose
+  function testWave(p) {
+    const g0 = G(), C = g0.cols, R = g0.rows, F = Math.max(...V.waves), best = new Map(), wet = [], hits = [];
+    let front = [], keepF = 0;
+    for (let c = 0; c < C; c++) front.push([0, c, F]);
+    // force only falls by 1 a square, so a breadth-first sweep from the strongest is enough
+    while (front.length) {
+      front.sort((a, b) => b[2] - a[2]);
+      const [r, c, f] = front.shift(), k = `${r},${c}`;
+      if ((best.get(k) ?? 0) >= f) continue;
+      best.set(k, f);
+      if (r === g0.keepRow && c === p.keep) { keepF = Math.max(keepF, f); continue; }
+      const cell = p.g[r][c];
+      if (cell && (cell[0] === 'wall' || cell[0] === 'tower') && cell[1] > 0) { hits.push([r, c, f, wearOf(f, cell[1])]); continue; }
+      if (cell && cell[0] === 'moat') continue;
+      wet.push([r, c, f]);
+      if (f - 1 >= 1) for (const [dr, dc] of [[1, 0], [0, 1], [0, -1], [-1, 0]]) { const rr = r + dr, cc = c + dc; if (rr >= 0 && rr < R && cc >= 0 && cc < C && (best.get(`${rr},${cc}`) ?? 0) < f - 1) front.push([rr, cc, f - 1]); }
+    }
+    return { F, wet, hits, keepF, dmg: Math.floor((keepF + 1) / 3) };
+  }
+  const wearOf = (f, h) => { const over = f - h - (G().wear ?? 2); return over < 0 ? 0 : Math.min(h, 1 + Math.floor(over / 3)); };
 
   function renderSide() {
     const box = $('tcRace'); if (!box || !V) return;
@@ -103,7 +130,7 @@ UI.tide = (() => {
     for (const i of order) {
       const p = ctx.player(V.seats[i]), row = ctx.el('div', 'seat-row lr-row' + (p && !p.eliminated ? '' : ' out'));
       const dot = ctx.el('span', 'mini-disc'); dot.style.background = colorOf(i);
-      const res = V.result?.[i], st = V.stage === 'build' ? (V.ready[i] ? '✅' : '🛠️') : res ? `🏰 ${res.survived}/${G().waves}` : '';
+      const res = V.result?.[i], st = V.stage === 'build' ? (V.ready[i] ? '✅' : '🛠️') : res ? `🏰 ${res.survived}/${G().waves}${res.hp != null ? ` ❤${res.hp}` : ''}` : '';
       row.append(dot, ctx.el('span', 'grow', `${nameOf(i)}${i === V.me ? ' (you)' : ''}`), ctx.el('span', 'tc-st', st), ctx.el('b', '', `${V.points[i]}`));
       box.append(row);
     }
@@ -117,13 +144,17 @@ UI.tide = (() => {
     }
     $('tcSand').textContent = V.me != null ? `🪣 ${V.left[V.me]}/${V.sand}` : '';
     $('tcReady').disabled = !b || V.ready[V.me];
+    $('tcTest').disabled = !b; $('tcTest').classList.toggle('on', b && test);
     $('tcReady').textContent = V.me != null && V.ready[V.me] ? '✅ Ready!' : '✅ Ready';
     $('tcTide').textContent = `🌊 Tide ${V.tide} / ${V.tides}`;
     const fore = $('tcFore'); fore.innerHTML = '';
-    V.waves.forEach((w, k) => { const s = ctx.el('span', 'tc-w' + (k === V.waves.length - 1 ? ' big' : ''), `${w}`); s.dataset.k = k; fore.append(s); });
+    // the forecast as waves sized by their force
+    const lo = Math.min(...V.waves), hi = Math.max(...V.waves);
+    V.waves.forEach((w, k) => { const s = ctx.el('span', 'tc-w' + (k === V.waves.length - 1 ? ' big' : '')); s.textContent = `${w}`; s.style.setProperty('--wz', (0.8 + 0.5 * (w - lo) / Math.max(1, hi - lo)).toFixed(2)); s.dataset.k = k; fore.append(s); });
     $('tcHint').textContent = !b ? (V.stage === 'tide' ? 'Here come the waves…' : V.stage === 'between' ? 'The tide goes out…' : '')
       : tool === 'keep' ? (V.moved[V.me] ? 'You moved your keep this tide (you can move it back).' : 'Tap a back-row square to move your keep (once a tide).')
-      : `Waves lose 1 force a square. They wear walls (1) and towers (2) when they hit harder than that.`;
+      : test && V.plots[V.me] ? (() => { const tw = testWave(V.plots[V.me]), worn = tw.hits.filter((h) => h[3]).length; return `🔍 The ${tw.F} wave: ${tw.keepF ? (tw.dmg ? `your keep loses ${tw.dmg} of ${G().keepHp}` : 'a trickle reaches your keep (no harm)') : 'your keep stays dry'}${worn ? `, ${worn} piece${worn > 1 ? 's' : ''} worn` : ''}.`; })()
+      : `Waves lose 1 force a square and wear a piece only when they hit 2 harder than it's tall. Pile 🗼 towers up to 4.`;
   }
 
   function pop(text, ms = 1600) {
@@ -164,8 +195,10 @@ UI.tide = (() => {
         setTimeout(() => {
           if (!mine || V.stage !== 'tide') return;
           if (mine.hit.some((h) => h[3])) SN.crumble();
-          if (mine.keep && !V.result[V.me].waves.slice(0, w).some((x) => x.keep)) { SN.keep(); ctx.buzz?.([80, 40, 120]); pop('💥 Your keep is washed away!', 2000); gl?.shake(0.25); }
-          else if (!V.result[V.me].waves.slice(0, w + 1).some((x) => x.keep)) pop(`🏰 Dry! +${G().wavePts}`, 1100);
+          const prev = w ? V.result[V.me].waves[w - 1].hp : G().keepHp;
+          if (prev > 0 && mine.hp <= 0) { SN.keep(); ctx.buzz?.([80, 40, 120]); pop('💥 Your keep is washed away!', 2000); gl?.shake(0.25); }
+          else if (mine.hp > 0 && mine.dmg > 0) { SN.crumble(); ctx.buzz?.(40); pop(`🏰 −${mine.dmg} strength · still standing +${G().wavePts}`, 1400); }
+          else if (mine.hp > 0) pop(`🏰 Standing! +${G().wavePts}`, 1100);
         }, wt * 550);
       }
       lastWave = w;
@@ -248,7 +281,8 @@ UI.tide = (() => {
     const wallGeo = new T.BoxGeometry(0.9, 0.45, 0.9), crenGeo = new T.BoxGeometry(0.2, 0.16, 0.2);
     const towerGeo = new T.CylinderGeometry(0.36, 0.44, 0.95, 14), towerTop = new T.CylinderGeometry(0.4, 0.36, 0.14, 14);
     const shellGeo = new T.SphereGeometry(0.2, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2);
-    const shared = new Set([wallGeo, crenGeo, towerGeo, towerTop, shellGeo, wallMat, towerMat, moatMat, waterMat, shellMat]);
+    const bandGeo = new T.CylinderGeometry(0.41, 0.41, 0.05, 14), bandMat = new T.MeshStandardMaterial({ color: 0xa8844c, roughness: 0.95 });
+    const shared = new Set([wallGeo, crenGeo, towerGeo, towerTop, shellGeo, bandGeo, wallMat, towerMat, moatMat, waterMat, shellMat, bandMat]);
     const plots3 = [];
     for (let i = 0; i < n; i++) { const grp = new T.Group(); scene.add(grp); plots3.push({ grp, key: '' }); }
     function keepModel(col, fallen) {
@@ -263,7 +297,7 @@ UI.tide = (() => {
     }
     function rebuild(i, p) {
       const o = plots3[i];
-      const key = p ? JSON.stringify([p.g, p.keep, [...(p.filled || [])], p.fallen]) : 'none';
+      const key = p ? JSON.stringify([p.g, p.keep, [...(p.filled || [])], p.fallen, p.hp]) : 'none';
       if (key === o.key) return;
       o.key = key;
       for (const ch of [...o.grp.children]) {
@@ -283,8 +317,10 @@ UI.tide = (() => {
           const m = new T.Mesh(wallGeo, wallMat); m.position.set(x, 0.225, z); m.castShadow = !low; m.receiveShadow = true; o.grp.add(m);
           for (const [dx, dz] of [[-0.3, -0.3], [0.3, -0.3], [-0.3, 0.3], [0.3, 0.3]]) { const cr = new T.Mesh(crenGeo, wallMat); cr.position.set(x + dx, 0.53, z + dz); o.grp.add(cr); }
         } else if (kind === 'tower') {
-          const m = new T.Mesh(towerGeo, towerMat); m.position.set(x, 0.475, z); m.castShadow = !low; o.grp.add(m);
-          const tp = new T.Mesh(towerTop, towerMat); tp.position.set(x, 1.0, z); o.grp.add(tp);
+          // a tower 2–4 high: the same turret stretched, a band of darker sand at each level
+          const m = new T.Mesh(towerGeo, towerMat); m.scale.y = h / 2; m.position.set(x, 0.2375 * h, z); m.castShadow = !low; o.grp.add(m);
+          const tp = new T.Mesh(towerTop, towerMat); tp.position.set(x, 0.475 * h + 0.05, z); o.grp.add(tp);
+          for (let lv = 1; lv < h; lv++) { const band = new T.Mesh(bandGeo, bandMat); band.position.set(x, 0.475 * lv, z); o.grp.add(band); }
         } else if (kind === 'moat') {
           const full = p.filled?.has(`${r},${c}`);
           const m = new T.Mesh(new T.BoxGeometry(0.86, 0.04, 0.86), full ? waterMat : moatMat); m.position.set(x, 0.012, z); o.grp.add(m);
@@ -293,7 +329,15 @@ UI.tide = (() => {
         }
       }
       const [kx, kz] = cellPos(i, g0.keepRow, p.keep);
-      const kp = keepModel(colorOf(i), p.fallen); kp.position.x += kx; kp.position.z += kz; o.grp.add(kp);
+      // the keep falls over (animated in draw) the first time it goes; its strength as a bar over it
+      if (p.fallen && !o.fallen) o.fallAt = performance.now();
+      o.fallen = p.fallen;
+      const kp = keepModel(colorOf(i), false); kp.position.x += kx; kp.position.z += kz; o.grp.add(kp); o.keep = kp;
+      const hpMax = g0.keepHp ?? 10, hp = p.hp ?? hpMax;
+      if (hp < hpMax && !p.fallen) {
+        const bar = new T.Sprite(new T.SpriteMaterial({ map: canvasTex(T, 128, 24, (g, w, h) => { g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(0, 0, w, h); g.fillStyle = hp > hpMax / 2 ? '#5fd35f' : hp > hpMax / 4 ? '#ffc23d' : '#ff5a4a'; g.fillRect(3, 3, (w - 6) * hp / hpMax, h - 6); }), transparent: true, depthWrite: false }));
+        bar.position.set(kx, 1.9, kz); bar.scale.set(0.9, 0.17, 1); o.grp.add(bar);
+      }
     }
     // water: one translucent tile per wet square, fading in as the wave reaches it and out as it drains
     const wetMat = new T.MeshBasicMaterial({ color: 0x5ec4f2, transparent: true, opacity: 0.6, depthWrite: false });
@@ -308,6 +352,25 @@ UI.tide = (() => {
     let pNext = 0;
     function splash(x, z, nn) { if (calm()) nn = Math.ceil(nn / 3); for (let k = 0; k < nn; k++) { const j = pNext; pNext = (pNext + 1) % NP; pPos[j * 3] = x; pPos[j * 3 + 1] = 0.4; pPos[j * 3 + 2] = z; const a = Math.random() * 6.283; pVel[j * 3] = Math.cos(a) * 1.5; pVel[j * 3 + 1] = 2 + Math.random() * 2; pVel[j * 3 + 2] = Math.sin(a) * 1.5 - 1; pLife[j] = 0.5 + Math.random() * 0.4; } }
     const splashed = new Set();
+    // #157: the wave's crest rolling up each beach, sand darkened where the water has been, sand flying off what
+    // the waves wear down, the build cursor, and the 🔍 test wave's reach
+    const crestMat = new T.MeshStandardMaterial({ color: 0xe8f6ff, roughness: 0.3, transparent: true, opacity: 0.9, emissive: 0x6ab8e8, emissiveIntensity: 0.25 });
+    const crests = []; for (let i = 0; i < n; i++) { const m = new T.Mesh(new T.CylinderGeometry(0.22, 0.32, C, 10, 1), crestMat); m.rotation.z = Math.PI / 2; m.visible = false; scene.add(m); crests.push(m); }
+    const dampMat = new T.MeshBasicMaterial({ color: 0x8a6a3a, transparent: true, opacity: 0.14, depthWrite: false });
+    const damp = new T.InstancedMesh(new T.PlaneGeometry(1, 1), dampMat, NW); damp.frustumCulled = false; scene.add(damp);
+    const flatQ = new T.Quaternion().setFromAxisAngle(new T.Vector3(1, 0, 0), -Math.PI / 2);
+    const SP2 = 200, sPos = new Float32Array(SP2 * 3), sVel = new Float32Array(SP2 * 3), sLife = new Float32Array(SP2);
+    const sGeo = new T.BufferGeometry(); sGeo.setAttribute('position', new T.BufferAttribute(sPos, 3));
+    const sand = new T.Points(sGeo, new T.PointsMaterial({ size: 0.1, color: 0xcfa968, transparent: true, depthWrite: false })); sand.frustumCulled = false; scene.add(sand);
+    for (let j = 0; j < SP2; j++) sPos[j * 3 + 1] = -99;
+    let sNext = 0;
+    function crumble(x, z, nn) { if (calm()) nn = Math.ceil(nn / 3); for (let k = 0; k < nn; k++) { const j = sNext; sNext = (sNext + 1) % SP2; sPos[j * 3] = x + (Math.random() - 0.5) * 0.6; sPos[j * 3 + 1] = 0.2 + Math.random() * 0.6; sPos[j * 3 + 2] = z + (Math.random() - 0.5) * 0.6; const a = Math.random() * 6.283; sVel[j * 3] = Math.cos(a) * 0.9; sVel[j * 3 + 1] = 0.5 + Math.random() * 1.5; sVel[j * 3 + 2] = Math.sin(a) * 0.9 + 0.5; sLife[j] = 0.6 + Math.random() * 0.4; } }
+    const crumbled = new Set();
+    const curMat = new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, depthWrite: false });
+    const cur = new T.Mesh(new T.RingGeometry(0.42, 0.5, 4, 1, Math.PI / 4), curMat); cur.rotation.x = -Math.PI / 2; cur.visible = false; scene.add(cur);
+    const testMat = new T.MeshBasicMaterial({ color: 0x2a9bd8, transparent: true, opacity: 0.4, depthWrite: false });
+    const testMesh = new T.InstancedMesh(new T.PlaneGeometry(0.92, 0.92), testMat, C * R); testMesh.frustumCulled = false; scene.add(testMesh);
+    const testKeep = new T.Mesh(new T.RingGeometry(0.5, 0.62, 32), new T.MeshBasicMaterial({ color: 0xff4a3a, transparent: true, opacity: 0.85, depthWrite: false })); testKeep.rotation.x = -Math.PI / 2; testKeep.visible = false; scene.add(testKeep);
     // the build cursor: a glowing square under the pointer's last tap (and a ghost of the tool)
     const raycaster = new T.Raycaster(), ground = new T.Plane(new T.Vector3(0, 1, 0), 0), v2 = new T.Vector2(), hitP = new T.Vector3();
 
@@ -323,7 +386,17 @@ UI.tide = (() => {
       camX += (tx - camX) * Math.min(1, dt * 4); camD += (td - camD) * Math.min(1, dt * 4);
       camera.position.set(camX, camD * 0.8, camD * 0.62 + 1.5); camera.lookAt(camX, 0, 0.2);
       GL3.tickShake(camera, dt); stg.follow(camera);
-      for (let i = 0; i < n; i++) rebuild(i, plots[i]);
+      for (let i = 0; i < n; i++) {
+        rebuild(i, plots[i]);
+        // a keep going over: it tips, slumps and sinks a little
+        const o = plots3[i];
+        if (o.keep) {
+          const u = o.fallen ? Math.min(1, (now - (o.fallAt || 0)) / 700) : 0, e = u * u * (3 - 2 * u);
+          o.keep.rotation.z = 1.2 * e; o.keep.scale.set(1, 1 - 0.5 * e, 1); o.keep.position.y = -0.1 * e;
+          if (o.fallen && u < 1 && u > 0.3 && !o.dusted) { o.dusted = true; crumble(o.keep.position.x, o.keep.position.z, 26); }
+          if (!o.fallen) o.dusted = false;
+        }
+      }
       // the sea swells (bigger while a wave is coming in)
       const t = tideT(now), wt = g0.waveT, w = V.stage === 'tide' ? Math.floor(t / wt) : -1, f = w >= 0 && w < g0.waves ? (t - w * wt) / wt : 0;
       const surge = w >= 0 && w < g0.waves ? Math.sin(Math.min(1, f * 1.6) * Math.PI) : 0;
@@ -355,6 +428,43 @@ UI.tide = (() => {
         }
       }
       wetMesh.count = k; wetMesh.instanceMatrix.needsUpdate = true;
+      // the crests and the worn pieces' sand
+      for (let i = 0; i < n; i++) {
+        const res = V.result?.[i], wave = w >= 0 && w < g0.waves ? res?.waves?.[w] : null, cm = crests[i];
+        if (!wave) { cm.visible = false; continue; }
+        const reach = wave.wet.reduce((m, q) => Math.max(m, q[0]), 0);
+        // the crest runs in at the water's pace (a square every 0.09 s) and breaks where the water stops
+        const el = f * wt, row = Math.min(reach, el / 0.09 - 0.5), stopAt = (reach + 0.5) * 0.09, fade = Math.max(0, 1 - Math.max(0, el - stopAt) / 0.35);
+        cm.visible = fade > 0.02; cm.position.set(ox(i) + C / 2 - 0.5, 0.12 * fade + 0.06 * Math.sin(el * 6), oz + row - 0.2);
+        cm.scale.set(fade, 1, 0.6 + 0.4 * fade); crestMat.opacity = 0.9 * fade;
+        for (const [r, c, fo, worn] of wave.hit) {
+          const key = `${V.tide}:${w}:${i}:${r}:${c}`;
+          if (worn && f >= 0.55 && !crumbled.has(key)) { crumbled.add(key); const [x, z] = cellPos(i, r, c); crumble(x, z, 8 + 6 * worn); }
+        }
+      }
+      // damp sand where the tide has been (until the next build)
+      let nd = 0;
+      if (V.stage === 'tide' || V.stage === 'between') for (let i = 0; i < n; i++) for (const key of plots[i]?.wet || []) { const [r, c] = key.split(',').map(Number), [x, z] = cellPos(i, r, c); ps.set(x, 0.008, z); damp.setMatrixAt(nd++, m4.compose(ps, flatQ, sc.set(1, 1, 1))); }
+      damp.count = nd; damp.instanceMatrix.needsUpdate = true;
+      for (let j = 0; j < SP2; j++) {
+        if (sLife[j] <= 0) continue;
+        sLife[j] -= dt; if (sLife[j] <= 0 || sPos[j * 3 + 1] < 0) { sLife[j] = 0; sPos[j * 3 + 1] = -99; continue; }
+        sVel[j * 3 + 1] -= 8 * dt; sPos[j * 3] += sVel[j * 3] * dt; sPos[j * 3 + 1] += sVel[j * 3 + 1] * dt; sPos[j * 3 + 2] += sVel[j * 3 + 2] * dt;
+      }
+      sGeo.attributes.position.needsUpdate = true;
+      // the cursor (the square you last tapped) and the test wave
+      const mineI = me(), bld = building();
+      cur.visible = bld && !!cursor && now - cursor.at < 1500;
+      if (cur.visible) { const [x, z] = cellPos(mineI, cursor.r, cursor.c); cur.position.set(x, 0.02, z); curMat.opacity = 0.9 * (1 - (now - cursor.at) / 1500); }
+      let nt = 0;
+      testKeep.visible = false;
+      if (bld && test && plots[mineI]) {
+        const tw = testWave(plots[mineI]);
+        for (const [r, c, fo] of tw.wet) { const [x, z] = cellPos(mineI, r, c); ps.set(x, 0.015, z); testMesh.setMatrixAt(nt++, m4.compose(ps, flatQ, sc.set(1, 1, 1))); }
+        testMat.opacity = 0.32 + 0.12 * Math.sin(now / 300);
+        if (tw.dmg > 0) { const [x, z] = cellPos(mineI, g0.keepRow, plots[mineI].keep); testKeep.position.set(x, 0.02, z); testKeep.visible = true; }
+      }
+      testMesh.count = nt; testMesh.instanceMatrix.needsUpdate = true;
       for (let j = 0; j < NP; j++) {
         if (pLife[j] <= 0) continue;
         pLife[j] -= dt; if (pLife[j] <= 0) { pPos[j * 3 + 1] = -99; continue; }
@@ -403,9 +513,19 @@ UI.tide = (() => {
         g.font = `${Math.round(k * 0.6)}px serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
         for (let r = 0; r < g0.rows; r++) for (let c = 0; c < g0.cols; c++) {
           const cell = p.g[r][c], cx = px + (c + 0.5) * k, cy = y0 + (r + 0.5) * k;
-          if (cell) { if (cell[0] === 'moat' && p.filled?.has(`${r},${c}`)) { g.fillStyle = '#3aa8e8'; g.fillRect(cx - k * 0.45, cy - k * 0.45, k * 0.9, k * 0.9); } else g.fillText(cell[0] === 'tower' && cell[1] === 1 ? '🧱' : ICON[cell[0]], cx, cy); }
-          if (r === g0.keepRow && c === p.keep) g.fillText(p.fallen ? '💥' : '🏰', cx, cy);
+          if (p.wet?.has(`${r},${c}`)) { g.fillStyle = 'rgba(107,78,37,0.18)'; g.fillRect(cx - k / 2, cy - k / 2, k, k); }
+          if (cell) {
+            if (cell[0] === 'moat' && p.filled?.has(`${r},${c}`)) { g.fillStyle = '#3aa8e8'; g.fillRect(cx - k * 0.45, cy - k * 0.45, k * 0.9, k * 0.9); }
+            else g.fillText(cell[0] === 'tower' && cell[1] === 1 ? '🧱' : ICON[cell[0]], cx, cy);
+            if (cell[0] === 'tower' && cell[1] > 1) { g.save(); g.font = `800 ${Math.round(k * 0.32)}px sans-serif`; g.fillStyle = '#fff'; g.strokeStyle = '#000a'; g.lineWidth = 3; g.strokeText(cell[1], cx + k * 0.3, cy + k * 0.3); g.fillText(cell[1], cx + k * 0.3, cy + k * 0.3); g.restore(); }
+          }
+          if (r === g0.keepRow && c === p.keep) {
+            g.fillText(p.fallen ? '💥' : '🏰', cx, cy);
+            const hm = g0.keepHp ?? 10, hp = p.hp ?? hm;
+            if (!p.fallen && hp < hm) { g.fillStyle = '#0008'; g.fillRect(cx - k * 0.4, cy - k * 0.55, k * 0.8, k * 0.1); g.fillStyle = hp > hm / 2 ? '#5fd35f' : '#ff5a4a'; g.fillRect(cx - k * 0.4, cy - k * 0.55, k * 0.8 * hp / hm, k * 0.1); }
+          }
         }
+        if (i === me() && building() && test) { const tw = testWave(p); g.fillStyle = 'rgba(42,155,216,0.35)'; for (const [r, c] of tw.wet) g.fillRect(px + c * k, y0 + r * k, k, k); }
         if (w >= 0 && w < g0.waves && V.result?.[i]) {
           const F = V.waves[w];
           for (const [r, c, fo] of V.result[i].waves[w].wet) {

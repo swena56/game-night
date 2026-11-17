@@ -6,10 +6,12 @@ beaches are hidden until the tide comes in): 🧱 walls, 🗼 towers, 🕳️ mo
 five waves roll up every beach.
 
 A wave comes in from the sea with some force and loses one with every square it runs across, flowing round
-whatever stands in its way. It stops at walls and towers, but wears one down a level when it hits harder than the
-thing is tall. A dry moat soaks up the water that reaches it (once a tide). If water reaches your keep, your castle
-falls for the rest of that tide. Each wave your keep stays dry scores 10; each shell still on the beach after the
-tide scores 3. What's left of your walls stays for the next tide. Most points after the third tide wins.
+whatever stands in its way. It stops at walls and towers, but wears one down a level when it hits at least two
+harder than the thing is tall (#157: so a tall tower really holds). Towers can be piled up to 4 high. A dry moat
+soaks up the water that reaches it (once a tide). Water that reaches your keep knocks off its force less one from
+the keep's 6 strength; at 0 the keep falls for the rest of that tide. Each wave your keep is still standing after
+scores 6, the keep's strength left at the end of the tide scores that much again, and each shell still on the beach
+scores 3. What's left of your walls stays for the next tide. Most points after the third tide wins.
 
 The forecast (every wave's force) is shown while you build, so plan for the big ones.
 """
@@ -26,17 +28,24 @@ TIDES = 3
 SAND = 12                     # a bucket per tide
 COST = {"wall": 1, "tower": 2, "moat": 1, "shell": 1}
 HEIGHT = {"wall": 1, "tower": 2}
+MAX_H = 4                     # a tower piles up to this (1 sand a level)
+WEAR = 2                      # a wave wears a level off when it hits at least height + WEAR
+WEAR_STEP = 3                 # … and another for every 3 harder than that
+KEEP_HP = 10
 BUILD_T = 45.0
 WAVE_T = 2.2                  # seconds each wave plays out on screen
 BETWEEN = 6.0
-WAVE_PTS, SHELL_PTS = 10, 3
+WAVE_PTS, SHELL_PTS = 6, 3
 BOT_TRIES = {"easy": 2, "normal": 25, "hard": 70}
 BOT_PACE = {"easy": (6, 14), "normal": (5, 12), "hard": (4, 10)}
 
 
+WAVE_LO, WAVE_HI, RAMP = 9, 12, 1
+
+
 def forecast(rng, tide):
     """Five wave forces for a tide: rising through the tide and from tide to tide."""
-    waves = sorted(rng.randint(6 + tide, 9 + tide) for _ in range(WAVES - 1))
+    waves = sorted(rng.randint(WAVE_LO + RAMP * tide, WAVE_HI + RAMP * tide) for _ in range(WAVES - 1))
     waves.append(waves[-1] + rng.randint(1, 2))      # the big one comes last
     return waves
 
@@ -47,13 +56,15 @@ def new_plot():
 
 def run_tide(plot, waves):
     """Roll the waves up a plot (changed in place: worn structures, washed shells, moats drain after).
-    Returns (per-wave records, waves survived before the keep fell (WAVES if it never did)).
-    A record: {"wet": [[r, c, force]…], "hit": [[r, c, force, worn]…], "soak": [[r, c]…], "keep": bool}."""
+    Returns (per-wave records, waves the keep stood through, the keep's strength left).
+    A record: {"wet": [[r, c, force]…], "hit": [[r, c, force, worn]…], "soak": [[r, c]…], "keep": bool (water
+    reached it), "dmg": strength knocked off, "hp": strength after}."""
     g = plot["g"]
     kc = plot["keep"]
     filled = set()
     out = []
     survived = None
+    hp = KEEP_HP
     for w, F in enumerate(waves):
         best = {}
         pq = []
@@ -61,6 +72,7 @@ def run_tide(plot, waves):
             heapq.heappush(pq, (-F, 0, c))
         wet, hits, soak = [], {}, []
         keep_hit = False
+        keep_f = 0
         while pq:
             nf, r, c = heapq.heappop(pq)
             f = -nf
@@ -70,6 +82,7 @@ def run_tide(plot, waves):
             cell = g[r][c]
             if r == KEEP_ROW and c == kc:
                 keep_hit = True
+                keep_f = max(keep_f, f)
                 continue
             if cell and cell[0] in HEIGHT and cell[1] > 0:
                 hits[(r, c)] = max(hits.get((r, c), 0), f)
@@ -89,21 +102,51 @@ def run_tide(plot, waves):
         worn = []
         for (r, c), f in sorted(hits.items()):
             kind, h = g[r][c]
-            gone = f > h
-            if gone:
-                h -= 1
-                g[r][c] = None if h <= 0 else ("wall", h)
-            worn.append([r, c, f, int(gone)])
-        out.append({"wet": wet, "hit": worn, "soak": soak, "keep": keep_hit})
-        if keep_hit and survived is None:
+            lost = wear(f, h)
+            if lost:
+                h -= lost
+                g[r][c] = None if h <= 0 else ("wall" if h == 1 else "tower", h)
+            worn.append([r, c, f, lost])
+        dmg = min(hp, keep_dmg(keep_f)) if hp > 0 else 0
+        hp -= dmg
+        out.append({"wet": wet, "hit": worn, "soak": soak, "keep": keep_hit, "dmg": dmg, "hp": hp})
+        if hp <= 0 and survived is None:
             survived = w
     # moats drain between tides
-    return out, WAVES if survived is None else survived
+    return out, WAVES if survived is None else survived, hp
 
 
-def score_tide(plot, survived):
+def keep_dmg(f):
+    """Strength a keep loses to water arriving with force f: a third of it, rounded (a trickle does nothing)."""
+    return (f + 1) // 3
+
+
+def wear(f, h):
+    """Levels a wave of force f knocks off something h tall: none unless it hits at least WEAR harder, then one more
+    for every WEAR_STEP beyond that."""
+    over = f - h - WEAR
+    return 0 if over < 0 else min(h, 1 + over // WEAR_STEP)
+
+
+def score_tide(plot, survived, hp):
     shells = sum(1 for row in plot["g"] for cell in row if cell and cell[0] == "shell")
-    return survived * WAVE_PTS + shells * SHELL_PTS, shells
+    return survived * WAVE_PTS + hp + shells * SHELL_PTS, shells
+
+
+def place_cost(cell, item):
+    """Sand to build `item` on a square holding `cell` (None if it can't go there): a tower on a wall or a tower
+    piles one more level on, up to MAX_H."""
+    if not cell:
+        return COST[item]
+    if item == "tower" and cell[0] in HEIGHT and cell[1] < MAX_H:
+        return 1
+    return None
+
+
+def placed_cell(cell, item):
+    if cell and item == "tower":
+        return ("tower", cell[1] + 1)
+    return (item, HEIGHT.get(item, 0))
 
 
 def copy_plot(plot):
@@ -116,14 +159,14 @@ class Tide(Game):
     family = None
     howto = [
         "Everyone builds on their own beach at once, then the same five waves roll up every beach. Three tides.",
-        "Spend your bucket of sand: 🧱 wall 1, 🗼 tower 2 (twice as tall), 🕳️ moat 1 (soaks up one wave), 🐚 shell 1.",
-        "A wave loses force with every square it crosses and flows round things. It wears walls and towers down a level when it hits harder than they're tall.",
-        "Water on your 🏰 keep and your castle falls for the tide. Each dry wave scores 10; each shell left scores 3.",
+        "Spend your bucket of sand: 🧱 wall 1, 🗼 tower 2 (tap it again to pile it higher, 1 a level, up to 4), 🕳️ moat 1 (soaks up one wave), 🐚 shell 1.",
+        "A wave loses 1 force with every square it crosses and flows round things. It wears a wall or tower down a level only when it hits at least 2 harder than it's tall.",
+        "Your 🏰 keep has 6 strength: water reaching it knocks off its force less 1. Each wave it's still standing scores 6, its strength left scores too, and each shell left scores 3.",
         "What's left stands for the next tide. Check the forecast: the last wave is the big one.",
     ]
     name = "Tide Castles"
     icon = "🏖️"
-    blurb = "Build sand castles at the same time, then the same waves hit every beach. Keep your keep dry for three tides."
+    blurb = "Build sand castles at the same time, then the same waves hit every beach. Pile your towers high and keep your keep standing for three tides."
     min_players = 1
     max_players = 6
     badges = {**Game.badges,
@@ -171,7 +214,8 @@ class Tide(Game):
         self.waves = forecast(self.rng, self.tide - 1)
         self.stage = "build"
         self.left = [self.sand] * len(self.seats)
-        self.placed = [set() for _ in self.seats]        # squares built this tide (can be taken back)
+        # squares built on this tide: {(r, c): [sand spent, what stood there before]} (taken back whole)
+        self.spent = [{} for _ in self.seats]
         self.moved = [False] * len(self.seats)
         self.ready = [False] * len(self.seats)
         self.result = None
@@ -209,6 +253,12 @@ class Tide(Game):
         else:
             raise GameError("Unknown action.")
 
+    def __setstate__(self, st):
+        # a room saved before #157 kept a set of built squares instead of what each one cost
+        if "spent" not in st and "placed" in st:
+            st["spent"] = [{rc: [0, None] for rc in pl} for pl in st.pop("placed")]
+        self.__dict__.update(st)
+
     def build(self, i, r, c, item):
         plot = self.plots[i]
         if item not in COST:
@@ -216,27 +266,27 @@ class Tide(Game):
         if r == KEEP_ROW and c == plot["keep"]:
             raise GameError("That's your keep.")
         cell = plot["g"][r][c]
-        cost = COST[item]
-        if cell:
-            if cell[0] == "wall" and item == "tower":
-                cost = 1                      # pile another level on a wall
-            else:
-                raise GameError("Something's already there (tap it to take it back).")
+        cost = place_cost(cell, item)
+        if cost is None:
+            if cell and cell[0] in HEIGHT and item == "tower":
+                raise GameError(f"That's as tall as sand will stand ({MAX_H}).")
+            raise GameError("Something's already there (tap it to take it back).")
         if self.left[i] < cost:
             raise GameError("Not enough sand left in your bucket.")
         self.left[i] -= cost
-        plot["g"][r][c] = (item, HEIGHT.get(item, 0))
-        self.placed[i].add((r, c))
+        sp = self.spent[i].setdefault((r, c), [0, cell])
+        sp[0] += cost
+        plot["g"][r][c] = placed_cell(cell, item)
 
     def clear(self, i, r, c):
+        """Take back everything built on a square this tide: its sand back, and whatever stood there before."""
         plot = self.plots[i]
-        cell = plot["g"][r][c]
-        if not cell or (r, c) not in self.placed[i]:
+        sp = self.spent[i].get((r, c))
+        if not plot["g"][r][c] or not sp:
             raise GameError("Only what you built this tide can come back.")
-        self.left[i] += COST[cell[0]]
-        plot["g"][r][c] = None
-        self.placed[i].discard((r, c))
-        self.left[i] = min(self.left[i], self.sand)
+        self.left[i] = min(self.sand, self.left[i] + sp[0])
+        plot["g"][r][c] = sp[1]
+        del self.spent[i][(r, c)]
 
     def move_keep(self, i, r, c):
         plot = self.plots[i]
@@ -264,21 +314,21 @@ class Tide(Game):
             if not self.present(i):
                 self.result.append(None)
                 continue
-            waves, survived = run_tide(plot, self.waves)
-            pts, shells = score_tide(plot, survived)
+            waves, survived, hp = run_tide(plot, self.waves)
+            pts, shells = score_tide(plot, survived, hp)
             self.points[i] += pts
-            self.result.append({"waves": waves, "survived": survived, "pts": pts, "shells": shells})
+            self.result.append({"waves": waves, "survived": survived, "hp": hp, "pts": pts, "shells": shells})
             lines.append(f"{self.name_of(i)} {pts}")
             if shells >= 5 and self.pl(i):
                 self.award(self.seats[i], "beachcomber", at=now + WAVE_T * WAVES)
-            if self.tide == TIDES and survived == WAVES and self.pl(i):
+            if self.tide == TIDES and hp == KEEP_HP and self.pl(i):
                 self.award(self.seats[i], "fortress", at=now + WAVE_T * WAVES)
         self.history.append([res["pts"] if res else 0 for res in self.result])
         self.standing = [self.plot_view(i) for i in range(len(self.seats))]   # what rivals see while everyone builds next
         dur = WAVE_T * WAVES + 1.0
         r.deadline = now + dur
         self.tide_at = now
-        dry = [i for i, res in enumerate(self.result) if res and res["survived"] == WAVES]
+        dry = [i for i, res in enumerate(self.result) if res and res["hp"] == KEEP_HP]
         r.add_log(f"🌊 Tide {self.tide}: " + ", ".join(lines) + ".", "big", at=now + dur - 0.5)
         if dry and len(self.seats) > 1:
             names = " & ".join(self.name_of(i) for i in dry)
@@ -317,7 +367,7 @@ class Tide(Game):
     def bot_build(self, i, level):
         plot = self.plots[i]
         # take back anything built this tide (an autopilot taking over half-way starts clean)
-        for (r, c) in list(self.placed[i]):
+        for (r, c) in list(self.spent[i]):
             self.clear(i, r, c)
         tries = BOT_TRIES.get(level, 25)
         best, best_v = None, -1e9
@@ -326,10 +376,11 @@ class Tide(Game):
             trial = copy_plot(plot)
             trial["keep"] = lay["keep"]
             for (r, c, item) in lay["items"]:
-                trial["g"][r][c] = (item, HEIGHT.get(item, 0)) if not trial["g"][r][c] else ("tower", 2)
-            waves = self.waves if level != "easy" else [w - 1 for w in self.waves]
-            _, survived = run_tide(trial, waves)
-            pts, _ = score_tide(trial, survived)
+                trial["g"][r][c] = placed_cell(trial["g"][r][c], item)
+            # easy plans for gentler waves than forecast
+            waves = [w + {"easy": -2}.get(level, 0) for w in self.waves]
+            _, survived, hp = run_tide(trial, waves)
+            pts, _ = score_tide(trial, survived, hp)
             # (hard) what's left standing is worth something for the next tide
             if level == "hard" and self.tide < TIDES:
                 pts += 0.6 * sum(cell[1] for row in trial["g"] for cell in row if cell and cell[0] in HEIGHT)
@@ -354,25 +405,30 @@ class Tide(Game):
             kc = rng.randrange(COLS)
             if g[KEEP_ROW][kc]:
                 kc = plot["keep"]
-        items, used, taken = [], 0, set()
+        items, used, now = [], 0, {}
 
         def add(r, c, item):
             nonlocal used
-            if not (0 <= r < ROWS and 0 <= c < COLS) or (r, c) in taken or (r == KEEP_ROW and c == kc):
+            if not (0 <= r < ROWS and 0 <= c < COLS) or (r == KEEP_ROW and c == kc):
                 return False
-            cell = g[r][c]
-            cost = COST[item]
-            if cell:
-                if cell[0] == "wall" and item == "tower" and cell[1] == 1:
-                    cost = 1
-                else:
-                    return False
-            if used + cost > sand:
+            cell = now.get((r, c), g[r][c])
+            cost = place_cost(cell, item)
+            if cost is None or used + cost > sand:
                 return False
             used += cost
-            taken.add((r, c))
+            now[(r, c)] = placed_cell(cell, item)
             items.append((r, c, item))
             return True
+
+        def raise_to(r, c, h):
+            if not (0 <= r < ROWS and 0 <= c < COLS):
+                return
+            cell = now.get((r, c), g[r][c])
+            if not cell:
+                if not add(r, c, "tower" if h >= 2 else "wall"):
+                    return
+            while (now.get((r, c), g[r][c]) or ("", 9))[1] < h and add(r, c, "tower"):
+                pass
         if level == "easy" and k % 2 == 0:
             for _ in range(40):
                 add(rng.randrange(ROWS), rng.randrange(COLS), rng.choice(("wall", "wall", "tower", "moat", "shell")))
@@ -386,9 +442,9 @@ class Tide(Game):
             ring.append((KEEP_ROW, kc - d))
             ring.append((KEEP_ROW, kc + d))
         rng.shuffle(ring) if k % 4 == 3 else None
-        towers = rng.random()
+        tall = rng.choice((1, 2, 2, 3, 3, 4, 4)) if level != "easy" else rng.choice((1, 2, 2, 3))
         for (r, c) in sorted(ring, key=lambda q: (abs(q[1] - kc) + (KEEP_ROW - q[0]))):
-            add(r, c, "tower" if rng.random() < towers else "wall")
+            raise_to(r, c, max(1, tall - (1 if r == KEEP_ROW and rng.random() < 0.5 else 0)))
         for _ in range(rng.randint(0, 3)):
             add(rng.randint(KEEP_ROW - depth - 2, KEEP_ROW - depth - 1), kc + rng.randint(-2, 2), "moat")
         extra = ("wall", "tower", "moat", "shell")
@@ -398,6 +454,9 @@ class Tide(Game):
             item = rng.choice(extra)
             if item == "shell":
                 add(rng.randint(ROWS - 2, ROWS - 1), rng.randrange(COLS), "shell")
+            elif item == "tower" and items and rng.random() < 0.5:
+                r, c, _ = rng.choice(items)     # pile one of mine higher
+                add(r, c, "tower")
             else:
                 add(rng.randrange(ROWS), rng.randrange(COLS), item)
         return {"keep": kc, "items": items}
@@ -459,12 +518,13 @@ class Tide(Game):
         return {"tide": {
             "seats": self.seats, "me": me, "tide": self.tide, "tides": TIDES, "stage": self.stage, "waves": self.waves,
             "plots": plots, "points": self.points, "left": self.left, "ready": self.ready, "moved": self.moved,
-            "placed": [[r, c] for (r, c) in self.placed[me]] if me is not None and sealed else [],
+            "placed": [[r, c] for (r, c) in self.spent[me]] if me is not None and sealed else [],
             "result": self.result if self.stage in ("tide", "between") else None,
             "before": getattr(self, "before", None) if self.stage in ("tide", "between") else None,
             "since": round(now - getattr(self, "tide_at", now), 2) if self.stage == "tide" else 0,
             "timeLeft": max(0.0, round((self.room.deadline or now) - now, 2)),
             "history": self.history, "sand": self.sand,
             "geo": {"cols": COLS, "rows": ROWS, "keepRow": KEEP_ROW, "waves": WAVES, "waveT": WAVE_T, "cost": COST,
-                    "height": HEIGHT, "wavePts": WAVE_PTS, "shellPts": SHELL_PTS},
+                    "height": HEIGHT, "wavePts": WAVE_PTS, "shellPts": SHELL_PTS,
+                    "maxH": MAX_H, "wear": WEAR, "keepHp": KEEP_HP},
         }}
