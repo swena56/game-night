@@ -12,6 +12,7 @@ UI.snowball = (() => {
   const STICK_PX = 60;
   const $ = (id) => document.getElementById(id);
   const calm = () => document.body.classList.contains('calm');
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
   function mount(main, side) {
     S = null; snap = null; gl = null; flat = null; drag = null; stick = [0, 0]; keys = new Set(); lastSeq = -1; flash = null; packAt = 0; rot = false; disp.length = 0; predAt = 0;
@@ -186,6 +187,12 @@ UI.snowball = (() => {
       K.burst(d, t, { type: 'highpass', f: 3000, q: 0.7, vol: 0.12, tau: 0.08 });
       K.mode(d, t, 180, mine ? 0.12 : 0.05, 0.08, { f1: 120 });
     }, x, y),
+    // #153 thawed out: the ice block cracks and bursts, shards tinkling down
+    crack: (x, y) => snd((t, K, d) => {
+      K.burst(d, t, { type: 'highpass', f: 2500, q: 0.7, vol: 0.22, tau: 0.02 });
+      K.burst(d, t + 0.01, { type: 'bandpass', f: 1200, q: 1, vol: 0.18, tau: 0.04 });
+      for (let n = 0; n < 7; n++) K.mode(d, t + 0.04 + n * K.R(0.03, 0.06), K.R(2600, 5200), 0.035, K.R(0.08, 0.2));
+    }, x, y),
     // a giant ready: a big roll of snow packing tight, and a little rise
     giant: () => snd((t, K, d) => { K.burst(d, t, { type: 'lowpass', f: 250, f1: 500, q: 0.7, vol: 0.3, tau: 0.1, dur: 0.45, attack: 0.1, buf: 'brown' }); [523, 784].forEach((f, n) => K.mode(d, t + 0.35 + n * 0.08, f, 0.06, 0.12)); }),
     // flattened by a giant: a big soft boom of snow
@@ -217,6 +224,7 @@ UI.snowball = (() => {
     } else if (kind === 'hit') {
       const [j, by, x, y, big] = a;
       SN.splat(big, x, y, j === i);
+      gl?.hitKid(j, x, y);
       (gl || flat)?.puff(x, y, big ? 30 : 18, colorOf(j));
       if (j === i) { ctx.buzz?.(big ? [40, 30, 60] : 35); gl?.shake(big ? 0.45 : 0.25); }
       else if (by === i) showFlash(big ? '💥 Big hit!' : '🎯 Hit!', 900);
@@ -439,7 +447,29 @@ UI.snowball = (() => {
     // the kids: a coat in the player's colour, a head, a white bobble hat and scarf, a ring under your own
     const skin = new T.MeshStandardMaterial({ color: 0xf1c7a3, roughness: 0.7 });
     const white = new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 });
-    const iceMat = new T.MeshStandardMaterial({ color: 0xbfeaff, transparent: true, opacity: 0.55, roughness: 0.1, metalness: 0.1, emissive: 0x245a7a, emissiveIntensity: 0.3 });
+    // #153 the ice block: faceted, glassy (clearcoat when not on Low), with frosty edges that crack as it thaws
+    const iceMat = low
+      ? new T.MeshStandardMaterial({ color: 0x8fd4ff, transparent: true, opacity: 0.68, roughness: 0.15, metalness: 0.05, emissive: 0x2a7ab0, emissiveIntensity: 0.45, flatShading: true, depthWrite: false })
+      : new T.MeshPhysicalMaterial({ color: 0x8fd4ff, transparent: true, opacity: 0.66, roughness: 0.06, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.08, emissive: 0x2a7ab0, emissiveIntensity: 0.45, flatShading: true, depthWrite: false, envMapIntensity: 1.6 });
+    const shardMat = new T.MeshStandardMaterial({ color: 0xd8f4ff, roughness: 0.1, emissive: 0x3a7aa0, emissiveIntensity: 0.4, flatShading: true });
+    const crackMat = new T.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false });
+    const clockMat = new T.MeshBasicMaterial({ color: 0x7fd8ff, side: T.DoubleSide, depthTest: false });
+    const clockBg = new T.MeshBasicMaterial({ color: 0x1a3a5a, transparent: true, opacity: 0.6, side: T.DoubleSide, depthTest: false });
+    const FROST = new T.Color(0xcfe8ff), WHITE = new T.Color(0xffffff);
+    // one rough crystal, shared: an icosahedron with its corners pushed about (the same for every block)
+    const iceGeo = (() => {
+      const g0 = new T.IcosahedronGeometry(1, 1), pa = g0.attributes.position, seen = new Map();
+      for (let n = 0; n < pa.count; n++) {
+        const key = `${pa.getX(n).toFixed(3)},${pa.getY(n).toFixed(3)},${pa.getZ(n).toFixed(3)}`;
+        if (!seen.has(key)) seen.set(key, 0.86 + 0.24 * Math.abs(Math.sin(n * 12.9898) * 43758.5453 % 1));
+        const f = seen.get(key); pa.setXYZ(n, pa.getX(n) * f, pa.getY(n) * f, pa.getZ(n) * f);
+      }
+      g0.computeVertexNormals();
+      return g0;
+    })();
+    const iceEdges = new T.EdgesGeometry(iceGeo, 8);
+    const spikeGeo = new T.ConeGeometry(0.09, 0.42, 5), capGeo = new T.SphereGeometry(0.5, 14, 6, 0, 6.283, 0, Math.PI / 2);
+    const splatGeo = new T.SphereGeometry(0.1, 8, 6);
     const pipOn = new T.MeshBasicMaterial({ color: 0x3a8dff }), pipOff = new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 });
     const shadowMat = new T.MeshBasicMaterial({ color: 0x334466, transparent: true, opacity: 0.22, depthWrite: false });
     const discGeo = new T.CircleGeometry(1, 24), KID = 1.25;   // drawn a bit bigger than the body, to read on a phone
@@ -462,10 +492,22 @@ UI.snowball = (() => {
         const ball = new T.Mesh(new T.SphereGeometry(0.13, 10, 8), white); ball.position.set(0.3, 0.95, 0.35); ball.visible = false;
         body.add(torso, legs, head, hat, bob, scarf, eyes, arm, ball);
         const giant = new T.Mesh(new T.SphereGeometry(1, 16, 12), snowMat); giant.castShadow = !low; giant.visible = false; g.add(giant);
-        const ice = new T.Mesh(new T.BoxGeometry(0.95, 1.6, 0.95), iceMat); ice.position.y = 0.8; ice.visible = false; g.add(ice);
+        // snow splats stuck to the coat, one per hit pip
+        const splats = [[0.12, 0.62, 0.3], [-0.16, 0.48, 0.3], [0.02, 0.75, -0.3]].map(([sx, sy, sz]) => { const m = new T.Mesh(splatGeo, white); m.position.set(sx, sy, sz); m.scale.set(1.2, 1, 0.45); m.visible = false; body.add(m); return m; });
+        const ice = new T.Group(); ice.visible = false; g.add(ice);
+        const block = new T.Mesh(iceGeo, iceMat); block.scale.set(0.62, 0.98, 0.62); block.position.y = 0.86; block.renderOrder = 2; ice.add(block);
+        const cracks = new T.LineSegments(iceEdges, crackMat); cracks.scale.copy(block.scale).multiplyScalar(1.01); cracks.position.copy(block.position); cracks.renderOrder = 3; ice.add(cracks);
+        const cap = new T.Mesh(capGeo, white); cap.scale.set(0.62, 0.22, 0.62); cap.position.y = 1.74; ice.add(cap);
+        for (let n = 0; n < 6; n++) { const a = n / 6 * 6.283 + 0.3, sp = new T.Mesh(spikeGeo, iceMat); sp.position.set(Math.cos(a) * 0.55, 0.16, Math.sin(a) * 0.55); sp.rotation.set(Math.sin(a) * 0.7, 0, -Math.cos(a) * 0.7); sp.scale.y = 0.8 + (n % 3) * 0.3; ice.add(sp); }
+        const coatBase = coat.color.clone();
         const pips = [];
         for (let k = 0; k < v0.pips; k++) { const p = new T.Mesh(new T.SphereGeometry(0.07, 8, 6), pipOff); p.position.set((k - (v0.pips - 1) / 2) * 0.24, 2.1, 0); pips.push(p); }
         const pipBox = new T.Group(); pips.forEach((p) => pipBox.add(p)); field.add(pipBox);
+        // frozen: a countdown ring over the head everyone can see (drawRange trims the ring as the ice melts)
+        const clockG = new T.Group(); clockG.position.y = 2.15; clockG.visible = false; pipBox.add(clockG);
+        const cbg = new T.Mesh(new T.RingGeometry(0.2, 0.33, 32), clockBg); cbg.renderOrder = 5; clockG.add(cbg);
+        const clockRing = new T.Mesh(new T.RingGeometry(0.2, 0.33, 32, 1, Math.PI / 2, Math.PI * 2), clockMat); clockRing.renderOrder = 6; clockG.add(clockRing);
+        const clockTxt = new T.Mesh(new T.CircleGeometry(0.06, 12), clockMat); clockTxt.renderOrder = 6; clockG.add(clockTxt);
         const shadow = new T.Mesh(discGeo, shadowMat); shadow.rotation.x = -Math.PI / 2; shadow.scale.setScalar(0.42); field.add(shadow);
         let ring = null, arrow = null;
         if (tm != null && i !== me()) {  // a team ring under everyone else
@@ -480,7 +522,8 @@ UI.snowball = (() => {
         }
         field.add(g);
         g.scale.setScalar(KID); shadow.scale.setScalar(0.42 * KID);
-        kids.push({ g, body, arm, ball, giant, ice, pips, pipBox, shadow, ring, arrow, col, last: null, roll: 0, step: 0, throwAt: 0 });
+        kids.push({ g, body, arm, ball, giant, ice, pips, pipBox, shadow, ring, arrow, col, last: null, roll: 0, step: 0, throwAt: 0,
+          coat, coatBase, splats, cracks, clockG, clockRing, frz: 0, wasFrozen: false, hitAt: 0, hitDir: [0, 0] });
       }
     }
     // snowballs in flight, each with the shadow of where it will land (red when it's coming for you)
@@ -523,6 +566,39 @@ UI.snowball = (() => {
         tmpC.set(colors[k % colors.length]); pCol[j * 3] = tmpC.r; pCol[j * 3 + 1] = tmpC.g; pCol[j * 3 + 2] = tmpC.b;
         pLife[j] = 0.5 + Math.random() * 0.5;
       }
+    }
+    // #153 shards of ice when a block bursts: a small instanced pool with its own tumble
+    const NS = 72, shardGeo = new T.TetrahedronGeometry(0.11), shards = new T.InstancedMesh(shardGeo, shardMat, NS);
+    shards.frustumCulled = false; field.add(shards);
+    const sP = new Float32Array(NS * 3), sV = new Float32Array(NS * 3), sR = new Float32Array(NS * 3), sW = new Float32Array(NS * 3), sL = new Float32Array(NS), sS = new Float32Array(NS);
+    let sNext = 0;
+    const zero = new T.Matrix4().makeScale(0, 0, 0), eul = new T.Euler();
+    for (let k = 0; k < NS; k++) shards.setMatrixAt(k, zero);
+    function shatter(x, z) {
+      const n = calm() ? 8 : 20;
+      for (let k = 0; k < n; k++) {
+        const j = sNext; sNext = (sNext + 1) % NS;
+        const a = Math.random() * 6.283, h = Math.random() * 1.9 * KID, sp = 1.5 + Math.random() * 2.5;
+        sP[j * 3] = x + Math.cos(a) * 0.5; sP[j * 3 + 1] = 0.15 + h; sP[j * 3 + 2] = z + Math.sin(a) * 0.5;
+        sV[j * 3] = Math.cos(a) * sp; sV[j * 3 + 1] = 1.5 + Math.random() * 3; sV[j * 3 + 2] = Math.sin(a) * sp;
+        for (let c = 0; c < 3; c++) { sR[j * 3 + c] = Math.random() * 6.3; sW[j * 3 + c] = (Math.random() - 0.5) * 16; }
+        sL[j] = 1.1 + Math.random() * 0.6; sS[j] = 0.6 + Math.random() * 1.1;
+      }
+    }
+    function tickShards(dt) {
+      let any = false;
+      for (let j = 0; j < NS; j++) {
+        if (sL[j] <= 0) continue;
+        any = true; sL[j] -= dt;
+        if (sL[j] <= 0) { shards.setMatrixAt(j, zero); continue; }
+        sV[j * 3 + 1] -= 9.8 * dt;
+        for (let c = 0; c < 3; c++) { sP[j * 3 + c] += sV[j * 3 + c] * dt; sR[j * 3 + c] += sW[j * 3 + c] * dt; }
+        if (sP[j * 3 + 1] < 0.05) { sP[j * 3 + 1] = 0.05; sV[j * 3 + 1] *= -0.3; sV[j * 3] *= 0.6; sV[j * 3 + 2] *= 0.6; for (let c = 0; c < 3; c++) sW[j * 3 + c] *= 0.5; }
+        const sc0 = sS[j] * Math.min(1, sL[j] / 0.4);
+        q.setFromEuler(eul.set(sR[j * 3], sR[j * 3 + 1], sR[j * 3 + 2])); ps.set(sP[j * 3], sP[j * 3 + 1], sP[j * 3 + 2]); sc.set(sc0, sc0 * 1.6, sc0);
+        m4.compose(ps, q, sc); shards.setMatrixAt(j, m4);
+      }
+      if (any || shards.userData.dirty) { shards.instanceMatrix.needsUpdate = true; shards.userData.dirty = any; }
     }
     function tickPuffs(dt) {
       for (let j = 0; j < NP; j++) {
@@ -622,8 +698,31 @@ UI.snowball = (() => {
         o.ball.visible = !!packing;
         if (packing) o.ball.scale.setScalar(i === me() && packAt ? 1 + Math.min(1, (now - packAt) / 1000 / v.bigHold) * 0.7 : 1.3);
         o.arm.rotation.x = now - o.throwAt < 220 ? -1.6 + (now - o.throwAt) / 220 * 2.5 : 0.9;
+        // #153 snowed in: the ice grows up from the feet, the kid frosts over and shivers, a countdown ring over the
+        // head melts away, the facets crack in the last second, then the block bursts into shards
+        const fT = v.frozenT || 3, left = k[8];
+        o.frz = frozen ? Math.min(1, o.frz + dt / 0.3) : 0;
+        if (o.wasFrozen && !frozen && st === 'play') { shatter(x, y); SN.crack(x, y); burst(x, 1, y, 16, ['#ffffff', '#bfeaff'], 2.2); }
+        o.wasFrozen = frozen;
         o.ice.visible = frozen;
-        if (frozen) o.ice.rotation.y = Math.sin(now / 900 + i) * 0.1;
+        if (frozen) {
+          const e = 1 - (1 - o.frz) ** 3;
+          o.ice.scale.set(0.7 + 0.3 * e, Math.max(0.02, e), 0.7 + 0.3 * e);
+          o.ice.rotation.y = i * 1.7;
+          const thaw = clamp(1 - left / 1.0, 0, 1);
+          crackMat.opacity = Math.max(crackMat.opacity, 0.4 + 0.6 * thaw);
+          o.cracks.visible = true;
+          if (thaw > 0 && !calm() && Math.random() < dt * 10) burst(x + (Math.random() - 0.5) * 0.8, 0.5 + Math.random() * 1.2, y + (Math.random() - 0.5) * 0.8, 1, ['#9fd8ff'], 0.15);
+          o.g.position.x += Math.sin(now / 28 + i) * 0.025 * (1 - thaw * 0.5);
+        }
+        // frosted while frozen, a white flash and a lean back when hit
+        const hitT = (now - o.hitAt) / 260;
+        o.coat.color.copy(o.coatBase).lerp(FROST, frozen ? 0.6 * o.frz : 0);
+        o.coat.emissive.copy(WHITE).multiplyScalar(hitT < 1 ? 0.55 * (1 - hitT) : frozen ? 0.08 : 0);
+        if (hitT < 1 && !frozen && !knocked) o.body.rotation.x -= Math.sin(hitT * Math.PI) * 0.45;
+        o.splats.forEach((m, n) => { m.visible = n < k[7] && !frozen; });
+        o.clockG.visible = frozen;
+        if (frozen) { const fr = clamp(left / fT, 0, 1); o.clockRing.geometry.setDrawRange(0, Math.ceil(32 * fr) * 6); }
         // ⛄ the giant rolls ahead of you
         o.giant.visible = k[11] > 0.04;
         if (o.giant.visible) {
@@ -634,8 +733,7 @@ UI.snowball = (() => {
         o.pipBox.position.set(x, 0, y);
         o.pipBox.quaternion.copy(camera.quaternion).premultiply(unturn);
         o.pipBox.position.y = knocked ? -0.9 : 0;
-        o.pips.forEach((m, n) => { m.material = n < k[7] ? pipOn : pipOff; });
-        o.pipBox.visible = !frozen;
+        o.pips.forEach((m, n) => { m.material = n < k[7] ? pipOn : pipOff; m.visible = !frozen; });
         o.shadow.position.set(x, 0.015, y);
         if (o.ring) { o.ring.position.set(x, 0.02, y); if (!o.ring.userData.team) o.ring.material.opacity = 0.55 + 0.3 * Math.sin(now / 250); }
         if (o.arrow) { o.arrow.visible = !knocked; o.arrow.position.y = 2.15 + 0.12 * Math.sin(now / 220); o.arrow.rotation.y += dt * 2; }
@@ -654,8 +752,9 @@ UI.snowball = (() => {
         }
         fGeo.attributes.position.needsUpdate = true;
       }
-      tickPuffs(dt); tickPrints(dt);
+      tickPuffs(dt); tickPrints(dt); tickShards(dt);
       renderer.render(scene, camera);
+      crackMat.opacity = 0;   // set again next frame by whoever is frozen (one shared material: the most-thawed wins)
     }
     function puff(x, y, n, col) { burst(x, 0.25, y, n, col ? ['#ffffff', '#e8f1ff', col] : ['#ffffff', '#e8f1ff'], 2.6); }
     function crumble(fi) {
@@ -666,10 +765,11 @@ UI.snowball = (() => {
     function sparkle(fi) { const [x, y] = V().forts[fi]; burst(x, 1.2, y, 14, ['#bfeaff', '#ffffff'], 1.5); }
     function freeze(j) { const [x, y] = pos(j, performance.now()); burst(x, 1, y, 28, ['#bfeaff', '#ffffff', '#7fd0ff'], 3); }
     function windup(i) { if (kids[i]) kids[i].throwAt = performance.now(); }
+    function hitKid(j) { if (kids[j]) kids[j].hitAt = performance.now(); }
     const shake = (a) => GL3.shake(camera, a);
     function dispose() { stg.dispose(); renderer.dispose(); renderer.domElement.remove(); }
     resize();
-    return { draw, resize, dispose, shake, puff, crumble, sparkle, freeze, windup };
+    return { draw, resize, dispose, shake, puff, crumble, sparkle, freeze, windup, hitKid };
   }
 
   // ---------- flat fallback (no WebGL): a top-down field
@@ -712,7 +812,15 @@ UI.snowball = (() => {
         g.fillStyle = colorOf(i); g.strokeStyle = v.teams ? TEAM_COL[v.team[i]] : i === v.me ? '#000' : '#0006'; g.lineWidth = r * (v.teams ? 0.35 : 0.25);
         g.beginPath(); g.arc(X(x), Y(y), r, 0, 7); g.fill(); g.stroke();
         g.strokeStyle = '#fff'; g.beginPath(); g.moveTo(X(x), Y(y)); g.lineTo(X(x + s[4] * v.body), Y(y + s[5] * v.body)); g.stroke();
-        if (s[8] > 0) { g.fillStyle = 'rgba(160,220,255,0.6)'; g.fillRect(X(x) - r * 1.2, Y(y) - r * 1.2, r * 2.4, r * 2.4); }
+        if (s[8] > 0) {
+          // an ice crystal round them and a countdown arc
+          const cx = X(x), cy = Y(y), R = r * 1.45;
+          g.fillStyle = 'rgba(170,225,255,0.55)'; g.strokeStyle = '#e8f8ff'; g.lineWidth = r * 0.18;
+          g.beginPath(); for (let n = 0; n < 6; n++) { const a = n / 6 * Math.PI * 2 + Math.PI / 6; g.lineTo(cx + Math.cos(a) * R, cy + Math.sin(a) * R); } g.closePath(); g.fill(); g.stroke();
+          g.strokeStyle = '#ffffffaa'; g.lineWidth = r * 0.08; g.beginPath();
+          for (let n = 0; n < 3; n++) { const a = n / 3 * Math.PI; g.moveTo(cx - Math.cos(a) * R * 0.7, cy - Math.sin(a) * R * 0.7); g.lineTo(cx + Math.cos(a) * R * 0.7, cy + Math.sin(a) * R * 0.7); } g.stroke();
+          g.strokeStyle = '#3a8dff'; g.lineWidth = r * 0.28; g.beginPath(); g.arc(cx, cy - R * 1.45, r * 0.45, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, s[8] / (v.frozenT || 3))); g.stroke();
+        }
         g.fillStyle = '#3a8dff';
         for (let n = 0; n < s[7]; n++) { g.beginPath(); g.arc(X(x) + (n - 1) * r * 0.6, Y(y) - r * 1.6, r * 0.2, 0, 7); g.fill(); }
       });

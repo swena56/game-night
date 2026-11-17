@@ -604,7 +604,7 @@ class Snowball(Game):
         return {"snowball": {
             **self.state(now), "seats": self.seats, "me": self.seat(p), "len": int(self.s.get("time", 120)),
             "aw": AW, "ah": AH, "body": BODY, "forts": FORTS, "fortLen": FORT_LEN, "fortThick": FORT_THICK, "fortHp": FORT_HP,
-            "patches": PATCHES, "patchR": PATCH_R, "ammoMax": AMMO, "pips": PIPS, "bigHold": BIG_HOLD, "giantR": GIANT_R,
+            "patches": PATCHES, "patchR": PATCH_R, "ammoMax": AMMO, "pips": PIPS, "frozenT": FROZEN, "bigHold": BIG_HOLD, "giantR": GIANT_R,
             "giants": bool(self.s.get("giants", True)), "seq": self.ev_seq, "splash": [SPLASH, BIG_SPLASH],
             "teams": bool(getattr(self, "teams", False)), "team": self.team or list(range(len(self.seats))),
             "speed": [SPEED, PACK_SPEED], "step": STEP,
