@@ -479,6 +479,18 @@ async function presence() {
 setInterval(presence, 10000);
 // Phones freeze background tabs and change networks: re-check as soon as we're back.
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { presence(); checkLiveness(); } });
+// ⏸ the only human in a game against bots switched away: pause it for them after a few seconds (#119). (A phone
+// may freeze the page first: the server pauses it too once it hears nothing for a while.)
+let awayTimer = 0;
+document.addEventListener('visibilitychange', () => {
+  clearTimeout(awayTimer);
+  if (!document.hidden) return;
+  awayTimer = setTimeout(() => {
+    if (document.hidden && session && S?.phase === 'playing' && S.canPause && !S.paused) {
+      fetch('/api/action', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...session, type: 'autopause' }) }).catch(() => {});
+    }
+  }, 4000);
+});
 addEventListener('online', () => { if (session) connect(); });
 addEventListener('beforeunload', (e) => {
   if (S?.phase === 'playing' && !S.me.spectator && !S.me.eliminated) { e.preventDefault(); e.returnValue = ''; }  // desktop: confirm leaving

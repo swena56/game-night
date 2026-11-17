@@ -78,6 +78,23 @@ if r.paused and len(r.humans()) != 1:
     r.resume(why="▶ Someone joined: the game goes on.")
 check("lifted", not r.paused)
 
+# auto-pause: the only human goes quiet → paused (not autopilot); with two humans, autopilot as before
+r, (ann,) = room("lanes")
+ann.last_seen = time.time() - 30
+check("a quiet lone human pauses the game", r.check_offline(time.time()) and r.paused and not ann.standin and "away" in r.log[-1]["text"])
+r.seen(ann)
+check("coming back leaves it paused (Resume is theirs)", r.paused and not ann.standin)
+r, (a, b) = room("lanes", humans=2, bots=0)
+a.last_seen = time.time() - 60
+r.check_offline(time.time())
+check("two humans: no pause, the autopilot covers", not r.paused and a.standin)
+r, (ann,) = room("snowball")
+r.act(ann, {"type": "autopause"})
+check("the page's own autopause", r.paused)
+r, (a, b) = room("lanes", humans=2, bots=0)
+r.act(a, {"type": "autopause"})
+check("autopause is quietly ignored with two humans", not r.paused)
+
 # the generic clock shifter
 class P: pass
 class G: pass

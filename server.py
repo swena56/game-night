@@ -304,7 +304,13 @@ class Room:
                 p.shown_away = quiet
                 changed = True
         away = lambda p: p.silent_for(now) > OFFLINE_GRACE
-        if self.phase == "playing":
+        # the only human in a game against bots went quiet: pause it for them instead of an autopilot (#119)
+        if self.phase == "playing" and not self.paused:
+            hs = self.humans()
+            if len(hs) == 1 and not hs[0].standin and hs[0].silent_for(now) > AWAY_AFTER:
+                self.pause(hs[0], auto=True)
+                changed = True
+        if self.phase == "playing" and not self.paused:
             for p in self.contenders():
                 if not p.bot and away(p):
                     p.bot, p.standin = "normal", True
@@ -648,6 +654,7 @@ class Room:
         "lobby": lambda r, p, a: r.back_to_lobby(p),
         "end_game": lambda r, p, a: r.end_game(p),
         "pause": lambda r, p, a: r.pause(p),
+        "autopause": lambda r, p, a: r.pause(p, auto=True),
         "resume": lambda r, p, a: r.resume(p),
     }
 
@@ -666,13 +673,16 @@ class Room:
         else:
             shift_times(self.game, shift, ref)
 
-    def pause(self, p):
+    def pause(self, p, auto=False):
+        """auto: the page went to the background, or the player went quiet (the ticker): paused for them."""
         if self.paused:
             return
         if not self.can_pause(p):
+            if auto:
+                return
             raise GameError("Pause is for a game against bots, with nobody else playing.")
         self.paused = time.time()
-        self.add_log(f"⏸ {p.name} paused the game.")
+        self.add_log(f"⏸ Paused while {p.name} is away." if auto else f"⏸ {p.name} paused the game.")
 
     def resume(self, p=None, why=None):
         if not self.paused:
