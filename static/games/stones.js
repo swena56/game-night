@@ -375,16 +375,59 @@ UI.stones = (() => {
     });
     const wall = new T.Mesh(new T.PlaneGeometry(14, 3.5), new T.MeshBasicMaterial({ map: wallTex }));
     wall.position.set(0, 1.75, -sh.end - 2.5); scene.add(wall);
-    for (const sx of [-1, 1]) {  // stands of a dim crowd down both sides
-      const st = new T.Mesh(new T.BoxGeometry(3, 1.6, len + 4), new T.MeshStandardMaterial({ color: 0x151f36, roughness: 1 }));
-      st.position.set(sx * (sh.half + 2.2), 0.4, -(len / 2 - 2)); scene.add(st);
+    // #147 the arena: banner boards with a clear shield above them, tiered stands with a crowd, a roof of trusses
+    const bannerTex = canvasTex(T, 1024, 64, (g, w, h) => {
+      const cols = ['#e63946', '#2a9d8f', '#f4a261', '#4361ee', '#ffd23f', '#9b5de5', '#06d6a0', '#ef476f'];
+      for (let i = 0; i < 16; i++) {
+        const x = i * w / 16; g.fillStyle = cols[i % cols.length]; g.fillRect(x, 0, w / 16, h);
+        g.fillStyle = 'rgba(255,255,255,.85)'; g.font = `bold ${h * 0.42}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.fillText(['🥌', '❄', '★', '🧊'][i % 4], x + w / 32, h / 2);
+        g.fillStyle = 'rgba(0,0,0,.18)'; g.fillRect(x, h - 6, w / 16, 6);
+      }
+    });
+    bannerTex.wrapS = T.RepeatWrapping; bannerTex.repeat.x = len / 12;
+    const bannerMat = new T.MeshBasicMaterial({ map: bannerTex, color: 0xb8c0d0 });
+    const glassMat = new T.MeshStandardMaterial({ color: 0xcfe6ff, transparent: true, opacity: 0.08, roughness: 0.05, metalness: 0.2, depthWrite: false });
+    for (const sx of [-1, 1]) {
+      const bn = new T.Mesh(new T.PlaneGeometry(len, 0.22), bannerMat);
+      bn.rotation.y = -sx * Math.PI / 2; bn.position.set(sx * (sh.half - 0.002), 0.13, -(len / 2 - 2)); scene.add(bn);
+      if (!low) { const gl2 = new T.Mesh(new T.PlaneGeometry(len, 0.8), glassMat); gl2.rotation.y = -sx * Math.PI / 2; gl2.position.set(sx * (sh.half + 0.16), 0.66, -(len / 2 - 2)); scene.add(gl2); }
     }
+    const standMat = new T.MeshStandardMaterial({ color: 0x1a2440, roughness: 0.95 }), seatMat = new T.MeshStandardMaterial({ color: 0x24345e, roughness: 0.8 });
+    const TIERS = 5, crowd = [];
+    for (const sx of [-1, 1]) {
+      for (let t = 0; t < TIERS; t++) {
+        const st = new T.Mesh(new T.BoxGeometry(0.8, 0.45, len + 4), t % 2 ? seatMat : standMat);
+        st.position.set(sx * (sh.half + 0.75 + t * 0.8), 0.2 + t * 0.45, -(len / 2 - 2)); st.receiveShadow = true; scene.add(st);
+        if (!low) for (let z = -1; z < len + 2; z += 0.55) if (Math.random() < 0.72) crowd.push([sx * (sh.half + 0.75 + t * 0.8) + (Math.random() - 0.5) * 0.25, 0.45 + t * 0.45, -z + (Math.random() - 0.5) * 0.2]);
+      }
+    }
+    if (crowd.length) {
+      // a person is a coloured coat with a head on top: two instanced meshes, a little random in size and colour
+      const coats = new T.InstancedMesh(new T.CylinderGeometry(0.13, 0.17, 0.42, 6), new T.MeshStandardMaterial({ roughness: 0.9 }), crowd.length);
+      const heads = new T.InstancedMesh(new T.SphereGeometry(0.1, 8, 6), new T.MeshStandardMaterial({ roughness: 0.8 }), crowd.length);
+      const m4 = new T.Matrix4(), c = new T.Color(), COATS = [0xe63946, 0x2a9d8f, 0xf4a261, 0x4361ee, 0xffd23f, 0x9b5de5, 0xf1faee, 0x264653, 0xd62828];
+      const SKIN = [0xf1c7a3, 0xe0a878, 0xc68642, 0x8d5524, 0xfde0c5];
+      crowd.forEach(([x, y, z], i) => {
+        const k = 0.85 + Math.random() * 0.3;
+        coats.setMatrixAt(i, m4.makeScale(k, k, k).setPosition(x, y + 0.21 * k, z)); coats.setColorAt(i, c.setHex(COATS[i % COATS.length]));
+        heads.setMatrixAt(i, m4.makeScale(k, k, k).setPosition(x, y + 0.52 * k, z)); heads.setColorAt(i, c.setHex(SKIN[(i * 7) % SKIN.length]));
+      });
+      scene.add(coats, heads);
+    }
+    // the roof: trusses across the sheet, the lamps hang from them
+    const trussMat = new T.MeshStandardMaterial({ color: 0x2a3550, roughness: 0.7, metalness: 0.4 });
+    for (let z = 2; z < len; z += 5) { const tr = new T.Mesh(new T.BoxGeometry(14, 0.12, 0.12), trussMat); tr.position.set(0, 7.35, -z); scene.add(tr); }
+    for (const sx of [-2.2, 2.2]) { const rail = new T.Mesh(new T.BoxGeometry(0.1, 0.1, len + 6), trussMat); rail.position.set(sx, 7.4, -(len / 2 - 2)); scene.add(rail); }
     const floor = new T.Mesh(new T.PlaneGeometry(40, len + 20), new T.MeshStandardMaterial({ color: 0x0d1424, roughness: 0.9 }));
     floor.rotation.x = -Math.PI / 2; floor.position.set(0, -0.02, -(len / 2 - 2)); scene.add(floor);
     // arena lights hanging over the sheet
     const lampMat = new T.MeshBasicMaterial({ color: 0xfff6e0, toneMapped: false });
+    const poolTex = canvasTex(T, 128, 128, (g, w) => { const gr = g.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2); gr.addColorStop(0, 'rgba(255,248,230,.22)'); gr.addColorStop(1, 'rgba(255,248,230,0)'); g.fillStyle = gr; g.fillRect(0, 0, w, w); });
+    const poolMat = new T.MeshBasicMaterial({ map: poolTex, transparent: true, depthWrite: false, blending: T.AdditiveBlending });
     for (let z = 2; z < len; z += 5) {
       const l = new T.Mesh(new T.BoxGeometry(2.2, 0.05, 0.4), lampMat); l.position.set(0, 7, -z); scene.add(l);
+      if (!low) { const pool = new T.Mesh(new T.PlaneGeometry(3.6, 3.2), poolMat); pool.rotation.x = -Math.PI / 2; pool.position.set(0, 0.003, -z); scene.add(pool); }
     }
     // the stones' reflections in the clear coat (fine graphics): a faint mirrored copy, drawn only where the ice
     // shows (a stencil: the ice marks its pixels, the stones unmark theirs)
@@ -459,6 +502,10 @@ UI.stones = (() => {
     sparks.frustumCulled = false; scene.add(sparks);
     let sparkT = 0;
 
+    const haloMat = new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.75, depthWrite: false, side: T.DoubleSide });
+    const halo = new T.Mesh(new T.RingGeometry(R * 1.35, R * 1.75, 32), haloMat); halo.rotation.x = -Math.PI / 2; halo.visible = false; scene.add(halo);
+    const wakeGeo = new T.CircleGeometry(R * 0.9, 16); let wakeAt = 0, wakeN = 0;
+    const wake = Array.from({ length: low ? 10 : 24 }, () => { const m = new T.Mesh(wakeGeo, new T.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })); m.rotation.x = -Math.PI / 2; m.visible = false; scene.add(m); return m; });
     // camera: rides behind the thrown stone, else looks down the sheet (aiming) or down on the house
     const cam = { pos: new T.Vector3(0, 3.4, 1.5), look: new T.Vector3(0, 0, -sh.tee), tp: new T.Vector3(), tl: new T.Vector3(), fov: 30, tf: 30, moving: true };
     function target(list) {
@@ -466,8 +513,9 @@ UI.stones = (() => {
       const thrown = anim && list[list.length - 1];
       const tall = camera.aspect < 0.8;
       const houseView = () => { cam.tp.set(0, tall ? 7.4 : 6.2, -sh.tee + (tall ? 3.4 : 4.2)); cam.tl.set(0, 0, -sh.tee + 0.2); cam.tf = 34; };
-      if (thrown && !thrown.gone && thrown.y < sh.tee - 7.5) {
-        cam.tp.set(thrown.x * 0.6, 1.3, -thrown.y + 3.0); cam.tl.set(thrown.x * 0.8, 0, -thrown.y - 7); cam.tf = 36;
+      if (thrown && !thrown.gone && thrown.y < sh.tee - 5) {
+        // #146: ride low and close behind the stone, so it's big in the frame and the ice streams past
+        cam.tp.set(thrown.x * 0.8, 0.72, -thrown.y + 1.45); cam.tl.set(thrown.x * 0.9, 0, -thrown.y - 2.4); cam.tf = 46; cam.chase = true;
       } else if (anim || v.between || camMode === 'house') houseView();
       else if (camMode === 'sheet' || myTurn()) { cam.tp.set(0, 3.4, 1.5); cam.tl.set(aim * 0.4, 0, -sh.tee + 1.2); cam.tf = tall ? 17 : 13; }
       else houseView();
@@ -503,6 +551,13 @@ UI.stones = (() => {
       }
       // sweepers in front of the thrown stone past the sweeping point
       const thrown = anim && list[list.length - 1];
+      // #146: a ring in the thrower's colour under the moving stone and a fading wake behind it, so it reads on white ice
+      halo.visible = !!(thrown && thrown.moving && !thrown.gone);
+      if (halo.visible) {
+        halo.position.set(thrown.x, 0.005, -thrown.y); haloMat.color.set(colorOf(thrown.o)); halo.scale.setScalar(1 + 0.08 * Math.sin(now / 120));
+        if (now - wakeAt > 45) { wakeAt = now; wake[wakeN % wake.length].position.set(thrown.x, 0.004, -thrown.y); wake[wakeN % wake.length].userData.t = now; wake[wakeN % wake.length].material.color.set(colorOf(thrown.o)); wakeN++; }
+      }
+      for (const w of wake) { const a = (now - (w.userData.t || -1e9)) / 1100; w.visible = a < 1; if (w.visible) { w.material.opacity = 0.32 * (1 - a); w.scale.setScalar(1 + a * 0.6); } }
       const brushing = thrown && anim.shot.sweep && thrown.moving && thrown.y > 8;
       sweepers.forEach((b, k) => {
         b.visible = !!brushing;
@@ -517,7 +572,13 @@ UI.stones = (() => {
       sparks.visible = sparkT > 0;
       target(list);
       const k = 1 - Math.exp(-dt * (anim ? 4 : 2.5));
-      cam.pos.lerp(cam.tp, k); cam.look.lerp(cam.tl, k);
+      if (cam.chase && thrown && thrown.moving) {
+        // chasing: keep pace with the stone down the sheet (no lag along it), ease only across and in height
+        const kz = 1 - Math.exp(-dt * 14);
+        cam.pos.x += (cam.tp.x - cam.pos.x) * k; cam.pos.y += (cam.tp.y - cam.pos.y) * k; cam.pos.z += (cam.tp.z - cam.pos.z) * kz;
+        cam.look.x += (cam.tl.x - cam.look.x) * k; cam.look.y += (cam.tl.y - cam.look.y) * k; cam.look.z += (cam.tl.z - cam.look.z) * kz;
+      } else { cam.pos.lerp(cam.tp, k); cam.look.lerp(cam.tl, k); }
+      cam.chase = false;
       cam.fov += (cam.tf - cam.fov) * k;
       cam.moving = cam.pos.distanceTo(cam.tp) > 0.01 || cam.look.distanceTo(cam.tl) > 0.01 || Math.abs(cam.fov - cam.tf) > 0.05;
       if (Math.abs(camera.fov - cam.fov) > 0.01) { camera.fov = cam.fov; camera.updateProjectionMatrix(); }
