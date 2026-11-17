@@ -13,6 +13,38 @@ function roomRecord(last) {
   return before.length && beat ? `📈 Room record for ${last.name}: ${fmtNum(won.score)}` : '';
 }
 
+// #143 a run of the same game back to back (rematches): how many each player has won, and who's on a streak.
+// Worked out from the room's history, so it survives a server restart like the rest of it.
+function runStats(hist) {
+  const last = hist?.at(-1);
+  if (!last) return null;
+  const wins = new Map();
+  let games = 0, streak = 0, streakId = undefined;
+  for (let i = hist.length - 1; i >= 0 && hist[i].game === last.game; i--) {
+    games++;
+    const w = hist[i].players.find((x) => x.won);
+    if (w) { const r = wins.get(w.id) || { id: w.id, name: w.name, color: w.color, n: 0 }; r.n++; wins.set(w.id, r); }
+    const wid = w ? w.id : null;
+    if (streakId === undefined) { streakId = wid; streak = wid ? 1 : 0; } else if (streak && wid === streakId && streak === games - 1) streak++;
+  }
+  const rows = [...wins.values()].sort((a, b) => b.n - a.n);
+  return { games, name: last.name, icon: last.icon, rows, draws: games - rows.reduce((a, r) => a + r.n, 0),
+    streak: streak >= 2 ? { name: rows.find((r) => r.id === streakId)?.name, n: streak } : null };
+}
+function runLine() {
+  const r = runStats(S.history);
+  if (!r || r.games < 2) return null;
+  const line = el('div', 'over-note over-run');
+  line.append(el('span', '', `${r.icon} This run (${r.games} games): `));
+  r.rows.forEach((x, k) => {
+    if (k) line.append(el('span', '', ' · '));
+    const nm = el('b', '', `${x.name} ${x.n}`); nm.style.color = player(x.id)?.color || x.color || ''; line.append(nm);
+  });
+  if (r.draws) line.append(el('span', '', ` · 🤝 ${r.draws}`));
+  if (r.streak) line.append(el('span', '', ` · 🔥 ${r.streak.name} ${r.streak.n} in a row`));
+  return line;
+}
+
 function renderOver() {
   const me = S.me, host = S.host === me.id;
   const w = player(S.winner);
@@ -40,6 +72,7 @@ function renderOver() {
     Profile.overLine(S),
   ].filter(Boolean);
   for (const n of notes) box.append(el('div', 'over-note', n));
+  const run = runLine(); if (run) box.append(run);
   const readyNames = S.ready.map((id) => player(id)?.name).filter(Boolean);
   const others = S.players.some((p) => p.id !== me.id && !p.bot);
   $('#rematchBtn').hidden = !host; $('#lobbyBtn').hidden = !host;
