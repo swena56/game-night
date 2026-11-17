@@ -274,7 +274,8 @@ UI.midway = (() => {
     const preview = canThrow() || swipe ? spot(aim, power) : null;
     return {
       kind: V.kind, geo: V.geo, layout: V.layout, jackLive: !V.jackBy && !(V.kind === 'cans' && b?.stacks),
-      shots: (b?.shots || []).filter((s) => !pending.has(s.id)), fly, fallAt, now, preview, swiping: !!swipe,
+      shots: (b?.shots || []).filter((s) => !pending.has(s.id)), fly, fallAt, now, preview, swiping: !!swipe, left: b?.left ?? 0,
+      pts: (b?.pts ?? 0) - (b?.shots || []).filter((s) => pending.has(s.id)).reduce((a, s) => a + s.pts, 0),
       color: colorOf(watchId),
     };
   }
@@ -427,6 +428,36 @@ UI.midway = (() => {
     const lane = new T.Mesh(new T.BoxGeometry(0.75, 0.04, 3.1), std(0x2c6e9e, { roughness: 0.4 }));
     lane.position.set(0, 1.0, -1.7); lane.rotation.x = 0.1; lane.receiveShadow = true; skee.add(lane);
     for (const sx of [-0.4, 0.4]) { const rail = new T.Mesh(new T.BoxGeometry(0.05, 0.12, 3.1), std(0xffd23f, { roughness: 0.4, metalness: 0.3 })); rail.position.set(sx, 1.05, -1.7); rail.rotation.x = 0.1; skee.add(rail); }
+    // #149 the cabinet: varnished wooden sides with a lit trim strip, the hump the ball jumps off at the top of the lane,
+    // side nets up to the board, a ball-return trough holding the balls you have left, and a glowing score panel
+    const woodTex = tex(256, 64, (g, w, h) => { g.fillStyle = '#8a4f24'; g.fillRect(0, 0, w, h); for (let k = 0; k < 40; k++) { g.strokeStyle = `rgba(${60 + Math.random() * 40},${30 + Math.random() * 20},10,.35)`; g.beginPath(); const y = Math.random() * h; g.moveTo(0, y); g.bezierCurveTo(w / 3, y + Math.random() * 8 - 4, 2 * w / 3, y + Math.random() * 8 - 4, w, y); g.stroke(); } });
+    const woodMat = std(0xffffff, { map: woodTex, roughness: 0.35 });
+    const trimMat = new T.MeshBasicMaterial({ color: 0xff5ab4 });
+    for (const sx of [-1, 1]) {
+      const side = new T.Mesh(new T.BoxGeometry(0.08, 0.5, 3.3), woodMat); side.position.set(sx * 0.47, 0.88, -1.7); side.rotation.x = 0.1; side.castShadow = true; skee.add(side);
+      const trim = new T.Mesh(new T.BoxGeometry(0.02, 0.025, 3.3), trimMat); trim.position.set(sx * 0.51, 1.1, -1.72); trim.rotation.x = 0.1; skee.add(trim);
+      const net = new T.Mesh(new T.PlaneGeometry(0.9, 0.9), new T.MeshStandardMaterial({ color: 0x111111, transparent: true, opacity: 0.25, side: T.DoubleSide, depthWrite: false }));
+      net.rotation.y = Math.PI / 2; net.position.set(sx * 0.62, 1.55, -3.55); skee.add(net);
+    }
+    const cabFront = new T.Mesh(new T.BoxGeometry(1.0, 0.6, 0.08), woodMat); cabFront.position.set(0, 0.62, -0.08); skee.add(cabFront);
+    const hump = new T.Mesh(new T.CylinderGeometry(0.05, 0.05, 0.72, 20), std(0x2c6e9e, { roughness: 0.35 }));   // a roll across the lane, half sunk
+    hump.rotation.z = Math.PI / 2; hump.position.set(0, 1.15, -3.14); skee.add(hump);
+    const trough = new T.Mesh(new T.BoxGeometry(0.16, 0.06, 0.9), woodMat); trough.position.set(0.62, 0.9, -0.45); skee.add(trough);
+    const trayBalls = Array.from({ length: 9 }, (_, k) => { const m = new T.Mesh(new T.SphereGeometry(0.045, 14, 10), std(0xf4efe4, { roughness: 0.4 })); m.position.set(0.62, 0.97, -0.1 - k * 0.095); m.castShadow = true; skee.add(m); return m; });
+    let panelTex = null, panelVal = null;
+    const panel = new T.Mesh(new T.PlaneGeometry(0.62, 0.2), new T.MeshBasicMaterial({ color: 0xffffff }));
+    panel.position.set(0, 2.08, -4.25); skee.add(panel);
+    function paintPanel(pts) {
+      if (pts === panelVal) return;
+      panelVal = pts; panelTex?.dispose();
+      panelTex = tex(256, 80, (g, w, h) => {
+        g.fillStyle = '#0a0612'; g.fillRect(0, 0, w, h); g.strokeStyle = '#ff5ab4'; g.lineWidth = 4; g.strokeRect(3, 3, w - 6, h - 6);
+        g.font = '700 50px "Courier New", monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.shadowColor = '#ff3a3a'; g.shadowBlur = 14; g.fillStyle = '#ff6a5a'; g.fillText(String(pts).padStart(4, '0'), w / 2, h / 2 + 2);
+      });
+      panel.material.map = panelTex; panel.material.needsUpdate = true;
+    }
+    const ballTex = tex(64, 32, (g, w, h) => { g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h); g.fillStyle = 'rgba(0,0,0,.28)'; g.fillRect(0, h * 0.42, w, h * 0.16); g.fillRect(w * 0.45, 0, w * 0.1, h); });
     const board = new T.Group(); board.position.set(0, 1.18, -3.3); board.rotation.x = -0.927; skee.add(board);
     let boardTex = null, boardFace = null;
     function paintBoard(geo) {
@@ -440,10 +471,17 @@ UI.midway = (() => {
           g.beginPath(); g.arc(X(0), Y(geo.cy), r * k, 0, 7); g.fillStyle = cols[n % cols.length]; g.fill();
           g.lineWidth = 3; g.strokeStyle = '#0b1830'; g.stroke();
         });
-        g.font = `800 ${Math.round(k * 0.06)}px "Baloo 2", system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.font = `800 ${Math.round(k * 0.05)}px "Baloo 2", system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+        // each ring's pocket: a dark hole at the top of its band, with the score on a lit plate beside it
         geo.rings.forEach(([r, pts], n) => {
-          const r0 = n ? geo.rings[n - 1][0] : 0, y = Y(geo.cy) - (r0 + r) / 2 * k;
-          g.fillStyle = '#0b1830'; g.fillText(String(pts), X(0), n ? y : Y(geo.cy));
+          const r0 = n ? geo.rings[n - 1][0] : 0, y = n ? Y(geo.cy) - (r0 + r) / 2 * k : Y(geo.cy), hr = n ? (r - r0) * k * 0.36 : r * k * 0.55;
+          const hole = g.createRadialGradient(X(0), y - hr * 0.2, 0, X(0), y, hr); hole.addColorStop(0, '#000'); hole.addColorStop(0.8, '#05080f'); hole.addColorStop(1, '#2a3550');
+          g.fillStyle = hole; g.beginPath(); g.arc(X(0), y, hr, 0, 7); g.fill();
+          if (n) {
+            const pw = k * 0.075, ph = k * 0.05, px = X(0) + hr + pw * 0.75;
+            g.fillStyle = '#fff6d0'; g.fillRect(px - pw / 2, y - ph / 2, pw, ph); g.strokeStyle = '#0b1830'; g.lineWidth = 2; g.strokeRect(px - pw / 2, y - ph / 2, pw, ph);
+            g.fillStyle = '#0b1830'; g.fillText(String(pts), px, y + 1);
+          } else { g.fillStyle = '#ffd23f'; g.fillText(String(pts), X(0), y + hr + k * 0.03); }
         });
         for (const [cx, cy] of geo.cups) { g.beginPath(); g.arc(X(cx), Y(cy), geo.cupR * k, 0, 7); g.fillStyle = '#05080f'; g.fill(); g.fillStyle = '#ffd23f'; g.fillText('100', X(cx), Y(cy) + geo.cupR * k * 1.9); }
       });
@@ -460,7 +498,7 @@ UI.midway = (() => {
     }
     const goldMat = std(0xffc83a, { metalness: 0.75, roughness: 0.25, emissive: 0x6a4a00, emissiveIntensity: 0.6 });
     const skeeJack = new T.Mesh(new T.TorusGeometry(0.05, 0.014, 8, 24), goldMat); skeeJack.position.z = 0.016; board.add(skeeJack);
-    const skeeBall = new T.Mesh(new T.SphereGeometry(0.045, 16, 12), std(0xffffff, { roughness: 0.35 })); skeeBall.castShadow = true;
+    const skeeBall = new T.Mesh(new T.SphereGeometry(0.045, 16, 12), std(0xffffff, { roughness: 0.35, map: ballTex })); skeeBall.castShadow = true;
     const skeeBalls = [];
     const skeeSign = marquee('SKEE ROLL', 1.3, 0.3); skeeSign.position.set(0, 2.38, -4.3); skee.add(skeeSign);
     const boardPt = (bx, by, lift = 0.05) => board.localToWorld(new T.Vector3(bx, by, lift));
@@ -588,7 +626,9 @@ UI.midway = (() => {
       if (sc.kind === 'skee') {
         skeeJack.visible = sc.jackLive; skeeJack.position.set(sc.layout.jack[0], sc.layout.jack[1], 0.016);
         pool(skeeBalls, skeeBall, scene3);
-        sc.fly.forEach((f, k) => { const m = skeeBalls[k]; m.visible = f.u > 0 && f.u < 1; m.position.copy(skeePath(f.shot, f.u, f.landU)); m.material.color.set(sc.color); trail(k, (u) => skeePath(f.shot, u, f.landU), f, sc.color); });
+        sc.fly.forEach((f, k) => { const m = skeeBalls[k]; m.visible = f.u > 0 && f.u < 1; m.position.copy(skeePath(f.shot, f.u, f.landU)); m.rotation.x = -f.u * 40; m.material.color.set(sc.color); trail(k, (u) => skeePath(f.shot, u, f.landU), f, sc.color); });
+        trayBalls.forEach((m, k) => { m.visible = k < (sc.left ?? 0); });
+        paintPanel(sc.pts ?? 0);
       } else if (sc.kind === 'rings') {
         bottleMeshes.forEach((m, i) => { m.material = i === sc.layout.jack && sc.jackLive ? goldMat : glass[sc.layout.colours[i]]; });
         while (ringPool.length < sc.shots.length) { const m = new T.Mesh(ringGeo, ringMat(0xffffff)); rings.add(m); ringPool.push(m); }
@@ -616,14 +656,16 @@ UI.midway = (() => {
       }
       // the preview arc
       const pv = sc.preview;
-      mark.visible = !!pv; dots.forEach((d) => { d.visible = !!pv; });
+      // #149: only the start of the throw shows (its direction and loft), never where it lands; the skee lane shows
+      // just a short arrow of dots up the lane, and the power meter is the only guide to how far
+      mark.visible = false; dots.forEach((d) => { d.visible = !!pv; });
       if (pv) {
-        let end, h, start = HAND[sc.kind];
-        if (sc.kind === 'skee') { end = boardPt(pv.x, Math.max(0, pv.y), 0.03); h = 0.15; mark.position.copy(end); mark.quaternion.copy(board.getWorldQuaternion(new T.Quaternion())); }
-        else if (sc.kind === 'rings') { end = tablePt(pv.x, pv.y, TY + 0.3); h = 0.5; mark.position.copy(end); mark.rotation.set(-Math.PI / 2, 0, 0); }
-        else { end = new T.Vector3(pv.x, SY + pv.y, SZ + 0.12); h = 0.12; mark.position.copy(end); mark.rotation.set(0, 0, 0); }
+        let end, h, start = HAND[sc.kind], from = 0.14, upto = 0.32;
+        if (sc.kind === 'skee') { end = new T.Vector3(pv.x * 0.7, 1.2, -3.15); h = 0; from = 0.2; upto = 0.4; }
+        else if (sc.kind === 'rings') { end = tablePt(pv.x, pv.y, TY + 0.3); h = 0.5; }
+        else { end = new T.Vector3(pv.x, SY + pv.y, SZ + 0.12); h = 0.12; }
         dotMat.opacity = sc.swiping ? 0.9 : 0.5;
-        dots.forEach((d, k) => d.position.copy(arc(start, end, h, 0.3 + 0.7 * (k + 1) / (dots.length + 1))));   // not the ones right under your nose
+        dots.forEach((d, k) => { const p = arc(start, end, h, from + upto * (k + 1) / dots.length); if (sc.kind === 'skee') p.y = 1.0 + 0.07 + 0.2 * (-p.z - 0.1) / 3.05; d.position.copy(p); });
       }
       for (let k = bits.length - 1; k >= 0; k--) {
         const m = bits[k], u = m.userData;
@@ -663,7 +705,7 @@ UI.midway = (() => {
       dispose() {
         stg.dispose();
         scene3.traverse((m) => { m.geometry?.dispose(); for (const mat of [].concat(m.material || [])) { mat.map?.dispose(); mat.dispose(); } });
-        boardTex?.dispose(); renderer.dispose(); canvas.remove();
+        boardTex?.dispose(); panelTex?.dispose(); renderer.dispose(); canvas.remove();
       },
     };
   }
@@ -724,8 +766,10 @@ UI.midway = (() => {
         }
       }
       if (sc.preview) {
-        const p = sc.preview; g.setLineDash([4, 6]); g.strokeStyle = '#fffb'; g.beginPath(); g.moveTo(cx, by + 20); g.quadraticCurveTo((cx + X(p.x)) / 2, Y(p.y) - 40, X(p.x), Y(p.y)); g.stroke(); g.setLineDash([]);
-        g.beginPath(); g.arc(X(p.x), Y(p.y), 9, 0, 7); g.strokeStyle = '#fff'; g.stroke();
+        // #149: just the direction it leaves in, not where it lands
+        const p = sc.preview, ex = X(p.x), ey = Y(p.y), u = 0.35, qx = (cx + ex) / 2, qy = ey - 40;
+        const mx = (1 - u) ** 2 * cx + 2 * (1 - u) * u * qx + u * u * ex, my = (1 - u) ** 2 * (by + 20) + 2 * (1 - u) * u * qy + u * u * ey;
+        g.setLineDash([4, 6]); g.strokeStyle = '#fffb'; g.beginPath(); g.moveTo(cx, by + 20); g.quadraticCurveTo(cx + (qx - cx) * u, by + 20 + (qy - by - 20) * u, mx, my); g.stroke(); g.setLineDash([]);
       }
       sparks = sparks.filter((s) => now < s.t + 600);
       for (const s of sparks) { const u = (now - s.t) / 600; g.beginPath(); g.arc(X(s.x), Y(s.y), 8 + u * 60, 0, 7); g.lineWidth = 4 * (1 - u); g.strokeStyle = s.c; g.stroke(); }
