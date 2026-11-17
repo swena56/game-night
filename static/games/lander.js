@@ -8,7 +8,7 @@ UI.lander = (() => {
   let fl = null, roundKey = '', held = { l: false, r: false, up: false }, keys = new Set(), posAt = 0, sent = false;
   let ghosts = {}, ghostAt = 0, flash = null, lastCd = 0, beeped = 0;
   // drag to look: `look` metres added to the camera's x; it springs back a moment after you let go
-  let look = 0, drag = null, lookRel = 0, padHold = null;
+  let look = 0, drag = null, lookRel = 0, padHold = null, seenRes = new Set();
   const $ = (id) => document.getElementById(id);
   const calm = () => document.body.classList.contains('calm');
 
@@ -168,7 +168,7 @@ UI.lander = (() => {
       SN.crash(); ctx.buzz?.([120, 60, 200]);
       showFlash(fl.done.pad < 0 ? '💥 Crashed: missed the pads' : -fl.vy > G().vyOk ? '💥 Crashed: too fast' : Math.abs(fl.vx) > G().vxOk ? '💥 Crashed: sliding' : '💥 Crashed: tilted', 2600, 'bad');
       (gl || flat)?.boom(fl.x, gy);
-      gl?.shake(0.6);
+      gl?.shake(1.0);
     }
     send();
   }
@@ -182,7 +182,14 @@ UI.lander = (() => {
   function render(s, c) {
     S = s; ctx = c; V = s.lander;
     const key = `${V.round}`;
-    if (key !== roundKey) { roundKey = key; fl = null; sent = false; ghosts = {}; beeped = 0; (gl || flat)?.rebuild?.(); }
+    if (key !== roundKey) { roundKey = key; fl = null; sent = false; ghosts = {}; beeped = 0; (gl || flat)?.rebuild?.(); seenRes = new Set(V.fliers.map((f, i) => (f.res ? i : -1))); }
+    // a rival's crash: a smaller boom where their ghost came down
+    V.fliers.forEach((f, i) => {
+      if (!f.res || seenRes.has(i)) return;
+      seenRes.add(i);
+      const o = ghosts[i];
+      if (f.res.how === 'crash' && o && i !== V.me) { const p = o.cur(performance.now()); (gl || flat)?.boom(p[0], ground(p[0]), { small: true, z: -3 - (i % 3) * 2.2 }); }
+    });
     const my = mine();
     if (V.stage === 'count' && my && !fl && !my.out) fl = newFlight(performance.now() + V.startIn * 1000);
     else if (V.stage === 'fly' && my && !fl && my.res == null && !my.out) fl = newFlight(performance.now() - V.flown * 1000);
@@ -384,6 +391,7 @@ UI.lander = (() => {
       for (const p of padObjs) { world.remove(p); disposeTree(p); }
       padObjs = [];
       for (const c of [...extras.children]) { extras.remove(c); disposeTree(c); }
+      wreck.clear(); bits.length = 0; fx.length = 0;
       const g = G(), h = V.h, seed = V.round * 977;
       const rnd = (a) => { const s = Math.sin(a * 12.9898 + seed) * 43758.5453; return s - Math.floor(s); };
       // past the ends the moon carries on: blend from the edge height into rolling hills
@@ -542,10 +550,112 @@ UI.lander = (() => {
       }
       pGeo.attributes.position.needsUpdate = true; pGeo.attributes.color.needsUpdate = true;
     }
-    function dust(x, y, n) { if (calm()) n = Math.ceil(n / 3); for (let k = 0; k < n; k++) { const a = Math.random() * 6.283; emit(x, y + 0.2, 0, Math.cos(a) * 4, Math.random() * 1.5, Math.sin(a) * 4, '#8a8a90', 1.2 + Math.random(), 0.5); } }
-    function boom(x, y) {
-      const n = calm() ? 30 : 110;
-      for (let k = 0; k < n; k++) { const a = Math.random() * 6.283, e = Math.random() * 1.4, s = 3 + Math.random() * 9; emit(x, y + 1, 0, Math.cos(a) * Math.cos(e) * s, Math.sin(e) * s, Math.sin(a) * Math.cos(e) * s, k % 3 ? '#ffb347' : '#ffffff', 0.8 + Math.random() * 1.2, 0.5); }
+    // dust is a second pool with normal blending (grey regolith, not glowing fire)
+    const ND = 400, dPos = new Float32Array(ND * 3), dVel = new Float32Array(ND * 3), dLife = new Float32Array(ND), dCol = new Float32Array(ND * 3);
+    let dNext = 0;
+    const dGeo = new T.BufferGeometry();
+    dGeo.setAttribute('position', new T.BufferAttribute(dPos, 3)); dGeo.setAttribute('color', new T.BufferAttribute(dCol, 3));
+    const dPts = new T.Points(dGeo, new T.PointsMaterial({ size: 0.5, vertexColors: true, transparent: true, opacity: 0.8, depthWrite: false }));
+    dPts.frustumCulled = false; world.add(dPts);
+    for (let k = 0; k < ND; k++) dPos[k * 3 + 1] = -999;
+    function kick(x, y, z, vx, vy, vz, life, lum = 0.55) {
+      const j = dNext; dNext = (dNext + 1) % ND;
+      dPos[j * 3] = x; dPos[j * 3 + 1] = y; dPos[j * 3 + 2] = z; dVel[j * 3] = vx; dVel[j * 3 + 1] = vy; dVel[j * 3 + 2] = vz; dLife[j] = life;
+      const v = lum * (0.8 + Math.random() * 0.4); dCol[j * 3] = v; dCol[j * 3 + 1] = v; dCol[j * 3 + 2] = v * 1.04;
+    }
+    function tickDust(dt) {
+      for (let j = 0; j < ND; j++) {
+        if (dLife[j] <= 0) continue;
+        dLife[j] -= dt;
+        if (dLife[j] <= 0) { dPos[j * 3 + 1] = -999; continue; }
+        dVel[j * 3 + 1] -= 1.62 * dt;   // no air: dust flies in clean arcs and just drops
+        dPos[j * 3] += dVel[j * 3] * dt; dPos[j * 3 + 1] += dVel[j * 3 + 1] * dt; dPos[j * 3 + 2] += dVel[j * 3 + 2] * dt;
+        const gy = ground(Math.max(0, Math.min(G().w, dPos[j * 3])));
+        if (dPos[j * 3 + 1] < gy) { dPos[j * 3 + 1] = gy; dVel[j * 3] = dVel[j * 3 + 1] = dVel[j * 3 + 2] = 0; dLife[j] = Math.min(dLife[j], 0.4); }
+        if (dLife[j] < 0.5) { const f = 0.94; dCol[j * 3] *= f; dCol[j * 3 + 1] *= f; dCol[j * 3 + 2] *= f; }
+      }
+      dGeo.attributes.position.needsUpdate = true; dGeo.attributes.color.needsUpdate = true;
+    }
+    function dust(x, y, n) { if (calm()) n = Math.ceil(n / 3); for (let k = 0; k < n; k++) { const a = Math.random() * 6.283, s = 2 + Math.random() * 4; kick(x, y + 0.15, (Math.random() - 0.5) * 0.6, Math.cos(a) * s, 0.5 + Math.random() * 2, Math.sin(a) * s * 0.6, 1.2 + Math.random() * 1.2); } }
+
+    // ---------- the crash: fireball, flash, a shockwave across the ground, the lander in pieces, a scorch
+    const glowTex = canvasTex(T, 128, 128, (g, w, h) => {
+      const gr = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+      gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.25, 'rgba(255,220,140,0.95)'); gr.addColorStop(0.55, 'rgba(255,120,40,0.5)'); gr.addColorStop(1, 'rgba(120,30,0,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, w, h);
+    });
+    const scorchTex = canvasTex(T, 128, 128, (g, w, h) => {
+      const gr = g.createRadialGradient(w / 2, h / 2, 2, w / 2, h / 2, w / 2);
+      gr.addColorStop(0, 'rgba(8,8,10,0.95)'); gr.addColorStop(0.5, 'rgba(20,18,18,0.7)'); gr.addColorStop(1, 'rgba(30,30,30,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, w, h);
+      for (let k = 0; k < 26; k++) { const a = Math.random() * 6.283, r0 = w * 0.18, r1 = w * (0.3 + Math.random() * 0.2); g.strokeStyle = 'rgba(10,10,12,0.5)'; g.lineWidth = 1 + Math.random() * 3; g.beginPath(); g.moveTo(w / 2 + Math.cos(a) * r0, h / 2 + Math.sin(a) * r0); g.lineTo(w / 2 + Math.cos(a) * r1, h / 2 + Math.sin(a) * r1); g.stroke(); }
+    });
+    const scorchMat = new T.MeshBasicMaterial({ map: scorchTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 });
+    const ringMat = () => new T.MeshBasicMaterial({ color: 0xffc070, transparent: true, opacity: 0.9, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide });
+    const ringGeo = new T.RingGeometry(0.85, 1, 48), shardGeo = new T.TetrahedronGeometry(0.28, 0), unit = new T.PlaneGeometry(1, 1);
+    const flashLight = new T.PointLight(0xffa850, 0, 40, 2); world.add(flashLight);
+    const wreck = new T.Group(); world.add(wreck);
+    const fx = [], bits = [];
+    const wp = new T.Vector3(), wq = new T.Quaternion();
+    function boom(x, y, o = {}) {
+      const small = !!o.small, z = o.z || 0, few = calm() || low;
+      // fireball: a hot white core inside an orange bloom, both swelling and fading
+      for (const [col, size, life] of [[0xffffff, small ? 2.2 : 4, 0.35], [0xffa040, small ? 4 : 8, 0.8]]) {
+        const sp = new T.Sprite(new T.SpriteMaterial({ map: glowTex, color: col, transparent: true, depthWrite: false, blending: T.AdditiveBlending }));
+        sp.position.set(x, y + 1, z); sp.scale.setScalar(0.1); world.add(sp);
+        fx.push({ m: sp, t: 0, life, kind: 'ball', size });
+      }
+      if (!small) { flashLight.position.set(x, y + 2.5, z + 1); flashLight.intensity = low ? 0 : 6; }
+      // a shockwave ring racing across the ground
+      const ring = new T.Mesh(ringGeo, ringMat()); ring.rotation.x = -Math.PI / 2; ring.position.set(x, y + 0.12, z); world.add(ring);
+      fx.push({ m: ring, t: 0, life: 0.9, kind: 'ring', size: small ? 7 : 15 });
+      // sparks and lingering embers (fire pool), then a ring of regolith thrown out
+      const n = (few ? 30 : 90) >> (small ? 1 : 0);
+      for (let k = 0; k < n; k++) { const a = Math.random() * 6.283, e = Math.random() * 1.3, s = 3 + Math.random() * 10; emit(x, y + 1, z, Math.cos(a) * Math.cos(e) * s, Math.sin(e) * s, Math.sin(a) * Math.cos(e) * s, k % 3 ? '#ffb347' : '#ffffff', 0.6 + Math.random() * 1.0, 0.5); }
+      for (let k = 0; k < (few ? 6 : 18) >> (small ? 1 : 0); k++) emit(x + (Math.random() - 0.5) * 2, y + 0.4, z, (Math.random() - 0.5) * 1.5, 0.5 + Math.random() * 1.5, (Math.random() - 0.5) * 1.5, '#ff6a20', 2.5 + Math.random() * 1.5, 0.3);
+      const nd = (few ? 50 : 140) >> (small ? 1 : 0);
+      for (let k = 0; k < nd; k++) { const a = Math.random() * 6.283, s = 3 + Math.random() * 7; kick(x, y + 0.3, z, Math.cos(a) * s, 1 + Math.random() * 4, Math.sin(a) * s * 0.7, 2 + Math.random() * 1.5); }
+      // a scorch on the ground, tilted to the slope; it stays for the round
+      const sc = new T.Mesh(unit, scorchMat), sl = Math.atan2(ground(x + 1) - ground(x - 1), 2);
+      sc.rotation.set(-Math.PI / 2, 0, 0); sc.rotateOnWorldAxis(new T.Vector3(0, 0, 1), sl); sc.position.set(x, ground(x) + 0.06, z); sc.scale.setScalar(small ? 4 : 7); wreck.add(sc);
+      if (small) return;
+      // the lander comes apart: its own parts tumble away in slow moon arcs, with foil shards
+      mine3.updateMatrixWorld(true);
+      const parts = [];
+      mine3.traverse((m) => { if (m.isMesh && m !== mine3.userData.flame && m.parent === mine3) parts.push(m); });
+      const foil = parts[0]?.material;
+      for (let k = 0; k < (few ? 6 : 16); k++) parts.push(Object.assign(new T.Mesh(shardGeo, foil), { shard: true }));
+      for (const m of parts) {
+        const c = m.shard ? m : m.clone();
+        if (m.shard) c.position.set(x + (Math.random() - 0.5) * 1.5, y + 1 + Math.random(), z);
+        else { m.getWorldPosition(wp); m.getWorldQuaternion(wq); c.position.copy(wp); c.quaternion.copy(wq); }
+        c.castShadow = !low; wreck.add(c);
+        const a = Math.random() * 6.283, s = 2 + Math.random() * (m.shard ? 9 : 5);
+        bits.push({ m: c, v: [Math.cos(a) * s, 3 + Math.random() * 7, Math.sin(a) * s * 0.5], w: [(Math.random() - 0.5) * 9, (Math.random() - 0.5) * 9, (Math.random() - 0.5) * 9], rest: false });
+      }
+    }
+    function tickFx(dt) {
+      for (let k = fx.length - 1; k >= 0; k--) {
+        const f = fx[k]; f.t += dt;
+        const u = Math.min(1, f.t / f.life);
+        if (f.kind === 'ball') { f.m.scale.setScalar(0.3 + f.size * Math.sqrt(u)); f.m.material.opacity = (1 - u) ** 1.5; }
+        else { f.m.scale.setScalar(0.5 + f.size * (1 - (1 - u) ** 2)); f.m.material.opacity = 0.9 * (1 - u); }
+        if (u >= 1) { world.remove(f.m); f.m.material.dispose(); fx.splice(k, 1); }
+      }
+      if (flashLight.intensity > 0) flashLight.intensity = Math.max(0, flashLight.intensity - dt * 14);
+      for (const b of bits) {
+        if (b.rest) continue;
+        const p = b.m.position;
+        b.v[1] -= 1.62 * dt;
+        p.x += b.v[0] * dt; p.y += b.v[1] * dt; p.z += b.v[2] * dt;
+        b.m.rotation.x += b.w[0] * dt; b.m.rotation.y += b.w[1] * dt; b.m.rotation.z += b.w[2] * dt;
+        const gy = ground(Math.max(0, Math.min(G().w, p.x))) + 0.15;
+        if (p.y < gy) {
+          p.y = gy; b.v[1] = -b.v[1] * 0.35; b.v[0] *= 0.6; b.v[2] *= 0.6; for (let i = 0; i < 3; i++) b.w[i] *= 0.6;
+          if (Math.abs(b.v[1]) > 1.2 && !calm()) kick(p.x, gy, p.z, b.v[0] * 0.3, 0.8, b.v[2] * 0.3, 0.8);
+          if (Math.abs(b.v[1]) < 0.6) b.rest = true;
+        }
+      }
     }
 
     let aspect = 1, lastDraw = 0, camX = V ? G().w / 2 : 80, camY = 60, camD = 120;
@@ -605,7 +715,7 @@ UI.lander = (() => {
       beaconMat.color.setHex(Math.floor(now / 700) % 2 ? 0xff4040 : 0x401010);
       for (const p of padObjs) p.userData.lightMat.color.set(blink ? (p.userData.m === 3 ? 0xff5d8f : p.userData.m === 2 ? 0xffd23f : 0x5ce1a0) : 0x333333);
       earth.rotation.y += dt * 0.02;
-      tickParts(dt);
+      tickParts(dt); tickDust(dt); tickFx(dt);
       renderer.render(scene, camera);
     }
     const shake = (a) => GL3.shake(camera, a);
@@ -622,7 +732,7 @@ UI.lander = (() => {
     const canvas = document.createElement('canvas'); canvas.className = 'ml-flat'; stage.prepend(canvas);
     const g = canvas.getContext('2d');
     if (!g) { stage.append('Your browser cannot draw this game.'); return null; }
-    const pops = [];
+    const pops = [], chunks = [], scorches = [];
     let vw = { cx: 80, k: 1, W: 1, span: 160 };
     const stars = Array.from({ length: 90 }, () => [Math.random(), Math.random()]);
     function resize() {
@@ -658,9 +768,16 @@ UI.lander = (() => {
       };
       for (const [i, o] of Object.entries(ghosts)) { const p = o.cur(now); lander(p[0], p[1], p[2], p[3], colorOf(+i), 0.45); }
       if (fl && !(fl.done && fl.done.how === 'crash')) lander(fl.x, fl.y, fl.k, !fl.done && fl.on, '#d9a63a', 1);
+      for (const sc of scorches) { g.fillStyle = '#0b0b0dcc'; g.beginPath(); g.ellipse(X(sc.x), Y(sc.y), sc.r * k, sc.r * k * 0.3, 0, 0, 7); g.fill(); }
+      for (let j = chunks.length - 1; j >= 0; j--) {
+        const c = chunks[j], dt = Math.min(0.05, (now - c.last) / 1000); c.last = now;
+        if (!c.rest) { c.vy -= 1.62 * dt; c.x += c.vx * dt; c.y += c.vy * dt; c.a += c.w * dt; const gy = ground(Math.max(0, Math.min(gg.w, c.x))); if (c.y < gy) { c.y = gy; c.vy *= -0.35; c.vx *= 0.6; c.w *= 0.6; if (Math.abs(c.vy) < 0.6) c.rest = true; } }
+        g.save(); g.translate(X(c.x), Y(c.y)); g.rotate(c.a); g.fillStyle = c.col; g.fillRect(-c.s * k / 2, -c.s * k / 2, c.s * k, c.s * k * 0.6); g.restore();
+      }
       for (let j = pops.length - 1; j >= 0; j--) {
-        const p = pops[j], t = (now - p.at) / 700;
+        const p = pops[j], t = (now - p.at) / (p.ball ? 600 : 700);
         if (t >= 1) { pops.splice(j, 1); continue; }
+        if (p.ball) { const gr = g.createRadialGradient(X(p.x), Y(p.y), 0, X(p.x), Y(p.y), (0.5 + p.size * Math.sqrt(t)) * k); gr.addColorStop(0, `rgba(255,255,230,${1 - t})`); gr.addColorStop(0.5, `rgba(255,150,50,${0.8 * (1 - t)})`); gr.addColorStop(1, 'rgba(255,80,0,0)'); g.fillStyle = gr; g.beginPath(); g.arc(X(p.x), Y(p.y), (0.5 + p.size * Math.sqrt(t)) * k, 0, 7); g.fill(); continue; }
         g.globalAlpha = 1 - t; g.strokeStyle = p.col; g.lineWidth = 3;
         g.beginPath(); g.arc(X(p.x), Y(p.y), (1 + t * p.size) * k, 0, 7); g.stroke();
       }
@@ -671,7 +788,13 @@ UI.lander = (() => {
       draw, resize, dispose() { canvas.remove(); },
       proj: (x) => ((x - vw.cx) * vw.k) / (vw.W / 2), span: () => vw.span,
       dust: (x, y) => pops.push({ x, y, col: '#aaa', size: 3, at: performance.now() }),
-      boom: (x, y) => pops.push({ x, y, col: '#ffb347', size: 8, at: performance.now() }),
+      boom: (x, y, o = {}) => {
+        const at = performance.now(), small = !!o.small;
+        pops.push({ x, y: y + 1, ball: true, size: small ? 3 : 6, at }, { x, y, col: '#ffb347', size: small ? 5 : 10, at });
+        scorches.push({ x, y: ground(x), r: small ? 2 : 3.5 });
+        if (!small) for (let n = 0; n < 12; n++) { const a = Math.random() * Math.PI; chunks.push({ x, y: y + 1, vx: Math.cos(a) * (2 + Math.random() * 6), vy: 2 + Math.random() * 7, a: 0, w: (Math.random() - 0.5) * 10, s: 0.4 + Math.random() * 0.7, col: n % 3 ? '#d9a63a' : '#dfe3ea', last: at }); }
+      },
+      rebuild() { chunks.length = 0; scorches.length = 0; },
     };
   }
 
