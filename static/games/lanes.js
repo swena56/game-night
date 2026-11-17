@@ -543,6 +543,33 @@ UI.lanes = (() => {
       }) });
     const setGeo = new T.BoxGeometry(W + 0.1, 0.05, 1.05), setMat = new T.MeshStandardMaterial({ color: 0x55525e, roughness: 0.5, metalness: 0.5 });
     const deckZ = -(ln.spots.reduce((a, s) => a + s[1], 0) / ln.spots.length);
+    // #145 the pinsetter in more detail. The sweep bar: the steel beam with a black rubber pad along its face, carried on
+    // two arms that rise to pivots in the masking unit. The spotting table: a plate with ten pin cups under it in the
+    // rack's triangle, a frame round its edge and four guide rods it rides down on.
+    const armMat = new T.MeshStandardMaterial({ color: 0x3a3b44, roughness: 0.45, metalness: 0.6 });
+    const padMat = new T.MeshStandardMaterial({ color: 0x111114, roughness: 0.9 });
+    const padGeo = new T.BoxGeometry(W + 0.3, 0.08, 0.025), armGeo = new T.BoxGeometry(0.05, 1.0, 0.05), pivotGeo = new T.CylinderGeometry(0.045, 0.045, 0.09, 12);
+    pivotGeo.rotateZ(Math.PI / 2);
+    function makeBar() {
+      const g = new T.Group(), beam = new T.Mesh(barGeo, barMat); beam.castShadow = !low; g.add(beam);
+      const pad = new T.Mesh(padGeo, padMat); pad.position.set(0, -0.045, 0.035); g.add(pad);
+      for (const sx of [-1, 1]) {
+        const arm = new T.Mesh(armGeo, armMat); arm.position.set(sx * (W / 2 + 0.2), 0.5, -0.01); g.add(arm);
+        const piv = new T.Mesh(pivotGeo, armMat); piv.position.set(sx * (W / 2 + 0.2), 0.98, -0.01); g.add(piv);
+        const brace = new T.Mesh(new T.BoxGeometry(0.03, 0.03, 0.22), armMat); brace.position.set(sx * (W / 2 + 0.2), 0.12, -0.12); brace.rotation.x = 0.5; g.add(brace);
+      }
+      return g;
+    }
+    const cupGeo = new T.CylinderGeometry(0.07, 0.06, 0.07, low ? 8 : 16, 1, true), cupMat = new T.MeshStandardMaterial({ color: 0x8a8c96, roughness: 0.35, metalness: 0.7, side: T.DoubleSide });
+    const rodGeo = new T.CylinderGeometry(0.016, 0.016, 1.2, 8), rimGeo = new T.BoxGeometry(W + 0.14, 0.035, 0.035), rimGeo2 = new T.BoxGeometry(0.035, 0.035, 1.07);
+    function makeSetter() {
+      const g = new T.Group(), plate = new T.Mesh(setGeo, setMat); plate.castShadow = !low; g.add(plate);
+      for (const [px, py] of ln.spots) { const c = new T.Mesh(cupGeo, cupMat); c.position.set(px, -0.06, -py - deckZ); g.add(c); }
+      for (const sz of [-1, 1]) { const r = new T.Mesh(rimGeo, armMat); r.position.set(0, 0.03, sz * 0.52); g.add(r); }
+      for (const sx of [-1, 1]) { const r = new T.Mesh(rimGeo2, armMat); r.position.set(sx * (W / 2 + 0.05), 0.03, 0); g.add(r); }
+      for (const sx of [-1, 1]) for (const sz of [-1, 1]) { const rod = new T.Mesh(rodGeo, armMat); rod.position.set(sx * (W / 2 - 0.05), 0.62, sz * 0.45); g.add(rod); }
+      return g;
+    }
     // the fascia on the masking unit: a glowing lane number and a starfield (#117)
     const fascia = (num) => {
       const t = canvasTex(T, 512, 160, (g, w, h) => {
@@ -586,7 +613,7 @@ UI.lanes = (() => {
       } else {
         pins = ln.spots.map(([px, py]) => { const m = new T.Mesh(pinGeo, pinMat); m.position.set(px, 0, -py); m.castShadow = !low; m.receiveShadow = !low; grp.add(m); return m; });
       }
-      const bar = empty ? null : new T.Mesh(barGeo, barMat), setter = empty ? null : new T.Mesh(setGeo, setMat);
+      const bar = empty ? null : makeBar(), setter = empty ? null : makeSetter();
       if (bar) { bar.visible = false; grp.add(bar); }
       if (setter) { setter.visible = false; setter.position.z = deckZ; grp.add(setter); }
       scene.add(grp);
