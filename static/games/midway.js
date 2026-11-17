@@ -370,14 +370,57 @@ UI.midway = (() => {
     const counter = new T.Mesh(new T.BoxGeometry(2.7, 0.08, 0.35), std(0xb8823f, { roughness: 0.55 }));
     counter.position.set(0, 0.92, 0.05); counter.castShadow = true; counter.receiveShadow = true; scene3.add(counter);
     const front = new T.Mesh(new T.BoxGeometry(2.7, 0.9, 0.05), std(0xc23b32)); front.position.set(0, 0.45, 0.2); scene3.add(front);
-    const bulbs = [], bulbGeo = new T.SphereGeometry(0.03, 8, 6), BULB = [0xffd27a, 0xff7a7a, 0x8ad8ff, 0xb8ff8a];
-    for (const [z, y, n] of [[-0.25, 2.25, low ? 9 : 14], [-2.5, 2.4, low ? 9 : 14], [-4.6, 2.55, low ? 7 : 11]]) {
+    // string lights: bulbs on a sagging wire (each bulb in a soft halo), three runs across the booth
+    const bulbs = [], bulbGeo = new T.SphereGeometry(1, 8, 6), BULB = [0xffd27a, 0xff7a7a, 0x8ad8ff, 0xb8ff8a];
+    const haloTex = tex(64, 64, (g, w) => { const r = g.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2); r.addColorStop(0, 'rgba(255,255,255,.9)'); r.addColorStop(0.25, 'rgba(255,255,255,.35)'); r.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = r; g.fillRect(0, 0, w, w); });
+    const wireMat = new T.LineBasicMaterial({ color: 0x1a1a1a });
+    for (const [z, y, n, r] of [[-0.45, 2.3, low ? 9 : 13, 0.018], [-2.5, 2.45, low ? 9 : 14, 0.026], [-4.55, 2.85, low ? 7 : 12, 0.03]]) {
+      const sag = (u) => y - 0.2 * Math.sin(Math.PI * u), pts = [];
+      for (let k = 0; k <= 24; k++) pts.push(new T.Vector3(-1.32 + 2.64 * k / 24, sag(k / 24) + 0.03, z));
+      scene3.add(new T.Line(new T.BufferGeometry().setFromPoints(pts), wireMat));
       for (let k = 0; k < n; k++) {
-        const u = k / (n - 1), b = new T.Mesh(bulbGeo, glow(BULB[k % 4]));
-        b.position.set(-1.3 + 2.6 * u, y - 0.18 * Math.sin(Math.PI * u), z); scene3.add(b); bulbs.push(b);
+        const u = (k + 0.5) / n, col = BULB[k % 4], b = new T.Mesh(bulbGeo, glow(col));
+        b.scale.setScalar(r); b.position.set(-1.32 + 2.64 * u, sag(u), z);
+        if (!low) { const h = new T.Sprite(new T.SpriteMaterial({ map: haloTex, color: col, transparent: true, depthWrite: false, blending: T.AdditiveBlending, opacity: 0.55 })); h.scale.setScalar(9); b.add(h); }   // the halo is 9× the bulb (it inherits the bulb's scale)
+        scene3.add(b); bulbs.push(b);
       }
     }
     if (!low) for (const x of [-0.8, 0.8]) { const L = new T.PointLight(0xffc27a, 0.6, 6, 2); L.position.set(x, 2.1, -1.8); scene3.add(L); }
+    // a warm spotlight on whatever you're throwing at (it follows the booth)
+    const spot = low ? null : new T.SpotLight(0xfff0d0, 1.1, 8, 0.42, 0.65, 1.4);
+    if (spot) { spot.position.set(0, 2.9, -0.6); scene3.add(spot, spot.target); }
+
+    // the prize wall behind every booth: shelves of plush bears in carnival colours
+    const prizes = new T.Group(); scene3.add(prizes);
+    const shelfMat = std(0x8a5a32, { roughness: 0.6 }), PLUSH = [0xff8fb1, 0x8fd3ff, 0xffd166, 0xb48cff, 0x7ee0a1, 0xff9f6b, 0xf4efe4];
+    const bodyG = new T.SphereGeometry(0.085, 14, 10), headG = new T.SphereGeometry(0.06, 14, 10), earG = new T.SphereGeometry(0.024, 8, 6), noseG = new T.SphereGeometry(0.026, 8, 6), eyeG = new T.SphereGeometry(0.009, 6, 4);
+    const eyeMat = std(0x111111, { roughness: 0.3 }), plushMats = PLUSH.map((c) => std(c, { roughness: 0.95 })), snout = std(0xfff3e0, { roughness: 0.95 });
+    function bear(m, s) {
+      const g = new T.Group(), body = new T.Mesh(bodyG, m); body.scale.y = 1.1; body.position.y = 0.085; body.castShadow = !low; g.add(body);
+      const head = new T.Mesh(headG, m); head.position.y = 0.21; g.add(head);
+      for (const sx of [-1, 1]) { const e = new T.Mesh(earG, m); e.position.set(sx * 0.045, 0.26, -0.005); g.add(e); const eye = new T.Mesh(eyeG, eyeMat); eye.position.set(sx * 0.021, 0.225, 0.053); g.add(eye); }
+      const n = new T.Mesh(noseG, snout); n.position.set(0, 0.2, 0.052); n.scale.z = 0.7; g.add(n);
+      g.scale.setScalar(s); return g;
+    }
+    for (const [y, n] of [[1.45, low ? 4 : 7], [1.95, low ? 4 : 8], [2.45, low ? 3 : 7]]) {
+      const sh = new T.Mesh(new T.BoxGeometry(2.5, 0.04, 0.22), shelfMat); sh.position.set(0, y, -4.68); sh.receiveShadow = true; prizes.add(sh);
+      for (let k = 0; k < n; k++) {
+        const b = bear(plushMats[(k * 3 + Math.round(y * 10)) % PLUSH.length], 0.85 + ((k * 7 + y * 13) % 5) * 0.08);
+        b.position.set(-1.12 + 2.24 * (k + 0.5) / n, y + 0.02, -4.66); b.rotation.y = ((k * 5) % 7 - 3) * 0.12; prizes.add(b);
+      }
+    }
+    // a lit marquee over each booth: its name in gold, a border of bulbs
+    function marquee(text, w, h) {
+      const t = tex(512, Math.round(512 * h / w), (g, W, H) => {
+        g.fillStyle = '#5a0f1e'; g.fillRect(0, 0, W, H);
+        g.strokeStyle = '#ffd23f'; g.lineWidth = 6; g.strokeRect(10, 10, W - 20, H - 20);
+        const n = 22; g.fillStyle = '#fff2b0';
+        for (let k = 0; k < n; k++) { const x = 10 + (W - 20) * k / (n - 1); for (const yy of [10, H - 10]) { g.beginPath(); g.arc(x, yy, 5, 0, 7); g.fill(); } }
+        g.font = `800 ${Math.round(H * 0.5)}px "Baloo 2", system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.shadowColor = '#ff9a2a'; g.shadowBlur = 18; g.fillStyle = '#ffe066'; g.fillText(text, W / 2, H / 2 + 3);
+      });
+      const m = new T.Mesh(new T.PlaneGeometry(w, h), new T.MeshBasicMaterial({ map: t })); return m;
+    }
 
     // 🎳 Skee Roll: an inclined lane up to a tilted ring board. Board coordinates (bx, by) are local x, y of `board`.
     const skee = new T.Group(); scene3.add(skee);
@@ -397,7 +440,7 @@ UI.midway = (() => {
           g.beginPath(); g.arc(X(0), Y(geo.cy), r * k, 0, 7); g.fillStyle = cols[n % cols.length]; g.fill();
           g.lineWidth = 3; g.strokeStyle = '#0b1830'; g.stroke();
         });
-        g.font = `bold ${Math.round(k * 0.045)}px "Baloo 2", system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.font = `800 ${Math.round(k * 0.06)}px "Baloo 2", system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
         geo.rings.forEach(([r, pts], n) => {
           const r0 = n ? geo.rings[n - 1][0] : 0, y = Y(geo.cy) - (r0 + r) / 2 * k;
           g.fillStyle = '#0b1830'; g.fillText(String(pts), X(0), n ? y : Y(geo.cy));
@@ -419,6 +462,7 @@ UI.midway = (() => {
     const skeeJack = new T.Mesh(new T.TorusGeometry(0.05, 0.014, 8, 24), goldMat); skeeJack.position.z = 0.016; board.add(skeeJack);
     const skeeBall = new T.Mesh(new T.SphereGeometry(0.045, 16, 12), std(0xffffff, { roughness: 0.35 })); skeeBall.castShadow = true;
     const skeeBalls = [];
+    const skeeSign = marquee('SKEE ROLL', 1.3, 0.3); skeeSign.position.set(0, 2.38, -4.3); skee.add(skeeSign);
     const boardPt = (bx, by, lift = 0.05) => board.localToWorld(new T.Vector3(bx, by, lift));
 
     // ⭕ Ring Toss: a table of bottles, board (bx, by) → world (bx, 0.86, -1.5 - by)
@@ -426,12 +470,16 @@ UI.midway = (() => {
     const TY = 0.86, TZ = -1.5;
     const table = new T.Mesh(new T.BoxGeometry(1.5, 0.06, 1.25), std(0x7a4a2a, { roughness: 0.6 }));
     table.position.set(0, TY - 0.03, TZ - 0.52); table.receiveShadow = true; rings.add(table);
-    const cloth = new T.Mesh(new T.BoxGeometry(1.52, 0.5, 0.02), std(0x2a7a4a)); cloth.position.set(0, TY - 0.28, TZ + 0.1); rings.add(cloth);
+    const fringe = tex(256, 48, (g, w, h) => { g.fillStyle = '#1f6a3c'; g.fillRect(0, 0, w, h * 0.6); g.fillStyle = '#ffd23f'; g.fillRect(0, h * 0.18, w, 3); for (let k = 0; k < 16; k++) { g.beginPath(); g.arc((k + 0.5) * w / 16, h * 0.6, w / 32, 0, Math.PI); g.fillStyle = k % 2 ? '#1f6a3c' : '#c23b32'; g.fill(); } });
+    fringe.wrapS = T.RepeatWrapping; fringe.repeat.x = 2;
+    const cloth = new T.Mesh(new T.PlaneGeometry(1.52, 0.2), std(0xffffff, { map: fringe, transparent: true, alphaTest: 0.1, side: T.DoubleSide })); cloth.position.set(0, TY - 0.1, TZ + 0.11); rings.add(cloth);
+    const legMat = std(0x5a3a20); for (const sx of [-0.68, 0.68]) for (const lz of [TZ + 0.05, TZ - 1.1]) { const leg = new T.Mesh(new T.BoxGeometry(0.06, TY, 0.06), legMat); leg.position.set(sx, TY / 2, lz); rings.add(leg); }
     const bottlePts = [[0, 0], [0.045, 0], [0.05, 0.02], [0.05, 0.15], [0.034, 0.19], [0.017, 0.22], [0.017, 0.28], [0.02, 0.29], [0, 0.29]].map(([x, y]) => new T.Vector2(x, y));
     const bottleGeo = new T.LatheGeometry(bottlePts, low ? 10 : 18);
     const glass = { g: std(0x2fbf5a, { roughness: 0.12, transparent: true, opacity: 0.85 }), b: std(0x2f7fe8, { roughness: 0.12, transparent: true, opacity: 0.85 }),
       r: std(0xe8343f, { roughness: 0.12, transparent: true, opacity: 0.85 }) };
     const bottleMeshes = [];
+    const ringSign = marquee('RING TOSS', 1.2, 0.28); ringSign.position.set(0, 1.55, TZ - 1.5); rings.add(ringSign);
     const ringGeo = new T.TorusGeometry(0.06, 0.009, 6, 28); ringGeo.rotateX(Math.PI / 2);
     const ringMats = new Map(), ringMat = (c) => { if (!ringMats.has(c)) ringMats.set(c, std(c, { roughness: 0.35, emissive: c, emissiveIntensity: 0.2 })); return ringMats.get(c); };
     const ringPool = [], flyRings = [];
@@ -442,7 +490,8 @@ UI.midway = (() => {
     const SY = 1.0, SZ = -2.6;
     const shelf = new T.Mesh(new T.BoxGeometry(0.9, 0.06, 0.35), std(0x8a5a32)); shelf.position.set(0, SY - 0.03, SZ); shelf.castShadow = shelf.receiveShadow = true; cansG.add(shelf);
     const post = new T.Mesh(new T.BoxGeometry(0.08, SY, 0.08), std(0x5a3a20)); post.position.set(0, SY / 2, SZ); cansG.add(post);
-    const curtain = new T.Mesh(new T.PlaneGeometry(2.6, 2.2), std(0x6a1630, { side: T.DoubleSide })); curtain.position.set(0, 1.1, SZ - 0.9); cansG.add(curtain);
+    const curtain = new T.Mesh(new T.PlaneGeometry(2.6, 1.55), std(0x6a1630, { side: T.DoubleSide })); curtain.position.set(0, 0.85, SZ - 0.9); cansG.add(curtain);
+    const cansSign = marquee('CAN SLAM', 1.0, 0.24); cansSign.position.set(0, 1.86, SZ - 0.85); cansG.add(cansSign);
     const canTex = tex(128, 64, (g, w, h) => { g.fillStyle = '#c8ccd2'; g.fillRect(0, 0, w, h); g.fillStyle = '#e8483f'; g.fillRect(0, h * 0.25, w, h * 0.5); g.fillStyle = '#fff'; g.font = 'bold 22px system-ui'; g.textAlign = 'center'; g.fillText('POW', w / 2, h * 0.62); });
     const canMat = [std(0xffffff, { map: canTex, metalness: 0.5, roughness: 0.35 }), std(0xb8bcc2, { metalness: 0.7, roughness: 0.3 }), std(0xb8bcc2, { metalness: 0.7, roughness: 0.3 })];
     const goldCan = [goldMat, goldMat, goldMat];
@@ -484,7 +533,7 @@ UI.midway = (() => {
     }
 
     const cam = { pos: new T.Vector3(0, 1.7, 1.1), look: new T.Vector3(0, 1.1, -3), init: false };
-    const VIEW = { skee: { pos: [0, 1.75, 0.9], look: [0, 1.25, -3.4], w: 0.8, d: 4.3 }, rings: { pos: [0, 1.95, 0.55], look: [0, 0.85, -2.0], w: 0.85, d: 3.0 },
+    const VIEW = { skee: { pos: [0, 1.7, -0.5], look: [0, 1.4, -3.6], w: 0.72, d: 3.2 }, rings: { pos: [0, 1.9, 0.1], look: [0, 0.78, -2.05], w: 0.8, d: 2.6 },
       cans: { pos: [0, 1.4, -0.2], look: [0, 1.18, -2.6], w: 0.55, d: 2.4 } };
     let lastT = 0, moving = 0;
     function resize() {
@@ -522,16 +571,24 @@ UI.midway = (() => {
         : hit.clone().add(new T.Vector3(0, -0.8 * v * v, -0.85 * v));
     }
 
+    // a short fading trail behind a flying ball
+    const trailGeo = new T.SphereGeometry(0.04, 8, 6), trails = [];
+    function trail(k, path, f, col) {
+      if (low) return;
+      trails[k] ||= Array.from({ length: 5 }, (_, j) => { const m = new T.Mesh(trailGeo, new T.MeshBasicMaterial({ transparent: true, opacity: 0.35 * (1 - j / 5), depthWrite: false })); m.scale.setScalar(1 - j * 0.15); scene3.add(m); return m; });
+      trails[k].forEach((m, j) => { const u = f.u - 0.035 * (j + 1); m.visible = f.u < f.landU && u > 0.05; if (m.visible) { m.position.copy(path(u)); m.material.color.set(col); } });
+    }
     function draw(now, sc, idle) {
+      for (const t of trails) if (t) for (const m of t) m.visible = false;
       const dt = Math.min(0.1, lastT ? (now - lastT) / 1000 : 0.016); lastT = now;
       build(sc);
-      if (sc.kind !== kindNow) { kindNow = sc.kind; cam.init = false; }
+      if (sc.kind !== kindNow) { kindNow = sc.kind; cam.init = false; if (spot) spot.target.position.set(0, sc.kind === 'rings' ? TY : 1.4, sc.kind === 'skee' ? -3.7 : sc.kind === 'rings' ? TZ - 0.5 : SZ); }
       skee.visible = sc.kind === 'skee'; rings.visible = sc.kind === 'rings'; cansG.visible = sc.kind === 'cans';
       const pool = (arr, proto, parent) => { while (arr.length < sc.fly.length) { const m = proto.clone(); m.material = proto.material.clone(); parent.add(m); arr.push(m); } arr.forEach((m) => { m.visible = false; }); };
       if (sc.kind === 'skee') {
         skeeJack.visible = sc.jackLive; skeeJack.position.set(sc.layout.jack[0], sc.layout.jack[1], 0.016);
         pool(skeeBalls, skeeBall, scene3);
-        sc.fly.forEach((f, k) => { const m = skeeBalls[k]; m.visible = f.u > 0 && f.u < 1; m.position.copy(skeePath(f.shot, f.u, f.landU)); m.material.color.set(sc.color); });
+        sc.fly.forEach((f, k) => { const m = skeeBalls[k]; m.visible = f.u > 0 && f.u < 1; m.position.copy(skeePath(f.shot, f.u, f.landU)); m.material.color.set(sc.color); trail(k, (u) => skeePath(f.shot, u, f.landU), f, sc.color); });
       } else if (sc.kind === 'rings') {
         bottleMeshes.forEach((m, i) => { m.material = i === sc.layout.jack && sc.jackLive ? goldMat : glass[sc.layout.colours[i]]; });
         while (ringPool.length < sc.shots.length) { const m = new T.Mesh(ringGeo, ringMat(0xffffff)); rings.add(m); ringPool.push(m); }
@@ -555,7 +612,7 @@ UI.midway = (() => {
           m.rotation.set(-1.6 * e, i * 0.7, (i % 2 ? 1 : -1) * 0.8 * e);
         });
         pool(canBalls, canBall, scene3);
-        sc.fly.forEach((f, k) => { const m = canBalls[k]; m.visible = f.u > 0 && f.u < 1; m.position.copy(canPath(f.shot, f.u, f.landU)); });
+        sc.fly.forEach((f, k) => { const m = canBalls[k]; m.visible = f.u > 0 && f.u < 1; m.position.copy(canPath(f.shot, f.u, f.landU)); trail(k, (u) => canPath(f.shot, u, f.landU), f, 0xfff2c0); });
       }
       // the preview arc
       const pv = sc.preview;
@@ -600,6 +657,7 @@ UI.midway = (() => {
         else if (sh.k === 'rings') at = tablePt(sh.ex, sh.ey, TY + 0.3);
         else at = new T.Vector3(sh.x, SY + sh.y, SZ + 0.1);
         if (sh.jack || sh.sweep || (sh.k === 'skee' && sh.where === 'cup')) { confetti(at, sh.jack ? 60 : 36); GL3.shake(camera, 0.12); }
+        else if (sh.pts >= (sh.k === 'skee' ? 30 : 1)) confetti(at, sh.hot ? 22 : 12);
         else if (sh.k === 'cans' && sh.fell.length >= 3) GL3.shake(camera, 0.08);
       },
       dispose() {
