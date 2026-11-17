@@ -27,6 +27,7 @@ AIM = 1.2             # the sight can point this far from the centre, each way
 APPLE_R = 0.06        # an arrow this close to the apple's centre hits it
 APPLE_PTS = 5
 SPLIT = 0.02          # landing this close to an arrow in the boss splits it
+HOLD_STEADY, HOLD_GIVE, HOLD_SCATTER = 2.0, 9.0, 0.03   # #128: a draw is steady this long, gives out at this, wanders up to this much
 HIT_PAUSE = 1.7       # seconds on the hit close-up before the next archer
 END_PAUSE = 5.0
 # wind setting -> (weakest, strongest wind in m/s, the end's hidden bias σ, each arrow's gust σ)
@@ -182,6 +183,9 @@ class Archery(Game):
             raise GameError("The next end is coming up.")
         self.require_turn(p)
         ax, ay, breath = a.get("ax"), a.get("ay"), a.get("breath", False)
+        held = a.get("held", 0)
+        if not isinstance(held, (int, float)) or isinstance(held, bool) or not math.isfinite(held):
+            raise GameError("Bad shot.")
         if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in (ax, ay)):
             raise GameError("Bad shot.")
         if abs(ax) > AIM or abs(ay) > AIM or not isinstance(breath, bool):
@@ -191,6 +195,13 @@ class Archery(Game):
             raise GameError("You've already used your steady breath.")
         if time.time() < self.ready_at - 0.3:
             raise GameError("Wait for the arrow to land.")
+        # #128 tired arms: held past the steady couple of seconds, the release itself wanders a little more
+        # (on top of the sway the page already added), so a long hold costs something here too
+        held = max(0.0, min(float(held), HOLD_GIVE))
+        if not breath and held > HOLD_STEADY:
+            sig = HOLD_SCATTER * (held - HOLD_STEADY) / (HOLD_GIVE - HOLD_STEADY)
+            ax = max(-AIM, min(AIM, ax + self.rng.gauss(0, sig)))
+            ay = max(-AIM, min(AIM, ay + self.rng.gauss(0, sig)))
         self.shoot(i, float(ax), float(ay), breath)
 
     def gust(self):

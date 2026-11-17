@@ -39,3 +39,10 @@
   .ar-loose { min-width: 100px; }
 }
 @media (prefers-reduced-motion: reduce) { .ar-pop-in, .ar-done, .ar-loose.ar-ready { animation: none; } }
+/* 💪 the draw's stamina (#128): a ring that empties as you hold; it shakes once the tremor sets in */
+.ar-stam { position: absolute; left: 10px; bottom: 10px; z-index: 2; width: 46px; height: 46px; border-radius: 50%; pointer-events: none;
+  background: conic-gradient(var(--c, #3ddc97) var(--p, 360deg), #ffffff22 0); display: grid; place-items: center; }
+.ar-stam i { position: absolute; inset: 5px; border-radius: 50%; background: #0b1020cc; }
+.ar-stam b { position: relative; font-size: 18px; }
+.ar-stam.shake { animation: arShake .12s linear infinite; }
+@keyframes arShake { 0% { transform: translate(0, 0); } 25% { transform: translate(1px, -1px); } 50% { transform: translate(-1px, 1px); } 75% { transform: translate(1px, 1px); } }

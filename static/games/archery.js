@@ -24,6 +24,7 @@ UI.archery = (() => {
         <div class="ar-hud"><span id="arEnd"></span><span id="arTurn"></span></div>
         <div class="ar-wind" id="arWind" title="The wind on the flag"><i id="arWindArrow">➤</i><b id="arWindKmh"></b><small>km/h</small></div>
         <div class="ar-pop" id="arPop" hidden></div>
+        <div class="ar-stam" id="arStam" hidden title="How long you can hold the draw"><i></i><b>💪</b></div>
         <div class="ar-done" id="arDone" hidden><h3 id="arDoneTitle"></h3><div id="arStand"></div></div>
       </div>
       <div class="ar-ctl" id="arCtl">
@@ -78,30 +79,95 @@ UI.archery = (() => {
 
   function unmount() {
     cancelAnimationFrame(raf); raf = 0; ro?.disconnect(); gl?.dispose(); gl = null; flat = null; hold = null;
+    window.Snd?.bed('ar.wind').set(0);
   }
+
+  // ---------- sound (#127), on the shared Snd kit (static/sfx.js), outdoors on the range
+  const OUT = { room: 'outdoor', send: 0.5 };
+  const snd = (fn, pan = 0, vol = 1) => window.Snd?.play((t, K) => fn(t, K, K.at({ ...OUT, pan, vol })));
+  const SND = {
+    // the limbs bending as you draw: a low wooden creak
+    draw: () => snd((t, K, d) => { K.burst(d, t, { type: 'bandpass', f: 320, f1: 520, q: 4, vol: 0.12, tau: 0.08, dur: 0.35, attack: 0.08 }); K.mode(d, t + 0.05, 95, 0.05, 0.08); }),
+    // tired arms: a creak with a shiver in it, louder as they tire
+    strain: (k) => snd((t, K, d) => { for (let n = 0; n < 3; n++) K.burst(d, t + n * 0.06, { type: 'bandpass', f: K.R(260, 420), q: 5, vol: 0.05 + 0.08 * k, tau: 0.03 }); }),
+    // the arm gives out: the string eased back down
+    letdown: () => snd((t, K, d) => { K.burst(d, t, { type: 'bandpass', f: 500, f1: 260, q: 3, vol: 0.12, tau: 0.08, dur: 0.4 }); K.mode(d, t + 0.35, 90, 0.08, 0.06); }),
+    // the string: a twang (the bow's low body and the string's partials), the slap on the arm guard, then the
+    // arrow's hiss away downrange
+    loose: (mine) => snd((t, K, d) => {
+      const v = mine ? 1 : 0.45, f = K.R(100, 125);
+      K.mode(d, t, f, 0.22 * v, 0.09); K.mode(d, t, f * 2.02, 0.1 * v, 0.06); K.mode(d, t, f * 3.05, 0.05 * v, 0.04); K.mode(d, t, f * 5.1, 0.02 * v, 0.02);
+      K.burst(d, t, { type: 'bandpass', f: 1800, q: 1.2, vol: 0.25 * v, tau: 0.006 });
+      K.burst(d, t + 0.02, { type: 'bandpass', f: 3800, f1: 1400, q: 1.5, vol: 0.09 * v, tau: 0.08, dur: 0.45, attack: 0.03 });
+    }, 0, 1),
+    // the arrow arriving: a deep thwack into the straw boss, a ring of the gold for a 9 or 10, a thump in the
+    // grass for a miss, and an apple bursting
+    hit: (ring, apple) => snd((t, K, d) => {
+      if (!ring) { K.burst(d, t, { type: 'lowpass', f: 380, q: 0.7, vol: 0.25, tau: 0.03, buf: 'brown' }); K.burst(d, t, { type: 'bandpass', f: 2500, q: 1, vol: 0.05, tau: 0.02 }); return; }
+      K.burst(d, t, { type: 'lowpass', f: 900, q: 0.8, vol: 0.45, tau: 0.018, buf: 'brown' });
+      K.mode(d, t, 140, 0.22, 0.05, { f1: 110 }); K.burst(d, t, { type: 'bandpass', f: 2600, q: 1.3, vol: 0.18, tau: 0.004 });
+      K.mode(d, t + 0.01, 38, 0.1, 0.06);  // the arrow's shaft quivering
+      if (ring >= 9) [1319, 1760, 2637].forEach((f, n) => K.mode(d, t + 0.08 + n * 0.07, f, ring === 10 ? 0.06 : 0.04, 0.25));
+      if (apple) for (let n = 0; n < 6; n++) K.burst(d, t + n * K.R(0.01, 0.03), { type: 'bandpass', f: K.R(1800, 4200), q: 1.6, vol: 0.12, tau: 0.01 });
+    }),
+  };
+  // the wind across the range, louder in a stronger wind
+  const windBed = (K, dst) => {
+    const A = K.ctx, src = K.loopSrc('white'), bp = A.createBiquadFilter(), g = A.createGain(), lfo = A.createOscillator(), lg = A.createGain();
+    bp.type = 'bandpass'; bp.frequency.value = 450; bp.Q.value = 0.7; g.gain.value = 0;
+    lfo.frequency.value = 0.17; lg.gain.value = 220; lfo.connect(lg).connect(bp.frequency); lfo.start();
+    src.connect(bp).connect(g).connect(dst);
+    return { set(l) { g.gain.setTargetAtTime(0.022 * l, A.currentTime, 0.8); }, stop() { try { src.stop(); lfo.stop(); } catch {} } };
+  };
+  function popText(text) { const el = $('arPop'); if (!el) return; el.textContent = text; el.style.color = '#ffd6a0'; el.style.fontSize = '20px'; el.hidden = false; popT = performance.now() + 1800; }
 
   function setAim(x, y) {
     const a = S?.archery?.range?.aim ?? 1.2;
     aim.x = clamp(x, a); aim.y = clamp(y, a);
   }
 
-  // the sight never sits still: a little when the bow is just up, less at the start of a draw, more the longer it's held
+  // the sight never sits still: a little when the bow is just up, steady for the first couple of seconds of a
+  // draw, then the arms tire (#128): the sway grows, a tremor creeps in after 5 s, and at 9 s the arm gives out
+  // and the draw is let down without a shot
+  const STEADY = 2, TREMOR = 5, GIVE = 9;
+  const heldFor = (now) => (hold ? (now - hold.t0) / 1000 : -1);
+  const c01 = (v) => Math.max(0, Math.min(1, v));
   function sway(now) {
     if (breath || (window.motionOK && !motionOK() && !hold)) return { x: 0, y: 0 };
-    const held = hold ? (now - hold.t0) / 1000 : -1;
-    const A = held < 0 ? 0.03 : 0.012 + 0.058 * Math.max(0, Math.min(1, (held - 2.5) / 5.5));
-    const t = now / 1000;
-    return { x: A * (Math.sin(t * 1.7) + 0.5 * Math.sin(t * 3.1 + 1)) / 1.5, y: A * (Math.cos(t * 1.3) + 0.5 * Math.sin(t * 2.7)) / 1.5 };
+    const held = heldFor(now), t = now / 1000;
+    const A = held < 0 ? 0.03 : 0.012 + 0.075 * c01((held - STEADY) / 4);
+    const J = held > TREMOR ? 0.03 * c01((held - TREMOR) / 3) : 0;
+    return {
+      x: A * (Math.sin(t * 1.7) + 0.5 * Math.sin(t * 3.1 + 1)) / 1.5 + J * (Math.sin(t * 11.3) + 0.6 * Math.sin(t * 17.9 + 2)) / 1.6,
+      y: A * (Math.cos(t * 1.3) + 0.5 * Math.sin(t * 2.7)) / 1.5 + J * (Math.cos(t * 12.7 + 1) + 0.6 * Math.sin(t * 19.3)) / 1.6,
+    };
+  }
+  // the stamina ring while drawing, and the arm giving out
+  function stamina(now) {
+    const el = $('arStam'); if (!el) return;
+    const held = heldFor(now);
+    el.hidden = held < 0 || breath;
+    if (held < 0) return;
+    const left = 1 - c01(held / GIVE), col = held < STEADY ? '#3ddc97' : held < TREMOR ? '#ffd23f' : '#ef476f';
+    el.style.setProperty('--p', `${Math.round(left * 360)}deg`); el.style.setProperty('--c', col);
+    el.classList.toggle('shake', held > TREMOR);
+    if (held > 0.8 && !hold.creak) { hold.creak = 1; SND.draw(); }
+    if (held > STEADY + 1.5 * (hold.creak || 1) && held < GIVE) { hold.creak = (hold.creak || 1) + 1; SND.strain(c01((held - STEADY) / (GIVE - STEADY))); }
+    if (held >= GIVE && !breath) {
+      hold = null; el.hidden = true; SND.letdown(); ctx.buzz?.([30, 40, 30]);
+      popText('💪 Your arm gave out: draw again'); controls();
+    }
   }
 
   function loose() {
     if (!canShoot()) { hold = null; return; }
     const now = performance.now(), s = sway(now), a = V().range.aim;
+    const held = Math.max(0, heldFor(now));
     hold = null; shotAt = now;
-    ctx.sfx?.('whoosh'); ctx.buzz?.(15);
+    SND.loose(true); ctx.buzz?.(15);
     const useBreath = breath && V().breath[V().me];
     breath = false;
-    ctx.quiet(ctx.act('shoot', { ax: +clamp(aim.x + s.x, a).toFixed(3), ay: +clamp(aim.y + s.y, a).toFixed(3), breath: useBreath }));
+    ctx.quiet(ctx.act('shoot', { ax: +clamp(aim.x + s.x, a).toFixed(3), ay: +clamp(aim.y + s.y, a).toFixed(3), breath: useBreath, held: +held.toFixed(2) }));
     controls();
   }
 
@@ -172,6 +238,7 @@ UI.archery = (() => {
 
   function pop(shot) {
     const el = $('arPop'); if (!el) return;
+    el.style.fontSize = '';
     el.textContent = (shot.x10 ? '✖ 10' : shot.ring ? String(shot.ring) : 'Miss') + (shot.apple ? '  🍎 +5' : '') + (shot.split ? '  🏹 split!' : '');
     el.style.color = shot.ring >= 9 ? '#ffd23f' : shot.ring ? '#fff' : '#ff9a9a';
     el.hidden = false; el.classList.remove('ar-pop-in'); void el.offsetWidth; el.classList.add('ar-pop-in');
@@ -216,21 +283,22 @@ UI.archery = (() => {
     if (!S?.archery) return;
     if (!anim && queue.length) {
       anim = { shot: queue.shift(), t0: now, hit: false };
-      if (!(anim.shot.o === V().me && now - shotAt < 3000)) ctx.sfx?.('whoosh');
+      if (!(anim.shot.o === V().me && now - shotAt < 3000)) SND.loose(false);
     }
     if (anim) {
       const t = (now - anim.t0) / 1000;
       if (!anim.hit && t >= anim.shot.t) {
         anim.hit = true;
         const sh = anim.shot;
-        ctx.sfx?.(sh.ring ? 'thud' : 'drop');
-        if (sh.apple) ctx.sfx?.('crack');
+        SND.hit(sh.ring, !!sh.apple);
         if (sh.o === V().me) ctx.buzz?.(sh.ring >= 9 ? 40 : 20);
         pop(sh); (gl || flat)?.impact?.(sh);
       }
       if (t >= anim.shot.t + HIT) { anim = null; controls(); hint(); }
     }
     if (popT && now > popT) { popT = 0; $('arPop').hidden = true; }
+    stamina(now);
+    window.Snd?.bed('ar.wind', windBed).set(S.phase === 'playing' && !S.paused ? Math.min(1, 0.25 + (V().kmh || 0) / 25) : 0);
     $('arDone').hidden = !V().between || busy();
     const sc = scene(now);
     // on-demand drawing: every frame while aiming or flying, otherwise ~15 fps for the flag

@@ -75,7 +75,7 @@ other = bo if me is ann else ann
 mi, oi = g.seat(me), g.seat(other)
 ok = {"ax": 0.0, "ay": 0.0}
 check("not your turn is refused", refused(g, other, {"type": "shoot", **ok}) is not None)
-for bad in ({"ax": 9}, {"ay": -1.3}, {"ax": "x"}, {"ay": float("nan")}, {"ax": True}, {"breath": 1}):
+for bad in ({"ax": 9}, {"ay": -1.3}, {"ax": "x"}, {"ay": float("nan")}, {"ax": True}, {"breath": 1}, {"held": "x"}, {"held": float("inf")}, {"held": True}):
     check(f"bad shot refused {bad}", refused(g, me, {"type": "shoot", **ok, **bad}) is not None)
 check("a good shot is taken", refused(g, me, {"type": "shoot", **ok}) is None and g.shots_done == 1)
 check("dead centre scores 10 and an X", g.points[mi] == 10 and g.xs[mi] == 1)
@@ -165,6 +165,24 @@ for k in range(60):
         tot[lv] += g.points[g.seat(p)]
 avg = {k: round(v / 60) for k, v in tot.items()}
 check("hard bots outscore normal, normal outscore easy", avg["hard"] > avg["normal"] > avg["easy"], str(avg))
+
+# #128 tired arms: a long hold scatters the release; a short one, or a steady breath, doesn't
+def spread(held, breath=False, n=40):
+    xs = []
+    for _ in range(n):
+        r2, g2, (a2, b2) = game(2, ends=1)
+        still(g2)
+        p2 = r2.players[r2.turn]
+        g2.act(p2, {"type": "shoot", "ax": 0.0, "ay": 0.0, "held": held, "breath": breath})
+        xs.append(abs(g2.shot["x"]) + abs(g2.shot["y"]))
+    return sum(xs) / n
+quick, long_, calm = spread(1.0), spread(8.5), spread(8.5, True)
+check("a quick release lands where aimed", quick < 1e-6, f"{quick:.4f}")
+check("a long hold wanders", long_ > 0.01, f"{long_:.4f}")
+check("a steady breath holds it", calm < 1e-6, f"{calm:.4f}")
+r3, g3, _ = game(2, ends=1)
+still(g3)
+check("a silly hold is clamped, not refused", refused(g3, r3.players[r3.turn], {"type": "shoot", "ax": 0.0, "ay": 0.0, "held": 999}) is None)
 
 print("\n" + ("all ok" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)
