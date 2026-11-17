@@ -218,6 +218,16 @@ UI.prism = (() => {
   let S, ctx, st = null, cv = null, c2 = null, dpr = 1, cs = 40, size = 320, sprites = [], stoneSprite = null, specSprites = { h: [], v: [], n: [] };
   let raf = 0, resizeObs = null, keyHandler = null, clock = null, hintTimer = null;
 
+  // the outline of gem k as points (a circle as 16), for cutting facets (#138)
+  function shapeVerts(k, cx, cy, r) {
+    const poly = (n, rad, rot) => Array.from({ length: n }, (_, t) => [cx + Math.cos(rot + t * 2 * Math.PI / n) * rad, cy + Math.sin(rot + t * 2 * Math.PI / n) * rad]);
+    if (k === 0) return poly(3, r * 1.12, -Math.PI / 2);
+    if (k === 1) return [[cx, cy - r * 1.05], [cx + r * 0.85, cy], [cx, cy + r * 1.05], [cx - r * 0.85, cy]];
+    if (k === 2) return poly(8, r * 0.98, Math.PI / 8);
+    if (k === 3) return poly(16, r * 0.9, 0);
+    if (k === 4) return poly(6, r * 0.98, 0);
+    return Array.from({ length: 10 }, (_, t) => { const a = -Math.PI / 2 + t * Math.PI / 5, rad = t % 2 ? r * 0.52 : r * 1.05; return [cx + Math.cos(a) * rad, cy + Math.sin(a) * rad]; });
+  }
   function shapePath(p, k, cx, cy, r) {
     p.beginPath();
     const poly = (n, rad, rot, sy = 1) => { for (let t = 0; t < n; t++) { const a = rot + t * 2 * Math.PI / n; p[t ? 'lineTo' : 'moveTo'](cx + Math.cos(a) * rad, cy + Math.sin(a) * rad * sy); } p.closePath(); };
@@ -245,11 +255,32 @@ UI.prism = (() => {
       p.fillStyle = grad; p.fill();
       p.restore();
       p.lineWidth = Math.max(1, s * 0.03); p.strokeStyle = dark; shapePath(p, k, cx, cy, r); p.stroke();
-      // the table facet: a smaller, lighter copy of the shape, and lines out to the rim
+      // #138 cut facets: the crown is a ring of facets from the rim to a smaller table, each lit by how much it faces
+      // the light (up and to the left), then the table itself, bright, and a soft glow inside the stone
+      const outer = shapeVerts(k, cx, cy, r), tx = cx - r * 0.05, ty = cy - r * 0.07;
+      const inner = outer.map(([x, y]) => [tx + (x - cx) * 0.52, ty + (y - cy) * 0.52]);
       p.save(); shapePath(p, k, cx, cy, r); p.clip();
-      p.globalAlpha = 0.28; p.fillStyle = light; shapePath(p, k, cx - r * 0.06, cy - r * 0.08, r * 0.52); p.fill();
-      p.globalAlpha = 0.18; p.strokeStyle = '#fff'; p.lineWidth = Math.max(1, s * 0.015);
-      for (let t = 0; t < 8; t++) { const a = t * Math.PI / 4 + 0.3; p.beginPath(); p.moveTo(cx, cy); p.lineTo(cx + Math.cos(a) * r * 1.4, cy + Math.sin(a) * r * 1.4); p.stroke(); }
+      for (let t = 0; t < outer.length; t++) {
+        const a = outer[t], b = outer[(t + 1) % outer.length], c = inner[(t + 1) % outer.length], d = inner[t];
+        const mx = (a[0] + b[0]) / 2 - cx, my = (a[1] + b[1]) / 2 - cy, len = Math.hypot(mx, my) || 1;
+        const lit = (-mx * 0.6 - my * 0.8) / len;   // 1 facing the light, -1 facing away
+        p.globalAlpha = 0.16 + 0.34 * Math.abs(lit); p.fillStyle = lit > 0 ? light : dark;
+        p.beginPath(); p.moveTo(a[0], a[1]); p.lineTo(b[0], b[1]); p.lineTo(c[0], c[1]); p.lineTo(d[0], d[1]); p.closePath(); p.fill();
+        p.globalAlpha = 0.22; p.strokeStyle = '#fff'; p.lineWidth = Math.max(0.6, s * 0.01); p.stroke();
+      }
+      const tg = p.createLinearGradient(tx - r * 0.5, ty - r * 0.5, tx + r * 0.5, ty + r * 0.5);
+      tg.addColorStop(0, light); tg.addColorStop(1, base);
+      p.globalAlpha = 0.7; p.fillStyle = tg; p.beginPath(); inner.forEach(([x, y], t) => p[t ? 'lineTo' : 'moveTo'](x, y)); p.closePath(); p.fill();
+      const ig = p.createRadialGradient(cx + r * 0.2, cy + r * 0.3, 0, cx + r * 0.2, cy + r * 0.3, r * 0.7);
+      ig.addColorStop(0, 'rgba(255,255,255,.35)'); ig.addColorStop(1, 'rgba(255,255,255,0)');
+      p.globalAlpha = 1; p.fillStyle = ig; p.fillRect(0, 0, s, s);
+      p.restore();
+      // a bright rim along the edges that catch the light
+      p.save(); p.lineWidth = Math.max(1, s * 0.022); p.strokeStyle = 'rgba(255,255,255,.55)';
+      for (let t = 0; t < outer.length; t++) {
+        const a = outer[t], b = outer[(t + 1) % outer.length], mx = (a[0] + b[0]) / 2 - cx, my = (a[1] + b[1]) / 2 - cy;
+        if (-mx * 0.6 - my * 0.8 > r * 0.25) { p.beginPath(); p.moveTo(a[0], a[1]); p.lineTo(b[0], b[1]); p.stroke(); }
+      }
       p.restore();
       // glint
       p.globalAlpha = 0.85; p.fillStyle = '#fff';
@@ -339,6 +370,13 @@ UI.prism = (() => {
     const k = kind(ch), sp = special(ch), [base, light] = COLORS[k];
     const sprite = (sp && specSprites[sp]?.[k]) || sprites[k];
     if (sprite) p.drawImage(sprite, x - half, y - half, cs * scale, cs * scale);
+    // #138 now and then a glint runs across a gem
+    const gp = ((t / 1000 + ((i * 2654435761) >>> 0) % 997 / 97) % 7) / 0.45;
+    if (gp < 1 && i != null) {
+      p.save(); p.globalCompositeOperation = 'lighter'; p.globalAlpha = 0.55 * Math.sin(Math.PI * gp);
+      p.fillStyle = '#fff'; p.beginPath(); p.ellipse(x - half * 0.6 + gp * half * 1.2, y - half * 0.6 + gp * half * 1.2, cs * 0.05 * scale, cs * 0.16 * scale, -Math.PI / 4, 0, Math.PI * 2); p.fill();
+      p.restore();
+    }
     if (sp === 'h' || sp === 'v') {
       // a light pulse running along the band
       p.save(); p.translate(x, y); if (sp === 'v') p.rotate(Math.PI / 2);
@@ -614,7 +652,8 @@ UI.prism = (() => {
   async function animStep(out, step, pts, center) {
     const t = now();
     for (const [i, ch] of out.popped) { pops.push({ i, ch, t0: t + (out.order?.get(i) || 0), dur: 260 }); }
-    out.popped.forEach(([i, ch], n) => n < 40 && burstParts(i, ch, out.popped.length > 20 ? 0.6 : 1));
+    const lowG = window.gfxLevel?.() === 'low', more = (lowG ? 0.5 : 1) * (1 + 0.15 * Math.min(step - 1, 5));
+    out.popped.forEach(([i, ch], n) => n < 40 && burstParts(i, ch, (out.popped.length > 20 ? 0.6 : 1) * more));
     out.broke.forEach((i) => { burstParts(i, STONE, 1.2); ctx.sfx?.('crack'); });
     out.thawed.forEach((i) => { iceParts(i); ctx.sfx?.('crack'); });
     out.born.forEach(([i, ch]) => {
@@ -623,6 +662,17 @@ UI.prism = (() => {
     });
     if (out.born.length) ctx.sfx?.('pickup');
     if (pts) floatText(center, `+${pts}`, step);
+    // #138 the cascade builds: a shock ring in the step's heat colour from the middle of what popped, a ×N that
+    // grows with each step, and from ×4 a tinted flash over the board
+    if (step >= 2 && c2) {
+      const lowG = window.gfxLevel?.() === 'low', hc = HEAT_COL[Math.min(step, HEAT_COL.length - 1)];
+      const ci = Array.isArray(center) ? null : center;
+      if (ci != null) fx.push({ type: 'ring', i: ci, r: 1.2 + step * 0.45, color: hc, t0: t, dur: 480 + step * 40 });
+      const [x, y] = Array.isArray(center) ? center : cellXY(center);
+      pfx.text(x, y - cs * 0.55, `×${step}`, { color: hc, size: cs * (0.5 + 0.12 * Math.min(step, 7)), big: 1.4, rise: cs * 1.3 });
+      if (!lowG) pfx.spark(x, y, 6 + step * 3, { color: hc, speed: [cs * 2, cs * (4 + step)], size: [cs * 0.05, cs * 0.12] });
+      if (step >= 4) pfx.flash(hc, Math.min(0.32, 0.08 * (step - 3)), 500);
+    }
     ctx.sfx?.('rise', Math.min(12, step * 2));
     heat(step);
     if (step >= 2 && out.popped.length) buzz?.(step >= 4 ? [30, 20, 50] : 18);
