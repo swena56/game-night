@@ -2,6 +2,7 @@
 // and play back on every phone. On your turn: set the 🧹 broom (tap the ice or use ◀ ▶), the weight, the curl
 // and the sweeping, then 🥌 Throw. The camera rides behind the stone, then looks down on the house.
 UI.stones = (() => {
+  let still = false;
   let S, ctx, gl = null, flat = null, raf = 0, ro = null;
   let anim = null, queue = [], seen = 0, primed = false, camMode = 'auto', lastDraw = 0, thrownAt = 0;
   // the throw being set up (kept between turns, like a player's habit)
@@ -43,7 +44,10 @@ UI.stones = (() => {
         </div>
       </div>
       <p id="icHint" class="hint"></p></div>`;
-    side.innerHTML = '<div class="panel"><h3>Scoreboard</h3><div id="icCard" class="ic-card"></div></div>';
+    side.innerHTML = '<div class="panel"><h3>Scoreboard</h3><div id="icCard" class="ic-card"></div>'
+      + '<label class="ic-sweepsnd">🧹 Sweeping sound <select id="icSweepSnd"><option value="soft">Soft</option><option value="off">Off</option></select></label></div>';
+    $('icSweepSnd').value = sweepPref();
+    $('icSweepSnd').onchange = (e) => { try { localStorage.setItem('stones.sweepSound', e.target.value); } catch {} if (e.target.value === 'off') brush(0); };
     const stage = $('icStage');
     $('icCtl').addEventListener('click', (e) => {
       const b = e.target.closest('button');
@@ -75,6 +79,7 @@ UI.stones = (() => {
   }
 
   function unmount() {
+    brush(0);
     cancelAnimationFrame(raf); raf = 0; ro?.disconnect(); gl?.dispose(); gl = null; flat = null;
   }
 
@@ -183,8 +188,37 @@ UI.stones = (() => {
     return list;
   }
 
+  // #106: sweeping used to fire the app's 'sweep' blip every half second, a harsh hiss with a rising note. Now
+  // it's one soft brushing hush: low, filtered noise with the brooms' stroke in it, fading in and out with the
+  // sweeping, and it can be turned off (🧹 in the side panel).
+  const sweepPref = () => { try { return localStorage.getItem('stones.sweepSound') || 'soft'; } catch { return 'soft'; } };
+  let hush = null;
+  function brush(level) {
+    const on = level > 0 && sweepPref() !== 'off' && typeof prefs !== 'undefined' && prefs.sound && prefs.moves && !document.hidden;
+    if (!on && !hush) return;
+    try {
+      if (!hush) {
+        const dst = window.out?.(); if (!dst) return;
+        const a = dst.context, sr = a.sampleRate, buf = a.createBuffer(1, sr, sr), d = buf.getChannelData(0);
+        for (let i = 0, lp = 0; i < d.length; i++) { lp += 0.35 * ((Math.random() * 2 - 1) - lp); d[i] = lp; }
+        const src = a.createBufferSource(), bp = a.createBiquadFilter(), g = a.createGain(), lfo = a.createOscillator(), depth = a.createGain();
+        src.buffer = buf; src.loop = true; bp.type = 'bandpass'; bp.frequency.value = 900; bp.Q.value = 0.7;
+        g.gain.value = 0; lfo.frequency.value = 3.2; depth.gain.value = 0; lfo.connect(depth).connect(g.gain);
+        src.connect(bp).connect(g).connect(dst); src.start(); lfo.start();
+        hush = { a, src, lfo, g, depth, lvl: -1 };
+      }
+      const want = on ? 0.012 + 0.008 * level : 0;
+      if (want === hush.lvl) return;
+      hush.lvl = want;
+      const t = hush.a.currentTime;
+      hush.g.gain.setTargetAtTime(want, t, 0.12); hush.depth.gain.setTargetAtTime(want * 0.7, t, 0.12);
+      hush.lfo.frequency.setTargetAtTime(2.6 + level * 0.8, t, 0.1);
+      if (!on) { const h = hush; hush = null; setTimeout(() => { try { h.src.stop(); h.lfo.stop(); } catch {} }, 600); }
+    } catch {}
+  }
+
   function loop(now) {
-    if (!$('icStage')) { raf = 0; return; }
+    if (!$('icStage')) { raf = 0; brush(0); return; }
     raf = requestAnimationFrame(loop);
     if (!S?.stones) return;
     if (!anim && queue.length) {
@@ -195,14 +229,15 @@ UI.stones = (() => {
     if (anim) {
       const f = ((now - anim.t0) / 1000) * FPS;
       while (anim.hi < anim.hits.length && anim.hits[anim.hi] <= f) { anim.hi++; ctx.sfx?.('crack'); gl?.spark(anim.shot, anim.hits[anim.hi - 1]); }
-      if (anim.shot.sweep && f - anim.sw > 14 && f < anim.shot.frames * 0.8) { anim.sw = f; ctx.sfx?.('sweep'); }
-      if (f >= anim.shot.frames + 12) { anim = null; controls(); hint(); }
+      brush(anim.shot.sweep && f > 8 && f < anim.shot.frames * 0.8 ? anim.shot.sweep : 0);
+      if (f >= anim.shot.frames + 12) { anim = null; brush(0); controls(); hint(); }
     }
     $('icDone').hidden = !S.stones.between || busy();
     // on-demand drawing: every frame while anything moves, otherwise ~15 fps for the glows
     const idle = !anim && !(gl?.moving?.());
     if (idle && now - lastDraw < 66) return;
     lastDraw = now;
+    still = idle;  // idle redraws are drawn sharp and kept out of the frame-rate watch (#107/#109)
     (gl || flat)?.draw(now, positions(now));
   }
 
@@ -398,7 +433,7 @@ UI.stones = (() => {
       camera.position.copy(cam.pos); camera.lookAt(cam.look);
       GL3.tickShake(camera, dt);
       stg.follow(camera);
-      renderer.render(scene, camera);
+      (still && renderer.renderStill ? renderer.renderStill : renderer.render)(scene, camera);
     }
     function spark(shot, frame) {
       // the stone that starts moving at this frame is where the hit happened

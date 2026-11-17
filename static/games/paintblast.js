@@ -43,10 +43,12 @@ UI.paintblast = (() => {
     stage.addEventListener('pointermove', (e) => {
       if (!touch) return;
       const dx = e.clientX - touch.x, dy = e.clientY - touch.y;
-      if (Math.hypot(dx, dy) < 18) return;
+      if (Math.hypot(dx, dy) < 12) return;
       touch.moved = true;
-      hold(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 1 : 3) : (dy > 0 ? 2 : 0));
-      touch.x = e.clientX - Math.sign(dx) * 9; touch.y = e.clientY - Math.sign(dy) * 9;  // stay responsive to a change of direction
+      // a wobbly diagonal doesn't flip the way you're going: the other axis has to clearly win (#100)
+      const horiz = heldDir === 1 || heldDir === 3 ? Math.abs(dx) * 1.5 > Math.abs(dy) : heldDir === 0 || heldDir === 2 ? Math.abs(dx) > Math.abs(dy) * 1.5 : Math.abs(dx) > Math.abs(dy);
+      hold(horiz ? (dx > 0 ? 1 : 3) : (dy > 0 ? 2 : 0));
+      touch.x = e.clientX - Math.sign(dx) * 6; touch.y = e.clientY - Math.sign(dy) * 6;  // stay responsive to a change of direction
     });
     const release = () => { if (!touch) return; if (touch.moved) hold(-1); else bomb(); touch = null; };
     stage.addEventListener('pointerup', release);
@@ -75,9 +77,24 @@ UI.paintblast = (() => {
 
   const me = () => S?.paintblast?.me;
   const playing = () => me() != null && S.phase === 'playing';
+  // #100: the first step from standing starts on your screen at once (the server's step lands a round trip
+  // later and carries straight on from it); the server still decides, and a refused step glides back
+  const DXY = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+  function predict(d) {
+    const i = me(), gl = i != null ? glide[i] : null, r = S?.paintblast;
+    if (d < 0 || !gl || !snap?.t || snap.st !== 'play' || snap.p?.[i]?.[1] || !r) return;
+    const now = performance.now(), stepMs = (1000 * r.move) / r.tick;
+    if (gl.at && now - gl.at < stepMs) return;  // already gliding: the server's pace takes over
+    const n = Math.round(Math.sqrt(snap.t.length)), x = gl.to % n + DXY[d][0], y = Math.floor(gl.to / n) + DXY[d][1];
+    if (x < 0 || y < 0 || x >= n || y >= n) return;
+    const c = y * n + x;
+    if (snap.t[c] !== '.' || snap.b?.some((b) => b[0] === c)) return;
+    glide[i] = { from: gl.to, to: c, at: now, guess: true };
+  }
   function hold(d) {
     if (!playing() || d === heldDir) return;
     heldDir = d;
+    predict(d);
     ctx.input({ dir: d }, true);
     for (const x of $('pbPad')?.querySelectorAll('[data-d]') ?? []) x.classList.toggle('on', +x.dataset.d === d);
   }
@@ -142,7 +159,9 @@ UI.paintblast = (() => {
     d.p.forEach(([pos], i) => {
       const gl = glide[i];
       if (!gl || snap?.rd !== d.rd) glide[i] = { from: pos, to: pos, at: 0 };
+      else if (gl.guess && gl.to !== pos && gl.from === pos && now - gl.at < 400) return;  // my guessed step: the server hasn't taken it yet
       else if (gl.to !== pos) glide[i] = { from: gl.to, to: pos, at: now };
+      else gl.guess = false;  // the server agrees with the guess
     });
     snap = { ...d };
     if (d.left != null) endsAt = now + d.left * 1000;

@@ -34,3 +34,4 @@
   .ic-lbl { min-width: 0; }
   .ic-dial button { width: 36px; height: 36px; }
 }
+.ic-sweepsnd { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 13px; color: var(--muted); }

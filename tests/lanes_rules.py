@@ -65,6 +65,12 @@ check("the saver can't be armed on a first ball", refused(g, ann, {"type": "bowl
 check("a roll is taken", refused(g, ann, {"type": "bowl", **ok}) is None and len(ann.g.rolls) == 1)
 check("both can bowl at once", refused(g, bo, {"type": "bowl", **ok}) is None)
 check("no second roll while the pins settle", refused(g, ann, {"type": "bowl", **ok}) is not None)
+# #105/#108: once the pins settle the server wakes the bowler with a fresh view, even if nobody else moves
+check("a settling bowler is not woken early", ann not in g.sleepers(__import__("time").time()))
+ann.g.busy = 0
+check("settled pins wake the bowler", ann in g.sleepers(__import__("time").time()) and g.bot_ready())
+g.bot_tick()
+check("woken once, view says go", ann.g.woke and g.view(ann)["lanes"]["wait"] is None and ann not in g.sleepers(__import__("time").time()))
 # race Ann ahead: the lead cap holds her at three frames past Bo
 for _ in range(12):
     ann.g.busy = 0
@@ -95,6 +101,60 @@ for _ in range(80):
 check("the game ends when everyone has bowled out", r.phase == "over" and all(p.g.done for p in ps))
 fs = g.final_scores()
 check("final scores are the totals", fs[ann.id] == g.total(ann) and fs[bo.id] == g.total(bo), f"{fs}")
+
+# a gutter first ball leaves all ten up, but the next ball is still ball 2 (it used to start the frame over)
+r = server.Room("TEST3")
+gp = r.add_player("Gus")
+hp = r.add_player("Hal")
+r.switch_game("lanes")
+r.start()
+g = r.game
+gut = {"type": "bowl", "start": 0.4, "angle": 0.12, "speed": 0.5, "spin": 0.0}
+for _ in range(2):
+    gp.g.busy = 0
+    g.act(gp, gut)
+check("two gutter balls end the frame", gp.g.frame == 1 and gp.g.ball == 0 and gp.g.rolls == [0, 0], f"frame {gp.g.frame + 1} ball {gp.g.ball} rolls {gp.g.rolls}")
+gp.g.busy = 0
+g.act(gp, gut)
+gp.g.busy = 0
+g.bowl(gp, 0.06, 0.0, 0.6, 0.0)
+check("gutter then all ten is a spare, not a strike", gp.g.frame == 2 and gp.g.last["word"] in ("spare", None) and gp.g.rolls[2] == 0, f"{gp.g.rolls} {gp.g.last}")
+gp.g.frame, gp.g.ball, gp.g.rolls, gp.g.standing = 9, 0, [0, 0] * 9, list(range(10))
+hp.g.frame = 9
+for _ in range(2):
+    gp.g.busy = 0
+    g.act(gp, gut)
+check("two gutter balls in the last frame finish", gp.g.done and gp.g.rolls[-2:] == [0, 0])
+
+# #110: a bot never gets onto a later frame than the human
+r = server.Room("TEST2")
+h = r.add_player("Hal")
+r.switch_game("lanes")
+r.add_bot("normal") if hasattr(r, "add_bot") else None
+r.start()
+g = r.game
+bots = [p for p in g.players() if p.bot]
+if bots:
+    import time as _t
+    b = bots[0]
+    for _ in range(40):
+        b.g.busy = 0; b.g.next_at = 0
+        g.bot_tick()
+    check("an idle human holds the bot at frame 2", b.g.frame == 1 and b.g.ball == 0, f"bot on frame {b.g.frame + 1}")
+    for _ in range(3):  # the human bowls frame 1 (gutter balls)
+        h.g.busy = 0
+        if h.g.frame == 1 or refused(g, h, {"type": "bowl", "start": 0.4, "angle": 0.12, "speed": 0.5, "spin": 0.0}):
+            break
+    check("the human is on frame 2", h.g.frame == 1, f"{h.g.frame}")
+    b.g.busy = 0; b.g.next_at = 0
+    g.bot_tick()
+    check("let go, the bot waits a beat", b.g.frame == 1 and b.g.ball == 0 and b.g.next_at > _t.time())
+    for _ in range(20):
+        b.g.busy = 0; b.g.next_at = 0
+        g.bot_tick()
+    check("then bowls frame 2 and no further", b.g.frame == 2 and b.g.ball == 0, f"frame {b.g.frame + 1}")
+else:
+    check("a bot could be added", False)
 
 print("\n" + ("all ok" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)

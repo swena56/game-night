@@ -6,6 +6,8 @@
 .bl-stage canvas[hidden] { display: none; }
 .bl-views { position: absolute; top: 8px; left: 8px; display: flex; gap: 6px; z-index: 2; }
 .bl-views button { padding: 6px 10px; font-size: 13px; background: #000a; color: #fff; }
+.bl-tall .bl-views { top: 4px; left: 50%; transform: translateX(-50%); }
+.bl-tall .bl-views button { padding: 4px 9px; font-size: 12px; }
 .bl-views button.on { background: #ffb703; color: #000; }
 .bl-rackdone { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(88%, 340px); max-height: 86%; overflow: auto;
   background: #0b1626ee; border: 1px solid #ffffff2a; border-radius: var(--radius); padding: 12px 14px; z-index: 3; animation: bannerIn .4s ease-out; }

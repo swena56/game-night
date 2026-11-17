@@ -92,13 +92,14 @@ const Billiards3D = (() => {
         const fuzz = (at(x, y) * 2 + at(x - 1, y) + at(x + 1, y) + (at(x - 2, y) + at(x + 2, y) + at(x, y - 1) + at(x, y + 1)) * 0.6) / 6.4 - 0.5;
         const twill = Math.sin(((x + y) * Math.PI * 2) / 4) * (0.75 + 0.25 * Math.sin((x - y) * Math.PI * 2 / 16));
         const i = y * size + x;
-        h[i] = fuzz * 0.7 + twill * 0.1 + (fine[i] - 0.5) * 0.4 + (mid[i] - 0.5) * 0.55 + (clump[i] - 0.5) * 0.4;
+        // #102: worsted pool cloth is smooth and even: mostly fine fuzz and weave, only a whisper of clumping
+        h[i] = fuzz * 0.6 + twill * 0.12 + (fine[i] - 0.5) * 0.3 + (mid[i] - 0.5) * 0.16 + (clump[i] - 0.5) * 0.1;
       }
     }
-    const [cc, cg] = noiseCanvas(size, (d, k, x, y) => { const v = 210 + h[y * size + x] * 64; d[k] = d[k + 1] = d[k + 2] = v; d[k + 3] = 255; });
-    const [bc, bg] = noiseCanvas(size, (d, k, x, y) => { const v = 128 + h[y * size + x] * 110; d[k] = d[k + 1] = d[k + 2] = v; d[k + 3] = 255; });
+    const [cc, cg] = noiseCanvas(size, (d, k, x, y) => { const v = 222 + h[y * size + x] * 40; d[k] = d[k + 1] = d[k + 2] = v; d[k + 3] = 255; });
+    const [bc, bg] = noiseCanvas(size, (d, k, x, y) => { const v = 128 + h[y * size + x] * 80; d[k] = d[k + 1] = d[k + 2] = v; d[k + 3] = 255; });
     // loose fibres: short curled strokes, mostly along the nap, light or dark, wrapped across the tile's edges
-    for (let f = 0; f < 2600; f++) {
+    for (let f = 0; f < 1400; f++) {
       const x0 = Math.random() * size, y0 = Math.random() * size, len = 6 + Math.random() * 16;
       const a = (Math.random() < 0.75 ? 0 : Math.PI / 2) + (Math.random() - 0.5) * 1.1, bend = (Math.random() - 0.5) * 0.5;
       const light = Math.random() < 0.55, alpha = 0.05 + Math.random() * 0.1, w = 0.9 + Math.random() * 0.9;
@@ -127,7 +128,7 @@ const Billiards3D = (() => {
     const c = Object.assign(document.createElement('canvas'), { width: w, height: h }), g = c.getContext('2d');
     const im = g.createImageData(w, h), d = im.data;
     for (let i = 0; i < w * h; i++) {
-      const v = (slow[i] - 0.5) * 0.09 + (soft[i] - 0.5) * 0.05, k = i * 4;
+      const v = (slow[i] - 0.5) * 0.05 + (soft[i] - 0.5) * 0.025, k = i * 4;
       d[k] = 22 * (1 + v); d[k + 1] = 114 * (1 + v); d[k + 2] = 64 * (1 + v * 0.8); d[k + 3] = 255;
     }
     g.putImageData(im, 0, 0);
@@ -329,7 +330,7 @@ const Billiards3D = (() => {
     const FELT = FELT_TILE;  // table units per tile of the baize's detail
     const [feltMap, feltBump] = feltDetail(T, aniso);
     // wool: rough, with a soft sheen that rises where you look along the cloth (the behind-the-cue view)
-    const wool = (o) => new T.MeshPhysicalMaterial({ bumpScale: 0.045, roughness: 0.9, metalness: 0, sheen: new T.Color(0x3d7a52), ...o });
+    const wool = (o) => new T.MeshPhysicalMaterial({ bumpScale: 0.025, roughness: 0.9, metalness: 0, sheen: new T.Color(0x3d7a52), ...o });
     // the bed: detail tiled at FELT units, the colour from feltMacro laid once over the whole table
     const tiled = (t, u, v) => { const c = t.clone(); c.needsUpdate = true; c.repeat.set(u, v); return c; };
     const macro = feltMacro(T, aniso, W, H, b.headX);
@@ -669,7 +670,9 @@ const Billiards3D = (() => {
     function puff(x, y, h, color, n, size, speed, life, rise, additive) {
       for (let i = 0; i < n; i++) {
         let sp = spares.pop();
-        if (!sp) { sp = new T.Sprite(new T.SpriteMaterial({ map: glow, transparent: true, depthWrite: false, toneMapped: false })); sp.renderOrder = 4; table.add(sp); }
+        // #114: the soft edge is read as an alpha map (the canvas's green channel is its alpha, premultiplied): as a colour
+        // map its clear texels upload as black and filtering smeared a dark rim round every puff, left lying on the cloth
+        if (!sp) { sp = new T.Sprite(new T.SpriteMaterial({ alphaMap: glow, transparent: true, depthWrite: false, toneMapped: false })); sp.renderOrder = 4; table.add(sp); }
         sp.material.color.set(color); sp.material.blending = additive ? T.AdditiveBlending : T.NormalBlending; sp.visible = true;
         const a = Math.random() * Math.PI * 2, v = speed * (0.4 + Math.random() * 0.6);
         sp.position.set(x, h, y);
@@ -723,7 +726,10 @@ const Billiards3D = (() => {
       let t = trails.get(n);
       if (!t) {
         if (!on) return false;
-        const mat = new T.MeshBasicMaterial({ color: COLORS[n > 8 ? n - 8 : n], map: fade, transparent: true, opacity: 0.3, depthWrite: false, toneMapped: false, side: T.DoubleSide });
+        // (an alpha map, not a colour map: see puff(); and the darkest balls' streaks are lightened, so the 8 doesn't drag a black smear)
+        const col = new T.Color(COLORS[n > 8 ? n - 8 : n]), lum = col.r * 0.3 + col.g * 0.59 + col.b * 0.11;
+        if (lum < 0.3) col.lerp(new T.Color(0xffffff), 0.45);
+        const mat = new T.MeshBasicMaterial({ color: col, alphaMap: fade, transparent: true, opacity: 0.3, depthWrite: false, toneMapped: false, side: T.DoubleSide });
         const m = new T.Mesh(new T.BufferGeometry(), mat);
         m.frustumCulled = false; m.renderOrder = 1; m.visible = false; table.add(m);
         trails.set(n, (t = { m, pts: [] }));
@@ -752,7 +758,9 @@ const Billiards3D = (() => {
 
     // ---------- camera
     const camNow = { pos: new T.Vector3(), look: new T.Vector3() }, camGoal = { pos: new T.Vector3(), look: new T.Vector3() };
-    let size = [300, 150], portrait = false, mode = 'table', fitted = null, settle = 0, zoom = { z: 1, x: 0, y: 0 };
+    let size = [300, 150], portrait = false, mode = 'table', fitted = null, settle = 0, zoom = { z: 1, x: 0, y: 0 }, yaw = 0;
+    let lifted = false, ease = 9;  // the follow-the-shot lift (#103) and how fast the camera eases to its goal
+    const moving0 = () => camNow.pos.distanceToSquared(camGoal.pos) > 1;
     // the lens's crop: the overview's centring offset, and the two-finger zoom (canvas point p shows (p - x) / z),
     // done by rendering the image z times bigger and showing the part on screen, so it's drawn sharp, not scaled up
     function crop() {
@@ -762,7 +770,9 @@ const Billiards3D = (() => {
     }
     // overview: tilted over the table's near side, far enough back that every rail fits, then centred
     function fitTable() {
-      const el = 1.1, dir = portrait ? new T.Vector3(-Math.cos(el), Math.sin(el), 0) : new T.Vector3(0, Math.sin(el), Math.cos(el));
+      // a tall phone: nearer top-down, so the far end doesn't shrink and the table fills the width (#101)
+      const el = portrait ? 0.98 : 1.1, dir = portrait ? new T.Vector3(-Math.cos(el), Math.sin(el), 0) : new T.Vector3(0, Math.sin(el), Math.cos(el));
+      dir.applyAxisAngle(new T.Vector3(0, 1, 0), yaw);  // #115: turned round the table
       camera.fov = 30; camera.aspect = size[0] / size[1]; camera.clearViewOffset();
       const pts = [];
       for (const x of [-RAIL, W + RAIL]) for (const y of [-RAIL, H + RAIL]) for (const h of [-1, RAIL_TOP]) pts.push(new T.Vector3(x - W / 2, h, y - H / 2));
@@ -793,13 +803,18 @@ const Billiards3D = (() => {
     function setZoom(z, x, y) {
       zoom = { z, x, y }; crop(); camera.updateProjectionMatrix(); key = '';
     }
+    // #115: the overview turns round the table (the behind-the-cue view already turns with the aim)
+    function setYaw(a) {
+      yaw = Math.atan2(Math.sin(a), Math.cos(a)); key = '';
+      if (mode === 'table') fitTable();
+    }
     function setMode(m) {
       mode = m; key = '';
       if (m === 'table') fitTable(); else { cueLens(); settle = 0; }
     }
 
     // ---------- each frame
-    let key = '', last = 0, sharp = false;
+    let key = '', last = 0, sharp = false, cueLift = null, cueNeed = null;
     const tmp = new T.Vector3();
     function render(st) {
       const now = performance.now(), dt = Math.min(0.1, (now - last) / 1000); last = now;
@@ -837,8 +852,25 @@ const Billiards3D = (() => {
       stick.visible = !!s;
       if (s) {
         stick.position.set(s.x, R, s.y); stick.rotation.y = -s.aim;
-        tilt.position.set(-(R + 0.6 + s.power * 14), s.spin * R * 0.55, s.english * R * 0.55);
+        const pull = R + 0.6 + s.power * 14, lift0 = s.spin * R * 0.55;
+        tilt.position.set(-pull, lift0, s.english * R * 0.55);
+        // #112: near a cushion the butt ran through the rail and vanished into it. Jack it up just enough that
+        // the cue clears the cushion and rail tops along its whole length, as a player would
+        const ux = Math.cos(s.aim), uy = Math.sin(s.aim);
+        let need = 0.09;
+        for (let d = 2; d <= 141; d += 2) {
+          const px = s.x - ux * (pull + d), py = s.y - uy * (pull + d);
+          if (px > 0 && px < W && py > 0 && py < H) continue;  // over the cloth
+          if (px < -RAIL - 1.5 || px > W + RAIL + 1.5 || py < -RAIL - 1.5 || py > H + RAIL + 1.5) break;  // past the table
+          const r = d < 84.77 ? 0.53 + (0.42 * (d - 2.77)) / 82 : buttR(d);
+          need = Math.max(need, Math.atan2(RAIL_TOP + 0.45 + r - (R + lift0), d));
+        }
+        need = Math.min(0.55, need); cueNeed = need;
+        cueLift = cueLift == null ? need : cueLift + (need - cueLift) * Math.min(1, dt * 12);
+        if (Math.abs(need - cueLift) < 0.002) cueLift = need;
+        tilt.rotation.z = -cueLift;
       }
+      const lifting = !!s && cueLift !== cueNeed;
       const gd = st.guide;
       aimLine.visible = objLine.visible = cueLine.visible = objPath.visible = cuePath.visible = ghost.visible = arrow.visible = false;
       if (gd && gd.mode !== 'off') {
@@ -881,9 +913,20 @@ const Billiards3D = (() => {
       let moving = false;
       if (mode === 'cue' && st.cam) {
         const { x, y, aim } = st.cam, dx = Math.cos(aim), dy = Math.sin(aim);
-        camGoal.pos.set(x - dx * 46 - W / 2, 21, y - dy * 46 - H / 2);
-        camGoal.look.set(x + dx * 22 - W / 2, 0, y + dy * 22 - H / 2);
-        const a = settle++ === 0 ? 1 : 1 - Math.exp(-dt * 9);
+        // #103: while the balls run, rise up and back over the table (looking down the shot, at the middle of
+        // the table), so you can see where everything goes; then drop back behind the cue
+        const up = st.animating && st.follow;
+        if (up) {
+          const lx = (x + dx * 50) * 0.5 + W / 4, ly = (y + dy * 50) * 0.5 + H / 4;
+          camGoal.pos.set(x - dx * 70 - W / 2, 150, y - dy * 70 - H / 2);
+          camGoal.look.set(lx - W / 2, 0, ly - H / 2);
+        } else {
+          camGoal.pos.set(x - dx * 46 - W / 2, Math.max(21, 46 * Math.tan(cueLift ?? 0) + 12), y - dy * 46 - H / 2);  // (over a jacked-up cue)
+          camGoal.look.set(x + dx * 22 - W / 2, 0, y + dy * 22 - H / 2);
+        }
+        if (up !== lifted) { lifted = up; ease = 3.2; }
+        if (!up && !moving0()) ease = 9;
+        const a = settle++ === 0 ? 1 : 1 - Math.exp(-dt * ease);
         camNow.pos.lerp(camGoal.pos, a); camNow.look.lerp(camGoal.look, a);
         camera.position.copy(camNow.pos); camera.lookAt(camNow.look);
         moving = camNow.pos.distanceToSquared(camGoal.pos) > 0.0004 || camNow.look.distanceToSquared(camGoal.look) > 0.0004;
@@ -893,7 +936,7 @@ const Billiards3D = (() => {
       // draw only when something changed
       const k = JSON.stringify([st.balls, s && [s.x, s.y, s.aim, s.power, s.spin, s.english], gd && [gd.mode, gd.g, gd.objPath?.length, gd.cuePath?.length, gd.cuePath?.at(-1)], st.ring, st.call, mode]);
       // (once the balls stop, one more frame at full resolution: the shot may have drawn at a lower one)
-      const busy = st.animating || falling.length || moving || fxOn || shaking || streaks;
+      const busy = st.animating || falling.length || moving || fxOn || shaking || streaks || lifting;
       if (k === key && !busy && sharp && !(st.callAll && st.call == null)) return;
       key = k; sharp = !busy;
       if (busy) renderer.render(scene, camera); else renderer.renderStill(scene, camera);
@@ -915,7 +958,7 @@ const Billiards3D = (() => {
       env.dispose(); macro.dispose(); glow.dispose(); fade.dispose(); soft.dispose(); maple.dispose();
       renderer.dispose(); canvas.remove();
     }
-    return { canvas, resize, render, pick, setMode, setZoom, dispose, effect, mode: () => mode };
+    return { canvas, resize, render, pick, setMode, setZoom, setYaw, yaw: () => yaw, dispose, effect, mode: () => mode };
   }
 
   return { create };

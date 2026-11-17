@@ -14,7 +14,8 @@ import time
 
 from .base import Game, GameError
 
-W, H = 12, 9           # map cells
+W, H = 12, 9           # the cosy map, in cells (the 'size' setting picks this or a bigger one, #107)
+SIZES = {"cosy": (12, 9), "wide": (16, 12), "vast": (20, 15)}
 LAYERS = 4              # wind layers, 0 (low) .. 3 (high)
 PENNANTS = 5            # on the map at once
 REACH = 1               # a balloon takes a pennant it passes within this many cells of
@@ -41,7 +42,7 @@ def make_winds(rng, prev=None):
     return out
 
 
-def step_path(x, y, z, choice, burn, winds, draft=0):
+def step_path(x, y, z, choice, burn, winds, draft=0, w=W, h=H):
     """The cells a balloon passes, start excluded: [[x, y, z], ...]. Balloons stop at the map's edge."""
     z = max(0, min(LAYERS - 1, z + CHOICES[choice]))
     d, sp = winds[z]
@@ -49,7 +50,7 @@ def step_path(x, y, z, choice, burn, winds, draft=0):
     n = sp + (1 if burn else 0) + draft
     path = [[x, y, z]]
     for _ in range(n):
-        nx, ny = max(0, min(W - 1, x + dx)), max(0, min(H - 1, y + dy))
+        nx, ny = max(0, min(w - 1, x + dx)), max(0, min(h - 1, y + dy))
         if (nx, ny) == (x, y):
             break
         x, y = nx, ny
@@ -83,12 +84,15 @@ class Drift(Game):
     settings_schema = {
         "turns": ("Turns", [(15, "15"), (10, "10"), (20, "20")], 15),
         "storm": ("Storm", [(1, "🌩 On"), (0, "Off")], 1),
+        "size": ("Sky", [("wide", "🗺️ Wide"), ("cosy", "🏡 Cosy"), ("vast", "🌍 Vast")], "wide"),
     }
 
     def start(self, seated, rng):
         self.rng = rng
         self.seats = [p.id for p in seated]
         self.turns = int(self.s.get("turns", 15))
+        self.w, self.h = SIZES.get(self.s.get("size", "wide"), SIZES["wide"])
+        self.npen = round(PENNANTS * self.w * self.h / (W * H))  # same density on every size
         self.turn_no = 1
         self.winds = make_winds(rng)
         self.next_winds = make_winds(rng, self.winds)
@@ -96,29 +100,32 @@ class Drift(Game):
         self.score = {pid: 0 for pid in self.seats}
         self.fuel = {pid: FUEL for pid in self.seats}
         self.pos = {}
-        spots = [(x, y) for x in range(1, 4) for y in range(1, H - 1)]
+        spots = [(x, y) for x in range(1, 4) for y in range(1, self.h - 1)]
         rng.shuffle(spots)
         for k, pid in enumerate(self.seats):
             x, y = spots[k % len(spots)]
             self.pos[pid] = [x, y, rng.randrange(LAYERS)]
-        for _ in range(PENNANTS):
+        for _ in range(self.npen):
             self.place_pennant()
         self.storm = None
         if self.s.get("storm", 1):
-            self.storm = {"x": W // 2, "y": rng.randrange(2, H - 2), "d": rng.choice((0, 2, 4, 6))}
-        self.terrain = [[round(rng.random(), 2) for _ in range(W)] for _ in range(H)]
+            self.storm = {"x": self.w // 2, "y": rng.randrange(2, self.h - 2), "d": rng.choice((0, 2, 4, 6))}
+        self.terrain = [[round(rng.random(), 2) for _ in range(self.w)] for _ in range(self.h)]
         self.last = None
         self.choices = {}
         self.ready_at = 0.0
         self.room.add_log(f"🎈 Sky Drift: {self.turns} turns. Pick a layer, ride its wind, sweep up the 🚩 pennants.", "big")
         self.open_turn(0.0)
 
+    def path(self, *a):
+        return step_path(*a, w=self.w, h=self.h)
+
     def place_pennant(self):
         taken = {(p[0], p[1]) for p in self.pennants} | {(v[0], v[1]) for v in self.pos.values()}
-        free = [(x, y) for x in range(W) for y in range(H) if (x, y) not in taken
+        free = [(x, y) for x in range(self.w) for y in range(self.h) if (x, y) not in taken
                 and all(dist((x, y), (v[0], v[1])) >= 3 for v in self.pos.values())]
         if not free:
-            free = [(x, y) for x in range(W) for y in range(H) if (x, y) not in taken]
+            free = [(x, y) for x in range(self.w) for y in range(self.h) if (x, y) not in taken]
         x, y = self.rng.choice(free)
         self.pennants.append([x, y])
 
@@ -177,7 +184,7 @@ class Drift(Game):
             if burn:
                 self.fuel[p.id] -= 1
             x, y, z = self.pos[p.id]
-            paths[p.id] = step_path(x, y, z, ch, burn, self.winds, 1 if p.id in drafts else 0)
+            paths[p.id] = self.path(x, y, z, ch, burn, self.winds, 1 if p.id in drafts else 0)
         # step everyone together so two balloons reaching a pennant on the same step both take it
         taken = {pid: 0 for pid in paths}
         events = []
@@ -197,7 +204,7 @@ class Drift(Game):
                 events.append({"k": k, "kind": "pennant", "at": pn, "by": hits[j]})
                 names = " & ".join(self.pl(pid).name for pid in hits[j] if self.pl(pid))
                 r.add_log(f"🚩 {names} {'take' if len(hits[j]) > 1 else 'takes'} a pennant.", "power")
-        for _ in range(PENNANTS - len(self.pennants)):
+        for _ in range(self.npen - len(self.pennants)):
             self.place_pennant()
         for pid, path in paths.items():
             self.pos[pid] = list(path[-1])
@@ -207,16 +214,16 @@ class Drift(Game):
             st = self.storm
             dx, dy = DIRS[st["d"]]
             nx, ny = st["x"] + dx, st["y"] + dy
-            if not (1 <= nx <= W - 2 and 1 <= ny <= H - 2) or self.rng.random() < 0.25:
+            if not (1 <= nx <= self.w - 2 and 1 <= ny <= self.h - 2) or self.rng.random() < 0.25:
                 st["d"] = (st["d"] + self.rng.choice((2, 3, 5, 6))) % 8
                 dx, dy = DIRS[st["d"]]
-                nx, ny = max(1, min(W - 2, st["x"] + dx)), max(1, min(H - 2, st["y"] + dy))
+                nx, ny = max(1, min(self.w - 2, st["x"] + dx)), max(1, min(self.h - 2, st["y"] + dy))
             st["x"], st["y"] = nx, ny
             for pid, v in self.pos.items():
                 if self.pl(pid) and not self.pl(pid).eliminated and dist(v, (st["x"], st["y"])) <= 1:
                     d = DIRS[self.rng.randrange(8)]
-                    v[0] = max(0, min(W - 1, v[0] + d[0] * 2))
-                    v[1] = max(0, min(H - 1, v[1] + d[1] * 2))
+                    v[0] = max(0, min(self.w - 1, v[0] + d[0] * 2))
+                    v[1] = max(0, min(self.h - 1, v[1] + d[1] * 2))
                     v[2] = max(0, v[2] - 1)
                     flung[pid] = list(v)
                     events.append({"k": longest, "kind": "storm", "by": [pid], "at": list(v)})
@@ -289,9 +296,9 @@ class Drift(Game):
         d = 1 if pid in self.drafts() else 0
         out = {}
         for ch in CHOICES:
-            out[ch] = step_path(x, y, z, ch, False, self.winds, d)
+            out[ch] = self.path(x, y, z, ch, False, self.winds, d)
             if self.fuel[pid] > 0:
-                out[ch + "+"] = step_path(x, y, z, ch, True, self.winds, d)
+                out[ch + "+"] = self.path(x, y, z, ch, True, self.winds, d)
         return out
 
     def meta(self, p):
@@ -306,7 +313,7 @@ class Drift(Game):
     def view(self, p):
         mine = p.id in self.seats and not p.eliminated
         return {"drift": {
-            "w": W, "h": H, "layers": LAYERS, "turn": self.turn_no, "turns": self.turns,
+            "w": self.w, "h": self.h, "layers": LAYERS, "turn": self.turn_no, "turns": self.turns,
             "winds": self.winds, "next": self.next_winds if self.shift_soon() else None, "dirs": DIRS,
             "pennants": self.pennants, "storm": self.storm, "pos": self.pos, "score": self.score, "fuel": self.fuel,
             "terrain": self.terrain, "last": self.last, "seats": self.seats,
@@ -346,14 +353,14 @@ class Drift(Game):
         later = self.next_winds if self.shift_soon() else self.winds
         best, best_v = None, -1e9
         for ch, burn in opts:
-            path = step_path(x, y, z, ch, burn, self.winds, draft)
+            path = self.path(x, y, z, ch, burn, self.winds, draft)
             v, got = self.value(path, self.pennants, self.storm if level != "easy" else None)
             if burn:
                 v -= 1.5 if level == "hard" else 0.8   # fuel is worth keeping
             if level == "hard":
                 ex, ey, ez = path[-1]
                 rest = [pn for pn in self.pennants if pn not in got]
-                v2 = max(self.value(step_path(ex, ey, ez, c2, False, later), rest, None)[0] for c2 in CHOICES)
+                v2 = max(self.value(self.path(ex, ey, ez, c2, False, later), rest, None)[0] for c2 in CHOICES)
                 v += 0.8 * v2
             if level == "easy":
                 v += random.uniform(-3, 3)

@@ -93,6 +93,7 @@ class PaintBlast(Game):
         self.kick = [False] * k
         self.stun, self.shield, self.tags = [0] * k, [SHIELD] * k, [0] * k
         self.moved = [0] * k  # tick of each player's last step, so browsers can glide
+        self.heading = [-1] * k  # the way each player last stepped (the turn buffer, #100)
         self.think = [0] * k
         self.tick = 0
         self.stage = "countdown"
@@ -246,10 +247,19 @@ class PaintBlast(Game):
             if d >= 0 and not self.cool[i]:
                 self.nudge[i] = False
                 nxt = self.step_to(self.pos[i], d)
-                if nxt is not None and self.tiles[nxt] == FLOOR and nxt not in self.bombs:
+                open_ = lambda c: c is not None and self.tiles[c] == FLOOR and c not in self.bombs
+                # #100 turn buffer: holding a turn into a wall while on the move keeps you going the way you were,
+                # and the turn is taken at the first opening (no stopping dead for a slightly early swipe)
+                h = self.heading[i]
+                if (not open_(nxt) and self.want[i] >= 0 and h >= 0 and h != d and h != (d + 2) % 4
+                        and self.tick - self.moved[i] <= MOVE_TICKS + 1 and open_(self.step_to(self.pos[i], h))
+                        and not (nxt in self.bombs and self.kick and self.kick[i])):
+                    d, nxt = h, self.step_to(self.pos[i], h)
+                if open_(nxt):
                     self.pos[i] = nxt
                     self.cool[i] = MOVE_TICKS
                     self.moved[i] = self.tick
+                    self.heading[i] = d
                     self.pick_up(i, nxt)
                 elif nxt in self.bombs and self.kick and self.kick[i]:
                     self.kick_bomb(nxt, d)

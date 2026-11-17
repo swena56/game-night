@@ -55,7 +55,14 @@ UI.billiards = (() => {
     c.style.width = cw + 'px'; c.style.height = ch + 'px';
     c.width = Math.round(cw * dpr); c.height = Math.round(ch * dpr);
     geo = { k: k * dpr, css: k, portrait, focus: document.body.classList.contains('focus') };
-    if (gl) { gl.canvas.style.width = cw + 'px'; gl.canvas.style.height = ch + 'px'; gl.resize(cw, ch, portrait); }
+    if (gl) {
+      // #101: on a phone held upright the 3D overview takes the whole stage, not a 2:1 box in the middle of it: a
+      // lower camera foreshortens the long table so it fits the height and the near end spans the width
+      const tall = portrait && view3d && cam !== 'cue';  // (behind the cue keeps its box: a tall one is mostly backdrop)
+      bl.classList.toggle('bl-tall', tall);  // the view buttons move to the far rail's middle, off the corner pocket
+      const gw = tall ? w : cw, gh = tall ? Math.round(Math.max(ch, Math.min(availH, w * 1.75))) : ch;
+      gl.canvas.style.width = gw + 'px'; gl.canvas.style.height = gh + 'px'; gl.resize(gw, gh, portrait);
+    }
   }
   // table (x, y) -> canvas pixels; portrait puts the head (break end) at the bottom
   // (with the two-finger zoom applied: the table is drawn zoomed, not the picture scaled, so it stays sharp)
@@ -356,7 +363,7 @@ UI.billiards = (() => {
       stick: cue ? { x: cue[0], y: cue[1], aim, power, spin, english } : strokeNow(),
       guide, ring: shooting && b.inHand && cuePos ? { x: cuePos[0], y: cuePos[1], ok: placeOk(...cuePos) } : null,
       call: anim ? anim.called ?? null : b.calling && shooting ? called : null, callAll: !!(b.calling && shooting),
-      cam: camAt,
+      cam: camAt, follow: pref('shotcam', '1') === '1',
     });
   }
 
@@ -986,10 +993,13 @@ UI.billiards = (() => {
   function audio() {
     if (actx) { if (actx.state === 'suspended') actx.resume(); return actx; }
     // through the app's output, so the volume setting applies (its own context only if that's missing)
-    actx = typeof out === 'function' ? out().context : new (window.AudioContext || window.webkitAudioContext)();
+    // (window.out: this module's own panIn used to be called out, which hid the app's and broke every sound, #104)
+    const appOut = typeof window.out === 'function' ? window.out : null;
+    actx = appOut ? appOut().context : new (window.AudioContext || window.webkitAudioContext)();
+    if (actx.state === 'suspended') actx.resume();
     const sr = actx.sampleRate, comp = actx.createDynamicsCompressor();
     comp.threshold.value = -16; comp.knee.value = 8; comp.ratio.value = 4; comp.attack.value = 0.001; comp.release.value = 0.12;
-    comp.connect(typeof out === 'function' ? out() : actx.destination);
+    comp.connect(appOut ? appOut() : actx.destination);
     noiseBuf = actx.createBuffer(1, sr, sr);
     const nd = noiseBuf.getChannelData(0);
     for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
@@ -1023,7 +1033,7 @@ UI.billiards = (() => {
     const u = geo.portrait ? p[1] / b.H : p[0] / b.W;
     return Math.max(-0.7, Math.min(0.7, (u - 0.5) * 1.4));
   }
-  function out(pan, send = 1) {  // a panned input feeding the room
+  function panIn(pan, send = 1) {  // a panned input feeding the room
     const g = actx.createStereoPanner ? actx.createStereoPanner() : actx.createGain();
     if (g.pan) g.pan.value = pan;
     g.connect(bus.dry);
@@ -1059,14 +1069,14 @@ UI.billiards = (() => {
     try {
       audio();
       const t = actx.currentTime + delay, h = Math.min(1, e.v / 12);  // 12 units a frame is a hard hit
-      if (e.kind === 'ball') ballClick(out(panAt(e.p)), t, h);
+      if (e.kind === 'ball') ballClick(panIn(panAt(e.p)), t, h);
       else if (e.kind === 'rail') {  // the rubber cushion under the cloth: a muffled thup, and the wooden rail behind it
-        const dst = out(panAt(e.p), 0.8), vol = 0.05 + 0.4 * h;
+        const dst = panIn(panAt(e.p), 0.8), vol = 0.05 + 0.4 * h;
         burst(dst, t, 'lowpass', 350 + 1500 * h, 0.7, vol * 1.1, 0.008 + 0.004 * h);
         mode(dst, t, 150, vol * 0.55, 0.045); mode(dst, t, 245, vol * 0.3, 0.03); mode(dst, t, 430, vol * 0.18, 0.018);
         if (h > 0.4) mode(dst, t, 1100, vol * 0.12 * h, 0.005);
       } else if (e.kind === 'pocket') {  // a thock against the pocket's leather, a rattle in the jaws if it came fast, then the roll down the return
-        const dst = out(panAt(e.p), 0.7), fast = Math.min(1, e.v / 6), vol = 0.12 + 0.25 * fast;
+        const dst = panIn(panAt(e.p), 0.7), fast = Math.min(1, e.v / 6), vol = 0.12 + 0.25 * fast;
         burst(dst, t, 'lowpass', 600 + 600 * fast, 0.8, vol, 0.012);
         mode(dst, t, 105, vol * 0.7, 0.06); mode(dst, t, 185, vol * 0.4, 0.04); mode(dst, t, 340, vol * 0.2, 0.02);
         if (fast > 0.5) [0.035, 0.07].forEach((dt, i) => { burst(dst, t + dt, 'lowpass', 900, 0.8, vol * (0.45 - i * 0.2), 0.006); mode(dst, t + dt, 240, vol * (0.3 - i * 0.12), 0.02); });
@@ -1079,7 +1089,7 @@ UI.billiards = (() => {
         s.connect(fl).connect(g).connect(dst); s.start(t1); s.stop(t1 + dur + 0.05); lfo.start(t1); lfo.stop(t1 + dur + 0.05);
         ballClick(dst, t1 + dur - 0.04, 0.18);  // and it bumps into the balls already down
       } else {  // the leather tip on the cue ball: a rounder tok with the cue's shaft in it, a crack on a hard break
-        const dst = out(panAt(e.p), 0.8), vol = 0.08 + 0.4 * h;
+        const dst = panIn(panAt(e.p), 0.8), vol = 0.08 + 0.4 * h;
         burst(dst, t, 'bandpass', 1500 + 1500 * h, 1.1, vol * 1.2, 0.0025);
         mode(dst, t, 820, vol * 0.3, 0.012); mode(dst, t, 1640, vol * 0.18, 0.008); mode(dst, t, 190, vol * 0.25, 0.025);
         if (h > 0.6) burst(dst, t, 'bandpass', 2600, 0.8, vol * (h - 0.6) * 1.2, 0.0008);
@@ -1128,7 +1138,8 @@ UI.billiards = (() => {
   function applyView() {
     if (!surf()) return;
     if (gl) gl.setZoom(view.z, view.x, view.y);
-    $('blZoom').hidden = view.z === 1;  // (tick draws it next frame)
+    $('blZoom').hidden = view.z === 1 && !(view3d && gl?.yaw?.());  // (tick draws it next frame)
+    $('blZoom').textContent = view.z === 1 ? '🔄 Reset' : '🔍 1×';
   }
   // two fingers on the table zoom (1–3×) and pan; the zoom centres on the fingers
   function onTouch(e, phase) {
@@ -1140,8 +1151,15 @@ UI.billiards = (() => {
     if (!pinch) {  // a second finger: this is a pinch, not an aim
       if (drag === 'aim') aim = aimBefore;
       drag = dial = null;
-      pinch = { d, mid, view: { ...view } };
+      pinch = { d, mid, view: { ...view }, ang: Math.atan2(by - ay, bx - ax), yaw: gl?.yaw?.() ?? 0, twist: false };
       return;
+    }
+    // #115: two fingers twisting turn the 3D overview round the table (past a small dead zone, so a pinch doesn't)
+    if (view3d && gl && cam !== 'cue') {
+      let da = Math.atan2(by - ay, bx - ax) - pinch.ang;
+      da = Math.atan2(Math.sin(da), Math.cos(da));
+      if (!pinch.twist && Math.abs(da) > 0.2) pinch.twist = true;
+      if (pinch.twist) { gl.setYaw(pinch.yaw - da); applyView(); return; }
     }
     const z = Math.min(3, Math.max(1, pinch.view.z * d / Math.max(10, pinch.d)));
     // the canvas's own top left, before the zoom (offsets ignore transforms)
@@ -1226,6 +1244,8 @@ UI.billiards = (() => {
     $('blView').textContent = view3d ? '▦ Flat' : '🧊 3D';
     $('blCam').hidden = !view3d;
     $('blCam').textContent = cam === 'cue' ? '🗺️ Whole table' : '🎥 Behind cue';
+    $('blTurn').hidden = !view3d || cam === 'cue';
+    if (gl && !view3d) gl.setYaw?.(0);
     layout();
   }
   function setCam(m) {
@@ -1265,7 +1285,7 @@ UI.billiards = (() => {
     gl = null; view3d = false; camAt = null; fxp = null; sinks = []; trails = new Map(); tableCache = null; tableKey = '';
     main.innerHTML = `<div class="bl"><div id="blStage" class="bl-stage"><canvas id="blCanvas"></canvas>
         <button id="blZoom" class="bl-zoom" hidden aria-label="Show the whole table">🔍 1×</button>
-        <div class="bl-views"><button id="blView" hidden>🧊 3D</button><button id="blCam" hidden>🎥 Behind cue</button>
+        <div class="bl-views"><button id="blView" hidden>🧊 3D</button><button id="blCam" hidden>🎥 Behind cue</button><button id="blTurn" hidden aria-label="Turn the table a quarter turn" title="Turn the table (or twist two fingers on it)">🔄</button>
           <button id="blPush" hidden aria-pressed="false" title="9-ball: the first shot after the break may be a push-out. It needn't hit anything; your rival then shoots from there or hands it back.">🔀 Push out</button>
           <button id="blReplay" hidden title="Watch the last shot again, slowed down">⏪ Replay</button>
           <button id="blPass" hidden title="Make your rival shoot from where their push-out left the balls">↩️ Hand it back</button></div>
@@ -1292,6 +1312,8 @@ UI.billiards = (() => {
       <p class="hint left" id="blHint">Drag anywhere on the table to turn the cue around the ball. ◀ ▶ fine-tune. Pull the power bar back and let go to shoot. ✋ With ball in hand, drag the cue ball to move it.</p>
       <label class="bl-tablevol" title="The balls rolling on the cloth and down the pocket's return. The clicks and thumps are always on (with sound on).">🔈 Table sound
         <select id="blTableVol"><option value="normal">Normal</option><option value="quiet">Quiet</option><option value="off">Off</option></select></label>
+      <label class="bl-tablevol" title="In the behind-the-cue view, rise up over the table while the balls run, then drop back behind the cue.">🎥 Follow the shot
+        <input type="checkbox" id="blShotCam"></label>
       <p class="hint left bl-keys">Keys: ← → turn the cue (hold to turn faster, Shift for fine aim) · ↑ ↓ or 1–9, 0 power · Space shoots · W A S D move the cue ball in hand · C switches the 3D camera.</p></div>`;
     const c = $('blCanvas');
     c.style.touchAction = 'none';
@@ -1301,11 +1323,17 @@ UI.billiards = (() => {
     c.addEventListener('pointercancel', () => { drag = null; });
     const stage = $('blStage');
     stage.addEventListener('pointerdown', (e) => onTouch(e, 'down'), true);
+    // phones only let sound start from a touch: wake the table's audio on the first one, not mid-shot
+    stage.addEventListener('pointerdown', () => { if (!quietNow()) try { audio(); } catch {} }, { capture: true, passive: true });
     stage.addEventListener('pointermove', (e) => onTouch(e, 'move'), true);
     for (const t of ['pointerup', 'pointercancel']) stage.addEventListener(t, (e) => onTouch(e, 'up'), true);
     $('blTableVol').value = pref('table', 'quiet');
+    $('blShotCam').checked = pref('shotcam', '1') === '1';
+    $('blShotCam').onchange = (e) => setPref('shotcam', e.target.checked ? '1' : '0');
     $('blTableVol').onchange = (e) => { setPref('table', e.target.value); tableVol = TABLE_VOL[e.target.value] ?? 0.5; if (!tableVol && roll) try { rumbleTo(0); } catch {} };
-    $('blZoom').onclick = () => { view = { z: 1, x: 0, y: 0 }; applyView(); };
+    $('blZoom').onclick = () => { view = { z: 1, x: 0, y: 0 }; gl?.setYaw?.(0); applyView(); };
+    // a quarter turn, snapped to the nearest quarter (after a twist)
+    $('blTurn').onclick = () => { if (!gl) return; gl.setYaw(Math.round(gl.yaw() / (Math.PI / 2)) * (Math.PI / 2) + Math.PI / 2); applyView(); };
     $('blView').onclick = () => { setPref('view', view3d ? '2d' : '3d'); setView(!view3d); };
     $('blCam').onclick = () => setCam(cam === 'cue' ? 'table' : 'cue');
     $('blReplay').onclick = () => (anim?.replay ? stopReplay() : !anim && lastShot && play(lastShot, 0, 0.6, true));

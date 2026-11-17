@@ -33,6 +33,7 @@ FRAME = 4
 MAX_T = 7.0
 OIL = {"dry": 9.0, "medium": 12.0, "slick": 14.5}   # oil length: the ball only hooks past it
 LEAD = 2              # frames a player may get ahead of the slowest one still bowling
+BOT_LEAD = 0          # bots never get ahead of the slowest human still bowling (#110)
 IDLE = 75             # seconds before a bowler who's ready but idle gets an automatic roll
 
 
@@ -253,6 +254,7 @@ class Lanes(Game):
             g = p.g
             g.rolls, g.standing, g.frame, g.ball = [], list(range(10)), 0, 0
             g.done, g.busy, g.shot, g.saver, g.last = False, now, None, True, None
+            g.woke = True
             g.next_at = now + random.uniform(1.5, 3.0)
             g.streak = 0
         r.deadline = now + IDLE
@@ -275,7 +277,24 @@ class Lanes(Game):
             others = [o.g.frame for o in self.bowlers() if o is not p]
             if others and g.frame > min(others) + LEAD:
                 return "Wait for the others to catch up."
+            if p.bot:
+                humans = [o.g.frame for o in self.bowlers() if not o.bot]
+                if humans and g.frame > min(humans) + BOT_LEAD:
+                    g.held = True
+                    return "Wait for the others to catch up."
         return None
+
+    def fresh_rack(self, g, last_frame):
+        """True when this ball is the first at a full rack: ball 1 of a frame, or a last-frame bonus ball after a mark."""
+        if not last_frame:
+            return g.ball == 0
+        fr = frame_rolls(g.rolls, self.nframes)
+        r = fr[-1] if len(fr) == self.nframes else []
+        if len(r) == 0:
+            return True
+        if len(r) == 1:
+            return r[0] == 10
+        return r[1] == 10 if r[0] == 10 else r[0] + r[1] == 10
 
     def spare_ball(self, g):
         """True when this ball is a try at a spare (pins already down in this frame)."""
@@ -314,10 +333,10 @@ class Lanes(Game):
             left = []
             g.saver = False
         n = len(knocked)
-        first = len(before) == 10
+        last_frame = g.frame == self.nframes - 1
+        first = self.fresh_rack(g, last_frame)  # (not "all ten standing": a gutter first ball leaves ten too)
         g.rolls.append(n)
         nm = p.name
-        last_frame = g.frame == self.nframes - 1
         word = None
         if first and n == 10:
             word = "strike"
@@ -365,6 +384,7 @@ class Lanes(Game):
                   "word": word, "saved": saved, "gutter": gutter}
         g.last = {"n": n, "word": word, "at": time.time()}
         g.busy = time.time() + frames / 30 + 1.2
+        g.woke = False
         g.next_at = g.busy + random.uniform(0.6, 2.0)
         self.room.deadline = time.time() + IDLE
         if g.done:
@@ -461,16 +481,26 @@ class Lanes(Game):
         sp = max(0.0, min(1.0, sp + rng.gauss(0, ns / 3)))
         return round(start, 3), round(ang, 4), round(sp, 3), round(s, 3)
 
+    def sleepers(self, now):
+        """Humans whose pins have settled since the last update: their view still says "wait" (#105/#108)."""
+        return [p for p in self.bowlers() if not p.bot and not getattr(p.g, "woke", True) and now >= p.g.busy - 0.3]
+
     def bot_ready(self):
         now = time.time()
-        return any(p.bot and now >= p.g.next_at and not self.can_bowl(p) for p in self.bowlers())
+        return bool(self.sleepers(now)) or any(p.bot and now >= p.g.next_at and not self.can_bowl(p) for p in self.bowlers())
 
     def bot_tick(self):
         now = time.time()
+        for p in self.sleepers(now):
+            p.g.woke = True  # the server bumps the room after this, which sends everyone a fresh view
         for p in self.bowlers():
             if self.room.phase != "playing":
                 return
             if p.bot and now >= p.g.next_at and not self.can_bowl(p):
+                if getattr(p.g, "held", False):  # just let go by a human catching up: don't all fire at once
+                    p.g.held = False
+                    p.g.next_at = now + random.uniform(0.6, 1.6)
+                    continue
                 saver = p.g.saver and self.spare_ball(p.g) and len(p.g.standing) <= 2 and p.bot != "easy"
                 self.bowl(p, *self.plan(p, p.bot), saver)
                 return

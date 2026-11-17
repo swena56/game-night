@@ -62,22 +62,32 @@
     let r;
     try { r = new T.WebGLRenderer({ antialias: !low, powerPreference: 'high-performance', ...opts }); } catch { return null; }
     if (!r.getContext()) { r.dispose(); return null; }
-    const cap = low ? Math.min(1, hooks.cap ?? CAP) : (hooks.cap ?? CAP), min = Math.min(cap, hooks.min ?? Math.min(1, cap) * 0.6);
+    // #107/#109: a phone at 1× (or 0.6×) of a ~2.2× screen looks fuzzy, so Low still draws at up to 1.5× and the
+    // adaptive floor stays at least 1×
+    const cap = low ? Math.min(1.5, hooks.cap ?? CAP) : (hooks.cap ?? CAP), min = Math.min(cap, hooks.min ?? Math.max(1, cap * 0.6));
     let pr = cap, shown = pr;
     r.setPixelRatio(pr);
     const use = (p) => { if (p !== shown) { shown = p; r.setPixelRatio(p); } };
     // adaptive resolution: watch the time between renders (ignore pauses: on-demand games, hidden tabs)
-    let last = 0, sum = 0, n = 0, smooth = 0;
+    let last = 0, sum = 0, n = 0, smooth = 0, good = 0, shed = false;
     const render = r.render.bind(r);
     r.render = (scene, camera) => {
       const now = performance.now(), dt = now - last; last = now;
+      // (a game's idle redraws, ~15 fps on purpose, go through renderStill: counted here they read as a slow device
+      // and shrank the picture, #107/#109)
       if (dt > 0 && dt < 120) { sum += dt; n++; }
       if (n >= 90) {
         const avg = sum / n; sum = 0; n = 0;
         if (avg > 24) {
-          if (pr > min) { pr = Math.max(min, pr - 0.25); smooth = 0; }
+          good = 0;
+          if (r.shadowMap.enabled && !shed) { shed = true; r.shadowMap.enabled = false; }  // shadows go before sharpness
+          else if (pr > min) { pr = Math.max(min, pr - 0.25); smooth = 0; }
           else if (!low && ++strain === 3) { try { sessionStorage.setItem('gn.strain', '1'); } catch {} }
-        } else if (avg < 17 && pr < cap && ++smooth >= 4) { pr = Math.min(cap, pr + 0.25); smooth = 0; }
+        } else if (avg < 17) {
+          if (pr < cap && ++smooth >= 4) { pr = Math.min(cap, pr + 0.25); smooth = 0; }
+          // smooth for a good while: forget an old strain, so the next game can go back to High
+          if (strained() && ++good >= 6) { strain = 0; try { sessionStorage.removeItem('gn.strain'); } catch {} }
+        }
       }
       use(pr);
       return render(scene, camera);

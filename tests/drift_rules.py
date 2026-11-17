@@ -45,6 +45,7 @@ r = server.Room("TEST")
 ps = [r.add_player(n) for n in ("Ann", "Bo")]
 r.switch_game("drift")
 r.settings["storm"] = 0
+r.settings["size"] = "cosy"  # the positions below are laid out on the 12×9 map
 r.start()
 g = r.game
 ann, bo = ps
@@ -76,6 +77,7 @@ check("no burner without fuel", refused(g, ann, {"type": "fly", "choice": "hold"
 r2 = server.Room("T2")
 q = r2.add_player("Cy")
 r2.switch_game("drift")
+r2.settings["size"] = "cosy"
 r2.start()
 g2 = r2.game
 g2.winds = [(0, 1)] * 4
@@ -98,6 +100,17 @@ for _ in range(40):
 check("the game ends after the last turn", r.phase == "over" and g.turn_no == g.turns)
 w = r.players.get(r.winner)
 check("the winner has the most pennants", w is None or g.score[w.id] == max(g.score.values()), f"{g.score}")
+
+# #107: the sky sizes, with pennants at the same density, and balloons stopping at the bigger map's edge
+for size, (w, h) in D.SIZES.items():
+    r3 = server.Room("TEST")
+    r3.add_player("Ann"); r3.add_player("Bo")
+    r3.switch_game("drift"); r3.settings["size"] = size; r3.start()
+    g3 = r3.game
+    v3 = g3.view(list(r3.players.values())[0])["drift"]
+    check(f"{size} sky is {w}x{h}", (v3["w"], v3["h"]) == (w, h) and len(v3["terrain"]) == h and len(v3["terrain"][0]) == w)
+    check(f"{size} sky has {g3.npen} pennants", len(g3.pennants) == g3.npen == round(D.PENNANTS * w * h / (D.W * D.H)))
+    check(f"{size} edge stops balloons", g3.path(w - 1, 3, 1, "hold", True, [(0, 2)] * D.LAYERS)[-1] == [w - 1, 3, 1])
 
 print("\n" + ("all ok" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)

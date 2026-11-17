@@ -2,6 +2,7 @@
 // Pick ⬆ / ⏸ / ⬇ (and 🔥) — the dotted line shows where that would carry you — then ✅ Lock in. When
 // everyone has, every balloon changes height and drifts at once, and this plays the turn back.
 UI.drift = (() => {
+  let still = false;
   let S, ctx, gl = null, flat = null, raf = 0, ro = null;
   let pick = 'hold', burn = false, seenTurn = 0, primed = false, play = null, lastDraw = 0;
   const $ = (id) => document.getElementById(id);
@@ -19,7 +20,8 @@ UI.drift = (() => {
   function mount(main, side) {
     gl = null; flat = null; play = null; seenTurn = 0; primed = false; pick = 'hold'; burn = false;
     main.innerHTML = `<div class="sk"><div class="sk-hud"><span id="skTurn"></span><span id="skMe"></span></div>
-      <div class="sk-stage" id="skStage"><div class="sk-gauge" id="skGauge"></div><div class="sk-pop" id="skPop" hidden></div></div>
+      <div class="sk-stage" id="skStage"><div class="sk-gauge" id="skGauge"></div><div class="sk-pop" id="skPop" hidden></div>
+        <div class="sk-view" aria-label="View"><button data-v="in" aria-label="Zoom in">＋</button><button data-v="out" aria-label="Zoom out">－</button><button data-v="l" aria-label="Turn left">⟲</button><button data-v="r" aria-label="Turn right">⟳</button><button data-v="me" aria-label="Find my balloon">🎯</button><button data-v="home" aria-label="Whole map">⌂</button></div></div>
       <div class="sk-ctl" id="skCtl">
         <div class="sk-picks" id="skPicks">
           <button data-p="up"><b>⬆ Climb</b><small></small></button>
@@ -39,20 +41,52 @@ UI.drift = (() => {
     });
     const stage = $('skStage');
     stage.style.touchAction = 'none';
-    let drag = null;
-    stage.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY }; try { stage.setPointerCapture(e.pointerId); } catch {} });
-    stage.addEventListener('pointermove', (e) => {
-      if (!drag || !gl) return;
-      gl.orbit((e.clientX - drag.x) * 0.008, (e.clientY - drag.y) * 0.005);
-      drag = { x: e.clientX, y: e.clientY };
+    // #111: one finger orbits; two fingers pinch to zoom, slide to pan and twist to turn; a double tap finds my
+    // balloon. (Mouse: drag orbits, right- or shift-drag pans, the wheel zooms.)
+    const fingers = new Map();
+    let two = null, lastTap = 0;
+    const pair = () => {
+      const [[ax, ay], [bx, by]] = [...fingers.values()];
+      return { mx: (ax + bx) / 2, my: (ay + by) / 2, d: Math.hypot(bx - ax, by - ay), a: Math.atan2(by - ay, bx - ax) };
+    };
+    stage.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('.sk-view')) return;
+      fingers.set(e.pointerId, [e.clientX, e.clientY, e.button === 2 || e.shiftKey]);
+      try { stage.setPointerCapture(e.pointerId); } catch {}
+      if (fingers.size === 2) two = pair();
+      else if (fingers.size === 1) {
+        const now = performance.now();
+        if (now - lastTap < 320) { gl?.findMe(); lastTap = 0; } else lastTap = now;
+      }
     });
-    const up = () => { drag = null; };
+    stage.addEventListener('pointermove', (e) => {
+      const f = fingers.get(e.pointerId);
+      if (!f || !gl) return;
+      const dx = e.clientX - f[0], dy = e.clientY - f[1];
+      f[0] = e.clientX; f[1] = e.clientY;
+      if (Math.abs(dx) + Math.abs(dy) > 3) lastTap = 0;
+      if (fingers.size >= 2 && two) {
+        const p = pair();
+        let da = p.a - two.a; da = Math.atan2(Math.sin(da), Math.cos(da));
+        if (p.d > 10 && two.d > 10) gl.zoom(two.d / p.d);
+        gl.pan(p.mx - two.mx, p.my - two.my);
+        gl.turn(-da);
+        two = p;
+      } else if (f[2]) gl.pan(dx, dy);
+      else gl.orbit(dx * 0.008, dy * 0.005);
+    });
+    const up = (e) => { fingers.delete(e.pointerId); two = fingers.size === 2 ? pair() : null; };
     stage.addEventListener('pointerup', up); stage.addEventListener('pointercancel', up);
+    stage.addEventListener('contextmenu', (e) => e.preventDefault());
+    stage.querySelector('.sk-view').addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b || !gl) return;
+      ({ in: () => gl.zoom(0.8), out: () => gl.zoom(1.25), l: () => gl.turn(-Math.PI / 4), r: () => gl.turn(Math.PI / 4), me: () => gl.findMe(), home: () => gl.home() })[b.dataset.v]?.();
+    });
     stage.addEventListener('wheel', (e) => { if (!gl) return; e.preventDefault(); gl.zoom(e.deltaY < 0 ? 0.9 : 1.1); }, { passive: false });
     ro = window.ResizeObserver ? new ResizeObserver(() => (gl || flat)?.resize()) : null;
     ro?.observe(stage);
     GL3.load().then(() => { if (stage.isConnected && !gl) gl = make3d(stage); }).catch(() => {})
-      .finally(() => { if (stage.isConnected && !gl && !flat) flat = make2d(stage); });
+      .finally(() => { if (stage.isConnected && !gl && !flat) flat = make2d(stage); const vw = stage.querySelector('.sk-view'); if (vw) vw.hidden = !gl; });
     raf = requestAnimationFrame(loop);
   }
 
@@ -190,6 +224,7 @@ UI.drift = (() => {
     const idle = !play && !gl?.busy?.();
     if (idle && now - lastDraw < (gl?.low ? 66 : 33)) return;
     lastDraw = now;
+    still = idle;  // idle redraws are drawn sharp and kept out of the frame-rate watch (#107/#109)
     (gl || flat)?.draw(now);
   }
 
@@ -219,7 +254,7 @@ UI.drift = (() => {
       exposure: 1.1, hemi: [0xdcefff, 0x4a5a2a, 0.85],
       key: { i: 0.9, color: 0xfff1d6, pos: [-6, 14, 8], area: 10, near: 1, far: 50 },
       sky: { top: 0x3f7fd0, horizon: 0xbfe3ff, bottom: 0xa9cfe8, band: 0.12 },
-      fog: [0xbfe3ff, 18, 48],
+      fog: [0xbfe3ff, 24 + Math.max(W, H) * 1.4, 60 + Math.max(W, H) * 3],  // clear over the map, hazy over the far country
     });
     stg.key.target.position.set(0, 0, 0);
     const low = stg.low;
@@ -251,7 +286,7 @@ UI.drift = (() => {
     land.computeVertexNormals();
     const ground = new T.Mesh(land, new T.MeshStandardMaterial({ map: fields, roughness: 0.95 }));
     ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
-    const skirt = new T.Mesh(new T.PlaneGeometry(120, 120), new T.MeshStandardMaterial({ color: 0x7fae58, roughness: 1 }));
+    const skirt = new T.Mesh(new T.PlaneGeometry(260, 260), new T.MeshStandardMaterial({ color: 0x7fae58, roughness: 1 }));
     skirt.rotation.x = -Math.PI / 2; skirt.position.y = -0.08; scene.add(skirt);
     // trees on the high ground, cottages on the fields
     const treeGeo = new T.ConeGeometry(0.16, 0.45, 6), treeMat = new T.MeshStandardMaterial({ color: 0x2f6b3a, roughness: 0.9 });
@@ -277,6 +312,63 @@ UI.drift = (() => {
         hs.position.set(cx(x), h + 0.08, cz(y)); rf.position.set(cx(x), h + 0.23, cz(y)); rf.rotation.y = Math.PI / 4;
         hs.castShadow = !low; scene.add(hs, rf);
       }
+    }
+
+    countryside();
+    // #107: the world runs on past the map: fields and woods all round, a lake, a ring of far hills, and clouds
+    // drifting overhead, so the map reads as a patch of a bigger country rather than a board on a green table
+    function countryside() {
+      const rnd = ((seed) => () => (seed = (seed * 16807) % 2147483647) / 2147483647)(Math.round(v0.terrain[0][0] * 1e4) + 7);
+      const outside = (x, z, m) => Math.abs(x) > W / 2 + m || Math.abs(z) > H / 2 + m;
+      const R = Math.max(W, H);
+      // patchwork fields
+      const fieldCols = [0x9ccc65, 0xb5d47a, 0x8bbf56, 0xd6cf7a, 0x6fae4f, 0xa3c26a];
+      const patchGeo = new T.PlaneGeometry(1, 1);
+      for (let i = 0; i < (low ? 40 : 90); i++) {
+        const a = rnd() * 6.283, d = R * 0.6 + rnd() * R * 2.2, x = Math.cos(a) * d, z = Math.sin(a) * d;
+        if (!outside(x, z, 1.5)) continue;
+        const m = new T.Mesh(patchGeo, new T.MeshStandardMaterial({ color: fieldCols[i % fieldCols.length], roughness: 1 }));
+        m.rotation.x = -Math.PI / 2; m.rotation.z = rnd() * 0.6 - 0.3; m.scale.set(2 + rnd() * 4, 1.5 + rnd() * 3, 1);
+        m.position.set(x, -0.07 + i * 0.0001, z); scene.add(m);
+      }
+      // a lake off one side
+      const la = rnd() * 6.283, ld = R * 1.1;
+      const lake = new T.Mesh(new T.CircleGeometry(1, 28), new T.MeshStandardMaterial({ color: 0x4a9fd8, roughness: 0.25, metalness: 0.1 }));
+      lake.rotation.x = -Math.PI / 2; lake.scale.set(R * 0.45, R * 0.28, 1); lake.position.set(Math.cos(la) * ld, -0.06, Math.sin(la) * ld);
+      if (outside(lake.position.x, lake.position.z, R * 0.5)) scene.add(lake);
+      // woods: clumps of trees in the countryside
+      const spots = [];
+      for (let i = 0; spots.length < (low ? 120 : 320) && i < 4000; i++) {
+        const a = rnd() * 6.283, d = R * 0.6 + rnd() * R * 2.4, x = Math.cos(a) * d, z = Math.sin(a) * d;
+        if (!outside(x, z, 1) || Math.hypot((x - lake.position.x) / (R * 0.5), (z - lake.position.z) / (R * 0.32)) < 1) continue;
+        const n = 2 + Math.floor(rnd() * 5);
+        for (let k = 0; k < n; k++) spots.push([x + (rnd() - 0.5) * 1.6, z + (rnd() - 0.5) * 1.6, 0.8 + rnd() * 0.8]);
+      }
+      const woods = new T.InstancedMesh(treeGeo, treeMat, spots.length);
+      spots.forEach(([x, z, k], i) => { m4.makeScale(k, k, k).setPosition(x, 0.18 * k - 0.05, z); woods.setMatrixAt(i, m4); });
+      scene.add(woods);
+      // far hills: a ring of soft, low domes fading into the haze
+      const hillMat = new T.MeshStandardMaterial({ color: 0x6f9a5a, roughness: 1, flatShading: true });
+      const hillGeo = new T.SphereGeometry(1, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+      for (let i = 0; i < (low ? 14 : 26); i++) {
+        const a = (i / (low ? 14 : 26)) * 6.283 + rnd() * 0.2, d = R * 3 + rnd() * R * 1.5;
+        const hl = new T.Mesh(hillGeo, hillMat);
+        hl.scale.set(R * (0.5 + rnd() * 0.6), R * (0.15 + rnd() * 0.25), R * (0.4 + rnd() * 0.4));
+        hl.position.set(Math.cos(a) * d, -0.1, Math.sin(a) * d); hl.rotation.y = rnd() * 3; scene.add(hl);
+      }
+    }
+    // fair-weather clouds in a slow ring round the horizon, past the map's edge (never between you and the map)
+    const puffs = new T.Group();
+    {
+      const puffMat = new T.MeshStandardMaterial({ color: 0xffffff, roughness: 1, transparent: true, opacity: 0.92, depthWrite: false });
+      const puffGeo = new T.SphereGeometry(1, 10, 8), R = Math.max(W, H);
+      for (let i = 0, n = low ? 7 : 14; i < n; i++) {
+        const c = new T.Group(), a = (i / n) * 6.283 + (i % 3) * 0.3, d = R * (1.5 + (i % 4) * 0.35);
+        for (let k = 0; k < 4; k++) { const b = new T.Mesh(puffGeo, puffMat); b.scale.setScalar(0.8 + ((i + k) % 3) * 0.4); b.position.set(k * 1.0 - 1.5, (k % 2) * 0.4, ((k * 7) % 3) * 0.3); c.add(b); }
+        c.position.set(Math.cos(a) * d, alt(3) + 1.5 + (i % 3) * 1.2, Math.sin(a) * d); c.rotation.y = -a;
+        puffs.add(c);
+      }
+      scene.add(puffs);
     }
 
     // wind: arrows streaming through each layer
@@ -386,15 +478,33 @@ UI.drift = (() => {
     }
 
     // camera: orbit round the map
-    const view = { yaw: 0, pitch: 1.0, dist: 13 };
+    const SC = Math.max(1, Math.max(W, H) / 12);  // bigger skies: the camera starts further out (#107)
+    // #111: and pan over it (view.tx/tz: the point looked at), zoom and turn with two fingers or the buttons
+    const HOME = { yaw: 0, pitch: 1.0, dist: 14.5 * SC, tx: 0, tz: 0 };
+    const view = { ...HOME };
     function place() {
       const d = view.dist * Math.max(1, 1.3 / camera.aspect), p = view.pitch + (camera.aspect < 1 ? 0.1 : 0);
-      camera.position.set(Math.sin(view.yaw) * Math.cos(p) * d, Math.sin(p) * d + 1, Math.cos(view.yaw) * Math.cos(p) * d);
-      camera.lookAt(0, 1.2, 0.4);
+      camera.position.set(view.tx + Math.sin(view.yaw) * Math.cos(p) * d, Math.sin(p) * d + 1, view.tz + Math.cos(view.yaw) * Math.cos(p) * d);
+      camera.lookAt(view.tx, 1.2, view.tz + 0.4);
     }
-    let moved = true;
-    function orbit(dy, dp) { view.yaw -= dy; view.pitch = Math.max(0.35, Math.min(1.35, view.pitch + dp)); moved = true; }
-    function zoom(k) { view.dist = Math.max(8, Math.min(26, view.dist * k)); moved = true; }
+    let moved = true, glide = null;
+    function orbit(dy, dp) { view.yaw -= dy; view.pitch = Math.max(0.35, Math.min(1.35, view.pitch + dp)); moved = true; glide = null; }
+    function zoom(k) { view.dist = Math.max(4, Math.min(30 * SC, view.dist * k)); moved = true; glide = null; }
+    function turn(a) { view.yaw -= a; moved = true; glide = null; }
+    // a drag in screen pixels slides the map under the finger
+    function pan(dx, dy) {
+      const k = (view.dist / Math.max(200, renderer.domElement.clientHeight || 400)) * 1.15, c = Math.cos(view.yaw), s = Math.sin(view.yaw);
+      view.tx = Math.max(-W / 2 - 2, Math.min(W / 2 + 2, view.tx - (c * dx + s * dy) * k));
+      view.tz = Math.max(-H / 2 - 2, Math.min(H / 2 + 2, view.tz - (-s * dx + c * dy) * k));
+      moved = true; glide = null;
+    }
+    // ease to a view: 🎯 my balloon, ⌂ the whole map
+    function goTo(to) { glide = { from: { ...view }, to: { ...view, ...to }, t: 0 }; }
+    function home() { goTo({ ...HOME, yaw: Math.round(view.yaw / (2 * Math.PI)) * 2 * Math.PI }); }
+    function findMe() {
+      const p = D().pos[S.me?.id];
+      if (p) goTo({ tx: cx(p[0]), tz: cz(p[1]), dist: Math.min(view.dist, 9 * Math.max(1, SC * 0.8)) });
+    }
 
     let lastT = 0;
     function draw(now) {
@@ -432,6 +542,7 @@ UI.drift = (() => {
       }
       // pennants wave
       for (const f of flags) { const fl = f.getObjectByName('flag'); fl.rotation.y = Math.sin(now / 300 + f.position.x) * 0.35; }
+      puffs.rotation.y += dt * 0.006;  // the clouds wheel slowly round the horizon
       // the storm
       storm.visible = !!v.storm;
       if (v.storm) {
@@ -454,10 +565,17 @@ UI.drift = (() => {
         bGeo.attributes.position.needsUpdate = true; bMat.opacity = Math.max(0, burstT);
       }
       burstPts.visible = burstT > 0;
+      if (glide) {
+        glide.t = Math.min(1, glide.t + dt / 0.5);
+        const e = glide.t * glide.t * (3 - 2 * glide.t);
+        for (const k of Object.keys(HOME)) view[k] = glide.from[k] + (glide.to[k] - glide.from[k]) * e;
+        moved = true;
+        if (glide.t >= 1) glide = null;
+      }
       if (moved) { place(); moved = false; }
       GL3.tickShake(camera, dt);
       stg.follow(camera);
-      renderer.render(scene, camera);
+      (still && renderer.renderStill ? renderer.renderStill : renderer.render)(scene, camera);
     }
     function resize() {
       const w = stage.clientWidth || 320, h = stage.clientHeight || 360;
@@ -468,7 +586,7 @@ UI.drift = (() => {
       stg.dispose(); renderer.dispose(); renderer.domElement.remove();
       scene.traverse((o) => { o.geometry?.dispose(); o.material?.map?.dispose(); o.material?.dispose?.(); });
     }
-    return { draw, resize, dispose, orbit, zoom, burst, flash: () => { flashT = 0.3; if (!low) GL3.shake(camera, 0.2); }, busy: () => burstT > 0, low };
+    return { draw, resize, dispose, orbit, zoom, turn, pan, home, findMe, gliding: () => !!glide, burst, flash: () => { flashT = 0.3; if (!low) GL3.shake(camera, 0.2); }, busy: () => burstT > 0 || !!glide, low };
   }
 
   // ---------- flat fallback: the map from above
