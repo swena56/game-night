@@ -2,7 +2,7 @@
 // (30 frames a second), which every phone plays back. The table stands upright on portrait screens.
 UI.billiards = (() => {
   let S, ctx, raf = 0, ro = null, roRaf = 0, animEnd = 0, setTip = null;
-  let dial = null, aim = 0, aimFor = null, power = 0.55, cuePos = null, drag = null, anim = null, seenShot = 0, lastShot = null;
+  let dial = null, aimMode = '', aimModeAt = 0, aimShown = '', aim = 0, aimFor = null, power = 0.55, cuePos = null, drag = null, anim = null, seenShot = 0, lastShot = null;
   let spin = 0, english = 0, elev = 0, called = null, pushing = false;  // elev: the cue's butt raised, in degrees (swerve / massé, #45)
   // where the cue tip strikes: follow (+) / draw (−), right (+) / left (−); the pocket called for the 8
   let rolls = new Map();  // each ball's orientation, so it turns as it rolls (#33)
@@ -886,7 +886,16 @@ UI.billiards = (() => {
     // the floating controls and info card fade while balls roll or the cue is being aimed, so they hide nothing that matters
     const busy = !!(anim || drag || touches.size), bl = $('blStage')?.parentElement;
     if (bl && bl.classList.contains('bl-busy') !== busy) bl.classList.toggle('bl-busy', busy);
-    shotFx(); draw(); shotSounds();
+    shotFx(); draw(); shotSounds(); angleReadout(now);
+  }
+
+  // #141: the cue's angle to a tenth of a degree while you aim, and whether that drag is fine or quick
+  function angleReadout(now) {
+    const el = $('blAngle'); if (!el) return;
+    const on = canShoot() && !anim;
+    const deg = ((aim * 180 / Math.PI) % 360 + 360) % 360;
+    const txt = on ? `${deg.toFixed(1)}°${aimMode && now - aimModeAt < 1500 ? (aimMode === 'fine' ? ' · 🎯 fine' : ' · ⚡ quick') : ''}` : '';
+    if (txt !== aimShown) { aimShown = txt; el.textContent = txt; el.hidden = !txt; }
   }
 
   // ---------- keyboard: ← → turn the cue, ↑ ↓ power, Space shoots, W A S D move the cue ball in hand
@@ -1055,14 +1064,17 @@ UI.billiards = (() => {
     g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + 0.0015); g.gain.setTargetAtTime(0, t + 0.0015, tau);  // a soft onset: no tick
     o.connect(g).connect(dst); o.start(t); o.stop(t + tau * 8 + 0.01);
   }
-  // two phenolic balls: a short, rounded clock. Mostly impact with a little tonal body, all of it through a
-  // lowpass so it stays warm rather than glassy; duller and softer still for a gentle kiss.
+  // two phenolic balls (#142): the crisp "clack" of a real table. A very short bright impact, a hard ring a few
+  // milliseconds long at the balls' own pitches (around 2.6, 3.9 and 5.3 kHz), and a little wooden body under it.
+  // A soft kiss keeps mostly the body and the lowest ring; a hard hit adds a dry crack on top.
   function ballClick(dst, t, h) {
-    const vol = 0.05 + 0.4 * h ** 0.8, lp = actx.createBiquadFilter();
-    lp.type = 'lowpass'; lp.frequency.value = 1900 + 1500 * h; lp.Q.value = 0.5; lp.connect(dst);
-    burst(lp, t, 'bandpass', 1100 + 1300 * h, 0.9, vol * 1.1, 0.0008 + 0.0008 * (1 - h));
-    for (const [f, a, tau] of [[1550, 0.2, 0.005], [2300, 0.1, 0.0035], [3000, 0.04, 0.0025]]) mode(lp, t, f, vol * a * (f > 2000 ? 0.2 + 0.8 * h : 0.5 + 0.5 * h), tau);
-    mode(lp, t, 650, vol * 0.14, 0.006);  // the body of the ball
+    const vol = 0.06 + 0.42 * h ** 0.75, lp = actx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 3200 + 5200 * h; lp.Q.value = 0.4; lp.connect(dst);
+    burst(lp, t, 'bandpass', 2400 + 2600 * h, 0.7, vol * 1.25, 0.0007 + 0.0006 * (1 - h));
+    const pitch = 0.97 + Math.random() * 0.06;   // no two balls ring quite alike
+    for (const [f, a, tau] of [[2600, 0.32, 0.007], [3900, 0.2, 0.0045], [5300, 0.11, 0.003]]) mode(lp, t, f * pitch, vol * a * (f > 3000 ? 0.15 + 0.85 * h : 0.6 + 0.4 * h), tau);
+    mode(lp, t, 900, vol * 0.16, 0.007);  // the body of the ball
+    if (h > 0.65) burst(dst, t, 'highpass', 6500, 0.7, vol * (h - 0.65) * 1.4, 0.0005);   // a hard hit's crack
   }
   function clack(e, delay = 0) {
     if (quietNow()) return;
@@ -1186,7 +1198,16 @@ UI.billiards = (() => {
       drag = B().inHand && cue && Math.hypot(x - cue[0], y - cue[1]) < B().R * 4 ? 'cue' : 'aim';
       // Aiming turns the cue like a dial: the drag rotates the current aim around the cue ball, so a
       // touch on the stick (behind the ball) or anywhere else never swings it round.
-      if (drag === 'aim' && cue) dial = behind() ? { x0: e.clientX, aim0: aim } : { from: Math.atan2(y - cue[1], x - cue[0]), aim0: aim };
+      // #139: grab the stick itself (behind the ball, along the cue) for slow, fine turning; anywhere else turns
+      // faster than the finger sweeps round the ball
+      if (drag === 'aim' && cue) {
+        const R = B().R, dx = x - cue[0], dy = y - cue[1], along = -(dx * Math.cos(aim) + dy * Math.sin(aim)), across = Math.abs(-dx * Math.sin(aim) + dy * Math.cos(aim));
+        const onStick = along > R * 1.2 && along < R * 34 && across < Math.max(R * 2.4, 22 / (geo?.k || 1));
+        dial = behind() ? { x0: e.clientX, aim0: aim, fine: false }
+          : onStick ? { fine: true, sx: x, sy: y, aim0: aim, lever: Math.max(along, R * 8) }
+            : { from: Math.atan2(dy, dx), aim0: aim, fine: false };
+        aimMode = dial.fine ? 'fine' : 'quick'; aimModeAt = performance.now();
+      }
       try { surf().setPointerCapture(e.pointerId); } catch {}
     }
     if (!drag) return;
@@ -1196,9 +1217,13 @@ UI.billiards = (() => {
     } else {
       const cue = cueAt();
       if (dial && dial.x0 != null) aim = dial.aim0 + (e.clientX - dial.x0) * 0.0035;  // behind the cue: drag sideways to turn
-      else if (cue && dial && Math.hypot(x - cue[0], y - cue[1]) > 3) {
+      else if (dial?.fine) {
+        // moving the butt sideways turns the cue a quarter as much as it would at that distance: a long, slow lever
+        const mx = x - dial.sx, my = y - dial.sy, side = -mx * Math.sin(dial.aim0) + my * Math.cos(dial.aim0);
+        aim = dial.aim0 - side / (dial.lever * 4);
+      } else if (cue && dial && Math.hypot(x - cue[0], y - cue[1]) > 3) {
         const turn = Math.atan2(y - cue[1], x - cue[0]) - dial.from;
-        aim = dial.aim0 + Math.atan2(Math.sin(turn), Math.cos(turn));
+        aim = dial.aim0 + 1.5 * Math.atan2(Math.sin(turn), Math.cos(turn));
       }
     }
     if (phase === 'up') drag = dial = null;
@@ -1283,7 +1308,7 @@ UI.billiards = (() => {
     view = { z: 1, x: 0, y: 0 }; pinch = null; touches.clear(); rolls = new Map(); spin = english = elev = 0;
     dial = null; aim = 0; aimFor = null; power = 0.55; cuePos = null; drag = null; anim = null; seenShot = 0; lastShot = null; geo = null;
     gl = null; view3d = false; camAt = null; fxp = null; sinks = []; trails = new Map(); tableCache = null; tableKey = '';
-    main.innerHTML = `<div class="bl"><div id="blStage" class="bl-stage"><canvas id="blCanvas"></canvas>
+    main.innerHTML = `<div class="bl"><div id="blStage" class="bl-stage"><canvas id="blCanvas"></canvas><div id="blAngle" class="bl-angle" hidden></div>
         <button id="blZoom" class="bl-zoom" hidden aria-label="Show the whole table">🔍 1×</button>
         <div class="bl-views"><button id="blView" hidden>🧊 3D</button><button id="blCam" hidden>🎥 Behind cue</button><button id="blTurn" hidden aria-label="Turn the table a quarter turn" title="Turn the table (or twist two fingers on it)">🔄</button>
           <button id="blPush" hidden aria-pressed="false" title="9-ball: the first shot after the break may be a push-out. It needn't hit anything; your rival then shoots from there or hands it back.">🔀 Push out</button>
@@ -1309,7 +1334,7 @@ UI.billiards = (() => {
     side.innerHTML = `<div class="panel bl-side">
       <div id="blStatus" class="seat-row"></div>
       <div id="blRacks" class="bl-racks"></div>
-      <p class="hint left" id="blHint">Drag anywhere on the table to turn the cue around the ball. ◀ ▶ fine-tune. Pull the power bar back and let go to shoot. ✋ With ball in hand, drag the cue ball to move it.</p>
+      <p class="hint left" id="blHint">Drag the cue stick for slow, fine aim, or anywhere else on the table to turn it quickly. ◀ ▶ fine-tune (hold to speed up). Pull the power bar back and let go to shoot. ✋ With ball in hand, drag the cue ball to move it.</p>
       <label class="bl-tablevol" title="The balls rolling on the cloth and down the pocket's return. The clicks and thumps are always on (with sound on).">🔈 Table sound
         <select id="blTableVol"><option value="normal">Normal</option><option value="quiet">Quiet</option><option value="off">Off</option></select></label>
       <label class="bl-tablevol" title="In the behind-the-cue view, rise up over the table while the balls run, then drop back behind the cue.">🎥 Follow the shot
@@ -1397,12 +1422,12 @@ UI.billiards = (() => {
     };
     bar.onpointercancel = () => { if (stroke) setPower(stroke.p0); stroke = null; bar.classList.remove('pulling', 'cancel'); };
     setPower(power);
-    // turn the aim by about 0.25° per tap, faster while held
+    // #141: a tap turns the aim by about 0.09°; held, it starts slow (fine) and speeds up
     for (const [id, dir] of [['blLeft', -1], ['blRight', 1]]) {
-      let hold = null;
-      const nudge = () => { aim += dir * 0.0045; };
-      $(id).onpointerdown = (e) => { e.preventDefault(); nudge(); clearInterval(hold); hold = setInterval(nudge, 60); };
-      $(id).onpointerup = $(id).onpointerleave = $(id).onpointercancel = () => clearInterval(hold);
+      let hold = null, t0 = 0;
+      const nudge = () => { const t = (performance.now() - t0) / 1000; aim += dir * (t < 0.6 ? 0.0015 : Math.min(0.02, 0.0015 + 0.006 * (t - 0.6) ** 2)); };
+      $(id).onpointerdown = (e) => { e.preventDefault(); t0 = performance.now(); nudge(); aimMode = 'fine'; aimModeAt = t0; clearInterval(hold); hold = setTimeout(() => { hold = setInterval(nudge, 50); }, 350); };
+      $(id).onpointerup = $(id).onpointerleave = $(id).onpointercancel = () => { clearTimeout(hold); clearInterval(hold); };
     }
     $('blShoot').onclick = shoot;
     held = { dir: 0, since: 0, fine: false, last: 0 };

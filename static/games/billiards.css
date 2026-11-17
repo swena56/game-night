@@ -100,3 +100,7 @@ body.focus #game .layout:has(.bl-busy) > aside { opacity: .2; }
   .bl-controls .bl-spin { flex: 1 1 100%; width: auto; order: 2; }
   .bl-controls #blShoot { flex: 1 1 100%; order: 3; padding: 10px; }
 }
+/* #141: the aim angle while you aim */
+.bl-angle { position: absolute; left: 50%; bottom: 6px; transform: translateX(-50%); z-index: 3; background: #0b1626c8; color: #fff; border-radius: 999px;
+  padding: 2px 10px; font-size: 12px; font-variant-numeric: tabular-nums; pointer-events: none; white-space: nowrap; }
+.bl-angle[hidden] { display: none; }
