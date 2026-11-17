@@ -110,11 +110,13 @@
       <div id="gameMenu" class="game-menu" role="menu" hidden>
         <button id="focusBtn" role="menuitemcheckbox" aria-pressed="false"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="7" y="7" width="10" height="10" rx="1" fill="currentColor" stroke="none"/></svg><span>Bigger board</span></button>
         <button id="fullBtn" role="menuitem" hidden><span class="ico"></span><span class="lbl">Full screen</span></button>
+        <button id="pauseBtn" role="menuitem" hidden><span>⏸</span><span>Pause</span></button>
         <button id="menuChat" role="menuitem"><span>💬</span><span>Chat</span></button>
         <button id="menuPrefs" role="menuitem"><span>⚙️</span><span>My settings</span></button>
         <button id="quitBtn" role="menuitem" class="menu-danger"><span>🚪</span><span id="quitLabel">Leave game</span></button>
       </div>
     </header>
+    <div id="pausedCover" class="paused-cover" hidden><div><b>⏸ Paused</b><p>The bots are waiting for you.</p><button id="resumeBtn" class="primary">▶ Resume</button></div></div>
     <div id="overBanner" class="over" hidden>
       <div class="over-head"><div id="overText"></div>
         <button id="overFold" class="icon-btn" aria-expanded="true" title="Fold the results to see the board">▴</button></div>
@@ -204,6 +206,7 @@
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   <script>window.UI = {};</script>
   <script src="/kit.js"></script>
+  <script src="/sfx.js"></script>
   <script src="/fx2d.js"></script>
   <script src="/patience.js"></script>
   <script src="/gl3.js"></script>

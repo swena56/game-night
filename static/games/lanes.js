@@ -24,57 +24,117 @@ UI.lanes = (() => {
   const RETURN_MS = 2300;  // the ball's ride back from the pit to the hood
   let ret = null;  // my ball on the ball return: { t0 } while it rolls back, { rest: true } once it sits on the hood
 
-  // ---------- sound (#116): a rolling rumble while the ball runs, a pin crash in layers, the gutter, the pit,
-  // the pinsetter and the ball return. Built on the app's tone() / noise() and its out() bus (game helpers must
-  // never be named out, sfx, tone or noise: they'd hide the app's).
-  const sndOn = () => typeof prefs !== 'undefined' && prefs.sound && prefs.moves && !document.hidden && !!window.tone && !!window.noise;
-  const snd = (fn) => { if (sndOn()) try { fn(window.tone, window.noise); } catch {} };
+  // ---------- sound (#116 #133): built on the shared Snd kit (static/sfx.js) in a bowling-alley hall. The
+  // ball's roll is a deep rumble bed that follows its speed (hollow in the gutter), each pin is a maple
+  // "tock" with real wooden resonances panned to where it stands, the rack crash is layered by how many go
+  // down, then the pit, the pinsetter and the ball return. (Never name a helper out, sfx, tone or noise.)
+  const sndOn = () => !!window.Snd?.on();
+  const snd = (fn, delay) => window.Snd?.play(fn, delay);
+  const panX = (x) => Math.max(-0.8, Math.min(0.8, (x || 0) / 0.55));
+  const HALL = { room: 'hall', send: 0.75 };
+  const rollBed = (K, dst) => {
+    const A = K.ctx, src = K.loopSrc('brown'), lpf = A.createBiquadFilter(), g = A.createGain(), o = A.createOscillator(), og = A.createGain();
+    const ticks = K.loopSrc('white'), bp = A.createBiquadFilter(), tg = A.createGain(), lfo = A.createOscillator(), lg = A.createGain();
+    lpf.type = 'lowpass'; lpf.frequency.value = 300; lpf.Q.value = 1.1;
+    o.type = 'sine'; o.frequency.value = 50; og.gain.value = 0.35; g.gain.value = 0;
+    // the boards' seams: a faint ticking whose rate follows the ball
+    bp.type = 'bandpass'; bp.frequency.value = 1400; bp.Q.value = 1.2; tg.gain.value = 0;
+    lfo.frequency.value = 18; lg.gain.value = 0.006; lfo.connect(lg).connect(tg.gain);
+    src.connect(lpf).connect(g); o.connect(og).connect(g); ticks.connect(bp).connect(tg).connect(g);
+    const room = K.at({ ...HALL, send: 0.35 });
+    g.connect(room); o.start(); lfo.start();
+    return {
+      set(level, hollow) {
+        const t = A.currentTime, on = level > 0;
+        g.gain.setTargetAtTime(on ? 0.07 + 0.17 * level : 0, t, on ? 0.05 : 0.15);
+        lpf.frequency.setTargetAtTime(hollow ? 150 : 220 + 320 * level, t, 0.08);
+        o.frequency.setTargetAtTime(hollow ? 34 : 42 + 18 * level, t, 0.1);
+        lfo.frequency.setTargetAtTime(8 + 22 * level, t, 0.1);
+        tg.gain.setTargetAtTime(on && !hollow ? 0.012 : 0, t, 0.1);
+      },
+      stop() { try { src.stop(); o.stop(); ticks.stop(); lfo.stop(); } catch {} },
+    };
+  };
   let hum = null;
   function rumble(level, hollow) {  // level 0..1 is the ball's speed; hollow: it's in the gutter
-    const on = level > 0.02 && sndOn();
-    if (!on && !hum) return;
-    try {
-      if (!hum) {
-        const dst = window.out?.(); if (!dst) return;
-        const a = dst.context, sr = a.sampleRate, buf = a.createBuffer(1, sr * 2, sr), d = buf.getChannelData(0);
-        for (let i = 0, lp = 0; i < d.length; i++) { lp += 0.07 * ((Math.random() * 2 - 1) - lp); d[i] = lp * 3.2; }  // a deep, brown noise
-        const src = a.createBufferSource(), lpf = a.createBiquadFilter(), g = a.createGain(), o = a.createOscillator(), og = a.createGain();
-        src.buffer = buf; src.loop = true; lpf.type = 'lowpass'; lpf.frequency.value = 300; lpf.Q.value = 1.2;
-        o.type = 'sine'; o.frequency.value = 52; og.gain.value = 0.3; g.gain.value = 0;
-        src.connect(lpf).connect(g); o.connect(og).connect(g); g.connect(dst); src.start(); o.start();
-        hum = { a, src, o, lpf, g, lvl: -1, hollow: null };
-      }
-      const want = on ? 0.06 + 0.16 * level : 0;
-      if (Math.abs(want - hum.lvl) < 0.005 && hum.hollow === hollow) return;
-      hum.lvl = want; hum.hollow = hollow;
-      const t = hum.a.currentTime;
-      hum.g.gain.setTargetAtTime(want, t, on ? 0.05 : 0.12);
-      hum.lpf.frequency.setTargetAtTime(hollow ? 160 : 230 + 300 * level, t, 0.08);
-      hum.o.frequency.setTargetAtTime(hollow ? 36 : 44 + 16 * level, t, 0.1);
-      if (!on) { const h = hum; hum = null; setTimeout(() => { try { h.src.stop(); h.o.stop(); } catch {} }, 900); }
-    } catch {}
+    if (!(level > 0.02) && !hum) return;
+    hum = level > 0.02;
+    window.Snd?.bed('lanes.roll', rollBed).set(level > 0.02 ? level : 0, hollow);
   }
-  // one pin: a hollow maple "tock" (v 0..1 is how hard it's hit)
-  const tock = (v = 1, at = 0) => snd((tn, nz) => {
-    const f = 700 + Math.random() * 900;
-    tn(f, f * 0.82, 0.09, 'triangle', 0.05 * v, at); tn(f * 2.7, f * 2.3, 0.04, 'sine', 0.018 * v, at);
-    nz(0.035, 2200 + Math.random() * 1800, 1.4, 0.32 * v, at);
-  });
-  // the ball reaching the rack: a heavy thump, and for a big hit a clattering wash
-  const crash = (n) => snd((tn, nz) => {
-    tn(150, 60, 0.2, 'sine', 0.26); nz(0.1, 800, 0.6, 0.55);
-    if (n >= 5) nz(0.45 + n * 0.02, 1700, 0.45, 0.04 * n, 0.04);
+  // one pin: a hollow maple tock, its pitch set by the pin (each one a little different), panned to its spot
+  const PIN_F = [610, 680, 560, 720, 640, 590, 750, 700, 620, 660];
+  const tock = (v = 1, at = 0, k = -1, x = 0) => snd((t, K) => {
+    const dst = K.at({ ...HALL, pan: panX(x), vol: 0.6 + 0.4 * v }), f = K.vary(k >= 0 ? PIN_F[k] : K.R(560, 760), 0.05);
+    K.burst(dst, t, { type: 'bandpass', f: K.R(2400, 3600), q: 1.1, vol: 0.32 * v, tau: 0.004 });
+    K.mode(dst, t, f, 0.13 * v, 0.03); K.mode(dst, t, f * 2.41, 0.06 * v, 0.016); K.mode(dst, t, f * 4.1, 0.025 * v, 0.008);
+    K.mode(dst, t, f * 0.5, 0.05 * v, 0.05);
+  }, at);
+  // the ball reaching the rack: a heavy thump of the ball into the head pin, and for a big hit a clatter of
+  // pins on the deck and against the kickbacks that grows with how many go
+  const crash = (n, x = 0) => snd((t, K) => {
+    const dst = K.at({ ...HALL, pan: panX(x) });
+    K.mode(dst, t, 90, 0.32, 0.07, { f1: 60 }); K.burst(dst, t, { type: 'lowpass', f: 900, q: 0.7, vol: 0.5, tau: 0.03 });
+    K.burst(dst, t, { type: 'bandpass', f: 2600, q: 0.9, vol: 0.28, tau: 0.006 });
+    if (n >= 4) {
+      for (let i = 0; i < n + 4; i++) {
+        const dt = 0.03 + i * K.R(0.018, 0.04), d2 = K.at({ ...HALL, pan: K.R(-0.6, 0.6), vol: 0.5 });
+        K.burst(d2, t + dt, { type: 'bandpass', f: K.R(1800, 3800), q: 1.3, vol: K.R(0.08, 0.2), tau: 0.004 });
+        K.mode(d2, t + dt, K.R(520, 800), K.R(0.03, 0.07), 0.025);
+      }
+      K.burst(dst, t + 0.05, { type: 'bandpass', f: 1500, f1: 700, q: 0.4, vol: 0.03 * n, tau: 0.12, dur: 0.4 + n * 0.03 });
+      K.burst(dst, t + 0.15, { type: 'lowpass', f: 300, q: 0.6, vol: 0.02 * n, tau: 0.08, buf: 'brown' });  // pins hitting the pit cushion
+    }
   });
   const SND = {
-    release: () => snd((tn, nz) => { nz(0.2, 800, 0.5, 0.25); tn(120, 70, 0.14, 'sine', 0.2, 0.12); nz(0.05, 500, 0.8, 0.3, 0.12); }),
-    gutter: () => snd((tn, nz) => { tn(170, 90, 0.12, 'sine', 0.16); nz(0.08, 450, 0.9, 0.35); }),
-    pit: (hit) => snd((tn, nz) => { tn(95, 38, 0.32, 'sine', 0.24, 0.05); nz(0.12, 320, 0.7, hit ? 0.3 : 0.5, 0.05); if (!hit) nz(0.25, 220, 0.5, 0.35, 0.08); }),
-    sweep: () => snd((tn, nz) => { tn(260, 190, 0.22, 'triangle', 0.025); nz(0.4, 650, 0.5, 0.14, 0.2); }),
-    setter: () => snd((tn, nz) => { tn(180, 240, 0.35, 'triangle', 0.02); nz(0.05, 1500, 1.5, 0.18, 0.36); for (let i = 0; i < 4; i++) nz(0.02, 2600 + Math.random() * 900, 2, 0.1, 0.38 + i * 0.015); }),
-    whirr: () => snd((tn, nz) => { tn(90, 150, 1.6, 'triangle', 0.018); nz(1.6, 380, 0.6, 0.07); }),
-    clunk: () => snd((tn, nz) => { tn(200, 120, 0.09, 'sine', 0.2); nz(0.04, 1300, 1.2, 0.28); tn(160, 110, 0.07, 'sine', 0.1, 0.11); nz(0.03, 1600, 1.2, 0.14, 0.11); }),
-    // a rival's lane: the same crash, much quieter
-    far: (n) => snd((tn, nz) => { tn(140, 70, 0.14, 'sine', 0.05); for (let i = 0; i < Math.min(n, 6); i++) nz(0.03, 1800 + Math.random() * 1500, 1.4, 0.07, 0.03 + i * 0.035 + Math.random() * 0.02); }),
+    // the ball leaving the hand and landing on the boards past the foul line
+    release: () => snd((t, K) => {
+      const d = K.at(HALL);
+      K.burst(d, t, { type: 'bandpass', f: 600, f1: 300, q: 0.5, vol: 0.12, tau: 0.04, dur: 0.18, attack: 0.04 });
+      K.mode(d, t + 0.14, 85, 0.3, 0.06, { f1: 55 }); K.burst(d, t + 0.14, { type: 'lowpass', f: 700, q: 0.7, vol: 0.4, tau: 0.02 });
+      K.mode(d, t + 0.14, 230, 0.06, 0.03);
+    }),
+    gutter: () => snd((t, K) => { const d = K.at(HALL); K.mode(d, t, 170, 0.18, 0.04, { f1: 120 }); K.burst(d, t, { type: 'bandpass', f: 450, q: 0.9, vol: 0.3, tau: 0.02 }); K.mode(d, t, 420, 0.05, 0.02); }),
+    // the ball dropping off the deck into the pit: a padded thump and the curtain swaying
+    pit: (hit) => snd((t, K) => {
+      const d = K.at(HALL);
+      K.mode(d, t + 0.05, 75, 0.3, 0.08, { f1: 45 }); K.burst(d, t + 0.05, { type: 'lowpass', f: 380, q: 0.7, vol: hit ? 0.25 : 0.45, tau: 0.04, buf: 'brown' });
+      if (!hit) K.burst(d, t + 0.1, { type: 'bandpass', f: 600, f1: 250, q: 0.5, vol: 0.12, tau: 0.08, dur: 0.35 });
+    }),
+    // the sweep bar dropping and raking the deck
+    sweep: () => snd((t, K) => {
+      const d = K.at({ ...HALL, send: 0.6 });
+      K.mode(d, t, 140, 0.08, 0.04); K.burst(d, t, { type: 'bandpass', f: 1800, q: 1.5, vol: 0.08, tau: 0.01 });
+      K.burst(d, t + 0.2, { type: 'bandpass', f: 800, f1: 450, q: 0.6, vol: 0.12, tau: 0.06, dur: 0.4, attack: 0.05 });
+      K.sweep(d, t + 0.15, { f0: 95, f1: 120, dur: 0.6, vol: 0.03, type: 'triangle', attack: 0.1 });  // the motor
+    }),
+    // the rack lowered: a motor whine, then ten pins set on the deck in a quick ripple of wooden clicks
+    setter: () => snd((t, K) => {
+      const d = K.at({ ...HALL, send: 0.6 });
+      K.sweep(d, t, { f0: 160, f1: 230, dur: 0.38, vol: 0.025, type: 'triangle', attack: 0.08 });
+      for (let i = 0; i < 10; i++) {
+        const dt = 0.36 + i * K.R(0.008, 0.016), d2 = K.at({ ...HALL, pan: K.R(-0.5, 0.5), vol: 0.45 });
+        K.burst(d2, t + dt, { type: 'bandpass', f: K.R(2200, 3200), q: 1.6, vol: 0.1, tau: 0.003 });
+        K.mode(d2, t + dt, K.vary(PIN_F[i], 0.04), 0.03, 0.02);
+      }
+    }),
+    // the ball's ride back under the lanes: a long low whirr and rumble
+    whirr: () => snd((t, K) => {
+      const d = K.at({ ...HALL, send: 0.4 });
+      K.sweep(d, t, { f0: 80, f1: 140, dur: 1.7, vol: 0.02, type: 'triangle', attack: 0.4 });
+      K.burst(d, t, { type: 'lowpass', f: 260, f1: 420, q: 0.8, vol: 0.18, tau: 0.25, dur: 1.7, attack: 0.5, buf: 'brown' });
+    }),
+    // and up the hood: a knock as it meets the balls already there
+    clunk: () => snd((t, K) => {
+      const d = K.at({ ...HALL, pan: 0.5 });
+      K.mode(d, t, 210, 0.2, 0.035); K.mode(d, t, 610, 0.06, 0.015); K.burst(d, t, { type: 'bandpass', f: 1600, q: 1.2, vol: 0.22, tau: 0.006 });
+      K.mode(d, t + 0.11, 180, 0.09, 0.03); K.burst(d, t + 0.11, { type: 'bandpass', f: 1800, q: 1.2, vol: 0.1, tau: 0.005 });
+    }),
+    // a rival's lane: the same crash, far off to the side and mostly room
+    far: (n) => snd((t, K) => {
+      const d = K.at({ room: 'hall', send: 1.4, pan: K.R(-0.9, 0.9), vol: 0.22 });
+      K.mode(d, t, 85, 0.2, 0.06);
+      for (let i = 0; i < Math.min(n, 7); i++) { const dt = 0.03 + i * K.R(0.02, 0.045); K.burst(d, t + dt, { type: 'bandpass', f: K.R(1800, 3400), q: 1.3, vol: 0.14, tau: 0.004 }); K.mode(d, t + dt, K.R(560, 760), 0.05, 0.025); }
+    }),
   };
   // where the timeline of a phase is: 0 before, 1 after, smoothly between
   const ph = (u, [a, b]) => { const t = Math.min(1, Math.max(0, (u - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -84,7 +144,7 @@ UI.lanes = (() => {
     gl = null; flat = null; anim = null; seen = 0; primed = false; drag = null; holdUntil = 0; saver = false;
     main.innerHTML = `<div class="ln"><div class="ln-hud"><span id="lnFrame"></span><span id="lnTotal"></span></div>
       <div class="ln-rivals" id="lnRivals"></div>
-      <div class="ln-stage" id="lnStage"><div class="ln-word" id="lnWord" hidden></div><div class="ln-power" id="lnPower" hidden><span></span></div></div>
+      <div class="ln-stage" id="lnStage"><div class="ln-word" id="lnWord" hidden></div><div class="ln-speed" id="lnSpeed" hidden></div><div class="ln-power" id="lnPower" hidden><span></span></div></div>
       <div class="ln-ctl">
         <div class="ln-row"><span class="ln-lbl">🧍 Stand</span>
           <div class="ln-dial"><button data-st="-1" aria-label="Stand further left">◀</button><b id="lnStart"></b><button data-st="1" aria-label="Stand further right">▶</button></div>
@@ -123,7 +183,7 @@ UI.lanes = (() => {
     raf = requestAnimationFrame(loop);
   }
 
-  function unmount() { cancelAnimationFrame(raf); raf = 0; rumble(0); ro?.disconnect(); gl?.dispose(); gl = null; flat = null; ret = null; }
+  function unmount() { cancelAnimationFrame(raf); raf = 0; rumble(0); hum = null; ro?.disconnect(); gl?.dispose(); gl = null; flat = null; ret = null; }
 
   // the drag: back = faster, sideways = the line (slingshot: drag left to send it right)
   function aimed() {
@@ -134,8 +194,16 @@ UI.lanes = (() => {
     return { speed: Math.min(1, pull / Math.max(90, h * 0.38)), angle: Math.max(-MAXA, Math.min(MAXA, (side / Math.max(120, w * 0.6)) * MAXA)) };
   }
 
+  // #131 the ball speed, as the alley's screen would show it
+  const KMH = (sp) => (5.5 + 4 * sp) * 3.6;
+  function showSpeed(kmh, top) {
+    const el = $('lnSpeed'); if (!el || !kmh) return;
+    el.innerHTML = `<b>${Math.round(kmh / 1.609)}</b> mph <i>${Math.round(kmh)} km/h</i>${top ? ' <em>⭐ top</em>' : ''}`;
+    el.hidden = false; el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+  }
   function bowl(r) {
     rolledAt = performance.now();
+    showSpeed(KMH(r.speed), KMH(r.speed) > (myRow()?.top || 0) + 0.05 && (myRow()?.top || 0) > 0);
     SND.release(); ctx.buzz?.(18);
     ret = null;  // picked up off the return
     const arm = saver && L().spare && L().saver;
@@ -223,14 +291,20 @@ UI.lanes = (() => {
         const td = ctx.el('td', 'ln-f' + (f === r.frame && !r.done ? ' now' : ''));
         const fr = r.frames[f];
         const m = fr ? marks(fr, f === v.nframes - 1) : [];
-        td.append(ctx.el('div', 'ln-balls', m.join(' ') || ' '), ctx.el('div', 'ln-cum', r.cum[f] != null ? String(r.cum[f]) : ' '));
+        const balls = ctx.el('div', 'ln-balls');
+        (m.length ? m : [' ']).forEach((x) => balls.append(ctx.el('span', x === 'X' ? 'ln-x' : x === '/' ? 'ln-sp' : x === '-' ? 'ln-miss' : '', x)));
+        td.append(balls, ctx.el('div', 'ln-cum', r.cum[f] != null ? String(r.cum[f]) : ' '));
         tr.append(td);
       }
       tr.append(ctx.el('td', 'ln-tot', String(r.total)));
+      if (r.top) tr.title = `Top ball speed ${Math.round(r.top / 1.609)} mph`;
       t.append(tr);
     }
     box.append(t);
     box.append(ctx.el('p', 'hint left', `🌟 Frame ${v.cosmic + 1} is cosmic: a strike or spare in it scores +10 more.`));
+    const me = myRow();
+    if (me?.top) box.append(ctx.el('p', 'hint left', `🚀 Your fastest ball: ${Math.round(me.top / 1.609)} mph (${Math.round(me.top)} km/h).`));
+    box.append(ctx.el('p', 'hint left', `🛢️ The faint sheen down the middle is the oil (${v.oil} m): the ball skids on it and only hooks once it reaches the dry boards.`));
   }
 
   // where the ball, my pins, the sweep bar and the pinsetter are right now
@@ -303,12 +377,20 @@ UI.lanes = (() => {
       if (!anim.pit && bi >= bf.length - 1) { anim.pit = true; SND.pit(sh.knocked.length > 0); }
       // each pin tocks as it's hit, after a thump for the ball meeting the rack
       const hits = sh.tracks.pins.map((t) => t.s).sort((a, b) => a - b);
-      if (anim.hi === 0 && hits.length && f >= hits[0]) { anim.hi = 1; crash(sh.knocked.length); if (sh.knocked.length >= 7) gl?.shake(); }
-      while (anim.hits < hits.length && f >= hits[anim.hits]) { tock(Math.max(0.35, 1 - anim.hits * 0.06)); if (anim.hits % 3 === 1) tock(0.4, 0.03 + Math.random() * 0.05); anim.hits++; }
+      if (anim.hi === 0 && hits.length && f >= hits[0]) { anim.hi = 1; crash(sh.knocked.length, bf[Math.min(bf.length - 1, bi)]?.[0]); if (sh.knocked.length >= 7) gl?.shake(); }
+      if (!anim.order) anim.order = sh.tracks.pins.slice().sort((a, b) => a.s - b.s);
+      while (anim.hits < hits.length && f >= hits[anim.hits]) {
+        const pt = anim.order[anim.hits], px = pt?.f?.[0]?.[0] ?? 0;
+        tock(Math.max(0.35, 1 - anim.hits * 0.06), 0, pt?.k ?? -1, px);
+        if (anim.hits % 3 === 1) tock(0.4, 0.03 + Math.random() * 0.05, -1, px);
+        anim.hits++;
+      }
       if (!anim.said && f >= sh.frames) {
         anim.said = true;
         const w = sh.word === 'strike' ? 'STRIKE!' : sh.word === 'spare' ? 'SPARE!' : sh.gutter && !sh.knocked.length ? 'Gutter…' : `${sh.knocked.length}`;
         word(w, sh.word);
+        const mine = myRow();
+        if (mine?.done) setTimeout(() => { if ($('lnWord')) word(`🏁 ${mine.total}`, 'final', 2600); }, 1300);  // the final score, before the game ends (#130)
         if (sh.word === 'strike') { ctx.sfx?.('fanfare'); ctx.confetti?.(); } else if (sh.word === 'spare') ctx.sfx?.('good');
       }
       // the pinsetter, then the ball coming back up the return
@@ -330,10 +412,11 @@ UI.lanes = (() => {
     (gl || flat)?.draw(now, scene(now), r);
   }
 
-  function word(text, kind) {
+  function word(text, kind, ms = 1500) {
     const w = $('lnWord'); if (!w) return;
     w.textContent = text; w.className = `ln-word ${kind || ''}`; w.hidden = false;
-    clearTimeout(word.t); word.t = setTimeout(() => { w.hidden = true; }, 1500);
+    w.style.animationDuration = `${ms}ms`;
+    clearTimeout(word.t); word.t = setTimeout(() => { w.hidden = true; }, ms);
   }
 
   // ---------- three.js: world x = lane x, world z = -lane y, y up. My lane at x = 0, rivals either side.
@@ -348,13 +431,13 @@ UI.lanes = (() => {
     const renderer = GL3.renderer({}, { onLost: () => { gl?.dispose(); gl = make3d(stage); } });
     if (!renderer) return null;
     stage.prepend(renderer.domElement);
-    const ln = L().lane, W = ln.w, HEAD = ln.head, PIT = ln.pit, PITCH = W + 0.75, R = ln.ballR;
+    const v0 = L(), ln = v0.lane, W = ln.w, HEAD = ln.head, PIT = ln.pit, PITCH = W + 0.75, R = ln.ballR;
     const scene = new T.Scene(); scene.background = new T.Color(0x0e0a1c);
     const camera = new T.PerspectiveCamera(30, 1, 0.05, 120);
     const stg = GL3.stage(renderer, scene, {
       exposure: 1.05, hemi: [0xfff1e0, 0x24163a, 0.75],
       key: { i: 0.75, pos: [1.5, 8, -HEAD + 3], area: 2.2, near: 1, far: 20 },
-      env: { walls: 0x1a1030, lamp: 0xfff4e6, accent: 0xff4fa3, floor: 0x3a2412 },
+      env: { walls: 0x1a1030, lamp: 0xfff4e6, accent: 0xffd9b0, floor: 0x3a2412 },  // (a pink accent read as a pink patch in the oil, #132)
       sky: { top: 0x07040f, horizon: 0x2b1650, bottom: 0x0e0a1c, band: 0.1 },
     });
     stg.key.target.position.set(0, 0, -HEAD);
@@ -365,6 +448,15 @@ UI.lanes = (() => {
     // shade with a fine grain; the arrows, dots, range finders and pin spots; a clear coat that's glossy where it's
     // oiled (the front two thirds) and duller on the dry back end
     const TW = low ? 128 : 256, TH = low ? 2048 : 4096;
+    // #137 the oil pattern for this game's Oil setting: heaviest down the middle boards, tapering to the edges
+    // and ending earlier out there (a "Christmas tree"), out to the setting's oil length. 0..1 by board and
+    // distance from the foul line. The clear coat is glossy where it's oiled, duller on the dry back end.
+    const OILL = v0.oil || 12;
+    const oilAt = (b, d) => {
+      const c = 1 - Math.min(1, Math.abs(b - 19) / 19.5), end = OILL * (0.55 + 0.45 * c);
+      if (d < 0 || d > end + 0.8) return 0;
+      return (0.35 + 0.65 * c) * (d < end ? 1 : 1 - (d - end) / 0.8);
+    };
     const wood = canvasTex(T, TW, TH, (g, w, h) => {
       const boards = 39, bw = w / boards, Y = (y) => h - ((y + 1.5) / len) * h;
       const pine = [Y(HEAD - 0.6), Y(4.6)];  // (canvas y runs the other way)
@@ -389,31 +481,50 @@ UI.lanes = (() => {
       }
       for (const bd of [3, 5, 8, 11, 14, 25, 28, 31, 34, 36]) { g.beginPath(); g.arc((bd / boards) * w, Y(2.1), 1.4 * sc, 0, 7); g.fill(); }
       for (const bd of [10, 30]) g.fillRect((bd / boards) * w - sc, Y(12.2), 2 * sc, 18 * sc);  // range finders
-      g.fillStyle = '#c0262d'; g.fillRect(0, Y(0) - 2 * sc, w, 4 * sc);
+      g.fillStyle = '#b3121c'; g.fillRect(0, Y(0) - 5 * sc, w, 10 * sc);  // the foul line (#134), and a mesh strip over it
+      // the oil: a faint cool sheen you can just make out, strongest down the middle (#137)
+      for (let b = 0; b < boards; b++) for (let d = 0; d < OILL + 1; d += 0.25) {
+        const o = oilAt(b + 0.5, d); if (o <= 0) continue;
+        g.fillStyle = `rgba(235,245,255,${(0.07 * o).toFixed(3)})`; g.fillRect(b * bw, Y(d + 0.25), bw, Y(d) - Y(d + 0.25) + 0.5);
+      }
       g.fillStyle = 'rgba(60,30,10,.35)'; for (const [sx, sy] of ln.spots) { g.beginPath(); g.arc(w / 2 + (sx / W) * w, Y(sy), 3 * sc, 0, 7); g.fill(); }
     });
     const laneMat = new T.MeshStandardMaterial({ map: wood, roughness: low ? 0.2 : 1, metalness: 0, emissive: 0x000000, envMapIntensity: 0.9 });
     if (!low) {
-      laneMat.roughnessMap = canvasTex(T, 4, 256, (g, w, h) => {
+      laneMat.roughnessMap = canvasTex(T, 39, 256, (g, w, h) => {
         for (let y = 0; y < h; y++) {
           const d = (1 - y / h) * len - 1.5;  // distance from the foul line
-          const r = d < 0 ? 0.35 : d < 12.5 ? 0.09 : d < 14 ? 0.09 + (d - 12.5) * 0.17 : 0.35;
-          g.fillStyle = `rgb(0,${Math.round(r * 255)},0)`; g.fillRect(0, y, w, 1);
+          for (let b = 0; b < w; b++) {
+            const r = d < 0 ? 0.4 : 0.3 - 0.24 * oilAt(b + 0.5, d);
+            g.fillStyle = `rgb(0,${Math.round(r * 255)},0)`; g.fillRect(b, y, 1, 1);
+          }
         }
       });
     }
     const gutterMat = new T.MeshStandardMaterial({ color: 0x2a2733, roughness: 0.35, metalness: 0.55, side: T.DoubleSide });
-    const capMat = new T.MeshStandardMaterial({ color: 0x2c1d47, roughness: 0.45 });
-    const glowMats = [0xff4fa3, 0x4cc9f0].map((c) => new T.MeshBasicMaterial({ color: c, toneMapped: false }));
+    const capMat = new T.MeshStandardMaterial({ color: 0x23212b, roughness: 0.4, metalness: 0.2 });  // (was purple: with its pink edge it read as part of the lane, #132)
+    const glowMats = [0x9b6bff, 0x4cc9f0].map((c) => new T.MeshBasicMaterial({ color: c, toneMapped: false }));
+    // #136 a tenpin's turned profile (radius, height in m): the base, the belly at 11 cm, the neck at 25 cm, the head
+    const PH = 0.381;
     const pinGeo = (() => {
-      const pr = [[0, 0], [0.026, 0], [0.05, 0.05], [0.06, 0.11], [0.05, 0.19], [0.022, 0.25], [0.02, 0.28], [0.03, 0.33], [0.024, 0.37], [0, 0.38]];
-      return new T.LatheGeometry(pr.map(([x, y]) => new T.Vector2(x, y)), 16);
+      const pr = [[0, 0], [0.025, 0], [0.033, 0.004], [0.044, 0.022], [0.054, 0.05], [0.0595, 0.085], [0.0605, 0.114], [0.0585, 0.145],
+        [0.051, 0.178], [0.04, 0.207], [0.03, 0.23], [0.0235, 0.25], [0.0228, 0.265], [0.025, 0.285], [0.029, 0.31], [0.0318, 0.333],
+        [0.0315, 0.35], [0.0275, 0.366], [0.019, 0.376], [0.008, 0.3805], [0, PH]];
+      const geo = new T.LatheGeometry(pr.map(([x, y]) => new T.Vector2(x, y)), low ? 16 : 32);
+      // (a lathe's v runs by profile point, not height: the stripes used to land on the head. Map v to height.)
+      const pos = geo.attributes.position, uv = geo.attributes.uv;
+      for (let i = 0; i < uv.count; i++) uv.setY(i, pos.getY(i) / PH);
+      return geo;
     })();
-    const pinTex = canvasTex(T, 64, 128, (g, w, h) => {
-      g.fillStyle = '#fbfaf6'; g.fillRect(0, 0, w, h);
-      g.fillStyle = '#c0262d'; g.fillRect(0, h * 0.22, w, h * 0.04); g.fillRect(0, h * 0.29, w, h * 0.04);
+    const pinTex = canvasTex(T, 64, 256, (g, w, h) => {
+      const at = (y) => h * (1 - y / PH);  // canvas y for a height on the pin (the texture's flipped: top is the head)
+      const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#fffefb'); gr.addColorStop(1, '#f1ede4');
+      g.fillStyle = gr; g.fillRect(0, 0, w, h);
+      g.fillStyle = '#c0262d'; g.fillRect(0, at(0.262), w, at(0.252) - at(0.262)); g.fillRect(0, at(0.245), w, at(0.235) - at(0.245));
+      g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(0, at(0.006), w, h - at(0.006));  // the scuffed base
     });
-    const pinMat = new T.MeshStandardMaterial({ map: pinTex, roughness: 0.22, metalness: 0, emissive: 0x000000 });
+    const pinMat = new T.MeshPhysicalMaterial ? new T.MeshPhysicalMaterial({ map: pinTex, roughness: 0.3, clearcoat: low ? 0 : 0.8, clearcoatRoughness: 0.12, metalness: 0, emissive: 0x000000 })
+      : new T.MeshStandardMaterial({ map: pinTex, roughness: 0.22, metalness: 0, emissive: 0x000000 });
     // shared pieces of every lane
     const deckGeo = new T.PlaneGeometry(W, len);
     const gutGeo = new T.CylinderGeometry(0.12, 0.12, len, 12, 1, true, 0, Math.PI);
@@ -469,11 +580,11 @@ UI.lanes = (() => {
       const strip = new T.Mesh(stripGeo, stripMat); strip.position.set(0, 0.73, -PIT + 0.8); grp.add(strip);
       let pins;
       if (empty) {  // a lane nobody's on: a still rack, one draw call
-        const im = new T.InstancedMesh(pinGeo, pinMat, 10), m4 = new T.Matrix4();
+        const im = new T.InstancedMesh(pinGeo, pinMat, 10), m4 = new T.Matrix4(); im.castShadow = false;
         ln.spots.forEach(([px, py], k) => im.setMatrixAt(k, m4.makeTranslation(px, 0, -py)));
         grp.add(im); pins = [];
       } else {
-        pins = ln.spots.map(([px, py]) => { const m = new T.Mesh(pinGeo, pinMat); m.position.set(px, 0, -py); m.castShadow = !low; grp.add(m); return m; });
+        pins = ln.spots.map(([px, py]) => { const m = new T.Mesh(pinGeo, pinMat); m.position.set(px, 0, -py); m.castShadow = !low; m.receiveShadow = !low; grp.add(m); return m; });
       }
       const bar = empty ? null : new T.Mesh(barGeo, barMat), setter = empty ? null : new T.Mesh(setGeo, setMat);
       if (bar) { bar.visible = false; grp.add(bar); }
@@ -482,6 +593,37 @@ UI.lanes = (() => {
       return { x, grp, pins, bar, setter, empty, ev: null };
     }
     lanes.push(buildLane(0));
+    // #134 the foul line: a red strip right across the lane and gutters, lit a touch so it reads from the
+    // approach, and the foul-light posts on the cappings either side
+    {
+      const fl = new T.Mesh(new T.BoxGeometry(W + 0.5, 0.004, 0.04), new T.MeshStandardMaterial({ color: 0xc8141f, emissive: 0x6a0610, roughness: 0.45 }));
+      fl.position.set(0, 0.002, 0); scene.add(fl);
+      const postMat = new T.MeshStandardMaterial({ color: 0x1b1426, roughness: 0.4, metalness: 0.4 }), eye = new T.MeshBasicMaterial({ color: 0xff2a3a, toneMapped: false });
+      for (const sx of [-1, 1]) {
+        const post = new T.Mesh(new T.BoxGeometry(0.05, 0.09, 0.05), postMat); post.position.set(sx * PITCH / 2, 0.115, 0); scene.add(post);
+        const e = new T.Mesh(new T.BoxGeometry(0.052, 0.014, 0.02), eye); e.position.set(sx * PITCH / 2, 0.14, 0.016); scene.add(e);
+      }
+    }
+    // soft contact shadows under my standing pins (all the shadow there is on Low graphics)
+    const blobTex = canvasTex(T, 64, 64, (g, w, h) => {
+      const gr = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); gr.addColorStop(0, 'rgba(0,0,0,.55)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, w, h);
+    });
+    const blobMat = new T.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false, opacity: low ? 1 : 0.6 });
+    const blobs = ln.spots.map(([px, py]) => { const b = new T.Mesh(new T.PlaneGeometry(0.2, 0.2), blobMat); b.rotation.x = -Math.PI / 2; b.position.set(px, 0.003, -py); scene.add(b); return b; });
+    // #137 reflections (fine graphics): a mirrored copy of my pins and ball, drawn faintly only where the lane's
+    // finish shows (a stencil: the lane deck marks its pixels, the pins and ball unmark theirs)
+    let mirror = null;
+    const stencil = (m, ref, func, op) => Object.assign(m, { stencilWrite: true, stencilRef: ref, stencilFunc: func, stencilZPass: op, stencilFail: T.KeepStencilOp, stencilZFail: T.KeepStencilOp });
+    if (!low) {
+      stencil(laneMat, 1, T.AlwaysStencilFunc, T.ReplaceStencilOp);
+      stencil(pinMat, 0, T.AlwaysStencilFunc, T.ReplaceStencilOp);
+      const grp = new T.Group(); grp.scale.y = -1; scene.add(grp);
+      const ghost = (map, color) => stencil(new T.MeshBasicMaterial({ map, color, transparent: true, opacity: 0.2, depthTest: false, depthWrite: false }), 1, T.EqualStencilFunc, T.KeepStencilOp);
+      const mMat = ghost(pinTex, 0xffffff);
+      const pins = ln.spots.map(() => { const m = new T.Mesh(pinGeo, mMat); m.renderOrder = 2; grp.add(m); return m; });
+      mirror = { grp, pins, ball: null, ghost };
+    }
     // my lane's pin deck gets its own light, so the rack pops against the dark pit
     if (!low) { const dl = new T.PointLight(0xfff0d8, 1.1, 3.2, 2); dl.position.set(0, 0.72, -HEAD + 0.25); scene.add(dl); }
     // the room: dark carpet, a glowing approach, a back wall over the masking units with the sign, a ceiling of
@@ -489,7 +631,7 @@ UI.lanes = (() => {
     const SPAN = PITCH * 5.5;
     const floor = new T.Mesh(new T.PlaneGeometry(SPAN * 2, len + 20), new T.MeshStandardMaterial({ color: 0x140e22, roughness: 0.9 }));
     floor.rotation.x = -Math.PI / 2; floor.position.set(0, -0.01, -(len / 2)); scene.add(floor);
-    const approach = new T.Mesh(new T.PlaneGeometry(SPAN * 2, 4.5), new T.MeshStandardMaterial({ color: 0xc89a62, roughness: 0.3 }));
+    const approach = new T.Mesh(new T.PlaneGeometry(SPAN * 2, 4.5), new T.MeshStandardMaterial({ color: 0x6e4a2c, roughness: 0.45 }));
     approach.rotation.x = -Math.PI / 2; approach.position.set(0, 0.001, 2.2); scene.add(approach);
     const wallMat = new T.MeshStandardMaterial({ color: 0x150b28, roughness: 0.85 });
     const back = new T.Mesh(new T.PlaneGeometry(SPAN * 2, 6), wallMat); back.position.set(0, 3, -PIT - 0.62); scene.add(back);
@@ -526,6 +668,10 @@ UI.lanes = (() => {
     const ballGeo = new T.SphereGeometry(R, 28, 18);
     const ball = new T.Mesh(ballGeo, ballMat); ball.castShadow = !low; scene.add(ball);
     const retBall = new T.Mesh(ballGeo, ballMat); retBall.visible = false; scene.add(retBall);
+    if (mirror) {
+      stencil(ballMat, 0, T.AlwaysStencilFunc, T.ReplaceStencilOp);
+      mirror.ball = new T.Mesh(ballGeo, mirror.ghost(ballTex, ballMat.color)); mirror.ball.renderOrder = 2; mirror.grp.add(mirror.ball);
+    }
     // (the ball rides the capping back, goes in under the hood and comes out onto the rack in front of it)
     const HX = PITCH / 2, HZ = 0.2, RACK = 0.22, RACKZ = HZ + 0.42;
     const hood = new T.Group(); hood.position.set(HX, 0, HZ); scene.add(hood);
@@ -621,6 +767,8 @@ UI.lanes = (() => {
         m.rotation.set(-Math.cos(a) * p.fall * 1.45, 0, Math.sin(a) * p.fall * 1.45);
         m.position.y = p.lift ?? p.fall * 0.04;
       });
+      blobs.forEach((b, k) => { const p = byK.get(k); b.visible = !!p && !p.gone && p.fall < 0.3 && !p.lift; });
+      if (mirror) lane.pins.forEach((m, k) => { const c = mirror.pins[k]; c.visible = m.visible; c.position.copy(m.position); c.rotation.copy(m.rotation); });
       lane.bar.visible = !!st.bar;
       if (st.bar) lane.bar.position.set(0, st.bar.h, -st.bar.y);
       lane.setter.visible = !!st.setter;
@@ -637,8 +785,9 @@ UI.lanes = (() => {
         ball.rotation.set(-spinA, 0, 0);
       } else {
         ball.visible = !!me && !me.done && (ready || !ret);
-        ball.position.set(start, R, -0.3);
+        ball.position.set(start, R, 0.16);  // (on the approach, behind the foul line)
       }
+      if (mirror) { mirror.ball.visible = ball.visible; mirror.ball.position.copy(ball.position); mirror.ball.rotation.copy(ball.rotation); }
       retBall.visible = !!ret && !(ret.rest && ready) && !st.ball;
       if (ret?.t0) {
         const t = Math.min(1, (now - ret.t0) / RETURN_MS), e = t * t * (3 - 2 * t), zFrom = -PIT, zTo = RACKZ;
@@ -659,7 +808,7 @@ UI.lanes = (() => {
       // camera: behind the foul line, then riding the ball, then looking at the pins (and the pinsetter)
       if (st.ball && st.ball.y < HEAD - 5.5) { cam.tp.set(st.ball.x * 0.5, 0.75, -st.ball.y + 2.2); cam.tl.set(st.ball.x * 0.5, 0.1, -st.ball.y - 6); cam.tf = 34; }
       else if (anim) { cam.tp.set(0, 1.05, -HEAD + 3.6); cam.tl.set(0, 0.2, -HEAD - 0.35); cam.tf = tall ? 34 : 28; }
-      else { cam.tp.set(start * 0.7, 0.9, 1.6); cam.tl.set(start * 0.2, 0, -8); cam.tf = tall ? 38 : 28; }
+      else { cam.tp.set(start * 0.7, 1.25, 3.4); cam.tl.set(start * 0.2, 0, -6.5); cam.tf = tall ? 38 : 30; }  // (the foul line and approach in view, #134)
       const k = 1 - Math.exp(-dt * (anim ? 5 : 3));
       cam.pos.lerp(cam.tp, k); cam.look.lerp(cam.tl, k); cam.fov += (cam.tf - cam.fov) * k;
       cam.moving = cam.pos.distanceTo(cam.tp) > 0.01 || cam.look.distanceTo(cam.tl) > 0.01 || cosmicK % 1 > 0.01 && cosmicK < 0.99;
@@ -703,7 +852,7 @@ UI.lanes = (() => {
       const ln = L().lane, X = (x) => canvas.width / 2 + x * k * 2.2, Y = (y) => canvas.height - (y + 0.8) * k;
       g.fillStyle = '#140e22'; g.fillRect(0, 0, canvas.width, canvas.height);
       g.fillStyle = '#d7a86e'; g.fillRect(X(-ln.w / 2), Y(ln.pit), ln.w * k * 2.2, Y(-0.8) - Y(ln.pit));
-      g.fillStyle = '#c0262d'; g.fillRect(X(-ln.w / 2), Y(0) - 1, ln.w * k * 2.2, 2);
+      g.fillStyle = '#c8141f'; g.fillRect(X(-ln.w / 2) - 6, Y(0) - 2, ln.w * k * 2.2 + 12, 4);
       for (const p of st.pins) {
         if (p.gone) continue;
         g.globalAlpha = 1 - p.fall * 0.6;

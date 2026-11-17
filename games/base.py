@@ -38,19 +38,20 @@ class Game:
                          for k, (lbl, opts, d) in cls.settings_schema.items()],
         }
 
-    def award(self, p, key):
+    def award(self, p, key, at=None):
         """Give player `p` (a Player or an id) this game's badge `key`; the room counts it for the evening
-        and announces the first one."""
+        and announces the first one (at: hold the announcement until then, see Room.add_log)."""
         award = getattr(self.room, "award", None)  # the rules tests run on small fake rooms
         if award:
-            award(p, self.id, key)
+            award(p, self.id, key, **({"at": at} if at is not None else {}))
 
-    def moment(self, text, tone="gold", sound=None, to=None):
+    def moment(self, text, tone="gold", sound=None, to=None, at=None):
         """✨ A moment for the table: a log line that also pops up as a callout on every screen
-        (Room.moment). tone: gold | good | bad | cool; sound: an SFX name or None."""
+        (Room.moment). tone: gold | good | bad | cool; sound: an SFX name or None. at: hold it until then
+        (a shot still playing out on screen, #129)."""
         m = getattr(self.room, "moment", None)  # the rules tests run on small fake rooms
         if m:
-            m(text, tone, sound, to)
+            m(text, tone, sound, to, **({"at": at} if at is not None else {}))
         else:
             self.room.add_log(text, "big")
 
@@ -143,3 +144,47 @@ class Game:
         elif r.turn == p.id:
             r.advance()
         p.eliminated = True
+
+
+def shift_times(game, shift, ref):
+    """Move every clock a game keeps on by `shift` seconds: the game was paused (or the server was down) at
+    `ref`. For games without their own on_restore. A clock is any number within two days of `ref` (a
+    time.time() stamp), found in the game's fields, its players' state (p.g) and the lists, dicts and small
+    objects inside them (a snowball's flight t0/t1, a bot's next move)."""
+    lo, hi = ref - 172800, ref + 172800
+    seen = set()
+
+    def walk(x, depth):
+        if depth > 5 or id(x) in seen:
+            return x
+        if isinstance(x, bool):
+            return x
+        if isinstance(x, (int, float)):
+            return x + shift if lo < x < hi else x
+        if isinstance(x, (str, bytes)) or x is None:
+            return x
+        seen.add(id(x))
+        if isinstance(x, list):
+            for i, v in enumerate(x):
+                x[i] = walk(v, depth + 1)
+        elif isinstance(x, dict):
+            for k in list(x):
+                x[k] = walk(x[k], depth + 1)
+        elif isinstance(x, tuple):
+            return tuple(walk(v, depth + 1) for v in x)
+        elif hasattr(x, "__dict__") and not callable(x) and type(x).__module__ != "random":
+            for k, v in list(vars(x).items()):
+                if k in ("room", "rng", "s", "streams", "cond") or k.startswith("__"):
+                    continue
+                setattr(x, k, walk(v, depth + 1))
+        return x
+
+    for k, v in list(vars(game).items()):
+        if k in ("room", "rng", "s"):
+            continue
+        setattr(game, k, walk(v, 1))
+    for p in getattr(game.room, "players", {}).values():
+        g = getattr(p, "g", None)
+        if g is not None:
+            p.g = walk(g, 1)
+

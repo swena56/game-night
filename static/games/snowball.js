@@ -14,7 +14,7 @@ UI.snowball = (() => {
   const calm = () => document.body.classList.contains('calm');
 
   function mount(main, side) {
-    S = null; snap = null; gl = null; flat = null; drag = null; stick = [0, 0]; keys = new Set(); lastSeq = -1; flash = null; packAt = 0; rot = false;
+    S = null; snap = null; gl = null; flat = null; drag = null; stick = [0, 0]; keys = new Set(); lastSeq = -1; flash = null; packAt = 0; rot = false; disp.length = 0; predAt = 0;
     main.innerHTML = `<div class="sw"><div class="sw-stage" id="swStage">
         <div class="sw-hud"><span id="swClock">2:00</span><span id="swPips"></span></div>
         <div class="lr-banner" id="swBanner" hidden></div>
@@ -71,7 +71,8 @@ UI.snowball = (() => {
   }
 
   function unmount() {
-    cancelAnimationFrame(raf); ro?.disconnect();
+    cancelAnimationFrame(raf); ro?.disconnect(); clearTimeout(stickT);
+    window.Snd?.bed('snow.wind').set(0);
     removeEventListener('keydown', keyDown); removeEventListener('keyup', keyUp);
     gl?.dispose(); gl = null; flat = null;
   }
@@ -80,6 +81,9 @@ UI.snowball = (() => {
   const me = () => V()?.me;
   const playing = () => me() != null && S.phase === 'playing';
   const colorOf = (i) => ctx.player(V().seats[i])?.color ?? '#888';
+  // 🔴🔵 teams (#126): the hat, scarf and a ring underfoot in the team's colour
+  const TEAM_COL = ['#e63946', '#3a86ff'], TEAM_NAME = ['🔴 Red', '🔵 Blue'];
+  const teamOf = (i) => (V()?.teams ? V().team[i] : null);
   const nameOf = (i) => ctx.player(V().seats[i])?.name ?? '?';
 
   function showStick(x, y, dx, dy) {
@@ -92,17 +96,26 @@ UI.snowball = (() => {
   function keyStick() {
     let x = 0, y = 0;
     for (const k of keys) { x += KEYS[k][0]; y += KEYS[k][1]; }
-    setStick(Math.sign(x), Math.sign(y), true);
+    const m = Math.hypot(x, y) || 1;
+    setStick(Math.sign(x) / (x && y ? Math.SQRT2 : 1), Math.sign(y) / (x && y ? Math.SQRT2 : 1));
   }
 
   // the stick is in screen terms; on a turned field, screen-down is the field's +y… turned a quarter
+  // (#123) the stick goes at most every 40 ms, always ending on the latest (a trailing send), and never queues:
+  // the app's input channel keeps only the newest stick, so a burst of key presses can't back up behind itself
+  let stickT = 0;
+  function sendStick() {
+    clearTimeout(stickT); stickT = 0;
+    if (!playing()) return;
+    sentAt = performance.now();
+    ctx.input({ sx: +stick[0].toFixed(3), sy: +stick[1].toFixed(3) });
+  }
   function setStick(x, y, force = false) {
     stick = rot ? [-y, x] : [x, y];
     if (!playing()) return;
-    const now = performance.now();
-    if (!force && now - sentAt < 50) return;
-    sentAt = now;
-    ctx.input({ sx: +stick[0].toFixed(3), sy: +stick[1].toFixed(3) }, force);
+    const wait = 40 - (performance.now() - sentAt);
+    if (force || wait <= 0) sendStick();
+    else if (!stickT) stickT = setTimeout(sendStick, wait);
   }
   function press() { if (!playing() || packAt) return; packAt = performance.now(); ctx.input({ throw: 'down' }, true); renderSide(); }
   function release() { if (!packAt) return; packAt = 0; if (playing()) ctx.input({ throw: 'up' }, true); renderSide(); }
@@ -126,45 +139,107 @@ UI.snowball = (() => {
 
   function take(d) {
     const was = snap?.st;
-    snap = { st: d.st, tl: d.tl, go: d.go, k: d.k, b: d.b, f: d.f, p: d.p };
+    snap = { st: d.st, tl: d.tl, go: d.go, k: d.k, b: d.b, f: d.f, p: d.p, tp: d.tp };
     gotAt = performance.now();
     Object.assign(V(), { st: d.st, k: d.k, f: d.f, p: d.p });
     if (was === 'countdown' && d.st === 'play') ctx?.sfx?.('whoosh');
     if (d.st !== 'play' && packAt) packAt = 0;
   }
 
+  // ---------- sound (#122): soft, snowy and outdoors, on the shared Snd kit (static/sfx.js). Each sound is panned
+  // to where it happened as the field is shown, and quieter the further it is from me.
+  const OUT = { room: 'outdoor', send: 0.6 };
+  function where(x, y) {
+    const i = me(), m = i != null && disp[i] ? disp[i] : { x: 0, y: 0 };
+    const sx = rot ? y - m.y : x - m.x, d = Math.hypot(x - m.x, y - m.y);
+    return { pan: Math.max(-0.85, Math.min(0.85, sx / 8)), vol: 1 / (1 + d / 7) };
+  }
+  const snd = (fn, x, y) => window.Snd?.play((t, K) => { const w = x == null ? { pan: 0, vol: 1 } : where(x, y); fn(t, K, K.at({ ...OUT, pan: w.pan, vol: w.vol })); });
+  const SN = {
+    // packed snow under a mitten, then the throw: a soft swish
+    throw: (mine, x, y) => snd((t, K, d) => {
+      K.burst(d, t, { type: 'bandpass', f: 1400, f1: 500, q: 0.7, vol: mine ? 0.22 : 0.12, tau: 0.05, dur: 0.2, attack: 0.03 });
+      K.burst(d, t, { type: 'bandpass', f: 3200, q: 1.5, vol: mine ? 0.06 : 0.03, tau: 0.01 });
+    }, x, y),
+    // a snowball bursting on a coat: a muffled thump and a spray of powder
+    splat: (big, x, y, onMe) => snd((t, K, d) => {
+      const v = (big ? 1.4 : 1) * (onMe ? 1.3 : 1);
+      K.burst(d, t, { type: 'lowpass', f: big ? 500 : 750, q: 0.7, vol: 0.4 * v, tau: 0.03, buf: 'brown' });
+      K.mode(d, t, big ? 90 : 120, 0.12 * v, 0.04);
+      K.burst(d, t + 0.01, { type: 'bandpass', f: 2600, f1: 1200, q: 0.6, vol: 0.12 * v, tau: 0.04, dur: big ? 0.3 : 0.18 });
+      for (let n = 0; n < (big ? 7 : 4); n++) K.burst(d, t + 0.02 + n * K.R(0.01, 0.025), { type: 'bandpass', f: K.R(2500, 5000), q: 2, vol: 0.05 * v, tau: 0.004 });
+    }, x, y),
+    // a miss: a soft puff into the snow
+    puff: (big, x, y) => snd((t, K, d) => {
+      K.burst(d, t, { type: 'lowpass', f: 600, q: 0.6, vol: big ? 0.22 : 0.14, tau: 0.03, buf: 'brown' });
+      K.burst(d, t, { type: 'bandpass', f: 2200, f1: 900, q: 0.6, vol: 0.05, tau: 0.04, dur: 0.15 });
+    }, x, y),
+    // a fort takes it: packed snow, a duller thud; and a fort giving way: a crunching slide
+    fort: (big, x, y) => snd((t, K, d) => { K.burst(d, t, { type: 'lowpass', f: 420, q: 0.8, vol: big ? 0.45 : 0.32, tau: 0.035, buf: 'brown' }); K.mode(d, t, 75, 0.14, 0.05); }, x, y),
+    crumble: (x, y) => snd((t, K, d) => {
+      for (let n = 0; n < 9; n++) { const dt = n * K.R(0.03, 0.07); K.burst(d, t + dt, { type: 'lowpass', f: K.R(300, 700), q: 0.8, vol: K.R(0.15, 0.3), tau: 0.03, buf: 'brown' }); K.burst(d, t + dt, { type: 'bandpass', f: K.R(1500, 3000), q: 1.4, vol: 0.06, tau: 0.008 }); }
+      K.mode(d, t, 60, 0.15, 0.12);
+    }, x, y),
+    // snowed in: ice crystallising round someone, a shimmer of glassy partials falling in pitch
+    ice: (mine, x, y) => snd((t, K, d) => {
+      [2093, 2637, 3136, 3951].forEach((f, n) => K.mode(d, t + n * 0.05, mine ? f * 0.75 : f, 0.05, 0.25));
+      K.burst(d, t, { type: 'highpass', f: 3000, q: 0.7, vol: 0.12, tau: 0.08 });
+      K.mode(d, t, 180, mine ? 0.12 : 0.05, 0.08, { f1: 120 });
+    }, x, y),
+    // a giant ready: a big roll of snow packing tight, and a little rise
+    giant: () => snd((t, K, d) => { K.burst(d, t, { type: 'lowpass', f: 250, f1: 500, q: 0.7, vol: 0.3, tau: 0.1, dur: 0.45, attack: 0.1, buf: 'brown' }); [523, 784].forEach((f, n) => K.mode(d, t + 0.35 + n * 0.08, f, 0.06, 0.12)); }),
+    // flattened by a giant: a big soft boom of snow
+    flat: (x, y) => snd((t, K, d) => {
+      K.mode(d, t, 55, 0.35, 0.15, { f1: 40 }); K.burst(d, t, { type: 'lowpass', f: 380, q: 0.7, vol: 0.6, tau: 0.09, buf: 'brown' });
+      K.burst(d, t + 0.02, { type: 'bandpass', f: 1800, f1: 600, q: 0.5, vol: 0.18, tau: 0.12, dur: 0.6 });
+    }, x, y),
+    // my own footsteps: a little crunch each step
+    step: () => snd((t, K, d) => { K.burst(d, t, { type: 'bandpass', f: K.R(1800, 2800), q: 1.2, vol: 0.05, tau: 0.012 }); K.burst(d, t, { type: 'lowpass', f: 500, q: 0.7, vol: 0.06, tau: 0.02, buf: 'brown' }); }),
+  };
+  // the wind over the snowfield, while the game runs
+  const windBed = (K, dst) => {
+    const A = K.ctx, src = K.loopSrc('white'), bp = A.createBiquadFilter(), g = A.createGain(), lfo = A.createOscillator(), lg = A.createGain();
+    bp.type = 'bandpass'; bp.frequency.value = 500; bp.Q.value = 0.6; g.gain.value = 0;
+    lfo.frequency.value = 0.13; lg.gain.value = 250; lfo.connect(lg).connect(bp.frequency); lfo.start();
+    src.connect(bp).connect(g).connect(dst);
+    return { set(l) { g.gain.setTargetAtTime(0.018 * l, A.currentTime, 0.6); }, stop() { try { src.stop(); lfo.stop(); } catch {} } };
+  };
+
   function showFlash(text, ms = 1400) { flash = { text, until: performance.now() + ms }; }
 
   function onEvent(e) {
     const [, kind, ...a] = e, i = me();
+    const at = (j) => (snap?.k?.[j] ? [snap.k[j][0], snap.k[j][1]] : [0, 0]);
     if (kind === 'throw') {
-      if (a[0] === i) { ctx.sfx?.('whoosh'); ctx.buzz?.(10); }
+      SN.throw(a[0] === i, ...at(a[0]));
+      if (a[0] === i) ctx.buzz?.(10);
       gl?.windup(a[0]);
     } else if (kind === 'hit') {
       const [j, by, x, y, big] = a;
-      ctx.sfx?.('thud');
+      SN.splat(big, x, y, j === i);
       (gl || flat)?.puff(x, y, big ? 30 : 18, colorOf(j));
       if (j === i) { ctx.buzz?.(big ? [40, 30, 60] : 35); gl?.shake(big ? 0.45 : 0.25); }
       else if (by === i) showFlash(big ? '💥 Big hit!' : '🎯 Hit!', 900);
     } else if (kind === 'splat') {
+      SN.puff(a[2], a[0], a[1]);
       (gl || flat)?.puff(a[0], a[1], a[2] ? 16 : 9);
     } else if (kind === 'fort') {
-      ctx.sfx?.('thud'); (gl || flat)?.puff(a[1], a[2], a[3] ? 20 : 12);
+      SN.fort(a[3], a[1], a[2]); (gl || flat)?.puff(a[1], a[2], a[3] ? 20 : 12);
     } else if (kind === 'crumble') {
-      ctx.sfx?.('crack'); gl?.crumble(a[0]); flat?.puff(V().forts[a[0]][0], V().forts[a[0]][1], 30);
+      SN.crumble(V().forts[a[0]][0], V().forts[a[0]][1]); gl?.crumble(a[0]); flat?.puff(V().forts[a[0]][0], V().forts[a[0]][1], 30);
     } else if (kind === 'regrow') {
       gl?.sparkle(a[0]);
     } else if (kind === 'frozen') {
       const [j, by] = a;
       gl?.freeze(j); flat?.puff(snap.k[j][0], snap.k[j][1], 30, '#bfeaff');
-      if (j === i) { ctx.sfx?.('bad'); ctx.buzz?.([80, 50, 160]); showFlash('🧊 Snowed in!', 2000); }
+      SN.ice(j === i, ...at(j));
+      if (j === i) { ctx.buzz?.([80, 50, 160]); showFlash('🧊 Snowed in!', 2000); }
       else if (by === i) { ctx.sfx?.('good'); showFlash(`❄️ You snowed in ${nameOf(j)}! +1`, 1800); }
-      else ctx.sfx?.('crack');
     } else if (kind === 'giant') {
-      if (a[0] === i) { ctx.sfx?.('pickup'); showFlash('⛄ Giant ready — run into someone!', 1800); }
+      if (a[0] === i) { SN.giant(); showFlash('⛄ Giant ready — run into someone!', 1800); }
     } else if (kind === 'flat') {
       const [j, by, x, y] = a;
-      ctx.sfx?.('boom'); (gl || flat)?.puff(x, y, 45); gl?.shake(j === i ? 0.7 : 0.35);
+      SN.flat(x, y); (gl || flat)?.puff(x, y, 45); gl?.shake(j === i ? 0.7 : 0.35);
       if (j === i) ctx.buzz?.([120, 40, 120]);
       if (by === i) showFlash(`🏔️ Flattened ${nameOf(j)}!`, 1800);
       else if (j === i) showFlash('🏔️ Flattened!', 1500);
@@ -177,11 +252,19 @@ UI.snowball = (() => {
   function renderSide() {
     const v = V(), box = $('swSeats'); if (!box || !snap) return;
     box.innerHTML = '';
-    const order = v.seats.map((_, i) => i).sort((a, b) => snap.k[b][12] - snap.k[a][12]);
+    let order = v.seats.map((_, i) => i).sort((a, b) => snap.k[b][12] - snap.k[a][12]);
+    if (v.teams) {
+      const tp = [0, 1].map((t) => v.seats.reduce((n, _, i) => n + (v.team[i] === t ? snap.k[i][12] : 0), 0));
+      const head = ctx.el('div', 'sw-teams');
+      [0, 1].forEach((t) => { const b = ctx.el('b', `sw-team t${t}`, `${TEAM_NAME[t]} ${tp[t]}`); if (v.me != null && v.team[v.me] === t) b.classList.add('mine'); head.append(b); });
+      box.append(head);
+      order = order.sort((a, b) => v.team[a] - v.team[b]);
+    }
     for (const i of order) {
       const p = ctx.player(v.seats[i]), k = snap.k[i];
       const row = ctx.el('div', 'seat-row lr-row' + (p && !p.eliminated ? '' : ' out'));
       const dot = ctx.el('span', 'mini-disc'); dot.style.background = colorOf(i);
+      if (v.teams) dot.style.boxShadow = `0 0 0 2px ${TEAM_COL[v.team[i]]}`;
       const state = k[8] > 0 ? ' 🧊' : k[9] > 0 ? ' 💫' : k[11] >= 0.99 ? ' ⛄' : '';
       row.append(dot, ctx.el('span', 'grow', `${p?.name ?? 'left'}${i === v.me ? ' (you)' : ''}${state}`),
         ctx.el('span', 'sw-pipline', '●'.repeat(k[7]) + '○'.repeat(Math.max(0, v.pips - k[7]))), ctx.el('b', '', `❄️ ${k[12]}`));
@@ -199,11 +282,40 @@ UI.snowball = (() => {
     $('swInfo').textContent = mine[8] > 0 ? `🧊 Snowed in ${mine[8].toFixed(1)}s` : mine[9] > 0 ? '💫 Knocked flat' : mine[11] > 0.05 && mine[11] < 0.99 ? `⛄ ${Math.round(mine[11] * 100)}%` : '';
   }
 
-  // where kid i is now: the last known position plus its velocity since then (capped)
-  function pos(i, now) {
+  // where kid i is now (#123). The server's last word plus its velocity since then is the target; others glide
+  // toward it instead of snapping on each update. My own kid is predicted: the stick moves it here at once, at the
+  // server's speed, and it's eased onto the server's position (snapped only when far off, e.g. knocked flat).
+  const disp = [];
+  let predAt = 0;
+  function target(i, now) {
     const k = snap.k[i];
-    const t = snap.st === 'play' ? Math.min(0.12, (now - gotAt) / 1000) : 0;
+    const t = snap.st === 'play' ? Math.min(0.15, (now - gotAt) / 1000) : 0;
     return [k[0] + k[2] * t, k[1] + k[3] * t];
+  }
+  function stepPos(now) {
+    const v = V(), dt = Math.min(0.1, predAt ? (now - predAt) / 1000 : 0); predAt = now;
+    snap.k.forEach((k, i) => {
+      const [tx, ty] = target(i, now);
+      let d = disp[i];
+      if (!d) { disp[i] = { x: tx, y: ty, vx: 0, vy: 0 }; return; }
+      const mine = i === me() && playing();
+      if (mine && snap.st === 'play' && k[8] <= 0 && k[9] <= 0) {
+        const sp = (packAt || k[10] ? v.speed?.[1] : v.speed?.[0]) ?? 4.6, b = Math.min(1, dt * 14);
+        d.vx += (stick[0] * sp - d.vx) * b; d.vy += (stick[1] * sp - d.vy) * b;
+        d.x = Math.max(-v.aw + v.body, Math.min(v.aw - v.body, d.x + d.vx * dt));
+        d.y = Math.max(-v.ah + v.body, Math.min(v.ah - v.body, d.y + d.vy * dt));
+        const ex = tx - d.x, ey = ty - d.y, e = Math.hypot(ex, ey);
+        if (e > 1.2) { d.x = tx; d.y = ty; } else { const c = Math.min(1, dt * (e > 0.4 ? 8 : 3)); d.x += ex * c; d.y += ey * c; }
+      } else {
+        const ex = tx - d.x, ey = ty - d.y;
+        if (Math.hypot(ex, ey) > 2.5) { d.x = tx; d.y = ty; } else { const c = Math.min(1, dt * 16); d.x += ex * c; d.y += ey * c; }
+        d.vx = k[2]; d.vy = k[3];
+      }
+    });
+  }
+  function pos(i, now) {
+    const d = disp[i];
+    return d ? [d.x, d.y] : target(i, now);
   }
   // a snowball in flight: its point along the arc (x, y on the field, h above it) and how far along it is
   function ballAt(b, now) {
@@ -220,7 +332,11 @@ UI.snowball = (() => {
   function loop(now) {
     raf = requestAnimationFrame(loop);
     if (!snap || !V()) return;
+    stepPos(now);
     (gl || flat)?.draw(now);
+    window.Snd?.bed('snow.wind', windBed).set(S.phase === 'playing' && !S.paused ? 1 : 0);
+    const md = me() != null ? disp[me()] : null;
+    if (md && snap.st === 'play' && Math.hypot(md.vx, md.vy) > 1.2) { loop.walk = (loop.walk || 0) + Math.hypot(md.vx, md.vy) * 0.016; if (loop.walk > 1.25) { loop.walk = 0; SN.step(); } }
     const v = V(), cd = snap.st === 'countdown' ? snap.go - (now - gotAt) / 1000 : 0;
     let text = '';
     if (S.phase === 'playing' && snap.st === 'countdown') text = cd > 0 ? String(Math.ceil(cd)) : 'GO!';
@@ -232,10 +348,10 @@ UI.snowball = (() => {
     if (!small && mine && snap.st === 'play' && mine[8] > 0) small = `🧊 ${Math.ceil(mine[8] - (now - gotAt) / 1000)}`;
     $('swFlash').hidden = !small; $('swFlash').textContent = small;
     const tl = timeLeft(now);
-    $('swClock').textContent = `⏱ ${clock(tl)}`;
+    $('swClock').textContent = v.teams ? `⏱ ${clock(tl)} · 🔴 ${snap.tp?.[0] ?? 0}–${snap.tp?.[1] ?? 0} 🔵` : `⏱ ${clock(tl)}`;
     $('swClock').classList.toggle('sw-hurry', snap.st === 'play' && tl <= 10);
     $('swPips').textContent = mine ? '💙'.repeat(Math.max(0, v.pips - mine[7])) + '🤍'.repeat(mine[7]) : '';
-    if (packAt && Math.floor(now / 100) % 2 === 0) renderSide();
+    if (packAt) { const big = (now - packAt) / 1000 >= v.bigHold; if (big !== loop.big) { loop.big = big; renderSide(); } } else loop.big = undefined;
   }
 
   // ---------- three.js snowfield
@@ -336,9 +452,10 @@ UI.snowball = (() => {
         const torso = new T.Mesh(new T.CylinderGeometry(0.26, 0.36, 0.7, 14), coat); torso.position.y = 0.55; torso.castShadow = !low;
         const legs = new T.Mesh(new T.CylinderGeometry(0.22, 0.24, 0.25, 12), new T.MeshStandardMaterial({ color: 0x2a3550 })); legs.position.y = 0.13;
         const head = new T.Mesh(new T.SphereGeometry(0.24, 16, 12), skin); head.position.y = 1.08; head.castShadow = !low;
-        const hat = new T.Mesh(new T.SphereGeometry(0.25, 14, 8, 0, 6.283, 0, Math.PI / 2), coat); hat.position.y = 1.13;
+        const tm = teamOf(i), teamMat = tm != null ? new T.MeshStandardMaterial({ color: TEAM_COL[tm], roughness: 0.7 }) : null;
+        const hat = new T.Mesh(new T.SphereGeometry(0.25, 14, 8, 0, 6.283, 0, Math.PI / 2), teamMat || coat); hat.position.y = 1.13;
         const bob = new T.Mesh(new T.SphereGeometry(0.09, 10, 8), white); bob.position.y = 1.4;
-        const scarf = new T.Mesh(new T.TorusGeometry(0.22, 0.06, 6, 16), white); scarf.rotation.x = Math.PI / 2; scarf.position.y = 0.88;
+        const scarf = new T.Mesh(new T.TorusGeometry(0.22, 0.06, 6, 16), teamMat || white); scarf.rotation.x = Math.PI / 2; scarf.position.y = 0.88;
         const eyes = new T.Group();
         for (const s of [-1, 1]) { const e = new T.Mesh(new T.SphereGeometry(0.035, 6, 6), new T.MeshBasicMaterial({ color: 0x1a1a2a })); e.position.set(s * 0.08, 1.1, 0.21); eyes.add(e); }
         const arm = new T.Mesh(new T.CylinderGeometry(0.07, 0.07, 0.5, 8), coat); arm.position.set(0.3, 0.75, 0.12); arm.rotation.x = 0.9;
@@ -351,6 +468,10 @@ UI.snowball = (() => {
         const pipBox = new T.Group(); pips.forEach((p) => pipBox.add(p)); field.add(pipBox);
         const shadow = new T.Mesh(discGeo, shadowMat); shadow.rotation.x = -Math.PI / 2; shadow.scale.setScalar(0.42); field.add(shadow);
         let ring = null, arrow = null;
+        if (tm != null && i !== me()) {  // a team ring under everyone else
+          ring = new T.Mesh(new T.RingGeometry(0.6, 0.74, 32), new T.MeshBasicMaterial({ color: TEAM_COL[tm], transparent: true, opacity: 0.7, depthWrite: false }));
+          ring.rotation.x = -Math.PI / 2; ring.userData.team = true; field.add(ring);
+        }
         if (i === me()) {   // you: a gold ring underfoot and an arrow bobbing over your head
           ring = new T.Mesh(new T.RingGeometry(0.62, 0.8, 32), new T.MeshBasicMaterial({ color: 0xffc83d, transparent: true, opacity: 0.85, depthWrite: false }));
           ring.rotation.x = -Math.PI / 2; field.add(ring);
@@ -464,8 +585,10 @@ UI.snowball = (() => {
       const d = Math.max(hw / (tv * aspect), (hd * 1.1) / tv);
       camera.position.set(0, d * 0.86, d * 0.52); camera.lookAt(0, 0, 0.4);
     }
+    const unturn = new T.Quaternion(), UP = new T.Vector3(0, 1, 0);
     function draw(now) {
       ensureKids();
+      unturn.setFromAxisAngle(UP, -field.rotation.y);
       const dt = Math.min(0.1, (now - lastDraw) / 1000); lastDraw = now;
       place(); GL3.tickShake(camera, dt);
       const v = V(), st = snap.st;
@@ -486,10 +609,11 @@ UI.snowball = (() => {
         if (!here) return;
         const [x, y] = pos(i, now), frozen = k[8] > 0, knocked = k[9] > 0, packing = k[10] || (i === me() && packAt);
         o.g.position.set(x, 0, y);
-        const face = Math.atan2(k[4], k[5]);
+        const steer = i === me() && playing() && Math.hypot(stick[0], stick[1]) > 0.2 && !frozen && !knocked;
+        const face = steer ? Math.atan2(stick[0], stick[1]) : Math.atan2(k[4], k[5]);
         let dr = face - o.g.rotation.y; dr = Math.atan2(Math.sin(dr), Math.cos(dr));
         o.g.rotation.y += dr * Math.min(1, dt * 14);
-        const speed = Math.hypot(k[2], k[3]);
+        const speed = i === me() && disp[i] ? Math.hypot(disp[i].vx, disp[i].vy) : Math.hypot(k[2], k[3]);
         // a waddle while running, flat on the back when knocked, crouched while packing
         o.step += dt * speed * 3.2;
         o.body.rotation.z = knocked ? 0 : Math.sin(o.step) * Math.min(0.15, speed * 0.04);
@@ -508,12 +632,12 @@ UI.snowball = (() => {
           o.roll += dt * speed / Math.max(0.1, r); o.giant.rotation.x = o.roll;
         }
         o.pipBox.position.set(x, 0, y);
-        o.pipBox.quaternion.copy(camera.quaternion).premultiply(new T.Quaternion().setFromAxisAngle(new T.Vector3(0, 1, 0), -field.rotation.y));
+        o.pipBox.quaternion.copy(camera.quaternion).premultiply(unturn);
         o.pipBox.position.y = knocked ? -0.9 : 0;
         o.pips.forEach((m, n) => { m.material = n < k[7] ? pipOn : pipOff; });
         o.pipBox.visible = !frozen;
         o.shadow.position.set(x, 0.015, y);
-        if (o.ring) { o.ring.position.set(x, 0.02, y); o.ring.material.opacity = 0.55 + 0.3 * Math.sin(now / 250); }
+        if (o.ring) { o.ring.position.set(x, 0.02, y); if (!o.ring.userData.team) o.ring.material.opacity = 0.55 + 0.3 * Math.sin(now / 250); }
         if (o.arrow) { o.arrow.visible = !knocked; o.arrow.position.y = 2.15 + 0.12 * Math.sin(now / 220); o.arrow.rotation.y += dt * 2; }
         // footprints every half step
         if (st === 'play' && speed > 0.8 && o.last && Math.hypot(x - o.last[0], y - o.last[1]) > 0.42) {
@@ -585,7 +709,7 @@ UI.snowball = (() => {
         const p = ctx.player(v.seats[i]); if (!p || p.eliminated) return;
         const [x, y] = pos(i, now), r = v.body * k;
         if (s[11] > 0.04) { g.fillStyle = '#fff'; g.strokeStyle = '#9ab'; g.beginPath(); g.arc(X(x + s[4] * (v.body + v.giantR * s[11])), Y(y + s[5] * (v.body + v.giantR * s[11])), v.giantR * s[11] * k, 0, 7); g.fill(); g.stroke(); }
-        g.fillStyle = colorOf(i); g.strokeStyle = i === v.me ? '#000' : '#0006'; g.lineWidth = r * 0.25;
+        g.fillStyle = colorOf(i); g.strokeStyle = v.teams ? TEAM_COL[v.team[i]] : i === v.me ? '#000' : '#0006'; g.lineWidth = r * (v.teams ? 0.35 : 0.25);
         g.beginPath(); g.arc(X(x), Y(y), r, 0, 7); g.fill(); g.stroke();
         g.strokeStyle = '#fff'; g.beginPath(); g.moveTo(X(x), Y(y)); g.lineTo(X(x + s[4] * v.body), Y(y + s[5] * v.body)); g.stroke();
         if (s[8] > 0) { g.fillStyle = 'rgba(160,220,255,0.6)'; g.fillRect(X(x) - r * 1.2, Y(y) - r * 1.2, r * 2.4, r * 2.4); }

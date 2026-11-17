@@ -240,6 +240,8 @@ class Lanes(Game):
         "oil": ("Oil", [("medium", "🛢️ Medium"), ("dry", "🏜️ Dry (big hook)"), ("slick", "💧 Slick (little hook)")], "medium"),
     }
 
+    finish_at = 0
+
     def start(self, seated, rng):
         self.rng = rng
         self.seats = [p.id for p in seated]
@@ -247,6 +249,7 @@ class Lanes(Game):
         self.oil = OIL.get(self.s.get("oil", "medium"), 12.0)
         self.cosmic = rng.randrange(1, self.nframes - 1) if self.nframes > 3 else 0
         self.shot_id = 0
+        self.finish_at = 0  # everyone's done: the game ends once the last roll has played out (#130)
         r = self.room
         r.turn = None
         now = time.time()
@@ -333,6 +336,8 @@ class Lanes(Game):
             left = []
             g.saver = False
         n = len(knocked)
+        frames = max([len(tracks["ball"])] + [tr["s"] + len(tr["f"]) for tr in tracks["pins"]])
+        lands = time.time() + frames / 30  # the shot plays out on screen: say its callouts when the pins land (#129)
         last_frame = g.frame == self.nframes - 1
         first = self.fresh_rack(g, last_frame)  # (not "all ten standing": a gutter first ball leaves ten too)
         g.rolls.append(n)
@@ -345,23 +350,23 @@ class Lanes(Game):
             word = "spare"
             g.streak = 0
             if self.is_split(before):
-                self.award(p, "split")
-                self.moment(f"🪓 {nm} picks up the split!", "gold", "good")
+                self.award(p, "split", at=lands)
+                self.moment(f"🪓 {nm} picks up the split!", "gold", "good", at=lands)
         elif first:
             pass
         else:
             g.streak = 0
         if word == "strike":
             if g.streak == 3:
-                self.award(p, "turkey")
-                self.moment(f"🦃 {nm}: TURKEY!", "gold", "fanfare")
+                self.award(p, "turkey", at=lands)
+                self.moment(f"🦃 {nm}: TURKEY!", "gold", "fanfare", at=lands)
             elif g.streak > 3:
-                self.moment(f"🔥 {nm}: {g.streak} strikes in a row!", "gold", "fanfare")
-            self.room.add_log(f"🎳 {nm}: STRIKE{' 🌟' if g.frame == self.cosmic else ''}!", "power")
+                self.moment(f"🔥 {nm}: {g.streak} strikes in a row!", "gold", "fanfare", at=lands)
+            self.room.add_log(f"🎳 {nm}: STRIKE{' 🌟' if g.frame == self.cosmic else ''}!", "power", at=lands)
         elif word == "spare":
-            self.room.add_log(f"🎳 {nm}: spare{' with the 🎯 saver' if saved is not None else ''}{' 🌟' if g.frame == self.cosmic else ''}.", "info")
+            self.room.add_log(f"🎳 {nm}: spare{' with the 🎯 saver' if saved is not None else ''}{' 🌟' if g.frame == self.cosmic else ''}.", "info", at=lands)
         elif gutter and n == 0:
-            self.room.add_log(f"🎳 {nm}: gutter ball.", "info")
+            self.room.add_log(f"🎳 {nm}: gutter ball.", "info", at=lands)
         # advance the frame
         g.ball += 1
         if last_frame:
@@ -379,19 +384,21 @@ class Lanes(Game):
         else:
             g.standing = left
         self.shot_id += 1
-        frames = max([len(tracks["ball"])] + [tr["s"] + len(tr["f"]) for tr in tracks["pins"]])
         g.shot = {"id": self.shot_id, "before": before, "knocked": knocked, "tracks": tracks, "frames": frames,
                   "word": word, "saved": saved, "gutter": gutter}
-        g.last = {"n": n, "word": word, "at": time.time()}
+        kmh = round((VMIN + (VMAX - VMIN) * speed) * 3.6, 1)  # the ball speed metric (#131)
+        g.last = {"n": n, "word": word, "at": time.time(), "kmh": kmh}
+        g.top = max(getattr(g, "top", 0), kmh)
         g.busy = time.time() + frames / 30 + 1.2
         g.woke = False
         g.next_at = g.busy + random.uniform(0.6, 2.0)
         self.room.deadline = time.time() + IDLE
         if g.done:
             total = self.total(p)
-            self.room.add_log(f"🏁 {nm} finishes on {total}.", "big")
+            self.room.add_log(f"🏁 {nm} finishes on {total}.", "big", at=lands)
             if all(o.g.done for o in self.players() if not o.eliminated):
-                self.finish_game()
+                # not yet: let the last roll play, then the final scoresheet sit a moment (#130)
+                self.finish_at = g.busy + 1.6
 
     @staticmethod
     def is_split(standing):
@@ -423,6 +430,9 @@ class Lanes(Game):
         # someone's been idle: roll a plain ball for every human who could bowl (the pins have long
         # settled by now; settling them here also lets simulate.py fast-forward)
         now = time.time()
+        if self.finish_at:
+            self.finish_at = 0
+            return self.finish_game()
         for p in self.bowlers():
             p.g.busy = min(p.g.busy, now)
         for p in self.bowlers():
@@ -431,6 +441,17 @@ class Lanes(Game):
                 self.bowl(p, *self.plan(p, "easy"))
         if self.room.phase == "playing":
             self.room.deadline = time.time() + IDLE
+
+    def on_restore(self, shift):
+        """The server was down (or the room paused) for `shift` seconds: move every clock on with it."""
+        for p in self.players():
+            g = getattr(p, "g", None)
+            if g is None or not hasattr(g, "busy"):
+                continue
+            g.busy += shift
+            g.next_at = getattr(g, "next_at", 0) + shift
+        if self.finish_at:
+            self.finish_at += shift
 
     def on_leave(self, p):
         r = self.room
@@ -487,10 +508,17 @@ class Lanes(Game):
 
     def bot_ready(self):
         now = time.time()
+        if self.finish_at:
+            return now >= self.finish_at
         return bool(self.sleepers(now)) or any(p.bot and now >= p.g.next_at and not self.can_bowl(p) for p in self.bowlers())
 
     def bot_tick(self):
         now = time.time()
+        if self.finish_at:
+            if now >= self.finish_at:
+                self.finish_at = 0
+                self.finish_game()
+            return
         for p in self.sleepers(now):
             p.g.woke = True  # the server bumps the room after this, which sends everyone a fresh view
         for p in self.bowlers():
@@ -522,7 +550,7 @@ class Lanes(Game):
             g = o.g
             rows.append({"id": o.id, "frames": frame_rolls(g.rolls, self.nframes), "cum": score(g.rolls, self.nframes, self.cosmic),
                          "frame": g.frame, "ball": g.ball, "done": g.done, "standing": g.standing, "saver": g.saver,
-                         "last": g.last, "total": self.total(o)})
+                         "last": g.last, "total": self.total(o), "top": getattr(g, "top", 0)})
         me = p.g if p.id in self.seats else None
         why = self.can_bowl(p) if me is not None else "Watching."
         return {"lanes": {

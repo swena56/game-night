@@ -108,17 +108,28 @@ class Snowball(Game):
     settings_schema = {
         "time": ("Length", [(120, "2 min"), (90, "90 s"), (180, "3 min")], 120),
         "giants": ("⛄ Giant snowballs", [(True, "On"), (False, "Off")], True),
+        "teams": ("Teams", [(False, "Everyone for themselves"), (True, "🔴🔵 Two teams")], False),
     }
+    TEAM_NAMES = ("🔴 Red", "🔵 Blue")
 
     def start(self, seated, rng):
         self.rng = rng
         self.seats = [p.id for p in seated]
         n = len(seated)
         self.kids = []
+        # 🔴🔵 teams (#126): seats alternate red, blue; each team starts on its own end of the field
+        self.teams = bool(self.s.get("teams", False)) and n >= 2
+        self.team = [i % 2 if self.teams else i for i in range(n)]
         off = rng.random() * math.tau
         for i in range(n):
-            a = off + math.tau * i / n
-            self.kids.append(Kid(math.cos(a) * AW * 0.8, math.sin(a) * AH * 0.75))
+            if self.teams:
+                side, row, per = (-1 if i % 2 == 0 else 1), i // 2, (n + 1 - i % 2) // 2
+                y = (row + 0.5 - per / 2) * (AH * 1.5 / max(1, per))
+                self.kids.append(Kid(side * AW * 0.82, y))
+                self.kids[-1].fx = -side
+            else:
+                a = off + math.tau * i / n
+                self.kids.append(Kid(math.cos(a) * AW * 0.8, math.sin(a) * AH * 0.75))
         self.forts = [FORT_HP] * len(FORTS)
         self.fort_down = [0.0] * len(FORTS)
         self.patches = [1.0] * len(PATCHES)       # fresh snow left in each patch, 0..1
@@ -137,10 +148,26 @@ class Snowball(Game):
         self.last = now
         self.acc = 0.0
         self.frames = 0
-        r.add_log(f"❄️ Snowball Scramble: {int(self.s.get('time', 120))} seconds. Three hits snow someone in.", "big")
+        if self.teams:
+            roster = lambda t: ", ".join(self.name_of(i) for i in range(n) if self.team[i] == t)  # noqa: E731
+            r.add_log(f"❄️ Snowball Scramble, {self.TEAM_NAMES[0]} ({roster(0)}) v {self.TEAM_NAMES[1]} ({roster(1)}): "
+                      f"{int(self.s.get('time', 120))} seconds. No hitting your own side.", "big")
+        else:
+            r.add_log(f"❄️ Snowball Scramble: {int(self.s.get('time', 120))} seconds. Three hits snow someone in.", "big")
 
     def seat(self, p):
         return self.seats.index(p.id) if p.id in self.seats else None
+
+    team = None  # (games saved before teams: everyone their own side)
+
+    def side(self, i):
+        return self.team[i] if self.team else i
+
+    def foes(self, i, j):
+        return self.side(i) != self.side(j)
+
+    def team_points(self, t):
+        return sum(k.points for i, k in enumerate(self.kids) if self.side(i) == t and self.active(i))
 
     def pl(self, i):
         return self.room.players.get(self.seats[i])
@@ -198,7 +225,7 @@ class Snowball(Game):
         k = self.kids[i]
         best, best_s = None, 1e9
         for j, o in enumerate(self.kids):
-            if j == i or not self.active(j):
+            if j == i or not self.active(j) or not self.foes(i, j):
                 continue
             dx, dy = o.x - k.x, o.y - k.y
             d = math.hypot(dx, dy) or 1e-6
@@ -333,7 +360,7 @@ class Snowball(Game):
             if a.giant >= 0.5:
                 gx, gy = a.x + a.fx * (BODY + GIANT_R * a.giant), a.y + a.fy * (BODY + GIANT_R * a.giant)
                 for j, b in enumerate(self.kids):
-                    if j == i or not self.active(j) or now < b.frozen_until or now < b.knock_until:
+                    if j == i or not self.active(j) or now < b.frozen_until or now < b.knock_until or not self.foes(i, j):
                         continue
                     if math.hypot(b.x - gx, b.y - gy) < BODY + GIANT_R * a.giant:
                         b.knock_until = now + KNOCK_SECS
@@ -379,7 +406,7 @@ class Snowball(Game):
             reach = BIG_SPLASH if big else SPLASH
             hit = False
             for j, o in enumerate(self.kids):
-                if j == by or not self.active(j) or now < o.frozen_until:
+                if j == by or not self.active(j) or now < o.frozen_until or not self.foes(j, by):
                     continue
                 if math.hypot(o.x - x1, o.y - y1) < reach + BODY * 0.5:
                     hit = True
@@ -427,6 +454,8 @@ class Snowball(Game):
         here = [i for i in range(len(self.seats)) if self.active(i)]
         if not here:
             return r.finish(None, "Everyone left.")
+        if getattr(self, "teams", False):
+            return self.end_teams(here)
         ranked = sorted(here, key=lambda i: (self.kids[i].points, self.kids[i].hits), reverse=True)
         top = ranked[0]
         tied = [i for i in ranked if (self.kids[i].points, self.kids[i].hits) == (self.kids[top].points, self.kids[top].hits)]
@@ -439,6 +468,21 @@ class Snowball(Game):
         more = "" if len(ranked) < 2 or pts > self.kids[ranked[1]].points else f" (most hits: {self.kids[top].hits})"
         return r.finish(self.pl(top), f"🏆 {self.name_of(top)} wins the snowball fight with {pts} snow-in{'s' if pts != 1 else ''}{more}!")
 
+    def end_teams(self, here):
+        r = self.room
+        self.stage = "done"
+        pts = [self.team_points(0), self.team_points(1)]
+        hits = [sum(self.kids[i].hits for i in here if self.side(i) == t) for t in (0, 1)]
+        if (pts[0], hits[0]) == (pts[1], hits[1]):
+            return r.finish(None, f"🤝 A draw: {self.TEAM_NAMES[0]} {pts[0]}, {self.TEAM_NAMES[1]} {pts[1]}.")
+        w = 0 if (pts[0], hits[0]) > (pts[1], hits[1]) else 1
+        team = [i for i in here if self.side(i) == w]
+        best = max(team, key=lambda i: (self.kids[i].points, self.kids[i].hits))
+        if not self.frozen_ever[best] and self.pl(best):
+            self.award(self.seats[best], "untouched")
+        names = " & ".join(self.name_of(i) for i in team)
+        return r.finish(self.pl(best), f"🏆 {self.TEAM_NAMES[w]} wins the snowball fight {pts[w]}–{pts[1 - w]} ({names})!")
+
     # -- streaming
 
     def state(self, now):
@@ -450,6 +494,7 @@ class Snowball(Game):
                    r(k.giant), k.points] for k in self.kids],
             "b": [[b[0], b[1], b[2], b[3], r(max(0.0, b[5] - now)), r(b[5] - b[4]), int(b[6]), b[7], b[9]] for b in self.balls],
             "f": self.forts, "p": [r(v) for v in self.patches],
+            **({"tp": [self.team_points(0), self.team_points(1)]} if getattr(self, "teams", False) else {}),
         }
 
     def broadcast(self, now):
@@ -535,7 +580,10 @@ class Snowball(Game):
         r = self.room
         r.add_log(f"{p.name} went home to dry off.")
         left = r.contenders()
-        if len(left) == 1 and r.phase == "playing":
+        if getattr(self, "teams", False) and r.phase == "playing" and left and len({self.side(self.seat(o)) for o in left}) == 1:
+            r.add_log("The other side has gone home.")
+            self.end()
+        elif len(left) == 1 and r.phase == "playing":
             r.finish(left[0], f"🏳️ Everyone else left — {left[0].name} wins!")
         elif not left and r.phase == "playing":
             r.finish(None, "Everyone left.")
@@ -544,7 +592,9 @@ class Snowball(Game):
 
     def meta(self, p):
         i = self.seat(p)
-        return "" if i is None or not hasattr(self, "kids") else f"❄️ {self.kids[i].points}"
+        if i is None or not hasattr(self, "kids"):
+            return ""
+        return f"{self.TEAM_NAMES[self.side(i)][:1]} ❄️ {self.kids[i].points}" if getattr(self, "teams", False) else f"❄️ {self.kids[i].points}"
 
     def final_scores(self):
         return {pid: self.kids[i].points for i, pid in enumerate(self.seats)}
@@ -556,4 +606,6 @@ class Snowball(Game):
             "aw": AW, "ah": AH, "body": BODY, "forts": FORTS, "fortLen": FORT_LEN, "fortThick": FORT_THICK, "fortHp": FORT_HP,
             "patches": PATCHES, "patchR": PATCH_R, "ammoMax": AMMO, "pips": PIPS, "bigHold": BIG_HOLD, "giantR": GIANT_R,
             "giants": bool(self.s.get("giants", True)), "seq": self.ev_seq, "splash": [SPLASH, BIG_SPLASH],
+            "teams": bool(getattr(self, "teams", False)), "team": self.team or list(range(len(self.seats))),
+            "speed": [SPEED, PACK_SPEED], "step": STEP,
         }}

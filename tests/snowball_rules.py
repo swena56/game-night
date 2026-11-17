@@ -173,5 +173,37 @@ check("the most snow-ins wins", r.winner == ann.id, f"{r.winner}")
 fs = g.final_scores()
 check("final scores are snow-ins", fs[ann.id] == A.points and fs[bo.id] == 0)
 
+# 🔴🔵 teams (#126)
+r = server.Room("TEAM")
+ps = [r.add_player(n) for n in ("Ann", "Bo", "Cy", "Di")]
+r.switch_game("snowball")
+r.settings["teams"] = True
+r.start()
+g = r.game
+check("teams alternate seats", g.teams and g.team == [0, 1, 0, 1])
+check("each team starts on its own end", all((g.kids[i].x < 0) == (g.team[i] == 0) for i in range(4)))
+check("you never aim at a teammate", all(g.foes(i, g.target_of(i)) for i in range(4)))
+t = g.go_at + 0.01
+g.frame(t)
+A, B, C = g.kids[0], g.kids[1], g.kids[2]
+C.x, C.y = 0.0, 0.0
+A.x, A.y = -3.0, 0.0
+B.x, B.y = 3.0, 3.0
+g.throw(0, t, False, (0.0, 0.0))  # at my own teammate
+t = run(g, t, 1.2)
+check("a snowball passes over a teammate", C.pips == 0, f"pips {C.pips}")
+B.x, B.y = 0.0, 0.0
+C.x, C.y = 3.0, 3.0
+A.cool_until = 0
+g.throw(0, t, False, (0.0, 0.0))
+t = run(g, t, 1.2)
+check("and hits a rival", B.pips == 1, f"pips {B.pips}")
+check("the view carries the teams", g.view(ps[0])["snowball"]["teams"] and g.view(ps[0])["snowball"]["team"] == [0, 1, 0, 1])
+A.points, C.points, B.points = 2, 1, 2
+check("team points add up", g.team_points(0) == 3 and g.team_points(1) == 2 and g.state(t)["tp"] == [3, 2])
+g.end_at = t
+run(g, t, 0.1)
+check("the team with more snow-ins wins", r.phase == "over" and "Red" in r.log[-1]["text"], r.log[-1]["text"])
+
 print("\n" + ("all ok" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)

@@ -756,6 +756,10 @@ function renderGame(view = S, readOnly = false, force = false) {
   shapeDots($('#arena')); shapeDots($('#sideGame'));
   renderLog(ui, view);
 
+  // ⏸ pause (#119): only offered to the one human in a game against bots
+  $('#pauseBtn').hidden = readOnly || !view.canPause || view.paused;
+  const cover = $('#pausedCover'), paused = !readOnly && view.phase === 'playing' && !!view.paused;
+  if (cover.hidden === paused) { cover.hidden = !paused; if (paused) $('#resumeBtn').hidden = !view.canPause; }
   const wasHidden = $('#overBanner').hidden;
   $('#overBanner').hidden = readOnly || view.phase !== 'over';
   syncOverBack();
@@ -1221,6 +1225,8 @@ $('#gameMenu').addEventListener('keydown', (e) => {
 });
 $('#menuChat').onclick = () => $('#chatBtn').click();
 $('#menuPrefs').onclick = () => $('#prefsBtn').click();
+$('#pauseBtn').onclick = () => act('pause');
+$('#resumeBtn').onclick = () => act('resume');
 function setReactOpen(open) { $('#dockReactBar').hidden = !open; $('#dockReact').ariaExpanded = String(open); }
 $('#dockReact').onclick = () => setReactOpen($('#dockReactBar').hidden);
 // phones: the log is a sheet that slides up from the dock (opened at full length)

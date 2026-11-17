@@ -28,6 +28,7 @@ from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
 
 from games import FAMILIES, GAME_INFO, GAME_LIST, GAMES, GameError
+from games.base import shift_times
 from games import garden, wordbomb
 from games.wordsmith import warm_up, words
 
@@ -226,6 +227,8 @@ class Room:
         self.deadline = None
         self.winner = None
         self.log = []
+        self.later = []  # log lines held until a time (add_log at=)
+        self.paused = 0  # ⏸ when the only human paused a game against bots (#119): the time it was paused
         self.reactions = []
         self.bot_at = 0
         self.touched = time.time()
@@ -249,7 +252,8 @@ class Room:
 
     def __setstate__(self, state):
         self.__dict__.update({"chat": [], "ready": set(), "votes": {}, "ledger": {}, "history": [], "replay": [],
-                              "_replay_key": None, "saved": {}, "fast": None, "fast_ver": 0, "game_no": 0, "no_bump": False})
+                              "_replay_key": None, "saved": {}, "fast": None, "fast_ver": 0, "game_no": 0, "no_bump": False,
+                              "later": [], "paused": 0})
         self.__dict__.update(state)
         for k, (_, _, d) in ROOM_SETTINGS.items():
             self.settings.setdefault(k, d)
@@ -263,8 +267,11 @@ class Room:
         shift = max(0.0, now - self.__dict__.pop("_saved_at", now))
         if self.deadline:
             self.deadline = max(self.deadline + shift, now + self.settings["timer"])
-        if self.game and self.phase == "playing" and hasattr(self.game, "on_restore"):
-            self.game.on_restore(shift)
+        if self.paused:  # it stays paused: the pause began when the server went down, as far as clocks go
+            self.paused = now
+        elif self.game and self.phase == "playing":
+            self.restore_clocks(shift, now - shift)
+        self.later = [(t + shift, e) for t, e in self.later]
         self.bot_at = now + 2
 
     # -- connection handling
@@ -328,17 +335,36 @@ class Room:
         self.fast_ver += 1
         self.cond.notify_all()
 
-    def add_log(self, text, kind="info", to=None, check=None, helper=None):
+    def add_log(self, text, kind="info", to=None, check=None, helper=None, at=None, **extra):
+        """A log line. at: a time.time() to hold it until (a game whose shot plays out on screen for a few
+        seconds says its callouts when the animation lands, #129); the ticker lets it out (flush_later)."""
+        entry = {"text": text, "kind": kind, "to": to, "check": check, "helper": helper, **extra}
+        if at is not None and at > time.time():
+            self.later.append((at, entry))
+            return
         self._eid += 1
-        self.log.append({"id": self._eid, "text": text, "kind": kind, "to": to,
-                         "check": check, "helper": helper})
+        self.log.append({"id": self._eid, **entry})
         self.log = self.log[-150:]
 
-    def moment(self, text, tone="gold", sound=None, to=None):
+    def flush_later(self, now):
+        """Let out held log lines whose time has come; True if any did (the room needs a bump)."""
+        if not self.later:
+            return False
+        due = [e for e in self.later if e[0] <= now]
+        if not due:
+            return False
+        self.later = [e for e in self.later if e[0] > now]
+        for _, entry in sorted(due, key=lambda e: e[0]):
+            self._eid += 1
+            self.log.append({"id": self._eid, **entry})
+        self.log = self.log[-150:]
+        return True
+
+    def moment(self, text, tone="gold", sound=None, to=None, at=None):
         """✨ A moment: logged like a big line and popped up as a callout across every screen that gets it
-        (renderLog in app.js). tone: gold | good | bad | cool; sound: an SFX name or None. Keep the text short."""
-        self.add_log(text, "moment", to=to)
-        self.log[-1].update(tone=tone, sound=sound)
+        (renderLog in app.js). tone: gold | good | bad | cool; sound: an SFX name or None. Keep the text short.
+        at: hold it until then (see add_log)."""
+        self.add_log(text, "moment", to=to, at=at, tone=tone, sound=sound)
 
     def seated(self):
         return [self.players[i] for i in self.order if not self.players[i].spectator]
@@ -435,7 +461,7 @@ class Room:
                 lines = BANTER["win" if winner and p.id == winner.id else "lose"]
                 self.add_chat(p, random.choice(lines))
 
-    def award(self, p, gid, key):
+    def award(self, p, gid, key, at=None):
         """🏅 A badge for player `p` in game `gid` (key from that game's `badges`). Counted per evening;
         the first of each kind is announced in the log, and bots never earn them."""
         p = self.players.get(p) if isinstance(p, str) else p
@@ -445,7 +471,7 @@ class Room:
         k = f"{gid}:{key}"
         p.badges[k] = p.badges.get(k, 0) + 1
         if p.badges[k] == 1:
-            self.add_log(f"🏅 {p.name} earned {badge[0]} {badge[1]}!", "badge")
+            self.add_log(f"🏅 {p.name} earned {badge[0]} {badge[1]}!", "badge", at=at)
 
     def add_chat(self, p, text, ghost=False):
         self._eid += 1
@@ -479,6 +505,8 @@ class Room:
             return handler(self, p, a)
         if self.phase != "playing":
             raise GameError("The game isn't running.")
+        if self.paused:
+            raise GameError("The game is paused.")
         if p.spectator:
             raise GameError("Spectators can't play.")
         self.game.act(p, a)
@@ -619,7 +647,46 @@ class Room:
         "rematch": lambda r, p, a: r.host_start(p, "over"),  # same game, same settings, straight back in
         "lobby": lambda r, p, a: r.back_to_lobby(p),
         "end_game": lambda r, p, a: r.end_game(p),
+        "pause": lambda r, p, a: r.pause(p),
+        "resume": lambda r, p, a: r.resume(p),
     }
+
+    # -- ⏸ pause (#119): only in a game against bots, by its one human; everything stands still
+
+    def humans(self):
+        return [o for o in self.seated() if o.human()]
+
+    def can_pause(self, p):
+        return self.phase == "playing" and p in self.seated() and p.human() and len(self.humans()) == 1
+
+    def restore_clocks(self, shift, ref):
+        """Time stood still for `shift` seconds from `ref` (a pause, or the server down): move the game's clocks on."""
+        if hasattr(self.game, "on_restore"):
+            self.game.on_restore(shift)
+        else:
+            shift_times(self.game, shift, ref)
+
+    def pause(self, p):
+        if self.paused:
+            return
+        if not self.can_pause(p):
+            raise GameError("Pause is for a game against bots, with nobody else playing.")
+        self.paused = time.time()
+        self.add_log(f"⏸ {p.name} paused the game.")
+
+    def resume(self, p=None, why=None):
+        if not self.paused:
+            return
+        now = time.time()
+        shift, ref = now - self.paused, self.paused
+        self.paused = 0
+        if self.deadline:
+            self.deadline += shift
+        self.bot_at += shift
+        self.later = [(t + shift, e) for t, e in self.later]
+        if self.game and self.phase == "playing":
+            self.restore_clocks(shift, ref)
+        self.add_log(why or f"▶ {p.name if p else 'The game'} resumed.")
 
     def fits(self, gid):
         game = GAMES[gid](self)
@@ -682,6 +749,8 @@ class Room:
             if p.wish == self.settings["game"]:
                 p.wish = None  # granted
         self.log = []
+        self.later = []
+        self.paused = 0
         self.winner = None
         self.turn = None
         self.deadline = None
@@ -784,7 +853,8 @@ class Room:
             "roomSettings": ROOM_SETTINGS_INFO,
             "host": self.host,
             "turn": self.turn,
-            "timeLeft": max(0.0, self.deadline - time.time()) if self.deadline else None,
+            "timeLeft": max(0.0, self.deadline - (self.paused or time.time())) if self.deadline else None,
+            "paused": bool(self.paused), "canPause": self.can_pause(p),
             "winner": self.winner,
             "reactions": self.reactions,
             "log": [e for e in self.log if e["to"] is None or e["to"] == p.id or see_all][-80:],
@@ -922,6 +992,8 @@ def realtime_input(body):
         game = room.game if room.phase == "playing" else None
         if not game or not hasattr(game, "on_input"):
             raise GameError("Not right now.")
+        if room.paused:
+            return {"ok": True, "paused": True}
         game.on_input(p, body)
     return {"ok": True}
 
@@ -1107,7 +1179,15 @@ def ticker():
             with room.cond:
                 if room.check_offline(now):
                     room.bump()
-                game = room.game if room.phase == "playing" else None
+                if room.paused and (room.phase != "playing" or len(room.humans()) != 1):
+                    if room.phase == "playing":
+                        room.resume(why="▶ Someone joined: the game goes on.")
+                    else:
+                        room.paused = 0
+                    room.bump()
+                if not room.paused and room.flush_later(now):
+                    room.bump()
+                game = room.game if room.phase == "playing" and not room.paused else None
                 if game:
                     try:
                         if now >= room.bot_at and game.bot_ready():
@@ -1161,7 +1241,7 @@ def frame_ticker():
             if any(r.phase == "playing" and hasattr(r.game, "frame") for r in list(ROOMS.values())):
                 slow(f"frame gap {gap * 1000:.0f} ms")
         for room in list(ROOMS.values()):
-            game = room.game if room.phase == "playing" else None
+            game = room.game if room.phase == "playing" and not room.paused else None
             if game is None or not hasattr(game, "frame"):
                 continue
             with room.cond:

@@ -98,7 +98,9 @@ for _ in range(80):
             p.g.busy = 0
             if not g.can_bowl(p):
                 g.bowl(p, 0.06, 0.0, 0.6, 0.0)
-check("the game ends when everyone has bowled out", r.phase == "over" and all(p.g.done for p in ps))
+check("everyone bowled out: the game waits for the last roll to play (#130)", r.phase == "playing" and g.finish_at > 0 and all(p.g.done for p in ps))
+g.finish_at = 1
+check("then ends", g.bot_ready() and (g.bot_tick() or True) and r.phase == "over")
 fs = g.final_scores()
 check("final scores are the totals", fs[ann.id] == g.total(ann) and fs[bo.id] == g.total(bo), f"{fs}")
 

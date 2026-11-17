@@ -28,15 +28,28 @@
 .ln-end { color: var(--muted); }
 .ln-saver.on { box-shadow: inset 0 0 0 2px #ffd23f; background: #ffd23f22; }
 .ln-sheet { overflow-x: auto; }
-.ln-tab { border-collapse: collapse; font-size: 12px; }
-.ln-tab th, .ln-tab td { border: 1px solid #ffffff1c; padding: 1px 3px; text-align: center; min-width: 1.9em; }
-.ln-tab .ln-nm { text-align: left; max-width: 6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ln-tab .ln-cos { color: #d38bff; }
-.ln-tab tr.me { background: var(--panel2); }
-.ln-tab td.now { box-shadow: inset 0 0 0 2px var(--accent); }
-.ln-balls { font-size: 11px; color: var(--muted); white-space: nowrap; }
+/* #135 the scoresheet as an alley's overhead screen: deep blue frames, white numbers, X gold, / cyan */
+.ln-tab { border-collapse: separate; border-spacing: 2px; font-size: 12px; background: #0b1230; border-radius: 8px; padding: 3px; }
+.ln-tab th { background: #1d2a66; color: #ffe9a8; font-weight: 700; padding: 2px 3px; border-radius: 4px; min-width: 2em; }
+.ln-tab td { background: #14204f; color: #f3f6ff; padding: 1px 3px; text-align: center; min-width: 2em; border-radius: 4px; }
+.ln-tab .ln-nm { background: transparent; text-align: left; max-width: 6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+.ln-tab .ln-cos { color: #e7b6ff; background: #3b1a66; }
+.ln-tab tr.me td:not(.ln-nm) { background: #1c2d6e; }
+.ln-tab td.now { box-shadow: inset 0 0 0 2px #ffd23f, 0 0 8px #ffd23f66; }
+.ln-balls { display: flex; justify-content: center; gap: 2px; font-size: 11px; white-space: nowrap; color: #b8c4ee; }
+.ln-balls span { min-width: 1em; }
+.ln-balls .ln-x { color: #ffd23f; font-weight: 900; }
+.ln-balls .ln-sp { color: #5fe0ff; font-weight: 900; }
+.ln-balls .ln-miss { color: #7f8bb8; }
 .ln-cum { font-weight: 700; }
-.ln-tot { font-weight: 800; }
+.ln-tab td.ln-tot { font-weight: 800; color: #ffe9a8; background: #24306e; }
+.ln-word.final { color: #fff; font-size: 40px; text-shadow: 0 3px 0 #2b1650, 0 0 22px #b14cff; }
+.ln-speed { position: absolute; left: 10px; top: 10px; z-index: 2; pointer-events: none; padding: 4px 10px; border-radius: 10px;
+  background: #0b1230cc; color: #e8f3ff; font-size: 12px; box-shadow: 0 0 0 1px #4cc9f055; }
+.ln-speed b { font-size: 18px; color: #7ee0ff; font-variant-numeric: tabular-nums; }
+.ln-speed i { font-style: normal; color: #9fb0d8; margin-left: 4px; }
+.ln-speed em { font-style: normal; color: #ffd23f; font-weight: 800; }
+.ln-speed.pop { animation: lnPop .5s ease-out; }
 @media (max-width: 420px) {
   .ln-stage { height: 50vh; }
   .ln-lbl { min-width: 0; }
