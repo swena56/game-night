@@ -1,0 +1,37 @@
+/* rapids: this game's own rules, loaded with static/games/rapids.js (needUI in app.js). Shared pieces and
+   the theme tokens live in static/style.css, which always loads first (banners and score rows in section 5). */
+.rp { max-width: 760px; margin: 0 auto; overscroll-behavior: none; user-select: none; -webkit-user-select: none; }
+.rp-stage { position: relative; height: clamp(280px, calc(var(--room) - 150px), 640px); border-radius: var(--radius); overflow: hidden;
+  display: flex; justify-content: center; align-items: center; background: #2f7fb8; }
+.rp-stage canvas { position: absolute; inset: 0; margin: auto; max-width: 100%; max-height: 100%; display: block; }
+.rp-hud { position: absolute; top: 8px; left: 8px; right: 8px; display: flex; justify-content: space-between; z-index: 2; pointer-events: none;
+  font-weight: 800; font-family: var(--font-display); color: #13324d; text-shadow: 0 1px 0 #fff8; }
+.rp-hud span { background: #ffffffc8; border-radius: 999px; padding: 2px 10px; }
+.rp-hud span:empty { display: none; }
+.rp-prog { position: absolute; top: 44px; left: 16px; right: 40px; height: 6px; border-radius: 3px; background: #ffffff70; z-index: 2; pointer-events: none; }
+.rp-prog i { position: absolute; top: -4px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; border: 2px solid #fff; box-sizing: border-box; transition: left .2s linear; }
+.rp-prog i.rp-me { width: 18px; height: 18px; top: -6px; margin-left: -9px; border-color: #ffc83d; z-index: 1; }
+.rp-prog .rp-flag { position: absolute; right: -26px; top: -9px; font-size: 16px; }
+.rp-sog { position: absolute; left: 10px; bottom: 10px; width: 30px; height: 96px; border-radius: 8px; background: #fbf7ecdd; border: 2px solid #fff;
+  overflow: hidden; z-index: 2; pointer-events: none; box-shadow: 0 2px 6px #0003; }
+.rp-sog i { position: absolute; left: 0; right: 0; bottom: 0; background: linear-gradient(#5fb6e6, #2f6fa8); transition: height .25s; }
+.rp-sog b { position: absolute; left: 0; right: 0; top: 4px; text-align: center; font-size: 11px; color: #13324d; }
+.rp-sog::before { content: '💧'; position: absolute; left: 0; right: 0; bottom: 4px; text-align: center; font-size: 13px; z-index: 1; }
+.rp-sog.rp-wet { animation: rp-pulse .5s ease-in-out infinite alternate; border-color: #ef476f; }
+@keyframes rp-pulse { to { transform: scale(1.07); } }
+.rp-stick { position: absolute; width: 150px; height: 44px; margin: -22px 0 0 -75px; border-radius: 22px; border: 2px solid #ffffff88;
+  background: #ffffff30; pointer-events: none; z-index: 2; }
+.rp-stick span { position: absolute; left: 53px; top: 0; width: 40px; height: 40px; border-radius: 50%; background: #ffffffa0; }
+.rp-res { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 3; min-width: 220px; max-width: calc(100% - 32px);
+  background: #fffffff0; color: #13324d; border-radius: var(--radius); padding: 12px 16px; box-shadow: 0 6px 24px #0004; }
+.rp-res h3 { margin: 0 0 8px; font-family: var(--font-display); }
+.rp-res div { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+.rp-res em { font-style: normal; opacity: .7; font-size: 13px; }
+.rp-res p { margin: 8px 0 0; }
+.rp-bar { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); margin-top: var(--s2); }
+.rp-bar button { min-width: 160px; min-height: 52px; font-size: 18px; touch-action: none; transition: transform .1s, box-shadow .15s; }
+.rp-bar button.rp-brace { transform: scale(.96); box-shadow: 0 0 0 4px #9ad0ff, 0 0 18px #9ad0ff; }
+.rp-flash { color: #fff; text-shadow: 0 2px 6px #0b2a44cc; }
+.rp-soglet { font-size: 11px; color: #3a8dff; margin-right: 6px; }
+body.focus .rp-stage { height: max(260px, calc(var(--room) - 160px)); }
+@media (prefers-reduced-motion: reduce) { .rp-sog.rp-wet { animation: none; } .rp-prog i { transition: none; } }
