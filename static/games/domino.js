@@ -18,6 +18,7 @@ UI.domino = (() => {
         <div class="dm-hud"><span id="dmTable"></span><span id="dmWho"></span></div>
         <div class="dm-sub"><span id="dmReach"></span></div>
         <div class="dm-pop" id="dmPop" hidden></div>
+        <div class="dm-tip" id="dmTip" hidden></div>
         <div class="dm-done" id="dmDone" hidden><h3 id="dmDoneTitle"></h3><div id="dmStand"></div></div>
       </div>
       <div class="dm-ctl" id="dmCtl">
@@ -93,6 +94,29 @@ UI.domino = (() => {
     for (const [k, f] of fallen) {
       const [x, y] = k.split(',').map(Number), pc = pieceAt(x, y);
       for (const p of pc?.[3] === 'split' ? [(f.d + 7) % 8, (f.d + 1) % 8] : [f.d]) out.push([x + DIRS[p][0], y + DIRS[p][1], p]);
+    }
+    return out;
+  }
+  // #152: the free squares that carry MY run on: where my run's last dominoes push (through bells and lined-up gates)
+  function myTaps() {
+    if (V.me == null) return [];
+    const mine = new Set((V.reach[String(V.me)]?.cells || []).map(([x, y]) => `${x},${y}`));
+    const out = [], seen = new Set(), fallen = sim().falls;
+    for (const [k, f] of fallen) {
+      if (!mine.has(k)) continue;
+      const [x, y] = k.split(',').map(Number), pc = pieceAt(x, y);
+      for (const p of pc?.[3] === 'split' ? [(f.d + 7) % 8, (f.d + 1) % 8] : [f.d]) {
+        let cx = x, cy = y;
+        for (let n = 0; n < V.size; n++) {
+          cx += DIRS[p][0]; cy += DIRS[p][1];
+          if (cx < 0 || cy < 0 || cx >= V.size || cy >= V.size) break;
+          const tg = targetAt(cx, cy);
+          if (tg) { if (tg[2] === 'tower' || (tg[2] === 'gate' && p % 4 !== tg[3])) break; continue; }
+          const ck = `${cx},${cy}`;
+          if (freeCell(cx, cy) && !seen.has(ck)) { seen.add(ck); out.push([cx, cy, p]); }
+          break;
+        }
+      }
     }
     return out;
   }
@@ -217,9 +241,13 @@ UI.domino = (() => {
   function hint() {
     const t = S.phase !== 'playing' ? '' : V.stage === 'topple' ? 'Watch them fall!' : V.stage === 'between' ? ''
       : !myTurn() ? (V.me == null ? 'Watch the runs grow.' : 'Plan ahead: the coloured squares show where each run reaches now.')
-        : !sel ? 'Tap a square to stand a domino there (the glowing squares carry your run on).'
+        : !sel ? 'Tap a pulsing ring to stand a domino where your run reaches next (or any free square to plan ahead).'
           : 'Tap the square again (or ⟳ / R) to turn it 45°, then ✔ Place. Side-on stops a run.';
     if ($('dmHint').textContent !== t) $('dmHint').textContent = t;
+    // the same nudge on the board itself (the hint line sits below the fold on a phone)
+    const tip = $('dmTip'), tt = !myTurn() ? '' : !sel ? '👆 Tap a pulsing ring' : kind === 'block' ? '✔ Place to block' : '⟳ Tap again to turn · ✔ Place';
+    if (tip.textContent !== tt) tip.textContent = tt;
+    tip.hidden = !tt;
   }
 
   function pop(text, color = '#fff') {
@@ -239,7 +267,8 @@ UI.domino = (() => {
       ring = new Map(V.topple.rings.map(([x, y, t, o]) => [`${x},${y}`, { t, o, u: clamp((tp - t) / 0.6, 0, 1) }]));
     }
     const ghost = myTurn() && sel ? { x: sel[0], y: sel[1], axis, kind } : null;
-    return { V, owner, fall, ring, tp, ghost, now, myColor: V.me != null ? colorOf(V.me) : '#fff', colorOf };
+    const taps = myTurn() ? myTaps() : [];
+    return { V, owner, fall, ring, tp, ghost, taps, idle: false, now, myColor: V.me != null ? colorOf(V.me) : '#fff', colorOf };
   }
 
   function topple(now) {
@@ -266,7 +295,8 @@ UI.domino = (() => {
     const busyAnim = V.topple && (now - toppleAt) / 1000 < V.topple.end + 1.2;
     if (!busyAnim && now - lastDraw < 100) return;
     lastDraw = now;
-    (gl || flat)?.draw(now, scene(now));
+    const sc = scene(now); sc.idle = !busyAnim;
+    (gl || flat)?.draw(now, sc);
   }
 
   // ---------- three.js: square (x, y) sits at world (x - mid, 0, mid - y); +y on the table runs away from you
@@ -287,7 +317,7 @@ UI.domino = (() => {
     const tex = (w, h, paint) => {
       const c = document.createElement('canvas'); c.width = w; c.height = h;
       const g = c.getContext('2d'); if (g) paint(g, w, h);
-      const t = new T.CanvasTexture(c); t.anisotropy = 4; return t;
+      const t = new T.CanvasTexture(c); t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy?.() || 4); return t;
     };
     const std = (color, o = {}) => new T.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0, ...o });
     let N = V.size, mid = (N - 1) / 2;
@@ -297,7 +327,11 @@ UI.domino = (() => {
     woodTex.wrapS = woodTex.wrapT = T.RepeatWrapping; woodTex.repeat.set(3, 3);
     const top = new T.Mesh(new T.BoxGeometry(N + 4, 0.4, N + 4), std(0xffffff, { map: woodTex, roughness: 0.45 }));
     top.position.y = -0.2; top.receiveShadow = true; scene3.add(top);
-    const feltTex = tex(512, 512, (g, w) => { g.fillStyle = '#1f5a3e'; g.fillRect(0, 0, w, w); const s = w / N; g.strokeStyle = 'rgba(255,255,255,.16)'; g.lineWidth = 2; for (let k = 0; k <= N; k++) { g.beginPath(); g.moveTo(k * s, 0); g.lineTo(k * s, w); g.stroke(); g.beginPath(); g.moveTo(0, k * s); g.lineTo(w, k * s); g.stroke(); } for (let k = 0; k < 3000; k++) { g.fillStyle = `rgba(0,0,0,${Math.random() * 0.08})`; g.fillRect(Math.random() * w, Math.random() * w, 2, 2); } });
+    const maxAniso = renderer.capabilities.getMaxAnisotropy?.() || 4;
+    // #151: the felt was a 512 texture stretched over a ~900 device-px board: soft grid lines
+    const FT = low ? 1024 : 2048;
+    const feltTex = tex(FT, FT, (g, w) => { g.fillStyle = '#1f5a3e'; g.fillRect(0, 0, w, w); const s = w / N; g.strokeStyle = 'rgba(255,255,255,.2)'; g.lineWidth = w / 256; for (let k = 0; k <= N; k++) { g.beginPath(); g.moveTo(k * s, 0); g.lineTo(k * s, w); g.stroke(); g.beginPath(); g.moveTo(0, k * s); g.lineTo(w, k * s); g.stroke(); } for (let k = 0; k < 3000 * (w / 512) ** 2 / 2; k++) { g.fillStyle = `rgba(0,0,0,${Math.random() * 0.08})`; g.fillRect(Math.random() * w, Math.random() * w, w / 256, w / 256); } });
+    feltTex.anisotropy = maxAniso; feltTex.colorSpace = woodTex.colorSpace;
     const felt = new T.Mesh(new T.PlaneGeometry(N, N), std(0xffffff, { map: feltTex, roughness: 0.95 }));
     felt.rotation.x = -Math.PI / 2; felt.position.y = 0.002; felt.receiveShadow = true; scene3.add(felt);
     // reach tiles: a soft glow on the squares each run reaches now
@@ -368,6 +402,13 @@ UI.domino = (() => {
       const t = { g, parts, kind: kindT };
       tgs.set(k, t); return t;
     }
+    // #152: pulsing rings on the squares that carry my run on, and an arrow by my own starter showing its fall
+    const tapGeo = new T.RingGeometry(0.28, 0.44, 32), taps3 = [];
+    const tapMesh = (k) => { if (taps3[k]) return taps3[k]; const m = new T.Mesh(tapGeo, new T.MeshBasicMaterial({ transparent: true, depthWrite: false })); m.rotation.x = -Math.PI / 2; scene3.add(m); return (taps3[k] = m); };
+    const arrowShape = new T.Shape(); arrowShape.moveTo(0, 0.5); arrowShape.lineTo(0.32, 0.12); arrowShape.lineTo(0.12, 0.12); arrowShape.lineTo(0.12, -0.4); arrowShape.lineTo(-0.12, -0.4); arrowShape.lineTo(-0.12, 0.12); arrowShape.lineTo(-0.32, 0.12); arrowShape.closePath();
+    const startArrow = new T.Mesh(new T.ShapeGeometry(arrowShape), new T.MeshBasicMaterial({ transparent: true, depthWrite: false }));
+    startArrow.rotation.x = -Math.PI / 2; startArrow.visible = false;
+    const startHolder = new T.Group(); startHolder.add(startArrow); scene3.add(startHolder);
     // the ghost of the domino you're about to place
     const ghostMat = new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5, depthWrite: false });
     const ghost = new T.Group(); const ghostBody = new T.Mesh(domGeo, ghostMat); ghostBody.position.set(0, DH / 2, 0); ghost.add(ghostBody);
@@ -418,6 +459,18 @@ UI.domino = (() => {
         m.position.copy(W(x, y, 0.004)); m.material.color.set(sc.colorOf(owners[0])); m.material.opacity = owners.includes(V2.me) ? 0.42 : 0.2; m.visible = true;
       }
       for (let k = n; k < tiles.length; k++) tiles[k].visible = false;
+      // tap targets (my turn) and my starter's arrow (whole build stage)
+      sc.taps.forEach(([x, y], k) => { const m = tapMesh(k); m.visible = true; m.position.copy(W(x, y, 0.008)); m.material.color.set(sc.myColor); const p = 0.5 + 0.5 * Math.sin(now / 260 + k); m.material.opacity = 0.45 + 0.45 * p; m.scale.setScalar(0.9 + 0.18 * p); });
+      for (let k = sc.taps.length; k < taps3.length; k++) taps3[k].visible = false;
+      const st = V2.stage === 'build' && V2.me != null ? V2.starters.find((s) => s[3] === V2.me) : null;
+      startArrow.visible = !!st;
+      if (st) {
+        const [sx, sy, sd] = st;
+        startHolder.position.copy(W(sx + DIRS[sd][0] * 0.62, sy + DIRS[sd][1] * 0.62, 0.012));
+        startHolder.rotation.y = sd * Math.PI / 4 - Math.PI / 2;
+        startArrow.material.color.set(sc.myColor); startArrow.material.opacity = 0.55 + 0.3 * Math.sin(now / 300);
+        startArrow.scale.setScalar(0.9);
+      }
       // the ghost
       const gh = sc.ghost;
       ghost.visible = !!gh;
@@ -433,7 +486,8 @@ UI.domino = (() => {
       GL3.tickShake(camera, dt);
       camera.lookAt(0, 0, 0.6);
       stg.follow(camera);
-      renderer.render(scene3, camera);
+      // #151: idle redraws (~10 fps on purpose) must not count as a slow phone, or GL3 drops the resolution
+      if (sc.idle && renderer.renderStill) renderer.renderStill(scene3, camera); else renderer.render(scene3, camera);
     }
 
     return {
@@ -491,6 +545,10 @@ UI.domino = (() => {
       };
       for (const [x, y, d, s] of V.starters) dom(x, y, d % 4, 'domino', s, d);
       for (const [x, y, ax, kindD, by] of V.pieces) dom(x, y, ax, kindD, by);
+      sc.taps.forEach(([x, y], i) => { const p = 0.5 + 0.5 * Math.sin(now / 260 + i); g.globalAlpha = 0.5 + 0.45 * p; g.strokeStyle = sc.myColor; g.lineWidth = 3; g.beginPath(); g.arc(X(x), Y(y), k * (0.3 + 0.08 * p), 0, Math.PI * 2); g.stroke(); });
+      g.globalAlpha = 1;
+      const st = V.stage === 'build' && V.me != null ? V.starters.find((s) => s[3] === V.me) : null;
+      if (st) { const [sx, sy, sd] = st; g.save(); g.translate(X(sx) + DIRS[sd][0] * k * 0.62, Y(sy) - DIRS[sd][1] * k * 0.62); g.rotate(-sd * Math.PI / 4); g.fillStyle = sc.myColor; g.globalAlpha = 0.8; g.beginPath(); g.moveTo(k * 0.35, 0); g.lineTo(0, k * 0.25); g.lineTo(0, -k * 0.25); g.closePath(); g.fill(); g.restore(); g.globalAlpha = 1; }
       if (sc.ghost) { g.globalAlpha = 0.6; g.strokeStyle = '#fff'; g.lineWidth = 2; g.strokeRect(X(sc.ghost.x) - k / 2, Y(sc.ghost.y) - k / 2, k, k); dom(sc.ghost.x, sc.ghost.y, sc.ghost.axis, sc.ghost.kind, V.me); g.globalAlpha = 1; }
     }
     return {
@@ -500,6 +558,11 @@ UI.domino = (() => {
     };
   }
 
-  const turnText = (s) => (s.phase === 'playing' && s.domino ? (s.domino.stage === 'build' ? `🁫 Table ${s.domino.table} · build ${s.domino.round} of ${s.domino.turns}` : '🁫 Topple!') : null);
+  // #152: keep the shell's "your turn" message on your turn
+  const turnText = (s) => {
+    const D = s.domino; if (s.phase !== 'playing' || !D) return null;
+    if (D.stage !== 'build') return '🁫 Topple!';
+    return `${D.cur != null && D.cur === D.me ? '✨ Your turn · ' : '🁫 '}Table ${D.table} · build ${D.round} of ${D.turns}`;
+  };
   return { mount, unmount, render, turnText, focus: true };
 })();

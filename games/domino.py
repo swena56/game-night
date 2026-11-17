@@ -118,7 +118,7 @@ class Domino(Game):
     category = "party"
     family = None
     howto = [
-        "Everyone builds on one table. Your starter domino sits on the edge, pointing in. On your turn stand up 3 dominoes: tap a square, tap again (or ⟳) to turn it 45°, then ✔ Place.",
+        "Everyone builds on one table. Your starter domino sits on the edge (the arrow in your colour). On your turn stand up 3 dominoes: tap a pulsing ring (where your run reaches next), tap again (or ⟳) to turn it 45°, then ✔ Place.",
         "A falling domino knocks the one in the next square it falls toward, if that one isn't side-on (45° turns the run). The preview lights up what your run reaches now.",
         "After the last build turn every starter is pushed at once. Your run scores 🔔 bells 10 and ⛩ gates 20 (falling through along the gate), and carries on past them; 🏯 the tower 50 ends it. Plus 1 a domino.",
         "Runs can merge: whoever's push reaches a domino first owns everything after it, so hijack a rival's run, or cut it off.",
