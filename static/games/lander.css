@@ -17,7 +17,8 @@
 .ml-fuel b { position: relative; display: block; text-align: center; font: 800 13px/22px var(--font-display); color: #fff; text-shadow: 0 1px 2px #000; }
 .ml-count { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%); z-index: 3; font-size: clamp(56px, 18vw, 110px); font-weight: 800;
   color: #fff; text-shadow: 0 4px 0 #0006, 0 0 26px #7fa7ff99; pointer-events: none; }
-.ml-pop { position: absolute; left: 50%; top: 26%; transform: translateX(-50%); z-index: 3; font-size: clamp(22px, 7vw, 40px); font-weight: 800; white-space: nowrap;
+.ml-pop { position: absolute; left: 50%; top: 26%; transform: translateX(-50%); z-index: 3; font-size: clamp(20px, 6vw, 36px); font-weight: 800;
+  width: max-content; max-width: 92%; text-align: center; text-wrap: balance;
   color: #fff; text-shadow: 0 2px 0 #000a, 0 0 18px #000a; pointer-events: none; }
 .ml-pop.good { color: #7dffb2; } .ml-pop.bad { color: #ff8a8a; }
 .ml-pop-in { animation: mlPop 2.4s ease-out both; }
@@ -34,3 +35,11 @@
 .ml-what { font-size: 12px; opacity: .8; margin-right: 6px; }
 body.focus .ml-stage { height: max(260px, calc(var(--room) - 190px)); }
 @media (prefers-reduced-motion: reduce) { .ml-pop-in { animation: none; } }
+.ml-arrows { position: absolute; top: 46%; z-index: 3; display: flex; flex-direction: column; gap: 6px; }
+.ml-left { left: 6px; align-items: flex-start; } .ml-right { right: 6px; align-items: flex-end; }
+.ml-arrows button { min-height: 34px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--pc); background: #000b; color: var(--pc);
+  font: 800 14px/1 var(--font-display); font-variant-numeric: tabular-nums; touch-action: none; animation: mlNudge 1.6s ease-in-out infinite; }
+.ml-left button { --dx: -3px; } .ml-right button { --dx: 3px; }
+@keyframes mlNudge { 50% { transform: translateX(var(--dx)); } }
+.ml-stage { cursor: grab; }
+@media (prefers-reduced-motion: reduce) { .ml-arrows button { animation: none; } }

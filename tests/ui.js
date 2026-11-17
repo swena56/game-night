@@ -348,6 +348,12 @@ const MOVES = {
   lander(d, S, n, w) {  // hold 🔥 burn for a while, lean ◀ ▶, or keys
     const fire = (el, type) => el && el.dispatchEvent(new w.MouseEvent(type, { bubbles: true }));
     const k = pick(['up', 'up', 'l', 'r']), b = d.querySelector(`#mlCtl [data-k="${k}"]`);
+    if (n % 5 === 4) {  // drag the sky to look around, or hold a pad arrow
+      const st = d.querySelector('#mlStage'), pe = (el, type, x) => el && el.dispatchEvent(new w.MouseEvent(type, { bubbles: true, clientX: x }));
+      const arrow = d.querySelector('.ml-arrows [data-pad]');
+      if (arrow) { pe(arrow, 'pointerdown', 0); setTimeout(() => pe(arrow, 'pointerup', 0), 400); return; }
+      pe(st, 'pointerdown', 200); pe(st, 'pointermove', 120); setTimeout(() => pe(st, 'pointerup', 120), 200); return;
+    }
     if (n % 3 === 2) { const code = pick(['ArrowUp', 'ArrowLeft', 'Space']); w.dispatchEvent(new w.KeyboardEvent('keydown', { code, bubbles: true })); setTimeout(() => w.dispatchEvent(new w.KeyboardEvent('keyup', { code, bubbles: true })), 500); return; }
     fire(b, 'pointerdown'); setTimeout(() => fire(b, 'pointerup'), k === 'up' ? pick([400, 900]) : 150);
   },

@@ -7,17 +7,20 @@ UI.lander = (() => {
   let S, ctx, V = null, gl = null, flat = null, raf = 0, ro = null, keyDown = null, keyUp = null;
   let fl = null, roundKey = '', held = { l: false, r: false, up: false }, keys = new Set(), posAt = 0, sent = false;
   let ghosts = {}, ghostAt = 0, flash = null, lastCd = 0, beeped = 0;
+  // drag to look: `look` metres added to the camera's x; it springs back a moment after you let go
+  let look = 0, drag = null, lookRel = 0, padHold = null;
   const $ = (id) => document.getElementById(id);
   const calm = () => document.body.classList.contains('calm');
 
   function mount(main, side) {
-    V = null; gl = null; flat = null; fl = null; roundKey = ''; held = { l: false, r: false, up: false }; keys = new Set(); ghosts = {}; flash = null; sent = false;
+    V = null; gl = null; flat = null; fl = null; roundKey = ''; look = 0; drag = null; padHold = null; held = { l: false, r: false, up: false }; keys = new Set(); ghosts = {}; flash = null; sent = false;
     main.innerHTML = `<div class="ml"><div class="ml-stage" id="mlStage">
         <canvas class="ml-map" id="mlMap"></canvas>
         <div class="ml-hud" id="mlHud"><span id="mlAlt"></span><span id="mlVy"></span><span id="mlVx"></span><span id="mlAng"></span></div>
         <div class="ml-fuel"><i id="mlFuel"></i><b id="mlFuelT"></b></div>
         <div class="ml-count" id="mlCount" hidden></div>
         <div class="ml-pop" id="mlPop" hidden></div>
+        <div class="ml-arrows ml-left" id="mlPadL"></div><div class="ml-arrows ml-right" id="mlPadR"></div>
         <div class="ml-done" id="mlDone" hidden><h3 id="mlDoneTitle"></h3><div id="mlStand"></div></div>
       </div>
       <div class="ml-ctl" id="mlCtl">
@@ -40,6 +43,26 @@ UI.lander = (() => {
     keyUp = (e) => { if (KEYS[e.code]) keys.delete(KEYS[e.code]); };
     addEventListener('keydown', keyDown); addEventListener('keyup', keyUp);
     const stage = $('mlStage');
+    // drag the sky sideways to look around
+    stage.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('.ml-arrows, .ml-done')) return;
+      e.preventDefault(); try { stage.setPointerCapture(e.pointerId); } catch {}
+      drag = { id: e.pointerId, x: e.clientX, look };
+    });
+    stage.addEventListener('pointermove', (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const per = ((gl || flat)?.span?.() || 80) / (stage.clientWidth || 320);
+      look = Math.max(-V?.geo.w || -160, Math.min(V?.geo.w || 160, drag.look - (e.clientX - drag.x) * per));
+    });
+    const endDrag = (e) => { if (drag && e.pointerId === drag.id) { drag = null; lookRel = performance.now(); } };
+    stage.addEventListener('pointerup', endDrag); stage.addEventListener('pointercancel', endDrag); stage.addEventListener('lostpointercapture', endDrag);
+    // hold a pad arrow to swing the view to that pad
+    for (const side of ['mlPadL', 'mlPadR']) {
+      const box = $(side);
+      box.addEventListener('pointerdown', (e) => { const b = e.target.closest('[data-pad]'); if (!b) return; e.preventDefault(); e.stopPropagation(); padHold = +b.dataset.pad; });
+      const off = () => { if (padHold != null) { padHold = null; lookRel = performance.now(); } };
+      box.addEventListener('pointerup', off); box.addEventListener('pointercancel', off); box.addEventListener('pointerleave', off);
+    }
     ro = window.ResizeObserver ? new ResizeObserver(() => (gl || flat)?.resize()) : null;
     ro?.observe(stage);
     const revive = { build: () => (gl = make3d(stage)), flat: () => { flat ||= make2d(stage); }, unflat: () => { flat?.dispose?.(); flat = null; } };
@@ -261,12 +284,34 @@ UI.lander = (() => {
       $('mlFuelT').textContent = f ? `⛽ ${(f.fuel / 30).toFixed(1)}s` : '';
       $('mlFuel').style.width = f ? `${Math.min(100, (f.fuel / g.tankMax) * 100)}%` : '0';
     }
+    // looking around: hold a pad arrow to swing there; let go and the view drifts home (sooner once you fly again)
+    if (padHold != null && fl && V.pads[padHold]) { const [l, r] = V.pads[padHold]; look += ((l + r) / 2 - fl.x - look) * 0.12; }
+    else if (!drag && look) {
+      const inp = input(), busy = inp.thrust || inp.rot;
+      if (busy || now - lookRel > 1200) { look *= busy ? 0.85 : 0.92; if (Math.abs(look) < 0.05) look = 0; }
+    }
+    drawArrows();
     drawMap(now);
     const my = mine();
     $('mlHint').textContent = S.phase !== 'playing' ? '' : V.stage === 'count' ? `Round ${V.round} of ${V.rounds}: pick a pad — ×3 is narrow and high.`
-      : fl && !fl.done ? (fl.fuel <= 0 ? '⛽ Out of fuel!' : 'Gentle now: green gauges mean a safe touchdown.')
+      : fl && !fl.done ? (fl.fuel <= 0 ? '⛽ Out of fuel!' : fl.t < 150 ? 'Drag the sky to look around; the arrows point to pads off screen.' : 'Gentle now: green gauges mean a safe touchdown.')
       : my?.res ? 'Watching the others come down…' : V.me == null ? 'Watching.' : '';
     if (now - (loop.side || 0) > 400) { loop.side = now; renderSide(); }
+  }
+
+  // arrows on the stage's edges for pads that are off screen (hold one to look that way)
+  const PAD_COL = { 1: '#5ce1a0', 2: '#ffd23f', 3: '#ff5d8f' };
+  function drawArrows() {
+    const L = $('mlPadL'), R = $('mlPadR'); if (!L) return;
+    const view = gl || flat, on = !!(fl && !fl.done && V.stage === 'fly' && view?.proj);
+    let left = '', right = '';
+    if (on) V.pads.forEach(([l, r, y, m], n) => {
+      const c = (l + r) / 2, p = view.proj(c, y), d = Math.round(Math.abs(c - fl.x));
+      const chip = (arrow) => `<button data-pad="${n}" style="--pc:${PAD_COL[m]}">${arrow === '◀' ? '◀ ' : ''}×${m} · ${d} m${arrow === '▶' ? ' ▶' : ''}</button>`;
+      if (p < -0.92) left += chip('◀'); else if (p > 0.92) right += chip('▶');
+    });
+    if (L.dataset.h !== left) { L.dataset.h = left; L.innerHTML = left; }
+    if (R.dataset.h !== right) { R.dataset.h = right; R.innerHTML = right; }
   }
 
   // a strip map across the top: the whole moon, the pads, me and the ghosts
@@ -301,10 +346,10 @@ UI.lander = (() => {
     if (!renderer) return null;
     stage.prepend(renderer.domElement);
     const scene = new T.Scene();
-    const camera = new T.PerspectiveCamera(45, 1, 0.5, 900);
+    const camera = new T.PerspectiveCamera(45, 1, 0.5, 1600);
     const stg = GL3.stage(renderer, scene, {
       exposure: 1.0, hemi: [0x8090b0, 0x111118, 0.35],
-      key: { i: 1.6, color: 0xfff6e8, pos: [-40, 60, 30], area: 50, near: 5, far: 200, map: 1024 },
+      key: { i: 1.6, color: 0xfff6e8, pos: [-55, 38, 28], area: 50, near: 5, far: 200, map: 1024 },
       sky: { top: 0x000005, horizon: 0x05060f, bottom: 0x05060f, band: 0.08, stars: 600, radius: 600 },
       env: { accent: 0x445577, walls: 0x05060a, lamp: 0xffffff, glow: 1.2 },
     });
@@ -324,41 +369,62 @@ UI.lander = (() => {
       for (let k = 0; k < 40; k++) { const x = Math.random() * w, y = Math.random() * h, r = 2 + Math.random() * 10; g.strokeStyle = 'rgba(40,40,46,0.35)'; g.lineWidth = 1.5; g.beginPath(); g.arc(x, y, r, 0, 7); g.stroke(); g.fillStyle = 'rgba(60,60,66,0.25)'; g.beginPath(); g.arc(x + 0.5, y + 0.5, r * 0.8, 0, 7); g.fill(); }
     });
     rego.wrapS = rego.wrapT = T.RepeatWrapping; rego.repeat.set(14, 6);
-    const groundMat = new T.MeshStandardMaterial({ map: rego, roughness: 0.95, color: 0xb8bac2, flatShading: true, vertexColors: true });
+    const groundMat = new T.MeshStandardMaterial({ map: rego, roughness: 0.95, color: 0xb8bac2, vertexColors: true });
     const padLegMat = new T.MeshStandardMaterial({ map: rego, roughness: 0.95, color: 0xb8bac2, flatShading: true });
     const world = new T.Group(); scene.add(world);
-    let terrain = null, padObjs = [];
-    // craters: a few dents in the scenery away from the flight line
+    const beaconMat = new T.MeshBasicMaterial({ color: 0xff4040 }); beaconMat.shared = true;
+    let terrain = null, padObjs = [], extras = new T.Group();
+    world.add(extras);
+    const disposeTree = (o) => o.traverse((m) => { m.geometry?.dispose(); if (m.material && !m.material.shared) { m.material.map?.dispose(); m.material.dispose?.(); } });
+    const rockGeo = new T.IcosahedronGeometry(1, 0), rockMat = new T.MeshStandardMaterial({ map: rego, color: 0x9a9ca4, roughness: 1, flatShading: true });
+    rockMat.shared = true;
+    // the scenery: the flight line in the middle, the moon running on past both ends and away behind, ridges on the horizon
     function build() {
       if (terrain) { world.remove(terrain); terrain.geometry.dispose(); }
-      for (const p of padObjs) { world.remove(p); p.traverse((m) => { m.geometry?.dispose(); if (m.material?.map) m.material.map.dispose(); }); }
+      for (const p of padObjs) { world.remove(p); disposeTree(p); }
       padObjs = [];
-      const g = G(), h = V.h, nx = h.length, zs = [];
-      for (let z = -70; z <= 14; z += z < -20 ? 6 : 2) zs.push(z);
-      const seed = V.round * 977;
+      for (const c of [...extras.children]) { extras.remove(c); disposeTree(c); }
+      const g = G(), h = V.h, seed = V.round * 977;
       const rnd = (a) => { const s = Math.sin(a * 12.9898 + seed) * 43758.5453; return s - Math.floor(s); };
+      // past the ends the moon carries on: blend from the edge height into rolling hills
+      const hills = (x) => 18 + 9 * Math.sin(x / 27 + seed) + 5 * Math.sin(x / 11.3 + seed * 1.7) + 14 * Math.max(0, Math.sin(x / 53 + seed * 0.3)) ** 2;
+      const lineH = (x) => {
+        if (x >= 0 && x <= g.w) return ground(x);
+        const e = x < 0 ? h[0] : h[h.length - 1], t = Math.min(1, (x < 0 ? -x : x - g.w) / 36);
+        return e + (hills(x) - e) * t * t * (3 - 2 * t);
+      };
       const craters = [];
-      for (let k = 0; k < 14; k++) craters.push([rnd(k) * g.w, -6 - rnd(k + 50) * 55, 3 + rnd(k + 90) * 9]);
-      const pos = [], idx = [], uv = [], cols = [];
-      for (let j = 0; j < zs.length; j++) {
-        const z = zs[j];
-        for (let i = 0; i < nx; i++) {
-          const x = i * g.seg;
-          let y = h[i];
-          const off = Math.max(0, Math.abs(z) - 3);
-          if (off > 0) {
-            // behind the flight line the ground falls away a little (the line you land on stays the skyline); in front it drops
-            const back = z < 0 ? -Math.min(14, off * 0.35) + 5 * Math.max(0, Math.sin(x / 21 + seed)) * Math.min(1, off / 40) : -off * 0.4;
-            y += back + Math.sin(x * 0.31 + z * 0.17 + seed) * Math.min(2.5, off * 0.2);
-            for (const [cx, cz, cr] of craters) {
-              const d = Math.hypot(x - cx, z - cz);
-              if (d < cr * 1.4) y += d < cr ? -Math.cos((d / cr) * Math.PI / 2) * cr * 0.35 : Math.sin(((d - cr) / (cr * 0.4)) * Math.PI) * cr * 0.12;
-            }
+      for (let k = 0; k < 26; k++) craters.push([-140 + rnd(k) * (g.w + 280), -8 - rnd(k + 50) * 120, 3 + rnd(k + 90) * (k < 5 ? 18 : 8)]);
+      for (let k = 0; k < 6; k++) craters.push([rnd(k + 300) * g.w, 5 + rnd(k + 310) * 8, 2 + rnd(k + 320) * 3]);   // a few small ones in front
+      const heightAt = (x, z) => {
+        let y = lineH(x);
+        const off = Math.max(0, Math.abs(z) - 3);
+        if (off > 0) {
+          // behind the flight line the ground falls away a little (the line you land on stays the skyline); in front it drops
+          const back = z < 0 ? -Math.min(16, off * 0.3) + 7 * Math.max(0, Math.sin(x / 21 + seed)) * Math.min(1, off / 40) : -off * 0.4;
+          y += back + Math.sin(x * 0.31 + z * 0.17 + seed) * Math.min(2.5, off * 0.2);
+          for (const [cx, cz, cr] of craters) {
+            const d = Math.hypot(x - cx, z - cz);
+            if (d < cr * 1.5) y += d < cr ? -Math.cos((d / cr) * Math.PI / 2) * cr * 0.32 : Math.sin(((d - cr) / (cr * 0.5)) * Math.PI) * cr * 0.14;
           }
-          pos.push(x, y, z); uv.push(x / g.w, (z + 70) / 84);
-          const shade = z < -3 ? Math.max(0.38, 1 - (-3 - z) / 60) : z > 3 ? Math.max(0.6, 1 - (z - 3) / 20) : 1;   // the flight line brightest
-          cols.push(shade, shade, shade * 1.02);
         }
+        return y;
+      };
+      // x: fine over the flight line, coarser out past the ends; z: fine near the line, coarse far back
+      const xs = [];
+      for (let x = -160; x < 0; x += 4) xs.push(x);
+      for (let i = 0; i < h.length; i++) xs.push(i * g.seg);
+      for (let x = g.w + 4; x <= g.w + 160; x += 4) xs.push(x);
+      const zs = [];
+      for (let z = -150; z <= 14; z += z < -70 ? 10 : z < -20 ? 5 : 2) zs.push(z);
+      const nx = xs.length, pos = [], idx = [], uv = [], cols = [];
+      for (const z of zs) for (const x of xs) {
+        const y = heightAt(x, z);
+        pos.push(x, y, z); uv.push((x + 160) / (g.w + 320) * 2.4, (z + 150) / 164 * 2);
+        const inside = x >= 0 && x <= g.w;
+        let shade = z < -3 ? Math.max(0.2, 1 - (-3 - z) / 65) : z > 3 ? Math.max(0.6, 1 - (z - 3) / 20) : 1;   // the flight line brightest
+        if (!inside) shade *= 0.82;
+        cols.push(shade, shade, shade * 1.03);
       }
       for (let j = 0; j < zs.length - 1; j++) for (let i = 0; i < nx - 1; i++) {
         const a = j * nx + i, b = a + 1, c = a + nx, d = c + 1;
@@ -368,6 +434,38 @@ UI.lander = (() => {
       geo.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); geo.setAttribute('uv', new T.Float32BufferAttribute(uv, 2)); geo.setAttribute('color', new T.Float32BufferAttribute(cols, 3));
       geo.setIndex(idx); geo.computeVertexNormals();
       terrain = new T.Mesh(geo, groundMat); terrain.receiveShadow = true; world.add(terrain);
+      // ridges on the horizon, each further one darker and bluer
+      [[-230, 20, 0.13], [-400, 38, 0.085], [-620, 66, 0.055]].forEach(([z, top, lum], n) => {
+        const rp = [], rc = [], ri = [], N = 140, x0 = -700, x1 = g.w + 700;
+        for (let i = 0; i <= N; i++) {
+          const x = x0 + (x1 - x0) * i / N, q = x / (40 + n * 25) + seed * (n + 1);
+          const peak = top * (0.45 + 0.35 * Math.sin(q) + 0.2 * Math.sin(q * 2.7 + 1) + 0.25 * Math.max(0, Math.sin(q * 0.4)) ** 3) + rnd(i + n * 100) * top * 0.08;
+          rp.push(x, -30, z + 60, x, peak, z, x, -30, z - 50);
+          for (let r = 0; r < 3; r++) rc.push(lum * (r === 1 ? 1.15 : 0.8), lum * (r === 1 ? 1.15 : 0.8), lum * (r === 1 ? 1.3 : 1.0));
+        }
+        for (let i = 0; i < N; i++) { const a = i * 3; ri.push(a, a + 3, a + 1, a + 1, a + 3, a + 4, a + 1, a + 4, a + 2, a + 2, a + 4, a + 5); }
+        const rg = new T.BufferGeometry();
+        rg.setAttribute('position', new T.Float32BufferAttribute(rp, 3)); rg.setAttribute('color', new T.Float32BufferAttribute(rc, 3));
+        rg.setIndex(ri); rg.computeVertexNormals();
+        extras.add(new T.Mesh(rg, new T.MeshStandardMaterial({ vertexColors: true, roughness: 1, color: 0xb8bac2 })));
+      });
+      // boulders for scale: a scatter behind and in front of the line (never on it)
+      const nRocks = low ? 60 : 160, rocks = new T.InstancedMesh(rockGeo, rockMat, nRocks), m4 = new T.Matrix4(), q4 = new T.Quaternion(), e4 = new T.Euler(), s4 = new T.Vector3(), p4 = new T.Vector3();
+      for (let k = 0; k < nRocks; k++) {
+        const x = -60 + rnd(k + 700) * (g.w + 120), front = k % 4 === 0, z = front ? 4.5 + rnd(k + 800) * 8 : -4.5 - rnd(k + 800) ** 1.6 * 60;
+        const r = 0.25 + rnd(k + 900) ** 3 * (front ? 0.9 : 2.6);
+        e4.set(rnd(k + 1) * 6, rnd(k + 2) * 6, rnd(k + 3) * 6); q4.setFromEuler(e4);
+        s4.set(r * (0.8 + rnd(k + 4) * 0.6), r * (0.5 + rnd(k + 5) * 0.4), r * (0.8 + rnd(k + 6) * 0.6));
+        p4.set(x, heightAt(x, z) + s4.y * 0.35, z);
+        m4.compose(p4, q4, s4); rocks.setMatrixAt(k, m4);
+      }
+      rocks.castShadow = !low; rocks.receiveShadow = true; extras.add(rocks);
+      // the ends of the flight line: masts with blinking tips (the lander can't fly past them)
+      for (const x of [1, g.w - 1]) {
+        const y = ground(x), mast = new T.Mesh(new T.CylinderGeometry(0.08, 0.12, 9, 6), new T.MeshStandardMaterial({ color: 0xc8ccd4, metalness: 0.6, roughness: 0.4 }));
+        mast.position.set(x, y + 4.5, -1.5); extras.add(mast);
+        const tip = new T.Mesh(new T.SphereGeometry(0.3, 10, 8), beaconMat); tip.position.set(x, y + 9.1, -1.5); extras.add(tip);
+      }
       // pads: a slab with blinking edge lights and a big ×n sign
       const padCol = { 1: '#5ce1a0', 2: '#ffd23f', 3: '#ff5d8f' };
       for (const [l, r, y, m] of V.pads) {
@@ -465,18 +563,19 @@ UI.lander = (() => {
       let tx, ty, td;
       if (fl && V.stage !== 'between') {
         const alt = Math.max(0, fl.y - ground(fl.x));
-        td = Math.max(20, Math.min(70, 18 + alt * 0.55)); tx = fl.x; ty = fl.y - Math.min(alt, td * tv()) * 0.45;
+        td = Math.max(24, Math.min(76, 22 + alt * 0.55)); tx = fl.x; ty = fl.y - Math.min(alt, td * tv()) * 0.45;
         if (fl.done) { td = 46; ty = fl.y + 6; }   // down (or in pieces): pull back to watch the others come in
         if (V.stage === 'count') { td = Math.max(g.w * 0.5 / (tv() * aspect), 60) ; tx = g.w / 2; ty = 45; }
       } else {
         td = Math.max(g.w * 0.52 / (tv() * aspect), 70); tx = g.w / 2; ty = 40;
       }
-      const ease = Math.min(1, dt * (V.stage === 'count' ? 1.2 : 3));
+      tx = Math.max(-20, Math.min(g.w + 20, tx + look));
+      const ease = Math.min(1, dt * (drag || padHold != null ? 10 : V.stage === 'count' ? 1.2 : 3));
       camX += (tx - camX) * ease; camY += (ty - camY) * ease; camD += (td - camD) * Math.min(1, dt * 1.6);
-      camera.position.set(camX, camY + camD * 0.22, camD); camera.lookAt(camX, camY, 0);
+      camera.position.set(camX, camY + camD * 0.17, camD); camera.lookAt(camX, camY, 0);
       GL3.tickShake(camera, dt); stg.follow(camera);
       // the key light's shadow box rides along
-      if (stg.key) { stg.key.position.set(camX - 40, 60, 30); stg.key.target.position.set(camX, 20, 0); }
+      if (stg.key) { stg.key.position.set(camX - 55, 38, 28); stg.key.target.position.set(camX, 20, 0); }
       // my lander
       mine3.visible = !!fl && !(fl.done && fl.done.how === 'crash');
       if (fl) {
@@ -503,15 +602,19 @@ UI.lander = (() => {
       for (const [k, gh] of Object.entries(ghost3)) if (!ghosts[k]) gh.visible = false;
       // pad lights blink
       const blink = Math.floor(now / 500) % 2;
+      beaconMat.color.setHex(Math.floor(now / 700) % 2 ? 0xff4040 : 0x401010);
       for (const p of padObjs) p.userData.lightMat.color.set(blink ? (p.userData.m === 3 ? 0xff5d8f : p.userData.m === 2 ? 0xffd23f : 0x5ce1a0) : 0x333333);
       earth.rotation.y += dt * 0.02;
       tickParts(dt);
       renderer.render(scene, camera);
     }
     const shake = (a) => GL3.shake(camera, a);
+    const pv = new T.Vector3();
+    const proj = (x, y) => pv.set(x, y, 0).project(camera).x;
+    const span = () => 2 * tv() * camD * aspect;
     function dispose() { stg.dispose(); renderer.dispose(); renderer.domElement.remove(); }
     resize();
-    return { draw, resize, dispose, shake, dust, boom, rebuild() { build.round = -1; } };
+    return { draw, resize, dispose, shake, dust, boom, proj, span, rebuild() { build.round = -1; } };
   }
 
   // ---------- flat fallback: a side view riding with my lander
@@ -520,6 +623,7 @@ UI.lander = (() => {
     const g = canvas.getContext('2d');
     if (!g) { stage.append('Your browser cannot draw this game.'); return null; }
     const pops = [];
+    let vw = { cx: 80, k: 1, W: 1, span: 160 };
     const stars = Array.from({ length: 90 }, () => [Math.random(), Math.random()]);
     function resize() {
       const dpr = Math.min(devicePixelRatio || 1, 2);
@@ -532,7 +636,8 @@ UI.lander = (() => {
       const W = canvas.width, H = canvas.height, gg = G();
       const alt = fl ? Math.max(0, fl.y - ground(fl.x)) : 60;
       const span = fl && V.stage === 'fly' ? Math.max(40, Math.min(110, 40 + alt * 1.1)) : gg.w;
-      const k = W / span, cx = fl && V.stage === 'fly' ? fl.x : gg.w / 2, cy = fl && V.stage === 'fly' ? fl.y - alt * 0.4 : 40;
+      const k = W / span, cx = Math.max(-20, Math.min(gg.w + 20, (fl && V.stage === 'fly' ? fl.x : gg.w / 2) + look)), cy = fl && V.stage === 'fly' ? fl.y - alt * 0.4 : 40;
+      vw = { cx, k, W, span };
       const X = (x) => W / 2 + (x - cx) * k, Y = (y) => H * 0.55 - (y - cy) * k;
       g.fillStyle = '#05060f'; g.fillRect(0, 0, W, H);
       g.fillStyle = '#ffffffaa'; for (const [a, b] of stars) g.fillRect(a * W, b * H, 1.5, 1.5);
@@ -564,6 +669,7 @@ UI.lander = (() => {
     resize();
     return {
       draw, resize, dispose() { canvas.remove(); },
+      proj: (x) => ((x - vw.cx) * vw.k) / (vw.W / 2), span: () => vw.span,
       dust: (x, y) => pops.push({ x, y, col: '#aaa', size: 3, at: performance.now() }),
       boom: (x, y) => pops.push({ x, y, col: '#ffb347', size: 8, at: performance.now() }),
     };
