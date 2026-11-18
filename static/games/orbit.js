@@ -1,10 +1,19 @@
 // Orbit Golf: a space mini-golf course in 3D (three.js) or flat from above. Take turns launching your probe at the cup.
 // Drag back from anywhere on the course like a slingshot (the pull sets the direction and power) and let go; or nudge
 // with ◀ ▶ − + (arrow keys) and tap 🚀 Launch (Space). The server flies every shot; the page plays it back.
+// #172: two fingers pinch to zoom, slide to pan and twist to turn the view (mouse: wheel zooms, right- or shift-drag
+// turns, a drag when it isn't your shot pans); 🎥 follows the play again, ⌂ shows the whole course.
+// #173: asteroids and comets move with the course clock (the server's, see clock_now in games/orbit.py): it runs
+// while a shot plays back and while the course is idle, so the scene here is where the server says it is.
 UI.orbit = (() => {
   let S, ctx, V, gl = null, flat = null, raf = 0, ro = null, keyFn = null;
   let anim = null, lastShot = null, lastV = null, readyAt = 0, holeKey = '';
-  let angle = 0, power = 0.5, drag = null, aimFor = '', popT = 0, lastDraw = 0;
+  let angle = 0, power = 0.5, drag = null, aimFor = '', popT = 0, lastDraw = 0, magnet = false;
+  let clk = { base: 0, wall: 0 };
+  // the view, in course units: what it looks at (x, y), how much shows (span), turned (yaw) and tilted (pitch)
+  const cam = { x: 0, y: 0, span: 56, yaw: 0, pitch: 0.95, mode: 'auto', glide: 0 };
+  const fingers = new Map();
+  let two = null, look = null;
   const $ = (id) => document.getElementById(id);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const nameOf = (i) => ctx?.player(V?.seats[i])?.name ?? '?';
@@ -13,19 +22,38 @@ UI.orbit = (() => {
   const canLaunch = () => myTurn() && !S.paused && performance.now() >= readyAt && !anim;
   const PLANET = [['#d0643a', '#8a3a22'], ['#e8c28a', '#b07a3a'], ['#7ac8f0', '#2f6aa8'], ['#8ad07a', '#3a7a3a'], ['#b48cff', '#5a3a9a'], ['#f0e0c0', '#a89878']];
 
+  // the moving bodies, the same sums as games/orbit.py (rock_at, comet_at)
+  function rockAt(rk, tau) {
+    if (rk.length < 6 || !rk[2]) return [rk[0], rk[1]];
+    const [cx, cy, R, ph, w, sy] = rk, a = ph + w * tau;
+    return [cx + R * Math.cos(a), cy + R * Math.sin(a) * sy];
+  }
+  function cometAt(cm, tau) {
+    const [sx, sy, vx, vy, P, off] = cm, u = (((tau + off) % P) + P) % P;
+    return [sx + vx * u, sy + vy * u];
+  }
+  // the course clock now: during a shot the shot's own, otherwise the server's clock carried on
+  function tauAt(now) {
+    if (anim) return anim.shot.tau0 + (now - anim.t0) / 1000 * V.geo.play;
+    return now < clk.wall ? clk.base - (clk.wall - now) / 1000 * V.geo.play : clk.base + (now - clk.wall) / 1000;
+  }
+
   function mount(main, side) {
     gl = null; flat = null; anim = null; lastShot = null; lastV = null; readyAt = 0; holeKey = '';
-    angle = 0; power = 0.5; drag = null; aimFor = '';
+    angle = 0; power = 0.5; drag = null; aimFor = ''; magnet = false; fingers.clear(); two = null; look = null;
+    Object.assign(cam, { x: 0, y: 0, span: 56, yaw: 0, pitch: 0.95, mode: 'auto' });
     main.innerHTML = `<div class="og"><div class="og-stage" id="ogStage">
         <div class="og-hud"><span id="ogHole"></span><span id="ogWho"></span></div>
         <div class="og-sub"><span id="ogStroke"></span></div>
         <div class="og-pop" id="ogPop" hidden></div>
         <div class="og-done" id="ogDone" hidden><h3 id="ogDoneTitle"></h3><div id="ogStand"></div></div>
+        <div class="og-view" id="ogView" aria-label="View"><button data-v="in" aria-label="Zoom in">＋</button><button data-v="out" aria-label="Zoom out">－</button><button data-v="l" aria-label="Turn left">⟲</button><button data-v="r" aria-label="Turn right">⟳</button><button data-v="auto" aria-label="Follow the play" title="Follow the play">🎥</button><button data-v="home" aria-label="Whole course" title="Whole course">⌂</button></div>
       </div>
       <div class="og-ctl" id="ogCtl">
         <button data-a="-1" aria-label="Aim left">◀</button><button data-a="1" aria-label="Aim right">▶</button>
         <div class="og-meter" title="Power"><i id="ogPow"></i></div>
         <button data-p="-1" aria-label="Less power">−</button><button data-p="1" aria-label="More power">+</button>
+        <button class="og-mag" id="ogMag" aria-pressed="false" title="Spend ⭐ stardust: a tractor cup for this stroke">🧲 0</button>
         <button class="og-go" id="ogGo">🚀 Launch</button>
       </div>
       <p id="ogHint" class="hint"></p></div>`;
@@ -33,34 +61,74 @@ UI.orbit = (() => {
     $('ogCtl').addEventListener('click', (e) => {
       const b = e.target.closest('button'); if (!b) return;
       if (b.id === 'ogGo') return fire();
+      if (b.id === 'ogMag') { magnet = !magnet && dust() > 0; ctx.sfx?.('pop'); return controls(); }
       if (b.dataset.a) angle += 1.5 * b.dataset.a;
       if (b.dataset.p) power = clamp(power + 0.02 * b.dataset.p, 0.03, 1);
       controls();
     });
     const stage = $('ogStage');
     stage.style.touchAction = 'none';
+    // one finger on your shot: drag back like a slingshot; otherwise it pans. Two fingers: zoom, pan, twist.
+    const pair = () => {
+      const [[ax, ay], [bx, by]] = [...fingers.values()];
+      return { mx: (ax + bx) / 2, my: (ay + by) / 2, d: Math.hypot(bx - ax, by - ay), a: Math.atan2(by - ay, bx - ax) };
+    };
+    const unAim = () => { if (drag) { angle = drag.a; power = drag.w; drag = null; controls(); } };
     stage.addEventListener('pointerdown', (e) => {
-      if (!canLaunch() || e.target.closest('button, .og-done')) return;
-      const p = (gl || flat)?.pick?.(e.clientX, e.clientY); if (!p) return;
+      if (e.target.closest('button, .og-done')) return;
+      fingers.set(e.pointerId, [e.clientX, e.clientY]);
       try { stage.setPointerCapture(e.pointerId); } catch {}
-      drag = { id: e.pointerId, p0: p, a: angle, w: power, moved: 0 };
+      if (fingers.size >= 2) { unAim(); look = null; two = pair(); return; }
+      const turnIt = e.button === 2 || e.shiftKey;
+      if (!turnIt && canLaunch()) {
+        const p = (gl || flat)?.pick?.(e.clientX, e.clientY); if (!p) return;
+        drag = { id: e.pointerId, p0: p, x0: e.clientX, y0: e.clientY, a: angle, w: power, moved: 0 };
+      } else look = { id: e.pointerId, x: e.clientX, y: e.clientY, turn: turnIt };
     });
     stage.addEventListener('pointermove', (e) => {
+      const f = fingers.get(e.pointerId);
+      if (f) { f[0] = e.clientX; f[1] = e.clientY; }
+      if (fingers.size >= 2 && two) {
+        const p = pair();
+        let da = p.a - two.a; da = Math.atan2(Math.sin(da), Math.cos(da));
+        if (p.d > 10 && two.d > 10) zoom(two.d / p.d);
+        pan(p.mx - two.mx, p.my - two.my);
+        turn(da);     // the course turns with the fingers
+        two = p; return;
+      }
+      if (look && e.pointerId === look.id) {
+        const dx = e.clientX - look.x, dy = e.clientY - look.y; look.x = e.clientX; look.y = e.clientY;
+        if (look.turn) { turn(dx * 0.008); cam.pitch = clamp(cam.pitch - dy * 0.004, 0.45, 1.45); } else pan(dx, dy);
+        return;
+      }
       if (!drag || e.pointerId !== drag.id) return;
       const p = (gl || flat)?.pick?.(e.clientX, e.clientY); if (!p) return;
-      const dx = drag.p0[0] - p[0], dy = drag.p0[1] - p[1], d = Math.hypot(dx, dy);
-      drag.moved = Math.max(drag.moved, d);
-      if (d > 0.4) { angle = Math.atan2(dx, dy) * 180 / Math.PI; power = clamp(d / 12, 0.03, 1); }
+      const dx = drag.p0[0] - p[0], dy = drag.p0[1] - p[1], px = Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0);
+      drag.moved = Math.max(drag.moved, px);
+      // the pull on screen sets the power (whatever the zoom), the pull on the course sets the direction
+      if (px > 6 && Math.hypot(dx, dy) > 1e-3) { angle = Math.atan2(dx, dy) * 180 / Math.PI; power = clamp(px / (0.4 * Math.min(stage.clientWidth || 400, stage.clientHeight || 400)), 0.03, 1); }
       controls();
     });
-    stage.addEventListener('pointerup', (e) => {
+    const up = (e) => {
+      fingers.delete(e.pointerId);
+      two = fingers.size >= 2 ? pair() : null;
+      if (look && e.pointerId === look.id) look = null;
       if (!drag || e.pointerId !== drag.id) return;
-      const ok = drag.moved > 0.8;
+      const ok = drag.moved > 14;
       if (!ok) { angle = drag.a; power = drag.w; }
       drag = null; controls();
       if (ok) fire();
+    };
+    stage.addEventListener('pointerup', up);
+    stage.addEventListener('pointercancel', (e) => { fingers.delete(e.pointerId); two = null; look = null; unAim(); });
+    stage.addEventListener('contextmenu', (e) => e.preventDefault());
+    stage.addEventListener('wheel', (e) => { e.preventDefault(); zoom(e.deltaY < 0 ? 0.88 : 1.14); }, { passive: false });
+    $('ogView').addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      ({ in: () => zoom(0.75), out: () => zoom(1.33), l: () => turn(-Math.PI / 4, true), r: () => turn(Math.PI / 4, true),
+        auto: () => { cam.mode = 'auto'; }, home: () => { cam.mode = 'home'; } })[b.dataset.v]?.();
+      viewBtns();
     });
-    stage.addEventListener('pointercancel', () => { if (drag) { angle = drag.a; power = drag.w; } drag = null; });
     keyFn = (e) => {
       if (!V || e.target.closest?.('input, textarea, select') || e.ctrlKey || e.metaKey || e.altKey) return;
       const k = e.key;
@@ -96,6 +164,10 @@ UI.orbit = (() => {
     lip: () => snd((t, K, d) => { K.mode(d, t, 2093, 0.08, 0.25); K.mode(d, t + 0.06, 1760, 0.05, 0.2); }),
     black: () => snd((t, K, d) => { K.sweep(d, t, { f0: 400, f1: 35, dur: 1.2, vol: 0.18, type: 'sine', attack: 0.02 }); K.burst(d, t, { type: 'lowpass', f: 300, f1: 60, q: 0.7, vol: 0.2, tau: 0.8, dur: 1.2, buf: 'brown' }); }),
     out: () => snd((t, K, d) => { K.sweep(d, t, { f0: 600, f1: 200, dur: 0.6, vol: 0.06, type: 'triangle', attack: 0.05 }); }),
+    star: (pan) => snd((t, K, d) => { [1319, 1760, 2637].forEach((f, k) => K.mode(d, t + k * 0.05, f, 0.07, 0.35)); }, pan),
+    comet: (pan) => snd((t, K, d) => { K.burst(d, t, { type: 'bandpass', f: 600, f1: 3200, q: 1.2, vol: 0.16, tau: 0.35, dur: 0.6 }); K.sweep(d, t, { f0: 300, f1: 900, dur: 0.4, vol: 0.06, type: 'triangle', attack: 0.02 }); }, pan),
+    fence: (pan) => snd((t, K, d) => { K.sweep(d, t, { f0: 140, f1: 90, dur: 0.7, vol: 0.09, type: 'square', attack: 0.04 }); K.sweep(d, t + 0.1, { f0: 220, f1: 150, dur: 0.5, vol: 0.04, type: 'sine', attack: 0.04 }); }, pan),
+    magnet: () => snd((t, K, d) => { K.sweep(d, t, { f0: 200, f1: 520, dur: 0.5, vol: 0.08, type: 'sine', attack: 0.03 }); }),
   };
   const humBed = (K, dst) => {
     const A = K.ctx, o = A.createOscillator(), o2 = A.createOscillator(), g = A.createGain(), lp = A.createBiquadFilter();
@@ -109,17 +181,65 @@ UI.orbit = (() => {
     readyAt = performance.now() + 1500;
     SND.launch(power); ctx.buzz?.(15);
     const a = ((angle + 180) % 360 + 360) % 360 - 180;
-    ctx.quiet(ctx.act('launch', { angle: +a.toFixed(2), power: +power.toFixed(3) }));
+    ctx.quiet(ctx.act('launch', { angle: +a.toFixed(2), power: +power.toFixed(3), ...(magnet && dust() > 0 ? { magnet: true } : {}) }));
+    magnet = false;
     controls();
+  }
+  const dust = () => (V && V.me != null ? V.dust?.[V.me] ?? 0 : 0);
+
+  // ---------- the view (#172)
+  const stageSize = () => { const st = $('ogStage'); return Math.max(200, Math.min(st?.clientWidth || 400, st?.clientHeight || 400)); };
+  function freeView() { if (cam.mode !== 'free') { cam.mode = 'free'; viewBtns(); } }
+  function zoom(k) { cam.span = clamp(cam.span * k, 8, 90); freeView(); }
+  function pan(dx, dy) {
+    if (!V) return;
+    const u = cam.span / stageSize(), sp = gl ? Math.max(0.5, Math.sin(cam.pitch)) : 1, c = Math.cos(cam.yaw), s = Math.sin(cam.yaw);
+    // right on screen is (cos, sin) on the course, up the screen is (-sin, cos)
+    cam.x = clamp(cam.x - c * dx * u - s * dy * u / sp, -V.geo.xMax, V.geo.xMax);
+    cam.y = clamp(cam.y - s * dx * u + c * dy * u / sp, -V.geo.yMax, V.geo.yMax);
+    if (Math.abs(dx) + Math.abs(dy) > 0.5) freeView();
+  }
+  function turn(a, smooth) { if (smooth) cam.yawTo = (cam.yawTo ?? cam.yaw) + a; else { cam.yaw += a; cam.yawTo = null; } }
+  function viewBtns() {
+    const v = $('ogView'); if (!v) return;
+    v.querySelector('[data-v="auto"]').classList.toggle('on', cam.mode === 'auto');
+    v.querySelector('[data-v="home"]').classList.toggle('on', cam.mode === 'home');
+  }
+  // 🎥 follow the play: the probe in flight, else the shooter's probe and the cup together; ⌂ the whole course
+  function camStep(dt, sc) {
+    let to = null;
+    const whole = { x: 0, y: (V.tee[1] + V.cup[1]) / 2, span: 2 * V.geo.fenceY + 4 };
+    if (cam.mode === 'home') to = whole;
+    else if (cam.mode === 'auto') {
+      const t = turnIdx();
+      if (sc.fly) to = { x: sc.fly.xy[0], y: sc.fly.xy[1], span: 30 };
+      else if (V.between || t < 0 || drag) to = drag ? null : whole;
+      else {
+        const [x, y] = V.pos[t], [cx, cy] = V.cup;
+        to = { x: (x + cx) / 2, y: (y + cy) / 2, span: clamp(Math.hypot(cx - x, cy - y) * 1.25 + 10, 22, 2 * V.geo.fenceY + 4) };
+      }
+    }
+    const f = 1 - Math.exp(-dt * 2.6);
+    cam.glide = 0;
+    if (to) {
+      const d = Math.abs(to.x - cam.x) + Math.abs(to.y - cam.y) + Math.abs(to.span - cam.span);
+      if (d > 0.02) { cam.x += (to.x - cam.x) * f; cam.y += (to.y - cam.y) * f; cam.span += (to.span - cam.span) * f; cam.glide = 1; }
+      if (cam.mode === 'home') { cam.yawTo = Math.round(cam.yaw / (2 * Math.PI)) * 2 * Math.PI; cam.pitch += (0.95 - cam.pitch) * f; }
+    }
+    if (cam.yawTo != null) {
+      cam.yaw += (cam.yawTo - cam.yaw) * Math.min(1, dt * 6);
+      if (Math.abs(cam.yawTo - cam.yaw) < 0.002) { cam.yaw = cam.yawTo; cam.yawTo = null; } else cam.glide = 1;
+    }
   }
 
   // ---------- state
   function render(s, c) {
     S = s; ctx = c; V = s.orbit;
     const now = performance.now();
-    if (V !== lastV) { lastV = V; readyAt = now + V.readyIn * 1000; }
+    if (V !== lastV) { lastV = V; readyAt = now + V.readyIn * 1000; if (V.clk) clk = { base: V.clk[0], wall: now + V.clk[1] * 1000 }; }
     const hk = `${V.hole}`;
-    if (hk !== holeKey) { holeKey = hk; anim = null; lastShot = V.shot?.id ?? null; aimFor = ''; }
+    if (hk !== holeKey) { holeKey = hk; anim = null; lastShot = V.shot?.id ?? null; aimFor = ''; cam.mode = 'auto'; viewBtns(); }
+    if (dust() < 1) magnet = false;
     if (V.shot && V.shot.id !== lastShot) {
       lastShot = V.shot.id;
       // only play shots that are still flying (a reload doesn't replay the last one)
@@ -132,7 +252,7 @@ UI.orbit = (() => {
       aimFor = key;
       const [x, y] = V.pos[V.me], [cx, cy] = V.cup;
       angle = Math.atan2(cx - x, cy - y) * 180 / Math.PI;
-      power = clamp(0.12 + Math.hypot(cx - x, cy - y) / 34, 0.05, 1);
+      power = clamp(0.1 + Math.hypot(cx - x, cy - y) / 40, 0.05, 1);
     }
     hud(); controls(); card(); done(); hint();
   }
@@ -144,7 +264,7 @@ UI.orbit = (() => {
     const t = turnIdx(), who = $('ogWho');
     if (V.between || t < 0) { who.textContent = ''; }
     else { who.textContent = t === V.me ? '🚀 Your shot' : `${nameOf(t)} is aiming`; who.style.color = t === V.me ? '' : colorOf(t); }
-    $('ogStroke').textContent = V.me != null ? (V.done[V.me] ? `✓ ${V.strokes[V.me]} on this hole` : `Stroke ${V.strokes[V.me] + 1}`) : '';
+    $('ogStroke').textContent = V.me != null ? (V.done[V.me] ? `✓ ${V.strokes[V.me]} on this hole` : `Stroke ${V.strokes[V.me] + 1}`) + (dust() ? ` · ⭐ ${dust()}` : '') : '';
   }
 
   function controls() {
@@ -154,6 +274,13 @@ UI.orbit = (() => {
     $('ogGo').classList.toggle('og-ready', go);
     $('ogCtl').classList.toggle('og-off', !myTurn());
     const p = $('ogPow'); if (p) p.style.height = `${Math.round(power * 100)}%`;
+    const m = $('ogMag');
+    if (m) {
+      const n = dust(), t = `🧲 ${n}`;
+      if (m.textContent !== t) m.textContent = t;
+      m.disabled = !myTurn() || n < 1; m.classList.toggle('on', magnet); m.setAttribute('aria-pressed', magnet ? 'true' : 'false');
+      m.hidden = V.me == null;
+    }
   }
 
   function card() {
@@ -194,7 +321,7 @@ UI.orbit = (() => {
 
   function hint() {
     const t = S.phase !== 'playing' ? '' : V.between ? '' : V.me == null ? 'Watch the probes fly.'
-      : myTurn() ? 'Drag back like a slingshot and let go: the pull sets the direction and power. Planets will bend it.'
+      : myTurn() ? (magnet ? '🧲 Tractor cup on: this stroke the cup is bigger and pulls your probe in.' : 'Drag back like a slingshot and let go: the pull sets the direction and power. Two fingers move the view.')
         : V.done[V.me] ? 'In the cup! Watch the others finish the hole.' : 'Furthest from the cup goes next.';
     if ($('ogHint').textContent !== t) $('ogHint').textContent = t;
   }
@@ -240,7 +367,13 @@ UI.orbit = (() => {
       fly = { o: anim.shot.o, tp, xy: at(anim.shot.path, tp), path: anim.shot.path, result: anim.shot.result, end: anim.shot.path[anim.shot.path.length - 1][0] };
     }
     const probes = V.seats.map((_, i) => ({ i, xy: fly && fly.o === i ? fly.xy : (anim && anim.shot.o === i ? anim.shot.from : V.pos[i]), color: colorOf(i), done: V.done[i], me: i === V.me, turn: i === turnIdx() }));
-    return { V, fly, probes, now, preview: canLaunch() || drag ? preview() : null, aim: { angle, power }, dragging: !!drag };
+    // stardust still out there (one picked up during the shot on screen stays until the probe gets there)
+    const taken = new Set(V.taken || []);
+    if (fly) for (const e of anim.shot.events) if (e[1] === 'star' && e[0] > fly.tp) taken.delete(e[4]);
+    const tau = tauAt(now);
+    const mag = fly ? !!anim.shot.magnet : (magnet && canLaunch());
+    return { V, fly, probes, now, tau, taken, mag, rocks: V.rocks.map((rk) => rockAt(rk, tau)), comets: (V.comets || []).map((cm) => ({ xy: cometAt(cm, tau), v: [cm[2], cm[3]] })),
+      preview: canLaunch() || drag ? preview() : null, aim: { angle, power }, dragging: !!drag };
   }
 
   function events(now) {
@@ -248,17 +381,21 @@ UI.orbit = (() => {
     const sh = anim.shot, tp = (now - anim.t0) / 1000 * V.geo.play;
     while (anim.ev < sh.events.length && sh.events[anim.ev][0] <= tp) {
       const [, kind, x] = sh.events[anim.ev++];
-      const pan = clamp(x / 13, -1, 1), mine = sh.o === V.me;
+      const pan = clamp((x - cam.x) / 20, -1, 1), mine = sh.o === V.me;
       if (kind === 'bump') SND.bump(pan);
       else if (kind === 'rock') SND.rock(pan);
       else if (kind === 'warp') SND.warp();
+      else if (kind === 'star') { SND.star(pan); if (mine) pop('⭐ Stardust!', '#ffe27a'); }
+      else if (kind === 'comet') { SND.comet(pan); if (mine) pop('🌠 Comet ride!', '#9ad8ff'); ctx.buzz?.(20); }
+      else if (kind === 'fence') { SND.fence(pan); if (mine) pop('🧲 Tractor fence', '#7af0ff'); }
+      else if (kind === 'magnet') SND.magnet();
       else if (kind === 'lip') { SND.lip(); if (mine) pop('Lipped out!', '#ffb0b0'); }
       else if (kind === 'cup') {
         SND.cup(); if (mine) ctx.buzz?.([30, 40, 60]);
         const s = sh.strokes, p = V.par, word = s === 1 ? '🌟 HOLE IN ONE!' : s <= p - 2 ? '🦅 Eagle!' : s === p - 1 ? '🐦 Birdie!' : s === p ? 'Par' : s === p + 1 ? 'Bogey' : `${s} strokes`;
         if (mine || s < p) pop(`${word}`, s < p ? '#ffd23f' : '#fff');
       } else if (kind === 'black') { SND.black(); if (mine) pop('🕳 Swallowed! +1', '#ff9a9a'); }
-      else if (kind === 'out') { SND.out(); if (mine) pop('🛰 Lost in space! +1', '#ff9a9a'); }
+      else if (kind === 'out') { SND.out(); if (mine) pop('🛰 Lost in deep space! +1', '#ff9a9a'); }
       (gl || flat)?.burst?.(kind, sh.events[anim.ev - 1], colorOf(sh.o));
     }
   }
@@ -273,9 +410,11 @@ UI.orbit = (() => {
     if ($('ogGo').disabled === canLaunch()) controls();
     window.Snd?.bed('og.hum', humBed).set(S.phase === 'playing' && !S.paused ? 1 : 0);
     const sc = scene(now);
-    const idle = !anim && !drag && !(gl || flat)?.moving?.();
+    const dt = Math.min(0.1, lastDraw ? (now - lastDraw) / 1000 : 0.016);
+    const idle = !anim && !drag && !cam.glide && !two && !look && !(gl || flat)?.moving?.();
     if (idle && now - lastDraw < 50) return;
     lastDraw = now;
+    camStep(dt, sc);
     (gl || flat)?.draw(now, sc, idle);
   }
 
@@ -309,14 +448,15 @@ UI.orbit = (() => {
 
     const course = new T.Group(); scene3.add(course);
     let builtFor = '';
-    let fabric = null, planets = [], bh = [], wormMeshes = [], cupG = null;
+    let fabric = null, planets = [], bh = [], wormMeshes = [], cupG = null, rockMeshes = [], cometGs = [], starMs = [], magRing = null;
+    const starTex = tex(64, 64, (g, w) => { g.translate(w / 2, w / 2); g.fillStyle = '#fff'; g.beginPath(); for (let k = 0; k < 10; k++) { const r = k % 2 ? w * 0.18 : w * 0.46, a = k * Math.PI / 5 - Math.PI / 2; g.lineTo(Math.cos(a) * r, Math.sin(a) * r); } g.closePath(); g.shadowColor = '#fff'; g.shadowBlur = 6; g.fill(); });
     // the course: a grid of space-time that dips into every planet's gravity well, then the bodies on top
     function build() {
       const key = `${V.hole}:${JSON.stringify(V.cup)}`; if (key === builtFor) return; builtFor = key;
       course.traverse((m) => { if (m !== course) { m.geometry?.dispose(); if (m.material && !m.material.shared) { m.material.map?.dispose?.(); m.material.dispose?.(); } } });
       while (course.children.length) course.remove(course.children[0]);
-      planets = []; bh = []; wormMeshes = [];
-      const G = V.geo, X = G.xMax, Y = G.yMax, sx = low ? 26 : 52, sy = low ? 38 : 76;
+      planets = []; bh = []; wormMeshes = []; rockMeshes = []; cometGs = []; starMs = [];
+      const G = V.geo, X = G.xMax, Y = G.yMax, sx = low ? 30 : 60, sy = low ? 38 : 76;
       const fg = new T.PlaneGeometry(2 * X, 2 * Y, sx, sy); fg.rotateX(-Math.PI / 2);
       const pos = fg.attributes.position;
       for (let k = 0; k < pos.count; k++) {
@@ -329,9 +469,16 @@ UI.orbit = (() => {
       fabric = new T.LineSegments(new T.WireframeGeometry(fg), new T.LineBasicMaterial({ color: 0x3a6aff, transparent: true, opacity: 0.22, depthWrite: false }));
       fg.dispose();
       course.add(fabric);
-      // the course edge
-      const edge = new T.LineLoop(new T.BufferGeometry().setFromPoints([W(-X, -Y), W(X, -Y), W(X, Y), W(-X, Y)]), new T.LineBasicMaterial({ color: 0x6a8aff, transparent: true, opacity: 0.5 }));
+      // the edge of deep space (faint red), and the tractor fence (glowing cyan, with beacons) that pulls probes back
+      const edge = new T.LineLoop(new T.BufferGeometry().setFromPoints([W(-X, -Y), W(X, -Y), W(X, Y), W(-X, Y)]), new T.LineBasicMaterial({ color: 0xff5a7a, transparent: true, opacity: 0.3 }));
       course.add(edge);
+      const FX = G.fenceX, FY = G.fenceY;
+      const fence = new T.LineLoop(new T.BufferGeometry().setFromPoints([W(-FX, -FY, 0.05), W(FX, -FY, 0.05), W(FX, FY, 0.05), W(-FX, FY, 0.05)]), new T.LineBasicMaterial({ color: 0x5af0ff, transparent: true, opacity: 0.6 }));
+      course.add(fence);
+      for (let k = 0; k <= 8; k++) for (const [x, y] of [[-FX + 2 * FX * k / 8, -FY], [-FX + 2 * FX * k / 8, FY], [-FX, -FY + 2 * FY * k / 8], [FX, -FY + 2 * FY * k / 8]]) {
+        if (low && k % 2) continue;
+        const b = glow(0x5af0ff, 1.1, 0.55); b.position.copy(W(x, y, 0.2)); course.add(b);
+      }
       // planets
       V.planets.forEach(([x, y, r, look], k) => {
         const [c1, c2] = PLANET[look % PLANET.length];
@@ -361,7 +508,26 @@ UI.orbit = (() => {
       }
       // asteroid rocks
       const rockG = new T.DodecahedronGeometry(G.rock, 0), rockM = new T.MeshStandardMaterial({ color: 0x8a7a6a, roughness: 0.95, flatShading: true });
-      V.rocks.forEach(([x, y], k) => { const m = new T.Mesh(rockG, rockM); m.position.copy(W(x, y, 0)); m.rotation.set(k, k * 2, k * 3); m.scale.set(1, 0.8 + (k % 3) * 0.15, 1.1); m.castShadow = !low; course.add(m); planets.push(m); m.userData.spin = 0.5; });
+      V.rocks.forEach((rk, k) => { const [x, y] = rockAt(rk, 0); const m = new T.Mesh(rockG, rockM); m.position.copy(W(x, y, 0)); m.rotation.set(k, k * 2, k * 3); m.scale.set(1, 0.8 + (k % 3) * 0.15, 1.1); m.castShadow = !low; course.add(m); planets.push(m); rockMeshes.push(m); m.userData.spin = 0.5 + (k % 4) * 0.2; });
+      // comets: a hot head and a long fading tail
+      for (const cm of V.comets || []) {
+        const g = new T.Group(), n = low ? 6 : 12;
+        g.add(new T.Mesh(new T.IcosahedronGeometry(0.32, 1), new T.MeshBasicMaterial({ color: 0xe8f6ff })));
+        g.add(glow(0x9ad8ff, 2.6, 0.95));
+        for (let k = 1; k <= n; k++) { const sp = glow(k < 3 ? 0xd8f0ff : 0x6ab8ff, 1.9 * (1 - k / (n + 2)), 0.75 * (1 - k / (n + 1))); sp.userData.u = k / n; g.add(sp); }
+        g.userData.dir = (() => { const sp = Math.hypot(cm[2], cm[3]) || 1; return [cm[2] / sp, cm[3] / sp]; })();
+        course.add(g); cometGs.push(g);
+      }
+      // stardust: a little gold star that spins over a glow
+      for (const [x, y] of V.stars || []) {
+        const g = new T.Group(); g.position.copy(W(x, y, 0.45));
+        const st = new T.Sprite(new T.SpriteMaterial({ map: starTex, color: 0xffe27a, transparent: true, depthWrite: false })); st.scale.setScalar(1.0); g.add(st);
+        g.add(glow(0xffc23a, 2.0, 0.6));
+        course.add(g); starMs.push(g);
+      }
+      // the tractor cup's reach (shown while it's switched on)
+      magRing = new T.Mesh(new T.RingGeometry(G.magR - 0.12, G.magR, 64), new T.MeshBasicMaterial({ color: 0xff7ad8, transparent: true, opacity: 0.5, depthWrite: false, side: T.DoubleSide, blending: T.AdditiveBlending }));
+      magRing.rotation.x = -Math.PI / 2; magRing.position.copy(W(V.cup[0], V.cup[1], 0.06)); magRing.visible = false; course.add(magRing);
       // wormholes: swirling purple discs
       const swirl = tex(128, 128, (g, w) => { g.translate(w / 2, w / 2); for (let k = 0; k < 6; k++) { g.rotate(Math.PI / 3); const gr = g.createLinearGradient(0, 0, w / 2, 0); gr.addColorStop(0, 'rgba(220,160,255,.9)'); gr.addColorStop(1, 'rgba(120,40,255,0)'); g.strokeStyle = gr; g.lineWidth = 6; g.beginPath(); g.arc(w / 6, 0, w / 3, Math.PI, Math.PI * 1.7); g.stroke(); } });
       for (const [x, y] of V.worms) {
@@ -395,9 +561,15 @@ UI.orbit = (() => {
     const dotMat = new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, depthWrite: false });
     const dots = Array.from({ length: 14 }, () => { const m = new T.Mesh(new T.SphereGeometry(0.11, 6, 4), dotMat); m.visible = false; scene3.add(m); return m; });
     const aimLine = new T.Mesh(new T.CylinderGeometry(0.05, 0.05, 1, 6), new T.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.8 })); aimLine.visible = false; scene3.add(aimLine);
+    const streakPos = new Float32Array(6), streakGeo = new T.BufferGeometry();
+    streakGeo.setAttribute('position', new T.BufferAttribute(streakPos, 3));
+    const streak = new T.Line(streakGeo, new T.LineBasicMaterial({ color: 0xdff0ff, transparent: true, opacity: 0, depthWrite: false, fog: false })); streak.frustumCulled = false; streak.visible = false; streak.userData = { life: 0 }; scene3.add(streak);
+    let nextStreak = performance.now() + 2000;
     const sparks = [];
     function burst(kind, e, col) {
-      const p = W(e[2], e[3], 0.3), n = kind === 'cup' ? 50 : kind === 'warp' ? 30 : kind === 'black' ? 24 : 10, c = kind === 'cup' ? 0x5affb0 : kind === 'warp' ? 0xc08aff : kind === 'black' ? 0xff9a4a : new T.Color(col).getHex();
+      if (kind === 'fence' || kind === 'magnet') return;
+      const p = W(e[2], e[3], 0.3), n = kind === 'cup' ? 50 : kind === 'warp' ? 30 : kind === 'black' ? 24 : kind === 'star' || kind === 'comet' ? 20 : 10;
+      const c = kind === 'cup' ? 0x5affb0 : kind === 'warp' ? 0xc08aff : kind === 'black' ? 0xff9a4a : kind === 'star' ? 0xffd23f : kind === 'comet' ? 0x9ad8ff : new T.Color(col).getHex();
       for (let k = 0; k < (low ? n / 2 : n); k++) {
         const m = glow(c, 0.5 + Math.random() * 0.5, 0.9); m.position.copy(p);
         const a = Math.random() * 7, s = (kind === 'cup' ? 4 : 2.5) * (0.4 + Math.random());
@@ -423,6 +595,29 @@ UI.orbit = (() => {
       for (const d of bh) d.rotation.z -= dt * 1.5;
       for (const w of wormMeshes) w.rotation.z += dt * 2;
       if (cupG) cupG.children[1].material.opacity = 0.22 + 0.12 * Math.sin(now / 300);
+      rockMeshes.forEach((m, k) => { const p = sc.rocks[k]; if (p) m.position.set(p[0], 0, -p[1]); });
+      cometGs.forEach((g, k) => {
+        const c = sc.comets[k]; if (!c) return;
+        const [x, y] = c.xy, [ux, uy] = g.userData.dir;
+        g.visible = Math.abs(x) < V.geo.xMax + 6 && Math.abs(y) < V.geo.yMax + 6;
+        g.position.set(x, 0.5, -y);
+        g.children.forEach((ch) => { if (ch.userData.u != null) { const u = ch.userData.u * V.geo.tail * 1.25; ch.position.set(-ux * u, 0.05 * Math.sin(now / 90 + u * 3), uy * u); } });
+      });
+      starMs.forEach((g, k) => { g.visible = !sc.taken.has(k); if (g.visible) { g.children[0].material.rotation = now / 600 + k; g.position.y = 0.45 + 0.12 * Math.sin(now / 400 + k * 2); } });
+      if (magRing) { magRing.visible = sc.mag; if (sc.mag) { magRing.material.opacity = 0.35 + 0.25 * Math.sin(now / 180); magRing.rotation.z = now / 900; } }
+      // a shooting star across the sky now and then (just for looks)
+      if (now > nextStreak) {
+        nextStreak = now + 2500 + Math.random() * (low ? 9000 : 5000);
+        const a = Math.random() * Math.PI * 2, r = 50 + Math.random() * 60, from = new T.Vector3(cam.x + Math.cos(a) * r, 25 + Math.random() * 40, -cam.y + Math.sin(a) * r - 40);
+        const dir = new T.Vector3(Math.random() - 0.5, -0.25 - Math.random() * 0.3, Math.random() - 0.5).normalize();
+        streak.userData = { p: from, d: dir, life: 0.9, v: 70 + Math.random() * 40 };
+      }
+      if (streak.userData.life > 0) {
+        const u = streak.userData; u.life -= dt; u.p.addScaledVector(u.d, u.v * dt);
+        const tail = u.p.clone().addScaledVector(u.d, -9);
+        streakPos.set([u.p.x, u.p.y, u.p.z, tail.x, tail.y, tail.z]); streakGeo.attributes.position.needsUpdate = true;
+        streak.material.opacity = Math.min(1, u.life * 2); streak.visible = true;
+      } else streak.visible = false;
       sc.probes.forEach((p) => {
         const m = probeFor(p.i);
         let h = 0.35, s = 1;
@@ -462,17 +657,15 @@ UI.orbit = (() => {
         u.life -= dt; m.position.addScaledVector(u.v, dt); if (!u.in) u.v.y -= 3 * dt; m.material.opacity = Math.max(0, u.life);
         if (u.life <= 0) { scene3.remove(m); m.material.dispose(); sparks.splice(k, 1); }
       }
-      // the camera: up behind the tee, fitted so the whole course shows on a narrow phone or a wide screen
-      const G = V.geo, asp = camera.aspect, fovR = 45 * Math.PI / 180;
-      const needH = (2 * G.yMax + 4) * 0.7, needW = 2 * G.xMax + 4;
-      const dist = Math.max(needH / 2 / Math.tan(fovR / 2), needW / 2 / Math.tan(fovR / 2) / asp) * 1.05;
-      const tilt = 0.95;      // radians from the horizon
-      camera.position.set(0, Math.sin(tilt) * dist, Math.cos(tilt) * dist - 1);
+      // the camera (#172): looks at cam.x, cam.y from cam.yaw / cam.pitch, far enough back for cam.span to show
+      const asp = camera.aspect, fovR = 45 * Math.PI / 180;
+      const dist = cam.span / 2 / Math.tan(fovR / 2) / Math.min(1, asp) * 0.82, p = cam.pitch;
+      camera.position.set(cam.x + Math.sin(cam.yaw) * Math.cos(p) * dist, Math.sin(p) * dist, -cam.y + Math.cos(cam.yaw) * Math.cos(p) * dist);
       if (Math.abs(camera.fov - 45) > 0.01) { camera.fov = 45; camera.updateProjectionMatrix(); }
       GL3.tickShake(camera, dt);
-      camera.lookAt(0, -1.5, 0.5);
+      camera.lookAt(cam.x, -0.8, -cam.y);
       stg.follow(camera);
-      moving = sparks.length ? 1 : 0;
+      moving = sparks.length || streak.visible ? 1 : 0;
       if (idle && renderer.renderStill) renderer.renderStill(scene3, camera); else renderer.render(scene3, camera);
     }
 
@@ -491,57 +684,85 @@ UI.orbit = (() => {
     };
   }
 
-  // ---------- flat fallback: the course from above
+  // ---------- flat fallback: the course from above, through the same view (pan, zoom, turn)
   function make2d(stage) {
     const canvas = document.createElement('canvas');
     stage.prepend(canvas);
     const g = canvas.getContext('2d');
     if (!g) { canvas.remove(); stage.prepend(Object.assign(document.createElement('p'), { className: 'hint', textContent: 'This browser cannot draw the course.' })); return { draw() {}, resize() {}, dispose() {} }; }
-    let w = 1, h = 1, sparks = [], k = 1, cx = 0, cy = 0;
-    const stars = Array.from({ length: 120 }, () => [Math.random(), Math.random(), Math.random()]);
+    let w = 1, h = 1, sparks = [], k = 1, streak = null, nextStreak = performance.now() + 2000;
+    const stars = Array.from({ length: 140 }, () => [Math.random(), Math.random(), Math.random()]);
     function resize() {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       w = stage.clientWidth || 1; h = stage.clientHeight || 1;
       canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); g.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
     resize();
-    const X = (x) => cx + x * k, Y = (y) => cy - y * k;
+    const dot = (x, y, r) => { g.beginPath(); g.arc(x, y, r, 0, 7); };
     function draw(now, sc) {
       const G = V.geo;
-      k = Math.min((w - 12) / (2 * G.xMax), (h - 70) / (2 * G.yMax)); cx = w / 2; cy = h / 2 + 22;
+      k = Math.min(w, h) / cam.span;
+      const px = 1 / k;     // one screen pixel in course units
+      g.save();
       g.fillStyle = '#05060f'; g.fillRect(0, 0, w, h);
-      for (const [a, b, c] of stars) { g.fillStyle = `rgba(255,255,255,${0.2 + c * 0.6})`; g.fillRect(a * w, b * h, 1.5, 1.5); }
-      g.strokeStyle = '#3a6aff66'; g.lineWidth = 1; g.strokeRect(X(-G.xMax), Y(G.yMax), 2 * G.xMax * k, 2 * G.yMax * k);
+      // the far stars drift a little with the view
+      for (const [a, b, c] of stars) { g.fillStyle = `rgba(255,255,255,${0.2 + c * 0.6})`; g.fillRect(((a * w - cam.x * c * 2) % w + w) % w, ((b * h + cam.y * c * 2) % h + h) % h, 1.5, 1.5); }
+      if (now > nextStreak) { nextStreak = now + 3000 + Math.random() * 6000; streak = { x: Math.random() * w, y: Math.random() * h * 0.5, a: 0.3 + Math.random() * 0.9, t: now }; }
+      if (streak) {
+        const u = (now - streak.t) / 700;
+        if (u > 1) streak = null;
+        else { const x = streak.x + Math.cos(streak.a) * u * 300, y = streak.y + Math.sin(streak.a) * u * 300; const gr = g.createLinearGradient(x, y, x - Math.cos(streak.a) * 60, y - Math.sin(streak.a) * 60); gr.addColorStop(0, `rgba(230,245,255,${1 - u})`); gr.addColorStop(1, 'rgba(230,245,255,0)'); g.strokeStyle = gr; g.lineWidth = 2; g.beginPath(); g.moveTo(x, y); g.lineTo(x - Math.cos(streak.a) * 60, y - Math.sin(streak.a) * 60); g.stroke(); }
+      }
+      g.translate(w / 2, h / 2); g.rotate(cam.yaw); g.scale(k, -k); g.translate(-cam.x, -cam.y);
+      g.strokeStyle = '#ff5a7a55'; g.lineWidth = px; g.strokeRect(-G.xMax, -G.yMax, 2 * G.xMax, 2 * G.yMax);
+      g.strokeStyle = '#5af0ffaa'; g.lineWidth = 2 * px; g.setLineDash([6 * px, 5 * px]); g.strokeRect(-G.fenceX, -G.fenceY, 2 * G.fenceX, 2 * G.fenceY); g.setLineDash([]);
       for (const [x, y, r, look] of V.planets) {
         const [c1, c2] = PLANET[look % PLANET.length];
-        const gr = g.createRadialGradient(X(x - r * 0.3), Y(y + r * 0.3), r * k * 0.1, X(x), Y(y), r * k); gr.addColorStop(0, c1); gr.addColorStop(1, c2);
-        g.beginPath(); g.arc(X(x), Y(y), r * k, 0, 7); g.fillStyle = gr; g.fill();
+        const gr = g.createRadialGradient(x - r * 0.3, y + r * 0.3, r * 0.1, x, y, r); gr.addColorStop(0, c1); gr.addColorStop(1, c2);
+        dot(x, y, r); g.fillStyle = gr; g.fill();
       }
-      for (const [x, y] of V.blacks) { const gr = g.createRadialGradient(X(x), Y(y), 0, X(x), Y(y), G.bhR * 3.5 * k); gr.addColorStop(0, '#000'); gr.addColorStop(0.28, '#000'); gr.addColorStop(0.35, '#ffd0a0'); gr.addColorStop(0.6, '#ff6a2a88'); gr.addColorStop(1, '#ff6a2a00'); g.fillStyle = gr; g.beginPath(); g.arc(X(x), Y(y), G.bhR * 3.5 * k, 0, 7); g.fill(); }
-      g.fillStyle = '#8a7a6a'; for (const [x, y] of V.rocks) { g.beginPath(); g.arc(X(x), Y(y), G.rock * k, 0, 7); g.fill(); }
-      for (const [x, y] of V.worms) { g.save(); g.translate(X(x), Y(y)); g.rotate(now / 400); g.strokeStyle = '#c08aff'; g.lineWidth = 2; for (let i = 0; i < 3; i++) { g.beginPath(); g.arc(0, 0, G.worm * k * (0.4 + i * 0.3), i, i + 4); g.stroke(); } g.restore(); }
-      g.beginPath(); g.arc(X(V.cup[0]), Y(V.cup[1]), G.cupR * k, 0, 7); g.fillStyle = '#5affb033'; g.fill(); g.strokeStyle = '#5affb0'; g.lineWidth = 2; g.stroke();
+      for (const [x, y] of V.blacks) { const R = G.bhR * 3.5, gr = g.createRadialGradient(x, y, 0, x, y, R); gr.addColorStop(0, '#000'); gr.addColorStop(0.28, '#000'); gr.addColorStop(0.35, '#ffd0a0'); gr.addColorStop(0.6, '#ff6a2a88'); gr.addColorStop(1, '#ff6a2a00'); g.fillStyle = gr; dot(x, y, R); g.fill(); }
+      g.fillStyle = '#8a7a6a'; for (const [x, y] of sc.rocks) { dot(x, y, G.rock); g.fill(); }
+      for (const [x, y] of V.worms) { g.save(); g.translate(x, y); g.rotate(now / 400); g.strokeStyle = '#c08aff'; g.lineWidth = 2 * px; for (let i = 0; i < 3; i++) { g.beginPath(); g.arc(0, 0, G.worm * (0.4 + i * 0.3), i, i + 4); g.stroke(); } g.restore(); }
+      for (const c of sc.comets) {
+        const [x, y] = c.xy, sp = Math.hypot(c.v[0], c.v[1]) || 1, tx = x - c.v[0] / sp * G.tail * 1.3, ty = y - c.v[1] / sp * G.tail * 1.3;
+        const gr = g.createLinearGradient(x, y, tx, ty); gr.addColorStop(0, '#e8f6ffee'); gr.addColorStop(1, '#6ab8ff00');
+        g.strokeStyle = gr; g.lineWidth = G.cometR * 1.2; g.lineCap = 'round'; g.beginPath(); g.moveTo(x, y); g.lineTo(tx, ty); g.stroke(); g.lineCap = 'butt';
+        g.fillStyle = '#fff'; dot(x, y, 0.35); g.fill();
+      }
+      (V.stars || []).forEach(([x, y], i) => {
+        if (sc.taken.has(i)) return;
+        g.save(); g.translate(x, y); g.rotate(now / 600 + i); g.fillStyle = '#ffe27a'; g.beginPath();
+        for (let j = 0; j < 10; j++) { const r = j % 2 ? 0.25 : 0.6, a = j * Math.PI / 5; g.lineTo(Math.cos(a) * r, Math.sin(a) * r); }
+        g.fill(); g.restore();
+      });
+      dot(V.cup[0], V.cup[1], G.cupR); g.fillStyle = '#5affb033'; g.fill(); g.strokeStyle = '#5affb0'; g.lineWidth = 2 * px; g.stroke();
+      if (sc.mag) { dot(V.cup[0], V.cup[1], G.magR); g.strokeStyle = `rgba(255,122,216,${0.4 + 0.3 * Math.sin(now / 180)})`; g.lineWidth = 2 * px; g.stroke(); }
       if (sc.fly) {
-        g.strokeStyle = colorOf(sc.fly.o); g.lineWidth = 2; g.beginPath(); let first = true;
-        for (const q of sc.fly.path) { if (q[0] > sc.fly.tp) break; if (first || q[3]) { g.moveTo(X(q[1]), Y(q[2])); first = false; } else g.lineTo(X(q[1]), Y(q[2])); }
-        g.lineTo(X(sc.fly.xy[0]), Y(sc.fly.xy[1])); g.stroke();
+        g.strokeStyle = colorOf(sc.fly.o); g.lineWidth = 2 * px; g.beginPath(); let first = true;
+        for (const q of sc.fly.path) { if (q[0] > sc.fly.tp) break; if (first || q[3]) { g.moveTo(q[1], q[2]); first = false; } else g.lineTo(q[1], q[2]); }
+        g.lineTo(sc.fly.xy[0], sc.fly.xy[1]); g.stroke();
       }
-      if (sc.preview) { g.fillStyle = '#fff'; for (const [x, y] of sc.preview) { g.beginPath(); g.arc(X(x), Y(y), 2, 0, 7); g.fill(); } }
+      if (sc.preview) { g.fillStyle = '#fff'; for (const [x, y] of sc.preview) { dot(x, y, 2 * px); g.fill(); } }
       if (sc.preview && V.me != null) {
         const [x, y] = V.pos[V.me], a = sc.aim.angle * Math.PI / 180, L = 0.6 + sc.aim.power * 3;
-        g.strokeStyle = `hsl(${120 - 120 * sc.aim.power},100%,55%)`; g.lineWidth = 3; g.beginPath(); g.moveTo(X(x), Y(y)); g.lineTo(X(x - Math.sin(a) * L), Y(y - Math.cos(a) * L)); g.stroke();
+        g.strokeStyle = `hsl(${120 - 120 * sc.aim.power},100%,55%)`; g.lineWidth = 3 * px; g.beginPath(); g.moveTo(x, y); g.lineTo(x - Math.sin(a) * L, y - Math.cos(a) * L); g.stroke();
       }
       for (const p of sc.probes) {
         let s = 1; if (sc.fly && sc.fly.o === p.i && (sc.fly.result === 'black' || sc.fly.result === 'out') && sc.fly.end - sc.fly.tp < 0.4) s = Math.max(0.1, (sc.fly.end - sc.fly.tp) / 0.4);
-        g.beginPath(); g.arc(X(p.xy[0]), Y(p.xy[1]), Math.max(3, G.probe * 1.6 * k) * s * (p.turn && !sc.fly ? 1 + 0.15 * Math.sin(now / 160) : 1), 0, 7); g.fillStyle = p.color; g.fill(); g.strokeStyle = '#fff'; g.lineWidth = 1.5; g.stroke();
+        dot(p.xy[0], p.xy[1], Math.max(3 * px, G.probe * 1.6) * s * (p.turn && !sc.fly ? 1 + 0.15 * Math.sin(now / 160) : 1)); g.fillStyle = p.color; g.fill(); g.strokeStyle = '#fff'; g.lineWidth = 1.5 * px; g.stroke();
       }
       sparks = sparks.filter((s) => now < s.t + 700);
-      for (const s of sparks) { const u = (now - s.t) / 700; g.beginPath(); g.arc(X(s.x), Y(s.y), 5 + u * 40, 0, 7); g.lineWidth = 3 * (1 - u); g.strokeStyle = s.c; g.stroke(); }
+      for (const s of sparks) { const u = (now - s.t) / 700; dot(s.x, s.y, (5 + u * 40) * px); g.lineWidth = 3 * (1 - u) * px; g.strokeStyle = s.c; g.stroke(); }
+      g.restore();
     }
     return {
-      draw, resize, moving: () => sparks.length > 0,
-      burst(kind, e, col) { sparks.push({ x: e[2], y: e[3], t: performance.now(), c: kind === 'cup' ? '#5affb0' : kind === 'warp' ? '#c08aff' : col }); },
-      pick(px, py) { const r = canvas.getBoundingClientRect(); return [(px - r.left - cx) / k, -(py - r.top - cy) / k]; },
+      draw, resize, moving: () => sparks.length > 0 || !!streak,
+      burst(kind, e, col) { if (kind === 'fence' || kind === 'magnet') return; sparks.push({ x: e[2], y: e[3], t: performance.now(), c: kind === 'cup' ? '#5affb0' : kind === 'warp' ? '#c08aff' : kind === 'star' ? '#ffd23f' : kind === 'comet' ? '#9ad8ff' : col }); },
+      pick(sx, sy) {
+        const r = canvas.getBoundingClientRect(), dx = sx - r.left - w / 2, dy = sy - r.top - h / 2, c = Math.cos(cam.yaw), s = Math.sin(cam.yaw);
+        return [cam.x + (dx * c + dy * s) / k, cam.y + (dx * s - dy * c) / k];
+      },
       dispose() { canvas.remove(); },
     };
   }

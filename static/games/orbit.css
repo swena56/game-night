@@ -43,3 +43,13 @@
   .og-ctl .og-go { min-width: 100px; }
 }
 @media (prefers-reduced-motion: reduce) { .og-pop-in, .og-done, .og-go.og-ready { animation: none; } }
+/* #172 view buttons, #169 the tractor-cup toggle */
+.og-view { position: absolute; right: 8px; bottom: 8px; z-index: 2; display: flex; flex-direction: column; gap: 6px; }
+.og-view button { width: 36px; height: 36px; padding: 0; border-radius: 50%; border: 0; font-size: 17px; line-height: 1; color: #fff;
+  background: rgba(20, 30, 60, .55); box-shadow: 0 1px 4px rgba(0,0,0,.3); cursor: pointer; touch-action: manipulation; }
+.og-view button:active { background: rgba(20, 30, 60, .85); }
+.og-view button.on { background: rgba(58, 106, 255, .7); }
+.og-ctl .og-mag { min-width: 54px; }
+.og-ctl .og-mag.on { background: #ff7ad8; color: #1a0620; box-shadow: 0 0 12px #ff7ad8aa; }
+.og-ctl .og-mag[hidden] { display: none; }
+@media (max-height: 560px) { .og-view { flex-direction: row; } }
