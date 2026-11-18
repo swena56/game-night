@@ -116,7 +116,7 @@
   function revive(stage, o, k = 0, flatEls = null) {
     if (!stage.isConnected) return;
     let ok = false;
-    try { ok = !!o.build(); } catch { ok = false; }
+    try { ok = !!o.build(); } catch (e) { ok = false; console.warn('GL3.revive: 3D build failed', e); }
     if (ok) {
       if (flatEls) { for (const c of flatEls) c.remove(); o.unflat?.(); }
       return;
@@ -125,10 +125,20 @@
       const before = new Set(stage.children);
       o.flat();
       flatEls = [...stage.children].filter((c) => !before.has(c));
+      // #174: a way back to 3D by hand, also after the automatic retries have given up
+      const btn = document.createElement('button');
+      btn.className = 'gl3-retry'; btn.type = 'button'; btn.textContent = '🧊 Try 3D'; btn.title = 'Switch back to the 3D view';
+      if (getComputedStyle(stage).position === 'static') stage.style.position = 'relative';
+      stage.append(btn); flatEls.push(btn);
     }
     let t = 0;
     const vis = () => { if (!document.hidden) again(); };
-    const again = () => { clearTimeout(t); document.removeEventListener('visibilitychange', vis); revive(stage, o, k + 1, flatEls); };
+    const again = (fresh) => { clearTimeout(t); document.removeEventListener('visibilitychange', vis); revive(stage, o, fresh ? 0 : k + 1, flatEls); };
+    const btn = flatEls.find((c) => c.classList?.contains('gl3-retry'));
+    if (btn) btn.onclick = (e) => {
+      e.stopPropagation(); btn.disabled = true; btn.textContent = '🧊 Trying…';
+      setTimeout(() => { again(true); if (btn.isConnected) { btn.disabled = false; btn.textContent = '🧊 Try 3D again'; } }, 30);
+    };
     if (k >= 8) return;   // about three minutes of trying: this device isn't giving us 3D
     t = setTimeout(again, [2000, 5000, 10000][k] ?? 30000);
     document.addEventListener('visibilitychange', vis);

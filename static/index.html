@@ -10,6 +10,7 @@
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
   <link rel="preload" href="/fonts/baloo2-800-latin.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/style.css">
+  <script src="/emojifb.js"></script>
 </head>
 <body>
   <!-- LOADING (shown while rejoining a room, until the first update arrives) -->
@@ -118,7 +119,7 @@
     </header>
     <div id="pausedCover" class="paused-cover" hidden><div><b>⏸ Paused</b><p>The bots are waiting for you.</p><button id="resumeBtn" class="primary">▶ Resume</button></div></div>
     <div id="overBanner" class="over" hidden>
-      <div class="over-head"><div id="overText"></div>
+      <div class="over-head"><div id="overText"></div><div id="overMini" class="over-mini"></div>
         <button id="overFold" class="icon-btn" aria-expanded="true" title="Fold the results to see the board">▴</button></div>
       <div id="overPodium" class="podium" hidden></div>
       <div id="overScores" class="over-scores"></div>

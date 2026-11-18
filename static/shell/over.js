@@ -86,13 +86,24 @@ function renderOver() {
   if (pickG) $('#playPickBtn').textContent = `▶ Play ${pickG.icon} ${pickG.name}`;
   $('#playVoteBtn').hidden = !(host && others && Object.keys(votes).length);
   $('#rematchBtn').className = $('#playPickBtn').hidden && $('#playVoteBtn').hidden ? 'primary' : '';
+  $('#readyBtn').textContent = S.ready.includes(me.id) ? '✋ Ready!' : "🙋 I'm in!";
+  $('#readyBtn').classList.toggle('on', S.ready.includes(me.id));
+  $('#replayBtn').hidden = !S.hasReplay;
   const folded = overFoldedAt === S.history.length;  // folding lasts for this game's results only
   $('#overBanner').classList.toggle('folded', folded);
   $('#overFold').textContent = folded ? '▾' : '▴ Board';  // spelled out while open: the way back to the board (#81)
   $('#overFold').ariaExpanded = String(!folded);
-  $('#readyBtn').textContent = S.ready.includes(me.id) ? '✋ Ready!' : "🙋 I'm in!";
-  $('#readyBtn').classList.toggle('on', S.ready.includes(me.id));
-  $('#replayBtn').hidden = !S.hasReplay;
+  // folded, the actions stay one tap away as icons in the slim bar (#170)
+  const mini = $('#overMini'); mini.innerHTML = '';
+  if (folded) for (const b of $('#overBanner .over-actions').children) {
+    if (b.hidden) continue;
+    const label = b.textContent.trim();
+    const icon = { playPickBtn: '▶', playVoteBtn: '🗳️', replayBtn: '🎬' }[b.id] || label.match(/^\p{Extended_Pictographic}\uFE0F?/u)?.[0] || '▶';
+    const m = el('button', 'icon-btn mini-act' + (b.classList.contains('primary') ? ' primary' : '') + (b.classList.contains('on') ? ' on' : ''), icon);
+    m.title = label; m.ariaLabel = label;
+    m.onclick = (e) => { e.stopPropagation(); b.click(); };
+    mini.append(m);
+  }
   $('#overWait').textContent = (readyNames.length ? `Ready for more: ${readyNames.join(', ')}. ` : '')
     + (host ? '' : 'The host starts the next game. Your vote below counts 🗳️');
   renderVote(host, others);
