@@ -3,7 +3,7 @@
 .ml { max-width: 760px; margin: 0 auto; overscroll-behavior: none; user-select: none; -webkit-user-select: none; }
 .ml-stage { position: relative; height: clamp(300px, calc(var(--room) - 170px), 640px); border-radius: var(--radius); overflow: hidden; background: #05060f; }
 .ml-stage > canvas:not(.ml-map) { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-.ml-map { position: absolute; top: 6px; left: 8px; right: 8px; width: calc(100% - 16px); height: 38px; z-index: 2; pointer-events: none;
+.ml-map { position: absolute; top: 6px; left: 8px; right: 8px; width: calc(100% - 16px); height: 38px; z-index: 3; pointer-events: auto; cursor: pointer; touch-action: none;
   background: #ffffff0d; border-radius: 8px; }
 .ml-hud { position: absolute; top: 50px; left: 8px; display: flex; flex-direction: column; gap: 4px; z-index: 2; pointer-events: none;
   font: 800 14px/1.2 var(--font-display); font-variant-numeric: tabular-nums; }

@@ -9,11 +9,13 @@ UI.lander = (() => {
   let ghosts = {}, ghostAt = 0, flash = null, lastCd = 0, beeped = 0;
   // drag to look: `look` metres added to the camera's x; it springs back a moment after you let go
   let look = 0, drag = null, lookRel = 0, padHold = null, seenRes = new Set();
+  // #161: tap (or drag along) the strip map to look at that spot; it stays a moment after you let go
+  let mapLook = null, mapHold = 0;
   const $ = (id) => document.getElementById(id);
   const calm = () => document.body.classList.contains('calm');
 
   function mount(main, side) {
-    V = null; gl = null; flat = null; fl = null; roundKey = ''; look = 0; drag = null; padHold = null; held = { l: false, r: false, up: false }; keys = new Set(); ghosts = {}; flash = null; sent = false;
+    V = null; gl = null; flat = null; fl = null; roundKey = ''; look = 0; drag = null; padHold = null; mapLook = null; mapHold = 0; held = { l: false, r: false, up: false }; keys = new Set(); ghosts = {}; flash = null; sent = false;
     main.innerHTML = `<div class="ml"><div class="ml-stage" id="mlStage">
         <canvas class="ml-map" id="mlMap"></canvas>
         <div class="ml-hud" id="mlHud"><span id="mlAlt"></span><span id="mlVy"></span><span id="mlVx"></span><span id="mlAng"></span></div>
@@ -56,6 +58,13 @@ UI.lander = (() => {
     });
     const endDrag = (e) => { if (drag && e.pointerId === drag.id) { drag = null; lookRel = performance.now(); } };
     stage.addEventListener('pointerup', endDrag); stage.addEventListener('pointercancel', endDrag); stage.addEventListener('lostpointercapture', endDrag);
+    // tap or drag along the strip map to look there
+    const map = $('mlMap');
+    const mapX = (e) => { const r = map.getBoundingClientRect(); return Math.max(0, Math.min(1, (e.clientX - r.left) / (r.width || 1))) * (V?.geo.w || 160); };
+    map.addEventListener('pointerdown', (e) => { if (!V) return; e.preventDefault(); e.stopPropagation(); try { map.setPointerCapture(e.pointerId); } catch {} mapLook = { id: e.pointerId, x: mapX(e) }; });
+    map.addEventListener('pointermove', (e) => { if (mapLook?.id === e.pointerId) mapLook.x = mapX(e); });
+    const mapOff = (e) => { if (mapLook?.id === e.pointerId) { mapLook = null; mapHold = lookRel = performance.now() + 1800; } };
+    map.addEventListener('pointerup', mapOff); map.addEventListener('pointercancel', mapOff); map.addEventListener('lostpointercapture', mapOff);
     // hold a pad arrow to swing the view to that pad
     for (const side of ['mlPadL', 'mlPadR']) {
       const box = $(side);
@@ -259,7 +268,7 @@ UI.lander = (() => {
     raf = requestAnimationFrame(loop);
     if (!V) return;
     stepFlight(now);
-    (gl || flat)?.draw(now);
+    try { (gl || flat)?.draw(now); } catch (e) { if (!loop.err) { loop.err = 1; console.error(e); } }   // one bad frame mustn't stop the HUD
     const g = G(), playing = S.phase === 'playing' && !S.paused;
     window.Snd?.bed('lander.engine', engineBed).set(playing && fl && !fl.done && fl.on ? 1 : 0);
     // post my position for the others' ghosts (about 7 times a second)
@@ -292,9 +301,11 @@ UI.lander = (() => {
       $('mlFuel').style.width = f ? `${Math.min(100, (f.fuel / g.tankMax) * 100)}%` : '0';
     }
     // looking around: hold a pad arrow to swing there; let go and the view drifts home (sooner once you fly again)
-    if (padHold != null && fl && V.pads[padHold]) { const [l, r] = V.pads[padHold]; look += ((l + r) / 2 - fl.x - look) * 0.12; }
+    const base = fl && V.stage !== 'between' && V.stage !== 'count' ? fl.x : g.w / 2;
+    if (mapLook) look += (mapLook.x - base - look) * 0.18;
+    else if (padHold != null && fl && V.pads[padHold]) { const [l, r] = V.pads[padHold]; look += ((l + r) / 2 - fl.x - look) * 0.12; }
     else if (!drag && look) {
-      const inp = input(), busy = inp.thrust || inp.rot;
+      const inp = input(), busy = (inp.thrust || inp.rot) && now > mapHold - 1500;
       if (busy || now - lookRel > 1200) { look *= busy ? 0.85 : 0.92; if (Math.abs(look) < 0.05) look = 0; }
     }
     drawArrows();
@@ -334,6 +345,13 @@ UI.lander = (() => {
     g.lineTo(W, H); g.fill();
     for (const [l, r, y, m] of V.pads) {
       g.fillStyle = m === 3 ? '#ff5d8f' : m === 2 ? '#ffd23f' : '#5ce1a0'; g.fillRect(l * sx, H - y * sy - 2 * dpr, (r - l) * sx, 3 * dpr);
+    }
+    // what's on screen: a soft bracket (tap the map to move it)
+    const view = gl || flat, sp = view?.span?.(), cx = view?.cx?.();
+    if (sp && cx != null && sp < G().w * 1.4) {
+      const a = (cx - sp / 2) * sx, b = (cx + sp / 2) * sx;
+      g.fillStyle = '#ffffff14'; g.fillRect(a, 0, b - a, H);
+      g.strokeStyle = mapLook ? '#ffd23fcc' : '#ffffff55'; g.lineWidth = 1.5 * dpr; g.strokeRect(a, 1, b - a, H - 2);
     }
     const dot = (x, y, col, r) => { g.fillStyle = col; g.beginPath(); g.arc(x * sx, Math.max(r, H - Math.min(top, y) * sy), r, 0, 7); g.fill(); };
     for (const [i, o] of Object.entries(ghosts)) { const p = o.cur(now); dot(p[0], p[1], colorOf(+i), 2.5 * dpr); }
@@ -392,11 +410,12 @@ UI.lander = (() => {
     });
     rego.wrapS = rego.wrapT = T.RepeatWrapping; rego.repeat.set(14, 6); rego.anisotropy = low ? 1 : Math.min(8, renderer.capabilities.getMaxAnisotropy?.() || 1);
     // a height map for the grain: little crater rims and pebbles that catch the low sun
-    const bump = low ? null : canvasTex(T, 512, 512, (g, w, h) => {
+    const coarse = matchMedia?.('(pointer: coarse)').matches, BS = coarse ? 256 : 512;   // (#163: phones lost the GPU context; go easier on memory)
+    const bump = low ? null : canvasTex(T, BS, BS, (g, w, h) => {
       g.fillStyle = '#808080'; g.fillRect(0, 0, w, h);
-      for (let k = 0; k < 9000; k++) { const v = 90 + Math.random() * 80 | 0; g.fillStyle = `rgb(${v},${v},${v})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
+      for (let k = 0; k < 9000 * (w / 512) ** 2; k++) { const v = 90 + Math.random() * 80 | 0; g.fillStyle = `rgb(${v},${v},${v})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
       for (let k = 0; k < 70; k++) {
-        const x = Math.random() * w, y = Math.random() * h, r = 3 + Math.random() * 16;
+        const x = Math.random() * w, y = Math.random() * h, r = (3 + Math.random() * 16) * w / 512;
         const gr = g.createRadialGradient(x, y, 0, x, y, r * 1.3); gr.addColorStop(0, 'rgba(40,40,40,0.8)'); gr.addColorStop(0.75, 'rgba(70,70,70,0.4)'); gr.addColorStop(0.85, 'rgba(200,200,200,0.6)'); gr.addColorStop(1, 'rgba(128,128,128,0)');
         g.fillStyle = gr; g.beginPath(); g.arc(x, y, r * 1.3, 0, 7); g.fill();
       }
@@ -433,10 +452,13 @@ UI.lander = (() => {
       const heightAt = (x, z) => {
         let y = lineH(x);
         const off = Math.max(0, Math.abs(z) - 3);
+        // in front, the flight line's bumps fade into a smoothed profile (else they run on as long ridges)
+        if (z > 8) { const sm = (lineH(x - 9) + lineH(x - 4.5) + y + lineH(x + 4.5) + lineH(x + 9)) / 5; y += (sm - y) * Math.min(1, (z - 8) / 30); }
         if (off > 0) {
           // behind the flight line the ground falls away a little (the line you land on stays the skyline); in front it drops
-          const back = z < 0 ? -Math.min(16, off * 0.3) + 7 * Math.max(0, Math.sin(x / 21 + seed)) * Math.min(1, off / 40) : -Math.min(off, 11) * 0.4 - Math.max(0, off - 11) * 0.6;
-          y += back + Math.sin(x * 0.31 + z * 0.17 + seed) * Math.min(2.5, off * 0.2);
+          const back = z < 0 ? -Math.min(16, off * 0.3) + 7 * Math.max(0, Math.sin(x / 21 + seed)) * Math.min(1, off / 40) : -Math.min(off, 11) * 0.4 - Math.min(Math.max(0, off - 11), 34) * 0.6;   // (#162: then levels out, so wide views see ground, not the edge)
+          y += back + Math.sin(x * 0.31 + z * 0.17 + seed) * Math.min(2.5, off * 0.2) * Math.max(0, Math.min(1, (60 - z) / 16));
+          if (z > 44) y += Math.min(1, (z - 44) / 30) * (4 * Math.sin(x / 37 + z / 41 + seed) + 2.5 * Math.sin(x / 17 - z / 23 + seed * 2));   // the near plain: slow swells (no fine noise the coarse rows would alias)
           for (const [cx, cz, cr] of craters) {
             const d = Math.hypot(x - cx, z - cz);
             if (d < cr * 1.5) y += d < cr ? -Math.cos((d / cr) * Math.PI / 2) * cr * 0.32 : Math.sin(((d - cr) / (cr * 0.5)) * Math.PI) * cr * 0.14;
@@ -450,7 +472,7 @@ UI.lander = (() => {
       for (let i = 0; i < h.length; i++) xs.push(i * g.seg);
       for (let x = g.w + 4; x <= g.w + 160; x += 4) xs.push(x);
       const zs = [];
-      for (let z = -150; z <= 60; z += z < -70 ? 10 : z < -20 ? 5 : z < 14 ? 2 : 6) zs.push(z);
+      for (let z = -150; z <= 440; z += z < -70 ? 10 : z < -20 ? 5 : z < 14 ? 2 : z < 60 ? 6 : 20) zs.push(z);
       const nx = xs.length, pos = [], idx = [], uv = [], cols = [];
       for (const z of zs) for (const x of xs) {
         const y = heightAt(x, z);
@@ -810,7 +832,7 @@ UI.lander = (() => {
     const span = () => 2 * tv() * camD * aspect;
     function dispose() { stg.dispose(); renderer.dispose(); renderer.domElement.remove(); }
     resize();
-    return { draw, resize, dispose, shake, dust, boom, proj, span, rebuild() { build.round = -1; } };
+    return { draw, resize, dispose, shake, dust, boom, proj, span, cx: () => camX, rebuild() { build.round = -1; } };
   }
 
   // ---------- flat fallback: a side view riding with my lander
@@ -856,12 +878,12 @@ UI.lander = (() => {
       if (fl && !(fl.done && fl.done.how === 'crash')) lander(fl.x, fl.y, fl.k, !fl.done && fl.on, '#d9a63a', 1);
       for (const sc of scorches) { g.fillStyle = '#0b0b0dcc'; g.beginPath(); g.ellipse(X(sc.x), Y(sc.y), sc.r * k, sc.r * k * 0.3, 0, 0, 7); g.fill(); }
       for (let j = chunks.length - 1; j >= 0; j--) {
-        const c = chunks[j], dt = Math.min(0.05, (now - c.last) / 1000); c.last = now;
+        const c = chunks[j], dt = Math.max(0, Math.min(0.05, (now - c.last) / 1000)); c.last = Math.max(c.last, now);
         if (!c.rest) { c.vy -= 1.62 * dt; c.x += c.vx * dt; c.y += c.vy * dt; c.a += c.w * dt; const gy = ground(Math.max(0, Math.min(gg.w, c.x))); if (c.y < gy) { c.y = gy; c.vy *= -0.35; c.vx *= 0.6; c.w *= 0.6; if (Math.abs(c.vy) < 0.6) c.rest = true; } }
         g.save(); g.translate(X(c.x), Y(c.y)); g.rotate(c.a); g.fillStyle = c.col; g.fillRect(-c.s * k / 2, -c.s * k / 2, c.s * k, c.s * k * 0.6); g.restore();
       }
       for (let j = pops.length - 1; j >= 0; j--) {
-        const p = pops[j], t = (now - p.at) / (p.ball ? 600 : 700);
+        const p = pops[j], t = Math.max(0, (now - p.at) / (p.ball ? 600 : 700));   // (#163: a rAF time can be older than the boom's stamp)
         if (t >= 1) { pops.splice(j, 1); continue; }
         if (p.ball) { const gr = g.createRadialGradient(X(p.x), Y(p.y), 0, X(p.x), Y(p.y), (0.5 + p.size * Math.sqrt(t)) * k); gr.addColorStop(0, `rgba(255,255,230,${1 - t})`); gr.addColorStop(0.5, `rgba(255,150,50,${0.8 * (1 - t)})`); gr.addColorStop(1, 'rgba(255,80,0,0)'); g.fillStyle = gr; g.beginPath(); g.arc(X(p.x), Y(p.y), (0.5 + p.size * Math.sqrt(t)) * k, 0, 7); g.fill(); continue; }
         g.globalAlpha = 1 - t; g.strokeStyle = p.col; g.lineWidth = 3;
@@ -872,7 +894,7 @@ UI.lander = (() => {
     resize();
     return {
       draw, resize, dispose() { canvas.remove(); },
-      proj: (x) => ((x - vw.cx) * vw.k) / (vw.W / 2), span: () => vw.span,
+      proj: (x) => ((x - vw.cx) * vw.k) / (vw.W / 2), span: () => vw.span, cx: () => vw.cx,
       dust: (x, y) => pops.push({ x, y, col: '#aaa', size: 3, at: performance.now() }),
       boom: (x, y, o = {}) => {
         const at = performance.now(), small = !!o.small;
