@@ -27,3 +27,10 @@ body.focus .sw-stage { height: max(240px, calc(var(--room) - 160px)); }
 .sw-team.t0 { box-shadow: inset 0 0 0 2px #e63946; }
 .sw-team.t1 { box-shadow: inset 0 0 0 2px #3a86ff; }
 .sw-team.mine { background: color-mix(in srgb, var(--panel2) 70%, #ffd23f); }
+/* #178 ✨ the gift button beside ❄️ Throw, and the 👑 crown chip in the HUD */
+.sw-bar button.sw-use { min-width: 0; padding: 0 14px; font-size: 22px; background: linear-gradient(#fff8dc, #ffe9a8); color: #4a3500;
+  box-shadow: 0 0 0 2px #ffd23f, 0 0 14px #ffd23f99; animation: sw-glow 1.2s ease-in-out infinite alternate; }
+@keyframes sw-glow { to { box-shadow: 0 0 0 2px #ffd23f, 0 0 4px #ffd23f55; } }
+.sw-bar .hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.sw-crown { color: #6b4b00; }
+@media (prefers-reduced-motion: reduce) { .sw-bar button.sw-use { animation: none; } }

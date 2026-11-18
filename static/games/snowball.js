@@ -4,10 +4,17 @@
 // pack a big one), or WASD/arrows + Space.
 // The server sends throws, hits, splats, fort damage, snow-ins and giant knockdowns as numbered events ("ev").
 // On a portrait screen the field is turned a quarter so its long side runs up the screen (the stick turns too).
+// #178: a field per game (forts, patches, the ⛸️ pond), 🎁 gifts spent with ✨ (🧊 ice ball, ☃️ decoy, 💦 slush),
+// 👑 the crown on the hill from half time, 🔥 streaks. Kid rows: [x, y, vx, vy, fx, fy, ammo, pips, frozen, knocked,
+// packing, giant, points, item, slow, streak, crowns, chill]; balls: [x0, y0, x1, y1, left, dur, big, by, id, kind].
+// #178 crashes: the 3D view frees everything it made on dispose, draws slowly on the results screen, compiles
+// its shaders up front (no hitch on the first snow-in), skips no-op resizes, and falls back to flat if a frame throws.
 UI.snowball = (() => {
   let S, ctx, snap = null, gotAt = 0, gl = null, flat = null, raf = 0, ro = null, rot = false;
   let keyDown = null, keyUp = null, drag = null, stick = [0, 0], sentAt = 0, keys = new Set();
-  let lastSeq = -1, flash = null, packAt = 0, lastCd = 0, sideAt = 0;
+  let lastSeq = -1, flash = null, packAt = 0, lastCd = 0, sideAt = 0, drawnAt = 0, drawFails = 0;
+  const EMOJI_FONT = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
+  const ITEM = [null, { e: '🧊', n: 'Ice ball', col: '#7fd0ff' }, { e: '☃️', n: 'Decoy', col: '#ffffff' }, { e: '💦', n: 'Slush bomb', col: '#9aa7b8' }];
   const KEYS = { ArrowUp: [0, -1], KeyW: [0, -1], ArrowDown: [0, 1], KeyS: [0, 1], ArrowLeft: [-1, 0], KeyA: [-1, 0], ArrowRight: [1, 0], KeyD: [1, 0] };
   const STICK_PX = 60;
   const $ = (id) => document.getElementById(id);
@@ -15,21 +22,24 @@ UI.snowball = (() => {
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
   function mount(main, side) {
-    S = null; snap = null; gl = null; flat = null; drag = null; stick = [0, 0]; keys = new Set(); lastSeq = -1; flash = null; packAt = 0; rot = false; disp.length = 0; predAt = 0;
+    S = null; snap = null; gl = null; flat = null; drag = null; stick = [0, 0]; keys = new Set(); lastSeq = -1; flash = null; packAt = 0; rot = false; disp.length = 0; predAt = 0; drawnAt = 0; drawFails = 0;
     main.innerHTML = `<div class="sw"><div class="sw-stage" id="swStage">
-        <div class="sw-hud"><span id="swClock">2:00</span><span id="swPips"></span></div>
+        <div class="sw-hud"><span id="swClock">2:00</span><span id="swCrown" class="sw-crown"></span><span id="swPips"></span></div>
         <div class="lr-banner" id="swBanner" hidden></div>
         <div class="lr-banner small sw-flash" id="swFlash" hidden></div>
         <div class="sw-stick" id="swStick" hidden><span></span></div></div>
-      <div class="sw-bar"><span id="swInfo" class="hint"></span><button id="swThrow" class="primary">❄️ Throw</button></div></div>`;
+      <div class="sw-bar"><span id="swInfo" class="hint"></span><button id="swUse" class="sw-use" hidden></button><button id="swThrow" class="primary">❄️ Throw</button></div></div>`;
     side.innerHTML = `<div class="panel"><div id="swSeats"></div>
-      <p class="hint left">Drag anywhere to run, tap to throw. Hold ❄️ to pack a big one. Keyboard: WASD / arrows and Space.</p></div>`;
+      <p class="hint left" id="swHint">Drag anywhere to run, tap to throw. Hold ❄️ to pack a big one. Keyboard: WASD / arrows and Space.</p></div>`;
     main.querySelector('.sw').style.touchAction = 'none';
     const btn = $('swThrow');
     btn.addEventListener('pointerdown', (e) => { e.preventDefault(); try { btn.setPointerCapture(e.pointerId); } catch {} press(); });
     btn.addEventListener('pointerup', (e) => { e.preventDefault(); release(); });
     btn.addEventListener('pointercancel', () => release());
     btn.addEventListener('contextmenu', (e) => e.preventDefault());
+    const ub = $('swUse');
+    ub.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); useGift(); });
+    ub.addEventListener('contextmenu', (e) => e.preventDefault());
     const stage = $('swStage');
     stage.addEventListener('pointerdown', (e) => {
       drag = { x: e.clientX, y: e.clientY, at: performance.now(), moved: false };
@@ -57,6 +67,7 @@ UI.snowball = (() => {
       if (e.target?.closest?.('input, textarea, select')) return;
       if (KEYS[e.code]) { e.preventDefault(); keys.add(e.code); keyStick(); }
       else if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) press(); }
+      else if ((e.code === 'KeyE' || e.code === 'ShiftLeft' || e.code === 'ShiftRight') && !e.repeat) { e.preventDefault(); useGift(); }
     };
     keyUp = (e) => {
       if (keys.delete(e.code)) keyStick();
@@ -64,7 +75,9 @@ UI.snowball = (() => {
     };
     addEventListener('keydown', keyDown);
     addEventListener('keyup', keyUp);
-    ro = window.ResizeObserver ? new ResizeObserver(() => (gl || flat)?.resize()) : null;
+    // (#178: phones fire this as the address bar slides; only a real size change reallocates the drawing buffer)
+    let roSize = '';
+    ro = window.ResizeObserver ? new ResizeObserver(() => { const k = `${stage.clientWidth}x${stage.clientHeight}`; if (k !== roSize) { roSize = k; (gl || flat)?.resize(); } }) : null;
     ro?.observe(stage);
     GL3.load().then(() => { if (stage.isConnected && !gl) GL3.revive(stage, { build: () => (gl = make3d(stage)), flat: () => { flat ||= make2d(stage); }, unflat: () => { flat?.dispose?.(); flat = null; } }); })
       .catch(() => { if (stage.isConnected && !gl && !flat) flat = make2d(stage); });
@@ -121,6 +134,7 @@ UI.snowball = (() => {
   function press() { if (!playing() || packAt) return; packAt = performance.now(); ctx.input({ throw: 'down' }, true); renderSide(); }
   function release() { if (!packAt) return; packAt = 0; if (playing()) ctx.input({ throw: 'up' }, true); renderSide(); }
   function tap() { if (playing()) ctx.input({ throw: 'tap' }, true); }
+  function useGift() { const m = me() != null && snap ? snap.k[me()] : null; if (playing() && m?.[13]) ctx.input({ use: true }, true); }
 
   // ---------- state
   function render(s, c) {
@@ -140,7 +154,7 @@ UI.snowball = (() => {
 
   function take(d) {
     const was = snap?.st;
-    snap = { st: d.st, tl: d.tl, go: d.go, k: d.k, b: d.b, f: d.f, p: d.p, tp: d.tp };
+    snap = { st: d.st, tl: d.tl, go: d.go, k: d.k, b: d.b, f: d.f, p: d.p, tp: d.tp, g: d.g || [], dc: d.dc || [], sl: d.sl || [], h: d.h || null };
     gotAt = performance.now();
     Object.assign(V(), { st: d.st, k: d.k, f: d.f, p: d.p });
     if (was === 'countdown' && d.st === 'play') ctx?.sfx?.('whoosh');
@@ -200,6 +214,11 @@ UI.snowball = (() => {
       K.mode(d, t, 55, 0.35, 0.15, { f1: 40 }); K.burst(d, t, { type: 'lowpass', f: 380, q: 0.7, vol: 0.6, tau: 0.09, buf: 'brown' });
       K.burst(d, t + 0.02, { type: 'bandpass', f: 1800, f1: 600, q: 0.5, vol: 0.18, tau: 0.12, dur: 0.6 });
     }, x, y),
+    // #178 a gift picked up: a bright little two-note chime; a slush bomb: a wet slap; a decoy losing its head: a soft pop
+    gift: (x, y) => snd((t, K, d) => { [1175, 1568].forEach((f, n) => K.mode(d, t + n * 0.07, f, 0.07, 0.18)); K.burst(d, t, { type: 'highpass', f: 4000, q: 0.7, vol: 0.05, tau: 0.05 }); }, x, y),
+    slush: (x, y) => snd((t, K, d) => { K.burst(d, t, { type: 'lowpass', f: 900, f1: 300, q: 1.2, vol: 0.4, tau: 0.08, dur: 0.3, buf: 'brown' }); K.burst(d, t + 0.03, { type: 'bandpass', f: 1600, q: 3, vol: 0.1, tau: 0.06 }); }, x, y),
+    poof: (x, y) => snd((t, K, d) => { K.burst(d, t, { type: 'bandpass', f: 900, f1: 2400, q: 0.8, vol: 0.2, tau: 0.06, dur: 0.25 }); K.mode(d, t, 330, 0.05, 0.1, { f1: 520 }); }, x, y),
+    crown: (mine) => snd((t, K, d) => { [784, 988, 1175, 1568].forEach((f, n) => K.mode(d, t + n * 0.06, mine ? f : f * 0.75, mine ? 0.07 : 0.04, 0.3)); }),
     // my own footsteps: a little crunch each step
     step: () => snd((t, K, d) => { K.burst(d, t, { type: 'bandpass', f: K.R(1800, 2800), q: 1.2, vol: 0.05, tau: 0.012 }); K.burst(d, t, { type: 'lowpass', f: 500, q: 0.7, vol: 0.06, tau: 0.02, buf: 'brown' }); }),
   };
@@ -218,7 +237,7 @@ UI.snowball = (() => {
     const [, kind, ...a] = e, i = me();
     const at = (j) => (snap?.k?.[j] ? [snap.k[j][0], snap.k[j][1]] : [0, 0]);
     if (kind === 'throw') {
-      SN.throw(a[0] === i, ...at(a[0]));
+      SN.throw(a[0] === i || !!a[2], ...at(a[0]));
       if (a[0] === i) ctx.buzz?.(10);
       gl?.windup(a[0]);
     } else if (kind === 'hit') {
@@ -245,6 +264,29 @@ UI.snowball = (() => {
       else if (by === i) { ctx.sfx?.('good'); showFlash(`❄️ You snowed in ${nameOf(j)}! +1`, 1800); }
     } else if (kind === 'giant') {
       if (a[0] === i) { SN.giant(); showFlash('⛄ Giant ready — run into someone!', 1800); }
+    } else if (kind === 'gift') {
+      gl?.sparkleAt(a[1], a[2], ITEM[a[3]]?.col);
+    } else if (kind === 'pick') {
+      const [j, it] = a, w = at(j);
+      SN.gift(...w); (gl || flat)?.puff(w[0], w[1], 10, ITEM[it]?.col);
+      if (j === i) { ctx.buzz?.(15); showFlash(`${ITEM[it]?.e} ${ITEM[it]?.n}! Tap ✨ to use it`, 2000); }
+    } else if (kind === 'decoy') {
+      SN.poof(a[1], a[2]); (gl || flat)?.puff(a[1], a[2], 14);
+    } else if (kind === 'soak') {
+      SN.splat(a[3], a[1], a[2], false); (gl || flat)?.puff(a[1], a[2], 14);
+    } else if (kind === 'poof') {
+      SN.poof(a[1], a[2]); (gl || flat)?.puff(a[1], a[2], 26);
+    } else if (kind === 'slush') {
+      SN.slush(a[0], a[1]); (gl || flat)?.puff(a[0], a[1], 18, '#9aa7b8');
+    } else if (kind === 'crown') {
+      SN.crown(true); showFlash('👑 The crown is on the hill!', 2200); ctx.buzz?.(20);
+    } else if (kind === 'crownpt') {
+      SN.crown(a[0] === i); gl?.sparkleAt(...(V().hill || [0, 0]), '#ffd23f');
+      if (a[0] === i) showFlash('👑 +1 for the hill!', 1400);
+    } else if (kind === 'streak') {
+      if (a[0] === i) showFlash(`🔥 ${a[1]} in a row!`, 1600);
+    } else if (kind === 'shutdown') {
+      if (a[0] === i) { ctx.sfx?.('good'); showFlash(`🧯 Streak stopped! +1`, 1800); }
     } else if (kind === 'flat') {
       const [j, by, x, y] = a;
       SN.flat(x, y); (gl || flat)?.puff(x, y, 45); gl?.shake(j === i ? 0.7 : 0.35);
@@ -273,11 +315,14 @@ UI.snowball = (() => {
       const row = ctx.el('div', 'seat-row lr-row' + (p && !p.eliminated ? '' : ' out'));
       const dot = ctx.el('span', 'mini-disc'); dot.style.background = colorOf(i);
       if (v.teams) dot.style.boxShadow = `0 0 0 2px ${TEAM_COL[v.team[i]]}`;
-      const state = k[8] > 0 ? ' 🧊' : k[9] > 0 ? ' 💫' : k[11] >= 0.99 ? ' ⛄' : '';
+      const state = (k[8] > 0 ? ' 🧊' : k[9] > 0 ? ' 💫' : k[11] >= 0.99 ? ' ⛄' : '') + (k[15] >= (v.streak || 3) ? ` 🔥${k[15]}` : '')
+        + (k[13] ? ` ${ITEM[k[13]]?.e ?? ''}` : '') + (k[16] ? ` 👑${k[16]}` : '');
       row.append(dot, ctx.el('span', 'grow', `${p?.name ?? 'left'}${i === v.me ? ' (you)' : ''}${state}`),
         ctx.el('span', 'sw-pipline', '●'.repeat(k[7]) + '○'.repeat(Math.max(0, v.pips - k[7]))), ctx.el('b', '', `❄️ ${k[12]}`));
       box.append(row);
     }
+    const hint = $('swHint');
+    if (hint && v.extras && !hint.dataset.x) { hint.dataset.x = 1; hint.textContent = 'Drag anywhere to run, tap to throw. Hold ❄️ to pack a big one. Walk over 🎁 gifts and spend them with ✨ (or E). 👑 From half time, hold the hill for +1 every 5 s: most kids (or team-mates) inside holds it, level freezes it (in big games the holder keeps it at half speed). Keyboard: WASD / arrows and Space.'; }
     const mine = v.me != null ? snap.k[v.me] : null, b = $('swThrow');
     b.parentElement.hidden = v.me == null;
     if (!mine) return;
@@ -287,7 +332,12 @@ UI.snowball = (() => {
     b.classList.toggle('sw-big', held >= v.bigHold);
     b.classList.toggle('sw-packing', !!packAt);
     b.textContent = packAt ? (held >= v.bigHold ? '⛄ Big one!' : '❄️ Packing…') : `❄️ Throw ${'●'.repeat(mine[6])}${'○'.repeat(Math.max(0, v.ammoMax - mine[6]))}`;
-    $('swInfo').textContent = mine[8] > 0 ? `🧊 Snowed in ${mine[8].toFixed(1)}s` : mine[9] > 0 ? '💫 Knocked flat' : mine[11] > 0.05 && mine[11] < 0.99 ? `⛄ ${Math.round(mine[11] * 100)}%` : '';
+    const u = $('swUse'), it = ITEM[mine[13]];
+    u.hidden = !it; u.disabled = b.disabled;
+    if (it && u.dataset.k !== String(mine[13])) { u.dataset.k = mine[13]; u.textContent = `✨${it.e}`; u.title = `Use your ${it.n} (E)`; }
+    if (!it) u.dataset.k = '';
+    $('swInfo').textContent = snap.st === 'countdown' && v.mapName ? v.mapName : mine[8] > 0 ? `🧊 Snowed in ${mine[8].toFixed(1)}s` : mine[9] > 0 ? '💫 Knocked flat'
+      : mine[11] > 0.05 && mine[11] < 0.99 ? `⛄ ${Math.round(mine[11] * 100)}%` : mine[17] > 0 ? '🥶 Chilled' : mine[14] < 0.99 ? '💦 Slushed' : '';
   }
 
   // where kid i is now (#123). The server's last word plus its velocity since then is the target; others glide
@@ -308,7 +358,8 @@ UI.snowball = (() => {
       if (!d) { disp[i] = { x: tx, y: ty, vx: 0, vy: 0 }; return; }
       const mine = i === me() && playing();
       if (mine && snap.st === 'play' && k[8] <= 0 && k[9] <= 0) {
-        const sp = (packAt || k[10] ? v.speed?.[1] : v.speed?.[0]) ?? 4.6, b = Math.min(1, dt * 14);
+        const iced = onIce(d.x, d.y);
+        const sp = ((packAt || k[10] ? v.speed?.[1] : v.speed?.[0]) ?? 4.6) * (k[14] ?? 1) * (iced ? v.iceSpeed?.[1] ?? 1 : 1), b = Math.min(1, dt * (iced ? v.iceSpeed?.[0] ?? 14 : 14));
         d.vx += (stick[0] * sp - d.vx) * b; d.vy += (stick[1] * sp - d.vy) * b;
         d.x = Math.max(-v.aw + v.body, Math.min(v.aw - v.body, d.x + d.vx * dt));
         d.y = Math.max(-v.ah + v.body, Math.min(v.ah - v.body, d.y + d.vy * dt));
@@ -320,6 +371,10 @@ UI.snowball = (() => {
         d.vx = k[2]; d.vy = k[3];
       }
     });
+  }
+  function onIce(x, y) {
+    const c = V()?.ice; if (!c) return false;
+    return ((x - c[0]) / c[2]) ** 2 + ((y - c[1]) / c[3]) ** 2 < 1;
   }
   function pos(i, now) {
     const d = disp[i];
@@ -341,7 +396,10 @@ UI.snowball = (() => {
     raf = requestAnimationFrame(loop);
     if (!snap || !V()) return;
     stepPos(now);
-    (gl || flat)?.draw(now);
+    // (#178) the results screen and a paused game need no 60 fps: a few frames a second keeps the picture alive
+    // without holding the GPU (and a weak phone's battery and memory) at full tilt behind the over panel
+    const idle = S.phase !== 'playing' || S.paused;
+    if (!idle || now - drawnAt > 150) { drawnAt = now; drawSafe(now); }
     window.Snd?.bed('snow.wind', windBed).set(S.phase === 'playing' && !S.paused ? 1 : 0);
     const md = me() != null ? disp[me()] : null;
     if (md && snap.st === 'play' && Math.hypot(md.vx, md.vy) > 1.2) { loop.walk = (loop.walk || 0) + Math.hypot(md.vx, md.vy) * 0.016; if (loop.walk > 1.25) { loop.walk = 0; SN.step(); } }
@@ -359,7 +417,27 @@ UI.snowball = (() => {
     $('swClock').textContent = v.teams ? `⏱ ${clock(tl)} · 🔴 ${snap.tp?.[0] ?? 0}–${snap.tp?.[1] ?? 0} 🔵` : `⏱ ${clock(tl)}`;
     $('swClock').classList.toggle('sw-hurry', snap.st === 'play' && tl <= 10);
     $('swPips').textContent = mine ? '💙'.repeat(Math.max(0, v.pips - mine[7])) + '🤍'.repeat(mine[7]) : '';
+    const h = snap.h, cr = $('swCrown');
+    let ct = '';
+    if (h && !h[0] && h[4] > 0 && h[4] <= 15 && snap.st === 'play') ct = `👑 in ${Math.ceil(Math.max(0, h[4] - (now - gotAt) / 1000))}`;
+    // h[3]: 1 = level, frozen; 2 = a big game's level hill, the holder fills at half speed (shown with ⚔️ after the %)
+    else if (h && h[0]) ct = h[3] === 1 ? '👑 ⚔️' : h[2] > 0.02 && h[1] >= 0 ? `👑 ${v.teams ? TEAM_NAME[h[1]].split(' ')[0] : h[1] === v.me ? 'You' : nameOf(h[1])} ${Math.round(h[2] * 100)}%${h[3] === 2 ? ' ⚔️' : ''}` : '👑';
+    if (cr.textContent !== ct) cr.textContent = ct;
     if (packAt) { const big = (now - packAt) / 1000 >= v.bigHold; if (big !== loop.big) { loop.big = big; renderSide(); } } else loop.big = undefined;
+  }
+
+  // a frame that throws must not freeze the game behind a stuck picture (#178): log it, and after a few in a row
+  // give up on 3D for the flat view (which has its own 🧊 Try 3D button through GL3.revive)
+  function drawSafe(now) {
+    try { (gl || flat)?.draw(now); drawFails = 0; } catch (e) {
+      if (++drawFails === 1) console.warn('snowball: draw failed', e);
+      if (drawFails >= 3 && gl) {
+        const stage = $('swStage');
+        try { gl.dispose(); } catch {}
+        gl = null; drawFails = 0;
+        if (stage) GL3.revive(stage, { build: () => { gl?.dispose(); gl = null; return (gl = make3d(stage)); }, flat: () => { flat ||= make2d(stage); }, unflat: () => { flat?.dispose?.(); flat = null; } }, 3);
+      }
+    }
   }
 
   // ---------- three.js snowfield
@@ -473,6 +551,75 @@ UI.snowball = (() => {
     const pipOn = new T.MeshBasicMaterial({ color: 0x3a8dff }), pipOff = new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 });
     const shadowMat = new T.MeshBasicMaterial({ color: 0x334466, transparent: true, opacity: 0.22, depthWrite: false });
     const discGeo = new T.CircleGeometry(1, 24), KID = 1.25;   // drawn a bit bigger than the body, to read on a phone
+    // #178 ⛸️ the frozen pond: glossy blue ice with a snowy rim
+    if (v0.ice) {
+      const [cx, cy, rx, ry] = v0.ice;
+      const pond = new T.Mesh(new T.CircleGeometry(1, 48), new T.MeshStandardMaterial({ color: 0xa9dcff, roughness: low ? 0.25 : 0.06, metalness: 0.05, emissive: 0x16466e, emissiveIntensity: 0.18 }));
+      pond.rotation.x = -Math.PI / 2; pond.position.set(cx, 0.008, cy); pond.scale.set(rx, ry, 1); pond.receiveShadow = true; field.add(pond);
+      const rim = new T.Mesh(new T.RingGeometry(0.97, 1.06, 48), new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, depthWrite: false }));
+      rim.rotation.x = -Math.PI / 2; rim.position.set(cx, 0.012, cy); rim.scale.set(rx, ry, 1); field.add(rim);
+      if (!low) {   // a few scratch lines from skates
+        const pts = [];
+        for (let n = 0; n < 9; n++) { const a = n * 2.1, r0 = 0.2 + (n % 4) * 0.18; pts.push(new T.Vector3(cx + Math.cos(a) * rx * r0, 0.014, cy + Math.sin(a) * ry * r0), new T.Vector3(cx + Math.cos(a + 0.9) * rx * (r0 + 0.3), 0.014, cy + Math.sin(a + 0.9) * ry * (r0 + 0.3))); }
+        field.add(new T.LineSegments(new T.BufferGeometry().setFromPoints(pts), new T.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 })));
+      }
+    }
+    // emoji badges drawn once each into a little canvas (gifts, the crown, a streak's flame)
+    const emojiTex = {};
+    // (a soft dark disc behind each one so ☃️ and 💦 read on white snow; colour emoji fonts named first, the #168
+    // 'GN Emoji' fallback is appended by emojifb.js; drawn again once web fonts settle so a late font isn't missed)
+    const emojiDraw = (e) => (g, n) => {
+      g.clearRect(0, 0, n, n);
+      g.fillStyle = 'rgba(24,40,64,0.38)'; g.beginPath(); g.arc(n / 2, n / 2, n * 0.47, 0, 6.283); g.fill();
+      g.fillStyle = '#000'; g.font = `${n * 0.66}px ${EMOJI_FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(e, n / 2, n * 0.54);
+    };
+    const emojiMat = (e) => {
+      if (emojiTex[e]) return emojiTex[e];
+      const tex = canvasTex(T, 64, emojiDraw(e));
+      if (document.fonts && document.fonts.status !== 'loaded') document.fonts.ready.then(() => { const g = tex.image.getContext('2d'); if (g) { emojiDraw(e)(g, 64); tex.needsUpdate = true; } }).catch(() => {});
+      return (emojiTex[e] = new T.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
+    };
+    // 👑 the hill: a gold ring that lights up at half time, a crown spinning over it, and a ring that fills for whoever holds it
+    const hill = new T.Group(); hill.position.set(v0.hill?.[0] ?? 0, 0, v0.hill?.[1] ?? 0); hill.visible = !!v0.extras; field.add(hill);
+    const hillMat = new T.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.35, depthWrite: false });
+    const hillRing = new T.Mesh(new T.RingGeometry(0.9, 1, 48), hillMat); hillRing.rotation.x = -Math.PI / 2; hillRing.position.y = 0.03; hillRing.scale.setScalar(v0.hillR || 1.5); hill.add(hillRing);
+    const holdMat = new T.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.9, depthWrite: false, side: T.DoubleSide });
+    const holdRing = new T.Mesh(new T.RingGeometry(1.02, 1.18, 48, 1, Math.PI / 2, Math.PI * 2), holdMat); holdRing.rotation.x = -Math.PI / 2; holdRing.position.y = 0.035; holdRing.scale.setScalar(v0.hillR || 1.5); hill.add(holdRing);
+    const goldMat = new T.MeshStandardMaterial({ color: 0xffc83d, metalness: 0.75, roughness: 0.3, emissive: 0x5a3a00, emissiveIntensity: 0.4 });
+    const crown = new T.Group(); crown.position.y = 2.2; crown.scale.setScalar(1.6); hill.add(crown);
+    crown.add(new T.Mesh(new T.CylinderGeometry(0.34, 0.3, 0.22, 10, 1, true), goldMat));
+    for (let n = 0; n < 5; n++) { const a = n / 5 * 6.283, c = new T.Mesh(new T.ConeGeometry(0.07, 0.2, 5), goldMat); c.position.set(Math.cos(a) * 0.32, 0.2, Math.sin(a) * 0.32); crown.add(c); }
+    // 🎁 gifts: a box in the gift's colour with a white ribbon and its emoji floating over it (a small pool)
+    const boxGeo = new T.BoxGeometry(0.42, 0.42, 0.42), ribGeo = new T.BoxGeometry(0.44, 0.44, 0.1);
+    const giftMats = [null, ...[0x7fd0ff, 0xfff6e8, 0x8d9db3].map((c) => new T.MeshStandardMaterial({ color: c, roughness: 0.5, emissive: c, emissiveIntensity: 0.15 }))];
+    const giftPool = [];
+    for (let n = 0; n < 3; n++) {
+      const g = new T.Group(), box = new T.Mesh(boxGeo, giftMats[1]); box.castShadow = !low; g.add(box);
+      const r1 = new T.Mesh(ribGeo, fortMat), r2 = new T.Mesh(ribGeo, fortMat); r2.rotation.y = Math.PI / 2; g.add(r1, r2);
+      const tag = new T.Sprite(emojiMat('🎁')); tag.scale.setScalar(0.6); tag.position.y = 0.8; g.add(tag);
+      g.scale.setScalar(1.4); g.visible = false; field.add(g);
+      const glow = new T.Mesh(new T.RingGeometry(0.5, 0.62, 28), new T.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.8, depthWrite: false }));
+      glow.rotation.x = -Math.PI / 2; glow.visible = false; field.add(glow);
+      giftPool.push({ g, box, tag, glow, kind: 0 });
+    }
+    // ☃️ decoys: three balls of snow, coal eyes, a carrot nose (a pool, one per player)
+    const coalMat = new T.MeshBasicMaterial({ color: 0x1a1a2a }), carrotMat = new T.MeshStandardMaterial({ color: 0xff8a2a, roughness: 0.6 });
+    const sGeo = new T.SphereGeometry(1, 14, 10), noseGeo = new T.ConeGeometry(0.05, 0.22, 6), eyeGeo = new T.SphereGeometry(0.035, 6, 6);
+    const decoyPool = [];
+    for (let n = 0; n < 6; n++) {
+      const g = new T.Group(), body = new T.Group(); g.add(body);
+      [[0.36, 0.34], [0.27, 0.86], [0.2, 1.26]].forEach(([r, y]) => { const m = new T.Mesh(sGeo, white); m.scale.setScalar(r); m.position.y = y; m.castShadow = !low; body.add(m); });
+      const nose = new T.Mesh(noseGeo, carrotMat); nose.rotation.x = Math.PI / 2; nose.position.set(0, 1.26, 0.27); body.add(nose);
+      for (const sx of [-1, 1]) { const e = new T.Mesh(eyeGeo, coalMat); e.position.set(sx * 0.08, 1.33, 0.17); body.add(e); }
+      const scarfD = new T.Mesh(new T.TorusGeometry(0.21, 0.05, 6, 14), white); scarfD.rotation.x = Math.PI / 2; scarfD.position.y = 1.07; body.add(scarfD);
+      g.visible = false; g.scale.setScalar(KID); field.add(g); decoyPool.push({ g, body, scarf: scarfD, id: 0 });
+    }
+    // 💦 slush puddles: grey-brown discs (a pool)
+    const slushMat = new T.MeshStandardMaterial({ color: 0x8d9db3, roughness: 0.25, transparent: true, opacity: 0.7, depthWrite: false });
+    const slushPool = [];
+    for (let n = 0; n < 6; n++) { const m = new T.Mesh(discGeo, slushMat); m.rotation.x = -Math.PI / 2; m.visible = false; field.add(m); slushPool.push(m); }
+    const ballMats = [white, new T.MeshStandardMaterial({ color: 0x9fe0ff, roughness: 0.1, emissive: 0x2a7ab0, emissiveIntensity: 0.5 }), slushMat];
+    const flameMat = emojiMat('🔥');
     const kids = [];
     function ensureKids() {
       while (kids.length < snap.k.length) {
@@ -503,6 +650,7 @@ UI.snowball = (() => {
         const pips = [];
         for (let k = 0; k < v0.pips; k++) { const p = new T.Mesh(new T.SphereGeometry(0.07, 8, 6), pipOff); p.position.set((k - (v0.pips - 1) / 2) * 0.24, 2.1, 0); pips.push(p); }
         const pipBox = new T.Group(); pips.forEach((p) => pipBox.add(p)); field.add(pipBox);
+        const flame = new T.Sprite(flameMat); flame.scale.setScalar(0.42); flame.position.y = 2.45; flame.visible = false; pipBox.add(flame);
         // frozen: a countdown ring over the head everyone can see (drawRange trims the ring as the ice melts)
         const clockG = new T.Group(); clockG.position.y = 2.15; clockG.visible = false; pipBox.add(clockG);
         const cbg = new T.Mesh(new T.RingGeometry(0.2, 0.33, 32), clockBg); cbg.renderOrder = 5; clockG.add(cbg);
@@ -523,7 +671,7 @@ UI.snowball = (() => {
         field.add(g);
         g.scale.setScalar(KID); shadow.scale.setScalar(0.42 * KID);
         kids.push({ g, body, arm, ball, giant, ice, pips, pipBox, shadow, ring, arrow, col, last: null, roll: 0, step: 0, throwAt: 0,
-          coat, coatBase, splats, cracks, clockG, clockRing, frz: 0, wasFrozen: false, hitAt: 0, hitDir: [0, 0] });
+          coat, coatBase, splats, cracks, clockG, clockRing, flame, frz: 0, wasFrozen: false, hitAt: 0, hitDir: [0, 0] });
       }
     }
     // snowballs in flight, each with the shadow of where it will land (red when it's coming for you)
@@ -536,7 +684,7 @@ UI.snowball = (() => {
         seen.add(b[8]);
         let o = balls.get(b[8]);
         if (!o) {
-          const m = new T.Mesh(ballGeo, white); m.scale.setScalar(b[6] ? 0.22 : 0.13); m.castShadow = !low;
+          const m = new T.Mesh(ballGeo, ballMats[b[9] || 0] || white); m.scale.setScalar(b[6] ? 0.22 : b[9] ? 0.17 : 0.13); m.castShadow = !low;
           const sh = new T.Mesh(discGeo, landMat); sh.rotation.x = -Math.PI / 2; sh.position.set(b[2], 0.02, b[3]);
           field.add(m, sh); o = { m, sh }; balls.set(b[8], o);
         }
@@ -628,23 +776,25 @@ UI.snowball = (() => {
       for (let k = 0; k < NF; k++) { printAge[k] = 99; printAt.push([0, 0, 0]); prints.setMatrixAt(k, m4.makeScale(0, 0, 0)); }
       prints.frustumCulled = false; field.add(prints);
     }
-    const flatQ = new T.Quaternion().setFromAxisAngle(new T.Vector3(1, 0, 0), -Math.PI / 2);
+    const flatQ = new T.Quaternion().setFromAxisAngle(new T.Vector3(1, 0, 0), -Math.PI / 2), UP = new T.Vector3(0, 1, 0);
     function footprint(x, y, fx, fy, side) {
       if (!prints) return;
       const k = printNext; printNext = (printNext + 1) % NF;
-      printAt[k] = [x - fy * 0.12 * side, y + fx * 0.12 * side, Math.atan2(fx, fy)]; printAge[k] = 0;
+      const pa = printAt[k]; pa[0] = x - fy * 0.12 * side; pa[1] = y + fx * 0.12 * side; pa[2] = Math.atan2(fx, fy); printAge[k] = 0;
     }
     function tickPrints(dt) {
       if (!prints) return;
+      let any = false;
       for (let k = 0; k < NF; k++) {
         if (printAge[k] > 8) continue;
+        any = true;
         printAge[k] += dt;
         const s = Math.max(0, 1 - printAge[k] / 8);
         ps.set(printAt[k][0], 0.012, printAt[k][1]); sc.set(s, s * 1.5, s);
-        q.setFromAxisAngle(new T.Vector3(0, 1, 0), printAt[k][2]).multiply(flatQ);
+        q.setFromAxisAngle(UP, printAt[k][2]).multiply(flatQ);
         prints.setMatrixAt(k, m4.compose(ps, q, sc));
       }
-      prints.instanceMatrix.needsUpdate = true;
+      if (any) prints.instanceMatrix.needsUpdate = true;
     }
 
     let aspect = 1, lastDraw = 0;
@@ -661,9 +811,10 @@ UI.snowball = (() => {
       const d = Math.max(hw / (tv * aspect), (hd * 1.1) / tv);
       camera.position.set(0, d * 0.86, d * 0.52); camera.lookAt(0, 0, 0.4);
     }
-    const unturn = new T.Quaternion(), UP = new T.Vector3(0, 1, 0);
+    const unturn = new T.Quaternion();
     function draw(now) {
       ensureKids();
+      if (!compiled && kids.length) precompile();
       unturn.setFromAxisAngle(UP, -field.rotation.y);
       const dt = Math.min(0.1, (now - lastDraw) / 1000); lastDraw = now;
       place(); GL3.tickShake(camera, dt);
@@ -677,6 +828,7 @@ UI.snowball = (() => {
       });
       snap.p.forEach((pv, pi) => { patches[pi].scale.set(0.4 + 0.6 * pv, 0.04 + 0.12 * pv, 0.4 + 0.6 * pv); patches[pi].userData.edge.scale.setScalar(v.patchR * (0.4 + 0.6 * pv)); });
       patchMat.emissiveIntensity = 0.3 + 0.15 * Math.sin(now / 300); patchEdge.opacity = 0.45 + 0.3 * Math.sin(now / 300);
+      drawExtras(now, dt, v);
       snap.k.forEach((k, i) => {
         const o = kids[i]; if (!o) return;
         const p = ctx.player(v.seats[i]), here = !!p && !p.eliminated;
@@ -717,7 +869,9 @@ UI.snowball = (() => {
         }
         // frosted while frozen, a white flash and a lean back when hit
         const hitT = (now - o.hitAt) / 260;
-        o.coat.color.copy(o.coatBase).lerp(FROST, frozen ? 0.6 * o.frz : 0);
+        o.coat.color.copy(o.coatBase).lerp(FROST, frozen ? 0.6 * o.frz : k[17] > 0 ? 0.35 : 0);
+        o.flame.visible = !frozen && k[15] >= (v.streak || 3);
+        if (o.flame.visible) o.flame.scale.setScalar(0.42 + 0.05 * Math.sin(now / 90 + i));
         o.coat.emissive.copy(WHITE).multiplyScalar(hitT < 1 ? 0.55 * (1 - hitT) : frozen ? 0.08 : 0);
         if (hitT < 1 && !frozen && !knocked) o.body.rotation.x -= Math.sin(hitT * Math.PI) * 0.45;
         o.splats.forEach((m, n) => { m.visible = n < k[7] && !frozen; });
@@ -756,6 +910,62 @@ UI.snowball = (() => {
       renderer.render(scene, camera);
       crackMat.opacity = 0;   // set again next frame by whoever is frozen (one shared material: the most-thawed wins)
     }
+    // #178 the hill and crown, gifts, decoys and slush, from the latest state
+    const holdCol = new T.Color();
+    function drawExtras(now, dt, v) {
+      const h = snap.h;
+      if (h) {
+        const open = !!h[0], soon = !open && h[4] > 0 && h[4] < 15;
+        hill.visible = true;
+        hillMat.opacity = open ? (h[3] ? 0.5 + 0.35 * Math.sin(now / (h[3] === 1 ? 90 : 180)) : 0.55) : soon ? 0.25 + 0.15 * Math.sin(now / 200) : 0.12;
+        hillMat.color.setHex(open && h[3] ? (h[3] === 1 ? 0xff5566 : 0xff9f1c) : 0xffd23f);
+        crown.visible = open || soon;
+        if (crown.visible) {
+          crown.rotation.y += dt * 1.2;
+          crown.position.y = open ? 2.0 + 0.12 * Math.sin(now / 300) : 2.0 + Math.max(0, (h[4] - (now - gotAt) / 1000)) * 0.6;
+        }
+        const prog = open ? Math.max(0, Math.min(1, h[2])) : 0;
+        holdRing.visible = prog > 0.01;
+        if (holdRing.visible) {
+          holdRing.geometry.setDrawRange(0, Math.ceil(48 * prog) * 6);
+          holdCol.set(v.teams ? TEAM_COL[h[1]] ?? '#ffd23f' : h[1] >= 0 ? colorOf(h[1]) : '#ffd23f'); holdMat.color.copy(holdCol);
+        }
+      } else hill.visible = false;
+      giftPool.forEach((o, n) => {
+        const gi = snap.g[n];
+        o.g.visible = o.glow.visible = !!gi;
+        if (!gi) return;
+        o.glow.position.set(gi[1], 0.025, gi[2]); o.glow.scale.setScalar(1 + 0.15 * Math.sin(now / 200 + n));
+        if (o.kind !== gi[3]) { o.kind = gi[3]; o.box.material = giftMats[gi[3]] || giftMats[1]; o.tag.material = emojiMat(ITEM[gi[3]]?.e || '🎁'); }
+        o.g.position.set(gi[1], 0.3 + 0.08 * Math.sin(now / 260 + n), gi[2]);
+        o.g.rotation.y = now / 700 + n;
+      });
+      decoyPool.forEach((o, n) => {
+        const d = snap.dc[n];
+        o.g.visible = !!d;
+        if (!d) return;
+        if (o.id !== d[0]) { o.id = d[0]; o.g.rotation.y = Math.random() * 6.28; o.scarf.material = kids[d[3]]?.coat || white; }
+        o.g.position.set(d[1], 0, d[2]);
+        o.body.rotation.z = d[4] < 2 ? 0.25 : Math.sin(now / 500 + n) * 0.04;   // wobbly once it's been hit
+      });
+      slushPool.forEach((m, n) => {
+        const p = snap.sl[n];
+        m.visible = !!p;
+        if (!p) return;
+        const left = p[2] - (now - gotAt) / 1000, r = (v.slushR || 1.6) * Math.min(1, Math.max(0.2, left / 1.0));
+        m.position.set(p[0], 0.018 + n * 0.001, p[1]); m.scale.setScalar(r);
+      });
+    }
+    // #178 compile every shader the game can need once, while the countdown runs: the first snow-in, ice ball or
+    // giant used to build its program mid-fight (a visible hitch on a weak phone)
+    let compiled = false;
+    function precompile() {
+      compiled = true;
+      const shown = [];
+      field.traverse((o) => { if (!o.visible) { shown.push(o); o.visible = true; } });
+      try { renderer.compile(scene, camera); } catch {}
+      for (const o of shown) o.visible = false;
+    }
     function puff(x, y, n, col) { burst(x, 0.25, y, n, col ? ['#ffffff', '#e8f1ff', col] : ['#ffffff', '#e8f1ff'], 2.6); }
     function crumble(fi) {
       const [x, y, horiz] = V().forts[fi], L = V().fortLen;
@@ -763,13 +973,23 @@ UI.snowball = (() => {
       shake(0.2);
     }
     function sparkle(fi) { const [x, y] = V().forts[fi]; burst(x, 1.2, y, 14, ['#bfeaff', '#ffffff'], 1.5); }
+    function sparkleAt(x, y, col) { burst(x, 0.6, y, 12, [col || '#ffd23f', '#ffffff'], 1.6); }
     function freeze(j) { const [x, y] = pos(j, performance.now()); burst(x, 1, y, 28, ['#bfeaff', '#ffffff', '#7fd0ff'], 3); }
     function windup(i) { if (kids[i]) kids[i].throwAt = performance.now(); }
     function hitKid(j) { if (kids[j]) kids[j].hitAt = performance.now(); }
     const shake = (a) => GL3.shake(camera, a);
-    function dispose() { stg.dispose(); renderer.dispose(); renderer.domElement.remove(); }
+    // (#178) free everything this view made, not only the context: geometries, materials and their canvas textures
+    function dispose() {
+      const seen = new Set(), free = (x) => { if (x && !seen.has(x)) { seen.add(x); x.dispose?.(); } };
+      try {
+        scene.traverse((o) => { free(o.geometry); for (const m of [].concat(o.material || [])) { free(m.map); free(m); } });
+        for (const k in emojiTex) { free(emojiTex[k].map); free(emojiTex[k]); }
+      } catch {}
+      stg.dispose(); renderer.dispose(); renderer.domElement.remove();
+    }
     resize();
-    return { draw, resize, dispose, shake, puff, crumble, sparkle, freeze, windup, hitKid };
+    const stats = () => ({ geo: renderer.info.memory.geometries, tex: renderer.info.memory.textures, calls: renderer.info.render.calls, prog: renderer.info.programs?.length, pr: renderer.getPixelRatio() });
+    return { draw, resize, dispose, shake, puff, crumble, sparkle, sparkleAt, freeze, windup, hitKid, stats };
   }
 
   // ---------- flat fallback (no WebGL): a top-down field
@@ -790,6 +1010,22 @@ UI.snowball = (() => {
       const v = V(), W = canvas.width, H = canvas.height, k = W / (2 * v.aw + 1), X = (x) => W / 2 + x * k, Y = (y) => H / 2 + y * k;
       g.fillStyle = '#f2f7ff'; g.fillRect(0, 0, W, H);
       g.strokeStyle = '#c6d6ea'; g.lineWidth = 0.1 * k; g.strokeRect(X(-v.aw), Y(-v.ah), 2 * v.aw * k, 2 * v.ah * k);
+      if (v.ice) {   // ⛸️ the pond
+        g.fillStyle = '#bfe4ff'; g.strokeStyle = '#ffffff'; g.lineWidth = 0.12 * k;
+        g.beginPath(); g.ellipse(X(v.ice[0]), Y(v.ice[1]), v.ice[2] * k, v.ice[3] * k, 0, 0, 7); g.fill(); g.stroke();
+      }
+      const h = snap.h;
+      if (h && v.hill) {   // 👑 the hill: a gold ring, an arc for whoever's holding it
+        const hx = X(v.hill[0]), hy = Y(v.hill[1]), R = v.hillR * k, open = !!h[0];
+        g.strokeStyle = open ? (h[3] === 1 ? '#ff5566' : h[3] ? '#ff9f1c' : '#e0a800') : 'rgba(224,168,0,0.3)'; g.lineWidth = 0.1 * k;
+        g.beginPath(); g.arc(hx, hy, R, 0, 7); g.stroke();
+        if (open && h[2] > 0.01) {
+          g.strokeStyle = v.teams ? TEAM_COL[h[1]] ?? '#e0a800' : h[1] >= 0 ? colorOf(h[1]) : '#e0a800'; g.lineWidth = 0.22 * k;
+          g.beginPath(); g.arc(hx, hy, R + 0.15 * k, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, h[2])); g.stroke();
+        }
+        if (open || (h[4] > 0 && h[4] < 15)) { g.font = `${0.9 * k}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('👑', hx, hy); }
+      }
+      for (const p of snap.sl) { g.fillStyle = 'rgba(120,135,160,0.45)'; g.beginPath(); g.arc(X(p[0]), Y(p[1]), (v.slushR || 1.6) * k, 0, 7); g.fill(); }
       if (v.giants) snap.p.forEach((pv, pi) => {
         g.fillStyle = `rgba(150,205,255,${0.15 + 0.35 * pv})`; g.beginPath(); g.arc(X(v.patches[pi][0]), Y(v.patches[pi][1]), v.patchR * k * (0.4 + 0.6 * pv), 0, 7); g.fill();
       });
@@ -798,12 +1034,23 @@ UI.snowball = (() => {
         g.fillStyle = hp > 0 ? `rgba(120,150,190,${0.35 + 0.65 * hp / v.fortHp})` : 'rgba(120,150,190,0.15)';
         g.fillRect(X(x) - w / 2, Y(y) - h / 2, w, h);
       });
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      for (const gi of snap.g) {
+        g.fillStyle = ITEM[gi[3]]?.col || '#fff'; g.strokeStyle = '#4a5a78'; g.lineWidth = 0.05 * k;
+        g.fillRect(X(gi[1]) - 0.25 * k, Y(gi[2]) - 0.25 * k, 0.5 * k, 0.5 * k); g.strokeRect(X(gi[1]) - 0.25 * k, Y(gi[2]) - 0.25 * k, 0.5 * k, 0.5 * k);
+        g.font = `${0.6 * k}px sans-serif`; g.fillStyle = '#000'; g.fillText(ITEM[gi[3]]?.e || '🎁', X(gi[1]), Y(gi[2]) - 0.6 * k);
+      }
+      for (const d of snap.dc) {
+        g.fillStyle = '#fff'; g.strokeStyle = '#7890b0'; g.lineWidth = 0.05 * k;
+        for (const [r, oy] of [[0.36, 0.15], [0.24, -0.3]]) { g.beginPath(); g.arc(X(d[1]), Y(d[2] + oy), r * k, 0, 7); g.fill(); g.stroke(); }
+        g.fillStyle = '#ff8a2a'; g.beginPath(); g.arc(X(d[1]) + 0.12 * k, Y(d[2] - 0.3), 0.06 * k, 0, 7); g.fill();
+      }
       for (const b of snap.b) {
         const p = ballAt(b, now);
         g.fillStyle = nearMe(b, now) ? 'rgba(255,50,80,0.35)' : 'rgba(30,50,90,0.2)';
         g.beginPath(); g.arc(X(b[2]), Y(b[3]), v.splash[b[6] ? 1 : 0] * k * (0.35 + 0.65 * p.f), 0, 7); g.fill();
-        g.fillStyle = '#fff'; g.strokeStyle = '#7890b0'; g.lineWidth = 0.04 * k;
-        g.beginPath(); g.arc(X(p.x), Y(p.y) - p.h * k * 0.5, (b[6] ? 0.22 : 0.13) * k * (1 + p.h * 0.15), 0, 7); g.fill(); g.stroke();
+        g.fillStyle = b[9] === 1 ? '#9fe0ff' : b[9] === 2 ? '#8d9db3' : '#fff'; g.strokeStyle = '#7890b0'; g.lineWidth = 0.04 * k;
+        g.beginPath(); g.arc(X(p.x), Y(p.y) - p.h * k * 0.5, (b[6] ? 0.22 : b[9] ? 0.17 : 0.13) * k * (1 + p.h * 0.15), 0, 7); g.fill(); g.stroke();
       }
       snap.k.forEach((s, i) => {
         const p = ctx.player(v.seats[i]); if (!p || p.eliminated) return;
@@ -821,6 +1068,8 @@ UI.snowball = (() => {
           for (let n = 0; n < 3; n++) { const a = n / 3 * Math.PI; g.moveTo(cx - Math.cos(a) * R * 0.7, cy - Math.sin(a) * R * 0.7); g.lineTo(cx + Math.cos(a) * R * 0.7, cy + Math.sin(a) * R * 0.7); } g.stroke();
           g.strokeStyle = '#3a8dff'; g.lineWidth = r * 0.28; g.beginPath(); g.arc(cx, cy - R * 1.45, r * 0.45, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, s[8] / (v.frozenT || 3))); g.stroke();
         }
+        if (s[17] > 0 && !(s[8] > 0)) { g.strokeStyle = '#9fe0ff'; g.lineWidth = r * 0.2; g.beginPath(); g.arc(X(x), Y(y), r * 1.25, 0, 7); g.stroke(); }
+        if (s[15] >= (v.streak || 3)) { g.font = `${r * 1.1}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('🔥', X(x) + r * 1.3, Y(y) - r * 1.3); }
         g.fillStyle = '#3a8dff';
         for (let n = 0; n < s[7]; n++) { g.beginPath(); g.arc(X(x) + (n - 1) * r * 0.6, Y(y) - r * 1.6, r * 0.2, 0, 7); g.fill(); }
       });
@@ -840,5 +1089,6 @@ UI.snowball = (() => {
   const turnText = (s) => (s.phase === 'playing' ? '❄️ Snowball fight — most snow-ins wins' : null);
   const myMove = (s) => s.phase === 'playing' && s.snowball.st === 'play' && s.snowball.me != null;
 
-  return { mount, render, unmount, fast, turnText, myMove, focus: true };
+  const stats = () => ({ gl: gl?.stats?.() ?? null, flat: !!flat, disp: disp.length, balls: snap?.b?.length ?? 0 });   // (for checks)
+  return { mount, render, unmount, fast, turnText, myMove, focus: true, stats };
 })();

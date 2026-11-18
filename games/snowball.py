@@ -11,7 +11,13 @@ knock them flat (two hits' worth). Most points when the clock runs out wins.
 
 Server-owned physics like Sumo Saucers: frame(now) steps the field 30 times a second, the stick and the
 throw button arrive through on_input, and positions stream to browsers over the room's fast channel.
-Hits, splats and knockdowns go out as numbered events, repeated for EVENT_KEEP seconds."""
+Hits, splats and knockdowns go out as numbered events, repeated for EVENT_KEEP seconds.
+
+#178 "needs more depth": a 🗺️ field per game (Fort Meadow, Snow Village, or the Frozen Pond where you slide),
+🎁 gifts to grab and spend (🧊 ice ball: fast, two hits and a chill; ☃️ decoy: a snowman rivals' throws lock on
+to; 💦 slush bomb: a puddle that bogs rivals down), 👑 the crown on the hill at half time (outnumber rivals in it: +1
+every few seconds; level freezes it, except in big games), and 🔥 streaks (three snow-ins without being snowed in; whoever ends one scores a bonus)."""
+import collections
 import math
 import random
 import time
@@ -39,6 +45,38 @@ GIANT_MAX, GIANT_GROW = 1.0, 0.45   # a giant's size 0..1 grows this much per se
 GIANT_R = 0.55              # a full giant's radius, in front of you
 KNOCK_SECS = 1.6
 COUNTDOWN, EVENT_KEEP = 3.0, 0.6
+# 🗺️ fields (#178): forts (x, y, horizontal), fresh-snow patches, the hill the crown sits on, and a frozen pond
+# (cx, cy, rx, ry) where you slide
+MAPS = {
+    "meadow": {"name": "🏰 Fort Meadow", "forts": FORTS, "patches": PATCHES, "hill": (0.0, 0.0), "ice": None},
+    "village": {"name": "🏘️ Snow Village", "hill": (0.0, 0.0), "ice": None,
+                "forts": [(-7.0, -2.8, 0), (-7.0, 2.8, 0), (7.0, -2.8, 0), (7.0, 2.8, 0), (-3.6, -4.3, 1), (3.6, 4.3, 1),
+                          (-3.6, 4.3, 1), (3.6, -4.3, 1), (0.0, -2.6, 1), (0.0, 2.6, 1)],
+                "patches": [(-8.4, 0.0), (8.4, 0.0), (0.0, 5.7)]},
+    "pond": {"name": "⛸️ Frozen Pond", "hill": (0.0, 0.0), "ice": (0.0, 0.0, 3.6, 2.5),
+             "forts": [(-6.8, -3.6, 0), (-6.8, 3.6, 0), (6.8, -3.6, 0), (6.8, 3.6, 0), (-3.0, -5.3, 1), (3.0, 5.3, 1),
+                       (-5.0, 0.0, 0), (5.0, 0.0, 0)],
+             "patches": [(-3.4, 5.3), (3.4, -5.3), (-8.6, 0.0), (8.6, 0.0)]},
+}
+ICE_GRIP, ICE_SPEED = 2.2, 1.15     # on the pond: you reach your speed slowly (and slide), a little faster
+# 🎁 gifts: one appears every GIFT_EVERY s (two at most on the field); walk over one to carry it, ✨ to spend it
+ITEMS = ("ice", "decoy", "slush")
+GIFT_FIRST, GIFT_EVERY, GIFT_MAX, GIFT_REACH = 7.0, 10.0, 2, BODY + 0.4
+ICE_FLIGHT, CHILL, CHILL_SPEED = 0.55, 2.5, 0.55      # an ice ball flies in this share of the time; a hit chills
+DECOY_HP, DECOY_T, DECOY_PULL = 2, 10.0, 0.6          # a decoy soaks this many throws; auto-aim scores it ×0.6
+SLUSH_R, SLUSH_T, SLUSH_SPEED = 1.6, 7.0, 0.45
+# 👑 the crown: on the hill from half time; hold it with no rival inside for HILL_EVERY s → +1
+HILL_R, HILL_EVERY = 1.5, 5.0
+# with CROWD or more players a level hill doesn't freeze: the holder keeps it at CROWD_RATE (#178 follow-up: 6 kids
+# nearly always had a rival inside, so the crown almost never scored)
+CROWD, CROWD_RATE = 4, 0.5
+BANK_FADE = 0.04      # …and a side pushed off keeps its count, fading this much a second, for when it's back
+STREAK, STREAK_BONUS = 3, 1          # snow-ins in a row for a streak; ending one scores this bonus
+BOT_X = {  # 🎁 how far it goes for a gift, chance it plays for the crown, how readily it spends a gift
+    "easy": (3.0, 0.15, 0.3),
+    "normal": (6.0, 0.5, 1.0),
+    "hard": (9.0, 0.9, 1.0),
+}
 BOT = {  # reaction (s), throw eagerness per second, aim error (units), dodges, uses cover
     "easy": (0.4, 0.5, 1.2, False, False),
     "normal": (0.2, 0.9, 0.5, True, False),
@@ -73,6 +111,14 @@ def seg_hits_rect(x0, y0, x1, y1, r, pad=0.0):
 
 
 class Kid:
+    # (#178: kids saved before gifts, chills, streaks and the crown)
+    item = None          # the gift carried: "ice" | "decoy" | "slush"
+    chill_until = 0.0
+    slow = 1.0           # this frame's speed factor (chilled, in slush), sent so the browser predicts the same
+    streak = 0           # snow-ins since you were last snowed in
+    crowns = 0           # points from the hill
+    soaks = 0            # throws your decoys soaked up
+
     def __init__(self, x, y):
         self.x, self.y, self.vx, self.vy = x, y, 0.0, 0.0
         self.fx, self.fy = 1.0, 0.0      # facing
@@ -94,21 +140,30 @@ class Snowball(Game):
         "Hold ❄️ to pack a big one (two hits, wider splash); you move slowly while you pack. You carry 3 and scoop more as you go.",
         "Snowballs land where the target stood when they were thrown: a shadow shows where. Keep moving! Forts block throws at whoever hides behind them, and crumble.",
         "Three hits and you're snowed in for 3 s: the thrower scores a point. ⛄ Walk through fresh snow to roll a giant; run it into a rival to knock them flat.",
+        "🎁 Grab gifts and spend them with ✨: 🧊 ice ball (fast, two hits, chills), ☃️ decoy (rivals' throws go for it), 💦 slush bomb (a puddle that bogs rivals down).",
+        "👑 At half time a crown lands on the hill: +1 every 5 s to whoever has the most kids in it (you alone, or your team). Level freezes it; with 4+ players the holder keeps it at half speed until outnumbered. 🔥 Three snow-ins in a row is a streak; end someone's streak for +1.",
         "Most points when the clock runs out wins.",
     ]
+    tip_lines = 3
     name = "Snowball Scramble"
     icon = "❄️"
-    blurb = "A real-time 3D snowball fight: lob, dodge the shadows, hide behind forts, roll a giant. Most snow-ins wins."
+    blurb = "A real-time 3D snowball fight: lob, dodge the shadows, hide behind forts, roll a giant, grab gifts, hold the crown."
     min_players = 2
     max_players = 6
     replayable = False
     badges = {**Game.badges,
               "avalanche": ("🏔️", "Avalanche", "Flatten a rival with a giant snowball"),
-              "untouched": ("🧊", "Untouchable", "Win without being snowed in")}
+              "untouched": ("🧊", "Untouchable", "Win without being snowed in"),
+              "crown": ("👑", "King of the Hill", "Score 3 crown points in one game"),
+              "shutdown": ("🧯", "Shutdown", "End a rival's streak of three or more"),
+              "decoy": ("☃️", "Snow Double", "Your decoys soak up 3 throws in one game")}
     settings_schema = {
         "time": ("Length", [(120, "2 min"), (90, "90 s"), (180, "3 min")], 120),
         "giants": ("⛄ Giant snowballs", [(True, "On"), (False, "Off")], True),
         "teams": ("Teams", [(False, "Everyone for themselves"), (True, "🔴🔵 Two teams")], False),
+        "map": ("🗺️ Field", [("mix", "A different one each game"), ("meadow", "🏰 Fort Meadow"), ("village", "🏘️ Snow Village"),
+                             ("pond", "⛸️ Frozen Pond")], "mix"),
+        "extras": ("🎁 Gifts, 👑 crown & streaks", [(True, "On"), (False, "Off (classic)")], True),
     }
     TEAM_NAMES = ("🔴 Red", "🔵 Blue")
 
@@ -130,10 +185,30 @@ class Snowball(Game):
             else:
                 a = off + math.tau * i / n
                 self.kids.append(Kid(math.cos(a) * AW * 0.8, math.sin(a) * AH * 0.75))
-        self.forts = [FORT_HP] * len(FORTS)
-        self.fort_down = [0.0] * len(FORTS)
-        self.patches = [1.0] * len(PATCHES)       # fresh snow left in each patch, 0..1
-        self.balls = []                            # [x0, y0, x1, y1, t0, t1, big, by, fort index or -1, id]
+        # 🗺️ the field (#178): chosen, or a different one each game (not the last one played in this room)
+        m = self.s.get("map", "mix")
+        if m not in MAPS:
+            last = getattr(self.room, "_snow_map", None)
+            m = rng.choice([k for k in MAPS if k != last] or list(MAPS))
+        try:
+            self.room._snow_map = m
+        except Exception:
+            pass
+        self.map = m
+        mp = MAPS[m]
+        self.fort_xy, self.patch_xy, self.hill_xy, self.ice = list(mp["forts"]), list(mp["patches"]), mp["hill"], mp["ice"]
+        self.extras = bool(self.s.get("extras", True))
+        self.forts = [FORT_HP] * len(self.fort_xy)
+        self.fort_down = [0.0] * len(self.fort_xy)
+        self.patches = [1.0] * len(self.patch_xy)  # fresh snow left in each patch, 0..1
+        self.balls = []                            # [x0, y0, x1, y1, t0, t1, big, by, fort index or -1, id, kind]
+        self.gifts, self.decoys, self.slush = [], [], []   # [id, x, y, kind]; [id, x, y, owner, hp, until]; [x, y, until, owner]
+        self.item_id = 0
+        self.said = {}
+        self.crown_open, self.crown_side, self.crown_prog, self.crown_contest = False, -1, 0.0, 0   # contest: 0 clear, 1 frozen, 2 challenged (half speed)
+        self.crown_bank = {}   # side → its count while someone else holds the hill (big games)
+        self.hill_in = {}   # kid → when they stepped onto the hill (still standing, not snowed in)
+        self.bot_hill = [False] * n
         self.ball_id = 0
         self.events, self.ev_seq = [], 0
         self.bot_next = [0.0] * n
@@ -145,15 +220,45 @@ class Snowball(Game):
         self.stage = "countdown"
         self.go_at = now + COUNTDOWN
         self.end_at = self.go_at + int(self.s.get("time", 120))
+        self.gift_at = self.go_at + GIFT_FIRST if self.extras else math.inf
+        self.crown_at = self.go_at + int(self.s.get("time", 120)) / 2 if self.extras else math.inf
         self.last = now
         self.acc = 0.0
         self.frames = 0
+        where = f" on {MAPS[m]['name']}"
         if self.teams:
             roster = lambda t: ", ".join(self.name_of(i) for i in range(n) if self.team[i] == t)  # noqa: E731
             r.add_log(f"❄️ Snowball Scramble, {self.TEAM_NAMES[0]} ({roster(0)}) v {self.TEAM_NAMES[1]} ({roster(1)}): "
-                      f"{int(self.s.get('time', 120))} seconds. No hitting your own side.", "big")
+                      f"{int(self.s.get('time', 120))} seconds{where}. No hitting your own side.", "big")
         else:
-            r.add_log(f"❄️ Snowball Scramble: {int(self.s.get('time', 120))} seconds. Three hits snow someone in.", "big")
+            r.add_log(f"❄️ Snowball Scramble{where}: {int(self.s.get('time', 120))} seconds. Three hits snow someone in.", "big")
+
+    def __setstate__(self, st):   # games saved before #178: the classic field, no gifts or crown
+        self.__dict__.update(st)
+        d = self.__dict__
+        d.setdefault("map", "meadow")
+        d.setdefault("fort_xy", list(FORTS))
+        d.setdefault("patch_xy", list(PATCHES))
+        d.setdefault("hill_xy", (0.0, 0.0))
+        d.setdefault("ice", None)
+        d.setdefault("extras", False)
+        for k in ("gifts", "decoys", "slush"):
+            d.setdefault(k, [])
+        d.setdefault("item_id", 0)
+        d.setdefault("said", {})
+        d.setdefault("gift_at", math.inf)
+        d.setdefault("crown_at", math.inf)
+        d.setdefault("crown_open", False)
+        d.setdefault("crown_side", -1)
+        d.setdefault("crown_prog", 0.0)
+        d.setdefault("crown_contest", 0)
+        d.setdefault("hill_in", {})
+        d.setdefault("crown_bank", {})
+        if "bot_hill" not in d and "seats" in d:
+            d["bot_hill"] = [False] * len(d["seats"])
+        for b in d.get("balls", []):
+            if len(b) < 11:
+                b.append(0)
 
     def seat(self, p):
         return self.seats.index(p.id) if p.id in self.seats else None
@@ -180,6 +285,10 @@ class Snowball(Game):
         p = self.pl(i)
         return bool(p and not p.eliminated)
 
+    def crowd(self):
+        """👑 a big game: a level hill keeps counting (slowly) for whoever held it."""
+        return sum(1 for i in range(len(self.kids)) if self.active(i)) >= CROWD
+
     def event(self, now, *e):
         self.ev_seq += 1
         self.events.append((self.ev_seq, now, e))
@@ -202,6 +311,10 @@ class Snowball(Game):
             if m > 1:
                 sx, sy = sx / m, sy / m
             k.sx, k.sy = sx, sy
+        if a.get("use") is not None:
+            if a.get("use") is not True:
+                raise GameError("Bad gift.")
+            self.use(i, time.time())
         t = a.get("throw")
         if t is not None:
             if t not in ("down", "up", "tap"):
@@ -235,22 +348,38 @@ class Snowball(Game):
                 best, best_s = j, score
         return best
 
-    def throw(self, i, now, big, at=None):
+    def aim_point(self, i, now=None):
+        """Where an auto-aimed throw goes: the target_of rival, or a rival's ☃️ decoy when that scores better
+        (a decoy pulls: its distance counts ×DECOY_PULL). Returns (x, y) or None."""
         k = self.kids[i]
-        if not self.can_act(k, now) or now < k.cool_until or k.ammo <= 0:
+        best, best_s = None, 1e9
+        cands = [(o.x, o.y, 1.0) for j, o in enumerate(self.kids) if j != i and self.active(j) and self.foes(i, j)]
+        cands += [(d[1], d[2], DECOY_PULL) for d in self.decoys if self.foes(i, d[3])]
+        for x, y, pull in cands:
+            dx, dy = x - k.x, y - k.y
+            d = math.hypot(dx, dy) or 1e-6
+            facing = (dx * k.fx + dy * k.fy) / d
+            score = d * (1.0 if facing > 0.5 else 1.8) * pull
+            if score < best_s:
+                best, best_s = (x, y), score
+        return best
+
+    def throw(self, i, now, big, at=None, kind=0):
+        """kind: 0 a snowball (costs one you carry), 1 a 🧊 ice ball, 2 a 💦 slush bomb (gifts: free)."""
+        k = self.kids[i]
+        if not self.can_act(k, now) or now < k.cool_until or (k.ammo <= 0 and not kind):
             return False
         if at is None:
-            j = self.target_of(i)
-            if j is None:
+            at = self.aim_point(i)
+            if at is None:
                 at = (k.x + k.fx * MISS_RANGE, k.y + k.fy * MISS_RANGE)
-            else:
-                at = (self.kids[j].x, self.kids[j].y)
         x1 = max(-AW, min(AW, at[0]))
         y1 = max(-AH, min(AH, at[1]))
-        k.ammo -= 1
+        if not kind:
+            k.ammo -= 1
+            if k.ammo < AMMO and k.reload_at <= now:
+                k.reload_at = now + RELOAD
         k.cool_until = now + COOLDOWN
-        if k.ammo < AMMO and k.reload_at <= now:
-            k.reload_at = now + RELOAD
         dx, dy = x1 - k.x, y1 - k.y
         d = math.hypot(dx, dy)
         if d > 0.1:
@@ -258,7 +387,7 @@ class Snowball(Game):
         # a fort between you and the landing spot takes the hit if the target is sheltering close behind it
         fort = -1
         best = 2.0
-        for fi, f in enumerate(FORTS):
+        for fi, f in enumerate(self.fort_xy):
             if self.forts[fi] <= 0:
                 continue
             t = seg_hits_rect(k.x, k.y, x1, y1, fort_rect(f), 0.1)
@@ -268,8 +397,30 @@ class Snowball(Game):
             x1, y1 = k.x + dx * best, k.y + dy * best
             d *= best
         self.ball_id += 1
-        self.balls.append([round(k.x, 2), round(k.y, 2), round(x1, 2), round(y1, 2), now, now + FLIGHT[0] + d * FLIGHT[1], big, i, fort, self.ball_id])
-        self.event(now, "throw", i, int(big))
+        fly = (FLIGHT[0] + d * FLIGHT[1]) * (ICE_FLIGHT if kind == 1 else 1.0)
+        self.balls.append([round(k.x, 2), round(k.y, 2), round(x1, 2), round(y1, 2), now, now + fly, big, i, fort, self.ball_id, kind])
+        self.event(now, "throw", i, int(big), kind)
+        return True
+
+    def use(self, i, now):
+        """✨ Spend the gift you carry: an ice ball or slush bomb thrown at once (auto-aimed), or a decoy dropped."""
+        k = self.kids[i]
+        if not k.item or not self.can_act(k, now):
+            return False
+        kind = k.item
+        if kind == "decoy":
+            x = max(-AW + BODY, min(AW - BODY, k.x + k.fx * 0.9))
+            y = max(-AH + BODY, min(AH - BODY, k.y + k.fy * 0.9))
+            self.decoys = [d for d in self.decoys if d[3] != i]   # one each
+            self.item_id += 1
+            self.decoys.append([self.item_id, round(x, 2), round(y, 2), i, DECOY_HP, now + DECOY_T])
+            self.event(now, "decoy", i, round(x, 2), round(y, 2))
+        else:
+            if now < k.cool_until:
+                k.cool_until = now   # a gift never waits on the throw cooldown
+            if not self.throw(i, now, False, kind=1 if kind == "ice" else 2):
+                return False
+        k.item = None
         return True
 
     def frame(self, now):
@@ -313,13 +464,15 @@ class Snowball(Game):
             if k.pack_at and now - k.pack_at > 3.0:   # a button held down too long throws itself
                 k.pack_at = 0.0
                 self.throw(i, now, True)
+            k.slow = self.slow_of(i, k, now)
+            iced = self.on_ice(k.x, k.y)
             if self.can_act(k, now):
-                sp = PACK_SPEED if k.pack_at else SPEED
+                sp = (PACK_SPEED if k.pack_at else SPEED) * k.slow * (ICE_SPEED if iced else 1.0)
                 tx, ty = k.sx * sp, k.sy * sp
             else:
                 tx = ty = 0.0
-            # a little momentum: reach the stick's speed quickly, slide a bit when knocked
-            blend = min(1.0, dt * (14 if now >= k.knock_until else 2))
+            # a little momentum: reach the stick's speed quickly, slide a bit when knocked (and on the pond)
+            blend = min(1.0, dt * (2 if now < k.knock_until else ICE_GRIP if iced else 14))
             k.vx += (tx - k.vx) * blend
             k.vy += (ty - k.vy) * blend
             k.x += k.vx * dt
@@ -329,12 +482,12 @@ class Snowball(Game):
                 k.fx, k.fy = k.sx / m, k.sy / m
             k.x = max(-AW + BODY, min(AW - BODY, k.x))
             k.y = max(-AH + BODY, min(AH - BODY, k.y))
-            for fi, f in enumerate(FORTS):
+            for fi, f in enumerate(self.fort_xy):
                 if self.forts[fi] > 0:
                     self.push_out(k, fort_rect(f))
             # ⛄ rolling a giant through fresh snow
             if giants and math.hypot(k.vx, k.vy) > 1.0 and k.giant < GIANT_MAX:
-                for pi, (px, py) in enumerate(PATCHES):
+                for pi, (px, py) in enumerate(self.patch_xy):
                     if self.patches[pi] > 0.05 and math.hypot(k.x - px, k.y - py) < PATCH_R:
                         grow = min(GIANT_GROW * dt, GIANT_MAX - k.giant, self.patches[pi])
                         k.giant += grow
@@ -373,6 +526,21 @@ class Snowball(Game):
                         a.giant = 0.0
                         break
 
+    def on_ice(self, x, y):
+        if not self.ice:
+            return False
+        cx, cy, rx, ry = self.ice
+        return ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 < 1.0
+
+    def slow_of(self, i, k, now):
+        """🧊 chilled and 💦 slush (a rival's puddle) slow you; the worst one counts."""
+        f = CHILL_SPEED if now < k.chill_until else 1.0
+        for x, y, until, owner in self.slush:
+            if now < until and self.foes(i, owner) and math.hypot(k.x - x, k.y - y) < SLUSH_R:
+                f = min(f, SLUSH_SPEED)
+                break
+        return f
+
     @staticmethod
     def push_out(k, r):
         cx = max(r[0], min(r[2], k.x))
@@ -392,27 +560,48 @@ class Snowball(Game):
     def land(self, now):
         keep = []
         for b in self.balls:
-            x0, y0, x1, y1, t0, t1, big, by, fort, bid = b
+            x0, y0, x1, y1, t0, t1, big, by, fort, bid = b[:10]
+            kind = b[10] if len(b) > 10 else 0
             if now < t1:
                 keep.append(b)
                 continue
+            heavy = big or kind == 1
             if fort >= 0 and self.forts[fort] > 0:
-                self.forts[fort] = max(0, self.forts[fort] - (2 if big else 1))
+                self.forts[fort] = max(0, self.forts[fort] - (2 if heavy else 1))
                 self.event(now, "fort", fort, x1, y1, int(big))
                 if self.forts[fort] == 0:
                     self.fort_down[fort] = now
                     self.event(now, "crumble", fort)
                 continue
             reach = BIG_SPLASH if big else SPLASH
+            if kind == 2:   # 💦 the slush bomb leaves a puddle wherever it lands
+                self.slush = [p for p in self.slush if p[3] != by] + [[x1, y1, now + SLUSH_T, by]]
+                self.event(now, "slush", x1, y1, by)
+            # ☃️ a rival's decoy standing there soaks it up
+            dec = next((d for d in self.decoys if self.foes(by, d[3]) and math.hypot(d[1] - x1, d[2] - y1) < reach + 0.3), None)
+            if dec is not None and kind != 2:
+                dec[4] -= 2 if heavy else 1
+                owner = self.kids[dec[3]]
+                owner.soaks += 1
+                self.event(now, "soak", dec[0], x1, y1, int(heavy))
+                if owner.soaks == 3 and self.pl(dec[3]):
+                    self.award(self.seats[dec[3]], "decoy")
+                if dec[4] <= 0:
+                    self.decoys.remove(dec)
+                    self.event(now, "poof", dec[0], dec[1], dec[2])
+                    self.say("decoy", 12, now, f"☃️ {self.name_of(by)} knocks the head off {self.name_of(dec[3])}'s decoy!", "cool")
+                continue
             hit = False
             for j, o in enumerate(self.kids):
                 if j == by or not self.active(j) or now < o.frozen_until or not self.foes(j, by):
                     continue
                 if math.hypot(o.x - x1, o.y - y1) < reach + BODY * 0.5:
                     hit = True
-                    self.event(now, "hit", j, by, x1, y1, int(big))
-                    self.hit(j, by, 2 if big else 1, now)
-            if not hit:
+                    self.event(now, "hit", j, by, x1, y1, int(big), kind)
+                    if kind == 1:
+                        o.chill_until = now + CHILL
+                    self.hit(j, by, 2 if heavy else 1, now)
+            if not hit and kind != 2:
                 self.event(now, "splat", x1, y1, int(big))
         self.balls = keep
 
@@ -426,12 +615,28 @@ class Snowball(Game):
             o.pack_at = 0.0
             o.giant = 0.0
             self.frozen_ever[j] = True
-            self.kids[by].points += 1
+            k = self.kids[by]
+            k.points += 1
             self.event(now, "frozen", j, by)
             self.room.add_log(f"❄️ {self.name_of(by)} snows in {self.name_of(j)}!", "power")
-            pts = self.kids[by].points
-            if pts and pts % 5 == 0:
-                self.moment(f"❄️ {self.name_of(by)}: {pts} snow-ins!", "cool", "good")
+            if not self.extras:
+                pts = k.points
+                if pts and pts % 5 == 0:
+                    self.moment(f"❄️ {self.name_of(by)}: {pts} snow-ins!", "cool", "good")
+                return
+            # 🔥 streaks: ending one scores a bonus
+            if o.streak >= STREAK:
+                k.points += STREAK_BONUS
+                self.event(now, "shutdown", by, j, o.streak)
+                self.say("shutdown", 4, now, f"🧯 {self.name_of(by)} ends {self.name_of(j)}'s streak of {o.streak}! +{STREAK_BONUS}", "good", "good")
+                if self.pl(by):
+                    self.award(self.seats[by], "shutdown")
+            o.streak = 0
+            k.streak += 1
+            if k.streak in (STREAK, STREAK + 2) or (k.streak > STREAK + 2 and k.streak % 3 == 0):
+                self.event(now, "streak", by, k.streak)
+                self.say(f"streak{by}", 5, now, f"🔥 {self.name_of(by)}: {k.streak} snow-ins in a row!"
+                         + (" Stop them!" if k.streak == STREAK else ""), "bad", "good")
 
     def tick_world(self, dt, now):
         for i, k in enumerate(self.kids):
@@ -439,15 +644,122 @@ class Snowball(Game):
                 if k.reload_at:
                     k.ammo += 1
                 k.reload_at = now + RELOAD if k.ammo < AMMO else 0.0
-        for fi in range(len(FORTS)):
+        for fi in range(len(self.fort_xy)):
             if self.forts[fi] <= 0 and now - self.fort_down[fi] > FORT_REGROW:
                 # only grow back once nobody is standing in it
-                if all(not self.active(i) or seg_hits_rect(k.x, k.y, k.x, k.y, fort_rect(FORTS[fi]), BODY) is None for i, k in enumerate(self.kids)):
+                if all(not self.active(i) or seg_hits_rect(k.x, k.y, k.x, k.y, fort_rect(self.fort_xy[fi]), BODY) is None for i, k in enumerate(self.kids)):
                     self.forts[fi] = FORT_HP
                     self.event(now, "regrow", fi)
-        for pi in range(len(PATCHES)):
+        for pi in range(len(self.patch_xy)):
             self.patches[pi] = min(1.0, self.patches[pi] + dt / PATCH_REGROW)
+        if self.extras:
+            self.tick_gifts(now)
+            self.tick_crown(dt, now)
         self.events = [e for e in self.events if now - e[1] < EVENT_KEEP]
+
+    # -- 🎁 gifts, ☃️ decoys, 💦 slush, 👑 the crown (#178)
+
+    def gift_spot(self):
+        rng = self.rng
+        for _ in range(40):
+            x, y = rng.uniform(-AW + 1.2, AW - 1.2), rng.uniform(-AH + 1.2, AH - 1.2)
+            if any(seg_hits_rect(x, y, x, y, fort_rect(f), 0.7) is not None for f in self.fort_xy):
+                continue
+            if any(math.hypot(k.x - x, k.y - y) < 2.2 for i, k in enumerate(self.kids) if self.active(i)):
+                continue
+            if any(math.hypot(g[1] - x, g[2] - y) < 3 for g in self.gifts) or math.hypot(x - self.hill_xy[0], y - self.hill_xy[1]) < HILL_R + 0.6:
+                continue
+            return round(x, 2), round(y, 2)
+        return None
+
+    def tick_gifts(self, now):
+        if now >= self.gift_at:
+            self.gift_at = now + GIFT_EVERY
+            spot = self.gift_spot() if len(self.gifts) < GIFT_MAX else None
+            if spot:
+                self.item_id += 1
+                kind = self.rng.choice(ITEMS)
+                self.gifts.append([self.item_id, spot[0], spot[1], kind])
+                self.event(now, "gift", self.item_id, spot[0], spot[1], ITEMS.index(kind) + 1)
+        for g in list(self.gifts):
+            for i, k in enumerate(self.kids):
+                if k.item or not self.active(i) or not self.can_act(k, now) or math.hypot(k.x - g[1], k.y - g[2]) > GIFT_REACH:
+                    continue
+                k.item = g[3]
+                self.gifts.remove(g)
+                self.event(now, "pick", i, ITEMS.index(g[3]) + 1, g[0])
+                break
+        if self.decoys:
+            for d in [d for d in self.decoys if now >= d[5] or not self.active(d[3])]:
+                self.decoys.remove(d)
+                self.event(now, "poof", d[0], d[1], d[2])
+        if self.slush:
+            self.slush = [p for p in self.slush if now < p[2]]
+
+    def tick_crown(self, dt, now):
+        if not self.crown_open:
+            if now < self.crown_at:
+                return
+            self.crown_open = True
+            self.event(now, "crown")
+            self.moment("👑 A crown lands on the hill! Outnumber your rivals in it: +1 every 5 s", "gold", "fanfare")
+        hx, hy = self.hill_xy
+        inside = [i for i, k in enumerate(self.kids) if self.active(i) and self.can_act(k, now) and math.hypot(k.x - hx, k.y - hy) < HILL_R]
+        for i in list(self.hill_in):
+            if i not in inside:
+                del self.hill_in[i]
+        for i in inside:
+            self.hill_in.setdefault(i, now)
+        if not inside:
+            self.crown_contest = 0
+            self.crown_prog = max(0.0, self.crown_prog - dt * 0.25)
+            return
+        # the side with the most kids inside holds it; level at the top freezes it, except in a crowd (CROWD+ players)
+        # where whoever held it last keeps filling at half speed until they're outnumbered or snowed out (#178 follow-up)
+        count = collections.Counter(self.side(i) for i in inside)
+        most = max(count.values())
+        top = [sd for sd, c in count.items() if c == most]
+        rate = 1.0
+        if len(top) == 1:
+            sd = top[0]
+            self.crown_contest = 0
+        elif self.crowd():   # level in a big game: the holder keeps it, else whoever has been up there longest takes it
+            sd = self.crown_side if self.crown_side in top else min(top, key=lambda sd: min(self.hill_in[i] for i in inside if self.side(i) == sd))
+            rate = CROWD_RATE
+            self.crown_contest = 2
+        else:
+            self.crown_contest = 1
+            return
+        if sd != self.crown_side:
+            if self.crowd():   # in a big game a side that loses the hill keeps (most of) its count for when it's back
+                if self.crown_side >= 0:
+                    self.crown_bank[self.crown_side] = self.crown_prog
+                self.crown_side, self.crown_prog = sd, self.crown_bank.pop(sd, 0.0)
+            else:
+                self.crown_side, self.crown_prog = sd, 0.0
+        for b in self.crown_bank:
+            self.crown_bank[b] = max(0.0, self.crown_bank[b] - dt * BANK_FADE)
+        self.crown_prog += dt * rate / HILL_EVERY
+        if self.crown_prog >= 1.0:
+            self.crown_prog = 0.0
+            i = min((i for i in inside if self.side(i) == sd), key=lambda i: math.hypot(self.kids[i].x - hx, self.kids[i].y - hy))
+            k = self.kids[i]
+            k.points += 1
+            k.crowns += 1
+            self.event(now, "crownpt", i)
+            self.room.add_log(f"👑 {self.name_of(i)} holds the hill: +1", "power")
+            if k.crowns == 3:
+                self.say("crown3", 30, now, f"👑 {self.name_of(i)} is King of the Hill: 3 crown points!", "gold", "good")
+                if self.pl(i):
+                    self.award(self.seats[i], "crown")
+
+    def say(self, key, gap, now, text, tone="gold", sound=None):
+        """A moment, at most once per `gap` seconds for this key, and one every 3 s in all."""
+        if now < self.said.get(key, 0) or now < self.said.get("", 0):
+            return
+        self.said[key] = now + gap
+        self.said[""] = now + 3.0
+        self.moment(text, tone, sound)
 
     def end(self):
         r = self.room
@@ -466,7 +778,8 @@ class Snowball(Game):
             self.award(self.seats[top], "untouched")
         pts = self.kids[top].points
         more = "" if len(ranked) < 2 or pts > self.kids[ranked[1]].points else f" (most hits: {self.kids[top].hits})"
-        return r.finish(self.pl(top), f"🏆 {self.name_of(top)} wins the snowball fight with {pts} snow-in{'s' if pts != 1 else ''}{more}!")
+        unit = ("point" if self.extras else "snow-in") + ("s" if pts != 1 else "")
+        return r.finish(self.pl(top), f"🏆 {self.name_of(top)} wins the snowball fight with {pts} {unit}{more}!")
 
     def end_teams(self, here):
         r = self.room
@@ -491,9 +804,16 @@ class Snowball(Game):
             "st": self.stage, "tl": r(max(0.0, self.end_at - now)), "go": r(max(0.0, self.go_at - now)),
             "k": [[r(k.x), r(k.y), r(k.vx), r(k.vy), r(k.fx), r(k.fy), k.ammo, k.pips,
                    r(max(0.0, k.frozen_until - now)), r(max(0.0, k.knock_until - now)), int(bool(k.pack_at)),
-                   r(k.giant), k.points] for k in self.kids],
-            "b": [[b[0], b[1], b[2], b[3], r(max(0.0, b[5] - now)), r(b[5] - b[4]), int(b[6]), b[7], b[9]] for b in self.balls],
+                   r(k.giant), k.points, ITEMS.index(k.item) + 1 if k.item in ITEMS else 0, r(k.slow),
+                   k.streak, k.crowns, r(max(0.0, k.chill_until - now))] for k in self.kids],
+            "b": [[b[0], b[1], b[2], b[3], r(max(0.0, b[5] - now)), r(b[5] - b[4]), int(b[6]), b[7], b[9], b[10] if len(b) > 10 else 0]
+                  for b in self.balls],
             "f": self.forts, "p": [r(v) for v in self.patches],
+            **({"g": [[g[0], g[1], g[2], ITEMS.index(g[3]) + 1] for g in self.gifts],
+                "dc": [[d[0], d[1], d[2], d[3], d[4]] for d in self.decoys],
+                "sl": [[p[0], p[1], r(max(0.0, p[2] - now)), p[3]] for p in self.slush],
+                "h": [int(self.crown_open), self.crown_side, r(self.crown_prog), int(self.crown_contest), r(max(0.0, self.crown_at - now))
+                      if self.crown_at < math.inf else 0]} if self.extras else {}),
             **({"tp": [self.team_points(0), self.team_points(1)]} if getattr(self, "teams", False) else {}),
         }
 
@@ -524,7 +844,7 @@ class Snowball(Game):
             gy = k.y + (t.y - k.y) / d * (d - want)
             if cover:   # hard: a spot behind the fort nearest to it, away from the target
                 best = None
-                for fi, f in enumerate(FORTS):
+                for fi, f in enumerate(self.fort_xy):
                     if self.forts[fi] <= 0:
                         continue
                     fx, fy = f[0], f[1]
@@ -538,11 +858,13 @@ class Snowball(Game):
                     gx, gy = best[1], best[2]
             # roll a giant when a patch is near and fresh
             if self.s.get("giants", True) and k.giant < GIANT_MAX and level != "easy":
-                for pi, (px, py) in enumerate(PATCHES):
+                for pi, (px, py) in enumerate(self.patch_xy):
                     if self.patches[pi] > 0.5 and math.hypot(px - k.x, py - k.y) < 3.5:
                         gx, gy = px + math.cos(now * 2) * 0.9, py + math.sin(now * 2) * 0.9
             if k.giant >= GIANT_MAX - 0.05:   # charge at the target with it
                 gx, gy = t.x, t.y
+        if self.extras and k.giant < GIANT_MAX - 0.05:
+            gx, gy = self.bot_extras(i, level, now, j, gx, gy)
         # dodge shadows that will land on me soon
         if dodge:
             for b in self.balls:
@@ -565,9 +887,48 @@ class Snowball(Game):
             k.fx, k.fy = (t.x - k.x) / d, (t.y - k.y) / d
         # throw now and then (with aim error)
         if j is not None and k.ammo > 0 and now >= k.cool_until and random.random() < eager * react:
-            t = self.kids[j]
+            ax, ay = self.aim_point(i) or (self.kids[j].x, self.kids[j].y)   # ☃️ decoys fool bots too
             big = level != "easy" and k.ammo >= 2 and random.random() < 0.25
-            self.throw(i, now, big, (t.x + random.gauss(0, err), t.y + random.gauss(0, err)))
+            self.throw(i, now, big, (ax + random.gauss(0, err), ay + random.gauss(0, err)))
+
+    def bot_extras(self, i, level, now, j, gx, gy):
+        """#178: a bot grabs gifts within its reach, plays for the crown, steps out of slush, and spends gifts:
+        ice and slush at a rival in range, a decoy when a snowball is coming or it's carrying hits."""
+        reach, hill_p, use_rate = BOT_X.get(level, BOT_X["normal"])
+        k = self.kids[i]
+        if int(now / 4) != int((now - 0.5) / 4) or not self.bot_hill:   # re-decide about the crown every 4 s
+            if not self.bot_hill:
+                self.bot_hill = [False] * len(self.kids)
+            self.bot_hill[i] = random.random() < hill_p
+        hx, hy = self.hill_xy
+        dh = math.hypot(hx - k.x, hy - k.y)
+        if self.crown_open and (self.bot_hill[i] or dh < 3.0):
+            a = now * 1.3 + i
+            gx, gy = hx + math.cos(a) * 0.6, hy + math.sin(a) * 0.6
+        elif not self.crown_open and level == "hard" and 0 < self.crown_at - now < 4:
+            gx, gy = hx + (k.x - hx) * 0.3, hy + (k.y - hy) * 0.3   # be there when it lands
+        if not k.item and self.gifts:
+            g = min(self.gifts, key=lambda g: math.hypot(g[1] - k.x, g[2] - k.y))
+            dg = math.hypot(g[1] - k.x, g[2] - k.y)
+            if dg < reach and (dg < 3.0 or not (self.crown_open and self.bot_hill[i] and dh < HILL_R)):
+                gx, gy = g[1], g[2]
+        if level != "easy":   # out of a rival's slush
+            for x, y, until, owner in self.slush:
+                if self.foes(i, owner) and math.hypot(k.x - x, k.y - y) < SLUSH_R + 0.2:
+                    ax, ay = k.x - x, k.y - y
+                    m = math.hypot(ax, ay) or 1.0
+                    gx, gy = x + ax / m * (SLUSH_R + 1.0), y + ay / m * (SLUSH_R + 1.0)
+                    break
+        if k.item and random.random() < use_rate:
+            if k.item == "decoy":
+                danger = any(b[7] != i and self.foes(i, b[7]) and math.hypot(b[2] - k.x, b[3] - k.y) < BIG_SPLASH + BODY for b in self.balls)
+                if danger or k.pips >= 1 or (self.crown_open and dh < HILL_R) or level == "easy":
+                    self.use(i, now)
+            elif j is not None:
+                t = self.kids[j]
+                if math.hypot(t.x - k.x, t.y - k.y) < 8 and now >= t.frozen_until and (level == "easy" or k.item != "slush" or self.crown_open or t.pips >= 1 or level == "normal"):
+                    self.use(i, now)
+        return gx, gy
 
     def bot_ready(self):
         return False   # bots think inside frame()
@@ -603,9 +964,12 @@ class Snowball(Game):
         now = time.time()
         return {"snowball": {
             **self.state(now), "seats": self.seats, "me": self.seat(p), "len": int(self.s.get("time", 120)),
-            "aw": AW, "ah": AH, "body": BODY, "forts": FORTS, "fortLen": FORT_LEN, "fortThick": FORT_THICK, "fortHp": FORT_HP,
-            "patches": PATCHES, "patchR": PATCH_R, "ammoMax": AMMO, "pips": PIPS, "frozenT": FROZEN, "bigHold": BIG_HOLD, "giantR": GIANT_R,
+            "aw": AW, "ah": AH, "body": BODY, "forts": self.fort_xy, "fortLen": FORT_LEN, "fortThick": FORT_THICK, "fortHp": FORT_HP,
+            "patches": self.patch_xy, "patchR": PATCH_R, "ammoMax": AMMO, "pips": PIPS, "frozenT": FROZEN, "bigHold": BIG_HOLD, "giantR": GIANT_R,
             "giants": bool(self.s.get("giants", True)), "seq": self.ev_seq, "splash": [SPLASH, BIG_SPLASH],
             "teams": bool(getattr(self, "teams", False)), "team": self.team or list(range(len(self.seats))),
             "speed": [SPEED, PACK_SPEED], "step": STEP,
+            "map": self.map, "mapName": MAPS.get(self.map, MAPS["meadow"])["name"], "ice": self.ice, "iceSpeed": [ICE_GRIP, ICE_SPEED],
+            "extras": self.extras, "hill": self.hill_xy, "hillR": HILL_R, "hillEvery": HILL_EVERY, "slushR": SLUSH_R,
+            "giftReach": GIFT_REACH, "items": list(ITEMS), "streak": STREAK,
         }}
