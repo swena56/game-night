@@ -403,7 +403,7 @@ const MOVES = {
   },
   domino(d, S, n, w) {  // taps on the table (pick / turn a square), the piece chips, ⟳ and ✔ Place, and keys
     const st = d.querySelector('#dmStage'), click = (el, x = 0, y = 0) => el && el.dispatchEvent(new w.MouseEvent('click', { bubbles: true, clientX: x, clientY: y }));
-    if (n % 5 === 4) { d.querySelector(`#dmKinds [data-k="${pick(['split', 'block', 'domino'])}"]`)?.click(); return; }
+    if (n % 5 === 4) { d.querySelector(`#dmKinds [data-k="${pick(['split', 'pirate', 'domino'])}"]`)?.click(); return; }
     if (n % 2 === 0) { click(st, 60 + Math.floor(Math.random() * 280), 80 + Math.floor(Math.random() * 300)); if (n % 4 === 0) d.querySelector('#dmRot')?.click(); d.querySelector('#dmGo')?.click(); }
     else { w.dispatchEvent(new w.KeyboardEvent('keydown', { key: pick(['ArrowUp', 'ArrowLeft', 'ArrowRight', 'r']), bubbles: true })); w.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); }
   },

@@ -24,7 +24,7 @@ def check(name, ok, detail=""):
 
 
 def run(pieces, targets=None, starters=((0, 5, 0, 0),), size=12):
-    pc = {(x, y): {"axis": a, "kind": k} for x, y, a, k in pieces}
+    pc = {(p[0], p[1]): {"axis": p[2], "kind": p[3], "by": p[4] if len(p) > 4 else 9} for p in pieces}
     tg = {(x, y): {"kind": k, "axis": a} for x, y, k, a in (targets or [])}
     return D.topple(size, pc, tg, list(starters))
 
@@ -59,6 +59,32 @@ check("whoever's push gets there first owns the rest", falls[(4, 5)][2] == froze
 check("scores: 1 a domino and the targets", D.score_of(*run([(1, 5, 0, "domino")], [(2, 5, "bell", 0)])[:2],
                                                           {(2, 5): {"kind": "bell", "axis": 0}}, {(0, 5)}) == {0: 11})
 
+# -- #175: ramps, poppers, pirates, combos, slow motion
+falls, rings, _ = run([(1, 5, 0, "domino"), (3, 5, 0, "domino"), (4, 5, 0, "domino")], [(2, 5, "ramp", 0)])
+check("a ramp along the run leaps the next square", (2, 5) in rings and (3, 5) not in falls and (4, 5) in falls)
+falls, rings, _ = run([(1, 5, 0, "domino"), (4, 5, 0, "domino")], [(2, 5, "ramp", 2)])
+check("a ramp across the run stops it", (2, 5) not in rings and (4, 5) not in falls)
+falls, rings, _ = run([(1, 5, 0, "domino"), (3, 5, 0, "domino"), (2, 6, 2, "domino"), (2, 4, 2, "domino"), (1, 6, 0, "domino"), (3, 6, 1, "domino")],
+                      [(2, 5, "pop", 0)])
+check("a popper bursts every way but back", (2, 5) in rings and all(c in falls for c in [(3, 5), (2, 6), (2, 4), (3, 6)]),
+      str(sorted(falls)))
+f2, r2_, _ = run([(2, 5, 0, "domino")], [(1, 5, "ramp", 0), (3, 5, "pop", 0)])
+check("…but not back the way the run came", (3, 5) in r2_ and (2, 5) not in f2, str(sorted(f2)))
+check("a popper's pushes come a step after it rings", falls[(3, 5)][0] == round(rings[(2, 5)][0] + D.STEP, 3))
+falls, rings, _ = run([(1, 5, 0, "domino"), (2, 5, 0, "pirate", 1), (3, 5, 0, "domino")])
+check("a pirate domino shares the run from there on", falls[(1, 5)][2] == frozenset({0}) and falls[(2, 5)][2] == frozenset({0, 1})
+      and falls[(3, 5)][2] == frozenset({0, 1}))
+tg = [(2, 5, "bell", 0), (4, 5, "bell", 0), (6, 5, "gate", 0)]
+fr, rg, _ = run([(1, 5, 0, "domino"), (3, 5, 0, "domino"), (5, 5, 0, "domino")], tg)
+cmb = D.combos(rg)
+check("combo counts a run's targets in order", [cmb[(2, 5)][0], cmb[(4, 5)][0], cmb[(6, 5)][0]] == [1, 2, 3])
+tgd = {(x, y): {"kind": k, "axis": a} for x, y, k, a in tg}
+check("combo scoring: +5 per target after the first", D.score_of(fr, rg, tgd, {(0, 5)}) == {0: 3 + 10 + 15 + 30})
+w = D.slow_windows({(5, 5): (1.0, frozenset({0})), (6, 6): (1.1, frozenset({0})), (1, 1): (0.5, frozenset({0}))},
+                   {(5, 5): {"kind": "tower"}, (6, 6): {"kind": "pop"}, (1, 1): {"kind": "bell"}})
+check("slow windows round the tower and poppers, merged", w == [[0.88, 1.4]], str(w))
+check("playback time stretches inside them", D.to_real(0.5, w) == 0.5 and abs(D.to_real(1.4, w) - (1.4 + 0.52 * (1 / D.SLOW - 1))) < 1e-9)
+
 # -- a game
 r = server.Room("TEST")
 a, b = r.add_player("Ann"), r.add_player("Bo")
@@ -89,20 +115,67 @@ g.act(first, {"type": "place", "x": free[0][0], "y": free[0][1], "axis": 0})
 check("a taken square refused", refused(first, {"type": "place", "x": free[0][0], "y": free[0][1], "axis": 0}) is not None)
 g.act(first, {"type": "place", "x": free[1][0], "y": free[1][1], "axis": 0, "kind": "split"})
 check("one split a game", refused(first, {"type": "place", "x": free[2][0], "y": free[2][1], "axis": 0, "kind": "split"}) is not None)
-g.act(first, {"type": "place", "x": free[2][0], "y": free[2][1], "axis": 0, "kind": "block"})
+check("blocks are gone", refused(first, {"type": "place", "x": free[2][0], "y": free[2][1], "axis": 0, "kind": "block"}) is not None)
+g.act(first, {"type": "place", "x": free[2][0], "y": free[2][1], "axis": 0, "kind": "pirate"})
+check("one pirate a table", not g.pirate[g.seat(first)])
 check("three pieces pass the turn", r.turn == other.id)
 json.dumps(g.view(a))
-check("the view carries the preview", isinstance(g.view(a)["domino"]["preview"], dict))
+v = g.view(a)["domino"]
+check("the view carries the preview, ends and theme", isinstance(v["preview"], dict) and isinstance(v["ends"], list) and v["theme"])
+check("the table has a theme's features", g.theme in D.THEMES)
 for _ in range(100):
     if g.stage != "build":
         break
     g.on_timeout()       # timeouts build the rest
 check("after the build turns the table topples", g.stage == "topple" and g.topple_res is not None)
 check("points were added", sum(g.points) == sum(g.topple_res["pts"].values()))
+tr = g.topple_res
+check("the topple carries slow windows and the real end", tr["realEnd"] >= tr["end"] + D.LEAD - 1e-6 and isinstance(tr["slow"], list))
+check("deadline waits for the slow-mo playback", abs(r.deadline - g.ready_at) < 1e-6)
 g.on_timeout()
 check("standings after the topple", g.stage == "between" and g.view(a)["domino"]["standings"])
 g.on_timeout()
 check("one table: the game ends", r.phase == "over")
+
+# -- specials come back each table; old saves load
+r2 = server.Room("TST2")
+r2.add_player("Cy"); r2.add_player("Di")
+r2.switch_game("domino")
+r2.settings.update(tables=2, turns=3)
+r2.start()
+g2 = r2.game
+g2.pirate = [False, False]; g2.split = [False, False]
+th = g2.theme
+for _ in range(200):
+    if g2.table_no > 1 or r2.phase != "playing":
+        break
+    g2.on_timeout()
+check("a fresh table gives back split and pirate", g2.split == [True, True] and g2.pirate == [True, True])
+check("the next table has a different theme", g2.theme != th)
+st = dict(g2.__dict__); st.pop("pirate"); st.pop("theme")
+g3 = D.Domino.__new__(D.Domino); g3.__setstate__(st)
+check("an old save loads with a pirate each and a theme", g3.pirate == [True, True] and g3.theme == "classic")
+
+# -- bots play pirates
+import random as _r
+_r.seed(3)
+used = 0
+for seed in range(6):
+    r3 = server.Room(f"B{seed}")
+    for nm in ("A", "B", "C"):
+        r3.add_player(nm)
+    r3.switch_game("domino")
+    r3.settings.update(tables=1, turns=4)
+    r3.start()
+    g4 = r3.game
+    for _ in range(200):
+        if g4.stage != "build":
+            break
+        p = r3.players[r3.turn]
+        x, y, ax, k = g4.plan(g4.seat(p), "normal")
+        g4.place(g4.seat(p), x, y, ax, k)
+    used += sum(1 for v in g4.pieces.values() if v["kind"] == "pirate")
+check("normal bots use their pirates", used >= 6, str(used))
 
 print(f"\n{len(fails)} failed" if fails else "\nall ok")
 sys.exit(1 if fails else 0)

@@ -1,28 +1,33 @@
 // Domino Run: a shared domino table in 3D (three.js) or flat from above. Take turns standing up three dominoes:
 // tap a square (tap it again, or ⟳, to turn the domino 45°), then ✔ Place. The squares each run reaches light up in
 // its colour. After the last build turn every starter is pushed and the server's topple plays out here.
+// #175: ⤴ ramps, 🎆 poppers, 🏴‍☠️ pirate dominoes, 🔥 combos; the topple has a lead-in, slow motion round the tower and
+// poppers (the server's `slow` windows, so callouts line up), a camera that follows your run, and score pops.
 UI.domino = (() => {
   let S, ctx, V, gl = null, flat = null, raf = 0, ro = null, keyFn = null;
   let sel = null, axis = 0, kind = 'domino', toppleAt = 0, toppleKey = '', played = 0, lastDraw = 0, rung = new Set(), busy = false;
+  let chain = {}, said = new Set(), tickKey = '';
   const $ = (id) => document.getElementById(id);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const DIRS = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]];
   const nameOf = (i) => ctx?.player(V?.seats[i])?.name ?? '?';
   const colorOf = (i) => ctx?.player(V?.seats[i])?.color ?? '#ccc';
   const myTurn = () => S?.phase === 'playing' && ctx?.myTurn && V?.stage === 'build' && V.me != null && V.cur === V.me;
-  const ICON = { bell: '🔔', gate: '⛩', tower: '🏯' };
+  const ICON = { bell: '🔔', gate: '⛩', tower: '🏯', ramp: '⤴', pop: '🎆' };
+  const BIG = new Set(['tower', 'pop']);
 
   function mount(main, side) {
-    gl = null; flat = null; sel = null; axis = 0; kind = 'domino'; toppleAt = 0; toppleKey = ''; played = 0; rung = new Set(); busy = false;
+    gl = null; flat = null; sel = null; axis = 0; kind = 'domino'; toppleAt = 0; toppleKey = ''; played = 0; rung = new Set(); busy = false; chain = {}; said = new Set(); tickKey = '';
     main.innerHTML = `<div class="dm"><div class="dm-stage" id="dmStage">
         <div class="dm-hud"><span id="dmTable"></span><span id="dmWho"></span></div>
-        <div class="dm-sub"><span id="dmReach"></span></div>
+        <div class="dm-sub"><span id="dmReach"></span><span id="dmGoal"></span></div>
+        <div class="dm-fx" id="dmFx"></div>
         <div class="dm-pop" id="dmPop" hidden></div>
         <div class="dm-tip" id="dmTip" hidden></div>
         <div class="dm-done" id="dmDone" hidden><h3 id="dmDoneTitle"></h3><div id="dmStand"></div></div>
       </div>
       <div class="dm-ctl" id="dmCtl">
-        <div class="dm-kinds" id="dmKinds"><button data-k="domino">🁫 Domino</button><button data-k="split" title="Once a game: forks the run both ways">✂ Split</button><button data-k="block" title="Once a game: nothing gets past">🚫 Block</button></div>
+        <div class="dm-kinds" id="dmKinds"><button data-k="domino">🁫 Domino</button><button data-k="split" title="Once a game: forks the run both ways">✂ Split</button><button data-k="pirate" title="Once a table: put it in a rival's path, their run scores for you too from there on">🏴‍☠️ Pirate</button></div>
         <div class="dm-acts"><button id="dmRot" aria-label="Turn 45°">⟳ Turn</button><span id="dmLeft" class="dm-left"></span><button class="dm-go" id="dmGo">✔ Place</button></div>
       </div>
       <p id="dmHint" class="hint"></p></div>`;
@@ -75,6 +80,11 @@ UI.domino = (() => {
     clack: (pan, n) => snd((t, K, d) => { K.mode(d, t, 1200 + (n % 7) * 60 + K.R(-40, 40), 0.07, 0.03); K.burst(d, t, { type: 'bandpass', f: 3000, q: 2.5, vol: 0.05, tau: 0.01 }); }, pan, 0.8),
     bell: (pan) => snd((t, K, d) => { K.mode(d, t, 1318, 0.12, 0.9); K.mode(d, t, 2637, 0.05, 0.5); K.mode(d, t, 3951, 0.02, 0.3); }, pan),
     gate: (pan) => snd((t, K, d) => { K.sweep(d, t, { f0: 300, f1: 220, dur: 0.35, vol: 0.06, type: 'triangle', attack: 0.02 }); K.mode(d, t + 0.3, 180, 0.12, 0.06); }, pan),
+    push: () => snd((t, K, d) => { K.mode(d, t, 140, 0.18, 0.12); K.sweep(d, t, { f0: 500, f1: 1400, dur: 0.25, vol: 0.03, type: 'triangle', attack: 0.01 }); }),
+    pop: (pan) => snd((t, K, d) => { K.burst(d, t, { type: 'lowpass', f: 900, q: 1, vol: 0.22, tau: 0.08 }); K.mode(d, t, 70, 0.25, 0.25); for (let k = 0; k < 10; k++) K.burst(d, t + 0.08 + K.R(0, 0.5), { type: 'bandpass', f: K.R(3000, 6000), q: 3, vol: 0.05, tau: 0.01 }); }, pan),
+    ramp: (pan) => snd((t, K, d) => { K.sweep(d, t, { f0: 400, f1: 1300, dur: 0.22, vol: 0.05, type: 'sine', attack: 0.01 }); }, pan),
+    combo: (k) => snd((t, K, d) => { const f = 660 * Math.pow(2, Math.min(k, 8) / 6); K.mode(d, t, f, 0.08, 0.35); K.mode(d, t + 0.07, f * 1.5, 0.06, 0.4); }),
+    ready: () => snd((t, K, d) => { K.mode(d, t, 520, 0.06, 0.15); }),
     tower: () => snd((t, K, d) => { for (let k = 0; k < 14; k++) { const s = t + k * 0.05 + K.R(0, 0.05); K.mode(d, s, K.R(600, 1400), 0.08, 0.05); K.burst(d, s, { type: 'bandpass', f: K.R(2000, 3500), q: 2, vol: 0.05, tau: 0.02 }); } K.mode(d, t, 90, 0.25, 0.2); }),
   };
 
@@ -82,88 +92,61 @@ UI.domino = (() => {
   function freeCell(x, y) {
     return !V.pieces.some((p) => p[0] === x && p[1] === y) && !V.targets.some((p) => p[0] === x && p[1] === y) && !V.starters.some((p) => p[0] === x && p[1] === y);
   }
-  // a fresh square starts at the angle that carries on whichever run pushes into it
+  // a fresh square starts at the angle that carries on whichever run pushes into it (mine first)
   function bestAxis(x, y) {
-    for (const [ex, ey, d] of pushes()) if (ex === x && ey === y) return d % 4;
-    return axis;
+    const e = (V.ends || []).filter(([ex, ey]) => ex === x && ey === y).sort((a, b) => b[3].includes(V.me) - a[3].includes(V.me))[0];
+    return e ? e[2] % 4 : axis;
   }
-  function pushes() {
-    // squares the current runs push into (from the server's reach: last fallen cells and their fall directions aren't
-    // sent, so work them out from the starters and pieces the same way the server does)
-    const out = [], fallen = sim().falls;
-    for (const [k, f] of fallen) {
-      const [x, y] = k.split(',').map(Number), pc = pieceAt(x, y);
-      for (const p of pc?.[3] === 'split' ? [(f.d + 7) % 8, (f.d + 1) % 8] : [f.d]) out.push([x + DIRS[p][0], y + DIRS[p][1], p]);
-    }
-    return out;
-  }
-  // #152: the free squares that carry MY run on: where my run's last dominoes push (through bells and lined-up gates)
+  // #152: the free squares that carry MY run on (the server sends where every run pushes next); #175: with the
+  // pirate picked, the squares rivals' runs push into, in their colours
   function myTaps() {
     if (V.me == null) return [];
-    const mine = new Set((V.reach[String(V.me)]?.cells || []).map(([x, y]) => `${x},${y}`));
-    const out = [], seen = new Set(), fallen = sim().falls;
-    for (const [k, f] of fallen) {
-      if (!mine.has(k)) continue;
-      const [x, y] = k.split(',').map(Number), pc = pieceAt(x, y);
-      for (const p of pc?.[3] === 'split' ? [(f.d + 7) % 8, (f.d + 1) % 8] : [f.d]) {
-        let cx = x, cy = y;
-        for (let n = 0; n < V.size; n++) {
-          cx += DIRS[p][0]; cy += DIRS[p][1];
-          if (cx < 0 || cy < 0 || cx >= V.size || cy >= V.size) break;
-          const tg = targetAt(cx, cy);
-          if (tg) { if (tg[2] === 'tower' || (tg[2] === 'gate' && p % 4 !== tg[3])) break; continue; }
-          const ck = `${cx},${cy}`;
-          if (freeCell(cx, cy) && !seen.has(ck)) { seen.add(ck); out.push([cx, cy, p]); }
-          break;
-        }
-      }
+    const seen = new Set(), out = [];
+    for (const [x, y, p, o] of V.ends || []) {
+      const mine = o.includes(V.me), k = `${x},${y}`;
+      if ((kind === 'pirate' ? mine : !mine) || seen.has(k) || !freeCell(x, y)) continue;
+      seen.add(k); out.push([x, y, p, kind === 'pirate' ? colorOf(o[0]) : null]);
     }
     return out;
   }
   const pieceAt = (x, y) => V.pieces.find((p) => p[0] === x && p[1] === y);
   const targetAt = (x, y) => V.targets.find((p) => p[0] === x && p[1] === y);
-  function fallDir(ax, push) {
-    let best = null, bd = 9;
-    for (const d of [ax, ax + 4]) { const diff = Math.min((d - push + 8) % 8, (push - d + 8) % 8); if (diff <= 1 && diff < bd) { best = d; bd = diff; } }
+  // the nearest target no run reaches yet, from where my run pushes next
+  function goal() {
+    const taken = new Set(Object.values(V.reach || {}).flatMap((r) => r.targets.map(([x, y]) => `${x},${y}`)));
+    let best = null;
+    for (const [ex, ey, , o] of V.ends || []) {
+      if (!o.includes(V.me)) continue;
+      for (const [tx, ty, kd] of V.targets) {
+        if (taken.has(`${tx},${ty}`)) continue;
+        const d = Math.max(Math.abs(tx - ex), Math.abs(ty - ey)) + 1, v = V.values[kd] / d;
+        if (!best || v > best.v) best = { v, d, kd };
+      }
+    }
     return best;
   }
-  // the server's topple, for directions only (the server's preview says who owns what)
-  let simKey = '', simRes = null;
-  function sim() {
-    const key = JSON.stringify([V.pieces, V.table]);
-    if (key === simKey) return simRes;
-    simKey = key;
-    const falls = new Map();
-    let front = V.starters.map(([x, y, d]) => [x, y, d]);
-    while (front.length) {
-      const nxt = [];
-      for (const [x, y, d] of front) {
-        const k = `${x},${y}`; if (falls.has(k)) continue;
-        falls.set(k, { d });
-        const pc = pieceAt(x, y);
-        for (const p of pc?.[3] === 'split' ? [(d + 7) % 8, (d + 1) % 8] : [d]) {
-          let cx = x, cy = y;
-          for (let n = 0; n < V.size; n++) {
-            cx += DIRS[p][0]; cy += DIRS[p][1];
-            if (cx < 0 || cy < 0 || cx >= V.size || cy >= V.size) break;
-            const tg = targetAt(cx, cy);
-            if (tg) { if (tg[2] === 'tower' || (tg[2] === 'gate' && p % 4 !== tg[3])) break; continue; }
-            const q = pieceAt(cx, cy);
-            if (!q || q[3] === 'block' || falls.has(`${cx},${cy}`)) break;
-            const nd = fallDir(q[2], p); if (nd != null) nxt.push([cx, cy, nd]);
-            break;
-          }
-        }
-      }
-      front = nxt;
+  // playback: topple time t plays at real time LEAD + toReal(t); slow windows run at `rate`
+  function toSim(r) {
+    const T = V.topple, rate = T.rate || 1;
+    let off = 0;
+    for (const [a, b] of T.slow || []) {
+      const ra = a + off; if (r <= ra) return r - off;
+      const rb = ra + (b - a) / rate; if (r < rb) return a + (r - ra) * rate;
+      off += (b - a) * (1 / rate - 1);
     }
-    return (simRes = { falls });
+    return r - off;
   }
+  function simNow(now) {
+    if (!V.topple) return 0;
+    const r = (now - toppleAt) / 1000 - (V.topple.lead || 0);
+    return r < 0 ? r : toSim(r);
+  }
+  const slowAt = (tp) => (V.topple?.slow || []).some(([a, b]) => tp >= a && tp <= b);
 
   function place() {
     if (!myTurn() || !sel || busy) return;
     if (kind === 'split' && !V.split[V.me]) kind = 'domino';
-    if (kind === 'block' && !V.block[V.me]) kind = 'domino';
+    if (kind === 'pirate' && !V.pirate?.[V.me]) kind = 'domino';
     busy = true;
     SND.set(); ctx.buzz?.(10);
     const [x, y] = sel;
@@ -177,9 +160,9 @@ UI.domino = (() => {
     if (!myTurn()) sel = null;
     const tk = V.topple ? `${V.table}` : '';
     if (tk && tk !== toppleKey) {
-      toppleKey = tk; rung = new Set(); played = 0;
+      toppleKey = tk; rung = new Set(); played = 0; chain = {}; said = new Set(); tickKey = '';
       // a reload mid-topple doesn't replay what's already fallen
-      const ago = V.topple.end + 3.5 - V.readyIn;
+      const ago = (V.topple.realEnd ?? V.topple.end) + (V.topple.pad ?? 3.5) - V.readyIn;
       toppleAt = performance.now() - Math.max(0, ago) * 1000;
     }
     if (!tk) toppleKey = '';
@@ -187,16 +170,19 @@ UI.domino = (() => {
   }
 
   function hud() {
-    $('dmTable').textContent = `🪵 Table ${V.table}/${V.tables}` + (V.stage === 'build' ? ` · build ${V.round}/${V.turns}` : V.stage === 'topple' ? ' · TOPPLE!' : '');
+    $('dmTable').textContent = `🪵 ${V.table}/${V.tables} ${V.theme || ''}` + (V.stage === 'build' ? ` · build ${V.round}/${V.turns}` : V.stage === 'topple' ? ' · TOPPLE!' : '');
     const who = $('dmWho');
     if (V.stage !== 'build' || V.cur == null) who.textContent = '';
     else { who.textContent = V.cur === V.me ? `🁫 Your turn: ${V.perTurn - V.placed} to place` : `${nameOf(V.cur)} is building`; who.style.color = V.cur === V.me ? '' : colorOf(V.cur); }
     const r = $('dmReach');
     if (V.stage === 'build' && V.me != null) {
       const mineT = (V.reach[String(V.me)]?.targets || []).map(([x, y]) => ICON[targetAt(x, y)?.[2]] || '').join('');
-      r.textContent = `Your run: ${V.preview[String(V.me)] || 0} pts ${mineT}`;
+      const k = V.combo?.[String(V.me)] || 0;
+      r.textContent = `Your run: ${V.preview[String(V.me)] || 0} pts ${mineT}${k >= 2 ? ` 🔥×${k}` : ''}`;
       r.style.color = colorOf(V.me);
-    } else r.textContent = '';
+      const gl0 = goal();
+      $('dmGoal').textContent = gl0 ? `🎯 ${ICON[gl0.kd]} ${gl0.d} away${k ? ` · next +${V.values[gl0.kd] + (V.comboStep || 5) * k}` : ''}` : '';
+    } else if (V.stage !== 'topple') { r.textContent = ''; $('dmGoal').textContent = ''; }
   }
 
   function controls() {
@@ -205,10 +191,10 @@ UI.domino = (() => {
     $('dmCtl').classList.toggle('dm-off', !mine);
     for (const b of $('dmKinds').querySelectorAll('button')) {
       const k = b.dataset.k;
-      b.disabled = !mine || (k === 'split' && !V.split[V.me]) || (k === 'block' && !V.block[V.me]);
+      b.disabled = !mine || (k === 'split' && !V.split[V.me]) || (k === 'pirate' && !V.pirate?.[V.me]);
       b.classList.toggle('on', k === kind);
     }
-    $('dmRot').disabled = !mine || !sel || kind === 'block';
+    $('dmRot').disabled = !mine || !sel;
     $('dmGo').disabled = !mine || !sel || busy;
     $('dmGo').classList.toggle('dm-ready', mine && !!sel);
     $('dmLeft').textContent = mine ? '●'.repeat(V.perTurn - V.placed) + '○'.repeat(V.placed) : '';
@@ -216,15 +202,17 @@ UI.domino = (() => {
 
   function race() {
     const box = $('dmRace'); box.innerHTML = '';
-    const rows = V.seats.map((_, i) => i).sort((a, b) => V.points[b] - V.points[a]);
-    const top = Math.max(1, ...V.points);
+    // while it falls, show the totals from before this table (the live tally on the board counts up)
+    const hide = V.stage === 'topple' && V.topple, P = V.seats.map((_, i) => V.points[i] - (hide ? V.topple.pts[String(i)] || 0 : 0));
+    const rows = V.seats.map((_, i) => i).sort((a, b) => P[b] - P[a]);
+    const top = Math.max(1, ...P);
     for (const i of rows) {
       const row = ctx.el('div', 'dm-row' + (i === V.me ? ' on' : '') + (i === V.cur && V.stage === 'build' ? ' turn' : ''));
       const nm = ctx.el('span', 'dm-nm', nameOf(i)); nm.style.color = colorOf(i);
-      const bar = ctx.el('span', 'dm-bar'); const fill = ctx.el('i'); fill.style.width = `${(100 * V.points[i] / top).toFixed(1)}%`; fill.style.background = colorOf(i); bar.append(fill);
-      const t = ctx.el('b', '', `${V.points[i]}`);
-      const pv = V.stage === 'build' ? `run now ${V.preview[String(i)] || 0}` : V.topple ? `+${V.topple.pts[String(i)] || 0} this table` : '';
-      const extra = ctx.el('small', '', `${pv}${V.split[i] ? ' · ✂' : ''}${V.block[i] ? ' · 🚫' : ''}`);
+      const bar = ctx.el('span', 'dm-bar'); const fill = ctx.el('i'); fill.style.width = `${(100 * P[i] / top).toFixed(1)}%`; fill.style.background = colorOf(i); bar.append(fill);
+      const t = ctx.el('b', '', `${P[i]}`);
+      const pv = V.stage === 'build' ? `run now ${V.preview[String(i)] || 0}` : hide ? 'falling…' : V.topple ? `+${V.topple.pts[String(i)] || 0} this table` : '';
+      const extra = ctx.el('small', '', `${pv}${V.split[i] ? ' · ✂' : ''}${V.pirate?.[i] ? ' · 🏴‍☠️' : ''}`);
       row.append(nm, bar, t, extra);
       box.append(row);
     }
@@ -241,11 +229,12 @@ UI.domino = (() => {
   function hint() {
     const t = S.phase !== 'playing' ? '' : V.stage === 'topple' ? 'Watch them fall!' : V.stage === 'between' ? ''
       : !myTurn() ? (V.me == null ? 'Watch the runs grow.' : 'Plan ahead: the coloured squares show where each run reaches now.')
-        : !sel ? 'Tap a pulsing ring to stand a domino where your run reaches next (or any free square to plan ahead).'
-          : 'Tap the square again (or ⟳ / R) to turn it 45°, then ✔ Place. Side-on stops a run.';
+        : kind === 'pirate' ? 'Pirate: tap a ring in a rival\'s colour (where their run reaches next). Their run scores for you too from there on.'
+          : !sel ? 'Tap a pulsing ring to stand a domino where your run reaches next (or any free square to plan ahead). 🔥 Each extra target on one run is worth +5 more.'
+            : 'Tap the square again (or ⟳ / R) to turn it 45°, then ✔ Place. Side-on stops a run; ⤴ ramps leap a square, 🎆 poppers burst every way.';
     if ($('dmHint').textContent !== t) $('dmHint').textContent = t;
     // the same nudge on the board itself (the hint line sits below the fold on a phone)
-    const tip = $('dmTip'), tt = !myTurn() ? '' : !sel ? '👆 Tap a pulsing ring' : kind === 'block' ? '✔ Place to block' : '⟳ Tap again to turn · ✔ Place';
+    const tip = $('dmTip'), tt = !myTurn() ? '' : !sel ? (kind === 'pirate' ? '🏴‍☠️ Tap a rival\'s ring' : '👆 Tap a pulsing ring') : '⟳ Tap again to turn · ✔ Place';
     if (tip.textContent !== tt) tip.textContent = tt;
     tip.hidden = !tt;
   }
@@ -256,34 +245,104 @@ UI.domino = (() => {
     el.classList.remove('dm-pop-in'); void el.offsetWidth; el.classList.add('dm-pop-in');
   }
 
+  // a score that floats up from a square of the table
+  function floater(x, y, text, color, big = false) {
+    const box = $('dmFx'), at = (gl || flat)?.toScreen?.(x, y); if (!box || !at) return;
+    const el = document.createElement('div');
+    el.className = 'dm-fl' + (big ? ' dm-fl-big' : ''); el.textContent = text; el.style.color = color;
+    el.style.left = `${at[0]}px`; el.style.top = `${at[1]}px`;
+    box.append(el); setTimeout(() => el.remove(), 1500);
+    while (box.childElementCount > 14) box.firstChild.remove();
+  }
+
   // what the table looks like now (and, in a topple, how far each domino has fallen)
   function scene(now) {
     const owner = new Map();
     if (V.stage === 'build') for (const [s, r] of Object.entries(V.reach || {})) for (const [x, y] of r.cells) { const k = `${x},${y}`; if (!owner.has(k)) owner.set(k, []); owner.get(k).push(+s); }
-    let fall = null, ring = null, tp = 0;
+    let fall = null, ring = null, tp = 0, focus = null, slow = false;
     if (V.topple) {
-      tp = (now - toppleAt) / 1000;
+      tp = simNow(now); slow = slowAt(tp);
       fall = new Map(V.topple.falls.map(([x, y, t, d, o]) => [`${x},${y}`, { t, d, o, u: clamp((tp - t) / 0.28, 0, 1) }]));
       ring = new Map(V.topple.rings.map(([x, y, t, o]) => [`${x},${y}`, { t, o, u: clamp((tp - t) / 0.6, 0, 1) }]));
+      // the camera: the lead-in looks at my starter, slow motion at the tower or popper, else my run's front
+      if (tp < V.topple.end + 0.5) {
+        const big = slow && V.topple.rings.filter(([x, y, t]) => BIG.has(targetAt(x, y)?.[2]) && Math.abs(t - tp) < 0.45).sort((a, b) => Math.abs(a[2] - tp) - Math.abs(b[2] - tp))[0];
+        if (big) focus = { x: big[0], y: big[1], span: 6 };
+        else if (tp < 0) { const st = V.starters.find((q) => q[3] === V.me); if (st) focus = { x: st[0] + DIRS[st[2]][0] * 2, y: st[1] + DIRS[st[2]][1] * 2, span: 8 }; }
+        else {
+          const act = V.topple.falls.filter(([, , t]) => t <= tp + 0.05 && t > tp - 0.5);
+          const mine = act.filter((f) => f[4].includes(V.me)), pick = mine.length ? mine : act;
+          if (pick.length) {
+            const cx = pick.reduce((a, f) => a + f[0], 0) / pick.length, cy = pick.reduce((a, f) => a + f[1], 0) / pick.length;
+            const spread = Math.max(...pick.map((f) => Math.max(Math.abs(f[0] - cx), Math.abs(f[1] - cy))));
+            focus = { x: cx, y: cy, span: clamp(spread * 2 + 6, 7, V.size + 1) };
+          }
+        }
+      }
     }
     const ghost = myTurn() && sel ? { x: sel[0], y: sel[1], axis, kind } : null;
     const taps = myTurn() ? myTaps() : [];
-    return { V, owner, fall, ring, tp, ghost, taps, idle: false, now, myColor: V.me != null ? colorOf(V.me) : '#fff', colorOf };
+    const recent = V.stage === 'build' ? (V.recent || []) : [];
+    return { V, owner, fall, ring, tp, ghost, taps, recent, focus, slow, idle: false, now, myColor: V.me != null ? colorOf(V.me) : '#fff', colorOf };
+  }
+
+  // the live tally while it falls: dominoes down and targets reached so far, per player
+  function tally(tp) {
+    const st = new Set(V.starters.map(([x, y]) => `${x},${y}`)), pts = {};
+    for (const [x, y, t, , o] of V.topple.falls) if (t <= tp && !st.has(`${x},${y}`)) for (const s of o) pts[s] = (pts[s] || 0) + 1;
+    for (const [x, y, t, o, cmb] of V.topple.rings) if (t <= tp) for (const s of o) pts[s] = (pts[s] || 0) + V.values[targetAt(x, y)?.[2]] + (V.topple.combo || 0) * ((cmb?.[s] || 1) - 1);
+    return pts;
   }
 
   function topple(now) {
     if (!V.topple) return;
-    const tp = (now - toppleAt) / 1000;
+    const tp = simNow(now), T = V.topple, fresh = (t) => tp - t < 0.5;
+    if (tp < 0) {
+      const n = Math.ceil(-tp / 0.4);
+      if (!said.has(`r${n}`) && n <= 2 && -tp < (T.lead || 0) - 0.1) { said.add(`r${n}`); SND.ready(); pop(n === 2 ? 'Ready…' : 'Steady…', '#ffd23f'); }
+      return;
+    }
+    if (!said.has('go')) { said.add('go'); if (tp < 0.4) { SND.push(); pop('PUSH!', '#ffd23f'); ctx.buzz?.(20); } }
     let n = 0;
-    for (const [x, , t] of V.topple.falls) { if (t <= tp) n++; }
-    while (played < n) { const f = V.topple.falls[played]; if (tp - f[2] < 0.4) SND.clack(clamp((f[0] - V.size / 2) / V.size * 2, -1, 1), played); played++; }
-    for (const [x, y, t, o] of V.topple.rings) {
+    for (const f of T.falls) { if (f[2] <= tp) n++; }
+    while (played < n) {
+      const f = T.falls[played++];
+      const isStart = V.starters.some((q) => q[0] === f[0] && q[1] === f[1]);
+      for (const s of f[4]) {
+        if (isStart) continue;
+        const c = (chain[s] = (chain[s] || 0) + 1);
+        if (c % 10 === 0 && fresh(f[2])) floater(f[0], f[1], `×${c}`, colorOf(s));
+      }
+      if (fresh(f[2])) { const c = Math.max(0, ...f[4].map((s) => chain[s] || 0)); SND.clack(clamp((f[0] - V.size / 2) / V.size * 2, -1, 1), c); }
+    }
+    for (const [x, y, t, o, cmb] of T.rings) {
       const k = `${x},${y}`; if (t > tp || rung.has(k)) continue;
       rung.add(k);
-      if (tp - t > 0.5) continue;
+      if (!fresh(t)) continue;
       const tg = targetAt(x, y)?.[2], pan = clamp((x - V.size / 2) / V.size * 2, -1, 1);
-      if (tg === 'bell') SND.bell(pan); else if (tg === 'gate') SND.gate(pan); else { SND.tower(); (gl || flat)?.shake?.(); }
-      if (tg === 'tower' || o.includes(V.me)) pop(`${ICON[tg]} ${o.map(nameOf).join(' & ')} +${V.values[tg]}`, tg === 'tower' ? '#ffd23f' : '#fff');
+      if (tg === 'bell') SND.bell(pan); else if (tg === 'gate') SND.gate(pan); else if (tg === 'ramp') SND.ramp(pan);
+      else if (tg === 'pop') { SND.pop(pan); (gl || flat)?.shake?.(0.06); ctx.buzz?.(25); }
+      else { SND.tower(); (gl || flat)?.shake?.(); ctx.buzz?.([30, 40, 60]); }
+      const who = o.includes(V.me) ? V.me : o[0], kk = cmb?.[String(who)] || 1, gain = V.values[tg] + (T.combo || 0) * (kk - 1);
+      floater(x, y, `${ICON[tg]} +${gain}${kk >= 2 ? ` 🔥${kk}` : ''}`, colorOf(who), BIG.has(tg));
+      if (tg === 'tower') pop(`${ICON[tg]} ${o.map(nameOf).join(' & ')} +${gain}`, '#ffd23f');
+      else if (o.includes(V.me) && kk >= 2) { pop(`🔥 COMBO ×${kk}`, '#ff9a3c'); SND.combo(kk); }
+      else if (tg === 'pop') pop('🎆 POP!', '#ff6ad5');
+    }
+    // the live tally in the HUD
+    const pts = tally(tp), key = JSON.stringify(pts);
+    if (key !== tickKey) {
+      tickKey = key;
+      const r = $('dmReach'); r.style.color = '';
+      r.innerHTML = '';
+      for (const i of V.seats.map((_, i) => i).sort((a, b) => (pts[b] || 0) - (pts[a] || 0))) {
+        const b = ctx.el('b', '', `${nameOf(i)} ${pts[i] || 0}`); b.style.color = colorOf(i); b.style.marginRight = '8px'; r.append(b);
+      }
+      $('dmGoal').textContent = '';
+    }
+    if (tp > T.end + 0.3 && !said.has('end') && V.me != null) {
+      said.add('end');
+      if (tp - T.end < 1.5) pop(`💥 +${T.pts[String(V.me)] || 0}`, colorOf(V.me));
     }
   }
 
@@ -292,7 +351,7 @@ UI.domino = (() => {
     raf = requestAnimationFrame(loop);
     if (!V) return;
     topple(now);
-    const busyAnim = V.topple && (now - toppleAt) / 1000 < V.topple.end + 1.2;
+    const busyAnim = V.topple && (now - toppleAt) / 1000 < (V.topple.realEnd ?? V.topple.end) + 2;
     if (!busyAnim && now - lastDraw < 100) return;
     lastDraw = now;
     const sc = scene(now); sc.idle = !busyAnim;
@@ -358,6 +417,13 @@ UI.domino = (() => {
         if (isStarter) { const band2 = band.clone(); band2.position.y = DH * 0.2; pivot.add(band2); const band3 = band.clone(); band3.position.y = DH * 0.8; pivot.add(band3); }
         if (!low) for (const side of [1, -1]) for (const [py, pz] of [[0.25, 0], [0.65, -0.14], [0.65, 0.14]]) { const p = new T.Mesh(pipGeo, pipMat); p.position.set(side > 0 ? 0.002 : -DT - 0.002, DH * py, pz); p.rotation.y = side > 0 ? Math.PI / 2 : -Math.PI / 2; pivot.add(p); }
         if (kindD === 'split') { const v = new T.Mesh(new T.ConeGeometry(0.12, 0.2, 3), std(0xffd23f)); v.position.set(-DT / 2, DH + 0.1, 0); v.rotation.z = Math.PI; pivot.add(v); }
+        if (kindD === 'pirate') {
+          // a black sash and a little black flag on a mast
+          const sash = new T.Mesh(bandGeo, std(0x111111, { roughness: 0.5 })); sash.position.set(-DT / 2, DH * 0.55, 0); pivot.add(sash);
+          const mast = new T.Mesh(new T.CylinderGeometry(0.012, 0.012, 0.32, 5), std(0x3a2a1a)); mast.position.set(-DT / 2, DH + 0.16, 0); pivot.add(mast);
+          const flagP = new T.Mesh(new T.PlaneGeometry(0.2, 0.13), new T.MeshBasicMaterial({ color: 0x111111, side: T.DoubleSide })); flagP.position.set(-DT / 2, DH + 0.25, 0.1); flagP.rotation.y = Math.PI / 2; pivot.add(flagP);
+          const skull = new T.Mesh(new T.CircleGeometry(0.03, 8), new T.MeshBasicMaterial({ color: 0xffffff, side: T.DoubleSide })); skull.position.set(-DT / 2 + 0.002, DH + 0.255, 0.1); skull.rotation.y = Math.PI / 2; pivot.add(skull);
+        }
       }
       scene3.add(g);
       d = { g, pivot, kind: kindD };
@@ -386,6 +452,26 @@ UI.domino = (() => {
         parts.push(ga);
         // an arrow on the felt along the gate's line
         const arr = new T.Mesh(new T.PlaneGeometry(0.9, 0.12), new T.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.45 })); arr.rotation.set(-Math.PI / 2, 0, ax * Math.PI / 4); arr.position.y = 0.006; g.add(arr);
+      } else if (kindT === 'ramp') {
+        // a little wooden hump along its line: the run leaps the square after it
+        const ra = new T.Group(); ra.rotation.y = ax * Math.PI / 4; g.add(ra);
+        const rmat = std(0xc89a5a, { roughness: 0.55 });
+        for (const sx of [-1, 1]) { const b = new T.Mesh(new T.BoxGeometry(0.5, 0.05, 0.6), rmat); b.position.set(sx * 0.2, 0.08, 0); b.rotation.z = -sx * 0.32; b.castShadow = true; ra.add(b); }
+        const stripe = new T.Mesh(new T.PlaneGeometry(0.9, 0.1), new T.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.45 })); stripe.rotation.x = -Math.PI / 2; stripe.position.y = 0.006; ra.add(stripe);
+        parts.push(ra); rmat.emissive = new T.Color(0); ra.userData.mat = rmat;
+      } else if (kindT === 'pop') {
+        // a firework popper: a striped tube with a fuse; it bursts into sparks
+        const tube = new T.Group(); g.add(tube);
+        const body = new T.Mesh(new T.CylinderGeometry(0.17, 0.19, 0.42, 14), std(0xd63a6a, { roughness: 0.45 })); body.position.y = 0.21; body.castShadow = true; tube.add(body);
+        const bandP = new T.Mesh(new T.CylinderGeometry(0.175, 0.175, 0.08, 14), std(0xffd23f, { roughness: 0.4 })); bandP.position.y = 0.3; tube.add(bandP);
+        const capP = new T.Mesh(new T.ConeGeometry(0.18, 0.16, 14), std(0x3a6ad6, { roughness: 0.45 })); capP.position.y = 0.5; tube.add(capP);
+        parts.push(tube);
+        const sparkMat = [0xffd23f, 0xff6ad5, 0x6af0ff, 0xffffff].map((c) => new T.MeshBasicMaterial({ color: c }));
+        for (let k = 0; k < (low ? 12 : 22); k++) {
+          const sp = new T.Mesh(new T.SphereGeometry(0.04, 5, 4), sparkMat[k % 4]); sp.visible = false; g.add(sp); parts.push(sp);
+          const a = Math.random() * Math.PI * 2, e = 0.4 + Math.random() * 1.0;
+          sp.userData.v = new T.Vector3(Math.cos(a) * Math.cos(e) * 3, Math.sin(e) * 4, Math.sin(a) * Math.cos(e) * 3); sp.userData.spark = true;
+        }
       } else {
         // a pyramid of cups
         let n = 0;
@@ -416,6 +502,10 @@ UI.domino = (() => {
     const ghostArrow2 = ghostArrow.clone(); ghostArrow2.rotation.z = Math.PI / 2; ghostArrow2.position.x = -0.4; ghost.add(ghostArrow2);
     const selRing = new T.Mesh(new T.RingGeometry(0.42, 0.5, 4, 1, Math.PI / 4), new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9 })); selRing.rotation.x = -Math.PI / 2; selRing.position.y = 0.01;
     ghost.add(selRing); ghost.visible = false; scene3.add(ghost);
+    // the last few dominoes stood up: a soft square outline so you see what the last player did
+    const recGeo = new T.RingGeometry(0.46, 0.52, 4, 1, Math.PI / 4), recs = [];
+    const recMesh = (k) => { if (recs[k]) return recs[k]; const m = new T.Mesh(recGeo, new T.MeshBasicMaterial({ transparent: true, depthWrite: false })); m.rotation.x = -Math.PI / 2; scene3.add(m); return (recs[k] = m); };
+    const cam = { x: 0, z: 0, span: 0 };
 
     function resize() {
       const w = stage.clientWidth || 1, h = stage.clientHeight || 1;
@@ -450,6 +540,15 @@ UI.domino = (() => {
         const t = targetFor(x, y, kindT, ax), r = sc.ring?.get(`${x},${y}`), u = r ? r.u : 0;
         if (kindT === 'bell') t.parts[0].rotation.z = r && u < 1 ? Math.sin(u * 30) * 0.6 * (1 - u) : r ? 0 : 0;
         else if (kindT === 'gate') t.parts[0].children.forEach((m) => { m.material.emissive?.set(r && u > 0 ? 0x553300 : 0x000000); });
+        else if (kindT === 'ramp') t.parts[0].userData.mat.emissive.set(r && u > 0 && u < 1 ? 0x664400 : 0x000000);
+        else if (kindT === 'pop') {
+          const s = r && sc.tp >= r.t ? sc.tp - r.t : -1;
+          t.parts[0].visible = s < 0;
+          for (const sp of t.parts) if (sp.userData.spark) {
+            sp.visible = s >= 0 && s < 1.4;
+            if (sp.visible) { const v = sp.userData.v; sp.position.set(v.x * s, Math.max(0.04, 0.4 + v.y * s - 4.9 * s * s), v.z * s); sp.scale.setScalar(1.4 - s); }
+          }
+        }
         else t.parts.forEach((c) => { if (!c.userData.home) { c.visible = !r || u <= 0; return; } if (r && sc.tp >= r.t) { const s = Math.min(1.5, sc.tp - r.t); c.position.copy(c.userData.home).addScaledVector(c.userData.v, s); c.position.y = Math.max(0.1, c.userData.home.y + c.userData.v.y * s - 4.9 * s * s); c.rotation.set(s * 6, 0, s * 4); } else { c.position.copy(c.userData.home); c.rotation.set(0, 0, 0); } });
       }
       // reach tiles (build) or the toppled path tinted by owner (topple)
@@ -460,7 +559,9 @@ UI.domino = (() => {
       }
       for (let k = n; k < tiles.length; k++) tiles[k].visible = false;
       // tap targets (my turn) and my starter's arrow (whole build stage)
-      sc.taps.forEach(([x, y], k) => { const m = tapMesh(k); m.visible = true; m.position.copy(W(x, y, 0.008)); m.material.color.set(sc.myColor); const p = 0.5 + 0.5 * Math.sin(now / 260 + k); m.material.opacity = 0.45 + 0.45 * p; m.scale.setScalar(0.9 + 0.18 * p); });
+      sc.recent.forEach(([x, y, by], k) => { const m = recMesh(k); m.visible = true; m.position.copy(W(x, y, 0.007)); m.material.color.set(sc.colorOf(by)); m.material.opacity = 0.5 + 0.3 * Math.sin(now / 400); });
+      for (let k = sc.recent.length; k < recs.length; k++) recs[k].visible = false;
+      sc.taps.forEach(([x, y, , c], k) => { const m = tapMesh(k); m.visible = true; m.position.copy(W(x, y, 0.008)); m.material.color.set(c || sc.myColor); const p = 0.5 + 0.5 * Math.sin(now / 260 + k); m.material.opacity = 0.45 + 0.45 * p; m.scale.setScalar(0.9 + 0.18 * p); });
       for (let k = sc.taps.length; k < taps3.length; k++) taps3[k].visible = false;
       const st = V2.stage === 'build' && V2.me != null ? V2.starters.find((s) => s[3] === V2.me) : null;
       startArrow.visible = !!st;
@@ -477,14 +578,20 @@ UI.domino = (() => {
       if (gh) {
         ghost.position.copy(W(gh.x, gh.y)); ghost.rotation.y = gh.axis * Math.PI / 4;
         ghostBody.visible = gh.kind !== 'block'; ghostArrow.visible = ghostArrow2.visible = gh.kind !== 'block';
-        ghostMat.color.set(gh.kind === 'block' ? 0xff8a5a : sc.myColor); ghostMat.opacity = 0.45 + 0.15 * Math.sin(now / 200);
+        ghostMat.color.set(gh.kind === 'pirate' ? 0x333333 : sc.myColor); ghostMat.opacity = 0.45 + 0.15 * Math.sin(now / 200);
       }
-      // the camera: the whole table, tilted toward you; it fits a narrow phone
-      const fov = 42, need = (N + 1) / 2, dist = need / Math.tan(fov * Math.PI / 360) / Math.min(1, camera.aspect * 1.1) * 1.2;
-      camera.position.set(0, dist * 0.86, dist * 0.52);
+      // the camera: the whole table, tilted toward you; it fits a narrow phone. #175: in a topple it follows the
+      // action (sc.focus) and eases back out to the whole table after
+      const fov = 42, f = sc.focus;
+      const tx = f ? clamp(f.x - mid, -mid, mid) : 0, tz = f ? clamp(mid - f.y, -mid, mid) : 0, tspan = f ? Math.min(f.span, N + 1) : N + 1;
+      if (!cam.span) Object.assign(cam, { x: tx, z: tz, span: tspan });
+      const kk = 1 - Math.exp(-dt * (f ? 3 : 2));
+      cam.x += (tx - cam.x) * kk; cam.z += (tz - cam.z) * kk; cam.span += (tspan - cam.span) * kk;
+      const dist = cam.span / 2 / Math.tan(fov * Math.PI / 360) / Math.min(1, camera.aspect * 1.1) * 1.2;
+      camera.position.set(cam.x, dist * 0.86, cam.z + dist * 0.52);
       if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
       GL3.tickShake(camera, dt);
-      camera.lookAt(0, 0, 0.6);
+      camera.lookAt(cam.x, 0, cam.z + 0.6 * cam.span / (N + 1));
       stg.follow(camera);
       // #151: idle redraws (~10 fps on purpose) must not count as a slow phone, or GL3 drops the resolution
       if (sc.idle && renderer.renderStill) renderer.renderStill(scene3, camera); else renderer.render(scene3, camera);
@@ -492,7 +599,12 @@ UI.domino = (() => {
 
     return {
       draw, resize,
-      shake() { GL3.shake(camera, 0.12); },
+      shake(a = 0.12) { GL3.shake(camera, a); },
+      toScreen(x, y) {
+        const v = W(x, y, 0.9).project(camera), r = canvas.getBoundingClientRect(), sr = stage.getBoundingClientRect();
+        if (v.z > 1) return null;
+        return [(v.x + 1) / 2 * r.width + r.left - sr.left, (1 - v.y) / 2 * r.height + r.top - sr.top];
+      },
       pick(cx, cy) {
         const r = canvas.getBoundingClientRect();
         ray.setFromCamera({ x: ((cx - r.left) / r.width) * 2 - 1, y: -((cy - r.top) / r.height) * 2 + 1 }, camera);
@@ -533,19 +645,21 @@ UI.domino = (() => {
       g.font = `${Math.round(k * 0.7)}px system-ui`; g.textAlign = 'center'; g.textBaseline = 'middle';
       for (const [x, y, kindT, ax] of V.targets) {
         const r = sc.ring?.get(`${x},${y}`);
-        if (kindT === 'gate') { g.save(); g.translate(X(x), Y(y)); g.rotate(-ax * Math.PI / 4); g.strokeStyle = '#ffd23f88'; g.lineWidth = 3; g.beginPath(); g.moveTo(-k * 0.45, 0); g.lineTo(k * 0.45, 0); g.stroke(); g.restore(); }
+        if (kindT === 'gate' || kindT === 'ramp') { g.save(); g.translate(X(x), Y(y)); g.rotate(-ax * Math.PI / 4); g.strokeStyle = '#ffd23f88'; g.lineWidth = 3; g.beginPath(); g.moveTo(-k * 0.45, 0); g.lineTo(k * 0.45, 0); g.stroke(); g.restore(); }
+        if (kindT === 'pop' && r && sc.tp >= r.t && sc.tp - r.t < 0.8) { const s = sc.tp - r.t; g.strokeStyle = '#ff6ad5'; g.globalAlpha = 1 - s / 0.8; g.lineWidth = 3; g.beginPath(); g.arc(X(x), Y(y), k * (0.4 + s * 3), 0, Math.PI * 2); g.stroke(); }
         g.globalAlpha = r && sc.tp >= r.t ? 0.5 : 1; g.fillText(ICON[kindT], X(x), Y(y) + (r && sc.tp >= r.t && kindT === 'bell' ? Math.sin(now / 40) * 2 : 0)); g.globalAlpha = 1;
       }
       const dom = (x, y, ax, kindD, by, d0) => {
         const f = sc.fall?.get(`${x},${y}`), dir = f ? f.d : d0 ?? ax, u = f ? f.u : 0;
         g.save(); g.translate(X(x) + DIRS[dir][0] * u * k * 0.45, Y(y) - DIRS[dir][1] * u * k * 0.45); g.rotate(-dir * Math.PI / 4);
         if (kindD === 'block') { g.fillStyle = '#8a5a32'; g.fillRect(-k * 0.35, -k * 0.35, k * 0.7, k * 0.7); }
-        else { const len = k * (0.16 + u * 0.8); g.fillStyle = '#f4efe4'; g.fillRect(-len / 2, -k * 0.32, len, k * 0.64); g.fillStyle = sc.colorOf(by); g.fillRect(-len / 2, -k * 0.32, Math.max(2, len * 0.35), k * 0.64); if (kindD === 'split') { g.fillStyle = '#ffd23f'; g.fillRect(-2, -k * 0.4, 4, k * 0.8); } }
+        else { const len = k * (0.16 + u * 0.8); g.fillStyle = '#f4efe4'; g.fillRect(-len / 2, -k * 0.32, len, k * 0.64); g.fillStyle = sc.colorOf(by); g.fillRect(-len / 2, -k * 0.32, Math.max(2, len * 0.35), k * 0.64); if (kindD === 'split') { g.fillStyle = '#ffd23f'; g.fillRect(-2, -k * 0.4, 4, k * 0.8); } if (kindD === 'pirate') { g.fillStyle = '#111'; g.fillRect(-len / 2, -k * 0.08, len, k * 0.16); } }
         g.restore();
       };
       for (const [x, y, d, s] of V.starters) dom(x, y, d % 4, 'domino', s, d);
       for (const [x, y, ax, kindD, by] of V.pieces) dom(x, y, ax, kindD, by);
-      sc.taps.forEach(([x, y], i) => { const p = 0.5 + 0.5 * Math.sin(now / 260 + i); g.globalAlpha = 0.5 + 0.45 * p; g.strokeStyle = sc.myColor; g.lineWidth = 3; g.beginPath(); g.arc(X(x), Y(y), k * (0.3 + 0.08 * p), 0, Math.PI * 2); g.stroke(); });
+      for (const [x, y, by] of sc.recent) { g.globalAlpha = 0.6; g.strokeStyle = sc.colorOf(by); g.setLineDash?.([4, 3]); g.lineWidth = 2; g.strokeRect(X(x) - k / 2 + 2, Y(y) - k / 2 + 2, k - 4, k - 4); g.setLineDash?.([]); }
+      sc.taps.forEach(([x, y, , c], i) => { const p = 0.5 + 0.5 * Math.sin(now / 260 + i); g.globalAlpha = 0.5 + 0.45 * p; g.strokeStyle = c || sc.myColor; g.lineWidth = 3; g.beginPath(); g.arc(X(x), Y(y), k * (0.3 + 0.08 * p), 0, Math.PI * 2); g.stroke(); });
       g.globalAlpha = 1;
       const st = V.stage === 'build' && V.me != null ? V.starters.find((s) => s[3] === V.me) : null;
       if (st) { const [sx, sy, sd] = st; g.save(); g.translate(X(sx) + DIRS[sd][0] * k * 0.62, Y(sy) - DIRS[sd][1] * k * 0.62); g.rotate(-sd * Math.PI / 4); g.fillStyle = sc.myColor; g.globalAlpha = 0.8; g.beginPath(); g.moveTo(k * 0.35, 0); g.lineTo(0, k * 0.25); g.lineTo(0, -k * 0.25); g.closePath(); g.fill(); g.restore(); g.globalAlpha = 1; }
@@ -553,6 +667,7 @@ UI.domino = (() => {
     }
     return {
       draw, resize, shake() {},
+      toScreen(x, y) { return [X(x), Y(y)]; },
       pick(px, py) { const r = canvas.getBoundingClientRect(); return [Math.floor((px - r.left - ox) / k), V.size - 1 - Math.floor((py - r.top - oy) / k)]; },
       dispose() { canvas.remove(); },
     };
