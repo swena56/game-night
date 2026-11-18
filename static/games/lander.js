@@ -111,16 +111,41 @@ UI.lander = (() => {
     if (f.y > g.ceiling) { f.y = g.ceiling; f.vy = Math.min(f.vy, 0); }
     return on;
   }
-  // a whole flight from an input log (the rules test checks this against the server's replay)
-  function replay(v, log, fuel) {
-    const g = v.geo, f = { x: v.start[0], vx: v.start[1], y: g.startY, vy: 0, k: 0, fuel };
-    let bits = 2, li = 0;
-    for (let t = 0; t < g.maxTicks; t++) {
-      while (li < log.length && log[li][0] <= t) bits = log[li++][1];
-      tick(f, g, bits);
-      if (f.y <= groundOf(v, f.x)) return { ...judgeOf(v, f.x, f.vx, f.vy, f.k), ticks: t + 1, x: f.x, vx: f.vx, vy: f.vy, k: f.k, fuel: f.fuel };
+  // pickups this tick touched (in index order, as fly() checks them): a canister's fuel goes straight in the tank
+  function grab(f, v) {
+    const P = v.picks || [], R2 = v.geo.pickR2;
+    for (let i = 0; i < P.length; i++) {
+      if (f.gone.has(i)) continue;
+      const dx = f.x - P[i][0], dy = f.y + 1 - P[i][1];
+      if (dx * dx + dy * dy < R2) { f.gone.add(i); f.got.push(i); if (P[i][2] === 1) f.fuel += v.geo.pickFuel; }
     }
-    return { how: 'lost', pad: -1, pts: 0, ticks: g.maxTicks, x: f.x, vx: f.vx, vy: f.vy, k: f.k, fuel: f.fuel };
+  }
+  // one whole tick as fly() takes it: the step, pickups, then the ground (a hop rests on its pad until airborne)
+  function advance(f, v, bits) {
+    const on = tick(f, v.geo, bits);
+    grab(f, v);
+    const gy = groundOf(v, f.x);
+    if (!f.air) {
+      if (f.y > gy + 1) f.air = true;
+      else if (f.y <= gy) { f.y = gy; f.vy = 0; f.vx = 0; return { on, down: false, gy }; }
+    }
+    return { on, down: f.y <= gy, gy };
+  }
+  const startOf = (v, fuel, o = {}) => {
+    const h = o.hop, f = h ? { x: h[0], vx: 0, y: h[1], vy: 0, k: 0, fuel, air: false } : { x: v.start[0], vx: v.start[1], y: v.geo.startY, vy: 0, k: 0, fuel, air: true };
+    f.gone = new Set(o.taken || []); f.got = [];
+    return f;
+  };
+  // a whole flight from an input log (the rules test checks this against the server's replay); o.hop = [x, y, tick]
+  function replay(v, log, fuel, o = {}) {
+    const g = v.geo, f = startOf(v, fuel, o);
+    let bits = 2, li = 0;
+    const end = o.hop ? o.hop[2] + g.hopTicks : g.maxTicks;
+    for (let t = o.hop ? o.hop[2] : 0; t < end; t++) {
+      while (li < log.length && log[li][0] <= t) bits = log[li++][1];
+      if (advance(f, v, bits).down) return { ...judgeOf(v, f.x, f.vx, f.vy, f.k), ticks: t + 1, x: f.x, vx: f.vx, vy: f.vy, k: f.k, fuel: f.fuel, got: f.got };
+    }
+    return { how: 'lost', pad: -1, pts: 0, ticks: end, x: f.x, vx: f.vx, vy: f.vy, k: f.k, fuel: f.fuel, got: f.got };
   }
   // a touchdown's verdict, as the server judges it (games/lander.py judge)
   const judge = (x, vx, vy, k) => judgeOf(V, x, vx, vy, k);

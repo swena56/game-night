@@ -6,6 +6,12 @@ perched somewhere awkward. Rotate and fire your one engine to come down softly o
 soft touchdown + up to 20 for landing near the middle). Fuel carries over: the tank gets a top-up each round, so
 fuel burnt hovering now is fuel you won't have later.
 
+You're the supply run (#165): each pad is an outpost that needs something. A ⛽ refinery fills your tank back up a
+little, a 🚑 medical rush pays the first lander a bonus, and a 🔬 survey lab pays for landing dead centre. Crystals
+and fuel canisters float in the sky (#167): a canister tops the tank up the moment you touch it; a 💎 crystal only
+counts if that flight ends in a landing. After a landing you may hop (#166): burn again within a few seconds of
+touchdown to lift off and land on a *different* pad for ×1.5 more (a crash on the hop keeps the first landing).
+
 Every browser flies its own lander on a fixed 30 Hz tick and sends its input log when it touches down; the server
 replays the log with the same integrator and judges the landing (its word is final). The angle moves in whole steps
 and the server hands out the sine/cosine table, so both sides do exactly the same arithmetic. Rivals show as ghost
@@ -33,6 +39,14 @@ MAX_TICKS = int(45 / DT)
 TANK0, REFILL, TANK_MAX = 24 * 30, 14 * 30, 36 * 30   # fuel, in ticks of burn
 COUNT, BETWEEN, SETTLE = 3.0, 6.0, 1.2
 GHOST_HZ = 10
+# the supply run: outposts on the pads, pickups in the sky, the hop
+NEEDS = ("fuel", "rush", "lab")
+NEED_FUEL, RUSH, LAB, LAB_PREC = 8 * 30, 40, 30, 0.8
+OUTPOSTS = ("Tycho Base", "Copernicus Camp", "Shackleton Ice Works", "Mare Station", "Kepler Lab", "Aristarchus Post",
+            "Plato Depot", "Hadley Outpost", "Serenity Dome", "Clavius Yard")
+GEM, PICK_FUEL, PICK_R2, N_PICKS = 15, 3 * 30, 2.6 * 2.6, 4
+HOP_MULT, HOP_MIN, HOP_OPEN, HOP_CLOSE = 1.5, 3 * 30, 24, 24 + 120   # ticks after touchdown: the window to lift off
+HOP_TICKS = 35 * 30    # a hop may fly this long from its lift-off (past the round's usual end)
 BOT = {  # think every n ticks, pad choice, touchdown speed aimed for, gain noise, approach speed cap
     "easy": (6, 1, 2.0, 0.35, 4.5),
     "normal": (3, 2, 1.4, 0.15, 6.0),
@@ -80,6 +94,27 @@ def make_moon(rng):
     return h, pads, (round(x0, 2), round(vx0, 2))
 
 
+def make_supply(rng, h, pads, start):
+    """This round's outpost needs (one per pad, [kind, name]) and the pickups in the sky ([x, y, kind]: 0 crystal, 1 fuel)."""
+    kinds = list(NEEDS)
+    rng.shuffle(kinds)
+    needs = [[k, nm] for k, nm in zip(kinds, rng.sample(OUTPOSTS, len(pads)))]
+    picks = []
+    for kind in [0] * (N_PICKS - 1) + [1]:
+        for _ in range(200):
+            x = rng.uniform(10, W - 10)
+            y = ground(h, x) + rng.uniform(12, 55)
+            if y > CEILING - 8:
+                continue
+            if any(abs(x - (l + r) / 2) < (r - l) / 2 + 4 for l, r, _, _ in pads):
+                continue
+            if math.hypot(x - start[0], y - START_Y) < 12 or any(math.hypot(x - q[0], y - q[1]) < 10 for q in picks):
+                continue
+            picks.append([round(x, 2), round(y, 2), kind])
+            break
+    return needs, picks
+
+
 def ground(h, x):
     i = int(x // SEG)
     i = max(0, min(NPTS - 2, i))
@@ -101,15 +136,28 @@ def judge(pads, x, vx, vy, k):
     return "crash", -1, 0, 0.0, 0.0
 
 
-def fly(h, pads, start, fuel, log, path_every=0):
+def fly(h, pads, start, fuel, log, path_every=0, picks=(), taken=(), hop=None):
     """Replay an input log: [[tick, bits], …] where bits = thrust + 2 × (rot + 1) applies from that tick on.
-    Returns a result dict; with path_every, also every n-th tick's [x, y, k, thrust] (for ghosts)."""
-    x, vx = start
-    y, vy, k = START_Y, 0.0, 0
+    Returns a result dict; with path_every, also every n-th tick's [x, y, k, thrust] (for ghosts).
+    picks: the pickups in the sky (those in `taken` are already gone); "got" lists the ones this flight touched.
+    hop=(x, y, tick): a hop from a pad, standing upright at rest from that tick; it only counts as down again once it
+    has been airborne (more than 1 m up)."""
+    if hop:
+        x, y, t0 = hop
+        vx = vy = 0.0
+        air = False
+    else:
+        x, vx = start
+        y, t0, air = START_Y, 0, True
+        vy = 0.0
+    k = 0
     thrust, rot = 0, 0
     li = 0
     path = []
-    for t in range(MAX_TICKS):
+    got = []
+    gone = set(taken)
+    end = t0 + HOP_TICKS if hop else MAX_TICKS
+    for t in range(t0, end):
         while li < len(log) and log[li][0] <= t:
             bits = log[li][1]
             thrust, rot = bits & 1, (bits >> 1) - 1
@@ -129,38 +177,62 @@ def fly(h, pads, start, fuel, log, path_every=0):
             x, vx = W - 1.0, 0.0
         if y > CEILING:
             y, vy = CEILING, min(vy, 0.0)
-        if path_every and t % path_every == 0:
+        for i, (px, py, kind) in enumerate(picks):
+            if i not in gone:
+                dx, dy = x - px, y + 1.0 - py
+                if dx * dx + dy * dy < PICK_R2:
+                    gone.add(i)
+                    got.append(i)
+                    if kind == 1:
+                        fuel += PICK_FUEL
+        if path_every and (t - t0) % path_every == 0:
             path.append([round(x, 2), round(y, 2), k, 1 if on else 0])
         gy = ground(h, x)
+        if not air:
+            if y > gy + 1.0:
+                air = True
+            elif y <= gy:
+                y, vy, vx = gy, 0.0, 0.0
+                continue
         if y <= gy:
             how, pad, pts, soft, prec = judge(pads, x, vx, vy, k)
             if path_every:
                 path.append([round(x, 2), round(gy, 2), k, 0])
             return {"how": how, "pad": pad, "pts": pts, "ticks": t + 1, "x": round(x, 2), "vx": round(vx, 2),
-                    "vy": round(vy, 2), "k": k, "fuel": fuel, "soft": round(soft, 2), "prec": round(prec, 2), "path": path}
-    return {"how": "lost", "pad": -1, "pts": 0, "ticks": MAX_TICKS, "x": round(x, 2), "vx": round(vx, 2), "vy": round(vy, 2),
-            "k": k, "fuel": fuel, "soft": 0, "prec": 0, "path": path}
+                    "vy": round(vy, 2), "k": k, "fuel": fuel, "soft": round(soft, 2), "prec": round(prec, 2), "path": path,
+                    "got": got}
+    return {"how": "lost", "pad": -1, "pts": 0, "ticks": end, "x": round(x, 2), "vx": round(vx, 2), "vy": round(vy, 2),
+            "k": k, "fuel": fuel, "soft": 0, "prec": 0, "path": path, "got": got}
 
 
-def autopilot(h, pads, start, fuel, level, rng):
+def autopilot(h, pads, start, fuel, level, rng, hop=None, target=None):
     """A bot's flight: a PD controller toward a chosen pad, deciding every few ticks, with shaky gains.
-    Returns the input log it would have pressed (so the server judges it exactly like a human's)."""
+    Returns the input log it would have pressed (so the server judges it exactly like a human's).
+    hop=(x, y, tick) and target=pad index: a hop from a pad (as fly() takes it)."""
     every, want, touch, noise, vcap = BOT.get(level, BOT["normal"])
     # pick a pad: the bot's favourite multiplier, or a lower one if the tank is low
     cands = sorted(range(len(pads)), key=lambda n: -pads[n][3])
     pref = [n for n in cands if pads[n][3] <= want]
     if fuel < 10 * 30:
         pref = [n for n in cands if pads[n][3] == 1] or pref
-    n = pref[0] if pref else cands[-1]
+    n = target if target is not None else pref[0] if pref else cands[-1]
     l, r, top, _ = pads[n]
     px = (l + r) / 2 + rng.uniform(-1, 1) * ((r - l) / 2 - FOOT) * (0.6 if level == "easy" else 0.25)
     gx, gk, gv = (1 + rng.gauss(0, noise) for _ in range(3))
-    x, vx = start
-    y, vy, k = START_Y, 0.0, 0
+    if hop:
+        x, y, t0 = hop
+        vx = vy = 0.0
+        air = False
+    else:
+        x, vx = start
+        y, t0, air = START_Y, 0, True
+        vy = 0.0
+    k = 0
     log, bits_now = [], None
     thrust = rot = 0
-    for t in range(MAX_TICKS):
-        if t % every == 0:
+    climb, clr = (2.5, 6) if hop else (1.0, 12)   # a hop skims low and quick
+    for t in range(t0, t0 + HOP_TICKS if hop else MAX_TICKS):
+        if (t - t0) % every == 0:
             dx = px - x
             alt = y - max(top, ground(h, x))
             over = abs(dx) < (r - l) / 2 - FOOT - 0.3
@@ -174,8 +246,8 @@ def autopilot(h, pads, start, fuel, level, rng):
             want_k = max(-9, min(9, round((want_vx - vx) * 2.2 * gk)))
             if alt < 7 or (over and abs(vx) < 0.6):
                 want_k = max(-2, min(2, round((want_vx - vx) * 1.2))) if alt > 2.5 else 0
-            if not over and clear < 12:
-                want_vy = 1.0                 # climb over the ridge first
+            if not over and clear < clr:
+                want_vy = climb               # climb over the ridge first
             elif not over:
                 want_vy = -min(3.0, max(0.5, clear * 0.1))
             else:
@@ -202,7 +274,14 @@ def autopilot(h, pads, start, fuel, level, rng):
             x, vx = W - 1.0, 0.0
         if y > CEILING:
             y, vy = CEILING, min(vy, 0.0)
-        if y <= ground(h, x):
+        gy = ground(h, x)
+        if not air:
+            if y > gy + 1.0:
+                air = True
+            elif y <= gy:
+                y, vy, vx = gy, 0.0, 0.0
+                continue
+        if y <= gy:
             break
     return log
 
@@ -215,18 +294,22 @@ class Lander(Game):
         "Everyone flies at once over the same stretch of moon. Hold 🔥 (or ↑ / Space) to fire the engine, ◀ ▶ (or ← →) to lean.",
         "Touch down on a pad gently: under 2.5 m/s down, 1.5 m/s sideways, nearly upright. Anything else is a crash.",
         "Pads score ×1, ×2 or ×3 (the narrow, awkward one) × (50 + softness up to 30 + aim up to 20).",
+        "Each pad is an outpost that needs you: ⛽ a refinery refills 8 s of fuel, 🚑 a medical rush pays +40 to the first one down, 🔬 a lab pays +30 for landing dead centre.",
+        "💎 Crystals in the sky are +15 each if that flight lands; a ⛽ canister adds 3 s of fuel the moment you touch it.",
+        "Landed with fuel to spare? Burn again within 4 s to hop to a different pad for ×1.5 more. A crash on the hop keeps your first landing.",
         "Fuel carries over: the tank only gets a top-up each round, so don't waste it hovering.",
         "Most points after the last round wins.",
     ]
     name = "Moon Lander"
     icon = "🚀"
-    blurb = "Everyone lands at once: lean, burn, touch down softly on the ×3 pad. Fuel carries over between rounds."
+    blurb = "Everyone flies the supply run at once: grab crystals, touch down softly on an outpost's pad, then hop to another. Fuel carries over."
     min_players = 1
     max_players = 6
     replayable = False
     badges = {**Game.badges,
               "feather": ("🪶", "Feather", "Touch down at under 0.5 m/s"),
-              "bullseye": ("🎯", "Bullseye", "Land dead centre on a ×3 pad")}
+              "bullseye": ("🎯", "Bullseye", "Land dead centre on a ×3 pad"),
+              "hopper": ("🔁", "Hopper", "Hop from one pad and land on the ×3")}
     settings_schema = {
         "rounds": ("Rounds", [(5, "5"), (3, "3"), (7, "7")], 5),
     }
@@ -259,6 +342,8 @@ class Lander(Game):
         self.mark_round()
         self.round_no += 1
         self.h, self.pads, self.start_xv = make_moon(self.rng)
+        self.needs, self.picks = make_supply(self.rng, self.h, self.pads, self.start_xv)
+        self.rushed = set()               # rush outposts already reached this round
         self.stage = "count"
         self.t0 = now + COUNT
         r.deadline = self.t0
@@ -269,57 +354,124 @@ class Lander(Game):
             g.tank = g.fuel                 # what this round's flight starts with
             g.res = None                    # this round's result
             g.ghost = None                  # [x, y, k, thrust] as last posted
-            g.plan = None                   # a bot's planned flight: (result, path)
+            g.plan = None                   # a bot's planned flight: (result, started at, first tick)
+            g.hop = None                    # after a landing: {"open", "close"} ticks → "up" → the hop's result
+            g.land1 = None                  # the first landing's result (for the hop)
         r.add_log(f"🌕 Round {self.round_no} of {self.rounds}: pads ×1, ×2 and ×3. Get ready…", "info")
 
     # -- flying
 
+    @staticmethod
+    def _log(log, lo=0, hi=MAX_TICKS):
+        if not isinstance(log, list) or len(log) > 3000:
+            raise GameError("Bad flight log.")
+        last = lo - 1
+        for e in log:
+            if (not isinstance(e, list) or len(e) != 2 or not all(isinstance(v, int) and not isinstance(v, bool) for v in e)
+                    or e[0] <= last or not lo <= e[0] < hi or not 0 <= e[1] <= 5):
+                raise GameError("Bad flight log.")
+            last = e[0]
+        return log
+
     def act(self, p, a):
-        if a.get("type") != "land":
+        kind = a.get("type")
+        if kind not in ("land", "lift", "hop"):
             raise GameError("Unknown action.")
         if p.id not in self.seats or p.eliminated:
             raise GameError("You're watching this one.")
+        if self.stage not in ("fly", "settle"):
+            raise GameError("Not flying right now.")
+        g, now = p.g, time.time()
+        if kind == "lift":
+            hop, t = g.hop, a.get("t")
+            if not isinstance(hop, dict):
+                raise GameError("No hop to make.")
+            if not isinstance(t, int) or isinstance(t, bool) or not hop["open"] <= t <= hop["close"]:
+                raise GameError("Too late to hop.")
+            if t * DT > now - self.t0 + 3.0 or now - self.t0 > hop["close"] * DT + 3.0:
+                raise GameError("Too late to hop.")
+            g.hop = "up"
+            g.lift = t
+            self.room.deadline = max(self.room.deadline or 0, self.t0 + (t + HOP_TICKS) * DT + 1.5)
+            return
+        if kind == "hop":
+            if g.hop != "up":
+                raise GameError("You're not hopping.")
+            log = self._log(a.get("log"), g.lift, g.lift + HOP_TICKS)
+            res = self.fly_hop(p, log)
+            if res["ticks"] * DT > now - self.t0 + 3.0:
+                raise GameError("That flight was too quick.")
+            return self.hop_done(p, res, now)
         if self.stage != "fly":
             raise GameError("Not flying right now.")
-        if p.g.res is not None:
+        if g.res is not None:
             raise GameError("You've already come down this round.")
-        log = a.get("log")
-        if not isinstance(log, list) or len(log) > 3000:
-            raise GameError("Bad flight log.")
-        last = -1
-        for e in log:
-            if (not isinstance(e, list) or len(e) != 2 or not all(isinstance(v, int) and not isinstance(v, bool) for v in e)
-                    or e[0] <= last or not 0 <= e[0] < MAX_TICKS or not 0 <= e[1] <= 5):
-                raise GameError("Bad flight log.")
-            last = e[0]
-        res = fly(self.h, self.pads, self.start_xv, p.g.tank, log)
+        log = self._log(a.get("log"))
+        res = fly(self.h, self.pads, self.start_xv, g.tank, log, picks=self.picks)
         # the flight must have taken (about) as long as it says
-        if res["ticks"] * DT > time.time() - self.t0 + 3.0:
+        if res["ticks"] * DT > now - self.t0 + 3.0:
             raise GameError("That flight was too quick.")
-        self.done(p, res, time.time())
+        self.done(p, res, now)
+
+    def fly_hop(self, p, log, path_every=0):
+        g = p.g
+        r1 = g.land1
+        top = self.pads[r1["pad"]][2]
+        return fly(self.h, self.pads, None, g.fuel, log, path_every=path_every, picks=self.picks, taken=r1.get("got", []),
+                   hop=(r1["x"], top, g.lift))
 
     def on_input(self, p, a):
         """A human's lander position while flying (for everyone else's ghost view)."""
-        if p.id not in self.seats or p.eliminated or self.stage != "fly" or p.g.res is not None:
+        if p.id not in self.seats or p.eliminated or self.stage not in ("fly", "settle") or (p.g.res is not None and p.g.hop != "up"):
             return
         g = a.get("at")
         if not (isinstance(g, list) and len(g) == 4 and all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in g)):
             raise GameError("Bad position.")
         p.g.ghost = [round(max(0.0, min(W, g[0])), 2), round(max(-5.0, min(CEILING + 5, g[1])), 2), int(max(-K_MAX, min(K_MAX, g[2]))), 1 if g[3] else 0]
 
+    def deliver(self, p, res):
+        """A landing's extras: crystals from that flight and the outpost's need. Returns (points, words)."""
+        g = p.g
+        kind, name = self.needs[res["pad"]]
+        pts, words = 0, []
+        gems = sum(1 for i in res.get("got", []) if self.picks[i][2] == 0)
+        if gems:
+            pts += GEM * gems
+            words.append(f"💎×{gems} +{GEM * gems}")
+        if kind == "fuel":
+            g.fuel = min(TANK_MAX, g.fuel + NEED_FUEL)
+            words.append(f"⛽ {name} refuels you")
+        elif kind == "rush":
+            if res["pad"] not in self.rushed:
+                self.rushed.add(res["pad"])
+                pts += RUSH
+                words.append(f"🚑 first to {name} +{RUSH}")
+        elif kind == "lab" and res["prec"] >= LAB_PREC:
+            pts += LAB
+            words.append(f"🔬 {name} bullseye +{LAB}")
+        res["bonus"] = pts
+        res["words"] = words
+        return pts
+
     def done(self, p, res, now):
         g = p.g
         res = {k: v for k, v in res.items() if k != "path"}
         g.res = res
         g.fuel = res["fuel"]
-        g.points += res["pts"]
-        g.best = max(g.best, res["pts"])
         g.ghost = None
         r = self.room
         if res["how"] == "land":
+            res["pts"] += self.deliver(p, res)
+        g.points += res["pts"]
+        g.best = max(g.best, res["pts"])
+        if res["how"] == "land":
             g.lands += 1
+            g.land1 = res
+            if g.fuel >= HOP_MIN and len(self.pads) > 1:
+                g.hop = {"open": res["ticks"] + HOP_OPEN, "close": res["ticks"] + HOP_CLOSE}
             mult = self.pads[res["pad"]][3]
-            r.add_log(f"🛬 {p.name} lands on the ×{mult} pad at {-res['vy']:.1f} m/s: +{res['pts']}.", "info")
+            extra = f" ({', '.join(res['words'])})" if res["words"] else ""
+            r.add_log(f"🛬 {p.name} lands on the ×{mult} pad at {-res['vy']:.1f} m/s: +{res['pts']}{extra}.", "info")
             if -res["vy"] < 0.5:
                 self.award(p, "feather")
             if mult == 3 and res["prec"] >= 0.9:
@@ -332,10 +484,42 @@ class Lander(Game):
             r.add_log(f"💥 {p.name} crashes ({why}).", "info")
         else:
             r.add_log(f"🛰️ {p.name} drifts off into space.", "info")
-        here = self.present()
-        if all(o.g.res is not None for o in here) and self.stage == "fly":
+        self.check_settle(now)
+
+    def hop_done(self, p, res, now):
+        g, r = p.g, self.room
+        res = {k: v for k, v in res.items() if k != "path"}
+        g.fuel = res["fuel"]
+        g.ghost = None
+        first = g.land1["pad"]
+        if res["how"] == "land" and res["pad"] != first:
+            res["pts"] = int(round(HOP_MULT * res["pts"]))
+            res["pts"] += self.deliver(p, res)
+            g.points += res["pts"]
+            g.res["pts"] += res["pts"]
+            g.best = max(g.best, g.res["pts"])
+            mult = self.pads[res["pad"]][3]
+            extra = f" ({', '.join(res['words'])})" if res["words"] else ""
+            r.add_log(f"🔁 {p.name} hops to the ×{mult} pad: +{res['pts']}{extra}.", "info")
+            if mult == 3:
+                self.award(p, "hopper")
+                self.moment(f"🔁 {p.name} hops onto the ×3 pad! +{res['pts']}", "gold", "good")
+        else:
+            res["pts"] = 0
+            r.add_log(f"🔁 {p.name}'s hop " + ("crashes (the first landing still counts)." if res["how"] == "crash"
+                      else "ends on the same pad: no bonus." if res["how"] == "land" else "comes to nothing."), "info")
+        g.hop = res
+        self.check_settle(now)
+
+    def busy(self, o, now):
+        """Still flying, or may yet hop."""
+        h = o.g.hop
+        return o.g.res is None or h == "up" or (isinstance(h, dict) and "open" in h and now < self.t0 + h["close"] * DT + 1.0)
+
+    def check_settle(self, now):
+        if self.stage == "fly" and not any(self.busy(o, now) for o in self.present()):
             self.stage = "settle"
-            r.deadline = now + SETTLE
+            self.room.deadline = now + SETTLE
 
     def frame(self, now):
         """Bots fly their planned flights on the clock; ghost positions stream ~10 times a second."""
@@ -351,25 +535,68 @@ class Lander(Game):
         t = now - self.t0
         for p in self.present():
             g = p.g
-            if not p.bot or g.res is not None:
+            if not p.bot:
+                if isinstance(g.hop, dict) and "open" in g.hop and not self.busy(p, now):
+                    g.hop = None                      # the hop window closed
+                    self.check_settle(now)
+                    changed = True
                 continue
-            if g.plan is None:
-                log = autopilot(self.h, self.pads, self.start_xv, g.tank, p.bot, random)
-                res = fly(self.h, self.pads, self.start_xv, g.tank, log, path_every=3)
-                g.plan = (res, max(0.0, t))           # a stand-in who took over late starts from now
-            res, since = g.plan
+            if g.res is None:
+                if g.plan is None:
+                    log = autopilot(self.h, self.pads, self.start_xv, g.tank, p.bot, random)
+                    res = fly(self.h, self.pads, self.start_xv, g.tank, log, path_every=3, picks=self.picks)
+                    g.plan = (res, max(0.0, t), 0)    # a stand-in who took over late starts from now
+            elif isinstance(g.hop, dict) and "open" in g.hop:
+                if not self.bot_hop(p, t):
+                    g.hop = None
+                    self.check_settle(now)
+                    changed = True
+                continue
+            elif g.hop != "up":
+                continue
+            res, since, t0 = g.plan
             k = int((t - since) / DT)
             if k >= res["ticks"]:
-                self.done(p, res, now)
+                (self.hop_done if g.hop == "up" else self.done)(p, res, now)
                 changed = True
             else:
                 path = res["path"]
-                g.ghost = path[min(len(path) - 1, k // 3)]
+                g.ghost = path[max(0, min(len(path) - 1, (k - t0) // 3))]
         if now - self.ghost_at >= 1 / GHOST_HZ:
             self.ghost_at = now
             self.room.push_fast({"gh": {str(self.seats.index(p.id)): p.g.ghost for p in self.present() if p.g.ghost and p.id in self.seats},
                                  "rd": self.round_no})
         return changed
+
+    def bot_hop(self, p, t):
+        """A bot that has landed: normal and hard bots hop to a better pad when the tank allows. Plans it and lifts."""
+        g = p.g
+        first = g.land1["pad"]
+        if p.bot not in ("normal", "hard") or g.fuel < 10 * 30 or (p.bot == "normal" and random.random() < 0.5):
+            return False
+        here = self.pads[first][3]
+        better = [n for n in range(len(self.pads)) if n != first and (self.pads[n][3] > here or self.needs[n][0] == "rush" and n not in self.rushed)]
+        if not better:
+            return False
+        x0 = g.land1["x"]
+        better = [n for n in better if abs((self.pads[n][0] + self.pads[n][1]) / 2 - x0) < 70]
+        if not better:
+            return False
+        n = max(better, key=lambda n: self.pads[n][3])
+        _, since, _ = g.plan
+        g.lift = g.hop["open"] + random.randint(4, 30)
+        # a bot only sets off on a hop it can see itself making (in good time): a couple of tries at a plan
+        for _ in range(3):
+            log = autopilot(self.h, self.pads, None, g.fuel, p.bot, random, hop=(x0, self.pads[first][2], g.lift), target=n)
+            res = self.fly_hop(p, log, path_every=3)
+            if res["how"] == "land" and res["pad"] == n and res["ticks"] - g.lift < 26 * 30:
+                break
+        else:
+            return False
+        g.hop = "up"
+        g.plan = (res, since, g.lift)
+        self.room.deadline = max(self.room.deadline or 0, self.t0 + (g.lift + HOP_TICKS) * DT + 1.5)
+        return True
 
     def end_round(self, now):
         r = self.room
@@ -377,6 +604,8 @@ class Lander(Game):
         self.stage = "between"
         r.deadline = now + BETWEEN
         for o in here:
+            if isinstance(o.g.hop, dict) and "open" in o.g.hop:
+                o.g.hop = None
             if o.g.res is None:
                 o.g.res = {"how": "lost", "pad": -1, "pts": 0, "ticks": MAX_TICKS, "x": 0, "vx": 0, "vy": 0, "k": 0,
                            "fuel": o.g.fuel, "soft": 0, "prec": 0}
@@ -414,8 +643,15 @@ class Lander(Game):
                 if p.bot and p.g.res is None:
                     if p.g.plan is None:
                         log = autopilot(self.h, self.pads, self.start_xv, p.g.tank, p.bot, random)
-                        p.g.plan = (fly(self.h, self.pads, self.start_xv, p.g.tank, log), 0.0)
+                        p.g.plan = (fly(self.h, self.pads, self.start_xv, p.g.tank, log, picks=self.picks), 0.0, 0)
                     self.done(p, p.g.plan[0], now)
+                if p.bot and isinstance(p.g.hop, dict) and "open" in p.g.hop:
+                    self.bot_hop(p, now - self.t0)
+                if p.g.hop == "up":
+                    if p.bot:
+                        self.hop_done(p, p.g.plan[0], now)
+                    else:
+                        self.hop_done(p, {"how": "lost", "pad": -1, "pts": 0, "fuel": p.g.fuel, "got": []}, now)
             return self.end_round(now)
         return self.after_round(now)
 
@@ -434,9 +670,7 @@ class Lander(Game):
             return r.finish(None, "Everyone left.")
         if len(left) == 1 and len(self.seats) > 1 and r.phase == "playing":
             return r.finish(left[0], f"🏳️ Everyone else left — {left[0].name} wins!")
-        if self.stage == "fly" and all(o.g.res is not None for o in self.present()):
-            self.stage = "settle"
-            r.deadline = time.time() + SETTLE
+        self.check_settle(time.time())
 
     # -- view
 
@@ -456,15 +690,18 @@ class Lander(Game):
             o = r.players.get(pid)
             g = o.g if o else None
             fliers.append({"points": getattr(g, "points", 0), "fuel": getattr(g, "fuel", 0), "tank": getattr(g, "tank", 0),
-                           "res": getattr(g, "res", None), "out": not o or o.eliminated})
+                           "res": getattr(g, "res", None), "hop": getattr(g, "hop", None), "out": not o or o.eliminated})
         me = self.seat(p)
         return {"lander": {
             "seats": self.seats, "me": me, "round": self.round_no, "rounds": self.rounds, "stage": self.stage,
             "startIn": max(0.0, round(self.t0 - now, 2)) if self.stage == "count" else 0,
             "flown": max(0.0, round(now - self.t0, 2)) if self.stage in ("fly", "settle") else 0,
             "h": self.h, "pads": self.pads, "start": list(self.start_xv), "fliers": fliers,
+            "needs": self.needs, "picks": self.picks, "rushed": sorted(self.rushed),
             "standings": self.standings() if self.stage == "between" and len(self.seats) > 1 else None,
             "geo": {"dt": DT, "g": G, "thrust": THRUST, "rot": ROT_STEP, "kMax": K_MAX, "w": W, "seg": SEG, "startY": START_Y,
                     "ceiling": CEILING, "vyOk": VY_OK, "vxOk": VX_OK, "angOk": ANG_OK, "foot": FOOT, "maxTicks": MAX_TICKS,
-                    "sin": SIN, "cos": COS, "tankMax": TANK_MAX},
+                    "sin": SIN, "cos": COS, "tankMax": TANK_MAX, "pickR2": PICK_R2, "pickFuel": PICK_FUEL, "gem": GEM,
+                    "hopOpen": HOP_OPEN, "hopClose": HOP_CLOSE, "hopTicks": HOP_TICKS, "hopMin": HOP_MIN, "hopMult": HOP_MULT, "needFuel": NEED_FUEL,
+                    "rush": RUSH, "lab": LAB, "labPrec": LAB_PREC},
         }}
