@@ -436,7 +436,7 @@ UI.lander = (() => {
       for (const p of padObjs) { world.remove(p); disposeTree(p); }
       padObjs = [];
       for (const c of [...extras.children]) { extras.remove(c); disposeTree(c); }
-      wreck.clear(); bits.length = 0; fx.length = 0;
+      wreck.clear(); bits.length = 0; fx.length = 0; holes.length = 0;
       const g = G(), h = V.h, seed = V.round * 977;
       const rnd = (a) => { const s = Math.sin(a * 12.9898 + seed) * 43758.5453; return s - Math.floor(s); };
       // past the ends the moon carries on: blend from the edge height into rolling hills
@@ -691,10 +691,32 @@ UI.lander = (() => {
       for (let k = 0; k < (few ? 6 : 18) >> (small ? 1 : 0); k++) emit(x + (Math.random() - 0.5) * 2, y + 0.4, z, (Math.random() - 0.5) * 1.5, 0.5 + Math.random() * 1.5, (Math.random() - 0.5) * 1.5, '#ff6a20', 2.5 + Math.random() * 1.5, 0.3);
       const nd = (few ? 50 : 140) >> (small ? 1 : 0);
       for (let k = 0; k < nd; k++) { const a = Math.random() * 6.283, s = 3 + Math.random() * 7; kick(x, y + 0.3, z, Math.cos(a) * s, 1 + Math.random() * 4, Math.sin(a) * s * 0.7, 2 + Math.random() * 1.5); }
-      // a scorch on the ground, tilted to the slope; it stays for the round
+      // #164: off the pads the ground takes a crater, blackened; on a pad, just a scorch. Both stay for the round
+      if (!onPad(x)) { crater(x, z, small ? 3 : 5); if (small) return; return breakUp(x, y, z); }
       const sc = new T.Mesh(unit, scorchMat), sl = Math.atan2(ground(x + 1) - ground(x - 1), 2);
       sc.rotation.set(-Math.PI / 2, 0, 0); sc.rotateOnWorldAxis(new T.Vector3(0, 0, 1), sl); sc.position.set(x, ground(x) + 0.06, z); sc.scale.setScalar(small ? 4 : 7); wreck.add(sc);
       if (small) return;
+      breakUp(x, y, z);
+    }
+    const onPad = (x) => V.pads.some(([l, r]) => x > l - 1 && x < r + 1);
+    const holes = [];
+    // how far a crater has dug the ground down at (x, z) (the rules' ground is untouched: this is only scenery)
+    const dent = (x, z) => { let d = 0; for (const [cx, cz, R] of holes) { const r = Math.hypot(x - cx, z - cz); if (r < R) d -= Math.cos((r / R) * Math.PI / 2) * R * 0.32; } return d; };
+    function crater(x, z, R) {
+      holes.push([x, z, R]);
+      const pa = terrain.geometry.attributes.position, ca = terrain.geometry.attributes.color, a = pa.array, c = ca.array;
+      for (let i = 0; i < pa.count; i++) {
+        const dx = a[i * 3] - x, dz = a[i * 3 + 2] - z;
+        if (Math.abs(dx) > R * 1.6 || Math.abs(dz) > R * 1.6) continue;
+        const d = Math.hypot(dx, dz);
+        if (d < R) a[i * 3 + 1] -= Math.cos((d / R) * Math.PI / 2) * R * 0.32;
+        else if (d < R * 1.5) a[i * 3 + 1] += Math.sin(((d - R) / (R * 0.5)) * Math.PI) * R * 0.12;   // a thrown-up rim
+        if (d < R * 1.6) { const f = d < R * 0.7 ? 0.35 : 0.35 + 0.65 * Math.min(1, (d - R * 0.7) / (R * 0.9)); c[i * 3] *= f; c[i * 3 + 1] *= f; c[i * 3 + 2] *= f; }
+      }
+      pa.needsUpdate = ca.needsUpdate = true; terrain.geometry.computeVertexNormals();
+    }
+    function breakUp(x, y, z) {
+      const few = calm() || low;
       // the lander comes apart: its own parts tumble away in slow moon arcs, with foil shards
       mine3.updateMatrixWorld(true);
       const parts = [];
@@ -725,7 +747,7 @@ UI.lander = (() => {
         b.v[1] -= 1.62 * dt;
         p.x += b.v[0] * dt; p.y += b.v[1] * dt; p.z += b.v[2] * dt;
         b.m.rotation.x += b.w[0] * dt; b.m.rotation.y += b.w[1] * dt; b.m.rotation.z += b.w[2] * dt;
-        const gy = ground(Math.max(0, Math.min(G().w, p.x))) + 0.15;
+        const gy = ground(Math.max(0, Math.min(G().w, p.x))) + dent(p.x, p.z) + 0.15;
         if (p.y < gy) {
           p.y = gy; b.v[1] = -b.v[1] * 0.35; b.v[0] *= 0.6; b.v[2] *= 0.6; for (let i = 0; i < 3; i++) b.w[i] *= 0.6;
           if (Math.abs(b.v[1]) > 1.2 && !calm()) kick(p.x, gy, p.z, b.v[0] * 0.3, 0.8, b.v[2] * 0.3, 0.8);
@@ -859,9 +881,9 @@ UI.lander = (() => {
       const X = (x) => W / 2 + (x - cx) * k, Y = (y) => H * 0.55 - (y - cy) * k;
       g.fillStyle = '#05060f'; g.fillRect(0, 0, W, H);
       g.fillStyle = '#ffffffaa'; for (const [a, b] of stars) g.fillRect(a * W, b * H, 1.5, 1.5);
-      g.fillStyle = '#8b8d94'; g.beginPath(); g.moveTo(X(0), H);
+      g.fillStyle = '#8b8d94'; g.beginPath(); g.moveTo(X(-400), H); g.lineTo(X(-400), Y(V.h[0]));   // (#162: the moon runs on past both ends)
       V.h.forEach((y, i) => g.lineTo(X(i * gg.seg), Y(y)));
-      g.lineTo(X(gg.w), H); g.fill();
+      g.lineTo(X(gg.w + 400), Y(V.h[V.h.length - 1])); g.lineTo(X(gg.w + 400), H); g.fill();
       for (const [l, r, y, m] of V.pads) {
         g.fillStyle = m === 3 ? '#ff5d8f' : m === 2 ? '#ffd23f' : '#5ce1a0'; g.fillRect(X(l), Y(y) - 3, (r - l) * k, 4);
         g.font = `bold ${Math.max(12, 2.2 * k)}px sans-serif`; g.textAlign = 'center'; g.fillText(`×${m}`, X((l + r) / 2), Y(y) - 8);
@@ -876,7 +898,16 @@ UI.lander = (() => {
       };
       for (const [i, o] of Object.entries(ghosts)) { const p = o.cur(now); lander(p[0], p[1], p[2], p[3], colorOf(+i), 0.45); }
       if (fl && !(fl.done && fl.done.how === 'crash')) lander(fl.x, fl.y, fl.k, !fl.done && fl.on, '#d9a63a', 1);
-      for (const sc of scorches) { g.fillStyle = '#0b0b0dcc'; g.beginPath(); g.ellipse(X(sc.x), Y(sc.y), sc.r * k, sc.r * k * 0.3, 0, 0, 7); g.fill(); }
+      for (const sc of scorches) {
+        if (sc.hole) {   // #164: a crater cut into the ground, with a lip of thrown regolith
+          const R = sc.r * k, cx = X(sc.x), cy = Y(sc.y);
+          g.fillStyle = '#8b8d94'; for (const s of [-1, 1]) { g.beginPath(); g.ellipse(cx + s * R * 1.15, cy, R * 0.35, R * 0.16, 0, Math.PI, 0); g.fill(); }
+          g.fillStyle = '#3a3b40'; g.beginPath(); g.ellipse(cx, cy, R, R * 0.4, 0, 0, Math.PI); g.fill();
+          g.fillStyle = '#1b1b1f'; g.beginPath(); g.ellipse(cx, cy + R * 0.05, R * 0.7, R * 0.25, 0, 0, Math.PI); g.fill();
+          continue;
+        }
+        g.fillStyle = '#0b0b0dcc'; g.beginPath(); g.ellipse(X(sc.x), Y(sc.y), sc.r * k, sc.r * k * 0.3, 0, 0, 7); g.fill();
+      }
       for (let j = chunks.length - 1; j >= 0; j--) {
         const c = chunks[j], dt = Math.max(0, Math.min(0.05, (now - c.last) / 1000)); c.last = Math.max(c.last, now);
         if (!c.rest) { c.vy -= 1.62 * dt; c.x += c.vx * dt; c.y += c.vy * dt; c.a += c.w * dt; const gy = ground(Math.max(0, Math.min(gg.w, c.x))); if (c.y < gy) { c.y = gy; c.vy *= -0.35; c.vx *= 0.6; c.w *= 0.6; if (Math.abs(c.vy) < 0.6) c.rest = true; } }
@@ -899,7 +930,7 @@ UI.lander = (() => {
       boom: (x, y, o = {}) => {
         const at = performance.now(), small = !!o.small;
         pops.push({ x, y: y + 1, ball: true, size: small ? 3 : 6, at }, { x, y, col: '#ffb347', size: small ? 5 : 10, at });
-        scorches.push({ x, y: ground(x), r: small ? 2 : 3.5 });
+        scorches.push({ x, y: ground(x), r: small ? 2.5 : 4, hole: !V.pads.some(([l, r]) => x > l - 1 && x < r + 1) });
         if (!small) for (let n = 0; n < 12; n++) { const a = Math.random() * Math.PI; chunks.push({ x, y: y + 1, vx: Math.cos(a) * (2 + Math.random() * 6), vy: 2 + Math.random() * 7, a: 0, w: (Math.random() - 0.5) * 10, s: 0.4 + Math.random() * 0.7, col: n % 3 ? '#d9a63a' : '#dfe3ea', last: at }); }
       },
       rebuild() { chunks.length = 0; scorches.length = 0; },
