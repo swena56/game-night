@@ -674,9 +674,10 @@ const MOVES = {
     wt.value = String(25 + Math.round(Math.random() * 40)); wt.dispatchEvent(new w.Event('input', { bubbles: true }));
     click(d.querySelector('#icThrow'));
   },
-  archery(d, S, n, w) {  // nudge the sight a few steps, sometimes take the steady breath, then loose
+  archery(d, S, n, w) {  // nudge the sight a few steps, sometimes take the steady breath or a fire arrow, then loose
     for (let k = 0; k < 1 + (n % 4); k++) click(pick([...d.querySelectorAll('#arCtl [data-n]')]));
     if (n % 5 === 3) click(d.querySelector('#arBreath'));
+    if (n % 3 === 1) { const f = d.querySelector('#arFire'); if (f && !f.disabled && !f.hidden) click(f); }   // #177 a fire arrow now and then
     click(d.querySelector('#arLoose'));
   },
   wobble(d, S, n, w) {  // pick the next player's block when it's our gift, else nudge the ghost about and place it

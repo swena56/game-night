@@ -26,6 +26,8 @@
 .ar-pad button { width: 40px; height: 40px; padding: 0; border-radius: 50%; font-size: 15px; touch-action: manipulation; }
 .ar-breath { min-height: 44px; padding: 6px 12px; }
 .ar-breath.on { background: #2e9c63; color: #fff; border-color: transparent; }
+.ar-fire { min-height: 44px; padding: 6px 12px; }
+.ar-fire.on { background: linear-gradient(180deg, #ff9b3d, #e2531c); color: #fff; border-color: transparent; box-shadow: 0 0 12px #ff8a2a99; }
 .ar-loose { min-width: 120px; min-height: 44px; font-size: 16px; }
 .ar-loose.ar-ready { animation: pulse 1.6s infinite; }
 .ar-scores td, .ar-scores th { padding: 2px 6px; text-align: center; }
@@ -33,12 +35,20 @@
 .ar-scores tr.now { background: var(--panel2); }
 .ar-scores .ar-x { color: #ffd23f; font-weight: 700; }
 .ar-scores .ar-left { letter-spacing: 1px; font-size: 10px; color: var(--muted); white-space: nowrap; }
+/* #177 the course banner as an end starts, and slow motion's letterbox */
+.ar-course { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%); z-index: 3; pointer-events: none; white-space: nowrap;
+  background: #0b1626d8; color: #fff; border-radius: 999px; padding: 8px 18px; font-size: clamp(17px, 5vw, 24px); font-weight: 800; box-shadow: 0 4px 18px #0006; }
+.ar-course-in { animation: arCourse 2.6s ease-out both; }
+@keyframes arCourse { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.6); } 12% { opacity: 1; transform: translate(-50%, -50%) scale(1.08); } 20% { transform: translate(-50%, -50%) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -70%); } }
+.ar-stage::before, .ar-stage::after { content: ''; position: absolute; left: 0; right: 0; height: 0; background: #000; z-index: 1; pointer-events: none; transition: height .25s ease-out; }
+.ar-stage::before { top: 0; } .ar-stage::after { bottom: 0; }
+.ar-stage.ar-slow::before, .ar-stage.ar-slow::after { height: 9%; }
 @media (max-width: 420px) {
   .ar-stage { height: 54vh; }
   .ar-pad button { width: 36px; height: 36px; }
   .ar-loose { min-width: 100px; }
 }
-@media (prefers-reduced-motion: reduce) { .ar-pop-in, .ar-done, .ar-loose.ar-ready { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .ar-pop-in, .ar-done, .ar-loose.ar-ready, .ar-course-in { animation: none; } }
 /* 💪 the draw's stamina (#128): a ring that empties as you hold; it shakes once the tremor sets in */
 .ar-stam { position: absolute; left: 10px; bottom: 10px; z-index: 2; width: 46px; height: 46px; border-radius: 50%; pointer-events: none;
   background: conic-gradient(var(--c, #3ddc97) var(--p, 360deg), #ffffff22 0); display: grid; place-items: center; }
