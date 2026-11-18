@@ -9,6 +9,13 @@ The wind shifts every so often, dark gust patches drift down the lake (+30 % win
 another's wind shadow (just downwind of it) loses a quarter of its speed. Pass close by each buoy in order, then
 cross the finish line. Finishing order scores 10/7/5/3/2/1; the race ends 20 s after the winner.
 
+🏴‍☠️ Pirates (on by default, #176): every boat is a pirate sloop with a cannon each side. 💥 Fire shoots a broadside
+at the nearest rival abeam (within 50° of straight out to the side, up to 32 m); the ball leads the target and lands
+about a second later, so a sharp turn can dodge it. A hit knocks the wind out of the target's sails (speed halved,
+2 s luffing, a slew off course) and then 5 s of cover from more hits. You hold up to 3 balls and reload one every 10 s
+(the leader reloads slower, boats behind faster); floating powder kegs give one more. The pirate ship Black Jack
+patrols one side of the first leg and fires at anyone who comes close; hit it to silence it for a while and plunder a ball.
+
 The server sails the lake 30 times a second and streams it (as Paper Boat Rapids does).
 """
 import math
@@ -36,6 +43,19 @@ LENGTHS = {"short": 2, "normal": 3, "long": 4}
 EVENT_KEEP = 3.0
 # reaction (s), heading noise (rad), uses gusts, tacks on the layline (vs. too early / late), oversteer
 BOT = {"easy": (0.6, 0.22, False, 0.7, 1.6), "normal": (0.35, 0.1, False, 0.9, 1.2), "hard": (0.18, 0.04, True, 1.0, 1.0)}
+# 🏴‍☠️ cannons (#176)
+RANGE = 32.0          # a broadside reaches this far
+ARC = math.radians(50)  # …within this of straight out to the side
+BALL_V = 30.0         # m/s: a ball takes about a second to land
+HIT_R = 3.0           # a ball landing this close to a hull hits it
+NEAR_R = 7.0          # …this close is a near miss
+AMMO_MAX, AMMO_START, RELOAD, FIRE_GAP = 3, 1, 10.0, 1.5
+STUN, STUN_KEEP, STUN_SAIL, GUARD, SLEW = 2.0, 0.5, 0.35, 5.0, 0.35
+KEG_R, KEG_BACK = 3.5, 25.0
+NPC_R, NPC_LOOP, NPC_V, NPC_RANGE, NPC_RELOAD, NPC_QUIET, NPC_SD = 3.4, 14.0, 3.0, 28.0, 6.0, 15.0, 1.4
+NPC_NAME = "Black Jack"
+# bots: fire at targets within this share of the range and this far off the beam (degrees), with this chance a think
+BOT_GUN = {"easy": (0.7, 40, 0.25), "normal": (0.8, 30, 0.3), "hard": (0.75, 22, 0.6)}
 
 
 def polar(twa):
@@ -72,6 +92,7 @@ def make_course(rng, marks):
 
 class Boat:
     goal = None                   # (boats pickled before #150 have no goal)
+    ammo, reload, fire_at, stun, guard, hits, last_hit = 0, 0.0, 0.0, 0.0, 0.0, 0, 0.0   # (and before #176 no cannons)
 
     def __init__(self, x, y, h):
         self.x, self.y, self.h, self.v = x, y, h, 0.0
@@ -87,6 +108,24 @@ class Boat:
         self.irons = False
         self.shadow = False
         self.gust = False
+        self.ammo = AMMO_START    # 🏴‍☠️ cannonballs ready
+        self.reload = 0.0         # seconds toward the next one
+        self.fire_at = 0.0        # no shot before this (one shot per FIRE_GAP)
+        self.stun = 0.0           # sails knocked flat until this
+        self.guard = 0.0          # no more hits until this
+        self.hits = 0             # hits landed this race
+        self.last_hit = 0.0
+
+
+class Pirate:
+    """Black Jack, the pirate ship that patrols one side of the first leg (not a racer)."""
+
+    def __init__(self, cx, cy, d):
+        self.cx, self.cy, self.d = cx, cy, d
+        self.ang = 0.0
+        self.x, self.y, self.h = cx + NPC_LOOP, cy, d * math.pi / 2
+        self.fire_at = 0.0
+        self.quiet = 0.0          # silenced (hit) until this
 
 
 class Regatta(Game):
@@ -101,6 +140,7 @@ class Regatta(Game):
         "Round each buoy in order (pass close by it, the glowing one is next), then cross the finish line between the flags.",
         "Watch the wind arrow: it shifts. Dark gust patches give 30 % more wind; sailing just downwind of a rival's sail costs you a quarter of your speed.",
         "Finishing order scores 10/7/5/3/2/1; the race ends 20 s after the winner.",
+        "🏴‍☠️ Pirates: 💥 Fire (or F) shoots a broadside at the nearest rival out to your side (red ring). A hit knocks the wind out of their sails. Balls reload every 10 s (faster when you're behind); grab floating 🛢 kegs for more, and steer clear of the pirate ship Black Jack.",
     ]
     name = "Regatta"
     icon = "⛵"
@@ -110,11 +150,13 @@ class Regatta(Game):
     badges = {**Game.badges,
               "wire": ("🏁", "Wire to wire", "Lead at every buoy and win"),
               "shadow": ("🌬", "Wind thief", "Pass a rival while they sail in your wind shadow"),
-              "gust": ("💨", "Gust rider", "Win a race in gusty wind")}
+              "gust": ("💨", "Gust rider", "Win a race in gusty wind"),
+              "gunner": ("💥", "Master gunner", "Land 3 cannon hits in one race")}
     settings_schema = {
         "course": ("Course", [("normal", "3 buoys (~90 s)"), ("short", "2 buoys (~75 s)"), ("long", "4 buoys (~2 min)")], "normal"),
         "races": ("Races", [(1, "1"), (3, "3")], 1),
         "wind": ("Wind", [("steady", "🍃 Steady"), ("shifty", "🌬 Shifty & gusty")], "steady"),
+        "pirates": ("Pirates", [("on", "🏴‍☠️ Pirate ships with cannons"), ("off", "⛵ Clean racing")], "on"),
     }
 
     def start(self, seated, rng):
@@ -129,11 +171,25 @@ class Regatta(Game):
         self.races = int(self.s.get("races", 1)) if self.s.get("races", 1) in (1, 3) else 1
         self.results = []
         self.leads = [[] for _ in range(n)]
+        self.guns = self.s.get("pirates", "on") != "off"
+        self.ball_seq = 0
+        self.said = {}
         r = self.room
         r.turn = None
         r.deadline = None
         self.new_race(time.time())
         r.add_log(f"⛵ Regatta: {self.races} race{'s' if self.races > 1 else ''} round {LENGTHS.get(self.s.get('course', 'normal'), 3)} buoys. Mind the wind!", "big")
+
+    def __setstate__(self, st):   # regattas saved before #176 have no cannons
+        self.__dict__.update(st)
+        d = self.__dict__
+        d.setdefault("guns", False)
+        d.setdefault("balls", [])
+        d.setdefault("ball_seq", 0)
+        d.setdefault("kegs", [])
+        d.setdefault("npc", None)
+        d.setdefault("ranks", [])
+        d.setdefault("said", {})
 
     @property
     def shifty(self):
@@ -171,6 +227,21 @@ class Regatta(Game):
         self.frames = 0
         self.steps = 0
         self.leads = [[] for _ in range(n)]
+        self.ranks = list(range(n))
+        # 🏴‍☠️ a pirate ship off one side of the first leg, and a powder keg along each leg
+        self.balls, self.kegs, self.npc = [], [], None
+        if self.guns:
+            m0 = self.course["marks"][0]
+            d = rng.choice((-1, 1))
+            self.npc = Pirate(m0[0] / 2 + d * rng.uniform(30, 36), m0[1] * rng.uniform(0.42, 0.55), d)
+            self.npc.fire_at = self.go_at + 8.0
+            pts = [(0.0, 0.0)] + [tuple(m) for m in self.course["marks"]]
+            for k in range(len(pts) - 1):
+                (ax, ay), (bx, by) = pts[k], pts[k + 1]
+                t = rng.uniform(0.4, 0.6)
+                L = math.hypot(bx - ax, by - ay) or 1
+                side = rng.uniform(-10, 10)
+                self.kegs.append([round(ax + (bx - ax) * t - (by - ay) / L * side, 1), round(ay + (by - ay) * t + (bx - ax) / L * side, 1), 0.0])
 
     def new_gust(self, rng, y=None):
         return [rng.uniform(-80, 80), 230.0 if y is None else y, rng.uniform(16, 26)]
@@ -222,6 +293,12 @@ class Regatta(Game):
             if a["tack"] is not True:
                 raise GameError("Bad tack.")
             self.tack(i)
+        if a.get("fire") is not None:
+            if a["fire"] is not True:
+                raise GameError("Bad fire.")
+            if not self.guns:
+                raise GameError("No cannons in this regatta.")
+            self.fire(i, time.time())
 
     def tack(self, i):
         """Turn through the wind (or, sailing downwind, gybe) to the same angle on the other side."""
@@ -292,6 +369,8 @@ class Regatta(Game):
         self.sail(dt, now)
         self.collide(now)
         self.weather(dt, now)
+        if self.guns:
+            self.cannons(dt, now)
         self.steps += 1
         if self.race_over(now):
             self.end_race(now)
@@ -348,6 +427,8 @@ class Regatta(Game):
             b.side = side
             sp, b.gust, b.shadow = self.wind_at(b.x, b.y, i)
             target = SPEED_K * sp * polar(twa)
+            if now < b.stun:
+                target *= STUN_SAIL           # 🏴‍☠️ hit: the sails hang torn and luffing
             b.irons = twa < NOGO
             k = ACCEL * dt * (1.0 if target > b.v else 1.6)
             b.v += (target - b.v) * min(1.0, k)
@@ -420,6 +501,221 @@ class Regatta(Game):
                         c.v *= 0.85
                         a.bump_at = c.bump_at = now + 1.0
                         self.event(now, "bump", i, j)
+        n = self.npc
+        if n:
+            for i, a in enumerate(bs):
+                if not self.active(i):
+                    continue
+                dx, dy = a.x - n.x, a.y - n.y
+                d = math.hypot(dx, dy)
+                if d < BOAT_R + NPC_R:
+                    if d < 1e-6:
+                        dx, dy, d = 1.0, 0.0, 1.0
+                    a.x += dx / d * (BOAT_R + NPC_R - d)
+                    a.y += dy / d * (BOAT_R + NPC_R - d)
+                    if now >= getattr(a, "bump_at", 0):
+                        a.v *= 0.8
+                        a.bump_at = now + 1.0
+                        self.event(now, "bump", i, -1)
+
+    # -- 🏴‍☠️ cannons (#176)
+
+    def aim(self, i, now):
+        """The rival boat i would fire at: (score, j, distance, side), j = -1 for the pirate ship; side +1 = to port
+        (left of the bow), -1 = starboard. The nearest one roughly abeam, inside the range, not under cover."""
+        b = self.boats[i]
+        cands = [(j, o.x, o.y) for j, o in enumerate(self.boats) if j != i and self.active(j) and not o.done_at and now >= o.guard]
+        n = self.npc
+        if n and now >= n.quiet:
+            cands.append((-1, n.x, n.y))
+        best = None
+        for j, x, y in cands:
+            dx, dy = x - b.x, y - b.y
+            d = math.hypot(dx, dy)
+            if d < 4 or d > RANGE:
+                continue
+            rel = wrap(math.atan2(dy, dx) - b.h)
+            off = abs(abs(rel) - math.pi / 2)
+            if off > ARC:
+                continue
+            score = d + off * 12
+            if best is None or score < best[0]:
+                best = (score, j, d, 1 if rel > 0 else -1)
+        return best
+
+    def fire(self, i, now):
+        """💥 A broadside from boat i at whoever it's aiming at (nothing happens without a target or a ball)."""
+        b = self.boats[i]
+        if self.stage != "race" or b.done_at or b.ammo <= 0 or now < b.fire_at:
+            return False
+        t = self.aim(i, now)
+        if not t:
+            return False
+        _, j, d, side = t
+        off = abs(abs(wrap(math.atan2(self.ty(j) - b.y, self.tx(j) - b.x) - b.h)) - math.pi / 2)
+        b.ammo -= 1
+        b.fire_at = now + FIRE_GAP
+        sx, sy = b.x + math.cos(b.h + side * math.pi / 2) * 1.2, b.y + math.sin(b.h + side * math.pi / 2) * 1.2
+        self.shoot(i, sx, sy, j, now, off * 2.5, side)     # a true broadside shoots straightest
+        return True
+
+    def tx(self, j):
+        return self.npc.x if j < 0 else self.boats[j].x
+
+    def ty(self, j):
+        return self.npc.y if j < 0 else self.boats[j].y
+
+    def shoot(self, src, sx, sy, j, now, extra, side):
+        """A ball from (sx, sy) at boat j (-1 = the pirate ship), led to where the target will be when it lands."""
+        if j < 0:
+            n = self.npc
+            tx, ty = n.x, n.y
+            vx, vy = -math.sin(n.ang) * NPC_V * n.d, math.cos(n.ang) * NPC_V * n.d
+        else:
+            o = self.boats[j]
+            tx, ty, vx, vy = o.x, o.y, math.cos(o.h) * o.v, math.sin(o.h) * o.v
+        T = math.hypot(tx - sx, ty - sy) / BALL_V
+        for _ in range(2):
+            px, py = tx + vx * T, ty + vy * T
+            T = math.hypot(px - sx, py - sy) / BALL_V
+        T = max(0.35, T)
+        d = math.hypot(px - sx, py - sy)
+        sd = 1.0 + d * 0.08 + extra
+        px += self.rng.gauss(0, sd)
+        py += self.rng.gauss(0, sd)
+        self.ball_seq += 1
+        self.balls.append([self.ball_seq, sx, sy, px, py, now, now + T, src, j])
+        self.event(now, "fire", src, side, round(sx, 2), round(sy, 2), round(px, 2), round(py, 2), round(T, 2))
+
+    def say(self, key, gap, now, text, tone="gold", sound=None):
+        """A moment, at most once per `gap` seconds for this key (cannon fire can come thick and fast)."""
+        if now < self.said.get(key, 0) or now < self.said.get("", 0):
+            return
+        self.said[key] = now + gap
+        self.said[""] = now + 6.0      # and no more than one every 6 s in all
+        self.moment(text, tone, sound)
+
+    def nm(self, j):
+        return f"🏴‍☠️ {NPC_NAME}" if j < 0 else self.name_of(j)
+
+    def rank_boats(self):
+        live = [i for i in range(len(self.boats)) if self.active(i)]
+        order = list(self.finished) + sorted((i for i in live if not self.boats[i].done_at), key=self.left_to_sail)
+        self.ranks = [order.index(i) if i in order else len(order) for i in range(len(self.boats))]
+
+    def cannons(self, dt, now):
+        if self.steps % 15 == 0 or len(self.ranks) != len(self.boats):
+            self.rank_boats()
+        n_live = sum(1 for i in range(len(self.boats)) if self.active(i))
+        for i, b in enumerate(self.boats):
+            if not self.active(i) or b.done_at:
+                continue
+            # reloading: the leader slower, boats further back faster (a comeback weapon)
+            if b.ammo < AMMO_MAX:
+                rk = self.ranks[i] if i < len(self.ranks) else 0
+                rate = 0.75 if rk == 0 and n_live > 1 else 1.0 + 0.12 * min(rk, 4)
+                b.reload += dt * rate
+                if b.reload >= RELOAD:
+                    b.reload = 0.0
+                    b.ammo += 1
+            else:
+                b.reload = 0.0
+            for k in self.kegs:
+                if now >= k[2] and b.ammo < AMMO_MAX and math.hypot(b.x - k[0], b.y - k[1]) < KEG_R + BOAT_R:
+                    k[2] = now + KEG_BACK
+                    b.ammo += 1
+                    self.event(now, "keg", i)
+        self.pirate(dt, now)
+        keep = []
+        for ball in self.balls:
+            if now >= ball[6]:
+                self.land(ball, now)
+            else:
+                keep.append(ball)
+        self.balls = keep
+
+    def pirate(self, dt, now):
+        n = self.npc
+        if not n:
+            return
+        n.ang = wrap(n.ang + n.d * NPC_V / NPC_LOOP * dt)
+        n.x, n.y = n.cx + math.cos(n.ang) * NPC_LOOP, n.cy + math.sin(n.ang) * NPC_LOOP
+        n.h = wrap(n.ang + n.d * math.pi / 2)
+        if now < n.fire_at or now < n.quiet:
+            return
+        best = None
+        for j, o in enumerate(self.boats):
+            if not self.active(j) or o.done_at or now < o.guard:
+                continue
+            d = math.hypot(o.x - n.x, o.y - n.y)
+            if d < NPC_RANGE and (best is None or d < best[0]):
+                best = (d, j)
+        if best:
+            o = self.boats[best[1]]
+            rel = wrap(math.atan2(o.y - n.y, o.x - n.x) - n.h)
+            self.shoot(-1, n.x, n.y, best[1], now, NPC_SD, 1 if rel > 0 else -1)
+            n.fire_at = now + NPC_RELOAD
+        else:
+            n.fire_at = now + 0.5
+
+    def land(self, ball, now):
+        _, sx, sy, x, y, t0, t1, src, aim = ball
+        hit, near = None, None
+        for j, o in enumerate(self.boats):
+            if j == src or not self.active(j) or o.done_at:
+                continue
+            d = math.hypot(o.x - x, o.y - y)
+            if d < HIT_R and (hit is None or d < hit[0]):
+                hit = (d, j)
+            elif d < NEAR_R and (near is None or d < near[0]):
+                near = (d, j)
+        n = self.npc
+        if n and src >= 0 and math.hypot(n.x - x, n.y - y) < NPC_R + 1.2 and now >= n.quiet:
+            n.quiet = now + NPC_QUIET
+            b = self.boats[src]
+            b.ammo = min(AMMO_MAX, b.ammo + 1)
+            self.event(now, "sink", src, round(x, 2), round(y, 2))
+            self.say("npc", 20, now, f"🏳 {self.name_of(src)} silences the pirate ship {NPC_NAME}! +1 cannonball", "good", "boom")
+            return
+        if hit:
+            j = hit[1]
+            o = self.boats[j]
+            if now < o.guard:
+                self.event(now, "splash", round(x, 2), round(y, 2), j)
+                return
+            self.strike(src, j, now)
+            return
+        self.event(now, "splash", round(x, 2), round(y, 2), near[1] if near else -1)
+        if near and src >= 0 and near[0] < 4.5:
+            self.say("near", 8, now, f"😅 Near miss! {self.name_of(src)}'s ball splashes right beside {self.name_of(near[1])}", "cool")
+
+    def strike(self, src, j, now):
+        """A ball hits boat j: the wind knocked out of its sails, a slew off course, then a few seconds of cover."""
+        o = self.boats[j]
+        o.v *= STUN_KEEP
+        o.stun = now + STUN
+        o.guard = now + GUARD
+        if o.auto is None:
+            o.h = wrap(o.h + self.rng.choice((-1, 1)) * SLEW)
+        self.event(now, "hit", src, j, round(o.x, 2), round(o.y, 2))
+        if src < 0:
+            self.say("npchit", 6, now, f"🏴‍☠️ {NPC_NAME}'s guns hole {self.name_of(j)}!", "bad")
+            return
+        b = self.boats[src]
+        b.hits += 1
+        rk = self.ranks if len(self.ranks) == len(self.boats) else list(range(len(self.boats)))
+        live = sum(1 for k in range(len(self.boats)) if self.active(k) and not self.boats[k].done_at)
+        if b.hits == 3 and self.pl(src):
+            self.award(self.pl(src), "gunner")
+        if rk[j] == 0 and rk[src] >= 2 and rk[src] == max(rk[k] for k in range(len(self.boats)) if self.active(k)) and live >= 3:
+            self.say("comeback", 6, now, f"🔥 Comeback cannon! {self.name_of(src)}, in last, knocks the leader {self.name_of(j)} flat!", "gold", "boom")
+        elif now - b.last_hit < 10:
+            self.say("double", 6, now, f"🎯 {self.name_of(src)} lands another broadside, on {self.name_of(j)}!", "gold", "boom")
+        elif rk[j] == 0:
+            self.say("lead", 6, now, f"💥 {self.name_of(src)} rakes the leader {self.name_of(j)} with a broadside!", "gold", "boom")
+        else:
+            self.say("hit", 6, now, f"💥 {self.name_of(src)} rakes {self.name_of(j)} with a broadside!", "cool", "boom")
+        b.last_hit = now
 
     def race_over(self, now):
         live = [i for i in range(len(self.boats)) if self.active(i)]
@@ -484,7 +780,11 @@ class Regatta(Game):
             "w": [round(self.wind_dir, 3), r(self.wind_spd)],
             "g": [[r(x), r(y), r(rr)] for x, y, rr in self.gusts],
             "b": [[r(b.x), r(b.y), round(b.h, 3), r(b.v), b.mark, b.place if b.done_at or self.stage != "race" else 0,
-                   int(b.irons), int(b.shadow), int(b.gust), b.pts, r(b.steer)] for b in self.boats],
+                   int(b.irons), int(b.shadow), int(b.gust), b.pts, r(b.steer),
+                   b.ammo, r(b.reload / RELOAD), r(max(0.0, b.stun - now)), r(max(0.0, b.guard - now))] for b in self.boats],
+            "np": [r(self.npc.x), r(self.npc.y), round(self.npc.h, 3), r(max(0.0, self.npc.quiet - now))] if self.npc else None,
+            "kg": [[k[0], k[1], int(now >= k[2])] for k in self.kegs],
+            "bl": [[bl[0], r(bl[1]), r(bl[2]), r(bl[3]), r(bl[4]), r(now - bl[5]), r(bl[6] - bl[5]), bl[7]] for bl in self.balls],
         }
 
     def broadcast(self, now):
@@ -504,6 +804,15 @@ class Regatta(Game):
         if b.done_at or self.stage != "race":
             b.steer = 0.0
             return
+        if self.guns and b.ammo > 0 and now >= b.fire_at:
+            t = self.aim(i, now)
+            reach, beam, keen = BOT_GUN.get(level, BOT_GUN["normal"])
+            off = abs(abs(wrap(math.atan2(self.ty(t[1]) - b.y, self.tx(t[1]) - b.x) - b.h)) - math.pi / 2) if t else 9
+            if t and t[2] < RANGE * reach and off < math.radians(beam) and random.random() < keen:
+                # a sharp bot saves its shot for a rival ahead or close by (or the pirate ship)
+                rk = self.ranks if len(self.ranks) == len(self.boats) else None
+                if level != "hard" or t[1] < 0 or not rk or rk[t[1]] <= rk[i] + 1 or t[2] < 18:
+                    self.fire(i, now)
         marks = self.course["marks"]
         if b.mark < len(marks):
             tx, ty = marks[b.mark]
@@ -516,6 +825,13 @@ class Regatta(Game):
                 if math.hypot(gx - b.x, gy - b.y) < 45 and math.hypot(gx - tx, gy - ty) < math.hypot(b.x - tx, b.y - ty):
                     tx, ty = tx * 0.8 + gx * 0.2, ty * 0.8 + gy * 0.2
                     break
+        if self.guns and level != "easy" and b.ammo < AMMO_MAX:
+            # a powder keg close to the way there: swing by it
+            for kx, ky, back in self.kegs:
+                if now >= back and math.hypot(kx - b.x, ky - b.y) < 22 and math.hypot(kx - tx, ky - ty) < math.hypot(b.x - tx, b.y - ty):
+                    if abs(wrap(math.atan2(ky - b.y, kx - b.x) - math.atan2(ty - b.y, tx - b.x))) < 0.5:
+                        tx, ty = kx, ky
+                        break
         want = math.atan2(ty - b.y, tx - b.x)
         into = self.wind_dir                                  # heading straight into the wind
         close = math.radians(NOGO + 7 + 4 * (1 - layline))
@@ -574,4 +890,5 @@ class Regatta(Game):
             **self.state(now), "seats": self.seats, "me": self.seat(p), "races": self.races, "course": self.course,
             "boatR": BOAT_R, "markR": MARK_R, "nogo": NOGO, "seq": self.ev_seq, "results": self.results,
             "shadow": [SHADOW_LEN, math.degrees(SHADOW_ANG)], "polar": [polar(a) for a in range(0, 181, 5)], "speedK": SPEED_K,
+            "guns": self.guns, "cannon": [RANGE, math.degrees(ARC), AMMO_MAX, RELOAD, HIT_R, NPC_R, NPC_RANGE],
         }}

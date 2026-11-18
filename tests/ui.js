@@ -412,8 +412,8 @@ const MOVES = {
     const st = d.querySelector('#rgStage'), kind = n % 4;
     if (kind === 0) { fire(st, 'pointerdown', 150, 150); fire(st, 'pointermove', 150 + pick([-80, 80]), 150); setTimeout(() => fire(st, 'pointerup'), 600); }
     else if (kind === 1) { const b = d.querySelector(pick(['#rgL', '#rgR'])); fire(b, 'pointerdown'); setTimeout(() => fire(b, 'pointerup'), pick([200, 900])); }
-    else if (kind === 2) d.querySelector('#rgTack')?.click();
-    else { const key = pick(['ArrowLeft', 'ArrowRight', 'a', 'd']); w.dispatchEvent(new w.KeyboardEvent('keydown', { key, bubbles: true })); setTimeout(() => w.dispatchEvent(new w.KeyboardEvent('keyup', { key, bubbles: true })), 400); }
+    else if (kind === 2) d.querySelector(n % 8 === 2 ? '#rgTack' : '#rgFire')?.click();
+    else { const key = pick(['ArrowLeft', 'ArrowRight', 'a', 'd', 'f']); w.dispatchEvent(new w.KeyboardEvent('keydown', { key, bubbles: true })); setTimeout(() => w.dispatchEvent(new w.KeyboardEvent('keyup', { key, bubbles: true })), 400); }
   },
   rapids(d, S, n, w) {  // sideways drags (steer), taps (paddle), a held paddle button (brace) and keys
     const fire = (el, type, x = 0, y = 0) => el && el.dispatchEvent(new w.MouseEvent(type, { bubbles: true, clientX: x, clientY: y }));

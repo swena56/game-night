@@ -27,10 +27,17 @@
 .rg-ctl button { min-width: 64px; height: 50px; border-radius: 999px; font-size: 20px; touch-action: none; -webkit-touch-callout: none; }
 .rg-ctl .rg-tack { min-width: 130px; font-size: 17px; font-weight: 700; }
 .rg-ctl .rg-tack.rg-pulse { animation: pulse 1.2s infinite; background: var(--accent); color: var(--accent-ink, #fff); }
+/* 🏴‍☠️ the fire button: ammo pips under it, a reload bar filling along it, red and pulsing when a rival is in your arcs */
+.rg-ctl .rg-fire { min-width: 112px; max-width: 150px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  line-height: 1.05; font-size: 16px; font-weight: 800; position: relative; overflow: hidden; }
+.rg-ctl .rg-fire::before { content: ''; position: absolute; left: 0; bottom: 0; height: 4px; width: calc(var(--rl, 0) * 100%); background: #ffd23f; opacity: .8; }
+.rg-fire small { font-size: 11px; font-weight: 700; letter-spacing: .5px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0 6px; }
+.rg-ctl .rg-fire.rg-armed { background: #c0263a; color: #fff; animation: pulse 1s infinite; }
 .rg-seats { display: flex; flex-direction: column; gap: 3px; }
 .rg-row { display: grid; grid-template-columns: 1fr auto; gap: 0 8px; padding: 4px 6px; border-radius: var(--r-sm, 8px); }
 .rg-row.on { background: var(--panel2); }
 .rg-nm { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rg-row small { grid-column: 1 / -1; color: var(--muted); font-size: 11px; }
-@media (max-width: 420px) { .rg-stage { height: 56vh; } .rg-map { width: 96px; height: 96px; } .rg-stage canvas.rg-map { width: 96px; height: 96px; } .rg-sub { right: 110px; } }
-@media (prefers-reduced-motion: reduce) { .rg-in, .rg-warn { animation: none; } }
+@media (max-width: 420px) { .rg-ctl { gap: 6px; } .rg-ctl button { min-width: 52px; } .rg-ctl .rg-tack { min-width: 100px; } .rg-ctl .rg-fire { min-width: 98px; }
+  .rg-stage { height: 56vh; } .rg-map { width: 96px; height: 96px; } .rg-stage canvas.rg-map { width: 96px; height: 96px; } .rg-sub { right: 110px; } }
+@media (prefers-reduced-motion: reduce) { .rg-in, .rg-warn, .rg-ctl .rg-fire.rg-armed { animation: none; } }
