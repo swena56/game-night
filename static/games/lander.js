@@ -166,41 +166,82 @@ UI.lander = (() => {
   // ---------- my flight: fixed ticks from the round's start, exactly as games/lander.py fly() steps
   function newFlight(startAt) {
     const g = G();
-    return { x: V.start[0], vx: V.start[1], y: g.startY, vy: 0, k: 0, fuel: mine().tank, t: 0, at: startAt, bits: null, log: [], on: false, done: null, trail: [] };
+    return { ...startOf(V, mine().tank), t: 0, at: startAt, bits: null, log: [], on: false, done: null, trail: [], leg: 1, hopWin: null };
   }
+  const NEED = { fuel: ['⛽', 'refinery'], rush: ['🚑', 'medical rush'], lab: ['🔬', 'survey lab'] };
+  const needOf = (n) => V.needs?.[n] || ['', ''];
+  const iconOf = (n) => NEED[needOf(n)[0]]?.[0] || '';
   function input() {
     const l = held.l || keys.has('l'), r = held.r || keys.has('r'), up = held.up || keys.has('up');
     return { thrust: up ? 1 : 0, rot: (r ? 1 : 0) - (l ? 1 : 0) };
   }
   function stepFlight(now) {
-    if (!fl || fl.done) return;
-    const g = G(), want = Math.min(g.maxTicks, Math.floor((now - fl.at) / 1000 / g.dt));
+    if (!fl) return;
+    const g = G(), clock = Math.floor((now - fl.at) / 1000 / g.dt);
+    if (fl.done) return hopWait(clock);
+    const end = fl.leg === 2 ? fl.lift + g.hopTicks : g.maxTicks, want = Math.min(end, clock);
     let n = 0;
     while (fl.t < want && !fl.done && n++ < 12) {
       const { thrust, rot } = input(), bits = thrust + 2 * (rot + 1);
       if (bits !== fl.bits) { fl.log.push([fl.t, bits]); fl.bits = bits; }
-      fl.on = tick(fl, g, bits);
+      const had = fl.got.length, r = advance(fl, V, bits);
+      fl.on = r.on;
+      if (fl.got.length > had) for (const i of fl.got.slice(had)) picked(i);
       if (fl.t % 6 === 0) { fl.trail.push([fl.x, fl.y]); if (fl.trail.length > 80) fl.trail.shift(); }
-      const gy = ground(fl.x);
       fl.t++;
-      if (fl.y <= gy) { touchdown(gy); break; }
+      if (r.down) { touchdown(r.gy); break; }
     }
-    if (!fl.done && fl.t >= g.maxTicks) { fl.done = { how: 'lost', pts: 0, pad: -1 }; send(); }
+    if (!fl.done && fl.t >= end) { fl.done = { how: 'lost', pts: 0, pad: -1 }; send(); }
+  }
+  // a pickup touched: sparks, a chime, and what it was worth
+  function picked(i) {
+    const [x, y, kind] = V.picks[i];
+    (gl || flat)?.sparkle?.(x, y, kind);
+    SN.pick(kind);
+    showFlash(kind === 1 ? `⛽ +${G().pickFuel / 30}s fuel` : `💎 +${G().gem} if you land`, 1100, 'good');
+  }
+  // after a landing: a few seconds to burn again and hop to another pad (a fresh press: not the burn you landed on)
+  function hopWait(clock) {
+    const w = fl.hopWin; if (!w || fl.leg === 2) return;
+    const { thrust } = input();
+    if (!thrust) w.free = true;
+    if (clock > w.close) { fl.hopWin = null; return; }
+    if (clock < w.open || !thrust || !w.free || S.paused) return;
+    // lift off: the second leg starts upright at rest on the pad, on this tick
+    const t = Math.max(w.open, Math.min(w.close, clock));
+    ctx.act('lift', { t }).catch((e) => ctx.toast?.(e?.message || 'Could not hop.'));
+    fl.first = fl.done; fl.done = null; fl.leg = 2; fl.lift = t; fl.t = t; fl.hopWin = null;
+    fl.vx = fl.vy = 0; fl.k = 0; fl.air = false; fl.y = ground(fl.x); fl.log = []; fl.bits = null; fl.gotAt = fl.got.length; sent = false; fl.trail = [];
+    showFlash('🔁 Hop! Pick another pad', 1400, 'good');
   }
   function touchdown(gy) {
     const v = { vx: fl.vx, vy: fl.vy, k: fl.k };
     fl.done = { ...judge(fl.x, fl.vx, fl.vy, fl.k), ...v };
     fl.y = gy;
+    const g = G(), hop = fl.leg === 2, samePad = hop && fl.done.how === 'land' && fl.done.pad === fl.first.pad;
     if (fl.done.how === 'land') {
       fl.k = fl.k; fl.vx = fl.vy = 0;
-      const mult = V.pads[fl.done.pad][3];
+      const n = fl.done.pad, mult = V.pads[n][3], [need, name] = needOf(n);
+      // what the server will add: crystals from this leg, the outpost's need (the rush only if nobody beat me there)
+      const gems = fl.got.slice(hop ? fl.gotAt : 0).filter((i) => V.picks[i][2] === 0).length;
+      let pts = hop ? Math.round(g.hopMult * fl.done.pts) : fl.done.pts;
+      const words = [];
+      if (!samePad) {
+        if (gems) { pts += g.gem * gems; words.push(`💎×${gems}`); }
+        if (need === 'fuel') { fl.fuel = Math.min(g.tankMax, fl.fuel + g.needFuel); words.push(`⛽ ${name} refuels you`); }
+        else if (need === 'rush' && !(V.rushed || []).includes(n)) { pts += g.rush; words.push(`🚑 +${g.rush}`); }
+        else if (need === 'lab' && fl.done.prec >= g.labPrec) { pts += g.lab; words.push(`🔬 +${g.lab}`); }
+      }
       SN.touch(); setTimeout(() => SN.chime(mult), 250);
-      showFlash(`🛬 ×${mult} landing! +${fl.done.pts}`, 2600, 'good');
+      showFlash(samePad ? '🔁 Same pad: no hop bonus' : `${hop ? '🔁 Hop' : '🛬'} ×${mult}${hop ? ` ×${g.hopMult}` : ' landing'}! +${pts}${words.length ? ' · ' + words.join(' · ') : ''}`, 2800, samePad ? '' : 'good');
+      // a first landing with fuel to spare opens the hop window (as games/lander.py done() does)
+      if (!hop && fl.fuel >= g.hopMin && V.pads.length > 1) fl.hopWin = { open: fl.t + g.hopOpen, close: fl.t + g.hopClose, free: false };
       ctx.buzz?.([30, 40, 30]);
       (gl || flat)?.dust(fl.x, gy, 30);
     } else {
       SN.crash(); ctx.buzz?.([120, 60, 200]);
-      showFlash(fl.done.pad < 0 ? '💥 Crashed: missed the pads' : -fl.vy > G().vyOk ? '💥 Crashed: too fast' : Math.abs(fl.vx) > G().vxOk ? '💥 Crashed: sliding' : '💥 Crashed: tilted', 2600, 'bad');
+      const why = fl.done.pad < 0 ? 'missed the pads' : -fl.vy > g.vyOk ? 'too fast' : Math.abs(fl.vx) > g.vxOk ? 'sliding' : 'tilted';
+      showFlash(hop ? `💥 Hop crashed (${why}): your first landing still counts` : `💥 Crashed: ${why}`, 2600, 'bad');
       (gl || flat)?.boom(fl.x, gy);
       gl?.shake(1.0);
     }
@@ -209,7 +250,7 @@ UI.lander = (() => {
   function send() {
     if (sent) return;
     sent = true;
-    ctx.act('land', { log: fl.log }).catch((e) => ctx.toast?.(e?.message || 'Could not send your landing.'));
+    ctx.act(fl.leg === 2 ? 'hop' : 'land', { log: fl.log }).catch((e) => ctx.toast?.(e?.message || 'Could not send your landing.'));
   }
 
   // ---------- state
@@ -217,12 +258,14 @@ UI.lander = (() => {
     S = s; ctx = c; V = s.lander;
     const key = `${V.round}`;
     if (key !== roundKey) { roundKey = key; fl = null; sent = false; ghosts = {}; beeped = 0; (gl || flat)?.rebuild?.(); seenRes = new Set(V.fliers.map((f, i) => (f.res ? i : -1))); }
-    // a rival's crash: a smaller boom where their ghost came down
+    // a rival's crash (or crashed hop): a smaller boom where their ghost came down
     V.fliers.forEach((f, i) => {
+      const hc = f.hop && typeof f.hop === 'object' && f.hop.how === 'crash';
+      if (hc && !seenRes.has(`h${i}`) && i !== V.me) { seenRes.add(`h${i}`); const o = ghosts[i]; if (o) { const p = o.cur(performance.now()); (gl || flat)?.boom(p[0], ground(p[0]), { small: true, z: -3 - (i % 3) * 2.2 }); } }
       if (!f.res || seenRes.has(i)) return;
       seenRes.add(i);
       const o = ghosts[i];
-      if (f.res.how === 'crash' && o && i !== V.me) { const p = o.cur(performance.now()); (gl || flat)?.boom(p[0], ground(p[0]), { small: true, z: -3 - (i % 3) * 2.2 }); }
+      if (f.res.how === 'crash' && o && i !== V.me && !seenRes.has(`h${i}`)) { const p = o.cur(performance.now()); (gl || flat)?.boom(p[0], ground(p[0]), { small: true, z: -3 - (i % 3) * 2.2 }); }
     });
     const my = mine();
     if (V.stage === 'count' && my && !fl && !my.out) fl = newFlight(performance.now() + V.startIn * 1000);
@@ -250,7 +293,8 @@ UI.lander = (() => {
     for (const i of order) {
       const f = V.fliers[i], row = ctx.el('div', 'seat-row lr-row' + (f.out ? ' out' : ''));
       const dot = ctx.el('span', 'mini-disc'); dot.style.background = colorOf(i);
-      const r = f.res, what = !r ? (V.stage === 'fly' ? '…flying' : '') : r.how === 'land' ? `×${V.pads[r.pad][3]} +${r.pts}` : r.how === 'crash' ? '💥' : '🛰️';
+      const r = f.res, h = f.hop, hop = h === 'up' ? ' 🔁…' : h && typeof h === 'object' && h.how ? (h.how === 'land' && h.pts ? ` ↪×${V.pads[h.pad][3]}` : h.how === 'crash' ? ' ↪💥' : '') : '';
+      const what = (!r ? (V.stage === 'fly' ? '…flying' : '') : r.how === 'land' ? `${iconOf(r.pad)}×${V.pads[r.pad][3]} +${r.pts}` : r.how === 'crash' ? '💥' : '🛰️') + hop;
       row.append(dot, ctx.el('span', 'grow', `${nameOf(i)}${i === V.me ? ' (you)' : ''}`), ctx.el('span', 'ml-what', what), ctx.el('b', '', `${f.points}`));
       box.append(row);
     }
@@ -260,7 +304,7 @@ UI.lander = (() => {
       $('mlDoneTitle').textContent = `🌕 Round ${V.round} done`;
       standingsCard($('mlStand'), V.standings, { title: '🚀 Points', note: V.round < V.rounds ? 'Next moon in a moment…' : 'That was the last round!' });
     }
-    $('mlCtl').classList.toggle('ml-off', !(fl && !fl.done && V.stage === 'fly'));
+    $('mlCtl').classList.toggle('ml-off', !(fl && (!fl.done || fl.hopWin) && V.stage === 'fly'));
     $('mlCtl').hidden = V.me == null;
   }
 
@@ -273,6 +317,7 @@ UI.lander = (() => {
       K.mode(d, t, 48, 0.4, 0.2, { f1: 30 }); K.burst(d, t, { type: 'lowpass', f: 600, f1: 120, q: 0.7, vol: 0.7, tau: 0.25, dur: 1.2, buf: 'brown' });
       for (let n = 0; n < 8; n++) K.burst(d, t + 0.05 + n * K.R(0.04, 0.1), { type: 'bandpass', f: K.R(1500, 4000), q: 2, vol: 0.08, tau: 0.01 });
     }),
+    pick: (kind) => snd((t, K, d) => { (kind === 1 ? [392, 523] : [1047, 1319, 1568]).forEach((f, n) => K.mode(d, t + n * 0.06, f, 0.07, 0.3)); }),
     beep: (hi) => snd((t, K, d) => K.sweep(d, t, { f0: hi ? 1320 : 880, f1: hi ? 1320 : 880, dur: 0.09, vol: 0.05, type: 'square', attack: 0.004 })),
   };
   const engineBed = (K, dst) => {
@@ -336,8 +381,14 @@ UI.lander = (() => {
     drawArrows();
     drawMap(now);
     const my = mine();
-    $('mlHint').textContent = S.phase !== 'playing' ? '' : V.stage === 'count' ? `Round ${V.round} of ${V.rounds}: pick a pad — ×3 is narrow and high.`
-      : fl && !fl.done ? (fl.fuel <= 0 ? '⛽ Out of fuel!' : fl.t < 150 ? 'Drag the sky to look around; the arrows point to pads off screen.' : 'Gentle now: green gauges mean a safe touchdown.')
+    // the hop window: the burn button counts down
+    const hw = fl?.hopWin, clock = fl ? (now - fl.at) / 1000 / g.dt : 0, burn = document.querySelector('#mlCtl .ml-burn');
+    const left = hw ? Math.max(0, (hw.close - clock) * g.dt) : 0, ready = hw && clock >= hw.open;
+    if (burn) { const txt = hw ? (ready ? `🔁 Hop ${Math.ceil(left)}` : '🔁 …') : '🔥 Burn'; if (burn.textContent !== txt) burn.textContent = txt; burn.classList.toggle('ml-hop', !!hw); }
+    const needs = V.needs ? V.pads.map(([, , , m], n) => `${iconOf(n)}×${m}`).join('  ') : '';
+    $('mlHint').textContent = S.phase !== 'playing' ? '' : V.stage === 'count' ? `Round ${V.round} of ${V.rounds}: ${needs || 'pick a pad'} · 💎 crystals pay if you land.`
+      : hw ? `🔁 Burn${ready ? '' : ' (let go first)'} within ${Math.ceil(left)} s to hop to another pad: ×${g.hopMult}!`
+      : fl && !fl.done ? (fl.fuel <= 0 ? '⛽ Out of fuel!' : fl.leg === 2 ? `🔁 Hopping: land on a different pad for ×${g.hopMult}.` : fl.t < 150 ? 'Drag the sky or tap the map to look around. ⛽ refuels · 🚑 first one +40 · 🔬 dead centre +30.' : 'Gentle now: green gauges mean a safe touchdown.')
       : my?.res ? 'Watching the others come down…' : V.me == null ? 'Watching.' : '';
     if (now - (loop.side || 0) > 400) { loop.side = now; renderSide(); }
   }
@@ -349,8 +400,9 @@ UI.lander = (() => {
     const view = gl || flat, on = !!(fl && !fl.done && V.stage === 'fly' && view?.proj);
     let left = '', right = '';
     if (on) V.pads.forEach(([l, r, y, m], n) => {
+      if (fl.leg === 2 && n === fl.first?.pad) return;
       const c = (l + r) / 2, p = view.proj(c, y), d = Math.round(Math.abs(c - fl.x));
-      const chip = (arrow) => `<button data-pad="${n}" style="--pc:${PAD_COL[m]}">${arrow === '◀' ? '◀ ' : ''}×${m} · ${d} m${arrow === '▶' ? ' ▶' : ''}</button>`;
+      const chip = (arrow) => `<button data-pad="${n}" style="--pc:${PAD_COL[m]}">${arrow === '◀' ? '◀ ' : ''}${iconOf(n)}×${m} · ${d} m${arrow === '▶' ? ' ▶' : ''}</button>`;
       if (p < -0.92) left += chip('◀'); else if (p > 0.92) right += chip('▶');
     });
     if (L.dataset.h !== left) { L.dataset.h = left; L.innerHTML = left; }
@@ -379,6 +431,7 @@ UI.lander = (() => {
       g.strokeStyle = mapLook ? '#ffd23fcc' : '#ffffff55'; g.lineWidth = 1.5 * dpr; g.strokeRect(a, 1, b - a, H - 2);
     }
     const dot = (x, y, col, r) => { g.fillStyle = col; g.beginPath(); g.arc(x * sx, Math.max(r, H - Math.min(top, y) * sy), r, 0, 7); g.fill(); };
+    (V.picks || []).forEach(([x, y, kind], i) => { if (!fl?.gone?.has(i)) dot(x, y, kind === 1 ? '#ffa040' : '#7fe8ff', 1.8 * dpr); });
     for (const [i, o] of Object.entries(ghosts)) { const p = o.cur(now); dot(p[0], p[1], colorOf(+i), 2.5 * dpr); }
     if (fl) dot(fl.x, fl.y, '#ffffff', 3.5 * dpr);
   }
@@ -557,8 +610,13 @@ UI.lander = (() => {
         const lightMat = new T.MeshBasicMaterial({ color: padCol[m] });
         for (const x of [l + 0.3, r - 0.3]) for (const z of [-2.8, 2.8]) { const b = new T.Mesh(new T.SphereGeometry(0.18, 8, 6), lightMat); b.position.set(x, y + 0.15, z); grp.add(b); }
         const stripe = new T.Mesh(new T.PlaneGeometry(r - l - 0.4, 0.5), lightMat); stripe.rotation.x = -Math.PI / 2; stripe.position.set((l + r) / 2, y + 0.07, 2.4); grp.add(stripe);
-        const sign = new T.Sprite(new T.SpriteMaterial({ map: canvasTex(T, 128, 64, (g, w, hh) => { g.fillStyle = padCol[m]; g.font = 'bold 52px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.shadowColor = '#000'; g.shadowBlur = 8; g.fillText(`×${m}`, w / 2, hh / 2); }), depthTest: false, transparent: true }));
-        sign.position.set((l + r) / 2, y + 3.2, 0); sign.scale.set(6, 3, 1); sign.userData.m = m; grp.add(sign);
+        const pn = V.pads.findIndex((q) => q[0] === l), [, oname] = needOf(pn);
+        const sign = new T.Sprite(new T.SpriteMaterial({ map: canvasTex(T, 256, 128, (g, w, hh) => {
+          g.textAlign = 'center'; g.textBaseline = 'middle'; g.shadowColor = '#000'; g.shadowBlur = 10;
+          g.fillStyle = padCol[m]; g.font = 'bold 64px sans-serif'; g.fillText(`${iconOf(pn)}×${m}`, w / 2, hh * 0.38);
+          if (oname) { g.fillStyle = '#e8ecf5'; g.font = 'bold 26px sans-serif'; g.fillText(oname, w / 2, hh * 0.82); }
+        }), depthTest: false, transparent: true }));
+        sign.position.set((l + r) / 2, y + 3.6, 0); sign.scale.set(8, 4, 1); sign.userData.m = m; grp.add(sign);
         if (!low) for (const x of [l + 0.3, r - 0.3]) for (const z of [-2.8, 2.8]) {
           const gs = new T.Sprite(new T.SpriteMaterial({ map: glowTex, color: padCol[m], transparent: true, depthWrite: false, blending: T.AdditiveBlending }));
           gs.position.set(x, y + 0.2, z); gs.scale.setScalar(1.6); grp.add(gs); (grp.glows ||= []).push(gs);
@@ -566,7 +624,30 @@ UI.lander = (() => {
         grp.userData = { lightMat, m, glows: grp.glows || [], l, r };
         world.add(grp); padObjs.push(grp);
       }
+      // the pickups: a spinning crystal (cyan) or a fuel canister (orange), each with a glow
+      pickObjs = (V.picks || []).map(([x, y, kind]) => {
+        const grp = new T.Group();
+        const col = kind === 1 ? 0xff9a3d : 0x7fe8ff;
+        const body = kind === 1
+          ? new T.Mesh(new T.CylinderGeometry(0.45, 0.45, 1.2, 14), new T.MeshStandardMaterial({ color: 0xff8a2a, emissive: 0x662200, metalness: 0.5, roughness: 0.35 }))
+          : new T.Mesh(new T.OctahedronGeometry(0.75, 0), new T.MeshStandardMaterial({ color: 0xbff6ff, emissive: 0x2aa8c8, emissiveIntensity: 0.9, metalness: 0.2, roughness: 0.1, flatShading: true }));
+        if (kind === 1) { const cap = new T.Mesh(new T.CylinderGeometry(0.2, 0.2, 0.25, 10), new T.MeshStandardMaterial({ color: 0xdfe3ea, metalness: 0.8, roughness: 0.3 })); cap.position.y = 0.72; body.add(cap); }
+        grp.add(body);
+        const gs = new T.Sprite(new T.SpriteMaterial({ map: glowTex, color: col, transparent: true, depthWrite: false, blending: T.AdditiveBlending, opacity: 0.7 }));
+        gs.scale.setScalar(3.2); grp.add(gs);
+        grp.position.set(x, y, 0); grp.userData = { body, y, kind };
+        extras.add(grp);
+        return grp;
+      });
       stg.relight?.();
+    }
+    let pickObjs = [];
+    function sparkle(x, y, kind) {
+      const n = calm() ? 12 : 40;
+      for (let k = 0; k < n; k++) { const a = Math.random() * 6.283, e = (Math.random() - 0.5) * 3, sp = 2 + Math.random() * 5; emit(x, y, 0, Math.cos(a) * sp, Math.sin(a) * sp + 1, e, kind === 1 ? '#ffb347' : (k % 2 ? '#bff6ff' : '#ffffff'), 0.5 + Math.random() * 0.5, 0.3); }
+      const sp = new T.Sprite(new T.SpriteMaterial({ map: glowTex, color: kind === 1 ? 0xffa040 : 0x9ff0ff, transparent: true, depthWrite: false, blending: T.AdditiveBlending }));
+      sp.position.set(x, y, 0); sp.scale.setScalar(0.1); world.add(sp);
+      fx.push({ m: sp, t: 0, life: 0.45, kind: 'ball', size: 5 });
     }
     // the lander: gold-foil descent stage, a silver cabin, four legs, an engine bell and a flame
     function makeLander(col, ghost) {
@@ -869,6 +950,12 @@ UI.lander = (() => {
         u.lightMat.color.set(lit ? (u.m === 3 ? 0xff5d8f : u.m === 2 ? 0xffd23f : 0x5ce1a0) : 0x333333);
         for (const gs of u.glows) { gs.visible = lit; gs.scale.setScalar(over ? 2.2 + Math.sin(now / 120) * 0.4 : 1.6); }
       }
+      pickObjs.forEach((o, i) => {
+        o.visible = !(fl?.gone?.has(i));
+        if (!o.visible) return;
+        const u = o.userData; u.body.rotation.y += dt * (u.kind === 1 ? 1.2 : 2.0); if (u.kind !== 1) u.body.rotation.x = Math.sin(now / 900 + i) * 0.4;
+        o.position.y = u.y + Math.sin(now / 600 + i * 1.7) * 0.25;
+      });
       earth.rotation.y += dt * 0.02;
       tickParts(dt); tickDust(dt); tickFx(dt);
       renderer.render(scene, camera);
@@ -879,7 +966,7 @@ UI.lander = (() => {
     const span = () => 2 * tv() * camD * aspect;
     function dispose() { stg.dispose(); renderer.dispose(); renderer.domElement.remove(); }
     resize();
-    return { draw, resize, dispose, shake, dust, boom, proj, span, cx: () => camX, rebuild() { build.round = -1; } };
+    return { draw, resize, dispose, shake, dust, boom, sparkle, proj, span, cx: () => camX, rebuild() { build.round = -1; } };
   }
 
   // ---------- flat fallback: a side view riding with my lander
@@ -911,8 +998,17 @@ UI.lander = (() => {
       g.lineTo(X(gg.w + 400), Y(V.h[V.h.length - 1])); g.lineTo(X(gg.w + 400), H); g.fill();
       for (const [l, r, y, m] of V.pads) {
         g.fillStyle = m === 3 ? '#ff5d8f' : m === 2 ? '#ffd23f' : '#5ce1a0'; g.fillRect(X(l), Y(y) - 3, (r - l) * k, 4);
-        g.font = `bold ${Math.max(12, 2.2 * k)}px sans-serif`; g.textAlign = 'center'; g.fillText(`×${m}`, X((l + r) / 2), Y(y) - 8);
+        g.font = `bold ${Math.max(12, 2.2 * k)}px sans-serif`; g.textAlign = 'center'; g.fillText(`${iconOf(V.pads.findIndex((q) => q[0] === l))}×${m}`, X((l + r) / 2), Y(y) - 8);
       }
+      (V.picks || []).forEach(([x, y, kind], i) => {
+        if (fl?.gone?.has(i)) return;
+        const px = X(x), py = Y(y + Math.sin(now / 600 + i * 1.7) * 0.25), s = Math.max(5, k * 0.8);
+        g.fillStyle = kind === 1 ? '#ff9a3d55' : '#7fe8ff44'; g.beginPath(); g.arc(px, py, s * 2, 0, 7); g.fill();
+        g.fillStyle = kind === 1 ? '#ff8a2a' : '#bff6ff'; g.beginPath();
+        if (kind === 1) g.rect(px - s * 0.6, py - s, s * 1.2, s * 2);
+        else { g.moveTo(px, py - s); g.lineTo(px + s * 0.7, py); g.lineTo(px, py + s); g.lineTo(px - s * 0.7, py); g.closePath(); }
+        g.fill();
+      });
       const lander = (x, y, kk, on, col, a) => {
         g.save(); g.globalAlpha = a; g.translate(X(x), Y(y)); g.rotate(kk * gg.rot);
         const s = Math.max(6, k * 1.1);
@@ -952,6 +1048,7 @@ UI.lander = (() => {
       draw, resize, dispose() { canvas.remove(); },
       proj: (x) => ((x - vw.cx) * vw.k) / (vw.W / 2), span: () => vw.span, cx: () => vw.cx,
       dust: (x, y) => pops.push({ x, y, col: '#aaa', size: 3, at: performance.now() }),
+      sparkle: (x, y, kind) => pops.push({ x, y, col: kind === 1 ? '#ffb347' : '#bff6ff', size: 4, at: performance.now() }),
       boom: (x, y, o = {}) => {
         const at = performance.now(), small = !!o.small;
         pops.push({ x, y: y + 1, ball: true, size: small ? 3 : 6, at }, { x, y, col: '#ffb347', size: small ? 5 : 10, at });
@@ -965,5 +1062,5 @@ UI.lander = (() => {
   const turnText = (s) => (s.phase === 'playing' ? `🚀 Moon Lander — round ${s.lander.round} of ${s.lander.rounds}` : null);
   const myMove = (s) => s.phase === 'playing' && s.lander.stage === 'fly' && s.lander.me != null && !s.lander.fliers[s.lander.me]?.res;
 
-  return { mount, render, unmount, fast, turnText, myMove, focus: true, replay };
+  return { mount, render, unmount, fast, turnText, myMove, focus: true, replay, peek: () => ({ fl, V }) };   // (peek: for test drivers)
 })();
