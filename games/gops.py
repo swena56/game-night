@@ -21,11 +21,13 @@ class Gops(CardGame):
         "The diamonds are prizes (ace 1 … king 13). Everyone holds a whole suit of their own.",
         "Each round a prize is turned up and everyone bids one card at once, face down.",
         "Highest bid takes the prize. A tie at the top carries it over: the next winner takes both.",
+        "✌️ Double down (once a game): win the prize for 2x, but lose the round and you drop 3 points.",
         "Every card bid is spent. After thirteen prizes, most points wins.",
     ]
     min_players, max_players = 2, 3
     badges = {**CardGame.badges, "steal": ("🦊", "Bargain", "Take the king prize with a bid of 5 or less")}
-    settings_schema = {"order": ("Prizes", [("shuffled", "Shuffled"), ("open", "🔓 Open: the whole prize order is shown")], "shuffled")}
+    settings_schema = {"double": ("✌️ Double down", [(1, "Once a game"), (0, "Off")], 1),
+                       "order": ("Prizes", [("shuffled", "Shuffled"), ("open", "🔓 Open: the whole prize order is shown")], "shuffled")}
 
     def start(self, seated, rng):
         self.seat_up(seated, rng)
@@ -38,6 +40,9 @@ class Gops(CardGame):
         self.bids = {}
         self.history = []
         self.result = None
+        self.doubles = [1 if self.s.get("double", 1) else 0] * self.n  # double-downs left
+        self.armed = set()  # seats that have armed a double for this round's bid
+        self.dbl = set()  # seats whose bid this round was a double
         self.room.add_log("🎯 GOPS: bid for each prize. Ties carry the prize over.", "big")
         self.next_prize()
 
@@ -47,6 +52,8 @@ class Gops(CardGame):
             return self.win_by_score(self.scores)
         self.pot.append(self.prizes.pop(0))
         self.bids = {}
+        self.armed = set()
+        self.dbl = set()
         self.stage = "bid"
         self.open_all(range(self.n))
 
@@ -56,6 +63,10 @@ class Gops(CardGame):
     def bid(self, i, c):
         self.hands[i].remove(c)
         self.bids[i] = c
+        if i in self.armed and self.can_double(i):
+            self.doubles[i] -= 1
+            self.dbl.add(i)
+        self.armed.discard(i)
         self.waiting.discard(i)
         if self.waiting:
             return
@@ -66,10 +77,17 @@ class Gops(CardGame):
         if len(best) == 1:
             w = best[0]
             got = self.worth()
+            if w in self.dbl:
+                got *= 2
+                self.moment(f"✌️ {self.nm(w)} doubled down and it paid: +{got}!", "gold", "fanfare")
             self.scores[w] += got
             self.room.add_log(f"🎯 {bids} → {self.nm(w)} takes {show(self.pot)} (+{got}).")
             if "K" in [rank(c) for c in self.pot] and top <= 5 and self.pl(w):
                 self.award(self.pl(w), "steal")
+            for k in self.dbl:
+                if k != w:
+                    self.scores[k] = max(0, self.scores[k] - 3)
+                    self.moment(f"✌️ {self.nm(k)} doubled down and lost: -3", "bad")
             self.result = {"winner": w, "pot": self.pot[:], "bids": [[k, c] for k, c in sorted(self.bids.items())]}
             self.pot = []
         else:
@@ -80,8 +98,16 @@ class Gops(CardGame):
         self.stage = "show"
         self.pause(self.next_prize, 2.2)
 
+    def can_double(self, i):
+        return bool(getattr(self, "doubles", None)) and self.doubles[i] > 0
+
     def act(self, p, a):
         i = self.act_seat(p)
+        if a.get("type") == "double":
+            if self.stage != "bid" or i not in self.waiting or not self.can_double(i):
+                raise GameError("You can't double down now.")
+            self.armed ^= {i}
+            return
         if a.get("type") != "bid":
             raise GameError("Unknown action.")
         if self.stage != "bid" or i not in self.waiting:
@@ -95,7 +121,10 @@ class Gops(CardGame):
 
     def bot_move(self, i, level):
         if self.stage == "bid":
-            self.bid(i, self.choose(i, level))
+            c = self.choose(i, level)
+            if level != "easy" and self.can_double(i) and self.worth() >= 9 and VAL[rank(c)] >= 10 and random.random() < 0.6:
+                self.armed.add(i)
+            self.bid(i, c)
 
     def choose(self, i, level):
         hand = sorted(self.hands[i], key=lambda c: VAL[rank(c)])
@@ -147,7 +176,8 @@ class Gops(CardGame):
         return {pid: self.scores[k] for k, pid in enumerate(self.seats)}
 
     def table(self, p, i):
-        info = [{"tags": [f"{self.scores[k]} pts"] + (["✓ bid"] if self.stage == "bid" and k in self.bids else [])} for k in range(self.n)]
+        info = [{"tags": [f"{self.scores[k]} pts"] + (["✓ bid"] if self.stage == "bid" and k in self.bids else [])
+                 + (["✌️ doubled"] if self.stage == "show" and k in self.dbl else [])} for k in range(self.n)]
         pot = self.result["pot"] if self.result else self.pot
         t = {"info": info, "piles": [{"cards": pot, "fan": True, "glow": True,
                                        "label": f"Prize: {sum(VAL[rank(c)] for c in pot)} pt{'s' if sum(VAL[rank(c)] for c in pot) != 1 else ''}"
@@ -162,7 +192,9 @@ class Gops(CardGame):
             t["banner"] = f"{self.nm(w)} takes it!" if w is not None else "Tie: carried over!"
         if i is not None and self.stage == "bid" and i in self.waiting:
             t["moves"] = [{"card": c, "a": {"type": "bid", "card": c}} for c in self.hands[i]]
-            t["note"] = f"Bid a card for {self.worth()} point{'s' if self.worth() != 1 else ''}."
+            t["note"] = f"Bid a card for {self.worth()} point{'s' if self.worth() != 1 else ''}." + (" ✌️ Doubled: win for 2x, lose -3." if i in self.armed else "")
+            if self.can_double(i):
+                t["buttons"] = [{"label": "✌️ Double down: ON" if i in self.armed else "✌️ Double down", "a": {"type": "double"}}]
             t["turnText"] = f"🎯 Bid for {self.worth()}"
         elif self.stage == "bid" and i is not None:
             t["note"] = "Bid in. Waiting for the others…"
