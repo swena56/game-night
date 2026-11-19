@@ -8,7 +8,7 @@ UI.dropfour = (() => {
       <div id="d4Moves" class="d4-moves"></div>
       <button id="bombBtn" class="danger" hidden>💣 Arm bomb</button>
       <button id="pullBtn" hidden>⬇️ Pull a disc</button>
-      <label class="check d4-warn"><input type="checkbox" id="d4Warn"> ⚠ Show where a rival wins next</label></div>`;
+      <label class="check d4-warn"><input type="checkbox" id="d4Warn"> ⚠ Analyze each column: wins and rival replies</label></div>`;
     try { document.getElementById('d4Warn').checked = !!localStorage.getItem('dropfour.warn'); } catch {}
     document.getElementById('d4Warn').onchange = (e) => { try { localStorage.setItem('dropfour.warn', e.target.checked ? '1' : ''); } catch {} ctx.rerender(); };
     board = main.querySelector('.d4');
@@ -51,8 +51,12 @@ UI.dropfour = (() => {
     (d.line || []).forEach(([r, c], k) => board.children[r * cols + c]?.style.setProperty('--k', k));
     // ⚠ (on this device, if asked for) the columns where a rival's next disc makes four
     const warn = document.getElementById('d4Warn')?.checked && S.phase === 'playing' && d.me != null;
-    const danger = warn ? threats(d.grid, d.me) : new Set();
-    [...board.children].forEach((cell, i) => cell.classList.toggle('danger', Math.floor(i / cols) === 0 && danger.has(i % cols)));
+    const forecast = warn ? analyze(d) : { wins: new Set(), danger: new Set() };
+    [...board.children].forEach((cell, i) => {
+      const col = i % cols, top = Math.floor(i / cols) === 0;
+      cell.classList.toggle('danger', top && forecast.danger.has(col) && !forecast.wins.has(col));
+      cell.classList.toggle('win-choice', top && forecast.wins.has(col));
+    });
     juice(d, rows, cols);
     board.classList.toggle('armed', bombArmed);
     board.classList.toggle('pulling', pullArmed);
@@ -87,24 +91,64 @@ UI.dropfour = (() => {
     pb.textContent = pullArmed ? '⬇️ Tap one of your bottom discs (tap here to cancel)' : '⬇️ Pull a disc';
   }
 
-  // columns where some rival dropping a disc next would line up four
-  function threats(grid, me) {
-    const rows = grid.length, cols = grid[0].length, out = new Set();
-    const seats = new Set(grid.flat().filter((v) => v != null && v !== me));
-    for (let c = 0; c < cols; c++) {
-      let r = rows - 1; while (r >= 0 && grid[r][c] != null) r--;
-      if (r < 0) continue;
-      for (const s of seats) {
-        const at = (y, x) => y >= 0 && y < rows && x >= 0 && x < cols && (y === r && x === c ? s : grid[y][x]) === s;
-        for (const [dy, dx] of [[0, 1], [1, 0], [1, 1], [1, -1]]) {
-          let n = 1;
-          for (let k = 1; k < 4 && at(r + dy * k, c + dx * k); k++) n++;
-          for (let k = 1; k < 4 && at(r - dy * k, c - dx * k); k++) n++;
-          if (n >= 4) out.add(c);
-        }
+  const dropRow = (g, c) => { for (let r = g.length - 1; r >= 0; r--) if (g[r][c] == null) return r; return -1; };
+  function applyDrop(g, c, seat, bomb = false) {
+    const r = dropRow(g, c); if (r < 0) return null;
+    const out = g.map((row) => [...row]); out[r][c] = seat;
+    if (bomb) {
+      for (let y = r - 1; y <= r + 1; y++) for (let x = c - 1; x <= c + 1; x++)
+        if ((y !== r || x !== c) && y >= 0 && x >= 0 && y < out.length && x < out[0].length) out[y][x] = null;
+      for (let x = 0; x < out[0].length; x++) {
+        const stack = out.map((row) => row[x]).filter((v) => v != null);
+        for (let y = 0; y < out.length; y++) out[y][x] = null;
+        stack.reverse().forEach((v, i) => { out[out.length - 1 - i][x] = v; });
       }
     }
     return out;
+  }
+  function applyPull(g, c) {
+    const out = g.map((row) => [...row]);
+    for (let y = out.length - 1; y > 0; y--) out[y][c] = out[y - 1][c];
+    out[0][c] = null; return out;
+  }
+  function hasLine(g, seat) {
+    const R = g.length, C = g[0].length;
+    for (let r = 0; r < R; r++) for (let c = 0; c < C; c++) if (g[r][c] === seat)
+      for (const [dy, dx] of [[0, 1], [1, 0], [1, 1], [1, -1]])
+        if (Array.from({ length: 4 }, (_, k) => [r + dy * k, c + dx * k]).every(([y, x]) => y >= 0 && x >= 0 && y < R && x < C && g[y][x] === seat)) return true;
+    return false;
+  }
+  function bombLeft(d, seat) { return d.bombsOn && !(d.moves || []).some((m) => m[0] === seat && m[2] === true); }
+  function winsNext(g, d, seat) {
+    const cols = g[0].length;
+    for (let c = 0; c < cols; c++) {
+      if (dropRow(g, c) < 0) continue;
+      const normal = applyDrop(g, c, seat);
+      if (hasLine(normal, seat)) return true;
+      if (bombLeft(d, seat) && hasLine(applyDrop(g, c, seat, true), seat)) return true;
+    }
+    if (d.pullOn) for (let c = 0; c < cols; c++) if (g[g.length - 1][c] === seat && hasLine(applyPull(g, c), seat)) return true;
+    return false;
+  }
+  // Analyze the selected action type in every column; then check whether the next living seat can win immediately.
+  function analyze(d) {
+    const wins = new Set(), danger = new Set(), me = d.me, cols = d.grid[0].length;
+    const active = d.seats.map((pid, i) => ({ pid, i })).filter(({ pid }) => !ctx.player(pid)?.eliminated).map((x) => x.i);
+    const next = active.length > 1 ? active[(active.indexOf(me) + 1) % active.length] : null;
+    for (let c = 0; c < cols; c++) {
+      let nextGrid = null;
+      if (pullArmed) {
+        if (d.pullOn && d.grid[d.grid.length - 1][c] === me) nextGrid = applyPull(d.grid, c);
+      } else if (bombArmed) {
+        if (d.bombs > 0) nextGrid = applyDrop(d.grid, c, me, true);
+      } else nextGrid = applyDrop(d.grid, c, me);
+      if (!nextGrid) continue;
+      if (hasLine(nextGrid, me)) { wins.add(c); continue; }
+      const givesWin = active.some((s) => s !== me && hasLine(nextGrid, s));
+      if (givesWin) { danger.add(c); continue; }
+      if (next != null && winsNext(nextGrid, d, next)) danger.add(c);
+    }
+    return { wins, danger };
   }
 
   // the column under the pointer glows, with a ghost of my disc at the top of it

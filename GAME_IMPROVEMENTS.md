@@ -89,7 +89,7 @@ acceptance check before they can be considered complete.
 | Game (`id`) | What to change | Acceptance check |
 |---|---|---|
 | Sea Battle (`seabattle`) | Add a post-game shot map that separates confirmed hits, misses, and sonar information used during the hunt. | Map reveals fleets only after the game and reproduces all prior scan and shot results. |
-| Drop Four (`dropfour`) | Add a one-move threat preview for every column, showing immediate wins and immediate opponent wins. | Preview respects gravity, player count, bomb discs, pull-outs, and variant board sizes. |
+| Drop Four (`dropfour`) | Add a one-move threat preview for every column, showing immediate wins and immediate opponent wins. **Implemented; browser verification pending.** | Preview respects gravity, player count, bomb discs, pull-outs, and variant board sizes. |
 | Dots & Boxes (`boxes`) | Add an endgame chain annotation that labels the remaining chains and who is expected to take each one. | Labels match the actual open edge graph and do not affect scoring or move legality. |
 | Tic-Tac-Toe (`tictactoe`) | Add a short rematch series with alternating first move and a series score. | Starter alternates correctly, each board uses the chosen variant, and series standings survive each round. |
 | Ultimate Tic-Tac-Toe (`ultimate`) | Add a route preview showing which small boards a move sends the rival to and which boards are already closed. | Preview follows forced-board rules and correctly handles a move that frees the rival to play anywhere. |

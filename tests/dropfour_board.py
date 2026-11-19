@@ -19,12 +19,14 @@ def check(name, ok, detail=""):
         fails.append(name)
 
 
-def size(board, n=2):
+def size(board, n=2, bombs=False, pull=False):
     r = server.Room("TEST")
     ps = [r.add_player(x) for x in ("Ann", "Bo", "Cy")[:n]]
     r.switch_game("dropfour")
     if board is not None:
         r.settings["board"] = board
+    r.settings["bombs"] = bombs
+    r.settings["pull"] = pull
     r.start()
     g = r.game
     return (len(g.grid), len(g.grid[0])), g, ps
@@ -33,6 +35,9 @@ def size(board, n=2):
 dims, g, ps = size(None)
 check("default 6 × 7", dims == (6, 7))
 check("view: my seat", g.view(ps[0])["d4"]["me"] == g.seats.index(ps[0].id))
+check("view exposes enabled public variant rules", not g.view(ps[0])["d4"]["bombsOn"] and not g.view(ps[0])["d4"]["pullOn"])
+_, g, ps = size(None, bombs=True, pull=True)
+check("view exposes bomb and pull preview rules", g.view(ps[0])["d4"]["bombsOn"] and g.view(ps[0])["d4"]["pullOn"])
 check("7 × 8", size("7x8")[0] == (7, 8))
 check("7 × 9", size("7x9")[0] == (7, 9))
 check("three players: 7 × 9 whatever the setting", size("7x8", 3)[0] == (7, 9))

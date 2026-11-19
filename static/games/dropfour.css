@@ -26,6 +26,8 @@
 .d4 { background: radial-gradient(ellipse at 30% 0%, #ffffff30, transparent 45%), linear-gradient(160deg, #3b6ff0, #1d4ed8 45%, #173ea8); border: 3px solid #102c78; }
 .d4-cell.danger::before { content: '⚠'; position: absolute; top: -2px; left: 50%; transform: translate(-50%, -100%); font-size: 16px; z-index: 2;
   animation: pulse .8s ease-in-out infinite alternate; filter: drop-shadow(0 0 4px #ff6b6b); }
+.d4-cell.win-choice::before { content: '✓'; position: absolute; top: -2px; left: 50%; transform: translate(-50%, -100%); font-size: 17px; font-weight: 900; color: #65ffad; z-index: 2;
+  filter: drop-shadow(0 0 4px #123); }
 .d4-warn { margin-top: 8px; font-size: 13px; }
 .d4.armed { background: #8b1d1d; }
 .d4-moves { display: flex; flex-wrap: wrap; gap: 3px; max-height: 52px; overflow-y: auto; margin: 6px 0; }

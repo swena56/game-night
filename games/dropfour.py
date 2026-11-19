@@ -95,6 +95,7 @@ class DropFour(Game):
         'Line up four in a row — across, down or diagonally — to win.',
         'With bombs on, a 💣 disc clears its 3×3 area and the stack falls.',
         'With ⬇️ pull-outs on, you may instead take one of your own discs out of the bottom row; the column slides down. A pull that lines up four for you and a rival wins for you.',
+        'Optional ⚠ column analyzer marks selected moves that win now and moves that leave the next rival an immediate win; it follows gravity, bombs and legal pull-outs.',
         '3–4 players get a bigger board; two players can pick one too (7 × 8 or 7 × 9).',
     ]
     name = "Drop Four"
@@ -214,7 +215,8 @@ class DropFour(Game):
     def view(self, p):
         return {"d4": {"grid": self.grid, "seats": self.seats, "last": self.last, "line": self.line,
                        "me": self.seats.index(p.id) if p.id in self.seats else None,
-                       "moves": list(self.moves), "bombs": self.bombs.get(p.id, 0),
+                       "moves": list(self.moves), "bombs": self.bombs.get(p.id, 0), "bombsOn": bool(self.s.get("bombs")),
+                       "pullOn": bool(self.s.get("pull")),
                        "pulls": pulls_for(self.grid, self.seats.index(p.id)) if self.s.get("pull") and p.id in self.seats else []}}
 
     # -- bot
