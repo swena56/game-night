@@ -20,6 +20,13 @@
 .um-note small { min-width: 2.6em; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
 .um-note.best small { color: var(--accent); font-weight: 700; }
 .um-note.new { animation: um-new 2.4s ease-out; }
+.um-recap { max-height: 42vh; overflow-y: auto; }
+.um-recap-row { display: grid; grid-template-columns: 1fr auto; gap: 3px 8px; padding: 7px 0; border-bottom: 1px solid #ffffff0d; font-size: 13px; }
+.um-recap-row b { font-weight: 600; }
+.um-recap-row span { font-weight: 800; }
+.um-recap-row .yes { color: #57cc99; }
+.um-recap-row .no { color: #ef476f; }
+.um-recap-row small { grid-column: 1 / -1; color: var(--muted); line-height: 1.4; }
 /* the answer that just came in (#14) */
 @keyframes um-new { from { background: #ffd16655; } to { background: transparent; } }
 .um-bubble { position: fixed; z-index: 30; left: 50%; top: calc(var(--bar-h, 52px) + 64px); transform: translateX(-50%); width: max-content; max-width: calc(100vw - 32px);

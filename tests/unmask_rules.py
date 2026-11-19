@@ -29,8 +29,8 @@ class Player:
 
 
 class Room:
-    def __init__(self, players):
-        self.settings = dict(u.Unmask.defaults(), mode="duel", size=24, powers=False)
+    def __init__(self, players, mode="duel"):
+        self.settings = dict(u.Unmask.defaults(), mode=mode, size=24, powers=False)
         self.players = {p.id: p for p in players}
         self.turn = self.winner = None
         self.phase, self.logs, self.awards = "playing", [], []
@@ -43,6 +43,9 @@ class Room:
 
     def opponent(self, p):
         return next(q for q in self.players.values() if q.id != p.id)
+
+    def seated(self):
+        return list(self.players.values())
 
     def finish(self, winner, text):
         self.phase, self.winner = "over", winner.id if winner else None
@@ -66,6 +69,20 @@ check("a right guess with 16 faces up is bold", ("a", "unmask", "bold") in room.
 room = game(flipped=20)  # 4 up
 check("a careful guess isn't", ("a", "unmask", "bold") not in room.awards and room.winner == "a", room.awards)
 check("bold badge defined", "bold" in u.Unmask.badges)
+
+a, b, c = Player("a", "Ann"), Player("b", "Bo"), Player("c", "Cy")
+room = Room([a, b, c], mode="manhunt")
+g = u.Unmask(room)
+g.start([a, b, c], random.Random(8))
+asked = {"a": "gender:woman"}
+g.questions = [{"asker": "a", "text": "Is a woman?", "check": {"q": {"a": "gender:woman"}, "ans": True}}]
+before = g.view(a)
+check("Manhunt answers stay private during play", before["recap"] is None and before["reveal"] is None)
+room.phase = "over"
+after = g.view(a)
+expected = {f["name"] for f in g.board if not u.evaluate(f, asked)}
+check("round recap maps the answer to eliminated faces",
+      after["recap"][0]["answer"] is True and set(after["recap"][0]["eliminated"]) == expected)
 
 print(f"\n{len(fails)} failed" if fails else "\nall passed")
 sys.exit(1 if fails else 0)

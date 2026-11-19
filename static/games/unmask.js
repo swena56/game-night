@@ -39,7 +39,8 @@ UI.unmask = (() => {
         </div>
         <div id="cards" class="cards"></div>
       </div>
-      <div class="panel"><h3>🗒️ Your clues</h3><div id="umNotes" class="um-notes"></div></div>`;
+      <div class="panel"><h3>🗒️ Your clues</h3><div id="umNotes" class="um-notes"></div></div>
+      <div id="umRecapPanel" class="panel um-recap" hidden><h3>🔎 Round deduction recap</h3><div id="umRecap"></div></div>`;
     for (const id of ['#qa', '#qb', '#qop']) $(id).onchange = updatePreview;
     $('#useCombo').onchange = () => { $('#comboFields').hidden = !$('#useCombo').checked; updatePreview(); };
     $('#askBtn').onclick = () => { ctx.quiet(ctx.act('ask', { q: currentQuestion() })); $('#useCombo').checked = false; };
@@ -125,6 +126,26 @@ UI.unmask = (() => {
     renderIdentity();
     renderAsk();
     renderNotes();
+    renderRecap();
+  }
+
+  function renderRecap() {
+    const panel = $('#umRecapPanel'), box = $('#umRecap');
+    if (!panel || !box) return;
+    const rows = S.phase === 'over' ? S.recap : null;
+    panel.hidden = !rows;
+    if (!rows) return;
+    box.innerHTML = '';
+    if (!rows.length) { box.append(ctx.el('p', 'hint left', 'No questions were asked this round.')); return; }
+    rows.forEach((row, i) => {
+      const item = ctx.el('div', 'um-recap-row');
+      const asker = ctx.player(row.asker)?.name ?? 'A player';
+      item.append(ctx.el('b', '', `${i + 1}. ${asker}: “${row.text}”`),
+        ctx.el('span', row.answer ? 'yes' : 'no', row.answer ? 'YES' : 'NO'));
+      item.append(ctx.el('small', '', row.eliminated.length
+        ? `Ruled out ${row.eliminated.join(', ')}` : 'Ruled out no faces'));
+      box.append(item);
+    });
   }
 
   // every answer you've had, and how many faces each one ruled out

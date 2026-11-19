@@ -159,6 +159,7 @@ class Unmask(Game):
         'On your turn, ask a yes/no question — the server answers truthfully.',
         "Flip down faces that don't fit. Think you know? Accuse — but a wrong guess costs you.",
         'Manhunt: questions are public, answers are private. Power cards bend the rules.',
+        'After the round, review each answer and the faces it ruled out.',
     ]
     name = "Unmask"
     icon = "🎭"
@@ -271,11 +272,11 @@ class Unmask(Game):
             r.add_log(f"🃏 You lied: “{text}” → {yn(ans)}. {p.name} believes it.", "private", to=opp.id)
         p.g.learned.append((q, ans))
         check = {"q": q, "ans": ans}
+        self.questions.append({"asker": p.id, "text": text, "check": check})
         if self.s["mode"] == "duel":
             r.opponent(p).g.about_me.append((q, ans))
             r.add_log(f"{p.name}: “{text}” → {yn(ans)}", "question", check=check, helper=p.id)
         else:
-            self.questions.append({"asker": p.id, "text": text, "check": check})
             r.add_log(f"{p.name} asked: “{text}”", "question")
             r.add_log(f"🤫 Only you hear it: {yn(ans)}", "private", to=p.id, check=check, helper=p.id)
         r.advance()
@@ -443,11 +444,21 @@ class Unmask(Game):
             reveal = {"culprit": self.culprit,
                       "secrets": {o.id: o.g.secret for o in r.seated()
                                   if getattr(o.g, "secret", None) is not None}}
+        recap = None
+        if r.phase == "over":
+            recap = [{
+                "asker": row["asker"],
+                "text": row["text"],
+                "answer": row["check"]["ans"],
+                "eliminated": [f["name"] for f in self.board
+                               if evaluate(f, row["check"]["q"]) != row["check"]["ans"]],
+            } for row in self.questions]
         g = p.g
         return {
             "board": self.board,
             "catalog": CATALOG,
             "reveal": reveal,
+            "recap": recap,
             "me": {
                 "secret": getattr(g, "secret", None),
                 "flipped": sorted(getattr(g, "flipped", ())),
