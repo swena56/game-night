@@ -24,7 +24,7 @@
 .rl-size { width: 30px; height: 30px; padding: 0; border-radius: 50%; display: grid; place-items: center; }
 .rl-size span { display: block; border-radius: 50%; background: var(--text); }
 .rl-size.on { outline: 2px solid #fff; }
-.rl-save { margin-top: 10px; }
+.rl-save, .rl-replay { width: 100%; min-height: 42px; margin-top: 8px; }
 .rl-chain { display: grid; gap: 10px; }
 .rl-entry { background: var(--panel); border-radius: var(--radius); padding: 10px; display: grid; gap: 8px; animation: rlin .5s both; }
 .rl-who { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }

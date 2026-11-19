@@ -1,6 +1,6 @@
 // Scribble Relay: write / draw / caption on your own phone, then reveal the chains and vote.
 UI.relay = (() => {
-  let handedKey = '', tallied = false, tickTimer = 0, lastTick = 0;
+  let handedKey = '', tallied = false, tickTimer = 0, lastTick = 0, replaySeq = 0, renderedReplay = 0;
   let S, ctx, pad, padKey = '', strokes = [], cur = null, color = 0, size = 0, ints = 0, shownKey = '';
   const NS = 'http://www.w3.org/2000/svg';
   const INK = ['#1d1a26', '#e63946', '#1d7bd8', '#2a9d4b', '#f4a300', '#8e44ad'];
@@ -87,6 +87,7 @@ UI.relay = (() => {
 
   function mount(main, side) {
     padKey = ''; strokes = []; cur = null; ints = 0; color = 0; size = 0; shownKey = '';
+    replaySeq = 0; renderedReplay = 0; tallied = false;
     main.innerHTML = `<div class="rl">
       <div class="rl-head"><span id="rlStep"></span><span id="rlTask" class="rl-task"></span></div>
       <div id="rlPrompt" class="rl-prompt"></div>
@@ -206,8 +207,10 @@ UI.relay = (() => {
     const starter = ctx.player(g.starter);
     $('rlStep').textContent = `Chain ${g.show + 1} of ${g.chains}`;
     $('rlTask').textContent = `${starter?.name ?? '?'}'s chain`;
-    const fresh = shownKey !== String(g.show);
-    shownKey = String(g.show);
+    const showKey = `${S.code}:${g.show}:${g.starter}`;
+    const fresh = shownKey !== showKey || renderedReplay !== replaySeq;
+    shownKey = showKey;
+    renderedReplay = replaySeq;
     const box = $('rlChain'); box.innerHTML = '';
     // a fresh chain plays out card by card; each drawing re-draws itself stroke by stroke as it appears,
     // so the next card waits a little longer after a picture
@@ -251,7 +254,9 @@ UI.relay = (() => {
     }
     const save = ctx.el('button', 'ghost-btn rl-save', '💾 Save this chain as a picture');
     save.onclick = () => saveChain(g).catch(() => ctx.toast("Couldn't make the picture on this device."));
-    box.append(save);
+    const replay = ctx.el('button', 'ghost-btn rl-replay', '↻ Replay this chain');
+    replay.onclick = () => { replaySeq++; ctx.rerender(); };
+    box.append(replay, save);
     const mine = playing() && g.myVote == null && g.waiting.includes(S.me.id);
     $('rlStatus').textContent = S.phase === 'playing'
       ? (mine ? '❤️ Tap the heart on your favourite entry (not your own): its author gets +1.' : '')

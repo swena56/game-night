@@ -14,6 +14,7 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 const BASE = process.env.BASE || 'http://localhost:8767';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const nodeErrors = [];
+const relayReplayed = new Set();
 process.on('unhandledRejection', (e) => nodeErrors.push('unhandledRejection: ' + (e?.stack || e)));
 
 class ES { // minimal EventSource over fetch streaming
@@ -165,7 +166,22 @@ const MOVES = {
   },
   relay(d, S, n, w) {
     const g = S.relay;
-    if (g.stage === 'show') return click(pick(enabled(d, '.rl-heart')));
+    if (g.stage === 'show') {
+      const key = `${S.code}:${g.show}`;
+      if (!relayReplayed.has(key)) {
+        relayReplayed.add(key);
+        const before = [...d.querySelectorAll('#rlChain .rl-entry')].map((e) => e.textContent);
+        const replay = d.querySelector('.rl-replay');
+        if (!replay) nodeErrors.push('Scribble Relay replay control missing');
+        else {
+          click(replay);
+          const after = [...d.querySelectorAll('#rlChain .rl-entry')].map((e) => e.textContent);
+          if (JSON.stringify(after) !== JSON.stringify(before)) nodeErrors.push('Scribble Relay replay changed chain cards or order');
+        }
+        return;
+      }
+      return click(pick(enabled(d, '.rl-heart')));
+    }
     if (g.kind === 'draw') {
       const pad = d.querySelector('#rlPad');
       pad.getBoundingClientRect = () => ({ left: 0, top: 0, width: 300, height: 300 });

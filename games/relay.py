@@ -47,7 +47,7 @@ class Relay(Game):
         "Everyone writes a phrase to start their own chain.",
         "Chains pass around the table: draw the phrase you get, then caption the drawing you get, and so on.",
         "You only ever see the entry just before yours.",
-        "At the end, each chain is revealed. Vote for your favourite entry (not your own): +1 per vote.",
+        "At the end, each chain is revealed. Vote for your favourite entry (not your own): +1 per vote; replay any chain to watch it again.",
         "🎯 If a chain ends up close to where it started, everyone in it gets +1.",
         "🎲 Twist cards (an option): each drawing comes with a twist, like one continuous line, four strokes, or your other hand.",
     ]
