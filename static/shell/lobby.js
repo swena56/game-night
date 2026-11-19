@@ -28,6 +28,15 @@ function gameTile(g, seated, current, newTags = Profile.showNew()) {
   b.dataset.game = g.id;
   return b;
 }
+// 🙈 games this device keeps out of the lists (the picker, the game-over suggestions). Searching still finds
+// them, the current game stays in place (dimmed), and the picker's "🙈 N hidden" row shows or restores them.
+const hiddenGames = () => load('hiddenGames') || [];
+const isHidden = (id) => hiddenGames().includes(id);
+function toggleHidden(id) {
+  const h = hiddenGames(), next = h.includes(id) ? h.filter((g) => g !== id) : [...h, id];
+  store('hiddenGames', next.length ? next : null);
+}
+let showHidden = false;  // the picker's hidden group is open (this visit only)
 // the sort chips, and (sorted by type) a row of category chips that jump to their group
 function renderPickerBar(bar, pick, redraw) {
   const sort = load('pickerSort') || 'type';
@@ -52,12 +61,17 @@ function renderPickerBar(bar, pick, redraw) {
   bar.append(jump);
 }
 // fills `pick` with the games in groups; tile(b, g) wires each tile (clicks, wishes)
-function renderPickerGrid(pick, { games, seated = 0, current = null, query = '', onlyFits = false, kind = load('pickerKind'), tile }) {
+function renderPickerGrid(pick, opts) {
+  let { games, seated = 0, current = null, query = '', onlyFits = false, kind = load('pickerKind'), tile, redraw } = opts;
+  redraw ||= () => renderPickerGrid(pick, opts);
   pick.innerHTML = '';
   query = query.trim().toLowerCase();
+  const hidden = hiddenGames();
+  // 🙈 hidden games leave every group, unless you're searching or it's the game picked right now
+  const hide = (g) => hidden.includes(g.id) && !query && g.id !== current;
   const sort = load('pickerSort') || 'type';
   const fits = (g) => !seated || (seated >= g.min && seated <= g.max);
-  const shown = games.filter((g) => (!query || g.name.toLowerCase().includes(query) || g.category.includes(query) || (g.family || '').toLowerCase().includes(query))
+  const shown = games.filter((g) => !hide(g) && (!query || g.name.toLowerCase().includes(query) || g.category.includes(query) || (g.family || '').toLowerCase().includes(query))
     && (!onlyFits || fits(g) || g.id === current) && (!kind || g.category === kind || g.id === current));
   const byId = (ids) => ids.map((id) => shown.find((g) => g.id === id)).filter(Boolean);
   const newTags = Profile.showNew();
@@ -83,6 +97,8 @@ function renderPickerGrid(pick, { games, seated = 0, current = null, query = '',
     }[sort] || ((a, b) => a.name.localeCompare(b.name));
     groups.push([`${PICKER_SORTS.find(([k]) => k === sort)?.[1] || ''} · ${shown.length} games`, [...shown].sort(key), '', false, true]);
   }
+  const hiddenList = games.filter(hide);
+  if (showHidden && hiddenList.length) groups.push([`🙈 Hidden · ${hiddenList.length}`, hiddenList, '', false, true]);
   if (!shown.length) pick.append(el('p', 'hint', query ? `No game matches “${query}”.` : kind ? `No ${TILE_KINDS[kind] || kind} fits this many players.` : 'No game fits this many players.'));
   for (const [label, list, cat, sub, flat] of groups) {
     // games that fit the players here come first in each group (a flat sort keeps its own order)
@@ -96,7 +112,29 @@ function renderPickerGrid(pick, { games, seated = 0, current = null, query = '',
     group.dataset.count = gs.length;
     group.dataset.cat = cat || '';
     pick.append(group);
-    for (const g of gs) { const b = gameTile(g, seated, current, newTags); tile?.(b, g); group.append(b); }
+    for (const g of gs) {
+      const b = gameTile(g, seated, current, newTags); tile?.(b, g); group.append(b);
+      if (!hidden.includes(g.id)) continue;
+      b.classList.add('is-hidden');
+      // a hidden tile can be put back in the list from its 👁️ corner
+      const back = el('span', 'tile-unhide', '👁️');
+      back.title = back.ariaLabel = `Show ${g.name} in the list again`;
+      back.setAttribute('role', 'button');
+      back.onclick = (e) => { e.stopPropagation(); toggleHidden(g.id); redraw(); };
+      b.append(back);
+    }
+  }
+  // the row that shows, hides again or restores the hidden games
+  if (hidden.length && !query) {
+    const row = el('div', 'picker-hidden');
+    const n = hiddenList.length;  // the picked game stays in place, so it isn't counted
+    const tog = el('button', 'chip-btn', showHidden ? `🙈 Hide the ${n} hidden again` : `🙈 ${n} hidden · show`);
+    tog.setAttribute('aria-pressed', showHidden);
+    tog.onclick = () => { showHidden = !showHidden; redraw(); };
+    const all = el('button', 'chip-btn', '👁️ Unhide all');
+    all.onclick = () => { store('hiddenGames', null); showHidden = false; redraw(); };
+    row.append(tog, all);
+    if (n) pick.append(row);
   }
   fitPicker(pick);
 }
@@ -120,7 +158,7 @@ async function pickGameSheet({ title = '🎮 Choose a game', current = null, sea
   const draw = () => {
     cards.setAttribute('aria-pressed', load('pickerKind') === 'cards');
     renderPickerBar(bar, pick, draw);
-    renderPickerGrid(pick, { games, seated, current, query: find.value, tile: (b, g) => { b.onclick = () => { chosen = g.id; ask.close?.(true); }; } });
+    renderPickerGrid(pick, { games, seated, current, query: find.value, redraw: draw, tile: (b, g) => { b.onclick = () => { chosen = g.id; ask.close?.(true); }; } });
   };
   find.oninput = draw;
   $('#modal').classList.add('sheet');
@@ -172,7 +210,7 @@ function renderLobby() {
   $('#pickerCards')?.setAttribute('aria-pressed', load('pickerKind') === 'cards');
   renderPickerBar($('#pickerBar'), pick, () => renderLobby());
   renderPickerGrid(pick, {
-    games: S.games, seated, current: S.gameId, query: $('#pickerFind').value, onlyFits,
+    games: S.games, seated, current: S.gameId, query: $('#pickerFind').value, onlyFits, redraw: () => renderLobby(),
     tile: (b, g) => {
       const wishers = S.players.filter((p) => p.wish === g.id);
       if (S.me && wishers.some((p) => p.id === S.me.id)) b.classList.add('wished');
@@ -201,6 +239,13 @@ function renderLobby() {
   star.setAttribute('aria-pressed', fav);
   star.onclick = () => { store('favGames', fav ? favs.filter((g) => g !== S.gameId) : [S.gameId, ...favs]); renderLobby(); };
   chosen.append(star);
+  // 🙈 keep this game out of the lists on this device (the picker can show it again)
+  const hid = isHidden(S.gameId);
+  const eye = el('button', 'ghost-btn hide-btn' + (hid ? ' on' : ''), hid ? '👁️' : '🙈');
+  eye.title = eye.ariaLabel = hid ? 'Show this game in the list again' : 'Hide this game from the list (on this device)';
+  eye.setAttribute('aria-pressed', hid);
+  eye.onclick = () => { toggleHidden(S.gameId); renderLobby(); };
+  star.after(eye);
   $('#settingsHead').textContent = `${info.name} settings`;
   document.title = `${info.name} — Game Night`;
   if (pickedGame && pickedGame === S.gameId) {
@@ -215,7 +260,7 @@ function renderLobby() {
     const change = el('button', 'change-game', '🔄 Change game');
     change.title = 'Show all the games again';
     change.onclick = () => { unfoldPicker(); pick.querySelector(`[data-game="${S.gameId}"]`)?.focus({ preventScroll: true }); };
-    star.after(change);
+    eye.after(change);
     if (focused || document.activeElement?.closest?.('#gamePicker')) change.focus({ preventScroll: true });  // keyboard users land on it
   }
   $('#gameDesc').textContent = info.blurb + (S.gameId === 'unmask' ? ' ' + MODE_DESC[S.settings.mode] : '');

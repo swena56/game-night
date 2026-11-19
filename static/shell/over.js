@@ -154,8 +154,9 @@ function renderVote(host, others) {
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
   const fresh = fit.filter((g) => !tonight.includes(g.id)).map((g) => [rnd(), g]).sort((a, b) => a[0] - b[0]).map(([, g]) => g);
   const mineFirst = (ids) => ids.map((id) => fit.find((g) => g.id === id)).filter(Boolean);
+  const shownFit = fit.filter((g) => !isHidden(g.id));  // 🙈 hidden games aren't suggested (votes still show)
   const picked = mine ? fit.filter((g) => g.id === mine) : [];
-  const picks = [...picked, ...fit.filter((g) => voters(g.id).length), ...mineFirst(load('favGames') || []), ...mineFirst(load('recentGames') || []), ...fresh, ...fit]
+  const picks = [...picked, ...fit.filter((g) => voters(g.id).length), ...mineFirst(load('favGames') || []).filter((g) => !isHidden(g.id)), ...mineFirst(load('recentGames') || []).filter((g) => !isHidden(g.id)), ...fresh.filter((g) => !isHidden(g.id)), ...shownFit]
     .filter((g, i, all) => all.indexOf(g) === i && g.id !== S.gameId).slice(0, 4);
   const nVotes = Object.keys(votes).length;
   if (overNextOpen?.at !== S.history.length) overNextOpen = { at: S.history.length, open: others };

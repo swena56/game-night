@@ -208,6 +208,12 @@ body.calm .nudge { animation: none; box-shadow: 0 0 0 2px #ffb70388; }
 .chip-btn[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-a10); color: var(--accent); }
 .game-chosen .fav-btn { margin-left: auto; font-size: 22px; line-height: 1; }
 .game-chosen .fav-btn.on { color: var(--accent); }
+/* 🙈 hidden games: hide/unhide beside the ★ in the lobby, dimmed tiles with a 👁️ corner, the picker's hidden row */
+.game-chosen .hide-btn { font-size: 18px; line-height: 1; opacity: .75; }
+.game-chosen .hide-btn.on { opacity: 1; }
+.game-tile.is-hidden:not(.on) { opacity: .55; }
+.game-tile .tile-unhide { position: absolute; bottom: 3px; right: 4px; font-size: var(--fs-xs); line-height: 1; cursor: pointer; }
+.picker-hidden { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 10px 0 2px; }
 .picker-group { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; --tint: var(--accent); }
 /* each tile takes its game's category tint (data-cat on the tile), so favourites and flat sorts keep it too */
 .game-tile[data-cat="party"] { --tint: #ef476f; } .game-tile[data-cat="action"] { --tint: #ffb703; } .game-tile[data-cat="strategy"] { --tint: #06d6a0; }
