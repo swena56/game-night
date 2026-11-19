@@ -87,6 +87,8 @@ UI.liars = (() => {
       const who = ctx.el('span', 'liar-who', `${p?.name ?? '?'} bids`);
       who.style.color = p?.color ?? 'inherit';
       bidBox.append(who, ctx.el('b', 'liar-q', `${l.bid[0]} ×`), die(l.bid[1], 'liar-bigdie'));
+      const est = l.bidOdds?.at(-1);
+      if (est != null) bidBox.append(ctx.el('small', 'liar-est', `📊 ~${est}% likely (estimate from dice counts only)`));
     } else {
       bidBox.append(ctx.el('span', 'liar-who', `Round ${l.round} · ${l.total} dice on the table · no bid yet`));
     }
@@ -227,8 +229,14 @@ UI.liars = (() => {
       cups.append(row);
     }
     const bids = $('lrBids'); bids.innerHTML = '';
-    for (const [q, f, pid] of l.bids.slice().reverse()) bids.append(ctx.el('div', '', `${ctx.player(pid)?.name ?? '?'}: ${say(q, f)}`));
+    // 📊 each bid with a public estimate (dice counts, dice on show and the wild rule; never hidden dice)
+    l.bids.map((b, k) => [b, l.bidOdds?.[k]]).reverse().forEach(([[q, f, pid], est]) => {
+      const row = ctx.el('div', 'liar-hrow', `${ctx.player(pid)?.name ?? '?'}: ${say(q, f)}`);
+      if (est != null) row.append(ctx.el('span', 'liar-est' + (est < 35 ? ' low' : ''), ` ~${est}%`));
+      bids.append(row);
+    });
     if (!l.bids.length) bids.append(ctx.el('div', 'hint left', 'None yet.'));
+    else if (l.bidOdds) bids.append(ctx.el('div', 'hint left', `~% = estimated chance the bid holds, from the ${l.total} dice on the table${l.wild ? ' with wild 1s' : ''} — nobody's hidden dice.`));
     paint();
   }
 

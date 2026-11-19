@@ -32,6 +32,15 @@ def exactly(k, n, p):
     return comb(n, k) * p ** k * (1 - p) ** (n - k) if 0 <= k <= n else 0.0
 
 
+def public_odds(q, f, total, shown, wild):
+    """📊 An estimate anyone at the table could make: the chance at least q dice show face f, from the
+    number of dice on the table and the dice on show only (no one's hidden dice). Wild 1s count for every
+    face but 1s; with wilds off (or in a palifico round) only the face itself counts."""
+    hits = lambda d: d == f or (wild and f != 1 and d == 1)
+    known = sum(1 for d in shown if hits(d))
+    return at_least(q - known, total - len(shown), 1 / 3 if wild and f != 1 else 1 / 6)
+
+
 class LiarsDice(Game):
     id = "liars"
     category = "dice"
@@ -43,6 +52,7 @@ class LiarsDice(Game):
         "🗿 Palifico (an option): the first time someone is down to one die, they open a special round: 1s aren't wild and every bid keeps the opening face (only the count goes up).",
         "Lose all your dice and you're out. The last player with dice wins.",
         "With 🎲 Show & reroll on, once a round on your turn you can put some of your dice on show for everyone and reroll the rest, then bid.",
+        "📊 Every bid this round carries an estimate of how likely it holds, from the number of dice on the table (and any dice on show) only — nobody's hidden dice, the same for everyone.",
     ]
     name = "Liar's Dice"
     icon = "🤥"
@@ -310,6 +320,9 @@ class LiarsDice(Game):
             "counts": {i: r.players[i].g.count for i in self.seats if i in r.players},
             "mine": list(getattr(p.g, "dice", [])) if p.id in self.seats else [],
             "bid": self.bid, "bids": self.bids[-8:], "round": self.round,
+            # 📊 public estimates for those bids: dice counts, dice on show and the round's wild rule only
+            "bidOdds": [round(100 * public_odds(q, f, self.total(), [d for x in self.players() for d in getattr(x.g, "shown", [])], self.wild()))
+                        for q, f, _ in self.bids[-8:]],
             "total": self.total(), "wild": self.wild(), "palifico": self.palifico, "exact": self.s["exact"], "low": self.lowest_face(),
             "showdown": self.showdown,
             "shown": {x.id: list(getattr(x.g, "shown", [])) for x in self.players()},
