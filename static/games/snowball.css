@@ -34,3 +34,11 @@ body.focus .sw-stage { height: max(240px, calc(var(--room) - 160px)); }
 .sw-bar .hint { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .sw-crown { color: #6b4b00; }
 @media (prefers-reduced-motion: reduce) { .sw-bar button.sw-use { animation: none; } }
+/* #182 the ✨ button names the gift and what it does; #181 the crown holder's row glows gold */
+.sw-bar button.sw-use { display: flex; align-items: center; gap: 6px; padding: 0 10px; text-align: left; }
+.sw-use-e { font-size: 22px; }
+.sw-use-t { display: flex; flex-direction: column; line-height: 1.05; }
+.sw-use-t b { font-size: 14px; white-space: nowrap; }
+.sw-use-t small { font-size: 11px; font-weight: 600; opacity: .8; white-space: nowrap; }
+@media (max-width: 420px) { .sw-bar button { min-width: 128px; } .sw-use-t small { display: none; } }
+.seat-row.sw-holder { background: color-mix(in srgb, var(--panel2) 65%, #ffd23f); border-radius: 8px; }

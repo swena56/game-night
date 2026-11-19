@@ -16,7 +16,12 @@ Hits, splats and knockdowns go out as numbered events, repeated for EVENT_KEEP s
 #178 "needs more depth": a 🗺️ field per game (Fort Meadow, Snow Village, or the Frozen Pond where you slide),
 🎁 gifts to grab and spend (🧊 ice ball: fast, two hits and a chill; ☃️ decoy: a snowman rivals' throws lock on
 to; 💦 slush bomb: a puddle that bogs rivals down), 👑 the crown on the hill at half time (outnumber rivals in it: +1
-every few seconds; level freezes it, except in big games), and 🔥 streaks (three snow-ins without being snowed in; whoever ends one scores a bonus)."""
+every few seconds; level, the holder fills at half speed), and 🔥 streaks (three snow-ins without being snowed in; whoever ends one scores a bonus).
+
+#181–#183: the crown is a loop now. Fill the ring on the hill (5 s) to win it (+CROWN_PTS), then it flies to a new
+hill elsewhere on the field (shown CROWN_MOVE s ahead, so everyone can regroup), and it moves on by itself if nobody
+has gone near it for CROWN_IDLE s. Holding it is risky: every hit on a holder inside knocks the ring back, and being
+snowed in on the hill halves the holder side's ring."""
 import collections
 import math
 import random
@@ -65,11 +70,15 @@ GIFT_FIRST, GIFT_EVERY, GIFT_MAX, GIFT_REACH = 7.0, 10.0, 2, BODY + 0.4
 ICE_FLIGHT, CHILL, CHILL_SPEED = 0.55, 2.5, 0.55      # an ice ball flies in this share of the time; a hit chills
 DECOY_HP, DECOY_T, DECOY_PULL = 2, 10.0, 0.6          # a decoy soaks this many throws; auto-aim scores it ×0.6
 SLUSH_R, SLUSH_T, SLUSH_SPEED = 1.6, 7.0, 0.45
-# 👑 the crown: on the hill from half time; hold it with no rival inside for HILL_EVERY s → +1
+# 👑 the crown: on the hill from half time; outnumber rivals in it for HILL_EVERY s → +CROWN_PTS (level: the holder at ½ speed)
 HILL_R, HILL_EVERY = 1.5, 5.0
 # with CROWD or more players a level hill doesn't freeze: the holder keeps it at CROWD_RATE (#178 follow-up: 6 kids
 # nearly always had a rival inside, so the crown almost never scored)
-CROWD, CROWD_RATE = 4, 0.5
+CROWD, CROWD_RATE = 1, 0.5   # (#183 follow-up: every game size now; with 3 players a tie froze it nearly always)
+# #181–#183: winning the crown scores CROWN_PTS, then it flies to a new hill (landing CROWN_MOVE s later, at least
+# CROWN_HOP away); a hit on a holder inside knocks the ring back HILL_HIT a pip, snowed in there halves it; an untouched
+# crown moves on after CROWN_IDLE s
+CROWN_PTS, CROWN_MOVE, CROWN_HOP, HILL_HIT, CROWN_IDLE = 2, 4.0, 7.0, 0.15, 20.0
 BANK_FADE = 0.04      # …and a side pushed off keeps its count, fading this much a second, for when it's back
 STREAK, STREAK_BONUS = 3, 1          # snow-ins in a row for a streak; ending one scores this bonus
 BOT_X = {  # 🎁 how far it goes for a gift, chance it plays for the crown, how readily it spends a gift
@@ -136,12 +145,13 @@ class Snowball(Game):
     category = "action"
     family = None
     howto = [
-        "Drag anywhere to run (or WASD / arrows). Tap ❄️ (or Space) to lob a snowball at the nearest rival, the one you're facing first.",
+        "Drag anywhere to run (or WASD / arrows). Tap ❄️ (or Space) to lob a snowball at the nearest rival, the one you're facing first. Three hits snow someone in: +1 to the thrower.",
+        "🎁 Walk over a gift to carry it, then tap ✨ (or E): 🧊 ice ball = a fast throw worth two hits that slows them; ☃️ decoy = a snowman that rivals' throws go for; 💦 slush bomb = a puddle that bogs rivals down.",
+        "👑 From half time a crown sits on a hill: stand in its ring with more of you than rivals until it fills (5 s) for +2 (level: the holder fills at half speed), then it flies to a new hill (you see where 4 s ahead). Hits on the holder knock the ring back; snowed in on the hill, half the ring is lost.",
         "Hold ❄️ to pack a big one (two hits, wider splash); you move slowly while you pack. You carry 3 and scoop more as you go.",
-        "Snowballs land where the target stood when they were thrown: a shadow shows where. Keep moving! Forts block throws at whoever hides behind them, and crumble.",
-        "Three hits and you're snowed in for 3 s: the thrower scores a point. ⛄ Walk through fresh snow to roll a giant; run it into a rival to knock them flat.",
-        "🎁 Grab gifts and spend them with ✨: 🧊 ice ball (fast, two hits, chills), ☃️ decoy (rivals' throws go for it), 💦 slush bomb (a puddle that bogs rivals down).",
-        "👑 At half time a crown lands on the hill: +1 every 5 s to whoever has the most kids in it (you alone, or your team). Level freezes it; with 4+ players the holder keeps it at half speed until outnumbered. 🔥 Three snow-ins in a row is a streak; end someone's streak for +1.",
+        "Snowballs land where the target stood when they were thrown: a shadow shows where. Keep moving! Forts block throws at whoever hides behind them, and crumble. Snowed in lasts 3 s.",
+        "⛄ Walk through fresh snow to roll a giant; run it into a rival to knock them flat. 🔥 Three snow-ins in a row is a streak; end someone's streak for +1.",
+        "👑 More of you than rivals on the hill holds it (team-mates count together); level, the holder keeps filling at half speed (⚔️) until outnumbered. Nobody near it for 20 s and it moves on.",
         "Most points when the clock runs out wins.",
     ]
     tip_lines = 3
@@ -154,7 +164,7 @@ class Snowball(Game):
     badges = {**Game.badges,
               "avalanche": ("🏔️", "Avalanche", "Flatten a rival with a giant snowball"),
               "untouched": ("🧊", "Untouchable", "Win without being snowed in"),
-              "crown": ("👑", "King of the Hill", "Score 3 crown points in one game"),
+              "crown": ("👑", "King of the Hill", "Win the crown 3 times in one game"),
               "shutdown": ("🧯", "Shutdown", "End a rival's streak of three or more"),
               "decoy": ("☃️", "Snow Double", "Your decoys soak up 3 throws in one game")}
     settings_schema = {
@@ -207,6 +217,10 @@ class Snowball(Game):
         self.said = {}
         self.crown_open, self.crown_side, self.crown_prog, self.crown_contest = False, -1, 0.0, 0   # contest: 0 clear, 1 frozen, 2 challenged (half speed)
         self.crown_bank = {}   # side → its count while someone else holds the hill (big games)
+        self.crown_holder = -1  # the kid wearing it (the holding side's kid nearest the middle), or -1
+        self.crown_move_at, self.crown_from, self.crown_next = 0.0, None, None   # in flight to a new hill until then
+        self.crown_seen = 0.0   # when someone last stood on the hill (an untouched crown moves on)
+        self.crown_wins = 0
         self.hill_in = {}   # kid → when they stepped onto the hill (still standing, not snowed in)
         self.bot_hill = [False] * n
         self.ball_id = 0
@@ -254,6 +268,12 @@ class Snowball(Game):
         d.setdefault("crown_contest", 0)
         d.setdefault("hill_in", {})
         d.setdefault("crown_bank", {})
+        d.setdefault("crown_holder", -1)
+        d.setdefault("crown_move_at", 0.0)
+        d.setdefault("crown_from", None)
+        d.setdefault("crown_next", None)
+        d.setdefault("crown_seen", 0.0)
+        d.setdefault("crown_wins", 0)
         if "bot_hill" not in d and "seats" in d:
             d["bot_hill"] = [False] * len(d["seats"])
         for b in d.get("balls", []):
@@ -609,6 +629,7 @@ class Snowball(Game):
         o = self.kids[j]
         o.pips += n
         self.kids[by].hits += 1
+        self.crown_hit(j, by, n, o.pips >= PIPS, now)
         if o.pips >= PIPS:
             o.pips = 0
             o.frozen_until = now + FROZEN
@@ -667,7 +688,7 @@ class Snowball(Game):
                 continue
             if any(math.hypot(k.x - x, k.y - y) < 2.2 for i, k in enumerate(self.kids) if self.active(i)):
                 continue
-            if any(math.hypot(g[1] - x, g[2] - y) < 3 for g in self.gifts) or math.hypot(x - self.hill_xy[0], y - self.hill_xy[1]) < HILL_R + 0.6:
+            if any(math.hypot(g[1] - x, g[2] - y) < 3 for g in self.gifts) or any(math.hypot(x - h[0], y - h[1]) < HILL_R + 0.6 for h in (self.hill_xy, self.crown_next) if h):
                 continue
             return round(x, 2), round(y, 2)
         return None
@@ -696,13 +717,46 @@ class Snowball(Game):
         if self.slush:
             self.slush = [p for p in self.slush if now < p[2]]
 
+    def hill_spot(self):
+        """👑 a new hill (#183): clear of forts and the walls, at least CROWN_HOP from the last one, and away from
+        everyone (no one gets it for free); a few candidates, the emptiest wins."""
+        rng, (ox, oy) = self.rng, self.hill_xy
+        best = None
+        for _ in range(80):
+            x, y = rng.uniform(-AW + HILL_R + 0.8, AW - HILL_R - 0.8), rng.uniform(-AH + HILL_R + 0.8, AH - HILL_R - 0.8)
+            if math.hypot(x - ox, y - oy) < CROWN_HOP:
+                continue
+            if any(seg_hits_rect(x, y, x, y, fort_rect(f), HILL_R * 0.75) is not None for f in self.fort_xy):
+                continue
+            room = min([math.hypot(k.x - x, k.y - y) for i, k in enumerate(self.kids) if self.active(i)] or [9.0])
+            score = min(room, 5.0) + rng.random()
+            if best is None or score > best[0]:
+                best = (score, round(x, 2), round(y, 2))
+            if best[0] >= 5.0:
+                break
+        return (best[1], best[2]) if best else (0.0, 0.0) if math.hypot(ox, oy) >= CROWN_HOP else (-ox, -oy)
+
+    def move_crown(self, now):
+        """👑 off to a new hill: it shows where at once and lands CROWN_MOVE s later."""
+        self.crown_from, self.crown_next = self.hill_xy, self.hill_spot()
+        self.crown_move_at = now + CROWN_MOVE
+        self.crown_side, self.crown_prog, self.crown_contest, self.crown_holder = -1, 0.0, 0, -1
+        self.crown_bank, self.hill_in = {}, {}
+        self.event(now, "crownmove", self.crown_from[0], self.crown_from[1], self.crown_next[0], self.crown_next[1])
+
     def tick_crown(self, dt, now):
         if not self.crown_open:
             if now < self.crown_at:
                 return
             self.crown_open = True
+            self.crown_seen = now
             self.event(now, "crown")
-            self.moment("👑 A crown lands on the hill! Outnumber your rivals in it: +1 every 5 s", "gold", "fanfare")
+            self.moment(f"👑 A crown lands on the hill! Outnumber rivals in its ring until it fills: +{CROWN_PTS}, then it flies off", "gold", "fanfare")
+        if self.crown_move_at:   # in flight to its next hill
+            if now < self.crown_move_at:
+                return
+            self.hill_xy, self.crown_move_at, self.crown_from, self.crown_seen = self.crown_next, 0.0, None, now
+            self.event(now, "crownland", self.hill_xy[0], self.hill_xy[1])
         hx, hy = self.hill_xy
         inside = [i for i, k in enumerate(self.kids) if self.active(i) and self.can_act(k, now) and math.hypot(k.x - hx, k.y - hy) < HILL_R]
         for i in list(self.hill_in):
@@ -710,11 +764,15 @@ class Snowball(Game):
                 del self.hill_in[i]
         for i in inside:
             self.hill_in.setdefault(i, now)
+        self.crown_holder = -1
         if not inside:
             self.crown_contest = 0
             self.crown_prog = max(0.0, self.crown_prog - dt * 0.25)
+            if now - self.crown_seen > CROWN_IDLE:   # nobody's been near it: it moves on
+                self.move_crown(now)
             return
-        # the side with the most kids inside holds it; level at the top freezes it, except in a crowd (CROWD+ players)
+        self.crown_seen = now
+        # the side with the most kids inside holds it; level at the top (CROWD is 1 now, so any game size)
         # where whoever held it last keeps filling at half speed until they're outnumbered or snowed out (#178 follow-up)
         count = collections.Counter(self.side(i) for i in inside)
         most = max(count.values())
@@ -729,6 +787,8 @@ class Snowball(Game):
             self.crown_contest = 2
         else:
             self.crown_contest = 1
+            if self.crown_side in top:
+                self.crown_holder = self.nearest_in(inside, self.crown_side)
             return
         if sd != self.crown_side:
             if self.crowd():   # in a big game a side that loses the hill keeps (most of) its count for when it's back
@@ -739,19 +799,43 @@ class Snowball(Game):
                 self.crown_side, self.crown_prog = sd, 0.0
         for b in self.crown_bank:
             self.crown_bank[b] = max(0.0, self.crown_bank[b] - dt * BANK_FADE)
+        self.crown_holder = i = self.nearest_in(inside, sd)
         self.crown_prog += dt * rate / HILL_EVERY
         if self.crown_prog >= 1.0:
-            self.crown_prog = 0.0
-            i = min((i for i in inside if self.side(i) == sd), key=lambda i: math.hypot(self.kids[i].x - hx, self.kids[i].y - hy))
             k = self.kids[i]
-            k.points += 1
+            k.points += CROWN_PTS
             k.crowns += 1
-            self.event(now, "crownpt", i)
-            self.room.add_log(f"👑 {self.name_of(i)} holds the hill: +1", "power")
+            self.crown_wins += 1
+            self.event(now, "crownpt", i, CROWN_PTS)
+            self.room.add_log(f"👑 {self.name_of(i)} wins the crown: +{CROWN_PTS}", "power")
             if k.crowns == 3:
-                self.say("crown3", 30, now, f"👑 {self.name_of(i)} is King of the Hill: 3 crown points!", "gold", "good")
+                self.say("crown3", 30, now, f"👑 {self.name_of(i)} is King of the Hill: 3 crowns!", "gold", "good")
                 if self.pl(i):
                     self.award(self.seats[i], "crown")
+            else:
+                self.say("crownpt", 8, now, f"👑 {self.name_of(i)} wins the crown: +{CROWN_PTS}! It flies to a new hill…", "gold")
+            self.move_crown(now)
+
+    def nearest_in(self, inside, sd):
+        hx, hy = self.hill_xy
+        return min((i for i in inside if self.side(i) == sd), key=lambda i: math.hypot(self.kids[i].x - hx, self.kids[i].y - hy))
+
+    def on_hill(self, j):
+        return self.crown_open and not self.crown_move_at and self.crown_side >= 0 and self.side(j) == self.crown_side and j in self.hill_in
+
+    def crown_hit(self, j, by, n, frozen, now):
+        """👑 #181: a hit on a holder standing on the hill knocks the ring back; snowed in there halves it."""
+        if not self.extras or not self.on_hill(j):
+            return
+        if frozen:   # (#181 follow-up: halved, not cleared; clearing it made the crown nearly unwinnable in big games)
+            lost = self.crown_prog * 0.5
+            self.crown_prog -= lost
+            self.event(now, "crowndrop", j, by)
+            if lost > 0.15:
+                self.say("crowndrop", 6, now, f"👑 {self.name_of(by)} snows {self.name_of(j)} off the hill: crown half lost!", "bad", "bad")
+        else:
+            self.crown_prog = max(0.0, self.crown_prog - HILL_HIT * n)
+            self.event(now, "crownhit", j, by)
 
     def say(self, key, gap, now, text, tone="gold", sound=None):
         """A moment, at most once per `gap` seconds for this key, and one every 3 s in all."""
@@ -813,7 +897,8 @@ class Snowball(Game):
                 "dc": [[d[0], d[1], d[2], d[3], d[4]] for d in self.decoys],
                 "sl": [[p[0], p[1], r(max(0.0, p[2] - now)), p[3]] for p in self.slush],
                 "h": [int(self.crown_open), self.crown_side, r(self.crown_prog), int(self.crown_contest), r(max(0.0, self.crown_at - now))
-                      if self.crown_at < math.inf else 0]} if self.extras else {}),
+                      if self.crown_at < math.inf else 0, self.hill_xy[0], self.hill_xy[1], self.crown_holder,
+                      r(max(0.0, self.crown_move_at - now)) if self.crown_move_at else 0, *(self.crown_next or self.hill_xy)]} if self.extras else {}),
             **({"tp": [self.team_points(0), self.team_points(1)]} if getattr(self, "teams", False) else {}),
         }
 
@@ -834,6 +919,9 @@ class Snowball(Game):
             k.sx = k.sy = 0.0
             return
         j = self.target_of(i)
+        hold = self.crown_holder if self.extras else -1
+        if 0 <= hold != i and level != "easy" and self.foes(i, hold) and self.active(hold) and math.hypot(self.kids[hold].x - k.x, self.kids[hold].y - k.y) < (9 if level == "hard" else 5):
+            j = hold   # #181: knock the crown holder back
         gx, gy = k.x, k.y
         if j is not None:
             t = self.kids[j]
@@ -887,7 +975,7 @@ class Snowball(Game):
             k.fx, k.fy = (t.x - k.x) / d, (t.y - k.y) / d
         # throw now and then (with aim error)
         if j is not None and k.ammo > 0 and now >= k.cool_until and random.random() < eager * react:
-            ax, ay = self.aim_point(i) or (self.kids[j].x, self.kids[j].y)   # ☃️ decoys fool bots too
+            ax, ay = (self.kids[j].x, self.kids[j].y) if j == hold else self.aim_point(i) or (self.kids[j].x, self.kids[j].y)   # ☃️ decoys fool bots too
             big = level != "easy" and k.ammo >= 2 and random.random() < 0.25
             self.throw(i, now, big, (ax + random.gauss(0, err), ay + random.gauss(0, err)))
 
@@ -900,7 +988,7 @@ class Snowball(Game):
             if not self.bot_hill:
                 self.bot_hill = [False] * len(self.kids)
             self.bot_hill[i] = random.random() < hill_p
-        hx, hy = self.hill_xy
+        hx, hy = self.crown_next if self.crown_move_at and self.crown_next else self.hill_xy   # regroup where it lands
         dh = math.hypot(hx - k.x, hy - k.y)
         if self.crown_open and (self.bot_hill[i] or dh < 3.0):
             a = now * 1.3 + i
@@ -971,5 +1059,6 @@ class Snowball(Game):
             "speed": [SPEED, PACK_SPEED], "step": STEP,
             "map": self.map, "mapName": MAPS.get(self.map, MAPS["meadow"])["name"], "ice": self.ice, "iceSpeed": [ICE_GRIP, ICE_SPEED],
             "extras": self.extras, "hill": self.hill_xy, "hillR": HILL_R, "hillEvery": HILL_EVERY, "slushR": SLUSH_R,
+            "crownPts": CROWN_PTS, "crownMove": CROWN_MOVE, "splashR": [SPLASH, BIG_SPLASH],
             "giftReach": GIFT_REACH, "items": list(ITEMS), "streak": STREAK,
         }}

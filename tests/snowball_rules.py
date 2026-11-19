@@ -5,6 +5,7 @@ snow and flattens a rival, and the most snow-ins wins when the clock runs out.
 
     python3 tests/snowball_rules.py
 """
+import math
 import os
 import sys
 
@@ -324,12 +325,45 @@ pts = A.points
 t = run(g, max(t, g.crown_at - 0.1), 0.3)
 check("it opens at half time", g.crown_open and any(e[2][0] == "crown" for e in g.events))
 t = run(g, t, W.HILL_EVERY + 0.2)
-check("holding it alone scores", A.points == pts + 1 and A.crowns == 1, f"{A.points - pts}")
+check("holding it alone wins the crown", A.points == pts + W.CROWN_PTS and A.crowns == 1, f"{A.points - pts}")
+# #183 then it flies to a new hill, shown ahead, landing CROWN_MOVE s later
+old = tuple(g.hill_xy)
+nxt = g.crown_next
+check("the crown flies to a new hill", g.crown_move_at > t and nxt and math.hypot(nxt[0] - old[0], nxt[1] - old[1]) >= W.CROWN_HOP
+      and any(e[2][0] == "crownmove" for e in g.events), f"{old} {nxt}")
+h = g.state(t)["h"]
+check("the state shows where it lands and when", h[9:11] == list(nxt) and 0 < h[8] <= W.CROWN_MOVE, str(h))
+check("the new hill is clear of forts", all(W.seg_hits_rect(nxt[0], nxt[1], nxt[0], nxt[1], W.fort_rect(f), 0.5) is None for f in g.fort_xy))
+pts = A.points
+t = run(g, t, W.CROWN_MOVE + 0.2)
+check("it lands there", tuple(g.hill_xy) == tuple(nxt) and not g.crown_move_at and A.points == pts, f"{g.hill_xy}")
+hx, hy = g.hill_xy
+A.x, A.y = hx + 0.3, hy
+t = run(g, t, 2.5)
+check("standing in it you wear the crown", g.crown_holder == 0 and g.state(t)["h"][7] == 0 and 0.3 < g.crown_prog < 0.7)
+# #181 hits on the holder knock the ring back; snowed in on the hill drops it
+prog = g.crown_prog
+B.pips = 0
+g.hit(0, 1, 1, t)
+check("a hit on the holder knocks the ring back", abs(g.crown_prog - (prog - W.HILL_HIT)) < 1e-6 and any(e[2][0] == "crownhit" for e in g.events))
+A.pips = 1
+prog = g.crown_prog
+g.hit(0, 1, 2, t)
+check("snowed in on the hill halves the ring", abs(g.crown_prog - prog / 2) < 1e-6 and g.crown_side == 0
+      and any(e[2][0] == "crowndrop" for e in g.events), f"{prog:.2f} → {g.crown_prog:.2f}")
+A.frozen_until = 0
+A.pips = 0
+t = run(g, t, 1.0)
 B.x, B.y = A.x - 0.6, A.y
 B.frozen_until = B.knock_until = 0
 prog = g.crown_prog
 t = run(g, t, 2.0)
-check("a rival inside stops the count", g.crown_contest == 1 and abs(g.crown_prog - prog) < 0.05)
+check("a rival inside halves the holder's speed", g.crown_contest == 2 and g.crown_side == 0 and 0.15 < g.crown_prog - prog < 0.25,
+      f"{g.crown_contest} {g.crown_prog - prog:.2f}")
+# nobody near it for CROWN_IDLE s: it moves on
+A.x, A.y, B.x, B.y = -9.0, -6.0, 9.0, 6.0
+t = run(g, t, W.CROWN_IDLE + 0.5)
+check("an untouched crown moves on", g.crown_move_at > 0 or tuple(g.hill_xy) != (hx, hy))
 
 # 👑 #178 follow-up: crowds. Most kids inside holds it; a level hill in a 4+ game goes on at half speed for the holder
 r, g, ps, t = fresh(n=6, map="meadow", teams=True)
@@ -341,8 +375,8 @@ red = [i for i in range(6) if g.side(i) == 0]
 blue = [i for i in range(6) if g.side(i) == 1]
 for n, i in enumerate(red[:2] + blue[:1]):
     g.kids[i].x, g.kids[i].y = hx + 0.3 * n, hy
-t = run(g, t, W.HILL_EVERY + 0.3)
-check("two reds beat one blue on the hill", g.crown_side == 0 and sum(g.kids[i].crowns for i in red) == 1 and g.crown_contest == 0,
+t = run(g, t, W.HILL_EVERY * 0.5)
+check("two reds beat one blue on the hill", g.crown_side == 0 and g.crown_prog > 0.3 and g.crown_contest == 0,
       f"{g.crown_side} {g.crown_contest}")
 g.kids[blue[1]].x, g.kids[blue[1]].y = hx - 0.3, hy + 0.3
 prog = g.crown_prog
@@ -361,7 +395,8 @@ t = run(g, max(t, g.crown_at - 0.1), 0.3)
 g.kids[0].x, g.kids[0].y = hx, hy
 g.kids[1].x, g.kids[1].y = hx + 0.5, hy
 t = run(g, t, W.HILL_EVERY + 0.3)
-check("with 3 players a rival inside still freezes it", g.crown_contest == 1 and not any(k.crowns for k in g.kids))
+check("with 3 players a level hill still fills for the holder at half speed", g.crown_contest == 2 and g.crown_side in (0, 1)
+      and 0.4 < g.crown_prog < 0.7, f"{g.crown_contest} {g.crown_prog:.2f}")
 
 # 🔥 streaks and the shutdown bonus
 r, g, ps, t = fresh(map="meadow")
@@ -377,7 +412,8 @@ check("ending it scores a bonus", B.points == 1 + W.STREAK_BONUS and A.streak ==
 # a game saved before #178 still loads and runs
 r, g, ps, t = fresh(map="meadow", extras=False)
 for k in ("map", "fort_xy", "patch_xy", "hill_xy", "ice", "extras", "gifts", "decoys", "slush", "item_id", "said", "gift_at", "crown_at",
-          "crown_open", "crown_side", "crown_prog", "crown_contest", "bot_hill"):
+          "crown_open", "crown_side", "crown_prog", "crown_contest", "bot_hill", "crown_holder", "crown_move_at", "crown_from",
+          "crown_next", "crown_seen", "crown_wins"):
     g.__dict__.pop(k, None)
 g.balls.append([0, 0, 1, 1, t, t + 0.5, False, 0, -1, 99])
 r = pickle.loads(pickle.dumps(r))

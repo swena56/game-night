@@ -9,12 +9,19 @@
 // packing, giant, points, item, slow, streak, crowns, chill]; balls: [x0, y0, x1, y1, left, dur, big, by, id, kind].
 // #178 crashes: the 3D view frees everything it made on dispose, draws slowly on the results screen, compiles
 // its shaders up front (no hitch on the first snow-in), skips no-op resizes, and falls back to flat if a frame throws.
+// #181–#183: warmer, brighter light; the crown is worn over its holder's head, a gold beacon marks the hill, and after
+// it's won it flies to a new hill (a pulsing ring with a countdown shows where, ahead of time); the HUD chip says who
+// holds it and what to do. Gifts explain themselves (a toast on pick-up, the ✨ button names its effect) and the
+// ice ball / slush bomb / decoy show where they'll go. Crown state h: [open, side, prog, contest, opensIn, hx, hy,
+// holder, moveLeft, nx, ny].
 UI.snowball = (() => {
   let S, ctx, snap = null, gotAt = 0, gl = null, flat = null, raf = 0, ro = null, rot = false;
   let keyDown = null, keyUp = null, drag = null, stick = [0, 0], sentAt = 0, keys = new Set();
   let lastSeq = -1, flash = null, packAt = 0, lastCd = 0, sideAt = 0, drawnAt = 0, drawFails = 0;
   const EMOJI_FONT = '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif';
-  const ITEM = [null, { e: '🧊', n: 'Ice ball', col: '#7fd0ff' }, { e: '☃️', n: 'Decoy', col: '#ffffff' }, { e: '💦', n: 'Slush bomb', col: '#9aa7b8' }];
+  const ITEM = [null, { e: '🧊', n: 'Ice ball', col: '#7fd0ff', d: '2 hits + slows', long: 'throws a fast ball worth two hits that slows them' },
+    { e: '☃️', n: 'Decoy', col: '#ffffff', d: 'soaks throws', long: 'drops a snowman that rivals\' throws go for' },
+    { e: '💦', n: 'Slush bomb', col: '#9aa7b8', d: 'bogs them down', long: 'lobs a puddle that slows rivals for 7 s' }];
   const KEYS = { ArrowUp: [0, -1], KeyW: [0, -1], ArrowDown: [0, 1], KeyS: [0, 1], ArrowLeft: [-1, 0], KeyA: [-1, 0], ArrowRight: [1, 0], KeyD: [1, 0] };
   const STICK_PX = 60;
   const $ = (id) => document.getElementById(id);
@@ -269,7 +276,7 @@ UI.snowball = (() => {
     } else if (kind === 'pick') {
       const [j, it] = a, w = at(j);
       SN.gift(...w); (gl || flat)?.puff(w[0], w[1], 10, ITEM[it]?.col);
-      if (j === i) { ctx.buzz?.(15); showFlash(`${ITEM[it]?.e} ${ITEM[it]?.n}! Tap ✨ to use it`, 2000); }
+      if (j === i) { ctx.buzz?.(15); showFlash(`${ITEM[it]?.e} ${ITEM[it]?.n}! ✨ ${ITEM[it]?.long}`, 3200); }
     } else if (kind === 'decoy') {
       SN.poof(a[1], a[2]); (gl || flat)?.puff(a[1], a[2], 14);
     } else if (kind === 'soak') {
@@ -281,8 +288,20 @@ UI.snowball = (() => {
     } else if (kind === 'crown') {
       SN.crown(true); showFlash('👑 The crown is on the hill!', 2200); ctx.buzz?.(20);
     } else if (kind === 'crownpt') {
-      SN.crown(a[0] === i); gl?.sparkleAt(...(V().hill || [0, 0]), '#ffd23f');
-      if (a[0] === i) showFlash('👑 +1 for the hill!', 1400);
+      const hl = snap?.h ? [snap.h[5], snap.h[6]] : V().hill || [0, 0];
+      SN.crown(a[0] === i); gl?.sparkleAt(...hl, '#ffd23f'); flat?.puff(...hl, 30, '#ffd23f');
+      showFlash(a[0] === i ? `👑 You win the crown! +${a[1] ?? 1}` : `👑 ${nameOf(a[0])} wins the crown +${a[1] ?? 1}`, 1800);
+    } else if (kind === 'crownmove') {
+      SN.poof(a[2], a[3]); if (!flash || performance.now() > flash.until - 600) showFlash('👑 The crown flies to a new hill!', 1800);
+    } else if (kind === 'crownland') {
+      SN.crown(false); gl?.sparkleAt(a[0], a[1], '#ffd23f'); flat?.puff(a[0], a[1], 30, '#ffd23f');
+      showFlash('👑 The crown has landed — go!', 1400);
+    } else if (kind === 'crownhit') {
+      gl?.sparkleAt(...at(a[0]), '#ffd23f');
+      if (a[0] === i) showFlash('👑 Hit! The ring slips back', 1100); else if (a[1] === i) showFlash('👑 Knocked back their crown!', 1100);
+    } else if (kind === 'crowndrop') {
+      SN.crack(...at(a[0])); (gl || flat)?.puff(...at(a[0]), 24, '#ffd23f');
+      if (a[0] === i) showFlash('👑 Snowed in — half the ring lost!', 2000); else if (a[1] === i) showFlash('👑 You knocked their ring back by half!', 1800);
     } else if (kind === 'streak') {
       if (a[0] === i) showFlash(`🔥 ${a[1]} in a row!`, 1600);
     } else if (kind === 'shutdown') {
@@ -312,17 +331,17 @@ UI.snowball = (() => {
     }
     for (const i of order) {
       const p = ctx.player(v.seats[i]), k = snap.k[i];
-      const row = ctx.el('div', 'seat-row lr-row' + (p && !p.eliminated ? '' : ' out'));
+      const row = ctx.el('div', 'seat-row lr-row' + (p && !p.eliminated ? '' : ' out') + (snap.h?.[0] && snap.h[7] === i ? ' sw-holder' : ''));
       const dot = ctx.el('span', 'mini-disc'); dot.style.background = colorOf(i);
       if (v.teams) dot.style.boxShadow = `0 0 0 2px ${TEAM_COL[v.team[i]]}`;
       const state = (k[8] > 0 ? ' 🧊' : k[9] > 0 ? ' 💫' : k[11] >= 0.99 ? ' ⛄' : '') + (k[15] >= (v.streak || 3) ? ` 🔥${k[15]}` : '')
-        + (k[13] ? ` ${ITEM[k[13]]?.e ?? ''}` : '') + (k[16] ? ` 👑${k[16]}` : '');
+        + (k[13] ? ` ${ITEM[k[13]]?.e ?? ''}` : '') + (k[16] ? ` 👑×${k[16]}` : '');
       row.append(dot, ctx.el('span', 'grow', `${p?.name ?? 'left'}${i === v.me ? ' (you)' : ''}${state}`),
         ctx.el('span', 'sw-pipline', '●'.repeat(k[7]) + '○'.repeat(Math.max(0, v.pips - k[7]))), ctx.el('b', '', `❄️ ${k[12]}`));
       box.append(row);
     }
     const hint = $('swHint');
-    if (hint && v.extras && !hint.dataset.x) { hint.dataset.x = 1; hint.textContent = 'Drag anywhere to run, tap to throw. Hold ❄️ to pack a big one. Walk over 🎁 gifts and spend them with ✨ (or E). 👑 From half time, hold the hill for +1 every 5 s: most kids (or team-mates) inside holds it, level freezes it (in big games the holder keeps it at half speed). Keyboard: WASD / arrows and Space.'; }
+    if (hint && v.extras && !hint.dataset.x) { hint.dataset.x = 1; hint.textContent = `Drag anywhere to run, tap to throw. Hold ❄️ to pack a big one. 🎁 Walk over a gift, then ✨ (or E): 🧊 ice ball = fast, 2 hits + slows; ☃️ decoy = rivals' throws go for it; 💦 slush = a puddle that bogs rivals down. 👑 From half time: outnumber rivals in the crown's ring until it fills (level: the holder at half speed) for +${v.crownPts ?? 1}, then it flies to a new hill. Hits knock the holder's ring back; snowed in there loses half of it. Keyboard: WASD / arrows, Space, E.`; }
     const mine = v.me != null ? snap.k[v.me] : null, b = $('swThrow');
     b.parentElement.hidden = v.me == null;
     if (!mine) return;
@@ -334,7 +353,10 @@ UI.snowball = (() => {
     b.textContent = packAt ? (held >= v.bigHold ? '⛄ Big one!' : '❄️ Packing…') : `❄️ Throw ${'●'.repeat(mine[6])}${'○'.repeat(Math.max(0, v.ammoMax - mine[6]))}`;
     const u = $('swUse'), it = ITEM[mine[13]];
     u.hidden = !it; u.disabled = b.disabled;
-    if (it && u.dataset.k !== String(mine[13])) { u.dataset.k = mine[13]; u.textContent = `✨${it.e}`; u.title = `Use your ${it.n} (E)`; }
+    if (it && u.dataset.k !== String(mine[13])) {
+      u.dataset.k = mine[13]; u.replaceChildren(ctx.el('span', 'sw-use-e', `✨${it.e}`), ctx.el('span', 'sw-use-t', ''));
+      u.lastChild.append(ctx.el('b', '', it.n), ctx.el('small', '', it.d)); u.title = `${it.n}: ${it.long} (E)`;
+    }
     if (!it) u.dataset.k = '';
     $('swInfo').textContent = snap.st === 'countdown' && v.mapName ? v.mapName : mine[8] > 0 ? `🧊 Snowed in ${mine[8].toFixed(1)}s` : mine[9] > 0 ? '💫 Knocked flat'
       : mine[11] > 0.05 && mine[11] < 0.99 ? `⛄ ${Math.round(mine[11] * 100)}%` : mine[17] > 0 ? '🥶 Chilled' : mine[14] < 0.99 ? '💦 Slushed' : '';
@@ -392,6 +414,30 @@ UI.snowball = (() => {
     return Math.hypot(b[2] - x, b[3] - y) < V().splash[b[6] ? 1 : 0] + V().body * 0.5;
   };
 
+  // ✨ where my gift would go (mirrors the server's aim_point: the nearest rival or rival decoy, those in front of me
+  // counting first, a decoy pulling ×0.6), or the spot in front where a decoy would stand
+  function aimPreview(now) {
+    const v = V(), i = me();
+    if (i == null || !playing() || snap.st !== 'play') return null;
+    const k = snap.k[i], it = k?.[13];
+    if (!it || k[8] > 0 || k[9] > 0) return null;
+    const [x, y] = pos(i, now);
+    let fx = k[4], fy = k[5];
+    if (Math.hypot(stick[0], stick[1]) > 0.2) { const m = Math.hypot(stick[0], stick[1]); fx = stick[0] / m; fy = stick[1] / m; }
+    if (it === 2) return { x: x + fx * 0.9, y: y + fy * 0.9, r: 0.55, col: '#ffffff' };
+    const foe = (j) => (v.teams ? v.team[j] !== v.team[i] : j !== i);
+    const cands = [];
+    snap.k.forEach((o, j) => { const p = ctx.player(v.seats[j]); if (j !== i && p && !p.eliminated && foe(j)) cands.push([...pos(j, now), 1]); });
+    for (const d of snap.dc) if (foe(d[3])) cands.push([d[1], d[2], 0.6]);
+    let best = null, bs = 1e9;
+    for (const [cx, cy, pull] of cands) {
+      const d = Math.hypot(cx - x, cy - y) || 1e-6, s = d * ((cx - x) * fx / d + (cy - y) * fy / d > 0.5 ? 1 : 1.8) * pull;
+      if (s < bs) { bs = s; best = [cx, cy]; }
+    }
+    if (!best) best = [x + fx * 7, y + fy * 7];
+    return { x: clamp(best[0], -v.aw, v.aw), y: clamp(best[1], -v.ah, v.ah), r: it === 3 ? v.slushR || 1.6 : v.splash[0], col: ITEM[it].col };
+  }
+
   function loop(now) {
     raf = requestAnimationFrame(loop);
     if (!snap || !V()) return;
@@ -419,9 +465,16 @@ UI.snowball = (() => {
     $('swPips').textContent = mine ? '💙'.repeat(Math.max(0, v.pips - mine[7])) + '🤍'.repeat(mine[7]) : '';
     const h = snap.h, cr = $('swCrown');
     let ct = '';
-    if (h && !h[0] && h[4] > 0 && h[4] <= 15 && snap.st === 'play') ct = `👑 in ${Math.ceil(Math.max(0, h[4] - (now - gotAt) / 1000))}`;
+    if (h && !h[0] && h[4] > 0 && h[4] <= 15 && snap.st === 'play') ct = `👑 lands in ${Math.ceil(Math.max(0, h[4] - (now - gotAt) / 1000))}`;
     // h[3]: 1 = level, frozen; 2 = a big game's level hill, the holder fills at half speed (shown with ⚔️ after the %)
-    else if (h && h[0]) ct = h[3] === 1 ? '👑 ⚔️' : h[2] > 0.02 && h[1] >= 0 ? `👑 ${v.teams ? TEAM_NAME[h[1]].split(' ')[0] : h[1] === v.me ? 'You' : nameOf(h[1])} ${Math.round(h[2] * 100)}%${h[3] === 2 ? ' ⚔️' : ''}` : '👑';
+    else if (h && h[0]) {
+      const mineSide = v.me != null ? (v.teams ? v.team[v.me] : v.me) : -2, pc = `${Math.round(h[2] * 100)}%`;
+      const who = h[1] < 0 ? '' : v.teams ? TEAM_NAME[h[1]].split(' ')[0] : h[1] === v.me ? 'You' : nameOf(h[1]);
+      if (h[8] > 0) ct = `👑 new hill in ${Math.ceil(Math.max(0, h[8] - (now - gotAt) / 1000))}`;
+      else if (h[3] === 1) ct = '👑 ⚔️ tied — push them out';
+      else if (h[1] >= 0 && h[2] > 0.02) ct = h[1] === mineSide ? `👑 ${who === 'You' ? 'Hold on' : who} ${pc}${h[3] === 2 ? ' ⚔️' : ''}` : `👑 ${who} ${pc} — hit them!`;
+      else ct = '👑 Get on the hill!';
+    }
     if (cr.textContent !== ct) cr.textContent = ct;
     if (packAt) { const big = (now - packAt) / 1000 >= v.bigHold; if (big !== loop.big) { loop.big = big; renderSide(); } } else loop.big = undefined;
   }
@@ -456,8 +509,9 @@ UI.snowball = (() => {
     const scene = new T.Scene();
     const camera = new T.PerspectiveCamera(42, 1, 0.5, 300);
     const stg = GL3.stage(renderer, scene, {
-      exposure: 0.95, hemi: [0xeef5ff, 0x5a6f90, 0.8],
-      key: { i: 1.05, color: 0xfff4e0, pos: [-9, 18, 7], area: AW + 3, near: 2, far: 60 },
+      // #181 a brighter, warmer winter afternoon: more sky fill, a low golden sun with crisper shadows
+      exposure: 1.08, hemi: [0xfff4e6, 0x8a9cc0, 1.0],
+      key: { i: 1.45, color: 0xffe2b8, pos: [-11, 13, 9], area: AW + 3, near: 2, far: 60 },
       sky: { top: 0x6f9fd8, horizon: 0xe8f2ff, bottom: 0xdfe9f5, band: 0.1 },
       fog: [0xe8f2ff, 40, 110],
     });
@@ -579,16 +633,28 @@ UI.snowball = (() => {
       if (document.fonts && document.fonts.status !== 'loaded') document.fonts.ready.then(() => { const g = tex.image.getContext('2d'); if (g) { emojiDraw(e)(g, 64); tex.needsUpdate = true; } }).catch(() => {});
       return (emojiTex[e] = new T.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
     };
-    // 👑 the hill: a gold ring that lights up at half time, a crown spinning over it, and a ring that fills for whoever holds it
+    // 👑 the hill: a gold ring with a faint gold floor and a beacon of light over it, a ring that fills for whoever
+    // holds it; the crown itself (on the field, not the hill) floats over the hill, sits over its holder's head, or
+    // flies to the next hill, where a pulsing ring shows ahead of time where it will land (#181–#183)
     const hill = new T.Group(); hill.position.set(v0.hill?.[0] ?? 0, 0, v0.hill?.[1] ?? 0); hill.visible = !!v0.extras; field.add(hill);
     const hillMat = new T.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.35, depthWrite: false });
     const hillRing = new T.Mesh(new T.RingGeometry(0.9, 1, 48), hillMat); hillRing.rotation.x = -Math.PI / 2; hillRing.position.y = 0.03; hillRing.scale.setScalar(v0.hillR || 1.5); hill.add(hillRing);
+    const floorMat = new T.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.12, depthWrite: false });
+    const hillFloor = new T.Mesh(discGeo, floorMat); hillFloor.rotation.x = -Math.PI / 2; hillFloor.position.y = 0.022; hillFloor.scale.setScalar((v0.hillR || 1.5) * 0.9); hill.add(hillFloor);
+    const beamMat = new T.MeshBasicMaterial({ color: 0xffe07a, transparent: true, opacity: 0.18, depthWrite: false, side: T.DoubleSide, blending: T.AdditiveBlending });
+    const beam = new T.Mesh(new T.CylinderGeometry(0.55, (v0.hillR || 1.5) * 0.85, 7, 24, 1, true), beamMat); beam.position.y = 3.5; hill.add(beam);
     const holdMat = new T.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.9, depthWrite: false, side: T.DoubleSide });
-    const holdRing = new T.Mesh(new T.RingGeometry(1.02, 1.18, 48, 1, Math.PI / 2, Math.PI * 2), holdMat); holdRing.rotation.x = -Math.PI / 2; holdRing.position.y = 0.035; holdRing.scale.setScalar(v0.hillR || 1.5); hill.add(holdRing);
-    const goldMat = new T.MeshStandardMaterial({ color: 0xffc83d, metalness: 0.75, roughness: 0.3, emissive: 0x5a3a00, emissiveIntensity: 0.4 });
-    const crown = new T.Group(); crown.position.y = 2.2; crown.scale.setScalar(1.6); hill.add(crown);
+    const holdRing = new T.Mesh(new T.RingGeometry(1.02, 1.22, 48, 1, Math.PI / 2, Math.PI * 2), holdMat); holdRing.rotation.x = -Math.PI / 2; holdRing.position.y = 0.035; holdRing.scale.setScalar(v0.hillR || 1.5); hill.add(holdRing);
+    const nextMat = new T.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.6, depthWrite: false });
+    const nextRing = new T.Mesh(new T.RingGeometry(0.86, 1, 48), nextMat); nextRing.rotation.x = -Math.PI / 2; nextRing.visible = false; field.add(nextRing);
+    const goldMat = new T.MeshStandardMaterial({ color: 0xffc83d, metalness: 0.75, roughness: 0.3, emissive: 0x7a5200, emissiveIntensity: 0.6 });
+    const crown = new T.Group(); crown.position.y = 2.2; crown.scale.setScalar(1.6); field.add(crown);
     crown.add(new T.Mesh(new T.CylinderGeometry(0.34, 0.3, 0.22, 10, 1, true), goldMat));
     for (let n = 0; n < 5; n++) { const a = n / 5 * 6.283, c = new T.Mesh(new T.ConeGeometry(0.07, 0.2, 5), goldMat); c.position.set(Math.cos(a) * 0.32, 0.2, Math.sin(a) * 0.32); crown.add(c); }
+    const crownAt = { x: v0.hill?.[0] ?? 0, y: v0.hill?.[1] ?? 0, h: 2.2 };
+    // ✨ where a gift goes: a reticle at the ice ball's / slush bomb's landing spot, a ghost ring where a decoy stands
+    const aimMat = new T.MeshBasicMaterial({ color: 0x7fd0ff, transparent: true, opacity: 0.75, depthWrite: false });
+    const aimRing = new T.Mesh(new T.RingGeometry(0.82, 1, 32), aimMat); aimRing.rotation.x = -Math.PI / 2; aimRing.visible = false; field.add(aimRing);
     // 🎁 gifts: a box in the gift's colour with a white ribbon and its emoji floating over it (a small pool)
     const boxGeo = new T.BoxGeometry(0.42, 0.42, 0.42), ribGeo = new T.BoxGeometry(0.44, 0.44, 0.1);
     const giftMats = [null, ...[0x7fd0ff, 0xfff6e8, 0x8d9db3].map((c) => new T.MeshStandardMaterial({ color: c, roughness: 0.5, emissive: c, emissiveIntensity: 0.15 }))];
@@ -915,22 +981,45 @@ UI.snowball = (() => {
     function drawExtras(now, dt, v) {
       const h = snap.h;
       if (h) {
-        const open = !!h[0], soon = !open && h[4] > 0 && h[4] < 15;
+        const open = !!h[0], soon = !open && h[4] > 0 && h[4] < 15, moving = open && h[8] > 0;
+        if (h.length > 6) hill.position.set(h[5], 0, h[6]);
         hill.visible = true;
-        hillMat.opacity = open ? (h[3] ? 0.5 + 0.35 * Math.sin(now / (h[3] === 1 ? 90 : 180)) : 0.55) : soon ? 0.25 + 0.15 * Math.sin(now / 200) : 0.12;
-        hillMat.color.setHex(open && h[3] ? (h[3] === 1 ? 0xff5566 : 0xff9f1c) : 0xffd23f);
+        const pulse = 0.5 + 0.5 * Math.sin(now / 220);
+        hillMat.opacity = moving ? 0.15 : open ? (h[3] ? 0.55 + 0.35 * Math.sin(now / (h[3] === 1 ? 90 : 180)) : 0.75) : soon ? 0.3 + 0.2 * pulse : 0.12;
+        const tint = open && h[3] ? (h[3] === 1 ? 0xff5566 : 0xff9f1c) : 0xffd23f;
+        hillMat.color.setHex(tint); floorMat.color.setHex(tint);
+        floorMat.opacity = moving ? 0 : open ? 0.14 + 0.06 * pulse : 0.05;
+        beam.visible = open && !moving; beamMat.opacity = 0.14 + 0.08 * pulse;
+        nextRing.visible = moving;
+        if (moving) {
+          const r = (v.hillR || 1.5) * (1 + 0.12 * pulse);
+          nextRing.position.set(h[9], 0.04, h[10]); nextRing.scale.setScalar(r); nextMat.opacity = 0.45 + 0.4 * pulse;
+        }
         crown.visible = open || soon;
         if (crown.visible) {
           crown.rotation.y += dt * 1.2;
-          crown.position.y = open ? 2.0 + 0.12 * Math.sin(now / 300) : 2.0 + Math.max(0, (h[4] - (now - gotAt) / 1000)) * 0.6;
+          let tx = h.length > 6 ? h[5] : v.hill[0], ty = h.length > 6 ? h[6] : v.hill[1], th = 2.2 + 0.12 * Math.sin(now / 300);
+          if (!open) th = 2.2 + Math.max(0, (h[4] - (now - gotAt) / 1000)) * 0.6;
+          else if (moving) {   // an arc from the old hill to the next one
+            const f = clamp(1 - (h[8] - (now - gotAt) / 1000) / (v.crownMove || 4), 0, 1);
+            tx = h[5] + (h[9] - h[5]) * f; ty = h[6] + (h[10] - h[6]) * f; th = 2.2 + Math.sin(f * Math.PI) * 5;
+            crownAt.x = tx; crownAt.y = ty;
+          } else if (h[7] >= 0 && snap.k[h[7]]) { [tx, ty] = pos(h[7], now); th = 2.6 * KID; }   // worn over the holder's head
+          const c = moving ? 1 : Math.min(1, dt * 10);
+          crownAt.x += (tx - crownAt.x) * c; crownAt.y += (ty - crownAt.y) * c; crownAt.h += (th - crownAt.h) * c;
+          crown.position.set(crownAt.x, crownAt.h, crownAt.y);
+          crown.scale.setScalar(h[7] >= 0 && !moving ? 1.25 : 1.6);
         }
-        const prog = open ? Math.max(0, Math.min(1, h[2])) : 0;
+        const prog = open && !moving ? Math.max(0, Math.min(1, h[2])) : 0;
         holdRing.visible = prog > 0.01;
         if (holdRing.visible) {
           holdRing.geometry.setDrawRange(0, Math.ceil(48 * prog) * 6);
           holdCol.set(v.teams ? TEAM_COL[h[1]] ?? '#ffd23f' : h[1] >= 0 ? colorOf(h[1]) : '#ffd23f'); holdMat.color.copy(holdCol);
         }
       } else hill.visible = false;
+      const ap = aimPreview(now);
+      aimRing.visible = !!ap;
+      if (ap) { aimRing.position.set(ap.x, 0.045, ap.y); aimRing.scale.setScalar(ap.r * (1 + 0.06 * Math.sin(now / 150))); aimMat.color.set(ap.col); }
       giftPool.forEach((o, n) => {
         const gi = snap.g[n];
         o.g.visible = o.glow.visible = !!gi;
@@ -1015,16 +1104,29 @@ UI.snowball = (() => {
         g.beginPath(); g.ellipse(X(v.ice[0]), Y(v.ice[1]), v.ice[2] * k, v.ice[3] * k, 0, 0, 7); g.fill(); g.stroke();
       }
       const h = snap.h;
-      if (h && v.hill) {   // 👑 the hill: a gold ring, an arc for whoever's holding it
-        const hx = X(v.hill[0]), hy = Y(v.hill[1]), R = v.hillR * k, open = !!h[0];
-        g.strokeStyle = open ? (h[3] === 1 ? '#ff5566' : h[3] ? '#ff9f1c' : '#e0a800') : 'rgba(224,168,0,0.3)'; g.lineWidth = 0.1 * k;
+      if (h && v.hill) {   // 👑 the hill: a gold ring, an arc for whoever's holding it, the crown over its holder (#181–#183)
+        const open = !!h[0], moving = open && h[8] > 0, hx = X(h.length > 6 ? h[5] : v.hill[0]), hy = Y(h.length > 6 ? h[6] : v.hill[1]), R = v.hillR * k;
+        const pulse = 0.5 + 0.5 * Math.sin(now / 220);
+        if (open && !moving) { g.fillStyle = `rgba(255,210,63,${0.12 + 0.08 * pulse})`; g.beginPath(); g.arc(hx, hy, R, 0, 7); g.fill(); }
+        g.strokeStyle = moving ? 'rgba(224,168,0,0.25)' : open ? (h[3] === 1 ? '#ff5566' : h[3] ? '#ff9f1c' : '#e0a800') : 'rgba(224,168,0,0.3)'; g.lineWidth = 0.12 * k;
         g.beginPath(); g.arc(hx, hy, R, 0, 7); g.stroke();
-        if (open && h[2] > 0.01) {
+        if (open && !moving && h[2] > 0.01) {
           g.strokeStyle = v.teams ? TEAM_COL[h[1]] ?? '#e0a800' : h[1] >= 0 ? colorOf(h[1]) : '#e0a800'; g.lineWidth = 0.22 * k;
           g.beginPath(); g.arc(hx, hy, R + 0.15 * k, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, h[2])); g.stroke();
         }
-        if (open || (h[4] > 0 && h[4] < 15)) { g.font = `${0.9 * k}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('👑', hx, hy); }
+        let cx = hx, cy = hy, cs = 0.9;
+        if (moving) {
+          const nx = X(h[9]), ny = Y(h[10]), f = clamp(1 - (h[8] - (now - gotAt) / 1000) / (v.crownMove || 4), 0, 1);
+          g.setLineDash([0.3 * k, 0.2 * k]); g.strokeStyle = `rgba(224,168,0,${0.5 + 0.4 * pulse})`; g.lineWidth = 0.14 * k;
+          g.beginPath(); g.arc(nx, ny, R * (1 + 0.1 * pulse), 0, 7); g.stroke(); g.setLineDash([]);
+          g.font = `bold ${0.8 * k}px sans-serif`; g.fillStyle = '#6b4b00'; g.textAlign = 'center'; g.textBaseline = 'middle';
+          g.fillText(String(Math.max(1, Math.ceil(h[8] - (now - gotAt) / 1000))), nx, ny);
+          cx = hx + (nx - hx) * f; cy = hy + (ny - hy) * f - Math.sin(f * Math.PI) * 2 * k;
+        } else if (open && h[7] >= 0 && snap.k[h[7]]) { const [px, py] = pos(h[7], now); cx = X(px); cy = Y(py) - v.body * k * 2.3; cs = 0.75; }
+        if (open || (h[4] > 0 && h[4] < 15)) { g.font = `${cs * k}px ${EMOJI_FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('👑', cx, cy); }
       }
+      const ap = aimPreview(now);
+      if (ap) { g.setLineDash([0.2 * k, 0.15 * k]); g.strokeStyle = ap.col === '#ffffff' ? '#7890b0' : ap.col; g.lineWidth = 0.1 * k; g.beginPath(); g.arc(X(ap.x), Y(ap.y), ap.r * k, 0, 7); g.stroke(); g.setLineDash([]); }
       for (const p of snap.sl) { g.fillStyle = 'rgba(120,135,160,0.45)'; g.beginPath(); g.arc(X(p[0]), Y(p[1]), (v.slushR || 1.6) * k, 0, 7); g.fill(); }
       if (v.giants) snap.p.forEach((pv, pi) => {
         g.fillStyle = `rgba(150,205,255,${0.15 + 0.35 * pv})`; g.beginPath(); g.arc(X(v.patches[pi][0]), Y(v.patches[pi][1]), v.patchR * k * (0.4 + 0.6 * pv), 0, 7); g.fill();
