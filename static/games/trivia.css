@@ -34,6 +34,8 @@
 .tv-who { position: absolute; top: 4px; right: 6px; display: flex; gap: 2px; }
 .tv-who .dot.fastest { outline: 2px solid #ffd166; outline-offset: 1px; animation: ld-pop .4s ease-out; }
 .tv-note { min-height: 2.8em; margin-top: 6px; text-align: center; font-size: 14px; color: var(--muted); }
+.tv-explain { padding: 10px 12px; border-left: 3px solid var(--accent); border-radius: 8px; background: var(--panel); color: var(--text); font-size: 14px; line-height: 1.45; }
+.tv-explain[hidden] { display: none; }
 @media (max-width: 420px) {
   .tv-q { font-size: 17px; }
   .tv-opt { font-size: 14px; min-height: 58px; }

@@ -4,6 +4,7 @@ import time
 
 from .base import Game, GameError
 from .trivia_qs import QUESTIONS, TOPICS
+from .trivia_explanations import EXPLANATIONS
 
 REVEAL_SECS = 5
 BASE_PTS, SPEED_PTS = 100, 100
@@ -102,6 +103,7 @@ class Trivia(Game):
             opts = [right, *wrong]
             self.rng.shuffle(opts)
             self.q = {"topic": topic, "text": text, "options": opts, "right": opts.index(right)}
+        self.q["explanation"] = EXPLANATIONS.get(text, "")
         self.answers = {}   # pid -> (option index, seconds taken)
         self.gained = {}
         self.stage = "ask"
@@ -291,6 +293,7 @@ class Trivia(Game):
         if reveal:
             out["reveal"] = {
                 "right": self.q["right"],
+                "explanation": self.q.get("explanation", ""),  # games saved before explanations have none
                 "picks": {pid: i for pid, (i, _) in self.answers.items()},
                 "gained": self.gained,
                 "fastest": getattr(self, "fastest", None),

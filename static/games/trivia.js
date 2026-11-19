@@ -12,6 +12,7 @@ UI.trivia = (() => {
       <div class="dd-bar"><span id="tvBar"></span></div>
       <div id="tvQ" class="tv-q"></div>
       <div id="tvOpts" class="tv-opts"></div>
+      <div id="tvExplain" class="tv-explain" hidden></div>
       <button id="tvFifty" class="tv-fifty" hidden>✂️ 50:50</button>
       <div id="tvNote" class="tv-note"></div></div>`;
     side.innerHTML = '<div class="panel"><h3>Scores</h3><div id="tvScores"></div><p class="hint left">Right answers score 100, plus up to 100 for speed. The last question counts double.</p></div>';
@@ -72,6 +73,9 @@ UI.trivia = (() => {
       b.onclick = () => { ctx.sfx('lock'); ctx.quiet(ctx.act('answer', { i })); };
       opts.append(b);
     });
+    const explain = $('tvExplain');
+    explain.hidden = !rv?.explanation;
+    explain.textContent = rv?.explanation ? `Why: ${rv.explanation}` : '';
     const ff = $('tvFifty');
     ff.hidden = t.fifty == null || (!t.fifty && !cut.size) || t.options.length < 4 || (!canPick && !cut.size) || !!rv;
     ff.disabled = !t.fifty || !canPick;
