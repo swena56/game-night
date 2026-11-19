@@ -72,6 +72,41 @@ def after(roll, kept, h1, h4, s):
     return value(len(roll) - len(kept), n1, n4, s + pts)
 
 
+@lru_cache(maxsize=None)
+def qualify(n, h1, h4):
+    """Best chance of ending with both the 1 and the 4, with n dice still to roll."""
+    if n == 0:
+        return 1.0 if h1 and h4 else 0.0
+    return sum(pr * max(qualify(n - len(k), *keep_score(k, h1, h4)[:2]) for k in choices(roll, h1, h4))
+               for roll, pr in rolls_of(n))
+
+
+@lru_cache(maxsize=256)
+def risk(roll, kept):
+    """📊 Keep-or-reroll odds for a roll on top of the dice already kept (both sorted descending):
+    `stop` is what keeping every die now scores (0 without the 1 and the 4); `options` maps each way to
+    set dice aside (its values, high first, as a string) to [average final score with best play after,
+    % chance to still qualify]; `best` is the keep with the highest average."""
+    h1, h4 = 1 in kept, 4 in kept
+    s = sum(kept) - (1 if h1 else 0) - (4 if h4 else 0)
+    n1, n4, pts = keep_score(roll, h1, h4)
+    stop = s + pts if n1 and n4 else 0
+    options = {}
+    for k in set(_subsets(roll)):
+        a1, a4, gain = keep_score(k, h1, h4)
+        left = len(roll) - len(k)
+        options["".join(map(str, k))] = [round(value(left, a1, a4, s + gain), 1), round(100 * qualify(left, a1, a4))]
+    best = max(options, key=lambda key: options[key][0])
+    return {"stop": stop, "options": options, "best": best}
+
+
+def _subsets(roll):
+    """Every non-empty sub-multiset of a sorted roll, each as a descending tuple."""
+    n = len(roll)
+    for mask in range(1, 1 << n):
+        yield tuple(roll[i] for i in range(n) if mask >> i & 1)
+
+
 def best_keep(roll, h1, h4, s):
     roll = tuple(sorted(roll, reverse=True))
     return max(choices(roll, h1, h4), key=lambda k: after(roll, k, h1, h4, s))
@@ -85,6 +120,7 @@ class Midnight(Game):
         "You need a 1 and a 4 among your kept dice to qualify. The other four dice are your score.",
         "Four 6s with your 1 and 4 is 24: 🕛 Midnight, the best there is. No 1 or no 4 scores nothing.",
         "Everyone takes one turn a round. Most points after the last round wins.",
+        "📊 On your turn the odds panel compares keeping every die now with the dice you've tapped: the average final score with best play after, and the chance you'll still get your 1 and 4.",
         f"Alone, average {SOLO_PER_ROUND} a round to win.",
         "🌙 Round wins (an option): each round's best score takes a moon; most moons wins.",
     ]
@@ -314,6 +350,8 @@ class Midnight(Game):
             "seats": self.seats, "round": self.round, "rounds": self.s["rounds"],
             "dice": self.dice, "kept": self.kept, "h1": h1, "h4": h4, "pts": pts, "n": self.n,
             "last": self.last,
+            # 📊 keep-or-reroll odds for the dice on the table (public, like the dice themselves)
+            "risk": risk(tuple(sorted(self.dice, reverse=True)), tuple(sorted(self.kept, reverse=True))) if self.dice and r.phase == "playing" else None,
             "scores": {i: r.players[i].g.score for i in self.seats if i in r.players},
             "moons": {i: r.players[i].g.moons for i in self.seats if i in r.players} if self.mooned() else None,
             "solo": len(self.seats) == 1, "goal": SOLO_PER_ROUND * self.s["rounds"],

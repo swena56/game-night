@@ -54,6 +54,25 @@ check("midnight: no 1 scores nothing", q.g.score == 0)
 g.do_roll(r.players[r.turn])
 check("midnight: keeping nothing is refused", raises(lambda: g.do_keep(r.players[r.turn], [])))
 check("midnight: the exact search averages about 18.7", 18.5 < MN.value(6, False, False, 0) < 18.9)
+# 📊 keep-or-reroll odds: follow the kept dice and the 1-and-4 rule
+rk = MN.risk((6, 6, 3), (6, 4, 1))
+check("midnight odds: keeping all now scores the kept dice plus the roll", rk["stop"] == 6 + 6 + 6 + 3)
+check("midnight odds: with the 1 and 4 kept, qualifying is certain", all(q == 100 for _, q in rk["options"].values()))
+check("midnight odds: keep 6 6, reroll one die averages 18 + 3.5", rk["options"]["66"] == [21.5, 100] and rk["best"] == "66", rk["options"])
+rk = MN.risk((6, 6, 5), (6, 6, 4))
+check("midnight odds: no 1 yet, keeping all scores nothing", rk["stop"] == 0)
+check("midnight odds: one die left to find the 1 is 1 in 6", rk["options"]["66"][1] == round(100 / 6) and rk["options"]["66"][0] == 24 / 6, rk["options"]["66"])
+rk = MN.risk((5, 4, 3, 2, 1, 1), ())
+check("midnight odds: a fresh six offers every keep, the 1 and the 4 come out of the score",
+      len(rk["options"]) == 47 and rk["options"]["41"] == [round(MN.value(4, True, True, 0), 1), 100], (len(rk["options"]), rk["options"]["41"]))
+r, g, (ann, bo) = room("midnight")
+p = r.players[r.turn]
+check("midnight odds: none before the roll", g.view(p)["midnight"]["risk"] is None)
+g.kept = [4]
+g.do_roll(p)
+v = g.view(p)["midnight"]["risk"]
+check("midnight odds: match the dice on the table and those kept", v == MN.risk(tuple(g.dice), (4,)))
+json.dumps(g.view(r.add_player("Eve")))   # a watcher sees the same public odds
 
 # -- Mia
 check("mia: 21 values, Mia on top, double 1s above 65", len(M.ORDER) == 21 and M.ORDER[-1] == 21 and M.RANK[11] > M.RANK[65])

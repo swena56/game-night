@@ -38,3 +38,10 @@
 .md-pts { font-family: var(--font-display); font-size: var(--fs-xl); color: #ffd166; text-shadow: 0 0 12px #ffd16655; }
 .md-six { box-shadow: 0 0 0 2px #ffd166, 0 2px 0 #b9b0cc, 0 4px 8px #0008; }
 .md-pts { font-size: var(--fs-lg); line-height: 1.2; }
+/* 📊 keep-or-reroll odds on your turn */
+.md-odds { display: grid; gap: 2px; max-width: 420px; margin: 4px auto; font-size: var(--fs-sm); text-align: left; }
+.md-odds:empty { display: none; }
+.md-orow { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
+.md-orow.pick { font-weight: 700; }
+.md-risk { color: var(--danger); }
+.md-safe { color: #06d6a0; }

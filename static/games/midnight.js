@@ -14,6 +14,7 @@ UI.midnight = (() => {
       <div class="ya-tray"><div id="mdDice" class="ya-dice"></div></div>
       <div class="row md-actions"><button id="mdRoll" class="primary big">🎲 Roll</button><button id="mdKeep" class="primary big"></button></div>
       <p id="mdHint" class="hint"></p>
+      <div id="mdOdds" class="md-odds"></div>
       <div id="mdLast" class="md-last"></div></div>`;
     side.innerHTML = `<div class="panel"><h3>Scores</h3><div id="mdScores"></div>
       <p class="hint left">Keep a 1 and a 4; the other four dice score. 24 is 🕛 midnight.</p>
@@ -69,6 +70,22 @@ UI.midnight = (() => {
     $('mdKeep').textContent = !pick.size ? 'Tap dice to keep' : all ? `✋ Keep ${pick.size} and finish` : `✋ Keep ${pick.size}, roll ${m.dice.length - pick.size}`;
     $('mdHint').textContent = !mine ? '' : !m.dice.length ? 'Roll all six dice.'
       : (!m.h1 && m.dice.includes(1)) || (!m.h4 && m.dice.includes(4)) ? 'Grab the 1 and the 4 when you see them!' : 'Keep at least one die each roll.';
+
+    // 📊 keep everything now vs. keep your pick and reroll the rest (exact odds from the server)
+    const odds = $('mdOdds'); odds.innerHTML = '';
+    if (mine && m.risk) {
+      const R = m.risk, key = [...pick].map((i) => m.dice[i]).sort((a, b) => b - a).join('');
+      const line = (label, ev, q, cls = '') => {
+        const row = ctx.el('div', 'md-orow ' + cls);
+        row.append(ctx.el('span', '', label), ctx.el('b', '', `avg ${ev}`), ctx.el('span', q < 100 ? 'md-risk' : 'md-safe', `${q}% to qualify`));
+        return row;
+      };
+      const allKey = m.dice.join('');
+      odds.append(ctx.el('div', 'md-orow', `✋ Keep all ${m.dice.length} now: ${R.stop ? `${R.stop} pts` : '0 (no 1 and 4)'}`));
+      if (key && key !== allKey && R.options[key]) odds.append(line(`🎲 Keep ${key.split('').join(' ')}, reroll ${m.dice.length - pick.size}:`, ...R.options[key], 'pick'));
+      if (R.best !== key) odds.append(line(`⭐ Best: keep ${R.best.split('').join(' ')}${R.best === allKey ? '' : `, reroll ${m.dice.length - R.best.length}`}:`, ...R.options[R.best]));
+      odds.append(ctx.el('small', 'hint', 'Averages assume best play from here.'));
+    }
 
     const last = $('mdLast'); last.innerHTML = '';
     if (m.last) {
