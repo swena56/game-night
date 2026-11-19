@@ -8,6 +8,16 @@
   font-weight: 900; color: #fff; text-shadow: 0 0 24px var(--accent); pointer-events: none; }
 .sp-banner { position: absolute; left: 0; right: 0; top: 40%; text-align: center; font-size: 28px; font-weight: 900;
   background: #000a; padding: 14px; pointer-events: none; }
+.sp-upgrade { position: absolute; z-index: 4; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(92%, 380px);
+  display: grid; gap: 8px; padding: 14px; border: 1px solid #d2c0ff99; border-radius: 16px; color: #fff;
+  background: #100c20ed; box-shadow: 0 12px 40px #000b; text-align: center; touch-action: manipulation; }
+.sp-upgrade[hidden] { display: none; }
+.sp-upgrade h3, .sp-upgrade p { margin: 0; }
+.sp-upgrade p { color: #d5c8f4; font-size: 13px; }
+.sp-upgrade button { min-height: 54px; display: grid; gap: 2px; border: 1px solid #ffffff30; border-radius: 10px;
+  background: #27203b; color: inherit; text-align: left; padding: 8px 12px; }
+.sp-upgrade button:active { transform: scale(.98); }
+.sp-upgrade button small { color: #c8bfd8; }
 .sp-flash { position: absolute; inset: 0; pointer-events: none; opacity: 0; }
 .sp-flash.small { background: radial-gradient(circle, #ffffff55, transparent 70%); }
 .sp-flash.big { background: radial-gradient(circle, #ffd166aa, transparent 70%); }

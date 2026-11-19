@@ -842,6 +842,8 @@ const MOVES = {
     if (Date.now() - w.__mbAt > (m.course.path.length / 6 + 1) * 1000) w.UI.marble.testWarp(m.course.goal[0] + 0.5, m.course.goal[1] + 0.5);
   },
   spire(d, S, n, w) {
+    const upgrade = enabled(d, '#spUpgrade button');
+    if (upgrade.length) { click(pick(upgrade)); return; }
     const key = (k) => w.dispatchEvent(new w.KeyboardEvent('keydown', { key: k, bubbles: true }));
     key(pick(['ArrowLeft', 'ArrowRight', 'ArrowUp', ' ', ' ', 'c']));
   },

@@ -43,6 +43,7 @@ RAMPS = {
     "off": {"every": 0, "factor": 1, "floor": 0.06, "bot": 1},
 }
 POWER_CHANCE = 1 / 8
+FOCUS_SECS = 20.0
 
 
 def attack_for(rings, combo):
@@ -171,7 +172,8 @@ class Spire(Game):
     howto = [
         'Pieces fall onto a tower that wraps all the way around.',
         '← → move around the tower, ↑ rotate, Space drops. On phones: swipe, tap, swipe down.',
-        'Fill a whole ring to clear it. ✨ Clear your whole tower in one go and every rival gets junk. Clear 2+ at once to send junk rings to a rival. Junk sent to you waits 3 s on the 🧱 meter: clear rings to block it.',
+        'Fill a whole ring to clear it and earn one upgrade choice per ring: 🛡️ Reinforce blocks one incoming junk attack; ⚡ Focus slows your falling pieces by 18% for 20 seconds. The choice pauses your next piece until you spend it.',
+        '✨ Clear your whole tower in one go and every rival gets junk. Clear 2+ at once to send junk rings to a rival. Junk sent to you waits 3 s on the 🧱 meter: clear rings to block it.',
         'Glowing power cells: ⚡ speed rivals up, 🛡️ block junk, 💣 blast your bottom rings.',
         'Hold (C, Shift, ⇄ or swipe up) parks the falling piece for later, once per piece.',
         'Prefer an upright board? Pick 🧱 Flat well. Want odd shapes? Pick the 🧩 Mixed set (2, 3 and 5 blocks).',
@@ -205,6 +207,7 @@ class Spire(Game):
             g = p.g
             g.rows, g.rings, g.sent, g.shield = "." * (W * H), 0, 0, 0
             g.events, g.applied, g.tower, g.surge_until = [], 0, None, 0
+            g.upgrade_tokens, g.focus_until, g.upgrade_pick = 0, 0.0, 0
             g.next_at = self.t0 + random.uniform(0.6, 1.2)
         r = self.room
         r.turn = r.deadline = None
@@ -239,9 +242,24 @@ class Spire(Game):
             if not (isinstance(rings, int) and 1 <= rings <= 5 and isinstance(combo, int) and 0 <= combo <= 50):
                 raise GameError("Bad clear.")
             p.g.rings += rings
+            p.g.upgrade_tokens = getattr(p.g, "upgrade_tokens", 0) + rings
             if a.get("perfect") is True and rings >= 1:
                 return self.perfect_clear(p, rings, combo, powers)
             return self.on_clear(p, rings, combo, powers)
+        if t == "upgrade":
+            choice = a.get("choice")
+            if choice not in ("shield", "focus"):
+                raise GameError("Choose a shield or focus upgrade.")
+            if getattr(p.g, "upgrade_tokens", 0) < 1:
+                raise GameError("Clear a ring before choosing an upgrade.")
+            p.g.upgrade_tokens -= 1
+            if choice == "shield":
+                p.g.shield += 1
+                self.room.add_log(f"🛡️ {p.name} reinforced their spire.", "power")
+            else:
+                p.g.focus_until = max(time.time(), getattr(p.g, "focus_until", 0.0)) + FOCUS_SECS
+                self.room.add_log(f"⚡ {p.name} focused: their pieces fall more slowly for {FOCUS_SECS:.0f}s.", "power")
+            return
         if t == "topout":
             return self.knock_out(p)
         raise GameError("Unknown action.")
@@ -267,6 +285,16 @@ class Spire(Game):
 
     def on_clear(self, p, rings, combo, powers):
         r = self.room
+        if p.bot:
+            # Bots spend each ring reward automatically, alternating defense and focus.
+            for _ in range(rings):
+                if getattr(p.g, "upgrade_pick", 0) % 2:
+                    p.g.focus_until = max(time.time(), getattr(p.g, "focus_until", 0.0)) + FOCUS_SECS  # saved games predate focus
+                else:
+                    p.g.shield += 1
+                    if getattr(p.g, "tower", None):
+                        p.g.tower.shield = p.g.shield
+                p.g.upgrade_pick = getattr(p.g, "upgrade_pick", 0) + 1
         if rings >= 4:
             self.award(p, "quad")
         foes = [o for o in r.contenders() if o.id != p.id]
@@ -396,6 +424,8 @@ class Spire(Game):
         if t.overflow():
             return self.knock_out(o)
         pace = {"easy": 1.6, "normal": 1.05, "hard": 0.62}[o.bot] * (self.ramp()["bot"] ** self.level())
+        if now < getattr(g, "focus_until", 0.0):
+            pace *= 1.18
         if now < g.surge_until:
             pace *= 0.6
         g.next_at = now + max(0.25, pace * random.uniform(0.85, 1.2))
@@ -419,4 +449,7 @@ class Spire(Game):
             "startIn": max(0.0, self.t0 - now), "elapsed": max(0.0, now - self.t0),
             "speed": SPEEDS[self.s["speed"]], "ramp": self.ramp(), "powers": self.s["powers"], "surgeSecs": SURGE_SECS,
             "flat": self.s.get("board") == "flat", "pieces": PIECE_SETS[self.s.get("pieces", "mixed")], "boards": boards, "events": p.g.events if mine else [], "playing": mine and not p.eliminated,
+            "upgrade": {"tokens": getattr(p.g, "upgrade_tokens", 0),
+                        "focus": max(0.0, round(getattr(p.g, "focus_until", 0.0) - now, 1))} if mine else None,
+            "focusSecs": FOCUS_SECS,
         }}

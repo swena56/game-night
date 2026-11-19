@@ -70,10 +70,12 @@ UI.spire = (() => {
       grid, rng: mulberry32(sp.seed + (mine ? mine.rings * 7919 : 0)), bag: [], piece: null, next: null, held: null, canHold: true,
       x: 0, y: 0, cells: null, fallAt: 0, lockAt: null, combo: 0, shield: mine?.shield || 0, surgeUntil: 0,
       applied, appliedKey: key, dead: !sp.playing, lastPush: 0, pushed: mine?.rows ?? '', angle: 0,
+      upgradePending: sp.upgrade?.tokens || 0, upgradeBusy: false,
+      focusUntil: performance.now() + (sp.upgrade?.focus || 0) * 1000,
       start: performance.now() + sp.startIn * 1000 - sp.elapsed * 1000, shake: 0, dirty: true, incoming: [],
     };
     st.next = drawKind();
-    if (!st.dead) spawn();
+    if (!st.dead && !st.upgradePending) spawn();
   }
 
   function spawn(from = null) {
@@ -105,6 +107,7 @@ UI.spire = (() => {
   function interval() {
     const r = ramp();
     let ms = Math.max(r.floor * 1000, S.spire.speed * 1000 * r.factor ** level());
+    if (performance.now() < st.focusUntil) ms *= 1.18;
     if (performance.now() < st.surgeUntil) ms *= 0.5;  // a rival's ⚡ still bites, even at top speed
     return Math.max(60, ms);
   }
@@ -148,12 +151,35 @@ UI.spire = (() => {
       if (powers.length) ctx.toast(powers.map((p) => `${POWER_ICON[p]} ${p}!`).join(' '));
       const perfect = !st.grid.some((row) => row.some(Boolean));  // ✨ nothing left standing
       if (perfect) { ctx.sfx('fanfare'); try { Kit.callout('✨ PERFECT CLEAR', 'gold'); } catch {} }
+      st.upgradePending += full.length;
+      renderUpgrade();
       ctx.quiet(ctx.act('clear', { rings: full.length, combo: st.combo, powers, perfect }));
     }
     st.dirty = true;
     if (st.grid.slice(H).some((row) => row.some(Boolean))) return die();
     push(true);
-    spawn();
+    if (!st.upgradePending) spawn();
+  }
+
+  function pickUpgrade(choice) {
+    if (!st?.upgradePending || st.upgradeBusy || !active() && st.dead) return;
+    st.upgradeBusy = true; renderUpgrade();
+    ctx.act('upgrade', { choice }).then(() => {
+      st.upgradePending = Math.max(0, st.upgradePending - 1);
+      if (choice === 'shield') st.shield++;
+      else st.focusUntil = Math.max(performance.now(), st.focusUntil) + (S.spire.focusSecs || 20) * 1000;
+      st.upgradeBusy = false;
+      renderUpgrade();
+      if (!st.upgradePending && !st.dead) spawn();
+    }).catch((e) => { st.upgradeBusy = false; renderUpgrade(); ctx.toast?.(e?.message || 'Could not choose that upgrade.'); });
+  }
+
+  function renderUpgrade() {
+    const box = $('spUpgrade'); if (!box || !st) return;
+    box.hidden = !st.upgradePending || st.dead || S.phase !== 'playing';
+    box.setAttribute('aria-hidden', String(box.hidden));
+    $('spUpgradeCount').textContent = st.upgradePending > 1 ? `${st.upgradePending} ring rewards to spend` : 'Spend your cleared-ring reward';
+    for (const b of box.querySelectorAll('button')) b.disabled = st.upgradeBusy;
   }
 
   const JUNK_DELAY = 3000;
@@ -494,6 +520,11 @@ UI.spire = (() => {
     main.innerHTML = `<div class="spire-wrap">
       <div id="spStage" class="spire-stage"><canvas id="spFallback"></canvas>
         <div id="spCount" class="sp-count"></div><div id="spFlash" class="sp-flash"></div><div id="spCall" class="sp-call"></div><div id="spBanner" class="sp-banner" hidden></div>
+        <section id="spUpgrade" class="sp-upgrade" aria-label="Choose a tower upgrade" aria-hidden="true" hidden>
+          <h3>✨ Between-wave upgrade</h3><p id="spUpgradeCount"></p>
+          <button type="button" data-upgrade="shield"><b>🛡️ Reinforce</b><small>Block one incoming junk attack.</small></button>
+          <button type="button" data-upgrade="focus"><b>⚡ Focus</b><small>Your pieces fall 18% more slowly for 20 seconds.</small></button>
+        </section>
         <div id="spJunk" class="sp-junk" hidden title="Incoming junk: clear rings to block it"></div></div>
       <div class="sp-pad"><button data-k="rotl">⟲</button><button data-k="left">◀</button><button data-k="drop">⤓</button>
         <button data-k="right">▶</button><button data-k="rot">⟳</button><button data-k="soft">▼</button><button data-k="hold" title="Hold">⇄</button></div></div>`;
@@ -504,6 +535,9 @@ UI.spire = (() => {
       <div id="spRivals" class="sp-rivals"></div>
       <p class="hint left" id="spHint">⌨️ ← → move around the tower · ↑/X rotate · Z rotate back · ↓ soft drop · Space drop.<br>
       C / Shift hold.<br>📱 Swipe sideways to move, tap to rotate, swipe down to drop, swipe up to hold.</p></div>`;
+    $('spUpgrade').addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-upgrade]'); if (b && !b.disabled) pickUpgrade(b.dataset.upgrade);
+    });
     for (const b of main.querySelectorAll('.sp-pad button')) {
       const k = b.dataset.k;
       b.onpointerdown = (e) => {
@@ -515,7 +549,7 @@ UI.spire = (() => {
     }
     const stage = $('spStage');
     let start = null;
-    stage.onpointerdown = (e) => { start = { x: e.clientX, y: e.clientY, moved: 0 }; };
+    stage.onpointerdown = (e) => { if (e.target.closest('#spUpgrade')) return; start = { x: e.clientX, y: e.clientY, moved: 0 }; };
     stage.onpointermove = (e) => {
       if (!start) return;
       const steps = Math.trunc((e.clientX - start.x) / 32) - start.moved;
@@ -560,13 +594,14 @@ UI.spire = (() => {
     const lvl = level();
     const me = sp.boards[S.me.id];
     $('spStatus').textContent = me
-      ? `Level ${lvl + 1} · ${me.rings} rings · 🛡️ ${st.shield}${performance.now() < st.surgeUntil ? ' · ⚡ surge!' : ''}`
+      ? `Level ${lvl + 1} · ${me.rings} rings · 🛡️ ${st.shield}${performance.now() < st.focusUntil ? ' · ⚡ focused' : ''}${performance.now() < st.surgeUntil ? ' · ⚡ surge!' : ''}`
       : '👁 Watching the battle';
     const banner = $('spBanner');
     banner.hidden = !(st.dead && me) && S.phase === 'playing';
     banner.textContent = S.phase === 'over' ? (S.winner === S.me.id ? '🏆 Last spire standing!' : '🏁 Battle over') : '💥 Your spire fell';
     renderRivals();
     renderNext();
+    renderUpgrade();
   }
 
   const turnText = (s) => s.phase !== 'playing' ? null
