@@ -77,6 +77,7 @@ class Spades(TrickGame):
 
     def end_hand(self):
         lines = []
+        self.recap = []
         for t in (0, 1):
             got = sum(self.tricks[k] for k in (t, t + 2) if self.bids[k] != NIL)
             pts = 0
@@ -103,6 +104,7 @@ class Spades(TrickGame):
                     pts -= 10 * bid
                     self.moment(f"💥 {self.team_name(t)} set! ({got} of {bid})", "bad", "groan")
             self.team_score[t] += pts
+            self.recap.append(f"{'🔵' if t == 0 else '🟠'} bid {bid or '–'}, took {got}" + (f" ({self.bags[t]} bags)" if self.bags[t] else "") + f" → {pts:+}")
             lines.append(f"{self.team_name(t)} {pts:+} ({self.team_score[t]})")
         self.room.add_log("🧮 " + " · ".join(lines), "big")
         target = self.s["target"]
@@ -207,4 +209,6 @@ class Spades(TrickGame):
                     [{"label": str(b), "a": {"type": "bid", "bid": b}, "kind": "primary" if b == round(self.estimate(i, 'normal')) else ""} for b in range(1, 14)]
                 t["note"] = "How many tricks will you take?" + (f" Your partner bid {'Nil' if mate == 0 else mate}." if mate is not None else "")
                 t["turnText"] = "📣 Your bid"
+        if self.stage == "score" and getattr(self, "recap", None):
+            t["note"] = "Hand review: " + " · ".join(self.recap)
         return t
