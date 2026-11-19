@@ -57,6 +57,10 @@
 .bg-actions > button[hidden] { display: none; }
 .bg-cube { margin-top: 8px; font-weight: 700; color: #ffd166; }
 .bg-rules { font-size: 13px; }
+.bg-plan h3 { margin: 0 0 6px; }
+.bg-plan p { margin: 0 0 6px; font-size: 12px; line-height: 1.4; }
+.bg-plan ol { margin: 0; padding-left: 22px; display: grid; gap: 5px; font-size: 12px; line-height: 1.4; }
+.bg-plan li { overflow-wrap: anywhere; }
 .bg-bar { position: relative; }
 .bg-cubeblock { position: absolute; left: 50%; bottom: 6px; transform: translateX(-50%); width: 24px; height: 24px; border-radius: var(--r-xs);
   display: grid; place-items: center; font: 900 11px system-ui, sans-serif; color: #1a1205; z-index: 2;

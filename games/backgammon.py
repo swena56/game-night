@@ -141,7 +141,7 @@ def pips(pos, side):
     return total
 
 
-def finals(pos, side, dice):
+def finals(pos, side, dice, must_use_larger=True):
     """Every distinct end-of-turn position reachable with a legal full move: {pos: [moves]}."""
     out = {}
     seen = set()
@@ -160,7 +160,7 @@ def finals(pos, side, dice):
             rest.remove(d)
             walk(apply(p, side, frm, to), tuple(sorted(rest)), path + [(frm, to, d)], False)
 
-    walk(pos, tuple(sorted(dice)), [], True)
+    walk(pos, tuple(sorted(dice)), [], must_use_larger)
     return out
 
 
@@ -260,6 +260,7 @@ class Backgammon(Game):
     howto = [
         "Move all fifteen checkers around and off the board. White moves 24 → 1, Black 1 → 24 (both shown heading to your bottom right).",
         "Each die is a move. Doubles play four times. Tap a checker, then where it goes. You can undo until you end your turn.",
+        "🎲 The remaining-dice plan shows legal move sequences from your current position; it updates after every checker move and stays private to you.",
         "Land on a lone enemy checker to hit it to the bar. A checker on the bar must come back in first.",
         "With all fifteen in your home board, bear them off. You must use as many dice as you can.",
         "Win 1 point, a gammon 2 (they bore none off), a backgammon 3. Play one game or a match.",
@@ -443,6 +444,16 @@ class Backgammon(Game):
         self.last_moves = self.turn_moves
         self.begin(-side)
 
+    def turn_analysis(self, p):
+        """Private legal continuation examples for the current player's remaining dice."""
+        if p.id != self.room.turn or not self.rolled or self.offer:
+            return None
+        need = max_len(self.pos, self.turn_side, tuple(sorted(self.dice)))
+        endings = finals(self.pos, self.turn_side, self.dice, must_use_larger=not bool(self.turn_moves))
+        paths = sorted(endings.values(), key=repr)[:3]
+        return {"dice": list(self.dice), "need": need,
+                "plans": [[[f, t, d] for f, t, d in path] for path in paths]}
+
     def label(self, x, side):
         """Point numbers as the mover counts them (each side numbers its own home 1–6)."""
         if x == "bar":
@@ -521,6 +532,7 @@ class Backgammon(Game):
             "turn": "w" if self.turn_side == WHITE else "b",
             "rolled": self.rolled, "dice": self.dice, "moves": self.turn_moves, "last": self.last_moves,
             "legal": [[f, t] for f, t, _ in legal], "canEnd": bool(self.rolled) and not legal,
+            "analysis": self.turn_analysis(p),
             "pips": {"w": pips(self.pos, WHITE), "b": pips(self.pos, BLACK)},
             "match": self.s["match"], "score": {"w": self.points[WHITE], "b": self.points[BLACK]}, "game": self.game_no,
             "names": {"w": self.ids[WHITE], "b": self.ids[BLACK]},

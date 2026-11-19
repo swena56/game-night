@@ -28,7 +28,8 @@ UI.backgammon = (() => {
       <li>All your checkers home? Bear off into the tray on the right.</li>
       <li>Gammon (they bore none off) = 2 points · backgammon = 3.</li>
       <li>🎲 Before rolling you may double the stakes; your rival takes (and owns the cube) or drops and loses.</li></ul>
-      <div id="bgCube" class="bg-cube"></div></div>`;
+      <div id="bgCube" class="bg-cube"></div></div>
+      <div id="bgPlan" class="panel bg-plan" hidden><h3>🎲 Remaining-dice plan</h3><p id="bgPlanNote"></p><ol id="bgPlanList"></ol></div>`;
     $('bgRoll').onclick = () => ctx.quiet(ctx.act('roll'));
     $('bgDouble').onclick = async () => (await ctx.ask(`Offer to double? The game would be worth ${S.backgammon.cube * 2}, and your rival takes the cube.`, { ok: '🎲 Double' })) && ctx.quiet(ctx.act('double'));
     $('bgTake').onclick = () => ctx.quiet(ctx.act('take'));
@@ -186,12 +187,32 @@ UI.backgammon = (() => {
     seenCube = g.cube;
     $('bgCube').textContent = !g.cubeOn ? '' : g.crawford ? '🎲 Crawford game: no doubling' : `🎲 Cube: ${g.cube} · ${!g.owner ? 'either player can double'
       : g.owner === myColor && g.me ? 'only you can double' : `only ${name(g.owner)} can double`}`;
+    renderPlans(g);
     $('bgUndo').hidden = !mine || !g.moves.length;
     $('bgEnd').hidden = !mine || !g.canEnd;
     $('bgHint').textContent = answering ? `${name(g.offer)} doubles! Take to play on for ${g.cube * 2}, or drop and lose ${g.cube}.`
       : !mine ? (S.phase === 'playing' ? (g.offer ? `Waiting for ${ctx.player(S.turn)?.name ?? ''} to take or drop…` : `${ctx.player(S.turn)?.name ?? ''} is moving…`) : '')
       : !g.rolled.length ? 'Roll the dice.' : g.canEnd ? (g.moves.length ? 'Done? End your turn (or undo).' : "No legal moves. End your turn.")
       : sel != null ? 'Now tap a highlighted point.' : g.bar[myColor] ? 'Bring your checker in from the bar first.' : 'Tap a glowing checker to move it.';
+  }
+
+  function renderPlans(g) {
+    const box = $('bgPlan'), note = $('bgPlanNote'), list = $('bgPlanList'), a = g.analysis;
+    box.hidden = !a || !a.dice.length;
+    list.replaceChildren();
+    if (box.hidden) return;
+    note.textContent = a.need
+      ? `The rules require ${a.need} of your ${a.dice.length} remaining dice. These are legal continuations from this position.`
+      : 'No legal die move remains; you can end your turn.';
+    if (a.need === 1 && a.dice.length === 2 && a.dice[0] !== a.dice[1]) {
+      note.textContent += ' If only one die can be played, the higher playable die takes priority.';
+    }
+    const pointName = (x) => x === 'bar' || x === 'off' ? x : String(g.turn === 'w' ? x : 25 - x);
+    a.plans.slice(0, 3).forEach((path) => {
+      const item = ctx.el('li', '');
+      item.textContent = path.length ? path.map(([from, to, die]) => `d${die}: ${pointName(from)} → ${pointName(to)}`).join(' · ') : 'No moves available';
+      list.append(item);
+    });
   }
 
   // the rect of the top checker on each point, the bar and the trays (and how many sit on each bar)
