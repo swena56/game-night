@@ -5,6 +5,8 @@
 .sd-hud { position: absolute; z-index: 2; top: 9px; left: 10px; right: 10px; display: flex; justify-content: space-between; gap: 6px; pointer-events: none; color: #17223d; font-family: var(--font-display); font-weight: 800; }
 .sd-hud > * { padding: 3px 10px; border-radius: 999px; background: #f5fbffe0; box-shadow: 0 2px 8px #080a2060; }
 .sd-progress { position: absolute; z-index: 2; top: 48px; left: 12px; right: 12px; height: 5px; border-radius: 4px; background: #ffffff55; overflow: hidden; pointer-events: none; }
+/* the flat view's "🧊 Try 3D" button (GL3.revive) sits bottom-left, clear of the HUD pills and the progress bar */
+.sd-stage .gl3-retry { top: auto; right: auto; bottom: 10px; left: 10px; }
 .sd-progress i { display: block; width: 0; height: 100%; background: linear-gradient(90deg,#59e1ef,#ffcf68); transition: width .15s linear; }
 .sd-banner { position: absolute; z-index: 3; left: 50%; top: 50%; transform: translate(-50%,-50%); min-width: 180px; max-width: calc(100% - 28px); padding: 12px 18px; border: 1px solid #ffffff70; border-radius: var(--r-md); color: #f8fbff; text-align: center; font: 800 24px var(--font-display); background: #10152be8; box-shadow: 0 8px 30px #07091a88; }
 .sd-banner p { margin: 4px 0; font: 700 15px var(--font-display); text-align: left; }

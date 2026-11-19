@@ -1,5 +1,6 @@
 """Sky Drop rules: the race counts down, everyone descends and the run finishes with a winner, rings score
 (with a combo), boosts speed you up and are limited (3, refilled at checkpoints), bots race to the finish,
+bots by level thread about 40% / 60% / 80% of the rings, the seat chips show live points,
 spectators / late joiners / the replay viewer get a view (no crash), and bad input is refused.
 
     python3 tests/skydrop_rules.py
@@ -138,6 +139,51 @@ for lvl in ("easy", "hard"):
     check(f"{lvl} bots thread rings", sum(g.flyers[i].rings for i in bots) >= 3 * 8,
           str([g.flyers[i].rings for i in bots]))
     check(f"{lvl} bot match has a winner line", any("wins Sky Drop" in (e.get("text") or "") for e in r.log[-5:]))
+
+# bot strength by level: average share of rings over several seeded races (easy must be beatable)
+share = {}
+for lvl in ("easy", "normal", "hard"):
+    got = total = 0
+    for seed in range(4):
+        r, g, ps = game(1, bots=3, level=lvl, runs=1)
+        g.rng.seed(seed)
+        g.run = 0
+        g.new_run(CLOCK[0])   # the same seeded course and bot rolls for every level
+        tick(g, 80, step=1 / 30)
+        bots = [i for i, pid in enumerate(g.seats) if r.players[pid].bot]
+        got += sum(g.flyers[i].rings for i in bots)
+        total += len(bots) * len(g.rings)
+    share[lvl] = got / total
+detail = " ".join(f"{k} {v:.0%}" for k, v in share.items())
+check("bots: easy < normal < hard on rings", share["easy"] < share["normal"] < share["hard"], detail)
+check("bots: easy threads at most half the rings", 0.25 <= share["easy"] <= 0.50, detail)
+check("bots: normal about 55-65%, hard about 75-85%", 0.50 <= share["normal"] <= 0.70 and 0.70 <= share["hard"] <= 0.90, detail)
+
+# the seat chips show live points during a run (match total + this run), and don't double up when it ends
+r, g, ps = game(2, hazards=False, runs=3)
+to_race(g)
+f = g.flyers[0]
+g.points[0] = 50      # as if an earlier run had scored
+refreshed = []
+tick(g, 12, each=aim)
+check("live points in the chip mid-run", f.score > 0 and g.meta(ps[0]) == f"{50 + f.score} pts", f"{g.meta(ps[0])} score {f.score}")
+
+
+def run_ticks(secs):
+    end = CLOCK[0] + secs
+    while CLOCK[0] < end and g.stage == "race":
+        CLOCK[0] += 1 / 60
+        with g.room.cond:
+            if g.frame(CLOCK[0]):
+                refreshed.append(g.stage)
+
+
+run_ticks(4)
+check("chips refresh during the race", "race" in refreshed, str(refreshed[:5]))
+run_ticks(80)
+check("run ends", g.stage == "results", g.stage)
+check("no double count after the run", g.meta(ps[0]) == f"{g.points[0]} pts" and g.points[0] == 50 + f.score,
+      f"{g.meta(ps[0])} points {g.points[0]} run {f.score}")
 
 # three runs: points carry across runs
 r, g, ps = game(2, runs=3)

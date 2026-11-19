@@ -13,7 +13,10 @@ STEP = 1 / 30
 SEND_EVERY = 2
 COUNTDOWN = 3.0
 RING_R = 1.65
-BOT = {"easy": (0.40, 0.9), "normal": (0.22, 0.55), "hard": (0.10, 0.25)}
+# Bots: (seconds between steering decisions, steering noise, chance to line up each ring properly).
+# A bot that loses focus on a ring aims for a spot beside it, so it usually misses that ring and
+# then has to recover for the next one. Tuned for about 40% / 60% / 80% of the rings.
+BOT = {"easy": (0.30, 0.6, 0.40), "normal": (0.20, 0.45, 0.71), "hard": (0.10, 0.25, 1.0)}
 
 
 class Flyer:
@@ -32,6 +35,8 @@ class Flyer:
         self.last_ring = -1
         self.hits = 0
         self.hit_cool_until = 0.0
+        self.aim_ring = -1          # bots: the ring they're lining up and their offset from it
+        self.aim_dx = self.aim_dz = 0.0
 
 
 class SkyDrop(Game):
@@ -102,6 +107,7 @@ class SkyDrop(Game):
         self.ev_seq = 0
         self.race_started = self.go_at
         self.room.deadline = None
+        self.chip_key, self.chip_at = None, 0.0
 
     def seat(self, p):
         return self.seats.index(p.id) if p.id in self.seats else None
@@ -177,7 +183,16 @@ class SkyDrop(Game):
         if all(f.done_at or not self.active(i) for i, f in enumerate(self.flyers)) or now - self.race_started > 100:
             self.end_run(now)
             return True
+        # The seat chips show live points (meta); refresh the full views when they change, at most once a second.
+        key = [self.live_points(i) for i in range(len(self.seats))]
+        if key != self.chip_key and now - self.chip_at >= 1.0:
+            self.chip_key, self.chip_at = key, now
+            return True
         return False
+
+    def live_points(self, i):
+        """Match points so far plus the run in progress (end_run adds the run to points, so not twice)."""
+        return self.points[i] + (self.flyers[i].score if self.stage != "results" else 0)
 
     def active(self, i):
         p = self.room.players.get(self.seats[i])
@@ -255,13 +270,23 @@ class SkyDrop(Game):
 
     def bot_think(self, i, level, now):
         f = self.flyers[i]
-        interval, noise = BOT.get(level, BOT["normal"])
+        interval, noise, focus = BOT.get(level, BOT["normal"])
         if now < f.next_bot:
             return
         f.next_bot = now + interval
         ri = next((j for j, ring in enumerate(self.rings) if ring[0] > f.depth), None)
         if ri is not None:
             _, x, z, _ = self.rings[ri]
+            if f.aim_ring != ri:
+                f.aim_ring = ri
+                if self.rng.random() < focus:
+                    f.aim_dx = f.aim_dz = 0.0
+                else:   # distracted: heads for a spot well beside the ring
+                    a = self.rng.uniform(0, math.tau)
+                    off = self.rng.uniform(2.2, 3.6)
+                    f.aim_dx, f.aim_dz = math.cos(a) * off, math.sin(a) * off * 0.7
+            x += f.aim_dx
+            z += f.aim_dz
             # Lead toward ring to account for steering inertia.
             f.sx = max(-1, min(1, (x - f.x - f.vx * 0.45) / 3.0 + self.rng.uniform(-noise, noise)))
             f.sz = max(-1, min(1, (z - f.z - f.vz * 0.45) / 2.5 + self.rng.uniform(-noise, noise)))
@@ -321,7 +346,7 @@ class SkyDrop(Game):
 
     def meta(self, p):
         i = self.seat(p)
-        return f"{self.points[i]} pts" if i is not None else "Watching"
+        return f"{self.live_points(i)} pts" if i is not None else "Watching"
 
     def final_scores(self):
         return {pid: self.points[i] for i, pid in enumerate(self.seats)}

@@ -19,7 +19,7 @@ UI.skydrop = (() => {
       <div class="sd-controls"><span class="hint" id="sdHint">Drag to steer · thread the rings · avoid the turbines</span><div><button id="sdTilt">📱 Tilt</button> <button id="sdBoost" class="primary">⚡ Boost <small id="sdCharges">3</small></button></div></div></div>`;
     side.innerHTML = `<div class="panel"><h3>🪂 Sky Drop</h3><div id="sdSeats"></div><p class="hint left">Steer in two directions. Rings build your combo; hazards break it. Reach a checkpoint to refill boosts.</p></div>`;
     stage = $('sdStage'); stage.style.touchAction = 'none';
-    stage.addEventListener('pointerdown', (e) => { drag = {x:e.clientX,y:e.clientY}; stage.setPointerCapture?.(e.pointerId); steerFrom(e); });
+    stage.addEventListener('pointerdown', (e) => { if (e.target.closest?.('button')) return; drag = {x:e.clientX,y:e.clientY}; stage.setPointerCapture?.(e.pointerId); steerFrom(e); });
     stage.addEventListener('pointermove', (e) => { if (drag) steerFrom(e); });
     const end = () => { drag = null; setSteer(0,0,true); $('sdStick').hidden = true; };
     stage.addEventListener('pointerup', end); stage.addEventListener('pointercancel', end);
@@ -83,16 +83,31 @@ UI.skydrop = (() => {
     const streamMat=new T.MeshBasicMaterial({color:0x6cf5d5,transparent:true,opacity:.45});
     const playerMeshes=[]; const divers=new T.Group(); scene.add(divers);
     const ringMeshes=[],hazardMeshes=[],streamMeshes=[];
-    const playerGeo=new T.ConeGeometry(.65,1.25,8); playerGeo.rotateX(-Math.PI/2);
+    // A diver is a swept wing (an arrow seen from the chase camera) with a round helmet; yours also has a
+    // glowing disc in your colour under it, a light trail behind and a "YOU" tag that stays in front of rings.
+    const wingShape=new T.Shape();wingShape.moveTo(0,-1.05);wingShape.lineTo(1.1,.55);wingShape.lineTo(.34,.3);wingShape.lineTo(0,.62);wingShape.lineTo(-.34,.3);wingShape.lineTo(-1.1,.55);wingShape.closePath();
+    const wingGeo=new T.ExtrudeGeometry(wingShape,{depth:.12,bevelEnabled:false});wingGeo.rotateX(Math.PI/2);wingGeo.translate(0,.06,0);
+    const headGeo=new T.SphereGeometry(.3,14,10),haloGeo=new T.RingGeometry(1.3,1.55,40),discGeo=new T.CircleGeometry(1.3,40),trailGeo=new T.ConeGeometry(.42,2.6,10,1,true);trailGeo.rotateX(Math.PI/2);trailGeo.translate(0,0,1.75);
+    function youTag(){const c=document.createElement('canvas');c.width=128;c.height=64;const g=c.getContext('2d');if(g){g.fillStyle='#ffffffee';g.beginPath();g.roundRect?g.roundRect(8,10,112,44,22):g.rect(8,10,112,44);g.fill();g.fillStyle='#17223d';g.font='900 34px system-ui,sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillText('YOU',64,33);}
+      const t=new T.CanvasTexture(c);t.encoding=T.sRGBEncoding;const sp=new T.Sprite(new T.SpriteMaterial({map:t,depthTest:false,transparent:true}));sp.scale.set(1.5,.75,1);sp.position.set(0,1.25,0);sp.renderOrder=12;return sp;}
+    function makeDiver(i,mine){const col=color(i),g=new T.Group();
+      const wing=new T.Mesh(wingGeo,new T.MeshStandardMaterial({color:col,emissive:col,emissiveIntensity:mine?.75:.3,roughness:.35,metalness:.1,side:T.DoubleSide}));
+      const head=new T.Mesh(headGeo,new T.MeshStandardMaterial({color:mine?0xffffff:0xdfe6ff,emissive:mine?0xffffff:0x000000,emissiveIntensity:mine?.35:0,roughness:.3}));head.position.set(0,.22,-.35);const body=new T.Group();body.add(wing,head);body.rotation.x=-.7;g.add(body);   // pitched nose-down so the chase camera sees the arrow, not an edge
+      if(mine){const halo=new T.Mesh(haloGeo,new T.MeshBasicMaterial({color:col,transparent:true,opacity:.85,side:T.DoubleSide,depthWrite:false}));halo.userData.halo=true;halo.rotation.x=-1.2;halo.position.y=-.2;g.add(halo);
+        const disc=new T.Mesh(discGeo,new T.MeshBasicMaterial({color:col,transparent:true,opacity:.2,side:T.DoubleSide,depthWrite:false}));disc.rotation.x=-1.2;disc.position.y=-.21;g.add(disc);
+        const trail=new T.Mesh(trailGeo,new T.MeshBasicMaterial({color:col,transparent:true,opacity:.28,depthWrite:false,blending:T.AdditiveBlending}));g.add(trail);g.add(youTag());
+}
+      else g.scale.setScalar(.8);
+      return g;}
     function buildCourse(v){
       for(const o of [...ringMeshes,...hazardMeshes,...streamMeshes]) {o.geometry?.dispose?.(); if(o.parent)o.parent.remove(o);}
       ringMeshes.length=hazardMeshes.length=streamMeshes.length=0;
       for(let i=0;i<(v?.rings||[]).length;i++){const [d,x,y,m]=v.rings[i],o=new T.Mesh(new T.TorusGeometry(m>1?1.85:1.55,.12,10,32),gateMat);o.position.set(x,y,-d);o.userData.depth=d;scene.add(o);ringMeshes.push(o);}
       for(const [d,x,y,k,p] of v?.hazards||[]){const g=k===0?new T.TorusGeometry(1.3,.18,8,12):k===1?new T.CylinderGeometry(.82,.82,.3,12):new T.OctahedronGeometry(.95),o=new T.Mesh(g,hazardMats[k]);o.position.set(x,y,-d);o.rotation.x=Math.PI/2;o.userData={depth:d,phase:p,kind:k,baseX:x,baseY:y};scene.add(o);hazardMeshes.push(o);}
       for(const [d,x,y,dx,dy] of v?.streams||[]){const o=new T.Mesh(new T.TorusGeometry(2.1,.035,4,32),streamMat);o.position.set(x,y,-d);scene.add(o);streamMeshes.push(o);}
-      for(const m of playerMeshes){divers.remove(m);m.material.dispose();}
+      for(const m of playerMeshes){divers.remove(m);m.traverse(o=>{if(o.material){o.material.map?.dispose();o.material.dispose();}});}
       playerMeshes.length=0;
-      for(let i=0;i<(v?.seats||[]).length;i++){const m=new T.Mesh(playerGeo,new T.MeshStandardMaterial({color:color(i),emissive:color(i),emissiveIntensity:.45,roughness:.3}));divers.add(m);playerMeshes.push(m);}
+      for(let i=0;i<(v?.seats||[]).length;i++){const m=makeDiver(i,i===me());divers.add(m);playerMeshes.push(m);}
     }
     let seed=-1;
     function resize(){const w=stage.clientWidth||320,h=stage.clientHeight||400;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}
@@ -101,7 +116,9 @@ UI.skydrop = (() => {
       const idx=me(),f=sample(idx),depth=f[0],px=f[1],py=f[2];
       camera.position.set(px*.35,py*.35+3.4,-depth+12);camera.lookAt(px,py,-depth-12);
       shaft.position.z=-depth;
-      for(let i=0;i<playerMeshes.length;i++){const a=sample(i),o=playerMeshes[i];o.position.set(a[1],a[2],-a[0]);o.visible=!a[9];o.rotation.z=-a[3]*.035;o.rotation.x=a[4]*.03;}
+      const pulse=1+Math.sin(performance.now()/260)*.06;
+      for(let i=0;i<playerMeshes.length;i++){const a=sample(i),o=playerMeshes[i];o.position.set(a[1],a[2],-a[0]);o.visible=!a[9];o.rotation.z=-a[3]*.06;o.rotation.x=a[4]*.03;
+        for(const c of o.children)if(c.userData.halo)c.scale.setScalar(pulse);}
       const elapsed=(v.time||0)+Math.max(0,(performance.now()-gotAt)/1000)-(v.raceStarted||v.go||0);
       for(const o of hazardMeshes){const {baseX,baseY,phase,kind}=o.userData;o.rotation.z=elapsed*1.7+phase;if(kind===2){o.position.x=baseX+Math.sin(elapsed*1.5+phase)*1.5;o.position.y=baseY+Math.cos(elapsed*1.1+phase)*1.1;}}
       GL3.tickShake?.(camera,.016);renderer.render(scene,camera);
@@ -119,8 +136,15 @@ UI.skydrop = (() => {
       const sxw=w/22,szh=h/14,at=(d,a,b)=>{const rel=d-f[0],k=Math.max(.35,1-rel/120);return [w/2+(a-f[1])*sxw*k+f[1]*sxw,yy-rel*h/95+b*szh*k,k,rel];};
       for(const [d,a,b,k] of v?.hazards||[]){const [hx,hy,s,rel]=at(d,a,b);if(rel<-2||rel>80)continue;x.fillStyle=['#ff576f','#ffb843','#c477ff'][k]||'#ff576f';x.beginPath();x.arc(hx,hy,Math.max(3,(k===0?1.3:1)*sxw*s),0,Math.PI*2);x.fill();}
       for(let i=0;i<(v?.rings||[]).length;i++){const [d,a,b,m]=v.rings[i],[rx,ry,s,rel]=at(d,a,b);if(rel<-2||rel>80)continue;x.strokeStyle=m>1?'#ffe17d':'#7df6ff';x.lineWidth=Math.max(2,4*s);x.beginPath();x.ellipse(rx,ry,Math.max(4,1.65*sxw*s),Math.max(3,1.65*szh*s*.45),0,0,Math.PI*2);x.stroke();}
-      for(let i=0;i<v.flyers.length;i++){if(i===idx)continue;const a=sample(i);if(a[9])continue;const [ox,oy,s,rel]=at(a[0],a[1],a[2]);if(rel<-12||rel>80)continue;x.fillStyle=color(i);x.beginPath();x.arc(ox,oy,Math.max(4,8*s),0,Math.PI*2);x.fill();}
-      x.fillStyle=color(idx);x.beginPath();x.moveTo(px,py-18);x.lineTo(px-12,py+12);x.lineTo(px+12,py+12);x.fill();
+      x.globalAlpha=.75;for(let i=0;i<v.flyers.length;i++){if(i===idx)continue;const a=sample(i);if(a[9])continue;const [ox,oy,s,rel]=at(a[0],a[1],a[2]);if(rel<-12||rel>80)continue;x.fillStyle=color(i);x.beginPath();x.arc(ox,oy,Math.max(4,8*s),0,Math.PI*2);x.fill();}
+      x.globalAlpha=1;
+      if(idx>=0&&v.flyers[idx]&&!f[9]){
+        // your diver: a glowing disc in your colour, an outlined swept wing and a "YOU" tag
+        const d=Math.min(2,devicePixelRatio||1),u=d*(1+Math.sin(performance.now()/260)*.06),col=color(idx);
+        x.save();x.globalAlpha=.25;x.fillStyle=col;x.beginPath();x.ellipse(px,py+6*d,30*u,12*u,0,0,Math.PI*2);x.fill();x.globalAlpha=1;x.strokeStyle=col;x.lineWidth=3*d;x.stroke();
+        x.shadowColor=col;x.shadowBlur=14*d;x.fillStyle=col;x.beginPath();x.moveTo(px,py-17*d);x.lineTo(px+19*d,py+9*d);x.lineTo(px+6*d,py+5*d);x.lineTo(px,py+11*d);x.lineTo(px-6*d,py+5*d);x.lineTo(px-19*d,py+9*d);x.closePath();x.fill();
+        x.shadowBlur=0;x.strokeStyle='#ffffff';x.lineWidth=2*d;x.stroke();x.fillStyle='#ffffff';x.beginPath();x.arc(px,py-4*d,3.6*d,0,Math.PI*2);x.fill();
+        x.font=`900 ${12*d}px system-ui,sans-serif`;x.textAlign='center';x.textBaseline='middle';const ty=py-30*d;x.fillStyle='#ffffffee';x.beginPath();x.roundRect?x.roundRect(px-20*d,ty-9*d,40*d,18*d,9*d):x.rect(px-20*d,ty-9*d,40*d,18*d);x.fill();x.fillStyle='#17223d';x.fillText('YOU',px,ty+1);x.restore();}
     }
     resize();return {resize,render,shake(){},dispose(){c.remove();}};
   }
@@ -132,7 +156,7 @@ UI.skydrop = (() => {
     $('sdScore').textContent=`${f[5]||0} pts · ${f[6]||0} rings · ×${Math.max(1,f[7]||0)}`;$('sdCharges').textContent=f[8]??3;
     $('sdProgress').style.width=`${Math.min(100,depth/v.length*100)}%`;$('sdClock').textContent=`Run ${v.run}/${v.runs}`;
     const banner=$('sdBanner');if(v.stage==='results'){banner.hidden=false;banner.replaceChildren();const title=document.createElement('b');title.textContent=`Run ${v.run} complete`;banner.append(title);for(const [n,i] of v.finished.entries()){const row=document.createElement('p');row.textContent=`${n+1}. ${name(i)} · ${state(i)[5]} pts`;banner.append(row);}}else if(v.stage==='countdown'){banner.hidden=false;banner.textContent=`${Math.max(1,Math.ceil((v.go-Date.now()/1000)))}…`;}else banner.hidden=true;
-    const seats=$('sdSeats');const key=JSON.stringify([v.points,v.ringTotals,v.flyers.map(a=>a[0])]);if(seats.dataset.key!==key){seats.dataset.key=key;seats.replaceChildren();v.seats.forEach((_,i)=>{const row=document.createElement('div');row.className='sd-row';const swatch=document.createElement('i');swatch.style.background=color(i);const label=document.createElement('span');label.textContent=name(i);const score=document.createElement('b');score.textContent=`${v.points[i]+state(i)[5]} pts`;const progress=document.createElement('small');progress.textContent=`${Math.floor(state(i)[0]/v.length*100)}%`;row.append(swatch,label,score,progress);seats.append(row);});}
+    const seats=$('sdSeats');const key=JSON.stringify([v.points,v.ringTotals,v.flyers.map(a=>a[0])]);if(seats.dataset.key!==key){seats.dataset.key=key;seats.replaceChildren();v.seats.forEach((_,i)=>{const row=document.createElement('div');row.className='sd-row';const swatch=document.createElement('i');swatch.style.background=color(i);const label=document.createElement('span');label.textContent=name(i);const score=document.createElement('b');score.textContent=`${v.points[i]+(v.stage==='results'?0:state(i)[5])} pts`;const progress=document.createElement('small');progress.textContent=`${Math.floor(state(i)[0]/v.length*100)}%`;row.append(swatch,label,score,progress);seats.append(row);});}
   }
   function render(S0,ctx0){S=S0;ctx=ctx0;if(snap?.seed!==V()?.seed)lastSeq=-1;snap=V();gotAt=performance.now();if(lastSeq<0)events(V());ensureView();}
   function fast(data){if(data.skydrop){const old=V()||{};S={...S,skydrop:{...data.skydrop,me:old.me,seats:old.seats}};snap=S.skydrop;gotAt=performance.now();ensureView();events(S.skydrop);}}
