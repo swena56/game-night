@@ -532,7 +532,8 @@ UI.stones = (() => {
     liveHud(info);
     if (mySlide()) sendSweep();
     else if (pad.down) sweepUp();
-    $('icDone').hidden = !S.stones.between || busy();
+    // the end card waits for the shell's moment callout ("🥌 Ann scores 3!", room.moment) to fade, so the two never stack
+    $('icDone').hidden = !S.stones.between || busy() || !!document.querySelector('.kit-callout');
     // on-demand drawing: every frame while anything moves, otherwise ~15 fps for the glows
     const idle = !anim && !(gl?.moving?.());
     if (idle && now - lastDraw < 66) return;
