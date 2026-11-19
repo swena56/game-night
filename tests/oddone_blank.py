@@ -10,6 +10,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 import server  # noqa: E402
 from games import oddone  # noqa: E402
+from games.base import GameError  # noqa: E402
 
 fails = []
 
@@ -49,6 +50,33 @@ for _ in range(300):
     else:
         g.on_timeout()
 check("bots play a whole Blank game", r.phase == "over")
+
+r, g, ps = table(False)
+g.stage = "vote"
+g.odd = ps[1].id
+ps[1].g.word = g.odd_word
+for p in ps:
+    if p.id != g.odd:
+        p.g.word = g.common
+g.votes = {ps[0].id: ps[1].id, ps[1].id: ps[0].id, ps[2].id: ps[1].id}
+locked_votes = dict(g.votes)
+g.count_votes()
+check("unique accused gets a defense turn", g.stage == "defense" and g.defender == ps[1].id)
+view = g.view(ps[1])["oddone"]
+check("defense does not reveal who is odd", view["odd"] is None and view["oddWord"] is None and view["result"] is None)
+try:
+    g.act(ps[0], {"type": "defend", "text": "careful"})
+    rejected = False
+except GameError:
+    rejected = True
+check("only accused player can defend", rejected)
+g.act(ps[1], {"type": "defend", "text": "careful"})
+check("defense is shown before resolution and votes stay locked",
+      g.stage == "defense_reveal" and g.defense == "careful" and g.votes == locked_votes and g.result is None)
+view = g.view(ps[1])["oddone"]
+check("defense reveal still hides role", view["odd"] is None and view["defense"] == "careful")
+g.on_timeout()
+check("vote result resolves after defense", g.stage == "guess" and g.result["caught"] and g.votes == locked_votes)
 
 print("\nall ok" if not fails else f"\n{len(fails)} failed: {fails}")
 sys.exit(1 if fails else 0)

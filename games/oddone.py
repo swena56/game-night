@@ -11,6 +11,8 @@ from .textmatch import norm, same
 
 VOTE_SECS = 60
 REVEAL_SECS = 7
+DEFENSE_SECS = 25
+DEFENSE_REVEAL_SECS = 3
 CLUE_RE = re.compile(r"^[A-Za-z][A-Za-z'\-]{0,19}$")
 
 
@@ -23,6 +25,7 @@ class OddOne(Game):
         "Everyone gets a secret word, but one player's word is slightly different. Nobody knows who.",
         "Take turns giving a one-word clue about your word. Don't make it too obvious!",
         "Then everyone votes for the player they think has the odd word.",
+        "After votes lock, the most-voted player may give one final clue or pass before the reveal.",
         "Catch the odd one: +2 each. If they escape, they get +4, and 🐐 an innocent who took the most votes gets +1.",
         "A caught odd one can still guess the real word for +3.",
         "🫥 Blank (an option): the odd one gets no word at all and knows it, so they have to bluff their clues.",
@@ -53,6 +56,9 @@ class OddOne(Game):
         self.room.oddone_seen = seen | {tuple(p) for p in self.pairs[:self.s["rounds"]]}
         self.round = 0
         self.result = None
+        self.defender = None
+        self.defense = None
+        self.pending_vote = None
         for p in seated:
             p.g.score = 0
             p.g.word = None
@@ -90,6 +96,9 @@ class OddOne(Game):
         self.clues = []
         self.votes = {}
         self.result = None
+        self.defender = None
+        self.defense = None
+        self.pending_vote = None
         self.stage = "clue"
         r.add_log(f"🔎 Round {self.round}/{self.s['rounds']}: check your word and give a clue.")
         r.begin_turn(self.order[0])
@@ -132,6 +141,21 @@ class OddOne(Game):
             if not isinstance(text, str) or not text.strip() or len(text) > 30:
                 raise GameError("Type one word.")
             return self.guess(p, text.strip())
+        if t in ("defend", "pass_defense"):
+            if self.stage != "defense" or p.id != self.defender:
+                raise GameError("Only the accused player can give a final clue.")
+            self.require_turn(p)
+            text = a.get("text", "")
+            if t == "pass_defense":
+                self.defense = "passed"
+            else:
+                if not isinstance(text, str) or not CLUE_RE.match(text.strip()):
+                    raise GameError("Give a one-word clue or pass.")
+                text = text.strip()
+                if same(text, p.g.word) or any(norm(text) == norm(c["text"]) for c in self.clues):
+                    raise GameError("Use a new clue that doesn't say your word.")
+                self.defense = text
+            return self.show_defense()
         raise GameError("Unknown action.")
 
     def give_clue(self, p, text):
@@ -172,22 +196,50 @@ class OddOne(Game):
         top = max(tally.values(), default=0)
         leaders = [pid for pid, n in tally.items() if n == top]
         caught = len(leaders) == 1 and leaders[0] == self.odd
+        shown = ", ".join(f"{r.players[pid].name} {n}" for pid, n in sorted(tally.items(), key=lambda x: -x[1]) if pid in r.players)
+        r.add_log(f"🗳️ Votes: {shown or 'none'}", "question")
+        if len(tally) == 1 and top >= 3:
+            self.moment("🗳️ UNANIMOUS!", "gold" if caught else "bad", "tag")
+        self.pending_vote = {"tally": tally, "leaders": leaders, "caught": caught}
+        if len(leaders) == 1:
+            self.defender = leaders[0]
+            self.defense = None
+            self.stage = "defense"
+            r.add_log(f"🛡️ {r.players[self.defender].name} gets one optional final clue before the reveal.", "big")
+            r.begin_turn(self.defender)
+            r.deadline = time.time() + DEFENSE_SECS
+            return
+        self.resolve_votes()
+
+    def show_defense(self):
+        r = self.room
+        r.turn = None
+        r.deadline = time.time() + DEFENSE_REVEAL_SECS
+        self.stage = "defense_reveal"
+        if self.defense == "passed":
+            r.add_log(f"🛡️ {r.players[self.defender].name} passed on a final clue.", "question")
+        else:
+            r.add_log(f"🛡️ {r.players[self.defender].name}'s final clue: {self.defense}", "question")
+
+    def resolve_votes(self):
+        r = self.room
+        pending = self.pending_vote or {"tally": {}, "leaders": [], "caught": False}
+        tally, leaders, caught = pending["tally"], pending["leaders"], pending["caught"]
+        top = max(tally.values(), default=0)
+        self.pending_vote = None
         oddp = r.players.get(self.odd)
         right = [pid for pid, t in self.votes.items() if t == self.odd]
         for pid in right:
             if pid in r.players:
                 r.players[pid].g.score += 2 if caught else 1
-        shown = ", ".join(f"{r.players[pid].name} {n}" for pid, n in sorted(tally.items(), key=lambda x: -x[1]) if pid in r.players)
-        r.add_log(f"🗳️ Votes: {shown or 'none'}", "question")
-        if len(tally) == 1 and top >= 3:
-            self.moment("🗳️ UNANIMOUS!", "gold" if caught else "bad", "tag")
         # 🐐 a scapegoat: an innocent who drew every vote gets a point for the trouble
         if not caught and len(leaders) == 1 and leaders[0] != self.odd and top >= 2 and leaders[0] in r.players:
             goat = r.players[leaders[0]]
             if hasattr(goat.g, "score"):
                 goat.g.score += 1
                 r.add_log(f"🐐 {goat.name} was the scapegoat — wrongly accused, +1.", "power")
-        self.result = {"votes": tally, "caught": caught, "guess": None, "guessed": False}
+        self.result = {"votes": tally, "caught": caught, "guess": None, "guessed": False,
+                       "defender": getattr(self, "defender", None), "defense": getattr(self, "defense", None)}  # saved games predate the defense
         if caught and oddp:
             r.add_log(f"🎯 Caught! {oddp.name} had the odd word “{self.odd_word}”. Last chance: guess the real word.", "power")
             self.stage = "guess"
@@ -229,6 +281,11 @@ class OddOne(Game):
             self.count_votes()
         elif self.stage == "guess":
             self.guess(r.players[r.turn], "…")
+        elif self.stage == "defense":
+            self.defense = "passed"
+            self.show_defense()
+        elif self.stage == "defense_reveal":
+            self.resolve_votes()
         elif self.round >= self.s["rounds"]:
             self.finish()
         else:
@@ -249,10 +306,13 @@ class OddOne(Game):
         self.votes = {k: v for k, v in self.votes.items() if k != p.id and v != p.id}
         if len(self.live()) < 2:
             return self.finish()
-        if p.id == self.odd and self.stage in ("clue", "vote", "guess"):
+        if p.id == self.odd and self.stage in ("clue", "vote", "guess", "defense", "defense_reveal"):
             r.add_log(f"🚪 The odd one left — the words were “{self.common}” and “{self.odd_word}”.", "power")
             self.result = {"votes": {}, "caught": False, "guess": None, "guessed": False}
             return self.reveal()
+        if self.stage == "defense" and p.id == self.defender:
+            self.defense = "passed"
+            return self.show_defense()
         if self.stage == "clue" and r.turn == p.id:
             self.next_clue()
         elif self.stage == "vote":
@@ -285,6 +345,8 @@ class OddOne(Game):
             out.update(common=self.common)
         if self.stage in ("guess", "reveal") or see_all:
             out["votes"] = dict(self.votes)
+        if self.stage in ("defense", "defense_reveal"):
+            out.update(defender=self.defender, defense=self.defense)
         return {"oddone": out}
 
     # -- bots
@@ -293,7 +355,7 @@ class OddOne(Game):
         r = self.room
         if self.stage == "vote":
             return any(p.bot for p in self.waiting_on())
-        if self.stage in ("clue", "guess"):
+        if self.stage in ("clue", "guess", "defense"):
             p = r.players.get(r.turn)
             return bool(p and p.bot)
         return False
@@ -310,6 +372,10 @@ class OddOne(Game):
             self.give_clue(p, self.bot_clue(p))
         elif self.stage == "guess":
             self.guess(p, self.bot_guess(p))
+        elif self.stage == "defense":
+            text = self.bot_clue(p)
+            self.defense = "passed" if same(text, p.g.word) or any(norm(text) == norm(c["text"]) for c in self.clues) else text
+            self.show_defense()
 
     def lists(self, p):
         if p.g.word == BLANK:  # the blank: guess the word from everyone else's clues

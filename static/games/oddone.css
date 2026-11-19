@@ -36,3 +36,6 @@
 .oo-votes { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
 .oo-vote { display: flex; align-items: center; gap: 6px; justify-content: center; }
 .oo-who { display: flex; align-items: center; gap: 6px; font-weight: 700; }
+.oo-defense { border-color: #ffd16666; }
+.oo-defense form { margin-bottom: 8px; }
+.oo-defense-result { padding: 8px; border-left: 3px solid #ffd166; background: #ffd16612; }

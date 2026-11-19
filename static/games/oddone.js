@@ -19,6 +19,11 @@ UI.oddone = (() => {
         <div class="row"><input id="ooGuess" maxlength="30" placeholder="Their word" autocapitalize="off" spellcheck="false" enterkeyhint="send">
         <button class="primary">Guess</button></div>
       </form>
+      <div id="ooDefensePanel" class="panel oo-defense" hidden><h3>🛡️ Final defense</h3><p id="ooDefenseStatus" class="hint"></p>
+        <form id="ooDefenseForm" class="row oo-form" autocomplete="off" hidden>
+          <input id="ooDefense" maxlength="20" placeholder="One-word final clue" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="send">
+          <button class="primary">Give clue</button>
+        </form><button id="ooPassDefense" type="button" hidden>Pass</button></div>
       <div id="ooVote" class="panel" hidden><h3>Who has the odd word?</h3><div id="ooVoteBtns" class="oo-votes"></div><p id="ooWaiting" class="hint"></p></div>
       <div id="ooResult" class="panel oo-result" hidden></div>
     </div>`;
@@ -26,6 +31,7 @@ UI.oddone = (() => {
       <li>Everyone has the same word, <b>except one player</b>, who has a similar one and doesn't know it.</li>
       <li>💬 Give one-word clues. Too vague looks suspicious; too obvious helps the odd one.</li>
       <li>🗳️ Vote for the odd one: <b>+2</b> each if they're caught (+1 if they escape).</li>
+      <li>🛡️ The most-voted player may give one final clue or pass before the reveal.</li>
       <li>🏃 An odd one who escapes gets <b>+4</b>. Caught? Guess the real word for <b>+3</b>.</li></ul></div>`;
     const send = (form, input, type) => {
       $(form).onsubmit = (e) => {
@@ -43,6 +49,12 @@ UI.oddone = (() => {
     for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) $('ooCard').addEventListener(ev, () => $('ooCard').classList.remove('peek'));
     send('ooClueForm', 'ooClue', 'clue');
     send('ooGuessForm', 'ooGuess', 'guess');
+    $('ooDefenseForm').onsubmit = (e) => {
+      e.preventDefault();
+      const text = $('ooDefense').value.trim(); if (!text) return;
+      ctx.quiet(ctx.act('defend', { text }).then(() => { $('ooDefense').value = ''; }));
+    };
+    $('ooPassDefense').onclick = () => ctx.quiet(ctx.act('pass_defense'));
   }
 
   function paintCard() {
@@ -72,6 +84,16 @@ UI.oddone = (() => {
 
     $('ooClueForm').hidden = !(g.stage === 'clue' && ctx.myTurn);
     $('ooGuessForm').hidden = !(g.stage === 'guess' && ctx.myTurn);
+    const defensePanel = $('ooDefensePanel');
+    defensePanel.hidden = !(g.stage === 'defense' || g.stage === 'defense_reveal');
+    if (!defensePanel.hidden) {
+      const defender = ctx.player(g.defender)?.name ?? 'The accused player';
+      $('ooDefenseStatus').textContent = g.stage === 'defense_reveal'
+        ? (g.defense === 'passed' ? `${defender} passed. The reveal is next.` : `${defender}'s clue: ${g.defense}`)
+        : `${defender} may give one optional final clue or pass.`;
+      $('ooDefenseForm').hidden = !(g.stage === 'defense' && ctx.myTurn);
+      $('ooPassDefense').hidden = !(g.stage === 'defense' && ctx.myTurn);
+    }
 
     // clues, grouped by player in speaking order
     const box = $('ooClues'); box.innerHTML = '';
@@ -134,6 +156,11 @@ UI.oddone = (() => {
       res.append(who);
       if (g.common) res.append(ctx.el('p', '', `Everyone else had “${g.common}”.`));
       if (g.result.guess) res.append(ctx.el('p', '', g.result.guessed ? `💡 They guessed “${g.result.guess}”. Correct, +3!` : `❌ They guessed “${g.result.guess}”.`));
+      if (g.result.defender != null && g.result.defense) {
+        const defender = ctx.player(g.result.defender)?.name ?? 'The accused player';
+        res.append(ctx.el('p', 'oo-defense-result', g.result.defense === 'passed'
+          ? `🛡️ ${defender} passed on a final clue.` : `🛡️ ${defender}'s final clue was “${g.result.defense}”.`));
+      }
       // who voted for whom: a row per suspect, most votes first, the voters' dots popping in one by one
       // (animated the first time this result is shown)
       const by = {};
@@ -178,6 +205,8 @@ UI.oddone = (() => {
     if (g.stage === 'clue') return s.turn === s.me.id ? '💬 Your clue!' : `💬 ${name(s.turn)} is thinking of a clue…`;
     if (g.stage === 'vote') return g.myVote || !g.word ? '🗳️ Waiting for votes…' : '🗳️ Vote for the odd one!';
     if (g.stage === 'guess') return s.turn === s.me.id ? '🎯 Guess the real word!' : `🎯 ${name(s.turn)} is guessing the real word…`;
+    if (g.stage === 'defense') return s.turn === s.me.id ? '🛡️ Give one final clue or pass.' : `🛡️ ${name(g.defender)} is giving a final clue…`;
+    if (g.stage === 'defense_reveal') return '🛡️ Final clue revealed. The result is next.';
     return `🕵️ ${name(g.odd)} was the odd one`;
   }
   const myMove = (s) => s.phase === 'playing' && s.oddone.stage === 'vote' && !s.oddone.myVote && !!s.oddone.word && !s.me.eliminated;
