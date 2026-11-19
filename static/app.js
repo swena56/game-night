@@ -904,7 +904,10 @@ function renderChat() {
   list.innerHTML = '';
   for (const m of S.chat) {
     const row = el('div', 'msg' + (m.pid === S.me.id ? ' mine' : '') + (m.ghost ? ' ghost' : ''));
-    const who = el('b', '', (m.ghost ? '👻 ' : '') + m.name); who.style.color = m.color;
+    const who = el('b'); who.style.color = m.color;
+    const sender = player(m.pid);
+    if (sender) who.append(avatar(sender));   // #195 the sender's icon beside the name
+    who.append((m.ghost ? '👻 ' : '') + m.name);
     row.append(who, el('span', '', m.text));
     list.append(row);
   }

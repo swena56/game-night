@@ -446,7 +446,8 @@ body.calm .nudge { animation: none; box-shadow: 0 0 0 2px #ffb70388; }
 .drawer-x { min-width: 36px; min-height: 36px; font-size: 16px; color: var(--muted); }
 .chat-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; min-height: 120px; font-size: 14px; }
 .msg { background: var(--tint-1); border-radius: var(--r-md); padding: 6px 10px; align-self: flex-start; max-width: 85%; word-wrap: break-word; }
-.msg b { display: block; font-size: var(--fs-xs); }
+.msg b { display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); }
+.msg b .avatar { display: inline-block; flex: none; width: 18px; height: 18px; box-shadow: 0 0 0 1px var(--line); }
 .msg.mine { align-self: flex-end; background: var(--accent-a20); }
 .msg.ghost { border: 1px dashed var(--muted); opacity: .85; }
 .quick-chat { display: flex; gap: 6px; overflow-x: auto; padding: 8px 0 2px; }
