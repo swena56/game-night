@@ -735,7 +735,7 @@ UI.realm = (() => {
     svgEl('text', { y: 0.5 }, coin).textContent = '$';
   }
 
-  // 🧭 lenses: 1 = threats to your lands, 2 = your progress on each island
+  // 🧭 lenses: 1 = strongest reachable current stack against your lands, 2 = island progress
   function lensLayer(m) {
     const box = $('rwLens'), tag = $('rwLensTag'), btn = $('rwLensBtn');
     box.replaceChildren();
@@ -751,17 +751,23 @@ UI.realm = (() => {
       t.classList.toggle('mine', !!(on && lens === 2 && have === ls));
     });
     if (!on) return;
-    tag.textContent = lens === 1 ? '🧭 Threats: enemy troops that can reach each of your lands' : '🧭 Islands: your share of each';
+    tag.textContent = lens === 1 ? '🧭 Next-turn risk: strongest current enemy stack; storms, forts and shields count. Future draft troops are not included.' : '🧭 Islands: your share of each';
     m.owner.forEach((o, i) => {
       const [, , x, y] = m.map.lands[i];
       if (lens === 1) {
         if (o !== m.me) return;
-        const th = adj(m, i).reduce((sum, j) => sum + (m.owner[j] !== m.me && m.owner[j] >= 0 ? Math.max(0, m.troops[j] - 1) : 0), 0);
-        if (!th) return;
+        const enemies = adj(m, i).filter((j) => m.owner[j] >= 0 && m.owner[j] !== m.me && m.troops[j] > 1);
+        const guard = m.forts.includes(i) || (m.shield || []).includes(m.me);
+        const best = enemies.map((j) => ({ land: j, spare: m.troops[j] - 1,
+          odds: winChance(m.troops[j] - 1, m.troops[i], guard) }))
+          .sort((a, b) => b.odds - a.odds || b.spare - a.spare)[0];
+        if (!best) return;
         const p = svgEl('path', { d: cellPaths[i], class: 'rw-lens-threat' }, box);
-        p.style.opacity = Math.min(0.62, 0.18 + 0.5 * th / (th + m.troops[i])).toFixed(2);
-        const t = svgEl('text', { x: x - 18, y: y + 17, class: 'rw-threat' + (th > m.troops[i] ? ' hot' : '') }, box);
-        t.textContent = `⚠${th}`;
+        p.style.opacity = (0.18 + 0.44 * best.odds).toFixed(2);
+        const t = svgEl('text', { x: x - 18, y: y + 17, class: 'rw-threat' + (best.odds >= 0.5 ? ' hot' : '') }, box);
+        const chance = Math.round(100 * best.odds);
+        t.textContent = `⚠${chance}%`;
+        svgEl('title', {}, t).textContent = `${m.map.lands[best.land][0]}: ${best.spare} attacking troops can reach this land. Estimated conquest chance ${chance}% with current stacks; ${guard ? 'fort/shield included' : 'no fort/shield bonus'}. Unplaced draft troops are excluded.`;
       } else if (o !== m.me) {
         svgEl('path', { d: cellPaths[i], class: 'rw-lens-dim' }, box);
       }
