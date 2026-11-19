@@ -229,10 +229,11 @@ class Boxes(Game):
         return [(r, c) for r, c in self.cells()
                 if sum(s in drawn for s in self.sides_of((r, c))) == 3]
 
-    def gives(self, drawn, line):
-        """Boxes (by value) the next player can grab greedily after `line` is drawn."""
+    def gives(self, drawn, line, streak=False):
+        """Boxes (by value) the next player can grab greedily after `line` is drawn; with `streak`,
+        plus the 🔥 Hot streak bonus those boxes would earn them in one turn."""
         drawn = drawn | {line}
-        total = 0
+        total = taken = 0
         while True:
             ready = self.three_sided(drawn)
             if not ready:
@@ -240,8 +241,11 @@ class Boxes(Game):
             box = ready[0]
             gap = next(s for s in self.sides_of(box) if s not in drawn)
             drawn.add(gap)
-            total += sum(self.value(b) for b in self.boxes_of(gap)
-                         if all(s in drawn for s in self.sides_of(b)))
+            closed = [b for b in self.boxes_of(gap) if all(s in drawn for s in self.sides_of(b))]
+            total += sum(self.value(b) for b in closed)
+            taken += len(closed)
+            if streak:
+                total += sum(bonus for need, bonus in STREAK if taken - len(closed) < need <= taken)
 
     def safe(self, drawn, line):
         return all(sum(s in drawn for s in self.sides_of(b)) < 2 for b in self.boxes_of(line))
@@ -291,7 +295,8 @@ class Boxes(Game):
             return self.draw(p, random.choice(safe))
         if level == "easy":
             return self.draw(p, random.choice(free))
-        costs = {ln: self.gives(drawn, ln) for ln in free}
+        streak = bool(self.s.get("streak", True))  # normal and hard bots count the 🔥 bonus they would hand over
+        costs = {ln: self.gives(drawn, ln, streak) for ln in free}
         least = min(costs.values())
         best = [ln for ln in free if costs[ln] == least]
         if level == "hard":

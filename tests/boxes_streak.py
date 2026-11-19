@@ -56,6 +56,45 @@ r, g, p = row()
 g.act(p, {"type": "line", "d": "h", "r": 2, "c": 0})
 check("a miss resets the run", g.run == 0)
 
+# 🔥 the sacrifice estimate counts the bonus: a 3-box chain (3 points) is the cheaper handout until the
+# +2 streak makes it cost 5, while a chain of two with a 💎 (4 points) is never close enough to a streak.
+FREE = {("h", 0, 0), ("h", 0, 2), ("h", 1, 0), ("h", 1, 2), ("h", 2, 2), ("h", 3, 2), ("v", 1, 0)}
+THREE = {("h", 0, 2), ("h", 1, 2), ("h", 2, 2), ("h", 3, 2)}
+
+
+def sacrifice(level, streak):
+    r = server.Room("S")
+    for n in ("Ann", "Bo"):
+        q = r.add_player(n)
+        q.bot = level
+    r.switch_game("boxes")
+    r.settings.update(size="3x4", gems=True, streak=streak)
+    r.start()
+    g = r.game
+    g.gems = [[1, 3], [1, 0]]
+    drawn = set(g.lines()) - FREE
+    for d, rr, c in drawn:
+        (g.h if d == "h" else g.v)[rr][c] = 0
+    for b in g.cells():
+        if all(sd in drawn for sd in g.sides_of(b)):
+            g.owner[b[0]][b[1]] = 0
+    assert not g.three_sided(drawn)
+    q = r.players[r.turn]
+    seen = []
+    g.draw = lambda pp, ln: seen.append(ln)
+    g.bot_turn(q)
+    return seen[0] if len(seen) == 1 else None
+
+
+for level in ("normal", "hard"):
+    off = {sacrifice(level, False) for _ in range(12)}
+    on = {sacrifice(level, True) for _ in range(12)}
+    check(f"{level} bot hands over the 3-chain when streak is off", None not in off and off <= THREE, off)
+    check(f"{level} bot avoids the 3-chain when the streak bonus tips it", None not in on and not (on & THREE), on)
+for streak in (False, True):
+    easy = {sacrifice("easy", streak) for _ in range(40)}
+    check(f"easy bot ignores streak (streak={streak})", None not in easy and bool(easy & THREE))
+
 import random
 for size in (3, 4):
     for seed in range(3):
