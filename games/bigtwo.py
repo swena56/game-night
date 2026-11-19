@@ -390,5 +390,18 @@ class BigTwo(CardGame):
                 t["note"] = f"Beat the {self.D(lp[1]).split(':')[0]} with {len(lp[1])} card{'s' if len(lp[1]) > 1 else ''}, or pass."
             else:
                 t["note"] = "Your lead: any single, pair, three or five-card hand" + (f" with the {show([self.opening])}." if self.first else ".")
+            t["note"] += self.last_card_warning(i, lp)
             t["turnText"] = "🐉 Your play"
         return t
+
+    def last_card_warning(self, i, lp):
+        """Public counts only: a rival down to one card can still beat a single, so lead pairs or runs."""
+        ones = [self.nm(k) for k in range(self.n) if k != i and len(self.hands[k]) == 1]
+        if not ones:
+            return ""
+        who = " & ".join(ones)
+        if lp and len(lp[1]) == 1:
+            return f" ⚠️ {who} has ONE card left: don't let a single slide, they could go out."
+        if not lp:
+            return f" ⚠️ {who} has ONE card left: lead pairs or runs, not singles."
+        return f" ⚠️ {who} has ONE card left."
