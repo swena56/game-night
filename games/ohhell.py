@@ -69,6 +69,13 @@ class OhHell(TrickGame):
         b = self.size - sum(x for x in self.bids if x is not None)
         return b if b >= 0 else None
 
+    def hook_note(self):
+        """Public forecast of the dealer's hook while the bids are still coming in."""
+        if self.stage != "bid" or not self.s.get("hook", True) or self.bids[self.dealer] is not None:
+            return ""
+        ban = self.banned(self.dealer)
+        return f" 🪝 Dealer can't bid {ban}: the total can't reach {self.size}." if ban is not None else f" 🪝 Bids already pass {self.size}: the dealer is free."
+
     def do_bid(self, i, b):
         self.bids[i] = b
         self.room.add_log(f"📣 {self.nm(i)} bids {b}.")
@@ -157,7 +164,7 @@ class OhHell(TrickGame):
                           ] + (["🎴 dealer"] if k == self.dealer else [])} for k in range(self.n)]
         t = {"info": info, "trump": self.turned, "trumpLabel": "Trumps" if self.turned else "No trumps",
              "scores": {"title": "Points", "rows": [{"seat": k, "value": self.scores[k], "sub": f"made {self.made[k]}"} for k in sorted(range(self.n), key=lambda k: -self.scores[k])],
-                        "hint": f"Hand {self.hand_no} of {len(self.plan)} · {self.size} card{'s' if self.size > 1 else ''}. Bids so far: {sum(b for b in self.bids if b is not None)}."}}
+                        "hint": f"Hand {self.hand_no} of {len(self.plan)} · {self.size} card{'s' if self.size > 1 else ''}. Bids so far: {sum(b for b in self.bids if b is not None)}." + self.hook_note()}}
         t.update(self.trick_view(p, i))
         if self.stage == "bid" and i is not None:
             t["hand"] = self.hands[i]
