@@ -25,6 +25,7 @@ class Trivia(Game):
         "Everyone gets the same question at the same time, with four answers to pick from.",
         f"A right answer scores {BASE_PTS}, plus up to {SPEED_PTS} more the faster you are. A wrong one scores nothing.",
         "You can't change your answer, so be quick but sure. The last question counts double, and so does one surprise 🎲 Double question along the way.",
+        "After answers lock, see the right answer and a short explanation.",
         f"🔥 Streaks pay: from your 3rd right answer in a row, +{STREAK_PTS} more for each (up to +{STREAK_PTS * STREAK_CAP}).",
         f"Most points wins. Alone, get {round(SOLO_GOAL * 100)}% right to win.",
     ]

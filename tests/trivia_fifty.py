@@ -9,6 +9,8 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 import server  # noqa: E402
+from games.trivia_explanations import EXPLANATIONS  # noqa: E402
+from games.trivia_qs import QUESTIONS  # noqa: E402
 from games.base import GameError  # noqa: E402
 
 fails = []
@@ -59,6 +61,15 @@ check("not on a true/false question", raises(lambda: g.act(bo, {"type": "fifty"}
 g.q = {"topic": g.q["topic"], "text": "Q?", "options": ["a", "b", "c", "d"], "right": 0}
 g.act(bo, {"type": "answer", "i": 0})
 check("not after answering", raises(lambda: g.act(bo, {"type": "fifty"})) is not None)
+
+check("every catalog question has an explanation", len(EXPLANATIONS) == len(QUESTIONS)
+      and all(EXPLANATIONS.get(q[1]) for q in QUESTIONS))
+r, g, ann, bo = room(None)
+g.q["explanation"] = "A brief reason for the correct answer."
+check("explanation is hidden while answers are open", g.view(ann)["trivia"]["reveal"] is None)
+g.reveal()
+check("explanation appears after answers lock",
+      g.view(ann)["trivia"]["reveal"]["explanation"] == "A brief reason for the correct answer.")
 
 print("\nall passed" if not fails else f"\n{len(fails)} FAILED: {', '.join(fails)}")
 sys.exit(1 if fails else 0)
