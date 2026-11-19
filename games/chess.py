@@ -307,6 +307,7 @@ class Chess(Undo, Game):
         'You can offer a draw or resign from the side panel.',
         'With a clock, your time runs only on your turn; run out and you lose (a draw if your opponent has only a king).',
         '👑 King of the Hill (an option): walk your king onto one of the four centre squares (d4, e4, d5, e5) to win at once.',
+        '3️⃣ Three-check (an option): give check three times to win at once. Checkmate still wins too.',
         '↶ In an untimed game, Undo asks your rival to take back your last move.',
     ]
     name = "Chess"
@@ -317,11 +318,13 @@ class Chess(Undo, Game):
               "pawnmate": ("♟", "Humble hero", "Deliver checkmate with a pawn")}
     settings_schema = {
         "clock": ("Clock", [(0, "Untimed"), (180, "⚡ 3 min + 2s"), (300, "5 min"), (600, "10 min + 5s")], 0),
-        "variant": ("Variant", [("standard", "Standard"), ("hill", "👑 King of the Hill")], "standard"),
+        "variant": ("Variant", [("standard", "Standard"), ("hill", "👑 King of the Hill"), ("threecheck", "3️⃣ Three-check")], "standard"),
     }
     INCREMENT = {180: 2, 300: 0, 600: 5}
     clock, inc, turn_at = None, 0, 0.0  # games saved before clocks existed have none
     sans = ()  # nor a move list
+    checks = {"w": 0, "b": 0}  # checks given so far (Three-check); older games have none
+    CHECKS_TO_WIN = 3
 
     def start(self, seated, rng):
         rng.shuffle(seated)
@@ -330,6 +333,7 @@ class Chess(Undo, Game):
         self.seen = {self.pos.key(): 1}
         self.last = None
         self.sans = []
+        self.checks = {"w": 0, "b": 0}
         self.captured = {"w": [], "b": []}  # pieces each side has lost
         self.draw_offer = None
         base = self.s.get("clock", 0)
@@ -372,11 +376,15 @@ class Chess(Undo, Game):
     def hill(self):
         return self.s.get("variant") == "hill"
 
+    def three(self):
+        return self.s.get("variant") == "threecheck"
+
     def undo_state(self):
-        return (self.pos, dict(self.seen), self.last, list(self.sans), {k: list(v) for k, v in self.captured.items()})
+        return (self.pos, dict(self.seen), self.last, list(self.sans), {k: list(v) for k, v in self.captured.items()},
+                dict(self.checks))
 
     def undo_restore(self, state):
-        self.pos, self.seen, self.last, self.sans, self.captured = state
+        self.pos, self.seen, self.last, self.sans, self.captured, self.checks = state
         self.draw_offer = None
 
     def color(self, p):
@@ -452,6 +460,12 @@ class Chess(Undo, Game):
                 return r.finish(p, f"♚ Checkmate! {p.name} wins.")
             return r.finish(None, "🤝 Stalemate — it's a draw.")
         r.add_log(f"{p.name}: {text}{'+' if check else ''}", "question")
+        if self.three() and check:
+            self.checks = {**self.checks, before.turn: self.checks[before.turn] + 1}
+            n = self.checks[before.turn]
+            if n >= self.CHECKS_TO_WIN:
+                return r.finish(p, f"3️⃣ {p.name} gives check for the third time — {p.name} wins!")
+            self.moment(f"3️⃣ {p.name}: check {n} of {self.CHECKS_TO_WIN}", "gold" if n == self.CHECKS_TO_WIN - 1 else "cool", "capture")
         if self.hill() and on_hill(self.pos.b, before.turn):
             return r.finish(p, f"👑 {p.name}'s king takes the hill — {p.name} wins!")
         if self.pos.half >= 100:
@@ -476,7 +490,7 @@ class Chess(Undo, Game):
             "moves": [list(m) for m in moves], "last": self.last, "check": check,
             "captured": self.captured, "drawOffer": self.draw_offer, "sans": list(self.sans),
             "clock": {pid: round(self.left(pid), 1) for pid in self.seats} if self.clock else None, "inc": self.inc,
-            "hill": self.hill(), "undo": None if self.clock else self.undo_view(p),
+            "hill": self.hill(), "checks": dict(self.checks) if self.three() else None, "undo": None if self.clock else self.undo_view(p),
         }}
 
     # -- bot
@@ -503,8 +517,11 @@ class Chess(Undo, Game):
                 for m in moves:
                     n, _ = apply(self.pos, m)
                     repeat = 150 if ahead and n.key() in self.seen else 0  # don't drift into a draw
+                    gives = 0
+                    if self.three() and in_check(n):  # 3️⃣ checks count: the third wins, the others are worth chasing
+                        gives = 5000 if self.checks[self.pos.turn] + 1 >= self.CHECKS_TO_WIN else 60
                     scored.append((-search(n, depth - 1, -MATE * 2, MATE * 2, deadline, self.hill())
-                                   - repeat + random.uniform(0, noise), m))
+                                   - repeat + gives + random.uniform(0, noise), m))
                 scored.sort(key=lambda x: -x[0])
                 best = scored[0][1]
                 moves = [m for _, m in scored]  # best-first ordering for the next depth

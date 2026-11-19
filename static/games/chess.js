@@ -108,9 +108,11 @@ UI.chess = (() => {
     if (castled) { Kit.callout('🏰 Castled', 'cool', { ms: 900 }); ctx.sfx('sweep'); }
     if (promoted) { Kit.callout(`♛ Promoted to a ${NAME[ch.board[ch.last[2]][ch.last[3]][1]]}!`, 'gold', { ms: 1200 }); ctx.sfx('tag'); }
     if (S.phase === 'over' && animate && ch.hill && !ch.check && S.winner) Kit.callout('👑 King of the Hill!', S.winner === S.me.id ? 'gold' : 'bad', { sound: S.winner === S.me.id ? 'fanfare' : 'thud', ms: 1800 });
-    if (S.phase === 'over' && animate && ch.check) Kit.callout('♚ Checkmate!', S.winner === S.me.id ? 'gold' : 'bad', { sound: S.winner === S.me.id ? 'fanfare' : 'thud', ms: 1800 });
+    if (S.phase === 'over' && animate && ch.checks && S.winner && ch.checks.w + ch.checks.b && Math.max(ch.checks.w, ch.checks.b) >= 3) Kit.callout('3️⃣ Third check!', S.winner === S.me.id ? 'gold' : 'bad', { sound: S.winner === S.me.id ? 'fanfare' : 'thud', ms: 1800 });
+    else if (S.phase === 'over' && animate && ch.check) Kit.callout('♚ Checkmate!', S.winner === S.me.id ? 'gold' : 'bad', { sound: S.winner === S.me.id ? 'fanfare' : 'thud', ms: 1800 });
     const mine = ch.me ? (ch.me === 'w' ? '♔ You play White' : '♚ You play Black') : '👁 Watching';
-    $('chStatus').textContent = mine + (S.phase === 'playing' ? ` · ${ch.turnColor === 'w' ? 'White' : 'Black'} to move` : '');
+    $('chStatus').textContent = mine + (S.phase === 'playing' ? ` · ${ch.turnColor === 'w' ? 'White' : 'Black'} to move` : '')
+      + (ch.checks ? ` · 3️⃣ checks: White ${ch.checks.w}/3, Black ${ch.checks.b}/3` : '');
     if (pre || preSel) {
       const sqName = (r, c) => 'abcdefgh'[c] + (8 - r);
       const x = ctx.el('button', 'ghost-btn', '✕');
