@@ -70,6 +70,7 @@ async function openOnce(stubCanvas) {
     beforeParse(w) {
       w.fetch = (u, o) => fetch(new URL(u, BASE).href, o);
       w.EventSource = ES;
+      if (!w.CSS) w.CSS = { escape: (s) => String(s).replace(/[^a-zA-Z0-9_-]/g, "\\$&") };  // jsdom has no CSS global
       w.ResizeObserver = class { observe() {} disconnect() {} };
       w.matchMedia = (q) => ({ matches: /max-width/.test(q), media: q, addEventListener() {}, removeEventListener() {} }); // phone-sized
       w.navigator.vibrate = () => true;

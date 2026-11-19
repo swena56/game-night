@@ -334,5 +334,5 @@ class Doodle(Game):
             "drawn": min(1.0, max(0.0, frac)) if self.stage == "draw" else 1.0, "secs": self.draw_secs(), "grace": GRACE_SECS,
         }
         if self.room.phase == "over":
-            out["gallery"] = self.gallery
+            out["gallery"] = getattr(self, "gallery", [])  # saved games predate the gallery
         return {"doodle": out}
