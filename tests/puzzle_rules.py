@@ -129,6 +129,17 @@ w = G.words[0]
 r1, c1, r2, c2 = G.where[w]
 room.act(ann, {"type": "find", "cells": [r2, c2, r1, c1]})
 check("word search: found from the last letter back", w in G.st[ann.id]["found"] and G.claims[w] == ann.id)
+# the progress list: in Grab, everyone (a spectator and the replay viewer too) sees who owns which word,
+# and the only path sent is the found word's
+w2 = G.words[1]
+G.take(bob, G.st[bob.id], w2, list(G.where[w2]))
+watcher = room.add_player("Wes")
+for who, label in ((ann, "me"), (bob, "rival"), (watcher, "spectator"), (server.REPLAY_VIEWER, "replay")):
+    vv = G.view(who)["wordsearch"]
+    check(f"word search grab list ({label}): owners are right", vv["owners"] == {w: ann.id, w2: bob.id}, vv["owners"])
+    check(f"word search grab list ({label}): paths only for found words", set(vv["lines"]) == {w, w2}, sorted(vv["lines"]))
+    check(f"word search grab list ({label}): no race counts in grab", vv["rivalFound"] == {})
+G.st[bob.id]["found"].remove(w2); G.claims.pop(w2); bob.g.score -= len(w2)
 check("word search: grab points land at once", ann.g.score == len(w))
 refused("word search: grabbed already", lambda: room.act(bob, {"type": "find", "cells": [r1, c1, r2, c2]}))
 refused("word search: not a straight line", lambda: room.act(ann, {"type": "find", "cells": [0, 0, 1, 2]}))
@@ -146,6 +157,18 @@ check("word search: the reveal doesn't count grab points twice",
 # -- word search race
 room, ann = room_for("wordsearch", bots=("easy",), mode="race")
 G = room.game
+bob = room.players[[p for p in room.players if p != ann.id][0]]
+# the progress list in Race: a rival's find is a count on my list, never its path or an owner
+x0 = G.words[0]
+G.take(bob, G.st[bob.id], x0, list(G.where[x0]))
+v = G.view(ann)["wordsearch"]
+check("word search race list: a rival's find is counted for me", v["rivalFound"] == {x0: 1}, v["rivalFound"])
+check("word search race list: but not its owner or path", v["owners"] == {} and v["lines"] == {}, (v["owners"], v["lines"]))
+vb = G.view(bob)["wordsearch"]
+check("word search race list: my own find isn't in my rival counts", vb["rivalFound"] == {} and vb["owners"] == {x0: bob.id})
+vs = G.view(server.REPLAY_VIEWER)["wordsearch"]
+check("word search race list: the replay viewer sees counts, no paths", vs["rivalFound"] == {x0: 1} and vs["lines"] == {})
+G.st[bob.id]["found"].remove(x0); G.st[bob.id]["at"].pop(x0)
 for x in G.words:
     a, b, c, d = G.where[x]
     room.act(ann, {"type": "find", "cells": [a, b, c, d]})

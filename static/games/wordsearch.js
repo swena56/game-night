@@ -14,6 +14,7 @@ UI.wordsearch = (() => {
       <div class="pt-head"><span id="wfRound"></span><span id="wfInfo" class="pt-info"></span><b id="wfClock" class="pt-clock"></b></div>
       <div class="dd-bar"><span id="wfBar"></span></div>
       <div class="wf-board" id="wfBoard"><div class="wf-grid" id="wfGrid"></div><svg class="wf-ink" id="wfInk" aria-hidden="true"></svg></div>
+      <div class="wf-tally" id="wfTally"></div>
       <div class="wf-words" id="wfWords" aria-label="Words to find"></div>
       <div class="pt-tools">
         <button type="button" id="wfHint" title="Show where a word starts">💡<small>Hint</small></button>
@@ -172,14 +173,27 @@ UI.wordsearch = (() => {
     for (const el of grid.querySelectorAll('.hint')) el.classList.remove('hint');
     for (const [r, cc] of v.hints) grid.children[r * n + cc]?.classList.add('hint');
 
-    // the word list
+    // the word list: each word says whether it's yours (✓), a rival's grab (🏴 name) or still hidden;
+    // in 🏁 Race, 👥 counts the rivals who've found it in their own copy (never where it is)
     const words = $('wfWords'); words.innerHTML = '';
+    const over = !!v.gained || S.phase === 'over';
+    let mine = 0, theirs = 0, hidden = 0;
     for (const w of v.words) {
       const who = v.owners[w];
-      const chip = ctx.el('span', 'wf-word' + (who ? ' got' : '') + (who && who !== S.me.id ? ' theirs' : ''), w);
+      const rival = who && who !== S.me.id;
+      const seen = v.rivalFound?.[w] || 0;
+      const chip = ctx.el('span', 'wf-word' + (who ? ' got' : '') + (rival ? ' theirs' : '') + (!who && over ? ' missed' : ''));
+      if (who === S.me.id) { chip.append(ctx.el('b', 'wf-mark', '✓')); mine++; } else if (rival) theirs++; else hidden++;
+      chip.append(ctx.el('span', 'wf-w', w));
+      if (rival) chip.append(ctx.el('small', 'wf-tag', `🏴 ${(ctx.player(who)?.name ?? '?').slice(0, 10)}`));
+      else if (!who && seen) chip.append(ctx.el('small', 'wf-tag', `👥${seen}`));
+      chip.title = who === S.me.id ? 'You found it' : rival ? `${ctx.player(who)?.name ?? 'A rival'} grabbed it`
+        : (over ? 'Missed (the grey line shows it)' : 'Still hidden') + (seen ? ` · ${seen} rival${seen === 1 ? ' has' : 's have'} found it` : '');
       if (who) chip.style.setProperty('--c', ctx.player(who)?.color || 'var(--accent)');
       words.append(chip);
     }
+    $('wfTally').textContent = v.grab ? `✓ ${mine} yours · 🏴 ${theirs} grabbed by rivals · ${hidden} ${over ? 'missed' : 'still hidden'}`
+      : `✓ ${mine} found · ${hidden} ${over ? 'missed' : 'still hidden'}` + (Object.keys(v.rivalFound || {}).length ? ' · 👥 rivals who found it' : '');
 
     const can = live();
     $('wfHint').disabled = $('wfBank').disabled = !can;

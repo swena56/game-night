@@ -129,6 +129,7 @@ class WordSearch(PuzzleRace):
         "Words from the theme hide in the grid in straight lines. Drag across one, or tap its first and last letter.",
         "🏴 Grab: one shared grid, and each word belongs to whoever circles it first. 🏁 Race: everyone has their own copy.",
         "A word scores a point per letter. 💡 shows where a word starts, for 2 points.",
+        "The word list tracks every word: ✓ yours, 🏴 grabbed by a rival (Grab), or still hidden. In Race, 👥 counts the rivals who've found a word in their own copy.",
         "In 🏁 Race, finding every word scores +10, and +5 more for being first. Most points after the last grid wins.",
         "Alone, find every word before the clock runs out to win (or just find them all, with 🌿 No clock).",
     ]
@@ -274,7 +275,14 @@ class WordSearch(PuzzleRace):
             owners = {w: p.id for w in st["found"]}
         shown = self.words if over else list(owners)
         at = {w: self.st.get(pid, {}).get("at", {}).get(w) for w, pid in owners.items()}
+        # 🏁 race: how many rivals have found each word in their own copy (a count only, never where it is)
+        rivals = {}
+        if not self.grab():
+            for q in self.live():
+                if q.id != p.id:
+                    for w in self.st.get(q.id, {}).get("found", []):
+                        rivals[w] = rivals.get(w, 0) + 1
         return {"size": self.size, "grid": self.grid, "theme": self.theme, "words": self.words,
-                "grab": self.grab(), "owners": owners, "found": st["found"],
+                "grab": self.grab(), "owners": owners, "found": st["found"], "rivalFound": rivals,
                 "lines": {w: at.get(w) or self.where[w] for w in shown},
                 "hints": st["hints"], "hintCost": HINT_COST, "seq": st["seq"]}
