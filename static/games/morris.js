@@ -103,7 +103,7 @@ UI.morris = (() => {
       g.style.fill = v == null ? '' : v === 0 ? 'url(#mmDark)' : 'url(#mmLight)';  // bevelled, lit from the top left
       g.style.stroke = color || '';
       g.setAttribute('class', 'mm-pt' + (v == null ? ' empty' : ' man') + (targets.has(i) ? ' can' : '') + (sources.has(i) ? ' src' : '')
-        + (i === pick ? ' picked' : '') + (takes.has(i) ? ' take' : '') + (i === last[1] ? ' last' : '') + (danger.has(i) ? ' warn' : ''));
+        + (i === pick ? ' picked' : '') + (takes.has(i) ? ' take' : '') + (i === last[1] ? ' last' : '') + (danger.has(i) ? ' warn' : '') + (m.safe === i ? ' safe' : ''));
     }
     $('mmHint').textContent = !mine || S.phase !== 'playing' ? '' : pending ? '🎯 Mill! Tap a rival man to take.'
       : pick != null ? 'Tap where it goes.' : placing ? (m.lasker && sources.size ? `Tap an empty point to place (${m.hand[m.me]} left), or one of your men to move it.` : `Tap an empty point to place a man (${m.hand[m.me]} left).`) : 'Tap one of your men to move it.';

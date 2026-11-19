@@ -22,3 +22,6 @@ body:not(.calm) .mm-pt.empty.warn { animation: pulse 1.2s ease-in-out infinite a
 .mm-res-man { width: 16px; height: 16px; border-radius: 50%; box-shadow: 0 2px 3px #0008; }
 .mm-res-man.dark { background: radial-gradient(circle at 35% 30%, #5a4e70, #1c1726 55%, #0c0a12); }
 .mm-res-man.light { background: radial-gradient(circle at 35% 30%, #fff, #f4eedd 60%, #c9bfa4); }
+.mm-pt.safe { stroke-width: 2.4; stroke-dasharray: 3 2; }
+.mm-pt.safe.empty { fill: #ffd86655; stroke: #ffd866; }
+.mm-pt.safe.man { filter: drop-shadow(0 0 3px #ffd866); }

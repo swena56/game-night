@@ -32,8 +32,10 @@ def in_mill(board, i, twelve=False):
     return v is not None and any(all(board[j] == v for j in m) for m in GEO[twelve][2][i])
 
 
-def removable(board, rival, twelve=False):
+def removable(board, rival, twelve=False, safe=None):
+    """Rival men a mill may take. A man on the 🛡️ safe point is spared while any other man can be taken."""
     theirs = [i for i, v in enumerate(board) if v == rival]
+    theirs = [i for i in theirs if i != safe] or theirs
     loose = [i for i in theirs if not in_mill(board, i, twelve)]
     return loose or theirs
 
@@ -59,7 +61,7 @@ def moved(board, me, src, dst):
     return b
 
 
-def legal(state, me, fly=True, twelve=False, lasker=False):
+def legal(state, me, fly=True, twelve=False, lasker=False, safe=None):
     board, hand, quiet = state
     if quiet >= QUIET_LIMIT:
         return []
@@ -69,7 +71,7 @@ def legal(state, me, fly=True, twelve=False, lasker=False):
     for src, dst in steps(state, me, fly, twelve, lasker):
         b = moved(board, me, src, dst)
         if any(all(b[j] == me for j in m) for m in GEO[twelve][2][dst]):
-            out += [(src, dst, r) for r in removable(b, 1 - me, twelve)]
+            out += [(src, dst, r) for r in removable(b, 1 - me, twelve, safe)]
         else:
             out.append((src, dst, -1))
     return out
@@ -88,9 +90,9 @@ def play(state, me, move):
     return (tuple(b), tuple(hand), 0 if rem >= 0 or placing else quiet + 1)
 
 
-def evaluate(state, me, fly=True, twelve=False, lasker=False):
+def evaluate(state, me, fly=True, twelve=False, lasker=False, safe=None):
     board, hand, quiet = state
-    if not legal(state, me, fly, twelve, lasker):
+    if not legal(state, me, fly, twelve, lasker, safe):
         return 0 if quiet >= QUIET_LIMIT or None not in board else -WIN
     men = lambda s: board.count(s) + hand[s]
     score = 30 * (men(me) - men(1 - me))
@@ -115,6 +117,7 @@ class Morris(Undo, Game):
         "A player with fewer than 3 men, or no legal move, loses.",
         "Twelve Men's Morris (an option): 12 men each, and the corner diagonals are lines too. If the board fills up, it's a draw.",
         "Lasker Morris (an option): 10 men each, and while you still have men to place you may move one instead.",
+        "🛡️ Safe point (an option): one point is marked at the start. A man standing on it can't be taken by a mill while you have other men.",
         "↶ Undo asks your rival to take back your last move.",
     ]
     name = "Nine Men's Morris"
@@ -124,11 +127,13 @@ class Morris(Undo, Game):
     max_players = 2
     badges = {**Game.badges, "untouched": ("🛡️", "Untouched", "Win without losing a single man")}
     settings_schema = {
+        "safe": ("🛡️ Safe point", [(True, "On: a man there can't be taken"), (False, "Off")], True),
         "fly": ("Flying with 3 men", [(True, "On"), (False, "Off")], True),
         "men": ("Men", [(9, "Nine Men's Morris"), (12, "Twelve Men's Morris (diagonals)"), (10, "Lasker Morris (10 men, place or move)")], 9),
     }
     lasker = False  # games saved before Lasker Morris
     twelve = False  # games saved before Twelve Men's Morris
+    safe = None     # the 🛡️ safe point (games saved before it have none)
 
     def start(self, seated, rng):
         self.rng = rng
@@ -140,6 +145,9 @@ class Morris(Undo, Game):
         men = 12 if self.twelve else 10 if self.lasker else MEN
         self.state = ((None,) * 24, (men, men), 0)
         self.last = None
+        self.safe = rng.randrange(24) if self.s.get("safe", True) else None
+        if self.safe is not None:
+            self.room.add_log(f"🛡️ Point {pos_name(self.safe)} is a safe point: a man there can't be taken.", "power")
         self.room.add_log(f"⚫ {seated[0].name} (dark) places first; ⚪ {seated[1].name} plays light.", "big")
         self.room.begin_turn(seated[0].id)
 
@@ -155,7 +163,7 @@ class Morris(Undo, Game):
         mv = a.get("move")
         if not (isinstance(mv, list) and len(mv) == 3 and all(isinstance(v, int) and not isinstance(v, bool) for v in mv)):
             raise GameError("Bad move.")
-        if tuple(mv) not in legal(self.state, self.seat(p), self.fly, self.twelve, self.lasker):
+        if tuple(mv) not in legal(self.state, self.seat(p), self.fly, self.twelve, self.lasker, self.safe):
             raise GameError("That move isn't allowed.")
         self.move(p, tuple(mv))
 
@@ -172,11 +180,13 @@ class Morris(Undo, Game):
         self.last = list(mv)
         src, dst, rem = mv
         r = self.room
-        name = lambda i: f"{'abcdefg'[POS[i][0]]}{7 - POS[i][1]}"
+        name = pos_name
         text = f"places at {name(dst)}" if src < 0 else f"moves {name(src)}→{name(dst)}"
         r.add_log(f"{'⚫⚪'[me]} {p.name} {text}" + (f" — mill! Takes {name(rem)}." if rem >= 0 else "."),
                   "power" if rem >= 0 else "question")
         nxt = 1 - me
+        if dst == self.safe and src != dst:
+            self.moment(f"🛡️ {p.name} holds the safe point", "cool", "place")
         if rem >= 0:
             board = self.state[0]
             mills = sum(1 for m in GEO[self.twelve][2][dst] if all(board[j] == me for j in m))
@@ -186,7 +196,7 @@ class Morris(Undo, Game):
                 self.moment(f"⚡ {p.name}: DOUBLE MILL!", "gold", "capture")
             elif left == 3 and q:
                 self.moment(f"⚠️ {q.name} is down to three men", "bad", "capture")
-        if not legal(self.state, nxt, self.fly, self.twelve, self.lasker):
+        if not legal(self.state, nxt, self.fly, self.twelve, self.lasker, self.safe):
             if self.state[2] >= QUIET_LIMIT:
                 return r.finish(None, f"🤝 {QUIET_LIMIT} moves without a capture — a draw.")
             if None not in self.state[0]:
@@ -210,17 +220,21 @@ class Morris(Undo, Game):
         mine = self.room.turn == p.id
         return {"morris": {
             "board": self.state[0], "hand": self.state[1], "seats": self.seats, "me": i, "last": self.last,
-            "legal": [list(m) for m in legal(self.state, i, self.fly, self.twelve, self.lasker)] if mine and i is not None else [],
-            "quiet": self.state[2], "limit": QUIET_LIMIT, "twelve": self.twelve, "fly": self.fly, "lasker": self.lasker,
+            "legal": [list(m) for m in legal(self.state, i, self.fly, self.twelve, self.lasker, self.safe)] if mine and i is not None else [],
+            "safe": self.safe, "quiet": self.state[2], "limit": QUIET_LIMIT, "twelve": self.twelve, "fly": self.fly, "lasker": self.lasker,
             "men": 12 if self.twelve else 10 if self.lasker else MEN, "undo": self.undo_view(p),
         }}
 
     def bot_turn(self, p):
         me = self.seat(p)
         depth, budget, noise = {"easy": (1, 0.3, 40), "normal": (3, 1.0, 6), "hard": (6, 2.5, 0)}[p.bot]
-        self.move(p, best_move(self.state, me, partial(legal, fly=self.fly, twelve=self.twelve, lasker=self.lasker), play,
-                               partial(evaluate, fly=self.fly, twelve=self.twelve, lasker=self.lasker),
+        self.move(p, best_move(self.state, me, partial(legal, fly=self.fly, twelve=self.twelve, lasker=self.lasker, safe=self.safe), play,
+                               partial(evaluate, fly=self.fly, twelve=self.twelve, lasker=self.lasker, safe=self.safe),
                                depth, budget, self.rng, noise))
+
+
+def pos_name(i):
+    return f"{'abcdefg'[POS[i][0]]}{7 - POS[i][1]}"
 
 
 # grid positions (column, row on a 7×7 grid) for move names and the board drawing
