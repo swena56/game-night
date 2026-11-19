@@ -262,5 +262,8 @@ class Eleusis(CardGame):
         t["buttons"] = [{"label": "🙅 No play", "a": {"type": "noplay"}}] + ([] if i in self.knows else [{"label": "🔮 Name the rule", "a": {"type": "guessmode"}}])
         if i in self.knows:
             t["note"] = f"🔮 You know the rule: {RULE[self.rule][0]}."
+        elif self.line:
+            t["note"] = (f"Play a card after {pretty(self.line[-1]['card'])}. If the secret rule allows it, it joins the line "
+                         f"and your hand shrinks; if not, it goes under the line (❌) and you draw 2. Stuck? 🙅 No play.")
         t["turnText"] = "🔮 Play a card"
         return t
