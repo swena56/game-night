@@ -7,7 +7,7 @@ UI.wordbomb = (() => {
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
-    seen = null; busy = false; myTurnWas = false; typedBy = null; typed = ''; miss = null;
+    seen = null; busy = false; myTurnWas = false; typedBy = null; typed = ''; miss = null; reviewKey = '';
     main.innerHTML = `<div class="wb">
       <div class="wb-head"><span id="wbBomb"></span><span id="wbUsed" class="wb-used"></span></div>
       <div id="wbTable" class="wb-table">
@@ -19,7 +19,8 @@ UI.wordbomb = (() => {
         <button type="submit" id="wbGo" class="primary">💣 Pass</button>
       </form>
       <div id="wbNote" class="wb-note" aria-live="polite"></div>
-      <div id="wbAlpha" class="wb-alpha" aria-label="Letters you've used"></div></div>`;
+      <div id="wbAlpha" class="wb-alpha" aria-label="Letters you've used"></div>
+      <div id="wbReview" class="wb-review" hidden></div></div>`;
     side.innerHTML = '<div class="panel"><h3>Hearts</h3><div id="wbScores"></div><p class="hint left">Type a word containing the letters on the bomb and press Enter. The fuse is hidden: don\'t hold it long!</p></div>';
     $('wbForm').onsubmit = (e) => { e.preventDefault(); submit(); };
     $('wbInput').oninput = () => {
@@ -165,6 +166,50 @@ UI.wordbomb = (() => {
       box.append(row);
     }
     if (w.longest) box.append(ctx.el('p', 'hint left', `📏 Longest: ${w.longest.word} (${ctx.player(w.longest.by)?.name ?? '?'})`));
+    review(w.review);
+  }
+
+  // 📜 the review: resolved bombs only (the server never sends the lit one). During play, the last bomb,
+  // folded; at the end, every bomb, open.
+  let reviewKey = '';
+  function review(rv) {
+    const box = $('wbReview');
+    box.hidden = !rv?.bombs?.length;
+    if (box.hidden) { box.innerHTML = ''; reviewKey = ''; return; }
+    const key = `${rv.final}:${rv.bombs.map((b) => `${b.bomb}.${b.words.length}`).join(',')}`;
+    if (key === reviewKey) return;
+    const wasOpen = box.querySelector('details')?.open;
+    reviewKey = key; box.innerHTML = '';
+    const det = ctx.el('details'), sum = ctx.el('summary');
+    det.open = rv.final || !!wasOpen;
+    const lastBoom = rv.bombs[rv.bombs.length - 1]?.boom;
+    sum.textContent = rv.final ? `📜 Game review: ${rv.bombs.length} bomb${rv.bombs.length === 1 ? '' : 's'}`
+      : `📜 Last bomb${lastBoom ? `: 💥 ${lastBoom.chunk} got ${lastBoom.by === S.me.id ? 'you' : ctx.player(lastBoom.by)?.name ?? '?'}` : ''}`;
+    det.append(sum);
+    for (const b of rv.bombs) {
+      const card = ctx.el('div', 'wb-rv');
+      const head = ctx.el('div', 'wb-rv-head');
+      head.append(ctx.el('b', '', `💣 Bomb ${b.bomb}`));
+      if (b.boom) {
+        const who = b.boom.by === S.me.id ? 'you' : ctx.player(b.boom.by)?.name ?? '?';
+        const boom = ctx.el('span', 'wb-rv-boom');
+        boom.append('💥 ', ctx.el('mark', '', b.boom.chunk), ` blew up on ${who}${b.boom.out ? ' (out)' : ''}`);
+        head.append(boom);
+      }
+      card.append(head);
+      const list = ctx.el('div', 'wb-rv-words');
+      for (const [pid, word, chunk] of b.words) {
+        const chip = spell(word, chunk, 'wb-rv-word');
+        chip.style.setProperty('--pc', ctx.player(pid)?.color || '#888');
+        chip.title = ctx.player(pid)?.name ?? '';
+        list.append(chip);
+      }
+      if (!b.words.length) list.append(ctx.el('span', 'hint', 'no words passed it on'));
+      if (b.boom?.example) list.append(ctx.el('span', 'hint', `💡 ${b.boom.example} would have worked`));
+      card.append(list);
+      det.append(card);
+    }
+    box.append(det);
   }
 
   // live updates: the holder's typing, and refused words

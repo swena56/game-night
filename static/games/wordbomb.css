@@ -62,3 +62,12 @@
   .wb-seat { padding: 3px 5px; max-width: 38%; }
   .wb-name, .wb-word { font-size: .72rem; }
 }
+/* 📜 the review: the last resolved bomb during play (folded), every bomb at the end */
+.wb-review { width: min(100%, 460px); }
+.wb-review summary { cursor: pointer; font-weight: 700; padding: 6px 8px; border-radius: 8px; background: var(--panel2); }
+.wb-rv { padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.wb-rv-head { display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; font-size: .85rem; }
+.wb-rv-boom { color: #ff6b6b; }
+.wb-rv-boom mark { background: #ffb34755; color: inherit; border-radius: 3px; padding: 0 1px; }
+.wb-rv-words { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.wb-rv-words .wb-word { padding: 1px 7px; border-radius: 999px; background: var(--panel2); border-left: 3px solid var(--pc); font-size: .78rem; }

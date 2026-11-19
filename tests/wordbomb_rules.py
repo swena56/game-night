@@ -204,5 +204,51 @@ with r.cond:
     g.bot_tick(); g.bot_tick()
 check("bots: a frozen bot types a little, then waits for the boom", not g.bot_ready() and len(g.typed) == 2)
 
+# -- 📜 the review: resolved bombs only, no fuse timer, last bomb during play, every bomb at the end
+r, g, ps = room(names=("Ann", "Bo"), lives=2)
+v = g.view(ps[0])["wordbomb"]
+check("review: nothing before a bomb resolves", v["review"] is None)
+a = holder(r)
+c1 = g.chunk
+w1 = word_for(g, c1)
+with r.cond:
+    g.act(a, {"type": "word", "word": w1})
+v = g.view(server.REPLAY_VIEWER)["wordbomb"]
+check("review: the lit bomb's words stay out of it", v["review"] is None)
+b = holder(r)
+c2 = g.chunk
+with r.cond:
+    g.on_timeout()   # the fuse runs out on b
+rv = g.view(ps[0])["wordbomb"]["review"]
+check("review: appears after the blast", rv and not rv["final"] and len(rv["bombs"]) == 1, rv)
+bomb = rv["bombs"][0]
+check("review: the bomb's words (who, word, chunk)", bomb["words"] == [[a.id, w1, c1]], bomb["words"])
+check("review: the chunk that caused the loss", bomb["boom"]["by"] == b.id and bomb["boom"]["chunk"] == c2, bomb["boom"])
+flat = repr(rv)
+check("review: no fuse timer leaks", "fuse" not in flat and str(round(g.fuse_at)) not in flat)
+with r.cond:
+    g.on_timeout()   # the next bomb is lit
+rv = g.view(ps[1])["wordbomb"]["review"]
+check("review: during the next bomb, still only the resolved one", rv and len(rv["bombs"]) == 1 and rv["bombs"][0]["bomb"] == 1)
+with r.cond:
+    g.on_timeout()   # second blast
+if r.phase == "playing":
+    with r.cond:
+        g.on_timeout()
+        g.on_timeout()
+check("review: game over", r.phase == "over")
+rv = g.view(server.REPLAY_VIEWER)["wordbomb"]["review"]
+check("review: every bomb at the end", rv["final"] and [x["bomb"] for x in rv["bombs"]] == list(range(1, len(rv["bombs"]) + 1))
+      and len(rv["bombs"]) >= 3 and all(x["boom"] for x in rv["bombs"]), rv)
+# a game saved before the review (no bombs / cur) still plays and views
+r, g, ps = room(names=("Ann", "Bo"))
+del g.bombs, g.cur
+check("review: old saved game views", g.view(ps[0])["wordbomb"]["review"] is None)
+a = holder(r)
+with r.cond:
+    g.act(a, {"type": "word", "word": word_for(g, g.chunk)})
+    g.on_timeout()
+check("review: old saved game files its next blast", len(g.view(ps[0])["wordbomb"]["review"]["bombs"]) == 1)
+
 print("\nall ok" if not fails else f"\n{len(fails)} FAILED: {fails}")
 sys.exit(1 if fails else 0)

@@ -121,6 +121,7 @@ class WordBomb(Game):
         f"Words need {MIN_LEN}+ letters and can't repeat in a game. A good word passes the bomb on with new letters.",
         "The fuse is hidden and different every time. If the bomb goes off in your hands, you lose a ♥. The last player with a heart wins.",
         "🔤 Use every letter A–Y in your words (J, Q, X, Z don't count) to win a ♥ back. 📏 A word of 9+ letters adds two seconds to the fuse.",
+        "📜 After each blast, the review shows that bomb's words and the letters that blew it up. When the game ends, it lists every bomb.",
     ]
     min_players, max_players = 2, 6
     settings_schema = {
@@ -160,6 +161,8 @@ class WordBomb(Game):
         self.alpha_win = None    # {by, seq}
         self.plan = None         # the bot's plan for this turn {word or None, typed}
         self.longest = ("", None)
+        self.bombs = []          # 📜 every resolved bomb: {bomb, words [[pid, word, chunk]], boom {by, chunk, example}}
+        self.cur = []            # the words played on the bomb that's lit now (kept out of views until it resolves)
         self.room.add_log(f"💣 Word Bomb! {self.max_lives} ♥ each. Type a word containing the letters on the bomb "
                           "before it goes off.", "big")
         self.light(rng.choice(self.seats), fresh=True)
@@ -224,6 +227,7 @@ class WordBomb(Game):
         example = self.rng.choice(free) if free else ""
         out = p.g.lives == 0
         self.boom = {"by": p.id, "seq": self.seq, "chunk": self.chunk, "example": example, "out": out}
+        self.close_bomb({"by": p.id, "chunk": self.chunk, "example": example, "out": out})
         if out:
             p.eliminated = True
             self.moment(f"💥 BOOM! {p.name} is out!", "bad", "boom")
@@ -283,6 +287,8 @@ class WordBomb(Game):
         close = left < 1.0
         long_word = self.s.get("longword", True) and len(w) >= LONG_WORD
         self.last = {"by": p.id, "word": w, "chunk": self.chunk, "seq": self.seq, "long": bool(long_word), "close": close}
+        self.cur = getattr(self, "cur", [])  # games saved before the review
+        self.cur.append([p.id, w, self.chunk])
         r.add_log(f"💣 {p.name}: {w}" + (" 📏 +2 s" if long_word else ""))
         if close:
             self.moment(f"😅 {p.name} passed it with a split second to spare!", "good", "whoosh")
@@ -307,6 +313,21 @@ class WordBomb(Game):
         self.passes += 1
         self.chunk = self.pick_chunk()
         self.pass_on()
+
+    def close_bomb(self, boom):
+        """📜 The bomb has resolved: file its words and the chunk that blew up, for the review."""
+        self.bombs = getattr(self, "bombs", [])
+        self.bombs.append({"bomb": self.bomb_no, "words": getattr(self, "cur", []), "boom": boom})
+        self.cur = []
+
+    def review(self):
+        """Resolved bombs only (never the lit one, and no fuse times): the last one during play, all at the end."""
+        bombs = list(getattr(self, "bombs", []))
+        if self.room.phase == "over":
+            if getattr(self, "cur", None):  # the game ended without a blast (players left)
+                bombs.append({"bomb": self.bomb_no, "words": self.cur, "boom": None})
+            return {"final": True, "bombs": bombs}
+        return {"final": False, "bombs": bombs[-1:]} if bombs else None
 
     def on_input(self, p, a):
         """The holder's keystrokes, shown live to the table."""
@@ -400,6 +421,7 @@ class WordBomb(Game):
                 "typed": self.typed, "last": self.last, "boom": self.boom, "alphaWin": self.alpha_win,
                 "bomb": self.bomb_no, "used": len(self.used), "seq": self.seq, "minLen": MIN_LEN,
                 "longest": {"word": self.longest[0], "by": self.longest[1]} if self.longest[0] else None,
+                "review": self.review(),
             },
         }
 
