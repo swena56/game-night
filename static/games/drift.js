@@ -94,13 +94,49 @@ UI.drift = (() => {
 
   const optKey = () => pick + (burn ? '+' : '');
 
+  const cellDist = (a, b) => Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]));
+  function catches(path, pennants) {
+    return new Set(pennants.map((p, i) => path.slice(1).some((cell) => cellDist(cell, p) <= 1) ? i : -1).filter((i) => i >= 0));
+  }
+  function forecastHold(from, winds) {
+    const v = D(), z = from[2], [di, speed] = winds[z], [dx, dy] = v.dirs[di];
+    let x = from[0], y = from[1];
+    const path = [[x, y, z]];
+    for (let i = 0; i < speed; i++) {
+      const nx = Math.max(0, Math.min(v.w - 1, x + dx)), ny = Math.max(0, Math.min(v.h - 1, y + dy));
+      if (nx === x && ny === y) break;
+      x = nx; y = ny; path.push([x, y, z]);
+    }
+    return path;
+  }
+  function straightStormForecast(end) {
+    const v = D(), st = v.storm;
+    if (!st) return false;
+    const [dx, dy] = v.dirs[st.d], nx = st.x + dx, ny = st.y + dy;
+    if (nx < 1 || nx > v.w - 2 || ny < 1 || ny > v.h - 2) return false;
+    return cellDist(end, [nx, ny]) <= 1;
+  }
+
   function controls() {
     const v = D(), me = S.me?.id, pos = v.pos[me];
+    const flags = v.pennants || [], windAhead = v.next || v.winds;
     const btns = $('skPicks').children;
     for (const b of btns) {
       const ch = b.dataset.p, z = pos ? Math.max(0, Math.min(v.layers - 1, pos[2] + (ch === 'up' ? 1 : ch === 'down' ? -1 : 0))) : 0;
       const w = v.winds[z];
-      b.querySelector('small').textContent = pos ? `${LAYER_NAME[z]} · ${arrow(w)} ${w[1]}` : '';
+      let note = pos ? `${LAYER_NAME[z]} · ${arrow(w)} ${w[1]}` : '';
+      if (pos && canPick()) {
+        const first = v.options[ch + (burn ? '+' : '')] || v.options[ch];
+        if (first?.length) {
+          const got = catches(first, flags), end = first[first.length - 1];
+          const second = forecastHold(end, windAhead);
+          const rest = flags.filter((_, i) => !got.has(i));
+          const total = got.size + catches(second, rest).size;
+          note += ` · +${got.size} now / ${total} in 2 turns${straightStormForecast(end) ? ' · 🌩' : ''}`;
+        }
+      }
+      b.querySelector('small').textContent = note;
+      b.title = 'Two-turn guide: current server route plus one Hold step using the next known wind; assumes no future draft, new pennants, or storm throw.';
       b.classList.toggle('on', ch === pick);
       b.disabled = !canPick() || (pos && ((ch === 'up' && pos[2] === v.layers - 1) || (ch === 'down' && pos[2] === 0)));
       b.style.setProperty('--lc', LAYER_COL[z]);
@@ -140,7 +176,7 @@ UI.drift = (() => {
       if (!amIn()) t = 'Watching the race.';
       else if (play) t = '';
       else if (locked()) t = `Waiting for ${S.players.filter((p) => v.seats.includes(p.id) && !v.locked.includes(p.id) && !p.eliminated).map((p) => p.name).join(', ') || 'the wind'}…`;
-      else t = 'Pick a height: the dotted line shows where its wind carries you. Pass next to a 🚩 to take it.';
+      else t = 'Compare the pennant route now and over two turns. The second step assumes Hold with the forecast wind; storm risk assumes the storm keeps its heading. Future pennant spawns and draft are not predicted.';
     }
     if ($('skHint').textContent !== t) $('skHint').textContent = t;
   }

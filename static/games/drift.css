@@ -18,7 +18,7 @@
 .sk-picks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .sk-picks button { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; border-radius: var(--r-md, 12px);
   border-bottom: 4px solid var(--lc, var(--accent)); touch-action: manipulation; min-height: 52px; }
-.sk-picks button small { font-size: 11px; color: var(--muted); }
+.sk-picks button small { font-size: 10px; line-height: 1.15; color: var(--muted); text-align: center; }
 .sk-picks button.on { background: var(--accent); color: #fff; }
 .sk-picks button.on small { color: #fffc; }
 .sk-row { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
