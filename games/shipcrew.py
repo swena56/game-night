@@ -39,6 +39,7 @@ class ShipCrew(Game):
         "No crew after three rolls scores 0. Most cargo after the last round wins.",
         f"Alone, average {SOLO_PER_ROUND} cargo a round to win.",
         "🍺 Pub pot: everyone antes 1 💰 a round and the round's best cargo takes the pot (a tie rolls it over). Most coins wins.",
+        "🦜 Parrot (once a game): after your first roll, ask the parrot for a 4th roll that turn.",
         "🏴‍☠️ Raids: dock with 11 or 12 cargo and you plunder 2 from whoever leads (not you).",
     ]
     name = "Ship, Captain & Crew"
@@ -50,6 +51,7 @@ class ShipCrew(Game):
     settings_schema = {
         "rounds": ("Rounds", [(5, "5"), (3, "3"), (8, "8")], 5),
         "pot": ("Scoring", [(False, "Total cargo"), (True, "🍺 Pub pot")], False),
+        "parrot": ("🦜 Parrot", [(True, "On: one extra roll per game"), (False, "Off")], True),
         "raid": ("🏴‍☠️ Raids", [(False, "Off"), (True, "On: dock 11 or more to plunder 2 cargo from the leader")], False),
     }
 
@@ -66,6 +68,7 @@ class ShipCrew(Game):
             p.g.best = 0
             p.g.coins = PURSE
             p.g.haul = None  # this round's cargo, for the pot
+            p.g.parrot = bool(self.s.get("parrot", True))  # the extra roll is still unspent
         self.pot = 0
         self.round = 1
         self.turns = 0          # turns taken this round
@@ -109,6 +112,7 @@ class ShipCrew(Game):
         self.found = []          # the needed faces found so far, in order
         self.free = []           # the other dice; once all three are found, these are the cargo
         self.rolls = 0
+        self.cap = ROLLS         # rolls this turn; the parrot adds one
         self.room.begin_turn(pid)
 
     def players(self):
@@ -132,14 +136,27 @@ class ShipCrew(Game):
             if pick is not None and not (isinstance(pick, list) and all(isinstance(i, int) and not isinstance(i, bool) for i in pick)):
                 raise GameError("Bad dice.")
             return self.do_roll(p, pick)
+        if t == "parrot":
+            return self.use_parrot(p)
         if t == "dock":
             if not self.loaded():
                 raise GameError("You need a ship, a captain and a crew before you can dock.")
             return self.end_turn(p)
         raise GameError("Unknown action.")
 
+    def can_parrot(self, p):
+        return bool(getattr(p.g, "parrot", False)) and 0 < self.rolls < self.cap
+
+    def use_parrot(self, p):
+        if not self.can_parrot(p):
+            raise GameError("The parrot can only help after your first roll, and only once a game.")
+        p.g.parrot = False
+        self.cap += 1
+        self.room.add_log(f"🦜 {p.name}'s parrot squawks: one extra roll this turn!", "power")
+        self.moment(f"🦜 {p.name}: parrot gives +1 roll", "gold", "tag")
+
     def do_roll(self, p, pick=None):
-        if self.rolls >= ROLLS:
+        if self.rolls >= self.cap:
             raise GameError("No rolls left.")
         if self.loaded():
             pick = sorted(set(pick if pick is not None else [0, 1]))
@@ -161,7 +178,7 @@ class ShipCrew(Game):
             self.room.add_log(f"🎲 {p.name} rolls {text}" + (f": {', '.join(got)}!" if got else "") + (f" Cargo {sum(self.free)}." if self.loaded() else ""))
             if len(got) == 3:
                 self.moment(f"⚓ {p.name}: ship, captain and crew in one roll!", "gold", "tag")
-        if self.rolls >= ROLLS:
+        if self.rolls >= self.cap:
             self.end_turn(p)
 
     def end_turn(self, p):
@@ -250,14 +267,16 @@ class ShipCrew(Game):
 
     def bot_turn(self, p):
         r = self.room
+        level = p.bot or "normal"
+        if level != "easy" and self.can_parrot(p) and self.rolls == self.cap - 1 and (not self.loaded() or sum(self.free) <= 6):
+            self.use_parrot(p)
         if not self.loaded():
             self.do_roll(p)
             r.bot_at = time.time() + 1.1
             return
-        left = ROLLS - self.rolls
+        left = self.cap - self.rolls
         a, b = self.free
         cargo = a + b
-        level = p.bot or "normal"
         if level == "easy":
             choice = [0, 1] if cargo < 6 and self.rng.random() < 0.8 else None
         elif level == "normal":
@@ -294,7 +313,8 @@ class ShipCrew(Game):
         r = self.room
         return {"shipcrew": {
             "seats": self.seats, "round": self.round, "rounds": self.s["rounds"],
-            "found": self.found, "free": self.free, "rolls": self.rolls, "maxRolls": ROLLS,
+            "found": self.found, "free": self.free, "rolls": self.rolls, "maxRolls": self.cap, "parrot": self.can_parrot(p) if self.room.turn == p.id else False,
+            "parrots": [i for i in self.seats if i in r.players and getattr(r.players[i].g, "parrot", False)],
             "loaded": self.loaded(), "last": self.last,
             "scores": {i: r.players[i].g.score for i in self.seats if i in r.players},
             "solo": len(self.seats) == 1, "goal": SOLO_PER_ROUND * self.s["rounds"],

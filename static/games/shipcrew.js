@@ -21,7 +21,7 @@ UI.shipcrew = (() => {
       <div id="scSlots" class="crew-slots"></div>
       <div id="scLabel" class="crew-label"></div>
       <div class="ya-tray"><div id="scFree" class="ya-dice crew-free"></div></div>
-      <div class="row crew-actions"><button id="scRoll" class="primary big"></button><button id="scDock" class="big">⚓ Dock</button></div>
+      <div class="row crew-actions"><button id="scRoll" class="primary big"></button><button id="scDock" class="big">⚓ Dock</button><button id="scParrot" class="big" hidden>🦜 Parrot: +1 roll</button></div>
       <p id="scHint" class="hint"></p>
       <div id="scLast" class="crew-last"></div></div>`;
     side.innerHTML = `<div class="panel"><h3>Cargo</h3><div id="scScores"></div><p class="hint left">Find 6 → 5 → 4 in order. The other two dice are your cargo.</p>
@@ -30,6 +30,7 @@ UI.shipcrew = (() => {
       const sc = S.shipcrew;
       ctx.quiet(ctx.act('roll', sc.loaded ? { reroll: [...pick].sort() } : {}));
     };
+    $('scParrot').onclick = () => ctx.quiet(ctx.act('parrot', {}));
     $('scDock').onclick = () => ctx.quiet(ctx.act('dock', {}));
   }
 
@@ -83,6 +84,7 @@ UI.shipcrew = (() => {
     $('scRoll').hidden = !mine || !rollsLeft;
     $('scRoll').disabled = sc.loaded && pick.size === 0;
     $('scRoll').textContent = !sc.rolls ? '🎲 Roll' : sc.loaded ? (pick.size === 2 ? '🎲 Reroll cargo' : pick.size ? '🎲 Reroll one' : 'Tap dice to reroll') : '🎲 Roll again';
+    $('scParrot').hidden = !mine || !sc.parrot;
     $('scDock').hidden = !mine || !sc.loaded;
     $('scHint').textContent = !mine ? '' : sc.loaded && rollsLeft ? 'Raised dice get rerolled. Dock to keep your cargo.' : '';
 
@@ -103,7 +105,7 @@ UI.shipcrew = (() => {
       const p = ctx.player(pid); if (!p) continue;
       const row = ctx.el('div', 'seat-row' + (S.turn === pid ? ' turn' : ''));
       const dot = ctx.el('span', 'dot'); dot.style.background = p.color;
-      row.append(dot, ctx.el('span', '', sc.coins ? `${p.name}: ${sc.coins[pid] ?? 0} 💰 · ${sc.scores[pid] ?? 0} cargo` : `${p.name}: ${sc.scores[pid] ?? 0}`));
+      row.append(dot, ctx.el('span', '', (sc.coins ? `${p.name}: ${sc.coins[pid] ?? 0} 💰 · ${sc.scores[pid] ?? 0} cargo` : `${p.name}: ${sc.scores[pid] ?? 0}`) + (sc.parrots.includes(pid) ? ' 🦜' : '')));
       box.append(row);
     }
     if (sc.pot != null) box.append(ctx.el('div', 'crew-pot', `🍺 Pot: ${sc.pot} 💰`));
