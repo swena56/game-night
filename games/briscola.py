@@ -28,12 +28,14 @@ class Briscola(TrickGame):
         "Order, high to low: A 3 K Q J 7 6 5 4 2. Draw back up to three after each trick, winner first.",
         "Points: ace 11, three 10, king 4, queen 3, jack 2. Over 60 of the 120 wins the hand.",
         "With four players, partners sit opposite and pool their points.",
+        "🔄 Swap (on your turn): hold the 7 of briscola while a stronger card is turned up and the stock still has cards behind it? Trade your 7 for it.",
     ]
     min_players, max_players = 2, 4
     follow = False
     order = ORDER
     badges = {**TrickGame.badges, "carico": ("🎯", "Carico", "Take an opponent's ace with a briscola")}
-    settings_schema = {"hands": ("Hands", [(1, "1 hand"), (3, "Best of 3")], 1)}
+    settings_schema = {"hands": ("Hands", [(1, "1 hand"), (3, "Best of 3")], 1),
+                       "swap": ("🔄 Swap the 7", [(1, "Allowed"), (0, "Off")], 1)}
 
     def start(self, seated, rng):
         self.seat_up(seated, rng)
@@ -60,6 +62,40 @@ class Briscola(TrickGame):
         self.room.add_log(f"🃏 Hand {self.hand_no}: {pretty(self.brisc)} turned, {SUIT_NAME[self.trump]} are briscola.")
         self.first = self.rng.randrange(self.n) if self.hand_no == 1 else (self.first + 1) % self.n
         self.start_tricks(self.first)
+
+    def can_swap(self, i):
+        """The trump 7 in hand, on your turn, for a stronger turned-up card with the stock still behind it."""
+        if not self.s.get("swap", 1) or self.stage != "play" or self.room.turn != self.pid(i) or len(self.stock) < 2:
+            return False
+        seven = self.trump_seven()
+        return seven in self.hands[i] and ORDER.index(rank(self.brisc)) > ORDER.index("7")
+
+    def pid(self, i):
+        return self.seats[i]
+
+    def trump_seven(self):
+        return "7" + self.trump
+
+    def swap(self, i):
+        seven, up = self.trump_seven(), self.brisc
+        self.hands[i].remove(seven)
+        self.hands[i].append(up)
+        self.sort_hand(i)
+        self.brisc = seven
+        self.stock[-1] = seven
+        self.moment(f"🔄 {self.nm(i)} swapped the 7 for the {pretty(up)}!", "gold", "fanfare")
+
+    def act_other(self, p, i, t, a):
+        if t == "swap":
+            if not self.can_swap(i):
+                raise GameError("You can't swap now.")
+            return self.swap(i)
+        raise GameError("Unknown action.")
+
+    def bot_move(self, i, level):
+        if self.stage == "play" and level != "easy" and self.can_swap(i):
+            self.swap(i)
+        return super().bot_move(i, level)
 
     def on_trick(self, w, cards):
         led = self.suit_of(self.last["cards"][0][1])
@@ -151,4 +187,6 @@ class Briscola(TrickGame):
              "piles": [{"cards": [self.brisc] if self.stock else [], "count": len(self.stock), "label": "Stock", "corner": True}],
              "scores": {"title": "Points", "rows": rows, "hint": "A 11 · 3 10 · K 4 · Q 3 · J 2. Over 60 wins."}}
         t.update(self.trick_view(p, i))
+        if i is not None and self.can_swap(i):
+            t["buttons"] = [{"label": f"🔄 Swap 7 for {pretty(self.brisc)}", "a": {"type": "swap"}}]
         return t
