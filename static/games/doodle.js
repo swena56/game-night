@@ -49,7 +49,11 @@ UI.doodle = (() => {
     const locked = Math.max(0, d.locked - since);
     const me = S.doodle.solvers.some(([pid]) => pid === S.me.id);
     const live = S.phase === 'playing' && d.stage === 'draw' && !S.me.spectator && !me && ctx.act;
-    $('ddGuess').disabled = $('ddSend').disabled = !live || locked > 0;
+    // a lockout only makes the box read-only, so the keyboard stays up; it is cleared when the round ends
+    $('ddGuess').disabled = !live;
+    $('ddGuess').readOnly = locked > 0;
+    $('ddSend').disabled = !live || locked > 0;
+    if (d.stage !== 'draw' || me) $('ddGuess').value = '';
     $('ddStatus').textContent = locked > 0 ? `❌ Locked for ${Math.ceil(locked)}s` : me ? `✅ You got it: ${(d.answer || '').toUpperCase()}` : '';
   }
 
