@@ -1,7 +1,9 @@
 """Wobble Tower rules: blocks land on the highest thing under them, the statics model keeps a centred stack
 up and drops an overhang, a plank bridging two pillars holds, a roof only carries along its ridge, gusts lean
 a tower over, bad placements and gifts are refused, a topple costs a life and resets the tower, the last
-builder standing wins, timeouts play on, and bots finish whole games quickly.
+builder standing wins, timeouts play on, and bots finish whole games quickly. 🪵 Pull & Stack: the tower starts
+built with layers crossed, top layers can't be pulled, pull then stack then the turn passes, a plank that holds a
+layer up brings the tower down, the lean adds up and cuts the margin, and bots play it through.
 
     python3 tests/wobble_rules.py
 """
@@ -188,6 +190,94 @@ for seed in range(3):
     places.append(g.places)
     check(f"a bot game finishes (seed {seed})", r.phase == "over", f"{g.places} placements")
 check("a bot's move takes under 1.5 s", worst < 1.5, f"{worst:.2f}s")
+
+# -- 🪵 Pull & Stack
+r, g, (ann, bo) = game(2, mode="pull")
+me = r.players[r.turn]
+other = bo if me is ann else ann
+t = g.tower
+check("the tower starts built: 12 layers of 3", len(t) == 3 * W.LAYERS and max(b["L"] for b in t) == W.LAYERS - 1)
+check("…layers crossed", all(b["r"] == (0 if b["L"] % 2 == 0 else 2) for b in t))
+check("…and it stands", W.stand(t, (0, 0))[0]["fail"] is None, f"{W.stand(t, (0, 0))[0]['margin']:.2f}")
+top_ids = {b["id"] for b in t if b["L"] == W.LAYERS - 1}
+check("the top layer can't be pulled", not top_ids & set(W.pullable(t)) and len(W.pullable(t)) == 3 * (W.LAYERS - 1))
+gr = W.grips(t, (0, 0))
+mid = [b for b in t if b["slot"] == 1 and b["L"] < W.LAYERS - 1]
+edge = [b for b in t if b["slot"] != 1 and b["L"] < W.LAYERS - 1]
+check("middles are held tighter than edges, on average",
+      sum(gr[b["id"]] for b in mid) / len(mid) > sum(gr[b["id"]] for b in edge) / len(edge) + 0.3)
+lone = [b for b in t if not (b["L"] == 3 and b["slot"] != 0)]
+check("a layer down to one edge plank brings the tower down", W.stand(lone, (0, 0))[0]["fail"] is not None)
+only_mid = [b for b in t if not (b["L"] == 3 and b["slot"] != 1)]
+check("a layer down to its middle plank still stands", W.stand(only_mid, (0, 0))[0]["fail"] is None)
+m0 = W.stand(only_mid, (0, 0))[0]["margin"]
+m1 = W.stand(only_mid, (0.15, 0))[0]["margin"]
+check("a lean cuts the margin", m1 < m0 - 0.2, f"{m0:.2f} → {m1:.2f}")
+check("…and a big enough lean brings it down", W.stand(only_mid, (0.3, 0))[0]["fail"] is not None)
+v = g.view(me)["wobble"]
+check("the view carries grip and risk for every plank you may pull", v["mode"] == "pull" and len(v["blocks"]) == 3 * (W.LAYERS - 1)
+      and all(0 <= i["g"] <= 1 and len(i["rk"]) == 2 for i in v["blocks"].values()))
+check("…and a fresh tower is safe to pull from", max(max(i["rk"]) for i in v["blocks"].values()) < 0.01)
+check("not your turn is refused", refused(g, other, {"type": "pull", "id": mid[0]["id"], "side": 1}) is not None)
+for bad in ({"id": 99999}, {"id": next(iter(top_ids))}, {"id": "1"}, {"id": True}, {"side": 0}, {"side": True}):
+    check(f"bad pull refused {bad}", refused(g, me, {"type": "pull", "id": edge[0]["id"], "side": 1, **bad}) is not None)
+check("you can't stack before you pull", refused(g, me, {"type": "stack", "slot": 0}) is not None)
+check("build moves are refused", refused(g, me, {"type": "place", "x": 0, "z": 0, "rot": 0}) is not None)
+pid = edge[0]["id"]
+check("a pull is taken", refused(g, me, {"type": "pull", "id": pid, "side": 1}) is None, f"{g.last}")
+check("…the plank leaves the tower and it's time to stack", len(g.tower) == 3 * W.LAYERS - 1 and g.phase == "stack" and r.turn == me.id
+      and not any(b["id"] == pid for b in g.tower))
+check("…the pull leaned the tower", g.lean != [0.0, 0.0])
+check("…and the view offers the open spots on a new layer", g.view(me)["wobble"]["layer"] == W.LAYERS and g.view(me)["wobble"]["open"] == [0, 1, 2])
+check("you can't pull twice", refused(g, me, {"type": "pull", "id": edge[1]["id"], "side": 1}) is not None)
+for bad in (3, -1, True, "1", None):
+    check(f"bad slot refused {bad!r}", refused(g, me, {"type": "stack", "slot": bad}) is not None)
+g.ready_at = 0
+check("a stack is taken", refused(g, me, {"type": "stack", "slot": 0}) is None)
+check("…on a new layer, crossed over the top one", g.tower[-1]["L"] == W.LAYERS and g.tower[-1]["r"] == (0 if W.LAYERS % 2 == 0 else 2))
+check("…and the turn passes", r.turn == other.id and g.phase == "pull")
+check("with the top unfinished, the layer under it can't be pulled either",
+      not any(b["L"] >= W.LAYERS - 1 for b in g.tower if b["id"] in W.pullable(g.tower)))
+check("the open spots on the unfinished top", W.target(g.tower) == (W.LAYERS, [1, 2]))
+# pulling a plank that holds its layer up topples it
+g.ready_at = 0
+lay = [b for b in g.tower if b["L"] == 4]
+g.tower = W.resup([b for b in g.tower if b["id"] != lay[0]["id"] and b["id"] != lay[1]["id"]])
+g.ver += 1
+lives = g.lives[g.seat(other)]
+check("the view warns that the last plank in a layer holds the tower up", g.view(other)["wobble"]["blocks"][lay[2]["id"]]["m"] < 0)
+g.act(other, {"type": "pull", "id": lay[2]["id"], "side": 1})
+check("pulling it costs a life", g.lives[g.seat(other)] == lives - 1)
+check("…the fall is sent, and a fresh tower stands", g.last["fall"] and len(g.tower) == 3 * W.LAYERS and g.lean == [0.0, 0.0])
+check("…and the next player pulls", r.turn == me.id and g.phase == "pull")
+check("you can't pull while it's still falling", refused(g, me, {"type": "pull", "id": g.tower[0]["id"], "side": 1}) is not None)
+# timeouts
+r, g, ps = game(3, mode="pull")
+t0 = r.turn
+g.on_timeout()
+check("a pull timeout pulls a plank", g.phase == "stack" and r.turn == t0 and len(g.tower) == 3 * W.LAYERS - 1)
+g.on_timeout()
+check("a stack timeout sets it and passes the turn", g.phase == "pull" and r.turn != t0 and len(g.tower) == 3 * W.LAYERS)
+leaver = r.players[r.turn]
+g.on_leave(leaver)
+check("leaving on your turn passes it on", r.turn != leaver.id and r.phase == "playing")
+# bots
+worst = 0.0
+for seed in range(2):
+    r, g, ps = game(3, mode="pull", lives=1)
+    for p, lv in zip(ps, ("easy", "normal", "hard")):
+        p.bot = lv
+    g.rng.seed(seed)
+    random.seed(seed)
+    for _ in range(400):
+        if r.phase != "playing":
+            break
+        g.ready_at = 0
+        t1 = time.time()
+        g.bot_turn(r.players[r.turn])
+        worst = max(worst, time.time() - t1)
+    check(f"a 🪵 bot game finishes (seed {seed})", r.phase == "over", f"{g.places} moves, {g.towers - 1} topples")
+check("a 🪵 bot's move takes under 1.5 s", worst < 1.5, f"{worst:.2f}s")
 
 print("\n" + ("all ok" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)

@@ -26,6 +26,15 @@
 .wb-pick:hover, .wb-pick:focus-visible { outline: 2px solid var(--accent); }
 .wb-ctl { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 8px; flex-wrap: wrap; transition: opacity .2s; }
 .wb-ctl.wb-off { opacity: .45; }
+.wb-ctl[hidden] { display: none; }
+/* 🪵 Pull & Stack: ◀ the plank's feel ▶ and 🪵 Pull; then Edge / Middle / Edge */
+.wb-pctl { gap: 8px; }
+.wb-pctl > button:not(.wb-place) { min-width: 44px; min-height: 44px; padding: 0 10px; touch-action: manipulation; }
+.wb-feel { flex: 1 1 150px; min-height: 44px; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 2px;
+  font-size: 13px; text-align: center; background: var(--panel2); border-radius: var(--r-sm, 10px); padding: 2px 8px; }
+.wb-feel i { font-style: normal; }
+.wb-slotq { font-size: 13px; color: var(--muted); width: 100%; text-align: center; }
+.wb-pctl .wb-slot { flex: 1 1 80px; max-width: 130px; min-height: 48px; border: 2px solid transparent; }
 .wb-pad { display: grid; grid-template-columns: repeat(3, 42px); grid-template-rows: repeat(3, 34px); gap: 2px;
   grid-template-areas: ". u ." "l . r" ". d ."; }
 .wb-pad button { padding: 0; border-radius: 10px; font-size: 15px; touch-action: manipulation; }

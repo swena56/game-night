@@ -4,11 +4,18 @@
 // the tower you can see, so it shows how close the tower would be to going over. Then 🎁 pick the next player's
 // block. A topple comes from the server as `last.fall` (the tower, the block that gave, the edge it tipped over)
 // and plays back here: everything above that block swings over the edge, then tumbles off the table.
+// 🪵 Pull & Stack (mode "pull"): the tower starts built from planks. On your turn tap a plank (it jiggles: loose ones
+// more) and drag it out along its length (or 🪵 Pull); the tower leans and shakes as it slides, more for a tight one.
+// Then tap a glowing spot on top (or Edge / Middle / Edge) to set it. The server sends each plank's grip and risk,
+// so the browser runs no statics in this mode; the tower is drawn tilted by its lean.
 UI.wobble = (() => {
   let S, ctx, gl = null, flat = null, raf = 0, ro = null, primed = false, seen = 0, lastDraw = 0;
   let gx = 0, gz = 0, grot = 0, yaw = 0;    // the ghost (position, eighth turns) and where the camera stands round the tower (#124)
   let fall = null;                           // the topple being played: {f, t0}
   let ghostFor = '';
+  // 🪵 Pull & Stack: the plank picked, how far it's slid out (0..1, and the drawn value easing after it), which
+  // way (±1 along its length), a drag in progress, and the last poke (a jiggle when you tap one)
+  let sel = null, prog = 0, progV = 0, pside = 1, pdrag = null, poke = null, sentAt = 0;
   const $ = (id) => document.getElementById(id);
   const FALL_MS = 2900;
 
@@ -18,6 +25,14 @@ UI.wobble = (() => {
   const placing = () => S?.phase === 'playing' && ctx?.myTurn && V().phase === 'place';
   const gifting = () => S?.phase === 'playing' && ctx?.myTurn && V().phase === 'gift' && V().placer === V().me;
   const busy = () => !!fall;
+  const pullMode = () => V()?.mode === 'pull';
+  const pulling = () => S?.phase === 'playing' && ctx?.myTurn && pullMode() && V().phase === 'pull' && !fall;
+  const stacking = () => S?.phase === 'playing' && ctx?.myTurn && pullMode() && V().phase === 'stack' && !fall;
+  const blockOf = (id) => V().tower.find((b) => b.id === id);
+  const axisOf = (b) => (b.r % 4 === 0 ? [1, 0] : [0, 1]);
+  const riskOf = (id, sd = pside) => { const i = V().blocks?.[id]; return !i ? 0 : i.m < 0 ? 1 : i.rk[sd < 0 ? 0 : 1]; };
+  const feelOf = (g) => (g >= V().k.tight ? ['🔴', 'Tight'] : g < V().k.loose ? ['🟢', 'Loose'] : ['🟡', 'Snug']);
+  const riskColor = (r) => (r >= 0.5 ? '#ef476f' : r >= 0.2 ? '#ff8c42' : r >= 0.05 ? '#ffd23f' : '#3ddc97');
 
   // ---------- statics: the same model as games/wobble.py
   const EPS = 1e-6, C45 = Math.SQRT1_2;
@@ -188,6 +203,16 @@ UI.wobble = (() => {
         <button class="wb-rot" id="wbRot" title="Turn the block 45°">⟳ Turn</button>
         <button class="wb-place" id="wbPlace">🧱 Place</button>
       </div>
+      <div class="wb-ctl wb-pctl" id="wbPCtl" hidden>
+        <button id="wbPrev" aria-label="The plank before">◀</button>
+        <div class="wb-feel" id="wbFeel"></div>
+        <button id="wbNextP" aria-label="The next plank">▶</button>
+        <button class="wb-place" id="wbPull">🪵 Pull</button>
+      </div>
+      <div class="wb-ctl wb-pctl" id="wbSCtl" hidden>
+        <span class="wb-slotq">Set it on top:</span>
+        <button class="wb-slot" data-slot="0">Edge</button><button class="wb-slot" data-slot="1">Middle</button><button class="wb-slot" data-slot="2">Edge</button>
+      </div>
       <p id="wbHint" class="hint"></p></div>`;
     side.innerHTML = '<div class="panel"><h3>Builders</h3><div id="wbCard"></div><h3 class="wb-h">Coming up</h3><div class="wb-next" id="wbNext"></div></div>';
     const stage = $('wbStage');
@@ -199,6 +224,17 @@ UI.wobble = (() => {
       else if (b.id === 'wbPlace') return placeNow();
       controls();
     });
+    $('wbPCtl').addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (!b || !pulling()) return;
+      if (b.id === 'wbPull') return pullNow(sel && riskOf(sel, -1) < riskOf(sel, 1) ? -1 : 1);
+      // ◀ ▶ step through the planks you may pull, from the top down
+      const ids = Object.keys(V().blocks || {}).map(Number).sort((a, c) => { const A = blockOf(a), C = blockOf(c); return C.L - A.L || A.slot - C.slot; });
+      if (!ids.length) return;
+      const k = ids.indexOf(sel);
+      choose(ids[(k < 0 ? 0 : k + (b.id === 'wbPrev' ? -1 : 1) + ids.length) % ids.length]);
+    });
+    $('wbSCtl').addEventListener('click', (e) => { const b = e.target.closest('button[data-slot]'); if (b && !b.disabled) stackNow(+b.dataset.slot); });
     $('wbView').onclick = (e) => { const b = e.target.closest('button[data-yaw]'); if (b) { yaw = Math.round(yaw / (Math.PI / 4)) * (Math.PI / 4) + +b.dataset.yaw * Math.PI / 4; controls(); } };
     $('wbPicks').addEventListener('click', (e) => {
       const b = e.target.closest('button[data-k]');
@@ -223,16 +259,43 @@ UI.wobble = (() => {
       if (e.target.closest('button, .wb-gift')) return;
       fingers.set(e.pointerId, [e.clientX, e.clientY]);
       try { stage.setPointerCapture(e.pointerId); } catch {}
-      if (fingers.size === 2 && gl) { dragging = false; twist = { a: fAngle(), yaw }; return; }
+      if (fingers.size === 2 && gl) { dragging = false; pdrag = null; if (prog < 1) prog = 0; twist = { a: fAngle(), yaw }; return; }
+      if (pullMode()) {
+        const r3 = gl || flat;
+        if (pulling()) {
+          const id = r3?.pickBlock?.(e.clientX, e.clientY);
+          if (id == null) return;
+          if (!V().blocks?.[id]) { ctx.toast?.('Not from the top layers: pull one from lower down.'); return; }
+          if (sel !== id) choose(id);
+          else poke = { id, t0: performance.now() };
+          pdrag = { id, x0: e.clientX, y0: e.clientY };
+        } else if (stacking()) {
+          const sl = r3?.pickSlot?.(e.clientX, e.clientY);
+          if (sl != null) stackNow(sl);
+        }
+        return;
+      }
       if (!placing() || busy()) return;
       dragging = true; move(e);
     });
     stage.addEventListener('pointermove', (e) => {
       if (fingers.has(e.pointerId)) fingers.set(e.pointerId, [e.clientX, e.clientY]);
       if (twist && fingers.size === 2) { let d = fAngle() - twist.a; d = Math.atan2(Math.sin(d), Math.cos(d)); yaw = twist.yaw + d; return; }
+      if (pdrag && pulling() && sel === pdrag.id) {
+        // slide the plank along its length: the drag measured along the plank as it looks on screen
+        const u = (gl || flat)?.axis2d?.(pdrag.id) || [1, 0];
+        const along = (e.clientX - pdrag.x0) * u[0] + (e.clientY - pdrag.y0) * u[1];
+        if (Math.abs(along) > 6) pside = along < 0 ? -1 : 1;
+        const was = prog;
+        prog = Math.min(1, Math.abs(along) / 120);
+        if (Math.floor(prog * 5) !== Math.floor(was * 5) && prog < 1) { ctx.sfx?.('tick'); if (riskOf(sel) > 0.2) ctx.buzz?.(8); }
+        if (prog >= 1) { pdrag = null; pullNow(pside); }
+        else controls();
+        return;
+      }
       if (dragging) move(e);
     });
-    const stop = (e) => { fingers.delete(e.pointerId); if (fingers.size < 2) twist = null; dragging = false; };
+    const stop = (e) => { fingers.delete(e.pointerId); if (fingers.size < 2) twist = null; dragging = false; if (pdrag) { pdrag = null; if (prog < 1) { prog = 0; controls(); } } };
     stage.addEventListener('pointerup', stop); stage.addEventListener('pointercancel', stop);
     ro = window.ResizeObserver ? new ResizeObserver(() => (gl || flat)?.resize()) : null;
     ro?.observe(stage);
@@ -253,6 +316,30 @@ UI.wobble = (() => {
     ctx.sfx?.('tick');
   }
 
+  // 🪵 pick a plank: it jiggles (a loose one more) and the chip says how it feels
+  function choose(id) {
+    sel = id; prog = 0; poke = { id, t0: performance.now() };
+    const i = V().blocks?.[id];
+    ctx.sfx?.('tick');
+    if (i && i.g >= V().k.tight) ctx.buzz?.(14);
+    controls();
+  }
+  function pullNow(sd) {
+    if (!pulling() || sel == null || !V().blocks?.[sel] || performance.now() - sentAt < 600) return;
+    pside = sd; prog = 1; sentAt = performance.now();
+    const id = sel;
+    ctx.sfx?.('whoosh'); ctx.buzz?.(18);
+    ctx.quiet(ctx.act('pull', { id, side: sd }));
+    setTimeout(() => { if (sel === id && V().tower.some((b) => b.id === id)) { prog = 0; controls(); } }, 1600);
+    controls();
+  }
+  function stackNow(sl) {
+    if (!stacking() || !V().open.includes(sl) || performance.now() - sentAt < 400) return;
+    sentAt = performance.now();
+    ctx.buzz?.(12);
+    ctx.quiet(ctx.act('stack', { slot: sl }));
+  }
+
   function placeNow() {
     if (!placing() || busy()) return;
     if (!preview()) { ctx.toast?.('Set it over the plinth or the tower.'); return; }
@@ -271,7 +358,45 @@ UI.wobble = (() => {
     gx = top ? +(Math.round(top.x / sn) * sn).toFixed(2) : 0; gz = top ? +(Math.round(top.z / sn) * sn).toFixed(2) : 0;
   }
 
+  // 🪵 the controls in Pull & Stack: the plank's feel and risk, the meter, the slot buttons
+  function pullControls() {
+    const v = V(), on = pulling(), st = stacking();
+    $('wbCtl').hidden = true;
+    $('wbPCtl').hidden = v.phase === 'stack' && S.phase === 'playing';
+    $('wbSCtl').hidden = !(v.phase === 'stack' && S.phase === 'playing');
+    $('wbPCtl').classList.toggle('wb-off', !on);
+    $('wbSCtl').classList.toggle('wb-off', !st);
+    if (sel != null && !v.blocks?.[sel]) { sel = null; prog = 0; }
+    for (const b of $('wbPCtl').querySelectorAll('button')) b.disabled = !on || (b.id === 'wbPull' && sel == null);
+    $('wbPull').classList.toggle('wb-ready', on && sel != null);
+    const info = sel != null ? v.blocks[sel] : null, feel = $('wbFeel');
+    feel.innerHTML = '';
+    if (info) {
+      const [dot, word] = feelOf(info.g), b = blockOf(sel), r = riskOf(sel);
+      feel.append(ctx.el('b', '', `${dot} ${word}`), ctx.el('span', '', ` · layer ${b.L + 1}`),
+        ctx.el('i', info.m < 0 ? 'wb-warn' : '', info.m < 0 ? ' · 💥 it holds the tower up!' : ` · ${r < 0.01 ? 'safe' : `${Math.round(r * 100)}% risk`}`));
+    } else feel.textContent = on ? 'Tap a plank' : '';
+    for (const b of $('wbSCtl').querySelectorAll('button[data-slot]')) {
+      const sl = +b.dataset.slot, open = v.open.includes(sl), m = v.slots?.[sl];
+      b.disabled = !st || !open;
+      b.style.borderColor = open && m != null ? meterColor(m) : '';
+    }
+    // the meter: the picked plank's risk the way you're sliding it, else how steady the tower is
+    const risk = info ? riskOf(sel) : null, m = v.margin;
+    $('wbFill').style.height = `${Math.round((risk != null ? risk : 1 - safety(m)) * 100)}%`;
+    $('wbFill').style.background = risk != null ? riskColor(risk) : meterColor(m);
+    $('wbMeter').classList.toggle('wb-danger', risk != null ? risk >= 0.3 : m < 0.08);
+    $('wbMeter').title = risk != null ? `Chance the tower goes over: ${Math.round(risk * 100)}%` : 'Wobble meter';
+    const L = Math.hypot(v.lean[0], v.lean[1]);
+    $('wbBlock').innerHTML = '';
+    if (S.phase === 'playing') {
+      $('wbBlock').append(ctx.el('span', '', v.phase === 'stack' ? `🪵 ${S.turn === v.seats[v.me] ? 'Your' : `${ctx.player(S.turn)?.name ?? '?'}'s`} plank goes on layer ${v.layer + 1}` : `🪵 Lean ${(Math.atan(L) * 180 / Math.PI).toFixed(1)}° ${L > 0.004 ? arrow([v.lean[0] / L, v.lean[1] / L]) : ''}`));
+    }
+  }
+
   function controls() {
+    if (pullMode()) return pullControls();
+    $('wbCtl').hidden = false; $('wbPCtl').hidden = true; $('wbSCtl').hidden = true;
     const v = V(), on = placing() && !busy();
     for (const b of $('wbCtl').querySelectorAll('button')) b.disabled = !on;
     $('wbCtl').classList.toggle('wb-off', !on);
@@ -300,10 +425,14 @@ UI.wobble = (() => {
     if (v.last && v.last.id !== seen) {
       seen = v.last.id;
       if (v.last.fall) { fall = { f: v.last.fall, t0: performance.now(), by: v.last.by }; ctx.sfx?.('crack'); gl?.topple(); }
+      else if (v.last.kind === 'pull') { ctx.sfx?.(v.last.g >= v.k.tight ? 'pop' : 'whoosh'); gl?.pulled?.(v.last); flat?.pulled?.(v.last); }
       else ctx.sfx?.('place');
+      sel = null; prog = 0; progV = 0; pdrag = null;
     }
     if (placing()) resetGhost();
-    $('wbTower').textContent = `🧱 Tower ${v.towers} · ${v.tower.length} block${v.tower.length === 1 ? '' : 's'} · ${v.height.toFixed(1)} high`;
+    $('wbTower').textContent = pullMode()
+      ? `🪵 Tower ${v.towers} · ${v.layer + (v.open.length === 3 ? 0 : 1)} layers · ${v.tower.length} planks`
+      : `🧱 Tower ${v.towers} · ${v.tower.length} block${v.tower.length === 1 ? '' : 's'} · ${v.height.toFixed(1)} high`;
     const g = v.gust;
     $('wbGust').textContent = !g ? '' : g.in === 0 ? `🌬 GUST now ${arrow(g.dir)}` : g.in === 1 ? `🌬 Gust next turn ${arrow(g.dir)}` : `🌬 Gust in ${g.in} turns`;
     $('wbGust').classList.toggle('wb-gusting', !!g && g.in === 0);
@@ -325,6 +454,10 @@ UI.wobble = (() => {
   function hint() {
     const v = V();
     const t = S.phase !== 'playing' ? '' : busy() ? '💥 Down it comes…'
+      : pullMode() ? (pulling() ? (sel == null ? 'Tap a plank to feel it (not from the top layers), then drag it out along its length. 🟢 loose ones are safest.'
+        : 'Drag the plank out along its length (either end), or 🪵 Pull. A tight one drags the tower over with it!')
+        : stacking() ? 'Tap a glowing spot on top (or Edge / Middle / Edge) to set your plank there.'
+          : v.phase === 'stack' ? `${ctx.player(S.turn)?.name ?? '?'} is setting the plank on top…` : `Watch ${ctx.player(S.turn)?.name ?? '?'} pull a plank.`)
       : gifting() ? `Pick the block ${nameOf(nextSeat())} has to set next.`
         : placing() ? (V().gust?.in === 0 ? '🌬 A gust leans on the tower this turn: build against it! ' : '')
           + 'Drag the ghost block (or ◀ ▶ ▲ ▼), ⟳ turn it, then 🧱 Place. The 📏 meter shows the wobble.'
@@ -369,6 +502,7 @@ UI.wobble = (() => {
     });
     box.append(t);
     const nx = $('wbNext'); nx.innerHTML = '';
+    nx.previousElementSibling.hidden = pullMode();
     for (const s of v.next3) { const d = ctx.el('div', 'wb-chip'); d.append(icon(s, 26), ctx.el('span', '', v.shapes[s].name)); nx.append(d); }
   }
 
@@ -412,7 +546,9 @@ UI.wobble = (() => {
     if (fall && now - fall.t0 > FALL_MS) { fall = null; controls(); hint(); renderGift(); }
     const moving = fall || placing() || gl?.moving?.() || V().tower.length;
     if (!moving && now - lastDraw < 66) return;
-    if (!fall && !placing() && now - lastDraw < 33) return;   // the sway is slow: ~30 fps is plenty
+    const sliding = prog > 0 || progV > 0.002 || (poke && now - poke.t0 < 600) || stacking();
+    if (!fall && !placing() && !sliding && now - lastDraw < 33) return;   // the sway is slow: ~30 fps is plenty
+    progV += (prog - progV) * Math.min(1, (now - lastDraw) / 90);
     lastDraw = now;
     (gl || flat)?.draw(now);
   }
@@ -482,7 +618,7 @@ UI.wobble = (() => {
     const mats = new Map();
     const matFor = (o) => {
       if (!mats.has(o)) {
-        const c = new T.Color(colorOf(o)).lerp(new T.Color(0xf3e3c8), 0.25);
+        const c = o < 0 ? new T.Color(0xe9c690) : new T.Color(colorOf(o)).lerp(new T.Color(0xf3e3c8), 0.25);   // (🪵 the tower's own planks: plain wood)
         mats.set(o, new T.MeshStandardMaterial({ map: woodTex, color: c, roughness: 0.62, metalness: 0.02 }));
       }
       return mats.get(o);
@@ -526,7 +662,9 @@ UI.wobble = (() => {
         if (!m) {
           m = blockMesh(b); meshes.set(b.id, m); towerGrp.add(m);
           m.userData.drop = (b.id === V().last?.block?.id) ? 1 : 0;   // the newest block drops into place
+          m.userData.id = b.id;
         }
+        m.userData.b = b;
         m.position.set(b.x, b.y, b.z);
       }
     }
@@ -540,6 +678,21 @@ UI.wobble = (() => {
     const drop = new T.Line(new T.BufferGeometry().setFromPoints([new T.Vector3(), new T.Vector3()]),
       new T.LineDashedMaterial({ color: 0xffffff, dashSize: 0.15, gapSize: 0.12, transparent: true, opacity: 0.6 }));
     scene.add(drop);
+    // 🪵 the picked plank glows; open spots on top show as ghost planks; a pulled plank slides on out and away
+    const selMat = new T.MeshStandardMaterial({ map: woodTex, color: 0xffe2a8, emissive: 0x9a6418, roughness: 0.5 });
+    let selShown = null;
+    const slotGrp = new T.Group(); towerGrp.add(slotGrp);
+    const slotMats = [0, 1, 2].map(() => new T.MeshStandardMaterial({ color: 0x3ddc97, transparent: true, opacity: 0.4, depthWrite: false, emissive: 0x113322 }));
+    let slotKey = '';
+    let outGo = null;   // {m, a: [ax, az], side, t0}
+    function setMat(grp, mat) { grp.traverse((o) => { if (o.isMesh) o.material = mat; }); }
+    function pulled(last) {
+      if (outGo) { towerGrp.remove(outGo.m); outGo = null; }
+      const m = blockMesh(last.block); m.position.set(last.block.x, last.block.y, last.block.z);
+      towerGrp.add(m);
+      const [ax, az] = axisOf(last.block);
+      outGo = { m, a: [ax, az], side: last.side || 1, t0: performance.now() };
+    }
     // gust: streaks of wind across the scene on a gust turn
     const NW = 40, wp = new Float32Array(NW * 6), wg = new T.BufferGeometry();
     wg.setAttribute('position', new T.BufferAttribute(wp, 3));
@@ -615,7 +768,9 @@ UI.wobble = (() => {
       if (!showFall && fallGrp.children.length) { fallGrp.clear(); fallKey = null; }
       let H = v.height;
       if (showFall) {
-        const t = (now - fall.t0) / 1000;
+        const t0 = (now - fall.t0) / 1000;
+        // 🪵 a pulled tower comes down in slow motion for its first second and a half, then at full speed
+        const t = pullMode() ? (t0 < 1.5 ? t0 * 0.5 : 0.75 + (t0 - 1.5) * 1.1) : t0;
         drawFall(t);
         H = Math.max(...fall.f.tower.map((b) => b.y + v.shapes[b.s].h));
         if (t > 1.2 && !clatter) { clatter = 1; ctx.sfx?.('thud'); if (!low) GL3.shake(camera, 0.35); }
@@ -624,11 +779,13 @@ UI.wobble = (() => {
         syncTower(v.tower);
         // the sway: bigger the closer the tower is to going over
         const m = v.tower.length ? Math.max(0, v.margin) : 1;
-        const amp = v.tower.length ? Math.min(0.035, 0.0025 / (m + 0.04)) * (window.motionOK && !motionOK() ? 0.3 : 1) : 0;
+        const calm = window.motionOK && !motionOK() ? 0.3 : 1;
+        const amp = v.tower.length ? Math.min(0.035, 0.0025 / (m + 0.04)) * calm : 0;
         towerGrp.rotation.x = Math.sin(now / 820) * amp; towerGrp.rotation.z = Math.sin(now / 1130 + 1) * amp * 0.8;
         for (const m2 of meshes.values()) {
           if (m2.userData.drop > 0) { m2.userData.drop = Math.max(0, m2.userData.drop - dt * 4); m2.position.y += m2.userData.drop * m2.userData.drop * 1.2; }
         }
+        if (pullMode()) pullScene(now, calm);
       }
       // the ghost
       const aiming = placing() && !busy();
@@ -684,7 +841,7 @@ UI.wobble = (() => {
       const tall = camera.aspect < 0.8;
       const top = Math.max(H, (p?.y ?? 0) + 1.5, 2);
       const dist = (tall ? 12 : 9) + top * (tall ? 1.15 : 0.8);
-      const want = yaw + (placing() ? 0 : Math.sin(now / 9000) * 0.35);
+      const want = yaw + (placing() || pulling() || stacking() ? 0 : Math.sin(now / 9000) * 0.35);
       let dy = want - cam.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       const k = 1 - Math.exp(-dt * 3);
       cam.yaw += dy * k;
@@ -706,6 +863,100 @@ UI.wobble = (() => {
       plane.constant = -(preview()?.y ?? V().height);
       return ray.ray.intersectPlane(plane, hit) ? [hit.x, hit.z] : null;
     }
+    // 🪵 the tower leans (its lean is a slope: x and z moved per unit of height); the picked plank slides out
+    // along its length, dragging the tower with it, more the tighter it's held; spots on top glow when it's set
+    function pullScene(now, calm) {
+      const v = V(), lean = v.lean || [0, 0];
+      let tx = lean[0], tz = lean[1];
+      const sb = sel != null && pulling() ? meshes.get(sel) : null;
+      if (sb) {
+        const b = sb.userData.b, [ax, az] = axisOf(b), g = v.blocks?.[sel]?.g ?? 0, r = riskOf(sel);
+        const out = progV * 1.75 * pside;
+        sb.position.x += ax * out; sb.position.z += az * out;
+        // the drag: the tower leans the way you pull and shudders as the plank scrapes past
+        const tug = progV * (0.01 + 0.05 * g * g) * pside, shud = progV * (0.004 + 0.03 * r) * calm;
+        tx += ax * tug + Math.sin(now / 37) * shud; tz += az * tug + Math.sin(now / 43 + 1) * shud;
+      }
+      if (poke && now - poke.t0 < 600) {
+        const pm = meshes.get(poke.id), pb = pm?.userData.b;
+        if (pb) {
+          const [ax, az] = axisOf(pb), g = v.blocks?.[poke.id]?.g ?? v.grip?.[poke.id] ?? 0.5;
+          const j = Math.sin((now - poke.t0) / 28) * (1 - (now - poke.t0) / 600) * (0.02 + 0.12 * (1 - g));
+          pm.position.x += ax * j; pm.position.z += az * j;
+        }
+      }
+      towerGrp.rotation.z += -Math.atan(tx); towerGrp.rotation.x += Math.atan(tz);
+      if (selShown !== (sb ? sel : null)) {
+        const old = selShown != null ? meshes.get(selShown) : null;
+        if (old) setMat(old, matFor(old.userData.b.o));
+        if (sb) setMat(sb, selMat);
+        selShown = sb ? sel : null;
+      }
+      selMat.emissiveIntensity = 0.6 + 0.4 * Math.sin(now / 200);
+      // the spots on top
+      const st = stacking(), key = st ? `${v.layer}|${v.open.join(',')}|${v.tower.length}` : '';
+      if (key !== slotKey) {
+        slotKey = key; slotGrp.clear();
+        if (st) {
+          for (const sl of v.open) {
+            const r = v.layer % 2 === 0 ? 0 : 2, x = v.layer % 2 === 0 ? 0 : sl - 1, z = v.layer % 2 === 0 ? sl - 1 : 0;
+            const g2 = blockMesh({ s: 'plank', r, o: 0 }, slotMats[sl]);
+            g2.position.set(x, v.layer * v.k.layerH, z); g2.userData.slot = sl;
+            slotMats[sl].color.set(meterColor(v.slots?.[sl] ?? 0.5));
+            slotGrp.add(g2);
+          }
+        }
+      }
+      for (const g2 of slotGrp.children) g2.position.y = v.layer * v.k.layerH + 0.25 + Math.sin(now / 260 + g2.userData.slot) * 0.08;
+      for (const mt of slotMats) mt.opacity = 0.32 + 0.18 * Math.sin(now / 220);
+      // the plank just pulled slides on out and drops away
+      if (outGo) {
+        const t = (now - outGo.t0) / 1000;
+        if (t > 1.1) { towerGrp.remove(outGo.m); outGo = null; }
+        else {
+          const b = outGo.m.userData.b0 || (outGo.m.userData.b0 = { x: outGo.m.position.x, y: outGo.m.position.y, z: outGo.m.position.z });
+          const d = 1.75 + t * 5;
+          outGo.m.position.set(b.x + outGo.a[0] * d * outGo.side, b.y - Math.max(0, t - 0.35) ** 2 * 6, b.z + outGo.a[1] * d * outGo.side);
+        }
+      }
+    }
+    function pickBlock(cx, cy) {
+      const r = renderer.domElement.getBoundingClientRect();
+      ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+      ray.setFromCamera(ndc, camera);
+      for (const h of ray.intersectObjects([...meshes.values()], true)) {
+        let o = h.object;
+        while (o && o.userData.id == null) o = o.parent;
+        if (o) return o.userData.id;
+      }
+      return null;
+    }
+    function pickSlot(cx, cy) {
+      const r = renderer.domElement.getBoundingClientRect();
+      ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+      ray.setFromCamera(ndc, camera);
+      const h = ray.intersectObjects(slotGrp.children, true)[0];
+      let o = h?.object;
+      while (o && o.userData.slot == null) o = o.parent;
+      if (o) return o.userData.slot;
+      // else the open spot nearest where the finger meets the top of the tower
+      const v = V();
+      plane.constant = -(v.layer * v.k.layerH + 0.25);
+      if (!ray.ray.intersectPlane(plane, hit)) return null;
+      const u = v.layer % 2 === 0 ? hit.z : hit.x;
+      if (Math.abs(v.layer % 2 === 0 ? hit.x : hit.z) > 2.2 || Math.abs(u) > 2.2) return null;
+      return v.open.reduce((a, sl) => (a == null || Math.abs(sl - 1 - u) < Math.abs(a - 1 - u) ? sl : a), null);
+    }
+    // which way a plank runs on screen (a unit vector in CSS pixels)
+    function axis2d(id) {
+      const m = meshes.get(id), b = m?.userData.b;
+      if (!b) return [1, 0];
+      const [ax, az] = axisOf(b), r = renderer.domElement.getBoundingClientRect();
+      const p = new T.Vector3(b.x, b.y + 0.25, b.z).applyMatrix4(towerGrp.matrixWorld).project(camera);
+      const q = new T.Vector3(b.x + ax, b.y + 0.25, b.z + az).applyMatrix4(towerGrp.matrixWorld).project(camera);
+      const dx = (q.x - p.x) * r.width / 2, dy = -(q.y - p.y) * r.height / 2, l = Math.hypot(dx, dy) || 1;
+      return [dx / l, dy / l];
+    }
     function resize() {
       const w = stage.clientWidth || 320, h = stage.clientHeight || 320;
       renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
@@ -715,9 +966,9 @@ UI.wobble = (() => {
       stg.dispose(); renderer.dispose(); renderer.domElement.remove();
       scene.traverse((o) => { o.geometry?.dispose(); if (Array.isArray(o.material)) o.material.forEach((m) => m.dispose()); else o.material?.dispose?.(); });
       for (const g of geos.values()) g.dispose();
-      woodTex.dispose(); tableTex.dispose(); plinthTex.dispose();
+      woodTex.dispose(); tableTex.dispose(); plinthTex.dispose(); selMat.dispose(); slotMats.forEach((m) => m.dispose());
     }
-    return { draw, resize, dispose, pick, topple, moving: () => cam.moving };
+    return { draw, resize, dispose, pick, topple, pulled, pickBlock, pickSlot, axis2d, moving: () => cam.moving };
   }
 
   // ---------- flat fallback: the tower from above, higher blocks lighter, the ghost outlined
@@ -734,7 +985,86 @@ UI.wobble = (() => {
       k = Math.min(canvas.width, canvas.height) / (2 * (V().k.reach + 1.2));
     }
     const X = (x) => canvas.width / 2 + x * k, Z = (z) => canvas.height / 2 + z * k;
+    // 🪵 Pull & Stack is drawn from the side at a slant (an isometric view), since from above you'd only see the top
+    let iso = null, faces = [], slotFaces = [], out = null;
+    const isoP = (x, y, z) => [iso.cx + (x - z) * 0.8 * iso.k, iso.cy + ((x + z) * 0.42 - y * 0.9) * iso.k];
+    function box(x0, y0, z0, x1, y1, z1) {   // the three faces you can see: front (+z), side (+x), top
+      return [[[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]], [[x1, y0, z0], [x1, y0, z1], [x1, y1, z1], [x1, y1, z0]],
+        [[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]]].map((f) => f.map((q) => isoP(...q)));
+    }
+    function plankBox(b, dx = 0, dz = 0, dy = 0) {
+      const [x0, z0, x1, z1] = rects(b.s, b.r)[0], h = V().shapes[b.s].h;
+      return box(b.x + x0 + dx, b.y + dy, b.z + z0 + dz, b.x + x1 + dx, b.y + h + dy, b.z + z1 + dz);
+    }
+    function paint(fs, fill, alpha = 1, stroke = '#2a1a10', dash = false) {
+      g.globalAlpha = alpha;
+      const shades = [0.82, 0.62, 1.05];
+      fs.forEach((f, j) => {
+        g.beginPath(); f.forEach(([x, y], q) => (q ? g.lineTo(x, y) : g.moveTo(x, y))); g.closePath();
+        if (fill) { g.fillStyle = fill; g.fill(); g.fillStyle = shades[j] < 1 ? `rgba(0,0,0,${1 - shades[j]})` : 'rgba(255,255,255,.18)'; g.fill(); }
+        if (dash) g.setLineDash([5, 4]);
+        g.strokeStyle = stroke; g.lineWidth = dash ? 2.5 : 1.2; g.stroke(); g.setLineDash([]);
+      });
+      g.globalAlpha = 1;
+    }
+    function drawPull(now) {
+      const v = V(), P = v.k.plinth, lean = v.lean || [0, 0];
+      let list = v.tower, gone = new Set(), t = 0;
+      if (fall) { list = fall.f.tower; t = (now - fall.t0) / 1000; gone = new Set(fall.f.falls); }
+      const H = Math.max(3, ...list.map((b) => b.y + 0.5)) + (stacking() ? 1 : 0.4);
+      // fit: x - z spans ±2P, the height H plus the plinth's depth
+      const kw = canvas.width / (4 * P * 0.8 + 1.2), kh = canvas.height / (H * 0.9 + 2 * P * 0.42 * 2 + 1);
+      iso = { k: Math.min(kw, kh), cx: canvas.width / 2, cy: 0 };
+      iso.cy = canvas.height - (2 * P * 0.42 + 0.5) * iso.k;
+      g.fillStyle = '#1d1420'; g.fillRect(0, 0, canvas.width, canvas.height);
+      paint(box(-P, -0.6, -P, P, 0, P), '#b9b0a4');
+      faces = [];
+      let sx = 0, sz = 0;
+      const sb = sel != null && pulling() ? sel : null;
+      if (sb != null) { const b = blockOf(sb), r = riskOf(sb); const tug = progV * (0.01 + 0.05 * (v.blocks?.[sb]?.g ?? 0) ** 2) * pside; const [ax, az] = axisOf(b); sx = ax * tug + Math.sin(now / 37) * progV * 0.03 * r; sz = az * tug; }
+      const order = list.map((b, i) => [b, i]).sort(([a], [c]) => a.y - c.y || (a.x + a.z) - (c.x + c.z));
+      for (const [b, i] of order) {
+        const lx = fall ? 0 : (lean[0] + sx) * b.y, lz = fall ? 0 : (lean[1] + sz) * b.y;
+        let dx = lx, dz = lz, dy = 0, alpha = 1;
+        if (gone.has(i)) { const f = Math.min(1, Math.max(0, (t - 0.2) / 1.2)); dx += fall.f.dir[0] * f * 3; dz += fall.f.dir[1] * f * 3; dy = -f * f * 2; alpha = 1 - f; }
+        if (b.id === sb) { const [ax, az] = axisOf(b); dx += ax * progV * 1.75 * pside; dz += az * progV * 1.75 * pside; }
+        if (poke && poke.id === b.id && now - poke.t0 < 600) { const [ax, az] = axisOf(b), j = Math.sin((now - poke.t0) / 28) * (1 - (now - poke.t0) / 600) * 0.1; dx += ax * j; dz += az * j; }
+        const fs = plankBox(b, dx, dz, dy);
+        const pickable = pulling() && v.blocks?.[b.id];
+        paint(fs, b.id === sb ? '#ffd98a' : b.o < 0 ? '#d9b07a' : colorOf(b.o), alpha, b.id === sb ? '#fff' : '#2a1a10');
+        if (!fall) faces.push([b.id, fs, pickable]);
+      }
+      if (out) {
+        const tt = (now - out.t0) / 1000;
+        if (tt > 0.9) out = null;
+        else { const [ax, az] = axisOf(out.b), d = (1.75 + tt * 5) * out.side; paint(plankBox(out.b, ax * d, az * d, -(Math.max(0, tt - 0.3) ** 2) * 6), '#d9b07a', 1 - tt); }
+      }
+      slotFaces = [];
+      if (stacking()) {
+        for (const sl of v.open) {
+          const L = v.layer, b = { s: 'plank', r: L % 2 === 0 ? 0 : 2, x: L % 2 === 0 ? 0 : sl - 1, z: L % 2 === 0 ? sl - 1 : 0, y: L * v.k.layerH };
+          const fs = plankBox(b, lean[0] * b.y, lean[1] * b.y, 0.3 + Math.sin(now / 260 + sl) * 0.08);
+          paint(fs, meterColor(v.slots?.[sl] ?? 0.5), 0.45 + 0.15 * Math.sin(now / 220), '#fff', true);
+          slotFaces.push([sl, fs]);
+        }
+      }
+    }
+    const inPoly = (pg, x, y) => { let c = false; for (let i = 0, j = pg.length - 1; i < pg.length; j = i++) { const [xi, yi] = pg[i], [xj, yj] = pg[j]; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; } return c; };
+    const toCanvas = (cx, cy) => { const r = canvas.getBoundingClientRect(), s2 = canvas.width / r.width; return [(cx - r.left) * s2, (cy - r.top) * s2]; };
+    function pickBlock(cx, cy) {
+      const [x, y] = toCanvas(cx, cy);
+      for (let i = faces.length - 1; i >= 0; i--) if (faces[i][1].some((f) => inPoly(f, x, y))) return faces[i][0];
+      return null;
+    }
+    function pickSlot(cx, cy) {
+      const [x, y] = toCanvas(cx, cy);
+      for (let i = slotFaces.length - 1; i >= 0; i--) if (slotFaces[i][1].some((f) => inPoly(f, x, y))) return slotFaces[i][0];
+      return null;
+    }
+    const axis2d = (id) => { const b = blockOf(id); return b && axisOf(b)[1] ? [-0.885, 0.465] : [0.885, 0.465]; };
+    const pulled = (last) => { out = { b: last.block, side: last.side || 1, t0: performance.now() }; };
     function draw(now) {
+      if (pullMode()) return drawPull(now);
       const v = V(), P = v.k.plinth;
       g.fillStyle = '#3a2416'; g.fillRect(0, 0, canvas.width, canvas.height);
       g.fillStyle = '#b9b0a4'; g.fillRect(X(-P), Z(-P), 2 * P * k, 2 * P * k);
@@ -770,10 +1100,10 @@ UI.wobble = (() => {
       return [((cx - r.left) * s - canvas.width / 2) / k, ((cy - r.top) * s - canvas.height / 2) / k];
     }
     resize();
-    return { draw, resize, pick };
+    return { draw, resize, pick, pickBlock, pickSlot, axis2d, pulled };
   }
 
-  const turnText = (s) => (s.phase === 'playing' ? `🧱 Tower ${s.wobble.towers}` : null);
+  const turnText = (s) => (s.phase === 'playing' ? `${s.wobble.mode === 'pull' ? '🪵' : '🧱'} Tower ${s.wobble.towers}` : null);
 
   return { mount, render, unmount, turnText, focus: true, testMargin: (t, g) => margin(t, g), testLand: (...a) => land(...a) };
 })();

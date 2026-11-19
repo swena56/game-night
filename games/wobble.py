@@ -241,11 +241,53 @@ def inside(poly, px, pz):
     return best, edge
 
 
-def check(tower, gust=(0.0, 0.0)):
+def spread(sup, cents, X, Z):
+    """🪵 Pull & Stack's load sharing over two or more supports in a row (a plank across planks): along the row
+    the load splits between the two supports either side of it, like a lever; across the row every share keeps
+    the load's offset. Returns [(weight, x, z)]."""
+    n = len(cents)
+    i, j = max(((i, j) for i in range(n) for j in range(i + 1, n)),
+               key=lambda p: (cents[p[0]][0] - cents[p[1]][0]) ** 2 + (cents[p[0]][1] - cents[p[1]][1]) ** 2)
+    (ax, az), (bx, bz) = cents[i], cents[j]
+    ln = math.hypot(bx - ax, bz - az)
+    if ln < EPS:
+        return [(1.0 / n, *nearest_in(pg, X, Z)) for (_, pg) in sup]
+    ux, uz = (bx - ax) / ln, (bz - az) / ln
+    t = [(cx - ax) * ux + (cz - az) * uz for cx, cz in cents]
+    tX = (X - ax) * ux + (Z - az) * uz
+    px, pz = X - ax - tX * ux, Z - az - tX * uz      # the load's offset across the row
+    order = sorted(range(n), key=lambda k: t[k])
+    ws = [0.0] * n
+    if tX <= t[order[0]]:
+        ws[order[0]] = 1.0
+    elif tX >= t[order[-1]]:
+        ws[order[-1]] = 1.0
+    else:
+        for a, b in zip(order, order[1:]):
+            if t[a] <= tX <= t[b]:
+                f = 0.5 if t[b] - t[a] < EPS else (tX - t[a]) / (t[b] - t[a])
+                ws[a], ws[b] = 1 - f, f
+                break
+    out = []
+    for k, (_, pg) in enumerate(sup):
+        if ws[k] <= 0:
+            out.append((0.0, 0.0, 0.0))
+            continue
+        along = (tX - t[k]) if ws[k] == 1.0 else 0.0    # a lone carrier takes the load where it is along the row
+        qx = ax + (t[k] + along) * ux + px
+        qz = az + (t[k] + along) * uz + pz
+        out.append((ws[k], *nearest_in(pg, qx, qz)))
+    return out
+
+
+def check(tower, gust=(0.0, 0.0), spread_rows=False):
     """The statics pass. Returns {"margin": the smallest margin of any block, "fail": None or
-    {"i": index, "pivot": [[x, z], [x, z]], "dir": [x, z], "y": height, "falls": [indices that come down]}}."""
+    {"i": index, "pivot": [[x, z], [x, z]], "dir": [x, z], "y": height, "falls": [indices that come down]},
+    "carry": the weight resting on each block}. spread_rows: share loads over supports in a row with spread()
+    (🪵 Pull & Stack's plank tower)."""
     n = len(tower)
     loads = [[] for _ in range(n)]
+    carry = [0.0] * n     # the weight resting on each block (🪵 Pull & Stack reads how snug a block is from this)
     worst, fails = 1e9, []
     for i in range(n - 1, -1, -1):
         b = tower[i]
@@ -260,6 +302,7 @@ def check(tower, gust=(0.0, 0.0)):
             Z += lm * lz
         X /= M
         Z /= M
+        carry[i] = M - m
         patches = [(k, as_poly(p)) for k, p in b["sup"]]
         pts = [q for _, pg in patches for q in pg]
         ph = hull(pts)
@@ -281,6 +324,11 @@ def check(tower, gust=(0.0, 0.0)):
         if not sup:
             continue
         cents = [pcent(pg)[1:] for _, pg in sup]
+        if spread_rows and len(sup) >= 2:
+            for (k, _), (w, lx, lz) in zip(sup, spread(sup, cents, X, Z)):
+                if k >= 0 and w > 0:
+                    loads[k].append((M * w, lx, lz))
+            continue
         if len(sup) == 1:
             ws = [1.0]
         elif len(sup) == 2:
@@ -304,7 +352,7 @@ def check(tower, gust=(0.0, 0.0)):
             if any(k in falls for k, _ in tower[j]["sup"]):
                 falls.add(j)
         fail = {"i": f["i"], "pivot": f["pivot"], "dir": f["dir"], "falls": sorted(falls)}
-    return {"margin": 1.0 if worst == 1e9 else worst, "fail": fail}
+    return {"margin": 1.0 if worst == 1e9 else worst, "fail": fail, "carry": carry}
 
 
 def height(tower):
@@ -319,6 +367,129 @@ def snapped(v):
     return abs(v / SNAP - round(v / SNAP)) < 1e-6
 
 
+# -- 🪵 Pull & Stack: a ready-built tower of planks, three to a layer, each layer crossed over the one below. Slide a
+# block out of the tower, then set it on top. The tower stands in the same statics model; what makes it go over is
+# the lean: every pull drags the tower a little (more for a block that's held tight), the lean adds up, and the
+# tower is checked sheared by it. Pull a block that holds the layer above up and it goes at once.
+LAYERS = 12           # the tower starts this many layers high
+PLANK_H = SHAPES["plank"]["h"]
+LEAN_BASE = 0.015     # σ of the lean one pull adds: LEAN_BASE + LEAN_K × grip²
+LEAN_K = 0.18
+LEAN_PUSH = 0.5       # the lean goes this many σ the way you pull, on average
+TIGHT = 0.6           # grip from here up: a tight block (⭐ for pulling one and living)
+LOOSE = 0.3           # grip under this: a loose one
+
+
+def layer_rot(L):
+    return 0 if L % 2 == 0 else 2
+
+
+def slot_xz(L, s):
+    """The centre of slot s (0, 1, 2) in layer L: even layers run along x, odd ones along z."""
+    return (0.0, float(s - 1)) if L % 2 == 0 else (float(s - 1), 0.0)
+
+
+def resup(tower, lean=(0.0, 0.0)):
+    """The tower sorted by layer, sheared by the lean (a block at height y moves lean × y), with what each block
+    rests on worked out afresh: the blocks of the layer under it, or the plinth."""
+    t = sorted((dict(b) for b in tower), key=lambda b: (b["L"], b["slot"]))
+    foot = []
+    for b in t:
+        b["y"] = round(b["L"] * PLANK_H, 4)
+        b["x"] = round(b["x"] + lean[0] * b["y"], 4)
+        b["z"] = round(b["z"] + lean[1] * b["y"], 4)
+        foot.append(parts(b["s"], b["x"], b["z"], b["r"])[0])
+    by_layer = {}
+    for i, b in enumerate(t):
+        by_layer.setdefault(b["L"], []).append(i)
+    for i, b in enumerate(t):
+        sup = []
+        if b["L"] == 0:
+            p = inter(foot[i], PLINTH_POLY)
+            if p:
+                sup.append([-1, p])
+        else:
+            for k in by_layer.get(b["L"] - 1, ()):
+                p = inter(foot[i], foot[k])
+                if p:
+                    sup.append([k, p])
+        b["sup"] = [[k, [[round(v, 4) for v in q] for q in p]] for k, p in sup]
+    return t
+
+
+def stand(tower, lean):
+    """The statics pass on the tower leaning this much: check()'s result plus the sheared tower."""
+    t = resup(tower, lean)
+    return check(t, spread_rows=True), t
+
+
+def grips(tower, lean):
+    """How tightly each block is held (0 loose … 1 tight), by id: half its share of the weight its layer carries,
+    half how snugly it happened to be made."""
+    res, t = stand(tower, lean)
+    tot = {}
+    for b, c in zip(t, res["carry"]):
+        tot[b["L"]] = tot.get(b["L"], 0.0) + c
+    return {b["id"]: round(max(0.0, min(1.0, 0.5 * (c / tot[b["L"]] if tot[b["L"]] > EPS else 0.0) + 0.5 * b.get("snug", 0.5))), 3)
+            for b, c in zip(t, res["carry"])}
+
+
+def sigma(g):
+    return LEAN_BASE + LEAN_K * g * g
+
+
+def axis_of(b):
+    return (1.0, 0.0) if b["r"] % 4 == 0 else (0.0, 1.0)
+
+
+def phi(x):
+    return 0.5 * (1 + math.erf(x / math.sqrt(2)))
+
+
+def pullable(tower):
+    """The ids you may pull: not from the top layer, nor the one under it while the top isn't finished."""
+    if not tower:
+        return []
+    top = max(b["L"] for b in tower)
+    full = sum(1 for b in tower if b["L"] == top) == 3
+    lim = top if full else top - 1
+    return [b["id"] for b in tower if b["L"] < lim]
+
+
+def target(tower):
+    """The layer a block goes on next and its open slots."""
+    top = max((b["L"] for b in tower), default=-1)
+    have = {b["slot"] for b in tower if b["L"] == top}
+    if top < 0 or len(have) == 3:
+        return top + 1, [0, 1, 2]
+    return top, [s for s in range(3) if s not in have]
+
+
+def pull_risk(tower, lean, bid, g):
+    """What pulling block bid would do: the tower's margin straight after (m, < 0: it holds the tower up) and
+    the chance it goes over pulled towards -axis and +axis ([risk-, risk+]), from the margin with the lean pushed
+    2σ each way along the pull (taken as straight lines between)."""
+    after = [b for b in tower if b["id"] != bid]
+    b = next(b for b in tower if b["id"] == bid)
+    m0 = stand(after, lean)[0]["margin"]
+    if m0 < 0:
+        return m0, [1.0, 1.0]
+    s = sigma(g)
+    ax, az = axis_of(b)
+    ms = [stand(after, (lean[0] + d * 2 * s * ax, lean[1] + d * 2 * s * az))[0]["margin"] for d in (-1, 1)]
+    out = []
+    for side in (-1, 1):
+        mu = side * LEAN_PUSH * s   # the lean the pull adds, along +axis: ~ N(mu, s)
+        p = 0.0
+        for d, m in zip((-1, 1), ms):
+            slope = (m0 - m) / (2 * s)    # margin lost per unit of lean that way
+            if slope > EPS:
+                need = m0 / slope          # this much lean that way brings it over
+                p += 1 - phi((need - d * mu) / s)
+        out.append(round(min(1.0, p), 3))
+    return m0, out
+
+
 class Wobble(Game):
     id = "wobble"
     category = "party"
@@ -329,22 +500,30 @@ class Wobble(Game):
         "🎁 After you place, pick which of the next three blocks the next player has to set. Hand them something awkward!",
         "Topple the tower and you lose a ❤️ (the tower starts again). Hands shake more the higher it gets, and 🌬 gusts lean it every fourth turn.",
         "The last builder standing wins. ⭐ Every block that makes the tower its tallest yet earns a star (ties go to stars).",
+        "🪵 Pull & Stack mode: the tower starts built, 12 layers of 3 planks. Tap a plank and drag it out (or 🪵 Pull), then tap a spot on top to set it there. Topple it and lose a ❤️.",
+        "🪵 Tap a plank to feel it: 🟢 loose ones barely move the tower, 🔴 tight ones drag it and it leans more each time. Pull toward the high side to straighten it. ⭐ for every tight plank you get out.",
     ]
     name = "Wobble Tower"
     icon = "🧱"
-    blurb = "Stack odd blocks on one shaky 3D tower, then gift the next player an awkward one. Topple it and lose a life."
+    blurb = ("Stack odd blocks on one shaky 3D tower and gift the next player an awkward one, or 🪵 pull planks out of a "
+             "built tower and set them on top. Topple it and lose a life.")
     min_players = 2
     max_players = 6
     badges = {**Game.badges,
               "steady": ("🤲", "Steady hands", "Make 5 placements in a row on a tower close to tipping"),
               "sky": ("🏙️", "Skyscraper", f"Set a block whose top reaches height {int(SKY)}")}
     settings_schema = {
+        "mode": ("Mode", [("build", "🧱 Build: odd blocks, gift the next one"), ("pull", "🪵 Pull & Stack: pull a plank, put it on top")], "build"),
         "lives": ("Lives", [(2, "❤️❤️ 2"), (1, "❤️ 1"), (3, "❤️❤️❤️ 3")], 2),
-        "gusts": ("Gusts", [("on", "🌬 On"), ("off", "Off")], "on"),
-        "blocks": ("Blocks", [("mixed", "🎲 Mixed"), ("simple", "🧊 Boxes only")], "mixed"),
+        "gusts": ("Gusts (Build)", [("on", "🌬 On"), ("off", "Off")], "on"),
+        "blocks": ("Blocks (Build)", [("mixed", "🎲 Mixed"), ("simple", "🧊 Boxes only")], "mixed"),
     }
 
     # -- setup
+
+    @property
+    def pullm(self):
+        return self.s.get("mode", "build") == "pull"
 
     def start(self, seated, rng):
         self.rng = rng
@@ -362,10 +541,17 @@ class Wobble(Game):
         self.placer = None
         self.ready_at = 0.0
         self.bag = []
-        self.current = self.draw()
-        self.next3 = [self.draw() for _ in range(3)]
-        self.gust = self.new_gust(GUST_EVERY - 1) if self.s.get("gusts", "on") == "on" else None
-        self.room.add_log(f"🧱 Wobble Tower: {lives} {'life' if lives == 1 else 'lives'} each. Don't be the one who topples it!", "big")
+        self.ver, self.info_c = 0, None
+        if self.pullm:
+            self.current, self.next3, self.gust = "plank", [], None
+            self.new_tower()
+            self.phase = "pull"
+            self.room.add_log(f"🪵 Pull & Stack: {lives} {'life' if lives == 1 else 'lives'} each. Pull a plank, set it on top, don't topple it!", "big")
+        else:
+            self.current = self.draw()
+            self.next3 = [self.draw() for _ in range(3)]
+            self.gust = self.new_gust(GUST_EVERY - 1) if self.s.get("gusts", "on") == "on" else None
+            self.room.add_log(f"🧱 Wobble Tower: {lives} {'life' if lives == 1 else 'lives'} each. Don't be the one who topples it!", "big")
         first = self.rng.randrange(n)
         self.room.begin_turn(self.seats[first])
 
@@ -405,6 +591,8 @@ class Wobble(Game):
 
     def act(self, p, a):
         t = a.get("type")
+        if self.pullm:
+            return self.act_pull(p, a, t)
         if t not in ("place", "gift"):
             raise GameError("Unknown action.")
         self.require_turn(p)
@@ -553,6 +741,13 @@ class Wobble(Game):
         if r.turn not in self.seats:
             return
         i = self.seats.index(r.turn)
+        if self.pullm:
+            self.ready_at = 0
+            if self.phase == "stack":
+                r.add_log(f"⏰ {self.name_of(i)} ran out of time: the plank is set for them.", "power")
+                return self.stack(i, self.plan_stack("easy"))
+            r.add_log(f"⏰ {self.name_of(i)} ran out of time: a plank is pulled for them.", "power")
+            return self.pull(i, *self.plan_pull("normal"))
         if self.phase == "gift":
             return self.gift(i, self.rng.randrange(len(self.next3)), auto=True)
         r.add_log(f"⏰ {self.name_of(i)} ran out of time: the block is set for them.", "power")
@@ -570,6 +765,10 @@ class Wobble(Game):
             return self.finish_by_score(None)
         if r.turn == p.id:
             i = self.seat(p)
+            if self.pullm:
+                if self.phase == "stack":
+                    return self.stack(i, self.plan_stack("easy"))
+                return self.pass_turn(i)
             self.gift(i, self.rng.randrange(len(self.next3)), auto=True)
 
     # -- view
@@ -585,6 +784,8 @@ class Wobble(Game):
 
     def view(self, p):
         g = self.gust
+        if self.pullm:
+            return self.view_pull(p)
         return {"wobble": {
             "seats": self.seats, "me": self.seat(p), "lives": self.lives, "maxLives": self.s.get("lives", 2),
             "stars": self.stars, "tower": self.tower, "current": self.current, "next3": self.next3,
@@ -711,6 +912,216 @@ class Wobble(Game):
 
     def bot_turn(self, p):
         i = self.seat(p)
+        if self.pullm:
+            if self.phase == "stack":
+                return self.stack(i, self.plan_stack(p.bot))
+            return self.pull(i, *self.plan_pull(p.bot))
         if self.phase == "gift":
             return self.gift(i, self.pick_gift(i, p.bot))
         self.place(i, *self.plan(i, p.bot))
+
+    # -- 🪵 Pull & Stack
+
+    def new_tower(self):
+        t = []
+        for L in range(LAYERS):
+            for sl in range(3):
+                x, z = slot_xz(L, sl)
+                self.bid += 1
+                t.append({"id": self.bid, "s": "plank", "x": x, "z": z, "y": 0.0, "r": layer_rot(L), "o": -1, "L": L,
+                          "slot": sl, "snug": round(self.rng.random(), 2)})
+        self.tower = resup(t)
+        self.lean = [0.0, 0.0]
+        self.peak = height(self.tower)
+        self.hand = None
+        self.ver += 1
+
+    def pinfo(self):
+        """Per pullable block: grip, the margin straight after pulling it, and the chance it goes over pulled each
+        way; per open slot on top: the margin with a plank set there. Worked out once per tower."""
+        if self.info_c and self.info_c[0] == self.ver:
+            return self.info_c[1]
+        lean = tuple(self.lean)
+        gr = grips(self.tower, lean)
+        ids = set(pullable(self.tower))
+        blocks = {}
+        if self.phase == "pull":
+            for b in self.tower:
+                if b["id"] in ids:
+                    m, rk = pull_risk(self.tower, lean, b["id"], gr[b["id"]])
+                    blocks[b["id"]] = {"g": gr[b["id"]], "m": round(m, 3), "rk": rk}
+        L, open_ = target(self.tower)
+        slots = {}
+        if self.phase == "stack":
+            for sl in open_:
+                x, z = slot_xz(L, sl)
+                t2 = self.tower + [{"id": -1, "s": "plank", "x": x, "z": z, "y": 0, "r": layer_rot(L), "o": -1, "L": L, "slot": sl}]
+                slots[sl] = round(stand(t2, lean)[0]["margin"], 3)
+        res = {"grip": gr, "blocks": blocks, "layer": L, "open": open_, "slots": slots,
+               "margin": round(stand(self.tower, lean)[0]["margin"], 3)}
+        self.info_c = (self.ver, res)
+        return res
+
+    def act_pull(self, p, a, t):
+        if t not in ("pull", "stack"):
+            raise GameError("Unknown action.")
+        self.require_turn(p)
+        i = self.seat(p)
+        if time.time() < self.ready_at - 0.3:
+            raise GameError("Wait for the tower to settle.")
+        if t == "pull":
+            if self.phase != "pull":
+                raise GameError("Set your plank on top first.")
+            bid, side = a.get("id"), a.get("side", 1)
+            if not isinstance(bid, int) or isinstance(bid, bool) or not any(b["id"] == bid for b in self.tower):
+                raise GameError("Pick a plank in the tower.")
+            if bid not in pullable(self.tower):
+                raise GameError("Not from the top layers: pull one from lower down.")
+            if side not in (1, -1) or isinstance(side, bool):
+                raise GameError("Bad side.")
+            return self.pull(i, bid, side)
+        if self.phase != "stack":
+            raise GameError("Pull a plank out first.")
+        sl = a.get("slot")
+        if not isinstance(sl, int) or isinstance(sl, bool) or sl not in target(self.tower)[1]:
+            raise GameError("Pick an open spot on top.")
+        self.stack(i, sl)
+
+    def pull(self, i, bid, side):
+        lean = tuple(self.lean)
+        gr = grips(self.tower, lean)
+        b = next(b for b in self.tower if b["id"] == bid)
+        g = gr[bid]
+        s = sigma(g)
+        ax, az = axis_of(b)
+        along = self.rng.gauss(side * LEAN_PUSH * s, s)
+        across = self.rng.gauss(0, 0.3 * s)
+        self.lean = [round(lean[0] + along * ax - across * az, 4), round(lean[1] + along * az + across * ax, 4)]
+        after = [c for c in self.tower if c["id"] != bid]
+        res, sheared = stand(after, tuple(self.lean))
+        nm = self.name_of(i)
+        feel = "a tight" if g >= TIGHT else "a loose" if g < LOOSE else "a snug"
+        self.places += 1
+        self.last_id += 1
+        self.ver += 1
+        self.last = {"id": self.last_id, "by": i, "kind": "pull", "block": b,
+                     "side": side, "g": g, "margin": round(res["margin"], 3), "fall": None}
+        if res["fail"]:
+            return self.topple(i, res, sheared, f"pulls {feel} plank from layer {b['L'] + 1} and")
+        self.tower = resup(after)
+        self.hand = {"from": b["L"], "g": g}
+        self.phase = "stack"
+        self.room.add_log(f"🪵 {nm} slides {feel} plank out of layer {b['L'] + 1}.", "info")
+        if g >= TIGHT:
+            self.stars[i] += 1
+            self.moment(f"💪 {nm}: a tight one, out!", "gold", "good")
+        elif res["margin"] < NEAR:
+            self.moment(f"😰 {nm}: by a hair!", "cool", "good")
+        self.ready_at = time.time() + 0.7
+        r = self.room
+        if r.settings.get("timer"):
+            r.deadline = time.time() + max(12, r.settings["timer"] / 2)
+        p = self.pl(i)
+        if p and p.bot:
+            r.bot_at = time.time() + 1.0
+
+    def stack(self, i, sl):
+        L, _ = target(self.tower)
+        x, z = slot_xz(L, sl)
+        y = L * PLANK_H
+        sig = SHAKE * y
+        jx = max(-2.5 * sig, min(2.5 * sig, self.rng.gauss(0, sig))) if sig else 0.0
+        jz = max(-2.5 * sig, min(2.5 * sig, self.rng.gauss(0, sig))) if sig else 0.0
+        self.bid += 1
+        b = {"id": self.bid, "s": "plank", "x": round(x + jx, 4), "z": round(z + jz, 4), "y": y, "r": layer_rot(L), "o": i,
+             "L": L, "slot": sl, "snug": round(self.rng.random(), 2)}
+        tower = self.tower + [b]
+        res, sheared = stand(tower, tuple(self.lean))
+        nm = self.name_of(i)
+        self.places += 1
+        self.last_id += 1
+        self.ver += 1
+        self.hand = None
+        self.last = {"id": self.last_id, "by": i, "kind": "stack", "block": b, "margin": round(res["margin"], 3), "fall": None}
+        if res["fail"]:
+            return self.topple(i, res, sheared, "sets a plank on top and")
+        self.tower = resup(tower)
+        done = sum(1 for c in self.tower if c["L"] == L) == 3
+        self.room.add_log(f"🪵 {nm} sets the plank on top{' and finishes layer ' + str(L + 1) if done else ''}.", "info")
+        if res["margin"] < NEAR:
+            self.moment(f"😰 {nm}: by a hair!", "cool", "good")
+        self.ready_at = time.time() + 0.6
+        if self.places >= 60 * len(self.seats):   # (a pull and a stack each count)
+            return self.finish_by_score("🪵 The builders ran out of turns.")
+        self.pass_turn(i)
+
+    def topple(self, i, res, sheared, what):
+        nm = self.name_of(i)
+        self.lives[i] -= 1
+        self.last["fall"] = {**res["fail"], "tower": sheared}
+        n = len(sheared)
+        self.towers += 1
+        out = self.lives[i] <= 0
+        self.room.add_log(f"💥 {nm} {what} brings the tower down ({n} planks)."
+                          f"{' ' + nm + ' is out!' if out else f' ❤️ {self.lives[i]} left.'}", "big")
+        self.moment(f"💥 {nm} {'is OUT' if out else 'topples it'}!", "bad", "boom")
+        self.new_tower()
+        self.phase = "pull"
+        self.ready_at = time.time() + FALL_PAUSE
+        if out and sum(1 for k in range(len(self.seats)) if self.alive(k)) <= 1:
+            return self.finish_by_score(None)
+        self.pass_turn(i)
+
+    def pass_turn(self, i):
+        self.phase = "pull"
+        self.hand = None
+        r = self.room
+        r.turn = self.seats[i]
+        r.advance()
+        wait = max(0.0, self.ready_at - time.time())
+        if wait:
+            if r.turn and r.players[r.turn].bot:
+                r.bot_at = max(r.bot_at, self.ready_at + 0.4)
+            if r.deadline:
+                r.deadline += wait
+
+    def view_pull(self, p):
+        inf = self.pinfo()
+        return {"wobble": {
+            "mode": "pull", "seats": self.seats, "me": self.seat(p), "lives": self.lives, "maxLives": self.s.get("lives", 2),
+            "stars": self.stars, "tower": self.tower, "current": "plank", "next3": [], "phase": self.phase, "placer": None,
+            "last": self.last, "places": self.places, "gust": None, "peak": round(self.peak, 2),
+            "height": round(height(self.tower), 2), "margin": inf["margin"], "lean": self.lean, "hand": self.hand,
+            "readyIn": max(0.0, round(self.ready_at - time.time(), 2)), "towers": self.towers,
+            "grip": inf["grip"], "blocks": inf["blocks"], "layer": inf["layer"], "open": inf["open"], "slots": inf["slots"],
+            "shapes": SHAPES, "k": {"plinth": PLINTH, "reach": REACH, "snap": SNAP, "ridge": RIDGE, "shake": SHAKE,
+                                    "gustK": GUST_K, "near": NEAR, "tight": TIGHT, "loose": LOOSE, "layerH": PLANK_H},
+        }}
+
+    def plan_pull(self, level):
+        """(id, side): easy goes by feel (loose-looking planks, not one that plainly holds the tower up); normal and
+        hard weigh the chance it goes over, the way they'd pull it (hard also keeps tight planks for later)."""
+        inf = self.pinfo()
+        bl = inf["blocks"]
+        ids = list(bl)
+        if not ids:
+            return self.tower[0]["id"], 1
+        if level == "easy":
+            ok = [k for k in ids if bl[k]["m"] > 0] or ids
+            if random.random() < 0.6:
+                pick = min(random.sample(ok, min(4, len(ok))), key=lambda k: bl[k]["g"])
+            else:
+                pick = random.choice(ok)
+            return pick, random.choice((1, -1))
+        noise = 0.05 if level == "normal" else 0.005
+        wg = 0.02 if level == "normal" else 0.05
+        best = min(ids, key=lambda k: min(bl[k]["rk"]) + wg * bl[k]["g"] + random.uniform(0, noise) + (5 if bl[k]["m"] < 0 else 0))
+        rk = bl[best]["rk"]
+        return best, (-1 if rk[0] < rk[1] else 1 if rk[1] < rk[0] else random.choice((1, -1)))
+
+    def plan_stack(self, level):
+        inf = self.pinfo()
+        slots = inf["slots"] or {s: 0 for s in inf["open"]}
+        if level == "easy":
+            return random.choice(list(slots))
+        return max(slots, key=lambda s: slots[s] + random.uniform(0, 0.02 if level == "normal" else 0.001))
