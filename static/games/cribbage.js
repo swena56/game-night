@@ -80,6 +80,10 @@ UI.cribbage = (() => {
         const plus = ctx.el('span', 'cb-plus', `+${score - was}`); plus.style.left = at(score);
         bar.append(plus);
       } else peg.style.left = at(score);
+      // a halfway post (the first lap's end on a real board) and the finish flag
+      const mid = ctx.el('span', 'cb-post'); mid.style.left = at(Math.round(g.target / 2)); mid.title = `Halfway (${Math.round(g.target / 2)})`;
+      const fin = ctx.el('span', 'cb-post fin'); fin.style.left = '100%'; fin.title = `Finish (${g.target})`; fin.textContent = '🏁';
+      bar.append(mid, fin);
       // the skunk line, 30 short of the finish: a rival who hasn't reached it when the game ends is skunked
       const skunk = ctx.el('span', 'cb-skunk'); skunk.style.left = at(g.target - 30); skunk.title = `Skunk line (${g.target - 30})`;
       bar.append(skunk);
