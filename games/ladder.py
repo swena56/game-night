@@ -13,6 +13,7 @@ ALPHA = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 REVEAL_SECS = 7
 PAR = {3: (3, 5), 4: (4, 6), 5: (4, 7)}   # the everyday-word ladder lengths a puzzle may have
 FINISH, OVER_PAR, FIRST, HINT = 10, 2, 5, 3
+CLEAN = 3  # 🧼 bonus for a climb at or under par with no undo, hint or peek
 PEEK = 1  # 🔎 shows which letter to change next, for a point
 BOT = {  # chance each step heads the right way, and seconds per step
     "easy": (0.55, 6.0, 11.0),
@@ -74,6 +75,7 @@ class Ladder(Game):
         f"Par is the shortest ladder of everyday words. Finishing scores {FINISH}, minus {OVER_PAR} for every step over par; the first to finish gets +{FIRST}.",
         f"Stuck? ↩ takes back a step for free, 🔎 shows which letter to change next for {PEEK} point, and 💡 fills in the next step for {HINT} points.",
         "Most points after the last ladder wins. Alone, finish every ladder to win.",
+        f"🧼 Clean climb: finish at or under par without taking back a step, or using 💡 or 🔎, for +{CLEAN}.",
         "With 🏃 Sprint on, the first player to the top cuts everyone else's clock to 15 seconds.",
     ]
     name = "Word Ladder"
@@ -86,6 +88,7 @@ class Ladder(Game):
         "rounds": ("Ladders", [(3, "3"), (5, "5"), (1, "1")], 3),
         "secs": ("Time per ladder", [(90, "90 s"), (120, "2 min"), (60, "60 s")], 90),
         "daily": ("Puzzles", [(False, "🎲 Random"), (True, "📅 Today's ladders (the same everywhere)")], False),
+        "clean": ("🧼 Clean climb bonus", [(True, f"On: +{CLEAN} for par or better with no undo or hints"), (False, "Off")], True),
         "sprint": ("🏃 Sprint", [(False, "Off"), (True, "On: the first to finish cuts everyone else to 15 s")], False),
     }
     badges = {**Game.badges, "par": ("⛳", "On par", "Climb a ladder in par steps with no hints or peeks"),
@@ -154,6 +157,7 @@ class Ladder(Game):
         self.done = {}      # pid -> seconds taken
         self.hints = {}     # pid -> hints used this round
         self.peeks = {}     # pid -> peeks used this round
+        self.undos = {}     # pid -> steps taken back this round
         self.peek = {}      # pid -> [word, spot]: the letter of `word` to change next
         self.gained = {}
         self.stage = "climb"
@@ -275,6 +279,7 @@ class Ladder(Game):
             if len(path) < 2:
                 raise GameError("Nothing to take back.")
             path.pop()
+            self.undos = {**getattr(self, "undos", {}), p.id: getattr(self, "undos", {}).get(p.id, 0) + 1}
         elif kind == "hint":
             nxt = self.best_step(path[-1], path)
             if nxt is None:   # the ladder doubled back on itself: undo to get unstuck
@@ -303,13 +308,18 @@ class Ladder(Game):
         first = len(self.done) == 1 and not self.solo
         steps = len(path) - 1
         pts = max(2, FINISH - OVER_PAR * max(0, steps - self.par)) + (FIRST if first else 0)
+        clean = (self.s.get("clean", True) and steps <= self.par and not self.hints.get(p.id)
+                 and not getattr(self, "peeks", {}).get(p.id) and not getattr(self, "undos", {}).get(p.id))
+        pts += CLEAN if clean else 0
         pts = max(0, pts - HINT * self.hints.get(p.id, 0) - PEEK * getattr(self, "peeks", {}).get(p.id, 0))
         p.g.score += pts
         p.g.finished += 1
         self.gained[p.id] = pts
         self.plans = [x for x in self.plans if x[1] != p.id]
         extra = f", {steps - self.par} over par" if steps > self.par else ", on par!"
-        self.room.add_log(f"🏁 {p.name} reached {self.target} in {steps} steps{extra} +{pts}" + (" (first!)" if first else ""), "power")
+        self.room.add_log(f"🏁 {p.name} reached {self.target} in {steps} steps{extra} +{pts}" + (" (first!)" if first else "") + (f" 🧼 clean +{CLEAN}" if clean else ""), "power")
+        if clean:
+            self.moment(f"🧼 {p.name}: a clean climb! +{CLEAN}", "cool", "tag")
         if first:
             self.moment(f"🏁 {p.name} topped out first!", "cool", "tag")
         if steps < self.par:
