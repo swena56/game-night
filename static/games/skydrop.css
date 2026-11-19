@@ -1,0 +1,22 @@
+/* skydrop: responsive controls and HUD for the Sky Drop 3D shaft. */
+.sd { max-width: 760px; margin: 0 auto; user-select: none; -webkit-user-select: none; overscroll-behavior: none; }
+.sd-stage { position: relative; height: clamp(300px, calc(var(--room) - 150px), 660px); overflow: hidden; border-radius: var(--radius); background: #11132b; touch-action: none; }
+.sd-stage canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+.sd-hud { position: absolute; z-index: 2; top: 9px; left: 10px; right: 10px; display: flex; justify-content: space-between; gap: 6px; pointer-events: none; color: #17223d; font-family: var(--font-display); font-weight: 800; }
+.sd-hud > * { padding: 3px 10px; border-radius: 999px; background: #f5fbffe0; box-shadow: 0 2px 8px #080a2060; }
+.sd-progress { position: absolute; z-index: 2; top: 48px; left: 12px; right: 12px; height: 5px; border-radius: 4px; background: #ffffff55; overflow: hidden; pointer-events: none; }
+.sd-progress i { display: block; width: 0; height: 100%; background: linear-gradient(90deg,#59e1ef,#ffcf68); transition: width .15s linear; }
+.sd-banner { position: absolute; z-index: 3; left: 50%; top: 50%; transform: translate(-50%,-50%); min-width: 180px; max-width: calc(100% - 28px); padding: 12px 18px; border: 1px solid #ffffff70; border-radius: var(--r-md); color: #f8fbff; text-align: center; font: 800 24px var(--font-display); background: #10152be8; box-shadow: 0 8px 30px #07091a88; }
+.sd-banner p { margin: 4px 0; font: 700 15px var(--font-display); text-align: left; }
+.sd-stick { position: absolute; z-index: 2; width: 52px; height: 52px; margin: -26px; border: 1px solid #ffffffaa; border-radius: 50%; background: #c7f6ff44; pointer-events: none; }
+.sd-stick i { position: absolute; inset: 12px; border-radius: 50%; background: #efffffdd; box-shadow: 0 0 12px #7bf4ff; }
+.sd-controls { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); margin-top: var(--s2); }
+.sd-controls button { min-width: 112px; min-height: 52px; font-size: 18px; touch-action: none; }
+.sd-controls button small { display: inline-grid; place-items: center; min-width: 20px; height: 20px; margin-left: 4px; border-radius: 50%; color: #fff; background: #11152e88; }
+.sd-row { display: grid; grid-template-columns: 10px 1fr auto auto; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--line, #ffffff18); }
+.sd-row i { width: 9px; height: 24px; border-radius: 5px; box-shadow: 0 0 8px currentColor; }
+.sd-row span { overflow: hidden; text-overflow: ellipsis; }
+.sd-row b { font-size: 13px; white-space: nowrap; }
+.sd-row small { opacity: .7; width: 34px; text-align: right; }
+body.focus .sd-stage { height: max(280px,calc(var(--room) - 155px)); }
+@media (prefers-reduced-motion: reduce) { .sd-progress i { transition: none; } }
