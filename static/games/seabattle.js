@@ -30,6 +30,7 @@ UI.seabattle = (() => {
       </div>
       <div id="sbFire">
         <div class="row sb-tools"><button id="sbSonar" class="big">📡 Use sonar</button><button id="sbTorp" class="big" hidden>💥 Torpedo</button></div>
+        <div id="sbReview" class="hint left" hidden></div>
         <div id="sbFleets" class="hint left"></div>
       </div></div>`;
     dragToPlace($('sbMine'));
@@ -111,7 +112,8 @@ UI.seabattle = (() => {
     $('sbFire').hidden = placing;
     $('sbEnemy').closest('.seas').classList.toggle('firing', !placing);  // phones: your fleet shrinks under the enemy's
     $('sbEnemyTitle').parentElement.hidden = placing && playing && !ready;
-    $('sbMineTitle').textContent = playing ? 'Your fleet' : `${ctx.player(sea.player)?.name ?? ''}'s fleet`;
+    $('sbMineTitle').textContent = S.phase === 'over' ? 'Your waters · rival shots' : playing ? 'Your fleet' : `${ctx.player(sea.player)?.name ?? ''}'s fleet`;
+    $('sbEnemyTitle').textContent = S.phase === 'over' ? 'Enemy waters · your hunt' : 'Enemy waters';
 
     // my board: placement preview, or real fleet with incoming shots
     const mine = $('sbMine').children;
@@ -120,15 +122,27 @@ UI.seabattle = (() => {
       : sea.mine.map((s, i) => ({ cells: s.cells || [], idx: i, sunk: s.sunk }));
     for (const s of myShips) for (const x of s.cells) shipAt.set(x.join(), s);
     const incoming = new Map(sea.theirShots.map(([r, c, v]) => [`${r},${c}`, v]));
+    const mySeat = sea.seats.indexOf(sea.player), post = sea.postScans;
+    const rivalScans = post && mySeat >= 0 ? (post[1 - mySeat] || []) : [];
+    const rivalScanArea = new Set(), rivalScanCentres = new Map();
+    for (const [r, c, n] of rivalScans) {
+      rivalScanCentres.set(`${r},${c}`, n);
+      for (let y = r - 1; y <= r + 1; y++) for (let x = c - 1; x <= c + 1; x++)
+        if (y >= 0 && x >= 0 && y < N && x < N) rivalScanArea.add(`${y},${x}`);
+    }
     const myHull = hulls(myShips.map((x) => x.cells), new Map());
     const lastIn = sea.theirShots.at(-1), newIn = seenIncoming != null && sea.theirShots.length > seenIncoming;
     for (let i = 0; i < N * N; i++) {
       const k = `${Math.floor(i / N)},${i % N}`, cell = mine[i], s = shipAt.get(k), hit = incoming.get(k);
       cell.className = 'sea-cell' + (s ? ' ship ' + myHull.get(k) : '') + (s && s.sunk ? ' sunk' : '') + (s && placing && s.idx === pick ? ' picked' : '')
+        + (rivalScanArea.has(k) ? ' scanned-other' : '')
         + (newIn && lastIn && `${lastIn[0]},${lastIn[1]}` === k ? (hit === 'miss' ? ' plop' : ' boom') : '');
       // pegs, not emoji: a white ring for a miss, a red peg for a hit
       cell.textContent = '';
+      const scanCount = rivalScanCentres.get(k);
+      if (scanCount != null) cell.textContent = String(scanCount);
       if (hit) { cell.classList.add(hit === 'miss' ? 'peg-miss' : 'peg-hit'); cell.title = hit === 'miss' ? 'Miss' : `Hit${s ? ` on your ${s.name || 'ship'}` : ''}`; }
+      else if (rivalScanArea.has(k)) cell.title = scanCount == null ? 'Inside an opponent sonar scan' : `Opponent sonar: ${scanCount} ship squares in this 3×3 scan`;
       cell.disabled = !(placing && playing && !ready);
     }
 
@@ -205,6 +219,14 @@ UI.seabattle = (() => {
     };
     $('sbFleets').innerHTML = '';
     $('sbFleets').append(fleet('Enemy', sea.enemy, false), fleet('Yours', sea.mine, true));
+    const review = $('sbReview');
+    review.hidden = S.phase !== 'over';
+    if (S.phase === 'over') {
+      const hits = sea.myShots.filter(([, , v]) => v !== 'miss').length;
+      const misses = sea.myShots.filter(([, , v]) => v === 'miss').length;
+      const myScans = sea.scans.length;
+      review.textContent = `Post-game hunt · your shots: ${hits} hits, ${misses} misses · your sonar scans: ${myScans}. Purple marks show the opponent’s scans of your waters (${rivalScans.length}); each centre gives their count.`;
+    }
   }
 
   // while placing, a ship can be dragged to a new spot: grab any part of it and it follows your finger,

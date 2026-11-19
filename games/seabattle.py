@@ -285,6 +285,8 @@ class SeaBattle(Game):
             "sonar": getattr(me.g, "sonar", 0) if me and me.id == p.id else 0,
             "torpedo": getattr(me.g, "torpedo", 0) if me and me.id == p.id else 0,
             "scans": me.g.scans if me and (me.id == p.id or see_all) else [],
+            "postScans": ([room.players[i].g.scans if i in room.players else [] for i in self.seats]
+                          if room.phase == "over" else None),
             "last": self.last, "player": me.id if me else None,
         }}
 
