@@ -256,6 +256,10 @@ class Scopa(CardGame):
                 label = f"Take {show(cap)}" if cap else "Lay it on the table"
                 if cap and len(cap) == len(self.table_cards) and not self.last_play(i):
                     label += " 🧹"
+                if cap and "7D" in (c, *cap):
+                    label += " 🌟 7♦"
+                elif not cap and c == "7D":
+                    label += " ⚠️ gives away 7♦"
                 moves.append({"card": c, "label": label, "a": {"type": "play", "card": c, "take": list(cap)}})
             t["moves"] = moves
             t["note"] = "Tap a card to play it." + (" Several captures: you'll pick one." if any(len(self.captures(c)) > 1 for c in self.hands[i]) else "")
