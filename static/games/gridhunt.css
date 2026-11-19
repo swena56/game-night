@@ -48,3 +48,12 @@ body.calm .gh-tile.trace { background: linear-gradient(#8ecae6, #4dabf7); }
 .gh-grid > * { rotate: calc(-1 * var(--turn, 0deg)); }
 /* letters stay upright (rotate adds to any transform) */
 .gh-grid.frenzy { box-shadow: 0 0 0 3px #ffd166, 0 0 26px #ffd16699; }
+/* grid hunt: 🔥 your hunt map after the round (heat on the tiles, so it turns with the grid) and your best misses */
+.gh-tile.heat, .gh-tile.heat:disabled { filter: none; background: linear-gradient(color-mix(in srgb, #ff8c42 calc(var(--heat, 0) * 100%), #fbf5e6),
+  color-mix(in srgb, #d62839 calc(var(--heat, 0) * 100%), #e9dfc4)); }
+.gh-tile.heat[data-heat="0"] { filter: saturate(.2) brightness(.6); }
+.gh-tile.heat:not([data-heat="0"])::before { content: attr(data-heat); position: absolute; left: 5px; bottom: 3px; font-size: 11px;
+  font-weight: 800; color: #2a2238; opacity: .75; }
+.gh-review { border-bottom: 1px solid var(--line); padding-bottom: 6px; margin-bottom: 4px; }
+.gh-review > .hint { flex-basis: 100%; text-align: left; }
+.gh-chip.miss { background: color-mix(in srgb, var(--accent) 25%, var(--panel2)); }

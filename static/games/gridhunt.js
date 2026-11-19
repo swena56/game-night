@@ -174,6 +174,15 @@ UI.gridhunt = (() => {
       });
     }
     for (const b of grid.children) b.disabled = !live();
+    // 🔥 your hunt map (once time is up): each tile glows by how many of your words ran through it. The
+    // heat sits on the tiles themselves, so it turns with the grid (⟳).
+    const heat = g.review?.heat, top = heat ? Math.max(1, ...heat) : 1;
+    [...grid.children].forEach((b, i) => {
+      const h = heat?.[i] || 0;
+      b.classList.toggle('heat', !!heat);
+      if (heat) b.style.setProperty('--heat', h ? (0.3 + 0.7 * Math.sqrt(h / top)).toFixed(2) : 0); else b.style.removeProperty('--heat');
+      b.dataset.heat = heat ? h : '';
+    });
     $('ghRound').textContent = `🔎 Round ${g.round} of ${g.rounds} · ${g.total} words hidden · ${g.minLen}+ letters` + (g.target ? ` · target ${g.target}` : '');
 
     const mine = $('ghMine'); mine.innerHTML = '';
@@ -199,6 +208,17 @@ UI.gridhunt = (() => {
     if (g.results) {
       res.innerHTML = '';
       res.append(ctx.el('h3', '', S.phase === 'over' ? `Round ${g.round} results` : `Round ${g.round} results — next grid soon…`));
+      if (g.review) {
+        const box = ctx.el('div', 'gh-list gh-review');
+        box.append(ctx.el('b', '', '🔥 Your hunt map'));
+        const used = g.review.heat.filter((h) => h > 0).length;
+        box.append(ctx.el('div', 'hint left', used ? `Glowing tiles carried your words (brighter = more of them). You used ${used} of ${g.review.heat.length} tiles.` : 'No words this round, so the grid stays cold.'));
+        if (g.review.missed.length) {
+          box.append(ctx.el('div', 'hint left', 'Your best misses (tap one to trace it):'));
+          for (const [w, pts] of g.review.missed) { const chip = ctx.el('span', 'gh-chip miss', `${w} ${pts}`); traceable(chip, w); box.append(chip); }
+        }
+        res.append(box);
+      }
       const ids = Object.keys(g.results.lists).sort((a, b) => g.results.pts[b] - g.results.pts[a]);
       const rk = `${g.round}`, freshResults = seenResults !== rk && motionOK();
       seenResults = rk;

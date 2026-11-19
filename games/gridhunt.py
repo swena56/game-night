@@ -66,6 +66,31 @@ def value(word):
     return max(1, len(word) - 2)
 
 
+def trace(tiles, n, word, star=-1):
+    """One tracing of word on the grid (tile indexes), preferring one through the star tile; None if none."""
+    best = None
+
+    def walk(i, at, path):
+        nonlocal best
+        t = tiles[i]
+        if i in path or not word.startswith(t, at):
+            return False
+        path = path + [i]
+        if at + len(t) == len(word):
+            if best is None or (star in path and star not in best):
+                best = path
+            return star in path
+        return any(walk(j, at + len(t), path) for j in neighbours(i, n))
+
+    for i in range(n * n):
+        if walk(i, 0, []):
+            break
+    return best
+
+
+MY_MISSES = 6  # the best-scoring words each hunter missed, shown on their own results
+
+
 FRENZY_SECS = 15  # ⚡ the end of each round, when words count double (an option)
 
 class GridHunt(Game):
@@ -80,6 +105,7 @@ class GridHunt(Game):
         "Alone, every word counts: reach the target score to win.",
         "With ⚡ Frenzy on, words found in the last 15 seconds of a round score double.",
         "⟳ turns the grid a quarter turn on your screen only, to see it fresh.",
+        "🔥 When time is up, your own hunt map lights the tiles your words used, and lists your best-scoring misses (tap one to trace it).",
     ]
     name = "Grid Hunt"
     icon = "🔎"
@@ -264,6 +290,7 @@ class GridHunt(Game):
             self.moment(f"🧵 {p.name}: {w.upper()} · longest word +{LONGEST_BONUS}", "gold", "tag")
         for p in live:
             p.g.score += p.g.round_pts
+            self.hunt_map(p)
         missed = sorted((w for w in self.all if not counts[w]), key=lambda w: (-len(w), w))[:8]
         self.results = {
             "lists": {p.id: [[w, self.worth(p, w), counts[w] > 1] for w in sorted(p.g.words, key=lambda w: (-len(w), w))]
@@ -279,6 +306,17 @@ class GridHunt(Game):
         self.plans = []
         self.end = self.now() + REVEAL_SECS
         self.room.deadline = self.end - self.skew
+
+    def hunt_map(self, p):
+        """🔥 p's private review of the round: how many of p's words ran through each tile, and the
+        best-scoring words p missed (only built once time is up)."""
+        heat = [0] * (self.n * self.n)
+        for w in p.g.words:
+            for i in trace(self.tiles, self.n, w, self.star) or ():
+                heat[i] += 1
+        have = set(p.g.words)
+        miss = sorted((w for w in self.all if w not in have), key=lambda w: (-self.points(w), -len(w), w))[:MY_MISSES]
+        p.g.review = {"round": self.round, "heat": heat, "missed": [[w, self.points(w)] for w in miss]}
 
     def target(self):
         """The solo goal: about what a quick human finds (20 a round on 4×4, 30 on 5×5, for 90 s)."""
@@ -321,6 +359,7 @@ class GridHunt(Game):
     def view(self, p):
         mine = getattr(p.g, "words", [])
         open_ = self.stage == "reveal" or self.room.phase == "over"
+        rv = getattr(p.g, "review", None)
         return {"gridhunt": {
             "stage": self.stage, "round": self.round, "rounds": self.s["rounds"], "n": self.n,
             "tiles": self.tiles, "star": self.star, "minLen": self.min_len, "total": len(self.all),
@@ -330,6 +369,8 @@ class GridHunt(Game):
             "lengths": self.lengths(mine),
             "counts": {q.id: len(q.g.words) for q in self.room.contenders() if hasattr(q.g, "words")},
             "results": self.results if open_ else None,
+            # 🔥 your own hunt map and best misses: private, and only once this round's time is up
+            "review": rv if open_ and rv and rv.get("round") == self.round else None,
             "standings": self.standings() if self.stage == "reveal" else None,
             "target": self.target() if len(self.room.seated()) == 1 else None,
         }}
