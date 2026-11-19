@@ -6,6 +6,7 @@ import time
 from .base import Game, GameError
 
 GEM = 3
+STREAK = [(3, 2), (6, 4)]  # boxes closed in one turn -> bonus points
 
 
 class Boxes(Game):
@@ -16,6 +17,7 @@ class Boxes(Game):
         "Draw the 4th side of a box to claim it — then you move again.",
         "Careful: drawing a box's 3rd side hands it to the next player.",
         "💎 Gem boxes are worth 3. Most points when the grid is full wins.",
+        "🔥 Hot streak: close 3 boxes in one turn for +2, and 6 for another +4.",
     ]
     name = "Dots & Boxes"
     icon = "🔳"
@@ -27,6 +29,7 @@ class Boxes(Game):
         "size": ("Grid", [(3, "3×3 (quick)"), (4, "4×4"), (5, "5×5"), (6, "6×6 (long)"),
                           ("4x6", "4×6 wide"), ("5x8", "5×8 wide (long)")], 4),
         "gems": ("Gem boxes", [(True, "💎 On"), (False, "Off")], True),
+        "streak": ("🔥 Hot streak", [(True, "On: +2 at 3 boxes in a turn, +4 more at 6"), (False, "Off")], True),
         "headstart": ("Head start", [(False, "Empty grid"), (True, "✏️ Some safe lines already drawn")], False),
     }
 
@@ -136,12 +139,18 @@ class Boxes(Game):
             self.owner[br][bc] = seat
             p.g.score += self.value((br, bc))
             p.g.boxes += 1
+        before = self.run - len(won)
+        for need, bonus in STREAK:  # 🔥 a streak step crossed by this line pays out once
+            if self.s.get("streak", True) and won and before < need <= self.run:
+                p.g.score += bonus
+                self.room.add_log(f"🔥 {p.name} is on a hot streak: {need} boxes in a turn, +{bonus}!", "power")
+                self.moment(f"🔥 {p.name}: {need} in a row, +{bonus}!", "gold", "fanfare")
         where = f"{'—' if d == 'h' else '|'} {r + 1}·{c + 1}"
         if won:
             pts = sum(self.value(b) for b in won)
             gem = " 💎" if any(self.value(b) > 1 for b in won) else ""
             self.room.add_log(f"{p.name} closes {len(won)} box{'es' if len(won) > 1 else ''}{gem} (+{pts}) and goes again.", "question")
-            if self.run >= 4 and self.run - len(won) < 4:
+            if not self.s.get("streak", True) and self.run >= 4 and self.run - len(won) < 4:
                 self.moment(f"⛓ {p.name} is on a chain!", "gold", "tag")
         else:
             self.room.add_log(f"{p.name} draws {where}", "question")
