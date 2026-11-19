@@ -27,22 +27,22 @@ acceptance check before they can be considered complete.
 | Game (`id`) | What to change | Acceptance check |
 |---|---|---|
 | Unmask (`unmask`) | Add a post-round deduction recap that shows which asked traits eliminated which faces, while keeping unrevealed faces hidden until the round ends. **Implemented; verification pending.** | In a completed round, each elimination can be traced to a public answer; private Manhunt answers remain private until reveal. |
-| Odd One Out (`oddone`) | Add a short optional final defense: after votes lock, let the accused odd player give one last clue before the reveal. | The defense appears once, cannot change votes, and the odd player still does not learn their role early. |
-| Scribble Relay (`relay`) | Add a replay control for each revealed chain so players can step through it again after the initial reveal. | Replay shows the same cards in order, does not duplicate votes or scores, and works on a narrow phone screen. |
+| Odd One Out (`oddone`) | Add a short optional final defense: after votes lock, let the accused odd player give one last clue before the reveal. **Implemented; verification pending.** | The defense appears once, cannot change votes, and the odd player still does not learn their role early. |
+| Scribble Relay (`relay`) | Add a replay control for each revealed chain so players can step through it again after the initial reveal. **Implemented; verification pending.** | Replay shows the same cards in order, does not duplicate votes or scores, and works on a narrow phone screen. |
 | Trivia Rush (`trivia`) | Add a one-sentence explanation to each answer reveal, including why the correct answer is right. **Implemented; verification pending.** | The explanation follows the question through server state, renders after answers lock, and does not reveal the answer before then. |
-| Doodle Dash (`doodle`) | Add a post-round gallery that lets players compare the original picture with the final guesses and accepted answers. | Gallery order and answer data match the round; it appears only after guessing closes and is usable on mobile. |
-| Bingo Bash (`bingo`) | Add a visual near-win callout when a card is one daub away from a winning pattern. | The callout reflects the selected pattern and card, updates after each ball, and never marks an invalid bingo as a win. |
-| Frozen Pond (`pond`) | Add a short catch log with species, weight, location, and fight result for every landed or escaped fish. | The log distinguishes catches from escapes, keeps score consistent, and stays readable during the live round. |
-| Domino Run (`domino`) | Add a build-phase preview that names the first target and likely score for each placed run before the push. | The preview matches the server's topple simulation for paths, merges, blockers, and target scores. |
-| Coin Cascade (`pusher`) | Add an adjustable drop strength so players can trade a shallow safe drop for a deeper, riskier shove. | Strength changes the server's drop physics, is visible before release, and identical inputs produce identical results. |
+| Doodle Dash (`doodle`) | Add a post-round gallery that lets players compare the original picture with the final guesses and accepted answers. **Implemented; verification pending.** | Gallery order and answer data match the round; it appears only after guessing closes and is usable on mobile. |
+| Bingo Bash (`bingo`) | Add a visual near-win callout when a card is one daub away from a winning pattern. **Implemented; verification pending.** | The callout reflects the selected pattern and card, updates after each ball, and never marks an invalid bingo as a win. |
+| Frozen Pond (`pond`) | Add a short catch log with species, weight, location, and fight result for every landed or escaped fish. **Implemented; verification pending.** | The log distinguishes catches from escapes, keeps score consistent, and stays readable during the live round. |
+| Domino Run (`domino`) | Add a build-phase preview that names the first target and likely score for each placed run before the push. **Implemented; browser verification pending.** | The preview matches the server's topple simulation for paths, merges, blockers, and target scores. |
+| Coin Cascade (`pusher`) | Add an adjustable drop strength so players can trade a shallow safe drop for a deeper, riskier shove. **Implemented; browser verification pending.** | Strength changes the server's drop physics, is visible before release, and identical inputs produce identical results. |
 | Wobble Tower (`wobble`) | Add a placement preview that shows the likely lean direction and a simple stability grade before committing a block. | Preview and server verdict agree for edge placements and both Build and Pull & Stack modes. |
-| Night Heist (`heist`) | Add a round-to-round history of each player's public outcomes so the table can read patterns without revealing current picks. | Current choices stay secret until reveal; the history contains only resolved rounds and survives refresh. |
+| Night Heist (`heist`) | Add a round-to-round history of each player's public outcomes so the table can read patterns without revealing current picks. **Implemented; mobile UI verification pending.** | Current choices stay secret until reveal; the history contains only resolved rounds and survives refresh. |
 
 ## Action
 
 | Game (`id`) | What to change | Acceptance check |
 |---|---|---|
-| Spire Siege (`spire`) | Add a short between-wave choice that lets players spend a cleared-ring reward on one of two balanced upgrades. | The choice is private to the player, applies only to their tower, and cannot be selected twice for one reward. |
+| Spire Siege (`spire`) | Add a short between-wave choice that lets players spend a cleared-ring reward on one of two balanced upgrades. **Implemented; browser verification pending.** | The choice is private to the player, applies only to their tower, and cannot be selected twice for one reward. |
 | Prism Pop (`prism`) | Add a board preview for incoming frost or stone attacks so players can plan a match before the obstruction lands. **Implemented; browser verification pending.** | Preview identifies the affected board cells without changing them; attack resolution stays consistent across browsers. |
 | Marble Rush (`marble`) | Add optional checkpoint split times and a personal best ghost for the same course seed. | Ghost follows only that player's saved run, split times sum to the final time, and the race remains fair across players. |
 | Light Riders (`riders`) | Add a limited-use brake or sharp-turn control so riders can choose a precise corner at a speed cost. | Braking reduces speed on server simulation, works from touch and keyboard, and cannot be held to stop indefinitely. |
@@ -72,23 +72,23 @@ acceptance check before they can be considered complete.
 
 | Game (`id`) | What to change | Acceptance check |
 |---|---|---|
-| Tide Castles (`tide`) | Add a wave-by-wave forecast comparison that shows which build pieces protected the keep and which failed. | Explanation follows the actual resolved wave path and scores, including moats, ramparts, and moved keeps. |
+| Tide Castles (`tide`) | Add a wave-by-wave forecast comparison that shows which build pieces protected the keep and which failed. **Implemented; browser verification pending.** | Explanation follows the actual resolved wave path and scores, including moats, ramparts, and moved keeps. |
 | Chess (`chess`) | Add a post-game move review that flags major swings and offers one legal alternative for each turning point. | Alternatives are legal in the recorded position; review is optional and does not change the game result. |
-| Checkers (`checkers`) | Add a move-history replay with forced-capture chains shown as one grouped turn. | Replay reproduces captures, crowning, flying kings, and undo-resolved state exactly. |
-| Backgammon (`backgammon`) | Add a turn analysis that shows legal dice uses the player missed before ending the move. | Analysis respects doubles, bar entry, bearing off, and the must-use-both-or-higher-die rules. |
-| Go (`go`) | Add an endgame territory estimate that marks unsettled groups before both players pass. | Estimate is clearly advisory, does not auto-remove stones, and preserves the chosen scoring rules and komi. |
-| Oware (`oware`) | Add a sowing-path preview that highlights which rival pits would be captured for a selected move. | Preview accounts for wraparound, grand-slam and must-feed rules, and matches the accepted move result. |
-| Reversi (`reversi`) | Add an endgame hint that compares legal moves by immediate flips and exposed corner risk. | Hint never recommends an illegal square and respects blocked-square variants. |
-| Hedgerow (`hedgerow`) | Add a route comparison showing the shortest path before and after a proposed hedge. | Comparison accounts for all placed hedges, hops, and other pawns without suggesting a sealed path. |
-| Kindred (`kindred`) | Add a one-turn lookahead that previews both placement score and the strongest piece the rival could receive. | Preview uses the current scoring rules and cannot leak a piece choice before it is made. |
-| Realm Wars (`realm`) | Add a compact threat forecast for the next rival turn, based on reachable borders and visible troop counts. | Forecast updates after moves and storms, explains its assumptions, and never uses hidden bot or player state. |
-| Sky Drift (`drift`) | Add a wind-route planner that compares likely pennant paths for climb, hold, and descend over the next few turns. | Planner uses the public forecast and storm path and updates when the forecast changes. |
+| Checkers (`checkers`) | Add a move-history replay with forced-capture chains shown as one grouped turn. **Implemented; browser verification pending.** | Replay reproduces captures, crowning, flying kings, and undo-resolved state exactly. |
+| Backgammon (`backgammon`) | Add a turn analysis that shows legal dice uses the player missed before ending the move. **Implemented; browser verification pending.** | Analysis respects doubles, bar entry, bearing off, and the must-use-both-or-higher-die rules. |
+| Go (`go`) | Add an endgame territory estimate that marks unsettled groups before both players pass. **Implemented; browser verification pending.** | Estimate is clearly advisory, does not auto-remove stones, and preserves the chosen scoring rules and komi. |
+| Oware (`oware`) | Add a sowing-path preview that highlights which rival pits would be captured for a selected move. **Implemented; browser verification pending.** | Preview accounts for wraparound, grand-slam and must-feed rules, and matches the accepted move result. |
+| Reversi (`reversi`) | Add an endgame hint that compares legal moves by immediate flips and exposed corner risk. **Implemented; browser verification pending.** | Hint never recommends an illegal square and respects blocked-square variants. |
+| Hedgerow (`hedgerow`) | Add a route comparison showing the shortest path before and after a proposed hedge. **Implemented; browser verification pending.** | Comparison accounts for all placed hedges, hops, and other pawns without suggesting a sealed path. |
+| Kindred (`kindred`) | Add a one-turn lookahead that previews both placement score and the strongest piece the rival could receive. **Implemented; browser verification pending.** | Preview uses the current scoring rules and cannot leak a piece choice before it is made. |
+| Realm Wars (`realm`) | Add a compact threat forecast for the next rival turn, based on reachable borders and visible troop counts. **Implemented; browser verification pending.** | Forecast updates after moves and storms, explains its assumptions, and never uses hidden bot or player state. |
+| Sky Drift (`drift`) | Add a wind-route planner that compares likely pennant paths for climb, hold, and descend over the next few turns. **Implemented; browser verification pending.** | Planner uses the public forecast and storm path and updates when the forecast changes. |
 
 ## Quick classics
 
 | Game (`id`) | What to change | Acceptance check |
 |---|---|---|
-| Sea Battle (`seabattle`) | Add a post-game shot map that separates confirmed hits, misses, and sonar information used during the hunt. | Map reveals fleets only after the game and reproduces all prior scan and shot results. |
+| Sea Battle (`seabattle`) | Add a post-game shot map that separates confirmed hits, misses, and sonar information used during the hunt. **Implemented; browser verification pending.** | Map reveals fleets only after the game and reproduces all prior scan and shot results. |
 | Drop Four (`dropfour`) | Add a one-move threat preview for every column, showing immediate wins and immediate opponent wins. **Implemented; browser verification pending.** | Preview respects gravity, player count, bomb discs, pull-outs, and variant board sizes. |
 | Dots & Boxes (`boxes`) | Add an endgame chain annotation that labels the remaining chains and who is expected to take each one. | Labels match the actual open edge graph and do not affect scoring or move legality. |
 | Tic-Tac-Toe (`tictactoe`) | Add a short rematch series with alternating first move and a series score. | Starter alternates correctly, each board uses the chosen variant, and series standings survive each round. |
