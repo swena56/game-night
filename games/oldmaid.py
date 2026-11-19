@@ -3,7 +3,11 @@
 One queen is taken out, so its partner can never pair: that's the Old Maid. All the cards are dealt
 and everyone puts down their pairs. Then in turn you draw a card, unseen, from the player on your left
 and put down any pair it makes. Get rid of all your cards and you're safe; whoever is left holding the
-Old Maid loses. The first player out wins."""
+Old Maid loses. The first player out wins.
+
+🔍 Peek (default: once a game each): on your turn, before you draw, flip one random card of your neighbour's
+face-up for yourself only. It stays on that spot until you draw; nobody else sees it, and the log only says that
+you peeked."""
 import random
 
 from .cardbase import CardGame, GameError, deck, rank, suit, pretty, rname
@@ -21,9 +25,14 @@ class OldMaid(CardGame):
         "One queen is removed, so one queen can never pair: the Old Maid.",
         "Put down your pairs. Then take turns drawing a hidden card from the player on your left, pairing what you can.",
         "Empty your hand and you're safe. The first out wins; whoever is stuck with the Old Maid loses.",
+        "🔍 Once a game, press Peek before you draw to see one random card of your neighbour's, just for you. It stays put until you draw.",
     ]
     min_players, max_players = 2, 6
-    badges = {**CardGame.badges, "dodge": ("🫣", "Dodged her", "Pass the Old Maid on and still go out first")}
+    badges = {**CardGame.badges, "dodge": ("🫣", "Dodged her", "Pass the Old Maid on and still go out first"),
+              "sidestep": ("👀", "Sidestep", "Peek at the Old Maid and leave her alone")}
+    settings_schema = {"peek": ("🔍 Peek", [(1, "Once a game"), (0, "Off")], 1)}
+    peeks = None   # games saved before 🔍 have none
+    peek = None    # (seat, neighbour, index, card) while that player is deciding
 
     def start(self, seated, rng):
         self.seat_up(seated, rng)
@@ -35,6 +44,8 @@ class OldMaid(CardGame):
         self.out = []
         self.had = [False] * self.n
         self.last = None
+        self.peeks = [self.s.get("peek", 1)] * self.n
+        self.peek = None
         self.room.add_log("👵 Old Maid: one queen has no partner. Don't get stuck with her!", "big")
         for k in range(self.n):
             self.pair_off(k, quiet=True)
@@ -69,9 +80,23 @@ class OldMaid(CardGame):
                 return j
         return None
 
+    def can_peek(self, i):
+        j = self.source(i)
+        return bool(self.peeks and self.peeks[i] > 0 and not self.peek and j is not None and self.hands[j])
+
+    def do_peek(self, i):
+        j = self.source(i)
+        k = self.rng.randrange(len(self.hands[j]))
+        self.peeks[i] -= 1
+        self.peek = (i, j, k, self.hands[j][k])
+        self.room.add_log(f"🔍 {self.nm(i)} peeks at one of {self.nm(j)}'s cards.")
+
     def draw(self, i, k):
         j = self.source(i)
         c = self.hands[j].pop(k)
+        if self.peek and self.peek[0] == i and self.peek[3] == self.maid and c != self.maid and self.pl(i):
+            self.award(self.pl(i), "sidestep")   # peeked the Old Maid and left her alone
+        self.peek = None
         self.rng.shuffle(self.hands[j])
         self.hands[i].append(c)
         self.hands[i].sort(key=SORT)
@@ -103,6 +128,10 @@ class OldMaid(CardGame):
     def act(self, p, a):
         i = self.act_seat(p)
         self.require_turn(p)
+        if a.get("type") == "peek":
+            if not self.can_peek(i):
+                raise GameError("No peek left, or you've already peeked this turn.")
+            return self.do_peek(i)
         if a.get("type") != "draw":
             raise GameError("Unknown action.")
         k = a.get("k")
@@ -113,7 +142,14 @@ class OldMaid(CardGame):
 
     def bot_move(self, i, level):
         j = self.source(i)
-        self.draw(i, random.randrange(len(self.hands[j])))
+        k = random.randrange(len(self.hands[j]))
+        # 🔍 normal and hard bots peek sometimes, and then won't take the Old Maid when there's another card to take
+        if level != "easy" and self.can_peek(i) and random.random() < (0.7 if level == "hard" else 0.4):
+            self.do_peek(i)
+            k = self.peek[2]
+            if self.peek[3] == self.maid and len(self.hands[j]) > 1:
+                k = random.choice([x for x in range(len(self.hands[j])) if x != k])
+        self.draw(i, k)
 
     # -- view
 
@@ -132,8 +168,14 @@ class OldMaid(CardGame):
                         "hint": "The queen of spades has no partner."}}
         if i is not None and self.room.turn == p.id and self.hands[i]:
             j = self.source(i)
-            t["rows"] = [{"label": f"{self.nm(j)}'s", "cards": ["??"] * len(self.hands[j]), "keys": [f"o{k}" for k in range(len(self.hands[j]))]}]
+            seen = self.peek[2] if self.peek and self.peek[0] == i else None   # 🔍 only you, only this turn
+            t["rows"] = [{"label": f"{self.nm(j)}'s", "cards": [self.peek[3] if k == seen else "??" for k in range(len(self.hands[j]))],
+                          "keys": [f"o{k}" for k in range(len(self.hands[j]))]}]
             t["moves"] = [{"card": f"o{k}", "a": {"type": "draw", "k": k}} for k in range(len(self.hands[j]))]
             t["note"] = f"Draw one of {self.nm(j)}'s cards."
+            if seen is not None:
+                t["note"] = f"🔍 You peeked: their card #{seen + 1} is {pretty(self.peek[3])}" + (" — the Old Maid!" if self.peek[3] == self.maid else ".")
+            elif self.can_peek(i):
+                t["buttons"] = [{"label": f"🔍 Peek ({self.peeks[i]} left)", "a": {"type": "peek"}}]
             t["turnText"] = f"🤏 Draw from {self.nm(j)}"
         return t
