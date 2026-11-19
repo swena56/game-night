@@ -62,6 +62,55 @@ def expected(n, one_die):
     return E, best
 
 
+@lru_cache(maxsize=4)
+def shut_odds(n, one_die):
+    """P[mask] = the best chance of shutting every tile from this box (bit i = tile i + 1 open), about to roll."""
+    full = (1 << n) - 1
+    tsum = [sum(i + 1 for i in range(n) if m >> i & 1) for m in range(full + 1)]
+    P = [1.0] + [0.0] * full
+    for m in sorted(range(1, full + 1), key=lambda m: bin(m).count("1")):
+        pick = {}
+        sub = m
+        while sub:
+            t = tsum[sub]
+            if t <= 12 and P[m ^ sub] > pick.get(t, -1):
+                pick[t] = P[m ^ sub]
+            sub = (sub - 1) & m
+        two = sum(p * pick.get(t, 0.0) for t, p in TWO.items())
+        one = one_die and all(not (m >> i & 1) for i in range(6, n))
+        P[m] = max(two, sum(p * pick.get(t, 0.0) for t, p in ONE.items())) if one else two
+    return P
+
+
+def forecast(open_tiles, dice, n, one_die):
+    """📊 What's ahead for this box, from its open tiles and the dice rule. Before a roll: for each way to
+    roll (two dice, and one die when allowed), [average points left with best play, % chance to shut
+    the box]. After a roll: every legal set of tiles to shut, as [tiles, points left now, average
+    final points with best play, % chance to shut], best average first. It only informs: nothing is picked."""
+    E, _ = expected(n, one_die)
+    P = shut_odds(n, one_die)
+    m = to_mask(open_tiles)
+    if not dice:
+        modes = {"2": TWO}
+        if may_roll_one(open_tiles, one_die):
+            modes["1"] = ONE
+        out = {}
+        for k, dist in modes.items():
+            e = sh = 0.0
+            for t, pr in dist.items():
+                fits = [to_mask(o) for o in options(open_tiles, t)]
+                e += pr * (min(E[m ^ f] for f in fits) if fits else sum(open_tiles))
+                sh += pr * (max(P[m ^ f] for f in fits) if fits else 0.0)
+            out[k] = [round(e, 1), round(100 * sh)]
+        return {"roll": out, "options": None}
+    rows = []
+    for o in options(open_tiles, sum(dice)):
+        rest = m ^ to_mask(o)
+        rows.append([o, sum(open_tiles) - sum(o), round(E[rest], 1), round(100 * P[rest])])
+    rows.sort(key=lambda r: (r[2], -r[3]))
+    return {"roll": None, "options": rows}
+
+
 def to_mask(tiles):
     return sum(1 << (t - 1) for t in tiles)
 
@@ -79,6 +128,7 @@ class ShutBox(Game):
         "When no open tiles add up to your roll, your turn ends: the open tiles are your points.",
         "Shut every tile to shut the box: 0 points. Lowest total after the last round wins. Alone, beat the target.",
         "With 📦 Shut it, win it on, shutting the box wins the whole game at once.",
+        "📊 The forecast shows, before a roll, the average points left and the chance to shut the box for two dice or one; after a roll, the same for every set of tiles that fits. It never picks for you.",
     ]
     name = "Shut the Box"
     icon = "📦"
@@ -311,7 +361,11 @@ class ShutBox(Game):
         return {"shutbox": {
             "seats": self.seats, "n": self.n, "round": self.round, "rounds": self.s["rounds"], "stage": self.stage,
             "boxes": boxes, "dice": self.dice, "rolled": self.rolled, "rollId": self.roll_id,
-            "options": opts, "canOne": bool(cur) and not self.rolled and may_roll_one(open_now, self.s["onedie"]),
+            "options": opts,
+            # 📊 the current box's forecast (public, like the box itself); only while a box is being played
+            "forecast": forecast(open_now, self.dice if self.rolled else [], self.n, self.s["onedie"])
+            if cur and self.stage == "play" and (opts or not self.rolled) else None,
+            "canOne": bool(cur) and not self.rolled and may_roll_one(open_now, self.s["onedie"]),
             "done": self.done, "last": self.last, "target": self.target() if len(self.seats) == 1 else None,
             "standings": self.standings() if self.stage == "between" and len(self.seats) > 1 else None,
         }}

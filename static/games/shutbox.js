@@ -17,7 +17,7 @@ UI.shutbox = (() => {
       <div id="sbSum" class="sb-sum"></div>
       <div class="row sb-actions"><button id="sbRoll2" class="primary big">🎲 Roll</button>
         <button id="sbRoll1" class="big">🎲 One die</button><button id="sbShut" class="primary big">📦 Shut</button></div>
-      <p id="sbHint" class="hint"></p><div id="sbStand" hidden></div></div>`;
+      <p id="sbHint" class="hint"></p><div id="sbCast" class="sb-cast"></div><div id="sbStand" hidden></div></div>`;
     side.innerHTML = `<div class="panel"><h3 id="sbRound">Boxes</h3><div id="sbBoxes"></div><p id="sbTarget" class="hint left"></p>
       <div id="sbBest" hidden><h3>🏅 Best solo totals</h3><ol class="ya-best"></ol><p class="hint left">Fewest points first. Kept on this device, for these tiles and rounds.</p></div></div>`;
     $('sbRoll2').onclick = () => ctx.quiet(ctx.act('roll', { dice: 2 }));
@@ -101,6 +101,30 @@ UI.shutbox = (() => {
     $('sbHint').textContent = S.phase !== 'playing' ? '' : sb.stage === 'between' ? 'Next round in a moment…'
       : !mine ? (who ? `${who.name} is playing…` : '') : !sb.rolled ? (sb.canOne ? 'Roll two dice, or one now that 7 and up are shut.' : 'Roll the dice.')
       : chosen > total ? 'Too much: tap a tile to put it back.' : 'Tap tiles that add up to your roll, then Shut.';
+
+    // 📊 forecast: average points left with best play and the chance to shut the box, for each way to
+    // roll before the roll and for each set of tiles that fits after it. It never picks for you.
+    const cast = $('sbCast'); cast.innerHTML = '';
+    const F = sb.forecast;
+    if (F && S.phase === 'playing') {
+      cast.append(ctx.el('div', 'sb-chead', '📊 Forecast (best play from here)'));
+      if (F.roll) {
+        for (const [k, label] of [['2', '🎲🎲 Two dice'], ['1', '🎲 One die']]) {
+          if (!F.roll[k]) continue;
+          const [ev, shut] = F.roll[k];
+          cast.append(ctx.el('div', 'sb-crow', `${label}: about ${ev} pts left · 📦 ${shut}% to shut it`));
+        }
+      } else if (F.options) {
+        const picked = [...pick].sort((a, b) => a - b).join('+');
+        F.options.forEach(([tiles, left, ev, shut], k) => {
+          if (k >= 5 && tiles.join('+') !== picked) return;   // the five best, plus whatever you've picked
+          const row = ctx.el('div', 'sb-crow' + (tiles.join('+') === picked ? ' on' : '') + (k === 0 ? ' best' : ''));
+          row.append(ctx.el('b', '', [...tiles].sort((a, b) => b - a).join(' + ')), ctx.el('span', '', ` → ${left} open · about ${ev} at the end · 📦 ${shut}%`));
+          cast.append(row);
+        });
+        if (F.options.length > 5) cast.append(ctx.el('small', 'hint', `${F.options.length} ways fit this roll; the five best are shown.`));
+      }
+    }
 
     $('sbRound').textContent = `Round ${sb.round} of ${sb.rounds}`;
     standingsCard($('sbStand'), sb.standings, { title: `After round ${sb.round} of ${sb.rounds}`, note: 'Lowest total wins.', lower: true });
