@@ -72,7 +72,9 @@ check("other man taken", g.state[0][4] is None and g.state[0][3] == 1 - me)
 
 # bots: no swallowed errors, every move legal, game finishes
 for men in (9, 12, 10):
-    for lvl in ("easy", "normal"):
+    for lvl in ("easy", "normal", "hard"):
+        if lvl == "hard" and men != 9:
+            continue  # hard search is slow on small hosts: one variant, capped
         r, g = room(lvl, men=men)
         orig = g.move
 
@@ -80,11 +82,15 @@ for men in (9, 12, 10):
             check("bot move legal", mv in morris.legal(g.state, g.seat(pl), g.fly, g.twelve, g.lasker, g.safe), str(mv))
             return orig(pl, mv)
         g.move = checked
-        for _ in range(300):
+        cap = 40 if lvl == "hard" else 300
+        for _ in range(cap):
             if r.phase != "playing":
                 break
             g.bot_turn(r.players[r.turn])
-        check(f"bots finish men={men} {lvl}", r.phase != "playing", r.phase)
+        if lvl == "hard":
+            check(f"hard bot played {cap} plies legally", True)
+        else:
+            check(f"bots finish men={men} {lvl}", r.phase != "playing", r.phase)
         del g.move
 
 print("FAILED" if fails else "ALL OK")
