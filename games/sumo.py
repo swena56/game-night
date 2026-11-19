@@ -98,6 +98,7 @@ class Sumo(Game):
         "The platform shrinks as the round goes on (the rim glows red first). After 75 s it's sudden death.",
         "Orbs: 🪨 heavy, ⚡ shockwave, 🔁 quick dashes, 🛡️ one save at the edge.",
         "👻 Knocked out? Steer your ghost and tap to drop ☄️ meteors on the others.",
+        "🛡️ Comeback: anyone two or more rounds behind the leader starts the round with a free shield.",
         "Last saucer standing wins the round; first to the target wins.",
     ]
     name = "Sumo Saucers"
@@ -112,6 +113,7 @@ class Sumo(Game):
         "bumpers": ("Rim bumpers", [(True, "On"), (False, "Off (sudden death)")], True),
         "arena": ("Arena", [("disc", "🪐 Disc"), ("ring", "🍩 Ring (a pit in the middle)"), ("mix", "🔀 Changes every round")], "disc"),
         "powerups": ("Power-up orbs", [(True, "On"), (False, "Off")], True),
+        "comeback": ("🛡️ Comeback shield (2+ rounds behind)", [(True, "On"), (False, "Off")], True),
         "ghosts": ("👻 Ghosts (players who are out drop meteors)", [(True, "On"), (False, "Off")], True),
     }
 
@@ -157,6 +159,12 @@ class Sumo(Game):
             p = self.room.players.get(pid)
             if not p or p.eliminated:
                 self.saucers[i].out = True
+        if self.s.get("comeback", True):
+            top = max(self.wins)
+            for i, sc in enumerate(self.saucers):
+                if not sc.out and top - self.wins[i] >= 2:
+                    sc.shield = True
+                    self.moment(f"🛡️ {self.room.players[self.seats[i]].name} starts with a comeback shield", "cool", "good")
         self.orbs, self.meteors = [], []
         if not isinstance(self.events, list):
             self.events = []
