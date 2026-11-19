@@ -81,20 +81,34 @@ for seed in range(3):
     for k in range(3):
         room.add_player(f"B{k}")
     room.switch_game("ninetynine"); room.settings["target"] = 60; room.start(); g = room.game
+    def legal_play(i, c, _play=g.play):
+        assert g.stage == "play" and c in g.hands[i] and c in g.legal(i), f"illegal bot card {c} for seat {i}"
+        return _play(i, c)
+
+    def legal_bid(i, cards, _bid=g.place_bid):
+        assert g.stage == "bid" and i in g.waiting, f"bot {i} bid out of turn"
+        assert len(cards) == 3 and len(set(cards)) == 3 and all(c in g.hands[i] for c in cards), f"illegal bid {cards}"
+        return _bid(i, cards)
+
+    g.play, g.place_bid = legal_play, legal_bid
+    moves = 0
     for _ in range(400):
         if room.phase != "playing":
             break
-        for i in range(3):
-            if g.stage in ("bid", "play"):
-                try:
-                    g.bot_move(i, "hard")
-                except Exception:
-                    pass
+        if g.stage == "bid":
+            for i in list(g.waiting):
+                could = g.can_double(i)
+                g.bot_move(i, "hard")  # exceptions propagate: a bot raising fails the test
+                assert i not in g.armed or could, f"bot {i} armed a double it can't have"
+                moves += 1
+        elif g.stage == "play":
+            g.bot_move(g.seat(room.players[room.turn]), "hard")
+            moves += 1
         for p in room.players.values():
             g.view(p)
         if g.stage == "score":
             g.deal()
-    check(f"seed {seed}: bots stay legal", True)
+    check(f"seed {seed}: bots stay legal", moves > 50, f"{moves} moves")
 
 print("all ok" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(1 if fails else 0)
