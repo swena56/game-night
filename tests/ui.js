@@ -333,14 +333,17 @@ const MOVES = {
       setTimeout(() => w.dispatchEvent(new w.KeyboardEvent('keyup', { code, bubbles: true })), 300);
     }
   },
-  tops(d, S, n, w) {  // the 🚀/💨 button, stick drags, taps (dash) and keys
+  tops(d, S, n, w) {  // pick a top, the 🚀/💨 button, 🌀 Rev, stick drags, taps (dash) and keys
     const fire = (el, type, x = 0, y = 0) => el && el.dispatchEvent(new w.MouseEvent(type, { bubbles: true, clientX: x, clientY: y }));
-    const st = d.querySelector('#tpStage'), btn = d.querySelector('#tpBtn'), kind = S.tops.st === 'launch' ? 2 : n % 4;
-    if (kind === 0) { fire(st, 'pointerdown', 150, 150); fire(st, 'pointermove', 150 + pick([-50, 50]), 150 + pick([-50, 50])); setTimeout(() => fire(st, 'pointerup'), 400); }
+    const st = d.querySelector('#tpStage'), btn = d.querySelector('#tpBtn'), kind = S.tops.st === 'launch' ? (n % 3 ? 2 : 5) : n % 6;
+    const chips = [...d.querySelectorAll('#tpPick:not([hidden]) [data-k]')];
+    if (kind === 5 && chips.length) fire(pick(chips), 'click');
+    else if (kind === 4) fire(d.querySelector('#tpRev:not([hidden])'), 'pointerdown');
+    else if (kind === 0) { fire(st, 'pointerdown', 150, 150); fire(st, 'pointermove', 150 + pick([-50, 50]), 150 + pick([-50, 50])); setTimeout(() => fire(st, 'pointerup'), 400); }
     else if (kind === 1) { fire(st, 'pointerdown', 150, 150); fire(st, 'pointerup', 150, 150); }
     else if (kind === 2) fire(btn, 'pointerdown');
     else {
-      const code = pick(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space']);
+      const code = pick(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'Space', 'KeyR', 'Digit3']);
       w.dispatchEvent(new w.KeyboardEvent('keydown', { code, bubbles: true }));
       setTimeout(() => w.dispatchEvent(new w.KeyboardEvent('keyup', { code, bubbles: true })), 300);
     }
@@ -397,6 +400,7 @@ const MOVES = {
     const fire = (el, type, x = 0, y = 0) => el && el.dispatchEvent(new w.MouseEvent(type, { bubbles: true, clientX: x, clientY: y }));
     const st = d.querySelector('#fpStage'), go = d.querySelector('#fpGo'), ln = S.pond.anglers[S.pond.me]?.line?.st;
     if (ln === 'fight') { fire(go, 'pointerdown'); setTimeout(() => fire(go, 'pointerup'), pick([300, 900, 1500])); }
+    else if (n % 7 === 5 && !d.querySelector('#fpDrill')?.hidden) d.querySelector('#fpDrill').click();
     else if (ln === 'bite' || n % 3 === 0) fire(go, 'pointerdown');
     else if (n % 3 === 1) fire(st, 'pointerdown', 100 + pick([0, 60, 120]), 150 + pick([0, 50, 100]));
     else { w.dispatchEvent(new w.KeyboardEvent('keydown', { key: ' ', bubbles: true })); w.dispatchEvent(new w.KeyboardEvent('keyup', { key: ' ', bubbles: true })); }
@@ -666,12 +670,19 @@ const MOVES = {
     if (n % 3 === 2) click(pick(enabled(d, '.cn-shell')));
     click(d.querySelector('#cnFire'));
   },
-  stones(d, S, n, w) {  // nudge the aim, pick a weight / curl / sweep, then throw once the ice is still
+  stones(d, S, n, w) {  // nudge the aim, pick a weight / curl, throw once the ice is still; sweep (#187) while it slides
+    const pad = d.querySelector('#icPad');
+    if (pad && !pad.hidden) {   // your stone is sliding: hold the pad, scrub it now and then
+      const fire = (type, x) => pad.dispatchEvent(new w.MouseEvent(type, { bubbles: true, clientX: x, clientY: 50 }));
+      fire('pointerdown', 100); if (n % 2) { fire('pointermove', 180); fire('pointermove', 100); }
+      if (n % 3 === 0) fire('pointerup', 100);
+      return;
+    }
     click(pick([...d.querySelectorAll('#icCtl [data-a]')]));
     if (n % 2) click(pick([...d.querySelectorAll('#icCurl button')]));
-    if (n % 3 === 1) click(pick([...d.querySelectorAll('#icSweep button')]));
+    if (n % 4 === 1) click(pick([...d.querySelectorAll('#icCtl [data-w]')]));
     const wt = d.querySelector('#icWeight');
-    wt.value = String(25 + Math.round(Math.random() * 40)); wt.dispatchEvent(new w.Event('input', { bubbles: true }));
+    wt.value = String(380 + Math.round(Math.random() * 300)); wt.dispatchEvent(new w.Event('input', { bubbles: true }));
     click(d.querySelector('#icThrow'));
   },
   archery(d, S, n, w) {  // nudge the sight a few steps, sometimes take the steady breath or a fire arrow, then loose
@@ -681,6 +692,14 @@ const MOVES = {
     click(d.querySelector('#arLoose'));
   },
   wobble(d, S, n, w) {  // pick the next player's block when it's our gift, else nudge the ghost about and place it
+    if (S.wobble.mode === 'pull') {  // 🪵 #190: tap a spot on top when stacking, else step to a plank (◀ ▶) and 🪵 Pull it
+      const slots = enabled(d, '#wbSCtl button[data-slot]');
+      if (slots.length) return click(pick(slots));
+      for (let k = 0; k < 1 + (n % 3); k++) click(d.querySelector(n % 2 ? '#wbPrev' : '#wbNextP'));
+      const b = d.querySelector('#wbPull');
+      if (b && !b.disabled) click(b);
+      return;
+    }
     const gift = [...d.querySelectorAll('#wbPicks button')];
     if (gift.length && !d.querySelector('#wbGift').hidden) return click(pick(gift));
     if (n % 2) click(pick([...d.querySelectorAll('.wb-pad button')]));
@@ -807,13 +826,20 @@ const MOVES = {
 const UI_MINE = (f) => (f.stage === 'write' && !f.mine) || (f.stage === 'pick' && f.myPick == null);
 
 async function playSolo(game, seconds = 60) {
+  const [, mode] = game.split(':');   // e.g. wobble:pull plays that game in that mode
+  game = game.split(':')[0];
   const { w, d, errors, close } = await openPage(game === 'hockey' || game === 'riders' || game === 'whisker' || game === 'paintblast' || game === 'sumo' || game === 'snowball' || game === 'tops' || game === 'lander' || game === 'rapids' || game === 'midway' || game === 'planes' || game === 'pond' || game === 'regatta' || game === 'putt' || game === 'rally' || game === 'prism' || game === 'marble');
   const S = () => w.eval('S');
   const report = { game, moves: 0, phase: null, notes: [] };
   d.querySelector('#name').value = 'Tester';
   d.querySelector('#soloGame').value = game;
   d.querySelector('#soloLevel').value = 'easy';
-  click(d.querySelector('#soloBtn'));
+  if (mode) {
+    click(d.querySelector('#soloSetupBtn'));
+    await waitFor(() => w.eval('S')?.phase === 'lobby' && w.eval('S').players?.length > 1);
+    await w.eval(`act('settings', { settings: { mode: ${JSON.stringify(mode)} } })`);
+    await w.eval(`act('start')`);
+  } else click(d.querySelector('#soloBtn'));
   if (!(await waitFor(() => !d.querySelector('#game').hidden && S()?.phase === 'playing'))) report.notes.push('never reached the game screen');
   const end = Date.now() + seconds * 1000;
   while (Date.now() < end && S()?.phase === 'playing') {
@@ -902,6 +928,13 @@ async function lobbyTour() {
   const names = [...d.querySelectorAll('#gamePicker .game-tile b')].map((b) => b.textContent);
   if (names.length !== S().games.length || names.join() !== [...names].sort((a, b) => a.localeCompare(b)).join()) notes.push('A–Z sort is not one alphabetical list');
   click([...d.querySelectorAll('#pickerBar .picker-sorts .chip-btn')][0]); await sleep(200);
+  // #189: card-game tiles say so (data-cat drives the playing-card icon), and 🃏 Cards shows only them (plus the picked game)
+  const cardIds = S().games.filter((g) => g.category === 'cards').map((g) => g.id);
+  if ([...d.querySelectorAll('#gamePicker .game-tile[data-cat="cards"]')].length < cardIds.length) notes.push('card-game tiles lack data-cat="cards"');
+  click(d.querySelector('#pickerCards')); await sleep(200);
+  const onlyCards = [...d.querySelectorAll('#gamePicker .game-tile')].filter((t) => t.dataset.game !== S().gameId);
+  if (!onlyCards.length || onlyCards.some((t) => t.dataset.cat !== 'cards')) notes.push('🃏 Cards filter shows other games');
+  click(d.querySelector('#pickerCards')); await sleep(200);
   const howto = d.querySelectorAll('#howto li').length;
   click(d.querySelector('#leaveBtn')); await sleep(200);
   const leaveDialog = d.querySelector('#modalText').textContent; click(d.querySelector('#modalCancel'));
@@ -970,7 +1003,7 @@ async function feedbackTour() {
   const lt = await lobbyTour();
   console.log('LOBBY', JSON.stringify(lt));
   for (const g of games.length ? games : Object.keys(MOVES)) {
-    const r = await playSolo(g, CT_GAMES.has(g) ? 240 : g === 'wordsmith' ? 40 : g === 'bingo' ? 300 : g === 'spire' ? 25 : g === 'prism' ? 110 : g === 'marble' ? 150 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'cribbage' ? 300 : g === 'yacht' ? 200 : g === 'farkle' ? 240 : g === 'qork' ? 200 : g === 'backgammon' ? 300 : g === 'gridhunt' ? 260 : g === 'paintblast' ? 230 : g === 'sumo' ? 200 : g === 'snowball' ? 200 : g === 'tops' ? 200 : g === 'lander' ? 330 : g === 'pusher' ? 330 : g === 'tide' ? 300 : g === 'rapids' ? 200 : g === 'midway' ? 200 : g === 'planes' ? 240 : g === 'orbit' ? 420 : g === 'pond' ? 240 : g === 'domino' ? 300 : g === 'regatta' ? 200 : g === 'putt' ? 300 : g === 'cannon' ? 240 : g === 'stones' ? 300 : g === 'archery' ? 240 : g === 'lanes' ? 300 : g === 'wobble' ? 300 : g === 'drift' ? 200 : g === 'rally' ? 150 : g === 'whisker' ? 120 : g === 'hearts' || g === 'rummy' ? 300 : g === 'twentyone' ? 200 : g === 'speed' ? 150 : g === 'trivia' ? 200 : g === 'ladder' ? 330 : g === 'freecell' || g === 'klondike' ? 300 : g === 'sudoku' ? 120 : g === 'wordsearch' ? 150 : g === 'garden' ? 200 : g === 'wordbomb' ? 200 : g === 'liars' ? 300 : g === 'shipcrew' || g === 'shutbox' || g === 'midnight' || g === 'mia' || g === 'brawl' || g === 'derby' ? 200 : g === 'squares' ? 120 : g === 'kindred' ? 200 : g === 'reversi' || g === 'hedgerow' || g === 'ultimate' || g === 'oware' || g === 'morris' || g === 'realm' ? 260 : g === 'safecracker' ? 200 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
+    const r = await playSolo(g, CT_GAMES.has(g) ? 240 : g === 'wordsmith' ? 40 : g === 'bingo' ? 300 : g === 'spire' ? 25 : g === 'prism' ? 110 : g === 'marble' ? 150 : g === 'billiards' ? 300 : g === 'holdem' ? 240 : g === 'cribbage' ? 300 : g === 'yacht' ? 200 : g === 'farkle' ? 240 : g === 'qork' ? 200 : g === 'backgammon' ? 300 : g === 'gridhunt' ? 260 : g === 'paintblast' ? 230 : g === 'sumo' ? 200 : g === 'snowball' ? 200 : g === 'tops' ? 200 : g === 'lander' ? 330 : g === 'pusher' ? 330 : g === 'tide' ? 300 : g === 'rapids' ? 200 : g === 'midway' ? 200 : g === 'planes' ? 240 : g === 'orbit' ? 420 : g === 'pond' ? 240 : g === 'domino' ? 300 : g === 'regatta' ? 200 : g === 'putt' ? 300 : g === 'cannon' ? 240 : g === 'stones' ? 300 : g === 'archery' ? 240 : g === 'lanes' ? 300 : g === 'wobble' || g === 'wobble:pull' ? 300 : g === 'drift' ? 200 : g === 'rally' ? 150 : g === 'whisker' ? 120 : g === 'hearts' || g === 'rummy' ? 300 : g === 'twentyone' ? 200 : g === 'speed' ? 150 : g === 'trivia' ? 200 : g === 'ladder' ? 330 : g === 'freecell' || g === 'klondike' ? 300 : g === 'sudoku' ? 120 : g === 'wordsearch' ? 150 : g === 'garden' ? 200 : g === 'wordbomb' ? 200 : g === 'liars' ? 300 : g === 'shipcrew' || g === 'shutbox' || g === 'midnight' || g === 'mia' || g === 'brawl' || g === 'derby' ? 200 : g === 'squares' ? 120 : g === 'kindred' ? 200 : g === 'reversi' || g === 'hedgerow' || g === 'ultimate' || g === 'oware' || g === 'morris' || g === 'realm' ? 260 : g === 'safecracker' ? 200 : g === 'lucky' ? 540 : g === 'relay' ? 300 : g === 'oddone' || g === 'fibfinder' ? 200 : 70);
     console.log(`\n== ${g}: phase=${r.phase} moves=${r.moves} dialogs=${r.dialogs || 0} screen="${r.screen}" ${r.banner ? `banner="${r.banner}"` : ''}`);
     console.log(`   help: ${r.help} | log ticker: "${r.ticker}"`);
     if (r.replay) console.log(`   replay: ${r.replay}`);

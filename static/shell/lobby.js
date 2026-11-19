@@ -10,11 +10,17 @@ function loadCatalog() {
   return fetch('/api/games').then((r) => r.json()).then((d) => { familyOrder = d.families || {}; return (catalog = d.games); });
 }
 const playersText = (g) => (g.min === g.max ? `${g.min} players` : `${g.min}–${g.max} players`);
+// what kind of game a tile is, from its category (#189): card games sit on a playing card, dice games on a die,
+// word games on a letter tile (style.css .game-tile[data-cat]); the name is read out for screen readers
+const TILE_KINDS = { cards: 'card game', dice: 'dice game', words: 'word game' };
 // one game tile: icon, name, players (or why it doesn't fit), this device's ★ stars or a "new" tag
 function gameTile(g, seated, current, newTags = Profile.showNew()) {
   const fit = !seated ? '' : seated < g.min ? `needs ${g.min}+` : seated > g.max ? `max ${g.max}` : '';
   const b = el('button', 'game-tile' + (g.id === current ? ' on' : '') + (fit ? ' nofit' : ''));
-  b.append(el('span', 'gicon', g.icon), el('b', '', g.name), el('small', '', fit || playersText(g)));
+  if (g.category) b.dataset.cat = g.category;  // the tint and icon shape follow the game, in every group and sort
+  // a long single word (Safecracker) gets a slightly smaller name on phones instead of breaking mid-word (#191)
+  b.append(el('span', 'gicon', g.icon), el('b', /[^\s-]{9,}/.test(g.name) ? 'long' : '', g.name), el('small', '', fit || playersText(g)));
+  if (TILE_KINDS[g.category]) b.append(el('span', 'sr-only', TILE_KINDS[g.category]));
   const st = Profile.stars(g.id);
   if (st) b.append(el('span', 'tile-stars', Profile.starText(st)));
   else if (newTags && !Profile.tried(g.id)) b.append(el('span', 'tile-new', 'new'));
@@ -35,7 +41,7 @@ function renderPickerBar(bar, pick, redraw) {
     sorts.append(c);
   }
   bar.append(sorts);
-  if (sort !== 'type') return;
+  if (sort !== 'type' || load('pickerKind')) return;  // only card games showing (#189): nothing to jump between
   const jump = el('div', 'picker-jump');
   for (const [cat, label] of CATEGORIES) {
     const c = el('button', 'chip-btn', label.split(' ')[0]);
@@ -46,13 +52,13 @@ function renderPickerBar(bar, pick, redraw) {
   bar.append(jump);
 }
 // fills `pick` with the games in groups; tile(b, g) wires each tile (clicks, wishes)
-function renderPickerGrid(pick, { games, seated = 0, current = null, query = '', onlyFits = false, tile }) {
+function renderPickerGrid(pick, { games, seated = 0, current = null, query = '', onlyFits = false, kind = load('pickerKind'), tile }) {
   pick.innerHTML = '';
   query = query.trim().toLowerCase();
   const sort = load('pickerSort') || 'type';
   const fits = (g) => !seated || (seated >= g.min && seated <= g.max);
   const shown = games.filter((g) => (!query || g.name.toLowerCase().includes(query) || g.category.includes(query) || (g.family || '').toLowerCase().includes(query))
-    && (!onlyFits || fits(g) || g.id === current));
+    && (!onlyFits || fits(g) || g.id === current) && (!kind || g.category === kind || g.id === current));
   const byId = (ids) => ids.map((id) => shown.find((g) => g.id === id)).filter(Boolean);
   const newTags = Profile.showNew();
   const groups = [];  // [label, games, category, sub-header?]
@@ -77,7 +83,7 @@ function renderPickerGrid(pick, { games, seated = 0, current = null, query = '',
     }[sort] || ((a, b) => a.name.localeCompare(b.name));
     groups.push([`${PICKER_SORTS.find(([k]) => k === sort)?.[1] || ''} · ${shown.length} games`, [...shown].sort(key), '', false, true]);
   }
-  if (!shown.length) pick.append(el('p', 'hint', query ? `No game matches “${query}”.` : 'No game fits this many players.'));
+  if (!shown.length) pick.append(el('p', 'hint', query ? `No game matches “${query}”.` : kind ? `No ${TILE_KINDS[kind] || kind} fits this many players.` : 'No game fits this many players.'));
   for (const [label, list, cat, sub, flat] of groups) {
     // games that fit the players here come first in each group (a flat sort keeps its own order)
     const gs = flat ? list : [...list].sort((a, b) => fits(b) - fits(a));
@@ -103,10 +109,16 @@ async function pickGameSheet({ title = '🎮 Choose a game', current = null, sea
   const body = el('div', 'picker-sheet');
   const find = el('input'); find.type = 'search'; find.placeholder = '🔎 Find a game'; find.autocomplete = 'off';
   find.setAttribute('aria-label', 'Find a game');
+  const cards = el('button', 'chip-btn kind-chip', '🃏 Cards');
+  cards.title = 'Show only card games';
+  cards.onclick = () => { store('pickerKind', load('pickerKind') === 'cards' ? null : 'cards'); draw(); };
+  const tools = el('div', 'picker-tools');
+  tools.append(find, cards);
   const bar = el('div', 'picker-bar'), pick = el('div', 'picker');
-  body.append(find, bar, pick);
+  body.append(tools, bar, pick);
   let chosen = null;
   const draw = () => {
+    cards.setAttribute('aria-pressed', load('pickerKind') === 'cards');
     renderPickerBar(bar, pick, draw);
     renderPickerGrid(pick, { games, seated, current, query: find.value, tile: (b, g) => { b.onclick = () => { chosen = g.id; ask.close?.(true); }; } });
   };
@@ -157,6 +169,7 @@ function renderLobby() {
   const onlyFits = !!load('pickerFits');
   $('#pickerFits').setAttribute('aria-pressed', onlyFits);
   $('#pickerFits').textContent = `👥 Fits ${seated}`;
+  $('#pickerCards')?.setAttribute('aria-pressed', load('pickerKind') === 'cards');
   renderPickerBar($('#pickerBar'), pick, () => renderLobby());
   renderPickerGrid(pick, {
     games: S.games, seated, current: S.gameId, query: $('#pickerFind').value, onlyFits,

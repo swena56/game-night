@@ -586,11 +586,8 @@ function fitPicker(pick = $('#gamePicker')) {
   const width = pick.clientWidth;
   const tile = window.matchMedia?.('(max-width: 600px)').matches ? 78 : 104;  // phones get compact tiles (style.css)
   const most = width ? Math.max(2, Math.floor((width + 8) / tile)) : 4;
-  for (const g of pick.querySelectorAll('.picker-group')) {
-    const n = +g.dataset.count, rows = Math.ceil(n / most);
-    // a short group (favourites, played lately) keeps ordinary tile widths instead of stretching
-    g.style.gridTemplateColumns = `repeat(${n < Math.min(most, 4) ? Math.min(most, 4) : Math.ceil(n / rows)}, minmax(0, 1fr))`;
-  }
+  // every group gets the same columns, so every tile in the picker is the same size (#191)
+  for (const g of pick.querySelectorAll('.picker-group')) g.style.gridTemplateColumns = `repeat(${most}, minmax(0, 1fr))`;
 }
 
 // the picker's wiring; its code is in shell/lobby.js
@@ -598,6 +595,8 @@ loadCatalog().then(() => { if (S?.phase === 'lobby' && !$('#lobby').hidden) rend
 window.addEventListener('resize', () => { if (!$('#lobby').hidden) fitPicker(); for (const p of document.querySelectorAll('.picker-sheet .picker')) fitPicker(p); });
 $('#pickerFind').oninput = () => S && renderLobby();
 $('#pickerFits').onclick = () => { store('pickerFits', !load('pickerFits') || null); renderLobby(); };
+const pickerCards = $('#pickerCards');
+if (pickerCards) pickerCards.onclick = () => { store('pickerKind', load('pickerKind') === 'cards' ? null : 'cards'); renderLobby(); };
 $('#gamePicker').addEventListener('keydown', (e) => {
   const dir = ARROWS[e.key], cur = document.activeElement;
   if (!dir || !cur?.classList.contains('game-tile')) return;

@@ -209,17 +209,40 @@ body.calm .nudge { animation: none; box-shadow: 0 0 0 2px #ffb70388; }
 .game-chosen .fav-btn { margin-left: auto; font-size: 22px; line-height: 1; }
 .game-chosen .fav-btn.on { color: var(--accent); }
 .picker-group { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; --tint: var(--accent); }
-.picker-group[data-cat="party"] { --tint: #ef476f; } .picker-group[data-cat="action"] { --tint: #ffb703; } .picker-group[data-cat="strategy"] { --tint: #06d6a0; }
-.picker-group[data-cat="classic"] { --tint: #8ecae6; } .picker-group[data-cat="cards"] { --tint: #cc5de8; } .picker-group[data-cat="dice"] { --tint: #ff8fab; }
-.picker-group[data-cat="words"] { --tint: #4dabf7; }
-.game-tile { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 6px 8px; position: relative;
+/* each tile takes its game's category tint (data-cat on the tile), so favourites and flat sorts keep it too */
+.game-tile[data-cat="party"] { --tint: #ef476f; } .game-tile[data-cat="action"] { --tint: #ffb703; } .game-tile[data-cat="strategy"] { --tint: #06d6a0; }
+.game-tile[data-cat="classic"] { --tint: #8ecae6; } .game-tile[data-cat="cards"] { --tint: #cc5de8; } .game-tile[data-cat="dice"] { --tint: #ff8fab; }
+.game-tile[data-cat="words"] { --tint: #4dabf7; }
+/* #191: every tile the same size: equal grid columns (fitPicker), a fixed icon box, a two-line name box and a one-line players box */
+.game-tile { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 4px; padding: 10px 6px 8px; position: relative; min-width: 0;
   background: linear-gradient(180deg, color-mix(in srgb, var(--tint) 13%, var(--panel2)), var(--panel2) 70%); border-color: color-mix(in srgb, var(--tint) 30%, var(--line));
   transition: transform .15s, box-shadow .2s; }
-.game-tile .gicon { font-size: 26px; width: 48px; height: 48px; display: grid; place-items: center; border-radius: 50%; line-height: 1;
+.game-tile .gicon { --gi: 48px; font-size: 26px; width: var(--gi); height: var(--gi); flex: none; display: grid; place-items: center; border-radius: 50%; line-height: 1; position: relative;
   background: radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--tint) 34%, #0000), color-mix(in srgb, var(--tint) 12%, #0000) 72%);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tint) 35%, #0000); filter: drop-shadow(0 3px 4px #0007); }
-.game-tile small { color: var(--muted); font-size: var(--fs-xs); }
-.game-tile.on { border: 2px solid var(--accent); background: linear-gradient(180deg, color-mix(in srgb, var(--tint) 22%, var(--panel2)), var(--accent-a10)); box-shadow: 0 0 0 1px var(--accent), 0 0 18px var(--accent-a40); }
+.game-tile b { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; hyphens: auto;
+  width: 100%; line-height: 1.2; height: 2.4em; flex: none; text-align: center; }
+.game-tile small { color: var(--muted); font-size: var(--fs-xs); display: block; max-width: 100%; height: 1.3em; line-height: 1.3; flex: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* #189: the kind of game at a glance. Card games sit on a little playing card (♠ ♥ corners), dice games on a die,
+   word games on a letter tile; the icon box keeps its height so tiles stay the same size */
+.game-tile[data-cat="cards"] .gicon { width: calc(var(--gi) * .74); border-radius: 5px; font-size: calc(var(--gi) * .44); transform: rotate(-4deg);
+  background: linear-gradient(160deg, #fff, #ece6f5); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--tint) 70%, #fff), 0 0 0 1px #0004; }
+.game-tile[data-cat="cards"] .gicon::before, .game-tile[data-cat="cards"] .gicon::after { position: absolute; font: 700 calc(var(--gi) * .2)/1 system-ui, sans-serif; }
+.game-tile[data-cat="cards"] .gicon::before { content: '♠'; top: 2px; left: 3px; color: #222; }
+.game-tile[data-cat="cards"] .gicon::after { content: '♥'; bottom: 2px; right: 3px; color: #e03131; transform: rotate(180deg); }
+.game-tile[data-cat="dice"] .gicon { width: calc(var(--gi) * .92); height: calc(var(--gi) * .92); margin: calc(var(--gi) * .04) 0; border-radius: 22%;
+  font-size: calc(var(--gi) * .46); background: linear-gradient(150deg, #fff, #f1e3e8); transform: rotate(6deg);
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--tint) 75%, #fff), inset -2px -3px 0 #0001, 0 0 0 1px #0004; }
+.game-tile[data-cat="dice"] .gicon::before, .game-tile[data-cat="dice"] .gicon::after { content: ''; position: absolute; width: 5px; height: 5px; border-radius: 50%; background: #333; }
+.game-tile[data-cat="dice"] .gicon::before { top: 4px; left: 4px; }
+.game-tile[data-cat="dice"] .gicon::after { bottom: 4px; right: 4px; }
+.game-tile[data-cat="words"] .gicon { width: calc(var(--gi) * .9); height: calc(var(--gi) * .9); margin: calc(var(--gi) * .05) 0; border-radius: 6px;
+  font-size: calc(var(--gi) * .46); background: linear-gradient(170deg, #f8ecd2, #e4cc9f); box-shadow: inset 0 -3px 0 #0002, 0 0 0 1px #0004; }
+.game-tile[data-cat="words"] .gicon::after { content: 'A'; position: absolute; bottom: 2px; right: 3px; font: 700 calc(var(--gi) * .18)/1 system-ui, sans-serif; color: #5c4a2a; }
+.kind-chip[aria-pressed="true"] { border-color: #cc5de8; background: color-mix(in srgb, #cc5de8 18%, var(--panel2)); color: inherit; }
+.game-tile.on { border-color: var(--accent); background: linear-gradient(180deg, color-mix(in srgb, var(--tint) 22%, var(--panel2)), var(--accent-a10));
+  box-shadow: inset 0 0 0 1px var(--accent), 0 0 0 1px var(--accent), 0 0 18px var(--accent-a40); }  /* a 1px border plus shadows: the picked tile keeps its size (#191) */
 .game-tile:disabled { opacity: .35; }
 .game-tile.on:disabled { opacity: 1; }
 .game-tile .wishes { position: absolute; top: 3px; right: 4px; font-size: var(--fs-xs); font-weight: 700; }
@@ -233,10 +256,13 @@ body.calm .nudge { animation: none; box-shadow: 0 0 0 2px #ffb70388; }
 @media (max-width: 600px) {
   .picker-group { gap: 6px; }
   .game-tile { padding: 7px 3px 6px; gap: 1px; border-radius: var(--r-md); }
-  .game-tile .gicon { font-size: 22px; width: 40px; height: 40px; }
-  .game-tile b { font-size: var(--fs-xs); line-height: 1.2; }
+  .game-tile .gicon { --gi: 40px; font-size: 22px; }
+  .game-tile b { font-size: var(--fs-xs); }
+  .game-tile b.long { font-size: 10.5px; letter-spacing: -.2px; }
   .game-tile:not(.nofit) small { display: none; }
-  .game-tile small { font-size: 10px; }
+  /* why a game doesn't fit sits as a pill over the icon's foot, so dimmed tiles stay the same height */
+  .game-tile small { font-size: 10px; position: absolute; top: 31px; left: 50%; transform: translateX(-50%); height: auto; max-width: calc(100% - 6px);
+    padding: 0 5px; border-radius: var(--r-pill); background: var(--panel); border: 1px solid color-mix(in srgb, var(--danger) 60%, var(--line)); }
   /* Start stays at the bottom of the screen however long the lobby is; the ⚙️ 💬 buttons sit above it */
   #lobby #startBtn { position: sticky; bottom: max(10px, env(safe-area-inset-bottom)); z-index: 5; box-shadow: 0 6px 24px #000a, 0 3px 12px var(--accent-a40); }
   body[data-screen="lobby"] .fabs { bottom: calc(74px + env(safe-area-inset-bottom)); }
@@ -264,7 +290,8 @@ body.calm .nudge { animation: none; box-shadow: 0 0 0 2px #ffb70388; }
 /* the picker in a dialog: home screen and game over */
 #modal.sheet .modal-card { width: min(100%, 560px); height: calc(100dvh - 32px); }
 #modal.sheet #modalText { display: none; }
-.picker-sheet input[type="search"] { width: 100%; margin: 0 0 8px; }
+.picker-sheet .picker-tools { margin-bottom: 8px; }
+.picker-sheet input[type="search"] { width: 100%; margin: 0; }
 /* home screen: the chosen game as a button that opens the picker */
 .solo-pick { display: flex; align-items: center; gap: 8px; text-align: left; min-width: 0; flex: 2 !important; padding: 6px 10px; }
 .solo-pick .gicon { font-size: 22px; flex: none; }
