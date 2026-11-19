@@ -164,6 +164,20 @@ class LastCard(Game):
         return (self.s.get("jumpin") and not self.penalty and card != top and rank(card) == rank(top)
                 and (suit(card) in "HD") == (suit(top) in "HD") and not (self.s["actions"] and rank(card) == "J"))
 
+    def why_not_twin(self, card):
+        """Say exactly why a card can't jump in on the current top card."""
+        top = self.top()
+        colour = "red" if suit(top) in "HD" else "black"
+        if self.penalty:
+            return "No jumping in while a draw penalty is stacked."
+        if card == top:
+            return "That is the top card itself."
+        if rank(card) != rank(top):
+            return f"To jump in you need a {colour} {rank(top)} (the top card is {pretty(top)}); {pretty(card)} is a {rank(card)}."
+        if (suit(card) in "HD") != (suit(top) in "HD"):
+            return f"Right rank, wrong colour: the twin of {pretty(top)} must be {colour}."
+        return "Wild Jacks can't jump in."
+
     def jump_in(self, p, card):
         if not self.s.get("jumpin"):
             raise GameError("Jump-in is off in this game.")
@@ -172,7 +186,7 @@ class LastCard(Game):
         if self.room.turn == p.id:
             raise GameError("It's your turn: just play it.")
         if not self.twin(card):
-            raise GameError("Only the top card's twin can jump in.")
+            raise GameError(self.why_not_twin(card))
         self.room.add_log(f"⚡ {p.name} jumps in!", "power")
         self.room.turn = p.id  # play carries on from the jumper
         self.drew = False
