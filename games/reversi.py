@@ -84,6 +84,16 @@ def evaluate(board, me):
     return pos + 8 * mob + (disc * 4 if empties < 12 else 0)
 
 
+def endgame_hints(board, me):
+    """For every legal square, count immediate flips and opponent corner replies after the move."""
+    out = {}
+    for c in placements(board, me):
+        after = play(board, me, c)
+        exposed = [corner for corner in CORNERS if after[corner] is None and flips(after, 1 - me, corner)]
+        out[c] = {"flips": len(flips(board, me, c)), "corners": sorted(exposed)}
+    return out
+
+
 class Reversi(Undo, Game):
     id = "reversi"
     category = "strategy"
@@ -91,7 +101,7 @@ class Reversi(Undo, Game):
         "Place a disc so it traps a straight line of rival discs between it and one of yours (across, down or diagonally).",
         "Every trapped disc flips to your colour. Glowing squares show where you can play.",
         "If you can't move, you pass. When neither player can move, the most discs wins.",
-        "Corners can never be flipped back, so they're worth fighting for.",
+        "Corners can never be flipped back, so they're worth fighting for. With 16 or fewer empty squares, compare every legal move's immediate flips with the corners it would let your rival take next.",
         "↶ Undo asks your rival to take back your last move. Flip hints (an option) show how many discs each move would flip.",
         "🏳️ Resign ends the game and your rival wins; the host can then start a rematch.",
         "⬛ Blocked squares (an option): four squares, placed symmetrically, that nobody can play on; they also stop a line of flips.",
@@ -196,6 +206,7 @@ class Reversi(Undo, Game):
             "legal": placements(self.board, i) if mine and i is not None else [],
             "flipCounts": {c: len(flips(self.board, i, c)) for c in placements(self.board, i)}
             if mine and i is not None and self.s.get("hints") else {},
+            "endHints": endgame_hints(self.board, i) if mine and i is not None and self.board.count(None) <= 16 else {},
             "undo": self.undo_view(p),
             "counts": [self.board.count(0), self.board.count(1)],
         }}

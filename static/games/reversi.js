@@ -7,7 +7,7 @@ UI.reversi = (() => {
   function mount(main, side) {
     seen = ''; counted = false;
     main.innerHTML = '<div class="rv"><div id="rvBar" class="rv-bar"><i></i><b></b><b></b></div><div class="rv-board" id="rvBoard"></div><p id="rvHint" class="hint"></p><div id="rvUndo" class="row center"></div></div>';
-    side.innerHTML = '<div class="panel"><div id="rvSeats"></div><div class="row"><button id="rvResign" class="danger">🏳️ Resign</button></div></div>';
+    side.innerHTML = '<div class="panel"><div id="rvSeats"></div><div class="row"><button id="rvResign" class="danger">🏳️ Resign</button></div></div><div class="panel rv-end-panel" id="rvEndPanel" hidden><h3>♟ Endgame comparison</h3><p id="rvEndNote"></p><ol id="rvEndList"></ol></div>';
     board = $('rvBoard');
     for (let c = 0; c < 64; c++) {
       const b = ctx?.el ? ctx.el('button', 'rv-cell') : Object.assign(document.createElement('button'), { className: 'rv-cell' });
@@ -100,10 +100,26 @@ UI.reversi = (() => {
       row.append(ctx.el('span', 'rv-disc mini ' + (i === 0 ? 'dark' : 'light')), ctx.el('span', 'grow', `${p?.name ?? 'left'}${i === r.me ? ' (you)' : ''}`), ctx.el('b', '', String(r.counts[i])));
       info.append(row);
     });
+    renderEndHints(r);
     $('rvHint').textContent = S.phase === 'playing' && ctx.myTurn ? 'Tap a glowing square.' : '';
     $('rvResign').hidden = r.me == null;
     $('rvResign').disabled = S.phase !== 'playing';
     undoRow($('rvUndo'), r.undo, S, ctx, r.me != null);
+  }
+
+  function renderEndHints(r) {
+    const panel = $('rvEndPanel'), note = $('rvEndNote'), list = $('rvEndList'), hints = r.endHints || {};
+    const moves = Object.entries(hints).map(([cell, info]) => [+cell, info]);
+    panel.hidden = !moves.length || !ctx.myTurn;
+    list.replaceChildren();
+    if (panel.hidden) return;
+    note.textContent = `${r.board.filter((x) => x == null).length} empty squares remain. Lower corner exposure is ranked first; flips are shown for comparison.`;
+    moves.sort((a, b) => a[1].corners.length - b[1].corners.length || b[1].flips - a[1].flips || a[0] - b[0]);
+    for (const [cell, info] of moves) {
+      const where = `${'abcdefgh'[cell % 8]}${Math.floor(cell / 8) + 1}`;
+      const risk = info.corners.length ? `immediately gives ${info.corners.map((c) => `${'abcdefgh'[c % 8]}${Math.floor(c / 8) + 1}`).join(', ')} to your rival` : 'no immediate corner reply';
+      list.append(ctx.el('li', '', `${where}: ${info.flips} flip${info.flips === 1 ? '' : 's'} · ${risk}`));
+    }
   }
 
   return { mount, render, ownSounds: true };
