@@ -42,6 +42,14 @@ def night(g, ps, picks):
 
 r, g, ps = heist_room()
 check("defaults: 8 nights, lone wolves", g.s["rounds"] == 8 and g.s["style"] == "solo")
+ann, bo, cy = ps
+g.act(ann, {"type": "choose", "choice": "grab"})
+check("a locked current choice is private", g.view(bo)["heist"]["nights"] == [] and g.view(bo)["heist"]["mine"] is None)
+g.act(bo, {"type": "choose", "choice": "guard"})
+g.act(cy, {"type": "choose", "choice": "rest"})
+hist = g.view(bo)["heist"]["nights"]
+check("resolved night is added to the public history", len(hist) == 1 and set(hist[0]) == {p.id for p in ps}
+      and all(len(hist[0][p.id]) == 2 for p in ps), str(hist))
 
 # endless
 r, g, ps = heist_room(rounds=0)
