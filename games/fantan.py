@@ -4,7 +4,10 @@ All the cards are dealt. Whoever holds the 7♦ starts by playing it. On your tu
 card up or down from a suit already on the table (a 6 or 8 next to its 7, and so on out to the ace and
 king). If you can't, you knock and pass, and with 🪙 Pay or Play you put a chip in the pot. First to
 play all their cards wins the round (and the pot). Over several rounds, the cards left in your hand are
-penalty points; the lowest total wins."""
+penalty points; the lowest total wins.
+
+🛑 Hold back (default on): once a round you may knock even though you hold a playable card, to keep a
+blocker in your hand. It costs 2 penalty points, so use it where it hurts a rival more than you."""
 import random
 
 from .cardbase import CardGame, GameError, deck, rank, suit, pretty, show, by_suit, GLYPH
@@ -25,13 +28,17 @@ class FanTan(CardGame):
         "Can't play? You pass. You must play if you can.",
         "First to empty their hand wins the round. Cards left count against you; after the last round, lowest total wins.",
         "🪙 Pay or Play: each pass puts a chip in the pot, and the round's winner takes it (+ 1 point off per chip).",
+        "🛑 Hold back: once a round you may pass even with a playable card, to keep a blocker. It costs you 2 penalty points.",
     ]
     min_players, max_players = 3, 6
     badges = {**CardGame.badges, "blocker": ("🧱", "Blocker", "Win a round without ever passing")}
     settings_schema = {
         "rounds": ("Rounds", [(3, "3 rounds"), (1, "1 round"), (5, "5 rounds")], 3),
         "pay": ("🪙 Pay or Play", [(False, "Off"), (True, "On: each pass costs a chip")], False),
+        "hold": ("🛑 Hold back", [(True, "On: pass once a round for +2"), (False, "Off")], True),
     }
+    HOLD_COST = 2
+    sneaks = None  # games saved before 🛑 have none
 
     def start(self, seated, rng):
         self.seat_up(seated, rng)
@@ -49,6 +56,7 @@ class FanTan(CardGame):
         self.hi = {}
         self.pot = 0
         self.passes = [0] * self.n
+        self.sneaks = [1 if self.s.get("hold", True) else 0] * self.n
         self.last = None
         self.stage = "play"
         first = next(k for k in range(self.n) if "7D" in self.hands[k])
@@ -82,12 +90,22 @@ class FanTan(CardGame):
             return self.end_round(i)
         self.to(self.next_seat(i))
 
-    def knock(self, i):
+    def can_hold(self, i):
+        """🛑 a voluntary pass: once a round, with a playable card, after the 7♦ is down."""
+        return bool(self.sneaks and self.sneaks[i] > 0 and self.lo and self.legal(i))
+
+    def hold_back(self, i):
+        self.sneaks[i] -= 1
+        self.scores[i] += self.HOLD_COST
+        self.moment(f"🛑 {self.nm(i)} holds back! (+{self.HOLD_COST})", "red", "pop")
+        self.knock(i, held=True)
+
+    def knock(self, i, held=False):
         self.passes[i] += 1
         if self.s.get("pay"):
             self.pot += 1
         self.last = {"seat": i, "card": None}
-        self.room.add_log(f"✊ {self.nm(i)} knocks and passes" + (" (a chip in the pot)." if self.s.get("pay") else "."))
+        self.room.add_log(f"{'🛑' if held else '✊'} {self.nm(i)} {'holds back a playable card' if held else 'knocks and passes'}" + (" (a chip in the pot)." if self.s.get("pay") else "."))
         self.to(self.next_seat(i))
 
     def end_round(self, w):
@@ -118,6 +136,10 @@ class FanTan(CardGame):
             if c not in self.legal(i):
                 raise GameError("That card doesn't fit: play a 7 or the next card on a suit.")
             return self.play(i, c)
+        if t == "hold":
+            if not self.can_hold(i):
+                raise GameError("You can't hold back now: once a round, and only with a card you could play.")
+            return self.hold_back(i)
         if t == "pass":
             if self.legal(i):
                 raise GameError("You can play, so you must.")
@@ -135,6 +157,10 @@ class FanTan(CardGame):
         if level == "easy":
             return self.play(i, random.choice(legal))
         hand = self.hands[i]
+        # 🛑 hard bots sit on a card that's about to open a suit for rivals, late in a round, when it's cheap enough
+        if level == "hard" and self.can_hold(i) and len(hand) <= 6 and all(rank(c) == "7" and suit(c) not in self.lo for c in legal) \
+                and self.rng.random() < 0.35:
+            return self.hold_back(i)
 
         def score(c):
             s, k = suit(c), IDX[rank(c)]
@@ -186,4 +212,6 @@ class FanTan(CardGame):
                 t["turnText"] = "✊ No play: knock"
             else:
                 t["note"] = "Play a 7, or the next card on a started suit."
+                if self.can_hold(i):
+                    t["buttons"] = [{"label": f"🛑 Hold back (+{self.HOLD_COST})", "a": {"type": "hold"}}]
         return t
