@@ -126,6 +126,23 @@ check("derby: tied horses share the better place", D.places({1: 5, 2: 5, 3: 1, 4
 r, g, (ann, bo) = room("derby", races=1)
 check("derby: two secret tickets each", len(ann.g.tickets) == 2 and g.view(bo)["derby"]["tickets"] == bo.g.tickets)
 check("derby: rivals' tickets stay hidden", g.view(bo)["derby"]["result"] is None and "tickets" not in json.dumps({k: v for k, v in g.view(bo)["derby"].items() if k != "tickets"}))
+# 🎟️ portfolio: built from the owner's own tickets only, reconciled with every move
+check("derby: the portfolio is the owner's", [x["horse"] for x in g.view(ann)["derby"]["portfolio"]["rows"]] == ann.g.tickets
+      and [x["horse"] for x in g.view(bo)["derby"]["portfolio"]["rows"]] == bo.g.tickets)
+watcher = r.add_player("Eve")
+check("derby: a watcher gets no tickets or portfolio", g.view(watcher)["derby"]["tickets"] is None and g.view(watcher)["derby"]["portfolio"] is None)
+f = D.portfolio({1: 6, 2: 4, 3: 4, 4: 2, 5: 1, 6: 0}, [2, 5], {1: 4, 2: 4, 3: 4, 4: 2, 5: 2, 6: 0})
+check("derby: portfolio pays, pass and threats", f["rows"][0] == {"horse": 2, "place": 1, "pays": 3, "pass": [1], "threats": [3]}
+      and f["rows"][1] == {"horse": 5, "place": 4, "pays": 0, "pass": [4], "threats": [6]} and f["total"] == 3 and f["last"] == -2, f)
+a = r.players[r.turn]
+g.act(a, {"type": "roll"})
+g.act(a, {"type": "move", "order": [0, 1, 2]})
+for q in (ann, bo):
+    fv = g.view(q)["derby"]["portfolio"]
+    check(f"derby: {q.name}'s portfolio reconciles after the move", fv["total"] == D.payout(g.pos, q.g.tickets)
+          and fv["last"] == D.payout(g.pos, q.g.tickets) - D.payout(g.prev_pos, q.g.tickets))
+del g.prev_pos
+check("derby: an old save without the last position still shows", g.view(ann)["derby"]["portfolio"]["last"] is None)
 a = r.players[r.turn]
 g.act(a, {"type": "roll"})
 check("derby: every die needs a job", raises(lambda: g.act(a, {"type": "move", "order": [0, 0, 1]})))

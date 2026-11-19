@@ -45,3 +45,10 @@
 .dby-horse { filter: drop-shadow(0 3px 2px #0008); }
 .dby-horse.lead { filter: drop-shadow(0 0 6px #ffd166) drop-shadow(0 3px 2px #0008); }
 .dby-run { margin-left: 12px; }
+/* 🎟️ portfolio: the owner's tickets, what they pay now and who to pass or hold back */
+.dby-folio { display: grid; gap: 2px; margin: 4px auto 6px; padding: 6px 10px; max-width: 420px; border-radius: var(--radius);
+  background: var(--panel); font-size: var(--fs-xs, 13px); text-align: left; }
+.dby-folio:empty { display: none; }
+.dby-ftotal { font-weight: 800; }
+.dby-help { color: #06d6a0; font-weight: 700; }
+.dby-hurt { color: var(--danger); font-weight: 700; }

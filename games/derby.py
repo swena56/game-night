@@ -30,6 +30,27 @@ def payout(pos, tickets):
     return sum(PAY[pl[h]] if pl[h] < len(PAY) else 0 for h in tickets)
 
 
+def portfolio(pos, tickets, before=None):
+    """🎟️ One owner's tickets as things stand: each horse's place, what it would pay if the race ended
+    now, the horses it should pass (knocking them back helps) and the ones that threaten it (pushing
+    them on hurts), and what the last move did to the payout."""
+    pl = places(pos)
+    rows = []
+    for h in tickets:
+        x = pos[h]
+        others = [k for k in pos if k not in tickets]
+        above = [pos[k] for k in others if pos[k] > x]
+        below = [pos[k] for k in others if pos[k] < x]
+        tied = sorted(k for k in others if pos[k] == x)
+        rows.append({
+            "horse": h, "place": pl[h], "pays": PAY[pl[h]] if pl[h] < len(PAY) else 0,
+            "pass": sorted(k for k in others if above and pos[k] == min(above)),
+            "threats": tied or sorted(k for k in others if below and pos[k] == max(below)),
+        })
+    now = payout(pos, tickets)
+    return {"rows": rows, "total": now, "last": None if before is None else now - payout(before, tickets)}
+
+
 def apply(pos, dice, order):
     pos = dict(pos)
     for d_i, step in zip(order, MOVES):
@@ -46,6 +67,7 @@ class Derby(Game):
         "On your turn roll three dice and use all three: one die's horse gallops +2, another trots +1, and the third stumbles −1.",
         f"The race ends the moment a horse reaches the line ({TRACK}). Tickets on 1st, 2nd and 3rd pay 5, 3 and 1 (tied horses share the better place).",
         "Everyone sees what you push and what you hold back — help your horses without giving your tickets away.",
+        "Your 🎟️ portfolio (only you see it) shows what each ticket pays right now, the horse to pass ▲ and the one to keep back ▼, and the points your picked jobs would add or cost.",
         "Most points after the last race wins.",
     ]
     name = "Dice Derby"
@@ -87,6 +109,7 @@ class Derby(Game):
             p.g.pushed = {h: 0 for h in range(1, HORSES + 1)}   # what the table has seen them do, for the bots
             r.add_log(f"🎟️ Your tickets: horse {p.g.tickets[0]} and horse {p.g.tickets[1]}.", "private", to=p.id)
         self.trail = []
+        self.prev_pos = None
         r.add_log(f"🏁 Race {self.race} of {self.s['races']}: they're off!", "big")
         live = self.players()
         start = live[(self.first + self.race - 1) % len(live)]
@@ -124,6 +147,7 @@ class Derby(Game):
     def do_move(self, p, order):
         r = self.room
         dice = self.dice
+        self.prev_pos = dict(self.pos)
         self.pos = apply(self.pos, dice, order)
         for d_i, step in zip(order, MOVES):
             p.g.pushed[dice[d_i]] = p.g.pushed.get(dice[d_i], 0) + step
@@ -260,10 +284,13 @@ class Derby(Game):
 
     def view(self, p):
         r = self.room
+        tickets = getattr(p.g, "tickets", None) if p.id in self.seats else None
         return {"derby": {
             "seats": self.seats, "race": self.race, "races": self.s["races"], "track": TRACK,
             "pos": self.pos, "dice": self.dice, "trail": self.trail, "n": self.n,
-            "tickets": getattr(p.g, "tickets", None) if p.id in self.seats else None,
+            "tickets": tickets,
+            # 🎟️ the owner's portfolio only: built from their own tickets and the public track
+            "portfolio": portfolio(self.pos, tickets, getattr(self, "prev_pos", None)) if tickets else None,
             "result": self.result, "places": places(self.pos),
             "scores": {i: r.players[i].g.score for i in self.seats if i in r.players},
         }}

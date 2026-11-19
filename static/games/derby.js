@@ -12,6 +12,7 @@ UI.derby = (() => {
       <div id="dbyTurn" class="dby-turn"></div>
       <div id="dbyTrack" class="dby-track"></div>
       <div id="dbyTickets" class="dby-tickets"></div>
+      <div id="dbyFolio" class="dby-folio"></div>
       <div class="ya-tray"><div id="dbyDice" class="ya-dice dby-dice"></div></div>
       <div id="dbyJobs" class="dby-jobs"></div>
       <div class="row dby-actions"><button id="dbyRoll" class="primary big">🎲 Roll</button><button id="dbyReset" class="big">↺</button><button id="dbyGo" class="primary big">🏇 Go!</button></div>
@@ -64,6 +65,28 @@ UI.derby = (() => {
     const tk = $('dbyTickets'); tk.innerHTML = '';
     if (tickets.length) tk.append(ctx.el('span', '', `🎟️ Your secret tickets: horse ${tickets.join(' and horse ')}`));
 
+    // 🎟️ portfolio (owner only): what each ticket pays now, who to pass ▲ and who to keep back ▼,
+    // and what the jobs picked so far would do to the total
+    const fo = $('dbyFolio'); fo.innerHTML = '';
+    const F = d.portfolio;
+    if (F && S.phase === 'playing') {
+      const ORD = ['1st', '2nd', '3rd'];
+      for (const row of F.rows) {
+        const line = ctx.el('div', 'dby-frow');
+        line.append(ctx.el('b', '', `🎟️ ${row.horse}`), ctx.el('span', '', ` ${ORD[row.place] ?? 'unplaced'} · pays ${row.pays}`));
+        if (row.pass.length) line.append(ctx.el('span', 'dby-help', ` ▲ pass ${row.pass.join(' & ')}`));
+        if (row.threats.length) line.append(ctx.el('span', 'dby-hurt', ` ▼ keep back ${row.threats.join(' & ')}`));
+        fo.append(line);
+      }
+      const sum = ctx.el('div', 'dby-ftotal', `Now worth ${F.total}`);
+      if (F.last) sum.append(ctx.el('span', F.last > 0 ? 'dby-help' : 'dby-hurt', ` · last move ${F.last > 0 ? '+' : ''}${F.last}`));
+      if (order.length) {
+        const diff = worth(ghost, tickets) - F.total;
+        sum.append(ctx.el('span', diff > 0 ? 'dby-help' : diff < 0 ? 'dby-hurt' : '', ` · your jobs ${diff > 0 ? '+' : ''}${diff}`));
+      }
+      fo.append(sum);
+    }
+
     const rk = `${S.turn}|${d.n}`, fresh = d.dice.length && rk !== rollKey && rollKey !== '';
     rollKey = rk;
     const tray = $('dbyDice'); tray.innerHTML = '';
@@ -110,6 +133,14 @@ UI.derby = (() => {
     Kit.scoreboard($('dbyScores'), d.seats.filter((pid) => ctx.player(pid)).map((pid) => ({
       p: ctx.player(pid), score: d.scores[pid] ?? 0, me: pid === S.me.id, turn: S.turn === pid,
     })), { lead: true });
+  }
+
+  // the server's places()/payout(): tied horses share the better place; 1st/2nd/3rd pay 5/3/1
+  function worth(pos, tickets) {
+    const hs = [1, 2, 3, 4, 5, 6].sort((a, b) => pos[b] - pos[a]);
+    const place = {};
+    hs.forEach((h, k) => { place[h] = k && pos[h] === pos[hs[k - 1]] ? place[hs[k - 1]] : k; });
+    return tickets.reduce((t, h) => t + ([5, 3, 1][place[h]] ?? 0), 0);
   }
 
   const turnText = (s) => s.phase !== 'playing' || s.turn !== s.me.id ? null : s.derby.dice.length ? '🏇 Give each die a job' : '🏇 Roll!';
