@@ -260,7 +260,7 @@ class Euchre(TrickGame):
             info.append({"count": len(self.hands[k]), "tags": [" · ".join(tags)] if tags else [], "badge": "🔵" if k % 2 == 0 else "🟠",
                          "out": self.is_out(k)})
         rows = [{"seat": t, "value": self.team_score[t], "sub": f"& {self.nm(t + 2)}"} for t in (0, 1)]
-        t = {"info": info, "trump": self.trump, "trumpLabel": f"{SUIT_NAME[self.trump].title()} trumps" if self.trump else "",
+        t = {"info": info, "trump": self.trump, "trumpLabel": (f"{SUIT_NAME[self.trump].title()} trumps · right J{GLYPH[self.trump]} · left J{GLYPH[SAME[self.trump]]}" if self.trump else ""),
              "scores": {"title": "Teams", "rows": rows, "hint": f"Game to {self.s['target']}. 🔵 seats 1 & 3, 🟠 seats 2 & 4."}}
         t.update(self.trick_view(p, i))
         if self.stage in ("call", "discard"):
