@@ -59,6 +59,21 @@ check("whoever's push gets there first owns the rest", falls[(4, 5)][2] == froze
 check("scores: 1 a domino and the targets", D.score_of(*run([(1, 5, 0, "domino")], [(2, 5, "bell", 0)])[:2],
                                                           {(2, 5): {"kind": "bell", "axis": 0}}, {(0, 5)}) == {0: 11})
 
+# The build HUD preview is produced by the same authoritative topple and score functions.
+r_preview = server.Room("PREVIEW")
+pa = r_preview.add_player("Preview")
+r_preview.add_player("Other")
+r_preview.switch_game("domino")
+r_preview.settings.update(tables=1, turns=3)
+r_preview.start()
+gp = r_preview.game
+gp.starters = [(0, 5, 0, 0)]
+gp.pieces = {(1, 5): {"axis": 0, "kind": "domino", "by": 0}}
+gp.targets = {(2, 5): {"kind": "bell", "axis": 0}}
+pv = gp.view(pa)["domino"]
+check("build preview names the first target from topple order", pv["firstTarget"]["0"] == {"x": 2, "y": 5, "kind": "bell"}, str(pv["firstTarget"]))
+check("build preview score equals the authoritative topple score", pv["preview"] == D.score_of(*D.topple(gp.size, gp.pieces, gp.targets, gp.starters)[:2], gp.targets, {(0, 5)}) == {0: 11}, str(pv["preview"]))
+
 # -- #175: ramps, poppers, pirates, combos, slow motion
 falls, rings, _ = run([(1, 5, 0, "domino"), (3, 5, 0, "domino"), (4, 5, 0, "domino")], [(2, 5, "ramp", 0)])
 check("a ramp along the run leaps the next square", (2, 5) in rings and (3, 5) not in falls and (4, 5) in falls)

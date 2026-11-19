@@ -189,7 +189,7 @@ class Domino(Game):
     family = None
     howto = [
         "Everyone builds on one table. Your starter domino sits on the edge (the arrow in your colour). On your turn stand up 3 dominoes: tap a pulsing ring (where your run reaches next), tap again (or ⟳) to turn it 45°, then ✔ Place.",
-        "A falling domino knocks the one in the next square it falls toward, if that one isn't side-on (45° turns the run). The preview lights up what your run reaches now.",
+        "A falling domino knocks the one in the next square it falls toward, if that one isn't side-on (45° turns the run). The build preview names your first target and likely points using the current table.",
         "After the last build turn every starter is pushed at once. Your run scores 🔔 bells 10 and ⛩ gates 20 (falling through along the gate), and carries on past them; 🏯 the tower 50 ends it. Plus 1 a domino.",
         "Runs can merge: whoever's push reaches a domino first owns everything after it, so hijack a rival's run, or cut it off.",
         "🔥 Combo: every target your run reaches after its first is worth 5 more than the last. ⤴ Ramps (along them) leap the next square; 🎆 poppers burst and knock dominoes every way.",
@@ -531,6 +531,7 @@ class Domino(Game):
         i = self.seat(p)
         falls, rings, ends = topple(self.size, self.pieces, self.targets, self.starters) if self.stage == "build" else ({}, {}, [])
         reach = {}
+        first_target = {}
         if self.stage == "build":
             for (x, y), (t, d, o) in falls.items():
                 for s in o:
@@ -538,6 +539,10 @@ class Domino(Game):
             for (x, y), (t, o) in rings.items():
                 for s in o:
                     reach.setdefault(str(s), {"cells": [], "targets": []})["targets"].append([x, y])
+            for (x, y), by in combos(rings).items():
+                for s, k in by.items():
+                    if k == 1:
+                        first_target[str(s)] = {"x": x, "y": y, "kind": self.targets[(x, y)]["kind"]}
         cur = self.order[self.turn_k % len(self.order)] if self.stage == "build" and self.order else None
         return {"domino": {
             "seats": self.seats, "me": i, "size": self.size, "table": self.table_no, "tables": self.total,
@@ -548,7 +553,8 @@ class Domino(Game):
             "starters": [list(s) for s in self.starters],
             "points": self.points, "split": self.split, "pirate": self.pirate, "history": self.history,
             "preview": score_of(falls, rings, self.targets, {(x, y) for x, y, _, _ in self.starters}) if self.stage == "build" else None,
-            "reach": reach, "combo": {str(s): max(by.values()) for s, by in self._combo_by_seat(rings).items()},
+            "reach": reach, "firstTarget": first_target,
+            "combo": {str(s): max(by.values()) for s, by in self._combo_by_seat(rings).items()},
             "ends": [[x, y, d, sorted(o)] for x, y, d, o in ends if self.cell_free((x, y))],
             "recent": self.recent, "theme": THEMES.get(self.theme, THEMES["classic"])[0],
             "topple": self.topple_res, "values": TARGETS, "comboStep": COMBO, "step": STEP,

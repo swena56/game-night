@@ -176,9 +176,10 @@ UI.domino = (() => {
     else { who.textContent = V.cur === V.me ? `🁫 Your turn: ${V.perTurn - V.placed} to place` : `${nameOf(V.cur)} is building`; who.style.color = V.cur === V.me ? '' : colorOf(V.cur); }
     const r = $('dmReach');
     if (V.stage === 'build' && V.me != null) {
-      const mineT = (V.reach[String(V.me)]?.targets || []).map(([x, y]) => ICON[targetAt(x, y)?.[2]] || '').join('');
+      const first = V.firstTarget?.[String(V.me)];
+      const firstText = first ? ` · first ${ICON[first.kind] || ''}` : ' · no target yet';
       const k = V.combo?.[String(V.me)] || 0;
-      r.textContent = `Your run: ${V.preview[String(V.me)] || 0} pts ${mineT}${k >= 2 ? ` 🔥×${k}` : ''}`;
+      r.textContent = `Your run: ${V.preview[String(V.me)] || 0} likely pts${firstText}${k >= 2 ? ` · 🔥×${k}` : ''}`;
       r.style.color = colorOf(V.me);
       const gl0 = goal();
       $('dmGoal').textContent = gl0 ? `🎯 ${ICON[gl0.kd]} ${gl0.d} away${k ? ` · next +${V.values[gl0.kd] + (V.comboStep || 5) * k}` : ''}` : '';
@@ -211,7 +212,9 @@ UI.domino = (() => {
       const nm = ctx.el('span', 'dm-nm', nameOf(i)); nm.style.color = colorOf(i);
       const bar = ctx.el('span', 'dm-bar'); const fill = ctx.el('i'); fill.style.width = `${(100 * P[i] / top).toFixed(1)}%`; fill.style.background = colorOf(i); bar.append(fill);
       const t = ctx.el('b', '', `${P[i]}`);
-      const pv = V.stage === 'build' ? `run now ${V.preview[String(i)] || 0}` : hide ? 'falling…' : V.topple ? `+${V.topple.pts[String(i)] || 0} this table` : '';
+      const first = V.firstTarget?.[String(i)];
+      const firstText = first ? ` · first ${ICON[first.kind] || first.kind}` : '';
+      const pv = V.stage === 'build' ? `run now ${V.preview[String(i)] || 0} pts${firstText}` : hide ? 'falling…' : V.topple ? `+${V.topple.pts[String(i)] || 0} this table` : '';
       const extra = ctx.el('small', '', `${pv}${V.split[i] ? ' · ✂' : ''}${V.pirate?.[i] ? ' · 🏴‍☠️' : ''}`);
       row.append(nm, bar, t, extra);
       box.append(row);
