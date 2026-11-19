@@ -113,6 +113,12 @@ for _ in range(20):
         break
     g.on_timeout()
 check("reeling a resting perch lands it", a.g.points == 10 and len(a.g.catches) == 1, f"{a.g.points} {a.g.line['st']}")
+landed = a.g.history[-1]
+check("landed fish log has species, weight, location and result",
+      landed["kind"] == "perch" and 0.3 <= landed["weight"] <= 1.5
+      and landed["result"] == "landed" and "x" in landed and "y" in landed, landed)
+check("landed fish log is public in the anglers view",
+      g.view(b)["pond"]["anglers"][a.id]["history"][-1] == landed)
 check("then the line goes back in", a.g.line["st"] in ("retie", "wait"))
 # a missed bite
 for _ in range(50):
@@ -121,6 +127,7 @@ for _ in range(50):
     g.on_timeout()
 g.on_timeout()
 check("an unhooked bite gets away", a.g.line["st"] in ("retie", "wait") and len(a.g.catches) == 1)
+check("missed strike is recorded as an escape", a.g.history[-1]["result"] == "missed strike")
 # a snap
 for _ in range(50):
     if a.g.line["st"] == "bite":
@@ -135,6 +142,11 @@ for _ in range(20):
         break
     g.on_timeout()
 check("reeling into a lunge snaps the line", a.g.last["what"] == "snap" and a.g.points == 10, str(a.g.last))
+check("snapped fish is recorded without changing score", a.g.history[-1]["result"] == "line snapped" and a.g.points == 10)
+a.g.line = {"st": "fight", "h": a.g.line["h"], "kind": "trout", "weight": 2.2}
+g.end_fight(a, "escape", g.T())
+check("escaped fish records its fight result and weight",
+      a.g.history[-1]["result"] == "escaped" and a.g.history[-1]["weight"] == 2.2)
 json.dumps(g.view(a))
 # the horn
 jump(g, g.t_end + 0.1)

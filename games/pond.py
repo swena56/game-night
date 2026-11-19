@@ -31,10 +31,10 @@ BITE_SIGMA = 2.3      # how far (m) a school's pull on a line reaches
 BITE_STEP = 0.25
 # species: points, line to reel (m), tension per second reeling into a lunge, lunge seconds, rest seconds, pull rate
 FISH = {
-    "perch": {"pts": 10, "L": 4.0, "k": 0.8, "pull": (0.5, 1.1), "rest": (1.2, 2.4), "icon": "🐟", "name": "perch"},
-    "trout": {"pts": 25, "L": 7.0, "k": 1.05, "pull": (0.6, 1.4), "rest": (1.0, 2.2), "icon": "🐠", "name": "trout"},
-    "pike":  {"pts": 60, "L": 11.0, "k": 1.35, "pull": (0.9, 2.0), "rest": (1.0, 2.0), "icon": "🦈", "name": "pike"},
-    "char":  {"pts": 150, "L": 9.0, "k": 1.7, "pull": (0.5, 1.0), "rest": (0.7, 1.4), "icon": "✨", "name": "golden char"},
+    "perch": {"pts": 10, "L": 4.0, "k": 0.8, "pull": (0.5, 1.1), "rest": (1.2, 2.4), "weight": (0.3, 1.5), "icon": "🐟", "name": "perch"},
+    "trout": {"pts": 25, "L": 7.0, "k": 1.05, "pull": (0.6, 1.4), "rest": (1.0, 2.2), "weight": (0.8, 5.0), "icon": "🐠", "name": "trout"},
+    "pike":  {"pts": 60, "L": 11.0, "k": 1.35, "pull": (0.9, 2.0), "rest": (1.0, 2.0), "weight": (2.0, 18.0), "icon": "🦈", "name": "pike"},
+    "char":  {"pts": 150, "L": 9.0, "k": 1.7, "pull": (0.5, 1.0), "rest": (0.7, 1.4), "weight": (1.0, 8.0), "icon": "✨", "name": "golden char"},
 }
 REEL_V, SLACK_V, LUNGE_TAKE, LUNGE_REEL = 2.4, 0.9, 0.8, 0.4
 BOT_HOOK = {"easy": (0.78, 0.25), "normal": (0.5, 0.15), "hard": (0.34, 0.08)}
@@ -122,6 +122,7 @@ class Pond(Game):
         "Where to drill: tap the ice near the fish shadows, the bubbles or a pulsing ⛏ sonar ping (or press ⛏ Drill here). Up to 3 holes, 2 seconds each, any time you haven't a fish on. Tap one of your holes to move your line there.",
         "Your line is the thick yellow one, the ring round your hole is its reach and the sonar box shows your lure's depth and the fish near it. Nibbles are fish looking: wait. When it STRIKES (flag up, red button, buzz), tap within about a second to hook it (the button or Space).",
         "Then fight it: hold to reel while the fish is tired, let go when it lunges (the line goes taut and red), or the line snaps. Reel it all the way in to land it.",
+        "The catch log records each landed fish and escape with its species, weight, hole location and result.",
         "Everyone fishes the same frozen pond at once. 🐟 Perch 10, 🐠 trout 25, 🦈 pike 60, ✨ the golden char 150 (once a pond). ❄️ Squalls hide the shadows and the pings. Most points when time runs out wins.",
     ]
     name = "Frozen Pond"
@@ -165,7 +166,7 @@ class Pond(Game):
         self.squalls = sq
         for p in seated:
             g = p.g
-            g.points, g.catches, g.biggest = 0, [], 0
+            g.points, g.catches, g.biggest, g.history = 0, [], 0, []
             g.line = {"st": "idle"}
             g.drilling = None
             g.act_at = rng.uniform(0.3, 1.5) if p.bot else None
@@ -281,7 +282,9 @@ class Pond(Game):
                     continue
                 k = self.rng.choices(range(len(parts)), weights=parts)[0]
                 kind = self.schools[k]["kind"]
-                g.line = {"st": "bite", "h": ln["h"], "kind": kind, "school": k, "at": round(now, 3), "until": round(now + WINDOW, 3)}
+                weight = round(self.rng.uniform(*FISH[kind]["weight"]), 1)
+                g.line = {"st": "bite", "h": ln["h"], "kind": kind, "school": k, "weight": weight,
+                          "at": round(now, 3), "until": round(now + WINDOW, 3)}
                 if p.bot:
                     mu, sd = BOT_HOOK.get(p.bot, BOT_HOOK["normal"])
                     rt = random.gauss(mu, sd)
@@ -289,6 +292,8 @@ class Pond(Game):
                     g.act_at = now + max(0.12, rt) if g.hook_ok else None
             elif ln["st"] == "bite" and now >= ln["until"]:
                 self.room.add_log(f"💨 {p.name} was too slow: the {FISH[ln['kind']]['name']} got away.", "info")
+                event_id = self.record_event(p, "missed strike", ln, ln["until"])
+                g.last = {"what": "escape", "kind": ln["kind"], "id": -event_id}
                 self.back_in(p, now, MISS_REST)
             elif ln["st"] == "fight" and now >= ln["next"]:
                 self.fight_tick(p, now)
@@ -332,9 +337,9 @@ class Pond(Game):
             if ln["kind"] == "char" and self.char_by is None:
                 self.char_by = p.id
                 self.schools[ln["school"]]["gone"] = True
-            self.catch_id += 1
+            event_id = self.record_event(p, "landed", ln, at)
             g.points += fish["pts"]
-            g.catches.append({"id": self.catch_id, "kind": ln["kind"], "pts": fish["pts"], "h": ln["h"]})
+            g.catches.append({"id": event_id, "kind": ln["kind"], "pts": fish["pts"], "h": ln["h"]})
             g.biggest = max(g.biggest, fish["pts"])
             self.room.add_log(f"{fish['icon']} {nm} lands a {fish['name']}! +{fish['pts']}", "big" if fish["pts"] >= 60 else "info")
             if ln["kind"] == "pike":
@@ -346,16 +351,29 @@ class Pond(Game):
             if len(g.catches) == 8:
                 self.award(p, "creel", at=when)
                 self.moment(f"🧺 {nm} has a full creel: 8 fish!", "cool", "good", at=when)
-            g.last = {"what": "land", "kind": ln["kind"], "id": self.catch_id}
+            g.last = {"what": "land", "kind": ln["kind"], "id": event_id}
         elif out == "snap":
             self.room.add_log(f"💥 {nm}'s line snaps: the {fish['name']} is gone.", "info")
-            g.last = {"what": "snap", "kind": ln["kind"], "id": -self.catch_id - 1}
-            self.catch_id += 1
+            event_id = self.record_event(p, "line snapped", ln, at)
+            g.last = {"what": "snap", "kind": ln["kind"], "id": -event_id}
         else:
             self.room.add_log(f"💨 The {fish['name']} wriggles off {nm}'s hook.", "info")
-            g.last = {"what": "escape", "kind": ln["kind"], "id": -self.catch_id - 1}
-            self.catch_id += 1
+            event_id = self.record_event(p, "escaped", ln, at)
+            g.last = {"what": "escape", "kind": ln["kind"], "id": -event_id}
         self.back_in(p, at, RETIE)
+
+    def record_event(self, p, result, line, at):
+        """Keep a public round log entry without changing catch scoring or counts."""
+        self.catch_id += 1
+        hole = self.holes[line["h"]]
+        low, high = FISH[line["kind"]]["weight"]
+        weight = line.get("weight", round((low + high) / 2, 1))
+        history = getattr(p.g, "history", None)
+        if not isinstance(history, list):
+            p.g.history = history = []
+        history.append({"id": self.catch_id, "at": round(at, 1), "kind": line["kind"], "weight": weight,
+                        "x": round(hole["x"], 1), "y": round(hole["y"], 1), "result": result})
+        return self.catch_id
 
     def finish_pond(self):
         r = self.room
@@ -604,7 +622,8 @@ class Pond(Game):
                 ln.pop("bite_at", None)          # nobody gets to know when the bite comes
             if ln.get("st") == "fight":
                 ln["age"] = round(now - ln["t0"], 3)
-            anglers[o.id] = {"points": g.points, "catches": g.catches[-12:], "n": len(g.catches), "line": ln,
+            anglers[o.id] = {"points": g.points, "catches": g.catches[-12:], "history": getattr(g, "history", []),
+                             "n": len(g.catches), "line": ln,
                              "last": getattr(g, "last", None), "out": o.eliminated, "seat": self.seat(o)}
         return {"pond": {
             "seats": self.seats, "me": p.id if p.id in self.seats else None, "t": round(now, 3), "end": self.t_end,

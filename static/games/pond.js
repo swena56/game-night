@@ -4,7 +4,7 @@
 // out from the server's numbers; the fight meters run the server's own fight model on the reel times it recorded.
 UI.pond = (() => {
   let S, ctx, V, gl = null, flat = null, raf = 0, ro = null, keyFn = null, keyUp = null;
-  let recvAt = 0, holding = false, lastNote = {}, popT = 0, lastDraw = 0, lastCount = '', lastBite = '', reelTick = 0;
+  let recvAt = 0, holding = false, lastNote = {}, popT = 0, lastDraw = 0, lastCount = '', lastBite = '', reelTick = 0, historyKey = '';
   // #180 readability: sonar pings where a hole would do well, nibbles while the line waits, the lure under the ice
   let pings = [], pingAt = 0, nibAt = -1e9, nibLam = 0, quietFor = 0, lastLoop = 0, sonar = null;
   const $ = (id) => document.getElementById(id);
@@ -20,7 +20,7 @@ UI.pond = (() => {
   const FISHCOL = { perch: [0x7a9a3a, 0x2a3a1a], trout: [0xc8c0c8, 0xd87a8a], pike: [0x5a7a4a, 0xc8d090], char: [0xffc83a, 0xff8a2a] };
 
   function mount(main, side) {
-    gl = null; flat = null; recvAt = 0; holding = false; lastNote = {}; lastCount = ''; lastBite = ''; pings = []; pingAt = 0; nibAt = -1e9; quietFor = 0; lastLoop = 0;
+    gl = null; flat = null; recvAt = 0; holding = false; lastNote = {}; lastCount = ''; lastBite = ''; historyKey = ''; pings = []; pingAt = 0; nibAt = -1e9; quietFor = 0; lastLoop = 0;
     main.innerHTML = `<div class="fp"><div class="fp-stage" id="fpStage">
         <div class="fp-hud"><span id="fpPts"></span><span id="fpClock" class="fp-clock"></span></div>
         <div class="fp-sub"><span id="fpState"></span><span id="fpSquall" class="fp-squall" hidden>❄️ Squall!</span><span id="fpChar" class="fp-char" hidden></span></div>
@@ -37,7 +37,7 @@ UI.pond = (() => {
       <div class="fp-steps" id="fpSteps"><span>⛏ Drill</span><i>→</i><span>🎣 Drop</span><i>→</i><span>〰 Wait</span><i>→</i><span>❗ Hook &amp; reel</span></div>
       <div class="fp-ctl"><button class="fp-go" id="fpGo">🎣</button><button class="fp-drill" id="fpDrill" hidden>⛏ New hole</button></div>
       <p id="fpHint" class="hint"></p></div>`;
-    side.innerHTML = '<div class="panel"><h3>🎣 Catch</h3><div id="fpRace" class="fp-race"></div></div>';
+    side.innerHTML = '<div class="panel"><h3>🎣 Anglers</h3><div id="fpRace" class="fp-race"></div><h3>📖 Catch log</h3><div id="fpCatchLog" class="fp-catch-log" aria-live="polite"></div></div>';
     const go = $('fpGo');
     // one big button: drop / HOOK / hold to reel
     go.addEventListener('pointerdown', (e) => { e.preventDefault(); press(true); });
@@ -188,7 +188,7 @@ UI.pond = (() => {
     if (bk && bk !== lastBite) { SND.bite(0); ctx.buzz?.([60, 40, 60]); pop('❗ STRIKE! Tap now', '#ff6a4a'); }
     if (!bk && lastBite && ln.st !== 'fight' && line().st !== 'fight') { /* missed */ }
     lastBite = bk;
-    hud(); race(); hint();
+    hud(); race(); catchLog(); hint();
   }
   const cap = (w) => w[0].toUpperCase() + w.slice(1);
 
@@ -210,6 +210,25 @@ UI.pond = (() => {
       const st = r.line?.st, doing = st === 'fight' ? ' 🎣 fighting!' : st === 'bite' ? ' ❗' : '';
       const extra = ctx.el('small', '', `${(r.catches || []).slice(-8).map((c) => V.fish[c.kind].icon).join('')}${r.n > 8 ? ` +${r.n - 8}` : ''}${doing}`);
       row.append(nm, bar, t, extra);
+      box.append(row);
+    }
+  }
+
+  function catchLog() {
+    const key = V.seats.map((pid) => `${pid}:${V.anglers[pid]?.history?.at(-1)?.id ?? 0}`).join('|');
+    if (key === historyKey) return;
+    historyKey = key;
+    const box = $('fpCatchLog'); box.textContent = '';
+    const rows = V.seats.flatMap((pid) => (V.anglers[pid]?.history || []).map((event) => ({ ...event, pid })))
+      .sort((a, b) => b.id - a.id);
+    if (!rows.length) { box.append(ctx.el('p', 'hint left', 'Landed fish and escapes will appear here.')); return; }
+    for (const event of rows) {
+      const fish = V.fish[event.kind];
+      const mins = Math.floor(event.at / 60), secs = String(Math.floor(event.at % 60)).padStart(2, '0');
+      const x = `${event.x >= 0 ? '+' : ''}${event.x.toFixed(1)}`, y = `${event.y >= 0 ? '+' : ''}${event.y.toFixed(1)}`;
+      const row = ctx.el('div', `fp-log-row ${event.result === 'landed' ? 'landed' : 'escaped'}`);
+      row.append(ctx.el('b', '', `${fish.icon} ${nameOf(event.pid)} · ${fish.name} · ${event.weight.toFixed(1)} lb`),
+        ctx.el('small', '', `${mins}:${secs} · x ${x}, y ${y} m · ${event.result === 'landed' ? 'Landed' : event.result}`));
       box.append(row);
     }
   }
