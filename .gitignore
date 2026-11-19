@@ -10,3 +10,8 @@ data/*
 !data/words.txt
 # per-device lifetime records (server.py /api/profile/put)
 data/profiles/
+
+# scratch: verify screenshots, one-off test scripts, /loop work queue
+tests/_shots/
+tests/_*.js
+.claude/loop-queue.md
