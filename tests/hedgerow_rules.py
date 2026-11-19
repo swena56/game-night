@@ -61,6 +61,8 @@ r, g, (a, b) = game()
 a.g.pos, b.g.pos = (5, 4), (4, 4)
 m = g.moves(a)
 check("leap straight over", m.get((3, 4)) == "jump" and (4, 4) not in m)
+route = g.traffic_path("S", a.g.pos, occupied={b.g.pos})
+check("route preview accounts for a pawn jump", route and route[0] == (3, 4))
 g.cut |= set(g.hedge_cuts("h", 3, 4))  # hedge behind b
 m = g.moves(a)
 check("diagonal when blocked behind", (3, 4) not in m and m.get((4, 3)) == "jump" and m.get((4, 5)) == "jump")
@@ -75,6 +77,12 @@ check("hop used up", a.g.hop is False and a.g.pos == (7, 4))
 g.cut |= set(g.hedge_cuts("h", 5, 3))
 a.g.pos = (6, 4)
 check("no second hop", (5, 4) not in g.moves(a))
+
+r, g, (a, b) = game()
+g.cut |= set(g.hedge_cuts("h", 7, 4))
+without_hop = g.traffic_path("S", a.g.pos, hop=False)
+with_hop = g.traffic_path("S", a.g.pos, hop=True)
+check("route preview spends the available hop", with_hop and with_hop[0] == (7, 4) and len(with_hop) < len(without_hop))
 
 # four players, win
 r, g, ps = game(4)

@@ -20,6 +20,7 @@ class Hedgerow(Game):
         "On your turn, step your pawn one square, or plant a hedge (two squares long) in a groove.",
         "First pawn to reach the far edge, your coloured side opposite, wins.",
         "To plant, tap a groove: the hedge centres on the nearest crossing and shows how many steps it costs each rival. ↻ Turn flips it.",
+        "Dashed route previews account for placed hedges, current pawn positions, jump/slip moves, and an unused 🐇 hop.",
         "A hedge can never seal anyone in: there must always be a way through.",
         "Standing face to face? Leap over the other pawn, or slip diagonally past if a hedge is behind it.",
         "🐇 Once per game you may hop straight through a hedge.",
@@ -116,6 +117,48 @@ class Hedgerow(Game):
                     prev[nxt] = cell
                     q.append(nxt)
         return []
+
+    def traffic_path(self, side, start, cut=None, occupied=(), hop=False):
+        """Shortest legal route with stationary pawns and an optional one-use hedge hop."""
+        cut = self.cut if cut is None else cut
+        occupied = set(occupied)
+        first = (start, bool(hop))
+        prev, q = {first: None}, deque([first])
+        while q:
+            cell, can_hop = q.popleft()
+            if self.at_goal(side, cell):
+                out, state = [], (cell, can_hop)
+                while prev[state] is not None:
+                    out.append(state[0])
+                    state = prev[state]
+                return out[::-1]
+            r, c = cell
+            moves = []
+            for dr, dc in STEPS:
+                nxt = (r + dr, c + dc)
+                if not self.inside(*nxt):
+                    continue
+                if self.edge(cell, nxt) in cut:
+                    if can_hop and nxt not in occupied:
+                        moves.append((nxt, False))
+                    continue
+                if nxt not in occupied:
+                    moves.append((nxt, can_hop))
+                    continue
+                far = (nxt[0] + dr, nxt[1] + dc)
+                if self.inside(*far) and self.edge(nxt, far) not in cut and far not in occupied:
+                    moves.append((far, can_hop))
+                    continue
+                for sr, sc in ((dc, dr), (-dc, -dr)):
+                    side_cell = (nxt[0] + sr, nxt[1] + sc)
+                    if (self.inside(*side_cell) and self.edge(nxt, side_cell) not in cut
+                            and side_cell not in occupied and side_cell != cell):
+                        moves.append((side_cell, can_hop))
+            for state in moves:
+                if state not in prev:
+                    prev[state] = (cell, can_hop)
+                    q.append(state)
+        return None
 
     def players(self):
         return [self.room.players[i] for i in self.seats if i in self.room.players and hasattr(self.room.players[i].g, "pos")]
@@ -260,7 +303,10 @@ class Hedgerow(Game):
         out = {"n": self.n, "seats": seats, "hedges": self.hedges, "last": self.last, "ply": self.ply}
         mine = self.room.players.get(p.id) if p.id in self.seats else None
         if mine and self.room.phase == "playing":
-            out["route"] = [list(x) for x in self.path(mine.g.side, mine.g.pos)]
+            others = {q.g.pos for q in self.racers() if q is not mine}
+            out["route"] = [list(x) for x in (self.traffic_path(
+                mine.g.side, mine.g.pos, occupied=others, hop=mine.g.hop
+            ) or [])]
             if self.room.turn == p.id:
                 out["moves"] = [[r, c, k] for (r, c), k in self.moves(mine).items()]
                 out["legal"] = [f"{o},{r},{c}" for o, r, c in self.legal_hedges()] if mine.g.hedges > 0 else []

@@ -29,21 +29,41 @@ UI.hedgerow = (() => {
     return s;
   };
   const atGoal = (n, side, [r, c]) => ({ S: r === 0, N: r === n - 1, W: c === n - 1, E: c === 0 }[side]);
-  // shortest route (cells after start) to the side's goal edge, ignoring pawns; null if sealed in
-  function route(n, side, start, cut) {
-    const prevOf = new Map([[`${start}`, null]]), q = [start];
+  // Shortest legal route with stationary pawns and a one-use hop. A route can be unavailable while pawns block it.
+  function route(n, side, start, cut, occupied = [], hop = false) {
+    const stateKey = (cell, canHop) => `${cell[0]},${cell[1]},${canHop ? 1 : 0}`;
+    const first = stateKey(start, hop), prevOf = new Map([[first, null]]), cells = new Map([[first, start]]), q = [[start, !!hop]];
     for (let i = 0; i < q.length; i++) {
-      const cell = q[i];
+      const [cell, canHop] = q[i], key = stateKey(cell, canHop);
       if (atGoal(n, side, cell)) {
         const out = [];
-        for (let k = `${cell}`; k !== `${start}`; k = prevOf.get(k)) out.push(k.split(',').map(Number));
+        for (let k = key; prevOf.get(k) !== null; k = prevOf.get(k)) out.push(cells.get(k));
         return out.reverse();
       }
       for (const [dr, dc] of STEPS) {
         const nx = [cell[0] + dr, cell[1] + dc];
-        if (nx[0] < 0 || nx[1] < 0 || nx[0] >= n || nx[1] >= n || prevOf.has(`${nx}`) || cut.has(ek(cell, nx))) continue;
-        prevOf.set(`${nx}`, `${cell}`);
-        q.push(nx);
+        if (nx[0] < 0 || nx[1] < 0 || nx[0] >= n || nx[1] >= n) continue;
+        const occupiedNext = occupied.some((p) => p[0] === nx[0] && p[1] === nx[1]);
+        const blocked = cut.has(ek(cell, nx));
+        const moves = [];
+        if (blocked) {
+          if (canHop && !occupiedNext) moves.push([nx, false]);
+        } else if (!occupiedNext) moves.push([nx, canHop]);
+        else {
+          const far = [nx[0] + dr, nx[1] + dc];
+          const farOccupied = occupied.some((p) => p[0] === far[0] && p[1] === far[1]);
+          if (far[0] >= 0 && far[1] >= 0 && far[0] < n && far[1] < n && !cut.has(ek(nx, far)) && !farOccupied) moves.push([far, canHop]);
+          else for (const [sr, sc] of [[dc, dr], [-dc, -dr]]) {
+            const slip = [nx[0] + sr, nx[1] + sc];
+            if (slip[0] >= 0 && slip[1] >= 0 && slip[0] < n && slip[1] < n && !cut.has(ek(nx, slip))
+              && !occupied.some((p) => p[0] === slip[0] && p[1] === slip[1]) && (slip[0] !== cell[0] || slip[1] !== cell[1])) moves.push([slip, canHop]);
+          }
+        }
+        for (const [to, nextHop] of moves) {
+          const nextKey = stateKey(to, nextHop);
+          if (prevOf.has(nextKey)) continue;
+          prevOf.set(nextKey, key); cells.set(nextKey, to); q.push([to, nextHop]);
+        }
       }
     }
     return null;
@@ -62,7 +82,8 @@ UI.hedgerow = (() => {
   function effect(key) {
     const g = S.hedgerow, now = cutSet(g.hedges), next = cutSet(g.hedges, parse(key));
     return racers().map((x) => {
-      const a = route(g.n, x.side, x.pos, now), b = route(g.n, x.side, x.pos, next);
+      const occupied = racers().filter((p) => p.id !== x.id).map((p) => p.pos);
+      const a = route(g.n, x.side, x.pos, now, occupied, x.hop), b = route(g.n, x.side, x.pos, next, occupied, x.hop);
       return { seat: x, before: a?.length, after: b?.length };
     });
   }
@@ -259,7 +280,7 @@ UI.hedgerow = (() => {
     paintRoutes(ok ? key : null);
     if (ok) {
       // a chip per racer whose route gets longer, beside the hedge's middle
-      const fx = effect(key).filter((x) => x.after > x.before);
+      const fx = effect(key).filter((x) => Number.isFinite(x.before) && Number.isFinite(x.after) && x.after > x.before);
       const [cx, cy] = topPoint(c * P + 1 + G / 2, r * P + 1 + G / 2);
       fx.forEach((x, i) => {
         const gx = cx + (i - (fx.length - 1) / 2) * 0.95, gy = cy + (cy < (S.hedgerow.n * P - G) / 2 ? 0.72 : -0.72);  // toward the middle, off the edge rows
@@ -282,7 +303,8 @@ UI.hedgerow = (() => {
       const mine = x.id === me?.id;
       if (!mine && !(mode === 'hedge' && ctx.myTurn)) continue;
       if (mine && !me) continue;
-      const cells = route(g.n, x.side, x.pos, cut);
+      const occupied = racers().filter((p) => p.id !== x.id).map((p) => p.pos);
+      const cells = route(g.n, x.side, x.pos, cut, occupied, x.hop);
       if (!cells?.length) continue;
       const pts = [x.pos, ...cells].map(([r, c]) => `${c * P + 0.5},${r * P + 0.5}`).join(' ');
       node('polyline', { points: pts, stroke: colorOf(x.id), class: 'hg-route' + (mine ? ' mine' : '') + (extra ? ' preview' : '') }, box);
@@ -302,14 +324,15 @@ UI.hedgerow = (() => {
     }
     if (!key) {
       hint.textContent = hover()
-        ? 'Point at a groove: the hedge snaps to the nearest crossing. Click to plant. Dotted lines show each rival\'s way home.'
-        : 'Tap a groove: the hedge snaps to the nearest crossing. Dotted lines show each rival\'s way home.';
+        ? 'Point at a groove: the hedge snaps to the nearest crossing. Click to plant. Dotted lines include pawn jumps and available hops.'
+        : 'Tap a groove: the hedge snaps to the nearest crossing. Dotted lines include pawn jumps and available hops.';
       return;
     }
     if (!ok) { hint.textContent = whyNot(key); return; }
-    const fx = effect(key), parts = fx.filter((x) => x.after !== x.before)
+    const fx = effect(key), parts = fx.filter((x) => Number.isFinite(x.before) && Number.isFinite(x.after) && x.after !== x.before)
       .map((x) => `${x.seat.id === S.me.id ? 'you' : ctx.player(x.seat.id)?.name ?? '?'} +${x.after - x.before}`);
-    const what = parts.length ? `This hedge: ${parts.join(' · ')} steps.` : 'This hedge doesn\'t lengthen anyone\'s route yet.';
+    const blocked = fx.some((x) => !Number.isFinite(x.after));
+    const what = parts.length ? `This hedge: ${parts.join(' · ')} steps.` : blocked ? 'A pawn blocks the displayed route; it can change when that pawn moves.' : 'This hedge doesn\'t lengthen anyone\'s route yet.';
     hint.textContent = what + (hover() ? ' Click to plant.' : ' Plant it, ↻ turn it, or tap another groove.');
   }
 
