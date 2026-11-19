@@ -26,6 +26,14 @@ def check(name, ok, detail=""):
 
 check("the shelf is back at phase 0", abs(P.face_at(0) - P.FACE[0]) < 1e-9)
 check("and all the way out at phase 0.5", abs(P.face_at(0.5) - P.FACE[1]) < 1e-9)
+shallow = [[1, 0.0, P.FACE[0] + P.R_COIN + 0.01, P.R_COIN, 0]]
+deep = [c[:] for c in shallow]
+repeat = [c[:] for c in shallow]
+P.simulate(shallow, 0.0, 2, frames=False, strength=0)
+P.simulate(deep, 0.0, 2, frames=False, strength=2)
+P.simulate(repeat, 0.0, 2, frames=False, strength=2)
+check("deep strength pushes farther than shallow", deep[0][2] > shallow[0][2] + 0.5, f"{shallow[0][2]:.2f} → {deep[0][2]:.2f}")
+check("identical strength inputs produce identical motion", deep == repeat)
 for ph in (0.0, 0.2, 0.5, 0.77):
     t = P.run_time(ph)
     if not (t >= P.SIM_T - 1e-9 and abs(P.face_at(ph + t / P.PERIOD) - P.FACE[1]) < 0.01):
@@ -76,7 +84,8 @@ def game(n=2, bots=(), **settings):
 r, g, (a, b) = game()
 check("a jammed pile to start", len(g.coins) >= 70 and sum(1 for c in g.coins if c[4] == 1) == P.START_STARS, f"{len(g.coins)}")
 check("Ann drops first", r.turn == a.id)
-for bad in ({"x": 2, "phase": 0.1}, {"x": 0, "phase": -0.1}, {"x": float("nan"), "phase": 0}, {"x": True, "phase": 0}):
+for bad in ({"x": 2, "phase": 0.1}, {"x": 0, "phase": -0.1}, {"x": float("nan"), "phase": 0}, {"x": True, "phase": 0},
+            {"x": 0, "phase": 0.1, "strength": 3}, {"x": 0, "phase": 0.1, "strength": True}):
     try:
         g.act(a, {"type": "drop", **bad})
         check(f"bad drop refused {bad}", False)

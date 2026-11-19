@@ -26,6 +26,7 @@ GAP_Y = 3.4                  # the side walls stop here: past it, coins can fall
 R_COIN, R_MEGA = 0.3, 0.52
 STEP = 1 / 20
 SIM_T, SHAKE_T = 4.8, 2.4    # seconds a drop runs (a shake adds a stroke)
+PUSH_RANGE = 0.32            # how far shallow/deep settings alter the shelf's forward stroke
 FRAME_EVERY = 2              # record motion every n steps (10 a second)
 ITERS = 14                   # solver passes a step at most (it stops once nothing overlaps more than SLOP)
 SLOP = 0.008
@@ -43,9 +44,10 @@ BOT = {"easy": 3, "normal": 8, "hard": 18}     # candidate drops tried
 BOT_RIVAL = {"easy": 0.0, "normal": 0.1, "hard": 0.3}  # how much a coin into a rival's tray counts against
 
 
-def face_at(phase):
-    """The shelf face's y at a point in its cycle (0..1, 0 = pulled back)."""
-    return FACE[0] + (FACE[1] - FACE[0]) * (0.5 - 0.5 * math.cos(math.tau * phase))
+def face_at(phase, strength=1):
+    """Shelf face position; strength 0/1/2 makes a shallower/standard/deeper forward stroke."""
+    far = FACE[1] + (strength - 1) * PUSH_RANGE
+    return FACE[0] + (far - FACE[0]) * (0.5 - 0.5 * math.cos(math.tau * phase))
 
 
 def run_time(phase, extra=0.0):
@@ -86,7 +88,7 @@ def landing(coins, x, r, face):
     return face + r + 0.02
 
 
-def simulate(coins, phase, n, guard=False, extra=0.0, frames=True, adds=()):
+def simulate(coins, phase, n, guard=False, extra=0.0, frames=True, adds=(), strength=1):
     """Run the machine for SIM_T (+ extra) seconds from `phase`. coins: [[id, x, y, r, kind], …] (changed in place;
     fallen coins removed). adds: [(t, x, r, kind, id)] coins dropped in during the run (each lands just in front
     of the shelf's face). Returns (falls [[id, kind, x, owner or -1, t]], frames [[t, [[id, x, y], …]], …])."""
@@ -98,7 +100,7 @@ def simulate(coins, phase, n, guard=False, extra=0.0, frames=True, adds=()):
     pending = sorted(adds)
     for s in range(1, steps + 1):
         t = s * STEP
-        face = face_at(phase + t / PERIOD)
+        face = face_at(phase + t / PERIOD, strength)
         while pending and pending[0][0] <= t:
             _, ax, ar, ak, aid = pending.pop(0)
             coins.append([aid, ax, landing(coins, ax, ar, face), ar, ak])
@@ -180,6 +182,7 @@ class Pusher(Game):
     howto = [
         "One shared coin-pusher machine. You own a stretch of the front edge: coins pushed over it drop into your tray.",
         "On your turn, slide the chute and drop a handful of three coins. Time it: dropped while the shelf is pulled back, they land deep and get the full shove.",
+        "Choose 🌱 Shallow for a safer shorter push, ⚖️ Standard for the original stroke, or 💥 Deep to reach farther with more risk of losing coins at the open sides.",
         "1 point a coin, 3 for a ⭐ prize token. Coins pushed off the open sides near the front are lost.",
         "Land on a 🔔 bell spot for a bonus: 🧱 side guards (3 drops), 🫨 an extra shove, or a 🪙 mega coin next turn.",
         "Most points when everyone's handfuls are spent wins.",
@@ -260,14 +263,16 @@ class Pusher(Game):
         if a.get("type") != "drop":
             raise GameError("Unknown action.")
         self.require_turn(p)
-        x, ph = a.get("x"), a.get("phase")
+        x, ph, strength = a.get("x"), a.get("phase"), a.get("strength", 1)
         if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in (x, ph)):
             raise GameError("Bad drop.")
         if not -1 <= x <= 1 or not 0 <= ph <= 1:
             raise GameError("Bad drop.")
+        if isinstance(strength, bool) or strength not in (0, 1, 2):
+            raise GameError("Choose a shallow, standard, or deep drop.")
         if time.time() < self.busy_until - 0.3:
             raise GameError("Wait for the coins to settle.")
-        self.drop(self.seat(p), x, ph)
+        self.drop(self.seat(p), x, ph, strength)
 
     def handful(self, i, xf, phase, ids=True):
         """The coins of one turn: HANDFUL of them a moment apart round the aim (the first is the mega coin, if any)."""
@@ -280,7 +285,7 @@ class Pusher(Game):
             out.append((round(GAP_T * k + STEP * 0.5, 3), round(x, 3), rad, 2 if rad == R_MEGA else 0, cid))
         return out
 
-    def drop(self, i, xf, phase):
+    def drop(self, i, xf, phase, strength=1):
         r = self.room
         mega = self.mega[i]
         adds = self.handful(i, xf, phase)
@@ -289,7 +294,7 @@ class Pusher(Game):
         # a bell under one of the coins?
         bonus = None
         for t, x, rad, _, _ in adds:
-            y = face_at((phase + t / PERIOD) % 1.0) + rad + 0.02
+            y = face_at((phase + t / PERIOD) % 1.0, strength) + rad + 0.02
             if any(math.hypot(x - bx, y - by) < BELL_R + rad * 0.5 for bx, by in BELLS):
                 bonus = self.rng.choice(BONUSES)
                 break
@@ -298,7 +303,7 @@ class Pusher(Game):
             self.guard[i] -= 1
         extra = SHAKE_T if bonus == "shake" else 0.0
         n = len(self.seats)
-        falls, frames = simulate(self.coins, phase, n, guard=guard, extra=extra, adds=adds)
+        falls, frames = simulate(self.coins, phase, n, guard=guard, extra=extra, adds=adds, strength=strength)
         if bonus == "guard":
             self.guard[i] = GUARD_DROPS
         elif bonus == "mega":
@@ -320,7 +325,7 @@ class Pusher(Game):
         self.best[i] = max(self.best[i], gain[i])
         dur = run_time(phase, extra)
         self.shot_no += 1
-        self.shot = {"no": self.shot_no, "by": i, "adds": [list(a) for a in adds], "phase": round(phase, 4),
+        self.shot = {"no": self.shot_no, "by": i, "adds": [list(a) for a in adds], "phase": round(phase, 4), "strength": strength,
                      "extra": extra, "dur": round(dur, 3), "falls": falls, "bonus": bonus, "gain": gain}
         r.push_fast({"shot": self.shot_no, "frames": frames})
         now = time.time()
@@ -465,6 +470,6 @@ class Pusher(Game):
             "seats": self.seats, "me": self.seat(p), "coins": [[c[0], round(c[1], 3), round(c[2], 3), c[3], c[4]] for c in self.coins],
             "points": self.points, "left": self.left, "stars": self.stars, "guard": self.guard, "mega": self.mega,
             "shot": self.shot, "busy": round(max(0.0, self.busy_until - now), 2), "drops": self.drops,
-            "geo": {"hw": HW, "edge": EDGE, "face": FACE, "period": PERIOD, "gapY": GAP_Y, "r": R_COIN, "rMega": R_MEGA,
+            "geo": {"hw": HW, "edge": EDGE, "face": FACE, "pushRange": PUSH_RANGE, "period": PERIOD, "gapY": GAP_Y, "r": R_COIN, "rMega": R_MEGA,
                     "bells": BELLS, "bellR": BELL_R, "simT": SIM_T, "spread": SPREAD, "gapT": GAP_T},
         }}

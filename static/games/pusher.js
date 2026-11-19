@@ -6,20 +6,23 @@
 UI.pusher = (() => {
   let S, ctx, V = null, gl = null, flat = null, raf = 0, ro = null, keyDown = null;
   let disp = new Map(), anim = null, lastShot = 0, framesBy = {}, pend = null, idle = { phase: 0.5, at: 0 }, aim = 0, dragX = null;
-  let shown = [], fallers = [], pops = [];
+  let shown = [], fallers = [], pops = [], strength = 1;
   const $ = (id) => document.getElementById(id);
   const calm = () => document.body.classList.contains('calm');
   const TAU = Math.PI * 2;
 
   function mount(main, side) {
-    V = null; gl = null; flat = null; disp = new Map(); anim = null; lastShot = 0; framesBy = {}; pend = null; idle = { phase: 0.5, at: performance.now() }; aim = 0; shown = []; fallers = []; pops = [];
+    V = null; gl = null; flat = null; disp = new Map(); anim = null; lastShot = 0; framesBy = {}; pend = null; idle = { phase: 0.5, at: performance.now() }; aim = 0; shown = []; fallers = []; pops = []; strength = 1;
     main.innerHTML = `<div class="cc"><div class="cc-stage" id="ccStage">
         <div class="cc-hud"><span id="ccTurn"></span><span id="ccLeft"></span></div>
         <div class="cc-pop" id="ccPop" hidden></div>
       </div>
       <div class="cc-ctl" id="ccCtl">
-        <input type="range" id="ccAim" min="-100" max="100" value="0" aria-label="Chute">
-        <button id="ccDrop" class="primary">🪙 Drop</button>
+        <div id="ccStrength" class="cc-strength" role="group" aria-label="Drop strength">
+          <button data-strength="0">🌱 Shallow</button><button data-strength="1" class="on">⚖️ Standard</button><button data-strength="2">💥 Deep</button>
+        </div>
+        <div class="cc-aim-row"><input type="range" id="ccAim" min="-100" max="100" value="0" aria-label="Chute">
+          <button id="ccDrop" class="primary">🪙 Drop</button></div>
       </div>
       <p id="ccHint" class="hint"></p></div>`;
     side.innerHTML = '<div class="panel"><h3>🪙 Trays</h3><div id="ccRace"></div><p class="hint left">Drag across the machine (or the slider, or ← →) to move the chute; tap 🪙 Drop (or Space). Coins dropped while the shelf is back get the full shove.</p></div>';
@@ -27,6 +30,10 @@ UI.pusher = (() => {
     stage.style.touchAction = 'none';
     $('ccAim').addEventListener('input', (e) => { aim = e.target.value / 100; });
     $('ccDrop').addEventListener('click', drop);
+    $('ccStrength').addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-strength]'); if (!b || !canDrop()) return;
+      strength = +b.dataset.strength; renderSide();
+    });
     // #154: the chute goes where your finger is on the machine (the view maps the screen onto the playfield)
     const aimAt = (e) => {
       const x = (gl || flat)?.pick?.(e.clientX, e.clientY);
@@ -63,7 +70,10 @@ UI.pusher = (() => {
   const me = () => V?.me;
   const colorOf = (i) => ctx.player(V.seats[i])?.color ?? '#888';
   const nameOf = (i) => ctx.player(V.seats[i])?.name ?? '?';
-  const faceAt = (ph) => G().face[0] + (G().face[1] - G().face[0]) * (0.5 - 0.5 * Math.cos(TAU * ph));
+  const faceAt = (ph, force = 1) => {
+    const g = G(), far = g.face[1] + (force - 1) * (g.pushRange || 0.32);
+    return g.face[0] + (far - g.face[0]) * (0.5 - 0.5 * Math.cos(TAU * ph));
+  };
   const ownerOf = (x) => Math.max(0, Math.min(V.seats.length - 1, Math.floor((x + G().hw) / (2 * G().hw / V.seats.length))));
   const myTurn = () => S?.phase === 'playing' && V?.me != null && S.turn === V.seats[V.me];
   const canDrop = () => myTurn() && !anim && !pend && V.left[V.me] > 0;
@@ -74,7 +84,7 @@ UI.pusher = (() => {
     const g = G(), mid = a * aimLim(), mega = V.me != null && V.mega[V.me];
     return (g.spread || [0, -0.22, 0.22]).map((sp, k) => {
       const r = k === 0 && mega ? g.rMega : g.r, x = Math.max(-(g.hw - r), Math.min(g.hw - r, mid + sp)), t = (g.gapT ?? 0.3) * k;
-      const y = faceAt((((ph + t / g.period) % 1) + 1) % 1) + r + 0.02;
+      const y = faceAt((((ph + t / g.period) % 1) + 1) % 1, strength) + r + 0.02;
       return { x, y, r, bell: g.bells.some(([bx, by]) => Math.hypot(x - bx, y - by) < g.bellR + r * 0.5) };
     });
   }
@@ -90,7 +100,7 @@ UI.pusher = (() => {
   function drop() {
     if (!canDrop()) return;
     const ph = ((shelfPhase(performance.now()) % 1) + 1) % 1;
-    ctx.act('drop', { x: +aim.toFixed(3), phase: +ph.toFixed(4) }).catch((e) => ctx.toast?.(e?.message || 'Could not drop.'));
+    ctx.act('drop', { x: +aim.toFixed(3), phase: +ph.toFixed(4), strength }).catch((e) => ctx.toast?.(e?.message || 'Could not drop.'));
     ctx.buzz?.(15);
   }
 
@@ -118,7 +128,7 @@ UI.pusher = (() => {
     const sh = pend.shot;
     if (!fr) { snap(pend.coins); shown = pend.points; pend = null; idle = { phase: 0.5, at: now }; return; }
     const was = shelfPhase(now), ofs = ((((was - sh.phase) % 1) + 1.5) % 1) - 0.5;
-    anim = { no: pend.no, t0: now, dur: sh.dur, phase: sh.phase, ofs, tracks: tracksOf(fr, sh), adds: sh.adds.map((a) => ({ t: a[0], x: a[1], r: a[2], k: a[3], id: a[4], on: false })),
+    anim = { no: pend.no, t0: now, dur: sh.dur, phase: sh.phase, strength: sh.strength ?? 1, ofs, tracks: tracksOf(fr, sh), adds: sh.adds.map((a) => ({ t: a[0], x: a[1], r: a[2], k: a[3], id: a[4], on: false })),
       falls: sh.falls.map((f) => ({ id: f[0], k: f[1], x: f[2], own: f[3], t: f[4], done: false })), end: { coins: pend.coins, points: pend.points }, by: sh.by, bonus: sh.bonus, gain: sh.gain };
     shown = pend.points.map((p, i) => p - (sh.gain[i] || 0));
     pend = null;
@@ -156,7 +166,7 @@ UI.pusher = (() => {
     for (const a of anim.adds) {
       if (!a.on && t >= a.t - 0.35) {
         a.on = true;
-        const k = anim.tracks.get(a.id), y = k ? k[0][2] : faceAt(anim.phase + a.t / g.period) + a.r + 0.02;
+        const k = anim.tracks.get(a.id), y = k ? k[0][2] : faceAt(anim.phase + a.t / g.period, anim.strength) + a.r + 0.02;
         disp.set(a.id, { x: k ? k[0][1] : a.x, y, r: a.r, k: a.k, h: 3, drop: a.t, spin: Math.random() * TAU });
       }
     }
@@ -209,7 +219,11 @@ UI.pusher = (() => {
     $('ccCtl').hidden = V.me == null;
     $('ccDrop').disabled = !canDrop();
     $('ccDrop').classList.toggle('cc-ready', canDrop());
-    $('ccHint').textContent = !myTurn() ? '' : V.mega[V.me] ? 'Your handful has a 🪙 mega coin in it!' : V.guard[V.me] ? `🧱 Side guards up (${V.guard[V.me]} drops).` : 'Drop while the shelf is back for the big shove. 🔔 bells give bonuses.';
+    [...$('ccStrength').children].forEach((b) => {
+      const chosen = +b.dataset.strength === strength;
+      b.classList.toggle('on', chosen); b.setAttribute('aria-pressed', String(chosen)); b.disabled = !canDrop();
+    });
+    $('ccHint').textContent = !myTurn() ? '' : `${['Shallow: safer, shorter shove', 'Standard: original shove', 'Deep: farther reach, greater side-loss risk'][strength]}. Drop while the shelf is back for the strongest effect. 🔔 bells give bonuses.`;
   }
 
   function popText(text) {
@@ -452,7 +466,7 @@ UI.pusher = (() => {
     function draw(now, dt) {
       place();
       const ph = shelfPhase(now), gp = g0.gapY;
-      shelf.position.z = faceAt(ph);
+      shelf.position.z = faceAt(ph, anim?.strength ?? 1);
       nk[0] = nk[1] = nk[2] = 0;
       for (const [id, c] of disp) {
         const th = c.k === 2 ? 1.5 : 1;
@@ -488,7 +502,7 @@ UI.pusher = (() => {
       const hf = showAim ? handfulAt(aim, ((ph % 1) + 1) % 1) : [];
       aimDots.forEach((m, n) => { const a = hf[n]; m.visible = !!a; if (!a) return; m.position.set(a.x, 0.012, a.y); m.scale.setScalar(a.r); m.material.color.set(a.bell ? 0x7dffb2 : 0xffd23f); m.material.opacity = n ? 0.6 : 0.9; });
       strip.visible = showAim;
-      if (showAim) { const lim = HW; strip.scale.set(2 * lim, 0.62, 1); strip.position.set(0, 0.008, faceAt(((ph % 1) + 1) % 1) + g0.r + 0.02); }
+      if (showAim) { const lim = HW; strip.scale.set(2 * lim, 0.62, 1); strip.position.set(0, 0.008, faceAt(((ph % 1) + 1) % 1, strength) + g0.r + 0.02); }
       guide.material.opacity = myTurn() ? 0.6 : 0;
       const by = anim ? anim.by : V.seats.indexOf(S.turn);
       guards.forEach((m) => { m.visible = by >= 0 && V.guard[by] > 0; });
@@ -537,7 +551,7 @@ UI.pusher = (() => {
       const n = V.seats.length;
       for (let i = 0; i < n; i++) { const w = 2 * gg.hw / n; g.fillStyle = colorOf(i); g.fillRect(X(-gg.hw + w * i) + 2, Y(gg.edge) + 4, w * k - 4, 0.9 * k); g.fillStyle = '#fff'; g.font = `bold ${Math.round(0.42 * k)}px sans-serif`; g.textAlign = 'center'; g.fillText(`${shown[i] ?? 0}`, X(-gg.hw + w * (i + 0.5)), Y(gg.edge) + 0.65 * k); }
       for (const [bx, by] of gg.bells) { g.strokeStyle = '#ffd23f'; g.lineWidth = 0.06 * k; g.beginPath(); g.arc(X(bx), Y(by), gg.bellR * k, 0, 7); g.stroke(); }
-      const face = faceAt(shelfPhase(now));
+      const face = faceAt(shelfPhase(now), anim?.strength ?? 1);
       g.fillStyle = '#2a2f3a'; g.fillRect(X(-gg.hw), Y(-0.6), 2 * gg.hw * k, (face + 0.6) * k);
       g.fillStyle = '#e8ecf2'; g.fillRect(X(-gg.hw), Y(face) - 2, 2 * gg.hw * k, 3);
       for (const c of disp.values()) {
@@ -552,7 +566,7 @@ UI.pusher = (() => {
       g.globalAlpha = 1;
       if (myTurn() && !anim && !pend) {
         const ph = ((shelfPhase(now) % 1) + 1) % 1;
-        g.fillStyle = '#ffd23f22'; g.fillRect(X(-gg.hw), Y(faceAt(ph)), 2 * gg.hw * k, 2 * gg.r * k + 2);
+        g.fillStyle = '#ffd23f22'; g.fillRect(X(-gg.hw), Y(faceAt(ph, strength)), 2 * gg.hw * k, 2 * gg.r * k + 2);
         handfulAt(aim, ph).forEach((a, n) => { g.strokeStyle = a.bell ? '#7dffb2' : '#ffd23f'; g.globalAlpha = n ? 0.65 : 1; g.lineWidth = 2; g.beginPath(); g.arc(X(a.x), Y(a.y), a.r * k, 0, 7); g.stroke(); });
         g.globalAlpha = 1;
       }
