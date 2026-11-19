@@ -4,7 +4,11 @@ The deck is dealt out evenly. Everyone flips their top card at once and the high
 (aces high, suits don't matter). When the top cards tie, those players go to war: three cards face
 down and one face up, and the highest of those takes everything. Won cards go to the bottom of your
 pile. Run out of cards and you're out. The last player holding cards wins. A battle limit (setting)
-ends a long game: most cards wins."""
+ends a long game: most cards wins.
+
+🎲 Gamble (default on): everyone has 2 gambles a game. Spend one before a flip: win the battle and you also
+take the top card of every rival's pile; lose it and the winner takes the top card of yours. A gamble never
+takes a pile's last card, so it can't knock anyone out."""
 from .cardbase import CardGame, GameError, deck, rank, pretty, show
 
 ORDER = "23456789TJQKA"
@@ -24,10 +28,16 @@ class War(CardGame):
         "A tie at the top means war: three cards face down, one face up, highest takes everything.",
         "Won cards go under your pile. Run out and you're out.",
         "Last player with cards wins, or most cards when the battle limit runs out.",
+        "🎲 You have 2 gambles a game. Press Gamble instead of Flip: if you win the battle you also take the top card of every rival's pile; if you lose, the winner takes one of yours.",
     ]
     min_players, max_players = 2, 4
-    badges = {**CardGame.badges, "warlord": ("🪖", "Warlord", "Win a double war")}
-    settings_schema = {"limit": ("Battle limit", [(60, "60 battles"), (30, "30 (quick)"), (150, "150 battles"), (0, "No limit")], 60)}
+    badges = {**CardGame.badges, "warlord": ("🪖", "Warlord", "Win a double war"), "gambler": ("🎲", "High roller", "Win a battle you gambled on")}
+    settings_schema = {"limit": ("Battle limit", [(60, "60 battles"), (30, "30 (quick)"), (150, "150 battles"), (0, "No limit")], 60),
+                       "gamble": ("Gambles", [(2, "🎲 2 a game"), (0, "Off")], 2)}
+    GAMBLES = 2  # per player per game (the setting turns them off)
+    gambles = None   # games saved before 🎲 have none
+    bets = None
+    last_bets = ()
 
     def start(self, seated, rng):
         self.seat_up(seated, rng)
@@ -37,6 +47,9 @@ class War(CardGame):
         self.piles = [cards[k * per:(k + 1) * per] for k in range(self.n)]
         self.battle = 0
         self.shown = None
+        self.gambles = [self.GAMBLES if self.s.get("gamble", 2) else 0] * self.n
+        self.bets = set()
+        self.last_bets = ()
         self.room.add_log("⚔️ War! Flip together; highest card takes the lot.", "big")
         self.next_battle()
 
@@ -56,16 +69,34 @@ class War(CardGame):
             return self.win_by_score([len(p) for p in self.piles], what="cards")
         self.battle += 1
         self.stage = "flip"
+        self.bets = set()
         self.open_all(live)
 
     def act(self, p, a):
         i = self.act_seat(p)
         if a.get("type") != "flip" or self.stage != "flip" or i not in self.waiting:
             raise GameError("Wait for the next battle.")
+        if a.get("gamble"):
+            self.gamble(i)
         self.flip(i)
+
+    def left(self, i):
+        return (self.gambles or [0] * self.n)[i]
+
+    def gamble(self, i):
+        if self.left(i) <= 0:
+            raise GameError("You're out of gambles.")
+        self.gambles[i] -= 1
+        self.bets = (self.bets or set()) | {i}
+        self.room.add_log(f"🎲 {self.nm(i)} gambles!", "power")
 
     def bot_move(self, i, level):
         if self.stage == "flip" and i in self.waiting:
+            # bots gamble when they're behind (hard: more eagerly), never with a pile too thin to pay
+            mine, best = len(self.piles[i]), max(len(p) for p in self.piles)
+            chance = {"easy": 0.05, "normal": 0.2, "hard": 0.4}.get(level, 0.2) if mine < best else 0.03
+            if self.left(i) > 0 and mine > 2 and self.rng.random() < chance:
+                self.gamble(i)
             self.flip(i)
 
     def flip(self, i):
@@ -103,11 +134,26 @@ class War(CardGame):
             if len(fighters) <= 1:
                 w = fighters[0] if fighters else best[0]
                 break
+        bets = set(self.bets or ())
+        # 🎲 the winner's gamble makes every rival pay a card; a rival's lost gamble makes that rival pay one
+        payers = ({k for k in range(self.n) if k != w} if w in bets else set()) | (bets - {w})
+        extra = 0
+        for k in sorted(payers):
+            if len(self.piles[k]) > 1:  # a gamble never takes a pile's last card
+                pot.append(self.piles[k].pop(0))
+                extra += 1
+        self.last_bets = sorted(bets)
         self.rng.shuffle(pot)
         self.piles[w] += pot
         self.shown = {"rounds": [{str(k): c for k, c in r.items()} for r in rounds], "winner": w, "pot": len(pot), "wars": wars}
         if wars >= 2 and self.pl(w):
             self.award(self.pl(w), "warlord")
+        if w in bets and self.pl(w):
+            self.award(self.pl(w), "gambler")
+        if bets and not wars:
+            who = " & ".join(self.nm(k) for k in sorted(bets))
+            msg = f"pays off: +{extra} card{'s' * (extra != 1)}!" if w in bets else f"fails: {self.nm(w)} collects!"
+            self.moment(f"🎲 {who}'s gamble {msg}", "gold" if w in bets else "red", "fanfare")
         if wars:
             self.moment(f"⚔️ {self.nm(w)} wins the war and {len(pot)} cards!", "gold", "fanfare")
         self.room.add_log(f"{show(list(rounds[-1].values()))} → {self.nm(w)} takes {len(pot)}.")
@@ -131,7 +177,9 @@ class War(CardGame):
         last = sh["rounds"][-1] if sh else {}
         info = [{"count": len(self.piles[k]), "out": not self.piles[k],
                  "show": [last[str(k)]] if str(k) in last and self.stage == "show" else [],
-                 "tags": ["🏆 took it" if sh and sh["winner"] == k and self.stage == "show" else ""]} for k in range(self.n)]
+                 "tags": [("🏆 took it" if sh and sh["winner"] == k and self.stage == "show" else "")
+                          + (" 🎲" if self.stage == "show" and k in (self.last_bets or ()) else "")
+                          + (f" · 🎲{self.left(k)}" if self.left(k) and self.stage == "flip" else "")]} for k in range(self.n)]
         lim = self.s.get("limit", 60)
         t = {"info": info,
              "trick": [[int(k), c] for k, c in last.items()] if self.stage == "show" else [],
@@ -142,5 +190,7 @@ class War(CardGame):
             t["piles"] = [{"cards": ["??"], "count": len(self.piles[i]), "label": "Your pile"}]
             if self.stage == "flip" and i in self.waiting:
                 t["buttons"] = [{"label": "⚔️ Flip!", "a": {"type": "flip"}, "kind": "slap"}]
+                if self.left(i) and len(self.piles[i]) > 1:
+                    t["buttons"].append({"label": f"🎲 Gamble ({self.left(i)} left)", "a": {"type": "flip", "gamble": True}})
                 t["turnText"] = "⚔️ Flip your card"
         return t
