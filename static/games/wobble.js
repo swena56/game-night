@@ -183,6 +183,19 @@ UI.wobble = (() => {
   }
   const safety = (m) => Math.max(0, Math.min(1, m / 0.5));
   const meterColor = (m) => (m < 0 ? '#ef476f' : m < 0.08 ? '#ff8c42' : m < 0.2 ? '#ffd23f' : '#3ddc97');
+  const grade = (m) => (m < 0 ? 'Falls' : m < 0.08 ? 'Risky' : m < 0.2 ? 'Wobbly' : 'Steady');
+  function leanForecast(p) {
+    if (!p?.sup?.length) return '';
+    let sx = 0, sz = 0, total = 0;
+    for (const [, pg] of p.sup) {
+      const [a, x, z] = pcent(pg);
+      sx += a * x; sz += a * z; total += a;
+    }
+    if (!total) return '';
+    const dx = gx - sx / total, dz = gz - sz / total;
+    const dir = Math.hypot(dx, dz) < 0.12 ? 'Centered' : `leans ${arrow([dx, dz])}`;
+    return `${dir} · ${grade(p.m)}`;
+  }
 
   // ---------- the screen
   function mount(main, side) {
@@ -380,6 +393,7 @@ UI.wobble = (() => {
       const sl = +b.dataset.slot, open = v.open.includes(sl), m = v.slots?.[sl];
       b.disabled = !st || !open;
       b.style.borderColor = open && m != null ? meterColor(m) : '';
+      b.textContent = `${['Edge', 'Middle', 'Edge'][sl]}${open && m != null ? ` · ${grade(m)}` : ''}`;
     }
     // the meter: the picked plank's risk the way you're sliding it, else how steady the tower is
     const risk = info ? riskOf(sel) : null, m = v.margin;
@@ -413,6 +427,7 @@ UI.wobble = (() => {
     $('wbBlock').innerHTML = '';
     if (S.phase === 'playing' && v.phase === 'place') {
       $('wbBlock').append(icon(v.current, 28), ctx.el('span', '', `${v.seats[v.me] === S.turn ? 'Your' : `${ctx.player(S.turn)?.name ?? '?'}'s`} block: ${sh.name}`));
+      if (p && on) $('wbBlock').append(ctx.el('b', p.m < 0 ? 'wb-warn' : '', leanForecast(p)));
       if (p && on && p.m < 0) $('wbBlock').append(ctx.el('b', 'wb-warn', '⚠️ it would fall'));
       else if (on && !p) $('wbBlock').append(ctx.el('b', 'wb-warn', '⬇ nothing under it'));
     }
