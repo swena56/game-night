@@ -1,24 +1,58 @@
 /* tide: Tide Castles' own rules, loaded with static/games/tide.js (needUI in app.js). Shared pieces and the theme
    tokens live in static/style.css, which always loads first. */
 .tc { max-width: 820px; margin: 0 auto; user-select: none; -webkit-user-select: none; }
-.tc-stage { position: relative; height: clamp(280px, calc(var(--room) - 200px), 620px); border-radius: var(--radius); overflow: hidden; background: #cfeaff; }
+.tc-stage { position: relative; height: clamp(280px, calc(var(--room) - 200px), 620px); border-radius: var(--radius); overflow: hidden;
+  background: linear-gradient(#5aa8f0, #ffd9a8 38%, #4fd8cf 40%, #f9e5b8 52%); }
 .tc-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .tc-hud { position: absolute; top: 8px; left: 8px; right: 8px; display: flex; justify-content: space-between; z-index: 2; pointer-events: none;
-  font: 800 15px/1.2 var(--font-display); color: #10324a; }
-.tc-hud span { background: #ffffffc0; border-radius: 999px; padding: 3px 10px; }
+  font: 800 15px/1.2 var(--font-display); color: #7a3b00; }
+.tc-hud span { background: #fff7e6e6; border-radius: 999px; padding: 3px 10px; box-shadow: 0 2px 0 #e7a94c66; }
 .tc-hud span:empty { display: none; }
 .tc-hurry { color: #c8102e; animation: tc-pulse .5s ease-in-out infinite alternate; }
 @keyframes tc-pulse { to { transform: scale(1.08); } }
 .tc-fore { position: absolute; top: 40px; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; z-index: 2; pointer-events: none; }
-.tc-w { min-width: 26px; text-align: center; padding: 2px 6px; border-radius: 999px; background: #1d6fa5cc; color: #fff; font: 800 calc(13px * var(--wz, 1))/1.3 var(--font-display); align-self: center; }
+.tc-w { min-width: 26px; text-align: center; padding: 2px 6px; border-radius: 999px; background: #1aa3c8d9; color: #fff; font: 800 calc(13px * var(--wz, 1))/1.3 var(--font-display); align-self: center;
+  box-shadow: 0 2px 0 #0e6f8c88; transition: transform .2s, background .2s; }
 .tc-w::before { content: '🌊'; font-size: calc(10px * var(--wz, 1)); margin-right: 2px; }
-.tc-w.big { background: #0b3b66ee; }
-.tc-w.now { background: #ffd23f; color: #10324a; transform: scale(1.15); }
-.tc-all { position: absolute; right: 8px; bottom: 8px; z-index: 2; min-height: 36px; padding: 4px 10px; border-radius: 999px; background: #ffffffd0; color: #10324a; border: 0; font-weight: 700; }
+.tc-w.big { background: #1667b0ee; }
+.tc-w.now { background: #ffd23f; color: #7a3b00; transform: scale(1.2); }
+.tc-all { position: absolute; right: 8px; bottom: 8px; z-index: 2; min-height: 36px; padding: 4px 10px; border-radius: 999px; background: #fff7e6e6; color: #7a3b00; border: 0; font-weight: 700; }
 .tc-all.on { background: #ffd23f; }
 .tc-all[hidden] { display: none; }
-.tc-pop { position: absolute; left: 50%; top: 34%; transform: translateX(-50%); z-index: 3; font-size: clamp(22px, 7vw, 38px); font-weight: 800; white-space: nowrap;
-  color: #fff; text-shadow: 0 2px 0 #0008, 0 0 16px #1d6fa5; pointer-events: none; }
+.tc-pop { position: absolute; left: 50%; top: 34%; transform: translateX(-50%); z-index: 3; font-size: clamp(22px, 6.4vw, 36px); font-weight: 800;
+  width: max-content; max-width: 92%; text-align: center; line-height: 1.15;
+  color: #fff; text-shadow: 0 2px 0 #b5600088, 0 0 16px #ff9f43; pointer-events: none; }
+.tc-pop.tc-pop-build { top: 24%; font-size: clamp(18px, 5.4vw, 28px); text-shadow: 0 2px 0 #7a3b0099, 0 0 14px #ffb347; }
+.tc-pop.tc-pop-goal { color: #fff6c2; text-shadow: 0 2px 0 #7a3b00aa, 0 0 22px #ffd23f; }
+.tc-pop.tc-pop-tide { text-shadow: 0 2px 0 #0e5f8a99, 0 0 18px #3fd0e0; }
+.tc-pop.tc-pop-bad { text-shadow: 0 2px 0 #0009, 0 0 18px #ff5a4a; }
+/* the goal chip, the wave banner, floating scores and the tally card (#184) */
+.tc-goal { position: absolute; left: 8px; bottom: 8px; z-index: 2; max-width: calc(100% - 110px); padding: 4px 10px; border-radius: 999px; background: #fff7e6e6; color: #7a3b00;
+  font: 800 13px/1.3 var(--font-display); box-shadow: 0 2px 0 #e7a94c66; pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tc-goal:empty { display: none; }
+.tc-goal.tc-met { background: #ffd23f; }
+.tc-wave { position: absolute; top: 74px; left: 50%; transform: translateX(-50%); z-index: 2; padding: 3px 12px; border-radius: 999px; background: #1aa3c8e6; color: #fff;
+  font: 800 15px/1.3 var(--font-display); white-space: nowrap; pointer-events: none; box-shadow: 0 2px 0 #0e6f8c88; }
+.tc-wave.big { background: #1667b0; font-size: 17px; }
+.tc-wave[hidden] { display: none; }
+.tc-wave-in { animation: tcWave .45s cubic-bezier(.3, 1.6, .5, 1) both; }
+@keyframes tcWave { from { transform: translateX(-50%) translateY(-12px) scale(.6); opacity: 0; } }
+.tc-fx { position: absolute; inset: 0; z-index: 3; pointer-events: none; overflow: hidden; }
+.tc-fl { position: absolute; transform: translate(-50%, -50%); font: 800 16px/1 var(--font-display); color: #fff; white-space: nowrap;
+  text-shadow: 0 2px 0 #7a3b00aa, 0 0 8px #ff9f43; animation: tcFl 1.4s ease-out both; }
+.tc-fl-rampart { color: #ffe08a; }
+.tc-fl-flag, .tc-fl-shell { color: #fff2f6; font-size: 15px; }
+.tc-fl-keep { font-size: 20px; color: #fff6c2; }
+.tc-fl-held { font-size: 18px; }
+@keyframes tcFl { 0% { transform: translate(-50%, -30%) scale(.5); opacity: 0; } 18% { transform: translate(-50%, -60%) scale(1.15); opacity: 1; } 70% { opacity: 1; } 100% { transform: translate(-50%, -190%) scale(1); opacity: 0; } }
+.tc-tally { position: absolute; right: 8px; top: 74px; z-index: 4; min-width: 190px; max-width: calc(100% - 16px); padding: 8px 12px; border-radius: 14px;
+  background: #fff7e6f2; color: #5a2c00; box-shadow: 0 4px 0 #e7a94c88, 0 8px 24px #0003; font: 700 13px/1.5 var(--font-display); pointer-events: none; }
+.tc-tally[hidden] { display: none; }
+.tc-tally div { display: flex; justify-content: space-between; gap: 12px; }
+.tc-tally .tc-tl-h { display: block; font-size: 15px; margin-bottom: 2px; color: #b55a00; }
+.tc-tally .tc-tl-sum { border-top: 2px dashed #e7a94c; margin-top: 4px; padding-top: 2px; font-size: 16px; }
+.tc-tally-in { animation: tcTally .4s cubic-bezier(.3, 1.5, .5, 1) both; }
+@keyframes tcTally { from { transform: translateY(-10px) scale(.85); opacity: 0; } }
 .tc-pop-in { animation: tcPop 1.6s ease-out both; }
 @keyframes tcPop { 0% { transform: translateX(-50%) scale(.4); opacity: 0; } 14% { transform: translateX(-50%) scale(1.1); opacity: 1; } 24% { transform: translateX(-50%) scale(1); } 80% { opacity: 1; } 100% { transform: translate(-50%, -16px); opacity: 0; } }
 .tc-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
@@ -29,9 +63,11 @@
 .tc-tools button.on { box-shadow: 0 0 0 3px var(--accent); background: var(--accent-a20); }
 .tc-tools.tc-off { opacity: .5; }
 .tc-sand { font: 800 16px var(--font-display); margin-left: auto; }
+.tc-sand.tc-low { color: #d9480f; }
 .tc-ready { min-height: 52px; }
 .tc-st { font-size: 12px; opacity: .8; margin-right: 6px; }
 body.focus .tc-stage { height: max(240px, calc(var(--room) - 220px)); }
-@media (prefers-reduced-motion: reduce) { .tc-pop-in, .tc-hurry { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .tc-pop-in, .tc-hurry, .tc-wave-in, .tc-tally-in { animation: none; } .tc-fl { animation-duration: .01s; } }
+@media (max-width: 520px) { .tc-tools { gap: 4px; } .tc-tools button[data-t] { min-width: 46px; padding: 4px 3px; } }
 
 .tc-test.on { background: var(--accent); color: var(--accent-ink, #fff); }
