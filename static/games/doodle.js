@@ -18,7 +18,7 @@ UI.doodle = (() => {
         <button class="primary" id="ddSend">Guess</button>
       </form>
       <div id="ddStatus" class="dd-status"></div></div>`;
-    side.innerHTML = '<div class="panel"><h3>This picture</h3><div id="ddSolvers"></div></div>';
+    side.innerHTML = '<div class="panel"><h3>This picture</h3><div id="ddSolvers"></div></div><div id="ddGalleryPanel" class="panel dd-gallery-panel" hidden><h3>🖼️ Round gallery</h3><div id="ddGallery"></div></div>';
     svg = $('ddSvg');
     $('ddForm').onsubmit = (e) => {
       e.preventDefault();
@@ -60,6 +60,38 @@ UI.doodle = (() => {
     p.setAttribute('class', 'dd-ink');
     if (animSecs > 0) p.style.animation = `dddraw ${animSecs}s linear ${-delay}s both`;
     svg.append(p);
+  }
+
+  function renderGallery(gallery) {
+    const panel = $('ddGalleryPanel'), box = $('ddGallery');
+    panel.hidden = !gallery?.length;
+    if (!gallery?.length) return;
+    box.innerHTML = '';
+    gallery.forEach((round) => {
+      const card = ctx.el('article', 'dd-gallery-card');
+      card.append(ctx.el('h4', '', `Picture ${round.round}: ${round.answer}`), ctx.el('p', 'dd-gallery-category', round.category));
+      const image = document.createElementNS(NS, 'svg');
+      image.setAttribute('viewBox', '-4 -4 108 108'); image.setAttribute('class', 'dd-gallery-art');
+      for (const d of round.strokes) {
+        const path = document.createElementNS(NS, 'path');
+        path.setAttribute('d', d); path.setAttribute('class', 'dd-ink');
+        path.style.stroke = MARKERS[round.round % MARKERS.length];
+        image.append(path);
+      }
+      card.append(image);
+      const accepted = round.guesses.filter((g) => g.accepted);
+      const aliases = round.aliases?.length ? ` Accepted: ${round.aliases.join(', ')}.` : '';
+      card.append(ctx.el('p', 'dd-gallery-answer', `Answer: ${round.answer}.${aliases}`));
+      const list = ctx.el('ul', 'dd-gallery-guesses');
+      if (!round.guesses.length) list.append(ctx.el('li', 'hint', 'No guesses were submitted.'));
+      for (const guess of round.guesses) {
+        const player = ctx.player(guess.pid);
+        list.append(ctx.el('li', guess.accepted ? 'accepted' : 'miss',
+          `${player?.name ?? 'A player'}: “${guess.text}” ${guess.accepted ? '✓ accepted' : '· not accepted'}`));
+      }
+      if (accepted.length) card.append(ctx.el('p', 'dd-gallery-summary', `${accepted.length} accepted guess${accepted.length === 1 ? '' : 'es'}.`));
+      card.append(list); box.append(card);
+    });
   }
 
   // wrong guesses float up over the paper as speech bubbles, so everyone sees the table's wild ideas
@@ -142,6 +174,7 @@ UI.doodle = (() => {
       box.append(row);
     }
     box.append(ctx.el('p', 'hint left', d.mode === 'race' ? '⚡ First correct guess takes the picture.' : '🙌 Everyone can score; the first gets +2.'));
+    renderGallery(d.gallery);
     tick();
   }
 

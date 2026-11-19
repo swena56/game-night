@@ -31,3 +31,13 @@
   animation: ddBubble 2.5s ease-out both; }
 .dd-bubble b { color: #7048e8; }
 @keyframes ddBubble { 0% { opacity: 0; transform: translateY(10px) scale(.8); } 15% { opacity: 1; transform: none; } 80% { opacity: 1; } 100% { opacity: 0; transform: translateY(-60px); } }
+.dd-gallery-panel { max-height: 62vh; overflow-y: auto; }
+#ddGallery { display: grid; gap: 12px; }
+.dd-gallery-card { padding: 10px; border-radius: var(--r-md); background: var(--panel2); }
+.dd-gallery-card h4 { margin: 0; }
+.dd-gallery-category, .dd-gallery-answer, .dd-gallery-summary { margin: 3px 0 8px; color: var(--muted); font-size: 13px; }
+.dd-gallery-art { display: block; width: min(100%, 180px); aspect-ratio: 1; margin: 8px auto; border-radius: 8px; background: #fffdf6; }
+.dd-gallery-art .dd-ink { filter: none; stroke-width: 2.4; }
+.dd-gallery-guesses { margin: 8px 0 0; padding-left: 18px; font-size: 13px; overflow-wrap: anywhere; }
+.dd-gallery-guesses .accepted { color: var(--ok); }
+.dd-gallery-guesses .miss { color: var(--muted); }

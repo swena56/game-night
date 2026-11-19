@@ -899,6 +899,13 @@ async function playSolo(game, seconds = 60) {
   report.screen = d.querySelector('#turnText')?.textContent;
   if (report.phase === 'over') {
     report.banner = d.querySelector('#overText')?.textContent;
+    if (game === 'doodle') {
+      const gallery = d.querySelector('#ddGalleryPanel'), cards = [...d.querySelectorAll('.dd-gallery-card')];
+      report.gallery = cards.length;
+      if (!gallery || gallery.hidden || cards.length !== S().doodle.rounds) report.notes.push('Doodle Dash gallery missing or out of round order');
+      if (cards.some((card, i) => !card.querySelector('svg') || !card.querySelector('h4')?.textContent.startsWith(`Picture ${i + 1}:`)))
+        report.notes.push('Doodle Dash gallery picture data is incomplete or out of order');
+    }
     // replay
     if (!d.querySelector('#replayBtn').hidden) {
       click(d.querySelector('#replayBtn'));

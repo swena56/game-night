@@ -66,6 +66,7 @@ class Doodle(Game):
         "Type what you think it is — everyone guesses at once.",
         "The sooner you get it, the more points. Wrong guesses lock you out for 3 seconds.",
         "Letter blanks appear halfway through the drawing, then the first letter.",
+        "After the match, browse the picture gallery with every guess and accepted answer.",
     ]
     name = "Doodle Dash"
     icon = "✏️"
@@ -90,6 +91,7 @@ class Doodle(Game):
         self.skew = 0.0  # the bot simulator fast-forwards this virtual clock
         self.queue = rng.sample(range(len(DRAWINGS)), min(self.s["pictures"], len(DRAWINGS)))
         self.round = 0
+        self.gallery = []
         for p in seated:
             p.g.score = 0
             p.g.got = 0
@@ -120,6 +122,7 @@ class Doodle(Game):
         self.per = self.draw_secs() / len(self.pic[3])
         self.end = self.t0 + self.draw_secs() + GRACE_SECS
         self.solvers = []  # [(pid, points)] in order
+        self.guesses = []  # attempted answers for the post-game gallery
         self.sent = 0  # strokes browsers have been told about; each new one is a clock event
         self.room.deadline = self.end - self.skew
         self.plan_bots()
@@ -219,7 +222,13 @@ class Doodle(Game):
     def guess(self, p, text):
         answer, _, aliases, _ = self.pic
         g = norm(text)
-        if g and is_answer(g, {norm(x) for x in [answer, *aliases]}):
+        accepted = bool(g and is_answer(g, {norm(x) for x in [answer, *aliases]}))
+        guesses = getattr(self, "guesses", None)
+        if not isinstance(guesses, list):
+            self.guesses = guesses = []
+        if len(guesses) < 120:
+            guesses.append({"pid": p.id, "text": text, "accepted": accepted})
+        if accepted:
             frac = min(1.0, max(0.0, (self.now() - self.t0) / self.draw_secs()))
             pts = 3 + round(7 * (1 - frac)) + (2 if self.s["mode"] == "all" and not self.solvers else 0)
             pts = max(1, pts - len(self.extra_letters()))  # the late letters make it easier, so it's worth less
@@ -243,6 +252,10 @@ class Doodle(Game):
             self.room.add_log(f"❌ {p.name}: “{text[:40]}”")
 
     def reveal(self, winner):
+        if not isinstance(getattr(self, "gallery", None), list):
+            self.gallery = []
+        if not isinstance(getattr(self, "guesses", None), list):
+            self.guesses = []
         answer = self.pic[0]
         got = {pid for pid, _ in self.solvers}
         for q in self.room.contenders():
@@ -255,6 +268,12 @@ class Doodle(Game):
             self.room.add_log(f"🎨 It was a {answer}! {len(self.solvers)} got it.", "big")
         else:
             self.room.add_log(f"🎨 Nobody got it — it was a {answer}.", "big")
+        self.gallery.append({
+            "round": self.round, "category": self.pic[1], "answer": answer,
+            "aliases": list(self.pic[2]), "strokes": list(self.pic[3]),
+            "solvers": [[pid, pts] for pid, pts in self.solvers],
+            "guesses": list(self.guesses),
+        })
         self.stage = "reveal"
         self.end = self.now() + REVEAL_SECS
         self.plans = []
@@ -304,7 +323,7 @@ class Doodle(Game):
         n = len(self.pic[3]) if self.stage == "reveal" else self.shown()
         frac = (now - self.t0) / self.draw_secs()
         solved = dict(self.solvers)
-        return {"doodle": {
+        out = {
             "stage": self.stage, "round": self.round, "rounds": len(self.queue), "category": self.pic[1],
             "strokes": self.pic[3][:n], "age": max(0.0, now - (self.t0 + (n - 1) * self.per)) if n else 0,
             "per": self.per, "hint": self.hint(frac),
@@ -313,4 +332,7 @@ class Doodle(Game):
             "standings": self.standings() if self.stage == "reveal" else None,
             "locked": max(0.0, getattr(p.g, "locked", 0) - now), "left": max(0.0, self.end - now),
             "drawn": min(1.0, max(0.0, frac)) if self.stage == "draw" else 1.0, "secs": self.draw_secs(), "grace": GRACE_SECS,
-        }}
+        }
+        if self.room.phase == "over":
+            out["gallery"] = self.gallery
+        return {"doodle": out}

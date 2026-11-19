@@ -54,6 +54,16 @@ check("the same spots on every look", g.hint(2) == h)
 g.act(ann, {"type": "guess", "text": g.pic[0]})
 got = dict(g.solvers).get(ann.id)
 check("each late letter costs a point", got == max(1, 3 + 2 - D.EXTRA_LETTERS), f"got {got}")
+g.guess(bo, "wrong-answer")
+g.reveal(None)
+check("gallery remains hidden until the match ends", "gallery" not in g.view(ann)["doodle"])
+g.finish_game()
+gallery = g.view(ann)["doodle"].get("gallery", [])
+check("gallery preserves picture order and original drawing",
+      len(gallery) == 1 and gallery[0]["round"] == 1 and gallery[0]["answer"] == g.pic[0]
+      and gallery[0]["strokes"] == g.pic[3])
+check("gallery marks accepted and missed guesses",
+      [(x["pid"], x["accepted"]) for x in gallery[0]["guesses"]] == [(ann.id, True), (bo.id, False)])
 
 print(f"\n{len(fails)} failed" if fails else "\nall passed")
 sys.exit(1 if fails else 0)
