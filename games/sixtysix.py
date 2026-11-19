@@ -307,6 +307,8 @@ class SixtySix(TrickGame):
             btn.append({"label": "🔒 Close the stock", "a": {"type": "close"}})
         if btn:
             t["buttons"] = btn
-        t["note"] = f"You have {self.points[i]} points" + (f" (+{self.held[i]} once you take a trick)" if self.held[i] else "") + ". " + \
+        total = self.points[i] + self.held[i]
+        goal = ("🎯 Win a trick and you reach 66!" if self.held[i] and total >= 66 else f"{max(0, 66 - total)} to 66.")
+        t["note"] = f"You have {self.points[i]} points" + (f" (+{self.held[i]} once you take a trick)" if self.held[i] else "") + f". {goal} " + \
             ("Follow suit and head the trick." if self.strict() and self.trick else "")
         return t
