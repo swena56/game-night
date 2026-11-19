@@ -1,11 +1,12 @@
 // Dice Squares: the roll for the whole table, and your own grid. Tap an empty square to write the die in
 // (with two dice, tap the one you want first). Each finished row and column shows the hand it scored.
+// 🔮 The first tap on a square selects it and forecasts its row and column; a second tap writes it in.
 UI.squares = (() => {
-  let S, ctx, die = 0, rollKey = '';
+  let S, ctx, die = 0, rollKey = '', sel = null;
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
-    die = 0; rollKey = ''; Kit.reset('dsq:');
+    die = 0; rollKey = ''; sel = null; Kit.reset('dsq:');
     main.innerHTML = `<div class="dsq">
       <div id="dsqTurn" class="dsq-turn"></div>
       <div id="dsqRoll" class="ya-dice dsq-roll"></div>
@@ -37,7 +38,11 @@ UI.squares = (() => {
       return b;
     });
     const rk = `${S.gameNo}|${q.t}`;
-    if (rk !== rollKey && playing) { if (rollKey) Dice.roll(nodes); die = 0; }
+    if (rk !== rollKey && playing) { if (rollKey) Dice.roll(nodes); die = 0; sel = null; }
+    if (!canAct || !q.forecast || !q.forecast[sel]) sel = null;
+    // 🔮 the selected square's row and column: what they'd score with this die, or the best still possible
+    const fc = {};
+    if (sel != null) for (const [k, full, lbl, pts] of q.forecast[sel][die] ?? []) fc[k] = [full, lbl, pts];
     rollKey = rk;
 
     // the grid with a result column on the right and a result row along the bottom
@@ -46,20 +51,23 @@ UI.squares = (() => {
     const mine = q.grid || Array(n * n).fill(0);
     const done = [];   // lines finished by this placement: they pop, and a big hand gets a callout
     const res = (k) => {
-      const r = q.lines?.[k];
-      const box = ctx.el('div', 'dsq-res' + (r ? (r[1] >= 12 ? ' big' : r[1] ? ' ok' : ' zero') : ''));
+      const r = q.lines?.[k], f = fc[k];
+      const box = ctx.el('div', 'dsq-res' + (r ? (r[1] >= 12 ? ' big' : r[1] ? ' ok' : ' zero') : f ? ' fc' + (f[0] ? ' sure' : '') : ''));
       if (r) { box.append(ctx.el('b', '', String(r[1]))); box.title = r[0]; box.append(ctx.el('small', '', r[0])); }
+      else if (f) { box.append(ctx.el('b', '', f[0] ? `=${f[2]}` : `≤${f[2]}`)); box.title = f[0] ? `Scores ${f[1]}` : `Best still possible: ${f[1]}`; box.append(ctx.el('small', '', f[1])); }
       Kit.onNew(`dsq:${S.gameNo}:${k}`, r ? r[1] : null, () => { box.classList.add('new'); done.push([box, r]); });
       return box;
     };
     for (let r = 0; r < n; r++) {
       for (let col = 0; col < n; col++) {
         const i = r * n + col, v = mine[i];
-        const b = ctx.el('button', 'dsq-cell' + (v ? ' full' : '') + (q.recent === i ? ' recent' : ''));
-        b.append(cellBox(v));
+        const b = ctx.el('button', 'dsq-cell' + (v ? ' full' : '') + (q.recent === i ? ' recent' : '') + (sel === i ? ' sel' : ''));
+        b.append(sel === i ? cellBox(q.dice[die], 'ghost') : cellBox(v));
         b.disabled = !canAct || !!v;
         b.setAttribute('aria-label', v ? `Row ${r + 1}, column ${col + 1}: ${v}` : `Row ${r + 1}, column ${col + 1}: empty`);
-        b.onclick = () => ctx.quiet(ctx.act('place', { cell: i, die }));
+        b.onclick = () => {
+          if (sel === i || !q.forecast) { sel = null; ctx.quiet(ctx.act('place', { cell: i, die })); } else { sel = i; render(S, ctx); }
+        };
         grid.append(b);
       }
       grid.append(res(r));
@@ -71,7 +79,8 @@ UI.squares = (() => {
     if (best) Kit.callout(`${best[1][0]}!`, 'gold', { sound: 'good', ms: 1300 });
 
     $('dsqHint').textContent = !playing || !q.grid ? '' : q.placed ? 'Placed — the next roll comes when everyone is in.'
-      : q.dice.length > 1 ? 'Pick a die, then tap an empty square.' : 'Tap an empty square for this roll.';
+      : sel != null ? 'Tap the square again to write it in, or try another.'
+      : q.dice.length > 1 ? 'Pick a die, then tap an empty square to see its forecast.' : 'Tap an empty square to see its forecast.';
 
     const box = $('dsqScores');
     Kit.scoreboard(box, q.seats.filter((pid) => ctx.player(pid)).map((pid) => ({

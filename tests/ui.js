@@ -580,7 +580,7 @@ const MOVES = {
     if (hot) return click(hot);
     click(pick([...d.querySelectorAll('.bgo-cell.called:not(.d)')]));
   },
-  squares(d) { const cells = [...d.querySelectorAll('.dsq-cell:not(:disabled)')]; if (cells.length) click(pick(cells)); },
+  squares(d) { const sel = d.querySelector('.dsq-cell.sel:not(:disabled)'), cells = [...d.querySelectorAll('.dsq-cell:not(:disabled)')]; if (sel) click(sel); else if (cells.length) click(pick(cells)); },  // 🔮 tap to forecast, tap again to place
   brawl(d) {  // roll, hold a die now and then, fight
     const roll = d.querySelector('#brwRoll'), fight = d.querySelector('#brwFight');
     if (!roll) return;

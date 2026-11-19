@@ -98,6 +98,28 @@ t = g.t
 g.act(bo, {"type": "place", "cell": 5})
 check("squares: the next roll comes when everyone is in", g.t == t + 1)
 check("squares: then it shows", g.view(bo)["squares"]["rivals"][ann.id][0] != 0)
+# 🔮 forecast: matches the final count for every hand, and only for the placer until the roll locks
+for n, lines_ in ((4, [[3, 3, 3], [2, 3, 4], [2, 2, 5], [1, 1, 1], [6, 6, 2], [1, 3, 5]]),
+                  (5, [[3, 3, 3, 3], [2, 2, 5, 5], [2, 3, 4, 5], [4, 4, 4, 1], [1, 2, 6, 6], [1, 3, 5, 6], [2, 2, 2, 5]])):
+    for vals in lines_:
+        for v in range(1, 7):
+            grid = [0] * (n * n)
+            grid[:n - 1] = vals
+            row = Q.forecast(grid, [v], n)[n - 1][0][0]
+            full = vals + [v]
+            g2 = list(grid)
+            g2[n - 1] = v
+            if not (row[1] and row[2:] == list(Q.hand(full)[1:]) and Q.total(g2, n) == row[3]):
+                check(f"squares forecast: {full} on {n}×{n}", False, row)
+check("squares forecast: completing lines match hand() for every category on 4×4 and 5×5", True)
+check("squares forecast: an unfinished line shows its best hand", Q.forecast([3, 3, 0, 0] + [0] * 12, [3], 4)[2][0][0] == [0, False, "Four of a kind", 20])
+r, g, (ann, bo) = room("squares")
+va, vb = g.view(ann)["squares"], g.view(bo)["squares"]
+check("squares forecast: each placer gets one for their own grid", va["forecast"] and len(va["forecast"]) == 16 and len(va["forecast"][0]) == len(g.dice))
+g.act(ann, {"type": "place", "cell": 3})
+check("squares forecast: gone once placed, and never about a rival's grid", g.view(ann)["squares"]["forecast"] is None and "forecast" not in json.dumps(g.view(bo)["squares"]["rivals"]))
+watcher = r.add_player("Eve")
+check("squares forecast: a watcher gets none", g.view(watcher)["squares"]["forecast"] is None)
 
 # -- Dice Brawl
 check("brawl: swords and smashes add up", B.tally([2, 3, 4, 5, 6])["dmg"] == 4)

@@ -54,6 +54,41 @@ def potential(filled, blanks, n):
     return 0.5 * sum(scores) / len(scores) + 0.5 * max(scores) * (0.75 ** blanks)
 
 
+@lru_cache(maxsize=None)
+def best_hand(filled, blanks):
+    """(label, points) of the best hand a part-filled line (sorted values, `blanks` empty) can still make."""
+    best = max((hand(filled + extra) for extra in product(range(1, 7), repeat=blanks)), key=lambda h: h[2])
+    return best[1], best[2]
+
+
+def forecast(grid, dice, n):
+    """🔮 For every empty square and each die: the row and the column through it, as
+    [line index, complete?, hand, points]. A line the die completes shows exactly what it will score (the
+    same hand() as the final count); an unfinished one shows the best hand it can still become."""
+    out = []
+    for cell in range(n * n):
+        if grid[cell]:
+            out.append(None)
+            continue
+        r, c = divmod(cell, n)
+        per_die = []
+        for v in dice:
+            g = list(grid)
+            g[cell] = v
+            rows = []
+            for k, ln in ((r, lines(n)[r]), (n + c, lines(n)[n + c])):
+                vals = [g[i] for i in ln]
+                if all(vals):
+                    _, lbl, pts = hand(vals)
+                    rows.append([k, True, lbl, pts])
+                else:
+                    lbl, pts = best_hand(tuple(sorted(x for x in vals if x)), vals.count(0))
+                    rows.append([k, False, lbl, pts])
+            per_die.append(rows)
+        out.append(per_die)
+    return out
+
+
 def lines(n):
     return [[r * n + c for c in range(n)] for r in range(n)] + [[r * n + c for r in range(n)] for c in range(n)]
 
@@ -73,6 +108,7 @@ class Squares(Game):
     howto = [
         "Everyone has their own empty grid. Each turn a die is rolled for the whole table.",
         "Everybody writes the roll into any empty square of their own grid at the same time — no take-backs.",
+        "🔮 Tap a square once to see what its row and column would score (or the best they can still make), and tap it again to write the die in.",
         "When the grids are full, every row and column scores as a dice hand: pair, two pairs, three of a kind, run, full house, four or five of a kind.",
         "Same rolls for everyone, so the best placer wins. Alone, beat the goal score.",
         "✌️ Two dice (an option): two dice are rolled and you pick which one to write in.",
@@ -284,5 +320,7 @@ class Squares(Game):
             "grid": mine, "lines": mylines, "placed": p.id in self.placed, "mine": p.id in self.placed or p.id not in self.seats,
             "waiting": [q.id for q in self.waiting_on()], "recent": self.recent.get(p.id),
             "rivals": rivals, "scores": {i: r.players[i].g.score for i in self.seats if i in r.players},
+            # 🔮 your own grid only, and only while this roll is still yours to place
+            "forecast": forecast(mine, self.dice, n) if mine and not over and p.id in self.seats and p.id not in self.placed else None,
             "hands": [[lbl, pts] for _, lbl, pts in HANDS[n]], "solo": len(self.seats) == 1, "goal": SOLO_GOAL[n, bool(self.s.get("two"))],
         }}

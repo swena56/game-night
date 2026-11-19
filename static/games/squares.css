@@ -41,3 +41,8 @@
 .dsq-res.big.new { animation: dsqLine .7s cubic-bezier(.2, 1.5, .4, 1), dsqGlow 1.6s ease-in-out 2; }
 @keyframes dsqGlow { 50% { box-shadow: 0 0 0 2px #ffd166, 0 0 20px #ffd16699; } }
 .dsq-total { font-family: var(--font-display); font-size: var(--fs-xl); text-shadow: 0 0 12px var(--accent-a40); }
+/* 🔮 forecast: the selected square (its die shown faintly) and the row and column it would change */
+.dsq-cell.sel { box-shadow: 0 0 0 3px var(--accent); }
+.dsq-cell .ghost { opacity: .55; }
+.dsq-res.fc { border: 2px dashed var(--accent); opacity: .9; }
+.dsq-res.fc.sure { border-style: solid; }
