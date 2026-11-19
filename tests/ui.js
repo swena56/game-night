@@ -161,6 +161,7 @@ const MOVES = {
   },
   fibfinder(d, S, n, w) {
     if (S.fibfinder.stage === 'pick') return click(pick(enabled(d, '.fb-opt')));
+    if (!d.querySelector('#fbFib')) return;  // the screen's script is still loading
     d.querySelector('#fbFib').value = pick(['a tiny hat', 'seven', 'purple', 'cheese', 'the mayor']);
     d.querySelector('#fbForm').dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
   },

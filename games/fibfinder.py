@@ -6,11 +6,12 @@ import time
 
 from .base import Game, GameError
 from .fib_facts import FACTS, TOPICS
+from .fib_notes import NOTES
 from .textmatch import norm, same
 
 WRITE_SECS = 75
 PICK_SECS = 45
-REVEAL_SECS = 9
+REVEAL_SECS = 12  # time to read the fact card too
 MIN_OPTIONS = 4
 TRUTH_PTS, FOOL_PTS = 3, 2
 SURE_WIN, SURE_LOSS = 5, 2  # ✌️ a "sure" pick: the truth pays this instead of TRUTH_PTS, a miss costs this
@@ -24,6 +25,7 @@ class FibFinder(Game):
         "Everyone secretly writes a fake answer that sounds true.",
         f"Then pick which answer you think is real: +{TRUTH_PTS} for the truth. ✌️ Sure of it? Double down: +{SURE_WIN} if you're right, −{SURE_LOSS} if you're fooled.",
         f"+{FOOL_PTS} for every player who falls for your fib. The last round counts double.",
+        "📖 Once the picks are in, a fact card explains the truth and says where to read more.",
     ]
     name = "Fib Finder"
     icon = "🤥"
@@ -266,6 +268,9 @@ class FibFinder(Game):
                 "text": o["text"], "truth": o["truth"], "house": o["house"], "authors": o["authors"],
                 "pickers": [pid for pid, i in self.picks.items() if i == k],
             } for k, o in enumerate(self.options)]
+            # 📖 the fact card: why the truth is true and where to read more; only once the picks are in
+            context, source = NOTES.get(self.fact[0], ("", ""))
+            out["card"] = {"fact": self.fact[0], "truth": self.fact[1], "context": context, "source": source}
         return {"fibfinder": out}
 
     # -- bots: everyone moves at once; undecided bots trickle in one at a time

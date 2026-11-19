@@ -15,13 +15,15 @@ UI.fibfinder = (() => {
         <p id="fbMine" class="hint left"></p>
       </form>
       <div id="fbOptions" class="fb-options"></div>
+      <div id="fbCard" class="fb-card" hidden></div>
       <p id="fbWaiting" class="hint"></p>
     </div>`;
     side.innerHTML = `<div class="panel"><h3>Scoring</h3><ul class="rules">
       <li>🔍 Pick the truth: <b>+3</b></li>
       <li>🤥 Each player fooled by your fib: <b>+2</b></li>
       <li>🏠 House fibs are added so there are always enough answers.</li>
-      <li>🔥 The last fact counts double.</li></ul></div>`;
+      <li>🔥 The last fact counts double.</li>
+      <li>📖 After the picks, a fact card explains the truth.</li></ul></div>`;
     $('fbForm').onsubmit = (e) => {
       e.preventDefault();
       const text = $('fbFib').value.trim();
@@ -35,6 +37,20 @@ UI.fibfinder = (() => {
     const [before, after = ''] = f.fact.split('____');
     const truth = performance.now() < hideTruthUntil ? null : f.reveal?.find((o) => o.truth)?.text;
     box.append(before, ctx.el('span', truth ? 'fb-blank filled' : 'fb-blank', truth ?? '?'), after);
+  }
+
+  // 📖 the fact card: why the truth is true, and where to read more (the server sends it only at the reveal)
+  function paintCard(f) {
+    const box = $('fbCard');
+    const card = f.card;
+    const show = !!(card && card.context) && performance.now() >= hideTruthUntil;
+    box.hidden = !show;
+    if (!show) { box.dataset.key = ''; return; }
+    const key = card.fact + card.truth;
+    if (box.dataset.key === key) return;
+    box.dataset.key = key; box.innerHTML = '';
+    box.append(ctx.el('b', 'fb-card-h', `📖 Why it's “${card.truth}”`), ctx.el('p', '', card.context));
+    if (card.source) box.append(ctx.el('small', 'fb-card-src', `Source: ${card.source}`));
   }
 
   function render(s, c) {
@@ -77,7 +93,7 @@ UI.fibfinder = (() => {
     } else if (f.reveal) {
       // the reveal plays out fib by fib, who fell for each, and the truth comes last
       const rk = `${f.round}`;
-      if (revealed === rk) return paintWaiting(f);
+      if (revealed === rk) { paintCard(f); return paintWaiting(f); }
       const staged = revealed !== '' || box.dataset.key !== '';
       revealed = rk;
       box.innerHTML = ''; box.dataset.key = '';
@@ -113,7 +129,7 @@ UI.fibfinder = (() => {
           c2.classList.remove('hidden-card'); c2.classList.add('flip-in');
           if (c2.dataset.fooled) Kit.flyText(c2, `🤥 ${c2.dataset.fooled}`, 'gold');
           if (c2.dataset.all) { Kit.stamp(c2, 'Fooled everyone!', 'gold', 1300); ctx.sfx('tag'); }
-          if (c2.classList.contains('truth')) { ctx.sfx('fanfare'); hideTruthUntil = 0; factLine(S.fibfinder); }
+          if (c2.classList.contains('truth')) { ctx.sfx('fanfare'); hideTruthUntil = 0; factLine(S.fibfinder); paintCard(S.fibfinder); }
         }, { sound: 'flip' });
         factLine(f);  // the blank stays a mystery until the truth card turns
       }
@@ -121,6 +137,7 @@ UI.fibfinder = (() => {
       revealed = '';
       box.innerHTML = ''; box.dataset.key = '';
     }
+    paintCard(f);
     paintWaiting(f);
   }
   function paintWaiting(f) {

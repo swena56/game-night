@@ -21,3 +21,9 @@
   border: 1px solid #c9a96e; padding-top: 28px; }
 .fb-fact::before { content: '📜 Strange but true'; position: absolute; top: 6px; left: 12px; font: 800 11px system-ui, sans-serif; letter-spacing: .08em;
   text-transform: uppercase; color: #8a6a3a; }
+/* 📖 the fact card after the reveal: why the truth is true, and a source note */
+.fb-card { margin-top: 10px; background: var(--panel); border-radius: var(--radius); border-left: 4px solid var(--ok); padding: 10px 12px; display: grid; gap: 4px; animation: fbCardIn .35s ease-out; }
+.fb-card p { margin: 0; line-height: 1.45; overflow-wrap: anywhere; }
+.fb-card-src { color: var(--muted); font-style: italic; overflow-wrap: anywhere; }
+@keyframes fbCardIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .fb-card { animation: none; } }
