@@ -58,3 +58,8 @@
 @keyframes wsNope { 20%, 60% { transform: translateX(-3px); } 40%, 80% { transform: translateX(3px); } }
 .ws-preview.bad { color: var(--danger); font-weight: 700; }
 body.calm .ws-cell.justplayed, body.calm .ws-cell.nope { animation: none; }
+/* 🔮 rack planning: a private dry run of your next turn with the tiles you'd keep */
+.ws-planbtn { padding: 2px 8px; font-size: 12px; margin-left: 4px; }
+.ws-plan { background: var(--panel2); border-radius: var(--r-md, 10px); padding: 6px 8px; margin: 4px 0; font-size: 13px; min-width: 0; overflow-wrap: anywhere; }
+.ws-plan-list { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+.ws-plan-chip { background: var(--accent-a20); border-radius: 999px; padding: 1px 8px; font-weight: 700; font-size: 12px; }

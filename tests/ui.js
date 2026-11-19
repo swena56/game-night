@@ -147,6 +147,7 @@ function ctMove(game, d, S) {
 }
 
 let WB_WORDS = null;   // the dictionary, for Word Bomb moves
+let WS_PLAN = null, WS_RACK = null;   // Wordsmith: the 🔮 plan-ahead step
 const MOVES = {
   oddone(d, S, n, w) {
     if (S.oddone.stage === 'vote') return click(pick(enabled(d, '.oo-vote')));
@@ -212,6 +213,18 @@ const MOVES = {
       fire(tile, 'pointerdown', 500, 500); fire(tile, 'pointermove', x, y); fire(tile, 'pointerup', x, y);
       const placed = d.querySelectorAll('.ws-cell.pending');
       if (placed.length !== 1 || [...board.children].indexOf(placed[0]) !== k) throw new Error('dragging a tile onto the board did not place it');
+      click(d.querySelector('#wsRecall'));
+    }
+    // 🔮 plan ahead: place the 💡 hint's word, then ask for a dry run of the next turn (nothing is played)
+    if (n === 1 && enabled(d, '#wsHint').length && !d.querySelector('#wsHint').hidden) { WS_PLAN = 'hint'; return click(d.querySelector('#wsHint')); }
+    if (n === 2 && WS_PLAN === 'hint') {
+      const b = d.querySelector('.ws-planbtn');
+      if (b) { WS_PLAN = 'asked'; WS_RACK = S.ws.rack.join(''); return click(b); }
+    }
+    if (n === 3 && WS_PLAN === 'asked') {
+      WS_PLAN = 'done';
+      if (d.querySelector('#wsPlan').hidden) throw new Error('🔮 plan ahead showed nothing');
+      if (S.ws.rack.join('') !== WS_RACK || d.querySelectorAll('.ws-cell.pending').length === 0) throw new Error('🔮 plan ahead changed the rack or the placed tiles');
       click(d.querySelector('#wsRecall'));
     }
     click(enabled(d, '#wsSwap')[0]); click(enabled(d, '.rack-tile')[0]); click(enabled(d, '#wsSwap')[0]); if (!enabled(d, '#wsSwap').length) return; click(d.querySelector('#wsPass')); },
@@ -892,7 +905,8 @@ async function playSolo(game, seconds = 60) {
     await w.eval(`act('settings', { settings: { mode: ${JSON.stringify(mode)} } })`);
     await w.eval(`act('start')`);
   } else click(d.querySelector('#soloBtn'));
-  if (!(await waitFor(() => !d.querySelector('#game').hidden && S()?.phase === 'playing'))) report.notes.push('never reached the game screen');
+  // …and the game's screen module has loaded and mounted (it loads on demand: slow on a busy host)
+  if (!(await waitFor(() => !d.querySelector('#game').hidden && S()?.phase === 'playing' && !!w.eval('mounted')))) report.notes.push('never reached the game screen');
   const end = Date.now() + seconds * 1000;
   while (Date.now() < end && S()?.phase === 'playing') {
     const s = S();

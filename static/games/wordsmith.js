@@ -24,6 +24,7 @@ UI.wordsmith = (() => {
       <div id="wsRack" class="rack"></div>
       <div id="wsBlank" class="ws-blank" hidden><p class="hint">Which letter is the blank?</p><div id="wsLetters" class="ws-letters"></div></div>
       <div id="wsPreview" class="ws-preview"></div>
+      <div id="wsPlan" class="ws-plan" hidden></div>
       <div class="row"><button id="wsPlay" class="primary">Play</button><button id="wsRecall">Recall</button><button id="wsShuffle">🔀</button></div>
       <div class="row"><button id="wsSwap">Swap tiles…</button><button id="wsPass">Pass</button><button id="wsHint" hidden>💡 Hint</button></div>
       <p class="hint left">Drag a tile onto a square, or tap a tile and then a square. Drag a placed tile to move it,
@@ -175,14 +176,44 @@ UI.wordsmith = (() => {
     previewKey = key;
     clearTimeout(previewTimer);
     box.textContent = ''; box.className = 'ws-preview';
+    $('wsPlan').hidden = true; $('wsPlan').textContent = '';
     if (!pending.length || !ctx.peek || unnamed()) return;
     previewTimer = setTimeout(() => {
       ctx.peek({ what: 'score', tiles: pending }).then((res) => {
         if (previewKey !== key || !box.isConnected) return;
         box.className = 'ws-preview ' + (res.error ? 'bad' : 'good');
         box.textContent = res.error ? `✗ ${res.error}` : `✓ ${res.words.join(', ')}: ${res.score} pts${res.notes.length ? ` (${res.notes.join(', ')})` : ''}`;
+        // 🔮 a valid play can be planned past: what the tiles you'd keep could do next turn
+        if (!res.error && pending.length < (S.ws.rack || []).length) {
+          const btn = ctx.el('button', 'ws-planbtn', '🔮 Plan ahead');
+          btn.title = 'Preview your next turn with the tiles you would keep (nothing is played)';
+          btn.onclick = () => plan(key);
+          box.append(' ', btn);
+        }
       }).catch(() => {});
     }, 250);
+  }
+
+  // 🔮 private rack planning: a dry run on the server (the board, your rack and the scores stay as they are)
+  function plan(key) {
+    const out = $('wsPlan');
+    out.hidden = false; out.textContent = '🔮 Looking ahead…';
+    ctx.peek({ what: 'plan', tiles: pending }).then((res) => {
+      if (previewKey !== key || !out.isConnected) return;
+      out.innerHTML = '';
+      if (res.error) { out.textContent = `✗ ${res.error}`; return; }
+      const keep = res.leave.split('').map((ch) => (ch === BLANK ? '▢' : ch)).join(' ');
+      out.append(ctx.el('b', '', `🔮 After ${res.words.join(', ')} (+${res.score}) you keep ${keep || 'no tiles'}`));
+      if (!res.next.length) out.append(ctx.el('div', 'hint left', 'Those tiles alone make no word on that board: the tiles you draw will have to.'));
+      else {
+        out.append(ctx.el('div', 'hint left', `Next turn with just those (before you draw): ${res.count} play${res.count === 1 ? '' : 's'} found.`));
+        const list = ctx.el('div', 'ws-plan-list');
+        for (const n of res.next) list.append(ctx.el('span', 'ws-plan-chip', res.named ? `${n.words.join(', ')} ${n.score}` : `${n.score} pts`));
+        out.append(list);
+        if (!res.named) out.append(ctx.el('div', 'hint left', 'With other people at the table, only the scores show.'));
+      }
+      out.append(ctx.el('div', 'hint left', 'Just a preview: nothing is played and no score changes.'));
+    }).catch((e) => { if (out.isConnected) out.textContent = `✗ ${e?.message || 'No plan right now.'}`; });
   }
 
   // solo only: place the best word the bots' search finds, using the matching rack tiles

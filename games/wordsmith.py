@@ -1,4 +1,5 @@
 """Wordsmith: crossword tile game on an 11×11 board with a rotating bounty letter."""
+import copy
 import os
 import random
 import threading
@@ -12,6 +13,7 @@ MID = SIZE // 2
 RACK = 7
 SWEEP_BONUS = 40
 BOUNTY_BONUS = 10
+PLAN_SECS = 1.0  # 🔮 the rack-planning search budget
 WORDS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "words.txt")
 
 # letter: (count, value) — 80 tiles, no blanks
@@ -100,6 +102,7 @@ class Wordsmith(Game):
         '🎯 Comeback bounty (an option): whoever is behind everyone scores +20 for the bounty letter instead.',
         'Use all 7 tiles in one go for a +40 clean sweep.',
         'With blank tiles on, a blank (?) can be any letter you choose, but it scores 0.',
+        '🔮 Plan ahead (once your placed tiles make a valid play): a private preview of your next turn with the tiles you would keep. Nothing is played. Alone against bots it names the words; otherwise it shows their scores.',
     ]
     name = "Wordsmith"
     icon = "🔤"
@@ -258,11 +261,44 @@ class Wordsmith(Game):
                 return {"none": True}
             score, tiles, texts = max(moves, key=lambda m: m[0])
             return {"tiles": [list(t) for t in tiles], "words": texts, "score": score}
+        if a.get("what") == "plan":
+            return self.plan(p, a.get("tiles"))
         try:
             score, texts, notes = self.check_play(self.placements(p, a.get("tiles"))[0], p)
         except GameError as e:
             return {"error": str(e)}
         return {"score": score, "words": texts, "notes": notes}
+
+    def plan(self, p, tiles):
+        """🔮 Rack planning (private, a dry run): if p made this play, what could the tiles p keeps do next turn
+        on the board as it would then be? Nothing is committed: the board, rack, bag and scores are untouched.
+        The new tiles p would draw are unknown, so only the kept tiles count. Alone against bots the best next
+        turns are named; with other people at the table only their scores and number show (like the 💡 hint)."""
+        try:
+            placements, idx = self.placements(p, tiles)
+            score, texts, _ = self.check_play(placements, p)
+        except GameError as e:
+            return {"error": str(e)}
+        leave = [ch for i, ch in enumerate(getattr(p.g, "rack", [])) if i not in idx]
+        if not leave:
+            return {"score": score, "words": texts, "leave": "", "count": 0, "next": [], "named": False}
+        after = copy.copy(self)   # a throwaway twin: its own grid; everything else is only read
+        after.grid = [row[:] for row in self.grid]
+        for r, c, ch in placements:
+            after.grid[r][c] = ch
+        after.bounty = None       # next turn's bounty letter isn't drawn yet
+        moves = after.find_moves(leave, PLAN_SECS)
+        best, seen = [], set()
+        for s, t, w in sorted(moves, key=lambda m: -m[0]):
+            k = tuple(w)
+            if k not in seen:
+                seen.add(k)
+                if len(best) < 3:
+                    best.append({"score": s, "words": w})
+        named = len([o for o in self.room.contenders() if o.human()]) <= 1
+        if not named:
+            best = [{"score": b["score"]} for b in best]
+        return {"score": score, "words": texts, "leave": "".join(leave), "count": len(seen), "next": best, "named": named}
 
     def act(self, p, a):
         self.require_turn(p)
