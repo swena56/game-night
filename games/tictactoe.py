@@ -73,6 +73,7 @@ class TicTacToe(Game):
         'Three in a row wins (four in a row on the 4×4 board).',
         '👻 Vanishing: you keep only your 3 newest marks (4 on 4×4) — the faded one disappears next.',
         '🙃 Misère: everything turned round. Whoever completes a line loses.',
+        '⭐ Lucky square: one square is marked at the start. Claim it and you move again straight away.',
     ]
     name = "Tic-Tac-Toe"
     icon = "❌"
@@ -80,6 +81,7 @@ class TicTacToe(Game):
     badges = {**Game.badges, "vanisher": ("👻", "Now you see me", "Win a Vanishing game")}
     settings_schema = {
         "variant": ("Variant", [("classic", "Classic"), ("vanishing", "👻 Vanishing"), ("misere", "🙃 Misère (a line loses)")], "classic"),
+        "lucky": ("⭐ Lucky square", [(True, "On: claim it to move again"), (False, "Off")], True),
         "size": ("Board", [(3, "3×3"), (4, "4×4 (four in a row)")], 3),
     }
 
@@ -91,6 +93,9 @@ class TicTacToe(Game):
         self.history = [[], []]  # per seat, oldest first
         self.moves = 0
         self.line = None
+        self.bonus = rng.randrange(len(self.cells)) if self.lucky_on() else None
+        if self.bonus is not None:
+            self.room.add_log("⭐ One square is lucky: claim it to move again.", "power")
         self.room.add_log(f"{seated[0].name} plays {MARKS[0]} and goes first.", "big")
         self.room.begin_turn(seated[0].id)
 
@@ -98,6 +103,11 @@ class TicTacToe(Game):
         return self.seats.index(p.id) if p.id in self.seats else None
 
     n = 3  # games saved before the 4×4 board
+
+    bonus = None  # the ⭐ lucky square, until someone claims it
+
+    def lucky_on(self):
+        return self.s.get("lucky", True) and self.s.get("variant") != "misere"
 
     def keep(self):
         return self.n
@@ -143,6 +153,11 @@ class TicTacToe(Game):
         elif None not in self.cells or self.moves >= MOVE_LIMIT:
             r.finish(None, "🤝 It's a draw.")
         else:
+            if cell == self.bonus:  # ⭐ claimed: same player moves again
+                self.bonus = None
+                self.moment(f"⭐ {p.name} takes the lucky square: moves again!", "gold", "fanfare")
+                r.add_log(f"⭐ {p.name} claims the lucky square and moves again.", "power")
+                return
             if not self.misere() and not self.vanishing():
                 lines = LINES if self.n == 3 else LINES4
                 forks = sum(1 for ln in lines if sum(self.cells[k] == seat for k in ln) == self.n - 1
@@ -160,7 +175,7 @@ class TicTacToe(Game):
         if self.vanishing():
             fading = [h[0] for h in self.history if len(h) == self.keep()]
         return {"ttt": {"cells": self.cells, "seats": self.seats, "marks": MARKS, "n": self.n,
-                        "fading": fading, "line": self.line}}
+                        "fading": fading, "line": self.line, "bonus": self.bonus}}
 
     # -- bot
 
@@ -172,7 +187,7 @@ class TicTacToe(Game):
                 return self.move(p, minimax_misere(tuple(self.cells), seat)[1])
             safe = [i for i in free if winner_of(self.place(self.cells, self.history, seat, i)[0])[0] is None] or free
             return self.move(p, random.choice(safe if p.bot != "easy" or random.random() < 0.7 else free))
-        if p.bot == "hard" and not self.vanishing() and self.n == 3:
+        if p.bot == "hard" and not self.vanishing() and self.n == 3 and self.bonus is None:
             return self.move(p, minimax(tuple(self.cells), seat)[1])
 
         def wins_with(s, i, cells=None, history=None):
@@ -191,6 +206,8 @@ class TicTacToe(Game):
                     if wins_with(s, i):
                         return self.move(p, i)
             if p.bot != "easy":
+                if self.bonus in free and not gives_away(self.bonus):
+                    return self.move(p, self.bonus)
                 safe = [i for i in free if not gives_away(i)] or free
                 prefs = (4, 0, 2, 6, 8) if self.n == 3 else (5, 6, 9, 10, 0, 3, 12, 15)
                 for pref in prefs:

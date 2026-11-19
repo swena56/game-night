@@ -61,6 +61,7 @@ UI.tictactoe = (() => {
       b.classList.toggle('mark', v != null);
       b.setAttribute('aria-label', `row ${Math.floor(i / n) + 1}, column ${i % n + 1}, ${v == null ? 'empty' : `${ctx.player(t.seats[v])?.name ?? '?'}'s ${t.marks[v]}`}${t.fading.includes(i) ? ', fades next' : ''}`);
       b.classList.toggle('fading', t.fading.includes(i));
+      b.classList.toggle('lucky', t.bonus === i && v == null);
       b.classList.toggle('win', !!t.line?.includes(i));
       b.classList.toggle('last', i === last && v != null && !t.line);
       b.disabled = !ctx.myTurn || v != null;
