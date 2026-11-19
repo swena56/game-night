@@ -95,5 +95,24 @@ a.bot = "normal"
 cell, _ = g.choose(a, "normal")
 check("bot takes the bonus square on an empty board", cell == 9, cell)
 
+# the 'squares' variant: bonus still pays, alone and on top of a finished 2x2 block
+r, g, (a, b) = game(variant="squares")
+check("squares: variant is on and a bonus is marked", g.variant == "squares" and g.bonus in range(16), g.variant)
+g.board = [None] * 16
+g.bonus = 10
+g.hand, g.stage = 3, "place"
+r.begin_turn(a.id)
+g.act(a, {"type": "move", "cell": 10})
+check("squares: bonus pays +2 alone", g.scores[g.seat(a)] == 2, g.scores)
+r, g, (a, b) = game(variant="squares")
+g.board = [None] * 16
+g.board[5], g.board[6], g.board[9] = 0, 1, 4  # three of the 2x2 block 5,6,9,10
+g.bonus = 10
+g.hand, g.stage = 5, "place"
+r.begin_turn(a.id)
+base, _ = K.gain(g.board, g.through, 10, g.hand)
+g.act(a, {"type": "move", "cell": 10})
+check("squares: bonus adds to a block's points", base > 0 and g.scores[g.seat(a)] == base + 2, (base, g.scores))
+
 print(f"\n{len(fails)} failed" if fails else "\nall ok")
 sys.exit(1 if fails else 0)
