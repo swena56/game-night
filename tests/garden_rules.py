@@ -1,6 +1,6 @@
 """Word Garden rules on real rooms: crossword layouts are valid, the view never shows letters you haven't
-found, garden and bonus words score, wrong words cost nothing, 💧 hints reveal letters (and complete words
-for no points), drops are earned by bonus words, finishers keep hunting bonus words, no-clock rounds wait.
+found, garden and bonus words score, wrong words cost nothing, 💧 hints reveal letters at exactly the announced
+cost (and complete words for no points) without touching bonus words, drops are earned by bonus words, finishers keep hunting bonus words, no-clock rounds wait.
 
     python3 tests/garden_rules.py        # a few seconds
 """
@@ -114,14 +114,34 @@ check("bonus words are kept", st["bonus"] == bonus, str(bonus))
 check(f"{G.DROP_EVERY} bonus words earn a drop", ann.g.drops == drops + 1)
 
 drops = ann.g.drops
+pts_before = g.points(ann)
+bonus_before = sum(G.bonus_pts(w) for w in st["bonus"])
+check("the view announces the hint cost", g.view(ann)["garden"]["hintCost"] == G.HINT_COST and g.view(ann)["garden"]["charged"] == 0)
 room.act(ann, {"type": "hint"})
 check("hint spends a drop and shows a letter", ann.g.drops == drops - 1 and len(st["shown"]) == 1)
+check("a hint takes exactly the announced cost", g.points(ann) == pts_before - G.HINT_COST, f"{pts_before} -> {g.points(ann)}")
+check("the cost is in the view and the note", g.view(ann)["garden"]["charged"] == G.HINT_COST and st["last"]["cost"] == G.HINT_COST)
+check("bonus words keep their points", sum(G.bonus_pts(w) for w in st["bonus"]) == bonus_before and st["bonus"] == bonus)
 r, c = st["shown"][0]
 v = g.view(ann)["garden"]
 check("hinted letter is in the view", v["grid"][r][c] == g.letter(r, c))
 hinted_word = next(s[0] for s in g.slots if (r, c) in G.slot_cells(s) and s[0] not in st["found"])
+pts_before = g.points(ann)
 room.act(ann, {"type": "word", "word": hinted_word})
-check("a hinted letter scores nothing", st["pts"][hinted_word] == len(hinted_word) - 1)
+check("a hinted word still scores every letter (the hint was paid up front)", st["pts"][hinted_word] == len(hinted_word)
+      and g.points(ann) == pts_before + len(hinted_word))
+pts_before = g.points(ann)
+extra_bonus = next((w for w in sorted(g.bonus_all) if w not in st["bonus"]), None)
+if extra_bonus:
+    room.act(ann, {"type": "word", "word": extra_bonus})
+    check("a bonus word after a hint scores as usual", g.points(ann) == pts_before + G.bonus_pts(extra_bonus))
+# a game saved before hints were charged: no "charged" key, still scores
+saved = dict(st)
+saved.pop("charged", None)
+g.st[ann.id] = saved
+check("a saved game without the charge scores", g.points(ann) == pts_before + (G.bonus_pts(extra_bonus) if extra_bonus else 0) + G.HINT_COST)
+g.view(ann)
+g.st[ann.id] = st
 ann.g.drops = 0
 refused("no drops, no hint", lambda: room.act(ann, {"type": "hint"}))
 
@@ -139,7 +159,8 @@ for _ in range(200):
         break
     room.act(ann, {"type": "hint"})
 check("hints alone can grow the garden", g.stage == "reveal" and all(v == 0 for v in st["pts"].values()))
-check("a fully hinted round scores only the clear bonus", g.gained[ann.id] == 10, str(g.gained))
+check("a fully hinted round: the clear bonus less the hints (never below 0)",
+      g.gained[ann.id] == max(0, 10 - G.HINT_COST * st["hinted"]), f"{g.gained} hints={st['hinted']}")
 
 # -- with company: finishers keep finding bonus words, the round waits for the rest
 room, ann = room_for(bots=("easy",))

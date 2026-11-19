@@ -21,7 +21,7 @@ UI.garden = (() => {
       <div class="pt-tools">
         <button type="button" id="gdClear" title="Clear the letters">⌫<small>Clear</small></button>
         <button type="button" id="gdPlant" title="Plant the word (Enter)">🌱<small>Plant</small></button>
-        <button type="button" id="gdHint" title="Spend a drop to show a letter">💧<small id="gdDrops">Hint</small></button>
+        <button type="button" id="gdHint" title="Spend a drop to show a letter (costs a point)">💧<small id="gdDrops">Hint</small></button>
         <button type="button" id="gdBank" title="Stop here and keep your points">🏳️<small>Rest</small></button>
       </div>
       <div class="pt-note" id="gdNote"></div>
@@ -37,7 +37,9 @@ UI.garden = (() => {
     $('gdPlant').onclick = () => plant();
     $('gdHint').onclick = async () => {
       if (!canHint()) return;
-      if (await ctx.ask(`Use a 💧 to show one letter? You have ${v.drops}. A shown letter scores no points.`, { ok: '💧 Water' })) send('hint', {});
+      const cost = v.hintCost ?? 1;
+      if (await ctx.ask(`Use a 💧 to show one letter? It costs exactly ${cost} point${cost === 1 ? '' : 's'} (you have ${v.drops} 💧). A word it completes for you scores nothing; bonus words are never touched.`,
+        { ok: `💧 Water · −${cost}` })) send('hint', {});
     };
     $('gdBank').onclick = async () => {
       if (!live()) return;
@@ -240,7 +242,7 @@ UI.garden = (() => {
       else if (L.kind === 'bonus') { say(`🌱 ${L.w}: a bonus word · +${L.pts}${L.drop ? ' · and a new 💧!' : ''}`, 'bonus'); ctx.sfx(L.drop ? 'chime' : 'pop'); }
       else if (L.kind === 'again') say(`${L.w} is already planted.`, 'soft');
       else if (L.kind === 'nope') { say(`${L.w} isn't in our dictionary. No harm done!`, 'soft'); nope = L.w; }
-      else if (L.kind === 'hint') { say(L.done ? '💧 A letter shows… and a word filled in!' : '💧 A letter shows.', 'bonus'); ctx.sfx('pop'); }
+      else if (L.kind === 'hint') { say(`${L.done ? '💧 A letter shows… and a word filled in' : '💧 A letter shows'} · −${L.cost ?? 1}`, 'bonus'); ctx.sfx('pop'); }
       if (v.done && L.kind === 'garden' && fresh.length) Kit.callout('🌸 In full bloom!', 'gold', { ms: 1600 });
     }
     drawSel();
@@ -249,8 +251,9 @@ UI.garden = (() => {
     }
 
     $('gdRound').textContent = `🌻 Garden ${v.round}/${v.rounds}`;
-    $('gdInfo').textContent = `${v.found}/${v.total} words · 🌱 ${v.bonus.length} bonus`;
-    $('gdDrops').textContent = `${v.drops}`;
+    // 💧 the hint ladder: what's left, what the next one costs, and what hints have cost so far
+    $('gdInfo').textContent = `${v.found}/${v.total} words · 🌱 ${v.bonus.length} bonus` + (v.charged ? ` · 💧 −${v.charged}` : '');
+    $('gdDrops').textContent = `${v.drops} · −${v.hintCost ?? 1}`;
     $('gdHint').disabled = !canHint();
     $('gdBank').disabled = !live();
     $('gdBarBox').hidden = !v.clock || v.stage !== 'play';
@@ -298,7 +301,7 @@ UI.garden = (() => {
       row.append(bar);
       box.append(row);
     }
-    $('gdHelp').textContent = `Garden words: a point a letter. Bonus words: 1 (2 for 6+ letters), and every ${v.dropEvery} earn a 💧. Growing the whole garden: +10. ${v.clock ? '' : 'No clock: take your time.'}`;
+    $('gdHelp').textContent = `Garden words: a point a letter. Bonus words: 1 (2 for 6+ letters), and every ${v.dropEvery} earn a 💧. A 💧 shows one letter for −${v.hintCost ?? 1}. Growing the whole garden: +10. ${v.clock ? '' : 'No clock: take your time.'}`;
   }
 
 

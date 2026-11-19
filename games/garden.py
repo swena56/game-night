@@ -37,6 +37,7 @@ TARGET = {5: 5, 6: 7, 7: 9}   # garden words per ring size
 MAX_SIDE = 10                 # the garden fits in 10 × 10
 START_DROPS = 3               # 💧 each player starts the game with
 DROP_EVERY = 3                # bonus words per new 💧
+HINT_COST = 1                 # 💧 each hint takes exactly this off the garden's points (bonus words untouched)
 BOT = {"easy": 15.0, "normal": 9.5, "hard": 6.0}   # seconds per word (± 30%)
 BONUS_TRY = {"easy": 0.08, "normal": 0.18, "hard": 0.28}  # how often a bot spots a bonus word instead
 
@@ -162,7 +163,8 @@ class Garden(PuzzleRace):
     howto = [
         "Spell words from the ring of letters: drag across them, tap them one by one, or type. Each word needs 3+ letters.",
         "Words in the garden (the little crossword) fill in. Other real words are bonus words.",
-        f"Garden words score a point per letter, bonus words 1 (2 for six letters or more). Every {DROP_EVERY} bonus words earn a 💧, which reveals a letter.",
+        f"Garden words score a point per letter, bonus words 1 (2 for six letters or more). Every {DROP_EVERY} bonus words earn a 💧.",
+        f"Stuck? A 💧 reveals one letter at a time and costs exactly {HINT_COST} point. A word a 💧 completes for you scores nothing; bonus words are never touched.",
         "No clock and no penalties: a garden ends when everyone is done. Finishing it scores +10. Most points after the last garden wins.",
         "Alone, grow every garden to win.",
     ]
@@ -224,7 +226,8 @@ class Garden(PuzzleRace):
 
     def points(self, p):
         st = self.st[p.id]
-        return sum(st["pts"].values()) + sum(bonus_pts(w) for w in st["bonus"])
+        # 💧 "charged": the hint cost, kept apart from the words (games saved before it charged nothing extra)
+        return sum(st["pts"].values()) + sum(bonus_pts(w) for w in st["bonus"]) - st.get("charged", 0)
 
     # -- moves
 
@@ -256,9 +259,7 @@ class Garden(PuzzleRace):
             if w in st["found"]:
                 st["last"] = {"w": w, "kind": "again", "n": st["seq"]}
                 return
-            i = self.answers.index(w)
-            shown = {tuple(x) for x in st["shown"]}
-            pts = sum(1 for at in slot_cells(self.slots[i]) if at not in shown)
+            pts = len(w)   # every letter, hinted ones too: a 💧 already paid its cost up front
             self.grow(st, w, pts)
             st["last"] = {"w": w, "kind": "garden", "pts": pts, "n": st["seq"]}
             if len(w) == len(self.ring) and not self.solo:
@@ -304,6 +305,7 @@ class Garden(PuzzleRace):
         at = self.rng.choice(spots)
         st["shown"].append(list(at))
         st["hinted"] += 1
+        st["charged"] = st.get("charged", 0) + HINT_COST
         st["seq"] += 1
         p.g.drops -= 1
         before = len(st["found"])
@@ -312,7 +314,7 @@ class Garden(PuzzleRace):
             if s[0] not in st["found"] and all(c in known for c in slot_cells(s)):
                 st["found"].append(s[0])
                 st["pts"][s[0]] = 0
-        st["last"] = {"w": "", "kind": "hint", "n": st["seq"], "done": len(st["found"]) - before}
+        st["last"] = {"w": "", "kind": "hint", "n": st["seq"], "done": len(st["found"]) - before, "cost": HINT_COST}
 
     def on_finish(self, p, secs):
         st = self.st[p.id]
@@ -379,7 +381,8 @@ class Garden(PuzzleRace):
                        s[0] in st["found"]] for s in self.slots],
             "found": len(st["found"]), "total": len(self.answers),
             "shown": st["shown"], "bonus": st["bonus"], "bonusAll": len(self.bonus_all),
-            "drops": getattr(p.g, "drops", 0), "dropEvery": DROP_EVERY, "last": st["last"], "seq": st["seq"],
+            "drops": getattr(p.g, "drops", 0), "dropEvery": DROP_EVERY,
+            "hintCost": HINT_COST, "charged": st.get("charged", 0), "hinted": st.get("hinted", 0), "last": st["last"], "seq": st["seq"],
             "base": self.base if over else None,
             "clock": bool(self.s.get("secs")),
             "bonusBy": {q.id: len(self.st[q.id]["bonus"]) for q in self.live() if q.id in self.st},
