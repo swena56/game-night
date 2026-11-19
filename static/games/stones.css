@@ -1,6 +1,7 @@
 /* stones: Ice Stones' own rules, loaded with static/games/stones.js (needUI in app.js). */
 .ic { max-width: 720px; margin: 0 auto; user-select: none; -webkit-user-select: none; }
-.ic-hud { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+.ic-hud { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin-bottom: 6px; flex-wrap: wrap; }
+.ic-count { font-weight: 700; }
 .ic-hud .ic-hot { color: #ff8c42; font-weight: 700; animation: pulse 1.4s infinite; }
 .ic-stage { position: relative; height: min(58vh, 520px); min-height: 260px; border-radius: var(--r-md, var(--radius)); overflow: hidden;
   background: #0b1220; overscroll-behavior: none; box-shadow: var(--sh-2, none); }
@@ -20,9 +21,19 @@
 .ic-seg { display: inline-flex; background: var(--panel); border-radius: 999px; padding: 3px; gap: 2px; }
 .ic-seg button { padding: 6px 12px; border-radius: 999px; font-size: 13px; background: transparent; touch-action: manipulation; min-height: 36px; }
 .ic-seg button.on { background: var(--accent); color: #fff; }
-.ic-row input[type=range] { flex: 1; min-width: 140px; max-width: 320px; accent-color: var(--accent); }
-.ic-zone { min-width: 3.6em; text-align: center; }
-.ic-throw { min-width: 120px; min-height: 44px; font-size: 16px; }
+/* #186/#187 the weight: − slider + with coloured zones under it (where a stone thrown that hard stops) */
+.ic-wbox { flex: 1; min-width: 200px; max-width: 420px; display: flex; flex-direction: column; gap: 2px; }
+.ic-wline { display: flex; align-items: center; gap: 6px; }
+.ic-wline > button { width: 36px; height: 36px; padding: 0; border-radius: 50%; font-size: 18px; flex: none; touch-action: manipulation; }
+.ic-slide { flex: 1; position: relative; padding-bottom: 14px; }
+.ic-slide input[type=range] { width: 100%; margin: 0; accent-color: var(--accent); height: 28px; }
+.ic-zones { position: absolute; left: 8px; right: 8px; bottom: 0; height: 12px; display: flex; border-radius: 6px; overflow: hidden; pointer-events: none; }
+.ic-zones i { font-style: normal; font-size: 9px; line-height: 12px; color: #fff; text-align: center; overflow: hidden; white-space: nowrap; opacity: .85; }
+.ic-zone { text-align: center; font-size: 13px; color: var(--muted); }
+.ic-zone b { color: var(--text, #fff); }
+.ic-zone[data-z=draw] b { color: #2ec27e; } .ic-zone[data-z=guard] b { color: #6a9cf5; } .ic-zone[data-z=short] b { color: #e04848; }
+.ic-zone[data-z=hit] b, .ic-zone[data-z=peel] b { color: #f07a3a; } .ic-zone[data-z=through] b { color: #e0a030; }
+.ic-throw { min-width: 200px; min-height: 48px; font-size: 17px; }
 .ic-throw.ic-ready { animation: pulse 1.6s infinite; }
 .ic-scores td, .ic-scores th { padding: 2px 6px; text-align: center; }
 .ic-scores td:first-child { text-align: left; }
@@ -35,3 +46,25 @@
   .ic-dial button { width: 36px; height: 36px; }
 }
 .ic-sweepsnd { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 13px; color: var(--muted); }
+/* #187 live sweeping: the pad takes the controls' place while your stone slides */
+.ic-ctl.ic-sliding { opacity: 1; }
+.ic-ctl.ic-sliding > .ic-row { display: none; }
+.ic-pad { position: relative; width: 100%; min-height: 104px; border-radius: var(--radius); border: 2px dashed #ffd23f88; background: linear-gradient(180deg, #1c2a44, #142036);
+  color: #fff; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; overflow: hidden; }
+.ic-pad:active { border-style: solid; border-color: #ffd23f; background: linear-gradient(180deg, #23365a, #1a2a48); }
+.ic-padtxt { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 26px; pointer-events: none; }
+.ic-padtxt b { font-size: 17px; letter-spacing: .06em; }
+.ic-padtxt small { font-size: 12px; color: #c9d6ee; }
+.ic-meter { position: absolute; left: 10px; right: 10px; bottom: 8px; height: 6px; border-radius: 3px; background: #ffffff1c; pointer-events: none; }
+.ic-meter i { display: block; height: 100%; width: 0; border-radius: 3px; background: linear-gradient(90deg, #8fd3ff, #ffd23f); transition: width .12s; }
+.ic-live { position: absolute; left: 8px; top: 8px; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; max-width: calc(100% - 110px);
+  background: #0b1626cc; border-left: 4px solid var(--who, #ffd23f); border-radius: 8px; padding: 4px 8px; font-size: 13px; color: #fff; pointer-events: none; }
+.ic-live b { font-variant-numeric: tabular-nums; }
+.ic-live i { font-style: normal; color: #9fb3d1; }
+.ic-live i.ic-sw1 { color: #8fd3ff; font-weight: 700; }
+.ic-live i.ic-sw2 { color: #ffd23f; font-weight: 800; animation: pulse .5s infinite; }
+.ic-why { margin: 0 0 8px; text-align: center; font-size: 13px; color: #c9d6ee; }
+@media (max-width: 540px) {
+  .ic-stage { height: 52vh; }
+  .ic-pad { min-height: 96px; }
+}

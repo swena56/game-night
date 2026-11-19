@@ -1,26 +1,85 @@
-// Ice Stones: the sheet in 3D (three.js) or a flat top-down house. Every throw's tracks come from the server
-// and play back on every phone. On your turn: set the 🧹 broom (tap the ice or use ◀ ▶), the weight, the curl
-// and the sweeping, then 🥌 Throw. The camera rides behind the stone, then looks down on the house.
+// Ice Stones: the sheet in 3D (three.js) or a flat top-down house. On your turn: set the 🧹 broom (tap or drag the
+// ice, or ◀ ▶), the weight (the zones under the slider say guard / draw / hit) and the curl, then 🥌 Throw. #187: the
+// stone then slides live on the server, and you sweep it as it goes (hold the 🧹 pad, scrub it to sweep hard): the
+// marker on the ice shows where it will stop if you keep doing what you're doing. Its tracks stream to every phone
+// (fast()) and play back a moment behind, smoothly between frames. #186: the count is shown as it stands (the gold
+// measuring ring through the best rival stone, numbers on the stones that count) and explained after each end.
 UI.stones = (() => {
   let still = false;
   let S, ctx, gl = null, flat = null, raf = 0, ro = null;
-  let anim = null, queue = [], seen = 0, primed = false, camMode = 'auto', lastDraw = 0, thrownAt = 0;
-  // the throw being set up (kept between turns, like a player's habit)
-  let aim = 0, weight = 0.36, curl = 1, sweep = 0;
+  let anim = null, queue = [], seen = 0, primed = false, camMode = 'auto', lastDraw = 0, thrownAt = 0, lastT = 0;
+  // the throw being set up (kept between turns, like a player's habit): a draw to the button, aimed for the curl
+  let aim = -0.95, weight = 0.48, curl = 1;
+  // live sweeping: the finger on the pad (or the ice), how fast it scrubs, what was last sent
+  const pad = { down: false, scrub: 0, lx: 0, ly: 0, lt: 0, sent: -1, sentAt: 0, key: false };
   const $ = (id) => document.getElementById(id);
   const FPS = 30;
 
   const colorOf = (i) => ctx?.player(S.stones.seats[i])?.color ?? '#ccc';
-  const myTurn = () => S?.phase === 'playing' && ctx?.myTurn && !S.stones.between;
+  const nameOf = (i) => ctx?.player(S.stones.seats[i])?.name ?? '?';
+  const myTurn = () => S?.phase === 'playing' && ctx?.myTurn && !S.stones.between && S.stones.sliding == null;
   const sheet = () => S.stones.sheet;
-  const zone = (w) => (w < 0.1 ? 'Hog' : w < 0.27 ? 'Guard' : w < 0.43 ? 'Draw' : w < 0.7 ? 'Hit' : 'Peel');
+  const busy = () => !!(anim || queue.length);
+
+  // ---------- the physics, as the server has it (games/stones.py Slide), for the path preview and the stop marker
+  const PH0 = { fric: 0.75, curl: 0.13, vc: 0.8, sweep: [[1, 1], [0.93, 0.8], [0.86, 0.6]], from: 7.5, dt: 1 / 120, fk: 1, ck: 1, wd: 0.7, lo: 19, hi: 32, vmax: 8.8, lag: 0.45 };
+  const ph = () => S?.stones?.phys || PH0;
+  function speedOf(w) {
+    const p = ph(), sh = sheet();
+    if (w <= p.wd) return Math.sqrt(2 * p.fric * (p.lo + (p.hi - p.lo) * w / p.wd - sh.start));
+    const v = Math.sqrt(2 * p.fric * (p.hi - sh.start));
+    return v + (p.vmax - v) * (w - p.wd) / (1 - p.wd);
+  }
+  function weightFor(stop) {  // the weight that stops a straight, unswept stone at y = stop on this ice
+    const p = ph(), sh = sheet(), v = Math.sqrt(2 * p.fric * p.fk * Math.max(0, stop - sh.start));
+    const lo = speedOf(0), hi = speedOf(p.wd);
+    if (v <= hi) return v < lo ? 0 : Math.max(0, Math.min(p.wd, ((sh.start + v * v / (2 * p.fric)) - p.lo) / (p.hi - p.lo) * p.wd));
+    return Math.min(1, p.wd + (v - hi) / (p.vmax - hi) * (1 - p.wd));
+  }
+  // slide one stone (no collisions) from (x, y) at (vx, vy); `lvl` sweeping; returns the path every `every` steps
+  function glide(x, y, vx, vy, spin, lvl, every = 8, stopAt = 1e9) {
+    const p = ph(), sh = sheet(), pts = [[x, y]];
+    for (let n = 0; n < 4000; n++) {
+      const sp = Math.hypot(vx, vy);
+      if (sp < 1e-3 || y > sh.back + sh.r || Math.abs(x) > sh.half - sh.r || y > stopAt) break;
+      const swept = lvl && y > p.from && y < sh.back;
+      const [fm, cm] = swept ? p.sweep[lvl] : [1, 1];
+      const ns = Math.max(0, sp - p.fric * p.fk * fm * p.dt);
+      let ux = vx / sp, uy = vy / sp;
+      if (spin && ns > 0) {
+        const a = spin * p.curl * p.ck * cm * 2 * p.vc / (ns * ns + p.vc * p.vc) * p.dt, c = Math.cos(a), s = Math.sin(a);
+        [ux, uy] = [ux * c + uy * s, uy * c - ux * s];
+      }
+      vx = ux * ns; vy = uy * ns; x += vx * p.dt; y += vy * p.dt;
+      if (n % every === 0) pts.push([x, y]);
+      if (ns === 0) break;
+    }
+    pts.push([x, y]);
+    return { pts, x, y, out: y > sh.back + sh.r || Math.abs(x) > sh.half - sh.r };
+  }
+  function launchPath(stopAt) {
+    const sh = sheet(), v = speedOf(weight), d = Math.hypot(aim, sh.tee - sh.start);
+    return glide(0, sh.start, v * aim / d, v * (sh.tee - sh.start) / d, curl, 0, 8, stopAt);
+  }
+  // the weight's zone, from where a straight unswept stone would stop
+  function zoneOf(w) {
+    const p = ph(), sh = sheet();
+    if (w > p.wd) return w > 0.88 ? ['peel', '💥 Peel', 'clears a stone right out'] : ['hit', '🎯 Hit', 'knocks a stone out'];
+    const stop = sh.start + speedOf(w) ** 2 / (2 * p.fric * p.fk), d = stop - sh.tee;
+    if (stop < sh.hog) return ['short', '⚠️ Too light', 'stops short of the hog line'];
+    if (stop < sh.tee - sh.house - sh.r) return ['guard', '🛡 Guard', `stops ${(sh.tee - sh.house - stop).toFixed(1)} m short of the house`];
+    if (stop <= sh.tee + sh.house + sh.r) return ['draw', '🏠 Draw', Math.abs(d) < 0.3 ? 'stops on the button' : `stops ${Math.abs(d).toFixed(1)} m ${d < 0 ? 'short of' : 'past'} the button`];
+    return ['through', '↗ Through', 'slides through the house'];
+  }
+  const ZONES = [['short', '#8a93a3'], ['guard', '#5b8def'], ['draw', '#2ec27e'], ['through', '#e0a030'], ['hit', '#f07a3a'], ['peel', '#e04848']];
 
   function mount(main, side) {
     gl = null; flat = null; anim = null; queue = []; seen = 0; primed = false; camMode = 'auto';
-    main.innerHTML = `<div class="ic"><div class="ic-hud"><span id="icEnd"></span><span id="icTurn"></span></div>
+    main.innerHTML = `<div class="ic"><div class="ic-hud"><span id="icEnd"></span><span id="icCount" class="ic-count"></span><span id="icTurn"></span></div>
       <div class="ic-stage" id="icStage">
         <button class="ic-cam ghost-btn" id="icCam" hidden title="Switch view">👁 Sheet</button>
-        <div class="ic-done" id="icDone" hidden><h3 id="icDoneTitle"></h3><div id="icStand"></div></div>
+        <div class="ic-live" id="icLive" hidden><b id="icSpeed"></b><span id="icCurlNow"></span><span id="icStop"></span><i id="icBrooms"></i></div>
+        <div class="ic-done" id="icDone" hidden><h3 id="icDoneTitle"></h3><p id="icDoneWhy" class="ic-why"></p><div id="icDoneCard"></div></div>
       </div>
       <div class="ic-ctl" id="icCtl">
         <div class="ic-row">
@@ -30,18 +89,17 @@ UI.stones = (() => {
             <button data-c="-1" title="The stone bends left as it slows">↺ Left</button><button data-c="1" title="The stone bends right as it slows">↻ Right</button>
           </div>
         </div>
-        <div class="ic-row">
+        <div class="ic-row ic-wrow">
           <span class="ic-lbl">💪 Weight</span>
-          <input type="range" id="icWeight" min="0" max="100" step="1" aria-label="Weight">
-          <b class="ic-zone" id="icZone"></b>
-        </div>
-        <div class="ic-row">
-          <span class="ic-lbl">🧹 Sweep</span>
-          <div class="ic-seg" id="icSweep" role="group" aria-label="Sweeping">
-            <button data-s="0">None</button><button data-s="1">Light</button><button data-s="2">Hard</button>
+          <div class="ic-wbox">
+            <div class="ic-wline"><button data-w="-1" aria-label="Less weight">−</button>
+              <div class="ic-slide"><input type="range" id="icWeight" min="0" max="1000" step="1" aria-label="Weight"><div class="ic-zones" id="icZones"></div></div>
+              <button data-w="1" aria-label="More weight">+</button></div>
+            <div class="ic-zone" id="icZone"><b></b> <span></span></div>
           </div>
-          <button class="ic-throw" id="icThrow">🥌 Throw</button>
         </div>
+        <div class="ic-row"><button class="ic-throw" id="icThrow">🥌 Throw</button></div>
+        <button class="ic-pad" id="icPad" hidden aria-label="Hold to sweep"><span class="ic-padtxt">🧹 <b>HOLD TO SWEEP</b><small>scrub fast to sweep hard</small></span><span class="ic-meter"><i id="icMeter"></i></span></button>
       </div>
       <p id="icHint" class="hint"></p></div>`;
     side.innerHTML = '<div class="panel"><h3>Scoreboard</h3><div id="icCard" class="ic-card"></div>'
@@ -51,26 +109,48 @@ UI.stones = (() => {
     const stage = $('icStage');
     $('icCtl').addEventListener('click', (e) => {
       const b = e.target.closest('button');
-      if (!b) return;
+      if (!b || b.id === 'icPad') return;
       if (b.dataset.a) setAim(aim + +b.dataset.a * 0.05);
-      else if (b.dataset.c) curl = +b.dataset.c;
-      else if (b.dataset.s) sweep = +b.dataset.s;
+      else if (b.dataset.c) { const c = +b.dataset.c; if (c !== curl) { curl = c; setAim(-aim); } }  // the skip's broom moves across with the turn
+      else if (b.dataset.w) weight = Math.max(0, Math.min(1, Math.round(weight * 100 + +b.dataset.w) / 100));
       else if (b.id === 'icThrow') return throwNow();
       controls();
     });
-    $('icWeight').addEventListener('input', (e) => { weight = +e.target.value / 100; controls(); });
+    $('icWeight').addEventListener('input', (e) => { weight = +e.target.value / 1000; controls(); });
     $('icCam').onclick = () => { camMode = camMode === 'house' ? 'sheet' : 'house'; controls(); };
-    // tap or drag on the ice to put the broom there
+    // the sweep pad: hold to sweep, scrub (move the finger back and forth) to sweep hard
+    const padEl = $('icPad');
+    padEl.addEventListener('pointerdown', (e) => { e.preventDefault(); try { padEl.setPointerCapture(e.pointerId); } catch {} sweepDown(e); });
+    padEl.addEventListener('pointermove', sweepMove);
+    for (const t of ['pointerup', 'pointercancel', 'lostpointercapture']) padEl.addEventListener(t, sweepUp);
+    padEl.addEventListener('contextmenu', (e) => e.preventDefault());
+    // the ice: on your turn, tap to put the broom there, drag sideways to nudge it (finely) or up/down for the
+    // weight; while your stone slides, hold or scrub it to sweep
     stage.style.touchAction = 'none';
-    let dragging = false;
-    const place = (e) => { const x = (gl || flat)?.iceX?.(e.clientX, e.clientY); if (x != null) { setAim(x); controls(); } };
+    let drag = null;
     stage.addEventListener('pointerdown', (e) => {
-      if (!myTurn() || e.target.closest('button, .ic-done')) return;
-      dragging = true; try { stage.setPointerCapture(e.pointerId); } catch {} place(e);
+      if (e.target.closest('button, .ic-done')) return;
+      if (mySlide()) { try { stage.setPointerCapture(e.pointerId); } catch {} return sweepDown(e); }
+      if (!myTurn() || busy()) return;
+      try { stage.setPointerCapture(e.pointerId); } catch {}
+      drag = { x: e.clientX, y: e.clientY, aim, weight, ix: iceAt(e), lock: null };
     });
-    stage.addEventListener('pointermove', (e) => { if (dragging) place(e); });
-    const stop = () => { dragging = false; };
-    stage.addEventListener('pointerup', stop); stage.addEventListener('pointercancel', stop);
+    stage.addEventListener('pointermove', (e) => {
+      if (pad.down) return sweepMove(e);
+      if (!drag) return;
+      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      if (!drag.lock && Math.hypot(dx, dy) > 9) drag.lock = Math.abs(dx) >= Math.abs(dy) ? 'x' : 'y';
+      if (drag.lock === 'x') { const ix = iceAt(e); if (ix != null && drag.ix != null) setAim(drag.aim + (ix - drag.ix) * 0.5); }
+      else if (drag.lock === 'y') weight = Math.max(0, Math.min(1, drag.weight - dy / (stage.clientHeight * 2.2)));
+      if (drag.lock) controls();
+    });
+    const stop = (e) => {
+      if (pad.down) return sweepUp(e);
+      if (drag && !drag.lock) { const x = iceAt(e); if (x != null) { setAim(x); controls(); } }  // a tap: the broom goes there
+      drag = null;
+    };
+    stage.addEventListener('pointerup', stop); stage.addEventListener('pointercancel', () => { drag = null; if (pad.down) sweepUp(); });
+    document.addEventListener('keydown', onKey); document.addEventListener('keyup', onKey);
     ro = window.ResizeObserver ? new ResizeObserver(() => (gl || flat)?.resize()) : null;
     ro?.observe(stage);
     GL3.load().then(() => { if (stage.isConnected && !gl) gl = make3d(stage); }).catch(() => {})
@@ -79,67 +159,153 @@ UI.stones = (() => {
   }
 
   function unmount() {
-    brush(0);
+    brush(0); sweepUp();
+    document.removeEventListener('keydown', onKey); document.removeEventListener('keyup', onKey);
     cancelAnimationFrame(raf); raf = 0; ro?.disconnect(); gl?.dispose(); gl = null; flat = null;
   }
 
+  const iceAt = (e) => (gl || flat)?.iceX?.(e.clientX, e.clientY) ?? null;
   function setAim(x) {
     const h = S?.stones?.sheet?.half ?? 2.2;
     aim = Math.max(-h + 0.2, Math.min(h - 0.2, Math.round(x * 100) / 100));
+  }
+
+  function onKey(e) {
+    if (!$('icStage') || e.target.closest?.('input, textarea, select')) return;
+    if (mySlide() && (e.key === ' ' || e.key === 's' || e.key === 'S')) {
+      e.preventDefault();
+      if (e.type === 'keydown' && !pad.key) { pad.key = true; sendSweep(); } else if (e.type === 'keyup') { pad.key = false; sendSweep(); }
+      return;
+    }
+    if (e.type !== 'keydown' || !myTurn() || busy()) return;
+    const k = { ArrowLeft: () => setAim(aim - 0.05), ArrowRight: () => setAim(aim + 0.05),
+      ArrowUp: () => { weight = Math.min(1, weight + 0.01); }, ArrowDown: () => { weight = Math.max(0, weight - 0.01); }, Enter: throwNow }[e.key];
+    if (k) { e.preventDefault(); k(); controls(); }
   }
 
   function throwNow() {
     if (!myTurn() || busy()) return;
     thrownAt = performance.now();
     SND.push(true); ctx.buzz?.(15);
-    ctx.quiet(ctx.act('throw', { aim: +aim.toFixed(3), weight: +weight.toFixed(3), curl, sweep }));
+    ctx.quiet(ctx.act('throw', { aim: +aim.toFixed(3), weight: +weight.toFixed(3), curl }));
   }
 
-  const busy = () => !!(anim || queue.length);
+  // ---------- sweeping your own stone
+  const mySlide = () => !!(S?.stones && S.stones.sliding != null && S.stones.sliding === S.stones.me && S.phase === 'playing');
+  const myLevel = () => (pad.key ? 2 : !pad.down ? 0 : pad.scrub > 520 ? 2 : 1);
+  function sweepDown(e) {
+    if (!mySlide()) return;
+    pad.down = true; pad.scrub = 0; pad.lx = e?.clientX ?? 0; pad.ly = e?.clientY ?? 0; pad.lt = performance.now();
+    ctx.buzz?.(8); sendSweep();
+  }
+  function sweepMove(e) {
+    if (!pad.down) return;
+    const now = performance.now(), dt = Math.max(8, now - pad.lt), d = Math.hypot(e.clientX - pad.lx, e.clientY - pad.ly);
+    pad.scrub = pad.scrub * 0.6 + (d / dt) * 1000 * 0.4;   // px a second, smoothed
+    pad.lx = e.clientX; pad.ly = e.clientY; pad.lt = now;
+    sendSweep();
+  }
+  function sweepUp() {
+    if (!pad.down) return;
+    pad.down = false; pad.scrub = 0; sendSweep();
+  }
+  function sendSweep(force = false) {
+    if (!ctx || !mySlide()) { pad.sent = -1; return; }
+    const l = myLevel(), now = performance.now();
+    if (l !== pad.sent || force || (l && now - pad.sentAt > 250)) {
+      if (l !== pad.sent && l) ctx.buzz?.(l === 2 ? 12 : 6);
+      pad.sent = l; pad.sentAt = now;
+      ctx.input({ sweep: l }, true);
+    }
+  }
 
   function controls() {
+    const v = S?.stones;
+    if (!v || !$('icAim')) return;
     $('icAim').textContent = aim === 0 ? 'centre' : `${aim < 0 ? '◀' : '▶'} ${Math.abs(aim).toFixed(2)}`;
-    $('icWeight').value = Math.round(weight * 100);
-    $('icZone').textContent = zone(weight);
+    $('icWeight').value = Math.round(weight * 1000);
+    const [zk, zl, zd] = zoneOf(weight);
+    const zb = $('icZone');
+    zb.dataset.z = zk; zb.firstElementChild.textContent = zl; zb.lastElementChild.textContent = zd;
+    zones();
     for (const b of $('icCurl').children) b.classList.toggle('on', +b.dataset.c === curl);
-    for (const b of $('icSweep').children) b.classList.toggle('on', +b.dataset.s === sweep);
     const go = myTurn() && !busy();
     $('icThrow').disabled = !go;
     $('icThrow').classList.toggle('ic-ready', go);
-    $('icCtl').classList.toggle('ic-off', !myTurn());
+    const sliding = mySlide();
+    $('icCtl').classList.toggle('ic-off', !myTurn() && !sliding);
+    $('icCtl').classList.toggle('ic-sliding', sliding);
+    $('icPad').hidden = !sliding;
+    if (!sliding && pad.down) sweepUp();
     $('icCam').textContent = camMode === 'house' ? '👁 Sheet' : '👁 House';
+  }
+  // the coloured bands under the weight slider: where a stone thrown at that weight stops
+  let zonesKey = '';
+  function zones() {
+    const p = ph(), sh = sheet(), key = `${p.fk}`;
+    if (key === zonesKey) return;
+    zonesKey = key;
+    const cuts = [0, weightFor(sh.hog), weightFor(sh.tee - sh.house - sh.r), weightFor(sh.tee + sh.house + sh.r), p.wd, 0.88, 1];
+    const box = $('icZones'); box.innerHTML = '';
+    ZONES.forEach(([k, c], i) => {
+      const w = Math.max(0, cuts[i + 1] - cuts[i]);
+      if (w <= 0) return;
+      const z = document.createElement('i'); z.style.flex = `${w} 0 0`; z.style.background = c; z.dataset.z = k;
+      z.textContent = { short: '', guard: 'guard', draw: 'draw', through: '', hit: 'hit', peel: 'peel' }[k];
+      box.append(z);
+    });
   }
 
   function render(s, c) {
     S = s; ctx = c;
     const v = S.stones;
-    if (!primed) { primed = true; seen = v.shot?.id ?? 0; }  // a throw from before you opened the page isn't replayed
-    if (v.shot && v.shot.id !== seen) { seen = v.shot.id; queue.push(v.shot); }
-    $('icEnd').textContent = `🧊 End ${v.end} of ${v.ends}`;
+    const now = performance.now();
+    if (!primed) { primed = true; seen = v.shot?.live ? (v.shot.id - 1) : (v.shot?.id ?? 0); }  // a throw from before you opened the page isn't replayed (a live one is joined)
+    if (v.shot && v.shot.id !== seen && v.shot.id > seen) { seen = v.shot.id; queue.push({ ...v.shot, tracks: v.shot.tracks.map((t) => ({ ...t, f: [...t.f] })), rx: now }); }
+    else if (v.shot) {
+      // the same shot again: a live one has finished (take the server's final tracks) or moved on
+      const sh = anim?.shot?.id === v.shot.id ? anim.shot : queue.find((q) => q.id === v.shot.id);
+      if (sh && sh.live && !v.shot.live) Object.assign(sh, { ...v.shot, tracks: v.shot.tracks.map((t) => ({ ...t, f: [...t.f] })), live: false, rx: now });
+      else if (sh && sh.live) mergeTracks(sh, v.shot.tracks.map((t) => [t.k, t.s, 0, t.f, t.out ? 2 : 0]), v.shot.frames, now);
+    }
+    const ex = v.extra ? `⚖️ Extra end ${v.extra}` : `🧊 End ${v.end} of ${v.ends}`;
+    $('icEnd').textContent = ex;
     const n = v.order.length;
-    const who = v.next != null ? (v.next === v.me ? 'Your' : `${ctx.player(v.seats[v.next])?.name ?? '?'}'s`) : '';
     const hotNow = v.thrown === v.hot;
-    $('icTurn').textContent = v.between ? `End ${v.end} done` : v.next != null ? `${who} stone · ${v.thrown + 1} of ${n}${hotNow ? ' · 🔥 HOT' : ''}` : '';
-    $('icTurn').classList.toggle('ic-hot', hotNow && !v.between);
+    const who = v.next != null ? (v.next === v.me ? 'Your' : `${nameOf(v.next)}'s`) : '';
+    $('icTurn').textContent = v.between ? `End ${v.end} done` : v.sliding != null ? (v.sliding === v.me ? '🧹 Sweep it!' : `${nameOf(v.sliding)}'s stone…`)
+      : v.next != null ? `${who} stone · ${v.thrown + 1} of ${n}${hotNow ? ' · 🔥 HOT' : ''}` : '';
+    $('icTurn').classList.toggle('ic-hot', hotNow && !v.between && v.sliding == null);
     controls();
-    renderCard();
+    countLine();
+    renderCard($('icCard'));
     renderDone();
     hint();
+  }
+
+  // who's counting right now (or, mid-throw, as it stood before it)
+  function countLine() {
+    const v = S.stones, c = v.between ? v.endMeasure : v.count, el = $('icCount');
+    if (!c || c.side == null) { el.textContent = Object.keys(c?.d || {}).length ? '🎯 Dead heat' : '🎯 House empty'; el.style.color = ''; return; }
+    el.textContent = `🎯 ${c.side === v.me ? 'You' : nameOf(c.side)} ${v.between ? 'scored' : 'lying'} ${c.pts}`;
+    el.style.color = colorOf(c.side);
   }
 
   function hint() {
     const v = S.stones;
     const t = S.phase !== 'playing' ? '' : v.between ? 'Next end in a moment…'
-      : !myTurn() ? (busy() ? '' : 'Watch the ice.')
-        : `Tap the ice to set the broom: aim there, and the stone bends ${curl > 0 ? 'right ↻' : 'left ↺'} as it slows. Draw weight stops in the house.`;
+      : mySlide() ? 'Hold the 🧹 pad (or the ice) to sweep: the stone runs further and curls less. Scrub fast to sweep hard. The ring on the ice shows where it will stop.'
+        : !myTurn() ? (busy() ? '' : 'Watch the ice.')
+          : `Tap the ice for the broom (drag sideways to nudge it, up/down for weight). The stone bends ${curl > 0 ? 'right ↻' : 'left ↺'} as it slows, so aim ${curl > 0 ? 'left' : 'right'} of where you want it. Then 🥌 Throw and sweep it home.`;
     if ($('icHint').textContent !== t) $('icHint').textContent = t;
   }
 
-  function renderCard() {
-    const v = S.stones, box = $('icCard'); box.innerHTML = '';
+  function renderCard(box, compact = false) {
+    const v = S.stones; box.innerHTML = '';
     const t = ctx.el('table', 'scores ic-scores');
     const head = ctx.el('tr');
-    head.append(ctx.el('th', '', ''), ...v.endsLog.map((_, k) => ctx.el('th', '', String(k + 1))), ctx.el('th', '', 'Σ'), ctx.el('th', '', '🥌'));
+    head.append(ctx.el('th', '', ''), ...v.endsLog.map((_, k) => ctx.el('th', '', k < v.ends ? String(k + 1) : `X${k - v.ends + 1}`)), ctx.el('th', '', 'Σ'));
+    if (!compact) head.append(ctx.el('th', '', '🥌'));
     t.append(head);
     v.seats.forEach((pid, i) => {
       const row = ctx.el('tr', v.next === i ? 'now' : '');
@@ -147,45 +313,119 @@ UI.stones = (() => {
       row.append(nm, ...v.endsLog.map(([side, pts]) => ctx.el('td', side === i ? 'ic-pt' : '', side === i ? String(pts) : '·')));
       row.append(ctx.el('td', '', ''));
       row.lastChild.append(ctx.el('b', '', String(v.points[i])));
-      let left = 0;
-      for (let k = v.thrown; k < v.order.length; k++) if (v.order[k] === i) left++;
-      row.append(ctx.el('td', 'ic-left', left ? '●'.repeat(left) : '–'));
+      if (!compact) {
+        let left = 0;
+        for (let k = v.thrown; k < v.order.length; k++) if (v.order[k] === i) left++;
+        row.append(ctx.el('td', 'ic-left', left ? '●'.repeat(left) : '–'));
+      }
       t.append(row);
     });
     box.append(t);
-    box.append(ctx.el('p', 'hint left', `🔥 Stone ${v.hot + 1} of this end is hot: it scores double. Hammer: ${ctx.player(v.seats[v.order[v.order.length - 1]])?.name ?? '?'}.`));
+    if (!compact) box.append(ctx.el('p', 'hint left', `🎯 Only the player nearest the button scores: 1 for each of their stones in the house closer than anyone else's best. 🔥 Stone ${v.hot + 1} of this end is hot (counts 2). Hammer: ${nameOf(v.order[v.order.length - 1])}.`));
   }
 
   function renderDone() {
     const v = S.stones;
     if (!v.between) { $('icDone').hidden = true; return; }
     const [side, pts] = v.endsLog[v.endsLog.length - 1] || [null, 0];
-    $('icDoneTitle').textContent = side == null ? `🏁 End ${v.end}: blank end` : `🏁 End ${v.end}: ${ctx.player(v.seats[side])?.name ?? '?'} scores ${pts}`;
-    standingsCard($('icStand'), v.standings, { title: 'Points', note: 'Most points wins.' });
+    const m = v.endMeasure;
+    $('icDoneTitle').textContent = side == null ? `🏁 End ${v.end}: blank end` : `🏁 End ${v.end}: ${nameOf(side)} scores ${pts}`;
+    $('icDoneTitle').style.color = side == null ? '' : colorOf(side);
+    let why = 'Nobody had a stone in the house.';
+    if (side != null) {
+      const n = m?.ids?.length ?? pts;
+      why = m?.ring != null ? `${n} stone${n !== 1 ? 's' : ''} inside the gold ring — closer to the button than anyone else's best stone.`
+        : `${n} stone${n !== 1 ? 's' : ''} in the house, and nobody else had one there.`;
+      if (pts > n) why += ' 🔥 The hot stone counted double.';
+    } else if (m && Object.keys(m.d || {}).length) why = 'Two stones were exactly as close: a dead heat, nobody scores.';
+    $('icDoneWhy').textContent = why;
+    renderCard($('icDoneCard'), true);
   }
 
-  // ---------- playback: where every stone is right now
+  // ---------- live tracks: fast() packets carry the newest frames of every track [k, s, from, frames, 0 moving | 1 stopped | 2 out]
+  function mergeTracks(sh, list, head, now) {
+    for (const [k, s, i0, fr, flag] of list) {
+      let tr = sh.tracks.find((t) => t.k === k);
+      if (!tr) { tr = { k, s, f: [] }; sh.tracks.push(tr); }
+      for (let j = 0; j < fr.length; j++) tr.f[i0 + j] = fr[j];
+      for (let j = 0; j < tr.f.length; j++) if (!tr.f[j]) tr.f[j] = tr.f[j - 1] || fr[0];   // a gap from lost packets
+      tr.flag = flag; if (flag === 2) tr.out = true;
+    }
+    if (head >= (sh.frames || 0)) { sh.frames = head; sh.rx = now; }
+  }
+  function fast(d) {
+    const p = d?.ic;
+    if (!p || !S?.stones) return;
+    const sh = anim?.shot?.id === p.id ? anim.shot : queue.find((q) => q.id === p.id);
+    if (!sh || !sh.live) return;
+    mergeTracks(sh, p.t, p.h, performance.now());
+    sh.sw = p.sw;
+  }
+
+  // ---------- playback: where every stone is right now (between the 30 fps frames, smoothly)
   // returns [{id, o, hot, x, y, gone, moving}] for drawing
-  function positions(now) {
+  function positions() {
     const v = S.stones;
     if (!anim) {
       if (!queue.length) return v.stones.map((s) => ({ ...s }));
-      const sh = queue[0];  // a throw waiting to play: show the stones as they were before it
-      return sh.before.map((s) => ({ ...s }));
+      return queue[0].before.map((s) => ({ ...s }));  // a throw waiting to play: the stones as they were before it
     }
-    const sh = anim.shot, f = ((now - anim.t0) / 1000) * FPS;
+    const sh = anim.shot, f = anim.f;
     const list = [...sh.before.map((s) => ({ ...s })), { id: sh.new, o: sh.by, hot: sh.hot, x: 0, y: sheet().start, fresh: true }];
     for (const tr of sh.tracks) {
       const s = list[tr.k];
-      if (!s) continue;
-      const k = Math.floor(f - tr.s);
-      const at = tr.f[Math.max(0, Math.min(tr.f.length - 1, k))];
-      s.x = at[0]; s.y = at[1];
-      s.moving = k >= 0 && k < tr.f.length - 1;
-      if ((tr.out || tr.short) && k >= tr.f.length - 1) s.gone = Math.min(1, (k - tr.f.length + 1) / 12);
+      if (!s || !tr.f.length) continue;
+      const k = f - tr.s, n = tr.f.length;
+      const i = Math.max(0, Math.min(n - 1, Math.floor(k))), a = Math.max(0, Math.min(1, k - i));
+      const p0 = tr.f[i], p1 = tr.f[Math.min(n - 1, i + 1)];
+      s.x = p0[0] + (p1[0] - p0[0]) * a; s.y = p0[1] + (p1[1] - p0[1]) * a;
+      const ended = (!sh.live || tr.flag >= 1 || tr.out) && k >= n - 1;
+      s.moving = k >= 0 && !ended;
+      if (s.moving && i + 1 < n) { s.vx = (p1[0] - p0[0]) * FPS; s.vy = (p1[1] - p0[1]) * FPS; }
+      else if (s.moving && n > 1) { s.vx = (tr.f[n - 1][0] - tr.f[n - 2][0]) * FPS; s.vy = (tr.f[n - 1][1] - tr.f[n - 2][1]) * FPS; }
+      if ((tr.out || tr.short) && k >= n - 1) s.gone = Math.min(1, (k - n + 1) / 12);
     }
     if (!sh.tracks.some((tr) => tr.k === list.length - 1)) list[list.length - 1].gone = 1;
     return list;
+  }
+
+  // the thrown stone right now: its speed, which way it bends, how hard it's swept, and where it would stop
+  let proj = null, projAt = 0;
+  function liveInfo(list, now) {
+    if (!anim) return null;
+    const sh = anim.shot, st = list[list.length - 1], P = ph(), shh = sheet();
+    if (!st || st.gone || !st.moving) return null;
+    const sp = Math.hypot(st.vx || 0, st.vy || 0);
+    const mine = sh.live && sh.by === S.stones.me;
+    const lvl = Math.max(mine ? myLevel() : 0, sh.live ? (sh.sw || 0) : (sh.sweep || 0));
+    const zone = st.y > P.from && st.y < shh.back;
+    const hit = sh.tracks.length > 1;   // after a hit the stop marker would be a guess
+    if (!hit && sp > 0.05 && now - projAt > 90) {
+      projAt = now;
+      const g = glide(st.x, st.y, st.vx, st.vy, sh.curl, zone || st.y < P.from ? lvl : 0, 1e9);
+      proj = { x: g.x, y: g.y, out: g.out };
+    }
+    return { sp, lvl: zone ? lvl : 0, curl: sh.curl, x: st.x, y: st.y, o: sh.by, proj: hit ? null : proj, mine, zone };
+  }
+  function liveHud(info) {
+    const box = $('icLive');
+    if (!box) return;
+    box.hidden = !info;
+    if (!info) return;
+    const shh = sheet();
+    $('icSpeed').textContent = `💨 ${info.sp.toFixed(1)} m/s`;
+    $('icCurlNow').textContent = info.curl > 0 ? '↻' : '↺';
+    let stop = '';
+    if (info.proj) {
+      const p = info.proj, d = Math.hypot(p.x, p.y - shh.tee);
+      stop = p.out ? '→ out' : p.y < shh.hog ? '→ short!' : d <= shh.house + shh.r ? (d < 0.3 ? '→ 🎯 button' : `→ house ${d.toFixed(1)} m`) : p.y < shh.tee ? '→ guard' : '→ past the house';
+    }
+    $('icStop').textContent = stop;
+    const b = $('icBrooms');
+    b.textContent = info.lvl === 2 ? '🧹🧹 HARD' : info.lvl === 1 ? '🧹 sweep' : info.zone ? '🧹 —' : '';
+    b.className = info.lvl ? `ic-sw${info.lvl}` : '';
+    box.style.setProperty('--who', colorOf(info.o));
+    const m = $('icMeter'); if (m) m.style.width = `${[0, 55, 100][info.mine ? myLevel() : 0]}%`;
   }
 
   // #106: sweeping used to fire the app's 'sweep' blip every half second, a harsh hiss with a rising note. Now
@@ -205,14 +445,15 @@ UI.stones = (() => {
         src.buffer = buf; src.loop = true; bp.type = 'bandpass'; bp.frequency.value = 900; bp.Q.value = 0.7;
         g.gain.value = 0; lfo.frequency.value = 3.2; depth.gain.value = 0; lfo.connect(depth).connect(g.gain);
         src.connect(bp).connect(g).connect(dst); src.start(); lfo.start();
-        hush = { a, src, lfo, g, depth, lvl: -1 };
+        hush = { a, src, lfo, g, depth, bp, lvl: -1 };
       }
-      const want = on ? 0.012 + 0.008 * level : 0;
+      const want = on ? 0.014 + 0.012 * level : 0;
       if (want === hush.lvl) return;
       hush.lvl = want;
       const t = hush.a.currentTime;
-      hush.g.gain.setTargetAtTime(want, t, 0.12); hush.depth.gain.setTargetAtTime(want * 0.7, t, 0.12);
-      hush.lfo.frequency.setTargetAtTime(2.6 + level * 0.8, t, 0.1);
+      hush.g.gain.setTargetAtTime(want, t, 0.08); hush.depth.gain.setTargetAtTime(want * 0.75, t, 0.08);
+      hush.lfo.frequency.setTargetAtTime(2.4 + level * 1.6, t, 0.08);   // the strokes quicken when sweeping hard
+      hush.bp.frequency.setTargetAtTime(800 + level * 350, t, 0.1);
       if (!on) { const h = hush; hush = null; setTimeout(() => { try { h.src.stop(); h.lfo.stop(); } catch {} }, 600); }
     } catch {}
   }
@@ -248,48 +489,57 @@ UI.stones = (() => {
       stop() { try { src.stop(); hiss.stop(); o.stop(); } catch {} },
     };
   };
-  // how fast the fastest stone is going in this frame of the throw (0..1)
-  function slideLevel(shot, f) {
-    let best = 0;
-    for (const tr of shot.tracks) {
-      const k = Math.floor(f - tr.s);
-      if (k < 1 || k >= tr.f.length) continue;
-      const [x0, y0] = tr.f[k - 1], [x1, y1] = tr.f[k];
-      best = Math.max(best, Math.hypot(x1 - x0, y1 - y0) * FPS);
-    }
-    return Math.min(1, best / 3.2);
-  }
+  // how fast the fastest stone is going (0..1)
+  const slideLevel = (list) => Math.min(1, list.reduce((m, s) => (s.moving ? Math.max(m, Math.hypot(s.vx || 0, s.vy || 0)) : m), 0) / 3.2);
 
   function loop(now) {
     if (!$('icStage')) { raf = 0; brush(0); window.Snd?.bed('st.slide').set(0); return; }
     raf = requestAnimationFrame(loop);
     if (!S?.stones) return;
+    const dt = Math.min(0.1, lastT ? (now - lastT) / 1000 : 0.016); lastT = now;
     if (!anim && queue.length) {
       const shot = queue.shift();
-      anim = { shot, t0: now, hits: shot.tracks.filter((t) => t.s > 0).map((t) => t.s).sort((a, b) => a - b), hi: 0, sw: 0 };
+      // a live shot starts a little behind the server (the lag soaks up the network); a finished one from the start
+      const lagF = (ph().lag || 0.45) * FPS;
+      const head = shot.live ? (shot.frames || 0) + ((now - (shot.rx || now)) / 1000) * FPS : 0;
+      anim = { shot, f: Math.min(0, head - lagF), hits: [], hi: 0 };
       if (!(shot.by === S.stones.me && now - thrownAt < 3000)) SND.push(false);
+      controls(); hint();
     }
+    let list;
     if (anim) {
-      const f = ((now - anim.t0) / 1000) * FPS;
-      while (anim.hi < anim.hits.length && anim.hits[anim.hi] <= f) {
-        const hf = anim.hits[anim.hi++], tr = anim.shot.tracks.find((t) => t.s === hf);
-        const sp = tr && tr.f.length > 1 ? Math.hypot(tr.f[1][0] - tr.f[0][0], tr.f[1][1] - tr.f[0][1]) * FPS : 1;
-        SND.clock(Math.min(1, sp / 2.2), tr?.f?.[0]?.[0] ?? 0);
-        gl?.spark(anim.shot, hf);
+      const sh = anim.shot, dtp = Math.min(0.25, (now - (anim.lastNow || now)) / 1000 || dt); anim.lastNow = now;   // a slow phone still plays in real time
+      let rate = 1;
+      if (sh.live) {
+        const head = (sh.frames || 0) + ((now - (sh.rx || now)) / 1000) * FPS, want = head - (ph().lag || 0.45) * FPS;
+        rate = Math.max(0.5, Math.min(1.6, 1 + (want - anim.f) * 0.05));
+        anim.f = Math.min(anim.f + dtp * FPS * rate, head - 1);
+      } else anim.f += dtp * FPS * (anim.f < sh.frames - 90 ? 2 : 1);   // a late joiner catches up
+      const f = anim.f;
+      // stones set moving by a hit: crack when the playhead gets there
+      for (const tr of sh.tracks) if (tr.s > 0 && !anim.hits.includes(tr.k) && f >= tr.s && tr.f.length) {
+        anim.hits.push(tr.k);
+        const sp = tr.f.length > 1 ? Math.hypot(tr.f[1][0] - tr.f[0][0], tr.f[1][1] - tr.f[0][1]) * FPS : 1;
+        SND.clock(Math.min(1, sp / 2.2), tr.f[0][0]);
+        gl?.spark(tr.f[0][0], tr.f[0][1]); flat?.spark?.(tr.f[0][0], tr.f[0][1]);
       }
-      window.Snd?.bed('st.slide', slideBed).set(slideLevel(anim.shot, f));
-      brush(anim.shot.sweep && f > 8 && f < anim.shot.frames * 0.8 ? anim.shot.sweep : 0);
-      if (f >= anim.shot.frames + 12) { anim = null; brush(0); window.Snd?.bed('st.slide').set(0); controls(); hint(); }
-    }
+      list = positions();
+      window.Snd?.bed('st.slide', slideBed).set(slideLevel(list));
+      if (!sh.live && f >= sh.frames + 12) { anim = null; brush(0); window.Snd?.bed('st.slide').set(0); controls(); hint(); list = positions(); }
+    } else list = positions();
+    const info = liveInfo(list, now);
+    brush(info?.lvl || 0);
+    liveHud(info);
+    if (mySlide()) sendSweep();
+    else if (pad.down) sweepUp();
     $('icDone').hidden = !S.stones.between || busy();
     // on-demand drawing: every frame while anything moves, otherwise ~15 fps for the glows
     const idle = !anim && !(gl?.moving?.());
     if (idle && now - lastDraw < 66) return;
     lastDraw = now;
     still = idle;  // idle redraws are drawn sharp and kept out of the frame-rate watch (#107/#109)
-    (gl || flat)?.draw(now, positions(now));
+    (gl || flat)?.draw(now, list, info, dt);
   }
-
   // ---------- three.js sheet: world x = sheet x, world z = -sheet y, y up
   function canvasTex(T, w, h, paint) {
     const c = document.createElement('canvas'); c.width = w; c.height = h;
@@ -485,16 +735,87 @@ UI.stones = (() => {
     const broom = new T.Group();
     const stick = new T.Mesh(new T.CylinderGeometry(0.018, 0.018, 1.2, 6), new T.MeshStandardMaterial({ color: 0x2b2b2b }));
     stick.position.y = 0.6; stick.rotation.z = 0.25; broom.add(stick);
-    const pad = new T.Mesh(new T.BoxGeometry(0.22, 0.04, 0.08), new T.MeshStandardMaterial({ color: 0xffd23f, roughness: 0.8 }));
-    pad.position.set(0.15, 0.02, 0); broom.add(pad);
+    const skipPad = new T.Mesh(new T.BoxGeometry(0.22, 0.04, 0.08), new T.MeshStandardMaterial({ color: 0xffd23f, roughness: 0.8 }));
+    skipPad.position.set(0.15, 0.02, 0); broom.add(skipPad);
     const spot = new T.Mesh(new T.RingGeometry(0.06, 0.09, 24), new T.MeshBasicMaterial({ color: 0xffd23f, side: T.DoubleSide }));
     spot.rotation.x = -Math.PI / 2; spot.position.y = 0.005; broom.add(spot);
     scene.add(broom);
+    // #187 the line to the broom, faint, and the stone's path for its first stretch (to the hog line), bright:
+    // the rest (where it curls most) is yours to judge
     const aimLine = new T.Line(new T.BufferGeometry().setFromPoints([new T.Vector3(), new T.Vector3()]),
-      new T.LineDashedMaterial({ color: 0xffd23f, dashSize: 0.3, gapSize: 0.25, transparent: true, opacity: 0.7 }));
+      new T.LineDashedMaterial({ color: 0xffd23f, dashSize: 0.3, gapSize: 0.25, transparent: true, opacity: 0.35 }));
     scene.add(aimLine);
-    // the sweepers' brooms, brushing in front of a swept stone
-    const sweepers = [0, 1].map(() => { const b = new T.Mesh(new T.BoxGeometry(0.2, 0.03, 0.07), pad.material); b.visible = false; scene.add(b); return b; });
+    const PATH_N = 160, pathPos = new Float32Array(PATH_N * 3), pathGeo = new T.BufferGeometry();
+    pathGeo.setAttribute('position', new T.BufferAttribute(pathPos, 3));
+    const pathLine = new T.Line(pathGeo, new T.LineDashedMaterial({ color: 0x1d6fe0, dashSize: 0.18, gapSize: 0.12, transparent: true, opacity: 0.9 }));
+    pathLine.frustumCulled = false; scene.add(pathLine);
+    const pathEnd = new T.Mesh(new T.RingGeometry(0.05, 0.08, 20), new T.MeshBasicMaterial({ color: 0x1d6fe0, side: T.DoubleSide, transparent: true, opacity: 0.9 }));
+    pathEnd.rotation.x = -Math.PI / 2; scene.add(pathEnd);
+    let pathKey = '';
+    // where the stone will stop if the sweeping carries on as it is (a dashed ring that slides as you sweep)
+    const stopMat = new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, side: T.DoubleSide, depthWrite: false });
+    const stopRing = new T.Mesh(new T.RingGeometry(R * 1.05, R * 1.35, 32, 1), stopMat);
+    stopRing.rotation.x = -Math.PI / 2; stopRing.visible = false; stopRing.renderOrder = 3; scene.add(stopRing);
+    const stopDot = new T.Mesh(new T.CircleGeometry(R * 0.25, 12), stopMat); stopDot.rotation.x = -Math.PI / 2; stopDot.visible = false; scene.add(stopDot);
+    // #188 the sweepers' brooms: a long handle up and away to the side, a dark head with a coloured cover, scrubbing
+    // across the path just in front of a swept stone (lifted and idle when they aren't sweeping)
+    const broomHeadGeo = new T.BoxGeometry(0.34, 0.05, 0.1), broomPadGeo = new T.BoxGeometry(0.36, 0.022, 0.11);
+    const handleGeo2 = new T.CylinderGeometry(0.014, 0.014, 1.25, 6); handleGeo2.translate(0, 0.625, 0);
+    const broomDark = new T.MeshStandardMaterial({ color: 0x23262e, roughness: 0.7 });
+    const broomCover = new T.MeshStandardMaterial({ color: 0xffd23f, roughness: 0.95 });
+    const handleMat = new T.MeshStandardMaterial({ color: 0x9aa3b5, roughness: 0.35, metalness: 0.6 });
+    const sweepers = [-1, 1].map((side) => {
+      const g = new T.Group(), head = new T.Mesh(broomHeadGeo, broomDark), cover = new T.Mesh(broomPadGeo, broomCover), stick = new T.Mesh(handleGeo2, handleMat);
+      head.position.y = 0.05; cover.position.y = 0.012; head.castShadow = true;
+      stick.position.y = 0.07; stick.rotation.set(-0.3, 0, side * 0.95);   // up, back towards the hack and out to the side
+      g.add(head, cover, stick); g.visible = false; g.userData = { side, ph: Math.random() * 6, lift: 0.12 };
+      scene.add(g); return g;
+    });
+    // frost kicked up by the brooms: soft points that drift, fall and fade (a pool, per-point alpha)
+    const NFR = low ? 70 : 160, frPos = new Float32Array(NFR * 3), frA = new Float32Array(NFR), frV = new Float32Array(NFR * 3), frT = new Float32Array(NFR);
+    const frGeo = new T.BufferGeometry();
+    frGeo.setAttribute('position', new T.BufferAttribute(frPos, 3)); frGeo.setAttribute('alpha', new T.BufferAttribute(frA, 1));
+    const frMat = new T.ShaderMaterial({
+      uniforms: { color: { value: new T.Color(0xb4cfea) }, size: { value: 0.026 }, scale: { value: 400 } },
+      vertexShader: 'attribute float alpha; varying float vA; uniform float size; uniform float scale; void main(){ vA = alpha; vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_PointSize = size * scale / max(0.1, -mv.z); gl_Position = projectionMatrix * mv; }',
+      fragmentShader: 'varying float vA; uniform vec3 color; void main(){ vec2 c = gl_PointCoord - 0.5; float d = dot(c, c); if (d > 0.25) discard; gl_FragColor = vec4(color, vA * (1.0 - d * 3.2)); }',
+      transparent: true, depthWrite: false,
+    });
+    const frost = new T.Points(frGeo, frMat); frost.frustumCulled = false; frost.renderOrder = 4; scene.add(frost);
+    let frN = 0, frLive = 0;
+    function frostAt(x, y, n, speed) {
+      for (let k = 0; k < n; k++) {
+        const i = frN++ % NFR;
+        frPos[i * 3] = x + (Math.random() - 0.5) * 0.3; frPos[i * 3 + 1] = 0.01; frPos[i * 3 + 2] = -y + (Math.random() - 0.5) * 0.06;
+        const a = Math.random() * Math.PI * 2;
+        frV[i * 3] = Math.cos(a) * (0.3 + Math.random() * 0.6); frV[i * 3 + 1] = 0.25 + Math.random() * 0.5; frV[i * 3 + 2] = -speed * 0.5 + Math.sin(a) * 0.3;
+        frT[i] = 0.45 + Math.random() * 0.4; frA[i] = 0.9;
+      }
+      frLive = 1.0;
+    }
+    // the swept path: brushed, glossier streaks on the pebble that fade behind the stone
+    const streakTex = canvasTex(T, 64, 64, (g, w, h) => {
+      for (let i = 0; i < 26; i++) { const y = Math.random() * h; g.strokeStyle = `rgba(120,160,210,${0.15 + Math.random() * 0.35})`; g.lineWidth = 0.6 + Math.random() * 1.6; g.beginPath(); g.moveTo(Math.random() * 8, y); g.lineTo(w - Math.random() * 8, y + (Math.random() - 0.5) * 6); g.stroke(); }
+    });
+    const streakGeo = new T.PlaneGeometry(0.42, 0.16);
+    const streaks = Array.from({ length: low ? 14 : 34 }, () => {
+      const m = new T.Mesh(streakGeo, new T.MeshBasicMaterial({ map: streakTex, transparent: true, opacity: 0, depthWrite: false }));
+      m.rotation.x = -Math.PI / 2; m.visible = false; m.renderOrder = 1; scene.add(m); return m;
+    });
+    let streakAt = 0, streakN = 0;
+    // #186 the count: a gold measuring ring round the button through the best rival stone; the stones inside it
+    // that count get a number; after the end, gold lines measure them to the button
+    const measMat = new T.MeshBasicMaterial({ color: 0xffc83d, transparent: true, opacity: 0.85, side: T.DoubleSide, depthWrite: false });
+    const measRing = new T.Mesh(new T.RingGeometry(0.97, 1, 72), measMat);
+    measRing.rotation.x = -Math.PI / 2; measRing.position.set(0, 0.007, -sh.tee); measRing.visible = false; measRing.renderOrder = 2; scene.add(measRing);
+    const numTex = new Map();
+    const numOf = (n) => {
+      if (!numTex.has(n)) numTex.set(n, canvasTex(T, 64, 64, (g, w) => { g.fillStyle = '#ffc83d'; g.beginPath(); g.arc(w / 2, w / 2, w / 2 - 3, 0, 7); g.fill(); g.strokeStyle = '#3a2a00'; g.lineWidth = 3; g.stroke(); g.fillStyle = '#2a1d00'; g.font = 'bold 38px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(n), w / 2, w / 2 + 2); }));
+      return numTex.get(n);
+    };
+    const nums = Array.from({ length: 8 }, () => { const sp = new T.Sprite(new T.SpriteMaterial({ map: numOf(1), depthTest: false, transparent: true })); sp.scale.setScalar(0.2); sp.visible = false; sp.renderOrder = 6; scene.add(sp); return sp; });
+    const lineMat = new T.LineBasicMaterial({ color: 0xffc83d, transparent: true, opacity: 0.9 });
+    const measLines = Array.from({ length: 8 }, () => { const l = new T.Line(new T.BufferGeometry().setFromPoints([new T.Vector3(), new T.Vector3()]), lineMat); l.visible = false; l.frustumCulled = false; scene.add(l); return l; });
     // sparks where stones crack together
     const sparkGeo = new T.BufferGeometry(), NSP = 40, sp = new Float32Array(NSP * 3), sv = [];
     sparkGeo.setAttribute('position', new T.BufferAttribute(sp, 3));
@@ -520,9 +841,7 @@ UI.stones = (() => {
       else if (camMode === 'sheet' || myTurn()) { cam.tp.set(0, 3.4, 1.5); cam.tl.set(aim * 0.4, 0, -sh.tee + 1.2); cam.tf = tall ? 17 : 13; }
       else houseView();
     }
-    let lastT = 0;
-    function draw(now, list) {
-      const dt = Math.min(0.1, lastT ? (now - lastT) / 1000 : 0.016); lastT = now;
+    function draw(now, list, info, dt) {
       const seenIds = new Set();
       const v = S.stones, counted = new Set(v.counted || []);
       for (const s of list) {
@@ -541,14 +860,47 @@ UI.stones = (() => {
         if (mark.visible) mark.scale.setScalar(1 + 0.12 * Math.sin(now / 180));
       }
       for (const [id, m] of meshes) if (!seenIds.has(id)) { scene.remove(m); if (m.userData.twin) { mirror.remove(m.userData.twin); m.userData.twin.traverse((o) => o.material?.dispose?.()); } m.traverse((o) => { if (o.material && o.material !== bodyMat && !o.material.map) o.material.dispose(); }); meshes.delete(id); }
-      // the broom while you aim
+      // the broom while you aim, and the path for its first stretch
       const aiming = myTurn() && !busy();
-      broom.visible = aimLine.visible = aiming;
+      broom.visible = aimLine.visible = pathLine.visible = pathEnd.visible = aiming;
       if (aiming) {
         broom.position.set(aim, 0, -sh.tee);
-        aimLine.geometry.setFromPoints([new T.Vector3(0, 0.01, -sh.start), new T.Vector3(aim, 0.01, -sh.tee)]);
-        aimLine.computeLineDistances();
+        const key = `${aim},${weight},${curl},${ph().fk},${ph().ck}`;
+        if (key !== pathKey) {
+          pathKey = key;
+          aimLine.geometry.setFromPoints([new T.Vector3(0, 0.01, -sh.start), new T.Vector3(aim, 0.01, -sh.tee)]);
+          aimLine.computeLineDistances();
+          const pts = launchPath(sh.hog).pts, n = Math.min(PATH_N, pts.length);
+          for (let i = 0; i < PATH_N; i++) { const p = pts[Math.min(i, n - 1)]; pathPos[i * 3] = p[0]; pathPos[i * 3 + 1] = 0.012; pathPos[i * 3 + 2] = -p[1]; }
+          pathGeo.attributes.position.needsUpdate = true; pathGeo.setDrawRange(0, n); pathLine.computeLineDistances();
+          const e = pts[n - 1]; pathEnd.position.set(e[0], 0.012, -e[1]);
+        }
       }
+      // where it will stop
+      const pr = info?.proj;
+      stopRing.visible = stopDot.visible = !!(pr && !pr.out);
+      if (stopRing.visible) {
+        stopRing.position.set(pr.x, 0.008, -pr.y); stopDot.position.set(pr.x, 0.008, -pr.y);
+        stopMat.color.set(colorOf(info.o)); stopMat.opacity = 0.65 + 0.3 * Math.sin(now / 140);
+        stopRing.rotation.z = now / 600;
+      }
+      // the count, when the ice is still
+      const v2 = S.stones, m = v2.between ? v2.endMeasure : (!busy() ? v2.count : null);
+      const showCount = !!(m && m.side != null);
+      measRing.visible = !!(showCount && m.ring != null);
+      if (measRing.visible) { measRing.scale.set(m.ring, m.ring, 1); measMat.opacity = v2.between ? 0.95 : 0.45 + 0.15 * Math.sin(now / 400); }
+      const byId = new Map(list.map((s) => [s.id, s]));
+      nums.forEach((sp, k) => {
+        const s = showCount ? byId.get(m.ids[k]) : null;
+        sp.visible = !!s && !s.gone;
+        if (sp.visible) {
+          sp.material.map = numOf(k + 1); sp.position.set(s.x, R * 2.6 + 0.04 * Math.sin(now / 250 + k), -s.y);
+          sp.scale.setScalar(v2.between ? 0.24 : 0.17);
+        }
+        const l = measLines[k];
+        l.visible = !!(sp.visible && v2.between);
+        if (l.visible) { l.geometry.setFromPoints([new T.Vector3(0, 0.012, -sh.tee), new T.Vector3(s.x, 0.012, -s.y)]); }
+      });
       // sweepers in front of the thrown stone past the sweeping point
       const thrown = anim && list[list.length - 1];
       // #146: a ring in the thrower's colour under the moving stone and a fading wake behind it, so it reads on white ice
@@ -558,11 +910,50 @@ UI.stones = (() => {
         if (now - wakeAt > 45) { wakeAt = now; wake[wakeN % wake.length].position.set(thrown.x, 0.004, -thrown.y); wake[wakeN % wake.length].userData.t = now; wake[wakeN % wake.length].material.color.set(colorOf(thrown.o)); wakeN++; }
       }
       for (const w of wake) { const a = (now - (w.userData.t || -1e9)) / 1100; w.visible = a < 1; if (w.visible) { w.material.opacity = 0.32 * (1 - a); w.scale.setScalar(1 + a * 0.6); } }
-      const brushing = thrown && anim.shot.sweep && thrown.moving && thrown.y > 8;
+      // #188 the brooms: with the stone from the sweeping line on, scrubbing when it's swept (quicker and wider
+      // when hard), throwing up frost and leaving brushed streaks; lifted and hovering when not
+      const lvl = info?.lvl || 0;
+      const withIt = !!(thrown && info && thrown.moving && !thrown.gone && thrown.y > ph().from - 1 && thrown.y < sh.back);
+      haloMat.opacity = lvl ? 0.95 : 0.75;
       sweepers.forEach((b, k) => {
-        b.visible = !!brushing;
-        if (brushing) b.position.set(thrown.x + (k ? 0.12 : -0.12) + Math.sin(now / (60 - anim.shot.sweep * 12) + k * 3) * 0.12, 0.02, -thrown.y - 0.35 - k * 0.1);
+        b.visible = withIt;
+        if (!withIt) return;
+        const u = b.userData, side = u.side;
+        u.lift += ((lvl ? 0 : 0.12) - u.lift) * Math.min(1, dt * 10);
+        u.ph += dt * (lvl === 2 ? 17 : lvl ? 11 : 2.5);
+        const amp = lvl === 2 ? 0.2 : lvl ? 0.14 : 0.04;
+        const dir = Math.atan2(info.sp > 0.05 ? (thrown.vx || 0) : 0, 1);
+        const ahead = 0.34 + k * 0.2;
+        b.position.set(thrown.x + Math.sin(dir) * ahead + side * 0.05 + Math.sin(u.ph + k * 1.7) * amp, u.lift, -thrown.y - Math.cos(dir) * ahead);
+        b.rotation.y = -dir + Math.sin(u.ph + k * 1.7) * (lvl ? 0.28 : 0.05);
+        if (lvl && Math.random() < (lvl === 2 ? 0.9 : 0.5) * (dt * 60)) frostAt(b.position.x, -b.position.z, lvl === 2 ? 3 : 2, info.sp);
       });
+      if (withIt && lvl && now - streakAt > (lvl === 2 ? 30 : 55)) {
+        streakAt = now;
+        const m2 = streaks[streakN++ % streaks.length];
+        m2.position.set(thrown.x + (Math.random() - 0.5) * 0.1, 0.0045, -thrown.y - 0.3); m2.rotation.z = (Math.random() - 0.5) * 0.3;
+        m2.userData.t = now; m2.userData.a = lvl === 2 ? 0.75 : 0.5; m2.visible = true;
+      }
+      for (const m2 of streaks) {
+        if (!m2.visible) continue;
+        const a = (now - m2.userData.t) / 2200;
+        if (a >= 1) { m2.visible = false; continue; }
+        m2.material.opacity = m2.userData.a * (1 - a);
+      }
+      if (frLive > 0) {
+        frLive -= dt;
+        for (let i = 0; i < NFR; i++) {
+          if (frT[i] <= 0) { frA[i] = 0; continue; }
+          frT[i] -= dt; frV[i * 3 + 1] -= 2.2 * dt;
+          frPos[i * 3] += frV[i * 3] * dt; frPos[i * 3 + 1] = Math.max(0.004, frPos[i * 3 + 1] + frV[i * 3 + 1] * dt); frPos[i * 3 + 2] += frV[i * 3 + 2] * dt;
+          frA[i] = Math.max(0, Math.min(0.9, frT[i] * 2));
+        }
+        if (frLive <= 0) frA.fill(0);
+        frGeo.attributes.position.needsUpdate = true; frGeo.attributes.alpha.needsUpdate = true;
+        if (frT.some((t) => t > 0)) frLive = Math.max(frLive, 0.05);
+      }
+      frost.visible = frLive > 0;
+      frMat.uniforms.scale.value = (renderer.domElement.height || 600) / 2 / Math.tan((camera.fov * Math.PI) / 360);
       if (sparkT > 0) {
         sparkT -= dt;
         for (let k = 0; k < NSP; k++) { sp[k * 3] += sv[k][0] * dt; sp[k * 3 + 1] = Math.max(0, sp[k * 3 + 1] + sv[k][1] * dt); sv[k][1] -= 4 * dt; sp[k * 3 + 2] += sv[k][2] * dt; }
@@ -587,11 +978,7 @@ UI.stones = (() => {
       stg.follow(camera);
       (still && renderer.renderStill ? renderer.renderStill : renderer.render)(scene, camera);
     }
-    function spark(shot, frame) {
-      // the stone that starts moving at this frame is where the hit happened
-      const tr = shot.tracks.find((t) => t.s === frame);
-      if (!tr) return;
-      const [x, y] = tr.f[0];
+    function spark(x, y) {
       for (let k = 0; k < NSP; k++) {
         sp[k * 3] = x; sp[k * 3 + 1] = sh.r; sp[k * 3 + 2] = -y;
         const a = Math.random() * Math.PI * 2, s = 0.5 + Math.random() * 1.5;
@@ -612,11 +999,13 @@ UI.stones = (() => {
       const w = stage.clientWidth || 320, h = stage.clientHeight || 320;
       renderer.setSize(w, h); camera.aspect = w / h;
       camera.updateProjectionMatrix();
+      frMat.uniforms.scale.value = (h * renderer.getPixelRatio()) / 2 / Math.tan((camera.fov * Math.PI) / 360);
     }
     resize();
     function dispose() {
       stg.dispose(); renderer.dispose(); renderer.domElement.remove();
       scene.traverse((o) => { o.geometry?.dispose(); o.material?.map?.dispose(); o.material?.dispose?.(); });
+      for (const t of numTex.values()) t.dispose();
     }
     return { draw, resize, dispose, iceX, spark, moving: () => cam.moving };
   }
@@ -637,7 +1026,8 @@ UI.stones = (() => {
     }
     // sheet y from (end - 12) to end fills the canvas; stones further up show at the bottom edge
     const X = (x) => canvas.width / 2 + x * k, Y = (y) => (sh().end - y) * k + top;
-    function draw(now, list) {
+    const fx = [];   // frost specks and hit sparks: [x, y, vx, vy, life, kind]
+    function draw(now, list, info, dt = 0.016) {
       const s = sh();
       g.fillStyle = '#0b1220'; g.fillRect(0, 0, canvas.width, canvas.height);
       g.fillStyle = '#eef4fa'; g.fillRect(X(-s.half), 0, 2 * s.half * k, canvas.height);
@@ -647,8 +1037,33 @@ UI.stones = (() => {
       g.fillStyle = '#d83a3a'; g.fillRect(X(-s.half), Y(s.hog) - 2, 2 * s.half * k, 4);
       g.fillStyle = '#26324a'; g.fillRect(X(-s.half), Y(s.tee) - 1, 2 * s.half * k, 2); g.fillRect(X(-s.half), Y(s.back) - 1, 2 * s.half * k, 2);
       const v = S.stones, counted = new Set(v.counted || []);
+      const bottom = s.end - (canvas.height - top) / k;
       if (myTurn() && !busy()) {
+        // the broom, and the path's first stretch where it shows (the flat view starts near the hog line)
+        const pts = launchPath(s.hog).pts.filter((p) => p[1] > bottom);
+        g.setLineDash([6, 5]); g.strokeStyle = '#1d6fe0'; g.lineWidth = 3; g.beginPath();
+        pts.forEach((p, i) => (i ? g.lineTo(X(p[0]), Y(p[1])) : g.moveTo(X(p[0]), Y(p[1])))); g.stroke();
+        g.strokeStyle = 'rgba(255,210,63,.6)'; g.lineWidth = 2; g.beginPath(); g.moveTo(X(aim * (bottom - s.start) / (s.tee - s.start)), Y(bottom)); g.lineTo(X(aim), Y(s.tee)); g.stroke();
+        g.setLineDash([]);
         g.strokeStyle = '#ffd23f'; g.lineWidth = 3; g.beginPath(); g.arc(X(aim), Y(s.tee), 0.12 * k, 0, 7); g.stroke();
+      }
+      // the count: the gold measuring ring, lines to the counting stones after the end
+      const m = v.between ? v.endMeasure : (!busy() ? v.count : null);
+      const byId = new Map(list.map((st) => [st.id, st]));
+      if (m && m.side != null) {
+        if (m.ring != null) { g.strokeStyle = v.between ? '#ffc83d' : 'rgba(255,200,61,.6)'; g.lineWidth = 3; g.beginPath(); g.arc(X(0), Y(s.tee), m.ring * k, 0, 7); g.stroke(); }
+        if (v.between) for (const id of m.ids) { const st = byId.get(id); if (!st) continue; g.strokeStyle = '#ffc83d'; g.lineWidth = 2; g.beginPath(); g.moveTo(X(0), Y(s.tee)); g.lineTo(X(st.x), Y(st.y)); g.stroke(); }
+      }
+      // where it will stop, and the sweeping
+      const pr = info?.proj;
+      if (pr && !pr.out) { g.setLineDash([4, 4]); g.strokeStyle = colorOf(info.o); g.lineWidth = 3; g.beginPath(); g.arc(X(pr.x), Y(pr.y), s.r * k * 1.2, 0, 7); g.stroke(); g.setLineDash([]); }
+      if (info?.lvl) {
+        const yy = Math.max(info.y, bottom + 0.3) + 0.35;
+        for (let j = 0; j < 2; j++) {
+          const bx = info.x + Math.sin(now / (info.lvl === 2 ? 45 : 70) + j * 2) * 0.16;
+          g.fillStyle = '#ffd23f'; g.fillRect(X(bx) - 0.17 * k, Y(yy + j * 0.15) - 3, 0.34 * k, 6);
+          if (Math.random() < 0.6) fx.push([bx + (Math.random() - 0.5) * 0.3, yy + j * 0.15, (Math.random() - 0.5) * 1.2, (Math.random() - 0.2) * 1, 0.5, 0]);
+        }
       }
       for (const st of list) {
         if (st.gone >= 1) continue;
@@ -659,17 +1074,32 @@ UI.stones = (() => {
         g.fillStyle = colorOf(st.o); g.beginPath(); g.arc(X(st.x), Y(y), s.r * k * 0.7, 0, 7); g.fill();
         if (v.between && counted.has(st.id)) { g.strokeStyle = '#ffe066'; g.lineWidth = 3; g.beginPath(); g.arc(X(st.x), Y(y), s.r * k * 1.4, 0, 7); g.stroke(); }
         g.globalAlpha = 1;
+        const n = m && m.side != null ? m.ids.indexOf(st.id) : -1;
+        if (n >= 0 && !st.gone) {
+          const r = Math.max(9, s.r * k * 0.6), cx = X(st.x) + s.r * k * 0.8, cy = Y(y) - s.r * k * 0.8;
+          g.fillStyle = '#ffc83d'; g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fill();
+          g.fillStyle = '#2a1d00'; g.font = `bold ${Math.round(r * 1.3)}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(String(n + 1), cx, cy + 1);
+        }
       }
+      for (let i = fx.length - 1; i >= 0; i--) {
+        const p = fx[i]; p[4] -= dt;
+        if (p[4] <= 0) { fx.splice(i, 1); continue; }
+        p[0] += p[2] * dt; p[1] += p[3] * dt;
+        g.fillStyle = p[5] ? `rgba(220,240,255,${p[4] * 1.6})` : `rgba(120,160,210,${p[4] * 1.6})`;
+        g.fillRect(X(p[0]) - 2, Y(p[1]) - 2, 4, 4);
+      }
+      if (fx.length > 300) fx.splice(0, fx.length - 300);
     }
+    function spark(x, y) { for (let i = 0; i < 24; i++) { const a = Math.random() * 7, sp = 0.5 + Math.random() * 1.5; fx.push([x, y, Math.cos(a) * sp, Math.sin(a) * sp, 0.6, 1]); } }
     function iceX(cx) {
       const r = canvas.getBoundingClientRect();
       return ((cx - r.left) * (canvas.width / r.width) - canvas.width / 2) / k;
     }
     resize();
-    return { draw, resize, iceX };
+    return { draw, resize, iceX, spark };
   }
 
   const turnText = (s) => (s.phase === 'playing' ? `🥌 End ${s.stones.end} of ${s.stones.ends}` : null);
 
-  return { mount, render, unmount, turnText, focus: true, testAim: () => aim };
+  return { mount, render, unmount, fast, turnText, focus: true, testAim: () => aim, testWeight: () => weight };
 })();
