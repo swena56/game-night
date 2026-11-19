@@ -73,6 +73,7 @@ function renderOver() {
   ].filter(Boolean);
   for (const n of notes) box.append(el('div', 'over-note', n));
   const run = runLine(); if (run) box.append(run);
+  const xp = Profile.xpCard(S); if (xp) box.append(xp);  // ✨ the XP this game earned, and any level-up
   const readyNames = S.ready.map((id) => player(id)?.name).filter(Boolean);
   const others = S.players.some((p) => p.id !== me.id && !p.bot);
   $('#rematchBtn').hidden = !host; $('#lobbyBtn').hidden = !host;
@@ -122,7 +123,7 @@ function renderPodium(w, scored) {
   for (const k of order) {
     const { p, score } = places[k], col = el('div', 'pod pod-' + (k + 1));
     col.style.setProperty('--pc', p.color || '#888');
-    const face = el('div', 'pod-face'); face.append(avatar(p));
+    const face = el('div', 'pod-face'); face.append(lookAvatar(p));
     if (k === 0) face.append(el('span', 'pod-crown', '👑'));
     col.append(face, el('b', '', p.name), el('small', '', score || ['Winner', '2nd', '3rd'][k]));
     box.append(col);

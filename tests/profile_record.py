@@ -49,7 +49,7 @@ const S = (game, players, extra = {}) => ({ code: 'ABCD', phase: 'over', me: { i
 mem['recentGames'] = JSON.stringify(['go']);
 out.seeded = Profile.tried('go') && !Profile.showNew();
 let s = S('chess', [pl('me', null, null, true), pl('b1', 'normal'), pl('b2', 'hard')]);
-out.news1 = Profile.onState(s); out.again = Profile.onState(s);  // the same finish counts once
+out.news1 = Profile.onState(s); out.last1 = load('gn.profile').last; out.again = Profile.onState(s);  // the same finish counts once
 out.stars = Profile.stars('chess');
 // a win with another person at the table earns no star
 Profile.onState(S('yacht', [pl('me', null, 200, true), pl('pal', null, 150), pl('b', 'hard', 100)]));
@@ -57,6 +57,7 @@ out.yachtStars = Profile.stars('yacht');
 // Hearts: lowest wins (inferred from the winner), a lower score is a new best
 Profile.onState(S('hearts', [pl('me', null, 40, false), pl('b', 'easy', 20, true), pl('c', 'easy', 90)]));
 out.heartsBest = Profile.onState(S('hearts', [pl('me', null, 30, true), pl('b', 'easy', 50), pl('c', 'easy', 90)]));
+out.lastHearts = load('gn.profile').last;
 // badges grow across states and survive a scoreboard reset
 Profile.onState({ ...S('chess', []), phase: 'lobby', players: [{ id: 'me', badges: { 'chess:giant': 1 } }] });
 Profile.onState({ ...S('chess', []), phase: 'lobby', players: [{ id: 'me', badges: {} }] });
@@ -67,6 +68,7 @@ Profile.onState(S('go', [pl('me', null, null, false), pl('b', 'easy', null, true
 out.mile = Profile.onState(S('oware', [pl('me', null, null, false), pl('b', 'easy', null, true)]));
 out.all = Profile.onState(S('speed', [pl('me', null, null, false), pl('b', 'easy', null, true)]));
 out.p = load('gn.profile');
+out.look = Profile.look();
 out.suggest = Profile.suggest();
 console.log(JSON.stringify(out));
 """
@@ -83,6 +85,15 @@ if r.returncode == 0:
     check("badges collected once across a reset", p["badges"]["chess:giant"]["n"] == 2 and p["badges"]["chess:giant"]["emo"] == "🧠", p["badges"])
     check("milestone at 5 different games", any("Explorer" in x for x in o["mile"]), o["mile"])
     check("and when every game is played", any("Played them all" in x for x in o["all"]), o["all"])
+    l1 = dict((t, x) for t, x in o["last1"]["lines"])
+    check("XP lines: finish, first play, win vs Normal ×1.5, two new stars",
+          l1.get("Finished") == 10 and l1.get("🆕 First play") == 30 and l1.get("🏆 Win vs Normal ×1.5") == 23 and l1.get("★★ New stars") == 40, o["last1"])
+    check("the card's XP runs from the old total to the new", o["last1"]["from"] == 0 and o["last1"]["to"] == 103 and o["last1"]["key"].startswith("ABCD:"), o["last1"])
+    check("a level-up says what it opens", any(x.startswith("🆙 Level 2") and "Rookie" in x for x in o["news1"]), o["news1"])
+    lh = dict((t, x) for t, x in o["lastHearts"]["lines"])
+    check("a personal best and an easy win earn their XP", lh.get("📈 Personal best") == 15 and lh.get("🏆 Win vs Easy") == 15 and "🆕 First play" not in lh, o["lastHearts"])
+    check("xp and level kept in the record", p["xp"] > 300 and p["lvl"] == o["look"]["lvl"] >= 4, (p["xp"], p["lvl"]))
+    check("the look shows the newest unlocked frame and title", o["look"] == {"lvl": p["lvl"], "frame": "bronze", "title": "regular" if p["lvl"] >= 5 else "rookie"}, o["look"])
     check("suggests a game not played yet", o["suggestFresh"] in ("oware", "speed"), o["suggestFresh"])
     check("then one with the fewest stars", o["suggest"] in ("yacht", "go", "oware", "speed"), o["suggest"])
 

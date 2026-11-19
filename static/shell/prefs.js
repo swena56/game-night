@@ -6,7 +6,8 @@ const THEMES = [['dark', '🌙 Dark'], ['light', '☀️ Light'], ['system', '�
 // 🎨 Graphics: Auto turns shadows, reflections and extra particles off on a weak device (few cores or little
 // memory, data saver, or a 3D game that had to drop its resolution to keep up: GL3.strained)
 const GFX = [['auto', '🪄 Auto'], ['high', '✨ High (shadows, reflections, more particles)'], ['low', '🔋 Low (smoother, saves battery)']];
-const CARD_BACKS = [['blue', '🔵 Midnight blue'], ['red', '🔴 Ruby'], ['green', '🟢 Emerald'], ['night', '⚫ Onyx & gold']];
+const CARD_BACKS = [['blue', '🔵 Midnight blue'], ['red', '🔴 Ruby'], ['green', '🟢 Emerald'], ['night', '⚫ Onyx & gold'],
+  ['sunset', '🌅 Sunset'], ['galaxy', '🌌 Galaxy'], ['royal', '👑 Royal']];  // the last three open with levels (Profile.UNLOCKS)
 const AUTO_LOW = (navigator.deviceMemory || 8) <= 2 || (navigator.hardwareConcurrency || 8) <= 2 || !!navigator.connection?.saveData;
 function gfxLevel() {
   const g = prefs.gfx || 'auto';
@@ -48,7 +49,10 @@ function renderPrefs() {
   box.append(gfx);
   const backs = el('label', '', '🂠 Card backs');
   const bpick = el('select');
-  for (const [k, label] of CARD_BACKS) bpick.append(Object.assign(el('option', '', label), { value: k }));
+  for (const [k, label] of CARD_BACKS) {
+    const open = Profile.unlocked('back', k), o = Object.assign(el('option', '', open ? label : `${label} · ${Profile.lockText('back', k)}`), { value: k });
+    o.disabled = !open; bpick.append(o);
+  }
   bpick.value = prefs.cardBack || 'blue';
   bpick.onchange = () => { prefs.cardBack = bpick.value; store('unmask.prefs', prefs); applyPrefs(); };
   backs.append(bpick);

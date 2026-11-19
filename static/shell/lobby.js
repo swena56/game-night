@@ -225,7 +225,9 @@ function renderLobby() {
   const ul = $('#lobbyPlayers'); ul.innerHTML = '';
   for (const p of S.players) {
     const li = el('li');
-    li.append(avatar(p), mark(p, p.online), el('span', '', p.name + (p.id === S.me.id ? ' (you)' : '')));
+    const lt = lookTitle(p);
+    li.append(lookAvatar(p), mark(p, p.online), el('span', '', p.name + (p.id === S.me.id ? ' (you)' : '')));
+    if (lt) li.append(el('small', 'look-title', lt));
     if (p.id === S.host) li.append(el('span', '', '👑'));
     if (p.id === S.me.id && S.phase !== 'playing') {
       const edit = el('button', 'ghost-btn', '✏️');

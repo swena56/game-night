@@ -8,3 +8,5 @@ tests/node_modules/
 # live server data: saved rooms, feedback reports, logs (keep the word list the games need)
 data/*
 !data/words.txt
+# per-device lifetime records (server.py /api/profile/put)
+data/profiles/

@@ -302,6 +302,16 @@ function avatar(p) {
   a.setAttribute('aria-hidden', 'true');
   return a;
 }
+// ✨ the avatar with the player's level look: a frame ring (unlocked by level) and a small Lv pip
+function lookAvatar(p) {
+  const a = avatar(p), lk = p?.look;
+  if (!lk || p.bot || (!lk.frame && !(lk.lvl > 1))) return a;
+  const w = el('span', 'av-frame' + (lk.frame ? ' fr-' + lk.frame : ''));
+  w.append(a);
+  if (lk.lvl > 1) w.append(el('span', 'lv-pip', String(lk.lvl)));
+  return w;
+}
+const lookTitle = (p) => (p?.look && !p.bot ? [p.look.lvl > 1 ? `Lv ${p.look.lvl}` : '', Profile.titleName(p.look.title)].filter(Boolean).join(' · ') : '');
 function mark(p, online = true) {
   const m = el('span', 'pmark', SHAPES[p?.color] ?? '●');
   m.style.color = online ? p?.color ?? '#777' : '#555';
@@ -555,17 +565,31 @@ function syncIcon(s) {
   iconSentAt = Date.now();
   quiet(act('icon', { icon: want || '' }));
 }
+// ✨ and the level look (level, frame, title): on joining, on a level-up and whenever a new one is picked
+let lookSentAt = 0;
+function syncLook(s, force = false) {
+  const mine = s?.players?.find((p) => p.id === s.me?.id);
+  if (!mine) return;
+  const want = Profile.look(), have = mine.look || {};
+  if (have.lvl === want.lvl && (have.frame || null) === want.frame && (have.title || null) === want.title) return;
+  if (!force && Date.now() - lookSentAt < 5000) return;
+  lookSentAt = Date.now();
+  quiet(act('look', want));
+}
+Profile.onLook = () => { if (S) syncLook(S, true); };
+Profile.onSynced = () => { if (S) syncLook(S, true); if (!$('#home').hidden) Profile.homeLine($('#homeLevel')); };
 function onState(s) {
   const prev = S;
   s.games ??= prev?.games ?? [];  // the server sends the game catalogue once per connection
   S = s; stateAt = performance.now();
-  syncIcon(s);
+  syncIcon(s); syncLook(s);
   history.replaceState(null, '', '?room=' + s.code);
   if (s.phase === 'playing' && prev?.phase !== 'playing' && s.gameId) {  // "Played lately" in the lobby (#67), this device only
     store('recentGames', [s.gameId, ...(load('recentGames') || []).filter((g) => g !== s.gameId)].slice(0, 6));
   }
   const news = Profile.onState(s);  // 🏆 lifetime record on this device: a new ★, personal best or milestone
   if (news.length) setTimeout(() => toast(news.join(' · ')), 1500);
+  if (news.some((n) => n.startsWith('🆙'))) syncLook(s, true);  // a level-up shows at the table straight away
   if (prev && prev.phase === 'playing' && s.phase === 'over' && !firstState) {
     blip(s.winner === s.me.id ? 'win' : 'lose');
     if (s.winner === s.me.id) confetti();
@@ -750,13 +774,14 @@ function renderGame(view = S, readOnly = false, force = false) {
 
   // the chips only change when something they show does (not on every chat line or clock tick)
   const chips = $('#players');
-  const chipKey = JSON.stringify([view.turn, me.id, view.players.map((p) => [p.id, p.name, p.color, p.online, p.meta, p.points, p.played, p.streak, p.spectator, p.eliminated, p.standin, p.away])]);
+  const chipKey = JSON.stringify([view.turn, me.id, view.players.map((p) => [p.id, p.name, p.color, p.online, p.meta, p.points, p.played, p.streak, p.spectator, p.eliminated, p.standin, p.away, p.look])]);
   if (chipKey !== chips.dataset.key) {
     chips.dataset.key = chipKey; chips.innerHTML = '';
     for (const p of view.players) {
       const c = el('div', 'chip' + (p.id === view.turn ? ' turn-now' : '') + (p.eliminated ? ' out' : '') + (p.id === me.id ? ' me' : ''));
-      c.title = p.name; c.style.setProperty('--pc', p.color || '#888');
-      c.append(avatar(p), mark(p, p.online), el('b', '', p.name));
+      const lt = lookTitle(p);
+      c.title = p.name + (lt ? ` · ${lt}` : ''); c.style.setProperty('--pc', p.color || '#888');
+      c.append(lookAvatar(p), mark(p, p.online), el('b', '', p.name));
       const bits = [p.spectator ? '👁 watching' : p.meta, p.played || p.points ? '⭐' + p.points : '', p.streak > 1 ? '🔥' + p.streak : '', p.eliminated ? '👻' : '',
         p.standin ? '🤖 autopilot' : p.away ? '📡 away' : ''].filter(Boolean);
       if (bits.length) c.append(el('span', 'meta', bits.join(' · ')));
@@ -1050,6 +1075,7 @@ function fillSoloGames() {
   sel.value = was || load('unmask.soloGame') || 'unmask';
   showSoloPick();
   $('#gameCount').textContent = SOLO_GAMES.length;
+  Profile.homeLine($('#homeLevel'));
   // the icon strip under the tagline: every game's icon drifting by (twice over, so the loop is seamless)
   const strip = $('#homeIcons');
   if (strip && !strip.childElementCount) {
@@ -1069,7 +1095,9 @@ fillSoloGames();
 const pickSolo = (id) => { $('#soloGame').value = id; store('unmask.soloGame', id); showSoloPick(); $('#soloPick').focus(); };
 $('#soloPick').onclick = async () => { const id = await pickGameSheet({ current: $('#soloGame').value }); if (id) pickSolo(id); };
 $('#newGameBtn').onclick = () => { const id = Profile.suggest(); pickSolo(id); toast(`How about ${$('#soloGame').selectedOptions[0].textContent.replace(/ {2}.*/, '')}?`); };
-$('#recordBtn').onclick = () => Profile.show(pickSolo);
+$('#recordBtn').onclick = () => Profile.show(pickSolo).then(() => Profile.homeLine($('#homeLevel')));
+$('#homeLevel').onclick = () => $('#recordBtn').click();
+Profile.sync(300);  // ✨ back up (and on a cleared browser, bring back) the lifetime record
 // 🔵 Bingo tools: a local-only screen (no room); Back returns home
 $('#bingoToolsBtn').onclick = () => needUI('bingotools').then(() => {
   let open = true;

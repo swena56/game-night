@@ -8,6 +8,7 @@ Transport: clients POST actions to /api/action and receive their own
 per-player view of the room over Server-Sent Events (/api/events).
 """
 import gc
+import hashlib
 import json
 import os
 import pickle
@@ -78,6 +79,13 @@ LOG_REQUESTS = os.environ.get("LOG_REQUESTS") == "1"
 USE_SSL = os.environ.get("SSL", "1").lower() not in ("0", "off", "no", "false")
 CERT_FILE = os.environ.get("CERT_FILE") or os.path.join(DATA_DIR, "cert.pem")
 KEY_FILE = os.environ.get("KEY_FILE") or os.path.join(DATA_DIR, "key.pem")
+# ✨ Lifetime records (static/profile.js), mirrored per device: data/profiles/<device id>.json
+PROFILE_DIR = os.environ.get("PROFILE_DIR") or os.path.join(DATA_DIR, "profiles")
+PROFILE_MAX = 64_000       # bytes of profile JSON
+PROFILE_POST_MAX = 70_000  # the POST body limit for /api/profile/put (everything else stays at 10 000)
+# the looks a level opens (mirrors UNLOCKS in static/profile.js): id -> level
+LOOK_FRAMES = {"bronze": 3, "silver": 6, "gold": 10, "frost": 15, "ember": 20, "rainbow": 30, "crown": 40, "legend": 50}
+LOOK_TITLES = {"rookie": 2, "regular": 5, "shark": 8, "devil": 12, "owl": 18, "veteran": 25, "champion": 35, "legend": 50}
 
 
 def static_files():
@@ -108,6 +116,7 @@ class Player:
         self.bot = None  # difficulty level for computer players
         self.standin = False  # a bot is playing for this human while they're offline
         self.icon = None  # #144 a picked avatar: 'f:<n>' (a generated face) or an emoji; None = the face from the name
+        self.look = None  # ✨ {lvl, frame, title} from the player's lifetime record (Room.set_look)
         self.last_seen = time.time()
         self.shown_away = False
         self.last_chat = 0
@@ -123,7 +132,7 @@ class Player:
 
     def __setstate__(self, state):  # rooms saved by older versions lack newer fields
         self.__dict__.update({"last_chat": 0, "played": 0, "streak": 0, "best_streak": 0, "by_game": {},
-                              "points": 0, "quits": 0, "watching": False, "wish": None, "badges": {}})
+                              "points": 0, "quits": 0, "watching": False, "wish": None, "badges": {}, "look": None})
         self.__dict__.update(state)
 
     def human(self):
@@ -458,6 +467,7 @@ class Room:
         info = GAMES[gid]
         self.history.append({
             "game": gid, "icon": info.icon, "name": info.name, "at": time.time(), "text": text, "no": self.game_no,
+            "secs": round(time.time() - self.started_at) if getattr(self, "started_at", None) else None,
             "winner": winner.name if winner else None, "low": bool(getattr(info, "low_wins", False)),
             # id and bot level let each device keep its own lifetime record (static/profile.js)
             "players": [{"id": p.id, "bot": None if p.standin else p.bot,
@@ -641,6 +651,7 @@ class Room:
         "chat": lambda r, p, a: r.chat_message(p, a.get("text")),
         "profile": lambda r, p, a: r.set_profile(p, a.get("name"), a.get("color")),
         "icon": lambda r, p, a: r.set_icon(p, a.get("icon")),
+        "look": lambda r, p, a: r.set_look(p, a),
         "ready": lambda r, p, a: r.toggle_ready(p),
         "kick": lambda r, p, a: r.kick(p, a.get("player")),
         "reset_scores": lambda r, p, a: r.reset_scores(p),
@@ -775,6 +786,7 @@ class Room:
         self.replay = []
         self._replay_key = None
         self.game_no += 1
+        self.started_at = time.time()
         game.start(list(seated), random.Random())
         self.snap()
 
@@ -807,6 +819,20 @@ class Room:
         if not ok:
             raise GameError("Pick one of the icons.")
         p.icon = icon
+
+    def set_look(self, p, a):
+        """✨ show your level, avatar frame and title at the table. XP is worked out on the device (an honour
+        system on a home LAN); the server only keeps the values in range and to looks that level opens."""
+        try:
+            lvl = max(1, min(50, int(a.get("lvl") or 1)))
+        except (TypeError, ValueError):
+            raise GameError("Bad level.")
+        frame, title = a.get("frame") or None, a.get("title") or None
+        if frame is not None and LOOK_FRAMES.get(frame, 99) > lvl:
+            frame = None
+        if title is not None and LOOK_TITLES.get(title, 99) > lvl:
+            title = None
+        p.look = {"lvl": lvl, "frame": frame, "title": title}
 
     def chat_message(self, p, text):
         text = " ".join(str(text or "").split())[:200]
@@ -885,7 +911,7 @@ class Room:
             "reactions": self.reactions,
             "log": [e for e in self.log if e["to"] is None or e["to"] == p.id or see_all][-80:],
             "players": [{
-                "id": o.id, "name": o.name, "color": o.color, "icon": getattr(o, "icon", None), "spectator": o.spectator,
+                "id": o.id, "name": o.name, "color": o.color, "icon": getattr(o, "icon", None), "look": getattr(o, "look", None), "spectator": o.spectator,
                 "watching": o.watching, "wish": o.wish,
                 "eliminated": o.eliminated, "online": not o.shown_away, "wins": o.wins,
                 "bot": None if o.standin else o.bot, "meta": self.game.meta(o) if self.game else "",
@@ -1037,6 +1063,115 @@ def replay(body):
             raise GameError("Replays unlock when the game ends.")
         # rooms saved before frames were compressed hold plain JSON strings
         return {"frames": [json.loads(zlib.decompress(f) if isinstance(f, bytes) else f) for f in room.replay]}
+
+
+PROFILE_LOCK = threading.Lock()
+
+
+def _profile_path(body):
+    pid, key = body.get("id"), body.get("key")
+    if not (isinstance(pid, str) and len(pid) == 16 and all(c in "0123456789abcdef" for c in pid)):
+        raise GameError("Bad device id.")
+    if not (isinstance(key, str) and 16 <= len(key) <= 64 and key.replace("-", "").replace("_", "").isalnum() and key.isascii()):
+        raise GameError("Bad device key.")
+    return os.path.join(PROFILE_DIR, pid + ".json"), hashlib.sha256(key.encode()).hexdigest()
+
+
+def _profile_read(path, keyhash):
+    try:
+        with open(path, encoding="utf-8") as f:
+            saved = json.load(f)
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError):
+        return None  # a broken file: the next write replaces it
+    if not secrets.compare_digest(str(saved.get("keyhash", "")), keyhash):
+        raise GameError("That record belongs to another device.")
+    return saved.get("profile") if isinstance(saved.get("profile"), dict) else {}
+
+
+def _seen_time(k):
+    try:
+        return float(str(k).rsplit(":", 1)[1])
+    except (IndexError, ValueError):
+        return 0.0
+
+
+def merge_profile(old, new):
+    """Merge two copies of one device's record: the larger of each count (the smaller best for low-score games),
+    the union of badges, finished games and unlocks; anything else from the newer copy. Idempotent:
+    merging the result with either side again changes nothing."""
+    old = old if isinstance(old, dict) else {}
+    new = new if isinstance(new, dict) else {}
+    out = {**old, **new}
+    num = lambda v: v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+    for k in ("xp", "lvl"):
+        vals = [v for v in (num(old.get(k)), num(new.get(k))) if v is not None]
+        if vals:
+            out[k] = max(vals)
+    if old.get("since") and new.get("since"):
+        out["since"] = min(str(old["since"]), str(new["since"]))
+    games = {}
+    og, ng = old.get("games") if isinstance(old.get("games"), dict) else {}, new.get("games") if isinstance(new.get("games"), dict) else {}
+    for gid in {**og, **ng}:
+        a, b = og.get(gid) if isinstance(og.get(gid), dict) else {}, ng.get(gid) if isinstance(ng.get(gid), dict) else {}
+        g = {**a, **b}
+        for k in ("played", "wins", "stars"):
+            vals = [v for v in (num(a.get(k)), num(b.get(k))) if v is not None]
+            if vals:
+                g[k] = max(vals)
+        if a.get("low") or b.get("low"):
+            g["low"] = True
+        if a.get("tried") or b.get("tried"):
+            g["tried"] = True
+        bests = [v for v in (num(a.get("best")), num(b.get("best"))) if v is not None]
+        if bests:
+            g["best"] = min(bests) if g.get("low") else max(bests)
+        if a.get("lastAt") or b.get("lastAt"):
+            g["lastAt"] = max(str(a.get("lastAt") or ""), str(b.get("lastAt") or ""))
+        if isinstance(a.get("data"), dict) or isinstance(b.get("data"), dict):
+            g["data"] = {**(a.get("data") if isinstance(a.get("data"), dict) else {}), **(b.get("data") if isinstance(b.get("data"), dict) else {})}
+        games[gid] = g
+    out["games"] = games
+    ob, nb = old.get("badges") if isinstance(old.get("badges"), dict) else {}, new.get("badges") if isinstance(new.get("badges"), dict) else {}
+    badges = {}
+    for k in {**ob, **nb}:
+        a, b = ob.get(k) if isinstance(ob.get(k), dict) else {}, nb.get(k) if isinstance(nb.get(k), dict) else {}
+        badges[k] = {**a, **b, "n": max(num(a.get("n")) or 0, num(b.get("n")) or 0)}
+    out["badges"] = badges
+    seen = {str(k) for x in (old, new) for k in (x.get("seen") if isinstance(x.get("seen"), list) else [])}
+    out["seen"] = sorted(seen, key=lambda k: (_seen_time(k), k))[-40:]
+    unl = [str(u) for x in (old, new) for u in (x.get("unl") if isinstance(x.get("unl"), list) else [])]
+    out["unl"] = list(dict.fromkeys(unl))
+    # per-room badge snapshots: this device's own copy, else the saved one (a cleared browser doesn't count badges twice)
+    if not (isinstance(new.get("snap"), dict) and new["snap"]) and isinstance(old.get("snap"), dict):
+        out["snap"] = old["snap"]
+    return out
+
+
+def profile_get(body):
+    path, keyhash = _profile_path(body)
+    with PROFILE_LOCK:
+        return {"profile": _profile_read(path, keyhash) or {}}
+
+
+def profile_put(body):
+    path, keyhash = _profile_path(body)
+    prof = body.get("profile")
+    if not isinstance(prof, dict):
+        raise GameError("Send a record.")
+    if len(json.dumps(prof, separators=(",", ":"))) > PROFILE_MAX:
+        raise GameError("That record is too big.")
+    with PROFILE_LOCK:
+        merged = merge_profile(_profile_read(path, keyhash), prof)
+        if len(json.dumps(merged, separators=(",", ":"))) > PROFILE_MAX:
+            raise GameError("That record is too big.")
+        os.makedirs(PROFILE_DIR, exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump({"keyhash": keyhash, "at": time.time(), "profile": merged}, f, separators=(",", ":"))
+        os.replace(tmp, path)
+    return {"profile": merged}
 
 
 FEEDBACK_LOCK = threading.Lock()
@@ -1404,12 +1539,14 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         routes = {"/api/create": create_room, "/api/join": join_room, "/api/action": do_action, "/api/input": realtime_input,
                   "/api/status": status, "/api/replay": replay, "/api/peek": peek,
+                  "/api/profile/get": profile_get, "/api/profile/put": profile_put,
                   "/api/feedback": lambda body: submit_feedback(body, self.client_address[0])}
         if self.local():
             routes["/api/feedback/status"] = set_feedback_status
-        route = routes.get(urlparse(self.path).path)
+        path = urlparse(self.path).path
+        route = routes.get(path)
         length = int(self.headers.get("Content-Length") or 0)
-        if not route or length > 10_000:
+        if not route or length > (PROFILE_POST_MAX if path == "/api/profile/put" else 10_000):
             self.close_connection = True   # the unread body would otherwise be parsed as the next request
             return self.send_json(404 if not route else 413, {"error": "Not found" if not route else "Too large"})
         body = None
