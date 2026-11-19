@@ -24,18 +24,23 @@ class NinetyNine(TrickGame):
         "Each bid card counts by suit: ♣ 3, ♥ 2, ♠ 1, ♦ 0. So you bid 0 to 9 tricks.",
         "Play nine tricks; follow suit if you can. Trumps change every hand (the last of each cycle has none).",
         "1 point a trick. Make your bid exactly: +30 if you're the only one, +20 each for two, +10 each for all three.",
+        "🎰 Double or nothing (once a game): arm it while bidding. Make your bid and your bonus doubles; miss and you lose 10.",
         "First to the target wins.",
     ]
     min_players, max_players = 3, 3
     order = "6789TJQKA"
     badges = {**TrickGame.badges, "lone": ("🎯", "Lone sniper", "Be the only one to make your bid")}
-    settings_schema = {"target": ("Play to", [(100, "100 points"), (60, "60 (quick)"), (150, "150 points")], 100)}
+    settings_schema = {"double": ("🎰 Double or nothing", [(1, "Once a game"), (0, "Off")], 1),
+                       "target": ("Play to", [(100, "100 points"), (60, "60 (quick)"), (150, "150 points")], 100)}
 
     def start(self, seated, rng):
         self.seat_up(seated, rng)
         self.scores = [0] * 3
         self.hand_no = 0
         self.dealer = rng.randrange(3)
+        self.dons = [1 if self.s.get("double", 1) else 0] * 3  # double-or-nothings left
+        self.armed = set()
+        self.dbl = set()  # seats that doubled this hand
         self.room.add_log(f"💯 Ninety-Nine to {self.s['target']}. Bid ♣3 ♥2 ♠1 ♦0.", "big")
         self.deal()
 
@@ -50,6 +55,7 @@ class NinetyNine(TrickGame):
         self.hands = [cards[k * 12:(k + 1) * 12] for k in range(3)]
         self.trump = TRUMPS[(self.hand_no - 1) % len(TRUMPS)]
         self.bids = [None] * 3
+        self.armed, self.dbl = set(), set()
         self.bidcards = [[] for _ in range(3)]
         self.result = None
         self.trick, self.last, self.tricks = [], None, [0] * 3
@@ -66,13 +72,26 @@ class NinetyNine(TrickGame):
             self.hands[i].remove(c)
         self.bidcards[i] = cards
         self.bids[i] = sum(WORTH[suit(c)] for c in cards)
+        if i in self.armed and self.can_double(i):
+            self.dons[i] -= 1
+            self.dbl.add(i)
+            self.moment(f"🎰 {self.nm(i)} is going double or nothing!", "cool")
+        self.armed.discard(i)
         self.waiting.discard(i)
         self.room.add_log(f"🤫 {self.nm(i)} lays aside a bid.")
         if not self.waiting:
             self.room.add_log("Bids are in. Play!")
             self.start_tricks((self.dealer + 1) % 3)
 
+    def can_double(self, i):
+        return bool(getattr(self, "dons", None)) and self.dons[i] > 0
+
     def act_other(self, p, i, t, a):
+        if t == "double":
+            if self.stage != "bid" or i not in self.waiting or not self.can_double(i):
+                raise GameError("You can't double down now.")
+            self.armed ^= {i}
+            return
         if t != "bid" or self.stage != "bid" or i not in self.waiting:
             raise GameError("Not now.")
         cards = a.get("cards")
@@ -124,6 +143,8 @@ class NinetyNine(TrickGame):
 
     def bot_other(self, i, level):
         if self.stage == "bid" and i in self.waiting:
+            if level != "easy" and self.can_double(i) and random.random() < 0.25:
+                self.armed.add(i)
             self.place_bid(i, self.bot_bid(i, level))
 
     def wants(self, i):
@@ -140,6 +161,13 @@ class NinetyNine(TrickGame):
         bonus = {1: 30, 2: 20, 3: 10}.get(len(made), 0)
         for k in range(3):
             self.scores[k] += self.tricks[k] + (bonus if k in made else 0)
+            if k in self.dbl:
+                if k in made:
+                    self.scores[k] += bonus
+                    self.moment(f"🎰 {self.nm(k)} doubled and made it: +{bonus} more!", "gold", "fanfare")
+                else:
+                    self.scores[k] -= 10
+                    self.moment(f"🎰 {self.nm(k)} doubled and missed: -10", "bad")
         if len(made) == 1 and self.pl(made[0]):
             self.award(self.pl(made[0]), "lone")
         self.result = [{"bid": self.bids[k], "took": self.tricks[k], "made": k in made, "cards": self.bidcards[k]} for k in range(3)]
@@ -167,6 +195,8 @@ class NinetyNine(TrickGame):
             tags = []
             if self.stage == "play":
                 tags.append(f"took {self.tricks[k]}")
+            if k in self.dbl and self.stage != "bid":
+                tags.append("🎰 double")
             if self.stage == "score" and self.result:
                 r = self.result[k]
                 tags = [f"{r['took']}/{r['bid']}" + (" ✅" if r["made"] else " ❌")]
@@ -182,7 +212,9 @@ class NinetyNine(TrickGame):
             return t
         if self.stage == "bid" and i in self.waiting:
             t["pick"] = {"act": "bid", "min": 3, "max": 3, "label": "Bid with these"}
-            t["note"] = "Pick three cards to lay aside. ♣ = 3, ♥ = 2, ♠ = 1, ♦ = 0 tricks."
+            t["note"] = "Pick three cards to lay aside. ♣ = 3, ♥ = 2, ♠ = 1, ♦ = 0 tricks." + (" 🎰 Doubled: bonus x2 if you make it, -10 if not." if i in self.armed else "")
+            if self.can_double(i):
+                t["buttons"] = [{"label": "🎰 Double or nothing: ON" if i in self.armed else "🎰 Double or nothing", "a": {"type": "double"}}]
             t["turnText"] = "🤫 Lay aside your bid"
         elif self.bids[i] is not None and self.stage == "play":
             t["note"] = f"Your bid: {self.bids[i]} ({show(self.bidcards[i])}). You've taken {self.tricks[i]}."
