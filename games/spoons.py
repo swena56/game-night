@@ -275,9 +275,9 @@ class Spoons(CardGame):
             return t
         if self.stage == "pass" and i in self.waiting:
             t["moves"] = [{"card": c, "a": {"type": "pass", "card": c}} for c in self.hands[i]]
-            t["buttons"] = [{"label": "🥄 Grab!", "a": {"type": "grab"}, "kind": "slap" if self.quads(i) else ""}]
-            t["note"] = "Four of a kind! Grab a spoon!" if self.quads(i) else "Tap a card to pass it left."
-            t["turnText"] = "🥄 GRAB!" if self.quads(i) else "👉 Pass a card left"
+            t["buttons"] = [{"label": "🥄 Grab!", "a": {"type": "grab"}, "kind": ""}]
+            t["note"] = "Tap a card to pass it left, or 🥄 Grab with four of a kind."
+            t["turnText"] = "👉 Pass a card left"
         elif self.stage == "pass":
             t["buttons"] = [{"label": "🥄 Grab!", "a": {"type": "grab"}}]
             t["note"] = "Waiting for everyone to pass…"
