@@ -6,5 +6,11 @@
 .ck-tray .mini.l { background: #efe2c8; border: 1px solid #b9a37c; }
 .csq .ck-ghost { position: absolute; pointer-events: none; }
 .ck-tray { flex-wrap: wrap; }
+.ck-replay { display: grid; gap: 6px; margin: 8px 0; }
+.ck-replay > button, #ckReplayPlay { min-height: 40px; }
+#ckReplayPanel { display: grid; gap: 7px; padding: 8px; border-radius: 10px; background: #ffffff0c; }
+#ckReplayPanel[hidden] { display: none; }
+#ckReplayRange { width: 100%; accent-color: var(--accent); }
+#ckReplayLabel { margin: 0; font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
 .ck-material { flex: 1 0 100%; width: 100%; height: 8px; border-radius: var(--r-pill); background: #f4eedd; overflow: hidden; margin-bottom: 6px; box-shadow: inset 0 0 0 1px #0004; }
 .ck-material i { display: block; height: 100%; background: #1c1726; transition: width .4s; }

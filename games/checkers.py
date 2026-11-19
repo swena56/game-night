@@ -24,6 +24,11 @@ def initial():
     return b
 
 
+def board_code(board):
+    """Compact, stable board snapshot for the move replay."""
+    return "".join(cell or "." for row in board for cell in row)
+
+
 def dirs(piece):
     if piece.isupper():
         return [(-1, -1), (-1, 1), (1, -1), (1, 1)]
@@ -163,6 +168,7 @@ class Checkers(Undo, Game):
         '🦅 Flying kings: a king glides any distance along an open diagonal and can jump a piece from afar.',
         'Win by taking every piece or leaving your opponent with no move.',
         '↶ Undo asks your rival to take back your last move; 🤝 you can also offer a draw.',
+        '↶ Review moves to replay the game: each forced capture chain stays grouped as one move.',
         '🎁 Giveaway (an option): everything turned round. The first side with no pieces or no move left wins, and captures are still compulsory.',
     ]
     name = "Checkers"
@@ -188,6 +194,7 @@ class Checkers(Undo, Game):
         self.board = initial()
         self.quiet = 0
         self.last = None
+        self.history = []
         self.room.add_log(f"⚫ {seated[0].name} plays Dark and moves first; ⚪ {seated[1].name} plays Light.", "big")
         self.room.begin_turn(seated[0].id)
 
@@ -227,10 +234,14 @@ class Checkers(Undo, Game):
         self.room.add_log(f"{p.name} declined the draw.")
 
     def undo_state(self):
-        return self.board, self.quiet, self.last
+        return self.board, self.quiet, self.last, getattr(self, "history", [])
 
     def undo_restore(self, state):
-        self.board, self.quiet, self.last = state
+        if len(state) == 3:  # snapshots made before the replay history existed
+            self.board, self.quiet, self.last = state
+            self.history = getattr(self, "history", [])
+        else:
+            self.board, self.quiet, self.last, self.history = state
 
     def play(self, p, path):
         r = self.room
@@ -239,6 +250,10 @@ class Checkers(Undo, Game):
         self.snapshot(p)
         self.board, taken, promoted = apply(self.board, path)
         self.last = [list(x) for x in path]
+        self.history = [*getattr(self, "history", []), {
+            "by": p.id, "side": self.side(p), "path": self.last, "taken": taken,
+            "promoted": promoted, "board": board_code(self.board),
+        }]
         self.quiet = 0 if taken or promoted else self.quiet + 1
         sep = "×" if taken else "→"
         text = sep.join(sq(x) for x in path)
@@ -275,6 +290,7 @@ class Checkers(Undo, Game):
         moves = moves_for(self.board, s, self.flying()) if s and self.room.turn == p.id else []
         return {"checkers": {"board": self.board, "seats": self.seats, "me": s,
                              "moves": [[list(x) for x in m] for m in moves], "last": self.last,
+                             "initial": initial(), "history": getattr(self, "history", []),
                              "forced": bool(moves) and apply(self.board, moves[0])[1] > 0,
                              "drawOffer": self.draw_offer, "undo": self.undo_view(p)}}
 

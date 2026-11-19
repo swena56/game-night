@@ -216,7 +216,15 @@ const MOVES = {
     }
     click(enabled(d, '#wsSwap')[0]); click(enabled(d, '.rack-tile')[0]); click(enabled(d, '#wsSwap')[0]); if (!enabled(d, '#wsSwap').length) return; click(d.querySelector('#wsPass')); },
   chess(d) { click(pick(enabled(d, '.csq.movable'))); click(pick(enabled(d, '.csq.target, .csq.capture'))); click(enabled(d, '#chPromo button')[0]); },
-  checkers(d) { click(pick(enabled(d, '.csq.movable'))); click(pick(enabled(d, '.csq.target'))); },
+  checkers(d, S, n, w) {
+    const history = S.checkers.history || [], panel = d.querySelector('#ckReplayPanel');
+    if (history.length && n % 12 === 4) { click(d.querySelector('#ckReplayToggle')); return; }
+    if (history.length && n % 12 === 5 && !panel.hidden) {
+      const range = d.querySelector('#ckReplayRange'); range.value = String(Math.max(1, history.length - 1)); range.dispatchEvent(new w.Event('input', { bubbles: true })); return;
+    }
+    if (history.length && n % 12 === 6 && !panel.hidden) { click(d.querySelector('#ckReplayToggle')); return; }
+    click(pick(enabled(d, '.csq.movable'))); click(pick(enabled(d, '.csq.target')));
+  },
   go(d, S, n) { if (n > 30) return click(d.querySelector('#goPass')); click(pick(enabled(d, '.go-pt'))); },
   lastcard(d) {
     click(enabled(d, '#lcDeclare')[0]);
