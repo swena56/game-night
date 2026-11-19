@@ -156,5 +156,11 @@ for _ in range(20000):
 check("a bot-only pond finishes", r.phase == "over")
 check("bots catch fish", sum(len(p.g.catches) for p in ps) > 5, str([len(p.g.catches) for p in ps]))
 
+# -- #180: the page gets the line's reach (for the ring and the sonar pings) and the tip card says the loop
+r, g, ps = game(2)
+v = g.view(ps[0])["pond"]
+check("the view carries the line's reach", v["geo"].get("sigma") == P.BITE_SIGMA)
+check("the tip card says the loop", "drill a hole" in P.Pond.blurb.lower() and "strikes" in P.Pond.blurb and "drill" in P.Pond.howto[0].lower())
+
 print(f"\n{len(fails)} failed" if fails else "\nall ok")
 sys.exit(1 if fails else 0)

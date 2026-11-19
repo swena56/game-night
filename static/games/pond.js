@@ -5,6 +5,8 @@
 UI.pond = (() => {
   let S, ctx, V, gl = null, flat = null, raf = 0, ro = null, keyFn = null, keyUp = null;
   let recvAt = 0, holding = false, lastNote = {}, popT = 0, lastDraw = 0, lastCount = '', lastBite = '', reelTick = 0;
+  // #180 readability: sonar pings where a hole would do well, nibbles while the line waits, the lure under the ice
+  let pings = [], pingAt = 0, nibAt = -1e9, nibLam = 0, quietFor = 0, lastLoop = 0, sonar = null;
   const $ = (id) => document.getElementById(id);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const nameOf = (pid) => ctx?.player(pid)?.name ?? '?';
@@ -18,19 +20,22 @@ UI.pond = (() => {
   const FISHCOL = { perch: [0x7a9a3a, 0x2a3a1a], trout: [0xc8c0c8, 0xd87a8a], pike: [0x5a7a4a, 0xc8d090], char: [0xffc83a, 0xff8a2a] };
 
   function mount(main, side) {
-    gl = null; flat = null; recvAt = 0; holding = false; lastNote = {}; lastCount = ''; lastBite = '';
+    gl = null; flat = null; recvAt = 0; holding = false; lastNote = {}; lastCount = ''; lastBite = ''; pings = []; pingAt = 0; nibAt = -1e9; quietFor = 0; lastLoop = 0;
     main.innerHTML = `<div class="fp"><div class="fp-stage" id="fpStage">
         <div class="fp-hud"><span id="fpPts"></span><span id="fpClock" class="fp-clock"></span></div>
         <div class="fp-sub"><span id="fpState"></span><span id="fpSquall" class="fp-squall" hidden>❄️ Squall!</span><span id="fpChar" class="fp-char" hidden></span></div>
         <div class="fp-count" id="fpCount" hidden></div>
         <div class="fp-pop" id="fpPop" hidden></div>
+        <div class="fp-tags"><div class="fp-tag drill" id="fpTagDrill" hidden>⛏ Drill here</div><div class="fp-tag me" id="fpTagMe" hidden></div></div>
+        <div class="fp-sonar" id="fpSonarBox" hidden title="Sonar: tap to fold"><canvas id="fpSonar" width="96" height="150"></canvas><div id="fpSonarTxt"></div><b class="fp-sonar-chip">📡</b></div>
         <div class="fp-fight" id="fpFight" hidden>
           <div class="fp-mood" id="fpMood"></div>
           <div class="fp-bar fp-tension"><i id="fpTau"></i><b>tension</b></div>
           <div class="fp-bar fp-line"><i id="fpLine"></i><b id="fpLineTxt">line</b></div>
         </div>
       </div>
-      <div class="fp-ctl"><button class="fp-go" id="fpGo">🎣</button></div>
+      <div class="fp-steps" id="fpSteps"><span>⛏ Drill</span><i>→</i><span>🎣 Drop</span><i>→</i><span>〰 Wait</span><i>→</i><span>❗ Hook &amp; reel</span></div>
+      <div class="fp-ctl"><button class="fp-go" id="fpGo">🎣</button><button class="fp-drill" id="fpDrill" hidden>⛏ New hole</button></div>
       <p id="fpHint" class="hint"></p></div>`;
     side.innerHTML = '<div class="panel"><h3>🎣 Catch</h3><div id="fpRace" class="fp-race"></div></div>';
     const go = $('fpGo');
@@ -40,10 +45,16 @@ UI.pond = (() => {
     go.addEventListener('pointerleave', () => { if (holding) press(false); });
     go.addEventListener('pointercancel', () => press(false));
     go.addEventListener('contextmenu', (e) => e.preventDefault());
+    $('fpDrill').addEventListener('click', () => drillPing());
+    // the sonar folds to a 📡 chip on a tap (remembered on this device)
+    const sb = $('fpSonarBox');
+    sb.classList.toggle('mini', sonarMini());
+    sb.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); });
+    sb.addEventListener('click', () => { const v = !sb.classList.contains('mini'); sb.classList.toggle('mini', v); sb.title = v ? 'Sonar: tap to open' : 'Sonar: tap to fold'; try { localStorage.setItem('fp.sonarMini', v ? '1' : '0'); } catch {} });
     const stage = $('fpStage');
     stage.style.touchAction = 'none';
     stage.addEventListener('pointerdown', (e) => {
-      if (e.target.closest('button')) return;
+      if (e.target.closest('button') || e.target.closest('.fp-sonar')) return;
       const ln = line();
       if (ln.st === 'bite' || ln.st === 'fight') return press(true);
       if (!playing()) return;
@@ -65,6 +76,7 @@ UI.pond = (() => {
   }
 
   function unmount() {
+    sonar = null;
     cancelAnimationFrame(raf); raf = 0; ro?.disconnect(); gl?.dispose(); gl = null; flat = null;
     if (keyFn) window.removeEventListener('keydown', keyFn); if (keyUp) window.removeEventListener('keyup', keyUp); keyFn = keyUp = null;
     window.Snd?.bed('fp.wind').set(0);
@@ -77,6 +89,7 @@ UI.pond = (() => {
     drill: (pan) => snd((t, K, d) => { for (let k = 0; k < 9; k++) K.burst(d, t + k * 0.2, { type: 'bandpass', f: K.R(1800, 2600), q: 2.5, vol: 0.08, tau: 0.15 }); K.burst(d, t + 1.9, { type: 'lowpass', f: 900, q: 0.8, vol: 0.12, tau: 0.08, buf: 'brown' }); }, pan),
     plop: (pan) => snd((t, K, d) => { K.mode(d, t, 520, 0.12, 0.06, { f1: 900 }); K.burst(d, t + 0.02, { type: 'bandpass', f: 1400, q: 1.2, vol: 0.06, tau: 0.08 }); }, pan),
     bite: (pan) => snd((t, K, d) => { K.mode(d, t, 1760, 0.14, 0.4); K.mode(d, t + 0.12, 1760, 0.1, 0.35); K.burst(d, t, { type: 'bandpass', f: 900, q: 1.3, vol: 0.12, tau: 0.1 }); }, pan),
+    nibble: () => snd((t, K, d) => { K.mode(d, t, 1250, 0.05, 0.05); K.burst(d, t, { type: 'bandpass', f: 2200, q: 2, vol: 0.03, tau: 0.02 }); }),
     click: () => snd((t, K, d) => K.burst(d, t, { type: 'bandpass', f: 3200, q: 3, vol: 0.05, tau: 0.01 })),
     snap: () => snd((t, K, d) => { K.burst(d, t, { type: 'highpass', f: 2500, q: 0.7, vol: 0.35, tau: 0.02 }); K.mode(d, t, 300, 0.1, 0.05, { f1: 120 }); }),
     land: (big) => snd((t, K, d) => { K.burst(d, t, { type: 'lowpass', f: 1200, q: 0.7, vol: 0.25, tau: 0.12 }); for (let k = 0; k < 4; k++) K.burst(d, t + 0.25 + k * 0.17, { type: 'bandpass', f: 1300, q: 1, vol: 0.08, tau: 0.04 }); if (big) [988, 1319, 1568, 1976].forEach((f, k) => K.mode(d, t + 0.1 + k * 0.08, f, 0.07, 0.4)); }),
@@ -100,11 +113,20 @@ UI.pond = (() => {
       SND.plop(0); ctx.quiet(ctx.act('drop', { hole: near.k }));
       return;
     }
-    if (Math.hypot(x, y) > V.R - 0.8) return;
-    if (mine.length >= V.geo.holes) return ctx.toast?.(`You have ${V.geo.holes} holes: tap one to fish it.`);
+    if (Math.hypot(x, y) > V.R + 1) return;
+    if (Math.hypot(x, y) > V.R - 0.8) return ctx.toast?.('Too close to the shore: drill out on the ice.');
+    if (mine.length >= V.geo.holes) return ctx.toast?.(`You have ${V.geo.holes} holes: tap one of yours to move your line there.`);
+    if (mine.some((h) => h.at > T())) return ctx.toast?.('Wait for this hole to go through (2 s).');
+    if (['bite', 'fight'].includes(line().st)) return;
+    drill(x, y);
+  }
+  function drill(x, y) {
     SND.drill(clamp(x / V.R, -1, 1)); ctx.buzz?.(10);
     ctx.act('drill', { x: +x.toFixed(2), y: +y.toFixed(2) }).catch((e) => ctx.toast?.(e?.message || String(e)));
   }
+  // can I drill another hole right now? (3 at most, one at a time, not with a fish on)
+  const canDrill = () => { const m = myHoles(); return playing() && m.length < V.geo.holes && !m.some((h) => h.at > T()) && !['bite', 'fight'].includes(line().st); };
+  function drillPing() { if (canDrill() && pings[0]) drill(pings[0].x, pings[0].y); }
 
   function press(on) {
     const ln = line();
@@ -115,6 +137,7 @@ UI.pond = (() => {
       if (ln.st === 'idle') {
         const ready = myHoles().filter((h) => h.at <= T());
         if (ready.length) { SND.plop(0); ctx.quiet(ctx.act('drop', { hole: ready[ready.length - 1].k })); }
+        else if (!myHoles().length) drillPing();
       }
     } else if (holding) {
       holding = false;
@@ -162,7 +185,7 @@ UI.pond = (() => {
     }
     const ln = line();
     const bk = ln.st === 'bite' ? `${ln.h}:${ln.at}` : '';
-    if (bk && bk !== lastBite) { SND.bite(0); ctx.buzz?.([40, 30, 40]); }
+    if (bk && bk !== lastBite) { SND.bite(0); ctx.buzz?.([60, 40, 60]); pop('❗ STRIKE! Tap now', '#ff6a4a'); }
     if (!bk && lastBite && ln.st !== 'fight' && line().st !== 'fight') { /* missed */ }
     lastBite = bk;
     hud(); race(); hint();
@@ -192,13 +215,17 @@ UI.pond = (() => {
   }
 
   function hint() {
-    const ln = line(), t = T();
-    const txt = S.phase !== 'playing' ? '' : !V.me ? 'Watch the anglers.' : t < 0 ? 'Get ready…'
+    const ln = line(), t = T(), mine = myHoles(), drilling = mine.some((h) => h.at > t), left = V.geo.holes - mine.length;
+    const txt = S.phase !== 'playing' ? '' : !V.me ? 'Watch the anglers.' : t < 0 ? 'Get ready: drill a hole → drop your line → wait for a nibble → reel when it strikes.'
       : ln.st === 'fight' ? 'Hold to reel while it rests; let go when it lunges!'
-        : ln.st === 'bite' ? 'HOOK IT!'
-          : myHoles().length === 0 ? 'Tap the ice near the fish shadows (or bubbles) to drill a hole.'
-            : ln.st === 'idle' ? 'Tap one of your holes to drop the line in, or drill another.'
-              : 'Waiting for a bite… Tap another of your holes to move, or drill near the shadows.';
+        : ln.st === 'bite' ? 'STRIKE! Tap the button (or Space) now to hook it!'
+          : drilling ? `Drilling takes ${V.geo.drill} s. Your line goes in by itself if it isn't in a hole yet.`
+            : !mine.length ? (squall(t) ? '❄️ Squall: no shadows or pings for a moment. Tap the ice anywhere to drill, or wait.' : 'Tap the ice near the dark fish shadows, the bubbles or the pulsing ⛏ ping to drill your first hole (2 s).')
+              : ln.st === 'idle' ? 'Tap one of your holes (or the button) to drop your line in.'
+                : ln.st === 'retie' ? 'Baiting the hook: your line goes back in a moment.'
+                  : quietFor > 12 && left > 0 ? `No fish near your line. Drill a new hole near a ping (${left} left) and tap it to move.`
+                    : quietFor > 12 ? 'No fish near your line. Tap another of your holes to move it.'
+                      : `Line in: fish inside your ring nibble. Wait for the STRIKE.${left > 0 ? ` You can drill ${left} more hole${left > 1 ? 's' : ''} meanwhile.` : ''}`;
     if ($('fpHint').textContent !== txt) $('fpHint').textContent = txt;
   }
 
@@ -213,14 +240,28 @@ UI.pond = (() => {
   function controls(t) {
     const ln = line(), go = $('fpGo'), fightBox = $('fpFight');
     let txt = '🎣', cls = '', dis = !playing();
-    if (ln.st === 'bite') { txt = '❗ HOOK!'; cls = 'bite'; }
-    else if (ln.st === 'fight') { txt = holding ? '🌀 Reeling…' : '✊ Hold to reel'; cls = holding ? 'reel' : 'fight'; }
-    else if (ln.st === 'wait') { txt = '🎣 Line in · waiting'; dis = true; }
-    else if (ln.st === 'retie') { txt = '🪝 Baiting…'; dis = true; }
-    else { const r = myHoles().filter((h) => h.at <= t); txt = r.length ? '🎣 Drop the line' : myHoles().length ? '⛏ Drilling…' : '⛏ Tap the ice to drill'; dis = dis || !r.length; }
+    const mine = myHoles(), dr = mine.find((h) => h.at > t), du = dr ? clamp(1 - (dr.at - t) / V.geo.drill, 0, 1) : 0;
+    let step = 0;
+    if (ln.st === 'bite') { txt = '❗ STRIKE! Tap now'; cls = 'bite'; step = 3; go.style.setProperty('--u', clamp((ln.until - t) / V.geo.window, 0, 1).toFixed(3)); }
+    else if (ln.st === 'fight') { txt = holding ? '🌀 Reeling…' : '✊ Hold to reel'; cls = holding ? 'reel' : 'fight'; step = 3; }
+    else if (ln.st === 'wait') { txt = performance.now() - nibAt < 700 ? '〰 Nibble… wait for it' : '〰 Waiting for a strike…'; dis = true; step = 2; }
+    else if (ln.st === 'retie') { txt = dr ? `⛏ Drilling… ${Math.round(du * 100)}%` : '🪝 Baiting…'; dis = true; step = dr ? 0 : 2; }
+    else {
+      const r = mine.filter((h) => h.at <= t);
+      if (r.length) { txt = '🎣 Drop the line'; step = 1; }
+      else if (dr) { txt = `⛏ Drilling… ${Math.round(du * 100)}%`; dis = true; }
+      else { txt = pings.length ? '⛏ Drill here' : '⛏ Tap the ice to drill'; dis = dis || !pings.length; cls = pings.length ? 'drill' : ''; }
+    }
     if (go.textContent !== txt) go.textContent = txt;
     go.disabled = dis && ln.st !== 'fight' && ln.st !== 'bite';
     go.className = `fp-go ${cls}`;
+    // the loop, with where you are in it
+    const steps = $('fpSteps').children, on = V.me && S.phase === 'playing' ? step * 2 : -1;
+    for (let k = 0; k < steps.length; k += 2) { steps[k].classList.toggle('on', k === on); steps[k].classList.toggle('done', on >= 0 && k < on); }
+    // a second way to drill while the line is in: at the best ping
+    const db = $('fpDrill'), showDb = !!V.me && canDrill() && pings.length > 0 && (ln.st !== 'idle' || mine.length > 0);
+    db.hidden = !showDb;
+    if (showDb) { const lt = `⛏ New hole · ${V.geo.holes - mine.length} left`; if (db.textContent !== lt) db.textContent = lt; }
     $('fpState').textContent = ln.st === 'wait' ? '〰 line in' : ln.st === 'bite' ? '❗ BITE' : ln.st === 'fight' ? `${V.fish[ln.kind].icon} on the line` : '';
     fightBox.hidden = ln.st !== 'fight';
     if (ln.st === 'fight') {
@@ -238,17 +279,148 @@ UI.pond = (() => {
   }
 
   // where each school (and each of its fish) is now
+  const live = (s, t) => !s.gone && t >= (s.t0 ?? -1e9) && t <= (s.t1 ?? 1e9);
+  const schoolXY = (s, t) => [s.cx + s.a1 * Math.cos(s.w1 * t + s.p1) + s.a2 * Math.cos(s.w2 * t + s.p2),
+    s.cy + s.b1 * Math.sin(s.w1 * t + s.p1) + s.b2 * Math.sin(s.w2 * t + s.p2)];
   function schools(t) {
     const out = [];
     V.schools.forEach((s, k) => {
-      if (s.gone || t < (s.t0 ?? -1e9) || t > (s.t1 ?? 1e9)) return;
-      const x = s.cx + s.a1 * Math.cos(s.w1 * t + s.p1) + s.a2 * Math.cos(s.w2 * t + s.p2);
-      const y = s.cy + s.b1 * Math.sin(s.w1 * t + s.p1) + s.b2 * Math.sin(s.w2 * t + s.p2);
+      if (!live(s, t)) return;
+      const [x, y] = schoolXY(s, t);
       const dx = -s.a1 * s.w1 * Math.sin(s.w1 * t + s.p1) - s.a2 * s.w2 * Math.sin(s.w2 * t + s.p2);
       const dy = s.b1 * s.w1 * Math.cos(s.w1 * t + s.p1) + s.b2 * s.w2 * Math.cos(s.w2 * t + s.p2);
       out.push({ k, s, x, y, h: Math.atan2(dy, dx) });
     });
     return out;
+  }
+  // bites per second at a spot (games/pond.py bite_rate)
+  const SIG = () => V.geo.sigma ?? 2.3;
+  function rateAt(x, y, t) {
+    let r = 0; const s2 = 2 * SIG() ** 2;
+    for (const s of V.schools) { if (!live(s, t)) continue; const [sx, sy] = schoolXY(s, t); r += s.rate * Math.exp(-((x - sx) ** 2 + (y - sy) ** 2) / s2); }
+    return r;
+  }
+  // sonar pings: the two best places for a new hole over the next few seconds (what a sharp eye on the shadows and
+  // the bubbles would pick; the normal bot looks the same distance ahead). Hidden in a squall.
+  function updatePings(t, now) {
+    if (now - pingAt < 900) return;
+    pingAt = now;
+    if (!V.me || t < 0 || squall(t) || !canDrill()) { pings = []; return; }
+    const gap = V.geo.gap, out = [];
+    for (const sc of schools(t + 4)) {
+      for (const [ox, oy] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const x = sc.x + ox, y = sc.y + oy;
+        if (Math.hypot(x, y) > V.R - 1.4 || V.holes.some((h) => Math.hypot(h.x - x, h.y - y) < gap + 0.1)) continue;
+        out.push({ x, y, v: (rateAt(x, y, t + 2) + rateAt(x, y, t + 6)) / 2 });
+      }
+    }
+    out.sort((a, b) => b.v - a.v);
+    const pick = [];
+    for (const c of out) { if (pick.length >= 2) break; if (!pick.some((p) => Math.hypot(p.x - c.x, p.y - c.y) < 3.5)) pick.push(c); }
+    // keep a ping where it was if it's still nearly as good (no jumping about)
+    pings = pick.map((c) => { const o = pings.find((p) => Math.hypot(p.x - c.x, p.y - c.y) < 1.2); return o ? { ...c, x: o.x + (c.x - o.x) * 0.5, y: o.y + (c.y - o.y) * 0.5, born: o.born } : { ...c, born: now }; });
+  }
+  // how deep a line's lure is (m): it sinks after the drop, jerks on a strike, comes up as you reel the fish in
+  const DEPTH = 3.2, deepOf = (s) => (s.deep ? 4.6 : 1.8);
+  function lureDepth(a, t, fight) {
+    const ln = a?.line;
+    if (!ln) return 0;
+    if (ln.st === 'wait') return DEPTH * clamp((t - (ln.since ?? -9)) / 1.4, 0, 1);
+    if (ln.st === 'bite') return DEPTH + 0.3;
+    if (ln.st === 'fight') { const p = fight ? fight.p : ln.p || 0; return DEPTH * clamp(1 - p / (V.fish[ln.kind]?.L || 5), 0, 1); }
+    return 0;
+  }
+  // a nibble now and then while fish are close: just a twitch, not a strike
+  function nibbles(t, now) {
+    const dt = Math.min(0.2, lastLoop ? (now - lastLoop) / 1000 : 0); lastLoop = now;
+    const ln = line(), h = V.holes[ln.h ?? -1];
+    if (ln.st !== 'wait' || !h || !playing()) { nibLam = 0; quietFor = 0; return; }
+    nibLam = rateAt(h.x, h.y, t);
+    quietFor = nibLam < 0.03 ? quietFor + dt : 0;
+    if (t - (ln.since ?? 0) > 1.5 && Math.random() < nibLam * dt * 1.6) { nibAt = performance.now(); SND.nibble(); ctx.buzz?.(8); }
+  }
+
+  const sonarMini = () => { try { return localStorage.getItem('fp.sonarMini') === '1'; } catch { return false; } };
+  // the sonar box: a cut through the ice under your line (depth on the left, fish within 6 m either side)
+  function drawSonar(t, now, fight) {
+    const box = $('fpSonarBox'), m = me(), ln = line(), h = V.holes[ln.h ?? -1];
+    const show = !!m && S.phase === 'playing' && !!h && ['wait', 'bite', 'fight'].includes(ln.st);     // only while your line is in
+    box.hidden = !show;
+    if (!show) return;
+    box.classList.toggle('strike', ln.st === 'bite');
+    if (box.classList.contains('mini')) return;
+    const cv = $('fpSonar'), dpr = Math.min(window.devicePixelRatio || 1, 2), W = 96, H = 150;
+    if (cv.width !== W * dpr) { cv.width = W * dpr; cv.height = H * dpr; }
+    const g = sonar ||= cv.getContext?.('2d');
+    if (!g) return;
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const top = 16, bot = H - 6, maxD = 6, Y = (d) => top + (bot - top) * d / maxD, mid = W / 2 + 8, span = 6, X = (dx) => mid + (dx / span) * (W - mid - 4);
+    const bg = g.createLinearGradient(0, top, 0, bot); bg.addColorStop(0, '#163a5c'); bg.addColorStop(1, '#06121f');
+    g.fillStyle = bg; g.fillRect(0, 0, W, H);
+    // the ice, with your hole in it
+    g.fillStyle = '#cfe6f8'; g.fillRect(0, 0, W, top); g.fillStyle = '#163a5c'; if (h) g.fillRect(mid - 4, 0, 8, top);
+    // depth gauge
+    g.font = '9px system-ui'; g.textAlign = 'left'; g.textBaseline = 'middle';
+    for (let d = 2; d <= maxD; d += 2) { g.strokeStyle = '#ffffff22'; g.lineWidth = 1; g.beginPath(); g.moveTo(16, Y(d)); g.lineTo(W, Y(d)); g.stroke(); g.fillStyle = '#9fc4e4'; g.fillText(`${d}m`, 2, Y(d)); }
+    // your reach (where fish nibble)
+    const reach = SIG() * 1.2;
+    g.fillStyle = '#ffe14a14'; g.fillRect(X(-reach), top, X(reach) - X(-reach), bot - top);
+    // fish near the hole
+    if (h) {
+      for (const sc of schools(t)) {
+        const dx = sc.x - h.x, dy = sc.y - h.y, dist = Math.hypot(dx, dy);
+        if (dist > span + 1) continue;
+        const near = dist < reach, n = Math.min(sc.s.n, 4), col = sc.s.kind === 'char' ? '#ffc83a' : sc.s.kind === 'pike' ? '#9fd08a' : sc.s.kind === 'trout' ? '#f0b8c4' : '#b8d878';
+        for (let j = 0; j < n; j++) {
+          const fx = X(Math.sign(dx || 1) * dist + Math.cos(j * 2.4 + t * 0.6) * 0.6), fy = Y(deepOf(sc.s) + Math.sin(j * 1.7 + t) * 0.35);
+          const sz = sc.s.kind === 'pike' ? 9 : sc.s.kind === 'trout' ? 6.5 : 5;
+          g.globalAlpha = near ? 1 : 0.5; g.fillStyle = col;
+          g.beginPath(); g.ellipse(fx, fy, sz, sz * 0.42, 0, 0, 7); g.fill();
+          const dir = Math.cos(sc.h) >= 0 ? -1 : 1;
+          g.beginPath(); g.moveTo(fx + dir * sz * 0.8, fy); g.lineTo(fx + dir * sz * 1.5, fy - sz * 0.45); g.lineTo(fx + dir * sz * 1.5, fy + sz * 0.45); g.fill();
+        }
+      }
+      g.globalAlpha = 1;
+    }
+    // the line and the lure
+    const d = lureDepth(m, t, fight), nib = performance.now() - nibAt < 450, bite = ln.st === 'bite';
+    if (h && ['wait', 'bite', 'fight'].includes(ln.st)) {
+      const jig = bite ? Math.sin(now / 35) * 2.5 : nib ? Math.sin(now / 30) * 1.5 : 0, ly = Y(d) + (bite ? 3 : nib ? 1.5 : 0);
+      g.strokeStyle = fight?.tau > 0.7 ? '#ff5a3c' : '#ffe14a'; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(mid, 0); g.lineTo(mid + jig, ly); g.stroke();
+      if (ln.st === 'fight') {
+        const F = V.fish[ln.kind], sz = ln.kind === 'pike' ? 11 : 8;
+        g.fillStyle = ln.kind === 'char' ? '#ffc83a' : '#e8f0f8'; g.beginPath(); g.ellipse(mid + jig, ly + sz * 0.5, sz * 0.42, sz, 0, 0, 7); g.fill();
+        g.font = '12px system-ui'; g.textAlign = 'center'; g.fillText(F.icon, mid + jig, ly + sz * 0.5);
+      } else {
+        g.fillStyle = bite ? '#ff3a3a' : '#ff8a2a'; g.beginPath(); g.arc(mid + jig, ly, bite ? 5 : 3.5, 0, 7); g.fill();
+        if (bite || nib) { g.strokeStyle = bite ? '#ff6a4a' : '#ffe14a'; g.lineWidth = 1.5; g.beginPath(); g.arc(mid + jig, ly, 7 + (now / 25) % 8, 0, 7); g.stroke(); }
+      }
+    }
+    const tx = !h ? 'line out' : ln.st === 'bite' ? '❗ STRIKE!' : ln.st === 'fight' ? `${Math.max(0, (V.fish[ln.kind]?.L || 0) - (fight?.p ?? ln.p ?? 0)).toFixed(1)} m to go`
+      : ln.st === 'wait' ? (nib ? 'nibble…' : `lure ${d.toFixed(1)} m`) : ln.st === 'retie' ? 'baiting…' : 'line out';
+    const el = $('fpSonarTxt'); if (el.textContent !== tx) el.textContent = tx;
+    box.classList.toggle('strike', bite);
+  }
+
+  // labels over the pond (the same in 3D and flat): "⛏ Drill here" on the best ping, and your hole's state
+  function tags(t) {
+    const R3 = gl || flat, dt = $('fpTagDrill'), mt = $('fpTagMe');
+    const p = pings[0];
+    if (p && R3?.toScreen && canDrill()) { const [sx, sy] = R3.toScreen(p.x, p.y); dt.hidden = false; dt.style.transform = `translate(${sx.toFixed(0)}px, ${(sy - 30).toFixed(0)}px) translateX(-50%)`; }
+    else dt.hidden = true;
+    const ln = line(), mine = myHoles(), idle = ln.st === 'idle';
+    const mh = mine.find((o) => o.at > t) || V.holes[ln.h ?? -1] || (idle ? mine.filter((o) => o.at <= t).pop() : null);
+    if (mh && R3?.toScreen && S.phase === 'playing') {
+      const drilling = mh.at > t, nib = performance.now() - nibAt < 700;
+      const tx = drilling ? `⛏ ${Math.round(clamp(1 - (mh.at - t) / V.geo.drill, 0, 1) * 100)}%` : idle ? '👆 tap to drop' : ln.st === 'bite' ? '❗ STRIKE!' : ln.st === 'fight' ? '🎣 Fish on!' : ln.st === 'retie' ? '🪝 baiting' : nib ? '〰 nibble' : '🎣 You';
+      if (mt.textContent !== tx) mt.textContent = tx;
+      // under the lure (3D shows it below the ice), so the tag never hides the rod, the flag or the line
+      const under = !drilling && ['wait', 'bite', 'fight'].includes(ln.st) ? lureDepth(me(), t, null) : 0;
+      const [sx, sy] = R3.toScreen(mh.x, mh.y, -under);
+      mt.hidden = false; mt.style.transform = `translate(${sx.toFixed(0)}px, ${(sy + 12).toFixed(0)}px) translateX(-50%)`;
+      mt.className = 'fp-tag me' + (ln.st === 'bite' ? ' strike' : '');
+    } else mt.hidden = true;
   }
 
   function loop(now) {
@@ -265,13 +437,17 @@ UI.pond = (() => {
     $('fpClock').classList.toggle('low', left < 15 && S.phase === 'playing');
     const sq = squall(t); $('fpSquall').hidden = !sq;
     if (popT && now > popT) { popT = 0; $('fpPop').hidden = true; }
+    updatePings(t, now);
+    nibbles(t, now);
     const fight = controls(t);
     window.Snd?.bed('fp.wind', windBed).set(S.phase === 'playing' && !S.paused ? (sq ? 2 : 0.7) : 0);
-    const sc = { t, now, sq, schools: schools(t), fight, holding };
-    const idle = false;
     if (now - lastDraw < 33) return;       // the fish never stop moving: ~30 fps is plenty
     lastDraw = now;
-    (gl || flat)?.draw(now, sc, idle);
+    hint();
+    const sc = { t, now, sq, schools: schools(t), fight, holding, pings: canDrill() ? pings : [], nib: performance.now() - nibAt, lure: (pid) => lureDepth(V.anglers[pid], t, pid === V.me ? fight : null) };
+    (gl || flat)?.draw(now, sc, false);
+    drawSonar(t, now, fight);
+    tags(t);
   }
 
   // ---------- three.js: the pond lies flat; pond x is world x, pond y is world -z (away from you)
@@ -354,6 +530,32 @@ UI.pond = (() => {
     const holeG = new T3.Group(); scene3.add(holeG);
     const waterMat = new T3.MeshStandardMaterial({ color: 0x0a1a2a, roughness: 0.1, metalness: 0.3 }), slushMat = std(0xe8f2fa, { roughness: 0.9 });
     const holeMeshes = [];
+    const augerShaftGeo = new T3.CylinderGeometry(0.05, 0.05, 1.1, 8), augerBarGeo = new T3.BoxGeometry(0.7, 0.06, 0.06);
+    const augerMat = std(0xb8c0c8, { metalness: 0.6, roughness: 0.35 }), augerGrip = std(0xd8362a);
+    // #180: lines you can see. A thick bright line from the rod tip to the hole, then on through the ice (drawn over
+    // it, x-ray style) down to the lure at its depth; your line's reach as a ring on the ice; sonar pings to drill at.
+    const tubeGeo = new T3.CylinderGeometry(1, 1, 1, 6, 1, true); tubeGeo.translate(0, 0.5, 0);
+    const UPV = new T3.Vector3(0, 1, 0), tv = new T3.Vector3();
+    function tube(r, mat, order = 0) { const m = new T3.Mesh(tubeGeo, mat); m.userData.r = r; m.renderOrder = order; m.frustumCulled = false; scene3.add(m); return m; }
+    function span(m, a, b) {
+      tv.subVectors(b, a); const len = tv.length();
+      m.position.copy(a); m.scale.set(m.userData.r, Math.max(1e-3, len), m.userData.r);
+      if (len > 1e-6) m.quaternion.setFromUnitVectors(UPV, tv.multiplyScalar(1 / len));
+    }
+    const xray = (color, op) => new T3.MeshBasicMaterial({ color, transparent: true, opacity: op, depthTest: false, depthWrite: false });
+    const sig = V.geo.sigma ?? 2.3;
+    const reach = new T3.Group(); scene3.add(reach);
+    const reachRing = new T3.Mesh(new T3.RingGeometry(sig - 0.07, sig + 0.07, 72), new T3.MeshBasicMaterial({ color: 0xffe14a, transparent: true, opacity: 0.7, depthWrite: false }));
+    const reachFill = new T3.Mesh(new T3.CircleGeometry(sig, 48), new T3.MeshBasicMaterial({ color: 0xffe14a, transparent: true, opacity: 0.08, depthWrite: false }));
+    reachRing.rotation.x = reachFill.rotation.x = -Math.PI / 2; reachRing.position.y = 0.035; reachFill.position.y = 0.03; reach.add(reachFill, reachRing);
+    const pingMeshes = [0, 1].map((k) => {
+      const g = new T3.Group();
+      const ring = new T3.Mesh(new T3.RingGeometry(0.6, 0.78, 40), new T3.MeshBasicMaterial({ color: 0x21e6ff, transparent: true, opacity: 0.9, depthWrite: false }));
+      const wave = new T3.Mesh(new T3.RingGeometry(0.66, 0.74, 40), new T3.MeshBasicMaterial({ color: 0x21e6ff, transparent: true, opacity: 0.6, depthWrite: false }));
+      const dot = new T3.Mesh(new T3.CircleGeometry(0.16, 16), new T3.MeshBasicMaterial({ color: 0x21e6ff, transparent: true, opacity: 0.9, depthWrite: false }));
+      for (const m of [ring, wave, dot]) { m.rotation.x = -Math.PI / 2; m.position.y = 0.04; g.add(m); }
+      g.visible = false; scene3.add(g); return { g, ring, wave, k };
+    });
     function holeFor(k, h) {
       if (holeMeshes[k]) return holeMeshes[k];
       const g = new T3.Group(); g.position.copy(W(h.x, h.y, 0));
@@ -368,8 +570,13 @@ UI.pond = (() => {
       const flagM = new T3.Mesh(new T3.PlaneGeometry(0.22, 0.16), new T3.MeshBasicMaterial({ color: 0xff6a1a, side: T3.DoubleSide })); flagM.position.set(0.11, 0.62, 0); pole.add(flagM);
       g.add(pole);
       const bob = new T3.Mesh(new T3.SphereGeometry(0.07, 10, 8), new T3.MeshStandardMaterial({ color: 0xff3a3a, roughness: 0.4 })); bob.position.y = 0.03; g.add(bob);
+      // the ice auger, spinning down while the hole is drilled
+      const auger = new T3.Group();
+      const shaft = new T3.Mesh(augerShaftGeo, augerMat); shaft.position.y = 0.55; auger.add(shaft);
+      const bar = new T3.Mesh(augerBarGeo, augerGrip); bar.position.y = 1.1; auger.add(bar);
+      g.add(auger);
       holeG.add(g);
-      return (holeMeshes[k] = { g, prog, pole, bob, water });
+      return (holeMeshes[k] = { g, prog, pole, bob, water, auger });
     }
     const anglers = {};
     function anglerFor(pid) {
@@ -384,10 +591,13 @@ UI.pond = (() => {
       // the rod: from the hands out over the hole (the group faces the hole along +x)
       const rodPivot = new T3.Group(); rodPivot.position.set(0.15, 0.85, 0); g.add(rodPivot);
       const rod = new T3.Mesh(new T3.CylinderGeometry(0.012, 0.02, 1.0, 5), std(0x3a2a1a)); rod.rotation.z = -Math.PI / 2 + 0.5; rod.position.set(0.42, 0.24, 0); rodPivot.add(rod);
-      const lineGeo = new T3.BufferGeometry().setFromPoints([new T3.Vector3(), new T3.Vector3()]);
-      const lineM = new T3.Line(lineGeo, new T3.LineBasicMaterial({ color: 0x223344 })); lineM.frustumCulled = false; scene3.add(lineM);
+      const mine = pid === V.me, lc = mine ? 0xffe14a : col.getHex(), r = mine ? 0.05 : 0.025;
+      const upO = tube(r * 2.2, new T3.MeshBasicMaterial({ color: 0x0c1c2c, side: T3.BackSide })), up = tube(r, new T3.MeshBasicMaterial({ color: lc }), 1);
+      const downO = tube(r * 2.2, xray(0x0c1c2c, mine ? 0.75 : 0.25), 6), down = tube(r, xray(lc, mine ? 0.95 : 0.4), 7);
+      const lure = new T3.Mesh(new T3.SphereGeometry(mine ? 0.15 : 0.09, 12, 8), xray(mine ? 0xff5a1a : lc, mine ? 1 : 0.5)); lure.renderOrder = 8; scene3.add(lure);
+      const halo = new T3.Mesh(new T3.RingGeometry(0.22, 0.3, 24), xray(0xffe14a, 0.9)); halo.rotation.x = -Math.PI / 2; halo.renderOrder = 8; halo.visible = false; scene3.add(halo);
       scene3.add(g);
-      return (anglers[pid] = { g, rodPivot, rod, lineM, lineGeo });
+      return (anglers[pid] = { g, rodPivot, rod, up, upO, down, downO, lure, halo, mine });
     }
     // landed fish flopping on the ice
     const flops = [];
@@ -451,6 +661,7 @@ UI.pond = (() => {
         if (drilling) { hm.prog.geometry.dispose(); hm.prog.geometry = new T3.RingGeometry(0.58, 0.68, 32, 1, 0, Math.PI * 2 * u); hm.prog.material.opacity = 0.9; }
         else if (hm.prog.userData.full !== true) { hm.prog.geometry.dispose(); hm.prog.geometry = new T3.RingGeometry(0.58, 0.68, 32); hm.prog.userData.full = true; hm.prog.material.opacity = 0.35; }
         hm.water.visible = !drilling || u > 0.8;
+        hm.auger.visible = drilling; if (drilling) { hm.auger.rotation.y = now / 60; hm.auger.position.y = -0.5 * u; }
         const L = lineHoles.get(k), st = L?.a.line.st;
         hm.pole.visible = !!L && !drilling;
         hm.bob.visible = !!L && st !== 'retie' && !drilling;
@@ -460,13 +671,25 @@ UI.pond = (() => {
         hm.bob.position.y = bite ? -0.04 + Math.sin(now / 70) * 0.05 : fight ? -0.08 : 0.03 + Math.sin(now / 600 + k) * 0.01;
         if ((bite || fight) && Math.random() < (fight ? 0.15 : 0.08)) ripple(h.x + (Math.random() - 0.5) * 0.3, h.y + (Math.random() - 0.5) * 0.3, 0xbfe4ff, 0.8);
       });
+      // your line's reach, and the sonar pings
+      const myLn = V.me ? V.anglers[V.me]?.line : null, rh = myLn && myLn.st !== 'idle' ? V.holes[myLn.h] : null;
+      reach.visible = !!rh;
+      if (rh) { reach.position.copy(W(rh.x, rh.y, 0)); const nib = sc.nib < 450 || myLn.st === 'bite'; reachRing.material.opacity = nib ? 0.95 : 0.55 + 0.1 * Math.sin(now / 500); reachRing.material.color.set(myLn.st === 'bite' ? 0xff5a3c : 0xffe14a); }
+      pingMeshes.forEach((pm) => {
+        const p = sc.pings[pm.k]; pm.g.visible = !!p; if (!p) return;
+        pm.g.position.copy(W(p.x, p.y, 0)); const u = ((now + pm.k * 600) % 1400) / 1400;
+        pm.wave.scale.setScalar(1 + u * 2.6); pm.wave.material.opacity = 0.7 * (1 - u);
+        pm.g.scale.setScalar(pm.k === 0 ? 1 : 0.75);
+      });
       // anglers sit by the hole they're fishing (or their newest hole)
       for (const pid of V.seats) {
         const a = V.anglers[pid]; if (!a) continue;
         const own = V.holes.map((h, k) => ({ h, k })).filter((o) => o.h.o === a.seat);
         const at = a.line?.h != null ? V.holes[a.line.h] : own.length ? own[own.length - 1].h : null;
         const m = anglerFor(pid);
-        m.g.visible = !!at && !a.out; m.lineM.visible = m.g.visible && a.line?.st !== 'idle';
+        m.g.visible = !!at && !a.out;
+        const lst = a.line?.st, inLine = m.g.visible && lst && lst !== 'idle', under = inLine && lst !== 'retie';
+        m.up.visible = m.upO.visible = !!inLine; m.down.visible = m.downO.visible = m.lure.visible = !!under; m.halo.visible = false;
         if (!at) continue;
         // sit on the shore side of the hole, facing it
         const d = Math.hypot(at.x, at.y) || 1, ox = at.x + (at.x / d) * 0.9, oy = at.y + (at.y / d) * 0.9;
@@ -475,10 +698,21 @@ UI.pond = (() => {
         const st = a.line?.st, fighting = st === 'fight';
         let bend = 0;
         if (fighting) { const ln = a.line, f = pid === V.me ? sc.fight : null, lunge = f ? f.lunge : false; bend = (lunge ? 0.5 : 0.25) + Math.sin(now / (lunge ? 40 : 120)) * (lunge ? 0.12 : 0.05); if (!f && ln) bend = 0.3 + Math.sin(now / 90) * 0.08; }
+        else if (st === 'bite') bend = 0.45 + Math.sin(now / 30) * 0.15;
+        else if (st === 'wait' && m.mine && sc.nib < 450) bend = 0.08 + Math.sin(now / 25) * 0.05;
         m.rodPivot.rotation.z = -bend;
         m.g.updateMatrixWorld(true);
         const tip = m.rodPivot.localToWorld(new T3.Vector3(0.86, 0.48, 0));     // the rod's far end
-        const pos = m.lineGeo.attributes.position; pos.setXYZ(0, tip.x, tip.y, tip.z); const hp = W(at.x, at.y, 0.02); pos.setXYZ(1, hp.x, hp.y, hp.z); pos.needsUpdate = true;
+        if (inLine) {
+          const hp = W(at.x, at.y, 0.03); span(m.up, tip, hp); span(m.upO, tip, hp);
+          if (under) {
+            const d = sc.lure(pid), jig = st === 'bite' ? Math.sin(now / 35) * 0.12 : m.mine && sc.nib < 450 ? Math.sin(now / 30) * 0.06 : 0;
+            const lp = W(at.x + jig, at.y, -d - (st === 'bite' ? 0.15 : 0)); span(m.down, hp, lp); span(m.downO, hp, lp); m.lure.position.copy(lp);
+            m.lure.scale.setScalar(st === 'fight' ? 1.5 : 1);
+            m.lure.material.color.set(st === 'bite' ? 0xff2a2a : st === 'fight' ? 0xffffff : m.mine ? 0xff5a1a : m.down.material.color.getHex());
+            if (m.mine && (st === 'bite' || sc.nib < 450)) { const u = (now % 500) / 500; m.halo.visible = true; m.halo.position.copy(lp); m.halo.scale.setScalar(1 + u * 2.5); m.halo.material.opacity = 0.9 * (1 - u); m.halo.material.color.set(st === 'bite' ? 0xff4a2a : 0xffe14a); }
+          }
+        }
       }
       // landed fish: a flop on the ice, then into the bucket
       for (let k = flops.length - 1; k >= 0; k--) {
@@ -494,7 +728,7 @@ UI.pond = (() => {
       pos.needsUpdate = true; fmat.size = sc.sq ? 0.18 : 0.12; fmat.opacity = sc.sq ? 0.95 : 0.7;
       scene3.fog.near = 40 - sqFade * 22; scene3.fog.far = 140 - sqFade * 80;
       // the camera: the whole pond, leaning in toward your hole while you fight a fish
-      const myA = V.me ? V.anglers[V.me] : null, myH = myA?.line?.st === 'fight' ? V.holes[myA.line.h] : null;
+      const myA = V.me ? V.anglers[V.me] : null, myH = ['fight', 'bite'].includes(myA?.line?.st) ? V.holes[myA.line.h] : null;
       const fov = 48, need = (2 * R + 1) / 2, dist = Math.max(need / Math.tan(fov * Math.PI / 360) / Math.min(1, camera.aspect) * 0.74, 16);
       let want, look;
       if (myH) { want = W(myH.x * 0.7, myH.y * 0.7 - 7, 6.5); look = W(myH.x, myH.y, 0); }
@@ -509,8 +743,10 @@ UI.pond = (() => {
       renderer.render(scene3, camera);
     }
 
+    const pv = new T3.Vector3();
     return {
       draw, resize,
+      toScreen(x, y, h = 0) { pv.copy(W(x, y, h)).project(camera); return [(pv.x + 1) / 2 * (stage.clientWidth || 1), (1 - pv.y) / 2 * (stage.clientHeight || 1)]; },
       pick(cx, cy) {
         const r = canvas.getBoundingClientRect();
         ray.setFromCamera({ x: ((cx - r.left) / r.width) * 2 - 1, y: -((cy - r.top) / r.height) * 2 + 1 }, camera);
@@ -559,6 +795,28 @@ UI.pond = (() => {
       }
       pops = pops.filter((p) => now - p.t < 1200);
       for (const p of pops) { const u = (now - p.t) / 1200; g.beginPath(); g.arc(X(p.x), Y(p.y), 3 + u * 12, 0, 7); g.strokeStyle = `rgba(255,255,255,${1 - u})`; g.lineWidth = 1.5; g.stroke(); }
+      // sonar pings (where to drill) and your line's reach
+      sc.pings.forEach((p, i) => {
+        const u = ((now + i * 600) % 1400) / 1400, sz = i === 0 ? 1 : 0.75;
+        g.strokeStyle = '#11c8e8'; g.lineWidth = 3; g.beginPath(); g.arc(X(p.x), Y(p.y), 0.68 * k * sz, 0, 7); g.stroke();
+        g.strokeStyle = `rgba(17,200,232,${0.7 * (1 - u)})`; g.lineWidth = 2; g.beginPath(); g.arc(X(p.x), Y(p.y), 0.7 * k * sz * (1 + u * 2.6), 0, 7); g.stroke();
+        g.fillStyle = '#11c8e8'; g.beginPath(); g.arc(X(p.x), Y(p.y), 0.16 * k, 0, 7); g.fill();
+      });
+      const myLn = V.me ? V.anglers[V.me]?.line : null, rh = myLn && myLn.st !== 'idle' ? V.holes[myLn.h] : null;
+      if (rh) {
+        const sg = V.geo.sigma ?? 2.3, hot = sc.nib < 450 || myLn.st === 'bite';
+        g.beginPath(); g.arc(X(rh.x), Y(rh.y), sg * k, 0, 7); g.fillStyle = '#ffe14a18'; g.fill();
+        g.setLineDash([6, 5]); g.lineWidth = hot ? 3 : 2; g.strokeStyle = myLn.st === 'bite' ? '#ff5a3c' : hot ? '#ffd000' : '#e0b800'; g.stroke(); g.setLineDash([]);
+      }
+      // anglers on the shore side of the hole they fish, with their line to it (yours thick and yellow)
+      for (const pid of V.seats) {
+        const a = V.anglers[pid], ho = a && !a.out && a.line?.st !== 'idle' ? V.holes[a.line?.h ?? -1] : null; if (!ho) continue;
+        const d = Math.hypot(ho.x, ho.y) || 1, ax = ho.x + (ho.x / d) * 0.9, ay = ho.y + (ho.y / d) * 0.9, mine = pid === V.me;
+        g.lineCap = 'round';
+        g.strokeStyle = '#0c1c2c'; g.lineWidth = mine ? 6 : 4; g.beginPath(); g.moveTo(X(ax), Y(ay)); g.lineTo(X(ho.x), Y(ho.y)); g.stroke();
+        g.strokeStyle = mine ? '#ffe14a' : colorOf(pid); g.lineWidth = mine ? 3 : 2; g.stroke();
+        g.beginPath(); g.arc(X(ax), Y(ay), 0.28 * k, 0, 7); g.fillStyle = colorOf(pid); g.fill(); g.lineWidth = 2; g.strokeStyle = '#fff'; g.stroke();
+      }
       V.holes.forEach((ho, i) => {
         const col = colorOf(V.seats[ho.o]), drilling = ho.at > sc.t;
         g.beginPath(); g.arc(X(ho.x), Y(ho.y), 0.5 * k, 0, 7); g.fillStyle = drilling ? '#ffffff' : '#0a1a2a'; g.fill(); g.lineWidth = 3; g.strokeStyle = col; g.stroke();
@@ -574,6 +832,7 @@ UI.pond = (() => {
     return {
       draw, resize,
       pick(px, py) { const r = canvas.getBoundingClientRect(); return [(px - r.left - cx) / k, -(py - r.top - cy) / k]; },
+      toScreen: (x, y) => [X(x), Y(y)],
       landed() {},
       dispose() { canvas.remove(); },
     };

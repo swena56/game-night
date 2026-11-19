@@ -119,15 +119,14 @@ class Pond(Game):
     category = "party"
     family = None
     howto = [
-        "Everyone fishes the same frozen pond at once. Tap the ice to drill a hole (up to 3, a couple of seconds each), then tap a hole of yours to drop your line in.",
-        "Fish drift under the ice in schools: shallow ones show as shadows, deep ones only as bubbles. Fish near a school to get bites.",
-        "When your bobber dips, HOOK it fast (tap the button or Space): you have about a second.",
+        "Where to drill: tap the ice near the fish shadows, the bubbles or a pulsing ⛏ sonar ping (or press ⛏ Drill here). Up to 3 holes, 2 seconds each, any time you haven't a fish on. Tap one of your holes to move your line there.",
+        "Your line is the thick yellow one, the ring round your hole is its reach and the sonar box shows your lure's depth and the fish near it. Nibbles are fish looking: wait. When it STRIKES (flag up, red button, buzz), tap within about a second to hook it (the button or Space).",
         "Then fight it: hold to reel while the fish is tired, let go when it lunges (the line goes taut and red), or the line snaps. Reel it all the way in to land it.",
-        "🐟 Perch 10, 🐠 trout 25, 🦈 pike 60, ✨ the golden char 150 (once a pond). ❄️ Squalls hide the shadows. Most points when time runs out wins.",
+        "Everyone fishes the same frozen pond at once. 🐟 Perch 10, 🐠 trout 25, 🦈 pike 60, ✨ the golden char 150 (once a pond). ❄️ Squalls hide the shadows and the pings. Most points when time runs out wins.",
     ]
     name = "Frozen Pond"
     icon = "🎣"
-    blurb = "Drill the ice, find the fish shadows and fight them in: hold to reel, ease off when they lunge."
+    blurb = "Drill a hole → drop your line → wait for a nibble → reel when it strikes (hold to reel, ease off when it lunges)."
     min_players = 2
     max_players = 6
     badges = {**Game.badges,
@@ -612,6 +611,6 @@ class Pond(Game):
             "R": R, "holes": self.holes, "schools": self.schools, "squalls": self.squalls, "anglers": anglers,
             "charBy": (self.room.players[self.char_by].name if self.char_by in self.room.players else None),
             "fish": {k: {"pts": v["pts"], "L": v["L"], "k": v["k"], "icon": v["icon"], "name": v["name"]} for k, v in FISH.items()},
-            "geo": {"holes": HOLES, "gap": HOLE_GAP, "drill": DRILL, "window": WINDOW, "dt": FIGHT_DT, "max": FIGHT_MAX,
+            "geo": {"sigma": BITE_SIGMA, "holes": HOLES, "gap": HOLE_GAP, "drill": DRILL, "window": WINDOW, "dt": FIGHT_DT, "max": FIGHT_MAX,
                     "reel": REEL_V, "slack": SLACK_V, "take": LUNGE_TAKE, "lreel": LUNGE_REEL},
         }}

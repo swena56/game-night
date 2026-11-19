@@ -29,9 +29,34 @@
 .fp-tension i { background: linear-gradient(90deg, #3ddc97, #ffd23f 60%, #ff5a3c); background-size: 300px 100%; }
 .fp-tension.hot { box-shadow: 0 0 0 2px #ff5a3c; }
 .fp-line i { background: #5ab0ff; }
-.fp-ctl { display: flex; justify-content: center; margin-top: 8px; }
+.fp-ctl { display: flex; justify-content: center; margin-top: 6px; }
 .fp-go { min-width: min(100%, 300px); height: 56px; border-radius: 999px; font-size: 18px; font-weight: 800; touch-action: none; -webkit-touch-callout: none; }
-.fp-go.bite { background: #ff5a3c; color: #fff; animation: pulse .5s infinite; }
+.fp-go.bite { background: linear-gradient(90deg, #ff2a1a calc(var(--u, 1) * 100%), #ff8a6a calc(var(--u, 1) * 100%)); color: #fff; animation: pulse .5s infinite; }
+.fp-go.drill { background: #11a8c8; color: #fff; }
+.fp-ctl { flex-wrap: wrap; gap: 8px; align-items: center; }
+.fp-drill { height: 44px; border-radius: 999px; font-weight: 700; padding: 0 14px; background: #11a8c8; color: #fff; }
+/* #180: the loop, labels over the pond, the sonar box */
+.fp-steps { display: flex; justify-content: center; align-items: center; gap: 2px 4px; flex-wrap: wrap; margin-top: 8px; font-size: 12px; color: var(--muted); }
+.fp-steps span { padding: 2px 8px; border-radius: 999px; border: 1px solid transparent; white-space: nowrap; }
+.fp-steps span.done { opacity: .55; }
+.fp-steps span.on { background: #ffe14a; color: #14283c; font-weight: 800; }
+.fp-steps i { font-style: normal; opacity: .5; }
+.fp-tags { position: absolute; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; }
+.fp-tag { position: absolute; left: 0; top: 0; white-space: nowrap; font-size: 12px; font-weight: 800; padding: 2px 8px; border-radius: 999px; will-change: transform; }
+.fp-tag.drill { background: #11a8c8; color: #fff; box-shadow: 0 2px 6px #0005; }
+.fp-tag.me { background: #ffe14a; color: #14283c; box-shadow: 0 2px 6px #0005; }
+.fp-tag.me.strike { background: #ff3a2a; color: #fff; animation: pulse .4s infinite; }
+.fp-sonar { position: absolute; left: 8px; top: 70px; z-index: 2; width: 96px; border-radius: 10px; overflow: hidden; background: #06121f; color: #fff;
+  box-shadow: 0 2px 8px #0006; border: 2px solid #ffffff30; }
+.fp-sonar canvas { display: block; width: 96px; height: 150px; }
+.fp-sonar div { font-size: 11px; font-weight: 700; text-align: center; padding: 2px 0 3px; background: #0c2238; }
+.fp-sonar.strike { border-color: #ff3a2a; }
+.fp-sonar.strike div { background: #ff3a2a; }
+.fp-sonar { pointer-events: auto; cursor: pointer; }
+.fp-sonar-chip { display: none; }
+.fp-sonar.mini { width: auto; border-radius: 999px; }
+.fp-sonar.mini canvas, .fp-sonar.mini div { display: none; }
+.fp-sonar.mini .fp-sonar-chip { display: block; font-size: 18px; line-height: 1; padding: 6px 8px; }
 .fp-go.fight { background: #2f7fe8; color: #fff; }
 .fp-go.reel { background: #1f5fc0; color: #fff; transform: scale(.97); box-shadow: inset 0 3px 8px #0006; }
 .fp-race { display: flex; flex-direction: column; gap: 4px; }
@@ -44,4 +69,4 @@
 .fp-row b { font-variant-numeric: tabular-nums; text-align: right; }
 .fp-row small { grid-column: 1 / -1; color: var(--muted); font-size: 11px; }
 @media (max-width: 420px) { .fp-stage { height: 56vh; } .fp-go { height: 52px; font-size: 17px; } }
-@media (prefers-reduced-motion: reduce) { .fp-pop-in, .fp-go.bite, .fp-clock.low, .fp-mood.lunge { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .fp-pop-in, .fp-go.bite, .fp-clock.low, .fp-mood.lunge, .fp-tag.me.strike { animation: none; } }
