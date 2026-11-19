@@ -196,6 +196,8 @@ class OddOne(Game):
         top = max(tally.values(), default=0)
         leaders = [pid for pid, n in tally.items() if n == top]
         caught = len(leaders) == 1 and leaders[0] == self.odd
+        self.defender = None
+        self.defense = None
         shown = ", ".join(f"{r.players[pid].name} {n}" for pid, n in sorted(tally.items(), key=lambda x: -x[1]) if pid in r.players)
         r.add_log(f"🗳️ Votes: {shown or 'none'}", "question")
         if len(tally) == 1 and top >= 3:
