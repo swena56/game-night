@@ -118,6 +118,22 @@ g.do_roll(o, [])
 check("brawl: a third skull backfires for 2", o.g.hp == hp - 2)
 del g.rng.randint
 json.dumps(g.view(ann))
+# ⚔️ combat preview: follows the held dice and the chosen target, with backfire and quake odds
+S_, W_, X_, G_, H_ = B.SKULL, B.SWORD, B.SMASH, B.SHIELD, B.HEART
+pv = B.preview([S_, S_, X_, X_, W_], {2, 3}, {"bo": 1, "cy": 0}, "bo", 2)
+check("brawl preview: fight now hits the target through its guard", pv["now"] == {"backfire": 0, "quake": 0, "dmg": 4, "guard": 0, "heal": 0}, pv["now"])
+check("brawl preview: one free die, a third skull 1 in 6", abs(pv["reroll"]["backfire"] - 1 / 6) < 1e-9, pv["reroll"])
+check("brawl preview: a third smash quakes everyone 1 in 6", abs(pv["reroll"]["quake"] - 1 / 6) < 1e-9)
+# reroll the sword: sword ×2 → 5−1, smash → quake 6−1 on Bo + 6 on Cy, shield/heart → 4−1; skull → 0
+check("brawl preview: average damage counts the quake on every rival", abs(pv["reroll"]["dmg"] - (2 * 4 + 11 + 3 + 3) / 6) < 1e-9, pv["reroll"]["dmg"])
+pv2 = B.preview([S_, S_, X_, X_, W_], {2, 3}, {"bo": 1, "cy": 0}, "cy", 2)
+check("brawl preview: changing target changes the damage", pv2["now"]["dmg"] == 5)
+pv3 = B.preview([S_, S_, X_, X_, W_], {2, 3, 4}, {"bo": 1}, "bo", 2)
+check("brawl preview: holding everything leaves no reroll", pv3["reroll"] is None)
+pv4 = B.preview([G_, H_, H_, H_, W_], {0, 1, 2, 3}, {"bo": 0}, "bo", 2)
+check("brawl preview: healing caps at the missing health", pv4["now"]["heal"] == 2 and pv4["now"]["guard"] == 1)
+pv5 = B.preview([W_, W_, W_, W_, W_], set(), {"bo": 0}, "bo", 0)
+check("brawl preview: five free dice", 0 < pv5["reroll"]["backfire"] < 0.2 and 0 < pv5["reroll"]["quake"] < 0.2, pv5["reroll"])
 
 # -- Dice Derby
 pos = {h: 0 for h in range(1, 7)}

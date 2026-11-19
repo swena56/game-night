@@ -58,6 +58,38 @@ def tally(dice):
     }
 
 
+def outcome(dice, guards, target, missing):
+    """What fighting on these dice does: damage that sticks (on the target, or on every rival in a quake),
+    guard raised and health healed; a third skull is a backfire instead."""
+    t = tally(dice)
+    if t["skulls"] >= 3:
+        return {"backfire": 1, "quake": 0, "dmg": 0, "guard": 0, "heal": 0}
+    quake = t["smash"] >= 3
+    hit = list(guards) if quake else [target] if t["dmg"] and target in guards else []
+    return {"backfire": 0, "quake": int(quake), "dmg": sum(max(0, t["dmg"] - guards[q]) for q in hit),
+            "guard": t["shield"], "heal": min(t["heal"], missing)}
+
+
+def preview(dice, hold, guards, target, missing):
+    """⚔️ Combat preview for the player on turn: `now` is fighting on these dice; `reroll` averages every
+    way the unheld dice can land (skulls always stay), with the chance of a backfire and of a quake.
+    `guards` is each live rival's shield, `missing` the health a heart could still restore. The browser
+    mirrors this (static/games/brawl.js) so it can follow the dice you tap and the rival you pick."""
+    now = outcome(dice, guards, target, missing)
+    free = [i for i, d in enumerate(dice) if d != SKULL and i not in hold]
+    if not free:
+        return {"now": now, "reroll": None}
+    tot = dict.fromkeys(now, 0.0)
+    rolls = list(product(range(1, 7), repeat=len(free)))
+    for faces in rolls:
+        d = list(dice)
+        for i, f in zip(free, faces):
+            d[i] = f
+        for k, v in outcome(d, guards, target, missing).items():
+            tot[k] += v
+    return {"now": now, "reroll": {k: v / len(rolls) for k, v in tot.items()}}
+
+
 class Brawl(Game):
     id = "brawl"
     category = "dice"
@@ -66,6 +98,7 @@ class Brawl(Game):
         "💀 Skulls lock where they land. A third skull backfires: you lose 2 ❤️ and your turn.",
         "Stop whenever you like: ⚔️ hits 1 and 💥 hits 2 on the rival you pick. Three or more 💥 hit everyone!",
         "🛡️ guards 1 damage each until your next turn; ❤️ heals 1 each (up to your starting health).",
+        "Before you bank a roll, the ⚔️ preview shows what fighting now does to your target, and what rerolling the dice you haven't held is likely to do — with the chance of a 💀 backfire and of a 🌋 quake.",
         "Last brawler standing wins.",
     ]
     name = "Dice Brawl"

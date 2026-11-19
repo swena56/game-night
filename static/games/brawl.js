@@ -11,6 +11,7 @@ UI.brawl = (() => {
       <div id="brwTurn" class="brw-turn"></div>
       <div id="brwRing" class="brw-ring"></div>
       <div id="brwTally" class="brw-tally"></div>
+      <div id="brwPreview" class="brw-preview"></div>
       <div class="ya-tray"><div id="brwDice" class="brw-dice"></div></div>
       <div class="row brw-actions"><button id="brwRoll" class="primary big"></button><button id="brwFight" class="big danger"></button></div>
       <p id="brwHint" class="hint"></p>
@@ -59,6 +60,27 @@ UI.brawl = (() => {
     $('brwTally').textContent = !t ? '' : t.skulls >= 3 ? '💀💀💀 Backfire!'
       : [t.dmg ? `⚔️ ${t.dmg} damage${quake ? ' to EVERYONE 🌋' : ''}` : '', t.shield ? `🛡️ ${t.shield}` : '', t.heal ? `❤️ +${t.heal}` : '', t.skulls ? `💀 ${t.skulls}/3` : ''].filter(Boolean).join(' · ');
 
+    // ⚔️ combat preview (mirrors preview() in games/brawl.py): fighting now on the chosen target, and
+    // the average of every way the unheld dice could land, with the backfire and quake chances
+    const pv = $('brwPreview'); pv.innerHTML = '';
+    if (mine && t && t.skulls < 3) {
+      const guards = Object.fromEntries(alive.filter((pid) => pid !== S.me.id).map((pid) => [pid, b.guard[pid] ?? 0]));
+      // no damage showing yet: aim the reroll forecast at the weakest rival (the default pick)
+      const aim = target ?? Object.keys(guards).sort((x, y) => b.hp[x] - b.hp[y])[0] ?? null;
+      const P = preview(b.dice, b.rolls < b.maxRolls ? hold : new Set(b.dice.keys()), guards, aim, b.maxHp - (b.hp[S.me.id] ?? 0));
+      const fmt = (o, avg) => {
+        const n = (v) => avg ? v.toFixed(1) : String(v);
+        return [`⚔️ ${n(o.dmg)} dmg${o.quake === 1 ? ' 🌋' : ''}`, `🛡️ ${n(o.guard)}`, `❤️ +${n(o.heal)}`].join(' · ');
+      };
+      pv.append(ctx.el('div', '', `👊 Fight now${P.now.quake ? ' (quake)' : t.dmg ? ` on ${ctx.player(aim)?.name ?? '…'}` : ''}: ${fmt(P.now)}`));
+      if (P.reroll) {
+        const R = P.reroll, pct = (v) => `${Math.round(v * 100)}%`;
+        const row = ctx.el('div', '', `🎲 Reroll ${P.free}${Object.keys(guards).length > 1 && aim ? ` (on ${ctx.player(aim)?.name ?? '…'})` : ''}, likely: ${fmt(R, true)} · `);
+        row.append(ctx.el('b', R.backfire >= 0.25 ? 'brw-risk' : '', `💀 backfire ${pct(R.backfire)}`), ` · 🌋 quake ${pct(R.quake)}`);
+        pv.append(row);
+      }
+    }
+
     const rk = `${S.turn}|${b.n}`, fresh = b.dice.length && rk !== rollKey && rollKey !== '';
     rollKey = rk;
     const tray = $('brwDice'); tray.innerHTML = '';
@@ -99,6 +121,30 @@ UI.brawl = (() => {
       const what = L.backfire ? ' backfired: −2 ❤️' : ' ' + ([hits.length ? 'hit ' + hits.join(', ') : '', L.heal ? `healed ${L.heal}` : '', L.shield ? `🛡️ ${L.shield}` : ''].filter(Boolean).join(' · ') || 'did nothing much');
       last.append(name, ctx.el('span', '', what));
     }
+  }
+
+  function outcome(dice, guards, target, missing) {
+    const sk = dice.filter((v) => v === 1).length, sm = dice.filter((v) => v === 4).length;
+    if (sk >= 3) return { backfire: 1, quake: 0, dmg: 0, guard: 0, heal: 0 };
+    const raw = dice.filter((v) => v === 2 || v === 3).length + 2 * sm, quake = sm >= 3;
+    const hit = quake ? Object.keys(guards) : raw && target in guards ? [target] : [];
+    return { backfire: 0, quake: quake ? 1 : 0, dmg: hit.reduce((a, q) => a + Math.max(0, raw - guards[q]), 0),
+      guard: dice.filter((v) => v === 5).length, heal: Math.min(dice.filter((v) => v === 6).length, missing) };
+  }
+
+  function preview(dice, hold, guards, target, missing) {
+    const now = outcome(dice, guards, target, missing);
+    const free = dice.map((v, i) => i).filter((i) => dice[i] !== 1 && !hold.has(i));
+    if (!free.length) return { now, reroll: null, free: 0 };
+    const tot = { backfire: 0, quake: 0, dmg: 0, guard: 0, heal: 0 }, n = 6 ** free.length;
+    for (let code = 0; code < n; code++) {
+      const d = [...dice];
+      free.forEach((i, k) => { d[i] = Math.floor(code / 6 ** k) % 6 + 1; });
+      const o = outcome(d, guards, target, missing);
+      for (const k in tot) tot[k] += o[k];
+    }
+    for (const k in tot) tot[k] /= n;
+    return { now, reroll: tot, free: free.length };
   }
 
   const turnText = (s) => s.phase !== 'playing' || s.turn !== s.me.id ? null : !s.brawl.dice.length ? '⚔️ Roll!' : '⚔️ Hold, reroll or fight';

@@ -168,7 +168,7 @@ would affect other games. Preserve each game's hidden hands and use its existing
 | Midnight (`midnight`) | Add a risk comparison for keeping the current score versus rerolling the unkept dice. | Odds account for the required 1 and 4 and match the current kept dice. |
 | Mia (`mia`) | Add a bluff likelihood indicator after a call, based only on the public claim sequence and remaining lives. | Indicator does not inspect the hidden roll and disappears before the next secret roll. |
 | Dice Squares (`squares`) | Add a live score forecast for every row and column affected by the selected die placement. | Forecast matches final scoring for all dice-hand categories and remains private until placement locks. |
-| Dice Brawl (`brawl`) | Add a combat preview that summarizes likely damage, guard, healing, and skull risk before banking a roll. | Preview follows held dice and chosen target, including third-skull backfire and quake effects. |
+| Dice Brawl (`brawl`) | Add a combat preview that summarizes likely damage, guard, healing, and skull risk before banking a roll. **Implemented; browser verification pending.** | Preview follows held dice and chosen target, including third-skull backfire and quake effects. |
 | Dice Derby (`derby`) | Add a ticket portfolio view that shows current payouts and which horse movements help or hurt each ticket. **Implemented; browser verification pending.** | View reflects secret tickets for their owner only and reconciles after every roll. |
 | Blackjack (`twentyone`) | Add a split-hand summary showing each hand's current stake, dealer up-card, and recommended basic-strategy action. | Recommendation follows the active shoe/rule options, is labeled advisory, and handles split aces and surrender. |
 
