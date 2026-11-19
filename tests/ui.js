@@ -150,11 +150,11 @@ let WB_WORDS = null;   // the dictionary, for Word Bomb moves
 const MOVES = {
   oddone(d, S, n, w) {
     if (S.oddone.stage === 'vote') return click(pick(enabled(d, '.oo-vote')));
-    const [form, input, text] = S.oddone.stage === 'guess' ? ['#ooGuessForm', '#ooGuess', pick(['tea', 'snow', 'pool'])]
     if (S.oddone.stage === 'defense') {
       d.querySelector('#ooDefense').value = pick(['careful', 'steady', 'thoughtful']);
       return d.querySelector('#ooDefenseForm').dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
     }
+    const [form, input, text] = S.oddone.stage === 'guess' ? ['#ooGuessForm', '#ooGuess', pick(['tea', 'snow', 'pool'])]
       : ['#ooClueForm', '#ooClue', pick(['warm', 'round', 'happy', 'big', 'fast', 'blue', 'loud', 'soft']) + 'ish'.slice(0, n % 4)];
     d.querySelector(input).value = text;
     d.querySelector(form).dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
