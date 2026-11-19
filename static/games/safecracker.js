@@ -1,8 +1,9 @@
 // Safecracker: build a guess from the colour pad, lock it in, and read everyone's revealed guesses.
 // Pegs carry their number as well as their colour, so colour is never the only cue.
 UI.safecracker = (() => {
-  let S, ctx, draft = [], cursor = 0, probing = false, draftFor = '', notes = [], notesFor = null, seenRounds = null, seenOpen = null, seenSafe = null;
+  let S, ctx, draft = [], cursor = 0, probing = false, draftFor = '', notes = [], spots = [], notesFor = null, seenRounds = null, seenOpen = null, seenSafe = null;
   const MARKS = ['', 'out', 'in'];  // a note cycles: unknown → ✗ not in the code → ✓ in the code
+  // 📝 the notes board is this device's only: nothing in it is ever sent to the server
   const STANDARD = ['#ef476f', '#ffb703', '#06d6a0', '#3a86ff', '#c77dff', '#f4f1de', '#ff7f11', '#8d6e63'];
   // Okabe–Ito: eight colours that stay distinct with the common kinds of colour blindness
   const SAFE = ['#d55e00', '#e69f00', '#009e73', '#0072b2', '#cc79a7', '#f0e442', '#56b4e9', '#eeeeee'];
@@ -22,7 +23,7 @@ UI.safecracker = (() => {
   }
 
   function mount(main, side) {
-    draft = []; cursor = 0; probing = false; draftFor = ''; notes = []; notesFor = null; seenRounds = null; seenOpen = null; seenSafe = null;
+    draft = []; cursor = 0; probing = false; draftFor = ''; notes = []; spots = []; notesFor = null; seenRounds = null; seenOpen = null; seenSafe = null;
     main.innerHTML = `<div class="sc">
       <div class="sc-head"><svg id="scVault" class="sc-vault" viewBox="0 0 64 64" aria-hidden="true">
           <rect x="2" y="2" width="60" height="60" rx="8" class="frame"/>
@@ -34,6 +35,12 @@ UI.safecracker = (() => {
       <div id="scStand" hidden></div>
       <div id="scHistory" class="sc-history"></div>
       <div id="scFit" class="sc-fit" hidden></div>
+      <details id="scBoard" class="sc-board"><summary>📝 Notes board <small>only you see it</small></summary>
+        <p class="hint left">Colours: tap to mark ✗ out or ✓ in the code. Spots: tap a cell to mark ✗ not here or ✓ here.</p>
+        <div id="scNotes" class="sc-notes"></div>
+        <div id="scSpots" class="sc-spots"></div>
+        <button id="scNotesClear" class="sc-clear">Clear notes</button>
+      </details>
       <div class="sc-entry">
         <div id="scSlots" class="sc-slots"></div>
         <div id="scPad" class="sc-pad"></div>
@@ -49,9 +56,12 @@ UI.safecracker = (() => {
       <p class="hint left"><span class="sc-pin on"></span> right colour, right spot · <span class="sc-pin"></span> right colour, wrong spot.</p>
       <div id="scProbeInfo" class="hint left"></div>
       <label class="check"><input type="checkbox" id="scSafePal"> Colour-blind-friendly colours</label>
-      <h3>📝 Notes</h3><div id="scNotes" class="sc-notes"></div>
-      <p class="hint left">Tap a colour to mark it ✗ out or ✓ in. Only you see your notes.</p></div>`;
+      <p class="hint left">📝 Your notes board sits under the guesses. Only you see it.</p></div>`;
     $('scSafePal').checked = safe;
+    // the board stays open or shut as you left it (this device only)
+    try { $('scBoard').open = localStorage.getItem('safecracker.board') !== 'shut'; } catch { $('scBoard').open = true; }
+    $('scBoard').ontoggle = () => { try { localStorage.setItem('safecracker.board', $('scBoard').open ? 'open' : 'shut'); } catch {} };
+    $('scNotesClear').onclick = () => { notes = []; spots = []; paintNotes(); paint(); };
     $('scSafePal').onchange = () => {
       safe = $('scSafePal').checked; COLORS = safe ? SAFE : STANDARD;
       try { localStorage.setItem('safecracker.palette', safe ? 'safe' : 'standard'); } catch {}
@@ -140,7 +150,9 @@ UI.safecracker = (() => {
       b.setAttribute('aria-label', `colour ${c + 1}` + (used ? ' (in your guess: tap to move it here)' : ''));
       b.classList.toggle('off', !open);
       b.classList.toggle('used', open && used);
-      if (notes[c]) b.classList.add('note-' + MARKS[notes[c]]);
+      // a colour that's out stays out; otherwise the selected spot's note, else the colour's
+      const mark = notes[c] === 1 ? 1 : (cursor != null && spots[cursor]?.[c]) || notes[c] || 0;
+      if (mark) b.classList.add('note-' + MARKS[mark]);
       if (open) b.onclick = () => tapColor(c);
       pad.append(b);
     }
@@ -249,7 +261,7 @@ UI.safecracker = (() => {
     }
     seenOpen = opened; seenRounds = g.history.length; seenSafe = g.safe;
 
-    if (notesFor !== g.safe) { notes = []; notesFor = g.safe; }
+    if (notesFor !== g.safe) { notes = []; spots = []; notesFor = g.safe; }
     paintNotes();
 
     $('scProbeInfo').textContent = g.myProbe ? `🔍 Your probe: the code holds ${g.myProbe[1]} of colour ${g.myProbe[0] + 1}.`
@@ -279,6 +291,28 @@ UI.safecracker = (() => {
       p.setAttribute('aria-label', `colour ${c + 1}: ${['no note', 'not in the code', 'in the code'][notes[c] || 0]}`);
       p.onclick = () => { notes[c] = ((notes[c] || 0) + 1) % 3; paintNotes(); paint(); };
       box.append(p);
+    }
+    // one row per spot: which colours can (✓) or can't (✗) go there
+    const grid = $('scSpots'); grid.innerHTML = '';
+    const n = S.safecracker.colors;
+    grid.style.gridTemplateColumns = `auto repeat(${n}, minmax(0, 1fr))`;
+    for (let i = 0; i < S.safecracker.length; i++) {
+      spots[i] = spots[i] || [];
+      grid.append(ctx.el('span', 'sc-spot-label', `Spot ${i + 1}`));
+      for (let c = 0; c < n; c++) {
+        const m = spots[i][c] || (notes[c] === 1 ? 1 : 0);  // a colour that's out is out of every spot
+        const cell = ctx.el('button', 'sc-cell' + (m ? ' ' + MARKS[m] : ''), m === 1 ? '✗' : m === 2 ? '✓' : String(c + 1));
+        cell.type = 'button';
+        cell.style.setProperty('--c', COLORS[c]);
+        cell.setAttribute('aria-label', `spot ${i + 1}, colour ${c + 1}: ${['no note', 'not here', 'here'][spots[i][c] || 0]}`);
+        cell.onclick = () => {
+          const v = ((spots[i][c] || 0) + 1) % 3;
+          if (v === 2) spots[i] = spots[i].map((x) => (x === 2 ? 0 : x));  // one ✓ per spot
+          spots[i][c] = v;
+          paintNotes(); paint();
+        };
+        grid.append(cell);
+      }
     }
   }
 

@@ -31,6 +31,7 @@ class Safecracker(Game):
         "Use your rivals' clues as well as your own.",
         "Crack it alone for 3 points, or 2 if others crack it in the same round. If nobody does before the rounds run out, the closest guess gets 1. 🔥 Crack safes alone back to back for +1 each.",
         "Once per safe, 🔍 Probe a colour to learn privately how many of it the code holds. It costs a point if you crack that safe.",
+        "📝 Your notes board (under the guesses) is yours alone: mark colours ✗ out or ✓ in, and each spot's ✗ not here or ✓ here. It's never sent anywhere and never changes the clues.",
         "Most points after the last safe wins. Alone, crack every safe.",
         "⚔️ Duel (2 players): each of you secretly sets a code, then you race to crack each other's.",
     ]

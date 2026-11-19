@@ -311,6 +311,8 @@ const MOVES = {
   },
   safecracker(d, S, n) {
     const lock = d.querySelector('#scLock');
+    if (!lock) return;  // the screen's script is still loading
+    if (n === 2) { click(d.querySelector('#scNotes .sc-peg')); click(d.querySelector('#scSpots .sc-cell')); }  // 📝 notes: local only
     if (!lock.disabled) return click(lock);
     const probe = d.querySelector('#scProbe');
     if (n === 3 && !probe.disabled) click(probe);  // probe once, then keep building the guess
