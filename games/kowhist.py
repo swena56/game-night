@@ -114,6 +114,15 @@ class KnockOutWhist(TrickGame):
     def final_scores(self):
         return {pid: (0 if self.knocked[k] else 1) for k, pid in enumerate(self.seats)}
 
+    def safety(self, i):
+        """Whether the viewer has already dodged the knock-out this hand."""
+        if self.knocked[i]:
+            return ""
+        left = len(self.hands[i])
+        if self.tricks[i]:
+            return f" ✅ Safe: you've won {self.tricks[i]}."
+        return " ⚠️ No trick yet: win one or you're out!" if left > 1 else " 🚨 Last card, no trick yet: win this or you're out!"
+
     def table(self, p, i):
         play = self.stage == "play"
         info = [{"count": len(self.hands[k]) if not self.knocked[k] else None, "out": self.knocked[k],
@@ -131,7 +140,9 @@ class KnockOutWhist(TrickGame):
         elif self.stage == "trump":
             t["note"] = f"{self.nm(self.chooser)} is picking trumps…"
         elif play and i is not None and self.room.turn == p.id:
-            t["note"] = "Your lead." if not self.trick else "Follow suit if you can."
+            t["note"] = ("Your lead." if not self.trick else "Follow suit if you can.") + self.safety(i)
+        elif play and i is not None and not self.knocked[i]:
+            t["note"] = self.safety(i).strip()
         return t
 
 
