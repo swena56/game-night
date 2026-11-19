@@ -192,6 +192,11 @@ class Gin(CardGame):
         self.stage = "show"
         self.pause(self.deal, 6)
 
+    @staticmethod
+    def risk_tag(left):
+        """A rough, hand-free estimate of undercut danger: the lower your deadwood, the harder you are to undercut."""
+        return " · ⚠️ undercut risk" if left >= 8 else " · some risk" if left >= 5 else ""
+
     def can_knock(self, i, c):
         return best([x for x in self.hands[i] if x != c])[0] <= 10
 
@@ -294,7 +299,7 @@ class Gin(CardGame):
                 moves.append({"card": c, "label": "Discard", "a": {"type": "discard", "card": c}})
                 if self.can_knock(i, c):
                     left = best([x for x in self.hands[i] if x != c])[0]
-                    moves.append({"card": c, "label": "🍸 Gin!" if left == 0 else f"👊 Knock ({left})", "a": {"type": "discard", "card": c, "knock": True}})
+                    moves.append({"card": c, "label": "🍸 Gin!" if left == 0 else f"👊 Knock ({left}){self.risk_tag(left)}", "a": {"type": "discard", "card": c, "knock": True}})
             t["moves"] = moves
             t["turnText"] = "🗑️ Discard (or knock)"
         return t
