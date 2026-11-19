@@ -271,6 +271,7 @@ const MOVES = {
   },
   heist(d) { click(pick(enabled(d, '.h-choice'))); },
   lantern(d) { click(pick(enabled(d, '.lm-tile'))); },
+  meteorshot(d, S) { const f = d.querySelector('#msFire'); if (f && !f.disabled) click(f); },
   moonshot(d, S) { click(S.moon.fuel >= 12 ? d.querySelector('#msBank') : d.querySelector('#msRoll')); },
   lucky(d, S, n, w) {
     const keys = enabled(d, '.lk-key');
