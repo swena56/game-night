@@ -316,9 +316,11 @@ class President(CardGame):
         if i is None:
             return t
         if self.stage == "swap" and i in self.waiting:
-            k = next(p[2] for p in self.swaps if p[0] == i)
+            _, low, k = next(p for p in self.swaps if p[0] == i)
+            junk = [c for c in sorted(self.hands[i], key=SORT) if c not in self.got.get(i, [])][:k]
             t["pick"] = {"act": "give", "min": k, "max": k, "label": f"Give {k} back"}
-            t["note"] = f"You got {show(self.got.get(i, []))}. Pick {k} card{'s' if k > 1 else ''} to give back."
+            t["note"] = (f"You got {show(self.got.get(i, []))} from {self.nm(low)}. Pick {k} card{'s' if k > 1 else ''} to give back"
+                         f" (your weakest: {show(junk)}).")
             t["turnText"] = "🔁 Pick cards to give back"
         elif self.stage == "swap":
             t["note"] = "Waiting for the swap…"
