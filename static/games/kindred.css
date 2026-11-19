@@ -39,3 +39,4 @@
 .kn-risk.safe { background: #06d6a0; color: #032; }
 .kn-risk.hot { background: #d00000; }
 .kn-stand { margin: 8px 0; }
+.kn-bonus { position: absolute; top: 4px; right: 6px; font-size: 14px; pointer-events: none; }

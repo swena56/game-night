@@ -73,7 +73,7 @@ g.board = [None] * 16
 g.board[0], g.board[1], g.board[2] = 8, 8 | 1, 8 | 2      # starred; mixed size/colour
 g.hand, g.stage = 8 | 4, "place"
 r.begin_turn(a.id)
-pts, _ = K.gain(g.board, g.through, 3, g.hand)
+pts, _ = K.gain(g.board, g.through, 3, g.hand, g.bonus)
 g.act(a, {"type": "move", "cell": 3})
 row = [x for x in g.scored if x["cells"] == [0, 1, 2, 3]]
 check("kin_traits names the shared trait", row and "✦ all starred" in row[0]["kin"], row)

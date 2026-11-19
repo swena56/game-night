@@ -18,6 +18,7 @@ TRAITS = [(1, "big", "small"), (2, "moon", "sun"), (4, "square", "round"), (8, "
 LINES = [[r * N + c for c in range(N)] for r in range(N)] + [[r * N + c for r in range(N)] for c in range(N)] \
     + [[i * N + i for i in range(N)], [i * N + N - 1 - i for i in range(N)]]
 SQUARES = [[r * N + c, r * N + c + 1, (r + 1) * N + c, (r + 1) * N + c + 1] for r in range(N - 1) for c in range(N - 1)]
+BONUS = 2  # extra points for filling the ⭐ bonus square
 BETWEEN = 5  # seconds to look at a full board before the next round
 
 
@@ -51,9 +52,9 @@ def kin_traits(pieces):
     return out
 
 
-def gain(board, through, cell, piece):
-    """Points for placing `piece` at `cell`, and the lines it completes [(cells, points)]."""
-    pts, done = 0, []
+def gain(board, through, cell, piece, bonus=None):
+    """Points for placing `piece` at `cell` (plus BONUS on the ⭐ square), and the lines it completes [(cells, points)]."""
+    pts, done = (BONUS if cell == bonus else 0), []
     for ln in through[cell]:
         if all(board[c] is not None or c == cell for c in ln):
             k = shared([piece if c == cell else board[c] for c in ln])
@@ -82,6 +83,7 @@ class Kindred(Game):
         "Fill the last gap of a row, column or long diagonal and you score it, trait by trait: all four alike 2 points, three alike 1, a 2–2 split 0.",
         "Example: big ☀️●, small ☀️■, big ☀️■✦, big ☀️● → sun 4 alike (2) + big 3 alike (1) + round 3 alike (1) + plain 3 alike (1) = 5 points.",
         "So hand your rival a piece that splits the traits 2–2 wherever they could finish a line, and keep the good ones for yourself.",
+        "⭐ One square on each board is marked: whoever fills it scores 2 extra, whatever it finishes (an option).",
         "No instant win: every finished line pays points, and the board always fills up. Highest total after the rounds wins; who gives first takes turns.",
     ]
     min_players = 2
@@ -90,8 +92,11 @@ class Kindred(Game):
               "triple": ("✨", "Big finish", "Score 10 points or more with one piece")}
     settings_schema = {
         "rounds": ("Rounds", [(1, "1 board"), (2, "2 boards (each gives first once)"), (4, "4 boards")], 2),
+        "bonus": ("⭐ Bonus square", [(True, "On: one square pays +2"), (False, "Off")], True),
         "variant": ("Lines", [("classic", "Rows, columns, diagonals"), ("squares", "➕ 2×2 kin squares score too")], "classic"),
     }
+
+    bonus = None  # the ⭐ bonus square (games saved before it have none)
 
     def start(self, seated, rng):
         self.rng = rng
@@ -100,6 +105,7 @@ class Kindred(Game):
         self.rounds = int(self.s.get("rounds") or 2)
         self.variant = self.s.get("variant") or "classic"
         self.through = lines_for(self.variant)
+        self.bonus_on = self.s.get("bonus", True) is not False
         self.scores = [0, 0]
         self.round = -1
         self.room.add_log(f"🦋 Kindred: {self.rounds} board{'s' * (self.rounds > 1)}. Place the piece you're handed, then pick your rival's.", "big")
@@ -112,6 +118,7 @@ class Kindred(Game):
         self.hand = None          # the piece the player to move must place
         self.stage = "give"       # give (first move of a board) | place | between
         self.last, self.scored = None, []
+        self.bonus = self.rng.randrange(N * N) if self.bonus_on else None
         giver = self.seats[self.round % 2]
         p = self.room.players.get(giver)
         if self.round:
@@ -177,7 +184,7 @@ class Kindred(Game):
 
     def place(self, p, cell):
         r = self.room
-        pts, done = gain(self.board, self.through, cell, self.hand)
+        pts, done = gain(self.board, self.through, cell, self.hand, self.bonus)
         self.board[cell] = self.hand
         self.scored = []
         for ln, k in done:
@@ -189,8 +196,12 @@ class Kindred(Game):
         if done:
             parts = [f"{x['pts']}" + (f" ({', '.join(x['kin'])})" if x["kin"] else "") for x in self.scored]
             line += ", finishing " + " + ".join(parts) + f" → +{pts}"
+        if cell == self.bonus:
+            line += f" ⭐ bonus +{BONUS}" + ("" if done else f" → +{pts}")
         r.add_log(line + ".", "question")
         kin = [t for x in self.scored for t in x["kin"]]
+        if cell == self.bonus:
+            self.moment(f"⭐ {p.name} takes the bonus square: +{BONUS}", "gold", "coin")
         if pts >= 10:
             self.award(p, "triple")
             self.moment(f"✨ {p.name} scores {pts} with one piece!", "gold", "fanfare")
@@ -257,20 +268,20 @@ class Kindred(Game):
         if random_only or (level == "easy" and rng.random() < 0.5):
             return rng.choice(cells), (rng.choice(pool) if pool else None)
         if self.stage == "place" and len(cells) <= {"hard": 6, "normal": 4}.get(level, 0):
-            return exact_best(tuple(board), hand, self.through)
+            return exact_best(tuple(board), hand, self.through, self.bonus)
         best, best_v = None, None
         for c in cells:
             b = list(board)
             mine = 0
             if c is not None:
-                mine, _ = gain(board, self.through, c, hand)
+                mine, _ = gain(board, self.through, c, hand, self.bonus)
                 b[c] = hand
             for gv in pool or [None]:
                 if gv is None:
                     v = mine
                 else:
                     # the rival's best placement of this piece, and (hard) what's left for me after
-                    reply = max(gain(b, self.through, c2, gv)[0] for c2 in range(N * N) if b[c2] is None) if any(x is None for x in b) else 0
+                    reply = max(gain(b, self.through, c2, gv, self.bonus)[0] for c2 in range(N * N) if b[c2] is None) if any(x is None for x in b) else 0
                     v = mine - reply * (1.0 if level != "easy" else 0.5)
                 v += rng.random() * (0.3 if level == "easy" else 0.01)
                 if best_v is None or v > best_v:
@@ -291,13 +302,13 @@ class Kindred(Game):
         return {"kindred": {
             "board": self.board, "hand": self.hand, "pool": self.pool(), "stage": self.stage, "seats": self.seats,
             "me": i, "scores": self.scores, "round": self.round, "rounds": self.rounds, "variant": self.variant,
-            "last": self.last, "scored": self.scored,
+            "last": self.last, "bonus": self.bonus, "scored": self.scored,
             "lines": LINES + (SQUARES if self.variant == "squares" else []),
             "standings": self.standings() if self.stage == "between" else None,
         }}
 
 
-def exact_best(board, hand, through):
+def exact_best(board, hand, through, bonus=None):
     """The move with the best final score difference for the player holding `hand`, by full search
     (memoised on board + hand: about 0.1 s at 6 empty squares, 2 s at 7 on a slow host)."""
     memo = {}
@@ -311,7 +322,7 @@ def exact_best(board, hand, through):
         pool = [x for x in range(16) if x not in used]
         best, move = None, None
         for c in empties:
-            pts, _ = gain(b, through, c, h)
+            pts, _ = gain(b, through, c, h, bonus)
             nb = b[:c] + (h,) + b[c + 1:]
             if not pool or len(empties) == 1:
                 v = pts

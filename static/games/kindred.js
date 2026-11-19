@@ -32,8 +32,9 @@ UI.kindred = (() => {
 
   // a full line's points, as on the server: per trait 2 (four alike), 1 (three alike), 0 (2–2)
   const linePts = (ps) => BITS.reduce((t, [b]) => t + Math.abs(ps.filter((x) => x & b).length - 2), 0);
+  let bonusCell = null;
   function gainAt(board, lines, cell, piece) {
-    let pts = 0;
+    let pts = cell === bonusCell ? 2 : 0;
     for (const ln of lines) {
       if (!ln.includes(cell) || !ln.every((c) => c === cell || board[c] != null)) continue;
       pts += linePts(ln.map((c) => (c === cell ? piece : board[c])));
@@ -118,6 +119,7 @@ UI.kindred = (() => {
     if (kd.hand != null && kd.stage === 'place') txt.append(ctx.el('small', '', `In hand: ${name(kd.hand)}`));
     hand.append(txt);
     // board: pieces, the last one ringed, the lines just scored glowing; my hints on empty squares
+    bonusCell = kd.bonus ?? null;
     const fresh = `${kd.round}:${kd.last}:${kd.board.filter((v) => v != null).length}`;
     const isNew = fresh !== seen && seen !== '';
     seen = fresh;
@@ -134,6 +136,7 @@ UI.kindred = (() => {
       b.classList.toggle('can', can);
       b.disabled = !can;
       if (v != null) b.append(pieceSvg(v));
+      else if (i === kd.bonus) b.append(ctx.el('span', 'kn-bonus', '⭐'));
       if (can) {
         const n = gainAt(kd.board, kd.lines, i, kd.hand);
         if (n) b.append(ctx.el('span', 'kn-gain', `+${n}`));
