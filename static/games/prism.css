@@ -81,6 +81,8 @@
 .pz-cell { padding: 0; aspect-ratio: 1; font-size: clamp(14px, 5vw, 26px); background: #ffffff10; border-radius: 6px; }
 .pz-cell.sel { outline: 2px solid #ffd166; }
 .pz-cell.ice { background: #9fdcff55; }
+.pz-cell.incoming-frost { outline: 3px dashed #83e8ff; outline-offset: -3px; box-shadow: inset 0 0 12px #35c9ff88; }
+.pz-cell.incoming-stone { outline: 3px dashed #e9c7a7; outline-offset: -3px; box-shadow: inset 0 0 12px #a9795288; }
 .pz-count { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 96px; font-weight: 900;
   color: #fff; text-shadow: 0 0 30px #a64dff, 0 0 60px #2fd0ff; pointer-events: none; background: #0006; }
 .pz-hit { position: absolute; left: 0; right: 0; top: 42%; text-align: center; font-size: 26px; font-weight: 900; pointer-events: none; opacity: 0; }

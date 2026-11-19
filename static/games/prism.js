@@ -540,6 +540,21 @@ UI.prism = (() => {
       p.restore();
       if (special(ch) || ch === PRISM) busy = true; // specials shimmer
     }
+    const incomingAt = new Map();
+    for (const e of st?.incoming || []) for (const i of e.cells || []) incomingAt.set(i, e.kind);
+    if (incomingAt.size) {
+      const pulse = 0.72 + 0.18 * Math.sin(t / 110);
+      for (const [i, kind_] of incomingAt) {
+        const [x, y] = cellXY(i), color = kind_ === 'frost' ? '#83e8ff' : '#e9c7a7';
+        p.save(); p.globalAlpha = pulse; p.strokeStyle = color; p.lineWidth = Math.max(2, cs * 0.065);
+        p.setLineDash([cs * 0.12, cs * 0.08]); p.lineDashOffset = -t / 22;
+        p.strokeRect(x - cs * 0.43, y - cs * 0.43, cs * 0.86, cs * 0.86);
+        p.setLineDash([]); p.fillStyle = color; p.font = `900 ${Math.max(10, cs * 0.25)}px sans-serif`;
+        p.textAlign = 'right'; p.textBaseline = 'top'; p.fillText(kind_ === 'frost' ? '❄' : '🪨', x + cs * 0.37, y - cs * 0.38);
+        p.restore();
+      }
+      busy = true;
+    }
     // twinkle: now and then a resting gem catches the light
     if (motion() && st) {
       if (!st.tw || t - st.tw.t0 > 700) {
@@ -879,15 +894,21 @@ UI.prism = (() => {
     for (const ev of q) {
       const n = Math.max(0, Math.min(6, ev.n | 0));
       if (ev.kind === 'frost') {
-        const spots = g.map((c, i) => (PLAIN.includes(c) ? i : -1)).filter((i) => i >= 0).sort(() => Math.random() - 0.5).slice(0, n);
+        const spots = Array.isArray(ev.cells)
+          ? ev.cells.filter((i) => Number.isInteger(i) && i >= 0 && i < N * N && PLAIN.includes(g[i]))
+          : g.map((c, i) => (PLAIN.includes(c) ? i : -1)).filter((i) => i >= 0).sort(() => Math.random() - 0.5).slice(0, n);
         spots.forEach((i) => { g[i] = FROZEN[PLAIN.indexOf(g[i])]; cells[i].ice = t; });
         if (sel != null && FROZEN.includes(g[sel])) sel = null;
         ctx.toast(`🧊 ${ev.from} froze ${spots.length} of your gems! Match next to them to thaw.`);
         ctx.sfx?.('crack'); buzz?.([40, 30, 40]);
       } else if (ev.kind === 'stone') {
-        let spots = g.map((c, i) => (PLAIN.includes(c) && i < N * 3 ? i : -1)).filter((i) => i >= 0);
-        if (!spots.length) spots = g.map((c, i) => (PLAIN.includes(c) ? i : -1)).filter((i) => i >= 0);
-        spots = spots.sort(() => Math.random() - 0.5).slice(0, n);
+        let spots;
+        if (Array.isArray(ev.cells)) spots = ev.cells.filter((i) => Number.isInteger(i) && i >= 0 && i < N * N && PLAIN.includes(g[i]));
+        else {
+          spots = g.map((c, i) => (PLAIN.includes(c) && i < N * 3 ? i : -1)).filter((i) => i >= 0);
+          if (!spots.length) spots = g.map((c, i) => (PLAIN.includes(c) ? i : -1)).filter((i) => i >= 0);
+          spots = spots.sort(() => Math.random() - 0.5).slice(0, n);
+        }
         spots.forEach((i) => { g[i] = STONE; cells[i].oy = -2 - ((i / N) | 0); cells[i].vy = 4; });
         if (spots.length && motion() && c2) falling ||= (() => { doShake(2.5); ctx.sfx?.('thud'); });
         else { spots.forEach((i) => { cells[i].oy = 0; }); ctx.sfx?.('thud'); }
@@ -939,6 +960,7 @@ UI.prism = (() => {
   function renderWarn() {
     const box = $('pzWarn');
     if (!box) return;
+    renderGrid(); kick();
     box.innerHTML = '';
     const t = now();
     for (const e of st.incoming) {
@@ -948,7 +970,7 @@ UI.prism = (() => {
       chip.append(bar);
       box.append(chip);
     }
-    if (st.incoming.length) box.append(ctx.el('div', 'pz-warn-tip', 'Chain ×3 or set off a special to shatter it!'));
+    if (st.incoming.length) box.append(ctx.el('div', 'pz-warn-tip', 'Outlined cells are the exact targets. Chain ×3 or set off a special to shatter the attack.'));
   }
 
   // ---------- sync with the server
@@ -1021,6 +1043,9 @@ UI.prism = (() => {
       b.style.color = k != null ? COLORS[k][0] : '';
       b.classList.toggle('sel', sel === i);
       b.classList.toggle('ice', FROZEN.includes(ch));
+      const target = st?.incoming.find((e) => (e.cells || []).includes(i));
+      b.classList.toggle('incoming-frost', target?.kind === 'frost');
+      b.classList.toggle('incoming-stone', target?.kind === 'stone');
     });
   }
 

@@ -99,6 +99,10 @@ b.freeze(4)
 check("frost freezes gems", sum(c in "ABCDEF" for c in b.rows()) == 4)
 b.stones(3)
 check("stones land on the board", b.rows().count(STONE) == 3 and b.moves())
+b = Board(random.Random(11))
+chosen = [i for i, c in enumerate(b.g) if c in "abcdef"][:2]
+b.freeze_cells(chosen)
+check("a locked frost target freezes only its selected cells", all(b.g[i] in "ABCDEF" for i in chosen))
 
 # -- cascades and refills
 # a hand-made two-step: column 2 holds b over a a; swapping the a in from (3,7) clears the column,
@@ -151,13 +155,18 @@ check("a falling score is refused", not refused(game, ann, {"type": "board", "ro
 check("an impossible jump is refused", refused(game, ann, {"type": "board", "rows": ann.g.rows, "score": 10 ** 7}))
 check("a score that isn't a number is refused", refused(game, ann, {"type": "board", "rows": ann.g.rows, "score": "900"}))
 check("a bad burst is refused", refused(game, ann, {"type": "burst", "cascade": 99}) and refused(game, ann, {"type": "burst", "cascade": True}))
+before_attack_rows = {p.id: p.g.rows for p in (bo, cy)}
 game.act(ann, {"type": "burst", "cascade": 4, "specials": ["nova", "hack"], "made": []})
 hit = [p for p in (bo, cy) if p.g.events]
-check("a big burst sends frost to one rival", len(hit) == 1 and hit[0].g.events[0]["kind"] == "frost" and ann.g.sent > 0)
+ev = hit[0].g.events[0] if hit else {}
+check("a big burst sends frost with fixed target cells", len(hit) == 1 and ev.get("kind") == "frost"
+      and len(ev.get("cells", [])) == ev.get("n") and all(hit[0].g.rows[i] in "abcdef" for i in ev["cells"]) and ann.g.sent > 0)
+check("incoming preview does not mutate the target board early", bool(hit) and hit[0].g.rows == before_attack_rows[hit[0].id])
 mine = game.view(ann)["prism"]
 game.act(ann, {"type": "burst", "cascade": 4, "specials": [], "made": []})
 check("attacks are spaced out", sum(len(p.g.events) for p in (bo, cy)) == 1)
-check("you only see your own attacks", mine["events"] == [] and game.view(hit[0])["prism"]["events"])
+check("you only see your own attacks", mine["events"] == [] and game.view(hit[0])["prism"]["events"]
+      and game.view(hit[0])["prism"]["events"][0].get("cells") == ev.get("cells"))
 check("the view shows every board and score", set(mine["boards"]) == {ann.id, bo.id, cy.id} and mine["boards"][ann.id]["score"] == 500)
 
 room, (ann, bo, cy), game = new_room(attacks=False)

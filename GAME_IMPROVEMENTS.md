@@ -43,7 +43,7 @@ acceptance check before they can be considered complete.
 | Game (`id`) | What to change | Acceptance check |
 |---|---|---|
 | Spire Siege (`spire`) | Add a short between-wave choice that lets players spend a cleared-ring reward on one of two balanced upgrades. | The choice is private to the player, applies only to their tower, and cannot be selected twice for one reward. |
-| Prism Pop (`prism`) | Add a board preview for incoming frost or stone attacks so players can plan a match before the obstruction lands. | Preview identifies the affected board cells without changing them; attack resolution stays consistent across browsers. |
+| Prism Pop (`prism`) | Add a board preview for incoming frost or stone attacks so players can plan a match before the obstruction lands. **Implemented; browser verification pending.** | Preview identifies the affected board cells without changing them; attack resolution stays consistent across browsers. |
 | Marble Rush (`marble`) | Add optional checkpoint split times and a personal best ghost for the same course seed. | Ghost follows only that player's saved run, split times sum to the final time, and the race remains fair across players. |
 | Light Riders (`riders`) | Add a limited-use brake or sharp-turn control so riders can choose a precise corner at a speed cost. | Braking reduces speed on server simulation, works from touch and keyboard, and cannot be held to stop indefinitely. |
 | Whisker Run (`whisker`) | Add a visible, brief warning when a mouse is close to a cat that is just outside the camera view. | Warning direction points toward the nearest off-screen cat, disappears when safe, and does not reveal hidden maze information. |

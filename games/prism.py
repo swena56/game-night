@@ -399,17 +399,31 @@ class Board:
     # -- attacks
     def freeze(self, n):
         spots = [i for i, c in enumerate(self.g) if c in PLAIN]
-        for i in self.rng.sample(spots, min(n, len(spots))):
-            self.g[i] = FROZEN[PLAIN.index(self.g[i])]
+        return self.freeze_cells(self.rng.sample(spots, min(n, len(spots))))
+
+    def freeze_cells(self, spots):
+        changed = 0
+        for i in spots:
+            if isinstance(i, int) and 0 <= i < N * N and self.g[i] in PLAIN:
+                self.g[i] = FROZEN[PLAIN.index(self.g[i])]
+                changed += 1
         if not self.moves():
             self.shuffle()
+        return changed
 
     def stones(self, n):
         spots = [i for i, c in enumerate(self.g) if c in PLAIN and i < N * 3] or [i for i, c in enumerate(self.g) if c in PLAIN]
-        for i in self.rng.sample(spots, min(n, len(spots))):
-            self.g[i] = STONE
+        return self.stone_cells(self.rng.sample(spots, min(n, len(spots))))
+
+    def stone_cells(self, spots):
+        changed = 0
+        for i in spots:
+            if isinstance(i, int) and 0 <= i < N * N and self.g[i] in PLAIN:
+                self.g[i] = STONE
+                changed += 1
         if not self.moves():
             self.shuffle()
+        return changed
 
 
 def bot_move(board, level, rng):
@@ -448,7 +462,7 @@ class Prism(Game):
         'Tap a gem, then a neighbour (or swipe it). ⌨️ Arrow keys move, Enter or Space picks.',
         '4 in a row makes a ⚡ beam (clears a row or column), an L or T makes a 💥 nova (clears around it), 5 in a row makes a 🌈 prism: swap it with a gem to clear that colour.',
         'Swap two specials together for a bigger blast. Cascades raise the multiplier: ×2, ×3…',
-        'Big plays send 🧊 frost (frozen gems can\'t move) and 🪨 stones to a rival: a match next to them breaks them. An attack shows a warning first: a ×3 cascade or a special before it lands 🛡 shatters it. Highest score when the clock runs out wins.',
+        'Big plays send 🧊 frost (frozen gems can\'t move) and 🪨 stones to a rival: a match next to them breaks them. Outlined cells show exact incoming targets during the warning; a ×3 cascade or a special before it lands 🛡 shatters the attack. Highest score when the clock runs out wins.',
         'Quick matches fill the 🔥 fever meter: when it\'s full, points count double for 6 seconds. The last 10 seconds are a RUSH: double points again (they stack).',
         '🎯 Levels mode (one player): reach each level\'s goal before your moves run out. More moves left = more ★.',
     ]
@@ -558,7 +572,12 @@ class Prism(Game):
 
     def send(self, o, event):
         self.eid += 1
-        o.g.events = (o.g.events + [{**event, "id": self.eid, "at": time.time() + PARRY_SECS}])[-30:]
+        rows = getattr(o.g, "rows", "")
+        eligible = [i for i, ch in enumerate(rows) if ch in PLAIN]
+        if event["kind"] == "stone":
+            eligible = [i for i in eligible if i < N * 3] or eligible
+        cells = self.rng.sample(eligible, min(event["n"], len(eligible)))
+        o.g.events = (o.g.events + [{**event, "cells": cells, "id": self.eid, "at": time.time() + PARRY_SECS}])[-30:]
         o.g.hits = getattr(o.g, "hits", 0) + 1
         o.g.last_from = event.get("fromId")
 
@@ -695,7 +714,10 @@ class Prism(Game):
             if ev.get("at", 0) > now:
                 break
             g.applied = ev["id"]
-            (b.freeze if ev["kind"] == "frost" else b.stones)(ev["n"])
+            if isinstance(ev.get("cells"), list):
+                (b.freeze_cells if ev["kind"] == "frost" else b.stone_cells)(ev["cells"])
+            else:  # saved rooms with older pending events still resolve
+                (b.freeze if ev["kind"] == "frost" else b.stones)(ev["n"])
         pace = PACE.get(o.bot, 2.4) * random.uniform(0.8, 1.25)
         move = bot_move(b, o.bot, self.rng)
         if not move:
