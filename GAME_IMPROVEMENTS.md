@@ -184,7 +184,7 @@ would affect other games. Preserve each game's hidden hands and use its existing
 | Word Garden (`garden`) | Add an optional hint ladder that reveals one letter at a time with a clearly shown score cost. | Each hint deducts exactly the announced score and leaves bonus-word scoring unchanged. |
 | Safecracker (`safecracker`) | Add a hypothesis board that lets players mark candidate colors privately between simultaneous guesses. | Notes remain local to the player and never affect the shared clue history or code count. |
 | Fib Finder (`fibfinder`) | Add a post-vote fact card with a source note and a short context explanation for the true answer. | Source/context is associated with the revealed fact and cannot be inspected before voting closes. |
-| Word Ladder (`ladder`) | Add an optional shortest-path hint that shows the next letter change without filling the whole answer. | Hint uses the selected dictionary and word length, charges the configured hint cost, and preserves race timing. |
+| Word Ladder (`ladder`) | Add an optional shortest-path hint that shows the next letter change without filling the whole answer. Already present as the 🔎 peek (marks the letter to change, 1 point); rules check extended for 3/5-letter sizes, race clock and watchers. **Implemented; browser verification pending.** | Hint uses the selected dictionary and word length, charges the configured hint cost, and preserves race timing. |
 
 ## Cross-game implementation notes
 

@@ -53,5 +53,25 @@ steps = len(g.paths[ann.id]) - 1
 want = max(2, L.FINISH - L.OVER_PAR * max(0, steps - g.par)) - L.PEEK
 check("finish pays one point less", g.gained.get(ann.id) == want, f"gained={g.gained} want={want}")
 
+# the acceptance check: the hint follows the chosen word length, leaves the race clock alone, and a
+# watcher's view carries no peek
+for size in (3, 5):
+    room = server.Room("TEST")
+    ann = room.add_player("Ann")
+    room.switch_game("ladder")
+    room.settings["size"] = size
+    room.start()
+    g = room.game
+    end, deadline = g.end, room.deadline
+    g.act(ann, {"type": "peek"})
+    spot = g.view(ann)["ladder"]["peek"]
+    here = g.paths[ann.id][-1]
+    d = L.distances(g.target)
+    leads = [x for x in L.neighbours(here, d) if x[spot] != here[spot] and d[x] < d.get(here, 99)]
+    check(f"{size}-letter peek marks a letter on a shortest everyday ladder", 0 <= spot < size and bool(leads), (here, spot))
+    check(f"{size}-letter peek leaves the race clock alone", g.end == end and room.deadline == deadline)
+    watcher = room.add_player("Cy")
+    check(f"{size}-letter: a watcher sees no peek", g.view(watcher)["ladder"]["peek"] is None)
+
 print(f"\n{len(fails)} failed" if fails else "\nall passed")
 sys.exit(1 if fails else 0)
