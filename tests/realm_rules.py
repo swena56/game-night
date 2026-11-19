@@ -198,7 +198,8 @@ room, ann = room_for(bots=("normal", "normal", "normal"), map="grand")
 check("a grand game deals all 44 lands", -1 not in room.game.owner and len(room.game.owner) == 44)
 
 # -- gambits
-room, ann = room_for(storms=True, gambits=True)
+# goal=world: with the default dominion goal a bot can win while the test waits for Ann's next turn
+room, ann = room_for(storms=True, gambits=True, goal="world")
 g = room.game
 to_my_draft(room, ann)
 s = g.seat(ann)
