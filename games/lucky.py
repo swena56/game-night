@@ -76,6 +76,7 @@ class Lucky(Game):
         "🎁 WILD reveals a free letter, 🦊 STEAL takes 500 from the leader, ⚡ JACKPOT wins the pot.",
         f"🔮 Solve while half the letters or more are still hidden for +{MIND_READER}.",
         "Solve on your turn to bank your round (at least 1000). Most points after the last round wins.",
+        "📚 The puzzle archive lists every solved phrase with its category and who solved it. A rematch brings new puzzles.",
     ]
     name = "Lucky Letters"
     icon = "🎡"
@@ -101,7 +102,17 @@ class Lucky(Game):
         self.total = {p.id: 0 for p in seated}
         self.bank = {p.id: 0 for p in seated}
         pool = [(cat, phrase) for cat, phrases in PUZZLES.items() for phrase in phrases]
-        self.queue = rng.sample(pool, self.s["rounds"])
+        # puzzles played in this room tonight are kept back on a rematch (so the 📚 archive never holds a
+        # puzzle that's on the board), until the pool runs low
+        seen = getattr(self.room, "lucky_seen", set())
+        fresh = [q for q in pool if q[1] not in seen]
+        if len(fresh) < self.s["rounds"]:
+            archived = {e.get("answer") for e in getattr(self.room, "lucky_archive", [])}
+            seen, fresh = set(), [q for q in pool if q[1] not in archived]
+            if len(fresh) < self.s["rounds"]:
+                fresh = pool
+        self.queue = rng.sample(fresh, self.s["rounds"])
+        self.room.lucky_seen = seen | {q[1] for q in self.queue}
         self.round = 0
         self.jackpot = 1000
         self.spin = None
@@ -297,6 +308,7 @@ class Lucky(Game):
             self.award(p, "mind_reader")
         self.total[p.id] += won
         self.last_answer = {"category": self.category, "answer": self.answer, "by": p.name, "won": won}
+        self.file_puzzle(p, won, bool(mind))
         self.called |= set(self.answer)
         r.add_log(f"🎉 {p.name} solved it: “{self.answer}” and banks {won:,}!" + (f" 🔮 Mind reader: {hidden} letters were still hidden, +{MIND_READER}." if mind else ""), "big")
         if mind:
@@ -305,6 +317,23 @@ class Lucky(Game):
             return self.finish()
         self.stage = "solved"  # on_timeout starts the next round once everyone has seen the answer
         r.deadline = time.time() + REVEAL_SECS
+
+    def file_puzzle(self, p, won, mind):
+        """📚 A solved puzzle goes into the room's archive (it lasts across rematches; the newest 30 are kept)."""
+        r = self.room
+        entry = {"game": getattr(r, "game_no", 0), "round": self.round, "rounds": self.s["rounds"],
+                 "category": self.category, "answer": self.answer, "by": p.name, "color": p.color, "won": won, "mind": mind}
+        r.lucky_archive = (getattr(r, "lucky_archive", []) + [entry])[-30:]
+
+    def archive(self):
+        """Completed puzzles only. The puzzle on the board (and any still to come this game) never shows, even if
+        an older game had it."""
+        ahead = set()
+        if self.room.phase == "playing":
+            ahead = {ph for _, ph in self.queue[self.round:]}
+            if self.stage != "solved":
+                ahead.add(self.answer)
+        return [e for e in getattr(self.room, "lucky_archive", []) if e.get("answer") not in ahead]
 
     def finish(self):
         r = self.room
@@ -352,6 +381,7 @@ class Lucky(Game):
             "bank": self.bank, "total": self.total, "seats": self.seats, "last": self.last_answer,
             "standings": self.standings() if self.stage == "solved" else None,
             "buy": VOWEL_COST if self.s.get("buy") else None, "clock": self.s.get("clock") or self.room.settings["timer"] or None,
+            "archive": self.archive(), "gameNo": getattr(self.room, "game_no", 0),
         }}
 
     # -- bots

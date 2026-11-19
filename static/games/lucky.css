@@ -34,3 +34,11 @@
   .lk-tile { width: clamp(16px, 2.4vw, 30px); }
   .lk-actions { min-height: 0; }
 }
+/* 📚 the puzzle archive: solved phrases with their category and solver */
+.lk-archive { margin-top: 10px; }
+.lk-archive summary { cursor: pointer; font-weight: 800; padding: 4px 0; }
+.lk-arc-h { font-size: 12px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-top: 6px; }
+.lk-arc { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 8px; padding: 5px 0; border-top: 1px solid var(--line); }
+.lk-arc small { grid-column: 1 / -1; color: var(--muted); font-size: 11px; }
+.lk-arc b { min-width: 0; overflow-wrap: anywhere; font-size: 13px; letter-spacing: .03em; }
+.lk-arc-by { font-size: 12px; font-weight: 700; white-space: nowrap; }

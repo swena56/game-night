@@ -195,7 +195,9 @@ UI.lucky = (() => {
         <div id="lkKeys" class="lk-keys"></div>
         <form id="lkSolveForm" class="row"><input id="lkSolve" placeholder="Solve the puzzle…" autocomplete="off"><button>Solve</button></form>
       </div>
-      <table id="lkScores" class="scores"></table></div>`;
+      <table id="lkScores" class="scores"></table>
+      <details id="lkArchive" class="lk-archive" hidden><summary></summary><div id="lkArcList"></div></details></div>`;
+    arcKey = '';
     $('lkSpin').onclick = () => ctx.quiet(ctx.act('spin'));
     $('lkBuy').onclick = () => ctx.quiet(ctx.act('buy'));
     $('lkSolveForm').onsubmit = (e) => {
@@ -314,6 +316,33 @@ UI.lucky = (() => {
       table.append(tr);
     }
     prevBank = { ...L.bank }; prevTotal = { ...L.total };
+    archive(L);
+  }
+
+  // 📚 the puzzle archive: solved phrases only (the server leaves out the one on the board), newest first
+  let arcKey = '';
+  function archive(L) {
+    const box = $('lkArchive'), list = L.archive || [];
+    box.hidden = !list.length;
+    const key = `${list.length}:${list[list.length - 1]?.answer ?? ''}:${S.phase}`;
+    if (key === arcKey) return;
+    if (arcKey === '' || S.phase !== 'playing') box.open = S.phase !== 'playing';  // open itself at the end
+    arcKey = key;
+    box.querySelector('summary').textContent = `📚 Puzzle archive (${list.length})`;
+    const out = $('lkArcList'); out.innerHTML = '';
+    const groups = [['This game', list.filter((e) => e.game === L.gameNo)], ['Earlier games', list.filter((e) => e.game !== L.gameNo)]];
+    for (const [title, items] of groups) {
+      if (!items.length) continue;
+      if (groups[1][1].length) out.append(ctx.el('div', 'lk-arc-h', title));
+      for (const e of [...items].reverse()) {
+        const row = ctx.el('div', 'lk-arc');
+        row.append(ctx.el('small', '', `${e.game === L.gameNo ? `Puzzle ${e.round}/${e.rounds} · ` : ''}${e.category}`), ctx.el('b', '', e.answer));
+        const who = ctx.el('span', 'lk-arc-by', `${e.by} +${num(e.won)}${e.mind ? ' 🔮' : ''}`);
+        if (e.color) who.style.color = e.color;
+        row.append(who);
+        out.append(row);
+      }
+    }
   }
 
   const turnText = (s) => s.phase !== 'playing' ? null
