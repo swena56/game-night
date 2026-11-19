@@ -4,7 +4,10 @@ Seven cards each (five with four or more players), the rest a face-down pond. On
 player for a rank you hold. If they have any, they hand them all over and you go again. If not: go
 fish! Draw from the pond; if it's the rank you asked for, show it and go again. Four of a rank make a
 book, laid down at once. Run out of cards and you draw five more. When all thirteen books are down,
-most books wins."""
+most books wins.
+
+📝 Table notes (default on): under each rival you see the ranks everyone has watched them ask for or take and
+not yet give up or lay down as a book (only public history). 🔥 Three asks in a row that bring cards in is a streak."""
 import random
 
 from .cardbase import CardGame, GameError, deck, rank, suit, pretty, rname, by_suit
@@ -24,9 +27,12 @@ class GoFish(CardGame):
         "They hand over every card of that rank, and you go again.",
         "If they have none: 🐟 go fish! Draw from the pond; draw the rank you asked for and you go again.",
         "Four of a rank make a book. Most books when all thirteen are down wins.",
+        "📝 Table notes show the ranks a rival has been seen asking for or taking and still holds, so you can ask them for it. 🔥 Three good asks in a row is a streak.",
     ]
     min_players, max_players = 2, 6
-    badges = {**CardGame.badges, "haul": ("🎣", "Big haul", "Get three cards in one ask")}
+    badges = {**CardGame.badges, "haul": ("🎣", "Big haul", "Get three cards in one ask"), "streak": ("🔥", "Hot streak", "Three successful asks in a row")}
+    settings_schema = {"notes": ("📝 Table notes", [(True, "On: show who's known to hold what"), (False, "Off: pure memory")], True)}
+    streak = None  # games saved before 🔥 have none
 
     def start(self, seated, rng):
         self.seat_up(seated, rng)
@@ -38,6 +44,7 @@ class GoFish(CardGame):
         self.books = [[] for _ in range(self.n)]
         self.known = [set() for _ in range(self.n)]     # ranks everyone saw each player ask for or receive
         self.last = None
+        self.streak = [0] * self.n
         self.room.add_log("🐟 Go Fish: ask for what you need. Books of four score.", "big")
         for k in range(self.n):
             self.check_books(k)
@@ -76,12 +83,20 @@ class GoFish(CardGame):
             self.room.add_log(f"🙋 {self.nm(i)} asks {self.nm(j)} for {rname(r)}: gets {len(got)}!")
             if len(got) >= 3 and self.pl(i):
                 self.award(self.pl(i), "haul")
+            if self.streak:
+                self.streak[i] += 1
+                if self.streak[i] == 3:
+                    self.moment(f"🔥 {self.nm(i)} is on a streak!", "gold", "fanfare")
+                    if self.pl(i):
+                        self.award(self.pl(i), "streak")
             self.check_books(i)
             self.refill(i)
             self.refill(j)
             return self.after_ask(i, again=True)
         self.room.add_log(f"🙋 {self.nm(i)} asks {self.nm(j)} for {rname(r)}: 🐟 Go fish!")
         self.last = {"seat": i, "from": j, "rank": r, "got": 0}
+        if self.streak:
+            self.streak[i] = 0
         again = False
         if self.pond:
             c = self.pond.pop()
@@ -150,8 +165,14 @@ class GoFish(CardGame):
     def final_scores(self):
         return {pid: len(self.books[k]) for k, pid in enumerate(self.seats)}
 
+    def notes(self, k):
+        """📝 ranks everyone has seen player k ask for or take and not yet lose (public history only)."""
+        return sorted(self.known[k], key=ORDER.index)
+
     def table(self, p, i):
-        info = [{"count": len(self.hands[k]), "tags": [f"📚 {len(self.books[k])}"],
+        show = self.s.get("notes", True)
+        info = [{"count": len(self.hands[k]),
+                 "tags": [f"📚 {len(self.books[k])}"] + ([f"📝 {' '.join('10' if r == 'T' else r for r in self.notes(k))}"] if show and k != i and self.notes(k) else []),
                  "show": [r + "S" for r in self.books[k]][-6:]} for k in range(self.n)]
         lst = self.last
         t = {"info": info, "hand": self.hands[i] if i is not None else [],
