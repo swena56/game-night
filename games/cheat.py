@@ -292,7 +292,12 @@ class Cheat(CardGame):
         elif self.stage == "call" and i in self.waiting:
             t["buttons"] = [{"label": "🚨 Cheat!", "a": {"type": "call"}, "kind": "danger big"},
                             {"label": "✓ Believe", "a": {"type": "believe"}}]
-            t["note"] = f"Do you believe {self.nm(c['seat'])}? You hold {sum(1 for x in self.hands[i] if rank(x) == c['rank'])} {rname(c['rank'])}."
+            held = sum(1 for x in self.hands[i] if rank(x) == c["rank"])
+            gone = held + sum(1 for x in self.mine_in_pile[i] if rank(x) == c["rank"])
+            left = 4 - gone
+            t["note"] = (f"Do you believe {self.nm(c['seat'])}? You hold {held} {rname(c['rank'])}"
+                         + (f" and only {left} can be out there, so {c['n']} is impossible: it's a lie!" if c["n"] > left
+                            else f"; at most {left} are left for them to hold ({c['n']} claimed)."))
             t["turnText"] = "🚨 Call Cheat, or believe it?"
         elif self.stage == "play" and self.room.turn in self.seats:
             t["note"] = f"{self.nm(self.seats.index(self.room.turn))} is playing {' / '.join(rname(r) for r in opts)}."
