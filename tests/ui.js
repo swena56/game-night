@@ -479,7 +479,18 @@ const MOVES = {
       setTimeout(() => w.dispatchEvent(new w.KeyboardEvent('keyup', { code, bubbles: true })), 200);
     }
   },
-  oware(d) { click(pick([...d.querySelectorAll('.ow-pit.can:not(:disabled)')])); },
+  oware(d, S, n, w) {
+    const o = S.oware, toggle = d.querySelector('#owPreviewToggle');
+    if (o.legal.length && n % 9 === 4 && !toggle.classList.contains('on')) {
+      click(toggle);
+      const pit = o.legal[0], cell = d.querySelector(`.ow-pit[data-i="${pit}"]`);
+      click(cell);
+      const expect = w.UI.oware.testPreview(o.pits, pit, o.me), actual = [...d.querySelectorAll('.ow-pit.takes')].map((b) => +b.dataset.i).sort((a, b) => a - b);
+      if (JSON.stringify(actual) !== JSON.stringify([...expect.taken].sort((a, b) => a - b))) nodeErrors.push('Oware touch preview disagrees with its sowing capture simulation');
+      click(d.querySelector(`.ow-pit[data-i="${pit}"]`)); return;
+    }
+    click(pick([...d.querySelectorAll('.ow-pit.can:not(:disabled)')]));
+  },
   reversi(d) { click(pick([...d.querySelectorAll('.rv-cell.can')])); },
   ultimate(d) { click(pick([...d.querySelectorAll('.ut-cell.can')])); },
   realm(d, S, n) {  // draft all onto one land; attack (blitz) from a land with a rival neighbour; move in; end the turn

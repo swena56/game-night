@@ -96,7 +96,7 @@ class Oware(Undo, Game):
         "Your row is the bottom one; the seeds you capture go in your store on the right.",
         "Tap one of your pits: all its seeds are dropped one per pit, rightward along your row, then leftward along your rival's row and round again (skipping the pit you emptied).",
         "If your last seed lands in a rival pit and makes it 2 or 3, you capture those seeds, plus the rival pits just before it that now hold 2 or 3.",
-        "With a mouse, point at a pit to see where its seeds would go and what it would capture.",
+        "Point at a pit with a mouse, or turn on 🔍 Preview sow on a touch screen, to see the sowing path and any pits it captures. Tap the selected pit again to sow.",
         "You can't capture every rival seed at once (that captures nothing). If your rival has no seeds, you must give them some.",
         "More than half the seeds wins (25 of 48). If nobody can capture any more, each side keeps the seeds in its row.",
         "Seeds per pit (an option): 3 for a quick game (19 of 36 wins) or 5 for a long one (31 of 60).",

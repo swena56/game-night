@@ -2,22 +2,28 @@
 // along it and back along the top). Seeds lie scattered in each pit (up to 20, with the count beside);
 // a sowing drops them in one pit at a time along its path (#56).
 UI.oware = (() => {
-  let S, ctx, shownKey = null, prevPits = null, fedNote = false;
+  let S, ctx, shownKey = null, prevPits = null, fedNote = false, previewMode = false, previewFrom = null;
   const MAX_SHOWN = 20, STEP = 0.11;  // seconds between seeds as a sowing plays out
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
-    shownKey = null;
+    shownKey = null; previewMode = false; previewFrom = null;
     // rows, stores and pits are labelled, and the flow arrows show the way seeds travel (#16)
     main.innerHTML = `<div class="ow"><div class="ow-store" id="owTheirs"><b></b><small></small></div>
       <div class="ow-mid"><div class="ow-label" id="owTopLabel"></div>
         <div class="ow-board"><div class="ow-row" id="owTop"></div><div class="ow-row" id="owBottom"></div></div>
         <div class="ow-label" id="owBottomLabel"></div></div>
       <div class="ow-store" id="owMine"><b></b><small>You</small></div></div>
+      <button id="owPreviewToggle" class="ow-preview-toggle" type="button" aria-pressed="false">🔍 Preview sow</button>
       <p id="owHint" class="hint"></p><div id="owUndo" class="row center"></div>`;
     side.innerHTML = `<div class="panel"><div id="owSeats"></div>
       <p class="hint left">Seeds travel counter-clockwise: along your row to the right, then back along the top.
-      Your captures go in the store on the right (gold).</p></div>`;
+      Your captures go in the store on the right (gold). On touch screens, turn on Preview sow, then tap a pit to inspect it; tap the same pit again to play.</p></div>`;
+    $('owPreviewToggle').onclick = () => {
+      previewMode = !previewMode;
+      if (!previewMode) previewFrom = null;
+      ctx.rerender();
+    };
   }
 
   // what sowing `from` would do, by the server's rules: the pits that get seeds, where the last one lands,
@@ -88,11 +94,20 @@ UI.oware = (() => {
         const b = pit(i, o.pits[i], (mine ? 'mine' : 'theirs') + (legal.has(i) ? ' can' : '') + (i === last ? ' last' : '') + (caught.includes(i) ? ' caught' : ''), drops[i] || []);
         if (caught.includes(i)) b.style.setProperty('--cd', `${animate ? done : 0}s`);  // captures flash once the seeds have landed
         b.disabled = !legal.has(i) || !ctx.myTurn;
-        b.onclick = () => ctx.quiet(ctx.act('sow', { pit: i }));
+        b.onclick = () => {
+          if (previewMode) {
+            if (previewFrom === i) {
+              previewMode = false; previewFrom = null; showPreview(null);
+              return ctx.quiet(ctx.act('sow', { pit: i }));
+            }
+            previewFrom = i; showPreview(i); return;
+          }
+          ctx.quiet(ctx.act('sow', { pit: i }));
+        };
         if (!b.disabled) {  // a mouse or keyboard shows the move before it's made
           b.onpointerenter = (e) => e.pointerType === 'mouse' && showPreview(i);
           b.onfocus = () => b.matches(':focus-visible') && showPreview(i);
-          b.onpointerleave = b.onblur = () => showPreview(null);
+          b.onpointerleave = b.onblur = () => showPreview(previewFrom);
         }
         row.append(b);
       }
@@ -148,6 +163,11 @@ UI.oware = (() => {
       : ctx.myTurn ? `Your turn: tap a glowing pit to sow it.${last >= 0 ? ` The blue ring is the pit ${rivalShort} last sowed from.` : ''}`
       : `${rivalShort} is thinking…`;
     $('owHint').textContent = baseHint;
+    $('owPreviewToggle').hidden = !ctx.myTurn;
+    $('owPreviewToggle').classList.toggle('on', previewMode);
+    $('owPreviewToggle').setAttribute('aria-pressed', String(previewMode));
+    $('owPreviewToggle').textContent = previewMode ? '🔍 Preview on · tap twice to sow' : '🔍 Preview sow';
+    showPreview(previewFrom);
     undoRow($('owUndo'), S.oware.undo, S, ctx, S.oware.me != null);
   }
 
@@ -157,6 +177,7 @@ UI.oware = (() => {
     const o = S?.oware;
     if (from == null || !o || o.me == null) { $('owHint').textContent = baseHint; return; }
     const pv = preview(o.pits, from, o.me), at = (i) => document.querySelector(`.ow-pit[data-i="${i}"]`);
+    at(from)?.classList.add('ow-preview-selected');
     for (const i of pv.reached) at(i)?.classList.add('gets');
     at(pv.last)?.classList.add('lands');
     for (const i of pv.taken) at(i)?.classList.add('takes');
@@ -168,5 +189,5 @@ UI.oware = (() => {
         : mine ? ' (captures only happen on their side).' : ' — no capture (it needs to make 2 or 3).');
   }
 
-  return { mount, render, ownSounds: true };
+  return { mount, render, ownSounds: true, testPreview: preview };
 })();
