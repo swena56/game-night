@@ -20,6 +20,7 @@
 .go-area { position: absolute; inset: 34%; border-radius: 2px; z-index: 1; opacity: .8; pointer-events: none; }
 .go-area.b { background: #111; }
 .go-area.w { background: #fff; box-shadow: 0 0 0 1px #0006; }
+.stone.unsettled { outline: 3px dashed #ff4b43; outline-offset: 2px; box-shadow: 0 0 0 2px #fff9, 0 0 10px #fa4a38; }
 .go-area.fill { animation: goFill .4s both cubic-bezier(.3, 1.6, .5, 1); }
 @keyframes goFill { from { transform: scale(0); opacity: 0; } }
 .stone.go-gone { animation: goGone .6s ease-in forwards; pointer-events: none; z-index: 2; }

@@ -1,5 +1,5 @@
 UI.go = (() => {
-  let S, ctx, boardEl, size = 0, shownLast, showArea = false, prevBoard = null, filled = false;
+  let S, ctx, boardEl, size = 0, shownLast, showArea = false, showUnsettled = false, prevBoard = null, filled = false;
   const STARS = { 9: [2, 4, 6], 13: [3, 6, 9], 19: [3, 9, 15] };
   const $ = (id) => document.getElementById(id);
 
@@ -14,6 +14,8 @@ UI.go = (() => {
       <div class="row"><button id="goPass">Pass</button><button id="goResign" class="danger">🏳️ Resign</button></div>
       <div class="row" id="goUndo"></div>
       <div class="row"><button id="goArea">◫ Show territory</button></div>
+      <div class="row"><button id="goUnsettled">⚠️ Show low-liberty groups</button></div>
+      <p class="hint left">Low-liberty marks are an advisory warning (groups with 1–2 liberties), not a life-and-death reading. The score remains the exact area score with the selected komi.</p>
       <p class="hint left">Area scoring: stones + surrounded empty points. Capture dead stones
       before you both pass — the board is scored exactly as it stands.</p></div>`;
     boardEl = main.querySelector('.goban');
@@ -22,6 +24,7 @@ UI.go = (() => {
       if (await ctx.ask(msg, { ok: 'Pass' })) ctx.quiet(ctx.act('pass'));
     };
     $('goArea').onclick = () => { showArea = !showArea; ctx.rerender(); };
+    $('goUnsettled').onclick = () => { showUnsettled = !showUnsettled; ctx.rerender(); };
     $('goResign').onclick = async () => (await ctx.ask('Resign this game?', { ok: '🏳️ Resign', danger: true })) && ctx.quiet(ctx.act('resign'));
   }
 
@@ -58,6 +61,7 @@ UI.go = (() => {
     const lastKey = g.last?.join() ?? null, fresh = shownLast !== undefined && lastKey !== shownLast;
     shownLast = lastKey;
     const area = showArea || S.phase !== 'playing' ? new Map(g.territory.map(([r, col, o]) => [r * n + col, o])) : new Map();
+    const unsettled = new Set((g.unsettled || []).map(([r, col]) => r * n + col));
     // stones that vanished since the last redraw were captured: they lift off the board
     const gone = prevBoard && prevBoard.length === n ? prevBoard.flatMap((row, r) => row.map((v, col) => (v && !g.board[r][col] ? [r, col, v] : null))).filter(Boolean) : [];
     // when the game ends, territory fills in from the centre outwards
@@ -74,6 +78,7 @@ UI.go = (() => {
       if (ghost && ghost[0] === r && ghost[1] === col && !v) pt.append(ctx.el('span', 'go-ghost ' + (g.me || 'b')));
       if (v) {
         const stone = ctx.el('span', 'stone ' + v);
+        if (showUnsettled && unsettled.has(i)) stone.classList.add('unsettled');
         if (g.last && g.last[0] === r && g.last[1] === col) stone.classList.add('last', ...(fresh ? ['drop'] : []));
         pt.append(stone);
       } else if (area.has(i)) {
@@ -106,6 +111,9 @@ UI.go = (() => {
     const ar = $('goArea');
     ar.hidden = S.phase !== 'playing';
     ar.textContent = showArea ? '◫ Hide territory' : '◫ Show territory';
+    const us = $('goUnsettled');
+    us.hidden = S.phase !== 'playing';
+    us.textContent = showUnsettled ? '⚠️ Hide low-liberty marks' : '⚠️ Show low-liberty groups';
     const un = $('goUndo'); un.innerHTML = '';
     if (S.phase === 'playing' && g.me) {
       if (g.undo.asker && g.undo.asker !== S.me.id) {

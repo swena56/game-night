@@ -8,6 +8,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 import server  # noqa: E402
+from games.go import unsettled_stones  # noqa: E402
 
 fails = []
 
@@ -38,6 +39,9 @@ r, g, black = corner(None)
 check("normal Go: a capture plays on", r.phase == "playing" and g.board[0][0] is None)
 r, g, black = corner("atari")
 check("Atari Go: the first capture wins", r.phase == "over" and r.winner == black.id)
+
+board = [["b", "b", "b"], ["b", "w", "b"], ["b", None, "b"]]
+check("advisory marks a group in atari", [1, 1] in unsettled_stones(board))
 
 print("\nall ok" if not fails else f"\n{len(fails)} failed: {fails}")
 sys.exit(1 if fails else 0)

@@ -88,6 +88,20 @@ def area_score(b):
     return score
 
 
+def unsettled_stones(b):
+    """Advisory risk markers: stones in groups with at most two current liberties."""
+    seen, out = set(), []
+    for r, row in enumerate(b):
+        for c, color in enumerate(row):
+            if color is None or (r, c) in seen:
+                continue
+            stones, liberties = group(b, r, c)
+            seen |= stones
+            if len(liberties) <= 2:
+                out.extend([y, x] for y, x in stones)
+    return out
+
+
 def is_eye(b, r, c, color):
     """An empty point surrounded by our own stones: filling it is almost always a mistake."""
     return all(b[y][x] == color for y, x in neighbors(len(b), r, c))
@@ -347,6 +361,7 @@ class Go(Game):
                        "captures": self.captures, "score": self.scores(), "passes": self.passes, "komi": self.komi,
                        "territory": [[r, c, owner] for region, owner in regions(self.board) if owner
                                      for r, c in region],
+                       "unsettled": unsettled_stones(self.board),
                        "undo": {"asker": self.undo_ask,
                                 "can": any(pid == p.id for pid, _ in self.snaps)}}}
 
