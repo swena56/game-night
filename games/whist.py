@@ -2,7 +2,10 @@
 
 Thirteen cards each; the dealer's last card is turned up for trumps. Follow suit if you can; the
 highest trump, or else the highest card of the suit led, wins the trick. Each trick a team takes over
-six scores a point. First team to the target (5 for short whist) wins."""
+six scores a point. First team to the target (5 for short whist) wins.
+
+👑 Honours (default on): a partnership dealt three of the four top trumps (A K Q J) between them scores 1 extra
+point and all four score 2, counted after the tricks (so a side that reaches the target on tricks has already won)."""
 from .cardbase import GameError, deck, rank, suit, pretty, SUIT_NAME
 from .tricks import TrickGame
 
@@ -16,12 +19,15 @@ class Whist(TrickGame):
         "Two teams, partners sit opposite. Thirteen cards each; the dealer's last card shows trumps.",
         "Follow suit if you can. Highest trump wins, else the highest card of the suit led.",
         "Each trick your team takes over six scores 1 point.",
+        "👑 Honours: a partnership holding three of the four top trumps (A K Q J) between them scores 1 extra point, all four scores 2, counted after the tricks.",
         "First team to the target wins.",
     ]
     min_players, max_players = 4, 4
     teams = True
     badges = {**TrickGame.badges, "slam": ("💫", "Grand slam", "Your team takes all thirteen tricks")}
-    settings_schema = {"target": ("Game to", [(5, "5 points (short whist)"), (7, "7 points"), (3, "3 points (quick)")], 5)}
+    settings_schema = {"target": ("Game to", [(5, "5 points (short whist)"), (7, "7 points"), (3, "3 points (quick)")], 5),
+                       "honours": ("👑 Honours", [(True, "On: 3 top trumps +1, all 4 +2"), (False, "Off")], True)}
+    honours = None   # per team: how many of the trump A K Q J they were dealt (games saved before 👑 have none)
 
     def start(self, seated, rng):
         self.seat_up(seated, rng)
@@ -37,6 +43,8 @@ class Whist(TrickGame):
         self.hands = [cards[k * 13:(k + 1) * 13] for k in range(4)]
         self.turned = self.hands[self.dealer][-1]
         self.trump = suit(self.turned)
+        top = {"A" + self.trump, "K" + self.trump, "Q" + self.trump, "J" + self.trump}
+        self.honours = [sum(c in top for k in (t, t + 2) for c in self.hands[k]) for t in (0, 1)]
         self.room.add_log(f"🃏 {self.nm(self.dealer)} deals and turns {pretty(self.turned)}: {SUIT_NAME[self.trump]} are trumps.")
         self.start_tricks((self.dealer + 1) % 4)
 
@@ -51,8 +59,19 @@ class Whist(TrickGame):
                     self.award(self.pl(k), "slam")
         self.room.add_log(f"🧮 {self.team_name(0)} {got[0]} – {got[1]} {self.team_name(1)}: {self.team_name(w)} +{pts} "
                           f"({self.team_score[0]}–{self.team_score[1]})", "big")
-        if max(self.team_score) >= self.s["target"]:
+        if self.team_score[w] >= self.s["target"]:
             return self.room.finish(self.pl(w), f"🏆 {self.team_name(w)} win Whist, {self.team_score[w]} to {self.team_score[1 - w]}!")
+        # 👑 honours are counted after the tricks: three of the top four trumps between partners = 1, all four = 2
+        hon = self.honours if self.s.get("honours", True) else None
+        for t in (0, 1):
+            n = hon[t] if hon else 0
+            if n >= 3:
+                bonus = 1 if n == 3 else 2
+                self.team_score[t] += bonus
+                self.moment(f"👑 {self.team_name(t)}: {n} honours, +{bonus}", "gold", "fanfare")
+                self.room.add_log(f"👑 {self.team_name(t)} held {n} of the top four {SUIT_NAME[self.trump]}: +{bonus} ({self.team_score[0]}–{self.team_score[1]})", "power")
+                if self.team_score[t] >= self.s["target"]:
+                    return self.room.finish(self.pl(t), f"🏆 {self.team_name(t)} win Whist, {self.team_score[t]} to {self.team_score[1 - t]}!")
         self.stage = "score"
         self.pause(self.deal, 3.5)
 
