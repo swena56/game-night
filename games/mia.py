@@ -41,6 +41,20 @@ def p_above(v):
     return sum(CHANCE[w] for w in ORDER[RANK[v] + 1:])
 
 
+def true_chance(prev, c):
+    """How likely a call of `c` is true, from the public calls alone: the odds of rolling it, against
+    how often a claimer stuck under `prev` would lie their way to it. Never looks under the cup."""
+    if not prev:   # an opening call can be anything; bluffs here are rarer but a big one is suspicious
+        return 0.4 + 0.6 * p_at_least(c)
+    lo = RANK[prev] + 1
+    # an honest claimer rolled exactly c; a liar rolled anything below the bar, then picked c among the lies
+    honest = CHANCE[c]
+    could_lie = sum(CHANCE[w] for w in ORDER[:lo])
+    steps = len(ORDER) - lo
+    liar = could_lie * (0.5 if c == ORDER[min(lo, len(ORDER) - 1)] else 0.5 / max(1, steps - 1))
+    return honest / (honest + liar) if honest + liar else 1.0
+
+
 class Mia(Game):
     id = "mia"
     category = "dice"
@@ -49,6 +63,7 @@ class Mia(Game):
         "Announce a value higher than the last one — the truth, or a bluff.",
         "Next player: 🤝 believe it and roll to beat it, or 🫳 lift the cup. A lie costs the liar a life; a true call costs the lifter.",
         "A lift over a Mia claim costs 2 lives. Facing a Mia you can also concede 1 life without looking.",
+        "After each call a 🕵️ bluff meter estimates how likely it is a lie, from the calls alone (it never sees the dice), with what lifting or believing puts at stake. It goes away once the cup is shaken again.",
         "Last player with lives left wins.",
     ]
     name = "Mia"
@@ -227,17 +242,7 @@ class Mia(Game):
 
     def believe_chance(self):
         """How likely the claim on the table is true, judged from the odds and the call before it."""
-        prev = self.calls[-2][1] if len(self.calls) > 1 else None
-        c = self.claim
-        if not prev:   # an opening call can be anything; bluffs here are rarer but a big one is suspicious
-            return 0.4 + 0.6 * p_at_least(c)
-        lo = RANK[prev] + 1 if prev else 0
-        # an honest claimer rolled exactly c; a liar rolled anything below the bar, then picked c among the lies
-        honest = CHANCE[c]
-        could_lie = sum(CHANCE[w] for w in ORDER[:lo])
-        steps = len(ORDER) - lo
-        liar = could_lie * (0.5 if c == ORDER[min(lo, len(ORDER) - 1)] else 0.5 / max(1, steps - 1))
-        return honest / (honest + liar) if honest + liar else 1.0
+        return true_chance(self.calls[-2][1] if len(self.calls) > 1 else None, self.claim)
 
     def bot_turn(self, p):
         r = self.room
@@ -296,7 +301,16 @@ class Mia(Game):
         need = None
         if self.claim:
             need = ORDER[RANK[self.claim] + 1] if self.claim != MIA else None
+        # 🕵️ the bluff meter: only while a call waits to be believed or lifted, built from the public calls and lives
+        bluff = None
+        if self.stage() == "decide" and self.calls:
+            prev = self.calls[-2][1] if len(self.calls) > 1 else None
+            claimer = r.players.get(self.claimer)
+            bluff = {"pct": round(100 * (1 - true_chance(prev, self.claim))), "beat": round(100 * p_above(self.claim)),
+                     "cost": 2 if self.claim == MIA else 1,
+                     "claimerLives": getattr(claimer.g, "lives", None) if claimer else None}
         return {"mia": {
+            "bluff": bluff,
             "seats": self.seats, "order": ORDER, "claim": self.claim, "claimer": self.claimer,
             "calls": self.calls[-8:], "stage": self.stage(), "need": need, "n": self.n,
             "dice": self.dice if mine else None, "rolled": bool(self.dice),

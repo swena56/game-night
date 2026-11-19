@@ -69,6 +69,16 @@ check("mia: the next player can't see the dice", g.view(b)["mia"]["dice"] is Non
 check("mia: a claim must beat the last one", raises(lambda: (g.act(b, {"type": "roll"}), g.act(b, {"type": "claim", "value": 64}))))
 g.act(b, {"type": "claim", "value": 11})   # b's dice are whatever was rolled: a bluff or not
 c = r.players[r.turn]
+# 🕵️ bluff meter: from the public calls and lives only, and gone once the cup is shaken again
+seen = []
+for truth in ([1, 1], [3, 1], [6, 5]):
+    g.truth = truth
+    seen.append(json.dumps([g.view(q)["mia"]["bluff"] for q in (a, b, c)]))
+bl = g.view(c)["mia"]["bluff"]
+check("mia meter: shown after a call, the same whatever is under the cup", len(set(seen)) == 1 and bl and 0 <= bl["pct"] <= 100, bl)
+check("mia meter: matches the public-calls estimate", bl["pct"] == round(100 * (1 - M.true_chance(65, 11))) and bl["cost"] == 1 and bl["claimerLives"] == b.g.lives)
+watcher = r.add_player("Eve")
+check("mia meter: a watcher's view works", g.view(watcher)["mia"]["bluff"] == bl)
 g.truth = [3, 1]                          # b really had a 31: the double 1s were a bluff
 lives = b.g.lives
 g.act(c, {"type": "lift"})
@@ -82,6 +92,15 @@ check("mia: nothing beats a Mia, so no believing", raises(lambda: g.act(c, {"typ
 lives = c.g.lives
 g.act(c, {"type": "lift"})
 check("mia: lifting a true Mia costs 2 lives", c.g.lives == max(0, lives - 2))
+r2, g2, _ = room("mia", 3)
+a2 = r2.players[r2.turn]
+g2.act(a2, {"type": "roll"})
+check("mia meter: none before the first call", g2.view(a2)["mia"]["bluff"] is None)
+g2.act(a2, {"type": "claim", "value": 66})
+b2 = r2.players[r2.turn]
+check("mia meter: an opening call gets one too", g2.view(b2)["mia"]["bluff"]["pct"] == round(100 * (1 - M.true_chance(None, 66))))
+g2.act(b2, {"type": "roll"})
+check("mia meter: gone once the cup is shaken", all(g2.view(q)["mia"]["bluff"] is None for q in r2.players.values()))
 json.dumps(g.view(a))
 
 # -- Dice Squares

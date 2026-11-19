@@ -13,6 +13,7 @@ UI.mia = (() => {
     main.innerHTML = `<div class="mia">
       <div id="miaTurn" class="mia-turn"></div>
       <div id="miaCall" class="mia-call"></div>
+      <div id="miaBluff" class="mia-bluff"></div>
       <div class="mia-table"><div id="miaCup" class="mia-cup" aria-hidden="true"><i class="mia-rim"></i></div><div id="miaDice" class="ya-dice mia-dice"></div></div>
       <div id="miaReveal" class="mia-reveal"></div>
       <div class="row mia-actions"><button id="miaRoll" class="primary big">🥤 Roll</button><button id="miaLift" class="big danger">🫳 Lift the cup</button><button id="miaConcede" class="big">🏳️ Concede 1 ❤️</button></div>
@@ -42,6 +43,18 @@ UI.mia = (() => {
       const n = ctx.el('b', '', p?.name ?? '?'); n.style.color = p?.color ?? 'inherit';
       call.append(n, ctx.el('span', '', ' says '), ctx.el('strong', 'mia-value' + (m.claim === 21 ? ' mia-mia' : ''), long(m.claim)));
     } else call.append(ctx.el('span', 'hint', 'A fresh round: any roll opens.'));
+
+    // 🕵️ bluff meter: an estimate from the public calls and lives only, gone once the cup is shaken again
+    const bl = $('miaBluff'); bl.innerHTML = '';
+    if (m.bluff && m.claim) {
+      const B = m.bluff, cl = ctx.player(m.claimer), heart = (n) => `${n} ❤️`;
+      const meter = ctx.el('div', 'mia-meter'); const fill = ctx.el('i'); fill.style.width = `${B.pct}%`; meter.append(fill);
+      bl.append(ctx.el('div', 'mia-blhead', `🕵️ About ${B.pct}% likely a bluff`), meter);
+      const odds = [];
+      if (m.claim !== 21) odds.push(`believe: a fresh roll beats it ${B.beat}% of the time`);
+      odds.push(`lift: a true call costs the lifter ${heart(B.cost)}, a bluff costs ${cl?.name ?? '?'} ${heart(B.cost)}` + (B.claimerLives != null && B.claimerLives <= B.cost ? ' (their last!)' : ''));
+      bl.append(ctx.el('div', 'mia-blodds', odds.join(' · ')), ctx.el('small', 'hint', 'An estimate from the calls alone — nobody has seen the dice.'));
+    }
 
     // the cup: lifted to show your own dice once you've rolled; otherwise shut
     const cup = $('miaCup'), dice = $('miaDice');

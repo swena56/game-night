@@ -41,3 +41,10 @@
   background: radial-gradient(#000a, #0000 70%); z-index: -1; }
 .mia-cup.shaken { animation: miaShake .6s ease-in-out 2; }
 .mia-hearts { letter-spacing: -2px; font-family: inherit; font-size: 12px; }
+/* 🕵️ bluff meter after a call */
+.mia-bluff { max-width: 420px; margin: 4px auto; font-size: var(--fs-sm); }
+.mia-bluff:empty { display: none; }
+.mia-blhead { font-weight: 800; }
+.mia-meter { height: 8px; margin: 3px 0; border-radius: 4px; background: var(--panel); overflow: hidden; }
+.mia-meter i { display: block; height: 100%; background: linear-gradient(90deg, #06d6a0, #ffd166, var(--danger)); }
+.mia-blodds { color: var(--muted); }
