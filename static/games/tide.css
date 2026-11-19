@@ -52,6 +52,12 @@
 .tc-tally .tc-tl-h { display: block; font-size: 15px; margin-bottom: 2px; color: #b55a00; }
 .tc-tally .tc-tl-sum { border-top: 2px dashed #e7a94c; margin-top: 4px; padding-top: 2px; font-size: 16px; }
 .tc-tally-in { animation: tcTally .4s cubic-bezier(.3, 1.5, .5, 1) both; }
+.tc-recap { max-height: min(48vh, 420px); overflow: auto; }
+.tc-recap h3 { margin: 0 0 8px; }
+.tc-recap-wave { border-top: 1px solid #ffffff20; padding: 7px 0; font-size: 13px; }
+.tc-recap-wave summary { cursor: pointer; font-weight: 700; line-height: 1.35; }
+.tc-recap-wave p { margin: 6px 0 0; font-size: 12px; line-height: 1.45; opacity: .88; }
+.tc-recap-score { margin: 8px 0 0; font-size: 12px; font-weight: 700; line-height: 1.4; }
 @keyframes tcTally { from { transform: translateY(-10px) scale(.85); opacity: 0; } }
 .tc-pop-in { animation: tcPop 1.6s ease-out both; }
 @keyframes tcPop { 0% { transform: translateX(-50%) scale(.4); opacity: 0; } 14% { transform: translateX(-50%) scale(1.1); opacity: 1; } 24% { transform: translateX(-50%) scale(1); } 80% { opacity: 1; } 100% { transform: translate(-50%, -16px); opacity: 0; } }

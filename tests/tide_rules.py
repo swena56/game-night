@@ -43,6 +43,7 @@ for c in range(T.COLS):
 waves, survived, hp = T.run_tide(p, [7])   # force 5 at row 2: 4 harder than the wall
 check("a wall row stops the water", all(r < 2 for r, c, f in waves[0]["wet"]))
 check("a wall row is a braced rampart: hit 4 harder it holds (#184)", all(p["g"][2][c] == ("wall", 1) for c in range(T.COLS)))
+check("wave records identify a braced piece that held", all(len(h) == 7 and h[4] == "wall" and h[5] == 1 and h[6] for h in waves[0]["hit"]))
 p = T.new_plot()
 for c in range(0, T.COLS, 2):
     p["g"][2][c] = ("wall", 1)
@@ -200,6 +201,9 @@ check("everyone met the same waves", len({len(x["waves"]) for x in g.result}) ==
 check("the tide's result carries its tally (#184)", all(sum(x["parts"].values()) == x["pts"] for x in g.result))
 v = g.view(a)["tide"]
 check("the tide view carries the beaches as they were", v["before"] and v["plots"][1] is not None)
+recap = v["waveHistory"][-1]
+check("wave history preserves the forecast, starting beaches and resolved wave details",
+      recap["forces"] == g.waves and recap["before"] and recap["result"] == g.result and len(recap["result"][0]["waves"]) == T.WAVES)
 json.dumps(v)
 check("view serialises", True)
 with r.cond:

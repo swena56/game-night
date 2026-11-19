@@ -31,7 +31,7 @@ UI.tide = (() => {
       <div class="tc-tools" id="tcTools">${TOOLS.map(([k, ic, nm, cost]) => `<button data-t="${k}" title="${nm}"><b>${ic}</b><small>${nm}${cost ? ` ${cost}` : ''}</small></button>`).join('')}
         <span class="tc-sand" id="tcSand"></span><button class="tc-test" id="tcTest" title="Show where the biggest wave would reach">🔍 Test</button><button class="primary tc-ready" id="tcReady">✅ Ready</button></div>
       <p id="tcHint" class="hint"></p></div>`;
-    side.innerHTML = '<div class="panel"><h3>🏖️ Beaches</h3><div id="tcRace"></div><p class="hint left">Tap a tool, then squares of your beach. 🗼 on a wall or tower piles it higher (up to 4); 🚩 goes on a tower 2+ high. Three walls/towers side by side make a 🧱 rampart (braced: harder to wear), three moats a channel (soaks 2 waves). Tap something you built this tide to take it back. 🔍 Test shows where the biggest wave would reach. Each wave your keep stands scores 6, its strength left scores too, shells and flags 3, every piece still standing 1 (2 in a rampart), and the 🎯 goal 8.</p></div>';
+    side.innerHTML = '<div class="panel"><h3>🏖️ Beaches</h3><div id="tcRace"></div><p class="hint left">Tap a tool, then squares of your beach. 🗼 on a wall or tower piles it higher (up to 4); 🚩 goes on a tower 2+ high. Three walls/towers side by side make a 🧱 rampart (braced: harder to wear), three moats a channel (soaks 2 waves). Tap something you built this tide to take it back. 🔍 Test shows where the biggest wave would reach. Each wave your keep stands scores 6, its strength left scores too, shells and flags 3, every piece still standing 1 (2 in a rampart), and the 🎯 goal 8.</p></div><div class="panel tc-recap" id="tcRecap" hidden><h3 id="tcRecapTitle">🌊 Last tide report</h3><div id="tcRecapRows"></div></div>';
     $('tcTools').addEventListener('click', (e) => {
       const b = e.target.closest('button'); if (!b) return;
       if (b.id === 'tcReady') return ctx.act('done').then(() => SN.ready()).catch((er) => ctx.toast?.(er?.message || 'Not now.'));
@@ -99,6 +99,7 @@ UI.tide = (() => {
     if (V.stage === 'build') noticeBuild();
     else prevMine = null;
     renderSide();
+    renderWaveRecap();
   }
 
   // runs of RUN+ side by side in a row (games/tide.py runs)
@@ -242,6 +243,34 @@ UI.tide = (() => {
       : test && V.plots[V.me] ? (() => { const tw = testWave(V.plots[V.me]), worn = tw.hits.filter((h) => h[3]).length; return `🔍 The ${tw.F} wave: ${tw.keepF ? (tw.dmg ? `your keep loses ${tw.dmg} of ${G().keepHp}` : 'a trickle reaches your keep (no harm)') : 'your keep stays dry'}${worn ? `, ${worn} piece${worn > 1 ? 's' : ''} worn` : ''}.`; })()
       : `The waves swell to the big one. A wave wears a piece a level when it hits ${G().wear ?? 4} harder than it's tall (${(G().wear ?? 4) + (G().brace ?? 1)} in a 🧱 rampart of 3+).`;
     if (V.stage === 'build') { $('tcTally').hidden = true; tallied = ''; }
+  }
+
+  function renderWaveRecap() {
+    const box = $('tcRecap'), rows = $('tcRecapRows');
+    if (!box || !rows || V.me == null) return;
+    const tide = V.waveHistory?.[V.waveHistory.length - 1], result = tide?.result?.[V.me];
+    box.hidden = !result;
+    rows.replaceChildren();
+    if (!result) return;
+    $('tcRecapTitle').textContent = `🌊 Tide ${tide.tide} · ${result.pts} points`;
+    const labels = { wall: 'Wall', tower: 'Tower', moat: 'Moat', shell: 'Shell' };
+    result.waves.forEach((wave, i) => {
+      const detail = ctx.el('details', 'tc-recap-wave');
+      const summary = ctx.el('summary', '', `Wave ${i + 1} · force ${tide.forces[i]} · ${wave.wet.length} water cells reached`);
+      detail.append(summary);
+      const hits = wave.hit.map(([r, c, f, lost, kind, h, braced]) =>
+        `${labels[kind] || kind} at row ${r + 1}, column ${c + 1} took force ${f}: ${lost ? `wore down ${lost} level${lost > 1 ? 's' : ''}${braced ? ' despite its rampart brace' : ''}` : `held at height ${h}${braced ? ' with its rampart brace' : ''}`}.`);
+      const soaked = wave.soak.length ? `${wave.soak.length} moat${wave.soak.length === 1 ? '' : 's'} soaked at ${wave.soak.map(([r, c]) => `${r + 1},${c + 1}`).join(' · ')}.` : '';
+      const washed = wave.washed?.length ? `${wave.washed.length} shell${wave.washed.length === 1 ? '' : 's'} washed away.` : '';
+      const keep = !wave.keep ? 'The keep stayed dry.' : wave.dmg
+        ? `The keep took ${wave.dmg} damage and ended at ${wave.hp}/${G().keepHp} strength.`
+        : `Only a harmless trickle reached the keep; it stayed at ${wave.hp}/${G().keepHp} strength.`;
+      detail.append(ctx.el('p', '', [keep, soaked, washed, ...hits].filter(Boolean).join(' ')));
+      rows.append(detail);
+    });
+    const parts = result.parts || {};
+    const scoring = Object.entries(parts).filter(([, pts]) => pts).map(([k, pts]) => `${k} +${pts}`).join(' · ');
+    rows.append(ctx.el('p', 'tc-recap-score', `Score: ${scoring || 'no bonus points'} = ${result.pts}.`));
   }
 
   function pop(text, ms = 1600, cls = '') {

@@ -114,7 +114,7 @@ def run_tide(plot, waves):
         pq = []
         for c in range(COLS):
             heapq.heappush(pq, (-F, 0, c))
-        wet, hits, soak = [], {}, []
+        wet, hits, soak, washed = [], {}, [], []
         keep_hit = False
         keep_f = 0
         while pq:
@@ -137,6 +137,7 @@ def run_tide(plot, waves):
                 continue
             wet.append([r, c, f])
             if cell and cell[0] == "shell":
+                washed.append([r, c])
                 g[r][c] = None
             if f - 1 >= 1:
                 for dr, dc in ((1, 0), (0, 1), (0, -1), (-1, 0)):
@@ -147,15 +148,17 @@ def run_tide(plot, waves):
         brace = braced(g)
         for (r, c), f in sorted(hits.items()):
             kind, h = g[r][c]
-            lost = wear(f, h, BRACE if (r, c) in brace else 0)
+            braced_hit = (r, c) in brace
+            lost = wear(f, h, BRACE if braced_hit else 0)
             if lost:
                 h -= lost
                 g[r][c] = None if h <= 0 else ("wall" if h == 1 else "tower", h)
                 flags.discard((r, c))
-            worn.append([r, c, f, lost])
+            worn.append([r, c, f, lost, kind, h + lost, braced_hit])
         dmg = min(hp, keep_dmg(keep_f)) if hp > 0 else 0
         hp -= dmg
-        out.append({"wet": wet, "hit": worn, "soak": soak, "keep": keep_hit, "dmg": dmg, "hp": hp})
+        out.append({"wet": wet, "hit": worn, "soak": soak, "washed": washed,
+                    "keep": keep_hit, "dmg": dmg, "hp": hp})
         if hp <= 0 and survived is None:
             survived = w
     # moats drain between tides
@@ -229,7 +232,7 @@ class Tide(Game):
         "Three or more walls/towers side by side make a 🧱 rampart: braced, so waves need to hit 1 harder to wear them. Three moats side by side soak two waves each.",
         "Each tide's waves swell, the last the biggest. A wave loses 1 force with every square it crosses and flows round things. It wears a wall or tower down a level only when it hits at least 4 harder than it's tall.",
         "Your 🏰 keep has 10 strength: water reaching it knocks off a third of the wave's force. Each wave it's still standing scores 6, its strength left scores too, each shell left 3, each flag still flying 3.",
-        "Every wall or tower still standing scores 1 (2 in a rampart), and each tide's 🎯 goal scores 8. What's left stands for the next tide. Check the forecast: the last wave is the big one.",
+        "Every wall or tower still standing scores 1 (2 in a rampart), and each tide's 🎯 goal scores 8. What's left stands for the next tide. Check the forecast: the last wave is the big one. After each tide, open the wave report to see which pieces held or wore, where moats soaked water, what reached your keep, and how the score was made.",
     ]
     name = "Tide Castles"
     icon = "🏖️"
@@ -252,6 +255,7 @@ class Tide(Game):
         self.plots = [new_plot() for _ in seated]
         self.points = [0] * len(seated)
         self.history = []
+        self.wave_history = []
         self.room.turn = None
         self.room.bot_at = 0
         self.room.add_log(f"🏖️ Tide Castles: {TIDES} tides of {WAVES} waves. Keep your keep dry!", "big")
@@ -333,6 +337,7 @@ class Tide(Game):
             pl.setdefault("flags", set())
         st.setdefault("goal", None)
         st.setdefault("goals", [])
+        st.setdefault("wave_history", [])
         self.__dict__.update(st)
 
     def build(self, i, r, c, item):
@@ -414,6 +419,8 @@ class Tide(Game):
                 self.award(self.seats[i], "fortress", at=now + LEAD + WAVE_T * WAVES)
             if parts["flags"] >= 3 * FLAG_PTS and self.pl(i):
                 self.award(self.seats[i], "standard", at=now + LEAD + WAVE_T * WAVES)
+        self.wave_history.append({"tide": self.tide, "forces": list(self.waves),
+                                  "before": self.before, "result": self.result})
         self.history.append([res["pts"] if res else 0 for res in self.result])
         self.standing = [self.plot_view(i) for i in range(len(self.seats))]   # what rivals see while everyone builds next
         dur = LEAD + WAVE_T * WAVES + 1.0
@@ -640,7 +647,7 @@ class Tide(Game):
             "before": getattr(self, "before", None) if self.stage in ("tide", "between") else None,
             "since": round(now - getattr(self, "tide_at", now), 2) if self.stage == "tide" else 0,
             "timeLeft": max(0.0, round((self.room.deadline or now) - now, 2)),
-            "history": self.history, "sand": self.sand,
+            "history": self.history, "waveHistory": getattr(self, "wave_history", [])[-TIDES:], "sand": self.sand,
             "goal": [self.goal, GOALS[self.goal][0], GOAL_PTS] if getattr(self, "goal", None) in GOALS else None,
             "geo": {"cols": COLS, "rows": ROWS, "keepRow": KEEP_ROW, "waves": WAVES, "waveT": WAVE_T, "cost": COST,
                     "height": HEIGHT, "wavePts": WAVE_PTS, "shellPts": SHELL_PTS, "flagPts": FLAG_PTS,
