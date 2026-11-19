@@ -16,6 +16,7 @@ UI.twentyone = (() => {
           <text><textPath href="#toArcPath" startOffset="50%" text-anchor="middle" id="toArcText">PAYS 3 TO 2 · DEALER STANDS ON 17</textPath></text></svg></div>
       <div id="toBar" class="row to-bar"></div>
       <p id="toNote" class="hint"></p>
+      <div id="toPlan" class="to-plan" hidden></div>
       <div id="toSeats" class="to-seats"></div></div>`;  // the buttons sit above the seats, which grow with every card (#18)
     side.innerHTML = '<div class="panel"><h3>Chips</h3><div id="toChips"></div><p class="hint left">Dealer draws to 17. A two-card 21 pays 3 to 2.</p></div>';
   }
@@ -217,6 +218,7 @@ UI.twentyone = (() => {
     else if (playing && t.stage === 'bet') note = t.chips[me] > 0 ? 'Waiting for the other bets…' : 'Out of chips — watching.';
     else if (t.stage === 'dealer') note = 'The dealer plays…';
     $('toNote').textContent = note;
+    plan(t.plan);
 
     const ch = $('toChips'); ch.innerHTML = '';
     t.seats.map((pid, i) => [i, t.chips[i]]).sort((a, b) => b[1] - a[1]).forEach(([i, v]) => {
@@ -226,6 +228,30 @@ UI.twentyone = (() => {
       ch.append(row);
     });
     ch.append(ctx.el('div', 'hint left', `Hand ${t.hand} of ${t.hands}`));
+  }
+
+  // 📋 your hands at a glance: shown once you split (or with 💡 Tips on). Each hand's stake and state against
+  // the dealer's up-card, and basic strategy's move for the hands still to play: advice only, the buttons decide.
+  const MOVE = { hit: '➕ Hit', stand: '✋ Stand', double: '💰 Double', split: '✂️ Split', surrender: '🏳️ Surrender' };
+  function plan(pl) {
+    const box = $('toPlan');
+    box.hidden = !pl || !(pl.hands.length > 1 || tips);
+    if (box.hidden) { box.innerHTML = ''; return; }
+    box.innerHTML = '';
+    const head = ctx.el('div', 'to-plan-head');
+    const up = face(pl.up, 'small');
+    head.append(ctx.el('b', '', pl.hands.length > 1 ? `📋 Your ${pl.hands.length} hands` : '📋 Your hand'), ctx.el('span', 'hint', 'vs dealer'), up);
+    box.append(head);
+    pl.hands.forEach((h, k) => {
+      const row = ctx.el('div', 'to-plan-row ' + h.state);
+      const what = h.state === 'now' ? '▶' : h.state === 'next' ? '…' : '✓';
+      row.append(ctx.el('span', 'to-plan-k', `${what} ${pl.hands.length > 1 ? `Hand ${k + 1}` : 'Hand'}`),
+        ctx.el('span', '', `💰 ${h.bet}`),
+        ctx.el('span', 'to-plan-t', `${h.soft ? 'soft ' : ''}${h.total}`),
+        h.advice ? ctx.el('span', 'to-plan-tip', `💡 ${MOVE[h.advice] ?? h.advice}`) : ctx.el('span', 'hint', h.note));
+      box.append(row);
+    });
+    box.append(ctx.el('div', 'hint left', `💡 Advisory only: basic strategy for this table (4 decks, dealer stands on 17${pl.surrender ? ', surrender on' : ''}). ${pl.chips} chips free for doubles and splits.`));
   }
 
   const turnText = (s) => (s.phase === 'playing' && s.twentyone.stage === 'insure' ? '🛡️ Insurance?'

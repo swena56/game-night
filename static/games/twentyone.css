@@ -62,3 +62,12 @@
 .to-pair.win { color: #ffd166; }
 .to-pair.lose { opacity: .6; }
 .to-paychips { position: absolute; left: 50%; bottom: 8px; }
+/* 📋 your hands at a glance: stakes, states and basic strategy's advisory move per hand */
+.to-plan { margin: 4px 0 8px; padding: 6px 10px; border-radius: var(--r-md, 10px); background: var(--panel2); font-size: var(--fs-sm, 13px); }
+.to-plan-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.to-plan .pc { --cw: 22px; }
+.to-plan-row { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, .8fr) minmax(0, .8fr) minmax(0, 1.4fr); gap: 6px; align-items: center; padding: 3px 0; border-top: 1px solid var(--line); }
+.to-plan-row.now { color: var(--text); font-weight: 700; }
+.to-plan-row.done { opacity: .65; }
+.to-plan-t { font-variant-numeric: tabular-nums; }
+.to-plan-tip { color: #ffd166; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

@@ -66,6 +66,7 @@ class TwentyOne(Game):
         "Get closer to 21 than the dealer without going over. Picture cards are 10, aces 1 or 11.",
         "The dealer draws to 17. Beat them to win your bet; a two-card 21 pays 3 to 2; a tie gives your bet back.",
         "Most chips after the last hand wins. Alone, finish ahead of your starting 100.",
+        "📋 After a split (or with 💡 Tips on), your hands panel lists each hand's bet and state against the dealer's up-card, with basic strategy's advisory move for each hand still to play.",
         "With 👯 Perfect Pairs on, add a 5-chip side bet when you bet: it pays if your first two cards are a pair — 6 to 1 mixed colours, 12 to 1 same colour, 25 to 1 same suit.",
     ]
     name = "Blackjack"
@@ -524,6 +525,7 @@ class TwentyOne(Game):
             "canSurrender": mine and self.can_surrender(i),
             # 💡 the move basic strategy picks for your hand (the hard bot's table); the page shows it if you ask
             "advice": self.advice(i) if mine else None,
+            "plan": self.hand_plan(i),
             "pairs": bool(self.s["pairs"]), "pairBet": PAIR_BET, "pair": self.pair, "pairRes": self.pair_res,
             "lastPairs": self.last_pair, "pairPays": PAIR_PAYS,
             "insurance": bool(self.s.get("insurance")), "ins": getattr(self, "ins", None), "insRes": getattr(self, "ins_res", None),
@@ -574,19 +576,52 @@ class TwentyOne(Game):
             return max(MIN_BET, min(self.chips[i], self.chips[i] // 10 // MIN_BET * MIN_BET))
         return min(self.chips[i], 10)
 
-    def advice(self, i):
-        move = self.bot_move(i, "hard", split=self.can_split(i))
-        if move == "double" and not self.can_double(i):
+    def advice(self, i, k=None):
+        """Basic strategy's move for seat i's hand k (the one being played by default), within this table's
+        rules: double and split only when they're allowed (chips, split limit), surrender only when it's on."""
+        k = self.cur[i] if k is None else k
+        h = self.hands[i][k]
+        cards = h["cards"]
+        spare = self.chips[i] - self.committed(i) >= h["bet"]
+        can_split = (len(cards) == 2 and value(cards[0]) == value(cards[1]) and len(self.hands[i]) < MAX_HANDS and spare)
+        move = self.bot_move(i, "hard", split=can_split, cards=cards)
+        if move == "double" and not (len(cards) == 2 and spare):
             move = "hit"
-        if self.can_surrender(i) and move == "hit":  # basic strategy gives up 16 against 9-A and 15 against 10
-            t, soft = total(self.hand(i)["cards"])
+        surr = bool(self.s.get("surrender")) and len(self.hands[i]) == 1 and len(cards) == 2
+        if surr and move == "hit":  # basic strategy gives up 16 against 9-A and 15 against 10
+            t, soft = total(cards)
             d = value(self.dealer[0])
             if not soft and ((t == 16 and d >= 9) or (t == 15 and d == 10)):
                 move = "surrender"
         return move
 
-    def bot_move(self, i, level, split=True):
-        cards = self.hand(i)["cards"]
+    def hand_plan(self, i):
+        """📋 Your hands at a glance (your own view, while hands are played): each hand's stake and state, and
+        basic strategy's advisory move for each hand still to play. Split aces take one card each, so they
+        show as done."""
+        if i is None or self.stage != "play" or not self.bets[i] or not self.hands[i] or not self.dealer:
+            return None
+        split = len(self.hands[i]) > 1
+        rows = []
+        for k, h in enumerate(self.hands[i]):
+            t, soft = total(h["cards"])
+            if h.get("surr"):
+                state, note = "done", "surrendered: half back"
+            elif t > 21:
+                state, note = "done", "bust"
+            elif h["done"] and split and h["cards"][0][0] == "A" and len(h["cards"]) == 2:
+                state, note = "done", "split aces: one card each"
+            elif h["done"]:
+                state, note = "done", ("blackjack" if self.is_natural(i, h) else f"stands on {t}")
+            else:
+                state, note = ("now" if self.room.turn == self.seats[i] and k == self.cur[i] else "next"), ""
+            rows.append({"bet": h["bet"], "total": t, "soft": soft and t <= 21, "state": state, "note": note,
+                         "advice": self.advice(i, k) if state != "done" else None})
+        return {"up": self.dealer[0], "hands": rows, "surrender": bool(self.s.get("surrender")),
+                "chips": self.chips[i] - self.committed(i)}
+
+    def bot_move(self, i, level, split=True, cards=None):
+        cards = cards or self.hand(i)["cards"]
         t, soft = total(cards)
         d = value(self.dealer[0])
         if split and len(cards) == 2 and value(cards[0]) == value(cards[1]):
