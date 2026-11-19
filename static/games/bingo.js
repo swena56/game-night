@@ -259,7 +259,8 @@ UI.bingo = (() => {
       grid.append(b);
     });
     grid.append(K.linesSvg());
-    box.append(head, grid, el('div', 'bgo-word'));
+    const nearCallout = el('div', 'bgo-near-callout'); nearCallout.hidden = true;
+    box.append(head, nearCallout, grid, el('div', 'bgo-word'));
     return box;
   }
 
@@ -283,7 +284,12 @@ UI.bingo = (() => {
       }
       const e = cardEls[ci], cells = e.querySelector('.bgo-grid').children, near = new Set(card.near);
       e.querySelector('.bgo-swap').hidden = !(g.stage === 'deal' && g.rerolls > 0);
-      e.classList.toggle('hot', card.near.length >= 2 && g.stage === 'call');
+      const names = [...new Set((card.nearPatterns || []).map((x) => x.name))];
+      const callout = e.querySelector('.bgo-near-callout');
+      callout.hidden = !names.length || g.stage !== 'call';
+      callout.textContent = names.length
+        ? `🔥 One daub away: ${names.slice(0, 2).join(', ')}${names.length > 2 ? ` +${names.length - 2} more` : ''}` : '';
+      e.classList.toggle('hot', names.length > 0 && g.stage === 'call');
       for (let i = 0; i < 25; i++) {
         const b = cells[i], n = card.nums[i], d = card.daub[i] || pending.has(`${ci}:${i}`);
         if (card.daub[i]) pending.delete(`${ci}:${i}`);

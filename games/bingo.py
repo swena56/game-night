@@ -63,7 +63,7 @@ class Bingo(Game):
     id = "bingo"
     category = "party"
     howto = [
-        "Pick your cards. The caller draws a ball every few seconds: tap that number wherever you hold it.",
+        "Pick your cards. The caller draws a ball every few seconds: tap that number wherever you hold it. A card glows and names the pattern when one daub remains.",
         "🎉 Bash: BINGO! claims every finished row, column, diagonal and the corners on all your cards at once, so lines keep scoring. Combos ×1.5, first of a kind +150, on the ball +50.",
         "🏁 First to Bingo: the first to claim a line wins the round. 🎯 Pattern hunt: fill the round's shape first. 📈 Ladder: one line → two lines → corners → blackout.",
         "⭐ cells give a free daub, or a power-up when they're on: 👁️ peek at the next ball, ✖️2, ❄️ freeze a rival's BINGO! button.",
@@ -778,21 +778,39 @@ class Bingo(Game):
 
     def one_to_go(self, card):
         """Cells that would finish something worth claiming."""
+        return sorted({row["cell"] for row in self.near_patterns(card)})
+
+    def near_patterns(self, card):
+        """Named valid claim patterns with exactly one missing daub on this card."""
+        def line_name(key):
+            if key.startswith("r"):
+                return f"Row {int(key[1:]) + 1}"
+            if key.startswith("c"):
+                return f"Column {int(key[1:]) + 1}"
+            return "Diagonal"
+
         if self.style == "bash":
-            masks = [cells for key, kind, cells in PATTERNS if kind != "blackout" and key not in card["got"] and key not in card["slept"]]
+            masks = [("Four corners" if key == "x4" else line_name(key), cells)
+                     for key, kind, cells in PATTERNS
+                     if kind != "blackout" and key not in card["got"] and key not in card["slept"]]
         elif self.target["kind"] == "two":
             open_lines = [m for k, m in LINES.items() if k not in card["slept"] and not done(card, m)]
             if sum(1 for k, m in LINES.items() if k not in card["slept"] and done(card, m)) < 1:
                 return []
-            masks = open_lines
+            masks = [("Second line", cells) for cells in open_lines]
+        elif self.target["kind"] == "line":
+            masks = [(line_name(key), cells) for key, cells in LINES.items() if key not in card["slept"]]
         else:
-            masks = self.target["masks"]
-        out = set()
-        for cells in masks:
+            masks = [(self.target["name"], cells) for cells in self.target["masks"]]
+        out, seen = [], set()
+        for name, cells in masks:
             open_ = [c for c in cells if not card["daub"][c]]
             if len(open_) == 1:
-                out.add(open_[0])
-        return sorted(out)
+                item = (name, open_[0])
+                if item not in seen:
+                    out.append({"name": name, "cell": open_[0]})
+                    seen.add(item)
+        return out
 
     def view(self, p):
         now = self.now()
@@ -819,7 +837,8 @@ class Bingo(Game):
         }
         if mine:
             v["cards"] = [{"nums": c["nums"], "daub": c["daub"], "stars": c["stars"], "got": c["got"], "slept": c["slept"],
-                           "near": self.one_to_go(c) if self.stage == "call" else []} for c in p.g.cards]
+                           "near": self.one_to_go(c) if self.stage == "call" else [],
+                           "nearPatterns": self.near_patterns(c) if self.stage == "call" else []} for c in p.g.cards]
             v["free"] = p.g.free
             v["pw"] = p.g.pw
             v["double"] = p.g.double

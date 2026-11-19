@@ -16,6 +16,7 @@
 .bgo-mini i { width: 14px; height: 17px; border-radius: 3px; background: linear-gradient(#ef476f 0 25%, #fff 25%); box-shadow: 0 1px 2px #0005; }
 .bgo-deal-go { justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
 .bgo-cards { --cw: min(100%, 440px); display: grid; gap: 10px; justify-content: center; grid-template-columns: var(--cw); }
+.bgo-near-callout:not([hidden]) { margin: 3px 0 5px; padding: 5px 8px; border-radius: 7px; background: #ffd166; color: #241600; text-align: center; font-size: clamp(10px, 3cqi, 13px); font-weight: 900; overflow-wrap: anywhere; }
 .bgo-cards[data-n="2"], .bgo-cards[data-n="3"], .bgo-cards[data-n="4"] { --cw: minmax(0, 300px); grid-template-columns: var(--cw) var(--cw); }
 .bgo-swap { position: absolute; right: 2px; top: -26px; padding: 2px 8px; font-size: 12px; border-radius: 999px; min-height: 0; }
 .bgo-star { position: absolute; right: 1px; top: 0; font-size: max(8px, 3.4cqi); font-style: normal; z-index: 3; filter: drop-shadow(0 0 3px #ffd166); }

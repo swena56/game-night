@@ -59,6 +59,27 @@ check("cards: 24 distinct numbers", len({v for v in c["nums"] if v}) == 24)
 check("cards: the star is never the FREE cell", BG.FREE not in c["stars"])
 check("patterns: 12 lines, corners, blackout", len(P.PATTERNS) == 14)
 
+# -- one-daub callouts follow only patterns that can actually be claimed
+r, g, (a, b) = room()
+probe = BG.new_card(random.Random(7))
+probe["daub"] = [False] * 25
+probe["daub"][BG.FREE] = True
+probe["daub"][:4] = [True] * 4
+near = g.near_patterns(probe)
+check("near callout names the one-missing row and its exact cell",
+      {"name": "Row 1", "cell": 4} in near and 4 in g.one_to_go(probe), near)
+g.stage = "call"; a.g.cards = [probe]
+check("each card view carries its own near-pattern callout",
+      g.view(a)["bingo"]["cards"][0]["nearPatterns"] == near)
+race = BG.Bingo(r); race.style = "race"; race.target = {"kind": "line", "name": "Any line"}
+check("race callout uses any winning line", {"name": "Row 1", "cell": 4} in race.near_patterns(probe))
+hunt = BG.Bingo(r); hunt.style = "hunt"; hunt.target = {"kind": "shape", "name": "Test shape", "masks": [[0, 1, 2, 3, 4]]}
+check("hunt callout follows the selected target shape",
+      {"name": "Test shape", "cell": 4} in hunt.near_patterns(probe))
+probe["daub"][4] = True
+check("completed patterns are not mislabeled one away",
+      not any(x["name"] == "Row 1" for x in g.near_patterns(probe)))
+
 # -- deal stage
 r, g, (a, b) = room()
 check("deal: humans start with 2 cards", len(a.g.cards) == 2 and g.stage == "deal")
