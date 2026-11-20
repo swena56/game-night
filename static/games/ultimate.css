@@ -27,3 +27,4 @@
 .ut-small.threat-x::before { background: #ef476f; }
 .ut-small.threat-o::before { background: #3a8fd1; }
 .ut-small.threat-x.threat-o::before { background: linear-gradient(90deg, #ef476f 50%, #3a8fd1 50%); }
+.ut-small.star:not(.done)::after { content: '⭐'; position: absolute; top: 1px; right: 3px; font-size: .8em; pointer-events: none; }

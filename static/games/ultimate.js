@@ -36,6 +36,7 @@ UI.ultimate = (() => {
     prevOpen = openKey;
     [...big.children].forEach((sb, b) => {
       const res = u.boards[b];
+      sb.classList.toggle('star', u.star === b && res == null);
       sb.classList.toggle('open', open.has(b) && S.phase === 'playing');
       sb.classList.toggle('threat-x', tx.has(b) && S.phase === 'playing');
       sb.classList.toggle('threat-o', to.has(b) && S.phase === 'playing');
@@ -88,7 +89,7 @@ UI.ultimate = (() => {
       info.append(row);
     });
     const mine = u.me === 0 ? tx : u.me === 1 ? to : null, theirs = u.me === 0 ? to : u.me === 1 ? tx : null;
-    $('utHint').textContent = S.phase !== 'playing' || !ctx.myTurn ? '' : (u.open.length > 1 ? 'Play in any glowing board.' : `Play in board ${u.open[0] + 1}.`)
+    $('utHint').textContent = S.phase !== 'playing' || !ctx.myTurn ? '' : (u.star != null ? `⭐ Win board ${u.star + 1} to move again. ` : '') + (u.open.length > 1 ? 'Play in any glowing board.' : `Play in board ${u.open[0] + 1}.`)
       + (theirs?.size ? ` ⚠ Your rival wins the game with board ${[...theirs].map((b) => b + 1).join(' or ')}.` : mine?.size ? ` ⭐ Board ${[...mine].map((b) => b + 1).join(' or ')} wins it for you.` : '');
     undoRow($('utUndo'), u.undo, S, ctx, u.me != null);
   }

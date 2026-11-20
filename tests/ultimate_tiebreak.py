@@ -26,6 +26,7 @@ def ending(tiebreak, boards):
     r.switch_game("ultimate")
     if tiebreak is not None:
         r.settings["tiebreak"] = tiebreak
+    r.settings["star"] = False
     r.start()
     g = r.game
     me = r.players[r.turn]

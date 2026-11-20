@@ -83,6 +83,7 @@ class Ultimate(Undo, Game):
         "If that board is already won or full, they can play anywhere.",
         "Win three small boards in a row to win the game.",
         "↶ Undo asks your rival to take back your last move.",
+        "⭐ Star board: one board is marked at the start. Win it and you move again, anywhere you like.",
         "If nobody can make a line, it's a draw, or, with the 🏆 Most small boards setting, a win for whoever took more boards.",
     ]
     name = "Ultimate Tic-Tac-Toe"
@@ -93,7 +94,10 @@ class Ultimate(Undo, Game):
     badges = {**Game.badges, "sniper": ("🎯", "No wasted boards", "Win with exactly three small boards")}
     settings_schema = {
         "tiebreak": ("When no line is left", [("draw", "🤝 It's a draw"), ("boards", "🏆 Most small boards wins")], "draw"),
+        "star": ("⭐ Star board", [(True, "On: win it to move again"), (False, "Off")], True),
     }
+
+    star = None  # the ⭐ board, until someone wins it (games saved before the twist have none)
 
     def start(self, seated, rng):
         self.rng = rng
@@ -101,6 +105,9 @@ class Ultimate(Undo, Game):
         self.seats = [p.id for p in seated]
         self.state = ((None,) * 81, (None,) * 9, None)
         self.last = None
+        self.star = rng.randrange(9) if self.s.get("star", True) else None
+        if self.star is not None:
+            self.room.add_log(f"⭐ Board {self.star + 1} is the star board: win it to move again.", "power")
         self.room.add_log(f"#️⃣ {seated[0].name} plays ✕ and goes first; {seated[1].name} plays ◯.", "big")
         self.room.begin_turn(seated[0].id)
 
@@ -134,10 +141,11 @@ class Ultimate(Undo, Game):
         self.last = c
         r = self.room
         b = c // 9
+        starred = b == self.star and before[b] is None and self.state[1][b] in (0, 1)
         if before[b] is None and self.state[1][b] in (0, 1):
             r.add_log(f"{'✕◯'[me]} {p.name} wins board {b + 1}!", "power")
             won = self.state[1].count(me)
-            if big_result(self.state[1]) not in (0, 1):
+            if big_result(self.state[1]) not in (0, 1) and not starred:
                 self.moment(f"{'✕◯'[me]} {p.name} takes board {b + 1}" + (f" · {won} boards" if won > 1 else ""), "cool", "good")
         else:
             r.add_log(f"{'✕◯'[me]} {p.name} plays board {b + 1}, square {c % 9 + 1}.", "question")
@@ -153,6 +161,12 @@ class Ultimate(Undo, Game):
                 w = self.room.players.get(self.seats[k])
                 return r.finish(w, f"🏆 No lines left: {w.name if w else '?'} wins on boards, {max(won)} to {min(won)}!")
             return r.finish(None, "🤝 No lines left to win — a draw.")
+        if starred:  # ⭐ star board won: same player moves again, anywhere
+            self.star = None
+            self.state = (self.state[0], self.state[1], None)
+            self.moment(f"⭐ {p.name} wins the star board: moves again!", "gold", "fanfare")
+            r.add_log(f"⭐ {p.name} wins the star board and moves again.", "power")
+            return r.begin_turn(p.id)
         r.begin_turn(self.seats[1 - me])
 
     def meta(self, p):
@@ -164,7 +178,7 @@ class Ultimate(Undo, Game):
         mine = self.room.turn == p.id
         nxt = self.seats.index(self.room.turn) if self.room.turn in self.seats else None
         return {"ultimate": {
-            "cells": self.state[0], "boards": self.state[1], "seats": self.seats, "me": i, "last": self.last,
+            "cells": self.state[0], "boards": self.state[1], "seats": self.seats, "me": i, "last": self.last, "star": self.star,
             "open": sorted({m // 9 for m in legal(self.state, nxt)}) if nxt is not None else [],
             "legal": legal(self.state, i) if mine and i is not None else [],
             "undo": self.undo_view(p),
@@ -173,4 +187,8 @@ class Ultimate(Undo, Game):
     def bot_turn(self, p):
         me = self.seat(p)
         depth, budget, noise = {"easy": (1, 0.3, 30), "normal": (3, 1.0, 6), "hard": (8, 2.5, 0)}[p.bot]
+        if p.bot != "easy" and self.star is not None:  # grab the star board when one move wins it
+            for m in legal(self.state, me):
+                if m // 9 == self.star and play(self.state, me, m)[1][self.star] == me:
+                    return self.mark(p, m)
         self.mark(p, best_move(self.state, me, legal, play, evaluate, depth, budget, self.rng, noise))
