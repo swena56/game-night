@@ -136,6 +136,7 @@ third = next(p for p in (ann, bo, cy) if p.id not in (innocent.id, odd.id))
 g.votes[innocent.id] = third.id  # the innocent guesses wrong too, so their only point is the scapegoat's
 s0 = innocent.g.score
 g.count_votes()
+g.resolve_votes()  # a lone leader gets a final defense first (7b648cd); skip straight to the scoring
 check("the scapegoat gets +1", innocent.g.score - s0 == 1, str(innocent.g.score - s0))
 check("the odd one still gets +4 for escaping", odd.g.score == 4, str(odd.g.score))
 
