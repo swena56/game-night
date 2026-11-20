@@ -32,11 +32,13 @@ class Spite(CardGame):
         "On your turn draw up to five, then play from your hand, your pay-off pile and your discard-pile tops onto the middle.",
         "Empty your hand? Draw five more and keep going.",
         "End your turn by putting a hand card on one of your four discard piles.",
+        "👑 An option: finish a pile up to the queen and you draw a bonus card from the stock.",
         "First to empty their pay-off pile wins.",
     ]
     min_players, max_players = 2, 4
     badges = {**CardGame.badges, "chain": ("⛓️", "Chain", "Play five pay-off cards in one turn")}
-    settings_schema = {"payoff": ("Pay-off pile", [(20, "20 cards"), (13, "13 cards (quick)"), (26, "26 cards")], 20)}
+    settings_schema = {"payoff": ("Pay-off pile", [(20, "20 cards"), (13, "13 cards (quick)"), (26, "26 cards")], 20),
+                       "crown": ("👑 Queen bonus", [(True, "On: finish a pile, draw 1"), (False, "Off")], True)}
 
     def start(self, seated, rng):
         self.seat_up(seated, rng)
@@ -122,12 +124,17 @@ class Spite(CardGame):
             if not self.payoff[i]:
                 return self.room.finish(self.pl(i), f"🏆 {self.nm(i)} empties their pay-off pile and wins Spite & Malice!")
             self.room.add_log(f"⭐ {self.nm(i)} plays {pretty(c)} from their pay-off pile ({len(self.payoff[i])} left).")
-        if len(self.center[k]) == 12:
+        cleared = len(self.center[k]) == 12
+        if cleared:
             self.done += [x for x, _ in self.center[k]]
             self.center.pop(k)
             self.room.add_log("✅ A pile reaches the queen and is cleared.")
         if not self.hands[i]:
             self.refill(i)
+        if self.s.get("crown", True) and cleared and self.stock:
+            self.hands[i].append(self.stock.pop())
+            self.hands[i].sort(key=lambda c: (v(c) or 13, suit(c)))
+            self.moment(f"👑 {self.nm(i)} finishes a pile: bonus card", "gold", "good")
 
     def discard(self, i, c, k):
         if c is not None:
