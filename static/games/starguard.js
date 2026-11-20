@@ -4,13 +4,14 @@
 UI.starguard = (() => {
   let S, ctx, canvas, g2, raf = 0, ro = null, net = null, stars = [];
   let own = null, target = null, lastSent = 0, shown = [], bossShown = null, keys = {}, keyHandler = null, keyUp = null;
-  let lastLives = null, flash = 0, bursts = [], lastAl = 0, lastFrame = 0;
+  let lastLives = null, flash = 0, prevAl = [], hadBoss = false, lastSnap = null, lastFrame = 0;
+  const fx = Fx2D.create({ cap: 260 }), KIND_COLOR = ['#7bd88f', '#ffb703', '#ef476f'];
   const SPEED = 1.1;  // must match SHIP_SPEED in games/starguard.py
   const $ = (id) => document.getElementById(id);
   const POWERS = { rapid: '⚡', spread: '🔱', shield: '🛡️', life: '❤️' };
 
   function mount(main, side) {
-    S = null; net = null; own = null; target = null; shown = []; bossShown = null; keys = {}; lastLives = null; flash = 0; bursts = []; lastAl = 0;
+    S = null; net = null; own = null; target = null; shown = []; bossShown = null; keys = {}; lastLives = null; flash = 0; prevAl = []; hadBoss = false; lastSnap = null; fx.clear?.();
     main.innerHTML = `<div class="sg"><div class="sg-stage" id="sgStage"><canvas id="sgCanvas"></canvas></div></div>`;
     side.innerHTML = `<div class="panel"><div id="sgHud" class="sg-hud"></div><div id="sgCrew"></div>
       <button id="sgBomb" class="primary sg-bomb" type="button">💣 Bomb</button>
@@ -101,6 +102,8 @@ UI.starguard = (() => {
       own += (srv - own) * 0.08;
     }
     g2.clearRect(0, 0, canvas.width, canvas.height);
+    fx.step(frameDt);
+    fx.begin(g2);
     const bg = g2.createLinearGradient(0, 0, 0, canvas.height); bg.addColorStop(0, '#060a1c'); bg.addColorStop(1, '#14103a');
     g2.fillStyle = bg; g2.fillRect(0, 0, canvas.width, canvas.height);
     g2.fillStyle = '#ffffff';
@@ -110,8 +113,20 @@ UI.starguard = (() => {
     g2.strokeStyle = '#ef476f33'; g2.setLineDash([u * 0.02, u * 0.02]); g2.beginPath(); g2.moveTo(0, Y(1.38)); g2.lineTo(canvas.width, Y(1.38)); g2.stroke(); g2.setLineDash([]);
     // aliens
     for (const a of src.al) alien(X(a[0]), Y(a[1]), a[3], a[2], u, t);
-    if (src.al.length < lastAl) bursts.push({ t: now, x: canvas.width / 2, y: canvas.height * 0.2 });
-    lastAl = src.al.length;
+    // 💥 an alien that has vanished since the last snapshot burst where it was (nothing near it any more)
+    if (src !== lastSnap) {
+      for (const a of prevAl) if (!src.al.some((b) => Math.abs(b[0] - a[0]) < 0.15 && Math.abs(b[1] - a[1]) < 0.15)) {
+        const c = KIND_COLOR[a[3]] || '#fff';
+        fx.burst(X(a[0]), Y(a[1]), 12, { colors: [c, '#ffffff'], speed: [u * 0.12, u * 0.4], size: u * 0.012, life: [0.3, 0.7] });
+        fx.ring(X(a[0]), Y(a[1]), { r0: u * 0.02, r1: u * 0.09, color: c, width: u * 0.006, life: 0.4 });
+      }
+      prevAl = src.al.map((a) => [a[0], a[1], a[2], a[3]]);
+      if (hadBoss && !src.bo) {   // the boss goes down: a big blast
+        fx.burst(X(bossShown?.[0] ?? 0.5), Y(bossShown?.[1] ?? 0.2), 40, { colors: ['#ffd166', '#ef476f', '#fff'], speed: [u * 0.15, u * 0.7], size: u * 0.016, life: [0.5, 1.1] });
+        fx.shake(u * 0.03); fx.flash('#ffd166', 0.3, 400);
+      }
+      hadBoss = !!src.bo; lastSnap = src;
+    }
     // boss
     if (src.bo) {
       bossShown = bossShown ? [bossShown[0] + (src.bo[0] - bossShown[0]) * 0.3, bossShown[1] + (src.bo[1] - bossShown[1]) * 0.3] : [src.bo[0], src.bo[1]];
@@ -138,9 +153,10 @@ UI.starguard = (() => {
       ship(X(x), Y(h.shipY), colorOf(i), u, s[2] > 0 && Math.floor(t * 10) % 2 ? 0.45 : 1, !!s[3], i === h.me);
     });
     // lost-a-life flash
-    if (lastLives != null && src.lv < lastLives) { flash = 1; ctx.sfx?.('groan'); }
+    if (lastLives != null && src.lv < lastLives) { flash = 1; ctx.sfx?.('groan'); fx.shake(u * 0.02); }
     lastLives = src.lv;
     if (flash > 0) { g2.fillStyle = `rgba(239,71,111,${flash * 0.3})`; g2.fillRect(0, 0, canvas.width, canvas.height); flash = Math.max(0, flash - 0.05); }
+    fx.draw(g2); fx.end(g2);
     // HUD on the sky
     g2.textAlign = 'left'; g2.fillStyle = '#fff'; g2.font = `700 ${u * 0.05}px system-ui, sans-serif`;
     g2.fillText(`Wave ${src.wv}/${h.waves}`, u * 0.03, canvas.height - u * 0.035);
