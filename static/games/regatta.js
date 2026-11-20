@@ -6,7 +6,7 @@
 // target, flies the ball and says where it lands (fire / hit / splash events + the balls in flight in every packet).
 UI.regatta = (() => {
   let S, ctx, snap = null, gotAt = 0, gl = null, flat = null, raf = 0, ro = null, keyFn = null, keyUp = null;
-  let steer = 0, drag = null, keys = new Set(), lastSent = 0, sentSteer = 0, lastSeq = -1, flash = null, sideAt = 0, holdBtn = 0;
+  let auto = false, autoTackAt = 0, steer = 0, drag = null, keys = new Set(), lastSent = 0, sentSteer = 0, lastSeq = -1, flash = null, sideAt = 0, holdBtn = 0;
   // #150: drag points the boat: goal = the heading you pointed at (shown as a white arrow until the boat gets there)
   let goal = null, goalShow = 0, sentHead = null, headAt = 0;
   // 🏴‍☠️ balls in flight (id → flight), effects to show (fire smoke, splashes, hits), foam trails behind each boat
@@ -21,7 +21,7 @@ UI.regatta = (() => {
   const playing = () => S?.phase === 'playing' && me() != null && snap?.st === 'race' && !snap.b[me()][5];
 
   function mount(main, side) {
-    S = null; snap = null; gl = null; flat = null; steer = 0; drag = null; keys = new Set(); lastSeq = -1; flash = null; holdBtn = 0; goal = null; sentHead = null;
+    S = null; snap = null; gl = null; flat = null; auto = false; steer = 0; drag = null; keys = new Set(); lastSeq = -1; flash = null; holdBtn = 0; goal = null; sentHead = null;
     balls = new Map(); fxq = []; trails = [];
     main.innerHTML = `<div class="rg"><div class="rg-stage" id="rgStage">
         <div class="rg-hud"><span id="rgPos"></span><span id="rgClock" class="rg-clock"></span></div>
@@ -32,7 +32,7 @@ UI.regatta = (() => {
         <div class="rg-flash" id="rgFlash" hidden></div>
         <div class="rg-done" id="rgDone" hidden><h3 id="rgDoneTitle"></h3><div id="rgStand"></div></div>
       </div>
-      <div class="rg-ctl"><button id="rgL" aria-label="Steer left">◀</button><button class="rg-tack" id="rgTack">⟲ Tack</button><button class="rg-fire" id="rgFire" hidden aria-label="Fire a broadside"><span>💥 Fire</span><small id="rgAmmo"></small></button><button id="rgR" aria-label="Steer right">▶</button></div>
+      <div class="rg-ctl"><button id="rgL" aria-label="Steer left">◀</button><button class="rg-tack" id="rgTack">⟲ Tack</button><button class="rg-auto" id="rgAuto" aria-pressed="false" title="Sail to the next buoy for me: tacks upwind by itself. Steering takes over.">🧭 Auto</button><button class="rg-fire" id="rgFire" hidden aria-label="Fire a broadside"><span>💥 Fire</span><small id="rgAmmo"></small></button><button id="rgR" aria-label="Steer right">▶</button></div>
       <p id="rgHint" class="hint"></p></div>`;
     side.innerHTML = '<div class="panel"><h3>⛵ Fleet</h3><div id="rgSeats" class="rg-seats"></div></div>';
     const hold = (el, dir) => {
@@ -42,6 +42,7 @@ UI.regatta = (() => {
     };
     hold($('rgL'), 1); hold($('rgR'), -1);
     $('rgTack').addEventListener('click', tack);
+    $('rgAuto').addEventListener('click', () => { auto = !auto; autoTackAt = 0; setAuto(); if (!auto) { goal = null; sentHead = null; } });
     $('rgFire').addEventListener('click', fire);
     const stage = $('rgStage');
     stage.style.touchAction = 'none';
@@ -49,6 +50,7 @@ UI.regatta = (() => {
       if (e.target.closest('button, .rg-done')) return;
       try { stage.setPointerCapture(e.pointerId); } catch {}
       const m = myBoat();
+      auto = false; setAuto();
       drag = { id: e.pointerId, x: e.clientX, h0: goal ?? m?.h ?? 0 };
     });
     stage.addEventListener('pointermove', (e) => {
@@ -101,7 +103,7 @@ UI.regatta = (() => {
     if (keys.has('arrowright') || keys.has('d')) s = -1;
     if (holdBtn) s = holdBtn;
     steer = s;
-    if (s) { goal = null; sentHead = null; }   // ◀ ▶ and the keys steer by rate, as before
+    if (s) { goal = null; sentHead = null; if (auto) { auto = false; setAuto(); } }   // ◀ ▶ and the keys steer by rate, as before
     if (!playing()) return;
     const now = performance.now();
     if (force || (Math.abs(steer - sentSteer) > 0.06 && now - lastSent > 60)) {
@@ -109,8 +111,21 @@ UI.regatta = (() => {
       ctx.input({ steer: +steer.toFixed(3) }, force);
     }
   }
+  function setAuto() { const b = $('rgAuto'); if (b) { b.classList.toggle('on', auto); b.setAttribute('aria-pressed', auto ? 'true' : 'false'); } }
+  // 🧭 autopilot: head for the next buoy, or sail close-hauled on the current tack and tack when that points closer
+  function autopilot(m, now) {
+    const nav = navOf(m), from = snap.w[0], nogo = (V().nogo || 38) * Math.PI / 180;
+    let h = nav.bt;
+    if (nav.upwind) {
+      const side = Math.sign(wrap(m.h - from)) || 1;
+      h = wrap(from + side * (nogo + 0.14));
+      if (nav.tackNow && now - autoTackAt > 3000) { autoTackAt = now; ctx.input({ tack: true }, true); SND.luff(); goal = null; sentHead = null; return; }
+    }
+    goal = h; goalShow = now; sendHead();
+  }
   function tack() {
     if (!playing()) return;
+    if (auto) { auto = false; setAuto(); }
     goal = null; sentHead = null; if (drag) drag.dead = true;   // a tack takes the helm; lift your finger to point again
     ctx.input({ tack: true }, true); SND.luff(); ctx.buzz?.(10);
   }
@@ -349,7 +364,9 @@ UI.regatta = (() => {
     const on = S.phase === 'playing' && !S.paused;
     window.Snd?.bed('rg.water', waterBed).set(on && m ? clamp(m.v / 6, 0.15, 1) : on ? 0.3 : 0);
     window.Snd?.bed('rg.wind', windBed).set(on ? clamp(snap.w[1] / 8, 0.3, 1.2) : 0);
-    if (goal != null && m && !drag && Math.abs(wrap(goal - m.h)) < 0.04 && now - goalShow > 800) goal = null;   // got there: hide the arrow (the boat holds the heading)
+    if (auto && m && playing() && !drag && !steer && snap.st === 'race' && !m.irons && now - autoTackAt > 900) autopilot(m, now);
+    else if (auto && m && playing() && snap.st === 'race' && m.irons) { goal = null; }
+    if (!auto && goal != null && m && !drag && Math.abs(wrap(goal - m.h)) < 0.04 && now - goalShow > 800) goal = null;   // got there: hide the arrow (the boat holds the heading)
     // foam trails: a point off each stern every ~0.1 s, kept for 3.5 s
     for (const b of bs) {
       const tr = (trails[b.i] ||= []), sx = b.x - Math.cos(b.h) * 2.3, sy = b.y - Math.sin(b.h) * 2.3, last = tr[tr.length - 1];
