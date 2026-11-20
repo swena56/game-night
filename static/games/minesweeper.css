@@ -1,0 +1,29 @@
+/* minesweeper: this game's own rules, loaded with static/games/minesweeper.js (needUI in app.js). Shared pieces and tokens live in static/style.css. */
+.swp { --swpw: min(100%, 520px, max(260px, calc(var(--room) - 175px))); --ink: #1d2742; width: 100%; max-width: 760px; margin: 0 auto; padding: 8px 6px 4px;
+  user-select: none; -webkit-user-select: none; }
+body.focus .swp { --swpw: min(100%, 640px, max(260px, calc(var(--room) - 175px))); }
+.swp .pt-head, .swp .dd-bar { width: var(--swpw); margin-left: auto; margin-right: auto; }
+.swp .pt-head { color: var(--text); }
+.swp .pt-tools { margin-top: 10px; }
+.swp-board { display: grid; grid-template-columns: repeat(var(--n, 9), 1fr); gap: 2px; width: var(--swpw); margin: 6px auto 0; padding: 4px;
+  background: #27324f; border-radius: 10px; box-shadow: 0 6px 22px #0008; container-type: inline-size; }
+.swp-cell { position: relative; aspect-ratio: 1; min-width: 0; padding: 0; margin: 0; border: 0; border-radius: 4px; display: grid; place-items: center;
+  font: 800 min(5.6cqi, 28px)/1 var(--font-display, system-ui); touch-action: manipulation; cursor: pointer; color: var(--ink);
+  background: linear-gradient(#8fa2d6, #6f84bd); box-shadow: inset 0 1.5px 0 #ffffff66, inset 0 -1.5px 0 #0003; }
+.swp-cell.open { background: #ece6d4; box-shadow: inset 0 0 0 1px #0001; cursor: default; }
+.swp-cell.open.n1 { color: #2563eb; } .swp-cell.open.n2 { color: #15803d; } .swp-cell.open.n3 { color: #dc2626; } .swp-cell.open.n4 { color: #6d28d9; }
+.swp-cell.open.n5 { color: #b45309; } .swp-cell.open.n6 { color: #0e7490; } .swp-cell.open.n7 { color: #111827; } .swp-cell.open.n8 { color: #6b7280; }
+.swp-cell.open.chordable { box-shadow: inset 0 0 0 2px #ffd166; cursor: pointer; }
+.swp-cell.flag { font-size: min(5cqi, 24px); }
+.swp-cell.boom { background: #ffb4c0; animation: swpBoom .5s; }
+.swp-cell.mineshow { background: #f4d6dc; font-size: min(5cqi, 24px); }
+.swp-cell.wrongflag { background: #ffe1a8; }
+.swp-cell.hinted { animation: swpPop .5s both; }
+.swp-cell.wave { animation: swpWave .4s both; }
+.swp.off .swp-cell { cursor: default; }
+.swp-flagtool.on { box-shadow: inset 0 0 0 2px #ffd166; background: #ffd16622; }
+@keyframes swpBoom { 0% { transform: scale(1.5); } 40% { transform: scale(.9); } }
+@keyframes swpPop { from { transform: scale(1.3); background: #ffe08a; } }
+@keyframes swpWave { 50% { background: #c9f2dc; transform: scale(1.06); } }
+body.calm .swp-cell.boom, body.calm .swp-cell.hinted, body.calm .swp-cell.wave { animation: none; }
+@media (max-width: 420px) { .swp { padding: 4px 2px; } .swp-board { gap: 1.5px; padding: 3px; } }

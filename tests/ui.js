@@ -643,6 +643,18 @@ const MOVES = {
     if (n % 6 === 4) { click(d.querySelector('#sdPencil')); click(pick(enabled(d, '#sdPad .sd-key'))); return click(d.querySelector('#sdPencil')); }
     click(pick(enabled(d, '#sdPad .sd-key')));
   },
+  minesweeper(d, S, n, w) {
+    // Mostly hints; now and then a tap on a covered square (a mine costs points but must not end the game), a flag, a chord.
+    const v = S.minesweeper;
+    const tap = (el) => { for (const t of ['pointerdown', 'pointerup']) el.dispatchEvent(new w.MouseEvent(t, { bubbles: true, cancelable: true, button: 0 })); };
+    const cells = [...d.querySelectorAll('#swpBoard .swp-cell')];
+    if (n % 4 === 1 && !d.querySelector('#swpHint').disabled) return click(d.querySelector('#swpHint'));
+    const covered = cells.filter((c) => v.grid[+c.dataset.i] === -1);
+    if (n % 5 === 2 && covered.length) { click(d.querySelector('#swpFlag')); tap(pick(covered)); return click(d.querySelector('#swpFlag')); }
+    const chord = cells.filter((c) => c.classList.contains('chordable'));
+    if (chord.length && n % 3 === 0) return tap(pick(chord));
+    if (covered.length) tap(pick(covered));
+  },
   wordsearch(d, S, n, w) {
     // Find an open word in the grid the way a person would (scan every line), then tap its first and last letters.
     const v = S.wordsearch, N = v.size, cells = [...d.querySelectorAll('#wfGrid .wf-cell')];
@@ -921,7 +933,7 @@ async function playSolo(game, seconds = 60) {
       || (game === 'relay' && (s.relay.stage === 'play' ? !s.relay.sent : s.relay.myVote == null)) || (game === 'seabattle' && s.sea.stage === 'placing' && !s.sea.ready[s.me.id])
       || (game === 'spire' && s.spire.playing && s.spire.startIn <= 0) || (game === 'prism' && s.prism.playing && s.prism.startIn <= 0) || (game === 'marble' && s.marble.playing) || (game === 'safecracker' && ['crack', 'set'].includes(s.safecracker.stage) && !s.safecracker.mine) || (game === 'gridhunt' && s.gridhunt.stage === 'hunt')
       || (game === 'doodle' && s.doodle.stage === 'draw' && !s.doodle.solvers.some(([p]) => p === s.me.id)) || game === 'hockey' || game === 'starguard' || (game === 'riders' && s.riders.stage === 'ride') || (game === 'whisker' && s.whisker.stage === 'play') || (game === 'paintblast' && s.paintblast.st === 'play') || (game === 'sumo' && s.sumo.stage === 'play') || (game === 'snowball' && s.snowball.st === 'play') || (game === 'tops' && (s.tops.st === 'spin' || s.tops.st === 'launch')) || (game === 'lander' && s.lander.stage === 'fly' && s.lander.me != null && !s.lander.fliers[s.lander.me]?.res) || (game === 'tide' && s.tide.stage === 'build' && s.tide.me != null && !s.tide.ready[s.tide.me]) || (game === 'rapids' && s.rapids.st === 'race') || (game === 'midway' && s.midway.stage === 'play') || (game === 'planes' && s.planes.stage === 'play') || (game === 'pond' && s.pond.t >= 0) || (game === 'regatta' && s.regatta.st === 'race') || (game === 'cannon' && s.cannon.volley && !s.cannon.between && s.cannon.me != null && s.cannon.tanks[s.cannon.me]?.[2] > 0 && !s.cannon.locked.includes(s.cannon.me)) || (game === 'rally' && s.rally.stage === 'race') || (game === 'lanes' && s.lanes.me != null && !s.lanes.wait) || (game === 'drift' && Object.keys(s.drift.options || {}).length > 0 && !s.drift.mine) || (game === 'hearts' && s.hearts.stage === 'pass' && !s.hearts.myPass) || (game === 'speed' && s.speed.stage === 'play') || (game === 'trivia' && s.trivia.stage === 'ask' && s.trivia.mine == null) || (game === 'ladder' && s.ladder.stage === 'climb' && !s.ladder.done) || (game === 'skydrop' && s.skydrop.stage === 'race')
-      || ((game === 'freecell' || game === 'klondike' || game === 'sudoku' || game === 'wordsearch' || game === 'garden') && s[game].stage === 'play' && s[game].playing && !s[game].done && !s[game].banked)
+      || ((game === 'freecell' || game === 'klondike' || game === 'sudoku' || game === 'minesweeper' || game === 'wordsearch' || game === 'garden') && s[game].stage === 'play' && s[game].playing && !s[game].done && !s[game].banked)
       || (game === 'qork' && (s.qork.stage === 'snap' ? !(s.me.id in s.qork.acted) : s.qork.cupper === s.me.id && ['wait', 'dice'].includes(s.qork.stage)))
       || (CT_GAMES.has(game) && s[game]?.mine)
       || (game === 'twentyone' && s.twentyone.stage === 'bet' && !s.twentyone.bets[s.twentyone.me] && s.twentyone.chips[s.twentyone.me] > 0);
