@@ -96,6 +96,7 @@ class DropFour(Game):
         'With bombs on, a 💣 disc clears its 3×3 area and the stack falls.',
         'With ⬇️ pull-outs on, you may instead take one of your own discs out of the bottom row; the column slides down. A pull that lines up four for you and a rival wins for you.',
         'Optional ⚠ column analyzer marks selected moves that win now and moves that leave the next rival an immediate win; it follows gravity, bombs and legal pull-outs.',
+        'As an option, 🛡️ blocking a rival\'s winning drop earns an extra turn at once (never two in a row).',
         '3–4 players get a bigger board; two players can pick one too (7 × 8 or 7 × 9).',
     ]
     name = "Drop Four"
@@ -104,12 +105,14 @@ class DropFour(Game):
     min_players = 2
     max_players = 4
     settings_schema = {
+        "block": ("Block bonus", [(False, "Off"), (True, "🛡️ Block a win, go again")], False),
         "bombs": ("Bomb discs", [(False, "Off"), (True, "💣 One each")], False),
         "pull": ("Pull-outs", [(False, "Off"), (True, "⬇️ Pull your own disc from the bottom")], False),
         "board": ("Board (2 players)", [("6x7", "6 × 7 (classic)"), ("7x8", "7 × 8"), ("7x9", "7 × 9 (wide)")], "6x7"),
     }
     badges = {**Game.badges, "demolition": ("💥", "Demolition", "Connect four with your own bomb or pull-out"),
               "gift": ("🎁", "Thanks for that", "Win because a rival's bomb or pull-out connected your four")}
+    bonus_now = False  # the move just made was itself a bonus turn: no chaining
     moves = ()  # [seat, column, bomb?] in order; games saved before the history have none
 
     def start(self, seated, rng):
@@ -121,6 +124,7 @@ class DropFour(Game):
         self.last = None
         self.line = None
         self.moves = []
+        self.bonus_now = False
         self.room.add_log(f"{seated[0].name} drops first.", "big")
         self.room.begin_turn(seated[0].id)
 
@@ -153,13 +157,21 @@ class DropFour(Game):
     def drop(self, p, col, bomb=False):
         r = self.room
         seat = self.seats.index(p.id)
+        blocked = None
+        if self.s.get("block") and not bomb and not self.bonus_now:
+            for s in range(len(self.seats)):
+                if s != seat and self.in_play(s):
+                    g2, _ = apply_drop(self.grid, col, s)
+                    if g2 and find_line(g2, s):
+                        blocked = self.room.players[self.seats[s]]
+                        break
         self.grid, row = apply_drop(self.grid, col, seat, bomb)
         self.last = [row, col] if not bomb else None
         self.moves = [*self.moves, [seat, col, bomb]]
         if bomb:
             self.bombs[p.id] -= 1
             r.add_log(f"💣 {p.name} bombed column {col + 1}!", "power")
-        self.check_end(p, seat, "bomb" if bomb else "drop")
+        self.check_end(p, seat, "bomb" if bomb else "drop", blocked)
 
     def pull(self, p, col):
         seat = self.seats.index(p.id)
@@ -169,7 +181,7 @@ class DropFour(Game):
         self.room.add_log(f"⬇️ {p.name} pulls a disc out of column {col + 1}.", "power")
         self.check_end(p, seat, "pull")
 
-    def check_end(self, p, seat, how):
+    def check_end(self, p, seat, how, blocked=None):
         r = self.room
         # A bomb or a pull can complete someone else's line; the mover wins ties.
         order = [seat] + [s for s in range(len(self.seats)) if s != seat]
@@ -199,6 +211,11 @@ class DropFour(Game):
                 return r.finish(None, "🤝 The board is full — it's a draw.")
         if len(self.moves) >= MOVE_CAP:
             return r.finish(None, f"🤝 {MOVE_CAP} moves and nobody connected — it's a draw.")
+        self.bonus_now = False
+        if blocked and self.s.get("block"):
+            self.bonus_now = True
+            self.moment(f"🛡️ {p.name} blocked {blocked.name}'s four and goes again!", "good", "tag")
+            return r.begin_turn(p.id)
         r.advance()
 
     def next_seat(self, seat):
