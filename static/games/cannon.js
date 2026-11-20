@@ -55,6 +55,7 @@ UI.cannon = (() => {
       <div class="cn-ctl" id="cnCtl">
         <div class="cn-dial"><button data-k="a+" aria-label="Aim further left">◀</button><b id="cnAng"></b><button data-k="a-" aria-label="Aim further right">▶</button></div>
         <div class="cn-dial"><button data-k="p-" aria-label="Less power">−</button><b id="cnPow"></b><button data-k="p+" aria-label="More power">＋</button></div>
+        <button id="cnPrev" class="ghost-btn" aria-label="Aim preview" title="Show where your shell will land">🎯</button>
         <button id="cnFire" class="primary cn-fire">🔥 Fire</button>
       </div>
       <div class="cn-shells" id="cnShells"></div>
@@ -104,6 +105,9 @@ UI.cannon = (() => {
       b.addEventListener('click', (e) => { if (e.detail === 0) nudge(b.dataset.k); });  // keyboard Enter / Space
     });
     $('cnFire').onclick = fire;
+    const pv = $('cnPrev'), pvShow = () => { pv.style.opacity = previewOn ? 1 : 0.45; pv.setAttribute('aria-pressed', String(previewOn)); };
+    pv.onclick = () => { previewOn = !previewOn; try { localStorage.setItem('cn.preview', previewOn ? '1' : '0'); } catch {} pvShow(); };
+    pvShow();
     onKey = (e) => {
       if (e.target.closest?.('input, textarea, select') || e.ctrlKey || e.metaKey || e.altKey || !S?.cannon) return;
       const k = e.key, big = e.shiftKey ? 5 : 1;
@@ -423,6 +427,8 @@ UI.cannon = (() => {
       g2.save(); g2.setLineDash([4 * dpr, 5 * dpr]); g2.strokeStyle = '#ffffffaa'; g2.lineWidth = 1.5 * dpr;
       g2.beginPath(); trail.forEach(([x, y], k) => (k ? g2.lineTo(X(x), Y(y)) : g2.moveTo(X(x), Y(y)))); g2.stroke(); g2.restore();
     }
+    // 🎯 aim preview: where the shell will come down under this turn's wind, and the size of its blast (same physics as the server)
+    if (previewOn && me != null && canAim() && !anim && tanks[me] && tanks[me][2] > 0) drawPreview(c, me, X, Y, s, dpr, terrain, tanks);
     // cannons
     tanks.forEach((t, i) => drawTank(t, i, s, X, Y, dpr, now));
     // shells in the air
@@ -529,6 +535,41 @@ UI.cannon = (() => {
       g2.beginPath(); g2.moveTo(cx + Math.cos(a) * 9 * s, Y(y + 4 + Math.sin(a) * 9)); g2.lineTo(cx + Math.cos(a) * len, Y(y + 4) - Math.sin(a) * len); g2.stroke();
       g2.setLineDash([]);
     }
+  }
+
+  // mirrors games/cannon.py's fly(): gravity 60, muzzle speed 140 x power, wind x 2.2 sideways, 120 steps a second
+  const BLAST = { shell: 16, big: 30, split: 12, dirt: 18 };
+  let previewOn = (() => { try { return localStorage.getItem('cn.preview') !== '0'; } catch { return true; } })();
+  function drawPreview(c, me, X, Y, s, dpr, terrain, tanks) {
+    const t = tanks[me], a = (aim.angle * Math.PI) / 180, v = 140 * aim.power, ax = (c.wind || 0) * 2.2, DT = 1 / 120;
+    let x = t[0] + 8 * Math.cos(a), y = t[1] + 4 + 8 * Math.sin(a), vx = v * Math.cos(a), vy = v * Math.sin(a), armed = false, pvy, end = null;
+    const pts = [[x, y]];
+    for (let i = 0; i < 1440; i++) {
+      pvy = vy; vx += ax * DT; vy -= 60 * DT; x += vx * DT; y += vy * DT;
+      if (i % 4 === 0) pts.push([x, y]);
+      if (x < 0 || x >= c.w) { end = null; break; }
+      if (aim.shell === 'split' && pvy > 0 && vy <= 0) { end = { x, y, split: true }; break; }
+      let hit = false;
+      for (let j = 0; j < tanks.length; j++) {
+        const o = tanks[j]; if (o[2] <= 0) continue;
+        const d = Math.hypot(x - o[0], y - (o[1] + 4));
+        if (j === me && !armed) { if (d > 9) armed = true; continue; }
+        if (d < 6) { hit = true; break; }
+      }
+      const surf = Math.max(terrain[Math.floor(x)], c.water);
+      if (hit || y <= surf) { end = { x, y: hit ? y : surf }; break; }
+    }
+    g2.save();
+    g2.fillStyle = '#ffffffcc';
+    pts.forEach(([px, py], k) => { if (k % 2) return; g2.beginPath(); g2.arc(X(px), Y(py), 1.3 * dpr, 0, 7); g2.fill(); });
+    if (end) {
+      const r = (BLAST[aim.shell] || 16) * s, ex = X(end.x), ey = Y(end.y), pulse = 0.6 + 0.4 * Math.sin(performance.now() / 180);
+      g2.strokeStyle = end.split ? '#9be7ff' : '#ff8a5c'; g2.globalAlpha = 0.5 + 0.3 * pulse; g2.lineWidth = 1.5 * dpr;
+      if (!end.split) { g2.setLineDash([3 * dpr, 3 * dpr]); g2.beginPath(); g2.arc(ex, ey, r, 0, 7); g2.stroke(); g2.setLineDash([]); }
+      g2.lineWidth = 2 * dpr; g2.beginPath(); const k = 3 * dpr;
+      g2.moveTo(ex - k, ey - k); g2.lineTo(ex + k, ey + k); g2.moveTo(ex + k, ey - k); g2.lineTo(ex - k, ey + k); g2.stroke();
+    }
+    g2.restore();
   }
 
   function drawFx(now, s, X, Y, dpr) {
