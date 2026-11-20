@@ -34,6 +34,9 @@ MAX_T = 7.0
 OIL = {"dry": 9.0, "medium": 12.0, "slick": 14.5}   # oil length: the ball only hooks past it
 LEAD = 2              # frames a player may get ahead of the slowest one still bowling
 BOT_LEAD = 0          # bots never get ahead of the slowest human still bowling (#110)
+WEAR = 0.18           # 🛢️ each ball you roll carries some oil off your lane (metres of oil length)
+WEAR_MAX = 3.0        # ...down to this much below where it started (never under WEAR_MIN)
+WEAR_MIN = 6.0
 IDLE = 75             # seconds before a bowler who's ready but idle gets an automatic roll
 
 
@@ -223,6 +226,7 @@ class Lanes(Game):
     howto = [
         "Everyone bowls their own lane at the same time. Set where you stand (◀ ▶) and the hook, then drag back from the ball and let go: the drag sets the line and the speed.",
         "The ball skids straight through the oil, then hooks the way you spun it. Aim for the pocket, just beside the head pin.",
+        "📉 Your lane's oil breaks down as you bowl, so the hook starts earlier and earlier: ease the spin, or move your start and aim, to keep finding the pocket.",
         "Standard scoring: a strike (all 10 with the first ball) scores 10 + your next two balls, a spare 10 + your next ball. Bonus balls in the last frame.",
         "🌟 The cosmic frame is lit up for everyone: a strike or spare in it scores +10 more. 🎯 Once a game, arm the spare saver on a spare ball: if it leaves exactly one pin, that pin falls too.",
         "Highest total wins. Nobody can get more than two frames ahead of the slowest bowler.",
@@ -238,6 +242,7 @@ class Lanes(Game):
     settings_schema = {
         "frames": ("Frames", [(10, "10"), (5, "5")], 10),
         "oil": ("Oil", [("medium", "🛢️ Medium"), ("dry", "🏜️ Dry (big hook)"), ("slick", "💧 Slick (little hook)")], "medium"),
+        "wear": ("Lane oil", [("on", "📉 Breaks down"), ("off", "Steady")], "on"),
     }
 
     finish_at = 0
@@ -247,6 +252,7 @@ class Lanes(Game):
         self.seats = [p.id for p in seated]
         self.nframes = int(self.s.get("frames", 10))
         self.oil = OIL.get(self.s.get("oil", "medium"), 12.0)
+        self.wear = self.s.get("wear", "on") != "off"
         self.cosmic = rng.randrange(1, self.nframes - 1) if self.nframes > 3 else 0
         self.shot_id = 0
         self.finish_at = 0  # everyone's done: the game ends once the last roll has played out (#130)
@@ -260,6 +266,7 @@ class Lanes(Game):
             g.woke = True
             g.next_at = now + random.uniform(1.5, 3.0)
             g.streak = 0
+            g.oil = self.oil
         r.deadline = now + IDLE
         r.bot_at = 0
         r.add_log(f"🎳 Lane Night: {self.nframes} frames each, everyone at once. 🌟 Frame {self.cosmic + 1} is the cosmic frame.", "big")
@@ -324,10 +331,14 @@ class Lanes(Game):
             raise GameError("The spare saver can't be used now.")
         self.bowl(p, start, angle, speed, spin, saver)
 
+    def oil_for(self, p):
+        """🛢️ Your lane's oil length right now: it wears off ball by ball, so the hook starts earlier as you go."""
+        return getattr(p.g, "oil", self.oil)
+
     def bowl(self, p, start, angle, speed, spin, saver=False):
         g = p.g
         before = list(g.standing)
-        knocked, tracks, gutter = roll(before, start, angle, speed, spin, self.oil)
+        knocked, tracks, gutter = roll(before, start, angle, speed, spin, self.oil_for(p))
         left = [k for k in before if k not in knocked]
         saved = None
         if saver and len(left) == 1:
@@ -368,6 +379,9 @@ class Lanes(Game):
         elif gutter and n == 0:
             self.room.add_log(f"🎳 {nm}: gutter ball.", "info", at=lands)
         # advance the frame
+        if self.wear:   # this ball took some oil with it: the next one hooks a little earlier
+            floor = max(min(self.oil, WEAR_MIN), self.oil - WEAR_MAX)
+            g.oil = max(floor, round(self.oil_for(p) - WEAR, 3))
         g.ball += 1
         if last_frame:
             rolls = frame_rolls(g.rolls, self.nframes)[-1]
@@ -488,11 +502,11 @@ class Lanes(Game):
             # aim at the target allowing for the hook (found by a short search on the real roll)
             ang = math.atan2(tx - start, HEAD) + rng.uniform(-0.02, 0.02)
             for _ in range(3):
-                knocked, tr, _ = roll(standing, start, ang, sp, s, self.oil, record=True)
+                knocked, tr, _ = roll(standing, start, ang, sp, s, self.oil_for(p), record=True)
                 path = tr["ball"]
                 at = next((b for b in path if b[1] >= HEAD - 0.3), path[-1])
                 ang = max(-0.12, min(0.12, ang + (tx - at[0]) / HEAD))
-            knocked, _, _ = roll(standing, start, ang, sp, s, self.oil, record=False)
+            knocked, _, _ = roll(standing, start, ang, sp, s, self.oil_for(p), record=False)
             if len(knocked) > best_n:
                 best, best_n = (start, ang, sp, s), len(knocked)
         start, ang, sp, s = best
@@ -554,7 +568,7 @@ class Lanes(Game):
         me = p.g if p.id in self.seats else None
         why = self.can_bowl(p) if me is not None else "Watching."
         return {"lanes": {
-            "seats": self.seats, "nframes": self.nframes, "cosmic": self.cosmic, "oil": self.oil, "rows": rows,
+            "seats": self.seats, "nframes": self.nframes, "cosmic": self.cosmic, "oil": round(self.oil_for(p), 1) if me is not None else self.oil, "oil0": self.oil, "rows": rows,
             "me": self.seats.index(p.id) if me is not None else None,
             "shot": me.shot if me is not None else None,
             "standing": me.standing if me is not None else list(range(10)),

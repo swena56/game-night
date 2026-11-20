@@ -158,5 +158,33 @@ if bots:
 else:
     check("a bot could be added", False)
 
+# 🛢️ the oil breaks down ball by ball on your own lane, to a floor, and can be turned off
+r = server.Room("OILW")
+wa = r.add_player("Wen")
+r.switch_game("lanes")
+r.start()
+g = r.game
+base = g.oil
+check("the oil starts at its setting", g.oil_for(wa) == base)
+for _ in range(3):
+    wa.g.busy = 0
+    g.bowl(wa, 0.06, 0.0, 0.6, 0.0)
+check("each ball wears the oil", abs(g.oil_for(wa) - (base - 3 * L.WEAR)) < 1e-6, f"{g.oil_for(wa)}")
+check("the view shows my oil and where it began", g.view(wa)["lanes"]["oil"] < base and g.view(wa)["lanes"]["oil0"] == base)
+for _ in range(60):
+    g.bowl(wa, 0.06, 0.0, 0.6, 0.0)
+check("it never wears below the floor", g.oil_for(wa) >= max(min(base, L.WEAR_MIN), base - L.WEAR_MAX) - 1e-9, f"{g.oil_for(wa)}")
+def _at_pins(oil):
+    path = L.roll(list(range(10)), 0.1, 0.0, 0.6, 0.8, oil)[1]["ball"]
+    return next(b for b in path if b[1] >= L.HEAD - 1)[0]
+check("the hook starts earlier on worn oil", abs(_at_pins(g.oil_for(wa)) - _at_pins(base)) > 0.02, f"{_at_pins(g.oil_for(wa))} vs {_at_pins(base)}")
+r = server.Room("OILS")
+sa = r.add_player("Sia")
+r.switch_game("lanes")
+r.settings["wear"] = "off"
+r.start()
+r.game.bowl(sa, 0.06, 0.0, 0.6, 0.0)
+check("with Steady oil nothing wears", r.game.oil_for(sa) == r.game.oil)
+
 print("\n" + ("all ok" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)

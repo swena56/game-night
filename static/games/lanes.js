@@ -304,7 +304,7 @@ UI.lanes = (() => {
     box.append(ctx.el('p', 'hint left', `🌟 Frame ${v.cosmic + 1} is cosmic: a strike or spare in it scores +10 more.`));
     const me = myRow();
     if (me?.top) box.append(ctx.el('p', 'hint left', `🚀 Your fastest ball: ${Math.round(me.top / 1.609)} mph (${Math.round(me.top)} km/h).`));
-    box.append(ctx.el('p', 'hint left', `🛢️ The faint sheen down the middle is the oil (${v.oil} m): the ball skids on it and only hooks once it reaches the dry boards.`));
+    box.append(ctx.el('p', 'hint left', `🛢️ The faint sheen down the middle is the oil: the ball skids on it and only hooks once it reaches the dry boards. Your lane's oil is ${v.oil} m long` + (v.oil0 - v.oil >= 0.05 ? ` (📉 down from ${v.oil0}: it breaks down as you bowl, so the hook starts earlier — ease the spin or aim a little right of where you did).` : '.')));
   }
 
   // where the ball, my pins, the sweep bar and the pinsetter are right now
@@ -451,7 +451,7 @@ UI.lanes = (() => {
     // #137 the oil pattern for this game's Oil setting: heaviest down the middle boards, tapering to the edges
     // and ending earlier out there (a "Christmas tree"), out to the setting's oil length. 0..1 by board and
     // distance from the foul line. The clear coat is glossy where it's oiled, duller on the dry back end.
-    const OILL = v0.oil || 12;
+    const OILL = v0.oil0 || v0.oil || 12;
     const oilAt = (b, d) => {
       const c = 1 - Math.min(1, Math.abs(b - 19) / 19.5), end = OILL * (0.55 + 0.45 * c);
       if (d < 0 || d > end + 0.8) return 0;
