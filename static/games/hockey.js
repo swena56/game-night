@@ -16,7 +16,7 @@ UI.hockey = (() => {
     main.innerHTML = `<div class="hk"><div class="hk-stage" id="hkStage"><canvas id="hkCanvas"></canvas>
       <div class="hk-banner" id="hkBanner" hidden></div></div></div>`;
     side.innerHTML = `<div class="panel"><div id="hkScore" class="hk-score"></div>
-      <p class="hint left" id="hkHint">Drag anywhere on your half to move your mallet. Bank shots off the side walls!</p></div>`;
+      <p class="hint left" id="hkHint">Drag anywhere on your half to move your mallet (on a phone it rides just ahead of your thumb). Bank shots off the side walls!</p></div>`;
     canvas = $('hkCanvas');
     g2 = canvas.getContext('2d');
     if (!g2) { $('hkStage').append('Your browser cannot draw this game.'); return; }
@@ -50,6 +50,10 @@ UI.hockey = (() => {
     const r = canvas.getBoundingClientRect();
     let x = ((e.clientX - r.left) / r.width) * h.W, y = ((e.clientY - r.top) / r.height) * h.H;
     if (flip()) { x = h.W - x; y = h.H - y; }
+    if (e.pointerType === 'touch') {   // the mallet rides just ahead of the thumb so it stays in view; the offset fades out at your back wall so you can still reach it
+      const m = h.mallet, d = h.me === 0 ? h.H - y : y, off = m * 1.7 * Math.min(1, Math.max(0, d / (m * 3)));
+      y += h.me === 0 ? -off : off;
+    }
     target = clampMine(x, y);
     const now = performance.now();
     if (now - lastSent > 33) { lastSent = now; ctx.input({ x: +target[0].toFixed(4), y: +target[1].toFixed(4) }); }
