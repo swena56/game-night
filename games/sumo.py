@@ -42,7 +42,8 @@ COUNTDOWN, ROUND_PAUSE = 3.0, 3.0
 HIT_EVENT = 4.0        # collisions harder than this impulse are sent as events
 EVENT_KEEP = 0.5
 # power-ups
-POWERS = ("heavy", "shock", "turbo", "shield")
+POWERS = ("heavy", "shock", "turbo", "shield", "freeze")
+FREEZE_SECS = 1.6      # 🧊 the nearest rival can't steer or dash for this long
 ORB_FIRST, ORB_EVERY, ORB_MAX, ORB_REACH = 4.0, 7.0, 2, SAUCER + 0.5
 POWER_SECS = 5.0
 HEAVY_MASS = 2.0       # 🪨 on top of DASH_MASS
@@ -60,7 +61,7 @@ BOT = {  # reaction interval (s), aim noise (units), dash willingness
 
 
 class Saucer:
-    heavy_until = turbo_until = 0.0   # (class defaults for saucers saved before power-ups)
+    heavy_until = turbo_until = frozen_until = 0.0   # (class defaults for saucers saved before power-ups)
     shield = False
     gx = gy = 0.0                     # 👻 ghost cursor, once it's out
 
@@ -76,7 +77,7 @@ class Saucer:
         return (DASH_MASS if now < self.dash_until else 1.0) * (HEAVY_MASS if now < self.heavy_until else 1.0)
 
     def powers(self, now):
-        return (1 if now < self.heavy_until else 0) | (2 if now < self.turbo_until else 0) | (4 if self.shield else 0)
+        return (1 if now < self.heavy_until else 0) | (2 if now < self.turbo_until else 0) | (4 if self.shield else 0) | (8 if now < self.frozen_until else 0)
 
 
 class Sumo(Game):
@@ -214,7 +215,7 @@ class Sumo(Game):
                 self.meteors.append([s.gx, s.gy, now + METEOR_DELAY, i])
                 s.cool_until = now + METEOR_COOL
             return
-        if s.fall:
+        if s.fall or now < s.frozen_until:
             return
         dx, dy = s.sx, s.sy
         if math.hypot(dx, dy) < 0.2:  # no stick: dash the way you're drifting
@@ -316,7 +317,7 @@ class Sumo(Game):
                 s.y += s.vy * h
                 continue
             dashing = now < s.dash_until
-            if not dashing:
+            if not dashing and now >= s.frozen_until:
                 s.vx += s.sx * ACCEL * h
                 s.vy += s.sy * ACCEL * h
                 sp = math.hypot(s.vx, s.vy)
@@ -438,6 +439,13 @@ class Sumo(Game):
                     s.cool_until = min(s.cool_until, now + TURBO_COOL)
                 elif kind == "shield":
                     s.shield = True
+                elif kind == "freeze":
+                    rivals = [(math.hypot(o.x - s.x, o.y - s.y), j) for j, o in enumerate(self.saucers)
+                              if j != i and not o.out and not o.fall]
+                    if rivals:
+                        j = min(rivals)[1]
+                        self.saucers[j].frozen_until = now + FREEZE_SECS
+                        self.event(now, "z", j, i)
                 else:
                     self.blast(s.x, s.y, SHOCK_R, SHOCK_SPEED, i, now, skip=i)
                     self.event(now, "w", round(s.x, 2), round(s.y, 2), i)

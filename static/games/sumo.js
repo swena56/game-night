@@ -11,7 +11,7 @@ UI.sumo = (() => {
   let lastSeq = -1, flash = null, falls = [], lastCount = 0, sideAt = 0;
   const KEYS = { ArrowUp: [0, -1], KeyW: [0, -1], ArrowDown: [0, 1], KeyS: [0, 1], ArrowLeft: [-1, 0], KeyA: [-1, 0], ArrowRight: [1, 0], KeyD: [1, 0] };
   const STICK_PX = 60;
-  const POWER = { heavy: ['🪨', 'Heavy!', 0x9a8c7a], shock: ['⚡', 'Shockwave!', 0xffd23f], turbo: ['🔁', 'Turbo dash!', 0x3fe0ff], shield: ['🛡️', 'Shield!', 0x7dffb0] };
+  const POWER = { heavy: ['🪨', 'Heavy!', 0x9a8c7a], shock: ['⚡', 'Shockwave!', 0xffd23f], turbo: ['🔁', 'Turbo dash!', 0x3fe0ff], shield: ['🛡️', 'Shield!', 0x7dffb0], freeze: ['🧊', 'Freeze!', 0x9be7ff] };
   const PW_ICONS = [[1, '🪨'], [2, '🔁'], [4, '🛡️']];
   const $ = (id) => document.getElementById(id);
   const calm = () => document.body.classList.contains('calm');
@@ -221,6 +221,9 @@ UI.sumo = (() => {
       snd.play(what === 'shield' ? 'shield' : 'pick');
       if (who === i) { showFlash(`${POWER[what][0]} ${POWER[what][1]}`); buzz(25); }
       gl?.pick(who, what);
+    } else if (kind === 'z') {
+      snd.play('shock'); (gl || flat)?.ring(snap?.s?.[a[0]]?.[0] ?? 0, snap?.s?.[a[0]]?.[1] ?? 0, 2, POWER.freeze[2]);
+      if (a[0] === i) { showFlash('🧊 Frozen!', 1200); buzz([40, 30, 40]); }
     } else if (kind === 's') {
       snd.play('shield'); gl?.pop(a[0]);
       if (a[0] === i) showFlash('🛡️ Saved!');
@@ -613,7 +616,7 @@ UI.sumo = (() => {
         // 🪨 heavy: bigger and darker, glowing like hot iron; 🛡️ a bubble
         const big = pw & 1 ? 1.18 : 1;
         u.hull.scale.set(S.sumo.saucer * big, S.sumo.saucer * 0.32 * big, S.sumo.saucer * big);
-        u.hullMat.emissive.setHex(pw & 1 ? 0x552200 : 0x000000);
+        u.hullMat.emissive.setHex(pw & 8 ? 0x2a6a8a : pw & 1 ? 0x552200 : 0x000000);
         u.bubble.visible = !!(pw & 4);
         u.bubble.scale.setScalar(S.sumo.saucer * (1 + 0.04 * Math.sin(now / 150)));
         u.lights.rotation.y -= 0.08;
