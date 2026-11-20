@@ -749,7 +749,8 @@ UI.prism = (() => {
   }
 
   async function runMove(a, b) {
-    if (!st || st.busy || !canPlay()) return;
+    if (!st || !canPlay()) return;
+    if (st.busy) { st.pend = [a, b]; ctx.sfx?.('tick'); return; }   // #223: a swap made during a cascade waits its turn and runs next
     hint = null; lastAct = now();
     const what = swapKind(a, b);
     st.busy = true;
@@ -848,6 +849,8 @@ UI.prism = (() => {
       if (st) { st.busy = false; flushEvents(); }
       kick();
       armHint();
+      const nx = st?.pend; if (st) st.pend = null;
+      if (nx) setTimeout(() => runMove(nx[0], nx[1]), 0);
     }
   }
 
@@ -1054,7 +1057,6 @@ UI.prism = (() => {
   function tap(i) {
     if (!st || !canPlay()) return;
     lastAct = now(); hint = null; armHint();
-    if (st.busy) return;
     if (sel == null) { if (movable(i)) { sel = i; ctx.sfx?.('tick'); } }
     else if (i === sel) sel = null;
     else if (neighbours(sel).includes(i)) { const a = sel; sel = null; runMove(a, i); }
@@ -1420,7 +1422,7 @@ UI.prism = (() => {
       try { cv.setPointerCapture(e.pointerId); } catch {}
     };
     cv.onpointermove = (e) => {
-      if (!start || !st || st.busy) return;
+      if (!start || !st) return;
       const dx = e.clientX - start.x, dy = e.clientY - start.y, cell = size / N;
       if (Math.max(Math.abs(dx), Math.abs(dy)) < cell * 0.4) return;
       const x = start.i % N, y = (start.i / N) | 0;
