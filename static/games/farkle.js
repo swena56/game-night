@@ -153,7 +153,7 @@ UI.farkle = (() => {
       const ev = $('fkEvent');
       ev.className = 'fk-event ' + f.event.kind;
       ev.textContent = f.event.kind === 'farkle' ? `💥 ${who} FARKLED (${f.event.roll.join(' ')})${f.event.lost ? ` and lost ${num(f.event.lost)}` : ''}!`
-        : f.event.kind === 'hot' ? `🔥 HOT DICE! ${who} rolls all six again with ${num(f.event.pts)} on the line`
+        : f.event.kind === 'hot' ? `🔥${f.event.streak ? '🔥 HOT-DICE STREAK, +500!' : ' HOT DICE!'} ${who} rolls all six again with ${num(f.event.pts)} on the line`
           : `🏦 ${who} banked ${num(f.event.pts)}`;
       void ev.offsetWidth; ev.classList.add('show');
       if (f.event.kind === 'farkle') {

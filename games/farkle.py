@@ -17,6 +17,9 @@ from .base import Game, GameError
 KIND = {3: None, 4: 1000, 5: 2000, 6: 3000}   # three of a kind depends on the face
 
 
+HOT_STREAK = 500  # bonus for the second (and each later) hot dice in one turn
+
+
 @lru_cache(maxsize=None)
 def best_score(dice):
     """Points for a set of kept dice (a sorted tuple) where every die must score, else None."""
@@ -91,7 +94,7 @@ class Farkle(Game):
         "Roll six dice, then tap scoring dice to set them aside. Roll the rest to push your luck, or bank.",
         "1 = 100 · 5 = 50 · three of a kind = face × 100 (three 1s = 1,000) · four / five / six of a kind = 1,000 / 2,000 / 3,000.",
         "With all six dice: straight 1–6 or three pairs = 1,500, four of a kind + a pair = 1,500, two triplets = 2,500.",
-        "A roll with nothing scoring is a FARKLE: you lose the turn's points. Score all six dice and you roll all six again.",
+        "A roll with nothing scoring is a FARKLE: you lose the turn's points. Score all six dice and you roll all six again (hot dice). 🔥 A second hot dice in one turn adds +500.",
         "Reach the target and everyone else gets one last turn to beat you.",
         "With 🐷 Piggyback on, when someone banks with dice still in hand, the next player may take over their points and those dice instead of starting fresh: farkle and it's all gone.",
     ]
@@ -105,6 +108,7 @@ class Farkle(Game):
         "target": ("Play to", [(10000, "10,000"), (5000, "5,000")], 10000),
         "opening": ("Get on the board", [(500, "500 in one turn"), (0, "Any score")], 500),
         "triple": ("Three farkles in a row", [(True, "−1,000"), (False, "No penalty")], True),
+        "hotstreak": ("🔥 Hot-dice streak", [(True, "On: a 2nd hot dice in a turn adds +500"), (False, "Off")], True),
         "piggyback": ("🐷 Piggyback", [(False, "Off"), (True, "On: take over the last bank's points and dice")], False),
     }
 
@@ -126,6 +130,7 @@ class Farkle(Game):
         self.roll, self.turn_pts, self.dice_left, self.rolled, self.kept = [], 0, 6, False, []
         self.aside = []  # every die set aside this turn, for the table to see (cleared on hot dice)
         self.farkled = False
+        self.hot_n = 0  # hot dice so far this turn
         self.pig = getattr(self, "next_pig", None) if self.s.get("piggyback") else None  # 🐷 what's on offer
         self.next_pig = None
         self.room.begin_turn(pid)
@@ -183,10 +188,14 @@ class Farkle(Game):
             if self.dice_left == 0:
                 self.dice_left = 6
                 self.aside = []
+                self.hot_n = getattr(self, "hot_n", 0) + 1
+                if self.hot_n >= 2 and self.s.get("hotstreak", True):  # 🔥 a streak is worth a prize
+                    self.turn_pts += HOT_STREAK
+                    r.add_log(f"🔥🔥 Hot-dice streak! +{HOT_STREAK}", "power")
                 r.add_log(f"🔥 Hot dice! {p.name} rolls all six again with {self.turn_pts:,} on the line.", "power")
                 self.moment(f"🔥 {p.name}: HOT DICE", "gold", "tag")
                 self.event_id += 1
-                self.event = {"id": self.event_id, "kind": "hot", "by": p.id, "pts": self.turn_pts}
+                self.event = {"id": self.event_id, "kind": "hot", "by": p.id, "pts": self.turn_pts, "streak": self.hot_n >= 2 and bool(self.s.get("hotstreak", True))}
         self.roll = [self.rng.randint(1, 6) for _ in range(self.dice_left)]
         self.rolled = True
         if not keep_options(self.roll):
