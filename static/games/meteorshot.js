@@ -302,7 +302,7 @@ UI.meteorshot = (() => {
     const grav = S.gravity < 4 ? '🌕 Low-G' : S.gravity > 5.5 ? '🪨 Heavy-G' : '🪐 Standard-G';
     const mine = S.score != null;
     const pv = ctx?.myTurn && !flight ? preview() : null;
-    $('msHud').innerHTML = `${mine ? `<span>☄️ ${S.score}</span>` : ''}<span>${S.finale ? '🏁 FINALE ×2' : `Round ${Math.min(S.round, S.shotsMax)}/${S.shotsMax}`}</span><span>💨 ${wind}</span><span>${grav}</span>${pv ? `<span>${novaShot ? '🌟' : '🎯'} Est. ${pv.points}${pv.points >= 80 ? ' 🔥' : ''}</span>` : ''}`;
+    $('msHud').innerHTML = `${mine ? `<span>☄️ ${S.score}</span>` : ''}<span>${S.finale ? '🏁 FINALE ×2' : `Round ${Math.min(S.round, S.shotsMax)}/${S.shotsMax}`}</span><span>💨 ${wind}</span>${S.twist ? `<span>${S.twist === 'gale' ? '🌪️ GALE' : '🍀 LUCKY ×1.5'}</span>` : ''}<span>${grav}</span>${pv ? `<span>${novaShot ? '🌟' : '🎯'} Est. ${pv.points}${pv.points >= 80 ? ' 🔥' : ''}</span>` : ''}`;
     const turnName = S.board?.find((b) => b.id === ctx?.turn)?.name;
     const wait = $('msWait');
     wait.hidden = !!ctx?.myTurn || !!flight || !turnName;

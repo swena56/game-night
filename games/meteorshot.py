@@ -48,6 +48,7 @@ class MeteorShot(Game):
         "Once per game, fire a Nova shot for 1.5× points. Save it for your best aim—or use it to catch the leader.",
         "🏁 The final round is the Finale: every shot scores double, so nobody is out of it until the last comet.",
         "Gravity shifts between rounds, changing the comet's arc. The current gravity is shown in the HUD and shot preview.",
+        "🌀 Some rounds have a twist: a 🌪️ gale doubles the wind, a 🍀 lucky ring pays ×1.5.",
         "The best-scoring shot each round earns a 25-point Round MVP bonus. Tied best shots all earn it.",
     ]
     settings_schema = {"shots": ("Shots", [(3, "3 shots"), (5, "5 shots")], 3)}
@@ -80,6 +81,10 @@ class MeteorShot(Game):
         self.target_speed = self.rng.uniform(0.75, 1.05)
         self.wind = round(self.rng.uniform(-0.7, 0.7), 2)
         self.gravity = self.rng.choice((3.4, 4.9, 6.4))
+        # 🌀 from round 2 a twist changes the rules of the round: a gale doubles the wind, a lucky ring pays half again
+        self.twist = None if getattr(self, "round", 0) == 0 else self.rng.choice((None, "gale", "lucky"))
+        if self.twist == "gale":
+            self.wind = round(math.copysign(max(0.9, min(1.4, abs(self.wind) * 2)), self.wind or 1), 2)
 
     def target_at(self, elapsed):
         phase = getattr(self, "target_phase", 0) + elapsed * getattr(self, "target_speed", 0)
@@ -109,7 +114,8 @@ class MeteorShot(Game):
         x, y = fly(angle, power, aim, self.target, self.wind, self.gravity)
         pts = points_for(x, y, self.target, impact_target[1], impact_target[0])
         finale = self.round == self.shots - 1     # 🏁 the last round counts double: a trailing player can still catch up
-        scored = int(pts * (1.5 if nova else 1.0) * (2 if finale else 1))
+        lucky = getattr(self, "twist", None) == "lucky"
+        scored = int(pts * (1.5 if nova else 1.0) * (2 if finale else 1) * (1.5 if lucky else 1))
         p.g.score += scored
         p.g.shots += 1
         p.g.best = max(getattr(p.g, "best", 0), scored)
@@ -155,6 +161,8 @@ class MeteorShot(Game):
             if self.round == self.shots - 1:
                 self.moment("🏁 FINALE: every point counts double!", "gold", "fanfare")
             self.room.add_log(f"🌠 Round {self.round + 1}: the ring moves; wind {self.wind_text()}, gravity {self.gravity_text()}.", "info")
+            if self.twist:
+                self.moment("🌪️ GALE: the wind is doubled this round!" if self.twist == "gale" else "🍀 LUCKY RING: every hit pays ×1.5 this round!", "gold", "fanfare")
         elif live and all(self.room.players[i].g.shots >= self.shots for i in live):
             return self.end()
         self.room.advance()
@@ -181,7 +189,7 @@ class MeteorShot(Game):
         g = p.g
         seated = p.id in getattr(self, "seats", [])
         return {"meteor": {"score": getattr(g, "score", 0) if seated else None, "shots": getattr(g, "shots", 0) if seated else 0,
-                "shotsMax": self.shots, "finale": getattr(self, "round", 0) == self.shots - 1, "round": getattr(self, "round", 0) + 1, "target": self.target, "wind": self.wind,
+                "shotsMax": self.shots, "finale": getattr(self, "round", 0) == self.shots - 1, "round": getattr(self, "round", 0) + 1, "target": self.target, "wind": self.wind, "twist": getattr(self, "twist", None),
                 "gravity": getattr(self, "gravity", 4.9), "elapsed": time.time() - getattr(self, "started_at", time.time()),
                 "motion": {"phase": getattr(self, "target_phase", 0), "drift": getattr(self, "target_drift", 0),
                            "speed": getattr(self, "target_speed", 0)},

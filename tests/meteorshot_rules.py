@@ -38,6 +38,32 @@ def fire(r, g, **a):
     return p
 
 
+# 🌀 twists: none in round 1; a lucky ring pays half again; a gale doubles the wind
+r, g, ps = game(2, shots=5)
+check("no twist in round 1", g.twist is None)
+g.twist = None
+g.rng.seed(1)
+base = {}
+for tw in (None, "lucky"):
+    r, g, ps = game(2, shots=5)
+    g.wind = 0.0
+    g.twist = tw
+    g.target = [0.0, 10.0]
+    g.target_drift = 0.0
+    p = fire(r, g)
+    base[tw] = p.g.score
+check("a lucky ring pays more", base["lucky"] > base[None], f"{base}")
+seen = set()
+for sd in range(40):
+    r, g, ps = game(2, shots=5)
+    g.rng.seed(sd)
+    g.round = 1
+    g.new_target()
+    seen.add(g.twist)
+    if g.twist == "gale":
+        check("a gale blows hard", abs(g.wind) >= 0.9, g.wind)
+check("all twists turn up", {None, "gale", "lucky"} <= seen, seen)
+
 # length: 3 shots each → 6 launches for 2 players
 r, g, ps = game(2)
 n = 0
