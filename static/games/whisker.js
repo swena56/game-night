@@ -4,6 +4,7 @@
 // Steer by swiping anywhere, tapping the maze (toward the tap from your critter), the arrow pad or the keys.
 UI.whisker = (() => {
   let S, ctx, root = null, canvas = null, g = null, fx = null, raf = 0, stopObs = null, keyHandler = null;
+  const trails = [];
   let walls = null, food = new Map(), ents = [], pos = [], round = 0, lastEv = 0, lastTick = 0;
   let mazeImg = null, foodImg = null, foodDirty = true, cell = 16, offX = 0, offY = 0, cssW = 0, cssH = 0, ratio = 1, last = 0;
   let pend = null, swipe = null, showPad = true, timeLeft = null, timeAt = 0, lastCount = '', nibbleAt = 0;
@@ -12,7 +13,7 @@ UI.whisker = (() => {
   const ICON = { m: '🐭', c: '🐱', a: '🐈‍⬛', spook: '🙀', basket: '😾' };
 
   function mount(main, side) {
-    S = null; walls = null; food = new Map(); ents = []; pos = []; round = 0; lastEv = 0; lastTick = 0;
+    trails.length = 0; S = null; walls = null; food = new Map(); ents = []; pos = []; round = 0; lastEv = 0; lastTick = 0;
     mazeImg = foodImg = null; foodDirty = true; pend = null; swipe = null; timeLeft = null; lastCount = ''; sprites.clear(); hudCache = null;
     showPad = load('whisker.pad') ?? true;
     main.innerHTML = `<div class="wk" id="wkRoot"><div class="wk-stage" id="wkStage">
@@ -334,6 +335,21 @@ UI.whisker = (() => {
       g.beginPath(); g.arc(x, y, cell * (0.5 + 0.15 * pulse), 0, 6.3); g.fill();
       const sp = sprite(kind === 'z' ? '⚡' : '🔔', Math.round(cell * 0.85)), sz = sp.width / ratio;
       g.drawImage(sp, x - sz / 2, y - sz / 2, sz, sz);
+    }
+    // 🐾 a fading trail of paw prints in each mouse's colour, so you can read who went where
+    const kk = S.whisker;
+    for (let i = 0; i < ents.length; i++) {
+      const e = ents[i]; if (e.role !== 'm') continue;
+      const tr = trails[i] || (trails[i] = []), p = drawPos(i, now);
+      if (e.st !== 0 && e.st !== 4) { tr.length = 0; continue; }
+      if (p && (!tr.length || now - tr[tr.length - 1][2] > 90)) { tr.push([p[0], p[1], now]); if (tr.length > 9) tr.shift(); }
+      const pc = e.seat != null ? ctx.player(kk.seats[e.seat])?.color ?? '#888' : '#888';
+      for (const [tx, ty, ta] of tr) {
+        const age = (now - ta) / 800; if (age >= 1) continue;
+        g.globalAlpha = 0.35 * (1 - age); g.fillStyle = pc;
+        g.beginPath(); g.arc((tx + 0.5) * cell, (ty + 0.5) * cell, cell * 0.14 * (1 - age * 0.5), 0, 6.3); g.fill();
+      }
+      g.globalAlpha = 1;
     }
     // critters: mice under cats
     const k = S.whisker;
