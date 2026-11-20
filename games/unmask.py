@@ -160,6 +160,7 @@ class Unmask(Game):
         "Flip down faces that don't fit. Think you know? Accuse — but a wrong guess costs you.",
         'Manhunt: questions are public, answers are private. Power cards bend the rules.',
         'After the round, review each answer and the faces it ruled out.',
+        "🍀 Cold streak (an option, needs power cards): two NO answers in a row hand you a free 🔍 Spyglass, up to 3 cards.",
     ]
     name = "Unmask"
     icon = "🎭"
@@ -173,6 +174,7 @@ class Unmask(Game):
         "size": ("Board", [(16, "16 faces"), (24, "24 faces"), (30, "30 faces")], 24),
         "powers": ("Power cards", [(True, "On"), (False, "Off")], True),
         "bluff": ("🃏 Bluff card (duel)", [(False, "Off"), (True, "On: one answer can be a lie")], False),
+        "streak": ("🍀 Cold streak", [(False, "Off"), (True, "On: two NOs in a row earn a Spyglass")], False),
     }
 
     def check_players(self, seated):
@@ -271,6 +273,7 @@ class Unmask(Game):
             self.lies = getattr(self, "lies", []) + [(opp.name, text, ans)]
             r.add_log(f"🃏 You lied: “{text}” → {yn(ans)}. {p.name} believes it.", "private", to=opp.id)
         p.g.learned.append((q, ans))
+        self.cold_streak(p, ans)
         check = {"q": q, "ans": ans}
         self.questions.append({"asker": p.id, "text": text, "check": check})
         if self.s["mode"] == "duel":
@@ -280,6 +283,22 @@ class Unmask(Game):
             r.add_log(f"{p.name} asked: “{text}”", "question")
             r.add_log(f"🤫 Only you hear it: {yn(ans)}", "private", to=p.id, check=check, helper=p.id)
         r.advance()
+
+    STREAK_CARDS = 3  # a cold streak never fills a hand past this
+
+    def cold_streak(self, p, ans):
+        """🍀 Two NO answers in a row hand the asker a free Spyglass (power cards on; the streak then restarts)."""
+        if not self.s.get("streak") or not self.s.get("powers"):
+            return
+        n = 0 if ans else getattr(p.g, "nos", 0) + 1
+        p.g.nos = n
+        if n < 2:
+            return
+        p.g.nos = 0
+        if len(p.g.cards) >= self.STREAK_CARDS:
+            return
+        p.g.cards.append("spyglass")
+        self.moment(f"🍀 {p.name} found a free Spyglass!", "good", "tag")
 
     def accuse(self, p, face):
         r = self.room
