@@ -787,15 +787,21 @@ UI.lanes = (() => {
     const ballTex = canvasTex(T, 256, 128, (g, w, h) => {
       g.fillStyle = '#fff'; g.fillRect(0, 0, w, h);
       for (let i = 0; i < 14; i++) { g.strokeStyle = `rgba(0,0,0,${0.08 + Math.random() * 0.12})`; g.lineWidth = 6 + Math.random() * 10; g.beginPath(); g.moveTo(Math.random() * w, 0); g.bezierCurveTo(Math.random() * w, h / 3, Math.random() * w, h * 2 / 3, Math.random() * w, h); g.stroke(); }
-for (const cx of [0.25, 0.75]) for (const [x, y, rad] of [[0, 0.3, 7], [-0.03, 0.46, 8], [0.03, 0.46, 8]]) {  // the thumb hole and two finger holes, with a lighter lip
-        g.fillStyle = 'rgba(255,255,255,.35)'; g.beginPath(); g.arc((cx + x) * w, y * h, rad + 2, 0, 7); g.fill();
-        g.fillStyle = '#050505'; g.beginPath(); g.arc((cx + x) * w, y * h, rad, 0, 7); g.fill();
-      }
     });
-    const ballMat = new T.MeshStandardMaterial({ map: ballTex, color: new T.Color(colorOf(S.me?.id)), roughness: 0.12, metalness: 0.1 });
-    const ballGeo = new T.SphereGeometry(R, 28, 18);
-    const ball = new T.Mesh(ballGeo, ballMat); ball.castShadow = !low; scene.add(ball);
-    const retBall = new T.Mesh(ballGeo, ballMat); retBall.visible = false; scene.add(retBall);
+    const ballMat = new T.MeshStandardMaterial({ map: ballTex, color: new T.Color(colorOf(S.me?.id)), roughness: 0.08, metalness: 0.15 });
+    const ballGeo = new T.SphereGeometry(R, 40, 28);
+    // real finger holes: a thumb hole and two finger holes, each a dark disc sunk into the shell with a glossy lip ring
+    const holeMat = new T.MeshBasicMaterial({ color: 0x030303 }), lipMat = new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2, metalness: 0.2, transparent: true, opacity: 0.35 });
+    function addHoles(m) {
+      for (const [dx, dy, rad] of [[0, -0.30, 0.2], [-0.2, 0.3, 0.17], [0.2, 0.3, 0.17]]) {
+        const r = R * rad, n = new T.Vector3(dx, 1, dy).normalize(), d = Math.sqrt(R * R - r * r);
+        const hole = new T.Mesh(new T.CircleGeometry(r, 20), holeMat), lip = new T.Mesh(new T.RingGeometry(r, r * 1.3, 20), lipMat);
+        for (const o of [hole, lip]) { o.position.copy(n).multiplyScalar(d * (o === hole ? 0.998 : 1.0015)); o.lookAt(n.clone().multiplyScalar(10)); m.add(o); }
+      }
+      return m;
+    }
+    const ball = addHoles(new T.Mesh(ballGeo, ballMat)); ball.castShadow = !low; scene.add(ball);
+    const retBall = addHoles(new T.Mesh(ballGeo, ballMat)); retBall.visible = false; scene.add(retBall);
     if (mirror) {
       stencil(ballMat, 0, T.AlwaysStencilFunc, T.ReplaceStencilOp);
       mirror.ball = new T.Mesh(ballGeo, mirror.ghost(ballTex, ballMat.color)); mirror.ball.renderOrder = 2; mirror.grp.add(mirror.ball);
@@ -806,15 +812,38 @@ for (const cx of [0.25, 0.75]) for (const [x, y, rad] of [[0, 0.3, 7], [-0.03, 0
       const g = new T.Group(), skin = new T.MeshStandardMaterial({ color: SKINS[ix % 4], roughness: 0.7 }), top = new T.MeshStandardMaterial({ color: new T.Color(shirtCss), roughness: 0.6 });
       const hip = new T.Group(); g.add(hip);
       const limb = (r0, r1, len, mat) => { const m = new T.Mesh(new T.CylinderGeometry(r0, r1, len, 10), mat); m.position.y = -len / 2; return m; };
-      const legs = [-1, 1].map((sx) => { const l = new T.Group(); l.position.set(sx * 0.09, 0, 0); l.add(limb(0.075, 0.05, 0.9, legMat)); const sh = new T.Mesh(new T.BoxGeometry(0.09, 0.06, 0.24), shoeMat); sh.position.set(0, -0.89, -0.05); l.add(sh); hip.add(l); return l; });
+      const M = (geo, mat, x, y, z) => { const m = new T.Mesh(geo, mat); m.position.set(x, y, z); return m; };
+      const HAIR = [0x2b1b12, 0x5a3a1e, 0xc9a24a, 0x1a1a1f], hair = new T.MeshStandardMaterial({ color: HAIR[(ix * 3 + 1) % 4], roughness: 0.85 });
+      const belt = new T.MeshStandardMaterial({ color: 0x15151c, roughness: 0.5 }), sole = new T.MeshStandardMaterial({ color: 0xc23a3a, roughness: 0.6 }), trim = new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
+      // legs: tapered trousers with a knee, bowling shoes with a red sole and a toe cap
+      const legs = [-1, 1].map((sx) => {
+        const l = new T.Group(); l.position.set(sx * 0.09, 0, 0);
+        l.add(limb(0.082, 0.062, 0.5, legMat)); const sh = limb(0.062, 0.05, 0.42, legMat); sh.position.y = -0.5 - 0.21; l.add(sh);
+        l.add(M(new T.SphereGeometry(0.062, 10, 8), legMat, 0, -0.5, 0));
+        l.add(M(new T.BoxGeometry(0.1, 0.07, 0.27), shoeMat, 0, -0.875, -0.06));
+        l.add(M(new T.BoxGeometry(0.105, 0.025, 0.28), sole, 0, -0.915, -0.06));
+        l.add(M(new T.SphereGeometry(0.052, 10, 8), shoeMat, 0, -0.875, -0.18));
+        hip.add(l); return l;
+      });
+      hip.add(M(new T.CylinderGeometry(0.165, 0.17, 0.07, 16), belt, 0, 0.02, 0));
       const torso = new T.Group(); hip.add(torso);
-      const body = new T.Mesh(new T.CylinderGeometry(0.17, 0.14, 0.55, 14), top); body.position.y = 0.28; torso.add(body);
-      const head = new T.Mesh(new T.SphereGeometry(0.11, 16, 12), skin); head.position.y = 0.72; torso.add(head);
-      const cap = new T.Mesh(new T.SphereGeometry(0.118, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.45), top); cap.position.y = 0.74; torso.add(cap);
+      // a V-shaped torso: broad chest tapering to the waist, shoulders, a collar and neck
+      const chest = M(new T.CylinderGeometry(0.2, 0.15, 0.36, 16), top, 0, 0.42, 0); chest.scale.z = 0.72; torso.add(chest);
+      const waist = M(new T.CylinderGeometry(0.15, 0.14, 0.26, 16), top, 0, 0.14, 0); waist.scale.z = 0.72; torso.add(waist);
+      const yoke = M(new T.SphereGeometry(0.2, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), top, 0, 0.6, 0); yoke.scale.set(1, 0.35, 0.72); torso.add(yoke);
+      torso.add(M(new T.BoxGeometry(0.09, 0.3, 0.012), trim, 0, 0.4, 0.138));   // a stripe down the back of the shirt
+      torso.add(M(new T.CylinderGeometry(0.058, 0.07, 0.1, 10), skin, 0, 0.68, 0));
+      const collar = M(new T.TorusGeometry(0.075, 0.022, 8, 14), top, 0, 0.64, 0); collar.rotation.x = Math.PI / 2; torso.add(collar);
+      const head = M(new T.SphereGeometry(0.115, 20, 14), skin, 0, 0.8, 0); head.scale.set(0.92, 1.05, 1); torso.add(head);
+      torso.add(M(new T.SphereGeometry(0.123, 20, 10, 0, Math.PI * 2, 0, Math.PI * 0.62), hair, 0, 0.805, 0.012));   // hair, covering the back and top of the head
+      for (const sx of [-1, 1]) torso.add(M(new T.SphereGeometry(0.026, 8, 6), skin, sx * 0.107, 0.79, 0));          // ears
+      torso.add(M(new T.SphereGeometry(0.018, 8, 6), skin, 0, 0.78, -0.112));                                          // nose
+      for (const sx of [-1, 1]) torso.add(M(new T.SphereGeometry(0.012, 6, 4), belt, sx * 0.04, 0.815, -0.103));       // eyes
       const arms = [-1, 1].map((sx) => {
-        const a = new T.Group(); a.position.set(sx * 0.22, 0.5, 0);
-        a.add(limb(0.048, 0.04, 0.62, skin)); const sl = limb(0.056, 0.05, 0.22, top); a.add(sl);
-        const hand = new T.Mesh(new T.SphereGeometry(0.055, 10, 8), skin); hand.position.y = -0.65; a.add(hand); a.userData.hand = hand;
+        const a = new T.Group(); a.position.set(sx * 0.235, 0.56, 0);
+        a.add(M(new T.SphereGeometry(0.066, 12, 8), top, 0, 0, 0));                                                    // shoulder
+        a.add(limb(0.044, 0.036, 0.62, skin)); const sl = limb(0.062, 0.054, 0.24, top); a.add(sl);                   // forearm and a short sleeve
+        const hand = new T.Mesh(new T.SphereGeometry(0.052, 12, 8), skin); hand.scale.set(0.85, 1.15, 0.8); hand.position.y = -0.66; a.add(hand); a.userData.hand = hand;
         torso.add(a); return a;
       });
       g.traverse((o) => { if (o.isMesh) o.castShadow = !low; });
@@ -876,7 +905,7 @@ for (const cx of [0.25, 0.75]) for (const [x, y, rad] of [[0, 0.3, 7], [-0.03, 0
       const used = new Set([0]);
       others.forEach((r, i) => { const side = i % 2 ? 1 : -1, n = Math.floor(i / 2) + 1; const l = buildLane(side * n * PITCH); l.id = r.id; lanes.push(l);
         l.bw = makeBowler(colorOf(r.id), i + 2); l.grp.add(l.bw);
-        l.ball = new T.Mesh(ballGeo, new T.MeshStandardMaterial({ color: new T.Color(colorOf(r.id)), roughness: 0.15 })); l.ball.visible = false; l.grp.add(l.ball); used.add(side * n); });
+        l.ball = addHoles(new T.Mesh(ballGeo, new T.MeshStandardMaterial({ color: new T.Color(colorOf(r.id)), roughness: 0.1, metalness: 0.15 }))); l.ball.visible = false; l.grp.add(l.ball); used.add(side * n); });
       if (!low) for (let n = -4; n <= 4; n++) if (!used.has(n) && Math.abs(n) <= Math.min(3, Math.max(...[...used].map(Math.abs)) + 2)) lanes.push(buildLane(n * PITCH, true));
     }
     // a rival lane: when their pins change, the ones that went down tip over, the sweep bar clears them and, if the
