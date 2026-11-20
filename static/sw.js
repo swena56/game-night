@@ -1,7 +1,7 @@
 // Game Night service worker: network first, so a running server always serves the newest files, with
 // the last good copy of the app shell as a fallback when the network is slow (1.5 s) or gone. The API
 // (/api/…, including the live event stream) is never cached.
-const CACHE = 'game-night-v20';  // bump when the shell's files must update together (style.css + kit.js; v18: picker 🃏 Cards chip #189; v19: ✨ XP card, level frames, card backs; v20: 🙈 hide games from the lists)
+const CACHE = 'game-night-v21';  // bump when the shell's files must update together (style.css + kit.js; v18: picker 🃏 Cards chip #189; v19: ✨ XP card, level frames, card backs; v20: 🙈 hide games from the lists; v21: compact XP list #222)
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil((async () => {
