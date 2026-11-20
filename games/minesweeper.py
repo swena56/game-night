@@ -11,6 +11,8 @@ from .puzzlerace import PuzzleRace
 
 LEVELS = {"easy": (9, 10), "medium": (12, 22), "hard": (14, 38)}   # side, mines
 MINE_COST = 4
+STREAK = 6          # 🔥 this many safe uncovers in a row (no mine between) pay a bonus
+STREAK_PTS = 3
 HINT_COST = 1
 
 
@@ -64,7 +66,7 @@ class Minesweeper(PuzzleRace):
     howto = [
         "Numbers say how many of the 8 squares around them hide a mine. Uncover every safe square and none of the mines. Everyone gets the same field, with a patch already open.",
         "Tap a square to uncover it (+1 each). Hit a mine and you lose 4 points, but you play on. 🚩 switches to flags: mark a mine you've worked out (a right flag scores +1 when the field ends, a wrong one −1). Tap a number whose flags are all placed to uncover the rest around it.",
-        "💡 uncovers a square that is safe, for 1 point (3 per field unless the host changes it).",
+        "💡 uncovers a square that is safe, for 1 point (3 per field unless the host changes it). 🔥 Six safe uncovers in a row, with no mine between, pay +3.",
         "Clearing every safe square scores +10, and +5 more for finishing first. Most points after the last field wins.",
         "Alone, clear every field before the clock runs out to win (or just clear them, with 🌿 No clock).",
     ]
@@ -92,7 +94,7 @@ class Minesweeper(PuzzleRace):
 
     def fresh(self):
         return {"o": list(self.o0), "f": [0] * (self.n * self.n), "mine": 0, "boom": 0, "hints": 0,
-                "miss": None, "hint": None, "seq": 0}
+                "miss": None, "hint": None, "seq": 0, "run": 0}
 
     def opened(self, st):
         return sum(1 for v in st["o"] if v == 1)
@@ -177,6 +179,7 @@ class Minesweeper(PuzzleRace):
             st["o"][i] = 2
             st["boom"] += 1
             st["miss"] = i
+            st["run"] = 0
             return
         st["miss"] = None
         got = flood(st["o"], self.mine, self.cnt, self.nb, i)
@@ -184,6 +187,16 @@ class Minesweeper(PuzzleRace):
             if st["o"][j] == 1:
                 st["f"][j] = 0
         st["mine"] += got
+        if not hint:
+            st["run"] = st.get("run", 0) + 1
+            if st["run"] % STREAK == 0:
+                st["mine"] += STREAK_PTS
+                pid = self.owner_of(st)
+                if pid and not getattr(self.room.players.get(pid), "bot", False):
+                    self.moment(f"🔥 {st['run']} safe in a row! +{STREAK_PTS}", "gold", "pop", to=pid)
+
+    def owner_of(self, st):
+        return next((pid for pid, x in self.st.items() if x is st), None)
 
     # -- bots: they reason from the numbers like a person, and only guess when they're stuck
 
