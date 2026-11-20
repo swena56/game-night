@@ -323,6 +323,12 @@ UI.putt = (() => {
     return waiting ? waiting.from : p.balls[i];
   }
 
+  // #217: balls still waiting on the tee (not yours, not mid-putt) stay out of sight, so a crowd of them doesn't pile up there
+  function unplayed(i) {
+    const p = S.putt;
+    return i !== p.me && !p.strokes[i] && !p.holed[i] && !(anim && anim.by === i) && !queue.some((q) => q.by === i);
+  }
+
   function loop(now) {
     if (!document.getElementById('ppStage')) { raf = 0; return; }  // the game view is gone: stop drawing
     raf = requestAnimationFrame(loop);
@@ -630,8 +636,12 @@ UI.putt = (() => {
         }
         const lintel = new T.Mesh(new T.BoxGeometry(DOOR * 2, 0.24, 0.3), body);
         lintel.position.set(mx + 0.5, 0.3, -(line + 0.12)); g.add(lintel);
-        const roof = new T.Mesh(new T.ConeGeometry(0.62, 0.4, 4), new T.MeshStandardMaterial({ color: 0xb23a48, roughness: 0.7 }));
-        roof.rotation.y = Math.PI / 4; roof.scale.set(1, 1, 0.5); roof.position.set(mx + 0.5, 0.61, -(line + 0.12)); roof.castShadow = true; g.add(roof);
+        // a gabled roof: a triangular prism running along the wall, with a ridge cap
+        const roof = new T.Mesh(new T.CylinderGeometry(0.23, 0.23, 1.04, 3), new T.MeshStandardMaterial({ color: 0xb23a48, roughness: 0.7 }));
+        roof.rotation.order = 'ZYX'; roof.rotation.set(0, Math.PI / 2, Math.PI / 2);
+        roof.position.set(mx + 0.5, 0.535, -(line + 0.12)); roof.castShadow = true; g.add(roof);
+        const ridge = new T.Mesh(new T.BoxGeometry(1.06, 0.03, 0.05), new T.MeshStandardMaterial({ color: 0x7d2230, roughness: 0.6 }));
+        ridge.position.set(mx + 0.5, 0.655, -(line + 0.12)); g.add(ridge);
         const hub = new T.Group();
         hub.position.set(mx + 0.5, 0.5, -(line - 0.06));
         for (let i = 0; i < 4; i++) {
@@ -880,7 +890,7 @@ UI.putt = (() => {
         const at = ballPos(i, now), m = b.mesh;
         const playing = (anim && anim.by === i) || queue.some((q) => q.by === i);
         const sunk = p.holed[i] && !playing;
-        m.visible = !sunk || i === p.me;
+        m.visible = (!sunk || i === p.me) && !unplayed(i);
         const r = p.ball * 1.3, pos = W(at[0], at[1]), z = at[2] || 0;
         pos.y = sunk ? -0.05 : z < 0 ? -0.06 + r * 0.6 + z * 1.2 : pos.y + r + z;   // flying over a jump, or sinking
         // roll: turn the ball about the axis across its path, by the distance travelled over its radius
@@ -1012,6 +1022,7 @@ UI.putt = (() => {
         g.strokeStyle = '#e6e9ee'; g.lineWidth = Math.max(1.5, cr * 0.12); g.beginPath(); g.arc(cx, cy, cr * 1.03, 0, 7); g.stroke();
       }
       p.seats.forEach((_, i) => {
+        if (unplayed(i)) return;
         const at = ballPos(i, now), bx = X(at[0]), by = Y(at[1]), br = Math.max(4, p.ball * k * 1.3);
         g.fillStyle = 'rgba(0,0,0,0.28)'; g.beginPath(); g.ellipse(bx + br * 0.25, by + br * 0.4, br * 1.05, br * 0.8, 0, 0, 7); g.fill();
         const bg = g.createRadialGradient(bx - br * 0.35, by - br * 0.4, br * 0.1, bx, by, br);

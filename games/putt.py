@@ -200,9 +200,9 @@ class Course:
         return self.kinds.get((math.floor(x), math.floor(y)))
 
 
-def simulate(course, pos, angle, power, record=True, hits=None, t0=0.0):
+def simulate(course, pos, angle, power, record=True, hits=None, t0=0.0, others=()):
     """Returns (final position, 'cup' | 'water' | None, frames). Frames are [x, y], or [x, y, z] while the ball
-    is in the air or sinking. With a `hits` list, every impact hard enough to show is added to it as
+    is in the air or sinking. `others` are the positions of balls lying on the course that this one can bump off. With a `hits` list, every impact hard enough to show is added to it as
     [frame (fractional), x, y, kind, speed]. t0 is the clock time of the putt (the windmills turn on it)."""
     x, y = pos
     speed = 0.25 + max(0.0, min(1.0, power)) * (MAX_SPEED - 0.25)
@@ -309,6 +309,12 @@ def simulate(course, pos, angle, power, record=True, hits=None, t0=0.0):
                 if d < br + BALL and d > 1e-9:
                     x, y = bx + dx / d * (br + BALL), by + dy / d * (br + BALL)
                     hit(step, "bumper", bounce(dx / d, dy / d, BUMPER_BOUNCE))
+            for bx, by in others:  # another player's ball (the contact setting): a solid, lively bounce
+                dx, dy = x - bx, y - by
+                d = math.hypot(dx, dy)
+                if d < 2 * BALL and d > 1e-9:
+                    x, y = bx + dx / d * 2 * BALL, by + dy / d * 2 * BALL
+                    hit(step, "ball", bounce(dx / d, dy / d, 0.8))
             for bx, by, br in course.rocks:  # rocks: lumpy and dead, they soak up the bounce
                 dx, dy = x - bx, y - by
                 d = math.hypot(dx, dy)
@@ -383,6 +389,7 @@ class Putt(Game):
         "course": ("Course", [("classic", "Classic"), ("mixed", "🎲 Surprise each hole"), ("water", "🌊 Water hazards"),
                               ("obstacles", "🌀 Obstacle alley"), ("hills", "⛰️ Hills and bowls")], "classic"),
         "strokes": ("Stroke limit", [(8, "8"), (6, "6"), (10, "10"), (0, "∞ No limit")], 8),
+        "contact": ("🎱 Ball contact", [(0, "Off"), (1, "On: balls in play block and bounce your putt")], 0),
         "longshot": ("🚀 Long shot", [(1, "On: holing out from 3.5+ tiles takes a stroke off"), (0, "Off")], 1),
     }
     low_wins = True  # strokes: the standings card ranks fewest first
@@ -503,6 +510,10 @@ class Putt(Game):
             raise GameError("Bad shot.")
         self.putt(self.seat(p), float(ang), max(0.0, min(1.0, float(pw))))
 
+    def name_of_seat(self, k):
+        p = self.pl(k)
+        return p.name if p else "a rival"
+
     def pickup(self, p):
         """With no stroke limit, a player who has had enough picks up: strokes so far +1."""
         self.require_turn(p)
@@ -520,7 +531,11 @@ class Putt(Game):
     def putt(self, i, angle, power):
         start = tuple(self.balls[i])
         hits, t0 = [], time.time()
-        end, result, frames = simulate(self.get_course(), start, angle, power, hits=hits, t0=t0)
+        others = ()
+        if self.s.get("contact"):  # balls already in play block the way (never the ones still on the tee)
+            others = [tuple(b) for j, b in enumerate(self.balls)
+                      if j != i and self.strokes[j] and not self.holed[j] and math.hypot(b[0] - start[0], b[1] - start[1]) > 2.2 * BALL]
+        end, result, frames = simulate(self.get_course(), start, angle, power, hits=hits, t0=t0, others=others)
         self.strokes[i] += 1
         p = self.pl(i)
         name = p.name if p else "?"
@@ -559,6 +574,12 @@ class Putt(Game):
             else:
                 self.room.add_log(f"🏌️ {name} putts ({self.strokes[i]}).", "question")
         self.shot_id += 1
+        bump = [h for h in hits if h[3] == "ball"]
+        if bump:  # name the ball that was hit
+            hx, hy = bump[0][1], bump[0][2]
+            j = min(others, key=lambda b: math.hypot(b[0] - hx, b[1] - hy), default=None)
+            who = next((self.name_of_seat(k) for k, b in enumerate(self.balls) if k != i and j is not None and tuple(b) == j), None)
+            self.moment(f"🎱 {name} clacks into {who}'s ball!" if who else f"🎱 {name} clacks into a ball!", "good", None)
         self.shot = {"by": i, "frames": frames, "result": result, "id": self.shot_id, "from": list(start), "hits": hits[:40],
                      "t0": round(t0, 3)}
         self.next_turn(i)
