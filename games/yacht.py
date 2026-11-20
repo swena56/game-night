@@ -225,7 +225,9 @@ class Yacht(Game):
             "dice": self.dice, "held": self.held, "rollsLeft": self.rolls_left, "rollId": self.roll_id,
             "rolled": self.rolls_left < 3,
             "preview": {c: score(c, self.dice) for c in CATS if cur.g.card[c] is None} if cur and self.rolls_left < 3 else {},
-            "last": self.last,
+            "last": self.last, "par": PAR,
+            # ⭐ the box a careful player would fill: points above the box's average, not just the biggest number
+            "pick": self.best_box(cur, "hard") if cur and cur.id in self.seats and self.rolls_left < 3 and any(v is None for v in cur.g.card.values()) else None,
             "bonus": bool(self.s.get("bonus")), "extraOn": bool(self.s.get("extra")), "need": UPPER_NEED,
             "upper": {i: self.upper(r.players[i]) for i in self.seats if i in r.players},
             "upperBonus": {i: self.upper_bonus(r.players[i]) for i in self.seats if i in r.players},

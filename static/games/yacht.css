@@ -29,3 +29,8 @@ body.light #arena .stick-top { background: linear-gradient(#1d1729 85%, transpar
 /* yacht: a die on each number row, and the bonus roll button */
 .ya-label-die { vertical-align: middle; margin-right: 6px; }
 #yaRoll.ya-star { background: linear-gradient(180deg, #ffd166, #f4a261); color: #1a1205; }
+/* how far above (+) or below (−) the box's usual score this roll would land */
+.ya-box.preview { position: relative; }
+.ya-box.preview::before { content: attr(data-d); position: absolute; top: -2px; right: 3px; font-size: 9px; font-weight: 700; opacity: .75; }
+.ya-box.preview[data-d^="−"]::before { color: var(--danger, #ef476f); }
+.ya-box.preview[data-d^="+"]::before { color: var(--good, #06d6a0); }

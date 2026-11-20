@@ -147,11 +147,16 @@ UI.yacht = (() => {
       }
     }
     filledSeen = filledNow || new Set(); filledNow = null;
-    // the best-scoring open box for this roll gets a star
+    // ⭐ the smartest open box for this roll (points above the box's average, so a 22 in Choice isn't always the play);
+    // every open box says how far above or below its average the roll would score
     if (mineTurn && y.rolled && y.preview) {
-      const top = Math.max(...Object.values(y.preview));
-      for (const b of t.querySelectorAll('.ya-box.preview')) b.classList.toggle('best', top > 0 && +b.textContent === top);
-    } else for (const b of t.querySelectorAll('.ya-box.best')) b.classList.remove('best');
+      for (const b of t.querySelectorAll('.ya-box.preview')) {
+        const cat = b.closest('tr').dataset.cat, d = (y.preview[cat] ?? 0) - (y.par?.[cat] ?? 0);
+        b.classList.toggle('best', y.pick === cat);
+        b.title = `${d >= 0 ? '+' : '−'}${Math.abs(d)} against this box's usual score (${y.par?.[cat] ?? '?'})${y.pick === cat ? ' — the best use of this roll' : ''}`;
+        b.dataset.d = d > 0 ? `+${d}` : d < 0 ? `−${-d}` : '±0';
+      }
+    } else for (const b of t.querySelectorAll('.ya-box.best')) { b.classList.remove('best'); b.removeAttribute('data-d'); }
     for (const td of t.querySelectorAll('tr.ya-total td[data-id]')) {
       const v = y.totals[td.dataset.id] ?? 0, was = td.dataset.v === undefined ? v : +td.dataset.v;
       if (v !== was) Kit.tally(td, was, v, 700); else td.textContent = String(v);
