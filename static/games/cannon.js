@@ -133,7 +133,11 @@ UI.cannon = (() => {
   function size() {
     const stage = $('cnStage');
     if (!stage || !cv) return;
-    const w = stage.clientWidth || 320, c = S?.cannon, h = Math.round(w * ((c?.h ?? 180) / (c?.w ?? 320)));
+    // 📱 sideways on a phone the range fills the screen's height too: the stage narrows (and centres) so the whole range fits above the controls
+    const c = S?.cannon, asp = (c?.h ?? 180) / (c?.w ?? 320), land = innerWidth > innerHeight && innerHeight < 560;
+    stage.style.maxWidth = land ? `${Math.max(280, Math.round((innerHeight - 130) / asp))}px` : '';
+    stage.style.margin = land ? '0 auto' : '';
+    const w = stage.clientWidth || 320, h = Math.round(w * asp);
     Fx2D.fit(cv, w, h);
   }
   // range coordinates → canvas pixels (for the effects kit); s = pixels per range unit
