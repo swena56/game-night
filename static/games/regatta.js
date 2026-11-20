@@ -549,7 +549,19 @@ UI.regatta = (() => {
     const flagTex = (bg, fg) => tex(64, 40, (g, w, h) => { g.fillStyle = bg; g.fillRect(0, 0, w, h); g.fillStyle = fg; g.beginPath(); g.arc(w / 2, h * 0.42, 8, 0, 7); g.fill(); g.fillRect(w / 2 - 5, h * 0.5, 10, 6); g.fillStyle = bg; g.fillRect(w / 2 - 4, h * 0.36, 3, 3); g.fillRect(w / 2 + 1, h * 0.36, 3, 3); g.strokeStyle = fg; g.lineWidth = 3; g.beginPath(); g.moveTo(w / 2 - 14, h * 0.7); g.lineTo(w / 2 + 14, h * 0.92); g.moveTo(w / 2 + 14, h * 0.7); g.lineTo(w / 2 - 14, h * 0.92); g.stroke(); });
     const skull = guns ? flagTex('#111', '#f4f0e6') : null, whiteFlag = guns ? tex(8, 8, (g) => { g.fillStyle = '#fff'; g.fillRect(0, 0, 8, 8); }) : null;
     const gunMat = std(0x1a1a1a, { metalness: 0.6, roughness: 0.4 }), gunGeo = new T.CylinderGeometry(0.16, 0.2, 1.0, 8);
-    function sailGeo(foot, luff, back = 0) { const g = new T.BufferGeometry(); g.setAttribute('position', new T.Float32BufferAttribute([0, 0, 0, -foot, 0, 0, -back, luff, 0], 3)); g.computeVertexNormals(); return g; }
+    // ⛵ a sail is a cambered triangle (tack, clew, head) cut in cloth panels: a belly that fills with wind, with a slightly
+    // darker seam between panels. The belly is on +z; the boat flips it to the lee side as the sail swings (see the sails' scale.z)
+    function sailGeo(foot, luff, back = 0, belly = 0.32) {
+      const g = new T.BufferGeometry(), NU = 8, NV = 10, pos = [], col = [], idx = [];
+      for (let j = 0; j <= NV; j++) for (let i = 0; i <= NU; i++) {
+        const v = j / NV, u = i / NU;
+        const x = -(1 - v) * u * foot - v * back, y = v * luff;
+        pos.push(x, y, belly * Math.sin(Math.PI * u) * (1 - v) * (0.55 + 0.45 * Math.sin(Math.PI * Math.min(1, v * 1.4))));
+        const c = 0.9 + 0.1 * (j % 2) + 0.05 * Math.sin(Math.PI * u); col.push(c, c, c);
+      }
+      for (let j = 0; j < NV; j++) for (let i = 0; i < NU; i++) { const a = j * (NU + 1) + i, b = a + 1, c = a + NU + 1, d = c + 1; idx.push(a, b, c, b, d, c); }
+      g.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new T.Float32BufferAttribute(col, 3)); g.setIndex(idx); g.computeVertexNormals(); return g;
+    }
     const wakeGeo = (n) => { const g = new T.BufferGeometry(); g.setAttribute('position', new T.BufferAttribute(new Float32Array(n * 6), 3)); const uv = new Float32Array(n * 4), idx = []; for (let k = 0; k < n; k++) { uv.set([k / (n - 1), 0, k / (n - 1), 1], k * 4); if (k) idx.push(2 * k - 2, 2 * k - 1, 2 * k, 2 * k - 1, 2 * k + 1, 2 * k); } g.setAttribute('uv', new T.BufferAttribute(uv, 2)); g.setIndex(idx); return g; };
     const WAKE_N = low ? 14 : 24;
     const boatMs = [];
@@ -568,14 +580,14 @@ UI.regatta = (() => {
       const boomPivot = new T.Group(); boomPivot.position.set(0.6, 1.2, 0); roll.add(boomPivot);
       const boom = new T.Mesh(new T.CylinderGeometry(0.05, 0.05, 3.2, 5), guns ? std(0x6b4a2a) : std(0xbbbbbb)); boom.rotation.z = Math.PI / 2; boom.position.x = -1.6; boomPivot.add(boom);
       const sailC = o.sail != null ? new T.Color(o.sail) : guns ? new T.Color(0xf0e2c0).lerp(new T.Color(color), 0.28) : new T.Color(color).lerp(new T.Color(0xffffff), 0.35);
-      const main = new T.Mesh(sailGeo(3.1, 6.6, 0.15), new T.MeshStandardMaterial({ color: sailC, roughness: 0.85, side: T.DoubleSide })); main.castShadow = !low; boomPivot.add(main);
+      const main = new T.Mesh(sailGeo(3.1, 6.6, 0.15), new T.MeshStandardMaterial({ color: sailC, roughness: 0.85, side: T.DoubleSide, vertexColors: true })); main.castShadow = !low; boomPivot.add(main);
       const jibPivot = new T.Group(); jibPivot.position.set(2.5, 0.8, 0); roll.add(jibPivot);
-      const jib = new T.Mesh(sailGeo(1.9, 5.6, 1.9), new T.MeshStandardMaterial({ color: o.sail != null ? sailC : guns ? 0xf0e4c8 : 0xf8f8f8, roughness: 0.85, side: T.DoubleSide })); jibPivot.add(jib);
+      const jib = new T.Mesh(sailGeo(1.9, 5.6, 1.9), new T.MeshStandardMaterial({ color: o.sail != null ? sailC : guns ? 0xf0e4c8 : 0xf8f8f8, roughness: 0.85, side: T.DoubleSide, vertexColors: true })); jibPivot.add(jib);
       let flag = null;
       if (guns) { flag = new T.Mesh(new T.PlaneGeometry(1.3, 0.8), new T.MeshBasicMaterial({ map: o.flag ?? skull, side: T.DoubleSide })); flag.position.set(-0.05, 7.6, 0); roll.add(flag); }
       const wake = new T.Mesh(wakeGeo(WAKE_N), new T.MeshBasicMaterial({ map: foamTex, transparent: true, depthWrite: false, opacity: 0.8 })); wake.frustumCulled = false; scene3.add(wake);
       scene3.add(g);
-      return { g, roll, boomPivot, jibPivot, wake, flag, main };
+      return { g, roll, boomPivot, jibPivot, wake, flag, main, jib };
     }
     function boatFor(i, color) {
       if (boatMs[i]) return boatMs[i];
@@ -726,6 +738,8 @@ UI.regatta = (() => {
         const ang = clamp(twa / 2, 0.12, 1.4) * (off > 0 ? -1 : 1);
         const flap = b.irons || b.stun > 0 ? Math.sin(now / 60 + b.i) * 0.35 : 0;
         m.boomPivot.rotation.y = ang + flap; m.jibPivot.rotation.y = ang * 0.8 + flap;
+        const bz = ang >= 0 ? 1 : -1, fl = b.irons || b.stun > 0 ? 0.25 : 1;   // the belly fills on the lee side; a luffing sail goes slack
+        m.main.scale.z = bz * fl; m.jib.scale.z = bz * fl;
         // heel: lean away from the wind, most on a close reach at speed; and ride the swell (slope along / across the hull)
         const ch = Math.cos(b.h), sh = Math.sin(b.h), along = s.gx * ch - s.gz * sh, across = s.gx * sh + s.gz * ch;
         m.roll.rotation.x = -(off > 0 ? 1 : -1) * clamp(b.v / 7, 0, 1) * Math.sin(Math.min(twa, 2.4)) * 0.28 - across * 0.8 + Math.sin(now / 700 + b.i) * 0.02;
