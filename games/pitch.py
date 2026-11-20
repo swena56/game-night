@@ -26,12 +26,14 @@ class Pitch(TrickGame):
         "Follow suit or trump as you like; when trumps are led you must follow with a trump.",
         "Points: High (top trump in play), Low (lowest trump in play), Jack (whoever takes the trump jack), Game (most A4 K3 Q2 J1 10s10).",
         "Make your bid or lose that many. First to the target wins.",
+        "An option: take all four points (a sweep) and score 2 bonus points.",
     ]
     min_players, max_players = 2, 4
     order = "23456789TJQKA"
     badges = {**TrickGame.badges, "shoot": ("🎯", "Shot the moon", "Bid 4 and take all four points")}
     settings_schema = {"target": ("Play to", [(11, "11 points"), (7, "7 (quick)"), (15, "15 points")], 11),
-                       "teams": ("Partners", [(False, "Every player for themselves"), (True, "Pairs (4 players)")], False)}
+                       "teams": ("Partners", [(False, "Every player for themselves"), (True, "Pairs (4 players)")], False),
+                       "sweep": ("Sweep", [(True, "🧹 Sweep: all four points +2"), (False, "Off")], True)}
 
     def start(self, seated, rng):
         self.seat_up(seated, rng)
@@ -224,6 +226,11 @@ class Pitch(TrickGame):
                 self.score[s] -= self.bid
             else:
                 self.score[s] += pts[s]
+        swept = [s for s in range(self.sides) if pts[s] == 4]
+        if swept and self.s.get("sweep", True):
+            sw = swept[0]
+            self.score[sw] += 2
+            self.moment(f"🧹 {self.side_name(sw)} swept all four points: +2 bonus!", "good", "good")
         if made and self.bid == 4 and pts[bs] == 4:
             for k in range(self.n):
                 if self.side(k) == bs and self.pl(k):
