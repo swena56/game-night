@@ -298,7 +298,8 @@ class Unmask(Game):
         if len(p.g.cards) >= self.STREAK_CARDS:
             return
         p.g.cards.append("spyglass")
-        self.moment(f"🍀 {p.name} found a free Spyglass!", "good", "tag")
+        # Manhunt answers are private, and a public callout would show the NO: tell only the asker there
+        self.moment(f"🍀 {p.name} found a free Spyglass!", "good", "tag", to=p.id if self.s["mode"] == "manhunt" else None)
 
     def accuse(self, p, face):
         r = self.room

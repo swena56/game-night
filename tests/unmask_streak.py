@@ -66,6 +66,14 @@ r, g, (a, b) = table(streak=True, powers=False)
 ask(r, g, a, False); ask(r, g, a, False)
 check("needs power cards", a.g.cards == [])
 
+# Manhunt: the callout must not be public (it would reveal the NO); duel answers are public anyway
+r, g, (a, b) = table(streak=True)
+a.g.cards = []
+n0 = len(r.log)
+ask(r, g, a, False); ask(r, g, a, False)
+mo = [e for e in r.log[n0:] if e.get("kind") == "moment"]
+check("manhunt callout is private to the asker", mo and all(e.get("to") == a.id for e in mo), str(mo))
+
 # an old game whose players never had the counter, and a pickle round trip
 r, g, (a, b) = table(streak=True)
 a.g.cards = []
