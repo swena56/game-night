@@ -128,10 +128,10 @@ class Ultimate(Undo, Game):
         self.mark(p, c)
 
     def undo_state(self):
-        return self.state, self.last
+        return self.state, self.last, self.star
 
     def undo_restore(self, state):
-        self.state, self.last = state
+        self.state, self.last, self.star = state
 
     def mark(self, p, c):
         self.snapshot(p)

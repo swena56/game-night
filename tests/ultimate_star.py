@@ -45,6 +45,10 @@ cells[27], cells[28] = i, i
 g.state = (tuple(cells), (None,) * 9, 3)
 g.act(me, {"type": "mark", "cell": 29})
 check("star won: same player still to move", r.turn == me.id and g.star is None, r.turn)
+g.act(me, {"type": "undo_ask"})
+g.act(next(q for q in r.players.values() if q.id != me.id), {"type": "undo_yes"})
+check("undo restores the star and the turn", g.star == 3 and g.state[0][29] is None and r.turn == me.id, (g.star, r.turn))
+g.act(me, {"type": "mark", "cell": 29})
 check("star spent, play anywhere", ultimate.legal(g.state, i) and {m // 9 for m in ultimate.legal(g.state, i)} == set(range(9)) - {3})
 
 # non-star board win passes the turn
