@@ -29,6 +29,7 @@ UI.heist = (() => {
         <li id="hRuleTwo">🔔 <b>Two or more grabbers</b> trip the alarm, and the loot keeps growing.</li>
         <li>🛡️ <b>Guards</b> fine every grabber 💰2.</li>
         <li>😴 <b>Rest</b> earns 💰1.</li>
+        <li id="hRuleMark">🎯 Steal alone and you're <b>marked</b> next night: if you grab and get caught, the fine is doubled.</li>
       </ul>
       <ul class="rules" id="hRuleLms" hidden>
         <li>🔥 Get caught <b>3 times</b> and you're arrested.</li>
@@ -50,6 +51,7 @@ UI.heist = (() => {
   function render(s, c) {
     S = s; ctx = c;
     const h = S.heist;
+    document.getElementById('hRuleMark').hidden = h.mark_on === false;
     const two = document.getElementById('hRuleTwo');
     if (two && h.crew) two.innerHTML = '🤝 <b>Two grabbers</b> split the vault; <b>three or more</b> trip the alarm.';
     const moon = h.moon ? '🌕' : '🌙';

@@ -50,5 +50,46 @@ check("only once a game", g.view(ann)["heist"]["tips"] == 0 and refused(g, ann, 
 g.act(cy, {"type": "choose", "choice": "rest"})
 check("not after choosing", refused(g, cy, {"type": "tip"}))
 
+# 🎯 marked thief: a lone thief pays double if caught the next night
+def marked_room(on):
+    room = server.Room("TEST")
+    ps = [room.add_player(n) for n in ("Ann", "Bo", "Cy")]
+    room.switch_game("heist")
+    room.settings["marked"] = on
+    room.start()
+    return room, ps, room.game
+
+
+def night(g, ps, picks):
+    for p, c in zip(ps, picks):
+        g.act(p, {"type": "choose", "choice": c})
+
+
+room, (ann, bo, cy), g = marked_room(True)
+check("marked on by default", server.Room("T").settings.get("marked", True) is True)
+g.moon = 99
+night(g, (ann, bo, cy), ("grab", "rest", "rest"))
+check("lone thief is marked", g.view(ann)["heist"]["marked"] == [ann.id] and "🎯" in g.meta(ann))
+before = g.gold[ann.id]
+night(g, (ann, bo, cy), ("grab", "guard", "rest"))
+check("double fine when marked and caught", before - g.gold[ann.id] == 4, before - g.gold[ann.id])
+check("mark clears after", g.view(ann)["heist"]["marked"] == [])
+night(g, (ann, bo, cy), ("grab", "guard", "rest"))
+check("normal fine unmarked", g.gold[ann.id] >= 0 and g.last["text"].startswith("🚨") and "double" not in g.last["text"])
+
+room, (ann, bo, cy), g = marked_room(False)
+g.moon = 99
+night(g, (ann, bo, cy), ("grab", "rest", "rest"))
+check("off: no mark", g.view(ann)["heist"]["marked"] == [])
+
+# bots through the real path: legal choices, no exceptions
+room, (ann, bo, cy), g = marked_room(True)
+g.moon = 99
+g.marked = {ann.id}
+for p in (bo, cy):
+    p.bot = "normal"
+g.bot_tick()
+check("bots chose legally", {bo.id, cy.id} <= set(g.choices) and all(c in ("grab", "guard", "rest") for c in g.choices.values()), g.choices)
+
 print(f"\n{len(fails)} failed" if fails else "\nall passed")
 sys.exit(1 if fails else 0)

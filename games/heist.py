@@ -31,6 +31,7 @@ class Heist(Game):
         '🔦 Last thief standing: getting caught (or tailed by an informant while you grab) adds 🔥 heat, and 🔥3 means arrest. '
         'From night 6 everyone pays rising rent into the vault — can\'t pay and you\'re busted. Arrested players turn 👻 informant '
         'and publicly tail one player each night. The last thief free wins.',
+        '🎯 With Marked thieves on, whoever steals the vault alone is marked the next night: if they grab again and a guard catches them, the fine is doubled.',
         'With 🕵️ Inside man on, once a game you can ask, before you choose, how many of the players who have already chosen are grabbing tonight.',
     ]
     name = "Night Heist"
@@ -46,6 +47,7 @@ class Heist(Game):
                              (LMS, "🔦 Last thief standing")], 8),
         "style": ("Heist style", [("solo", "🦹 Lone wolves (2 grabbers trip the alarm)"),
                                   ("crew", "🤝 Crews (2 grabbers split the vault, 3 trip it)")], "solo"),
+        "marked": ("Marked thief", [(True, "🎯 On"), (False, "Off")], True),
         "tip": ("Inside man", [(False, "Off"), (True, "🕵️ One tip-off each")], False),
     }
 
@@ -56,6 +58,7 @@ class Heist(Game):
         self.gold = {p.id: 3 for p in seated}
         self.choices = {}
         self.last = None
+        self.marked = set()  # 🎯 who stole a vault alone last night: doubled fines tonight
         self.nights = []  # every revealed night: {pid: [choice, gold change]}
         self.heat = {p.id: 0 for p in seated}  # 🔦 last thief standing: catches so far
         self.tails = {}  # 👻 informant id -> the player they're tailing tonight
@@ -108,6 +111,8 @@ class Heist(Game):
         rent = f" 🔦 Rent tonight: 💰{self.rent()}." if self.rent() else ""
         moon = "🌕" if self.full_moon() else "🌙"
         r.add_log(f"{moon} Night {self.night}{of}: 💰{added} more loot — the vault holds 💰{self.pot}.{rent}")
+        for i in sorted(self.marked):
+            self.moment(f"🎯 {r.players[i].name} is MARKED · fines doubled", "bad", "alarm")
         if self.full_moon():
             self.moment(f"🌕 FULL MOON · fines 💰{MOON_FINE}", "cool", "alarm")
         elif self.full_moon(self.night + 1):
@@ -183,11 +188,13 @@ class Heist(Game):
         for i in rest:
             self.gold[i] += 1
         hot = set()  # 🔦 who picks up heat tonight
+        marked = set(getattr(self, "marked", ())) & set(grab)
+        self.marked = set()
         if guard and grab:
             hot.update(grab)
             fines = 0
             for i in grab:
-                paid = min(self.fine(), self.gold[i])
+                paid = min(self.fine() * (2 if i in marked else 1), self.gold[i])
                 self.gold[i] -= paid
                 fines += paid
             share, leftover = divmod(fines, len(guard))
@@ -195,6 +202,8 @@ class Heist(Game):
                 self.gold[i] += share
             self.pot += leftover
             outcome = f"🚨 {names(guard)} caught {names(grab)}! Fines paid: 💰{fines}."
+            if marked:
+                outcome += f" 🎯 {names(sorted(marked, key=grab.index))} had a mark on them: double fine!"
             if len(grab) >= 2:
                 for i in guard:
                     self.award(i, "hawk")
@@ -210,6 +219,8 @@ class Heist(Game):
                 self.award(grab[0], "mastermind")
             self.gold[grab[0]] += self.pot
             self.pot = 0
+            if self.s.get("marked", True):
+                self.marked = {grab[0]}
         elif len(grab) == 2 and self.s.get("style") == "crew":
             share, left = divmod(self.pot, 2)
             outcome = f"🤝 {names(grab)} pulled it off together and split 💰{self.pot}: 💰{share} each!"
@@ -301,7 +312,8 @@ class Heist(Game):
         heat = f" · 🔥{self.heat[p.id]}" if self.lms and getattr(self, "heat", {}).get(p.id) else ""
         if self.lms and p.eliminated:
             return f"🚔 💰{self.gold[p.id]}"
-        return f"💰{self.gold[p.id]}{heat}{locked}" + (f" · {PERSONAS[kind][0]} {kind}" if kind else "")
+        mark = " · 🎯" if p.id in getattr(self, "marked", ()) else ""
+        return f"💰{self.gold[p.id]}{heat}{mark}{locked}" + (f" · {PERSONAS[kind][0]} {kind}" if kind else "")
 
     def final_scores(self):
         return dict(self.gold)
@@ -316,6 +328,7 @@ class Heist(Game):
             "gold": self.gold,
             "waiting": [o.id for o in self.waiting_on()],
             "tips": getattr(self, "tips", {}).get(p.id, 0),
+            "marked": sorted(getattr(self, "marked", ())), "mark_on": self.s.get("marked", True),
         }}
 
     # -- bots: everyone moves at once, so all undecided bots choose together
@@ -360,6 +373,11 @@ class Heist(Game):
                 grab *= 0.3 if self.gold[p.id] >= self.rent(self.night + 1) * 2 else 0.8  # one more catch ends it
             if self.gold[p.id] < self.rent(self.night + 1) + 1:
                 grab *= 1.6  # rent's due: need loot
+        if self.marked:  # 🎯 a marked thief grabs warily; everyone else smells a fine
+            if p.id in self.marked:
+                grab *= 0.5
+            else:
+                guard *= 1.4
         if self.full_moon():  # 🌕 bigger fines make guarding pay and grabbing dearer
             guard, grab = guard * 1.4, grab * 0.85
         kind = getattr(self, "persona", {}).get(p.id)
