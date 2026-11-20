@@ -27,7 +27,7 @@ UI.whisker = (() => {
     side.innerHTML = `<div class="panel"><div id="wkRows"></div>
       <label class="check"><input type="checkbox" id="wkPadOn"> Show the arrow pad</label>
       <p class="hint left">Swipe anywhere, tap the maze toward where you want to go, or use the arrows / WASD. Press early to turn at the next corner.</p>
-      <p class="hint left">🧀 crumb +1 · 🔔 bell +5 and the cats panic · bump a 🙀 panicking cat +20 · a cat that catches a mouse snatches half of what it nibbled this round.</p>
+      <p class="hint left">🧀 crumb +1 · ⚡ zoomies +3 and a burst of speed · 🔔 bell +5 and the cats panic · bump a 🙀 panicking cat +20 · a cat that catches a mouse snatches half of what it nibbled this round.</p>
       <p class="hint left">🕳️ Mouse holes in the hedge let mice through but not cats — though a cat at either end can reach in with a paw.</p></div>`;
     $('wkPadOn').checked = showPad;
     $('wkPadOn').addEventListener('change', (e) => { showPad = e.target.checked; store('whisker.pad', showPad ? null : false); renderSide(); });
@@ -161,6 +161,10 @@ UI.whisker = (() => {
         ctx.sfx('pickup');
         if (my?.role === 'c') { Kit.callout('🙀 A bell! Run from the mice!', 'bad', { ms: 1300 }); buzz([40, 40, 40]); }
         else Kit.callout(mine ? '🔔 Ding! Chase the cats!' : `🔔 ${name} rang a bell — chase the cats!`, 'gold', { ms: 1300 });
+      } else if (kind === 'zoom') {
+        fx?.ring(x, y, { r0: 4 * ratio, r1: cell * 3 * ratio, color: '#7cdcff', width: 3 * ratio, life: 0.5 });
+        ctx.sfx('pickup');
+        if (mine) { Kit.callout('⚡ Zoomies!', 'gold', { ms: 1000 }); buzz(25); }
       } else if (kind === 'catch') {
         fx?.burst(x, y, 14, { colors: ['#ffd166', '#c9a227', '#fff'], speed: [60, 200] , size: 4 * ratio, life: [0.4, 0.8] });
         fx?.shake(mine ? 8 : 3);
@@ -324,11 +328,11 @@ UI.whisker = (() => {
     g.save(); g.scale(ratio, ratio); g.translate(offX, offY);
     const w = W(), now = performance.now(), pulse = 0.5 + 0.5 * Math.sin(t / 220);
     for (const [c, kind] of food) {  // bells pulse, so they're drawn each frame (there are only a few)
-      if (kind !== 'b') continue;
+      if (kind !== 'b' && kind !== 'z') continue;
       const x = (c % w + 0.5) * cell, y = (Math.floor(c / w) + 0.5) * cell;
-      g.fillStyle = `rgba(255, 209, 102, ${0.15 + 0.25 * pulse})`;
+      g.fillStyle = kind === 'z' ? `rgba(120, 220, 255, ${0.15 + 0.25 * pulse})` : `rgba(255, 209, 102, ${0.15 + 0.25 * pulse})`;
       g.beginPath(); g.arc(x, y, cell * (0.5 + 0.15 * pulse), 0, 6.3); g.fill();
-      const sp = sprite('🔔', Math.round(cell * 0.85)), sz = sp.width / ratio;
+      const sp = sprite(kind === 'z' ? '⚡' : '🔔', Math.round(cell * 0.85)), sz = sp.width / ratio;
       g.drawImage(sp, x - sz / 2, y - sz / 2, sz, sz);
     }
     // critters: mice under cats

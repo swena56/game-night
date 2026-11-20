@@ -158,5 +158,16 @@ m["cell"], m["from"], m["dir"], m["moved_at"] = fwd, cell, 0, now
 g.late_turn(m, 1, now + 1.0)
 check("a swipe far too late is left alone", m["cell"] == fwd and m["dir"] == 0)
 
+# -- ⚡ zoomies
+r, g, _ = table(2)
+mz = next(e for e in g.ents if e["role"] == "m")
+zc = next((c for c, k in g.food.items() if k == "z"), None)
+check("the maze has zoomies pickups", zc is not None and sum(1 for k in g.food.values() if k == "z") == 2)
+now = time.time()
+base = g.speed_of(mz, now)
+g.nibble(mz, zc, now)
+check("zoomies makes a mouse faster", g.speed_of(mz, now) > base * 1.3 and mz["zoom_until"] > now)
+check("and wears off", g.speed_of(mz, now + wk.ZOOM_SECS + 0.1) == base)
+
 print("\nall ok" if not fails else f"\n{len(fails)} FAILED: {fails}")
 sys.exit(1 if fails else 0)

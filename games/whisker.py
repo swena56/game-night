@@ -39,6 +39,7 @@ OUTNUMBERED = 0.03                # cats run this much faster per mouse more tha
 LATE_TURN = 0.22                  # a swipe this soon after passing a side opening still turns into it
 NIBBLE = 0.25                     # a mouse loses this much of a step munching each crumb
 SQUEEZE = 0.25                    # …and this much squeezing into a mouse hole
+ZOOM_SECS, ZOOM_PACE, ZOOM_PTS = 3.0, 1.35, 3   # ⚡ a zoomies pickup: a mouse runs this much faster for this long
 CRUMB, BELL, BONK, CATCH = 1, 5, 20, 8               # points
 CLEAR_BONUS, SWEEP_BONUS = 25, 25  # every crumb gone (each mouse still in) / every mouse out (each cat)
 INF = 10 ** 6
@@ -183,6 +184,7 @@ class Whisker(Game):
         "Each round some players are 🐭 mice and the rest are 🐱 cats — the roles rotate, so everyone hunts.",
         "Mice: nibble crumbs for points. Swipe, use the arrows or the arrow keys — press early to take a corner.",
         "Cats: catch a mouse and you snatch half the crumbs it nibbled this round. Cats run a touch faster.",
+        "⚡ Grab a zoomies pickup (one each side) and your mouse runs a third faster for 3 seconds.",
         "🔔 A mouse that rings a bell makes every cat panic: bump one then to send it back to its basket.",
         "🕳️ Mouse holes let mice through the walls but not cats — though a cat at either end can reach in.",
         "Every round is a new maze: the 🌿 garden, the 🫙 pantry, the 🕯️ cellar. More mice, bigger maze.",
@@ -265,10 +267,11 @@ class Whisker(Game):
             ci += 1
         spawns = {e["spawn"] for e in self.ents}
         bells = {y * self.w + x for x, y in bell_cells}
+        zooms = {(self.h // 2) * self.w + x for x in (3, self.w - 4)}   # ⚡ one each side, level with the den
         self.food = {}
         for c in range(n):
             if self.walls[c] == OPEN and not self.in_den(c) and c not in spawns:
-                self.food[c] = "b" if c in bells else "c"
+                self.food[c] = "b" if c in bells else "z" if c in zooms else "c"
         self.crumbs_at_start = len(self.food)
         self.eaten = []  # [tick, cell] lately eaten, for the fast channel
         self.stage = "countdown"
@@ -290,7 +293,7 @@ class Whisker(Game):
         c = xy[1] * self.w + xy[0]
         return {"role": role, "seat": seat, "cell": c, "prev": c, "spawn": c, "dir": 0 if role == "m" else 2,
                 "pend": None, "acc": 0.0, "lives": LIVES if role == "m" else 0, "out_until": None, "done": False,
-                "ghost_until": 0.0, "spook_until": 0.0, "frozen_until": 0.0, "pouch": 0}
+                "ghost_until": 0.0, "spook_until": 0.0, "zoom_until": 0.0, "frozen_until": 0.0, "pouch": 0}
 
     def step_cell(self, c, d, cat):
         """The cell one step from c in direction d (wrapping through the tunnel), or None for a hedge
@@ -340,7 +343,7 @@ class Whisker(Game):
     def speed_of(self, e, now):
         v = self.s.get("speed", 7.0)
         if e["role"] == "m":
-            return v
+            return v * ZOOM_PACE if e["zoom_until"] > now else v
         if e["spook_until"] > now:
             return v * SPOOK_PACE
         return v * (ALLEY_PACE if e["role"] == "a" else self.pace)
@@ -474,10 +477,14 @@ class Whisker(Game):
         if not kind:
             return False
         self.eaten = (self.eaten + [[self.tick, c]])[-16:]
-        pts = BELL if kind == "b" else CRUMB
+        pts = BELL if kind == "b" else ZOOM_PTS if kind == "z" else CRUMB
         e["acc"] -= NIBBLE
         self.score[e["seat"]] += pts
         e["pouch"] += pts
+        if kind == "z":
+            e["zoom_until"] = now + ZOOM_SECS
+            self.event("zoom", c, e["seat"])
+            return False
         if kind == "b":
             for o in self.ents:
                 if self.is_cat(o) and o["frozen_until"] <= now:
