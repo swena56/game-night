@@ -19,6 +19,7 @@ FRICTION = 0.35          # fraction of speed lost per second
 WALL_BOUNCE, HIT_BOUNCE = 0.9, 0.95
 SUBSTEPS = 4
 SERVE_PAUSE = 1.2
+RALLY_FROM, RALLY_STEP, RALLY_MAX = 5, 0.03, 0.24   # 🔥 after this many mallet touches without a goal the puck's top speed grows
 GOAL_PAUSE = 2.8         # after a goal: time for every screen to show the replay
 STUCK_SECS = 5          # a puck that stays in one spot this long is re-served in its half
 BOT = {  # reaction interval (s), mallet speed, aim noise
@@ -94,6 +95,7 @@ class Hockey(Game):
         x = W / 2 + (0.18 if idx else -0.18 if self.s["pucks"] > 1 else 0)
         y = H * (0.68 if side == 0 else 0.32)
         p = Puck(x, y)
+        p.rally = 0
         if idx < len(self.pucks):
             self.pucks[idx] = p
             self.still[idx] = [x, y, 0.0]
@@ -205,6 +207,9 @@ class Hockey(Game):
                     pk.vx -= (1 + HIT_BOUNCE) * dot * nx
                     pk.vy -= (1 + HIT_BOUNCE) * dot * ny
                     self.hits += 1
+                    pk.rally = getattr(pk, "rally", 0) + 1
+                    if pk.rally == 10 and not getattr(self, "quiet_rally", False):
+                        self.moment("🔥 10-hit rally: the puck is speeding up!", "gold", None)
                     pk.banked = 0  # a fresh touch: a goal from here is a bank shot only if it bounces first
         if pk.x < PUCK:
             pk.x, pk.vx = PUCK, abs(pk.vx) * WALL_BOUNCE
@@ -225,6 +230,7 @@ class Hockey(Game):
                 self.mallets[i] = self.clamp(i, pk.x - dx / d * (MALLET + PUCK), pk.y - dy / d * (MALLET + PUCK))
         sp = math.hypot(pk.vx, pk.vy)
         top = MAX_PUCK * (1.25 if self.match_point() else 1)  # 🔥 match point: a livelier puck
+        top *= 1 + min(RALLY_MAX, RALLY_STEP * max(0, getattr(pk, "rally", 0) - RALLY_FROM))  # and a long rally heats up
         if sp > top:
             pk.vx, pk.vy = pk.vx / sp * top, pk.vy / sp * top
         return None
