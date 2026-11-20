@@ -1,7 +1,7 @@
 /* cardtable: this game's own rules, loaded with static/games/cardtable.js (needUI in app.js). Shared pieces and
    the theme tokens live in static/style.css, which always loads first. */
 .ct { width: min(100%, 640px); margin: 0 auto; display: flex; flex-direction: column; gap: 8px;
-  overflow-x: clip; overflow-clip-margin: 10px;  /* a seat's "took the trick" ring grows past its plate: at the right edge that stretched the page sideways for a moment; the 10px margin keeps seat plates (which poke 2-4px past .ct) whole and clips at the page edge */ }
+  overflow-x: clip;  /* a seat's "took the trick" ring grows past its plate: at the right edge that stretched the page sideways for a moment (overflow-clip-margin does nothing while overflow-y is visible, so the plates are kept inside .ct by the seat inset below instead) */ }
 .ct-table { position: relative; height: clamp(270px, 62vw, 340px); border-radius: 50% / 42%; padding: 0;
   box-shadow: inset 0 0 0 7px #5a3a1e, inset 0 0 0 9px #8b5e34, inset 0 0 50px #000a, 0 6px 18px #0007; }
 .ct-seat { position: absolute; left: calc(50% + var(--x) * (50% - 50px)); top: calc(50% + var(--y) * (50% - 30px));
@@ -85,7 +85,7 @@
 body.lowgfx .ct-seat.turn { animation: none; box-shadow: 0 0 0 2px var(--accent); }
 body.lowgfx .ct-table::after { display: none; }
 /* seat plates stay inside the oval on a phone: a smaller face, a capped name, plates pulled in from the edge */
-.ct-seat { left: calc(50% + var(--x) * (50% - 62px)); max-width: 132px; }
+.ct-seat { left: calc(50% + var(--x) * (50% - 66px)); max-width: 132px; }
 .ct-who b { max-width: 10ch; font-size: var(--fs-sm); }
 @media (max-width: 420px) { .ct-who .avatar { width: 20px; height: 20px; } .ct-seat { max-width: 118px; } .ct-who b { max-width: 8ch; } }
 .ct-badge { flex: none; font-size: var(--fs-xs); }
