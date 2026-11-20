@@ -13,6 +13,7 @@ sys.path.insert(0, ROOT)
 from games import billiards as b  # noqa: E402
 from games.base import GameError  # noqa: E402
 
+real_simulate = b.simulate
 fails = []
 
 
@@ -214,6 +215,60 @@ g, room, a, bo = new_game("8")
 g.pos[1] = (192.236158970, 42.959114867)
 v = dict((n, (x, y)) for n, x, y in g.view(a)["billiards"]["balls"])
 check("the view sends ball positions unrounded", v[1] == g.pos[1], f"{v[1]}")
+
+# ---------- ⭐ lucky ball (8-ball): sink it legally, shoot again with ball in hand
+g, room, a, bo = new_game("8")
+check("lucky ball is on by default and marks one object ball", g.s["lucky"] and g.lucky in (set(range(1, 8)) | set(range(9, 16))), g.lucky)
+check("the view names the lucky ball", g.view(a)["billiards"]["lucky"] == g.lucky)
+lk = g.lucky
+g.breaking = False
+g.groups = {"a": "solids", "b": "stripes"} if lk < 8 else {"a": "stripes", "b": "solids"}
+g.in_hand = None
+script(sunk=[lk], first=lk)
+shoot(g, a)
+check("lucky ball sunk legally: shoot again, ball in hand", room.turn == "a" and g.in_hand == "anywhere", f"{g.in_hand} {room.turn} {room.logs[-2:]}")
+check("the lucky ball is spent", g.view(a)["billiards"]["lucky"] is None)
+other = next(n for n in (g.mine("a") or ()) if n in g.pos)
+script(sunk=[other], first=other)
+shoot(g, a, cue=[30, 30])
+check("a later ordinary pot gives no ball in hand", room.turn == "a" and g.in_hand is None)
+
+g, room, a, bo = new_game("8")
+lk = g.lucky
+g.breaking = False
+g.groups = {"a": "solids", "b": "stripes"} if lk < 8 else {"a": "stripes", "b": "solids"}
+script(sunk=[0, lk], first=lk)
+shoot(g, a, cue=[30, 30])
+check("lucky ball with a scratch: foul, no bonus", room.turn == "b" and g.in_hand == "anywhere" and not any("lucky" in t for t in room.logs))
+
+g, room, a, bo = new_game("8", lucky=False)
+check("lucky off: no marked ball", g.lucky is None and g.view(a)["billiards"]["lucky"] is None)
+g, room, a, bo = new_game("9")
+check("9-ball has no lucky ball", g.lucky is None)
+
+g, room, a, bo = new_game("8")
+del g.__dict__["lucky"]  # a game saved before the lucky ball
+g.s.pop("lucky", None)
+g.breaking = False
+script(sunk=[1], first=1)
+g.groups = {"a": "solids", "b": "stripes"}
+shoot(g, a)
+check("old-style game without lucky still plays", room.turn == "a" and g.in_hand is None and g.view(a)["billiards"]["lucky"] is None)
+
+# bots through the real move path: every shot is legal (no exceptions swallowed)
+b.simulate = real_simulate
+g, room, a, bo = new_game("8")
+room.players["a"].bot = room.players["b"].bot = "easy"
+shots = 0
+while room.phase == "playing" and shots < 12:
+    g.busy_until = 0.0
+    g.bot_turn(room.players[room.turn])
+    shots += 1
+    if g.ending:
+        g.bot_tick()
+check("bots play real shots on the lucky table", shots > 0 and (g.lucky is None or g.lucky in range(1, 16)))
+import pickle  # noqa: E402
+check("a lucky game pickles", pickle.loads(pickle.dumps(g.lucky)) == g.lucky)
 
 print(f"\n{len(fails)} failed" if fails else "\nall passed")
 sys.exit(1 if fails else 0)

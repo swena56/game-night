@@ -651,11 +651,12 @@ const Billiards3D = (() => {
       m.rotation.x = -Math.PI / 2; m.renderOrder = 3; m.visible = false; table.add(m); return m;
     };
     const handRing = ringMesh(R * 1.9, R * 2.25, 0xffb703);
+    const luckyRing = ringMesh(R * 1.35, R * 1.7, 0xffd166);  // ⭐ the lucky ball's gold ring
     const callRings = b.pockets.map(([x, y, cap]) => { const m = ringMesh(cap + 2.3, cap + 3.1, 0xffd166); m.position.set(x, RAIL_TOP + 0.6, y); return m; });
 
     // the colours above were picked as sRGB: light works in linear, so convert them once; the overlays (aim
     // guide, ghost ball, rings) skip tone mapping so they keep exactly the colours picked
-    const overlays = new Set([ghost.material, ghostRim.material, arrow.material, handRing.material, objPath.material, cuePath.material, ...callRings.map((m) => m.material)]);
+    const overlays = new Set([ghost.material, ghostRim.material, arrow.material, handRing.material, luckyRing.material, objPath.material, cuePath.material, ...callRings.map((m) => m.material)]);
     scene.traverse((o) => {
       const m = o.material;
       if (!m || m.userData.lin) return;
@@ -905,6 +906,9 @@ const Billiards3D = (() => {
           if (gd.deflect) cueLine.set(gx, gy, gx + gd.deflect[0], gy + gd.deflect[1], 0.55);
         }
       }
+      const lk = st.lucky != null && st.balls.find(([n]) => n === st.lucky);
+      luckyRing.visible = !!lk;
+      if (lk) { luckyRing.position.set(lk[1], 0.1, lk[2]); luckyRing.material.opacity = 0.65 + 0.3 * Math.sin(now / 300); }
       handRing.visible = !!st.ring;
       if (st.ring) { handRing.position.set(st.ring.x, 0.1, st.ring.y); handRing.material.color.set(st.ring.ok ? 0xffb703 : 0xef476f); }
       const pulse = 0.45 + 0.35 * Math.sin(now / 250);
@@ -934,7 +938,7 @@ const Billiards3D = (() => {
       const fxOn = stepFx(dt), shaking = !!camera.userData.shake;
       if (shaking) GL3.tickShake(camera, dt);
       // draw only when something changed
-      const k = JSON.stringify([st.balls, s && [s.x, s.y, s.aim, s.power, s.spin, s.english], gd && [gd.mode, gd.g, gd.objPath?.length, gd.cuePath?.length, gd.cuePath?.at(-1)], st.ring, st.call, mode]);
+      const k = JSON.stringify([st.lucky, st.balls, s && [s.x, s.y, s.aim, s.power, s.spin, s.english], gd && [gd.mode, gd.g, gd.objPath?.length, gd.cuePath?.length, gd.cuePath?.at(-1)], st.ring, st.call, mode]);
       // (once the balls stop, one more frame at full resolution: the shot may have drawn at a lower one)
       const busy = st.animating || falling.length || moving || fxOn || shaking || streaks || lifting;
       if (k === key && !busy && sharp && !(st.callAll && st.call == null)) return;

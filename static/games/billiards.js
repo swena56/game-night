@@ -359,7 +359,7 @@ UI.billiards = (() => {
     const resting = ballMap()[0];
     if (!anim && drag !== 'cue') { const at = cue || resting; if (at) camAt = { x: at[0], y: at[1], aim }; }
     gl.render({
-      balls: ballsNow(), animating: !!anim,
+      balls: ballsNow(), animating: !!anim, lucky: b.lucky ?? null,
       stick: cue ? { x: cue[0], y: cue[1], aim, power, spin, english } : strokeNow(),
       guide, ring: shooting && b.inHand && cuePos ? { x: cuePos[0], y: cuePos[1], ok: placeOk(...cuePos) } : null,
       call: anim ? anim.called ?? null : b.calling && shooting ? called : null, callAll: !!(b.calling && shooting),
@@ -617,6 +617,10 @@ UI.billiards = (() => {
     const sk = strokeNow();
     if (sk) drawStick(g, [sk.x, sk.y], sk.aim, sk.power, sk.english, rpx);
     for (const [n, x, y] of balls) drawBall(g, n, ...toScreen(x, y), rpx);
+    if (b.lucky != null) {  // ⭐ the lucky ball wears a pulsing gold ring
+      const lb = balls.find(([n]) => n === b.lucky);
+      if (lb) { const [sx, sy] = toScreen(lb[1], lb[2]); g.strokeStyle = `rgba(255, 209, 102, ${0.65 + 0.3 * Math.sin(now / 300)})`; g.lineWidth = Math.max(1.5, rpx * 0.22); g.beginPath(); g.arc(sx, sy, rpx * 1.45, 0, 7); g.stroke(); }
+    }
     if (!anim && canShoot() && b.inHand && cuePos) {  // ball-in-hand ring
       const [sx, sy] = toScreen(...cuePos);
       g.strokeStyle = placeOk(...cuePos) ? '#ffb703' : '#ef476f'; g.lineWidth = 2 * (k / geo.css); g.setLineDash([4, 3]);
@@ -1526,6 +1530,7 @@ UI.billiards = (() => {
       if (b.rules === '9') dots(chip, [b.targets[0]], b.targets[0]);
       else if (b.targets.length === 1 && b.targets[0] === 8 && g) dots(chip, [8], 8);
       else if (g) dots(chip, groupBalls(g).filter((n) => up.includes(n)));
+      if (b.lucky != null && b.rules !== '9') chip.append(ctx.el('span', '', `⭐ ${b.lucky}`));
       else chip.append(ctx.el('span', '', b.breaking ? 'to break' : 'open table'));
       const tag = b.inHand && S.turn === me ? '✋ ball in hand' : b.calling && S.turn === me ? (called == null ? '📣 call the 8' : '📣 8 called')
         : b.pushChoice === S.turn ? '🔀 push-out' : pushing ? '🔀 pushing' : '';

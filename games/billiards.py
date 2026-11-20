@@ -370,6 +370,7 @@ class Billiards(Game):
         "⤴ under the pad raises the butt of the cue: with left or right on the pad, the cue ball curves toward that side (a swerve; steep, a massé) and goes a little slower.",
         "(the full aim guide shows where it really goes). Spin wears off as the ball travels.",
         "Pockets have jaws: a ball straight in drops, one coming in at a slant can catch the point and rattle out. Side pockets want straight-in shots.",
+        "With ⭐ Lucky ball on (8-ball), one object ball per rack wears a gold ring: sink it legally and you shoot again with ball in hand.",
         "The Cloth setting: 🐢 Classic is slow, so balls stop soon; 🏎️ Fast rolls like a real table, so play softer.",
         "Fouls (cue ball in a pocket, missing everything, wrong ball first) give your rival ✋ ball in hand: anywhere, "
         "or behind the line after a scratch on an 8-ball break.",
@@ -389,8 +390,15 @@ class Billiards(Game):
         "guide": ("Aim guide", [("full", "🎯 Full (where both balls go)"), ("light", "Light (ghost ball and a hint of the angle)"), ("short", "Short"), ("off", "Off")], "full"),
         "call8": ("The 8 ball", [(True, "📣 Call its pocket"), (False, "Any pocket")], True),
         "cloth": ("Cloth", [("classic", "🐢 Classic (slow, short rolls)"), ("fast", "🏎️ Fast (rolls like a real table)")], "classic"),
+        "lucky": ("⭐ Lucky ball", [(True, "On: pot it for ball in hand"), (False, "Off")], True),
         "race": ("Match", [(1, "1 rack"), (2, "🏁 Race to 2"), (3, "🏁 Race to 3"), (5, "🏁 Race to 5")], 1),
     }
+
+    lucky = None  # 8-ball ⭐: the marked ball this rack (rooms saved before it have none)
+
+    @property
+    def lucky_on(self):
+        return bool(self.s.get("lucky")) and not self.nine
 
     @property
     def table(self):
@@ -440,6 +448,8 @@ class Billiards(Game):
         self.push_ok = False             # 9-ball: the first shot after the break may be a push-out
         self.push_choice = None          # 9-ball: after a push, the player who picks: shoot from there or hand it back
         self.fouls = {i: 0 for i in self.seats}  # 9-ball: fouls in a row; the third loses
+        # ⭐ one marked ball per rack (not the 8): sink it legally and you shoot again with ball in hand
+        self.lucky = sorted(SOLIDS | STRIPES)[int(self.rng.random() * 14)] if self.lucky_on else None
         self.mark_round()
         if self.breaker not in r.players:  # the breaker left: the other player breaks
             self.breaker = next((i for i in self.seats if i in r.players), self.breaker)
@@ -595,6 +605,11 @@ class Billiards(Game):
         elif scored:
             self.last = f"✅ {p.name} sank {names}."
             r.add_log(f"✅ {p.name} sank {names}{' on the break' if breaking else ''} and shoots again.", "question")
+            if self.lucky in scored:  # ⭐ the lucky ball: the shooter also picks up the cue ball
+                self.in_hand = "anywhere"
+                self.last = f"⭐ {p.name} sank the lucky {self.lucky}: ball in hand!"
+                r.add_log(f"⭐ {p.name} sank the lucky {self.lucky}: ball in hand for the next shot.", "power")
+                self.moment(f"⭐ Lucky {self.lucky}: {p.name} gets ball in hand!", "gold", "good")
             if len(objects) >= 2:
                 self.moment(f"🎱 {p.name}: {len(objects)} balls in one shot!", "gold", "tag")
             r.begin_turn(p.id)
@@ -741,7 +756,7 @@ class Billiards(Game):
             # exact positions: the aim guide re-runs the shot from them, and a ball rounded to 0.01 sent a hard
             # shot near the foot rail almost a unit off the server's path
             "balls": [[n, x, y] for n, (x, y) in sorted(self.pos.items())],
-            "rules": "9" if self.nine else "8", "groups": self.groups, "inHand": self.in_hand, "breaking": self.breaking,
+            "rules": "9" if self.nine else "8", "lucky": self.lucky if self.lucky in self.pos else None, "groups": self.groups, "inHand": self.in_hand, "breaking": self.breaking,
             "targets": self.legal_targets(self.room.turn) if self.room.turn else [],
             "shot": shot, "last": self.last, "guide": self.s["guide"],
             "lead": STROKE_LEAD, "minSpeed": MIN_SPEED, "maxSpeed": self.table[1], "friction": self.table[0],
