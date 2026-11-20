@@ -12,7 +12,7 @@ LENGTH = 720.0
 STEP = 1 / 30
 SEND_EVERY = 2
 COUNTDOWN = 3.0
-RING_R = 1.65
+RING_R = 2.05
 # Bots: (seconds between steering decisions, steering noise, chance to line up each ring properly).
 # A bot that loses focus on a ring aims for a spot beside it, so it usually misses that ring and
 # then has to recover for the next one. Tuned for about 40% / 60% / 80% of the rings.
@@ -48,9 +48,9 @@ class SkyDrop(Game):
     min_players, max_players = 2, 6
     replayable = False
     howto = [
-        "Everyone dives the same course at once. Drag to steer left/right and forward/back, or use WASD / arrow keys.",
+        "Everyone dives the same course at once. Drag from anywhere to steer with the floating stick, or use WASD / arrow keys.",
         "Fly through glowing rings to score. Consecutive rings build a combo; missing one resets it.",
-        "Avoid turbines and storm gates. Air streams push you off line; checkpoints refill your boosts.",
+        "Steering is stabilized, so you can make small corrections without drifting away. Avoid turbines and storm gates; checkpoints refill boosts.",
         "Tap ⚡ or Space for one of three short boosts. The boost refills at the checkpoint.",
         "Ring points plus a finish-place bonus decide the winner.",
     ]
@@ -82,7 +82,7 @@ class SkyDrop(Game):
         theme = self.s.get("course", "spire")
         for j, d in enumerate(range(28, int(LENGTH), 18)):
             mult = (1.2 if j % 4 == 3 else 1.0) if theme == "aurora" else (0.85 if j % 4 == 3 else 1.0)
-            self.rings.append([d, r.uniform(-5.6, 5.6), r.uniform(-3.7, 3.7), mult])
+            self.rings.append([d, r.uniform(-4.8, 4.8), r.uniform(-3.1, 3.1), mult])
         self.hazards = []
         if self.s.get("hazards", True):
             hazard_gap = 27 if theme == "storm" else 36
@@ -207,7 +207,13 @@ class SkyDrop(Game):
                 f.depth = min(LENGTH, f.depth + 4.2 * dt)
             else:
                 # Course currents are local force fields, with a small oscillation for movement.
-                ax, az = f.sx * 15.0, f.sz * 13.0
+                # Steering is a velocity target with gentle damping. This keeps a release or
+                # direction change predictable on touch screens, while currents still matter.
+                target_vx, target_vz = f.sx * 6.8, f.sz * 5.8
+                response = min(1.0, dt * 4.2)
+                f.vx += (target_vx - f.vx) * response
+                f.vz += (target_vz - f.vz) * response
+                ax = az = 0.0
                 current_scale = 1.45 if self.s.get("course") == "storm" else 1.0
                 for d, x, z, dx, dz in self.streams:
                     dd = abs(f.depth - d)
@@ -216,8 +222,8 @@ class SkyDrop(Game):
                         k = (1 - dd / 9) * (1 - dist / 4) * current_scale
                         ax += dx * 8 * k
                         az += dz * 8 * k
-                f.vx = max(-8, min(8, (f.vx + ax * dt) * (1 - 1.5 * dt)))
-                f.vz = max(-7, min(7, (f.vz + az * dt) * (1 - 1.7 * dt)))
+                f.vx = max(-8, min(8, (f.vx + ax * dt) * (1 - 1.2 * dt)))
+                f.vz = max(-7, min(7, (f.vz + az * dt) * (1 - 1.35 * dt)))
                 speed = 12.5 + (4.0 if now < f.boost_until else 0)
                 f.depth = min(LENGTH, f.depth + speed * dt)
                 f.x += f.vx * dt

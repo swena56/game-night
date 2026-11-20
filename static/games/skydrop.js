@@ -16,12 +16,12 @@ UI.skydrop = (() => {
       <div class="sd-hud"><b id="sdPlace">🪂 SKY DROP</b><span id="sdScore">0 pts</span><span id="sdClock"></span></div>
       <div class="sd-progress"><i id="sdProgress"></i></div><div class="sd-banner" id="sdBanner" hidden></div>
       <div class="sd-stick" id="sdStick" hidden><i></i></div></div>
-      <div class="sd-controls"><span class="hint" id="sdHint">Drag to steer · thread the rings · avoid the turbines</span><div><button id="sdTilt">📱 Tilt</button> <button id="sdBoost" class="primary">⚡ Boost <small id="sdCharges">3</small></button></div></div></div>`;
+      <div class="sd-controls"><span class="hint" id="sdHint">Drag anywhere to steer · release to stabilize · thread the rings</span><div><button id="sdTilt">📱 Tilt</button> <button id="sdBoost" class="primary">⚡ Boost <small id="sdCharges">3</small></button></div></div></div>`;
     side.innerHTML = `<div class="panel"><h3>🪂 Sky Drop</h3><div id="sdSeats"></div><p class="hint left">Steer in two directions. Rings build your combo; hazards break it. Reach a checkpoint to refill boosts.</p></div>`;
     stage = $('sdStage'); stage.style.touchAction = 'none';
     stage.addEventListener('pointerdown', (e) => { if (e.target.closest?.('button')) return; drag = {x:e.clientX,y:e.clientY}; stage.setPointerCapture?.(e.pointerId); steerFrom(e); });
     stage.addEventListener('pointermove', (e) => { if (drag) steerFrom(e); });
-    const end = () => { drag = null; setSteer(0,0,true); $('sdStick').hidden = true; };
+    const end = () => { drag = null; $('sdStick').hidden = true; keySteer(); };
     stage.addEventListener('pointerup', end); stage.addEventListener('pointercancel', end);
     let boostTap = 0;
     $('sdBoost').addEventListener('pointerdown', (e) => { e.preventDefault(); boostTap = performance.now(); boost(); });
@@ -41,11 +41,12 @@ UI.skydrop = (() => {
 
   function unmount() { cancelAnimationFrame(raf); ro?.disconnect(); removeEventListener('keydown',keyDown); removeEventListener('keyup',keyUp); if(tiltHandler)removeEventListener('deviceorientation',tiltHandler); tiltHandler=null;tiltOn=false;tiltZero=null;gl?.dispose(); gl = flat = null; }
   function steerFrom(e) {
-    const r = stage.getBoundingClientRect(), x = Math.max(-1,Math.min(1,(e.clientX-r.left-r.width/2)/(r.width*.34))), z = Math.max(-1,Math.min(1,(e.clientY-r.top-r.height/2)/(r.height*.34)));
-    $('sdStick').hidden = false; $('sdStick').style.left = `${e.clientX-r.left}px`; $('sdStick').style.top = `${e.clientY-r.top}px`;
-    $('sdStick').firstElementChild.style.transform = `translate(${x*22}px,${z*22}px)`; setSteer(x,z);
+    const r = stage.getBoundingClientRect(), dx=e.clientX-drag.x, dy=e.clientY-drag.y, reach=58;
+    const mag=Math.hypot(dx,dy), scale=mag>reach?reach/mag:1, x=dx*scale/reach, z=dy*scale/reach;
+    $('sdStick').hidden = false; $('sdStick').style.left = `${drag.x-r.left}px`; $('sdStick').style.top = `${drag.y-r.top}px`;
+    $('sdStick').firstElementChild.style.transform = `translate(${dx*scale}px,${dy*scale}px)`; setSteer(x,z);
   }
-  function keySteer() { let x=0,z=0; for (const k of keys) { if (k==='ArrowLeft'||k==='KeyA')x--; if(k==='ArrowRight'||k==='KeyD')x++; if(k==='ArrowUp'||k==='KeyW')z--; if(k==='ArrowDown'||k==='KeyS')z++; } setSteer(Math.sign(x),Math.sign(z),true); }
+  function keySteer() { let x=0,z=0; for (const k of keys) { if (k==='ArrowLeft'||k==='KeyA')x--; if(k==='ArrowRight'||k==='KeyD')x++; if(k==='ArrowUp'||k==='KeyW')z--; if(k==='ArrowDown'||k==='KeyS')z++; } const n=Math.hypot(x,z)||1; setSteer(x/n,z/n,true); }
   function setSteer(x,z,force=false) { sx=x; sz=z; if (!S || S.phase!=='playing') return; const now=performance.now(); if(!force&&now-sentAt<45)return; sentAt=now; ctx.input({sx:+x.toFixed(2),sz:+z.toFixed(2)}); }
   function boost() { if (S?.phase==='playing') ctx.input({boost:true},true); }
   async function toggleTilt() {
@@ -78,7 +79,7 @@ UI.skydrop = (() => {
     for(let side=0;side<4;side++){const m=new T.Mesh(new T.BoxGeometry(side<2?0.35:17,side<2?12:0.35,240),wallMat); if(side===0)m.position.x=-9; if(side===1)m.position.x=9; if(side===2)m.position.y=6; if(side===3)m.position.y=-6; m.position.z=-90; shaft.add(m);}
     const gridMat=new T.MeshBasicMaterial({color:0x6179c7,transparent:true,opacity:.32});
     for(let z=0;z<20;z++){const g=new T.Mesh(new T.TorusGeometry(8.7,.025,4,64),gridMat);g.position.z=-z*11;shaft.add(g);}
-    const gateMat=new T.MeshStandardMaterial({color:0x6cecff,emissive:0x159dcc,emissiveIntensity:2,metalness:.25,roughness:.25});
+    const gateMat=new T.MeshStandardMaterial({color:0x6cecff,emissive:0x159dcc,emissiveIntensity:2.8,metalness:.18,roughness:.2});
     const hazardMats=[0xff576f,0xffb843,0xc477ff].map(c=>new T.MeshStandardMaterial({color:c,emissive:c,emissiveIntensity:1.3,metalness:.2,roughness:.32}));
     const streamMat=new T.MeshBasicMaterial({color:0x6cf5d5,transparent:true,opacity:.45});
     const playerMeshes=[]; const divers=new T.Group(); scene.add(divers);
@@ -102,7 +103,7 @@ UI.skydrop = (() => {
     function buildCourse(v){
       for(const o of [...ringMeshes,...hazardMeshes,...streamMeshes]) {o.geometry?.dispose?.(); if(o.parent)o.parent.remove(o);}
       ringMeshes.length=hazardMeshes.length=streamMeshes.length=0;
-      for(let i=0;i<(v?.rings||[]).length;i++){const [d,x,y,m]=v.rings[i],o=new T.Mesh(new T.TorusGeometry(m>1?1.85:1.55,.12,10,32),gateMat);o.position.set(x,y,-d);o.userData.depth=d;scene.add(o);ringMeshes.push(o);}
+      for(let i=0;i<(v?.rings||[]).length;i++){const [d,x,y,m]=v.rings[i],gold=m>1,o=new T.Mesh(new T.TorusGeometry(gold?2.05:1.8,.15,12,48),gateMat.clone());if(gold){o.material.color.set(0xffdd79);o.material.emissive.set(0xffae36);}o.material.emissiveIntensity=gold?3.5:2.8;o.position.set(x,y,-d);o.userData.depth=d;scene.add(o);ringMeshes.push(o);}
       for(const [d,x,y,k,p] of v?.hazards||[]){const g=k===0?new T.TorusGeometry(1.3,.18,8,12):k===1?new T.CylinderGeometry(.82,.82,.3,12):new T.OctahedronGeometry(.95),o=new T.Mesh(g,hazardMats[k]);o.position.set(x,y,-d);o.rotation.x=Math.PI/2;o.userData={depth:d,phase:p,kind:k,baseX:x,baseY:y};scene.add(o);hazardMeshes.push(o);}
       for(const [d,x,y,dx,dy] of v?.streams||[]){const o=new T.Mesh(new T.TorusGeometry(2.1,.035,4,32),streamMat);o.position.set(x,y,-d);scene.add(o);streamMeshes.push(o);}
       for(const m of playerMeshes){divers.remove(m);m.traverse(o=>{if(o.material){o.material.map?.dispose();o.material.dispose();}});}
@@ -130,12 +131,13 @@ UI.skydrop = (() => {
   function makeFlat() {
     const c=document.createElement('canvas');c.className='sd-canvas';stage.append(c);const x=c.getContext('2d');if(!x)return {resize(){},render(){},dispose(){c.remove();}};
     function resize(){const r=stage.getBoundingClientRect(),d=Math.min(devicePixelRatio||1,2);c.width=Math.round(r.width*d);c.height=Math.round(r.height*d);c.style.width=`${r.width}px`;c.style.height=`${r.height}px`;}
-    function render(v){if(!v||!Array.isArray(v.flyers)||!Array.isArray(v.seats))return;const w=c.width,h=c.height,idx=me(),f=sample(idx),g=x.createLinearGradient(0,0,0,h),top=v.course==='storm'?'#331b32':v.course==='aurora'?'#0a3448':'#151633',bottom=v.course==='storm'?'#8a4655':v.course==='aurora'?'#287e85':'#493778';g.addColorStop(0,top);g.addColorStop(1,bottom);x.fillStyle=g;x.fillRect(0,0,w,h);x.strokeStyle='#8298ff44';x.lineWidth=2;
+    function render(v){if(!v||!Array.isArray(v.flyers)||!Array.isArray(v.seats))return;const w=c.width,h=c.height,idx=me(),f=sample(idx),g=x.createLinearGradient(0,0,0,h),top=v.course==='storm'?'#331b32':v.course==='aurora'?'#0a3448':'#151633',bottom=v.course==='storm'?'#8a4655':v.course==='aurora'?'#287e85':'#493778';g.addColorStop(0,top);g.addColorStop(1,bottom);x.fillStyle=g;x.fillRect(0,0,w,h);
+      const glow=x.createRadialGradient(w*.5,h*.35,4,w*.5,h*.35,w*.72);glow.addColorStop(0,'#98efff22');glow.addColorStop(1,'#10112600');x.fillStyle=glow;x.fillRect(0,0,w,h);x.strokeStyle='#8298ff44';x.lineWidth=2;
       for(let i=0;i<13;i++){let yy=(i*h/12+(performance.now()*.04)% (h/12));x.beginPath();x.ellipse(w/2,yy,w*.42,24,0,0,Math.PI*2);x.stroke();}
       const yy=h*.68,px=w/2+f[1]*w/22,py=yy+f[2]*h/14;
       const sxw=w/22,szh=h/14,at=(d,a,b)=>{const rel=d-f[0],k=Math.max(.35,1-rel/120);return [w/2+(a-f[1])*sxw*k+f[1]*sxw,yy-rel*h/95+b*szh*k,k,rel];};
       for(const [d,a,b,k] of v?.hazards||[]){const [hx,hy,s,rel]=at(d,a,b);if(rel<-2||rel>80)continue;x.fillStyle=['#ff576f','#ffb843','#c477ff'][k]||'#ff576f';x.beginPath();x.arc(hx,hy,Math.max(3,(k===0?1.3:1)*sxw*s),0,Math.PI*2);x.fill();}
-      for(let i=0;i<(v?.rings||[]).length;i++){const [d,a,b,m]=v.rings[i],[rx,ry,s,rel]=at(d,a,b);if(rel<-2||rel>80)continue;x.strokeStyle=m>1?'#ffe17d':'#7df6ff';x.lineWidth=Math.max(2,4*s);x.beginPath();x.ellipse(rx,ry,Math.max(4,1.65*sxw*s),Math.max(3,1.65*szh*s*.45),0,0,Math.PI*2);x.stroke();}
+      for(let i=0;i<(v?.rings||[]).length;i++){const [d,a,b,m]=v.rings[i],[rx,ry,s,rel]=at(d,a,b);if(rel<-2||rel>80)continue;x.strokeStyle=m>1?'#ffe17d':'#7df6ff';x.lineWidth=Math.max(2,4*s);x.beginPath();x.ellipse(rx,ry,Math.max(4,(m>1?2.05:1.8)*sxw*s),(m>1?2.05:1.8)*szh*s*.45,0,0,Math.PI*2);x.stroke();}
       x.globalAlpha=.75;for(let i=0;i<v.flyers.length;i++){if(i===idx)continue;const a=sample(i);if(a[9])continue;const [ox,oy,s,rel]=at(a[0],a[1],a[2]);if(rel<-12||rel>80)continue;x.fillStyle=color(i);x.beginPath();x.arc(ox,oy,Math.max(4,8*s),0,Math.PI*2);x.fill();}
       x.globalAlpha=1;
       if(idx>=0&&v.flyers[idx]&&!f[9]){
