@@ -116,7 +116,7 @@ UI.skydrop = (() => {
     function buildCourse(v){
       for(const o of [...ringMeshes,...hazardMeshes,...streamMeshes]) {o.geometry?.dispose?.(); if(o.parent)o.parent.remove(o);}
       ringMeshes.length=hazardMeshes.length=streamMeshes.length=0;
-      for(let i=0;i<(v?.rings||[]).length;i++){const [d,x,y,m]=v.rings[i],gold=m>1,o=new T.Mesh(new T.TorusGeometry(gold?2.05:1.8,.15,12,48),gateMat.clone());if(gold){o.material.color.set(0xffdd79);o.material.emissive.set(0xffae36);}o.material.emissiveIntensity=gold?3.5:2.8;o.position.set(x,y,-d);o.userData.depth=d;scene.add(o);ringMeshes.push(o);}
+      for(let i=0;i<(v?.rings||[]).length;i++){const [d,x,y,m]=v.rings[i],gold=m>1,o=new T.Mesh(new T.TorusGeometry(gold?2.05:1.8,.15,12,48),gateMat.clone());if(gold){o.material.color.set(0xffdd79);o.material.emissive.set(0xffae36);}o.material.emissiveIntensity=gold?3.5:2.8;o.position.set(x,y,-d);o.userData.depth=d;o.userData.gold=gold;scene.add(o);ringMeshes.push(o);}
       for(const [d,x,y,k,p] of v?.hazards||[]){const g=k===0?new T.TorusGeometry(1.3,.18,8,12):k===1?new T.CylinderGeometry(.82,.82,.3,12):new T.OctahedronGeometry(.95),o=new T.Mesh(g,hazardMats[k]);o.position.set(x,y,-d);o.rotation.x=Math.PI/2;o.userData={depth:d,phase:p,kind:k,baseX:x,baseY:y};scene.add(o);hazardMeshes.push(o);}
       for(const [d,x,y,dx,dy] of v?.streams||[]){const o=new T.Mesh(new T.TorusGeometry(2.1,.035,4,32),streamMat);o.position.set(x,y,-d);scene.add(o);streamMeshes.push(o);}
       for(const m of playerMeshes){divers.remove(m);m.traverse(o=>{if(o.material){o.material.map?.dispose();o.material.dispose();}});}
@@ -131,7 +131,8 @@ UI.skydrop = (() => {
       camera.position.set(px*.35,py*.35+3.4,-depth+12);camera.lookAt(px,py,-depth-12);
       const nowT=performance.now()/1000,boosting=((v.time||0)+Math.max(0,(performance.now()-gotAt)/1000))<(f[13]||0);
       shaft.position.z=-(depth-depth%GRID);   // the hoops are fixed in the tunnel: they stream past you in steps of 11
-      const baseK=Math.floor(depth/GRID);
+      const baseK=Math.floor(depth/GRID);curDepth=depth;
+      for(const o of ringMeshes){const t=o.userData.pulse?(performance.now()-o.userData.pulse)/500:1,k=t<1?1-t:0;if(k||o.userData.lit){o.scale.setScalar(1+.7*k);o.material.emissiveIntensity=(o.userData.gold?3.5:2.8)+6*k;o.userData.lit=k>0;}}
       for(const g of gridRings){const k=g.userData.k+baseK,m=g.material;m.color.setHSL(((k*.045+nowT*.05)%1+1)%1,.75,.58);m.opacity=.18+.4*Math.max(0,1-(g.userData.k*GRID-depth%GRID)/200);}
       const len=boosting?5.5:2.6;for(let i=0;i<NS;i++){const [sx0,sy0,z0]=streakSeed[i],rel=((z0-depth)%220+220)%220,zz=-depth-rel+12;streakPos.set([sx0,sy0,zz,sx0,sy0,zz-len],i*6);}
       streakGeo.attributes.position.needsUpdate=true;streaks.material.opacity=boosting?.9:.5;
@@ -144,7 +145,10 @@ UI.skydrop = (() => {
       GL3.tickShake?.(camera,.016);renderer.render(scene,camera);
     }
     function shake(a){GL3.shake?.(camera,a);}
-    resize();return {resize,render,shake,dispose(){renderer.domElement.remove();world.dispose?.();renderer.dispose();scene.traverse(o=>{o.geometry?.dispose?.();if(o.material){if(Array.isArray(o.material))o.material.forEach(m=>m.dispose());else o.material.dispose();}});}};
+    // (#235) threading a ring makes it flare: it swells, whitens and fades back over about half a second
+    let curDepth=0;
+    function pulse(){let best=null,bd=9;for(const o of ringMeshes){const d=Math.abs(o.userData.depth-curDepth);if(d<bd){bd=d;best=o;}}if(best)best.userData.pulse=performance.now();}
+    resize();return {resize,render,shake,pulse,dispose(){renderer.domElement.remove();world.dispose?.();renderer.dispose();scene.traverse(o=>{o.geometry?.dispose?.();if(o.material){if(Array.isArray(o.material))o.material.forEach(m=>m.dispose());else o.material.dispose();}});}};
   }
 
   function makeFlat() {
@@ -182,6 +186,6 @@ UI.skydrop = (() => {
   function render(S0,ctx0){S=S0;ctx=ctx0;if(snap?.seed!==V()?.seed)lastSeq=-1;snap=V();gotAt=performance.now();if(lastSeq<0)events(V());ensureView();}
   function fast(data){if(data.skydrop){const old=V()||{};S={...S,skydrop:{...data.skydrop,me:old.me,seats:old.seats}};snap=S.skydrop;gotAt=performance.now();ensureView();events(S.skydrop);}}
   function events(v){const evs=v?.events||[];if(lastSeq<0||evs.some(e=>e[0]<lastSeq-40)){lastSeq=evs.at(-1)?.[0]??0;return;}for(const [n,kind,i] of evs){if(n<=lastSeq)continue;lastSeq=n;if(i!==me())continue;
-    if(kind==='ring')ctx?.sfx?.('chip');else if(kind==='hit'){ctx?.sfx?.('thud');ctx?.buzz?.(40);(gl||flat)?.shake?.(.35);}else if(kind==='bullseye'){ctx?.sfx?.('pop');ctx?.buzz?.(15);}else if(kind==='graze'){ctx?.sfx?.('tick');ctx?.buzz?.(10);if(typeof Kit!=='undefined')Kit.callout('😮‍💨 Close call! +3','gold',{ms:700});}else if(kind==='boost')ctx?.sfx?.('whoosh');else if(kind==='checkpoint')ctx?.sfx?.('rise');else if(kind==='finish')ctx?.sfx?.('fanfare');}}
+    if(kind==='ring'){ctx?.sfx?.('chip');ctx?.buzz?.(8);gl?.pulse?.();}else if(kind==='hit'){ctx?.sfx?.('thud');ctx?.buzz?.(40);(gl||flat)?.shake?.(.35);}else if(kind==='bullseye'){ctx?.sfx?.('pop');ctx?.buzz?.(15);}else if(kind==='graze'){ctx?.sfx?.('tick');ctx?.buzz?.(10);if(typeof Kit!=='undefined')Kit.callout('😮‍💨 Close call! +3','gold',{ms:700});}else if(kind==='boost')ctx?.sfx?.('whoosh');else if(kind==='checkpoint')ctx?.sfx?.('rise');else if(kind==='finish')ctx?.sfx?.('fanfare');}}
   return {mount,render,fast,unmount,turnText:()=> '🪂 Dive through the rings · highest score wins'};
 })();
