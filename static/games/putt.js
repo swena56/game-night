@@ -355,6 +355,13 @@ UI.putt = (() => {
         if (anim.result === 'cup') {
           gl?.burst(x, y, 0xffffff, 18); knock(1400, 0.12); setTimeout(() => knock(1000, 0.1), 90);
           if (anim.by === p.me) ctx.confetti?.();
+          // a big hole gets its name on screen: a hole in one, or two or more under par
+          const sk = p.strokes?.[anim.by], par = p.par ?? 3;
+          if (sk && typeof Kit !== 'undefined' && (sk === 1 || sk - par <= -2)) {
+            const who = anim.by === p.me ? 'You' : (ctx.player(p.seats?.[anim.by])?.name ?? 'Someone');
+            Kit.callout(`${sk === 1 ? '🎯 Hole in one' : '🦅 Eagle'}: ${who}!`, 'gold', { ms: 1800 });
+            ctx.sfx?.('fanfare');
+          }
         }
       }
       if (f >= anim.frames.length + 8) anim = null;  // a short rest at the end
