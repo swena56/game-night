@@ -5,6 +5,29 @@ UI.lanes = (() => {
   let still = false;
   let S, ctx, gl = null, flat = null, raf = 0, ro = null;
   // 🧑 the animated bowler (a toggle, remembered): walks up, swings and releases; rivals throw on their own lanes
+  // 🎨 my ball's pattern (cosmetic, kept on this device): the shell texture is repainted in place
+  const BALLS = ['🌀 Swirl', '🦓 Stripes', '⭐ Stars', '🔮 Pearl', '🏁 Checks', '🌈 Marble'];
+  let ballStyle = (() => { try { return (+localStorage.getItem('ln.ball') || 0) % BALLS.length; } catch { return 0; } })();
+  let repaintBall = null;
+  function paintBall(g, w, h, style) {
+    let z = 7; const rnd = () => ((z = (z * 16807) % 2147483647) / 2147483647);
+    g.fillStyle = '#fff'; g.fillRect(0, 0, w, h);
+    if (style === 0) {
+      for (let i = 0; i < 14; i++) { g.strokeStyle = `rgba(0,0,0,${0.08 + rnd() * 0.12})`; g.lineWidth = 6 + rnd() * 10; g.beginPath(); g.moveTo(rnd() * w, 0); g.bezierCurveTo(rnd() * w, h / 3, rnd() * w, h * 2 / 3, rnd() * w, h); g.stroke(); }
+    } else if (style === 1) {
+      for (let x = 0; x < w; x += 32) { g.fillStyle = 'rgba(0,0,0,.28)'; g.fillRect(x, 0, 16, h); }
+    } else if (style === 2) {
+      g.fillStyle = 'rgba(0,0,40,.3)'; g.fillRect(0, 0, w, h);
+      for (let i = 0; i < 26; i++) { g.fillStyle = 'rgba(255,255,255,.95)'; g.font = `${14 + rnd() * 22}px sans-serif`; g.fillText('★', rnd() * w, 14 + rnd() * h); }
+    } else if (style === 3) {
+      const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(.5, 'rgba(255,255,255,.9)'); gr.addColorStop(1, 'rgba(0,0,0,.25)');
+      g.fillStyle = gr; g.fillRect(0, 0, w, h);
+    } else if (style === 4) {
+      for (let y = 0; y < h; y += 16) for (let x = 0; x < w; x += 16) if (((x + y) / 16) % 2) { g.fillStyle = 'rgba(0,0,0,.3)'; g.fillRect(x, y, 16, 16); }
+    } else {
+      for (let i = 0; i < 9; i++) { g.fillStyle = `hsla(${i * 40},90%,${45 + rnd() * 25}%,.35)`; g.beginPath(); g.ellipse(rnd() * w, rnd() * h, 20 + rnd() * 50, 10 + rnd() * 25, rnd() * 3, 0, 7); g.fill(); }
+    }
+  }
   let bowlerOn = (() => { try { return localStorage.getItem('ln.bowler') !== '0'; } catch { return true; } })();
   const LEAD = 0.8;  // seconds of approach before the ball leaves the hand
   let anim = null, seen = 0, primed = false, drag = null, rolledAt = 0, lastDraw = 0, holdUntil = 0, settleAt = 0, settled = true;
@@ -159,6 +182,7 @@ UI.lanes = (() => {
         <div class="ln-row"><span class="ln-lbl">🧍 Stand</span>
           <div class="ln-dial"><button data-st="-1" aria-label="Stand further left">◀</button><b id="lnStart"></b><button data-st="1" aria-label="Stand further right">▶</button></div>
           <button class="ln-saver ghost-btn" id="lnSpare" hidden title="Stand where the leave is easiest, with no hook">💡 Spare spot</button>
+          <button class="ln-saver ghost-btn" id="lnBall" title="Change your ball's pattern (just for you)">🎨 Ball</button>
           <button class="ln-saver ghost-btn" id="lnBowler" title="Show an animated bowler on every lane">🧑 Bowler</button>
           <button class="ln-saver ghost-btn" id="lnSaver" hidden title="If this ball leaves exactly one pin, it falls too (once a game)">🎯 Spare saver</button>
         </div>
@@ -177,6 +201,7 @@ UI.lanes = (() => {
         start = Math.max(-0.4, Math.min(0.4, Math.round((-avg * 1.7) / 0.04) * 0.04)); spin = 0;
         $('lnSpin').value = 0; coach = `💡 Standing ${start === 0 ? 'in the middle' : (start < 0 ? 'left' : 'right')} with no hook: now drag straight at ${xs.length === 1 ? 'the pin' : 'the leave'}.`;
       }
+      else if (b.id === 'lnBall') { ballStyle = (ballStyle + 1) % BALLS.length; try { localStorage.setItem('ln.ball', String(ballStyle)); } catch {} repaintBall?.(); }
       else if (b.id === 'lnBowler') { bowlerOn = !bowlerOn; try { localStorage.setItem('ln.bowler', bowlerOn ? '1' : '0'); } catch {} }
       controls(); hint();
     });
@@ -237,6 +262,7 @@ UI.lanes = (() => {
     sv.hidden = !(L().spare && L().saver && L().me != null);
     sv.classList.toggle('on', saver);
     const sb = $('lnSpare'); if (sb) sb.hidden = !(L().me != null && L().standing.length && L().standing.length < 10 && canBowl());
+    const bl = $('lnBall'); if (bl) bl.textContent = `🎨 ${BALLS[ballStyle]}`;
     const bb = $('lnBowler'); if (bb) { bb.classList.toggle('on', bowlerOn); bb.setAttribute('aria-pressed', bowlerOn ? 'true' : 'false'); bb.textContent = bowlerOn ? '🧑 Bowler: on' : '🧑 Bowler: off'; }
   }
 
@@ -783,10 +809,8 @@ UI.lanes = (() => {
       scene.add(new T.Points(pg, new T.PointsMaterial({ color: 0xb8a6ff, size: 0.03, toneMapped: false })));
     }
     // the ball, and the ball return on the capping to my right: a hood the ball rolls up into (#118)
-    const ballTex = canvasTex(T, 256, 128, (g, w, h) => {
-      g.fillStyle = '#fff'; g.fillRect(0, 0, w, h);
-      for (let i = 0; i < 14; i++) { g.strokeStyle = `rgba(0,0,0,${0.08 + Math.random() * 0.12})`; g.lineWidth = 6 + Math.random() * 10; g.beginPath(); g.moveTo(Math.random() * w, 0); g.bezierCurveTo(Math.random() * w, h / 3, Math.random() * w, h * 2 / 3, Math.random() * w, h); g.stroke(); }
-    });
+    const ballTex = canvasTex(T, 256, 128, (g, w, h) => paintBall(g, w, h, ballStyle));
+    repaintBall = () => { const c = ballTex.image, g = c.getContext('2d'); paintBall(g, c.width, c.height, ballStyle); ballTex.needsUpdate = true; };
     const ballMat = new T.MeshStandardMaterial({ map: ballTex, color: new T.Color(colorOf(S.me?.id)), roughness: 0.08, metalness: 0.15 });
     const ballGeo = new T.SphereGeometry(R, 40, 28);
     // real finger holes: a thumb hole and two finger holes, each a dark disc sunk into the shell with a glossy lip ring
