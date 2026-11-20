@@ -79,29 +79,37 @@ check("old-style player works", ann.g.streak == 0)
 r2 = pickle.loads(pickle.dumps(r))
 check("pickle round trip keeps the setting", r2.game.s.get("streak", True) is True)
 
-# bots play whole games through the real path
-for seed in (1, 2, 3):
+# bots play whole games through the real path (seeds picked because the bonus fires in them; a full 121
+# game is ~0.4 s each). Every bonus must come with its log line and its callout.
+# Seeds are not fully repeatable (str-hash ordering of card sets varies per process), so play until a
+# bonus has fired (at least 3 games, at most 20; about a third of games have one, ~0.4 s each).
+bonus = 0
+for seed in range(1, 21):
+    if seed > 3 and bonus:
+        break
     random.seed(seed)
     r = server.Room("TEST")
     r.add_bot("hard")
     r.add_bot("normal")
     r.switch_game("cribbage")
-    r.settings["target"] = 61
+    r.settings["target"] = 121
     r.start()
     g = r.game
     steps = 0
-    bonus = 0
     while r.phase == "playing" and steps < 4000:
         steps += 1
         if g.stage == "show":
             g.on_timeout()
         elif g.bot_ready():
-            before = {p.id: p.g.score for p in r.players.values()}
             g.bot_tick()   # illegal moves raise GameError and fail the run
         else:
             break
     check(f"bots finish game {seed}", r.phase == "over", f"{steps} steps, stage {g.stage}")
-    bonus += sum("Hot streak" in e["text"] for e in r.log)
+    logs = sum("Hot streak!" in e["text"] for e in r.log)
+    calls = sum("hot streak +1" in e["text"] for e in r.log)
+    check(f"game {seed}: each bonus has a log line and a callout", logs == calls, f"{logs} vs {calls}")
+    bonus += logs
+check("the streak bonus fires in bot games", bonus >= 1, f"{bonus} in {seed} games")
 print("streak bonuses in bot games:", bonus)
 
 print("\n" + ("ALL PASSED" if not fails else f"{len(fails)} FAILED: {fails}"))
