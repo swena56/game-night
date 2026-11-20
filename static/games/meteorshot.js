@@ -139,6 +139,11 @@ UI.meteorshot = (() => {
     const landing = new T.Mesh(new T.SphereGeometry(0.14, 12, 8), new T.MeshBasicMaterial({ color: 0x53ddff })); scene.add(landing);
     const burst = new T.Mesh(new T.RingGeometry(0.3, 0.5, 32), new T.MeshBasicMaterial({ color: 0xffe08a, transparent: true, side: T.DoubleSide }));
     burst.visible = false; scene.add(burst);
+    // a shower of sparks where the comet lands: gold on a bullseye, green on a good one, ember-orange on a graze
+    const SH = 48, shDir = Array.from({ length: SH }, () => { const a = Math.random() * 6.283, b = Math.random() * 3.1416, sp = 0.5 + Math.random(); return [Math.sin(b) * Math.cos(a) * sp, Math.cos(b) * sp, Math.sin(b) * Math.sin(a) * sp]; });
+    const shGeo = new T.BufferGeometry(); shGeo.setAttribute('position', new T.BufferAttribute(new Float32Array(SH * 3), 3));
+    const shower = new T.Points(shGeo, new T.PointsMaterial({ size: 0.22, color: 0xffd166, transparent: true, depthWrite: false, blending: T.AdditiveBlending }));
+    shower.visible = false; shower.frustumCulled = false; scene.add(shower);
     const stars = new T.BufferGeometry(), sp = new Float32Array(520 * 3), starColors = new Float32Array(520 * 3);
     for (let i = 0; i < 520; i++) {
       sp.set([(Math.random() - 0.5) * 90, 2 + Math.random() * 36, -10 - Math.random() * 75], i * 3);
@@ -185,9 +190,17 @@ UI.meteorshot = (() => {
           const k = Math.min(1, (t - f.T) / 0.6);
           burst.visible = k < 1; burst.position.set(f.hit[0], f.hit[1], -f.s.target[1]); burst.scale.setScalar(1 + k * 5);
           burst.material.opacity = 1 - k;
+          const pts = f.s.points, kk = Math.min(1, (t - f.T) / 0.9);
+          shower.visible = pts > 0 && kk < 1;
+          if (shower.visible) {
+            shower.material.color.setHex(pts >= 90 ? 0xffd166 : pts >= 60 ? 0x7dffb0 : 0xff9060); shower.material.opacity = 1 - kk;
+            const q = shGeo.attributes.position.array, sc = (pts >= 90 ? 4.5 : 3) * kk;
+            for (let i = 0; i < SH; i++) { q[i * 3] = f.hit[0] + shDir[i][0] * sc; q[i * 3 + 1] = f.hit[1] + shDir[i][1] * sc - kk * kk * 1.8; q[i * 3 + 2] = -f.s.target[1] + shDir[i][2] * sc; }
+            shGeo.attributes.position.needsUpdate = true;
+          }
         }
         ringMat.emissive.setHex(f.s.points >= 60 && t >= f.T ? 0xffa030 : 0x8c4210);
-      } else { trail.visible = false; sparks.visible = false; comet.visible = false; burst.visible = false; ringMat.emissive.setHex(0x8c4210); }
+      } else { trail.visible = false; sparks.visible = false; comet.visible = false; burst.visible = false; shower.visible = false; ringMat.emissive.setHex(0x8c4210); }
       st.follow(camera);
       renderer.render(scene, camera);
     }
