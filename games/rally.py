@@ -200,6 +200,7 @@ class Rally(Game):
         "missiles": ("Items", [(True, "🎁 On (🚀 💣 🛡️)"), (False, "Off (pure racing)")], True),
         "track": ("Track", [("new", "🎲 A new track"), ("daily", "📅 Today's track (the same everywhere, with a best-lap board)")], "new"),
         "features": ("Track features", [(True, "🚧 Ice, narrows and ramps"), (False, "Plain track")], True),
+        "pit": ("Pit refill", [(True, "🔋 On (last place gets a boost back)"), (False, "Off")], True),
         "class": ("Class", [(150, "150cc"), (100, "100cc (gentler)"), (200, "200cc (fast!)")], 150),
     }
     CLASS = {100: 0.82, 150: 1.0, 200: 1.2}
@@ -531,6 +532,7 @@ class Rally(Game):
             if lap > c.lap:
                 c.lap = lap
                 changed = self.lap_done(i, p, now) or changed
+                changed = self.pit_refill(i, p) or changed
                 if self.elim:
                     if lap > self.elim_lap:
                         self.elim_lap = lap
@@ -587,6 +589,20 @@ class Rally(Game):
         flown, span = c.s - c.air[0], c.air[1]
         f = flown / span
         return round(4 * JUMP_H * f * (1 - f), 2)
+
+    def pit_refill(self, i, p):
+        """🔋 Crossing the line in last place (of two or more still racing) hands back one spent boost, so the
+        back of the pack always has something to chase with. Not in Elimination (last place is out anyway)."""
+        c = self.crafts[i]
+        if self.elim or not self.s.get("pit", True) or c.finished is not None or c.boosts >= BOOSTS \
+                or c.lap >= self.s["laps"]:
+            return False
+        rivals = [o for o in self.crafts if o is not c and o.finished is None]
+        if not rivals or any(o.s <= c.s for o in rivals):
+            return False
+        c.boosts += 1
+        self.moment(f"🔋 {p.name} is last across the line: boost refilled", "cool", "tag")
+        return True
 
     def lap_done(self, i, p, now):
         """Time the lap just finished; on today's track a person's good lap goes on the day's board
