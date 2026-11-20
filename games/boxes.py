@@ -189,7 +189,8 @@ class Boxes(Game):
     def view(self, p):
         return {"boxes": {"rows": self.rows, "cols": self.cols, "h": self.h, "v": self.v, "owner": self.owner, "gems": self.gems,
                           "seats": self.seats, "last": self.last, "claimed": self.claimed_last,
-                          "chains": self.chains() if self.room.phase == "playing" else None}}
+                          "chains": self.chains() if self.room.phase == "playing" else None,
+                          "plan": self.chain_plan(self.chains()) if self.room.phase == "playing" else None}}
 
     def chains(self):
         """In the endgame (no safe line left and nothing to take), the chains and loops still on the board:
@@ -222,6 +223,30 @@ class Boxes(Game):
                 sum(s not in drawn for s in self.sides_of(b)) == 2 for b in comp)
             out.append([len(comp), loop])
         return sorted(out, key=lambda x: (-x[0], x[1]))
+
+    def chain_plan(self, chains):
+        """An estimate of who takes each chain once every line gives boxes away (two players). The player to move
+        has to open the shortest chain first. The taker of a long chain (3+, or a loop of 4+) keeps control by
+        taking all but two boxes (all but four for a loop) and handing those back, and takes the last chain whole.
+        Short chains are taken whole and the taker must then open the next one. Returns
+        [[boxes, is_loop, taker seat, boxes taken, boxes handed back], …] in the order they would be opened, or None."""
+        if not chains or len(self.seats) != 2 or self.room.turn not in self.seats:
+            return None
+        opener = self.seats.index(self.room.turn)
+        plan = []
+        todo = sorted(chains, key=lambda c: (c[0], c[1]))
+        for k, (n, loop) in enumerate(todo):
+            taker = 1 - opener
+            keep_control = (n >= 3 and not loop) or (loop and n >= 5)
+            last = k == len(todo) - 1
+            if keep_control and not last:
+                give = 4 if loop else 2
+                plan.append([n, loop, taker, n - give, give])  # the opener gets `give` back and keeps the move
+            else:
+                plan.append([n, loop, taker, n, 0])
+                if not last:
+                    opener = taker  # taking it whole means having to open the next one
+        return plan
 
     # -- bot
 

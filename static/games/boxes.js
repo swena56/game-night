@@ -147,6 +147,10 @@ UI.boxes = (() => {
       const chains = b.chains.filter(([, loop]) => !loop).map(([n]) => n), loops = b.chains.filter(([, loop]) => loop).map(([n]) => n);
       $('bxHint').textContent += ` ⛓ Every line gives boxes away now. Chains: ${chains.join(' · ') || 'none'}` +
         (loops.length ? ` · loops: ${loops.join(' · ')}` : '') + '. Hand over the small ones first.';
+      if (b.plan?.length) {  // an estimate of who ends up with each chain (open the shortest first; keep control with a double-cross)
+        const nm = (i) => (ctx.player(b.seats[i])?.name ?? '?') + (b.seats[i] === S.me.id ? ' (you)' : '');
+        $('bxHint').textContent += ' Likely: ' + b.plan.map(([n, loop, t, got, back]) => `${loop ? '🔁' : '⛓'}${n} → ${nm(t)} ${got}${back ? ` (hands back ${back})` : ''}`).join(' · ') + '.';
+      }
     }
   }
 
