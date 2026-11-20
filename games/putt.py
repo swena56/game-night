@@ -36,6 +36,7 @@ FRAME = 8                      # record every 8th step (30 fps)
 MAX_STEPS = 240 * 14
 STROKE_CAP = 8          # the default most a hole can cost
 SAFETY_CAP = 20         # with no limit (#68), a hole still ends here so a lost ball can't stall the game
+LONG_PUTT = 3.5                # 🚀 holing out from at least this far (units) takes a stroke off
 HOLE_PAUSE = 4.0               # seconds to read the hole's scores, after the last putt has rolled
 
 
@@ -368,6 +369,7 @@ class Putt(Game):
         "🌀 Time your putt through the windmill's doorway, and hit the ramp hard enough to clear the stream.",
         "Everyone plays the same hole, one stroke each in turn. Balls pass through each other.",
         "🟫 Sand slows the ball, ↗ slopes push it, ⚪ bumpers bounce it, and 💧 water costs a stroke (you replay from where you hit).",
+        f"🚀 Long shot (an option, on by default): sink a putt from 3.5 tiles or more away and a stroke comes off your hole (never below 1).",
         f"Hole out in the fewest strokes; {STROKE_CAP} is the most a hole can cost (a setting: 6, 10 or ∞, where ⛳ Pick up takes your strokes +1). Lowest total wins.",
     ]
     name = "Putt Party"
@@ -381,6 +383,7 @@ class Putt(Game):
         "course": ("Course", [("classic", "Classic"), ("mixed", "🎲 Surprise each hole"), ("water", "🌊 Water hazards"),
                               ("obstacles", "🌀 Obstacle alley"), ("hills", "⛰️ Hills and bowls")], "classic"),
         "strokes": ("Stroke limit", [(8, "8"), (6, "6"), (10, "10"), (0, "∞ No limit")], 8),
+        "longshot": ("🚀 Long shot", [(1, "On: holing out from 3.5+ tiles takes a stroke off"), (0, "Off")], 1),
     }
     low_wins = True  # strokes: the standings card ranks fewest first
 
@@ -528,6 +531,10 @@ class Putt(Game):
         elif result == "cup":
             self.holed[i] = True
             self.balls[i] = list(end)
+            cx, cy = self.hole["cup"]
+            if self.s.get("longshot", 1) and self.strokes[i] > 1 and math.hypot(start[0] - cx, start[1] - cy) >= LONG_PUTT:
+                self.strokes[i] -= 1
+                self.moment(f"🚀 {name}: long shot, a stroke off!", "gold", "fanfare")
             s = self.strokes[i]
             if s == 1:
                 self.award(self.seats[i], "ace")
