@@ -9,7 +9,7 @@ Play one card a turn:
   • Trail: lay a card on the table (not while you own a build).
 Clearing the table is a sweep. When the deck is out the last to capture takes what's left. Scoring each
 deal: most cards 3, most spades 1, the 10♦ (big casino) 2, the 2♠ (little casino) 1, each ace 1, each
-sweep 1. First to 21 wins."""
+sweep 1 (an option: a sweep of 4+ piles counts 2). First to 21 wins."""
 import itertools
 import random
 
@@ -34,11 +34,12 @@ class Cassino(CardGame):
         "Capture: same rank, or number cards (ace 1) and builds that add up to your card.",
         "Build: add a card to table cards so they total a value you hold; take it later with that card.",
         "Trail: just lay a card down (not while you own a build). Clearing the table is a sweep.",
-        "Each deal: most cards 3, most ♠ 1, 10♦ 2, 2♠ 1, each ace 1, each sweep 1. First to 21.",
+        "Each deal: most cards 3, most ♠ 1, 10♦ 2, 2♠ 1, each ace 1, each sweep 1 (an option: 4+ piles at once counts 2). First to 21.",
     ]
     min_players, max_players = 2, 4
     badges = {**CardGame.badges, "bigcasino": ("💰", "Big casino", "Take the 10♦ with a build")}
-    settings_schema = {"target": ("Game to", [(21, "21 points"), (11, "11 points (quick)")], 21)}
+    settings_schema = {"target": ("Game to", [(21, "21 points"), (11, "11 points (quick)")], 21),
+                       "bigsweep": ("🧹 Big sweep", [(True, "On: 4+ piles = 2"), (False, "Off")], True)}
 
     def start(self, seated, rng):
         self.seat_up(seated, rng)
@@ -133,8 +134,12 @@ class Cassino(CardGame):
             self.last_taker = i
             sweep = not self.table_items and (self.stock or any(self.hands))
             if sweep:
-                self.sweeps[i] += 1
-                self.moment(f"🧹 SWEEP! {self.nm(i)} clears the table", "gold", "fanfare")
+                big = len(chosen) >= 4 and self.s.get("bigsweep", True)
+                self.sweeps[i] += 2 if big else 1
+                if big:
+                    self.moment(f"🧹🧹 BIG SWEEP! {self.nm(i)} clears {len(chosen)} piles, worth 2", "gold", "fanfare")
+                else:
+                    self.moment(f"🧹 SWEEP! {self.nm(i)} clears the table", "gold", "fanfare")
             if "TD" in got and any(it["owner"] is not None for it in chosen) and self.pl(i):
                 self.award(self.pl(i), "bigcasino")
             self.room.add_log(f"🃏 {self.nm(i)} plays {pretty(c)} and takes {show(got[1:])}.")
