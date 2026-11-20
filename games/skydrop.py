@@ -14,6 +14,7 @@ SEND_EVERY = 2
 COUNTDOWN = 3.0
 RING_R = 2.05
 COIN_PTS, GEM_PTS, COIN_R = 2, 10, 1.8   # 🪙 coins and 💎 gems hang between the rings: fly through them for points
+DRAFT_GAP, DRAFT_R, DRAFT_BOOST = 8.0, 2.0, 1.12   # 🌬️ tuck in close behind a rival and you ride their slipstream: a bit more speed
 MINE_PTS, MINE_STUN = 12, 2.2        # 💥 a mine is deadly: it blows you out of the dive for a couple of seconds and costs points
 GRAZE, GRAZE_PTS = 0.8, 3   # skim a hazard within this much of its edge for a few points: risk for reward
 # Bots: (seconds between steering decisions, steering noise, chance to line up each ring properly).
@@ -40,6 +41,7 @@ class Flyer:
         self.grazes = 0
         self.hit_cool_until = 0.0
         self.coins = self.gems = self.mines = 0
+        self.drafting = False
         self.aim_ring = -1          # bots: the ring they're lining up and their offset from it
         self.aim_dx = self.aim_dz = 0.0
 
@@ -56,7 +58,7 @@ class SkyDrop(Game):
         "Everyone dives the same course at once. Drag from anywhere to steer with the floating stick, or use WASD / arrow keys.",
         "Fly through glowing rings to score. Consecutive rings build a combo; missing one resets it.",
         "Steering is stabilized, so you can make small corrections without drifting away. Avoid turbines and storm gates, and keep well clear of the red 💥 mines: they blow you out of the dive for two seconds. Checkpoints refill boosts.",
-        "Tap ⚡ or Space for one of three short boosts. The boost refills at the checkpoint.",
+        "🌬️ Tuck in close behind a rival and you ride their slipstream: a little extra speed to slingshot past. Tap ⚡ or Space for one of three short boosts. The boost refills at the checkpoint.",
         "😮‍💨 Skim past a hazard without touching it for a +3 close-call bonus. 🪙 Coins between the rings are +2 each and a 💎 gem is +10.",
         "Ring points plus a finish-place bonus decide the winner.",
     ]
@@ -241,6 +243,14 @@ class SkyDrop(Game):
                 f.vx = max(-9, min(9, (f.vx + ax * dt) * (1 - 1.2 * dt)))
                 f.vz = max(-7.5, min(7.5, (f.vz + az * dt) * (1 - 1.35 * dt)))
                 speed = 12.5 + (4.0 if now < f.boost_until else 0)
+                tow = any(0 < o.depth - f.depth < DRAFT_GAP and math.hypot(o.x - f.x, o.z - f.z) < DRAFT_R
+                          for j, o in enumerate(self.flyers) if o is not f and self.active(j) and not o.done_at)
+                if tow:
+                    speed *= DRAFT_BOOST
+                if tow != f.drafting:
+                    f.drafting = tow
+                    if tow:
+                        self.event(now, "draft", i)
                 f.depth = min(LENGTH, f.depth + speed * dt)
                 f.x += f.vx * dt
                 f.z += f.vz * dt
