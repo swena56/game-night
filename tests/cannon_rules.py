@@ -112,6 +112,22 @@ for bad in ({"type": "fire", "angle": "x", "power": 0.5}, {"type": "fire", "angl
     check(f"refused {bad}", refused(g, me, bad) is not None)
 check("not your turn", refused(g, other, {"type": "fire", "angle": 45, "power": 0.5}) is not None)
 
+# 🎯 two direct hits in a row hand out a Big Bang
+r, g, ps = game(rounds=3)
+flat(g)
+me, other = first(r, g, ps)
+i, j = g.seat(me), g.seat(other)
+g.tanks[i][0], g.tanks[j][0] = 100.0, 140.0
+a, pw, _ = g.plan_shot(i, "hard")
+big0 = g.ammo[i]["big"]
+for n in (1, 2):
+    flat(g)
+    g.tanks[j][2] = C.HP
+    g.resolve([(i, a, pw, "shell")])
+    if n == 1:
+        check("one direct hit is not enough", g.shot["booms"][0]["hit"] == j and g.ammo[i]["big"] == big0, f"{g.shot['booms'][0]['hit']}")
+check("two in a row earn a free Big Bang", g.ammo[i]["big"] == big0 + 1, f"{g.ammo[i]}")
+
 # a knockout ends the round, and the winner scores it
 r, g, ps = game(rounds=3)
 flat(g)

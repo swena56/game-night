@@ -32,6 +32,7 @@ FALL_K, FALL_MAX = 1.2, 40
 ROUND_PAUSE = 4.0        # seconds to read the round's result, after the last shell has landed
 SHOTS_PER_ROUND = 14     # each, before the round goes to whoever has the most ❤️ (a stalemate guard)
 GRIT_HP = 30             # last stand: at or below this many ❤️ a cannon is handed a Big Bang
+STREAK_HITS = 2          # this many direct hits in a row on your own shots hand you a Big Bang
 SPLIT_SPREAD = 14.0      # a splitter's outer bomblets leave this much faster / slower sideways
 
 # key: (icon, name, blast radius, damage, per round (None = endless), what it does)
@@ -184,6 +185,7 @@ class Cannon(Game):
     howto = [
         "On your turn, aim your cannon: drag back from it like a slingshot, or use ◀ ▶ for the angle and − + for the power. Pick a shell and 🔥 Fire.",
         "The wind (top corner) changes every turn and pushes shells sideways. Your last shot's trail stays as a dashed line, to help you adjust.",
+        "🎯 Two direct hits in a row earn a free Big Bang.",
         "Blasts hurt every cannon nearby (yours too) and blow craters. A cannon whose ground is blown away drops, and a long drop hurts. Sink into the sea and you're out.",
         "Shells: 🔵 plain (endless), 💥 Big Bang (huge blast), ✨ Splitter (splits in three at the top of its arc), 🪨 Dirt Bomb (builds a wall). Big Bang and Splitter once a round, Dirt Bomb twice.",
         "🔥 Last stand (an option, on by default): the first time a cannon drops to 30 ❤️ or less in a round, it is handed a free Big Bang.",
@@ -244,6 +246,7 @@ class Cannon(Game):
 
     def new_round(self):
         self.between = False
+        self.streak = {}
         self.mark_round()
         self.round_no += 1
         n = len(self.seats)
@@ -372,9 +375,19 @@ class Cannon(Game):
                 end = path[-1].get("end") or {}
                 self.room.add_log(f"💨 {self.name_of(i)}'s shell sails {'off the range' if end.get('kind') == 'off' else 'away'}.", "info")
         booms = []
+        self.hit_now = set()
         for s in sorted((s for s in segs if s["boom"]), key=lambda s: s["t"]):
             b = s["boom"]
             booms.append(self.blast(s["by"], s["shell"], b, s["at"] + len(s["f"]) - 1))
+        streak = getattr(self, "streak", None)
+        if streak is None:
+            streak = self.streak = {}
+        for i in {sh[0] for sh in shots}:   # 🎯 two direct hits in a row on your own shots earns a free Big Bang
+            streak[i] = streak.get(i, 0) + 1 if i in self.hit_now else 0
+            if streak[i] >= STREAK_HITS and self.present(i):
+                streak[i] = 0
+                self.ammo[i]["big"] = self.ammo[i].get("big", 0) + 1
+                self.moment(f"🎯🎯 {self.name_of(i)}: back-to-back direct hits, a free Big Bang!", "gold", "fanfare")
         self.shot_id += 1
         self.shot = {
             "id": self.shot_id, "by": [sh[0] for sh in shots], "wind": self.wind,
@@ -405,6 +418,7 @@ class Cannon(Game):
                     self.dealt[by] += n
             if b["hit"] is not None and b["hit"] != by and self.present(by):
                 self.award(self.seats[by], "direct")
+                self.hit_now.add(by)
         falls = self.settle()
         names = []
         for j, n in hurt:
