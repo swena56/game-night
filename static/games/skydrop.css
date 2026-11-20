@@ -29,3 +29,14 @@
 body.focus .sd-stage { height: max(280px,calc(var(--room) - 155px)); }
 @media (max-width: 560px) { .sd-controls { align-items: stretch; flex-direction: column; } .sd-controls > div { display: flex; gap: 8px; } .sd-controls button { flex: 1; } .sd-hud { font-size: 13px; } }
 @media (prefers-reduced-motion: reduce) { .sd-progress i { transition: none; } }
+
+/* (#241) the hyperspace jump when your dive ends: light streaks rush out of the centre, then a white flash, then the results */
+.sd-hyper { position: absolute; inset: -20%; z-index: 3; pointer-events: none; opacity: 0;
+  background: repeating-conic-gradient(from 0deg at 50% 50%, #ffffff00 0 2.6deg, #cfeeffcc 2.6deg 3.4deg, #ffffff00 3.4deg 7deg);
+  -webkit-mask-image: radial-gradient(circle, transparent 6%, #000 38%); mask-image: radial-gradient(circle, transparent 6%, #000 38%); }
+.sd-hyper::after { content: ""; position: absolute; inset: 0; background: radial-gradient(circle, #fff 0, #bfe9ff 45%, #6cecff00 100%); opacity: 0; }
+.sd-hyper.go { animation: sdWarp 1.9s ease-in both; }
+.sd-hyper.go::after { animation: sdFlash 1.9s ease-in both; }
+@keyframes sdWarp { 0% { transform: scale(.35); opacity: 0; } 15% { opacity: 1; } 85% { transform: scale(3.2); opacity: 1; } 100% { transform: scale(4.5); opacity: 0; } }
+@keyframes sdFlash { 0%, 60% { opacity: 0; } 88% { opacity: .95; } 100% { opacity: 0; } }
+body.calm .sd-hyper.go, body.calm .sd-hyper.go::after { animation: none; }

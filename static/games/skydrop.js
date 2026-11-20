@@ -4,6 +4,8 @@ UI.skydrop = (() => {
   let sx = 0, sz = 0, drag = null, keys = new Set(), sentAt = 0, lastSeq = 0, flash = '', flashAt = 0;
   let keyDown, keyUp, tiltHandler = null, tiltOn = false, tiltZero = null, three = 'loading';
   const $ = (id) => document.getElementById(id);
+  let hyperAt = 0, hyperRun = -1;   // (#241) when my dive ended: the hyperspace jump plays for HYPER ms before the results
+  const HYPER = 1900;
   const V = () => S?.skydrop;
   const me = () => V()?.me ?? -1;
   const color = (i) => ctx?.player?.(V()?.seats?.[i])?.color || ['#58d7ff','#ff6b8a','#ffc857','#b68aff','#72e59b','#ff9c56'][((i%6)+6)%6];
@@ -14,7 +16,7 @@ UI.skydrop = (() => {
     S = null; snap = null; gl = flat = null; sx = sz = 0; drag = null; keys = new Set(); lastSeq = -1; flash = ''; tiltOn = false; tiltZero = null;
     main.innerHTML = `<div class="sd"><div class="sd-stage" id="sdStage">
       <div class="sd-hud"><b id="sdPlace">🪂 SKY DROP</b><span id="sdScore">0 pts</span><span id="sdClock"></span></div>
-      <div class="sd-progress"><i id="sdProgress"></i></div><div class="sd-banner" id="sdBanner" hidden></div>
+      <div class="sd-progress"><i id="sdProgress"></i></div><div class="sd-hyper" id="sdHyper"></div><div class="sd-banner" id="sdBanner" hidden></div>
       <div class="sd-stick" id="sdStick" hidden><i></i></div></div>
       <div class="sd-controls"><span class="hint" id="sdHint">Drag anywhere to steer · release to stabilize · thread the rings</span><div><button id="sdTilt">📱 Tilt</button> <button id="sdBoost" class="primary">⚡ Boost <small id="sdCharges">3</small></button></div></div></div>`;
     side.innerHTML = `<div class="panel"><h3>🪂 Sky Drop</h3><div id="sdSeats"></div><p class="hint left">Steer in two directions. Rings build your combo, dead centre pays +50%; hazards break it. Reach a checkpoint to refill boosts.</p></div>`;
@@ -135,11 +137,11 @@ UI.skydrop = (() => {
       const baseK=Math.floor(depth/GRID);curDepth=depth;
       for(const o of ringMeshes){const t=o.userData.pulse?(performance.now()-o.userData.pulse)/500:1,k=t<1?1-t:0;if(k||o.userData.lit){o.scale.setScalar(1+.7*k);o.material.emissiveIntensity=(o.userData.gold?3.5:2.8)+6*k;o.userData.lit=k>0;}}
       for(const g of gridRings){const k=g.userData.k+baseK,m=g.material;m.color.setHSL(((k*.045+nowT*.05)%1+1)%1,.75,.58);m.opacity=.18+.4*Math.max(0,1-(g.userData.k*GRID-depth%GRID)/200);}
-      const len=boosting?5.5:2.6;for(let i=0;i<NS;i++){const [sx0,sy0,z0]=streakSeed[i],rel=((z0-depth)%220+220)%220,zz=-depth-rel+12;streakPos.set([sx0,sy0,zz,sx0,sy0,zz-len],i*6);}
-      streakGeo.attributes.position.needsUpdate=true;streaks.material.opacity=boosting?.9:.5;
-      const fov=63+(boosting?9:0);camera.fov+=(fov-camera.fov)*.12;camera.updateProjectionMatrix();
+      const hk=hyperRun===v.run&&hyperAt?Math.min(1,(performance.now()-hyperAt)/HYPER):1,hy=hk<1?hk*hk:0,len=(boosting?5.5:2.6)+hy*46;for(let i=0;i<NS;i++){const [sx0,sy0,z0]=streakSeed[i],rel=((z0-depth)%220+220)%220,zz=-depth-rel+12;streakPos.set([sx0,sy0,zz,sx0,sy0,zz-len],i*6);}
+      streakGeo.attributes.position.needsUpdate=true;streaks.material.opacity=hy?.95:boosting?.9:.5;
+      const fov=63+(boosting?9:0)+hy*62;camera.fov+=(fov-camera.fov)*.12;camera.updateProjectionMatrix();
       const pulse=1+Math.sin(performance.now()/260)*.06;
-      for(let i=0;i<playerMeshes.length;i++){const a=sample(i),o=playerMeshes[i];o.position.set(a[1],a[2],-a[0]);o.visible=!a[9];o.rotation.z=-a[3]*.06;o.rotation.x=a[4]*.03;
+      for(let i=0;i<playerMeshes.length;i++){const a=sample(i),o=playerMeshes[i];o.position.set(a[1],a[2],-a[0]);o.visible=!a[9]||(i===me()&&hy>0&&hy<1);if(i===me()&&hy>0)o.position.z-=hy*140;o.rotation.z=-a[3]*.06;o.rotation.x=a[4]*.03;
         for(const c of o.children)if(c.userData.halo)c.scale.setScalar(pulse);}
       const elapsed=(v.time||0)+Math.max(0,(performance.now()-gotAt)/1000)-(v.raceStarted||v.go||0);
       for(const o of coinMeshes){const rel=o.userData.depth-depth;o.visible=rel>0&&rel<120;if(o.visible){if(o.userData.gem){o.rotation.y=nowT*2.4;o.rotation.x=.4;}else o.rotation.z=nowT*3;}}
@@ -186,12 +188,12 @@ UI.skydrop = (() => {
     $('sdPlace').textContent=v.stage==='countdown'?`🪂 Run ${v.run} · get ready`:watching?`👀 Watching only · leader ${Math.floor(depth/v.length*100)}% · play from the lobby`:`${ord(place)} · ${Math.floor(depth/v.length*100)}%`;
     $('sdScore').textContent=`${f[5]||0} pts · ${f[6]||0} rings · ×${Math.max(1,f[7]||0)}`;$('sdCharges').textContent=f[8]??3;
     $('sdProgress').style.width=`${Math.min(100,depth/v.length*100)}%`;$('sdClock').textContent=`Run ${v.run}/${v.runs}`;
-    const banner=$('sdBanner');if(v.stage==='results'){banner.hidden=false;banner.replaceChildren();const title=document.createElement('b');title.textContent=`Run ${v.run} complete`;banner.append(title);for(const [n,i] of v.finished.entries()){const row=document.createElement('p');row.textContent=`${n+1}. ${name(i)} · ${state(i)[5]} pts`;banner.append(row);}}else if(v.stage==='countdown'){banner.hidden=false;banner.textContent=`${Math.max(1,Math.ceil((v.go-Date.now()/1000)))}…`;}else banner.hidden=true;
+    const banner=$('sdBanner');if(v.stage==='results'&&hyperRun===v.run&&performance.now()-hyperAt<HYPER)banner.hidden=true;else if(v.stage==='results'){banner.hidden=false;banner.replaceChildren();const title=document.createElement('b');title.textContent=`Run ${v.run} complete`;banner.append(title);for(const [n,i] of v.finished.entries()){const row=document.createElement('p');row.textContent=`${n+1}. ${name(i)} · ${state(i)[5]} pts`;banner.append(row);}}else if(v.stage==='countdown'){banner.hidden=false;banner.textContent=`${Math.max(1,Math.ceil((v.go-Date.now()/1000)))}…`;}else banner.hidden=true;
     const seats=$('sdSeats');const key=JSON.stringify([v.points,v.ringTotals,v.flyers.map(a=>a[0])]);if(seats.dataset.key!==key){seats.dataset.key=key;seats.replaceChildren();v.seats.forEach((_,i)=>{const row=document.createElement('div');row.className='sd-row';const swatch=document.createElement('i');swatch.style.background=color(i);const label=document.createElement('span');label.textContent=name(i);const score=document.createElement('b');score.textContent=`${v.points[i]+(v.stage==='results'?0:state(i)[5])} pts`;const progress=document.createElement('small');progress.textContent=`${Math.floor(state(i)[0]/v.length*100)}%`;row.append(swatch,label,score,progress);seats.append(row);});}
   }
   function render(S0,ctx0){S=S0;ctx=ctx0;if(snap?.seed!==V()?.seed)lastSeq=-1;snap=V();gotAt=performance.now();if(lastSeq<0)events(V());ensureView();}
   function fast(data){if(data.skydrop){const old=V()||{};S={...S,skydrop:{...data.skydrop,me:old.me,seats:old.seats,coins:old.seed===data.skydrop.seed?old.coins:undefined}};snap=S.skydrop;gotAt=performance.now();ensureView();events(S.skydrop);}}
   function events(v){const evs=v?.events||[];if(lastSeq<0||evs.some(e=>e[0]<lastSeq-40)){lastSeq=evs.at(-1)?.[0]??0;return;}for(const [n,kind,i] of evs){if(n<=lastSeq)continue;lastSeq=n;if(i!==me())continue;
-    if(kind==='ring'){ctx?.sfx?.('chip');ctx?.buzz?.(8);(gl||flat)?.pulse?.();}else if(kind==='hit'){ctx?.sfx?.('thud');ctx?.buzz?.(40);(gl||flat)?.shake?.(.35);}else if(kind==='bullseye'){ctx?.sfx?.('pop');ctx?.buzz?.(15);}else if(kind==='coin'){ctx?.sfx?.('tick');ctx?.buzz?.(6);}else if(kind==='gem'){ctx?.sfx?.('pop');ctx?.buzz?.(14);if(typeof Kit!=='undefined')Kit.callout('💎 +10','gold',{ms:600});}else if(kind==='boom'){ctx?.sfx?.('thud');ctx?.buzz?.([60,40,90]);(gl||flat)?.shake?.(.6);if(typeof Kit!=='undefined')Kit.callout('💥 Mine! −12','bad',{ms:1000});}else if(kind==='graze'){ctx?.sfx?.('tick');ctx?.buzz?.(10);if(typeof Kit!=='undefined')Kit.callout('😮‍💨 Close call! +3','gold',{ms:700});}else if(kind==='boost')ctx?.sfx?.('whoosh');else if(kind==='checkpoint')ctx?.sfx?.('rise');else if(kind==='finish')ctx?.sfx?.('fanfare');}}
+    if(kind==='ring'){ctx?.sfx?.('chip');ctx?.buzz?.(8);(gl||flat)?.pulse?.();}else if(kind==='hit'){ctx?.sfx?.('thud');ctx?.buzz?.(40);(gl||flat)?.shake?.(.35);}else if(kind==='bullseye'){ctx?.sfx?.('pop');ctx?.buzz?.(15);}else if(kind==='coin'){ctx?.sfx?.('tick');ctx?.buzz?.(6);}else if(kind==='gem'){ctx?.sfx?.('pop');ctx?.buzz?.(14);if(typeof Kit!=='undefined')Kit.callout('💎 +10','gold',{ms:600});}else if(kind==='boom'){ctx?.sfx?.('thud');ctx?.buzz?.([60,40,90]);(gl||flat)?.shake?.(.6);if(typeof Kit!=='undefined')Kit.callout('💥 Mine! −12','bad',{ms:1000});}else if(kind==='graze'){ctx?.sfx?.('tick');ctx?.buzz?.(10);if(typeof Kit!=='undefined')Kit.callout('😮‍💨 Close call! +3','gold',{ms:700});}else if(kind==='boost')ctx?.sfx?.('whoosh');else if(kind==='finish'){hyperAt=performance.now();hyperRun=V()?.run;ctx?.sfx?.('whoosh');setTimeout(()=>ctx?.sfx?.('fanfare'),HYPER*.7);const h=$('sdHyper');if(h){h.classList.remove('go');void h.offsetWidth;h.classList.add('go');}}else if(kind==='checkpoint')ctx?.sfx?.('rise');else if(kind==='finish')ctx?.sfx?.('fanfare');}}
   return {mount,render,fast,unmount,turnText:()=> '🪂 Dive through the rings · highest score wins'};
 })();
