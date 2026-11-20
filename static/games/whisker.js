@@ -366,6 +366,23 @@ UI.whisker = (() => {
       g.drawImage(sp, x - sz / 2, y - sz / 2 + bob, sz, sz);
       g.globalAlpha = 1;
     }
+    // 😨 danger pulse: a red ring (and a ! once it is very close) round your mouse when a hunting cat is near
+    const me = k.mine != null ? ents[k.mine] : null, mp = me && me.role === 'm' && me.st !== 5 && me.st !== 1 && k.stage === 'play' ? drawPos(k.mine, now) : null;
+    if (mp) {
+      let best = 99;
+      for (let i = 0; i < ents.length; i++) {
+        const c = ents[i]; if (c.role !== 'c' || c.st !== 0) continue;
+        const cp = drawPos(i, now); if (!cp) continue;
+        best = Math.min(best, Math.hypot(cp[0] - mp[0], cp[1] - mp[1]));
+      }
+      if (best < 5) {
+        const near = 1 - best / 5, x = (mp[0] + 0.5) * cell, y = (mp[1] + 0.5) * cell, beat = 0.5 + 0.5 * Math.sin(t / (260 - 140 * near));
+        g.strokeStyle = `rgba(255, 70, 70, ${(0.25 + 0.5 * near) * (0.5 + 0.5 * beat)})`;
+        g.lineWidth = Math.max(2, cell * (0.1 + 0.12 * near));
+        g.beginPath(); g.arc(x, y, cell * (0.8 + 0.5 * near * beat), 0, 6.3); g.stroke();
+        if (best < 2.5) { g.font = `bold ${Math.round(cell * 0.9)}px system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#ff4d4d'; g.fillText('!', x, y - cell * 1.15 - beat * cell * 0.1); }
+      }
+    }
     g.restore();
     fx?.draw(g); fx?.end(g);
     banner();
