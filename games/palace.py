@@ -30,11 +30,13 @@ class Palace(CardGame):
         "Play one or more of a rank, equal or higher than the pile (ace high). Draw back up to three.",
         "2 goes on anything and resets. 10 goes on anything and burns the pile, as do four of a rank in a row: play again.",
         "Can't play? Pick up the whole pile.",
+        "An 8 skips the next player (an option).",
         "Hand and stock gone: play your face-ups, then your face-downs blind. First with no cards wins.",
     ]
     min_players, max_players = 2, 6
     badges = {**CardGame.badges, "blind": ("🙈", "Blind luck", "Win by playing your last face-down card")}
-    settings_schema = {"seven": ("7s", [(False, "Normal"), (True, "🔻 7: the next player must play 7 or lower")], False)}
+    settings_schema = {"seven": ("7s", [(False, "Normal"), (True, "🔻 7: the next player must play 7 or lower")], False),
+                       "eight": ("8s", [(True, "⏭ 8 skips the next player"), (False, "Normal")], True)}
 
     def start(self, seated, rng):
         self.seat_up(seated, rng)
@@ -119,7 +121,13 @@ class Palace(CardGame):
             self.moment(f"🔥 {self.nm(i)} burns the pile!", "bad", "boom")
             return self.to(i)                     # and goes again
         self.flash = "↺" if r == "2" else None
-        self.to(self.next_seat(i))
+        nxt = self.next_seat(i)
+        if r == "8" and self.s.get("eight", True):
+            lost = nxt
+            nxt = self.next_seat(nxt)
+            self.flash = "⏭"
+            self.moment(f"⏭ {self.nm(i)}'s 8 skips {self.nm(lost)}!" if lost != i else f"⏭ {self.nm(i)}'s 8 goes round: again!", "good", "good")
+        self.to(nxt)
 
     def pick_up(self, i, extra=()):
         got = self.pile + list(extra)
@@ -198,7 +206,11 @@ class Palace(CardGame):
             c = random.choice(opts)
         else:
             plain = [c for c in opts if rank(c) not in "2T"]
-            if plain:
+            nxt = self.next_seat(i)
+            if plain and level == "hard" and self.s.get("eight", True) and nxt != i and any(rank(x) == "8" for x in plain) \
+                    and len(self.hands[nxt]) + len(self.up[nxt]) + len(self.down[nxt]) <= 4:
+                c = next(x for x in plain if rank(x) == "8")      # skip a player who is close to out
+            elif plain:
                 c = min(plain, key=strength)
             elif level == "hard" and len(self.pile) >= 6 and any(rank(x) == "T" for x in opts):
                 c = next(x for x in opts if rank(x) == "T")
@@ -228,7 +240,8 @@ class Palace(CardGame):
              "piles": [{"cards": ["??"] if self.stock else [], "count": len(self.stock), "label": "Stock", "corner": True},
                        {"cards": top, "fan": True, "count": len(self.pile) or None,
                         "label": ("↺ reset by a 2" if self.flash == "↺" and self.pile else
-                                  f"Play {pretty(self.top())} or higher" if self.pile else "🔥 Burned: play anything" if self.flash == "🔥" else "Empty: play anything")}],
+                                  f"Play {pretty(self.top())} or higher" if self.pile else "🔥 Burned: play anything" if self.flash == "🔥" else
+                                  f"⏭ 8 skipped a player: play {pretty(self.top())} or higher" if self.flash == "⏭" and self.pile else "Empty: play anything")}],
              "scores": {"title": "Cards left", "rows": [{"seat": k, "value": len(self.hands[k]) + len(self.up[k]) + len(self.down[k])}
                                                         for k in sorted(range(self.n), key=lambda k: len(self.hands[k]) + len(self.up[k]) + len(self.down[k]))],
                         "hint": f"2 resets · 10 burns · {self.burned} burned so far."}}
