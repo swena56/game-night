@@ -85,18 +85,19 @@ UI.skydrop = (() => {
     const key=new T.DirectionalLight(0xffe8b5,2.0); key.position.set(-7,12,12); scene.add(key);
     const shaft=new T.Group(); scene.add(shaft);
     const wallMat=new T.MeshStandardMaterial({color:0x222b53,roughness:.72,metalness:.16,side:T.DoubleSide});
-    for(let side=0;side<4;side++){const m=new T.Mesh(new T.BoxGeometry(side<2?0.35:17,side<2?12:0.35,240),wallMat); if(side===0)m.position.x=-9; if(side===1)m.position.x=9; if(side===2)m.position.y=6; if(side===3)m.position.y=-6; m.position.z=-90; shaft.add(m);}
+    for(let side=0;side<4;side++){const m=new T.Mesh(new T.BoxGeometry(side<2?0.35:17,side<2?16:0.35,240),wallMat); if(side===0)m.position.x=-9; if(side===1)m.position.x=9; if(side===2)m.position.y=8; if(side===3)m.position.y=-8; m.position.z=-90; shaft.add(m);}
     const GRID=11,gridRings=[];
-    for(let z=-2;z<20;z++){const g=new T.Mesh(new T.TorusGeometry(8.7,.05,4,64),new T.MeshBasicMaterial({color:0x6179c7,transparent:true,opacity:.5,blending:T.AdditiveBlending,depthWrite:false}));g.position.z=-z*GRID;g.userData.k=z;shaft.add(g);gridRings.push(g);}
+    for(let z=-2;z<20;z++){const g=new T.Mesh(new T.TorusGeometry(8.7,.05,4,64),new T.MeshBasicMaterial({color:0x6179c7,transparent:true,opacity:.5,blending:T.AdditiveBlending,depthWrite:false}));g.position.z=-z*GRID;g.scale.y=.9;g.userData.k=z;shaft.add(g);gridRings.push(g);}
     // speed streaks: bright dashes that rush past, so you can feel how fast you fall and how deep you are
     const NS=110,streakPos=new Float32Array(NS*6),streakSeed=[];for(let i=0;i<NS;i++){const a=Math.random()*6.283,r=2.5+Math.random()*5.5;streakSeed.push([Math.cos(a)*r*1.5,Math.sin(a)*r*.75,Math.random()*220]);}
     const streakGeo=new T.BufferGeometry();streakGeo.setAttribute('position',new T.BufferAttribute(streakPos,3));
     const streaks=new T.LineSegments(streakGeo,new T.LineBasicMaterial({color:0xaefcff,transparent:true,opacity:.55,blending:T.AdditiveBlending,depthWrite:false}));streaks.frustumCulled=false;scene.add(streaks);
     const gateMat=new T.MeshStandardMaterial({color:0x6cecff,emissive:0x159dcc,emissiveIntensity:2.8,metalness:.18,roughness:.2});
-    const hazardMats=[0xff576f,0xffb843,0xc477ff].map(c=>new T.MeshStandardMaterial({color:c,emissive:c,emissiveIntensity:1.3,metalness:.2,roughness:.32}));
+    const hazardMats=[0xff576f,0xffb843,0xc477ff,0xff1f3d].map(c=>new T.MeshStandardMaterial({color:c,emissive:c,emissiveIntensity:1.3,metalness:.2,roughness:.32}));
     const streamMat=new T.MeshBasicMaterial({color:0x6cf5d5,transparent:true,opacity:.45});
     const playerMeshes=[]; const divers=new T.Group(); scene.add(divers);
-    const ringMeshes=[],hazardMeshes=[],streamMeshes=[];
+    const ringMeshes=[],hazardMeshes=[],streamMeshes=[],coinMeshes=[];
+    const coinGeo=new T.CylinderGeometry(.5,.5,.12,16),gemGeo=new T.OctahedronGeometry(.62),coinMat=new T.MeshStandardMaterial({color:0xffd34d,emissive:0xd89a00,emissiveIntensity:1.6,metalness:.5,roughness:.25}),gemMat=new T.MeshStandardMaterial({color:0x6ff0ff,emissive:0x00b4d8,emissiveIntensity:2.2,metalness:.2,roughness:.1});
     // A diver is a swept wing (an arrow seen from the chase camera) with a round helmet; yours also has a
     // glowing disc in your colour under it, a light trail behind and a "YOU" tag that stays in front of rings.
     const wingShape=new T.Shape();wingShape.moveTo(0,-1.05);wingShape.lineTo(1.1,.55);wingShape.lineTo(.34,.3);wingShape.lineTo(0,.62);wingShape.lineTo(-.34,.3);wingShape.lineTo(-1.1,.55);wingShape.closePath();
@@ -107,17 +108,17 @@ UI.skydrop = (() => {
     function makeDiver(i,mine){const col=color(i),g=new T.Group();
       const wing=new T.Mesh(wingGeo,new T.MeshStandardMaterial({color:col,emissive:col,emissiveIntensity:mine?.75:.3,roughness:.35,metalness:.1,side:T.DoubleSide}));
       const head=new T.Mesh(headGeo,new T.MeshStandardMaterial({color:mine?0xffffff:0xdfe6ff,emissive:mine?0xffffff:0x000000,emissiveIntensity:mine?.35:0,roughness:.3}));head.position.set(0,.22,-.35);const body=new T.Group();body.add(wing,head);body.rotation.x=-.7;g.add(body);   // pitched nose-down so the chase camera sees the arrow, not an edge
-      if(mine){const halo=new T.Mesh(haloGeo,new T.MeshBasicMaterial({color:col,transparent:true,opacity:.85,side:T.DoubleSide,depthWrite:false}));halo.userData.halo=true;halo.rotation.x=-1.2;halo.position.y=-.2;g.add(halo);
-        const disc=new T.Mesh(discGeo,new T.MeshBasicMaterial({color:col,transparent:true,opacity:.2,side:T.DoubleSide,depthWrite:false}));disc.rotation.x=-1.2;disc.position.y=-.21;g.add(disc);
-        const trail=new T.Mesh(trailGeo,new T.MeshBasicMaterial({color:col,transparent:true,opacity:.28,depthWrite:false,blending:T.AdditiveBlending}));g.add(trail);g.add(youTag());
+      if(mine){const trail=new T.Mesh(trailGeo,new T.MeshBasicMaterial({color:col,transparent:true,opacity:.28,depthWrite:false,blending:T.AdditiveBlending}));g.add(trail);g.add(youTag());
 }
       else g.scale.setScalar(.8);
       return g;}
     function buildCourse(v){
       for(const o of [...ringMeshes,...hazardMeshes,...streamMeshes]) {o.geometry?.dispose?.(); if(o.parent)o.parent.remove(o);}
-      ringMeshes.length=hazardMeshes.length=streamMeshes.length=0;
+      for(const o of coinMeshes) if(o.parent)o.parent.remove(o);
+      ringMeshes.length=hazardMeshes.length=streamMeshes.length=coinMeshes.length=0;
+      for(const [d,x,y,k] of v?.coins||[]){const o=new T.Mesh(k?gemGeo:coinGeo,k?gemMat:coinMat);o.position.set(x,y,-d);if(!k)o.rotation.x=Math.PI/2;o.userData={depth:d,gem:!!k};scene.add(o);coinMeshes.push(o);}
       for(let i=0;i<(v?.rings||[]).length;i++){const [d,x,y,m]=v.rings[i],gold=m>1,o=new T.Mesh(new T.TorusGeometry(gold?2.05:1.8,.15,12,48),gateMat.clone());if(gold){o.material.color.set(0xffdd79);o.material.emissive.set(0xffae36);}o.material.emissiveIntensity=gold?3.5:2.8;o.position.set(x,y,-d);o.userData.depth=d;o.userData.gold=gold;scene.add(o);ringMeshes.push(o);}
-      for(const [d,x,y,k,p] of v?.hazards||[]){const g=k===0?new T.TorusGeometry(1.3,.18,8,12):k===1?new T.CylinderGeometry(.82,.82,.3,12):new T.OctahedronGeometry(.95),o=new T.Mesh(g,hazardMats[k]);o.position.set(x,y,-d);o.rotation.x=Math.PI/2;o.userData={depth:d,phase:p,kind:k,baseX:x,baseY:y};scene.add(o);hazardMeshes.push(o);}
+      for(const [d,x,y,k,p] of v?.hazards||[]){const g=k===0?new T.TorusGeometry(1.3,.18,8,12):k===1?new T.CylinderGeometry(.82,.82,.3,12):k===3?new T.IcosahedronGeometry(1.1,1):new T.OctahedronGeometry(.95),o=new T.Mesh(g,hazardMats[k]);o.position.set(x,y,-d);o.rotation.x=Math.PI/2;o.userData={depth:d,phase:p,kind:k,baseX:x,baseY:y};scene.add(o);hazardMeshes.push(o);}
       for(const [d,x,y,dx,dy] of v?.streams||[]){const o=new T.Mesh(new T.TorusGeometry(2.1,.035,4,32),streamMat);o.position.set(x,y,-d);scene.add(o);streamMeshes.push(o);}
       for(const m of playerMeshes){divers.remove(m);m.traverse(o=>{if(o.material){o.material.map?.dispose();o.material.dispose();}});}
       playerMeshes.length=0;
@@ -141,6 +142,7 @@ UI.skydrop = (() => {
       for(let i=0;i<playerMeshes.length;i++){const a=sample(i),o=playerMeshes[i];o.position.set(a[1],a[2],-a[0]);o.visible=!a[9];o.rotation.z=-a[3]*.06;o.rotation.x=a[4]*.03;
         for(const c of o.children)if(c.userData.halo)c.scale.setScalar(pulse);}
       const elapsed=(v.time||0)+Math.max(0,(performance.now()-gotAt)/1000)-(v.raceStarted||v.go||0);
+      for(const o of coinMeshes){const rel=o.userData.depth-depth;o.visible=rel>0&&rel<120;if(o.visible){if(o.userData.gem){o.rotation.y=nowT*2.4;o.rotation.x=.4;}else o.rotation.z=nowT*3;}}
       for(const o of hazardMeshes){const {baseX,baseY,phase,kind}=o.userData;o.rotation.z=elapsed*1.7+phase;if(kind===2){o.position.x=baseX+Math.sin(elapsed*1.5+phase)*1.5;o.position.y=baseY+Math.cos(elapsed*1.1+phase)*1.1;}}
       GL3.tickShake?.(camera,.016);renderer.render(scene,camera);
     }
@@ -160,7 +162,8 @@ UI.skydrop = (() => {
       for(let i=0;i<13;i++){let yy=(i*h/12+(performance.now()*.04)% (h/12));x.beginPath();x.ellipse(w/2,yy,w*.42,24,0,0,Math.PI*2);x.stroke();}
       const yy=h*.68,px=w/2+f[1]*w/22,py=yy+f[2]*h/14;
       const sxw=w/22,szh=h/14,at=(d,a,b)=>{const rel=d-f[0],k=Math.max(.35,1-rel/120);return [w/2+(a-f[1])*sxw*k+f[1]*sxw,yy-rel*h/95+b*szh*k,k,rel];};
-      for(const [d,a,b,k] of v?.hazards||[]){const [hx,hy,s,rel]=at(d,a,b);if(rel<-2||rel>80)continue;x.fillStyle=['#ff576f','#ffb843','#c477ff'][k]||'#ff576f';x.beginPath();x.arc(hx,hy,Math.max(3,(k===0?1.3:1)*sxw*s),0,Math.PI*2);x.fill();}
+      for(const [d,a,b,k] of v?.coins||[]){const [cx,cy,s,rel]=at(d,a,b);if(rel<=0||rel>80)continue;x.fillStyle=k?'#6ff0ff':'#ffd34d';x.beginPath();if(k){const r=Math.max(4,.7*sxw*s);x.moveTo(cx,cy-r);x.lineTo(cx+r*.7,cy);x.lineTo(cx,cy+r);x.lineTo(cx-r*.7,cy);x.closePath();}else x.arc(cx,cy,Math.max(3,.5*sxw*s),0,Math.PI*2);x.fill();}
+      for(const [d,a,b,k] of v?.hazards||[]){const [hx,hy,s,rel]=at(d,a,b);if(rel<-2||rel>80)continue;x.fillStyle=['#ff576f','#ffb843','#c477ff','#ff1f3d'][k]||'#ff576f';x.beginPath();x.arc(hx,hy,Math.max(3,(k===0?1.3:1)*sxw*s),0,Math.PI*2);x.fill();}
       curD=f[0];
       for(let i=0;i<(v?.rings||[]).length;i++){const [d,a,b,m]=v.rings[i],[rx,ry,s,rel]=at(d,a,b);if(rel<-2||rel>80)continue;const pk=flare&&flare.d===d?Math.max(0,1-(performance.now()-flare.t)/500):0;x.strokeStyle=pk?'#ffffff':m>1?'#ffe17d':'#7df6ff';x.lineWidth=Math.max(2,4*s)*(1+1.5*pk);x.beginPath();x.ellipse(rx,ry,Math.max(4,(m>1?2.05:1.8)*sxw*s*(1+.5*pk)),(m>1?2.05:1.8)*szh*s*.45*(1+.5*pk),0,0,Math.PI*2);x.stroke();}
       x.globalAlpha=.75;for(let i=0;i<v.flyers.length;i++){if(i===idx)continue;const a=sample(i);if(a[9])continue;const [ox,oy,s,rel]=at(a[0],a[1],a[2]);if(rel<-12||rel>80)continue;x.fillStyle=color(i);x.beginPath();x.arc(ox,oy,Math.max(4,8*s),0,Math.PI*2);x.fill();}
@@ -168,7 +171,7 @@ UI.skydrop = (() => {
       if(idx>=0&&v.flyers[idx]&&!f[9]){
         // your diver: a glowing disc in your colour, an outlined swept wing and a "YOU" tag
         const d=Math.min(2,devicePixelRatio||1),u=d*(1+Math.sin(performance.now()/260)*.06),col=color(idx);
-        x.save();x.globalAlpha=.25;x.fillStyle=col;x.beginPath();x.ellipse(px,py+6*d,30*u,12*u,0,0,Math.PI*2);x.fill();x.globalAlpha=1;x.strokeStyle=col;x.lineWidth=3*d;x.stroke();
+        x.save();
         x.shadowColor=col;x.shadowBlur=14*d;x.fillStyle=col;x.beginPath();x.moveTo(px,py-17*d);x.lineTo(px+19*d,py+9*d);x.lineTo(px+6*d,py+5*d);x.lineTo(px,py+11*d);x.lineTo(px-6*d,py+5*d);x.lineTo(px-19*d,py+9*d);x.closePath();x.fill();
         x.shadowBlur=0;x.strokeStyle='#ffffff';x.lineWidth=2*d;x.stroke();x.fillStyle='#ffffff';x.beginPath();x.arc(px,py-4*d,3.6*d,0,Math.PI*2);x.fill();
         x.font=`900 ${12*d}px system-ui,sans-serif`;x.textAlign='center';x.textBaseline='middle';const ty=py-30*d;x.fillStyle='#ffffffee';x.beginPath();x.roundRect?x.roundRect(px-20*d,ty-9*d,40*d,18*d,9*d):x.rect(px-20*d,ty-9*d,40*d,18*d);x.fill();x.fillStyle='#17223d';x.fillText('YOU',px,ty+1);x.restore();}
@@ -187,8 +190,8 @@ UI.skydrop = (() => {
     const seats=$('sdSeats');const key=JSON.stringify([v.points,v.ringTotals,v.flyers.map(a=>a[0])]);if(seats.dataset.key!==key){seats.dataset.key=key;seats.replaceChildren();v.seats.forEach((_,i)=>{const row=document.createElement('div');row.className='sd-row';const swatch=document.createElement('i');swatch.style.background=color(i);const label=document.createElement('span');label.textContent=name(i);const score=document.createElement('b');score.textContent=`${v.points[i]+(v.stage==='results'?0:state(i)[5])} pts`;const progress=document.createElement('small');progress.textContent=`${Math.floor(state(i)[0]/v.length*100)}%`;row.append(swatch,label,score,progress);seats.append(row);});}
   }
   function render(S0,ctx0){S=S0;ctx=ctx0;if(snap?.seed!==V()?.seed)lastSeq=-1;snap=V();gotAt=performance.now();if(lastSeq<0)events(V());ensureView();}
-  function fast(data){if(data.skydrop){const old=V()||{};S={...S,skydrop:{...data.skydrop,me:old.me,seats:old.seats}};snap=S.skydrop;gotAt=performance.now();ensureView();events(S.skydrop);}}
+  function fast(data){if(data.skydrop){const old=V()||{};S={...S,skydrop:{...data.skydrop,me:old.me,seats:old.seats,coins:old.seed===data.skydrop.seed?old.coins:undefined}};snap=S.skydrop;gotAt=performance.now();ensureView();events(S.skydrop);}}
   function events(v){const evs=v?.events||[];if(lastSeq<0||evs.some(e=>e[0]<lastSeq-40)){lastSeq=evs.at(-1)?.[0]??0;return;}for(const [n,kind,i] of evs){if(n<=lastSeq)continue;lastSeq=n;if(i!==me())continue;
-    if(kind==='ring'){ctx?.sfx?.('chip');ctx?.buzz?.(8);(gl||flat)?.pulse?.();}else if(kind==='hit'){ctx?.sfx?.('thud');ctx?.buzz?.(40);(gl||flat)?.shake?.(.35);}else if(kind==='bullseye'){ctx?.sfx?.('pop');ctx?.buzz?.(15);}else if(kind==='graze'){ctx?.sfx?.('tick');ctx?.buzz?.(10);if(typeof Kit!=='undefined')Kit.callout('😮‍💨 Close call! +3','gold',{ms:700});}else if(kind==='boost')ctx?.sfx?.('whoosh');else if(kind==='checkpoint')ctx?.sfx?.('rise');else if(kind==='finish')ctx?.sfx?.('fanfare');}}
+    if(kind==='ring'){ctx?.sfx?.('chip');ctx?.buzz?.(8);(gl||flat)?.pulse?.();}else if(kind==='hit'){ctx?.sfx?.('thud');ctx?.buzz?.(40);(gl||flat)?.shake?.(.35);}else if(kind==='bullseye'){ctx?.sfx?.('pop');ctx?.buzz?.(15);}else if(kind==='coin'){ctx?.sfx?.('tick');ctx?.buzz?.(6);}else if(kind==='gem'){ctx?.sfx?.('pop');ctx?.buzz?.(14);if(typeof Kit!=='undefined')Kit.callout('💎 +10','gold',{ms:600});}else if(kind==='boom'){ctx?.sfx?.('thud');ctx?.buzz?.([60,40,90]);(gl||flat)?.shake?.(.6);if(typeof Kit!=='undefined')Kit.callout('💥 Mine! −12','bad',{ms:1000});}else if(kind==='graze'){ctx?.sfx?.('tick');ctx?.buzz?.(10);if(typeof Kit!=='undefined')Kit.callout('😮‍💨 Close call! +3','gold',{ms:700});}else if(kind==='boost')ctx?.sfx?.('whoosh');else if(kind==='checkpoint')ctx?.sfx?.('rise');else if(kind==='finish')ctx?.sfx?.('fanfare');}}
   return {mount,render,fast,unmount,turnText:()=> '🪂 Dive through the rings · highest score wins'};
 })();
