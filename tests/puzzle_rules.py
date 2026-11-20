@@ -146,13 +146,13 @@ refused("word search: not a straight line", lambda: room.act(ann, {"type": "find
 refused("word search: off the grid", lambda: room.act(ann, {"type": "find", "cells": [0, 0, 0, 99]}))
 room.act(ann, {"type": "hint"})
 check("word search: a hint costs points", ann.g.score == len(w) - WS.HINT_COST and len(G.st[ann.id]["hints"]) == 1)
-before = ann.g.score
+before = ann.g.score; bonus0 = G.st[ann.id].get("bonus", 0)
 for x in G.words[1:]:
     a, b, c, d = G.where[x]
     room.act(ann, {"type": "find", "cells": [a, b, c, d]})
 check("word search: the grid ends when every word is grabbed", G.stage == "reveal")
 check("word search: the reveal doesn't count grab points twice",
-      ann.g.score == before + sum(len(x) for x in G.words[1:]) and G.gained[ann.id] == ann.g.score)
+      ann.g.score == before + sum(len(x) for x in G.words[1:]) + G.st[ann.id]["bonus"] - bonus0 and G.gained[ann.id] == ann.g.score)
 
 # -- word search race
 room, ann = room_for("wordsearch", bots=("easy",), mode="race")
@@ -174,7 +174,19 @@ for x in G.words:
     room.act(ann, {"type": "find", "cells": [a, b, c, d]})
 check("word search race: finding every word finishes", ann.id in G.done)
 G.bank(room.players[[p for p in room.players if p != ann.id][0]])
-check("word search race: letters + finish + first", ann.g.score == sum(map(len, G.words)) + 15, str(ann.g.score))
+check("word search race: letters + finish + first", ann.g.score == sum(map(len, G.words)) + G.st[ann.id]["bonus"] + 15, str(ann.g.score))
+
+
+# ⚡ combo: a quick second find adds +1, a slow one adds nothing
+room, ann = room_for("wordsearch", secs=0, mode="race")
+G = room.game
+w1, w2 = G.words[:2]
+room.act(ann, {"type": "find", "cells": list(G.where[w1])})
+room.act(ann, {"type": "find", "cells": list(G.where[w2])})
+check("word search combo: a quick second find adds +1", G.st[ann.id]["bonus"] == 1 and G.points(ann) == len(w1) + len(w2) + 1)
+G.st[ann.id]["t"] -= 60
+room.act(ann, {"type": "find", "cells": list(G.where[G.words[2]])})
+check("word search combo: a slow find resets it", G.st[ann.id]["combo"] == 0 and G.st[ann.id]["bonus"] == 1)
 
 print(f"\n{len(fails)} failed" if fails else "\nall ok")
 sys.exit(1 if fails else 0)

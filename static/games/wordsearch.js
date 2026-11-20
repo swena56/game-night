@@ -172,6 +172,7 @@ UI.wordsearch = (() => {
         }
       }
     }
+    if (prev && v.bonus > 0 && fresh.some((w) => v.owners[w] === S.me.id)) Kit.callout(`⚡ Combo ×${v.combo} +${v.bonus}`, 'good', { ms: 900 });
     if (prev && v.done && fresh.some((w) => v.owners[w] === S.me.id)) Kit.callout('🏁 Every word!', 'gold', { ms: 1500 });
 
     // circled words, then the words nobody found (after the round)

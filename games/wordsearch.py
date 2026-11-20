@@ -4,6 +4,7 @@ letters with words hidden in straight lines. Drag (or tap the first and last let
 🏴 Grab (the default with company): one shared puzzle, and a word belongs to whoever circles it first.
 🏁 Race: everyone has their own copy and tries to find every word first."""
 import random
+import time
 
 from .base import GameError
 from .puzzlerace import PuzzleRace
@@ -46,6 +47,7 @@ DIRS = {   # which way words may run
 }
 COUNT = {8: 8, 10: 11, 12: 14}
 HINT_COST = 2
+COMBO_SECS = 8              # ⚡ a find this soon after your last one starts a combo
 
 
 def build(rng, size, dirs, theme):
@@ -128,7 +130,7 @@ class WordSearch(PuzzleRace):
     howto = [
         "Words from the theme hide in the grid in straight lines. Drag across one, or tap its first and last letter.",
         "🏴 Grab: one shared grid, and each word belongs to whoever circles it first. 🏁 Race: everyone has their own copy.",
-        "A word scores a point per letter. 💡 shows where a word starts, for 2 points.",
+        "A word scores a point per letter. ⚡ Find the next one within 8 seconds for a combo: +1, then +2, then +3 a word. 💡 shows where a word starts, for 2 points.",
         "The word list tracks every word: ✓ yours, 🏴 grabbed by a rival (Grab), or still hidden. In Race, 👥 counts the rivals who've found a word in their own copy.",
         "In 🏁 Race, finding every word scores +10, and +5 more for being first. Most points after the last grid wins.",
         "Alone, find every word before the clock runs out to win (or just find them all, with 🌿 No clock).",
@@ -182,7 +184,7 @@ class WordSearch(PuzzleRace):
 
     def points(self, p):
         st = self.st[p.id]
-        return sum(len(w) for w in st["found"]) - HINT_COST * len(st["hints"])
+        return sum(len(w) for w in st["found"]) + st.get("bonus", 0) - HINT_COST * len(st["hints"])
 
     def scored_live(self):
         return self.grab()   # grab points (and hint costs) land as they happen
@@ -238,9 +240,16 @@ class WordSearch(PuzzleRace):
         st["found"].append(w)
         st.setdefault("at", {})[w] = pos
         st["seq"] += 1
+        # ⚡ combo: a find within COMBO_SECS of the last one adds +1, +2, then +3 a word
+        now = time.time()
+        st["combo"] = st.get("combo", 0) + 1 if now - st.get("t", -99) <= COMBO_SECS else 0
+        st["t"] = now
+        extra = min(st["combo"], 3)
+        st["bonus"] = st.get("bonus", 0) + extra
+        st["lastBonus"] = extra
         if self.grab():
             self.claims[w] = p.id
-            p.g.score += len(w)   # grab points land at once, so the scoreboard moves
+            p.g.score += len(w) + extra   # grab points land at once, so the scoreboard moves
             left = len(self.words) - len(self.claims)
             self.room.add_log(f"🔍 {p.name} grabbed {w} (+{len(w)})" + (f", {left} left." if left else "."))
             if len(w) >= 8:
@@ -285,4 +294,4 @@ class WordSearch(PuzzleRace):
         return {"size": self.size, "grid": self.grid, "theme": self.theme, "words": self.words,
                 "grab": self.grab(), "owners": owners, "found": st["found"], "rivalFound": rivals,
                 "lines": {w: at.get(w) or self.where[w] for w in shown},
-                "hints": st["hints"], "hintCost": HINT_COST, "seq": st["seq"]}
+                "combo": st.get("combo", 0), "bonus": st.get("lastBonus", 0), "hints": st["hints"], "hintCost": HINT_COST, "seq": st["seq"]}
