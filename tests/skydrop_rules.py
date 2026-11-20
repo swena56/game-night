@@ -118,6 +118,24 @@ r, g, ps = game(2)
 g.on_input(ps[0], {"boost": True})
 check("no boost during the countdown", g.flyers[0].boosts == 3)
 
+# 😮‍💨 a close call: skim a hazard's edge without touching it
+r, g, ps = game(2, hazards=False)
+to_race(g)
+a, b = g.flyers
+g.hazards = [[a.depth + 3.0, 1.55 + 0.4, 0.0, 0, 0.0]]
+a.x = 0.0
+g.flyers[1].done_at = -1
+before = a.score
+tick(g, 0.6)
+check("skimming a hazard pays a close-call bonus", a.grazes == 1 and a.score == before + M.GRAZE_PTS, f"{a.grazes} {a.score - before}")
+
+r, g, ps = game(2, hazards=False)
+to_race(g)
+a, b = g.flyers
+g.hazards = [[a.depth + 3.0, 6.0, 0.0, 0, 0.0]]
+tick(g, 0.6)
+check("a far miss is no close call", a.grazes == 0)
+
 # steering input moves you
 r, g, ps = game(2, hazards=False)
 to_race(g)

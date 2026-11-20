@@ -13,6 +13,7 @@ STEP = 1 / 30
 SEND_EVERY = 2
 COUNTDOWN = 3.0
 RING_R = 2.05
+GRAZE, GRAZE_PTS = 0.8, 3   # skim a hazard within this much of its edge for a few points: risk for reward
 # Bots: (seconds between steering decisions, steering noise, chance to line up each ring properly).
 # A bot that loses focus on a ring aims for a spot beside it, so it usually misses that ring and
 # then has to recover for the next one. Tuned for about 40% / 60% / 80% of the rings.
@@ -34,6 +35,7 @@ class Flyer:
         self.next_bot = 0.0
         self.last_ring = -1
         self.hits = 0
+        self.grazes = 0
         self.hit_cool_until = 0.0
         self.aim_ring = -1          # bots: the ring they're lining up and their offset from it
         self.aim_dx = self.aim_dz = 0.0
@@ -52,6 +54,7 @@ class SkyDrop(Game):
         "Fly through glowing rings to score. Consecutive rings build a combo; missing one resets it.",
         "Steering is stabilized, so you can make small corrections without drifting away. Avoid turbines and storm gates; checkpoints refill boosts.",
         "Tap ⚡ or Space for one of three short boosts. The boost refills at the checkpoint.",
+        "😮‍💨 Skim past a hazard without touching it for a +3 close-call bonus.",
         "Ring points plus a finish-place bonus decide the winner.",
     ]
     settings_schema = {
@@ -257,7 +260,13 @@ class SkyDrop(Game):
                 hit_x = prev_x + (f.x - prev_x) * t
                 hit_z = prev_z + (f.z - prev_z) * t
                 hazard_x, hazard_z = self.hazard_position(d, x, z, kind, phase, now - dt + t * dt)
-                if now >= f.hit_cool_until and crossed and math.hypot(hit_x - hazard_x, hit_z - hazard_z) < (1.55 if kind == 0 else 1.25):
+                hz_r = 1.55 if kind == 0 else 1.25
+                hz_d = math.hypot(hit_x - hazard_x, hit_z - hazard_z)
+                if crossed and now >= f.stun_until and hz_r <= hz_d < hz_r + GRAZE:   # 😮‍💨 a close call pays
+                    f.score += GRAZE_PTS
+                    f.grazes += 1
+                    self.event(now, "graze", i)
+                if now >= f.hit_cool_until and crossed and hz_d < hz_r:
                     f.stun_until = now + (0.55 if kind == 1 else 0.8)
                     f.hit_cool_until = now + 1.0
                     f.vx += (1 if f.x < x else -1) * 4.5
