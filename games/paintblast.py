@@ -100,6 +100,7 @@ class PaintBlast(Game):
         self.next_at = now + COUNTDOWN
         self.ends_at = None
         self.closed = 0
+        self.boosted = False
         self.last_frame = now
         self.acc = 0.0
         self.room.add_log(f"🎨 Round {self.round}/{self.s['rounds']}: a fresh maze. Get ready!")
@@ -187,11 +188,26 @@ class PaintBlast(Game):
             self.acc -= 1
             self.step()
             self.close_in(now)
+            self.comeback(now)
             if now >= self.ends_at:
                 self.end_round(now)
                 return True
         self.broadcast(now)
         return False
+
+    def comeback(self, now):
+        """🎨 With 25 s left, whoever has painted least gets one extra bomb and a longer blast, so the round stays open."""
+        if getattr(self, "boosted", True) or self.ends_at - now > 25:
+            return
+        self.boosted = True
+        pts = [self.round_points(i) for i in range(len(self.seats))]
+        if len(pts) < 2 or min(pts) == max(pts) or pts.count(min(pts)) > 1:
+            return
+        i = pts.index(min(pts))
+        self.maxb[i] = min(4, self.maxb[i] + 1)
+        self.reach[i] = min(6, self.reach[i] + 1)
+        p = self.room.players.get(self.seats[i])
+        self.moment(f"🎨 Comeback! {p.name if p else '?'} gets +1 bomb and +1 reach", "gold", "good")
 
     def close_in(self, now):
         """Wall off the outer rings near the end. Anyone standing there is pushed to the nearest open tile inside."""
