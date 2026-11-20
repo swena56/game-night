@@ -33,6 +33,7 @@ UI.lantern = (() => {
         <li>🤝 Matching bids cancel out. If every bid is matched, the lot stays and the next one joins it.</li>
         <li>Each tile is used once, win or lose.</li>
         <li>🏮 Once a game, light your lantern: a winning bid counts the lots double. It burns out either way.</li>
+        <li id="lmSneakRule">🐭 Sneak: winning with a bid of 1 or 2 pays a +3 bonus on top.</li>
         <li id="lmEvRule" hidden>🎁 A mystery lot hides its value until bought; 🌧 rain washes an unsold table away.</li>
       </ul>
       <p class="hint left">The small number on a tile is how many rivals still hold it: those bids could clash. ✓ means nobody does.</p>
@@ -66,6 +67,8 @@ UI.lantern = (() => {
     paintRecap(L);
     const rule = document.getElementById('lmEvRule');
     if (rule) rule.hidden = !S.settings?.events;
+    const sn = document.getElementById('lmSneakRule');
+    if (sn) sn.hidden = S.settings?.sneak === false;
   }
 
   // the string of lanterns over the stall: one per trader in their colour. It glows once they've bid

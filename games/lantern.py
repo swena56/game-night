@@ -57,7 +57,7 @@ class Lantern(Game):
         "lots": ("Lots", [(10, "10 lots (tiles 1–10)"), (13, "13 lots (tiles 1–13)")], 10),
         "peek": ("Next lot", [(True, "👀 Shown"), (False, "Hidden")], True),
         "lamp": ("Lanterns", [(True, "🏮 One each"), (False, "Off")], True),
-        "sneak": ("🐭 Sneak bonus (win with a 1 or 2)", [(True, "+3"), (False, "Off")], True),
+        "sneak": ("🐭 Sneak (win with 1–2)", [(True, "+3"), (False, "Off")], True),
         "events": ("Market events", [(False, "Off"), (True, "🎁🌧 Mystery lots & rain")], False),
     }
     EVENT_ODDS = 0.3  # with events on, the share of lots (all but the last) that come with one

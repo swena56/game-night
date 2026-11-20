@@ -36,6 +36,13 @@ def round_(sneak, bids, lot=6):
 room, ps, g = round_(True, (9, 9, 2))
 check("bid 2 wins +3", g.score[ps[2].id] == 9, g.score)
 check("callout logged", any("Sneak" in t for t in [l["text"] if isinstance(l, dict) else str(l) for l in room.log]))
+room = server.Room("TEST")
+ps = [room.add_player(x) for x in ("Ann", "Bo", "Cy")]
+room.switch_game("lantern"); room.settings["timer"] = 0; room.start()
+g = room.game; g.table, g.deck, g.choices = [6], [1, 2, 3, 4, 5, 7, 8, 9, 10], {}
+for p_, b_ in zip(ps, (9, 9, 2)):
+    g.act(p_, {"type": "bid", "bid": b_})
+check("default setting: bid 2 wins +3", g.score[ps[2].id] == 9, g.score)
 room, ps, g = round_(True, (9, 9, 1))
 check("bid 1 wins +3", g.score[ps[2].id] == 9, g.score)
 room, ps, g = round_(True, (9, 9, 3))
