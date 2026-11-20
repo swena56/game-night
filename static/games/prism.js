@@ -888,6 +888,7 @@ UI.prism = (() => {
       box.append(btn);
     }
     const left = Math.max(0, item.until - now());
+    box.style.setProperty('--tgt', `${left}ms`); box.classList.remove('go'); void box.offsetWidth; box.classList.add('go');
     attackTimer = setTimeout(() => settleTarget(null), left);
   }
 

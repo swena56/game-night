@@ -15,10 +15,14 @@
 .pz-stage { position: relative; border-radius: 16px; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none;
   box-shadow: 0 10px 30px #0008, 0 0 0 2px #ffffff12, 0 0 40px color-mix(in srgb, var(--pz-glow, #7b5cff) 22%, transparent); background: #15142c;
   transition: box-shadow .5s; }
-.pz-target-prompt { position: absolute; z-index: 4; left: 8px; right: 8px; bottom: 8px; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px;
-  padding: 8px; border-radius: 12px; background: #11121eeF; color: #fff; font-size: 12px; box-shadow: 0 2px 12px #0009; }
+.pz-target-prompt { position: absolute; z-index: 4; left: 8px; right: 8px; top: 6px; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 5px;
+  padding: 5px 8px 8px; border-radius: 12px; background: #11121ebb; color: #fff; font-size: 11px; box-shadow: 0 2px 10px #0007; pointer-events: none; overflow: hidden; }
+.pz-target-prompt > * { pointer-events: auto; }
+.pz-target-prompt::after { content: ''; position: absolute; left: 0; bottom: 0; height: 3px; width: 100%; background: linear-gradient(90deg, #ff4d6d, #ffb21a); transform-origin: left; }
+.pz-target-prompt.go::after { animation: pzTgt var(--tgt, 4s) linear forwards; }
+@keyframes pzTgt { to { transform: scaleX(0); } }
 .pz-target-prompt[hidden] { display: none; }
-.pz-target { min-height: 34px; padding: 5px 9px; border-radius: 9px; font-size: 12px; touch-action: manipulation; }
+.pz-target { min-height: 32px; padding: 4px 9px; border-radius: 9px; font-size: 12px; touch-action: manipulation; }
 .pz-stage.heat { box-shadow: 0 10px 30px #0008, 0 0 0 2px var(--pz-heat), 0 0 36px var(--pz-heat); transition: box-shadow .08s; }
 .pz-stage.fever { box-shadow: 0 10px 30px #0008, 0 0 0 2px #ff5cf4, 0 0 42px #ff5cf4aa; animation: pzFever .8s infinite alternate; }
 .pz-stage.rush { box-shadow: 0 10px 30px #0008, 0 0 0 3px #ff4d6d, 0 0 44px #ffb21a99; }
