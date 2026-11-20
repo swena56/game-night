@@ -158,6 +158,19 @@ UI.wordsearch = (() => {
     for (const w of fresh) {
       if (v.owners[w] === S.me.id) { ctx.sfx(w.length >= 8 ? 'fanfare' : 'good'); }
       else ctx.sfx('pop');
+      // the word's letters hop one after another along the line
+      const ln = v.lines[w];
+      if (ln) {
+        const [r1, c1, r2, c2] = ln, len = Math.max(Math.abs(r2 - r1), Math.abs(c2 - c1)) + 1;
+        const dr = Math.sign(r2 - r1), dc = Math.sign(c2 - c1);
+        for (let i = 0; i < len; i++) {
+          const el = grid.children[(r1 + dr * i) * n + c1 + dc * i];
+          if (!el) continue;
+          el.style.setProperty('--d', `${i * 45}ms`);
+          el.classList.remove('hop'); void el.offsetWidth; el.classList.add('hop');
+          setTimeout(() => el.classList.remove('hop'), 700 + i * 45);
+        }
+      }
     }
     if (prev && v.done && fresh.some((w) => v.owners[w] === S.me.id)) Kit.callout('🏁 Every word!', 'gold', { ms: 1500 });
 
@@ -182,7 +195,7 @@ UI.wordsearch = (() => {
       const who = v.owners[w];
       const rival = who && who !== S.me.id;
       const seen = v.rivalFound?.[w] || 0;
-      const chip = ctx.el('span', 'wf-word' + (who ? ' got' : '') + (rival ? ' theirs' : '') + (!who && over ? ' missed' : ''));
+      const chip = ctx.el('span', 'wf-word' + (who ? ' got' : '') + (rival ? ' theirs' : '') + (!who && over ? ' missed' : '') + (fresh.includes(w) ? ' fresh' : ''));
       if (who === S.me.id) { chip.append(ctx.el('b', 'wf-mark', '✓')); mine++; } else if (rival) theirs++; else hidden++;
       chip.append(ctx.el('span', 'wf-w', w));
       if (rival) chip.append(ctx.el('small', 'wf-tag', `🏴 ${(ctx.player(who)?.name ?? '?').slice(0, 10)}`));
