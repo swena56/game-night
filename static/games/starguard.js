@@ -8,7 +8,7 @@ UI.starguard = (() => {
   const fx = Fx2D.create({ cap: 260 }), KIND_COLOR = ['#7bd88f', '#ffb703', '#ef476f'];
   const SPEED = 1.1;  // must match SHIP_SPEED in games/starguard.py
   const $ = (id) => document.getElementById(id);
-  const POWERS = { rapid: '⚡', spread: '🔱', shield: '🛡️', life: '❤️' };
+  const POWERS = { rapid: '⚡', spread: '🔱', shield: '🛡️', life: '❤️', bomb: '💣' };
 
   function mount(main, side) {
     S = null; net = null; own = null; target = null; shown = []; bossShown = null; keys = {}; lastLives = null; flash = 0; prevAl = []; hadBoss = false; lastSnap = null; fx.clear?.();

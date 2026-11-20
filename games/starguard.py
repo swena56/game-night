@@ -68,7 +68,7 @@ class StarGuard(Game):
         "Shoot the alien waves before they reach the bottom, and dodge their shots. Lives are shared: when the team runs out, it's over.",
         "Catch falling power-ups: ⚡ rapid fire, 🔱 spread shot, 🛡️ shield, ❤️ extra life.",
         "🔥 Quick kills build a combo (x2 at 10, x3 at 20). A wave with no ship lost is Flawless: +50 each.",
-        "💣 Tap Bomb once per game to wipe the shots and hurt every alien. Every 5th wave is a boss!",
+        "💣 Tap Bomb to wipe the shots and hurt every alien: you start with one, and a dropped 💣 gives a spare (up to 3). Every 5th wave is a boss!",
     ]
     name = "Star Guard"
     icon = "🛸"
@@ -374,7 +374,7 @@ class StarGuard(Game):
         if self.rng.random() < 0.12 or self.dry >= 18:
             self.dry = 0
             x, y = self.apos(a)
-            self.pups.append([x, y, self.rng.choice(["rapid", "spread", "shield", "shield", "life"])])
+            self.pups.append([x, y, self.rng.choice(["rapid", "spread", "shield", "shield", "life", "bomb"])])
 
     def take(self, i, kind):
         s = self.ships[i]
@@ -384,6 +384,9 @@ class StarGuard(Game):
             s.spread = POWER_SECS
         elif kind == "shield":
             s.shield = True
+        elif kind == "bomb":
+            s.bombs = min(3, s.bombs + 1)
+            self.room.add_log(f"💣 {self.name_of(i)} picks up a spare smart bomb.", "power")
         elif kind == "life":
             self.lives += 1
             self.room.add_log(f"❤️ {self.name_of(i)} grabs an extra life: {self.lives} left.", "power")
