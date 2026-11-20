@@ -57,3 +57,9 @@
   .ln-lbl { min-width: 0; }
   .ln-word { font-size: 36px; }
 }
+
+/* (#234) the controls stay put: buttons that come and go keep their space, labels keep a width, and the coaching line reserves two lines */
+.ln-ctl button[hidden] { display: inline-flex; visibility: hidden; pointer-events: none; }
+.ln-ctl .ln-saver { min-width: 7.5em; justify-content: center; }
+#lnHint { min-height: 2.9em; }
+.ln-hud { min-height: 1.6em; }
