@@ -21,11 +21,14 @@ class GermanWhist(TrickGame):
         "First half: the trick winner takes the face-up card, the loser takes the hidden next card. These tricks don't count.",
         "Follow suit if you can. Highest trump wins, else the highest card of the suit led.",
         "When the stock runs out, play the last thirteen tricks: they count. Most tricks wins the hand by the difference.",
+        "🏁 Last trick (an option): whoever wins the final counted trick scores a bonus 1.",
         "After the last hand, most points wins.",
     ]
     min_players, max_players = 2, 2
     badges = {**TrickGame.badges, "slam": ("💫", "Grand slam", "Take all thirteen tricks of the second half")}
-    settings_schema = {"hands": ("Hands", [(3, "3 hands"), (1, "1 hand (quick)"), (5, "5 hands")], 3)}
+    settings_schema = {"hands": ("Hands", [(3, "3 hands"), (1, "1 hand (quick)"), (5, "5 hands")], 3),
+                       "lasttrick": ("🏁 Last trick", [(True, "On: final trick +1"), (False, "Off")], True)}
+    lastwin = None      # seat that took the final counted trick this hand (old saves lack it)
 
     def start(self, seated, rng):
         self.seat_up(seated, rng)
@@ -45,6 +48,7 @@ class GermanWhist(TrickGame):
         self.counted = [0, 0]
         self.phase = 1
         self.got = None
+        self.lastwin = None
         self.room.add_log(f"🃏 Hand {self.hand_no}: {pretty(self.stock[0])} turned, {SUIT_NAME[self.trump]} are trumps.")
         self.leader = 1 - self.leader
         self.start_tricks(self.leader)
@@ -75,15 +79,21 @@ class GermanWhist(TrickGame):
                 self.moment("🦅 The stock is gone: these tricks count!", "cool", "whoosh")
         else:
             self.counted[w] += 1
+            if not any(self.hands) and self.s.get("lasttrick", True):
+                self.lastwin = w
+                self.room.add_log(f"🏁 {self.nm(w)} takes the last trick: +1.", "power")
+                self.moment(f"🏁 {self.nm(w)}: last trick +1", "gold", "good")
 
     def end_hand(self):
         a, b = self.counted
         w = 0 if a > b else 1
         diff = abs(a - b)
         self.scores[w] += diff
+        if getattr(self, "lastwin", None) is not None:
+            self.scores[self.lastwin] += 1
         if max(a, b) == 13 and self.pl(w):
             self.award(self.pl(w), "slam")
-        self.room.add_log(f"🧮 {self.nm(0)} {a} – {b} {self.nm(1)}: {self.nm(w)} +{diff}.", "big")
+        self.room.add_log(f"🧮 {self.nm(0)} {a} – {b} {self.nm(1)}: {self.nm(w)} +{diff}" + (f", {self.nm(self.lastwin)} +1 last trick" if getattr(self, "lastwin", None) is not None else "") + ".", "big")
         if self.hand_no >= self.s["hands"]:
             return self.win_by_score(self.scores)
         self.stage = "score"
