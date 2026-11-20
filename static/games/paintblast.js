@@ -10,7 +10,7 @@ UI.paintblast = (() => {
   function mount(main, side) {
     S = null; snap = null; glide = []; heldDir = -1; touch = null;
     main.innerHTML = `<div class="pb"><div class="pb-hud"><span id="pbRound"></span><b id="pbClock"></b><span id="pbMe"></span></div>
-      <div class="pb-cover" id="pbCover" aria-label="Paint coverage"></div>
+      <div class="pb-cover" id="pbCover" aria-label="Paint coverage"></div><div class="pb-pct" id="pbPct" aria-live="off"></div>
       <div class="pb-stage" id="pbStage"><canvas id="pbCanvas"></canvas><div class="lr-banner" id="pbBanner" hidden></div></div>
       <div class="pb-controls"><div class="pb-dpad" id="pbPad" role="group" aria-label="Move">
         <span data-d="0">▲</span><span data-d="3">◀</span><span data-d="1">▶</span><span data-d="2">▼</span></div>
@@ -206,8 +206,14 @@ UI.paintblast = (() => {
       seg.style.width = `${(100 * n) / floor}%`;
       seg.style.background = colorOf(i);
       seg.title = `${ctx.player(S.paintblast.seats[i])?.name ?? '?'}: ${Math.round((100 * n) / floor)}%`;
+      const pct = Math.round((100 * n) / floor);
+      if (pct >= 12) seg.textContent = `${pct}%`;
       bar.append(seg);
     });
+    // 🎨 the numbers, biggest first, with a leader mark: "🎨 You 34% · Bo 28% · Cy 9%"
+    const txt = counts.map((n, i) => [n, i]).sort((a, b) => b[0] - a[0]).filter(([n], k) => n || k < 2).slice(0, 4)
+      .map(([n, i], k) => `${k === 0 && n ? '👑 ' : ''}${i === S.paintblast.me ? 'You' : (ctx.player(S.paintblast.seats[i])?.name ?? '?').slice(0, 8)} ${Math.round((100 * n) / floor)}%`).join(' · ');
+    const pt = $('pbPct'); if (pt && pt.textContent !== txt) pt.textContent = txt;
   }
 
   function resize() {
