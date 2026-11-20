@@ -847,11 +847,11 @@ UI.lanes = (() => {
       // legs: tapered trousers with a knee, bowling shoes with a red sole and a toe cap
       const legs = [-1, 1].map((sx) => {
         const l = new T.Group(); l.position.set(sx * 0.09, 0, 0);
-        l.add(limb(0.082, 0.062, 0.5, legMat)); const sh = limb(0.062, 0.05, 0.42, legMat); sh.position.y = -0.5 - 0.21; l.add(sh);
-        l.add(M(new T.SphereGeometry(0.062, 10, 8), legMat, 0, -0.5, 0));
-        l.add(M(new T.BoxGeometry(0.1, 0.07, 0.27), shoeMat, 0, -0.875, -0.06));
-        l.add(M(new T.BoxGeometry(0.105, 0.025, 0.28), sole, 0, -0.915, -0.06));
-        l.add(M(new T.SphereGeometry(0.052, 10, 8), shoeMat, 0, -0.875, -0.18));
+        l.add(limb(0.082, 0.062, 0.42, legMat)); const sh = limb(0.062, 0.05, 0.34, legMat); sh.position.y = -0.42 - 0.17; l.add(sh);   // (#233) shorter legs
+        l.add(M(new T.SphereGeometry(0.062, 10, 8), legMat, 0, -0.42, 0));
+        l.add(M(new T.BoxGeometry(0.1, 0.07, 0.27), shoeMat, 0, -0.745, -0.06));
+        l.add(M(new T.BoxGeometry(0.105, 0.025, 0.28), sole, 0, -0.785, -0.06));
+        l.add(M(new T.SphereGeometry(0.052, 10, 8), shoeMat, 0, -0.745, -0.18));
         hip.add(l); return l;
       });
       hip.add(M(new T.CylinderGeometry(0.165, 0.17, 0.07, 16), belt, 0, 0.02, 0));
@@ -871,8 +871,8 @@ UI.lanes = (() => {
       const arms = [-1, 1].map((sx) => {
         const a = new T.Group(); a.position.set(sx * 0.235, 0.56, 0);
         a.add(M(new T.SphereGeometry(0.066, 12, 8), top, 0, 0, 0));                                                    // shoulder
-        a.add(limb(0.044, 0.036, 0.62, skin)); const sl = limb(0.062, 0.054, 0.24, top); a.add(sl);                   // forearm and a short sleeve
-        const hand = new T.Mesh(new T.SphereGeometry(0.052, 12, 8), skin); hand.scale.set(0.85, 1.15, 0.8); hand.position.y = -0.66; a.add(hand); a.userData.hand = hand;
+        a.add(limb(0.044, 0.036, 0.46, skin)); const sl = limb(0.062, 0.054, 0.2, top); a.add(sl);                   // forearm and a short sleeve
+        const hand = new T.Mesh(new T.SphereGeometry(0.052, 12, 8), skin); hand.scale.set(0.85, 1.15, 0.8); hand.position.y = -0.5; a.add(hand); a.userData.hand = hand;
         torso.add(a); return a;
       });
       g.traverse((o) => { if (o.isMesh) o.castShadow = !low; });
@@ -886,7 +886,7 @@ UI.lanes = (() => {
       const w = ph(t, [-LEAD, -0.3]), sl = ph(t, [-0.3, -0.02]), fo = ph(t, [0, 0.7]);
       const step = Math.sin(Math.max(0, t + LEAD) * Math.PI * 2 * 1.4) * (1 - sl) * 0.5;
       g.position.set(hx - 0.22, 0, 2.3 - 1.0 * w - 0.75 * sl);
-      hip.position.y = 0.95 - 0.43 * sl + 0.12 * fo;
+      hip.position.y = 0.81 - 0.37 * sl + 0.1 * fo;
       legs[0].rotation.x = step + (0.9 - step) * sl;
       legs[1].rotation.x = -step + (-0.9 + step) * sl;
       const lean = 0.08 + 0.62 * sl - 0.35 * fo;
