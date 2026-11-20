@@ -86,7 +86,7 @@ class Cribbage(Game):
         "The show: score your hand with the starter: fifteens 2, pairs 2, runs, flushes, and nobs (jack of the starter's suit) 1.",
         "The dealer also scores the crib. First to the target wins the moment they reach it.",
         "🦉 Muggins (an option): count your own hand. Miss points and the next player takes them!",
-        "🔥 Hot streak: score with three of your own plays in a row during one play and peg a bonus 1 (the streak then restarts).",
+        "🔥 Hot streak: score with three of your own plays in a row during the play and peg a bonus 1 (the streak then restarts).",
     ]
     name = "Cribbage"
     icon = "📍"

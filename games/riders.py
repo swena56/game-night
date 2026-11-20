@@ -15,6 +15,7 @@ from .base import Game, GameError
 DIRS = [(0, -1), (1, 0), (0, 1), (-1, 0)]  # up, right, down, left (screen directions)
 COUNTDOWN, ROUND_PAUSE = 3.0, 2.8
 BOOSTS, BOOST_TICKS = 3, 12
+BRAKES, BRAKE_TICKS = 2, 10  # one-shot slow turn: move on alternate server ticks, then it ends
 GRIND_FULL = 25    # ticks spent riding right beside a wall or trail that earn a boost back
 RESPAWN = 1.5      # seconds between a crash and riding again, while lives remain
 GHOST_TICKS = 2    # a respawned rider holds still this long so everyone sees it appear
@@ -40,6 +41,7 @@ class Riders(Game):
         "Your light bike never stops, and leaves a wall of light behind it.",
         "Swipe, use the arrows or the arrow keys to turn. Don't hit any wall — yours included.",
         "⚡ Boost (3 per round) doubles your speed for a moment. Ride right beside a wall or trail to grind a boost back.",
+        f"🛑 Brake ({BRAKES} per round) moves you at half speed for {BRAKE_TICKS} ticks; tap it before a tight turn. It can't be held on.",
         "Crash with lives left and your trail vanishes — you respawn in open space a moment later.",
         "Last rider with lives left wins the round. First to the target wins the match.",
     ]
@@ -87,6 +89,7 @@ class Riders(Game):
         self.alive = [True] * k
         self.dirs, self.queue = [0] * k, [deque() for _ in range(k)]
         self.boosts, self.boosting = [BOOSTS] * k, [0] * k
+        self.brakes, self.braking = [BRAKES] * k, [0] * k
         self.lives = [self.s.get("lives", 3)] * k
         if self.s.get("catchup", True):
             top = max(self.wins)
@@ -178,6 +181,8 @@ class Riders(Game):
             raise GameError("You're watching this game.")
         if a.get("boost") is True:
             self.start_boost(i)
+        if a.get("brake") is True:
+            self.start_brake(i)
         d = a.get("dir")
         if d is None:
             return
@@ -189,9 +194,15 @@ class Riders(Game):
             q.append(d)
 
     def start_boost(self, i):
-        if self.stage == "ride" and self.alive[i] and self.boosts[i] > 0 and not self.boosting[i]:
+        if self.stage == "ride" and self.alive[i] and self.boosts[i] > 0 and not self.boosting[i] and not self.braking[i]:
             self.boosts[i] -= 1
             self.boosting[i] = BOOST_TICKS
+
+    def start_brake(self, i):
+        if self.stage == "ride" and self.alive[i] and self.brakes[i] > 0 and not self.braking[i]:
+            self.brakes[i] -= 1
+            self.braking[i] = BRAKE_TICKS
+            self.boosting[i] = 0
 
     # -- simulation
 
@@ -246,8 +257,11 @@ class Riders(Game):
         return changed
 
     def step(self, now):
-        """One tick: bots decide, turns apply, everyone moves (boosters twice). Returns True on crashes."""
+        """One tick: bots decide, turns apply, riders move (boosts can move twice; braking skips alternate ticks)."""
         self.tick += 1
+        braking = {i for i in range(len(self.seats)) if self.braking[i] > 0}
+        for i in braking:
+            self.braking[i] -= 1
         for i, pid in enumerate(self.seats):
             p = self.room.players.get(pid)
             if self.alive[i] and p and p.bot:
@@ -268,7 +282,9 @@ class Riders(Game):
                     holding.add(i)
         for sub in range(2):
             movers = [i for i in range(len(self.seats))
-                      if self.alive[i] and i not in crashed and i not in holding and (sub == 0 or self.boosting[i])]
+                      if self.alive[i] and i not in crashed and i not in holding
+                      and ((sub == 0 and (i not in braking or self.tick % 2 == 0))
+                           or (sub == 1 and self.boosting[i]))]
             if not movers:
                 continue
             targets = {}
@@ -303,6 +319,7 @@ class Riders(Game):
         for i in crashed:
             self.alive[i] = False
             self.boosting[i] = self.grind[i] = self.slow[i] = 0
+            self.braking[i] = 0
             self.queue[i].clear()
             self.lives[i] -= 1
             p = self.room.players.get(self.seats[i])
@@ -402,7 +419,7 @@ class Riders(Game):
             "it": [[c, k] for c, k in getattr(self, "items", {}).items()],
             "sl": [int(x > 0) for x in getattr(self, "slow", [])], "gr": getattr(self, "grabs", []),
             "p": [[len(t), int(self.alive[i]), self.dirs[i], self.boosts[i], int(self.boosting[i] > 0),
-                   self.lives[i], self.grind[i], *t[-TAIL:]]
+                   self.lives[i], self.grind[i], int(self.braking[i] > 0), self.brakes[i], *t[-TAIL:]]
                   for i, t in enumerate(self.trails)],
         })
 
@@ -548,6 +565,7 @@ class Riders(Game):
             "slow": [int(x > 0) for x in getattr(self, "slow", [0] * len(self.seats))], "grabs": getattr(self, "grabs", []),
             "wins": self.wins, "target": self.s["target"], "speed": self.s["speed"], "tick": self.tick,
             "trails": self.trails, "alive": self.alive, "dirs": self.dirs, "boosts": self.boosts,
+            "brakes": self.brakes, "braking": [int(x > 0) for x in self.braking],
             "lives": self.lives, "maxLives": self.s.get("lives", 3), "grind": self.grind, "grindFull": GRIND_FULL,
             "respawning": [None if at is None else max(0.0, at - time.time()) for at in self.respawn_at],
             "countdown": max(0.0, self.next_at - time.time()) if self.stage in ("countdown", "over") else 0,

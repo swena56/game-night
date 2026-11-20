@@ -27,6 +27,7 @@ RETIE = 1.6           # after a snap or a landing, the line goes back in after t
 MISS_REST = 0.8
 FIGHT_DT = 0.05
 FIGHT_MAX = 30.0
+RUN_SECS = 50.0       # 🐠 the trout run swims in for the last this-many seconds
 BITE_SIGMA = 2.3      # how far (m) a school's pull on a line reaches
 BITE_STEP = 0.25
 # species: points, line to reel (m), tension per second reeling into a lunge, lunge seconds, rest seconds, pull rate
@@ -209,6 +210,14 @@ class Pond(Game):
                     "w1": round(rng.uniform(0.12, 0.16), 4), "w2": round(-rng.uniform(0.2, 0.28), 4),
                     "p1": round(rng.uniform(0, 6.28), 3), "p2": round(rng.uniform(0, 6.28), 3),
                     "t0": round(t0, 1), "t1": round(t0 + rng.uniform(40, 55), 1)})
+        # 🐠 the trout run: a big shoal sweeps through for the last stretch, a chance for anyone behind to catch up
+        t0 = self.t_end - RUN_SECS
+        room = R - 2.0
+        sch.append({"kind": "trout", "deep": False, "n": 14, "rate": 0.55, "cx": 0.0, "cy": 0.0,
+                    "a1": round(room * 0.45, 2), "a2": round(room * 0.25, 2), "b1": round(room * 0.45, 2), "b2": round(room * 0.25, 2),
+                    "w1": round(rng.uniform(0.07, 0.1) * rng.choice((1, -1)), 4), "w2": round(rng.uniform(0.12, 0.18) * rng.choice((1, -1)), 4),
+                    "p1": round(rng.uniform(0, 6.28), 3), "p2": round(rng.uniform(0, 6.28), 3),
+                    "t0": round(t0, 1), "t1": round(self.t_end - 2, 1), "run": True})
         self.schools = sch
 
     def on_restore(self, shift):

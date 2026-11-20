@@ -264,6 +264,7 @@ class Marble(Game):
         '🔥 The quick route has a shortcut lined with holes; 🌿 the safe way round is longer but has a pad and a gem. Your call.',
         '🎁 Between boards, pick a perk for the next one: ⚡ Turbo, 🛡️ Shield or 🧲 Magnet. Whoever is last picks two.',
         'Fastest total time over all the boards wins. See your rivals as ghost marbles on your board.',
+        '🚩 Checkpoint split times are shown beside the race. A faster finish on the same maze saves a personal best ghost on this device; toggle it on or off during your next run.',
     ]
     name = "Marble Rush"
     icon = "🌀"

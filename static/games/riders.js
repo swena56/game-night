@@ -25,20 +25,22 @@ UI.riders = (() => {
           <button data-d="3" aria-label="Left">◀</button><span></span><button data-d="1" aria-label="Right">▶</button>
           <span></span><button data-d="2" aria-label="Down">▼</button><span></span></div>
         <button id="lrBoost" class="lr-boost" aria-label="Boost">⚡</button>
+        <button id="lrBrake" class="lr-brake" aria-label="Brake">🛑</button>
       </div></div>`;
     side.innerHTML = `<div class="panel"><div id="lrRiders"></div>
       <label class="check"><input type="checkbox" id="lrTap"> Tap left / right side to turn</label>
       <p class="hint left" id="lrHow"></p></div>`;
     const how = () => {
       $('lrHow').textContent = tapTurn
-        ? 'Tap the left or right half of the screen to turn left or right from where your bike is heading. Keys: arrows / WASD, Q/E turn, Space boosts.'
-        : 'Swipe anywhere to steer, or use the keyboard (arrows / WASD, Q/E turn, Space boosts). Ride beside a trail to grind a boost back.';
+        ? 'Tap the left or right half of the screen to turn left or right from where your bike is heading. Keys: arrows / WASD, Q/E turn, Space boosts, X brakes.'
+        : 'Swipe anywhere to steer, or use the keyboard (arrows / WASD, Q/E turn, Space boosts, X brakes). Ride beside a trail to grind a boost back.';
     };
     $('lrTap').checked = tapTurn;
     $('lrTap').addEventListener('change', (e) => { tapTurn = e.target.checked; store('riders.tapTurn', tapTurn || null); how(); });
     how();
     for (const b of $('lrPad').querySelectorAll('button[data-d]')) b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); steer(+b.dataset.d); });
     $('lrBoost').addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); boost(); });
+    $('lrBrake').addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); brake(); });
     root = $('lrRoot');
     const stage = $('lrStage');
     // The whole game area ignores browser panning, so a swipe can't scroll the page; the pointer is
@@ -69,6 +71,7 @@ UI.riders = (() => {
       if (k != null) { e.preventDefault(); steer(k); }
       else if (rel != null) { e.preventDefault(); turn(rel); }
       else if (['Space', 'ShiftLeft', 'ShiftRight', 'Enter'].includes(e.code)) { e.preventDefault(); boost(); }
+      else if (e.code === 'KeyX') { e.preventDefault(); brake(); }
     };
     addEventListener('keydown', keyHandler);
     ro = window.ResizeObserver ? new ResizeObserver(() => { gl?.resize(); flat?.resize(); }) : null;
@@ -104,6 +107,12 @@ UI.riders = (() => {
     if (!canSteer() || S.riders.stage !== 'ride' || !L.boosts || L.boosting) return;
     snd.play('boost');
     ctx.input({ boost: true }, true);
+  }
+  function brake() {
+    const L = live[mine()];
+    if (!canSteer() || S.riders.stage !== 'ride' || !L.brakes || L.braking) return;
+    snd.play('turn');
+    ctx.input({ brake: true }, true);
   }
   const colorOf = (i) => ctx.player(S.riders.seats[i])?.color ?? '#888';
 
@@ -152,6 +161,7 @@ UI.riders = (() => {
     trails = r.trails.map((t) => [...t]);
     const old = live;
     live = r.alive.map((a, i) => ({ alive: a, dir: r.dirs[i], boosts: r.boosts[i], boosting: false,
+      brakes: r.brakes?.[i] ?? 0, braking: !!r.braking?.[i],
       lives: r.lives?.[i] ?? 1, grind: r.grind?.[i] ?? 0, respawnAt: r.respawning?.[i] != null ? performance.now() + r.respawning[i] * 1000 : null }));
     if (!fresh) live.forEach((L, i) => { events(i, old[i], L); if (old[i]?.boosting) L.boosting = true; });
     else { pred = null; grabsSeen = new Set(); }
@@ -168,7 +178,7 @@ UI.riders = (() => {
   function fast(data) {
     if (!S || data.k < lastTick) return;  // a new round starts with a full view
     const t0 = performance.now(), drawn = noteHeads(t0);
-    data.p.forEach(([len, alive, dir, boosts, boosting, lives, grind, ...tail], i) => {
+    data.p.forEach(([len, alive, dir, boosts, boosting, lives, grind, braking, brakes, ...tail], i) => {
       const t = trails[i]; if (!t) return;
       // the newest cells line up with what we hold (cells never repeat within a trail), so this also
       // follows a ✂️ cut, which drops cells from the start
@@ -179,7 +189,7 @@ UI.riders = (() => {
         for (let idx = Math.max(t.length, len - tail.length); idx < len; idx++) t.push(tail[idx - (len - tail.length)]);
       }
       const was = live[i];
-      live[i] = { alive: !!alive, dir, boosts, boosting: !!boosting, lives, grind, respawnAt: was?.respawnAt ?? null };
+      live[i] = { alive: !!alive, dir, boosts, boosting: !!boosting, brakes, braking: !!braking, lives, grind, respawnAt: was?.respawnAt ?? null };
       if (alive) live[i].respawnAt = null;
       events(i, was, live[i]);
     });
@@ -208,6 +218,10 @@ UI.riders = (() => {
     b.style.setProperty('--g', me ? Math.min(1, me.grind / (r.grindFull || 25)) : 0);
     b.disabled = !me || !me.alive || !me.boosts || r.stage !== 'ride';
     b.hidden = r.me == null;
+    const br = $('lrBrake');
+    br.textContent = me ? `🛑${me.brakes}` : '🛑';
+    br.disabled = !me || !me.alive || !me.brakes || me.braking || r.stage !== 'ride';
+    br.hidden = r.me == null;
     $('lrPad').hidden = r.me == null;
     // fast updates arrive every tick: only rebuild the panels when something on them changed (#32)
     const key = JSON.stringify([r.round, r.stage, r.wins, r.seats, r.me, slow, live.map((L) => [L?.alive, L?.lives, L?.respawnAt != null])]);
@@ -241,7 +255,7 @@ UI.riders = (() => {
     if (!L?.alive || S.riders.stage !== 'ride') return [x, y];
     const per = 1000 / S.riders.speed, step = (now - tickAt) / per;
     // 🐌 a slowed rider moves on even ticks only: spread its glide over two ticks
-    const f = slow[i] ? ((lastTick % 2) + step) / 2 : step * (L.boosting ? 2 : 1);
+    const f = slow[i] || L.braking ? ((lastTick % 2) + step) / 2 : step * (L.boosting ? 2 : 1);
     // A late update (#87, "lag spikes"): keep gliding instead of freezing at the cell's edge, easing to a stop
     // a little way into the next cell, so a short hiccup reads as a stumble rather than a stop-and-jump.
     const g = f < 0.8 ? f : 0.8 + 0.6 * (1 - Math.exp(-(f - 0.8) / 0.6));
@@ -293,7 +307,7 @@ UI.riders = (() => {
       if (me && count && (count !== 'GO' || lastCount)) snd.play(count === 'GO' ? 'go' : 'beep');  // no GO when joining mid-ride
       lastCount = count;
     }
-    snd.engine(S.phase === 'playing' && r.stage === 'ride' && me?.alive ? (me.boosting ? 2 : 1) : null);
+    snd.engine(S.phase === 'playing' && r.stage === 'ride' && me?.alive ? (me.braking ? 0.5 : me.boosting ? 2 : 1) : null);
   }
 
   // ---------- sound: an engine hum while you ride and short synthesized hits (no files)

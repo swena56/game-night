@@ -195,7 +195,8 @@ UI.pond = (() => {
   function hud() {
     const m = me();
     $('fpPts').textContent = m ? `🎣 ${m.points} pts · ${m.n} fish` : '🎣 Frozen Pond';
-    $('fpChar').hidden = !V.charBy; if (V.charBy) $('fpChar').textContent = `✨ ${V.charBy} has the char`;
+    const run = V.schools?.some((s) => s.run && T() >= s.t0 && T() <= s.t1);
+    $('fpChar').hidden = !V.charBy && !run; $('fpChar').textContent = V.charBy ? `✨ ${V.charBy} has the char` : run ? '🐠 Trout run! A big shoal is passing through' : '';
   }
 
   function race() {
@@ -447,6 +448,7 @@ UI.pond = (() => {
     raf = requestAnimationFrame(loop);
     if (!V) return;
     const t = T();
+    if (now - (loop.hudAt || 0) > 500) { loop.hudAt = now; hud(); }   // the 🐠 trout run's banner follows the clock
     const cnt = $('fpCount');
     if (S.phase === 'playing' && t < 0) { const s = String(Math.ceil(-t)); if (cnt.textContent !== s) { cnt.textContent = s; ctx.sfx?.('tick'); } cnt.hidden = false; }
     else if (!cnt.hidden && t < 0.8 && S.phase === 'playing') { if (cnt.textContent !== 'GO!') { cnt.textContent = 'GO!'; SND.horn(); } }
