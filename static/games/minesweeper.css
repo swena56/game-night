@@ -22,8 +22,13 @@ body.focus .swp { --swpw: min(100%, 640px, max(260px, calc(var(--room) - 175px))
 .swp-cell.wave { animation: swpWave .4s both; }
 .swp.off .swp-cell { cursor: default; }
 .swp-flagtool.on { box-shadow: inset 0 0 0 2px #ffd166; background: #ffd16622; }
+.swp-board.shake { animation: swpShake .35s; }
+.swp-board.cleared { animation: swpGlow 1.6s ease-in-out infinite; }
+.swp-board.cleared .swp-cell.open { background: #d9f5e2; }
+@keyframes swpShake { 20% { transform: translate(-4px, 2px); } 40% { transform: translate(4px, -2px); } 60% { transform: translate(-3px, -1px); } 80% { transform: translate(2px, 2px); } }
+@keyframes swpGlow { 50% { box-shadow: 0 0 26px #5be39a, 0 6px 22px #0008; } }
 @keyframes swpBoom { 0% { transform: scale(1.5); } 40% { transform: scale(.9); } }
 @keyframes swpPop { from { transform: scale(1.3); background: #ffe08a; } }
 @keyframes swpWave { 50% { background: #c9f2dc; transform: scale(1.06); } }
-body.calm .swp-cell.boom, body.calm .swp-cell.hinted, body.calm .swp-cell.wave { animation: none; }
+body.calm .swp-board.shake, body.calm .swp-board.cleared, body.calm .swp-cell.boom, body.calm .swp-cell.hinted, body.calm .swp-cell.wave { animation: none; }
 @media (max-width: 420px) { .swp { padding: 4px 2px; } .swp-board { gap: 1.5px; padding: 3px; } }

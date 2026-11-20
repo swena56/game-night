@@ -80,13 +80,14 @@ UI.minesweeper = (() => {
     S = s; ctx = c; v = S.minesweeper;
     if (!v) return;
     const key = `${v.round}:${v.n}:${v.mines}`;
-    if (key !== seenKey) { seenKey = key; seenSeq = -1; seenDone = false; prevOpen = null; sel = 0; }
+    if (key !== seenKey) { $('swpBoard')?.classList.remove('cleared'); seenKey = key; seenSeq = -1; seenDone = false; prevOpen = null; sel = 0; }
     const fresh = seenSeq >= 0 && v.seq !== seenSeq;
     seenSeq = v.seq;
     draw();
     if (fresh) feedback();
     if (v.done && !seenDone && fresh) {
       Kit.callout(v.boom || v.hints ? '🏁 Field cleared!' : '🧹 Clean sweep!', 'gold', { ms: 1600 });
+      $('swpBoard').classList.add('cleared');
       ctx.sfx('fanfare');
     }
     seenDone = v.done;
@@ -101,6 +102,7 @@ UI.minesweeper = (() => {
       const cell = board.children[v.miss];
       ctx.sfx('wrong'); ctx.buzz?.(60); Kit.callout('💥 Mine! −4', 'bad', { ms: 700 });
       if (cell) { cell.classList.remove('boom'); void cell.offsetWidth; cell.classList.add('boom'); }
+      board.classList.remove('shake'); void board.offsetWidth; board.classList.add('shake');   // the whole field jolts
       return;
     }
     ctx.sfx('place');
