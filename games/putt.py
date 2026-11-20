@@ -532,15 +532,19 @@ class Putt(Game):
             self.holed[i] = True
             self.balls[i] = list(end)
             cx, cy = self.hole["cup"]
-            if self.s.get("longshot", 1) and self.strokes[i] > 1 and math.hypot(start[0] - cx, start[1] - cy) >= LONG_PUTT:
+            ls = bool(self.s.get("longshot", 1) and self.strokes[i] > 1 and math.hypot(start[0] - cx, start[1] - cy) >= LONG_PUTT)
+            if ls:
                 self.strokes[i] -= 1
                 self.moment(f"🚀 {name}: long shot, a stroke off!", "gold", "fanfare")
             s = self.strokes[i]
-            if s == 1:
+            ace = s == 1 and not ls  # a long shot that trims a 2 to a 1 is no real hole in one
+            if ace:
                 self.award(self.seats[i], "ace")
-            self.room.add_log(f"⛳ {name} holes out in {s}!" + (" 🎯 Hole in one!" if s == 1 else ""), "power" if s <= 2 else "question")
+            self.room.add_log(f"⛳ {name} holes out in {s}!" + (" 🎯 Hole in one!" if ace else ""), "power" if s <= 2 else "question")
             par = self.hole.get("par", 3)
-            if s == 1:
+            if ls:
+                pass  # the long-shot callout is this putt's moment
+            elif ace:
                 self.moment(f"🎯 {name}: HOLE IN ONE!", "gold", "fanfare")
             elif s <= par - 2:
                 self.moment(f"🦅 {name}: eagle!", "gold", "fanfare")
