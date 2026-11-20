@@ -12,10 +12,16 @@ from .cardbase import CardGame, GameError, deck, rank, suit, pretty, show, GLYPH
 VAL = {**{r: int(r) for r in "23456789"}, "T": 10, "J": 10, "Q": 10, "K": 10, "A": 11}
 
 
-def value(hand):
+def is_trips(hand):
+    return len(hand) == 3 and len({rank(c) for c in hand}) == 1
+
+
+def value(hand, trips=False):
     best = 0
     for s in "CDHS":
         best = max(best, sum(VAL[rank(c)] for c in hand if suit(c) == s))
+    if trips and is_trips(hand):
+        best = max(best, 30)
     return best
 
 
@@ -28,12 +34,17 @@ class Blitz(CardGame):
         "Three cards each. Take the top of the stock or the discard, then throw one away.",
         "Your hand counts the cards of one suit: ace 11, faces 10, others their number.",
         "Knock instead of drawing: everyone else gets one more turn, then the lowest hand loses a life (a knocker caught lowest loses two).",
+        "An option: three of a kind counts as 30, whatever the suits.",
         "Hit exactly 31: ⚡ Blitz! Everyone else loses a life on the spot.",
         "Three lives each. Last player with a life wins.",
     ]
     min_players, max_players = 2, 6
     badges = {**CardGame.badges, "blitz": ("⚡", "Blitz!", "Hit exactly 31")}
-    settings_schema = {"lives": ("Lives", [(3, "3 lives"), (2, "2 lives (quick)"), (4, "4 lives")], 3)}
+    settings_schema = {"lives": ("Lives", [(3, "3 lives"), (2, "2 lives (quick)"), (4, "4 lives")], 3),
+                       "trips": ("Three of a kind", [(1, "Counts 30"), (0, "Off")], 1)}
+
+    def val(self, hand):
+        return value(hand, self.s.get("trips", 1) != 0)
 
     def start(self, seated, rng):
         self.seat_up(seated, rng)
@@ -63,7 +74,7 @@ class Blitz(CardGame):
         self.room.add_log(f"🃏 New hand. {self.nm(self.next_seat(self.dealer))} starts.")
         self.to(self.next_seat(self.dealer))
         for k in range(self.n):
-            if not self.is_out(k) and value(self.hands[k]) == 31:
+            if not self.is_out(k) and self.val(self.hands[k]) == 31:
                 return self.blitz(k)
 
     def draw(self, i, src):
@@ -85,7 +96,7 @@ class Blitz(CardGame):
         self.hands[i].remove(c)
         self.discard.append(c)
         self.room.add_log(f"{self.nm(i)} throws {pretty(c)}.")
-        if value(self.hands[i]) == 31:
+        if self.val(self.hands[i]) == 31:
             return self.blitz(i)
         self.next_turn(i)
 
@@ -112,7 +123,7 @@ class Blitz(CardGame):
         self.after_hand({k: 1 for k in losers}, f"Everyone else loses a life.")
 
     def showdown(self):
-        vals = {k: value(self.hands[k]) for k in range(self.n) if not self.is_out(k)}
+        vals = {k: self.val(self.hands[k]) for k in range(self.n) if not self.is_out(k)}
         low = min(vals.values())
         losers = [k for k, v in vals.items() if v == low]
         hit = {}
@@ -120,6 +131,9 @@ class Blitz(CardGame):
             n = 2 if k == self.knocker else 1
             self.lives[k] -= n
             hit[k] = n
+        for k, v in vals.items():
+            if is_trips(self.hands[k]) and v == 30 and value(self.hands[k]) < 30:
+                self.moment(f"🎰 {self.nm(k)} shows three {rank(self.hands[k][0])}s: that counts 30!", "gold", "chime")
         self.room.add_log("🂠 " + " · ".join(f"{self.nm(k)} {v}" for k, v in vals.items()), "big")
         self.after_hand(hit, " & ".join(self.nm(k) + (" (the knocker!)" if k == self.knocker else "") for k in losers) + f" lose{'s' if len(losers) == 1 else ''} a life with {low}.")
 
@@ -133,7 +147,7 @@ class Blitz(CardGame):
         if len(alive) <= 1:
             if alive:
                 return self.room.finish(self.pl(alive[0]), f"🏆 {self.nm(alive[0])} is the last one with a life and wins Blitz!")
-            best = max(range(self.n), key=lambda k: (self.lives[k], value(self.hands[k])))
+            best = max(range(self.n), key=lambda k: (self.lives[k], self.val(self.hands[k])))
             return self.room.finish(self.pl(best), f"🏆 {self.nm(best)} wins Blitz!")
         self.stage = "show"
         self.pause(self.deal, 4)
@@ -167,12 +181,12 @@ class Blitz(CardGame):
     def bot_move(self, i, level):
         hand = self.hands[i]
         if self.stage == "draw":
-            v = value(hand)
+            v = self.val(hand)
             bar = {"easy": random.randint(20, 27), "normal": 26, "hard": 25 if self.alive_count() > 3 else 27}[level]
             if self.knocker is None and v >= bar and (level != "hard" or self.turns_in() > 0):
                 return self.knock(i)
             top = self.discard[-1]
-            best_with = max(value([x for x in hand + [top] if x != d]) for d in hand)
+            best_with = max(self.val([x for x in hand + [top] if x != d]) for d in hand)
             if best_with > v + (0 if level == "hard" else 2) and (level != "easy" or random.random() < 0.6):
                 return self.draw(i, "discard")
             return self.draw(i, "stock")
@@ -180,7 +194,7 @@ class Blitz(CardGame):
             opts = [c for c in hand if c != self.took]
             if level == "easy" and random.random() < 0.3:
                 return self.throw(i, random.choice(opts))
-            return self.throw(i, max(opts, key=lambda c: (value([x for x in hand if x != c]), -VAL[rank(c)])))
+            return self.throw(i, max(opts, key=lambda c: (self.val([x for x in hand if x != c]), -VAL[rank(c)])))
 
     def alive_count(self):
         return sum(1 for k in range(self.n) if not self.is_out(k))
@@ -212,7 +226,7 @@ class Blitz(CardGame):
         if self.knocker is not None and self.stage != "show":
             t["banner"] = f"✊ {self.nm(self.knocker)} knocked: last turns!"
         if i is not None and self.hands[i]:
-            v = value(self.hands[i])
+            v = self.val(self.hands[i])
             best = max("CDHS", key=lambda s: sum(VAL[rank(c)] for c in self.hands[i] if suit(c) == s))
             t["note"] = f"Your hand: {v} in {GLYPH[best]}."
         if mine and self.stage == "draw":
