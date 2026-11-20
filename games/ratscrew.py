@@ -26,6 +26,7 @@ class Ratscrew(CardGame):
         "Everyone has a face-down stack. In turn, flip your top card onto the pile.",
         "Flip a J, Q, K or A and the next player gets 1, 2, 3 or 4 flips to answer with a face card or ace, or you take the pile.",
         "👋 Slap when the top two match (double) or the top card matches the one two below (sandwich). First slap takes the pile.",
+        "💍 An option: a king and a queen back to back (a marriage) can be slapped too.",
         "Slap wrong and you burn a card under the pile.",
         "Run out and you're out. Collect every card to win.",
         "Variants: Beggar My Neighbour (face cards, no slaps), Slap Jack (no face cards; slap every jack), Snap (no face cards; slap pairs).",
@@ -35,6 +36,7 @@ class Ratscrew(CardGame):
     settings_schema = {"variant": ("Game", [("ratscrew", "Egyptian Ratscrew"), ("beggar", "Beggar My Neighbour: face cards, no slaps"),
                                             ("slapjack", "Slap Jack: slap the jacks"), ("snap", "Snap: slap pairs, no face cards")], "ratscrew"),
                        "slaps": ("Slaps", [("both", "Doubles and sandwiches"), ("doubles", "Doubles only")], "both"),
+                       "marriage": ("Marriage", [(False, "Off"), (True, "💍 Slap a K and Q together")], False),
                        "limit": ("Time limit", [(300, "5 minutes, then most cards"), (600, "10 minutes"), (0, "None")], 300)}
 
     def start(self, seated, rng):
@@ -76,6 +78,8 @@ class Ratscrew(CardGame):
             return "double"
         if self.s.get("slaps", "both") == "both" and len(p) >= 3 and rank(p[-1]) == rank(p[-3]):
             return "sandwich"
+        if self.s.get("marriage") and len(p) >= 2 and {rank(p[-1]), rank(p[-2])} == {"K", "Q"}:
+            return "marriage"
         return None
 
     # -- flipping
@@ -171,7 +175,7 @@ class Ratscrew(CardGame):
             self.slaps[i] += 1
             if self.slaps[i] == 5 and self.pl(i):
                 self.award(self.pl(i), "fast")
-            self.moment(f"👋 {self.nm(i)} slaps the {kind}!", "good", "crack")
+            self.moment(f"{'💍' if kind == 'marriage' else '👋'} {self.nm(i)} slaps the {kind}!", "good", "crack")
             self.room.deadline = None
             return self.take(i, f"👋 {self.nm(i)} slaps the {kind} and takes {len(self.pile)} cards.")
         if not self.piles[i]:
@@ -245,7 +249,8 @@ class Ratscrew(CardGame):
              "banner": self.flash or (f"Answer within {ch['left']}!" if ch and self.stage == "flip" else None),
              "scores": {"title": "Cards", "rows": [{"seat": k, "value": len(self.piles[k])} for k in sorted(range(self.n), key=lambda k: -len(self.piles[k]))],
                         "hint": {"beggar": "Face cards demand an answer: J 1, Q 2, K 3, A 4.", "slapjack": "Slap every jack!", "snap": "Slap two of a kind in a row!"}.get(
-                            self.variant(), "Slap doubles (7 7)" + (" and sandwiches (7 4 7)" if self.s.get("slaps", "both") == "both" else "") + ".")}}
+                            self.variant(), "Slap doubles (7 7)" + (" and sandwiches (7 4 7)" if self.s.get("slaps", "both") == "both" else "")
+                            + (", and marriages (K Q)." if self.s.get("marriage") else "."))}}
         if self.ends:
             t["scores"]["hint"] += f" {max(0, int(self.ends - time.time())) // 60}:{max(0, int(self.ends - time.time())) % 60:02d} left."
         if i is None:
