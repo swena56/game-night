@@ -333,7 +333,7 @@ UI.lanes = (() => {
   }
 
   function renderSheet() {
-    const v = L(), box = $('lnSheet'), wasOpen = box.querySelector('details.ln-why')?.open; box.innerHTML = '';
+    const v = L(), box = $('lnSheet'), wasOpen = box.querySelector('details.ln-why')?.open, me = myRow(); box.innerHTML = '';
     const t = ctx.el('table', 'ln-tab');
     const head = ctx.el('tr'); head.append(ctx.el('th', '', ''));
     for (let f = 0; f < v.nframes; f++) head.append(ctx.el('th', f === v.cosmic ? 'ln-cos' : '', f === v.cosmic ? `🌟${f + 1}` : String(f + 1)));
@@ -365,7 +365,6 @@ UI.lanes = (() => {
       det.append(ol); box.append(det);
     }
     box.append(ctx.el('p', 'hint left', `🌟 Frame ${v.cosmic + 1} is cosmic: a strike or spare in it scores +10 more.`));
-    const me = myRow();
     if (me?.top) box.append(ctx.el('p', 'hint left', `🚀 Your fastest ball: ${Math.round(me.top / 1.609)} mph (${Math.round(me.top)} km/h).`));
     box.append(ctx.el('p', 'hint left', `🛢️ The faint sheen down the middle is the oil: the ball skids on it and only hooks once it reaches the dry boards. Your lane's oil is ${v.oil} m long` + (v.oil0 - v.oil >= 0.05 ? ` (📉 down from ${v.oil0}: it breaks down as you bowl, so the hook starts earlier — ease the spin or aim a little right of where you did).` : '.')));
   }
