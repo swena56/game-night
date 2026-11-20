@@ -13,7 +13,7 @@ STEP = 1 / 30
 SEND_EVERY = 2
 COUNTDOWN = 3.0
 RING_R = 2.05
-COIN_PTS, GEM_PTS, COIN_R = 2, 10, 1.45   # 🪙 coins and 💎 gems hang between the rings: fly through them for points
+COIN_PTS, GEM_PTS, COIN_R = 2, 10, 1.8   # 🪙 coins and 💎 gems hang between the rings: fly through them for points
 MINE_PTS, MINE_STUN = 12, 2.2        # 💥 a mine is deadly: it blows you out of the dive for a couple of seconds and costs points
 GRAZE, GRAZE_PTS = 0.8, 3   # skim a hazard within this much of its edge for a few points: risk for reward
 # Bots: (seconds between steering decisions, steering noise, chance to line up each ring properly).
