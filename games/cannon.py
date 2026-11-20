@@ -31,6 +31,7 @@ FALL_FREE = 6            # a drop this high (units) is harmless; more costs FALL
 FALL_K, FALL_MAX = 1.2, 40
 ROUND_PAUSE = 4.0        # seconds to read the round's result, after the last shell has landed
 SHOTS_PER_ROUND = 14     # each, before the round goes to whoever has the most ❤️ (a stalemate guard)
+GRIT_HP = 30             # last stand: at or below this many ❤️ a cannon is handed a Big Bang
 SPLIT_SPREAD = 14.0      # a splitter's outer bomblets leave this much faster / slower sideways
 
 # key: (icon, name, blast radius, damage, per round (None = endless), what it does)
@@ -185,6 +186,7 @@ class Cannon(Game):
         "The wind (top corner) changes every turn and pushes shells sideways. Your last shot's trail stays as a dashed line, to help you adjust.",
         "Blasts hurt every cannon nearby (yours too) and blow craters. A cannon whose ground is blown away drops, and a long drop hurts. Sink into the sea and you're out.",
         "Shells: 🔵 plain (endless), 💥 Big Bang (huge blast), ✨ Splitter (splits in three at the top of its arc), 🪨 Dirt Bomb (builds a wall). Big Bang and Splitter once a round, Dirt Bomb twice.",
+        "🔥 Last stand (an option, on by default): the first time a cannon drops to 30 ❤️ or less in a round, it is handed a free Big Bang.",
         "Last cannon standing wins the round; most rounds wins. ⚡ All at once (an option): everyone aims in secret and the shells fly together.",
     ]
     name = "Cannon Hills"
@@ -199,6 +201,7 @@ class Cannon(Game):
         "rounds": ("Rounds", [(3, "3"), (1, "1"), (5, "5")], 3),
         "wind": ("Wind", [("light", "🍃 Light"), ("wild", "🌪️ Wild"), ("off", "Off")], "light"),
         "terrain": ("Terrain", [("rolling", "🎲 Rolling hills"), ("mountains", "⛰️ Mountains"), ("islands", "🏝️ Islands")], "rolling"),
+        "grit": ("🔥 Last stand", [(1, "On: a free Big Bang at 30 ❤️"), (0, "Off")], 1),
         "volley": ("Firing", [(0, "Take turns"), (1, "⚡ All at once")], 0),
     }
 
@@ -253,6 +256,7 @@ class Cannon(Game):
             self.tanks[i] = [round(x, 1), float(ground_at(self.terrain, x)), HP if self.present(i) else 0]
         self.ammo = [{k: v[4] for k, v in SHELLS.items() if v[4] is not None} for _ in range(n)]
         self.trails = [None] * n
+        self.grit = set()  # cannons that have already had their last-stand Big Bang this round
         self.fired = [0] * n
         self.shot = None
         self.locked = {}
@@ -420,6 +424,12 @@ class Cannon(Game):
             self.room.add_log(f"🌊 {self.name_of(by)}'s shell splashes into the sea.", "info")
         else:
             self.room.add_log(f"🕳️ {self.name_of(by)} blows a crater.", "info")
+        if self.s.get("grit", 1):
+            for j, t in enumerate(self.tanks):
+                if 0 < t[2] <= GRIT_HP and j not in getattr(self, "grit", set()) and self.present(j):
+                    self.grit = getattr(self, "grit", set()) | {j}
+                    self.ammo[j]["big"] = self.ammo[j].get("big", 0) + 1
+                    self.moment(f"🔥 {self.name_of(j)}: last stand, a free Big Bang!", "gold", "fanfare")
         for j, n, drown in falls:
             if drown:
                 self.room.add_log(f"🌊 {self.name_of(j)} slides into the sea!", "power")
