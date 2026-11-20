@@ -77,7 +77,7 @@ UI.rapids = (() => {
   function unmount() {
     cancelAnimationFrame(raf); ro?.disconnect(); clearTimeout(holdT);
     removeEventListener('keydown', keyDown); removeEventListener('keyup', keyUp);
-    gl?.dispose(); gl = null; flat = null;
+    gl?.dispose(); gl = null; flat = null; bedOn = false; window.Snd?.stopAll();
   }
 
   const V = () => S?.rapids;
@@ -191,12 +191,64 @@ UI.rapids = (() => {
     if (t - sideAt > 250) { sideAt = t; renderSide(); }
   }
 
+
+  // ---------- sound (#220): the shared Snd kit in an outdoor space. A river bed that follows the current and
+  // white water (louder, hissier), a paddle dip, a hull thud on rocks, splashes sized by the drop, a gurgle
+  // as a boat sinks, and a roar under each waterfall. (Never name a helper out, sfx, tone or noise.)
+  const snd = (fn, delay) => window.Snd?.play(fn, delay);
+  const OUT = { room: 'outdoor', send: 0.4 };
+  const pan = (x) => Math.max(-0.8, Math.min(0.8, (x || 0) / 6));
+  const riverBed = (K, dst) => {
+    const A = K.ctx, src = K.loopSrc('brown'), lpf = A.createBiquadFilter(), g = A.createGain();
+    const hiss = K.loopSrc('white'), hp = A.createBiquadFilter(), hg = A.createGain();
+    lpf.type = 'lowpass'; lpf.frequency.value = 380; g.gain.value = 0;
+    hp.type = 'highpass'; hp.frequency.value = 2400; hg.gain.value = 0;
+    src.connect(lpf).connect(g); hiss.connect(hp).connect(hg).connect(g);
+    g.connect(K.at({ ...OUT, send: 0.2 }));
+    return {
+      set(level, white) {
+        const t = A.currentTime;
+        g.gain.setTargetAtTime(level > 0 ? 0.05 + 0.1 * level : 0, t, 0.2);
+        lpf.frequency.setTargetAtTime(300 + 500 * level, t, 0.2);
+        hg.gain.setTargetAtTime(white ? 0.07 : 0.012, t, 0.25);
+      },
+      stop() { try { src.stop(); hiss.stop(); } catch {} },
+    };
+  };
+  let bedOn = false;
+  function river(level) {
+    if (!(level > 0) && !bedOn) return;
+    bedOn = level > 0;
+    const b = window.Snd?.bed('rapids.river', riverBed);
+    if (b) b.set(level, level > 0 && snap && me() != null && (snap.b[me()]?.[6] & 4));
+  }
+  const dip = (x) => snd((t, K) => {
+    const d = K.at({ ...OUT, pan: pan(x), vol: 0.7 });
+    K.burst(d, t, { type: 'bandpass', f: K.R(900, 1300), f1: 400, q: 0.9, vol: 0.22, tau: 0.09, dur: 0.25 });
+    K.mode(d, t + 0.02, K.vary(190, 0.08), 0.1, 0.05);
+  });
+  const thud = (x, v = 1) => snd((t, K) => {
+    const d = K.at({ ...OUT, pan: pan(x), vol: 0.8 * v });
+    K.mode(d, t, K.vary(95, 0.06), 0.4, 0.06); K.mode(d, t, K.vary(230, 0.06), 0.12, 0.03);
+    K.burst(d, t, { type: 'lowpass', f: 700, q: 0.7, vol: 0.3, tau: 0.04 });
+  });
+  const plash = (x, big) => snd((t, K) => {
+    const d = K.at({ ...OUT, pan: pan(x), vol: big ? 1 : 0.7 });
+    K.burst(d, t, { type: 'bandpass', f: K.R(1500, 2200), f1: 700, q: 0.8, vol: big ? 0.45 : 0.3, tau: big ? 0.35 : 0.18, dur: big ? 1 : 0.5 });
+    K.burst(d, t + 0.03, { type: 'lowpass', f: 500, q: 0.7, vol: big ? 0.35 : 0.15, tau: big ? 0.3 : 0.1 });
+  });
+  const gurgle = (x) => snd((t, K) => {
+    const d = K.at({ ...OUT, pan: pan(x) });
+    for (let k = 0; k < 5; k++) K.sweep(d, t + k * 0.12, { f0: K.R(180, 260), f1: K.R(380, 520), dur: 0.12, vol: 0.12, type: 'sine', attack: 0.01 });
+  });
+
   function take(d) {
     const was = snap?.st;
     snap = { st: d.st, race: d.race, go: d.go, rt: d.rt, gr: d.gr, nx: d.nx, b: d.b, pk: d.pk };
     gotAt = performance.now();
     Object.assign(V(), { st: d.st, b: d.b, pk: d.pk });
     if (was === 'countdown' && d.st === 'race') { ctx?.sfx?.('whoosh'); if (steer && playing()) ctx.input({ sx: steer }, true); }
+    { const m = me(), b = m != null ? d.b[m] : null; river(d.st === 'race' && b && !b[9] ? Math.min(1, 0.3 + (b[2] || 0) / 9) : 0); }
     if (d.st !== 'race' && braced) { braced = false; holdAt = 0; }
   }
 
@@ -205,25 +257,26 @@ UI.rapids = (() => {
   function onEvent(e) {
     const [, kind, ...a] = e, i = me();
     if (kind === 'paddle') {
-      if (a[0] === i) { ctx.sfx?.('sweep'); ctx.buzz?.(8); }
+      if (a[0] === i) { dip(0); ctx.buzz?.(8); }
       gl?.paddleFx(a[0]);
     } else if (kind === 'rock' || kind === 'ledge') {
       const [j, s, x] = a;
-      if (j === i) { ctx.sfx?.('thud'); ctx.buzz?.(40); gl?.shake(0.3); showFlash(kind === 'rock' ? '🪨 Rock! Soaked' : '🧱 Find a gap!', 900); }
+      if (j === i) { thud(x); ctx.buzz?.(40); gl?.shake(0.3); showFlash(kind === 'rock' ? '🪨 Rock! Soaked' : '🧱 Find a gap!', 900); }
       (gl || flat)?.splash(s, x, 16);
     } else if (kind === 'falls') {
       const [j, edge, s, x] = a;
       (gl || flat)?.splash(s, x, edge ? 34 : 14, edge);
-      if (j === i) { ctx.sfx?.('splash'); if (edge) { ctx.buzz?.([30, 20, 50]); gl?.shake(0.35); showFlash('🌊 Shot the edge! Drenched', 1100); } }
+      plash(x, edge);
+      if (j === i) { if (edge) { ctx.buzz?.([30, 20, 50]); gl?.shake(0.35); showFlash('🌊 Shot the edge! Drenched', 1100); } }
     } else if (kind === 'bump') {
       const [j, k, s, x] = a;
       (gl || flat)?.splash(s, x, 10);
-      if (j === i || k === i) { ctx.sfx?.('thud'); ctx.buzz?.(20); }
+      if (j === i || k === i) { thud(x, 0.6); ctx.buzz?.(20); }
     } else if (kind === 'sink') {
       const [j, s, x] = a;
       (gl || flat)?.splash(s, x, 30);
+      gurgle(x);
       if (j === i) { ctx.sfx?.('bad'); ctx.buzz?.([80, 40, 140]); showFlash('🧻 Soggy! Your boat sank', 2200); }
-      else ctx.sfx?.('splash');
     } else if (kind === 'refold') {
       if (a[0] === i) { ctx.sfx?.('pop'); showFlash('📄 Refolded — off you go!', 1100); }
     } else if (kind === 'pick') {
@@ -410,6 +463,20 @@ UI.rapids = (() => {
     });
     const waterMat = new T.MeshStandardMaterial({ map: flowTex, vertexColors: true, roughness: 0.18, metalness: 0.05, transparent: true, opacity: 0.94 });
     const water = new T.Mesh(waterGeo, waterMat); water.receiveShadow = true; scene.add(water);
+    // #221 the surface moves: small travelling swells, bigger in white water, lifted only on the rows near the boats
+    const wPos = waterGeo.attributes.position, wCols = (low ? 10 : 16) + 1, wBase = Float32Array.from(wPos.array), wRows = wPos.count / wCols;
+    const wAmp = new Float32Array(wPos.count);
+    for (let r = 0; r < wRows; r++) for (let c = 0; c < wCols; c++) { const s0 = Math.max(0, Math.min(L, S0 + r * DS)); wAmp[r * wCols + c] = C.white(s0, (c / (wCols - 1) - 0.5) * C.width(s0)) ? 0.11 : 0.04; }
+    let waveAt = 0;
+    function waves(now, s) {
+      if (calm() || now - waveAt < 50) return; waveAt = now;
+      const r0 = Math.max(0, Math.floor((s - 8 - S0) / DS)), r1 = Math.min(wRows - 1, Math.ceil((s + 22 - S0) / DS)), t = now / 1000, a = wPos.array;
+      for (let r = r0; r <= r1; r++) for (let c = 0; c < wCols; c++) {
+        const k = r * wCols + c, sw = Math.sin(r * 0.55 - t * 2.4 + c * 0.7) + 0.6 * Math.sin(r * 0.23 - t * 1.6 - c * 1.3);
+        a[k * 3 + 1] = wBase[k * 3 + 1] + sw * wAmp[k];
+      }
+      wPos.needsUpdate = true;
+    }
     // white water: a foam layer on each rapids band that runs faster than the river
     const foamTex = canvasTex(T, 128, 128, (g, w, h) => {
       g.clearRect(0, 0, w, h);
@@ -682,7 +749,7 @@ UI.rapids = (() => {
       const k = Math.min(1, dt * 4);
       camPos.lerp(want, k); camLook.lerp(look, k);
       camera.position.copy(camPos); camera.lookAt(camLook);
-      stg.follow(camera);
+      stg.follow(camera); waves(now, s);
       if (key) { const c = W(s + 4, 0); key.position.set(c.x - 10, c.y + 22, c.z + 6); key.target.position.copy(c); }
     }
     function draw(now) {
