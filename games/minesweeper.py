@@ -63,7 +63,7 @@ class Minesweeper(PuzzleRace):
     blurb = "The mine-clearing puzzle as a race: same minefield for everyone, every safe square scores."
     howto = [
         "Numbers say how many of the 8 squares around them hide a mine. Uncover every safe square and none of the mines. Everyone gets the same field, with a patch already open.",
-        "Tap a square to uncover it (+1 each). Hit a mine and you lose 4 points, but you play on. 🚩 switches to flags: tap to mark a mine you've worked out. Tap a number whose flags are all placed to uncover the rest around it.",
+        "Tap a square to uncover it (+1 each). Hit a mine and you lose 4 points, but you play on. 🚩 switches to flags: mark a mine you've worked out (a right flag scores +1 when the field ends, a wrong one −1). Tap a number whose flags are all placed to uncover the rest around it.",
         "💡 uncovers a square that is safe, for 1 point (3 per field unless the host changes it).",
         "Clearing every safe square scores +10, and +5 more for finishing first. Most points after the last field wins.",
         "Alone, clear every field before the clock runs out to win (or just clear them, with 🌿 No clock).",
@@ -106,7 +106,9 @@ class Minesweeper(PuzzleRace):
 
     def points(self, p):
         st = self.st[p.id]
-        return st["mine"] - MINE_COST * st["boom"] - HINT_COST * st["hints"]
+        right = sum(1 for i, f in enumerate(st["f"]) if f and self.mine[i])
+        wrong = sum(1 for i, f in enumerate(st["f"]) if f and not self.mine[i])
+        return st["mine"] - MINE_COST * st["boom"] - HINT_COST * st["hints"] + right - wrong   # 🚩 a right flag +1, a wrong one −1, when the field ends
 
     def on_finish(self, p, secs):
         st = self.st[p.id]

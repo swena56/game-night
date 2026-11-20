@@ -18,7 +18,7 @@ UI.minesweeper = (() => {
         <button type="button" id="swpBank" title="Stop here and keep your points">🏳️<small>Done</small></button>
       </div>
       <div class="pt-note" id="swpNote"></div></div>`;
-    side.innerHTML = '<div class="panel"><h3>Sweepers</h3><div id="swpRacers"></div><p class="hint left">Everyone clears the same field. A safe square +1, a mine −4, 💡 −1; clearing it all +10, first to finish +5 more.</p></div>';
+    side.innerHTML = '<div class="panel"><h3>Sweepers</h3><div id="swpRacers"></div><p class="hint left">Everyone clears the same field. A safe square +1, a mine −4, 💡 −1, a right 🚩 +1 / wrong −1 at the end; clearing it all +10, first to finish +5 more.</p></div>';
     const board = $('swpBoard');
     board.addEventListener('pointerdown', (e) => {
       const c = e.target.closest('.swp-cell'); if (!c) return;
