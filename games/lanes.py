@@ -37,6 +37,7 @@ BOT_LEAD = 0          # bots never get ahead of the slowest human still bowling 
 WEAR = 0.18           # 🛢️ each ball you roll carries some oil off your lane (metres of oil length)
 WEAR_MAX = 3.0        # ...down to this much below where it started (never under WEAR_MIN)
 WEAR_MIN = 6.0
+WEIGHTS = [(5.2, 1.06, 1.25), (7.0, 1.0, 1.0), (8.6, 0.95, 0.8)]   # ⚖️ light / medium / heavy ball: (mass kg, speed factor, hook factor)
 IDLE = 75             # seconds before a bowler who's ready but idle gets an automatic roll
 
 
@@ -51,11 +52,12 @@ def pin_spots():
 SPOTS = pin_spots()
 
 
-def roll(standing, start, angle, speed, spin, oil, record=True):
+def roll(standing, start, angle, speed, spin, oil, record=True, weight=1):
     """Roll a ball from (start, 0) at `angle` (radians, + is to the right) with `speed` 0..1 and `spin` -1..1
     (+ hooks to the left) at the pins still `standing` (a list of pin indices). Returns (knocked pin indices,
     tracks, gutter): tracks has "ball": [[x, y], ...] and "pins": [{k, s, f}] for each pin that moved."""
-    v = VMIN + (VMAX - VMIN) * speed
+    m_ball, vk, hk = WEIGHTS[weight]
+    v = (VMIN + (VMAX - VMIN) * speed) * vk
     bx, by = start, 0.0
     vx, vy = v * math.sin(angle), v * math.cos(angle)
     pins = {k: [SPOTS[k][0], SPOTS[k][1], 0.0, 0.0] for k in standing}
@@ -75,7 +77,7 @@ def roll(standing, start, angle, speed, spin, oil, record=True):
                 k = max(0.0, sp - BALL_DECEL * DT) / sp
                 vx, vy = vx * k, vy * k
             if not gutter and by > oil:
-                vx -= spin * HOOK * DT * min(1.0, (by - oil) / 2 + 0.3)
+                vx -= spin * HOOK * hk * DT * min(1.0, (by - oil) / 2 + 0.3)
             bx += vx * DT
             by += vy * DT
             if not gutter and abs(bx) > LANE / 2:
@@ -98,9 +100,9 @@ def roll(standing, start, angle, speed, spin, oil, record=True):
                     p[1] += ny * over
                     rel = (vx - p[2]) * nx + (vy - p[3]) * ny
                     if rel > 0:
-                        j = (1 + REST_BP) * rel / (1 / M_BALL + 1 / M_PIN)
-                        vx -= j / M_BALL * nx
-                        vy -= j / M_BALL * ny
+                        j = (1 + REST_BP) * rel / (1 / m_ball + 1 / M_PIN)
+                        vx -= j / m_ball * nx
+                        vy -= j / m_ball * ny
                         p[2] += j / M_PIN * nx
                         p[3] += j / M_PIN * ny
                     hit.add(k)
@@ -325,21 +327,24 @@ class Lanes(Game):
         start, angle, speed, spin = (float(v) for v in vals)
         if not (-LANE / 2 + BALL_R <= start <= LANE / 2 - BALL_R and -0.12 <= angle <= 0.12 and 0 <= speed <= 1 and -1 <= spin <= 1):
             raise GameError("Bad roll.")
+        wt = a.get("weight", 1)
+        if wt not in (0, 1, 2) or isinstance(wt, bool):
+            raise GameError("Bad roll.")
         saver = a.get("saver", False)
         if not isinstance(saver, bool):
             raise GameError("Bad roll.")
         if saver and not (p.g.saver and self.spare_ball(p.g)):
             raise GameError("The spare saver can't be used now.")
-        self.bowl(p, start, angle, speed, spin, saver)
+        self.bowl(p, start, angle, speed, spin, saver, wt)
 
     def oil_for(self, p):
         """🛢️ Your lane's oil length right now: it wears off ball by ball, so the hook starts earlier as you go."""
         return getattr(p.g, "oil", self.oil)
 
-    def bowl(self, p, start, angle, speed, spin, saver=False):
+    def bowl(self, p, start, angle, speed, spin, saver=False, weight=1):
         g = p.g
         before = list(g.standing)
-        knocked, tracks, gutter = roll(before, start, angle, speed, spin, self.oil_for(p))
+        knocked, tracks, gutter = roll(before, start, angle, speed, spin, self.oil_for(p), weight=weight)
         left = [k for k in before if k not in knocked]
         saved = None
         if saver and len(left) == 1:
@@ -407,7 +412,7 @@ class Lanes(Game):
         self.shot_id += 1
         g.shot = {"id": self.shot_id, "before": before, "knocked": knocked, "tracks": tracks, "frames": frames,
                   "word": word, "saved": saved, "gutter": gutter}
-        kmh = round((VMIN + (VMAX - VMIN) * speed) * 3.6, 1)  # the ball speed metric (#131)
+        kmh = round((VMIN + (VMAX - VMIN) * speed) * WEIGHTS[weight][1] * 3.6, 1)  # the ball speed metric (#131)
         g.last = {"n": n, "word": word, "at": time.time(), "kmh": kmh}
         g.top = max(getattr(g, "top", 0), kmh)
         g.busy = time.time() + frames / 30 + 1.2

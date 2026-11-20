@@ -186,5 +186,10 @@ r.start()
 r.game.bowl(sa, 0.06, 0.0, 0.6, 0.0)
 check("with Steady oil nothing wears", r.game.oil_for(sa) == r.game.oil)
 
+# ⚖️ ball weight (#231): heavy hooks less and is slower, light hooks more
+ends = [L.roll(list(range(10)), 0.1, 0.0, 0.6, 0.8, 12.0, weight=w)[1]["ball"] for w in (0, 1, 2)]
+check("a light ball hooks further than a heavy one", abs(ends[0][60][0]) != abs(ends[2][60][0]) and abs(ends[0][60][0] - 0.1) > abs(ends[2][60][0] - 0.1), f"{ends[0][60]} {ends[2][60]}")
+check("a heavy ball moves slower", ends[2][40][1] < ends[0][40][1])
+
 print("\n" + ("all ok" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)

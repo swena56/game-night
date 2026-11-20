@@ -8,6 +8,8 @@ UI.lanes = (() => {
   // 🎨 my ball's pattern (cosmetic, kept on this device): the shell texture is repainted in place
   const BALLS = ['🌀 Swirl', '🦓 Stripes', '⭐ Stars', '🔮 Pearl', '🏁 Checks', '🌈 Marble'];
   let ballStyle = (() => { try { return (+localStorage.getItem('ln.ball') || 0) % BALLS.length; } catch { return 0; } })();
+  const WTS = ['🪶 Light 10 lb', '⚖️ Medium 14 lb', '🪨 Heavy 16 lb'];   // ⚖️ ball weight: light is quick and hooks more, heavy plows pins but is slower and hooks less
+  let weight = (() => { try { const w = +localStorage.getItem('ln.wt'); return w >= 0 && w <= 2 ? w : 1; } catch { return 1; } })();
   let repaintBall = null;
   function paintBall(g, w, h, style) {
     let z = 7; const rnd = () => ((z = (z * 16807) % 2147483647) / 2147483647);
@@ -183,6 +185,7 @@ UI.lanes = (() => {
           <div class="ln-dial"><button data-st="-1" aria-label="Stand further left">◀</button><b id="lnStart"></b><button data-st="1" aria-label="Stand further right">▶</button></div>
           <button class="ln-saver ghost-btn" id="lnSpare" hidden title="Stand where the leave is easiest, with no hook">💡 Spare spot</button>
           <button class="ln-saver ghost-btn" id="lnBall" title="Change your ball's pattern (just for you)">🎨 Ball</button>
+          <button class="ln-saver ghost-btn" id="lnWt" title="Ball weight: light is fast and hooks more, heavy hits harder but is slower and hooks less">⚖️ Weight</button>
           <button class="ln-saver ghost-btn" id="lnBowler" title="Show an animated bowler on every lane">🧑 Bowler</button>
           <button class="ln-saver ghost-btn" id="lnSaver" hidden title="If this ball leaves exactly one pin, it falls too (once a game)">🎯 Spare saver</button>
         </div>
@@ -202,6 +205,7 @@ UI.lanes = (() => {
         $('lnSpin').value = 0; coach = `💡 Standing ${start === 0 ? 'in the middle' : (start < 0 ? 'left' : 'right')} with no hook: now drag straight at ${xs.length === 1 ? 'the pin' : 'the leave'}.`;
       }
       else if (b.id === 'lnBall') { ballStyle = (ballStyle + 1) % BALLS.length; try { localStorage.setItem('ln.ball', String(ballStyle)); } catch {} repaintBall?.(); }
+      else if (b.id === 'lnWt') { weight = (weight + 1) % 3; try { localStorage.setItem('ln.wt', String(weight)); } catch {} }
       else if (b.id === 'lnBowler') { bowlerOn = !bowlerOn; try { localStorage.setItem('ln.bowler', bowlerOn ? '1' : '0'); } catch {} }
       controls(); hint();
     });
@@ -238,7 +242,7 @@ UI.lanes = (() => {
   }
 
   // #131 the ball speed, as the alley's screen would show it
-  const KMH = (sp) => (5.5 + 4 * sp) * 3.6;
+  const KMH = (sp) => (5.5 + 4 * sp) * [1.06, 1, 0.95][weight] * 3.6;
   function showSpeed(kmh, top) {
     const el = $('lnSpeed'); if (!el || !kmh) return;
     el.innerHTML = `<b>${Math.round(kmh / 1.609)}</b> mph <i>${Math.round(kmh)} km/h</i>${top ? ' <em>⭐ top</em>' : ''}`;
@@ -252,7 +256,7 @@ UI.lanes = (() => {
     ret = null;  // picked up off the return
     const arm = saver && L().spare && L().saver;
     saver = false;
-    ctx.quiet(ctx.act('bowl', { start: +start.toFixed(3), angle: +r.angle.toFixed(4), speed: +r.speed.toFixed(3), spin: +spin.toFixed(2), saver: !!arm }));
+    ctx.quiet(ctx.act('bowl', { start: +start.toFixed(3), angle: +r.angle.toFixed(4), speed: +r.speed.toFixed(3), spin: +spin.toFixed(2), weight, saver: !!arm }));
   }
 
   function controls() {
@@ -263,6 +267,7 @@ UI.lanes = (() => {
     sv.classList.toggle('on', saver);
     const sb = $('lnSpare'); if (sb) sb.hidden = !(L().me != null && L().standing.length && L().standing.length < 10 && canBowl());
     const bl = $('lnBall'); if (bl) bl.textContent = `🎨 ${BALLS[ballStyle]}`;
+    const wb = $('lnWt'); if (wb) wb.textContent = WTS[weight];
     const bb = $('lnBowler'); if (bb) { bb.classList.toggle('on', bowlerOn); bb.setAttribute('aria-pressed', bowlerOn ? 'true' : 'false'); bb.textContent = bowlerOn ? '🧑 Bowler: on' : '🧑 Bowler: off'; }
   }
 
