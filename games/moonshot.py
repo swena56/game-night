@@ -17,6 +17,7 @@ class MoonShot(Game):
         "Any 1 loses this turn's fuel; double 1s crash you back to the start.",
         'Doubles earn a 🛡️ shield. Stopping on ⭐ +5, ☄️ −5, 🌀 swaps you with the leader.',
         'With 💥 Bumping on, landing exactly on a rival knocks them back 3.',
+        '🌬️ An option: stop 1 or 2 squares behind a rival and you slipstream onto their square.',
         'First to the moon wins. Alone, reach it within a turn limit (4, 6 or 9 turns by distance).',
     ]
     name = "Moon Shot"
@@ -30,6 +31,7 @@ class MoonShot(Game):
     settings_schema = {
         "goal": ("Distance", [(30, "Short (30)"), (50, "Classic (50)"), (75, "Long (75)")], 50),
         "hazards": ("Space hazards", [(True, "On"), (False, "Off")], True),
+        "slip": ("🌬️ Slipstream", [(True, "On: 1-2 behind a rival, draft up"), (False, "Off")], True),
         "bump": ("💥 Bumping", [(False, "Off"), (True, "On: land on a rival to knock them back 3")], False),
     }
 
@@ -135,6 +137,12 @@ class MoonShot(Game):
             else:
                 msg += " — 🌀 wormhole, but they're already in the lead"
         here = self.pos[p.id]
+        if self.s.get("slip", True) and 0 < here < self.goal:  # 🌬️ close behind a rival: draft onto their square
+            ahead = [self.pos[i] for i in self.seats if i != p.id and i in r.players and 1 <= self.pos[i] - here <= 2]
+            if ahead:
+                self.pos[p.id] = here = min(ahead)
+                msg += f" and 🌬️ slipstreamed up to {here}"
+                self.moment(f"🌬️ {p.name} slipstreams to {here}!", "gold", "whoosh")
         if self.s.get("bump") and 0 < here < self.goal:  # 💥 landing on rivals knocks them back
             hit = [i for i in self.seats if i != p.id and i in r.players and self.pos[i] == here]
             for i in hit:

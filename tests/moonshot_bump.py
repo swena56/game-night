@@ -24,6 +24,7 @@ def race(bump):
     ann, bo = (r.add_player(n) for n in ("Ann", "Bo"))
     r.switch_game("moonshot")
     r.settings["hazards"] = False
+    r.settings["slip"] = False  # keep this test about bumping alone
     if bump is not None:
         r.settings["bump"] = bump
     r.start()
