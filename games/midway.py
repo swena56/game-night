@@ -76,6 +76,28 @@ def skee_land(aim, power, rng):
     return aim * SK_W + rng.gauss(0, s), power * SK_H - 0.08 + rng.gauss(0, s)
 
 
+SK_LIP = 0.014      # a ball landing this close to a ring's edge rattles along the lip and drops one side or the other
+SK_RIMLIP = 0.022   # ...and one skimming a cup's rim may drop in
+
+
+def skee_settle(x, y, rng):
+    """🎳 Where a ball that first lands at (x, y) comes to rest: (x, y, rattled). Straddling a ring's wire it hops
+    to either side; just outside a corner cup's rim it sometimes drops in."""
+    if y < 0:
+        return x, y, False
+    for cx, cy in SK_CUPS:
+        d = math.hypot(x - cx, y - cy)
+        if SK_CUP_R <= d < SK_CUP_R + SK_RIMLIP and rng.random() < 0.4:
+            return cx, cy, True
+    r = math.hypot(x, y - SK_CY)
+    for rad, _ in SK_RINGS:
+        if abs(r - rad) < SK_LIP:
+            to = rad + rng.choice((-1, 1)) * (SK_LIP + 0.012)
+            k = to / (r or 1e-6)
+            return x * k, SK_CY + (y - SK_CY) * k, True
+    return x, y, False
+
+
 def skee_score(x, y, jack=None):
     """(points, where, jackpot hit) for a skee ball that reaches (x, y) on the board."""
     if y < 0:
@@ -299,10 +321,11 @@ class Midway(Game):
         pts, good, jack, sweep = 0, False, False, False
         if kind == "skee":
             x, y = skee_land(aim, power, rng)
+            ex, ey, rattle = skee_settle(x, y, rng)
             jk = self.jack if self.jack_by is None else None
-            pts, where, jack = skee_score(x, y, jk)
+            pts, where, jack = skee_score(ex, ey, jk)
             good = pts >= 30
-            shot.update(x=round(x, 3), y=round(y, 3), where=where)
+            shot.update(x=round(x, 3), y=round(y, 3), ex=round(ex, 3), ey=round(ey, 3), rattle=rattle, where=where)
         elif kind == "rings":
             x, y = ring_land(aim, power, rng)
             b, ex, ey, bounced = ring_settle(x, y, rng)

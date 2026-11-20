@@ -237,7 +237,7 @@ UI.midway = (() => {
 
   function pop(sh) {
     const el = $('mwPop'); if (!el) return;
-    const words = sh.k === 'skee' ? (sh.where === 'short' ? 'Short!' : sh.where === 'cup' ? '🏆 CUP!' : '')
+    const words = sh.k === 'skee' ? (sh.where === 'short' ? 'Short!' : sh.where === 'cup' ? (sh.rattle ? '🏆 RATTLED IN!' : '🏆 CUP!') : (sh.rattle ? 'Rattled!' : ''))
       : sh.k === 'rings' ? (sh.b == null ? 'Miss' : 'RINGER!') : (sh.fell.length ? `${sh.fell.length} can${sh.fell.length > 1 ? 's' : ''}` : 'Miss');
     el.textContent = `${words}${sh.pts ? ` +${sh.pts}` : ''}${sh.hot ? ' 🔥' : ''}${sh.jack ? '  🔔 JACKPOT' : ''}${sh.sweep ? '  🥫 SWEEP' : ''}`.trim();
     el.style.color = sh.jack ? '#ffd23f' : sh.pts ? '#fff' : '#ff9a9a';
@@ -591,7 +591,12 @@ UI.midway = (() => {
       }
       if (u < 0.55) { const s = 1 - (1 - u / 0.55) ** 1.6; return HAND.skee.clone().lerp(lip, s).setY(1.02 + 0.18 * s); }
       if (u < landU) return arc(lip, boardPt(sh.x, Math.max(0.02, sh.y)), 0.22, (u - 0.55) / (landU - 0.55));
-      return boardPt(sh.x, Math.max(0.02, sh.y), 0.05 - 0.12 * Math.min(1, (u - landU) / (1 - landU)));
+      const w = Math.min(1, (u - landU) / (1 - landU));
+      if (sh.rattle) {   // 🎳 it rattles along the wire, then drops on one side (or into the cup)
+        const k = Math.min(1, w / 0.45), hop = Math.sin(Math.min(1, w / 0.45) * Math.PI * 3) * 0.012 * (1 - k);
+        return boardPt(sh.x + (sh.ex - sh.x) * k + hop, Math.max(0.02, sh.y + (sh.ey - sh.y) * k), 0.05 - 0.12 * Math.max(0, (w - 0.45) / 0.55));
+      }
+      return boardPt(sh.x, Math.max(0.02, sh.y), 0.05 - 0.12 * w);
     }
     function ringPath(sh, u, landU) {
       const top = 0.31, first = tablePt(sh.x, sh.y, TY + top);
