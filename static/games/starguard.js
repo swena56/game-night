@@ -168,6 +168,7 @@ UI.starguard = (() => {
     });
     $('sgHud').textContent = `Wave ${src.wv} of ${h.waves} · ${src.lv} ${src.lv === 1 ? 'life' : 'lives'} shared`;
     const me = h.me != null ? src.sh[h.me] : null;
+    if (me?.[8] >= 3) $('sgHud').textContent += ` · 🔥 ${me[8]} combo${me[8] >= 10 ? ` x${1 + Math.min(2, Math.floor(me[8] / 10))}` : ''}`;
     $('sgBomb').disabled = !me || !me[1] || !me[7] || S.phase !== 'playing';
   }
 

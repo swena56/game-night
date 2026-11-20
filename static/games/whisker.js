@@ -44,7 +44,7 @@ UI.whisker = (() => {
     stage.addEventListener('pointermove', (e) => {
       if (!swipe) return;
       const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y;
-      if (Math.hypot(dx, dy) < Math.max(16, Math.min(40, cssW * 0.05))) return;
+      if (Math.hypot(dx, dy) < Math.max(10, Math.min(24, cssW * 0.03))) return;
       steer(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 1 : 3) : (dy > 0 ? 2 : 0));
       swipe = { x: e.clientX, y: e.clientY, moved: true };
     });

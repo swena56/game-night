@@ -17,7 +17,7 @@ UI.skydrop = (() => {
       <div class="sd-progress"><i id="sdProgress"></i></div><div class="sd-banner" id="sdBanner" hidden></div>
       <div class="sd-stick" id="sdStick" hidden><i></i></div></div>
       <div class="sd-controls"><span class="hint" id="sdHint">Drag anywhere to steer · release to stabilize · thread the rings</span><div><button id="sdTilt">📱 Tilt</button> <button id="sdBoost" class="primary">⚡ Boost <small id="sdCharges">3</small></button></div></div></div>`;
-    side.innerHTML = `<div class="panel"><h3>🪂 Sky Drop</h3><div id="sdSeats"></div><p class="hint left">Steer in two directions. Rings build your combo; hazards break it. Reach a checkpoint to refill boosts.</p></div>`;
+    side.innerHTML = `<div class="panel"><h3>🪂 Sky Drop</h3><div id="sdSeats"></div><p class="hint left">Steer in two directions. Rings build your combo, dead centre pays +50%; hazards break it. Reach a checkpoint to refill boosts.</p></div>`;
     stage = $('sdStage'); stage.style.touchAction = 'none';
     stage.addEventListener('pointerdown', (e) => { if (e.target.closest?.('button')) return; drag = {x:e.clientX,y:e.clientY}; stage.setPointerCapture?.(e.pointerId); steerFrom(e); });
     stage.addEventListener('pointermove', (e) => { if (drag) steerFrom(e); });
@@ -41,13 +41,13 @@ UI.skydrop = (() => {
 
   function unmount() { cancelAnimationFrame(raf); ro?.disconnect(); removeEventListener('keydown',keyDown); removeEventListener('keyup',keyUp); if(tiltHandler)removeEventListener('deviceorientation',tiltHandler); tiltHandler=null;tiltOn=false;tiltZero=null;gl?.dispose(); gl = flat = null; }
   function steerFrom(e) {
-    const r = stage.getBoundingClientRect(), dx=e.clientX-drag.x, dy=e.clientY-drag.y, reach=58;
+    const r = stage.getBoundingClientRect(), dx=e.clientX-drag.x, dy=e.clientY-drag.y, reach=38;
     const mag=Math.hypot(dx,dy), scale=mag>reach?reach/mag:1, x=dx*scale/reach, z=dy*scale/reach;
     $('sdStick').hidden = false; $('sdStick').style.left = `${drag.x-r.left}px`; $('sdStick').style.top = `${drag.y-r.top}px`;
     $('sdStick').firstElementChild.style.transform = `translate(${dx*scale}px,${dy*scale}px)`; setSteer(x,z);
   }
   function keySteer() { let x=0,z=0; for (const k of keys) { if (k==='ArrowLeft'||k==='KeyA')x--; if(k==='ArrowRight'||k==='KeyD')x++; if(k==='ArrowUp'||k==='KeyW')z--; if(k==='ArrowDown'||k==='KeyS')z++; } const n=Math.hypot(x,z)||1; setSteer(x/n,z/n,true); }
-  function setSteer(x,z,force=false) { sx=x; sz=z; if (!S || S.phase!=='playing') return; const now=performance.now(); if(!force&&now-sentAt<45)return; sentAt=now; ctx.input({sx:+x.toFixed(2),sz:+z.toFixed(2)}); }
+  function setSteer(x,z,force=false) { sx=x; sz=z; if (!S || S.phase!=='playing') return; const now=performance.now(); if(!force&&now-sentAt<30)return; sentAt=now; ctx.input({sx:+x.toFixed(2),sz:+z.toFixed(2)}); }
   function boost() { if (S?.phase==='playing') ctx.input({boost:true},true); }
   async function toggleTilt() {
     if (tiltOn) { tiltOn=false; tiltZero=null; if(tiltHandler)removeEventListener('deviceorientation',tiltHandler); tiltHandler=null; $('sdTilt').classList.remove('primary'); return; }
@@ -163,6 +163,6 @@ UI.skydrop = (() => {
   function render(S0,ctx0){S=S0;ctx=ctx0;if(snap?.seed!==V()?.seed)lastSeq=-1;snap=V();gotAt=performance.now();if(lastSeq<0)events(V());ensureView();}
   function fast(data){if(data.skydrop){const old=V()||{};S={...S,skydrop:{...data.skydrop,me:old.me,seats:old.seats}};snap=S.skydrop;gotAt=performance.now();ensureView();events(S.skydrop);}}
   function events(v){const evs=v?.events||[];if(lastSeq<0||evs.some(e=>e[0]<lastSeq-40)){lastSeq=evs.at(-1)?.[0]??0;return;}for(const [n,kind,i] of evs){if(n<=lastSeq)continue;lastSeq=n;if(i!==me())continue;
-    if(kind==='ring')ctx?.sfx?.('chip');else if(kind==='hit'){ctx?.sfx?.('thud');ctx?.buzz?.(40);(gl||flat)?.shake?.(.35);}else if(kind==='boost')ctx?.sfx?.('whoosh');else if(kind==='checkpoint')ctx?.sfx?.('rise');else if(kind==='finish')ctx?.sfx?.('fanfare');}}
+    if(kind==='ring')ctx?.sfx?.('chip');else if(kind==='hit'){ctx?.sfx?.('thud');ctx?.buzz?.(40);(gl||flat)?.shake?.(.35);}else if(kind==='bullseye'){ctx?.sfx?.('pop');ctx?.buzz?.(15);}else if(kind==='boost')ctx?.sfx?.('whoosh');else if(kind==='checkpoint')ctx?.sfx?.('rise');else if(kind==='finish')ctx?.sfx?.('fanfare');}}
   return {mount,render,fast,unmount,turnText:()=> '🪂 Dive through the rings · highest score wins'};
 })();

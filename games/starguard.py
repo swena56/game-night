@@ -56,6 +56,8 @@ class Ship:
         self.deaths = 0
         self.bot_at = 0.0
         self.bot_x = x
+        self.combo = 0
+        self.combo_at = 0.0
 
 
 class StarGuard(Game):
@@ -65,6 +67,7 @@ class StarGuard(Game):
         "Drag left and right to slide your ship along the bottom. It fires on its own.",
         "Shoot the alien waves before they reach the bottom, and dodge their shots. Lives are shared: when the team runs out, it's over.",
         "Catch falling power-ups: ⚡ rapid fire, 🔱 spread shot, 🛡️ shield, ❤️ extra life.",
+        "🔥 Quick kills build a combo (x2 at 10, x3 at 20). A wave with no ship lost is Flawless: +50 each.",
         "💣 Tap Bomb once per game to wipe the shots and hurt every alien. Every 5th wave is a boss!",
     ]
     name = "Star Guard"
@@ -101,6 +104,8 @@ class StarGuard(Game):
         self.stage_until = 0.0
         self.alien_fire = 0.0
         self.dive_at = 0.0
+        self.dry = 0          # kills since the last power-up drop (a pity timer)
+        self.clean = True     # no ship lost this wave
         self.last_frame = None
         self.frames = 0
         self.over = False
@@ -141,6 +146,7 @@ class StarGuard(Game):
                                              2 if tough else 1, kind))
             self.room.add_log(f"🛸 Wave {w} of {self.s['waves']}: {len(self.aliens)} aliens!", "power")
         self.total = len(self.aliens)
+        self.clean = True
         self.fx, self.fy, self.fdir = W / 2, 0.16, 1
         self.fspeed = (0.09 + 0.012 * w) * (0.8 if n == 1 else 1.0)
         self.stage = "intro"
@@ -356,9 +362,17 @@ class StarGuard(Game):
         if a in self.aliens:
             self.aliens.remove(a)
         s = self.ships[seat]
-        s.score += POINTS[a.kind]
+        # 🔥 combo: kills in quick succession build a multiplier (x2 at 10, x3 at 20); a pause or a hit resets it
+        now = self.last_frame or 0.0
+        s.combo = s.combo + 1 if now - s.combo_at < 2.0 else 1
+        s.combo_at = now
+        s.score += POINTS[a.kind] * (1 + min(2, s.combo // 10))
+        if s.combo in (10, 20):
+            self.moment(f"🔥 {self.name_of(seat)}: x{1 + s.combo // 10} combo!", "gold", "pop")
         s.kills += 1
-        if self.rng.random() < 0.12:
+        self.dry += 1
+        if self.rng.random() < 0.12 or self.dry >= 18:
+            self.dry = 0
             x, y = self.apos(a)
             self.pups.append([x, y, self.rng.choice(["rapid", "spread", "shield", "shield", "life"])])
 
@@ -383,6 +397,8 @@ class StarGuard(Game):
             s.invuln = 1.0
             return False
         s.alive = False
+        s.combo = 0
+        self.clean = False
         s.deaths += 1
         s.rapid = s.spread = 0.0
         self.lives -= 1
@@ -428,7 +444,9 @@ class StarGuard(Game):
         w = self.wave
         for s in self.ships:
             if s.alive:
-                s.score += 25 * w
+                s.score += 25 * w + (50 if self.clean else 0)
+        if self.clean:
+            self.moment("✨ Flawless wave! +50 each", "gold", "pop")
         if w >= self.s["waves"]:
             return self.win()
         self.moment(f"✅ Wave {w} cleared!", "good", "fanfare")
@@ -522,7 +540,7 @@ class StarGuard(Game):
         return {pid: self.ships[i].score for i, pid in enumerate(self.seats)}
 
     def ship_data(self):
-        return [[round(s.x, 3), int(s.alive), round(s.invuln, 1), int(s.shield), int(s.rapid > 0), int(s.spread > 0), s.score, s.bombs]
+        return [[round(s.x, 3), int(s.alive), round(s.invuln, 1), int(s.shield), int(s.rapid > 0), int(s.spread > 0), s.score, s.bombs, s.combo if self.last_frame and self.last_frame - s.combo_at < 2.0 else 0]
                 for s in self.ships]
 
     def snapshot(self, now=None):

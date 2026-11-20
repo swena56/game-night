@@ -36,6 +36,7 @@ SPOOK, BONK_HOLD = 6.0, 3.0       # 🔔 panic time; how long a bumped cat sits 
 CAT_PACE, ALLEY_PACE, SPOOK_PACE = 1.0, 0.85, 0.6   # speeds relative to a mouse
 OUTNUMBERED = 0.03                # cats run this much faster per mouse more than them (2+ player cats; a lone cat
                                   # facing two mice gets an alley cat instead)
+LATE_TURN = 0.22                  # a swipe this soon after passing a side opening still turns into it
 NIBBLE = 0.25                     # a mouse loses this much of a step munching each crumb
 SQUEEZE = 0.25                    # …and this much squeezing into a mouse hole
 CRUMB, BELL, BONK, CATCH = 1, 5, 20, 8               # points
@@ -373,6 +374,19 @@ class Whisker(Game):
         e = self.ent_of(i)
         if e:
             e["pend"] = d
+            self.late_turn(e, d, time.time())
+
+    def late_turn(self, e, d, now):
+        """Corner forgiveness: a swipe that lands just after you've passed an opening still takes it (you step
+        back one cell), so a slightly late thumb doesn't cost a whole lap."""
+        back = e.get("from")
+        if (back is None or now - e.get("moved_at", -9) > LATE_TURN or self.stage != "play" or e["out_until"] is not None
+                or e["frozen_until"] > now or d in (e["dir"], (e["dir"] + 2) % 4)):
+            return
+        if self.nbs(e)[e["cell"]][d] is not None or self.nbs(e)[back][d] is None:
+            return   # the turn is open right here (the tick takes it), or there was never a turn to miss
+        e["prev"], e["cell"] = e["cell"], back
+        e["dir"], e["pend"], e["from"] = d, None, None
 
     # -- simulation
 
@@ -439,6 +453,7 @@ class Whisker(Game):
             if n is None:  # nose against a hedge: wait there (no banking moves)
                 e["acc"] = 0.0
                 continue
+            e["from"], e["moved_at"] = e["cell"], now
             e["cell"] = n
             if e["role"] == "m":
                 if self.walls[n] == HOLE:

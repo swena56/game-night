@@ -16,7 +16,7 @@ RING_R = 2.05
 # Bots: (seconds between steering decisions, steering noise, chance to line up each ring properly).
 # A bot that loses focus on a ring aims for a spot beside it, so it usually misses that ring and
 # then has to recover for the next one. Tuned for about 40% / 60% / 80% of the rings.
-BOT = {"easy": (0.30, 0.6, 0.40), "normal": (0.20, 0.45, 0.71), "hard": (0.10, 0.25, 1.0)}
+BOT = {"easy": (0.35, 0.8, 0.0), "normal": (0.25, 0.6, 0.35), "hard": (0.14, 0.4, 0.72)}
 
 
 class Flyer:
@@ -209,8 +209,8 @@ class SkyDrop(Game):
                 # Course currents are local force fields, with a small oscillation for movement.
                 # Steering is a velocity target with gentle damping. This keeps a release or
                 # direction change predictable on touch screens, while currents still matter.
-                target_vx, target_vz = f.sx * 6.8, f.sz * 5.8
-                response = min(1.0, dt * 4.2)
+                target_vx, target_vz = f.sx * 8.0, f.sz * 6.6
+                response = min(1.0, dt * 9.0)   # snappy: ~110 ms to reach the stick's speed (was ~240 ms)
                 f.vx += (target_vx - f.vx) * response
                 f.vz += (target_vz - f.vz) * response
                 ax = az = 0.0
@@ -222,8 +222,8 @@ class SkyDrop(Game):
                         k = (1 - dd / 9) * (1 - dist / 4) * current_scale
                         ax += dx * 8 * k
                         az += dz * 8 * k
-                f.vx = max(-8, min(8, (f.vx + ax * dt) * (1 - 1.2 * dt)))
-                f.vz = max(-7, min(7, (f.vz + az * dt) * (1 - 1.35 * dt)))
+                f.vx = max(-9, min(9, (f.vx + ax * dt) * (1 - 1.2 * dt)))
+                f.vz = max(-7.5, min(7.5, (f.vz + az * dt) * (1 - 1.35 * dt)))
                 speed = 12.5 + (4.0 if now < f.boost_until else 0)
                 f.depth = min(LENGTH, f.depth + speed * dt)
                 f.x += f.vx * dt
@@ -243,7 +243,11 @@ class SkyDrop(Game):
                     if math.hypot(cross_x - x, cross_z - z) <= RING_R:
                         f.combo += 1
                         f.rings += 1
-                        f.score += round((10 + min(10, (f.combo - 1) * 2)) * mult)
+                        pts = (10 + min(10, (f.combo - 1) * 2)) * mult
+                        if math.hypot(cross_x - x, cross_z - z) <= RING_R * 0.3:   # 🎯 dead centre pays half again
+                            pts *= 1.5
+                            self.event(now, "bullseye", i)
+                        f.score += round(pts)
                         self.event(now, "ring", i)
                     else:
                         f.combo = 0

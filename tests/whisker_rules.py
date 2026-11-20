@@ -145,5 +145,18 @@ for n in (2, 3, 4, 5, 6):
         cpu = (time.perf_counter() - t0) / max(1, steps) * 1000
         check(f"{n}p {bot}: the game ends ({g.round} rounds), {cpu:.2f} ms a frame", r.phase != "playing" and cpu < 2)
 
+# late turns: a swipe just after passing a side opening steps back into it
+r, g, _ = table(2)
+m = next(e for e in g.ents if e["role"] == "m")
+now = time.time(); g.stage = "play"; m["out_until"] = None; m["frozen_until"] = 0
+cell = next(c for c, nb in enumerate(g.nb) if nb and nb[0] is not None and nb[1] is not None and g.nb[nb[0]] and g.nb[nb[0]][1] is None)
+fwd = g.nb[cell][0]
+m["cell"], m["from"], m["dir"], m["moved_at"] = fwd, cell, 0, now
+g.late_turn(m, 1, now + 0.1)
+check("a late swipe turns back into the missed opening", m["cell"] == cell and m["dir"] == 1, (m["cell"], cell, m["dir"]))
+m["cell"], m["from"], m["dir"], m["moved_at"] = fwd, cell, 0, now
+g.late_turn(m, 1, now + 1.0)
+check("a swipe far too late is left alone", m["cell"] == fwd and m["dir"] == 0)
+
 print("\nall ok" if not fails else f"\n{len(fails)} FAILED: {fails}")
 sys.exit(1 if fails else 0)

@@ -213,7 +213,8 @@ UI.wobble = (() => {
           <button data-m="-1,0" aria-label="Left">◀</button><button data-m="1,0" aria-label="Right">▶</button>
           <button data-m="0,1" aria-label="Towards you">▼</button>
         </div>
-        <button class="wb-rot" id="wbRot" title="Turn the block 45°">⟳ Turn</button>
+        <button class="wb-rot" id="wbRotL" title="Turn the block 45° the other way" aria-label="Turn the block anticlockwise">⟲</button>
+        <button class="wb-rot" id="wbRot" title="Turn the block 45°" aria-label="Turn the block clockwise">⟳ Turn</button>
         <button class="wb-place" id="wbPlace">🧱 Place</button>
       </div>
       <div class="wb-ctl wb-pctl" id="wbPCtl" hidden>
@@ -233,7 +234,7 @@ UI.wobble = (() => {
       const b = e.target.closest('button');
       if (!b || !placing() || busy()) return;
       if (b.dataset.m) { const [dx, dz] = b.dataset.m.split(',').map(Number); nudge(dx, dz); }
-      else if (b.id === 'wbRot') { grot = (grot + 1) % (V().current === 'ell' ? 8 : 4); ctx.sfx?.('tick'); }
+      else if (b.id === 'wbRot' || b.id === 'wbRotL') { const n = V().current === 'ell' ? 8 : 4; grot = (grot + (b.id === 'wbRot' ? 1 : n - 1)) % n; ctx.sfx?.('tick'); }
       else if (b.id === 'wbPlace') return placeNow();
       controls();
     });

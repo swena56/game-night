@@ -26,7 +26,7 @@ UI.meteorshot = (() => {
     const targetHit = targetAt(elapsedNow() + T);
     const base = Math.max(0, 100 - Math.floor(Math.hypot(hit[0] - targetHit[0], hit[1] - targetHit[1]) * 22));
     const me = S?.board?.find((b) => b.id === ctx?.me), streakBonus = base >= 80 ? Math.min(45, (me?.streak || 0) * 15) : 0;
-    return { s, T, hit, targetHit, points: (novaShot ? Math.floor(base * 1.5) : base) + streakBonus };
+    return { s, T, hit, targetHit, points: Math.floor(base * (novaShot ? 1.5 : 1) * (S?.finale ? 2 : 1)) + streakBonus };
   }
 
   function mount(main, side) {
@@ -302,7 +302,7 @@ UI.meteorshot = (() => {
     const grav = S.gravity < 4 ? '🌕 Low-G' : S.gravity > 5.5 ? '🪨 Heavy-G' : '🪐 Standard-G';
     const mine = S.score != null;
     const pv = ctx?.myTurn && !flight ? preview() : null;
-    $('msHud').innerHTML = `${mine ? `<span>☄️ ${S.score}</span>` : ''}<span>Round ${Math.min(S.round, S.shotsMax)}/${S.shotsMax}</span><span>💨 ${wind}</span><span>${grav}</span>${pv ? `<span>${novaShot ? '🌟' : '🎯'} Est. ${pv.points}${pv.points >= 80 ? ' 🔥' : ''}</span>` : ''}`;
+    $('msHud').innerHTML = `${mine ? `<span>☄️ ${S.score}</span>` : ''}<span>${S.finale ? '🏁 FINALE ×2' : `Round ${Math.min(S.round, S.shotsMax)}/${S.shotsMax}`}</span><span>💨 ${wind}</span><span>${grav}</span>${pv ? `<span>${novaShot ? '🌟' : '🎯'} Est. ${pv.points}${pv.points >= 80 ? ' 🔥' : ''}</span>` : ''}`;
     const turnName = S.board?.find((b) => b.id === ctx?.turn)?.name;
     const wait = $('msWait');
     wait.hidden = !!ctx?.myTurn || !!flight || !turnName;
