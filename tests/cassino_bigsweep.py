@@ -1,5 +1,5 @@
-"""Cassino 🧹 big sweep: clearing 4+ table piles in one capture counts as 2 sweeps (setting "bigsweep", on by
-default); Off or a smaller sweep counts 1; old rooms load; a bot takes a 4-pile sweep through the real move path.
+"""Cassino 🧹 big sweep: clearing 3+ table piles in one capture counts as 2 sweeps (setting "bigsweep", on by
+default); Off or a smaller sweep counts 1; old rooms load; a bot takes a 3+-pile sweep through the real move path.
 
     python3 tests/cassino_bigsweep.py
 """
@@ -48,10 +48,13 @@ def full_take(g, i):
 
 
 FOUR = ["9H", "9D", "4H", "5H"]       # 9S takes both 9s and 4+5: four piles
+THREE = ["9H", "4H", "5H"]            # 9S takes the 9 and 4+5: three piles
 r, g = table(); lay(g, ["4H", "5H"]); g.apply(0, full_take(g, 0))
 check("2-pile sweep counts 1", g.sweeps[0] == 1, g.sweeps)
 r, g = table(); lay(g, FOUR); g.apply(0, full_take(g, 0))
 check("4-pile sweep counts 2 (default)", g.sweeps[0] == 2, g.sweeps)
+r, g = table(); lay(g, THREE); g.apply(0, full_take(g, 0))
+check("3-pile sweep counts 2 (default)", g.sweeps[0] == 2, g.sweeps)
 r, g = table(False); lay(g, FOUR); g.apply(0, full_take(g, 0))
 check("Off: 4-pile sweep counts 1", g.sweeps[0] == 1, g.sweeps)
 
@@ -79,5 +82,39 @@ for _ in range(10):
         fired += 1
         break
 check("bot takes the big sweep", fired > 0)
+# real bot games (hard vs normal): finish, every move legal, big sweeps fire (about 1 game in 6 has one)
+big = 0
+from games import cassino  # noqa: E402
+real = cassino.Cassino.apply
+def spy(self, i, m):
+    assert any(x["card"] == m["card"] and x["kind"] == m["kind"] and x["items"] == m["items"] for x in self.moves_for(i)), m
+    sw, k = self.sweeps[i], len(m["items"])
+    out = real(self, i, m)
+    if m["kind"] == "take" and self.sweeps[i] - sw == 2 and k >= 3:
+        global big
+        big += 1
+    return out
+cassino.Cassino.apply = spy
+done = 0
+try:
+    for n in range(100):
+        if n >= 20 and big:      # at least 20 games; more (a few ms each) until a big sweep fires
+            break
+        r, g = table()
+        lv = ["hard", "normal"]
+        steps = 0
+        while r.phase == "playing" and steps < 4000:
+            if g.after:
+                g.on_timeout()
+                continue
+            i = g.seats.index(r.turn)
+            g.bot_move(i, lv[i])
+            steps += 1
+        if r.phase == "over":
+            done += 1
+finally:
+    cassino.Cassino.apply = real
+check("bot games finish, every move legal", done == n, f"{done}/{n + 1}" if done != n else f"{done} games")
+check("a big sweep fires in bot games", big > 0, f"{big} in {done} games")
 print("all ok" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(1 if fails else 0)
