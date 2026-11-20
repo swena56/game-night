@@ -357,8 +357,13 @@ UI.cannon = (() => {
     const water = b.kind === 'water';
     pfx.burst(bx, by, b.shell === 'dirt' ? 26 : 18, { color: water ? '#e4f8ffcc' : '#5a3d22', dir: -Math.PI / 2, spread: Math.PI, speed: [20 * s, 70 * s], gravity: 60 * s, drag: 0, size: [1.2 * s, 2.2 * s], life: 1.1, spin: 6 });
     if (!water) pfx.smoke(bx, by, 6, { color: b.shell === 'dirt' ? '#a08060' : '#4a4a4a', size: [b.r * s * 0.25, b.r * s * 0.45], speed: [4 * s, 14 * s], rise: 18 * s, life: [0.8, 1.4], grow: 1.8 });
+    if (!water) {   // 💥 a shockwave ring and a spray of hot sparks, bigger for a big shell
+      pfx.ring(bx, by, { r0: b.r * s * 0.3, r1: b.r * s * 1.6, color: '#ffd166', width: Math.max(2, s * 1.2), life: 0.45 });
+      pfx.burst(bx, by, 14, { color: '#ffb347', spread: Math.PI * 2, speed: [40 * s, 110 * s], gravity: 40 * s, drag: 1, size: [0.8 * s, 1.5 * s], life: 0.6 });
+    }
     for (const [j, n2] of b.dmg) {
       const t = b.tanks[j], [tx, ty] = px(t[0], t[1] + 16);
+      if (n2 >= 35) { pfx.flash('#fff', 0.3, 260); pfx.text(tx, ty - 14 * s, '💥 DIRECT HIT!', { color: '#ffd166', size: Math.max(15, 7 * s), ms: 1200, rise: 12 * s }); }
       pfx.text(tx, ty, `−${n2}`, { color: '#ff5d5d', size: Math.max(13, 6 * s), ms: 1400, rise: 14 * s });
       if (j === C()?.me && typeof buzz === 'function') buzz([40, 30, 60]);
     }
