@@ -4,14 +4,14 @@
 UI.starguard = (() => {
   let S, ctx, canvas, g2, raf = 0, ro = null, net = null, stars = [];
   let own = null, target = null, lastSent = 0, shown = [], bossShown = null, keys = {}, keyHandler = null, keyUp = null;
-  let lastLives = null, flash = 0, prevAl = [], hadBoss = false, lastSnap = null, lastFrame = 0;
+  let lastLives = null, flash = 0, prevAl = [], prevPu = [], hadBoss = false, lastSnap = null, lastFrame = 0;
   const fx = Fx2D.create({ cap: 260 }), KIND_COLOR = ['#7bd88f', '#ffb703', '#ef476f'];
   const SPEED = 1.1;  // must match SHIP_SPEED in games/starguard.py
   const $ = (id) => document.getElementById(id);
   const POWERS = { rapid: '⚡', spread: '🔱', shield: '🛡️', life: '❤️', bomb: '💣' };
 
   function mount(main, side) {
-    S = null; net = null; own = null; target = null; shown = []; bossShown = null; keys = {}; lastLives = null; flash = 0; prevAl = []; hadBoss = false; lastSnap = null; fx.clear?.();
+    S = null; net = null; own = null; target = null; shown = []; bossShown = null; keys = {}; lastLives = null; flash = 0; prevAl = []; prevPu = []; hadBoss = false; lastSnap = null; fx.clear?.();
     main.innerHTML = `<div class="sg"><div class="sg-stage" id="sgStage"><canvas id="sgCanvas"></canvas></div></div>`;
     side.innerHTML = `<div class="panel"><div id="sgHud" class="sg-hud"></div><div id="sgCrew"></div>
       <button id="sgBomb" class="primary sg-bomb" type="button">💣 Bomb</button>
@@ -121,6 +121,16 @@ UI.starguard = (() => {
         fx.ring(X(a[0]), Y(a[1]), { r0: u * 0.02, r1: u * 0.09, color: c, width: u * 0.006, life: 0.4 });
       }
       prevAl = src.al.map((a) => [a[0], a[1], a[2], a[3]]);
+      // ✨ a power-up that has gone and a ship is on top of it: it was picked up, so ring it in that ship's colour
+      for (const q of prevPu) if (!src.pu.some((r) => Math.abs(r[0] - q[0]) < 0.12 && Math.abs(r[1] - q[1]) < 0.12)) {
+        const near = src.sh.findIndex((sh) => sh[1] && Math.abs(sh[0] - q[0]) < 0.14);
+        if (near < 0 || q[1] < h.shipY - 0.25) continue;
+        const c = colorOf(near), px = X(src.sh[near][0]), py = Y(h.shipY);
+        fx.ring(px, py, { r0: u * 0.03, r1: u * 0.14, color: c, width: u * 0.008, life: 0.5 });
+        fx.spark(px, py, 14, { color: c, speed: [u * 0.1, u * 0.35], size: [u * 0.006, u * 0.012] });
+        fx.text(px, py - u * 0.07, POWERS[q[2]] || '✨', { size: u * 0.07, rise: u * 0.12 });
+      }
+      prevPu = src.pu.map((q) => [q[0], q[1], q[2]]);
       if (hadBoss && !src.bo) {   // the boss goes down: a big blast
         fx.burst(X(bossShown?.[0] ?? 0.5), Y(bossShown?.[1] ?? 0.2), 40, { colors: ['#ffd166', '#ef476f', '#fff'], speed: [u * 0.15, u * 0.7], size: u * 0.016, life: [0.5, 1.1] });
         fx.shake(u * 0.03); fx.flash('#ffd166', 0.3, 400);
