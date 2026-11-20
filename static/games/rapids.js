@@ -307,7 +307,7 @@ UI.rapids = (() => {
       const p = ctx.player(v.seats[i]), b = snap.b[i];
       const row = ctx.el('div', 'seat-row lr-row' + (p && !p.eliminated ? '' : ' out'));
       const dot = ctx.el('span', 'mini-disc'); dot.style.background = colorOf(i);
-      const tag = b[5] > 0 ? ' 🧻' : b[9] ? ` 🏁${ord(b[9])}` : b[6] & 8 ? ' 🌀' : '';
+      const tag = b[5] > 0 ? ' 🧻' : b[9] ? ` 🏁${ord(b[9])}` : b[6] & 8 ? ' 🌀' : b[6] & 32 ? ' 💨' : '';
       row.append(dot, ctx.el('span', 'grow', `${p?.name ?? 'left'}${i === v.me ? ' (you)' : ''}${tag}`),
         ctx.el('span', 'rp-soglet', `💧${Math.round(b[4])}%`));
       if (v.races > 1) row.append(ctx.el('b', '', `${b[10]}`));
@@ -791,6 +791,11 @@ UI.rapids = (() => {
         if (snap.st === 'race' && !sunk && !b[9] && now - o.wakeAt > (b[6] & 4 ? 60 : 140) && !calm()) {
           o.wakeAt = now;
           burst(W(s - 0.6, x, 0.05), b[6] & 4 ? 3 : 1, ['#ffffff', '#d8efff'], 0.7, 0.6);
+        }
+        // 💨 riding a rival's wake: bright streaks stream off the stern, pulling you along
+        if (snap.st === 'race' && !sunk && !b[9] && b[6] & 32 && now - (o.draftAt || 0) > 70 && !calm()) {
+          o.draftAt = now;
+          burst(W(s - 0.9, x, 0.35), 2, ['#fff7c2', '#ffffff', '#bfe8ff'], 1.6, 0.25);
         }
       });
       place(dt, now); GL3.tickShake(camera, dt);

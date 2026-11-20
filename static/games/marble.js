@@ -8,7 +8,7 @@ UI.marble = (() => {
   let S, ctx, gfx = null, raf = 0, last = 0, keys = new Set(), keyDown = null, keyUp = null, resizeObs = null;
   let st = null;            // this board's local race: course, marble, timers
   let input = { x: 0, z: 0 }, drag = null, tilt = null, view = { x: 0, z: 0 };
-  let ghosts = {}, ghostPos = {};
+  let ghosts = {}, ghostPos = {}, pbGhost = null, ghostOn = true, splitRows = [];
 
   // ---------- course + physics
   function newRace(m) {
@@ -31,14 +31,36 @@ UI.marble = (() => {
     const sx = c.start[0] + 0.5, sz = c.start[1] + 0.5;
     // #97: gems you carry (carry) only count once banked at a flag or the goal (gems); perks from the last break
     const perks = m.perks || [];
-    st = { key: raceKey(m), round: m.round, c, rects, grid, x: sx, z: sz, vx: 0, vz: 0, cp: 0, gems: new Set(), carry: new Set(), falls: 0,
+    st = { key: raceKey(m), courseKey: courseKey(m), round: m.round, c, rects, grid, x: sx, z: sz, vx: 0, vz: 0, cp: 0, gems: new Set(), carry: new Set(), falls: 0,
       t0: performance.now() + m.startIn * 1000, done: m.done != null, fall: 0, acc: 0, sent: { at: 0, x: sx, z: sz },
       finishing: false, goSeen: false, trail: [], safe: { x: sx, z: sz },
-      turbo: perks.includes('turbo') ? 1 : 0, shield: perks.includes('shield'), magnet: perks.includes('magnet') };
+      turbo: perks.includes('turbo') ? 1 : 0, shield: perks.includes('shield'), magnet: perks.includes('magnet'),
+      samples: [], splits: [], sampleAt: 0, splitAt: 0 };
+    pbGhost = loadGhost(st.courseKey); splitRows = [];
     if (st.done) { st.x = c.goal[0] + 0.5; st.z = c.goal[1] + 0.5; }
     ghostPos = {};
   }
-  const raceKey = (m) => `${m.round}:${m.course.walls.join('')}:${m.course.path.length}`;
+  const courseKey = (m) => `${m.course.w}x${m.course.h}:${m.course.walls.join('')}:${JSON.stringify(m.course.flags)}:${JSON.stringify(m.course.holes)}:${JSON.stringify(m.course.gems)}:${JSON.stringify(m.course.boosts)}`;
+  const raceKey = (m) => `${m.round}:${courseKey(m)}`;
+  const ghostStorageKey = (key) => `marble.ghost:${key}`;
+  function loadGhost(key) {
+    try { const g = JSON.parse(localStorage.getItem(ghostStorageKey(key))); return g?.ms > 0 && Array.isArray(g.pts) ? g : null; } catch { return null; }
+  }
+  function saveGhost() {
+    if (!st?.samples?.length || !st.myMs) return;
+    const old = loadGhost(st.courseKey);
+    if (old && (old.score ?? old.ms) <= st.myMs) return;
+    try { localStorage.setItem(ghostStorageKey(st.courseKey), JSON.stringify({ ms: st.rawMs, score: st.myMs, splits: st.splits, pts: st.samples })); } catch {}
+    pbGhost = loadGhost(st.courseKey);
+  }
+  function ghostPosition(ms) {
+    const pts = pbGhost?.pts;
+    if (!ghostOn || !pts?.length || ms > pts[pts.length - 1][0]) return null;
+    let lo = 0, hi = pts.length - 1;
+    while (lo < hi - 1) { const mid = (lo + hi) >> 1; if (pts[mid][0] <= ms) lo = mid; else hi = mid; }
+    const a = pts[lo], b = pts[hi], f = b[0] > a[0] ? clamp((ms - a[0]) / (b[0] - a[0]), 0, 1) : 0;
+    return { x: a[1] + (b[1] - a[1]) * f, z: a[2] + (b[2] - a[2]) * f };
+  }
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
   function respawn() {
@@ -83,7 +105,7 @@ UI.marble = (() => {
     if (!near) { st.safe.x = st.x; st.safe.z = st.z; }  // where a 🛡️ shield puts you back
     c.flags.forEach((f, i) => {
       if (st.cp <= i && Math.floor(st.x) === f[0] && Math.floor(st.z) === f[1]) {
-        st.cp = i + 1; sfx('tag');
+        st.cp = i + 1; st.splits.push(Math.max(0, Math.round(performance.now() - st.t0))); splitRows = [...st.splits]; renderSplits(); sfx('tag');
         const n = bank();
         toast(n ? `🚩 Flag ${i + 1} · 💎×${n} safe!` : `🚩 Flag ${i + 1}`);
       }
@@ -132,7 +154,10 @@ UI.marble = (() => {
     st.finishing = true; st.done = true;
     bank();
     const ms = Math.round(performance.now() - st.t0), gems = st.gems.size;
+    st.rawMs = ms;
     st.myMs = Math.max(0, ms - gems * (S.marble.gemBonus || 1000));
+    st.samples.push([ms, +st.x.toFixed(3), +st.z.toFixed(3)]);
+    splitRows = [...st.splits]; saveGhost(); renderSplits();
     sfx('fanfare'); buzz([40, 30, 80]);
     sendPos(true);
     ctx.act('finish', { r: st.round, ms, gems }).catch((e) => ctx.toast(e?.message || 'Finish not counted.'));
@@ -349,6 +374,15 @@ UI.marble = (() => {
     }
     if (st.fall) marble.position.y = y;
     marble.visible = !spectating();
+    const local = ghostPosition(Math.max(0, now - st.t0));
+    if (local) {
+      let m = gfx.ghosts.pb;
+      if (!m) {
+        m = new T.Mesh(new T.SphereGeometry(R * 0.88, 18, 12), new T.MeshBasicMaterial({ color: 0x8ff3ff, transparent: true, opacity: 0.62, depthWrite: false }));
+        board.add(m); gfx.ghosts.pb = m;
+      }
+      m.position.set(local.x - c.w / 2, R * 0.9, local.z - c.h / 2); m.visible = !spectating();
+    } else if (gfx.ghosts.pb) gfx.ghosts.pb.visible = false;
     // ghosts: ease toward their last reported spot
     for (const [id, gh] of Object.entries(ghosts)) {
       if (id === S.me.id && !spectating()) continue;
@@ -357,6 +391,8 @@ UI.marble = (() => {
       const a = 1 - Math.exp(-dt * 6); p.x += (gh.x - p.x) * a; p.z += (gh.z - p.z) * a;
       m.position.set(p.x - c.w / 2, R * 0.92, p.z - c.h / 2); m.visible = !gh.out;
     }
+    const local = ghostPosition(Math.max(0, performance.now() - st.t0));
+    if (local && !spectating()) { g.globalAlpha = 0.7; disc(local.x, local.z, R * 0.88, '#8ff3ff'); g.globalAlpha = 1; }
     // little life: spinning gems, waving flags, pulsing pads and the goal beam
     const t = now / 1000;
     gfx.gems?.forEach((m, i) => { m.visible = !st.gems.has(i) && !st.carry.has(i); m.rotation.y = t * 2 + i; m.position.y = 0.3 + Math.sin(t * 3 + i) * 0.05; });
@@ -439,6 +475,8 @@ UI.marble = (() => {
     if (racing && !st.fall) {
       st.acc += dt;
       while (st.acc >= DT && !st.fall && !st.done) { step(); st.acc -= DT; }
+      const elapsed = Math.max(0, Math.round(now - st.t0));
+      if (!st.sampleAt || now - st.sampleAt >= 80) { st.samples.push([elapsed, +st.x.toFixed(3), +st.z.toFixed(3)]); st.sampleAt = now; }
       sendPos(false);
     } else st.acc = 0;
     updateClock(now);
@@ -477,7 +515,10 @@ UI.marble = (() => {
       <div class="mb-bar"><button id="mbTurbo" class="mb-turbo primary" type="button" hidden>⚡ Turbo</button><button id="mbTilt" class="mb-tiltbtn" type="button">📱 Use tilt</button>
         <span class="hint mb-hint">Drag anywhere on the board to tilt it · ⌨️ arrows / WASD</span></div></div>`;
     side.innerHTML = `<div class="panel"><h3>🌀 The race</h3><div id="mbRivals" class="mb-rivals"></div>
-      <div id="mbStand" class="mb-stand" hidden></div><p id="mbPB" class="hint"></p></div>`;
+      <div id="mbStand" class="mb-stand" hidden></div><p id="mbPB" class="hint"></p>
+      <button id="mbGhostToggle" class="mb-ghost-toggle" type="button">👻 PB ghost on</button><div id="mbSplits" class="mb-splits"></div></div>`;
+    try { ghostOn = localStorage.getItem('marble.ghostOn') !== '0'; } catch { ghostOn = true; }
+    $('mbGhostToggle').onclick = () => { ghostOn = !ghostOn; try { localStorage.setItem('marble.ghostOn', ghostOn ? '1' : '0'); } catch {} renderSplits(); };
     const stage = $('mbStage');
     $('mbTilt').onclick = () => { if (tilt?.on && tilt.have) { tilt.base = null; ctx.toast('📱 Re-levelled.'); } else toggleTilt(); };
     $('mbTilt').ondblclick = () => { if (tilt?.on) toggleTilt(); };
@@ -591,6 +632,27 @@ UI.marble = (() => {
     else stand.hidden = true;
     const pb = typeof Profile !== 'undefined' ? Profile.best?.('marble') : null;
     $('mbPB').textContent = pb ? `⭐ Your best total: ${(pb / 1000).toFixed(2)} s` : '';
+    $('mbGhostToggle').hidden = !pbGhost;
+    $('mbGhostToggle').textContent = `👻 PB ghost ${ghostOn ? 'on' : 'off'}`;
+    renderSplits();
+  }
+
+  function renderSplits() {
+    const box = $('mbSplits'); if (!box || !st) return;
+    box.innerHTML = '';
+    const title = ctx.el('div', 'hint left', `🚩 Checkpoint splits${pbGhost ? ` · PB ${(pbGhost.ms / 1000).toFixed(2)} s` : ''}`); box.append(title);
+    let prev = 0, pbPrev = 0;
+    const add = (label, curTotal, pbTotal) => {
+      const cur = curTotal == null ? null : curTotal - prev, pb = pbTotal == null ? null : pbTotal - pbPrev;
+      const row = ctx.el('div', 'mb-split');
+      row.append(ctx.el('span', '', label), ctx.el('b', '', cur == null ? '—' : `${(cur / 1000).toFixed(2)} s`),
+        ctx.el('small', cur == null || pb == null ? '' : cur <= pb ? 'best' : 'slower', pb == null ? '' : `PB ${(pb / 1000).toFixed(2)} s`));
+      box.append(row);
+      if (curTotal != null) prev = curTotal;
+      if (pbTotal != null) pbPrev = pbTotal;
+    };
+    st.c.flags.forEach((_, i) => add(`Flag ${i + 1}`, splitRows[i] ?? null, pbGhost?.splits?.[i] ?? null));
+    add('Finish', st.done ? st.rawMs : null, pbGhost?.ms ?? null);
   }
 
   function fast(data) {

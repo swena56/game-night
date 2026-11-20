@@ -41,6 +41,11 @@
 .mb-prog i { display: block; height: 100%; border-radius: 4px; transition: width .25s linear; }
 .mb-time { font-variant-numeric: tabular-nums; font-size: 13px; }
 .mb-stand { margin-top: 10px; }
+.mb-ghost-toggle { margin-top: 8px; font-size: 13px; padding: 6px 10px; }
+.mb-splits { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.mb-split { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: baseline; font-size: 13px; }
+.mb-split b, .mb-split small { font-variant-numeric: tabular-nums; }
+.mb-split small { color: var(--muted); min-width: 5em; text-align: right; }
 body.focus .mb-stage { height: max(260px, calc(var(--room) - 80px)); }
 @media (max-width: 600px) {
   .mb-hint { display: none; }
