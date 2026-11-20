@@ -945,8 +945,10 @@ UI.lanes = (() => {
       const up = new Set(r.standing), at = r.last?.at ?? 0;
       if (l.at === undefined) { l.at = at; l.up = up; }
       const startEv = (e0, now0) => { l.ev = { t: now0, ...e0 }; if (e0.down.size) SND.far(e0.down.size); };
-      if (at !== l.at) {
-        if (l.throw && !l.throw.go) { startEv(l.throw.evd, now); l.throw = null; }
+      // (#225) a rival's next result can arrive while their ball is still on its way: let that ball reach the pins
+      // (speeded up) and handle the new result afterwards, so pins never fall on a lane with no ball
+      if (at !== l.at && l.throw && !l.throw.go) l.throw.t0 = Math.min(l.throw.t0, now - ((bowlerOn ? LEAD : 0) + 0.3) * 1000);
+      if (at !== l.at && !(l.throw && !l.throw.go)) {
         const reset = up.size === 10 && !r.done;
         const down = [...l.up].filter((k) => reset || r.done || !up.has(k));
         const evd = { down: new Set(down), reset, dir: down.map(() => Math.random() * Math.PI * 2) };
