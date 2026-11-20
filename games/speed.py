@@ -41,6 +41,7 @@ class Speed(Game):
         "Your hand refills to 5 from your stock. When nobody can play, fresh cards flip onto both piles.",
         "Empty your hand and stock first to win the round.",
         "With 👯 Pairs on, a card of the same rank fits as well (a 7 on a 7).",
+        "With 🔥 Streak on, play 3 cards in a row without your rival playing in between and you shed a bonus card from your stock.",
     ]
     name = "Speed"
     icon = "⚡"
@@ -51,7 +52,9 @@ class Speed(Game):
     settings_schema = {
         "rounds": ("Match", [(1, "One round"), (2, "Best of 3")], 1),
         "pairs": ("👯 Pairs", [(False, "Off"), (True, "On: the same rank fits too")], False),
+        "streak": ("🔥 Streak", [(True, "On: 3 in a row sheds a card"), (False, "Off")], True),
     }
+    streak = (0, 0)  # plays in a row per seat (class default: rooms pickled before this existed)
 
     # -- setup
 
@@ -87,6 +90,7 @@ class Speed(Game):
         self.side = [deck[40:45], deck[45:50]]
         self.piles = [[deck[50]], [deck[51]]]
         self.stage = "play"
+        self.streak = [0, 0]
         self.next_at = None   # the flip (stall) or the next round (between)
         self.ready = [None, None]
         self.last = None      # [seat, card, pile] of the latest play, for the animation
@@ -144,6 +148,16 @@ class Speed(Game):
             self.hand[i].append(self.stock[i].pop())
         self.seq += 1
         self.last = [i, card, pile]
+        if self.s.get("streak", True):
+            run = list(self.streak)
+            run[i] += 1
+            run[1 - i] = 0
+            self.streak = run
+            if run[i] >= 3 and self.stock[i]:
+                self.stock[i].pop()
+                self.streak = [0, 0]
+                p = self.pl(i)
+                self.moment(f"🔥 {p.name if p else '?'} played 3 in a row and sheds a bonus card!", "gold", "fanfare")
         if not self.left(i):
             return self.round_won(i)
         self.settle()
@@ -164,6 +178,7 @@ class Speed(Game):
             self.piles[k].append(src.pop())
         self.seq += 1
         self.last = None
+        self.streak = [0, 0]
         self.next_at = None
         self.room.add_log(f"🔄 Nobody can play: flip! {pretty(self.piles[0][-1])} and {pretty(self.piles[1][-1])}.")
         self.settle()
@@ -270,7 +285,8 @@ class Speed(Game):
         me = i if i is not None else 0
         now = self.now()
         return {"speed": {
-            "me": i, "pairs": bool(self.s.get("pairs")),
+            "me": i, "pairs": bool(self.s.get("pairs")), "streak": bool(self.s.get("streak", True)),
+            "run": list(self.streak),
             "seats": self.seats,
             "hand": self.hand[me] if i is not None else [],
             "stock": [len(s) for s in self.stock],
