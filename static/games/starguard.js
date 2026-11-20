@@ -4,14 +4,14 @@
 UI.starguard = (() => {
   let S, ctx, canvas, g2, raf = 0, ro = null, net = null, stars = [];
   let own = null, target = null, lastSent = 0, shown = [], bossShown = null, keys = {}, keyHandler = null, keyUp = null;
-  let lastLives = null, flash = 0, prevAl = [], prevPu = [], hadBoss = false, lastSnap = null, lastFrame = 0;
+  let lastLives = null, flash = 0, prevAl = [], prevPu = [], prevUfo = null, lastUfoSnap = null, hadBoss = false, lastSnap = null, lastFrame = 0;
   const fx = Fx2D.create({ cap: 260 }), KIND_COLOR = ['#7bd88f', '#ffb703', '#ef476f'];
   const SPEED = 1.1;  // must match SHIP_SPEED in games/starguard.py
   const $ = (id) => document.getElementById(id);
   const POWERS = { rapid: '⚡', spread: '🔱', shield: '🛡️', life: '❤️', bomb: '💣' };
 
   function mount(main, side) {
-    S = null; net = null; own = null; target = null; shown = []; bossShown = null; keys = {}; lastLives = null; flash = 0; prevAl = []; prevPu = []; hadBoss = false; lastSnap = null; fx.clear?.();
+    S = null; net = null; own = null; target = null; shown = []; bossShown = null; keys = {}; lastLives = null; flash = 0; prevAl = []; prevPu = []; prevUfo = null; lastUfoSnap = null; hadBoss = false; lastSnap = null; fx.clear?.();
     main.innerHTML = `<div class="sg"><div class="sg-stage" id="sgStage"><canvas id="sgCanvas"></canvas></div></div>`;
     side.innerHTML = `<div class="panel"><div id="sgHud" class="sg-hud"></div><div id="sgCrew"></div>
       <button id="sgBomb" class="primary sg-bomb" type="button">💣 Bomb</button>
@@ -147,6 +147,22 @@ UI.starguard = (() => {
       g2.fillStyle = '#0006'; g2.fillRect(canvas.width * 0.15, u * 0.02, canvas.width * 0.7, u * 0.018);
       g2.fillStyle = '#ef476f'; g2.fillRect(canvas.width * 0.15, u * 0.02, canvas.width * 0.7 * Math.max(0, src.bo[2] / src.bo[3]), u * 0.018);
     } else bossShown = null;
+    // 🛸 the bonus saucer: a glowing disc skimming the top, with a ring of lights
+    if (src.uf != null) {
+      const ux = X(src.uf), uy = Y(0.065), uw = u * 0.06;
+      g2.save(); g2.translate(ux, uy); g2.shadowColor = '#ffd166'; g2.shadowBlur = u * 0.04;
+      g2.fillStyle = '#9aa6c4'; g2.beginPath(); g2.ellipse(0, 0, uw, uw * 0.3, 0, 0, 7); g2.fill();
+      g2.fillStyle = '#7bdff2'; g2.beginPath(); g2.ellipse(0, -uw * 0.2, uw * 0.45, uw * 0.35, 0, Math.PI, 0); g2.fill();
+      for (let k = -2; k <= 2; k++) { g2.fillStyle = Math.floor(t * 8 + k) % 2 ? '#ffd166' : '#ef476f'; g2.beginPath(); g2.arc(k * uw * 0.36, uw * 0.02, uw * 0.07, 0, 7); g2.fill(); }
+      g2.restore();
+    }
+    if (prevUfo != null && src.uf == null && src !== lastUfoSnap) {
+      if (prevUfo > -0.02 && prevUfo < h.W + 0.02) {
+        fx.burst(X(prevUfo), Y(0.065), 22, { colors: ['#ffd166', '#7bdff2', '#fff'], speed: [u * 0.12, u * 0.5], size: u * 0.012, life: [0.4, 0.9] });
+        fx.text(X(prevUfo), Y(0.065) + u * 0.04, '+100', { kind: 'gold', size: u * 0.06, rise: u * 0.1 });
+      }
+    }
+    if (src !== lastUfoSnap) { prevUfo = src.uf ?? null; lastUfoSnap = src; }
     // power-ups and shots
     g2.textAlign = 'center'; g2.textBaseline = 'middle'; g2.font = `${u * 0.06}px system-ui, "Noto Color Emoji", sans-serif`;
     for (const p of src.pu) g2.fillText(POWERS[p[2]] || '✨', X(p[0]), Y(p[1]));

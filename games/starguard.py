@@ -26,6 +26,8 @@ INTRO = 2.4
 GRID_COLS, GRID_STEP_X, GRID_STEP_Y = 7, 0.105, 0.095
 BOTTOM_LINE = 1.36           # an alien that gets this low ends the game
 POINTS = {"grunt": 10, "tough": 20, "diver": 30}
+UFO_Y, UFO_SPEED, UFO_POINTS = 0.065, 0.24, 100   # 🛸 a bonus saucer crosses the top now and then: shoot it for points and a power-up
+UFO_EVERY = (14.0, 24.0)
 BOT = {  # reaction interval (s), dodge radius, uses bombs
     "easy": (0.22, 0.05, False),
     "normal": (0.12, 0.08, False),
@@ -94,6 +96,8 @@ class StarGuard(Game):
         self.wave = 0
         self.aliens = []
         self.boss = None
+        self.ufo = None     # [x, direction] while a bonus saucer is crossing
+        self.ufo_at = 0.0
         self.pbul = []      # [x, y, seat, vx, dmg]
         self.ebul = []      # [x, y, vx, vy]
         self.pups = []      # [x, y, kind]
@@ -129,6 +133,8 @@ class StarGuard(Game):
         self.boss = None
         self.pbul.clear()
         self.ebul.clear()
+        self.ufo = None
+        self.ufo_at = now + INTRO + self.rng.uniform(*UFO_EVERY)
         n = len(self.seats)
         w = self.wave
         if w % 5 == 0:
@@ -296,6 +302,15 @@ class StarGuard(Game):
                 return self.lose("👽 The aliens broke through!")
         if self.boss:
             changed = self.boss_step(dt, now) or changed
+        # 🛸 the bonus saucer
+        if getattr(self, "ufo", None):
+            self.ufo[0] += self.ufo[1] * UFO_SPEED * dt
+            if not -0.08 < self.ufo[0] < W + 0.08:
+                self.ufo = None
+                self.ufo_at = now + self.rng.uniform(*UFO_EVERY)
+        elif self.aliens and not self.boss and now >= getattr(self, "ufo_at", 1e18):
+            d = self.rng.choice((-1, 1))
+            self.ufo = [-0.07 if d > 0 else W + 0.07, d]
         # enemy bullets and pickups
         for b in self.ebul:
             b[0] += b[2] * dt
@@ -308,6 +323,10 @@ class StarGuard(Game):
         keep = []
         for b in self.pbul:
             hit = False
+            if getattr(self, "ufo", None) and abs(b[0] - self.ufo[0]) < 0.06 and abs(b[1] - UFO_Y) < 0.045:
+                self.ufo_down(b[2], now)
+                changed = True
+                continue
             if self.boss and abs(b[0] - self.boss["x"]) < 0.14 and abs(b[1] - self.boss["y"]) < 0.07:
                 self.boss["hp"] -= b[4]
                 hit = True
@@ -375,6 +394,14 @@ class StarGuard(Game):
             self.dry = 0
             x, y = self.apos(a)
             self.pups.append([x, y, self.rng.choice(["rapid", "spread", "shield", "shield", "life", "bomb"])])
+
+    def ufo_down(self, seat, now):
+        x = self.ufo[0]
+        self.ufo = None
+        self.ufo_at = now + self.rng.uniform(*UFO_EVERY)
+        self.ships[seat].score += UFO_POINTS
+        self.pups.append([max(0.06, min(W - 0.06, x)), UFO_Y + 0.03, self.rng.choice(["rapid", "spread", "shield", "bomb"])])
+        self.moment(f"🛸 {self.name_of(seat)} downs the bonus saucer! +{UFO_POINTS}", "gold", "pop")
 
     def take(self, i, kind):
         s = self.ships[i]
@@ -555,6 +582,7 @@ class StarGuard(Game):
             "pb": [[r(b[0]), r(b[1]), b[2]] for b in self.pbul],
             "eb": [[r(b[0]), r(b[1])] for b in self.ebul],
             "pu": [[r(u[0]), r(u[1]), u[2]] for u in self.pups],
+            "uf": r(self.ufo[0]) if getattr(self, "ufo", None) else None,
             "bo": [r(self.boss["x"]), r(self.boss["y"]), round(self.boss["hp"]), self.boss["max"]] if self.boss else None,
             "lv": self.lives, "wv": self.wave, "st": self.stage, "intro": round(max(0.0, self.stage_until - t), 1) if self.stage == "intro" else 0,
         }
