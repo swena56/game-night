@@ -146,13 +146,20 @@ UI.skydrop = (() => {
       const elapsed=(v.time||0)+Math.max(0,(performance.now()-gotAt)/1000)-(v.raceStarted||v.go||0);
       for(const o of coinMeshes){const rel=o.userData.depth-depth;o.visible=rel>0&&rel<120;if(o.visible){if(o.userData.gem){o.rotation.y=nowT*2.4;o.rotation.x=.4;}else o.rotation.z=nowT*3;}}
       for(const o of hazardMeshes){const {baseX,baseY,phase,kind}=o.userData;o.rotation.z=elapsed*1.7+phase;if(kind===2){o.position.x=baseX+Math.sin(elapsed*1.5+phase)*1.5;o.position.y=baseY+Math.cos(elapsed*1.1+phase)*1.1;}}
+      if(spAt){const k=(performance.now()-spAt)/450;if(k>=1){spAt=0;spPts.visible=false;}else{const m=playerMeshes[me()];if(m){const q=spGeo.attributes.position.array;for(let i=0;i<SP;i++){q[i*3]=m.position.x+spDir[i][0]*k*2.4;q[i*3+1]=m.position.y+spDir[i][1]*k*2.4;q[i*3+2]=m.position.z+spDir[i][2]*k*2.4;}spGeo.attributes.position.needsUpdate=true;spPts.material.opacity=1-k;spPts.visible=true;}}}
       GL3.tickShake?.(camera,.016);renderer.render(scene,camera);
     }
     function shake(a){GL3.shake?.(camera,a);}
+    // 🪙 a little burst of sparks round your diver when you grab a coin (gold) or a gem (cyan)
+    const SP=18,spDir=Array.from({length:SP},()=>{const a=Math.random()*6.283,b=Math.random()*3.1416;return [Math.sin(b)*Math.cos(a),Math.cos(b),Math.sin(b)*Math.sin(a)];});
+    const spGeo=new T.BufferGeometry();spGeo.setAttribute('position',new T.BufferAttribute(new Float32Array(SP*3),3));
+    const spPts=new T.Points(spGeo,new T.PointsMaterial({size:.2,color:0xffd34d,transparent:true,depthWrite:false,blending:T.AdditiveBlending}));spPts.visible=false;spPts.frustumCulled=false;scene.add(spPts);
+    let spAt=0;
+    function sparkle(gem){spAt=performance.now();spPts.material.color.setHex(gem?0x6ff0ff:0xffd34d);}
     // (#235) threading a ring makes it flare: it swells, whitens and fades back over about half a second
     let curDepth=0;
     function pulse(){let best=null,bd=9;for(const o of ringMeshes){const d=Math.abs(o.userData.depth-curDepth);if(d<bd){bd=d;best=o;}}if(best)best.userData.pulse=performance.now();}
-    resize();return {resize,render,shake,pulse,dispose(){renderer.domElement.remove();world.dispose?.();renderer.dispose();scene.traverse(o=>{o.geometry?.dispose?.();if(o.material){if(Array.isArray(o.material))o.material.forEach(m=>m.dispose());else o.material.dispose();}});}};
+    resize();return {resize,render,shake,pulse,sparkle,dispose(){renderer.domElement.remove();world.dispose?.();renderer.dispose();scene.traverse(o=>{o.geometry?.dispose?.();if(o.material){if(Array.isArray(o.material))o.material.forEach(m=>m.dispose());else o.material.dispose();}});}};
   }
 
   function makeFlat() {
@@ -194,6 +201,6 @@ UI.skydrop = (() => {
   function render(S0,ctx0){S=S0;ctx=ctx0;if(snap?.seed!==V()?.seed)lastSeq=-1;snap=V();gotAt=performance.now();if(lastSeq<0)events(V());ensureView();}
   function fast(data){if(data.skydrop){const old=V()||{};S={...S,skydrop:{...data.skydrop,me:old.me,seats:old.seats,coins:old.seed===data.skydrop.seed?old.coins:undefined}};snap=S.skydrop;gotAt=performance.now();ensureView();events(S.skydrop);}}
   function events(v){const evs=v?.events||[];if(lastSeq<0||evs.some(e=>e[0]<lastSeq-40)){lastSeq=evs.at(-1)?.[0]??0;return;}for(const [n,kind,i] of evs){if(n<=lastSeq)continue;lastSeq=n;if(i!==me())continue;
-    if(kind==='ring'){ctx?.sfx?.('chip');ctx?.buzz?.(8);(gl||flat)?.pulse?.();}else if(kind==='hit'){ctx?.sfx?.('thud');ctx?.buzz?.(40);(gl||flat)?.shake?.(.35);}else if(kind==='bullseye'){ctx?.sfx?.('pop');ctx?.buzz?.(15);}else if(kind==='coin'){ctx?.sfx?.('tick');ctx?.buzz?.(6);}else if(kind==='gem'){ctx?.sfx?.('pop');ctx?.buzz?.(14);if(typeof Kit!=='undefined')Kit.callout('💎 +10','gold',{ms:600});}else if(kind==='boom'){ctx?.sfx?.('thud');ctx?.buzz?.([60,40,90]);(gl||flat)?.shake?.(.6);if(typeof Kit!=='undefined')Kit.callout('💥 Mine! −12','bad',{ms:1000});}else if(kind==='graze'){ctx?.sfx?.('tick');ctx?.buzz?.(10);if(typeof Kit!=='undefined')Kit.callout('😮‍💨 Close call! +3','gold',{ms:700});}else if(kind==='boost')ctx?.sfx?.('whoosh');else if(kind==='finish'){hyperAt=performance.now();hyperRun=V()?.run;ctx?.sfx?.('whoosh');setTimeout(()=>ctx?.sfx?.('fanfare'),HYPER*.7);const h=$('sdHyper');if(h){h.classList.remove('go');void h.offsetWidth;h.classList.add('go');}}else if(kind==='checkpoint')ctx?.sfx?.('rise');else if(kind==='finish')ctx?.sfx?.('fanfare');}}
+    if(kind==='ring'){ctx?.sfx?.('chip');ctx?.buzz?.(8);(gl||flat)?.pulse?.();}else if(kind==='hit'){ctx?.sfx?.('thud');ctx?.buzz?.(40);(gl||flat)?.shake?.(.35);}else if(kind==='bullseye'){ctx?.sfx?.('pop');ctx?.buzz?.(15);}else if(kind==='coin'){ctx?.sfx?.('tick');ctx?.buzz?.(6);gl?.sparkle?.(false);}else if(kind==='gem'){ctx?.sfx?.('pop');ctx?.buzz?.(14);gl?.sparkle?.(true);if(typeof Kit!=='undefined')Kit.callout('💎 +10','gold',{ms:600});}else if(kind==='boom'){ctx?.sfx?.('thud');ctx?.buzz?.([60,40,90]);(gl||flat)?.shake?.(.6);if(typeof Kit!=='undefined')Kit.callout('💥 Mine! −12','bad',{ms:1000});}else if(kind==='graze'){ctx?.sfx?.('tick');ctx?.buzz?.(10);if(typeof Kit!=='undefined')Kit.callout('😮‍💨 Close call! +3','gold',{ms:700});}else if(kind==='boost')ctx?.sfx?.('whoosh');else if(kind==='finish'){hyperAt=performance.now();hyperRun=V()?.run;ctx?.sfx?.('whoosh');setTimeout(()=>ctx?.sfx?.('fanfare'),HYPER*.7);const h=$('sdHyper');if(h){h.classList.remove('go');void h.offsetWidth;h.classList.add('go');}}else if(kind==='checkpoint')ctx?.sfx?.('rise');else if(kind==='finish')ctx?.sfx?.('fanfare');}}
   return {mount,render,fast,unmount,turnText:()=> '🪂 Dive through the rings · highest score wins'};
 })();
