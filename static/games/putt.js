@@ -420,6 +420,11 @@ UI.putt = (() => {
         g.fillStyle = gr; g.beginPath(); g.arc(x, y, 3, 0, 7); g.fill();
       }
     });
+    const blob = canvasTex(T, 32, 32, (g, w, h) => {
+      const gr = g.createRadialGradient(w / 2, h / 2, 1, w / 2, h / 2, w / 2);
+      gr.addColorStop(0, 'rgba(0,0,0,0.9)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, w, h);
+    });
     const planks = canvasTex(T, 64, 64, (g, w, h) => {
       g.fillStyle = '#fff'; g.fillRect(0, 0, w, h);
       g.fillStyle = 'rgba(0,0,0,0.25)'; for (let i = 0; i < 6; i++) g.fillRect(0, i * (h / 6), w, 1.5);
@@ -499,7 +504,7 @@ UI.putt = (() => {
       group(lampGeo, new T.MeshBasicMaterial({ color: 0xffe8a3 }), lamps, ([x, y]) => { at.set(x, 0.3, -y); sc.set(1, 1, 1); up.set(0, 0, 0); });
     }
     const balls = [], ballGeo = new T.SphereGeometry(1, 28, 18);
-    let flag = null, flagBase = null;
+    let flag = null, flagBase = null, cupGlow = null;
     // aim guide (#82): dots that drift out from the ball and shrink toward an arrowhead, all in the power colour
     const AIM_DOTS = 12, aimMat = new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95 });
     const aimDots = [], dotGeo = new T.SphereGeometry(1, 10, 8);
@@ -645,8 +650,20 @@ UI.putt = (() => {
         const top = new T.Mesh(new T.BoxGeometry(ph * 2 + 0.02, 0.025, ph * 2 + 0.02), new T.MeshStandardMaterial({ color: 0xffd166 }));
         top.position.set(px, 0.19, -py); course.add(top);
       }
-      const cup = new T.Mesh(new T.CylinderGeometry(p.cupR, p.cupR, 0.02, 28), new T.MeshBasicMaterial({ color: 0x111111 }));
-      cup.position.copy(W(...p.cup)).setY(0.005); course.add(cup);
+      // the cup: a dark well that gets deeper toward the middle, a worn-lighter apron round it, a bright metal rim and
+      // a soft ring that breathes so the hole reads from far away (#216)
+      const cupAt = W(...p.cup), flatRing = (r0, r1, mat, y) => { const m = new T.Mesh(new T.RingGeometry(r0, r1, 40), mat); m.rotation.x = -Math.PI / 2; m.position.copy(cupAt).setY(y); course.add(m); return m; };
+      const well = canvasTex(T, 64, 64, (g, w, h) => {
+        const gr = g.createRadialGradient(w / 2, h / 2, 2, w / 2, h / 2, w / 2);
+        gr.addColorStop(0, '#000'); gr.addColorStop(0.7, '#0b0b0e'); gr.addColorStop(1, '#2b2d33');
+        g.fillStyle = gr; g.fillRect(0, 0, w, h);
+      });
+      const cup = new T.Mesh(new T.CircleGeometry(p.cupR, 40), new T.MeshBasicMaterial({ map: well }));
+      cup.rotation.x = -Math.PI / 2; cup.position.copy(cupAt).setY(0.006); course.add(cup);
+      flatRing(p.cupR, p.cupR * 1.7, new T.MeshBasicMaterial({ color: 0xcfe8a8, transparent: true, opacity: 0.28, depthWrite: false }), 0.004);
+      const rim = new T.Mesh(new T.TorusGeometry(p.cupR * 1.02, 0.011, 8, 40), new T.MeshStandardMaterial({ color: 0xe6e9ee, metalness: 0.85, roughness: 0.25 }));
+      rim.rotation.x = Math.PI / 2; rim.position.copy(cupAt).setY(0.008); course.add(rim);
+      cupGlow = flatRing(p.cupR * 1.9, p.cupR * 2.4, new T.MeshBasicMaterial({ color: 0xffe27a, transparent: true, opacity: 0.3, depthWrite: false, side: T.DoubleSide }), 0.01);
       const pole = new T.Mesh(new T.CylinderGeometry(0.012, 0.012, 0.7, 6), new T.MeshStandardMaterial({ color: 0xeeeeee }));
       pole.position.copy(W(...p.cup)).setY(0.35); pole.castShadow = true; course.add(pole);
       // the flag: a strip of cloth that waves (see draw)
@@ -666,12 +683,15 @@ UI.putt = (() => {
       resize();
     }
     function ensureBalls() {
-      while (balls.length > S.putt.seats.length) scene.remove(balls.pop().mesh);  // a rematch with fewer players (#53)
+      while (balls.length > S.putt.seats.length) { const o = balls.pop(); scene.remove(o.mesh); scene.remove(o.sh); }  // a rematch with fewer players (#53)
       while (balls.length < S.putt.seats.length) {
         const i = balls.length;
-        const m = new T.Mesh(ballGeo, new T.MeshStandardMaterial({ color: new T.Color(colorOf(i)), map: dimples, bumpMap: dimples, bumpScale: 0.12, roughness: 0.3 }));
+        const m = new T.Mesh(ballGeo, new T.MeshPhysicalMaterial({ color: new T.Color(colorOf(i)), map: dimples, bumpMap: dimples, bumpScale: 0.12, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.08, emissive: new T.Color(colorOf(i)), emissiveIntensity: 0.12 }));
         m.scale.setScalar(S.putt.ball * 1.3); m.castShadow = true;
-        scene.add(m); balls.push({ mesh: m, last: null });
+        // a soft blob under it, so you can see where it is on the green and how high it's flying
+        const sh = new T.Mesh(new T.CircleGeometry(1, 20), new T.MeshBasicMaterial({ map: blob, transparent: true, depthWrite: false, opacity: 0.6 }));
+        sh.rotation.x = -Math.PI / 2; scene.add(sh);
+        scene.add(m); balls.push({ mesh: m, last: null, sh });
       }
     }
 
@@ -870,10 +890,20 @@ UI.putt = (() => {
         }
         b.last = pos.clone();
         m.position.copy(pos);
+        if (b.sh) {   // under the ball on the ground; smaller and fainter the higher it flies
+          const lift = Math.max(0, z), onGround = !sunk && z >= 0;
+          b.sh.visible = m.visible && onGround;
+          b.sh.position.set(pos.x, groundH(at[0], at[1]) + 0.012, pos.z);
+          b.sh.scale.setScalar(r * 1.5 * (1 + lift * 0.8)); b.sh.material.opacity = Math.max(0.1, 0.55 - lift * 1.6);
+        }
       });
       const clock = anim ? anim.clock + (now - anim.t0) / 1000 : now / 1000 + clockOff;
       for (const m of mills) m.hub.rotation.z = (p.millSpeed || 1.2566) * clock;
       // the flag waves, more toward its free end
+      if (cupGlow) {
+        const br = 0.5 + 0.5 * Math.sin(now / 420);
+        cupGlow.material.opacity = 0.16 + 0.26 * br; cupGlow.scale.setScalar(0.92 + 0.14 * br);
+      }
       if (flag && flagBase) {
         const a = flag.geometry.attributes.position, t = now / 1000;
         for (let k = 0; k < a.count; k++) {
@@ -971,11 +1001,25 @@ UI.putt = (() => {
         g.fillRect(X(mx), Y(my + 0.56), (0.5 - 0.17) * k, 0.12 * k); g.fillRect(X(mx + 0.67), Y(my + 0.56), (0.5 - 0.17) * k, 0.12 * k);
         if (shut) { g.fillStyle = '#ffffff'; g.fillRect(X(mx + 0.33), Y(my + 0.56), 0.34 * k, 0.12 * k); }
       }
-      g.fillStyle = '#111'; g.beginPath(); g.arc(X(p.cup[0]), Y(p.cup[1]), p.cupR * k, 0, 7); g.fill();
+      {   // the cup (#216): a breathing ring, a pale apron, a dark well and a bright rim
+        const cx = X(p.cup[0]), cy = Y(p.cup[1]), cr = p.cupR * k, br = 0.5 + 0.5 * Math.sin(now / 420);
+        g.strokeStyle = `rgba(255,226,122,${0.18 + 0.3 * br})`; g.lineWidth = Math.max(2, cr * 0.25);
+        g.beginPath(); g.arc(cx, cy, cr * (2 + 0.2 * br), 0, 7); g.stroke();
+        g.fillStyle = 'rgba(207,232,168,0.3)'; g.beginPath(); g.arc(cx, cy, cr * 1.7, 0, 7); g.fill();
+        const gr = g.createRadialGradient(cx, cy, 1, cx, cy, cr);
+        gr.addColorStop(0, '#000'); gr.addColorStop(0.7, '#0b0b0e'); gr.addColorStop(1, '#2b2d33');
+        g.fillStyle = gr; g.beginPath(); g.arc(cx, cy, cr, 0, 7); g.fill();
+        g.strokeStyle = '#e6e9ee'; g.lineWidth = Math.max(1.5, cr * 0.12); g.beginPath(); g.arc(cx, cy, cr * 1.03, 0, 7); g.stroke();
+      }
       p.seats.forEach((_, i) => {
-        const at = ballPos(i, now);
+        const at = ballPos(i, now), bx = X(at[0]), by = Y(at[1]), br = Math.max(4, p.ball * k * 1.3);
+        g.fillStyle = 'rgba(0,0,0,0.28)'; g.beginPath(); g.ellipse(bx + br * 0.25, by + br * 0.4, br * 1.05, br * 0.8, 0, 0, 7); g.fill();
+        const bg = g.createRadialGradient(bx - br * 0.35, by - br * 0.4, br * 0.1, bx, by, br);
+        bg.addColorStop(0, '#fff'); bg.addColorStop(0.35, colorOf(i)); bg.addColorStop(1, colorOf(i));
         g.fillStyle = colorOf(i); g.strokeStyle = i === p.me ? '#fff' : '#000'; g.lineWidth = 2;
-        g.beginPath(); g.arc(X(at[0]), Y(at[1]), Math.max(4, p.ball * k * 1.3), 0, 7); g.fill(); g.stroke();
+        g.beginPath(); g.arc(bx, by, br, 0, 7); g.fill(); g.stroke();
+        g.fillStyle = bg; g.globalAlpha = 0.65; g.beginPath(); g.arc(bx, by, br, 0, 7); g.fill(); g.globalAlpha = 1;
+        g.fillStyle = 'rgba(255,255,255,0.9)'; g.beginPath(); g.arc(bx - br * 0.35, by - br * 0.38, br * 0.2, 0, 7); g.fill();
       });
       if (shot && p.me != null) {  // a dotted guide with an arrowhead, in the power colour (#82)
         const [bx, by] = p.balls[p.me], len = 0.4 + shot.power * 2.2;
