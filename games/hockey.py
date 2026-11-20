@@ -41,6 +41,7 @@ class Hockey(Game):
         "Smash the puck into the goal at the far end. Bank shots off the walls count!",
         "First to the target score wins. 🔥 At match point the puck gets faster.",
         "🏒🏒 Double Trouble puts two pucks on the table.",
+        "💥 Bank shots count double: a goal after the puck bounced off a side wall is worth 2.",
     ]
     name = "Air Hockey"
     icon = "🏒"
@@ -53,6 +54,7 @@ class Hockey(Game):
     settings_schema = {
         "target": ("First to", [(5, "5 goals"), (7, "7 goals"), (3, "3 goals (quick)")], 5),
         "pucks": ("Pucks", [(1, "🏒 One"), (2, "🏒🏒 Double Trouble")], 1),
+        "bank": ("💥 Bank shots", [(True, "On: a bounced goal counts 2"), (False, "Off: every goal is 1")], True),
         "widen": ("🥅 Leader's goal widens", [(False, "Off"), (True, "On: each goal of lead widens your goal")], False),
     }
 
@@ -229,12 +231,13 @@ class Hockey(Game):
 
     def goal(self, scorer, k, now):
         """Returns True if the game ended."""
-        self.score[scorer] += 1
+        banked = getattr(self.pucks[k], "banked", 0) if k < len(self.pucks) else 0
+        worth = 2 if banked and self.s.get("bank", True) else 1  # 💥 a bank shot is worth two
+        self.score[scorer] = min(self.s["target"], self.score[scorer] + worth)
         r = self.room
         who = r.players.get(self.seats[scorer])
         name = who.name if who else "?"
-        r.add_log(f"🚨 GOAL! {name} scores — {self.score[0]} : {self.score[1]}", "big" if max(self.score) >= self.s["target"] else "power")
-        banked = getattr(self.pucks[k], "banked", 0) if k < len(self.pucks) else 0
+        r.add_log(f"🚨 GOAL!{' 💥 BANK SHOT counts double!' if worth == 2 else ''} {name} scores — {self.score[0]} : {self.score[1]}", "big" if max(self.score) >= self.s["target"] else "power")
         run = getattr(self, "run", [None, 0])
         run = [scorer, run[1] + 1] if run[0] == scorer else [scorer, 1]
         self.run = run
@@ -242,7 +245,9 @@ class Hockey(Game):
             self.award(who, "hattrick")
             self.moment(f"🎩 {name}: HAT-TRICK!", "gold", "cheer")
         elif banked >= 2:
-            self.moment(f"🏒 {name}: double bank shot!", "gold", None)
+            self.moment(f"🏒 {name}: double bank shot!" + (" +2" if worth == 2 else ""), "gold", None)
+        elif banked and worth == 2:
+            self.moment(f"💥 {name}: bank shot, +2!", "gold", None)
         elif banked:
             self.moment(f"🏒 {name}: bank shot!", "cool", None)
         if self.score[scorer] >= self.s["target"]:
@@ -285,7 +290,7 @@ class Hockey(Game):
             pk = min(mine, key=lambda q: math.hypot(q.x - mx, q.y - my))
             behind_puck = (pk.y > my + 0.01) if i == 0 else (pk.y < my - 0.01)
             if self.aims[i] is None:  # pick a spot in (or banked toward) the goal once per attack
-                bank = random.random() < (0.15 if level == "easy" else 0.3)
+                bank = random.random() < (0.15 if level == "easy" else 0.3) + (0.15 if self.s.get("bank", True) and level != "easy" else 0)
                 aim = random.choice([-0.9, 1.9]) * W if bank else W / 2 + random.uniform(-0.6, 0.6) * GOAL / 2
                 self.aims[i] = aim + random.gauss(0, noise)
             lead = {"easy": 0.0, "normal": 0.08, "hard": 0.14}[level]
