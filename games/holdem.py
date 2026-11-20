@@ -148,8 +148,10 @@ class Holdem(Game):
         "Blinds rise every few hands. Run out of chips and you're out (unless you 💸 buy back in). Last player with chips wins.",
         "With a turn timer, everyone has a 60 s ⏳ time bank: run out of time and it adds 20 s before you're folded.",
         "With 🎯 Bounties on, whoever wins the pot that knocks a player out collects a bounty of 10% of the starting chips.",
+        "An option: 🔥 Hot streak pays a bonus of 5% of the starting chips for winning three hands in a row on your own.",
     ]
     name = "Texas Hold'em"
+    streak_id, streak_n = None, 0  # 🔥 who has won the last hands on their own, and how many
     icon = "♠️"
     blurb = "No-limit poker: two cards each, five shared, bluff and bet your way to every chip on the table."
     min_players = 2
@@ -162,6 +164,7 @@ class Holdem(Game):
         "rebuys": ("Buy back in", [(0, "Off"), (1, "💸 Once each"), (3, "💸 Up to 3 times")], 1),
         "breather": ("Between hands", [(1, "⚡ Quick"), (2, "Normal"), (3, "🐢 Relaxed")], 2),
         "odds": ("Win chance", [(False, "Hidden"), (True, "📊 Show my odds")], False),
+        "streak": ("🔥 Hot streak", [(False, "Off"), (True, "On: 3 hands won in a row pays 5% of the start")], False),
         "bounty": ("🎯 Bounties", [(False, "Off"), (True, "On: knock a player out, collect 10% of the starting chips")], False),
     }
 
@@ -177,6 +180,7 @@ class Holdem(Game):
             p.g.rebuys = self.s.get("rebuys", 1)
             p.g.bank = TIME_BANK
         self.hand_no = 0
+        self.streak_id, self.streak_n = None, 0
         self.dealer = rng.randrange(len(self.seats))
         self.board, self.shown, self.result, self.last_act = [], {}, "", {}
         self.best5, self.winners = [], []
@@ -389,6 +393,7 @@ class Holdem(Game):
         for i, v in winnings.items():
             self.pl(i).g.chips += v
         r.add_log(f"💰 {self.result}", "big")
+        self.hot_streak()
         # the hand history keeps everyone's hole cards so each player can look back at their own;
         # `shown` is the same dict as self.shown, so a winner who shows later appears here too
         entry = {"n": self.hand_no, "board": list(self.board), "result": self.result, "shown": self.shown,
@@ -419,6 +424,23 @@ class Holdem(Game):
         # an all-in run-out is dealt slowly on the page: wait for it before the next hand
         slow = (5 - self.runout) * RUNOUT_STEP if getattr(self, "runout", None) is not None else 0
         r.deadline = time.time() + PAUSES[self.s.get("breather", 2)][1 if self.shown else 0] + slow
+
+    def hot_streak(self):
+        """🔥 Win three hands in a row on your own (a split pot breaks the run) for 5% of the starting chips."""
+        if not self.s.get("streak"):
+            return
+        sole = self.winners[0] if len(self.winners) == 1 else None
+        if sole is None or sole != self.streak_id:
+            self.streak_id, self.streak_n = sole, 1 if sole else 0
+        else:
+            self.streak_n += 1
+        if sole and self.streak_n >= 3 and self.pl(sole):
+            prize = max(1, self.s["chips"] // 20)
+            w = self.pl(sole)
+            w.g.chips += prize
+            self.streak_id, self.streak_n = None, 0
+            self.room.add_log(f"🔥 Hot streak! {w.name} wins a third hand in a row and pockets {prize:,} extra.", "big")
+            self.moment(f"🔥 {w.name}: hot streak, +{prize:,}", "gold", "cheer")
 
     def finish(self):
         alive = self.alive()
