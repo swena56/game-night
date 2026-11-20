@@ -74,6 +74,20 @@ refused("sudoku: bad cell", lambda: room.act(ann, {"type": "put", "cell": 81, "d
 refused("sudoku: bool cell", lambda: room.act(ann, {"type": "put", "cell": True, "digit": 1}))
 room.act(ann, {"type": "hint"})
 check("sudoku: a hint fills a cell", st["hints"] == 1 and st["g"][st["hint"]] == G.sol[st["hint"]])
+v = G.view(ann)["sudoku"]
+check("sudoku: a hint explains itself with a row, column or box", v["why"] and any(w in v["why"] for w in ("row", "column", "box", "Row")), v["why"])
+cell = st["hint"]
+check("sudoku: the hint explanation names only its own cell", f"Row {cell // 9 + 1}, column {cell % 9 + 1}" in v["why"])
+room.act(ann, {"type": "put", "cell": next(k for k, x in enumerate(st["g"]) if not x), "digit": 1})
+check("sudoku: the explanation clears on the next move", G.view(ann)["sudoku"]["why"] is None)
+# each difficulty and both sizes: a reason is always produced
+for n in (6, 9):
+    for lv in ("easy", "medium", "hard"):
+        g = SD.make_puzzle(random.Random(3), n, lv)[0]
+        sh = SD.Shape(n)
+        step = SD.single_step(g, sh, 2)
+        txt = SD.explain_step(g, sh, step[0], step[1], step[2]) if step else SD.explain_step(g, sh, g.index(0), 1, None)
+        check(f"sudoku {n}x{n} {lv}: hint reason is text", isinstance(txt, str) and "Row" in txt or "row" in txt)
 for k, d in enumerate(G.sol):   # fill the rest
     if not st["g"][k]:
         room.act(ann, {"type": "put", "cell": k, "digit": d})

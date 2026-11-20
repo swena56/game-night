@@ -94,7 +94,7 @@ acceptance check before they can be considered complete.
 | Tic-Tac-Toe (`tictactoe`) | Add a short rematch series with alternating first move and a series score. **Implemented; verified 2026-11-20 (tictactoe_series + simulate, node syntax check).** | Starter alternates correctly, each board uses the chosen variant, and series standings survive each round. |
 | Ultimate Tic-Tac-Toe (`ultimate`) | Add a route preview showing which small boards a move sends the rival to and which boards are already closed. | Preview follows forced-board rules and correctly handles a move that frees the rival to play anywhere. |
 | Nine Men's Morris (`morris`) | Add a repetition and blocked-position warning so players can see when a move risks a draw or loss. | Warning matches movement, flying, mill capture, and current repetition rules. |
-| Sudoku (`sudoku`) | Add a step-by-step explanation for a hint that names the row, column, or box constraint used. | Explanation is valid for each difficulty and does not reveal unrelated puzzle cells. |
+| Sudoku (`sudoku`) | Add a step-by-step explanation for a hint that names the row, column, or box constraint used. **Implemented; verified 2026-11-20 (puzzle_rules: 6×6/9×9 at every level, explanation clears on next move).** | Explanation is valid for each difficulty and does not reveal unrelated puzzle cells. |
 
 ## Cards
 

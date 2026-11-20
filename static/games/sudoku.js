@@ -219,7 +219,8 @@ UI.sudoku = (() => {
     const left = grid.filter((x) => !x).length;
     $('sdInfo').textContent = v.playing ? `${left} left${v.wrong ? ` · ✗${v.wrong}` : ''}${v.hints ? ` · 💡${v.hints}` : ''}` : '';
     let note = '';
-    if (v.gained) note = v.playing ? `+${v.gained[S.me.id] ?? 0} this puzzle` + (left ? ' · the red digits were still to find' : '') : '';
+    if (v.why && v.hint != null && v.playing) note = `💡 ${v.why}`;
+    else if (v.gained) note = v.playing ? `+${v.gained[S.me.id] ?? 0} this puzzle` + (left ? ' · the red digits were still to find' : '') : '';
     else if (v.done) note = '🏁 Solved! Waiting for the others…';
     else if (v.banked) note = '🏳️ You called it a day. Waiting for the others…';
     else if (!v.playing) note = 'Watching: the grid as it was dealt.';

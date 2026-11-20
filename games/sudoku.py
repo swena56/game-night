@@ -114,6 +114,27 @@ def single_step(g, sh, level):
     return None
 
 
+def explain_step(g, sh, i, d, how):
+    """A short, spoiler-free reason for a hint: names the row, column or box that forces the digit."""
+    n = sh.n
+    r, c = i // n + 1, i % n + 1
+    where = f"Row {r}, column {c}"
+    if how == "naked":
+        return (f"{where}: the digits already in its row, column and box rule out every other number, "
+                f"so only {d} fits.")
+    if how == "hidden":
+        for k, u in enumerate(sh.units):
+            if i not in u or any(g[j] == d for j in u):
+                continue
+            if sum(1 for j in u if not g[j] and sh.cands(g, j) >> d & 1) == 1:
+                kind = "row" if k < n else "column" if k < 2 * n else "box"
+                label = k + 1 if k < n else k - n + 1 if k < 2 * n else k - 2 * n + 1
+                return (f"In {kind} {label}, {d} has nowhere else to go: every other empty cell there "
+                        f"is blocked by a {d} in its own row, column or box. So {where} must be {d}.")
+    return (f"{where}: no single cell was forced by simple logic here, so this one was filled in "
+            f"from the solution. Try the cells with the fewest candidates next.")
+
+
 def logic_solves(g, sh, level):
     g = list(g)
     while 0 in g:
@@ -219,6 +240,7 @@ class Sudoku(PuzzleRace):
                 raise GameError("No hints left for this puzzle." if self.s.get("hints", 3) else "Hints are off in this game.")
             s = single_step(st["g"], Shape(self.n), 2)
             i = s[0] if s else next(k for k, v in enumerate(st["g"]) if not v)
+            st["why"] = explain_step(st["g"], Shape(self.n), i, self.sol[i], s[2] if s else None)
             st["g"][i] = self.sol[i]
             st["hints"] += 1
             st["hint"] = i
@@ -236,6 +258,7 @@ class Sudoku(PuzzleRace):
             raise GameError("That cell is already filled.")
         st["seq"] += 1
         st["hint"] = None
+        st["why"] = None
         if self.sol[i] == d:
             st["g"][i] = d
             st["mine"] += 1
@@ -279,7 +302,7 @@ class Sudoku(PuzzleRace):
                "puzzle": self.puzzle, "blanks": self.blanks,
                "grid": st["g"] if st else self.puzzle,
                "wrong": st["wrong"] if st else 0, "hints": st["hints"] if st else 0, "mine": st["mine"] if st else 0,
-               "miss": st["miss"] if st else None, "hint": st["hint"] if st else None, "seq": st["seq"] if st else 0,
+               "miss": st["miss"] if st else None, "hint": st["hint"] if st else None, "why": st.get("why") if st else None, "seq": st["seq"] if st else 0,
                "hintsLeft": self.hints_left(st) if st else None,
                "sol": None}
         if self.stage == "reveal" or self.room.phase == "over":
