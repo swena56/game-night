@@ -567,7 +567,10 @@ class Prism(Game):
                 raise GameError("Bad burst.")
             specials = [s for s in specials if s in SPECIAL_KINDS][:6]
             made = [s for s in made if s in ("beam", "nova", "prism")][:6]
-            return self.on_burst(p, cascade, specials, made)
+            target_id = a.get("target")
+            if target_id is not None and not isinstance(target_id, str):
+                target_id = None
+            return self.on_burst(p, cascade, specials, made, target_id)
         raise GameError("Unknown action.")
 
     def send(self, o, event):
@@ -620,7 +623,19 @@ class Prism(Game):
         g.rows, g.score, g.level = b.rows(), 0, n
         g.runs += 1
 
-    def on_burst(self, p, cascade, specials, made):
+    def attack_target(self, p, target_id=None):
+        foes = [o for o in self.room.contenders() if o.id != p.id]
+        if not foes:
+            return None
+        selected = next((o for o in foes if o.id == target_id), None)
+        if selected:
+            return selected
+        if self.s.get("aim") == "leader":
+            top = max(o.g.score for o in foes)
+            return self.rng.choice([o for o in foes if o.g.score == top])
+        return self.rng.choice(foes)
+
+    def on_burst(self, p, cascade, specials, made, target_id=None):
         r = self.room
         if cascade >= 5:
             self.award(p, "cascade5")
@@ -633,16 +648,13 @@ class Prism(Game):
         frost, stones = attack_for(cascade, specials)
         if p.bot and self.rng.random() >= ATTACK_ODDS.get(p.bot, 1.0):
             frost = stones = 0
-        foes = [o for o in r.contenders() if o.id != p.id]
         now = time.time()
-        if not (frost or stones) or not foes or now < getattr(p.g, "attack_at", 0):
+        if not (frost or stones) or now < getattr(p.g, "attack_at", 0):
             return
         p.g.attack_at = now + ATTACK_GAP
-        if self.s.get("aim") == "leader":
-            top = max(o.g.score for o in foes)
-            target = self.rng.choice([o for o in foes if o.g.score == top])
-        else:
-            target = self.rng.choice(foes)
+        target = self.attack_target(p, target_id)
+        if not target:
+            return
         what = []
         if frost:
             self.send(target, {"kind": "frost", "n": frost, "from": p.name, "fromId": p.id})

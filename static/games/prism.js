@@ -216,6 +216,7 @@ UI.prism = (() => {
   const $ = (id) => document.getElementById(id);
 
   let S, ctx, st = null, cv = null, c2 = null, dpr = 1, cs = 40, size = 320, sprites = [], stoneSprite = null, specSprites = { h: [], v: [], n: [] };
+  let attackQueue = [], attackTimer = 0;
   let raf = 0, resizeObs = null, keyHandler = null, clock = null, hintTimer = null;
 
   // the outline of gem k as points (a circle as 16), for cutting facets (#138)
@@ -831,21 +832,60 @@ UI.prism = (() => {
       afterMove(step, fired, madeList);
       push();
       if (step >= 3 || fired.length || madeList.length) {
-        ctx.quiet(ctx.act('burst', { cascade: step, specials: fired, made: madeList }));
         const [frost, stones] = S?.prism?.attacks && Object.keys(S.prism.boards).length > 1 ? attackFor(step, fired) : [0, 0];
-        if ((frost || stones) && now() >= (st.attackAt || 0)) {
+        const burst = { cascade: step, specials: fired, made: madeList };
+        const sends = (frost || stones) && now() >= (st.attackAt || 0);
+        if (sends) {
           st.attackAt = now() + 5000;
+          queueTarget(burst);
           st.stats.sent += frost + stones;
           const w = [frost && `🧊×${frost}`, stones && `🪨×${stones}`].filter(Boolean).join(' ');
           try { Kit.flyText($('pzScore'), `${w} sent!`, 'gold'); } catch {}
           ctx.sfx?.('whoosh');
-        }
+        } else ctx.quiet(ctx.act('burst', burst));
       }
     } finally {
       if (st) { st.busy = false; flushEvents(); }
       kick();
       armHint();
     }
+  }
+
+  // Target selection stays outside the board's move loop; attacks resolve in the same order as clears.
+  function queueTarget(burst) {
+    const rivals = Object.entries(S?.prism?.boards || {}).filter(([id, b]) => id !== S.me.id && b.alive);
+    if (rivals.length <= 1) {
+      ctx.quiet(ctx.act('burst', { ...burst, ...(rivals.length ? { target: rivals[0][0] } : {}) }));
+      return;
+    }
+    attackQueue.push({ burst, until: now() + 4000 });
+    renderTargetPrompt();
+  }
+  function settleTarget(target) {
+    const item = attackQueue.shift();
+    if (!item) return;
+    clearTimeout(attackTimer);
+    if (st) st.attackAt = now() + 5000;
+    ctx.quiet(ctx.act('burst', { ...item.burst, ...(target ? { target } : {}) }));
+    renderTargetPrompt();
+  }
+  function renderTargetPrompt() {
+    const box = $('pzTarget');
+    if (!box) return;
+    clearTimeout(attackTimer);
+    const item = attackQueue[0];
+    box.replaceChildren();
+    box.hidden = !item;
+    if (!item) return;
+    box.append(ctx.el('span', '', '🎯 Send attack to'));
+    for (const [id, b] of Object.entries(S?.prism?.boards || {}).filter(([id, b]) => id !== S.me.id && b.alive)) {
+      const p = ctx.player(id), btn = ctx.el('button', 'pz-target', `${p?.name ?? 'Rival'} · ${b.score.toLocaleString()}`);
+      btn.type = 'button'; btn.setAttribute('aria-label', `Target ${p?.name ?? 'rival'}, score ${b.score}`);
+      btn.onclick = () => settleTarget(id);
+      box.append(btn);
+    }
+    const left = Math.max(0, item.until - now());
+    attackTimer = setTimeout(() => settleTarget(null), left);
   }
 
   // after each move: stats, 🔥 fever, 🛡 parry, personal best, 🎯 level goal
@@ -1352,7 +1392,7 @@ UI.prism = (() => {
   }
 
   function mount(main, side) {
-    S = null; st = null; c2 = null; themeNow = null;
+    S = null; st = null; c2 = null; themeNow = null; attackQueue = []; clearTimeout(attackTimer);
     main.innerHTML = `<div class="pz-wrap">
       <div class="pz-top"><span class="pz-clock" id="pzClock">0:00</span><div class="pz-timebar"><i id="pzTime"></i></div>
         <button class="pz-hintbtn" id="pzHintBtn" title="Show me a move (every 15 s)" aria-label="Show me a move">💡</button>
@@ -1361,7 +1401,7 @@ UI.prism = (() => {
       <div id="pzGoal" class="pz-goal" hidden></div>
       <div id="pzStage" class="pz-stage"><canvas id="pzCanvas" tabindex="0" aria-label="Your gem board"></canvas><div id="pzGrid" class="pz-grid" hidden></div>
         <div id="pzWarn" class="pz-warn"></div><div id="pzMap" class="pz-map" hidden></div>
-        <div id="pzCount" class="pz-count" hidden></div><div id="pzBanner" class="pz-hit"></div><div id="pzOver" class="pz-over" hidden></div></div></div>`;
+        <div id="pzCount" class="pz-count" hidden></div><div id="pzBanner" class="pz-hit"></div><div id="pzTarget" class="pz-target-prompt" role="group" aria-label="Choose attack target" hidden></div><div id="pzOver" class="pz-over" hidden></div></div></div>`;
     side.innerHTML = `<div class="panel">
       <div id="pzStatus" class="seat-row"></div>
       <div id="pzRivals" class="pz-rivals"></div>
@@ -1393,7 +1433,7 @@ UI.prism = (() => {
     cv.onpointerup = () => { if (start) tap(start.i); start = null; };
     cv.onpointercancel = () => { start = null; };
     keyHandler = (e) => {
-      if (e.target?.closest?.('input, textarea, select')) return;
+      if (e.target?.closest?.('input, textarea, select, button, [role="button"]')) return;
       if (!st || !canPlay()) return;
       const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
       if (d) {
@@ -1415,6 +1455,7 @@ UI.prism = (() => {
   function unmount() {
     cancelAnimationFrame(raf); raf = 0;
     cancelAnimationFrame(scoreRaf);
+    clearTimeout(attackTimer); attackQueue = [];
     clearInterval(clock); clearTimeout(hintTimer); clearTimeout(idleT); clearTimeout(heatT);
     if (keyHandler) removeEventListener('keydown', keyHandler);
     resizeObs?.disconnect();

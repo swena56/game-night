@@ -194,6 +194,18 @@ for _ in range(4):
 check("👑 aimed at the leader", len(cy.g.events) == 4 and not bo.g.events)
 
 room, (ann, bo, cy), game = new_room()
+game.act(ann, {"type": "burst", "cascade": 3, "specials": [], "made": [], "target": cy.id})
+check("a requested active rival receives the attack", bool(cy.g.events) and not bo.g.events)
+ann.g.attack_at = 0
+game.act(ann, {"type": "burst", "cascade": 3, "specials": [], "made": [], "target": ann.id})
+check("a player cannot target themself", not ann.g.events and bool(bo.g.events or cy.g.events))
+
+room, (ann, bo, cy), game = new_room()
+bo.eliminated = True
+game.act(ann, {"type": "burst", "cascade": 3, "specials": [], "made": [], "target": bo.id})
+check("a target who left falls back to another active rival", bool(cy.g.events) and not bo.g.events)
+
+room, (ann, bo, cy), game = new_room()
 ann.g.score, bo.g.score, cy.g.score = 300, 800, 500
 room.deadline = time.time() - 1
 check("the clock ending makes bots ready to finish", game.bot_ready())
