@@ -35,6 +35,7 @@ WHITE_SOAK, EYE_SOAK, SUN_DRY = 6.0, 8.0, 10.0      # % per second
 EDGE_SPLASH, EDGE_KICK = 25.0, 2.5
 WHIRL_PULL, WHIRL_SWIRL, WHIRL_SPIT = 2.2, 3.0, 4.0  # spat out after this many seconds caught
 LEAF_SECS, LEAF_ADD, DRY_FOLD = 2.0, 2.5, 40.0
+DRAFT_AHEAD, DRAFT_WIDE, DRAFT_ADD = 3.5, 0.9, 1.3   # 💨 tuck in this close behind another boat to ride its wake
 PICK_R, PICK_RESPAWN = 0.9, 8.0
 COUNTDOWN, GRACE, BETWEEN, EVENT_KEEP = 3.0, 20.0, 5.0, 0.6
 POINTS = [10, 7, 5, 3, 2, 1]
@@ -388,6 +389,11 @@ class Rapids(Game):
                 target += BOOST_ADD
             if now < b.leaf_until:
                 target += LEAF_ADD
+            drafting = any(
+                j != i and self.active(j) and not o.done_at and not o.sunk_until and 0.7 < o.s - b.s < DRAFT_AHEAD and abs(o.x - b.x) < DRAFT_WIDE
+                for j, o in enumerate(self.boats))
+            if drafting:
+                target += DRAFT_ADD
             if b.brace:
                 target *= BRACE_SPEED
             b.vs += (target - b.vs) * min(1.0, dt * 2.5)
@@ -395,7 +401,7 @@ class Rapids(Game):
             b.vx += (tvx - b.vx) * min(1.0, dt * 6)
             g = cv.segs[cv.idx(b.s)]
             ds, dx = b.vs, b.vx
-            b.flags = int(b.brace)
+            b.flags = int(b.brace) | (32 if drafting else 0)
             if now < b.boost_until or now < b.leaf_until:
                 b.flags |= 2
             # 🌀 a whirlpool pulls you in and spins you round

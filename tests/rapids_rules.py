@@ -122,6 +122,16 @@ t = run(g, t, 3.0)
 check("the bank stops you", abs(A.x + (g.cv.width(A.s) / 2 - R.BOAT_R)) < 1e-6, f"{A.x:.2f}")
 A.sx = 0.0
 
+# -- 💨 slipstream
+place(A, 6.0, 0.0)
+place(B, 8.0, 0.0)
+A.sx = B.sx = 0.0
+g.move(R.STEP, t)
+check("a boat close behind another is drafting", A.flags & 32 and not B.flags & 32, f"{A.flags} {B.flags}")
+place(B, 8.0, 3.0)
+g.move(R.STEP, t)
+check("beside the wake there is no draft", not A.flags & 32)
+
 # -- paddles
 place(A, 10.0, 0.0)
 A.vs = 3.0

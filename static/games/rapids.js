@@ -319,7 +319,7 @@ UI.rapids = (() => {
     btn.disabled = snap.st !== 'race' || mine[5] > 0 || !!mine[9] || S.phase !== 'playing';
     btn.classList.toggle('rp-brace', braced);
     btn.textContent = braced ? '🛡️ Bracing' : `🛶 Paddle ${'●'.repeat(mine[7])}${'○'.repeat(Math.max(0, v.paddleMax - mine[7]))}`;
-    $('rpInfo').textContent = mine[5] > 0 ? '🧻 Refolding…' : mine[6] & 8 ? '🌀 Whirlpool — paddle out!' : mine[6] & 4 ? (braced ? '🌊 White water (braced)' : '🌊 White water — hold to brace') : mine[6] & 16 ? '☀️ Drying in the sun' : mine[11] > 0 ? '🍃 Leaf sail!' : '';
+    $('rpInfo').textContent = mine[5] > 0 ? '🧻 Refolding…' : mine[6] & 8 ? '🌀 Whirlpool — paddle out!' : mine[6] & 4 ? (braced ? '🌊 White water (braced)' : '🌊 White water — hold to brace') : mine[6] & 16 ? '☀️ Drying in the sun' : mine[11] > 0 ? '🍃 Leaf sail!' : mine[6] & 32 ? '💨 Slipstream: you are riding their wake!' : '';
   }
 
   // where boat i is now: the last known position plus its speed since then (capped)
