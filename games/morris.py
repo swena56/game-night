@@ -215,6 +215,30 @@ class Morris(Undo, Game):
         board, hand, _ = self.state
         return f"{board.count(i)} on board" + (f" · {hand[i]} to place" if hand[i] else "")
 
+    def risks(self, me, moves):
+        """⚠ For each (src, dst) among `moves`: 'draw' if it uses up the quiet-move allowance (the game is called a draw),
+        or 'loss' if the rival has a reply that leaves me with no move (or two men). Only the first listed capture
+        choice for a point is judged; None-risk moves are left out."""
+        kw = dict(fly=self.fly, twelve=self.twelve, lasker=self.lasker, safe=self.safe)
+        out, seen = {}, set()
+        for mv in moves:
+            key = (mv[0], mv[1])
+            if key in seen:
+                continue
+            seen.add(key)
+            nxt = play(self.state, me, mv)
+            if nxt[2] >= QUIET_LIMIT and None in nxt[0]:
+                out[key] = "draw"
+                continue
+            if not legal(nxt, 1 - me, **kw):
+                continue  # the rival is stuck: that's a win or a draw for me, not a risk
+            for rep in legal(nxt, 1 - me, **kw):
+                after = play(nxt, 1 - me, rep)
+                if after[2] < QUIET_LIMIT and None in after[0] and not legal(after, me, **kw):
+                    out[key] = "loss"
+                    break
+        return out
+
     def view(self, p):
         i = self.seat(p)
         mine = self.room.turn == p.id
@@ -223,6 +247,7 @@ class Morris(Undo, Game):
             "legal": [list(m) for m in legal(self.state, i, self.fly, self.twelve, self.lasker, self.safe)] if mine and i is not None else [],
             "safe": self.safe, "quiet": self.state[2], "limit": QUIET_LIMIT, "twelve": self.twelve, "fly": self.fly, "lasker": self.lasker,
             "men": 12 if self.twelve else 10 if self.lasker else MEN, "undo": self.undo_view(p),
+            "risk": [[a, b, k] for (a, b), k in self.risks(i, legal(self.state, i, self.fly, self.twelve, self.lasker, self.safe)).items()] if mine and i is not None else [],
         }}
 
     def bot_turn(self, p):

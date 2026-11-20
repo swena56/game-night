@@ -28,3 +28,6 @@
 .ut-small.threat-o::before { background: #3a8fd1; }
 .ut-small.threat-x.threat-o::before { background: linear-gradient(90deg, #ef476f 50%, #3a8fd1 50%); }
 .ut-small.star:not(.done)::after { content: '⭐'; position: absolute; top: 1px; right: 3px; font-size: .8em; pointer-events: none; }
+.ut-small.route { outline: 3px dashed var(--accent); outline-offset: -3px; z-index: 1; }
+.ut-small.route-closed { outline: 3px dashed var(--muted); outline-offset: -3px; opacity: .8; }
+body.calm .ut-small.route { outline-style: solid; }

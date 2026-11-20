@@ -92,6 +92,8 @@ UI.morris = (() => {
         else if (placing) legal.filter(([s]) => s < 0).forEach(([, d]) => targets.add(d));
       }
     }
+    // ⚠ points where this move lets the rival block me for the loss, or runs out the quiet-move clock for a draw
+    const riskOf = (d) => m.risk?.find(([a, b]) => a === (pick != null ? pick : -1) && b === d)?.[2];
     const last = m.last || [-1, -1, -1];
     for (const g of svg.querySelectorAll('.mm-pt')) {
       const i = +g.dataset.i;
@@ -103,10 +105,12 @@ UI.morris = (() => {
       g.style.fill = v == null ? '' : v === 0 ? 'url(#mmDark)' : 'url(#mmLight)';  // bevelled, lit from the top left
       g.style.stroke = color || '';
       g.setAttribute('class', 'mm-pt' + (v == null ? ' empty' : ' man') + (targets.has(i) ? ' can' : '') + (sources.has(i) ? ' src' : '')
-        + (i === pick ? ' picked' : '') + (takes.has(i) ? ' take' : '') + (i === last[1] ? ' last' : '') + (danger.has(i) ? ' warn' : '') + (m.safe === i ? ' safe' : ''));
+        + (i === pick ? ' picked' : '') + (takes.has(i) ? ' take' : '') + (i === last[1] ? ' last' : '') + (danger.has(i) ? ' warn' : '') + (m.safe === i ? ' safe' : '') + (targets.has(i) && riskOf(i) ? ` risk-${riskOf(i)}` : ''));
     }
-    $('mmHint').textContent = !mine || S.phase !== 'playing' ? '' : pending ? '🎯 Mill! Tap a rival man to take.'
-      : pick != null ? 'Tap where it goes.' : placing ? (m.lasker && sources.size ? `Tap an empty point to place (${m.hand[m.me]} left), or one of your men to move it.` : `Tap an empty point to place a man (${m.hand[m.me]} left).`) : 'Tap one of your men to move it.';
+    const risky = [...targets].map((d) => [d, riskOf(d)]).filter(([, k]) => k);
+    const riskNote = risky.length && !pending ? ` ⚠ ${risky.some(([, k]) => k === 'loss') ? 'Dashed points can leave you with no move (a loss)' : ''}${risky.some(([, k]) => k === 'draw') ? ' Dotted points end the game as a draw (60 quiet moves)' : ''}.` : '';
+    $('mmHint').textContent = (!mine || S.phase !== 'playing' ? '' : pending ? '🎯 Mill! Tap a rival man to take.'
+      : pick != null ? 'Tap where it goes.' : placing ? (m.lasker && sources.size ? `Tap an empty point to place (${m.hand[m.me]} left), or one of your men to move it.` : `Tap an empty point to place a man (${m.hand[m.me]} left).`) : 'Tap one of your men to move it.') + (!mine || S.phase !== 'playing' ? '' : riskNote);
   }
 
   // the move just made: a man glides from where it was, a new mill flashes, a taken man shrinks away

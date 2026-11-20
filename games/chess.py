@@ -1,6 +1,7 @@
 """Chess with full rules: castling, en passant, promotion, check/mate, stalemate,
 50-move rule, threefold repetition and insufficient material. White = seat 0."""
 import random
+import threading
 import time
 
 from .base import Game, GameError
@@ -297,6 +298,55 @@ def san(pos, m, after, replies):
     return text
 
 
+REVIEW_DEPTH = 2        # plies searched past each candidate move
+REVIEW_SWING = 150      # centipawns lost against the best move before a move counts as a turning point
+REVIEW_KEEP = 5         # the biggest swings shown
+_reviewing = set()      # (id(game)) while a review thread runs; not saved with the room
+
+
+def mate_in_one(pos):
+    """Can the side to move checkmate right now? (A plain search this shallow can't see mates.)"""
+    for m in legal(pos):
+        after, _ = apply(pos, m)
+        if in_check(after) and not legal(after):
+            return True
+    return False
+
+
+def review_trail(trail, hill=False, pause=0.01):
+    """🔎 Post-game review: for each move played, search every legal alternative and report the moves that gave up the
+    most against the best one. trail = [(position before, move played), …]. Returns the list, biggest swing first."""
+    out = []
+    for ply, (pos, played) in enumerate(trail):
+        moves = legal(pos)
+        if len(moves) < 2:
+            continue
+        deadline = time.time() + 5
+        scored = []
+        try:
+            for m in moves:
+                n, _ = apply(pos, m)
+                if not legal(n):  # the move ends the game: mate is as good as it gets, stalemate is level
+                    v = 2000 if in_check(n) else 0
+                elif mate_in_one(n):  # …or lets the rival mate straight away
+                    v = -2000
+                else:
+                    v = -search(n, REVIEW_DEPTH - 1, -MATE * 2, MATE * 2, deadline, hill)
+                scored.append((max(-2000, min(2000, v)), m))
+        except Timeout:
+            continue
+        best_v, best = max(scored, key=lambda x: x[0])
+        got = next(v for v, m in scored if m == played)
+        if best_v - got >= REVIEW_SWING and best != played:
+            n, _ = apply(pos, best)
+            out.append({"ply": ply, "color": pos.turn, "loss": best_v - got,
+                        "played": san(pos, played, apply(pos, played)[0], legal(apply(pos, played)[0])),
+                        "best": san(pos, best, n, legal(n)), "bestMove": list(best[:4])})
+        time.sleep(pause)  # leave the CPU to live games
+    out.sort(key=lambda r: -r["loss"])
+    return out
+
+
 class Chess(Undo, Game):
     id = "chess"
     category = "strategy"
@@ -323,6 +373,8 @@ class Chess(Undo, Game):
     INCREMENT = {180: 2, 300: 0, 600: 5}
     clock, inc, turn_at = None, 0, 0.0  # games saved before clocks existed have none
     sans = ()  # nor a move list
+    trail = ()  # (position before, move) for each ply, for the post-game review
+    review = None  # None until the game is over; then {"done": bool, "swings": [...]}
     checks = {"w": 0, "b": 0}  # checks given so far (Three-check); older games have none
     CHECKS_TO_WIN = 3
 
@@ -333,6 +385,8 @@ class Chess(Undo, Game):
         self.seen = {self.pos.key(): 1}
         self.last = None
         self.sans = []
+        self.trail = []
+        self.review = None
         self.checks = {"w": 0, "b": 0}
         self.captured = {"w": [], "b": []}  # pieces each side has lost
         self.draw_offer = None
@@ -381,10 +435,10 @@ class Chess(Undo, Game):
 
     def undo_state(self):
         return (self.pos, dict(self.seen), self.last, list(self.sans), {k: list(v) for k, v in self.captured.items()},
-                dict(self.checks))
+                dict(self.checks), list(self.trail))
 
     def undo_restore(self, state):
-        self.pos, self.seen, self.last, self.sans, self.captured, self.checks = state
+        self.pos, self.seen, self.last, self.sans, self.captured, self.checks, self.trail = state
         self.draw_offer = None
 
     def color(self, p):
@@ -434,6 +488,7 @@ class Chess(Undo, Game):
         else:
             self.snapshot(p)
         before = self.pos
+        self.trail = [*self.trail, (before, move)]
         self.pos, captured = apply(before, move)
         text = move_text(before, move, captured)
         if captured:
@@ -481,6 +536,32 @@ class Chess(Undo, Game):
         c = self.color(p)
         return {"w": "♔ White", "b": "♚ Black"}.get(c, "")
 
+    def review_view(self):
+        """Start the review (once, in a background thread) when the game is over, and report where it is."""
+        if self.room.phase != "over" or not self.trail:
+            return None
+        if self.review is None or (not self.review["done"] and id(self) not in _reviewing):
+            self.review = {"done": False, "swings": []}
+            trail, hill = list(self.trail)[-120:], self.hill()
+            offset = len(self.trail) - len(trail)
+            _reviewing.add(id(self))
+
+            def work():
+                try:
+                    swings = review_trail(trail, hill)
+                    for sw in swings:
+                        sw["ply"] += offset
+                    self.review = {"done": True, "swings": swings[:REVIEW_KEEP]}
+                except Exception:
+                    self.review = {"done": True, "swings": []}
+                finally:
+                    _reviewing.discard(id(self))
+                    with self.room.cond:
+                        self.room.bump()
+            threading.Thread(target=work, daemon=True).start()
+        return {"done": self.review["done"], "swings": [dict(sw, move=self.sans[sw["ply"]] if sw["ply"] < len(self.sans) else "")
+                                                         for sw in self.review["swings"]]}
+
     def view(self, p):
         mine = self.color(p)
         moves = legal(self.pos) if mine == self.pos.turn and self.room.turn == p.id else []
@@ -491,6 +572,7 @@ class Chess(Undo, Game):
             "captured": self.captured, "drawOffer": self.draw_offer, "sans": list(self.sans),
             "clock": {pid: round(self.left(pid), 1) for pid in self.seats} if self.clock else None, "inc": self.inc,
             "hill": self.hill(), "checks": dict(self.checks) if self.three() else None, "undo": None if self.clock else self.undo_view(p),
+            "review": self.review_view(),
         }}
 
     # -- bot

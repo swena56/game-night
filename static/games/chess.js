@@ -17,6 +17,7 @@ UI.chess = (() => {
       <div id="chStatus" class="seat-row"></div>
       <div id="chTaken" class="taken"></div>
       <ol id="chMoves" class="ch-moves"></ol>
+      <div id="chReview" class="ch-review" hidden></div>
       <div id="chPromo" class="row promo" hidden></div>
       <div id="chDraw" class="row"></div>
       <div id="chUndo" class="row"></div>
@@ -144,6 +145,20 @@ UI.chess = (() => {
     for (let i = 0; i < sans.length; i += 2) list.append(ctx.el('li', '', sans.slice(i, i + 2).join('  ')));
     list.hidden = !sans.length;
     list.scrollTop = list.scrollHeight;
+
+    // 🔎 after the game: the biggest turning points, each with the best move the engine found instead (a quick search, not gospel)
+    const rv = $('chReview'), rev = S.phase === 'over' ? ch.review : null;
+    rv.hidden = !rev; rv.innerHTML = '';
+    if (rev) {
+      rv.append(ctx.el('h4', '', '🔎 Turning points'));
+      if (!rev.done) rv.append(ctx.el('p', 'hint', 'Reviewing the game…'));
+      else if (!rev.swings.length) rv.append(ctx.el('p', 'hint', 'No big swings: nobody gave much away.'));
+      for (const sw of [...rev.swings].sort((a, b) => a.ply - b.ply)) {
+        const n = Math.floor(sw.ply / 2) + 1, who = sw.color === 'w' ? 'White' : 'Black';
+        const li = ctx.el('p', 'ch-turn', `${n}${sw.color === 'w' ? '.' : '…'} ${who} played ${sw.played} (−${(sw.loss / 100).toFixed(1)}). Better: ${sw.best}`);
+        rv.append(li);
+      }
+    }
 
     const pr = $('chPromo'); pr.innerHTML = ''; pr.hidden = !promo;
     if (promo) for (const k of 'QRBN') {

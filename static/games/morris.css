@@ -25,3 +25,5 @@ body:not(.calm) .mm-pt.empty.warn { animation: pulse 1.2s ease-in-out infinite a
 .mm-pt.safe { stroke-width: 2.4; stroke-dasharray: 3 2; }
 .mm-pt.safe.empty { fill: #ffd86655; stroke: #ffd866; }
 .mm-pt.safe.man { filter: drop-shadow(0 0 3px #ffd866); }
+.mm-pt.empty.risk-loss { stroke: var(--danger); stroke-width: 2; stroke-dasharray: 3 2; }
+.mm-pt.empty.risk-draw { stroke: var(--muted); stroke-width: 2; stroke-dasharray: 1 2.5; }

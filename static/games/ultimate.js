@@ -6,7 +6,24 @@ UI.ultimate = (() => {
   const threats = (boards, seat) => new Set(boards.map((v, b) => b).filter((b) => boards[b] == null
     && LINES.some((l) => l.includes(b) && l.every((x) => x === b || boards[x] === seat))));
   const MARK = ['✕', '◯'];
-  const $ = (id) => document.getElementById(id);
+  // 🧭 where would playing this square send my rival? (hover or focus a legal square; touch players get it as a hint line)
+  function route(u, i) {
+    const b = Math.floor(i / 9), k = i % 9;
+    const cells = u.cells.slice(k * 9, k * 9 + 9);
+    if (k === b) cells[i % 9] = u.me;  // sending them to the board I'm playing in: this move may close it
+    const closed = u.boards[k] != null || cells.every((v) => v != null) || (k === b && LINES.some((l) => l.every((x) => cells[x] === u.me)));
+    return { board: k, closed };
+  }
+  let baseHint = '';
+  function showRoute(i) {
+    const u = S?.ultimate, hint = $('utHint');
+    if (!hint) return;
+    big.querySelectorAll('.route,.route-closed').forEach((el) => el.classList.remove('route', 'route-closed'));
+    if (i == null || !u || S.phase !== 'playing') { hint.textContent = baseHint; return; }
+    const r = route(u, i);
+    big.children[r.board].classList.add(r.closed ? 'route-closed' : 'route');
+    hint.textContent = r.closed ? `🧭 Board ${r.board + 1} is closed, so your rival may play in any open board.` : `🧭 Sends your rival to board ${r.board + 1}.`;
+  }
 
   function mount(main, side) {
     main.innerHTML = '<div class="ut"><div class="ut-big" id="utBig"></div><p id="utHint" class="hint"></p><div id="utUndo" class="row center"></div></div>';
@@ -18,6 +35,10 @@ UI.ultimate = (() => {
         const cell = document.createElement('button'); cell.className = 'ut-cell';
         const idx = b * 9 + k;
         cell.setAttribute('aria-label', `board ${b + 1}, square ${k + 1}`);
+        cell.onpointerenter = (e) => e.pointerType === 'mouse' && !cell.disabled && showRoute(idx);
+        cell.onpointerleave = () => showRoute(null);
+        cell.onfocus = () => cell.matches(':focus-visible') && !cell.disabled && showRoute(idx);
+        cell.onblur = () => showRoute(null);
         cell.onclick = () => ctx.myTurn && ctx.quiet(ctx.act('mark', { cell: idx }));
         sb.append(cell);
       }
@@ -89,8 +110,9 @@ UI.ultimate = (() => {
       info.append(row);
     });
     const mine = u.me === 0 ? tx : u.me === 1 ? to : null, theirs = u.me === 0 ? to : u.me === 1 ? tx : null;
-    $('utHint').textContent = S.phase !== 'playing' || !ctx.myTurn ? '' : (u.star != null ? `⭐ Win board ${u.star + 1} to move again. ` : '') + (u.open.length > 1 ? 'Play in any glowing board.' : `Play in board ${u.open[0] + 1}.`)
+    baseHint = S.phase !== 'playing' || !ctx.myTurn ? '' : (u.star != null ? `⭐ Win board ${u.star + 1} to move again. ` : '') + (u.open.length > 1 ? 'Play in any glowing board.' : `Play in board ${u.open[0] + 1}.`)
       + (theirs?.size ? ` ⚠ Your rival wins the game with board ${[...theirs].map((b) => b + 1).join(' or ')}.` : mine?.size ? ` ⭐ Board ${[...mine].map((b) => b + 1).join(' or ')} wins it for you.` : '');
+    $('utHint').textContent = baseHint;
     undoRow($('utUndo'), u.undo, S, ctx, u.me != null);
   }
 
