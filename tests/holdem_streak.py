@@ -72,6 +72,17 @@ old.winners = [ann.id]
 old.hot_streak()
 check("and can still score", old.streak_n == 1)
 
+# a player leaving takes their run with them, and a missing winner is never paid
+room, g, (ann, bo, cy) = table(True)
+win(g, cy), win(g, cy)
+g.on_leave(cy)
+check("leaving clears the run", (g.streak_id, g.streak_n) == (None, 0))
+room, g, (ann, bo, cy) = table(True)
+win(g, cy), win(g, cy)
+del room.players[cy.id]
+win(g, cy)
+check("a winner with no seat gets no bonus and no crash", True)
+
 # real bot games: every hand through the real move path
 fired = games = 0
 t0 = time.time()

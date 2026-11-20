@@ -578,6 +578,8 @@ class Holdem(Game):
         r.add_log(f"{p.name} left the table.")
         was_turn = r.turn == p.id
         p.eliminated = True
+        if self.streak_id == p.id:  # 🔥 a run doesn't outlive its player
+            self.streak_id, self.streak_n = None, 0
         if self.stage != "done" and p.id in self.in_hand:
             p.g.folded = True
             self.dead += p.g.put  # the room removes the player next; their chips stay in the pot
