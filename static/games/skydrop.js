@@ -39,15 +39,24 @@ UI.skydrop = (() => {
     raf = requestAnimationFrame(loop);
   }
 
-  function unmount() { cancelAnimationFrame(raf); ro?.disconnect(); removeEventListener('keydown',keyDown); removeEventListener('keyup',keyUp); if(tiltHandler)removeEventListener('deviceorientation',tiltHandler); tiltHandler=null;tiltOn=false;tiltZero=null;gl?.dispose(); gl = flat = null; }
+  function unmount() { clearTimeout(steerTimer); cancelAnimationFrame(raf); ro?.disconnect(); removeEventListener('keydown',keyDown); removeEventListener('keyup',keyUp); if(tiltHandler)removeEventListener('deviceorientation',tiltHandler); tiltHandler=null;tiltOn=false;tiltZero=null;gl?.dispose(); gl = flat = null; }
   function steerFrom(e) {
-    const r = stage.getBoundingClientRect(), dx=e.clientX-drag.x, dy=e.clientY-drag.y, reach=38;
-    const mag=Math.hypot(dx,dy), scale=mag>reach?reach/mag:1, x=dx*scale/reach, z=dy*scale/reach;
+    const r = stage.getBoundingClientRect(), reach=58;
+    let dx=e.clientX-drag.x, dy=e.clientY-drag.y; const m0=Math.hypot(dx,dy);
+    if (m0>reach) { drag.x+=dx/m0*(m0-reach); drag.y+=dy/m0*(m0-reach); dx=e.clientX-drag.x; dy=e.clientY-drag.y; }  // the stick follows your thumb, so turning back is instant
+    const mag=Math.hypot(dx,dy), scale=mag>reach?reach/mag:1, dead=mag<5?0:1, x=dead*dx*scale/reach, z=dead*dy*scale/reach;
     $('sdStick').hidden = false; $('sdStick').style.left = `${drag.x-r.left}px`; $('sdStick').style.top = `${drag.y-r.top}px`;
     $('sdStick').firstElementChild.style.transform = `translate(${dx*scale}px,${dy*scale}px)`; setSteer(x,z);
   }
   function keySteer() { let x=0,z=0; for (const k of keys) { if (k==='ArrowLeft'||k==='KeyA')x--; if(k==='ArrowRight'||k==='KeyD')x++; if(k==='ArrowUp'||k==='KeyW')z--; if(k==='ArrowDown'||k==='KeyS')z++; } const n=Math.hypot(x,z)||1; setSteer(x/n,z/n,true); }
-  function setSteer(x,z,force=false) { sx=x; sz=z; if (!S || S.phase!=='playing') return; const now=performance.now(); if(!force&&now-sentAt<30)return; sentAt=now; ctx.input({sx:+x.toFixed(2),sz:+z.toFixed(2)}); }
+  let steerTimer=0;
+  function setSteer(x,z,force=false) {
+    sx=x; sz=z; if (!S || S.phase!=='playing') return;
+    const now=performance.now(), wait=33-(now-sentAt);
+    clearTimeout(steerTimer); steerTimer=0;
+    if (force||wait<=0) { sentAt=now; ctx.input({sx:+x.toFixed(2),sz:+z.toFixed(2)}); return; }
+    steerTimer=setTimeout(()=>{ steerTimer=0; sentAt=performance.now(); if (S?.phase==='playing') ctx.input({sx:+sx.toFixed(2),sz:+sz.toFixed(2)}); },wait);  // never drop the latest position
+  }
   function boost() { if (S?.phase==='playing') ctx.input({boost:true},true); }
   async function toggleTilt() {
     if (tiltOn) { tiltOn=false; tiltZero=null; if(tiltHandler)removeEventListener('deviceorientation',tiltHandler); tiltHandler=null; $('sdTilt').classList.remove('primary'); return; }
@@ -77,8 +86,12 @@ UI.skydrop = (() => {
     const shaft=new T.Group(); scene.add(shaft);
     const wallMat=new T.MeshStandardMaterial({color:0x222b53,roughness:.72,metalness:.16,side:T.DoubleSide});
     for(let side=0;side<4;side++){const m=new T.Mesh(new T.BoxGeometry(side<2?0.35:17,side<2?12:0.35,240),wallMat); if(side===0)m.position.x=-9; if(side===1)m.position.x=9; if(side===2)m.position.y=6; if(side===3)m.position.y=-6; m.position.z=-90; shaft.add(m);}
-    const gridMat=new T.MeshBasicMaterial({color:0x6179c7,transparent:true,opacity:.32});
-    for(let z=0;z<20;z++){const g=new T.Mesh(new T.TorusGeometry(8.7,.025,4,64),gridMat);g.position.z=-z*11;shaft.add(g);}
+    const GRID=11,gridRings=[];
+    for(let z=-2;z<20;z++){const g=new T.Mesh(new T.TorusGeometry(8.7,.05,4,64),new T.MeshBasicMaterial({color:0x6179c7,transparent:true,opacity:.5,blending:T.AdditiveBlending,depthWrite:false}));g.position.z=-z*GRID;g.userData.k=z;shaft.add(g);gridRings.push(g);}
+    // speed streaks: bright dashes that rush past, so you can feel how fast you fall and how deep you are
+    const NS=110,streakPos=new Float32Array(NS*6),streakSeed=[];for(let i=0;i<NS;i++){const a=Math.random()*6.283,r=2.5+Math.random()*5.5;streakSeed.push([Math.cos(a)*r*1.5,Math.sin(a)*r*.75,Math.random()*220]);}
+    const streakGeo=new T.BufferGeometry();streakGeo.setAttribute('position',new T.BufferAttribute(streakPos,3));
+    const streaks=new T.LineSegments(streakGeo,new T.LineBasicMaterial({color:0xaefcff,transparent:true,opacity:.55,blending:T.AdditiveBlending,depthWrite:false}));streaks.frustumCulled=false;scene.add(streaks);
     const gateMat=new T.MeshStandardMaterial({color:0x6cecff,emissive:0x159dcc,emissiveIntensity:2.8,metalness:.18,roughness:.2});
     const hazardMats=[0xff576f,0xffb843,0xc477ff].map(c=>new T.MeshStandardMaterial({color:c,emissive:c,emissiveIntensity:1.3,metalness:.2,roughness:.32}));
     const streamMat=new T.MeshBasicMaterial({color:0x6cf5d5,transparent:true,opacity:.45});
@@ -116,7 +129,13 @@ UI.skydrop = (() => {
       const pal=v.course==='storm'?['#241428',0xffc16f]:v.course==='aurora'?['#08263c',0x8effe8]:['#11132b',0x6cecff];scene.background.set(pal[0]);scene.fog.color.set(pal[0]);gateMat.color.set(pal[1]);gateMat.emissive.set(pal[1]);
       const idx=me(),f=sample(idx),depth=f[0],px=f[1],py=f[2];
       camera.position.set(px*.35,py*.35+3.4,-depth+12);camera.lookAt(px,py,-depth-12);
-      shaft.position.z=-depth;
+      const nowT=performance.now()/1000,boosting=((v.time||0)+Math.max(0,(performance.now()-gotAt)/1000))<(f[13]||0);
+      shaft.position.z=-(depth-depth%GRID);   // the hoops are fixed in the tunnel: they stream past you in steps of 11
+      const baseK=Math.floor(depth/GRID);
+      for(const g of gridRings){const k=g.userData.k+baseK,m=g.material;m.color.setHSL(((k*.045+nowT*.05)%1+1)%1,.75,.58);m.opacity=.18+.4*Math.max(0,1-(g.userData.k*GRID-depth%GRID)/200);}
+      const len=boosting?5.5:2.6;for(let i=0;i<NS;i++){const [sx0,sy0,z0]=streakSeed[i],rel=((z0-depth)%220+220)%220,zz=-depth-rel+12;streakPos.set([sx0,sy0,zz,sx0,sy0,zz-len],i*6);}
+      streakGeo.attributes.position.needsUpdate=true;streaks.material.opacity=boosting?.9:.5;
+      const fov=63+(boosting?9:0);camera.fov+=(fov-camera.fov)*.12;camera.updateProjectionMatrix();
       const pulse=1+Math.sin(performance.now()/260)*.06;
       for(let i=0;i<playerMeshes.length;i++){const a=sample(i),o=playerMeshes[i];o.position.set(a[1],a[2],-a[0]);o.visible=!a[9];o.rotation.z=-a[3]*.06;o.rotation.x=a[4]*.03;
         for(const c of o.children)if(c.userData.halo)c.scale.setScalar(pulse);}
