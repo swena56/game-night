@@ -29,11 +29,13 @@ class Belote(TrickGame):
         "Follow suit. Can't? You must trump unless your partner is winning, and beat any trump already played.",
         "King and queen of trumps: belote, +20. The takers must score over 81 of 162, or the defenders take it all.",
         "First pair to the target wins.",
+        "An option: win the last trick with the trump jack for a bonus 20.",
     ]
     min_players, max_players = 4, 4
     teams = True
     badges = {**TrickGame.badges, "capot": ("🧹", "Capot", "Take all eight tricks")}
-    settings_schema = {"target": ("Play to", [(1000, "1000"), (501, "501 (quick)")], 1000)}
+    settings_schema = {"target": ("Play to", [(1000, "1000"), (501, "501 (quick)")], 1000),
+                       "lastjack": ("🃏 Last jack", [(False, "Off"), (True, "On: +20")], False)}
 
     def start(self, seated, rng):
         self.seat_up(seated, rng)
@@ -206,6 +208,11 @@ class Belote(TrickGame):
         bel = [0, 0]
         if self.belote is not None:
             bel[side(self.belote)] = 20
+        if self.s.get("lastjack", False):
+            w = self.last["winner"]
+            if any(sd == w and c == "J" + self.trump for sd, c in self.last["cards"]):
+                bel[side(w)] += 20
+                self.moment(f"🃏 {self.nm(w)} takes the last trick with the jack: +20!", "gold", "chime")
         if pts[ts] + bel[ts] > pts[1 - ts] + bel[1 - ts]:
             gain = [pts[0] + bel[0], pts[1] + bel[1]]
             text = f"✅ {self.side_name(ts)} make it: {pts[ts]} to {pts[1 - ts]}"
