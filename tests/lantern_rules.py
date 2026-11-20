@@ -42,6 +42,7 @@ check("winner_of: highest unique", winner_of({"a": 9, "b": 9, "c": 4}) == "c" an
 check("winner_of: all matched", winner_of({"a": 5, "b": 5}) is None)
 
 room, (ann, bo, cy), g = new_room()
+room.settings["sneak"] = False; g.s["sneak"] = False
 g.table, g.deck = [6], [1, 2, 3, 4, 5, 7, 8, 9, 10]
 check("bad bids refused", refused(g, ann, {"type": "bid", "bid": 11}) and refused(g, ann, {"type": "bid", "bid": "3"})
       and refused(g, ann, {"type": "bid", "bid": 3, "lit": "yes"}))
@@ -78,6 +79,7 @@ check("both final reveals are kept: the auto-played last lot follows the one bef
 
 # market events: a mystery lot stays hidden (from views and bots) until bought; rain washes an unsold table away
 room, (ann, bo, cy), g = new_room()
+room.settings["sneak"] = False; g.s["sneak"] = False
 g.table, g.deck, g.hidden, g.event = [4], [1, 2, 3, 5, 6, 7, 8, 9, 10], set(), None
 g.events = {10: "mystery"}
 g.act(ann, {"type": "bid", "bid": 3}); g.act(bo, {"type": "bid", "bid": 3}); g.act(cy, {"type": "bid", "bid": 3})

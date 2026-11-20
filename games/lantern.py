@@ -41,6 +41,7 @@ class Lantern(Game):
         "Every tile is used once, win or lose. Most points after the last lot wins.",
         "🏮 Once a game, light your lantern on a bid: if it wins, the lots count double. It burns out either way, "
         "and an unused lantern lights itself on the last lot.",
+        "🐭 Sneak: winning a lot with a bid of 1 or 2 pays a +3 bonus on top.",
         "With market events on, some lots come with a twist: 🎁 a mystery lot keeps its value hidden until someone buys it, "
         "and 🌧 rain washes the whole table away if nobody buys that round.",
     ]
@@ -56,6 +57,7 @@ class Lantern(Game):
         "lots": ("Lots", [(10, "10 lots (tiles 1–10)"), (13, "13 lots (tiles 1–13)")], 10),
         "peek": ("Next lot", [(True, "👀 Shown"), (False, "Hidden")], True),
         "lamp": ("Lanterns", [(True, "🏮 One each"), (False, "Off")], True),
+        "sneak": ("🐭 Sneak bonus (win with a 1 or 2)", [(True, "+3"), (False, "Off")], True),
         "events": ("Market events", [(False, "Off"), (True, "🎁🌧 Mystery lots & rain")], False),
     }
     EVENT_ODDS = 0.3  # with events on, the share of lots (all but the last) that come with one
@@ -163,20 +165,26 @@ class Lantern(Game):
         if win:
             bid, lit = self.choices[win]
             gain = pot * 2 if lit else pot
+            sneak = self.s.get("sneak", True) and bid <= 2
+            if sneak:
+                gain += 3
             self.score[win] += gain
             self.bought[win] += len(self.table)
             rec["bids"][win][2] = gain
             goods = " + ".join(GOODS[v][0] for v in self.table)
             opened = [v for v in self.table if v in self.hidden]
             text = (f"🏮 {r.players[win].name} buys {goods} with a {bid}{clash}: "
-                    + (f"lantern lit, {pot} doubled to {gain}!" if lit else f"+{gain}.")
+                    + (f"lantern lit, {pot} doubled to {gain - 3 * sneak}!" if lit else f"+{gain - 3 * sneak}.")
+                    + (" 🐭 Sneak bonus +3." if sneak else "")
                     + "".join(f" 🎁 The mystery was {lot_name(v)}." for v in opened))
             self.hidden -= set(opened)
             if pot >= 10 and bid <= 3:
                 self.award(win, "bargain")
-            if lit and gain >= 20:
+            if lit and gain - 3 * sneak >= 20:
                 self.award(win, "bonfire")
-            if lit:
+            if sneak:
+                self.moment(f"🐭 {r.players[win].name}: sneaky {bid} wins, +3 bonus!", "cool", "good")
+            elif lit:
                 self.moment(f"🏮 {r.players[win].name}: lantern lit, {pot} → {gain}!", "gold", "fanfare")
             elif pot >= 10 and bid <= 3:
                 self.moment(f"🤑 {r.players[win].name}: a {bid} buys {pot}!", "gold", "tag")
