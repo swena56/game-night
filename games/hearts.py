@@ -15,6 +15,7 @@ RANKS = "23456789TJQKA"
 SUITS = "CDSH"   # sort order in hand: clubs, diamonds, spades, hearts
 VALUE = {r: i + 2 for i, r in enumerate(RANKS)}
 QUEEN = "QS"
+TEN = "TC"          # with the 10♣ option, whoever takes it doubles their hand
 JACK = "JD"        # with the jack option, taking the J♦ is −10
 REMOVE = ["2D", "3D", "3C", "4D"]  # taken out so the deck divides evenly
 HAND_PAUSE = 5.0   # pause on the hand's points
@@ -41,6 +42,7 @@ class Hearts(Game):
         "Each heart you take is 1 point and the Q♠ is 13. Take them all to shoot the moon: everyone else gets 26.",
         "No points on the first trick, and no leading hearts until one has been played.",
         "Optional 💎 J♦: whoever takes the jack of diamonds scores −10 (it counts even when someone shoots the moon).",
+        "Optional 🔟 10♣: whoever takes the 10 of clubs has the hearts and Q♠ they take that hand counted double (not when someone shoots the moon).",
         "When someone reaches the target, the lowest score wins.",
         "With 🌙 Shooter's choice, a moon shot takes whichever helps the shooter more: +26 to everyone else (when that ends the game in their favour, or they lead) or −26 off their own score.",
     ]
@@ -54,6 +56,7 @@ class Hearts(Game):
     settings_schema = {
         "target": ("Game to", [(100, "100 points"), (50, "50 points (quick)")], 100),
         "jack": ("Jack of diamonds", [(False, "No bonus"), (True, "💎 J♦ is −10")], False),
+        "ten": ("🔟 10♣", [(False, "Normal"), (True, "Doubles your hand")], False),
         "moon": ("🌙 Shooting the moon", [("others", "Everyone else +26"), ("choice", "Shooter's choice: +26 to the rest or −26 for you")], "others"),
     }
 
@@ -167,6 +170,8 @@ class Hearts(Game):
                   "power" if pts else "question")
         if QUEEN in cards and w:
             self.moment(f"👑 {w.name} takes the Queen (+13)", "bad", "groan")
+        elif self.ten() and TEN in cards and w:
+            self.moment(f"🔟 {w.name} takes the 10♣ (hand ×2)", "bad", "groan")
         elif self.jack() and JACK in cards and w:
             self.moment(f"💎 {w.name} takes the J♦ (−10)", "good", "good")
         self.last_trick = {"cards": [[s, c] for s, c in self.trick], "winner": win}
@@ -178,6 +183,9 @@ class Hearts(Game):
 
     def jack(self):
         return bool(self.s.get("jack"))
+
+    def ten(self):
+        return bool(self.s.get("ten"))
 
     def took(self, i):
         """Points taken this hand so far: hearts and the queen, less 10 for the J♦ when that option is on."""
@@ -207,6 +215,12 @@ class Hearts(Game):
                 got = [0 if i == moon else 26 for i in range(len(got))]
                 r.add_log(f"🌙 {m.name if m else '?'} shot the moon! Everyone else takes 26.", "big")
                 self.moment(f"🌙 {m.name if m else '?'} SHOT THE MOON", "gold", "fanfare")
+        if self.ten() and moon is None:
+            for i, t in enumerate(self.taken):
+                if TEN in t and got[i] > 0:
+                    x = self.pl(i)
+                    r.add_log(f"🔟 {x.name if x else '?'} took the 10♣: {got[i]} doubled to {got[i] * 2}.", "power")
+                    got[i] *= 2
         if self.jack():
             for i, t in enumerate(self.taken):
                 if JACK in t:
@@ -304,7 +318,8 @@ class Hearts(Game):
             "seats": self.seats, "me": i, "stage": self.stage, "hand": self.hands[i] if mine else [],
             "counts": [len(h) for h in self.hands], "trick": [[s, c] for s, c in self.trick],
             "last": self.last_trick, "scores": self.scores, "handNo": self.hand_no,
-            "taken": [self.took(k) for k in range(n)], "broken": self.broken, "jack": self.jack(),
+            "taken": [self.took(k) for k in range(n)], "broken": self.broken, "jack": self.jack(), "ten": self.ten(),
+            "tenAt": next((k for k in range(n) if TEN in self.taken[k]), None) if self.ten() else None,
             "queenAt": next((k for k in range(n) if "QS" in self.taken[k]), None),
             "jackAt": next((k for k in range(n) if JACK in self.taken[k]), None) if self.jack() else None,
             "hearts": [sum(1 for c in self.taken[k] if c[1] == "H") for k in range(n)],
@@ -390,6 +405,8 @@ class Hearts(Game):
             winners = [c for c in legal if VALUE[c[0]] > top and c != QUEEN]
             if jack_here and winners and pts < 10 and (last or suit == "D"):
                 return JACK if JACK in winners else max(winners, key=lambda c: VALUE[c[0]])
+        if following and self.ten() and level != "easy" and TEN in legal and len(legal) > 1:
+            legal = [c for c in legal if c != TEN] or legal if VALUE["T"] > top else legal
         if following:
             under = [c for c in legal if VALUE[c[0]] < top]
             if under:  # duck with the highest card that still loses
@@ -405,6 +422,8 @@ class Hearts(Game):
             legal = [c for c in legal if c != JACK]
         if QUEEN in legal:
             return QUEEN
+        if self.ten() and TEN in legal and level != "easy":
+            return TEN   # void in clubs: hand the doubler to whoever wins this trick
         high_spades = [c for c in legal if c[1] == "S" and c[0] in "KA"]
         if high_spades and queen_out:
             return high_spades[0]
