@@ -199,8 +199,9 @@ UI.hockey = (() => {
         if (!old) return;
         const jump = Math.hypot(vx - old[2], vy - old[3]);
         const near = data.ml.findIndex(([mx, my]) => Math.hypot(x - mx, y - my) < (h.mallet + h.puck) * 1.6);
-        if (near >= 0 && jump > 0.8) { ctx.sfx('puck', Math.min(1, jump / 4)); if (near === h.me) buzz(25); }
-        else if ((Math.sign(vx) !== Math.sign(old[2]) && Math.abs(old[2]) > 0.3) || (Math.sign(vy) !== Math.sign(old[3]) && Math.abs(old[3]) > 0.3)) ctx.sfx('rail');
+        const spark = (n, col, size) => { if (!canvas?.width) return; const [sx, sy] = toScreen(x, y), u = canvas.width; pfx.spark(sx, sy, n, { color: col, speed: [u * 0.1, u * 0.45], size: [u * size, u * size * 2] }); };
+        if (near >= 0 && jump > 0.8) { ctx.sfx('puck', Math.min(1, jump / 4)); if (near === h.me) buzz(25); spark(Math.min(16, 4 + Math.round(jump * 3)), jump > 3 ? '#ffd166' : '#ffffff', 0.004); }
+        else if ((Math.sign(vx) !== Math.sign(old[2]) && Math.abs(old[2]) > 0.3) || (Math.sign(vy) !== Math.sign(old[3]) && Math.abs(old[3]) > 0.3)) { ctx.sfx('rail'); spark(4, '#9fd8ff', 0.003); }
       });
     }
     net = { ...data, at: performance.now() };
