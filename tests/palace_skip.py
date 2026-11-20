@@ -47,11 +47,21 @@ def play8(n, eight):
 
 r, g, seen = play8(3, None)
 check("default: next player skipped", r.turn == g.seats[2], str(r.turn))
-check("callout names skipped player", len(seen) == 1 and "skips P1" in seen[0], str(seen))
+check("callout names skipped player", len(seen) == 1 and f"skips {g.nm(1)}" in seen[0], str(seen))
+check("pile label notes the skip", "8 skipped" in g.table(r.players[g.seats[1]], 1)["piles"][1]["label"])
 r, g, seen = play8(2, None)
 check("2 players: goes again", r.turn == g.seats[0] and len(seen) == 1, str(seen))
 r, g, seen = play8(3, False)
 check("off: normal turn order, no callout", r.turn == g.seats[1] and not seen)
+
+# the swap stage's Ready button sends "go" ("ready" is a room action)
+r = server.Room("TEST")
+for k in range(2):
+    r.add_player(f"P{k}")
+r.switch_game("palace")
+r.start()
+r.game.act(r.players[r.game.seats[0]], {"type": "go"})
+check("go readies a player", 0 not in r.game.waiting)
 
 # 8 that burns (four of a rank) still burns, no skip callout needed
 r, g = table(3)
@@ -88,8 +98,24 @@ try:
         r.switch_game("palace")
         r.start()
         g = r.game
+        orig_play, orig_pick = g.play, g.pick_up
+
+        def play_checked(i, cards, blind=False, _o=orig_play, g=g, level=level):
+            if not blind:
+                src = g.source(i)
+                pool = g.hands[i] if src == "hand" else g.up[i]
+                assert src in ("hand", "up"), f"play from {src}"
+                assert cards and len({palace.rank(c) for c in cards}) == 1, f"mixed ranks {cards}"
+                assert all(pool.count(c) >= cards.count(c) for c in cards), f"{cards} not in {pool}"
+                assert g.ok(cards[0]), f"illegal {cards} on {g.top()} ({level})"
+            return _o(i, cards, blind)
+
+        def pick_checked(i, extra=(), _o=orig_pick, g=g, level=level):
+            assert g.pile and not g.playable(i), f"pick up while able to play ({level})"
+            return _o(i, extra)
+        g.play, g.pick_up = play_checked, pick_checked
         steps = 0
-        while r.phase == "playing" and steps < 3000:
+        while r.phase == "playing" and steps < 20000:
             steps += 1
             if g.stage == "swap":
                 for i in sorted(g.waiting):

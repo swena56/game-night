@@ -123,10 +123,9 @@ class Palace(CardGame):
         self.flash = "↺" if r == "2" else None
         nxt = self.next_seat(i)
         if r == "8" and self.s.get("eight", True):
-            lost = nxt
-            nxt = self.next_seat(nxt)
+            self.moment(f"⏭ {self.nm(i)}'s 8 skips {self.nm(nxt)}!", "good", "good")
+            nxt = self.next_seat(nxt)             # in a 2-player game that is the 8 player again
             self.flash = "⏭"
-            self.moment(f"⏭ {self.nm(i)}'s 8 skips {self.nm(lost)}!" if lost != i else f"⏭ {self.nm(i)}'s 8 goes round: again!", "good", "good")
         self.to(nxt)
 
     def pick_up(self, i, extra=()):
@@ -158,7 +157,7 @@ class Palace(CardGame):
                 if h not in self.hands[i] or u not in self.up[i]:
                     raise GameError("Pick a hand card and a face-up card.")
                 return self.swap(i, h, u)
-            if t == "ready":
+            if t == "go":
                 return self.ready(i)
             raise GameError("Swap cards or say you're ready.")
         self.require_turn(p)
@@ -240,8 +239,8 @@ class Palace(CardGame):
              "piles": [{"cards": ["??"] if self.stock else [], "count": len(self.stock), "label": "Stock", "corner": True},
                        {"cards": top, "fan": True, "count": len(self.pile) or None,
                         "label": ("↺ reset by a 2" if self.flash == "↺" and self.pile else
-                                  f"Play {pretty(self.top())} or higher" if self.pile else "🔥 Burned: play anything" if self.flash == "🔥" else
-                                  f"⏭ 8 skipped a player: play {pretty(self.top())} or higher" if self.flash == "⏭" and self.pile else "Empty: play anything")}],
+                                  f"⏭ 8 skipped a player: play {pretty(self.top())} or higher" if self.flash == "⏭" and self.pile else
+                                  f"Play {pretty(self.top())} or higher" if self.pile else "🔥 Burned: play anything" if self.flash == "🔥" else "Empty: play anything")}],
              "scores": {"title": "Cards left", "rows": [{"seat": k, "value": len(self.hands[k]) + len(self.up[k]) + len(self.down[k])}
                                                         for k in sorted(range(self.n), key=lambda k: len(self.hands[k]) + len(self.up[k]) + len(self.down[k]))],
                         "hint": f"2 resets · 10 burns · {self.burned} burned so far."}}
@@ -251,7 +250,7 @@ class Palace(CardGame):
         if self.stage == "swap":
             if i in self.waiting:
                 t["moves"] = [{"card": h, "label": f"Swap for {pretty(u)}", "a": {"type": "swap", "hand": h, "up": u}} for h in self.hands[i] for u in self.up[i]]
-                t["buttons"] = [{"label": "✓ Ready", "a": {"type": "ready"}, "kind": "primary"}]
+                t["buttons"] = [{"label": "✓ Ready", "a": {"type": "go"}, "kind": "primary"}]
                 t["note"] = "Tap a hand card to swap it with a face-up card (good cards face up!), then Ready."
                 t["turnText"] = "🔁 Swap, then Ready"
             return t
