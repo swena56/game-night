@@ -79,9 +79,11 @@ UI.tictactoe = (() => {
       const row = ctx.el('div', 'seat-row', `${t.marks[i]}  ${p?.name ?? '—'}${pid === S.me.id ? ' (you)' : ''}`);
       row.style.color = p?.color ?? '';
       // the series: wins at Tic-Tac-Toe tonight
+      if (t.series) row.append(ctx.el('b', 'ttt-wins', ` ${t.series.wins[i]}`));
       row.append(ctx.el('b', 'ttt-wins', '🏆'.repeat(Math.min(5, p?.byGame?.tictactoe || 0)) + ((p?.byGame?.tictactoe || 0) > 5 ? `×${p.byGame.tictactoe}` : '')));
       info.append(row);
     });
+    if (t.series) info.append(ctx.el('p', 'hint', `🏁 Best of ${t.series.n}: first to ${Math.floor(t.series.n / 2) + 1}. ${t.series.done ? 'Series over — a rematch starts a new one.' : 'The first move alternates each game; draws are replayed.'}`));
     if (S.settings.variant === 'vanishing')
       info.append(ctx.el('p', 'hint', `👻 Vanishing: you only keep ${n} marks. Your faded mark disappears when you place the next one.`));
     if (n === 4) info.append(ctx.el('p', 'hint', 'Four in a row wins: across, down or corner to corner.'));

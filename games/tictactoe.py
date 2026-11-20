@@ -74,6 +74,7 @@ class TicTacToe(Game):
         '👻 Vanishing: you keep only your 3 newest marks (4 on 4×4) — the faded one disappears next.',
         '🙃 Misère: everything turned round. Whoever completes a line loses.',
         '⭐ Lucky square: one square is marked at the start. Claim it and you move again straight away.',
+        '🏁 Series: best of 3 or 5 with the first move alternating; the score is kept between games.',
     ]
     name = "Tic-Tac-Toe"
     icon = "❌"
@@ -83,10 +84,14 @@ class TicTacToe(Game):
         "variant": ("Variant", [("classic", "Classic"), ("vanishing", "👻 Vanishing"), ("misere", "🙃 Misère (a line loses)")], "classic"),
         "lucky": ("⭐ Lucky square", [(True, "On: claim it to move again"), (False, "Off")], True),
         "size": ("Board", [(3, "3×3"), (4, "4×4 (four in a row)")], 3),
+        "series": ("Series", [(1, "Single game"), (3, "Best of 3"), (5, "Best of 5")], 1),
     }
 
     def start(self, seated, rng):
         rng.shuffle(seated)
+        st = self.series_state([p.id for p in seated])
+        if st:  # a series: the first move alternates, so each game starts the other way round
+            seated.sort(key=lambda p: p.id != st["next"])
         self.seats = [p.id for p in seated]
         self.n = self.s.get("size", 3)
         self.cells = [None] * (self.n * self.n)
@@ -98,6 +103,40 @@ class TicTacToe(Game):
             self.room.add_log("⭐ One square is lucky: claim it to move again.", "power")
         self.room.add_log(f"{seated[0].name} plays {MARKS[0]} and goes first.", "big")
         self.room.begin_turn(seated[0].id)
+
+    def series_len(self):
+        return self.s.get("series", 1) or 1
+
+    def series_state(self, ids=None):
+        """The running series on the room (it outlives each game): wins per player, games played, who opens next.
+        Returns None for single games. With `ids`, starts a fresh series if the players or length changed."""
+        n = self.series_len()
+        if n <= 1:
+            self.room.ttt_series = None
+            return None
+        st = getattr(self.room, "ttt_series", None)
+        if ids is not None and (not st or st.get("done") or st["n"] != n or sorted(st["ids"]) != sorted(ids)):
+            st = self.room.ttt_series = {"n": n, "ids": list(ids), "wins": {i: 0 for i in ids}, "games": 0, "next": ids[0]}
+        return st
+
+    def end(self, winner, text):
+        """Finish the game, keeping the series score (a draw replays the game: it doesn't count)."""
+        st = self.series_state()
+        r = self.room
+        if st and sorted(st["ids"]) == sorted(self.seats):
+            if winner:
+                st["wins"][winner.id] += 1
+                st["games"] += 1
+            st["next"] = self.seats[1]  # the other player opens next
+            need = st["n"] // 2 + 1
+            top = max(st["wins"].values())
+            if top >= need or st["games"] >= st["n"]:
+                champ = max(st["wins"], key=st["wins"].get)
+                names = {i: r.players[i].name for i in st["ids"] if i in r.players}
+                score = " – ".join(str(st["wins"][i]) for i in st["ids"])
+                text += f" 🏁 Series over ({score}): {names.get(champ, '?')} takes best of {st['n']}!"
+                st["done"] = True
+        return r.finish(winner, text)
 
     def seat(self, p):
         return self.seats.index(p.id) if p.id in self.seats else None
@@ -146,12 +185,12 @@ class TicTacToe(Game):
             self.line = line
             if self.misere():  # 🙃 the one who made the line loses
                 o = r.players.get(self.seats[1 - seat])
-                return r.finish(o, f"🙃 {p.name} made {'three' if self.n == 3 else 'four'} in a row and loses — {o.name if o else '?'} wins!")
+                return self.end(o, f"🙃 {p.name} made {'three' if self.n == 3 else 'four'} in a row and loses — {o.name if o else '?'} wins!")
             if self.vanishing():
                 self.award(p, "vanisher")
-            r.finish(p, f"🏆 {p.name} gets {'three' if self.n == 3 else 'four'} in a row!")
+            self.end(p, f"🏆 {p.name} gets {'three' if self.n == 3 else 'four'} in a row!")
         elif None not in self.cells or self.moves >= MOVE_LIMIT:
-            r.finish(None, "🤝 It's a draw.")
+            self.end(None, "🤝 It's a draw.")
         else:
             if cell == self.bonus:  # ⭐ claimed: same player moves again
                 self.bonus = None
@@ -170,12 +209,18 @@ class TicTacToe(Game):
         seat = self.seat(p)
         return "" if seat is None else MARKS[seat]
 
+    def series_view(self):
+        st = self.series_state()
+        if not st or sorted(st["ids"]) != sorted(self.seats):
+            return None
+        return {"n": st["n"], "wins": [st["wins"][i] for i in self.seats], "games": st["games"], "done": bool(st.get("done"))}
+
     def view(self, p):
         fading = []
         if self.vanishing():
             fading = [h[0] for h in self.history if len(h) == self.keep()]
         return {"ttt": {"cells": self.cells, "seats": self.seats, "marks": MARKS, "n": self.n,
-                        "fading": fading, "line": self.line, "bonus": self.bonus}}
+                        "fading": fading, "line": self.line, "bonus": self.bonus, "series": self.series_view()}}
 
     # -- bot
 
