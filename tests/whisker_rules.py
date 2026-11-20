@@ -130,6 +130,19 @@ for _ in range(60):
 p = sent[-1]["p"][0]
 check("fast updates send 7 fields per critter, the last the step's head start", len(p) == 7 and -100 <= p[6] <= 100, p)
 
+# -- ⚡ a zoomies pickup grows back after ZOOM_BACK seconds
+r, g, _ = table(2)
+now = time.time()
+g.last_frame, g.next_at = now, now
+g.frame(now + 0.01)
+zc = next(c for c, k in g.food.items() if k == "z")
+mouse = next(e for e in g.ents if e["role"] == "m")
+g.nibble(mouse, zc, now)
+check("eaten zoomies is gone at first", zc not in g.food)
+mouse["cell"] = g.ents[0]["spawn"] if g.ents[0] is not mouse else g.ents[1]["spawn"]
+g.step(now + wk.ZOOM_BACK + 1)
+check("zoomies grows back later", g.food.get(zc) == "z")
+
 # -- whole games at every size, every bot level
 for n in (2, 3, 4, 5, 6):
     for bot in ("easy", "normal", "hard"):

@@ -39,6 +39,7 @@ OUTNUMBERED = 0.03                # cats run this much faster per mouse more tha
 LATE_TURN = 0.22                  # a swipe this soon after passing a side opening still turns into it
 NIBBLE = 0.25                     # a mouse loses this much of a step munching each crumb
 SQUEEZE = 0.25                    # …and this much squeezing into a mouse hole
+ZOOM_BACK = 18.0   # ⚡ an eaten zoomies pickup grows back this many seconds later, so the contest comes round again
 ZOOM_SECS, ZOOM_PACE, ZOOM_PTS = 3.0, 1.35, 3   # ⚡ a zoomies pickup: a mouse runs this much faster for this long
 CRUMB, BELL, BONK, CATCH = 1, 5, 20, 8               # points
 CLEAR_BONUS, SWEEP_BONUS = 25, 25  # every crumb gone (each mouse still in) / every mouse out (each cat)
@@ -184,7 +185,7 @@ class Whisker(Game):
         "Each round some players are 🐭 mice and the rest are 🐱 cats — the roles rotate, so everyone hunts.",
         "Mice: nibble crumbs for points. Swipe, use the arrows or the arrow keys — press early to take a corner.",
         "Cats: catch a mouse and you snatch half the crumbs it nibbled this round. Cats run a touch faster.",
-        "⚡ Grab a zoomies pickup (one each side) and your mouse runs a third faster for 3 seconds.",
+        "⚡ Grab a zoomies pickup (one each side, it grows back after 18 s) and your mouse runs a third faster for 3 seconds.",
         "🔔 A mouse that rings a bell makes every cat panic: bump one then to send it back to its basket.",
         "🕳️ Mouse holes let mice through the walls but not cats — though a cat at either end can reach in.",
         "Every round is a new maze: the 🌿 garden, the 🫙 pantry, the 🕯️ cellar. More mice, bigger maze.",
@@ -273,6 +274,7 @@ class Whisker(Game):
             if self.walls[c] == OPEN and not self.in_den(c) and c not in spawns:
                 self.food[c] = "b" if c in bells else "z" if c in zooms else "c"
         self.crumbs_at_start = len(self.food)
+        self.zoom_back = []
         self.eaten = []  # [tick, cell] lately eaten, for the fast channel
         self.stage = "countdown"
         self.next_at = now + COUNTDOWN
@@ -437,6 +439,12 @@ class Whisker(Game):
         """One tick: critters whose turn it is to move decide (bots) and move; then catches. True if anything big happened."""
         self.tick += 1
         big = False
+        for t, c in list(getattr(self, "zoom_back", [])):
+            if now >= t:
+                self.zoom_back.remove((t, c))
+                if c not in self.food and not any(e["cell"] == c for e in self.ents):
+                    self.food[c] = "z"
+                    big = True
         for e in self.ents:
             e["prev"] = e["cell"]
         for e in self.ents:
@@ -483,6 +491,7 @@ class Whisker(Game):
         e["pouch"] += pts
         if kind == "z":
             e["zoom_until"] = now + ZOOM_SECS
+            self.zoom_back = getattr(self, "zoom_back", []) + [(now + ZOOM_BACK, c)]
             self.event("zoom", c, e["seat"])
             return False
         if kind == "b":
