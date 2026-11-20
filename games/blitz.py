@@ -220,7 +220,7 @@ class Blitz(CardGame):
              "piles": [{"cards": ["??"], "count": len(self.stock), "label": "Stock", "act": {"type": "draw", "from": "stock"} if mine and self.stage == "draw" else None},
                        {"cards": self.discard[-1:], "label": "Discard", "act": {"type": "draw", "from": "discard"} if mine and self.stage == "draw" else None}],
              "scores": {"title": "Lives", "rows": [{"seat": k, "value": "❤️" * max(0, self.lives[k]) or "💀"} for k in sorted(range(self.n), key=lambda k: -self.lives[k])],
-                        "hint": "Ace 11, faces 10. Only one suit counts."}}
+                        "hint": "Ace 11, faces 10. Only one suit counts" + (" (three of a kind = 30)." if self.s.get("trips", 1) != 0 else ".")}}
         if self.reveal and self.stage == "show":
             t["banner"] = self.reveal["text"]
         if self.knocker is not None and self.stage != "show":
@@ -228,7 +228,10 @@ class Blitz(CardGame):
         if i is not None and self.hands[i]:
             v = self.val(self.hands[i])
             best = max("CDHS", key=lambda s: sum(VAL[rank(c)] for c in self.hands[i] if suit(c) == s))
-            t["note"] = f"Your hand: {v} in {GLYPH[best]}."
+            if self.s.get("trips", 1) != 0 and is_trips(self.hands[i]) and v == 30 and value(self.hands[i]) < 30:
+                t["note"] = f"Your hand: 30 (three {rank(self.hands[i][0])}s)."
+            else:
+                t["note"] = f"Your hand: {v} in {GLYPH[best]}."
         if mine and self.stage == "draw":
             t["buttons"] = [{"label": "✊ Knock", "a": {"type": "knock"}}] if self.knocker is None else []
             t["turnText"] = "🃏 Draw, or knock"

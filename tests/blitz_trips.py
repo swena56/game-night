@@ -106,5 +106,17 @@ finally:
     blitz.Blitz.throw, blitz.Blitz.draw, blitz.Blitz.moment = real_throw, real_draw, real_moment
 check("bot games finish", done == games, f"{done}/{games}")
 check("trips callout fires in bot games", fired > 0, f"{fired} in {games} games")
+# the "Your hand" note names the trips instead of a suit; a tie with a 30 suit total loses nothing extra
+for setting, want in ((None, True), (0, False)):
+    r, g = table(setting)
+    g.hands[0] = ["9C", "9D", "9S"]
+    note = g.table(g.pl(0), 0)["note"]
+    check(f"note trips (setting {setting})", ("30 (three 9s)" in note) == want, note)
+r, g = table()
+g.hands = [["9C", "9D", "9S"], ["KC", "QC", "KD"], ["2C", "3D", "5H"]]
+g.knocker = 0
+g.showdown()
+check("trips 30 ties suit 30: both safe, lowest loses", g.lives == [3, 3, 2], str(g.lives))
+
 print("all ok" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(1 if fails else 0)
