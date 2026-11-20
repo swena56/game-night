@@ -91,5 +91,22 @@ for p in (bo, cy):
 g.bot_tick()
 check("bots chose legally", {bo.id, cy.id} <= set(g.choices) and all(c in ("grab", "guard", "rest") for c in g.choices.values()), g.choices)
 
+# pickles: marked survives a save; a pre-change save (no `marked`) still plays a night
+import pickle  # noqa: E402
+room, (ann, bo, cy), g = marked_room(True)
+g.moon = 99
+night(g, (ann, bo, cy), ("grab", "rest", "rest"))
+r2 = pickle.loads(pickle.dumps(room))
+check("marked survives a pickle", r2.game.marked == {ann.id})
+room, (ann, bo, cy), g = marked_room(True)
+g.moon = 99
+del g.__dict__["marked"]
+r3 = pickle.loads(pickle.dumps(room))
+g3 = r3.game
+a3, b3, c3 = r3.seated()
+check("old save without marked views", g3.view(a3)["heist"]["marked"] == [])
+night(g3, (a3, b3, c3), ("grab", "rest", "rest"))
+check("old save plays and marks", g3.view(a3)["heist"]["marked"] == [a3.id])
+
 print(f"\n{len(fails)} failed" if fails else "\nall passed")
 sys.exit(1 if fails else 0)

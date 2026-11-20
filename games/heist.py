@@ -19,6 +19,7 @@ PERSONAS = {"greedy": ("🦊", 1.6, 0.7), "cautious": ("🐢", 0.5, 0.9), "watch
 
 class Heist(Game):
     id = "heist"
+    marked = frozenset()  # 🎯 rooms saved before Marked thief have none
     category = "party"
     howto = [
         'Each night, everyone secretly chooses Grab, Guard or Rest.',
