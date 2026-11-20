@@ -4,8 +4,11 @@
 UI.lanes = (() => {
   let still = false;
   let S, ctx, gl = null, flat = null, raf = 0, ro = null;
+  // 🧑 the animated bowler (a toggle, remembered): walks up, swings and releases; rivals throw on their own lanes
+  let bowlerOn = (() => { try { return localStorage.getItem('ln.bowler') !== '0'; } catch { return true; } })();
+  const LEAD = 0.8;  // seconds of approach before the ball leaves the hand
   let anim = null, seen = 0, primed = false, drag = null, rolledAt = 0, lastDraw = 0, holdUntil = 0, settleAt = 0, settled = true;
-  let start = 0.2, spin = 0.5, saver = false;
+  let start = 0.2, spin = 0.5, saver = false, coach = '';  // coach: what the last ball did at the rack, and how to fix it
   const $ = (id) => document.getElementById(id);
   const FPS = 30;
   const MAXA = 0.12;
@@ -31,12 +34,12 @@ UI.lanes = (() => {
   const sndOn = () => !!window.Snd?.on();
   const snd = (fn, delay) => window.Snd?.play(fn, delay);
   const panX = (x) => Math.max(-0.8, Math.min(0.8, (x || 0) / 0.55));
-  const HALL = { room: 'hall', send: 0.75 };
+  const HALL = { room: 'hall', send: 0.4 };
   const rollBed = (K, dst) => {
     const A = K.ctx, src = K.loopSrc('brown'), lpf = A.createBiquadFilter(), g = A.createGain(), o = A.createOscillator(), og = A.createGain();
     const ticks = K.loopSrc('white'), bp = A.createBiquadFilter(), tg = A.createGain(), lfo = A.createOscillator(), lg = A.createGain();
     lpf.type = 'lowpass'; lpf.frequency.value = 300; lpf.Q.value = 1.1;
-    o.type = 'sine'; o.frequency.value = 50; og.gain.value = 0.35; g.gain.value = 0;
+    o.type = 'sine'; o.frequency.value = 50; og.gain.value = 0; g.gain.value = 0;
     // the boards' seams: a faint ticking whose rate follows the ball
     bp.type = 'bandpass'; bp.frequency.value = 1400; bp.Q.value = 1.2; tg.gain.value = 0;
     lfo.frequency.value = 18; lg.gain.value = 0.006; lfo.connect(lg).connect(tg.gain);
@@ -46,11 +49,11 @@ UI.lanes = (() => {
     return {
       set(level, hollow) {
         const t = A.currentTime, on = level > 0;
-        g.gain.setTargetAtTime(on ? 0.07 + 0.17 * level : 0, t, on ? 0.05 : 0.15);
+        g.gain.setTargetAtTime(on ? 0.05 + 0.11 * level : 0, t, on ? 0.08 : 0.15);
         lpf.frequency.setTargetAtTime(hollow ? 150 : 220 + 320 * level, t, 0.08);
         o.frequency.setTargetAtTime(hollow ? 34 : 42 + 18 * level, t, 0.1);
         lfo.frequency.setTargetAtTime(8 + 22 * level, t, 0.1);
-        tg.gain.setTargetAtTime(on && !hollow ? 0.012 : 0, t, 0.1);
+        tg.gain.setTargetAtTime(0, t, 0.1);
       },
       stop() { try { src.stop(); o.stop(); ticks.stop(); lfo.stop(); } catch {} },
     };
@@ -64,25 +67,35 @@ UI.lanes = (() => {
   // one pin: a hollow maple tock, its pitch set by the pin (each one a little different), panned to its spot
   const PIN_F = [610, 680, 560, 720, 640, 590, 750, 700, 620, 660];
   const tock = (v = 1, at = 0, k = -1, x = 0) => snd((t, K) => {
-    const dst = K.at({ ...HALL, pan: panX(x), vol: 0.6 + 0.4 * v }), f = K.vary(k >= 0 ? PIN_F[k] : K.R(560, 760), 0.05);
-    K.burst(dst, t, { type: 'bandpass', f: K.R(2400, 3600), q: 1.1, vol: 0.32 * v, tau: 0.004 });
-    K.mode(dst, t, f, 0.13 * v, 0.03); K.mode(dst, t, f * 2.41, 0.06 * v, 0.016); K.mode(dst, t, f * 4.1, 0.025 * v, 0.008);
-    K.mode(dst, t, f * 0.5, 0.05 * v, 0.05);
+    const dst = K.at({ room: 'hall', send: 0.18, pan: panX(x), vol: 0.55 + 0.45 * v }), f = K.vary(k >= 0 ? PIN_F[k] : K.R(560, 760), 0.06);
+    // contact: a very short bright click, then the pin's dry maple ring dying in a few ms (a pin is hollow-ish and small)
+    K.burst(dst, t, { type: 'bandpass', f: K.R(2600, 4200), q: 2.2, vol: 0.2 * v, tau: 0.0014 });
+    K.mode(dst, t, f * 1.9, 0.1 * v, 0.011); K.mode(dst, t, f * 3.3, 0.05 * v, 0.006); K.mode(dst, t, f * 0.62, 0.07 * v, 0.02);
+    if (Math.random() < 0.45) {  // the quick second knock as the two pins rebound off each other
+      const dt = K.R(0.012, 0.03); K.burst(dst, t + dt, { type: 'bandpass', f: K.R(2200, 3600), q: 2, vol: 0.09 * v, tau: 0.0012 }); K.mode(dst, t + dt, f * 2.2, 0.05 * v, 0.008);
+    }
   }, at);
   // the ball reaching the rack: a heavy thump of the ball into the head pin, and for a big hit a clatter of
   // pins on the deck and against the kickbacks that grows with how many go
   const crash = (n, x = 0) => snd((t, K) => {
-    const dst = K.at({ ...HALL, pan: panX(x) });
-    K.mode(dst, t, 90, 0.32, 0.07, { f1: 60 }); K.burst(dst, t, { type: 'lowpass', f: 900, q: 0.7, vol: 0.5, tau: 0.03 });
-    K.burst(dst, t, { type: 'bandpass', f: 2600, q: 0.9, vol: 0.28, tau: 0.006 });
-    if (n >= 4) {
-      for (let i = 0; i < n + 4; i++) {
-        const dt = 0.03 + i * K.R(0.018, 0.04), d2 = K.at({ ...HALL, pan: K.R(-0.6, 0.6), vol: 0.5 });
-        K.burst(d2, t + dt, { type: 'bandpass', f: K.R(1800, 3800), q: 1.3, vol: K.R(0.08, 0.2), tau: 0.004 });
-        K.mode(d2, t + dt, K.R(520, 800), K.R(0.03, 0.07), 0.025);
-      }
-      K.burst(dst, t + 0.05, { type: 'bandpass', f: 1500, f1: 700, q: 0.4, vol: 0.03 * n, tau: 0.12, dur: 0.4 + n * 0.03 });
-      K.burst(dst, t + 0.15, { type: 'lowpass', f: 300, q: 0.6, vol: 0.02 * n, tau: 0.08, buf: 'brown' });  // pins hitting the pit cushion
+    const dst = K.at({ ...HALL, pan: panX(x), send: 0.5 }), big = Math.min(1, n / 10);
+    // impact: a hard wooden crack (bright snap + body of the pin + ball thud), loud and instant
+    K.burst(dst, t, { type: 'highpass', f: 1800, q: 0.7, vol: 0.4, tau: 0.006 });
+    K.burst(dst, t, { type: 'bandpass', f: 3200, q: 0.8, vol: 0.3, tau: 0.012 });
+    K.mode(dst, t, 700, 0.14, 0.05); K.mode(dst, t, 1700, 0.07, 0.025); K.mode(dst, t, 105, 0.14, 0.06, { f1: 65 });
+    // the scatter: dense overlapping knocks, loud at first and thinning out, pitches from low bonks to high clacks
+    const cnt = Math.round(4 + n * 4.5), span = 0.35 + big * 0.7;
+    for (let i = 0; i < cnt; i++) {
+      const u = i / cnt, dt = 0.015 + Math.pow(u, 1.3) * span + K.R(0, 0.025), fade = 1 - u * 0.65;
+      const d2 = K.at({ ...HALL, pan: K.R(-0.7, 0.7), vol: K.R(0.4, 0.8) * fade }), f = K.vary(PIN_F[i % 10] * K.R(0.7, 1.25), 0.05);
+      K.burst(d2, t + dt, { type: 'bandpass', f: K.R(1800, 4200), q: 1.5, vol: K.R(0.08, 0.2), tau: 0.0035 });
+      K.mode(d2, t + dt, f, K.R(0.06, 0.13), K.R(0.02, 0.045)); K.mode(d2, t + dt, f * 2.41, 0.035, 0.012);
+    }
+    // pins sliding and tumbling on the deck, then bouncing off the back cushion
+    if (n >= 3) K.burst(dst, t + 0.06, { type: 'bandpass', f: 900, f1: 450, q: 0.5, vol: 0.018 * n, tau: 0.15, dur: 0.3 + big * 0.6, attack: 0.03 });
+    if (n >= 4) for (let i = 0; i < Math.min(4, n - 2); i++) {
+      const dt = 0.12 + i * K.R(0.05, 0.11), d3 = K.at({ ...HALL, pan: K.R(-0.4, 0.4), vol: 0.6 });
+      K.mode(d3, t + dt, K.R(140, 220), 0.12, 0.05); K.burst(d3, t + dt, { type: 'lowpass', f: 700, q: 0.7, vol: 0.14, tau: 0.02, buf: 'brown' });
     }
   });
   const SND = {
@@ -105,12 +118,10 @@ UI.lanes = (() => {
       const d = K.at({ ...HALL, send: 0.6 });
       K.mode(d, t, 140, 0.08, 0.04); K.burst(d, t, { type: 'bandpass', f: 1800, q: 1.5, vol: 0.08, tau: 0.01 });
       K.burst(d, t + 0.2, { type: 'bandpass', f: 800, f1: 450, q: 0.6, vol: 0.12, tau: 0.06, dur: 0.4, attack: 0.05 });
-      K.sweep(d, t + 0.15, { f0: 95, f1: 120, dur: 0.6, vol: 0.03, type: 'triangle', attack: 0.1 });  // the motor
     }),
     // the rack lowered: a motor whine, then ten pins set on the deck in a quick ripple of wooden clicks
     setter: () => snd((t, K) => {
       const d = K.at({ ...HALL, send: 0.6 });
-      K.sweep(d, t, { f0: 160, f1: 230, dur: 0.38, vol: 0.025, type: 'triangle', attack: 0.08 });
       for (let i = 0; i < 10; i++) {
         const dt = 0.36 + i * K.R(0.008, 0.016), d2 = K.at({ ...HALL, pan: K.R(-0.5, 0.5), vol: 0.45 });
         K.burst(d2, t + dt, { type: 'bandpass', f: K.R(2200, 3200), q: 1.6, vol: 0.1, tau: 0.003 });
@@ -120,7 +131,6 @@ UI.lanes = (() => {
     // the ball's ride back under the lanes: a long low whirr and rumble
     whirr: () => snd((t, K) => {
       const d = K.at({ ...HALL, send: 0.4 });
-      K.sweep(d, t, { f0: 80, f1: 140, dur: 1.7, vol: 0.02, type: 'triangle', attack: 0.4 });
       K.burst(d, t, { type: 'lowpass', f: 260, f1: 420, q: 0.8, vol: 0.18, tau: 0.25, dur: 1.7, attack: 0.5, buf: 'brown' });
     }),
     // and up the hood: a knock as it meets the balls already there
@@ -148,6 +158,8 @@ UI.lanes = (() => {
       <div class="ln-ctl">
         <div class="ln-row"><span class="ln-lbl">🧍 Stand</span>
           <div class="ln-dial"><button data-st="-1" aria-label="Stand further left">◀</button><b id="lnStart"></b><button data-st="1" aria-label="Stand further right">▶</button></div>
+          <button class="ln-saver ghost-btn" id="lnSpare" hidden title="Stand where the leave is easiest, with no hook">💡 Spare spot</button>
+          <button class="ln-saver ghost-btn" id="lnBowler" title="Show an animated bowler on every lane">🧑 Bowler</button>
           <button class="ln-saver ghost-btn" id="lnSaver" hidden title="If this ball leaves exactly one pin, it falls too (once a game)">🎯 Spare saver</button>
         </div>
         <div class="ln-row"><span class="ln-lbl">🌀 Hook</span><span class="ln-end">⟲</span>
@@ -160,7 +172,13 @@ UI.lanes = (() => {
       const b = e.target.closest('button'); if (!b) return;
       if (b.dataset.st) start = Math.max(-0.4, Math.min(0.4, Math.round((start + +b.dataset.st * 0.04) * 100) / 100));
       else if (b.id === 'lnSaver') saver = !saver;
-      controls();
+      else if (b.id === 'lnSpare') {
+        const sp = L().lane.spots, xs = L().standing.map((k) => sp[k][0]), avg = xs.reduce((a, b) => a + b, 0) / (xs.length || 1);
+        start = Math.max(-0.4, Math.min(0.4, Math.round((-avg * 1.7) / 0.04) * 0.04)); spin = 0;
+        $('lnSpin').value = 0; coach = `💡 Standing ${start === 0 ? 'in the middle' : (start < 0 ? 'left' : 'right')} with no hook: now drag straight at ${xs.length === 1 ? 'the pin' : 'the leave'}.`;
+      }
+      else if (b.id === 'lnBowler') { bowlerOn = !bowlerOn; try { localStorage.setItem('ln.bowler', bowlerOn ? '1' : '0'); } catch {} }
+      controls(); hint();
     });
     $('lnSpin').addEventListener('input', (e) => { spin = -e.target.value / 100; controls(); });
     const stage = $('lnStage');
@@ -202,9 +220,10 @@ UI.lanes = (() => {
     el.hidden = false; el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
   }
   function bowl(r) {
-    rolledAt = performance.now();
+    rolledAt = performance.now(); coach = '';
     showSpeed(KMH(r.speed), KMH(r.speed) > (myRow()?.top || 0) + 0.05 && (myRow()?.top || 0) > 0);
-    SND.release(); ctx.buzz?.(18);
+    if (bowlerOn) setTimeout(() => SND.release(), LEAD * 1000); else SND.release();
+    ctx.buzz?.(18);
     ret = null;  // picked up off the return
     const arm = saver && L().spare && L().saver;
     saver = false;
@@ -217,6 +236,8 @@ UI.lanes = (() => {
     const sv = $('lnSaver');
     sv.hidden = !(L().spare && L().saver && L().me != null);
     sv.classList.toggle('on', saver);
+    const sb = $('lnSpare'); if (sb) sb.hidden = !(L().me != null && L().standing.length && L().standing.length < 10 && canBowl());
+    const bb = $('lnBowler'); if (bb) { bb.classList.toggle('on', bowlerOn); bb.setAttribute('aria-pressed', bowlerOn ? 'true' : 'false'); bb.textContent = bowlerOn ? '🧑 Bowler: on' : '🧑 Bowler: off'; }
   }
 
   // a frame's boxes on the scoresheet: X for a strike, / for a spare, - for a miss
@@ -241,7 +262,8 @@ UI.lanes = (() => {
       // after the roll: a fresh rack if the frame is over (and I'm still bowling), else the leave set back down
       const done = myRow()?.done;
       ret = null;  // (an automatic roll never went through bowl())
-      anim = { shot: v.shot, t0: performance.now(), hi: 0, said: false, hits: 0, gut: false, pit: false, post: 0,
+      const lead = bowlerOn && performance.now() - rolledAt < 4000;
+      anim = { shot: v.shot, lead, t0: lead ? Math.max(performance.now(), rolledAt + LEAD * 1000) : performance.now(), hi: 0, said: false, hits: 0, gut: false, pit: false, post: 0,
         reset: !done && v.standing.length === 10, keep: done || v.standing.length === 10 ? new Set() : new Set(v.standing) };
     }
     const me = myRow();
@@ -254,12 +276,46 @@ UI.lanes = (() => {
     renderRivals(); renderSheet(); controls(); hint();
   }
 
+  // 📖 the score, frame by frame, in words: how each frame's points came about (strike/spare bonuses, the last
+  // frame's bonus balls, splits, the saver, the cosmic +10). `pts` per frame always adds up to the server's total.
+  function explain(row, nframes, cosmic) {
+    const flat = row.frames.flat(), out = [];
+    let i = 0, run = 0;
+    row.frames.forEach((fr, f) => {
+      const last = f === nframes - 1, at = i, cum = row.cum[f];
+      const tag = [row.splits?.includes(at) ? '🪓 split left' : '', row.saved?.some((q) => q >= at && q < at + fr.length) ? '🎯 saver' : ''].filter(Boolean).join(' · ');
+      let text, base = null, mark = false;
+      if (last) {
+        const done = fr.length === 3 || (fr.length === 2 && fr[0] + fr[1] < 10);
+        mark = fr[0] === 10 || fr[0] + fr[1] === 10;
+        text = `${fr.join(' + ')}${fr.length > 1 ? ' = ' + fr.reduce((a, b) => a + b, 0) : ''}${mark ? ` (${fr[0] === 10 ? 'a strike' : 'a spare'} earns bonus balls here, each counted once)` : ''}`;
+        base = done ? fr.reduce((a, b) => a + b, 0) : null;
+        i += fr.length;
+      } else if (fr[0] === 10) {
+        const n = flat.slice(at + 1, at + 3); mark = true;
+        text = `Strike: 10 + next two balls (${n.length ? n.join(' + ') : '?'})`;
+        base = n.length === 2 ? 10 + n[0] + n[1] : null; i += 1;
+      } else if (fr.length === 2 && fr[0] + fr[1] === 10) {
+        const n = flat.slice(at + 2, at + 3); mark = true;
+        text = `Spare: 10 + next ball (${n.length ? n[0] : '?'})`;
+        base = n.length ? 10 + n[0] : null; i += 2;
+      } else {
+        text = fr.length === 2 ? `${fr[0]} + ${fr[1]}, open frame` : `${fr[0]}, second ball to come`;
+        base = fr.length === 2 ? fr[0] + fr[1] : null; i += fr.length;
+      }
+      const bonus = base != null && f === cosmic && mark ? 10 : 0, pts = base == null ? null : base + bonus;
+      if (pts != null) run += pts;
+      out.push({ f, text: text + (bonus ? ' + 🌟 10 cosmic' : '') + (tag ? ` (${tag})` : ''), pts, total: pts == null ? null : run, cum });
+    });
+    return out;
+  }
+
   function hint() {
     const v = L();
     let t = '';
     if (S.phase === 'playing' && v.me != null) {
       if (v.wait && v.wait !== SETTLE) t = v.wait;
-      else if (canBowl()) t = gl || flat ? 'Drag back from anywhere on the lane and let go. Sideways sets the line; further back is faster.' : '';
+      else if (canBowl()) t = gl || flat ? (coach ? coach + ' ' : '') + 'Drag back from anywhere on the lane and let go. Sideways sets the line; further back is faster.' : '';
     }
     if ($('lnHint').textContent !== t) $('lnHint').textContent = t;
   }
@@ -277,7 +333,7 @@ UI.lanes = (() => {
   }
 
   function renderSheet() {
-    const v = L(), box = $('lnSheet'); box.innerHTML = '';
+    const v = L(), box = $('lnSheet'), wasOpen = box.querySelector('details.ln-why')?.open; box.innerHTML = '';
     const t = ctx.el('table', 'ln-tab');
     const head = ctx.el('tr'); head.append(ctx.el('th', '', ''));
     for (let f = 0; f < v.nframes; f++) head.append(ctx.el('th', f === v.cosmic ? 'ln-cos' : '', f === v.cosmic ? `🌟${f + 1}` : String(f + 1)));
@@ -301,6 +357,13 @@ UI.lanes = (() => {
       t.append(tr);
     }
     box.append(t);
+    if (me) {
+      const det = ctx.el('details', 'ln-why'); det.append(ctx.el('summary', '', '📖 How my score adds up'));
+      if (wasOpen) det.open = true;
+      const ol = ctx.el('div', 'ln-whylist');
+      for (const x of explain(me, v.nframes, v.cosmic)) ol.append(ctx.el('p', 'hint left', `F${x.f + 1}: ${x.text}${x.pts == null ? ' …waiting for the bonus' : ` → ${x.pts} (total ${x.total})`}`));
+      det.append(ol); box.append(det);
+    }
     box.append(ctx.el('p', 'hint left', `🌟 Frame ${v.cosmic + 1} is cosmic: a strike or spare in it scores +10 more.`));
     const me = myRow();
     if (me?.top) box.append(ctx.el('p', 'hint left', `🚀 Your fastest ball: ${Math.round(me.top / 1.609)} mph (${Math.round(me.top)} km/h).`));
@@ -389,6 +452,13 @@ UI.lanes = (() => {
         anim.said = true;
         const w = sh.word === 'strike' ? 'STRIKE!' : sh.word === 'spare' ? 'SPARE!' : sh.gutter && !sh.knocked.length ? 'Gutter…' : `${sh.knocked.length}`;
         word(w, sh.word);
+        {  // where the ball met the rack, and what to change
+          const hd = L().lane.head, b = sh.tracks.ball, i = b.findIndex((q) => q[1] >= hd - 0.05), dx = i >= 0 ? b[i][0] : null;
+          if (dx == null || sh.gutter && !sh.knocked.length) coach = sh.gutter ? '🪣 Into the gutter: aim a little more toward the middle, or ease the hook.' : '';
+          else if (Math.abs(dx) < 0.03) coach = '🎯 Dead centre on the head pin: a hit like that can leave a split. Try the pocket, a hand to one side.';
+          else if (Math.abs(dx) < 0.1) coach = '🎯 In the pocket!';
+          else coach = `${Math.abs(dx) < 0.2 ? '↔️ Hit' : '↔️ Way'} ${dx < 0 ? 'left' : 'right'} of the pocket: ${dx < 0 ? 'stand or aim a bit further right' : 'stand or aim a bit further left'}.`;
+        }
         const mine = myRow();
         if (mine?.done) setTimeout(() => { if ($('lnWord')) word(`🏁 ${mine.total}`, 'final', 2600); }, 1300);  // the final score, before the game ends (#130)
         if (sh.word === 'strike') { ctx.sfx?.('fanfare'); ctx.confetti?.(); } else if (sh.word === 'spare') ctx.sfx?.('good');
@@ -481,7 +551,7 @@ UI.lanes = (() => {
       }
       for (const bd of [3, 5, 8, 11, 14, 25, 28, 31, 34, 36]) { g.beginPath(); g.arc((bd / boards) * w, Y(2.1), 1.4 * sc, 0, 7); g.fill(); }
       for (const bd of [10, 30]) g.fillRect((bd / boards) * w - sc, Y(12.2), 2 * sc, 18 * sc);  // range finders
-      g.fillStyle = '#b3121c'; g.fillRect(0, Y(0) - 5 * sc, w, 10 * sc);  // the foul line (#134), and a mesh strip over it
+      g.fillStyle = 'rgba(30,18,10,.7)'; g.fillRect(0, Y(0) - 1.5 * sc, w, 3 * sc);  // the foul line (#134), and a mesh strip over it
       // the oil: a faint cool sheen you can just make out, strongest down the middle (#137)
       for (let b = 0; b < boards; b++) for (let d = 0; d < OILL + 1; d += 0.25) {
         const o = oilAt(b + 0.5, d); if (o <= 0) continue;
@@ -501,7 +571,7 @@ UI.lanes = (() => {
         }
       });
     }
-    const gutterMat = new T.MeshStandardMaterial({ color: 0x2a2733, roughness: 0.35, metalness: 0.55, side: T.DoubleSide });
+    const gutterMat = new T.MeshStandardMaterial({ color: 0x5a5868, roughness: 0.42, metalness: 0.6, side: T.DoubleSide, envMapIntensity: 1.2 });
     const capMat = new T.MeshStandardMaterial({ color: 0x23212b, roughness: 0.4, metalness: 0.2 });  // (was purple: with its pink edge it read as part of the lane, #132)
     const glowMats = [0x9b6bff, 0x4cc9f0].map((c) => new T.MeshBasicMaterial({ color: c, toneMapped: false }));
     // #136 a tenpin's turned profile (radius, height in m): the base, the belly at 11 cm, the neck at 25 cm, the head
@@ -586,6 +656,8 @@ UI.lanes = (() => {
       disposables.push(t);
       return new T.MeshBasicMaterial({ map: t, color: 0xdddddd });
     };
+    const kickMat = new T.MeshStandardMaterial({ color: 0x1d1830, roughness: 0.22, metalness: 0.5 });
+    const curtainMat = new T.MeshStandardMaterial({ color: 0x0b0714, roughness: 1, side: T.DoubleSide });
     const lanes = [];  // [{x, grp, pins: [mesh x10], bar, setter, id}]
     function buildLane(x, empty) {
       const grp = new T.Group(); grp.position.x = x;
@@ -604,6 +676,11 @@ UI.lanes = (() => {
       // the masking unit over the pins, its fascia facing the bowler, and the pin-deck light under it
       const mask = new T.Mesh(maskGeo, maskMat); mask.position.set(0, 1.05, -PIT + 0.2); grp.add(mask);
       if (!low) { const f = new T.Mesh(faceGeo, fascia(12 + Math.round(x / PITCH))); f.position.set(0, 1.05, -PIT + 0.805); grp.add(f); }
+      // the kickbacks: glossy side panels that flank the pin deck, and a dark curtain across the pit
+      for (const sx of [-1, 1]) {
+        const kb = new T.Mesh(new T.BoxGeometry(0.06, 0.5, 1.5), kickMat); kb.position.set(sx * (W / 2 + 0.2), 0.25, -PIT + 0.55); grp.add(kb);
+      }
+      const curtain = new T.Mesh(new T.PlaneGeometry(W + 0.5, 0.5), curtainMat); curtain.position.set(0, 0.28, -PIT - 0.28); grp.add(curtain);
       const strip = new T.Mesh(stripGeo, stripMat); strip.position.set(0, 0.73, -PIT + 0.8); grp.add(strip);
       let pins;
       if (empty) {  // a lane nobody's on: a still rack, one draw call
@@ -623,7 +700,7 @@ UI.lanes = (() => {
     // #134 the foul line: a red strip right across the lane and gutters, lit a touch so it reads from the
     // approach, and the foul-light posts on the cappings either side
     {
-      const fl = new T.Mesh(new T.BoxGeometry(W + 0.5, 0.004, 0.04), new T.MeshStandardMaterial({ color: 0xc8141f, emissive: 0x6a0610, roughness: 0.45 }));
+      const fl = new T.Mesh(new T.BoxGeometry(W + 0.5, 0.004, 0.012), new T.MeshStandardMaterial({ color: 0x24160c, roughness: 0.6 }));
       fl.position.set(0, 0.002, 0); scene.add(fl);
       const postMat = new T.MeshStandardMaterial({ color: 0x1b1426, roughness: 0.4, metalness: 0.4 }), eye = new T.MeshBasicMaterial({ color: 0xff2a3a, toneMapped: false });
       for (const sx of [-1, 1]) {
@@ -658,10 +735,31 @@ UI.lanes = (() => {
     const SPAN = PITCH * 5.5;
     const floor = new T.Mesh(new T.PlaneGeometry(SPAN * 2, len + 20), new T.MeshStandardMaterial({ color: 0x140e22, roughness: 0.9 }));
     floor.rotation.x = -Math.PI / 2; floor.position.set(0, -0.01, -(len / 2)); scene.add(floor);
-    const approach = new T.Mesh(new T.PlaneGeometry(SPAN * 2, 4.5), new T.MeshStandardMaterial({ color: 0x6e4a2c, roughness: 0.45 }));
+    const apTex = canvasTex(T, 512, 512, (g, w, h) => {  // (#226) the approach is the same maple boards as the lane, running on behind the foul line
+      const boards = 39, bw = w / boards;
+      for (let b = 0; b < boards; b++) {
+        const tone = Math.random() * 8;
+        g.fillStyle = `hsl(33, 52%, ${60 + tone}%)`; g.fillRect(b * bw, 0, bw, h);
+        g.fillStyle = 'rgba(80,45,15,.22)'; g.fillRect(b * bw, 0, Math.max(0.6, bw * 0.08), h);
+        for (let i = 0; i < 70; i++) { g.fillStyle = `rgba(${110 + Math.random() * 30},${60 + Math.random() * 20},25,${0.04 + Math.random() * 0.1})`; g.fillRect(b * bw + Math.random() * bw, Math.random() * h, 0.5 + Math.random() * 0.6, 30 + Math.random() * 120); }
+        for (let j = 0; j < 2; j++) { g.fillStyle = 'rgba(70,40,15,.25)'; g.fillRect(b * bw, Math.random() * h, bw, 1); }
+      }
+    });
+    apTex.wrapS = apTex.wrapT = T.RepeatWrapping; apTex.repeat.set(SPAN * 2 / W, 4.5 / 4.5);
+    const approach = new T.Mesh(new T.PlaneGeometry(SPAN * 2, 4.5), new T.MeshStandardMaterial({ map: apTex, color: 0xe6d8c8, roughness: low ? 0.5 : 0.3, metalness: 0 }));
     approach.rotation.x = -Math.PI / 2; approach.position.set(0, 0.001, 2.2); scene.add(approach);
     const wallMat = new T.MeshStandardMaterial({ color: 0x150b28, roughness: 0.85 });
-    const back = new T.Mesh(new T.PlaneGeometry(SPAN * 2, 6), wallMat); back.position.set(0, 3, -PIT - 0.62); scene.add(back);
+    // the back wall: a deep violet gradient with a soft glow low down, tall light bars and a diamond panel pattern
+    const backTex = canvasTex(T, 1024, 512, (g, w, h) => {
+      const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#07030f'); gr.addColorStop(0.55, '#1a0d33'); gr.addColorStop(1, '#2d1457');
+      g.fillStyle = gr; g.fillRect(0, 0, w, h);
+      g.strokeStyle = 'rgba(160,120,255,.09)'; g.lineWidth = 2;
+      for (let i = -h; i < w + h; i += 64) { g.beginPath(); g.moveTo(i, h); g.lineTo(i + h, 0); g.stroke(); g.beginPath(); g.moveTo(i, 0); g.lineTo(i + h, h); g.stroke(); }
+      for (let i = 0; i < 9; i++) { const x = (i + 0.5) * w / 9, lg = g.createLinearGradient(x - 16, 0, x + 16, 0); lg.addColorStop(0, 'rgba(76,201,240,0)'); lg.addColorStop(0.5, i % 2 ? 'rgba(255,79,163,.5)' : 'rgba(76,201,240,.5)'); lg.addColorStop(1, 'rgba(76,201,240,0)'); g.fillStyle = lg; g.fillRect(x - 16, h * 0.12, 32, h * 0.8); }
+      const glow = g.createRadialGradient(w / 2, h * 0.95, 10, w / 2, h * 0.95, w * 0.5); glow.addColorStop(0, 'rgba(255,120,200,.35)'); glow.addColorStop(1, 'rgba(255,120,200,0)');
+      g.fillStyle = glow; g.fillRect(0, 0, w, h);
+    });
+    const back = new T.Mesh(new T.PlaneGeometry(SPAN * 2, 6), new T.MeshBasicMaterial({ map: backTex, color: 0xcccccc })); back.position.set(0, 3, -PIT - 0.62); scene.add(back);
     const neonTex = canvasTex(T, 512, 64, (g, w, h) => {
       g.fillStyle = '#100820'; g.fillRect(0, 0, w, h);
       g.font = 'bold 40px sans-serif'; g.textAlign = 'center'; g.shadowColor = '#ff4fa3'; g.shadowBlur = 16; g.fillStyle = '#ffd6ee';
@@ -689,7 +787,10 @@ UI.lanes = (() => {
     const ballTex = canvasTex(T, 256, 128, (g, w, h) => {
       g.fillStyle = '#fff'; g.fillRect(0, 0, w, h);
       for (let i = 0; i < 14; i++) { g.strokeStyle = `rgba(0,0,0,${0.08 + Math.random() * 0.12})`; g.lineWidth = 6 + Math.random() * 10; g.beginPath(); g.moveTo(Math.random() * w, 0); g.bezierCurveTo(Math.random() * w, h / 3, Math.random() * w, h * 2 / 3, Math.random() * w, h); g.stroke(); }
-      g.fillStyle = '#111'; for (const [x, y] of [[0.5, 0.42], [0.46, 0.55], [0.54, 0.55]]) { g.beginPath(); g.arc(x * w, y * h, 6, 0, 7); g.fill(); }
+for (const cx of [0.25, 0.75]) for (const [x, y, rad] of [[0, 0.3, 7], [-0.03, 0.46, 8], [0.03, 0.46, 8]]) {  // the thumb hole and two finger holes, with a lighter lip
+        g.fillStyle = 'rgba(255,255,255,.35)'; g.beginPath(); g.arc((cx + x) * w, y * h, rad + 2, 0, 7); g.fill();
+        g.fillStyle = '#050505'; g.beginPath(); g.arc((cx + x) * w, y * h, rad, 0, 7); g.fill();
+      }
     });
     const ballMat = new T.MeshStandardMaterial({ map: ballTex, color: new T.Color(colorOf(S.me?.id)), roughness: 0.12, metalness: 0.1 });
     const ballGeo = new T.SphereGeometry(R, 28, 18);
@@ -699,6 +800,51 @@ UI.lanes = (() => {
       stencil(ballMat, 0, T.AlwaysStencilFunc, T.ReplaceStencilOp);
       mirror.ball = new T.Mesh(ballGeo, mirror.ghost(ballTex, ballMat.color)); mirror.ball.renderOrder = 2; mirror.grp.add(mirror.ball);
     }
+    // ---------- the bowler: a low-poly figure posed by code (no skinning), right-handed, facing down the lane
+    const SKINS = [0xf1c9a5, 0xd9a47c, 0xa8744f, 0x7a4f33], shoeMat = new T.MeshStandardMaterial({ color: 0xe8e8ee, roughness: 0.5 }), legMat = new T.MeshStandardMaterial({ color: 0x2b2f4a, roughness: 0.7 });
+    function makeBowler(shirtCss, ix) {
+      const g = new T.Group(), skin = new T.MeshStandardMaterial({ color: SKINS[ix % 4], roughness: 0.7 }), top = new T.MeshStandardMaterial({ color: new T.Color(shirtCss), roughness: 0.6 });
+      const hip = new T.Group(); g.add(hip);
+      const limb = (r0, r1, len, mat) => { const m = new T.Mesh(new T.CylinderGeometry(r0, r1, len, 10), mat); m.position.y = -len / 2; return m; };
+      const legs = [-1, 1].map((sx) => { const l = new T.Group(); l.position.set(sx * 0.09, 0, 0); l.add(limb(0.075, 0.05, 0.9, legMat)); const sh = new T.Mesh(new T.BoxGeometry(0.09, 0.06, 0.24), shoeMat); sh.position.set(0, -0.89, -0.05); l.add(sh); hip.add(l); return l; });
+      const torso = new T.Group(); hip.add(torso);
+      const body = new T.Mesh(new T.CylinderGeometry(0.17, 0.14, 0.55, 14), top); body.position.y = 0.28; torso.add(body);
+      const head = new T.Mesh(new T.SphereGeometry(0.11, 16, 12), skin); head.position.y = 0.72; torso.add(head);
+      const cap = new T.Mesh(new T.SphereGeometry(0.118, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.45), top); cap.position.y = 0.74; torso.add(cap);
+      const arms = [-1, 1].map((sx) => {
+        const a = new T.Group(); a.position.set(sx * 0.22, 0.5, 0);
+        a.add(limb(0.048, 0.04, 0.62, skin)); const sl = limb(0.056, 0.05, 0.22, top); a.add(sl);
+        const hand = new T.Mesh(new T.SphereGeometry(0.055, 10, 8), skin); hand.position.y = -0.65; a.add(hand); a.userData.hand = hand;
+        torso.add(a); return a;
+      });
+      g.traverse((o) => { if (o.isMesh) o.castShadow = !low; });
+      g.visible = false; g.userData = { hip, legs, torso, arms };
+      return g;
+    }
+    // t is seconds from the release: the walk, a slide into a lunge with the backswing, the swing, then the follow-through
+    const lerp = (a, b, k) => a + (b - a) * k;
+    function poseBowler(g, t, hx) {
+      const { hip, legs, torso, arms } = g.userData;
+      const w = ph(t, [-LEAD, -0.3]), sl = ph(t, [-0.3, -0.02]), fo = ph(t, [0, 0.7]);
+      const step = Math.sin(Math.max(0, t + LEAD) * Math.PI * 2 * 1.4) * (1 - sl) * 0.5;
+      g.position.set(hx - 0.22, 0, 2.3 - 1.0 * w - 0.75 * sl);
+      hip.position.y = 0.95 - 0.43 * sl + 0.12 * fo;
+      legs[0].rotation.x = step + (0.9 - step) * sl;
+      legs[1].rotation.x = -step + (-0.9 + step) * sl;
+      const lean = 0.08 + 0.62 * sl - 0.35 * fo;
+      torso.rotation.x = -lean;
+      let th;  // the ball arm's angle from hanging (positive = forward)
+      if (t < -0.3) th = 0.75;
+      else if (t < -0.14) th = lerp(0.75, -1.0, ph(t, [-0.3, -0.14]));
+      else if (t < 0) th = lerp(-1.0, 0.35, ph(t, [-0.14, 0]));
+      else th = lerp(0.35, 2.5, ph(t, [0, 0.3]));
+      arms[1].rotation.x = th + lean;
+      arms[0].rotation.x = -Math.sin(Math.max(0, t + LEAD) * Math.PI * 2 * 1.4) * (1 - sl) * 0.5 + 0.15;
+      arms[0].rotation.z = -0.8 * sl;
+    }
+    const handAt = (g, v3) => { (g.parent || g).updateMatrixWorld(true); return g.userData.arms[1].userData.hand.getWorldPosition(v3); };
+    const hv = new T.Vector3();
+    const myBow = makeBowler(colorOf(S.me?.id), 1); scene.add(myBow);
     // (the ball rides the capping back, goes in under the hood and comes out onto the rack in front of it)
     const HX = PITCH / 2, HZ = 0.2, RACK = 0.22, RACKZ = HZ + 0.42;
     const hood = new T.Group(); hood.position.set(HX, 0, HZ); scene.add(hood);
@@ -728,7 +874,9 @@ UI.lanes = (() => {
       rivalKey = key;
       while (lanes.length > 1) { const l = lanes.pop(); scene.remove(l.grp); l.grp.traverse((o) => { if (o.material?.map && o.material.map !== wood && o.material.map !== pinTex) { o.material.map.dispose(); o.material.dispose(); } }); }
       const used = new Set([0]);
-      others.forEach((r, i) => { const side = i % 2 ? 1 : -1, n = Math.floor(i / 2) + 1; const l = buildLane(side * n * PITCH); l.id = r.id; lanes.push(l); used.add(side * n); });
+      others.forEach((r, i) => { const side = i % 2 ? 1 : -1, n = Math.floor(i / 2) + 1; const l = buildLane(side * n * PITCH); l.id = r.id; lanes.push(l);
+        l.bw = makeBowler(colorOf(r.id), i + 2); l.grp.add(l.bw);
+        l.ball = new T.Mesh(ballGeo, new T.MeshStandardMaterial({ color: new T.Color(colorOf(r.id)), roughness: 0.15 })); l.ball.visible = false; l.grp.add(l.ball); used.add(side * n); });
       if (!low) for (let n = -4; n <= 4; n++) if (!used.has(n) && Math.abs(n) <= Math.min(3, Math.max(...[...used].map(Math.abs)) + 2)) lanes.push(buildLane(n * PITCH, true));
     }
     // a rival lane: when their pins change, the ones that went down tip over, the sweep bar clears them and, if the
@@ -738,13 +886,30 @@ UI.lanes = (() => {
       if (!r) return;
       const up = new Set(r.standing), at = r.last?.at ?? 0;
       if (l.at === undefined) { l.at = at; l.up = up; }
+      const startEv = (e0, now0) => { l.ev = { t: now0, ...e0 }; if (e0.down.size) SND.far(e0.down.size); };
       if (at !== l.at) {
+        if (l.throw && !l.throw.go) { startEv(l.throw.evd, now); l.throw = null; }
         const reset = up.size === 10 && !r.done;
         const down = [...l.up].filter((k) => reset || r.done || !up.has(k));
-        l.ev = { t: now, down: new Set(down), reset, dir: down.map(() => Math.random() * Math.PI * 2) };
+        const evd = { down: new Set(down), reset, dir: down.map(() => Math.random() * Math.PI * 2) };
+        l.throw = { t0: now, evd, before: l.up, go: false };
         l.at = at; l.up = up;
-        if (down.length) SND.far(down.length);
       }
+      // a rival's turn: the walk-up and swing, the ball down the lane, and only then do the pins go
+      let shown = up;
+      if (l.throw) {
+        const tb = (now - l.throw.t0) / 1000 - (bowlerOn ? LEAD : 0);
+        if (!l.throw.go) shown = l.throw.before;
+        if (!l.throw.go && tb >= 0.5) { l.throw.go = true; startEv(l.throw.evd, now); }
+        if (tb > 1.6) l.throw = null;
+        else {
+          l.bw.visible = bowlerOn; if (bowlerOn) poseBowler(l.bw, tb, 0);
+          l.ball.visible = tb >= 0 || bowlerOn; l.ball.visible = l.ball.visible && tb < 0.5;
+          if (tb < 0) { if (bowlerOn) handAt(l.bw, hv), l.ball.position.copy(l.grp.worldToLocal(hv)).y -= 0.05; }
+          else { l.ball.position.set(0, R, lerp(0.16, -HEAD, tb / 0.5)); l.ball.rotation.x = -tb * 30; }
+        }
+      }
+      if (!l.throw) { l.bw.visible = false; l.ball.visible = false; }
       const ev = l.ev, e = ev ? (now - ev.t) / 1000 : 9;
       if (ev && e > 1.7) l.ev = null;
       const u = e * FPS - 14;  // the bar's timeline starts once the pins have tipped
@@ -766,7 +931,7 @@ UI.lanes = (() => {
           m.position.z = -y; m.visible = y < PIT + 0.05; return;
         }
         if (ev?.reset) { m.visible = u >= SET[0]; m.position.y = drop; return; }
-        m.visible = up.has(k);
+        m.visible = shown.has(k);
       });
     }
 
@@ -814,6 +979,17 @@ UI.lanes = (() => {
         ball.visible = !!me && !me.done && (ready || !ret);
         ball.position.set(start, R, 0.16);  // (on the approach, behind the foul line)
       }
+      // 🧑 my bowler: approach and swing, the ball in his hand until it's let go
+      let bt = null;
+      if (bowlerOn && myRow() && !myRow().done) {
+        if (anim?.lead) bt = (now - anim.t0) / 1000;
+        else if (!anim && now - rolledAt < LEAD * 1000 + 1700 && rolledAt) bt = Math.min(-0.02, (now - rolledAt - LEAD * 1000) / 1000);
+      }
+      myBow.visible = bt != null && bt < 1.6;
+      if (myBow.visible) {
+        poseBowler(myBow, bt, start);
+        if (bt < 0) { ball.visible = true; handAt(myBow, hv); ball.position.set(hv.x, Math.max(R, hv.y - 0.05), hv.z); }
+      }
       if (mirror) { mirror.ball.visible = ball.visible; mirror.ball.position.copy(ball.position); mirror.ball.rotation.copy(ball.rotation); }
       retBall.visible = !!ret && !(ret.rest && ready) && !st.ball;
       if (ret?.t0) {
@@ -833,7 +1009,8 @@ UI.lanes = (() => {
         aimLine.material.color.setStyle(powerCss(r.speed));
       }
       // camera: behind the foul line, then riding the ball, then looking at the pins (and the pinsetter)
-      if (st.ball && st.ball.y < HEAD - 5.5) { cam.tp.set(st.ball.x * 0.5, 0.75, -st.ball.y + 2.2); cam.tl.set(st.ball.x * 0.5, 0.1, -st.ball.y - 6); cam.tf = 34; }
+      if (myBow.visible && bt < 0.35) { cam.tp.set(start * 0.5, 1.5, 4.5); cam.tl.set(start * 0.3, 0.5, -1.2); cam.tf = tall ? 46 : 38; }
+      else if (st.ball && st.ball.y < HEAD - 5.5) { cam.tp.set(st.ball.x * 0.5, 0.75, -st.ball.y + 2.2); cam.tl.set(st.ball.x * 0.5, 0.1, -st.ball.y - 6); cam.tf = 34; }
       else if (anim) { cam.tp.set(0, 1.05, -HEAD + 3.6); cam.tl.set(0, 0.2, -HEAD - 0.35); cam.tf = tall ? 34 : 28; }
       else { cam.tp.set(start * 0.7, 1.25, 3.4); cam.tl.set(start * 0.2, 0, -6.5); cam.tf = tall ? 38 : 30; }  // (the foul line and approach in view, #134)
       const k = 1 - Math.exp(-dt * (anim ? 5 : 3));
@@ -879,7 +1056,7 @@ UI.lanes = (() => {
       const ln = L().lane, X = (x) => canvas.width / 2 + x * k * 2.2, Y = (y) => canvas.height - (y + 0.8) * k;
       g.fillStyle = '#140e22'; g.fillRect(0, 0, canvas.width, canvas.height);
       g.fillStyle = '#d7a86e'; g.fillRect(X(-ln.w / 2), Y(ln.pit), ln.w * k * 2.2, Y(-0.8) - Y(ln.pit));
-      g.fillStyle = '#c8141f'; g.fillRect(X(-ln.w / 2) - 6, Y(0) - 2, ln.w * k * 2.2 + 12, 4);
+      g.fillStyle = '#3a2412'; g.fillRect(X(-ln.w / 2) - 6, Y(0) - 2, ln.w * k * 2.2 + 12, 4);
       for (const p of st.pins) {
         if (p.gone) continue;
         g.globalAlpha = 1 - p.fall * 0.6;
@@ -904,5 +1081,5 @@ UI.lanes = (() => {
   };
   const myMove = (s) => s.phase === 'playing' && s.lanes?.me != null && !s.lanes.wait;
 
-  return { mount, render, unmount, turnText, myMove, focus: true };
+  return { mount, render, unmount, turnText, myMove, explain, focus: true };
 })();

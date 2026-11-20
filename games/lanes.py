@@ -266,6 +266,7 @@ class Lanes(Game):
             g.woke = True
             g.next_at = now + random.uniform(1.5, 3.0)
             g.streak = 0
+            g.splits, g.saved = [], []  # roll numbers: a first ball that left a split, a ball the spare saver finished
             g.oil = self.oil
         r.deadline = now + IDLE
         r.bot_at = 0
@@ -352,6 +353,12 @@ class Lanes(Game):
         last_frame = g.frame == self.nframes - 1
         first = self.fresh_rack(g, last_frame)  # (not "all ten standing": a gutter first ball leaves ten too)
         g.rolls.append(n)
+        if first and left and self.is_split(left):
+            getattr(g, "splits", None) is None and setattr(g, "splits", [])
+            g.splits.append(len(g.rolls) - 1)
+        if saved is not None:
+            getattr(g, "saved", None) is None and setattr(g, "saved", [])
+            g.saved.append(len(g.rolls) - 1)
         nm = p.name
         word = None
         if first and n == 10:
@@ -564,7 +571,7 @@ class Lanes(Game):
             g = o.g
             rows.append({"id": o.id, "frames": frame_rolls(g.rolls, self.nframes), "cum": score(g.rolls, self.nframes, self.cosmic),
                          "frame": g.frame, "ball": g.ball, "done": g.done, "standing": g.standing, "saver": g.saver,
-                         "last": g.last, "total": self.total(o), "top": getattr(g, "top", 0)})
+                         "last": g.last, "splits": list(getattr(g, "splits", None) or []), "saved": list(getattr(g, "saved", None) or []), "total": self.total(o), "top": getattr(g, "top", 0)})
         me = p.g if p.id in self.seats else None
         why = self.can_bowl(p) if me is not None else "Watching."
         return {"lanes": {
