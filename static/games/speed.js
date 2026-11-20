@@ -127,7 +127,7 @@ UI.speed = (() => {
     const rival = ctx.player(sp.seats[them]);
 
     const top = $('spThem'); top.innerHTML = '';
-    const tag = ctx.el('div', 'sp-who', `${rival?.name ?? '?'} · ${sp.hands[them] + sp.stock[them]} cards left`);
+    const tag = ctx.el('div', 'sp-who', `${rival?.name ?? '?'} · ${sp.hands[them] + sp.stock[them]} cards left${sp.streak && sp.run?.[them] > 0 ? ` · 🔥 ${sp.run[them]}/3` : ''}`);
     tag.style.color = rival?.color ?? 'inherit';
     top.append(tag);
     for (let i = 0; i < sp.hands[them]; i++) top.append(back('', 'small'));
@@ -160,7 +160,7 @@ UI.speed = (() => {
     prevTops = [...sp.piles];
     if (sp.pairs) $('spRule').textContent = 'Cards fit one rank up or down, or 👯 the same rank, any suit. K and A wrap round. No turns!';
 
-    $('spMine').textContent = sp.me == null ? '' : `Your stock: ${sp.stock[me]} · ${sp.hands[me] + sp.stock[me]} cards to go`;
+    $('spMine').textContent = sp.me == null ? '' : `Your stock: ${sp.stock[me]} · ${sp.hands[me] + sp.stock[me]} cards to go${sp.streak && sp.run?.[me] > 0 ? ` · 🔥 ${sp.run[me]}/3` : ''}`;
     const score = $('spScore'); score.innerHTML = '';
     for (const i of [0, 1]) {
       const p = ctx.player(sp.seats[i]);
