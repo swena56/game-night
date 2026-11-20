@@ -378,6 +378,7 @@ UI.lanes = (() => {
         const td = ctx.el('td', 'ln-f' + (f === r.frame && !r.done ? ' now' : ''));
         const fr = r.frames[f];
         const m = fr ? marks(fr, f === v.nframes - 1) : [];
+        if (m[0] === 'X') td.classList.add('ln-fx'); else if (m.includes('/')) td.classList.add('ln-fsp');   // a strike or spare frame lights up its box
         const balls = ctx.el('div', 'ln-balls');
         (m.length ? m : [' ']).forEach((x) => balls.append(ctx.el('span', x === 'X' ? 'ln-x' : x === '/' ? 'ln-sp' : x === '-' ? 'ln-miss' : '', x)));
         td.append(balls, ctx.el('div', 'ln-cum', r.cum[f] != null ? String(r.cum[f]) : ' '));
