@@ -23,12 +23,14 @@ class Ecarte(TrickGame):
         "The non-dealer plays as dealt or proposes; if the dealer accepts, both swap any cards for fresh ones.",
         "Holding the trump king scores 1. Follow suit and win the trick if you can; trump if you can't follow.",
         "Three tricks score 1, all five score 2. Lose after playing as dealt, or after refusing, and they score 2.",
+        "An option: Bold, play as dealt and win the hand and you score 1 extra.",
         "First to five points wins.",
     ]
     min_players, max_players = 2, 2
     order = "789TAJQK"
     badges = {**TrickGame.badges, "vole": ("🕊️", "La vole", "Take all five tricks")}
-    settings_schema = {"target": ("Play to", [(5, "5 points"), (3, "3 (quick)"), (7, "7 points")], 5)}
+    settings_schema = {"target": ("Play to", [(5, "5 points"), (3, "3 (quick)"), (7, "7 points")], 5),
+                       "bold": ("🎩 Bold bonus", [(1, "On"), (0, "Off")], 1)}
 
     def start(self, seated, rng):
         self.seat_up(seated, rng)
@@ -159,9 +161,14 @@ class Ecarte(TrickGame):
             pts, why = 2, f"{self.tricks[w]} tricks; {self.nm(lose)} " + ("played as dealt" if self.played_dealt == lose else "refused")
         else:
             pts, why = 1, f"{self.tricks[w]} tricks"
+        bold = w == self.played_dealt and self.s.get("bold", 1)  # old rooms have no setting: on
+        if bold:
+            pts, why = pts + 1, why + ", bold bonus for playing as dealt"
         self.result = f"🏅 {self.nm(w)} +{pts}: {why}"
         self.room.add_log(self.result, "big")
-        if pts == 2:
+        if bold:
+            self.moment(f"🎩 Bold! {self.nm(w)} played as dealt and won: +1 extra", "gold", "fanfare")
+        elif pts == 2:
             self.moment(self.result, "gold", "fanfare")
         self.score[w] += pts
         if self.score[w] >= self.s["target"]:
