@@ -83,16 +83,30 @@ check("old object has class default", g.bonus_now is False)
 r2 = pickle.loads(pickle.dumps(r)).game
 check("pickle round trip", r2.bonus_now is False)
 
+# timeout during a bonus turn: turn passes on and the bonus flag does not leak
+r, g, ps = make()
+cur = r.players[r.turn]; me = g.seats.index(cur.id)
+setup(g, [str(1 - me) * 3 + "."])
+g.drop(cur, 3)
+check("bonus turn is live", r.turn == cur.id and g.bonus_now)
+r.game.on_timeout()
+check("timeout on bonus turn passes the turn", r.phase == "playing" and r.turn != cur.id)
+check("timeout clears the bonus flag", g.bonus_now is False)
+nxt = r.players[r.turn]; nme = g.seats.index(nxt.id)
+setup(g, [str(me) * 3 + "."])
+g.drop(nxt, 3)
+check("next player can still earn a block bonus", r.turn == nxt.id)
+
 # bots, all levels, real move path
 fired = games = 0
 t0 = time.time()
-for level in ("easy", "normal", "hard", "normal", "easy", "hard") * 4:
+for level in ("easy", "normal", "hard", "normal", "easy", "hard", "hh", "hh") * 3:
     if time.time() - t0 > 50:
         break
     r = server.Room("TEST")
     a = r.add_player("A"); b = r.add_player("B")
-    for p, lv in ((a, level), (b, "normal" if level == "hard" else level)):
-        p.bot = lv
+    for p, lv in ((a, level), (b, "hard" if level == "hh" else "normal" if level == "hard" else level)):
+        p.bot = "hard" if lv == "hh" else lv
     r.switch_game("dropfour"); r.settings["block"] = True; r.start()
     g = r.game
     for _ in range(200):

@@ -218,6 +218,10 @@ class DropFour(Game):
             return r.begin_turn(p.id)
         r.advance()
 
+    def on_timeout(self):
+        self.bonus_now = False  # a bonus turn that times out ends the bonus: the next player starts fresh
+        super().on_timeout()
+
     def next_seat(self, seat):
         n = len(self.seats)
         for k in range(1, n + 1):
