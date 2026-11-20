@@ -86,6 +86,7 @@ class Cribbage(Game):
         "The show: score your hand with the starter: fifteens 2, pairs 2, runs, flushes, and nobs (jack of the starter's suit) 1.",
         "The dealer also scores the crib. First to the target wins the moment they reach it.",
         "🦉 Muggins (an option): count your own hand. Miss points and the next player takes them!",
+        "🔥 Hot streak: score with three of your own plays in a row during one play and peg a bonus 1 (the streak then restarts).",
     ]
     name = "Cribbage"
     icon = "📍"
@@ -96,6 +97,7 @@ class Cribbage(Game):
               "skunk": ("🦨", "Skunk", "Win before a rival reaches the skunk line (30 short of the finish)")}
     settings_schema = {
         "target": ("Game to", [(121, "121 (full)"), (61, "61 (short)")], 121),
+        "streak": ("🔥 Hot streak", [(True, "On: 3 scoring plays in a row +1"), (False, "Off")], True),
         "muggins": ("Counting", [(False, "Hands counted for you"), (True, "🦉 Muggins: count your own")], False),
     }
     claims = None  # 🦉 muggins: what each person said their hand was worth
@@ -155,6 +157,7 @@ class Cribbage(Game):
         for p in self.players():
             p.g.hand = sorted((self.deck.pop() for _ in range(n)), key=lambda c: (rank(c), c[1]))
             p.g.peg_hand, p.g.pegged, p.g.discarded = [], [], False
+            p.g.streak = 0
         self.starter, self.show, self.last_peg = None, [], ""
         self.stage = "discard"
         self.count, self.seq, self.last_player = 0, [], None
@@ -228,6 +231,14 @@ class Cribbage(Game):
         r.add_log(f"{'🎯' if items else '🃏'} {self.last_peg}", "question" if items else "info")
         if self.peg(p, pts, why):
             return
+        if self.s.get("streak", True):
+            p.g.streak = (getattr(p.g, "streak", 0) + 1) if items else 0
+            if p.g.streak >= 3:
+                p.g.streak = 0
+                r.add_log(f"🔥 Hot streak! {p.name} has scored three plays in a row: +1.", "power")
+                self.moment(f"🔥 {p.name}: hot streak +1", "gold", "good")
+                if self.peg(p, 1, "hot streak"):
+                    return
         if self.count == 31:
             self.reset_count()
         self.next_peg(p.id)
