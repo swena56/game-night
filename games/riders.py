@@ -55,6 +55,7 @@ class Riders(Game):
         "speed": ("Speed", [(10, "Normal"), (7, "Chill"), (14, "Fast")], 10),
         "lives": ("Lives", [(3, "3"), (1, "1 (classic)"), (5, "5")], 3),
         "shrink": ("🧱 Closing arena", [(False, "Off"), (True, f"On: after {SHRINK_AFTER} s the walls close in")], False),
+        "catchup": ("👑 Leader's cost", [(True, "On: leader starts 1 ⚡ short"), (False, "Off")], True),
         "pickups": ("🎁 Power-ups", [(False, "Off"), (True, "On: grab ⚡ boosts, 🐌 slow-mo, ❤️ lives and ✂️ trail cuts")], False),
     }
 
@@ -87,6 +88,14 @@ class Riders(Game):
         self.dirs, self.queue = [0] * k, [deque() for _ in range(k)]
         self.boosts, self.boosting = [BOOSTS] * k, [0] * k
         self.lives = [self.s.get("lives", 3)] * k
+        if self.s.get("catchup", True):
+            top = max(self.wins)
+            if top > 0 and self.wins.count(top) == 1:  # 👑 a lone leader pays a boost for the crown
+                i = self.wins.index(top)
+                self.boosts[i] = BOOSTS - 1
+                p = self.room.players.get(self.seats[i])
+                if p:
+                    self.moment(f"👑 {p.name} leads and starts round {self.round} one boost short", "cool")
         self.respawn_at, self.ghost, self.grind = [None] * k, [0] * k, [0] * k
         self.tick = 0
         self.ring, self.ride_at = 0, None
