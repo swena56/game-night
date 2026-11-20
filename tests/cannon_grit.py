@@ -55,6 +55,19 @@ g.tanks[1][2] = 45
 hit(g, 0, 1)
 check("off: no gift", g.ammo[1]["big"] == 1 and 0 < g.tanks[1][2] <= 30, g.tanks[1])
 
+# volley mode (all at once): same gift, once a round, not for the shooter
+r, g = game(volley=1)
+check("volley: on", g.volley)
+g.ammo[0]["big"] = 0
+g.tanks[1][2] = 45
+g.ready_at = 0
+g.locked = {0: (0.0, 0.0, "shell"), 1: (0.0, 0.0, "shell")}
+hit(g, 0, 1)
+check("volley: free Big Bang", 0 < g.tanks[1][2] <= 30 and g.ammo[1]["big"] == 2 and 1 in g.grit, g.tanks[1])
+hit(g, 0, 1)
+check("volley: once a round", g.ammo[1]["big"] == 2, g.ammo[1])
+check("volley: shooter not rewarded", g.ammo[0]["big"] == 0)
+
 # bots fire whole turns legally (exceptions propagate)
 r, g = game()
 for p in r.players.values():
