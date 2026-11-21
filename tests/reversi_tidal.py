@@ -127,5 +127,39 @@ check("bots (easy/normal/hard): all moves legal, games finish, no exceptions", n
 print(f"tidal wave fired in {fired} of {n} bot games")
 check("fires in at least one real bot game", fired >= 1)
 
+# --- search awareness: a wave keeps the mover on turn inside the bot search
+st = reversi.tidal_play((WAVE, False), 0, 5)
+check("search: a wave leaves the rival owed a pass, then the mover plays again",
+      st[1] is True and reversi.tidal_legal(st, 1) == [reversi.PASS]
+      and reversi.tidal_play(st, 1, reversi.PASS) == (st[0], False)
+      and reversi.tidal_play((SEVEN, False), 0, 5)[1] is False
+      and reversi.tidal_play((LONE, False), 0, 5)[1] is False)
+
+# --- hard bots: legality move by move (time budgets cut so a few games stay quick)
+_best = reversi.best_move
+reversi.best_move = lambda st, me, mv, pl, ev, d, b, rng, noise=0.0: _best(st, me, mv, pl, ev, min(d, 7), min(b, 0.1), rng, noise)
+herr = []
+for lvls in [("hard", "hard")] * 2 + [("hard", "normal"), ("normal", "hard")]:
+    r, g = game(True, lvls)
+    for ply in range(150):
+        if r.phase != "playing":
+            break
+        p = r.players[r.turn]
+        me = g.seat(p)
+        before, legal = g.board, reversi.placements(g.board, me)
+        try:
+            g.bot_turn(p)
+        except Exception as e:  # noqa: BLE001
+            herr.append(repr(e))
+            break
+        placed = [c for c in range(64) if before[c] is None and g.board[c] is not None]
+        if len(placed) != 1 or placed[0] not in legal:
+            herr.append(f"illegal {lvls} {placed} not in {legal}")
+            break
+    if r.phase != "over":
+        herr.append(f"{lvls} did not finish")
+reversi.best_move = _best
+check("hard-vs-hard x2 and hard-vs-normal x2: every move legal, games finish", not herr, herr[:2])
+
 print("\nall ok" if not fails else f"\n{len(fails)} failed: {fails}")
 sys.exit(1 if fails else 0)

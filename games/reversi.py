@@ -86,6 +86,26 @@ def evaluate(board, me):
     return pos + 8 * mob + (disc * 4 if empties < 12 else 0)
 
 
+# 🌊 Tidal wave search: the state is (board, owed) where owed means the rival must "pass" so that the
+# player who just made a wave moves again (the search alternates players strictly).
+def tidal_legal(st, me):
+    board, owed = st
+    return [PASS] if owed else legal(board, me)
+
+
+def tidal_play(st, me, c):
+    board, owed = st
+    if owed or c == PASS:
+        return (board, False)
+    after = play(board, me, c)
+    wave = sum(1 for a, b in zip(board, after) if a is not None and a != b) >= WAVE
+    return (after, wave and bool(placements(after, me)))
+
+
+def tidal_eval(st, me):
+    return evaluate(st[0], me)
+
+
 def endgame_hints(board, me):
     """For every legal square, count immediate flips and opponent corner replies after the move."""
     out = {}
@@ -224,4 +244,8 @@ class Reversi(Undo, Game):
     def bot_turn(self, p):
         me = self.seat(p)
         depth, budget, noise = {"easy": (1, 0.3, 60), "normal": (3, 1.0, 8), "hard": (7, 2.5, 0)}[p.bot]
-        self.place(p, best_move(self.board, me, legal, play, evaluate, depth, budget, self.rng, noise))
+        if self.s.get("tidal"):   # 🌊 the search knows a wave keeps the mover on turn
+            c = best_move((self.board, False), me, tidal_legal, tidal_play, tidal_eval, depth, budget, self.rng, noise)
+        else:
+            c = best_move(self.board, me, legal, play, evaluate, depth, budget, self.rng, noise)
+        self.place(p, c)
