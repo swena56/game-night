@@ -537,6 +537,9 @@ class Rally(Game):
                     if lap > self.elim_lap:
                         self.elim_lap = lap
                         changed = self.knock_out(now) or changed
+                elif c.lap == self.s["laps"] - 1 and self.s["laps"] > 1 and not getattr(self, "final_called", False):
+                    self.final_called = True   # 🏁 the first craft onto the last lap
+                    self.moment(f"🏁 Final lap! {p.name} leads the way.", "gold", "tag")
                 elif c.lap >= self.s["laps"]:
                     self.places += 1
                     c.finished = self.places
@@ -548,6 +551,7 @@ class Rally(Game):
                     changed = True
         self.bump()
         self.fly(dt, now)
+        self.lead_check(now)
         racing = [i for i, c in enumerate(self.crafts) if c.finished is None and self.active(i)]
         if not racing or (self.elim and len(racing) == 1) or (self.first_done and now - self.first_done > FINISH_WAIT):
             self.end_race()
@@ -555,6 +559,30 @@ class Rally(Game):
         if self.frames % 2 == 0:
             self.broadcast(now)
         return changed
+
+    LEAD_MARGIN, LEAD_GAP = 0.04, 4.0   # 🥇 a pass must be clear (this share of a lap) and callouts at least this far apart
+
+    def lead_check(self, now):
+        """🥇 Call it when the lead changes hands in a race of two or more (not in Elimination), with a clear gap so a
+        side-by-side swap doesn't flicker."""
+        if self.elim or len(self.crafts) < 2 or self.started is None or now - self.started < 3.0:
+            return
+        racing = [i for i, c in enumerate(self.crafts) if c.finished is None and self.active(i)]
+        if len(racing) < 2:
+            return
+        top = max(racing, key=lambda i: self.crafts[i].s)
+        cur = getattr(self, "leader", None)
+        if cur is None or cur not in racing:
+            self.leader = top
+            return
+        if top != cur and self.crafts[top].s > self.crafts[cur].s + self.LEAD_MARGIN * self.length:
+            self.leader = top
+            if now - getattr(self, "lead_said", 0.0) >= self.LEAD_GAP:
+                self.lead_said = now
+                p = self.room.players.get(self.seats[top])
+                q = self.room.players.get(self.seats[cur])
+                if p:
+                    self.moment(f"🥇 {p.name} takes the lead from {q.name if q else 'the pack'}!", "cool", "tag")
 
     def jump(self, i, p, dt, now):
         """A craft in the air: straight on along the track, no steering, until it lands, or (short of
