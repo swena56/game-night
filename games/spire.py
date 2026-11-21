@@ -174,6 +174,7 @@ class Spire(Game):
         '← → move around the tower, ↑ rotate, Space drops. On phones: swipe, tap, swipe down.',
         'Fill a whole ring to clear it and earn one upgrade choice per ring: 🛡️ Reinforce blocks one incoming junk attack; ⚡ Focus slows your falling pieces by 18% for 20 seconds. The choice pauses your next piece until you spend it.',
         '✨ Clear your whole tower in one go and every rival gets junk. Clear 2+ at once to send junk rings to a rival. Junk sent to you waits 3 s on the 🧱 meter: clear rings to block it.',
+        '🎯 Send junk to a rival and if their spire topples within 25 seconds, you get the credit and a free upgrade.',
         'Glowing power cells: ⚡ speed rivals up, 🛡️ block junk, 💣 blast your bottom rings.',
         'Hold (C, Shift, ⇄ or swipe up) parks the falling piece for later, once per piece.',
         'Prefer an upright board? Pick 🧱 Flat well. Want odd shapes? Pick the 🧩 Mixed set (2, 3 and 5 blocks).',
@@ -264,7 +265,11 @@ class Spire(Game):
             return self.knock_out(p)
         raise GameError("Unknown action.")
 
-    def send(self, o, event):
+    BOUNTY_SECS = 25.0   # 🎯 a spire that topples within this long of taking junk pays its attacker an upgrade token
+
+    def send(self, o, event, by=None):
+        if by is not None and event.get("kind") == "junk":
+            o.g.last_hit = (by.id, time.time())
         self.eid += 1
         o.g.events = (o.g.events + [{**event, "id": self.eid}])[-30:]
 
@@ -276,7 +281,7 @@ class Spire(Game):
         self.award(p, "perfect")
         foes = [o for o in r.contenders() if o.id != p.id]
         for o in foes:
-            self.send(o, {"kind": "junk", "n": self.PERFECT_JUNK, "from": p.name})
+            self.send(o, {"kind": "junk", "n": self.PERFECT_JUNK, "from": p.name}, by=p)
             p.g.sent += self.PERFECT_JUNK
         self.moment(f"✨ {p.name}: PERFECT CLEAR", "gold", "fanfare")
         if foes:
@@ -306,7 +311,7 @@ class Spire(Game):
                 target = self.rng.choice([o for o in foes if o.g.rings == top])
             else:
                 target = self.rng.choice(foes)
-            self.send(target, {"kind": "junk", "n": attack, "from": p.name})
+            self.send(target, {"kind": "junk", "n": attack, "from": p.name}, by=p)
             p.g.sent += attack
             if attack >= 2:
                 r.add_log(f"🗼 {p.name} cleared {rings} ring{'s' * (rings > 1)}"
@@ -327,12 +332,26 @@ class Spire(Game):
         p.eliminated = True
         left = r.contenders()
         r.add_log(f"💥 {p.name}'s spire toppled with {p.g.rings} rings cleared!", "big")
+        hit = getattr(p.g, "last_hit", None)
+        killer = r.players.get(hit[0]) if hit and time.time() - hit[1] <= self.BOUNTY_SECS else None
+        if killer and killer.id in self.seats and not killer.eliminated and killer.id != p.id:
+            killer.g.upgrade_tokens = getattr(killer.g, "upgrade_tokens", 0) + 1
+            if killer.bot:   # bots spend it straight away, as they do ring rewards
+                killer.g.shield += 1
+                killer.g.upgrade_tokens -= 1
+                if getattr(killer.g, "tower", None):
+                    killer.g.tower.shield = killer.g.shield
+            self.moment(f"🎯 {killer.name} finishes {p.name}'s spire: +1 upgrade!", "gold", "fanfare")
+        else:
+            self.moment(f"💥 {p.name}'s spire toppled!", "bad", "boom")
         if len(self.seats) == 1:
             r.finish(None, f"🗼 Your spire fell after {p.g.rings} rings. Try to beat it!")
         elif len(left) == 1:
             r.finish(left[0], f"🏆 {left[0].name} has the last spire standing!")
         elif not left:
             r.finish(None, "Every spire fell.")
+        elif len(left) == 2 and len(self.seats) >= 3:
+            self.moment(f"⚔️ Duel: {left[0].name} vs {left[1].name}!", "gold", "alarm")
 
     def on_leave(self, p):
         self.knock_out(p)
