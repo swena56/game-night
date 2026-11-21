@@ -37,6 +37,7 @@ MAX_STEPS = 240 * 14
 STROKE_CAP = 8          # the default most a hole can cost
 SAFETY_CAP = 20         # with no limit (#68), a hole still ends here so a lost ball can't stall the game
 LONG_PUTT = 3.5                # 🚀 holing out from at least this far (units) takes a stroke off
+BANK_KINDS, BANK_HITS = ("wall", "bumper", "post", "mill", "rock"), 3   # 🏀 holing out after this many bounces is a bank shot
 HOLE_PAUSE = 4.0               # seconds to read the hole's scores, after the last putt has rolled
 
 
@@ -563,6 +564,8 @@ class Putt(Game):
                 self.moment(f"🎯 {name}: HOLE IN ONE!", "gold", "fanfare")
             elif s <= par - 2:
                 self.moment(f"🦅 {name}: eagle!", "gold", "fanfare")
+            elif sum(1 for h in hits if h[3] in BANK_KINDS) >= BANK_HITS:
+                self.moment(f"🏀 {name}: bank shot! ({sum(1 for h in hits if h[3] in BANK_KINDS)} bounces)", "good", "good")
             elif s == par - 1:
                 self.moment(f"🐦 {name}: birdie", "good", "good")
             elif s >= 8:
