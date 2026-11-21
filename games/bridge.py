@@ -66,11 +66,14 @@ class Bridge(TrickGame):
         "Follow suit if you can. Highest trump wins, else the highest card of the suit led.",
         "Make your contract for trick points plus bonuses (game, slam, overtricks); fail and the defenders score.",
         "Chicago: four deals with set vulnerability. Highest total wins.",
+        "An option: honors. Holding four of the five top trump honors in one hand scores 100 for that side, all five 150, and four aces at no trumps 150.",
     ]
     min_players, max_players = 4, 4
     teams = True
     badges = {**TrickGame.badges, "slam": ("🌉", "Slam", "Bid and make a slam")}
-    settings_schema = {"deals": ("Deals", [(4, "4 (one Chicago)"), (8, "8 (two rounds)"), (2, "2 (quick)")], 4)}
+    settings_schema = {"deals": ("Deals", [(4, "4 (one Chicago)"), (8, "8 (two rounds)"), (2, "2 (quick)")], 4),
+                       "honors": ("🎖️ Honors", [(False, "Off"), (True, "On: honor bonus")], False)}
+    dealt = None       # each seat's thirteen cards as dealt (the hands empty as they are played)
 
     def start(self, seated, rng):
         self.seat_up(seated, rng)
@@ -105,6 +108,7 @@ class Bridge(TrickGame):
         self.result = None
         for k in range(4):
             self.sort_hand(k)
+        self.dealt = [list(h) for h in self.hands]
         self.stage = "bid"
         v = [s for s in (0, 1) if self.vul(s)]
         self.room.add_log(f"🃏 Deal {self.deal_no}: {self.nm(self.dealer)} deals. Vulnerable: " +
@@ -309,6 +313,18 @@ class Bridge(TrickGame):
 
     # -- end of deal
 
+    def honors(self):
+        """(seat, points, label) for a hand holding 4-5 trump honors, or all four aces at no trumps."""
+        out = []
+        for k, h in enumerate(self.dealt or []):
+            if self.trump:
+                n = sum(1 for c in h if suit(c) == self.trump and rank(c) in "AKQJT")
+                if n >= 4:
+                    out.append((k, 150 if n == 5 else 100, f"{n} trump honors"))
+            elif sum(1 for c in h if rank(c) == "A") == 4:
+                out.append((k, 150, "four aces"))
+        return out
+
     def end_hand(self):
         side = self.declarer % 2
         took = self.tricks[self.declarer] + self.tricks[self.dummy]
@@ -327,6 +343,11 @@ class Bridge(TrickGame):
             self.score[1 - side] += -sc
             text = f"❌ {bname(self.contract)} down {need - took}: {self.side_name(1 - side)} +{-sc}"
             self.moment(text, "bad", "boom")
+        if self.s.get("honors", False):
+            for k, pts, what in self.honors():
+                self.score[k % 2] += pts
+                text += f" · 🎖️ {self.nm(k)} held {what}: {self.side_name(k % 2)} +{pts}"
+                self.moment(f"🎖️ {self.nm(k)} held {what}: +{pts}", "gold", "fanfare")
         self.result = text
         self.room.add_log(f"🧮 {text}.", "big")
         self.next_deal()
