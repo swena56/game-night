@@ -419,12 +419,31 @@ class Lanes(Game):
         g.woke = False
         g.next_at = g.busy + random.uniform(0.6, 2.0)
         self.room.deadline = time.time() + IDLE
+        self.after_roll(p, lands)
         if g.done:
             total = self.total(p)
             self.room.add_log(f"🏁 {nm} finishes on {total}.", "big", at=lands)
             if all(o.g.done for o in self.players() if not o.eliminated):
                 # not yet: let the last roll play, then the final scoresheet sit a moment (#130)
                 self.finish_at = g.busy + 1.6
+
+    LEAD_FROM = 3   # 👑 lead calls start once everyone has bowled about this many balls
+
+    def after_roll(self, p, lands):
+        """👑 Call a new outright leader (once the game has settled in) and 💯 a perfect game (every ball a strike)."""
+        g = p.g
+        ps = [q for q in self.players() if not q.eliminated and getattr(q.g, "rolls", None)]
+        if len(ps) >= 2 and min(len(q.g.rolls) for q in ps) >= self.LEAD_FROM:
+            tot = {q.id: self.total(q) for q in ps}
+            top = max(tot.values())
+            lead = [q for q in ps if tot[q.id] == top]
+            if len(lead) == 1:
+                cur = getattr(self, "leader", None)
+                self.leader = lead[0].id
+                if cur is not None and cur != lead[0].id:
+                    self.moment(f"👑 {lead[0].name} takes the lead with {top}!", "cool", "tag", at=lands)
+        if g.done and len(g.rolls) == self.nframes + 2 and all(r == 10 for r in g.rolls):
+            self.moment(f"💯 {p.name}: PERFECT GAME!", "gold", "fanfare", at=lands)
 
     @staticmethod
     def is_split(standing):
