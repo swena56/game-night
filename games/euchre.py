@@ -169,7 +169,7 @@ class Euchre(TrickGame):
             self.team_score[self.nine] += 1
             self.room.add_log(f"🪶 {self.team_name(self.nine)} +1 for the 9 of trumps.")
         self.room.add_log(f"🧮 {self.team_name(0)} {self.team_score[0]} · {self.team_name(1)} {self.team_score[1]}")
-        if max(self.team_score) >= self.s["target"] and self.team_score[0] != self.team_score[1]:   # a 🪶 bonus can tie them: play on
+        if max(self.team_score) >= self.s["target"] and (self.team_score[0] != self.team_score[1] or not self.s.get("nine", False)):   # a 🪶 bonus can tie them: play on
             w = 0 if self.team_score[0] > self.team_score[1] else 1
             return self.room.finish(self.pl(w), f"🏆 {self.team_name(w)} win Euchre, {self.team_score[w]} to {self.team_score[1 - w]}!"
                                     + (" (🪶 incl. the 9 of trumps bonus)" if self.nine is not None else ""))

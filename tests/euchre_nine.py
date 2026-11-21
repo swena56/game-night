@@ -86,6 +86,46 @@ g.nine = 1
 g.end_hand()
 check("tie 10-10 plays on", r.phase == "playing" and g.team_score == [10, 10], (r.phase, g.team_score))
 
+
+def hand_end(on, score, tricks, nine, maker=0):
+    r, g = table(on)
+    g.team_score = list(score)
+    g.trump, g.maker, g.alone, g.stage = "H", maker, None, "play"
+    g.tricks, g.won, g.played, g.trick = list(tricks), [[] for _ in range(4)], set(), []
+    g.nine = nine
+    g.end_hand()
+    return r, g
+
+
+# Off: an (unreachable in play) tie at the target keeps the original rule, no plays-on
+r, g = hand_end(False, [10, 10], [2, 0, 1, 0], None)
+check("Off: equal scores at target end the game as before", r.phase != "playing", g.team_score)
+# On: both cross with different scores -> higher wins
+r, g = hand_end(True, [9, 9], [3, 0, 2, 0], 1)
+check("On: both cross 11-10, the higher wins", r.phase != "playing" and "11 to 10" in r.log[-1]["text"], (g.team_score, r.log[-1]))
+# On: long run of ties keeps playing; a decisive hand ends it
+r, g = hand_end(True, [9, 9], [2, 0, 1, 0], 1)
+for _ in range(60):
+    g.tricks, g.nine, g.stage = [2, 0, 1, 0], 1, "play"
+    g.end_hand()
+    if r.phase != "playing" or g.team_score[0] != g.team_score[1]:
+        break
+check("On: ties keep playing", r.phase == "playing" and g.team_score[0] == g.team_score[1], g.team_score)
+g.tricks, g.nine, g.stage = [2, 0, 1, 0], None, "play"
+g.end_hand()
+check("On: a lead at hand end finishes it", r.phase != "playing", g.team_score)
+for seed in range(9):
+    r, g = table(True, tag=f"T{seed}")
+    g.team_score = [9, 9]
+    for _ in range(4000):
+        if r.phase != "playing":
+            break
+        if g.stage in ("call", "discard", "play"):
+            g.bot_move(g.seats.index(r.turn), ["easy", "normal", "hard"][seed % 3])
+        elif g.stage == "score":
+            g.deal()
+    check(f"tie-start bot game {seed} ends", r.phase != "playing", g.team_score)
+
 # old-style object (no attribute), pickle
 r, g = table(True)
 g.__dict__.pop("nine", None)
