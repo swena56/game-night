@@ -9,6 +9,7 @@ per-player view of the room over Server-Sent Events (/api/events).
 """
 import gc
 import hashlib
+import ipaddress
 import json
 import os
 import pickle
@@ -73,7 +74,52 @@ SAVE_FILE = os.environ.get("ROOMS_FILE") or os.path.join(DATA_DIR, f"rooms{_SUFF
 FEEDBACK_FILE = os.environ.get("FEEDBACK_FILE") or os.path.join(DATA_DIR, f"feedback{_SUFFIX}.jsonl")
 FEEDBACK_STATUS = FEEDBACK_FILE.rsplit(".", 1)[0] + "-status.json"
 FEEDBACK_KINDS = ("bug", "idea")
-FEEDBACK_LIMIT = (5, 600)  # at most 5 reports per 10 minutes from one address
+FEEDBACK_MAX_BYTES = 8 * 1024 * 1024
+MAX_ROOMS = 32
+MAX_STREAMS = 64
+MAX_STREAMS_PER_CLIENT = 20
+MAX_CONNECTIONS = 128
+TRUST_CADDY = os.environ.get("TRUST_CADDY") == "1"
+REQUEST_LIMITS = {
+    "/api/create": (6, 60),
+    "/api/join": (40, 60),
+    "/api/feedback": (5, 600),
+    "/api/profile/put": (60, 60),
+    "/api/events": (60, 60),
+}
+
+
+class CapacityError(GameError):
+    pass
+
+
+LIMIT_LOCK = threading.Lock()
+REQUEST_HITS = {}
+NEXT_LIMIT_CLEANUP = 0
+STREAMS_PER_CLIENT = {}
+STREAM_SLOTS = threading.BoundedSemaphore(MAX_STREAMS)
+
+
+def allow_request(path, client):
+    global NEXT_LIMIT_CLEANUP
+    limit, window = REQUEST_LIMITS[path]
+    now = time.monotonic()
+    key = path, client
+    with LIMIT_LOCK:
+        if now >= NEXT_LIMIT_CLEANUP:
+            for entry, hits in list(REQUEST_HITS.items()):
+                if now - hits[-1] >= REQUEST_LIMITS[entry[0]][1]:
+                    del REQUEST_HITS[entry]
+            NEXT_LIMIT_CLEANUP = now + 10
+        if key not in REQUEST_HITS and len(REQUEST_HITS) >= 4096:
+            return 10
+        hits = REQUEST_HITS.setdefault(key, deque())
+        while hits and now - hits[0] >= window:
+            hits.popleft()
+        if len(hits) >= limit:
+            return max(1, int(window - (now - hits[0])) + 1)
+        hits.append(now)
+        return 0
 # HTTPS: on by default (SSL=0 turns it off). Without CERT_FILE/KEY_FILE a self-signed certificate is made in data/.
 LOG_REQUESTS = os.environ.get("LOG_REQUESTS") == "1"
 USE_SSL = os.environ.get("SSL", "1").lower() not in ("0", "off", "no", "false")
@@ -962,6 +1008,8 @@ def clean_name(name):
 def create_room(body):
     name = clean_name(body.get("name"))
     with ROOMS_LOCK:
+        if len(ROOMS) >= MAX_ROOMS:
+            raise CapacityError("The server has reached its room limit. Try again later.")
         while True:
             code = "".join(random.choices("ABCDEFGHJKLMNPQRSTUVWXYZ", k=4))
             if code not in ROOMS:
@@ -1187,10 +1235,7 @@ def profile_put(body):
 
 
 FEEDBACK_LOCK = threading.Lock()
-FEEDBACK_HITS = defaultdict(deque)
-
-
-def submit_feedback(body, ip):
+def submit_feedback(body):
     kind = body.get("kind")
     if kind not in FEEDBACK_KINDS:
         raise GameError("Pick bug or suggestion.")
@@ -1202,13 +1247,9 @@ def submit_feedback(body, ip):
         context = {"note": "details too large, dropped"}
     now = time.time()
     with FEEDBACK_LOCK:
-        hits = FEEDBACK_HITS[ip]
-        while hits and now - hits[0] > FEEDBACK_LIMIT[1]:
-            hits.popleft()
-        if len(hits) >= FEEDBACK_LIMIT[0]:
-            raise GameError("Thanks! That's a lot of reports — please try again in a few minutes.")
-        hits.append(now)
         try:
+            if os.path.getsize(FEEDBACK_FILE) >= FEEDBACK_MAX_BYTES:
+                raise CapacityError("The feedback inbox is full.")
             with open(FEEDBACK_FILE, encoding="utf-8") as f:
                 next_id = sum(1 for _ in f) + 1
         except FileNotFoundError:
@@ -1463,13 +1504,28 @@ class Handler(BaseHTTPRequestHandler):
             tls = "tls" if isinstance(self.connection, ssl.SSLSocket) else "plain"
             print(f"{self.client_address[0]} {tls} {fmt % args} host={self.headers.get('Host') if self.headers else None}")
 
-    def send_json(self, status, data):
+    def send_json(self, status, data, *, retry_after=None):
         body = json.dumps(data).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        if retry_after is not None:
+            self.send_header("Retry-After", str(retry_after))
+        if self.close_connection:
+            self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(body)
+
+    def rate_limit_client(self):
+        peer = ipaddress.ip_address(self.client_address[0])
+        if TRUST_CADDY and not peer.is_loopback:
+            try:
+                peer = ipaddress.ip_address(self.headers.get("X-Game-Night-Client", ""))
+            except ValueError:
+                pass
+        if isinstance(peer, ipaddress.IPv6Address):
+            peer = peer.ipv4_mapped or ipaddress.ip_network((peer, 64), strict=False).network_address
+        return str(peer)
 
     def parse_request(self):
         """Plain HTTP from another device is sent to HTTPS on the same port (old invite links and QR codes keep working).
@@ -1552,21 +1608,35 @@ class Handler(BaseHTTPRequestHandler):
         routes = {"/api/create": create_room, "/api/join": join_room, "/api/action": do_action, "/api/input": realtime_input,
                   "/api/status": status, "/api/replay": replay, "/api/peek": peek,
                   "/api/profile/get": profile_get, "/api/profile/put": profile_put,
-                  "/api/feedback": lambda body: submit_feedback(body, self.client_address[0])}
+                  "/api/feedback": submit_feedback}
         if self.local():
             routes["/api/feedback/status"] = set_feedback_status
         path = urlparse(self.path).path
         route = routes.get(path)
-        length = int(self.headers.get("Content-Length") or 0)
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            if length < 0 or self.headers.get("Transfer-Encoding"):
+                raise ValueError
+        except ValueError:
+            self.close_connection = True
+            return self.send_json(400, {"error": "Invalid request body length."})
         if not route or length > (PROFILE_POST_MAX if path == "/api/profile/put" else 10_000):
             self.close_connection = True   # the unread body would otherwise be parsed as the next request
             return self.send_json(404 if not route else 413, {"error": "Not found" if not route else "Too large"})
+        if path in REQUEST_LIMITS:
+            retry_after = allow_request(path, self.rate_limit_client())
+            if retry_after:
+                self.close_connection = True
+                return self.send_json(429, {"error": "Too many requests. Try again shortly."},
+                                      retry_after=retry_after)
         body = None
         try:
             body = json.loads(self.rfile.read(length) or b"{}")
             if not isinstance(body, dict):
                 raise GameError("Bad request.")
             self.send_json(200, route(body))
+        except CapacityError as e:
+            self.send_json(503, {"error": str(e)}, retry_after=30)
         except GameError as e:
             self.send_json(400, {"error": str(e)})
         except json.JSONDecodeError:
@@ -1579,6 +1649,10 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(500, {"error": "Something went wrong — try again.", "bug": True})
 
     def events(self, q):
+        client = self.rate_limit_client()
+        retry_after = allow_request("/api/events", client)
+        if retry_after:
+            return self.send_json(429, {"error": "Too many stream attempts."}, retry_after=retry_after)
         first = lambda k: (q.get(k) or [""])[0]
         try:
             room = get_room(first("code"))
@@ -1586,6 +1660,24 @@ class Handler(BaseHTTPRequestHandler):
                 p = auth(room, first("pid"), first("token"))
         except GameError as e:
             return self.send_json(403, {"error": str(e)})
+        with LIMIT_LOCK:
+            count = STREAMS_PER_CLIENT.get(client, 0)
+            if count < MAX_STREAMS_PER_CLIENT and STREAM_SLOTS.acquire(blocking=False):
+                STREAMS_PER_CLIENT[client] = count + 1
+            else:
+                count = None
+        if count is None:
+            return self.send_json(503, {"error": "Too many live streams. Try again shortly."}, retry_after=5)
+        try:
+            return self.stream_events(room, p)
+        finally:
+            with LIMIT_LOCK:
+                STREAMS_PER_CLIENT[client] -= 1
+                if not STREAMS_PER_CLIENT[client]:
+                    del STREAMS_PER_CLIENT[client]
+                STREAM_SLOTS.release()
+
+    def stream_events(self, room, p):
         # The stream has no length: it ends when the connection closes.
         self.close_connection = True
         # One gzip stream for the whole connection, flushed after every event: each view is mostly the same
@@ -1694,6 +1786,26 @@ class GameServer(ThreadingHTTPServer):
     """Serves HTTPS and plain HTTP on one port: each connection's first byte says which (0x16 starts a TLS handshake)."""
     daemon_threads = True
     ssl_context = None
+
+    def __init__(self, *args, **kwargs):
+        self.connection_slots = threading.BoundedSemaphore(MAX_CONNECTIONS)
+        super().__init__(*args, **kwargs)
+
+    def process_request(self, request, client_address):
+        if not self.connection_slots.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self.connection_slots.release()
+            raise
+
+    def process_request_thread(self, request, client_address):
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self.connection_slots.release()
 
     def handle_error(self, request, client_address):
         if isinstance(sys.exc_info()[1], CLIENT_GONE):

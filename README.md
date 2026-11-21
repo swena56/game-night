@@ -22,6 +22,64 @@ Open <http://localhost:8000>. Compose keeps room saves and player profiles in th
 `PORT=9000 docker compose up --build`). The container serves plain HTTP; put it
 behind a TLS reverse proxy if you expose it beyond a trusted network.
 
+### Deploy to DigitalOcean
+
+Set `DIGITALOCEAN_TOKEN` in your environment and register your SSH public key with
+DigitalOcean. From this checkout, run one of these commands with Python 3 and OpenSSH.
+The script looks up a Droplet named `game-night` by default.
+
+```sh
+python3 droplet.py                    # Deploy, or offer to create the Droplet if missing
+python3 droplet.py start --wait       # Power on and print the public IPv4 address
+python3 droplet.py start --ssh        # Power on and open a root SSH shell
+python3 droplet.py start --deploy     # Power on, deploy, and wait for Game Night
+python3 droplet.py start --deploy --ssh  # Deploy, then open a root SSH shell
+python3 droplet.py --stop             # Shut down game-night
+python3 droplet.py --remove           # Delete game-night after confirmation
+```
+
+Use `--name NAME` for a different Droplet. If names are duplicated, pass a numeric ID with
+`start ID`, `--stop ID`, or `--remove ID`. Startup flags work with an existing named Droplet
+or with `start ID`. Use `create` with the same flags to provision a new Droplet.
+`start` and `create` deploy by default. When you use `--wait` or `--ssh`, add `--deploy`
+to deploy in the same run. SSH and deployment both wait for the Droplet to start.
+
+New Droplets use Ubuntu 24.04 by default. Deployment uses root SSH and installs Docker Compose on Ubuntu
+24.04 if needed. To use a private key outside your SSH defaults, append
+`--ssh-key ~/.ssh/your_key` to the command. Load passphrase-protected keys into your SSH agent
+before deploying.
+
+Allow inbound TCP 22 for SSH, TCP 80 for certificate validation and HTTP redirects, and TCP
+443 for HTTPS. Caddy obtains and automatically renews a publicly trusted Let's Encrypt
+certificate for the Droplet's public IPv4 address. Deployment prints the HTTPS URL after
+checking it. The app's port 8000 stays inside Docker, and Caddy keeps its certificates in a
+persistent Docker volume.
+
+For a free hostname, claim a name at [Duck DNS](https://www.duckdns.org/) once and set
+`DUCKDNS_TOKEN` in your environment. Use the same hostname option on each deployment.
+
+```sh
+python3 droplet.py start --duckdns your-game-night
+```
+
+This updates the hostname to the Droplet's current IPv4 address and deploys the app at
+`https://your-game-night.duckdns.org/`. Caddy serves HTTPS on the selected hostname.
+
+To read the feedback inbox from a running Droplet, use the same DigitalOcean token and
+SSH key as for deployment. The script reads the inbox over SSH and prints JSON.
+
+```sh
+python3 fetch_feedback.py
+```
+
+Use `--name NAME` or pass a numeric Droplet ID to select a different Droplet.
+
+Redeploys preserve rooms and profiles in the Docker volume. `--stop` shuts down the VM and
+billing continues. `--remove` requires you to type the ID again and permanently deletes the VM
+and its local app data. For a custom-scoped token, enable `droplet:read`, then add
+`droplet:create` and `ssh_key:read` for creation, `droplet:update` for power-on and shutdown,
+or `droplet:delete` for deletion, along with the scopes required by DigitalOcean.
+
 `start.sh` keeps the server running after you close the terminal. On Android it also takes a
 Termux wake lock when Termux:API is installed, so the phone doesn't pause the server with the
 screen off. To start it automatically when the phone boots, install the Termux:Boot app and add

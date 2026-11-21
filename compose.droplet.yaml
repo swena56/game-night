@@ -1,0 +1,24 @@
+services:
+  game-night:
+    ports: !reset []
+    environment:
+      TRUST_CADDY: "1"
+  caddy:
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM caddy:2.11-alpine
+        COPY Caddyfile /etc/caddy/Caddyfile
+    restart: unless-stopped
+    environment:
+      GAME_NIGHT_ADDRESS: ${GAME_NIGHT_ADDRESS:?Set the Droplet public IPv4 address}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  caddy-data:
+  caddy-config:

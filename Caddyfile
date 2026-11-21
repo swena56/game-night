@@ -1,0 +1,15 @@
+{
+	default_sni {$GAME_NIGHT_ADDRESS}
+}
+
+{$GAME_NIGHT_ADDRESS} {
+	tls {
+		issuer acme https://acme-v02.api.letsencrypt.org/directory {
+			profile shortlived
+			disable_tlsalpn_challenge
+		}
+	}
+	reverse_proxy game-night:8000 {
+		header_up X-Game-Night-Client {remote_host}
+	}
+}
