@@ -31,4 +31,20 @@ for case, hand, table_, want in [
     print("ok  " if ok else "FAIL", case, labels)
     if not ok:
         fails.append(case)
+for mode, table_cards, expected in [
+    ("scopa", ["7H", "3H", "4H"], ["7H"]),
+    ("scopa", ["3H", "4H"], ["3H", "4H"]),
+    ("escoba", ["3H", "5H"], ["3H", "5H"]),
+]:
+    g.s["mode"] = mode
+    g.hands = [["7C"], []]
+    g.table_cards = table_cards
+    g.stock = ["AC"]
+    move = g.table(ps[0], 0)["moves"][0]
+    correct = move["a"]["take"] == expected and ("🧹" in move["label"]) == (len(table_cards) == len(expected))
+    g.stock = []
+    correct = correct and "🧹" not in g.table(ps[0], 0)["moves"][0]["label"]
+    print("ok  " if correct else "FAIL", mode, "exact preview and final-play sweep exception", move)
+    if not correct:
+        fails.append(mode)
 sys.exit(1 if fails else 0)

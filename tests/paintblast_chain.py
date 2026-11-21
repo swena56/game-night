@@ -59,5 +59,24 @@ g.step()
 check("a chain of four pays more, to the first bomb's owner", g.chain[0] == pb.CHAIN_PTS * 2, str(g.chain))
 check("the chain bonus counts in the round score", g.round_points(0) >= pb.CHAIN_PTS * 2)
 
+g, base = arena()
+wall, crate, bomb = base + 3, base + 7, base + 5
+g.tiles[wall], g.tiles[crate] = pb.PILLAR, pb.CRATE
+g.bombs[bomb] = [4, 0, 5]
+preview = g.snapshot(0)
+warning = dict(preview["w"])
+check("active bomb outlines its blocking wall and crate",
+      wall in preview["blockers"] and crate in preview["blockers"])
+check("blast reaches the crate but stops before the wall and beyond the crate",
+      crate in warning and wall not in warning and crate + 1 not in warning)
+g.tiles[crate] = pb.FLOOR
+g.bombs[bomb][0] -= 1
+preview = g.snapshot(0)
+check("warning refreshes after a crate clears and the fuse ticks",
+      crate not in preview["blockers"] and dict(preview["w"]).get(crate + 1) == 3)
+g.explode(bomb)
+check("preview matches the tiles burned by the blast",
+      set(dict(preview["w"])) == set(g.burn))
+
 print("FAILED: " + ", ".join(fails) if fails else "all ok")
 sys.exit(1 if fails else 0)

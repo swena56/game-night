@@ -33,6 +33,7 @@ class Blitz(CardGame):
     howto = [
         "Three cards each. Take the top of the stock or the discard, then throw one away.",
         "Your hand counts the cards of one suit: ace 11, faces 10, others their number.",
+        "The draw forecast shows the best score still possible from an unknown stock draw, based on your hand and the public discard pile.",
         "Knock instead of drawing: everyone else gets one more turn, then the lowest hand loses a life (a knocker caught lowest loses two).",
         "An option: three of a kind counts as 30, whatever the suits.",
         "Hit exactly 31: ⚡ Blitz! Everyone else loses a life on the spot.",
@@ -211,6 +212,19 @@ class Blitz(CardGame):
     def final_scores(self):
         return {pid: self.lives[k] for k, pid in enumerate(self.seats)}
 
+    def knock_forecast(self, i):
+        hand = self.hands[i]
+        if self.stock:
+            known = set(hand) | set(self.discard)
+            candidates = [card for card in deck() if card not in known]
+        else:
+            candidates = self.discard[:-1]
+        current = self.val(hand)
+        scores = [max(current, *(self.val([card, *hand[:k], *hand[k + 1:]]) for k in range(len(hand))))
+                  for card in candidates]
+        return {"current": current, "sameSuit": value(hand), "best": max(scores, default=None),
+                "knock": self.knocker is None}
+
     def table(self, p, i):
         info = [{"count": len(self.hands[k]) if not self.is_out(k) else None, "out": self.is_out(k),
                  "tags": ["❤️" * max(0, self.lives[k]) or "💀 out"] + (["✊ knocked"] if k == self.knocker else []),
@@ -233,8 +247,9 @@ class Blitz(CardGame):
             else:
                 t["note"] = f"Your hand: {v} in {GLYPH[best]}."
         if mine and self.stage == "draw":
+            t["knockForecast"] = self.knock_forecast(i)
             t["buttons"] = [{"label": "✊ Knock", "a": {"type": "knock"}}] if self.knocker is None else []
-            t["turnText"] = "🃏 Draw, or knock"
+            t["turnText"] = "🃏 Draw, or knock" if self.knocker is None else "🃏 Last draw"
             t["note"] = (t.get("note") or "") + " Take the stock or the discard."
         elif mine and self.stage == "discard":
             t["moves"] = [{"card": c, "a": {"type": "discard", "card": c}} for c in self.hands[i] if c != self.took]

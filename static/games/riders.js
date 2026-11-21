@@ -71,7 +71,7 @@ UI.riders = (() => {
       if (k != null) { e.preventDefault(); steer(k); }
       else if (rel != null) { e.preventDefault(); turn(rel); }
       else if (['Space', 'ShiftLeft', 'ShiftRight', 'Enter'].includes(e.code)) { e.preventDefault(); boost(); }
-      else if (e.code === 'KeyX') { e.preventDefault(); brake(); }
+      else if (e.code === 'KeyX') { e.preventDefault(); if (!e.repeat) brake(); }
     };
     addEventListener('keydown', keyHandler);
     ro = window.ResizeObserver ? new ResizeObserver(() => { gl?.resize(); flat?.resize(); }) : null;

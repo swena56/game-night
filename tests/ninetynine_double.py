@@ -10,6 +10,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 import server  # noqa: E402
 
+from games.cardbase import pretty, suit  # noqa: E402
+from games.ninetynine import WORTH  # noqa: E402
+
 fails = []
 
 
@@ -109,6 +112,22 @@ for seed in range(3):
         if g.stage == "score":
             g.deal()
     check(f"seed {seed}: bots stay legal", moves > 50, f"{moves} moves")
+
+room, ps, g = table()
+hand = g.hands[0].copy()
+raw_card = {pretty(c): c for c in hand}
+plan = g.view(ps[0])["ninetynine"]["bidPlan"]
+check("bid planner recommends three owned cards for each achievable bid",
+      plan and all(len(set(row["cards"])) == 3
+                   and sum(WORTH[suit(raw_card[c])] for c in row["cards"]) == row["bid"] for row in plan))
+check("another bidder gets only their own discard choices",
+      all(not set(row["cards"]) & set(raw_card) for row in g.view(ps[1])["ninetynine"]["bidPlan"]))
+check("spectators receive no bid plan", "bidPlan" not in g.table(ps[0], None))
+row = plan[0]
+g.act(ps[0], {"type": "bid", "cards": [raw_card[c] for c in row["cards"]]})
+check("the recommendation gives the advertised bid and then clears",
+      g.bids[0] == row["bid"] and len(g.hands[0]) == len(hand) - 3
+      and "bidPlan" not in g.view(ps[0])["ninetynine"])
 
 print("all ok" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(1 if fails else 0)

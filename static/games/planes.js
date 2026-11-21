@@ -216,6 +216,11 @@ UI.planes = (() => {
       const nm = ctx.el('b', '', nameOf(pid)); nm.style.color = colorOf(pid);
       row.append(nm, ctx.el('span', '', ` ${FOLD[s.fold].split(' ')[0]}${s.clip ? '📎' : ''} ${flying.has(s.id) ? '…in the air' : what(s)}`));
       box.append(row);
+      if (!flying.has(s.id) && s.telemetry) {
+        const { speed, lift, wind: [forward, right], end } = s.telemetry;
+        box.append(ctx.el('small', 'hint left pl-telemetry',
+          `Launch ${speed} m/s · lift ${lift} m/s² · wind ${forward} forward, ${right} right (m/s) · ${end === 'ground' ? 'Touched ground' : 'Flight time limit'}`));
+      }
     }
   }
 

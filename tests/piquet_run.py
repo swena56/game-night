@@ -180,5 +180,32 @@ print(f"deals with a run bonus: fired in {fired} of {games} 2-deal games")
 check("bonus fires in bot play", fired >= 1)
 check("bots legal", "legal bot moves (easy)" not in fails and not any(f.startswith("legal") for f in fails))
 
+r, g = table()
+viewer = g.pl(0)
+check("declaration comparison stays hidden during exchange", "declarations" not in g.view(viewer)["piquet"])
+g.hands = [[rank + "C" for rank in "789TJQKA"] + ["AD", "AH", "AS", "KD"],
+           ["7D", "8D", "9D", "TD", "JD", "QD", "7H", "9H", "JH", "8S", "TS", "QS"]]
+g.declare()
+comparison = g.view(viewer)["piquet"]["declarations"]
+check("declared categories and repique reconcile",
+      [row["points"] for row in comparison["rows"]] == [[8, 0], [18, 0], [14, 0]]
+      and comparison["bonuses"] == [{"label": "Repique", "seat": 0, "points": 60}]
+      and comparison["totals"] == [100, 0])
+g.last, g.tricks = {"winner": 0, "cards": []}, [12, 0]
+g.hand_pts[0] += 12
+g.end_hand()
+comparison = g.view(viewer)["piquet"]["declarations"]
+check("capot stays itemized in the final deal total",
+      comparison["bonuses"][-1] == {"label": "Capot", "seat": 0, "points": 40}
+      and comparison["totals"] == [153, 0])
+
+r, g = table()
+g.declare()
+g.elder, g.pique_on, g.hand_pts = 0, True, [29, 0]
+g.on_trick(0, [])
+check("pique is tracked separately from the trick point",
+      g.view(g.pl(0))["piquet"]["declarations"]["bonuses"][-1]
+      == {"label": "Pique", "seat": 0, "points": 30} and g.hand_pts == [60, 0])
+
 print("FAILED: " + ", ".join(fails) if fails else "all ok")
 sys.exit(1 if fails else 0)

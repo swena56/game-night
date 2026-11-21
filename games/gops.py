@@ -22,6 +22,7 @@ class Gops(CardGame):
         "Each round a prize is turned up and everyone bids one card at once, face down.",
         "Highest bid takes the prize. A tie at the top carries it over: the next winner takes both.",
         "✌️ Double down (once a game): win the prize for 2x, but lose the round and you drop 3 points.",
+        "The bid history shows each resolved prize, the bids spent on it, and what was won or carried over.",
         "Every card bid is spent. After thirteen prizes, most points wins.",
     ]
     min_players, max_players = 2, 3
@@ -73,13 +74,17 @@ class Gops(CardGame):
         top = max(VAL[rank(c)] for c in self.bids.values())
         best = [k for k, c in self.bids.items() if VAL[rank(c)] == top]
         bids = " · ".join(f"{self.nm(k)} {pretty(c)}" for k, c in sorted(self.bids.items()))
-        self.history.append({"prize": self.pot[:], "bids": {k: c for k, c in self.bids.items()}, "winner": best[0] if len(best) == 1 else None})
+        reveal = {"prize": self.pot[:], "bids": dict(self.bids),
+                  "winner": best[0] if len(best) == 1 else None, "worth": self.worth(),
+                  "points": 0, "carry": len(best) > 1 and bool(self.prizes)}
+        self.history.append(reveal)
         if len(best) == 1:
             w = best[0]
             got = self.worth()
             if w in self.dbl:
                 got *= 2
                 self.moment(f"✌️ {self.nm(w)} doubled down and it paid: +{got}!", "gold", "fanfare")
+            reveal["points"] = got
             self.scores[w] += got
             self.room.add_log(f"🎯 {bids} → {self.nm(w)} takes {show(self.pot)} (+{got}).")
             if "K" in [rank(c) for c in self.pot] and top <= 5 and self.pl(w):
@@ -183,6 +188,7 @@ class Gops(CardGame):
                                        "label": f"Prize: {sum(VAL[rank(c)] for c in pot)} pt{'s' if sum(VAL[rank(c)] for c in pot) != 1 else ''}"
                                        + (" (carried over)" if len(pot) > 1 else "")},
                                       {"cards": ["??"] if self.prizes else [], "count": len(self.prizes), "label": "Prizes left"}],
+             "bidHistory": self.history,
              "hand": self.hands[i] if i is not None else [],
              "scores": {"title": "Points", "rows": [{"seat": k, "value": self.scores[k]} for k in sorted(range(self.n), key=lambda k: -self.scores[k])],
                         "hint": f"{len(self.prizes)} prizes to come" + (": " + " ".join(rank(c) for c in self.prizes) if self.s.get("order") == "open" else ".")}}

@@ -88,6 +88,25 @@ UI.shipcrew = (() => {
     $('scDock').hidden = !mine || !sc.loaded;
     $('scHint').textContent = !mine ? '' : sc.loaded && rollsLeft ? 'Raised dice get rerolled. Dock to keep your cargo.' : '';
 
+    const forecast = mine ? sc.forecast : null;
+    if (forecast) {
+      const option = forecast.options[[...pick].sort().join('')];
+      const pct = (p) => `${Math.round(p * 100)}%`;
+      const dock = [`Dock: ${forecast.haul} cargo`];
+      if (forecast.raid && forecast.haul >= 11) dock.push(`+ ${forecast.raid} from raid`);
+      if (forecast.potLead) {
+        dock.push(forecast.haul > forecast.potLead ? `leads the ${sc.pot}-coin pot`
+          : forecast.haul === forecast.potLead ? 'ties the pot lead' : `pot lead: ${forecast.potLead}`);
+      } else if (forecast.potLead === 0) dock.push(`${sc.pot} coins in pot`);
+      if (option) {
+        const roll = [`Reroll: ${pct(option.up)} better, ${pct(option.down)} worse`,
+          `${option.expected.toFixed(1)} expected cargo with best play`];
+        if (option.raid != null) roll.push(`${pct(option.raid)} to reach raid cargo`);
+        if (option.potLead != null) roll.push(`${pct(option.potLead)} to beat current pot lead`);
+        $('scHint').textContent = [...dock, ...roll].join(' · ');
+      } else $('scHint').textContent = [...dock, 'Tap dice to compare a reroll'].join(' · ');
+    }
+
     const last = $('scLast'); last.innerHTML = '';
     if (sc.last) {
       const p = ctx.player(sc.last.by);

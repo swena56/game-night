@@ -95,7 +95,7 @@ UI.farkle = (() => {
     $('fkBest').hidden = !mine || !f.rolled;
     $('fkHint').textContent = !mine ? '' : !f.rolled ? 'Roll to start your turn.'
       : picked.size && !valid ? 'Every die you set aside has to score.'
-      : valid ? `Rolling ${left} ${left === 1 ? 'die' : 'dice'}: ${FARKLE_PCT[left]}% chance to farkle.` : 'Tap scoring dice to set them aside, then roll the rest or bank.';
+      : valid ? '' : 'Tap scoring dice to set them aside, then roll the rest or bank.';
     // the risk gauge: what's on the line and the chance the next roll farkles (with my picks, or, watching,
     // after the best keep)
     const risk = $('fkRisk'), best0 = f.options[0];
@@ -103,10 +103,15 @@ UI.farkle = (() => {
     const onLine = f.turnPts + (valid ? pts : best0 ? best0[0] : 0);
     risk.hidden = !(S.phase === 'playing' && f.rolled && !f.farkled && next);
     if (!risk.hidden) {
-      const pct = FARKLE_PCT[next] ?? 0;
+      const pct = f.bustOdds ? f.bustOdds[next - 1] * 100 : FARKLE_PCT[next];
+      const opening = f.onBoard[S.turn] ? 0 : f.opening;
+      const bank = onLine < opening ? `${num(onLine)} points · need ${num(opening)} to bank`
+        : mine && !valid ? `Suggested keep: ${num(onLine)} points` : `Bank ${num(onLine)}`;
+      const riskPoints = onLine + (next === 6 ? f.nextHotBonus || 0 : 0);
+      const dice = `${next} ${next === 1 ? 'die' : 'dice'}${next === 6 ? ' (hot dice)' : ''}`;
       risk.style.setProperty('--p', pct / 100);
       risk.classList.toggle('hot', pct >= 40);
-      risk.querySelector('small').textContent = `${num(onLine)} on the line · roll ${next} more: ${pct}% to farkle`;
+      risk.querySelector('small').textContent = `${bank} · Roll ${dice}: ${pct.toFixed(1)}% chance to lose ${num(riskPoints)}`;
     }
   }
 

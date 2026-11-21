@@ -51,6 +51,20 @@ check("meter swings back", abs(T.meter(T.METER) - 0) < 1e-9)
 
 r, g, (a, b) = game()
 check("starts on the launch", g.stage == "launch" and g.round == 1)
+g.arena = "ice"
+g.tops[0].kind = "sta"
+preview = g.view(a)["tops"]
+kind_index = preview["t"][0][9]
+stats = preview["matchups"][preview["ar"]][kind_index]
+_, _, attack, mass, decay, steer, _ = T.TYPES["sta"]
+check("matchup reports the selected top and ice steering",
+      preview["kinds"][kind_index][0] == "sta" and stats == {
+          "speed": T.VMAX, "mass": mass, "attack": attack,
+          "stamina": round(1 / (T.DECAY * decay), 1),
+          "steering": round(steer * T.ICE_STEER, 2),
+      })
+g.arena = "classic"
+g.tops[0].kind = "bal"
 for bad in ({"sx": float("nan"), "sy": 0}, {"sx": "x", "sy": 0}, {"btn": "boom"}):
     try:
         g.on_input(a, bad)

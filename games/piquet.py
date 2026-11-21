@@ -34,6 +34,7 @@ class Piquet(TrickGame):
     howto = [
         "Twelve cards each from 32 (A high). The elder swaps 1–5 cards with the talon, then the younger swaps up to the rest.",
         "Declarations compare automatically: point (longest suit), sequences (runs of 3+) and sets (three or four of A K Q J 10).",
+        "After both players exchange, open Declaration comparison to see both declarations, points awarded, and the deal’s scoring bonuses.",
         "Only the better hand in each class scores. Reaching 30 on declarations alone before your rival scores: repique, +60.",
         "Play twelve tricks with no trumps; follow suit. 1 a trick, 1 for the last, 10 for most tricks (40 for all).",
         "Highest after six deals wins.",
@@ -67,6 +68,7 @@ class Piquet(TrickGame):
         self.elder = 1 - self.dealer
         self.hand_pts = [0, 0]
         self.decl = None
+        self.decl_comparison = None
         self.pique_on = False
         self.run_seat, self.run_n, self.run_pts = None, 0, [0, 0]
         self.result = None
@@ -133,28 +135,45 @@ class Piquet(TrickGame):
         e, y = self.elder, 1 - self.elder
         h = self.hands
         lines = []
-        got = [0, 0]
+        rows = []
+
+        def compare(label, totals, winners, values):
+            awarded = [0, 0]
+            if winners[e] != winners[y]:
+                winner = e if winners[e] > winners[y] else y
+                awarded[winner] = values[winner]
+            rows.append({"label": label, "counts": totals, "points": awarded})
+
         # point: ties (equal length and total) score nothing
         pe, py = self.point(h[e]), self.point(h[y])
+        points = {e: pe, y: py}
+        compare("Point", [f"{points[k][0]} cards, {points[k][1]} pips" for k in (0, 1)],
+                points, [points[k][0] for k in (0, 1)])
         if pe != py:
             w = e if pe > py else y
-            got[w] += (pe if w == e else py)[0]
             lines.append(f"Point of {(pe if w == e else py)[0]}: {self.nm(w)}")
         se, sy = self.sequences(h[e]), self.sequences(h[y])
         te, ty = (se[0][:2] if se else (0, 0)), (sy[0][:2] if sy else (0, 0))
+        seq = {e: se, y: sy}
+        compare("Sequences", [", ".join(str(n) for n, _, _ in seq[k]) for k in (0, 1)],
+                {e: te, y: ty}, [sum(seq_value(n) for n, _, _ in seq[k]) for k in (0, 1)])
         if te != ty:
             w, seqs = (e, se) if te > ty else (y, sy)
-            got[w] += sum(seq_value(n) for n, _, _ in seqs)
             lines.append(f"Sequence{'s' if len(seqs) > 1 else ''} ({', '.join(str(n) for n, _, _ in seqs)}): {self.nm(w)}")
         we, wy = self.sets(h[e]), self.sets(h[y])
         te, ty = (we[0][:2] if we else (0, 0)), (wy[0][:2] if wy else (0, 0))
+        sets = {e: we, y: wy}
+        compare("Sets", [", ".join(str(n) for n, _, _ in sets[k]) for k in (0, 1)],
+                {e: te, y: ty}, [sum(14 if n == 4 else 3 for n, _, _ in sets[k]) for k in (0, 1)])
+        self.decl_comparison = {"rows": rows, "bonuses": []}
         if te != ty:
             w, ss = (e, we) if te > ty else (y, wy)
-            got[w] += sum(14 if n == 4 else 3 for n, _, _ in ss)
             lines.append(f"Sets ({', '.join(('four ' if n == 4 else 'three ') + rname(r) for n, _, r in ss)}): {self.nm(w)}")
+        got = [sum(row["points"][k] for row in rows) for k in (0, 1)]
         for k in (0, 1):
             if got[k] >= 30 and got[1 - k] == 0:
                 got[k] += 60
+                self.comparison_bonus("Repique", k, 60)
                 lines.append(f"⚜️ Repique for {self.nm(k)}! +60")
                 self.moment(f"⚜️ {self.nm(k)}: repique! +60", "gold", "fanfare")
                 if self.pl(k):
@@ -164,6 +183,11 @@ class Piquet(TrickGame):
         self.decl = lines or ["Nothing to declare."]
         self.room.add_log("📜 " + " · ".join(self.decl) + f" ({got[0]}–{got[1]})", "power")
         self.start_tricks(self.elder)
+
+    def comparison_bonus(self, label, seat, points):
+        comparison = getattr(self, "decl_comparison", None)
+        if comparison:
+            comparison["bonuses"].append({"label": label, "seat": seat, "points": points})
 
     # -- play
 
@@ -179,6 +203,7 @@ class Piquet(TrickGame):
                 self.pique_on = False
             elif self.hand_pts[self.elder] >= 30:
                 self.hand_pts[self.elder] += 30
+                self.comparison_bonus("Pique", self.elder, 30)
                 self.pique_on = False
                 self.room.add_log(f"⚜️ Pique for {self.nm(self.elder)}! +30", "power")
                 self.moment(f"⚜️ {self.nm(self.elder)}: pique! +30", "gold", "fanfare")
@@ -190,14 +215,17 @@ class Piquet(TrickGame):
         if max(a, b) == 12:
             k = 0 if a == 12 else 1
             self.hand_pts[k] += 40
+            self.comparison_bonus("Capot", k, 40)
             self.room.add_log(f"💥 Capot! {self.nm(k)} takes every trick: +40.", "power")
         elif a != b:
             k = 0 if a > b else 1
             self.hand_pts[k] += 10
+            self.comparison_bonus("Most tricks", k, 10)
             self.room.add_log(f"🎴 {self.nm(k)} wins the cards: +10.")
         for k in (0, 1):
             if self.run_pts[k]:
                 self.hand_pts[k] += self.run_pts[k]
+                self.comparison_bonus("Run of eight", k, self.run_pts[k])
                 self.room.add_log(f"🔥 {self.nm(k)}'s run of eight: +{self.run_pts[k]}.", "power")
             self.score[k] += self.hand_pts[k]
         self.result = f"Deal {self.deal_no}: {self.nm(0)} +{self.hand_pts[0]}, {self.nm(1)} +{self.hand_pts[1]}" + \
@@ -266,6 +294,8 @@ class Piquet(TrickGame):
              "scores": {"title": "Points", "rows": [{"seat": k, "value": self.score[k], "sub": f"this deal {self.hand_pts[k]}"} for k in (0, 1)],
                         "hint": f"Deal {self.deal_no} of {self.s['deals']}"}}
         t.update(self.trick_view(p, i))
+        if getattr(self, "decl_comparison", None):
+            t["declarations"] = {**self.decl_comparison, "totals": self.hand_pts}
         if i is None or self.room.turn != p.id or self.stage != "exchange":
             return t
         n = self.max_swap(i)

@@ -59,6 +59,9 @@ for on in (None, False):
     expect = 8 + 12 + (1 if on is None else 0)
     check(f"[{tag}] third scoring play {'adds the bonus' if on is None else 'adds nothing'}", ann.g.score == expect, ann.g.score)
     check(f"[{tag}] callout/log only when on", any("Hot streak" in e["text"] for e in r.log) == (on is None))
+    history = g.view(ann)["cribbage"]["pegHistory"]
+    check("peg replay totals match the score including any hot streak",
+          sum(e["credited"] for e in history if e["who"] == ann.id) == ann.g.score)
     if on is None:
         check("streak restarts after the bonus", ann.g.streak == 0)
 
@@ -111,6 +114,25 @@ for seed in range(1, 21):
     bonus += logs
 check("the streak bonus fires in bot games", bonus >= 1, f"{bonus} in {seed} games")
 print("streak bonuses in bot games:", bonus)
+
+r, g, ann, bo = board()
+ann.g.peg_hand, bo.g.peg_hand = ["7C"], ["8D"]
+g.count, g.seq, g.last_player = 25, ["QD", "9C", "6C"], ann.id
+g.next_peg(ann.id)
+event = g.view(bo)["cribbage"]["pegHistory"][-1]
+check("go is credited before starting a new count",
+      event["items"] == [("Go", 1)] and event["count"] == 25
+      and event["group"] + 1 == g.peg_group and g.count == 0)
+
+r, g, ann, bo = board()
+ann.g.score = g.s["target"] - 1
+ann.g.peg_hand, bo.g.peg_hand = ["AC"], ["8D"]
+g.count, g.seq = 30, ["QD", "KC", "JD"]
+play(g, ann, "AC")
+event = g.view(bo)["cribbage"]["pegHistory"][-1]
+check("pegging out records the scoring reason and exact peg movement",
+      r.phase == "over" and event["items"] == [("Thirty-one", 2)] and event["credited"] == 1
+      and ann.g.score == g.s["target"])
 
 print("\n" + ("ALL PASSED" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)

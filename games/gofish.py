@@ -27,7 +27,7 @@ class GoFish(CardGame):
         "They hand over every card of that rank, and you go again.",
         "If they have none: 🐟 go fish! Draw from the pond; draw the rank you asked for and you go again.",
         "Four of a rank make a book. Most books when all thirteen are down wins.",
-        "📝 Table notes show the ranks a rival has been seen asking for or taking and still holds, so you can ask them for it. 🔥 Three good asks in a row is a streak.",
+        "📝 Table notes show publicly known ranks. Your memory panel lists ranks rivals asked for or denied earlier in this hand. 🔥 Three good asks in a row is a streak.",
     ]
     min_players, max_players = 2, 6
     badges = {**CardGame.badges, "haul": ("🎣", "Big haul", "Get three cards in one ask"), "streak": ("🔥", "Hot streak", "Three successful asks in a row")}
@@ -43,6 +43,8 @@ class GoFish(CardGame):
         self.pond = cards[self.n * per:]
         self.books = [[] for _ in range(self.n)]
         self.known = [set() for _ in range(self.n)]     # ranks everyone saw each player ask for or receive
+        self.asked = [set() for _ in range(self.n)]
+        self.denied = [set() for _ in range(self.n)]
         self.last = None
         self.streak = [0] * self.n
         self.room.add_log("🐟 Go Fish: ask for what you need. Books of four score.", "big")
@@ -75,6 +77,12 @@ class GoFish(CardGame):
     def ask(self, i, j, r):
         got = [c for c in self.hands[j] if rank(c) == r]
         self.known[i].add(r)
+        if not hasattr(self, "asked"):
+            self.asked = [set() for _ in range(self.n)]
+            self.denied = [set() for _ in range(self.n)]
+        self.asked[i].add(r)
+        if not got:
+            self.denied[j].add(r)
         if got:
             self.hands[j] = [c for c in self.hands[j] if rank(c) != r]
             self.known[j].discard(r)
@@ -180,6 +188,10 @@ class GoFish(CardGame):
              "banner": (f"{self.nm(lst['seat'])} → {self.nm(lst['from'])}: {rname(lst['rank'])}? " + (f"Got {lst['got']}!" if lst["got"] else "Go fish! 🐟")) if lst else None,
              "scores": {"title": "Books", "rows": [{"seat": k, "value": len(self.books[k])} for k in sorted(range(self.n), key=lambda k: -len(self.books[k]))],
                         "hint": f"{13 - sum(len(b) for b in self.books)} books still out there."}}
+        if show and i is not None and hasattr(self, "asked"):
+            t["memory"] = [{"seat": k, "asked": sorted(self.asked[k], key=ORDER.index),
+                            "denied": sorted(self.denied[k], key=ORDER.index)}
+                           for k in range(self.n) if k != i and (self.asked[k] or self.denied[k])]
         if i is not None and self.room.turn == p.id:
             others = [k for k in range(self.n) if k != i and self.hands[k]]
             t["moves"] = [{"card": c, "label": f"Ask {self.nm(k)} for {rname(rank(c))}", "a": {"type": "ask", "who": k, "rank": rank(c)}}

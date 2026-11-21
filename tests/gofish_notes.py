@@ -50,6 +50,15 @@ check("no note for ranks only held in secret", not any("📝" in t for t in tags
 g.act(ps[0], {"type": "ask", "who": 2, "rank": "2"})          # go fish
 check("a failed ask still notes the rank as the asker's", "2" in g.known[0])
 
+check("memory lists public asks and denies from this viewer's opponents",
+      g.view(ps[1])["gofish"]["memory"] == [
+          {"seat": 0, "asked": ["2", "7"], "denied": []},
+          {"seat": 2, "asked": [], "denied": ["2"]},
+      ])
+check("the asker sees only the rival's reply",
+      g.view(ps[0])["gofish"]["memory"] == [{"seat": 2, "asked": [], "denied": ["2"]}])
+check("spectators get no private memory panel", "memory" not in g.table(ps[0], None))
+
 # books clear the note
 g.hands[0] = ["7C", "7D", "7H", "KS"]; g.known[0] = {"7", "K"}; g.hands[1] = ["7S", "3C"]; g.to(0)
 g.act(ps[0], {"type": "ask", "who": 1, "rank": "7"})
@@ -70,6 +79,10 @@ check("a go-fish resets the streak", g.streak[0] == 0)
 room, ps, g = table(notes=False)
 g.known[0] = {"7"}
 check("notes off by the setting", not any("📝" in t for t in tags(g, ps[1], 0)))
+g.asked[0].add("7")
+check("the notes setting also disables the memory panel", "memory" not in g.view(ps[1])["gofish"])
+g.start(ps, random.Random(1))
+check("new hand clears old asks and denials", not any(g.asked) and not any(g.denied))
 
 # old saves
 room, ps, g = table()

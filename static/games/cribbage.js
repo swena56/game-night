@@ -32,6 +32,7 @@ UI.cribbage = (() => {
       <p id="cbHint" class="hint"></p>
     </div>`;
     side.innerHTML = `<div class="panel"><div id="cbStatus" class="seat-row"></div><div id="cbPlayed" class="cb-played"></div>
+      <details id="cbPegReplay" hidden><summary>Pegging replay</summary><div></div></details>
       <h3>Scoring</h3><ul class="rules cb-rules">
       <li>Fifteen 2 · Pair 2 · Three of a kind 6 · Four 12</li><li>Run: 1 per card · 31: 2 · Last card / go: 1</li>
       <li>Show: flush 4 (5 with the starter; the crib needs 5) · Nobs 1</li></ul></div>`;
@@ -50,10 +51,35 @@ UI.cribbage = (() => {
     };
   }
 
+  function renderPegReplay(events) {
+    const replay = $('cbPegReplay');
+    replay.hidden = !events.length;
+    const key = JSON.stringify(events);
+    if (replay.dataset.history === key) return;
+    replay.dataset.history = key;
+    const body = replay.lastElementChild;
+    body.replaceChildren();
+    let group, list;
+    for (const entry of events) {
+      if (entry.group !== group) {
+        group = entry.group;
+        list = ctx.el('ol', 'rules');
+        body.append(ctx.el('b', '', `Count ${group}`), list);
+      }
+      const name = entry.who === S.me.id ? 'You' : ctx.player(entry.who)?.name ?? '?';
+      const play = entry.card ? `${entry.card} → ${entry.count}` : '';
+      const reasons = entry.items.map(([label, points]) => `${label} +${points}`);
+      const scored = entry.items.reduce((sum, [, points]) => sum + points, 0);
+      const clipped = scored !== entry.credited ? `only +${entry.credited} needed to peg out` : '';
+      list.append(ctx.el('li', '', [name, play, ...reasons, clipped].filter(Boolean).join(' · ')));
+    }
+  }
+
   function render(s, c) {
     S = s; ctx = c;
     const g = S.cribbage, me = S.me.id, mine = g.seats.includes(me);
     const dealerName = ctx.player(g.dealer)?.name ?? '';
+    renderPegReplay(g.pegHistory || []);
 
     // peg track: one lane per player. Like real two-peg scoring, the back peg stays at the old score while the
     // front peg hops forward, with the points just scored floating above it.

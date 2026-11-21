@@ -264,6 +264,10 @@ UI.putt = (() => {
     const live = !p.between && S.phase === 'playing';  // between holes and after the last one, the hole just played is already on the card
     const pars = p.pars || [];
     const played = p.cards[0].length + (live ? 1 : 0);
+    const addMadePutt = (td, i, hole) => {
+      const distance = p.madePutts?.[i]?.[hole];
+      if (distance != null) td.append(ctx.el('small', 'pp-made-putt', `⛳ ${distance.toFixed(1)}`));
+    };
     head.append(ctx.el('th', '', 'Hole'), ...Array.from({ length: played }, (_, k) => ctx.el('th', k + 1 === p.hole ? 'now' : '', String(k + 1))));
     head.append(ctx.el('th', '', 'Σ'), ctx.el('th', '', '±'));
     t.append(head);
@@ -281,17 +285,23 @@ UI.putt = (() => {
       p.cards[i].forEach((v, k) => {
         const par = pars[k] ?? 3; diff += v - par;
         const td = ctx.el('td'); td.append(ctx.el('span', 'pp-mark ' + markCls(v, par), String(v)));
-        td.title = vsPar(v, par); row.append(td);
+        td.title = vsPar(v, par); addMadePutt(td, i, k + 1); row.append(td);
       });
-      if (live) row.append(ctx.el('td', 'now', p.holed[i] ? `${p.strokes[i]}✓` : String(p.strokes[i])));
-      if (live && p.holed[i]) diff += p.strokes[i] - (pars[p.hole - 1] ?? 3);
+      const locked = p.holeScores?.[i];
+      const current = locked ?? p.strokes[i];
+      if (live) {
+        const td = ctx.el('td', 'now', p.holed[i] ? `${current}✓` : String(current));
+        addMadePutt(td, i, p.hole);
+        row.append(td);
+        if (locked != null) diff += locked - (pars[p.hole - 1] ?? p.par ?? 3);
+      }
       const tot = ctx.el('td');
-      tot.append(ctx.el('b', '', String(p.cards[i].reduce((a, b) => a + b, 0) + (live ? p.strokes[i] : 0))));
+      tot.append(ctx.el('b', '', String(p.totals?.[i] ?? (p.cards[i].reduce((a, b) => a + b, 0) + (live ? current : 0)))));
       row.append(tot, ctx.el('td', 'pp-topar ' + (diff < 0 ? 'pp-under' : diff > 0 ? 'pp-over' : ''), toPar(diff)));
       t.append(row);
     });
     box.append(t);
-    box.append(ctx.el('p', 'hint left pp-legend', '◯ birdie · ◎ eagle · ▢ bogey · ± strokes against par'));
+    box.append(ctx.el('p', 'hint left pp-legend', '◯ birdie · ◎ eagle · ▢ bogey · ± strokes against par · ⛳ made putt in tiles'));
   }
 
   // between holes: this hole's strokes and the standings, once the last putt has rolled in (see loop)

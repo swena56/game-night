@@ -25,6 +25,7 @@ class Briscola(TrickGame):
     howto = [
         "40 cards. Three in hand; the card under the stock shows the briscola (trumps).",
         "You don't have to follow suit. Highest briscola wins, else the highest of the suit led.",
+        "On your turn, the trick preview shows which cards would lead against the cards already played.",
         "Order, high to low: A 3 K Q J 7 6 5 4 2. Draw back up to three after each trick, winner first.",
         "Points: ace 11, three 10, king 4, queen 3, jack 2. Over 60 of the 120 wins the hand.",
         "With four players, partners sit opposite and pool their points.",
@@ -187,6 +188,17 @@ class Briscola(TrickGame):
              "piles": [{"cards": [self.brisc] if self.stock else [], "count": len(self.stock), "label": "Stock", "corner": True}],
              "scores": {"title": "Points", "rows": rows, "hint": "A 11 · 3 10 · K 4 · Q 3 · J 2. Over 60 wins."}}
         t.update(self.trick_view(p, i))
+        if t["moves"]:
+            led = self.suit_of(self.trick[0][1]) if self.trick else None
+            t["trickPreview"] = {
+                "led": SUIT_NAME[led] if led else None,
+                "trump": SUIT_NAME[self.trump],
+                "cards": [{"card": pretty(move["card"]),
+                           "trump": self.suit_of(move["card"]) == self.trump,
+                           "follows": self.suit_of(move["card"]) == led,
+                           "leads": self.best_of([*self.trick, (i, move["card"])])[0] == i}
+                          for move in t["moves"]],
+            }
         if i is not None and self.can_swap(i):
             t["buttons"] = [{"label": f"🔄 Swap 7 for {pretty(self.brisc)}", "a": {"type": "swap"}}]
         return t

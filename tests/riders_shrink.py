@@ -58,5 +58,26 @@ ride(r, g, 10, t)
 check("then the band grows", g.ring >= 3 or g.round > 1, (g.ring, g.round))
 check("a walled cell is deadly", g.walled(0, 0) == (g.ring > 0))
 
+r, g = arena(False)
+for player in r.players.values():
+    player.bot = None
+g.stage = "ride"
+g.grid = bytearray(g.n * g.n)
+g.trails = [[], []]
+g.occupy(0, 2, 2)
+g.occupy(1, 2, 4)
+g.dirs = [1, 1]
+player = r.players[g.seats[0]]
+now = time.time()
+for tick in range(riders.BRAKE_TICKS):
+    g.on_input(player, {"brake": True})
+    g.step(now + tick / 20)
+check("brake halves movement during its fixed server window",
+      len(g.trails[0]) - 1 == riders.BRAKE_TICKS // 2 and len(g.trails[1]) - 1 == riders.BRAKE_TICKS)
+check("repeated presses during braking cost only one charge and do not extend it",
+      g.brakes[0] == riders.BRAKES - 1 and g.braking[0] == 0)
+g.step(now + riders.BRAKE_TICKS / 20)
+check("normal movement resumes on the next tick", len(g.trails[0]) - 1 == riders.BRAKE_TICKS // 2 + 1)
+
 print("\nall ok" if not fails else f"\n{len(fails)} failed: {fails}")
 sys.exit(1 if fails else 0)

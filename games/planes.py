@@ -56,7 +56,7 @@ BOT_PACE = {"easy": (4.0, 7.0), "normal": (3.0, 5.5), "hard": (2.0, 4.0)}
 BOT_SAMPLES = {"easy": 5, "normal": 12, "hard": 18}
 
 
-def fly(fold, pitch, yaw, power, wind, vents, jitter=(0.0, 0.0, 0.0), gust=0.0):
+def fly(fold, pitch, yaw, power, wind, vents, jitter=(0.0, 0.0, 0.0), gust=0.0, telemetry=None):
     """Simulate one throw. pitch/yaw in degrees, power 0..1, wind (wx, wz) m/s, vents [(x, z, up)].
     jitter: (pitch rad, yaw rad, lift ×) from the wobble. Returns (path [(t, x, y, z)], landed (x, z), airtime)."""
     cl, cd, spd, wmul, _, curl, lmax = FOLDS[fold]
@@ -68,6 +68,9 @@ def fly(fold, pitch, yaw, power, wind, vents, jitter=(0.0, 0.0, 0.0), gust=0.0):
     x, y, z = 0.0, H0, 0.0
     wx, wz = wind[0] * wmul * (1 + gust), wind[1] * wmul * (1 + gust)
     lift_vent = 0.6 if fold == "dart" else wmul
+    if telemetry is not None:
+        telemetry.update(speed=round(V, 1), lift=round(min(cl * V * V, lmax * G), 1),
+                         wind=[round(wx, 1), round(wz, 1)])
     t = 0.0
     path = [(0.0, x, y, z)]
     while t < T_MAX:
@@ -100,6 +103,8 @@ def fly(fold, pitch, yaw, power, wind, vents, jitter=(0.0, 0.0, 0.0), gust=0.0):
             path.append((t, x, 0.0, z))
             break
         path.append((t, x, y, z))
+    if telemetry is not None:
+        telemetry["end"] = "ground" if path[-1][2] == 0 else "limit"
     return path, (path[-1][1], path[-1][3]), path[-1][0]
 
 
@@ -155,6 +160,7 @@ class Planes(Game):
     category = "action"
     family = None
     howto = [
+        "After a flight, the results list shows its launch speed, initial lift, effective wind and how it ended.",
         "Each round is one challenge in the park, and everyone throws at once: two paper planes each, the better one counts.",
         "Pick a fold: 🎯 Dart flies fast and straight, 🕊 Glider floats far but the wind pushes it, 🌀 Stunt loops when thrown hard and high and curls right.",
         "Swipe up on the park to throw: sideways aims, a longer swipe throws harder. ▲ ▼ set the loft (how steeply it climbs).",
@@ -306,7 +312,8 @@ class Planes(Game):
         wob = FOLDS[fold][4]
         jit = (0.0, 0.0, 0.0) if clip else (rng.gauss(0, wob), rng.gauss(0, wob), rng.gauss(0, wob * 1.5))
         gust = 0.0 if clip else max(-0.6, min(0.6, rng.gauss(0, self.wind_set[2])))
-        path, land, air = fly(fold, pitch, yaw, power, self.wind, self.vents, jit, gust)
+        telemetry = {}
+        path, land, air = fly(fold, pitch, yaw, power, self.wind, self.vents, jit, gust, telemetry=telemetry)
         pts, info = score(self.goal, self.targets, path, land, air)
         if clip:
             g.clip = False
@@ -315,7 +322,7 @@ class Planes(Game):
         show = max(1.2, air)
         shot = {"id": self.shot_id, "fold": fold, "pitch": round(pitch, 1), "yaw": round(yaw, 1), "power": round(power, 3),
                 "path": thin(path), "land": [round(land[0], 2), round(land[1], 2)], "air": round(air, 2),
-                "pts": pts, "clip": clip, "t": round(show, 2), **info}
+                "pts": pts, "telemetry": telemetry, "clip": clip, "t": round(show, 2), **info}
         g.shots.append(shot)
         best = max(s["pts"] for s in g.shots)
         g.points += best - g.round_pts

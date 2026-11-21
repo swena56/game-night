@@ -131,6 +131,12 @@ g.rng = random.Random(5)      # real wobble this time
 clean = P.fly("dart", 5, 0, 0.7, g.wind, g.vents)[1]
 s = throw(g, a, "dart", 5, 0, 0.7, clip=True)
 check("a clipped throw flies true", abs(s["land"][0] - clean[0]) < 0.01 and abs(s["land"][1] - clean[1]) < 0.01)
+cl, _, multiplier, wind_multiplier, _, _, lift_cap = P.FOLDS["dart"]
+speed = (P.SPEED[0] + (P.SPEED[1] - P.SPEED[0]) * 0.7) * multiplier
+check("flight report uses the actual launch and landing values",
+      s["telemetry"] == {"speed": round(speed, 1), "lift": round(min(cl * speed ** 2, lift_cap * P.G), 1),
+                         "wind": [round(v * wind_multiplier, 1) for v in g.wind], "end": "ground"}
+      and s["path"][-1][2] == 0)
 check("the clip is used up", not a.g.clip)
 check("only once a game", refused(g, a, {"type": "throw", "fold": "dart", "pitch": 5, "yaw": 0, "power": 0.5, "clip": True}) is not None)
 

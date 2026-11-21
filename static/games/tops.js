@@ -289,6 +289,11 @@ UI.tops = (() => {
   function renderSide() {
     const v = V(), box = $('tpSeats'); if (!box || !snap) return;
     box.innerHTML = '';
+    const preview = S.phase === 'playing' && snap.st === 'launch' && v.matchups?.[snap.ar];
+    if (preview) {
+      const arena = v.arenas[snap.ar];
+      box.append(ctx.el('p', 'hint left', `${arena[0]} ${arena[1]} · ${v.arenaRules[snap.ar]}`));
+    }
     const order = v.seats.map((_, i) => i).sort((a, b) => snap.t[b][8] - snap.t[a][8]);
     for (const i of order) {
       const p = ctx.player(v.seats[i]), t = snap.t[i];
@@ -297,7 +302,13 @@ UI.tops = (() => {
       const state = (t[5] === 1 ? ' 💥' : t[5] === 2 ? ' 😵' : '') + (t[13] >= 2 ? ` 🔥${t[13]}` : '');
       const bar = ctx.el('span', 'tp-mini'), fill = ctx.el('i'); fill.style.width = `${Math.round(Math.max(0, t[4]) * 100)}%`; fill.style.background = colorOf(i); bar.append(fill);
       const kind = ctx.el('span', 'tp-kind', PICK_ICON[t[9] ?? 0] || ''); kind.title = v.kinds?.[t[9] ?? 0]?.[2] || '';
-      row.append(dot, kind, ctx.el('span', 'grow', `${p?.name ?? 'left'}${i === v.me ? ' (you)' : ''}${state}`), bar, ctx.el('b', '', `🌀 ${t[8]}`));
+      const label = ctx.el('span', 'grow', `${p?.name ?? 'left'}${i === v.me ? ' (you)' : ''}${state}`);
+      const stats = preview?.[t[9] ?? 0];
+      if (stats && p && !p.eliminated) {
+        label.append(ctx.el('small', 'tp-matchup',
+          `${kind.title} · Speed cap ${stats.speed} · Mass ×${stats.mass} · Attack ×${stats.attack} · Spin ${stats.stamina} s · Steer ×${stats.steering}`));
+      }
+      row.append(dot, kind, label, bar, ctx.el('b', '', `🌀 ${t[8]}`));
       box.append(row);
     }
     const mine = v.me != null ? snap.t[v.me] : null, b = $('tpBtn');

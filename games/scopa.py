@@ -30,6 +30,7 @@ class Scopa(CardGame):
         "Play a card to take a table card of the same value, or a group that adds up to it. A single match must be taken first.",
         "Take nothing and your card stays on the table. Clear the table for a 🧹 scopa (1 point).",
         "Each round: 1 point each for most cards, most ♦, the 7♦, and the best primiera (7s best, then 6s, aces…).",
+        "Select a hand card to highlight its possible captures. Choose a capture to play it; 🧹 marks a sweep.",
         "🧮 Escoba: instead, capture cards that add up to 15 together with the card you play.",
         "🌊 Napola (an option): capture the A♦ 2♦ 3♦ run and score its length, one more for each next diamond (4, 5, 6, 7…).",
     ]
@@ -288,5 +289,5 @@ class Scopa(CardGame):
                     label += " ⚠️ gives away 7♦"
                 moves.append({"card": c, "label": label, "a": {"type": "play", "card": c, "take": list(cap)}})
             t["moves"] = moves
-            t["note"] = "Tap a card to play it." + (" Several captures: you'll pick one." if any(len(self.captures(c)) > 1 for c in self.hands[i]) else "")
+            t["note"] = "Select a card to preview its capture, then choose a move."
         return t

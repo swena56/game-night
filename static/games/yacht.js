@@ -84,6 +84,16 @@ UI.yacht = (() => {
     $('yaHint').textContent = S.phase !== 'playing' ? y.last : !mineTurn ? `${turnName} is rolling…`
       : !y.rolled ? 'Roll the dice to start your turn.' : 'Tap dice to hold them, reroll, or tap a box below to score.';
 
+    if (mineTurn && y.rolled && y.comparison && y.pick) {
+      const { extra, upper, upperPoints, reroll } = y.comparison;
+      const label = y.cats.find(([cat]) => cat === y.pick)?.[1];
+      const bonuses = [extra ? `+${extra} extra Yacht` : '', upper.includes(y.pick) ? `+${upperPoints} upper bonus` : ''].filter(Boolean);
+      const diff = y.preview[y.pick] - y.par[y.pick];
+      const relative = diff === 0 ? 'at par' : `${Math.abs(diff)} ${diff > 0 ? 'above' : 'below'} par`;
+      $('yaHint').textContent = `Suggested: ${label} · ${y.preview[y.pick]} points (${relative})${bonuses.length ? ' · ' + bonuses.join(' · ') : ''}`
+        + (y.rollsLeft ? ' · Reroll available' : reroll ? ' · Bonus roll available' : '');
+    }
+
     // scorecard: rows = boxes, columns = players (rebuilt only when the players change)
     const t = $('yaCard'), seats = y.seats.filter((id) => y.cards[id]);
     const ck = seats.join(',');
@@ -154,6 +164,8 @@ UI.yacht = (() => {
         const cat = b.closest('tr').dataset.cat, d = (y.preview[cat] ?? 0) - (y.par?.[cat] ?? 0);
         b.classList.toggle('best', y.pick === cat);
         b.title = `${d >= 0 ? '+' : '−'}${Math.abs(d)} against this box's usual score (${y.par?.[cat] ?? '?'})${y.pick === cat ? ' — the best use of this roll' : ''}`;
+        if (y.comparison?.upper.includes(cat)) b.title += ` · +${y.comparison.upperPoints} upper bonus`;
+        if (y.comparison?.extra) b.title += ` · +${y.comparison.extra} extra Yacht`;
         b.dataset.d = d > 0 ? `+${d}` : d < 0 ? `−${-d}` : '±0';
       }
     } else for (const b of t.querySelectorAll('.ya-box.best')) { b.classList.remove('best'); b.removeAttribute('data-d'); }

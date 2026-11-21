@@ -12,6 +12,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 import server  # noqa: E402
 
+from games.cardbase import pretty  # noqa: E402
+
 fails = []
 
 
@@ -98,5 +100,23 @@ try:
 finally:
     spite.Spite.moment, spite.Spite.build = real_moment, real_build
 check("bonus fires in bot games", fires > 0, f"{fires} in {games} games")
+r, g = table()
+near_queen(g)
+g.payoff[0] = ["QC", "AD"]
+g.payoff[1] = ["2C", "KS"]
+owner, rival = g.pl(0), g.pl(1)
+hint = g.view(owner)["spite"]["payoffHint"]
+check("pay-off hint uses the legal queen destination",
+      hint["top"] == pretty("QC") and hint["destinations"] == ["middle pile 1 (as Q)"])
+check("only the owner sees the next card",
+      hint["next"] == pretty("AD") and "payoffHint" not in g.view(rival)["spite"]
+      and "payoffHint" not in g.table(owner, None))
+g.build(0, "p", 0)
+hint = g.view(owner)["spite"]["payoffHint"]
+check("clearing the pile reveals exactly the previewed ace and updates destinations",
+      hint == {"top": pretty("AD"), "next": None, "destinations": ["a new pile"]})
+g.build(0, "p", "new")
+check("the last payoff card wins", r.phase == "over")
+
 print("all ok" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(1 if fails else 0)

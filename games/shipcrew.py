@@ -36,6 +36,7 @@ class ShipCrew(Game):
         "Three rolls of five dice per turn. Find a 6 (🚢 ship), then a 5 (🧭 captain), then a 4 (👥 crew), in that order. They're set aside for you.",
         "With all three, the other two dice are your cargo: their total is your score for the turn.",
         "Rolls left? Tap cargo dice to reroll them (one or both), or ⚓ Dock to keep the cargo.",
+        "The cargo forecast compares docking with the next reroll. It shows your chances of gaining or losing cargo and reaching any active pot or raid threshold.",
         "No crew after three rolls scores 0. Most cargo after the last round wins.",
         f"Alone, average {SOLO_PER_ROUND} cargo a round to win.",
         "🍺 Pub pot: everyone antes 1 💰 a round and the round's best cargo takes the pot (a tie rolls it over). Most coins wins.",
@@ -181,24 +182,55 @@ class ShipCrew(Game):
         if self.rolls >= self.cap:
             self.end_turn(p)
 
+    def raid_target(self, p):
+        if not self.s.get("raid") or self.potted():
+            return None
+        rivals = [o for o in self.players() if o.id != p.id and o.g.score > 0]
+        leader = max(rivals, key=lambda o: o.g.score, default=None)
+        return leader if leader and leader.g.score >= p.g.score else None
+
+    def cargo_forecast(self, p):
+        left = self.cap - self.rolls
+        if not self.loaded() or left <= 0:
+            return None
+        haul = sum(self.free)
+        target = self.raid_target(p)
+        pot_lead = max((q.g.haul or 0 for q in self.players() if q.id != p.id), default=0) if self.potted() else None
+        options = {}
+        for indices in ((0,), (1,), (0, 1)):
+            outcomes = []
+            for faces in product(range(1, 7), repeat=len(indices)):
+                dice = self.free.copy()
+                for i, face in zip(indices, faces):
+                    dice[i] = face
+                outcomes.append((sum(dice), cargo_value(left - 1, *dice)))
+            count = len(outcomes)
+            options["".join(map(str, indices))] = {
+                "up": sum(total > haul for total, _ in outcomes) / count,
+                "down": sum(total < haul for total, _ in outcomes) / count,
+                "expected": sum(value for _, value in outcomes) / count,
+                "raid": sum(total >= 11 for total, _ in outcomes) / count if target else None,
+                "potLead": sum(total > pot_lead for total, _ in outcomes) / count if pot_lead else None,
+            }
+        return {"haul": haul, "raid": min(2, target.g.score) if target else 0,
+                "potLead": pot_lead, "options": options}
+
     def end_turn(self, p):
         r = self.room
         pts = sum(self.free) if self.loaded() else 0
+        leader = self.raid_target(p) if pts >= 11 else None
         p.g.score += pts
         p.g.best = max(p.g.best, pts)
         p.g.haul = pts
         raided = None
         if self.loaded():
             r.add_log(f"⚓ {p.name} docks with {pts} cargo → {p.g.score}.", "question")
-            if self.s.get("raid") and pts >= 11 and not self.potted():
-                rivals = [o for o in self.players() if o.id != p.id and o.g.score > 0]
-                leader = max(rivals, key=lambda o: o.g.score, default=None)
-                if leader and leader.g.score >= p.g.score - pts:  # only raid someone ahead of where you were
-                    took = min(2, leader.g.score)
-                    leader.g.score -= took
-                    p.g.score += took
-                    raided = leader.id
-                    r.add_log(f"🏴‍☠️ {p.name} raids {leader.name} for {took} cargo!", "power")
+            if leader:
+                took = min(2, leader.g.score)
+                leader.g.score -= took
+                p.g.score += took
+                raided = leader.id
+                r.add_log(f"🏴‍☠️ {p.name} raids {leader.name} for {took} cargo!", "power")
         else:
             r.add_log(f"🌊 {p.name} never found a {NAMES[len(self.found)]}: 0 this turn.", "power")
         self.last = {"by": p.id, "raid": raided, "found": list(self.found), "cargo": list(self.free) if self.loaded() else [], "pts": pts, "n": self.round * 10 + self.turns}
@@ -316,6 +348,7 @@ class ShipCrew(Game):
             "found": self.found, "free": self.free, "rolls": self.rolls, "maxRolls": self.cap, "parrot": self.can_parrot(p) if self.room.turn == p.id else False,
             "parrots": [i for i in self.seats if i in r.players and getattr(r.players[i].g, "parrot", False)],
             "loaded": self.loaded(), "last": self.last,
+            "forecast": self.cargo_forecast(p) if r.phase == "playing" and r.turn == p.id else None,
             "scores": {i: r.players[i].g.score for i in self.seats if i in r.players},
             "solo": len(self.seats) == 1, "goal": SOLO_PER_ROUND * self.s["rounds"],
             "pot": self.pot if self.potted() else None,

@@ -82,6 +82,7 @@ class Cribbage(Game):
     category = "cards"
     howto = [
         "Discard to the dealer's crib, then a starter card is cut (a jack: 2 for the dealer).",
+        "Open Pegging replay to review each count and see exactly why the pegs moved.",
         "The play: take turns laying cards, keeping the count at 31 or under. 15 and 31 score 2, pairs 2, runs their length, the last card 1.",
         "The show: score your hand with the starter: fifteens 2, pairs 2, runs, flushes, and nobs (jack of the starter's suit) 1.",
         "The dealer also scores the crib. First to the target wins the moment they reach it.",
@@ -161,6 +162,7 @@ class Cribbage(Game):
         self.starter, self.show, self.last_peg = None, [], ""
         self.stage = "discard"
         self.count, self.seq, self.last_player = 0, [], None
+        self.peg_history, self.peg_group = [], 1
         r.turn = None
         t = r.settings["timer"]
         r.deadline = time.time() + max(t, 30) if t else None
@@ -210,6 +212,14 @@ class Cribbage(Game):
     def turn_to(self, pid):
         self.room.begin_turn(pid)
 
+    def record_peg(self, p, items, card=None):
+        if not hasattr(self, "peg_history"):
+            self.peg_history, self.peg_group = [], 1
+        points = sum(value for _, value in items)
+        credited = min(points, max(0, self.s["target"] - p.g.score))
+        self.peg_history.append({"who": p.id, "card": pretty(card) if card else None, "count": self.count,
+                                 "group": self.peg_group, "items": items, "credited": credited})
+
     def play(self, p, card):
         r = self.room
         if self.stage != "peg":
@@ -229,6 +239,7 @@ class Cribbage(Game):
         why = ", ".join(f"{d} {v}" for d, v in items)
         self.last_peg = f"{p.name}: {pretty(card)} → {self.count}" + (f" · {why}" if items else "")
         r.add_log(f"{'🎯' if items else '🃏'} {self.last_peg}", "question" if items else "info")
+        self.record_peg(p, items, card)
         if self.peg(p, pts, why):
             return
         if self.s.get("streak", True):
@@ -237,6 +248,7 @@ class Cribbage(Game):
                 p.g.streak = 0
                 r.add_log(f"🔥 Hot streak! {p.name} has scored three plays in a row: +1.", "power")
                 self.moment(f"🔥 {p.name}: hot streak +1", "gold", "good")
+                self.record_peg(p, [("Hot streak", 1)])
                 if self.peg(p, 1, "hot streak"):
                     return
         if self.count == 31:
@@ -245,6 +257,7 @@ class Cribbage(Game):
 
     def reset_count(self):
         self.count, self.seq = 0, []
+        self.peg_group = getattr(self, "peg_group", 1) + 1
 
     def next_peg(self, after):
         """Pass the turn to the next player who can lay a card; handle go and the last card."""
@@ -253,6 +266,7 @@ class Cribbage(Game):
             if self.count and self.last_player:  # last card of the play
                 lp = self.pl(self.last_player)
                 r.add_log(f"1️⃣ {lp.name}: last card, 1.", "question")
+                self.record_peg(lp, [("Last card", 1)])
                 if self.peg(lp, 1, "last card"):
                     return
             return self.start_show()
@@ -264,6 +278,7 @@ class Cribbage(Game):
         if self.count and self.last_player:
             lp = self.pl(self.last_player)
             r.add_log(f"🙅 Go — {lp.name} scores 1.", "question")
+            self.record_peg(lp, [("Go", 1)])
             if self.peg(lp, 1, "go"):
                 return
         self.reset_count()
@@ -403,6 +418,7 @@ class Cribbage(Game):
             "pegged": {i: self.pl(i).g.pegged for i in self.seats if self.pl(i)},
             "left": {i: len(self.pl(i).g.peg_hand) for i in self.seats if self.pl(i)},
             "need": self.need(), "crib": len(self.crib), "starter": self.starter,
+            "pegHistory": getattr(self, "peg_history", []),
             "count": self.count, "seq": self.seq, "lastPeg": self.last_peg,
             "hand": (p.g.hand if self.stage == "discard" else p.g.peg_hand) if mine else [],
             "kept": p.g.hand if mine else [],

@@ -57,6 +57,7 @@ class Yacht(Game):
         "Ones–Sixes: that number's total. Full House: all dice. Four of a Kind: the four. Straights 1–5 or 2–6: 30. Choice: all dice. Yacht (five alike): 50.",
         "Twelve rounds; the highest total wins. Alone, reach 150 to win (175 with the upper bonus on).",
         "Optional bonuses: +35 when Ones–Sixes add up to 63 or more, and +50 for each extra Yacht once your Yacht box holds 50.",
+        "The scorecard highlights a suggested box and shows its score against par, plus any bonuses you would earn by scoring now.",
         "With ⭐ Bonus roll on, everyone has one extra roll for the whole game: spend it on a turn after your third roll.",
     ]
     name = "Yacht"
@@ -143,13 +144,28 @@ class Yacht(Game):
         kept = sum(hold)
         self.room.add_log(f"🎲 {p.name} {'rolls' if first else f'keeps {kept} and rerolls'}: {' '.join(map(str, self.dice))}")
 
+    def extra_yacht(self, p, dice):
+        return bool(self.s.get("extra") and len(set(dice)) == 1 and p.g.card["yacht"] == 50)
+
+    def box_comparison(self, p, preview):
+        if not preview:
+            return None
+        upper = self.upper(p)
+        return {
+            "extra": EXTRA_YACHT if self.extra_yacht(p, self.dice) else 0,
+            "upper": [cat for cat, pts in preview.items() if self.s.get("bonus")
+                      and cat in CATS[:6] and upper < UPPER_NEED <= upper + pts],
+            "upperPoints": UPPER_BONUS,
+            "reroll": bool(self.rolls_left or getattr(p.g, "bonus_rolls", 0)),
+        }
+
     def fill(self, p, cat):
         if self.rolls_left == 3:
             raise GameError("Roll first.")
         if cat not in CATS or p.g.card[cat] is not None:
             raise GameError("Pick an empty box.")
         pts = score(cat, self.dice)
-        extra = self.s.get("extra") and len(set(self.dice)) == 1 and p.g.card["yacht"] == 50
+        extra = self.extra_yacht(p, self.dice)
         had_bonus = self.upper_bonus(p)
         p.g.card[cat] = pts
         if extra:
@@ -218,16 +234,20 @@ class Yacht(Game):
     def view(self, p):
         r = self.room
         cur = r.players.get(r.turn)
+        preview = {c: score(c, self.dice) for c in CATS if cur.g.card[c] is None} if (
+            cur and cur.id in self.seats and self.rolls_left < 3
+        ) else {}
+        comparison = self.box_comparison(cur, preview)
         return {"yacht": {
             "cats": [[c, LABEL[c]] for c in CATS], "seats": self.seats,
             "cards": {i: r.players[i].g.card for i in self.seats if i in r.players},
             "totals": {i: self.total(r.players[i]) for i in self.seats if i in r.players},
             "dice": self.dice, "held": self.held, "rollsLeft": self.rolls_left, "rollId": self.roll_id,
             "rolled": self.rolls_left < 3,
-            "preview": {c: score(c, self.dice) for c in CATS if cur.g.card[c] is None} if cur and self.rolls_left < 3 else {},
+            "preview": preview, "comparison": comparison,
             "last": self.last, "par": PAR,
             # ⭐ the box a careful player would fill: points above the box's average, not just the biggest number
-            "pick": self.best_box(cur, "hard") if cur and cur.id in self.seats and self.rolls_left < 3 and any(v is None for v in cur.g.card.values()) else None,
+            "pick": self.best_box(cur, "hard") if preview else None,
             "bonus": bool(self.s.get("bonus")), "extraOn": bool(self.s.get("extra")), "need": UPPER_NEED,
             "upper": {i: self.upper(r.players[i]) for i in self.seats if i in r.players},
             "upperBonus": {i: self.upper_bonus(r.players[i]) for i in self.seats if i in r.players},
@@ -250,12 +270,15 @@ class Yacht(Game):
         """With the upper bonus on, three or more of a face up top is worth extra (it keeps 63 in reach)."""
         if not self.s.get("bonus") or cat not in CATS[:6] or self.upper(p) >= UPPER_NEED:
             return 0
+        pts = score(cat, dice)
+        if self.upper(p) + pts >= UPPER_NEED:
+            return UPPER_BONUS
         face = CATS.index(cat) + 1
-        return (score(cat, dice) - 3 * face) * 0.8 + (4 if score(cat, dice) >= 3 * face else 0)
+        return (pts - 3 * face) * 0.8 + (4 if pts >= 3 * face else 0)
 
     def box_value(self, p, dice):
         """How good a final roll is for this player: the best (score - par) over open boxes."""
-        extra = EXTRA_YACHT if self.s.get("extra") and len(set(dice)) == 1 and p.g.card["yacht"] == 50 else 0
+        extra = EXTRA_YACHT if self.extra_yacht(p, dice) else 0
         return extra + max(score(c, dice) - PAR[c] + self.bonus_pull(p, c, dice) for c in CATS if p.g.card[c] is None)
 
     def choose_hold(self, p, level):

@@ -102,6 +102,7 @@ class Tops(Game):
     category = "action"
     family = None
     howto = [
+        "Before launch, compare the selected tops’ speed cap, mass, attack and full-spin lifetime. Arena hazards can shorten that lifetime.",
         "Pick your top before the launch: ⚔️ Attack hits hard but spins down fast, 🛡️ Defense is heavy, 🌀 Stamina spins longest, ⚖️ Balanced is in between. Attack beats Stamina, Defense beats Attack, Stamina outlasts Defense.",
         "Each round starts with a launch: tap 🚀 when the swinging meter is high. A better launch means more spin.",
         "Drag anywhere to steer (or WASD / arrows). Tap 💨 (or Space) to dash: hit someone within half a second for a 💥 smash.",
@@ -824,6 +825,15 @@ class Tops(Game):
             return {}
         return {pid: self.tops[i].points for i, pid in enumerate(self.seats)}
 
+    def matchup_stats(self, arena, kind):
+        _, _, attack, mass, decay, steer, _ = TYPES[kind]
+        ice = arena == "ice"
+        return {
+            "speed": VMAX, "mass": mass, "attack": attack,
+            "stamina": round(1 / (DECAY * decay), 1),
+            "steering": round(steer * (ICE_STEER if ice else 1), 2),
+        }
+
     def view(self, p):
         now = time.time()
         return {"tops": {
@@ -833,5 +843,10 @@ class Tops(Game):
             "sparks": bool(self.s.get("sparks", True)),
             "revPeriod": REV_PERIOD, "revCool": REV_COOL, "bumpR": BUMP_R,
             "kinds": [[k, *TYPES[k][:2]] for k in KINDS],
+            "matchups": {arena: [self.matchup_stats(arena, kind) for kind in KINDS] for arena in ARENAS},
+            "arenaRules": {
+                "classic": "Standard bowl", "bumpers": "Bumpers reflect tops",
+                "hot": "Spin drains outside the closing ring", "ice": "Less drag and weaker steering",
+            },
             "arenas": {k: list(v) for k, v in ARENAS.items()},
         }}

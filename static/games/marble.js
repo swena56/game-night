@@ -46,12 +46,10 @@ UI.marble = (() => {
   function loadGhost(key) {
     try { const g = JSON.parse(localStorage.getItem(ghostStorageKey(key))); return g?.ms > 0 && Array.isArray(g.pts) ? g : null; } catch { return null; }
   }
-  function saveGhost() {
-    if (!st?.samples?.length || !st.myMs) return;
-    const old = loadGhost(st.courseKey);
-    if (old && (old.score ?? old.ms) <= st.myMs) return;
-    try { localStorage.setItem(ghostStorageKey(st.courseKey), JSON.stringify({ ms: st.rawMs, score: st.myMs, splits: st.splits, pts: st.samples })); } catch {}
-    pbGhost = loadGhost(st.courseKey);
+  function saveGhost(run) {
+    const old = loadGhost(run.courseKey);
+    if (old && (old.score ?? old.ms) <= run.myMs) return;
+    try { localStorage.setItem(ghostStorageKey(run.courseKey), JSON.stringify({ ms: run.rawMs, score: run.myMs, splits: run.splits, pts: run.samples })); } catch {}
   }
   function ghostPosition(ms) {
     const pts = pbGhost?.pts;
@@ -105,7 +103,9 @@ UI.marble = (() => {
     if (!near) { st.safe.x = st.x; st.safe.z = st.z; }  // where a 🛡️ shield puts you back
     c.flags.forEach((f, i) => {
       if (st.cp <= i && Math.floor(st.x) === f[0] && Math.floor(st.z) === f[1]) {
-        st.cp = i + 1; st.splits.push(Math.max(0, Math.round(performance.now() - st.t0))); splitRows = [...st.splits]; renderSplits(); sfx('tag');
+        st.cp = i + 1;
+        st.splits[i] = Math.max(0, Math.round(performance.now() - st.t0));
+        splitRows = [...st.splits]; renderSplits(); sfx('tag');
         const n = bank();
         toast(n ? `🚩 Flag ${i + 1} · 💎×${n} safe!` : `🚩 Flag ${i + 1}`);
       }
@@ -157,10 +157,17 @@ UI.marble = (() => {
     st.rawMs = ms;
     st.myMs = Math.max(0, ms - gems * (S.marble.gemBonus || 1000));
     st.samples.push([ms, +st.x.toFixed(3), +st.z.toFixed(3)]);
-    splitRows = [...st.splits]; saveGhost(); renderSplits();
+    splitRows = [...st.splits]; renderSplits();
     sfx('fanfare'); buzz([40, 30, 80]);
     sendPos(true);
-    ctx.act('finish', { r: st.round, ms, gems }).catch((e) => ctx.toast(e?.message || 'Finish not counted.'));
+    const run = st;
+    ctx.act('finish', { r: run.round, ms, gems }).then(() => {
+      saveGhost(run);
+      if (st?.courseKey === run.courseKey) {
+        pbGhost = loadGhost(run.courseKey);
+        renderSplits();
+      }
+    }).catch((e) => ctx.toast(e?.message || 'Finish not counted.'));
     updateHud();
   }
 
@@ -391,8 +398,6 @@ UI.marble = (() => {
       const a = 1 - Math.exp(-dt * 6); p.x += (gh.x - p.x) * a; p.z += (gh.z - p.z) * a;
       m.position.set(p.x - c.w / 2, R * 0.92, p.z - c.h / 2); m.visible = !gh.out;
     }
-    const local = ghostPosition(Math.max(0, performance.now() - st.t0));
-    if (local && !spectating()) { g.globalAlpha = 0.7; disc(local.x, local.z, R * 0.88, '#8ff3ff'); g.globalAlpha = 1; }
     // little life: spinning gems, waving flags, pulsing pads and the goal beam
     const t = now / 1000;
     gfx.gems?.forEach((m, i) => { m.visible = !st.gems.has(i) && !st.carry.has(i); m.rotation.y = t * 2 + i; m.position.y = 0.3 + Math.sin(t * 3 + i) * 0.05; });
@@ -445,6 +450,8 @@ UI.marble = (() => {
     c.gems.forEach((gm, i) => { if (!st.gems.has(i) && !st.carry.has(i)) disc(gm.x, gm.z, 0.15, '#ff5fb8'); });
     g.fillStyle = '#7a4a26';
     for (const w of st.rects) g.fillRect(X(w.x0), Z(w.z0), (w.x1 - w.x0) * s, (w.z1 - w.z0) * s);
+    const local = ghostPosition(Math.max(0, performance.now() - st.t0));
+    if (local && !spectating()) { g.globalAlpha = 0.7; disc(local.x, local.z, R * 0.88, '#8ff3ff'); g.globalAlpha = 1; }
     for (const [id, gh] of Object.entries(ghosts)) {
       if (id === S.me.id && !spectating()) continue;
       const p = ghostPos[id] || (ghostPos[id] = { x: gh.x, z: gh.z }); p.x += (gh.x - p.x) * 0.15; p.z += (gh.z - p.z) * 0.15;

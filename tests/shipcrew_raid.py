@@ -48,5 +48,26 @@ r, g, me, (lead, other) = harbour(True, cargo=(5, 5))
 g.end_turn(me)
 check("10 cargo: no raid", me.g.score == 20 and lead.g.score == 20)
 
+r, g, me, (lead, other) = harbour(True)
+g.rolls = g.cap - 1
+forecast = g.view(me)["shipcrew"]["forecast"]
+check("rerolling a single die preserves the other",
+      forecast["options"]["0"]["down"] == 5 / 6 and forecast["options"]["1"]["up"] == 1 / 6)
+check("last-roll raid odds and docking stakes",
+      forecast["raid"] == 2 and forecast["options"]["01"]["raid"] == 3 / 36
+      and forecast["options"]["01"]["expected"] == 7)
+g.use_parrot(me)
+check("the parrot adds another chance without changing next-roll odds",
+      g.cargo_forecast(me)["options"]["01"]["expected"] > 7
+      and g.cargo_forecast(me)["options"]["01"]["raid"] == 3 / 36)
+g.s["pot"] = True
+lead.g.haul = 10
+forecast = g.cargo_forecast(me)
+check("pub pot replaces the raid target with the score to beat",
+      forecast["raid"] == 0 and forecast["potLead"] == 10
+      and forecast["options"]["1"]["potLead"] == 2 / 6)
+check("forecast leaves locked dice and cargo untouched",
+      g.found == [6, 5, 4] and g.free == [6, 5])
+
 print("\nall ok" if not fails else f"\n{len(fails)} failed: {fails}")
 sys.exit(1 if fails else 0)

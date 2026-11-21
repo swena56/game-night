@@ -24,6 +24,7 @@ class OldMaid(CardGame):
     howto = [
         "One queen is removed, so one queen can never pair: the Old Maid.",
         "Put down your pairs. Then take turns drawing a hidden card from the player on your left, pairing what you can.",
+        "Draw history shows the pairs made on resolved draws. After the game it also reveals the Old Maid’s route around the table.",
         "Empty your hand and you're safe. The first out wins; whoever is stuck with the Old Maid loses.",
         "🔍 Once a game, press Peek before you draw to see one random card of your neighbour's, just for you. It stays put until you draw.",
     ]
@@ -44,6 +45,7 @@ class OldMaid(CardGame):
         self.out = []
         self.had = [False] * self.n
         self.last = None
+        self.draw_history = []
         self.peeks = [self.s.get("peek", 1)] * self.n
         self.peek = None
         self.room.add_log("👵 Old Maid: one queen has no partner. Don't get stuck with her!", "big")
@@ -58,13 +60,13 @@ class OldMaid(CardGame):
         count = {}
         for c in self.hands[i]:
             count.setdefault(rank(c), []).append(c)
-        made = 0
+        made = []
         for r, cs in count.items():
             while len(cs) >= 2:
                 a, b = cs.pop(), cs.pop()
                 self.hands[i].remove(a)
                 self.hands[i].remove(b)
-                made += 1
+                made.append(r)
         if made and not quiet:
             self.room.add_log(f"🃏 {self.nm(i)} puts down a pair.")
         return made
@@ -104,7 +106,11 @@ class OldMaid(CardGame):
         self.room.add_log(f"🤏 {self.nm(i)} draws from {self.nm(j)}.")
         if c == self.maid:
             self.had[i] = True
-        self.pair_off(i)
+        pairs = self.pair_off(i)
+        if pairs or c == self.maid:
+            if not hasattr(self, "draw_history"):
+                self.draw_history = []
+            self.draw_history.append({"seat": i, "from": j, "pairs": pairs, "maid": c == self.maid})
         for x in (i, j):
             if not self.hands[x] and x not in self.out:
                 self.out.append(x)
@@ -162,7 +168,13 @@ class OldMaid(CardGame):
 
     def table(self, p, i):
         info = [{"count": len(self.hands[k]), "out": not self.hands[k], "tags": [f"#{self.out.index(k) + 1} out"] if k in self.out else []} for k in range(self.n)]
-        t = {"info": info, "hand": self.hands[i] if i is not None else [],
+        finished = self.room.phase == "over"
+        history = getattr(self, "draw_history", [])
+        resolved = history if finished else [
+            {"seat": draw["seat"], "from": draw["from"], "pairs": draw["pairs"]}
+            for draw in history if draw["pairs"]
+        ]
+        t = {"info": info, "drawHistory": resolved, "hand": self.hands[i] if i is not None else [],
              "banner": f"{self.nm(self.last['seat'])} drew from {self.nm(self.last['from'])}" if self.last else None,
              "scores": {"title": "Cards", "rows": [{"seat": k, "value": len(self.hands[k]) if self.hands[k] else "out"} for k in sorted(range(self.n), key=lambda k: len(self.hands[k]))],
                         "hint": "The queen of spades has no partner."}}

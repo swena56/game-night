@@ -26,6 +26,7 @@ class War(CardGame):
     howto = [
         "The deck is dealt out. Everyone flips their top card together: highest takes them all (aces high).",
         "A tie at the top means war: three cards face down, one face up, highest takes everything.",
+        "Open Recent battles to see the flips, face-down war cards and cards awarded after each battle resolves.",
         "Won cards go under your pile. Run out and you're out.",
         "Last player with cards wins, or most cards when the battle limit runs out.",
         "🎲 You have 2 gambles a game. Press Gamble instead of Flip: if you win the battle you also take the top card of every rival's pile; if you lose, the winner takes one of yours.",
@@ -47,6 +48,7 @@ class War(CardGame):
         self.piles = [cards[k * per:(k + 1) * per] for k in range(self.n)]
         self.battle = 0
         self.shown = None
+        self.battle_history = []
         self.gambles = [self.GAMBLES if self.s.get("gamble", 2) else 0] * self.n
         self.bets = set()
         self.last_bets = ()
@@ -108,19 +110,24 @@ class War(CardGame):
         pot = []
         fighters = self.live()
         rounds = []
+        face_down = []
         wars = 0
         while True:
             up = {}
+            stakes = {}
             for k in fighters:
                 if wars:
                     down = self.piles[k][:3] if len(self.piles[k]) > 1 else []
                     down = down[:max(0, len(self.piles[k]) - 1)]
+                    if down:
+                        stakes[k] = down
                     pot += down
                     self.piles[k] = self.piles[k][len(down):]
                 if self.piles[k]:
                     up[k] = self.piles[k].pop(0)
                     pot.append(up[k])
             rounds.append(up)
+            face_down.append(stakes)
             if not up:
                 break
             top = max(val(c) for c in up.values())
@@ -142,6 +149,14 @@ class War(CardGame):
             if len(self.piles[k]) > 1:  # a gamble never takes a pile's last card
                 pot.append(self.piles[k].pop(0))
                 extra += 1
+        if not hasattr(self, "battle_history"):
+            self.battle_history = []
+        self.battle_history.append({
+            "battle": self.battle, "winner": w, "ties": wars,
+            "rounds": [{"up": up, "down": down} for up, down in zip(rounds, face_down)],
+            "won": sorted(pot), "extra": extra,
+        })
+        del self.battle_history[:-12]
         self.last_bets = sorted(bets)
         self.rng.shuffle(pot)
         self.piles[w] += pot
@@ -181,7 +196,7 @@ class War(CardGame):
                           + (" 🎲" if self.stage == "show" and k in (self.last_bets or ()) else "")
                           + (f" · 🎲{self.left(k)}" if self.left(k) and self.stage == "flip" else "")]} for k in range(self.n)]
         lim = self.s.get("limit", 60)
-        t = {"info": info,
+        t = {"info": info, "battleHistory": getattr(self, "battle_history", []),
              "trick": [[int(k), c] for k, c in last.items()] if self.stage == "show" else [],
              "banner": (f"{'⚔️ ' * sh['wars']}{self.nm(sh['winner'])} takes {sh['pot']}" if sh and self.stage == "show" else None),
              "scores": {"title": "Cards", "rows": [{"seat": k, "value": len(self.piles[k])} for k in sorted(range(self.n), key=lambda k: -len(self.piles[k]))],

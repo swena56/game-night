@@ -118,5 +118,29 @@ g.knocker = 0
 g.showdown()
 check("trips 30 ties suit 30: both safe, lowest loses", g.lives == [3, 3, 2], str(g.lives))
 
+r, g = table()
+g.hands[0] = ["AC", "KC", "2D"]
+g.stage = "draw"
+g.to(0)
+g.knocker = None
+g.discard, g.stock = ["3C"], ["4D"]
+g.hands[1] = ["QC", "JC", "TC"]
+forecast = g.view(g.pl(0))["blitz"]["knockForecast"]
+check("forecast uses an unknown-draw upper bound rather than reading hidden cards",
+      forecast == {"current": 21, "sameSuit": 21, "best": 31, "knock": True})
+check("forecast stays private", "knockForecast" not in g.view(g.pl(1))["blitz"])
+g.stock, g.discard = [], ["3C", "2H"]
+g.knocker = 1
+forecast = g.view(g.pl(0))["blitz"]["knockForecast"]
+check("known recycled discards and an existing knock change the forecast",
+      forecast["best"] == 24 and not forecast["knock"])
+for enabled in (0, 1):
+    r, g = table(trips=enabled)
+    g.hands[0], g.stock, g.discard = ["9C", "9D", "2H"], [], ["9S", "3C"]
+    g.stage = "draw"
+    g.to(0)
+    check("best candidate respects the three-of-a-kind setting",
+          g.view(g.pl(0))["blitz"]["knockForecast"]["best"] == (30 if enabled else 9))
+
 print("all ok" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(1 if fails else 0)

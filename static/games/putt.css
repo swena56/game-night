@@ -32,3 +32,5 @@
 .pp-legend { font-size: 11px; margin: 4px 0 0; }
 .pp-res.birdie, .pp-res.eagle { color: #57cc99; }
 body.focus .pp-stage { height: max(240px, calc(var(--room) - 130px)); }
+
+.pp-made-putt { display: block; white-space: nowrap; }

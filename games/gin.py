@@ -95,6 +95,7 @@ class Gin(CardGame):
     icon = "🍸"
     blurb = "Draw, discard, and arrange ten cards into sets and runs. Knock low, or go gin."
     howto = [
+        "Knock options show an estimate of which unseen cards could be laid off onto your melds.",
         "Ten cards each. Take the top of the stock or the discard pile, then discard one.",
         "Melds: three or four of a rank, or three+ in a row of one suit (ace low). Other cards are deadwood (faces 10, ace 1).",
         "With 10 or less deadwood you can knock as you discard. The other player lays off cards on your melds.",
@@ -197,6 +198,17 @@ class Gin(CardGame):
         """A rough, hand-free estimate of undercut danger: the lower your deadwood, the harder you are to undercut."""
         return " · ⚠️ undercut risk" if left >= 8 else " · some risk" if left >= 5 else ""
 
+    def knock_label(self, hand, discard):
+        left, melds, _ = best([card for card in hand if card != discard])
+        if left > 10:
+            return None
+        if not left:
+            return "🍸 Gin! No layoffs"
+        known = set(hand) | set(self.discard)
+        possible, _ = lay_off(melds, [card for card in deck() if card not in known])
+        exposure = f"possible layoffs: {show(possible)}" if possible else "no unseen layoffs fit"
+        return f"👊 Knock ({left}){self.risk_tag(left)} · Estimate: {exposure}"
+
     def can_knock(self, i, c):
         return best([x for x in self.hands[i] if x != c])[0] <= 10
 
@@ -297,9 +309,9 @@ class Gin(CardGame):
                 if c == self.took:
                     continue
                 moves.append({"card": c, "label": "Discard", "a": {"type": "discard", "card": c}})
-                if self.can_knock(i, c):
-                    left = best([x for x in self.hands[i] if x != c])[0]
-                    moves.append({"card": c, "label": "🍸 Gin!" if left == 0 else f"👊 Knock ({left}){self.risk_tag(left)}", "a": {"type": "discard", "card": c, "knock": True}})
+                label = self.knock_label(self.hands[i], c)
+                if label:
+                    moves.append({"card": c, "label": label, "a": {"type": "discard", "card": c, "knock": True}})
             t["moves"] = moves
             t["turnText"] = "🗑️ Discard (or knock)"
         return t

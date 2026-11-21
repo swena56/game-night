@@ -306,6 +306,16 @@ UI.paintblast = (() => {
         g.strokeRect(x + 3, y + 3, cell - 6, cell - 6);
       }
     }
+    g.save();
+    g.globalAlpha = 0.95;
+    g.strokeStyle = '#ffbd86';
+    g.lineWidth = Math.max(1.5, cell * 0.07);
+    g.setLineDash([cell * 0.19, cell * 0.12]);
+    for (const c of snap.blockers || []) {
+      const x = (c % n) * cell, y = Math.floor(c / n) * cell;
+      g.strokeRect(x + cell * 0.12, y + cell * 0.12, cell * 0.76, cell * 0.76);
+    }
+    g.restore();
     // 🎯 your next bomb: a faint ghost of where it would blast from the tile you stand on, with the crates it would break marked
     {
       const mi = me(), mp = mi != null ? snap.p[mi] : null;

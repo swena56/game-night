@@ -33,6 +33,7 @@ class Cassino(CardGame):
         "Four cards each, four on the table. Each turn play one card to capture, build or trail.",
         "Capture: same rank, or number cards (ace 1) and builds that add up to your card.",
         "Build: add a card to table cards so they total a value you hold; take it later with that card.",
+        "The build ledger lists each build’s target, owner and committed cards. Anyone with a legal capture can take it.",
         "Trail: just lay a card down (not while you own a build). Clearing the table is a sweep.",
         "Each deal: most cards 3, most ♠ 1, 10♦ 2, 2♠ 1, each ace 1, each sweep 1 (an option: 3+ piles at once counts 2). First to 21.",
     ]
@@ -249,15 +250,16 @@ class Cassino(CardGame):
 
     def table(self, p, i):
         info = [{"count": len(self.hands[k]), "tags": [f"🂠 {len(self.taken[k])}" + (f" · 🧹{self.sweeps[k]}" if self.sweeps[k] else "")]} for k in range(self.n)]
-        piles = []
+        piles, builds = [], []
         for it in self.table_items:
             if len(it["cards"]) > 1 or it["owner"] is not None:
+                builds.append({"owner": it["owner"], "target": it["value"], "cards": show(it["cards"])})
                 piles.append({"cards": it["cards"], "fan": True, "small": True, "glow": True, "label": f"🧱 {it['value']} ({self.nm(it['owner'])})"})
             else:
                 piles.append({"cards": it["cards"], "small": True})
         piles.append({"cards": ["??"] if self.stock else [], "count": len(self.stock), "label": "Deck", "corner": True})
         lm = self.last_move
-        t = {"info": info, "piles": piles, "hand": self.hands[i] if i is not None else [],
+        t = {"info": info, "piles": piles, "builds": builds, "hand": self.hands[i] if i is not None else [],
              "banner": f"{self.nm(lm['seat'])}: {pretty(lm['card'])} ({lm['kind']})" if lm and self.stage == "play" else None,
              "scores": {"title": "Points", "rows": [{"seat": k, "value": self.scores[k]} for k in sorted(range(self.n), key=lambda k: -self.scores[k])],
                         "hint": f"Game to {self.s['target']}. Cards 3 · ♠ 1 · 10♦ 2 · 2♠ 1 · aces 1 · sweeps 1" + (" (3+ piles = 2)." if self.s.get("bigsweep", True) else ".")}}
@@ -268,5 +270,5 @@ class Cassino(CardGame):
             t["moves"] = [{"card": m["card"], "label": self.label(m),
                            "a": {"type": "play", "card": m["card"], "kind": m["kind"], "items": m["items"], **({"value": m["value"]} if "value" in m else {})}}
                           for m in self.moves_for(i)]
-            t["note"] = "Tap a card: take, build or trail." + (" You own a build: you can't trail." if self.owns_build(i) else "")
+            t["note"] = "Tap a card: take, build or trail." + (" You own a build: you can't trail while you have another move." if self.owns_build(i) else "")
         return t

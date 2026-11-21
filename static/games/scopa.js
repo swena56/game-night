@@ -1,1 +1,1 @@
-UI.scopa = CardTable.screen('scopa');
+UI.scopa = CardTable.screen('scopa', { previewCards: (move) => move.a.take || [] });

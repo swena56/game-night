@@ -137,9 +137,22 @@ function ctMove(game, d, S) {
     if (go.length) return click(pick(go));
   }
   if (t.moves?.length && cards.length && (!btns.length || Math.random() < (game === 'spoons' ? 0.97 : 0.7))) {
-    click(pick(cards));
+    const card = pick(cards);
+    click(card);
     const ch = [...root.querySelectorAll('.ct-choice button.primary')];
-    if (ch.length) click(pick(ch));
+    if (ch.length) {
+      const option = pick(ch);
+      if (game === 'scopa') {
+        const handIndex = cards.indexOf(card);
+        const expected = t.moves.filter((move) => move.card === t.hand[handIndex])[ch.indexOf(option)].a.take;
+        option.focus();
+        const shown = [...root.querySelectorAll('.ct-capture-preview')].map((face) => face.dataset.previewCard);
+        if (shown.length !== expected.length || shown.some((c) => !expected.includes(c))) {
+          throw new Error('Scopa highlights a different set of cards than the capture option');
+        }
+      }
+      click(option);
+    }
     return;
   }
   const piles = [...root.querySelectorAll('.ct-pile.tap')];
@@ -286,6 +299,8 @@ const MOVES = {
   },
   riders(d, S, n, w) {  // mix taps (relative-turn mode), swipes anywhere, the boost button and keys
     const root = d.querySelector('#lrRoot');
+    if (n % 12 === 5) return w.dispatchEvent(new w.KeyboardEvent('keydown', { code: 'KeyX' }));
+    if (n % 12 === 9) return d.querySelector('#lrBrake')?.dispatchEvent(new w.MouseEvent('pointerdown', { bubbles: true }));
     if (n % 4 === 0) {
       const tap = d.querySelector('#lrTap');
       if (!tap.checked) { tap.checked = true; tap.dispatchEvent(new w.Event('change', { bubbles: true })); }

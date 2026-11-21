@@ -114,6 +114,7 @@ var CardTable = window.CardTable || (() => {   // var: several games load this h
         if (!cards.length) stack.append(ctx.el('span', 'pc empty'));
         cards.forEach((card, j) => {
           const f = Cards.face(card, pile.small ? 'small' : '');
+          if (hooks.previewCards) f.dataset.previewCard = card;
           if (j === cards.length - 1 && seenPiles[k] !== undefined && seenPiles[k] !== top && motionOK()) f.classList.add('toss');
           stack.append(f);
         });
@@ -154,7 +155,7 @@ var CardTable = window.CardTable || (() => {   // var: several games load this h
             return ctx.rerender();
           }
           const ms = moves.get(key) || [];
-          if (ms.length === 1) { choice = null; return send(ms[0].a); }
+          if (ms.length === 1 && !hooks.previewCards) { choice = null; return send(ms[0].a); }
           choice = choice === key ? null : key;
           ctx.rerender();
         };
@@ -181,8 +182,19 @@ var CardTable = window.CardTable || (() => {   // var: several games load this h
       // several moves with one card: pick which
       R.choice.innerHTML = '';
       const opts = choice != null ? moves.get(choice) || [] : [];
+      const highlight = (options) => {
+        const cards = new Set(options.flatMap(hooks.previewCards));
+        for (const face of R.piles.querySelectorAll('[data-preview-card]')) {
+          face.classList.toggle('ct-capture-preview', cards.has(face.dataset.previewCard));
+        }
+      };
+      if (hooks.previewCards) highlight(opts);
       for (const m of opts) {
         const b = ctx.el('button', 'primary', m.label || 'Play');
+        if (hooks.previewCards) {
+          b.onpointerenter = b.onfocus = () => highlight([m]);
+          b.onpointerleave = b.onblur = () => highlight(opts);
+        }
         b.onclick = () => { choice = null; send(m.a); };
         R.choice.append(b);
       }

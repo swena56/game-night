@@ -12,6 +12,7 @@ UI.moonshot = (() => {
         <div id="msDice" class="dice"></div>
         <div class="moon-info"><div id="msFuel" class="fuel"></div><p id="msRisk" class="ms-risk"></p><p id="msPreview" class="preview"></p></div>
         <div class="row moon-btns"><button id="msRoll" class="primary">🎲 Roll</button><button id="msBank">🚀 Fly!</button></div>
+        <details id="msRoutes" hidden><summary>Next-roll destinations</summary><div id="msRolls"></div></details>
       </div>`;
     side.innerHTML = `<div class="panel">
       <ul class="rules">
@@ -56,7 +57,7 @@ UI.moonshot = (() => {
       if (m.shields?.[pid]) { r.classList.add('shielded'); r.dataset.shields = '🛡️'.repeat(m.shields[pid]); }
       cells[Math.min(m.pos[pid], m.goal)].querySelector('.rockets').append(r);
     }
-    if (m.preview && m.preview.cell <= m.goal) cells[m.preview.cell].classList.add('preview');
+    if (m.preview) cells[Math.min(m.preview.end ?? m.preview.cell, m.goal)].classList.add('preview');
 
     Kit.glide(track, before, 650);
     // what the move did: a flight, a crash to the pad, a boost, a meteor, a wormhole swap
@@ -76,13 +77,23 @@ UI.moonshot = (() => {
     shownRoll = rk;
     $('msFuel').textContent = `⛽ ${m.fuel} fuel this turn` + (m.turnsLeft != null ? ` · ⏳ ${m.turnsLeft} turn${m.turnsLeft === 1 ? '' : 's'} left` : '');
     const turnPlayer = ctx.player(S.turn);
-    let preview = '';
-    if (m.preview && turnPlayer) {
-      const who = S.turn === S.me.id ? 'Fly now' : `${turnPlayer.name} could fly`;
-      preview = m.preview.cell >= m.goal ? `${who} → 🌕 the moon!`
-        : `${who} → ${m.preview.cell}${m.preview.tile ? ' ' + m.tileText[m.preview.tile] : ''}`;
-    }
-    $('msPreview').textContent = preview;
+    const describe = (route) => {
+      const end = route.end ?? route.cell;
+      const effects = [];
+      if (route.lost) effects.push(route.shielded ? 'Lost fuel · 🛡️ shield spent' : 'Lost fuel');
+      if (route.tile === 'star') effects.push('⭐ boost');
+      if (route.tile === 'meteor') effects.push(route.shielded ? '🛡️ blocked meteor' : '☄️ meteor');
+      if (route.tile === 'wormhole') effects.push(route.swap ? `🌀 swap with ${ctx.player(route.swap)?.name ?? 'leader'}` : '🌀 no swap');
+      if (route.draft != null) effects.push('🌬️ slipstream');
+      if (route.bumped?.length) effects.push(`💥 bump ${route.bumped.map((pid) => ctx.player(pid)?.name ?? 'rival').join(', ')}`);
+      return `${end >= m.goal ? '🌕 Moon' : end}${effects.length ? ' · ' + effects.join(' · ') : ''}`;
+    };
+    const who = S.turn === S.me.id ? 'Fly now' : `${turnPlayer?.name ?? 'Rocket'} could fly`;
+    $('msPreview').textContent = m.preview ? `${who} → ${describe(m.preview)}` : '';
+    const rolls = ctx.myTurn ? m.rolls || [] : [];
+    $('msRoutes').hidden = !rolls.length;
+    $('msRolls').replaceChildren(...rolls.map((route) =>
+      ctx.el('div', '', `${route.dice.join(' + ')} → ${describe(route)}`)));
     // the odds of the next roll: any 1 on two dice is 11 in 36; double 1s are 1 in 36
     const mine = m.pos[S.turn] ?? 0, shield = m.shields?.[S.turn];
     $('msRisk').textContent = !ctx.myTurn ? '' : `Next roll: 💨 31% lose ${m.fuel ? `${m.fuel} fuel` : 'the turn'}` +

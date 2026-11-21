@@ -52,9 +52,23 @@ g.act(me, {"type": "hold", "hold": [True, False, True, False, False]})
 check("holds reach the table", g.view(me)["yacht"]["held"] == [True, False, True, False, False])
 g.act(me, ROLL); g.act(me, ROLL)
 check("bonus roll on offer", g.view(me)["yacht"]["bonusRolls"][me.id] == 1)
+check("category comparison recognizes the bonus roll", g.view(me)["yacht"]["comparison"]["reroll"])
 g.act(me, ROLL)
 check("a fourth roll spends it", g.view(me)["yacht"]["bonusRolls"][me.id] == 0 and g.rolls_left == 0)
 check("only once a game", refused(lambda: g.act(me, ROLL)))
+check("comparison hides the spent bonus roll", not g.view(me)["yacht"]["comparison"]["reroll"])
+
+r, g, me = table(False)
+g.s.update(bonus=True, extra=True)
+me.g.card.update(fours=16, fives=20, yacht=50)
+g.rolls_left, g.dice = 0, [6] * 5
+before = g.total(me)
+view = g.view(me)["yacht"]
+check("comparison identifies the exact category bonuses",
+      view["pick"] == "sixes" and view["preview"]["sixes"] == 30 and view["comparison"]["upper"] == ["sixes"]
+      and view["comparison"]["extra"] == 50 and view["comparison"]["upperPoints"] == 35)
+g.act(me, {"type": "score", "cat": "sixes"})
+check("banked total matches the shown comparison", g.total(me) - before == 115)
 
 print("\nall ok" if not fails else f"\n{len(fails)} failed: {fails}")
 sys.exit(1 if fails else 0)

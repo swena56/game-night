@@ -124,5 +124,19 @@ finally:
     cassino.Cassino.apply = real
 check("bot games finish, every move legal", done == n, f"{done}/{n + 1}" if done != n else f"{done} games")
 check("a big sweep fires in bot games", big > 0, f"{big} in {done} games")
+r, g = table()
+lay(g, ["2H"])
+g.hands[0] = ["3C", "5C"]
+owner, rival = g.pl(0), g.pl(1)
+g.act(owner, {"type": "play", "card": "3C", "kind": "build", "items": [0], "value": 5})
+ledger = g.view(rival)["cassino"]["builds"]
+check("ledger lists the build owner, target and committed cards",
+      ledger == [{"owner": 0, "target": 5, "cards": cassino.show(["2H", "3C"])}])
+check("owners still cannot trail if a capture is available",
+      g.owns_build(0) and not any(m["kind"] == "trail" for m in g.moves_for(0)))
+g.act(rival, {"type": "play", "card": "5D", "kind": "take", "items": [0]})
+check("a rival can capture the listed cards using its target",
+      g.taken[1] == ["5D", "2H", "3C"] and not g.view(owner)["cassino"]["builds"])
+
 print("all ok" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(1 if fails else 0)

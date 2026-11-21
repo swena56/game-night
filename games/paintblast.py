@@ -36,6 +36,7 @@ class PaintBlast(Game):
     howto = [
         "Move with a swipe-and-hold on the arena, the arrows, or the keyboard (arrows / WASD). Tap the arena, 💣 or Space to drop a bomb.",
         "A bomb blasts in a straight line in all four directions. It breaks the first crate it meets and paints every tile it touches in your colour.",
+        "Red tiles show where active bombs would blast. Dashed outlines mark the walls and crates stopping those blasts.",
         "Caught in a blast? You're stunned for 3 s and respawn at home. Catching a rival scores +10, and 💥 two in one blast +10 more.",
         "⛓️ Chain reaction: a bomb whose blast sets off two more bombs (yours or a rival's) pays the one who started it +4, and +4 more for every bomb after that.",
         "Crates hide 💣 more bombs, 🔥 longer blasts, 🖌️ paint splashes and 👟 kick: walk into a bomb to send it sliding.",
@@ -346,18 +347,24 @@ class PaintBlast(Game):
                 if self.tiles[cc] == FLOOR:
                     self.paint[cc] = i + 1
 
-    def blast_cells(self, c, reach):
+    def blast_cells(self, c, reach, blockers=None):
         """Tiles a bomb at c with this reach would burn: (cells, crates it would break)."""
         cells, crates = [c], []
         for d in range(4):
             cur = c
             for _ in range(reach):
                 cur = self.step_to(cur, d)
-                if cur is None or self.tiles[cur] == PILLAR:
+                if cur is None:
+                    break
+                if self.tiles[cur] == PILLAR:
+                    if blockers is not None:
+                        blockers.add(cur)
                     break
                 cells.append(cur)
                 if self.tiles[cur] == CRATE:
                     crates.append(cur)
+                    if blockers is not None:
+                        blockers.add(cur)
                     break
                 if cur in self.bombs:
                     break
@@ -425,12 +432,15 @@ class PaintBlast(Game):
         r.finish(r.players[self.seats[ranked[0]]], f"🏆 {r.players[self.seats[ranked[0]]].name} wins Paint Blast! {text}")
 
     def snapshot(self, now):
+        blockers = set()
+        warning = self.danger(blockers=blockers) if self.bombs else {}
         return {
             "k": self.tick, "st": self.stage, "rd": self.round,
             "t": "".join(".#+"[v] for v in self.tiles), "c": self.paint.hex(),
             "b": [[c, b[0], b[1]] for c, b in self.bombs.items()],
             # where the bombs will blast and in how many ticks (the bots' own map), so the arena can warn (#6)
-            "w": [[c, f] for c, f in self.danger().items() if f > 0] if self.bombs else [],
+            "w": [[c, f] for c, f in warning.items() if f > 0],
+            "blockers": sorted(blockers),
             "f": [[c, b[1]] for c, b in self.burn.items()],
             "i": [[c, kind] for c, kind in self.items.items()],
             "p": [[self.pos[i], self.stun[i], self.shield[i], self.moved[i], self.maxb[i], self.reach[i],
@@ -443,7 +453,7 @@ class PaintBlast(Game):
 
     # -- bots
 
-    def danger(self, extra=None):
+    def danger(self, extra=None, blockers=None):
         """{cell: ticks until it burns} for every live bomb (chains included), plus burning tiles at 0."""
         bombs = dict(self.bombs)
         if extra is not None:
@@ -451,7 +461,7 @@ class PaintBlast(Game):
         fuse = {c: b[0] for c, b in bombs.items()}
         saved, self.bombs = self.bombs, bombs
         try:
-            blasts = {c: self.blast_cells(c, b[2])[0] for c, b in bombs.items()}
+            blasts = {c: self.blast_cells(c, b[2], blockers)[0] for c, b in bombs.items()}
         finally:
             self.bombs = saved
         for _ in range(3):  # a blast that reaches another bomb sets it off early

@@ -116,5 +116,30 @@ for seed in range(6):
 check("bot gambling keeps 52 cards", tot == 52 * 6, tot)
 check("bots do gamble", gam > 0, gam)
 
+room, ps, g = table()
+g.piles = [["9C", "2C", "3C", "4C", "8C", "5C", "AC"],
+           ["9D", "2D", "3D", "4D", "8D", "5D", "KD"]]
+cards = sorted(g.piles[0] + g.piles[1])
+g.act(ps[0], {"type": "flip"})
+check("no battle history until every flip locks", not g.view(ps[1])["war"]["battleHistory"])
+g.act(ps[1], {"type": "flip"})
+entry = g.view(ps[0])["war"]["battleHistory"][-1]
+check("double war records each stake and short final flip",
+      entry["ties"] == 2 and entry["rounds"][1]["down"][0] == ["2C", "3C", "4C"]
+      and entry["rounds"][2]["down"][1] == ["5D"] and entry["rounds"][2]["up"][0] == "AC")
+check("battle history matches the cards won without changing ownership",
+      entry["won"] == cards and sorted(g.piles[0]) == cards and not g.piles[1])
+g.next_battle()
+check("empty pile ends the match with the history intact",
+      room.phase == "over" and len(g.view(ps[0])["war"]["battleHistory"]) == 1)
+
+room, ps, g = table()
+stack(g, ["AC", "5D"])
+g.battle = g.s["limit"]
+play(g, ps)
+g.next_battle()
+check("battle limit keeps the final resolved history",
+      room.phase == "over" and g.view(ps[1])["war"]["battleHistory"][-1]["battle"] == g.s["limit"])
+
 print("all ok" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(1 if fails else 0)

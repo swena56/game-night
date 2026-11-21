@@ -33,7 +33,7 @@ class Spite(CardGame):
         "Empty your hand? Draw five more and keep going.",
         "End your turn by putting a hand card on one of your four discard piles.",
         "👑 An option: finish a pile up to the queen and you draw a bonus card from the stock.",
-        "First to empty their pay-off pile wins.",
+        "First to empty their pay-off pile wins. Your private pay-off hint shows where the top card can go and which of your cards it would uncover.",
     ]
     min_players, max_players = 2, 4
     badges = {**CardGame.badges, "chain": ("⛓️", "Chain", "Play five pay-off cards in one turn")}
@@ -266,6 +266,14 @@ class Spite(CardGame):
                     for k in range(4):
                         moves.append({"card": src, "label": f"🗑️ Discard on pile {k + 1} (ends turn)", "a": {"type": "discard", "from": src, "pile": k}})
             t["moves"] = moves
+            payoff = self.payoff[i]
+            if payoff:
+                t["payoffHint"] = {
+                    "top": pretty(payoff[0]),
+                    "next": pretty(payoff[1]) if len(payoff) > 1 else None,
+                    "destinations": [move["label"].removeprefix("→ ") for move in moves
+                                     if move["card"] == "p"],
+                }
             if not self.hands[i]:
                 t["buttons"] = [{"label": "End turn (no cards to draw)", "a": {"type": "end"}}]
             t["note"] = "Play onto the middle; end your turn by discarding a hand card."

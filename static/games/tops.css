@@ -53,3 +53,5 @@
 #tpInfo[hidden] { display: none; }
 body.focus .tp-stage { height: max(240px, calc(var(--room) - 160px)); }
 @media (prefers-reduced-motion: reduce) { .tp-hurry, .tp-bar > button.tp-ready { animation: none; } }
+
+.tp-matchup { display: block; white-space: normal; line-height: 1.35; }

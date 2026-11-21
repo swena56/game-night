@@ -112,5 +112,27 @@ for seed in range(8):
     check(f"seed {seed}: game ends", room.phase != "playing")
 check("hard bots peek sometimes", used > 0, used)
 
+room, ps, g = table(n=2)
+g.hands = [["2C"], ["QS", "2D"]]
+g.out = []
+g.to(0)
+g.act(ps[0], {"type": "draw", "k": 0})
+check("history conceals the Old Maid transfer while anyone still holds cards",
+      all(not g.view(p)["oldmaid"]["drawHistory"] for p in ps))
+g.act(ps[1], {"type": "draw", "k": g.hands[0].index("2C")})
+history = g.view(ps[0])["oldmaid"]["drawHistory"]
+check("game over reveals the transfer and the exact discarded rank",
+      room.phase == "over" and history == [
+          {"seat": 0, "from": 1, "pairs": [], "maid": True},
+          {"seat": 1, "from": 0, "pairs": ["2"], "maid": False},
+      ])
+
+room, ps, g = table()
+setup(g, ps)
+g.hands[0].append("3D")
+g.act(ps[0], {"type": "draw", "k": 1})
+check("a live history exposes only the resolved pair rank",
+      g.view(ps[2])["oldmaid"]["drawHistory"] == [{"seat": 0, "from": 1, "pairs": ["3"]}])
+
 print("all ok" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(1 if fails else 0)

@@ -6,11 +6,12 @@ Score all six dice and you roll all six again (hot dice). Scoring: single 1 = 10
 three of a kind = face × 100 (three 1s = 1,000), four / five / six of a kind = 1,000 / 2,000 / 3,000;
 using all six dice: straight 1–6 = 1,500, three pairs = 1,500, four of a kind + a pair = 1,500,
 two triplets = 2,500. Reaching the target starts a final round: everyone else gets one more turn."""
+import math
 import random
 import time
 from collections import Counter
 from functools import lru_cache
-from itertools import combinations
+from itertools import combinations, combinations_with_replacement
 
 from .base import Game, GameError
 
@@ -87,6 +88,17 @@ def _measure(n, trials=3000, rng=random.Random(7)):
 ODDS = {n: _measure(n) for n in range(1, 7)}
 
 
+@lru_cache(maxsize=6)
+def bust_probability(n):
+    """Exact probability using the same legal keeps as the roll handler."""
+    busts = 0
+    for roll in combinations_with_replacement(range(1, 7), n):
+        if not keep_options(roll):
+            denominator = math.prod(math.factorial(count) for count in Counter(roll).values())
+            busts += math.factorial(n) // denominator
+    return busts / 6 ** n
+
+
 class Farkle(Game):
     id = "farkle"
     category = "dice"
@@ -94,6 +106,7 @@ class Farkle(Game):
         "Roll six dice, then tap scoring dice to set them aside. Roll the rest to push your luck, or bank.",
         "1 = 100 · 5 = 50 · three of a kind = face × 100 (three 1s = 1,000) · four / five / six of a kind = 1,000 / 2,000 / 3,000.",
         "With all six dice: straight 1–6 or three pairs = 1,500, four of a kind + a pair = 1,500, two triplets = 2,500.",
+        "The odds panel compares what you can bank with your exact risk on the next roll, including six fresh dice after a hot keep.",
         "A roll with nothing scoring is a FARKLE: you lose the turn's points. Score all six dice and you roll all six again (hot dice). 🔥 A second hot dice in one turn adds +500.",
         "Reach the target and everyone else gets one last turn to beat you.",
         "With 🐷 Piggyback on, when someone banks with dice still in hand, the next player may take over their points and those dice instead of starting fresh: farkle and it's all gone.",
@@ -317,6 +330,8 @@ class Farkle(Game):
             "kept": self.kept, "aside": getattr(self, "aside", []), "farkled": self.farkled, "final": bool(self.final_from),
             "pig": getattr(self, "pig", None),
             "options": [[pts, idx] for pts, idx in keep_options(self.roll)] if self.rolled else [],
+            "nextHotBonus": HOT_STREAK if getattr(self, "hot_n", 0) and self.s.get("hotstreak", True) else 0,
+            "bustOdds": [bust_probability(n) for n in range(1, 7)],
             "event": self.event,
         }}
 

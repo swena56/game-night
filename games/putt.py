@@ -377,6 +377,7 @@ class Putt(Game):
         "Everyone plays the same hole, one stroke each in turn. Balls pass through each other.",
         "🟫 Sand slows the ball, ↗ slopes push it, ⚪ bumpers bounce it, and 💧 water costs a stroke (you replay from where you hit).",
         f"🚀 Long shot (an option, on by default): sink a putt from 3.5 tiles or more away and a stroke comes off your hole (never below 1).",
+        "The scorecard shows each hole’s par and stroke count, your running total and the distance of each putt that found the cup.",
         f"Hole out in the fewest strokes; {STROKE_CAP} is the most a hole can cost (a setting: 6, 10 or ∞, where ⛳ Pick up takes your strokes +1). Lowest total wins.",
     ]
     name = "Putt Party"
@@ -401,6 +402,7 @@ class Putt(Game):
         self.rng = rng
         self.seats = [p.id for p in seated]
         self.cards = [[] for _ in seated]   # strokes per finished hole
+        self.made_putts = [{} for _ in seated]  # hole number to hole-out distance in tiles
         self.hole_no = 0
         self.pars = []
         self.room.add_log(f"⛳ Putt Party: {self.s['holes']} holes. Fewest strokes wins.", "big")
@@ -548,7 +550,11 @@ class Putt(Game):
             self.holed[i] = True
             self.balls[i] = list(end)
             cx, cy = self.hole["cup"]
-            ls = bool(self.s.get("longshot", 1) and self.strokes[i] > 1 and math.hypot(start[0] - cx, start[1] - cy) >= LONG_PUTT)
+            distance = math.hypot(start[0] - cx, start[1] - cy)
+            if not hasattr(self, "made_putts"):
+                self.made_putts = [{} for _ in self.seats]
+            self.made_putts[i][self.hole_no] = round(distance, 1)
+            ls = bool(self.s.get("longshot", 1) and self.strokes[i] > 1 and distance >= LONG_PUTT)
             if ls:
                 self.strokes[i] -= 1
                 self.moment(f"🚀 {name}: long shot, a stroke off!", "gold", "fanfare")
@@ -617,9 +623,15 @@ class Putt(Game):
 
     # -- view
 
+    def running_total(self, i):
+        total = sum(self.cards[i])
+        if len(self.cards[i]) < self.hole_no:
+            total += self.hole_score(i) if self.done(i) else self.strokes[i]
+        return total
+
     def meta(self, p):
         i = self.seat(p)
-        return "" if i is None else f"⛳ {sum(self.cards[i]) + self.strokes[i]}"
+        return "" if i is None else f"⛳ {self.running_total(i)}"
 
     def final_scores(self):
         return {pid: sum(self.cards[i]) for i, pid in enumerate(self.seats)}
@@ -633,6 +645,9 @@ class Putt(Game):
             "hills": h.get("hills", []), "posts": h.get("posts", []), "rocks": h.get("rocks", []),
             "banks": h.get("banks", []), "mills": h.get("mills", []), "theme": h.get("theme", "day"), "style": h.get("style", "classic"), "millSpeed": MILL_OMEGA, "now": round(time.time(), 3), "cols": COLS, "rows": ROWS, "ball": BALL, "cupR": CUP,
             "balls": self.balls, "strokes": self.strokes, "holed": self.holed, "cards": self.cards,
+            "madePutts": getattr(self, "made_putts", []),
+            "totals": [self.running_total(i) for i in range(len(self.seats))],
+            "holeScores": [self.hole_score(i) if self.done(i) else None for i in range(len(self.seats))],
             "shot": self.shot, "cap": self.cap, "picked": getattr(self, "picked", None), "between": getattr(self, "between", False),
             "standings": self.standings() if getattr(self, "between", False) and len(self.seats) > 1 else None,
         }}

@@ -72,6 +72,27 @@ except Exception:
     ok = True
 check("off by setting", ok and not btn(g, ps[0]))
 
+room, ps, g = table()
+g.act(ps[0], {"type": "bid", "card": "2C"})
+check("history hides a bid until all players lock",
+      all(not g.view(p)["gops"]["bidHistory"] for p in ps))
+g.act(ps[1], {"type": "bid", "card": "2S"})
+first = g.view(ps[0])["gops"]["bidHistory"][0]
+check("history records a tie, both bids, and the carried prize",
+      first == {"prize": ["8D"], "bids": {0: "2C", 1: "2S"},
+                "winner": None, "worth": 8, "points": 0, "carry": True})
+g.next_prize()
+g.act(ps[0], {"type": "double"})
+g.act(ps[0], {"type": "bid", "card": "KC"})
+g.act(ps[1], {"type": "bid", "card": "3S"})
+second = g.view(ps[1])["gops"]["bidHistory"][-1]
+check("history reports the combined prize and the actual doubled award",
+      second["prize"] == ["8D", "2D"] and second["worth"] == 10 and second["points"] == 20)
+g.next_prize()
+g.act(ps[0], {"type": "bid", "card": "AC"})
+g.act(ps[1], {"type": "bid", "card": "AS"})
+check("a tied final prize is unclaimed", not g.view(ps[0])["gops"]["bidHistory"][-1]["carry"])
+
 for seed in range(4):
     room = server.Room("B%d" % seed)
     for k in range(3):

@@ -13,7 +13,7 @@ class MoonShot(Game):
     id = "moonshot"
     category = "dice"
     howto = [
-        'Roll two dice to build fuel, then Fly to move that far.',
+        'Roll two dice to build fuel, then Fly to move that far. The route forecast shows where Fly or each possible next roll could take you.',
         "Any 1 loses this turn's fuel; double 1s crash you back to the start.",
         'Doubles earn a 🛡️ shield. Stopping on ⭐ +5, ☄️ −5, 🌀 swaps you with the leader.',
         'With 💥 Bumping on, landing exactly on a rival knocks them back 3.',
@@ -108,47 +108,69 @@ class MoonShot(Game):
         if self.pos[p.id] + self.fuel >= self.goal:
             self.bank(p)  # nothing to gain by rolling on
 
+    def route(self, pid, fuel, shield):
+        """Resolve where a flight would end using only the current public track."""
+        cell = self.pos[pid] + fuel
+        tile = self.tiles.get(cell)
+        rivals = {i: self.pos[i] for i in self.seats if i != pid and i in self.room.players}
+        destination = cell
+        swap = None
+        shielded = False
+        if tile == "star":
+            destination += 5
+        elif tile == "meteor":
+            shielded = bool(shield)
+            if not shielded:
+                destination = max(0, cell - 5)
+        elif tile == "wormhole":
+            leader = max(rivals, key=rivals.get, default=None)
+            if leader is not None and rivals[leader] > cell:
+                swap, destination = leader, rivals[leader]
+                rivals[leader] = cell
+        draft = None
+        if self.s.get("slip", True) and 0 < destination < self.goal:
+            draft = min((pos for pos in rivals.values() if 1 <= pos - destination <= 2), default=None)
+            if draft is not None:
+                destination = draft
+        bumped = [i for i, pos in rivals.items() if pos == destination] if (
+            self.s.get("bump") and 0 < destination < self.goal
+        ) else []
+        return {"cell": cell, "tile": tile, "end": min(destination, self.goal), "swap": swap,
+                "shielded": shielded, "draft": draft, "bumped": bumped}
+
     def bank(self, p):
         r = self.room
         fuel, self.fuel = self.fuel, 0
-        land = self.pos[p.id] + fuel
-        self.pos[p.id] = land
+        route = self.route(p.id, fuel, self.shields[p.id])
+        land, kind, here = route["cell"], route["tile"], route["end"]
+        self.pos[p.id] = here
         msg = f"🚀 {p.name} flew {fuel} to {min(land, self.goal)}"
         if fuel >= 15 and land < self.goal:
             self.moment(f"🚀 {p.name} flies {fuel}!", "gold", "whoosh")
-        kind = self.tiles.get(land)
         if kind == "star":
-            self.pos[p.id] += 5
-            msg += f" and hit a ⭐ boost → {self.pos[p.id]}"
+            msg += f" and hit a ⭐ boost → {land + 5}"
         elif kind == "meteor":
-            if self.shields[p.id]:
+            if route["shielded"]:
                 self.shields[p.id] -= 1
                 msg += ", where the 🛡️ shield blocked a ☄️ meteor"
             else:
-                self.pos[p.id] = max(0, land - 5)
-                msg += f" — ☄️ meteor! Knocked back to {self.pos[p.id]}"
+                msg += f" — ☄️ meteor! Knocked back to {max(0, land - 5)}"
         elif kind == "wormhole":
-            leader = max(self.seats, key=lambda i: self.pos[i] if i in r.players else -1)
-            if leader != p.id and self.pos[leader] > land:
-                self.pos[p.id], self.pos[leader] = self.pos[leader], land
+            leader = route["swap"]
+            if leader is not None:
+                self.pos[leader] = land
                 self.award(p, "wormhole")
                 self.moment(f"🌀 {p.name} swaps places with {r.players[leader].name}!", "gold", "whoosh")
                 msg += f" — 🌀 wormhole! Swapped places with {r.players[leader].name}"
             else:
                 msg += " — 🌀 wormhole, but they're already in the lead"
-        here = self.pos[p.id]
-        if self.s.get("slip", True) and 0 < here < self.goal:  # 🌬️ close behind a rival: draft onto their square
-            ahead = [self.pos[i] for i in self.seats if i != p.id and i in r.players and 1 <= self.pos[i] - here <= 2]
-            if ahead:
-                self.pos[p.id] = here = min(ahead)
-                msg += f" and 🌬️ slipstreamed up to {here}"
-                self.moment(f"🌬️ {p.name} slipstreams to {here}!", "gold", "whoosh")
-        if self.s.get("bump") and 0 < here < self.goal:  # 💥 landing on rivals knocks them back
-            hit = [i for i in self.seats if i != p.id and i in r.players and self.pos[i] == here]
-            for i in hit:
+        if route["draft"] is not None:
+            msg += f" and 🌬️ slipstreamed up to {here}"
+            self.moment(f"🌬️ {p.name} slipstreams to {here}!", "gold", "whoosh")
+        if route["bumped"]:
+            for i in route["bumped"]:
                 self.pos[i] = max(0, here - 3)
-            if hit:
-                msg += f" and 💥 bumped {' & '.join(r.players[i].name for i in hit)} back to {max(0, here - 3)}"
+            msg += f" and 💥 bumped {' & '.join(r.players[i].name for i in route['bumped'])} back to {max(0, here - 3)}"
         r.add_log(msg + ".", "question")
         if self.pos[p.id] >= self.goal:
             self.pos[p.id] = self.goal
@@ -186,12 +208,22 @@ class MoonShot(Game):
         turn = self.room.turn
         preview = None
         if turn in self.pos and self.fuel:
-            land = self.pos[turn] + self.fuel
-            preview = {"cell": land, "tile": self.tiles.get(land)}
+            preview = self.route(turn, self.fuel, self.shields[turn])
+        rolls = []
+        if turn == p.id and turn in self.pos:
+            for first in range(1, 7):
+                for second in range(first, 7):
+                    if first == 1:
+                        route = {"end": 0 if second == 1 and not self.shields[turn] else self.pos[turn],
+                                 "lost": True, "shielded": second == 1 and bool(self.shields[turn])}
+                    else:
+                        shield = min(MAX_SHIELDS, self.shields[turn] + (first == second))
+                        route = self.route(turn, self.fuel + first + second, shield)
+                    rolls.append({"dice": [first, second], **route})
         return {"moon": {
             "goal": self.goal, "seats": self.seats, "turnsLeft": self.limit() - self.turns if self.solo() else None, "pos": self.pos, "shields": self.shields,
             "tiles": {str(k): v for k, v in self.tiles.items()}, "fuel": self.fuel, "dice": self.dice,
-            "preview": preview, "tileText": TILE_TEXT,
+            "preview": preview, "rolls": rolls, "tileText": TILE_TEXT,
         }}
 
     # -- bot: one roll or bank per tick so humans can follow along

@@ -10,6 +10,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 import server  # noqa: E402
 
+from games.cardbase import pretty, SUIT_NAME  # noqa: E402
+
 fails = []
 
 
@@ -63,6 +65,22 @@ g.to(0); g.stock = ["AH"]
 check("not with a one-card stock", not btn(g, 0))
 g.stock = ["2C", "4C", "5C", "2H"]; g.brisc = "2H"
 check("not for a weaker card", not btn(g, 0))
+
+room, g, lead = table()
+reply = 1 - lead
+g.hands[lead] = ["KD"]
+g.hands[reply] = ["3D", "AS", "2H"]
+g.play(lead, "KD")
+preview = g.view(g.pl(reply))["briscola"]["trickPreview"]
+cards = {row["card"]: row for row in preview["cards"]}
+check("preview names the lead suit and briscola",
+      preview["led"] == SUIT_NAME["D"] and preview["trump"] == SUIT_NAME["H"])
+check("the 3 beats the king, off-suit ace loses, and the low trump wins",
+      cards[pretty("3D")]["follows"] and cards[pretty("3D")]["leads"]
+      and not cards[pretty("AS")]["leads"] and cards[pretty("2H")]["trump"] and cards[pretty("2H")]["leads"])
+check("other players cannot see the hand preview", "trickPreview" not in g.view(g.pl(lead))["briscola"])
+g.play(reply, "3D")
+check("preview matches the winner", g.last["winner"] == reply)
 
 for seed in range(4):
     room = server.Room("B%d" % seed)

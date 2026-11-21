@@ -6,6 +6,7 @@ following suit if you can. Score one point a trick, plus a bonus for landing you
 you're the only one who does, 20 each if two do, 10 each if all three do. Trumps change every hand.
 First to the target wins."""
 import random
+from itertools import combinations
 
 from .cardbase import GameError, deck, rank, suit, pretty, show, SUIT_NAME
 from .tricks import TrickGame
@@ -21,6 +22,7 @@ class NinetyNine(TrickGame):
     blurb = "Bid by discarding three cards, then take exactly that many tricks. Three players, nine tricks."
     howto = [
         "36 cards (6 up to ace), twelve each. Lay aside three cards as your secret bid.",
+        "Open Plan your bid to compare discard sets for your target trick count. The estimate uses your own cards and the current trump.",
         "Each bid card counts by suit: ♣ 3, ♥ 2, ♠ 1, ♦ 0. So you bid 0 to 9 tricks.",
         "Play nine tricks; follow suit if you can. Trumps change every hand (the last of each cycle has none).",
         "1 point a trick. Make your bid exactly: +30 if you're the only one, +20 each for two, +10 each for all three.",
@@ -122,6 +124,18 @@ class NinetyNine(TrickGame):
                     e += 0.3
         return e
 
+    def bid_plan(self, i):
+        hand = self.hands[i]
+        best = {}
+        for cards in combinations(hand, 3):
+            bid = sum(WORTH[suit(c)] for c in cards)
+            estimate = self.strength(i, [c for c in hand if c not in cards], "hard")
+            cost = abs(estimate - bid) + 0.05 * sum(self.power(c) for c in cards)
+            if bid not in best or cost < best[bid][0]:
+                best[bid] = (cost, {"bid": bid, "cards": [pretty(c) for c in cards],
+                                    "estimate": round(estimate, 1)})
+        return [best[bid][1] for bid in sorted(best)]
+
     def bot_bid(self, i, level):
         hand = self.hands[i]
         if level == "easy":
@@ -211,6 +225,7 @@ class NinetyNine(TrickGame):
         if i is None:
             return t
         if self.stage == "bid" and i in self.waiting:
+            t["bidPlan"] = self.bid_plan(i)
             t["pick"] = {"act": "bid", "min": 3, "max": 3, "label": "Bid with these"}
             t["note"] = "Pick three cards to lay aside. ♣ = 3, ♥ = 2, ♠ = 1, ♦ = 0 tricks." + (" 🎰 Doubled: bonus x2 if you make it, -10 if not." if i in self.armed else "")
             if self.can_double(i):

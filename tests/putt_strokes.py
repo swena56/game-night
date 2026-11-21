@@ -6,6 +6,7 @@ picks up with ⛳ (strokes so far +1) and a safety limit of 20 still ends a lost
 import math
 import os
 import sys
+from unittest.mock import patch
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -73,8 +74,27 @@ check("no limit: still playing after 9", not g.between and g.strokes == [9, 9], 
 check("pick up out of turn refused", refused(g, bo, {"type": "pickup"}) is not None)
 g.act(ann, {"type": "pickup"})
 check("after pick up it is Bo's turn", r.turn == bo.id)
+scores = g.view(ann)["putt"]
+check("live total includes the pickup penalty", scores["holeScores"] == [10, None] and scores["totals"] == [10, 9])
 g.act(bo, {"type": "pickup"})
 check("both picked up: hole scored strokes +1", g.between and g.cards == [[10], [10]], f"cards {g.cards}")
+
+check("completed hole total counts the pickup only once", g.view(ann)["putt"]["totals"] == [10, 10])
+
+r, g, ann, bo = course(0)
+del g.made_putts  # older room
+cup = g.hole["cup"]
+distance = round(math.dist(g.balls[0], cup), 1)
+with patch.object(putt, "simulate", return_value=(cup, "cup", [])):
+    g.putt(0, 0.0, 1.0)
+check("a made putt records its distance in a restored room",
+      g.view(bo)["putt"]["madePutts"] == [{1: distance}, {}])
+tap(g, bo)
+g.pickup(bo)
+g.after_hole()
+check("made putt remains attached to its hole as totals carry forward",
+      g.view(ann)["putt"]["madePutts"] == [{1: distance}, {}]
+      and g.view(ann)["putt"]["totals"] == [1, 2])
 
 # no limit: the safety cap ends a hole nobody picks up
 r, g, ann, bo = course(0)
