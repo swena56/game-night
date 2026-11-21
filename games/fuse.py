@@ -20,6 +20,9 @@ DASH_SPEED, DASH_SECS, DASH_COOL = 1.55, 0.22, 2.4   # ⚡ a short burst, then a
 IMMUNE = 1.1                   # the one who just passed the bomb can't be tagged straight back
 READY = 1.8                    # a pause before each new bomb: a "Ready…" for every screen
 FUSE_STEP, FUSE_MIN = 1.2, 5.5  # each round's fuse is this much shorter, never below the minimum
+ITEM_EVERY, ITEM_MAX, ITEM_R = (4.5, 7.5), 2, 0.035   # 🎁 a pickup appears every few seconds (two at most) on the arena floor
+BOOST_PACE, BOOST_SECS = 1.3, 4.0   # ⚡ a speed pickup: this much faster for this long
+BLOCK_IMMUNE = 0.8              # 🛡️ a shield soaks one tag; the carrier can't try that runner again for this long
 CLOSE_CALL = 1.0               # a pass with less than this left on the fuse is a callout
 BOT = {  # reaction interval (s), speed factor, aim noise (units), dashes
     "easy": (0.26, 0.9, 0.12, 0.0),
@@ -35,6 +38,7 @@ class Fuse(Game):
         "Drag a finger (or use WASD / arrow keys) and your runner follows it.",
         "💣 One runner holds the bomb. It runs a little faster, and touching someone passes the bomb on.",
         "The one who just passed it can't be tagged back for a second, so get away!",
+        "🎁 Glowing pickups appear on the floor: 🛡️ a shield soaks one tag, ⚡ a speed boost lasts 4 seconds. First to touch one gets it.",
         "⚡ Tap Dash (or Space) for a short burst of speed, then wait a couple of seconds.",
         "When the fuse burns out the carrier blows up and is out. A new bomb with a shorter fuse is lit; last runner standing wins.",
     ]
@@ -64,6 +68,10 @@ class Fuse(Game):
         self.survived = [0] * n
         self.passes = [0] * n
         self.bot_next = [0.0] * n
+        self.shield = [False] * n
+        self.boost_until = [0.0] * n
+        self.items = []
+        self.next_item = 0.0
         self.round = 0
         self.last_frame = None
         self.frames = 0
@@ -87,11 +95,15 @@ class Fuse(Game):
             self.dash_until[i] = 0.0
             self.dash_ready[i] = 0.0
             self.immune[i] = 0.0
+            self.shield[i] = False
+            self.boost_until[i] = 0.0
+        self.items = []
         self.carrier = self.rng.choice(live)
         base = float(self.s.get("fuse", 11))
         self.fuse_len = max(FUSE_MIN, base - FUSE_STEP * (self.round - 1)) + self.rng.uniform(-0.8, 1.4)
         self.paused_until = now + READY
         self.fuse_end = self.paused_until + self.fuse_len
+        self.next_item = self.paused_until + self.rng.uniform(2.0, 4.0)
         self.room.add_log(f"💣 Round {self.round}: {self.name_of(self.carrier)} has the bomb! ({len(live)} left)", "power")
 
     def name_of(self, i):
@@ -150,7 +162,8 @@ class Fuse(Game):
                 if self.alive[i]:
                     self.move(i, dt, now)
             self.separate()
-            changed = self.tag(now)
+            changed = self.pickups(now)
+            changed = self.tag(now) or changed
             if now >= self.fuse_end and self.alive[self.carrier]:
                 return self.explode(now)
         self._prev = before
@@ -166,6 +179,8 @@ class Fuse(Game):
         else:
             p = self.room.players.get(self.seats[i])
             sp = CARRIER_SPEED if i == self.carrier else SPEED
+            if now < self.boost_until[i]:
+                sp *= BOOST_PACE
             if p and p.bot:
                 sp *= BOT[p.bot][1]
             dx, dy = self.target[i][0] - x, self.target[i][1] - y
@@ -189,12 +204,42 @@ class Fuse(Game):
                     self.pos[i] = [self.pos[i][0] - nx * push, self.pos[i][1] - ny * push]
                     self.pos[j] = [self.pos[j][0] + nx * push, self.pos[j][1] + ny * push]
 
+    def pickups(self, now):
+        """🎁 Items appear now and then; the first runner to touch one takes it. Returns True when something changed."""
+        changed = False
+        if now >= self.next_item and len(self.items) < ITEM_MAX:
+            self.next_item = now + self.rng.uniform(*ITEM_EVERY)
+            cx, cy = self.pos[self.carrier]
+            for _ in range(8):   # not right on top of the bomb
+                x, y = self.rng.uniform(0.15, W - 0.15), self.rng.uniform(0.15, H - 0.15)
+                if math.hypot(x - cx, y - cy) > 0.3:
+                    self.items.append([round(x, 3), round(y, 3), self.rng.choice(("shield", "boost"))])
+                    changed = True
+                    break
+        for it in list(self.items):
+            for i, ok in enumerate(self.alive):
+                if ok and math.hypot(self.pos[i][0] - it[0], self.pos[i][1] - it[1]) <= R + ITEM_R:
+                    self.items.remove(it)
+                    if it[2] == "shield":
+                        self.shield[i] = True
+                    else:
+                        self.boost_until[i] = now + BOOST_SECS
+                    self.room.add_log(f"{'🛡️ shield' if it[2] == 'shield' else '⚡ speed boost'}: {self.name_of(i)} grabs it.", "info")
+                    changed = True
+                    break
+        return changed
+
     def tag(self, now):
         c = self.carrier
         for j, ok in enumerate(self.alive):
             if not ok or j == c or now < self.immune[j]:
                 continue
             if math.hypot(self.pos[j][0] - self.pos[c][0], self.pos[j][1] - self.pos[c][1]) <= 2 * R + 0.006:
+                if self.shield[j]:   # 🛡️ the shield soaks this one tag
+                    self.shield[j] = False
+                    self.immune[j] = now + BLOCK_IMMUNE
+                    self.moment(f"🛡️ {self.name_of(j)} blocks the bomb from {self.name_of(c)}!", "cool", "tag")
+                    return True
                 left = self.fuse_end - now
                 self.immune[c] = now + IMMUNE
                 self.passes[c] += 1
@@ -232,6 +277,7 @@ class Fuse(Game):
             "im": [round(max(0.0, t - now), 2) for t in self.immune],
             "dc": [round(max(0.0, t - now), 1) for t in self.dash_ready],
             "dn": [int(now < t) for t in self.dash_until],
+            "it": self.items, "sh": [int(v) for v in self.shield], "bo": [int(now < t) for t in self.boost_until],
             "c": self.carrier, "rd": self.round,
             "f": round(max(0.0, self.fuse_end - now), 2), "len": round(self.fuse_len, 1),
             "pause": round(max(0.0, self.paused_until - now), 2),
@@ -270,6 +316,11 @@ class Fuse(Game):
                 fx += -dy / d * 0.8 * (1 if (i + c) % 2 else -1)
                 fy += dx / d * 0.8 * (1 if (i + c) % 2 else -1)
             m = math.hypot(fx, fy) or 1e-6
+            if level != "easy" and d > 0.4 and self.items:   # the bomb is far: nip over to a pickup
+                it = min(self.items, key=lambda q: math.hypot(q[0] - x, q[1] - y))
+                if math.hypot(it[0] - x, it[1] - y) < 0.45:
+                    self.target[i] = [it[0], it[1]]
+                    return
             self.target[i] = [min(W - R, max(R, x + fx / m * 0.4 + rnd(0, noise))), min(H - R, max(R, y + fy / m * 0.4 + rnd(0, noise)))]
             if dashes and d < 0.2 and now >= self.dash_ready[i] and self.rng.random() < dashes:
                 self.dash(i, now)
@@ -316,4 +367,5 @@ class Fuse(Game):
                          "p": self.pos, "a": [int(v) for v in self.alive], "c": self.carrier, "rd": self.round,
                          "f": round(max(0.0, self.fuse_end - now), 2), "len": round(self.fuse_len, 1),
                          "pause": round(max(0.0, self.paused_until - now), 2),
-                         "dc": [round(max(0.0, t - now), 1) for t in self.dash_ready]}}
+                         "dc": [round(max(0.0, t - now), 1) for t in self.dash_ready],
+                         "it": self.items, "sh": [int(v) for v in self.shield], "bo": [int(now < t) for t in self.boost_until]}}

@@ -2,12 +2,12 @@
 // This module draws the arena, smooths the runners between updates and sends where a finger (or key) points.
 UI.fuse = (() => {
   let S, ctx, canvas, g2, raf = 0, ro = null, net = null, shown = [], keys = {}, keyDown = null, keyUp = null;
-  let lastSent = 0, lastCarrier = -1, lastRound = 0, lastAlive = null, lastTickSec = -1, lastFrame = 0, flash = 0;
+  let lastItems = [], lastShield = null, lastSent = 0, lastCarrier = -1, lastRound = 0, lastAlive = null, lastTickSec = -1, lastFrame = 0, flash = 0;
   const pfx = Fx2D.create({ cap: 160 });
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
-    S = null; net = null; shown = []; keys = {}; lastCarrier = -1; lastRound = 0; lastAlive = null; lastTickSec = -1;
+    S = null; net = null; shown = []; keys = {}; lastItems = []; lastShield = null; lastCarrier = -1; lastRound = 0; lastAlive = null; lastTickSec = -1;
     main.innerHTML = `<div class="fz"><div class="fz-stage" id="fzStage"><canvas id="fzCanvas"></canvas>
       <div class="fz-banner" id="fzBanner" hidden></div></div></div>`;
     side.innerHTML = `<div class="panel"><div id="fzSeats"></div>
@@ -107,6 +107,14 @@ UI.fuse = (() => {
     pfx.step((now - lastFrame) / 1000); lastFrame = now;
     pfx.begin(g2);
     const r = f.R * u;
+    for (const [ix, iy, kind] of src.it || []) {   // 🎁 floor pickups: a glowing disc with the power's icon
+      const sx = ix * u, sy = iy * u, pulse = 1 + 0.12 * Math.sin(now / 160);
+      g2.save(); g2.shadowColor = kind === 'shield' ? '#6cecff' : '#ffd166'; g2.shadowBlur = r * 1.4;
+      g2.fillStyle = kind === 'shield' ? '#12466a' : '#6a4a12'; g2.beginPath(); g2.arc(sx, sy, r * 0.8 * pulse, 0, 7); g2.fill();
+      g2.lineWidth = r * 0.12; g2.strokeStyle = g2.shadowColor; g2.stroke(); g2.restore();
+      g2.font = `${r * 1.0}px system-ui, "Noto Color Emoji", sans-serif`; g2.textAlign = 'center'; g2.textBaseline = 'middle';
+      g2.fillText(kind === 'shield' ? '🛡️' : '⚡', sx, sy + r * 0.05);
+    }
     src.p.forEach((_, i) => {
       if (!src.a[i]) return;
       const [sx, sy] = [shown[i][0] * u, shown[i][1] * u], isC = i === src.c, imm = (src.im?.[i] || 0) > 0;
@@ -118,6 +126,8 @@ UI.fuse = (() => {
       g2.fillStyle = grad; g2.beginPath(); g2.arc(sx, sy, r, 0, 7); g2.fill();
       g2.lineWidth = r * (i === f.me ? 0.22 : 0.1); g2.strokeStyle = i === f.me ? '#fff' : '#0008'; g2.stroke();
       g2.restore();
+      if (src.sh?.[i]) { g2.save(); g2.strokeStyle = '#6cecff'; g2.shadowColor = '#6cecff'; g2.shadowBlur = r; g2.lineWidth = r * 0.16; g2.globalAlpha = 0.8; g2.beginPath(); g2.arc(sx, sy, r * 1.45, 0, 7); g2.stroke(); g2.restore(); }
+      if (src.bo?.[i]) { pfx.spark(sx, sy, 1, { color: '#ffd166', speed: [u * 0.03, u * 0.12], size: [u * 0.003, u * 0.007] }); }
       if (isC) { g2.font = `${r * 1.5}px system-ui, "Noto Color Emoji", sans-serif`; g2.textAlign = 'center'; g2.textBaseline = 'middle'; g2.fillText('💣', sx, sy - r * 1.7); }
       if (imm) { g2.font = `${r * 0.9}px system-ui, sans-serif`; g2.textAlign = 'center'; g2.fillText('🛡️', sx, sy - r * 1.6); }
     });
@@ -164,9 +174,24 @@ UI.fuse = (() => {
           flash = 0.45; ctx.sfx?.('boom'); ctx.buzz?.(i === f.me ? [120, 40, 160] : 40);
         }
       });
+      for (const old of data.rd === lastRound ? lastItems : []) {   // a pickup that is gone was taken: sparks where it lay
+        if (!(data.it || []).some((q) => q[0] === old[0] && q[1] === old[1])) {
+          const x = old[0] * u, y = old[1] * u, col = old[2] === 'shield' ? '#6cecff' : '#ffd166';
+          pfx.ring(x, y, { r0: u * 0.02, r1: u * 0.12, color: col, width: u * 0.01, life: 0.4 });
+          pfx.spark(x, y, 10, { color: col, speed: [u * 0.1, u * 0.4], size: [u * 0.004, u * 0.009] });
+          ctx.sfx?.('pop');
+        }
+      }
+      if (lastShield) data.sh?.forEach((v, i) => {   // a shield used up: a flash round the runner
+        if (lastShield[i] && !v && data.a[i]) {
+          const [x, y] = at(i);
+          pfx.ring(x, y, { r0: u * 0.04, r1: u * 0.2, color: '#6cecff', width: u * 0.014, life: 0.5 });
+          ctx.sfx?.('tick');
+        }
+      });
       if (data.rd !== lastRound && lastRound) ctx.sfx?.('rise');
     }
-    lastCarrier = data.c; lastRound = data.rd; lastAlive = [...data.a];
+    lastCarrier = data.c; lastRound = data.rd; lastAlive = [...data.a]; lastItems = (data.it || []).map((q) => [...q]); lastShield = [...(data.sh || [])];
     net = { ...data, at: performance.now() };
     renderSeats();
   }
@@ -187,7 +212,7 @@ UI.fuse = (() => {
     const first = !S;
     S = s; ctx = c;
     if (first || !canvas.width) resize();
-    if (!net) { lastCarrier = s.fuse.c; lastRound = s.fuse.rd; lastAlive = [...s.fuse.a]; }
+    if (!net) { lastItems = (s.fuse.it || []).map((q) => [...q]); lastShield = [...(s.fuse.sh || [])]; lastCarrier = s.fuse.c; lastRound = s.fuse.rd; lastAlive = [...s.fuse.a]; }
     renderSeats();
     $('fzHint').hidden = s.fuse.me == null || s.fuse.me < 0;
   }

@@ -1,0 +1,80 @@
+"""Fuse Frenzy 🎁 pickups: items appear (max two), touching one grants a shield or speed boost, a shield soaks one tag
+(then the carrier can't retry for a moment), a boost speeds a runner, a new round clears them, bots stay legal.
+
+    python3 tests/fuse_items.py
+"""
+import os
+import sys
+import time
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, ROOT)
+import server  # noqa: E402
+from games import fuse as F  # noqa: E402
+
+fails = []
+
+
+def check(name, ok, detail=""):
+    print("ok  " if ok else "FAIL", name, detail)
+    if not ok:
+        fails.append(name)
+
+
+r = server.Room("TEST")
+ps = [r.add_player(x) for x in ("Ann", "Bo", "Cy")]
+r.switch_game("fuse")
+r.start()
+g = r.game
+said = []
+g.moment = lambda text, *a, **k: said.append(text)
+now = g.paused_until + 1
+g.next_item = now - 1
+g.pickups(now)
+check("an item appears when due", len(g.items) == 1, g.items)
+for k in range(5):
+    g.next_item = now - 1
+    g.pickups(now)
+check("never more than two on the floor", len(g.items) == F.ITEM_MAX, g.items)
+
+# take a shield (nothing else is due to spawn)
+g.next_item = now + 100
+runner = next(i for i in range(3) if i != g.carrier)
+g.items = [[g.pos[runner][0], g.pos[runner][1], "shield"]]
+g.pickups(now)
+check("touching a shield grants it", g.shield[runner] and not g.items)
+# the carrier tags that runner: blocked, no handover
+c = g.carrier
+g.pos[c] = [g.pos[runner][0] - 0.05, g.pos[runner][1]]
+g.immune = [0.0] * 3
+g.tag(now)
+check("the shield soaks the tag", g.carrier == c and not g.shield[runner] and any("blocks" in t for t in said), said)
+check("and the carrier can't retry straight away", g.immune[runner] > now)
+g.tag(now + 0.1)
+check("still blocked during the grace", g.carrier == c)
+g.tag(now + 2)
+check("after the grace the tag lands", g.carrier == runner)
+
+# a boost speeds a runner
+g.items = [[g.pos[c][0], g.pos[c][1], "boost"]]
+g.carrier = runner
+g.pickups(now)
+check("touching a boost starts it", g.boost_until[c] > now)
+g.target[c] = [g.pos[c][0], 0.1]
+g.pos[c] = [0.5, 1.0]
+y0 = g.pos[c][1]
+g.dash_until[c] = 0
+g.move(c, 0.1, now)
+boosted = y0 - g.pos[c][1]
+g.boost_until[c] = 0
+g.pos[c] = [0.5, 1.0]
+g.move(c, 0.1, now)
+check("a boosted runner covers more ground", boosted > (y0 - g.pos[c][1]) * 1.2, (boosted, y0 - g.pos[c][1]))
+
+# a new round clears everything
+g.shield = [True] * 3
+g.items = [[0.5, 0.5, "boost"]]
+g.new_round(now)
+check("a new round clears items and shields", not g.items and not any(g.shield) and not any(g.boost_until))
+check("the view carries them", "it" in g.view(ps[0])["fuse"] and "sh" in g.view(ps[0])["fuse"])
+sys.exit(1 if fails else 0)
