@@ -29,13 +29,13 @@ UI.oware = (() => {
   // what sowing `from` would do, by the server's rules: the pits that get seeds, where the last one lands,
   // and the rival pits it captures (none if that would take every rival seed)
   const sideOf = (seat) => (seat === 0 ? [0, 1, 2, 3, 4, 5] : [6, 7, 8, 9, 10, 11]);
-  function preview(pits, from, me) {
+  function preview(pits, from, me, caps = [2, 3]) {
     const after = [...pits], reached = new Set();
     let left = after[from], i = from;
     after[from] = 0;
     while (left) { i = (i + 1) % 12; if (i === from) continue; after[i]++; reached.add(i); left--; }
     const theirs = sideOf(1 - me), taken = [];
-    for (let j = i; theirs.includes(j) && (after[j] === 2 || after[j] === 3); j--) taken.push(j);
+    for (let j = i; theirs.includes(j) && caps.includes(after[j]); j--) taken.push(j);
     const all = theirs.reduce((t, j) => t + after[j], 0);
     const seeds = taken.reduce((t, j) => t + after[j], 0);
     return { reached, last: i, taken: seeds === all ? [] : taken, slam: taken.length > 0 && seeds === all, seeds };
@@ -176,7 +176,7 @@ UI.oware = (() => {
     for (const b of document.querySelectorAll('.ow-pit')) b.classList.remove('gets', 'lands', 'takes');
     const o = S?.oware;
     if (from == null || !o || o.me == null) { $('owHint').textContent = baseHint; return; }
-    const pv = preview(o.pits, from, o.me), at = (i) => document.querySelector(`.ow-pit[data-i="${i}"]`);
+    const pv = preview(o.pits, from, o.me, o.caps), at = (i) => document.querySelector(`.ow-pit[data-i="${i}"]`);
     at(from)?.classList.add('ow-preview-selected');
     for (const i of pv.reached) at(i)?.classList.add('gets');
     at(pv.last)?.classList.add('lands');

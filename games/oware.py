@@ -6,11 +6,14 @@ counter-clockwise, skipping the pit you emptied. If the last seed lands in a riv
 2 or 3, you capture it, and the pits before it too while they are rival pits holding 2 or 3.
 A capture that would take every rival seed captures nothing (grand slam). If your rival has no
 seeds you must give them some; if you can't, you keep the seeds on your side and the game ends.
-25 seeds wins; 24 each is a draw."""
+25 seeds wins; 24 each is a draw. 🌶️ Hot pits (an option) also captures pits of 4."""
+from functools import partial
+
 from .base import Game, GameError
 from .search import WIN, best_move
 from .undo import Undo
 
+CAPS = {False: (2, 3), True: (2, 3, 4)}   # pit sizes a last seed captures: classic, 🌶️ hot pits
 QUIET_LIMIT = 80   # plies with no capture: the seeds left are endlessly circling, so each side keeps its own
 
 
@@ -31,13 +34,13 @@ def side(seat):
     return range(0, 6) if seat == 0 else range(6, 12)
 
 
-def apply(state, me, pit):
+def apply(state, me, pit, caps=(2, 3)):
     """state = (pits, stores, quiet). Returns the new state; captures are scored here."""
     pits, stores, quiet = state
     new, last = sow(pits, pit)
     taken = []
     i = last
-    while i in side(1 - me) and new[i] in (2, 3):
+    while i in side(1 - me) and new[i] in caps:
         taken.append(i)
         i -= 1
     if taken and sum(new[j] for j in side(1 - me)) == sum(new[j] for j in taken):
@@ -77,7 +80,7 @@ def final(state, me):
     return stores
 
 
-def evaluate(state, me):
+def evaluate(state, me, caps=(2, 3)):
     if not legal(state, me):
         st = final(state, me)
         return WIN if st[me] > st[1 - me] else -WIN if st[me] < st[1 - me] else 0
@@ -85,7 +88,7 @@ def evaluate(state, me):
     score = (stores[me] - stores[1 - me]) * 10
     # seeds on your side are mobility; rival pits sitting on 1-2 seeds are capture chances
     score += sum(pits[j] for j in side(me)) - sum(pits[j] for j in side(1 - me))
-    score += 2 * sum(1 for j in side(1 - me) if pits[j] in (1, 2)) - 2 * sum(1 for j in side(me) if pits[j] in (1, 2))
+    score += 2 * sum(1 for j in side(1 - me) if pits[j] + 1 in caps) - 2 * sum(1 for j in side(me) if pits[j] + 1 in caps)
     return score
 
 
@@ -98,6 +101,7 @@ class Oware(Undo, Game):
         "If your last seed lands in a rival pit and makes it 2 or 3, you capture those seeds, plus the rival pits just before it that now hold 2 or 3.",
         "Point at a pit with a mouse, or turn on 🔍 Preview sow on a touch screen, to see the sowing path and any pits it captures. Tap the selected pit again to sow.",
         "You can't capture every rival seed at once (that captures nothing). If your rival has no seeds, you must give them some.",
+        "🌶️ Hot pits (an option): pits of 4 are captured too, not just 2 and 3.",
         "More than half the seeds wins (25 of 48). If nobody can capture any more, each side keeps the seeds in its row.",
         "Seeds per pit (an option): 3 for a quick game (19 of 36 wins) or 5 for a long one (31 of 60).",
         "↶ Undo asks your rival to take back your last move.",
@@ -110,6 +114,7 @@ class Oware(Undo, Game):
     badges = {**Game.badges, "harvest": ("🌾", "Big harvest", "Win with 36 seeds or more")}
     settings_schema = {
         "seeds": ("Seeds per pit", [(4, "4 (classic)"), (3, "3 (quick)"), (5, "5 (long)")], 4),
+        "hot": ("🌶️ Hot pits", [(False, "Off"), (True, "On: capture pits of 4 too")], False),
     }
 
     def start(self, seated, rng):
@@ -120,6 +125,9 @@ class Oware(Undo, Game):
         self.last = None   # [pit, [captured pits], seeds sown]
         self.room.add_log(f"🌰 Oware! {seated[0].name} sows first.", "big")
         self.room.begin_turn(seated[0].id)
+
+    def caps(self):
+        return CAPS[bool(self.s.get("hot"))]
 
     def seat(self, p):
         return self.seats.index(p.id) if p.id in self.seats else None
@@ -148,10 +156,11 @@ class Oware(Undo, Game):
         me = self.seat(p)
         before = self.state[1][me]
         seeds = self.state[0][pit]
-        new = apply(self.state, me, pit)
+        new = apply(self.state, me, pit, self.caps())
         took = new[1][me] - before
         sown, _ = sow(self.state[0], pit)
         captured = [j for j in side(1 - me) if sown[j] and not new[0][j]]
+        hot = [j for j in captured if sown[j] == 4]   # only possible with 🌶️ on
         self.state = new
         self.last = [pit, captured, seeds]  # the client replays the sowing from these
         num = pit + 1 if me == 0 else pit - 5
@@ -160,6 +169,8 @@ class Oware(Undo, Game):
         total = 12 * self.s.get("seeds", 4)
         if took and new[1][me] * 2 > total and before * 2 <= total:
             self.moment(f"🏁 {p.name} passes {total // 2} seeds — clinched!", "gold", "fanfare")
+        elif hot:
+            self.moment(f"🌶️ {p.name} captures {'a pit' if len(hot) == 1 else f'{len(hot)} pits'} of 4!", "gold", "capture")
         elif took >= 6:
             self.moment(f"🌾 {p.name} harvests {took} seeds!", "gold", "capture")
         nxt = 1 - me
@@ -194,12 +205,13 @@ class Oware(Undo, Game):
             "pits": self.state[0], "stores": self.state[1], "seats": self.seats,
             "me": i, "last": self.last,
             "legal": legal(self.state, i) if mine and i is not None else [],
-            "goal": half(self.state) + 1,
+            "goal": half(self.state) + 1, "caps": list(self.caps()),
             "undo": self.undo_view(p),
         }}
 
     def bot_turn(self, p):
         me = self.seat(p)
+        caps = self.caps()
         depth, budget, noise = {"easy": (1, 0.3, 25), "normal": (4, 1.0, 4), "hard": (9, 2.5, 0)}[p.bot]
-        pit = best_move(self.state, me, legal, apply, evaluate, depth, budget, self.rng, noise)
+        pit = best_move(self.state, me, legal, partial(apply, caps=caps), partial(evaluate, caps=caps), depth, budget, self.rng, noise)
         self.sow(p, pit)
