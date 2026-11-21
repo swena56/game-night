@@ -27,13 +27,15 @@ def check(name, ok, detail=""):
         fails.append(name)
 
 
-def game(n=2, bots=0, level="normal", **settings):
+def game(n=2, bots=0, level="normal", dive=None, **settings):
     r = server.Room("TEST")
     ps = [r.add_player(nm) for nm in ("Ann", "Bo", "Cy", "Di")[:n]]
     r.switch_game("skydrop")
     for _ in range(bots):
         r.add_bot(level)
     r.settings.update(settings)
+    if dive:
+        r.settings["level"] = dive
     CLOCK[0] += 1000
     r.start()
     return r, r.game, [p for p in r.players.values() if not p.spectator]
@@ -280,6 +282,47 @@ for j, (gd, gx, gz) in g.forks.items():
     off.append(math.hypot(gx - lx, gz - lz))
 check("every fork gem is out of reach from the ring line", off and min(off) > M.COIN_R + 1, f"min {min(off):.1f}")
 check("fork gems stay inside the shaft", all(abs(c[1]) <= M.SHAFT_X and abs(c[2]) <= M.SHAFT_Z for c in gems))
+
+# 🎚️ levels: smaller rings, set pieces with a flyable lane through them, speed ramp at 5
+for lvl in (1, 2, 3, 4, 5):
+    r, g, ps = game(2, dive=lvl)
+    check(f"level {lvl}: course built", g.level == lvl and g.ring_r == M.LEVELS[lvl]["ring_r"] and g.fast_view(CLOCK[0])["ringR"] == g.ring_r)
+check("level 1 has no pendulums", not any(h[3] == M.PENDULUM_KIND for h in game(2, dive=1)[1].hazards))
+for lvl in (3, 4, 5):
+    kinds = set()
+    ok = True
+    for n in range(12):
+        r, g, ps = game(2, dive=lvl)
+        kinds |= {h[3] for h in g.hazards}
+        for j in range(len(g.rings) - 1):
+            ring = g.rings[j + 1]
+            if (j + 1) % M.LEVELS[lvl]["sets"] != M.LEVELS[lvl]["sets"] - 1:
+                continue
+            near = [h for h in g.hazards if abs(h[0] - (ring[0] - 6)) < 0.01]
+            # the lane along the ring line stays clear: every non-pendulum hazard sits well off it
+            lx, lz = M._line_xz(g.rings[j], ring, ring[0] - 6)
+            for h in near:
+                if h[3] != M.PENDULUM_KIND and abs(h[1] - lx) < 2.99:
+                    ok = False
+    check(f"level {lvl}: set pieces appear, with gaps", (3 in kinds or 0 in kinds) and ok)
+r, g, ps = game(2, hazards=False, dive=3)
+check("hazards Off removes set pieces", not g.hazards)
+# a pendulum sweeps across the ring line
+g.race_started = 0.0
+x0, _ = g.hazard_position(100, 0.0, 0.0, M.PENDULUM_KIND, 0.0, 0.0)
+x1, _ = g.hazard_position(100, 0.0, 0.0, M.PENDULUM_KIND, 0.0, 0.83)
+check("pendulum swings", abs(x1 - x0) > 3, f"{x0:.1f}->{x1:.1f}")
+# after a hit you get a short speed-up
+r, g, ps = game(2)
+to_race(g)
+f = g.flyers[0]
+f.stun_until = CLOCK[0] - 0.1
+d0 = f.depth
+g.simulate(0.1, CLOCK[0])
+f2 = g.flyers[1]
+d1 = f2.depth
+g.simulate(0.1, CLOCK[0])
+check("recovering after a hit is faster", f.depth - d0 > f2.depth - d1)
 
 print("FAILED: " + ", ".join(fails) if fails else "all ok")
 sys.exit(1 if fails else 0)

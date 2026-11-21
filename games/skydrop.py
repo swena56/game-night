@@ -13,7 +13,6 @@ LENGTH = 720.0
 STEP = 1 / 30
 SEND_EVERY = 2
 COUNTDOWN = 3.0
-RING_R = 2.05
 COIN_PTS, GEM_PTS, COIN_R = 2, 10, 1.8   # 🪙 coins and 💎 gems hang between the rings: fly through them for points
 DRAFT_GAP, DRAFT_R, DRAFT_BOOST = 8.0, 2.0, 1.12   # 🌬️ tuck in close behind a rival and you ride their slipstream: a bit more speed
 STREAK_EVERY, STREAK_PTS, STREAK_SURGE = 5, 10, 1.5   # 🔥 every 5th ring in a row: bonus points and a short free speed surge
@@ -22,6 +21,18 @@ GRAZE, GRAZE_PTS = 0.8, 3   # skim a hazard within this much of its edge for a f
 PLACE_BONUS = (40, 26, 16, 10, 6, 2)   # 1st through 6th. Enough to swing a close run; a missed shaft still loses.
 FORK_OFF = 3.8   # greed gem sits this far off the ring-to-ring line, past the coin grab radius
 SHAFT_X, SHAFT_Z = 8.5, 5.5
+# 🎚️ Levels: 1 is the classic dive. Higher levels shrink the rings, crowd the dive with set pieces (corridor, pendulum,
+# mine field: each one has a flyable line through it) and, at 5, ramp the speed up as you fall.
+# ring_r, set-piece spacing in rings (0 = none), speed ramp at the bottom, stream strength, recovery window after a hit.
+LEVELS = {
+    1: {"name": "Open Sky", "ring_r": 2.05, "sets": 0, "ramp": 0.0, "streams": 1.0},
+    2: {"name": "Crosswinds", "ring_r": 1.85, "sets": 0, "ramp": 0.0, "streams": 1.5},
+    3: {"name": "Gauntlet", "ring_r": 1.85, "sets": 6, "ramp": 0.0, "streams": 1.2},
+    4: {"name": "Needle Eye", "ring_r": 1.65, "sets": 4, "ramp": 0.0, "streams": 1.4},
+    5: {"name": "Redline", "ring_r": 1.6, "sets": 3, "ramp": 0.28, "streams": 1.5},
+}
+RECOVER = 2.0   # after a hit you get a short speed-up, so one mistake does not end the run
+PENDULUM_KIND = 4
 
 
 def _unit_perp(dx, dz):
@@ -154,6 +165,7 @@ class SkyDrop(Game):
     settings_schema = {
         "course": ("Course", [("spire", "🏙️ Cloud Spire"), ("storm", "⛈️ Stormwell"), ("aurora", "🌌 Aurora Shaft")], "spire"),
         "runs": ("Runs", [(1, "1 run"), (3, "3 runs")], 1),
+        "level": ("Level", [(1, "1 · Open Sky"), (2, "2 · Crosswinds"), (3, "3 · Gauntlet"), (4, "4 · Needle Eye"), (5, "5 · Redline")], 1),
         "hazards": ("Hazards", [(True, "On"), (False, "Off")], True),
     }
 
@@ -177,6 +189,9 @@ class SkyDrop(Game):
         # Every course element is shared and immutable for the whole run.
         self.rings = []
         theme = self.s.get("course", "spire")
+        self.level = max(1, min(5, int(self.s.get("level", 1) or 1)))
+        lv = LEVELS[self.level]
+        self.ring_r = lv["ring_r"]
         depths = list(range(28, int(LENGTH), 18))
         path = _ring_path(r, theme, len(depths))   # 🧩 every run is built from random sections: slalom, spiral, zigzag, ramp...
         for j, d in enumerate(depths):
@@ -191,7 +206,7 @@ class SkyDrop(Game):
                 for k in (1, 2, 3):
                     t = k / 4
                     self.coins.append([round(d + (nd - d) * t, 2), round(rx + (nx - rx) * t, 2), round(rz + (nz - rz) * t, 2), 0])
-            if j % 3 == 1:   # 💎 a greed fork: a gem well off the ring line. Grab it and you may miss the next ring.
+            if j % 3 == 1 or (self.level >= 4 and j % 3 == 0):   # 💎 a greed fork: a gem well off the ring line. Grab it and you may miss the next ring.
                 a, b = self.rings[j], self.rings[j + 1]
                 px, pz = _unit_perp(b[1] - a[1], b[2] - a[2])
                 side = r.choice([-1, 1])
@@ -207,6 +222,8 @@ class SkyDrop(Game):
                 kind = 3 if r.random() < 0.22 else r.randrange(3)
                 self.hazards.append([d, r.uniform(-5.4, 5.4), r.uniform(-3.4, 3.4), kind, r.uniform(0, math.tau)])
                 d += round(hazard_gap * (1 - 0.4 * d / LENGTH))   # 📈 the dive gets busier the deeper you go
+            if lv["sets"]:
+                self._set_pieces(r, lv["sets"])
         self.streams = []
         for d in range(42, int(LENGTH) - 30, 54):
             self.streams.append([d, r.uniform(-5, 5), r.uniform(-3, 3), r.choice([-1, 1]), r.uniform(-1, 1)])
@@ -226,6 +243,26 @@ class SkyDrop(Game):
         self.race_started = self.go_at
         self.room.deadline = None
         self.chip_key, self.chip_at = None, 0.0
+
+    def _set_pieces(self, r, every):
+        """Corridor / pendulum / mine field laid across the line into a ring. Each leaves a flyable lane through the ring,
+        so a bot or player aiming at the ring finds the gap. Ordinary hazards near a set piece are cleared out."""
+        for j in range(every - 1, len(self.rings) - 1, every):
+            a, b = self.rings[j - 1], self.rings[j]
+            d = b[0] - 6
+            lx, lz = _line_xz(a, b, d)
+            kind = r.choice(("corridor", "pendulum", "field"))
+            self.hazards = [h for h in self.hazards if abs(h[0] - d) > 12]
+            if kind == "corridor":
+                for side in (-1, 1):
+                    self.hazards.append([d, round(lx + side * 3.2, 2), round(lz, 2), 0, r.uniform(0, math.tau)])
+            elif kind == "pendulum":
+                self.hazards.append([d, round(lx, 2), round(lz, 2), PENDULUM_KIND, r.uniform(0, math.tau)])
+            else:
+                for off in (-5.6, -3.0, 3.0, 5.6):
+                    if abs(lx + off) <= 8.0:
+                        self.hazards.append([d, round(lx + off, 2), round(lz, 2), 3, r.uniform(0, math.tau)])
+        self.hazards.sort(key=lambda h: h[0])
 
     def seat(self, p):
         return self.seats.index(p.id) if p.id in self.seats else None
@@ -262,6 +299,10 @@ class SkyDrop(Game):
             elapsed = max(0.0, at - self.race_started)
             x += math.sin(elapsed * 1.5 + phase) * 1.5
             z += math.cos(elapsed * 1.1 + phase) * 1.1
+        if kind == PENDULUM_KIND:   # 🕰️ swings right across the ring line: time your pass
+            elapsed = max(0.0, at - self.race_started)
+            x += math.sin(elapsed * 1.9 + phase) * 4.4
+            z += math.cos(elapsed * 1.3 + phase) * 0.6
         return x, z
 
     def frame(self, now):
@@ -332,7 +373,7 @@ class SkyDrop(Game):
                 f.vx += (target_vx - f.vx) * response
                 f.vz += (target_vz - f.vz) * response
                 ax = az = 0.0
-                current_scale = 1.45 if self.s.get("course") == "storm" else 1.0
+                current_scale = (1.45 if self.s.get("course") == "storm" else 1.0) * LEVELS[self.level]["streams"]
                 for d, x, z, dx, dz in self.streams:
                     dd = abs(f.depth - d)
                     dist = math.hypot(f.x - x, f.z - z)
@@ -342,11 +383,13 @@ class SkyDrop(Game):
                         az += dz * 8 * k
                 f.vx = max(-9, min(9, (f.vx + ax * dt) * (1 - 1.2 * dt)))
                 f.vz = max(-7.5, min(7.5, (f.vz + az * dt) * (1 - 1.35 * dt)))
-                speed = 12.5 + (4.0 if now < f.boost_until else 0) + (3.0 if now < f.surge_until else 0)
+                speed = 12.5 * (1 + LEVELS[self.level]["ramp"] * f.depth / LENGTH) + (4.0 if now < f.boost_until else 0) + (3.0 if now < f.surge_until else 0)
                 tow = any(0 < o.depth - f.depth < DRAFT_GAP and math.hypot(o.x - f.x, o.z - f.z) < DRAFT_R
                           for j, o in enumerate(self.flyers) if o is not f and self.active(j) and not o.done_at)
                 if tow:
                     speed *= DRAFT_BOOST
+                if now < f.stun_until + RECOVER:   # recovering from a hit: a little extra speed
+                    speed *= 1.12
                 if tow != f.drafting:
                     f.drafting = tow
                     if tow:
@@ -366,11 +409,11 @@ class SkyDrop(Game):
                     t = (d - prev_depth) / max(1e-9, f.depth - prev_depth)
                     cross_x = prev_x + (f.x - prev_x) * t
                     cross_z = prev_z + (f.z - prev_z) * t
-                    if math.hypot(cross_x - x, cross_z - z) <= RING_R:
+                    if math.hypot(cross_x - x, cross_z - z) <= self.ring_r:
                         f.combo += 1
                         f.rings += 1
                         pts = (10 + min(10, (f.combo - 1) * 2)) * mult
-                        if math.hypot(cross_x - x, cross_z - z) <= RING_R * 0.3:   # 🎯 dead centre pays half again
+                        if math.hypot(cross_x - x, cross_z - z) <= self.ring_r * 0.3:   # 🎯 dead centre pays half again
                             pts *= 1.5
                             self.event(now, "bullseye", i)
                         f.score += round(pts)
@@ -399,7 +442,7 @@ class SkyDrop(Game):
                 hit_x = prev_x + (f.x - prev_x) * t
                 hit_z = prev_z + (f.z - prev_z) * t
                 hazard_x, hazard_z = self.hazard_position(d, x, z, kind, phase, now - dt + t * dt)
-                hz_r = 1.55 if kind == 0 else 1.15 if kind == 3 else 1.25
+                hz_r = 1.55 if kind == 0 else 1.15 if kind == 3 else 1.3 if kind == PENDULUM_KIND else 1.25
                 hz_d = math.hypot(hit_x - hazard_x, hit_z - hazard_z)
                 if crossed and now >= f.stun_until and hz_r <= hz_d < hz_r + GRAZE:   # 😮‍💨 a close call pays
                     f.score += GRAZE_PTS
@@ -499,7 +542,7 @@ class SkyDrop(Game):
 
     def fast_view(self, now, full=False):
         return {"stage": self.stage, "run": self.run, "runs": self.runs, "go": self.go_at,
-                "time": now, "raceStarted": self.race_started, "length": LENGTH, "seed": self.seed, "course": self.s.get("course", "spire"),
+                "time": now, "raceStarted": self.race_started, "length": LENGTH, "seed": self.seed, "course": self.s.get("course", "spire"), "level": self.level, "ringR": self.ring_r,
                 "rings": self.rings, "hazards": self.hazards, "streams": self.streams, **({"coins": self.coins} if full else {}),
                 "finished": self.finished, "events": self.events,
                 "flyers": [[f.depth, f.x, f.z, f.vx, f.vz, f.score, f.rings, f.combo,
