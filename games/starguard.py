@@ -28,6 +28,8 @@ BOTTOM_LINE = 1.36           # an alien that gets this low ends the game
 POINTS = {"grunt": 10, "tough": 20, "diver": 30}
 UFO_Y, UFO_SPEED, UFO_POINTS = 0.065, 0.24, 100   # 🛸 a bonus saucer crosses the top now and then: shoot it for points and a power-up
 UFO_EVERY = (14.0, 24.0)
+GRAZE_R, GRAZE_PTS, GRAZE_CALL = 0.075, 3, 10   # 🌀 an enemy bullet slipping past a ship (not hitting) scores; a callout every 10
+SUPPLY_SECS = 5.0                                # 🎁 a cleared wave arms every live ship with rapid fire or spread for this long
 BOT = {  # reaction interval (s), dodge radius, uses bombs
     "easy": (0.22, 0.05, False),
     "normal": (0.12, 0.08, False),
@@ -56,6 +58,7 @@ class Ship:
         self.bombs = 1
         self.kills = 0
         self.deaths = 0
+        self.grazes = 0
         self.bot_at = 0.0
         self.bot_x = x
         self.combo = 0
@@ -354,6 +357,13 @@ class StarGuard(Game):
             if s.invuln > 0:
                 continue
             for b in self.ebul:
+                if len(b) == 4 and SHIP_R <= abs(b[0] - s.x) < GRAZE_R and abs(b[1] - SHIP_Y) < 0.04:
+                    b.append(True)  # one graze per bullet
+                    s.score += GRAZE_PTS
+                    s.grazes += 1
+                    if s.grazes % GRAZE_CALL == 0:
+                        self.moment(f"🌀 {self.name_of(i)}: close shave x{s.grazes}", "good", "pop")
+            for b in self.ebul:
                 if abs(b[0] - s.x) < SHIP_R and abs(b[1] - SHIP_Y) < 0.04:
                     self.ebul.remove(b)
                     if self.ship_hit(i, now):
@@ -454,7 +464,10 @@ class StarGuard(Game):
     def boss_step(self, dt, now):
         b = self.boss
         b["phase"] += dt
-        b["x"] += b["dir"] * (0.25 + 0.15 * (1 - b["hp"] / b["max"])) * dt
+        if b["hp"] <= b["max"] / 2 and not b.get("rage"):
+            b["rage"] = True  # 😡 the second half of the fight: faster, and everyone is told
+            self.moment("😡 The boss is enraged!", "bad", "alarm")
+        b["x"] += b["dir"] * (0.25 + 0.15 * (1 - b["hp"] / b["max"])) * (1.25 if b.get("rage") else 1.0) * dt
         if b["x"] > W - 0.16 or b["x"] < 0.16:
             b["dir"] = -b["dir"]
         b["y"] = 0.28 + 0.03 * math.sin(b["phase"] * 1.3)
@@ -481,6 +494,11 @@ class StarGuard(Game):
             return self.win()
         self.moment(f"✅ Wave {w} cleared!", "good", "fanfare")
         self.next_wave(now)
+        kind = self.rng.choice(("rapid", "spread"))
+        for s in self.ships:
+            if s.alive:
+                setattr(s, kind, max(getattr(s, kind), SUPPLY_SECS))
+        self.room.add_log(f"🎁 Supply drop: {'rapid fire' if kind == 'rapid' else 'spread shot'} for everyone.", "power")
         return True
 
     def win(self):
@@ -583,7 +601,7 @@ class StarGuard(Game):
             "eb": [[r(b[0]), r(b[1])] for b in self.ebul],
             "pu": [[r(u[0]), r(u[1]), u[2]] for u in self.pups],
             "uf": r(self.ufo[0]) if getattr(self, "ufo", None) else None,
-            "bo": [r(self.boss["x"]), r(self.boss["y"]), round(self.boss["hp"]), self.boss["max"]] if self.boss else None,
+            "bo": [r(self.boss["x"]), r(self.boss["y"]), round(self.boss["hp"]), self.boss["max"], int(bool(self.boss.get("rage")))] if self.boss else None,
             "lv": self.lives, "wv": self.wave, "st": self.stage, "intro": round(max(0.0, self.stage_until - t), 1) if self.stage == "intro" else 0,
         }
 

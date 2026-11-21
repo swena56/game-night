@@ -141,8 +141,8 @@ UI.starguard = (() => {
     if (src.bo) {
       bossShown = bossShown ? [bossShown[0] + (src.bo[0] - bossShown[0]) * 0.3, bossShown[1] + (src.bo[1] - bossShown[1]) * 0.3] : [src.bo[0], src.bo[1]];
       const bx = X(bossShown[0]), by = Y(bossShown[1]), w = u * 0.14;
-      g2.save(); g2.translate(bx, by); g2.shadowColor = '#ef476f'; g2.shadowBlur = u * 0.06;
-      g2.fillStyle = '#8e3b9b'; g2.beginPath(); g2.ellipse(0, 0, w, w * 0.55, 0, Math.PI, 0); g2.lineTo(w, w * 0.4); g2.lineTo(w * 0.5, w * 0.2); g2.lineTo(0, w * 0.45); g2.lineTo(-w * 0.5, w * 0.2); g2.lineTo(-w, w * 0.4); g2.closePath(); g2.fill();
+      g2.save(); g2.translate(bx, by); g2.shadowColor = '#ef476f'; g2.shadowBlur = u * (src.bo[4] ? 0.1 : 0.06);
+      g2.fillStyle = src.bo[4] ? '#d1345b' : '#8e3b9b'; g2.beginPath(); g2.ellipse(0, 0, w, w * 0.55, 0, Math.PI, 0); g2.lineTo(w, w * 0.4); g2.lineTo(w * 0.5, w * 0.2); g2.lineTo(0, w * 0.45); g2.lineTo(-w * 0.5, w * 0.2); g2.lineTo(-w, w * 0.4); g2.closePath(); g2.fill();
       g2.fillStyle = '#ffd166'; g2.beginPath(); g2.arc(-w * 0.35, -w * 0.1, w * 0.12, 0, 7); g2.arc(w * 0.35, -w * 0.1, w * 0.12, 0, 7); g2.arc(0, -w * 0.25, w * 0.12, 0, 7); g2.fill(); g2.restore();
       g2.fillStyle = '#0006'; g2.fillRect(canvas.width * 0.15, u * 0.02, canvas.width * 0.7, u * 0.018);
       g2.fillStyle = '#ef476f'; g2.fillRect(canvas.width * 0.15, u * 0.02, canvas.width * 0.7 * Math.max(0, src.bo[2] / src.bo[3]), u * 0.018);
