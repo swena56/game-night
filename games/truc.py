@@ -26,10 +26,12 @@ class Truc(CardGame):
         "Before you play, call \"Truc!\": your rival accepts (the stake goes up by one) or folds and pays the old stake.",
         "They can raise you back. A tied trick counts for nobody.",
         "Truc: first to 12. Put: a call means the hand decides the game; first to 5.",
+        "An option: a sweep (winning the first two tricks outright) scores one extra point in Truc.",
     ]
     min_players, max_players = 2, 2
     badges = {**CardGame.badges, "bluff": ("🃏", "Bluffer", "Win a hand by a fold while holding no 3, 2 or ace")}
-    settings_schema = {"rules": ("Rules", [("truc", "Truc (to 12)"), ("put", "Put (to 5)")], "truc")}
+    settings_schema = {"rules": ("Rules", [("truc", "Truc (to 12)"), ("put", "Put (to 5)")], "truc"),
+                       "sweep": ("🧹 Sweep", [(False, "Off"), (True, "On: +1")], False)}
 
     def start(self, seated, rng):
         self.seat_up(seated, rng)
@@ -141,9 +143,18 @@ class Truc(CardGame):
             return self.hand_over(0 if self.won[0] > self.won[1] else 1, "more tricks")
         self.to(self.leader)
 
+    def swept(self, w):
+        """True when w took tricks one and two outright (a sweep, Truc only, setting on)."""
+        return (self.s.get("sweep", False) and not self.put() and len(self.history) == 2
+                and all(h["winner"] == w for h in self.history))
+
     def hand_over(self, w, why):
-        self.score[w] += self.stake
-        self.result = f"🏅 {self.nm(w)} +{self.stake} ({why})"
+        extra = 0
+        if why == "two tricks" and self.swept(w):
+            extra = 1
+            self.moment(f"🧹 {self.nm(w)} sweeps: +1!", "good", "cheer")
+        self.score[w] += self.stake + extra
+        self.result = f"🏅 {self.nm(w)} +{self.stake}" + (" +1 sweep" if extra else "") + f" ({why})"
         self.room.add_log(self.result, "big")
         self.next_hand()
 
