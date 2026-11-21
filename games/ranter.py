@@ -101,9 +101,9 @@ class Ranter(CardGame):
         losers = [k for k in alive if low(self.card[k]) == lo]
         doom = bool(self.s.get("doom")) and lo == 0
         for k in losers:
-            self.lives[k] -= 2 if doom else 1
-        self.reveal = {"cards": {k: self.card[k] for k in alive}, "losers": losers}
-        self.room.add_log("🂠 " + " · ".join(f"{self.nm(k)} {pretty(self.card[k])}" for k in alive), "big")
+            self.lives[k] = max(0, self.lives[k] - (2 if doom else 1))
+        self.reveal = {"cards": {k: self.card[k] for k in alive}, "losers": losers, "doom": doom}
+        self.room.add_log("🂠 " + " · ".join(f"{self.nm(k)} {pretty(self.card[k])}" for k in alive) + (" (Ace of Doom: -2)" if doom else ""), "big")
         who = " & ".join(self.nm(k) for k in losers)
         if doom:
             self.moment(f"☠️ Ace of Doom! {who} lose{'s' if len(losers) == 1 else ''} two lives", "bad", "groan")
@@ -171,7 +171,7 @@ class Ranter(CardGame):
                          + (["💔"] if rv and k in rv["losers"] else []), "show": show, "out": self.is_out(k)})
         t = {"info": info, "hand": [self.card[i]] if i is not None and self.card[i] else [],
              "piles": [{"cards": ["??"], "count": len(self.deck), "label": "Deck"}],
-             "banner": ("Lowest: " + " & ".join(self.nm(k) for k in rv["losers"])) if rv else None,
+             "banner": ("Lowest: " + " & ".join(self.nm(k) for k in rv["losers"]) + (" (Ace of Doom: -2)" if rv.get("doom") else "")) if rv else None,
              "scores": {"title": "Lives", "rows": [{"seat": k, "value": "❤️" * max(0, self.lives[k]) or "💀"} for k in sorted(range(self.n), key=lambda k: -self.lives[k])],
                         "hint": "Ace is low, king is high. Kings block swaps."}}
         if i is not None and self.stage == "swap" and self.room.turn == p.id:
