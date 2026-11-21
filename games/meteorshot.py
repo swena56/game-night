@@ -47,6 +47,7 @@ class MeteorShot(Game):
         "The ring and wind change every round. Score 80+ to build a streak: each follow-up streak hit adds 15 points (up to +45).",
         "Once per game, fire a Nova shot for 1.5× points. Save it for your best aim—or use it to catch the leader.",
         "🏁 The final round is the Finale: every shot scores double, so nobody is out of it until the last comet.",
+        "⚔️ Tied at the top? The tied players get a sudden-death shoot-off: one shot each at a fresh ring, best shot wins (up to three tries).",
         "Gravity shifts between rounds, changing the comet's arc. The current gravity is shown in the HUD and shot preview.",
         "🌀 Some rounds have a twist: a 🌪️ gale doubles the wind, a 🍀 lucky ring pays ×1.5.",
         "The best-scoring shot each round earns a 25-point Round MVP bonus. Tied best shots all earn it.",
@@ -113,6 +114,8 @@ class MeteorShot(Game):
         impact_target = self.target_at(elapsed + flight)
         x, y = fly(angle, power, aim, self.target, self.wind, self.gravity)
         pts = points_for(x, y, self.target, impact_target[1], impact_target[0])
+        if getattr(self, "sd", None):
+            return self.shoot_off_shot(p, angle, power, aim, x, y, pts, impact_target, elapsed)
         finale = self.round == self.shots - 1     # 🏁 the last round counts double: a trailing player can still catch up
         lucky = getattr(self, "twist", None) == "lucky"
         scored = int(pts * (1.5 if nova else 1.0) * (2 if finale else 1) * (1.5 if lucky else 1))
@@ -174,15 +177,72 @@ class MeteorShot(Game):
     def gravity_text(self):
         return {3.4: "🌕 low-G", 4.9: "🪐 standard-G", 6.4: "🪨 heavy-G"}.get(self.gravity, "🪐 standard-G")
 
+    SHOOT_OFFS = 3   # ⚔️ a tie at the top is settled by up to this many one-shot shoot-offs between the tied players
+
     def end(self):
         scores = self.final_scores()
         top = max(scores.values())
         winners = [self.room.players[i] for i, s in scores.items() if s == top]
         if len(winners) == 1:
             return self.room.finish(winners[0], f"🏆 {winners[0].name} wins Meteor Shot with {top} points!")
+        if getattr(self, "shootoffs", 0) < self.SHOOT_OFFS:
+            return self.start_shoot_off(winners, top)
         return self.room.finish(None, f"🤝 Meteor Shot tied at {top} points!")
 
+    def start_shoot_off(self, tied, top):
+        """⚔️ Sudden death: each tied player takes one more shot at a fresh ring; the best shot wins."""
+        self.shootoffs = getattr(self, "shootoffs", 0) + 1
+        self.sd = [p.id for p in tied]
+        self.sd_scores = {}
+        self.round += 1
+        self.started_at = time.time()
+        self.new_target()
+        self.twist = None
+        self.last = None
+        self.moment(f"⚔️ SHOOT-OFF! {' vs '.join(p.name for p in tied)} tied on {top}: one shot each.", "gold", "alarm")
+        self.room.begin_turn(self.sd[0])
+
+    def shoot_off_shot(self, p, angle, power, aim, x, y, pts, impact_target, elapsed):
+        self.sd_scores[p.id] = pts
+        self.fired_total = getattr(self, "fired_total", 0) + 1
+        self.last = {"pid": p.id, "angle": angle, "power": power, "aim": aim, "landing": [round(x, 3), round(y, 3)],
+                     "points": pts, "base": pts, "nova": False, "finale": False, "bonus": 0, "streak": 0,
+                     "target": list(self.target), "targetImpact": [round(impact_target[0], 3), round(impact_target[1], 3)],
+                     "elapsed": elapsed, "wind": self.wind, "gravity": self.gravity, "n": self.fired_total}
+        self.room.add_log(f"⚔️ {p.name} shoots off: {pts}.", "info")
+        return self.sd_next()
+
+    def sd_next(self):
+        if len(self.sd_scores) < len(self.sd):
+            return self.room.advance()
+        best = max(self.sd_scores.values())
+        top = [pid for pid, v in self.sd_scores.items() if v == best]
+        if len(top) == 1:
+            w = self.room.players[top[0]]
+            self.sd = None
+            return self.room.finish(w, f"🏆 {w.name} wins the shoot-off ({best} to {max([v for k, v in self.sd_scores.items() if k != top[0]] or [0])}) and Meteor Shot!")
+        tied = [self.room.players[i] for i in top]
+        self.sd = None
+        self.moment("⚔️ Still level!", "gold", None)
+        return self.end_tied(tied)
+
+    def end_tied(self, tied):
+        if self.shootoffs < self.SHOOT_OFFS:
+            return self.start_shoot_off(tied, max(self.final_scores().values()))
+        self.sd = None
+        return self.room.finish(None, f"🤝 Meteor Shot tied at {max(self.final_scores().values())} points, even after {self.SHOOT_OFFS} shoot-offs!")
+
+    def on_timeout(self):
+        r = self.room
+        if getattr(self, "sd", None):   # ⚔️ a shoot-off shot that never came scores nothing
+            self.sd_scores[r.turn] = 0
+            r.add_log(f"⏰ {r.players[r.turn].name} ran out of time in the shoot-off!", "power")
+            return self.sd_next()
+        super().on_timeout()
+
     def skip_turn(self, p):
+        if getattr(self, "sd", None):
+            return p.id not in self.sd or p.id in self.sd_scores
         return p.id not in self.seats or getattr(p.g, "shots", 0) >= self.shots
 
     def view(self, p):

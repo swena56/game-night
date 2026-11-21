@@ -67,14 +67,14 @@ check("all twists turn up", {None, "gale", "lucky"} <= seen, seen)
 # length: 3 shots each → 6 launches for 2 players
 r, g, ps = game(2)
 n = 0
-while r.phase == "playing" and n < 40:
+while r.phase == "playing" and not getattr(g, "sd", None) and n < 40:   # a tie goes to a shoot-off after the regular shots
     fire(r, g)
     n += 1
 check("2 players × 3 shots ends after 6 launches", n == 6, f"{n}")
 check("every player fired 3", all(p.g.shots == 3 for p in ps))
 r, g, ps = game(3, shots=5)
 n = 0
-while r.phase == "playing" and n < 80:
+while r.phase == "playing" and not getattr(g, "sd", None) and n < 80:
     fire(r, g)
     n += 1
 check("3 players × 5 shots ends after 15 launches", n == 15, f"{n}")
