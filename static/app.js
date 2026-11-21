@@ -258,6 +258,9 @@ async function reportDialog(kind = 'bug', draft = '') {
       kind: chosen, text: text.value, name: S?.me.name || $('#name').value,
       context: include.checked ? reportContext() : {},
     });
+    const gameId = S?.gameId;  // remembered so the picker can filter by games you've reported on
+    if (gameId) store('feedbackGames', [...new Set([...(load('feedbackGames') || []), gameId])]);
+    if (S?.phase === 'lobby' && !$('#lobby').hidden) renderLobby();
     toast(`Thanks! ${chosen === 'bug' ? 'Bug report' : 'Suggestion'} #${res.id} sent.`);
   } catch (e) {
     toast(e.message);
@@ -621,6 +624,8 @@ window.addEventListener('resize', () => { if (!$('#lobby').hidden) fitPicker(); 
 $('#pickerFind').oninput = () => S && renderLobby();
 $('#pickerFits').onclick = () => { store('pickerFits', !load('pickerFits') || null); renderLobby(); };
 const pickerCards = $('#pickerCards');
+const pickerFeedback = $('#pickerFeedback');
+if (pickerFeedback) pickerFeedback.onclick = () => { cycleFeedback(); renderLobby(); };
 if (pickerCards) pickerCards.onclick = () => { store('pickerKind', load('pickerKind') === 'cards' ? null : 'cards'); renderLobby(); };
 $('#gamePicker').addEventListener('keydown', (e) => {
   const dir = ARROWS[e.key], cur = document.activeElement;
