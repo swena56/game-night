@@ -16,6 +16,8 @@ SKULL, SWORD, SWORD2, SMASH, SHIELD, HEART = 1, 2, 3, 4, 5, 6
 FACES = {SKULL: "💀", SWORD: "⚔️", SWORD2: "⚔️", SMASH: "💥", SHIELD: "🛡️", HEART: "❤️"}
 DICE, ROLLS = 5, 3
 BACKFIRE = 2
+LAST_STAND = 3   # 🩸 at this health or less you get a fourth roll: a comeback chance
+PARRY = 1        # 🛡️ a shield that soaks a whole hit bites back: the attacker loses this much health
 
 
 KINDS = (SKULL, SWORD, SMASH, SHIELD, HEART)
@@ -92,6 +94,7 @@ def preview(dice, hold, guards, target, missing):
 
 class Brawl(Game):
     id = "brawl"
+    max_rolls = ROLLS   # a turn's rolls (a last stand adds one); a class default so older saves still load
     category = "dice"
     howto = [
         "Roll five combat dice up to three times; tap dice to hold them between rolls.",
@@ -99,6 +102,7 @@ class Brawl(Game):
         "Stop whenever you like: ⚔️ hits 1 and 💥 hits 2 on the rival you pick. Three or more 💥 hit everyone!",
         "🛡️ guards 1 damage each until your next turn; ❤️ heals 1 each (up to your starting health).",
         "Before you bank a roll, the ⚔️ preview shows what fighting now does to your target, and what rerolling the dice you haven't held is likely to do — with the chance of a 💀 backfire and of a 🌋 quake.",
+        "🩸 Down to 3 ❤️ or less? You get a fourth roll: a comeback chance. 🛡️ A shield that soaks a whole hit parries it: the attacker loses 1 ❤️.",
         "Last brawler standing wins.",
     ]
     name = "Dice Brawl"
@@ -127,9 +131,13 @@ class Brawl(Game):
         self.dice = []
         self.held = [False] * DICE
         self.rolls = 0
+        self.max_rolls = ROLLS
         p = self.room.players.get(pid)
         if p:
             p.g.guard = 0   # your shields last until your own next turn
+            if 0 < p.g.hp <= LAST_STAND and len(self.alive()) > 1:
+                self.max_rolls = ROLLS + 1
+                self.moment(f"🩸 {p.name}: last stand! A fourth roll.", "gold", "good")
         self.room.begin_turn(pid)
 
     def alive(self):
@@ -156,7 +164,7 @@ class Brawl(Game):
         raise GameError("Unknown action.")
 
     def do_roll(self, p, hold=()):
-        if self.rolls >= ROLLS:
+        if self.rolls >= self.max_rolls:
             raise GameError("No rolls left — fight!")
         if self.dice:
             self.held = [i in hold or self.dice[i] == SKULL for i in range(DICE)]
@@ -202,6 +210,9 @@ class Brawl(Game):
             q.g.hp = max(0, q.g.hp - dmg)
             p.g.dealt += dmg
             hits[q.id] = [dmg, blocked]
+            if blocked and not dmg:   # 🛡️ parry: the whole hit was soaked, and it stings
+                p.g.hp = max(0, p.g.hp - PARRY)
+                self.moment(f"🛡️ {q.name} parries {p.name}! −{PARRY} ❤️", "good", "tag")
         healed = min(t["heal"], self.s["hp"] - p.g.hp)
         p.g.hp += healed
         p.g.guard = t["shield"]
@@ -222,6 +233,8 @@ class Brawl(Game):
         for q in hit:
             if q.g.hp <= 0:
                 self.knock_out(q, p)
+        if p.g.hp <= 0 and not p.eliminated:   # a parry can finish the attacker
+            self.knock_out(p, None)
         if r.phase == "playing":
             self.next_turn()
 
@@ -229,6 +242,7 @@ class Brawl(Game):
         r = self.room
         q.eliminated = True
         r.add_log(f"☠️ {q.name} is knocked out{f' by {by.name}' if by else ''}!", "power")
+        self.moment(f"☠️ {q.name} is out!" + (f" ({by.name} lands the blow)" if by else ""), "bad", "boom")
         live = self.alive()
         if len(live) == 1:
             r.finish(live[0], f"🏆 {live[0].name} is the last brawler standing!")
@@ -310,7 +324,7 @@ class Brawl(Game):
             return
         free = [i for i in range(DICE) if self.dice[i] != SKULL]
         hold = None
-        if self.rolls < ROLLS and free:
+        if self.rolls < self.max_rolls and free:
             if level == "easy":
                 hold = [i for i in free if self.dice[i] in (SWORD, SWORD2, SMASH) or self.rng.random() < 0.3]
                 if len(hold) == len(free):
@@ -355,7 +369,7 @@ class Brawl(Game):
             return sum(pr * value(tuple(a + b for a, b in zip(h, o)), left - 1) for o, pr in outcomes(k))
 
         c = counts(self.dice)
-        left = ROLLS - self.rolls
+        left = self.max_rolls - self.rolls
         best, pick = stop(c) + 0.05, None
         for h in holds(c):
             v = ev(h, left)
@@ -386,7 +400,7 @@ class Brawl(Game):
     def view(self, p):
         r = self.room
         return {"brawl": {
-            "seats": self.seats, "dice": self.dice, "held": self.held, "rolls": self.rolls, "maxRolls": ROLLS,
+            "seats": self.seats, "dice": self.dice, "held": self.held, "rolls": self.rolls, "maxRolls": getattr(self, "max_rolls", ROLLS),
             "tally": tally(self.dice) if self.dice else None, "maxHp": self.s["hp"], "last": self.last, "n": self.n,
             "hp": {i: r.players[i].g.hp for i in self.seats if i in r.players},
             "guard": {i: r.players[i].g.guard for i in self.seats if i in r.players},
