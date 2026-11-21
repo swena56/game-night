@@ -653,6 +653,8 @@ class Room:
 
     def host_add_bot(self, p, level):
         self.require_host(p, "lobby")
+        if self.settings["game"] == "switchyard":
+            raise GameError("Switchyard Scramble is for human players.")
         self.add_bot(level)
 
     # Room-level actions by type; anything else is a move in the current game.

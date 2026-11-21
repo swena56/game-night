@@ -165,7 +165,7 @@ UI.switchyard = (() => {
       button.firstChild.textContent = label;
       place(button, node);
       button.onclick = () => {
-        const { switches, canSwitch } = state.switchyard;
+        const { switches, canSwitch, wave, beat } = state.switchyard;
         if (!canSwitch || pending.has(node)) return;
         const position = 1 - switches[node];
         const request = { position };
@@ -176,7 +176,7 @@ UI.switchyard = (() => {
           pending.delete(node);
           syncPending(button);
         };
-        context.quiet(context.act('set_switch', { switch: node, position }).then(() => {
+        context.quiet(context.act('set_switch', { switch: node, position, gameNo: state.gameNo, wave, beat }).then(() => {
           // SSE confirmation can arrive after the HTTP response.
           setTimeout(clear, 350);
         }, (error) => {
@@ -210,7 +210,7 @@ UI.switchyard = (() => {
       button.title = `Call ${name}`;
       button.onclick = () => {
         if (!state.switchyard.canCall || !preview.train) return;
-        context.quiet(context.act('call_route', { train: preview.train.id, branch }));
+        context.quiet(context.act('call_route', { train: preview.train.id, branch, gameNo: state.gameNo }));
       };
       controls.append(button);
       return { button, branch, name };

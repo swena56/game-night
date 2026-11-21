@@ -26,8 +26,12 @@ class SwitchyardRules(unittest.TestCase):
         self.now.return_value = game.next_beat
         return game.frame(self.now.return_value)
 
-    def switch(self, node, position, player=None):
-        self.room.act(player or self.player, {"type": "set_switch", "switch": node, "position": position})
+    def switch(self, node, position, player=None, **overrides):
+        game = self.room.game
+        action = {"type": "set_switch", "switch": node, "position": position,
+                  "gameNo": self.room.game_no, "wave": game.wave + 1, "beat": game.beat}
+        self.room.no_bump = False  # The HTTP action handler resets this between requests.
+        self.room.act(player or self.player, {**action, **overrides})
 
     def test_wave_timing_routes_and_team_rematch(self):
         partner = self.room.add_player("Signalman")
@@ -93,6 +97,10 @@ class SwitchyardRules(unittest.TestCase):
         self.now.return_value = game.next_beat
         self.switch("main", 0)
         self.assertEqual(game.trains[0]["route"], "east")
+        self.assertEqual(game.switches["main"], 1)
+        self.assertFalse(self.room.no_bump)
+        self.switch("main", 0, beat=1)
+        self.assertEqual(game.switches["main"], 1)
         self.switch("east", 1)
         self.tick()
         self.switch("east", 0)
@@ -123,7 +131,7 @@ class SwitchyardRules(unittest.TestCase):
         self.room.start()
         game = self.room.game
         watcher = self.room.add_player("Watcher")
-        call = {"type": "call_route", "train": 0, "branch": "east"}
+        call = {"type": "call_route", "train": 0, "branch": "east", "gameNo": self.room.game_no}
         self.room.act(partner, call)
         view = self.room.view(watcher)["switchyard"]
         self.assertEqual(view["upcoming"][0]["call"], {"name": partner.name, "branch": "east"})
@@ -137,6 +145,34 @@ class SwitchyardRules(unittest.TestCase):
         self.room.act(partner, call)
         self.assertEqual(game.route_calls, {})
         self.assertEqual(game.trains[0]["node"], "entry")
+
+    def test_old_match_requests_and_missing_context(self):
+        partner = self.room.add_player("Signalman")
+        self.room.start()
+        old = self.room.game_no
+        self.room.game.finish(True)
+        self.room.act(self.player, {"type": "rematch"})
+        self.switch("main", 1, gameNo=old)
+        self.room.act(partner, {"type": "call_route", "train": 0, "branch": "east", "gameNo": old})
+        self.assertEqual(self.room.game.switches["main"], 0)
+        self.assertEqual(self.room.game.route_calls, {})
+        with self.assertRaisesRegex(GameError, "Refresh"):
+            self.switch("main", 1, beat=None)
+
+    def test_start_requires_humans(self):
+        self.room.switch_game("unmask")
+        self.room.add_bot("hard")
+        self.room.switch_game("switchyard")
+        self.assertFalse(self.room.fits("switchyard"))
+        with self.assertRaisesRegex(GameError, "Remove computer players"):
+            self.room.start()
+        with self.assertRaisesRegex(GameError, "human players"):
+            self.room.host_add_bot(self.player, "normal")
+        bot = next(p for p in self.room.seated() if p.bot)
+        self.room.remove_bot(self.player, bot.id)
+        self.assertTrue(self.room.fits("switchyard"))
+        self.room.start()
+        self.assertEqual(self.room.game.crew, {self.player.id})
 
     def test_miss_identifies_first_incorrect_junction(self):
         for target, miss_at in ((1, "west"), (2, "main")):

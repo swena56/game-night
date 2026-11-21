@@ -316,17 +316,21 @@ function renderLobby() {
   $('#defaultsBtn').hidden = !host || info.settings.every((f) => isDefault(f));
   // table size: a Start that says what's missing, and one tap to seat the right number of bots
   const rec = recSeats(info), short = seated < info.min, over = seated > info.max;
+  const humanOnly = S.gameId === "switchyard";
+  const hasBots = humanOnly && S.players.some((p) => !p.spectator && p.bot);
   const fill = $('#fillBtn');
-  fill.hidden = !host || seated >= rec || seated >= 6;
+  fill.hidden = !host || humanOnly || seated >= rec || seated >= 6;
   fill.textContent = `🤖 Fill to ${rec} players`;
   fill.title = `Add ${rec - seated} computer player${rec - seated > 1 ? 's' : ''} (${$('#botLevel').selectedOptions[0]?.textContent || 'Normal'})`;
   fill.classList.toggle('nudge', short);
-  $('#startBtn').hidden = !host; $('#waitHost').hidden = host; $('#botRow').hidden = !host;
+  $('#startBtn').hidden = !host; $('#waitHost').hidden = host; $('#botRow').hidden = !host || humanOnly;
   const chosenInfo = gameInfo(S.gameId);
   $('#startBtn').textContent = !chosenInfo ? 'Start game'
+    : hasBots ? "Remove computer players to start"
     : short ? `▶ Start — needs ${info.min === info.max ? info.min : info.min + '+'} players`
     : over ? `▶ Start — ${info.max} players at most` : `▶ Start ${chosenInfo.icon} ${chosenInfo.name}`;
-  $('#startBtn').classList.toggle('blocked', short || over);
+  $('#startBtn').classList.toggle('blocked', short || over || hasBots);
+  $('#startBtn').disabled = hasBots;
   $('#lobbyReplayBtn').hidden = !S.hasReplay;
   renderScores(host);
 }

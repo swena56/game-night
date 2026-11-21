@@ -19,9 +19,16 @@ function runStats(hist) {
   const last = hist?.at(-1);
   if (!last) return null;
   const wins = new Map();
+  const cooperative = last.game === "switchyard";
+  let crewWins = 0, shutdowns = 0;
   let games = 0, draws = 0, streak = 0, streakId = undefined;
   for (let i = hist.length - 1; i >= 0 && hist[i].game === last.game; i--) {
     games++;
+    if (cooperative) {
+      if (hist[i].teamWinnerIds?.length) crewWins++;
+      else shutdowns++;
+      continue;
+    }
     const winners = hist[i].teamWinnerIds === undefined
       ? hist[i].players.filter((x) => x.won).slice(0, 1) : hist[i].players.filter((x) => x.won);
     if (!winners.length) draws++;
@@ -34,7 +41,7 @@ function runStats(hist) {
     if (streakId === undefined) { streakId = wid; streak = wid ? 1 : 0; } else if (streak && wid === streakId && streak === games - 1) streak++;
   }
   const rows = [...wins.values()].sort((a, b) => b.n - a.n);
-  return { games, name: last.name, icon: last.icon, rows, draws,
+  return { games, name: last.name, icon: last.icon, rows, draws, cooperative, crewWins, shutdowns,
     streak: streak >= 2 ? { name: rows.find((r) => r.id === streakId)?.name, n: streak } : null };
 }
 function runLine() {
@@ -42,6 +49,10 @@ function runLine() {
   if (!r || r.games < 2) return null;
   const line = el('div', 'over-note over-run');
   line.append(el('span', '', `${r.icon} This run (${r.games} games): `));
+  if (r.cooperative) {
+    line.append(el("span", "", `${r.crewWins} crew ${r.crewWins === 1 ? "win" : "wins"} · ${r.shutdowns} yard ${r.shutdowns === 1 ? "shutdown" : "shutdowns"}`));
+    return line;
+  }
   r.rows.forEach((x, k) => {
     if (k) line.append(el('span', '', ' · '));
     const nm = el('b', '', `${x.name} ${x.n}`); nm.style.color = player(x.id)?.color || x.color || ''; line.append(nm);

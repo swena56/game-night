@@ -34,6 +34,11 @@ class Switchyard(Game):
         "Check the next two arrivals. Three waves send trains in faster, and three wrong deliveries end the match.",
     ]
 
+    def check_players(self, seated):
+        super().check_players(seated)
+        if any(not p.human() for p in seated):
+            raise GameError("Remove computer players before starting Switchyard Scramble.")
+
     def start(self, seated, rng):
         self.crew = {p.id for p in seated if p.human()}
         # Swap branches and depot pairs while preserving the decisions in each pattern.
@@ -95,6 +100,12 @@ class Switchyard(Game):
     def act(self, p, a):
         if p.spectator or p.eliminated or p.id not in self.crew:
             raise GameError("Only the crew can set switches.")
+        fields = ("gameNo",) if a.get("type") == "call_route" else ("gameNo", "wave", "beat")
+        if any(type(a.get(field)) is not int for field in fields):
+            raise GameError("Refresh the page to use the Switchyard controls.")
+        if a["gameNo"] != self.room.game_no:
+            self.room.no_bump = True
+            return
         if a.get("type") == "call_route":
             return self.call_route(p, a)
         switch, position = a.get("switch"), a.get("position")
@@ -107,7 +118,7 @@ class Switchyard(Game):
         advanced = self.frame(time.time())
         if self.room.phase != "playing":
             return
-        if self.switches[switch] == position:
+        if (a["wave"], a["beat"]) != (self.wave + 1, self.beat) or self.switches[switch] == position:
             if not advanced:
                 self.room.no_bump = True
             return
