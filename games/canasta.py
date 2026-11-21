@@ -54,10 +54,13 @@ class Canasta(CardGame):
         "Your side's first meld must be worth 50+ points (more as your score grows). Red 3s score 100 as bonus cards.",
         "Seven cards make a canasta: 500 natural, 300 mixed. End each turn with a discard.",
         "Go out once you have a canasta (+100). Melded cards score; cards left in hand count against you.",
+        "An option: the first side to complete a natural canasta in a hand earns a +100 race bonus.",
     ]
     min_players, max_players = 2, 4
     badges = {**CardGame.badges, "natural": ("🌿", "Natural", "Build a canasta without wild cards")}
-    settings_schema = {"target": ("Play to", [(5000, "5000 (classic)"), (2500, "2500"), (1500, "1500 (quick)")], 2500)}
+    settings_schema = {"target": ("Play to", [(5000, "5000 (classic)"), (2500, "2500"), (1500, "1500 (quick)")], 2500),
+                       "race": ("🏁 Race", [(False, "Off"), (True, "On: first natural canasta +100")], False)}
+    race_side = None      # the side that completed the hand's first natural canasta (the option on)
 
     def start(self, seated, rng):
         self.seat_up(seated, rng)
@@ -88,6 +91,7 @@ class Canasta(CardGame):
         self.result = None
         self.drawn = False
         self.out_by = None
+        self.race_side = None
         self.seen = [set() for _ in range(self.n)]        # ranks each player has discarded (a bot memory)
         for k in range(self.n):
             for _ in range(per):
@@ -184,6 +188,9 @@ class Canasta(CardGame):
             if len(m) >= 7 > before.get(r, 0):
                 pure = not any(wildc(c) for c in m)
                 self.moment(f"🧺 {self.nm(i)} completes a {'natural' if pure else 'mixed'} canasta of {rname(r)}!", "gold", "fanfare")
+                if pure and self.s.get("race", False) and self.race_side is None:
+                    self.race_side = s
+                    self.moment(f"🏁 {self.side_name(s)} win the natural canasta race: +100!", "cool", "whoosh")
                 if pure and self.pl(i):
                     self.award(self.pl(i), "natural")
         self.room.add_log(f"🃏 {self.nm(i)} melds " + ", ".join(f"{show(cs)}" for cs in add.values()) + ".")
@@ -270,10 +277,11 @@ class Canasta(CardGame):
                 r3 = -r3
             out = 100 if self.out_by is not None and self.side(self.out_by) == s else 0
             hand = sum(val(c) if not black3(c) else 5 for k in range(self.n) if self.side(k) == s for c in self.hands[k])
-            total = melded + bonus + r3 + out - hand
+            race = 100 if self.race_side == s else 0
+            total = melded + bonus + r3 + out + race - hand
             self.score[s] += total
             rows.append((s, total))
-        self.result = "  ·  ".join(f"{self.side_name(s)} {'+' if v >= 0 else ''}{v}" for s, v in rows)
+        self.result = "  ·  ".join(f"{self.side_name(s)} {'+' if v >= 0 else ''}{v}{' (🏁 +100)' if s == self.race_side else ''}" for s, v in rows)
         self.room.add_log(f"🧮 {self.result}", "big")
         tgt = self.s["target"]
         if max(self.score) >= tgt:
@@ -434,7 +442,7 @@ class Canasta(CardGame):
         t = {"info": info, "piles": piles, "hand": self.hands[i] if i is not None else [],
              "banner": self.result if self.stage == "score" else None,
              "scores": {"title": "Points", "rows": [{"seat": s, "value": self.score[s], "sub": f"& {self.nm(s + 2)}" if self.teams else ""} for s in sorted(range(self.sides), key=lambda s: -self.score[s])],
-                        "hint": f"To {self.s['target']} · first meld {self.need(my) if my is not None else 50}+ · joker 50, 2/A 20, K–8 10, 7–4 5"}}
+                        "hint": f"To {self.s['target']}{' · 🏁 first natural canasta +100' if self.s.get('race', False) else ''} · first meld {self.need(my) if my is not None else 50}+ · joker 50, 2/A 20, K–8 10, 7–4 5"}}
         if i is None or self.room.turn != p.id:
             return t
         need = "" if self.opened(my) else f" Your side's first meld needs {self.need(my)}+ points."
