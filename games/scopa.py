@@ -6,7 +6,9 @@ must take one (a single match beats a sum); otherwise you may take a group addin
 it takes nothing it stays on the table. Clearing the table is a scopa (1 point), except on the very last
 play. When the deck is gone the last player to take something gets what's left. Then: 1 point each for
 most cards, most diamonds, the 7♦ (settebello) and the best primiera (a high card per suit, 7s best).
-🧮 Escoba (a setting): capture groups that add up to 15 with the card you play instead."""
+🧮 Escoba (a setting): capture groups that add up to 15 with the card you play instead.
+🌊 Napola (an option, default off): a round's captures holding the A♦ 2♦ 3♦ run score its length (3 for A-2-3, +1 for
+each next diamond 4, 5, 6, 7, J, Q, K in order)."""
 import itertools
 import random
 
@@ -29,12 +31,14 @@ class Scopa(CardGame):
         "Take nothing and your card stays on the table. Clear the table for a 🧹 scopa (1 point).",
         "Each round: 1 point each for most cards, most ♦, the 7♦, and the best primiera (7s best, then 6s, aces…).",
         "🧮 Escoba: instead, capture cards that add up to 15 together with the card you play.",
+        "🌊 Napola (an option): capture the A♦ 2♦ 3♦ run and score its length, one more for each next diamond (4, 5, 6, 7…).",
     ]
     min_players, max_players = 2, 4
     badges = {**CardGame.badges, "sette": ("💎", "Settebello", "Capture the 7♦ with a scopa")}
     settings_schema = {
         "target": ("Game to", [(11, "11 points"), (21, "21 points"), (6, "6 points (quick)")], 11),
         "mode": ("Capture by", [("scopa", "Scopa: match the card's value"), ("escoba", "🧮 Escoba: make 15 with your card")], "scopa"),
+        "napola": ("🌊 Napola", [("off", "Off"), ("on", "On: A♦-2♦-3♦ run scores")], "off"),
     }
 
     def start(self, seated, rng):
@@ -46,6 +50,19 @@ class Scopa(CardGame):
 
     def escoba(self):
         return self.s.get("mode") == "escoba"
+
+    def napola(self):
+        return self.s.get("napola") == "on"
+
+    @staticmethod
+    def napola_run(cards):
+        """Length of the diamond run A, 2, 3... in cards, or 0 when it is shorter than three."""
+        n = 0
+        for r in RANKS:
+            if r + "D" not in cards:
+                break
+            n += 1
+        return n if n >= 3 else 0
 
     def new_round(self):
         self.dealer = (self.dealer + 1) % self.n
@@ -151,11 +168,18 @@ class Scopa(CardGame):
         award("♦", [sum(1 for c in t if suit(c) == "D") for t in self.taken])
         award("7♦", [1 if "7D" in t else 0 for t in self.taken])
         award("primiera", [self.primiera(t) for t in self.taken])
+        if self.napola():
+            for k in range(self.n):
+                run = self.napola_run(self.taken[k])
+                if run:
+                    pts[k] += run
+                    why[k].append(f"🌊 napola {run}")
+                    self.moment(f"🌊 NAPOLA! {self.nm(k)} holds A♦ to {RANKS[run - 1]}♦ for {run}", "gold", "fanfare")
         for k in range(self.n):
             self.scores[k] += pts[k]
         r.add_log("🧮 " + " · ".join(f"{self.nm(k)} +{pts[k]} ({', '.join(why[k]) or '—'})" for k in range(self.n)), "big")
         self.summary = [{"seat": k, "pts": pts[k], "why": why[k]} for k in range(self.n)]
-        top = max(self.scores)
+        top = max(self.scores)  # both sides past the target: the higher score wins, a tie plays on
         if top >= self.s["target"] and self.scores.count(top) == 1:
             return self.win_by_score(self.scores)
         self.stage = "score"
@@ -210,6 +234,8 @@ class Scopa(CardGame):
             left = [x for x in self.table_cards if x not in cap]
             if not left and not self.last_play(i):
                 v += 6
+            if self.napola():
+                v += 2.5 * sum(1 for x in (c, *cap) if suit(x) == "D" and x[0] in "A23")
         else:
             v = -worth([c]) * 0.8
             left = self.table_cards + [c]
@@ -240,7 +266,7 @@ class Scopa(CardGame):
                        {"cards": ["??"] if self.stock else [], "count": len(self.stock), "label": "Deck", "corner": True}],
              "scores": {"title": "Points", "rows": [{"seat": k, "value": self.scores[k], "sub": f"🂠{len(self.taken[k])} ♦{sum(1 for c in self.taken[k] if suit(c) == 'D')}" + (" 7♦" if "7D" in self.taken[k] else "")}
                                                     for k in sorted(range(self.n), key=lambda k: -self.scores[k])],
-                        "hint": f"Game to {self.s['target']}. Points: 🧹 scopas, most cards, most ♦, 7♦, primiera."}}
+                        "hint": f"Game to {self.s['target']}. Points: 🧹 scopas, most cards, most ♦, 7♦, primiera" + (", 🌊 napola (A♦-2♦-3♦ run)." if self.napola() else ".")}}
         t["piles"][0]["small"] = len(self.table_cards) > 6
         if self.table_cards:
             t["piles"][0]["cards"] = self.table_cards
