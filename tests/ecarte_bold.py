@@ -44,6 +44,16 @@ check("dealt loser: rival 2, no bold", end(g, [2, 3], 0) == [0, 2])
 check("vole as dealt +3", end(g, [5, 0], 0) == [3, 0])
 check("no dealt: plain 1", end(g, [3, 2], None) == [1, 0])
 g.hand_no = 0
+# a 3-4 trick loss after playing as dealt: the rival gets 2 (played-as-dealt branch), no bold bonus or callout
+for tr in ([2, 3], [1, 4]):
+    room, g = room_of(tag="L")
+    moments = []
+    room.moment = lambda text, *a, **k: moments.append(text)
+    sc = end(g, tr, 0)
+    check(f"dealt loser {tr}: rival 2, played-as-dealt branch", sc == [0, 2] and "played as dealt" in g.result, f"{sc} {g.result}")
+    check(f"dealt loser {tr}: no bold text/callout", "bold" not in g.result.lower() and not any("Bold" in m for m in moments), moments)
+    g.s["bold"] = 0
+    check(f"dealt loser {tr}: same with Bold Off", end(g, tr, 0) == [0, 2])
 room, g = room_of(bold=0, tag="F")
 check("off: plain 1", end(g, [3, 2], 0) == [1, 0])
 room, g = room_of(tag="G")
