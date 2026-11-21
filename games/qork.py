@@ -16,6 +16,7 @@ AUTO_ROLL = 4.0   # an idle human Cupper rolls automatically
 RESULT = 3.2      # the trapped/escaped reveal
 
 REACT = {"easy": (640, 130), "normal": (480, 90), "hard": (350, 60)}   # ms mean, spread
+STREAK = 3  # 🔥 this many clean escapes in a row earns a bonus point (and every 3 after)
 FLINCH = {"easy": 0.10, "normal": 0.07, "hard": 0.02}                  # on a near miss (6 or 8, or 1 apart)
 
 
@@ -36,6 +37,7 @@ class Qork(Game):
         "One player is the 🥤 Cupper and keeps rolling two dice; everyone else is a Corker with a Qork (a cork on a string) in the middle of the mat.",
         "On doubles or a total of 7, Corkers tap YANK to pull their Qork away, and the Cupper taps SLAM.",
         "Yank before the cup lands: +1. Too slow: you're trapped and the Cupper gets +1 (all trapped: +1 more).",
+        "🔥 Three clean escapes in a row pay a bonus point (and every three after); a trap or an early yank resets it.",
         "Jumping early on any other roll costs you 1 point — Cuppers too.",
         "The cup passes each round. Most points after everyone has been Cupper wins.",
         "🍀 Lucky number (an option): each round also draws a lucky total (like 5 or 9) that triggers just like a 7.",
@@ -64,6 +66,7 @@ class Qork(Game):
             p.g.score = 0
             p.g.escapes = 0
             p.g.traps = 0
+            p.g.streak = 0
         self.room.turn = None
         self.room.bot_at = 0
         self.room.add_log(f"🥤 Qork! {self.rounds} rounds — watch for doubles and sevens.", "big")
@@ -221,6 +224,7 @@ class Qork(Game):
         cup = p.id == self.cupper
         if self.stage != "snap" or ms < 0:
             p.g.score -= 1
+            p.g.streak = 0
             what = "slammed the cup on nothing" if cup else "yanked too early"
             self.room.add_log(f"😬 {p.name} {what} — −1.", "info")
             return
@@ -239,12 +243,18 @@ class Qork(Game):
                 escaped.append(q)
                 q.g.score += 1
                 q.g.escapes += 1
+                q.g.streak = getattr(q.g, "streak", 0) + 1
+                if q.g.streak % STREAK == 0:
+                    q.g.score += 1
+                    self.moment(f"🔥 {q.name}: {q.g.streak} escapes in a row! +1", "gold", "pop")
                 if 0 <= y < 300:
                     self.award(q, "lightning")
             elif slam is not None:
                 trapped.append(q)
+                q.g.streak = 0
             else:
                 frozen.append(q)
+                q.g.streak = 0
         gain = len(trapped) + (1 if trapped and len(trapped) == len(corkers) and len(corkers) > 1 else 0)
         cup.g.score += gain
         # ⚡ the night's fastest escape (kept on the room, so it carries across rematches)
