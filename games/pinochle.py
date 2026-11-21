@@ -57,12 +57,14 @@ class Pinochle(TrickGame):
         "Play twelve tricks: follow suit and beat the trick if you can; can't follow? Trump. Ranks: A 10 K Q J 9.",
         "Aces, tens and kings won count 1 each, the last trick 1 more (25 in all).",
         "Bidders need meld + points ≥ bid, or lose the bid. First pair to 150 wins.",
+        "An option: a side that takes ten or more of the twelve tricks (a romp) scores 20 extra.",
     ]
     min_players, max_players = 4, 4
     teams = True
     order = "9JQKTA"
     badges = {**TrickGame.badges, "pinochle": ("💍", "Double pinochle", "Hold both J♦ and both Q♠")}
-    settings_schema = {"target": ("Play to", [(150, "150"), (100, "100 (quick)"), (250, "250")], 150)}
+    settings_schema = {"target": ("Play to", [(150, "150"), (100, "100 (quick)"), (250, "250")], 150),
+                       "romp": ("🧹 Romp", [(False, "Off"), (True, "On: +20")], False)}
 
     def start(self, seated, rng):
         self.seat_up(seated, rng)
@@ -219,10 +221,16 @@ class Pinochle(TrickGame):
         made = meld[bs] + cnt[bs] >= self.bid and took[bs] > 0
         gain[bs] = meld[bs] + cnt[bs] if made else -self.bid
         gain[1 - bs] = (meld[1 - bs] if took[1 - bs] else 0) + cnt[1 - bs]
+        romp = ""
+        if self.s.get("romp", False) and max(took) >= 10 and (took[1 - bs] >= 10 or made):
+            rw = 0 if took[0] >= 10 else 1
+            gain[rw] += 20
+            romp = f" (+20 romp for {self.side_name(rw)})"
+            self.moment(f"🧹 {self.side_name(rw)} romp home with {took[rw]} tricks: +20!", "gold", "sweep")
         for s in (0, 1):
             self.score[s] += gain[s]
         text = (f"✅ {self.side_name(bs)} make {meld[bs]}+{cnt[bs]} on a bid of {self.bid}" if made
-                else f"❌ {self.side_name(bs)} go set: {meld[bs]}+{cnt[bs]} of {self.bid}")
+                else f"❌ {self.side_name(bs)} go set: {meld[bs]}+{cnt[bs]} of {self.bid}") + romp
         self.result = text
         self.room.add_log(f"🧮 {text}. {gain[0]:+d} / {gain[1]:+d}", "big")
         self.moment(text, "gold" if made else "bad", "fanfare" if made else "boom")
