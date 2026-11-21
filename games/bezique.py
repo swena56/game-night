@@ -31,11 +31,13 @@ class Bezique(TrickGame):
         "Melds lie face up and can still be played. A card can't repeat the same kind of meld; each meld needs a hand card.",
         "When the stock is gone: take melds back, follow suit and win if you can, trump if you can't.",
         "Aces and tens taken score 10 each, the last trick 10. First to the target wins.",
+        "An option: trump a plain ace or ten with a low trump (7, 8 or 9) for a bonus 10.",
     ]
     min_players, max_players = 2, 2
     order = "789JQKTA"
     badges = {**TrickGame.badges, "double": ("💎", "Double bezique", "Declare double bezique (500)")}
-    settings_schema = {"target": ("Play to", [(1000, "1000"), (500, "500 (quick)"), (2000, "2000")], 1000)}
+    settings_schema = {"target": ("Play to", [(1000, "1000"), (500, "500 (quick)"), (2000, "2000")], 1000),
+                       "giant": ("🗡️ Giant killer", [(False, "Off"), (True, "On: +10")], False)}
 
     def start(self, seated, rng):
         self.seat_up(seated, rng)
@@ -123,6 +125,11 @@ class Bezique(TrickGame):
         self.last = {"cards": [[s, c] for s, c in self.trick], "winner": w}
         self.trick = []
         self.room.add_log(f"🃏 {show(cards)} → {self.nm(w)}", "question")
+        if self.s.get("giant", False):
+            cw, cl = (cb, ca) if w == b else (ca, cb)
+            if suit(cw) == self.trump and rank(cw) in "789" and suit(cl) != self.trump and rank(cl) in "AT":
+                self.score[w] += 10
+                self.moment(f"🗡️ {self.nm(w)} trumps the {rname(rank(cl), 1)} with a {rname(rank(cw), 1)}: +10!", "gold", "chime")
         if self.phase == 1:
             self.melder = w
             self.stage = "meld"
