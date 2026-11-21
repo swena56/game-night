@@ -7,7 +7,10 @@ tricks, playing alone) can be bid once the bidding has reached seven. The top bi
 discards three and leads. Trumps rank joker, right bower (trump jack), left bower (the other jack of the
 same colour), then A K Q 10 9 … Follow suit when you can. In no trumps the joker is the only trump.
 Make the contract to score its value; miss it and lose that much. Opponents score 10 a trick. First
-side to 500 wins; drop to −500 and you lose."""
+side to 500 wins; drop to −500 and you lose.
+
+Option, Contra: after the discard an opponent may double a trick contract. Make it and the bidders score
+twice the bid; go down and they lose twice the bid. Misère can't be doubled."""
 import random
 
 from .cardbase import GameError, rank, suit, pretty, show, SUIT_NAME
@@ -43,11 +46,15 @@ class FiveHundred(TrickGame):
         "The winner takes the kitty, discards three and leads. Follow suit when you can.",
         "Trumps: joker, then the trump jack, then the other jack of that colour, then A K Q 10…",
         "Make it: score the bid (6♠ 40 up to 10NT 520). Miss: lose it. Opponents get 10 a trick. First to 500.",
+        "An option, Contra: after the discard an opponent may double the bid, so making or missing it counts twice.",
     ]
     min_players, max_players = 3, 4
+    doubled = None      # seat that doubled this hand's contract (Contra option)
+    contra_q = ()       # opponents still to say double or pass
     order = "456789TJQKA"
     badges = {**TrickGame.badges, "slam": ("💥", "Slam", "Take all ten tricks as the bidder")}
-    settings_schema = {"target": ("Play to", [(500, "500"), (300, "300 (quick)")], 500)}
+    settings_schema = {"target": ("Play to", [(500, "500"), (300, "300 (quick)")], 500),
+                       "contra": ("Contra", [(0, "Off"), (1, "On")], 0)}
 
     def start(self, seated, rng):
         self.seat_up(seated, rng)
@@ -117,6 +124,7 @@ class FiveHundred(TrickGame):
         self.passed = [False] * self.n
         self.said = [None] * self.n
         self.contract, self.bidder = None, None
+        self.doubled, self.contra_q = None, ()
         self.result = None
         self.stage = "bid"
         for k in range(self.n):
@@ -180,14 +188,40 @@ class FiveHundred(TrickGame):
             if not isinstance(cards, list) or len(cards) != 3 or len(set(cards)) != 3 or any(c not in self.hands[i] for c in cards):
                 raise GameError("Discard exactly three cards.")
             return self.drop(i, cards)
+        if self.stage == "contra" and t == "contra":
+            return self.say_contra(i, bool(a.get("double")))
         raise GameError("Not now.")
 
     def drop(self, i, cards):
         for c in cards:
             self.hands[i].remove(c)
         self.room.add_log(f"🗑️ {self.nm(i)} takes the kitty and discards three.")
+        if self.s.get("contra") and self.contract != "M":
+            bs = self.side(i)
+            self.contra_q = [k for k in range(self.n) if self.side(k) != bs]
+            self.stage = "contra"
+            return self.to(self.contra_q[0])
         self.start_tricks(i)
-        self.tricks = [0] * self.n
+
+    def say_contra(self, i, yes):
+        if yes:
+            self.doubled, self.contra_q = i, ()
+            self.moment(f"🔥 {self.nm(i)} doubles {self.nm(self.bidder)}'s {bid_name(self.contract)}: double or quits!", "bad", "boom")
+        else:
+            self.contra_q = self.contra_q[1:]
+            if self.contra_q:
+                return self.to(self.contra_q[0])
+            self.room.add_log("Nobody doubles.")
+        self.start_tricks(self.bidder)
+
+    def bot_contra(self, i, level):
+        """Double when this hand alone nearly sinks the bid; the partner, kitty and a hard bot's margin vary."""
+        if level == "easy":
+            return False
+        t = "N" if self.trump == "X" else self.trump
+        need = 11 - int(self.contract[:-1])         # tricks that set the bid
+        e = self.est(i, t) + (1.0 if self.teams else 0.4)
+        return e >= need + (0.0 if level == "hard" else 0.3)
 
     # -- bot
 
@@ -248,6 +282,8 @@ class FiveHundred(TrickGame):
             return self.place_bid(i, self.bot_bid(i, level))
         if self.stage == "kitty":
             return self.drop(i, self.bot_drop(i, level))
+        if self.stage == "contra":
+            return self.say_contra(i, self.bot_contra(i, level))
 
     def wants(self, i):
         if self.contract == "M":
@@ -268,6 +304,8 @@ class FiveHundred(TrickGame):
             made = took[bs] >= int(self.contract[:-1])
             if took[bs] == 10 and v < 250:
                 v = 250
+        if self.doubled is not None:
+            v *= 2
         if made:
             self.score[bs] += v
             if took[bs] == 10 and self.contract != "M":
@@ -280,7 +318,8 @@ class FiveHundred(TrickGame):
             for s in range(self.sides):
                 if s != bs:
                     self.score[s] += 10 * took[s]
-        text = (f"✅ {self.side_name(bs)} made {bid_name(self.contract)}: +{v}" if made else f"❌ {self.side_name(bs)} went down in {bid_name(self.contract)}: −{v}")
+        x2 = " (doubled by " + self.nm(self.doubled) + ")" if self.doubled is not None else ""
+        text = (f"✅ {self.side_name(bs)} made {bid_name(self.contract)}{x2}: +{v}" if made else f"❌ {self.side_name(bs)} went down in {bid_name(self.contract)}{x2}: −{v}")
         self.result = text
         self.room.add_log(f"🧮 {text}. Tricks: " + ", ".join(f"{self.side_name(s)} {took[s]}" for s in range(self.sides)), "big")
         self.moment(text, "gold" if made else "bad", "fanfare" if made else "boom")
@@ -314,7 +353,7 @@ class FiveHundred(TrickGame):
             if self.stage == "bid" and self.said[k]:
                 tags.append("pass" if self.said[k] == "pass" else bid_name(self.said[k]))
             if k == self.bidder and self.stage != "bid":
-                tags.append(f"🙋 {bid_name(self.contract)}")
+                tags.append(f"🙋 {bid_name(self.contract)}" + (" ×2" if self.doubled is not None else ""))
             if self.stage in ("play", "score") and self.contract:
                 tags.append("sits out" if self.is_out(k) else f"{self.tricks[k]} tricks")
             info.append({"count": len(self.hands[k]), "tags": tags, "out": self.is_out(k)})
@@ -344,4 +383,9 @@ class FiveHundred(TrickGame):
             t["pick"] = {"act": "discard", "min": 3, "max": 3, "label": "Discard these"}
             t["note"] = "You took the kitty: discard three."
             t["turnText"] = "🗑️ Discard three"
+        elif self.stage == "contra":
+            t["buttons"] = [{"label": "Pass", "a": {"type": "contra", "double": False}},
+                            {"label": "🔥 Double", "a": {"type": "contra", "double": True}, "kind": "primary"}]
+            t["note"] = f"{self.nm(self.bidder)} bid {bid_name(self.contract)}. Double to make the bid count twice, win or lose."
+            t["turnText"] = "🔥 Double the bid?"
         return t
