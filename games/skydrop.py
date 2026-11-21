@@ -33,6 +33,7 @@ LEVELS = {
 }
 RECOVER = 2.0   # after a hit you get a short speed-up, so one mistake does not end the run
 PENDULUM_KIND = 4
+SLING = 1.25   # boost + current: +25% speed, but you steer at 60%
 # 🎁 at every checkpoint you pick one perk for the next stretch (bots pick at random)
 PERKS = ("magnet", "wide", "shield")   # 🧲 coins and gems pulled from twice as far · ⭕ rings 0.45 wider · 🛡️ blocks the next hit
 MAGNET, WIDE = 1.9, 0.45
@@ -146,6 +147,7 @@ class Flyer:
         self.fork_go = False        # bots: this gap's gem is worth leaving the ring line for
         self.fork_x = self.fork_z = self.fork_d = 0.0
         self.perk = ""              # 🎁 this stretch's checkpoint perk; "shield" is spent by the next hit
+        self.slinging = False
         self.offer = False          # a checkpoint perk choice is waiting
 
 
@@ -163,6 +165,8 @@ class SkyDrop(Game):
         "Steering is stabilized, so you can make small corrections without drifting away. Avoid turbines and storm gates, and keep well clear of the red 💥 mines: they blow you out of the dive for two seconds. Checkpoints refill boosts.",
         "🌬️ Tuck in close behind a rival and you ride their slipstream: a little extra speed to slingshot past. Tap ⚡ or Space for one of three short boosts. The boost refills at the checkpoint.",
         "😮‍💨 Skim a hazard for +3. Most gaps pay a coin line (+2). About one gap in three is a 💎 greed fork off to the side (+10): take it and you can miss the next ring.",
+        "🚀 Boost while inside an air stream and you slingshot: 25% more speed, but you steer at 60% until it ends.",
+        "🎚️ Levels 2-5 add smaller rings, corridor / pendulum / mine-field set pieces, drifting gold rings (4+) and a dark, fast Redline (5). 📈 Climb steps 1, 3, 5 over a 3-run match. Pick a 🎁 perk at each checkpoint.",
         "Cloud Spire mixes those forks in. Stormwell hangs the gem on a moving gate. Aurora Shaft slides the gold rings off the coin line.",
         "🧩 Every dive is a brand-new course built from sections (slalom, spiral, zigzag, drift, breather) and it gets busier the deeper you go.",
         "Finish order pays 40, 26, 16, 10, 6, then 2. Ring points still decide a messy dive.",
@@ -170,7 +174,7 @@ class SkyDrop(Game):
     settings_schema = {
         "course": ("Course", [("spire", "🏙️ Cloud Spire"), ("storm", "⛈️ Stormwell"), ("aurora", "🌌 Aurora Shaft")], "spire"),
         "runs": ("Runs", [(1, "1 run"), (3, "3 runs")], 1),
-        "level": ("Level", [(1, "1 · Open Sky"), (2, "2 · Crosswinds"), (3, "3 · Gauntlet"), (4, "4 · Needle Eye"), (5, "5 · Redline")], 1),
+        "level": ("Level", [(0, "📈 Climb each run"), (1, "1 · Open Sky"), (2, "2 · Crosswinds"), (3, "3 · Gauntlet"), (4, "4 · Needle Eye"), (5, "5 · Redline")], 1),
         "hazards": ("Hazards", [(True, "On"), (False, "Off")], True),
     }
 
@@ -194,7 +198,8 @@ class SkyDrop(Game):
         # Every course element is shared and immutable for the whole run.
         self.rings = []
         theme = self.s.get("course", "spire")
-        self.level = max(1, min(5, int(self.s.get("level", 1) or 1)))
+        chosen = int(self.s.get("level", 1) or 0)
+        self.level = max(1, min(5, 1 + (self.run - 1) * 2)) if chosen == 0 else max(1, min(5, chosen))   # 📈 0 = climb: 1, 3, 5 over a 3-run match
         lv = LEVELS[self.level]
         self.ring_r = lv["ring_r"]
         depths = list(range(28, int(LENGTH), 18))
@@ -236,6 +241,8 @@ class SkyDrop(Game):
                 if j % lv["drift"] == 1 and not (lv["sets"] and j % lv["sets"] == lv["sets"] - 1):
                     self.drifts[j] = [lv["amp"], round(lv["amp"] * 0.55, 2), round(r.uniform(0, math.tau), 2), round(r.uniform(1.0, 1.4), 2)]
                     self.rings[j][3] = max(self.rings[j][3], 1.3)
+        # 🌑 level 5: dark stretches where rings and coins only show up 25 units ahead (hazards still glow)
+        self.dark = [[d, d + 90] for d in range(200, int(LENGTH) - 100, 220)] if self.level >= 5 else []
         self.streams = []
         for d in range(42, int(LENGTH) - 30, 54):
             self.streams.append([d, r.uniform(-5, 5), r.uniform(-3, 3), r.choice([-1, 1]), r.uniform(-1, 1)])
@@ -398,15 +405,17 @@ class SkyDrop(Game):
                 # Steering is a velocity target with gentle damping. This keeps a release or
                 # direction change predictable on touch screens, while currents still matter.
                 target_vx, target_vz = f.sx * 8.0, f.sz * 6.6
-                response = min(1.0, dt * 9.0)   # snappy: ~110 ms to reach the stick's speed (was ~240 ms)
+                response = min(1.0, dt * 9.0) * (0.6 if f.slinging else 1.0)   # snappy: ~110 ms to reach the stick's speed (was ~240 ms)
                 f.vx += (target_vx - f.vx) * response
                 f.vz += (target_vz - f.vz) * response
                 ax = az = 0.0
                 current_scale = (1.45 if self.s.get("course") == "storm" else 1.0) * LEVELS[self.level]["streams"]
+                in_stream = False
                 for d, x, z, dx, dz in self.streams:
                     dd = abs(f.depth - d)
                     dist = math.hypot(f.x - x, f.z - z)
                     if dd < 9 and dist < 4:
+                        in_stream = True
                         k = (1 - dd / 9) * (1 - dist / 4) * current_scale
                         ax += dx * 8 * k
                         az += dz * 8 * k
@@ -417,6 +426,12 @@ class SkyDrop(Game):
                           for j, o in enumerate(self.flyers) if o is not f and self.active(j) and not o.done_at)
                 if tow:
                     speed *= DRAFT_BOOST
+                slinging = in_stream and now < f.boost_until   # 🚀 boosting inside a current: a big speed kick, but it fights your steering
+                if slinging:
+                    speed *= SLING
+                    if not f.slinging:
+                        self.event(now, "sling", i)
+                f.slinging = slinging
                 if now < f.stun_until + RECOVER:   # recovering from a hit: a little extra speed
                     speed *= 1.12
                 if tow != f.drafting:
@@ -581,7 +596,7 @@ class SkyDrop(Game):
 
     def fast_view(self, now, full=False):
         return {"stage": self.stage, "run": self.run, "runs": self.runs, "go": self.go_at,
-                "time": now, "raceStarted": self.race_started, "length": LENGTH, "seed": self.seed, "course": self.s.get("course", "spire"), "level": self.level, "ringR": self.ring_r, "ramp": LEVELS[self.level]["ramp"], "drifts": self.drifts,
+                "time": now, "raceStarted": self.race_started, "length": LENGTH, "seed": self.seed, "course": self.s.get("course", "spire"), "level": self.level, "ringR": self.ring_r, "ramp": LEVELS[self.level]["ramp"], "drifts": self.drifts, "dark": self.dark,
                 "rings": self.rings, "hazards": self.hazards, "streams": self.streams, **({"coins": self.coins} if full else {}),
                 "finished": self.finished, "events": self.events,
                 "flyers": [[f.depth, f.x, f.z, f.vx, f.vz, f.score, f.rings, f.combo,

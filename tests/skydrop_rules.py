@@ -34,7 +34,7 @@ def game(n=2, bots=0, level="normal", dive=None, **settings):
     for _ in range(bots):
         r.add_bot(level)
     r.settings.update(settings)
-    if dive:
+    if dive is not None:
         r.settings["level"] = dive
     CLOCK[0] += 1000
     r.start()
@@ -381,6 +381,29 @@ bx, bz = g.ring_position(mv[1], t + 0.01)
 f.x, f.z = bx + g.ring_r + 1.0, bz
 g.simulate(0.02, t + 0.02)
 check("missing a drifting ring breaks the combo", f.combo == 0)
+
+# 🌑 blackout, 🚀 slingshot, 📈 climb
+check("blackout stretches only on level 5", not game(2, dive=4)[1].dark and len(game(2, dive=5)[1].dark) >= 2)
+r, g, ps = game(2, hazards=False)
+to_race(g)
+a, b = g.flyers
+for f in (a, b):
+    f.depth, f.x, f.z, f.sx, f.sz = 100.0, 0.0, 0.0, 0, 0
+g.streams = [[100.0, 0.0, 0.0, 0, 0]]
+a.boost_until = CLOCK[0] + 5
+g.simulate(0.1, CLOCK[0])
+check("boosting inside a stream slingshots (faster than boosting outside)", a.slinging and a.depth > b.depth + 0.1 and not b.slinging, f"{a.depth:.2f} vs {b.depth:.2f}")
+check("a slingshot fires an event", any(e[1] == "sling" for e in g.events))
+b.boost_until = CLOCK[0] + 5
+b.x = 7.0
+g.simulate(0.1, CLOCK[0] + 0.1)
+check("boosting outside a stream is no slingshot", not b.slinging)
+r, g, ps = game(2, runs=3, dive=0)
+lv = [g.level]
+for _ in range(2):
+    g.new_run(CLOCK[0])
+    lv.append(g.level)
+check("climb steps 1, 3, 5 over three runs", lv == [1, 3, 5], str(lv))
 
 print("FAILED: " + ", ".join(fails) if fails else "all ok")
 sys.exit(1 if fails else 0)
