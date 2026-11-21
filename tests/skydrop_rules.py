@@ -355,5 +355,32 @@ b.depth = 179.9
 g.simulate(0.05, CLOCK[0])
 check("bots pick a perk automatically", b.perk in M.PERKS and not b.offer)
 
+# 🌀 drifting rings (level 4+)
+check("levels 1-3 have no drifting rings", all(not any(game(2, dive=l)[1].drifts) for l in (1, 3)))
+r, g, ps = game(2, dive=4)
+mv = [j for j, d in enumerate(g.drifts) if d]
+check("level 4 has drifting rings that pay more", len(mv) >= 5 and all(g.rings[j][3] >= 1.3 for j in mv), str(len(mv)))
+check("drifting rings never carry a set piece or leave the shaft", all(abs(g.rings[j][1]) + g.drifts[j][0] <= M.SHAFT_X and abs(g.rings[j][2]) + g.drifts[j][1] <= M.SHAFT_Z for j in mv)
+      and not any(abs(h[0] - (g.rings[j][0] - 6)) < .01 for j in mv for h in g.hazards))
+g.race_started = 0.0
+j = mv[0]
+p0, p1 = g.ring_position(j, 0.0), g.ring_position(j, 1.5)
+check("a drifting ring moves", math.hypot(p0[0] - p1[0], p0[1] - p1[1]) > 0.5)
+to_race(g)
+f = g.flyers[0]
+j = mv[0]
+t = CLOCK[0]
+f.depth, f.last_ring, f.sx, f.sz = g.rings[j][0] - 0.1, j - 1, 0, 0
+f.x, f.z = g.ring_position(j, t + 0.01)
+g.hazards = []
+before = f.rings
+g.simulate(0.02, t + 0.02)
+check("a drifting ring scores against where it is now", f.rings == before + 1)
+f.depth, f.last_ring = g.rings[mv[1]][0] - 0.1, mv[1] - 1
+bx, bz = g.ring_position(mv[1], t + 0.01)
+f.x, f.z = bx + g.ring_r + 1.0, bz
+g.simulate(0.02, t + 0.02)
+check("missing a drifting ring breaks the combo", f.combo == 0)
+
 print("FAILED: " + ", ".join(fails) if fails else "all ok")
 sys.exit(1 if fails else 0)

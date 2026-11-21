@@ -25,11 +25,11 @@ SHAFT_X, SHAFT_Z = 8.5, 5.5
 # mine field: each one has a flyable line through it) and, at 5, ramp the speed up as you fall.
 # ring_r, set-piece spacing in rings (0 = none), speed ramp at the bottom, stream strength, recovery window after a hit.
 LEVELS = {
-    1: {"name": "Open Sky", "ring_r": 2.05, "sets": 0, "ramp": 0.0, "streams": 1.0},
-    2: {"name": "Crosswinds", "ring_r": 1.85, "sets": 0, "ramp": 0.0, "streams": 1.5},
-    3: {"name": "Gauntlet", "ring_r": 1.85, "sets": 6, "ramp": 0.0, "streams": 1.2},
-    4: {"name": "Needle Eye", "ring_r": 1.65, "sets": 4, "ramp": 0.0, "streams": 1.4},
-    5: {"name": "Redline", "ring_r": 1.6, "sets": 3, "ramp": 0.28, "streams": 1.5},
+    1: {"name": "Open Sky", "ring_r": 2.05, "sets": 0, "ramp": 0.0, "streams": 1.0, "drift": 0, "amp": 0.0},
+    2: {"name": "Crosswinds", "ring_r": 1.85, "sets": 0, "ramp": 0.0, "streams": 1.5, "drift": 0, "amp": 0.0},
+    3: {"name": "Gauntlet", "ring_r": 1.85, "sets": 6, "ramp": 0.0, "streams": 1.2, "drift": 0, "amp": 0.0},
+    4: {"name": "Needle Eye", "ring_r": 1.65, "sets": 4, "ramp": 0.0, "streams": 1.4, "drift": 3, "amp": 1.6},
+    5: {"name": "Redline", "ring_r": 1.6, "sets": 3, "ramp": 0.28, "streams": 1.5, "drift": 2, "amp": 2.0},
 }
 RECOVER = 2.0   # after a hit you get a short speed-up, so one mistake does not end the run
 PENDULUM_KIND = 4
@@ -229,6 +229,13 @@ class SkyDrop(Game):
                 d += round(hazard_gap * (1 - 0.4 * d / LENGTH))   # 📈 the dive gets busier the deeper you go
             if lv["sets"]:
                 self._set_pieces(r, lv["sets"])
+        # 🌀 level 4+: some rings drift on a slow orbit, so you lead the shot. They pay more. Rings with a set piece in front stay put.
+        self.drifts = [None] * len(self.rings)
+        if lv["drift"]:
+            for j in range(1, len(self.rings) - 1):
+                if j % lv["drift"] == 1 and not (lv["sets"] and j % lv["sets"] == lv["sets"] - 1):
+                    self.drifts[j] = [lv["amp"], round(lv["amp"] * 0.55, 2), round(r.uniform(0, math.tau), 2), round(r.uniform(1.0, 1.4), 2)]
+                    self.rings[j][3] = max(self.rings[j][3], 1.3)
         self.streams = []
         for d in range(42, int(LENGTH) - 30, 54):
             self.streams.append([d, r.uniform(-5, 5), r.uniform(-3, 3), r.choice([-1, 1]), r.uniform(-1, 1)])
@@ -305,6 +312,16 @@ class SkyDrop(Game):
         self.ev_seq += 1
         self.events.append([self.ev_seq, kind, i, now])
         self.events = self.events[-30:]
+
+    def ring_position(self, ri, at):
+        """Where ring ri is at time `at`: drifting rings circle their base spot."""
+        _, x, z, _ = self.rings[ri]
+        dr = self.drifts[ri]
+        if dr:
+            e = max(0.0, at - self.race_started)
+            x += math.sin(e * dr[3] + dr[2]) * dr[0]
+            z += math.cos(e * dr[3] * 0.8 + dr[2]) * dr[1]
+        return x, z
 
     def hazard_position(self, d, x, z, kind, phase, at):
         if kind == 2:
@@ -419,6 +436,7 @@ class SkyDrop(Game):
                 if f.last_ring < ri and prev_depth < d <= f.depth:
                     f.last_ring = ri
                     t = (d - prev_depth) / max(1e-9, f.depth - prev_depth)
+                    x, z = self.ring_position(ri, now - dt + t * dt)
                     cross_x = prev_x + (f.x - prev_x) * t
                     cross_z = prev_z + (f.z - prev_z) * t
                     if math.hypot(cross_x - x, cross_z - z) <= self.ring_r + (WIDE if f.perk == "wide" else 0):
@@ -498,7 +516,7 @@ class SkyDrop(Game):
         f.next_bot = now + interval
         ri = next((j for j, ring in enumerate(self.rings) if ring[0] > f.depth), None)
         if ri is not None:
-            _, x, z, _ = self.rings[ri]
+            x, z = self.ring_position(ri, now + max(0.0, self.rings[ri][0] - f.depth) / 12.5)   # lead a drifting ring
             if f.aim_ring != ri:
                 f.aim_ring = ri
                 if self.rng.random() < focus:
@@ -563,7 +581,7 @@ class SkyDrop(Game):
 
     def fast_view(self, now, full=False):
         return {"stage": self.stage, "run": self.run, "runs": self.runs, "go": self.go_at,
-                "time": now, "raceStarted": self.race_started, "length": LENGTH, "seed": self.seed, "course": self.s.get("course", "spire"), "level": self.level, "ringR": self.ring_r, "ramp": LEVELS[self.level]["ramp"],
+                "time": now, "raceStarted": self.race_started, "length": LENGTH, "seed": self.seed, "course": self.s.get("course", "spire"), "level": self.level, "ringR": self.ring_r, "ramp": LEVELS[self.level]["ramp"], "drifts": self.drifts,
                 "rings": self.rings, "hazards": self.hazards, "streams": self.streams, **({"coins": self.coins} if full else {}),
                 "finished": self.finished, "events": self.events,
                 "flyers": [[f.depth, f.x, f.z, f.vx, f.vz, f.score, f.rings, f.combo,
