@@ -218,6 +218,7 @@ UI.prism = (() => {
   let S, ctx, st = null, cv = null, c2 = null, dpr = 1, cs = 40, size = 320, sprites = [], stoneSprite = null, specSprites = { h: [], v: [], n: [] };
   let attackQueue = [], attackTimer = 0;
   let raf = 0, resizeObs = null, keyHandler = null, clock = null, hintTimer = null;
+  let renderVisible = true, viewIntersecting = true, viewObs = null, visibilityHandler = null;
 
   // the outline of gem k as points (a circle as 16), for cutting facets (#138)
   function shapeVerts(k, cx, cy, r) {
@@ -396,6 +397,12 @@ UI.prism = (() => {
       for (let s = 0; s < 4; s++) { const a = t / 500 + s * Math.PI / 2; p.beginPath(); p.arc(x + Math.cos(a) * cs * 0.42 * scale, y + Math.sin(a) * cs * 0.42 * scale, cs * 0.035, 0, Math.PI * 2); p.fill(); }
       p.restore();
     }
+    if (sp) {
+      const badge = sp === 'h' || sp === 'v' ? '⚡' : '✦';
+      p.save(); p.font = `900 ${Math.max(9, cs * 0.22 * scale)}px sans-serif`; p.textAlign = 'right'; p.textBaseline = 'top';
+      p.lineWidth = Math.max(2, cs * 0.055); p.strokeStyle = 'rgba(20,12,35,.9)'; p.fillStyle = '#fff';
+      p.strokeText(badge, x + half * 0.68, y - half * 0.72); p.fillText(badge, x + half * 0.68, y - half * 0.72); p.restore();
+    }
     void base;
   }
   function drawPrism(p, x, y, r, t) {
@@ -453,7 +460,7 @@ UI.prism = (() => {
   }
   // drifting light motes behind the gems (the board is never quite still)
   function drawMotes(p, t, dt) {
-    if (!motion()) return;
+    if (!motion() || window.gfxLevel?.() === 'low') return;
     if (motes.length !== 24) {
       motes = Array.from({ length: 24 }, () => ({ x: Math.random(), y: Math.random(), r: 0.02 + Math.random() * 0.05,
         vx: (Math.random() - 0.5) * 0.02, vy: -0.01 - Math.random() * 0.025, ph: Math.random() * 6 }));
@@ -502,10 +509,13 @@ UI.prism = (() => {
     drawBoardBg(p);
     drawMotes(p, t, dt);
     // a slow diagonal sheen across the board while things are moving
-    const sx = ((t / 9) % (cv.width * 3)) - cv.width;
-    const sheen = p.createLinearGradient(sx, 0, sx + cv.width * 0.5, cv.height);
-    sheen.addColorStop(0, 'rgba(255,255,255,0)'); sheen.addColorStop(0.5, 'rgba(255,255,255,0.04)'); sheen.addColorStop(1, 'rgba(255,255,255,0)');
-    p.fillStyle = sheen; p.fillRect(0, 0, cv.width, cv.height);
+    const ambient = motion() && window.gfxLevel?.() !== 'low';
+    if (ambient) {
+      const sx = ((t / 9) % (cv.width * 3)) - cv.width;
+      const sheen = p.createLinearGradient(sx, 0, sx + cv.width * 0.5, cv.height);
+      sheen.addColorStop(0, 'rgba(255,255,255,0)'); sheen.addColorStop(0.5, 'rgba(255,255,255,0.035)'); sheen.addColorStop(1, 'rgba(255,255,255,0)');
+      p.fillStyle = sheen; p.fillRect(0, 0, cv.width, cv.height);
+    }
     // hint shimmer and selection glow
     const glowAt = (i, color, a) => {
       const [x, y] = cellXY(i);
@@ -513,13 +523,17 @@ UI.prism = (() => {
       rg.addColorStop(0, color.replace('A', a)); rg.addColorStop(1, color.replace('A', 0));
       p.fillStyle = rg; p.fillRect(x - cs * 0.62, y - cs * 0.62, cs * 1.24, cs * 1.24);
     };
-    if (hint) { const a = 0.25 + 0.25 * Math.sin(t / 180); hint.forEach((i) => glowAt(i, 'rgba(255,255,255,A)', a)); busy = true; }
+    if (hint) { const a = 0.25 + 0.25 * Math.sin(t / 180); hint.forEach((i) => glowAt(i, 'rgba(255,255,255,A)', a)); }
     if (sel != null) {
       glowAt(sel, 'rgba(255,230,140,A)', 0.4 + 0.2 * Math.sin(t / 120));
       const [x, y] = cellXY(sel);
       p.save(); p.strokeStyle = '#ffe48c'; p.lineWidth = Math.max(2, cs * 0.05); p.setLineDash([cs * 0.16, cs * 0.1]); p.lineDashOffset = -t / 30;
       p.beginPath(); p.arc(x, y, cs * 0.47, 0, Math.PI * 2); p.stroke(); p.restore();
-      busy = true;
+      for (const j of neighbours(sel)) if (swapKind(sel, j)) {
+        const [nx, ny] = cellXY(j);
+        p.save(); p.globalAlpha = 0.72; p.strokeStyle = '#b9ffd9'; p.lineWidth = Math.max(2, cs * 0.045);
+        p.setLineDash([cs * 0.08, cs * 0.08]); p.strokeRect(nx - cs * 0.4, ny - cs * 0.4, cs * 0.8, cs * 0.8); p.restore();
+      }
     }
     // gems
     for (let i = 0; i < N * N; i++) {
@@ -536,10 +550,10 @@ UI.prism = (() => {
       if (sel === i) scale *= 1.06 + 0.04 * Math.sin(t / 120);
       p.save();
       p.translate(x, y + (1 - sys) * cs * 0.35); p.scale(sxs, sys);
-      drawGem(p, ch, 0, 0, scale, t, i);
+      drawGem(p, ch, 0, 0, scale, ambient ? t : 0, i);
       if (FROZEN.includes(ch)) { const grow = c.ice ? Math.min(1, (t - c.ice) / 380) : 1; if (grow < 1) busy = true; drawIce(p, 0, 0, 0.6 + 0.4 * grow); }
       p.restore();
-      if (special(ch) || ch === PRISM) busy = true; // specials shimmer
+      // Specials shimmer on the slower idle cadence; they do not force a continuous frame loop.
     }
     const incomingAt = new Map();
     for (const e of st?.incoming || []) for (const i of e.cells || []) incomingAt.set(i, e.kind);
@@ -554,10 +568,10 @@ UI.prism = (() => {
         p.textAlign = 'right'; p.textBaseline = 'top'; p.fillText(kind_ === 'frost' ? '❄' : '🪨', x + cs * 0.37, y - cs * 0.38);
         p.restore();
       }
-      busy = true;
+      // The incoming marker is refreshed at the idle cadence; the server timer resolves it independently.
     }
     // twinkle: now and then a resting gem catches the light
-    if (motion() && st) {
+    if (ambient && st) {
       if (!st.tw || t - st.tw.t0 > 700) {
         const i = Math.floor(Math.random() * N * N);
         st.tw = { i: PLAIN.includes(g[i]) && !cells[i].oy ? i : null, t0: t };
@@ -645,10 +659,23 @@ UI.prism = (() => {
     }
     pfx.end(p);  // the flash
     if (busy || st.busy) kick();
-    else if (motion() && !st.over) { clearTimeout(idleT); idleT = setTimeout(kick, 50); }  // ~20 fps while idle: motes and glints
+    else if (motion() && !st.over && renderVisible && !document.hidden) {
+      clearTimeout(idleT);
+      idleT = setTimeout(kick, window.gfxLevel?.() === 'low' ? 500 : 125); // low-cost ambient refresh; no continuous 60 Hz idle loop
+    }
   }
   let idleT = 0;
-  function kick() { if (!raf && c2) { clearTimeout(idleT); raf = requestAnimationFrame(frame); } }
+  function kick() { if (!raf && c2 && renderVisible && !document.hidden) { clearTimeout(idleT); raf = requestAnimationFrame(frame); } }
+
+  function updateRenderVisibility() {
+    if (!viewObs) {
+      const r = $('pzStage')?.getBoundingClientRect();
+      viewIntersecting = !r || (r.bottom > 0 && r.top < window.innerHeight);
+    }
+    renderVisible = !document.hidden && viewIntersecting;
+    if (!renderVisible) { cancelAnimationFrame(raf); raf = 0; clearTimeout(idleT); }
+    else kick();
+  }
 
   // ---------- moves, step by step with effects
   function waitFall(drop) {
@@ -675,6 +702,8 @@ UI.prism = (() => {
     out.born.forEach(([i, ch]) => {
       cells[i].born = t;
       fx.push({ type: 'birth', i, color: ch === PRISM ? 'rgba(255,255,255,0.5)' : COLORS[kind(ch)][0], t0: t, dur: 600 });
+      const label = ch === PRISM ? '🌈 PRISM' : NOVA.includes(ch) ? '💥 NOVA' : '⚡ BEAM';
+      pfx.text(...cellXY(i), label, { color: ch === PRISM ? '#fff' : '#ffd166', size: cs * 0.25, big: 1.1, rise: cs * 0.55, ms: 760 });
     });
     if (out.born.length) ctx.sfx?.('pickup');
     if (pts) floatText(center, `+${pts}`, step);
@@ -748,15 +777,38 @@ UI.prism = (() => {
     if (st.lv?.def.goal === 'colour') st.lv.colour += out.popped.filter(([, ch]) => kind(ch) === st.lv.def.colour).length;
   }
 
+  const MAX_PENDING_MOVES = 4;
+  function renderPendingMoves() {
+    const badge = $('pzQueue');
+    if (!badge) return;
+    const n = st?.pendingMoves?.length || 0;
+    badge.hidden = !n;
+    badge.textContent = n === 1 ? '⌛ Move queued' : `⌛ ${n} moves queued`;
+  }
+  function queueMove(a, b) {
+    if (!st) return;
+    const q = st.pendingMoves;
+    if (q.length >= MAX_PENDING_MOVES) {
+      ctx.sfx?.('wrong');
+      return;
+    }
+    if (q.length && q[q.length - 1][0] === a && q[q.length - 1][1] === b) return;
+    q.push([a, b]);
+    renderPendingMoves();
+    ctx.sfx?.('tick');
+  }
+
   async function runMove(a, b) {
     if (!st || !canPlay()) return;
-    if (st.busy) { st.pend = [a, b]; ctx.sfx?.('tick'); return; }   // #223: a swap made during a cascade waits its turn and runs next
+    if (st.busy) { queueMove(a, b); return; }
     hint = null; lastAct = now();
     const what = swapKind(a, b);
     st.busy = true;
     try {
       ctx.sfx?.('flip');
       if (!what) { ctx.sfx?.('wrong'); await animSwap(a, b, true); return; }
+      if (what === 'combo') { try { Kit.callout('💥 SPECIAL COMBO!', 'gold'); } catch {} }
+      else if (what === 'prism') { try { Kit.callout('🌈 PRISM SWEEP!', 'cool'); } catch {} }
       if (st.lv) st.lv.left--;
       const m = mult();
       await animSwap(a, b, false);
@@ -849,8 +901,9 @@ UI.prism = (() => {
       if (st) { st.busy = false; flushEvents(); }
       kick();
       armHint();
-      const nx = st?.pend; if (st) st.pend = null;
-      if (nx) setTimeout(() => runMove(nx[0], nx[1]), 0);
+      const nx = st?.pendingMoves.shift();
+      renderPendingMoves();
+      if (nx) void runMove(nx[0], nx[1]);
     }
   }
 
@@ -1058,10 +1111,10 @@ UI.prism = (() => {
   function tap(i) {
     if (!st || !canPlay()) return;
     lastAct = now(); hint = null; armHint();
-    if (sel == null) { if (movable(i)) { sel = i; ctx.sfx?.('tick'); } }
+    if (sel == null) { if (st.busy || movable(i)) { sel = i; ctx.sfx?.('tick'); } }
     else if (i === sel) sel = null;
     else if (neighbours(sel).includes(i)) { const a = sel; sel = null; runMove(a, i); }
-    else sel = movable(i) ? i : null;
+    else sel = st.busy || movable(i) ? i : null;
     renderGrid();
     kick();
   }
@@ -1085,6 +1138,7 @@ UI.prism = (() => {
       b.textContent = ch === STONE ? '🪨' : ch === PRISM ? '🌈' : ch === EMPTY ? '' : (sp === 'n' ? '💥' : sp ? (sp === 'h' ? '↔' : '↕') : GLYPH[k]);
       b.style.color = k != null ? COLORS[k][0] : '';
       b.classList.toggle('sel', sel === i);
+      b.classList.toggle('possible', sel != null && neighbours(sel).includes(i) && !!swapKind(sel, i));
       b.classList.toggle('ice', FROZEN.includes(ch));
       const target = st?.incoming.find((e) => (e.cells || []).includes(i));
       b.classList.toggle('incoming-frost', target?.kind === 'frost');
@@ -1114,6 +1168,7 @@ UI.prism = (() => {
     try { pb = Profile.best('prism'); } catch {}
     st = { seed: pz.seed, score: mine?.score || 0, applied: applied != null ? +applied : Math.max(0, ...pz.events.map((e) => e.id)),
       appliedKey, queue: [], incoming: [], busy: false, pushed: mine?.rows, pushedScore: mine?.score || 0, endAt: now() + pz.timeLeft * 1000, over: false, lastT: 0,
+      pendingMoves: [],
       fever: { meter: 0, until: 0, t: now() }, hintAt: 0, pb, pbShown: false, rushShown: false, lv: null,
       stats: { best: 0, popped: 0, made: 0, fevers: 0, sent: 0, got: 0, parried: 0, moves: 0 } };
     rng = mulberry32((pz.seed ^ (st.score * 2654435761)) >>> 0);
@@ -1125,6 +1180,7 @@ UI.prism = (() => {
       st.lv = { n: pz.level, def, left: def.moves, frozen0: count(FROZEN), stones0: count(STONE), colour: 0, made: 0, prisms: 0, over: false };
     }
     cells = vis(); pops = []; fx = []; pfx.clear(); sel = null; hint = null;
+    renderPendingMoves();
     for (const k of Object.keys(prevHits)) delete prevHits[k];
     for (const k of Object.keys(prevScore)) delete prevScore[k];
     shownScore = st.score;
@@ -1171,6 +1227,7 @@ UI.prism = (() => {
   function endLevel(won) {
     const lv = st.lv;
     lv.over = true; sel = null; hint = null;
+    st.pendingMoves.length = 0; renderPendingMoves();
     const frac = lv.left / lv.def.moves, stars = won ? (frac >= 0.4 ? 3 : frac >= 0.15 ? 2 : 1) : 0;
     const d = pdata(); d.levels ||= {};
     const old = d.levels[lv.n] || 0;
@@ -1389,7 +1446,7 @@ UI.prism = (() => {
     if (bar) { bar.style.width = (100 * Math.min(1, left / (pz.length || 90))) + '%'; bar.classList.toggle('low', left < 10); }
     if (txt) txt.textContent = `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
     if (left < 10 && left > 0 && pz.playing && Math.floor(left) !== st.lastBeep) { st.lastBeep = Math.floor(left); ctx.sfx?.('tickfast'); }
-    if (left <= 0 && !st.over) { st.over = true; sel = null; hint = null; kick(); }
+    if (left <= 0 && !st.over) { st.over = true; sel = null; hint = null; st.pendingMoves.length = 0; renderPendingMoves(); kick(); }
     landDue();
     updateHud();
   }
@@ -1404,14 +1461,14 @@ UI.prism = (() => {
       <div id="pzGoal" class="pz-goal" hidden></div>
       <div id="pzStage" class="pz-stage"><canvas id="pzCanvas" tabindex="0" aria-label="Your gem board"></canvas><div id="pzGrid" class="pz-grid" hidden></div>
         <div id="pzWarn" class="pz-warn"></div><div id="pzMap" class="pz-map" hidden></div>
-        <div id="pzCount" class="pz-count" hidden></div><div id="pzBanner" class="pz-hit"></div><div id="pzTarget" class="pz-target-prompt" role="group" aria-label="Choose attack target" hidden></div><div id="pzOver" class="pz-over" hidden></div></div></div>`;
+        <div id="pzCount" class="pz-count" hidden></div><div id="pzBanner" class="pz-hit"></div><div id="pzQueue" class="pz-queue" aria-live="polite" hidden></div><div id="pzTarget" class="pz-target-prompt" role="group" aria-label="Choose attack target" hidden></div><div id="pzOver" class="pz-over" hidden></div></div></div>`;
     side.innerHTML = `<div class="panel">
       <div id="pzStatus" class="seat-row"></div>
       <div id="pzRivals" class="pz-rivals"></div>
       <div id="pzLevelSide"></div>
       <div id="pzThemes" class="pz-themes"></div>
-      <p class="hint left">Tap a gem, then a neighbour, or swipe it. ⌨️ Arrows move, Enter/Space picks, H shows a move.<br>
-      4 in a row ⚡ · L or T 💥 · 5 in a row 🌈 · swap two specials for a bigger blast. Quick matches fill 🔥 fever: double points.</p></div>`;
+      <p class="hint left"><b>Swap to make a line of 3.</b> Swipe a gem, or tap it and a neighbour. During animations, tap or swipe to queue up to 4 swaps. ⌨️ Arrows move; Enter/Space selects; H gives a hint.<br>
+      4 makes a row/column ⚡ · L/T makes a 3×3 💥 · 5 makes a colour-clearing 🌈. Match beside 🧊 or 🪨 to clear them. Chain matches for bigger scores; a special or ×3 chain can parry an incoming hit.</p></div>`;
     cv = $('pzCanvas');
     c2 = cv.getContext?.('2d') || null;
     if (!c2) { cv.hidden = true; $('pzGrid').hidden = false; }
@@ -1451,6 +1508,13 @@ UI.prism = (() => {
     addEventListener('keydown', keyHandler);
     resizeObs = window.ResizeObserver ? new ResizeObserver(resize) : null;
     resizeObs?.observe($('pzStage'));
+    viewObs = window.IntersectionObserver ? new IntersectionObserver((entries) => {
+      viewIntersecting = !!entries[0]?.isIntersecting;
+      updateRenderVisibility();
+    }, { threshold: 0.01 }) : null;
+    viewObs?.observe($('pzStage'));
+    visibilityHandler = updateRenderVisibility;
+    document.addEventListener('visibilitychange', visibilityHandler);
     resize();
     clock = setInterval(tickClock, 250);
   }
@@ -1462,6 +1526,9 @@ UI.prism = (() => {
     clearInterval(clock); clearTimeout(hintTimer); clearTimeout(idleT); clearTimeout(heatT);
     if (keyHandler) removeEventListener('keydown', keyHandler);
     resizeObs?.disconnect();
+    viewObs?.disconnect(); viewObs = null;
+    if (visibilityHandler) document.removeEventListener('visibilitychange', visibilityHandler);
+    visibilityHandler = null; renderVisible = true; viewIntersecting = true;
     falling = null; st = null; c2 = null; cv = null;
   }
 
@@ -1475,7 +1542,7 @@ UI.prism = (() => {
       if (pz.startIn > 0 && !st.countdown) { st.countdown = true; setTimeout(() => { kick(); armHint(); }, pz.startIn * 1000); }
     }
     if (pz.playing) applyEvents(pz.events);
-    if (!pz.playing) { st.over = true; sel = null; hint = null; }
+    if (!pz.playing) { st.over = true; sel = null; hint = null; st.pendingMoves.length = 0; renderPendingMoves(); }
     const me = pz.boards[S.me.id];
     if (levels) {
       const done = pdata().levels || {}, total = Object.values(done).reduce((a, b) => a + b, 0);

@@ -1,0 +1,81 @@
+.sy { max-width: 730px; margin-inline: auto; }
+.sy-header, .sy-incoming { display: flex; align-items: center; flex-wrap: wrap; gap: .45rem .7rem; }
+.sy-header { justify-content: space-between; }
+.sy-clock { color: var(--muted); font-variant-numeric: tabular-nums; min-height: 1.4em; }
+.sy-incoming { min-height: 2.8rem; }
+.sy-board {
+  position: relative; isolation: isolate; aspect-ratio: 1.42; min-height: 306px;
+  border-radius: 16px; overflow: hidden; border: 1px solid #41616b;
+  background: radial-gradient(ellipse at 50% 0%, #29454b, #12232a 80%);
+  color: #edf8fa;
+}
+.sy-board canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.sy-entry, .sy-depot, .sy-switch, .sy-train { position: absolute; transform: translate(-50%, -50%); }
+.sy-entry { font-size: .8rem; font-weight: 700; background: #172c33; padding: .25rem .55rem; border-radius: .4rem; }
+.sy-token {
+  display: inline-grid; place-items: center; min-width: 1.9rem; min-height: 1.9rem;
+  background: #182b34; color: var(--depot); border: 2px solid var(--depot);
+  border-radius: .5rem; font-size: 1.1rem; line-height: 1;
+}
+.sy-depot { width: clamp(30px, 9%, 60px); height: 13%; border-width: 3px; border-radius: .6rem .6rem .25rem .25rem; }
+.sy-switch {
+  display: grid; align-content: center; gap: .1rem; z-index: 1;
+  min-width: 76px; min-height: 46px; padding: .25rem .45rem; line-height: 1.15;
+  background: #243d48; border: 1px solid #92bbc6; border-radius: .55rem; color: #fff;
+  font-size: clamp(.7rem, 2.4vw, .88rem); white-space: nowrap; touch-action: manipulation;
+}
+.sy-switch > span { color: #97f9df; }
+.sy-switch:focus-visible { outline: 3px solid #ffe7a4; outline-offset: 3px; }
+.sy-switch:disabled { opacity: .8; }
+.sy-train {
+  z-index: 2; pointer-events: none; transform: translate(-50%, calc(-50% - 31px));
+  display: inline-flex; justify-content: center; gap: .22rem; padding-inline: .25rem;
+  border-radius: .45rem .45rem .2rem .2rem; box-shadow: 0 2px 0 #08191e;
+}
+.sy-train[data-node="entry"] { transform: translate(calc(-50% + 49px), -50%); }
+.sy-train small { font-size: .8em; color: #f4f7fa; }
+.sy-feedback { min-height: 1.5em; margin-block: .55rem 0; font-weight: 700; }
+.sy-correct { color: #72e6c2; }
+.sy-wrong { color: #ffae9d; }
+
+.sy-beat { height: 5px; margin-top: .4rem; border-radius: 4px; background: #293a46; overflow: hidden; }
+.sy-beat > span { display: block; height: 100%; background: #97f9df; transform-origin: left; }
+.sy-incoming { justify-content: center; }
+.sy-due { border-color: #ffe7a4; }
+.sy-due::before {
+  content: ''; position: absolute; width: 9px; height: 9px; top: -4px; right: -4px;
+  border-radius: 50%; background: #ffe7a4; box-shadow: 0 0 0 2px #142b30;
+}
+.sy-pending { box-shadow: inset 0 0 0 2px #97f9df; }
+.sy-train { border-bottom-width: 4px; }
+.sy-train::after {
+  content: ''; position: absolute; bottom: -6px; left: 4px; right: 4px; height: 5px;
+  background: radial-gradient(circle at 3px 2px, #0b171e 2px, transparent 2.5px) left / 9px 5px repeat-x;
+}
+.sy-train.sy-moving { transition: left 220ms ease-out, top 220ms ease-out, transform 220ms ease-out; }
+.sy-train.sy-misrouted { outline: 2px dashed #ffae9d; outline-offset: 2px; }
+.sy-feedback, .sy-attribution { text-align: center; }
+.sy-attribution { color: var(--muted); font-size: .82rem; min-height: 1.25em; margin: .15rem 0 0; }
+@media (prefers-reduced-motion: reduce) {
+  .sy-train.sy-moving { transition: none; }
+}
+
+.sy-scene { position: absolute; inset: 0; pointer-events: none; }
+.sy-3d .sy-flat { display: none; }
+.sy-3d .sy-entry { transform: translate(-50%, -135%); }
+.sy-3d .sy-depot { width: 29px; height: 29px; border-width: 1px; }
+.sy-3d .sy-train {
+  width: 1px; height: 1px; min-width: 0; min-height: 0;
+  clip-path: inset(50%); overflow: hidden;
+}
+
+.sy-incoming[hidden], .sy-preview[hidden], .sy-call-controls[hidden] { display: none; }
+.sy-preview { display: inline-flex; align-items: center; gap: .3rem; flex-wrap: wrap; }
+.sy-call-controls { display: inline-flex; gap: .2rem; }
+.sy-call-controls button {
+  min-width: 44px; min-height: 44px; padding: .2rem;
+  background: #263d48; color: #d8f0f3; font-size: 1.1rem;
+}
+.sy-call-controls button[aria-pressed="true"] { background: #a2efdb; color: #112825; }
+.sy-route-call { max-width: 12ch; line-height: 1.1; color: var(--muted); overflow-wrap: anywhere; }
+.sy-missed-switch { box-shadow: 0 0 0 2px #ff8978; }

@@ -84,6 +84,7 @@ from .hedgerow import Hedgerow
 from .realm import Realm
 from .heist import Heist
 from .hockey import Hockey
+from .fuse import Fuse
 from .klondike import Klondike
 from .holdem import Holdem
 from .ladder import Ladder
@@ -111,6 +112,7 @@ from .spire import Spire
 from .sumo import Sumo
 from .tictactoe import TicTacToe
 from .shipcrew import ShipCrew
+from .switchyard import Switchyard
 from .shutbox import ShutBox
 from .speed import Speed
 from .trivia import Trivia
@@ -128,7 +130,7 @@ from .starguard import StarGuard
 from .minesweeper import Minesweeper
 
 # Order here is the order of the lobby's game picker.
-GAMES = {g.id: g for g in (Unmask, OddOne, Relay, Trivia, Doodle, Bingo, Pond, Domino, Lucky, Spire, Prism, Marble, Riders, Whisker, PaintBlast, Sumo, Putt, Rally, Hockey, Snowball, Rapids, Midway, Planes, Orbit, Regatta, Tops, Lander, Pusher, Tide, Billiards, Cannon, Stones, Archery, MeteorShot, Lanes, Wobble, Wordsmith, WordBomb, GridHunt, WordSearch, Garden, Safecracker, FibFinder, Ladder, Chess, Checkers, Backgammon, Go, Oware, Reversi, Hedgerow, Kindred, Realm, Drift, LastCard, Lantern, Holdem, Cribbage, Hearts, Speed, Rummy, Klondike, FreeCell, Cheat, President, Spoons, KnockOutWhist, Spades, OhHell, Euchre, Gops, Scopa, Gin, GermanWhist, FanTan, Palace, Ratscrew, Nertz, Whist, Briscola, Blitz, Ranter, BigTwo, GoFish, OldMaid, Cassino, Spite, War, NinetyNine, SixtySix, Pitch, Ecarte, FiveHundred, Canasta, Eleusis, Mao, Belote, Pinochle, Bezique, Bridge, Truc, Skat, Piquet, SeaBattle,
+GAMES = {g.id: g for g in (Unmask, OddOne, Relay, Trivia, Doodle, Bingo, Pond, Domino, Lucky, Switchyard, Spire, Prism, Marble, Riders, Whisker, PaintBlast, Sumo, Putt, Rally, Hockey, Fuse, Snowball, Rapids, Midway, Planes, Orbit, Regatta, Tops, Lander, Pusher, Tide, Billiards, Cannon, Stones, Archery, MeteorShot, Lanes, Wobble, Wordsmith, WordBomb, GridHunt, WordSearch, Garden, Safecracker, FibFinder, Ladder, Chess, Checkers, Backgammon, Go, Oware, Reversi, Hedgerow, Kindred, Realm, Drift, LastCard, Lantern, Holdem, Cribbage, Hearts, Speed, Rummy, Klondike, FreeCell, Cheat, President, Spoons, KnockOutWhist, Spades, OhHell, Euchre, Gops, Scopa, Gin, GermanWhist, FanTan, Palace, Ratscrew, Nertz, Whist, Briscola, Blitz, Ranter, BigTwo, GoFish, OldMaid, Cassino, Spite, War, NinetyNine, SixtySix, Pitch, Ecarte, FiveHundred, Canasta, Eleusis, Mao, Belote, Pinochle, Bezique, Bridge, Truc, Skat, Piquet, SeaBattle,
                            DropFour, Boxes, TicTacToe, Ultimate, Morris, Sudoku, Minesweeper, Heist, MoonShot, Yacht, Farkle, Qork, ShipCrew, ShutBox, LiarsDice, Midnight, Mia, Squares, Brawl, Derby, TwentyOne, SkyDrop, StarGuard)}
 # Subgroups for the two big categories (#98): the picker shows them as small headers, in this order.
 FAMILIES = {

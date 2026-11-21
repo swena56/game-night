@@ -19,16 +19,22 @@ function runStats(hist) {
   const last = hist?.at(-1);
   if (!last) return null;
   const wins = new Map();
-  let games = 0, streak = 0, streakId = undefined;
+  let games = 0, draws = 0, streak = 0, streakId = undefined;
   for (let i = hist.length - 1; i >= 0 && hist[i].game === last.game; i--) {
     games++;
-    const w = hist[i].players.find((x) => x.won);
-    if (w) { const r = wins.get(w.id) || { id: w.id, name: w.name, color: w.color, n: 0 }; r.n++; wins.set(w.id, r); }
-    const wid = w ? w.id : null;
+    const winners = hist[i].teamWinnerIds === undefined
+      ? hist[i].players.filter((x) => x.won).slice(0, 1) : hist[i].players.filter((x) => x.won);
+    if (!winners.length) draws++;
+    for (const w of winners) {
+      const r = wins.get(w.id) || { id: w.id, name: w.name, color: w.color, n: 0 };
+      r.n++;
+      wins.set(w.id, r);
+    }
+    const wid = winners.length === 1 ? winners[0].id : null;
     if (streakId === undefined) { streakId = wid; streak = wid ? 1 : 0; } else if (streak && wid === streakId && streak === games - 1) streak++;
   }
   const rows = [...wins.values()].sort((a, b) => b.n - a.n);
-  return { games, name: last.name, icon: last.icon, rows, draws: games - rows.reduce((a, r) => a + r.n, 0),
+  return { games, name: last.name, icon: last.icon, rows, draws,
     streak: streak >= 2 ? { name: rows.find((r) => r.id === streakId)?.name, n: streak } : null };
 }
 function runLine() {
@@ -48,9 +54,10 @@ function runLine() {
 function renderOver() {
   const me = S.me, host = S.host === me.id;
   const w = player(S.winner);
-  $('#overText').textContent = w ? (w.id === me.id ? '🏆 You win!' : `🏆 ${w.name} wins!`) : (S.log.at(-1)?.text ?? 'Game over');
-  $('#overBanner').classList.toggle('won', w?.id === me.id);
   const last = S.history.at(-1);
+  const team = last?.teamWinnerIds;
+  $('#overText').textContent = team ? last.text : w ? (w.id === me.id ? '🏆 You win!' : `🏆 ${w.name} wins!`) : (S.log.at(-1)?.text ?? 'Game over');
+  $('#overBanner').classList.toggle('won', w?.id === me.id || !!team?.includes(me.id));
   const scored = last?.players.filter((x) => x.score != null) ?? [];
   const mineRow = last?.players.find((x) => x.name === me.name);
   renderPodium(w, scored);

@@ -173,7 +173,7 @@ let pickedGame = null;  // the game this host just tapped, scrolled to once the 
 let pickerFolded = false;  // the host has picked: the picker folds away until 🔄 Change game (or the next lobby visit)
 const unfoldPicker = () => { if (!pickerFolded) return false; pickerFolded = false; renderLobby(); return true; };
 // seats a game is best with: the solo bot count plus you, within the game's limits
-const recSeats = (g) => Math.min(g.max, Math.max(g.min, (SOLO_BOTS[g.id] || 1) + 1));
+const recSeats = (g) => Math.min(g.max, Math.max(g.min, (SOLO_BOTS[g.id] ?? 1) + 1));
 const sameVal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const isDefault = (f, settings = S.settings) => f.default === undefined || sameVal(settings[f.key], f.default);
 

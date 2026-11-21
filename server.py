@@ -277,7 +277,10 @@ class Room:
         shift = max(0.0, now - self.__dict__.pop("_saved_at", now))
         if self.deadline:
             self.deadline = max(self.deadline + shift, now + self.settings["timer"])
-        if self.paused:  # it stays paused: the pause began when the server went down, as far as clocks go
+        if self.paused:
+            # Rebase the frozen game clock before starting a new pause interval.
+            if self.game and self.phase == "playing":
+                self.restore_clocks(max(0.0, now - self.paused), self.paused)
             self.paused = now
         elif self.game and self.phase == "playing":
             self.restore_clocks(shift, now - shift)
@@ -437,7 +440,10 @@ class Room:
             self.begin_turn(cand.id)
             return
 
-    def finish(self, winner, text):
+    def finish(self, winner, text, *, team_winner_ids=None):
+        winners = set(team_winner_ids or ())
+        if winner:
+            winners.add(winner.id)
         self.phase = "over"
         self.winner = winner.id if winner else None
         self.turn = None
@@ -448,14 +454,16 @@ class Room:
         gid = self.settings["game"]
         scores = self.game.final_scores() if self.game else {}
         seated = self.seated()
+        if team_winner_ids is not None:
+            winners.intersection_update(p.id for p in seated if p.human() and not getattr(p, "quitting", False))
         for p in seated:
             if getattr(p, "quitting", False):
                 p.last_pts, p.streak = 0, 0
                 continue
             p.played += 1
-            p.last_pts = POINTS_WIN if winner and p.id == winner.id else POINTS_PLAYED
+            p.last_pts = POINTS_WIN if p.id in winners else POINTS_PLAYED
             p.points += p.last_pts
-            if winner and p.id == winner.id:
+            if p.id in winners:
                 if any(o.bot == "hard" and not o.standin for o in seated):
                     self.award(p, gid, "giant")
                 p.wins += 1
@@ -472,12 +480,14 @@ class Room:
             # id and bot level let each device keep its own lifetime record (static/profile.js)
             "players": [{"id": p.id, "bot": None if p.standin else p.bot,
                          "name": p.name, "color": p.color, "score": scores.get(p.id), "pts": p.last_pts,
-                         "won": bool(winner and p.id == winner.id)} for p in seated],
+                         "won": p.id in winners} for p in seated],
         })
+        if team_winner_ids is not None:
+            self.history[-1]["teamWinnerIds"] = [p.id for p in seated if p.id in winners]
         self.history = self.history[-30:]
         for p in seated:
             if p.bot and not p.standin and random.random() < 0.6:
-                lines = BANTER["win" if winner and p.id == winner.id else "lose"]
+                lines = BANTER["win" if p.id in winners else "lose"]
                 self.add_chat(p, random.choice(lines))
 
     def award(self, p, gid, key, at=None):
@@ -1407,7 +1417,7 @@ def frame_ticker():
                 continue
             with room.cond:
                 try:
-                    if room.phase == "playing" and room.game is game and game.frame(now):
+                    if room.phase == "playing" and not room.paused and room.game is game and game.frame(now):
                         room.snap()
                         room.bump()
                 except Exception:
