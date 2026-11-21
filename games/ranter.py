@@ -26,10 +26,12 @@ class Ranter(CardGame):
         "The dealer goes last and may swap with the top of the deck.",
         "Cards up: the lowest (ace is low) loses a life. Ties all lose one.",
         "Last player with a life wins.",
+        "An option, Ace of Doom: if the lowest card is an ace, its holders lose two lives.",
     ]
     min_players, max_players = 3, 6
     badges = {**CardGame.badges, "escape": ("🏃", "Great escape", "Swap away an ace")}
-    settings_schema = {"lives": ("Lives", [(3, "3 lives"), (2, "2 lives (quick)"), (5, "5 lives")], 3)}
+    settings_schema = {"doom": ("Ace of Doom", [(0, "Off"), (1, "On: lowest ace costs 2 lives")], 0),
+                       "lives": ("Lives", [(3, "3 lives"), (2, "2 lives (quick)"), (5, "5 lives")], 3)}
 
     def start(self, seated, rng):
         self.seat_up(seated, rng)
@@ -97,11 +99,16 @@ class Ranter(CardGame):
         alive = [k for k in range(self.n) if not self.is_out(k)]
         lo = min(low(self.card[k]) for k in alive)
         losers = [k for k in alive if low(self.card[k]) == lo]
+        doom = bool(self.s.get("doom")) and lo == 0
         for k in losers:
-            self.lives[k] -= 1
+            self.lives[k] -= 2 if doom else 1
         self.reveal = {"cards": {k: self.card[k] for k in alive}, "losers": losers}
         self.room.add_log("🂠 " + " · ".join(f"{self.nm(k)} {pretty(self.card[k])}" for k in alive), "big")
-        self.moment(f"💔 {' & '.join(self.nm(k) for k in losers)} lose{'s' if len(losers) == 1 else ''} a life", "bad", "groan")
+        who = " & ".join(self.nm(k) for k in losers)
+        if doom:
+            self.moment(f"☠️ Ace of Doom! {who} lose{'s' if len(losers) == 1 else ''} two lives", "bad", "groan")
+        else:
+            self.moment(f"💔 {who} lose{'s' if len(losers) == 1 else ''} a life", "bad", "groan")
         left = [k for k in range(self.n) if not self.is_out(k)]
         if len(left) <= 1:
             w = left[0] if left else max(range(self.n), key=lambda k: low(self.card[k]) if self.card[k] else -1)
