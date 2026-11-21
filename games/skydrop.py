@@ -67,6 +67,9 @@ def _place_off(a, b, t, px, pz, dist, limit):
             z += 0.45 if z >= lz else -0.45
         else:
             break
+    e = math.hypot(x / 7.4, z / 5.0)   # 🥚 the shaft is round: pull a corner gem back inside the ellipse
+    if e > 1:
+        x, z = x / e, z / e
     return round(x, 2), round(z, 2)
 RX, RZ, STEP_X, STEP_Z = 4.8, 3.1, 8.0, 5.4   # ring field, and the most a ring may sit from the last one (so every line is flyable)
 PATTERNS = {
@@ -162,6 +165,7 @@ class SkyDrop(Game):
     howto = [
         "Everyone dives the same course at once. Drag from anywhere to steer with the floating stick, or use WASD / arrow keys.",
         "Fly through glowing rings to score. Consecutive rings build a combo; missing one resets it. 🔥 Every 5th ring in a row pays +10 and a short speed surge.",
+        "🔵 Blue and 🟡 gold rings are the ones to fly through. Spinning red ✴️ blades, orange gates and 💥 mines are hazards: stay away from those.",
         "Steering is stabilized, so you can make small corrections without drifting away. Avoid turbines and storm gates, and keep well clear of the red 💥 mines: they blow you out of the dive for two seconds. Checkpoints refill boosts.",
         "🌬️ Tuck in close behind a rival and you ride their slipstream: a little extra speed to slingshot past. Tap ⚡ or Space for one of three short boosts. The boost refills at the checkpoint.",
         "😮‍💨 Skim a hazard for +3. Most gaps pay a coin line (+2). About one gap in three is a 💎 greed fork off to the side (+10): take it and you can miss the next ring.",
@@ -220,7 +224,9 @@ class SkyDrop(Game):
                 a, b = self.rings[j], self.rings[j + 1]
                 px, pz = _unit_perp(b[1] - a[1], b[2] - a[2])
                 side = r.choice([-1, 1])
-                gx, gz = _place_off(a, b, 0.5, px * side, pz * side, FORK_OFF, FORK_OFF - 0.4)
+                lx, lz = _line_xz(a, b, (d + nd) / 2)
+                tries = [_place_off(a, b, 0.5, px * sd, pz * sd, FORK_OFF, FORK_OFF - 0.4) for sd in (side, -side)]
+                gx, gz = max(tries, key=lambda q: (math.hypot(q[0] - lx, q[1] - lz) >= COIN_R + 1.05, tries.index(q) == 0, math.hypot(q[0] - lx, q[1] - lz)))
                 gd = round((d + nd) / 2, 2)
                 self.coins.append([gd, gx, gz, 1])
                 self.forks[j] = (gd, gx, gz)
@@ -441,9 +447,9 @@ class SkyDrop(Game):
                 f.depth = min(LENGTH, f.depth + speed * dt)
                 f.x += f.vx * dt
                 f.z += f.vz * dt
-                if abs(f.x) > 8.5 or abs(f.z) > 5.5:
-                    f.x = max(-8.5, min(8.5, f.x))
-                    f.z = max(-5.5, min(5.5, f.z))
+                e = math.hypot(f.x / SHAFT_X, f.z / SHAFT_Z)   # 🥚 a round tunnel: the wall is an ellipse, not a box
+                if e > 1:
+                    f.x, f.z = f.x / e, f.z / e
                     f.vx *= -0.45
                     f.vz *= -0.45
             for ri, ring in enumerate(self.rings):
