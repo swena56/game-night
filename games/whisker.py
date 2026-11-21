@@ -41,6 +41,7 @@ NIBBLE = 0.25                     # a mouse loses this much of a step munching e
 SQUEEZE = 0.25                    # …and this much squeezing into a mouse hole
 ZOOM_BACK = 18.0   # ⚡ an eaten zoomies pickup grows back this many seconds later, so the contest comes round again
 ZOOM_SECS, ZOOM_PACE, ZOOM_PTS = 3.0, 1.35, 3   # ⚡ a zoomies pickup: a mouse runs this much faster for this long
+POUNCE_RANGE, POUNCE_SECS, POUNCE_COOL, POUNCE_PACE = 5, 1.0, 8.0, 1.35   # 🐾 a cat with a clear run at a mouse lunges: faster for a second, then a wait
 CRUMB, BELL, BONK, CATCH = 1, 5, 20, 8               # points
 CLEAR_BONUS, SWEEP_BONUS = 25, 25  # every crumb gone (each mouse still in) / every mouse out (each cat)
 INF = 10 ** 6
@@ -185,6 +186,7 @@ class Whisker(Game):
         "Each round some players are 🐭 mice and the rest are 🐱 cats — the roles rotate, so everyone hunts.",
         "Mice: nibble crumbs for points. Swipe, use the arrows or the arrow keys — press early to take a corner.",
         "Cats: catch a mouse and you snatch half the crumbs it nibbled this round. Cats run a touch faster.",
+        "🐾 A cat with a mouse in its straight run ahead lunges: a one-second burst of speed (a ring shows where), then an 8-second wait. Turn a corner before it gets you!",
         "⚡ Grab a zoomies pickup (one each side, it grows back after 18 s) and your mouse runs a third faster for 3 seconds.",
         "🔔 A mouse that rings a bell makes every cat panic: bump one then to send it back to its basket.",
         "🕳️ Mouse holes let mice through the walls but not cats — though a cat at either end can reach in.",
@@ -348,7 +350,22 @@ class Whisker(Game):
             return v * ZOOM_PACE if e["zoom_until"] > now else v
         if e["spook_until"] > now:
             return v * SPOOK_PACE
-        return v * (ALLEY_PACE if e["role"] == "a" else self.pace)
+        pace = ALLEY_PACE if e["role"] == "a" else self.pace
+        return v * pace * (POUNCE_PACE if e.get("pounce_until", 0.0) > now else 1.0)
+
+    def pounce_target(self, cat, now):
+        """A mouse (not blinking, not out) in the straight run ahead of this cat, if any."""
+        c, d = cat["cell"], cat["dir"]
+        nb = self.nbs(cat)
+        for _ in range(POUNCE_RANGE):
+            n = nb[c][d]
+            if n is None:
+                return None
+            c = n
+            for m in self.ents:
+                if m["role"] == "m" and not m["done"] and m["out_until"] is None and m["ghost_until"] <= now and m["cell"] == c:
+                    return m
+        return None
 
     def state_of(self, e, now):
         """0 running · 1 caught, waiting · 2 panicking cat · 3 cat in the basket · 4 blinking mouse · 5 out."""
@@ -447,6 +464,13 @@ class Whisker(Game):
                     big = True
         for e in self.ents:
             e["prev"] = e["cell"]
+        for cat in self.ents:   # 🐾 a cat with a mouse in its sights lunges (every cat, human or bot)
+            if (self.is_cat(cat) and not cat["done"] and cat["out_until"] is None and cat["frozen_until"] <= now
+                    and cat["spook_until"] <= now and cat.get("pounce_cool", 0.0) <= now):
+                m = self.pounce_target(cat, now)
+                if m:
+                    cat["pounce_until"], cat["pounce_cool"] = now + POUNCE_SECS, now + POUNCE_COOL
+                    self.event("pounce", cat["cell"], cat["seat"])
         for e in self.ents:
             if e["done"] or e["out_until"] is not None or e["frozen_until"] > now:
                 continue

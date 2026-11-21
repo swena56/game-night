@@ -171,6 +171,10 @@ UI.whisker = (() => {
         fx?.shake(mine ? 8 : 3);
         if (mine) { ctx.sfx('crack'); buzz([80, 40, 140]); Kit.callout('🐾 Caught! Half your crumbs are gone', 'bad', { ms: 1300 }); }
         else ctx.sfx('capture');
+      } else if (kind === 'pounce') {
+        fx?.ring(x, y, { r0: 3 * ratio, r1: cell * 2 * ratio, color: '#ff8a5b', width: 3 * ratio, life: 0.4 });
+        if (mine) { ctx.sfx('tag'); buzz(20); Kit.callout('🐾 Pounce!', 'gold', { ms: 700 }); }
+        else if (my?.role === 'm') { ctx.sfx('tick'); buzz([15, 20, 15]); }
       } else if (kind === 'bonk') {
         fx?.ring(x, y, { r0: 4 * ratio, r1: cell * 2.5 * ratio, color: '#8ce99a', width: 4 * ratio, life: 0.5 });
         fx?.text(x, y, '+20', { color: '#8ce99a', size: 20 * ratio, big: 1 });
