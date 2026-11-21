@@ -26,6 +26,7 @@ class Euchre(TrickGame):
         "Trumps: the jack of trumps is highest, then the other jack of the same colour, then A K Q 10 9.",
         "Makers take 3 or 4 tricks: 1 point. All five: 2 (4 alone). Fewer than 3: the other side scores 2.",
         "First team to 10 points wins.",
+        "An option: a trick won with the 9 of trumps earns its team 1 extra point, whoever made trumps.",
     ]
     min_players, max_players = 4, 4
     teams = True
@@ -35,7 +36,9 @@ class Euchre(TrickGame):
     settings_schema = {
         "target": ("Game to", [(10, "10 points"), (5, "5 points (quick)")], 10),
         "stick": ("🔒 Stick the dealer", [(True, "Dealer must call in round two"), (False, "Redeal if all pass")], True),
+        "nine": ("🪶 Nine lives", [(False, "Off"), (True, "On: 9 of trumps wins = +1")], False),
     }
+    nine = None   # the team (0/1) whose 9 of trumps took a trick this hand (🪶 Nine lives)
 
     def start(self, seated, rng):
         self.seat_up(seated, rng)
@@ -77,6 +80,7 @@ class Euchre(TrickGame):
         self.trump = None
         self.maker = None
         self.alone = None
+        self.nine = None
         self.round = 1
         self.passes = 0
         self.tricks = [0] * 4
@@ -138,6 +142,12 @@ class Euchre(TrickGame):
 
     # -- scoring
 
+    def on_trick(self, w, cards):
+        nine = "9" + (self.trump or "")
+        if self.s.get("nine", False) and self.trump and any(s == w and c == nine for s, c in self.last["cards"]):
+            self.nine = w % 2
+            self.moment(f"🪶 Nine lives! {pretty(nine)} takes a trick: +1 for {self.team_name(self.nine)} at hand end", "gold", "sweep")
+
     def end_hand(self):
         t = self.maker % 2
         got = self.tricks[self.maker] + self.tricks[(self.maker + 2) % 4]
@@ -155,10 +165,14 @@ class Euchre(TrickGame):
                 if self.pl(k):
                     self.award(self.pl(k), "euchre")
             self.moment(f"💥 EUCHRED! {self.team_name(1 - t)} +2", "bad", "groan")
+        if self.nine is not None:
+            self.team_score[self.nine] += 1
+            self.room.add_log(f"🪶 {self.team_name(self.nine)} +1 for the 9 of trumps.")
         self.room.add_log(f"🧮 {self.team_name(0)} {self.team_score[0]} · {self.team_name(1)} {self.team_score[1]}")
-        if max(self.team_score) >= self.s["target"]:
+        if max(self.team_score) >= self.s["target"] and self.team_score[0] != self.team_score[1]:   # a 🪶 bonus can tie them: play on
             w = 0 if self.team_score[0] > self.team_score[1] else 1
-            return self.room.finish(self.pl(w), f"🏆 {self.team_name(w)} win Euchre, {self.team_score[w]} to {self.team_score[1 - w]}!")
+            return self.room.finish(self.pl(w), f"🏆 {self.team_name(w)} win Euchre, {self.team_score[w]} to {self.team_score[1 - w]}!"
+                                    + (" (🪶 incl. the 9 of trumps bonus)" if self.nine is not None else ""))
         self.stage = "score"
         self.pause(self.deal, 3.5)
 
@@ -261,7 +275,7 @@ class Euchre(TrickGame):
                          "out": self.is_out(k)})
         rows = [{"seat": t, "value": self.team_score[t], "sub": f"& {self.nm(t + 2)}"} for t in (0, 1)]
         t = {"info": info, "trump": self.trump, "trumpLabel": (f"{SUIT_NAME[self.trump].title()} trumps · right J{GLYPH[self.trump]} · left J{GLYPH[SAME[self.trump]]}" if self.trump else ""),
-             "scores": {"title": "Teams", "rows": rows, "hint": f"Game to {self.s['target']}. 🔵 seats 1 & 3, 🟠 seats 2 & 4."}}
+             "scores": {"title": "Teams", "rows": rows, "hint": f"Game to {self.s['target']}. 🔵 seats 1 & 3, 🟠 seats 2 & 4." + (" 🪶 A trick won with the 9 of trumps: +1." if self.s.get("nine", False) else "")}}
         t.update(self.trick_view(p, i))
         if self.stage in ("call", "discard"):
             t["hand"] = self.hands[i] if i is not None else []
