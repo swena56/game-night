@@ -21,6 +21,7 @@ BURN = 6             # a blast burns for half a second
 STUN = 36            # 3 s out after being caught
 SHIELD = 18          # 1.5 s of safety after respawning
 TAG_POINTS = 10
+CHAIN_MIN, CHAIN_PTS = 3, 4   # ⛓️ a blast that sets off 2+ more bombs (any owner) pays its starter this per bomb past the second
 COUNTDOWN, PAUSE = 3.0, 5.0
 CLOSE_FROM, CLOSE_EVERY = 15.0, 4.0  # 🧱 the walls close in: a ring of pillars from 15 s left, then every 4 s
 FLOOR, PILLAR, CRATE = 0, 1, 2
@@ -36,6 +37,7 @@ class PaintBlast(Game):
         "Move with a swipe-and-hold on the arena, the arrows, or the keyboard (arrows / WASD). Tap the arena, 💣 or Space to drop a bomb.",
         "A bomb blasts in a straight line in all four directions. It breaks the first crate it meets and paints every tile it touches in your colour.",
         "Caught in a blast? You're stunned for 3 s and respawn at home. Catching a rival scores +10, and 💥 two in one blast +10 more.",
+        "⛓️ Chain reaction: a bomb whose blast sets off two more bombs (yours or a rival's) pays the one who started it +4, and +4 more for every bomb after that.",
         "Crates hide 💣 more bombs, 🔥 longer blasts, 🖌️ paint splashes and 👟 kick: walk into a bomb to send it sliding.",
         "When the clock runs out, every tile in your colour is a point. Most points after the last round wins.",
         "🧱 In the last 15 s the walls close in, one ring at a time. Paint under them still counts.",
@@ -92,6 +94,8 @@ class PaintBlast(Game):
         self.maxb, self.reach = [1] * k, [2] * k
         self.kick = [False] * k
         self.stun, self.shield, self.tags = [0] * k, [SHIELD] * k, [0] * k
+        self.chain = [0] * k      # ⛓️ bonus points from chain reactions this round
+        self.chain_root = {}      # bomb cell -> seat whose bomb started the chain it is part of
         self.moved = [0] * k  # tick of each player's last step, so browsers can glide
         self.heading = [-1] * k  # the way each player last stepped (the turn buffer, #100)
         self.think = [0] * k
@@ -283,13 +287,22 @@ class PaintBlast(Game):
         # fuses, chain reactions, burning
         for c in list(self.bombs):
             self.bombs[c][0] -= 1
+        size = {}   # chain starter -> bombs that went off in their chain this tick
         while True:
             due = [c for c, b in self.bombs.items() if b[0] <= 0]
             if not due:
                 break
             for c in due:
                 if c in self.bombs:
-                    self.explode(c)
+                    root = self.chain_root.pop(c, self.bombs[c][1])
+                    size[root] = size.get(root, 0) + 1
+                    self.explode(c, root)
+        self.chain_root.clear()
+        for root, n in size.items():
+            if n >= CHAIN_MIN:
+                self.chain[root] += CHAIN_PTS * (n - CHAIN_MIN + 1)
+                p = self.room.players.get(self.seats[root])
+                self.moment(f"⛓️ {p.name if p else '?'}: CHAIN ×{n} +{CHAIN_PTS * (n - CHAIN_MIN + 1)}", "gold", "boom")
         for c in list(self.burn):
             self.burn[c][0] -= 1
             if self.burn[c][0] <= 0:
@@ -350,11 +363,14 @@ class PaintBlast(Game):
                     break
         return cells, crates
 
-    def explode(self, c):
+    def explode(self, c, root=None):
         fuse, owner, reach = self.bombs.pop(c)
+        root = owner if root is None else root
         cells, crates = self.blast_cells(c, reach)
         for cc in cells:
             if cc in self.bombs:
+                if self.bombs[cc][0] > 0:
+                    self.chain_root[cc] = root
                 self.bombs[cc][0] = 0  # chain reaction
             self.items.pop(cc, None)
             self.burn[cc] = [BURN, owner]
@@ -383,7 +399,7 @@ class PaintBlast(Game):
 
     def round_points(self, i):
         gold = sum(1 for c in self.gold if self.paint[c] == i + 1) * (GOLD_POINTS - 1)  # ⭐ a gold tile is worth 3
-        return self.paint.count(i + 1) + gold + TAG_POINTS * self.tags[i]
+        return self.paint.count(i + 1) + gold + TAG_POINTS * self.tags[i] + self.chain[i]
 
     def end_round(self, now):
         r = self.room
