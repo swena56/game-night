@@ -131,5 +131,65 @@ for level in ("easy", "normal", "hard"):
             fails.append(f"bots ({level}) finished")
 check("bots finish legally and the bonus fires", fired >= 1 and 0.03 < fired / races < 0.8, f"{fired}/{races}")
 
+# edge: a long-trailing horse that finishes 2nd gets nothing while another horse wins
+r, g, (ann, bo) = room(longshot=True, races=1)
+ann.g.tickets, bo.g.tickets = [2, 5], [1, 5]
+g.pos = {h: 0 for h in range(1, 7)}
+g.pos[1] = D.TRACK - 1
+g.pos[2] = 7
+g.lag = {h: 0 for h in range(1, 7)}
+g.lag[2] = D.LAG + 2
+a = r.players[r.turn]
+g.dice = [1, 3, 4]
+g.act(a, {"type": "move", "order": [0, 1, 2]})
+check("edge: a qualified 2nd-place horse gets no bonus", g.result["long"] == [] and ann.g.score == 3 and bo.g.score == 5, (ann.g.score, bo.g.score))
+
+# edge: dead heat, only one of the two winners qualified; holders of other horses get nothing extra
+r, g, (ann, bo) = room(longshot=True, races=1)
+ann.g.tickets, bo.g.tickets = [1, 5], [2, 5]
+g.pos = {h: 0 for h in range(1, 7)}
+g.pos[1], g.pos[2] = D.TRACK - 2, D.TRACK - 1
+g.lag = {h: 0 for h in range(1, 7)}
+g.lag[1] = D.LAG
+a = r.players[r.turn]
+g.dice = [1, 2, 3]        # 1 gallops to 12, 2 trots to 12, 3 stumbles (stays 0)
+g.act(a, {"type": "move", "order": [0, 1, 2]})
+check("edge: dead heat pays the bonus only to the qualified winner", g.result["long"] == [1] and ann.g.score == 9 and bo.g.score == 6, (ann.g.score, bo.g.score, g.result["long"]))
+
+# edge: a player with no ticket on the long shot gets nothing extra
+r, g, (ann, bo) = room(longshot=True, races=1)
+finish_with(r, g, 4, [4, 5], D.LAG)
+ann.g.score = 0
+check("edge: callout is public, no ticket info in it",
+      not any("Ann" in m.get("text", "") for m in r.log if isinstance(m, dict) and "Long shot" in m.get("text", "")))
+r, g, (ann, bo) = room(longshot=True, races=1)
+ann.g.tickets, bo.g.tickets = [4, 5], [1, 2]
+g.pos = {h: 0 for h in range(1, 7)}
+g.pos[4] = D.TRACK - 1
+g.lag = {h: 0 for h in range(1, 7)}
+g.lag[4] = D.LAG
+a = r.players[r.turn]
+g.dice = [4, 5, 6]
+g.act(a, {"type": "move", "order": [0, 1, 2]})
+check("edge: holders of other horses get no bonus", ann.g.score == 11 and bo.g.score == 2, (ann.g.score, bo.g.score))
+
+# edge: lag is measured from the leader after each move; a tie for the lead and the opening are no gap
+r, g, (ann, bo) = room(longshot=True)
+check("lag: nothing at the start", set(g.lag.values()) == {0})
+g.pos = {h: 0 for h in range(1, 7)}
+a = r.players[r.turn]
+g.dice = [1, 1, 2]      # 1 gallops +2 then trots +1 (=3), 2 stumbles
+g.act(a, {"type": "move", "order": [0, 1, 2]})
+check("lag: leader 0, others the gap", g.lag[1] == 0 and g.lag[2] == 3 and g.lag[3] == 3 and g.pos[1] == 3, g.lag)
+r, g, (ann, bo) = room(longshot=True)
+g.pos = {h: 0 for h in range(1, 7)}
+g.pos[1], g.pos[2] = 4, 5
+g.lag = {h: 0 for h in range(1, 7)}
+a = r.players[r.turn]
+g.dice = [1, 3, 4]      # horse 3 gallops, horse 1 trots to 5 and ties horse 2
+g.act(a, {"type": "move", "order": [1, 0, 2]})
+tied_ok = g.pos[1] == 5 and g.pos[2] == 5
+check("lag: a tie for the lead gives the tied horses no gap", tied_ok and g.lag[1] == 0 and g.lag[2] == 0, (g.pos, g.lag))
+
 print("\nall ok" if not fails else f"\n{len(fails)} FAILED: {', '.join(fails)}")
 sys.exit(1 if fails else 0)
