@@ -71,6 +71,7 @@ class Drift(Game):
         "Each of the four layers has its own wind (the arrows). Pick the layer that carries you over a 🚩 pennant to take it; a new one appears elsewhere.",
         "🔥 The burner adds one cell to your drift (3 per game). Two balloons that start a turn in the same cell and layer draft: +1 cell each.",
         "The winds shift every 3 turns; the forecast shows the next winds a turn ahead. Ending a turn in the 🌩 storm throws you a cell and drops you a layer.",
+        "🔥 Take a pennant three turns running and you earn a spare burner charge. A miss or a storm throw resets the streak.",
         "Most pennants after the last turn wins. A tie goes to whoever is nearest a pennant.",
     ]
     name = "Sky Drift"
@@ -230,6 +231,7 @@ class Drift(Game):
                     r.add_log(f"🌩 The storm throws {self.pl(pid).name}!", "power")
                     if taken.get(pid):
                         self.award(pid, "storm")
+        self.update_streaks(taken, flung)
         for pid, n in taken.items():
             if n >= 2:
                 self.award(pid, "double")
@@ -245,6 +247,20 @@ class Drift(Game):
             self.next_winds = make_winds(self.rng, self.winds)
             r.add_log("🌬️ The winds shift.", "info")
         self.open_turn(PLAY)
+
+    STREAK = 3   # 🔥 pennants on this many turns running earn a spare burner charge
+
+    def update_streaks(self, taken, flung=()):
+        """A pennant on consecutive turns builds a streak (a miss or a storm throw ends it); every STREAK-th turn
+        in a row refuels the burner by one."""
+        st = getattr(self, "streaks", None)
+        if st is None:
+            st = self.streaks = {}
+        for pid, n in taken.items():
+            st[pid] = st.get(pid, 0) + 1 if n and pid not in flung else 0
+            if st[pid] and st[pid] % self.STREAK == 0 and self.pl(pid):
+                self.fuel[pid] += 1
+                self.moment(f"🔥 {self.pl(pid).name}: {st[pid]} turns running, +1 burner!", "gold", "good")
 
     def shift_soon(self):
         return self.turn_no % SHIFT == 0
