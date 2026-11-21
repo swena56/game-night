@@ -208,18 +208,20 @@ class Belote(TrickGame):
         bel = [0, 0]
         if self.belote is not None:
             bel[side(self.belote)] = 20
+        jack = ""
         if self.s.get("lastjack", False):
             w = self.last["winner"]
             if any(sd == w and c == "J" + self.trump for sd, c in self.last["cards"]):
                 bel[side(w)] += 20
+                jack = " (+20 last jack)"
                 self.moment(f"🃏 {self.nm(w)} takes the last trick with the jack: +20!", "gold", "chime")
         if pts[ts] + bel[ts] > pts[1 - ts] + bel[1 - ts]:
             gain = [pts[0] + bel[0], pts[1] + bel[1]]
-            text = f"✅ {self.side_name(ts)} make it: {pts[ts]} to {pts[1 - ts]}"
+            text = f"✅ {self.side_name(ts)} make it: {pts[ts]} to {pts[1 - ts]}{jack}"
         else:
             gain = [0, 0]
             gain[1 - ts] = max(162, pts[0] + pts[1]) + bel[0] + bel[1]
-            text = f"❌ {self.side_name(ts)} are dedans ({pts[ts]}): all to the defenders"
+            text = f"❌ {self.side_name(ts)} are dedans ({pts[ts]}): all to the defenders{jack}"
             self.moment(text, "bad", "boom")
         for s in (0, 1):
             self.score[s] += gain[s]
