@@ -306,6 +306,35 @@ UI.paintblast = (() => {
         g.strokeRect(x + 3, y + 3, cell - 6, cell - 6);
       }
     }
+    // 🎯 your next bomb: a faint ghost of where it would blast from the tile you stand on, with the crates it would break marked
+    {
+      const mi = me(), mp = mi != null ? snap.p[mi] : null;
+      if (mp && snap.st === 'play' && !mp[1] && !snap.b.some((b) => b[0] === mp[0]) && snap.b.filter((b) => b[2] === mi).length < mp[4]) {
+        const col = colorOf(mi), pulseG = 0.5 + 0.5 * Math.sin(now / 260), at = mp[0];
+        const cells = [at], crates = [];
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          let cx = at % n, cy = Math.floor(at / n);
+          for (let r = 0; r < mp[5]; r++) {
+            cx += dx; cy += dy;
+            if (cx < 0 || cy < 0 || cx >= n || cy >= n) break;
+            const cc = cy * n + cx, tt = snap.t[cc];
+            if (tt === '#') break;
+            cells.push(cc);
+            if (tt === '+') { crates.push(cc); break; }
+            if (snap.b.some((b) => b[0] === cc)) break;
+          }
+        }
+        g.strokeStyle = col; g.lineWidth = Math.max(1, cell * 0.05);
+        g.globalAlpha = 0.22 + 0.16 * pulseG;
+        for (const c of cells) g.strokeRect((c % n) * cell + cell * 0.18, Math.floor(c / n) * cell + cell * 0.18, cell * 0.64, cell * 0.64);
+        g.globalAlpha = 0.55 + 0.3 * pulseG; g.lineWidth = Math.max(1.5, cell * 0.08);
+        for (const c of crates) {   // this crate would break
+          const x = (c % n) * cell, y = Math.floor(c / n) * cell;
+          g.beginPath(); g.arc(x + cell / 2, y + cell / 2, cell * 0.42, 0, 7); g.stroke();
+        }
+        g.globalAlpha = 1;
+      }
+    }
     g.globalAlpha = 1;
     g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = `${Math.round(cell * 0.62)}px system-ui, sans-serif`;
     for (const [c, kind] of snap.i) g.fillText(ITEM[kind] || '?', (c % n + 0.5) * cell, (Math.floor(c / n) + 0.55) * cell);
