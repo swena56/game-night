@@ -1,0 +1,24 @@
+services:
+  game-night:
+    build: .
+    restart: unless-stopped
+    environment:
+      PORT: ${PORT:-8000}
+      SSL: "0"
+    ports:
+      - "${PORT:-8000}:${PORT:-8000}"
+    volumes:
+      - game-night-data:/app/data
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import os,socket; s=socket.create_connection(('127.0.0.1', int(os.environ.get('PORT',8000))), timeout=3); s.close()"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  game-night-data:

@@ -11,6 +11,17 @@ PORT=9000 ./start.sh         # another port
 python3 server.py            # or run it in the foreground (Ctrl+C stops it)
 ```
 
+### Run with Docker Compose
+
+```bash
+docker compose up --build
+```
+
+Open <http://localhost:8000>. Compose keeps room saves and player profiles in the
+`game-night-data` volume. To use another host port, set `PORT` (for example,
+`PORT=9000 docker compose up --build`). The container serves plain HTTP; put it
+behind a TLS reverse proxy if you expose it beyond a trusted network.
+
 `start.sh` keeps the server running after you close the terminal. On Android it also takes a
 Termux wake lock when Termux:API is installed, so the phone doesn't pause the server with the
 screen off. To start it automatically when the phone boots, install the Termux:Boot app and add
