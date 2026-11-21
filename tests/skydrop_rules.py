@@ -403,7 +403,7 @@ lv = [g.level]
 for _ in range(2):
     g.new_run(CLOCK[0])
     lv.append(g.level)
-check("climb steps 1, 3, 5 over three runs", lv == [1, 3, 5], str(lv))
+check("climb steps 1, 4, 8 over three runs", lv == [1, 4, 8], str(lv))
 
 print("FAILED: " + ", ".join(fails) if fails else "all ok")
 sys.exit(1 if fails else 0)

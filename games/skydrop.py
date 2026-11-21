@@ -30,7 +30,15 @@ LEVELS = {
     3: {"name": "Gauntlet", "ring_r": 1.85, "sets": 6, "ramp": 0.0, "streams": 1.2, "drift": 0, "amp": 0.0},
     4: {"name": "Needle Eye", "ring_r": 1.65, "sets": 4, "ramp": 0.0, "streams": 1.4, "drift": 3, "amp": 1.6},
     5: {"name": "Redline", "ring_r": 1.6, "sets": 3, "ramp": 0.28, "streams": 1.5, "drift": 2, "amp": 2.0},
+    6: {"name": "Storm Front", "ring_r": 1.55, "sets": 5, "ramp": 0.15, "streams": 1.5, "drift": 3, "amp": 1.8, "gusts": True},
+    7: {"name": "Shutters", "ring_r": 1.5, "sets": 3, "ramp": 0.2, "streams": 1.4, "drift": 3, "amp": 2.0, "gusts": True, "shutters": True},
+    8: {"name": "Zero Hour", "ring_r": 1.4, "sets": 3, "ramp": 0.38, "streams": 1.5, "drift": 2, "amp": 2.2, "gusts": True, "shutters": True, "dark": 160, "pts": 1.25},
 }
+MAX_LEVEL = 8
+CLIMB = (1, 4, 8)   # 📈 the Climb option's level for each run of a 3-run match
+GUST_ACC, GUST_LEN, GUST_WARN = 14.0, 40.0, 30.0   # 💨 a gust shoves you sideways (units/s²) for 40 units of the dive; a warning call 30 units before
+SHUT_KINDS, SHUT_AMP, SHUT_RATE = (5, 6), 2.4, 1.6   # 🪟 two jaws (left, right) that slide shut and open together; the gap is wide open every ~4 s
+MEDAL_PERFECT, MEDAL_CLEAN = 15, 6
 RECOVER = 2.0   # after a hit you get a short speed-up, so one mistake does not end the run
 PENDULUM_KIND = 4
 SLING = 1.25   # boost + current: +25% speed, but you steer at 60%
@@ -147,6 +155,7 @@ class Flyer:
         self.surge_until = 0.0
         self.aim_ring = -1          # bots: the ring they're lining up and their offset from it
         self.aim_dx = self.aim_dz = 0.0
+        self.gust_warned = -1       # the last gust this diver was warned about
         self.fork_go = False        # bots: this gap's gem is worth leaving the ring line for
         self.fork_x = self.fork_z = self.fork_d = 0.0
         self.perk = ""              # 🎁 this stretch's checkpoint perk; "shield" is spent by the next hit
@@ -170,7 +179,7 @@ class SkyDrop(Game):
         "🌬️ Tuck in close behind a rival and you ride their slipstream: a little extra speed to slingshot past. Tap ⚡ or Space for one of three short boosts. The boost refills at the checkpoint.",
         "😮‍💨 Skim a hazard for +3. Most gaps pay a coin line (+2). About one gap in three is a 💎 greed fork off to the side (+10): take it and you can miss the next ring.",
         "🚀 Boost while inside an air stream and you slingshot: 25% more speed, but you steer at 60% until it ends.",
-        "🎚️ Levels 2-5 add smaller rings, corridor / pendulum / mine-field set pieces, drifting gold rings (4+) and a dark, fast Redline (5). 📈 Climb steps 1, 3, 5 over a 3-run match. Pick a 🎁 perk at each checkpoint.",
+        "🎚️ Levels 2-5 add smaller rings, corridor / pendulum / mine-field set pieces, drifting gold rings (4+) and a dark, fast Redline (5). 6 Storm Front adds 💨 gusts (a warning shows first), 7 adds 🪟 shutters that slide shut and open (wait for the gap), 8 Zero Hour is all of it with tiny rings. 📈 Climb steps 1, 4, 8 over a 3-run match. 🏅 A dive with no hits (level 3+) pays +15. Pick a 🎁 perk at each checkpoint.",
         "Cloud Spire mixes those forks in. Stormwell hangs the gem on a moving gate. Aurora Shaft slides the gold rings off the coin line.",
         "🧩 Every dive is a brand-new course built from sections (slalom, spiral, zigzag, drift, breather) and it gets busier the deeper you go.",
         "Finish order pays 40, 26, 16, 10, 6, then 2. Ring points still decide a messy dive.",
@@ -178,7 +187,7 @@ class SkyDrop(Game):
     settings_schema = {
         "course": ("Course", [("spire", "🏙️ Cloud Spire"), ("storm", "⛈️ Stormwell"), ("aurora", "🌌 Aurora Shaft")], "spire"),
         "runs": ("Runs", [(1, "1 run"), (3, "3 runs")], 1),
-        "level": ("Level", [(0, "📈 Climb each run"), (1, "1 · Open Sky"), (2, "2 · Crosswinds"), (3, "3 · Gauntlet"), (4, "4 · Needle Eye"), (5, "5 · Redline")], 1),
+        "level": ("Level", [(0, "📈 Climb each run"), (1, "1 · Open Sky"), (2, "2 · Crosswinds"), (3, "3 · Gauntlet"), (4, "4 · Needle Eye"), (5, "5 · Redline"), (6, "6 · Storm Front"), (7, "7 · Shutters"), (8, "8 · Zero Hour")], 1),
         "hazards": ("Hazards", [(True, "On"), (False, "Off")], True),
     }
 
@@ -203,7 +212,7 @@ class SkyDrop(Game):
         self.rings = []
         theme = self.s.get("course", "spire")
         chosen = int(self.s.get("level", 1) or 0)
-        self.level = max(1, min(5, 1 + (self.run - 1) * 2)) if chosen == 0 else max(1, min(5, chosen))   # 📈 0 = climb: 1, 3, 5 over a 3-run match
+        self.level = CLIMB[min(self.run, len(CLIMB)) - 1] if chosen == 0 else max(1, min(MAX_LEVEL, chosen))   # 📈 0 = climb: 1, 4, 8 over a 3-run match
         lv = LEVELS[self.level]
         self.ring_r = lv["ring_r"]
         depths = list(range(28, int(LENGTH), 18))
@@ -239,7 +248,7 @@ class SkyDrop(Game):
                 self.hazards.append([d, r.uniform(-5.4, 5.4), r.uniform(-3.4, 3.4), kind, r.uniform(0, math.tau)])
                 d += round(hazard_gap * (1 - 0.4 * d / LENGTH))   # 📈 the dive gets busier the deeper you go
             if lv["sets"]:
-                self._set_pieces(r, lv["sets"])
+                self._set_pieces(r, lv["sets"], lv.get("shutters"))
         # 🌀 level 4+: some rings drift on a slow orbit, so you lead the shot. They pay more. Rings with a set piece in front stay put.
         self.drifts = [None] * len(self.rings)
         if lv["drift"]:
@@ -248,7 +257,14 @@ class SkyDrop(Game):
                     self.drifts[j] = [lv["amp"], round(lv["amp"] * 0.55, 2), round(r.uniform(0, math.tau), 2), round(r.uniform(1.0, 1.4), 2)]
                     self.rings[j][3] = max(self.rings[j][3], 1.3)
         # 🌑 level 5: dark stretches where rings and coins only show up 25 units ahead (hazards still glow)
-        self.dark = [[d, d + 90] for d in range(200, int(LENGTH) - 100, 220)] if self.level >= 5 else []
+        self.dark = [[d, d + 90] for d in range(200, int(LENGTH) - 100, lv.get("dark", 220))] if self.level >= 5 else []
+        # 💨 level 6+: gusts, each a stretch of the dive where the wind shoves you sideways
+        self.gusts = []
+        if lv.get("gusts"):
+            d = 110.0
+            while d < LENGTH - 90:
+                self.gusts.append([round(d, 1), round(d + GUST_LEN, 1), r.choice((-1, 1))])
+                d += GUST_LEN + r.uniform(70, 110)
         self.streams = []
         for d in range(42, int(LENGTH) - 30, 54):
             self.streams.append([d, r.uniform(-5, 5), r.uniform(-3, 3), r.choice([-1, 1]), r.uniform(-1, 1)])
@@ -269,18 +285,22 @@ class SkyDrop(Game):
         self.room.deadline = None
         self.chip_key, self.chip_at = None, 0.0
 
-    def _set_pieces(self, r, every):
+    def _set_pieces(self, r, every, shutters=False):
         """Corridor / pendulum / mine field laid across the line into a ring. Each leaves a flyable lane through the ring,
         so a bot or player aiming at the ring finds the gap. Ordinary hazards near a set piece are cleared out."""
         for j in range(every - 1, len(self.rings) - 1, every):
             a, b = self.rings[j - 1], self.rings[j]
             d = b[0] - 6
             lx, lz = _line_xz(a, b, d)
-            kind = r.choice(("corridor", "pendulum", "field"))
+            kind = r.choice(("corridor", "pendulum", "field", "shutter") if shutters else ("corridor", "pendulum", "field"))
             self.hazards = [h for h in self.hazards if abs(h[0] - d) > 12]
             if kind == "corridor":
                 for side in (-1, 1):
                     self.hazards.append([d, round(lx + side * 3.2, 2), round(lz, 2), 0, r.uniform(0, math.tau)])
+            elif kind == "shutter":   # 🪟 two jaws that close over the ring line and open again: wait for the gap
+                ph = r.uniform(0, math.tau)
+                for side, k in ((-1, SHUT_KINDS[0]), (1, SHUT_KINDS[1])):
+                    self.hazards.append([d, round(lx + side * 3.2, 2), round(lz, 2), k, ph])
             elif kind == "pendulum":
                 self.hazards.append([d, round(lx, 2), round(lz, 2), PENDULUM_KIND, r.uniform(0, math.tau)])
             else:
@@ -341,6 +361,9 @@ class SkyDrop(Game):
             elapsed = max(0.0, at - self.race_started)
             x += math.sin(elapsed * 1.5 + phase) * 1.5
             z += math.cos(elapsed * 1.1 + phase) * 1.1
+        if kind in SHUT_KINDS:   # 🪟 both jaws share a phase: closed at s=1, wide open at s=0
+            s = (1 + math.sin(max(0.0, at - self.race_started) * SHUT_RATE + phase)) / 2
+            x += SHUT_AMP * s * (1 if kind == SHUT_KINDS[0] else -1)
         if kind == PENDULUM_KIND:   # 🕰️ swings right across the ring line: time your pass
             elapsed = max(0.0, at - self.race_started)
             x += math.sin(elapsed * 1.9 + phase) * 4.4
@@ -425,6 +448,12 @@ class SkyDrop(Game):
                         k = (1 - dd / 9) * (1 - dist / 4) * current_scale
                         ax += dx * 8 * k
                         az += dz * 8 * k
+                for gi, (g0, g1, gdir) in enumerate(self.gusts):   # 💨
+                    if gi > f.gust_warned and f.depth >= g0 - GUST_WARN:
+                        f.gust_warned = gi
+                        self.event(now, "gustr" if gdir > 0 else "gustl", i)
+                    if g0 <= f.depth < g1:
+                        ax += gdir * GUST_ACC
                 f.vx = max(-9, min(9, (f.vx + ax * dt) * (1 - 1.2 * dt)))
                 f.vz = max(-7.5, min(7.5, (f.vz + az * dt) * (1 - 1.35 * dt)))
                 speed = 12.5 * (1 + LEVELS[self.level]["ramp"] * f.depth / LENGTH) + (4.0 if now < f.boost_until else 0) + (3.0 if now < f.surge_until else 0)
@@ -463,7 +492,7 @@ class SkyDrop(Game):
                     if math.hypot(cross_x - x, cross_z - z) <= self.ring_r + (WIDE if f.perk == "wide" else 0):
                         f.combo += 1
                         f.rings += 1
-                        pts = (10 + min(10, (f.combo - 1) * 2)) * mult
+                        pts = (10 + min(10, (f.combo - 1) * 2)) * mult * LEVELS[self.level].get("pts", 1.0)
                         if math.hypot(cross_x - x, cross_z - z) <= self.ring_r * 0.3:   # 🎯 dead centre pays half again
                             pts *= 1.5
                             self.event(now, "bullseye", i)
@@ -554,6 +583,15 @@ class SkyDrop(Game):
                 if f.fork_go:
                     x, z = fk[1], fk[2]
                     f.aim_dx = f.aim_dz = 0.0
+            if level != "easy":   # 🪟 a shutter about to be shut when we get there: go round it (the ring is forgone), else thread the gap
+                for h in self.hazards:
+                    if h[3] == SHUT_KINDS[0] and 0 < h[0] - f.depth < 18:
+                        at = now + (h[0] - f.depth) / 12.5
+                        if self.hazard_position(*h[:3], h[3], h[4], at)[0] > h[1] + SHUT_AMP * 0.5 - 0.01:   # jaws more than half shut
+                            cx = h[1] + 3.2
+                            x = max(-7.4, min(7.4, cx + (5.6 if cx <= 0 else -5.6)))
+                            f.aim_dx = 0.0
+                        break
             x += f.aim_dx
             z += f.aim_dz
             # Lead toward ring to account for steering inertia.
@@ -576,6 +614,13 @@ class SkyDrop(Game):
             f = self.flyers[i]
             f.place = place
             f.score += max(0, 18 - 3 * (place - 1))
+            if self.level >= 3 and f.done_at and f.depth >= LENGTH:   # 🏅 a dive with no hits, 🥈 with one
+                if f.hits == 0:
+                    f.score += MEDAL_PERFECT
+                    self.moment(f"🏅 {self.player_name(i)}: perfect line, no hits! +{MEDAL_PERFECT}", "gold", "fanfare")
+                elif f.hits == 1:
+                    f.score += MEDAL_CLEAN
+                    self.room.add_log(f"🥈 {self.player_name(i)}: a clean dive, one hit. +{MEDAL_CLEAN}", "power")
         for i, f in enumerate(self.flyers):
             if not self.active(i):
                 continue
@@ -603,7 +648,7 @@ class SkyDrop(Game):
     def fast_view(self, now, full=False):
         return {"stage": self.stage, "run": self.run, "runs": self.runs, "go": self.go_at,
                 "time": now, "raceStarted": self.race_started, "length": LENGTH, "seed": self.seed, "course": self.s.get("course", "spire"), "level": self.level, "ringR": self.ring_r, "ramp": LEVELS[self.level]["ramp"], "drifts": self.drifts, "dark": self.dark,
-                "rings": self.rings, "hazards": self.hazards, "streams": self.streams, **({"coins": self.coins} if full else {}),
+                "rings": self.rings, "hazards": self.hazards, "streams": self.streams, "gusts": self.gusts, **({"coins": self.coins} if full else {}),
                 "finished": self.finished, "events": self.events,
                 "flyers": [[f.depth, f.x, f.z, f.vx, f.vz, f.score, f.rings, f.combo,
                             f.boosts, f.done_at, f.place, f.stun_until, f.hits, f.boost_until, f.perk, f.offer] for f in self.flyers],
