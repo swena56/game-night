@@ -3,7 +3,9 @@
 The hands shrink from the biggest deal down to one card (or grow, or go down and back up). After the
 deal the next card is turned for trumps. Everyone bids, and the dealer, bidding last, may not make the
 bids add up to the number of tricks (so someone must miss). Follow suit if you can. Take exactly what
-you bid for 10 points plus one a trick; miss by any amount and score nothing. Most points wins."""
+you bid for 10 points plus one a trick; miss by any amount and score nothing. Most points wins.
+
+🧗 Bold bids (option, default off): making an exact bid of 3 or more tricks pays 5 extra points."""
 import random
 
 from .cardbase import GameError, deck, rank, suit, show, pretty, SUIT_NAME
@@ -20,6 +22,7 @@ class OhHell(TrickGame):
         "Everyone bids how many tricks they'll take. The dealer bids last and can't make the total come out exact.",
         "Follow suit if you can. Highest trump wins, else the highest card of the suit led.",
         "Take exactly your bid: 10 + 1 per trick. Miss by any amount: 0.",
+        "🧗 Bold bids (an option): make an exact bid of 3 or more tricks and score 5 extra.",
         "After the last hand, most points wins.",
     ]
     min_players, max_players = 3, 6
@@ -28,7 +31,10 @@ class OhHell(TrickGame):
         "shape": ("Hands", [("down", "Down: biggest to 1"), ("updown", "Down and back up (long)"), ("up", "Up: 1 to biggest")], "down"),
         "most": ("Biggest hand", [(7, "7 cards"), (10, "10 cards"), (5, "5 cards (quick)")], 7),
         "hook": ("Dealer's hook", [(True, "Bids can't add up exactly"), (False, "Any bid")], True),
+        "bold": ("🧗 Bold bids", [(False, "Off"), (True, "On: exact 3+ bid +5")], False),
     }
+    BOLD = 3      # the smallest bid that counts as bold
+    BOLD_BONUS = 5
 
     def start(self, seated, rng):
         self.seat_up(seated, rng)
@@ -86,14 +92,19 @@ class OhHell(TrickGame):
         self.start_tricks((self.dealer + 1) % self.n)
 
     def end_hand(self):
-        lines = []
+        lines, bold = [], []
         for k in range(self.n):
             ok = self.tricks[k] == self.bids[k]
             pts = 10 + self.tricks[k] if ok else 0
+            if ok and self.bids[k] >= self.BOLD and self.s.get("bold", False):
+                pts += self.BOLD_BONUS
+                bold.append(self.nm(k))
             self.made[k] += ok
             self.scores[k] += pts
             lines.append(f"{self.nm(k)} {self.tricks[k]}/{self.bids[k]} {'✓' if ok else '✗'}")
         self.room.add_log("🧮 " + " · ".join(lines), "big")
+        if bold:
+            self.moment(f"🧗 Bold bid made: {', '.join(bold)} +{self.BOLD_BONUS}", "gold", "fanfare")
         if self.hand_no >= len(self.plan):
             for k in range(self.n):
                 if self.made[k] == len(self.plan) and self.pl(k):
@@ -164,7 +175,8 @@ class OhHell(TrickGame):
                           ] + (["🎴 dealer"] if k == self.dealer else [])} for k in range(self.n)]
         t = {"info": info, "trump": self.turned, "trumpLabel": "Trumps" if self.turned else "No trumps",
              "scores": {"title": "Points", "rows": [{"seat": k, "value": self.scores[k], "sub": f"made {self.made[k]}"} for k in sorted(range(self.n), key=lambda k: -self.scores[k])],
-                        "hint": f"Hand {self.hand_no} of {len(self.plan)} · {self.size} card{'s' if self.size > 1 else ''}. Bids so far: {sum(b for b in self.bids if b is not None)}." + self.hook_note()}}
+                        "hint": f"Hand {self.hand_no} of {len(self.plan)} · {self.size} card{'s' if self.size > 1 else ''}. Bids so far: {sum(b for b in self.bids if b is not None)}." + self.hook_note()
+                        + (f" 🧗 Bold bids on: an exact bid of {self.BOLD}+ scores {self.BOLD_BONUS} extra." if self.s.get("bold") else "")}}
         t.update(self.trick_view(p, i))
         if self.stage == "bid" and i is not None:
             t["hand"] = self.hands[i]
