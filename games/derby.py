@@ -12,6 +12,8 @@ from .base import Game, GameError
 HORSES = 6
 TRACK = 12
 PAY = (5, 3, 1)
+LAG = 6          # 🐴 Long shot: a horse that trailed the leader by this many squares...
+LONG_BONUS = 3   # ...and then still wins adds this to each ticket on it
 MOVES = (2, 1, -1)
 PERMS = [(0, 1, 2), (0, 2, 1), (1, 0, 2), (1, 2, 0), (2, 0, 1), (2, 1, 0)]
 
@@ -25,12 +27,12 @@ def places(pos):
     return out
 
 
-def payout(pos, tickets):
+def payout(pos, tickets, longs=()):
     pl = places(pos)
-    return sum(PAY[pl[h]] if pl[h] < len(PAY) else 0 for h in tickets)
+    return sum((PAY[pl[h]] if pl[h] < len(PAY) else 0) + (LONG_BONUS if h in longs and pl[h] == 0 else 0) for h in tickets)
 
 
-def portfolio(pos, tickets, before=None):
+def portfolio(pos, tickets, before=None, longs=()):
     """🎟️ One owner's tickets as things stand: each horse's place, what it would pay if the race ended
     now, the horses it should pass (knocking them back helps) and the ones that threaten it (pushing
     them on hurts), and what the last move did to the payout."""
@@ -43,12 +45,12 @@ def portfolio(pos, tickets, before=None):
         below = [pos[k] for k in others if pos[k] < x]
         tied = sorted(k for k in others if pos[k] == x)
         rows.append({
-            "horse": h, "place": pl[h], "pays": PAY[pl[h]] if pl[h] < len(PAY) else 0,
+            "horse": h, "place": pl[h], "pays": payout(pos, [h], longs),
             "pass": sorted(k for k in others if above and pos[k] == min(above)),
             "threats": tied or sorted(k for k in others if below and pos[k] == max(below)),
         })
-    now = payout(pos, tickets)
-    return {"rows": rows, "total": now, "last": None if before is None else now - payout(before, tickets)}
+    now = payout(pos, tickets, longs)
+    return {"rows": rows, "total": now, "last": None if before is None else now - payout(before, tickets, longs)}
 
 
 def apply(pos, dice, order):
@@ -68,6 +70,7 @@ class Derby(Game):
         f"The race ends the moment a horse reaches the line ({TRACK}). Tickets on 1st, 2nd and 3rd pay 5, 3 and 1 (tied horses share the better place).",
         "Everyone sees what you push and what you hold back — help your horses without giving your tickets away.",
         "Your 🎟️ portfolio (only you see it) shows what each ticket pays right now, the horse to pass ▲ and the one to keep back ▼, and the points your picked jobs would add or cost.",
+        "🐴 Long shot (an option): a horse that trailed the leader by 6 squares at any point and still wins adds +3 to every ticket on it.",
         "Most points after the last race wins.",
     ]
     name = "Dice Derby"
@@ -78,7 +81,15 @@ class Derby(Game):
     badges = {**Game.badges, "exacta": ("🎟️", "Exacta", "Hold tickets on both the 1st and 2nd horse")}
     settings_schema = {
         "races": ("Races", [(3, "3"), (1, "1"), (5, "5")], 3),
+        "longshot": ("Long shot", [(False, "Off"), (True, "🐴 +3")], False),
     }
+    lag = {}   # old saves: no long-shot tracking
+
+    def longs(self):
+        """Horses that count as long shots right now (always empty with the option off)."""
+        if not self.s.get("longshot"):
+            return set()
+        return {h for h, v in self.lag.items() if v >= LAG}
 
     def start(self, seated, rng):
         self.rng = rng
@@ -110,6 +121,7 @@ class Derby(Game):
             r.add_log(f"🎟️ Your tickets: horse {p.g.tickets[0]} and horse {p.g.tickets[1]}.", "private", to=p.id)
         self.trail = []
         self.prev_pos = None
+        self.lag = {h: 0 for h in range(1, HORSES + 1)}
         r.add_log(f"🏁 Race {self.race} of {self.s['races']}: they're off!", "big")
         live = self.players()
         start = live[(self.first + self.race - 1) % len(live)]
@@ -156,6 +168,8 @@ class Derby(Game):
         self.n += 1
         r.add_log(f"🏇 {p.name}: horse {g} gallops, {t} trots, {s} stumbles.")
         lead = max(self.pos.values())
+        for h in self.lag:
+            self.lag[h] = max(self.lag[h], lead - self.pos[h])
         if lead >= TRACK:
             return self.end_race()
         r.advance()
@@ -167,8 +181,12 @@ class Derby(Game):
         winners = [h for h in pl if pl[h] == 0]
         r.add_log(f"🏁 Horse {' & '.join(map(str, winners))} wins race {self.race}!", "big")
         gains = {}
+        longs = self.longs()
+        won = sorted(h for h in winners if h in longs)
+        for h in won:
+            self.moment(f"🐴 Long shot! Horse {h} was {self.lag[h]} squares back and still wins: +{LONG_BONUS} a ticket.", "gold", "fanfare")
         for p in self.players():
-            gain = payout(self.pos, p.g.tickets)
+            gain = payout(self.pos, p.g.tickets, longs)
             p.g.score += gain
             gains[p.id] = gain
             r.add_log(f"🎟️ {p.name} held {p.g.tickets[0]} & {p.g.tickets[1]}: +{gain} → {p.g.score}")
@@ -176,7 +194,7 @@ class Derby(Game):
                 self.award(p, "exacta")
                 self.moment(f"🎟️ {p.name} hits the exacta: horses {p.g.tickets[0]} and {p.g.tickets[1]} finish 1-2!", "gold", "fanfare")
         self.result = {"race": self.race, "pos": dict(self.pos), "places": pl,
-                       "tickets": {p.id: p.g.tickets for p in self.players()}, "gains": gains, "n": self.n}
+                       "tickets": {p.id: p.g.tickets for p in self.players()}, "gains": gains, "n": self.n, "long": won}
         self.n += 1
         if self.race >= self.s["races"]:
             return self.finish()
@@ -290,7 +308,8 @@ class Derby(Game):
             "pos": self.pos, "dice": self.dice, "trail": self.trail, "n": self.n,
             "tickets": tickets,
             # 🎟️ the owner's portfolio only: built from their own tickets and the public track
-            "portfolio": portfolio(self.pos, tickets, getattr(self, "prev_pos", None)) if tickets else None,
+            "portfolio": portfolio(self.pos, tickets, getattr(self, "prev_pos", None), self.longs()) if tickets else None,
+            "longshot": bool(self.s.get("longshot")), "lag": self.lag if self.s.get("longshot") else None,
             "result": self.result, "places": places(self.pos),
             "scores": {i: r.players[i].g.score for i in self.seats if i in r.players},
         }}

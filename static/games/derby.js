@@ -19,7 +19,8 @@ UI.derby = (() => {
       <p id="dbyHint" class="hint"></p>
       <div id="dbyResult" class="dby-result"></div></div>`;
     side.innerHTML = `<div class="panel"><h3>Points</h3><div id="dbyScores"></div>
-      <p class="hint left">Tickets on 1st, 2nd and 3rd pay 5, 3 and 1.</p></div>`;
+      <p class="hint left">Tickets on 1st, 2nd and 3rd pay 5, 3 and 1.</p>
+      <p id="dbyLong" class="hint left" hidden></p></div>`;
     $('dbyRoll').onclick = () => ctx.quiet(ctx.act('roll', {}));
     $('dbyReset').onclick = () => { order = []; render(S, ctx); };
     $('dbyGo').onclick = () => { if (order.length === 3) ctx.quiet(ctx.act('move', { order })); };
@@ -115,17 +116,23 @@ UI.derby = (() => {
     $('dbyReset').disabled = !order.length;
     $('dbyHint').textContent = !mine ? '' : !d.dice.length ? 'Roll three dice.' : order.length < 3 ? `Tap the die whose horse should ${JOBS[order.length][1]} (${JOBS[order.length][0]}).` : 'Happy with it? Go!';
 
+    const lg = $('dbyLong'); lg.hidden = !d.longshot;
+    if (d.longshot) {
+      const lo = Object.keys(d.lag || {}).filter((h) => d.lag[h] >= 6);
+      lg.textContent = '🐴 Long shot: a horse that trailed the leader by 6 squares and still wins adds +3 a ticket.' + (lo.length ? ` Qualified: horse ${lo.join(', ')}.` : '');
+    }
+
     const res = $('dbyResult'); res.innerHTML = '';
     if (d.result) {
       const R = d.result;
       if (R.n !== seenResult && seenResult !== -1) Kit.callout(`🏁 Horse ${Object.keys(R.places).filter((h) => R.places[h] === 0).join(' & ')} wins!`, 'gold', { sound: 'fanfare' });
       seenResult = R.n;
-      res.append(ctx.el('div', 'dby-rhead', `Race ${R.race} result`));
+      res.append(ctx.el('div', 'dby-rhead', `Race ${R.race} result` + ((R.long || []).length ? ` · 🐴 long shot: horse ${R.long.join(' & ')}` : '')));
       for (const [pid, tks] of Object.entries(R.tickets)) {
         const p = ctx.player(pid);
         const row = ctx.el('div', 'dby-rrow');
         const n = ctx.el('b', '', p?.name ?? '?'); n.style.color = p?.color ?? 'inherit';
-        row.append(n, ctx.el('span', '', ` 🎟️ ${tks.map((h) => `${h} (${['1st', '2nd', '3rd'][R.places[h]] ?? '–'})`).join(', ')} → +${R.gains[pid] ?? 0}`));
+        row.append(n, ctx.el('span', '', ` 🎟️ ${tks.map((h) => `${h} (${['1st', '2nd', '3rd'][R.places[h]] ?? '–'})`).join(', ')} → +${R.gains[pid] ?? 0}${tks.some((h) => (R.long || []).includes(h)) ? ' 🐴' : ''}`));
         res.append(row);
       }
     }
