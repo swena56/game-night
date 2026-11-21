@@ -36,16 +36,20 @@ class Skat(TrickGame):
         "In suit games the four jacks (♣ ♠ ♥ ♦) top the trumps. Follow suit; jacks count as trumps.",
         "The declarer needs 61 of the 120 card points (A 11, 10 10, K 4, Q 3, J 2). The skat counts for them.",
         "Win: + the game's value. Lose or overbid: − twice that. Highest after all deals wins.",
+        "An option: after a lost game the next deal is a Bock deal and every score in it counts double.",
     ]
     min_players, max_players = 3, 3
     badges = {**TrickGame.badges, "grand": ("🍺", "Grand", "Win a grand")}
-    settings_schema = {"deals": ("Deals", [(6, "6 deals"), (3, "3 (quick)"), (9, "9 deals")], 6)}
+    settings_schema = {"deals": ("Deals", [(6, "6 deals"), (3, "3 (quick)"), (9, "9 deals")], 6),
+                       "bock": ("🍺 Bock", [(False, "Off"), (True, "On: x2 after a loss")], False)}
+    bock = False       # this deal counts double (a lost game just before it, with the option on)
 
     def start(self, seated, rng):
         self.seat_up(seated, rng)
         self.score = [0, 0, 0]
         self.dealer = rng.randrange(3)
         self.deal_no = 0
+        self.bock = False
         self.room.add_log(f"🍺 Skat: {self.s['deals']} deals, one declarer against two.", "big")
         self.deal()
 
@@ -220,12 +224,18 @@ class Skat(TrickGame):
             v = max(v, ((self.bid + base - 1) // base) * base)
             text += f" (overbid at {self.bid})"
         gain = v if won else -2 * v
+        if self.bock:
+            gain *= 2
+            text += " (Bock: x2)"
+        self.bock = bool(self.s.get("bock", False)) and not won and self.deal_no < self.s["deals"]
         self.score[d] += gain
         if won and g == "G" and self.pl(d):
             self.award(self.pl(d), "grand")
         self.result = f"{'✅' if won else '❌'} {self.nm(d)} {text}: {gain:+d}"
         self.room.add_log(f"🧮 {self.result}", "big")
         self.moment(self.result, "gold" if won else "bad", "fanfare" if won else "boom")
+        if self.bock:
+            self.moment("🍺 Bock! The next deal counts double", "cool", "whoosh")
         if self.deal_no >= self.s["deals"]:
             return self.win_by_score(self.score)
         self.stage = "score"
@@ -380,7 +390,7 @@ class Skat(TrickGame):
              "piles": [{"cards": ["??", "??"], "label": "Skat", "small": True}] if self.skat else [],
              "banner": self.result if self.stage == "score" else (f"{self.nm(self.declarer)}: {GAME_NAME[g]}, bid {self.bid}" if g else None),
              "scores": {"title": "Points", "rows": [{"seat": k, "value": self.score[k]} for k in sorted(range(3), key=lambda k: -self.score[k])],
-                        "hint": f"Deal {self.deal_no} of {self.s['deals']} · A 11, 10 10, K 4, Q 3, J 2 · 61 wins"}}
+                        "hint": f"Deal {self.deal_no} of {self.s['deals']}{' · 🍺 Bock x2' if self.bock else ''} · A 11, 10 10, K 4, Q 3, J 2 · 61 wins"}}
         t.update(self.trick_view(p, i))
         if i is None or self.room.turn != p.id:
             return t
