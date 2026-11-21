@@ -60,16 +60,12 @@ function renderPickerBar(bar, pick, redraw) {
   }
   bar.append(jump);
 }
-// the 💬 chip cycles all games → ones you've left feedback on → ones you haven't
-const FEEDBACK_FILTERS = [[null, '💬 Feedback'], ['given', '💬 Left feedback'], ['none', '💬 No feedback yet']];
+// the 💬 chip shows only the games you haven't left feedback on yet
 function feedbackChip(btn) {
-  const cur = FEEDBACK_FILTERS.find(([k]) => k === (load('pickerFeedback') || null)) || FEEDBACK_FILTERS[0];
-  btn.textContent = cur[1]; btn.setAttribute('aria-pressed', !!cur[0]);
+  const on = !!load('pickerFeedback');
+  btn.textContent = '💬 Needs feedback'; btn.setAttribute('aria-pressed', on);
 }
-function cycleFeedback() {
-  const i = FEEDBACK_FILTERS.findIndex(([k]) => k === (load('pickerFeedback') || null));
-  store('pickerFeedback', FEEDBACK_FILTERS[(i + 1) % FEEDBACK_FILTERS.length][0]);
-}
+const toggleFeedback = () => store('pickerFeedback', load('pickerFeedback') ? null : 'none');
 // fills `pick` with the games in groups; tile(b, g) wires each tile (clicks, wishes)
 function renderPickerGrid(pick, opts) {
   let { games, seated = 0, current = null, query = '', onlyFits = false, kind = load('pickerKind'), tile, redraw } = opts;
@@ -84,7 +80,7 @@ function renderPickerGrid(pick, opts) {
   const fed = load('feedbackGames') || [], fedFilter = load('pickerFeedback');  // 'given' | 'none' | null
   const shown = games.filter((g) => !hide(g) && (!query || g.name.toLowerCase().includes(query) || g.category.includes(query) || (g.family || '').toLowerCase().includes(query))
     && (!onlyFits || fits(g) || g.id === current) && (!kind || g.category === kind || g.id === current)
-    && (!fedFilter || (fedFilter === 'given') === fed.includes(g.id) || g.id === current));
+    && (!fedFilter || !fed.includes(g.id) || g.id === current));
   const byId = (ids) => ids.map((id) => shown.find((g) => g.id === id)).filter(Boolean);
   const newTags = Profile.showNew();
   const groups = [];  // [label, games, category, sub-header?]
@@ -111,7 +107,7 @@ function renderPickerGrid(pick, opts) {
   }
   const hiddenList = games.filter(hide);
   if (showHidden && hiddenList.length) groups.push([`🙈 Hidden · ${hiddenList.length}`, hiddenList, '', false, true]);
-  if (!shown.length) pick.append(el('p', 'hint', query ? `No game matches “${query}”.` : fedFilter ? `No games ${fedFilter === 'given' ? 'with' : 'without'} feedback from you${onlyFits || kind ? ' match the other filters' : ''}.` : kind ? `No ${TILE_KINDS[kind] || kind} fits this many players.` : 'No game fits this many players.'));
+  if (!shown.length) pick.append(el('p', 'hint', query ? `No game matches “${query}”.` : fedFilter ? 'You have left feedback on every game here.' : kind ? `No ${TILE_KINDS[kind] || kind} fits this many players.` : 'No game fits this many players.'));
   for (const [label, list, cat, sub, flat] of groups) {
     // games that fit the players here come first in each group (a flat sort keeps its own order)
     const gs = flat ? list : [...list].sort((a, b) => fits(b) - fits(a));
@@ -163,8 +159,8 @@ async function pickGameSheet({ title = '🎮 Choose a game', current = null, sea
   cards.title = 'Show only card games';
   cards.onclick = () => { store('pickerKind', load('pickerKind') === 'cards' ? null : 'cards'); draw(); };
   const fedBtn = el('button', 'chip-btn', '');
-  fedBtn.title = 'Filter by whether you have left feedback on a game';
-  fedBtn.onclick = () => { cycleFeedback(); draw(); };
+  fedBtn.title = 'Show only games you have not left feedback on';
+  fedBtn.onclick = () => { toggleFeedback(); draw(); };
   const tools = el('div', 'picker-tools');
   tools.append(find, cards, fedBtn);
   const bar = el('div', 'picker-bar'), pick = el('div', 'picker');

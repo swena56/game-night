@@ -241,27 +241,33 @@ async function reportDialog(kind = 'bug', draft = '') {
   const peek = el('button', 'ghost-btn', 'What’s included?'); peek.type = 'button';
   const pre = el('pre', 'report-pre'); pre.hidden = true;
   peek.onclick = () => { pre.textContent = JSON.stringify(reportContext(), null, 2); pre.hidden = !pre.hidden; };
-  body.append(kinds, text, details, peek, pre,
+  const game = S && gameInfo();
+  const perfect = el('input'); perfect.type = 'checkbox'; perfect.id = 'reportPerfect';
+  const perfectRow = el('label', 'check'); perfectRow.append(perfect, `👍 ${game?.name || 'This game'} is perfect, nothing to fix`);
+  perfectRow.hidden = !game;
+  perfect.onchange = () => { text.disabled = perfect.checked; kinds.hidden = perfect.checked; };
+  body.append(kinds, perfectRow, text, details, peek, pre,
     el('p', 'hint left', 'Sent to whoever runs this Game Night server, along with your name.'));
   kinds.onchange = () => { text.placeholder = placeholder(); };
   text.placeholder = placeholder();
   setTimeout(() => text.focus(), 50);
 
   if (!(await ask('', { title: 'Report a bug or suggest an idea', body, ok: 'Send' }))) return;
-  const chosen = body.querySelector('input[name=reportKind]:checked').value;
-  if (text.value.trim().length < 5) {
+  const chosen = perfect.checked ? 'idea' : body.querySelector('input[name=reportKind]:checked').value;
+  const note = perfect.checked ? `👍 Perfect as is: ${game.name}` : text.value;
+  if (note.trim().length < 5) {
     toast('Please describe it in a few words.');
     return reportDialog(chosen, text.value);
   }
   try {
     const res = await api('/api/feedback', {
-      kind: chosen, text: text.value, name: S?.me.name || $('#name').value,
+      kind: chosen, text: note, name: S?.me.name || $('#name').value,
       context: include.checked ? reportContext() : {},
     });
     const gameId = S?.gameId;  // remembered so the picker can filter by games you've reported on
     if (gameId) store('feedbackGames', [...new Set([...(load('feedbackGames') || []), gameId])]);
     if (S?.phase === 'lobby' && !$('#lobby').hidden) renderLobby();
-    toast(`Thanks! ${chosen === 'bug' ? 'Bug report' : 'Suggestion'} #${res.id} sent.`);
+    toast(`Thanks! ${perfect.checked ? 'Your thumbs-up' : chosen === 'bug' ? 'Bug report' : 'Suggestion'} #${res.id} sent.`);
   } catch (e) {
     toast(e.message);
     if (e.network) reportDialog(chosen, text.value);  // keep their words if the network blipped
@@ -625,7 +631,7 @@ $('#pickerFind').oninput = () => S && renderLobby();
 $('#pickerFits').onclick = () => { store('pickerFits', !load('pickerFits') || null); renderLobby(); };
 const pickerCards = $('#pickerCards');
 const pickerFeedback = $('#pickerFeedback');
-if (pickerFeedback) pickerFeedback.onclick = () => { cycleFeedback(); renderLobby(); };
+if (pickerFeedback) pickerFeedback.onclick = () => { toggleFeedback(); renderLobby(); };
 if (pickerCards) pickerCards.onclick = () => { store('pickerKind', load('pickerKind') === 'cards' ? null : 'cards'); renderLobby(); };
 $('#gamePicker').addEventListener('keydown', (e) => {
   const dir = ARROWS[e.key], cur = document.activeElement;
