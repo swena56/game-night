@@ -184,9 +184,9 @@ UI.oware = (() => {
     const n = o.pits[from], mine = sideOf(o.me).includes(pv.last);
     const where = mine ? `your pit ${pv.last % 6 + 1}` : `their pit ${pv.last % 6 + 1}`;
     $('owHint').textContent = `Sow ${n} seed${n === 1 ? '' : 's'}: the last lands in ${where}`
-      + (pv.taken.length ? ` and captures ${pv.seeds} (pits of 2 or 3)!`
+      + (pv.taken.length ? ` and captures ${pv.seeds} (pits of ${o.caps?.includes(4) ? '2 to 4' : '2 or 3'})!`
         : pv.slam ? ' — that would take all their seeds, so it captures nothing.'
-        : mine ? ' (captures only happen on their side).' : ' — no capture (it needs to make 2 or 3).');
+        : mine ? ' (captures only happen on their side).' : ' — no capture (it needs to make ' + (o.caps?.includes(4) ? '2, 3 or 4' : '2 or 3') + ').');
   }
 
   return { mount, render, ownSounds: true, testPreview: preview };
