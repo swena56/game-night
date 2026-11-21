@@ -46,6 +46,7 @@ OUTPOSTS = ("Tycho Base", "Copernicus Camp", "Shackleton Ice Works", "Mare Stati
             "Plato Depot", "Hadley Outpost", "Serenity Dome", "Clavius Yard")
 GEM, PICK_FUEL, PICK_R2, N_PICKS = 15, 3 * 30, 2.6 * 2.6, 4
 HOP_MULT, HOP_MIN, HOP_OPEN, HOP_CLOSE = 1.5, 3 * 30, 24, 24 + 120   # ticks after touchdown: the window to lift off
+STREAK_PTS, STREAK_MAX = 5, 15   # 🔥 each landing in a row after the first adds this much (up to the max); a crash or a missed round resets it
 HOP_TICKS = 35 * 30    # a hop may fly this long from its lift-off (past the round's usual end)
 BOT = {  # think every n ticks, pad choice, touchdown speed aimed for, gain noise, approach speed cap
     "easy": (6, 1, 2.0, 0.35, 4.5),
@@ -296,6 +297,7 @@ class Lander(Game):
         "Pads score ×1, ×2 or ×3 (the narrow, awkward one) × (50 + softness up to 30 + aim up to 20).",
         "Each pad is an outpost that needs you: ⛽ a refinery refills 8 s of fuel, 🚑 a medical rush pays +40 to the first one down, 🔬 a lab pays +30 for landing dead centre.",
         "💎 Crystals in the sky are +15 each if that flight lands; a ⛽ canister adds 3 s of fuel the moment you touch it.",
+        "🔥 Land round after round and each landing in a row adds +5 (up to +15). A crash or a round without a landing resets it.",
         "Landed with fuel to spare? Burn again within 4 s to hop to a different pad for ×1.5 more. A crash on the hop keeps your first landing.",
         "Fuel carries over: the tank only gets a top-up each round, so don't waste it hovering.",
         "Most points after the last round wins.",
@@ -462,6 +464,13 @@ class Lander(Game):
         r = self.room
         if res["how"] == "land":
             res["pts"] += self.deliver(p, res)
+            g.streak = getattr(g, "streak", 0) + 1   # 🔥 landings in a row, round to round
+            bonus = min(STREAK_MAX, STREAK_PTS * (g.streak - 1))
+            if bonus:
+                res["pts"] += bonus
+                res["words"] = list(res.get("words") or []) + [f"🔥 streak +{bonus}"]
+        else:
+            g.streak = 0
         g.points += res["pts"]
         g.best = max(g.best, res["pts"])
         if res["how"] == "land":
@@ -478,6 +487,8 @@ class Lander(Game):
                 self.award(p, "bullseye")
             if mult == 3:
                 self.moment(f"🎯 {p.name} sticks the ×3 landing! +{res['pts']}", "gold", "good")
+            elif g.streak in (3, 5):
+                self.moment(f"🔥 {p.name}: {g.streak} landings in a row!", "gold", "good")
         elif res["how"] == "crash":
             why = ("off the pads" if res["pad"] < 0 else "too fast" if -res["vy"] > VY_OK else "sliding sideways"
                    if abs(res["vx"]) > VX_OK else "tilted over")
@@ -607,6 +618,7 @@ class Lander(Game):
             if isinstance(o.g.hop, dict) and "open" in o.g.hop:
                 o.g.hop = None
             if o.g.res is None:
+                o.g.streak = 0
                 o.g.res = {"how": "lost", "pad": -1, "pts": 0, "ticks": MAX_TICKS, "x": 0, "vx": 0, "vy": 0, "k": 0,
                            "fuel": o.g.fuel, "soft": 0, "prec": 0}
                 r.add_log(f"⏰ {o.name} never touched down.", "info")
