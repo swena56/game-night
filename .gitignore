@@ -15,3 +15,4 @@ data/profiles/
 tests/_shots/
 tests/_*.js
 .claude/loop-queue.md
+graphify-out/

@@ -87,6 +87,7 @@ def aim():
 tick(g, 20, each=aim)
 check("rings scored", f.rings >= 10, f"{f.rings} rings")
 check("combo grows", f.combo == f.rings and f.score > f.rings * 10, f"combo {f.combo} score {f.score}")
+check("a 5-ring streak sets off the surge", f.surge_until > 0, f"surge_until {f.surge_until}")
 miss = g.flyers[1]
 check("a flyer that never steers misses most rings", miss.rings < f.rings, f"{miss.rings} vs {f.rings}")
 
@@ -257,6 +258,28 @@ tick(g, 75)
 check("race ends with a quitter", r.phase == "over", r.phase)
 check("fast view is JSON", isinstance(json.dumps(g.fast_view(CLOCK[0])), str))
 check("all finite", all(math.isfinite(x) for f in g.flyers for x in (f.depth, f.x, f.z)))
+
+# 🧩 dynamic levels: every run is built from random sections, always flyable, different every time
+import random
+paths = [M._ring_path(random.Random(n), th, 39) for n in range(60) for th in ("spire", "storm", "aurora")]
+check("level rings stay inside the ring field", all(abs(x) <= M.RX + .01 and abs(z) <= M.RZ + .01 for p in paths for x, z in p))
+check("no hop between rings is too far to fly", all(abs(a[0] - b[0]) <= M.STEP_X + .01 and abs(a[1] - b[1]) <= M.STEP_Z + .01 for p in paths for a, b in zip(p, p[1:])))
+check("levels differ from run to run", len({tuple(M._ring_path(random.Random(n), "spire", 39)) for n in range(60)}) == 60)
+r, g, ps = game(2)
+r2, g2, ps2 = game(2)
+check("two matches get different courses", [x[1:3] for x in g.rings] != [x[1:3] for x in g2.rings])
+check("hazards get denser with depth", len([h for h in g.hazards if h[0] > M.LENGTH / 2]) >= len([h for h in g.hazards if h[0] <= M.LENGTH / 2]) - 1, str(len(g.hazards)))
+
+# 💎 greed forks: about one gap in three hangs a gem well off the ring line
+r, g, ps = game(2)
+gems = [c for c in g.coins if c[3] == 1]
+check("greed forks: about a third of the gaps", 10 <= len(gems) <= 15, str(len(gems)))
+off = []
+for j, (gd, gx, gz) in g.forks.items():
+    lx, lz = M._line_xz(g.rings[j], g.rings[j + 1], gd)
+    off.append(math.hypot(gx - lx, gz - lz))
+check("every fork gem is out of reach from the ring line", off and min(off) > M.COIN_R + 1, f"min {min(off):.1f}")
+check("fork gems stay inside the shaft", all(abs(c[1]) <= M.SHAFT_X and abs(c[2]) <= M.SHAFT_Z for c in gems))
 
 print("FAILED: " + ", ".join(fails) if fails else "all ok")
 sys.exit(1 if fails else 0)

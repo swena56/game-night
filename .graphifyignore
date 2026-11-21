@@ -1,0 +1,7 @@
+.claude/worktrees/
+data/
+tests/node_modules/
+static/vendor/
+static/fonts/
+static/icons/
+__pycache__/

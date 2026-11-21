@@ -4,6 +4,7 @@ Players steer on two axes to collect rings, draft through air streams, and dodge
 moving hazards. The browser renders the shared course; the server owns scoring.
 """
 import math
+import random
 import time
 
 from .base import Game, GameError
@@ -15,8 +16,91 @@ COUNTDOWN = 3.0
 RING_R = 2.05
 COIN_PTS, GEM_PTS, COIN_R = 2, 10, 1.8   # 🪙 coins and 💎 gems hang between the rings: fly through them for points
 DRAFT_GAP, DRAFT_R, DRAFT_BOOST = 8.0, 2.0, 1.12   # 🌬️ tuck in close behind a rival and you ride their slipstream: a bit more speed
+STREAK_EVERY, STREAK_PTS, STREAK_SURGE = 5, 10, 1.5   # 🔥 every 5th ring in a row: bonus points and a short free speed surge
 MINE_PTS, MINE_STUN = 12, 2.2        # 💥 a mine is deadly: it blows you out of the dive for a couple of seconds and costs points
 GRAZE, GRAZE_PTS = 0.8, 3   # skim a hazard within this much of its edge for a few points: risk for reward
+PLACE_BONUS = (40, 26, 16, 10, 6, 2)   # 1st through 6th. Enough to swing a close run; a missed shaft still loses.
+FORK_OFF = 3.8   # greed gem sits this far off the ring-to-ring line, past the coin grab radius
+SHAFT_X, SHAFT_Z = 8.5, 5.5
+
+
+def _unit_perp(dx, dz):
+    h = math.hypot(dx, dz)
+    if h < 1e-6:
+        return 1.0, 0.0
+    return -dz / h, dx / h
+
+
+def _line_xz(a, b, depth):
+    """Point on the ring-to-ring line at this depth. a and b are ring rows [depth, x, z, mult]."""
+    span = b[0] - a[0]
+    t = 0.0 if span == 0 else (depth - a[0]) / span
+    return a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t
+
+
+def _place_off(a, b, t, px, pz, dist, limit):
+    """A point `dist` off the ring line, kept inside the shaft and clear of the line."""
+    lx, lz = _line_xz(a, b, a[0] + (b[0] - a[0]) * t)
+    x = min(7.4, max(-7.4, lx + px * dist))
+    z = min(5.2, max(-5.2, lz + pz * dist))
+    for _ in range(5):
+        if math.hypot(x - lx, z - lz) > limit:
+            break
+        if abs(x) < 7.2:
+            x += 0.55 if x >= lx else -0.55
+        elif abs(z) < 5.0:
+            z += 0.45 if z >= lz else -0.45
+        else:
+            break
+    return round(x, 2), round(z, 2)
+RX, RZ, STEP_X, STEP_Z = 4.8, 3.1, 8.0, 5.4   # ring field, and the most a ring may sit from the last one (so every line is flyable)
+PATTERNS = {
+    "scatter": 1.0,   # loose random
+    "slalom": 1.0,    # hard left, hard right, hard left ...
+    "spiral": 1.0,    # round and round the shaft
+    "zigzag": 1.0,    # sweeping diagonals corner to corner
+    "ramp": 0.8,      # one long drift across the shaft
+    "straight": 0.6,  # a breather: rings stacked near the middle
+}
+THEME_PATTERN = {"storm": {"zigzag": 1.6, "slalom": 1.4}, "aurora": {"spiral": 1.8, "ramp": 1.3}, "spire": {"scatter": 1.3}}
+
+
+def _ring_path(r, theme, count):
+    """Ring positions [x, z] for the whole dive, built from short sections (4-7 rings) of different shapes, no shape twice
+    in a row, so every run is a different course but always flyable: no ring is further from the last than STEP_X / STEP_Z."""
+    weights = {k: w * THEME_PATTERN.get(theme, {}).get(k, 1.0) for k, w in PATTERNS.items()}
+    out, last = [], None
+    cx, cz = r.uniform(-1, 1), r.uniform(-1, 1)
+    while len(out) < count:
+        kind = r.choices([k for k in weights if k != last], [w for k, w in weights.items() if k != last])[0]
+        last, n = kind, r.randint(4, 7)
+        a0 = r.uniform(0, math.tau)
+        spin = r.choice([-1, 1])
+        tx, tz = r.choice([-1, 1]) * r.uniform(3.2, RX), r.choice([-1, 1]) * r.uniform(1.8, RZ)
+        for i in range(n):
+            u = i / max(1, n - 1)
+            if kind == "scatter":
+                x, z = r.uniform(-RX, RX), r.uniform(-RZ, RZ)
+            elif kind == "slalom":
+                x, z = (RX * 0.85 if (i + int(a0)) % 2 else -RX * 0.85), r.uniform(-1.2, 1.2)
+            elif kind == "spiral":
+                ang = a0 + spin * i * 1.15
+                x, z = math.cos(ang) * RX * 0.9, math.sin(ang) * RZ * 0.9
+            elif kind == "zigzag":
+                x = (-1 if (i % 2) else 1) * tx * 0.9
+                z = (1 if (i % 2) else -1) * tz * 0.9
+            elif kind == "ramp":
+                x, z = -tx + 2 * tx * u, -tz * 0.6 + tz * 1.2 * u
+            else:   # straight
+                x, z = r.uniform(-0.9, 0.9), r.uniform(-0.7, 0.7)
+            # keep every hop flyable
+            x = max(cx - STEP_X, min(cx + STEP_X, x))
+            z = max(cz - STEP_Z, min(cz + STEP_Z, z))
+            cx, cz = max(-RX, min(RX, x)), max(-RZ, min(RZ, z))
+            out.append((round(cx, 2), round(cz, 2)))
+    return out[:count]
+
+
 # Bots: (seconds between steering decisions, steering noise, chance to line up each ring properly).
 # A bot that loses focus on a ring aims for a spot beside it, so it usually misses that ring and
 # then has to recover for the next one. Tuned for about 40% / 60% / 80% of the rings.
@@ -42,8 +126,11 @@ class Flyer:
         self.hit_cool_until = 0.0
         self.coins = self.gems = self.mines = 0
         self.drafting = False
+        self.surge_until = 0.0
         self.aim_ring = -1          # bots: the ring they're lining up and their offset from it
         self.aim_dx = self.aim_dz = 0.0
+        self.fork_go = False        # bots: this gap's gem is worth leaving the ring line for
+        self.fork_x = self.fork_z = self.fork_d = 0.0
 
 
 class SkyDrop(Game):
@@ -51,16 +138,18 @@ class SkyDrop(Game):
     category = "action"
     name = "Sky Drop"
     icon = "🪂"
-    blurb = "Dive through a shifting sky shaft, thread the rings, and race to the landing deck."
+    blurb = "Dive a sky shaft, thread the bright ring, or peel off for a gem."
     min_players, max_players = 2, 6
     replayable = False
     howto = [
         "Everyone dives the same course at once. Drag from anywhere to steer with the floating stick, or use WASD / arrow keys.",
-        "Fly through glowing rings to score. Consecutive rings build a combo; missing one resets it.",
+        "Fly through glowing rings to score. Consecutive rings build a combo; missing one resets it. 🔥 Every 5th ring in a row pays +10 and a short speed surge.",
         "Steering is stabilized, so you can make small corrections without drifting away. Avoid turbines and storm gates, and keep well clear of the red 💥 mines: they blow you out of the dive for two seconds. Checkpoints refill boosts.",
         "🌬️ Tuck in close behind a rival and you ride their slipstream: a little extra speed to slingshot past. Tap ⚡ or Space for one of three short boosts. The boost refills at the checkpoint.",
-        "😮‍💨 Skim past a hazard without touching it for a +3 close-call bonus. 🪙 Coins between the rings are +2 each and a 💎 gem is +10.",
-        "Ring points plus a finish-place bonus decide the winner.",
+        "😮‍💨 Skim a hazard for +3. Most gaps pay a coin line (+2). About one gap in three is a 💎 greed fork off to the side (+10): take it and you can miss the next ring.",
+        "Cloud Spire mixes those forks in. Stormwell hangs the gem on a moving gate. Aurora Shaft slides the gold rings off the coin line.",
+        "🧩 Every dive is a brand-new course built from sections (slalom, spiral, zigzag, drift, breather) and it gets busier the deeper you go.",
+        "Finish order pays 40, 26, 16, 10, 6, then 2. Ring points still decide a messy dive.",
     ]
     settings_schema = {
         "course": ("Course", [("spire", "🏙️ Cloud Spire"), ("storm", "⛈️ Stormwell"), ("aurora", "🌌 Aurora Shaft")], "spire"),
@@ -88,25 +177,36 @@ class SkyDrop(Game):
         # Every course element is shared and immutable for the whole run.
         self.rings = []
         theme = self.s.get("course", "spire")
-        for j, d in enumerate(range(28, int(LENGTH), 18)):
+        depths = list(range(28, int(LENGTH), 18))
+        path = _ring_path(r, theme, len(depths))   # 🧩 every run is built from random sections: slalom, spiral, zigzag, ramp...
+        for j, d in enumerate(depths):
             mult = (1.2 if j % 4 == 3 else 1.0) if theme == "aurora" else (0.85 if j % 4 == 3 else 1.0)
-            self.rings.append([d, r.uniform(-4.8, 4.8), r.uniform(-3.1, 3.1), mult])
+            self.rings.append([d, path[j][0], path[j][1], mult])
         # 🪙 a short arc of coins just past most rings, and now and then a 💎 gem off the line
         self.coins = []
+        self.forks = {}   # ring index -> (depth, x, z) of the gem forked off the line after that ring
         for j, (d, rx, rz, _) in enumerate(self.rings[:-1]):
             nd, nx, nz, _ = self.rings[j + 1]
             if r.random() < 0.7:
                 for k in (1, 2, 3):
                     t = k / 4
                     self.coins.append([round(d + (nd - d) * t, 2), round(rx + (nx - rx) * t, 2), round(rz + (nz - rz) * t, 2), 0])
-            if j % 5 == 2:
-                self.coins.append([round((d + nd) / 2, 2), round(r.uniform(-5.6, 5.6), 2), round(r.uniform(-3.4, 3.4), 2), 1])
+            if j % 3 == 1:   # 💎 a greed fork: a gem well off the ring line. Grab it and you may miss the next ring.
+                a, b = self.rings[j], self.rings[j + 1]
+                px, pz = _unit_perp(b[1] - a[1], b[2] - a[2])
+                side = r.choice([-1, 1])
+                gx, gz = _place_off(a, b, 0.5, px * side, pz * side, FORK_OFF, FORK_OFF - 0.4)
+                gd = round((d + nd) / 2, 2)
+                self.coins.append([gd, gx, gz, 1])
+                self.forks[j] = (gd, gx, gz)
         self.hazards = []
         if self.s.get("hazards", True):
             hazard_gap = 27 if theme == "storm" else 36
-            for d in range(48, int(LENGTH) - 20, hazard_gap):
+            d = 48
+            while d < int(LENGTH) - 20:
                 kind = 3 if r.random() < 0.22 else r.randrange(3)
                 self.hazards.append([d, r.uniform(-5.4, 5.4), r.uniform(-3.4, 3.4), kind, r.uniform(0, math.tau)])
+                d += round(hazard_gap * (1 - 0.4 * d / LENGTH))   # 📈 the dive gets busier the deeper you go
         self.streams = []
         for d in range(42, int(LENGTH) - 30, 54):
             self.streams.append([d, r.uniform(-5, 5), r.uniform(-3, 3), r.choice([-1, 1]), r.uniform(-1, 1)])
@@ -242,7 +342,7 @@ class SkyDrop(Game):
                         az += dz * 8 * k
                 f.vx = max(-9, min(9, (f.vx + ax * dt) * (1 - 1.2 * dt)))
                 f.vz = max(-7.5, min(7.5, (f.vz + az * dt) * (1 - 1.35 * dt)))
-                speed = 12.5 + (4.0 if now < f.boost_until else 0)
+                speed = 12.5 + (4.0 if now < f.boost_until else 0) + (3.0 if now < f.surge_until else 0)
                 tow = any(0 < o.depth - f.depth < DRAFT_GAP and math.hypot(o.x - f.x, o.z - f.z) < DRAFT_R
                           for j, o in enumerate(self.flyers) if o is not f and self.active(j) and not o.done_at)
                 if tow:
@@ -275,6 +375,10 @@ class SkyDrop(Game):
                             self.event(now, "bullseye", i)
                         f.score += round(pts)
                         self.event(now, "ring", i)
+                        if f.combo % STREAK_EVERY == 0:
+                            f.score += STREAK_PTS
+                            f.surge_until = now + STREAK_SURGE
+                            self.event(now, "streak", i)
                     else:
                         f.combo = 0
             for d, x, z, kind in self.coins:
@@ -339,6 +443,14 @@ class SkyDrop(Game):
                     a = self.rng.uniform(0, math.tau)
                     off = self.rng.uniform(2.2, 3.6)
                     f.aim_dx, f.aim_dz = math.cos(a) * off, math.sin(a) * off * 0.7
+            fk = self.forks.get(ri - 1)
+            if fk and fk[0] > f.depth:   # a greed fork ahead: some bots peel off for the gem, once per gap
+                if f.fork_d != fk[0]:
+                    f.fork_d = fk[0]
+                    f.fork_go = self.rng.random() < {"easy": 0.0, "normal": 0.3, "hard": 0.5}.get(level, 0.3)
+                if f.fork_go:
+                    x, z = fk[1], fk[2]
+                    f.aim_dx = f.aim_dz = 0.0
             x += f.aim_dx
             z += f.aim_dz
             # Lead toward ring to account for steering inertia.
