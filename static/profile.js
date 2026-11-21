@@ -135,6 +135,61 @@ const Profile = (() => {
   }
   const upNews = (ups) => ups.map((u) => `🆙 Level ${u[0]}! 🔓 ${u[3]}`);
 
+  const lowerRecord = (kind) => ['lowPoints', 'strokes', 'time'].includes(kind);
+  const winRecord = (kind) => kind === 'wins' || kind === 'crew';
+  const recordValue = (value, kind) => kind === 'time' ? `${(value / 1000).toFixed(3)} s` :
+    `${Number.isInteger(value) ? fmt(value) : value.toLocaleString(undefined, { maximumFractionDigits: 3 })} ${kind === 'strokes' ? (value === 1 ? 'stroke' : 'strokes') : 'pts'}`;
+  const recentValue = (b) => winRecord(b.kind) ? b.recent.reduce((sum, row) => sum + row[2], 0) :
+    (lowerRecord(b.kind) ? Math.min : Math.max)(...b.recent.map((row) => row[2]));
+
+  function recordBenchmark(p, last, me, key) {
+    const rules = last.record;
+    if (!rules || rules.kind === 'progress' || me.bot) return null;
+    const { kind } = rules;
+    const wins = winRecord(kind);
+    const value = wins ? Number(me.won) : me.recordScore;
+    if (!Number.isFinite(value)) return null;
+    const records = p.benchmarks ||= {};
+    const b = records[rules.key] ||= { game: last.game, label: rules.label, kind, recent: [] };
+    if (b.recent.some(([id]) => id === key)) return null;
+    const previous = b.recent.length ? recentValue(b) : null;
+    const best = b.best;
+    b.recent = [...b.recent, [key, last.at, value]].sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : 1)).slice(-5);
+    const current = wins ? recentValue(b) : value;
+    const improves = (target) => target == null || (lowerRecord(kind) ? current < target : current > target);
+    const newBest = (!wins || b.recent.length === 5) && improves(best);
+    if (newBest) b.best = current;
+    const keys = Object.keys(records);
+    if (keys.length > 256) {
+      keys.sort((a, b) => records[a].recent.at(-1)[1] - records[b].recent.at(-1)[1] || a.localeCompare(b));
+      delete records[keys[0]];
+    }
+    if (wins) {
+      const target = b.best ?? current;
+      const possible = b.recent.slice(-4).reduce((sum, row) => sum + row[2], 0) + 1;
+      const result = `${current} ${kind === 'crew' ? 'crew wins' : 'wins'} in your last ${b.recent.length}`;
+      const goal = b.recent.length < 5 ? 'Play toward your first five-game record.' :
+        possible > target ? 'Win the next round for a new five-game best.' :
+        possible === target ? 'Win the next round to match your five-game best.' :
+        possible > current ? 'Win the next round to improve your recent record.' : `Your five-game best is ${target}.`;
+      return { text: `${result}. ${goal}` };
+    }
+    const next = recentValue(b);
+    const gap = previous == null ? '' : recordValue(Math.abs(value - previous), kind);
+    const result = previous == null ? 'First mark' : newBest && best != null ? 'New all-time best' :
+      value === previous ? 'Matched your recent best' : improves(previous) ? 'New recent best' :
+      `${gap} ${lowerRecord(kind) ? 'over' : 'short of'} your recent best`;
+    const verb = kind === 'lowPoints' && next === 0 ? 'match' : 'beat';
+    return { text: `${result}. Next round, ${verb} ${recordValue(next, kind)}.`, reward: newBest && best != null };
+  }
+
+  function replayGoal(S) {
+    const last = S.history?.at(-1);
+    const key = last && `${S.code}:${last.at}`;
+    const result = get().last;
+    return result?.key === key ? result?.goal || '' : '';
+  }
+
   function record(p, last, me, key = '') {
     const news = [], gid = last.game, name = `${last.icon} ${last.name}`;
     const before = triedCount(p);
@@ -153,7 +208,7 @@ const Profile = (() => {
     }
     // personal best: which way is better comes from the game, or from who won (the winner holds the top
     // score, or the bottom one as in Hearts)
-    if (typeof me.score === 'number') {
+    if (!last.record && !last.recordExcluded && typeof me.score === 'number') {
       const scores = last.players.map((x) => x.score).filter((v) => typeof v === 'number');
       const won = last.players.find((x) => x.won);
       if (last.low) g.low = true;
@@ -162,6 +217,8 @@ const Profile = (() => {
       if (better && g.best != null) { news.push(`📈 Personal best at ${name}: ${fmt(me.score)} (was ${fmt(g.best)})`); lines.push(['📈 Personal best', XP.best]); }
       if (better) g.best = me.score;
     }
+    const benchmark = recordBenchmark(p, last, me, key);
+    if (benchmark?.reward) lines.push(['📈 Personal best', XP.best]);
     // ★ bot ladder: a win as the only person at the table earns the star for the weakest bot level there
     if (me.won && humans.length === 1 && bots.length) {
       const lvl = Math.min(...bots.map((x) => Math.max(0, LEVELS.indexOf(x.bot))));
@@ -183,7 +240,7 @@ const Profile = (() => {
     delete p.pend; delete p.pendXp;
     const from = (p.xp || 0) - pendXp;
     news.push(...upNews(gain(p, lines)));
-    p.last = { key, game: gid, from, to: p.xp, lines: [...lines, ...pend] };
+    p.last = { key, game: gid, from, to: p.xp, lines: [...lines, ...pend], goal: benchmark?.text };
     return news;
   }
 
@@ -234,13 +291,6 @@ const Profile = (() => {
     up.hidden = true;
     up.addEventListener('animationend', () => { up.style.animation = 'none'; });  // renderOver re-inserts the card: pop once
     box.append(head, bar, sub, list, up);
-    // this run of the same game, from your side: "This run: 3–1 in Prism Pop"
-    const run = [];
-    for (let i = S.history.length - 1; i >= 0 && S.history[i].game === last.game; i--) run.push(S.history[i]);
-    if (run.length >= 2) {
-      const mine = run.filter((h) => h.players.find((x) => x.id === S.me.id)?.won).length;
-      box.append(el('div', 'xp-series', `This run: ${mine}–${run.length - mine} in ${last.icon} ${last.name}`));
-    }
     const show = (xp) => {
       const L = levelOf(xp);
       lvlB.textContent = `Lv ${L.lvl}`;
@@ -353,7 +403,7 @@ const Profile = (() => {
     }
     if (games.length) {
       const t = el('table', 'rec-table');
-      const hr = el('tr'); for (const h of ['', 'Bots', 'Played', 'Won', 'Best']) hr.append(el('th', '', h));
+      const hr = el('tr'); for (const h of ['', 'Bots', 'Played', 'Won', 'Historical best']) hr.append(el('th', '', h));
       t.append(hr);
       for (const [gid, g] of games.sort((a, b) => b[1].played - a[1].played)) {
         const tr = el('tr');
@@ -365,6 +415,23 @@ const Profile = (() => {
       }
       body.append(el('h4', '', '🎮 By game'), t);
     } else body.append(el('p', 'hint', 'Finish a game and it shows up here. Win alone against bots to earn ★ stars: Easy, Normal, then Hard.'));
+    const benchmarks = Object.values(p.benchmarks || {}).sort((a, b) => b.recent.at(-1)[1] - a.recent.at(-1)[1]);
+    if (benchmarks.length) {
+      const table = el('table', 'rec-table');
+      const head = el('tr');
+      for (const heading of ['Game and rules', 'Recent', 'All-time best']) head.append(el('th', '', heading));
+      table.append(head);
+      for (const b of benchmarks) {
+        const row = el('tr'), game = el('td', '', label(b.game));
+        const wins = winRecord(b.kind);
+        game.append(el('div', 'hint', b.label));
+        const recent = wins ? `${recentValue(b)} wins in ${b.recent.length}` : recordValue(recentValue(b), b.kind);
+        const best = b.best == null ? '—' : wins ? `${b.best} wins in 5` : recordValue(b.best, b.kind);
+        row.append(game, el('td', '', recent), el('td', '', best));
+        table.append(row);
+      }
+      body.append(el('h4', '', 'Personal benchmarks'), table);
+    }
     const fresh = SOLO_GAMES.filter(([id]) => !tried(id, p));
     if (fresh.length) {
       body.append(el('h4', '', `🆕 Not tried yet (${fresh.length})`));
@@ -483,7 +550,7 @@ const Profile = (() => {
   // "new" tags only mean something once a few games have been tried
   const showNew = () => triedCount() >= 3;
   // per-game extras a game keeps on this device (Prism Pop: 🎯 level stars, XP, board theme)
-  const best = (gid) => get().games[gid]?.best ?? null;
+  const best = (gid, rules) => rules ? get().benchmarks?.[rules.key]?.best ?? null : get().games[gid]?.best ?? null;
   const gameData = (gid) => ({ ...(get().games[gid]?.data || {}) });
   function saveGameData(gid, data) { const p = get(); (p.games[gid] ||= { played: 0, wins: 0 }).data = data; store(KEY, p); }
 
@@ -491,7 +558,7 @@ const Profile = (() => {
   const played = (gid) => get().games[gid]?.played || 0;
   const lastAt = (gid) => get().games[gid]?.lastAt || '';
 
-  return { onState, overLine, show, suggest, stars, tried, starText, showNew, best, gameData, saveGameData, played, lastAt,
+  return { onState, replayGoal, formatBenchmark: recordValue, overLine, show, suggest, stars, tried, starText, showNew, best, gameData, saveGameData, played, lastAt,
     xpCard, homeLine, look, level, levelOf, xpFor, unlocked, unlockAt, titleName, lockText, sync, dev, migrate, UNLOCKS, PACKS,
     set onSynced(f) { onSynced = f; }, set onLook(f) { onLook = f; } };
 })();

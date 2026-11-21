@@ -364,7 +364,9 @@ function badgeShelf(p) {
 function renderScores(host) {
   const played = S.players.filter((p) => p.played || p.points);
   $('#scoreSection').hidden = !played.length && !S.history.length;
-  const board = $('#scoreboard'); board.innerHTML = '';
+  const board = $('#scoreboard');
+  const roomBestsOpen = board.querySelector('details.room-bests')?.open;
+  board.innerHTML = '';
   if (played.length) {
     const games = [...new Set(played.flatMap((p) => Object.keys(p.byGame)))];
     const t = el('table', 'scores');
@@ -386,6 +388,18 @@ function renderScores(host) {
       t.append(tr);
     });
     board.append(t);
+  }
+  const records = Object.values(S.roomRecords || {});
+  if (records.length) {
+    const details = el('details', 'room-bests'), list = el('ul');
+    details.open = !!roomBestsOpen;
+    details.append(el('summary', '', 'Room bests'), list);
+    for (const record of records.sort((a, b) => b.at - a.at)) {
+      const row = el('li', '', `${gameInfo(record.game)?.name || record.game} · ${player(record.id)?.name || record.name} · ${Profile.formatBenchmark(record.value, record.kind)}`);
+      row.append(el('div', 'hint', record.label));
+      list.append(row);
+    }
+    board.append(details);
   }
   const hist = $('#history'); hist.innerHTML = '';
   for (const h of [...S.history].reverse()) {

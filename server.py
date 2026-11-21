@@ -51,6 +51,8 @@ ROOM_SETTINGS = {
     "ghost_chat": ("Ghost & spectator chat", [("private", "👻 Ghosts only during play"), ("open", "💬 Everyone")], "private"),
     "locked": ("Room", [(False, "🔓 Open to join"), (True, "🔒 Locked")], False),
 }
+RECORD_SCORES = {"trivia": "points", "prism": "points", "yacht": "points", "lander": "points",
+                 "shutbox": "lowPoints", "putt": "strokes", "marble": "time"}
 ROOM_SETTINGS_INFO = [{"key": k, "label": lbl, "options": opts, "default": d} for k, (lbl, opts, d) in ROOM_SETTINGS.items()]
 CHAT_KEEP = 100
 BANTER = {
@@ -128,7 +130,9 @@ KEY_FILE = os.environ.get("KEY_FILE") or os.path.join(DATA_DIR, "key.pem")
 # ✨ Lifetime records (static/profile.js), mirrored per device: data/profiles/<device id>.json
 PROFILE_DIR = os.environ.get("PROFILE_DIR") or os.path.join(DATA_DIR, "profiles")
 PROFILE_MAX = 64_000       # bytes of profile JSON
-PROFILE_POST_MAX = 70_000  # the POST body limit for /api/profile/put (everything else stays at 10 000)
+PROFILE_POST_MAX = 70_000
+BENCHMARK_MAX = 160_000
+PROFILE_WITH_BENCHMARKS_MAX = PROFILE_POST_MAX + BENCHMARK_MAX
 # the looks a level opens (mirrors UNLOCKS in static/profile.js): id -> level
 LOOK_FRAMES = {"bronze": 3, "silver": 6, "gold": 10, "frost": 15, "ember": 20, "rainbow": 30, "crown": 40, "legend": 50}
 LOOK_TITLES = {"rookie": 2, "regular": 5, "shark": 8, "devil": 12, "owl": 18, "veteran": 25, "champion": 35, "legend": 50}
@@ -374,6 +378,7 @@ class Room:
         if self.phase == "playing" and not self.paused:
             for p in self.contenders():
                 if not p.bot and away(p):
+                    self.record_interrupted = True
                     p.bot, p.standin = "normal", True
                     self.bot_at = max(self.bot_at, now + 1)
                     self.add_log(f"📡 {p.name} lost connection — 🤖 autopilot is covering until they're back.", "power")
@@ -528,6 +533,33 @@ class Room:
                          "name": p.name, "color": p.color, "score": scores.get(p.id), "pts": p.last_pts,
                          "won": p.id in winners} for p in seated],
         })
+        record = getattr(self, "round_record", None)
+        if record:
+            self.history[-1]["recordExcluded"] = True
+        if record and not getattr(self, "record_interrupted", False):
+            entry = self.history[-1]
+            entry.pop("recordExcluded", None)
+            entry["record"] = record
+            for row in entry["players"]:
+                score = row["score"]
+                if gid == "marble" and any(board.get(row["id"], {}).get("dnf", True)
+                                           for board in self.game.results):
+                    score = None
+                if not row["bot"] and record["kind"] not in ("wins", "crew", "progress"):
+                    row["recordScore"] = score
+            if record["kind"] not in ("wins", "crew", "progress"):
+                room_records = self.room_records = getattr(self, "room_records", {})
+                for row in entry["players"]:
+                    value = row.get("recordScore")
+                    if value is None:
+                        continue
+                    current = room_records.get(record["key"])
+                    low = record["kind"] in ("lowPoints", "strokes", "time")
+                    if current is None or (value < current["value"] if low else value > current["value"]):
+                        room_records[record["key"]] = {
+                            "value": value, "name": row["name"], "kind": record["kind"],
+                            "label": record["label"], "game": gid, "id": row["id"], "at": entry["at"],
+                        }
         if team_winner_ids is not None:
             self.history[-1]["teamWinnerIds"] = [p.id for p in seated if p.id in winners]
         self.history = self.history[-30:]
@@ -559,7 +591,7 @@ class Room:
         if not self.game or not self.game.replayable:
             return
         v = self.view(REPLAY_VIEWER)
-        for k in ("games", "roomSettings", "reactions", "chat", "ready", "votes", "history", "hasReplay"):
+        for k in ("games", "roomSettings", "reactions", "chat", "ready", "votes", "history", "roomRecords", "hasReplay"):
             v.pop(k, None)
         v["log"] = v["log"][-2:]
         v["timeLeft"] = None
@@ -609,6 +641,7 @@ class Room:
             o.wins = o.played = o.streak = o.best_streak = o.points = o.quits = 0
             o.by_game = {}
         self.history = []
+        self.room_records = {}
         self.ledger = {}
         self.add_log(f"{p.name} reset the scoreboard.")
 
@@ -680,6 +713,7 @@ class Room:
             raise GameError(f"{self.game.name} can't take new players mid-game. You'll get a seat for the next one.")
         p.reset()
         self.game.late_join(p)
+        self.record_interrupted = True
         p.spectator = p.watching = False
         self.add_log(f"🙋 {p.name} joins the game!", "big")
 
@@ -845,6 +879,32 @@ class Room:
         self._replay_key = None
         self.game_no += 1
         self.started_at = time.time()
+        gid = self.settings["game"]
+        kind = RECORD_SCORES.get(gid, "wins")
+        if gid == "switchyard":
+            kind = "crew"
+        elif gid == "prism" and self.settings.get("mode") == "levels":
+            kind = "progress"
+        elif gid == "shutbox" and self.settings.get("instant"):
+            kind = "wins"
+        elif gid == "starguard" and len(seated) > 1:
+            kind = "progress"
+        rules = {k: self.settings.get(k, schema[2]) for k, schema in cls.settings_schema.items()}
+        labels = []
+        for k, (name, options, _) in cls.settings_schema.items():
+            option = next((label for value, label in options if value == rules[k]), rules[k])
+            labels.append(f"{name} – {option}")
+        levels = sorted(p.bot or "human" for p in seated)
+        humans = levels.count("human")
+        labels.append(f"{humans} human" + ("s" if humans != 1 else ""))
+        labels.extend(level.title() + " bot" for level in levels if level != "human")
+        if self.settings["timer"]:
+            labels.append(f'{self.settings["timer"]}s turn timer')
+        signature = json.dumps([gid, kind, rules, self.settings["timer"], levels], sort_keys=True)
+        self.round_record = {"key": hashlib.sha256(signature.encode()).hexdigest()[:24],
+                             "label": " · ".join(labels), "kind": kind,
+                             "roster": sorted(p.id for p in seated)}
+        self.record_interrupted = any(p.standin for p in seated)
         game.start(list(seated), random.Random())
         self.snap()
 
@@ -932,6 +992,7 @@ class Room:
             p.points += POINTS_QUIT
             p.quits += 1
             self.add_log(f"🚪 {p.name} walked out mid-game ({POINTS_QUIT} ⭐).", "power")
+            self.record_interrupted = True
             p.quitting = True  # if leaving ends the game, the walk-out doesn't count as playing it
             self.game.on_leave(p)
         else:
@@ -985,6 +1046,8 @@ class Room:
         v["ready"] = sorted(self.ready)
         v["votes"] = self.votes
         v["history"] = self.history[-15:]
+        v["roomRecords"] = getattr(self, "room_records", {})
+        v["roundRecord"] = getattr(self, "round_record", None)
         v["hasReplay"] = len(self.replay) > 1
         if self.game:
             gv = self.game.view(p)
@@ -1193,6 +1256,37 @@ def merge_profile(old, new):
             g["data"] = {**(a.get("data") if isinstance(a.get("data"), dict) else {}), **(b.get("data") if isinstance(b.get("data"), dict) else {})}
         games[gid] = g
     out["games"] = games
+    def benchmarks(profile):
+        value = profile.get("benchmarks")
+        return value if isinstance(value, dict) else {}
+
+    a_records, b_records = benchmarks(old), benchmarks(new)
+    records = {}
+    for key in a_records.keys() | b_records.keys():
+        sources = [value for value in (a_records.get(key), b_records.get(key)) if isinstance(value, dict)]
+        if not sources:
+            continue
+        valid = [source for source in sources if isinstance(source.get("recent"), list)]
+        if not valid:
+            continue
+        record = dict(valid[-1])
+        recent = {row[0]: row for source in valid for row in source["recent"]
+                  if isinstance(row, list) and len(row) == 3 and isinstance(row[0], str)
+                  and num(row[1]) is not None and num(row[2]) is not None}
+        record["recent"] = sorted(recent.values(), key=lambda row: (row[1], row[0]))[-5:]
+        if not record["recent"]:
+            continue
+        bests = [source["best"] for source in valid if num(source.get("best")) is not None]
+        if record.get("kind") in ("wins", "crew") and len(record["recent"]) == 5:
+            bests.append(sum(row[2] for row in record["recent"]))
+        if bests:
+            choose = min if record.get("kind") in ("lowPoints", "strokes", "time") else max
+            record["best"] = choose(bests)
+        records[key] = record
+    if records:
+        out["benchmarks"] = dict(sorted(records.items(), key=lambda pair:
+                                        (pair[1]["recent"][-1][1], pair[0]))[-256:])
+
     ob, nb = old.get("badges") if isinstance(old.get("badges"), dict) else {}, new.get("badges") if isinstance(new.get("badges"), dict) else {}
     badges = {}
     for k in {**ob, **nb}:
@@ -1215,16 +1309,22 @@ def profile_get(body):
         return {"profile": _profile_read(path, keyhash) or {}}
 
 
+def profile_fits(profile):
+    base = {key: value for key, value in profile.items() if key != "benchmarks"}
+    size = lambda value: len(json.dumps(value, separators=(",", ":")))
+    return size(base) <= PROFILE_MAX and size(profile.get("benchmarks", {})) <= BENCHMARK_MAX
+
+
 def profile_put(body):
     path, keyhash = _profile_path(body)
     prof = body.get("profile")
     if not isinstance(prof, dict):
         raise GameError("Send a record.")
-    if len(json.dumps(prof, separators=(",", ":"))) > PROFILE_MAX:
+    if not profile_fits(prof):
         raise GameError("That record is too big.")
     with PROFILE_LOCK:
         merged = merge_profile(_profile_read(path, keyhash), prof)
-        if len(json.dumps(merged, separators=(",", ":"))) > PROFILE_MAX:
+        if not profile_fits(merged):
             raise GameError("That record is too big.")
         os.makedirs(PROFILE_DIR, exist_ok=True)
         tmp = path + ".tmp"
@@ -1620,7 +1720,7 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             self.close_connection = True
             return self.send_json(400, {"error": "Invalid request body length."})
-        if not route or length > (PROFILE_POST_MAX if path == "/api/profile/put" else 10_000):
+        if not route or length > (PROFILE_WITH_BENCHMARKS_MAX if path == "/api/profile/put" else 10_000):
             self.close_connection = True   # the unread body would otherwise be parsed as the next request
             return self.send_json(404 if not route else 413, {"error": "Not found" if not route else "Too large"})
         if path in REQUEST_LIMITS:
@@ -1634,6 +1734,10 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length) or b"{}")
             if not isinstance(body, dict):
                 raise GameError("Bad request.")
+            if path == "/api/profile/put" and length > PROFILE_POST_MAX:
+                profile = body.get("profile")
+                if not isinstance(profile, dict) or not isinstance(profile.get("benchmarks"), dict) or not profile_fits(profile):
+                    return self.send_json(413, {"error": "Too large"})
             self.send_json(200, route(body))
         except CapacityError as e:
             self.send_json(503, {"error": str(e)}, retry_after=30)

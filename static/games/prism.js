@@ -1165,7 +1165,7 @@ UI.prism = (() => {
     const appliedKey = `pz.applied.${S.code || ''}.${pz.seed}`;
     let applied = null, pb = null;
     try { applied = sessionStorage.getItem(appliedKey); } catch {}
-    try { pb = Profile.best('prism'); } catch {}
+    try { pb = Profile.best('prism', S.roundRecord); } catch {}
     st = { seed: pz.seed, score: mine?.score || 0, applied: applied != null ? +applied : Math.max(0, ...pz.events.map((e) => e.id)),
       appliedKey, queue: [], incoming: [], busy: false, pushed: mine?.rows, pushedScore: mine?.score || 0, endAt: now() + pz.timeLeft * 1000, over: false, lastT: 0,
       pendingMoves: [],

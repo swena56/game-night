@@ -2,27 +2,24 @@
 // Part of the shell, split out of app.js: a plain script loaded before app.js, sharing its globals
 // (S, $, el, act, prefs, …), which exist by the time anything here is called.
 function roomRecord(last) {
-  const won = last?.players.find((x) => x.won);
-  const scores = last?.players.map((x) => x.score).filter((v) => typeof v === 'number') ?? [];
-  if (!won || typeof won.score !== 'number' || scores.length < 2) return '';
-  // which way is better shows in who won: the winner holds the top score, or the bottom one (Hearts, Shut the Box)
-  const low = won.score === Math.min(...scores) && won.score !== Math.max(...scores);
-  const before = S.history.slice(0, -1).filter((h) => h.game === last.game && h.players.filter((x) => x.score != null).length > 1)
-    .flatMap((h) => h.players.map((x) => x.score)).filter((v) => typeof v === 'number');
-  const beat = low ? won.score < Math.min(...before) : won.score > Math.max(...before);
-  return before.length && beat ? `📈 Room record for ${last.name}: ${fmtNum(won.score)}` : '';
+  const record = S.roomRecords?.[last?.record?.key];
+  if (!record) return '';
+  const holder = player(record.id)?.name || record.name;
+  return `${record.at === last.at ? 'New room mark' : 'Room best'} · ${holder} · ${Profile.formatBenchmark(record.value, record.kind)}`;
 }
 
 // #143 a run of the same game back to back (rematches): how many each player has won, and who's on a streak.
 // Worked out from the room's history, so it survives a server restart like the rest of it.
 function runStats(hist) {
   const last = hist?.at(-1);
-  if (!last) return null;
+  if (!last || last.record?.kind === 'progress') return null;
   const wins = new Map();
   const cooperative = last.game === "switchyard";
   let crewWins = 0, shutdowns = 0;
   let games = 0, draws = 0, streak = 0, streakId = undefined;
-  for (let i = hist.length - 1; i >= 0 && hist[i].game === last.game; i--) {
+  const sameSeries = (h) => h.game === last.game && !h.recordExcluded && (!last.record ||
+    (h.record?.key === last.record.key && h.record.roster.join(',') === last.record.roster.join(',')));
+  for (let i = hist.length - 1; i >= 0 && sameSeries(hist[i]); i--) {
     games++;
     if (cooperative) {
       if (hist[i].teamWinnerIds?.length) crewWins++;
@@ -70,14 +67,14 @@ function renderOver() {
   $('#overText').textContent = team ? last.text : w ? (w.id === me.id ? '🏆 You win!' : `🏆 ${w.name} wins!`) : (S.log.at(-1)?.text ?? 'Game over');
   $('#overBanner').classList.toggle('won', w?.id === me.id || !!team?.includes(me.id));
   const scored = last?.players.filter((x) => x.score != null) ?? [];
-  const mineRow = last?.players.find((x) => x.name === me.name);
-  renderPodium(w, scored);
+  const mineRow = last?.players.find((x) => x.id === me.id);
+  renderPodium(w, scored, last?.low);
   // the scores as a small table, best first; the extra lines (stars earned, streaks, records) under it (#93)
   const box = $('#overScores'); box.innerHTML = '';
   if (scored.length > 1) {
     const tbl = el('ol', 'over-table');
     [...scored].sort((a, b) => (last.low ? a.score - b.score : b.score - a.score)).forEach((x) => {
-      const li = el('li', x.name === me.name ? 'me' : '');
+      const li = el('li', x.id === me.id ? 'me' : '');
       li.append(el('span', 'ot-name', x.name), el('b', '', fmtNum(x.score)));
       tbl.append(li);
     });
@@ -91,6 +88,17 @@ function renderOver() {
   ].filter(Boolean);
   for (const n of notes) box.append(el('div', 'over-note', n));
   const run = runLine(); if (run) box.append(run);
+  const goal = $('#overGoal');
+  if (goal) {
+    const series = last?.record?.kind === 'wins' && runStats(S.history);
+    const own = series && (series.rows.find((r) => r.id === me.id)?.n || 0);
+    const leader = series && series.rows[0]?.n;
+    const headToHead = last?.players.length === 2 && last.players.every((p) => !p.bot)
+      && last.players.some((p) => p.id === me.id);
+    goal.textContent = headToHead && leader && leader - own === 1
+      ? 'Win the next round to tie the series.' : Profile.replayGoal(S);
+    goal.hidden = !goal.textContent;
+  }
   const xp = Profile.xpCard(S); if (xp) box.append(xp);  // ✨ the XP this game earned, and any level-up
   const readyNames = S.ready.map((id) => player(id)?.name).filter(Boolean);
   const others = S.players.some((p) => p.id !== me.id && !p.bot);
@@ -130,10 +138,9 @@ function renderOver() {
 }
 // the podium: the winner in the middle, up a step, with the runners-up either side (by score when the game
 // keeps one, else just the winner)
-function renderPodium(w, scored) {
+function renderPodium(w, scored, low) {
   const box = $('#overPodium'); box.innerHTML = '';
-  const byName = (n) => S.players.find((p) => p.name === n);
-  let places = scored.length > 1 ? [...scored].sort((a, b) => b.score - a.score).slice(0, 3).map((x) => ({ p: byName(x.name) || { name: x.name }, score: fmtNum(x.score) }))
+  let places = scored.length > 1 ? [...scored].sort((a, b) => low ? a.score - b.score : b.score - a.score).slice(0, 3).map((x) => ({ p: player(x.id) || { name: x.name }, score: fmtNum(x.score) }))
     : w ? [{ p: w, score: '' }] : [];
   if (!places.length) { box.hidden = true; return; }
   box.hidden = false;
