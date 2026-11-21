@@ -38,6 +38,7 @@ class Hearts(Game):
     category = "cards"
     howto = [
         "Each hand, pass three cards (left, right, across with four players, then no pass), then play tricks.",
+        "While selecting cards to pass, see which suits will be empty before you receive cards and which penalty cards you’ll pass or keep.",
         "The 2♣ leads first. Follow suit if you can; the highest card of the suit led takes the trick.",
         "Each heart you take is 1 point and the Q♠ is 13. Take them all to shoot the moon: everyone else gets 26.",
         "No points on the first trick, and no leading hearts until one has been played.",

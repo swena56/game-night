@@ -574,6 +574,12 @@ const MOVES = {
     if (S.hearts.stage === 'pass') {
       const cards = [...d.querySelectorAll('#hhHand .card-btn:not(:disabled)')].slice(0, 3);
       cards.forEach((c) => click(c));
+      const sent = S.hearts.hand.slice(0, 3);
+      const points = sent.reduce((sum, card) => sum + (card[1] === 'H' ? 1 : card === 'QS' ? 13 : 0), 0);
+      const preview = d.querySelector('#hhPassPreview');
+      if (preview.hidden || !preview.textContent.includes(`${points} pts passed`)) {
+        throw new Error('Hearts pass preview does not match the selected cards');
+      }
       return click(d.querySelector('#hhPass'));
     }
     click(pick([...d.querySelectorAll('#hhHand .card-btn:not(:disabled)')]));

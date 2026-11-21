@@ -8,11 +8,28 @@ UI.hearts = (() => {
 
   const face = (card, cls = '') => Cards.face(card, cls);
 
+  function passPreview(h, passing) {
+    const preview = $('hhPassPreview');
+    preview.hidden = !passing || !chosen.length;
+    if (preview.hidden) return;
+    const kept = h.hand.filter((card) => !chosen.includes(card));
+    const voids = Object.keys(SUIT).filter((suit) => !kept.some((card) => card[1] === suit));
+    const penalty = (cards) => cards.reduce((sum, card) => sum + (card[1] === 'H' ? 1 : card === 'QS' ? 13 : 0), 0);
+    const terms = [
+      voids.length ? `Void before receiving: ${voids.map((suit) => SUIT[suit]).join(' ')}` : 'No void before receiving',
+      `Penalty cards: ${penalty(chosen)} pts passed, ${penalty(kept)} pts kept`,
+    ];
+    if (h.jack && h.hand.includes('JD')) terms.push(`J♦ bonus ${chosen.includes('JD') ? 'passed' : 'kept'}`);
+    if (h.ten && h.hand.includes('TC')) terms.push(`10♣ multiplier ${chosen.includes('TC') ? 'passed' : 'kept'}`);
+    preview.textContent = terms.join(' · ');
+  }
+
   function mount(main, side) {
     chosen = []; chosenFor = ''; seenLast = null; seenTrick = 0; seenBroken = null; seenHandPts = null; seenGot = '';
     main.innerHTML = `<div class="hh">
       <div id="hhTable" class="table hh-table"><div id="hhSeats"></div><div id="hhTrick" class="hh-trick"></div></div>
       <div id="hhNote" class="hh-note"></div>
+      <p id="hhPassPreview" class="hint" hidden></p>
       <div id="hhHand" class="hh-hand"></div>
       <button id="hhPass" class="primary big" hidden></button></div>`;
     side.innerHTML = '<div class="panel"><h3>Scores</h3><div id="hhScores"></div><p class="hint left">♥ = 1 point, Q♠ = 13. Lowest score wins.</p></div>';
@@ -103,6 +120,7 @@ UI.hearts = (() => {
     // my hand, fanned; a new hand is dealt in, and the cards passed to me glow for the first trick
     const hand = $('hhHand'); hand.innerHTML = '';
     const legal = new Set(h.legal), passing = h.stage === 'pass' && !h.myPass && me != null;
+    passPreview(h, passing);
     const got = new Set(h.received || []), newCards = Kit.fresh('hearts', h.hand), dealt = [];
     const gotKey = (h.received || []).join();
     const showGot = gotKey && gotKey !== seenGot;
