@@ -2,7 +2,8 @@
 
 Place a disc so that it closes a straight line (any of eight directions) of rival discs between it
 and one of yours; every disc in each closed line flips to your colour. If you can't move you pass;
-when neither player can, the most discs wins. Dark moves first."""
+when neither player can, the most discs wins. Dark moves first. 🌊 Tidal wave (an option): a move that
+flips 8 or more discs earns another move straight away."""
 from .base import Game, GameError
 from .search import WIN, best_move
 from .undo import Undo
@@ -22,6 +23,7 @@ WEIGHTS = [
 ]
 CORNERS = {0: (1, 8, 9), 7: (6, 14, 15), 56: (48, 49, 57), 63: (54, 55, 62)}
 PASS = -1
+WAVE = 8   # 🌊 flips that earn another move
 
 
 HOLE = "x"  # a blocked square: nobody can play there, and it stops a line of flips
@@ -104,6 +106,7 @@ class Reversi(Undo, Game):
         "Corners can never be flipped back, so they're worth fighting for. With 16 or fewer empty squares, compare every legal move's immediate flips with the corners it would let your rival take next.",
         "↶ Undo asks your rival to take back your last move. Flip hints (an option) show how many discs each move would flip.",
         "🏳️ Resign ends the game and your rival wins; the host can then start a rematch.",
+        "🌊 Tidal wave (an option): a move that flips 8 or more discs earns another move straight away.",
         "⬛ Blocked squares (an option): four squares, placed symmetrically, that nobody can play on; they also stop a line of flips.",
     ]
     name = "Reversi"
@@ -115,6 +118,7 @@ class Reversi(Undo, Game):
               "landslide": ("⛰️", "Landslide", "Win with 48 discs or more")}
     settings_schema = {
         "hints": ("Flip hints", [(False, "Off"), (True, "Show how many each move flips")], False),
+        "tidal": ("🌊 Tidal wave", [(False, "Off"), (True, "On: flip 8+ discs and move again")], False),
         "holes": ("Board", [(False, "Classic"), (True, "⬛ Four blocked squares (placed symmetrically)")], False),
     }
 
@@ -165,14 +169,20 @@ class Reversi(Undo, Game):
         self.board = play(self.board, me, c)
         self.last = c
         self.room.add_log(f"{'⚫⚪'[me]} {p.name}: {'abcdefgh'[c % N]}{c // N + 1}, flipping {len(self.flipped)}.", "question")
-        if len(self.flipped) >= 8:
+        wave = len(self.flipped) >= WAVE
+        again = wave and self.s.get("tidal") and bool(placements(self.board, me))
+        if again:
+            self.moment(f"🌊 {p.name} flips {len(self.flipped)} and moves again!", "gold", "capture")
+        elif wave:
             self.moment(f"🌊 {p.name} flips {len(self.flipped)}!", "gold", "capture")
         elif c in (0, N - 1, N * (N - 1), N * N - 1):
             self.moment(f"📐 {p.name} takes a corner", "cool", "lock")
-        self.next_turn(me)
+        self.next_turn(me, again)
 
-    def next_turn(self, me):
+    def next_turn(self, me, again=False):
         r = self.room
+        if again:   # 🌊 a tidal wave: the same player moves once more
+            return r.begin_turn(self.seats[me])
         nxt = 1 - me
         if placements(self.board, nxt):
             return r.begin_turn(self.seats[nxt])
