@@ -496,6 +496,14 @@ class Sumo(Game):
                     if rko[by] == 2 and q:
                         self.award(q, "double_ko")
                         self.moment(f"💥 {q.name}: DOUBLE KO!", "gold", "boom")
+                    rev = getattr(self, "last_ko", None) or {}
+                    if q and p and rko[by] != 2 and rev.get(by) == i:   # 🔁 the saucer that last knocked `by` off is now the one going over
+                        self.moment(f"🔁 {q.name} gets revenge on {p.name}!", "gold", "tag")
+                    elif q and p and getattr(self, "first_blood", None) != self.round:   # 🩸 the round's first knockout
+                        self.moment(f"🩸 First blood: {q.name} knocks {p.name} off!", "cool", None)
+                    rev[i] = by
+                    self.last_ko = rev
+                    self.first_blood = self.round
                 ghost = "👻 " if by is not None and self.saucers[by].out else ""
                 r.add_log(f"🕳️ {ghost}{q.name} knocked {p.name if p else '?'} off!" if q else
                           f"🕳️ {p.name if p else '?'} drifted off the edge.", "power")
