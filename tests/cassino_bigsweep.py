@@ -55,6 +55,14 @@ r, g = table(); lay(g, FOUR); g.apply(0, full_take(g, 0))
 check("4-pile sweep counts 2 (default)", g.sweeps[0] == 2, g.sweeps)
 r, g = table(); lay(g, THREE); g.apply(0, full_take(g, 0))
 check("3-pile sweep counts 2 (default)", g.sweeps[0] == 2, g.sweeps)
+def hint(g):
+    return g.table(r.players[next(iter(r.players))], 0)["scores"]["hint"]
+
+
+r, g = table()
+check("hint mentions big sweep when On", "sweeps 1 (3+ piles = 2)" in hint(g), hint(g))
+r, g = table(False)
+check("hint unchanged when Off", hint(g).endswith("sweeps 1."), hint(g))
 r, g = table(False); lay(g, FOUR); g.apply(0, full_take(g, 0))
 check("Off: 4-pile sweep counts 1", g.sweeps[0] == 1, g.sweeps)
 

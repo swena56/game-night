@@ -260,7 +260,7 @@ class Cassino(CardGame):
         t = {"info": info, "piles": piles, "hand": self.hands[i] if i is not None else [],
              "banner": f"{self.nm(lm['seat'])}: {pretty(lm['card'])} ({lm['kind']})" if lm and self.stage == "play" else None,
              "scores": {"title": "Points", "rows": [{"seat": k, "value": self.scores[k]} for k in sorted(range(self.n), key=lambda k: -self.scores[k])],
-                        "hint": f"Game to {self.s['target']}. Cards 3 · ♠ 1 · 10♦ 2 · 2♠ 1 · aces 1 · sweeps 1."}}
+                        "hint": f"Game to {self.s['target']}. Cards 3 · ♠ 1 · 10♦ 2 · 2♠ 1 · aces 1 · sweeps 1" + (" (3+ piles = 2)." if self.s.get("bigsweep", True) else ".")}}
         if self.stage == "score":
             t["banner"] = "Deal over"
             t["note"] = " · ".join(f"{self.nm(x['seat'])} +{x['pts']} ({', '.join(x['why']) or '—'})" for x in self.summary)
