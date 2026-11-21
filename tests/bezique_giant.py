@@ -96,5 +96,22 @@ for seed in range(18):
     fired += sum("trumps the" in m for m in msgs)
 print(f"fired {fired} times in {games} games")
 check("fires in bot games (>= once per game)", fired >= games, fired)
+
+# hard bot: saves a low trump for a plain ace/ten when giant is On; still trumps the ace
+def bot_reply(on, led, hand):
+    r, g = table(on)
+    g.trump, g.phase, g.stage, g.score = "S", 1, "play", [0, 0]
+    g.laid, g.trick = [[], []], []
+    g.hands = [[led, "9D"], hand]
+    g.to(0)
+    g.play_key(0, led)
+    g.bot_move(1, "hard")
+    return g.last["cards"][1][1]
+
+
+check("hard, On: trump 7 over an ace", bot_reply(True, "AH", ["7S", "KH", "8C"]) == "7S")
+check("hard, On: led king, wins with the ace of the suit, not the 7",
+      bot_reply(True, "KH", ["7S", "AH", "8C"]) != "7S")
+check("hard, On: low trump not spent on a plain king", bot_reply(True, "QH", ["7S", "8C", "9C"]) != "7S")
 print("FAILED" if fails else "all ok")
 sys.exit(1 if fails else 0)

@@ -336,6 +336,9 @@ class Bezique(TrickGame):
             return self.play_key(i, min(wins, key=lambda k: (keep(k), self.power(keys[k]))))
         if wins and level == "hard":
             cheap = [k for k in wins if keep(k) == 0 or (rank(keys[k]) in "AT" and suit(keys[k]) == suit(led))]
+            if self.s.get("giant", False):
+                # a low trump is worth +10 on a plain ace or ten: don't spend it on a lesser card
+                cheap = [k for k in cheap if not (suit(keys[k]) == t and rank(keys[k]) in "789")]
             if cheap:
                 return self.play_key(i, min(cheap, key=lambda k: keep(k)))
         lose = [k for k in legal if k not in wins] or legal
