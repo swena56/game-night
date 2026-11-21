@@ -9,7 +9,9 @@ higher beats lower, fours beat threes) score 14 or 3 each. Only the better hand 
 Then twelve tricks, no trumps, follow suit: a point a trick, one more for the last, and ten for winning
 most tricks (forty for all of them: capot). Reaching 30 on declarations before your rival scores
 anything doubles to a repique (+60); reaching 30 in play first is a pique (+30). Highest after six
-deals wins."""
+deals wins.
+
+Option, Run bonus: winning eight tricks in a row in a deal scores 8 more (once a deal, counted at the end)."""
 import random
 
 from .cardbase import GameError, deck, rank, suit, pretty, show, rname, SUIT_NAME
@@ -35,11 +37,14 @@ class Piquet(TrickGame):
         "Only the better hand in each class scores. Reaching 30 on declarations alone before your rival scores: repique, +60.",
         "Play twelve tricks with no trumps; follow suit. 1 a trick, 1 for the last, 10 for most tricks (40 for all).",
         "Highest after six deals wins.",
+        "An option adds a run bonus: eight tricks in a row in one deal is worth 8 more.",
     ]
     min_players, max_players = 2, 2
     order = ORDER
     badges = {**TrickGame.badges, "repique": ("⚜️", "Repique", "Score a repique")}
-    settings_schema = {"deals": ("Deals", [(6, "6 (a partie)"), (2, "2 (quick)"), (4, "4")], 6)}
+    settings_schema = {"deals": ("Deals", [(6, "6 (a partie)"), (2, "2 (quick)"), (4, "4")], 6),
+                       "run": ("Run bonus", [(0, "Off"), (1, "On")], 0)}
+    run_seat, run_n, run_pts = None, 0, (0, 0)    # current streak, and bonus earned this deal (Run bonus option)
 
     def start(self, seated, rng):
         self.seat_up(seated, rng)
@@ -63,6 +68,7 @@ class Piquet(TrickGame):
         self.hand_pts = [0, 0]
         self.decl = None
         self.pique_on = False
+        self.run_seat, self.run_n, self.run_pts = None, 0, [0, 0]
         self.result = None
         self.trick, self.last, self.tricks = [], None, [0, 0]
         for k in (0, 1):
@@ -163,6 +169,11 @@ class Piquet(TrickGame):
 
     def on_trick(self, w, cards):
         self.hand_pts[w] += 1
+        self.run_n = self.run_n + 1 if w == self.run_seat else 1
+        self.run_seat = w
+        if self.s.get("run") and self.run_n == 8:
+            self.run_pts[w] = 8
+            self.moment(f"🔥 {self.nm(w)}: eight tricks in a row! +8", "gold", "fanfare")
         if self.pique_on:
             if w != self.elder:
                 self.pique_on = False
@@ -185,8 +196,12 @@ class Piquet(TrickGame):
             self.hand_pts[k] += 10
             self.room.add_log(f"🎴 {self.nm(k)} wins the cards: +10.")
         for k in (0, 1):
+            if self.run_pts[k]:
+                self.hand_pts[k] += self.run_pts[k]
+                self.room.add_log(f"🔥 {self.nm(k)}'s run of eight: +{self.run_pts[k]}.", "power")
             self.score[k] += self.hand_pts[k]
-        self.result = f"Deal {self.deal_no}: {self.nm(0)} +{self.hand_pts[0]}, {self.nm(1)} +{self.hand_pts[1]}"
+        self.result = f"Deal {self.deal_no}: {self.nm(0)} +{self.hand_pts[0]}, {self.nm(1)} +{self.hand_pts[1]}" + \
+            ("".join(f" · {self.nm(k)}'s run of eight +8" for k in (0, 1) if self.run_pts[k]))
         self.room.add_log(f"🧮 {self.result}", "big")
         if self.deal_no >= self.s["deals"]:
             return self.win_by_score(self.score)
