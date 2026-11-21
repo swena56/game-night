@@ -21,6 +21,7 @@ SUBSTEPS = 4
 SERVE_PAUSE = 1.2
 RALLY_FROM, RALLY_STEP, RALLY_MAX = 5, 0.03, 0.24   # 🔥 after this many mallet touches without a goal the puck's top speed grows
 GOAL_PAUSE = 2.8         # after a goal: time for every screen to show the replay
+SAVE_SPEED, ROCKET_SPEED, CALL_GAP = 1.9, 2.3, 4.0   # 🧤 stopping a puck this fast heading for your goal; 🚀 hitting one this fast; callouts at least this far apart (s)
 STUCK_SECS = 5          # a puck that stays in one spot this long is re-served in its half
 BOT = {  # reaction interval (s), mallet speed, aim noise
     "easy": (0.3, 1.6, 0.2),
@@ -204,8 +205,11 @@ class Hockey(Game):
                 rvx, rvy = pk.vx - self.mvel[i][0], pk.vy - self.mvel[i][1]
                 dot = rvx * nx + rvy * ny
                 if dot < 0:
+                    before = math.hypot(pk.vx, pk.vy)
+                    coming = pk.vy > 0 if i == 0 else pk.vy < 0   # heading for this mallet's own goal
                     pk.vx -= (1 + HIT_BOUNCE) * dot * nx
                     pk.vy -= (1 + HIT_BOUNCE) * dot * ny
+                    self.hit_call(i, pk, before, coming)
                     self.hits += 1
                     pk.rally = getattr(pk, "rally", 0) + 1
                     if pk.rally == 10 and not getattr(self, "quiet_rally", False):
@@ -234,6 +238,23 @@ class Hockey(Game):
         if sp > top:
             pk.vx, pk.vy = pk.vx / sp * top, pk.vy / sp * top
         return None
+
+    def hit_call(self, i, pk, before, coming):
+        """🧤 a big save (a fast puck stopped and sent back) or 🚀 a rocket (a hard hit toward the far goal), rate limited."""
+        now = self.last_frame or 0.0
+        if now - getattr(self, "call_at", -99.0) < CALL_GAP or getattr(self, "quiet_rally", False):
+            return
+        who = self.room.players.get(self.seats[i])
+        if not who:
+            return
+        after = math.hypot(pk.vx, pk.vy)
+        away = pk.vy < 0 if i == 0 else pk.vy > 0   # now heading for the other goal
+        if coming and before >= SAVE_SPEED and away:
+            self.call_at = now
+            self.moment(f"🧤 {who.name}: big save!", "cool", None)
+        elif away and after >= ROCKET_SPEED:
+            self.call_at = now
+            self.moment(f"🚀 {who.name} fires a rocket!", "gold", None)
 
     def goal(self, scorer, k, now):
         """Returns True if the game ended."""
