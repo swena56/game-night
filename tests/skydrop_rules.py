@@ -324,5 +324,36 @@ d1 = f2.depth
 g.simulate(0.1, CLOCK[0])
 check("recovering after a hit is faster", f.depth - d0 > f2.depth - d1)
 
+# 🎁 checkpoint perks
+r, g, ps = game(2, hazards=False)
+to_race(g)
+f = g.flyers[0]
+f.depth = 179.9
+f.sx = f.sz = 0
+g.simulate(0.05, CLOCK[0])
+check("checkpoint offers a perk", f.offer is True and g.fast_view(CLOCK[0])["flyers"][0][15] is True)
+g.on_input(ps[0], {"perk": "shield"})
+check("choosing a perk uses the offer", f.perk == "shield" and not f.offer)
+try:
+    g.on_input(ps[0], {"perk": "nope"})
+    check("unknown perk refused", False)
+except GameError:
+    check("unknown perk refused", True)
+g.hazards = [[f.depth + 0.2, f.x, f.z, 0, 0.0]]
+before = f.score
+g.simulate(0.05, CLOCK[0] + 0.05)
+check("shield blocks one hit, no stun", f.perk == "" and f.stun_until <= CLOCK[0] and f.hits == 0 and f.score >= before)
+f.perk = "wide"
+f.last_ring = -1
+g.rings = [[f.depth + 0.2, f.x + g.ring_r + 0.2, f.z, 1.0]]
+g.simulate(0.05, CLOCK[0] + 0.1)
+check("wide perk counts a ring just outside the normal radius", f.rings == 1)
+r, g, ps = game(1, bots=1)
+to_race(g)
+b = g.flyers[1]
+b.depth = 179.9
+g.simulate(0.05, CLOCK[0])
+check("bots pick a perk automatically", b.perk in M.PERKS and not b.offer)
+
 print("FAILED: " + ", ".join(fails) if fails else "all ok")
 sys.exit(1 if fails else 0)

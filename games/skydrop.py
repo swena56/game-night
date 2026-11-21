@@ -33,6 +33,9 @@ LEVELS = {
 }
 RECOVER = 2.0   # after a hit you get a short speed-up, so one mistake does not end the run
 PENDULUM_KIND = 4
+# 🎁 at every checkpoint you pick one perk for the next stretch (bots pick at random)
+PERKS = ("magnet", "wide", "shield")   # 🧲 coins and gems pulled from twice as far · ⭕ rings 0.45 wider · 🛡️ blocks the next hit
+MAGNET, WIDE = 1.9, 0.45
 
 
 def _unit_perp(dx, dz):
@@ -142,6 +145,8 @@ class Flyer:
         self.aim_dx = self.aim_dz = 0.0
         self.fork_go = False        # bots: this gap's gem is worth leaving the ring line for
         self.fork_x = self.fork_z = self.fork_d = 0.0
+        self.perk = ""              # 🎁 this stretch's checkpoint perk; "shield" is spent by the next hit
+        self.offer = False          # a checkpoint perk choice is waiting
 
 
 class SkyDrop(Game):
@@ -281,6 +286,13 @@ class SkyDrop(Game):
                 if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
                     raise GameError("Bad steering input.")
                 setattr(f, key, max(-1.0, min(1.0, float(value))))
+        perk = a.get("perk")
+        if perk is not None:
+            if perk not in PERKS:
+                raise GameError("Unknown perk.")
+            if f.offer and self.stage == "race" and f.done_at == 0:
+                f.perk, f.offer = perk, False
+                self.event(time.time(), "perk", i)
         if a.get("boost") is True:
             now = time.time()
             if self.stage == "race" and f.done_at == 0 and now >= f.boost_cool and f.boosts:
@@ -409,7 +421,7 @@ class SkyDrop(Game):
                     t = (d - prev_depth) / max(1e-9, f.depth - prev_depth)
                     cross_x = prev_x + (f.x - prev_x) * t
                     cross_z = prev_z + (f.z - prev_z) * t
-                    if math.hypot(cross_x - x, cross_z - z) <= self.ring_r:
+                    if math.hypot(cross_x - x, cross_z - z) <= self.ring_r + (WIDE if f.perk == "wide" else 0):
                         f.combo += 1
                         f.rings += 1
                         pts = (10 + min(10, (f.combo - 1) * 2)) * mult
@@ -427,7 +439,7 @@ class SkyDrop(Game):
             for d, x, z, kind in self.coins:
                 if prev_depth < d <= f.depth:
                     t = (d - prev_depth) / max(1e-9, f.depth - prev_depth)
-                    if math.hypot(prev_x + (f.x - prev_x) * t - x, prev_z + (f.z - prev_z) * t - z) <= COIN_R:
+                    if math.hypot(prev_x + (f.x - prev_x) * t - x, prev_z + (f.z - prev_z) * t - z) <= COIN_R * (MAGNET if f.perk == "magnet" else 1):
                         if kind:
                             f.gems += 1
                             f.score += GEM_PTS
@@ -448,6 +460,11 @@ class SkyDrop(Game):
                     f.score += GRAZE_PTS
                     f.grazes += 1
                     self.event(now, "graze", i)
+                if now >= f.hit_cool_until and crossed and hz_d < hz_r and f.perk == "shield":
+                    f.perk = ""   # 🛡️ the shield takes the hit: no stun, no lost points, but the combo survives too
+                    f.hit_cool_until = now + 1.0
+                    self.event(now, "shield", i)
+                    break
                 if now >= f.hit_cool_until and crossed and hz_d < hz_r:
                     f.stun_until = now + (MINE_STUN if kind == 3 else 0.55 if kind == 1 else 0.8)
                     f.hit_cool_until = now + 1.0
@@ -462,6 +479,10 @@ class SkyDrop(Game):
             if int(f.depth // 180) > getattr(f, "checkpoint", 0):
                 f.checkpoint = int(f.depth // 180)
                 f.boosts = 3
+                f.perk = ""
+                f.offer = True
+                if not self.room.players.get(self.seats[i]) or self.room.players[self.seats[i]].bot:
+                    f.perk, f.offer = self.rng.choice(PERKS), False
                 self.event(now, "checkpoint", i)
             if f.depth >= LENGTH:
                 f.depth = LENGTH
@@ -542,11 +563,11 @@ class SkyDrop(Game):
 
     def fast_view(self, now, full=False):
         return {"stage": self.stage, "run": self.run, "runs": self.runs, "go": self.go_at,
-                "time": now, "raceStarted": self.race_started, "length": LENGTH, "seed": self.seed, "course": self.s.get("course", "spire"), "level": self.level, "ringR": self.ring_r,
+                "time": now, "raceStarted": self.race_started, "length": LENGTH, "seed": self.seed, "course": self.s.get("course", "spire"), "level": self.level, "ringR": self.ring_r, "ramp": LEVELS[self.level]["ramp"],
                 "rings": self.rings, "hazards": self.hazards, "streams": self.streams, **({"coins": self.coins} if full else {}),
                 "finished": self.finished, "events": self.events,
                 "flyers": [[f.depth, f.x, f.z, f.vx, f.vz, f.score, f.rings, f.combo,
-                            f.boosts, f.done_at, f.place, f.stun_until, f.hits, f.boost_until] for f in self.flyers],
+                            f.boosts, f.done_at, f.place, f.stun_until, f.hits, f.boost_until, f.perk, f.offer] for f in self.flyers],
                 "points": self.points, "ringTotals": self.ring_totals}
 
     def view(self, p):
