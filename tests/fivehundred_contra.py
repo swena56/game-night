@@ -96,6 +96,58 @@ check("old object defaults", g2.doubled is None and not g2.contra_q)
 g.s.pop("contra", None)
 check("old room w/o setting (get)", g.s.get("contra") is None)
 
+
+# offer order starts left of the bidder; partner never asked; all-pass; timeout; leaving
+def rigged(n, tag, bidder):
+    room, g = room_of(n, 1, tag)
+    g.contract, g.bidder = "7H", bidder
+    g.win_auction(); g.drop(bidder, g.bot_drop(bidder, "normal"))
+    return room, g
+
+room, g = rigged(4, "O1", 1)
+check("4p order from bidder's left, no partner", list(g.contra_q) == [2, 0], g.contra_q)
+room, g = rigged(3, "O2", 1)
+check("3p order from bidder's left", list(g.contra_q) == [2, 0], g.contra_q)
+for n in (3, 4):
+    room, g = rigged(n, f"AP{n}", 0)
+    asked = list(g.contra_q)
+    for k in asked:
+        check(f"{n}p turn is seat {k}", room.turn == g.seats[k])
+        g.act(room.players[g.seats[k]], {"type": "contra", "double": False})
+    check(f"{n}p all pass -> play, bidder leads", g.stage == "play" and g.doubled is None and room.turn == g.seats[0])
+    check(f"{n}p no stale queue", not g.contra_q)
+    for p_ in room.players.values():
+        g.view(p_)
+# timeouts: human passes, stage advances, nothing sticks
+room, g = rigged(4, "TO", 0)
+first = g.contra_q[0]
+room.deadline = 0
+g.on_timeout()
+check("timeout passes, next opponent", g.stage == "contra" and room.turn == g.seats[g.contra_q[0]] and g.contra_q[0] != first and g.doubled is None)
+g.on_timeout()
+check("last timeout -> play, undoubled", g.stage == "play" and g.doubled is None and room.turn == g.seats[0])
+# leaving mid-contra: the seat plays itself, no stall
+for n in (3, 4):
+    room, g = rigged(n, f"LV{n}", 0)
+    for k in list(g.contra_q):
+        room.players[g.seats[k]].eliminated = True
+    for _ in range(10):
+        if g.stage != "contra":
+            break
+        g.bot_tick()
+        room.bot_at = 0
+    check(f"{n}p leavers mid-contra: no stall", g.stage == "play", g.stage)
+room, g = rigged(4, "LV9", 0)
+q0 = g.contra_q[0]
+room.leave(room.players[g.seats[q0]])
+for _ in range(10):
+    if g.stage != "contra":
+        break
+    g.bot_tick(); room.bot_at = 0
+    if g.stage == "contra" and g.seats[room.turn and g.seats.index(room.turn)] in room.players:
+        g.act(room.players[room.turn], {"type": "contra", "double": False})   # the other human passes
+check("real leave mid-contra: no stall", g.stage == "play", g.stage)
+
 # bot play
 fired = hands = 0
 for n in range(24):

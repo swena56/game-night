@@ -198,7 +198,8 @@ class FiveHundred(TrickGame):
         self.room.add_log(f"🗑️ {self.nm(i)} takes the kitty and discards three.")
         if self.s.get("contra") and self.contract != "M":
             bs = self.side(i)
-            self.contra_q = [k for k in range(self.n) if self.side(k) != bs]
+            order = [(i + 1 + j) % self.n for j in range(self.n)]      # from the bidder's left
+            self.contra_q = [k for k in order if self.side(k) != bs]
             self.stage = "contra"
             return self.to(self.contra_q[0])
         self.start_tricks(i)
