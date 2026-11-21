@@ -150,6 +150,32 @@ for lv in ("easy", "normal", "hard"):
         fired += seen > 0
         if not legal_ok:
             check(f"legal bot moves ({lv})", False)
+# a human leaves mid-deal with a run in progress: the other seat wins at once, no crash, state stays sane
+r, g = table(1)
+plan = play_plan(g, [0] * 12)
+run_out(g, plan, 6)
+leaver = list(r.players.values())[0]
+r.leave(leaver)
+check("leave mid-run: game over, opponent wins", r.phase == "over" and r.winner is not None and r.winner != leaver.id, (r.phase,))
+check("leave mid-run: no bonus paid", g.run_pts == [0, 0] and g.score == [0, 0], (g.run_pts, g.score))
+
+# autopilot stand-in (offline human) takes the seat mid-run and carries the streak through to the bonus
+r, g = table(1)
+plan = play_plan(g, [0] * 12)
+run_out(g, plan, 7)
+p0 = list(r.players.values())[0]
+p0.bot, p0.standin = "normal", True
+check("stand-in keeps streak", (g.run_seat, g.run_n) == (0, 7))
+g.to(0); g.play(0, plan[7][1]); g.play(1, plan[7][2])
+check("stand-in: bonus still pays", g.run_pts == [8, 0], g.run_pts)
+
+# never both seats: eight in a row is exclusive (8+8 > 12), and a second streak after a break cannot pay twice
+for winners in ([0] * 8 + [1] * 4, [1] * 4 + [0] * 8, [0] * 4 + [1] * 8, [0] * 8 + [1, 0, 0, 0]):
+    r, g = table(1)
+    plan = play_plan(g, winners)
+    run_out(g, plan)
+    check(f"one payer only {winners[:1]}{len(winners)}", sum(1 for x in g.run_pts if x) <= 1 and sum(g.run_pts) <= 8, g.run_pts)
+
 print(f"deals with a run bonus: fired in {fired} of {games} 2-deal games")
 check("bonus fires in bot play", fired >= 1)
 check("bots legal", "legal bot moves (easy)" not in fails and not any(f.startswith("legal") for f in fails))
