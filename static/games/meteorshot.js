@@ -191,6 +191,7 @@ UI.meteorshot = (() => {
           burst.visible = k < 1; burst.position.set(f.hit[0], f.hit[1], -f.s.target[1]); burst.scale.setScalar(1 + k * 5);
           burst.material.opacity = 1 - k;
           const pts = f.s.points, kk = Math.min(1, (t - f.T) / 0.9);
+          if (!f.shook && pts >= 60) { f.shook = 1; window.GL3?.shake?.(camera, pts >= 90 ? 0.55 : 0.28); }   // a good hit thumps the screen
           shower.visible = pts > 0 && kk < 1;
           if (shower.visible) {
             shower.material.color.setHex(pts >= 90 ? 0xffd166 : pts >= 60 ? 0x7dffb0 : 0xff9060); shower.material.opacity = 1 - kk;
@@ -201,7 +202,7 @@ UI.meteorshot = (() => {
         }
         ringMat.emissive.setHex(f.s.points >= 60 && t >= f.T ? 0xffa030 : 0x8c4210);
       } else { trail.visible = false; sparks.visible = false; comet.visible = false; burst.visible = false; shower.visible = false; ringMat.emissive.setHex(0x8c4210); }
-      st.follow(camera);
+      st.follow(camera); window.GL3?.tickShake?.(camera, 0.016);
       renderer.render(scene, camera);
     }
     function dispose() {
