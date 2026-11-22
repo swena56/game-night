@@ -82,6 +82,10 @@ class DartMatch:
         self.__dict__.setdefault("visits_done", [0] * len(self.seats))
         self.__dict__.setdefault("finishing", self.winner is not None)
 
+    @property
+    def solo(self):
+        return len(self.seats) == 1
+
     def active(self):
         return [i for i, pid in enumerate(self.seats)
                 if pid in self.room.players and not self.room.players[pid].eliminated]
@@ -105,8 +109,10 @@ class DartMatch:
 
     def advance(self, i, delay=0):
         active = self.active()
-        if len(active) <= 1:
+        if len(active) <= 1 and not self.solo:
             return self.finish(active[0] if active else None)
+        if not active:
+            return self.finish(None)
         if self.mode == "countup":
             if i in active:
                 self.visits_done[i] += 1
@@ -201,7 +207,10 @@ class DartMatch:
     def finish(self, winner):
         player = self.room.players.get(self.seats[winner]) if winner is not None else None
         name = MODES[self.mode]
-        if player:
+        if player and self.solo:
+            text = f"🎯 {player.name} finishes {name} in {self.visit} visits." if self.mode != "countup" \
+                else f"🎯 {player.name} scores {self.points[0]} in {name}."
+        elif player:
             text = f"🏆 {player.name} wins {name}!"
         elif self.active():
             text = f"🤝 {name} ends in a tie at {max(self.points[i] for i in self.active())} points."

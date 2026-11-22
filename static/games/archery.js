@@ -839,7 +839,7 @@ UI.archery = (() => {
   const DART_HAND_DEPTH = 48;
   const DART_BOARD_SCALE = 0.72;
 
-  function makeDarts3d(surface, isZoomed) {
+  function makeDarts3d(surface) {
     const T = window.THREE;
     let api;
     const renderer = GL3.renderer({ alpha: true }, { onLost: () => api?.dispose() });
@@ -852,7 +852,7 @@ UI.archery = (() => {
     const fov = 2 * Math.atan(125 / cameraDistance) * 180 / Math.PI;
     const scene = new T.Scene(), camera = new T.PerspectiveCamera(fov, 1, 1, 550);
     camera.position.z = cameraDistance;
-    const ZERO_TARGET = new T.Vector3(), ZOOM_TARGET = new T.Vector3(0, 2.2, 0);
+    const VIEW_TARGET = new T.Vector3();
     scene.add(new T.HemisphereLight(0xf4e4ce, 0x6c534c, 1.35));
     const lamp = new T.SpotLight(0xffcb88, 2.8, 0, 0.51, 0.72);
     lamp.position.set(-75, 174, 235);
@@ -1032,8 +1032,6 @@ UI.archery = (() => {
       new T.Vector3(0, 0, -1));
     const landedRotation = new T.Euler(-1.35, 0.12, 0.22);
     const landedOrientation = new T.Quaternion().setFromEuler(landedRotation);
-    const zoomTilt = 0.032;
-    const zoomOrientation = new T.Quaternion().setFromEuler(new T.Euler(-0.10, 0.07, 0));
     const travelOrientation = new T.Quaternion();
     const smooth = (t) => { const k = c01(t); return k * k * (3 - 2 * k); };
     const planeScale = (depth) => 98 * (1 - depth / cameraDistance);
@@ -1065,21 +1063,16 @@ UI.archery = (() => {
         camera.aspect = surface.clientWidth / surface.clientHeight;
         camera.updateProjectionMatrix();
       }
-      const viewTarget = isZoomed() ? ZOOM_TARGET : ZERO_TARGET;
       // A slightly wider framing while the dart rests on the rack gives the
       // player more context. As it rises into the grip, ease back to the aim view.
-      const framing = isZoomed() || flight ? 0 : hand ? 1 - hand.lift : 1;
+      const framing = flight ? 0 : hand ? 1 - hand.lift : 1;
       const targetFov = fov + 4 * framing;
       if (Math.abs(camera.fov - targetFov) > 0.01) {
         camera.fov = targetFov;
         camera.updateProjectionMatrix();
       }
-      camera.position.set(isZoomed() ? 10 : 0, isZoomed() ? 9 : 0, cameraDistance).add(viewTarget);
-      camera.lookAt(viewTarget);
-      if (isZoomed()) {
-        camera.quaternion.multiply(zoomOrientation);
-        camera.rotateZ(zoomTilt);
-      }
+      camera.position.set(0, 0, cameraDistance);
+      camera.lookAt(VIEW_TARGET);
       const signature = [pins.map((p) => p.id).join(), hand?.x, hand?.y, hand?.angle, hand?.lift, hand?.aiming, flight?.u, impact?.angle].join('|');
       if (signature === lastFrame) return;
       lastFrame = signature;
@@ -1150,8 +1143,8 @@ UI.archery = (() => {
 
   function makeDartsUI() {
     const STEP = Math.PI / 10, CENTER = 125, SCALE = 98, WIDTH = 250;
-    let root, score, stage, board, geometry, pins, grip, held, guide, dartModel, result, callout, hint, turn, tabletop, darts3d, zoom, swipeButton;
-    let view, state, ctx, frame, readyAt, pending, visit, shown, flight, swipe, keys, releasedFrom, waitingHand, zoomed, recapUntil, impact;
+    let root, score, stage, board, geometry, pins, grip, held, guide, dartModel, result, callout, hint, turn, tabletop, darts3d, swipeButton;
+    let view, state, ctx, frame, readyAt, pending, visit, shown, flight, swipe, keys, releasedFrom, waitingHand, impact;
     const xAt = (x) => CENTER + SCALE * x, yAt = (y) => CENTER - SCALE * y;
     const point = (a, r) => [CENTER + Math.sin(a) * r, CENTER - Math.cos(a) * r];
     const circle = (r, fill) => `<circle cx="125" cy="125" r="${r}" fill="${fill}"/>`;
@@ -1159,7 +1152,7 @@ UI.archery = (() => {
     const clockLabel = (number) => number == null ? 'Done' : number === 25 ? 'Bull' : String(number);
     const origin = () => { const [x, y] = view.dartOrigin || [1.04, -0.55]; return { x, y }; };
     const mine = () => view && state.phase === 'playing' && ctx.myTurn && !state.paused;
-    const ready = () => mine() && !zoomed && !pending && !waitingHand && !flight && performance.now() >= readyAt;
+    const ready = () => mine() && !pending && !waitingHand && !flight && performance.now() >= readyAt;
     const reduce = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     const transform = (x, y) => `translate(${xAt(x)} ${yAt(y)})`;
 
@@ -1184,7 +1177,6 @@ UI.archery = (() => {
     function mount(main, side) {
       main.innerHTML = `<section class="ar-darts">
         <header><div><h2></h2><span class="ar-darts-turn"></span></div>
-          <button type="button" class="ar-darts-zoom" aria-pressed="false">Zoom board</button>
         </header>
         <div class="ar-darts-board-wrap"><div class="ar-darts-stage"><div class="ar-darts-tabletop">
           <svg viewBox="0 0 250 250" tabindex="0" role="group"
@@ -1207,16 +1199,12 @@ UI.archery = (() => {
       root = main.firstElementChild; score = side.querySelector('.ar-darts-score');
       const find = (name) => root.querySelector('.ar-darts-' + name);
       board = root.querySelector('svg'); grip = find('grip'); held = find('held');
-      guide = find('direction'); dartModel = find('model'); tabletop = find('tabletop'); stage = find('stage'); zoom = find('zoom'); swipeButton = find('swipe');
+      guide = find('direction'); dartModel = find('model'); tabletop = find('tabletop'); stage = find('stage'); swipeButton = find('swipe');
       geometry = find('board'); pins = find('pins');
       result = find('result'); callout = find('callout'); hint = find('hint'); turn = find('turn');
       view = null; pending = false; flight = null; shown = null; visit = null;
-      swipe = null; keys = null; releasedFrom = null; waitingHand = null; darts3d = null; zoomed = false; recapUntil = 0; impact = null;
+      swipe = null; keys = null; releasedFrom = null; waitingHand = null; darts3d = null; impact = null;
       callout.addEventListener('animationend', () => { callout.hidden = true; });
-      zoom.addEventListener('click', () => setZoom(!zoomed));
-      root.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && zoomed) { setZoom(false); zoom.focus(); }
-      });
       const pickUp = (e) => {
         if (!ready() || swipe || e.button !== 0) return;
         const scale = board.getBoundingClientRect().width * SCALE / WIDTH;
@@ -1275,29 +1263,10 @@ UI.archery = (() => {
       const surface = tabletop;
       window.GL3?.load().then(() => {
         if (tabletop !== surface || !surface.isConnected) return;
-        darts3d = makeDarts3d(surface, () => zoomed);
+        darts3d = makeDarts3d(surface);
         if (darts3d && view) darts3d.paint(view);
       }).catch(() => {});
       frame = requestAnimationFrame(tick);
-    }
-
-    function setZoom(value, until = 0) {
-      zoomed = value;
-      recapUntil = until;
-      swipe = null; keys = null;
-      stage.classList.toggle('ar-darts-zoomed', value);
-      zoom.setAttribute('aria-pressed', String(value));
-      zoom.textContent = value ? 'Back to throws' : 'Zoom board';
-      stage.scrollLeft = value ? Math.max(0, stage.scrollWidth * CENTER / WIDTH - stage.clientWidth / 2) : 0;
-      stage.scrollTop = 0;
-      if (until) stage.scrollTop = Math.max(0, stage.scrollHeight * 125 / 250 - stage.clientHeight / 2);
-      if (view) updateHint();
-    }
-
-    function recap(shot) {
-      if (shot.recap && ctx.peek && !zoomed && !state.paused) {
-        setZoom(true, performance.now() + shot.recap * 1000);
-      }
     }
 
     function sample(e) {
@@ -1335,19 +1304,15 @@ UI.archery = (() => {
 
     function playGrip() {
       window.Snd?.play((t, K) => {
-        const dst = K.at({ room: 'room', send: 0.24, vol: 0.36 });
-        K.burst(dst, t, { type: 'bandpass', f: 1150, q: 1.8, vol: 0.17, tau: 0.021 });
-        K.mode(dst, t + 0.016, 960, 0.04, 0.027);
+        const dst = K.at({ room: 'room', send: 0.24, vol: 0.2 });
+        K.burst(dst, t, { type: 'lowpass', f: 700, vol: 0.1, tau: 0.015, buf: 'brown' });
       });
     }
 
-    function playRelease(pace) {
+    function playRelease() {
       window.Snd?.play((t, K) => {
-        const power = Math.min(1, pace / 6);
-        const dst = K.at({ room: 'room', send: 0.22, vol: 0.33 + 0.23 * power });
-        K.burst(dst, t, { type: 'bandpass', f: 1750 + power * 1100, f1: 700,
-          q: 0.7, vol: 0.25, tau: 0.038, dur: 0.11 });
-        K.burst(dst, t, { type: 'lowpass', f: 520, vol: 0.13, tau: 0.012, buf: 'brown' });
+        const dst = K.at({ room: 'room', send: 0.12, vol: 0.16 });
+        K.burst(dst, t, { type: 'lowpass', f: 420, vol: 0.1, tau: 0.02, buf: 'brown' });
       });
     }
 
@@ -1393,10 +1358,9 @@ UI.archery = (() => {
     function tick(now) {
       frame = requestAnimationFrame(tick);
       if (!view) return;
-      if (recapUntil && now >= recapUntil) setZoom(false);
       if (waitingHand && now >= waitingHand.until) waitingHand = null;
       const show = ready(), hand = waitingHand || pose(now);
-      const drawHand = !zoomed && !flight && (show || !!waitingHand);
+      const drawHand = !flight && (show || !!waitingHand);
       grip.toggleAttribute('hidden', !show || !!swipe);
       swipeButton.disabled = !show;
       held.toggleAttribute('hidden', !drawHand);
@@ -1437,7 +1401,6 @@ UI.archery = (() => {
           showShot(shot);
           flashHit(shot);
           playLanding(shot);
-          recap(shot);
           ctx.buzz?.(shot.bust ? [25, 40, 25] : 15);
         }
       }
@@ -1517,7 +1480,6 @@ UI.archery = (() => {
           if (!first && c.peek) {
             flashHit(shot);
             playLanding(shot);
-            recap(shot);
           }
         }
         if (!shot) result.textContent = '';
@@ -1539,8 +1501,7 @@ UI.archery = (() => {
       if (view.mode === 'clock') rule = view.next == null ? 'Hit 1–20 in order, then bull.'
         : `Next target: ${clockLabel(view.nextNumbers[view.next])}.`;
       if (view.mode === 'countup') rule = `Highest score after ${view.visitLimit} visits wins.`;
-      hint.textContent = recapUntil ? 'Visit complete' : zoomed ? 'Pan to inspect the board.'
-        : mine() ? `Swipe inward from the dart or the button below. A faster flick travels farther. ${rule}` : rule;
+      hint.textContent = mine() ? `Swipe inward from the dart or the button below. A faster flick travels farther. ${rule}` : rule;
     }
 
     return { mount, render, unmount() { cancelAnimationFrame(frame); darts3d?.dispose(); darts3d = null; view = null; tabletop = null; } };

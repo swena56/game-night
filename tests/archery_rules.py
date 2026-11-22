@@ -295,5 +295,24 @@ r3, g3, _ = game(2, ends=1)
 still(g3)
 check("a silly hold is clamped, not refused", refused(g3, r3.players[r3.turn], {"type": "shoot", "ax": 0.0, "ay": 0.0, "held": 999}) is None)
 
+
+# Solo play: every course runs to its own finish with a single player and no rival.
+for course in ("301", "cricket", "clock", "countup", "archery"):
+    r = server.Room("SOLO")
+    me = r.add_player("Ann"); me.bot = "hard"
+    r.switch_game("archery"); r.settings.update(course=course); r.start()
+    g, n = r.game, 0
+    while r.phase == "playing" and n < 400:
+        n += 1
+        (g.darts or g).ready_at = 0
+        r.deadline = 0
+        if g.darts and r.turn == me.id:
+            g.darts.bot(me)
+        elif not g.darts and r.turn == me.id:
+            g.act(me, {"type": "shoot", "ax": 0, "ay": 0})
+        else:
+            g.on_timeout()
+    check(f"solo {course} finishes", r.phase == "over", f"{n} steps")
+
 print("\n" + ("all ok" if not fails else f"{len(fails)} FAILED: {fails}"))
 sys.exit(1 if fails else 0)

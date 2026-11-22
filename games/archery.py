@@ -113,7 +113,7 @@ class Archery(Game):
     name = "Darts"
     icon = "🎯"
     blurb = "Swipe to throw on a 3D dartboard. Play 301, 501, Cricket, Around the Clock or Count-Up, or choose Wind Archery from Course."
-    min_players = 2
+    min_players = 1
     max_players = 6
     badges = {**Game.badges,
               "centre": ("🎯", "Dead centre", "Put an arrow in the ✖ at the very middle"),
@@ -431,7 +431,7 @@ class Archery(Game):
         r = self.room
         self.between = False
         here = [i for i in range(len(self.seats)) if self.present(i)]
-        if self.end_no >= self.total_ends or len(here) <= 1:
+        if self.end_no >= self.total_ends or (len(here) <= 1 and len(self.seats) > 1):
             if not here:
                 return r.finish(None, "Everyone left.")
             if self.shootoff:
@@ -448,6 +448,8 @@ class Archery(Game):
             if len(tied) > 1:
                 r.add_log(f"🤝 {' & '.join(self.name_of(i) for i in tied)} are level on {self.points[top]}: a shoot-off!", "big")
                 return self.new_end(shootoff=tied)
+            if len(self.seats) == 1:
+                return r.finish(self.pl(top), f"🎯 {self.name_of(top)} scores {self.points[top]} points in Wind Archery.")
             return r.finish(self.pl(top), f"🏆 {self.name_of(top)} wins Wind Archery with {self.points[top]} points!")
         self.new_end()
 
