@@ -17,6 +17,7 @@ PAUSE = 0.85
 VISIT_RECAP = 1.65
 DART_ORIGIN = (1.04, -0.55)
 SWIPE_PACE = 2.2
+SCATTER = 1.0       # 0 turns off the hand's wobble (tests): fast flicks scatter more than steady throws
 
 
 def hit_at(x, y):
@@ -137,7 +138,9 @@ class DartMatch:
             raise GameError("Wait for the dart to land.")
         x = DART_ORIGIN[0] + dx + 0.14 * (vx + SWIPE_PACE)
         y = DART_ORIGIN[1] + dy + 0.085 * vy
-        self.throw(self.seats.index(p.id), x, y, pace=math.hypot(vx, vy))
+        pace = math.hypot(vx, vy)
+        sigma = SCATTER * (0.03 + 0.012 * pace)
+        self.throw(self.seats.index(p.id), x + self.rng.gauss(0, sigma), y + self.rng.gauss(0, sigma), pace=pace)
 
     def cricket_winner(self, active):
         high = max((self.points[i] for i in active), default=0)

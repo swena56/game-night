@@ -1115,7 +1115,7 @@ UI.archery = (() => {
       if (!hand && !flight) dartLight.intensity = 0;
       lodged.forEach((obj, i) => {
         const p = pins[i];
-        obj.visible = !!p && p.id !== flyingId && Math.hypot(p.x, p.y) <= 1;
+        obj.visible = !!p && p.id !== flyingId && Math.hypot(p.x, p.y) <= 1.5;
         if (!obj.visible) return;
         const quiver = p.id === impact?.id ? impact.angle : 0;
         obj.rotation.set(landedRotation.x + quiver, landedRotation.y, landedRotation.z - quiver * 0.6);
@@ -1144,6 +1144,7 @@ UI.archery = (() => {
   function makeDartsUI() {
     const STEP = Math.PI / 10, CENTER = 125, SCALE = 98, WIDTH = 250;
     let root, score, stage, board, geometry, pins, grip, held, guide, dartModel, result, callout, hint, turn, tabletop, darts3d, swipeButton;
+    const zoom = { s: 1, x: 0, y: 0 };
     let view, state, ctx, frame, readyAt, pending, visit, shown, flight, swipe, keys, releasedFrom, waitingHand, impact;
     const xAt = (x) => CENTER + SCALE * x, yAt = (y) => CENTER - SCALE * y;
     const point = (a, r) => [CENTER + Math.sin(a) * r, CENTER - Math.cos(a) * r];
@@ -1204,9 +1205,47 @@ UI.archery = (() => {
       result = find('result'); callout = find('callout'); hint = find('hint'); turn = find('turn');
       view = null; pending = false; flight = null; shown = null; visit = null;
       swipe = null; keys = null; releasedFrom = null; waitingHand = null; darts3d = null; impact = null;
+      zoom.s = 1; zoom.x = 0; zoom.y = 0;
       callout.addEventListener('animationend', () => { callout.hidden = true; });
+      // Pinch to look closer while no dart is in hand; picking the dart up eases back to the full board.
+      const touches = new Map();
+      let pinch = null, panFrom = null;
+      stage.addEventListener('pointerdown', (e) => {
+        if (swipe) return;
+        touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (touches.size === 2) {
+          const [a, b] = [...touches.values()];
+          pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, s: zoom.s, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, x: zoom.x, y: zoom.y };
+          panFrom = null;
+        } else if (zoom.s > 1) panFrom = { id: e.pointerId, cx: e.clientX, cy: e.clientY, x: zoom.x, y: zoom.y };
+      });
+      stage.addEventListener('pointermove', (e) => {
+        if (!touches.has(e.pointerId)) return;
+        touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (swipe) return;
+        if (pinch && touches.size === 2) {
+          const [a, b] = [...touches.values()];
+          zoom.s = pinch.s * Math.hypot(a.x - b.x, a.y - b.y) / pinch.d;
+          zoom.x = pinch.x + (a.x + b.x) / 2 - pinch.mx;
+          zoom.y = pinch.y + (a.y + b.y) / 2 - pinch.my;
+          applyZoom();
+        } else if (panFrom?.id === e.pointerId) {
+          zoom.x = panFrom.x + e.clientX - panFrom.cx;
+          zoom.y = panFrom.y + e.clientY - panFrom.cy;
+          applyZoom();
+        }
+      });
+      const lift = (e) => {
+        touches.delete(e.pointerId);
+        if (touches.size < 2) pinch = null;
+        if (panFrom?.id === e.pointerId) panFrom = null;
+      };
+      stage.addEventListener('pointerup', lift);
+      stage.addEventListener('pointercancel', lift);
+      stage.addEventListener('dblclick', resetZoom);
       const pickUp = (e) => {
         if (!ready() || swipe || e.button !== 0) return;
+        resetZoom();
         const scale = board.getBoundingClientRect().width * SCALE / WIDTH;
         if (!scale) return;
         e.preventDefault();
@@ -1267,6 +1306,19 @@ UI.archery = (() => {
         if (darts3d && view) darts3d.paint(view);
       }).catch(() => {});
       frame = requestAnimationFrame(tick);
+    }
+
+    function applyZoom() {
+      zoom.s = Math.max(1, Math.min(3.5, zoom.s));
+      const mx = (zoom.s - 1) * tabletop.offsetWidth / 2, my = (zoom.s - 1) * tabletop.offsetHeight / 2;
+      zoom.x = Math.max(-mx, Math.min(mx, zoom.x));
+      zoom.y = Math.max(-my, Math.min(my, zoom.y));
+      tabletop.style.transform = zoom.s === 1 ? '' : `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.s})`;
+    }
+
+    function resetZoom() {
+      zoom.s = 1; zoom.x = 0; zoom.y = 0;
+      if (tabletop) applyZoom();
     }
 
     function sample(e) {
@@ -1501,7 +1553,7 @@ UI.archery = (() => {
       if (view.mode === 'clock') rule = view.next == null ? 'Hit 1–20 in order, then bull.'
         : `Next target: ${clockLabel(view.nextNumbers[view.next])}.`;
       if (view.mode === 'countup') rule = `Highest score after ${view.visitLimit} visits wins.`;
-      hint.textContent = mine() ? `Swipe inward from the dart or the button below. A faster flick travels farther. ${rule}` : rule;
+      hint.textContent = mine() ? `Swipe inward from the dart or the button below. A faster flick travels farther, and a rushed one strays. Pinch to zoom. ${rule}` : rule;
     }
 
     return { mount, render, unmount() { cancelAnimationFrame(frame); darts3d?.dispose(); darts3d = null; view = null; tabletop = null; } };

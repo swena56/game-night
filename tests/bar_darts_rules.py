@@ -8,8 +8,11 @@ import pickle
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from games.bar_darts import COUNTUP_VISITS, DART_ORIGIN, NUMBERS, RADII, SWIPE_PACE, checkout, hit_at
+import games.bar_darts as bar_darts
 from games.base import GameError
 from server import Room
+
+bar_darts.SCATTER = 0  # tests aim exactly
 
 
 def aim(number, multiplier):

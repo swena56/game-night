@@ -79,7 +79,7 @@
   box-shadow: inset 0 0 30px #180f0c, var(--sh-2, none);
   overflow: hidden;
 }
-.ar-darts-tabletop { position: relative; width: min(100%, 57vh, 515px); aspect-ratio: 1; }
+.ar-darts-tabletop { position: relative; will-change: transform; touch-action: none; width: min(100%, 57vh, 515px); aspect-ratio: 1; }
 .ar-darts-stage svg, .ar-darts-webgl {
   display: block; position: absolute; inset: 0; width: 100%; height: 100%;
 }
