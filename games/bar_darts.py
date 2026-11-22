@@ -15,7 +15,7 @@ CLOCK_TARGETS = (*range(1, 21), 25)
 COUNTUP_VISITS = 8
 PAUSE = 0.85
 VISIT_RECAP = 1.65
-GRAB_TIME = 12      # a human has this long to pull their darts before they are collected for them
+GRAB_TIME = 10      # a human has this long to pull their darts before they are collected for them
 DART_ORIGIN = (1.04, -0.55)
 SWIPE_PACE = 2.2
 SCATTER = 1.0       # 0 turns off the hand's wobble (tests): fast flicks scatter more than steady throws
@@ -46,25 +46,41 @@ SETUP = tuple(sorted(
 ))
 
 
+ANY_FINISH = tuple(sorted(
+    [(n, m) for n in NUMBERS for m in (1, 2, 3)] + [(25, 1), (25, 2)],
+    key=lambda hit: (hit[1] != 2, hit[1] == 3, -hit[0] * hit[1]),
+))
+
+
 @lru_cache(maxsize=1024)
-def checkout(remaining, darts):
-    """Find a legal finish, preferring direct doubles and high scoring setup darts."""
-    if not 2 <= remaining <= 60 * (darts - 1) + 50:
-        return ()
-    for hit in DOUBLES:
+def checkout(remaining, darts, double_out=True):
+    """Find a legal finish, preferring direct doubles and high scoring setup darts.
+
+    Without double-out any dart that reaches exactly zero finishes, so singles and triples count too.
+    """
+    if double_out:
+        if not 2 <= remaining <= 60 * (darts - 1) + 50:
+            return ()
+        finishers = DOUBLES
+    else:
+        if not 1 <= remaining <= 60 * darts:
+            return ()
+        finishers = ANY_FINISH
+    for hit in finishers:
         if hit[0] * hit[1] == remaining:
             return (hit,)
     if darts > 1:
         for hit in SETUP:
-            rest = checkout(remaining - hit[0] * hit[1], darts - 1)
+            rest = checkout(remaining - hit[0] * hit[1], darts - 1, double_out)
             if rest:
                 return (hit, *rest)
     return ()
 
 
 class DartMatch:
-    def __init__(self, room, seats, rng, mode):
+    def __init__(self, room, seats, rng, mode, double_out=False):
         self.room, self.seats, self.rng, self.mode = room, seats, rng, mode
+        self.double_out = double_out
         self.points = [X01.get(mode, 0) for _ in seats]
         self.marks = [[0] * len(TARGETS) for _ in seats]
         self.visits_done = [0] * len(seats)
@@ -85,6 +101,7 @@ class DartMatch:
         self.__dict__.setdefault("visits_done", [0] * len(self.seats))
         self.__dict__.setdefault("finishing", self.winner is not None)
         self.__dict__.setdefault("grabbing", None)
+        self.__dict__.setdefault("double_out", True)   # games saved before the option always needed a double
 
     @property
     def solo(self):
@@ -170,7 +187,7 @@ class DartMatch:
         bust, winner, added_marks = False, None, 0
         if self.mode in X01:
             remaining = before - number * multiplier
-            bust = remaining < 2 and not (remaining == 0 and multiplier == 2)
+            bust = remaining < 0 or (self.double_out and (remaining == 1 or (remaining == 0 and multiplier != 2)))
             self.points[i] = self.visit_start if bust else remaining
             if not bust and remaining == 0:
                 winner = i
@@ -278,20 +295,26 @@ class DartMatch:
     def bot(self, p):
         i = self.seats.index(p.id)
         sigma = {"easy": 0.105, "normal": 0.065, "hard": 0.034}.get(p.bot, 0.065)
+        number, multiplier = self.target(i, p.bot)
+        x, y = self.point(number, multiplier)
+        self.throw(i, x + self.rng.gauss(0, sigma), y + self.rng.gauss(0, sigma))
+
+    def target(self, i, level):
+        """The dart worth throwing next for seat i: a bot's choice, and the hint a player can ask for."""
         if self.mode in X01:
             remaining = self.points[i]
-            route = checkout(remaining, 3 - len(self.darts))
+            route = checkout(remaining, 3 - len(self.darts), self.double_out)
             if route:
                 number, multiplier = route[0]
             elif remaining <= 50:
                 number = next(n for n in range(1, 21) if 2 <= remaining - n <= 40 and (remaining - n) % 2 == 0)
                 multiplier = 1
             else:
-                number, multiplier = 20, 3 if remaining > 70 and p.bot != "easy" else 1
+                number, multiplier = 20, 3 if remaining > 70 and level != "easy" else 1
         elif self.mode == "clock":
             number, multiplier = self.next_number(i), 1
         elif self.mode == "countup":
-            number, multiplier = 20, 1 if p.bot == "easy" else 3
+            number, multiplier = 20, 1 if level == "easy" else 3
         else:
             open_targets = [n for n, marks in zip(TARGETS, self.marks[i]) if marks < 3]
             scoring = [n for n in TARGETS if any(
@@ -301,19 +324,26 @@ class DartMatch:
             if scoring and any(self.points[j] > self.points[i] for j in self.active()):
                 number = next((n for n in scoring if n not in open_targets), number)
             multiplier = 2 if number == 25 else 3
+        return number, multiplier
+
+    @staticmethod
+    def point(number, multiplier):
         inner, _, triple_in, triple_out, double_in, edge = RADII
         if number == 25:
-            x, y = 0, 0 if multiplier == 2 else inner * 1.75
-        else:
-            theta = math.tau * NUMBERS.index(number) / len(NUMBERS)
-            radius = {1: 0.47, 2: (double_in + edge) / 2, 3: (triple_in + triple_out) / 2}[multiplier]
-            x, y = radius * math.sin(theta), radius * math.cos(theta)
-        self.throw(i, x + self.rng.gauss(0, sigma), y + self.rng.gauss(0, sigma))
+            return 0, 0 if multiplier == 2 else inner * 1.75
+        theta = math.tau * NUMBERS.index(number) / len(NUMBERS)
+        radius = {1: 0.47, 2: (double_in + edge) / 2, 3: (triple_in + triple_out) / 2}[multiplier]
+        return radius * math.sin(theta), radius * math.cos(theta)
 
     def view(self, p):
         next_seat = self.seats.index(self.room.turn) if self.room.turn in self.seats else None
         left = 3 - len(self.darts) if next_seat is not None else 0
-        route = checkout(self.points[next_seat], left) if self.mode in X01 and left else ()
+        route = checkout(self.points[next_seat], left, self.double_out) if self.mode in X01 and left else ()
+        hint = None
+        if next_seat is not None and p.id in self.seats and next_seat == self.seats.index(p.id) and left:
+            number, multiplier = self.target(next_seat, "hard")
+            x, y = self.point(number, multiplier)
+            hint = {"label": label(number, multiplier), "x": x, "y": y}
         return {
             "mode": self.mode, "title": MODES[self.mode], "x01": self.mode in X01,
             "nextNumbers": [self.next_number(i) for i in range(len(self.seats))] if self.mode == "clock" else None,
@@ -325,6 +355,7 @@ class DartMatch:
             "numbers": NUMBERS, "radii": RADII, "left": left,
             "dartOrigin": DART_ORIGIN, "swipePace": SWIPE_PACE,
             "checkout": [label(*hit) for hit in route],
+            "doubleOut": self.double_out, "hint": hint,
             "grab": next_seat is not None and self.grabbing == next_seat,
             "grabIn": max(0.0, (self.room.deadline or 0) - time.time()) if self.grabbing is not None else 0,
             "readyIn": max(0.0, self.ready_at - time.time()),

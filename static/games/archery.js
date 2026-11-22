@@ -1135,8 +1135,9 @@ UI.archery = (() => {
 
   function makeDartsUI() {
     const STEP = Math.PI / 10, CENTER = 125, SCALE = 98, WIDTH = 250;
-    let root, score, stage, board, geometry, pins, grip, held, guide, dartModel, result, callout, hint, turn, tabletop, darts3d, swipeButton, grabButton;
+    let root, score, stage, board, geometry, pins, grip, held, guide, dartModel, result, callout, hint, turn, tabletop, darts3d, swipeButton, grabButton, hintButton, aim;
     const zoom = { s: 1, x: 0, y: 0 };
+    let hintOn = false;
     let view, state, ctx, frame, readyAt, grabAt, grabbing, pending, visit, shown, flight, swipe, keys, releasedFrom, waitingHand, impact;
     const xAt = (x) => CENTER + SCALE * x, yAt = (y) => CENTER - SCALE * y;
     const point = (a, r) => [CENTER + Math.sin(a) * r, CENTER - Math.cos(a) * r];
@@ -1170,8 +1171,10 @@ UI.archery = (() => {
     function mount(main, side) {
       main.innerHTML = `<section class="ar-darts">
         <header><div><h2></h2><span class="ar-darts-turn"></span></div>
+          <button type="button" class="ar-darts-hintbtn" aria-pressed="false">💡 Hint</button>
         </header>
         <div class="ar-darts-board-wrap"><div class="ar-darts-stage"><div class="ar-darts-tabletop">
+          <div class="ar-darts-aim" aria-hidden="true" hidden></div>
           <svg viewBox="0 0 250 250" tabindex="0" role="group"
             aria-label="Dartboard. Hold the dart at the right edge and swipe inward. With a keyboard, use arrow keys to adjust the swipe and Enter to throw.">
             <g class="ar-darts-board"></g><g class="ar-darts-pins"></g>
@@ -1193,12 +1196,13 @@ UI.archery = (() => {
       root = main.firstElementChild; score = side.querySelector('.ar-darts-score');
       const find = (name) => root.querySelector('.ar-darts-' + name);
       board = root.querySelector('svg'); grip = find('grip'); held = find('held');
-      guide = find('direction'); dartModel = find('model'); tabletop = find('tabletop'); stage = find('stage'); swipeButton = find('swipe'); grabButton = find('grab');
+      guide = find('direction'); dartModel = find('model'); tabletop = find('tabletop'); stage = find('stage'); swipeButton = find('swipe'); grabButton = find('grab'); hintButton = find('hintbtn'); aim = find('aim');
       geometry = find('board'); pins = find('pins');
       result = find('result'); callout = find('callout'); hint = find('hint'); turn = find('turn');
       view = null; pending = false; flight = null; shown = null; visit = null;
       swipe = null; keys = null; releasedFrom = null; waitingHand = null; darts3d = null; impact = null;
       zoom.s = 1; zoom.x = 0; zoom.y = 0;
+      hintButton.addEventListener('click', () => { hintOn = !hintOn; paintHint(); });
       grabButton.addEventListener('click', () => {
         if (grabbing) return;
         grabbing = true;
@@ -1306,6 +1310,16 @@ UI.archery = (() => {
       frame = requestAnimationFrame(tick);
     }
 
+    function paintHint() {
+      const hint = view?.hint;
+      hintButton.setAttribute('aria-pressed', String(hintOn));
+      hintButton.textContent = hintOn && hint ? `💡 Aim: ${hint.label}` : '💡 Hint';
+      if (hint) {
+        aim.style.left = `${xAt(hint.x) / WIDTH * 100}%`;
+        aim.style.top = `${yAt(hint.y) / WIDTH * 100}%`;
+      }
+    }
+
     function applyZoom() {
       zoom.s = Math.max(1, Math.min(3.5, zoom.s));
       const mx = (zoom.s - 1) * tabletop.offsetWidth / 2, my = (zoom.s - 1) * tabletop.offsetHeight / 2;
@@ -1331,6 +1345,7 @@ UI.archery = (() => {
       if (!ready()) return;
       const surface = tabletop;
       pending = true;
+      hintOn = false;
       releasedFrom = from;
       waitingHand = hand && { ...hand, until: performance.now() + 1800 };
       playRelease(Math.hypot(vx, vy));
@@ -1413,6 +1428,8 @@ UI.archery = (() => {
       const drawHand = !flight && (show || !!waitingHand);
       grip.toggleAttribute('hidden', !show || !!swipe);
       swipeButton.disabled = !show;
+      hintButton.disabled = !show;
+      aim.hidden = !(hintOn && view.hint && show);
       // After the last dart of a visit the thrower pulls them from the board before the next player goes.
       const canGrab = mine() && view.grab && !flight && now >= readyAt;
       swipeButton.hidden = canGrab || (mine() && view.grab);
@@ -1516,6 +1533,7 @@ UI.archery = (() => {
       readyAt = performance.now() + view.readyIn * 1000;
       grabAt = performance.now() + view.grabIn * 1000;
       grabbing = false;
+      paintHint();
       if (first) {
         const start = origin();
         grip.setAttribute('transform', transform(start.x, start.y));
@@ -1557,12 +1575,12 @@ UI.archery = (() => {
     }
 
     function updateHint() {
-      let rule = 'Reach zero on a double.';
+      let rule = view.doubleOut ? 'Reach zero on a double.' : 'Reach exactly zero; any dart finishes.';
       if (view.mode === 'cricket') rule = 'Close 15–20 and bull. Extra hits score while a rival has the target open.';
       if (view.mode === 'clock') rule = view.next == null ? 'Hit 1–20 in order, then bull.'
         : `Next target: ${clockLabel(view.nextNumbers[view.next])}.`;
       if (view.mode === 'countup') rule = `Highest score after ${view.visitLimit} visits wins.`;
-      hint.textContent = mine() ? `Swipe inward from the dart or the button below. A faster flick travels farther, and a rushed one strays. Pinch to zoom. ${rule}` : rule;
+      hint.textContent = mine() ? `Swipe inward from the dart or the button below. A faster flick travels farther, and a rushed one strays. 💡 Hint shows a good spot. Pinch to zoom. ${rule}` : rule;
     }
 
     return { mount, render, unmount() { cancelAnimationFrame(frame); darts3d?.dispose(); darts3d = null; view = null; tabletop = null; } };

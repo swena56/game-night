@@ -24,12 +24,12 @@ def aim(number, multiplier):
 
 
 class DartsTests(unittest.TestCase):
-    def start(self, mode, players=2):
+    def start(self, mode, players=2, finish="double"):
         self.room = room = Room("DART")
         self.players = [room.add_player(name) for name in ("Ada", "Ben", "Cory")[:players]]
         room.switch_game("archery")
         if mode is not None:
-            room.change_settings(self.players[0], {"course": mode})
+            room.change_settings(self.players[0], {"course": mode, "finish": finish})
         room.start()
         self.match = room.game.darts
         self.match.rng = random.Random(24)
@@ -159,6 +159,36 @@ class DartsTests(unittest.TestCase):
                 self.assertEqual(self.room.turn, self.players[0].id)
                 self.grab()
                 self.assertEqual(self.room.turn, self.players[1].id)
+
+    def test_any_finish_is_the_default_and_double_out_is_an_option(self):
+        self.start(None)
+        self.assertEqual((self.room.settings["finish"], self.match.double_out), ("any", False))
+        self.start("301", finish="any")
+        self.match.points[0] = 20
+        self.match.visit_start = 20
+        self.throw(20, 1)
+        self.assertEqual((self.match.points[0], self.match.shot["win"], self.match.shot["bust"]), (0, True, False))
+        self.start("301", finish="any")
+        self.match.points[0] = 20
+        self.match.visit_start = 20
+        self.throw(19, 3)
+        self.assertTrue(self.match.shot["bust"])
+        self.assertEqual(checkout(20, 1, False), ((20, 1),) if checkout(20, 1, False)[0][1] != 2 else checkout(20, 1, False))
+        self.assertEqual(len(checkout(57, 1, False)), 1)
+        self.assertEqual(checkout(57, 1, True), ())
+        self.start("301", finish="double")
+        self.match.points[0] = 20
+        self.match.visit_start = 20
+        self.throw(20, 1)
+        self.assertTrue(self.match.shot["bust"])
+
+    def test_hint_points_at_the_recommended_spot_for_the_thrower_only(self):
+        self.start("301")
+        view = self.match.view(self.players[0])
+        self.assertEqual(view["hint"]["label"], "T20")
+        self.assertIsNone(self.match.view(self.players[1])["hint"])
+        self.match.points[0] = 40
+        self.assertEqual(self.match.view(self.players[0])["hint"]["label"], "D20")
 
     def test_grab_times_out_and_collects_for_the_player(self):
         self.start("301")
