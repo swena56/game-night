@@ -1094,11 +1094,13 @@ UI.archery = (() => {
       }
       flying.visible = !!flight;
       if (flight) {
-        direction.set(flight.dx, flight.dy, -1.15).normalize();
+        // Nose follows the real path tangent (up at release, level at the apex, dipping on approach).
+        const [tx, ty, td] = flight.tangent, k = planeScale(flight.depth);
+        direction.set(tx * k, ty * k, td).normalize();
         travelOrientation.setFromUnitVectors(dartAxis, direction);
-        flying.quaternion.copy(aimingOrientation).slerp(travelOrientation, smooth(flight.u / 0.34));
+        flying.quaternion.copy(aimingOrientation).slerp(travelOrientation, smooth(flight.u / 0.14));
         flying.rotateY(flight.roll);
-        flying.quaternion.slerp(landedOrientation, smooth((flight.u - 0.64) / 0.36));
+        flying.quaternion.slerp(landedOrientation, smooth((flight.u - 0.86) / 0.14));
         placeTip(flying, flight.x, flight.y, flight.depth, flight.scale);
         dartLight.position.copy(flying.position);
         dartLight.position.y += 12;
@@ -1395,22 +1397,31 @@ UI.archery = (() => {
       if (flight) {
         const { shot, dot, from: start, duration } = flight;
         const time = c01((now - flight.start) / duration);
-        const u = time * (1.16 - 0.16 * time);
-        const fall = 0.055;
         const dx = shot.x - start.x, dy = shot.y - start.y;
-        const wobble = 0.008 * Math.sin(time * 4 * Math.PI) * (1 - time) ** 2;
-        const x = start.x + dx * u;
-        const y = start.y + dy * u + fall * u * (1 - u);
-        const scale = DART_BOARD_SCALE + ((start.scale ?? DART_HELD_SCALE) - DART_BOARD_SCALE) * (1 - u) ** 1.25;
-        const depth = 0.45 + (start.depth ?? DART_HAND_DEPTH - 10) * (1 - u);
-        throwPose = { x, y, depth, dx: dx + wobble, dy: dy + fall * (1 - 2 * u), roll: 0.12 * Math.sin(Math.PI * time), scale, u };
+        const pace = shot.pace ?? 2.2;
+        // Gravity bows the path above the straight line: slow, lobbed throws arc higher than hard flicks.
+        const lift = (0.07 + 0.11 * (1 - c01(pace / 6))) * Math.min(1.4, 0.6 + Math.hypot(dx, dy));
+        const at = (t) => {
+          const u = c01(t) * (1.07 - 0.07 * c01(t));   // drag: a touch quicker off the fingers, settling toward the board
+          return {
+            x: start.x + dx * u + 0.012 * Math.sin(t * 6 * Math.PI) * (1 - t) ** 2,
+            y: start.y + dy * u + lift * 4 * u * (1 - u),
+            depth: 0.45 + (start.depth ?? DART_HAND_DEPTH - 10) * (1 - u),
+            scale: DART_BOARD_SCALE + ((start.scale ?? DART_HELD_SCALE) - DART_BOARD_SCALE) * (1 - u) ** 1.25,
+            u,
+          };
+        };
+        const cur = at(time), ahead = at(Math.min(1, time + 0.02)), behind = at(Math.max(0, time - 0.02));
+        const { x, y, depth, scale, u } = cur;
+        throwPose = { x, y, depth, scale, u, roll: time * duration * 0.011,
+          tangent: [ahead.x - behind.x, ahead.y - behind.y, ahead.depth - behind.depth] };
         const flightAngle = 0;
         const pinScale = 1 + (scale - DART_BOARD_SCALE) * 2.2;
         dot?.setAttribute('transform', `${transform(x, y)} rotate(${flightAngle}) scale(${pinScale})`);
         if (time >= 1) {
           flight = null;
           dot?.setAttribute('transform', transform(shot.x, shot.y));
-          impact = shot.number ? { id: shot.id, at: now } : null;
+          impact = shot.number ? { id: shot.id, at: now, power: 0.7 + 0.5 * c01((shot.pace ?? 2.2) / 6) } : null;
           showShot(shot);
           flashHit(shot);
           playLanding(shot);
@@ -1418,9 +1429,9 @@ UI.archery = (() => {
           ctx.buzz?.(shot.bust ? [25, 40, 25] : 15);
         }
       }
-      if (impact && now - impact.at > 310) impact = null;
+      if (impact && now - impact.at > 380) impact = null;
       const age = impact ? (now - impact.at) / 1000 : 0;
-      const quiver = impact ? { id: impact.id, angle: 0.14 * Math.exp(-13 * age) * Math.sin(105 * age) } : null;
+      const quiver = impact ? { id: impact.id, angle: 0.14 * impact.power * Math.exp(-11 * age) * Math.sin(105 * age) } : null;
       darts3d?.draw(view.darts, drawHand ? hand : null, flight ? throwPose : null, flight?.shot.id, quiver);
     }
 
@@ -1484,7 +1495,7 @@ UI.archery = (() => {
         flight = shot && !first && c.peek && !reduce() ? {
           shot, start: performance.now(),
           from: shot.o === view.me && releasedFrom ? releasedFrom : origin(),
-          duration: Math.max(470, 710 - 30 * (shot.pace ?? 2.2)),
+          duration: Math.max(520, 790 - 40 * (shot.pace ?? 2.2)),
         } : null;
         if (shot && !first && c.peek && (shot.o !== view.me || !releasedFrom)) playRelease(shot.pace ?? 2.2);
         releasedFrom = null;
