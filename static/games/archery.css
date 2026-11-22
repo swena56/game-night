@@ -56,3 +56,89 @@
 .ar-stam b { position: relative; font-size: 18px; }
 .ar-stam.shake { animation: arShake .12s linear infinite; }
 @keyframes arShake { 0% { transform: translate(0, 0); } 25% { transform: translate(1px, -1px); } 50% { transform: translate(-1px, 1px); } 75% { transform: translate(1px, 1px); } }
+
+.ar-darts svg [hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .ar-stam.shake { animation: none; }
+  .ar-stage::before, .ar-stage::after { transition: none; }
+}
+
+.ar-darts { max-width: 680px; margin: auto; text-align: center; }
+.ar-darts header {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 4px 2px 9px; text-align: left;
+}
+.ar-darts h2 { margin: 0; font-size: clamp(15px, 4vw, 20px); }
+.ar-darts-turn { color: var(--muted); font-size: .8rem; }
+.ar-darts-zoom { min-height: 44px; flex: none; }
+.ar-darts-stage {
+  display: grid; place-items: center; border-radius: var(--radius);
+  background: radial-gradient(ellipse at 44% 10%, #b36d347a 0, transparent 66%),
+              radial-gradient(ellipse at 75% 62%, #4c516258 0, transparent 73%),
+              repeating-linear-gradient(92deg, transparent 0 4px, #2e1d171c 5px 6px, transparent 7px 11px),
+              repeating-linear-gradient(90deg, #38251a 0 65px, #231710 66px 68px);
+  box-shadow: inset 0 0 30px #180f0c, var(--sh-2, none);
+  overflow: hidden;
+}
+.ar-darts-tabletop { position: relative; width: min(100%, 57vh, 515px); aspect-ratio: 1; }
+.ar-darts-stage.ar-darts-zoomed { display: block; max-height: 65vh; overflow: auto; }
+.ar-darts-zoomed .ar-darts-tabletop { width: max(125%, min(74vh, 660px)); margin: auto; }
+.ar-darts-zoomed.ar-darts-stage svg { touch-action: pan-x pan-y; }
+.ar-darts-stage svg, .ar-darts-webgl {
+  display: block; position: absolute; inset: 0; width: 100%; height: 100%;
+}
+.ar-darts-stage svg { touch-action: none; user-select: none; }
+.ar-darts-webgl { pointer-events: none; }
+.ar-darts-is3d .ar-darts-board :is(g, circle), .ar-darts-is3d .ar-darts-pins, .ar-darts-is3d .ar-darts-model {
+  visibility: hidden;
+}
+.ar-darts-grip { cursor: grab; }
+.ar-darts-grip rect { fill: transparent; }
+.ar-darts-held { pointer-events: none; }
+.ar-darts-model { fill: #e7cf98; stroke: #4c3d34; stroke-width: 1.2; }
+.ar-darts-direction { fill: #ffe6a324; stroke: #ffe6a378; stroke-width: .55; }
+.ar-darts-stage svg:focus-visible { outline: 2px solid #ffd780; outline-offset: -3px; }
+.ar-darts-board text {
+  fill: #fff1d5; font: bold 9px system-ui, sans-serif;
+  text-anchor: middle; dominant-baseline: central;
+}
+.ar-darts-pins g { fill: var(--dart-color); stroke: #1b1410; stroke-width: .9px; }
+.ar-last, .ar-darts-result { min-height: 1.35em; margin: 8px 0; font-weight: 650; }
+.ar-last { text-align: center; }
+.ar-darts-footer {
+  display: grid; grid-template-columns: 1fr auto; gap: 8px;
+  align-items: center; margin-top: 8px; text-align: left;
+}
+.ar-darts-swipe { min-height: 44px; touch-action: none; cursor: grab; padding-inline: 12px; }
+.ar-darts-hint { margin: 6px auto; max-width: 50ch; }
+.ar-darts-score { overflow-x: auto; }
+.ar-darts-table { width: 100%; font-variant-numeric: tabular-nums; }
+.ar-darts-table td, .ar-darts-table th { padding: 4px 3px; text-align: center; }
+.ar-darts-table th:first-child { text-align: left; overflow-wrap: anywhere; }
+.ar-darts-table tr.now { background: var(--panel2); }
+.ar-darts-table tr.out { opacity: .5; }
+.ar-darts-table .closed { color: var(--muted); }
+.ar-darts-table .total, .ar-darts-checkout { font-weight: 700; }
+.ar-darts-checkout { margin: 8px 0 0; font-size: .9rem; }
+
+.ar-darts-board-wrap { position: relative; }
+.ar-darts-callout {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  z-index: 1; pointer-events: none; max-width: calc(100% - 20px);
+  border: 1px solid #ffe3ae66; border-radius: 999px; padding: 5px 14px;
+  color: #fff5df; background: #23160fe8; box-shadow: 0 3px 12px #130a0680;
+  font-size: clamp(16px, 4vw, 22px); font-weight: 800; white-space: nowrap;
+}
+.ar-darts-callout[data-tone="bull"] { color: #ffe18b; }
+.ar-darts-callout[data-tone="miss"] { color: #ffc1ac; }
+.ar-darts-flash { animation: arDartHit 1.05s ease-out both; }
+@keyframes arDartHit {
+  0% { opacity: 0; transform: translate(-50%, 7px) scale(.86); }
+  13% { opacity: 1; transform: translateX(-50%) scale(1.06); }
+  25%, 76% { opacity: 1; transform: translateX(-50%); }
+  100% { opacity: 0; transform: translate(-50%, -5px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ar-darts-flash { animation-name: arDartHitFade; }
+}
+@keyframes arDartHitFade { 0%, 77% { opacity: 1; } 100% { opacity: 0; } }

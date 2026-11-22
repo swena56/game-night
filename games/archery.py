@@ -23,6 +23,7 @@ import random
 import time
 
 from .base import Game, GameError
+from .bar_darts import DartMatch, MODES
 
 ARROW_V = 60.0        # m/s
 K = 0.055             # drift = K × wind (m/s) × t²
@@ -96,6 +97,9 @@ class Archery(Game):
     category = "action"
     family = None
     howto = [
+        "Choose Course in the lobby for Wind Archery, 301 or Cricket. In darts, swipe inward from the dart at the right edge or the button below the board to throw. Direction, distance and speed shape where it lands. Each visit has up to three darts.",
+        "301: count down to exactly zero on a double. Going below zero, leaving one or hitting zero without a double busts the whole visit.",
+        "Cricket: hit 15–20 and bull three times each. Extra marks score while a rival still has that target open. Close every target and at least tie the high score to win.",
         "Take turns shooting one arrow at the target. Drag the sight over the target and let go (or tap 🏹 Loose). The sight sways more the longer you hold.",
         "The wind carries every arrow: watch the flag and aim into the wind. The further the target (30 m, 50 m, 70 m), the more an arrow drifts.",
         "The flag is only a guide: the real wind is a bit stronger or weaker each end. Every shot shows where it was aimed, so learn from each arrow, rivals' too.",
@@ -106,7 +110,7 @@ class Archery(Game):
     ]
     name = "Wind Archery"
     icon = "🎯"
-    blurb = "Read the flag, aim into the wind and loose: an apple, balloons, then a swinging target. 🔥 Fire arrows double the gold or burn out."
+    blurb = "Read the flag, aim into the wind and loose: an apple, balloons, then a swinging target. 🔥 Fire arrows double the gold or burn out. Choose Bar Darts in Course for 301 or Cricket."
     min_players = 2
     max_players = 6
     badges = {**Game.badges,
@@ -116,6 +120,7 @@ class Archery(Game):
               "fire": ("🔥", "Gold on fire", "Put a fire arrow in the gold"),
               "streak": ("✨", "Golden streak", "Three golds in a row")}
     settings_schema = {
+        "course": ("Course", [("archery", "Wind Archery"), ("301", "Bar Darts · 301"), ("cricket", "Bar Darts · Cricket")], "archery"),
         "ends": ("Ends", [(3, "3"), (2, "2"), (5, "5")], 3),
         "wind": ("Wind", [("breezy", "🍃 Breezy"), ("gusty", "🌬 Gusty"), ("calm", "🪶 Calm")], "breezy"),
     }
@@ -125,6 +130,10 @@ class Archery(Game):
     def start(self, seated, rng):
         self.rng = rng
         self.seats = [p.id for p in seated]
+        mode = self.s.get("course", "archery")
+        self.darts = DartMatch(self.room, self.seats, rng, mode) if mode in MODES else None
+        if self.darts:
+            return
         n = len(self.seats)
         self.points = [0] * n
         self.xs = [0] * n               # dead-centre shots, the tie-break
@@ -144,6 +153,8 @@ class Archery(Game):
     def __setstate__(self, st):   # games saved before #177: an apple end every end, no fire arrows or streaks
         self.__dict__.update(st)
         d = self.__dict__
+        if d.setdefault("darts", None):
+            return
         n = len(d.get("seats", []))
         if "prizes" not in d:
             a = d.get("apple")
@@ -262,6 +273,8 @@ class Archery(Game):
     # -- actions
 
     def act(self, p, a):
+        if self.darts:
+            return self.darts.act(p, a)
         if a.get("type") != "shoot":
             raise GameError("Unknown action.")
         if self.between:
@@ -437,6 +450,8 @@ class Archery(Game):
         self.new_end()
 
     def on_timeout(self):
+        if self.darts:
+            return self.darts.timeout()
         r = self.room
         if self.between:
             return self.after_end()
@@ -447,6 +462,8 @@ class Archery(Game):
         self.shoot(i, 0.0, 0.0)
 
     def on_leave(self, p):
+        if self.darts:
+            return self.darts.leave(p)
         r = self.room
         p.eliminated = True
         r.add_log(f"{p.name} left the range.")
@@ -468,14 +485,22 @@ class Archery(Game):
 
     def meta(self, p):
         i = self.seat(p)
+        if self.darts and i is not None:
+            stat = "left" if self.darts.mode == "301" else "pts"
+            return f"{self.darts.points[i]} {stat}"
         if i is None or not hasattr(self, "points"):
             return ""
         return f"{self.points[i]} pts" + (f" · ✖{self.xs[i]}" if self.xs[i] else "")
 
     def final_scores(self):
+        if self.darts:
+            scores = self.darts.points
+            return dict(zip(self.seats, (301 - p for p in scores) if self.darts.mode == "301" else scores))
         return {pid: self.points[i] for i, pid in enumerate(self.seats)}
 
     def view(self, p):
+        if self.darts:
+            return {"darts": self.darts.view(p)}
         nxt = self.order[self.shots_done] if not self.between and self.shots_done < len(self.order) else None
         i = self.seat(p)
         return {"archery": {
@@ -561,12 +586,16 @@ class Archery(Game):
         return round(ax, 3), round(ay, 3), bool(breath), fire
 
     def bot_ready(self):
+        if self.darts:
+            return super().bot_ready()
         if self.between:
             return False
         p = self.room.players.get(self.room.turn)
         return bool(p and p.bot)
 
     def bot_turn(self, p):
+        if self.darts:
+            return self.darts.bot(p)
         i = self.seat(p)
         ax, ay, breath, fire = self.plan(i, p.bot)
         self.shoot(i, ax, ay, breath, fire)

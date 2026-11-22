@@ -259,7 +259,9 @@ function renderLobby() {
   eye.setAttribute('aria-pressed', hid);
   eye.onclick = () => { toggleHidden(S.gameId); renderLobby(); };
   star.after(eye);
-  $('#settingsHead').textContent = `${info.name} settings`;
+  const darts = S.gameId === 'archery' && ['301', 'cricket'].includes(S.settings.course);
+  const courseName = darts ? `Bar Darts · ${S.settings.course === '301' ? '301' : 'Cricket'}` : info.name;
+  $('#settingsHead').textContent = `${courseName} settings`;
   document.title = `${info.name} — Game Night`;
   if (pickedGame && pickedGame === S.gameId) {
     pickedGame = null; pickerFolded = host;
@@ -276,7 +278,7 @@ function renderLobby() {
     eye.after(change);
     if (focused || document.activeElement?.closest?.('#gamePicker')) change.focus({ preventScroll: true });  // keyboard users land on it
   }
-  $('#gameDesc').textContent = info.blurb + (S.gameId === 'unmask' ? ' ' + MODE_DESC[S.settings.mode] : '');
+  $('#gameDesc').textContent = (darts ? `Play ${courseName} with three darts per visit.` : info.blurb) + (S.gameId === 'unmask' ? ' ' + MODE_DESC[S.settings.mode] : '');
   $('#howto').innerHTML = '';
   for (const line of info.howto) $('#howto').append(el('li', '', line));
 
@@ -316,6 +318,7 @@ function renderLobby() {
 
   const box = $('#settingsBox'); box.innerHTML = '';
   for (const f of [...info.settings, ...S.roomSettings]) {
+    if (darts && ['ends', 'wind'].includes(f.key)) continue;
     const label = f.key === 'timer' && S.gameId === 'heist' ? 'Night timer' : f.label;
     const lab = el('label', '', label);
     const sel = el('select');

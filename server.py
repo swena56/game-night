@@ -317,6 +317,8 @@ class Room:
         self.__dict__.update(state)
         for k, (_, _, d) in ROOM_SETTINGS.items():
             self.settings.setdefault(k, d)
+        if self.settings["game"] == "archery":
+            self.settings.setdefault("course", "archery")
         self.cond = threading.Condition()
         now = time.time()
         for p in self.players.values():
@@ -890,8 +892,15 @@ class Room:
         elif gid == "starguard" and len(seated) > 1:
             kind = "progress"
         rules = {k: self.settings.get(k, schema[2]) for k, schema in cls.settings_schema.items()}
+        if gid == "archery":
+            if rules["course"] == "archery":
+                del rules["course"]
+            else:
+                rules = {"course": rules["course"]}
         labels = []
         for k, (name, options, _) in cls.settings_schema.items():
+            if k not in rules:
+                continue
             option = next((label for value, label in options if value == rules[k]), rules[k])
             labels.append(f"{name} – {option}")
         levels = sorted(p.bot or "human" for p in seated)
