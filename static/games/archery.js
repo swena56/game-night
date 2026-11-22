@@ -839,7 +839,8 @@ UI.archery = (() => {
   const DART_HAND_DEPTH = 48;
   const DART_BOARD_SCALE = 1;
   const DART_LENGTH = 0.74;
-  const DART_TIP = 32.4 * DART_LENGTH;
+  const DART_POINT_APEX = 32.4;
+  const DART_TIP = DART_POINT_APEX * DART_LENGTH;
 
   const smooth = (t) => { const k = c01(t); return k * k * (3 - 2 * k); };
   const DART_NUMBER_RADIUS = 108;
@@ -864,11 +865,11 @@ UI.archery = (() => {
     surface.prepend(canvas);
     const cameraDistance = 345;
     const fov = 2 * Math.atan(125 / cameraDistance) * 180 / Math.PI;
-    const scene = new T.Scene(), camera = new T.PerspectiveCamera(fov, 1, 1, 550);
+    const scene = new T.Scene(), camera = new T.PerspectiveCamera(fov, 1, 1, 850);
     camera.position.z = cameraDistance;
     const VIEW_TARGET = new T.Vector3();
     scene.add(new T.HemisphereLight(0xfffaf4, 0x9b9894, 1.3));
-    const lamp = new T.SpotLight(0xffe5c9, 0.65, 0, 0.64, 0.77);
+    const lamp = new T.SpotLight(0xffe5c9, 0.68, 0, 0.64, 0.77);
     lamp.position.set(-64, 128, 235);
     lamp.target.position.set(0, 18, 0);
     scene.add(lamp, lamp.target);
@@ -937,7 +938,7 @@ UI.archery = (() => {
     scene.add(cabinet);
     const walnut = material(0x865e46, { map: wood, bumpMap: grain, bumpScale: 0.24, roughness: 0.72 });
     const seam = material(0x211510);
-    const mountMetal = material(0x9b794e, { metalness: 0.42, roughness: 0.55 });
+    const mountMetal = material(0x91734f, { metalness: 0.36, roughness: 0.51 });
     const edgeWear = material(0x896249, { map: wood, roughness: 0.78 });
     const wornEdge = new T.BoxGeometry(0.65, 265, 0.4);
     const seamGeometry = new T.BoxGeometry(1.5, 265, 1);
@@ -960,7 +961,7 @@ UI.archery = (() => {
       for (let x = 0; x < shadowSize; x++) {
         const radius = Math.hypot(x + 0.5 - shadowSize / 2, y + 0.5 - shadowSize / 2) * 132 / (shadowSize / 2);
         const alpha = smooth((132 - radius) / 18);
-        shadowPixels[(y * shadowSize + x) * 4 + 3] = Math.round(88 * alpha);
+        shadowPixels[(y * shadowSize + x) * 4 + 3] = Math.round(103 * alpha);
       }
     }
     const contactShadow = new T.DataTexture(shadowPixels, shadowSize, shadowSize);
@@ -969,26 +970,34 @@ UI.archery = (() => {
     mesh(cabinet, new T.PlaneGeometry(264, 264),
       new T.MeshBasicMaterial({ map: contactShadow, transparent: true, depthWrite: false }), 0, 0, -16.1);
 
+    const cabinetHalf = 132.5, openingHalf = 122, cabinetBack = -36, cabinetFront = -11;
     const railWood = wood.clone();
     railWood.rotation = Math.PI / 2;
     railWood.center.set(0.5, 0.5);
     railWood.needsUpdate = true;
-    const railLip = material(0x35241c, { map: railWood, roughness: 0.64 });
-    const railHighlight = material(0x93694a, { map: railWood, roughness: 0.69 });
-    const rail = new T.BoxGeometry(265, 8, 6);
-    const bevel = new T.BoxGeometry(265, 1.1, 2);
-    for (const y of [-126, 126]) {
-      mesh(cabinet, rail, railLip, 0, y, -14).receiveShadow = true;
-      mesh(cabinet, bevel, railHighlight, 0, y - Math.sign(y) * 4.2, -11);
+    const railFace = material(0x654434, { map: railWood, roughness: 0.57 });
+    const railSide = material(0x4c3328, { map: railWood, roughness: 0.65 });
+    const miterGap = 0.85;
+    const railShape = new T.Shape();
+    railShape.moveTo(-cabinetHalf + miterGap, cabinetHalf);
+    railShape.lineTo(-openingHalf + miterGap, openingHalf);
+    railShape.lineTo(openingHalf - miterGap, openingHalf);
+    railShape.lineTo(cabinetHalf - miterGap, cabinetHalf);
+    railShape.closePath();
+    const rail = new T.ExtrudeGeometry(railShape, {
+      depth: cabinetFront - cabinetBack, bevelSize: 0.55, bevelThickness: 0.55, bevelSegments: 1,
+    });
+    const railUV = rail.attributes.uv;
+    for (let i = 0; i < railUV.count; i++) {
+      railUV.setXY(i, railUV.getX(i) / (2 * cabinetHalf) + 0.5, railUV.getY(i) / 36);
     }
-    const sideRail = new T.BoxGeometry(244, 8, 6);
-    const sideBevel = new T.BoxGeometry(244, 1.1, 2);
-    for (const x of [-126, 126]) {
-      const side = mesh(cabinet, sideRail, railLip, x, 0, -14);
-      side.rotation.z = Math.PI / 2;
+    for (let i = 0; i < 4; i++) {
+      const side = mesh(cabinet, rail, [railFace, railSide], 0, 0, cabinetBack);
+      side.rotation.z = i * Math.PI / 2;
       side.receiveShadow = true;
-      mesh(cabinet, sideBevel, railHighlight, x - Math.sign(x) * 4.2, 0, -11).rotation.z = Math.PI / 2;
     }
+    mesh(cabinet, new T.BoxGeometry(2 * openingHalf, 2 * openingHalf, 4),
+      railSide, 0, 0, cabinetBack + 2);
     const bracket = new T.BoxGeometry(16, 7, 1.8);
     const bolt = new T.SphereGeometry(1.25, 10, 6);
     for (const x of [-112, 112]) for (const y of [-110, 110]) {
@@ -1060,14 +1069,18 @@ UI.archery = (() => {
       const rings = view.radii.map((r) => r * 98);
       const [, outer, , , , edge] = rings;
       const rimProfile = [
-        [0, -16.5], [119, -16.5], [119, -2.7], [118.9, -1.9],
+        [0, -13.5], [119, -13.5], [119, -2.7], [118.9, -1.9],
         [118.6, -1.35], [118.1, -0.95], [117.5, -0.65], [116.8, -0.5], [0, -0.5],
       ].map(([radius, depth]) => new T.Vector2(radius, depth));
       const backing = mesh(face, new T.LatheGeometry(rimProfile, 96),
         material(DART_RIM, { roughness: 0.72 }));
       backing.rotation.x = Math.PI / 2;
       backing.castShadow = true;
-      const wire = material(DART_WIRE, { metalness: 0.24, roughness: 0.43 });
+      const spacers = new T.CylinderGeometry(4, 4, 3.3, 12);
+      for (const y of [-77, 77]) {
+        mesh(face, spacers, backing.material, 0, y, -15).rotation.x = Math.PI / 2;
+      }
+      const wire = material(DART_WIRE, { metalness: 0.31, roughness: 0.48 });
       const screwHead = new T.CircleGeometry(1.2, 12);
       const slot = new T.PlaneGeometry(1.5, 0.26);
       const slotMat = material(0x211c19);
@@ -1078,7 +1091,7 @@ UI.archery = (() => {
       }
       const step = Math.PI / 10;
       const [map, bump] = sisalFace(rings);
-      mesh(face, new T.CircleGeometry(113, 128), material(0xffffff, { map, bumpMap: bump, bumpScale: 0.14, roughness: 0.96 }), 0, 0, 0.1);
+      mesh(face, new T.CircleGeometry(113, 128), material(0xffffff, { map, bumpMap: bump, bumpScale: 0.12, roughness: 1 }), 0, 0, 0.1);
       mesh(face, new T.RingGeometry(edge + 0.85, 115, 128), material(DART_NUMBER_BAND), 0, 0, 0.25);
       holes = new T.CanvasTexture(holeCanvas);
       if (T.SRGBColorSpace) holes.colorSpace = T.SRGBColorSpace;
@@ -1189,7 +1202,7 @@ UI.archery = (() => {
     }
 
     const steel = material(0xf0e8db, { roughness: 0.31, metalness: 0.43 });
-    const pointSteel = material(0xfffcf4, { roughness: 0.25, metalness: 0.37 });
+    const pointSteel = material(0xbfc8cd, { roughness: 0.28, metalness: 0.48 });
     const brass = material(0xc59b62, { roughness: 0.39, metalness: 0.48 });
     const groove = material(0x503929, { roughness: 0.54 });
     const defaultFinColor = 0x24516c;
@@ -1208,8 +1221,10 @@ UI.archery = (() => {
     foldShape.lineTo(1.15, -12.9);
     foldShape.lineTo(0.72, -12.7);
     foldShape.closePath();
-    const tipGeometry = new T.ConeGeometry(0.78, 7, 12);
-    const noseGeometry = new T.CylinderGeometry(1.08, 2.15, 3, 16);
+    const tipGeometry = new T.LatheGeometry([
+      [0.42, 24.2], [0.39, 26.1], [0.33, 29.8], [0.19, 31.4], [0, DART_POINT_APEX],
+    ].map(([radius, height]) => new T.Vector2(radius, height)), 12);
+    const noseGeometry = new T.CylinderGeometry(0.61, 2.15, 2.6, 16);
     const barrelGeometry = new T.CylinderGeometry(2.15, 1.95, 22, 18);
     const collarGeometry = new T.CylinderGeometry(1.88, 0.9, 2.5, 14);
     const shaftGeometry = new T.CylinderGeometry(0.82, 0.68, 38, 10);
@@ -1218,12 +1233,16 @@ UI.archery = (() => {
       depth: 0.22, bevelThickness: 0.1, bevelSize: 0.1, bevelSegments: 1, curveSegments: 5,
     }).translate(0, 0, -0.11);
     const foldGeo = new T.ShapeGeometry(foldShape);
+    // Extend the flight toward the barrel while keeping its rear edge in place.
+    for (const geometry of [finGeo, foldGeo]) {
+      geometry.translate(0, 15, 0).scale(1.16, 1.65, 1).translate(0, -15, 0);
+    }
     function dart() {
       const group = new T.Group();
       const finMaterial = material(defaultFinColor, { side: T.DoubleSide, roughness: 0.8 });
       group.userData.finMaterial = finMaterial;
-      mesh(group, tipGeometry, pointSteel, 0, 28.9);
-      mesh(group, noseGeometry, steel, 0, 24.05);
+      mesh(group, tipGeometry, pointSteel);
+      mesh(group, noseGeometry, steel, 0, 23.85);
       mesh(group, barrelGeometry, brass, 0, 11.55);
       for (let i = 0; i < 12; i++) {
         mesh(group, gripRing, groove, 0, 1.4 + i * 1.7).rotation.x = Math.PI / 2;
@@ -1280,6 +1299,8 @@ UI.archery = (() => {
       const k = planeScale(depth);
       dart.position.set(x * k - tip.x, y * k - tip.y, depth - tip.z);
     }
+    const cabinetCorner = new T.Vector3(), cameraRotation = new T.Quaternion();
+    const fitLimit = 0.97 * Math.tan(fov * Math.PI / 360);
     let size = 0, disposed = false, lastFrame;
     function draw(pins, hand, flight, flyingId, impact, past, ownerColor, angle, pinFans) {
       if (disposed) return;
@@ -1300,13 +1321,35 @@ UI.archery = (() => {
       lastFrame = signature;
       const pitch = angle.pitch * -Math.PI / 180 || 0;
       const yaw = angle.yaw * -Math.PI / 180 || 0;
-      const distance = cameraDistance + 115 * Math.max(Math.abs(Math.sin(pitch)), Math.abs(Math.sin(yaw)));
+      const distance = cameraDistance;
       camera.position.set(
         distance * Math.cos(pitch) * Math.sin(yaw),
         distance * Math.sin(pitch),
         distance * Math.cos(pitch) * Math.cos(yaw)
       );
       camera.lookAt(VIEW_TARGET);
+      if (pitch || yaw) {
+        cameraRotation.copy(camera.quaternion).invert();
+        let framedDistance = distance;
+        // Each corner must fit both axes of the perspective frustum.
+        for (const x of [-cabinetHalf - 1, cabinetHalf + 1]) {
+          for (const y of [-cabinetHalf - 1, cabinetHalf + 1]) {
+            for (const z of [cabinetBack - 1, cabinetFront + 1]) {
+              cabinetCorner.set(x, y, z).applyQuaternion(cameraRotation);
+              const extent = Math.max(Math.abs(cabinetCorner.x) / camera.aspect, Math.abs(cabinetCorner.y));
+              framedDistance = Math.max(framedDistance, cabinetCorner.z + extent / fitLimit);
+            }
+          }
+        }
+        // The board sits in front of the cabinet opening and projects farther out.
+        for (let i = 0; i < 32; i++) {
+          const a = i * Math.PI / 16;
+          cabinetCorner.set(120 * Math.cos(a), 120 * Math.sin(a), 1.2).applyQuaternion(cameraRotation);
+          const extent = Math.max(Math.abs(cabinetCorner.x) / camera.aspect, Math.abs(cabinetCorner.y));
+          framedDistance = Math.max(framedDistance, cabinetCorner.z + extent / fitLimit);
+        }
+        camera.position.multiplyScalar(framedDistance / distance);
+      }
       inHand.visible = !!hand;
       if (hand) {
         inHand.userData.finMaterial.color.set(handColor ?? defaultFinColor);
@@ -1372,7 +1415,13 @@ UI.archery = (() => {
       surface.classList.remove('ar-darts-is3d', 'ar-darts-3d-numbers');
       const resources = new Set([grain, wood, holes, normalNumber, goldNumber]);
       scene.traverse(({ material, geometry }) => {
-        if (material) { resources.add(material); if (material.map) resources.add(material.map); if (material.bumpMap) resources.add(material.bumpMap); }
+        const materials = Array.isArray(material) ? material : [material];
+        for (const mat of materials) {
+          if (!mat) continue;
+          resources.add(mat);
+          if (mat.map) resources.add(mat.map);
+          if (mat.bumpMap) resources.add(mat.bumpMap);
+        }
         if (geometry) resources.add(geometry);
       });
       resources.forEach((resource) => resource?.dispose());
@@ -1388,7 +1437,7 @@ UI.archery = (() => {
     let root, score, stage, board, geometry, holeG, pins, grip, held, guide, dartModel, result, callout, hint, turn, tabletop, darts3d, swipeButton, grabButton, hintButton, aim, spreadEl, hitFlash, landing, trail, impactMark;
     const zoom = { s: 1, x: 0, y: 0 };
     const angle = { pitch: 0, yaw: 0 };
-    let inspecting, inspectButton;
+    let inspecting, inspectButton, tabletopResize;
     let hintOn = false;
     let past = [], pastIds = new Set();
     let landingId, landingAt;
@@ -1408,12 +1457,12 @@ UI.archery = (() => {
     const lodgedAngle = -34;
     const pinFans = new Map();
     // Local origin is the steel tip. The flight extends below it in SVG coordinates.
-    const dartSilhouette = `<path class="ar-darts-tip" d="M0 0L1 4H-1Z"/>
-      <path class="ar-darts-barrel" d="M-1 4H1L1.5 5V9H-1.5V5Z"/>
+    const dartSilhouette = `<path class="ar-darts-tip" d="M0 0L.23 1.6L.34 5.1H-.34L-.23 1.6Z"/>
+      <path class="ar-darts-barrel" d="M-.5 5H.5L1.5 5.8V9H-1.5V5.8Z"/>
       <path class="ar-darts-shaft" d="M0 9V13"/>
-      <path class="ar-darts-fin" d="M0 11L3.5 14Q3.8 14.3 3.6 14.8L3.1 16.8Q3 17.2 2.6 17L0 16L-2.6 17Q-3 17.2-3.1 16.8L-3.6 14.8Q-3.8 14.3-3.5 14Z"/>
-      <path class="ar-darts-fin-fold" d="M0 11L3.5 14Q3.8 14.3 3.6 14.8L3.1 16.8Q3 17.2 2.6 17L0 16Z"/>
-      <path class="ar-darts-fin-seam" d="M0 12V15.8"/>`;
+      <path class="ar-darts-fin" d="M0 9.3L4 13.5Q4.3 13.9 4.1 14.5L3.5 16.8Q3.4 17.2 3 17L0 16L-3 17Q-3.4 17.2-3.5 16.8L-4.1 14.5Q-4.3 13.9-4 13.5Z"/>
+      <path class="ar-darts-fin-fold" d="M0 9.3L4 13.5Q4.3 13.9 4.1 14.5L3.5 16.8Q3.4 17.2 3 17L0 16Z"/>
+      <path class="ar-darts-fin-seam" d="M0 10.3V15.8"/>`;
 
 
     function sector(a, inner, outer, color) {
@@ -1511,6 +1560,8 @@ UI.archery = (() => {
       swipe = null; keys = null; releasedFrom = null; waitingHand = null; darts3d = null; impact = null;
       inspectButton = find('inspect');
       resetView();
+      tabletopResize = window.ResizeObserver ? new ResizeObserver(applyView) : null;
+      tabletopResize?.observe(tabletop);
       hintButton.addEventListener('click', () => { hintOn = !hintOn; paintHint(); });
       inspectButton.addEventListener('click', () => {
         if (inspectButton.disabled) return;
@@ -1683,13 +1734,30 @@ UI.archery = (() => {
       ctx.quiet(ctx.act('grab').catch((error) => { grabbing = false; throw error; }));
     }
 
+    function fitFlatTilt() {
+      const half = tabletop.offsetWidth / 2;
+      if (!half) return 1;
+      const pitch = angle.pitch * Math.PI / 180, yaw = angle.yaw * Math.PI / 180;
+      let extent = half;
+      for (const x of [-half, half]) {
+        for (const y of [-half, half]) {
+          const turnedZ = -x * Math.sin(yaw);
+          const vertical = y * Math.cos(pitch) - turnedZ * Math.sin(pitch);
+          const depth = y * Math.sin(pitch) + turnedZ * Math.cos(pitch);
+          const perspective = 950 / (950 - depth);
+          extent = Math.max(extent, perspective * Math.max(Math.abs(x * Math.cos(yaw)), Math.abs(vertical)));
+        }
+      }
+      return Math.min(1, 0.97 * half / extent);
+    }
+
     function applyView() {
       const mx = (zoom.s - 1) * tabletop.offsetWidth / 2, my = (zoom.s - 1) * tabletop.offsetHeight / 2;
       zoom.x = Math.max(-mx, Math.min(mx, zoom.x));
       zoom.y = Math.max(-my, Math.min(my, zoom.y));
       const tilted = inspecting && !tabletop.classList.contains('ar-darts-is3d');
       const zoomTransform = zoom.s > 1 ? `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.s})` : '';
-      const tiltTransform = tilted ? `perspective(950px) rotateX(${angle.pitch}deg) rotateY(${angle.yaw}deg)` : '';
+      const tiltTransform = tilted ? `scale(${fitFlatTilt()}) perspective(950px) rotateX(${angle.pitch}deg) rotateY(${angle.yaw}deg)` : '';
       tabletop.style.transform = `${zoomTransform} ${tiltTransform}`.trim();
       stage.classList.toggle('ar-darts-inspecting', inspecting);
       inspectButton.setAttribute('aria-pressed', String(inspecting));
@@ -2134,7 +2202,14 @@ UI.archery = (() => {
         : `Drag to tilt the board or pinch to zoom. ${rule}`;
     }
 
-    return { mount, render, unmount() { cancelAnimationFrame(frame); darts3d?.dispose(); darts3d = null; view = null; tabletop = null; } };
+    return { mount, render, unmount() {
+      cancelAnimationFrame(frame);
+      tabletopResize?.disconnect();
+      darts3d?.dispose();
+      darts3d = null;
+      view = null;
+      tabletop = null;
+    } };
   }
 
   let mainBox, sideBox, activeUI;
