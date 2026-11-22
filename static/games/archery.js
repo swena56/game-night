@@ -839,7 +839,7 @@ UI.archery = (() => {
   const DART_HAND_DEPTH = 48;
   const DART_BOARD_SCALE = 0.72;
 
-  function makeDarts3d(surface) {
+  function makeDarts3d(surface, isZoomed) {
     const T = window.THREE;
     let api;
     const renderer = GL3.renderer({ alpha: true }, { onLost: () => api?.dispose() });
@@ -852,6 +852,7 @@ UI.archery = (() => {
     const fov = 2 * Math.atan(125 / cameraDistance) * 180 / Math.PI;
     const scene = new T.Scene(), camera = new T.PerspectiveCamera(fov, 1, 1, 550);
     camera.position.z = cameraDistance;
+    const ZERO_TARGET = new T.Vector3(), ZOOM_TARGET = new T.Vector3(0, 2.2, 0);
     scene.add(new T.HemisphereLight(0xf4e4ce, 0x6c534c, 1.35));
     const lamp = new T.SpotLight(0xffcb88, 2.8, 0, 0.51, 0.72);
     lamp.position.set(-75, 174, 235);
@@ -1024,9 +1025,11 @@ UI.archery = (() => {
     const tip = new T.Vector3(), direction = new T.Vector3();
     const dartAxis = new T.Vector3(0, 1, 0);
     const aimingOrientation = new T.Quaternion().setFromUnitVectors(dartAxis,
-      new T.Vector3(-0.065, 0.09, -1).normalize());
+      new T.Vector3(0, 0, -1));
     const landedRotation = new T.Euler(-1.35, 0.12, 0.22);
     const landedOrientation = new T.Quaternion().setFromEuler(landedRotation);
+    const zoomTilt = 0.032;
+    const zoomOrientation = new T.Quaternion().setFromEuler(new T.Euler(-0.10, 0.07, 0));
     const travelOrientation = new T.Quaternion();
     const smooth = (t) => { const k = c01(t); return k * k * (3 - 2 * k); };
     const planeScale = (depth) => 98 * (1 - depth / cameraDistance);
@@ -1053,7 +1056,26 @@ UI.archery = (() => {
       if (disposed) return;
       const w = surface.clientWidth;
       if (!w || !face.children.length) return;
-      if (w !== size) { size = w; renderer.setSize(w, surface.clientHeight, false); lastFrame = null; }
+      if (w !== size) {
+        size = w; renderer.setSize(w, surface.clientHeight, false); lastFrame = null;
+        camera.aspect = surface.clientWidth / surface.clientHeight;
+        camera.updateProjectionMatrix();
+      }
+      const viewTarget = isZoomed() ? ZOOM_TARGET : ZERO_TARGET;
+      // A slightly wider framing while the dart rests on the rack gives the
+      // player more context. As it rises into the grip, ease back to the aim view.
+      const framing = isZoomed() || flight ? 0 : hand ? 1 - hand.lift : 1;
+      const targetFov = fov + 4 * framing;
+      if (Math.abs(camera.fov - targetFov) > 0.01) {
+        camera.fov = targetFov;
+        camera.updateProjectionMatrix();
+      }
+      camera.position.set(isZoomed() ? 10 : 0, isZoomed() ? 9 : 0, cameraDistance).add(viewTarget);
+      camera.lookAt(viewTarget);
+      if (isZoomed()) {
+        camera.quaternion.multiply(zoomOrientation);
+        camera.rotateZ(zoomTilt);
+      }
       const signature = [pins.map((p) => p.id).join(), hand?.x, hand?.y, hand?.angle, hand?.lift, hand?.aiming, flight?.u, impact?.angle].join('|');
       if (signature === lastFrame) return;
       lastFrame = signature;
@@ -1239,7 +1261,7 @@ UI.archery = (() => {
       const surface = tabletop;
       window.GL3?.load().then(() => {
         if (tabletop !== surface || !surface.isConnected) return;
-        darts3d = makeDarts3d(surface);
+        darts3d = makeDarts3d(surface, () => zoomed);
         if (darts3d && view) darts3d.paint(view);
       }).catch(() => {});
       frame = requestAnimationFrame(tick);
@@ -1376,12 +1398,13 @@ UI.archery = (() => {
         const u = time * (1.16 - 0.16 * time);
         const fall = 0.055;
         const dx = shot.x - start.x, dy = shot.y - start.y;
-        const wobble = 0.025 * Math.sin(time * 4 * Math.PI) * (1 - time) ** 2;
-        const x = start.x + dx * u, y = start.y + dy * u + fall * u * (1 - u);
+        const wobble = 0.008 * Math.sin(time * 4 * Math.PI) * (1 - time) ** 2;
+        const x = start.x + dx * u;
+        const y = start.y + dy * u + fall * u * (1 - u);
         const scale = DART_BOARD_SCALE + ((start.scale ?? DART_HELD_SCALE) - DART_BOARD_SCALE) * (1 - u) ** 1.25;
         const depth = 0.45 + (start.depth ?? DART_HAND_DEPTH - 10) * (1 - u);
         throwPose = { x, y, depth, dx: dx + wobble, dy: dy + fall * (1 - 2 * u), roll: 0.12 * Math.sin(Math.PI * time), scale, u };
-        const flightAngle = -12 * (1 - u);
+        const flightAngle = 0;
         const pinScale = 1 + (scale - DART_BOARD_SCALE) * 2.2;
         dot?.setAttribute('transform', `${transform(x, y)} rotate(${flightAngle}) scale(${pinScale})`);
         if (time >= 1) {
