@@ -838,13 +838,26 @@ UI.archery = (() => {
   const DART_AIM_SCALE = 1.4;
   const DART_HAND_DEPTH = 48;
   const DART_BOARD_SCALE = 1;
-  const DART_TIP = 32.4;   // tip height above the model origin; a real dart spans outer bull to double ring (~84 board units)
+  const DART_LENGTH = 0.74;
+  const DART_TIP = 32.4 * DART_LENGTH;
 
-  function makeDarts3d(surface) {
+  const smooth = (t) => { const k = c01(t); return k * k * (3 - 2 * k); };
+  const DART_NUMBER_RADIUS = 108;
+  const DART_PALETTE = { dark: '#242522', light: '#ebd5a6', red: '#c14a48', green: '#3d8962' };
+  const DART_WIRE = '#b9afa1';
+  const DART_WIRE_BASE = '#514a42';
+  const DART_NUMBER_BAND = '#242421';
+  const DART_DOT_HOLD = 250;
+  const DART_DOT_FADE = 900;
+  const DART_RIM = '#292723';
+  const DART_FASTENERS = Array.from({ length: 8 }, (_, i) => (i + 0.5) * Math.PI / 4);
+
+  function makeDarts3d(surface, onRendererChange) {
     const T = window.THREE;
     let api;
     const renderer = GL3.renderer({ alpha: true }, { onLost: () => api?.dispose() });
     if (!renderer) return null;
+    renderer.outputEncoding = T.sRGBEncoding;
     const canvas = renderer.domElement;
     canvas.className = 'ar-darts-webgl';
     canvas.setAttribute('aria-hidden', 'true');
@@ -854,23 +867,24 @@ UI.archery = (() => {
     const scene = new T.Scene(), camera = new T.PerspectiveCamera(fov, 1, 1, 550);
     camera.position.z = cameraDistance;
     const VIEW_TARGET = new T.Vector3();
-    scene.add(new T.HemisphereLight(0xf4e4ce, 0x6c534c, 1.35));
-    const lamp = new T.SpotLight(0xffcb88, 2.8, 0, 0.51, 0.72);
-    lamp.position.set(-75, 174, 235);
-    lamp.target.position.set(1, -5, 0);
+    scene.add(new T.HemisphereLight(0xfffaf4, 0x9b9894, 1.3));
+    const lamp = new T.SpotLight(0xffe5c9, 0.65, 0, 0.64, 0.77);
+    lamp.position.set(-64, 128, 235);
+    lamp.target.position.set(0, 18, 0);
     scene.add(lamp, lamp.target);
-    const rimLight = new T.DirectionalLight(0x8ac5ff, 0.9);
+    const rimLight = new T.DirectionalLight(0xf2f3f5, 0.28);
     rimLight.position.set(130, -105, 46);
     scene.add(rimLight);
     const dartLight = new T.PointLight(0xe8f3ff, 0, 84, 1);
     scene.add(dartLight);
     if (renderer.shadowMap && GL3.level?.() !== 'low') {
       renderer.shadowMap.enabled = true;
-      renderer.shadowMap.type = T.PCFSoftShadowMap;
+      renderer.shadowMap.type = T.PCFShadowMap;
       lamp.castShadow = true;
       lamp.shadow.mapSize.set(768, 768);
       lamp.shadow.camera.near = 120;
       lamp.shadow.camera.far = 400;
+      lamp.shadow.radius = 3;
       lamp.shadow.normalBias = 0.32;
     }
     const face = new T.Group(); scene.add(face);
@@ -910,7 +924,7 @@ UI.archery = (() => {
         const i = 4 * (y * textureSize + x);
         const curve = x + 2.1 * Math.sin(y * 0.031 + x * 0.094) + 1.6 * Math.sin(y * 0.012 + x * 0.23);
         const streak = Math.sin(curve * 1.12) + 0.6 * Math.sin(curve * 2.47) + 0.9 * Math.sin(curve * 0.19);
-        const grainValue = 0.83 + 0.072 * streak + 0.035 * (fibers[i] / 128 - 1);
+        const grainValue = 0.82 + 0.031 * streak + 0.035 * (fibers[i] / 128 - 1);
         woodPixels[i] = 222 * grainValue;
         woodPixels[i + 1] = 159 * grainValue;
         woodPixels[i + 2] = 116 * grainValue;
@@ -918,23 +932,62 @@ UI.archery = (() => {
       }
     }
     const wood = detailTexture(woodPixels);
+    wood.encoding = T.sRGBEncoding;
     const cabinet = new T.Group();
     scene.add(cabinet);
-    const walnut = material(0x75452d, { map: wood, bumpMap: wood, bumpScale: 0.6, roughness: 0.58 });
-    const lip = material(0x3d291f, { map: wood, roughness: 0.52 });
+    const walnut = material(0x865e46, { map: wood, bumpMap: grain, bumpScale: 0.24, roughness: 0.72 });
     const seam = material(0x211510);
-    const mountMetal = material(0x8c6945, { metalness: 0.42, roughness: 0.4 });
-    const plank = new T.BoxGeometry(52, 265, 5);
+    const mountMetal = material(0x9b794e, { metalness: 0.42, roughness: 0.55 });
+    const edgeWear = material(0x896249, { map: wood, roughness: 0.78 });
+    const wornEdge = new T.BoxGeometry(0.65, 265, 0.4);
+    const seamGeometry = new T.BoxGeometry(1.5, 265, 1);
     for (let n = -2; n <= 2; n++) {
       const x = n * 53;
+      const plank = new T.BoxGeometry(52, 265, 5);
+      const uv = plank.attributes.uv;
+      for (let i = 0; i < uv.count; i++) {
+        uv.setXY(i, uv.getX(i) + n * 0.23, uv.getY(i) + n * 0.17);
+      }
       mesh(cabinet, plank, walnut, x, 0, -19).receiveShadow = true;
-      if (n < 2) mesh(cabinet, new T.BoxGeometry(1.5, 265, 1), seam, x + 26.5, 0, -17).receiveShadow = true;
+      if (n < 2) {
+        mesh(cabinet, seamGeometry, seam, x + 26.5, 0, -17).receiveShadow = true;
+        mesh(cabinet, wornEdge, edgeWear, x + 25.4, 0, -16.4).receiveShadow = true;
+      }
     }
+    const shadowSize = 128;
+    const shadowPixels = new Uint8Array(shadowSize * shadowSize * 4);
+    for (let y = 0; y < shadowSize; y++) {
+      for (let x = 0; x < shadowSize; x++) {
+        const radius = Math.hypot(x + 0.5 - shadowSize / 2, y + 0.5 - shadowSize / 2) * 132 / (shadowSize / 2);
+        const alpha = smooth((132 - radius) / 18);
+        shadowPixels[(y * shadowSize + x) * 4 + 3] = Math.round(88 * alpha);
+      }
+    }
+    const contactShadow = new T.DataTexture(shadowPixels, shadowSize, shadowSize);
+    contactShadow.magFilter = T.LinearFilter;
+    contactShadow.needsUpdate = true;
+    mesh(cabinet, new T.PlaneGeometry(264, 264),
+      new T.MeshBasicMaterial({ map: contactShadow, transparent: true, depthWrite: false }), 0, 0, -16.1);
+
+    const railWood = wood.clone();
+    railWood.rotation = Math.PI / 2;
+    railWood.center.set(0.5, 0.5);
+    railWood.needsUpdate = true;
+    const railLip = material(0x35241c, { map: railWood, roughness: 0.64 });
+    const railHighlight = material(0x93694a, { map: railWood, roughness: 0.69 });
     const rail = new T.BoxGeometry(265, 8, 6);
-    const bevel = new T.BoxGeometry(265, 1.4, 2);
+    const bevel = new T.BoxGeometry(265, 1.1, 2);
     for (const y of [-126, 126]) {
-      mesh(cabinet, rail, lip, 0, y, -14).receiveShadow = true;
-      mesh(cabinet, bevel, walnut, 0, y - Math.sign(y) * 4.2, -11);
+      mesh(cabinet, rail, railLip, 0, y, -14).receiveShadow = true;
+      mesh(cabinet, bevel, railHighlight, 0, y - Math.sign(y) * 4.2, -11);
+    }
+    const sideRail = new T.BoxGeometry(244, 8, 6);
+    const sideBevel = new T.BoxGeometry(244, 1.1, 2);
+    for (const x of [-126, 126]) {
+      const side = mesh(cabinet, sideRail, railLip, x, 0, -14);
+      side.rotation.z = Math.PI / 2;
+      side.receiveShadow = true;
+      mesh(cabinet, sideBevel, railHighlight, x - Math.sign(x) * 4.2, 0, -11).rotation.z = Math.PI / 2;
     }
     const bracket = new T.BoxGeometry(16, 7, 1.8);
     const bolt = new T.SphereGeometry(1.25, 10, 6);
@@ -945,71 +998,156 @@ UI.archery = (() => {
       }
     }
 
+    const numbers = new Map();
+    let normalNumber, goldNumber, highlighted;
+    function makeNumbers(order) {
+      const atlas = document.createElement('canvas');
+      const size = 512, tile = 64, glyphSize = 12, planeSize = 21;
+      atlas.width = atlas.height = size;
+      const ink = atlas.getContext('2d');
+      if (!ink) return;
+      const texture = new T.CanvasTexture(atlas);
+      texture.colorSpace = T.SRGBColorSpace;
+      normalNumber = new T.MeshBasicMaterial({ map: texture, alphaTest: 0.25 });
+      goldNumber = new T.MeshBasicMaterial({ map: texture, color: 0xffdf82, alphaTest: 0.25 });
+      ink.font = `bold ${glyphSize * tile / planeSize}px system-ui, sans-serif`;
+      ink.textAlign = 'center';
+      ink.textBaseline = 'middle';
+      ink.lineJoin = 'round';
+      order.forEach((number, index) => {
+        const left = (index % 8) * tile, top = Math.floor(index / 8) * tile;
+        const x = left + tile / 2, y = top + tile / 2;
+        ink.lineWidth = 4;
+        ink.strokeStyle = '#130e0b';
+        ink.strokeText(number, x, y + 3);
+        ink.fillStyle = '#b8a58b';
+        ink.fillText(number, x, y + 1.5);
+        ink.strokeStyle = '#30231c';
+        ink.strokeText(number, x, y);
+        ink.fillStyle = '#fff7e6';
+        ink.fillText(number, x, y);
+        ink.fillStyle = '#fffaf1';
+        ink.save();
+        ink.beginPath();
+        ink.rect(left, top, tile, tile / 2);
+        ink.clip();
+        ink.fillText(number, x, y - 0.7);
+        ink.restore();
+
+        const depth = 0.38, perspective = 1 - depth / cameraDistance;
+        const geometry = new T.PlaneGeometry(planeSize * perspective, planeSize * perspective);
+        const uv = geometry.attributes.uv;
+        for (let i = 0; i < uv.count; i++) {
+          uv.setXY(i, (left + uv.getX(i) * tile) / size, 1 - (top + (1 - uv.getY(i)) * tile) / size);
+        }
+        const angle = index * Math.PI / 10;
+        const radius = DART_NUMBER_RADIUS * perspective;
+        numbers.set(number, mesh(face, geometry, normalNumber, Math.sin(angle) * radius, Math.cos(angle) * radius, depth));
+      });
+    }
+
+    function setNumberTarget(target) {
+      const next = numbers.get(target);
+      if (next === highlighted) return;
+      if (highlighted) highlighted.material = normalNumber;
+      if (next) next.material = goldNumber;
+      highlighted = next;
+      lastFrame = null;
+    }
+
     function paint(view) {
       if (face.children.length) return;
       const rings = view.radii.map((r) => r * 98);
-      const [inner, outer, tripleIn, tripleOut, doubleIn, edge] = rings;
-      mesh(face, new T.CircleGeometry(119, 96), material(0x0a0a0a, { roughness: 0.9 }), 0, 0, -0.5);   // the black band round the sisal
-      const wire = material(0xb0a395, { metalness: 0.34, roughness: 0.38 });
+      const [, outer, , , , edge] = rings;
+      const rimProfile = [
+        [0, -16.5], [119, -16.5], [119, -2.7], [118.9, -1.9],
+        [118.6, -1.35], [118.1, -0.95], [117.5, -0.65], [116.8, -0.5], [0, -0.5],
+      ].map(([radius, depth]) => new T.Vector2(radius, depth));
+      const backing = mesh(face, new T.LatheGeometry(rimProfile, 96),
+        material(DART_RIM, { roughness: 0.72 }));
+      backing.rotation.x = Math.PI / 2;
+      backing.castShadow = true;
+      const wire = material(DART_WIRE, { metalness: 0.24, roughness: 0.43 });
       const screwHead = new T.CircleGeometry(1.2, 12);
       const slot = new T.PlaneGeometry(1.5, 0.26);
       const slotMat = material(0x211c19);
-      for (let i = 0; i < 8; i++) {
-        const a = (i + 0.5) * Math.PI / 4, x = 115.9 * Math.cos(a), y = 115.9 * Math.sin(a);
+      for (const a of DART_FASTENERS) {
+        const x = 115.9 * Math.cos(a), y = 115.9 * Math.sin(a);
         mesh(face, screwHead, wire, x, y, 0.2);
         mesh(face, slot, slotMat, x, y, 0.3).rotation.z = a;
       }
       const step = Math.PI / 10;
       const [map, bump] = sisalFace(rings);
-      mesh(face, new T.CircleGeometry(113, 128), material(0xffffff, { map, bumpMap: bump, bumpScale: 0.4, roughness: 0.96 }), 0, 0, 0.1);
+      mesh(face, new T.CircleGeometry(113, 128), material(0xffffff, { map, bumpMap: bump, bumpScale: 0.14, roughness: 0.96 }), 0, 0, 0.1);
+      mesh(face, new T.RingGeometry(edge + 0.85, 115, 128), material(DART_NUMBER_BAND), 0, 0, 0.25);
       holes = new T.CanvasTexture(holeCanvas);
       if (T.SRGBColorSpace) holes.colorSpace = T.SRGBColorSpace;
       holeLayer = mesh(face, new T.CircleGeometry(113, 64), new T.MeshBasicMaterial({ map: holes, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), 0, 0, 0.38);
+      const wireSeat = material(DART_WIRE_BASE);
+      const spokeTube = new T.CylinderGeometry(0.49, 0.49, edge - outer, 8);
+      const spokeSeat = new T.PlaneGeometry(1.28, edge - outer);
       view.numbers.forEach((_, i) => {
         const a = Math.PI / 2 - (i + 0.5) * step;
-        const spoke = mesh(face, new T.CylinderGeometry(0.27, 0.27, edge - outer, 5), wire,
-          Math.cos(a) * (edge + outer) / 2, Math.sin(a) * (edge + outer) / 2, 0.35);
-        spoke.rotation.z = a - Math.PI / 2;
+        const x = Math.cos(a) * (edge + outer) / 2, y = Math.sin(a) * (edge + outer) / 2;
+        mesh(face, spokeSeat, wireSeat, x, y, 0.12).rotation.z = a - Math.PI / 2;
+        mesh(face, spokeTube, wire, x, y, 0.49).rotation.z = a - Math.PI / 2;
       });
-      rings.forEach((r, i) => { if (i !== 4) mesh(face, new T.TorusGeometry(r, 0.32, 6, 112), wire, 0, 0, 0.43); });
+      for (const r of rings) {
+        mesh(face, new T.RingGeometry(r - 0.68, r + 0.68, 112), wireSeat, 0, 0, 0.13);
+        mesh(face, new T.TorusGeometry(r, 0.53, 8, 112), wire, 0, 0, 0.53);
+      }
       face.children.forEach((part) => { part.receiveShadow = true; });
+      makeNumbers(view.numbers);
     }
 
     // One painted face: sisal fibre dashes, mottling, pressed grooves under the wire, plus a matching bump map.
     function sisalFace(rings) {
       const N = 1024, half = N / 2, unit = half / 113, [bullR, outerR, tripleIn, tripleOut, doubleIn, edge] = rings;
       const hash = (a, b) => { let h = Math.imul(a | 0, 374761393) ^ Math.imul(b | 0, 668265263); h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967295; };
-      const paletteDark = [37, 35, 32], paletteLight = [214, 190, 140], paletteRed = [158, 40, 44], paletteGreen = [34, 108, 78];
+      const rgbChannels = (hex) => hex.slice(1).match(/../g).map((channel) => parseInt(channel, 16));
+      const [paletteDark, paletteLight, paletteRed, paletteGreen] = Object.values(DART_PALETTE).map(rgbChannels);
       const color = document.createElement('canvas'), relief = document.createElement('canvas');
       color.width = color.height = relief.width = relief.height = N;
       const cg = color.getContext('2d'), rg = relief.getContext('2d');
       const img = cg.createImageData(N, N), bmp = rg.createImageData(N, N);
+      const edgeTint = [189, 172, 144];
       const step = Math.PI / 10;
       for (let py = 0; py < N; py++) for (let px = 0; px < N; px++) {
         const dx = (px + 0.5 - half) / unit, dy = (half - py - 0.5) / unit, r = Math.hypot(dx, dy);
         const o = 4 * (py * N + px);
         let base, rgb;
-        const turn = (Math.PI / 2 - Math.atan2(dy, dx)) / step, i = Math.round(turn), off = turn - i;
+        const angle = Math.atan2(dy, dx);
+        const turn = (Math.PI / 2 - angle) / step, i = Math.round(turn), off = turn - i;
         const even = (((i % 20) + 20) % 20) % 2 === 0;
         if (r > edge) rgb = r > 113 ? [24, 24, 22] : [41, 39, 32];
         else if (r < bullR) rgb = paletteRed;
         else if (r < outerR) rgb = paletteGreen;
         else if (r < tripleIn || (r >= tripleOut && r < doubleIn)) rgb = even ? paletteDark : paletteLight;
         else rgb = even ? paletteRed : paletteGreen;
-        // short radial fibre dashes, a coarser mottle, and fine grain
-        const s = Math.floor(Math.atan2(dy, dx) * r / 0.26), col = hash(s, 7);
-        const fibre = hash(s, Math.floor((r + 9 * col) / 1.7));
-        const mottle = hash(Math.floor(px / 9), Math.floor(py / 9)) * 0.6 + hash(Math.floor(px / 23), Math.floor(py / 23)) * 0.4;
+        // Broken directional fibres and broad variations in compressed sisal.
+        const bend = 0.36 * Math.sin(r * 0.32 + angle * 9);
+        const strand = Math.floor((angle * r + bend) / 0.26);
+        const offset = 9 * hash(strand, 7);
+        const fibre = hash(strand, Math.floor((r + offset) / 1.7));
+        const bundle = hash(Math.floor(strand / 6), Math.floor((r + offset) / 5));
         const fine = hash(px, py);
-        let groove = 1;
-        const edgeDist = Math.min(
-          (0.5 - Math.abs(off)) * step * r,
-          ...[bullR, outerR, tripleIn, tripleOut, doubleIn, edge].map((ring) => Math.abs(r - ring)));
-        if (r <= edge + 0.6 && edgeDist < 1.1) groove = 0.55 + 0.45 * (edgeDist / 1.1);
-        const k = (0.7 + 0.24 * fibre + 0.16 * (mottle - 0.5) + 0.12 * (fine - 0.5)) * groove;
-        for (let c = 0; c < 3; c++) img.data[o + c] = Math.min(255, rgb[c] * k);
+
+        const cellX = Math.floor(px / 26), cellY = Math.floor(py / 26);
+        const wearSeed = hash(cellX, cellY);
+        const wearX = px % 26 - (5 + 16 * wearSeed);
+        const wearY = py % 26 - (5 + 16 * hash(cellY, cellX + 41));
+        const impression = r < edge && wearSeed > 0.89
+          ? c01(1 - (wearX * wearX + wearY * wearY) / 10) : 0;
+
+        const ringEdge = Math.min(Math.abs(r - tripleIn), Math.abs(r - tripleOut), Math.abs(r - doubleIn), Math.abs(r - edge));
+        const spokeEdge = r >= outerR ? (0.5 - Math.abs(off)) * step * r : Infinity;
+        const wireEdge = Math.min(spokeEdge, ringEdge, Math.abs(r - bullR), Math.abs(r - outerR));
+        const groove = r <= edge + 0.6 ? 0.62 + 0.38 * c01(wireEdge / 1.1) : 1;
+        const seam = r <= edge ? 0.16 * c01(1 - ringEdge / 0.55) : 0;
+        const k = (0.82 + 0.10 * fibre + 0.09 * (bundle - 0.5) + 0.04 * (fine - 0.5) - 0.14 * impression) * groove;
+        for (let c = 0; c < 3; c++) img.data[o + c] = Math.min(255, rgb[c] * k * (1 - seam) + edgeTint[c] * seam);
         img.data[o + 3] = 255;
-        base = (0.3 + 0.5 * fibre + 0.2 * fine) * groove * (r > edge ? 0.7 : 1) * 255;
+        base = (0.32 + 0.38 * fibre + 0.12 * bundle + 0.16 * fine - 0.22 * impression) * groove * (r > edge ? 0.7 : 1) * 255;
         bmp.data[o] = bmp.data[o + 1] = bmp.data[o + 2] = base;
         bmp.data[o + 3] = 255;
       }
@@ -1050,63 +1188,76 @@ UI.archery = (() => {
       lastFrame = null;
     }
 
-    const steel = material(0xcbbfb0, { roughness: 0.27, metalness: 0.46 });
-    const brass = material(0xb2834b, { roughness: 0.33, metalness: 0.42 });
+    const steel = material(0xf0e8db, { roughness: 0.31, metalness: 0.43 });
+    const pointSteel = material(0xfffcf4, { roughness: 0.25, metalness: 0.37 });
+    const brass = material(0xc59b62, { roughness: 0.39, metalness: 0.48 });
     const groove = material(0x503929, { roughness: 0.54 });
-    const blue = material(0x256d91, { side: T.DoubleSide, roughness: 0.43 });
-    const trim = material(0x79cddd, { side: T.DoubleSide, roughness: 0.45 });
+    const defaultFinColor = 0x24516c;
+    const foldHighlight = material(0x97a9b3, { side: T.DoubleSide, roughness: 0.6 });
     const flightShape = new T.Shape();
     flightShape.moveTo(0, -2);
-    flightShape.quadraticCurveTo(2.5, -4, 5, -7);
-    flightShape.quadraticCurveTo(7.6, -9.6, 6.3, -14);
-    flightShape.lineTo(5.2, -15.8); flightShape.lineTo(0, -12.5); flightShape.closePath();
-    const stripeShape = new T.Shape();
-    stripeShape.moveTo(0, -6.5); stripeShape.lineTo(6.5, -10.6);
-    stripeShape.lineTo(6.5, -12.2); stripeShape.lineTo(0, -8.2); stripeShape.closePath();
+    flightShape.lineTo(6.4, -8.4);
+    flightShape.quadraticCurveTo(7.2, -9.2, 7, -10.1);
+    flightShape.lineTo(6.1, -14.3);
+    flightShape.quadraticCurveTo(5.9, -15.2, 5, -15);
+    flightShape.lineTo(0, -12.5);
+    flightShape.closePath();
+    const foldShape = new T.Shape();
+    foldShape.moveTo(0.72, -2.85);
+    foldShape.lineTo(1.15, -3.3);
+    foldShape.lineTo(1.15, -12.9);
+    foldShape.lineTo(0.72, -12.7);
+    foldShape.closePath();
+    const tipGeometry = new T.ConeGeometry(0.78, 7, 12);
+    const noseGeometry = new T.CylinderGeometry(1.08, 2.15, 3, 16);
+    const barrelGeometry = new T.CylinderGeometry(2.15, 1.95, 22, 18);
+    const collarGeometry = new T.CylinderGeometry(1.88, 0.9, 2.5, 14);
+    const shaftGeometry = new T.CylinderGeometry(0.82, 0.68, 38, 10);
+    const gripRing = new T.TorusGeometry(2.06, 0.17, 4, 18);
+    const finGeo = new T.ExtrudeGeometry(flightShape, {
+      depth: 0.22, bevelThickness: 0.1, bevelSize: 0.1, bevelSegments: 1, curveSegments: 5,
+    }).translate(0, 0, -0.11);
+    const foldGeo = new T.ShapeGeometry(foldShape);
     function dart() {
       const group = new T.Group();
-      mesh(group, new T.ConeGeometry(0.78, 7, 12), steel, 0, 28.9);
-      mesh(group, new T.CylinderGeometry(1.08, 2.15, 3, 16), steel, 0, 24.05);
-      mesh(group, new T.CylinderGeometry(2.15, 1.95, 22, 18), brass, 0, 11.55);
-      const gripRing = new T.TorusGeometry(2.06, 0.17, 4, 18);
+      const finMaterial = material(defaultFinColor, { side: T.DoubleSide, roughness: 0.8 });
+      group.userData.finMaterial = finMaterial;
+      mesh(group, tipGeometry, pointSteel, 0, 28.9);
+      mesh(group, noseGeometry, steel, 0, 24.05);
+      mesh(group, barrelGeometry, brass, 0, 11.55);
       for (let i = 0; i < 12; i++) {
         mesh(group, gripRing, groove, 0, 1.4 + i * 1.7).rotation.x = Math.PI / 2;
       }
-      mesh(group, new T.CylinderGeometry(1.88, 0.9, 2.5, 14), steel, 0, -0.65);
-      mesh(group, new T.CylinderGeometry(0.82, 0.68, 38, 10), steel, 0, -19.7);
-      const finGeo = new T.ExtrudeGeometry(flightShape, { depth: 0.9, bevelEnabled: false }).translate(0, 0, -0.45), stripeGeo = new T.ShapeGeometry(stripeShape);
+      mesh(group, collarGeometry, steel, 0, -0.65);
+      mesh(group, shaftGeometry, steel, 0, -19.7);
       for (let i = 0; i < 4; i++) {
         const fin = new T.Group();
         fin.rotation.y = i * Math.PI / 2;
         fin.position.y = -35.9;
-        mesh(fin, finGeo, blue);
-        mesh(fin, stripeGeo, trim, 0, 0, 0.5);
-        mesh(fin, stripeGeo, trim, 0, 0, -0.5);
+        mesh(fin, finGeo, finMaterial);
+        mesh(fin, foldGeo, foldHighlight, 0, 0, 0.13);
+        mesh(fin, foldGeo, foldHighlight, 0, 0, -0.13);
         group.add(fin);
       }
       group.traverse((part) => { if (part.isMesh) part.castShadow = true; });
       scene.add(group);
       return group;
     }
-    const inHand = dart(), flying = dart(), lodged = Array.from({ length: 3 }, dart);
+    const inHand = dart(), flying = dart(), lodged = [];
     const tip = new T.Vector3(), direction = new T.Vector3();
-    const trailPoints = [];
-    const trail = new T.Line(new T.BufferGeometry(), new T.LineBasicMaterial({ color: 0xdfe9ff, transparent: true, opacity: 0.4, depthWrite: false }));
-    trail.frustumCulled = false; trail.visible = false;
-    scene.add(trail);
     const dartAxis = new T.Vector3(0, 1, 0);
     const aimingOrientation = new T.Quaternion().setFromUnitVectors(dartAxis,
       new T.Vector3(0, 0, -1));
     const landedOrientation = new T.Quaternion(), wobble = new T.Quaternion(), wobbleEuler = new T.Euler(), sight = new T.Vector3();
     // A stuck dart points along the line of sight to its tip, so perspective doesn't streak the tail outward from
     // the board centre, then lifts the tail a little so it reads as thrown from below.
-    function lodgedPose(x, y, out) {
+    function lodgedPose(x, y, id, out) {
       sight.set(x * 98, y * 98, -cameraDistance).normalize();
-      sight.y -= 0.2;
+      sight.x += 0.1 * ((id * 0.6180339) % 1 - 0.5);
+      sight.y -= 0.18 + 0.08 * ((id * 0.4142136) % 1);
       return out.setFromUnitVectors(dartAxis, sight.normalize());
     }
     const travelOrientation = new T.Quaternion();
-    const smooth = (t) => { const k = c01(t); return k * k * (3 - 2 * k); };
     const planeScale = (depth) => 98 * (1 - depth / cameraDistance);
     function releasePoint(hand) {
       const depth = DART_HAND_DEPTH + 9 * hand.lift;
@@ -1121,14 +1272,15 @@ UI.archery = (() => {
     }
 
     function placeTip(dart, x, y, depth, scale) {
-      dart.scale.setScalar(scale);
+      dart.scale.set(scale, scale * DART_LENGTH, scale);
       tip.set(0, DART_TIP * scale, 0).applyQuaternion(dart.quaternion);
       const k = planeScale(depth);
       dart.position.set(x * k - tip.x, y * k - tip.y, depth - tip.z);
     }
     let size = 0, disposed = false, lastFrame;
-    function draw(pins, hand, flight, flyingId, impact, past = []) {
+    function draw(pins, hand, flight, flyingId, impact, past, ownerColor, angle) {
       if (disposed) return;
+      pins = pins.filter((pin) => pin.number && pin.id !== flyingId);
       paintHoles(past);
       const w = surface.clientWidth;
       if (!w || !face.children.length) return;
@@ -1137,26 +1289,43 @@ UI.archery = (() => {
         camera.aspect = surface.clientWidth / surface.clientHeight;
         camera.updateProjectionMatrix();
       }
-      camera.position.set(0, 0, cameraDistance);
-      camera.lookAt(VIEW_TARGET);
-      const signature = [pins.map((p) => p.id).join(), hand?.x, hand?.y, hand?.angle, hand?.lift, hand?.aiming, flight?.u, impact?.angle].join('|');
+      const handColor = hand ? ownerColor(hand.owner) : null;
+      const flightColor = flight ? ownerColor(flight.owner) : null;
+      const pinColors = pins.map((pin) => ownerColor(pin.o));
+      const signature = [pins.map((p) => p.id).join(), ...pinColors, handColor, flightColor, hand?.x, hand?.y, hand?.angle, hand?.lift, hand?.aiming, flight?.u, flight?.tumble, impact?.angle, angle.pitch, angle.yaw].join('|');
       if (signature === lastFrame) return;
       lastFrame = signature;
+      const pitch = angle.pitch * -Math.PI / 180 || 0;
+      const yaw = angle.yaw * -Math.PI / 180 || 0;
+      const distance = cameraDistance + 115 * Math.max(Math.abs(Math.sin(pitch)), Math.abs(Math.sin(yaw)));
+      camera.position.set(
+        distance * Math.cos(pitch) * Math.sin(yaw),
+        distance * Math.sin(pitch),
+        distance * Math.cos(pitch) * Math.cos(yaw)
+      );
+      camera.lookAt(VIEW_TARGET);
       inHand.visible = !!hand;
       if (hand) {
+        inHand.userData.finMaterial.color.set(handColor ?? defaultFinColor);
         const depth = DART_HAND_DEPTH + 9 * hand.lift;
         const k = planeScale(depth);
         inHand.position.set(hand.x * k, hand.y * k, depth);
         if (hand.aiming) inHand.quaternion.copy(aimingOrientation);
         else inHand.rotation.set(-0.94, -0.30, -hand.angle);
-        inHand.scale.setScalar(hand.scale);
+        inHand.scale.set(hand.scale, hand.scale * DART_LENGTH, hand.scale);
         dartLight.position.copy(inHand.position);
         dartLight.position.addScaledVector(dartAxis, 20);
         dartLight.position.z += 31;
         dartLight.intensity = 1.35;
       }
       flying.visible = !!flight;
-      if (flight) {
+      if (flight) flying.userData.finMaterial.color.set(flightColor ?? defaultFinColor);
+      if (flight?.tumble != null) {
+        flying.quaternion.copy(lodgedPose(flight.x, flight.landingY, flight.id, landedOrientation));
+        flying.rotateX(flight.tumble * 2.1);
+        flying.rotateZ(flight.tumble * 1.1);
+        placeTip(flying, flight.x, flight.y, 0.45, flight.scale);
+      } else if (flight) {
         // Nose follows the real path tangent (up at release, level at the apex, dipping on approach).
         const { behind, ahead } = flight, kb = planeScale(behind.depth), ka = planeScale(ahead.depth);
         // The hand sits well off to the side, so the true path is mostly sideways. A dart flies nose-first,
@@ -1166,66 +1335,81 @@ UI.archery = (() => {
         travelOrientation.setFromUnitVectors(dartAxis, direction);
         flying.quaternion.copy(aimingOrientation).slerp(travelOrientation, smooth(flight.u / 0.14));
         flying.rotateY(flight.roll);
-        flying.quaternion.slerp(lodgedPose(flight.x, flight.y, landedOrientation), smooth((flight.u - 0.6) / 0.4));
+        flying.quaternion.slerp(lodgedPose(flight.landingX, flight.landingY, flight.id, landedOrientation), smooth((flight.u - 0.6) / 0.4));
         placeTip(flying, flight.x, flight.y, flight.depth, flight.scale);
-        const kk = planeScale(flight.depth);
-        trailPoints.push(new T.Vector3(flight.x * kk, flight.y * kk, flight.depth + 40 * flight.scale));
-        if (trailPoints.length > 9) trailPoints.shift();
-        trail.geometry.setFromPoints(trailPoints);
-        trail.visible = trailPoints.length > 1;
         dartLight.position.copy(flying.position);
         dartLight.position.y += 12;
         dartLight.position.z += 30;
         dartLight.intensity = 1.15 * (1 - flight.u);
       }
-      if (!flight) { trailPoints.length = 0; trail.visible = false; }
-      if (!hand && !flight) dartLight.intensity = 0;
+      if (!hand && (!flight || flight.tumble != null)) dartLight.intensity = 0;
+      while (lodged.length < pins.length) lodged.push(dart());
       lodged.forEach((obj, i) => {
         const p = pins[i];
-        obj.visible = !!p && p.id !== flyingId && Math.hypot(p.x, p.y) <= 1.5;
+        obj.visible = !!p;
         if (!obj.visible) return;
+        obj.userData.finMaterial.color.set(pinColors[i] ?? defaultFinColor);
         const quiver = p.id === impact?.id ? impact.angle : 0;
-        obj.quaternion.copy(lodgedPose(p.x, p.y, landedOrientation));
+        obj.quaternion.copy(lodgedPose(p.x, p.y, p.id, landedOrientation));
         if (quiver) obj.quaternion.multiply(wobble.setFromEuler(wobbleEuler.set(quiver, 0, -quiver * 0.6)));
         placeTip(obj, p.x, p.y, 0.45, DART_BOARD_SCALE);
       });
       renderer.render(scene, camera);
-      surface.classList.add('ar-darts-is3d');
+      if (!surface.classList.contains('ar-darts-is3d')) {
+        surface.classList.add('ar-darts-is3d');
+        onRendererChange();
+      }
+      surface.classList.toggle('ar-darts-3d-numbers', numbers.size > 0);
     }
 
-    api = { paint, draw, releasePoint, dispose() {
+    api = { paint, draw, releasePoint, setNumberTarget, dispose() {
       if (disposed) return;
       disposed = true;
-      surface.classList.remove('ar-darts-is3d');
-      const resources = new Set([grain, wood, holes]);
+      surface.classList.remove('ar-darts-is3d', 'ar-darts-3d-numbers');
+      const resources = new Set([grain, wood, holes, normalNumber, goldNumber]);
       scene.traverse(({ material, geometry }) => {
         if (material) { resources.add(material); if (material.map) resources.add(material.map); if (material.bumpMap) resources.add(material.bumpMap); }
         if (geometry) resources.add(geometry);
       });
-      resources.forEach((resource) => resource.dispose());
+      resources.forEach((resource) => resource?.dispose());
       lamp.shadow.map?.dispose();
       renderer.dispose(); canvas.remove();
+      onRendererChange();
     } };
     return api;
   }
 
   function makeDartsUI() {
     const STEP = Math.PI / 10, CENTER = 125, SCALE = 98, WIDTH = 250;
-    let root, score, stage, board, geometry, holeG, pins, grip, held, guide, dartModel, result, callout, hint, turn, tabletop, darts3d, swipeButton, grabButton, hintButton, aim, spreadEl, hitFlash;
+    let root, score, stage, board, geometry, holeG, pins, grip, held, guide, dartModel, result, callout, hint, turn, tabletop, darts3d, swipeButton, grabButton, hintButton, aim, spreadEl, hitFlash, landing, trail, impactMark;
     const zoom = { s: 1, x: 0, y: 0 };
+    const angle = { pitch: 0, yaw: 0 };
+    let inspecting, inspectButton;
     let hintOn = false;
     let past = [], pastIds = new Set();
-    let view, state, ctx, frame, readyAt, grabAt, grabbing, pending, visit, shown, flight, swipe, keys, releasedFrom, waitingHand, impact;
+    let landingId, landingAt;
+    let view, state, ctx, frame, readyAt, grabAt, grabbing, pending, visit, shown, flight, falling, swipe, keys, releasedFrom, waitingHand, impact;
     const xAt = (x) => CENTER + SCALE * x, yAt = (y) => CENTER - SCALE * y;
     const point = (a, r) => [CENTER + Math.sin(a) * r, CENTER - Math.cos(a) * r];
     const circle = (r, fill) => `<circle cx="125" cy="125" r="${r}" fill="${fill}"/>`;
     const player = (i) => ctx.player(view.seats[i]);
+    const ownerColor = (i) => i == null ? undefined : player(i)?.color;
     const clockLabel = (number) => number == null ? 'Done' : number === 25 ? 'Bull' : String(number);
     const origin = () => { const [x, y] = view.dartOrigin || [1.04, -0.55]; return { x, y }; };
     const mine = () => view && state.phase === 'playing' && ctx.myTurn && !state.paused;
     const ready = () => mine() && !view.grab && !pending && !waitingHand && !flight && performance.now() >= readyAt;
     const reduce = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const visibleImpact = (x, y) => xAt(x) >= 5 && xAt(x) <= 245 && yAt(y) >= 5 && yAt(y) <= 245;
     const transform = (x, y) => `translate(${xAt(x)} ${yAt(y)})`;
+    const lodgedAngle = -34;
+    // Local origin is the steel tip. The flight extends below it in SVG coordinates.
+    const dartSilhouette = `<path class="ar-darts-tip" d="M0 0L1 4H-1Z"/>
+      <path class="ar-darts-barrel" d="M-1 4H1L1.5 5V9H-1.5V5Z"/>
+      <path class="ar-darts-shaft" d="M0 9V13"/>
+      <path class="ar-darts-fin" d="M0 11L3.5 14Q3.8 14.3 3.6 14.8L3.1 16.8Q3 17.2 2.6 17L0 16L-2.6 17Q-3 17.2-3.1 16.8L-3.6 14.8Q-3.8 14.3-3.5 14Z"/>
+      <path class="ar-darts-fin-fold" d="M0 11L3.5 14Q3.8 14.3 3.6 14.8L3.1 16.8Q3 17.2 2.6 17L0 16Z"/>
+      <path class="ar-darts-fin-seam" d="M0 12V15.8"/>`;
+
 
     function sector(a, inner, outer, color) {
       const left = a - STEP / 2, right = a + STEP / 2;
@@ -1235,32 +1419,71 @@ UI.archery = (() => {
 
     function paintBoard() {
       const [bull, outer, t0, t1, d0, edge] = view.radii.map((r) => r * SCALE);
-      geometry.innerHTML = circle(117, '#181815') + circle(113, '#292720')
+      const rings = [bull, outer, t0, t1, d0, edge]
+        .map((r) => `<circle cx="125" cy="125" r="${r}"/>`).join('');
+      const spokes = view.numbers.map((_, i) => {
+        const angle = (i + 0.5) * STEP, [x1, y1] = point(angle, outer), [x2, y2] = point(angle, edge);
+        return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+      }).join('');
+      const wirePath = `<g>${rings}${spokes}</g>`;
+      geometry.innerHTML = `<defs><linearGradient id="ar-darts-rim-bevel" x2="30%" y2="100%">
+        <stop stop-color="#62584a"/><stop offset=".48" stop-color="#39342d"/><stop offset="1" stop-color="#171713"/>
+        </linearGradient><linearGradient id="ar-darts-sisal-light" x2="68%" y2="100%">
+        <stop stop-color="#fff3d9" stop-opacity=".09"/><stop offset=".48" stop-color="#fff3d9" stop-opacity="0"/>
+        <stop offset="1" stop-color="#20150d" stop-opacity=".13"/>
+        </linearGradient></defs>`
+        + circle(119, '#161714') + circle(118.5, 'url(#ar-darts-rim-bevel)')
+        + circle(117, DART_RIM) + circle(115, DART_NUMBER_BAND)
+        + DART_FASTENERS.map((a) => {
+          const x = 125 + 115.9 * Math.cos(a), y = 125 - 115.9 * Math.sin(a);
+          return `<g transform="translate(${x} ${y}) rotate(${-a * 180 / Math.PI})">
+            <circle r="1.2" fill="${DART_WIRE}"/><path d="M-.75 0H.75" stroke="#211c19" stroke-width=".26"/>
+            </g>`;
+        }).join('')
+        + '<g>' + view.numbers.map((_, i) => {
+          const angle = i * STEP;
+          const sisal = i % 2 ? DART_PALETTE.light : DART_PALETTE.dark;
+          const stripe = i % 2 ? DART_PALETTE.green : DART_PALETTE.red;
+          return `${sector(angle, outer, t0, sisal)}
+            ${sector(angle, t0, t1, stripe)}${sector(angle, t1, d0, sisal)}${sector(angle, d0, edge, stripe)}`;
+        }).join('') + '</g>' + circle(outer, DART_PALETTE.green) + circle(bull, DART_PALETTE.red)
+        + circle(edge, 'url(#ar-darts-sisal-light)')
+        + `<g fill="none" class="ar-darts-wires" style="--wire-base: ${DART_WIRE_BASE}; --wire-light: ${DART_WIRE}">${wirePath}${wirePath}</g>`
         + view.numbers.map((number, i) => {
-          const angle = i * STEP, [x, y] = point(angle, 108);
-          const sisal = i % 2 ? '#dcc697' : '#292723', stripe = i % 2 ? '#317553' : '#a33c39';
-          return `<g stroke="#a89d81" stroke-width=".45">${sector(angle, outer, t0, sisal)}
-            ${sector(angle, t0, t1, stripe)}${sector(angle, t1, d0, sisal)}${sector(angle, d0, edge, stripe)}
-            </g><text data-number="${number}" x="${x}" y="${y}">${number}</text>`;
-        }).join('') + circle(outer, '#317553') + circle(bull, '#b7423d');
+          const [x, y] = point(i * STEP, DART_NUMBER_RADIUS);
+          return `<text data-number="${number}" x="${x}" y="${y}">${number}</text>`;
+        }).join('');
     }
 
     function mount(main, side) {
       main.innerHTML = `<section class="ar-darts">
         <header><div><h2></h2><span class="ar-darts-turn"></span></div>
-          <button type="button" class="ar-darts-hintbtn" aria-pressed="false">💡 Hint</button>
+          <div class="ar-darts-tools">
+            <button type="button" class="ar-darts-inspect" aria-pressed="false" aria-label="Inspect dartboard at an angle">Inspect</button>
+            <button type="button" class="ar-darts-hintbtn" aria-pressed="false">💡 Hint</button>
+          </div>
         </header>
         <div class="ar-darts-board-wrap"><div class="ar-darts-stage"><div class="ar-darts-tabletop">
           <div class="ar-darts-aim" aria-hidden="true" hidden></div>
           <div class="ar-darts-spread" aria-hidden="true" hidden></div>
+          <svg class="ar-darts-trail" viewBox="0 0 250 250" aria-hidden="true" hidden>
+            ${Array.from({ length: 5 }, (_, i) => `<line opacity="${(0.14 + i * 0.16).toFixed(2)}" stroke-width="${(0.55 + i * 0.23).toFixed(2)}"/>`).join('')}
+          </svg>
+          <svg class="ar-darts-impact" viewBox="0 0 250 250" aria-hidden="true" hidden>
+            <circle r="4"/><path class="ar-darts-miss-mark" d="M-3 -3L3 3M3 -3L-3 3"/><path class="ar-darts-bull-mark" d="M0-5L5 0L0 5L-5 0Z"/>
+          </svg>
+          <svg class="ar-darts-landing" viewBox="0 0 250 250" aria-hidden="true" hidden
+            style="--dot-hold: ${DART_DOT_HOLD}ms; --dot-fade: ${DART_DOT_FADE}ms">
+            <circle r="1.8"/>
+          </svg>
           <svg class="ar-darts-hitflash" viewBox="0 0 250 250" aria-hidden="true"></svg>
-          <svg viewBox="0 0 250 250" tabindex="0" role="group"
-            aria-label="Dartboard. Hold the dart at the right edge and swipe inward. With a keyboard, use arrow keys to adjust the swipe and Enter to throw.">
+          <svg class="ar-darts-input" viewBox="0 0 250 250" tabindex="0" role="group"
+            aria-label="Dartboard. Drag the left half to inspect. Touch the right half to pick up a dart and swipe inward. With a keyboard, use arrows to aim, Shift and arrows for larger steps, Enter or Space to throw, and Escape to clear aim.">
             <g class="ar-darts-board"></g><g class="ar-darts-holes"></g><g class="ar-darts-pins"></g>
             <g class="ar-darts-grip" aria-hidden="true"><rect x="-25" y="-25" width="48" height="50" rx="14"/></g>
             <g class="ar-darts-held">
               <path class="ar-darts-direction" d="M-12 -8L0 -53L12 -8Z" hidden/>
-              <g class="ar-darts-model" transform="scale(${DART_HELD_SCALE})"><path d="M0-19L2-9V4L6 10V17L0 13L-6 17V10L-2 4V-9Z"/></g>
+              <g class="ar-darts-model" transform="scale(${DART_HELD_SCALE})"><g transform="translate(0 -19) scale(2.1 ${2.1 * DART_LENGTH})">${dartSilhouette}</g></g>
             </g>
           </svg>
         </div></div><div class="ar-darts-callout" aria-hidden="true" hidden></div></div>
@@ -1271,62 +1494,101 @@ UI.archery = (() => {
         </div>
         <p class="hint ar-darts-hint"></p>
       </section>`;
-      side.innerHTML = '<div class="panel"><h3>Scoreboard</h3><div class="ar-darts-score"></div></div>';
+      side.innerHTML = '<div class="panel ar-darts-score-panel"><h3>Scoreboard</h3><div class="ar-darts-score"></div></div>';
       root = main.firstElementChild; score = side.querySelector('.ar-darts-score');
       const find = (name) => root.querySelector('.ar-darts-' + name);
-      board = root.querySelector('svg'); grip = find('grip'); held = find('held');
-      guide = find('direction'); dartModel = find('model'); tabletop = find('tabletop'); stage = find('stage'); swipeButton = find('swipe'); grabButton = find('grab'); hintButton = find('hintbtn'); aim = find('aim'); spreadEl = find('spread'); hitFlash = find('hitflash');
+      board = find('input'); grip = find('grip'); held = find('held');
+      guide = find('direction'); dartModel = find('model'); tabletop = find('tabletop'); stage = find('stage'); swipeButton = find('swipe'); grabButton = find('grab'); hintButton = find('hintbtn'); aim = find('aim'); spreadEl = find('spread'); hitFlash = find('hitflash'); landing = find('landing'); trail = find('trail'); impactMark = find('impact');
       geometry = find('board'); holeG = find('holes'); pins = find('pins'); past = []; pastIds = new Set();
       result = find('result'); callout = find('callout'); hint = find('hint'); turn = find('turn');
-      view = null; pending = false; flight = null; shown = null; visit = null;
+      landingId = null;
+      view = null; pending = false; flight = null; falling = null; shown = null; visit = null;
       swipe = null; keys = null; releasedFrom = null; waitingHand = null; darts3d = null; impact = null;
-      zoom.s = 1; zoom.x = 0; zoom.y = 0;
+      inspectButton = find('inspect');
+      resetView();
       hintButton.addEventListener('click', () => { hintOn = !hintOn; paintHint(); });
-      grabButton.addEventListener('click', () => {
-        if (grabbing) return;
-        grabbing = true;
-        ctx.quiet(ctx.act('grab').catch((error) => { grabbing = false; throw error; }));
+      inspectButton.addEventListener('click', () => {
+        if (inspectButton.disabled) return;
+        if (inspecting) { resetView(); return; }
+        inspecting = true;
+        keys = null;
+        angle.pitch = 12;
+        angle.yaw = -24;
+        applyView();
       });
+      grabButton.addEventListener('click', collectDarts);
       callout.addEventListener('animationend', () => { callout.hidden = true; });
-      // Pinch to look closer while no dart is in hand; picking the dart up eases back to the full board.
       const touches = new Map();
-      let pinch = null, panFrom = null;
+      let pinch = null, drag = null;
       stage.addEventListener('pointerdown', (e) => {
-        if (swipe) return;
+        if (e.button !== 0 || !view) return;
         touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
         if (touches.size === 2) {
+          if (swipe?.id !== e.pointerId && touches.has(swipe?.id)) swipe = null;
           const [a, b] = [...touches.values()];
-          pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, s: zoom.s, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, x: zoom.x, y: zoom.y };
-          panFrom = null;
-        } else if (zoom.s > 1) panFrom = { id: e.pointerId, cx: e.clientX, cy: e.clientY, x: zoom.x, y: zoom.y };
+          const bounds = stage.getBoundingClientRect();
+          const cx = bounds.left + bounds.width / 2;
+          const cy = bounds.top + bounds.height / 2;
+          pinch = {
+            d: Math.hypot(a.x - b.x, a.y - b.y) || 1, s: zoom.s, cx, cy,
+            x: ((a.x + b.x) / 2 - cx - zoom.x) / zoom.s,
+            y: ((a.y + b.y) / 2 - cy - zoom.y) / zoom.s,
+          };
+          drag = null;
+          stage.setPointerCapture?.(e.pointerId);
+        } else if (touches.size === 1) {
+          const onBoard = board.contains(e.target);
+          const bounds = board.getBoundingClientRect();
+          const onGrabSide = e.clientX >= bounds.left + bounds.width / 2;
+          if (onBoard && onGrabSide && !inspecting && ready()) {
+            pickUp(e);
+            return;
+          }
+          if (throwInProgress()) return;
+          drag = { id: e.pointerId, x: e.clientX, y: e.clientY, ...angle, onBoard, moved: false };
+          stage.setPointerCapture?.(e.pointerId);
+        }
       });
       stage.addEventListener('pointermove', (e) => {
         if (!touches.has(e.pointerId)) return;
         touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
-        if (swipe) return;
+        if (throwInProgress()) return;
         if (pinch && touches.size === 2) {
           const [a, b] = [...touches.values()];
-          zoom.s = pinch.s * Math.hypot(a.x - b.x, a.y - b.y) / pinch.d;
-          zoom.x = pinch.x + (a.x + b.x) / 2 - pinch.mx;
-          zoom.y = pinch.y + (a.y + b.y) / 2 - pinch.my;
-          applyZoom();
-        } else if (panFrom?.id === e.pointerId) {
-          zoom.x = panFrom.x + e.clientX - panFrom.cx;
-          zoom.y = panFrom.y + e.clientY - panFrom.cy;
-          applyZoom();
+          const scale = pinch.s * Math.hypot(a.x - b.x, a.y - b.y) / pinch.d;
+          zoom.s = Math.max(1, Math.min(3.5, scale));
+          zoom.x = (a.x + b.x) / 2 - pinch.cx - pinch.x * zoom.s;
+          zoom.y = (a.y + b.y) / 2 - pinch.cy - pinch.y * zoom.s;
+          applyView();
+        } else if (drag?.id === e.pointerId) {
+          const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+          if (!drag.moved && Math.hypot(dx, dy) < 8) return;
+          drag.moved = true;
+          inspecting = true;
+          keys = null;
+          angle.pitch = clamp(drag.pitch - dy * 0.35, 65);
+          angle.yaw = clamp(drag.yaw + dx * 0.35, 75);
+          applyView();
         }
       });
       const lift = (e) => {
         touches.delete(e.pointerId);
         if (touches.size < 2) pinch = null;
-        if (panFrom?.id === e.pointerId) panFrom = null;
+        if (drag?.id !== e.pointerId) return;
+        const tapped = e.type === 'pointerup' && drag.onBoard && !drag.moved
+          && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 8;
+        drag = null;
+        if (!tapped) return;
+        if (canCollect()) collectDarts();
+        else if (inspecting && ready()) resetView();
       };
       stage.addEventListener('pointerup', lift);
       stage.addEventListener('pointercancel', lift);
-      stage.addEventListener('dblclick', resetZoom);
+      stage.addEventListener('lostpointercapture', lift);
+      stage.addEventListener('dblclick', resetView);
       const pickUp = (e) => {
         if (!ready() || swipe || e.button !== 0) return;
-        resetZoom();
+        resetView();
         const scale = board.getBoundingClientRect().width * SCALE / WIDTH;
         if (!scale) return;
         e.preventDefault();
@@ -1336,7 +1598,6 @@ UI.archery = (() => {
         playGrip();
         board.setPointerCapture?.(e.pointerId);
       };
-      grip.addEventListener('pointerdown', pickUp);
       swipeButton.addEventListener('pointerdown', pickUp);
       board.addEventListener('pointermove', (e) => {
         if (swipe?.id === e.pointerId) sample(e);
@@ -1349,7 +1610,7 @@ UI.archery = (() => {
         const from = darts3d?.releasePoint(hand) ?? {
           x: hand.x - 0.04,
           y: hand.y + 0.12,
-          depth: DART_HAND_DEPTH + 9 * hand.lift - 18 * hand.scale,
+          depth: DART_HAND_DEPTH + 9 * hand.lift - 18 * DART_LENGTH * hand.scale,
           scale: hand.scale,
         };
         swipe = null;
@@ -1366,12 +1627,12 @@ UI.archery = (() => {
       swipeButton.addEventListener('blur', clearKeys);
       root.addEventListener('keydown', (e) => {
         if ((e.target !== board && e.target !== swipeButton) || !ready() || swipe) return;
-        if (e.key === 'Escape') { keys = null; return; }
+        if (e.key === 'Escape') { keys = null; resetView(); return; }
         const delta = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] }[e.key];
         if (delta) {
           e.preventDefault();
           keys ??= { dx: -origin().x, dy: -origin().y };
-          const step = e.shiftKey ? 0.20 : 0.055;
+          const step = e.shiftKey ? 0.20 : 0.02;
           keys.dx = Math.max(-2.5, Math.min(-0.05, keys.dx + step * delta[0]));
           keys.dy = clamp(keys.dy + step * delta[1], 1.5);
         }
@@ -1383,8 +1644,11 @@ UI.archery = (() => {
       const surface = tabletop;
       window.GL3?.load().then(() => {
         if (tabletop !== surface || !surface.isConnected) return;
-        darts3d = makeDarts3d(surface);
-        if (darts3d && view) darts3d.paint(view);
+        darts3d = makeDarts3d(surface, applyView);
+        if (darts3d && view) {
+          darts3d.paint(view);
+          darts3d.setNumberTarget(view.nextNumbers?.[view.next]);
+        }
       }).catch(() => {});
       frame = requestAnimationFrame(tick);
     }
@@ -1399,17 +1663,40 @@ UI.archery = (() => {
       }
     }
 
-    function applyZoom() {
-      zoom.s = Math.max(1, Math.min(3.5, zoom.s));
+    function throwInProgress() {
+      return !!(swipe || waitingHand || pending || (flight && flight.shot.o === view.me));
+    }
+
+    function canCollect() {
+      return mine() && view.grab && !flight && performance.now() >= readyAt;
+    }
+
+    function collectDarts() {
+      if (!canCollect() || grabbing) return;
+      grabbing = true;
+      resetView();
+      ctx.quiet(ctx.act('grab').catch((error) => { grabbing = false; throw error; }));
+    }
+
+    function applyView() {
       const mx = (zoom.s - 1) * tabletop.offsetWidth / 2, my = (zoom.s - 1) * tabletop.offsetHeight / 2;
       zoom.x = Math.max(-mx, Math.min(mx, zoom.x));
       zoom.y = Math.max(-my, Math.min(my, zoom.y));
-      tabletop.style.transform = zoom.s === 1 ? '' : `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.s})`;
+      const tilted = inspecting && !tabletop.classList.contains('ar-darts-is3d');
+      const zoomTransform = zoom.s > 1 ? `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.s})` : '';
+      const tiltTransform = tilted ? `perspective(950px) rotateX(${angle.pitch}deg) rotateY(${angle.yaw}deg)` : '';
+      tabletop.style.transform = `${zoomTransform} ${tiltTransform}`.trim();
+      stage.classList.toggle('ar-darts-inspecting', inspecting);
+      inspectButton.setAttribute('aria-pressed', String(inspecting));
+      inspectButton.textContent = inspecting ? 'Front view' : 'Inspect';
+      inspectButton.setAttribute('aria-label', inspecting ? 'Return to front view' : 'Inspect dartboard at an angle');
     }
 
-    function resetZoom() {
+    function resetView() {
       zoom.s = 1; zoom.x = 0; zoom.y = 0;
-      if (tabletop) applyZoom();
+      angle.pitch = 0; angle.yaw = 0;
+      inspecting = false;
+      applyView();
     }
 
     // Pace of the swipe so far, as the server will see it on release (board radii per second).
@@ -1430,16 +1717,20 @@ UI.archery = (() => {
 
     function submit(dx, dy, vx, vy, from = origin(), hand = null) {
       if (!ready()) return;
+      resetView();
       const surface = tabletop;
       pending = true;
+      landing.setAttribute('hidden', '');
+      clearImpact();
+      keys = null;
       hintOn = false;
       releasedFrom = from;
-      waitingHand = hand && { ...hand, until: performance.now() + 1800 };
+      waitingHand = hand && { ...hand, owner: view.me, until: performance.now() + 1800 };
       playRelease(Math.hypot(vx, vy));
       ctx.quiet(ctx.act('throw', {
         dx: clamp(dx, 2.5), dy: clamp(dy, 3.2), vx: clamp(vx, 6), vy: clamp(vy, 6),
       }).catch((error) => {
-        if (tabletop === surface) { waitingHand = null; releasedFrom = null; }
+        if (tabletop === surface) { waitingHand = null; releasedFrom = null; paintLanding(); }
         throw error;
       }).finally(() => { if (tabletop === surface) pending = false; }));
     }
@@ -1451,7 +1742,7 @@ UI.archery = (() => {
       const y = start.y + (-0.18 - start.y) * lift + dy * (1 - 0.18 * lift);
       const angle = keys ? Math.atan2(keys.dx, keys.dy) : Math.atan2(-start.x, -start.y);
       const scale = DART_HELD_SCALE + (DART_AIM_SCALE - DART_HELD_SCALE) * lift;
-      return { x: clamp(x, 1.2), y: clamp(y, 1.1), angle, lift, scale, aiming: !!swipe };
+      return { x: clamp(x, 1.2), y: clamp(y, 1.1), angle, lift, scale, aiming: !!swipe, owner: view.next };
     }
 
     function playGrip() {
@@ -1488,12 +1779,13 @@ UI.archery = (() => {
       hitFlash.innerHTML = '';
       const [bull, outer, t0, t1, d0, edge] = view.radii.map((r) => r * SCALE);
       const r = Math.hypot(shot.x, shot.y) * SCALE, i = view.numbers.indexOf(shot.number);
-      if (!shot.number || r > edge) return;
+      if (!shot.number) return;
       let shape;
-      if (r <= bull) shape = `<circle cx="125" cy="125" r="${bull}"/>`;
-      else if (r <= outer) shape = `<path fill-rule="evenodd" d="M${CENTER - outer} ${CENTER}a${outer} ${outer} 0 1 0 ${outer * 2} 0a${outer} ${outer} 0 1 0 ${-outer * 2} 0ZM${CENTER - bull} ${CENTER}a${bull} ${bull} 0 1 0 ${bull * 2} 0a${bull} ${bull} 0 1 0 ${-bull * 2} 0Z"/>`;
+      if (shot.number === 25 && shot.multiplier === 2) shape = `<circle cx="125" cy="125" r="${bull}"/>`;
+      else if (shot.number === 25) shape = `<path fill-rule="evenodd" d="M${CENTER - outer} ${CENTER}a${outer} ${outer} 0 1 0 ${outer * 2} 0a${outer} ${outer} 0 1 0 ${-outer * 2} 0ZM${CENTER - bull} ${CENTER}a${bull} ${bull} 0 1 0 ${bull * 2} 0a${bull} ${bull} 0 1 0 ${-bull * 2} 0Z"/>`;
       else if (i >= 0) {
-        const [inner, outerR] = r < t0 ? [outer, t0] : r <= t1 ? [t0, t1] : r < d0 ? [t1, d0] : [d0, edge];
+        const [inner, outerR] = shot.multiplier === 2 ? [d0, edge]
+          : shot.multiplier === 3 ? [t0, t1] : r < (t0 + t1) / 2 ? [outer, t0] : [t1, d0];
         shape = sector(i * STEP, inner, outerR, '');
       }
       if (!shape) return;
@@ -1503,13 +1795,47 @@ UI.archery = (() => {
       hitFlash.classList.add('ar-darts-lit');
     }
 
+    function paintLanding() {
+      const shot = view.shot;
+      const visible = !!shot?.number && !flight && view.darts.some((dart) => dart.id === shot.id);
+      if (!visible) {
+        landing.setAttribute('hidden', '');
+        return;
+      }
+      if (landingId === shot.id) return;
+      landingId = shot.id;
+      landingAt = performance.now();
+      landing.firstElementChild.setAttribute('transform', transform(shot.x, shot.y));
+      landing.removeAttribute('hidden');
+    }
+
+    function clearImpact() {
+      callout.hidden = true;
+      callout.classList.remove('ar-darts-flash');
+      hitFlash.classList.remove('ar-darts-lit');
+      impactMark.setAttribute('hidden', '');
+      impactMark.classList.remove('ar-darts-impact-active');
+    }
+
     function flashHit(shot) {
+      clearImpact();
       flashSection(shot);
+      const x = xAt(shot.x), y = yAt(shot.y);
+      if (visibleImpact(shot.x, shot.y)) {
+        impactMark.dataset.kind = shot.number === 25 ? 'bull' : shot.number ? 'hit' : 'miss';
+        const [ring, cross, diamond] = impactMark.children;
+        ring.setAttribute('cx', x);
+        ring.setAttribute('cy', y);
+        cross.setAttribute('transform', transform(shot.x, shot.y));
+        diamond.setAttribute('transform', transform(shot.x, shot.y));
+        impactMark.removeAttribute('hidden');
+        void impactMark.getBoundingClientRect();
+        impactMark.classList.add('ar-darts-impact-active');
+      }
       const prefix = ['Miss', 'Single', 'Double', 'Triple'][shot.multiplier];
       callout.textContent = shot.number && shot.number !== 25 ? `${prefix} ${shot.number}` : shot.label;
-      callout.dataset.tone = shot.bust || !shot.number ? 'miss' : shot.multiplier >= 2 ? 'bull' : '';
+      callout.dataset.tone = shot.bust || !shot.number ? 'miss' : shot.number === 25 ? 'bull' : '';
       callout.hidden = false;
-      callout.classList.remove('ar-darts-flash');
       void callout.offsetWidth;
       callout.classList.add('ar-darts-flash');
     }
@@ -1532,38 +1858,46 @@ UI.archery = (() => {
       frame = requestAnimationFrame(tick);
       if (!view) return;
       if (waitingHand && now >= waitingHand.until) waitingHand = null;
+      if (!landing.hasAttribute('hidden') && now - landingAt >= DART_DOT_HOLD + (reduce() ? 0 : DART_DOT_FADE)) {
+        landing.setAttribute('hidden', '');
+      }
       const show = ready(), hand = waitingHand || pose(now);
-      const drawHand = !flight && (show || !!waitingHand);
-      grip.toggleAttribute('hidden', !show || !!swipe);
+      const drawHand = !inspecting && !flight && (show || !!waitingHand);
+      inspectButton.disabled = throwInProgress();
+      grip.toggleAttribute('hidden', !show || !!swipe || inspecting);
       swipeButton.disabled = !show;
       hintButton.disabled = !show;
-      // While swiping, ring where the dart will land; its size is two standard deviations of the wobble.
-      spreadEl.hidden = !swipe;
-      if (swipe) {
-        const o = origin(), r = 2 * (view.spreadBase + view.spreadPerPace * swipePace());
-        spreadEl.style.left = `${xAt(o.x + swipe.dx) / WIDTH * 100}%`;
-        spreadEl.style.top = `${yAt(o.y + swipe.dy) / WIDTH * 100}%`;
-        spreadEl.style.width = `${2 * r * SCALE / WIDTH * 100}%`;
+      const preview = show && (swipe || keys);
+      spreadEl.hidden = !preview;
+      if (preview) {
+        const o = origin();
+        const pace = swipe ? swipePace() : view.swipePace;
+        const radius = 2 * (view.spreadBase + view.spreadPerPace * pace);
+        spreadEl.style.left = `${xAt(o.x + preview.dx) / WIDTH * 100}%`;
+        spreadEl.style.top = `${yAt(o.y + preview.dy) / WIDTH * 100}%`;
+        spreadEl.style.width = `${2 * radius * SCALE / WIDTH * 100}%`;
       }
       aim.hidden = !(hintOn && view.hint && show);
       // After the last dart of a visit the thrower pulls them from the board before the next player goes.
-      const canGrab = mine() && view.grab && !flight && now >= readyAt;
+      const canGrab = canCollect();
       swipeButton.hidden = canGrab || (mine() && view.grab);
       grabButton.hidden = !canGrab;
       if (canGrab) {
         grabButton.disabled = grabbing;
-        grabButton.textContent = `🖐 Grab darts · ${Math.max(0, Math.ceil((grabAt - now) / 1000))}s`;
+        grabButton.textContent = `Collect darts · ${Math.max(0, Math.ceil((grabAt - now) / 1000))}s`;
       }
       held.toggleAttribute('hidden', !drawHand);
       guide.toggleAttribute('hidden', hand.aiming);
-      const angle = hand.angle * 180 / Math.PI;
-      held.setAttribute('transform', `${transform(hand.x, hand.y)} rotate(${angle})`);
+      const handAngle = hand.angle * 180 / Math.PI;
+      held.setAttribute('transform', `${transform(hand.x, hand.y)} rotate(${handAngle})`);
+      dartModel.style.setProperty('--dart-color', ownerColor(hand.owner) ?? '#ffe198');
       dartModel.setAttribute('transform', hand.aiming
-        ? `rotate(${-angle - 12}) scale(${hand.scale}, ${hand.scale * 0.39})` : `scale(${hand.scale})`);
+        ? `rotate(${-handAngle - 12}) scale(${hand.scale}, ${hand.scale * 0.39})` : `scale(${hand.scale})`);
       let throwPose = null;
+      trail.toggleAttribute('hidden', !flight || reduce());
       if (flight) {
         const { shot, dot, from: start, duration } = flight;
-        const time = c01((now - flight.start) / duration);
+        const time = reduce() ? 1 : c01((now - flight.start) / duration);
         const dx = shot.x - start.x, dy = shot.y - start.y;
         const pace = shot.pace ?? 2.2;
         // Gravity bows the path above the straight line: slow, lobbed throws arc higher than hard flicks.
@@ -1578,37 +1912,75 @@ UI.archery = (() => {
             u,
           };
         };
+        const startOffset = 85, gap = 12;
+        let previous = at(time - startOffset / duration);
+        for (let i = 0; i < trail.children.length; i++) {
+          const line = trail.children[i];
+          const next = at(time - (startOffset - (i + 1) * (startOffset - gap) / 5) / duration);
+          line.setAttribute('x1', xAt(previous.x));
+          line.setAttribute('y1', yAt(previous.y));
+          line.setAttribute('x2', xAt(next.x));
+          line.setAttribute('y2', yAt(next.y));
+          previous = next;
+        }
         const cur = at(time), ahead = at(Math.min(1, time + 0.02)), behind = at(Math.max(0, time - 0.02));
         const { x, y, depth, scale, u } = cur;
-        throwPose = { x, y, depth, scale, u, roll: time * 5,
+        throwPose = { x, y, depth, scale, u, owner: shot.o, id: shot.id, landingX: shot.x, landingY: shot.y, roll: time * 5,
           behind, ahead };
-        const flightAngle = 0;
+        const tangent = Math.atan2(ahead.x - behind.x, ahead.y - behind.y) * 180 / Math.PI;
+        const turnToLodged = ((lodgedAngle - tangent + 540) % 360) - 180;
+        const flightAngle = tangent + turnToLodged * smooth((u - 0.65) / 0.35);
         const pinScale = 1 + (scale - DART_BOARD_SCALE) * 2.2;
         dot?.setAttribute('transform', `${transform(x, y)} rotate(${flightAngle}) scale(${pinScale})`);
         if (time >= 1) {
           flight = null;
-          dot?.setAttribute('transform', transform(shot.x, shot.y));
+          trail.setAttribute('hidden', '');
+          dot?.setAttribute('transform', `${transform(shot.x, shot.y)} rotate(${lodgedAngle})`);
+          if (!shot.number) {
+            if (!reduce() && visibleImpact(shot.x, shot.y)) falling = { shot, dot, started: now };
+            else dot?.setAttribute('hidden', '');
+          }
           impact = shot.number ? { id: shot.id, at: now, power: 0.7 + 0.5 * c01((shot.pace ?? 2.2) / 6) } : null;
           showShot(shot);
+          paintLanding();
           flashHit(shot);
           playLanding(shot);
           ctx.buzz?.(shot.bust ? [25, 40, 25] : 15);
         }
       }
+      if (falling) {
+        const { shot, dot, started } = falling;
+        const progress = c01((now - started) / 150);
+        if (progress >= 1 || reduce()) {
+          dot?.setAttribute('hidden', '');
+          falling = null;
+          throwPose = null;
+        } else {
+          const y = shot.y - 0.24 * progress * progress;
+          throwPose = { x: shot.x, y, landingY: shot.y, id: shot.id, owner: shot.o,
+            scale: DART_BOARD_SCALE * (1 - 0.35 * progress), tumble: progress };
+          dot?.setAttribute('transform', `${transform(shot.x, y)} rotate(${lodgedAngle + progress * 105}) scale(${1 - 0.35 * progress})`);
+        }
+      }
       if (impact && now - impact.at > 380) impact = null;
       const age = impact ? (now - impact.at) / 1000 : 0;
-      const quiver = impact ? { id: impact.id, angle: 0.035 * impact.power * Math.exp(-11 * age) * Math.sin(105 * age) } : null;
+      const quiver = impact && !reduce() ? { id: impact.id, angle: 0.035 * impact.power * Math.exp(-11 * age) * Math.sin(105 * age) } : null;
+      for (const pin of pins.children) {
+        const quivering = quiver && String(quiver.id) === pin.dataset.shot;
+        const model = pin.firstElementChild;
+        if (quivering) model.setAttribute('transform', `rotate(${quiver.angle * 180 / Math.PI})`);
+        else if (model.hasAttribute('transform')) model.removeAttribute('transform');
+      }
       noteHoles();
-      darts3d?.draw(view.darts, drawHand ? hand : null, flight ? throwPose : null, flight?.shot.id, quiver, past);
+      darts3d?.draw(view.darts, drawHand ? hand : null, flight || falling ? throwPose : null, flight?.shot.id, quiver, past, ownerColor, angle);
     }
 
     // Remember where each dart landed so its hole stays in the board after the dart is pulled.
     function noteHoles() {
       if (!view) return;
-      const [, , , , , edge] = view.radii;
       let added = false;
       for (const d of view.darts) {
-        if (pastIds.has(d.id) || d.id === flight?.shot.id || Math.hypot(d.x, d.y) > edge) continue;
+        if (!d.number || pastIds.has(d.id) || d.id === flight?.shot.id) continue;
         pastIds.add(d.id);
         past.push({ x: d.x, y: d.y, seed: (d.id * 0.6180339) % 1 });
         added = true;
@@ -1619,10 +1991,12 @@ UI.archery = (() => {
     }
 
     function paintPins() {
-      pins.innerHTML = view.darts.map((d) => `<g data-shot="${d.id}" transform="${transform(d.x, d.y)}">
-        <path d="M0 0L6 9L5 13L10 14L12 10L8 8Z"/><circle r="2"/>
+      const visible = view.darts.filter((dart) => dart.number || dart.id === flight?.shot.id || dart.id === falling?.shot.id);
+      pins.innerHTML = visible.map((d) => `<g data-shot="${d.id}" transform="${transform(d.x, d.y)} rotate(${lodgedAngle})">
+        <g><g transform="scale(1 ${DART_LENGTH})">${dartSilhouette}</g></g>
       </g>`).join('');
-      view.darts.forEach((d, i) => pins.children[i].style.setProperty('--dart-color', player(d.o)?.color ?? '#ffe198'));
+      visible.forEach((d, i) => pins.children[i].style.setProperty('--dart-color', player(d.o)?.color ?? '#ffe198'));
+      if (falling) falling.dot = pins.querySelector(`[data-shot="${falling.shot.id}"]`);
       if (flight) {
         flight.dot = pins.querySelector(`[data-shot="${flight.shot.id}"]`);
         flight.dot?.setAttribute('transform', transform(0, -1.2));
@@ -1677,7 +2051,12 @@ UI.archery = (() => {
       }
       if (!mine() || visit !== view.visit) { visit = view.visit; swipe = null; keys = null; }
       const shot = view.shot;
+      const previousShot = shown;
       if (shot?.id !== shown) {
+        falling = null;
+        landing.setAttribute('hidden', '');
+        clearImpact();
+        trail.setAttribute('hidden', '');
         shown = shot?.id;
         flight = shot && !first && c.peek && !reduce() ? {
           shot, start: performance.now(),
@@ -1696,13 +2075,19 @@ UI.archery = (() => {
         }
         if (!shot) result.textContent = '';
       }
+      if (shot && !view.darts.some((dart) => dart.id === shot.id)) {
+        falling = null;
+        clearImpact();
+      }
       paintPins();
+      if (!pending || shot?.id !== previousShot) paintLanding();
       const target = view.nextNumbers?.[view.next];
+      darts3d?.setNumberTarget(target);
       for (const label of geometry.querySelectorAll('[data-number]')) {
         label.classList.toggle('ar-darts-next-number', Number(label.dataset.number) === target);
       }
       turn.textContent = s.phase === 'over' ? 'Game over' : view.next == null ? 'Final dart'
-        : view.grab ? `${view.next === view.me ? 'Grab your darts' : `${player(view.next)?.name ?? 'Player'} is collecting darts`}`
+        : view.grab ? `${view.next === view.me ? 'Collect the round’s darts' : `${player(view.next)?.name ?? 'Player'} is collecting darts`}`
         : `${view.next === view.me ? 'Your visit' : player(view.next)?.name ?? 'Player'} · ${view.left} left`;
       updateHint();
       renderScores();
@@ -1714,7 +2099,9 @@ UI.archery = (() => {
       if (view.mode === 'clock') rule = view.next == null ? 'Hit 1–20 in order, then bull.'
         : `Next target: ${clockLabel(view.nextNumbers[view.next])}.`;
       if (view.mode === 'countup') rule = `Highest score after ${view.visitLimit} visits wins.`;
-      hint.textContent = mine() ? `Swipe inward from the dart or the button below. The dart lands where the swipe ends; the ring shows how far a rushed swipe may stray. 💡 Hint shows a good spot. Pinch to zoom. ${rule}` : rule;
+      hint.textContent = mine() && view.grab ? 'Tap the board to collect the round’s darts.'
+        : mine() ? `Drag the left half to inspect. Touch the right half or the throw button and swipe inward to throw. Pinch to zoom. ${rule}`
+        : `Drag to tilt the board or pinch to zoom. ${rule}`;
     }
 
     return { mount, render, unmount() { cancelAnimationFrame(frame); darts3d?.dispose(); darts3d = null; view = null; tabletop = null; } };

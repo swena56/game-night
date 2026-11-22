@@ -116,24 +116,28 @@ class DartsTests(unittest.TestCase):
             self.assertEqual(self.match.shot["recap"], 0)
         self.throw(20, 3)
         v = self.room.game.view(second)["darts"]
-        # The visit is over but the thrower keeps the turn until they pull their darts.
-        self.assertEqual((self.room.turn, v["points"], v["grab"], v["darts"] and len(v["darts"])), (first.id, [121, 301], True, 3))
+        self.assertEqual((self.room.turn, v["points"], v["grab"], len(v["darts"])),
+                         (second.id, [121, 301], False, 3))
         self.assertEqual([d["label"] for d in v["darts"]], ["T20"] * 3)
         self.assertGreater(v["shot"]["recap"], 0)
         with self.assertRaises(GameError):
-            self.room.act(first, {"type": "throw", "dx": -1, "dy": 0, "vx": -2, "vy": 0})
-        with self.assertRaises(GameError):
             self.room.act(second, {"type": "grab"})
+        for count in range(4, 7):
+            self.throw(20, 1)
+            v = self.room.game.view(second)["darts"]
+            self.assertEqual(len(v["darts"]), count)
+            self.assertEqual(v["grab"], count == 6)
+        self.assertEqual(self.room.turn, second.id)
+        with self.assertRaises(GameError):
+            self.room.act(second, {"type": "throw", "dx": -1, "dy": 0, "vx": -2, "vy": 0})
         self.grab()
-        v = self.room.game.view(second)["darts"]
-        self.assertEqual((self.room.turn, v["left"], v["darts"], v["grab"]), (second.id, 3, [], False))
-        self.room.game.on_timeout()
-        self.assertEqual(self.room.turn, first.id)
+        v = self.room.game.view(first)["darts"]
+        self.assertEqual((self.room.turn, v["left"], v["darts"], v["grab"]), (first.id, 3, [], False))
         self.throw(20, 3)
         self.throw(20, 3)
         self.assertTrue(self.match.shot["bust"])
         self.assertEqual(self.match.points[0], 121)
-        self.assertEqual(self.room.turn, first.id)
+        self.assertEqual(self.room.turn, second.id)
         self.skip_rival()
         self.assertTrue(checkout(121, 3))
         self.throw(20, 3)
@@ -156,8 +160,7 @@ class DartsTests(unittest.TestCase):
                 self.throw(number, multiplier)
                 self.assertTrue(self.match.shot["bust"])
                 self.assertEqual(self.match.points[0], 20)
-                self.assertEqual(self.room.turn, self.players[0].id)
-                self.grab()
+                self.assertIsNone(self.match.grabbing)
                 self.assertEqual(self.room.turn, self.players[1].id)
 
     def test_any_finish_is_the_default_and_double_out_is_an_option(self):
@@ -192,11 +195,12 @@ class DartsTests(unittest.TestCase):
 
     def test_grab_times_out_and_collects_for_the_player(self):
         self.start("301")
-        for _ in range(3):
+        for _ in range(6):
             self.throw(20, 1)
-        self.assertEqual(self.match.grabbing, 0)
+        self.assertEqual(self.match.grabbing, 1)
         self.match.timeout()
-        self.assertEqual((self.match.grabbing, self.room.turn, self.match.darts), (None, self.players[1].id, []))
+        self.assertEqual((self.match.grabbing, self.room.turn, self.match.darts), (None, self.players[0].id, []))
+        self.assertEqual(self.match.view(self.players[0])["darts"], [])
 
     def test_cricket_marks_excess_and_closed_target(self):
         self.start("cricket", 3)

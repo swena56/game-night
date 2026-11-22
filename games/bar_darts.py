@@ -91,13 +91,13 @@ class DartMatch:
         self.visits_done = [0] * len(seats)
         self.visit = 0
         self.darts = []
-        self.last_darts = []
+        self.last_darts = []             # completed visits still on the board this round
         self.shot = None
         self.shot_id = 0
         self.ready_at = 0.0
         self.winner = None
         self.finishing = False
-        self.grabbing = None            # the seat that must pull its darts before the next player goes
+        self.grabbing = None            # the final thrower collects the round's darts
         room.add_log(f"🎯 Darts · {MODES[mode]}. Three darts per visit.", "big")
         self.begin(0)
 
@@ -118,8 +118,7 @@ class DartMatch:
 
     def begin(self, i, delay=0):
         self.visit += 1
-        if self.darts:
-            self.last_darts = self.darts
+        self.last_darts.extend(self.darts)
         self.darts = []
         self.visit_start = self.points[i]
         self.turn(i, delay)
@@ -228,18 +227,22 @@ class DartMatch:
         if winner is not None:
             self.finish_later(winner, delay)
         elif bust or len(self.darts) == 3:
-            if player.bot:
-                self.advance(i, delay)
-            else:
-                self.collect(i, delay)
+            self.end_visit(i, delay)
         else:
             self.turn(i, PAUSE)
 
-    def collect(self, i, delay):
-        """The visit is over: the player keeps the turn until they pull their darts (or the timer does it)."""
-        self.grabbing = i
-        self.ready_at = time.time() + delay
-        self.room.deadline = self.ready_at + GRAB_TIME
+    def end_visit(self, i, delay=0, *, collect=True):
+        if any(seat > i for seat in self.active()):
+            return self.advance(i, delay)
+        if collect and (self.darts or self.last_darts):
+            self.grabbing = i
+            self.ready_at = time.time() + delay
+            self.room.deadline = self.ready_at + GRAB_TIME
+            if self.room.players[self.seats[i]].bot:
+                self.room.bot_at = max(self.room.bot_at, self.ready_at)
+            return
+        self.darts, self.last_darts = [], []
+        self.advance(i, delay)
 
     def grab(self, i):
         self.grabbing = None
@@ -274,7 +277,7 @@ class DartMatch:
         if self.room.turn in self.seats:
             i = self.seats.index(self.room.turn)
             self.room.add_log(f"⏰ {self.room.players[self.seats[i]].name} ran out of time. Visit over.", "power")
-            self.advance(i)
+            self.end_visit(i, collect=False)
 
     def leave(self, p):
         p.eliminated = True
@@ -295,10 +298,12 @@ class DartMatch:
             if winner is not None:
                 return self.finish(winner)
         if self.room.turn == p.id or self.room.turn is None:
-            self.advance(self.seats.index(p.id))
+            self.end_visit(self.seats.index(p.id), collect=False)
 
     def bot(self, p):
         i = self.seats.index(p.id)
+        if self.grabbing == i:
+            return self.grab(i)
         sigma = {"easy": 0.105, "normal": 0.065, "hard": 0.034}.get(p.bot, 0.065)
         number, multiplier = self.target(i, p.bot)
         x, y = self.point(number, multiplier)
@@ -342,7 +347,8 @@ class DartMatch:
 
     def view(self, p):
         next_seat = self.seats.index(self.room.turn) if self.room.turn in self.seats else None
-        left = 3 - len(self.darts) if next_seat is not None else 0
+        darts = self.last_darts + self.darts
+        left = 3 - len(self.darts) if next_seat is not None and self.grabbing is None else 0
         route = checkout(self.points[next_seat], left, self.double_out) if self.mode in X01 and left else ()
         hint = None
         if next_seat is not None and p.id in self.seats and next_seat == self.seats.index(p.id) and left:
@@ -355,7 +361,7 @@ class DartMatch:
             "visitsDone": self.visits_done if self.mode == "countup" else None,
             "visitLimit": COUNTUP_VISITS if self.mode == "countup" else None,
             "seats": self.seats, "me": self.seats.index(p.id) if p.id in self.seats else None,
-            "next": next_seat, "visit": self.visit, "darts": self.darts or self.last_darts, "shot": self.shot,
+            "next": next_seat, "visit": self.visit, "darts": darts, "shot": self.shot,
             "points": self.points, "marks": self.marks, "targets": TARGETS, "active": self.active(),
             "numbers": NUMBERS, "radii": RADII, "left": left,
             "dartOrigin": DART_ORIGIN, "swipePace": SWIPE_PACE,
