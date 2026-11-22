@@ -283,6 +283,26 @@ async function test() {
     assert.equal(currentLanding.hasAttribute('hidden'), false);
     frame(window.performance.now() + 260);
     assert.ok(currentLanding.hasAttribute('hidden'));
+
+    const firstHit = darts.shot;
+    const firstPin = document.querySelector('[data-shot="10"]');
+    const firstPose = firstPin.getAttribute('transform');
+    reducedMotion = false;
+    darts.visit += 1;
+    darts.shot = { ...firstHit, id: 11, o: 0 };
+    darts.darts = [firstHit, darts.shot];
+    render();
+    frame(window.performance.now() + 180);
+    assert.equal(document.querySelector('[data-shot="10"]'), firstPin);
+    assert.equal(firstPin.getAttribute('transform'), firstPose);
+    frame(window.performance.now() + 700);
+    const secondPose = document.querySelector('[data-shot="11"]').getAttribute('transform');
+    assert.match(secondPose, /^translate[(]125 125[)] rotate/);
+    assert.notEqual(secondPose, firstPose);
+    darts.darts = [];
+    render();
+    assert.equal(document.querySelector('[data-shot="10"]'), null);
+    assert.equal(document.querySelector('[data-shot="11"]'), null);
   } finally {
     ui.unmount();
     window.close();

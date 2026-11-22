@@ -1251,10 +1251,13 @@ UI.archery = (() => {
     const landedOrientation = new T.Quaternion(), wobble = new T.Quaternion(), wobbleEuler = new T.Euler(), sight = new T.Vector3();
     // A stuck dart points along the line of sight to its tip, so perspective doesn't streak the tail outward from
     // the board centre, then lifts the tail a little so it reads as thrown from below.
-    function lodgedPose(x, y, id, out) {
+    function lodgedPose(x, y, id, fan, out) {
       sight.set(x * 98, y * 98, -cameraDistance).normalize();
-      sight.x += 0.1 * ((id * 0.6180339) % 1 - 0.5);
-      sight.y -= 0.18 + 0.08 * ((id * 0.4142136) % 1);
+      const turn = fan * Math.PI / 180;
+      const side = 0.1 * ((id * 0.6180339) % 1 - 0.5);
+      const drop = 0.18 + 0.08 * ((id * 0.4142136) % 1);
+      sight.x += side * Math.cos(turn) - drop * Math.sin(turn);
+      sight.y -= side * Math.sin(turn) + drop * Math.cos(turn);
       return out.setFromUnitVectors(dartAxis, sight.normalize());
     }
     const travelOrientation = new T.Quaternion();
@@ -1278,7 +1281,7 @@ UI.archery = (() => {
       dart.position.set(x * k - tip.x, y * k - tip.y, depth - tip.z);
     }
     let size = 0, disposed = false, lastFrame;
-    function draw(pins, hand, flight, flyingId, impact, past, ownerColor, angle) {
+    function draw(pins, hand, flight, flyingId, impact, past, ownerColor, angle, pinFans) {
       if (disposed) return;
       pins = pins.filter((pin) => pin.number && pin.id !== flyingId);
       paintHoles(past);
@@ -1321,7 +1324,7 @@ UI.archery = (() => {
       flying.visible = !!flight;
       if (flight) flying.userData.finMaterial.color.set(flightColor ?? defaultFinColor);
       if (flight?.tumble != null) {
-        flying.quaternion.copy(lodgedPose(flight.x, flight.landingY, flight.id, landedOrientation));
+        flying.quaternion.copy(lodgedPose(flight.x, flight.landingY, flight.id, 0, landedOrientation));
         flying.rotateX(flight.tumble * 2.1);
         flying.rotateZ(flight.tumble * 1.1);
         placeTip(flying, flight.x, flight.y, 0.45, flight.scale);
@@ -1335,7 +1338,8 @@ UI.archery = (() => {
         travelOrientation.setFromUnitVectors(dartAxis, direction);
         flying.quaternion.copy(aimingOrientation).slerp(travelOrientation, smooth(flight.u / 0.14));
         flying.rotateY(flight.roll);
-        flying.quaternion.slerp(lodgedPose(flight.landingX, flight.landingY, flight.id, landedOrientation), smooth((flight.u - 0.6) / 0.4));
+        flying.quaternion.slerp(lodgedPose(flight.landingX, flight.landingY, flight.id, pinFans.get(flight.id) ?? 0, landedOrientation),
+          smooth((flight.u - 0.6) / 0.4));
         placeTip(flying, flight.x, flight.y, flight.depth, flight.scale);
         dartLight.position.copy(flying.position);
         dartLight.position.y += 12;
@@ -1350,7 +1354,7 @@ UI.archery = (() => {
         if (!obj.visible) return;
         obj.userData.finMaterial.color.set(pinColors[i] ?? defaultFinColor);
         const quiver = p.id === impact?.id ? impact.angle : 0;
-        obj.quaternion.copy(lodgedPose(p.x, p.y, p.id, landedOrientation));
+        obj.quaternion.copy(lodgedPose(p.x, p.y, p.id, pinFans.get(p.id) ?? 0, landedOrientation));
         if (quiver) obj.quaternion.multiply(wobble.setFromEuler(wobbleEuler.set(quiver, 0, -quiver * 0.6)));
         placeTip(obj, p.x, p.y, 0.45, DART_BOARD_SCALE);
       });
@@ -1402,6 +1406,7 @@ UI.archery = (() => {
     const visibleImpact = (x, y) => xAt(x) >= 5 && xAt(x) <= 245 && yAt(y) >= 5 && yAt(y) <= 245;
     const transform = (x, y) => `translate(${xAt(x)} ${yAt(y)})`;
     const lodgedAngle = -34;
+    const pinFans = new Map();
     // Local origin is the steel tip. The flight extends below it in SVG coordinates.
     const dartSilhouette = `<path class="ar-darts-tip" d="M0 0L1 4H-1Z"/>
       <path class="ar-darts-barrel" d="M-1 4H1L1.5 5V9H-1.5V5Z"/>
@@ -1928,14 +1933,15 @@ UI.archery = (() => {
         throwPose = { x, y, depth, scale, u, owner: shot.o, id: shot.id, landingX: shot.x, landingY: shot.y, roll: time * 5,
           behind, ahead };
         const tangent = Math.atan2(ahead.x - behind.x, ahead.y - behind.y) * 180 / Math.PI;
-        const turnToLodged = ((lodgedAngle - tangent + 540) % 360) - 180;
+        const landingAngle = pinAngle(shot);
+        const turnToLodged = ((landingAngle - tangent + 540) % 360) - 180;
         const flightAngle = tangent + turnToLodged * smooth((u - 0.65) / 0.35);
         const pinScale = 1 + (scale - DART_BOARD_SCALE) * 2.2;
         dot?.setAttribute('transform', `${transform(x, y)} rotate(${flightAngle}) scale(${pinScale})`);
         if (time >= 1) {
           flight = null;
           trail.setAttribute('hidden', '');
-          dot?.setAttribute('transform', `${transform(shot.x, shot.y)} rotate(${lodgedAngle})`);
+          dot?.setAttribute('transform', `${transform(shot.x, shot.y)} rotate(${landingAngle})`);
           if (!shot.number) {
             if (!reduce() && visibleImpact(shot.x, shot.y)) falling = { shot, dot, started: now };
             else dot?.setAttribute('hidden', '');
@@ -1972,7 +1978,7 @@ UI.archery = (() => {
         else if (model.hasAttribute('transform')) model.removeAttribute('transform');
       }
       noteHoles();
-      darts3d?.draw(view.darts, drawHand ? hand : null, flight || falling ? throwPose : null, flight?.shot.id, quiver, past, ownerColor, angle);
+      darts3d?.draw(view.darts, drawHand ? hand : null, flight || falling ? throwPose : null, flight?.shot.id, quiver, past, ownerColor, angle, pinFans);
     }
 
     // Remember where each dart landed so its hole stays in the board after the dart is pulled.
@@ -1990,17 +1996,41 @@ UI.archery = (() => {
       holeG.innerHTML = past.map((h) => `<circle cx="${xAt(h.x)}" cy="${yAt(h.y)}" r="1.6" fill="#0a0706" stroke="#c9b88f" stroke-opacity=".45" stroke-width=".5"/>`).join('');
     }
 
+    function pinAngle(dart) {
+      return lodgedAngle + (pinFans.get(dart.id) ?? 0);
+    }
+
     function paintPins() {
-      const visible = view.darts.filter((dart) => dart.number || dart.id === flight?.shot.id || dart.id === falling?.shot.id);
-      pins.innerHTML = visible.map((d) => `<g data-shot="${d.id}" transform="${transform(d.x, d.y)} rotate(${lodgedAngle})">
-        <g><g transform="scale(1 ${DART_LENGTH})">${dartSilhouette}</g></g>
-      </g>`).join('');
-      visible.forEach((d, i) => pins.children[i].style.setProperty('--dart-color', player(d.o)?.color ?? '#ffe198'));
-      if (falling) falling.dot = pins.querySelector(`[data-shot="${falling.shot.id}"]`);
-      if (flight) {
-        flight.dot = pins.querySelector(`[data-shot="${flight.shot.id}"]`);
-        flight.dot?.setAttribute('transform', transform(0, -1.2));
+      pinFans.clear();
+      const hits = view.darts.filter((dart) => dart.number);
+      for (const [index, dart] of hits.entries()) {
+        const occupied = new Set(hits.slice(0, index)
+          .filter((other) => Math.hypot(other.x - dart.x, other.y - dart.y) < 0.08)
+          .map((other) => pinFans.get(other.id)));
+        // Separate nearby tails while keeping every tip on its scored hit.
+        let fan = 0;
+        while (occupied.has(fan)) fan = (fan + 137) % 360;
+        pinFans.set(dart.id, fan);
       }
+      const visible = view.darts.filter((dart) => dart.number || dart.id === flight?.shot.id || dart.id === falling?.shot.id);
+      const existing = new Map(Array.from(pins.children, (pin) => [Number(pin.dataset.shot), pin]));
+      for (const dart of visible) {
+        let pin = existing.get(dart.id);
+        if (!pin) {
+          pin = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          pin.dataset.shot = dart.id;
+          pin.innerHTML = `<g><g transform="scale(1 ${DART_LENGTH})">${dartSilhouette}</g></g>`;
+          pin.setAttribute('transform', flight?.shot.id === dart.id
+            ? transform(0, -1.2) : `${transform(dart.x, dart.y)} rotate(${pinAngle(dart)})`);
+          pins.append(pin);
+        }
+        existing.delete(dart.id);
+        pin.style.setProperty('--dart-color', player(dart.o)?.color ?? '#ffe198');
+        if (flight?.shot.id === dart.id) flight.dot = pin;
+        else if (falling?.shot.id === dart.id) falling.dot = pin;
+        else pin.setAttribute('transform', `${transform(dart.x, dart.y)} rotate(${pinAngle(dart)})`);
+      }
+      existing.forEach((pin) => pin.remove());
     }
 
     function renderScores() {
