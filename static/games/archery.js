@@ -1135,7 +1135,7 @@ UI.archery = (() => {
 
   function makeDartsUI() {
     const STEP = Math.PI / 10, CENTER = 125, SCALE = 98, WIDTH = 250;
-    let root, score, stage, board, geometry, pins, grip, held, guide, dartModel, result, callout, hint, turn, tabletop, darts3d, swipeButton, grabButton, hintButton, aim;
+    let root, score, stage, board, geometry, pins, grip, held, guide, dartModel, result, callout, hint, turn, tabletop, darts3d, swipeButton, grabButton, hintButton, aim, hitFlash;
     const zoom = { s: 1, x: 0, y: 0 };
     let hintOn = false;
     let view, state, ctx, frame, readyAt, grabAt, grabbing, pending, visit, shown, flight, swipe, keys, releasedFrom, waitingHand, impact;
@@ -1175,6 +1175,7 @@ UI.archery = (() => {
         </header>
         <div class="ar-darts-board-wrap"><div class="ar-darts-stage"><div class="ar-darts-tabletop">
           <div class="ar-darts-aim" aria-hidden="true" hidden></div>
+          <svg class="ar-darts-hitflash" viewBox="0 0 250 250" aria-hidden="true"></svg>
           <svg viewBox="0 0 250 250" tabindex="0" role="group"
             aria-label="Dartboard. Hold the dart at the right edge and swipe inward. With a keyboard, use arrow keys to adjust the swipe and Enter to throw.">
             <g class="ar-darts-board"></g><g class="ar-darts-pins"></g>
@@ -1196,7 +1197,7 @@ UI.archery = (() => {
       root = main.firstElementChild; score = side.querySelector('.ar-darts-score');
       const find = (name) => root.querySelector('.ar-darts-' + name);
       board = root.querySelector('svg'); grip = find('grip'); held = find('held');
-      guide = find('direction'); dartModel = find('model'); tabletop = find('tabletop'); stage = find('stage'); swipeButton = find('swipe'); grabButton = find('grab'); hintButton = find('hintbtn'); aim = find('aim');
+      guide = find('direction'); dartModel = find('model'); tabletop = find('tabletop'); stage = find('stage'); swipeButton = find('swipe'); grabButton = find('grab'); hintButton = find('hintbtn'); aim = find('aim'); hitFlash = find('hitflash');
       geometry = find('board'); pins = find('pins');
       result = find('result'); callout = find('callout'); hint = find('hint'); turn = find('turn');
       view = null; pending = false; flight = null; shown = null; visit = null;
@@ -1396,7 +1397,28 @@ UI.archery = (() => {
       });
     }
 
+    // Light up the exact section the dart landed in, briefly.
+    function flashSection(shot) {
+      hitFlash.innerHTML = '';
+      const [bull, outer, t0, t1, d0, edge] = view.radii.map((r) => r * SCALE);
+      const r = Math.hypot(shot.x, shot.y) * SCALE, i = view.numbers.indexOf(shot.number);
+      if (!shot.number || r > edge) return;
+      let shape;
+      if (r <= bull) shape = `<circle cx="125" cy="125" r="${bull}"/>`;
+      else if (r <= outer) shape = `<path fill-rule="evenodd" d="M${CENTER - outer} ${CENTER}a${outer} ${outer} 0 1 0 ${outer * 2} 0a${outer} ${outer} 0 1 0 ${-outer * 2} 0ZM${CENTER - bull} ${CENTER}a${bull} ${bull} 0 1 0 ${bull * 2} 0a${bull} ${bull} 0 1 0 ${-bull * 2} 0Z"/>`;
+      else if (i >= 0) {
+        const [inner, outerR] = r < t0 ? [outer, t0] : r <= t1 ? [t0, t1] : r < d0 ? [t1, d0] : [d0, edge];
+        shape = sector(i * STEP, inner, outerR, '');
+      }
+      if (!shape) return;
+      hitFlash.innerHTML = shape;
+      hitFlash.classList.remove('ar-darts-lit');
+      void hitFlash.getBoundingClientRect();
+      hitFlash.classList.add('ar-darts-lit');
+    }
+
     function flashHit(shot) {
+      flashSection(shot);
       const prefix = ['Miss', 'Single', 'Double', 'Triple'][shot.multiplier];
       callout.textContent = shot.number && shot.number !== 25 ? `${prefix} ${shot.number}` : shot.label;
       callout.dataset.tone = shot.bust || !shot.number ? 'miss' : shot.multiplier >= 2 ? 'bull' : '';
