@@ -3,6 +3,7 @@ services:
     ports: !reset []
     environment:
       TRUST_CADDY: "1"
+      GAME_NIGHT_RELEASE: "${GAME_NIGHT_RELEASE:-}"
   caddy:
     build:
       context: .

@@ -1,31 +1,49 @@
 // Fuse Frenzy: the server runs the chase and streams positions over the fast channel (~30/s).
-// This module draws the arena, smooths the runners between updates and sends where a finger (or key) points.
+// This module draws the arena, smooths the runners between updates and sends joystick or keyboard directions.
 UI.fuse = (() => {
   let S, ctx, canvas, g2, raf = 0, ro = null, net = null, shown = [], keys = {}, keyDown = null, keyUp = null;
-  let lastItems = [], lastShield = null, lastSent = 0, lastCarrier = -1, lastRound = 0, lastAlive = null, lastTickSec = -1, lastFrame = 0, flash = 0;
+  let lastItems = [], lastShield = null, lastCarrier = -1, lastRound = 0, lastAlive = null, lastTickSec = -1, lastFrame = 0, flash = 0;
+  let drag = null, direction = '', steering = null, clearInput;
   const pfx = Fx2D.create({ cap: 160 });
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
     S = null; net = null; shown = []; keys = {}; lastItems = []; lastShield = null; lastCarrier = -1; lastRound = 0; lastAlive = null; lastTickSec = -1;
+    drag = null; direction = ''; steering = null;
     main.innerHTML = `<div class="fz"><div class="fz-stage" id="fzStage"><canvas id="fzCanvas"></canvas>
-      <div class="fz-banner" id="fzBanner" hidden></div></div></div>`;
+      <div class="fz-stick" id="fzStick" hidden><i></i></div><div class="fz-banner" id="fzBanner" hidden></div></div><button class="btn fz-dash" id="fzDash" type="button">⚡ Dash</button></div>`;
     side.innerHTML = `<div class="panel"><div id="fzSeats"></div>
-      <button class="btn fz-dash" id="fzDash" type="button">⚡ Dash</button>
-      <p class="hint left" id="fzHint">Drag to run (or WASD / arrows). Touching a rival with the bomb passes it on. Tap ⚡ Dash (or Space) for a burst.</p></div>`;
+      <p class="hint left" id="fzHint">Drag to steer like a joystick. Lift to stop. Use Dash for a burst. Keyboard: WASD or arrows, Space to dash.</p></div>`;
     canvas = $('fzCanvas');
     g2 = canvas.getContext('2d');
     if (!g2) { $('fzStage').append('Your browser cannot draw this game.'); return; }
     canvas.style.touchAction = 'none';
-    canvas.addEventListener('pointerdown', (e) => { canvas.setPointerCapture?.(e.pointerId); point(e); });
-    canvas.addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse' ? e.buttons : (e.buttons || e.pressure > 0)) point(e); });
-    $('fzDash').addEventListener('click', dash);
+    canvas.addEventListener('pointerdown', (e) => {
+      if (drag || e.button !== 0) return;
+      drag = { id: e.pointerId, x: e.clientX, y: e.clientY, dx: 0, dy: 0 };
+      canvas.setPointerCapture?.(e.pointerId);
+      point(e);
+    });
+    canvas.addEventListener('pointermove', (e) => { if (drag && e.pointerId === drag.id) point(e); });
+    for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+      canvas.addEventListener(event, (e) => {
+        if (!drag || e.pointerId !== drag.id) return;
+        drag = null; $('fzStick').hidden = true; sendKeys();
+      });
+    }
+    clearInput = () => {
+      drag = null; keys = {}; $('fzStick').hidden = true; sendKeys();
+    };
+    window.addEventListener('blur', clearInput);
+    const dashButton = $('fzDash');
+    dashButton.addEventListener('pointerdown', (e) => { if (e.button === 0 && !dashButton.disabled) dash(); });
+    dashButton.addEventListener('click', (e) => { if (e.detail === 0) dash(); });
     keyDown = (e) => {
       if (e.target?.tagName === 'INPUT' || e.target?.tagName === 'TEXTAREA') return;
-      if (e.code === 'Space') { e.preventDefault(); dash(); return; }
-      if (KEYS[e.code]) { keys[e.code] = true; e.preventDefault(); sendKeys(true); }
+      if (e.code === 'Space' && e.target?.tagName !== 'BUTTON') { e.preventDefault(); if (!e.repeat) dash(); return; }
+      if (KEYS[e.code]) { keys[e.code] = true; e.preventDefault(); if (!drag) sendKeys(); }
     };
-    keyUp = (e) => { if (KEYS[e.code]) { delete keys[e.code]; sendKeys(true); } };
+    keyUp = (e) => { if (KEYS[e.code]) { delete keys[e.code]; if (!drag) sendKeys(); } };
     window.addEventListener('keydown', keyDown); window.addEventListener('keyup', keyUp);
     ro = window.ResizeObserver ? new ResizeObserver(resize) : null;
     ro?.observe($('fzStage'));
@@ -35,6 +53,7 @@ UI.fuse = (() => {
 
   function unmount() {
     cancelAnimationFrame(raf); ro?.disconnect();
+    window.removeEventListener('blur', clearInput);
     window.removeEventListener('keydown', keyDown); window.removeEventListener('keyup', keyUp);
   }
 
@@ -42,40 +61,50 @@ UI.fuse = (() => {
   const mine = () => (S?.fuse?.me != null && S.fuse.me >= 0 ? S.fuse.me : null);
   const alive = (i) => (net ? net.a : S.fuse.a)[i];
 
-  function sendKeys(force) {
-    const f = S?.fuse, me = mine();
-    if (!f || me == null || S.phase !== 'playing' || !alive(me)) return;
+  function sendKeys() {
     let dx = 0, dy = 0;
     for (const k of Object.keys(keys)) { dx += KEYS[k][0]; dy += KEYS[k][1]; }
-    const now = performance.now();
-    if (!force && now - lastSent < 33) return;
-    const cur = shown[me] || (net || f).p[me];
-    lastSent = now;
-    ctx.input(dx || dy ? { x: +(cur[0] + dx * 0.5).toFixed(3), y: +(cur[1] + dy * 0.5).toFixed(3) } : { x: +cur[0].toFixed(3), y: +cur[1].toFixed(3) });
+    steer(dx, dy);
+  }
+
+  function steer(dx, dy) {
+    const me = mine();
+    if (me == null || S.phase !== 'playing' || S.paused || !alive(me)) return;
+    const length = Math.hypot(dx, dy) || 1;
+    const data = { dx: +(dx / length).toFixed(2), dy: +(dy / length).toFixed(2) };
+    const next = `${(net || S.fuse).rd}:${data.dx},${data.dy}`;
+    if (next === direction) return;
+    direction = next;
+    steering = data;
+    ctx.input(data);
   }
 
   function dash() {
     const me = mine();
-    if (me == null || S?.phase !== 'playing' || !alive(me)) return;
-    ctx.input({ dash: true });
+    if (me == null || S?.phase !== 'playing' || S.paused || !alive(me)) return;
+    ctx.input({ ...steering, dash: true }, true);
     ctx.sfx?.('whoosh');
   }
 
   function point(e) {
-    const f = S?.fuse, me = mine();
-    if (!f || me == null || S.phase !== 'playing' || !alive(me)) return;
-    const r = canvas.getBoundingClientRect();
-    const x = ((e.clientX - r.left) / r.width) * f.W, y = ((e.clientY - r.top) / r.height) * f.H;
-    const now = performance.now();
-    if (now - lastSent > 33) { lastSent = now; ctx.input({ x: +x.toFixed(3), y: +y.toFixed(3) }); }
-    e.preventDefault?.();
+    const stick = $('fzStick'), bounds = $('fzStage').getBoundingClientRect();
+    if (mine() == null || S.phase !== 'playing' || !alive(mine())) return;
+    const reach = 28, dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    const length = Math.hypot(dx, dy), scale = Math.min(1, reach / (length || 1));
+    drag.x += dx * (1 - scale); drag.y += dy * (1 - scale);
+    stick.hidden = false;
+    stick.style.left = `${drag.x - bounds.left}px`;
+    stick.style.top = `${drag.y - bounds.top}px`;
+    stick.firstElementChild.style.transform = `translate(${dx * scale}px, ${dy * scale}px)`;
+    drag.dx = length < 4 ? 0 : dx; drag.dy = length < 4 ? 0 : dy;
+    steer(drag.dx, drag.dy);
   }
 
   function resize() {
     const stage = $('fzStage');
     if (!stage || !S?.fuse) return;
     const ratio = S.fuse.H / S.fuse.W;
-    const width = Math.min(stage.clientWidth || 320, (window.innerHeight - (document.body.classList.contains('focus') ? 70 : 150)) / ratio, 520);
+    const width = Math.min(stage.clientWidth || 320, (window.innerHeight - (document.body.classList.contains('focus') ? 144 : 200)) / ratio, 520);
     Fx2D.fit(canvas, width, width * ratio);
   }
 
@@ -85,8 +114,9 @@ UI.fuse = (() => {
     raf = requestAnimationFrame(loop);
     if (!S?.fuse || !g2 || !canvas.width) return;
     const f = S.fuse, src = net || { ...f, at: now, im: [], dn: [] };
-    const u = canvas.width / f.W, k = (i) => [src.p[i][0] * u, src.p[i][1] * u];
-    sendKeys(false);
+    const u = canvas.width / f.W;
+    if (drag) steer(drag.dx, drag.dy);
+    else if (Object.keys(keys).length) sendKeys();
     for (let i = 0; i < src.p.length; i++) {   // ease each runner toward its server position
       shown[i] = shown[i] ? [shown[i][0] + (src.p[i][0] - shown[i][0]) * 0.4, shown[i][1] + (src.p[i][1] - shown[i][1]) * 0.4] : [...src.p[i]];
     }
@@ -145,8 +175,9 @@ UI.fuse = (() => {
     const btn = $('fzDash');
     if (btn) {
       const cd = Math.max(0, (src.dc?.[me ?? 0] || 0) - (now - src.at) / 1000);
-      btn.disabled = me == null || !src.a[me] || cd > 0;
-      btn.textContent = cd > 0 ? `⚡ Dash ${cd.toFixed(1)}` : '⚡ Dash';
+      btn.disabled = S.phase !== 'playing' || me == null || !src.a[me] || cd > 0;
+      const label = cd > 0 ? `⚡ Dash ${cd.toFixed(1)}` : '⚡ Dash';
+      if (btn.textContent !== label) btn.textContent = label;
       btn.hidden = me == null;
     }
     // the countdown ticks over the last 3 seconds
@@ -191,9 +222,10 @@ UI.fuse = (() => {
       });
       if (data.rd !== lastRound && lastRound) ctx.sfx?.('rise');
     }
+    const seatsChanged = lastCarrier !== data.c || data.a.some((a, i) => a !== lastAlive?.[i]);
     lastCarrier = data.c; lastRound = data.rd; lastAlive = [...data.a]; lastItems = (data.it || []).map((q) => [...q]); lastShield = [...(data.sh || [])];
     net = { ...data, at: performance.now() };
-    renderSeats();
+    if (seatsChanged) renderSeats();
   }
 
   function renderSeats() {
@@ -209,8 +241,9 @@ UI.fuse = (() => {
   }
 
   function render(s, c) {
-    const first = !S;
+    const first = !S, resumed = S?.paused && !s.paused;
     S = s; ctx = c;
+    if (resumed) { direction = ''; clearInput?.(); }
     if (first || !canvas.width) resize();
     if (!net) { lastItems = (s.fuse.it || []).map((q) => [...q]); lastShield = [...(s.fuse.sh || [])]; lastCarrier = s.fuse.c; lastRound = s.fuse.rd; lastAlive = [...s.fuse.a]; }
     renderSeats();

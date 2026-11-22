@@ -55,6 +55,11 @@ check("still blocked during the grace", g.carrier == c)
 g.tag(now + 2)
 check("after the grace the tag lands", g.carrier == runner)
 
+# Keep the other runners out of pickup range after the tag test.
+g.pos[c] = [0.5, 1.0]
+g.pos[runner] = [0.5, 0.3]
+g.pos[next(i for i in range(3) if i not in (c, runner))] = [0.1, 0.1]
+
 # a boost speeds a runner
 g.items = [[g.pos[c][0], g.pos[c][1], "boost"]]
 g.carrier = runner
@@ -71,10 +76,27 @@ g.pos[c] = [0.5, 1.0]
 g.move(c, 0.1, now)
 check("a boosted runner covers more ground", boosted > (y0 - g.pos[c][1]) * 1.2, (boosted, y0 - g.pos[c][1]))
 
+# Directional input uses both axes at a capped speed and release stops immediately.
+p = r.players[g.seats[c]]
+g.pos[c] = [0.5, 0.5]
+g.on_input(p, {"dx": 1, "dy": -1})
+g.move(c, 0.1, now)
+dx, dy = g.pos[c][0] - 0.5, 0.5 - g.pos[c][1]
+check("diagonal steering is capped", dx > 0 and abs(dx - dy) < 1e-8 and abs((dx ** 2 + dy ** 2) ** 0.5 - F.SPEED * 0.1) < 1e-8)
+g.on_input(p, {"dx": 0, "dy": 0})
+before = g.pos[c][:]
+g.move(c, 0.1, now)
+check("releasing the stick stops the runner", g.pos[c] == before)
+g.paused_until = 0
+g.on_input(p, {"dx": -1, "dy": 0, "dash": True})
+g.move(c, 0.1, g.dash_until[c] - 0.01)
+check("dash uses the current direction", abs(before[0] - g.pos[c][0] - 0.1 * F.DASH_SPEED) < 1e-8 and g.pos[c][1] == before[1])
+
 # a new round clears everything
 g.shield = [True] * 3
 g.items = [[0.5, 0.5, "boost"]]
 g.new_round(now)
 check("a new round clears items and shields", not g.items and not any(g.shield) and not any(g.boost_until))
+check("a new round clears steering", g.steer == [None] * len(ps))
 check("the view carries them", "it" in g.view(ps[0])["fuse"] and "sh" in g.view(ps[0])["fuse"])
 sys.exit(1 if fails else 0)

@@ -20,6 +20,7 @@ class SwitchyardRules(unittest.TestCase):
         self.room = server.Room("RAIL")
         self.player = self.room.add_player("Dispatcher")
         self.room.switch_game("switchyard")
+        self.room.settings["rules"] = "classic"
 
     def tick(self):
         game = self.room.game
@@ -71,6 +72,25 @@ class SwitchyardRules(unittest.TestCase):
         fresh = self.room.game
         self.assertEqual((fresh.wave, fresh.delivered, fresh.strikes, fresh.trains), (0, 0, 0, []))
         self.assertIsNone(fresh.last_switch)
+
+    def test_party_crew_survives_four_misses_and_tracks_streak(self):
+        self.room.settings["rules"] = "party"
+        self.room.start()
+        game = self.room.game
+        self.tick()
+        self.assertEqual(game.next_beat - self.now.return_value, 3)
+        while self.room.phase == "playing":
+            for train in game.trains:
+                target = train["target"]
+                if train["node"] == "entry":
+                    if game.wave == 0:
+                        self.assertEqual(game.view(self.player)["switchyard"]["hints"]["main"], target // 2)
+                    self.switch("main", target // 2 if train["id"] >= 4 else 1 - target // 2)
+                elif train["node"] == "main":
+                    self.switch(train["route"], target % 2)
+            self.tick()
+        self.assertTrue(game.won)
+        self.assertEqual((game.delivered, game.strikes, game.best_streak), (14, 4, 14))
 
     def test_cutoff_pause_and_idempotency(self):
         self.room.start()

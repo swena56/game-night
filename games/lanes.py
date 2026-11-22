@@ -26,6 +26,8 @@ REST_BP, REST_PP = 0.55, 0.7
 PIN_DECEL = 2.0       # a knocked pin slides and tumbles to a stop
 PIN_FALL = 0.10       # a falling pin sweeps a wider circle than a standing one (it is 38 cm tall)
 BALL_DECEL = 0.25
+LIP = 0.02           # a grazing ball can hook back before it falls into the channel
+GUTTER_DECEL = 0.55
 HOOK = 2.2            # m/s² sideways at full spin on dry boards
 VMIN, VMAX = 5.5, 9.5
 DT = 1 / 120
@@ -74,20 +76,24 @@ def roll(standing, start, angle, speed, spin, oil, record=True, weight=1):
         if ball_on:
             sp = math.hypot(vx, vy)
             if sp > 0:
-                k = max(0.0, sp - BALL_DECEL * DT) / sp
+                k = max(0.0, sp - (GUTTER_DECEL if gutter else BALL_DECEL) * DT) / sp
                 vx, vy = vx * k, vy * k
             if not gutter and by > oil:
                 vx -= spin * HOOK * hk * DT * min(1.0, (by - oil) / 2 + 0.3)
             bx += vx * DT
             by += vy * DT
             if not gutter and abs(bx) > LANE / 2:
-                gutter = True
-                bx = math.copysign(LANE / 2 + BALL_R * 0.9, bx)
+                can_hook_back = by > oil and bx * spin > 0 and abs(bx) < LANE / 2 + LIP
+                if not can_hook_back:
+                    gutter = True
+            if gutter:
+                channel = math.copysign(LANE / 2 + BALL_R * 0.9, bx)
+                bx += (channel - bx) * min(1, 28 * DT)
                 vx = 0.0
             if by > PIT:
                 ball_on = False
         # ball against pins
-        if ball_on and not gutter:
+        if ball_on and not gutter and abs(bx) <= LANE / 2:
             for k, p in pins.items():
                 if k in gone:
                     continue

@@ -4,10 +4,12 @@ import time
 from .base import Game, GameError
 
 BEAT = 2
+PRACTICE_BEAT = 3
 COUNTDOWN = 4
 WAVE_SPACING = (3, 2, 1)
 TRAINS_PER_WAVE = 6
 TOTAL = len(WAVE_SPACING) * TRAINS_PER_WAVE
+PARTY_GOAL = 14
 SWITCHES = ("main", "west", "east")
 BRANCHES = SWITCHES[1:]
 DEPOTS = ("Circle", "Diamond", "Triangle", "Square")
@@ -28,10 +30,17 @@ class Switchyard(Game):
     min_players = 1
     max_players = 6
     replayable = False
+    settings_schema = {
+        "rules": ("Rules", [("party", "Party crew"), ("classic", "Three strikes")], "party"),
+    }
+    party = False  # rounds saved before Party crew keep their original rules
+    streak = 0
+    best_streak = 0
     howto = [
         "Match each train's color and symbol to its depot. Anyone on the crew can flip any switch.",
-        "Trains move one segment every two seconds. Set a switch before a train reaches it.",
-        "Check the next two arrivals. Three waves send trains in faster, and three wrong deliveries end the match.",
+        "Set each switch before the train reaches it. The first Party crew wave gives you three seconds per move. Later waves give you two.",
+        "Three waves send trains in faster. In Party crew, use suggested routes in wave one and deliver at least 14 of 18 trains. Keep a streak going together.",
+        "Three strikes ends the match early after three wrong deliveries.",
     ]
 
     def check_players(self, seated):
@@ -40,6 +49,8 @@ class Switchyard(Game):
             raise GameError("Remove computer players before starting Switchyard Scramble.")
 
     def start(self, seated, rng):
+        self.party = self.s.get("rules") == "party"
+        self.streak = self.best_streak = 0
         self.crew = {p.id for p in seated if p.human()}
         # Swap branches and depot pairs while preserving the decisions in each pattern.
         mirror = rng.randrange(4)
@@ -71,6 +82,8 @@ class Switchyard(Game):
             self.room.finish(None, self.result_text("The crew left the yard."))
 
     def result_text(self, result):
+        if self.party:
+            return f"{result} {self.delivered}/{TOTAL} delivered · best streak {self.best_streak}"
         return f"{result} {self.delivered}/{TOTAL} delivered · {self.strikes}/3 strikes used"
 
     def finish(self, won):
@@ -125,12 +138,15 @@ class Switchyard(Game):
         self.switches[switch] = position
         self.last_switch = {"switch": switch, "position": position, "name": p.name}
 
+    def beat_length(self):
+        return PRACTICE_BEAT if self.party and self.wave == 0 else BEAT
+
     def frame(self, now):
         if self.room.paused or now < self.next_beat:
             return False
         while self.room.phase == "playing" and now >= self.next_beat:
             at = self.next_beat
-            self.next_beat += BEAT
+            self.next_beat += self.beat_length()
             self.step(at)
         return True
 
@@ -156,9 +172,12 @@ class Switchyard(Game):
                                  "correct": correct, "missAt": train.get("missAt")}
                 if correct:
                     self.delivered += 1
+                    self.streak += 1
+                    self.best_streak = max(self.best_streak, self.streak)
                 else:
                     self.strikes += 1
-                    if self.strikes == 3:
+                    self.streak = 0
+                    if not self.party and self.strikes == 3:
                         self.finish(False)
                         return
 
@@ -170,7 +189,7 @@ class Switchyard(Game):
         self.beat += 1
         if not self.trains and self.launched == TRAINS_PER_WAVE:
             if self.wave == len(WAVE_SPACING) - 1:
-                self.finish(True)
+                self.finish(not self.party or self.delivered >= PARTY_GOAL)
             else:
                 self.wave += 1
                 self.start_wave(at)
@@ -181,10 +200,17 @@ class Switchyard(Game):
         can_switch = playing and not (self.room.paused or p.spectator or p.eliminated) and p.id in self.crew
         upcoming = self.upcoming() if playing else ()
         calls = getattr(self, "route_calls", {})
+        hints = {}
+        if self.party and self.wave == 0 and playing:
+            for train in self.trains:
+                if train["node"] == "entry":
+                    hints["main"] = train["target"] // 2
+                elif train["node"] == "main" and not train.get("missAt"):
+                    hints[train["route"]] = train["target"] % 2
         return {"switchyard": {
             "wave": self.wave + 1, "waves": len(WAVE_SPACING), "countdown": self.beat == 0,
             "timeLeft": max(0, self.next_beat - now) if playing else 0,
-            "beat": self.beat, "beatLength": COUNTDOWN if self.beat == 0 else BEAT,
+            "beat": self.beat, "beatLength": COUNTDOWN if self.beat == 0 else self.beat_length(),
             "lastSwitch": getattr(self, "last_switch", None),
             "switches": dict(self.switches), "trains": [dict(t) for t in self.trains],
             "incoming": [self.schedule[i] for i in upcoming],
@@ -192,5 +218,6 @@ class Switchyard(Game):
             "canCall": can_switch and sum(o.id in self.crew for o in self.room.contenders()) > 1,
             "delivered": self.delivered, "total": TOTAL, "strikes": self.strikes,
             "feedback": self.feedback, "won": self.won,
+            "goal": PARTY_GOAL if self.party else None, "streak": self.streak, "hints": hints,
             "canSwitch": can_switch,
         }}

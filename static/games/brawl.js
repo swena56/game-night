@@ -13,13 +13,14 @@ UI.brawl = (() => {
       <div id="brwTally" class="brw-tally"></div>
       <div id="brwPreview" class="brw-preview"></div>
       <div class="ya-tray"><div id="brwDice" class="brw-dice"></div></div>
-      <div class="row brw-actions"><button id="brwRoll" class="primary big"></button><button id="brwFight" class="big danger"></button></div>
+      <div class="row brw-actions"><button id="brwRoll" class="primary big"></button><button id="brwFight" class="big danger"></button><button id="brwBreak" class="big danger" hidden>🛡️ Guard Break</button></div>
       <p id="brwHint" class="hint"></p>
       <div id="brwLast" class="brw-last"></div></div>`;
     const face = (n, f, text) => `<li><span class="brw-die mini f${f}">${Dice.art(n)}</span><span>${text}</span></li>`;
     side.innerHTML = `<div class="panel"><h3>The faces</h3><ul class="brw-legend">${face('skull', 1, '<b>Skull</b>: locks. Three backfire: −2 ❤️')}${face('sword', 2, '<b>Sword</b> (two faces): 1 hit')}${face('smash', 4, '<b>Smash</b>: 2 hits. Three hit everyone')}${face('shield', 5, '<b>Shield</b>: blocks 1 until your next turn')}${face('heart', 6, '<b>Heart</b>: heals 1')}</ul></div>`;
     $('brwRoll').onclick = () => ctx.quiet(ctx.act('roll', { hold: [...hold] }));
     $('brwFight').onclick = () => ctx.quiet(ctx.act('fight', { target }));
+    $('brwBreak').onclick = () => ctx.quiet(ctx.act('fight', { target, guardBreak: true }));
   }
 
   function render(s, c) {
@@ -39,6 +40,10 @@ UI.brawl = (() => {
       const rivals = alive.filter((pid) => pid !== S.me.id);
       target = rivals.find((pid) => t.dmg - (b.guard[pid] ?? 0) >= b.hp[pid]) ?? rivals.sort((x, y) => b.hp[x] - b.hp[y])[0] ?? null;
     }
+
+    const breakCost = b.guardBreakCost;
+    const canBreak = needTarget && t.skulls < 3 && breakCost > 0 && t.shield >= breakCost && b.guard[target] > 0 && b.guard[target] < t.dmg + breakCost;
+    $('brwBreak').hidden = !canBreak;
 
     // the ring of brawlers
     const ring = $('brwRing'); ring.innerHTML = '';
@@ -73,6 +78,10 @@ UI.brawl = (() => {
         return [`⚔️ ${n(o.dmg)} dmg${o.quake === 1 ? ' 🌋' : ''}`, `🛡️ ${n(o.guard)}`, `❤️ +${n(o.heal)}`].join(' · ');
       };
       pv.append(ctx.el('div', '', `👊 Fight now${P.now.quake ? ' (quake)' : t.dmg ? ` on ${ctx.player(aim)?.name ?? '…'}` : ''}: ${fmt(P.now)}`));
+      if (canBreak) {
+        const dmg = Math.max(0, t.dmg - Math.max(0, guards[target] - breakCost));
+        pv.append(ctx.el('div', '', `🛡️ Guard Break: ${fmt({ ...P.now, dmg, guard: P.now.guard - breakCost })}`));
+      }
       if (P.reroll) {
         const R = P.reroll, pct = (v) => `${Math.round(v * 100)}%`;
         const row = ctx.el('div', '', `🎲 Reroll ${P.free}${Object.keys(guards).length > 1 && aim ? ` (on ${ctx.player(aim)?.name ?? '…'})` : ''}, likely: ${fmt(R, true)} · `);
@@ -118,7 +127,7 @@ UI.brawl = (() => {
       seenLast = L.n;
       const name = ctx.el('b', '', p?.name ?? '?'); name.style.color = p?.color ?? 'inherit';
       const hits = Object.entries(L.hits || {}).map(([pid, [d, bl]]) => `${ctx.player(pid)?.name ?? '?'} −${d}${bl ? ` (🛡️${bl})` : ''}`);
-      const what = L.backfire ? ' backfired: −2 ❤️' : ' ' + ([hits.length ? 'hit ' + hits.join(', ') : '', L.heal ? `healed ${L.heal}` : '', L.shield ? `🛡️ ${L.shield}` : ''].filter(Boolean).join(' · ') || 'did nothing much');
+      const what = L.backfire ? ' backfired: −2 ❤️' : ' ' + ([L.guardBreak ? 'broke guard' : '', hits.length ? 'hit ' + hits.join(', ') : '', L.heal ? `healed ${L.heal}` : '', L.shield ? `🛡️ ${L.shield}` : ''].filter(Boolean).join(' · ') || 'did nothing much');
       last.append(name, ctx.el('span', '', what));
     }
   }

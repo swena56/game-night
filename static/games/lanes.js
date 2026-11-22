@@ -37,6 +37,7 @@ UI.lanes = (() => {
   const $ = (id) => document.getElementById(id);
   const FPS = 30;
   const MAXA = 0.12;
+  const lerp = (a, b, k) => a + (b - a) * k;
   const colorOf = (id) => ctx?.player(id)?.color ?? '#ccc';
   const L = () => S.lanes;
   const myRow = () => L().rows.find((r) => r.id === S.me?.id);
@@ -44,7 +45,7 @@ UI.lanes = (() => {
   // so that one wait clears here once its time is up
   const SETTLE = 'Wait for the pins to settle.';
   const waiting = () => { const w = L().wait; return w && !(w === SETTLE && performance.now() >= settleAt) ? w : null; };
-  const canBowl = () => S?.phase === 'playing' && L().me != null && !waiting() && !anim && performance.now() > holdUntil;
+  const canBowl = () => S?.phase === 'playing' && !S.paused && L().me != null && !waiting() && !anim && performance.now() > holdUntil;
   // after the roll (in frames at FPS, from the shot's last frame): the pinsetter lifts any pins left standing, the
   // sweep bar drops, sweeps the fallen pins into the pit and lifts, then a fresh rack is lowered or the spare leave
   // set back down (#118). It all fits inside the server's 1.2 s settle.
@@ -176,11 +177,16 @@ UI.lanes = (() => {
   const powerCss = (t, a = 1) => `hsla(${((1 - Math.min(1, Math.max(0, t))) * 120).toFixed(0)}, 90%, 55%, ${a})`;
 
   function mount(main, side) {
-    gl = null; flat = null; anim = null; seen = 0; primed = false; drag = null; holdUntil = 0; saver = false;
+    gl = null; flat = null; anim = null; seen = 0; primed = false; drag = null; holdUntil = 0; rolledAt = 0; saver = false;
     main.innerHTML = `<div class="ln"><div class="ln-hud"><span id="lnFrame"></span><span id="lnTotal"></span></div>
       <div class="ln-rivals" id="lnRivals"></div>
       <div class="ln-stage" id="lnStage"><div class="ln-word" id="lnWord" hidden></div><div class="ln-speed" id="lnSpeed" hidden></div><div class="ln-power" id="lnPower" hidden><span></span></div></div>
       <div class="ln-ctl">
+        <details class="ln-manual"><summary>Set aim and power</summary>
+          <div class="ln-row"><label for="lnAim">Aim</label><span class="ln-end">L</span><input type="range" id="lnAim" min="-100" max="100" value="0"><span class="ln-end">R</span></div>
+          <div class="ln-row"><label for="lnManualPower">Power</label><input type="range" id="lnManualPower" min="0" max="100" value="65">
+          <button class="btn primary" type="button" id="lnRoll">Roll</button></div>
+        </details>
         <div class="ln-row"><span class="ln-lbl">🧍 Stand</span>
           <div class="ln-dial"><button data-st="-1" aria-label="Stand further left">◀</button><b id="lnStart"></b><button data-st="1" aria-label="Stand further right">▶</button></div>
           <button class="ln-saver ghost-btn" id="lnSpare" hidden title="Stand where the leave is easiest, with no hook">💡 Spare spot</button>
@@ -195,6 +201,7 @@ UI.lanes = (() => {
       <p id="lnHint" class="hint"></p></div>`;
     side.innerHTML = '<div class="panel"><h3>Scoresheet</h3><div id="lnSheet" class="ln-sheet"></div></div>';
     $('lnSpin').value = Math.round(-spin * 100);
+    $('lnRoll').addEventListener('click', () => { if (canBowl()) bowl(manualAim()); });
     main.querySelector('.ln-ctl').addEventListener('click', (e) => {
       const b = e.target.closest('button'); if (!b) return;
       if (b.dataset.st) start = Math.max(-0.4, Math.min(0.4, Math.round((start + +b.dataset.st * 0.04) * 100) / 100));
@@ -213,16 +220,22 @@ UI.lanes = (() => {
     const stage = $('lnStage');
     stage.style.touchAction = 'none';
     stage.addEventListener('pointerdown', (e) => {
-      if (!canBowl()) return;
+      if (drag || e.button !== 0 || !canBowl()) return;
       try { stage.setPointerCapture(e.pointerId); } catch {}
-      drag = { x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY };
+      drag = { id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY };
     });
-    stage.addEventListener('pointermove', (e) => { if (drag) { drag.x = e.clientX; drag.y = e.clientY; } });
-    stage.addEventListener('pointerup', () => {
-      const r = aimed(); drag = null; $('lnPower').hidden = true;
+    stage.addEventListener('pointermove', (e) => {
+      if (drag?.id === e.pointerId) { drag.x = e.clientX; drag.y = e.clientY; }
+    });
+    const endDrag = (e) => {
+      if (drag?.id !== e.pointerId) return;
+      drag.x = e.clientX; drag.y = e.clientY;
+      const r = e.type === 'pointerup' && aimed();
+      drag = null;
+      $('lnPower').hidden = true;
       if (r && r.speed > 0.08 && canBowl()) bowl(r);
-    });
-    stage.addEventListener('pointercancel', () => { drag = null; $('lnPower').hidden = true; });
+    };
+    for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) stage.addEventListener(event, endDrag);
     ro = window.ResizeObserver ? new ResizeObserver(() => (gl || flat)?.resize()) : null;
     ro?.observe(stage);
     GL3.load().then(() => { if (stage.isConnected && !gl) GL3.revive(stage, { build: () => (gl = make3d(stage)), flat: () => { flat ||= make2d(stage); }, unflat: () => { flat?.dispose?.(); flat = null; } }); })
@@ -231,6 +244,8 @@ UI.lanes = (() => {
   }
 
   function unmount() { cancelAnimationFrame(raf); raf = 0; rumble(0); hum = null; ro?.disconnect(); gl?.dispose(); gl = null; flat = null; ret = null; }
+
+  const manualAim = () => ({ angle: +$('lnAim').value * MAXA / 100, speed: +$('lnManualPower').value / 100 });
 
   // the drag: back = faster, sideways = the line (slingshot: drag left to send it right)
   function aimed() {
@@ -250,6 +265,7 @@ UI.lanes = (() => {
   }
   function bowl(r) {
     rolledAt = performance.now(); coach = '';
+    holdUntil = rolledAt + 600;
     showSpeed(KMH(r.speed), KMH(r.speed) > (myRow()?.top || 0) + 0.05 && (myRow()?.top || 0) > 0);
     if (bowlerOn) setTimeout(() => SND.release(), LEAD * 1000); else SND.release();
     ctx.buzz?.(18);
@@ -435,7 +451,8 @@ UI.lanes = (() => {
   function rolling(now, v) {
     const sh = anim.shot, f = ((now - anim.t0) / 1000) * FPS;
     const bf = sh.tracks.ball, bi = Math.min(bf.length - 1, Math.max(0, Math.floor(f)));
-    const ball = f < bf.length + 2 ? { x: bf[bi][0], y: bf[bi][1], f } : null;
+    const next = bf[Math.min(bi + 1, bf.length - 1)], blend = Math.max(0, Math.min(1, f - bi));
+    const ball = f < bf.length + 2 ? { x: lerp(bf[bi][0], next[0], blend), y: lerp(bf[bi][1], next[1], blend), f } : null;
     const tr = new Map(sh.tracks.pins.map((t) => [t.k, t]));
     const pins = sh.before.map((k) => {
       const t = tr.get(k);
@@ -464,7 +481,7 @@ UI.lanes = (() => {
       // the ball's rumble follows its speed down the lane, hollow in the gutter, and stops in the pit
       const bi = Math.floor(f);
       if (bi >= 1 && bi < bf.length) {
-        const [x0, y0] = bf[bi - 1], [x1, y1] = bf[bi], inGut = Math.abs(x1) > ln.w / 2;
+        const [x0, y0] = bf[bi - 1], [x1, y1] = bf[bi], inGut = Math.abs(x1) > ln.w / 2 + 0.02;
         if (inGut && !anim.gut) { anim.gut = true; SND.gutter(); }
         rumble(y1 < ln.pit ? Math.min(1, Math.hypot(x1 - x0, y1 - y0) / 0.3) : 0, inGut);
       } else rumble(0);
@@ -503,7 +520,9 @@ UI.lanes = (() => {
     }
     if (ret?.t0 && now - ret.t0 > RETURN_MS) { ret = { rest: true }; SND.clunk(); }
     if (!settled && !anim && now >= settleAt && now > holdUntil) { settled = true; controls(); hint(); }
-    const r = aimed(), bar = $('lnPower');
+    const ready = canBowl(), rollButton = $('lnRoll');
+    if (rollButton.disabled === ready) rollButton.disabled = !ready;
+    const r = aimed() || (ready && rollButton.closest('details').open ? manualAim() : null), bar = $('lnPower');
     bar.hidden = !r;
     if (r) { const fill = bar.firstElementChild; fill.style.height = `${r.speed * 100}%`; fill.style.background = powerCss(r.speed); }
     const idle = !anim && !drag && !(gl?.moving?.());
@@ -880,7 +899,6 @@ UI.lanes = (() => {
       return g;
     }
     // t is seconds from the release: the walk, a slide into a lunge with the backswing, the swing, then the follow-through
-    const lerp = (a, b, k) => a + (b - a) * k;
     function poseBowler(g, t, hx) {
       const { hip, legs, torso, arms } = g.userData;
       const w = ph(t, [-LEAD, -0.3]), sl = ph(t, [-0.3, -0.02]), fo = ph(t, [0, 0.7]);
@@ -924,7 +942,7 @@ UI.lanes = (() => {
 
     // rivals on the lanes either side, then (fine graphics) a couple of empty lanes beyond them, so the alley
     // feels like a big room
-    let rivalKey = '';
+    let rivalKey;
     function syncRivals() {
       const others = L().rows.filter((r) => r.id !== S.me?.id);
       const key = others.map((r) => r.id).join(',');
@@ -935,7 +953,8 @@ UI.lanes = (() => {
       others.forEach((r, i) => { const side = i % 2 ? 1 : -1, n = Math.floor(i / 2) + 1; const l = buildLane(side * n * PITCH); l.id = r.id; lanes.push(l);
         l.bw = makeBowler(colorOf(r.id), i + 2); l.grp.add(l.bw);
         l.ball = addHoles(new T.Mesh(ballGeo, new T.MeshStandardMaterial({ color: new T.Color(colorOf(r.id)), roughness: 0.1, metalness: 0.15 }))); l.ball.visible = false; l.grp.add(l.ball); used.add(side * n); });
-      if (!low) for (let n = -4; n <= 4; n++) if (!used.has(n) && Math.abs(n) <= Math.min(3, Math.max(...[...used].map(Math.abs)) + 2)) lanes.push(buildLane(n * PITCH, true));
+      const edge = low ? 1 : Math.min(3, Math.max(...[...used].map(Math.abs)) + 2);
+      for (let n = -edge; n <= edge; n++) if (!used.has(n)) lanes.push(buildLane(n * PITCH, true));
     }
     // a rival lane: when their pins change, the ones that went down tip over, the sweep bar clears them and, if the
     // frame is over, a fresh rack is lowered (#118)
@@ -1032,7 +1051,8 @@ UI.lanes = (() => {
       if (st.ball) {
         ball.visible = st.ball.y < PIT;
         const prev = ball.position.clone();
-        ball.position.set(st.ball.x, R, -st.ball.y);
+        const gutterDepth = Math.min(1, Math.max(0, (Math.abs(st.ball.x) - W / 2 - 0.02) / (R * 0.9 - 0.02)));
+        ball.position.set(st.ball.x, R - gutterDepth * R * 0.65, -st.ball.y);
         spinA += prev.distanceTo(ball.position) / R;
         ball.rotation.set(-spinA, 0, 0);
       } else {
@@ -1072,7 +1092,7 @@ UI.lanes = (() => {
       if (myBow.visible && bt < 0.35) { cam.tp.set(start * 0.5, 1.5, 4.5); cam.tl.set(start * 0.3, 0.5, -1.2); cam.tf = tall ? 46 : 38; }
       else if (st.ball && st.ball.y < HEAD - 5.5) { cam.tp.set(st.ball.x * 0.5, 0.75, -st.ball.y + 2.2); cam.tl.set(st.ball.x * 0.5, 0.1, -st.ball.y - 6); cam.tf = 34; }
       else if (anim) { cam.tp.set(0, 1.05, -HEAD + 3.6); cam.tl.set(0, 0.2, -HEAD - 0.35); cam.tf = tall ? 34 : 28; }
-      else { cam.tp.set(start * 0.7, 1.25, 3.4); cam.tl.set(start * 0.2, 0, -6.5); cam.tf = tall ? 38 : 30; }  // (the foul line and approach in view, #134)
+      else { cam.tp.set(start * 0.7, 1.25, 3.4); cam.tl.set(start * 0.2, 0, -6.5); cam.tf = tall ? 49 : 38; }  // (the foul line and approach in view, #134)
       const k = 1 - Math.exp(-dt * (anim ? 5 : 3));
       cam.pos.lerp(cam.tp, k); cam.look.lerp(cam.tl, k); cam.fov += (cam.tf - cam.fov) * k;
       cam.moving = cam.pos.distanceTo(cam.tp) > 0.01 || cam.look.distanceTo(cam.tl) > 0.01 || cosmicK % 1 > 0.01 && cosmicK < 0.99;
@@ -1115,6 +1135,12 @@ UI.lanes = (() => {
     function draw(now, st, r) {
       const ln = L().lane, X = (x) => canvas.width / 2 + x * k * 2.2, Y = (y) => canvas.height - (y + 0.8) * k;
       g.fillStyle = '#140e22'; g.fillRect(0, 0, canvas.width, canvas.height);
+      const spacing = ln.w + 0.75;
+      g.fillStyle = '#a17c59';
+      for (const side of [-1, 1]) {
+        const x = side * spacing;
+        g.fillRect(X(x - ln.w / 2), Y(ln.pit), X(x + ln.w / 2) - X(x - ln.w / 2), Y(-0.8) - Y(ln.pit));
+      }
       g.fillStyle = '#d7a86e'; g.fillRect(X(-ln.w / 2), Y(ln.pit), ln.w * k * 2.2, Y(-0.8) - Y(ln.pit));
       g.fillStyle = '#3a2412'; g.fillRect(X(-ln.w / 2) - 6, Y(0) - 2, ln.w * k * 2.2 + 12, 4);
       for (const p of st.pins) {

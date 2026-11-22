@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
 import shlex
 import shutil
 import subprocess
@@ -43,10 +44,13 @@ fi
 systemctl enable --now docker
 export PORT=8000
 export GAME_NIGHT_ADDRESS="$1"
+export GAME_NIGHT_RELEASE="$2"
 compose() {
     docker compose -p game-night -f compose.yaml -f compose.droplet.yaml "$@"
 }
+compose config --quiet
 compose build
+compose run --rm -T --no-deps --entrypoint caddy caddy validate --config /etc/caddy/Caddyfile
 compose run --rm -T --no-deps game-night sh -ec \
     'cat > /app/data/.words.txt.tmp && mv /app/data/.words.txt.tmp /app/data/words.txt' \
     < data/words.txt
@@ -268,7 +272,8 @@ def update_duckdns(name, address, token):
 
 
 def deploy_app(droplet_id, address, hostname, ssh, ssh_env):
-    print(f"Deploying Game Night to {address}...", flush=True)
+    release = secrets.token_hex(8)
+    print(f"Deploying Game Night release {release} to {address}...", flush=True)
     repo = Path(__file__).resolve().parent
     with tempfile.TemporaryFile() as bundle:
         with tarfile.open(fileobj=bundle, mode="w:gz") as archive:
@@ -277,28 +282,31 @@ def deploy_app(droplet_id, address, hostname, ssh, ssh_env):
         bundle.seek(0)
         try:
             subprocess.run(ssh + ["-T", "-o", "BatchMode=yes", f"root@{address}",
-                                  shlex.join(["sh", "-c", DEPLOY_SCRIPT, "deploy", hostname])], stdin=bundle,
+                                  shlex.join(["sh", "-c", DEPLOY_SCRIPT, "deploy", hostname, release])], stdin=bundle,
                            check=True, timeout=1200, env=ssh_env)
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
-            raise DropletError(f"Deployment failed on Droplet {droplet_id}: {error.__class__.__name__}. "
-                               f"After checking SSH output, retry with 'python3 droplet.py start {droplet_id} --deploy'.") from None
+            raise DropletError(f"Deployment failed on Droplet {droplet_id}, release {release}: "
+                               f"{error.__class__.__name__}. Check the SSH output and retry with the same "
+                               "Droplet and hostname options.") from None
     print("Game Night passed its server health check. Waiting for public HTTPS...", flush=True)
     url = f"https://{hostname}/"
     deadline = time.monotonic() + 180
     while True:
         try:
             with urlopen(url, timeout=5) as response:
-                if response.status == 200 and response.geturl() == url:
+                observed = response.headers.get("X-Game-Night-Release")
+                if response.status == 200 and response.geturl() == url and observed == release:
                     break
-                error = f"Unexpected HTTPS response: HTTP {response.status} at {response.geturl()}"
+                error = (f"HTTP {response.status} at {response.geturl()} reported release "
+                         f"{observed or 'unknown'}, expected {release}")
         except (OSError, ValueError) as failure:
             error = str(failure)
         if time.monotonic() >= deadline:
             raise DropletError(f"Could not verify {url}: {error}. "
-                               "Check that TCP ports 80 and 443 are publicly reachable "
-                               "and inspect Caddy's Docker logs.")
+                               "Check that TCP ports 80 and 443 are publicly reachable, "
+                               "then inspect the app and Caddy Docker logs.")
         time.sleep(3)
-    print(f"Game Night is live with verified HTTPS. Open {url}")
+    print(f"Game Night is live on release {release} with verified HTTPS. Open {url}")
 
 
 def app_member(member):

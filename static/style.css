@@ -164,12 +164,6 @@ button.shake { animation: shake .35s; }
   background-clip: text; color: transparent; animation: sheen 8s linear infinite; }
 .logo.small { font-size: var(--fs-lg); }
 .tag { text-align: center; color: var(--muted); margin-top: 0; }
-/* the games' icons drifting under the tagline, faded at the sides */
-.home-icons { overflow: hidden; margin: -4px -14px 10px; -webkit-mask: linear-gradient(90deg, #0000, #000 18%, #000 82%, #0000); mask: linear-gradient(90deg, #0000, #000 18%, #000 82%, #0000); }
-.home-icons > div { display: flex; gap: 14px; width: max-content; padding: 4px 0; font-size: var(--fs-xl); animation: iconDrift 90s linear infinite; filter: drop-shadow(0 3px 4px #0007); }
-.home-icons span { flex: none; opacity: .85; }
-@keyframes iconDrift { to { transform: translateX(-50%); } }
-body.calm .home-icons > div { animation: none; }
 .or { text-align: center; color: var(--muted); margin: 14px 0 4px; font-size: var(--fs-sm); }
 .solo { margin-top: 10px; }
 .code-input { text-transform: uppercase; letter-spacing: .3em; text-align: center; font-weight: 700; }
@@ -1621,3 +1615,74 @@ body.calm .csq.promoted { animation: none; }
   background: #000a; color: #fff; border: 1px solid #fff4; backdrop-filter: blur(4px); }
 
 .ct-capture-preview { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* Tabletop surfaces on the home screen, lobby and home game picker. */
+:is(#home, #lobby, body[data-screen="home"] #modal.sheet) {
+  --panel: #152c25;
+  --panel2: #203a30;
+  --field: #10251e;
+  --text: #f7f0df;
+  --muted: #c4cbbd;
+  --line: #53685a;
+  --table-accent: #e8bf78;
+  --table-focus: #a3e5cb;
+  color: var(--text);
+}
+body.light :is(#home, #lobby, body[data-screen="home"] #modal.sheet) {
+  --panel: #fff9ed;
+  --panel2: #f0e7d5;
+  --field: #fffdf5;
+  --text: #183329;
+  --muted: #4a5b51;
+  --line: #a39882;
+  --table-accent: #735019;
+  --table-focus: #11634b;
+}
+:is(#home, #lobby) { background: radial-gradient(ellipse at 50% 0, #284a3b, #12241e 75%); }
+body.light :is(#home, #lobby) { background: radial-gradient(ellipse at 50% 0, #fff5df, #e3dbc8 75%); }
+#home .logo { font-size: clamp(2rem, 9vw, 3rem); color: var(--table-accent); background: none; animation: none; }
+.home-art {
+  height: clamp(92px, 24vw, 144px);
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: url('/tabletop-home.webp') center / cover no-repeat, radial-gradient(ellipse at center, #355848, #183429);
+}
+#lobby .room-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  justify-content: space-between;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--panel2);
+}
+#lobby .room-code { text-align: left; color: var(--muted); font-size: var(--fs-sm); }
+#lobby .room-code b { color: var(--table-accent); font-size: clamp(1.5rem, 6vw, 2rem); }
+#lobby #shareBtn { margin: 0; }
+#lobby .game-chosen, #lobby .game-chosen.folded, #lobby .settings, #lobby .plist li {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--panel2);
+}
+#lobby .game-chosen { flex-wrap: wrap; }
+#lobby .game-chosen:empty, #lobby .settings:empty { display: none; }
+#lobby .picker-tools, body[data-screen="home"] .picker-sheet .picker-tools { flex-wrap: wrap; }
+:is(#lobby, body[data-screen="home"] .picker-sheet) .picker-tools input { flex-basis: 8rem; }
+:is(#lobby, body[data-screen="home"] .picker-sheet) .game-tile {
+  background: linear-gradient(155deg, color-mix(in srgb, var(--tint) 15%, var(--panel2)), var(--panel2) 70%);
+}
+:is(#lobby, body[data-screen="home"] .picker-sheet) .game-tile.on {
+  border-color: var(--table-accent);
+  box-shadow: inset 0 0 0 1px var(--table-accent);
+}
+:is(#home, #lobby, body[data-screen="home"] #modal.sheet) :is(button, input, select):focus-visible {
+  outline: 2px solid var(--table-focus);
+  outline-offset: 2px;
+}
+:is(#lobby, body[data-screen="home"] .picker-sheet) .game-tile:focus-visible { outline-offset: -4px; }
+body.lowgfx :is(#lobby, body[data-screen="home"] .picker-sheet) .game-tile .gicon { filter: none; }

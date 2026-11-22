@@ -63,3 +63,9 @@
 .ln-ctl .ln-saver { min-width: 7.5em; justify-content: center; }
 #lnHint { min-height: 2.9em; }
 .ln-hud { min-height: 1.6em; }
+
+.ln-manual { background: var(--panel); border-radius: var(--r-md, var(--radius)); padding: 6px 10px; }
+.ln-manual summary { padding: 8px 0; cursor: pointer; }
+.ln-manual .ln-row { min-height: 44px; justify-content: flex-start; }
+.ln-manual label { min-width: 3em; }
+.ln-manual #lnRoll { min-height: 44px; }

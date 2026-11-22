@@ -1,9 +1,11 @@
 /* fuse: this game's own rules, loaded with static/games/fuse.js (needUI in app.js). Shared pieces and
    the theme tokens live in static/style.css, which always loads first. */
-.fz { display: flex; justify-content: center; }
+.fz { display: flex; flex-direction: column; align-items: center; }
 .fz-stage { position: relative; display: flex; justify-content: center; width: 100%; }
 .fz-stage canvas { display: block; border-radius: 18px; box-shadow: 0 0 0 4px #2a3b5e, 0 0 30px #ff7a2f44, 0 14px 40px #000a; }
 .fz-banner { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 40px; font-weight: 900; color: #fff;
   text-shadow: 0 0 20px #ff7a2f; pointer-events: none; animation: pulse .6s infinite; }
 .fz .fz-out, .fz-out { opacity: .45; text-decoration: line-through; }
-.fz-dash { width: 100%; margin-top: 10px; font-size: 18px; font-weight: 800; }
+.fz-dash { width: 100%; max-width: 520px; min-height: 48px; margin-top: 10px; font-size: 18px; font-weight: 800; touch-action: manipulation; }
+.fz-stick { position: absolute; width: 76px; height: 76px; transform: translate(-50%, -50%); border: 2px solid #fff8; border-radius: 50%; background: #15234466; pointer-events: none; }
+.fz-stick i { position: absolute; inset: 25px; border-radius: 50%; background: #fff; }

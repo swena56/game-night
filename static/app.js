@@ -224,7 +224,11 @@ function reportContext() {
   return ctx;
 }
 
-async function reportDialog(kind = 'bug', draft = '') {
+async function reportDialog(kind = 'bug', retry = {}) {
+  const {
+    draft = '', includeDetails = true, endorsed = false,
+    game = S && gameInfo(), gameContext = game ? reportContext() : null,
+  } = retry;
   const body = el('div', 'report');
   const kinds = el('div', 'seg');
   for (const [value, label] of [['bug', '🐞 Bug'], ['idea', '💡 Suggestion']]) {
@@ -236,41 +240,49 @@ async function reportDialog(kind = 'bug', draft = '') {
   const placeholder = () => (body.querySelector('input[name=reportKind]:checked').value === 'bug'
     ? 'What happened, and what did you expect? Which game?' : 'What would make Game Night more fun?');
   const details = el('label', 'check');
-  const include = el('input'); include.type = 'checkbox'; include.checked = true; include.id = 'reportDetails';
+  const include = el('input'); include.type = 'checkbox'; include.checked = includeDetails; include.id = 'reportDetails';
   details.append(include, 'Include technical details');
   const peek = el('button', 'ghost-btn', 'What’s included?'); peek.type = 'button';
   const pre = el('pre', 'report-pre'); pre.hidden = true;
-  peek.onclick = () => { pre.textContent = JSON.stringify(reportContext(), null, 2); pre.hidden = !pre.hidden; };
-  const game = S && gameInfo();
-  const perfect = el('input'); perfect.type = 'checkbox'; perfect.id = 'reportPerfect';
+  const perfect = el('input'); perfect.type = 'checkbox'; perfect.id = 'reportPerfect'; perfect.checked = endorsed;
+  const context = () => perfect.checked ? gameContext : reportContext();
+  peek.onclick = () => { pre.textContent = JSON.stringify(context(), null, 2); pre.hidden = !pre.hidden; };
   const perfectRow = el('label', 'check'); perfectRow.append(perfect, `👍 ${game?.name || 'This game'} is perfect, nothing to fix`);
   perfectRow.hidden = !game;
-  perfect.onchange = () => { text.disabled = perfect.checked; kinds.hidden = perfect.checked; };
+  perfect.onchange = () => {
+    text.disabled = perfect.checked; kinds.hidden = perfect.checked;
+    if (!pre.hidden) pre.textContent = JSON.stringify(context(), null, 2);
+  };
+  perfect.onchange();
   body.append(kinds, perfectRow, text, details, peek, pre,
     el('p', 'hint left', 'Sent to whoever runs this Game Night server, along with your name.'));
   kinds.onchange = () => { text.placeholder = placeholder(); };
   text.placeholder = placeholder();
-  setTimeout(() => text.focus(), 50);
+  setTimeout(() => (perfect.checked ? perfect : text).focus(), 50);
 
   if (!(await ask('', { title: 'Report a bug or suggest an idea', body, ok: 'Send' }))) return;
-  const chosen = perfect.checked ? 'idea' : body.querySelector('input[name=reportKind]:checked').value;
+  const selected = body.querySelector('input[name=reportKind]:checked').value;
+  const chosen = perfect.checked ? 'idea' : selected;
   const note = perfect.checked ? `👍 Perfect as is: ${game.name}` : text.value;
+  const reopen = () => reportDialog(selected, {
+    draft: text.value, includeDetails: include.checked, endorsed: perfect.checked, game, gameContext,
+  });
   if (note.trim().length < 5) {
     toast('Please describe it in a few words.');
-    return reportDialog(chosen, text.value);
+    return reopen();
   }
+  const gameId = perfect.checked ? game.id : S?.gameId;
   try {
     const res = await api('/api/feedback', {
       kind: chosen, text: note, name: S?.me.name || $('#name').value,
-      context: include.checked ? reportContext() : {},
+      context: include.checked ? context() : {},
     });
-    const gameId = S?.gameId;  // remembered so the picker can filter by games you've reported on
     if (gameId) store('feedbackGames', [...new Set([...(load('feedbackGames') || []), gameId])]);
     if (S?.phase === 'lobby' && !$('#lobby').hidden) renderLobby();
     toast(`Thanks! ${perfect.checked ? 'Your thumbs-up' : chosen === 'bug' ? 'Bug report' : 'Suggestion'} #${res.id} sent.`);
   } catch (e) {
     toast(e.message);
-    if (e.network) reportDialog(chosen, text.value);  // keep their words if the network blipped
+    if (e.network) return reopen();
   }
 }
 const logHasEntries = () => $('#log').childElementCount > 0;
@@ -855,8 +867,9 @@ function renderLog(ui, view) {
     // ✨ moments (room.moment on the server): a callout across the screen, the newest one if several landed at once
     const moment = fresh.filter((e) => e.kind === 'moment').at(-1);
     if (moment && typeof Kit !== 'undefined') Kit.callout(moment.text, moment.tone || 'gold', { ms: 1700, sound: moment.sound || null });
-    if (lastLogId && !replay && !firstState && view.phase === 'playing' && !ui.ownSounds) {
-      const e = view.log.at(-1), cat = gameInfo(view.gameId)?.category;
+    const e = view.log.at(-1);
+    if (e && lastLogId && !replay && !firstState && view.phase === 'playing' && !ui.ownSounds) {
+      const cat = gameInfo(view.gameId)?.category;
       const sad = /nobody|never|bust|💀|timed? out|ran out|gave up|forfeit/i.test(e.text);
       if (cat !== 'action' && e.kind !== 'moment') sfx(e.kind === 'big' ? (sad ? 'bad' : 'good') : /captur|takes|jump|hit|sunk|bust|farkle/i.test(e.text) && cat !== 'words' ? 'capture' : CATEGORY_SFX[cat]);
     }
@@ -1091,12 +1104,7 @@ function fillSoloGames() {
   showSoloPick();
   $('#gameCount').textContent = SOLO_GAMES.length;
   Profile.homeLine($('#homeLevel'));
-  // the icon strip under the tagline: every game's icon drifting by (twice over, so the loop is seamless)
-  const strip = $('#homeIcons');
-  if (strip && !strip.childElementCount) {
-    const icons = SOLO_GAMES.map(([, label]) => label.split(' ')[0]);
-    for (const ic of [...icons, ...icons]) strip.append(el('span', '', ic));
-  }
+
 }
 // the home screen's game button opens the full picker (#98); the hidden select keeps the value
 function showSoloPick() {

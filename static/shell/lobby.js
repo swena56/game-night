@@ -107,7 +107,7 @@ function renderPickerGrid(pick, opts) {
   }
   const hiddenList = games.filter(hide);
   if (showHidden && hiddenList.length) groups.push([`🙈 Hidden · ${hiddenList.length}`, hiddenList, '', false, true]);
-  if (!shown.length) pick.append(el('p', 'hint', query ? `No game matches “${query}”.` : fedFilter ? 'You have left feedback on every game here.' : kind ? `No ${TILE_KINDS[kind] || kind} fits this many players.` : 'No game fits this many players.'));
+  if (!shown.length) pick.append(el('p', 'hint', fedFilter ? 'No games needing feedback match the active filters.' : query ? `No game matches “${query}”.` : kind ? `No ${TILE_KINDS[kind] || kind} fits this many players.` : 'No game fits this many players.'));
   for (const [label, list, cat, sub, flat] of groups) {
     // games that fit the players here come first in each group (a flat sort keeps its own order)
     const gs = flat ? list : [...list].sort((a, b) => fits(b) - fits(a));

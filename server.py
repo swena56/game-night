@@ -39,7 +39,7 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(APP_DIR, "static")
 DATA_DIR = os.path.join(APP_DIR, "data")
 CONTENT_TYPES = {".html": "text/html", ".js": "text/javascript", ".css": "text/css",
-                 ".webmanifest": "application/manifest+json", ".png": "image/png", ".svg": "image/svg+xml",
+                 ".webmanifest": "application/manifest+json", ".png": "image/png", ".webp": "image/webp", ".svg": "image/svg+xml",
                  ".woff2": "font/woff2", ".gz": "application/octet-stream"}  # .gz: the OCR model (static/vendor/tesseract)
 MAX_PLAYERS = 6
 # Overall points for the evening: a win, playing a game to the end, and walking out of a live game.
@@ -82,6 +82,9 @@ MAX_STREAMS = 64
 MAX_STREAMS_PER_CLIENT = 20
 MAX_CONNECTIONS = 128
 TRUST_CADDY = os.environ.get("TRUST_CADDY") == "1"
+RELEASE = os.environ.get("GAME_NIGHT_RELEASE", "")
+if len(RELEASE) != 16 or any(char not in "0123456789abcdef" for char in RELEASE):
+    RELEASE = ""
 REQUEST_LIMITS = {
     "/api/create": (6, 60),
     "/api/join": (40, 60),
@@ -1707,6 +1710,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-cache")
         self.send_header("ETag", etag)
+        if RELEASE and url.path == "/":
+            self.send_header("X-Game-Night-Release", RELEASE)
         self.send_header("Vary", "Accept-Encoding")
         if body is gz:
             self.send_header("Content-Encoding", "gzip")

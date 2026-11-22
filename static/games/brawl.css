@@ -28,7 +28,7 @@
 .brw-die.f5 { background: linear-gradient(145deg, #d8ecff, #a9cff5); }
 .brw-die.f6 { background: linear-gradient(145deg, #ffe0e8, #ffb3c4); }
 .brw-die.roll { animation: diceTumble .55s calc(var(--i, 0) * 40ms) both cubic-bezier(.25, 1.35, .45, 1); }
-.brw-actions { justify-content: center; gap: 8px; }
+.brw-actions { justify-content: center; flex-wrap: wrap; gap: 8px; }
 .brw-last { margin-top: 10px; min-height: 1.4em; font-size: 14px; }
 .brw-die.locked .die-art { filter: drop-shadow(0 0 4px #ef476f); }
 .brw-die.blank { font-size: calc(var(--die) * .5); }

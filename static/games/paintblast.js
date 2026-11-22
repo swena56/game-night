@@ -76,7 +76,7 @@ UI.paintblast = (() => {
   }
 
   const me = () => S?.paintblast?.me;
-  const playing = () => me() != null && S.phase === 'playing';
+  const playing = () => me() != null && S.phase === 'playing' && !(S.paintblast.lastStanding && snap?.p[me()]?.[1]);
   // #100: the first step from standing starts on your screen at once (the server's step lands a round trip
   // later and carries straight on from it); the server still decides, and a refused step glides back
   const DXY = [[0, -1], [1, 0], [0, 1], [-1, 0]];
@@ -146,6 +146,7 @@ UI.paintblast = (() => {
         if (fire?.[1] !== i) return;
         sfx('tag');
         const c = prev.p[j][0];
+        if (S.paintblast.lastStanding) return;
         pfx.text(((c % n) + 0.5) * cell, (Math.floor(c / n) + 0.3) * cell, '+10', { kind: 'gold', size: cell * 0.6, rise: cell * 0.8 });
       });
     }
@@ -171,7 +172,7 @@ UI.paintblast = (() => {
   function renderSide() {
     const r = S.paintblast, box = $('pbScores'); if (!box || !snap) return;
     box.innerHTML = '';
-    box.append(ctx.el('div', 'hint left', `Round ${r.round} of ${r.rounds} · total so far`));
+    box.append(ctx.el('div', 'hint left', `Round ${r.round} of ${r.rounds} · ${r.lastStanding ? "round wins" : "total so far"}`));
     const rows = r.seats.map((pid, i) => [i, r.total[i] + (snap.st === 'play' ? snap.p[i][6] : 0)]).sort((a, b) => b[1] - a[1]);
     for (const [i, pts] of rows) {
       const p = ctx.player(r.seats[i]);
@@ -181,9 +182,10 @@ UI.paintblast = (() => {
       box.append(row);
     }
     $('pbRound').textContent = `🎨 Round ${r.round}/${r.rounds}`;
-    paintCover();
+    $('pbCover').hidden = $('pbPct').hidden = !!r.lastStanding;
+    if (!r.lastStanding) paintCover();
     const mine = r.me != null ? snap.p[r.me] : null;
-    $('pbMe').textContent = mine ? `💣${mine[4]} 🔥${mine[5]}${mine[7] ? ' 👟' : ''} · ${mine[6]} pts` : 'Watching';
+    $('pbMe').textContent = mine ? `💣${mine[4]} 🔥${mine[5]}${mine[7] ? ' 👟' : ''}${r.lastStanding ? '' : ` · ${mine[6]} pts`}` : 'Watching';
     $('pbPad').hidden = r.me == null;
     $('pbBomb').disabled = !mine || !!mine[1] || snap.st !== 'play';
   }
@@ -243,8 +245,8 @@ UI.paintblast = (() => {
     const cd = (countdownAt - now) / 1000, mine = r.me != null ? snap.p[r.me] : null;
     let text = '';
     if (S.phase === 'playing' && snap.st === 'countdown') text = cd > 0 ? String(Math.ceil(cd)) : 'GO!';
-    else if (S.phase === 'playing' && snap.st === 'over') text = 'Time!';
-    else if (S.phase === 'playing' && mine?.[1]) text = `💫 Back in ${Math.ceil(mine[1] / r.tick)}`;
+    else if (S.phase === 'playing' && snap.st === 'over') text = r.lastStanding ? (snap.p.filter((seat) => !seat[1]).length === 1 ? 'Round complete' : 'Draw') : 'Time!';
+    else if (S.phase === 'playing' && mine?.[1]) text = r.lastStanding ? 'Out for this round' : `💫 Back in ${Math.ceil(mine[1] / r.tick)}`;
     $('pbBanner').hidden = !text; $('pbBanner').textContent = text;
     if (g) draw(now);
   }
@@ -257,7 +259,7 @@ UI.paintblast = (() => {
     g.setTransform(1, 0, 0, 1, 0, 0);
     pfx.begin(g);
     g.fillStyle = '#17121f'; g.fillRect(-W, -W, 3 * W, 3 * W);
-    const paint = snap.c, gold = new Set(S.paintblast.gold || []);
+    const paint = snap.c, gold = new Set(snap.gold ?? S.paintblast.gold ?? []);
     for (let c = 0; c < n * n; c++) {
       const x = (c % n) * cell, y = Math.floor(c / n) * cell, t = snap.t[c];
       if (t === '#') {  // a pillar: lit top, shaded sides, a dark foot
@@ -382,7 +384,7 @@ UI.paintblast = (() => {
   }
 
   const turnText = (s) => (s.phase === 'playing' ? `🎨 Round ${s.paintblast.round} of ${s.paintblast.rounds}` : null);
-  const myMove = (s) => s.phase === 'playing' && s.paintblast.st === 'play' && s.paintblast.me != null;
+  const myMove = (s) => s.phase === 'playing' && s.paintblast.st === 'play' && s.paintblast.me != null && !(s.paintblast.lastStanding && s.paintblast.p[s.paintblast.me]?.[1]);
 
   return { mount, render, unmount, fast, turnText, myMove, focus: true };
 })();

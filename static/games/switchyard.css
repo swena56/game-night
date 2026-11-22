@@ -79,3 +79,5 @@
 .sy-call-controls button[aria-pressed="true"] { background: #a2efdb; color: #112825; }
 .sy-route-call { max-width: 12ch; line-height: 1.1; color: var(--muted); overflow-wrap: anywhere; }
 .sy-missed-switch { box-shadow: 0 0 0 2px #ff8978; }
+
+.sy-switch.sy-suggest { border-color: #72e6c2; box-shadow: 0 0 0 2px #72e6c255; }

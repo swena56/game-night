@@ -16,6 +16,7 @@ SKULL, SWORD, SWORD2, SMASH, SHIELD, HEART = 1, 2, 3, 4, 5, 6
 FACES = {SKULL: "💀", SWORD: "⚔️", SWORD2: "⚔️", SMASH: "💥", SHIELD: "🛡️", HEART: "❤️"}
 DICE, ROLLS = 5, 3
 BACKFIRE = 2
+GUARD_BREAK = 2
 LAST_STAND = 3   # 🩸 at this health or less you get a fourth roll: a comeback chance
 PARRY = 1        # 🛡️ a shield that soaks a whole hit bites back: the attacker loses this much health
 
@@ -103,6 +104,7 @@ class Brawl(Game):
         "🛡️ guards 1 damage each until your next turn; ❤️ heals 1 each (up to your starting health).",
         "Before you bank a roll, the ⚔️ preview shows what fighting now does to your target, and what rerolling the dice you haven't held is likely to do — with the chance of a 💀 backfire and of a 🌋 quake.",
         "🩸 Down to 3 ❤️ or less? You get a fourth roll: a comeback chance. 🛡️ A shield that soaks a whole hit parries it: the attacker loses 1 ❤️.",
+        "In Guard Break mode, spend two rolled shields to bypass up to two guard on a single-target hit.",
         "Last brawler standing wins.",
     ]
     name = "Dice Brawl"
@@ -112,6 +114,7 @@ class Brawl(Game):
     max_players = 6
     badges = {**Game.badges, "quake": ("🌋", "Quake", "Hit everyone with three or more 💥")}
     settings_schema = {
+        "mode": ("Mode", [("classic", "Classic"), ("guard_break", "Guard Break")], "classic"),
         "hp": ("Health", [(12, "12 ❤️"), (8, "8 ❤️ (quick)"), (18, "18 ❤️ (long)")], 12),
     }
 
@@ -160,7 +163,7 @@ class Brawl(Game):
             return self.do_roll(p, hold)
         if t == "fight":
             target = a.get("target")
-            return self.do_fight(p, target)
+            return self.do_fight(p, target, a.get("guardBreak") is True)
         raise GameError("Unknown action.")
 
     def do_roll(self, p, hold=()):
@@ -188,7 +191,12 @@ class Brawl(Game):
             self.knock_out(p, None)
         self.next_turn()
 
-    def do_fight(self, p, target):
+    def guard_break_available(self, t, rival):
+        return (self.s.get("mode") == "guard_break" and rival and rival.g.guard > 0
+                and 0 < t["dmg"] and t["smash"] < 3 and t["shield"] >= GUARD_BREAK
+                and rival.g.guard < t["dmg"] + GUARD_BREAK)
+
+    def do_fight(self, p, target, guard_break=False):
         r = self.room
         if not self.dice:
             raise GameError("Roll first.")
@@ -202,9 +210,12 @@ class Brawl(Game):
             hit = [q]
         else:
             hit = rivals if quake else []
+        if guard_break and not self.guard_break_available(t, hit[0] if hit else None):
+            raise GameError("Guard Break needs two rolled shields and a single target whose guard you can pierce.")
+        spent = GUARD_BREAK if guard_break else 0
         hits = {}
         for q in hit:
-            blocked = min(q.g.guard, t["dmg"])
+            blocked = min(max(0, q.g.guard - spent), t["dmg"])
             q.g.guard -= blocked
             dmg = t["dmg"] - blocked
             q.g.hp = max(0, q.g.hp - dmg)
@@ -215,20 +226,22 @@ class Brawl(Game):
                 self.moment(f"🛡️ {q.name} parries {p.name}! −{PARRY} ❤️", "good", "tag")
         healed = min(t["heal"], self.s["hp"] - p.g.hp)
         p.g.hp += healed
-        p.g.guard = t["shield"]
+        p.g.guard = t["shield"] - spent
         parts = []
+        if guard_break:
+            parts.append("breaks guard")
         if hits:
             parts.append(", ".join(f"hits {r.players[i].name} for {d}" + (f" ({b} blocked)" if b else "") for i, (d, b) in hits.items()))
         if healed:
             parts.append(f"heals {healed}")
-        if t["shield"]:
-            parts.append(f"raises 🛡️{t['shield']}")
+        if p.g.guard:
+            parts.append(f"raises 🛡️{p.g.guard}")
         r.add_log(f"👊 {p.name} {' and '.join(parts) if parts else 'does nothing much'}.", "question")
         if quake:
             self.award(p, "quake")
             self.moment(f"🌋 {p.name} QUAKES the whole table for {t['dmg']}!", "gold", "boom")
         self.last = {"by": p.id, "dice": list(self.dice), "backfire": False, "hits": hits, "heal": healed,
-                     "shield": t["shield"], "quake": quake, "n": self.n}
+                     "shield": p.g.guard, "quake": quake, "guardBreak": guard_break, "n": self.n}
         self.n += 1
         for q in hit:
             if q.g.hp <= 0:
@@ -265,7 +278,7 @@ class Brawl(Game):
             self.do_roll(p)
             if self.room.turn != p.id or self.room.phase != "playing":
                 return
-        self.do_fight(p, self.pick_target(p, "normal"))
+        self.bank_bot_roll(p, "normal")
 
     def on_leave(self, p):
         r = self.room
@@ -342,7 +355,18 @@ class Brawl(Game):
             if r.turn == p.id and r.phase == "playing":
                 r.bot_at = time.time() + 1.0
             return
-        self.do_fight(p, self.pick_target(p, level))
+        self.bank_bot_roll(p, level)
+
+    def bank_bot_roll(self, p, level):
+        target = self.pick_target(p, level)
+        rival = self.room.players.get(target)
+        t = tally(self.dice)
+        use_break = False
+        if self.guard_break_available(t, rival):
+            normal = max(0, t["dmg"] - rival.g.guard)
+            piercing = max(0, t["dmg"] - max(0, rival.g.guard - GUARD_BREAK))
+            use_break = normal < rival.g.hp <= piercing or normal == 0 < piercing
+        self.do_fight(p, target, use_break)
 
     def best_hold(self, p, free):
         """Hard: an exact search over every hold and reroll left this turn (the two sword faces count as one
@@ -402,6 +426,7 @@ class Brawl(Game):
         return {"brawl": {
             "seats": self.seats, "dice": self.dice, "held": self.held, "rolls": self.rolls, "maxRolls": getattr(self, "max_rolls", ROLLS),
             "tally": tally(self.dice) if self.dice else None, "maxHp": self.s["hp"], "last": self.last, "n": self.n,
+            "guardBreakCost": GUARD_BREAK if self.s.get("mode") == "guard_break" else 0,
             "hp": {i: r.players[i].g.hp for i in self.seats if i in r.players},
             "guard": {i: r.players[i].g.guard for i in self.seats if i in r.players},
         }}

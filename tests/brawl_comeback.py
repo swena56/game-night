@@ -19,10 +19,12 @@ def check(name, ok, detail=""):
         fails.append(name)
 
 
-def table(n=2):
+def table(n=2, guard_break=False):
     r = server.Room("TEST")
     ps = [r.add_player(x) for x in ("Ann", "Bo", "Cy")[:n]]
     r.switch_game("brawl")
+    if guard_break:
+        r.change_settings(ps[0], {"mode": "guard_break"})
     r.start()
     return r, r.game, ps
 
@@ -74,4 +76,30 @@ a.g.hp, b.g.hp, b.g.guard = 1, 12, 5
 g.dice, g.rolls = [B.SWORD, B.SKULL, B.SKULL, B.SHIELD, B.SHIELD], 1
 g.do_fight(a, b.id)
 check("parry KO: attacker out, rival wins", a.eliminated and r.phase != "playing", r.phase)
+# Guard Break trades rolled defense for through damage on a guarded rival.
+r, g, ps = table(guard_break=True)
+a = r.players[r.turn]
+b = next(p for p in ps if p.id != a.id)
+b.g.guard = 3
+g.dice = [B.SMASH, B.SHIELD, B.SHIELD, B.SHIELD, B.SKULL]
+g.act(a, {"type": "fight", "target": b.id, "guardBreak": True})
+check("Guard Break pierces two guard and spends two rolled shields",
+      b.g.hp == 11 and g.last["hits"][b.id] == [1, 1] and a.g.guard == 1 and g.last["guardBreak"])
+
+for enabled, dice in [(False, [B.SWORD, B.SHIELD, B.SHIELD, B.SKULL, B.SKULL]),
+                      (True, [B.SMASH, B.SMASH, B.SMASH, B.SHIELD, B.SHIELD])]:
+    r, g, ps = table(guard_break=enabled)
+    a = r.players[r.turn]
+    b = next(p for p in ps if p.id != a.id)
+    b.g.guard = 2
+    g.dice = dice
+    try:
+        g.act(a, {"type": "fight", "target": b.id, "guardBreak": True})
+    except B.GameError:
+        rejected = True
+    else:
+        rejected = False
+    check("Guard Break rejects Quake or Classic mode without spending the turn",
+          rejected and r.turn == a.id and b.g.hp == 12 and b.g.guard == 2)
+
 sys.exit(1 if fails else 0)

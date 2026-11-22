@@ -47,6 +47,10 @@ k, tr, gut = L.roll(list(range(10)), 0.06, 0.0, 0.6, 0.0, 12.0)
 check("a ball near the pocket knocks most pins down", len(k) >= 8, f"{len(k)}")
 k, tr, gut = L.roll(list(range(10)), 0.45, 0.06, 0.6, 0.0, 12.0)
 check("a ball into the gutter knocks nothing", gut and not k)
+_, graze, gutter = L.roll([], 0.2, 0.0317, 0.65, 0.5, 9.0)
+check("a shallow lip graze can hook back onto the lane",
+      not gutter and max(x for x, _ in graze["ball"]) > L.LANE / 2
+      and abs(graze["ball"][-1][0]) < L.LANE / 2)
 k, _, _ = L.roll([6], L.SPOTS[6][0], 0.0, 0.6, 0.0, 12.0)
 check("a ball at a lone pin knocks it", k == [6])
 check("pin tracks carry frames", all(len(t["f"]) >= 1 for t in tr["pins"]) and len(tr["ball"]) > 20)

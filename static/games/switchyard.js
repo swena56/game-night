@@ -248,7 +248,7 @@ UI.switchyard = (() => {
   function animateFlatArrival(board, animate) {
     const arrival = board.feedback;
     const car = arrival && cars.get(arrival.id);
-    if (scene || !animate || !car || board.trains.some((train) => train.id === arrival.id)) return;
+    if (scene || !animate || !car?.animate || board.trains.some((train) => train.id === arrival.id)) return;
     const departure = car.cloneNode(true);
     departure.removeAttribute('data-train');
     departure.setAttribute('aria-hidden', 'true');
@@ -315,7 +315,8 @@ UI.switchyard = (() => {
     state = view;
     context = ctx;
     animateScene = animate;
-    header.textContent = `Wave ${board.wave}/${board.waves} · ${board.delivered}/${board.total} delivered · ${board.strikes}/3 strikes`;
+    header.textContent = `Wave ${board.wave}/${board.waves} · ${board.delivered}/${board.total} delivered · `
+      + (board.goal ? `Goal ${board.goal} · Streak ${board.streak}` : `${board.strikes}/3 strikes`);
     tick();
     updateQueue(board);
     animateFlatArrival(board, animate);
@@ -330,7 +331,11 @@ UI.switchyard = (() => {
       const label = heading[route] || depots[route][0] + ' ' + depots[route][1];
       const due = view.phase === 'playing' && approaching.has(node);
       button.lastChild.textContent = heading[route] ? (position ? '↘ East' : '↙ West') : label;
-      button.setAttribute('aria-label', `${names[node]}, set to ${label}.${due ? ' Train arriving next beat.' : ''}${misses.has(node) ? ' A train went off route here.' : ''} Flip switch.`);
+      const suggested = board.hints?.[node];
+      const hint = suggested === undefined ? '' : suggested === position ? ' · Ready' : ' · Flip';
+      button.lastChild.textContent += hint;
+      button.classList.toggle('sy-suggest', suggested !== undefined && suggested !== position);
+      button.setAttribute('aria-label', `${names[node]}, set to ${label}${hint}.${due ? ' Train arriving next beat.' : ''}${misses.has(node) ? ' A train went off route here.' : ''} Flip switch.`);
       button.classList.toggle('sy-due', due);
       button.classList.toggle('sy-missed-switch', misses.has(node));
       button.disabled = !board.canSwitch;
@@ -347,11 +352,11 @@ UI.switchyard = (() => {
       lastArrival = arrival.id;
       feedback.className = 'sy-feedback ' + (arrival.correct ? 'sy-correct' : 'sy-wrong');
       feedback.textContent = arrival.correct ? `${depots[arrival.target][1]} train delivered!`
-        : `${depots[arrival.target][0]} ${depots[arrival.target][1]} reached ${depots[arrival.depot][0]} ${depots[arrival.depot][1]}. Strike${arrival.missAt ? ' at the ' + names[arrival.missAt].toLowerCase() : ''}!`;
+        : `${depots[arrival.target][0]} ${depots[arrival.target][1]} reached ${depots[arrival.depot][0]} ${depots[arrival.depot][1]}. ${board.goal ? 'Miss' : 'Strike'}${arrival.missAt ? ' at the ' + names[arrival.missAt].toLowerCase() : ''}!`;
       if (previous) context.sfx?.(arrival.correct ? 'good' : 'bad');
       const bay = bays[arrival.depot];
       if (motion) {
-        bay.animate([{ boxShadow: `0 0 0 5px ${arrival.correct ? '#72e6c2' : '#ffae9d'}` },
+        bay.animate?.([{ boxShadow: `0 0 0 5px ${arrival.correct ? '#72e6c2' : '#ffae9d'}` },
           { boxShadow: '0 0 0 12px transparent' }], { duration: 450 });
       }
     }

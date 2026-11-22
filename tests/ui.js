@@ -294,8 +294,12 @@ const MOVES = {
   fuse(d, S, n, w) {  // run to random spots, dash now and then
     const c = d.querySelector('#fzCanvas');
     c.getBoundingClientRect = () => ({ left: 0, top: 0, width: 320, height: 416 });
-    for (const type of ['pointerdown', 'pointermove']) c.dispatchEvent(new w.MouseEvent(type, { clientX: 30 + Math.random() * 260, clientY: 30 + Math.random() * 350, buttons: 1 }));
-    if (n % 5 === 0) { const b = d.querySelector('#fzDash'); if (b && !b.disabled) click(b); }
+    if (n % 4 === 3) c.dispatchEvent(new w.MouseEvent('pointerup'));
+    else {
+      if (n % 4 === 0) c.dispatchEvent(new w.MouseEvent('pointerdown', { clientX: 160, clientY: 208, buttons: 1 }));
+      c.dispatchEvent(new w.MouseEvent('pointermove', { clientX: 30 + Math.random() * 260, clientY: 30 + Math.random() * 350, buttons: 1 }));
+      if (n % 5 === 0) { const b = d.querySelector('#fzDash'); if (b && !b.disabled) click(b); }
+    }
   },
   riders(d, S, n, w) {  // mix taps (relative-turn mode), swipes anywhere, the boost button and keys
     const root = d.querySelector('#lrRoot');
@@ -819,9 +823,16 @@ const MOVES = {
     if (n % 3 === 0) click(pick([...d.querySelectorAll('.ln-dial button')]));
     sp.value = String(-20 - Math.round(Math.random() * 60)); sp.dispatchEvent(new w.Event('input', { bubbles: true }));
     const sv = d.querySelector('#lnSaver'); if (sv && !sv.hidden && n % 2) click(sv);
+    const manual = d.querySelector('.ln-manual');
+    if (n % 3 === 1) {
+      manual.open = true;
+      return click(d.querySelector('#lnRoll:not([disabled])'));
+    }
+    manual.open = false;
+    const x = 150 + Math.round(Math.random() * 20 - 10), y = 180 + Math.round(Math.random() * 60);
     fire(st, 'pointerdown', 150, 100);
-    fire(st, 'pointermove', 150 + Math.round(Math.random() * 20 - 10), 100 + 80 + Math.round(Math.random() * 60));
-    fire(st, 'pointerup', 0, 0);
+    fire(st, 'pointermove', x, y);
+    fire(st, 'pointerup', x, y);
   },
   drift(d, S, n, w) {  // pick a height (sometimes with the burner) and lock in
     const picks = [...d.querySelectorAll('#skPicks button:not([disabled])')];

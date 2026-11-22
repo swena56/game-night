@@ -5,8 +5,7 @@ touching someone; the one who just passed can't be tagged straight back. When th
 carrier blows up and is out. Everyone else dashes, dodges and corners rivals; a new bomb with a shorter
 fuse is lit for the survivors until one brawler is left.
 
-Arena: x 0..W, y 0..H. Players steer toward where a finger (or key) points, at a capped speed, so nobody
-can teleport. Positions stream ~30 times a second over the room's fast channel."""
+Arena: x 0..W, y 0..H. Players steer at a capped speed. Positions stream ~30 times a second over the room's fast channel."""
 import math
 import random
 import time
@@ -35,7 +34,7 @@ class Fuse(Game):
     id = "fuse"
     category = "action"
     howto = [
-        "Drag a finger (or use WASD / arrow keys) and your runner follows it.",
+        "Drag on the arena like a joystick and lift to stop. Use WASD or arrow keys to steer on a keyboard.",
         "💣 One runner holds the bomb. It runs a little faster, and touching someone passes the bomb on.",
         "The one who just passed it can't be tagged back for a second, so get away!",
         "🎁 Glowing pickups appear on the floor: 🛡️ a shield soaks one tag, ⚡ a speed boost lasts 4 seconds. First to touch one gets it.",
@@ -60,6 +59,7 @@ class Fuse(Game):
         n = len(self.seats)
         self.pos = [[W / 2, H / 2] for _ in range(n)]
         self.target = [[W / 2, H / 2] for _ in range(n)]
+        self.steer = [None] * n
         self.dir = [[0.0, 1.0] for _ in range(n)]
         self.alive = [True] * n
         self.dash_until = [0.0] * n
@@ -92,6 +92,8 @@ class Fuse(Game):
             a = math.tau * j / k + 0.4
             self.pos[i] = [W / 2 + math.cos(a) * 0.32, H / 2 + math.sin(a) * 0.42]
             self.target[i] = list(self.pos[i])
+            if hasattr(self, "steer"):
+                self.steer[i] = None
             self.dash_until[i] = 0.0
             self.dash_ready[i] = 0.0
             self.immune[i] = 0.0
@@ -122,10 +124,21 @@ class Fuse(Game):
         i = self.seat(p)
         if i is None or p.eliminated or not self.alive[i]:
             raise GameError("You're watching this game.")
+        if not hasattr(self, "steer"):
+            self.steer = [None] * len(self.seats)
+        dx, dy = a.get("dx"), a.get("dy")
+        if dx is not None or dy is not None:
+            if not all(type(v) in (int, float) and -1 <= v <= 1 for v in (dx, dy)):
+                raise GameError("Bad direction.")
+            length = math.hypot(dx, dy) or 1
+            self.steer[i] = (dx / length, dy / length)
+            if (dx or dy) and time.time() >= self.dash_until[i]:
+                self.dir[i] = self.steer[i]
         x, y = a.get("x"), a.get("y")
         if x is not None or y is not None:
             if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in (x, y)):
                 raise GameError("Bad position.")
+            self.steer[i] = None
             self.target[i] = [min(W - R, max(R, x)), min(H - R, max(R, y))]
         if a.get("dash") is True:
             self.dash(i, time.time())
@@ -135,6 +148,10 @@ class Fuse(Game):
             return False
         px, py = self.pos[i]
         dx, dy = self.target[i][0] - px, self.target[i][1] - py
+        steer = self.steer[i] if hasattr(self, "steer") else None
+        p = self.room.players.get(self.seats[i])
+        if steer is not None and not (p and p.bot):
+            dx, dy = steer
         d = math.hypot(dx, dy)
         if d > 0.02:
             self.dir[i] = [dx / d, dy / d]
@@ -183,12 +200,17 @@ class Fuse(Game):
                 sp *= BOOST_PACE
             if p and p.bot:
                 sp *= BOT[p.bot][1]
-            dx, dy = self.target[i][0] - x, self.target[i][1] - y
-            d = math.hypot(dx, dy)
-            if d < 1e-6:
-                return
-            ux, uy = dx / d, dy / d
-            step = min(d, sp * dt)
+            steer = self.steer[i] if hasattr(self, "steer") and not (p and p.bot) else None
+            if steer is not None:
+                ux, uy = steer
+                step = sp * dt
+            else:
+                dx, dy = self.target[i][0] - x, self.target[i][1] - y
+                d = math.hypot(dx, dy)
+                if d < 1e-6:
+                    return
+                ux, uy = dx / d, dy / d
+                step = min(d, sp * dt)
         self.pos[i] = [min(W - R, max(R, x + ux * step)), min(H - R, max(R, y + uy * step))]
 
     def separate(self):

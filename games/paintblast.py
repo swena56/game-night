@@ -41,7 +41,8 @@ class PaintBlast(Game):
         "⛓️ Chain reaction: a bomb whose blast sets off two more bombs (yours or a rival's) pays the one who started it +4, and +4 more for every bomb after that.",
         "Crates hide 💣 more bombs, 🔥 longer blasts, 🖌️ paint splashes and 👟 kick: walk into a bomb to send it sliding.",
         "When the clock runs out, every tile in your colour is a point. Most points after the last round wins.",
-        "🧱 In the last 15 s the walls close in, one ring at a time. Paint under them still counts.",
+        "In Last Standing mode, a blast knocks you out for the round. The sole survivor earns one round win; no survivor or multiple survivors at time is a draw.",
+        "⭐ In the default finale, three central tiles become worth 3 each in the last 15 s. In Last Standing, the finale places power-ups near the center.",
     ]
     name = "Paint Blast"
     icon = "🎨"
@@ -50,15 +51,21 @@ class PaintBlast(Game):
     max_players = 6
     replayable = False
     settings_schema = {
+        "mode": ("Mode", [("paint", "Paint points"), ("last", "Last Standing")], "paint"),
         "secs": ("Round length", [(90, "1½ min"), (60, "1 min"), (120, "2 min")], 90),
         "rounds": ("Rounds", [(2, "2"), (1, "1"), (3, "3")], 2),
         "arena": ("Arena", [(13, "Medium"), (11, "Small"), (15, "Large")], 13),
-        "closing": ("Last 15 s", [(True, "🧱 Walls close in"), (False, "Arena stays open")], True),
+        "closing": ("Last 15 s", [("center", "⭐ Center rush"), (False, "No finale"), (True, "🧱 Walls close in")], "center"),
         "gold": ("⭐ Gold tiles", [(False, "Off"), (True, "On: a few tiles are worth 3")], False),
     }
     gold = ()  # cells worth GOLD_POINTS (rounds saved before gold tiles had none)
+    finale = False
     closed = 0  # rings of the arena walled off so far (rounds saved before this had none)
     kick = None  # who has picked up 👟 kick this round
+
+    @property
+    def last_standing(self):
+        return self.s.get("mode") == "last"
 
     # -- setup
 
@@ -71,8 +78,9 @@ class PaintBlast(Game):
         self.round = 0
         self.room.turn = None
         self.room.deadline = None
+        objective = "Be the last standing." if self.last_standing else "Paint the most floor."
         self.room.add_log(f"🎨 Paint Blast! {self.s['rounds']} round{'s' if self.s['rounds'] > 1 else ''} of "
-                          f"{self.s['secs']} s. Paint the most floor.", "big")
+                          f"{self.s['secs']} s. {objective}", "big")
         self.new_round(time.time())
 
     def homes(self):
@@ -85,7 +93,7 @@ class PaintBlast(Game):
         self.tiles = self.make_maze()
         self.paint = bytearray(n * n)  # 0 = bare, else seat + 1
         floor = [c for c in range(n * n) if self.tiles[c] == FLOOR]
-        self.gold = sorted(self.rng.sample(floor, min(len(floor), n // 2))) if self.s.get("gold") else []
+        self.gold = sorted(self.rng.sample(floor, min(len(floor), n // 2))) if self.s.get("gold") and not self.last_standing else []
         self.bombs = {}    # cell -> [fuse, owner, range]
         self.burn = {}     # cell -> [ticks, owner]
         self.items = {}    # cell -> power kind
@@ -105,6 +113,7 @@ class PaintBlast(Game):
         self.next_at = now + COUNTDOWN
         self.ends_at = None
         self.closed = 0
+        self.finale = False
         self.boosted = False
         self.last_frame = now
         self.acc = 0.0
@@ -154,7 +163,7 @@ class PaintBlast(Game):
 
     def on_input(self, p, a):
         i = self.seat(p)
-        if i is None or p.eliminated:
+        if i is None or p.eliminated or (self.last_standing and not self.active(i)):
             raise GameError("You're watching this game.")
         if a.get("bomb") is True:
             self.drop[i] = True
@@ -192,9 +201,10 @@ class PaintBlast(Game):
         while self.acc >= 1 and self.stage == "play":
             self.acc -= 1
             self.step()
-            self.close_in(now)
-            self.comeback(now)
-            if now >= self.ends_at:
+            self.run_finale(now)
+            if not self.last_standing:
+                self.comeback(now)
+            if now >= self.ends_at or (self.last_standing and self.stun.count(0) <= 1):
                 self.end_round(now)
                 return True
         self.broadcast(now)
@@ -213,6 +223,24 @@ class PaintBlast(Game):
         self.reach[i] = min(6, self.reach[i] + 1)
         p = self.room.players.get(self.seats[i])
         self.moment(f"🎨 Comeback! {p.name if p else '?'} gets +1 bomb and +1 reach", "gold", "good")
+
+    def run_finale(self, now):
+        rule = self.s.get("closing", "center")
+        left = self.ends_at - now
+        if rule is True:
+            self.close_in(now)
+        elif rule == "center" and left <= CLOSE_FROM and not self.finale:
+            self.finale = True
+            mid = self.n // 2
+            candidates = (c for c, tile in enumerate(self.tiles) if tile == FLOOR
+                          and c not in self.items and c not in self.gold)
+            cells = sorted(candidates, key=lambda c: (abs(c % self.n - mid) + abs(c // self.n - mid), c))[:3]
+            if self.last_standing:
+                self.items.update(zip(cells, ("r", "b", "k")))
+                self.room.add_log("⭐ Center rush! Power-ups are up for grabs near the middle.", "power")
+            else:
+                self.gold = sorted([*self.gold, *cells])
+                self.room.add_log("⭐ Center rush! Three tiles near the middle are now worth 3 points each.", "power")
 
     def close_in(self, now):
         """Wall off the outer rings near the end. Anyone standing there is pushed to the nearest open tile inside."""
@@ -300,7 +328,7 @@ class PaintBlast(Game):
                     self.explode(c, root)
         self.chain_root.clear()
         for root, n in size.items():
-            if n >= CHAIN_MIN:
+            if n >= CHAIN_MIN and not self.last_standing:
                 self.chain[root] += CHAIN_PTS * (n - CHAIN_MIN + 1)
                 p = self.room.players.get(self.seats[root])
                 self.moment(f"⛓️ {p.name if p else '?'}: CHAIN ×{n} +{CHAIN_PTS * (n - CHAIN_MIN + 1)}", "gold", "boom")
@@ -312,6 +340,8 @@ class PaintBlast(Game):
             if self.shield[i]:
                 self.shield[i] -= 1
             if self.stun[i]:
+                if self.last_standing:
+                    continue
                 self.stun[i] -= 1
                 if not self.stun[i]:
                     hx, hy = self.homes()[i]
@@ -389,6 +419,10 @@ class PaintBlast(Game):
 
     def caught(self, i, by):
         self.stun[i] = STUN
+        if self.last_standing:
+            victim = self.room.players.get(self.seats[i])
+            self.room.add_log(f"💥 {victim.name if victim else '?'} is out for the round!", "power")
+            return
         r = self.room
         victim = r.players.get(self.seats[i])
         if by != i:
@@ -405,17 +439,25 @@ class PaintBlast(Game):
             r.add_log(f"💥 {victim.name if victim else '?'} got caught in their own blast.", "power")
 
     def round_points(self, i):
+        if self.last_standing:
+            return 0
         gold = sum(1 for c in self.gold if self.paint[c] == i + 1) * (GOLD_POINTS - 1)  # ⭐ a gold tile is worth 3
         return self.paint.count(i + 1) + gold + TAG_POINTS * self.tags[i] + self.chain[i]
 
     def end_round(self, now):
         r = self.room
         pts = [self.round_points(i) for i in range(len(self.seats))]
+        if self.last_standing and self.stun.count(0) == 1:
+            pts[self.stun.index(0)] = 1
         for i, v in enumerate(pts):
             self.total[i] += v
         order = sorted(range(len(self.seats)), key=lambda i: -pts[i])
         names = [(r.players[self.seats[i]].name if self.seats[i] in r.players else "?") for i in range(len(self.seats))]
-        r.add_log(f"⏱️ Round {self.round}: " + " · ".join(f"{names[i]} {pts[i]}" for i in order), "big")
+        if self.last_standing:
+            result = f"{names[order[0]]} wins" if any(pts) else "draw"
+        else:
+            result = " · ".join(f"{names[i]} {pts[i]}" for i in order)
+        r.add_log(f"⏱️ Round {self.round}: {result}", "big")
         self.last_points = pts
         self.stage = "over"
         self.next_at = now + PAUSE
@@ -436,7 +478,7 @@ class PaintBlast(Game):
         warning = self.danger(blockers=blockers) if self.bombs else {}
         return {
             "k": self.tick, "st": self.stage, "rd": self.round,
-            "t": "".join(".#+"[v] for v in self.tiles), "c": self.paint.hex(),
+            "t": "".join(".#+"[v] for v in self.tiles), "c": self.paint.hex(), "gold": list(self.gold),
             "b": [[c, b[0], b[1]] for c, b in self.bombs.items()],
             # where the bombs will blast and in how many ticks (the bots' own map), so the arena can warn (#6)
             "w": [[c, f] for c, f in warning.items() if f > 0],
@@ -497,7 +539,9 @@ class PaintBlast(Game):
     def bomb_value(self, i, c, level):
         cells, crates = self.blast_cells(c, self.reach[i])
         v = len(crates) * 3
-        v += sum(1 for cc in cells if self.paint[cc] != i + 1 and self.tiles[cc] == FLOOR) * (0.8 if level == "hard" else 0.4)
+        if not self.last_standing:
+            v += sum(GOLD_POINTS if cc in self.gold else 1 for cc in cells
+                     if self.paint[cc] != i + 1 and self.tiles[cc] == FLOOR) * (0.8 if level == "hard" else 0.4)
         for j, pc in enumerate(self.pos):
             if j != i and self.active(j) and not self.shield[j] and pc in cells:
                 v += 6 if level == "hard" else 3
@@ -533,10 +577,14 @@ class PaintBlast(Game):
                     return
         reach = self.routes(here, danger, limit=200 if level == "easy" else 400)
         best, best_score = None, 0.0
+        rivals = [pc for j, pc in enumerate(self.pos) if j != i and self.active(j)] if self.last_standing else []
         for c, (dist, first) in reach.items():
             if c == here or c in danger:
                 continue
             score = (12 if c in self.items else 0) + self.bomb_value(i, c, level)
+            if rivals:
+                gap = min(abs(c % self.n - pc % self.n) + abs(c // self.n - pc // self.n) for pc in rivals)
+                score += 5 / (gap + 1)
             score /= dist + 2
             if level != "hard":
                 score *= random.uniform(0.6, 1.4)
@@ -573,7 +621,7 @@ class PaintBlast(Game):
         if i is None:
             return ""
         now = self.total[i] + (self.round_points(i) if self.stage == "play" else 0)
-        return f"🎨 {now}"
+        return f"💣 {now} round wins" if self.last_standing else f"🎨 {now}"
 
     def final_scores(self):
         return {pid: self.total[i] for i, pid in enumerate(self.seats)}
@@ -582,9 +630,8 @@ class PaintBlast(Game):
         now = time.time()
         return {"paintblast": {
             "n": self.n, "seats": self.seats, "me": self.seat(p), "round": self.round, "rounds": self.s["rounds"],
-            "secs": self.s["secs"], "total": self.total, "tick": TICK, "move": MOVE_TICKS, "fuse": FUSE,
+            "lastStanding": self.last_standing, "secs": self.s["secs"], "total": self.total, "tick": TICK, "move": MOVE_TICKS, "fuse": FUSE,
             "countdown": max(0.0, self.next_at - now) if self.stage in ("countdown", "over") else 0,
             "last": getattr(self, "last_points", None) if self.stage == "over" else None,
-            "gold": list(self.gold),
             **self.snapshot(now),
         }}

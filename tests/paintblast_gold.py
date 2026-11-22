@@ -38,5 +38,23 @@ g.paint[g.gold[0]] = 1
 g.paint[next(c for c in range(g.n * g.n) if g.tiles[c] == pb.FLOOR and c not in g.gold)] = 1
 check("a gold tile is worth 3, a plain one 1", g.round_points(0) == before + 3 + 1, (before, g.round_points(0)))
 
+r, g, ann = arena(None)
+g.ends_at = 100
+board = g.tiles[:]
+g.run_finale(84)
+check("center rush waits until 15 seconds remain", not g.gold)
+g.run_finale(85)
+first = g.gold[:]
+check("center rush adds three gold tiles without changing the maze",
+      len(first) == 3 and g.tiles == board and g.snapshot(85)["gold"] == first)
+g.run_finale(95)
+check("center rush runs once per round", g.gold == first)
+g.s["mode"] = "last"
+g.new_round(95)
+g.ends_at = 160
+g.run_finale(145)
+check("Last Standing gets three central pickups instead of gold",
+      not g.gold and sorted(g.items.values()) == ["b", "k", "r"])
+
 print("\nall ok" if not fails else f"\n{len(fails)} failed: {fails}")
 sys.exit(1 if fails else 0)

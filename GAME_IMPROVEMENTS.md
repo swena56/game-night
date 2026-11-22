@@ -200,3 +200,35 @@ would affect other games. Preserve each game's hidden hands and use its existing
 - A proposed improvement is ready to ship only when its acceptance check passes, the help text and
   README describe the actual behavior, and the change does not break existing settings or player
   privacy.
+
+## Player feedback follow-up
+
+### Switchyard Scramble (report #1)
+
+Start with a short, playable first wave. Give the crew one slow practice train
+with a highlighted route and show which junction needs attention next. Start
+counting strikes once the crew has made its first delivery. Keep the next two
+trains and their depot symbols visible during play.
+
+Give each player a junction to watch in multiplayer and show their teammate's
+assignment next to each switch. Keep every switch available to every player so
+a crew can cover for someone. In solo play, show all three junction prompts
+together. Turn the final wave into a short rush with a delivery streak counter
+and a results screen that shows which routes the crew handled successfully.
+
+Playtest on phones with one player and with crews of two and four. Check whether
+new players deliver their first train without help, whether each teammate gets
+a routing decision in the first wave, and whether crews want to replay after the
+final rush. Adjust the first-wave pacing before adding new track layouts.
+
+### Dice Brawl (report #5)
+
+The Guard Break mode lets a player spend two shields from
+their banked roll to ignore two points of guard on the chosen target. This
+creates a choice between protecting yourself until your next turn and getting
+through a guarded rival now. The option is available on single-target hits.
+
+The combat preview shows both outcomes. Bots spend their shields when the hit
+would otherwise be parried or when Guard Break secures a knockout. Playtest three- and
+six-player tables for how often players use each choice and how long a fight
+takes to bank.

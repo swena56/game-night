@@ -14,7 +14,7 @@ UI.skydrop = (() => {
   const state = (i) => V()?.flyers?.[i] || [0,0,0,0,0,0,0,0,0,0,0,0,0];
 
   function mount(main, side) {
-    S = null; snap = null; gl = flat = null; sx = sz = 0; drag = null; keys = new Set(); lastSeq = -1; flash = ''; tiltOn = false; tiltZero = null;
+    S = null; snap = null; gl = flat = null; sx = sz = sentAt = 0; drag = null; keys = new Set(); lastSeq = -1; flash = ''; tiltOn = false; tiltZero = null;
     main.innerHTML = `<div class="sd"><div class="sd-stage" id="sdStage">
       <div class="sd-hud"><b id="sdPlace">🪂 SKY DROP</b><span id="sdScore">0 pts</span><span id="sdClock"></span></div>
       <div class="sd-progress"><i id="sdProgress"></i></div><div class="sd-hyper" id="sdHyper"></div><div class="sd-banner" id="sdBanner" hidden></div>
@@ -23,10 +23,20 @@ UI.skydrop = (() => {
       <div class="sd-controls"><span class="hint" id="sdHint">Drag anywhere to steer · release to stabilize · thread the rings</span><div><button id="sdTilt">📱 Tilt</button> <button id="sdBoost" class="primary">⚡ Boost <small id="sdCharges">3</small></button></div></div></div>`;
     side.innerHTML = `<div class="panel"><h3>🪂 Sky Drop</h3><div id="sdSeats"></div><p class="hint left">Steer in two directions. Rings build your combo, dead centre pays +50%; hazards break it. Reach a checkpoint to refill boosts.</p></div>`;
     stage = $('sdStage'); stage.style.touchAction = 'none';
-    stage.addEventListener('pointerdown', (e) => { if (e.target.closest?.('button')) return; drag = {x:e.clientX,y:e.clientY}; stage.setPointerCapture?.(e.pointerId); steerFrom(e); });
-    stage.addEventListener('pointermove', (e) => { if (drag) steerFrom(e); });
-    const end = () => { drag = null; $('sdStick').hidden = true; keySteer(); };
-    stage.addEventListener('pointerup', end); stage.addEventListener('pointercancel', end);
+    stage.addEventListener('pointerdown', (e) => {
+      if (drag || e.button !== 0 || e.target.closest?.('button')) return;
+      drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      stage.setPointerCapture?.(e.pointerId);
+      steerFrom(e);
+    });
+    stage.addEventListener('pointermove', (e) => { if (drag && e.pointerId === drag.id) steerFrom(e); });
+    const end = (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      drag = null;
+      $('sdStick').hidden = true;
+      keySteer();
+    };
+    for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) stage.addEventListener(event, end);
     let boostTap = 0;
     $('sdBoost').addEventListener('pointerdown', (e) => { e.preventDefault(); boostTap = performance.now(); boost(); });
     $('sdBoost').addEventListener('click', () => { if (performance.now() - boostTap > 600) boost(); });
@@ -34,42 +44,48 @@ UI.skydrop = (() => {
     $('sdPerks').addEventListener('pointerdown', (e) => { const b = e.target.closest('[data-perk]'); if (!b) return; e.preventDefault(); e.stopPropagation(); if (S?.phase === 'playing') ctx.input({ perk: b.dataset.perk }, true); $('sdPerks').hidden = true; });
     keyDown = (e) => {
       if (e.target?.closest?.('input,textarea,select')) return;
-      if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','KeyW','KeyA','KeyS','KeyD'].includes(e.code)) { e.preventDefault(); keys.add(e.code); keySteer(); }
+      if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','KeyW','KeyA','KeyS','KeyD'].includes(e.code)) { e.preventDefault(); keys.add(e.code); if (!drag) keySteer(); }
       else if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) boost(); }
     };
-    keyUp = (e) => { if (keys.delete(e.code)) keySteer(); };
-    addEventListener('keydown', keyDown); addEventListener('keyup', keyUp);
+    keyUp = (e) => { if (keys.delete(e.code) && !drag) keySteer(); };
+    addEventListener('keydown', keyDown); addEventListener('keyup', keyUp); addEventListener('blur', clearSteering);
     ro = window.ResizeObserver ? new ResizeObserver(() => (gl || flat)?.resize()) : null; ro?.observe(stage);
     GL3.load().then(() => { three = 'ok'; if(stage.isConnected)revive3d(); }).catch(() => { three = 'no'; }).finally(() => { if (stage.isConnected) ensureView(); });
     raf = requestAnimationFrame(loop);
   }
 
-  function unmount() { clearTimeout(steerTimer); cancelAnimationFrame(raf); ro?.disconnect(); removeEventListener('keydown',keyDown); removeEventListener('keyup',keyUp); if(tiltHandler)removeEventListener('deviceorientation',tiltHandler); tiltHandler=null;tiltOn=false;tiltZero=null;gl?.dispose(); gl = flat = null; }
+  function unmount() { clearTimeout(steerTimer); cancelAnimationFrame(raf); ro?.disconnect(); removeEventListener('blur',clearSteering); removeEventListener('keydown',keyDown); removeEventListener('keyup',keyUp); if(tiltHandler)removeEventListener('deviceorientation',tiltHandler); tiltHandler=null;tiltOn=false;tiltZero=null;gl?.dispose(); gl = flat = null; }
+  function clearSteering() {
+    drag = null;
+    keys.clear();
+    $('sdStick').hidden = true;
+    setSteer(0, 0, true);
+  }
   function steerFrom(e) {
-    const r = stage.getBoundingClientRect(), reach=58;
+    const r = stage.getBoundingClientRect(), reach=30;
     let dx=e.clientX-drag.x, dy=e.clientY-drag.y; const m0=Math.hypot(dx,dy);
     if (m0>reach) { drag.x+=dx/m0*(m0-reach); drag.y+=dy/m0*(m0-reach); dx=e.clientX-drag.x; dy=e.clientY-drag.y; }  // the stick follows your thumb, so turning back is instant
-    const mag=Math.hypot(dx,dy), scale=mag>reach?reach/mag:1, dead=mag<5?0:1, x=dead*dx*scale/reach, z=dead*dy*scale/reach;
+    const mag=Math.hypot(dx,dy), scale=mag>reach?reach/mag:1, dead=mag<3?0:1, x=dead*dx*scale/reach, z=dead*dy*scale/reach;
     $('sdStick').hidden = false; $('sdStick').style.left = `${drag.x-r.left}px`; $('sdStick').style.top = `${drag.y-r.top}px`;
     $('sdStick').firstElementChild.style.transform = `translate(${dx*scale}px,${dy*scale}px)`; setSteer(x,z);
   }
   function keySteer() { let x=0,z=0; for (const k of keys) { if (k==='ArrowLeft'||k==='KeyA')x--; if(k==='ArrowRight'||k==='KeyD')x++; if(k==='ArrowUp'||k==='KeyW')z--; if(k==='ArrowDown'||k==='KeyS')z++; } const n=Math.hypot(x,z)||1; setSteer(x/n,z/n,true); }
   let steerTimer=0;
   function setSteer(x,z,force=false) {
-    sx=x; sz=z; if (!S || S.phase!=='playing') return;
+    sx=x; sz=z; if (S?.phase !== 'playing' || S.paused) return;
     const now=performance.now(), wait=33-(now-sentAt);
     clearTimeout(steerTimer); steerTimer=0;
     if (force||wait<=0) { sentAt=now; ctx.input({sx:+x.toFixed(2),sz:+z.toFixed(2)}); return; }
-    steerTimer=setTimeout(()=>{ steerTimer=0; sentAt=performance.now(); if (S?.phase==='playing') ctx.input({sx:+sx.toFixed(2),sz:+sz.toFixed(2)}); },wait);  // never drop the latest position
+    steerTimer=setTimeout(()=>{ steerTimer=0; sentAt=performance.now(); if (S?.phase === 'playing' && !S.paused) ctx.input({sx:+sx.toFixed(2),sz:+sz.toFixed(2)}); },wait);  // never drop the latest position
   }
-  function boost() { if (S?.phase==='playing') ctx.input({boost:true},true); }
+  function boost() { if (S?.phase === 'playing' && !S.paused) ctx.input({sx:+sx.toFixed(2),sz:+sz.toFixed(2),boost:true},true); }
   async function toggleTilt() {
-    if (tiltOn) { tiltOn=false; tiltZero=null; if(tiltHandler)removeEventListener('deviceorientation',tiltHandler); tiltHandler=null; $('sdTilt').classList.remove('primary'); return; }
+    if (tiltOn) { tiltOn=false; tiltZero=null; if(tiltHandler)removeEventListener('deviceorientation',tiltHandler); tiltHandler=null; $('sdTilt').classList.remove('primary'); if(!drag)keySteer(); return; }
     if (!('DeviceOrientationEvent' in window)) { ctx.toast('Tilt controls are not available on this device.'); return; }
     try { if (typeof DeviceOrientationEvent.requestPermission === 'function' && await DeviceOrientationEvent.requestPermission() !== 'granted') { ctx.toast('Tilt permission was not granted.'); return; } }
     catch { ctx.toast('Tilt controls could not be enabled.'); return; }
     tiltOn=true; $('sdTilt').classList.add('primary');
-    tiltHandler=(e)=>{if(!Number.isFinite(e.gamma)||!Number.isFinite(e.beta))return;if(!tiltZero)tiltZero={x:e.gamma,y:e.beta};setSteer(Math.max(-1,Math.min(1,(e.gamma-tiltZero.x)/24)),Math.max(-1,Math.min(1,(e.beta-tiltZero.y)/25)));};
+    tiltHandler=(e)=>{if(drag||keys.size||!Number.isFinite(e.gamma)||!Number.isFinite(e.beta))return;if(!tiltZero)tiltZero={x:e.gamma,y:e.beta};setSteer(Math.max(-1,Math.min(1,(e.gamma-tiltZero.x)/24)),Math.max(-1,Math.min(1,(e.beta-tiltZero.y)/25)));};
     addEventListener('deviceorientation',tiltHandler);
   }
 
@@ -218,11 +234,11 @@ UI.skydrop = (() => {
     resize();return {resize,render,shake(){},pulse,dispose(){c.remove();}};
   }
   // (#242) smoother flying: the server sends ~15 snapshots a second, so the raw prediction snaps a little at each one.
-  // Every diver's drawn position eases toward that prediction instead (about 60 ms), once per frame, so the camera glides.
+  // Ease toward the prediction once per frame, with a shorter delay for the local diver.
   let frameNo=0;const smooth=[];
   function sample(i){const m=smooth[i];if(m&&m.f===frameNo)return m.v;const raw=sampleRaw(i);if(!raw||!V()?.flyers?.[i])return raw;const now=performance.now();
     if(!m||m.run!==V().run||raw[9]||Math.abs(raw[0]-m.v[0])>8){smooth[i]={f:frameNo,t:now,run:V().run,v:raw.slice()};return smooth[i].v;}
-    const k=1-Math.exp(-Math.min(.05,(now-m.t)/1000)*16),v=raw.slice();for(let j=0;j<3;j++)v[j]=m.v[j]+(raw[j]-m.v[j])*k;m.v=v;m.t=now;m.f=frameNo;return v;}
+    const k=1-Math.exp(-Math.min(.05,(now-m.t)/1000)*(i===me()?30:16)),v=raw.slice();for(let j=0;j<3;j++)v[j]=m.v[j]+(raw[j]-m.v[j])*k;m.v=v;m.t=now;m.f=frameNo;return v;}
   function sampleRaw(i){const raw=state(i);if(!raw||!V()?.flyers?.[i])return raw;const dt=Math.max(0,Math.min(.13,(performance.now()-gotAt)/1000));const v=V(),serverNow=(v.time||0)+dt,boosting=serverNow<(raw[13]||0),out=raw.slice();if(!raw[9]&&v.stage==='race'){out[0]=Math.min(v.length,raw[0]+(12.5*(1+(v.ramp||0)*raw[0]/v.length)+(boosting?4:0))*dt);out[1]=raw[1]+raw[3]*dt;out[2]=raw[2]+raw[4]*dt;}return out;}
   function loop(){frameNo++;ensureView();if(S){const v=V();(gl||flat)?.render(v);renderHud(v);}raf=requestAnimationFrame(loop);}
   function renderHud(v){if(!v||!Array.isArray(v.flyers)||!Array.isArray(v.seats))return;const i0=me(),watching=!(i0>=0&&v.flyers[i0]),f=watching?(v.flyers.reduce((a,b)=>(b[0]>a[0]?b:a),state(-1))):state(i0),depth=f[0]||0;
@@ -233,7 +249,15 @@ UI.skydrop = (() => {
     const banner=$('sdBanner');if(v.stage==='results'&&hyperRun===v.run&&performance.now()-hyperAt<HYPER)banner.hidden=true;else if(v.stage==='results'){banner.hidden=false;banner.replaceChildren();const title=document.createElement('b');title.textContent=`Run ${v.run} complete`;banner.append(title);for(const [n,i] of v.finished.entries()){const row=document.createElement('p');row.textContent=`${n+1}. ${name(i)} · ${state(i)[5]} pts`;banner.append(row);}}else if(v.stage==='countdown'){banner.hidden=false;banner.textContent=`${Math.max(1,Math.ceil((v.go-Date.now()/1000)))}…`;}else banner.hidden=true;
     const seats=$('sdSeats');const key=JSON.stringify([v.points,v.ringTotals,v.flyers.map(a=>a[0])]);if(seats.dataset.key!==key){seats.dataset.key=key;seats.replaceChildren();v.seats.forEach((_,i)=>{const row=document.createElement('div');row.className='sd-row';const swatch=document.createElement('i');swatch.style.background=color(i);const label=document.createElement('span');label.textContent=name(i);const score=document.createElement('b');score.textContent=`${v.points[i]+(v.stage==='results'?0:state(i)[5])} pts`;const progress=document.createElement('small');progress.textContent=`${Math.floor(state(i)[0]/v.length*100)}%`;row.append(swatch,label,score,progress);seats.append(row);});}
   }
-  function render(S0,ctx0){S=S0;ctx=ctx0;if(snap?.seed!==V()?.seed)lastSeq=-1;snap=V();gotAt=performance.now();if(lastSeq<0)events(V());ensureView();}
+  function render(S0, ctx0) {
+    const resumed = S?.paused && !S0.paused;
+    S = S0; ctx = ctx0;
+    if (resumed) clearSteering();
+    if (snap?.seed !== V()?.seed) lastSeq = -1;
+    snap = V(); gotAt = performance.now();
+    if (lastSeq < 0) events(V());
+    ensureView();
+  }
   function fast(data){if(data.skydrop){const old=V()||{};S={...S,skydrop:{...data.skydrop,me:old.me,seats:old.seats,coins:old.seed===data.skydrop.seed?old.coins:undefined}};snap=S.skydrop;gotAt=performance.now();ensureView();events(S.skydrop);}}
   function events(v){const evs=v?.events||[];if(lastSeq<0||evs.some(e=>e[0]<lastSeq-40)){lastSeq=evs.at(-1)?.[0]??0;return;}for(const [n,kind,i] of evs){if(n<=lastSeq)continue;lastSeq=n;if(i!==me())continue;
     if(kind==='ring'){ctx?.sfx?.('chip');ctx?.buzz?.(8);(gl||flat)?.pulse?.();}else if(kind==='hit'){gl?.sparkle?.(2);ctx?.sfx?.('thud');ctx?.buzz?.(40);(gl||flat)?.shake?.(.35);}else if(kind==='bullseye'){ctx?.sfx?.('pop');ctx?.buzz?.(15);}else if(kind==='draft'){if(typeof Kit!=='undefined')Kit.callout('🌬️ Slipstream!','cool',{ms:600});}else if(kind==='coin'){ctx?.sfx?.('tick');ctx?.buzz?.(6);gl?.sparkle?.(false);}else if(kind==='gem'){ctx?.sfx?.('pop');ctx?.buzz?.(14);gl?.sparkle?.(true);if(typeof Kit!=='undefined')Kit.callout('💎 +10','gold',{ms:600});}else if(kind==='boom'){gl?.sparkle?.(2);ctx?.sfx?.('thud');ctx?.buzz?.([60,40,90]);(gl||flat)?.shake?.(.6);if(typeof Kit!=='undefined')Kit.callout('💥 Mine! −12','bad',{ms:1000});}else if(kind==='graze'){ctx?.sfx?.('tick');ctx?.buzz?.(10);if(typeof Kit!=='undefined')Kit.callout('😮‍💨 Close call! +3','gold',{ms:700});}else if(kind==='streak'){ctx?.sfx?.('rise');ctx?.buzz?.([10,30,10]);if(typeof Kit!=='undefined')Kit.callout('🔥 Hot streak! +10','gold',{ms:800});}else if(kind==='gustl'||kind==='gustr'){ctx?.sfx?.('whoosh');if(typeof Kit!=='undefined')Kit.callout(kind==='gustr'?'💨 Gust ahead: pushes right →':'💨 Gust ahead: pushes left ←','cool',{ms:1400});}else if(kind==='boost')ctx?.sfx?.('whoosh');else if(kind==='finish'){hyperAt=performance.now();hyperRun=V()?.run;ctx?.sfx?.('whoosh');setTimeout(()=>ctx?.sfx?.('fanfare'),HYPER*.7);const h=$('sdHyper');if(h){h.classList.remove('go');void h.offsetWidth;h.classList.add('go');}}else if(kind==='checkpoint')ctx?.sfx?.('rise');else if(kind==='sling'){ctx?.sfx?.('whoosh');ctx?.buzz?.([10,20,10]);(gl||flat)?.shake?.(.2);if(typeof Kit!=='undefined')Kit.callout('🚀 Slingshot!','gold',{ms:700});}else if(kind==='perk'){ctx?.sfx?.('pop');}else if(kind==='shield'){ctx?.sfx?.('pop');ctx?.buzz?.(20);if(typeof Kit!=='undefined')Kit.callout('🛡️ Shield blocked it!','cool',{ms:900});}else if(kind==='finish')ctx?.sfx?.('fanfare');}}
