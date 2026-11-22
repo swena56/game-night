@@ -1063,14 +1063,6 @@ UI.archery = (() => {
         camera.aspect = surface.clientWidth / surface.clientHeight;
         camera.updateProjectionMatrix();
       }
-      // A slightly wider framing while the dart rests on the rack gives the
-      // player more context. As it rises into the grip, ease back to the aim view.
-      const framing = flight ? 0 : hand ? 1 - hand.lift : 1;
-      const targetFov = fov + 4 * framing;
-      if (Math.abs(camera.fov - targetFov) > 0.01) {
-        camera.fov = targetFov;
-        camera.updateProjectionMatrix();
-      }
       camera.position.set(0, 0, cameraDistance);
       camera.lookAt(VIEW_TARGET);
       const signature = [pins.map((p) => p.id).join(), hand?.x, hand?.y, hand?.angle, hand?.lift, hand?.aiming, flight?.u, impact?.angle].join('|');
