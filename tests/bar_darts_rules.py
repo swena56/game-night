@@ -254,8 +254,8 @@ class DartsTests(unittest.TestCase):
             with self.assertRaises(GameError):
                 self.room.act(first, {**neutral, **invalid})
         for vector, x, y in [
-            ({"vx": -3.2}, -0.14, 0),
-            ({"vy": 2, "vx": -1.2, "dx": -DART_ORIGIN[0] + 0.1}, 0.24, 0.17),
+            ({"vx": -3.2}, 0, 0),    # speed never moves where the swipe ends
+            ({"vy": 2, "vx": -1.2, "dx": -DART_ORIGIN[0] + 0.1}, 0.1, 0),
             ({}, 0, 0),
         ]:
             self.match.ready_at = 0
@@ -264,6 +264,23 @@ class DartsTests(unittest.TestCase):
             self.assertAlmostEqual(self.match.shot["y"], y)
             self.assertAlmostEqual(self.match.shot["pace"], math.hypot(vector.get("vx", -SWIPE_PACE), vector.get("vy", 0)))
         self.assertEqual(self.match.shot["label"], "Bull")
+
+    def test_wobble_grows_with_pace(self):
+        self.assertLess(bar_darts.spread(1), bar_darts.spread(6))
+        bar_darts.SCATTER = 1
+        try:
+            def miss_distance(pace):
+                total = 0
+                for seed in range(200):
+                    self.start("301")
+                    self.match.rng = random.Random(seed)
+                    self.match.ready_at = 0
+                    self.room.act(self.players[0], {"type": "throw", "dx": -DART_ORIGIN[0], "dy": -DART_ORIGIN[1], "vx": -pace, "vy": 0})
+                    total += math.hypot(self.match.shot["x"], self.match.shot["y"])
+                return total / 200
+            self.assertLess(miss_distance(1), miss_distance(6))
+        finally:
+            bar_darts.SCATTER = 0
 
     def test_bots_finish(self):
         for mode in ("301", "501", "cricket", "clock", "countup"):

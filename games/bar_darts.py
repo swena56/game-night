@@ -21,6 +21,11 @@ SWIPE_PACE = 2.2
 SCATTER = 1.0       # 0 turns off the hand's wobble (tests): fast flicks scatter more than steady throws
 
 
+def spread(pace):
+    """Standard deviation of the wobble, in board radii: a steady swipe is tight, a rushed flick strays."""
+    return 0.03 + 0.012 * pace
+
+
 def hit_at(x, y):
     inner, outer, triple_in, triple_out, double_in, edge = RADII
     radius = math.hypot(x, y)
@@ -162,10 +167,10 @@ class DartMatch:
             raise GameError("Swipe toward the board.")
         if time.time() < self.ready_at - 0.05:
             raise GameError("Wait for the dart to land.")
-        x = DART_ORIGIN[0] + dx + 0.14 * (vx + SWIPE_PACE)
-        y = DART_ORIGIN[1] + dy + 0.085 * vy
+        # The dart lands where the swipe ends; only the hand's wobble depends on speed (see spread()).
+        x, y = DART_ORIGIN[0] + dx, DART_ORIGIN[1] + dy
         pace = math.hypot(vx, vy)
-        sigma = SCATTER * (0.03 + 0.012 * pace)
+        sigma = SCATTER * spread(pace)
         self.throw(self.seats.index(p.id), x + self.rng.gauss(0, sigma), y + self.rng.gauss(0, sigma), pace=pace)
 
     def cricket_winner(self, active):
@@ -354,6 +359,7 @@ class DartMatch:
             "points": self.points, "marks": self.marks, "targets": TARGETS, "active": self.active(),
             "numbers": NUMBERS, "radii": RADII, "left": left,
             "dartOrigin": DART_ORIGIN, "swipePace": SWIPE_PACE,
+            "spreadBase": spread(0), "spreadPerPace": spread(1) - spread(0),
             "checkout": [label(*hit) for hit in route],
             "doubleOut": self.double_out, "hint": hint,
             "grab": next_seat is not None and self.grabbing == next_seat,

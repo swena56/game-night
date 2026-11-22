@@ -112,6 +112,12 @@
 .ar-darts-hitflash.ar-darts-lit { animation: ar-section-flash .75s ease-out; }
 @keyframes ar-section-flash { 0% { opacity: .95; } 35% { opacity: .55; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .ar-darts-hitflash.ar-darts-lit { animation-duration: .01s; } }
+.ar-darts-spread {
+  position: absolute; z-index: 3; aspect-ratio: 1; translate: -50% -50%; border-radius: 50%;
+  border: 1.5px solid #ffffffcc; background: #ffffff1f; box-shadow: 0 0 0 1px #0006;
+  pointer-events: none; transition: width .08s linear;
+}
+.ar-darts-spread[hidden] { display: none; }
 .ar-darts-aim {
   position: absolute; z-index: 3; width: 9%; aspect-ratio: 1; translate: -50% -50%; border-radius: 50%;
   border: 2px solid #ffe29a; box-shadow: 0 0 12px 3px #ffd36acc, inset 0 0 8px #ffd36a88;
