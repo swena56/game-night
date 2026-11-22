@@ -259,8 +259,10 @@ function renderLobby() {
   eye.setAttribute('aria-pressed', hid);
   eye.onclick = () => { toggleHidden(S.gameId); renderLobby(); };
   star.after(eye);
-  const darts = S.gameId === 'archery' && ['301', 'cricket'].includes(S.settings.course);
-  const courseName = darts ? `Bar Darts · ${S.settings.course === '301' ? '301' : 'Cricket'}` : info.name;
+  const course = S.gameId === 'archery' && info.settings.find((f) => f.key === 'course');
+  const selectedCourse = course && (S.settings.course ?? course.default);
+  const darts = course && selectedCourse !== 'archery';
+  const courseName = course?.options?.find(([id]) => id === selectedCourse)?.[1] ?? info.name;
   $('#settingsHead').textContent = `${courseName} settings`;
   document.title = `${info.name} — Game Night`;
   if (pickedGame && pickedGame === S.gameId) {
@@ -278,7 +280,7 @@ function renderLobby() {
     eye.after(change);
     if (focused || document.activeElement?.closest?.('#gamePicker')) change.focus({ preventScroll: true });  // keyboard users land on it
   }
-  $('#gameDesc').textContent = (darts ? `Play ${courseName} with three darts per visit.` : info.blurb) + (S.gameId === 'unmask' ? ' ' + MODE_DESC[S.settings.mode] : '');
+  $('#gameDesc').textContent = (course && !darts ? 'Read the wind and aim at apples, balloons, and a swinging target.' : info.blurb) + (S.gameId === 'unmask' ? ' ' + MODE_DESC[S.settings.mode] : '');
   $('#howto').innerHTML = '';
   for (const line of info.howto) $('#howto').append(el('li', '', line));
 

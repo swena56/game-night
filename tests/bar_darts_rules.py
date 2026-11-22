@@ -1,4 +1,4 @@
-"""Exercise both darts courses through the Wind Archery room."""
+"""Exercise the Darts courses through the room."""
 import math
 import random
 import sys
@@ -7,7 +7,7 @@ from pathlib import Path
 import pickle
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from games.bar_darts import NUMBERS, RADII, DART_ORIGIN, SWIPE_PACE, checkout, hit_at
+from games.bar_darts import COUNTUP_VISITS, DART_ORIGIN, NUMBERS, RADII, SWIPE_PACE, checkout, hit_at
 from games.base import GameError
 from server import Room
 
@@ -25,7 +25,8 @@ class DartsTests(unittest.TestCase):
         self.room = room = Room("DART")
         self.players = [room.add_player(name) for name in ("Ada", "Ben", "Cory")[:players]]
         room.switch_game("archery")
-        room.change_settings(self.players[0], {"course": mode})
+        if mode is not None:
+            room.change_settings(self.players[0], {"course": mode})
         room.start()
         self.match = room.game.darts
         self.match.rng = random.Random(24)
@@ -34,6 +35,56 @@ class DartsTests(unittest.TestCase):
         self.match.ready_at = 0
         x, y = aim(number, multiplier)
         self.room.act(self.room.players[self.room.turn], {"type": "throw", "dx": x - DART_ORIGIN[0], "dy": y - DART_ORIGIN[1], "vx": -SWIPE_PACE, "vy": 0})
+
+    def test_darts_is_the_default_catalogue_entry(self):
+        self.start(None)
+        self.assertEqual(self.room.game.info()["name"], "Darts")
+        self.assertEqual(self.room.settings["course"], "301")
+        self.assertEqual(self.match.points, [301, 301])
+
+    def test_501_uses_the_same_double_out(self):
+        self.start("501")
+        self.assertEqual(self.match.points, [501, 501])
+        self.match.points[0] = 80
+        self.match.visit_start = 80
+        self.throw(20, 3)
+        self.assertEqual(self.match.points[0], 20)
+        self.assertEqual(self.match.view(self.players[0])["checkout"], ["D10"])
+        self.throw(10, 2)
+        self.room.game.on_timeout()
+        self.assertEqual(self.room.winner, self.players[0].id)
+        self.assertEqual(self.room.history[-1]["players"][0]["score"], 501)
+
+    def test_around_the_clock_ignores_out_of_order_hits_and_counts_once(self):
+        self.start("clock")
+        self.throw(2, 3)
+        self.assertEqual(self.match.points[0], 0)
+        self.throw(1, 3)
+        self.assertEqual(self.match.view(self.players[0])["nextNumbers"], [2, 1])
+        for number in range(2, 21):
+            if self.room.turn == self.players[1].id:
+                self.room.game.on_timeout()
+            self.throw(number, 2)
+        if self.room.turn == self.players[1].id:
+            self.room.game.on_timeout()
+        self.assertEqual(self.match.view(self.players[0])["nextNumbers"][0], 25)
+        self.throw(25, 1)
+        self.room.game.on_timeout()
+        self.assertEqual(self.room.winner, self.players[0].id)
+
+    def test_countup_gives_each_seat_eight_visits_and_resolves_ties(self):
+        for tie in (False, True):
+            with self.subTest(tie=tie):
+                self.start("countup")
+                for visit in range(COUNTUP_VISITS * 2):
+                    for _ in range(3):
+                        self.throw(20, 1 if tie or visit % 2 else 2)
+                self.assertEqual(self.match.visits_done, [COUNTUP_VISITS] * 2)
+                self.assertIsNone(self.room.turn)
+                self.room.game.on_timeout()
+                self.assertEqual(self.room.phase, "over")
+                self.assertEqual(self.room.winner, None if tie else self.players[0].id)
+                self.assertEqual(self.match.points, [480 if tie else 960, 480])
 
     def test_board(self):
         for number in NUMBERS:
@@ -138,7 +189,7 @@ class DartsTests(unittest.TestCase):
         self.start("301")
         first = self.players[0]
         neutral = {"type": "throw", "dx": -DART_ORIGIN[0], "dy": -DART_ORIGIN[1], "vx": -SWIPE_PACE, "vy": 0}
-        for invalid in ({"vx": None}, {"vx": True}, {"vy": float("nan")}, {"vx": -6.1}, {"dx": -0.29}):
+        for invalid in ({"vx": None}, {"vx": True}, {"vy": float("nan")}, {"vx": -6.1}, {"dx": -0.04}):
             with self.assertRaises(GameError):
                 self.room.act(first, {**neutral, **invalid})
         for vector, x, y in [
@@ -154,7 +205,7 @@ class DartsTests(unittest.TestCase):
         self.assertEqual(self.match.shot["label"], "Bull")
 
     def test_bots_finish(self):
-        for mode in ("301", "cricket"):
+        for mode in ("301", "501", "cricket", "clock", "countup"):
             with self.subTest(mode=mode):
                 self.start(mode, 3)
                 self.match.rng = random.Random(24)

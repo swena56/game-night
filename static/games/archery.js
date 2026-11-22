@@ -1120,6 +1120,7 @@ UI.archery = (() => {
     const point = (a, r) => [CENTER + Math.sin(a) * r, CENTER - Math.cos(a) * r];
     const circle = (r, fill) => `<circle cx="125" cy="125" r="${r}" fill="${fill}"/>`;
     const player = (i) => ctx.player(view.seats[i]);
+    const clockLabel = (number) => number == null ? 'Done' : number === 25 ? 'Bull' : String(number);
     const origin = () => { const [x, y] = view.dartOrigin || [1.04, -0.55]; return { x, y }; };
     const mine = () => view && state.phase === 'playing' && ctx.myTurn && !state.paused;
     const ready = () => mine() && !zoomed && !pending && !waitingHand && !flight && performance.now() >= readyAt;
@@ -1140,7 +1141,7 @@ UI.archery = (() => {
           const sisal = i % 2 ? '#dcc697' : '#292723', stripe = i % 2 ? '#317553' : '#a33c39';
           return `<g stroke="#a89d81" stroke-width=".45">${sector(angle, outer, t0, sisal)}
             ${sector(angle, t0, t1, stripe)}${sector(angle, t1, d0, sisal)}${sector(angle, d0, edge, stripe)}
-            </g><text x="${x}" y="${y}">${number}</text>`;
+            </g><text data-number="${number}" x="${x}" y="${y}">${number}</text>`;
         }).join('') + circle(outer, '#317553') + circle(bull, '#b7423d');
     }
 
@@ -1208,7 +1209,7 @@ UI.archery = (() => {
           scale: hand.scale,
         };
         swipe = null;
-        if (dx > -0.3) return;
+        if (dx > -0.05 || Math.hypot(dx, dy) < 0.1) return;
         const first = samples[0], last = samples.at(-1);
         const seconds = Math.max(0.032, (last.t - first.t) / 1000);
         submit(dx, dy, (last.x - first.x) / seconds, (last.y - first.y) / seconds, from, hand);
@@ -1227,7 +1228,7 @@ UI.archery = (() => {
           e.preventDefault();
           keys ??= { dx: -origin().x, dy: -origin().y };
           const step = e.shiftKey ? 0.20 : 0.055;
-          keys.dx = Math.max(-2.5, Math.min(-0.3, keys.dx + step * delta[0]));
+          keys.dx = Math.max(-2.5, Math.min(-0.05, keys.dx + step * delta[0]));
           keys.dy = clamp(keys.dy + step * delta[1], 1.5);
         }
         if (e.key === 'Enter' || e.key === ' ') {
@@ -1342,9 +1343,11 @@ UI.archery = (() => {
     function showShot(shot) {
       const pieces = [player(shot.o)?.name ?? 'Player', shot.label];
       if (shot.bust) pieces.push('Bust, visit score restored');
-      else if (view.mode === '301') pieces.push(shot.win ? 'Checkout!' : `${shot.points} left`);
-      else if (shot.win) pieces.push('All targets closed!');
-      else {
+      else if (view.x01) pieces.push(shot.win ? 'Checkout!' : `${shot.points} left`);
+      else if (view.mode === 'clock') {
+        pieces.push(shot.win ? 'Clock complete!' : `${shot.gain ? 'Next' : 'Still aiming for'} ${clockLabel(view.nextNumbers[shot.o])}`);
+      } else {
+        if (shot.win) pieces.push('All targets closed!');
         if (shot.marks) pieces.push(`+${shot.marks} marks`);
         if (shot.gain) pieces.push(`+${shot.gain} pts`);
       }
@@ -1410,10 +1413,12 @@ UI.archery = (() => {
     }
 
     function renderScores() {
-      const cricket = view.mode === 'cricket', table = ctx.el('table', 'scores ar-darts-table');
+      const cricket = view.mode === 'cricket', clock = view.mode === 'clock', countup = view.mode === 'countup';
+      const table = ctx.el('table', 'scores ar-darts-table');
       const head = ctx.el('thead'), headings = ctx.el('tr');
       const targets = cricket ? view.targets.map((n) => n === 25 ? 'Bull' : String(n)) : [];
-      for (const title of ['Player', ...targets, cricket ? 'Pts' : 'Left']) {
+      const columns = clock ? ['Next', 'Hit'] : countup ? ['Visits', 'Pts'] : [...targets, view.x01 ? 'Left' : 'Pts'];
+      for (const title of ['Player', ...columns]) {
         const cell = ctx.el('th', '', title); cell.scope = 'col'; headings.append(cell);
       }
       head.append(headings); table.append(head);
@@ -1429,6 +1434,8 @@ UI.archery = (() => {
           cell.setAttribute('aria-label', marks === 3 ? 'Closed' : `${marks} of 3 marks`);
           row.append(cell);
         }
+        if (clock) row.append(ctx.el('td', '', clockLabel(view.nextNumbers[i])));
+        if (countup) row.append(ctx.el('td', '', `${view.visitsDone[i]}/${view.visitLimit}`));
         row.append(ctx.el('td', 'total', String(view.points[i])));
         body.append(row);
       });
@@ -1445,7 +1452,7 @@ UI.archery = (() => {
         grip.setAttribute('transform', transform(start.x, start.y));
         paintBoard();
         darts3d?.paint(view);
-        root.querySelector('h2').textContent = `Bar Darts · ${view.mode === '301' ? '301' : 'Cricket'}`;
+        root.querySelector('h2').textContent = `Darts · ${view.title}`;
       }
       if (!mine() || visit !== view.visit) { visit = view.visit; swipe = null; keys = null; }
       const shot = view.shot;
@@ -1470,6 +1477,10 @@ UI.archery = (() => {
         if (!shot) result.textContent = '';
       }
       paintPins();
+      const target = view.nextNumbers?.[view.next];
+      for (const label of geometry.querySelectorAll('[data-number]')) {
+        label.classList.toggle('ar-darts-next-number', Number(label.dataset.number) === target);
+      }
       turn.textContent = s.phase === 'over' ? 'Game over' : view.next == null ? 'Final dart'
         : `${view.next === view.me ? 'Your visit' : player(view.next)?.name ?? 'Player'} · ${view.left} left`;
       updateHint();
@@ -1477,8 +1488,11 @@ UI.archery = (() => {
     }
 
     function updateHint() {
-      const rule = view.mode === '301' ? 'Reach zero on a double.'
-        : 'Close 15–20 and bull. Extra hits score while a rival has the target open.';
+      let rule = 'Reach zero on a double.';
+      if (view.mode === 'cricket') rule = 'Close 15–20 and bull. Extra hits score while a rival has the target open.';
+      if (view.mode === 'clock') rule = view.next == null ? 'Hit 1–20 in order, then bull.'
+        : `Next target: ${clockLabel(view.nextNumbers[view.next])}.`;
+      if (view.mode === 'countup') rule = `Highest score after ${view.visitLimit} visits wins.`;
       hint.textContent = recapUntil ? 'Visit complete' : zoomed ? 'Pan to inspect the board.'
         : mine() ? `Swipe inward from the dart or the button below. A faster flick travels farther. ${rule}` : rule;
     }

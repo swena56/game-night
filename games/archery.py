@@ -23,7 +23,7 @@ import random
 import time
 
 from .base import Game, GameError
-from .bar_darts import DartMatch, MODES
+from .bar_darts import DartMatch, MODES, X01
 
 ARROW_V = 60.0        # m/s
 K = 0.055             # drift = K × wind (m/s) × t²
@@ -97,10 +97,12 @@ class Archery(Game):
     category = "action"
     family = None
     howto = [
-        "Choose Course in the lobby for Wind Archery, 301 or Cricket. In darts, swipe inward from the dart at the right edge or the button below the board to throw. Direction, distance and speed shape where it lands. Each visit has up to three darts.",
-        "301: count down to exactly zero on a double. Going below zero, leaving one or hitting zero without a double busts the whole visit.",
+        "In darts, swipe inward from the dart at the right edge or the button below the board to throw. Direction, distance and speed shape where it lands. Each visit has up to three darts.",
+        "301 and 501: count down to exactly zero on a double. Going below zero, leaving one or hitting zero without a double busts the whole visit.",
         "Cricket: hit 15–20 and bull three times each. Extra marks score while a rival still has that target open. Close every target and at least tie the high score to win.",
-        "Take turns shooting one arrow at the target. Drag the sight over the target and let go (or tap 🏹 Loose). The sight sways more the longer you hold.",
+        "Around the Clock: hit 1 through 20 in order, then either bull. A double or triple clears only that number.",
+        "Count-Up: score as many points as you can in eight three-dart visits. Doubles and triples multiply each hit.",
+        "Wind Archery: take turns shooting one arrow at the target. Drag the sight over the target and let go (or tap 🏹 Loose). The sight sways more the longer you hold.",
         "The wind carries every arrow: watch the flag and aim into the wind. The further the target (30 m, 50 m, 70 m), the more an arrow drifts.",
         "The flag is only a guide: the real wind is a bit stronger or weaker each end. Every shot shows where it was aimed, so learn from each arrow, rivals' too.",
         "Rings score 10 (gold) down to 1; off the face scores nothing. 🍎 The first arrow through the apple scores +5.",
@@ -108,9 +110,9 @@ class Archery(Game):
         "🔥 Once an end, loose a fire arrow: the gold (9 or 10) scores double, anything else scores nothing. ✨ From your third gold in a row, every gold is +1.",
         "🧘 Once a game, take a steady breath: no sway and no gust on that arrow. Most points after the last end wins; a tie goes to a one-arrow 🏹 shoot-off, closest to the middle.",
     ]
-    name = "Wind Archery"
+    name = "Darts"
     icon = "🎯"
-    blurb = "Read the flag, aim into the wind and loose: an apple, balloons, then a swinging target. 🔥 Fire arrows double the gold or burn out. Choose Bar Darts in Course for 301 or Cricket."
+    blurb = "Swipe to throw on a 3D dartboard. Play 301, 501, Cricket, Around the Clock or Count-Up, or choose Wind Archery from Course."
     min_players = 2
     max_players = 6
     badges = {**Game.badges,
@@ -120,7 +122,7 @@ class Archery(Game):
               "fire": ("🔥", "Gold on fire", "Put a fire arrow in the gold"),
               "streak": ("✨", "Golden streak", "Three golds in a row")}
     settings_schema = {
-        "course": ("Course", [("archery", "Wind Archery"), ("301", "Bar Darts · 301"), ("cricket", "Bar Darts · Cricket")], "archery"),
+        "course": ("Course", [*MODES.items(), ("archery", "Wind Archery")], "301"),
         "ends": ("Ends", [(3, "3"), (2, "2"), (5, "5")], 3),
         "wind": ("Wind", [("breezy", "🍃 Breezy"), ("gusty", "🌬 Gusty"), ("calm", "🪶 Calm")], "breezy"),
     }
@@ -130,7 +132,7 @@ class Archery(Game):
     def start(self, seated, rng):
         self.rng = rng
         self.seats = [p.id for p in seated]
-        mode = self.s.get("course", "archery")
+        mode = self.s.get("course", self.settings_schema["course"][2])
         self.darts = DartMatch(self.room, self.seats, rng, mode) if mode in MODES else None
         if self.darts:
             return
@@ -486,7 +488,7 @@ class Archery(Game):
     def meta(self, p):
         i = self.seat(p)
         if self.darts and i is not None:
-            stat = "left" if self.darts.mode == "301" else "pts"
+            stat = "left" if self.darts.mode in X01 else "targets" if self.darts.mode == "clock" else "pts"
             return f"{self.darts.points[i]} {stat}"
         if i is None or not hasattr(self, "points"):
             return ""
@@ -495,7 +497,8 @@ class Archery(Game):
     def final_scores(self):
         if self.darts:
             scores = self.darts.points
-            return dict(zip(self.seats, (301 - p for p in scores) if self.darts.mode == "301" else scores))
+            start = X01.get(self.darts.mode)
+            return dict(zip(self.seats, (start - p for p in scores) if start else scores))
         return {pid: self.points[i] for i, pid in enumerate(self.seats)}
 
     def view(self, p):

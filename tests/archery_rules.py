@@ -28,7 +28,7 @@ def game(n=2, **settings):
     r = server.Room("TEST")
     ps = [r.add_player(nm) for nm in ("Ann", "Bo", "Cy", "Di")[:n]]
     r.switch_game("archery")
-    r.settings.update(settings)
+    r.settings.update(course="archery", **settings)
     r.start()
     return r, r.game, ps
 

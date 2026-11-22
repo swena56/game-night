@@ -781,7 +781,16 @@ const MOVES = {
     wt.value = String(380 + Math.round(Math.random() * 300)); wt.dispatchEvent(new w.Event('input', { bubbles: true }));
     click(d.querySelector('#icThrow'));
   },
-  archery(d, S, n, w) {  // nudge the sight a few steps, sometimes take the steady breath or a fire arrow, then loose
+  archery(d, S, n, w) {
+    if (S.darts) {
+      const button = d.querySelector('.ar-darts-swipe:enabled');
+      if (button) {
+        button.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'ArrowUp', shiftKey: true, bubbles: true }));
+        button.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      }
+      return;
+    }
+    // Nudge the sight a few steps, sometimes using steady breath or a fire arrow.
     for (let k = 0; k < 1 + (n % 4); k++) click(pick([...d.querySelectorAll('#arCtl [data-n]')]));
     if (n % 5 === 3) click(d.querySelector('#arBreath'));
     if (n % 3 === 1) { const f = d.querySelector('#arFire'); if (f && !f.disabled && !f.hidden) click(f); }   // #177 a fire arrow now and then
@@ -948,7 +957,8 @@ async function playSolo(game, seconds = 60) {
   if (mode) {
     click(d.querySelector('#soloSetupBtn'));
     await waitFor(() => w.eval('S')?.phase === 'lobby' && w.eval('S').players?.length > 1);
-    await w.eval(`act('settings', { settings: { mode: ${JSON.stringify(mode)} } })`);
+    const setting = game === 'archery' ? 'course' : 'mode';
+    await w.eval(`act('settings', { settings: ${JSON.stringify({ [setting]: mode })} })`);
     await w.eval(`act('start')`);
   } else click(d.querySelector('#soloBtn'));
   // …and the game's screen module has loaded and mounted (it loads on demand: slow on a busy host)

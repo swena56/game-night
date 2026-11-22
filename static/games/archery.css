@@ -102,6 +102,7 @@
   fill: #fff1d5; font: bold 9px system-ui, sans-serif;
   text-anchor: middle; dominant-baseline: central;
 }
+.ar-darts-board .ar-darts-next-number { fill: #ffd476; stroke: #52351b; stroke-width: 0.45; paint-order: stroke; }
 .ar-darts-pins g { fill: var(--dart-color); stroke: #1b1410; stroke-width: .9px; }
 .ar-last, .ar-darts-result { min-height: 1.35em; margin: 8px 0; font-weight: 650; }
 .ar-last { text-align: center; }

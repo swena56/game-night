@@ -318,7 +318,7 @@ class Room:
         for k, (_, _, d) in ROOM_SETTINGS.items():
             self.settings.setdefault(k, d)
         if self.settings["game"] == "archery":
-            self.settings.setdefault("course", "archery")
+            self.settings.setdefault("course", "301" if self.phase == "lobby" else "archery")
         self.cond = threading.Condition()
         now = time.time()
         for p in self.players.values():
