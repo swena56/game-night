@@ -66,7 +66,7 @@ UI.archery = (() => {
       </div>
       <p id="arLast" class="ar-last" role="status"></p>
       <p id="arHint" class="hint"></p></div>`;
-    side.innerHTML = '<div class="panel"><h3>Scoreboard</h3><div id="arCard" class="ar-card"></div></div>';
+    side.innerHTML = '<div class="panel ar-darts-scorecard"><h3>Scoreboard</h3><div id="arCard" class="ar-card"></div></div>';
     const stage = $('arStage');
     $('arCtl').addEventListener('click', (e) => {
       const b = e.target.closest('button');
@@ -855,9 +855,9 @@ UI.archery = (() => {
     camera.position.z = cameraDistance;
     const VIEW_TARGET = new T.Vector3();
     scene.add(new T.HemisphereLight(0xf4e4ce, 0x6c534c, 1.35));
-    const lamp = new T.SpotLight(0xffcb88, 2.8, 0, 0.51, 0.72);
+    const lamp = new T.SpotLight(0xffce95, 3.4, 0, 0.53, 0.79);
     lamp.position.set(-75, 174, 235);
-    lamp.target.position.set(1, -5, 0);
+    lamp.target.position.set(1, 24, 0);
     scene.add(lamp, lamp.target);
     const rimLight = new T.DirectionalLight(0x8ac5ff, 0.9);
     rimLight.position.set(130, -105, 46);
@@ -920,7 +920,7 @@ UI.archery = (() => {
     const wood = detailTexture(woodPixels);
     const cabinet = new T.Group();
     scene.add(cabinet);
-    const walnut = material(0x75452d, { map: wood, bumpMap: wood, bumpScale: 0.6, roughness: 0.58 });
+    const walnut = material(0x69402d, { map: wood, bumpMap: wood, bumpScale: 0.28, roughness: 0.7 });
     const lip = material(0x3d291f, { map: wood, roughness: 0.52 });
     const seam = material(0x211510);
     const mountMetal = material(0x8c6945, { metalness: 0.42, roughness: 0.4 });
@@ -930,11 +930,13 @@ UI.archery = (() => {
       mesh(cabinet, plank, walnut, x, 0, -19).receiveShadow = true;
       if (n < 2) mesh(cabinet, new T.BoxGeometry(1.5, 265, 1), seam, x + 26.5, 0, -17).receiveShadow = true;
     }
-    const rail = new T.BoxGeometry(265, 8, 6);
-    const bevel = new T.BoxGeometry(265, 1.4, 2);
-    for (const y of [-126, 126]) {
-      mesh(cabinet, rail, lip, 0, y, -14).receiveShadow = true;
-      mesh(cabinet, bevel, walnut, 0, y - Math.sign(y) * 4.2, -11);
+    const rail = new T.BoxGeometry(265, 9, 6);
+    const bevel = new T.BoxGeometry(265, 1.6, 2);
+    for (const side of [-1, 1]) {
+      mesh(cabinet, rail, lip, 0, side * 125, -14).receiveShadow = true;
+      mesh(cabinet, bevel, walnut, 0, side * 120, -11);
+      mesh(cabinet, rail, lip, side * 125, 0, -14).rotation.z = Math.PI / 2;
+      mesh(cabinet, bevel, walnut, side * 120, 0, -11).rotation.z = Math.PI / 2;
     }
     const bracket = new T.BoxGeometry(16, 7, 1.8);
     const bolt = new T.SphereGeometry(1.25, 10, 6);
@@ -949,7 +951,7 @@ UI.archery = (() => {
       if (face.children.length) return;
       const rings = view.radii.map((r) => r * 98);
       const [inner, outer, tripleIn, tripleOut, doubleIn, edge] = rings;
-      mesh(face, new T.CircleGeometry(119, 96), material(0x0a0a0a, { roughness: 0.9 }), 0, 0, -0.5);   // the black band round the sisal
+      mesh(face, new T.CircleGeometry(119, 96), material(0x0a0a0a, { roughness: 0.9, shadowSide: T.DoubleSide }), 0, 0, -0.5).castShadow = true;   // the black band round the sisal
       const wire = material(0xb0a395, { metalness: 0.34, roughness: 0.38 });
       const screwHead = new T.CircleGeometry(1.2, 12);
       const slot = new T.PlaneGeometry(1.5, 0.26);
@@ -1050,11 +1052,11 @@ UI.archery = (() => {
       lastFrame = null;
     }
 
-    const steel = material(0xcbbfb0, { roughness: 0.27, metalness: 0.46 });
+    const steel = material(0xeee7de, { roughness: 0.3, metalness: 0.36 });
     const brass = material(0xb2834b, { roughness: 0.33, metalness: 0.42 });
     const groove = material(0x503929, { roughness: 0.54 });
-    const blue = material(0x256d91, { side: T.DoubleSide, roughness: 0.43 });
-    const trim = material(0x79cddd, { side: T.DoubleSide, roughness: 0.45 });
+    const teal = material(0x169f9e, { side: T.DoubleSide, roughness: 0.43 });
+    const trim = material(0xc7fff1, { side: T.DoubleSide, roughness: 0.45 });
     const flightShape = new T.Shape();
     flightShape.moveTo(0, -2);
     flightShape.quadraticCurveTo(2.5, -4, 5, -7);
@@ -1079,7 +1081,7 @@ UI.archery = (() => {
         const fin = new T.Group();
         fin.rotation.y = i * Math.PI / 2;
         fin.position.y = -35.9;
-        mesh(fin, finGeo, blue);
+        mesh(fin, finGeo, teal);
         mesh(fin, stripeGeo, trim, 0, 0, 0.5);
         mesh(fin, stripeGeo, trim, 0, 0, -0.5);
         group.add(fin);
@@ -1091,7 +1093,7 @@ UI.archery = (() => {
     const inHand = dart(), flying = dart(), lodged = Array.from({ length: 3 }, dart);
     const tip = new T.Vector3(), direction = new T.Vector3();
     const trailPoints = [];
-    const trail = new T.Line(new T.BufferGeometry(), new T.LineBasicMaterial({ color: 0xdfe9ff, transparent: true, opacity: 0.4, depthWrite: false }));
+    const trail = new T.Line(new T.BufferGeometry(), new T.LineBasicMaterial({ color: 0xdfe9ff, transparent: true, opacity: 0.64, depthWrite: false }));
     trail.frustumCulled = false; trail.visible = false;
     scene.add(trail);
     const dartAxis = new T.Vector3(0, 1, 0);
@@ -1211,7 +1213,7 @@ UI.archery = (() => {
 
   function makeDartsUI() {
     const STEP = Math.PI / 10, CENTER = 125, SCALE = 98, WIDTH = 250;
-    let root, score, stage, board, geometry, holeG, pins, grip, held, guide, dartModel, result, callout, hint, turn, tabletop, darts3d, swipeButton, grabButton, hintButton, aim, spreadEl, hitFlash;
+    let root, score, stage, board, geometry, holeG, pins, grip, held, guide, dartModel, result, callout, hint, turn, dartIndicators, tabletop, darts3d, swipeButton, grabButton, hintButton, aim, spreadEl, hitFlash;
     const zoom = { s: 1, x: 0, y: 0 };
     let hintOn = false;
     let past = [], pastIds = new Set();
@@ -1243,11 +1245,13 @@ UI.archery = (() => {
             ${sector(angle, t0, t1, stripe)}${sector(angle, t1, d0, sisal)}${sector(angle, d0, edge, stripe)}
             </g><text data-number="${number}" x="${x}" y="${y}">${number}</text>`;
         }).join('') + circle(outer, '#317553') + circle(bull, '#b7423d');
+      geometry.firstElementChild.classList.add('ar-darts-rim');
     }
 
     function mount(main, side) {
       main.innerHTML = `<section class="ar-darts">
-        <header><div><h2></h2><span class="ar-darts-turn"></span></div>
+        <header><div><h2></h2><div class="ar-darts-visit"><span class="ar-darts-turn"></span>
+            <span class="ar-darts-indicators" aria-hidden="true"><i></i><i></i><i></i></span></div></div>
           <button type="button" class="ar-darts-hintbtn" aria-pressed="false">💡 Hint</button>
         </header>
         <div class="ar-darts-board-wrap"><div class="ar-darts-stage"><div class="ar-darts-tabletop">
@@ -1260,7 +1264,10 @@ UI.archery = (() => {
             <g class="ar-darts-grip" aria-hidden="true"><rect x="-25" y="-25" width="48" height="50" rx="14"/></g>
             <g class="ar-darts-held">
               <path class="ar-darts-direction" d="M-12 -8L0 -53L12 -8Z" hidden/>
-              <g class="ar-darts-model" transform="scale(${DART_HELD_SCALE})"><path d="M0-19L2-9V4L6 10V17L0 13L-6 17V10L-2 4V-9Z"/></g>
+              <g class="ar-darts-model" transform="scale(${DART_HELD_SCALE})"><path d="M0-19L2-9V4L6 10V17L0 13L-6 17V10L-2 4V-9Z"/>
+                <path class="ar-darts-steel" d="M0-19L2-9H-2Z"/>
+                <path class="ar-darts-flight" d="M0 5L6 10V17L0 13L-6 17V10Z"/>
+                <path class="ar-darts-stripe" d="M-5 11L0 8L5 11"/></g>
             </g>
           </svg>
         </div></div><div class="ar-darts-callout" aria-hidden="true" hidden></div></div>
@@ -1271,13 +1278,13 @@ UI.archery = (() => {
         </div>
         <p class="hint ar-darts-hint"></p>
       </section>`;
-      side.innerHTML = '<div class="panel"><h3>Scoreboard</h3><div class="ar-darts-score"></div></div>';
+      side.innerHTML = '<div class="panel ar-darts-scorecard"><h3>Scoreboard</h3><div class="ar-darts-score"></div></div>';
       root = main.firstElementChild; score = side.querySelector('.ar-darts-score');
       const find = (name) => root.querySelector('.ar-darts-' + name);
-      board = root.querySelector('svg'); grip = find('grip'); held = find('held');
+      board = root.querySelector('svg[tabindex]'); grip = find('grip'); held = find('held');
       guide = find('direction'); dartModel = find('model'); tabletop = find('tabletop'); stage = find('stage'); swipeButton = find('swipe'); grabButton = find('grab'); hintButton = find('hintbtn'); aim = find('aim'); spreadEl = find('spread'); hitFlash = find('hitflash');
       geometry = find('board'); holeG = find('holes'); pins = find('pins'); past = []; pastIds = new Set();
-      result = find('result'); callout = find('callout'); hint = find('hint'); turn = find('turn');
+      result = find('result'); callout = find('callout'); hint = find('hint'); turn = find('turn'); dartIndicators = find('indicators');
       view = null; pending = false; flight = null; shown = null; visit = null;
       swipe = null; keys = null; releasedFrom = null; waitingHand = null; darts3d = null; impact = null;
       zoom.s = 1; zoom.x = 0; zoom.y = 0;
@@ -1497,7 +1504,8 @@ UI.archery = (() => {
         shape = sector(i * STEP, inner, outerR, '');
       }
       if (!shape) return;
-      hitFlash.innerHTML = shape;
+      hitFlash.innerHTML = shape + (reduce() ? '' :
+        `<circle class="ar-darts-impact-ring" cx="${xAt(shot.x)}" cy="${yAt(shot.y)}" r="5"/>`);
       hitFlash.classList.remove('ar-darts-lit');
       void hitFlash.getBoundingClientRect();
       hitFlash.classList.add('ar-darts-lit');
@@ -1505,8 +1513,7 @@ UI.archery = (() => {
 
     function flashHit(shot) {
       flashSection(shot);
-      const prefix = ['Miss', 'Single', 'Double', 'Triple'][shot.multiplier];
-      callout.textContent = shot.number && shot.number !== 25 ? `${prefix} ${shot.number}` : shot.label;
+      callout.textContent = shot.bust ? 'Bust' : hitName(shot);
       callout.dataset.tone = shot.bust || !shot.number ? 'miss' : shot.multiplier >= 2 ? 'bull' : '';
       callout.hidden = false;
       callout.classList.remove('ar-darts-flash');
@@ -1514,17 +1521,21 @@ UI.archery = (() => {
       callout.classList.add('ar-darts-flash');
     }
 
+    function hitName(shot) {
+      const prefix = ['', 'Single', 'Double', 'Triple'][shot.multiplier];
+      return shot.number && shot.number !== 25 ? `${prefix} ${shot.number}` : shot.label;
+    }
+
     function showShot(shot) {
-      const pieces = [player(shot.o)?.name ?? 'Player', shot.label];
-      if (shot.bust) pieces.push('Bust, visit score restored');
-      else if (view.x01) pieces.push(shot.win ? 'Checkout!' : `${shot.points} left`);
-      else if (view.mode === 'clock') {
-        pieces.push(shot.win ? 'Clock complete!' : `${shot.gain ? 'Next' : 'Still aiming for'} ${clockLabel(view.nextNumbers[shot.o])}`);
-      } else {
-        if (shot.win) pieces.push('All targets closed!');
+      const pieces = [shot.bust ? 'Bust' : hitName(shot)];
+      if (shot.bust) pieces.push('Score restored');
+      else if (shot.win) pieces.push(view.x01 ? 'Checkout!' : view.mode === 'clock' ? 'Clock complete!' : 'Winner');
+      else if (view.mode === 'clock') pieces.push(`Next: ${clockLabel(view.nextNumbers[shot.o])}`);
+      else if (view.mode === 'cricket') {
         if (shot.marks) pieces.push(`+${shot.marks} marks`);
         if (shot.gain) pieces.push(`+${shot.gain} pts`);
-      }
+      } else if (shot.number) pieces.push(String(shot.value));
+      result.dataset.tone = shot.bust || !shot.number ? 'miss' : '';
       result.textContent = pieces.join(' · ');
     }
 
@@ -1582,7 +1593,9 @@ UI.archery = (() => {
         const { x, y, depth, scale, u } = cur;
         throwPose = { x, y, depth, scale, u, roll: time * 5,
           behind, ahead };
-        const flightAngle = 0;
+        // The SVG pin starts at its tip and extends down-right toward its tail.
+        const flightAngle = (Math.atan2(behind.y - ahead.y, ahead.x - behind.x)
+          + Math.PI - Math.atan2(9, 6)) * 180 / Math.PI;
         const pinScale = 1 + (scale - DART_BOARD_SCALE) * 2.2;
         dot?.setAttribute('transform', `${transform(x, y)} rotate(${flightAngle}) scale(${pinScale})`);
         if (time >= 1) {
@@ -1620,7 +1633,7 @@ UI.archery = (() => {
 
     function paintPins() {
       pins.innerHTML = view.darts.map((d) => `<g data-shot="${d.id}" transform="${transform(d.x, d.y)}">
-        <path d="M0 0L6 9L5 13L10 14L12 10L8 8Z"/><circle r="2"/>
+        <path d="M0 0L6 9L5 13L10 14L12 10L8 8Z"/><path class="ar-darts-stripe" d="M7 10L10 12"/><circle r="2"/>
       </g>`).join('');
       view.darts.forEach((d, i) => pins.children[i].style.setProperty('--dart-color', player(d.o)?.color ?? '#ffe198'));
       if (flight) {
@@ -1643,7 +1656,7 @@ UI.archery = (() => {
       view.seats.forEach((_, i) => {
         const row = ctx.el('tr', view.next === i ? 'now' : '');
         const name = ctx.el('th', '', player(i)?.name ?? '?'); name.scope = 'row';
-        name.style.color = player(i)?.color ?? '';
+        if (view.next === i) name.append(ctx.el('span', 'ar-darts-up', view.grab ? 'Collecting' : 'Up next'));
         row.classList.toggle('out', !view.active.includes(i));
         row.append(name);
         if (cricket) for (const marks of view.marks[i]) {
@@ -1694,7 +1707,6 @@ UI.archery = (() => {
             playLanding(shot);
           }
         }
-        if (!shot) result.textContent = '';
       }
       paintPins();
       const target = view.nextNumbers?.[view.next];
@@ -1704,6 +1716,10 @@ UI.archery = (() => {
       turn.textContent = s.phase === 'over' ? 'Game over' : view.next == null ? 'Final dart'
         : view.grab ? `${view.next === view.me ? 'Grab your darts' : `${player(view.next)?.name ?? 'Player'} is collecting darts`}`
         : `${view.next === view.me ? 'Your visit' : player(view.next)?.name ?? 'Player'} · ${view.left} left`;
+      const remaining = s.phase === 'over' || view.grab || view.next == null ? 0 : view.left;
+      for (const [i, indicator] of Array.from(dartIndicators.children).entries()) {
+        indicator.classList.toggle('ready', i < remaining);
+      }
       updateHint();
       renderScores();
     }
