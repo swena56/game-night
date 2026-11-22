@@ -271,14 +271,42 @@ def update_duckdns(name, address, token):
     return f"{name}.duckdns.org"
 
 
-def deploy_app(droplet_id, address, hostname, ssh, ssh_env):
-    release = secrets.token_hex(8)
-    print(f"Deploying Game Night release {release} to {address}...", flush=True)
+def git(repo, *args):
+    result = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
+    if result.returncode:
+        raise DropletError(f"git {args[0]} failed: {result.stderr.strip()}")
+    return result.stdout.strip()
+
+
+def release_source(repo, dirty):
+    """Return a 16-hex release id: the commit being shipped, or random for --dirty."""
+    if dirty:
+        return secrets.token_hex(8)
+    problems = []
+    if git(repo, "rev-parse", "--abbrev-ref", "HEAD") != "main":
+        problems.append("not on main")
+    if git(repo, "status", "--porcelain", "--untracked-files=no"):
+        problems.append("uncommitted changes to tracked files")
+    git(repo, "fetch", "--quiet", "origin", "main")
+    if git(repo, "rev-parse", "HEAD") != git(repo, "rev-parse", "origin/main"):
+        problems.append("HEAD differs from origin/main (push or pull first)")
+    if problems:
+        raise DropletError("Refusing to deploy: " + "; ".join(problems) + ". Use --dirty to ship the working tree.")
+    return git(repo, "rev-parse", "HEAD")[:16]
+
+
+def deploy_app(droplet_id, address, hostname, ssh, ssh_env, dirty=False):
     repo = Path(__file__).resolve().parent
+    release = release_source(repo, dirty)
+    print(f"Deploying Game Night release {release}{' (working tree)' if dirty else ' (main)'} to {address}...", flush=True)
     with tempfile.TemporaryFile() as bundle:
-        with tarfile.open(fileobj=bundle, mode="w:gz") as archive:
-            for filename in APP_FILES:
-                archive.add(repo / filename, arcname=filename, filter=app_member)
+        if dirty:
+            with tarfile.open(fileobj=bundle, mode="w:gz") as archive:
+                for filename in APP_FILES:
+                    archive.add(repo / filename, arcname=filename, filter=app_member)
+        else:
+            subprocess.run(["git", "-C", str(repo), "archive", "--format=tar.gz", "HEAD", "--", *APP_FILES],
+                           stdout=bundle, check=True)
         bundle.seek(0)
         try:
             subprocess.run(ssh + ["-T", "-o", "BatchMode=yes", f"root@{address}",
@@ -338,6 +366,8 @@ def main():
                            metavar="ID", help="delete the named Droplet or an explicit ID")
     parser.add_argument("--name", default="game-night", help="Droplet name (default: game-night)")
     parser.add_argument("--ssh-key", type=Path, help="path to an SSH private key")
+    parser.add_argument("--dirty", action="store_true",
+                        help="deploy the working tree instead of requiring a clean, pushed main")
     add_start_options(parser)
     parser.set_defaults(region="nyc3", size="s-1vcpu-1gb", image="ubuntu-24-04-x64")
     commands = parser.add_subparsers(dest="command")
@@ -414,7 +444,7 @@ def main():
             wait_for_ssh(droplet_id, address, ssh, ssh_env, interactive=not deploy)
         if deploy:
             hostname = update_duckdns(duckdns_name, address, duckdns_token) if duckdns_name else address
-            deploy_app(droplet_id, address, hostname, ssh, ssh_env)
+            deploy_app(droplet_id, address, hostname, ssh, ssh_env, args.dirty)
         if args.ssh:
             return subprocess.run(ssh + ["-t", f"root@{address}"], env=ssh_env).returncode
     except EOFError:

@@ -30,6 +30,7 @@ The script looks up a Droplet named `game-night` by default.
 
 ```sh
 python3 droplet.py                    # Deploy, or offer to create the Droplet if missing
+python3 droplet.py --dirty            # Ship the working tree instead of requiring clean, pushed main
 python3 droplet.py start --wait       # Power on and print the public IPv4 address
 python3 droplet.py start --ssh        # Power on and open a root SSH shell
 python3 droplet.py start --deploy     # Power on, deploy, and wait for Game Night
