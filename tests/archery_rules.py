@@ -306,7 +306,7 @@ for course in ("301", "cricket", "clock", "countup", "archery"):
         n += 1
         (g.darts or g).ready_at = 0
         r.deadline = 0
-        if g.darts and r.turn == me.id:
+        if g.darts and g.bot_ready():
             g.darts.bot(me)
         elif not g.darts and r.turn == me.id:
             g.act(me, {"type": "shoot", "ax": 0, "ay": 0})

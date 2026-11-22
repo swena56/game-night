@@ -339,6 +339,9 @@ class Room:
             self.paused = now
         elif self.game and self.phase == "playing":
             self.restore_clocks(shift, now - shift)
+        darts = getattr(self.game, "darts", None)
+        if self.phase == "playing" and darts and darts.grabbing is not None:
+            self.deadline = darts.ready_at
         self.later = [(t + shift, e) for t, e in self.later]
         self.bot_at = now + 2
 

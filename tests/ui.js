@@ -787,8 +787,6 @@ const MOVES = {
   },
   archery(d, S, n, w) {
     if (S.darts) {
-      const grab = d.querySelector('.ar-darts-grab:not([hidden]):enabled');
-      if (grab) return click(grab);
       const button = d.querySelector('.ar-darts-swipe:enabled');
       if (button) {
         button.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'ArrowUp', shiftKey: true, bubbles: true }));

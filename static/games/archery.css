@@ -170,9 +170,8 @@
 @keyframes ar-aim-pulse { 50% { transform: scale(1.35); opacity: .55; } }
 @media (prefers-reduced-motion: reduce) { .ar-darts-aim { animation: none; } }
 .ar-darts-webgl { filter: drop-shadow(0 12px 14px #000a); }
-.ar-darts-grab { min-height: 44px; padding-inline: 14px; font-weight: 700; }
-.ar-darts-grab[hidden], .ar-darts-swipe[hidden] { display: none; }
 .ar-darts-swipe { min-height: 44px; touch-action: none; cursor: grab; padding-inline: 12px; }
+.ar-darts-swipe[hidden] { display: none; }
 .ar-darts-hint { margin: 6px auto; max-width: 50ch; }
 .ar-darts-score-panel { min-width: 0; border-color: #a17a504d; }
 .ar-darts-scorecard.panel, .ar-darts-score-panel.panel { --line: #594634; background: #242220; color: #fff0d6; border: 1px solid var(--line); }
@@ -186,11 +185,11 @@
 .ar-darts-table tr.now { background: #463627; }
 .ar-darts-table tr.now th { box-shadow: inset 3px 0 #dba966; padding-inline-start: 10px; }
 .ar-darts-table thead { border-bottom: 1px solid #a17a5066; }
-.ar-darts :is(.ar-darts-hintbtn, .ar-darts-swipe, .ar-darts-grab) {
+.ar-darts :is(.ar-darts-hintbtn, .ar-darts-swipe) {
   color: #fff1d5; background: linear-gradient(#62452f, #38271d);
   border: 1px solid #a17a50;
 }
-.ar-darts :is(.ar-darts-hintbtn, .ar-darts-swipe, .ar-darts-grab):focus-visible {
+.ar-darts :is(.ar-darts-hintbtn, .ar-darts-swipe):focus-visible {
   outline: 2px solid #ffd780; outline-offset: 2px;
 }
 .ar-darts-table tr.out { opacity: .5; }
@@ -315,3 +314,21 @@
   .ar-darts-landing:not([hidden]) { animation: none; }
 }
 .ar-darts-inspecting .ar-darts-is3d .ar-darts-trail { visibility: hidden; }
+
+.ar-darts-visit-card { margin: 6px 0; font-size: .85rem; overflow-wrap: anywhere; }
+
+.ar-darts-adjust {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px 12px;
+  min-inline-size: 0;
+  margin: 0;
+}
+.ar-darts-adjust[hidden] { display: none; }
+.ar-darts-adjust label { flex: 1 1 8rem; min-width: 0; }
+.ar-darts-adjust input { display: block; width: 100%; min-height: 44px; margin: 0; touch-action: none; }
+.ar-darts-release { min-height: 44px; }
+.ar-darts-release[aria-disabled="true"] { opacity: .55; cursor: default; }
+.ar-darts-aim-status, .ar-darts-advice { margin: 4px 0; overflow-wrap: anywhere; }
+.ar-darts-aim-status:empty, .ar-darts-advice:empty { margin: 0; }

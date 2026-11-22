@@ -97,7 +97,7 @@ class Archery(Game):
     category = "action"
     family = None
     howto = [
-        "In darts, swipe inward from the dart at the right edge or the button below the board to throw. The dart lands where your swipe ends; a slow, steady swipe is accurate and a rushed flick scatters, shown by the ring while you swipe. Each visit has up to three darts, then tap 🖐 Grab darts to pull them before the next player goes (they are collected for you after 10 seconds). A rushed, fast flick strays more than a steady throw.",
+        "In darts, start on the right half of the board or on the throw button, then swipe inward. Release when the aim ring is over your target. The ring grows on faster swipes to show the extra scatter. Each visit has up to three darts, and the board clears automatically after the last visit of the round.",
         "301 and 501: count down to exactly zero; any dart can finish. Going below zero busts the whole visit. With the Double out setting you must finish on a double, and leaving one or hitting zero without a double busts too.",
         "Cricket: hit 15–20 and bull three times each. Extra marks score while a rival still has that target open. Close every target and at least tie the high score to win.",
         "Around the Clock: hit 1 through 20 in order, then either bull. A double or triple clears only that number.",
@@ -123,6 +123,7 @@ class Archery(Game):
               "streak": ("✨", "Golden streak", "Three golds in a row")}
     settings_schema = {
         "course": ("Course", [*MODES.items(), ("archery", "Wind Archery")], "301"),
+        "aim_control": ("Darts controls", [("swipe", "Swipe first"), ("adjust", "Adjust and release")], "swipe"),
         "finish": ("Finish (301/501)", [("any", "Any finish"), ("double", "Double out")], "any"),
         "ends": ("Ends", [(3, "3"), (2, "2"), (5, "5")], 3),
         "wind": ("Wind", [("breezy", "🍃 Breezy"), ("gusty", "🌬 Gusty"), ("calm", "🪶 Calm")], "breezy"),
@@ -134,7 +135,11 @@ class Archery(Game):
         self.rng = rng
         self.seats = [p.id for p in seated]
         mode = self.s.get("course", self.settings_schema["course"][2])
-        self.darts = DartMatch(self.room, self.seats, rng, mode, self.s.get("finish", "any") == "double") if mode in MODES else None
+        self.darts = DartMatch(
+            self.room, self.seats, rng, mode,
+            double_out=self.s.get("finish") == "double",
+            aim_control=self.s.get("aim_control") == "adjust",
+        ) if mode in MODES else None
         if self.darts:
             return
         n = len(self.seats)
@@ -593,7 +598,7 @@ class Archery(Game):
 
     def bot_ready(self):
         if self.darts:
-            return super().bot_ready()
+            return self.darts.grabbing is None and super().bot_ready()
         if self.between:
             return False
         p = self.room.players.get(self.room.turn)

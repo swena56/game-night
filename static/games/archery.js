@@ -1434,14 +1434,15 @@ UI.archery = (() => {
 
   function makeDartsUI() {
     const STEP = Math.PI / 10, CENTER = 125, SCALE = 98, WIDTH = 250;
-    let root, score, stage, board, geometry, holeG, pins, grip, held, guide, dartModel, result, callout, hint, turn, dartIndicators, tabletop, darts3d, swipeButton, grabButton, hintButton, aim, spreadEl, hitFlash, landing, trail, impactMark;
+    let root, score, stage, board, geometry, holeG, pins, grip, held, guide, dartModel, result, callout, hint, turn, dartIndicators, tabletop, darts3d, swipeButton, visitPanel, hintButton, aim, spreadEl, hitFlash, landing, trail, impactMark;
     const zoom = { s: 1, x: 0, y: 0 };
     const angle = { pitch: 0, yaw: 0 };
+    let adjust, aimX, aimY, release, aimStatus, hintAdvice, touchListeners, aimTimer;
     let inspecting, inspectButton, tabletopResize;
     let hintOn = false;
     let past = [], pastIds = new Set();
     let landingId, landingAt;
-    let view, state, ctx, frame, readyAt, grabAt, grabbing, pending, visit, shown, flight, falling, swipe, keys, releasedFrom, waitingHand, impact;
+    let view, state, ctx, frame, readyAt, pending, visit, shown, flight, falling, swipe, keys, releasedFrom, waitingHand, impact;
     const xAt = (x) => CENTER + SCALE * x, yAt = (y) => CENTER - SCALE * y;
     const point = (a, r) => [CENTER + Math.sin(a) * r, CENTER - Math.cos(a) * r];
     const circle = (r, fill) => `<circle cx="125" cy="125" r="${r}" fill="${fill}"/>`;
@@ -1450,7 +1451,7 @@ UI.archery = (() => {
     const clockLabel = (number) => number == null ? 'Done' : number === 25 ? 'Bull' : String(number);
     const origin = () => { const [x, y] = view.dartOrigin || [1.04, -0.55]; return { x, y }; };
     const mine = () => view && state.phase === 'playing' && ctx.myTurn && !state.paused;
-    const ready = () => mine() && !view.grab && !pending && !waitingHand && !flight && performance.now() >= readyAt;
+    const ready = () => mine() && !view.roundRecap && !pending && !waitingHand && !flight && performance.now() >= readyAt;
     const reduce = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     const visibleImpact = (x, y) => xAt(x) >= 5 && xAt(x) <= 245 && yAt(y) >= 5 && yAt(y) <= 245;
     const transform = (x, y) => `translate(${xAt(x)} ${yAt(y)})`;
@@ -1512,11 +1513,11 @@ UI.archery = (() => {
 
     function mount(main, side) {
       main.innerHTML = `<section class="ar-darts">
-        <header><div><h2></h2><div class="ar-darts-visit"><span class="ar-darts-turn"></span>
+        <header><div><h2></h2><div class="ar-darts-visit"><span class="ar-darts-turn" role="status"></span>
             <span class="ar-darts-indicators" aria-hidden="true"><i></i><i></i><i></i></span></div></div>
           <div class="ar-darts-tools">
             <button type="button" class="ar-darts-inspect" aria-pressed="false" aria-label="Inspect dartboard at an angle">Inspect</button>
-            <button type="button" class="ar-darts-hintbtn" aria-pressed="false">💡 Hint</button>
+            <button type="button" class="ar-darts-hintbtn" aria-label="Strategy hint" aria-pressed="false">💡 Hint</button>
           </div>
         </header>
         <div class="ar-darts-board-wrap"><div class="ar-darts-stage"><div class="ar-darts-tabletop">
@@ -1546,17 +1547,28 @@ UI.archery = (() => {
         <div class="ar-darts-footer">
           <p class="ar-darts-result" role="status"></p>
           <button type="button" class="ar-darts-swipe" aria-label="Swipe toward the board to throw, or press Enter to throw">Swipe to throw</button>
-          <button type="button" class="ar-darts-grab" hidden></button>
         </div>
+        <fieldset class="ar-darts-adjust" hidden>
+          <legend>Adjust aim</legend>
+          <label>Horizontal aim <input class="ar-darts-aim-x" type="range" min="-100" max="100" value="0"></label>
+          <label>Vertical aim <input class="ar-darts-aim-y" type="range" min="-100" max="100" value="0"></label>
+          <button type="button" class="ar-darts-release">Release dart</button>
+        </fieldset>
+        <p class="ar-darts-aim-status" role="status"></p>
+        <p class="ar-darts-advice" role="status"></p>
+        <div class="ar-darts-visit-card"></div>
         <p class="hint ar-darts-hint"></p>
       </section>`;
       side.innerHTML = '<div class="panel ar-darts-score-panel"><h3>Scoreboard</h3><div class="ar-darts-score"></div></div>';
       root = main.firstElementChild; score = side.querySelector('.ar-darts-score');
       const find = (name) => root.querySelector('.ar-darts-' + name);
       board = find('input'); grip = find('grip'); held = find('held');
-      guide = find('direction'); dartModel = find('model'); tabletop = find('tabletop'); stage = find('stage'); swipeButton = find('swipe'); grabButton = find('grab'); hintButton = find('hintbtn'); aim = find('aim'); spreadEl = find('spread'); hitFlash = find('hitflash'); landing = find('landing'); trail = find('trail'); impactMark = find('impact');
+      guide = find('direction'); dartModel = find('model'); tabletop = find('tabletop'); stage = find('stage'); swipeButton = find('swipe'); visitPanel = find('visit-card'); hintButton = find('hintbtn'); aim = find('aim'); spreadEl = find('spread'); hitFlash = find('hitflash'); landing = find('landing'); trail = find('trail'); impactMark = find('impact');
       geometry = find('board'); holeG = find('holes'); pins = find('pins'); past = []; pastIds = new Set();
       result = find('result'); callout = find('callout'); hint = find('hint'); turn = find('turn'); dartIndicators = find('indicators');
+      adjust = find('adjust'); aimX = find('aim-x'); aimY = find('aim-y');
+      release = find('release'); aimStatus = find('aim-status'); hintAdvice = find('advice');
+      hintOn = false;
       landingId = null;
       view = null; pending = false; flight = null; falling = null; shown = null; visit = null;
       swipe = null; keys = null; releasedFrom = null; waitingHand = null; darts3d = null; impact = null;
@@ -1574,8 +1586,71 @@ UI.archery = (() => {
         angle.yaw = -24;
         applyView();
       });
-      grabButton.addEventListener('click', collectDarts);
       callout.addEventListener('animationend', () => { callout.hidden = true; });
+      // Track contacts across the entire document, including touches outside the board
+      // and throws that start on the separate swipe button.
+      touchListeners = new AbortController();
+      const options = { capture: true, signal: touchListeners.signal };
+      const contacts = new Set();
+      let interrupted = false, adjustingPointer = null;
+      const cancelThrow = (message) => {
+        clearTimeout(aimTimer);
+        swipe = keys = null;
+        aimX.value = aimY.value = 0;
+        spreadEl.hidden = true;
+        setText(aimStatus, message);
+      };
+      document.addEventListener('pointerdown', (e) => {
+        if (!contacts.size) {
+          interrupted = false;
+          if (adjust.contains(e.target)) adjustingPointer = e.pointerId;
+        }
+        if (e.pointerType !== 'touch') return;
+        contacts.add(e.pointerId);
+        if (contacts.size > 1 && (swipe || adjustingPointer !== null || adjust.contains(e.target))) {
+          interrupted = true;
+          cancelThrow('Aim cleared. Try again.');
+        }
+      }, options);
+      for (const event of ['pointerup', 'pointercancel']) {
+        document.addEventListener(event, (e) => {
+          contacts.delete(e.pointerId);
+          if (event === 'pointercancel' && (swipe?.id === e.pointerId || adjustingPointer === e.pointerId)) {
+            interrupted = true;
+            cancelThrow('Aim cleared. Try again.');
+          }
+          if (adjustingPointer === e.pointerId) adjustingPointer = null;
+        }, options);
+      }
+      adjust.addEventListener('pointerdown', (e) => {
+        if (contacts.size > 1) e.preventDefault();
+      });
+      adjust.addEventListener('lostpointercapture', (e) => {
+        if (adjustingPointer !== e.pointerId) return;
+        interrupted = true;
+        adjustingPointer = null;
+        cancelThrow('Aim cleared. Try again.');
+      });
+      const updateAdjustment = () => {
+        if (interrupted && contacts.size) {
+          aimX.value = aimY.value = 0;
+          return;
+        }
+        resetView();
+        announceAim(adjustPayload());
+      };
+      for (const slider of [aimX, aimY]) {
+        slider.addEventListener('input', updateAdjustment);
+        slider.addEventListener('focus', updateAdjustment);
+      }
+      adjust.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') cancelThrow('Aim cleared.');
+      });
+      release.addEventListener('click', (e) => {
+        if (swipe || contacts.size || (e.detail && interrupted)) return;
+        const { dx, dy, vx, vy } = adjustPayload();
+        submit(dx, dy, vx, vy);
+      });
       const touches = new Map();
       let pinch = null, drag = null;
       stage.addEventListener('pointerdown', (e) => {
@@ -1598,7 +1673,7 @@ UI.archery = (() => {
           const onBoard = board.contains(e.target);
           const bounds = board.getBoundingClientRect();
           const onGrabSide = e.clientX >= bounds.left + bounds.width / 2;
-          if (onBoard && onGrabSide && !inspecting && ready()) {
+          if (onBoard && onGrabSide && !inspecting && ready() && contacts.size <= 1) {
             pickUp(e);
             return;
           }
@@ -1637,15 +1712,14 @@ UI.archery = (() => {
           && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 8;
         drag = null;
         if (!tapped) return;
-        if (canCollect()) collectDarts();
-        else if (inspecting && ready()) resetView();
+        if (inspecting && ready()) resetView();
       };
       stage.addEventListener('pointerup', lift);
       stage.addEventListener('pointercancel', lift);
       stage.addEventListener('lostpointercapture', lift);
       stage.addEventListener('dblclick', resetView);
       const pickUp = (e) => {
-        if (!ready() || swipe || e.button !== 0) return;
+        if (!ready() || swipe || e.button !== 0 || contacts.size > 1) return;
         resetView();
         const scale = board.getBoundingClientRect().width * SCALE / WIDTH;
         if (!scale) return;
@@ -1658,12 +1732,16 @@ UI.archery = (() => {
       };
       swipeButton.addEventListener('pointerdown', pickUp);
       board.addEventListener('pointermove', (e) => {
-        if (swipe?.id === e.pointerId) sample(e);
+        if (swipe?.id !== e.pointerId) return;
+        sample(e);
+        clearTimeout(aimTimer);
+        aimTimer = setTimeout(() => { if (swipe) announceAim(swipePayload()); }, 180);
       });
       board.addEventListener('pointerup', (e) => {
         if (swipe?.id !== e.pointerId) return;
         sample(e);
-        const { dx, dy, samples } = swipe;
+        clearTimeout(aimTimer);
+        const { dx, dy, vx, vy } = swipePayload();
         const hand = pose();
         const from = darts3d?.releasePoint(hand) ?? {
           x: hand.x - 0.04,
@@ -1672,27 +1750,35 @@ UI.archery = (() => {
           scale: hand.scale,
         };
         swipe = null;
-        if (dx > -0.05 || Math.hypot(dx, dy) < 0.1) return;
-        const first = samples[0], last = samples.at(-1);
-        const seconds = Math.max(0.032, (last.t - first.t) / 1000);
-        submit(dx, dy, (last.x - first.x) / seconds, (last.y - first.y) / seconds, from, hand);
+        if (dx > -0.05 || Math.hypot(dx, dy) < 0.1) {
+          setText(aimStatus, 'Swipe inward to throw. Try again.');
+          return;
+        }
+        submit(dx, dy, vx, vy, from, hand);
       });
-      const cancelSwipe = (e) => { if (swipe?.id === e.pointerId) swipe = null; };
+      const cancelSwipe = (e) => {
+        if (swipe?.id === e.pointerId) cancelThrow('Aim cleared. Try again.');
+      };
       board.addEventListener('pointercancel', cancelSwipe);
       board.addEventListener('lostpointercapture', cancelSwipe);
-      const clearKeys = () => { keys = null; };
+      const clearKeys = () => {
+        if (keys) setText(aimStatus, '');
+        keys = null;
+      };
       board.addEventListener('blur', clearKeys);
       swipeButton.addEventListener('blur', clearKeys);
       root.addEventListener('keydown', (e) => {
-        if ((e.target !== board && e.target !== swipeButton) || !ready() || swipe) return;
-        if (e.key === 'Escape') { keys = null; resetView(); return; }
+        if ((e.target !== board && e.target !== swipeButton) || !ready() || swipe || contacts.size) return;
+        if (e.key === 'Escape') { cancelThrow('Aim cleared.'); resetView(); return; }
         const delta = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] }[e.key];
         if (delta) {
           e.preventDefault();
+          if (inspecting || zoom.s !== 1) resetView();
           keys ??= { dx: -origin().x, dy: -origin().y };
           const step = e.shiftKey ? 0.20 : 0.02;
           keys.dx = Math.max(-2.5, Math.min(-0.05, keys.dx + step * delta[0]));
           keys.dy = clamp(keys.dy + step * delta[1], 1.5);
+          announceAim(throwPayload(keys.dx, keys.dy, -view.swipePace, 0));
         }
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
@@ -1714,6 +1800,7 @@ UI.archery = (() => {
     function paintHint() {
       const hint = view?.hint;
       hintButton.setAttribute('aria-pressed', String(hintOn));
+      setText(hintAdvice, hintOn && hint ? `Aim for ${hint.label}. ${hint.reason ?? ''}`.trim() : '');
       hintButton.textContent = hintOn && hint ? `💡 Aim: ${hint.label}` : '💡 Hint';
       if (hint) {
         aim.style.left = `${xAt(hint.x) / WIDTH * 100}%`;
@@ -1723,17 +1810,6 @@ UI.archery = (() => {
 
     function throwInProgress() {
       return !!(swipe || waitingHand || pending || (flight && flight.shot.o === view.me));
-    }
-
-    function canCollect() {
-      return mine() && view.grab && !flight && performance.now() >= readyAt;
-    }
-
-    function collectDarts() {
-      if (!canCollect() || grabbing) return;
-      grabbing = true;
-      resetView();
-      ctx.quiet(ctx.act('grab').catch((error) => { grabbing = false; throw error; }));
     }
 
     function fitFlatTilt() {
@@ -1774,12 +1850,35 @@ UI.archery = (() => {
       applyView();
     }
 
-    // Pace of the swipe so far, as the server will see it on release (board radii per second).
-    function swipePace() {
-      const samples = swipe?.samples;
-      if (!samples || samples.length < 2) return 0;
-      const first = samples[0], last = samples.at(-1), seconds = Math.max(0.032, (last.t - first.t) / 1000);
-      return Math.min(6, Math.hypot(last.x - first.x, last.y - first.y) / seconds);
+    function throwPayload(dx, dy, vx, vy) {
+      return { dx: clamp(dx, 2.5), dy: clamp(dy, 3.2), vx: clamp(vx, 6), vy: clamp(vy, 6) };
+    }
+
+    function setText(element, text) {
+      if (element.textContent !== text) element.textContent = text;
+    }
+
+    function adjustPayload() {
+      const { x, y } = origin();
+      return throwPayload(Math.min(-0.05, Number(aimX.value) / 100 - x), Number(aimY.value) / 100 - y, 0, 0);
+    }
+
+    function announceAim({ dx, dy, vx, vy }) {
+      const o = origin(), x = o.x + dx, y = o.y + dy;
+      const [inner, outer, tripleIn, tripleOut, doubleIn] = view.radii;
+      const radius = Math.hypot(x, y);
+      const wedge = Math.floor(Math.atan2(x, y) / (Math.PI / 10) + 0.5);
+      const number = view.numbers[(wedge + 20) % 20];
+      const target = radius > 1 ? 'Off board' : radius <= inner ? 'Bull' : radius <= outer ? 'Outer bull'
+        : number == null ? 'Board' : `${radius >= doubleIn ? 'Double' : radius >= tripleIn && radius <= tripleOut ? 'Triple' : 'Single'} ${number}`;
+      const spread = 2 * (view.spreadBase + view.spreadPerPace * Math.hypot(vx, vy));
+      setText(aimStatus, `${target}. Spread radius ${Math.round(spread * 100)}% of the board radius.`);
+    }
+
+    function swipePayload() {
+      const first = swipe.samples[0], last = swipe.samples.at(-1);
+      const seconds = Math.max(0.032, (last.t - first.t) / 1000);
+      return throwPayload(swipe.dx, swipe.dy, (last.x - first.x) / seconds, (last.y - first.y) / seconds);
     }
 
     function sample(e) {
@@ -1799,13 +1898,17 @@ UI.archery = (() => {
       clearImpact();
       keys = null;
       hintOn = false;
+      paintHint();
+      clearTimeout(aimTimer);
+      setText(aimStatus, '');
       releasedFrom = from;
       waitingHand = hand && { ...hand, owner: view.me, until: performance.now() + 1800 };
       playRelease(Math.hypot(vx, vy));
-      ctx.quiet(ctx.act('throw', {
-        dx: clamp(dx, 2.5), dy: clamp(dy, 3.2), vx: clamp(vx, 6), vy: clamp(vy, 6),
-      }).catch((error) => {
-        if (tabletop === surface) { waitingHand = null; releasedFrom = null; paintLanding(); }
+      ctx.quiet(ctx.act('throw', throwPayload(dx, dy, vx, vy)).catch((error) => {
+        if (tabletop === surface) {
+          waitingHand = null; releasedFrom = null; paintLanding();
+          setText(aimStatus, 'Throw failed. Try again.');
+        }
         throw error;
       }).finally(() => { if (tabletop === surface) pending = false; }));
     }
@@ -1945,26 +2048,22 @@ UI.archery = (() => {
       inspectButton.disabled = throwInProgress();
       grip.toggleAttribute('hidden', !show || !!swipe || inspecting);
       swipeButton.disabled = !show;
+      release.setAttribute('aria-disabled', String(!show || !!swipe));
+      aimX.disabled = aimY.disabled = !mine();
       hintButton.disabled = !show;
-      const preview = show && (swipe || keys);
+      const preview = show && !inspecting && (swipe ? swipePayload()
+        : keys ? throwPayload(keys.dx, keys.dy, -view.swipePace, 0) : view.aimControl && adjustPayload());
       spreadEl.hidden = !preview;
       if (preview) {
         const o = origin();
-        const pace = swipe ? swipePace() : view.swipePace;
+        const pace = Math.hypot(preview.vx, preview.vy);
         const radius = 2 * (view.spreadBase + view.spreadPerPace * pace);
         spreadEl.style.left = `${xAt(o.x + preview.dx) / WIDTH * 100}%`;
         spreadEl.style.top = `${yAt(o.y + preview.dy) / WIDTH * 100}%`;
         spreadEl.style.width = `${2 * radius * SCALE / WIDTH * 100}%`;
       }
       aim.hidden = !(hintOn && view.hint && show);
-      // After the last dart of a visit the thrower pulls them from the board before the next player goes.
-      const canGrab = canCollect();
-      swipeButton.hidden = canGrab || (mine() && view.grab);
-      grabButton.hidden = !canGrab;
-      if (canGrab) {
-        grabButton.disabled = grabbing;
-        grabButton.textContent = `Collect darts · ${Math.max(0, Math.ceil((grabAt - now) / 1000))}s`;
-      }
+      swipeButton.hidden = !!view.roundRecap;
       held.toggleAttribute('hidden', !drawHand);
       guide.toggleAttribute('hidden', hand.aiming);
       const handAngle = hand.angle * 180 / Math.PI;
@@ -2022,6 +2121,7 @@ UI.archery = (() => {
           }
           impact = shot.number ? { id: shot.id, at: now, power: 0.7 + 0.5 * c01((shot.pace ?? 2.2) / 6) } : null;
           showShot(shot);
+          renderVisit();
           paintLanding();
           flashHit(shot);
           playLanding(shot);
@@ -2121,7 +2221,7 @@ UI.archery = (() => {
       view.seats.forEach((_, i) => {
         const row = ctx.el('tr', view.next === i ? 'now' : '');
         const name = ctx.el('th', '', player(i)?.name ?? '?'); name.scope = 'row';
-        if (view.next === i) name.append(ctx.el('span', 'ar-darts-up', view.grab ? 'Collecting' : 'Up next'));
+        if (view.next === i) name.append(ctx.el('span', 'ar-darts-up', view.roundRecap ? 'Round complete' : 'Up next'));
         row.classList.toggle('out', !view.active.includes(i));
         row.append(name);
         if (cricket) for (const marks of view.marks[i]) {
@@ -2143,8 +2243,6 @@ UI.archery = (() => {
       const first = !view;
       view = s.darts; state = s; ctx = c;
       readyAt = performance.now() + view.readyIn * 1000;
-      grabAt = performance.now() + view.grabIn * 1000;
-      grabbing = false;
       paintHint();
       if (first) {
         const start = origin();
@@ -2153,7 +2251,12 @@ UI.archery = (() => {
         darts3d?.paint(view);
         root.querySelector('h2').textContent = `Darts · ${view.title}`;
       }
-      if (!mine() || visit !== view.visit) { visit = view.visit; swipe = null; keys = null; }
+      adjust.hidden = !view.aimControl;
+      if (!mine() || view.roundRecap || visit !== view.visit) {
+        visit = view.visit; swipe = null; keys = null;
+        aimX.value = aimY.value = 0;
+        setText(aimStatus, '');
+      }
       const shot = view.shot;
       const previousShot = shown;
       if (shot?.id !== shown) {
@@ -2189,15 +2292,41 @@ UI.archery = (() => {
       for (const label of geometry.querySelectorAll('[data-number]')) {
         label.classList.toggle('ar-darts-next-number', Number(label.dataset.number) === target);
       }
-      turn.textContent = s.phase === 'over' ? 'Game over' : view.next == null ? 'Final dart'
-        : view.grab ? `${view.next === view.me ? 'Collect the round’s darts' : `${player(view.next)?.name ?? 'Player'} is collecting darts`}`
-        : `${view.next === view.me ? 'Your visit' : player(view.next)?.name ?? 'Player'} · ${view.left} left`;
-      const remaining = s.phase === 'over' || view.grab || view.next == null ? 0 : view.left;
+      setText(turn, s.phase === 'over' ? 'Game over' : view.next == null ? 'Final dart'
+        : view.roundRecap ? 'Round complete'
+        : `${view.next === view.me ? 'Your visit' : player(view.next)?.name ?? 'Player'} · ${view.left} left`);
+      const remaining = s.phase === 'over' || view.roundRecap || view.next == null ? 0 : view.left;
       for (const [i, indicator] of Array.from(dartIndicators.children).entries()) {
         indicator.classList.toggle('ready', i < remaining);
       }
       updateHint();
       renderScores();
+      renderVisit();
+    }
+
+    function renderVisit() {
+      const visible = (dart) => dart.id !== flight?.shot.id;
+      const completed = view.completedVisit;
+      const current = (view.visitDarts ?? []).filter(visible);
+      const showCompleted = completed && completed.darts.every(visible);
+      const parts = [];
+      if (!showCompleted || completed.visit !== view.visit) {
+        const landed = completed && !showCompleted ? completed.darts.filter(visible) : current;
+        const labels = Array.from({ length: 3 }, (_, i) => landed[i]?.label ?? '–');
+        parts.push(ctx.el('div', '', `Current visit · ${labels.join(' / ')}`));
+      }
+      if (showCompleted) {
+        const { seat, darts, reason, before, after, marks } = completed;
+        const labels = darts.map((dart) => dart.label).join(' / ');
+        const delta = after - before;
+        const summary = reason === 'bust' ? `Bust on ${darts.at(-1).label} · Restored to ${after}`
+          : view.x01 ? `${-delta} scored · ${after} left`
+          : view.mode === 'cricket' ? `${marks} marks · ${delta} points`
+          : view.mode === 'clock' ? `${delta} targets cleared` : `${delta} points`;
+        const ending = reason === 'timeout' ? ' · Time expired' : reason === 'departure' ? ' · Player left' : '';
+        parts.push(ctx.el('div', '', `${player(seat)?.name ?? 'Player'} · ${labels ? labels + ' · ' : ''}${summary}${ending}`));
+      }
+      visitPanel.replaceChildren(...parts);
     }
 
     function updateHint() {
@@ -2206,13 +2335,16 @@ UI.archery = (() => {
       if (view.mode === 'clock') rule = view.next == null ? 'Hit 1–20 in order, then bull.'
         : `Next target: ${clockLabel(view.nextNumbers[view.next])}.`;
       if (view.mode === 'countup') rule = `Highest score after ${view.visitLimit} visits wins.`;
-      hint.textContent = mine() && view.grab ? 'Tap the board to collect the round’s darts.'
-        : mine() ? `Drag the left half to inspect. Touch the right half or the throw button and swipe inward to throw. Pinch to zoom. ${rule}`
+      hint.textContent = view.roundRecap ? 'The board clears after the recap.'
+        : mine() && view.aimControl ? `Adjust horizontal and vertical aim, then release. You can also swipe from the right half of the board. ${rule}`
+        : mine() ? `Drag the left half to inspect. Start on the right half or the throw button. Swipe inward and release when the ring is over your target. Pinch to zoom. ${rule}`
         : `Drag to tilt the board or pinch to zoom. ${rule}`;
     }
 
     return { mount, render, unmount() {
       cancelAnimationFrame(frame);
+      clearTimeout(aimTimer);
+      touchListeners?.abort();
       tabletopResize?.disconnect();
       darts3d?.dispose();
       darts3d = null;
@@ -2239,6 +2371,7 @@ UI.archery = (() => {
     turnText(s) {
       if (!s.darts || s.phase !== 'playing') return null;
       const { next, seats, left } = s.darts;
+      if (s.darts.roundRecap) return 'Round complete';
       if (next == null) return 'Final dart';
       const name = s.players.find((p) => p.id === seats[next])?.name;
       return next === s.darts.me ? `Your visit · ${left} left` : `${name ?? 'Player'} · ${left} left`;

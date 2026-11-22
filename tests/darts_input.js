@@ -8,6 +8,7 @@ async function test() {
   const { window } = new JSDOM('<main></main><aside></aside>', { runScripts: 'outside-only' });
   const { document } = window;
   const actions = [];
+  let rejectThrow = false;
   let frame;
   window.requestAnimationFrame = (callback) => { frame = callback; return 1; };
   window.cancelAnimationFrame = () => {};
@@ -23,11 +24,14 @@ async function test() {
     el: (tag, cls, text) => Object.assign(document.createElement(tag), {
       className: cls || '', textContent: text || '',
     }),
-    act: async (type, payload) => { actions.push({ type, payload }); },
-    quiet: () => {},
+    act: async (type, payload) => {
+      actions.push({ type, payload });
+      if (rejectThrow) throw new Error('Rejected throw');
+    },
+    quiet: (promise) => promise.catch(() => {}),
   };
   const darts = {
-    title: '301', mode: '301', x01: true, readyIn: 0, grabIn: 0, seats: ['a'],
+    title: '301', mode: '301', x01: true, readyIn: 0, roundRecap: false, seats: ['a'],
     active: [0], me: 0, next: 0, left: 3, visit: 1, numbers: [20], darts: [],
     points: [301], checkout: [], swipePace: 2.2, spreadBase: 0.03, spreadPerPace: 0.012,
     radii: [0.037, 0.094, 0.58, 0.63, 0.953, 1],
@@ -87,7 +91,7 @@ async function test() {
     tick();
     assert.ok(spread.hidden);
     context.myTurn = true;
-    darts.grab = true;
+    darts.roundRecap = true;
     render();
     press(board, 'Enter');
     assert.equal(actions.length, 2);
@@ -95,7 +99,7 @@ async function test() {
     const landing = document.querySelector('.ar-darts-landing');
     const hint = document.querySelector('.ar-darts-aim');
     assert.ok(landing.hasAttribute('hidden'));
-    darts.grab = false;
+    darts.roundRecap = false;
     darts.hint = { x: 0, y: 0, label: 'Bull' };
     render();
     tick();
@@ -201,9 +205,11 @@ async function test() {
     const currentSpread = document.querySelector('.ar-darts-spread');
     const inspect = document.querySelector('.ar-darts-inspect');
     const tabletop = document.querySelector('.ar-darts-tabletop');
+    let pointerTime = 0;
     const pointer = (type, x, y) => {
       const event = new window.MouseEvent(type, { bubbles: true, clientX: x, clientY: y });
       Object.defineProperty(event, 'pointerId', { value: 1 });
+      Object.defineProperty(event, 'timeStamp', { value: pointerTime += 10 });
       currentBoard.dispatchEvent(event);
     };
     inspect.click();
@@ -226,16 +232,20 @@ async function test() {
     assert.match(tabletop.style.transform, /rotateY\(-28deg\)/);
     inspect.click();
     pointer('pointerdown', 180, 100);
-    pointer('pointermove', 130, 105);
+    pointer('pointermove', 130, 155);
     tick();
     assert.equal(currentSpread.hidden, false);
-    pointer('pointerup', 130, 105);
+    closeTo(parseFloat(currentSpread.style.width), 4 * (0.03 + 0.012 * Math.hypot(6, 6)) * 98 / 250 * 100);
+    pointer('pointerup', 130, 155);
     assert.equal(actions[count].type, 'throw');
+    assert.equal(actions[count].payload.vx, -6);
+    assert.equal(actions[count].payload.vy, -6);
     await new Promise(setImmediate);
 
     reducedMotion = true;
     darts.shot = { ...darts.shot, id: 8 };
-    darts.grab = true;
+    darts.roundRecap = true;
+    darts.completedVisit = { visit: darts.visit, seat: 0, reason: 'bust', darts: [darts.shot], before: 301, after: 301 };
     render();
     pointer('pointerdown', 100, 100);
     pointer('pointermove', 150, 100);
@@ -243,12 +253,14 @@ async function test() {
     assert.equal(actions.length, count + 1);
     pointer('pointerdown', 100, 100);
     pointer('pointerup', 100, 100);
-    assert.equal(actions[count + 1].type, 'grab');
-    assert.equal(tabletop.style.transform, '');
+    assert.equal(actions.length, count + 1);
+    assert.match(document.querySelector('.ar-darts-turn').textContent, /Round complete/);
+    assert.match(document.querySelector('.ar-darts-visit-card').textContent, /Restored to 301/);
+    inspect.click();
 
     const currentLanding = document.querySelector('.ar-darts-landing');
     const currentTrail = document.querySelector('.ar-darts-trail');
-    darts.grab = false;
+    darts.roundRecap = false;
     context.myTurn = false;
     reducedMotion = false;
     tick();
@@ -303,6 +315,60 @@ async function test() {
     render();
     assert.equal(document.querySelector('[data-shot="10"]'), null);
     assert.equal(document.querySelector('[data-shot="11"]'), null);
+
+    darts.aimControl = true;
+    context.myTurn = true;
+    reducedMotion = true;
+    render();
+    tick();
+    const adjust = document.querySelector('.ar-darts-adjust');
+    const horizontal = adjust.querySelector('input');
+    const release = adjust.querySelector('button');
+    const status = document.querySelector('.ar-darts-aim-status');
+    const swipeButton = document.querySelector('.ar-darts-swipe');
+    assert.equal(adjust.hidden, false);
+    horizontal.value = '25';
+    horizontal.dispatchEvent(new window.Event('input', { bubbles: true }));
+    tick();
+    assert.match(status.textContent, /Spread radius 6%/);
+    assert.equal(currentSpread.hidden, false);
+
+    const touch = (target, type, id, x) => {
+      const event = new window.MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: 100 });
+      Object.defineProperties(event, { pointerId: { value: id }, pointerType: { value: 'touch' } });
+      target.dispatchEvent(event);
+    };
+    const before = actions.length;
+    touch(horizontal, 'pointerdown', 1, 100);
+    touch(document.body, 'pointerdown', 2, 90);
+    touch(horizontal, 'pointerup', 1, 100);
+    touch(document.body, 'pointerup', 2, 90);
+    assert.equal(horizontal.value, '0');
+    assert.match(status.textContent, /Try again/);
+    touch(swipeButton, 'pointerdown', 1, 180);
+    touch(document.body, 'pointerdown', 2, 100);
+    touch(currentBoard, 'pointerup', 1, 70);
+    touch(document.body, 'pointerup', 2, 100);
+    assert.equal(actions.length, before);
+    touch(currentBoard, 'pointerdown', 1, 180);
+    touch(currentBoard, 'pointermove', 1, 110);
+    touch(currentBoard, 'pointercancel', 1, 110);
+    touch(currentBoard, 'pointerup', 1, 70);
+    assert.equal(actions.length, before);
+
+    horizontal.value = '25';
+    horizontal.dispatchEvent(new window.Event('input', { bubbles: true }));
+    rejectThrow = true;
+    release.click();
+    await new Promise(setImmediate);
+    assert.match(status.textContent, /Throw failed/);
+    rejectThrow = false;
+    release.click();
+    await new Promise(setImmediate);
+    assert.equal(actions.length, before + 2);
+    closeTo(actions.at(-1).payload.dx, -0.79);
+    closeTo(actions.at(-1).payload.dy, 0.55);
+    assert.equal(actions.at(-1).payload.vx, 0);
   } finally {
     ui.unmount();
     window.close();

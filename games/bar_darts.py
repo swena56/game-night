@@ -1,6 +1,8 @@
 """Pub darts courses on the standard 20-segment board."""
 import math
 import time
+from collections import Counter
+from statistics import NormalDist
 from functools import lru_cache
 
 from .base import GameError
@@ -15,7 +17,6 @@ CLOCK_TARGETS = (*range(1, 21), 25)
 COUNTUP_VISITS = 8
 PAUSE = 0.85
 VISIT_RECAP = 1.65
-GRAB_TIME = 10      # a human has this long to pull their darts before they are collected for them
 DART_ORIGIN = (1.04, -0.55)
 SWIPE_PACE = 2.2
 SCATTER = 1.0       # 0 turns off the hand's wobble (tests): fast flicks scatter more than steady throws
@@ -75,6 +76,9 @@ def checkout(remaining, darts, double_out=True):
         if hit[0] * hit[1] == remaining:
             return (hit,)
     if darts > 1:
+        shorter = checkout(remaining, darts - 1, double_out)
+        if shorter:
+            return shorter
         for hit in SETUP:
             rest = checkout(remaining - hit[0] * hit[1], darts - 1, double_out)
             if rest:
@@ -82,22 +86,89 @@ def checkout(remaining, darts, double_out=True):
     return ()
 
 
+# Midpoint quantiles give a deterministic approximation of the same independent
+# Gaussian axes used for actual throws. The chooser never consumes match RNG.
+QUANTILES = tuple(NormalDist().inv_cdf((i + 0.5) / 19) for i in range(19))
+BOT_SPREAD_MULTIPLIER = {"easy": 2.4, "normal": 1.45, "hard": 0.8}
+
+
+@lru_cache(maxsize=16)
+def aim_outcomes(sigma):
+    candidates = []
+    for number, multiplier in SETUP:
+        x, y = DartMatch.point(number, multiplier)
+        candidates.append((x, y))
+        if number != 25 and multiplier == 1:
+            # The outer single trades a narrower radial margin for a wider wedge.
+            candidates.append((x * 0.75 / 0.47, y * 0.75 / 0.47))
+    results = []
+    for x, y in candidates:
+        hits = Counter(hit_at(x + sigma * a, y + sigma * b) for a in QUANTILES for b in QUANTILES)
+        results.append((x, y, tuple((hit, count / len(QUANTILES) ** 2) for hit, count in hits.items())))
+    return tuple(results)
+
+
+def x01_result(remaining, hit, double_out):
+    number, multiplier = hit
+    after = remaining - number * multiplier
+    if after < 0 or (double_out and (after == 1 or (after == 0 and multiplier != 2))):
+        return None
+    return after
+
+
+@lru_cache(maxsize=8192)
+def x01_choice(remaining, darts, visit_start, double_out, sigma):
+    """Minimize estimated darts to finish, looking ahead through the current visit."""
+    candidates = aim_outcomes(sigma)
+    scoring_rate = max(sum(n * m * p for (n, m), p in outcomes) for _, _, outcomes in candidates)
+    @lru_cache(maxsize=None)
+    def tail(score):
+        # Beyond the current visit, estimate the scoring phase and then the finish.
+        direct = max(sum(p for (n, m), p in outcomes
+                         if n * m == score and (not double_out or m == 2))
+                     for _, _, outcomes in candidates)
+        # Allow for setup when repeatedly attempting the direct finish is costly.
+        return min(1 / direct if direct else math.inf,
+                   2.8 + max(0, score - (40 if double_out else 20)) / scoring_rate)
+
+    @lru_cache(maxsize=None)
+    def best(score, left):
+        costs = {}
+        for hit in SETUP + ((0, 0),):
+            after = x01_result(score, hit, double_out)
+            if after is None:
+                costs[hit] = tail(visit_start)
+            elif after == 0:
+                costs[hit] = 0
+            else:
+                costs[hit] = best(after, left - 1)[0] if left > 1 else tail(after)
+        value, x, y = min(
+            (sum(p * costs[hit] for hit, p in outcomes), x, y)
+            for x, y, outcomes in candidates
+        )
+        return 1 + value, x, y
+
+    return best(remaining, darts)[1:]
+
+
 class DartMatch:
-    def __init__(self, room, seats, rng, mode, double_out=False):
+    def __init__(self, room, seats, rng, mode, double_out=False, aim_control=False):
         self.room, self.seats, self.rng, self.mode = room, seats, rng, mode
         self.double_out = double_out
+        self.aim_control = aim_control
         self.points = [X01.get(mode, 0) for _ in seats]
         self.marks = [[0] * len(TARGETS) for _ in seats]
         self.visits_done = [0] * len(seats)
         self.visit = 0
         self.darts = []
         self.last_darts = []             # completed visits still on the board this round
+        self.completed_visit = None
         self.shot = None
         self.shot_id = 0
         self.ready_at = 0.0
         self.winner = None
         self.finishing = False
-        self.grabbing = None            # the final thrower collects the round's darts
+        self.grabbing = None            # seat whose round recap is pending
         room.add_log(f"🎯 Darts · {MODES[mode]}. Three darts per visit.", "big")
         self.begin(0)
 
@@ -106,6 +177,7 @@ class DartMatch:
         self.__dict__.setdefault("visits_done", [0] * len(self.seats))
         self.__dict__.setdefault("finishing", self.winner is not None)
         self.__dict__.setdefault("grabbing", None)
+        self.__dict__.setdefault("completed_visit", None)
         self.__dict__.setdefault("double_out", True)   # games saved before the option always needed a double
 
     @property
@@ -148,16 +220,12 @@ class DartMatch:
         self.begin(next((seat for seat in active if seat > i), active[0]), delay)
 
     def act(self, p, action):
-        if action.get("type") == "grab":
-            if self.grabbing is None or self.room.turn != p.id:
-                raise GameError("No darts to grab.")
-            return self.grab(self.grabbing)
         if action.get("type") != "throw":
             raise GameError("Unknown darts action.")
         if self.room.turn != p.id:
             raise GameError("It's not your turn.")
         if self.grabbing is not None:
-            raise GameError("Grab your darts first.")
+            raise GameError("Wait for the round recap.")
         dx, dy, vx, vy = (action.get(key) for key in ("dx", "dy", "vx", "vy"))
         if not all(type(v) in (int, float) and abs(v) <= limit
                    for v, limit in zip((dx, dy, vx, vy), (2.5, 3.2, 6, 6))):
@@ -190,8 +258,8 @@ class DartMatch:
         before = self.points[i]
         bust, winner, added_marks = False, None, 0
         if self.mode in X01:
-            remaining = before - number * multiplier
-            bust = remaining < 0 or (self.double_out and (remaining == 1 or (remaining == 0 and multiplier != 2)))
+            remaining = x01_result(before, (number, multiplier), self.double_out)
+            bust = remaining is None
             self.points[i] = self.visit_start if bust else remaining
             if not bust and remaining == 0:
                 winner = i
@@ -225,26 +293,35 @@ class DartMatch:
         result = " · Bust, visit score restored" if bust else " · Checkout!" if self.mode in X01 and winner == i else ""
         self.room.add_log(f"🎯 {player.name} hits {self.shot['label']}{result}.")
         if winner is not None:
+            self.record_visit(i, "finish")
             self.finish_later(winner, delay)
         elif bust or len(self.darts) == 3:
-            self.end_visit(i, delay)
+            self.end_visit(i, delay, reason="bust" if bust else "complete")
         else:
             self.turn(i, PAUSE)
 
-    def end_visit(self, i, delay=0, *, collect=True):
+    def record_visit(self, i, reason):
+        if self.completed_visit and self.completed_visit["visit"] == self.visit:
+            return
+        self.completed_visit = {
+            "visit": self.visit, "seat": i, "reason": reason, "darts": list(self.darts),
+            "before": self.visit_start, "after": self.points[i],
+            "marks": sum(dart["marks"] for dart in self.darts),
+        }
+
+    def end_visit(self, i, delay=0, *, collect=True, reason="departure"):
+        self.record_visit(i, reason)
         if any(seat > i for seat in self.active()):
             return self.advance(i, delay)
         if collect and (self.darts or self.last_darts):
             self.grabbing = i
             self.ready_at = time.time() + delay
-            self.room.deadline = self.ready_at + GRAB_TIME
-            if self.room.players[self.seats[i]].bot:
-                self.room.bot_at = max(self.room.bot_at, self.ready_at)
+            self.room.deadline = self.ready_at
             return
         self.darts, self.last_darts = [], []
         self.advance(i, delay)
 
-    def grab(self, i):
+    def clear_round(self, i):
         self.grabbing = None
         self.darts, self.last_darts = [], []
         self.advance(i)
@@ -273,13 +350,15 @@ class DartMatch:
         if self.finishing:
             return self.finish(self.winner)
         if self.grabbing is not None:
-            return self.grab(self.grabbing)
+            return self.clear_round(self.grabbing)
         if self.room.turn in self.seats:
             i = self.seats.index(self.room.turn)
             self.room.add_log(f"⏰ {self.room.players[self.seats[i]].name} ran out of time. Visit over.", "power")
-            self.end_visit(i, collect=False)
+            self.end_visit(i, reason="timeout")
 
     def leave(self, p):
+        if self.room.turn == p.id:
+            self.record_visit(self.seats.index(p.id), "departure")
         p.eliminated = True
         active = self.active()
         if self.winner in active:
@@ -302,39 +381,53 @@ class DartMatch:
 
     def bot(self, p):
         i = self.seats.index(p.id)
-        if self.grabbing == i:
-            return self.grab(i)
-        sigma = {"easy": 0.105, "normal": 0.065, "hard": 0.034}.get(p.bot, 0.065)
-        number, multiplier = self.target(i, p.bot)
-        x, y = self.point(number, multiplier)
+        sigma = SCATTER * spread(SWIPE_PACE) * BOT_SPREAD_MULTIPLIER.get(p.bot, BOT_SPREAD_MULTIPLIER["normal"])
+        x, y, _ = self.recommend(i, sigma)
         self.throw(i, x + self.rng.gauss(0, sigma), y + self.rng.gauss(0, sigma))
 
-    def target(self, i, level):
-        """The dart worth throwing next for seat i: a bot's choice, and the hint a player can ask for."""
+    def recommend(self, i, sigma):
+        candidates = aim_outcomes(sigma)
         if self.mode in X01:
-            remaining = self.points[i]
-            route = checkout(remaining, 3 - len(self.darts), self.double_out)
-            if route:
-                number, multiplier = route[0]
-            elif remaining <= 50:
-                number = next(n for n in range(1, 21) if 2 <= remaining - n <= 40 and (remaining - n) % 2 == 0)
-                multiplier = 1
-            else:
-                number, multiplier = 20, 3 if remaining > 70 and level != "easy" else 1
+            points = self.points[i]
+            x, y = x01_choice(points, 3 - len(self.darts), self.visit_start, self.double_out, sigma)
+            after = x01_result(points, hit_at(x, y), self.double_out)
+            reason = ("Gives you a chance to check out now." if after == 0
+                      else f"Leaves {after} if you hit it." if after is not None
+                      else "Nearby hits give you a better route to a finish.")
+            return x, y, reason
+        if self.mode == "cricket":
+            rivals = [j for j in self.active() if j != i]
+            gap = max((self.points[j] - self.points[i] for j in rivals), default=0)
+            needed = dict(zip(TARGETS, (3 - m for m in self.marks[i])))
+            scores = {n for t, n in enumerate(TARGETS) if any(self.marks[j][t] < 3 for j in rivals)}
+
+            def utility(n, m):
+                if n not in needed:
+                    return 0
+                marks = min(needed[n], m)
+                points = (m - marks) * n if n in scores else 0
+                win = marks == sum(needed.values()) and points >= gap
+                return marks + points / (16 if gap > 0 else 36) + (8 if win else 0)
         elif self.mode == "clock":
-            number, multiplier = self.next_number(i), 1
-        elif self.mode == "countup":
-            number, multiplier = 20, 1 if level == "easy" else 3
+            target = self.next_number(i)
+
+            def utility(n, m):
+                return n == target
         else:
-            open_targets = [n for n, marks in zip(TARGETS, self.marks[i]) if marks < 3]
-            scoring = [n for n in TARGETS if any(
-                j != i and self.marks[j][TARGETS.index(n)] < 3 for j in self.active()
-            )]
-            number = next(iter(open_targets or scoring), 20)
-            if scoring and any(self.points[j] > self.points[i] for j in self.active()):
-                number = next((n for n in scoring if n not in open_targets), number)
-            multiplier = 2 if number == 25 else 3
-        return number, multiplier
+            def utility(n, m):
+                return n * m
+
+        x, y, _ = max(candidates, key=lambda aim: sum(p * utility(*hit) for hit, p in aim[2]))
+        number, _ = hit_at(x, y)
+        if self.mode == "cricket":
+            reason = ("Builds marks toward closing a target." if needed.get(number)
+                      else "Scores while a rival still has this target open." if number in scores
+                      else "Nearby hits can build marks or score points.")
+        elif self.mode == "clock":
+            reason = "Best chance of hitting the next required number."
+        else:
+            reason = "Highest average score with this spread."
+        return x, y, reason
 
     @staticmethod
     def point(number, multiplier):
@@ -352,9 +445,9 @@ class DartMatch:
         route = checkout(self.points[next_seat], left, self.double_out) if self.mode in X01 and left else ()
         hint = None
         if next_seat is not None and p.id in self.seats and next_seat == self.seats.index(p.id) and left:
-            number, multiplier = self.target(next_seat, "hard")
-            x, y = self.point(number, multiplier)
-            hint = {"label": label(number, multiplier), "x": x, "y": y}
+            pace = 0 if getattr(self, "aim_control", False) else SWIPE_PACE
+            x, y, reason = self.recommend(next_seat, SCATTER * spread(pace))
+            hint = {"label": label(*hit_at(x, y)), "x": x, "y": y, "reason": reason}
         return {
             "mode": self.mode, "title": MODES[self.mode], "x01": self.mode in X01,
             "nextNumbers": [self.next_number(i) for i in range(len(self.seats))] if self.mode == "clock" else None,
@@ -368,7 +461,8 @@ class DartMatch:
             "spreadBase": spread(0), "spreadPerPace": spread(1) - spread(0),
             "checkout": [label(*hit) for hit in route],
             "doubleOut": self.double_out, "hint": hint,
-            "grab": next_seat is not None and self.grabbing == next_seat,
-            "grabIn": max(0.0, (self.room.deadline or 0) - time.time()) if self.grabbing is not None else 0,
+            "aimControl": getattr(self, "aim_control", False),
+            "roundRecap": self.grabbing is not None,
+            "visitDarts": self.darts, "completedVisit": self.completed_visit,
             "readyIn": max(0.0, self.ready_at - time.time()),
         }
