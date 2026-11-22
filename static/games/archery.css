@@ -106,6 +106,8 @@
   display: grid; grid-template-columns: 1fr auto; gap: 8px;
   align-items: center; margin-top: 8px; text-align: left;
 }
+.ar-darts-grab { min-height: 44px; padding-inline: 14px; font-weight: 700; }
+.ar-darts-grab[hidden], .ar-darts-swipe[hidden] { display: none; }
 .ar-darts-swipe { min-height: 44px; touch-action: none; cursor: grab; padding-inline: 12px; }
 .ar-darts-hint { margin: 6px auto; max-width: 50ch; }
 .ar-darts-score { overflow-x: auto; }

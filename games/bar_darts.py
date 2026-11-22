@@ -15,6 +15,7 @@ CLOCK_TARGETS = (*range(1, 21), 25)
 COUNTUP_VISITS = 8
 PAUSE = 0.85
 VISIT_RECAP = 1.65
+GRAB_TIME = 12      # a human has this long to pull their darts before they are collected for them
 DART_ORIGIN = (1.04, -0.55)
 SWIPE_PACE = 2.2
 SCATTER = 1.0       # 0 turns off the hand's wobble (tests): fast flicks scatter more than steady throws
@@ -75,6 +76,7 @@ class DartMatch:
         self.ready_at = 0.0
         self.winner = None
         self.finishing = False
+        self.grabbing = None            # the seat that must pull its darts before the next player goes
         room.add_log(f"🎯 Darts · {MODES[mode]}. Three darts per visit.", "big")
         self.begin(0)
 
@@ -82,6 +84,7 @@ class DartMatch:
         self.__dict__.update(state)
         self.__dict__.setdefault("visits_done", [0] * len(self.seats))
         self.__dict__.setdefault("finishing", self.winner is not None)
+        self.__dict__.setdefault("grabbing", None)
 
     @property
     def solo(self):
@@ -124,10 +127,16 @@ class DartMatch:
         self.begin(next((seat for seat in active if seat > i), active[0]), delay)
 
     def act(self, p, action):
+        if action.get("type") == "grab":
+            if self.grabbing is None or self.room.turn != p.id:
+                raise GameError("No darts to grab.")
+            return self.grab(self.grabbing)
         if action.get("type") != "throw":
             raise GameError("Unknown darts action.")
         if self.room.turn != p.id:
             raise GameError("It's not your turn.")
+        if self.grabbing is not None:
+            raise GameError("Grab your darts first.")
         dx, dy, vx, vy = (action.get(key) for key in ("dx", "dy", "vx", "vy"))
         if not all(type(v) in (int, float) and abs(v) <= limit
                    for v, limit in zip((dx, dy, vx, vy), (2.5, 3.2, 6, 6))):
@@ -197,9 +206,23 @@ class DartMatch:
         if winner is not None:
             self.finish_later(winner, delay)
         elif bust or len(self.darts) == 3:
-            self.advance(i, delay)
+            if player.bot:
+                self.advance(i, delay)
+            else:
+                self.collect(i, delay)
         else:
             self.turn(i, PAUSE)
+
+    def collect(self, i, delay):
+        """The visit is over: the player keeps the turn until they pull their darts (or the timer does it)."""
+        self.grabbing = i
+        self.ready_at = time.time() + delay
+        self.room.deadline = self.ready_at + GRAB_TIME
+
+    def grab(self, i):
+        self.grabbing = None
+        self.darts, self.last_darts = [], []
+        self.advance(i)
 
     def finish_later(self, winner, delay):
         self.winner = winner
@@ -224,6 +247,8 @@ class DartMatch:
     def timeout(self):
         if self.finishing:
             return self.finish(self.winner)
+        if self.grabbing is not None:
+            return self.grab(self.grabbing)
         if self.room.turn in self.seats:
             i = self.seats.index(self.room.turn)
             self.room.add_log(f"⏰ {self.room.players[self.seats[i]].name} ran out of time. Visit over.", "power")
@@ -235,6 +260,8 @@ class DartMatch:
         if self.winner in active:
             return self.finish(self.winner)
         self.winner = None
+        if self.grabbing == self.seats.index(p.id):
+            self.grabbing, self.darts, self.last_darts = None, [], []
         if len(active) <= 1:
             return self.finish(active[0] if active else None)
         if self.finishing and self.mode == "countup":
@@ -298,5 +325,7 @@ class DartMatch:
             "numbers": NUMBERS, "radii": RADII, "left": left,
             "dartOrigin": DART_ORIGIN, "swipePace": SWIPE_PACE,
             "checkout": [label(*hit) for hit in route],
+            "grab": next_seat is not None and self.grabbing == next_seat,
+            "grabIn": max(0.0, (self.room.deadline or 0) - time.time()) if self.grabbing is not None else 0,
             "readyIn": max(0.0, self.ready_at - time.time()),
         }

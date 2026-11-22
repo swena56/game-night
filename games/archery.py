@@ -97,7 +97,7 @@ class Archery(Game):
     category = "action"
     family = None
     howto = [
-        "In darts, swipe inward from the dart at the right edge or the button below the board to throw. Direction, distance and speed shape where it lands. Each visit has up to three darts.",
+        "In darts, swipe inward from the dart at the right edge or the button below the board to throw. Direction, distance and speed shape where it lands. Each visit has up to three darts, then tap 🖐 Grab darts to pull them before the next player goes (they are collected for you after 12 seconds). A rushed, fast flick strays more than a steady throw.",
         "301 and 501: count down to exactly zero on a double. Going below zero, leaving one or hitting zero without a double busts the whole visit.",
         "Cricket: hit 15–20 and bull three times each. Extra marks score while a rival still has that target open. Close every target and at least tie the high score to win.",
         "Around the Clock: hit 1 through 20 in order, then either bull. A double or triple clears only that number.",

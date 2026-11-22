@@ -1143,9 +1143,9 @@ UI.archery = (() => {
 
   function makeDartsUI() {
     const STEP = Math.PI / 10, CENTER = 125, SCALE = 98, WIDTH = 250;
-    let root, score, stage, board, geometry, pins, grip, held, guide, dartModel, result, callout, hint, turn, tabletop, darts3d, swipeButton;
+    let root, score, stage, board, geometry, pins, grip, held, guide, dartModel, result, callout, hint, turn, tabletop, darts3d, swipeButton, grabButton;
     const zoom = { s: 1, x: 0, y: 0 };
-    let view, state, ctx, frame, readyAt, pending, visit, shown, flight, swipe, keys, releasedFrom, waitingHand, impact;
+    let view, state, ctx, frame, readyAt, grabAt, grabbing, pending, visit, shown, flight, swipe, keys, releasedFrom, waitingHand, impact;
     const xAt = (x) => CENTER + SCALE * x, yAt = (y) => CENTER - SCALE * y;
     const point = (a, r) => [CENTER + Math.sin(a) * r, CENTER - Math.cos(a) * r];
     const circle = (r, fill) => `<circle cx="125" cy="125" r="${r}" fill="${fill}"/>`;
@@ -1153,7 +1153,7 @@ UI.archery = (() => {
     const clockLabel = (number) => number == null ? 'Done' : number === 25 ? 'Bull' : String(number);
     const origin = () => { const [x, y] = view.dartOrigin || [1.04, -0.55]; return { x, y }; };
     const mine = () => view && state.phase === 'playing' && ctx.myTurn && !state.paused;
-    const ready = () => mine() && !pending && !waitingHand && !flight && performance.now() >= readyAt;
+    const ready = () => mine() && !view.grab && !pending && !waitingHand && !flight && performance.now() >= readyAt;
     const reduce = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     const transform = (x, y) => `translate(${xAt(x)} ${yAt(y)})`;
 
@@ -1193,6 +1193,7 @@ UI.archery = (() => {
         <div class="ar-darts-footer">
           <p class="ar-darts-result" role="status"></p>
           <button type="button" class="ar-darts-swipe" aria-label="Swipe toward the board to throw, or press Enter to throw">Swipe to throw</button>
+          <button type="button" class="ar-darts-grab" hidden></button>
         </div>
         <p class="hint ar-darts-hint"></p>
       </section>`;
@@ -1200,12 +1201,17 @@ UI.archery = (() => {
       root = main.firstElementChild; score = side.querySelector('.ar-darts-score');
       const find = (name) => root.querySelector('.ar-darts-' + name);
       board = root.querySelector('svg'); grip = find('grip'); held = find('held');
-      guide = find('direction'); dartModel = find('model'); tabletop = find('tabletop'); stage = find('stage'); swipeButton = find('swipe');
+      guide = find('direction'); dartModel = find('model'); tabletop = find('tabletop'); stage = find('stage'); swipeButton = find('swipe'); grabButton = find('grab');
       geometry = find('board'); pins = find('pins');
       result = find('result'); callout = find('callout'); hint = find('hint'); turn = find('turn');
       view = null; pending = false; flight = null; shown = null; visit = null;
       swipe = null; keys = null; releasedFrom = null; waitingHand = null; darts3d = null; impact = null;
       zoom.s = 1; zoom.x = 0; zoom.y = 0;
+      grabButton.addEventListener('click', () => {
+        if (grabbing) return;
+        grabbing = true;
+        ctx.quiet(ctx.act('grab').catch((error) => { grabbing = false; throw error; }));
+      });
       callout.addEventListener('animationend', () => { callout.hidden = true; });
       // Pinch to look closer while no dart is in hand; picking the dart up eases back to the full board.
       const touches = new Map();
@@ -1415,6 +1421,14 @@ UI.archery = (() => {
       const drawHand = !flight && (show || !!waitingHand);
       grip.toggleAttribute('hidden', !show || !!swipe);
       swipeButton.disabled = !show;
+      // After the last dart of a visit the thrower pulls them from the board before the next player goes.
+      const canGrab = mine() && view.grab && !flight && now >= readyAt;
+      swipeButton.hidden = canGrab || (mine() && view.grab);
+      grabButton.hidden = !canGrab;
+      if (canGrab) {
+        grabButton.disabled = grabbing;
+        grabButton.textContent = `🖐 Grab darts · ${Math.max(0, Math.ceil((grabAt - now) / 1000))}s`;
+      }
       held.toggleAttribute('hidden', !drawHand);
       guide.toggleAttribute('hidden', hand.aiming);
       const angle = hand.angle * 180 / Math.PI;
@@ -1508,6 +1522,8 @@ UI.archery = (() => {
       const first = !view;
       view = s.darts; state = s; ctx = c;
       readyAt = performance.now() + view.readyIn * 1000;
+      grabAt = performance.now() + view.grabIn * 1000;
+      grabbing = false;
       if (first) {
         const start = origin();
         grip.setAttribute('transform', transform(start.x, start.y));
@@ -1542,6 +1558,7 @@ UI.archery = (() => {
         label.classList.toggle('ar-darts-next-number', Number(label.dataset.number) === target);
       }
       turn.textContent = s.phase === 'over' ? 'Game over' : view.next == null ? 'Final dart'
+        : view.grab ? `${view.next === view.me ? 'Grab your darts' : `${player(view.next)?.name ?? 'Player'} is collecting darts`}`
         : `${view.next === view.me ? 'Your visit' : player(view.next)?.name ?? 'Player'} · ${view.left} left`;
       updateHint();
       renderScores();
