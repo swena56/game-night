@@ -1099,8 +1099,10 @@ UI.archery = (() => {
       flying.visible = !!flight;
       if (flight) {
         // Nose follows the real path tangent (up at release, level at the apex, dipping on approach).
-        const [tx, ty, td] = flight.tangent, k = planeScale(flight.depth);
-        direction.set(tx * k, ty * k, td).normalize();
+        const { behind, ahead } = flight, kb = planeScale(behind.depth), ka = planeScale(ahead.depth);
+        // The hand sits well off to the side, so the true path is mostly sideways. A dart flies nose-first,
+        // so keep the nose pointed mostly at the board and let only a fraction of the sideways drift tilt it.
+        direction.set(0.4 * (ahead.x * ka - behind.x * kb), 0.5 * (ahead.y * ka - behind.y * kb), 3 * (ahead.depth - behind.depth)).normalize();
         travelOrientation.setFromUnitVectors(dartAxis, direction);
         flying.quaternion.copy(aimingOrientation).slerp(travelOrientation, smooth(flight.u / 0.14));
         flying.rotateY(flight.roll);
@@ -1424,7 +1426,7 @@ UI.archery = (() => {
         const cur = at(time), ahead = at(Math.min(1, time + 0.02)), behind = at(Math.max(0, time - 0.02));
         const { x, y, depth, scale, u } = cur;
         throwPose = { x, y, depth, scale, u, roll: time * 5,
-          tangent: [ahead.x - behind.x, ahead.y - behind.y, ahead.depth - behind.depth] };
+          behind, ahead };
         const flightAngle = 0;
         const pinScale = 1 + (scale - DART_BOARD_SCALE) * 2.2;
         dot?.setAttribute('transform', `${transform(x, y)} rotate(${flightAngle}) scale(${pinScale})`);
