@@ -834,10 +834,11 @@ UI.archery = (() => {
     };
   }
 
-  const DART_HELD_SCALE = 1.82;
-  const DART_AIM_SCALE = 2.34;
+  const DART_HELD_SCALE = 1.15;
+  const DART_AIM_SCALE = 1.4;
   const DART_HAND_DEPTH = 48;
-  const DART_BOARD_SCALE = 0.72;
+  const DART_BOARD_SCALE = 1;
+  const DART_TIP = 32.4;   // tip height above the model origin; a real dart spans outer bull to double ring (~84 board units)
 
   function makeDarts3d(surface) {
     const T = window.THREE;
@@ -948,13 +949,10 @@ UI.archery = (() => {
       if (face.children.length) return;
       const rings = view.radii.map((r) => r * 98);
       const [inner, outer, tripleIn, tripleOut, doubleIn, edge] = rings;
-      const rim = mesh(face, new T.CylinderGeometry(117, 120, 10, 96), material(0x332017), 0, 0, -6);
-      rim.rotation.x = Math.PI / 2;
-      rim.castShadow = true;
       mesh(face, new T.CircleGeometry(113, 96), material(0x171815), 0, 0, -0.5);
       const wire = material(0xb0a395, { metalness: 0.34, roughness: 0.38 });
-      const liner = material(0x775334, { metalness: 0.24, roughness: 0.54 });
-      for (const r of [114, 117.5]) mesh(face, new T.TorusGeometry(r, 0.45, 6, 128), liner, 0, 0, -0.1);
+      const liner = material(0xd2d6da, { metalness: 0.6, roughness: 0.28 });
+      for (const r of [117.5]) mesh(face, new T.TorusGeometry(r, 0.45, 6, 128), liner, 0, 0, -0.1);
       const screwHead = new T.CircleGeometry(1.2, 12);
       const slot = new T.PlaneGeometry(1.5, 0.26);
       const slotMat = material(0x211c19);
@@ -963,25 +961,95 @@ UI.archery = (() => {
         mesh(face, screwHead, wire, x, y, 0.2);
         mesh(face, slot, slotMat, x, y, 0.3).rotation.z = a;
       }
-      const sisalMat = (color) => material(color, { map: grain, bumpMap: grain, bumpScale: 0.33 });
-      const red = sisalMat(0x8b272a), green = sisalMat(0x28654c);
-      const dark = sisalMat(0x252320), light = sisalMat(0xcead77);
       const step = Math.PI / 10;
+      const [map, bump] = sisalFace(rings);
+      mesh(face, new T.CircleGeometry(113, 128), material(0xffffff, { map, bumpMap: bump, bumpScale: 0.4, roughness: 0.96 }), 0, 0, 0.1);
+      holes = new T.CanvasTexture(holeCanvas);
+      if (T.SRGBColorSpace) holes.colorSpace = T.SRGBColorSpace;
+      holeLayer = mesh(face, new T.CircleGeometry(113, 64), new T.MeshBasicMaterial({ map: holes, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), 0, 0, 0.38);
       view.numbers.forEach((_, i) => {
         const a = Math.PI / 2 - (i + 0.5) * step;
-        const sisal = i % 2 ? light : dark, stripe = i % 2 ? green : red;
-        for (const [lo, hi, mat] of [[outer, tripleIn, sisal], [tripleIn, tripleOut, stripe],
-          [tripleOut, doubleIn, sisal], [doubleIn, edge, stripe]]) {
-          mesh(face, new T.RingGeometry(lo, hi, 8, 1, a, step), mat);
-        }
         const spoke = mesh(face, new T.CylinderGeometry(0.27, 0.27, edge - outer, 5), wire,
           Math.cos(a) * (edge + outer) / 2, Math.sin(a) * (edge + outer) / 2, 0.35);
         spoke.rotation.z = a - Math.PI / 2;
       });
-      mesh(face, new T.CircleGeometry(outer, 40), green, 0, 0, 0.1);
-      mesh(face, new T.CircleGeometry(inner, 28), red, 0, 0, 0.2);
       for (const r of rings) mesh(face, new T.TorusGeometry(r, 0.32, 6, 112), wire, 0, 0, 0.43);
       face.children.forEach((part) => { part.receiveShadow = true; });
+    }
+
+    // One painted face: sisal fibre dashes, mottling, pressed grooves under the wire, plus a matching bump map.
+    function sisalFace(rings) {
+      const N = 1024, half = N / 2, unit = half / 113, [bullR, outerR, tripleIn, tripleOut, doubleIn, edge] = rings;
+      const hash = (a, b) => { let h = Math.imul(a | 0, 374761393) ^ Math.imul(b | 0, 668265263); h = Math.imul(h ^ (h >>> 13), 1274126177); return ((h ^ (h >>> 16)) >>> 0) / 4294967295; };
+      const paletteDark = [37, 35, 32], paletteLight = [214, 190, 140], paletteRed = [158, 40, 44], paletteGreen = [34, 108, 78];
+      const color = document.createElement('canvas'), relief = document.createElement('canvas');
+      color.width = color.height = relief.width = relief.height = N;
+      const cg = color.getContext('2d'), rg = relief.getContext('2d');
+      const img = cg.createImageData(N, N), bmp = rg.createImageData(N, N);
+      const step = Math.PI / 10;
+      for (let py = 0; py < N; py++) for (let px = 0; px < N; px++) {
+        const dx = (px + 0.5 - half) / unit, dy = (half - py - 0.5) / unit, r = Math.hypot(dx, dy);
+        const o = 4 * (py * N + px);
+        let base, rgb;
+        const turn = (Math.PI / 2 - Math.atan2(dy, dx)) / step, i = Math.round(turn), off = turn - i;
+        const even = (((i % 20) + 20) % 20) % 2 === 0;
+        if (r > edge) rgb = r > 113 ? [24, 24, 22] : [41, 39, 32];
+        else if (r < bullR) rgb = paletteRed;
+        else if (r < outerR) rgb = paletteGreen;
+        else if (r < tripleIn || (r >= tripleOut && r < doubleIn)) rgb = even ? paletteDark : paletteLight;
+        else rgb = even ? paletteRed : paletteGreen;
+        // short radial fibre dashes, a coarser mottle, and fine grain
+        const s = Math.floor(Math.atan2(dy, dx) * r / 0.26), col = hash(s, 7);
+        const fibre = hash(s, Math.floor((r + 9 * col) / 1.7));
+        const mottle = hash(Math.floor(px / 9), Math.floor(py / 9)) * 0.6 + hash(Math.floor(px / 23), Math.floor(py / 23)) * 0.4;
+        const fine = hash(px, py);
+        let groove = 1;
+        const edgeDist = Math.min(
+          (0.5 - Math.abs(off)) * step * r,
+          ...[bullR, outerR, tripleIn, tripleOut, doubleIn, edge].map((ring) => Math.abs(r - ring)));
+        if (r <= edge + 0.6 && edgeDist < 1.1) groove = 0.55 + 0.45 * (edgeDist / 1.1);
+        const k = (0.7 + 0.24 * fibre + 0.16 * (mottle - 0.5) + 0.12 * (fine - 0.5)) * groove;
+        for (let c = 0; c < 3; c++) img.data[o + c] = Math.min(255, rgb[c] * k);
+        img.data[o + 3] = 255;
+        base = (0.3 + 0.5 * fibre + 0.2 * fine) * groove * (r > edge ? 0.7 : 1) * 255;
+        bmp.data[o] = bmp.data[o + 1] = bmp.data[o + 2] = base;
+        bmp.data[o + 3] = 255;
+      }
+      cg.putImageData(img, 0, 0); rg.putImageData(bmp, 0, 0);
+      const make = (canvas, srgb) => {
+        const texture = new T.CanvasTexture(canvas);
+        if (srgb && T.SRGBColorSpace) texture.colorSpace = T.SRGBColorSpace;
+        texture.anisotropy = Math.min(8, renderer.capabilities?.getMaxAnisotropy?.() ?? 1);
+        return texture;
+      };
+      return [make(color, true), make(relief, false)];
+    }
+    // Holes left by earlier darts, painted onto a transparent overlay on the board.
+    const holeCanvas = document.createElement('canvas');
+    holeCanvas.width = holeCanvas.height = 1024;
+    let holes, holeLayer, holeCount = -1;
+    function paintHoles(list) {
+      if (!holes || list.length === holeCount) return;
+      holeCount = list.length;
+      const g = holeCanvas.getContext('2d'), unit = 512 / 113;
+      g.clearRect(0, 0, 1024, 1024);
+      for (const h of list) {
+        const x = 512 + h.x * 98 * unit, y = 512 - h.y * 98 * unit, r = 1.5 * unit;
+        const halo = g.createRadialGradient(x, y, r * 0.5, x, y, r * 2.1);
+        halo.addColorStop(0, 'rgba(20,14,10,0.55)'); halo.addColorStop(1, 'rgba(20,14,10,0)');
+        g.fillStyle = halo; g.beginPath(); g.arc(x, y, r * 2.1, 0, 7); g.fill();
+        const pit = g.createRadialGradient(x, y, 0, x, y, r);
+        pit.addColorStop(0, '#050403'); pit.addColorStop(0.7, '#0b0807'); pit.addColorStop(1, 'rgba(11,8,7,0.2)');
+        g.fillStyle = pit; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+        g.strokeStyle = 'rgba(214,196,150,0.5)'; g.lineWidth = 0.9;   // torn fibres round the rim
+        for (let n = 0; n < 7; n++) {
+          const a = h.seed * 9 + n * 0.9 + Math.sin(n * 7 + h.seed * 13) * 0.3, l = r * (1.1 + 0.6 * ((n * 37 + h.seed * 100) % 7) / 7);
+          g.beginPath(); g.moveTo(x + Math.cos(a) * r * 0.85, y + Math.sin(a) * r * 0.85);
+          g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke();
+        }
+      }
+      holes.needsUpdate = true;
+      lastFrame = null;
     }
 
     const steel = material(0xcbbfb0, { roughness: 0.27, metalness: 0.46 });
@@ -999,22 +1067,23 @@ UI.archery = (() => {
     stripeShape.lineTo(6.5, -12.2); stripeShape.lineTo(0, -8.2); stripeShape.closePath();
     function dart() {
       const group = new T.Group();
-      mesh(group, new T.ConeGeometry(0.78, 7, 12), steel, 0, 15);
-      mesh(group, new T.CylinderGeometry(1.08, 2.15, 3, 16), steel, 0, 10.15);
-      mesh(group, new T.CylinderGeometry(2.15, 1.95, 8.2, 18), brass, 0, 4.65);
+      mesh(group, new T.ConeGeometry(0.78, 7, 12), steel, 0, 28.9);
+      mesh(group, new T.CylinderGeometry(1.08, 2.15, 3, 16), steel, 0, 24.05);
+      mesh(group, new T.CylinderGeometry(2.15, 1.95, 22, 18), brass, 0, 11.55);
       const gripRing = new T.TorusGeometry(2.06, 0.17, 4, 18);
-      for (let i = 0; i < 7; i++) {
-        mesh(group, gripRing, groove, 0, 1.2 + i * 1.1).rotation.x = Math.PI / 2;
+      for (let i = 0; i < 12; i++) {
+        mesh(group, gripRing, groove, 0, 1.4 + i * 1.7).rotation.x = Math.PI / 2;
       }
       mesh(group, new T.CylinderGeometry(1.88, 0.9, 2.5, 14), steel, 0, -0.65);
-      mesh(group, new T.CylinderGeometry(0.82, 0.68, 12, 10), steel, 0, -6.7);
-      const finGeo = new T.ShapeGeometry(flightShape), stripeGeo = new T.ShapeGeometry(stripeShape);
+      mesh(group, new T.CylinderGeometry(0.82, 0.68, 38, 10), steel, 0, -19.7);
+      const finGeo = new T.ExtrudeGeometry(flightShape, { depth: 0.9, bevelEnabled: false }).translate(0, 0, -0.45), stripeGeo = new T.ShapeGeometry(stripeShape);
       for (let i = 0; i < 4; i++) {
         const fin = new T.Group();
         fin.rotation.y = i * Math.PI / 2;
+        fin.position.y = -35.9;
         mesh(fin, finGeo, blue);
-        mesh(fin, stripeGeo, trim, 0, 0, 0.06);
-        mesh(fin, stripeGeo, trim, 0, 0, -0.06);
+        mesh(fin, stripeGeo, trim, 0, 0, 0.5);
+        mesh(fin, stripeGeo, trim, 0, 0, -0.5);
         group.add(fin);
       }
       group.traverse((part) => { if (part.isMesh) part.castShadow = true; });
@@ -1030,14 +1099,20 @@ UI.archery = (() => {
     const dartAxis = new T.Vector3(0, 1, 0);
     const aimingOrientation = new T.Quaternion().setFromUnitVectors(dartAxis,
       new T.Vector3(0, 0, -1));
-    const landedRotation = new T.Euler(-1.35, 0.12, 0.22);
-    const landedOrientation = new T.Quaternion().setFromEuler(landedRotation);
+    const landedOrientation = new T.Quaternion(), wobble = new T.Quaternion(), wobbleEuler = new T.Euler(), sight = new T.Vector3();
+    // A stuck dart points along the line of sight to its tip, so perspective doesn't streak the tail outward from
+    // the board centre, then lifts the tail a little so it reads as thrown from below.
+    function lodgedPose(x, y, out) {
+      sight.set(x * 98, y * 98, -cameraDistance).normalize();
+      sight.y -= 0.2;
+      return out.setFromUnitVectors(dartAxis, sight.normalize());
+    }
     const travelOrientation = new T.Quaternion();
     const smooth = (t) => { const k = c01(t); return k * k * (3 - 2 * k); };
     const planeScale = (depth) => 98 * (1 - depth / cameraDistance);
     function releasePoint(hand) {
       const depth = DART_HAND_DEPTH + 9 * hand.lift;
-      tip.set(0, 18.5 * hand.scale, 0).applyQuaternion(aimingOrientation);
+      tip.set(0, DART_TIP * hand.scale, 0).applyQuaternion(aimingOrientation);
       const startDepth = depth + tip.z;
       return {
         x: (hand.x * planeScale(depth) + tip.x) / planeScale(startDepth),
@@ -1049,13 +1124,14 @@ UI.archery = (() => {
 
     function placeTip(dart, x, y, depth, scale) {
       dart.scale.setScalar(scale);
-      tip.set(0, 18.5 * scale, 0).applyQuaternion(dart.quaternion);
+      tip.set(0, DART_TIP * scale, 0).applyQuaternion(dart.quaternion);
       const k = planeScale(depth);
       dart.position.set(x * k - tip.x, y * k - tip.y, depth - tip.z);
     }
     let size = 0, disposed = false, lastFrame;
-    function draw(pins, hand, flight, flyingId, impact) {
+    function draw(pins, hand, flight, flyingId, impact, past = []) {
       if (disposed) return;
+      paintHoles(past);
       const w = surface.clientWidth;
       if (!w || !face.children.length) return;
       if (w !== size) {
@@ -1086,12 +1162,13 @@ UI.archery = (() => {
         // Nose follows the real path tangent (up at release, level at the apex, dipping on approach).
         const { behind, ahead } = flight, kb = planeScale(behind.depth), ka = planeScale(ahead.depth);
         // The hand sits well off to the side, so the true path is mostly sideways. A dart flies nose-first,
-        // so keep the nose pointed mostly at the board and let only a fraction of the sideways drift tilt it.
-        direction.set(0.4 * (ahead.x * ka - behind.x * kb), 0.5 * (ahead.y * ka - behind.y * kb), 3 * (ahead.depth - behind.depth)).normalize();
+        // so keep the nose pointed mostly at the board and let only a small fraction of the sideways drift tilt it
+        // (the dart is long, so any tilt swings its tail a long way).
+        direction.set(0.12 * (ahead.x * ka - behind.x * kb), 0.2 * (ahead.y * ka - behind.y * kb), 3 * (ahead.depth - behind.depth)).normalize();
         travelOrientation.setFromUnitVectors(dartAxis, direction);
         flying.quaternion.copy(aimingOrientation).slerp(travelOrientation, smooth(flight.u / 0.14));
         flying.rotateY(flight.roll);
-        flying.quaternion.slerp(landedOrientation, smooth((flight.u - 0.86) / 0.14));
+        flying.quaternion.slerp(lodgedPose(flight.x, flight.y, landedOrientation), smooth((flight.u - 0.6) / 0.4));
         placeTip(flying, flight.x, flight.y, flight.depth, flight.scale);
         const kk = planeScale(flight.depth);
         trailPoints.push(new T.Vector3(flight.x * kk, flight.y * kk, flight.depth + 40 * flight.scale));
@@ -1110,7 +1187,8 @@ UI.archery = (() => {
         obj.visible = !!p && p.id !== flyingId && Math.hypot(p.x, p.y) <= 1.5;
         if (!obj.visible) return;
         const quiver = p.id === impact?.id ? impact.angle : 0;
-        obj.rotation.set(landedRotation.x + quiver, landedRotation.y, landedRotation.z - quiver * 0.6);
+        obj.quaternion.copy(lodgedPose(p.x, p.y, landedOrientation));
+        if (quiver) obj.quaternion.multiply(wobble.setFromEuler(wobbleEuler.set(quiver, 0, -quiver * 0.6)));
         placeTip(obj, p.x, p.y, 0.45, DART_BOARD_SCALE);
       });
       renderer.render(scene, camera);
@@ -1121,9 +1199,9 @@ UI.archery = (() => {
       if (disposed) return;
       disposed = true;
       surface.classList.remove('ar-darts-is3d');
-      const resources = new Set([grain, wood]);
+      const resources = new Set([grain, wood, holes]);
       scene.traverse(({ material, geometry }) => {
-        if (material) resources.add(material);
+        if (material) { resources.add(material); if (material.map) resources.add(material.map); if (material.bumpMap) resources.add(material.bumpMap); }
         if (geometry) resources.add(geometry);
       });
       resources.forEach((resource) => resource.dispose());
@@ -1135,9 +1213,10 @@ UI.archery = (() => {
 
   function makeDartsUI() {
     const STEP = Math.PI / 10, CENTER = 125, SCALE = 98, WIDTH = 250;
-    let root, score, stage, board, geometry, pins, grip, held, guide, dartModel, result, callout, hint, turn, tabletop, darts3d, swipeButton, grabButton, hintButton, aim, spreadEl, hitFlash;
+    let root, score, stage, board, geometry, holeG, pins, grip, held, guide, dartModel, result, callout, hint, turn, tabletop, darts3d, swipeButton, grabButton, hintButton, aim, spreadEl, hitFlash;
     const zoom = { s: 1, x: 0, y: 0 };
     let hintOn = false;
+    let past = [], pastIds = new Set();
     let view, state, ctx, frame, readyAt, grabAt, grabbing, pending, visit, shown, flight, swipe, keys, releasedFrom, waitingHand, impact;
     const xAt = (x) => CENTER + SCALE * x, yAt = (y) => CENTER - SCALE * y;
     const point = (a, r) => [CENTER + Math.sin(a) * r, CENTER - Math.cos(a) * r];
@@ -1158,7 +1237,7 @@ UI.archery = (() => {
 
     function paintBoard() {
       const [bull, outer, t0, t1, d0, edge] = view.radii.map((r) => r * SCALE);
-      geometry.innerHTML = circle(120, '#3c291f') + circle(117, '#181815') + circle(113, '#292720')
+      geometry.innerHTML = circle(117, '#181815') + circle(113, '#292720')
         + view.numbers.map((number, i) => {
           const angle = i * STEP, [x, y] = point(angle, 108);
           const sisal = i % 2 ? '#dcc697' : '#292723', stripe = i % 2 ? '#317553' : '#a33c39';
@@ -1179,7 +1258,7 @@ UI.archery = (() => {
           <svg class="ar-darts-hitflash" viewBox="0 0 250 250" aria-hidden="true"></svg>
           <svg viewBox="0 0 250 250" tabindex="0" role="group"
             aria-label="Dartboard. Hold the dart at the right edge and swipe inward. With a keyboard, use arrow keys to adjust the swipe and Enter to throw.">
-            <g class="ar-darts-board"></g><g class="ar-darts-pins"></g>
+            <g class="ar-darts-board"></g><g class="ar-darts-holes"></g><g class="ar-darts-pins"></g>
             <g class="ar-darts-grip" aria-hidden="true"><rect x="-25" y="-25" width="48" height="50" rx="14"/></g>
             <g class="ar-darts-held">
               <path class="ar-darts-direction" d="M-12 -8L0 -53L12 -8Z" hidden/>
@@ -1199,7 +1278,7 @@ UI.archery = (() => {
       const find = (name) => root.querySelector('.ar-darts-' + name);
       board = root.querySelector('svg'); grip = find('grip'); held = find('held');
       guide = find('direction'); dartModel = find('model'); tabletop = find('tabletop'); stage = find('stage'); swipeButton = find('swipe'); grabButton = find('grab'); hintButton = find('hintbtn'); aim = find('aim'); spreadEl = find('spread'); hitFlash = find('hitflash');
-      geometry = find('board'); pins = find('pins');
+      geometry = find('board'); holeG = find('holes'); pins = find('pins'); past = []; pastIds = new Set();
       result = find('result'); callout = find('callout'); hint = find('hint'); turn = find('turn');
       view = null; pending = false; flight = null; shown = null; visit = null;
       swipe = null; keys = null; releasedFrom = null; waitingHand = null; darts3d = null; impact = null;
@@ -1520,8 +1599,25 @@ UI.archery = (() => {
       }
       if (impact && now - impact.at > 380) impact = null;
       const age = impact ? (now - impact.at) / 1000 : 0;
-      const quiver = impact ? { id: impact.id, angle: 0.14 * impact.power * Math.exp(-11 * age) * Math.sin(105 * age) } : null;
-      darts3d?.draw(view.darts, drawHand ? hand : null, flight ? throwPose : null, flight?.shot.id, quiver);
+      const quiver = impact ? { id: impact.id, angle: 0.035 * impact.power * Math.exp(-11 * age) * Math.sin(105 * age) } : null;
+      noteHoles();
+      darts3d?.draw(view.darts, drawHand ? hand : null, flight ? throwPose : null, flight?.shot.id, quiver, past);
+    }
+
+    // Remember where each dart landed so its hole stays in the board after the dart is pulled.
+    function noteHoles() {
+      if (!view) return;
+      const [, , , , , edge] = view.radii;
+      let added = false;
+      for (const d of view.darts) {
+        if (pastIds.has(d.id) || d.id === flight?.shot.id || Math.hypot(d.x, d.y) > edge) continue;
+        pastIds.add(d.id);
+        past.push({ x: d.x, y: d.y, seed: (d.id * 0.6180339) % 1 });
+        added = true;
+      }
+      if (!added) return;
+      if (past.length > 90) past.shift();
+      holeG.innerHTML = past.map((h) => `<circle cx="${xAt(h.x)}" cy="${yAt(h.y)}" r="1.6" fill="#0a0706" stroke="#c9b88f" stroke-opacity=".45" stroke-width=".5"/>`).join('');
     }
 
     function paintPins() {
@@ -1567,6 +1663,7 @@ UI.archery = (() => {
     }
 
     function render(s, c) {
+      noteHoles();
       const first = !view;
       view = s.darts; state = s; ctx = c;
       readyAt = performance.now() + view.readyIn * 1000;

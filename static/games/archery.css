@@ -85,7 +85,7 @@
 }
 .ar-darts-stage svg { touch-action: none; user-select: none; }
 .ar-darts-webgl { pointer-events: none; }
-.ar-darts-is3d .ar-darts-board :is(g, circle), .ar-darts-is3d .ar-darts-pins, .ar-darts-is3d .ar-darts-model {
+.ar-darts-is3d .ar-darts-board :is(g, circle), .ar-darts-is3d .ar-darts-holes, .ar-darts-is3d .ar-darts-pins, .ar-darts-is3d .ar-darts-model {
   visibility: hidden;
 }
 .ar-darts-grip { cursor: grab; }
