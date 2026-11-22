@@ -1023,6 +1023,10 @@ UI.archery = (() => {
     }
     const inHand = dart(), flying = dart(), lodged = Array.from({ length: 3 }, dart);
     const tip = new T.Vector3(), direction = new T.Vector3();
+    const trailPoints = [];
+    const trail = new T.Line(new T.BufferGeometry(), new T.LineBasicMaterial({ color: 0xdfe9ff, transparent: true, opacity: 0.4, depthWrite: false }));
+    trail.frustumCulled = false; trail.visible = false;
+    scene.add(trail);
     const dartAxis = new T.Vector3(0, 1, 0);
     const aimingOrientation = new T.Quaternion().setFromUnitVectors(dartAxis,
       new T.Vector3(0, 0, -1));
@@ -1102,11 +1106,17 @@ UI.archery = (() => {
         flying.rotateY(flight.roll);
         flying.quaternion.slerp(landedOrientation, smooth((flight.u - 0.86) / 0.14));
         placeTip(flying, flight.x, flight.y, flight.depth, flight.scale);
+        const kk = planeScale(flight.depth);
+        trailPoints.push(new T.Vector3(flight.x * kk, flight.y * kk, flight.depth + 40 * flight.scale));
+        if (trailPoints.length > 9) trailPoints.shift();
+        trail.geometry.setFromPoints(trailPoints);
+        trail.visible = trailPoints.length > 1;
         dartLight.position.copy(flying.position);
         dartLight.position.y += 12;
         dartLight.position.z += 30;
         dartLight.intensity = 1.15 * (1 - flight.u);
       }
+      if (!flight) { trailPoints.length = 0; trail.visible = false; }
       if (!hand && !flight) dartLight.intensity = 0;
       lodged.forEach((obj, i) => {
         const p = pins[i];
@@ -1400,11 +1410,11 @@ UI.archery = (() => {
         const dx = shot.x - start.x, dy = shot.y - start.y;
         const pace = shot.pace ?? 2.2;
         // Gravity bows the path above the straight line: slow, lobbed throws arc higher than hard flicks.
-        const lift = (0.07 + 0.11 * (1 - c01(pace / 6))) * Math.min(1.4, 0.6 + Math.hypot(dx, dy));
+        const lift = (0.04 + 0.07 * (1 - c01(pace / 6))) * Math.min(1.4, 0.6 + Math.hypot(dx, dy));
         const at = (t) => {
           const u = c01(t) * (1.07 - 0.07 * c01(t));   // drag: a touch quicker off the fingers, settling toward the board
           return {
-            x: start.x + dx * u + 0.012 * Math.sin(t * 6 * Math.PI) * (1 - t) ** 2,
+            x: start.x + dx * u,
             y: start.y + dy * u + lift * 4 * u * (1 - u),
             depth: 0.45 + (start.depth ?? DART_HAND_DEPTH - 10) * (1 - u),
             scale: DART_BOARD_SCALE + ((start.scale ?? DART_HELD_SCALE) - DART_BOARD_SCALE) * (1 - u) ** 1.25,
@@ -1413,7 +1423,7 @@ UI.archery = (() => {
         };
         const cur = at(time), ahead = at(Math.min(1, time + 0.02)), behind = at(Math.max(0, time - 0.02));
         const { x, y, depth, scale, u } = cur;
-        throwPose = { x, y, depth, scale, u, roll: time * duration * 0.011,
+        throwPose = { x, y, depth, scale, u, roll: time * 5,
           tangent: [ahead.x - behind.x, ahead.y - behind.y, ahead.depth - behind.depth] };
         const flightAngle = 0;
         const pinScale = 1 + (scale - DART_BOARD_SCALE) * 2.2;
@@ -1495,7 +1505,7 @@ UI.archery = (() => {
         flight = shot && !first && c.peek && !reduce() ? {
           shot, start: performance.now(),
           from: shot.o === view.me && releasedFrom ? releasedFrom : origin(),
-          duration: Math.max(520, 790 - 40 * (shot.pace ?? 2.2)),
+          duration: Math.max(400, 600 - 30 * (shot.pace ?? 2.2)),
         } : null;
         if (shot && !first && c.peek && (shot.o !== view.me || !releasedFrom)) playRelease(shot.pace ?? 2.2);
         releasedFrom = null;
