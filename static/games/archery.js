@@ -949,10 +949,8 @@ UI.archery = (() => {
       if (face.children.length) return;
       const rings = view.radii.map((r) => r * 98);
       const [inner, outer, tripleIn, tripleOut, doubleIn, edge] = rings;
-      mesh(face, new T.CircleGeometry(113, 96), material(0x171815), 0, 0, -0.5);
+      mesh(face, new T.CircleGeometry(119, 96), material(0x0a0a0a, { roughness: 0.9 }), 0, 0, -0.5);   // the black band round the sisal
       const wire = material(0xb0a395, { metalness: 0.34, roughness: 0.38 });
-      const liner = material(0xd2d6da, { metalness: 0.6, roughness: 0.28 });
-      for (const r of [117.5]) mesh(face, new T.TorusGeometry(r, 0.45, 6, 128), liner, 0, 0, -0.1);
       const screwHead = new T.CircleGeometry(1.2, 12);
       const slot = new T.PlaneGeometry(1.5, 0.26);
       const slotMat = material(0x211c19);
@@ -973,7 +971,7 @@ UI.archery = (() => {
           Math.cos(a) * (edge + outer) / 2, Math.sin(a) * (edge + outer) / 2, 0.35);
         spoke.rotation.z = a - Math.PI / 2;
       });
-      for (const r of rings) mesh(face, new T.TorusGeometry(r, 0.32, 6, 112), wire, 0, 0, 0.43);
+      rings.forEach((r, i) => { if (i !== 4) mesh(face, new T.TorusGeometry(r, 0.32, 6, 112), wire, 0, 0, 0.43); });
       face.children.forEach((part) => { part.receiveShadow = true; });
     }
 
