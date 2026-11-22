@@ -17,12 +17,12 @@ import tempfile
 import time
 from urllib.error import HTTPError
 from urllib.parse import urlencode
-from urllib.request import Request, urlopen
+from urllib.request import HTTPBasicAuthHandler, HTTPPasswordMgrWithDefaultRealm, Request, build_opener, urlopen
 
 
 API = "https://api.digitalocean.com/v2"
 APP_FILES = (".dockerignore", "Dockerfile", "compose.yaml", "compose.droplet.yaml",
-             "Caddyfile", "server.py",
+             "Caddyfile", "Caddyfile.http", "server.py",
              "games", "static", "data/words.txt")
 DEPLOY_SCRIPT = """set -eu
 export DEBIAN_FRONTEND=noninteractive
@@ -45,6 +45,9 @@ systemctl enable --now docker
 export PORT=8000
 export GAME_NIGHT_ADDRESS="$1"
 export GAME_NIGHT_RELEASE="$2"
+if [ "$3" = 0 ]; then
+    cp Caddyfile.http Caddyfile
+fi
 compose() {
     docker compose -p game-night -f compose.yaml -f compose.droplet.yaml "$@"
 }
@@ -271,6 +274,22 @@ def update_duckdns(name, address, token):
     return f"{name}.duckdns.org"
 
 
+def update_noip(hostname, address, username, password):
+    passwords = HTTPPasswordMgrWithDefaultRealm()
+    passwords.add_password(None, "https://dynupdate.no-ip.com/", username, password)
+    opener = build_opener(HTTPBasicAuthHandler(passwords))
+    request = Request("https://dynupdate.no-ip.com/nic/update?" + urlencode({"hostname": hostname, "myip": address}),
+                      headers={"User-Agent": "game-night-droplet/1.0 swena56@gmail.com"})
+    try:
+        with opener.open(request, timeout=20) as response:
+            result = response.read(64).decode(errors="replace").strip()
+    except OSError:
+        raise DropletError("Could not reach the No-IP update endpoint, or it rejected the credentials.") from None
+    if not result.startswith(("good", "nochg")):
+        raise DropletError(f"No-IP rejected the update ({result}). Check the hostname and NOIP_USERNAME/NOIP_PASSWORD.")
+    return hostname
+
+
 def git(repo, *args):
     result = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
     if result.returncode:
@@ -295,7 +314,7 @@ def release_source(repo, dirty):
     return git(repo, "rev-parse", "HEAD")[:16]
 
 
-def deploy_app(droplet_id, address, hostname, ssh, ssh_env, dirty=False):
+def deploy_app(droplet_id, address, hostname, ssh, ssh_env, dirty=False, ssl=True):
     repo = Path(__file__).resolve().parent
     release = release_source(repo, dirty)
     print(f"Deploying Game Night release {release}{' (working tree)' if dirty else ' (main)'} to {address}...", flush=True)
@@ -310,14 +329,14 @@ def deploy_app(droplet_id, address, hostname, ssh, ssh_env, dirty=False):
         bundle.seek(0)
         try:
             subprocess.run(ssh + ["-T", "-o", "BatchMode=yes", f"root@{address}",
-                                  shlex.join(["sh", "-c", DEPLOY_SCRIPT, "deploy", hostname, release])], stdin=bundle,
+                                  shlex.join(["sh", "-c", DEPLOY_SCRIPT, "deploy", hostname, release, "1" if ssl else "0"])], stdin=bundle,
                            check=True, timeout=1200, env=ssh_env)
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
             raise DropletError(f"Deployment failed on Droplet {droplet_id}, release {release}: "
                                f"{error.__class__.__name__}. Check the SSH output and retry with the same "
                                "Droplet and hostname options.") from None
-    print("Game Night passed its server health check. Waiting for public HTTPS...", flush=True)
-    url = f"https://{hostname}/"
+    print("Game Night passed its server health check. Waiting for the public site...", flush=True)
+    url = f"{'https' if ssl else 'http'}://{hostname}/"
     deadline = time.monotonic() + 180
     while True:
         try:
@@ -331,10 +350,10 @@ def deploy_app(droplet_id, address, hostname, ssh, ssh_env, dirty=False):
             error = str(failure)
         if time.monotonic() >= deadline:
             raise DropletError(f"Could not verify {url}: {error}. "
-                               "Check that TCP ports 80 and 443 are publicly reachable, "
+                               "Check that TCP port 80 (and 443 for SSL) is publicly reachable, "
                                "then inspect the app and Caddy Docker logs.")
         time.sleep(3)
-    print(f"Game Night is live on release {release} with verified HTTPS. Open {url}")
+    print(f"Game Night is live on release {release} with verified {"HTTPS" if ssl else "HTTP (no SSL)"}. Open {url}")
 
 
 def app_member(member):
@@ -352,6 +371,10 @@ def add_start_options(parser, *, defaults=None):
                         help="deploy Game Night and wait for its health check")
     parser.add_argument("--duckdns", default=defaults, metavar="NAME",
                         help="update a claimed Duck DNS name and deploy HTTPS for it")
+    parser.add_argument("--noip", default=defaults, metavar="HOSTNAME",
+                        help="use a No-IP hostname (default: $NOIP_HOSTNAME; updated via NOIP_USERNAME/NOIP_PASSWORD if set)")
+    parser.add_argument("--no-ssl", action="store_true", default=defaults,
+                        help="serve plain HTTP on port 80 instead of HTTPS")
 
 
 def main():
@@ -384,14 +407,24 @@ def main():
                              help="path to an SSH private key")
     args = parser.parse_args()
     operation = next((flag for flag in ("stop", "remove") if hasattr(args, flag)), args.command)
-    if operation in ("stop", "remove") and (args.command or args.wait or args.ssh or args.deploy or args.duckdns):
+    if operation in ("stop", "remove") and (args.command or args.wait or args.ssh or args.deploy or args.duckdns or args.noip):
         parser.error("Use --stop or --remove without a startup option or subcommand.")
-    deploy = args.deploy or args.duckdns is not None or not (args.wait or args.ssh)
+    if args.noip is None and args.duckdns is None:
+        args.noip = os.environ.get("NOIP_HOSTNAME") or None
+    deploy = args.deploy or args.duckdns is not None or args.noip is not None or not (args.wait or args.ssh)
     duckdns_name = None
     if args.duckdns is not None:
         duckdns_name = args.duckdns.lower().removesuffix(".duckdns.org")
         if not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", duckdns_name):
             parser.error("Use a Duck DNS name such as your-game-night or your-game-night.duckdns.org.")
+    noip_host = None
+    if args.noip is not None:
+        noip_host = args.noip.lower()
+        if args.duckdns is not None:
+            parser.error("Use either --duckdns or --noip.")
+        if not re.fullmatch(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}", noip_host):
+            parser.error("Use a full No-IP hostname such as your-game-night.ddns.net.")
+    ssl = not args.no_ssl
     droplet_id = getattr(args, operation if operation in ("stop", "remove") else "id", None)
     if droplet_id is not None and droplet_id <= 0:
         parser.error("Droplet ID must be a positive integer.")
@@ -414,7 +447,7 @@ def main():
             if existing:
                 droplet_id = existing["id"]
                 print(f"Found {existing['name']} (ID {droplet_id}).")
-            elif operation or args.wait or args.ssh or args.deploy or duckdns_name:
+            elif operation or args.wait or args.ssh or args.deploy or duckdns_name or noip_host:
                 raise DropletError(f"No Droplet named {args.name}. Use --name NAME or pass its ID.")
         if operation == "stop":
             stop_droplet(api, droplet_id)
@@ -443,8 +476,14 @@ def main():
         if deploy or args.ssh:
             wait_for_ssh(droplet_id, address, ssh, ssh_env, interactive=not deploy)
         if deploy:
-            hostname = update_duckdns(duckdns_name, address, duckdns_token) if duckdns_name else address
-            deploy_app(droplet_id, address, hostname, ssh, ssh_env, args.dirty)
+            if duckdns_name:
+                hostname = update_duckdns(duckdns_name, address, duckdns_token)
+            elif noip_host:
+                noip_user, noip_pass = os.environ.get("NOIP_USERNAME", ""), os.environ.get("NOIP_PASSWORD", "")
+                hostname = update_noip(noip_host, address, noip_user, noip_pass) if noip_user and noip_pass else noip_host
+            else:
+                hostname = address
+            deploy_app(droplet_id, address, hostname, ssh, ssh_env, args.dirty, ssl)
         if args.ssh:
             return subprocess.run(ssh + ["-t", f"root@{address}"], env=ssh_env).returncode
     except EOFError:

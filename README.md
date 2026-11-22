@@ -68,6 +68,18 @@ python3 droplet.py start --duckdns your-game-night
 This updates the hostname to the Droplet's current IPv4 address and deploys the app at
 `https://your-game-night.duckdns.org/`. Caddy serves HTTPS on the selected hostname.
 
+For a No-IP hostname without SSL, set `NOIP_USERNAME` and `NOIP_PASSWORD` (your No-IP DDNS
+credentials; optional if the hostname already points at the Droplet) and run:
+
+```sh
+python3 droplet.py start --noip your-game-night.ddns.net --no-ssl
+```
+
+Set `NOIP_HOSTNAME` to make `--noip` the default, so a bare `python3 droplet.py` deploys to it.
+
+`--no-ssl` serves plain HTTP on port 80 (`Caddyfile.http`) with no certificate, so only TCP 80
+needs to be open. It also works without `--noip`, using the Droplet's IPv4 address.
+
 ### Resolve public player feedback
 
 Use the same DigitalOcean token and SSH key as for deployment. The feedback CLI

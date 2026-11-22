@@ -1,0 +1,9 @@
+{
+	auto_https off
+}
+
+:80 {
+	reverse_proxy game-night:8000 {
+		header_up X-Game-Night-Client {remote_host}
+	}
+}
