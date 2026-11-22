@@ -66,7 +66,7 @@ UI.archery = (() => {
       </div>
       <p id="arLast" class="ar-last" role="status"></p>
       <p id="arHint" class="hint"></p></div>`;
-    side.innerHTML = '<div class="panel"><h3>Scoreboard</h3><div id="arCard" class="ar-card"></div></div>';
+    side.innerHTML = '<div class="panel ar-darts-scorecard"><h3>Scoreboard</h3><div id="arCard" class="ar-card"></div></div>';
     const stage = $('arStage');
     $('arCtl').addEventListener('click', (e) => {
       const b = e.target.closest('button');
@@ -868,10 +868,10 @@ UI.archery = (() => {
     const scene = new T.Scene(), camera = new T.PerspectiveCamera(fov, 1, 1, 850);
     camera.position.z = cameraDistance;
     const VIEW_TARGET = new T.Vector3();
-    scene.add(new T.HemisphereLight(0xfffaf4, 0x9b9894, 1.3));
-    const lamp = new T.SpotLight(0xffe5c9, 0.68, 0, 0.64, 0.77);
-    lamp.position.set(-64, 128, 235);
-    lamp.target.position.set(0, 18, 0);
+    scene.add(new T.HemisphereLight(0xf4e4ce, 0x6c534c, 1.35));
+    const lamp = new T.SpotLight(0xffce95, 3.4, 0, 0.53, 0.79);
+    lamp.position.set(-75, 174, 235);
+    lamp.target.position.set(1, 24, 0);
     scene.add(lamp, lamp.target);
     const rimLight = new T.DirectionalLight(0xf2f3f5, 0.28);
     rimLight.position.set(130, -105, 46);
@@ -1434,7 +1434,7 @@ UI.archery = (() => {
 
   function makeDartsUI() {
     const STEP = Math.PI / 10, CENTER = 125, SCALE = 98, WIDTH = 250;
-    let root, score, stage, board, geometry, holeG, pins, grip, held, guide, dartModel, result, callout, hint, turn, tabletop, darts3d, swipeButton, grabButton, hintButton, aim, spreadEl, hitFlash, landing, trail, impactMark;
+    let root, score, stage, board, geometry, holeG, pins, grip, held, guide, dartModel, result, callout, hint, turn, dartIndicators, tabletop, darts3d, swipeButton, grabButton, hintButton, aim, spreadEl, hitFlash, landing, trail, impactMark;
     const zoom = { s: 1, x: 0, y: 0 };
     const angle = { pitch: 0, yaw: 0 };
     let inspecting, inspectButton, tabletopResize;
@@ -1507,11 +1507,13 @@ UI.archery = (() => {
           const [x, y] = point(i * STEP, DART_NUMBER_RADIUS);
           return `<text data-number="${number}" x="${x}" y="${y}">${number}</text>`;
         }).join('');
+      geometry.querySelector(':scope > circle').classList.add('ar-darts-rim');
     }
 
     function mount(main, side) {
       main.innerHTML = `<section class="ar-darts">
-        <header><div><h2></h2><span class="ar-darts-turn"></span></div>
+        <header><div><h2></h2><div class="ar-darts-visit"><span class="ar-darts-turn"></span>
+            <span class="ar-darts-indicators" aria-hidden="true"><i></i><i></i><i></i></span></div></div>
           <div class="ar-darts-tools">
             <button type="button" class="ar-darts-inspect" aria-pressed="false" aria-label="Inspect dartboard at an angle">Inspect</button>
             <button type="button" class="ar-darts-hintbtn" aria-pressed="false">💡 Hint</button>
@@ -1554,7 +1556,7 @@ UI.archery = (() => {
       board = find('input'); grip = find('grip'); held = find('held');
       guide = find('direction'); dartModel = find('model'); tabletop = find('tabletop'); stage = find('stage'); swipeButton = find('swipe'); grabButton = find('grab'); hintButton = find('hintbtn'); aim = find('aim'); spreadEl = find('spread'); hitFlash = find('hitflash'); landing = find('landing'); trail = find('trail'); impactMark = find('impact');
       geometry = find('board'); holeG = find('holes'); pins = find('pins'); past = []; pastIds = new Set();
-      result = find('result'); callout = find('callout'); hint = find('hint'); turn = find('turn');
+      result = find('result'); callout = find('callout'); hint = find('hint'); turn = find('turn'); dartIndicators = find('indicators');
       landingId = null;
       view = null; pending = false; flight = null; falling = null; shown = null; visit = null;
       swipe = null; keys = null; releasedFrom = null; waitingHand = null; darts3d = null; impact = null;
@@ -1862,7 +1864,8 @@ UI.archery = (() => {
         shape = sector(i * STEP, inner, outerR, '');
       }
       if (!shape) return;
-      hitFlash.innerHTML = shape;
+      hitFlash.innerHTML = shape + (reduce() ? '' :
+        `<circle class="ar-darts-impact-ring" cx="${xAt(shot.x)}" cy="${yAt(shot.y)}" r="5"/>`);
       hitFlash.classList.remove('ar-darts-lit');
       void hitFlash.getBoundingClientRect();
       hitFlash.classList.add('ar-darts-lit');
@@ -1905,25 +1908,28 @@ UI.archery = (() => {
         void impactMark.getBoundingClientRect();
         impactMark.classList.add('ar-darts-impact-active');
       }
-      const prefix = ['Miss', 'Single', 'Double', 'Triple'][shot.multiplier];
-      callout.textContent = shot.number && shot.number !== 25 ? `${prefix} ${shot.number}` : shot.label;
-      callout.dataset.tone = shot.bust || !shot.number ? 'miss' : shot.number === 25 ? 'bull' : '';
+      callout.textContent = shot.bust ? 'Bust' : hitName(shot);
+      callout.dataset.tone = shot.bust || !shot.number ? 'miss' : shot.multiplier >= 2 ? 'bull' : '';
       callout.hidden = false;
       void callout.offsetWidth;
       callout.classList.add('ar-darts-flash');
     }
 
+    function hitName(shot) {
+      const prefix = ['', 'Single', 'Double', 'Triple'][shot.multiplier];
+      return shot.number && shot.number !== 25 ? `${prefix} ${shot.number}` : shot.label;
+    }
+
     function showShot(shot) {
-      const pieces = [player(shot.o)?.name ?? 'Player', shot.label];
-      if (shot.bust) pieces.push('Bust, visit score restored');
-      else if (view.x01) pieces.push(shot.win ? 'Checkout!' : `${shot.points} left`);
-      else if (view.mode === 'clock') {
-        pieces.push(shot.win ? 'Clock complete!' : `${shot.gain ? 'Next' : 'Still aiming for'} ${clockLabel(view.nextNumbers[shot.o])}`);
-      } else {
-        if (shot.win) pieces.push('All targets closed!');
+      const pieces = [shot.bust ? 'Bust' : hitName(shot)];
+      if (shot.bust) pieces.push('Score restored');
+      else if (shot.win) pieces.push(view.x01 ? 'Checkout!' : view.mode === 'clock' ? 'Clock complete!' : 'Winner');
+      else if (view.mode === 'clock') pieces.push(`Next: ${clockLabel(view.nextNumbers[shot.o])}`);
+      else if (view.mode === 'cricket') {
         if (shot.marks) pieces.push(`+${shot.marks} marks`);
         if (shot.gain) pieces.push(`+${shot.gain} pts`);
-      }
+      } else if (shot.number) pieces.push(String(shot.value));
+      result.dataset.tone = shot.bust || !shot.number ? 'miss' : '';
       result.textContent = pieces.join(' · ');
     }
 
@@ -2115,7 +2121,7 @@ UI.archery = (() => {
       view.seats.forEach((_, i) => {
         const row = ctx.el('tr', view.next === i ? 'now' : '');
         const name = ctx.el('th', '', player(i)?.name ?? '?'); name.scope = 'row';
-        name.style.color = player(i)?.color ?? '';
+        if (view.next === i) name.append(ctx.el('span', 'ar-darts-up', view.grab ? 'Collecting' : 'Up next'));
         row.classList.toggle('out', !view.active.includes(i));
         row.append(name);
         if (cricket) for (const marks of view.marks[i]) {
@@ -2171,7 +2177,6 @@ UI.archery = (() => {
             playLanding(shot);
           }
         }
-        if (!shot) result.textContent = '';
       }
       if (shot && !view.darts.some((dart) => dart.id === shot.id)) {
         falling = null;
@@ -2187,6 +2192,10 @@ UI.archery = (() => {
       turn.textContent = s.phase === 'over' ? 'Game over' : view.next == null ? 'Final dart'
         : view.grab ? `${view.next === view.me ? 'Collect the round’s darts' : `${player(view.next)?.name ?? 'Player'} is collecting darts`}`
         : `${view.next === view.me ? 'Your visit' : player(view.next)?.name ?? 'Player'} · ${view.left} left`;
+      const remaining = s.phase === 'over' || view.grab || view.next == null ? 0 : view.left;
+      for (const [i, indicator] of Array.from(dartIndicators.children).entries()) {
+        indicator.classList.toggle('ready', i < remaining);
+      }
       updateHint();
       renderScores();
     }
