@@ -53,4 +53,9 @@
 @media (prefers-reduced-motion: reduce) { .mw-pop-in, .mw-done, .mw-go.mw-ready, .mw-clock.low { animation: none; } }
 
 .mw-skee [data-p] { display: none; }
-.mw-skee .mw-go { touch-action: none; user-select: none; }
+.mw-skee .mw-go { touch-action: none; user-select: none; min-width: 140px; }
+.mw-skee .mw-go.mw-charging {
+  animation: none;
+  color: #fff;
+  background: linear-gradient(to right, #176447 0 var(--mw-charge), #202638 var(--mw-charge) 100%);
+}

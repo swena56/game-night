@@ -196,7 +196,15 @@ UI.midway = (() => {
   }
 
   function meter() {
-    const p = $('mwPow'); if (p) p.style.height = `${Math.round(power * 100)}%`;
+    const percent = `${Math.round(power * 100)}%`;
+    const fill = $('mwPow');
+    if (fill) fill.style.height = percent;
+    const button = $('mwGo');
+    if (!button) return;
+    const label = charge ? 'Release to roll' : V?.kind === 'skee' ? 'Hold to roll' : '🎯 Throw';
+    if (button.textContent !== label) button.textContent = label;
+    button.classList.toggle('mw-charging', !!charge);
+    if (charge) button.style.setProperty('--mw-charge', percent);
   }
 
   function controls() {
@@ -204,8 +212,6 @@ UI.midway = (() => {
     const go = canThrow();
     if (!go) cancelCharge?.();
     const skee = V.kind === 'skee';
-    const label = skee ? 'Hold to roll' : '🎯 Throw';
-    if ($('mwGo').textContent !== label) $('mwGo').textContent = label;
     $('mwCtl').classList.toggle('mw-skee', skee);
     $('mwGo').disabled = !go;
     $('mwGo').classList.toggle('mw-ready', go);
