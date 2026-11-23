@@ -8,7 +8,9 @@ of it (the same seeded layout), against a throw clock and with a set number of t
 - 🥫 Can Slam: knock down a 10-can pyramid; a can falls when it is hit or when a can it stands on falls.
   Clearing the stack pays a bonus and it is stacked again.
 
-🔔 Every booth hides a gold jackpot (a cup, a bottle or a can) in a new place each round: the first to hit it wins
+- 🏀 Basketball: arc shots through three hoops. The higher hoops are worth more.
+
+🔔 Every booth hides a gold jackpot in a new place each round: the first to hit it wins
 +100. 🔥 Hot hand: after three good throws in a row, every good throw pays double until you miss.
 
 Nothing is simulated step by step (as in Wind Archery): a throw is an aim (-1..1, left to right) and a power
@@ -20,10 +22,10 @@ import time
 
 from .base import Game, GameError
 
-BOOTHS = ("skee", "rings", "cans")
-NAMES = {"skee": "🎳 Skee Roll", "rings": "⭕ Ring Toss", "cans": "🥫 Can Slam"}
-THROWS = {"skee": 9, "rings": 8, "cans": 6}
-SHOW = {"skee": 1.6, "rings": 1.2, "cans": 1.0}    # seconds the browsers take to play a throw out
+BOOTHS = ("skee", "rings", "cans", "hoops")
+NAMES = {"skee": "🎳 Skee Roll", "rings": "⭕ Ring Toss", "cans": "🥫 Can Slam", "hoops": "🏀 Basketball"}
+THROWS = {"skee": 9, "rings": 8, "cans": 6, "hoops": 8}
+SHOW = {"skee": 1.6, "rings": 1.2, "cans": 1.0, "hoops": 1.35}    # seconds the browsers take to play a throw out
 COUNT = 3.0          # the countdown before the bell
 BETWEEN = 6.0        # the standings between booths
 SETTLE = 2.2         # once everyone has thrown, the last throws play out for this long
@@ -51,6 +53,22 @@ CN_W = 0.45
 ROWS = (4, 3, 2, 1)
 CANS = [(r, k, (k - (n - 1) / 2) * (CAN_W + 0.01), CAN_H / 2 + r * CAN_H) for r, n in enumerate(ROWS) for k in range(n)]
 CAN_AT = {(r, k): i for i, (r, k, _, _) in enumerate(CANS)}
+
+# 🏀 Basketball: (x, loft, scoring width, scoring height, tickets) at the hoop entry plane.
+BB_MAP = (0.75, 1.15, 0.0)
+HOOPS = ((-0.48, 0.70, 0.095, 0.085, 50), (0.0, 0.55, 0.13, 0.10, 30), (0.48, 0.91, 0.075, 0.065, 70))
+
+
+def hoop_land(aim, power, rng):
+    w, h, offset = BB_MAP
+    s = wobble(power)
+    return aim * w + rng.gauss(0, s), power * h + offset + rng.gauss(0, s)
+
+
+def hoop_hit(x, y):
+    return next((i for i, (cx, cy, rx, ry, _) in enumerate(HOOPS)
+                 if ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1), None)
+
 
 BOT_SIGMA = {"easy": 0.10, "normal": 0.055, "hard": 0.03}
 BOT_PACE = {"easy": (2.6, 4.4), "normal": (2.2, 3.6), "hard": (1.9, 3.0)}
@@ -188,12 +206,13 @@ class Midway(Game):
         "Everyone plays the same carnival booth at the same time, each in your own copy, before the clock runs out.",
         "Swipe up to throw: the direction aims, the length sets how far (or high) it goes. Or use ◀ ▶ and the power meter.",
         "🎳 Skee Roll: rings pay 10–50, the corner cups 100. ⭕ Ring Toss: green 30, blue 50, red 80. 🥫 Can Slam: 10 a can, +50 for clearing the stack.",
+        "🏀 Basketball: aim and set your loft to sink 30, 50 or 70-ticket baskets. Higher hoops are tighter.",
         "🔔 Each booth hides a gold jackpot: the first to hit it wins +100. 🔥 Three good throws in a row and every good throw pays double until you miss.",
         "Most 🎟 tickets after the last booth wins; ties go to the most jackpots.",
     ]
     name = "Midway Night"
     icon = "🎪"
-    blurb = "A carnival night of skee rolls, ring tosses and can slams: everyone throws at once, the gold jackpot goes to the quickest."
+    blurb = "A carnival night of skee rolls, ring tosses, can slams and basketball: everyone throws at once, the gold jackpot goes to the quickest."
     min_players = 2
     max_players = 6
     badges = {**Game.badges,
@@ -201,7 +220,7 @@ class Midway(Game):
               "sweep": ("🥫", "Clean sweep", "Knock down a whole can pyramid"),
               "hot": ("🔥", "Hot hand", "Make five good throws in a row")}
     settings_schema = {
-        "booths": ("Rounds", [(3, "3 rounds"), (6, "6 rounds")], 3),
+        "booths": ("Rounds", [(4, "4 rounds"), (3, "3 rounds"), (6, "6 rounds")], 4),
         "booth_type": ("Booth type", [("mixed", "Mixed booths")] + [(kind, NAMES[kind]) for kind in BOOTHS], "mixed"),
         "clock": ("Throw clock", [(45, "45 s"), (30, "30 s"), (60, "60 s")], 45),
     }
@@ -234,8 +253,8 @@ class Midway(Game):
 
     @property
     def total(self):
-        v = self.s.get("booths", 3)
-        return v if v in (3, 6) else 3
+        v = self.s.get("booths", 4)
+        return v if v in (3, 4, 6) else 4
 
     @property
     def clock(self):
@@ -272,6 +291,8 @@ class Midway(Game):
                     cols.append(rng.choices("gbr", weights=w)[0])
             self.colours = cols
             self.jack = rng.randrange(10, 25)     # a bottle in the middle or back rows
+        elif kind == "hoops":
+            self.jack = rng.randrange(len(HOOPS))
         else:
             self.jack = rng.choice([i for i, (row, _, _, _) in enumerate(CANS) if row < 3])
         for p in self.players():
@@ -336,6 +357,14 @@ class Midway(Game):
                 good = True
                 jack = b == self.jack and self.jack_by is None
             shot.update(x=round(x, 3), y=round(y, 3), ex=round(ex, 3), ey=round(ey, 3), b=b, bounce=bounced)
+        elif kind == "hoops":
+            x, y = hoop_land(aim, power, rng)
+            hoop = hoop_hit(x, y)
+            if hoop is not None:
+                pts = HOOPS[hoop][4]
+                good = True
+                jack = hoop == self.jack and self.jack_by is None
+            shot.update(x=round(x, 3), y=round(y, 3), hoop=hoop)
         else:
             x, y = can_land(aim, power, rng)
             hit = can_hit(x, y, g.cans)
@@ -375,6 +404,8 @@ class Midway(Game):
             what = {"short": "falls short", "cup": "sinks a corner cup", "gutter": "rolls into the 10"}.get(shot["where"], f"rolls into the {shot['where']}")
         elif kind == "rings":
             what = f"rings a {dict(g='green', b='blue', r='red')[self.colours[shot['b']]]} bottle" if shot["b"] is not None else "misses"
+        elif kind == "hoops":
+            what = "sinks a basket" if shot["hoop"] is not None else "misses the basket"
         else:
             n = len(shot["fell"])
             what = f"knocks down {n} can{'s' if n != 1 else ''}" if n else "misses the cans"
@@ -476,6 +507,8 @@ class Midway(Game):
             return out
         if kind == "rings":
             return [(i, x, y) for i, (x, y) in enumerate(BOTTLES)]
+        if kind == "hoops":
+            return [(i, x, y) for i, (x, y, _, _, _) in enumerate(HOOPS)]
         return [(i, cx, cy) for i, (_, _, cx, cy) in enumerate(CANS) if o.g.cans[i]]
 
     def value(self, o, x, y, rng):
@@ -489,6 +522,11 @@ class Midway(Game):
             if b is None:
                 return 0
             return RT_PTS[self.colours[b]] + (JACKPOT if b == self.jack and self.jack_by is None else 0)
+        if kind == "hoops":
+            hoop = hoop_hit(x, y)
+            if hoop is None:
+                return 0
+            return HOOPS[hoop][4] + (JACKPOT if hoop == self.jack and self.jack_by is None else 0)
         hit = can_hit(x, y, o.g.cans)
         if hit is None:
             return 0
@@ -507,6 +545,9 @@ class Midway(Game):
             aim, power = x / SK_W, (y + 0.08) / SK_H
         elif kind == "rings":
             aim, power = x / RT_W, (y + 0.05) / RT_H
+        elif kind == "hoops":
+            w, h, offset = BB_MAP
+            aim, power = x / w, (y - offset) / h
         else:
             aim, power = x / CN_W, (y - 0.02) / 0.7
         return max(-1.0, min(1.0, aim)), max(0.0, min(1.0, power))
@@ -530,7 +571,7 @@ class Midway(Game):
                 tot = 0.0
                 for _ in range(16):
                     aim, power = self.to_throw(t[1] + rng.gauss(0, sig), t[2] + rng.gauss(0, sig))
-                    land = {"skee": skee_land, "rings": ring_land, "cans": can_land}[self.kind](aim, power, rng)
+                    land = {"skee": skee_land, "rings": ring_land, "cans": can_land, "hoops": hoop_land}[self.kind](aim, power, rng)
                     tot += self.value(o, land[0], land[1], rng)
                 return tot / 16
             if level == "normal" and len(cands) > 6:
@@ -564,6 +605,8 @@ class Midway(Game):
                {"map": [RT_W, RT_H, -0.05], "bottles": BOTTLES, "pts": RT_PTS, "ring": RT_RING} if kind == "rings" else
                {"map": [CN_W, 0.7, 0.02], "cans": [[cx, cy] for _, _, cx, cy in CANS], "w": CAN_W, "h": CAN_H, "ball": BALL_R,
                 "pts": CAN_PTS, "sweep": SWEEP})
+        if kind == "hoops":
+            geo = {"map": BB_MAP, "hoops": HOOPS}
         jb = r.players.get(self.jack_by) if self.jack_by else None
         return {"midway": {
             "seats": self.seats, "me": p.id if p.id in self.seats else None,

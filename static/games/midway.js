@@ -8,7 +8,7 @@ UI.midway = (() => {
   let aim = 0, power = 0.5, swipe = null, lastThrow = 0, popT = 0, lastDraw = 0, lastTick = 0, fallAt = [];
   const $ = (id) => document.getElementById(id);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-  const ICON = { skee: '🎳', rings: '⭕', cans: '🥫' };
+  const ICON = { skee: '🎳', rings: '⭕', cans: '🥫', hoops: '🏀' };
   const nameOf = (pid) => ctx?.player(pid)?.name ?? '?';
   const colorOf = (pid) => ctx?.player(pid)?.color ?? '#ccc';
   const watched = () => V?.booths?.[watchId];
@@ -201,7 +201,7 @@ UI.midway = (() => {
     if (fill) fill.style.height = percent;
     const button = $('mwGo');
     if (!button) return;
-    const label = charge ? 'Release to roll' : V?.kind === 'skee' ? 'Hold to roll' : '🎯 Throw';
+    const label = charge ? 'Release to roll' : V?.kind === 'skee' ? 'Hold to roll' : V?.kind === 'hoops' ? '🏀 Shoot' : '🎯 Throw';
     if (button.textContent !== label) button.textContent = label;
     button.classList.toggle('mw-charging', !!charge);
     if (charge) button.style.setProperty('--mw-charge', percent);
@@ -262,6 +262,7 @@ UI.midway = (() => {
         : left() === 0 ? 'Out of throws: tap a name to watch a rival.'
           : { skee: 'Drag sideways to aim. Hold to charge, then release to roll. The corner cups pay 100.',
               rings: 'Swipe up to toss: a longer swipe reaches the back rows. Red bottles pay 80.',
+              hoops: 'Swipe up to shoot, or use aim and power. Swipe higher for higher hoops. The gold rim marks the jackpot.',
               cans: 'Swipe up to throw: a longer swipe throws higher. Hit the bottom row and the cans above it fall too.' }[V.kind];
     if ($('mwHint').textContent !== t) $('mwHint').textContent = t;
   }
@@ -269,7 +270,8 @@ UI.midway = (() => {
   function pop(sh) {
     const el = $('mwPop'); if (!el) return;
     const words = sh.k === 'skee' ? (sh.where === 'short' ? 'Short!' : sh.where === 'cup' ? (sh.rattle ? '🏆 RATTLED IN!' : '🏆 CUP!') : (sh.rattle ? 'Rattled!' : ''))
-      : sh.k === 'rings' ? (sh.b == null ? 'Miss' : 'RINGER!') : (sh.fell.length ? `${sh.fell.length} can${sh.fell.length > 1 ? 's' : ''}` : 'Miss');
+      : sh.k === 'hoops' ? (sh.hoop == null ? 'Miss' : '🏀 Basket!')
+        : sh.k === 'rings' ? (sh.b == null ? 'Miss' : 'RINGER!') : (sh.fell.length ? `${sh.fell.length} can${sh.fell.length > 1 ? 's' : ''}` : 'Miss');
     el.textContent = `${words}${sh.pts ? ` +${sh.pts}` : ''}${sh.hot ? ' 🔥' : ''}${sh.jack ? '  🔔 JACKPOT' : ''}${sh.sweep ? '  🥫 SWEEP' : ''}`.trim();
     el.style.color = sh.jack ? '#ffd23f' : sh.pts ? '#fff' : '#ff9a9a';
     el.hidden = false; el.classList.remove('mw-pop-in'); void el.offsetWidth; el.classList.add('mw-pop-in');
@@ -281,6 +283,7 @@ UI.midway = (() => {
     const sh = a.shot, mine = watchId === V.me;
     if (sh.k === 'skee') SND.sink(sh.pts >= 50);
     else if (sh.k === 'rings') sh.b != null ? SND.clink(true) : SND.tap();
+    else if (sh.k === 'hoops') sh.hoop == null ? SND.flop() : SND.clink(true);
     else if (sh.fell.length) {
       SND.clatter(sh.fell.length);
       for (const i of sh.fell) if (fallAt[i] == null || fallAt[i] < 0) fallAt[i] = now + Math.random() * 140;
@@ -311,7 +314,7 @@ UI.midway = (() => {
     };
   }
   // the share of a throw's play-out at which it lands
-  const HIT = { skee: 0.85, rings: 0.75, cans: 0.55 };
+  const HIT = { skee: 0.85, rings: 0.75, cans: 0.55, hoops: 0.73 };
 
   function loop(now) {
     if (!$('mwStage')) { raf = 0; return; }
@@ -352,7 +355,7 @@ UI.midway = (() => {
     (gl || flat)?.draw(now, sc, idle);
   }
 
-  // ---------- three.js: you stand at z = 0 looking down -z at the booth; one scene, three sets of props
+  // ---------- three.js: you stand at z = 0 looking down -z at the booth; one scene with props for each booth
   function make3d(stage) {
     const T = window.THREE;
     const renderer = GL3.renderer({}, { onLost: () => GL3.revive(stage, { build: () => { gl?.dispose(); gl = null; return (gl = make3d(stage)); }, flat: () => { flat ||= make2d(stage); }, unflat: () => { flat?.dispose?.(); flat = null; } }) });
@@ -613,6 +616,43 @@ UI.midway = (() => {
     const canBall = new T.Mesh(new T.SphereGeometry(0.045, 14, 10), std(0xf4efe4, { roughness: 0.6 })); canBall.castShadow = true;
     const canBalls = [];
 
+    // 🏀 Basketball: staggered backboards, rims, and tapered nets.
+    const hoops = new T.Group(); scene3.add(hoops);
+    const hoopRims = [], hoopBalls = [];
+    const hoopRimMat = std(0xff7435, { metalness: 0.35 });
+    const hoopBall = new T.Mesh(new T.SphereGeometry(0.053, 18, 12), std(0xef782a));
+    const hoopSeamMat = new T.MeshBasicMaterial({ color: 0x522814 });
+    for (const turn of [0, Math.PI / 2]) {
+      const seam = new T.Mesh(new T.TorusGeometry(0.053, 0.0016, 5, 24), hoopSeamMat);
+      seam.rotation.y = turn; hoopBall.add(seam);
+    }
+    const hoopPoint = (x, y) => new T.Vector3(x, 1 + y, -2.42);
+    function buildHoops(geo) {
+      for (const [x, y, rx, , points] of geo.hoops) {
+        const target = new T.Group();
+        target.position.copy(hoopPoint(x, y));
+        hoops.add(target);
+        const board = marquee(String(points), 0.36, 0.23, '#22465b');
+        board.position.set(0, 0.095, -0.15);
+        target.add(board);
+        const radius = rx + 0.052;
+        const rim = new T.Mesh(new T.TorusGeometry(radius, 0.011, 8, 28), hoopRimMat);
+        rim.rotation.x = -Math.PI / 2;
+        target.add(rim); hoopRims.push(rim);
+        const net = [];
+        for (let i = 0; i < 10; i++) {
+          const a = i * Math.PI / 5;
+          for (const offset of [-0.31, 0.31]) {
+            net.push(Math.cos(a) * radius, 0, Math.sin(a) * radius,
+              Math.cos(a + offset) * radius * 0.65, -0.19, Math.sin(a + offset) * radius * 0.65);
+          }
+        }
+        const netGeo = new T.BufferGeometry();
+        netGeo.setAttribute('position', new T.Float32BufferAttribute(net, 3));
+        target.add(new T.LineSegments(netGeo, new T.LineBasicMaterial({ color: 0xf3ebe0 })));
+      }
+    }
+
     // the preview: dots along the arc and a ring where it would land
     const dotGeo = new T.SphereGeometry(0.012, 6, 4), dotMat = new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, depthTest: false });
     const dots = Array.from({ length: 14 }, () => { const m = new T.Mesh(dotGeo, dotMat); m.renderOrder = 9; scene3.add(m); return m; });
@@ -640,6 +680,7 @@ UI.midway = (() => {
         while (bottleMeshes.length < sc.geo.bottles.length) { const m = new T.Mesh(bottleGeo, glass.g); m.castShadow = true; rings.add(m); bottleMeshes.push(m); }
         sc.geo.bottles.forEach(([bx, by], i) => { const m = bottleMeshes[i]; m.position.copy(tablePt(bx, by)); m.material = glass[sc.layout.colours[i]]; });
       }
+      if (sc.kind === 'hoops' && !hoopRims.length) buildHoops(sc.geo);
       if (sc.kind === 'cans') {
         canGeo ||= new T.CylinderGeometry(sc.geo.w / 2 - 0.004, sc.geo.w / 2 - 0.004, sc.geo.h - 0.004, low ? 12 : 20);
         while (canMeshes.length < sc.geo.cans.length) { const m = new T.Mesh(canGeo, canMat); m.castShadow = true; cansG.add(m); canMeshes.push(m); }
@@ -648,6 +689,7 @@ UI.midway = (() => {
 
     const cam = { pos: new T.Vector3(0, 1.7, 1.1), look: new T.Vector3(0, 1.1, -3), init: false };
     const VIEW = { skee: { pos: [0, 1.85, 1.65], look: [0, 1.36, -2.6], w: 0.86, d: 2.7 }, rings: { pos: [0, 1.9, 0.1], look: [0, 0.78, -2.05], w: 0.8, d: 2.6 },
+      hoops: { pos: [0, 1.92, 0.28], look: [0, 1.53, -2.42], w: 0.76, d: 2.7 },
       cans: { pos: [0, 1.4, -0.2], look: [0, 1.18, -2.6], w: 0.55, d: 2.4 } };
     let lastT = 0, moving = 0;
     function resize() {
@@ -658,7 +700,7 @@ UI.midway = (() => {
 
     const arc = (a, b, h, u) => new T.Vector3(a.x + (b.x - a.x) * u, a.y + (b.y - a.y) * u + h * 4 * u * (1 - u), a.z + (b.z - a.z) * u);
     // where a throw is at u (0..1 of its flight to the landing), for each booth
-    const HAND = { skee: new T.Vector3(0, laneHeight(laneFront) + ballRadius, laneFront), rings: new T.Vector3(0.1, 1.35, 0.25), cans: new T.Vector3(0.15, 1.35, 0.5) };
+    const HAND = { skee: new T.Vector3(0, laneHeight(laneFront) + ballRadius, laneFront), rings: new T.Vector3(0.1, 1.35, 0.25), cans: new T.Vector3(0.15, 1.35, 0.5), hoops: new T.Vector3(0, 1.17, 0.02) };
     function skeePath(sh, u, landU) {
       const lip = new T.Vector3(clamp(sh.x * 0.7, -0.33, 0.33), laneHeight(laneLip) + ballRadius, laneLip);
       const rollAt = (s) => {
@@ -707,6 +749,8 @@ UI.midway = (() => {
       const dt = Math.min(0.1, lastT ? (now - lastT) / 1000 : 0.016); lastT = now;
       build(sc);
       if (sc.kind !== kindNow) { kindNow = sc.kind; cam.init = false; if (spot) spot.target.position.set(0, sc.kind === 'rings' ? TY : 1.4, sc.kind === 'skee' ? -3.7 : sc.kind === 'rings' ? TZ - 0.5 : SZ); }
+      hoops.visible = sc.kind === 'hoops';
+      counter.visible = front.visible = sc.kind !== 'hoops';
       skee.visible = sc.kind === 'skee'; rings.visible = sc.kind === 'rings'; cansG.visible = sc.kind === 'cans';
       const pool = (arr, proto, parent) => { while (arr.length < sc.fly.length) { const m = proto.clone(); m.material = proto.material.clone(); parent.add(m); arr.push(m); } arr.forEach((m) => { m.visible = false; }); };
       if (sc.kind === 'skee') {
@@ -726,6 +770,19 @@ UI.midway = (() => {
         while (flyRings.length < sc.fly.length) { const m = new T.Mesh(ringGeo, ringMat(0xffffff)); rings.add(m); flyRings.push(m); }
         flyRings.forEach((m) => { m.visible = false; });
         sc.fly.forEach((f, k) => { const m = flyRings[k]; m.visible = f.u > 0; m.position.copy(ringPath(f.shot, f.u, f.landU)); m.rotation.set(f.u < f.landU ? 0.5 * (1 - f.u) : 0, f.u * 9, 0); m.material = ringMat(sc.color); });
+      } else if (sc.kind === 'hoops') {
+        hoopRims.forEach((rim, i) => { rim.material = sc.jackLive && i === sc.layout.jack ? goldMat : hoopRimMat; });
+        pool(hoopBalls, hoopBall, hoops);
+        sc.fly.forEach(({ shot, u, landU }, i) => {
+          const ball = hoopBalls[i];
+          const hit = hoopPoint(shot.x, shot.y);
+          const after = clamp((u - landU) / (1 - landU), 0, 1);
+          ball.visible = u > 0 && u < 1;
+          ball.position.copy(u <= landU ? arc(HAND.hoops, hit, 0.68, u / landU) : hit);
+          ball.position.y -= after * (0.18 + 0.46 * after);
+          if (shot.hoop == null) ball.position.z += after * 0.55;
+          ball.rotation.x = u * 11;
+        });
       } else {
         sc.geo.cans.forEach(([cx, cy], i) => {
           const m = canMeshes[i]; if (!m) return;
@@ -748,6 +805,7 @@ UI.midway = (() => {
       if (pv) {
         let end, h, start = HAND[sc.kind], from = 0.14, upto = 0.32;
         if (sc.kind === 'skee') { end = new T.Vector3(clamp(pv.x * 0.7, -0.33, 0.33), laneHeight(laneLip) + ballRadius, laneLip); h = 0; from = 0.2; upto = 0.4; }
+        else if (sc.kind === 'hoops') { end = hoopPoint(pv.x, pv.y); h = 0.68; }
         else if (sc.kind === 'rings') { end = tablePt(pv.x, pv.y, TY + 0.3); h = 0.5; }
         else { end = new T.Vector3(pv.x, SY + pv.y, SZ + 0.12); h = 0.12; }
         dotMat.opacity = sc.swiping ? 0.9 : 0.5;
@@ -783,6 +841,7 @@ UI.midway = (() => {
         let at;
         if (sh.k === 'skee') at = boardPt(sh.x, Math.max(0.02, sh.y), 0.1);
         else if (sh.k === 'rings') at = tablePt(sh.ex, sh.ey, TY + 0.3);
+        else if (sh.k === 'hoops') at = hoopPoint(sh.x, sh.y);
         else at = new T.Vector3(sh.x, SY + sh.y, SZ + 0.1);
         if (sh.jack || sh.sweep || (sh.k === 'skee' && sh.where === 'cup')) { confetti(at, sh.jack ? 60 : 36); GL3.shake(camera, 0.12); }
         else if (sh.pts >= (sh.k === 'skee' ? 30 : 1)) confetti(at, sh.hot ? 22 : 12);
@@ -813,7 +872,7 @@ UI.midway = (() => {
     function draw(now, sc) {
       const bg = g.createLinearGradient(0, 0, 0, h); bg.addColorStop(0, '#20123a'); bg.addColorStop(1, '#3a1f22'); g.fillStyle = bg; g.fillRect(0, 0, w, h);
       // world box: x in [-0.7, 0.7], y in [-0.1, 1.2]; fitted with room for the HUD at the top and the hand at the bottom
-      const k = Math.min(w / 1.5, (h - 90) / 1.35), cx = w / 2, by = h - 34;
+      const k = Math.max(1, Math.min(w / 1.5, (h - 90) / 1.35)), cx = w / 2, by = h - 34;
       const X = (x) => cx + x * k, Y = (y) => by - (y + 0.1) * k;
       g.lineWidth = 2;
       if (sc.kind === 'skee') {
@@ -837,6 +896,34 @@ UI.midway = (() => {
           g.beginPath(); g.arc(X(x), Y(y), 0.06 * k * (1 + 0.6 * (1 - v)), 0, 7); g.strokeStyle = sc.color; g.lineWidth = 3; g.stroke();
         }
         g.lineWidth = 2;
+      } else if (sc.kind === 'hoops') {
+        g.fillStyle = '#203d50'; g.fillRect(X(-0.72), Y(1.16), 1.44 * k, 1.21 * k);
+        sc.geo.hoops.forEach(([x, y, rx, , points], i) => {
+          const px = X(x), py = Y(y), rim = (rx + 0.052) * k;
+          g.fillStyle = '#315976'; g.fillRect(px - 0.18 * k, py - 0.19 * k, 0.36 * k, 0.22 * k);
+          g.strokeStyle = '#dbe8ef'; g.strokeRect(px - 0.18 * k, py - 0.19 * k, 0.36 * k, 0.22 * k);
+          g.fillStyle = '#fff'; g.font = `800 ${Math.max(10, k * 0.085)}px system-ui`;
+          g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(points, px, py - 0.115 * k);
+          g.beginPath();
+          for (const side of [-1, 1]) {
+            g.moveTo(px + side * rim, py);
+            g.lineTo(px + side * rim * 0.57, py + 0.17 * k);
+            g.lineTo(px - side * rim * 0.42, py + 0.05 * k);
+          }
+          g.stroke();
+          g.beginPath(); g.ellipse(px, py, rim, Math.max(2, 0.025 * k), 0, 0, 2 * Math.PI);
+          g.strokeStyle = sc.jackLive && i === sc.layout.jack ? '#ffd23f' : '#ff833e';
+          g.lineWidth = 4; g.stroke(); g.lineWidth = 2;
+        });
+        for (const { shot, u, landU } of sc.fly) {
+          if (u <= 0 || u >= 1) continue;
+          const v = Math.min(1, u / landU), after = Math.max(0, (u - landU) / (1 - landU));
+          const y = -0.06 + (shot.y + 0.06) * v + 1.15 * v * (1 - v) - 0.6 * after * after;
+          const x = X(shot.x * v), py = Y(y), r = Math.max(4, 0.054 * k * (1.4 - 0.4 * v));
+          g.beginPath(); g.arc(x, py, r, 0, 2 * Math.PI);
+          g.fillStyle = '#f48132'; g.fill(); g.strokeStyle = '#542510'; g.stroke();
+          g.beginPath(); g.ellipse(x, py, r, r * 0.32, u * 12, 0, 2 * Math.PI); g.stroke();
+        }
       } else {
         g.fillStyle = '#6a1630'; g.fillRect(X(-0.7), Y(1.2), 1.4 * k, 1.3 * k);
         g.fillStyle = '#8a5a32'; g.fillRect(X(-0.45), Y(0), 0.9 * k, 0.04 * k);

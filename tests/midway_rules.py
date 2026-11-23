@@ -143,6 +143,32 @@ for k in left:
 check("cans: clearing the stack restacks it", all(a.g.cans) and a.g.stacks == 1 and a.g.shots[-1]["sweep"])
 check("cans: the sweep pays its bonus", a.g.shots[-1]["pts"] >= M.SWEEP)
 
+# basketball
+r, g, (a, b) = game(booth_type="hoops")
+g.on_timeout()
+g.rng = Still()
+g.jack = 2
+check("basketball has eight shots and exposes the shared hoops", a.g.left == 8
+      and g.view(a)["midway"]["geo"]["hoops"] == M.HOOPS
+      and g.view(b)["midway"]["layout"]["jack"] == 2)
+for i, (x, y, _, _, points) in enumerate(M.HOOPS):
+    sh = throw(g, a, x, y)
+    check(f"basketball hoop {i} scores {points}", sh["hoop"] == i and sh["good"]
+          and sh["pts"] == points + (M.JACKPOT if i == g.jack else 0), str(sh))
+sh = throw(g, a, *M.HOOPS[2][:2])
+check("another gold basket doubles on a hot hand, without another jackpot", sh["pts"] == 140
+      and sh["hot"] and not sh["jack"] and a.g.jackpots == 1)
+sh = throw(g, a, M.HOOPS[1][0], M.HOOPS[1][1] + 0.15)
+check("too much loft misses and breaks the streak", sh["hoop"] is None and sh["pts"] == 0 and a.g.streak == 0)
+sh = throw(g, b, *M.HOOPS[2][:2])
+check("a rival cannot reclaim the jackpot", sh["pts"] == 70 and not sh["jack"])
+for level in M.BOT_SIGMA:
+    b.bot = level
+    b.g.next_at = 0
+    before = b.g.left
+    g.bot_tick()
+    check(f"{level} bot takes a basketball shot", b.g.left == before - 1 and b.g.shots[-1]["k"] == "hoops")
+
 # out of throws, early finish, end of the night
 booth(g, "cans")
 for p in (a, b):
@@ -159,9 +185,12 @@ for _ in range(3):
     g.on_timeout()        # clock runs out
     g.on_timeout()        # standings over
 check("the night ends after the last booth", r.phase != "playing" and g.round_no == 3)
+r, g, (a, b) = game()
+check("the default night visits all four booths once", g.total == 4 and set(g.order) == set(M.BOOTHS), str(g.order))
 r, g, (a, b) = game(booths=6)
-check("six booths: each booth twice, never twice in a row",
-      sorted(g.order) == sorted(M.BOOTHS * 2) and all(x != y for x, y in zip(g.order, g.order[1:])), str(g.order))
+check("six rounds: all booths once and two repeats, never back to back",
+      len(g.order) == 6 and set(g.order) == set(M.BOOTHS)
+      and len(set(g.order[4:])) == 2 and all(x != y for x, y in zip(g.order, g.order[1:])), str(g.order))
 
 # single-booth matches
 for kind in M.BOOTHS:
