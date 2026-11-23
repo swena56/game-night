@@ -1216,18 +1216,15 @@ UI.midway = (() => {
           g.beginPath(); g.ellipse(x, y, r * stretch, r, 0, 0, Math.PI * 2); g.fill();
         }
         g.globalAlpha = 1;
-        // Seams: a soft groove under a crisp black line. The equator and both halves of the vertical
-        // great circle stay continuous across the texture edge; two curved channels make the eight panels.
+        // Seams: a soft groove under a crisp dark line. A real ball is eight panels: the equator, one
+        // meridian great circle, and two parallels at 30 degrees north and south. The map is
+        // equirectangular, so every one of them is a straight line here.
         const seams = () => {
           g.beginPath();
-          g.moveTo(0, h / 2); g.lineTo(w, h / 2);
+          for (const v of [1 / 3, 1 / 2, 2 / 3]) { g.moveTo(0, h * v); g.lineTo(w, h * v); }
           g.moveTo(w / 2, 0); g.lineTo(w / 2, h);
           g.moveTo(0, 0); g.lineTo(0, h);
           g.moveTo(w, 0); g.lineTo(w, h);
-          for (const offset of [-w * 0.16, w * 0.16]) {
-            g.moveTo(w / 2 + offset, 0);
-            g.bezierCurveTo(w / 2 + offset * 1.8, h * 0.28, w / 2 + offset * 1.8, h * 0.72, w / 2 + offset, h);
-          }
         };
         g.lineCap = 'round';
         const passes = heightMap
@@ -1572,7 +1569,7 @@ UI.midway = (() => {
         sc.basketballs.forEach(({ x, y, z, spin }, i) => {
           const ball = hoopBalls[i];
           ball.position.set(x, y, z);
-          ball.children[0].rotation.set(spin + 0.1, -0.5 + (i * 0.9) % 1.6, 0.08);
+          ball.children[0].rotation.set(spin + 0.55, -1.1 + (i * 0.97) % 2.2, 0.12);
         });
       } else {
         sc.geo.cans.forEach(([cx, cy], i) => {
