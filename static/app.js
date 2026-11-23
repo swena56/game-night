@@ -604,7 +604,8 @@ function onState(s) {
   s.games ??= prev?.games ?? [];  // the server sends the game catalogue once per connection
   S = s; stateAt = performance.now();
   syncIcon(s); syncLook(s);
-  history.replaceState(null, '', '?room=' + s.code);
+  const axeDebug = new URLSearchParams(location.search).get('axeDebug') === '1';
+  history.replaceState(null, '', '?room=' + s.code + (axeDebug ? '&axeDebug=1' : ''));
   if (s.phase === 'playing' && prev?.phase !== 'playing' && s.gameId) {  // "Played lately" in the lobby (#67), this device only
     store('recentGames', [s.gameId, ...(load('recentGames') || []).filter((g) => g !== s.gameId)].slice(0, 6));
   }
@@ -826,6 +827,7 @@ function renderGame(view = S, readOnly = false, force = false) {
   const inputTip = (...a) => { moved(); return input(...a); };
   ui.render(view, { act: readOnly ? readOnlyAct : actTip, input: readOnly ? () => {} : inputTip, quiet, toast, el, ask, player: lookup, mark: (id) => mark(lookup(id)), myTurn,
     peek: readOnly ? null : (extra) => api('/api/peek', { ...session, ...extra }),
+    logAxeDebug: readOnly ? null : (extra) => api('/api/axe-debug', { ...session, ...extra }),
     confetti: readOnly ? () => {} : confetti, sfx: readOnly ? () => {} : sfx, buzz: readOnly ? () => {} : buzz, rerender: () => (replay ? showFrame() : renderGame(S, false, true)) });
   shapeDots($('#arena')); shapeDots($('#sideGame'));
   renderLog(ui, view);

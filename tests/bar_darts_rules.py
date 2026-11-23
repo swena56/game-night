@@ -1,5 +1,7 @@
 """Exercise the Darts courses through the room."""
+import json
 import math
+import tempfile
 import random
 import sys
 import unittest
@@ -11,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from games.bar_darts import COUNTUP_VISITS, DART_ORIGIN, NUMBERS, RADII, SWIPE_PACE, checkout, hit_at
 import games.bar_darts as bar_darts
 from games.base import GameError
-from server import Room
+from server import Room, check_restored, log_axe_debug
 
 bar_darts.SCATTER = 0  # tests aim exactly
 
@@ -25,12 +27,15 @@ def aim(number, multiplier):
 
 
 class DartsTests(unittest.TestCase):
-    def start(self, mode, players=2, finish="double"):
+    def start(self, mode, players=2, finish="double", axe_scoring="classic"):
         self.room = room = Room("DART")
         self.players = [room.add_player(name) for name in ("Ada", "Ben", "Cory")[:players]]
         room.switch_game("archery")
         if mode is not None:
-            room.change_settings(self.players[0], {"course": mode, "finish": finish})
+            settings = {"course": mode, "finish": finish}
+            if axe_scoring is not None:
+                settings["axe_scoring"] = axe_scoring
+            room.change_settings(self.players[0], settings)
         room.start()
         self.match = room.game.darts
         self.match.rng = random.Random(24)
@@ -100,6 +105,194 @@ class DartsTests(unittest.TestCase):
                 self.assertEqual(self.room.phase, "over")
                 self.assertEqual(self.room.winner, None if tie else self.players[0].id)
                 self.assertEqual(self.match.points, [480 if tie else 960, 480])
+
+    def test_axe_target_and_spectator_view(self):
+        self.start("axe")
+        for edge, points in bar_darts.AXE_RINGS:
+            self.assertEqual(bar_darts.axe_hit(edge, 0), points)
+            self.assertEqual(bar_darts.axe_hit(math.nextafter(edge, math.inf), 0), points - 1)
+        spectator = type("Spectator", (), {"id": "spectator"})()
+        view = self.match.view(spectator)
+        self.assertEqual(view["axeRings"], bar_darts.AXE_RINGS)
+        self.assertIsNone(view["hint"])
+        self.assertIn("5-point", self.match.view(self.players[0])["hint"]["label"])
+
+    def test_axe_defaults_to_corner_scoring(self):
+        self.start("axe", axe_scoring=None)
+        view = self.match.view(self.players[0])
+        self.assertEqual(view["axeRings"], bar_darts.AXE_CORNER_RINGS)
+        self.assertEqual(view["axeCorners"], bar_darts.AXE_CORNERS)
+
+    def test_axe_corner_scoring_requires_a_final_throw_call(self):
+        for final_xy, call_corner, vx, expected in (
+            ((0.64, 0.64), True, 0, 7),
+            ((-0.64, 0.64), True, 0, 7),
+            ((0.64, 0.64), False, 0, 0),
+            ((0, 0), True, 0, 0),
+            ((0.64, 0.64), True, -0.001, 0),
+            ((0.7, 0), False, 0, 1),
+        ):
+            with self.subTest(final_xy=final_xy, call_corner=call_corner, vx=vx):
+                self.start("axe", players=1, axe_scoring="corner")
+                player = self.players[0]
+
+                def throw(x, y, call=False, speed=0):
+                    self.match.ready_at = 0
+                    self.room.act(player, {"type": "throw", "dx": x - DART_ORIGIN[0],
+                                           "dy": y - DART_ORIGIN[1], "vx": speed, "vy": 0, "axeCorner": call})
+
+                self.assertFalse(self.match.view(player)["canCallCorner"])
+                with self.assertRaises(GameError):
+                    throw(0.64, 0.64, True)
+                throw(0, 0)
+                throw(0.4, 0)
+                self.assertEqual(self.match.points[0], 8)
+                throw(0, 0)
+                throw(0, 0)
+                self.assertTrue(self.match.view(player)["canCallCorner"])
+                throw(*final_xy, call_corner, vx)
+                self.assertEqual(self.match.shot["value"], expected)
+                self.assertEqual(self.match.points[0], 18 + expected)
+
+    def test_axe_stick_speed_boundaries(self):
+        for speed, x, points, bounce in (
+            (1.44, 0, 0, True), (1.5, 0, 5, False),
+            (6.25, 0, 5, False), (6.5, 0, 0, True),
+            (6.5, -1.1, 0, False), (0, 0, 5, False), (SWIPE_PACE, 0, 5, False),
+        ):
+            with self.subTest(speed=speed, x=x):
+                self.start("axe")
+                vx = min(speed, 6)
+                self.room.act(self.players[0], {
+                    "type": "throw", "dx": x - DART_ORIGIN[0], "dy": -DART_ORIGIN[1],
+                    "vx": -vx, "vy": math.sqrt(max(0, speed ** 2 - vx ** 2)),
+                })
+                self.assertEqual(self.match.shot["axeBounce"], bounce)
+                self.assertEqual(self.match.shot["value"], points)
+                self.assertEqual(self.match.points[0], points)
+                self.assertEqual(self.room.turn, self.players[1].id)
+                self.assertEqual(self.match.view(self.players[0])["left"], 5)
+                self.assertEqual(self.match.throws_left(0), 4)
+
+    def test_axe_spin_uses_total_release_speed(self):
+        def release(vx, vy):
+            self.start("axe")
+            self.room.act(self.players[0], {
+                "type": "throw", "dx": -DART_ORIGIN[0], "dy": -DART_ORIGIN[1],
+                "vx": vx, "vy": vy,
+            })
+            return self.match.shot
+
+        steady = release(-3.5, 0)
+        diagonal = release(-3, 4)
+        straight = release(-5, 0)
+        self.assertEqual(diagonal["axeSpinSpeed"], 5)
+        self.assertEqual(diagonal["axeTurn"], straight["axeTurn"])
+        self.assertEqual(diagonal["axeFlightMs"], straight["axeFlightMs"])
+        airborne_seconds = (diagonal["axeFlightMs"] - diagonal["axeWindupMs"]) / 1000
+        self.assertAlmostEqual(diagonal["axeTurn"], diagonal["axeSpinRate"] * airborne_seconds)
+        self.assertAlmostEqual(steady["axeAngle"], 0)
+        self.assertGreater(diagonal["axeWindupMs"], 140)
+        self.assertGreater(diagonal["axeTurn"], steady["axeTurn"])
+        self.assertLess(diagonal["axeFlightMs"], steady["axeFlightMs"])
+        self.assertFalse(diagonal["axeBounce"])
+        self.assertTrue(release(-3.5, 6)["axeBounce"])
+
+    def test_axe_debug_log_records_the_owned_shot_once(self):
+        self.start("axe")
+        self.throw(25, 2)
+        player, other = self.players
+        body = {
+            "code": self.room.code, "pid": player.id, "token": player.token,
+            "shotId": self.match.shot["id"], "swipe": {"durationMs": 180},
+            "trace": {"rows": [[0] * 10 for _ in range(7)],
+                      "contact": {"version": 1, "serverResult": "stick", "predictedResult": "blade-first"}},
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory, "axe-debug.jsonl")
+            with patch("server.get_room", return_value=self.room), patch("server.AXE_DEBUG_FILE", path):
+                with self.assertRaises(GameError):
+                    log_axe_debug({**body, "pid": other.id, "token": other.token})
+                log_axe_debug(body)
+                log_axe_debug(body)
+            (entry,) = map(json.loads, path.read_text().splitlines())
+            self.assertEqual(entry["shot"], self.match.shot)
+            self.assertEqual(entry["swipe"]["durationMs"], 180)
+            self.assertEqual(entry["trace"]["contact"], body["trace"]["contact"])
+            self.assertNotIn("token", entry)
+
+    def test_axe_can_throw_right_from_a_placed_origin(self):
+        self.start("axe")
+        move = {"type": "throw", "dx": 0.75, "dy": -0.25, "vx": 3.5, "vy": 0}
+        with self.assertRaises(GameError):
+            self.room.act(self.players[0], {**move, "axeOrigin": [2, 0]})
+        self.room.act(self.players[0], {**move, "axeOrigin": [-0.75, 0.25]})
+        self.assertEqual(self.match.shot["axeOrigin"], [-0.75, 0.25])
+        self.assertEqual((self.match.shot["x"], self.match.shot["y"]), (0, 0))
+        self.assertEqual(self.match.shot["value"], 5)
+
+    def test_axe_visit_limit_and_results(self):
+        for players, tie in ((1, False), (2, False), (2, True)):
+            with self.subTest(players=players, tie=tie):
+                self.start("axe", players)
+                for round_index in range(COUNTUP_VISITS):
+                    for throw_index in range(5):
+                        for seat in range(players):
+                            self.assertEqual(self.room.turn, self.players[seat].id)
+                            self.assertEqual(self.match.view(self.players[seat])["left"], 5 - throw_index)
+                            self.match.ready_at = 0
+                            self.room.act(self.players[seat], {
+                                "type": "throw", "dx": (0 if tie or not seat else 0.3) - DART_ORIGIN[0],
+                                "dy": -DART_ORIGIN[1], "vx": 0, "vy": 0,
+                            })
+                            self.assertEqual(len(self.match.view(self.players[seat])["darts"]), throw_index * players + seat + 1)
+                    if round_index < COUNTUP_VISITS - 1:
+                        self.assertTrue(self.match.view(self.players[0])["roundRecap"])
+                        self.finish_recap()
+                        self.assertEqual(self.match.view(self.players[0])["darts"], [])
+                self.finish_recap()
+                self.assertEqual(self.match.visits_done, [8] * players)
+                self.assertEqual(self.room.winner, None if tie else self.players[0].id)
+                self.assertEqual(self.match.points, [200] if players == 1 else [200, 200 if tie else 160])
+                self.assertEqual(len(self.match.darts), 5 * players)
+
+    def test_legacy_axe_match_upgrades_at_round_boundary(self):
+        for in_progress in (False, True):
+            with self.subTest(in_progress=in_progress):
+                self.start("axe")
+                del self.match.axe_round_throws
+                self.match.points[:] = [30, 25]
+                self.match.visits_done[:] = [4, 4]
+                expected = [30, 25]
+                rounds = 4
+                if in_progress:
+                    self.throw(25, 2)
+                    expected = [45, 40]
+                    rounds = 5
+                check_restored(self.room)
+                if in_progress:
+                    self.assertFalse(self.match.alternating_axes)
+                    for _ in range(5):
+                        self.throw(25, 2)
+                    self.finish_recap()
+                self.assertEqual(self.match.points, expected)
+                self.assertEqual(self.match.visits_done, [rounds, rounds])
+                self.assertTrue(self.match.alternating_axes)
+                for turn in range(10):
+                    self.assertEqual(self.room.turn, self.players[turn % 2].id)
+                    self.throw(25, 2)
+                    self.assertEqual(len(self.match.darts), turn + 1)
+                self.assertTrue(self.match.view(self.players[0])["roundRecap"])
+
+    def test_axe_skip_and_departure_keep_axes_until_round_end(self):
+        self.start("axe", players=3)
+        self.throw(25, 2)
+        self.match.timeout()
+        self.assertEqual(self.room.turn, self.players[2].id)
+        self.assertEqual(self.match.throws_left(1), 4)
+        self.match.leave(self.players[2])
+        self.assertEqual(self.room.turn, self.players[0].id)
+        self.assertEqual(len(self.match.view(self.players[0])["darts"]), 1)
 
     def test_checkout_prefers_shortest_legal_route(self):
         self.assertEqual(len(checkout(60, 3)), 2)
@@ -396,7 +589,7 @@ class DartsTests(unittest.TestCase):
 
     @patch.object(bar_darts, "SCATTER", 1)
     def test_bots_finish(self):
-        for mode in ("301", "501", "cricket", "clock", "countup"):
+        for mode in ("301", "501", "cricket", "clock", "countup", "axe"):
             with self.subTest(mode=mode):
                 self.start(mode, 3)
                 self.match.rng = random.Random(24)

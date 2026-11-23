@@ -77,9 +77,9 @@
 .ar-darts-indicators .ready { background: #ffd487; border-color: #ffd487; }
 .ar-darts-stage {
   position: relative; display: grid; place-items: center; border-radius: var(--radius);
-  background: radial-gradient(ellipse at 50% 18%, #efad6266, transparent 64%),
+  background: radial-gradient(ellipse at 50% 18%, #ffba716b, transparent 64%),
               radial-gradient(ellipse at center, transparent 35%, #170c08b5),
-              repeating-linear-gradient(90deg, #483023 0 65px, #39251b 66px 68px);
+              repeating-linear-gradient(90deg, #493024 0 65px, #2f1c14 66px 68px);
   box-shadow: var(--sh-2, none);
   overflow: hidden;
 }
@@ -95,10 +95,11 @@
   border: clamp(3px, 1.1vw, 7px) solid transparent;
   background:
     radial-gradient(circle closest-side, #1c110b99 94%, transparent 100%) border-box padding-box,
-    radial-gradient(ellipse at 30% 5%, #ac754a8c, transparent 70%) padding-box,
+    radial-gradient(ellipse at 32% 2%, #d6945b90, transparent 68%) padding-box,
+    repeating-linear-gradient(88deg, transparent 0 11px, #dc9b641b 12px, transparent 14px 19px) padding-box,
     repeating-linear-gradient(92deg, transparent 0 4px, #21151029 5px 6px, transparent 7px 11px) padding-box,
     repeating-linear-gradient(90deg, #503528 0 19.4%, #312018 19.7% 20%) padding-box,
-    linear-gradient(135deg, #79553c 0%, #4b3225 38%, #281911 74%) border-box;
+    linear-gradient(135deg, #a37148 0%, #513225 38%, #25150f 83%) border-box;
   box-shadow: inset 1px 1px 0 #b488598c, inset -1px -1px 0 #593c2a,
               inset 0 0 0 3px #28191073, inset 3px 6px 12px #190e0bbb,
               inset -2px -3px 8px #21130d;
@@ -125,7 +126,7 @@
 .ar-darts-stage svg:focus-visible { outline: 2px solid #ffd780; outline-offset: -3px; }
 .ar-darts-board text {
   fill: #fff7e6; font: bold 12px system-ui, sans-serif;
-  stroke: #211813; stroke-width: 1.2; paint-order: stroke;
+  stroke: #16110d; stroke-width: 1.5; paint-order: stroke;
   text-anchor: middle; dominant-baseline: central;
 }
 .ar-darts-board .ar-darts-next-number { fill: #ffda72; stroke: #211813; stroke-width: 1.5; paint-order: stroke; }
@@ -176,6 +177,10 @@
 .ar-darts-score-panel { min-width: 0; border-color: #a17a504d; }
 .ar-darts-scorecard.panel, .ar-darts-score-panel.panel { --line: #594634; background: #242220; color: #fff0d6; border: 1px solid var(--line); }
 .ar-darts-score { overflow-x: auto; }
+.ar-darts-score-above.panel { margin: 0 0 8px; padding: 6px 9px; }
+.ar-darts-score-above h3 { margin: 0 0 3px; font-size: .85rem; }
+.ar-darts-score-above .ar-darts-table :is(th, td) { padding-block: 3px; }
+.ar-darts-score-above .ar-darts-up { display: inline; margin-inline-start: .45em; }
 .ar-darts-up { display: block; color: #ffd487; font-size: .7rem; font-weight: 600; }
 .ar-darts-table .total { font-size: 1.2rem; }
 .ar-darts-table th:first-child { min-width: 4.5rem; }
@@ -332,3 +337,63 @@
 .ar-darts-release[aria-disabled="true"] { opacity: .55; cursor: default; }
 .ar-darts-aim-status, .ar-darts-advice { margin: 4px 0; overflow-wrap: anywhere; }
 .ar-darts-aim-status:empty, .ar-darts-advice:empty { margin: 0; }
+
+.ar-darts-axe-debug {
+  margin-block: .65rem;
+  padding: .55rem .75rem;
+  background: #251a13;
+  border: 1px solid #6d4d32;
+  border-radius: 8px;
+  color: #fff3df;
+}
+.ar-darts-axe-debug summary { cursor: pointer; }
+.ar-darts-axe-readout { font: .8rem/1.5 monospace; font-variant-numeric: tabular-nums; }
+.ar-darts-axe-sliders { display: grid; gap: .4rem; margin-block: .5rem; }
+.ar-darts-axe-sliders label {
+  display: grid;
+  grid-template-columns: 3rem minmax(0, 1fr) 3.5rem;
+  align-items: center;
+  gap: .5rem;
+}
+.ar-darts-axe-sliders input { width: 100%; min-height: 28px; }
+.ar-darts-axe-sliders span { text-align: right; font-variant-numeric: tabular-nums; }
+
+.ar-darts-axe-live {
+  position: absolute;
+  z-index: 4;
+  inset-inline-start: .5rem;
+  inset-block-end: .45rem;
+  max-width: calc(100% - 1rem);
+  margin: 0;
+  padding: .2rem .4rem;
+  background: #251a13eb;
+  color: #fff3df;
+  border-radius: 4px;
+  font: .75rem/1.4 monospace;
+  pointer-events: none;
+  text-align: left;
+}
+
+.ar-darts-axe-trace { margin-block-start: .65rem; }
+.ar-darts-axe-trace-summary { margin: .3rem 0; }
+.ar-darts-axe-trace-scroll { overflow-x: auto; margin-block: .35rem; }
+.ar-darts-axe-trace table { width: 100%; border-collapse: collapse; font: .75rem/1.4 monospace; }
+.ar-darts-axe-trace :is(th, td) { padding: .2rem .4rem; white-space: nowrap; text-align: start; }
+.ar-darts-axe-trace th { border-bottom: 1px solid #6d4d32; }
+.ar-darts-axe-trace-text { width: 100%; box-sizing: border-box; min-height: 5rem; margin-block-start: .35rem; }
+
+.ar-darts-axe-swipe-summary { font: .8rem/1.5 monospace; overflow-wrap: anywhere; }
+.ar-darts-axe-log-status { margin: .3rem 0; font-size: .8rem; }
+.ar-darts-axe-log-status:empty { display: none; }
+
+.ar-darts-axe-placement { margin-block: .55rem; }
+.ar-darts-axe-grab { fill: transparent; cursor: grab; }
+.ar-darts-axe-grab[hidden] { display: none; }
+.ar-darts-axe-grab:active { cursor: grabbing; }
+.ar-darts-axe-grab:focus-visible { outline: none; stroke: #ffd780; stroke-width: 2; }
+
+.ar-darts-axe-pivot { margin: .3rem 0; font: .8rem/1.5 monospace; }
+
+.ar-darts-axe-contact-summary { font: .8rem/1.5 monospace; white-space: pre-line; }
+.ar-darts-axe-contact-marker { fill: none; stroke: #a9ffe2; stroke-width: 1.2; pointer-events: none; }
+.ar-darts-axe-contact-marker[hidden] { display: none; }

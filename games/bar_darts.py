@@ -11,10 +11,46 @@ NUMBERS = (20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5
 TARGETS = (20, 19, 18, 17, 16, 15, 25)
 # Radii relative to the outside of the double ring.
 RADII = (6.35 / 170, 15.9 / 170, 99 / 170, 107 / 170, 162 / 170, 1)
-MODES = {"301": "301", "501": "501", "cricket": "Cricket", "clock": "Around the Clock", "countup": "Count-Up"}
+MODES = {"301": "301", "501": "501", "cricket": "Cricket", "clock": "Around the Clock", "countup": "Count-Up", "axe": "Axe Throwing"}
+FIXED_VISITS = ("countup", "axe")
+AXE_LODGED_ANGLE = 38
+AXE_STICK_ANGLE = 30
+# Keep the successful release calibration across the change to a forward-only axis.
+AXE_WINDUP_MS = 153
+AXE_SPIN = {
+    "referenceSpeed": 3.5,
+    "referenceRate": (360 - AXE_LODGED_ANGLE) / 0.533,
+    "rateGain": 51,
+    "airBaseMs": 620,
+    "airMinMs": 470,
+    "airMsPerSpeed": 25,
+}
+
+AXE_POSITION_LIMIT = 125 / 98
+AXE_RINGS = tuple(zip((0.2, 0.4, 0.6, 0.8, 1.0), (5, 4, 3, 2, 1)))
+
+
+AXE_CORNER_RINGS = ((0.2, 5), (0.6, 3), (1.0, 1))
+AXE_CORNERS = ((-0.64, 0.64, 0.09), (0.64, 0.64, 0.09))
+
+
+def axe_flight(drive):
+    air_ms = math.floor(max(AXE_SPIN["airMinMs"], AXE_SPIN["airBaseMs"] - drive * AXE_SPIN["airMsPerSpeed"]) + 0.5)
+    rate = AXE_SPIN["referenceRate"] + AXE_SPIN["rateGain"] * (drive - AXE_SPIN["referenceSpeed"])
+    return air_ms, rate, rate * air_ms / 1000
+
+def axe_hit(x, y, rings=AXE_RINGS):
+    radius = math.hypot(x, y)
+    return next((points for edge, points in rings if radius <= edge), 0)
+
+
+def axe_label(points):
+    return f"{points}-point ring" if points else "Miss"
+
 X01 = {"301": 301, "501": 501}
 CLOCK_TARGETS = (*range(1, 21), 25)
 COUNTUP_VISITS = 8
+AXES_PER_ROUND = 5
 PAUSE = 0.85
 VISIT_RECAP = 1.65
 DART_ORIGIN = (1.04, -0.55)
@@ -152,10 +188,11 @@ def x01_choice(remaining, darts, visit_start, double_out, sigma):
 
 
 class DartMatch:
-    def __init__(self, room, seats, rng, mode, double_out=False, aim_control=False):
+    def __init__(self, room, seats, rng, mode, double_out=False, aim_control=False, axe_scoring=None):
         self.room, self.seats, self.rng, self.mode = room, seats, rng, mode
         self.double_out = double_out
         self.aim_control = aim_control
+        self.axe_scoring = axe_scoring
         self.points = [X01.get(mode, 0) for _ in seats]
         self.marks = [[0] * len(TARGETS) for _ in seats]
         self.visits_done = [0] * len(seats)
@@ -169,7 +206,9 @@ class DartMatch:
         self.winner = None
         self.finishing = False
         self.grabbing = None            # seat whose round recap is pending
-        room.add_log(f"🎯 Darts · {MODES[mode]}. Three darts per visit.", "big")
+        self.axe_round_throws = [0] * len(seats) if mode == "axe" else None
+        rules = "Five axes per player each round, alternating throws." if mode == "axe" else "Three darts per visit."
+        room.add_log(f"🎯 Darts · {MODES[mode]}. {rules}", "big")
         self.begin(0)
 
     def __setstate__(self, state):
@@ -210,7 +249,7 @@ class DartMatch:
             return self.finish(active[0] if active else None)
         if not active:
             return self.finish(None)
-        if self.mode == "countup":
+        if self.mode in FIXED_VISITS:
             if i in active:
                 self.visits_done[i] += 1
             eligible = [j for j in active if self.visits_done[j] < COUNTUP_VISITS]
@@ -218,6 +257,48 @@ class DartMatch:
                 return self.finish_later(self.countup_winner(active), delay)
             active = eligible
         self.begin(next((seat for seat in active if seat > i), active[0]), delay)
+
+    @property
+    def corner_scoring(self):
+        return self.mode == "axe" and getattr(self, "axe_scoring", None) == "corner"
+
+    @property
+    def alternating_axes(self):
+        return getattr(self, "axe_round_throws", None) is not None
+
+    def upgrade_axe_round(self):
+        if (self.mode != "axe" or self.alternating_axes or self.finishing or self.grabbing is not None
+                or self.darts or self.last_darts):
+            return
+        active = self.active()
+        if (not active or self.room.turn != self.seats[active[0]]
+                or len({self.visits_done[seat] for seat in active}) != 1):
+            return
+        self.axe_round_throws = [0] * len(self.seats)
+        # A game played under both formats should not set a scoring record.
+        self.room.record_interrupted = True
+
+    def throws_left(self, seat):
+        return AXES_PER_ROUND - self.axe_round_throws[seat] if self.alternating_axes else 3 - len(self.darts)
+
+    def can_call_corner(self):
+        return (self.corner_scoring and self.grabbing is None and self.room.turn in self.seats
+                and self.throws_left(self.seats.index(self.room.turn)) == 1)
+
+    def advance_axe_round(self, i, delay):
+        active = self.active()
+        eligible = [seat for seat in active if self.throws_left(seat)]
+        if eligible:
+            self.turn(next((seat for seat in eligible if seat > i), eligible[0]), delay)
+            return
+        for seat in active:
+            self.visits_done[seat] += 1
+        if not active or self.visits_done[active[0]] >= COUNTUP_VISITS:
+            self.finish_later(self.countup_winner(active) if active else None, delay + VISIT_RECAP)
+            return
+        self.grabbing = i
+        self.ready_at = time.time() + delay + VISIT_RECAP
+        self.room.deadline = self.ready_at
 
     def act(self, p, action):
         if action.get("type") != "throw":
@@ -230,15 +311,25 @@ class DartMatch:
         if not all(type(v) in (int, float) and abs(v) <= limit
                    for v, limit in zip((dx, dy, vx, vy), (2.5, 3.2, 6, 6))):
             raise GameError("Bad swipe.")
-        if dx > -0.05 or math.hypot(dx, dy) < 0.1:
+        placed = action.get("axeOrigin") if self.mode == "axe" else None
+        if placed is not None:
+            if (not isinstance(placed, list) or len(placed) != 2
+                    or any(type(axis) not in (int, float) or not abs(axis) <= AXE_POSITION_LIMIT for axis in placed)):
+                raise GameError("Place the axe inside the board area.")
+        elif dx > -0.05 or math.hypot(dx, dy) < 0.1:
             raise GameError("Swipe toward the board.")
         if time.time() < self.ready_at - 0.05:
-            raise GameError("Wait for the dart to land.")
-        # The dart lands where the swipe ends; only the hand's wobble depends on speed (see spread()).
-        x, y = DART_ORIGIN[0] + dx, DART_ORIGIN[1] + dy
+            raise GameError("Wait for the throw to land.")
+        call_corner = action.get("axeCorner", False)
+        if type(call_corner) is not bool or (call_corner and not self.can_call_corner()):
+            raise GameError("Call a corner on the final axe of your visit.")
+        # The endpoint sets aim. Release speed sets scatter and drives axe spin.
+        start_x, start_y = placed if placed is not None else DART_ORIGIN
+        x, y = start_x + dx, start_y + dy
         pace = math.hypot(vx, vy)
         sigma = SCATTER * spread(pace)
-        self.throw(self.seats.index(p.id), x + self.rng.gauss(0, sigma), y + self.rng.gauss(0, sigma), pace=pace)
+        self.throw(self.seats.index(p.id), x + self.rng.gauss(0, sigma), y + self.rng.gauss(0, sigma),
+                   pace=pace, spin_speed=pace or None, axe_origin=placed, call_corner=call_corner)
 
     def cricket_winner(self, active):
         high = max((self.points[i] for i in active), default=0)
@@ -253,8 +344,30 @@ class DartMatch:
         done = self.points[i]
         return CLOCK_TARGETS[done] if done < len(CLOCK_TARGETS) else None
 
-    def throw(self, i, x, y, pace=SWIPE_PACE):
-        number, multiplier = hit_at(x, y)
+    def throw(self, i, x, y, pace=SWIPE_PACE, spin_speed=None, axe_origin=None, call_corner=False):
+        number, multiplier = hit_at(x, y) if self.mode != "axe" else (axe_hit(x, y), 1)
+        axe_result = {}
+        corner_hit = False
+        if self.corner_scoring:
+            corner_hit = any(math.hypot(x - cx, y - cy) <= r for cx, cy, r in AXE_CORNERS)
+            number = 7 if corner_hit else axe_hit(x, y, AXE_CORNER_RINGS)
+        if self.mode == "axe":
+            # Virtual release calibration. For a given impulse increment, higher inertia means less added spin.
+            drive = AXE_SPIN["referenceSpeed"] if spin_speed is None else spin_speed
+            air_ms, rate, turn = axe_flight(drive)
+            impact_angle = turn - (360 - AXE_LODGED_ANGLE)
+            bounce = bool(number and abs(impact_angle) > AXE_STICK_ANGLE)
+            axe_result = {
+                "axeAngle": impact_angle, "axeTurn": turn, "axeFlightMs": AXE_WINDUP_MS + air_ms,
+                "axeWindupMs": AXE_WINDUP_MS, "axeSpinRate": rate, "axeSpinSpeed": drive, "axeBounce": bounce,
+            }
+            if axe_origin is not None:
+                axe_result["axeOrigin"] = axe_origin
+            if bounce:
+                number, multiplier = 0, 0
+        value = number * multiplier
+        if self.corner_scoring and call_corner != corner_hit:
+            value = 0
         before = self.points[i]
         bust, winner, added_marks = False, None, 0
         if self.mode in X01:
@@ -278,21 +391,27 @@ class DartMatch:
                 if self.next_number(i) is None:
                     winner = i
         else:
-            self.points[i] += number * multiplier
+            self.points[i] += value
         self.shot_id += 1
         self.shot = {
             "id": self.shot_id, "o": i, "x": x, "y": y, "pace": pace, "number": number,
-            "multiplier": multiplier, "label": label(number, multiplier),
-            "value": number * multiplier, "bust": bust, "win": winner == i,
+            "multiplier": multiplier, "label": ("Under-rotated" if impact_angle < 0 else "Over-rotated") if axe_result.get("axeBounce")
+            else "7-point corner" if value == 7 else "Corner uncalled" if corner_hit
+            else "Corner missed" if call_corner else axe_label(number) if self.mode == "axe" else label(number, multiplier),
+            **axe_result,
+            "value": value, "bust": bust, "win": winner == i,
             "marks": added_marks, "points": self.points[i], "gain": self.points[i] - before,
-            "recap": VISIT_RECAP if len(self.darts) == 2 else 0,
+            "recap": VISIT_RECAP if not self.alternating_axes and len(self.darts) == 2 else 0,
         }
         self.darts.append(self.shot)
         delay = PAUSE + self.shot["recap"]
         player = self.room.players[self.seats[i]]
         result = " · Bust, visit score restored" if bust else " · Checkout!" if self.mode in X01 and winner == i else ""
         self.room.add_log(f"🎯 {player.name} hits {self.shot['label']}{result}.")
-        if winner is not None:
+        if self.alternating_axes:
+            self.axe_round_throws[i] += 1
+            self.advance_axe_round(i, delay)
+        elif winner is not None:
             self.record_visit(i, "finish")
             self.finish_later(winner, delay)
         elif bust or len(self.darts) == 3:
@@ -324,7 +443,12 @@ class DartMatch:
     def clear_round(self, i):
         self.grabbing = None
         self.darts, self.last_darts = [], []
-        self.advance(i)
+        if self.alternating_axes:
+            self.axe_round_throws = [0] * len(self.seats)
+            self.begin(self.active()[0])
+        else:
+            self.advance(i)
+            self.upgrade_axe_round()
 
     def finish_later(self, winner, delay):
         self.winner = winner
@@ -336,7 +460,7 @@ class DartMatch:
         player = self.room.players.get(self.seats[winner]) if winner is not None else None
         name = MODES[self.mode]
         if player and self.solo:
-            text = f"🎯 {player.name} finishes {name} in {self.visit} visits." if self.mode != "countup" \
+            text = f"🎯 {player.name} finishes {name} in {self.visit} visits." if self.mode not in FIXED_VISITS \
                 else f"🎯 {player.name} scores {self.points[0]} in {name}."
         elif player:
             text = f"🏆 {player.name} wins {name}!"
@@ -353,10 +477,24 @@ class DartMatch:
             return self.clear_round(self.grabbing)
         if self.room.turn in self.seats:
             i = self.seats.index(self.room.turn)
+            if self.alternating_axes:
+                self.room.add_log(f"⏰ {self.room.players[self.seats[i]].name} ran out of time. Throw skipped.", "power")
+                self.axe_round_throws[i] += 1
+                return self.advance_axe_round(i, 0)
             self.room.add_log(f"⏰ {self.room.players[self.seats[i]].name} ran out of time. Visit over.", "power")
             self.end_visit(i, reason="timeout")
 
     def leave(self, p):
+        if self.alternating_axes:
+            p.eliminated = True
+            active = self.active()
+            if len(active) <= 1:
+                return self.finish(active[0] if active else None)
+            if self.finishing:
+                self.winner = self.countup_winner(active)
+            elif self.grabbing is None and self.room.turn == p.id:
+                self.advance_axe_round(self.seats.index(p.id), PAUSE)
+            return
         if self.room.turn == p.id:
             self.record_visit(self.seats.index(p.id), "departure")
         p.eliminated = True
@@ -368,7 +506,7 @@ class DartMatch:
             self.grabbing, self.darts, self.last_darts = None, [], []
         if len(active) <= 1:
             return self.finish(active[0] if active else None)
-        if self.finishing and self.mode == "countup":
+        if self.finishing and self.mode in FIXED_VISITS:
             self.winner = self.countup_winner(active)
             return
         self.finishing = False
@@ -383,9 +521,19 @@ class DartMatch:
         i = self.seats.index(p.id)
         sigma = SCATTER * spread(SWIPE_PACE) * BOT_SPREAD_MULTIPLIER.get(p.bot, BOT_SPREAD_MULTIPLIER["normal"])
         x, y, _ = self.recommend(i, sigma)
-        self.throw(i, x + self.rng.gauss(0, sigma), y + self.rng.gauss(0, sigma))
+        call_corner = False
+        if self.can_call_corner():
+            cx, cy, radius = AXE_CORNERS[1]
+            # For centered isotropic scatter, this is the chance of landing within the dot.
+            expected = 7 * (1 - math.exp(-0.5 * (radius / sigma) ** 2)) if sigma else 7
+            call_corner = expected > 5
+            if call_corner:
+                x, y = cx, cy
+        self.throw(i, x + self.rng.gauss(0, sigma), y + self.rng.gauss(0, sigma), call_corner=call_corner)
 
     def recommend(self, i, sigma):
+        if self.mode == "axe":
+            return 0, 0, "Aim at the center for five points."
         candidates = aim_outcomes(sigma)
         if self.mode in X01:
             points = self.points[i]
@@ -441,21 +589,30 @@ class DartMatch:
     def view(self, p):
         next_seat = self.seats.index(self.room.turn) if self.room.turn in self.seats else None
         darts = self.last_darts + self.darts
-        left = 3 - len(self.darts) if next_seat is not None and self.grabbing is None else 0
+        left = self.throws_left(next_seat) if next_seat is not None and self.grabbing is None else 0
         route = checkout(self.points[next_seat], left, self.double_out) if self.mode in X01 and left else ()
         hint = None
         if next_seat is not None and p.id in self.seats and next_seat == self.seats.index(p.id) and left:
             pace = 0 if getattr(self, "aim_control", False) else SWIPE_PACE
             x, y, reason = self.recommend(next_seat, SCATTER * spread(pace))
-            hint = {"label": label(*hit_at(x, y)), "x": x, "y": y, "reason": reason}
+            hint = {"label": axe_label(axe_hit(x, y)) if self.mode == "axe" else label(*hit_at(x, y)), "x": x, "y": y, "reason": reason}
+        viewer = self.seats.index(p.id) if p.id in self.seats else None
+        round_seat = viewer if viewer is not None else next_seat
         return {
             "mode": self.mode, "title": MODES[self.mode], "x01": self.mode in X01,
             "nextNumbers": [self.next_number(i) for i in range(len(self.seats))] if self.mode == "clock" else None,
-            "visitsDone": self.visits_done if self.mode == "countup" else None,
-            "visitLimit": COUNTUP_VISITS if self.mode == "countup" else None,
+            "visitsDone": self.visits_done if self.mode in FIXED_VISITS else None,
+            "visitLimit": COUNTUP_VISITS if self.mode in FIXED_VISITS else None,
             "seats": self.seats, "me": self.seats.index(p.id) if p.id in self.seats else None,
             "next": next_seat, "visit": self.visit, "darts": darts, "shot": self.shot,
             "points": self.points, "marks": self.marks, "targets": TARGETS, "active": self.active(),
+            "axeSpin": AXE_SPIN if self.mode == "axe" else None,
+            "axeStickAngle": AXE_STICK_ANGLE if self.mode == "axe" else None,
+            "axeLodgedAngle": AXE_LODGED_ANGLE if self.mode == "axe" else None,
+            "axeRings": (AXE_CORNER_RINGS if self.corner_scoring else AXE_RINGS) if self.mode == "axe" else None,
+            "axeCorners": AXE_CORNERS if self.corner_scoring else None,
+            "axesPerRound": AXES_PER_ROUND if self.alternating_axes else None,
+            "canCallCorner": bool(left and self.can_call_corner()),
             "numbers": NUMBERS, "radii": RADII, "left": left,
             "dartOrigin": DART_ORIGIN, "swipePace": SWIPE_PACE,
             "spreadBase": spread(0), "spreadPerPace": spread(1) - spread(0),
@@ -463,6 +620,7 @@ class DartMatch:
             "doubleOut": self.double_out, "hint": hint,
             "aimControl": getattr(self, "aim_control", False),
             "roundRecap": self.grabbing is not None,
-            "visitDarts": self.darts, "completedVisit": self.completed_visit,
+            "visitDarts": [shot for shot in self.darts if shot["o"] == round_seat] if self.alternating_axes else self.darts,
+            "completedVisit": self.completed_visit,
             "readyIn": max(0.0, self.ready_at - time.time()),
         }

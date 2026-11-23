@@ -845,13 +845,393 @@ UI.archery = (() => {
   const smooth = (t) => { const k = c01(t); return k * k * (3 - 2 * k); };
   const DART_NUMBER_RADIUS = 108;
   const DART_PALETTE = { dark: '#242522', light: '#ebd5a6', red: '#c14a48', green: '#3d8962' };
-  const DART_WIRE = '#b9afa1';
+  const DART_WIRE = '#d0c5b4';
+  const DART_BRASS = '#c5a273';
   const DART_WIRE_BASE = '#514a42';
   const DART_NUMBER_BAND = '#242421';
   const DART_DOT_HOLD = 250;
   const DART_DOT_FADE = 900;
   const DART_RIM = '#292723';
   const DART_FASTENERS = Array.from({ length: 8 }, (_, i) => (i + 0.5) * Math.PI / 4);
+
+  const DART_LODGED_ANGLE = -34;
+  const AXE_SCALE = 1.4;
+  const BOARD_CAMERA_DISTANCE = 345;
+  const boardPlaneScale = (depth) => 98 * (1 - depth / BOARD_CAMERA_DISTANCE);
+  const AXE_WINDUP_MS = 140;
+  const AXE_RELEASE_WINDOW_MS = 190;
+  const AXE_FLICK_WINDOW_MS = 115;
+  const AXE_FLICK_PAUSE_MS = 75;
+  const AXE_FLICK_MIN_DISTANCE = 0.22; // Board radii.
+  const AXE_FLICK_MIN_SPEED = 2.2; // Board radii per second.
+  const AXE_BACKSWING_MS = 60;
+  const AXE_GRAVITY = 1.8; // Board radii per second squared on the game clock.
+  const AXE_LODGED_ANGLE = 38;
+  const AXE_BOARD_DEPTH = 0.1;
+  const AXE_HEADING = -78;
+  const AXE_HEADING_COS = Math.cos(AXE_HEADING * Math.PI / 180);
+  const AXE_HEADING_SIN = Math.sin(AXE_HEADING * Math.PI / 180);
+  const AXE_START_POSE = { pitch: 12, roll: 0, yaw: -60 };
+  const AXE_READY_HEADING = axeStartOrientation({ pitch: 0, roll: 0, yaw: AXE_HEADING });
+  const AXE_RELEASE_ANGLE = 0;
+  const AXE_COLORS = ['#91362b', '#a76d42', '#dfba86', '#9e6d48', '#d6ab76'];
+  const expandAxeHead = (points) => points.map(([x, y]) => [x * 1.15, y * 1.10]);
+  const AXE_EDGE = expandAxeHead([[0, 0], [-3.2, 2.3], [-4.5, 5.4], [-3.2, 8.7], [0, 11]]);
+  const AXE_BEVEL = expandAxeHead([[1.3, 0.9], [-0.7, 2.9], [-1.5, 5.4], [-0.7, 8], [1.3, 10.1]]);
+  const AXE_SPINE = expandAxeHead([[9, 7.4], [9, 3.6]]);
+  const AXE_BLADE_THICKNESS = 2.8;
+  const AXE_PROFILE = [...AXE_EDGE, ...AXE_SPINE];
+  // Relative model masses. A longer handle adds mass as well as moving its midpoint.
+  const AXE_MASS_PROFILE = {
+    headMass: 4.4, headOutline: AXE_PROFILE, headThickness: AXE_BLADE_THICKNESS,
+    handleStart: [5.5, 4], handleEnd: [7.4, 26], handleMassPerUnit: 0.05,
+  };
+
+  function axeMassProperties({ headMass, headOutline, headThickness, handleStart, handleEnd, handleMassPerUnit }) {
+    let areaTwice = 0, headX = 0, headY = 0, secondX = 0, secondY = 0;
+    for (let i = 0; i < headOutline.length; i++) {
+      const [x, y] = headOutline[i], [nextX, nextY] = headOutline[(i + 1) % headOutline.length];
+      const cross = x * nextY - nextX * y;
+      areaTwice += cross;
+      headX += (x + nextX) * cross;
+      headY += (y + nextY) * cross;
+      secondX += (x ** 2 + x * nextX + nextX ** 2) * cross;
+      secondY += (y ** 2 + y * nextY + nextY ** 2) * cross;
+    }
+    headX /= 3 * areaTwice;
+    headY /= 3 * areaTwice;
+    const dx = handleEnd[0] - handleStart[0], dy = handleEnd[1] - handleStart[1];
+    const handleLength = Math.hypot(dx, dy * DART_LENGTH);
+    const handleMass = handleLength * handleMassPerUnit;
+    const handleX = handleStart[0] + dx / 2, handleY = handleStart[1] + dy / 2;
+    const mass = headMass + handleMass;
+    const x = (headMass * headX + handleMass * handleX) / mass;
+    const y = (headMass * headY + handleMass * handleY) / mass;
+    // The fixed heading turns the blade's local X into depth relative to the world-X tumble axis.
+    const radiusSquared = (px, py) => (AXE_HEADING_SIN * px) ** 2 + (DART_LENGTH * py) ** 2;
+    const headInertia = (secondX * AXE_HEADING_SIN ** 2 + secondY * DART_LENGTH ** 2) / (6 * areaTwice)
+      - radiusSquared(headX, headY) + (headThickness * AXE_HEADING_COS) ** 2 / 12;
+    const inertia = headMass * (headInertia + radiusSquared(headX - x, headY - y))
+      + handleMass * (radiusSquared(dx, dy) / 12 + radiusSquared(handleX - x, handleY - y));
+    return { x, y, headMass, handleMass, handleLength, inertia };
+  }
+
+  const AXE_PIVOT = axeMassProperties(AXE_MASS_PROFILE);
+  const AXE_SETTLE_SCALE = Math.sqrt(AXE_PIVOT.inertia / 104.38);
+  const AXE_PIVOT_LABEL = `Rotation center from blade contact · X ${AXE_PIVOT.x.toFixed(2)} · Y ${AXE_PIVOT.y.toFixed(2)} model units · Inertia ${AXE_PIVOT.inertia.toFixed(1)} (relative)`;
+
+
+  const AXE_ART = {
+    board: '/games/axe-art/target.jpg',
+    steel: '/games/axe-art/forged-steel.jpg',
+    bevel: '/games/axe-art/ground-steel.jpg',
+    handle: '/games/axe-art/hickory.jpg',
+  };
+  const AXE_HANDLE_PATH = 'M3.5 2.5Q5 1.9 6.7 2.5Q6.1 11 7.1 17Q7.6 21 8.8 24.7Q9.4 27 7 27Q5.3 26.8 5.3 25Q3 17 3.5 10Z';
+
+  const polygonPoints = (points) => points.map((point) => point.join(',')).join(' ');
+  const AXE_BODY_PATH = `M${polygonPoints(AXE_PROFILE.slice(0, AXE_EDGE.length))}L8.4 8.1Q10.35 8.1 10.35 7L10.35 2.9Q10.35 1.7 8.4 1.7Z`;
+  const axeSilhouette = `<g stroke="none"><path d="M5.5 5Q5 15 7.4 25" fill="none" stroke="#a37a4e" stroke-width="1.5"
+      stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+    <path d="M.5 1Q-5 5.4 .5 10" fill="none" stroke="#bfc7cb" stroke-width="1.1"
+      stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+    <path fill="var(--dart-color, #e8c99f)" d="${AXE_HANDLE_PATH}"/>
+    <path fill="url(#ar-axe-wood-light)" opacity=".45" d="${AXE_HANDLE_PATH}"/>
+    <path fill="url(#ar-axe-hickory)" opacity=".20" d="${AXE_HANDLE_PATH}"/>
+    <path fill="none" stroke="#f2c28d" stroke-width=".48" opacity=".75" d="M4.4 7Q3.7 17 6.2 24.7"/>
+    <ellipse cx="7.1" cy="25.9" rx="1.6" ry=".75" fill="#ad754b"/>
+    <path fill="url(#ar-axe-steel-light)" d="${AXE_BODY_PATH}"/>
+    <path fill="url(#ar-axe-forged)" opacity=".38" d="${AXE_BODY_PATH}"/>
+    <polygon fill="url(#ar-axe-bevel-light)" points="${polygonPoints([...AXE_EDGE, ...AXE_BEVEL.slice().reverse()])}"/>
+    <polygon fill="url(#ar-axe-ground)" opacity=".25" points="${polygonPoints([...AXE_EDGE, ...AXE_BEVEL.slice().reverse()])}"/>
+    <polyline fill="none" stroke="#f1f9ff" stroke-width=".48" points="${polygonPoints(AXE_EDGE)}"/>
+    <path fill="none" stroke="#89949b" stroke-width=".45" opacity=".65" d="M2 2L8 4"/>
+    <path fill="#d7a471" stroke="#34251e" stroke-width=".35" d="M3.5 2.8L4.7 2.3L6.7 2.8L5.1 3.1Z"/></g>`;
+  const ringColor = (points) => AXE_COLORS[5 - points];
+  const axeLabelRadius = (radius, points) => radius - (points === 5 ? 0.055 : 0.10);
+
+  function axeStartOrientation({ pitch, roll, yaw }) {
+    const radians = Math.PI / 360;
+    const a = pitch * radians, b = yaw * radians, c = -roll * radians;
+    const [sa, sb, sc] = [Math.sin(a), Math.sin(b), Math.sin(c)];
+    const [ca, cb, cc] = [Math.cos(a), Math.cos(b), Math.cos(c)];
+    return [sa * cb * cc + ca * sb * sc, ca * sb * cc - sa * cb * sc,
+      ca * cb * sc + sa * sb * cc, ca * cb * cc - sa * sb * sc];
+  }
+
+  function axeTumbleOrientation(angle) {
+    return pitchAxe(AXE_READY_HEADING, angle);
+  }
+
+  function pitchAxe(from, angle) {
+    const half = -angle * Math.PI / 360;
+    const sine = Math.sin(half), cosine = Math.cos(half);
+    const [x, y, z, w] = from;
+    return [cosine * x + sine * w, cosine * y - sine * z,
+      cosine * z + sine * y, cosine * w - sine * x];
+  }
+
+  function blendAxeOrientation(from, angle, progress) {
+    const [x, y, z, w] = from;
+    if (Math.abs(x * y - z * w) < 1e-7) {
+      // An X pitch followed by a Y yaw leaves the handle in the vertical plane throughout alignment.
+      const pitch = Math.atan2(2 * (y * z + x * w), 1 - 2 * (x * x + z * z)) * 180 / Math.PI;
+      const yaw = Math.atan2(2 * (x * z + y * w), 1 - 2 * (y * y + z * z)) * 180 / Math.PI;
+      const headingDelta = ((AXE_HEADING - yaw + 540) % 360) - 180;
+      return axeStartOrientation({ pitch: pitch * (1 - progress) - angle * progress, roll: 0, yaw: yaw + headingDelta * progress });
+    }
+    // Ease custom debug orientation into the release heading before the axe leaves the hand.
+    const sign = from.reduce((dot, component, i) => dot + component * AXE_READY_HEADING[i], 0) < 0 ? -1 : 1;
+    const aligned = from.map((component, i) => component * (1 - progress) + sign * AXE_READY_HEADING[i] * progress);
+    const length = Math.hypot(...aligned);
+    return pitchAxe(aligned.map((component) => component / length), angle * progress);
+  }
+
+  function axeProjection(angle) {
+    const radians = angle * Math.PI / 180;
+    return [AXE_HEADING_COS, AXE_HEADING_SIN * Math.sin(radians), 0, Math.cos(radians)];
+  }
+
+  function axePointOffset([modelX, modelY, modelZ = 0], scale, [qx, qy, qz, qw]) {
+    const x = modelX * scale, y = -modelY * DART_LENGTH * scale, z = modelZ * scale;
+    return {
+      x: (1 - 2 * (qy ** 2 + qz ** 2)) * x + 2 * (qx * qy - qz * qw) * y + 2 * (qx * qz + qy * qw) * z,
+      y: 2 * (qx * qy + qz * qw) * x + (1 - 2 * (qx ** 2 + qz ** 2)) * y + 2 * (qy * qz - qx * qw) * z,
+      depth: 2 * (qx * qz - qy * qw) * x + 2 * (qy * qz + qx * qw) * y + (1 - 2 * (qx ** 2 + qy ** 2)) * z,
+    };
+  }
+
+  function axeLeadingEdge(angle) {
+    const orientation = axeTumbleOrientation(angle);
+    const depths = AXE_EDGE.map((point) => axePointOffset(point, AXE_SCALE, orientation).depth);
+    const nearest = Math.min(...depths);
+    const index = depths.findIndex((depth) => depth <= nearest + 1e-8);
+    const midpoint = index < depths.length - 1 && depths[index + 1] <= nearest + 1e-8;
+    const point = midpoint ? AXE_EDGE[index].map((value, axis) => (value + AXE_EDGE[index + 1][axis]) / 2) : AXE_EDGE[index];
+    return { point, index, midpoint };
+  }
+
+  function axeContactPose(shot, rotation, edge) {
+    const offset = axePointOffset(edge, AXE_SCALE, axeTumbleOrientation(rotation));
+    const depth = AXE_BOARD_DEPTH - offset.depth;
+    const plane = boardPlaneScale(depth), board = boardPlaneScale(AXE_BOARD_DEPTH);
+    return { x: (shot.x * board - offset.x) / plane, y: (shot.y * board - offset.y) / plane,
+      depth, rotation, scale: AXE_SCALE, u: 1 };
+  }
+
+  function axeRestPose(shot, landingAngle, quiver = 0) {
+    const angle = landingAngle - (shot.axeAngle ?? 0);
+    const { point } = axeLeadingEdge(angle);
+    return { ...axeContactPose(shot, angle + quiver, point), edge: point };
+  }
+
+  function axeClearance(pose, margin = 0) {
+    const orientation = axeTumbleOrientation(pose.rotation);
+    const leadingDepth = Math.min(...AXE_EDGE.map((point) => axePointOffset(point, pose.scale, orientation).depth));
+    return Math.max(0, AXE_BOARD_DEPTH + margin - pose.depth - leadingDepth);
+  }
+
+  // The flight path follows the axe's mass center. Renderers place the cutting edge
+  // by rotating the offset from that center, including at the exact contact frame.
+  function axeMotion(start, shot, landingAngle, airTime, edge) {
+    const contactAngle = landingAngle - (shot.axeAngle ?? 0);
+    const turn = shot.axeTurn ?? (360 + ((AXE_RELEASE_ANGLE - contactAngle + 540) % 360) - 180);
+    const lift = AXE_GRAVITY * (airTime / 1000) ** 2 / 8;
+    const initialDepth = start.depth ?? DART_HAND_DEPTH - 10;
+    const initialScale = start.scale ?? AXE_SCALE;
+    const pivotPoint = [AXE_PIVOT.x, AXE_PIVOT.y];
+    const offset = (angle, scale) => axePointOffset(pivotPoint, scale, axeTumbleOrientation(angle));
+    const from = offset(AXE_RELEASE_ANGLE, initialScale);
+    const to = offset(contactAngle, AXE_SCALE);
+    const endPose = edge ? axeContactPose(shot, contactAngle, edge)
+      : { x: shot.x, y: shot.y, depth: AXE_BOARD_DEPTH };
+    const startX = start.x * boardPlaneScale(initialDepth) + from.x;
+    const startY = start.y * boardPlaneScale(initialDepth) + from.y;
+    const startDepth = initialDepth + from.depth;
+    const dx = endPose.x * boardPlaneScale(endPose.depth) + to.x - startX;
+    const dy = endPose.y * boardPlaneScale(endPose.depth) + to.y - startY;
+    const dz = endPose.depth + to.depth - startDepth;
+    const arc = 4 * lift * 98;
+    return (time, afterImpact = false) => {
+      const extra = afterImpact ? time : 0;
+      const u = afterImpact ? 1 : c01(time);
+      const bounce = afterImpact && shot.axeBounce;
+      const rotation = AXE_RELEASE_ANGLE - turn * (u + extra * (bounce ? 0.65 : 1));
+      const scale = AXE_SCALE + (initialScale - AXE_SCALE) * (1 - u);
+      const pivot = offset(rotation, scale);
+      const centerDepth = startDepth + dz * (u + extra * (bounce ? -0.55 : 1));
+      const centerX = startX + dx * (u + extra * (bounce ? 0.45 : 1));
+      const releaseY = bounce ? Math.min(0.24 * 98, Math.max(0.08 * 98, -0.35 * (dy - arc))) : dy - arc;
+      const centerY = startY + dy * u + arc * u * (1 - u) + releaseY * extra - arc * extra ** 2;
+      const depth = centerDepth - pivot.depth;
+      const plane = boardPlaneScale(depth);
+      return {
+        x: (centerX - pivot.x) / plane, y: (centerY - pivot.y) / plane, depth, rotation, scale, u,
+        center: { x: centerX, y: centerY, depth: centerDepth },
+      };
+    };
+  }
+
+  function axeWindup(grip, motion, elapsed, airTime, windupMs, backswingMs) {
+    const back = {
+      x: grip.x + grip.backswingX, y: grip.y + 0.18,
+      depth: grip.depth + 5, rotation: 40,
+    };
+    const release = motion(0);
+    // Sample the flight tangent so the swing carries through release at the same speed.
+    const sample = motion(0.001);
+    const forward = elapsed >= backswingMs;
+    const duration = forward ? windupMs - backswingMs : backswingMs;
+    const u = c01((elapsed - (forward ? backswingMs : 0)) / duration);
+    const ease = smooth(u);
+    const from = forward ? back : grip;
+    const to = forward ? release : back;
+    const pose = { scale: release.scale };
+    if (!forward) pose.orientation = blendAxeOrientation(grip.orientation, back.rotation, ease);
+    for (const key of ['x', 'y', 'depth', 'rotation']) {
+      const tangent = forward ? (sample[key] - release[key]) * duration / (0.001 * airTime) : 0;
+      pose[key] = from[key] + (to[key] - from[key]) * ease + tangent * u * u * (u - 1);
+    }
+    return pose;
+  }
+
+  function axeTrajectory(start, shot, duration, landingAngle, orientation) {
+    const grip = {
+      x: start.placed ? start.x : clamp(start.x, 0.86), y: start.placed ? start.y : clamp(start.y, 0.68),
+      depth: DART_HAND_DEPTH + 9 * (start.lift ?? 0), rotation: 0,
+      orientation: start.orientation ?? orientation,
+    };
+    const sweepX = start.placed ? clamp(shot.x - grip.x, 0.08) : -0.08;
+    grip.backswingX = -Math.sign(sweepX) * 0.09;
+    const release = { x: grip.x + sweepX, y: grip.y + 0.16, depth: DART_HAND_DEPTH, scale: AXE_SCALE };
+    const windupMs = shot.axeWindupMs ?? AXE_WINDUP_MS;
+    const backswingMs = Math.round(windupMs * AXE_BACKSWING_MS / AXE_WINDUP_MS);
+    const airTime = duration - windupMs;
+    const contact = shot.number || shot.axeBounce ? axeLeadingEdge(landingAngle - (shot.axeAngle ?? 0)) : null;
+    const rawMotion = axeMotion(release, shot, landingAngle, airTime, contact?.point);
+    const motion = (time, afterImpact = false) => {
+      const pose = rawMotion(time, afterImpact);
+      const keepEdgeClear = contact && (afterImpact ? shot.axeBounce && time > 0 : pose.u < 1);
+      const correction = keepEdgeClear ? axeClearance(pose, (1 - pose.u) * 0.01) : 0;
+      if (!correction) return pose;
+      const depth = pose.depth + correction;
+      const scaleRatio = boardPlaneScale(pose.depth) / boardPlaneScale(depth);
+      return { ...pose, depth, x: pose.x * scaleRatio, y: pose.y * scaleRatio };
+    };
+    return { motion, rawMotion, contact, windupMs, backswingMs, windup: (elapsed) => axeWindup(grip, motion, elapsed, airTime, windupMs, backswingMs) };
+  }
+
+  const AXE_TRACE_COLUMNS = ['Time (ms)', 'Phase', 'X', 'Y', 'Z', 'Tumble (°)', 'qx', 'qy', 'qz', 'qw'];
+  const AXE_TRACE_AXES = `Blade reference point in board radii. +X right, +Y up, +Z toward viewer. Negative tumble pitches forward about world X at ${AXE_HEADING}° heading. Quaternion uses WebGL X/Y/Z axes.`;
+  function axeTraceRows(shot, duration, trajectory) {
+    const { motion, windup, windupMs, backswingMs } = trajectory;
+    const airTime = duration - windupMs;
+    const samples = [
+      [0, 'Start', windup(0)],
+      [backswingMs, 'Backswing', windup(backswingMs)],
+      [windupMs, 'Release', motion(0)],
+      ...[0.25, 0.5, 0.75].map((progress) =>
+        [windupMs + airTime * progress, `Flight ${progress * 100}%`, motion(progress)]),
+      [duration, shot.number || shot.axeBounce ? 'Impact' : 'Board plane', motion(1)],
+    ];
+    if (!shot.number) {
+      for (const delay of [100, 250]) samples.push([duration + delay, shot.axeBounce ? 'Bounce' : 'Past target',
+        motion(delay / airTime, true)]);
+    }
+    return samples.map(([elapsed, phase, pose]) => {
+      const rotation = phase === 'Start' || phase === 'Backswing' ? '' : pose.rotation.toFixed(1);
+      const orientation = pose.orientation ?? axeTumbleOrientation(pose.rotation);
+      return [Math.round(elapsed), phase, pose.x.toFixed(3), pose.y.toFixed(3), (pose.depth / 98).toFixed(3),
+        rotation, ...orientation.map((component) => component.toFixed(4))];
+    });
+  }
+
+  const AXE_CONTACT_LANDMARKS = [
+    ...AXE_EDGE.map((point) => ({ feature: 'cutting edge', point })),
+    ...[-1, 1].flatMap((side) => [
+      ...AXE_BEVEL.map((point) => ({ feature: 'head face', point: [...point, side * AXE_BLADE_THICKNESS / 2] })),
+      ...AXE_SPINE.map((point) => ({ feature: 'poll', point: [...point, side * AXE_BLADE_THICKNESS / 2] })),
+      ...[[4.4, 4], [6.6, 4], [6, 13], [9, 24], [5.8, 26], [3.4, 17]]
+        .map((point) => ({ feature: 'handle', point: [...point, side * 2.8] })),
+    ]),
+  ];
+
+  const wrapAxeAngle = (angle) => ((angle % 360 + 540) % 360) - 180;
+
+  function axeShadowContact(rawMotion, windupMs, airTime, contact) {
+    // This compares landmarks on the fitted path before any visual clearance correction.
+    const steps = 64, epsilon = 1e-7;
+    const frameAt = (u) => {
+      const pose = rawMotion(u);
+      const orientation = axeTumbleOrientation(pose.rotation);
+      const depthAt = ({ point }) => pose.depth + axePointOffset(point, pose.scale, orientation).depth;
+      return { pose, orientation, depthAt };
+    };
+    const landmarks = contact?.midpoint
+      ? [...AXE_CONTACT_LANDMARKS, { feature: 'cutting edge', point: contact.point }] : AXE_CONTACT_LANDMARKS;
+    let previous = frameAt(0);
+    for (let step = 1; step <= steps; step++) {
+      const next = frameAt(step / steps);
+      let first = null;
+      for (const landmark of landmarks) {
+        if (previous.depthAt(landmark) <= AXE_BOARD_DEPTH + epsilon || next.depthAt(landmark) > AXE_BOARD_DEPTH + epsilon) continue;
+        let lo = (step - 1) / steps, hi = step / steps;
+        for (let iteration = 0; iteration < 12; iteration++) {
+          const mid = (lo + hi) / 2;
+          if (frameAt(mid).depthAt(landmark) > AXE_BOARD_DEPTH + epsilon) lo = mid;
+          else hi = mid;
+        }
+        if (first && hi >= first.u) continue;
+        const { pose, orientation } = frameAt(hi);
+        const offset = axePointOffset(landmark.point, pose.scale, orientation);
+        const pointDepth = pose.depth + offset.depth;
+        const worldX = pose.x * boardPlaneScale(pose.depth) + offset.x;
+        const worldY = pose.y * boardPlaneScale(pose.depth) + offset.y;
+        const x = worldX / boardPlaneScale(pointDepth), y = worldY / boardPlaneScale(pointDepth);
+        if (Math.hypot(x, y) > 1 + epsilon) continue;
+        const beforeU = Math.max(0, hi - 0.001), afterU = Math.min(1, hi + 0.001);
+        const before = rawMotion(beforeU), after = rawMotion(afterU);
+        const seconds = (afterU - beforeU) * airTime / 1000;
+        const centerVelocity = (after.center.depth - before.center.depth) / seconds;
+        const angularVelocity = (before.rotation - after.rotation) * Math.PI / 180 / seconds;
+        const contactLeverY = worldY - pose.center.y;
+        first = {
+          u: hi, feature: landmark.feature, timeMs: Math.round(windupMs + hi * airTime),
+          x, y, pitch: wrapAxeAngle(pose.rotation), approachSpeed: -(centerVelocity + angularVelocity * contactLeverY) / 98,
+        };
+      }
+      if (first) {
+        const { u, ...result } = first;
+        return result;
+      }
+      previous = next;
+    }
+    return null;
+  }
+
+  function axeContactTrace(shot, duration, trajectory, landingAngle, stickAngle = 30) {
+    const { contact, rawMotion, windupMs } = trajectory;
+    let clearance = 0;
+    if (contact) {
+      for (let i = 0; i < 64; i++) {
+        const u = i / 64;
+        clearance = Math.max(clearance, axeClearance(rawMotion(u), (1 - u) * 0.01));
+      }
+    }
+    const shadow = axeShadowContact(rawMotion, windupMs, duration - windupMs, contact);
+    if (shadow) shadow.angleError = wrapAxeAngle(shadow.pitch - landingAngle);
+    const bladeFirst = shadow?.feature === 'cutting edge' && shadow.approachSpeed > 0 && Math.abs(shadow.angleError) <= stickAngle;
+    return {
+      version: 1,
+      boardPoint: contact ? { x: shot.x, y: shot.y, z: AXE_BOARD_DEPTH / 98 } : null,
+      edge: contact, timeMs: contact ? duration : null,
+      pitch: wrapAxeAngle(rawMotion(1).rotation), heading: AXE_HEADING,
+      clearance: clearance / 98,
+      shadow,
+      serverResult: shot.number ? 'stick' : shot.axeBounce ? 'bounce' : 'miss',
+      predictedResult: shadow ? (bladeFirst ? 'blade-first' : 'glancing') : 'no target contact',
+    };
+  }
 
   function makeDarts3d(surface, onRendererChange) {
     const T = window.THREE;
@@ -863,13 +1243,13 @@ UI.archery = (() => {
     canvas.className = 'ar-darts-webgl';
     canvas.setAttribute('aria-hidden', 'true');
     surface.prepend(canvas);
-    const cameraDistance = 345;
+    const cameraDistance = BOARD_CAMERA_DISTANCE;
     const fov = 2 * Math.atan(125 / cameraDistance) * 180 / Math.PI;
     const scene = new T.Scene(), camera = new T.PerspectiveCamera(fov, 1, 1, 850);
     camera.position.z = cameraDistance;
     const VIEW_TARGET = new T.Vector3();
     scene.add(new T.HemisphereLight(0xf4e4ce, 0x6c534c, 1.35));
-    const lamp = new T.SpotLight(0xffce95, 3.4, 0, 0.53, 0.79);
+    const lamp = new T.SpotLight(0xffc890, 3.65, 0, 0.53, 0.79);
     lamp.position.set(-75, 174, 235);
     lamp.target.position.set(1, 24, 0);
     scene.add(lamp, lamp.target);
@@ -936,9 +1316,9 @@ UI.archery = (() => {
     wood.encoding = T.sRGBEncoding;
     const cabinet = new T.Group();
     scene.add(cabinet);
-    const walnut = material(0x865e46, { map: wood, bumpMap: grain, bumpScale: 0.24, roughness: 0.72 });
+    const walnut = material(0x79503a, { map: wood, bumpMap: grain, bumpScale: 0.24, roughness: 0.72 });
     const seam = material(0x211510);
-    const mountMetal = material(0x91734f, { metalness: 0.36, roughness: 0.51 });
+    const mountMetal = material(DART_BRASS, { metalness: 0.42, roughness: 0.4 });
     const edgeWear = material(0x896249, { map: wood, roughness: 0.78 });
     const wornEdge = new T.BoxGeometry(0.65, 265, 0.4);
     const seamGeometry = new T.BoxGeometry(1.5, 265, 1);
@@ -985,7 +1365,7 @@ UI.archery = (() => {
     railShape.lineTo(cabinetHalf - miterGap, cabinetHalf);
     railShape.closePath();
     const rail = new T.ExtrudeGeometry(railShape, {
-      depth: cabinetFront - cabinetBack, bevelSize: 0.55, bevelThickness: 0.55, bevelSegments: 1,
+      depth: cabinetFront - cabinetBack, bevelSize: 0.72, bevelThickness: 0.72, bevelSegments: 2,
     });
     const railUV = rail.attributes.uv;
     for (let i = 0; i < railUV.count; i++) {
@@ -1031,7 +1411,7 @@ UI.archery = (() => {
         ink.strokeText(number, x, y + 3);
         ink.fillStyle = '#b8a58b';
         ink.fillText(number, x, y + 1.5);
-        ink.strokeStyle = '#30231c';
+        ink.strokeStyle = '#16110d';
         ink.strokeText(number, x, y);
         ink.fillStyle = '#fff7e6';
         ink.fillText(number, x, y);
@@ -1066,6 +1446,83 @@ UI.archery = (() => {
 
     function paint(view) {
       if (face.children.length) return;
+      axe = !!view.axeRings;
+      axeLodgedAngle = view.axeLodgedAngle;
+      inHand = dart();
+      flying = dart();
+      if (axe) {
+        lamp.color.setHex(0xffead5);
+        lamp.intensity = 2.5;
+        makeAxeReflection();
+        paintAxeEndGrain();
+        loadAxeMaterial(axeSteel, AXE_ART.steel, true);
+        loadAxeMaterial(axeEdgeSteel, AXE_ART.bevel);
+        loadAxeMaterial(axeWood, AXE_ART.handle, true);
+        const target = document.createElement('canvas');
+        target.width = target.height = 512;
+        const ink = target.getContext('2d');
+        ink.font = 'bold 29px system-ui';
+        ink.textAlign = 'center';
+        ink.textBaseline = 'middle';
+        const rings = [...view.axeRings].reverse();
+        const boardMap = new T.CanvasTexture(target);
+        boardMap.encoding = T.sRGBEncoding;
+        boardMap.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+        const boardMaterial = material(0xded0bc, { map: boardMap, bumpMap: grain, bumpScale: 0.25 });
+        const paintTarget = (photo) => {
+          ink.fillStyle = '#cfa275';
+          ink.fillRect(0, 0, 512, 512);
+          if (photo) ink.drawImage(photo, 0, 0, 512, 512);
+          rings.forEach(([radius, points], index) => {
+            ink.beginPath();
+            ink.arc(256, 256, radius * 256, 0, Math.PI * 2);
+            if (index + 1 < rings.length) {
+              const inner = rings[index + 1][0] * 256;
+              ink.moveTo(256 + inner, 256);
+              ink.arc(256, 256, inner, 0, Math.PI * 2, true);
+            }
+            ink.fillStyle = ringColor(points) + (photo ? '80' : 'ff');
+            ink.fill();
+            ink.strokeStyle = '#42291b99';
+            ink.lineWidth = 2.5;
+            ink.stroke();
+          });
+          for (const [radius, points] of rings) {
+            const labelY = 256 - axeLabelRadius(radius, points) * 256;
+            ink.strokeStyle = '#35231a';
+            ink.lineWidth = 3;
+            ink.strokeText(points, 256, labelY);
+            ink.fillStyle = '#fff5df';
+            ink.fillText(points, 256, labelY);
+          }
+          for (const [x, y, radius] of view.axeCorners ?? []) {
+            ink.beginPath();
+            ink.arc(256 * (1 + x), 256 * (1 - y), radius * 256, 0, Math.PI * 2);
+            ink.fillStyle = '#30653f';
+            ink.fill();
+            ink.fillStyle = '#fff5df';
+            ink.font = 'bold 24px system-ui';
+            ink.fillText('7', 256 * (1 + x), 256 * (1 - y));
+            ink.font = 'bold 29px system-ui';
+          }
+          boardMap.needsUpdate = true;
+        };
+        paintTarget();
+        const backingProfile = [[0, -10], [97, -10], [99, -8], [99, -2], [98, AXE_BOARD_DEPTH]]
+          .map(([radius, depth]) => new T.Vector2(radius, depth));
+        mesh(face, new T.LatheGeometry(backingProfile, 96), walnut).rotation.x = Math.PI / 2;
+        mesh(face, new T.CircleGeometry(98, 96), boardMaterial, 0, 0, AXE_BOARD_DEPTH).receiveShadow = true;
+        const photo = new Image();
+        photo.onload = () => {
+          if (disposed) return;
+          paintTarget(photo);
+          boardMaterial.bumpMap = boardMap;
+          boardMaterial.bumpScale = 0.32;
+          refreshAxeArt();
+        };
+        photo.src = AXE_ART.board;
+        return;
+      }
       const rings = view.radii.map((r) => r * 98);
       const [, outer, , , , edge] = rings;
       const rimProfile = [
@@ -1086,7 +1543,7 @@ UI.archery = (() => {
       const slotMat = material(0x211c19);
       for (const a of DART_FASTENERS) {
         const x = 115.9 * Math.cos(a), y = 115.9 * Math.sin(a);
-        mesh(face, screwHead, wire, x, y, 0.2);
+        mesh(face, screwHead, mountMetal, x, y, 0.2);
         mesh(face, slot, slotMat, x, y, 0.3).rotation.z = a;
       }
       const step = Math.PI / 10;
@@ -1206,6 +1663,7 @@ UI.archery = (() => {
     const brass = material(0xc59b62, { roughness: 0.39, metalness: 0.48 });
     const groove = material(0x503929, { roughness: 0.54 });
     const defaultFinColor = 0x24516c;
+    const defaultAxeHandleColor = 0xe8c99f;
     const foldHighlight = material(0x97a9b3, { side: T.DoubleSide, roughness: 0.6 });
     const flightShape = new T.Shape();
     flightShape.moveTo(0, -2);
@@ -1239,8 +1697,23 @@ UI.archery = (() => {
     }
     function dart() {
       const group = new T.Group();
-      const finMaterial = material(defaultFinColor, { side: T.DoubleSide, roughness: 0.8 });
+      const finMaterial = axe ? axeWood.clone() : material(defaultFinColor, { side: T.DoubleSide, roughness: 0.8 });
       group.userData.finMaterial = finMaterial;
+      if (axe) {
+        const model = new T.Group();
+        model.scale.set(0.5, 1 / 3, 1);
+        model.position.y = DART_POINT_APEX * (2 / 3);
+        axeHandleMaterials.add(finMaterial);
+        mesh(model, axeHandle, finMaterial).castShadow = true;
+        mesh(model, axeButt, axeEndGrain);
+        mesh(model, axeEye, axeEndGrain);
+        mesh(model, axeWedge, axeWedgeWood, 10.2, 29.85);
+        mesh(model, axeBlade, axeSteel).castShadow = true;
+        mesh(model, axeBevel, axeEdgeSteel);
+        group.add(model);
+        scene.add(group);
+        return group;
+      }
       mesh(group, tipGeometry, pointSteel);
       mesh(group, noseGeometry, steel, 0, 23.85);
       mesh(group, barrelGeometry, brass, 0, 11.55);
@@ -1262,7 +1735,167 @@ UI.archery = (() => {
       scene.add(group);
       return group;
     }
-    const inHand = dart(), flying = dart(), lodged = [];
+    const axePoint = ([x, y]) => new T.Vector2(x * 2, DART_POINT_APEX - y * 3);
+    const axeShape = new T.Shape(AXE_BEVEL.map(axePoint));
+    axeShape.lineTo(16.8, 8.1);
+    axeShape.quadraticCurveTo(20.7, 8.1, 20.7, 11.4);
+    axeShape.lineTo(20.7, 23.7);
+    axeShape.quadraticCurveTo(20.7, 27.2, 16.8, 27.2);
+    axeShape.closePath();
+    const halfBlade = AXE_BLADE_THICKNESS / 2;
+    const axeBlade = new T.ExtrudeGeometry(axeShape, {
+      depth: AXE_BLADE_THICKNESS - 0.36, bevelEnabled: true, bevelSegments: 2, bevelSize: 0.23,
+      bevelThickness: 0.18, curveSegments: 5,
+    }).translate(0, 0, 0.18 - halfBlade);
+    const bevelVertices = [], bevelNormals = [];
+    const edge = AXE_EDGE.map(axePoint), shoulder = AXE_BEVEL.map(axePoint);
+    const bevelPoint = (points, index, z) => new T.Vector3(points[index].x, points[index].y, z);
+    const triangle = (a, b, c, normals) => {
+      bevelVertices.push(...a.toArray(), ...b.toArray(), ...c.toArray());
+      const face = new T.Vector3().subVectors(b, a).cross(new T.Vector3().subVectors(c, a)).normalize();
+      for (const normal of normals ?? [face, face, face]) bevelNormals.push(...normal.toArray());
+    };
+    for (const side of [-1, 1]) {
+      const z = side * halfBlade;
+      const normals = edge.map((point, i) => {
+        const tangent = new T.Vector3().subVectors(
+          bevelPoint(edge, Math.min(i + 1, edge.length - 1), 0),
+          bevelPoint(edge, Math.max(i - 1, 0), 0));
+        const slope = new T.Vector3(shoulder[i].x - point.x, shoulder[i].y - point.y, z);
+        return tangent.cross(slope).multiplyScalar(side).normalize();
+      });
+      for (let i = 0; i < edge.length - 1; i++) {
+        const a = bevelPoint(edge, i, 0), b = bevelPoint(edge, i + 1, 0);
+        const c = bevelPoint(shoulder, i, z), d = bevelPoint(shoulder, i + 1, z);
+        if (side > 0) {
+          triangle(a, b, c, [normals[i], normals[i + 1], normals[i]]);
+          triangle(b, d, c, [normals[i + 1], normals[i + 1], normals[i]]);
+        } else {
+          triangle(a, c, b, [normals[i], normals[i], normals[i + 1]]);
+          triangle(b, c, d, [normals[i + 1], normals[i], normals[i + 1]]);
+        }
+      }
+    }
+    for (const i of [0, edge.length - 1]) {
+      const a = bevelPoint(edge, i, 0), b = bevelPoint(shoulder, i, halfBlade), c = bevelPoint(shoulder, i, -halfBlade);
+      if (i === 0) triangle(a, c, b);
+      else triangle(a, b, c);
+    }
+    const axeBevel = new T.BufferGeometry();
+    axeBevel.setAttribute('position', new T.Float32BufferAttribute(bevelVertices, 3));
+    axeBevel.setAttribute('normal', new T.Float32BufferAttribute(bevelNormals, 3));
+    let axeReflection;
+    function makeAxeReflection() {
+      const image = document.createElement('canvas');
+      image.width = 128; image.height = 64;
+      const ink = image.getContext('2d');
+      if (!ink) return;
+      ink.fillStyle = '#414953';
+      ink.fillRect(0, 0, 128, 64);
+      for (const [x, y, radius, color] of [[32, 22, 23, '#fff4e1'], [94, 28, 16, '#bacfea']]) {
+        const light = ink.createRadialGradient(x, y, 1, x, y, radius);
+        light.addColorStop(0, color);
+        light.addColorStop(1, 'transparent');
+        ink.fillStyle = light;
+        ink.fillRect(x - radius, y - radius, 2 * radius, 2 * radius);
+      }
+      const source = new T.CanvasTexture(image);
+      source.encoding = T.sRGBEncoding;
+      const pmrem = new T.PMREMGenerator(renderer);
+      axeReflection = pmrem.fromEquirectangular(source);
+      pmrem.dispose();
+      source.dispose();
+      axeSteel.envMap = axeEdgeSteel.envMap = axeReflection.texture;
+    }
+
+    function loadAxeMaterial(mat, url, useBump = false) {
+      new T.TextureLoader().load(url, (map) => {
+        if (disposed) {
+          map.dispose();
+          return;
+        }
+        map.encoding = T.sRGBEncoding;
+        map.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+        const materials = mat === axeWood ? [mat, ...axeHandleMaterials] : [mat];
+        for (const material of materials) {
+          material.map = map;
+          if (useBump) material.bumpMap = map;
+          material.needsUpdate = true;
+        }
+        refreshAxeArt();
+      });
+    }
+
+    // The extrusion uses world units for UVs. Project the material across the actual local bounds.
+    function mapAxeMaterial(geometry, depthWeight = 0) {
+      geometry.computeBoundingBox();
+      const { min, max } = geometry.boundingBox;
+      const position = geometry.attributes.position;
+      const left = min.x + min.z * depthWeight;
+      const width = max.x + max.z * depthWeight - left;
+      const uv = new Float32Array(position.count * 2);
+      for (let i = 0; i < position.count; i++) {
+        uv[i * 2] = (position.getX(i) + position.getZ(i) * depthWeight - left) / width;
+        uv[i * 2 + 1] = (position.getY(i) - min.y) / (max.y - min.y);
+      }
+      geometry.setAttribute('uv', new T.BufferAttribute(uv, 2));
+    }
+    const axeSteel = material(0x89949d, { metalness: 0.68, roughness: 0.55, bumpScale: 0.045, envMapIntensity: 1.2 });
+    const axeEdgeSteel = material(0xe8edf0, { metalness: 0.72, roughness: 0.28, envMapIntensity: 1.65 });
+    const handleRings = [
+      // Height, center X, width radius, and thickness radius.
+      [29.7, 10.2, 3.1, 1.95], [21, 10.1, 3.25, 2.1], [14, 9.8, 2.7, 1.85],
+      [5, 10, 2.5, 1.75], [-7, 10.7, 2.55, 1.85], [-19, 12.1, 2.65, 2],
+      [-31, 14.4, 2.85, 2.15], [-40, 15.3, 3.45, 2.45], [-46, 14.4, 3.65, 2.5], [-48, 14.1, 2.8, 2.05],
+    ];
+    const radialSegments = 16, handleVertices = [], handleUVs = [], handleIndices = [];
+    for (const [ring, [y, x, width, thickness]] of handleRings.entries()) {
+      for (let i = 0; i <= radialSegments; i++) {
+        const angle = i * Math.PI * 2 / radialSegments;
+        handleVertices.push(x + Math.cos(angle) * width, y, Math.sin(angle) * thickness);
+        handleUVs.push(i / radialSegments, (y + 48) / 73);
+        if (ring && i) {
+          const last = ring * (radialSegments + 1) + i, above = last - radialSegments - 1;
+          handleIndices.push(above - 1, above, last - 1, above, last, last - 1);
+        }
+      }
+    }
+    const axeHandle = new T.BufferGeometry();
+    axeHandle.setAttribute('position', new T.Float32BufferAttribute(handleVertices, 3));
+    axeHandle.setAttribute('uv', new T.Float32BufferAttribute(handleUVs, 2));
+    axeHandle.setIndex(handleIndices);
+    axeHandle.computeVertexNormals();
+    const handleCap = ([y, x, width, thickness], top) => new T.CircleGeometry(1, radialSegments)
+      .scale(width, thickness, 1).rotateX(top ? -Math.PI / 2 : Math.PI / 2).translate(x, y, 0);
+    const axeButt = handleCap(handleRings.at(-1), false);
+    const axeEye = handleCap(handleRings[0], true);
+    const axeWedge = new T.BoxGeometry(4.1, 0.18, 0.5).rotateY(-0.2);
+    const axeWedgeWood = material(0x58321f, { roughness: 0.82 });
+    const axeEndGrain = material(0xc48d55, { roughness: 0.85 });
+    function paintAxeEndGrain() {
+      const image = document.createElement('canvas');
+      image.width = image.height = 32;
+      const ink = image.getContext('2d');
+      if (!ink) return;
+      ink.fillStyle = '#eac593';
+      ink.fillRect(0, 0, 32, 32);
+      ink.strokeStyle = '#b57f53';
+      ink.lineWidth = 0.8;
+      for (let radius = 4; radius <= 28; radius += 4) {
+        ink.beginPath();
+        ink.ellipse(10, 18, radius, radius * 0.8, -0.3, 0, Math.PI * 2);
+        ink.stroke();
+      }
+      axeEndGrain.map = new T.CanvasTexture(image);
+      axeEndGrain.map.encoding = T.sRGBEncoding;
+      axeEndGrain.needsUpdate = true;
+    }
+    const axeHandleMaterials = new Set();
+    const axeWood = material(defaultAxeHandleColor, { roughness: 0.59, bumpScale: 0.06 });
+    mapAxeMaterial(axeBlade, 0.5);
+    mapAxeMaterial(axeBevel);
+    let axe, axeLodgedAngle, inHand, flying;
+    const lodged = [];
     const tip = new T.Vector3(), direction = new T.Vector3();
     const dartAxis = new T.Vector3(0, 1, 0);
     const aimingOrientation = new T.Quaternion().setFromUnitVectors(dartAxis,
@@ -1280,7 +1913,7 @@ UI.archery = (() => {
       return out.setFromUnitVectors(dartAxis, sight.normalize());
     }
     const travelOrientation = new T.Quaternion();
-    const planeScale = (depth) => 98 * (1 - depth / cameraDistance);
+    const planeScale = boardPlaneScale;
     function releasePoint(hand) {
       const depth = DART_HAND_DEPTH + 9 * hand.lift;
       tip.set(0, DART_TIP * hand.scale, 0).applyQuaternion(aimingOrientation);
@@ -1301,9 +1934,14 @@ UI.archery = (() => {
     }
     const cabinetCorner = new T.Vector3(), cameraRotation = new T.Quaternion();
     const fitLimit = 0.97 * Math.tan(fov * Math.PI / 360);
-    let size = 0, disposed = false, lastFrame;
+    let size = 0, disposed = false, lastFrame, latestDraw;
+    function refreshAxeArt() {
+      lastFrame = null;
+      if (latestDraw) draw(...latestDraw);
+    }
     function draw(pins, hand, flight, flyingId, impact, past, ownerColor, angle, pinFans) {
       if (disposed) return;
+      if (axe) latestDraw = [pins, hand, flight, flyingId, impact, past, ownerColor, angle, pinFans];
       pins = pins.filter((pin) => pin.number && pin.id !== flyingId);
       paintHoles(past);
       const w = surface.clientWidth;
@@ -1316,7 +1954,7 @@ UI.archery = (() => {
       const handColor = hand ? ownerColor(hand.owner) : null;
       const flightColor = flight ? ownerColor(flight.owner) : null;
       const pinColors = pins.map((pin) => ownerColor(pin.o));
-      const signature = [pins.map((p) => p.id).join(), ...pinColors, handColor, flightColor, hand?.x, hand?.y, hand?.angle, hand?.lift, hand?.aiming, flight?.u, flight?.tumble, impact?.angle, angle.pitch, angle.yaw].join('|');
+      const signature = [pins.map((p) => p.id).join(), ...pinColors, handColor, flightColor, hand?.x, hand?.y, hand?.angle, hand?.orientation?.join(','), hand?.lift, hand?.aiming, flight?.u, flight?.tumble, flight?.rotation, flight?.orientation?.join(','), impact?.angle, angle.pitch, angle.yaw].join('|');
       if (signature === lastFrame) return;
       lastFrame = signature;
       const pitch = angle.pitch * -Math.PI / 180 || 0;
@@ -1352,21 +1990,27 @@ UI.archery = (() => {
       }
       inHand.visible = !!hand;
       if (hand) {
-        inHand.userData.finMaterial.color.set(handColor ?? defaultFinColor);
+        inHand.userData.finMaterial.color.set(handColor ?? (axe ? defaultAxeHandleColor : defaultFinColor));
         const depth = DART_HAND_DEPTH + 9 * hand.lift;
         const k = planeScale(depth);
         inHand.position.set(hand.x * k, hand.y * k, depth);
-        if (hand.aiming) inHand.quaternion.copy(aimingOrientation);
+        if (axe) {
+          inHand.quaternion.set(...hand.orientation);
+          placeTip(inHand, hand.x, hand.y, depth, hand.scale);
+        } else if (hand.aiming) inHand.quaternion.copy(aimingOrientation);
         else inHand.rotation.set(-0.94, -0.30, -hand.angle);
         inHand.scale.set(hand.scale, hand.scale * DART_LENGTH, hand.scale);
         dartLight.position.copy(inHand.position);
         dartLight.position.addScaledVector(dartAxis, 20);
         dartLight.position.z += 31;
-        dartLight.intensity = 1.35;
+        dartLight.intensity = axe ? 0.30 : 1.35;
       }
       flying.visible = !!flight;
-      if (flight) flying.userData.finMaterial.color.set(flightColor ?? defaultFinColor);
-      if (flight?.tumble != null) {
+      if (flight) flying.userData.finMaterial.color.set(flightColor ?? (axe ? defaultAxeHandleColor : defaultFinColor));
+      if (flight && axe) {
+        flying.quaternion.set(...(flight.orientation ?? axeTumbleOrientation(flight.rotation)));
+        placeTip(flying, flight.x, flight.y, flight.depth, flight.scale);
+      } else if (flight?.tumble != null) {
         flying.quaternion.copy(lodgedPose(flight.x, flight.landingY, flight.id, 0, landedOrientation));
         flying.rotateX(flight.tumble * 2.1);
         flying.rotateZ(flight.tumble * 1.1);
@@ -1395,25 +2039,31 @@ UI.archery = (() => {
         const p = pins[i];
         obj.visible = !!p;
         if (!obj.visible) return;
-        obj.userData.finMaterial.color.set(pinColors[i] ?? defaultFinColor);
+        obj.userData.finMaterial.color.set(pinColors[i] ?? (axe ? defaultAxeHandleColor : defaultFinColor));
         const quiver = p.id === impact?.id ? impact.angle : 0;
-        obj.quaternion.copy(lodgedPose(p.x, p.y, p.id, pinFans.get(p.id) ?? 0, landedOrientation));
-        if (quiver) obj.quaternion.multiply(wobble.setFromEuler(wobbleEuler.set(quiver, 0, -quiver * 0.6)));
-        placeTip(obj, p.x, p.y, 0.45, DART_BOARD_SCALE);
+        if (axe) {
+          const pose = axeRestPose(p, axeLodgedAngle ?? AXE_LODGED_ANGLE, quiver * 180 / Math.PI);
+          obj.quaternion.set(...axeTumbleOrientation(pose.rotation));
+          placeTip(obj, pose.x, pose.y, pose.depth, pose.scale);
+        } else {
+          obj.quaternion.copy(lodgedPose(p.x, p.y, p.id, pinFans.get(p.id) ?? 0, landedOrientation));
+          if (quiver) obj.quaternion.multiply(wobble.setFromEuler(wobbleEuler.set(quiver, 0, -quiver * 0.6)));
+          placeTip(obj, p.x, p.y, 0.45, DART_BOARD_SCALE);
+        }
       });
       renderer.render(scene, camera);
       if (!surface.classList.contains('ar-darts-is3d')) {
         surface.classList.add('ar-darts-is3d');
         onRendererChange();
       }
-      surface.classList.toggle('ar-darts-3d-numbers', numbers.size > 0);
+      surface.classList.toggle('ar-darts-3d-numbers', axe || numbers.size > 0);
     }
 
     api = { paint, draw, releasePoint, setNumberTarget, dispose() {
       if (disposed) return;
       disposed = true;
       surface.classList.remove('ar-darts-is3d', 'ar-darts-3d-numbers');
-      const resources = new Set([grain, wood, holes, normalNumber, goldNumber]);
+      const resources = new Set([grain, wood, holes, normalNumber, goldNumber, axeWood]);
       scene.traverse(({ material, geometry }) => {
         const materials = Array.isArray(material) ? material : [material];
         for (const mat of materials) {
@@ -1424,6 +2074,7 @@ UI.archery = (() => {
         }
         if (geometry) resources.add(geometry);
       });
+      axeReflection?.dispose();
       resources.forEach((resource) => resource?.dispose());
       lamp.shadow.map?.dispose();
       renderer.dispose(); canvas.remove();
@@ -1438,10 +2089,16 @@ UI.archery = (() => {
     const zoom = { s: 1, x: 0, y: 0 };
     const angle = { pitch: 0, yaw: 0 };
     let adjust, aimX, aimY, release, aimStatus, hintAdvice, touchListeners, aimTimer;
-    let inspecting, inspectButton, tabletopResize;
+    let inspecting, inspectButton, tabletopResize, drag;
     let hintOn = false;
     let past = [], pastIds = new Set();
     let landingId, landingAt;
+    let axeDebug, axeReadout, axeLive, axeCopyFlight, axeSliders;
+    let axeTraceBody, axeTraceSummary, axeContactSummary, axeContactMarker, axeSwipeSummary, axeTraceCopy, axeTraceText, axeLogStatus;
+    const showAxeDiagnostics = new URLSearchParams(window.location.search).get('axeDebug') === '1';
+    let callCorner = false, cornerButton;
+    let releasedSwipe, axePlacement, axeDrag, axeGrab, resetAxePosition;
+    const axeStart = { ...AXE_START_POSE };
     let view, state, ctx, frame, readyAt, pending, visit, shown, flight, falling, swipe, keys, releasedFrom, waitingHand, impact;
     const xAt = (x) => CENTER + SCALE * x, yAt = (y) => CENTER - SCALE * y;
     const point = (a, r) => [CENTER + Math.sin(a) * r, CENTER - Math.cos(a) * r];
@@ -1449,13 +2106,17 @@ UI.archery = (() => {
     const player = (i) => ctx.player(view.seats[i]);
     const ownerColor = (i) => i == null ? undefined : player(i)?.color;
     const clockLabel = (number) => number == null ? 'Done' : number === 25 ? 'Bull' : String(number);
-    const origin = () => { const [x, y] = view.dartOrigin || [1.04, -0.55]; return { x, y }; };
+    const defaultOrigin = () => {
+      const [x, y] = view.dartOrigin || [1.04, -0.55];
+      return { x, y };
+    };
+    const origin = () => (view.axeRings && axePlacement) || defaultOrigin();
     const mine = () => view && state.phase === 'playing' && ctx.myTurn && !state.paused;
     const ready = () => mine() && !view.roundRecap && !pending && !waitingHand && !flight && performance.now() >= readyAt;
     const reduce = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     const visibleImpact = (x, y) => xAt(x) >= 5 && xAt(x) <= 245 && yAt(y) >= 5 && yAt(y) <= 245;
     const transform = (x, y) => `translate(${xAt(x)} ${yAt(y)})`;
-    const lodgedAngle = -34;
+    const lodgedAngle = DART_LODGED_ANGLE;
     const pinFans = new Map();
     // Local origin is the steel tip. The flight extends below it in SVG coordinates.
     const dartSilhouette = `<path class="ar-darts-tip" d="M0 0L.23 1.6L.34 5.1H-.34L-.23 1.6Z"/>
@@ -1473,6 +2134,48 @@ UI.archery = (() => {
     }
 
     function paintBoard() {
+      if (view.axeRings) {
+        const materialPattern = (id, href, x, y, width, height) => `<pattern id="${id}" x="${x}" y="${y}"
+          width="${width}" height="${height}" patternUnits="userSpaceOnUse">
+          <image width="${width}" height="${height}" href="${href}" preserveAspectRatio="none"/>
+          </pattern>`;
+        geometry.innerHTML = `<defs>
+          <clipPath id="ar-axe-face"><circle cx="125" cy="125" r="${SCALE}"/></clipPath>
+          <linearGradient id="ar-axe-rim" x2="20%" y2="100%">
+            <stop stop-color="#bc8b59"/><stop offset=".35" stop-color="#795034"/><stop offset="1" stop-color="#382419"/>
+          </linearGradient>
+          <linearGradient id="ar-axe-wood-light">
+            <stop stop-color="#261911"/><stop offset=".42" stop-color="#fff6e8"/><stop offset="1" stop-color="#34241a"/>
+          </linearGradient>
+          <linearGradient id="ar-axe-steel-light" x2="30%" y2="100%">
+            <stop stop-color="#788891"/><stop offset=".46" stop-color="#404a52"/><stop offset="1" stop-color="#20282f"/>
+          </linearGradient>
+          <linearGradient id="ar-axe-bevel-light" x2="40%" y2="100%">
+            <stop stop-color="#f4f7f9"/><stop offset=".52" stop-color="#adbcc5"/><stop offset="1" stop-color="#687d8c"/>
+          </linearGradient>
+          ${materialPattern('ar-axe-forged', AXE_ART.steel, -6, 0, 18, 13)}
+          ${materialPattern('ar-axe-ground', AXE_ART.bevel, -6, 0, 8, 13)}
+          ${materialPattern('ar-axe-hickory', AXE_ART.handle, 3, 4, 7, 23)}
+          </defs>`
+          + circle(101, 'url(#ar-axe-rim)')
+          + circle(SCALE, '#cfa275')
+          + `<g clip-path="url(#ar-axe-face)"><image href="${AXE_ART.board}" x="${125 - SCALE}" y="${125 - SCALE}"
+            width="${2 * SCALE}" height="${2 * SCALE}"/></g>`
+          + [...view.axeRings].reverse().map(([radius, points], index, rings) => {
+            const outer = radius * SCALE;
+            const inner = (rings[index + 1]?.[0] ?? 0) * SCALE;
+            const mid = (outer + inner) / 2;
+            return `<circle cx="125" cy="125" r="${mid}" fill="none" stroke="${ringColor(points)}"
+              stroke-opacity=".5" stroke-width="${outer - inner}"/>
+              <circle cx="125" cy="125" r="${outer}" fill="none" stroke="#42291b99" stroke-width=".65"/>`;
+          }).join('')
+          + view.axeRings.map(([radius, points]) =>
+            `<text x="125" y="${125 - axeLabelRadius(radius, points) * SCALE}">${points}</text>`).join('')
+          + (view.axeCorners ?? []).map(([x, y, r]) =>
+            `<circle cx="${xAt(x)}" cy="${yAt(y)}" r="${r * SCALE}" fill="#30653f"/>
+              <text x="${xAt(x)}" y="${yAt(y)}">7</text>`).join('');
+        return;
+      }
       const [bull, outer, t0, t1, d0, edge] = view.radii.map((r) => r * SCALE);
       const rings = [bull, outer, t0, t1, d0, edge]
         .map((r) => `<circle cx="125" cy="125" r="${r}"/>`).join('');
@@ -1486,13 +2189,16 @@ UI.archery = (() => {
         </linearGradient><linearGradient id="ar-darts-sisal-light" x2="68%" y2="100%">
         <stop stop-color="#fff3d9" stop-opacity=".09"/><stop offset=".48" stop-color="#fff3d9" stop-opacity="0"/>
         <stop offset="1" stop-color="#20150d" stop-opacity=".13"/>
-        </linearGradient></defs>`
+        </linearGradient><pattern id="ar-darts-fibers" width="5" height="4" patternUnits="userSpaceOnUse">
+          <path d="M.5 1l.8 .4m1.4 1.8 1 .3" stroke="#fff4d7" stroke-opacity=".24" stroke-width=".34"/>
+          <path d="M2 .5l.3 .8m2.1 .4-.5 .9M.5 3l.5 .4" stroke="#170e09" stroke-opacity=".34" stroke-width=".38"/>
+        </pattern></defs>`
         + circle(119, '#161714') + circle(118.5, 'url(#ar-darts-rim-bevel)')
         + circle(117, DART_RIM) + circle(115, DART_NUMBER_BAND)
         + DART_FASTENERS.map((a) => {
           const x = 125 + 115.9 * Math.cos(a), y = 125 - 115.9 * Math.sin(a);
           return `<g transform="translate(${x} ${y}) rotate(${-a * 180 / Math.PI})">
-            <circle r="1.2" fill="${DART_WIRE}"/><path d="M-.75 0H.75" stroke="#211c19" stroke-width=".26"/>
+            <circle r="1.2" fill="${DART_BRASS}"/><path d="M-.75 0H.75" stroke="#211c19" stroke-width=".26"/>
             </g>`;
         }).join('')
         + '<g>' + view.numbers.map((_, i) => {
@@ -1502,7 +2208,7 @@ UI.archery = (() => {
           return `${sector(angle, outer, t0, sisal)}
             ${sector(angle, t0, t1, stripe)}${sector(angle, t1, d0, sisal)}${sector(angle, d0, edge, stripe)}`;
         }).join('') + '</g>' + circle(outer, DART_PALETTE.green) + circle(bull, DART_PALETTE.red)
-        + circle(edge, 'url(#ar-darts-sisal-light)')
+        + circle(edge, 'url(#ar-darts-fibers)') + circle(edge, 'url(#ar-darts-sisal-light)')
         + `<g fill="none" class="ar-darts-wires" style="--wire-base: ${DART_WIRE_BASE}; --wire-light: ${DART_WIRE}">${wirePath}${wirePath}</g>`
         + view.numbers.map((number, i) => {
           const [x, y] = point(i * STEP, DART_NUMBER_RADIUS);
@@ -1535,15 +2241,18 @@ UI.archery = (() => {
           </svg>
           <svg class="ar-darts-hitflash" viewBox="0 0 250 250" aria-hidden="true"></svg>
           <svg class="ar-darts-input" viewBox="0 0 250 250" tabindex="0" role="group"
-            aria-label="Dartboard. Drag the left half to inspect. Touch the right half to pick up a dart and swipe inward. With a keyboard, use arrows to aim, Shift and arrows for larger steps, Enter or Space to throw, and Escape to clear aim.">
+            aria-label="Dartboard. Activate Inspect to rotate the board. Touch the right half to pick up a dart and swipe inward. With a keyboard, use arrows to aim, Shift and arrows for larger steps, Enter or Space to throw, and Escape to clear aim.">
             <g class="ar-darts-board"></g><g class="ar-darts-holes"></g><g class="ar-darts-pins"></g>
+            <circle class="ar-darts-axe-contact-marker" r="3" hidden aria-hidden="true"/>
             <g class="ar-darts-grip" aria-hidden="true"><rect x="-25" y="-25" width="48" height="50" rx="14"/></g>
             <g class="ar-darts-held">
               <path class="ar-darts-direction" d="M-12 -8L0 -53L12 -8Z" hidden/>
               <g class="ar-darts-model" transform="scale(${DART_HELD_SCALE})"><g transform="translate(0 -19) scale(2.1 ${2.1 * DART_LENGTH})">${dartSilhouette}</g></g>
             </g>
+            <rect class="ar-darts-axe-grab" x="-22" y="-36" width="44" height="72" rx="8" hidden
+              role="group" aria-label="Axe starting position. Drag to move, or use arrow keys. Hold Shift for larger steps."></rect>
           </svg>
-        </div></div><div class="ar-darts-callout" aria-hidden="true" hidden></div></div>
+        </div><p class="ar-darts-axe-live" hidden></p></div><div class="ar-darts-callout" aria-hidden="true" hidden></div></div>
         <div class="ar-darts-footer">
           <p class="ar-darts-result" role="status"></p>
           <button type="button" class="ar-darts-swipe" aria-label="Swipe toward the board to throw, or press Enter to throw">Swipe to throw</button>
@@ -1554,6 +2263,41 @@ UI.archery = (() => {
           <label>Vertical aim <input class="ar-darts-aim-y" type="range" min="-100" max="100" value="0"></label>
           <button type="button" class="ar-darts-release">Release dart</button>
         </fieldset>
+        <div class="ar-darts-axe-placement" hidden>
+          <button type="button" class="ar-darts-axe-corner" aria-pressed="false" hidden>Call 7-point corner</button>
+          <button type="button" class="ar-darts-axe-reset-position" disabled>Reset position</button>
+        </div>
+        <details class="ar-darts-axe-debug" hidden>
+          <summary>Axe diagnostics</summary>
+          <p class="ar-darts-axe-readout"></p>
+          <p class="ar-darts-axe-pivot">${AXE_PIVOT_LABEL}</p>
+          <div class="ar-darts-axe-sliders">
+            ${Object.entries(AXE_START_POSE).map(([axis, value]) => `<label>
+              ${axis[0].toUpperCase() + axis.slice(1)}
+              <input aria-label="${axis[0].toUpperCase() + axis.slice(1)}" type="range" min="-180" max="180" step="1"
+                data-axis="${axis}" value="${value}">
+              <span>${value}°</span>
+            </label>`).join('')}
+          </div>
+          <button type="button" class="ar-darts-axe-reset">Reset pose</button>
+          <button type="button" class="ar-darts-axe-copy">Copy start coordinates</button>
+          <button type="button" class="ar-darts-axe-copy-flight" disabled>Copy flight coordinates</button>
+          <div class="ar-darts-axe-trace">
+            <p class="ar-darts-axe-trace-summary">Throw to record a flight trace.</p>
+            <p class="ar-darts-axe-contact-summary" hidden></p>
+            <p class="ar-darts-axe-swipe-summary" hidden></p>
+            <p class="ar-darts-axe-log-status" role="status"></p>
+            <div class="ar-darts-axe-trace-scroll" tabindex="0" aria-label="Axe flight trace">
+              <table aria-label="Axe flight trace" hidden>
+                <thead><tr>${AXE_TRACE_COLUMNS.map((column) => `<th scope="col">${column}</th>`).join('')}</tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <button type="button" class="ar-darts-axe-trace-copy" disabled>Copy flight trace</button>
+            <textarea class="ar-darts-axe-trace-text" aria-label="Flight trace text" readonly hidden></textarea>
+          </div>
+          <span class="ar-darts-axe-copy-status" role="status"></span>
+        </details>
         <p class="ar-darts-aim-status" role="status"></p>
         <p class="ar-darts-advice" role="status"></p>
         <div class="ar-darts-visit-card"></div>
@@ -1568,10 +2312,89 @@ UI.archery = (() => {
       result = find('result'); callout = find('callout'); hint = find('hint'); turn = find('turn'); dartIndicators = find('indicators');
       adjust = find('adjust'); aimX = find('aim-x'); aimY = find('aim-y');
       release = find('release'); aimStatus = find('aim-status'); hintAdvice = find('advice');
+      axePlacement = axeDrag = null;
+      axeGrab = find('axe-grab');
+      cornerButton = find('axe-corner');
+      callCorner = false;
+      cornerButton.addEventListener('click', () => {
+        if (!ready() || !view.canCallCorner || throwInProgress()) return;
+        callCorner = !callCorner;
+        updateCorner();
+        paintHint();
+        if (view.aimControl) announceAim(adjustPayload());
+      });
+      resetAxePosition = find('axe-reset-position');
+      resetAxePosition.addEventListener('click', () => {
+        if (throwInProgress()) return;
+        axePlacement = null;
+        keys = null;
+        resetAxePosition.disabled = true;
+        updateHint();
+        if (view.aimControl) announceAim(adjustPayload());
+      });
+      axeDebug = find('axe-debug'); axeReadout = find('axe-readout');
+      axeLive = find('axe-live'); axeCopyFlight = find('axe-copy-flight');
+      const trace = find('axe-trace');
+      axeTraceBody = trace.querySelector('tbody');
+      axeTraceSummary = find('axe-trace-summary'); axeTraceCopy = find('axe-trace-copy'); axeTraceText = find('axe-trace-text');
+      axeContactSummary = find('axe-contact-summary'); axeContactMarker = find('axe-contact-marker');
+      axeSwipeSummary = find('axe-swipe-summary'); axeLogStatus = find('axe-log-status');
+      axeSliders = [...axeDebug.querySelectorAll('input[data-axis]')];
+      for (const slider of axeSliders) {
+        const axis = slider.dataset.axis;
+        slider.value = axeStart[axis];
+        slider.nextElementSibling.textContent = `${slider.value}°`;
+        slider.addEventListener('input', () => {
+          axeStart[axis] = Number(slider.value);
+          slider.nextElementSibling.textContent = `${slider.value}°`;
+        });
+      }
+      const copyStatus = find('axe-copy-status');
+      const copyCoordinates = async (readout) => {
+        const textField = readout instanceof HTMLTextAreaElement;
+        const coordinates = textField ? readout.value : readout.textContent;
+        setText(copyStatus, '');
+        try {
+          await navigator.clipboard.writeText(coordinates);
+          setText(copyStatus, 'Copied.');
+        } catch {
+          const selection = window.getSelection();
+          if (textField) {
+            readout.hidden = false;
+            readout.select();
+          } else {
+            const range = document.createRange();
+            range.selectNodeContents(readout);
+            selection.removeAllRanges();
+            selection.addRange(range);
+          }
+          if (document.execCommand?.('copy')) {
+            selection.removeAllRanges();
+            if (textField) readout.hidden = true;
+            setText(copyStatus, 'Copied.');
+          } else {
+            setText(copyStatus, 'Coordinates selected. Copy them manually.');
+          }
+        }
+      };
+      find('axe-copy').addEventListener('click', () => {
+        setText(axeReadout, axeCoordinates(waitingHand || pose()));
+        copyCoordinates(axeReadout);
+      });
+      axeCopyFlight.addEventListener('click', () => copyCoordinates(axeLive));
+      axeTraceCopy.addEventListener('click', () => copyCoordinates(axeTraceText));
+      find('axe-reset').addEventListener('click', () => {
+        for (const slider of axeSliders) {
+          const axis = slider.dataset.axis;
+          axeStart[axis] = AXE_START_POSE[axis];
+          slider.value = axeStart[axis];
+          slider.nextElementSibling.textContent = `${slider.value}°`;
+        }
+      });
       hintOn = false;
       landingId = null;
       view = null; pending = false; flight = null; falling = null; shown = null; visit = null;
-      swipe = null; keys = null; releasedFrom = null; waitingHand = null; darts3d = null; impact = null;
+      swipe = null; keys = null; releasedFrom = null; releasedSwipe = null; waitingHand = null; darts3d = null; impact = null;
       inspectButton = find('inspect');
       resetView();
       tabletopResize = window.ResizeObserver ? new ResizeObserver(applyView) : null;
@@ -1607,6 +2430,7 @@ UI.archery = (() => {
         }
         if (e.pointerType !== 'touch') return;
         contacts.add(e.pointerId);
+        if (contacts.size > 1) axeDrag = null;
         if (contacts.size > 1 && (swipe || adjustingPointer !== null || adjust.contains(e.target))) {
           interrupted = true;
           cancelThrow('Aim cleared. Try again.');
@@ -1652,10 +2476,38 @@ UI.archery = (() => {
         submit(dx, dy, vx, vy);
       });
       const touches = new Map();
-      let pinch = null, drag = null;
+      let pinch = null;
+      const moveAxe = (e) => {
+        const drag = axeDrag;
+        const x = (e.clientX - drag.clientX) / drag.scale;
+        const y = (drag.clientY - e.clientY) / drag.scale;
+        const last = drag.samples.at(-1);
+        if (Math.hypot(x - last.x, y - last.y) * drag.scale >= 1) {
+          drag.samples.push({ x, y, time: e.timeStamp });
+          drag.samples = drag.samples.filter((sample) => e.timeStamp - sample.time <= AXE_FLICK_WINDOW_MS);
+        }
+        drag.flick = releaseFlick(drag, e.timeStamp);
+        drag.cueUntil = performance.now() + AXE_FLICK_PAUSE_MS;
+        if (drag.position || Math.hypot(x, y) * drag.scale >= 4) {
+          drag.position = placedOrigin(drag.x + x, drag.y + y);
+        }
+      };
       stage.addEventListener('pointerdown', (e) => {
-        if (e.button !== 0 || !view) return;
+        if (e.button !== 0 || !view || axeDrag) return;
         touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (view.axeRings && ready() && !inspecting && !swipe && board.contains(e.target) && touches.size === 1 && contacts.size <= 1) {
+          const scale = board.getBoundingClientRect().width * SCALE / WIDTH;
+          if (!scale) return;
+          // Each drag starts from the displayed axe, even when the pointer starts elsewhere.
+          const { x, y } = pose();
+          axeDrag = {
+            id: e.pointerId, x, y, scale, clientX: e.clientX, clientY: e.clientY,
+            samples: [{ x: 0, y: 0, time: e.timeStamp }],
+          };
+          stage.setPointerCapture?.(e.pointerId);
+          e.preventDefault();
+          return;
+        }
         if (touches.size === 2) {
           if (swipe?.id !== e.pointerId && touches.has(swipe?.id)) swipe = null;
           const [a, b] = [...touches.values()];
@@ -1673,16 +2525,20 @@ UI.archery = (() => {
           const onBoard = board.contains(e.target);
           const bounds = board.getBoundingClientRect();
           const onGrabSide = e.clientX >= bounds.left + bounds.width / 2;
-          if (onBoard && onGrabSide && !inspecting && ready() && contacts.size <= 1) {
+          if (onBoard && onGrabSide && !view.axeRings && !inspecting && ready() && contacts.size <= 1) {
             pickUp(e);
             return;
           }
-          if (throwInProgress()) return;
+          if (!inspecting || throwInProgress()) return;
           drag = { id: e.pointerId, x: e.clientX, y: e.clientY, ...angle, onBoard, moved: false };
           stage.setPointerCapture?.(e.pointerId);
         }
       });
       stage.addEventListener('pointermove', (e) => {
+        if (axeDrag?.id === e.pointerId) {
+          if (ready() && contacts.size <= 1) moveAxe(e);
+          return;
+        }
         if (!touches.has(e.pointerId)) return;
         touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
         if (throwInProgress()) return;
@@ -1693,11 +2549,10 @@ UI.archery = (() => {
           zoom.x = (a.x + b.x) / 2 - pinch.cx - pinch.x * zoom.s;
           zoom.y = (a.y + b.y) / 2 - pinch.cy - pinch.y * zoom.s;
           applyView();
-        } else if (drag?.id === e.pointerId) {
+        } else if (inspecting && drag?.id === e.pointerId) {
           const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
           if (!drag.moved && Math.hypot(dx, dy) < 8) return;
           drag.moved = true;
-          inspecting = true;
           keys = null;
           angle.pitch = clamp(drag.pitch - dy * 0.35, 65);
           angle.yaw = clamp(drag.yaw + dx * 0.35, 75);
@@ -1705,6 +2560,20 @@ UI.archery = (() => {
         }
       });
       const lift = (e) => {
+        if (axeDrag?.id === e.pointerId) {
+          const released = e.type === 'pointerup' && ready() && contacts.size === 0;
+          if (released) moveAxe(e);
+          const { flick, position } = axeDrag;
+          axeDrag = null;
+          if (released && flick) {
+            setAxePlacement(flick.origin);
+            submit(flick.dx, flick.dy, flick.vx, flick.vy, pose(), null, {
+              input: 'board flick', releaseWindowMs: Math.round(flick.duration),
+            });
+          } else if (released && position) {
+            setAxePlacement(position);
+          }
+        }
         touches.delete(e.pointerId);
         if (touches.size < 2) pinch = null;
         if (drag?.id !== e.pointerId) return;
@@ -1719,13 +2588,17 @@ UI.archery = (() => {
       stage.addEventListener('lostpointercapture', lift);
       stage.addEventListener('dblclick', resetView);
       const pickUp = (e) => {
-        if (!ready() || swipe || e.button !== 0 || contacts.size > 1) return;
+        if (!ready() || axeDrag || swipe || e.button !== 0 || contacts.size > 1) return;
         resetView();
         const scale = board.getBoundingClientRect().width * SCALE / WIDTH;
         if (!scale) return;
         e.preventDefault();
         keys = null;
         swipe = { id: e.pointerId, scale, x: e.clientX, y: e.clientY, samples: [], dx: 0, dy: 0, pickedAt: performance.now() };
+        if (view.axeRings) swipe.capture = {
+          pointer: e.pointerType || 'mouse', start: e.timeStamp,
+          points: [], count: 0, path: 0, peak: 0, lastMovement: e.timeStamp,
+        };
         sample(e);
         playGrip();
         board.setPointerCapture?.(e.pointerId);
@@ -1735,7 +2608,8 @@ UI.archery = (() => {
         if (swipe?.id !== e.pointerId) return;
         sample(e);
         clearTimeout(aimTimer);
-        aimTimer = setTimeout(() => { if (swipe) announceAim(swipePayload()); }, 180);
+        if (view.axeRings) announceAim(swipePayload());
+        else aimTimer = setTimeout(() => { if (swipe) announceAim(swipePayload()); }, 180);
       });
       board.addEventListener('pointerup', (e) => {
         if (swipe?.id !== e.pointerId) return;
@@ -1743,18 +2617,19 @@ UI.archery = (() => {
         clearTimeout(aimTimer);
         const { dx, dy, vx, vy } = swipePayload();
         const hand = pose();
-        const from = darts3d?.releasePoint(hand) ?? {
+        const from = view.axeRings ? hand : darts3d?.releasePoint(hand) ?? {
           x: hand.x - 0.04,
           y: hand.y + 0.12,
           depth: DART_HAND_DEPTH + 9 * hand.lift - 18 * DART_LENGTH * hand.scale,
           scale: hand.scale,
         };
+        const swipeStats = swipe.capture && axeSwipeStats();
         swipe = null;
-        if (dx > -0.05 || Math.hypot(dx, dy) < 0.1) {
-          setText(aimStatus, 'Swipe inward to throw. Try again.');
+        if ((!axePlacement && dx > -0.05) || Math.hypot(dx, dy) < (view.axeRings ? 0.18 : 0.1)) {
+          setText(aimStatus, view.axeRings ? 'Make a longer swipe toward your target.' : 'Swipe inward to throw. Try again.');
           return;
         }
-        submit(dx, dy, vx, vy, from, hand);
+        submit(dx, dy, vx, vy, from, hand, swipeStats);
       });
       const cancelSwipe = (e) => {
         if (swipe?.id === e.pointerId) cancelThrow('Aim cleared. Try again.');
@@ -1768,15 +2643,24 @@ UI.archery = (() => {
       board.addEventListener('blur', clearKeys);
       swipeButton.addEventListener('blur', clearKeys);
       root.addEventListener('keydown', (e) => {
-        if ((e.target !== board && e.target !== swipeButton) || !ready() || swipe || contacts.size) return;
-        if (e.key === 'Escape') { cancelThrow('Aim cleared.'); resetView(); return; }
+        if (!ready() || axeDrag || swipe || contacts.size) return;
         const delta = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] }[e.key];
+        if (e.target === axeGrab) {
+          if (delta && !inspecting) {
+            e.preventDefault();
+            const start = pose(), step = e.shiftKey ? 0.20 : 0.02;
+            setAxePlacement(placedOrigin(start.x + step * delta[0], start.y + step * delta[1]));
+          }
+          return;
+        }
+        if (e.target !== board && e.target !== swipeButton) return;
+        if (e.key === 'Escape') { cancelThrow('Aim cleared.'); resetView(); return; }
         if (delta) {
           e.preventDefault();
           if (inspecting || zoom.s !== 1) resetView();
           keys ??= { dx: -origin().x, dy: -origin().y };
           const step = e.shiftKey ? 0.20 : 0.02;
-          keys.dx = Math.max(-2.5, Math.min(-0.05, keys.dx + step * delta[0]));
+          keys.dx = Math.max(-2.5, Math.min(axePlacement ? 2.5 : -0.05, keys.dx + step * delta[0]));
           keys.dy = clamp(keys.dy + step * delta[1], 1.5);
           announceAim(throwPayload(keys.dx, keys.dy, -view.swipePace, 0));
         }
@@ -1786,19 +2670,59 @@ UI.archery = (() => {
         }
       });
       const surface = tabletop;
-      window.GL3?.load().then(() => {
-        if (tabletop !== surface || !surface.isConnected) return;
-        darts3d = makeDarts3d(surface, applyView);
-        if (darts3d && view) {
-          darts3d.paint(view);
-          darts3d.setNumberTarget(view.nextNumbers?.[view.next]);
-        }
-      }).catch(() => {});
+      if (window.WebGLRenderingContext || window.WebGL2RenderingContext) {
+        window.GL3?.load().then(() => {
+          if (tabletop !== surface || !surface.isConnected) return;
+          darts3d = makeDarts3d(surface, applyView);
+          if (darts3d && view) {
+            darts3d.paint(view);
+            darts3d.setNumberTarget(view.nextNumbers?.[view.next]);
+          }
+        }).catch(() => {});
+      }
       frame = requestAnimationFrame(tick);
     }
 
+    function placedOrigin(x, y) {
+      const edge = CENTER / SCALE;
+      return { x: clamp(x, edge), y: clamp(y, edge), placed: true };
+    }
+
+    function releaseFlick(drag, time) {
+      const last = drag.samples.at(-1);
+      if (time - last.time > AXE_FLICK_PAUSE_MS) return null;
+      let path = 0, flick = null;
+      for (let i = drag.samples.length - 2; i >= 0; i--) {
+        const start = drag.samples[i], next = drag.samples[i + 1];
+        path += Math.hypot(next.x - start.x, next.y - start.y);
+        const dx = last.x - start.x, dy = last.y - start.y;
+        const distance = Math.hypot(dx, dy);
+        const duration = Math.max(32, last.time - start.time);
+        if (distance < AXE_FLICK_MIN_DISTANCE || distance * drag.scale < 14 || distance < 0.85 * path
+          || distance * 1000 / duration < AXE_FLICK_MIN_SPEED) continue;
+        const origin = placedOrigin(drag.x + start.x, drag.y + start.y);
+        flick = { origin, dx, dy, vx: dx * 1000 / duration, vy: dy * 1000 / duration, duration };
+      }
+      return flick;
+    }
+
+    function setAxePlacement(position) {
+      axePlacement = position;
+      keys = null;
+      resetAxePosition.disabled = false;
+      updateHint();
+    }
+
+    function updateCorner() {
+      cornerButton.hidden = !(mine() && view.canCallCorner);
+      cornerButton.disabled = !ready() || throwInProgress();
+      cornerButton.setAttribute('aria-pressed', String(callCorner));
+    }
+
     function paintHint() {
-      const hint = view?.hint;
+      const hint = callCorner
+        ? { x: view.axeCorners[1][0], y: view.axeCorners[1][1], label: '7-point corner', reason: 'Either green target scores.' }
+        : view?.hint;
       hintButton.setAttribute('aria-pressed', String(hintOn));
       setText(hintAdvice, hintOn && hint ? `Aim for ${hint.label}. ${hint.reason ?? ''}`.trim() : '');
       hintButton.textContent = hintOn && hint ? `💡 Aim: ${hint.label}` : '💡 Hint';
@@ -1809,7 +2733,7 @@ UI.archery = (() => {
     }
 
     function throwInProgress() {
-      return !!(swipe || waitingHand || pending || (flight && flight.shot.o === view.me));
+      return !!(axeDrag || swipe || waitingHand || pending || (flight && flight.shot.o === view.me));
     }
 
     function fitFlatTilt() {
@@ -1840,10 +2764,11 @@ UI.archery = (() => {
       stage.classList.toggle('ar-darts-inspecting', inspecting);
       inspectButton.setAttribute('aria-pressed', String(inspecting));
       inspectButton.textContent = inspecting ? 'Front view' : 'Inspect';
-      inspectButton.setAttribute('aria-label', inspecting ? 'Return to front view' : 'Inspect dartboard at an angle');
+      inspectButton.setAttribute('aria-label', inspecting ? 'Return to front view' : view?.axeRings ? 'Inspect axe target at an angle' : 'Inspect dartboard at an angle');
     }
 
     function resetView() {
+      drag = null;
       zoom.s = 1; zoom.x = 0; zoom.y = 0;
       angle.pitch = 0; angle.yaw = 0;
       inspecting = false;
@@ -1860,7 +2785,8 @@ UI.archery = (() => {
 
     function adjustPayload() {
       const { x, y } = origin();
-      return throwPayload(Math.min(-0.05, Number(aimX.value) / 100 - x), Number(aimY.value) / 100 - y, 0, 0);
+      const dx = Number(aimX.value) / 100 - x;
+      return throwPayload(axePlacement ? dx : Math.min(-0.05, dx), Number(aimY.value) / 100 - y, 0, 0);
     }
 
     function announceAim({ dx, dy, vx, vy }) {
@@ -1869,28 +2795,104 @@ UI.archery = (() => {
       const radius = Math.hypot(x, y);
       const wedge = Math.floor(Math.atan2(x, y) / (Math.PI / 10) + 0.5);
       const number = view.numbers[(wedge + 20) % 20];
-      const target = radius > 1 ? 'Off board' : radius <= inner ? 'Bull' : radius <= outer ? 'Outer bull'
+      const axeRing = view.axeRings?.find(([edge]) => radius <= edge);
+      const corner = view.axeCorners?.some(([cx, cy, r]) => Math.hypot(x - cx, y - cy) <= r);
+      const target = view.axeRings ? (callCorner ? (corner ? '7-point corner' : 'Aim for a green corner')
+        : corner ? 'Corner requires a call' : axeRing ? `${axeRing[1]}-point ring` : 'Off board') : radius > 1 ? 'Off board' : radius <= inner ? 'Bull' : radius <= outer ? 'Outer bull'
         : number == null ? 'Board' : `${radius >= doubleIn ? 'Double' : radius >= tripleIn && radius <= tripleOut ? 'Triple' : 'Single'} ${number}`;
       const spread = 2 * (view.spreadBase + view.spreadPerPace * Math.hypot(vx, vy));
-      setText(aimStatus, `${target}. Spread radius ${Math.round(spread * 100)}% of the board radius.`);
+      const blade = axeBladeFeedback(vx, vy, radius <= 1);
+      setText(aimStatus, `${target}. Spread radius ${Math.round(spread * 100)}% of the board radius.${blade ? ` ${blade}.` : ''}`);
+    }
+
+    function axeBladeFeedback(vx, vy, onBoard) {
+      const spin = axeSwipeSpin(vx, vy);
+      if (!spin) return '';
+      if (!onBoard) return 'Move aim onto the target';
+      if (spin.angle < -spin.limit) return 'Too little rotation · flick faster';
+      if (spin.angle > spin.limit) return 'Too much rotation · ease off';
+      return `Blade-first · ${Math.round(spin.angle)}° from ideal`;
+    }
+
+    function axeSwipeSpin(vx, vy) {
+      const limit = view.axeStickAngle ?? 30;
+      if (view.axeSpin) {
+        const { referenceSpeed, referenceRate, rateGain, airBaseMs, airMinMs, airMsPerSpeed } = view.axeSpin;
+        const drive = Math.hypot(vx, vy) || referenceSpeed;
+        const airMs = Math.round(Math.max(airMinMs, airBaseMs - drive * airMsPerSpeed));
+        const rate = referenceRate + rateGain * (drive - referenceSpeed);
+        return { limit, angle: rate * airMs / 1000 - (360 - (view.axeLodgedAngle ?? AXE_LODGED_ANGLE)) };
+      }
+      if (!view.axeStickSpeed) return null;
+      const [low, high] = view.axeStickSpeed;
+      const steady = (low + high) / 2;
+      const drive = Math.hypot(vx, vy) || steady;
+      return { limit, angle: limit * (drive - steady) / ((high - low) / 2) };
+    }
+
+    function swipeReleaseVelocity() {
+      const [first, next] = swipe.samples;
+      const last = swipe.samples.at(-1);
+      let { x, y, t } = first;
+      const cutoff = last.t - AXE_RELEASE_WINDOW_MS;
+      if (swipe.capture && next && t < cutoff) {
+        const weight = (cutoff - t) / (next.t - t);
+        x += (next.x - x) * weight;
+        y += (next.y - y) * weight;
+        t = cutoff;
+      }
+      const windowMs = Math.max(32, last.t - t);
+      return { vx: 1000 * (last.x - x) / windowMs, vy: 1000 * (last.y - y) / windowMs, windowMs };
     }
 
     function swipePayload() {
-      const first = swipe.samples[0], last = swipe.samples.at(-1);
-      const seconds = Math.max(0.032, (last.t - first.t) / 1000);
-      return throwPayload(swipe.dx, swipe.dy, (last.x - first.x) / seconds, (last.y - first.y) / seconds);
+      const { vx, vy } = swipeReleaseVelocity();
+      return throwPayload(swipe.dx, swipe.dy, swipe.capture && !vx && !vy ? -0.001 : vx, vy);
     }
 
     function sample(e) {
       const dx = (e.clientX - swipe.x) / swipe.scale, dy = (swipe.y - e.clientY) / swipe.scale;
+      const capture = swipe.capture;
+      if (capture) {
+        const last = capture.points.at(-1);
+        if (last) {
+          const step = Math.hypot(dx - last[1], dy - last[2]);
+          const seconds = Math.max(0.008, (e.timeStamp - capture.start - last[0]) / 1000);
+          if (step > 0) capture.lastMovement = e.timeStamp;
+          capture.path += step;
+          capture.peak = Math.max(capture.peak, step / seconds);
+        }
+        capture.points.push([e.timeStamp - capture.start, dx, dy]);
+        capture.count++;
+        if (capture.points.length > 64) capture.points.splice(1, 1);
+      }
       swipe.dx = dx; swipe.dy = dy;
       swipe.samples.push({ t: e.timeStamp, x: dx, y: dy });
-      // Use a short window so changing direction or slowing down before release affects the throw.
-      while (swipe.samples.length > 2 && e.timeStamp - swipe.samples[0].t > 105) swipe.samples.shift();
+      // Keep one axe sample before the cutoff to interpolate the start of the release window.
+      const cutoff = e.timeStamp - (capture ? AXE_RELEASE_WINDOW_MS : 105);
+      while (swipe.samples.length > 2 && swipe.samples[capture ? 1 : 0].t < cutoff) swipe.samples.shift();
     }
 
-    function submit(dx, dy, vx, vy, from = origin(), hand = null) {
-      if (!ready()) return;
+    function axeSwipeStats() {
+      const capture = swipe.capture;
+      const last = swipe.samples.at(-1);
+      const { vx, vy, windowMs } = swipeReleaseVelocity();
+      const round = (value) => Number(value.toFixed(3));
+      const durationMs = Math.round(last.t - capture.start);
+      return {
+        input: capture.pointer,
+        durationMs, pathLength: round(capture.path),
+        meanSpeed: round(1000 * capture.path / Math.max(1, durationMs)),
+        peakSpeed: round(capture.peak), sampleCount: capture.count,
+        releaseWindowMs: Math.round(windowMs), releaseFilterMs: AXE_RELEASE_WINDOW_MS,
+        rawReleaseVx: round(vx), rawReleaseVy: round(vy),
+        releasePauseMs: Math.round(last.t - capture.lastMovement),
+        samples: capture.points.map(([time, x, y]) => [Math.round(time), round(x), round(y)]),
+      };
+    }
+
+    function submit(dx, dy, vx, vy, from = origin(), hand = null, swipeStats = null) {
+      if (!ready() || axeDrag) return;
       resetView();
       const surface = tabletop;
       pending = true;
@@ -1902,24 +2904,98 @@ UI.archery = (() => {
       clearTimeout(aimTimer);
       setText(aimStatus, '');
       releasedFrom = from;
+      if (view.axeRings) releasedSwipe = {
+        input: vx || vy ? 'keyboard' : 'adjusted',
+        ...swipeStats, dx, dy, vx, vy, distance: Math.hypot(dx, dy), speed: Math.hypot(vx, vy),
+      };
       waitingHand = hand && { ...hand, owner: view.me, until: performance.now() + 1800 };
       playRelease(Math.hypot(vx, vy));
-      ctx.quiet(ctx.act('throw', throwPayload(dx, dy, vx, vy)).catch((error) => {
+      const payload = throwPayload(dx, dy, vx, vy);
+      if (callCorner) payload.axeCorner = true;
+      if (view.axeRings && axePlacement) payload.axeOrigin = [axePlacement.x, axePlacement.y];
+      ctx.quiet(ctx.act('throw', payload).catch((error) => {
         if (tabletop === surface) {
-          waitingHand = null; releasedFrom = null; paintLanding();
+          waitingHand = null; releasedFrom = null; releasedSwipe = null; paintLanding();
           setText(aimStatus, 'Throw failed. Try again.');
         }
         throw error;
       }).finally(() => { if (tabletop === surface) pending = false; }));
     }
 
+    function paintAxeTrace(shot, rows = [], stroke, contact) {
+      const summary = stroke ? [
+        stroke.input,
+        stroke.durationMs == null ? '' : `${stroke.durationMs} ms · ${stroke.sampleCount} samples`,
+        `ΔX ${stroke.dx.toFixed(2)} · ΔY ${stroke.dy.toFixed(2)}`,
+        `Release VX ${stroke.vx.toFixed(2)} · VY ${stroke.vy.toFixed(2)}`,
+        stroke.releaseWindowMs == null ? '' : `Speed measured over ${stroke.releaseWindowMs} ms`,
+        stroke.pathLength == null ? '' : `Path ${stroke.pathLength} · Mean ${stroke.meanSpeed} · Peak ${stroke.peakSpeed} · Release pause ${stroke.releasePauseMs} ms`,
+      ].filter(Boolean).join(' · ') : '';
+      axeSwipeSummary.hidden = !summary;
+      setText(axeSwipeSummary, summary ? `Swipe · ${summary}` : '');
+      const speed = rows.length && shot.axeSpinRate != null ? ` · ${Math.round(shot.axeSpinRate)}°/s` : '';
+      const result = rows.length ? `Flight trace · ${shot.label} · ${shot.value} points${speed}` : 'Throw to record a flight trace.';
+      setText(axeTraceSummary, result);
+      const boardPoint = contact?.boardPoint;
+      const contactDetails = boardPoint ? `Contact · edge ${contact.edge.index + 1}${contact.edge.midpoint ? ' midpoint' : ''} · Blade ${contact.edge.point.map((axis) => axis.toFixed(2)).join(', ')} · X ${boardPoint.x.toFixed(3)} · Y ${boardPoint.y.toFixed(3)} · Z ${boardPoint.z.toFixed(3)} · ${contact.timeMs} ms · Pitch ${contact.pitch.toFixed(1)}° · Heading ${contact.heading}° · Clearance ${contact.clearance.toFixed(3)}`
+        : contact ? 'Contact · shot passed the board plane' : '';
+      const shadow = contact?.shadow;
+      const prediction = contact ? (shadow
+        ? `Collision estimate · ${shadow.feature} · ${shadow.timeMs} ms · Approach ${shadow.approachSpeed.toFixed(2)} radii/s · Pitch error ${shadow.angleError.toFixed(1)}° · ${contact.predictedResult}`
+        : 'Collision estimate · no target contact') : '';
+      axeContactSummary.hidden = !contactDetails;
+      setText(axeContactSummary, [contactDetails, prediction].filter(Boolean).join('\n'));
+
+      axeTraceBody.replaceChildren(...rows.map((row) => {
+        const tr = document.createElement('tr');
+        for (const value of row) tr.insertCell().textContent = value;
+        return tr;
+      }));
+      axeTraceBody.closest('table').hidden = !rows.length;
+      axeTraceBody.closest('div').hidden = !rows.length;
+      axeTraceCopy.disabled = !rows.length;
+      axeTraceText.hidden = true;
+      axeTraceText.value = rows.length ? [result, ...(summary ? [`Swipe · ${summary}`] : []), AXE_TRACE_AXES, AXE_PIVOT_LABEL, contactDetails, prediction, AXE_TRACE_COLUMNS.join('\t'),
+        ...rows.map((row) => row.join('\t'))].join('\n') : '';
+    }
+
+    function axePosition({ x, y, depth }) {
+      return `X ${x.toFixed(2)} · Y ${y.toFixed(2)} · Z ${(depth / SCALE).toFixed(2)}`;
+    }
+
+    function axeCoordinates(hand) {
+      return `${axePosition({ ...hand, depth: DART_HAND_DEPTH + 9 * hand.lift })} · Pitch ${axeStart.pitch}° · Roll ${axeStart.roll}° · Yaw ${axeStart.yaw}°`;
+    }
+
     function pose(now = performance.now()) {
-      const start = origin(), dx = swipe?.dx ?? 0, dy = swipe?.dy ?? 0;
+      const flick = axeDrag && now <= axeDrag.cueUntil ? axeDrag.flick : null;
+      const start = flick?.origin ?? axeDrag?.position ?? origin(), dx = swipe?.dx ?? 0, dy = swipe?.dy ?? 0;
       const lift = swipe ? 1 - (1 - (reduce() ? 1 : c01((now - swipe.pickedAt) / 160))) ** 3 : 0;
       const x = start.x + (0.56 - start.x) * lift + dx * (1 - 0.18 * lift);
       const y = start.y + (-0.18 - start.y) * lift + dy * (1 - 0.18 * lift);
       const angle = keys ? Math.atan2(keys.dx, keys.dy) : Math.atan2(-start.x, -start.y);
       const scale = DART_HELD_SCALE + (DART_AIM_SCALE - DART_HELD_SCALE) * lift;
+      if (view.axeRings) {
+        let orientation = axeStartOrientation(axeStart);
+        const forward = c01(start.placed ? Math.hypot(dx, dy) : -dx);
+        if (swipe) {
+          const { vx, vy } = swipePayload();
+          const drive = c01(Math.hypot(vx, vy) / 6);
+          orientation = pitchAxe(orientation, -95 * forward * drive * lift);
+        }
+        if (start.placed) {
+          const edge = CENTER / SCALE;
+          return { x: clamp(start.x + clamp(dx * 0.28, 0.24), edge),
+            y: clamp(start.y + clamp(dy * 0.35, 0.30), edge), placed: true,
+            angle: 0, orientation, lift, scale: AXE_SCALE, aiming: !!swipe, owner: view.next };
+        }
+        // Follow the drag near the pickup, then ease into the edge of the throwing area.
+        const carryX = 0.28 * (1 - Math.exp(-2.7 * forward));
+        const carryY = clamp(dy * 0.55, 0.30);
+        return { x: clamp(start.x, 0.86) - carryX + 0.08 * c01(2 * dx),
+          y: clamp(start.y + 0.22 * lift + carryY, 0.68),
+          angle: 0, orientation, lift, scale: AXE_SCALE, aiming: !!swipe, owner: view.next };
+      }
       return { x: clamp(x, 1.2), y: clamp(y, 1.1), angle, lift, scale, aiming: !!swipe, owner: view.next };
     }
 
@@ -1938,7 +3014,20 @@ UI.archery = (() => {
     }
 
     function playLanding(shot) {
+      const axe = !!view.axeRings;
+      if (axe && !shot.number && !shot.axeBounce) return;
       window.Snd?.play((t, K) => {
+        if (axe) {
+          const dst = K.at({ room: 'room', send: 0.27, pan: clamp(shot.x * 0.65, 0.9), vol: 0.65 });
+          if (shot.number) {
+            K.burst(dst, t, { type: 'lowpass', f: 1050, vol: 0.45, tau: 0.027, buf: 'brown' });
+            K.mode(dst, t, 144, 0.17, 0.064);
+          } else {
+            K.burst(dst, t, { type: 'bandpass', f: 1950, q: 2, vol: 0.26, tau: 0.015 });
+            K.mode(dst, t, 310, 0.12, 0.05);
+          }
+          return;
+        }
         const hit = !!shot.number;
         const dst = K.at({ room: 'room', send: 0.35, pan: clamp(shot.x * 0.65, 0.9), vol: 0.65 });
         K.burst(dst, t, { type: 'lowpass', f: hit ? 1550 : 560, vol: 0.28, tau: 0.016, buf: 'brown' });
@@ -1957,9 +3046,19 @@ UI.archery = (() => {
       hitFlash.innerHTML = '';
       const [bull, outer, t0, t1, d0, edge] = view.radii.map((r) => r * SCALE);
       const r = Math.hypot(shot.x, shot.y) * SCALE, i = view.numbers.indexOf(shot.number);
-      if (!shot.number) return;
+      if (view.axeRings ? !shot.value : !shot.number) return;
       let shape;
-      if (shot.number === 25 && shot.multiplier === 2) shape = `<circle cx="125" cy="125" r="${bull}"/>`;
+      if (view.axeCorners && shot.value === 7) {
+        const [x, y, radius] = view.axeCorners[shot.x > 0 ? 1 : 0];
+        shape = `<circle cx="${xAt(x)}" cy="${yAt(y)}" r="${radius * SCALE}"/>`;
+      } else if (view.axeRings) {
+        const index = view.axeRings.findIndex(([, points]) => points === shot.value);
+        const outer = view.axeRings[index][0] * SCALE;
+        const inner = (view.axeRings[index - 1]?.[0] ?? 0) * SCALE;
+        shape = inner ? `<circle cx="125" cy="125" r="${(outer + inner) / 2}"
+          style="fill:none;stroke:#fff2b8;stroke-width:${outer - inner};stroke-opacity:.42"/>`
+          : `<circle cx="125" cy="125" r="${outer}"/>`;
+      } else if (shot.number === 25 && shot.multiplier === 2) shape = `<circle cx="125" cy="125" r="${bull}"/>`;
       else if (shot.number === 25) shape = `<path fill-rule="evenodd" d="M${CENTER - outer} ${CENTER}a${outer} ${outer} 0 1 0 ${outer * 2} 0a${outer} ${outer} 0 1 0 ${-outer * 2} 0ZM${CENTER - bull} ${CENTER}a${bull} ${bull} 0 1 0 ${bull * 2} 0a${bull} ${bull} 0 1 0 ${-bull * 2} 0Z"/>`;
       else if (i >= 0) {
         const [inner, outerR] = shot.multiplier === 2 ? [d0, edge]
@@ -2011,14 +3110,15 @@ UI.archery = (() => {
         void impactMark.getBoundingClientRect();
         impactMark.classList.add('ar-darts-impact-active');
       }
-      callout.textContent = shot.bust ? 'Bust' : hitName(shot);
-      callout.dataset.tone = shot.bust || !shot.number ? 'miss' : shot.multiplier >= 2 ? 'bull' : '';
+      callout.textContent = shot.bust ? 'Bust' : view.axeRings && !shot.value ? `${shot.label} · 0 points` : hitName(shot);
+      callout.dataset.tone = shot.bust || (view.axeRings ? !shot.value : !shot.number) ? 'miss' : shot.multiplier >= 2 ? 'bull' : '';
       callout.hidden = false;
       void callout.offsetWidth;
       callout.classList.add('ar-darts-flash');
     }
 
     function hitName(shot) {
+      if (view.axeRings) return shot.label;
       const prefix = ['', 'Single', 'Double', 'Triple'][shot.multiplier];
       return shot.number && shot.number !== 25 ? `${prefix} ${shot.number}` : shot.label;
     }
@@ -2031,8 +3131,11 @@ UI.archery = (() => {
       else if (view.mode === 'cricket') {
         if (shot.marks) pieces.push(`+${shot.marks} marks`);
         if (shot.gain) pieces.push(`+${shot.gain} pts`);
-      } else if (shot.number) pieces.push(String(shot.value));
-      result.dataset.tone = shot.bust || !shot.number ? 'miss' : '';
+      } else if (view.axeRings) {
+        if (!shot.value) pieces.push('0 points');
+      }
+      else if (shot.number) pieces.push(String(shot.value));
+      result.dataset.tone = shot.bust || (view.axeRings ? !shot.value : !shot.number) ? 'miss' : '';
       result.textContent = pieces.join(' · ');
     }
 
@@ -2043,19 +3146,34 @@ UI.archery = (() => {
       if (!landing.hasAttribute('hidden') && now - landingAt >= DART_DOT_HOLD + (reduce() ? 0 : DART_DOT_FADE)) {
         landing.setAttribute('hidden', '');
       }
-      const show = ready(), hand = waitingHand || pose(now);
-      const drawHand = !inspecting && !flight && (show || !!waitingHand);
+      const show = ready();
+      if (!show) axeDrag = null;
+      const hand = waitingHand || pose(now);
+      const drawHand = !inspecting && !flight && (show || !!waitingHand || (!!view.axeRings && axeDebug.open && !falling));
+      if (view.axeRings && axeDebug.open) setText(axeReadout, axeCoordinates(hand));
+      const movingAxe = !!axeDrag;
+      const canGrab = !!view.axeRings && show && !inspecting && !swipe;
+      axeGrab.toggleAttribute('hidden', !canGrab);
+      if (canGrab) {
+        axeGrab.setAttribute('tabindex', '0');
+        axeGrab.setAttribute('transform', transform(hand.x, hand.y));
+      } else axeGrab.removeAttribute('tabindex');
+      if (view.axeRings) {
+        resetAxePosition.disabled = !axePlacement || throwInProgress();
+        updateCorner();
+      }
       inspectButton.disabled = throwInProgress();
-      grip.toggleAttribute('hidden', !show || !!swipe || inspecting);
-      swipeButton.disabled = !show;
-      release.setAttribute('aria-disabled', String(!show || !!swipe));
+      grip.toggleAttribute('hidden', !show || !!swipe || inspecting || movingAxe || !!view.axeRings);
+      swipeButton.disabled = !show || movingAxe;
+      release.setAttribute('aria-disabled', String(!show || !!swipe || movingAxe));
       aimX.disabled = aimY.disabled = !mine();
       hintButton.disabled = !show;
-      const preview = show && !inspecting && (swipe ? swipePayload()
-        : keys ? throwPayload(keys.dx, keys.dy, -view.swipePace, 0) : view.aimControl && adjustPayload());
+      const readyFlick = axeDrag && now <= axeDrag.cueUntil ? axeDrag.flick : null;
+      const preview = readyFlick || (show && !inspecting && !movingAxe && (swipe ? swipePayload()
+        : keys ? throwPayload(keys.dx, keys.dy, -view.swipePace, 0) : view.aimControl && adjustPayload()));
       spreadEl.hidden = !preview;
       if (preview) {
-        const o = origin();
+        const o = readyFlick?.origin ?? origin();
         const pace = Math.hypot(preview.vx, preview.vy);
         const radius = 2 * (view.spreadBase + view.spreadPerPace * pace);
         spreadEl.style.left = `${xAt(o.x + preview.dx) / WIDTH * 100}%`;
@@ -2065,22 +3183,28 @@ UI.archery = (() => {
       aim.hidden = !(hintOn && view.hint && show);
       swipeButton.hidden = !!view.roundRecap;
       held.toggleAttribute('hidden', !drawHand);
-      guide.toggleAttribute('hidden', hand.aiming);
+      guide.toggleAttribute('hidden', hand.aiming || !!view.axeRings);
       const handAngle = hand.angle * 180 / Math.PI;
-      held.setAttribute('transform', `${transform(hand.x, hand.y)} rotate(${handAngle})`);
+      held.setAttribute('transform', view.axeRings ? axeTransform(hand.x, hand.y, 0, 1, hand.orientation, DART_HAND_DEPTH + 9 * hand.lift)
+        : `${transform(hand.x, hand.y)} rotate(${handAngle})`);
       dartModel.style.setProperty('--dart-color', ownerColor(hand.owner) ?? '#ffe198');
-      dartModel.setAttribute('transform', hand.aiming
+      dartModel.setAttribute('transform', view.axeRings ? `scale(${hand.scale} ${hand.scale * DART_LENGTH})` : hand.aiming
         ? `rotate(${-handAngle - 12}) scale(${hand.scale}, ${hand.scale * 0.39})` : `scale(${hand.scale})`);
       let throwPose = null;
       trail.toggleAttribute('hidden', !flight || reduce());
       if (flight) {
         const { shot, dot, from: start, duration } = flight;
-        const time = reduce() ? 1 : c01((now - flight.start) / duration);
+        const windup = flight.axeTrajectory?.windupMs ?? 0;
+        const elapsed = now - flight.start;
+        const airTime = duration - windup;
+        const time = reduce() ? 1 : c01((elapsed - windup) / airTime);
         const dx = shot.x - start.x, dy = shot.y - start.y;
         const pace = shot.pace ?? 2.2;
         // Gravity bows the path above the straight line: slow, lobbed throws arc higher than hard flicks.
         const lift = (0.04 + 0.07 * (1 - c01(pace / 6))) * Math.min(1.4, 0.6 + Math.hypot(dx, dy));
-        const at = (t) => {
+        const trajectory = flight.axeTrajectory;
+        const motion = trajectory?.motion;
+        const at = motion ?? ((t) => {
           const u = c01(t) * (1.07 - 0.07 * c01(t));   // drag: a touch quicker off the fingers, settling toward the board
           return {
             x: start.x + dx * u,
@@ -2089,52 +3213,69 @@ UI.archery = (() => {
             scale: DART_BOARD_SCALE + ((start.scale ?? DART_HELD_SCALE) - DART_BOARD_SCALE) * (1 - u) ** 1.25,
             u,
           };
-        };
-        const startOffset = 85, gap = 12;
-        let previous = at(time - startOffset / duration);
-        for (let i = 0; i < trail.children.length; i++) {
-          const line = trail.children[i];
-          const next = at(time - (startOffset - (i + 1) * (startOffset - gap) / 5) / duration);
-          line.setAttribute('x1', xAt(previous.x));
-          line.setAttribute('y1', yAt(previous.y));
-          line.setAttribute('x2', xAt(next.x));
-          line.setAttribute('y2', yAt(next.y));
-          previous = next;
-        }
-        const cur = at(time), ahead = at(Math.min(1, time + 0.02)), behind = at(Math.max(0, time - 0.02));
-        const { x, y, depth, scale, u } = cur;
-        throwPose = { x, y, depth, scale, u, owner: shot.o, id: shot.id, landingX: shot.x, landingY: shot.y, roll: time * 5,
-          behind, ahead };
-        const tangent = Math.atan2(ahead.x - behind.x, ahead.y - behind.y) * 180 / Math.PI;
-        const landingAngle = pinAngle(shot);
-        const turnToLodged = ((landingAngle - tangent + 540) % 360) - 180;
-        const flightAngle = tangent + turnToLodged * smooth((u - 0.65) / 0.35);
-        const pinScale = 1 + (scale - DART_BOARD_SCALE) * 2.2;
-        dot?.setAttribute('transform', `${transform(x, y)} rotate(${flightAngle}) scale(${pinScale})`);
-        if (time >= 1) {
-          flight = null;
+        });
+        if (motion && elapsed < windup && !reduce()) {
+          const pose = trajectory.windup(elapsed);
+          throwPose = { ...pose, owner: shot.o };
           trail.setAttribute('hidden', '');
-          dot?.setAttribute('transform', `${transform(shot.x, shot.y)} rotate(${landingAngle})`);
-          if (!shot.number) {
-            if (!reduce() && visibleImpact(shot.x, shot.y)) falling = { shot, dot, started: now };
-            else dot?.setAttribute('hidden', '');
+          dot?.setAttribute('transform', axeTransform(pose.x, pose.y, pose.rotation, pose.scale, pose.orientation, pose.depth));
+        } else {
+          const startOffset = 85, gap = 12;
+          let previous = at(time - startOffset / duration);
+          for (let i = 0; i < trail.children.length; i++) {
+            const line = trail.children[i];
+            const next = at(time - (startOffset - (i + 1) * (startOffset - gap) / 5) / duration);
+            line.setAttribute('x1', xAt(previous.x));
+            line.setAttribute('y1', yAt(previous.y));
+            line.setAttribute('x2', xAt(next.x));
+            line.setAttribute('y2', yAt(next.y));
+            previous = next;
           }
-          impact = shot.number ? { id: shot.id, at: now, power: 0.7 + 0.5 * c01((shot.pace ?? 2.2) / 6) } : null;
-          showShot(shot);
-          renderVisit();
-          paintLanding();
-          flashHit(shot);
-          playLanding(shot);
-          ctx.buzz?.(shot.bust ? [25, 40, 25] : 15);
+          const cur = at(time), ahead = at(Math.min(1, time + 0.02)), behind = at(Math.max(0, time - 0.02));
+          const { x, y, depth, scale, u } = cur;
+          throwPose = { x, y, depth, scale, u, owner: shot.o, id: shot.id, landingX: shot.x, landingY: shot.y, roll: time * 5,
+            behind, ahead, rotation: cur.rotation };
+          const tangent = Math.atan2(ahead.x - behind.x, ahead.y - behind.y) * 180 / Math.PI;
+          const landingAngle = pinAngle(shot);
+          const turnToLodged = ((landingAngle - tangent + 540) % 360) - 180;
+          const flightAngle = motion ? cur.rotation : tangent + turnToLodged * smooth((u - 0.65) / 0.35);
+          const pinScale = motion ? scale : 1 + (scale - DART_BOARD_SCALE) * 2.2;
+          dot?.setAttribute('transform', motion ? axeContactTransform(cur, trajectory.contact?.point) : `${transform(x, y)} rotate(${flightAngle}) scale(${pinScale})`);
+          if (time >= 1) {
+            const flightEnd = flight.start + duration;
+            if (trajectory) paintAxeTrace(shot, flight.axeTrace, flight.axeStroke, flight.axeContact);
+            flight = null;
+            trail.setAttribute('hidden', '');
+            if (!motion) dot?.setAttribute('transform', `${transform(shot.x, shot.y)} rotate(${landingAngle})`);
+            if (!shot.number) {
+              if (!reduce() && (motion || visibleImpact(shot.x, shot.y))) falling = { shot, dot, started: motion ? flightEnd : now, motion, edge: trajectory?.contact?.point, duration: airTime };
+              else dot?.setAttribute('hidden', '');
+            }
+            impact = shot.number ? { id: shot.id, at: now, power: 0.7 + 0.5 * c01((shot.pace ?? 2.2) / 6) } : null;
+            showShot(shot);
+            if (view.axeRings) renderScores();
+            renderVisit();
+            paintLanding();
+            flashHit(shot);
+            playLanding(shot);
+            if (!view.axeRings || shot.number || shot.axeBounce) {
+              ctx.buzz?.(shot.bust ? [25, 40, 25] : shot.axeBounce ? [12, 24, 8] : 15);
+            }
+          }
         }
       }
       if (falling) {
-        const { shot, dot, started } = falling;
-        const progress = c01((now - started) / 150);
+        const { shot, dot, started, motion, edge, duration } = falling;
+        const elapsed = now - started;
+        const progress = c01(elapsed / (motion ? 330 : 150));
         if (progress >= 1 || reduce()) {
           dot?.setAttribute('hidden', '');
           falling = null;
           throwPose = null;
+        } else if (motion) {
+          const pose = motion(elapsed / duration, true);
+          throwPose = { ...pose, owner: shot.o, id: shot.id };
+          dot?.setAttribute('transform', axeContactTransform(pose, edge));
         } else {
           const y = shot.y - 0.24 * progress * progress;
           throwPose = { x: shot.x, y, landingY: shot.y, id: shot.id, owner: shot.o,
@@ -2142,13 +3283,49 @@ UI.archery = (() => {
           dot?.setAttribute('transform', `${transform(shot.x, y)} rotate(${lodgedAngle + progress * 105}) scale(${1 - 0.35 * progress})`);
         }
       }
+      if (view.axeRings) {
+        const moving = !!throwPose && (flight || falling);
+        const shot = view.shot;
+        const contact = !moving && shot && { x: shot.x, y: shot.y, depth: AXE_BOARD_DEPTH };
+        const position = moving ? throwPose : contact;
+        const mark = axeDebug.open && !flight && !swipe && !pending && (shot?.number || shot?.axeBounce);
+        axeContactMarker.toggleAttribute('hidden', !mark);
+        if (mark) {
+          axeContactMarker.setAttribute('cx', xAt(shot.x));
+          axeContactMarker.setAttribute('cy', yAt(shot.y));
+        }
+        const flickReady = !!readyFlick;
+        const stroke = !moving && swipe ? swipePayload() : null;
+        const aim = stroke && origin();
+        const alignment = stroke && axeBladeFeedback(stroke.vx, stroke.vy, Math.hypot(aim.x + stroke.dx, aim.y + stroke.dy) <= 1);
+        axeLive.hidden = !flickReady && !alignment && (!axeDebug.open || !position);
+        axeCopyFlight.disabled = !position || !!alignment || flickReady;
+        if (flickReady) {
+          setText(axeLive, "Ready to release");
+        } else if (alignment) {
+          setText(axeLive, alignment);
+        } else if (!axeLive.hidden) {
+          const phase = moving ? (falling ? (falling.shot.axeBounce ? 'Bounce' : 'Past target')
+            : throwPose.u == null ? 'Windup' : 'Flight') : shot.number || shot.axeBounce ? 'Impact' : 'Board plane';
+          setText(axeLive, `${phase} · ${axePosition(position)}`);
+        }
+      }
       if (impact && now - impact.at > 380) impact = null;
       const age = impact ? (now - impact.at) / 1000 : 0;
-      const quiver = impact && !reduce() ? { id: impact.id, angle: 0.035 * impact.power * Math.exp(-11 * age) * Math.sin(105 * age) } : null;
+      const settle = view.axeRings
+        ? Math.sin(Math.PI * c01(age / (0.16 * AXE_SETTLE_SCALE))) * Math.exp(-14 * age / AXE_SETTLE_SCALE)
+        : Math.sin(105 * age) * Math.exp(-11 * age);
+      const quiver = impact && !reduce() ? { id: impact.id, angle: 0.035 * impact.power * settle } : null;
       for (const pin of pins.children) {
         const quivering = quiver && String(quiver.id) === pin.dataset.shot;
         const model = pin.firstElementChild;
-        if (quivering) model.setAttribute('transform', `rotate(${quiver.angle * 180 / Math.PI})`);
+        if (view.axeRings && impact && String(impact.id) === pin.dataset.shot) {
+          const shot = view.darts.find((dart) => dart.id === impact.id);
+          if (shot) {
+            const pose = axeRestPose(shot, pinAngle(shot), (quiver?.angle ?? 0) * 180 / Math.PI);
+            pin.setAttribute('transform', axeContactTransform(pose, pose.edge));
+          }
+        } else if (quivering) model.setAttribute('transform', `rotate(${quiver.angle * 180 / Math.PI})`);
         else if (model.hasAttribute('transform')) model.removeAttribute('transform');
       }
       noteHoles();
@@ -2170,7 +3347,31 @@ UI.archery = (() => {
       holeG.innerHTML = past.map((h) => `<circle cx="${xAt(h.x)}" cy="${yAt(h.y)}" r="1.6" fill="#0a0706" stroke="#c9b88f" stroke-opacity=".45" stroke-width=".5"/>`).join('');
     }
 
+    function axeTransform(x, y, angle, scale = AXE_SCALE, orientation, depth = 0.45) {
+      let projection = axeProjection(angle);
+      if (orientation) {
+        const [qx, qy, qz, qw] = orientation;
+        projection = [1 - 2 * (qy * qy + qz * qz), -2 * (qx * qy + qz * qw),
+          -2 * (qx * qy - qz * qw), 1 - 2 * (qx * qx + qz * qz)];
+      }
+      const matrix = projection.map((value) => value * scale * 98 / boardPlaneScale(depth));
+      return `${transform(x, y)} matrix(${matrix.join(' ')} 0 0)`;
+    }
+
+    function axeContactTransform(pose, edge) {
+      const { x, y, rotation, scale, depth } = pose;
+      if (!edge) return axeTransform(x, y, rotation, scale, pose.orientation, depth);
+      const offset = axePointOffset(edge, scale, pose.orientation ?? axeTumbleOrientation(rotation));
+      const plane = boardPlaneScale(depth), contactPlane = boardPlaneScale(depth + offset.depth);
+      // Correct the affine fallback at the edge as it approaches the contact frame.
+      const weight = smooth(pose.u);
+      const correctedX = x + weight * ((x * plane + offset.x) / contactPlane - x - offset.x / plane);
+      const correctedY = y + weight * ((y * plane + offset.y) / contactPlane - y - offset.y / plane);
+      return axeTransform(correctedX, correctedY, rotation, scale, pose.orientation, depth);
+    }
+
     function pinAngle(dart) {
+      if (view.axeRings) return view.axeLodgedAngle ?? AXE_LODGED_ANGLE;
       return lodgedAngle + (pinFans.get(dart.id) ?? 0);
     }
 
@@ -2189,30 +3390,32 @@ UI.archery = (() => {
       const visible = view.darts.filter((dart) => dart.number || dart.id === flight?.shot.id || dart.id === falling?.shot.id);
       const existing = new Map(Array.from(pins.children, (pin) => [Number(pin.dataset.shot), pin]));
       for (const dart of visible) {
+        const pose = view.axeRings && dart.number ? axeRestPose(dart, pinAngle(dart)) : null;
+        const resting = pose ? axeContactTransform(pose, pose.edge) : `${transform(dart.x, dart.y)} rotate(${pinAngle(dart)})`;
         let pin = existing.get(dart.id);
         if (!pin) {
           pin = document.createElementNS('http://www.w3.org/2000/svg', 'g');
           pin.dataset.shot = dart.id;
-          pin.innerHTML = `<g><g transform="scale(1 ${DART_LENGTH})">${dartSilhouette}</g></g>`;
+          pin.innerHTML = `<g><g transform="scale(1 ${DART_LENGTH})">${view.axeRings ? axeSilhouette : dartSilhouette}</g></g>`;
           pin.setAttribute('transform', flight?.shot.id === dart.id
-            ? transform(0, -1.2) : `${transform(dart.x, dart.y)} rotate(${pinAngle(dart)})`);
+            ? transform(0, -1.2) : resting);
           pins.append(pin);
         }
         existing.delete(dart.id);
         pin.style.setProperty('--dart-color', player(dart.o)?.color ?? '#ffe198');
         if (flight?.shot.id === dart.id) flight.dot = pin;
         else if (falling?.shot.id === dart.id) falling.dot = pin;
-        else pin.setAttribute('transform', `${transform(dart.x, dart.y)} rotate(${pinAngle(dart)})`);
+        else pin.setAttribute('transform', resting);
       }
       existing.forEach((pin) => pin.remove());
     }
 
     function renderScores() {
-      const cricket = view.mode === 'cricket', clock = view.mode === 'clock', countup = view.mode === 'countup';
+      const cricket = view.mode === 'cricket', clock = view.mode === 'clock', countup = view.mode === 'countup' || !!view.axeRings;
       const table = ctx.el('table', 'scores ar-darts-table');
       const head = ctx.el('thead'), headings = ctx.el('tr');
       const targets = cricket ? view.targets.map((n) => n === 25 ? 'Bull' : String(n)) : [];
-      const columns = clock ? ['Next', 'Hit'] : countup ? ['Visits', 'Pts'] : [...targets, view.x01 ? 'Left' : 'Pts'];
+      const columns = clock ? ['Next', 'Hit'] : countup ? [view.axesPerRound ? 'Rounds' : 'Visits', 'Pts'] : [...targets, view.x01 ? 'Left' : 'Pts'];
       for (const title of ['Player', ...columns]) {
         const cell = ctx.el('th', '', title); cell.scope = 'col'; headings.append(cell);
       }
@@ -2231,7 +3434,8 @@ UI.archery = (() => {
         }
         if (clock) row.append(ctx.el('td', '', clockLabel(view.nextNumbers[i])));
         if (countup) row.append(ctx.el('td', '', `${view.visitsDone[i]}/${view.visitLimit}`));
-        row.append(ctx.el('td', 'total', String(view.points[i])));
+        const inAir = view.axeRings && flight?.shot.o === i ? flight.shot.gain ?? flight.shot.value ?? 0 : 0;
+        row.append(ctx.el('td', 'total', String(view.points[i] - inAir)));
         body.append(row);
       });
       score.replaceChildren(table);
@@ -2243,11 +3447,30 @@ UI.archery = (() => {
       const first = !view;
       view = s.darts; state = s; ctx = c;
       readyAt = performance.now() + view.readyIn * 1000;
+      if (!ready()) axeDrag = null;
+      if (!mine() || !view.canCallCorner || view.shot?.id !== shown) callCorner = false;
+      updateCorner();
       paintHint();
       if (first) {
         const start = origin();
         grip.setAttribute('transform', transform(start.x, start.y));
         paintBoard();
+        if (view.axeRings) {
+          dartModel.firstElementChild.innerHTML = axeSilhouette;
+          dartModel.firstElementChild.removeAttribute('transform');
+          release.textContent = 'Release axe';
+          if (view.axesPerRound) {
+            while (dartIndicators.children.length < view.axesPerRound) dartIndicators.append(document.createElement('i'));
+          }
+          swipeButton.setAttribute('aria-label', 'Swipe to throw the axe, or press Enter to throw');
+          const scorePanel = score.parentElement;
+          scorePanel.classList.add('ar-darts-score-above');
+          stage.parentElement.before(scorePanel);
+          axeDebug.hidden = !showAxeDiagnostics;
+          root.querySelector('.ar-darts-axe-placement').hidden = false;
+          board.setAttribute('aria-label', 'Axe target. Drag to move the axe. Flick and release to throw, or pause and lift to place it. Use arrows to aim, Shift and arrows for larger steps, Enter or Space to throw, and Escape to clear aim.');
+          applyView();
+        }
         darts3d?.paint(view);
         root.querySelector('h2').textContent = `Darts · ${view.title}`;
       }
@@ -2265,13 +3488,37 @@ UI.archery = (() => {
         clearImpact();
         trail.setAttribute('hidden', '');
         shown = shot?.id;
-        flight = shot && !first && c.peek && !reduce() ? {
-          shot, start: performance.now(),
-          from: shot.o === view.me && releasedFrom ? releasedFrom : origin(),
-          duration: Math.max(400, 600 - 30 * (shot.pace ?? 2.2)),
-        } : null;
+        const from = shot?.o === view.me && releasedFrom ? releasedFrom : shot?.axeOrigin
+          ? { x: shot.axeOrigin[0], y: shot.axeOrigin[1], placed: true }
+          : defaultOrigin();
+        const duration = view.axeRings ? (shot?.axeFlightMs ?? 700) : Math.max(400, 600 - 30 * (shot?.pace ?? 2.2));
+        const trajectory = shot && !first && view.axeRings
+          ? axeTrajectory(from, shot, duration, pinAngle(shot), axeStartOrientation(axeStart)) : null;
+        const stroke = shot?.o === view.me ? releasedSwipe : null;
+        const trace = trajectory ? axeTraceRows(shot, duration, trajectory) : [];
+        const contact = trajectory ? axeContactTrace(shot, duration, trajectory, pinAngle(shot), view.axeStickAngle) : null;
+        flight = shot && !first && (c.peek || trajectory) && !reduce()
+          ? { shot, start: performance.now(), from, duration, axeTrajectory: trajectory, axeTrace: trace, axeStroke: stroke, axeContact: contact } : null;
+        if (view.axeRings) {
+          paintAxeTrace(shot, flight ? [] : trace, stroke, flight ? null : contact);
+          if (stroke && trace.length && c.logAxeDebug) {
+            const status = axeLogStatus;
+            setText(status, 'Saving throw…');
+            c.logAxeDebug({
+              shotId: shot.id, swipe: stroke,
+              trace: { columns: AXE_TRACE_COLUMNS, axes: AXE_TRACE_AXES, pivot: AXE_PIVOT, rows: trace, contact },
+            }).then(() => {
+              if (shown === shot.id && status === axeLogStatus) setText(status, 'Throw saved to debug log.');
+            }).catch(() => {
+              if (shown === shot.id && status === axeLogStatus) setText(status, 'Could not save this throw.');
+            });
+          } else {
+            setText(axeLogStatus, '');
+          }
+        }
         if (shot && !first && c.peek && (shot.o !== view.me || !releasedFrom)) playRelease(shot.pace ?? 2.2);
         releasedFrom = null;
+        releasedSwipe = null;
         waitingHand = null;
         if (shot && !flight) {
           showShot(shot);
@@ -2292,9 +3539,9 @@ UI.archery = (() => {
       for (const label of geometry.querySelectorAll('[data-number]')) {
         label.classList.toggle('ar-darts-next-number', Number(label.dataset.number) === target);
       }
-      setText(turn, s.phase === 'over' ? 'Game over' : view.next == null ? 'Final dart'
+      setText(turn, s.phase === 'over' ? 'Game over' : view.next == null ? (view.axeRings ? 'Final throw' : 'Final dart')
         : view.roundRecap ? 'Round complete'
-        : `${view.next === view.me ? 'Your visit' : player(view.next)?.name ?? 'Player'} · ${view.left} left`);
+        : `${view.next === view.me ? (view.axesPerRound ? 'Your throw' : 'Your visit') : player(view.next)?.name ?? 'Player'} · ${view.left} left`);
       const remaining = s.phase === 'over' || view.roundRecap || view.next == null ? 0 : view.left;
       for (const [i, indicator] of Array.from(dartIndicators.children).entries()) {
         indicator.classList.toggle('ready', i < remaining);
@@ -2312,8 +3559,8 @@ UI.archery = (() => {
       const parts = [];
       if (!showCompleted || completed.visit !== view.visit) {
         const landed = completed && !showCompleted ? completed.darts.filter(visible) : current;
-        const labels = Array.from({ length: 3 }, (_, i) => landed[i]?.label ?? '–');
-        parts.push(ctx.el('div', '', `Current visit · ${labels.join(' / ')}`));
+        const labels = Array.from({ length: view.axesPerRound ?? 3 }, (_, i) => landed[i]?.label ?? '–');
+        parts.push(ctx.el('div', '', `${view.axesPerRound ? (view.me == null ? "Current player’s axes" : "Your axes this round") : "Current visit"} · ${labels.join(' / ')}`));
       }
       if (showCompleted) {
         const { seat, darts, reason, before, after, marks } = completed;
@@ -2330,15 +3577,25 @@ UI.archery = (() => {
     }
 
     function updateHint() {
+      if (view.axeRings) {
+        const controls = mine() ? `Drag to move the axe. Flick and release to throw, or use Swipe to throw. ${view.aimControl ? 'You can also adjust aim and select Release axe. ' : ''}` : '';
+        const format = view.axesPerRound ? `${view.axesPerRound} axes each, one throw per turn. Highest score after ${view.visitLimit} rounds wins.`
+          : `Highest score after ${view.visitLimit} visits wins.`;
+        hint.textContent = view.roundRecap ? 'The target clears after the recap.'
+          : `${controls}${view.axeCorners
+            ? 'Rings score 5, 3, or 1. On your last throw, call a corner to play for 7 points. Only the green targets score on a called throw.'
+            : 'A clean stick scores 1–5 points.'} ${format}`;
+        return;
+      }
       let rule = view.doubleOut ? 'Reach zero on a double.' : 'Reach exactly zero; any dart finishes.';
       if (view.mode === 'cricket') rule = 'Close 15–20 and bull. Extra hits score while a rival has the target open.';
       if (view.mode === 'clock') rule = view.next == null ? 'Hit 1–20 in order, then bull.'
         : `Next target: ${clockLabel(view.nextNumbers[view.next])}.`;
       if (view.mode === 'countup') rule = `Highest score after ${view.visitLimit} visits wins.`;
       hint.textContent = view.roundRecap ? 'The board clears after the recap.'
-        : mine() && view.aimControl ? `Adjust horizontal and vertical aim, then release. You can also swipe from the right half of the board. ${rule}`
-        : mine() ? `Drag the left half to inspect. Start on the right half or the throw button. Swipe inward and release when the ring is over your target. Pinch to zoom. ${rule}`
-        : `Drag to tilt the board or pinch to zoom. ${rule}`;
+        : mine() && view.aimControl ? `Adjust horizontal and vertical aim, then release. Swipe from the right half of the board or select Inspect to rotate. ${rule}`
+        : mine() ? `Select Inspect to rotate. Start on the right half or the throw button. Swipe inward and release when the ring is over your target. Pinch to zoom. ${rule}`
+        : `Select Inspect to rotate. Pinch to zoom. ${rule}`;
     }
 
     return { mount, render, unmount() {
@@ -2372,9 +3629,9 @@ UI.archery = (() => {
       if (!s.darts || s.phase !== 'playing') return null;
       const { next, seats, left } = s.darts;
       if (s.darts.roundRecap) return 'Round complete';
-      if (next == null) return 'Final dart';
+      if (next == null) return s.darts.axeRings ? 'Final throw' : 'Final dart';
       const name = s.players.find((p) => p.id === seats[next])?.name;
-      return next === s.darts.me ? `Your visit · ${left} left` : `${name ?? 'Player'} · ${left} left`;
+      return next === s.darts.me ? `${s.darts.axesPerRound ? "Your throw" : "Your visit"} · ${left} left` : `${name ?? 'Player'} · ${left} left`;
     },
   };
 })();

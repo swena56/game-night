@@ -102,6 +102,7 @@ class Archery(Game):
         "Cricket: hit 15–20 and bull three times each. Extra marks score while a rival still has that target open. Close every target and at least tie the high score to win.",
         "Around the Clock: hit 1 through 20 in order, then either bull. A double or triple clears only that number.",
         "Count-Up: score as many points as you can in eight three-dart visits. Doubles and triples multiply each hit.",
+        "Axe Throwing: swipe inward at a steady speed so the blade lines up. The wooden rings score 5 down to 1. Highest total after eight three-throw visits wins.",
         "Wind Archery: take turns shooting one arrow at the target. Drag the sight over the target and let go (or tap 🏹 Loose). The sight sways more the longer you hold.",
         "The wind carries every arrow: watch the flag and aim into the wind. The further the target (30 m, 50 m, 70 m), the more an arrow drifts.",
         "The flag is only a guide: the real wind is a bit stronger or weaker each end. Every shot shows where it was aimed, so learn from each arrow, rivals' too.",
@@ -112,7 +113,7 @@ class Archery(Game):
     ]
     name = "Darts"
     icon = "🎯"
-    blurb = "Swipe to throw on a 3D dartboard. Play 301, 501, Cricket, Around the Clock or Count-Up, or choose Wind Archery from Course."
+    blurb = "Swipe to throw on a 3D dartboard. Play 301, 501, Cricket, Around the Clock, Count-Up or Axe Throwing, or choose Wind Archery from Course."
     min_players = 1
     max_players = 6
     badges = {**Game.badges,
@@ -123,6 +124,7 @@ class Archery(Game):
               "streak": ("✨", "Golden streak", "Three golds in a row")}
     settings_schema = {
         "course": ("Course", [*MODES.items(), ("archery", "Wind Archery")], "301"),
+        "axe_scoring": ("Axe scoring", [("corner", "5–3–1 + 7-point corners"), ("classic", "Classic 5–4–3–2–1")], "corner"),
         "aim_control": ("Darts controls", [("swipe", "Swipe first"), ("adjust", "Adjust and release")], "swipe"),
         "finish": ("Finish (301/501)", [("any", "Any finish"), ("double", "Double out")], "any"),
         "ends": ("Ends", [(3, "3"), (2, "2"), (5, "5")], 3),
@@ -137,6 +139,7 @@ class Archery(Game):
         mode = self.s.get("course", self.settings_schema["course"][2])
         self.darts = DartMatch(
             self.room, self.seats, rng, mode,
+            axe_scoring=self.s.get("axe_scoring", self.settings_schema["axe_scoring"][2]),
             double_out=self.s.get("finish") == "double",
             aim_control=self.s.get("aim_control") == "adjust",
         ) if mode in MODES else None

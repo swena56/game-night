@@ -30,6 +30,7 @@ from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
 
 from games import FAMILIES, GAME_INFO, GAME_LIST, GAMES, GameError
+from games.bar_darts import AXES_PER_ROUND
 from games.base import shift_times
 from games import garden, wordbomb
 from games.wordsmith import warm_up, words
@@ -39,7 +40,7 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 STATIC_DIR = os.path.join(APP_DIR, "static")
 DATA_DIR = os.path.join(APP_DIR, "data")
 CONTENT_TYPES = {".html": "text/html", ".js": "text/javascript", ".css": "text/css",
-                 ".webmanifest": "application/manifest+json", ".png": "image/png", ".webp": "image/webp", ".svg": "image/svg+xml",
+                 ".webmanifest": "application/manifest+json", ".png": "image/png", ".webp": "image/webp", ".jpg": "image/jpeg", ".svg": "image/svg+xml",
                  ".woff2": "font/woff2", ".gz": "application/octet-stream"}  # .gz: the OCR model (static/vendor/tesseract)
 MAX_PLAYERS = 6
 # Overall points for the evening: a win, playing a game to the end, and walking out of a live game.
@@ -74,6 +75,8 @@ _SUFFIX = "" if PORT == 8000 else f"-{PORT}"
 SAVE_FILE = os.environ.get("ROOMS_FILE") or os.path.join(DATA_DIR, f"rooms{_SUFFIX}.pickle")
 # Bug reports & suggestions: one JSON object per line, plus a small status map.
 FEEDBACK_FILE = os.environ.get("FEEDBACK_FILE") or os.path.join(DATA_DIR, f"feedback{_SUFFIX}.jsonl")
+AXE_DEBUG_FILE = os.environ.get("AXE_DEBUG_FILE") or os.path.join(DATA_DIR, f"axe-debug{_SUFFIX}.jsonl")
+AXE_DEBUG_LOCK = threading.Lock()
 FEEDBACK_STATUS = FEEDBACK_FILE.rsplit(".", 1)[0] + "-status.json"
 FEEDBACK_KINDS = ("bug", "idea")
 FEEDBACK_MAX_BYTES = 8 * 1024 * 1024
@@ -89,6 +92,7 @@ REQUEST_LIMITS = {
     "/api/create": (6, 60),
     "/api/join": (40, 60),
     "/api/feedback": (5, 600),
+    "/api/axe-debug": (180, 60),
     "/api/profile/put": (60, 60),
     "/api/events": (60, 60),
 }
@@ -901,14 +905,23 @@ class Room:
         if gid == "archery":
             if rules["course"] == "archery":
                 del rules["course"]
+                del rules["axe_scoring"]
             else:
-                rules = {"course": rules["course"]}
+                course = rules["course"]
+                axe_scoring = rules["axe_scoring"]
+                rules = {"course": course}
+                if course == "axe":
+                    rules["axes_per_round"] = AXES_PER_ROUND
+                    if axe_scoring == "corner":
+                        rules["axe_scoring"] = axe_scoring
         labels = []
         for k, (name, options, _) in cls.settings_schema.items():
             if k not in rules:
                 continue
             option = next((label for value, label in options if value == rules[k]), rules[k])
             labels.append(f"{name} – {option}")
+        if "axes_per_round" in rules:
+            labels.append(f"{AXES_PER_ROUND} axes per round")
         levels = sorted(p.bot or "human" for p in seated)
         humans = levels.count("human")
         labels.append(f"{humans} human" + ("s" if humans != 1 else ""))
@@ -1162,6 +1175,41 @@ def do_action(body):
         if back or not room.no_bump:
             room.bump()
         room.no_bump = False
+    return {"ok": True}
+
+
+def log_axe_debug(body):
+    shot_id = body.get("shotId")
+    trace = body.get("trace")
+    swipe = body.get("swipe")
+    if (type(shot_id) is not int or not isinstance(swipe, dict) or not isinstance(trace, dict)
+            or not isinstance(trace.get("rows"), list) or len(trace["rows"]) not in (7, 9)
+            or any(not isinstance(row, list) or len(row) != 10 for row in trace["rows"])):
+        raise GameError("Bad axe debug record.")
+    with player_session(body) as (room, player):
+        match = getattr(room.game, "darts", None)
+        if not match or match.mode != "axe" or player.id not in match.seats:
+            raise GameError("No axe throw to record.")
+        shot = next((shot for shot in [match.shot, *match.darts, *match.last_darts]
+                     if shot and shot["id"] == shot_id and match.seats[shot["o"]] == player.id), None)
+        if not shot:
+            raise GameError("Axe throw is no longer available.")
+        logged = getattr(match, "debug_logged", None)
+        if logged is None:
+            match.debug_logged = logged = set()
+        if shot_id in logged:
+            return {"ok": True}
+        entry = {
+            "at": time.time(), "room": room.code, "matchStartedAt": getattr(room, "started_at", None),
+            "shot": shot, "swipe": swipe, "trace": trace,
+        }
+        try:
+            line = json.dumps(entry, allow_nan=False, separators=(",", ":"))
+        except (ValueError, RecursionError):
+            raise GameError("Bad axe debug values.") from None
+        with AXE_DEBUG_LOCK, open(AXE_DEBUG_FILE, "a", encoding="utf-8") as log:
+            log.write(line + "\n")
+        logged.add(shot_id)
     return {"ok": True}
 
 
@@ -1459,6 +1507,9 @@ def check_restored(room):
     if room.phase != "playing" or not room.game:
         return
     try:
+        match = getattr(room.game, "darts", None)
+        if match is not None:
+            match.upgrade_axe_round()
         for p in [*room.players.values(), REPLAY_VIEWER]:
             room.view(p)
     except Exception:
@@ -1725,7 +1776,7 @@ class Handler(BaseHTTPRequestHandler):
         routes = {"/api/create": create_room, "/api/join": join_room, "/api/action": do_action, "/api/input": realtime_input,
                   "/api/status": status, "/api/replay": replay, "/api/peek": peek,
                   "/api/profile/get": profile_get, "/api/profile/put": profile_put,
-                  "/api/feedback": submit_feedback}
+                  "/api/feedback": submit_feedback, "/api/axe-debug": log_axe_debug}
         if self.local():
             routes["/api/feedback/status"] = set_feedback_status
         path = urlparse(self.path).path
