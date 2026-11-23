@@ -102,6 +102,21 @@ UI.switchyard = (() => {
       pen.strokeStyle = '#90a3a0';
       pen.stroke();
       pen.setLineDash([]);
+      if (selected) {
+        const tipX = x + dx * .53, tipY = y + dy * .53;
+        const backX = tipX - dx / length * 8, backY = tipY - dy / length * 8;
+        const wingX = dy / length * 5, wingY = -dx / length * 5;
+        pen.beginPath();
+        pen.moveTo(backX + wingX, backY + wingY);
+        pen.lineTo(tipX, tipY);
+        pen.lineTo(backX - wingX, backY - wingY);
+        pen.lineWidth = 6;
+        pen.strokeStyle = '#1a292e';
+        pen.stroke();
+        pen.lineWidth = 3;
+        pen.strokeStyle = '#a9e9d6';
+        pen.stroke();
+      }
     }
     line('entry', 'main', false);
     for (const [node, ends] of Object.entries(routes)) {

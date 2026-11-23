@@ -101,6 +101,13 @@ const Switchyard3D = (() => {
           span(yard, steel, a.clone().addScaledVector(side, offset), b.clone().addScaledVector(side, offset), 3, 2.4, 2);
         }
         const signal = span(yard, idle, a.clone().lerp(b, .18), a.clone().lerp(b, .53), 3.5, 2.5, 1);
+        const arrow = new T.Group();
+        const tip = a.clone().lerp(b, .53);
+        const back = tip.clone().addScaledVector(axis, -8);
+        for (const wing of [-5, 5]) {
+          span(arrow, active, back.clone().addScaledVector(side, wing), tip, 4.5, 3, 1);
+        }
+        yard.add(arrow);
         const trail = new T.Group();
         const lane = side.clone().multiplyScalar(-13);
         for (let i = 0; i < 5; i++) {
@@ -108,7 +115,7 @@ const Switchyard3D = (() => {
           span(trail, active, a.clone().lerp(b, start).add(lane), a.clone().lerp(b, start + .065).add(lane), 4, 3, 1);
         }
         yard.add(trail);
-        return { from, to, signal, trail };
+        return { from, to, signal, arrow, trail };
       });
       tieMesh = new T.InstancedMesh(box, ties, sleepers.length);
       sleepers.forEach((matrix, index) => tieMesh.setMatrixAt(index, matrix));
@@ -212,8 +219,10 @@ const Switchyard3D = (() => {
       }
       stateKey = key;
       const commitments = new Map(board.trains.map((train) => [train.node, train]));
-      for (const { from, to, signal, trail } of tracks) {
-        signal.material = routes[from]?.[board.switches[from]] === to ? active : idle;
+      for (const { from, to, signal, arrow, trail } of tracks) {
+        const selected = routes[from]?.[board.switches[from]] === to;
+        signal.material = selected ? active : idle;
+        arrow.visible = selected;
         const train = commitments.get(from);
         trail.visible = train?.route === to;
         if (trail.visible) for (const dash of trail.children) dash.material = lamps[train.target];
