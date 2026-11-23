@@ -1198,12 +1198,14 @@ UI.midway = (() => {
         g.fillStyle = heightMap ? '#777' : '#eb6216';
         g.fillRect(0, 0, w, h);
         for (let row = 0; row * 5 < h; row++) {
-          for (let col = 0; col * 5 < w; col++) {
+          // The map is equirectangular, so widen the pebbles toward the poles to keep them round on the sphere.
+          const stretch = 1 / Math.max(0.22, Math.cos(((row * 5 + 2.5) / h - 0.5) * Math.PI));
+          for (let col = 0; col * 5 * stretch < w; col++) {
             const grain = (row * 13 + col * 23 + (row * col) % 19) % 11;
-            const x = (col * 5 + (row % 2) * 2.5 + grain * 0.16) % w;
+            const x = (col * 5 + (row % 2) * 2.5 + grain * 0.16) * stretch % w;
             const y = row * 5 + grain * 0.14;
             g.fillStyle = heightMap ? '#c8c8c8' : grain < 5 ? '#ff943e' : '#f77a23';
-            g.beginPath(); g.ellipse(x, y, 1.65, 1.8, 0.2, 0, Math.PI * 2); g.fill();
+            g.beginPath(); g.ellipse(x, y, 1.65 * stretch, 1.8, 0.2, 0, Math.PI * 2); g.fill();
           }
         }
         g.beginPath();
