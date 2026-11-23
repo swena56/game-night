@@ -8,7 +8,6 @@ UI.war = CardTable.screen('war', {
       details.append(ctx.el('summary', '', 'Recent battles'), ctx.el('ol', 'rules'));
       panel.append(details);
     }
-    details.hidden = !entries.length;
     const key = JSON.stringify(entries);
     if (details.dataset.history === key) return;
     details.dataset.history = key;
@@ -30,6 +29,7 @@ UI.war = CardTable.screen('war', {
       line.append(ctx.el('small', '', `Won: ${entry.won.map(card).join(' ')}${entry.extra ? ` · includes ${entry.extra} from gambles` : ''}`));
       return line;
     });
-    details.lastElementChild.replaceChildren(...items);
+    // the panel stays put (no hidden -> shown jump after the first battle)
+    details.lastElementChild.replaceChildren(...(items.length ? items : [ctx.el('li', '', 'No battles yet.')]));
   },
 });
