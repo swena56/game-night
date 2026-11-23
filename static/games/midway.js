@@ -19,6 +19,7 @@ UI.midway = (() => {
   const hoopRackSize = 5;
   const hoopGlideTime = 160;
   const chargeDuration = () => V?.kind === 'hoops' ? 490 : 1000;
+  let ballUid = 0;
   let rackBalls = [], rackTargets = [], aimFeedback = null, heldBallX = 0;
   const canPlay = () => S?.phase === 'playing' && V?.stage === 'play' && V.me && !watched()?.out && hasShots(V) && !S.paused
     && (V.kind !== 'hoops' || !endAt || performance.now() < endAt);
@@ -210,6 +211,18 @@ UI.midway = (() => {
     sink: (big) => snd((t, K, d) => { K.mode(d, t, 140, 0.25, 0.06, { f1: 100 }); K.burst(d, t, { type: 'bandpass', f: 1200, q: 1.5, vol: 0.12, tau: 0.02 }); for (let n = 1; n < 4; n++) K.mode(d, t + n * 0.07, 220 + n * 30, 0.06 / n, 0.03); if (big) [1047, 1319, 1568].forEach((f, n) => K.mode(d, t + 0.1 + n * 0.08, f, 0.06, 0.2)); }),
     // a ring on glass: a bright clink, ringing on a bottle
     clink: (on) => snd((t, K, d) => { K.mode(d, t, K.R(2400, 2900), 0.12, on ? 0.35 : 0.08); K.mode(d, t, K.R(3600, 4200), 0.05, 0.12); if (on) K.mode(d, t + 0.05, 1600, 0.06, 0.4); }),
+    // a rubber ball on the iron rim: a low, short bonk with a faint hum, nothing like glass
+    rimHit: () => snd((t, K, d) => {
+      K.mode(d, t, K.R(170, 220), 0.26, 0.07, { f1: 120 });
+      K.mode(d, t, K.R(520, 640), 0.05, 0.10);
+      K.burst(d, t, { type: 'lowpass', f: 900, q: 0.7, vol: 0.12, tau: 0.025, buf: 'brown' });
+    }),
+    // a ball against the backboard (or a side rail, softer): a deep thud with a short glassy boom
+    backboard: (vol = 1) => snd((t, K, d) => {
+      K.mode(d, t, K.R(110, 140), 0.32, 0.09, { f1: 85 });
+      K.mode(d, t, K.R(300, 360), 0.07, 0.14);
+      K.burst(d, t, { type: 'lowpass', f: 700, q: 0.7, vol: 0.14, tau: 0.03, buf: 'brown' });
+    }, 0, vol),
     // a ring landing on the table
     tap: () => snd((t, K, d) => { K.burst(d, t, { type: 'bandpass', f: 900, q: 1.2, vol: 0.16, tau: 0.02 }); K.mode(d, t, 300, 0.05, 0.03); }),
     // a ball into a tin pyramid: the smack, then cans clattering for each that falls
@@ -238,11 +251,20 @@ UI.midway = (() => {
     const request = ctx.act('throw', { aim: +aim.toFixed(3), power: +power.toFixed(3), ...(V.kind === 'hoops' ? { startX: +heldBallX.toFixed(3) } : {}) });
     if (V.kind === 'hoops') {
       const pending = { ball: heldBall, startX: heldBallX };
+      // the ball leaves the hand now, on the plain arc this aim and power would give; the server's flight replaces it
+      const guess = spot(aim, power);
+      pending.anim = {
+        shot: { id: -(++ballUid), t: hoopShowTime, x: guess.x, y: guess.y, startX: heldBallX, aim, hoop: null, k: 'hoops' },
+        t0: performance.now(), hit: true, nextContact: 1e9, predicted: true, ball: pending.ball,
+      };
+      pending.anim.trajectory = basketballTrajectory(pending.anim.shot);
+      anims.push(pending.anim);
       pendingShots.push(pending);
       heldBall = false;
       ctx.quiet(request.catch(() => {
         const index = pendingShots.indexOf(pending);
         if (index < 0) return;
+        anims = anims.filter((a) => a !== pending.anim);
         pendingShots.splice(index, 1);
         heldBall = pending.ball;
         heldBallX = pending.startX;
@@ -283,9 +305,9 @@ UI.midway = (() => {
       if (seen.has(sh.id)) continue;
       seen.add(sh.id);
       const pendingIndex = sh.k === 'hoops' && pendingShots.length ? 0 : -1;
-      if (pendingIndex >= 0) sh.startX = pendingShots[pendingIndex].startX;
-      const rim = sh.k === 'hoops' ? basketballRimContact(sh, V.geo.hoops) : null;
-      const trajectory = sh.k === 'hoops' ? basketballTrajectory(sh, rim) : null;
+      const pendingShot = pendingIndex >= 0 ? pendingShots[pendingIndex] : null;
+      if (pendingShot) sh.startX = pendingShot.startX;
+      const trajectory = sh.k === 'hoops' ? basketballTrajectory(sh) : null;
       let ball;
       if (trajectory) {
         if (pendingIndex >= 0) {
@@ -297,7 +319,14 @@ UI.midway = (() => {
           rackBalls = rackBalls.filter((resting) => resting !== ball);
         }
       }
-      anims.push({ shot: sh, t0: now + stagger, hit: false, trajectory, rim, ball });
+      // a shot this player just released has been flying since the release: carry on from there
+      let t0 = now + stagger;
+      if (pendingShot?.anim) {
+        const guess = pendingShot.anim;
+        anims = anims.filter((a) => a !== guess);
+        if (now - guess.t0 < 1200) t0 = guess.t0;
+      }
+      anims.push({ shot: sh, t0, hit: false, trajectory, ball, nextContact: 1 });
       stagger += 120;
       if (sh.k === 'skee') SND.roll();
     }
@@ -321,7 +350,7 @@ UI.midway = (() => {
       balls.textContent = '●'.repeat(n) + '○'.repeat(Math.max(0, V.throws - n));
       $('mwAimCue').hidden = true;
     }
-    $('mwHot').hidden = V.kind === 'hoops' || !(b && b.streak >= V.hotAt);
+    $('mwHot').hidden = !(b && b.streak >= V.hotAt);
     $('mwJack').textContent = V.kind === 'hoops' ? '' : V.jackBy ? `🔔 ${V.jackBy} got the jackpot` : '🔔 Jackpot up!';
     $('mwJack').classList.toggle('taken', !!V.jackBy);
     const w = $('mwWatch');
@@ -366,7 +395,7 @@ UI.midway = (() => {
       const bar = ctx.el('span', 'mw-bar'); const fill = ctx.el('i'); fill.style.width = `${(100 * r.tickets / top).toFixed(1)}%`; fill.style.background = colorOf(r.pid); bar.append(fill);
       const t = ctx.el('b', '', `${r.tickets}`);
       const progress = V.kind === 'hoops' ? `${r.shots.length} shots` : r.left ? '●'.repeat(r.left) : '✓';
-      const extra = ctx.el('small', '', `${progress}${V.kind !== 'hoops' && r.streak >= V.hotAt ? ' 🔥' : ''}${r.jackpots ? ' 🔔'.repeat(r.jackpots) : ''}`);
+      const extra = ctx.el('small', '', `${progress}${r.streak >= V.hotAt ? ' 🔥' : ''}${r.jackpots ? ' 🔔'.repeat(r.jackpots) : ''}`);
       row.append(nm, bar, t, extra);
       box.append(row);
     }
@@ -407,7 +436,7 @@ UI.midway = (() => {
   function pop(sh) {
     const el = $('mwPop'); if (!el) return;
     const words = sh.k === 'skee' ? (sh.where === 'short' ? 'Short!' : sh.where === 'cup' ? (sh.rattle ? '🏆 RATTLED IN!' : '🏆 CUP!') : (sh.rattle ? 'Rattled!' : ''))
-      : sh.k === 'hoops' ? (sh.hoop == null ? 'Miss' : 'BASKET')
+      : sh.k === 'hoops' ? (sh.hoop == null ? basketballMissText(sh) : sh.swish ? 'SWISH!' : sh.bank ? 'BANK!' : 'BASKET')
         : sh.k === 'rings' ? (sh.b == null ? 'Miss' : 'RINGER!') : (sh.fell.length ? `${sh.fell.length} can${sh.fell.length > 1 ? 's' : ''}` : 'Miss');
     el.textContent = `${words}${sh.pts ? ` +${sh.pts}` : ''}${sh.hot ? ' 🔥' : ''}${sh.jack ? '  🔔 JACKPOT' : ''}${sh.sweep ? '  🥫 SWEEP' : ''}`.trim();
     const madeBasket = sh.k === 'hoops' && sh.hoop != null;
@@ -424,11 +453,10 @@ UI.midway = (() => {
     else if (sh.k === 'rings') sh.b != null ? SND.clink(true) : SND.tap();
     else if (sh.k === 'hoops') {
       if (sh.hoop != null) {
-        netStrike = { at: now, offset: (sh.entryX ?? sh.x) - (sh.targetX ?? sh.x) };
+        netStrike = { at: now, offset: (sh.path?.at(-1)?.[1] ?? sh.x) - (sh.targetX ?? sh.x) };
         SND.basketSwoosh();
         SND.sink(true);
-      } else if (a.rim) SND.clink(false);
-      else if (!sh.board) SND.flop();
+      } else if (!sh.path?.some((k) => k[7] === 'rim' || k[7] === 'board' || k[7] === 'wall')) SND.flop();
     }
     else if (sh.fell.length) {
       SND.clatter(sh.fell.length);
@@ -439,7 +467,7 @@ UI.midway = (() => {
     if (mine && sh.k === 'hoops') {
       aimFeedback = sh.hoop == null ? { direction: basketballMissDirection(sh, V.geo.hoops[0]), until: now + 1800 } : null;
     }
-    if (sh.k !== 'hoops' || sh.hoop != null || (!mine && (!netStrike || now - netStrike.at > 800))) pop(sh);
+    if (sh.k !== 'hoops' || sh.hoop != null || mine || !netStrike || now - netStrike.at > 800) pop(sh);
     (gl || flat)?.impact?.(sh);
   }
 
@@ -447,10 +475,26 @@ UI.midway = (() => {
   const spot = (a, p) => { const m = V.geo.map; return { x: a * m[0], y: p * m[1] + m[2] }; };
 
   function basketballMissDirection(shot, [centerX, centerY, width, height]) {
-    const dx = ((shot.entryX ?? shot.x) - (shot.targetX ?? centerX)) / width;
-    const dy = shot.board ? shot.entryDepth / 0.09 : (shot.y - centerY) / height;
+    const dx = (shot.x - (shot.targetX ?? centerX)) / width;
+    const dy = (shot.y - centerY) / height;
     if (Math.abs(dx) >= Math.abs(dy)) return dx > 0 ? 'left' : 'right';
     return dy > 0 ? 'down' : 'up';
+  }
+
+  // why a shot missed, in words, from what the server's flight actually did
+  function basketballMissText(shot) {
+    const [centerX, centerY, width, height] = V.geo.hoops[0];
+    const path = shot.path || [];
+    const dx = shot.x - (shot.targetX ?? centerX);
+    const dy = (shot.y - centerY) / height;
+    const rim = path.find((k) => k[7] === 'rim');
+    const off = Math.hypot(dx / 0.19, dy);
+    const lateral = Math.abs(dx) / 0.19 >= Math.abs(dy);
+    const why = rim ? (rim[3] > hoopDepth + 0.05 ? 'Short, front rim' : dx > 0 ? 'Rim out right' : 'Rim out left')
+      : path.some((k) => k[7] === 'board' || k[7] === 'wall') ? 'Off the glass'
+      : lateral ? (dx > 0 ? 'Too far right' : 'Too far left')
+      : dy > 0 ? 'Too high' : 'Short';
+    return `${off < 2.2 || rim ? 'So close! ' : 'Miss: '}${why}`;
   }
 
   function basketballAimDirection(now) {
@@ -475,9 +519,11 @@ UI.midway = (() => {
         if (!a.returned && now >= a.t0) {
           const p = basketballSample(a.trajectory, (now - a.t0) / 1000);
           if (a.rest) {
-            const u = clamp((now - a.glideAt) / hoopGlideTime, 0, 1);
+            const t = clamp((now - a.glideAt) / hoopGlideTime, 0, 1), u = t * t * (3 - 2 * t);
             for (const axis of ['x', 'y', 'z', 'spin']) p[axis] += (a.rest[axis] - p[axis]) * u;
           }
+          p.ref = a;
+          p.uid = a.uid ??= ++ballUid;
           basketballs.push(p);
         }
       } else fly.push({ shot: a.shot, u: Math.min(1, u), landU: HIT[a.shot.k] });
@@ -485,8 +531,10 @@ UI.midway = (() => {
     const pending = new Set(anims.filter((a) => !a.hit).map((a) => a.shot.id));
     const preview = canThrow() || swipe ? { ...spot(aim, power), aim, startX: heldBall ? heldBallX : hoopHandX(aim) } : null;
     if (V.kind === 'hoops') {
-      basketballs.push(...rackBalls.map((ball) => ({ ...ball })));
-      if (heldBall) basketballs.push({ x: heldBallX, y: 1.17, z: hoopLaunchZ, spin: 0 });
+      basketballs.push(...rackBalls.map((ball) => ({ ...ball, ref: ball, uid: ball.uid ??= ++ballUid })));
+      if (heldBall) basketballs.push({ x: heldBallX, y: 1.17, z: hoopLaunchZ, spin: 0, uid: 0 });
+      // a fixed order, so a ball changing from flying to resting doesn't change how overlaps resolve
+      basketballs.sort((a, b) => (a.uid ?? 1e9) - (b.uid ?? 1e9));
       const diameter = hoopRadius * 2;
       // Collision distances must match the rendered centers. The cabinet
       // compresses height and depth while each ball cancels that scale so it
@@ -516,6 +564,14 @@ UI.midway = (() => {
           }
         }
       }
+      // keep what was resolved: resting balls stay where they were nudged to, and a ball
+      // coming home settles into the rack from where it is shown instead of jumping
+      const reach = 0.92 - hoopRadius;
+      for (const ball of basketballs) {
+        if (!ball.ref) continue;
+        if (rackBalls.includes(ball.ref)) ball.ref.x = clamp(ball.x, -reach, reach);
+        else ball.ref.shown = { x: ball.x, y: ball.y, z: ball.z };
+      }
     }
     const movingHoop = V.kind === 'hoops' && V.geo.travel > 0 && (V.stage === 'play' || V.stage === 'settle');
     const elapsed = movingHoop && !S.paused ? Math.max(0, (now - hoopAt) / 1000) : V.hoopElapsed ?? 0;
@@ -532,6 +588,7 @@ UI.midway = (() => {
   const HIT = { skee: 0.85, rings: 0.75, cans: 0.55, hoops: 0.73 };
 
   const hoopStep = 1 / 120;
+  const hoopFrameCap = 720;
   const hoopRadius = 0.155;
   const hoopDepth = -2.42;
   const hoopRackZ = -0.86;
@@ -552,7 +609,11 @@ UI.midway = (() => {
     const valid = options.filter((x) => Math.abs(x) <= limit
       && occupied.every((other) => Math.abs(x - other.x) >= spacing - 1e-7));
     const preferred = clamp(ball.x + Math.sin(shotId * 7.13) * 0.22, -limit, limit);
-    const x = valid.reduce((a, b) => Math.abs(a - preferred) < Math.abs(b - preferred) ? a : b);
+    // with the rack crowded no slot may be fully clear: take the roomiest one rather than failing
+    const room = (x) => occupied.reduce((least, other) => Math.min(least, Math.abs(x - other.x)), Infinity);
+    const x = valid.length
+      ? valid.reduce((a, b) => Math.abs(a - preferred) < Math.abs(b - preferred) ? a : b)
+      : options.filter((x) => Math.abs(x) <= limit).reduce((a, b) => room(a) >= room(b) ? a : b, preferred);
     return rackBall(x, ball.spin + (ball.z - hoopRackZ) / hoopRadius);
   }
 
@@ -585,6 +646,9 @@ UI.midway = (() => {
     };
   }
 
+  const hoopBoardZ = -2.622;   // the ball bounces with its surface on this plane, just behind the ring
+  const boardHalfWidth = 0.92;   // inside the side rails, where the walls stop a ball's surface
+  const boardBottom = 0.66, boardTop = 1.50;   // entry-plane heights: the rim up to the top bar
   const hoopTubeRadius = 0.013;
   const hoopRingRadius = (width) => width + 0.052;
 
@@ -628,20 +692,6 @@ UI.midway = (() => {
     return knots;
   }
 
-  function basketballRimContact(shot, targets) {
-    if (shot.hoop != null || shot.board) return null;
-    for (const [x, y, width] of targets) {
-      const dx = shot.x - (shot.targetX ?? x);
-      const dy = shot.y - y;
-      const edge = hoopRingRadius(width) - Math.abs(dx);
-      const gap = Math.hypot(edge, dy);
-      if (gap <= hoopRadius + hoopTubeRadius) {
-        return { x: -(Math.sign(dx) || 1) * edge, y: dy };
-      }
-    }
-    return null;
-  }
-
   // Both renderers show the same tapering arc through the first part of the flight.
   function basketballGuide(shot, index, count) {
     const t = index / (count - 1);
@@ -649,48 +699,38 @@ UI.midway = (() => {
     return basketballFlight(shot, (0.12 + 0.50 * t) * duration, duration);
   }
 
-  function basketballTrajectory(shot, rim) {
-    const flightTime = shot.t * HIT.hoops;
+  // The server's flight as keyframes [t, x, y, z, vx, vy, vz, kind]: launch, each contact, then the landing.
+  // Between keyframes the ball is in free fall. A shot without a path (an older one) is a plain arc.
+  function basketballPath(shot) {
+    if (shot.path) return shot.path;
+    const T = shot.t * HIT.hoops, startX = shot.startX ?? hoopHandX(shot.aim);
+    return [[0, startX, 1.17, hoopLaunchZ, (shot.x - startX) / T, (shot.y - 0.17) / T + gravity * T / 2, (hoopDepth - hoopLaunchZ) / T, 'launch'],
+      [T, shot.x, shot.y + 1, hoopDepth, (shot.x - startX) / T, (shot.y - 0.17) / T - gravity * T / 2, (hoopDepth - hoopLaunchZ) / T, shot.hoop != null ? 'net' : 'end']];
+  }
+
+  function basketballTrajectory(shot) {
+    const path = basketballPath(shot);
     const frames = [];
-    const board = shot.board;
-    const phaseStart = board ? (shot.hoop != null ? shot.landAt : board.at) : flightTime;
-    const rebound = (time) => {
-      const dt = time - board.at;
-      return {
-        x: board.x + board.vx * dt,
-        y: board.y + (board.vy - gravity * dt / 2) * dt,
-        z: board.z + board.vz * dt,
-        spin: time * 9,
-      };
+    const phaseStart = path.at(-1)[0];
+    const fall = (k, time) => {
+      const dt = time - k[0];
+      return { x: k[1] + k[4] * dt, y: k[2] + k[5] * dt - gravity * dt * dt / 2, z: k[3] + k[6] * dt, spin: time * 9 };
     };
-    let ball = board ? rebound(phaseStart) : basketballFlight(shot, flightTime, flightTime);
-    let vx = board?.vx ?? (shot.x - (shot.startX ?? hoopHandX(shot.aim))) / flightTime;
-    let vy = board ? board.vy - gravity * (phaseStart - board.at)
-      : (shot.y - 0.17) / flightTime - gravity * flightTime / 2;
-    let vz = board?.vz ?? (hoopDepth - hoopLaunchZ) / flightTime;
+    let segment = 0;
+    const last = path.at(-1);
+    let ball = fall(last, phaseStart);
+    let vx = last[4], vy = last[5], vz = last[6];
     let spinRate = 9;
     if (shot.hoop != null) { vx *= 0.25; vy *= 0.65; vz *= 0.20; spinRate *= 0.60; }
-    else if (rim) {
-      // Reflect the velocity along the rim's contact normal with energy loss.
-      const nz = 0.045;
-      const length = Math.hypot(rim.x, rim.y, nz);
-      const approach = (vx * rim.x + vy * rim.y + vz * nz) / length;
-      const impulse = -1.55 * Math.min(0, approach) / length;
-      vx = vx * 0.88 + impulse * rim.x;
-      vy = vy * 0.88 + impulse * rim.y;
-      vz = vz * 0.88 + impulse * nz;
-      // a rim clip kicks the ball off the iron, not across the whole cabinet
-      vx = clamp(vx, -0.9, 0.9);
-      vy = clamp(vy, -3, 3.2);
-    }
-    const back = -2.57 + hoopRadius;
+    const back = -2.5295;
     const returnPhase = (shot.id * 2.399963) % (Math.PI * 2);
     let rampBounce = 0;
     const normalLength = Math.hypot(1, hoopSlope);
-    for (let i = 0; i <= 480; i++) {
+    for (let i = 0; i <= hoopFrameCap; i++) {
       const time = i * hoopStep;
       if (time <= phaseStart) {
-        frames.push(board && time >= board.at ? rebound(time) : basketballFlight(shot, time, flightTime));
+        while (segment + 1 < path.length && path[segment + 1][0] <= time) segment++;
+        frames.push(fall(path[segment], time));
         continue;
       }
 
@@ -714,12 +754,18 @@ UI.midway = (() => {
           vy += impulse;
           vz += hoopSlope * impulse;
           const impact = Math.abs(normalSpeed);
-          rampBounce++;
-          const sideKick = Math.sin(returnPhase + rampBounce * 1.7) * Math.min(0.48, impact * 0.20);
-          vx = (vx + sideKick) * 0.91;
-          vz *= 0.94;
+          // only a real bounce kicks and slows the ball; resting on the slope it just rolls
+          if (impact > 0.25) {
+            rampBounce++;
+            const sideKick = Math.sin(returnPhase + rampBounce * 1.7) * Math.min(0.48, impact * 0.20);
+            vx = (vx + sideKick) * 0.91;
+            vz *= 0.94;
+          }
           spinRate += (vz * cabinetDepthScale / hoopRadius - spinRate) * 0.35;
         }
+        // rolling resistance, per second, so the roll home settles near a steady pace
+        const drag = Math.exp(-1.8 * dt);
+        vx *= drag; vz *= drag;
       }
       frames.push(ball);
       if (ball.z >= hoopRackZ && ball.y <= hoopRampY(hoopRackZ) + 0.10) break;
@@ -745,10 +791,14 @@ UI.midway = (() => {
     if (!V) return;
     let ballReturned = false;
     for (const a of anims) {
+      if (a.predicted) { if (now - a.t0 > 2500) a.dead = true; continue; }
       const elapsed = (now - a.t0) / 1000;
-      if (a.shot.board && !a.boardHit && elapsed >= a.shot.board.at) {
-        a.boardHit = true;
-        SND.tap();
+      // each contact in the server's flight sounds at its own moment
+      for (const path = a.shot.path; path && a.nextContact < path.length && elapsed >= path[a.nextContact][0]; a.nextContact++) {
+        const kind = path[a.nextContact][7];
+        if (kind === 'rim') SND.rimHit();
+        else if (kind === 'board' || kind === 'wall') SND.backboard();
+        else if (kind === 'rail') SND.backboard(0.5);
       }
       if (!a.hit && elapsed >= (a.shot.landAt ?? a.shot.t * HIT[a.shot.k])) { a.hit = true; land(a, now); }
       if (a.trajectory && !a.returned && now - a.t0 >= (a.trajectory.length - 1) * hoopStep * 1000) {
@@ -758,14 +808,14 @@ UI.midway = (() => {
           a.glideAt = now;
         }
         if (!a.rest || now - a.glideAt >= hoopGlideTime) {
-          if (a.rest) rackBalls.push(a.rest);
+          if (a.rest) rackBalls.push({ ...a.rest, x: clamp(a.shown?.x ?? a.rest.x, -(0.92 - hoopRadius), 0.92 - hoopRadius), uid: a.uid });
           a.returned = true;
           ballReturned = true;
         }
       }
       if (a.restack && now >= a.restack) { a.restack = 0; fallAt = fallAt.map(() => null); }
     }
-    anims = anims.filter((a) => a.trajectory ? !a.returned : now - a.t0 < a.shot.t * 1000 + 900 || a.restack);
+    anims = anims.filter((a) => !a.dead && (a.trajectory ? !a.returned : now - a.t0 < a.shot.t * 1000 + 900 || a.restack));
     if (popT && now > popT) { popT = 0; $('mwPop').hidden = true; }
     // the countdown and the clock
     const cnt = $('mwCount');
@@ -1187,10 +1237,22 @@ UI.midway = (() => {
     hoops.scale.set(1, cabinetHeightScale, cabinetDepthScale);
     hoops.position.set(0, cabinetFloorY * (1 - cabinetHeightScale), hoopRackZ * (1 - cabinetDepthScale));
     const hoopBalls = [];
+    // Depth cues on the ramp: a shadow under each ball and a ring under the hoop, so height and distance read apart.
+    const rampTilt = -Math.PI / 2 + Math.atan(hoopSlope);
+    const rampSurface = (z) => hoopRampY(z) - hoopRadius;
+    const shadowGeo = new T.CircleGeometry(hoopRadius, 20);
+    const hoopShadows = [];
+    const footprint = new T.Mesh(new T.RingGeometry(0.97, 1, 56), new T.MeshBasicMaterial({
+      color: 0x64edff, transparent: true, opacity: 0.42, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2,
+    }));
+    footprint.rotation.x = rampTilt;
+    footprint.position.set(0, rampSurface(hoopDepth) + 0.006, hoopDepth);
+    footprint.renderOrder = 2;
+    hoops.add(footprint);
     let movingTarget, rimAssembly, hoopNet, scoreHalo;
     const cord = new T.Object3D();
     const cordAxis = new T.Vector3(0, 1, 0), cordDirection = new T.Vector3();
-    const hoopRimMat = std(0xff7435, { metalness: 0.35, emissive: 0x7aff55, emissiveIntensity: 0 });
+    const hoopRimMat = std(0xff6a2a, { metalness: 0.55, roughness: 0.34, emissive: 0x7aff55, emissiveIntensity: 0 });
     const hoopPoint = (x, y) => new T.Vector3(x, 1 + y, hoopDepth);
     let hoopBall, rubberBump;
     function buildHoops(geo) {
@@ -1262,45 +1324,42 @@ UI.midway = (() => {
           for (let x = 8 + y % 4; x < w; x += 14) g.fillRect(x, y, 2, 2);
         }
       });
-      const cabinet = new T.Mesh(new T.PlaneGeometry(1.72, 1.63), std(0xffffff, { map: cabinetTex }));
+      const cabinet = new T.Mesh(new T.PlaneGeometry(2.01, 1.775), std(0xffffff, { map: cabinetTex }));
       const surround = new T.Mesh(new T.PlaneGeometry(8, 6), new T.MeshBasicMaterial({
         color: 0x080f17, toneMapped: false,
       }));
       surround.position.set(0, 1.6, -3.2);
       hoops.add(surround);
-      cabinet.position.set(0, 1.66, -2.585);
+      cabinet.position.set(0, 1.7325, -2.65);
       hoops.add(cabinet);
-      box(2.00, 0.08, 0.16, 0, 2.46, -2.57, shell);
-      const sign = marquee('BASKETBALL', 1.48, 0.22, '#12353f', '#a9f6ff');
-      sign.position.set(0, 2.32, -2.55);
-      hoops.add(sign);
-      box(1.76, 0.013, 0.035, 0, 2.21, -2.52, cyan);
+      box(2.30, 0.08, 0.16, 0, 2.66, -2.60, shell);
+      box(1.84, 0.013, 0.035, 0, 2.52, -2.55, cyan);
       const lamp = new T.PointLight(0x91dfff, 2.1, 4, 2);
-      lamp.position.set(0, 2.26, -2.13);
+      lamp.position.set(0, 2.45, -2.13);
       const fill = new T.PointLight(0xc6faff, 1.6, 1.8, 2);
       fill.position.set(0, 1.08, hoopRackZ + 0.15);
       hoops.add(lamp, fill);
       // The side panels sit outside the playable ramp, with the strips following their upper edge.
       const panel = new T.Shape();
-      panel.moveTo(-2.58, 0.54);
+      panel.moveTo(-2.64, 0.54);
       panel.lineTo(hoopRackZ + 0.14, 0.54);
       panel.lineTo(hoopRackZ + 0.14, 0.78);
-      panel.lineTo(-2.58, 1.53);
+      panel.lineTo(-2.64, 1.53);
       panel.closePath();
       const panelGeo = new T.ExtrudeGeometry(panel, { depth: 0.09, bevelEnabled: false });
       panelGeo.rotateY(-Math.PI / 2);
-      const railRun = hoopRackZ + 0.14 + 2.58;
+      const railRun = hoopRackZ + 0.14 + 2.64;
       for (const side of [-1, 1]) {
-        box(0.10, 1.55, 0.15, side * 0.82, 1.66, -2.54, shell);
-        box(0.012, 1.27, 0.016, side * 0.82, 1.66, -2.458, cyan);
+        box(0.10, 1.80, 0.15, side * 0.97, 1.76, -2.575, shell);
+        box(0.012, 1.27, 0.016, side * 0.97, 1.66, -2.493, cyan);
         const wall = new T.Mesh(panelGeo, shell);
-        wall.position.x = side * 0.82 + 0.045;
+        wall.position.x = side * 1.01;
         hoops.add(wall);
         const strip = box(0.018, 0.012, Math.hypot(railRun, 0.75),
-          side * 0.82, 1.155, -2.58 + railRun / 2, cyan);
+          side * 0.97, 1.155, -2.64 + railRun / 2, cyan);
         strip.rotation.x = Math.atan2(0.75, railRun);
       }
-      const rampLength = hoopRackZ + 2.57;
+      const rampLength = hoopRackZ + 2.622;
       const rampTex = tex(256, 256, (g, w, h) => {
         g.fillStyle = '#242c36'; g.fillRect(0, 0, w, h);
         for (let y = 0; y < h; y += 6) {
@@ -1310,18 +1369,25 @@ UI.midway = (() => {
         g.strokeStyle = '#67909977';
         g.beginPath(); g.moveTo(12, h / 2); g.lineTo(w - 12, h / 2); g.stroke();
         g.beginPath(); g.arc(w / 2, h / 2, 30, 0, 2 * Math.PI); g.stroke();
+        // chevrons pointing toward the hoop
+        g.strokeStyle = '#64edff66'; g.lineWidth = 4; g.lineJoin = 'round';
+        for (const cy of [h * 0.24, h * 0.8]) {
+          for (const dy of [0, 16]) {
+            g.beginPath(); g.moveTo(w / 2 - 26, cy + 14 + dy); g.lineTo(w / 2, cy - 4 + dy); g.lineTo(w / 2 + 26, cy + 14 + dy); g.stroke();
+          }
+        }
       });
-      const ramp = new T.Mesh(new T.PlaneGeometry(1.78, rampLength * Math.hypot(1, hoopSlope)),
+      const ramp = new T.Mesh(new T.PlaneGeometry(1.84, rampLength * Math.hypot(1, hoopSlope)),
         std(0xffffff, { map: rampTex, roughness: 0.78 }));
       ramp.rotation.x = -Math.PI / 2 + Math.atan(hoopSlope);
       ramp.position.z = hoopRackZ - rampLength / 2;
       ramp.position.y = hoopRampY(ramp.position.z) - hoopRadius;
       hoops.add(ramp);
-      box(1.98, 0.55, 0.24, 0, 0.36, hoopRackZ + 0.025, shell);
-      box(1.82, 0.018, 0.24, 0, 0.681, hoopRackZ + 0.046, dark);
-      box(1.92, 0.10, 0.045, 0, 0.636, hoopRackZ + 0.17, shell);
-      box(1.48, 0.012, 0.012, 0, 0.667, hoopRackZ + 0.195, cyan);
-      const trayGlow = new T.Mesh(new T.PlaneGeometry(1.84, 0.25), new T.MeshBasicMaterial({
+      box(2.28, 0.55, 0.24, 0, 0.36, hoopRackZ + 0.025, shell);
+      box(2.12, 0.018, 0.24, 0, 0.681, hoopRackZ + 0.046, dark);
+      box(2.22, 0.10, 0.045, 0, 0.636, hoopRackZ + 0.17, shell);
+      box(1.78, 0.012, 0.012, 0, 0.667, hoopRackZ + 0.195, cyan);
+      const trayGlow = new T.Mesh(new T.PlaneGeometry(2.14, 0.25), new T.MeshBasicMaterial({
         map: haloTex, color: 0x57dfff, opacity: 0.36, transparent: true, depthWrite: false,
         blending: T.AdditiveBlending,
       }));
@@ -1333,27 +1399,68 @@ UI.midway = (() => {
         const target = movingTarget = new T.Group();
         target.position.copy(hoopPoint(x, y));
         hoops.add(target);
-        const boardTex = tex(256, 160, (g, w, h) => {
-          const glassTint = g.createLinearGradient(0, 0, w, h);
-          glassTint.addColorStop(0, '#a4ebff99');
-          glassTint.addColorStop(0.45, '#3a839744');
-          glassTint.addColorStop(1, '#6bb8df77');
-          g.fillStyle = glassTint; g.fillRect(0, 0, w, h);
-          g.strokeStyle = '#b9e5e9'; g.lineWidth = 7;
-          g.strokeRect(7, 7, w - 14, h - 14);
-          g.lineWidth = 4; g.strokeRect(65, 82, 126, 72);
-          g.strokeRect(23, 23, w - 46, h - 46);
+        // The glass fills the back of the cabinet between the side rails, from the rim up to the top bar.
+        const glassTex = tex(512, 352, (g, w, h) => {
+          const tint = g.createLinearGradient(0, 0, w, h);
+          tint.addColorStop(0, '#a4ebff80');
+          tint.addColorStop(0.45, '#3a839738');
+          tint.addColorStop(1, '#6bb8df66');
+          g.fillStyle = tint; g.fillRect(0, 0, w, h);
+          g.fillStyle = '#ffffff12';
+          g.beginPath(); g.moveTo(w * 0.12, 0); g.lineTo(w * 0.30, 0); g.lineTo(w * 0.08, h); g.lineTo(0, h); g.lineTo(0, h * 0.7); g.closePath(); g.fill();
+          g.strokeStyle = '#b9e5e9'; g.lineWidth = 9;
+          g.strokeRect(5, 5, w - 10, h - 10);
+          g.lineWidth = 3; g.strokeStyle = '#b9e5e988';
+          g.strokeRect(22, 22, w - 44, h - 44);
         });
-        const board = new T.Mesh(new T.PlaneGeometry(0.82, 0.52), std(0xffffff, { map: boardTex, roughness: 0.28, transparent: true, depthWrite: false }));
-        board.position.set(0, 0.26, -0.15);
+        const glass = new T.Mesh(new T.PlaneGeometry(boardHalfWidth * 2, boardTop - boardBottom),
+          std(0xffffff, { map: glassTex, roughness: 0.28, transparent: true, depthWrite: false }));
+        glass.position.set(0, 1 + (boardTop + boardBottom) / 2, hoopBoardZ);
+        hoops.add(glass);
+        // a metal frame around the glass, with a lit lower edge level with the rim
+        const frameMetal = std(0x46515f, { metalness: 0.65, roughness: 0.38 });
+        const glassMid = 1 + (boardTop + boardBottom) / 2, glassH = boardTop - boardBottom;
+        const bar = (w, h, x, y, mat = frameMetal) => {
+          const mesh = new T.Mesh(new T.BoxGeometry(w, h, 0.05), mat);
+          mesh.position.set(x, y, hoopBoardZ + 0.012);
+          hoops.add(mesh);
+        };
+        bar(boardHalfWidth * 2, 0.035, 0, 1 + boardTop - 0.0175);
+        bar(boardHalfWidth * 2, 0.035, 0, 1 + boardBottom + 0.0175);
+        for (const side of [-1, 1]) bar(0.035, glassH, side * (boardHalfWidth - 0.0175), glassMid);
+        const edgeGlow = new T.Mesh(new T.BoxGeometry(boardHalfWidth * 2 - 0.07, 0.008, 0.012), cyan);
+        edgeGlow.position.set(0, 1 + boardBottom + 0.04, hoopBoardZ + 0.04);
+        hoops.add(edgeGlow);
+        // the rim's warm spot, for highlights on the iron and the ball
+        const rimLight = new T.PointLight(0xffd2a0, 1.1, 2.6, 2);
+        rimLight.position.set(0, 1 + boardBottom + 0.55, hoopDepth + 0.55);
+        hoops.add(rimLight);
+        // the shooter's square follows the hoop, as the rim and net do
+        const squareTex = tex(256, 160, (g, w, h) => {
+          g.strokeStyle = '#d5f6ff'; g.lineWidth = 8;
+          g.strokeRect(6, 6, w - 12, h - 12);
+        });
+        const board = new T.Mesh(new T.PlaneGeometry(0.58, 0.36),
+          std(0xffffff, { map: squareTex, roughness: 0.28, transparent: true, depthWrite: false }));
+        board.position.set(0, 0.17, hoopBoardZ - hoopDepth + 0.004);
         target.add(board);
+        const mountPlate = new T.Mesh(new T.BoxGeometry(0.30, 0.13, 0.016), frameMetal);
+        mountPlate.position.set(0, 0.062, hoopBoardZ - hoopDepth + 0.012);
+        target.add(mountPlate);
+        const screwGeo = new T.CylinderGeometry(0.009, 0.009, 0.01, 8);
+        for (const [sx, sy] of [[-0.12, 0.02], [0.12, 0.02], [-0.12, 0.105], [0.12, 0.105]]) {
+          const screw = new T.Mesh(screwGeo, hoopRimMat);
+          screw.rotation.x = Math.PI / 2;
+          screw.position.set(sx, sy, hoopBoardZ - hoopDepth + 0.025);
+          target.add(screw);
+        }
         const rimMount = new T.Group();
         rimMount.scale.set(1, 1 / cabinetHeightScale, 1 / cabinetDepthScale);
         target.add(rimMount);
         rimAssembly = new T.Group();
         rimMount.add(rimAssembly);
         const radius = hoopRingRadius(rx);
-        const rim = new T.Mesh(new T.TorusGeometry(radius, hoopTubeRadius, 8, 28), hoopRimMat);
+        const rim = new T.Mesh(new T.TorusGeometry(radius, hoopTubeRadius, 12, 64), hoopRimMat);
         rim.rotation.x = -Math.PI / 2;
         rimAssembly.add(rim);
         scoreHalo = new T.Sprite(new T.SpriteMaterial({
@@ -1363,7 +1470,7 @@ UI.midway = (() => {
         scoreHalo.position.set(0, -0.035, 0.035);
         scoreHalo.scale.set(0.80, 0.56, 1);
         rimAssembly.add(scoreHalo);
-        const strand = new T.CylinderGeometry(0.0025, 0.0025, 1, 5);
+        const strand = new T.CylinderGeometry(0.0032, 0.0032, 1, 6);
         hoopNet = new T.InstancedMesh(strand, std(0xffecd3, { roughness: 0.96 }), netWeave.length);
         hoopNet.instanceMatrix.setUsage(T.DynamicDrawUsage);
         hoopNet.frustumCulled = false;
@@ -1438,7 +1545,7 @@ UI.midway = (() => {
 
     const cam = { pos: new T.Vector3(0, 1.7, 1.1), look: new T.Vector3(0, 1.1, -3), init: false };
     const VIEW = { skee: { pos: [0, 1.85, 1.65], look: [0, 1.36, -2.6], w: 0.86, d: 2.7 }, rings: { pos: [0, 1.9, 0.1], look: [0, 0.78, -2.05], w: 0.8, d: 2.6 },
-      hoops: { pos: [0, 1.92, 1.46], look: [0, 1.25, -2.70], w: 1.04, d: 2.4 },
+      hoops: { pos: [0, 1.92, 1.46], look: [0, 1.25, -2.70], w: 1.2, d: 2.4 },
       cans: { pos: [0, 1.4, -0.2], look: [0, 1.18, -2.6], w: 0.55, d: 2.4 } };
     let lastT = 0, moving = 0;
     function resize() {
@@ -1566,6 +1673,28 @@ UI.midway = (() => {
           hoopBalls.push(ball);
         }
         hoopBalls.forEach((ball, i) => { ball.visible = i < sc.basketballs.length; });
+        const footprintRadius = hoopRingRadius(sc.geo.hoops[0][2]);
+        footprint.scale.set(footprintRadius, footprintRadius / cabinetDepthScale, 1);
+        footprint.position.x = sc.hoopX ?? 0;
+        while (hoopShadows.length < sc.basketballs.length) {
+          const shadow = new T.Mesh(shadowGeo, new T.MeshBasicMaterial({
+            color: 0x000000, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2,
+          }));
+          shadow.rotation.x = rampTilt;
+          shadow.renderOrder = 3;
+          hoops.add(shadow);
+          hoopShadows.push(shadow);
+        }
+        hoopShadows.forEach((shadow, i) => {
+          const ball = sc.basketballs[i];
+          shadow.visible = !!ball;
+          if (!ball) return;
+          const height = Math.max(0, ball.y - hoopRampY(ball.z)) * cabinetHeightScale;
+          const grow = 1 - 0.3 * Math.min(1, height / 1.2);
+          shadow.position.set(ball.x, rampSurface(ball.z) + 0.004, ball.z);
+          shadow.scale.set(grow, grow / cabinetDepthScale, 1);
+          shadow.material.opacity = clamp(0.5 - height * 0.3, 0.12, 0.5);
+        });
         sc.basketballs.forEach(({ x, y, z, spin }, i) => {
           const ball = hoopBalls[i];
           ball.position.set(x, y, z);
@@ -1829,7 +1958,8 @@ UI.midway = (() => {
         }
         g.strokeStyle = '#a0cec57a'; g.lineWidth = 1;
         g.strokeRect(X(-0.88), rampBack + 0.025 * k, 1.76 * k, rampFront - rampBack - 0.05 * k);
-        g.beginPath(); g.ellipse(cx, (rampBack + rampFront) / 2, 0.17 * k, 0.048 * k, 0, 0, 2 * Math.PI); g.stroke();
+        g.strokeStyle = '#64edffa8'; g.lineWidth = 1.5;
+        g.beginPath(); g.ellipse(X(sc.hoopX ?? 0), rampBack, hoopRingRadius(sc.geo.hoops[0][2]) * k, 0.048 * k, 0, 0, 2 * Math.PI); g.stroke();
         const trayY = ballY(hoopRampY(hoopRackZ), hoopRackZ);
         g.fillStyle = '#10151c'; g.fillRect(X(-1.00), trayY + 0.03 * k, 1.72 * k, 0.18 * k);
         g.save();
@@ -1854,6 +1984,9 @@ UI.midway = (() => {
         rackTargets = (sc.rack ?? []).map((ball) => ({ ball, x: X(ball.x), y: ballY(ball.y, ball.z), radius: ballSize(ball.z) }));
         for (const ball of [...sc.basketballs].sort((a, b) => a.z - b.z)) {
           const x = X(ball.x), py = ballY(ball.y, ball.z), r = ballSize(ball.z);
+          const floorY = ballY(hoopRampY(ball.z), ball.z), lift = clamp((floorY - py) / (1.2 * k), 0, 1);
+          g.fillStyle = `rgba(0, 0, 0, ${0.5 - 0.38 * lift})`;
+          g.beginPath(); g.ellipse(x, floorY + r * 0.1, r * (1 - 0.3 * lift), r * 0.28 * (1 - 0.3 * lift), 0, 0, 2 * Math.PI); g.fill();
           g.beginPath(); g.arc(x, py, r, 0, 2 * Math.PI);
           const rubber = g.createRadialGradient(x - r * 0.35, py - r * 0.4, 0, x, py, r);
           rubber.addColorStop(0, '#ffe1ad'); rubber.addColorStop(0.33, '#ff9b4e');

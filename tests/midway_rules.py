@@ -163,16 +163,26 @@ sh = throw(g, a, 0, hoop_y)
 check("a centered shot scores with the fixed hoop", sh["targetX"] == 0 and sh["pts"] == 1)
 sh = throw(g, a, M.HOOP_TRAVEL, hoop_y)
 check("a shot away from the fixed hoop misses", sh["targetX"] == 0 and sh["pts"] == 0)
+kinds = lambda sim: [k[7] for k in sim["path"]]
 sh = throw(g, a, 0.04, 1.0)
 check("a high shot banks off glass for one point",
-      sh["pts"] == 1 and M.HOOP_FLIGHT < sh["board"]["at"] < sh["landAt"] and sh["board"]["vz"] > 0)
-sh = throw(g, a, 0.17, 1.0)
-check("a wide bank bounces off glass without scoring", sh["pts"] == 0 and sh.get("board") is not None)
-sh = throw(g, a, 0.24, 1.0)
-check("a shot beyond the glass cannot bank in", sh["pts"] == 0 and "board" not in sh)
-bank = M.hoop_bank(0.68, 0.51, 1.0, 0.25, M.HOOP_TRAVEL)
-check("a moving bank checks hoop position when the ball drops",
-      bank is not None and bank[0] and bank[1] == M.hoop_x(0.25 + bank[2]["landAt"]))
+      sh["pts"] == 1 and sh["bank"] and not sh["swish"] and "board" in kinds(sh))
+check("a shot's path starts at launch and ends at its landing time",
+      sh["path"][0][7] == "launch" and sh["path"][-1][0] == sh["landAt"] and sh["path"][-1][7] == "net")
+sh = throw(g, a, 0, hoop_y)
+check("a clean centered shot is a swish with no contacts", sh["swish"] and kinds(sh) == ["launch", "net"])
+sh = throw(g, a, 0.3, hoop_y)
+check("a shot wide of the ring rattles off the iron without scoring", sh["pts"] == 0 and "rim" in kinds(sh))
+sh = throw(g, a, 0.0, 0.3)
+check("a weak shot meets the front of the rim and misses", sh["pts"] == 0 and "rim" in kinds(sh))
+sim = M.hoop_sim(0.68, -0.75, 1.0, 0, 0)
+check("a cross-court ball kicks off the side rail instead of passing the glass",
+      "rail" in kinds(sim) and all(abs(k[1]) <= M.RAIL_LIMIT + 1e-6 for k in sim["path"]))
+check("every path stays on the right side of the glass and ends", all(k[3] >= M.SIM_BOARD_Z - 1e-6 for k in sim["path"])
+      and sim["path"][-1][7] in ("net", "end"))
+check("the simulation is deterministic", M.hoop_sim(0.2, 0.05, 0.7, 1.3, M.HOOP_TRAVEL) == M.hoop_sim(0.2, 0.05, 0.7, 1.3, M.HOOP_TRAVEL))
+moving = M.hoop_sim(0, 0.51, hoop_y, 0.25, M.HOOP_TRAVEL)
+check("a moving hoop is followed during the flight", moving["good"] == (abs(0.51 - M.hoop_x(0.25 + moving["landAt"])) < 0.19))
 
 r, g, (a, b) = game(booth_type="hoops", hoop_movement="moving")
 g.on_timeout()
@@ -182,7 +192,7 @@ check("basketball is timed and has one shared hoop", g.view(a)["midway"]["throws
       and g.view(a)["midway"]["geo"]["hoops"] == M.HOOPS
       and len(M.HOOPS) == 1 and g.view(b)["midway"]["geo"]["travel"] == M.HOOP_TRAVEL)
 check("basketball accepts a modest power error while keeping lateral aim important",
-      M.hoop_hit(0.51, hoop_y + 0.12, 0.51) and not M.hoop_hit(0.27, hoop_y, 0.51))
+      M.hoop_sim(0, 0, hoop_y + 0.12, 0, 0)["good"] and not M.hoop_sim(0, 0.27, hoop_y, 0, 0)["good"])
 pause = M.HOOP_CENTER_PAUSE
 leg = M.HOOP_PERIOD / 2 + pause
 peak = pause + M.HOOP_PERIOD / 4
@@ -195,13 +205,27 @@ def moving_hoop_x():
     return M.hoop_x(time.time() - g.t0 + M.HOOP_FLIGHT)
 
 g.t0 = time.time() + M.HOOP_FLIGHT - peak
+got = []
 for _ in range(5):
     sh = throw(g, a, moving_hoop_x(), hoop_y)
-    check("a basket scores exactly one point even on a streak",
-          sh["hoop"] == 0 and sh["pts"] == 1 and not sh["jack"] and not sh["hot"], str(sh))
-check("the score counts baskets", a.g.booth_pts == 5)
+    got.append((sh["pts"], sh["hot"]))
+    check("every shot in the streak scored", sh["hoop"] == 0 and not sh["jack"], str(sh))
+check("the hot hand starts on the fourth basket, and a clean swish on it pays one more",
+      got == [(1, False), (1, False), (1, False), (3, True), (3, True)], str(got))
+check("the score counts the bonuses", a.g.booth_pts == 9)
 sh = throw(g, a, -moving_hoop_x(), hoop_y)
 check("a shot on the opposite side misses", sh["hoop"] is None and sh["pts"] == 0 and a.g.streak == 0)
+import random as _rr
+def bot_rate(level):
+    rr, n = _rr.Random(11), 0
+    for _ in range(300):
+        tx = rr.gauss(0, M.BOT_HOOP_SIGMA[level])
+        aim, power = g.to_throw(tx, hoop_y + rr.gauss(0, M.BOT_HOOP_SIGMA[level]))
+        x, y = M.hoop_land(aim, power, rr)
+        n += M.hoop_sim(0, x, y, 0, 0)["good"]
+    return n / 300
+rates = [bot_rate(level) for level in ("easy", "normal", "hard")]
+check("basketball bots get steadily better with level", rates[0] + 0.1 < rates[1] < rates[2] and 0.35 < rates[0] < 0.7 and rates[2] > 0.8, str(rates))
 for level in M.BOT_SIGMA:
     b.bot = level
     b.g.next_at = 0

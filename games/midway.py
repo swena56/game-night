@@ -8,7 +8,7 @@ of it (the same seeded layout), against a throw clock. Basketball has unlimited 
 - 🥫 Can Slam: knock down a 10-can pyramid; a can falls when it is hit or when a can it stands on falls.
   Clearing the stack pays a bonus and it is stacked again.
 
-- 🏀 Basketball: time shots through a moving hoop for one point per basket.
+- 🏀 Basketball: time shots through the hoop for one point per basket; three in a row is the hot hand (double), and a clean swish on it pays one more.
 
 🔔 The other booths hide a gold jackpot in a new place each round: the first to hit it wins
 +100. 🔥 Hot hand: after three good throws in a row, every good throw pays double until you miss.
@@ -59,13 +59,14 @@ CAN_AT = {(r, k): i for i, (r, k, _, _) in enumerate(CANS)}
 
 # 🏀 Basketball: (x, loft, scoring width, scoring height, tickets) at the hoop entry plane.
 BB_MAP = (0.75, 1.15, 0.0)
-HOOPS = ((0.0, 0.66, 0.29, 0.30, 1),)
+HOOPS = ((0.0, 0.66, 0.29, 0.26, 1),)
 HOOP_TRAVEL = 0.51
 HOOP_PERIOD = 3.2
 HOOP_CENTER_PAUSE = 0.50
 HOOP_GAP = 0.10
-HOOP_CLEAR = 0.19      # ball-centre reach that passes the rim untouched: ring radius (width + 0.052) less the ball radius
 HOOP_FLIGHT = SHOW["hoops"] * 0.73
+RAIL_LIMIT = 0.765        # furthest ball-centre reach before the side rail: the ramp's wall less the ball's radius
+RAIL_BOUNCE = 0.55
 
 
 def hoop_x(elapsed, travel=HOOP_TRAVEL):
@@ -78,53 +79,120 @@ def hoop_x(elapsed, travel=HOOP_TRAVEL):
 
 def hoop_land(aim, power, rng, start_x=0.0):
     w, h, offset = BB_MAP
-    s = wobble(power) * 0.5
+    s = wobble(power) * 0.7
     return aim * w + rng.gauss(0, s), power * h + offset + rng.gauss(0, s)
 
 
-def hoop_hit(x, y, target_x):
-    _, cy, _, ry, _ = HOOPS[0]
-    return ((x - target_x) / HOOP_CLEAR) ** 2 + ((y - cy) / ry) ** 2 <= 1
+# -- 🏀 the ball in flight: one simulation decides the shot and the browsers replay its contacts. Positions are the
+# cabinet's own coordinates (x across, y up, z down the lane); the cabinet is stretched in y and z, so distances are
+# measured in rendered metres by scaling those axes while the ball stays round.
+SIM_G = 9.81
+SIM_STEP = 1 / 240
+SIM_LAUNCH_Y, SIM_LAUNCH_Z = 1.17, -0.50
+SIM_RIM_Z = -2.42                # the hoop's centre depth
+SIM_SY, SIM_SZ = 1.14, 1.68      # rendered metres per unit of y and z
+SIM_BALL = 0.155
+SIM_TUBE = 0.013
+SIM_BOARD_Z = -2.5295            # ball centre against the glass: its surface touches the plane just behind the ring
+SIM_RIM_E, SIM_RIM_SLIP = 0.5, 0.92
+SIM_RIM_POINTS = 24
+SIM_FLOOR_Y, SIM_RACK_Z, SIM_SLOPE = 0.69, -0.86, 0.24
+SIM_MAX_T = 4.0
+SIM_MAX_HITS = 14
 
 
-def hoop_bank(start_x, x, y, elapsed, travel):
-    """Trace sphere contact with the board, then test the descending rim crossing."""
-    _, rim_y, _, _, _ = HOOPS[0]
-    gravity = 9.81
-    # The cabinet stretches along the lane, while the rendered ball stays round.
-    launch_z, rim_z = -0.50, -2.42
-    board_z = -2.57 + 0.068 / 1.68
-    vz = (rim_z - launch_z) / HOOP_FLIGHT
-    at = (board_z - launch_z) / vz
-    vx = (x - start_x) / HOOP_FLIGHT
-    vy = (y - 0.17) / HOOP_FLIGHT + gravity * HOOP_FLIGHT / 2
-    bx = start_x + vx * at
-    by = 0.17 + vy * at - gravity * at ** 2 / 2
-    board_x = hoop_x(elapsed + at, travel)
-    # Round off the expanded corners of the glass with the ball's contact radius.
-    edge_x = max(0.0, abs(bx - board_x) - 0.18)
-    edge_y = max(0.0, abs(by - rim_y - 0.11) - 0.115)
-    if math.hypot(edge_x, edge_y) > 0.035 or by <= rim_y:
-        return None
+def sim_ramp_y(z):
+    return SIM_FLOOR_Y + SIM_BALL + (SIM_RACK_Z - z) * SIM_SLOPE
 
-    vx *= 0.94
-    vy = (vy - gravity * at) * 0.94
-    vz *= -0.78
-    drop = by - rim_y
-    rebound_time = (vy + math.sqrt(vy ** 2 + 2 * gravity * drop)) / gravity
-    entry_x = bx + vx * rebound_time
-    entry_z = board_z + vz * rebound_time
-    land_at = at + rebound_time
-    target_x = hoop_x(elapsed + land_at, travel)
-    # A slightly generous opening makes the bank useful even with a little aim error.
-    good = ((entry_x - target_x) / HOOP_CLEAR) ** 2 + ((entry_z - rim_z) / 0.09) ** 2 <= 1
-    return good, target_x, {
-        "board": {"at": at, "x": bx, "y": by + 1, "z": board_z, "vx": vx, "vy": vy, "vz": vz},
-        "landAt": land_at, "entryX": entry_x, "entryDepth": entry_z - rim_z,
-    }
+
+def hoop_sim(start_x, x, y, elapsed, travel, flight=HOOP_FLIGHT):
+    """Fly a ball released at (start_x, launch) so that, undisturbed, it would reach the hoop's depth at (x, y), and follow
+    it through the rim, glass and side rails. Returns {good, swish, bank, path, landAt}: `path` is a list of keyframes
+    [t, x, y, z, vx, vy, vz, kind], the launch and each contact; between two keyframes the ball is in free fall."""
+    ring_r = HOOPS[0][2] + 0.052
+    rim_y = 1 + HOOPS[0][1]
+    reach = SIM_BALL + SIM_TUBE
+    vx = (x - start_x) / flight
+    vz = (SIM_RIM_Z - SIM_LAUNCH_Z) / flight
+    vy = (y - 0.17) / flight + SIM_G * flight / 2
+    px, py, pz = start_x, SIM_LAUNCH_Y, SIM_LAUNCH_Z
+    t = 0.0
+    path = []
+    hits = 0
+    good = bank = False
+    touched = False
+
+    def key(kind):
+        path.append([round(t, 4), round(px, 4), round(py, 4), round(pz, 4), round(vx, 4), round(vy, 4), round(vz, 4), kind])
+
+    key("launch")
+    ring = [(math.cos(math.tau * k / SIM_RIM_POINTS) * ring_r, math.sin(math.tau * k / SIM_RIM_POINTS) * ring_r / SIM_SZ)
+            for k in range(SIM_RIM_POINTS)]
+    while t < SIM_MAX_T:
+        prev_y = py
+        px += vx * SIM_STEP
+        py += vy * SIM_STEP - SIM_G * SIM_STEP ** 2 / 2
+        pz += vz * SIM_STEP
+        vy -= SIM_G * SIM_STEP
+        t += SIM_STEP
+        hit = None
+        if abs(px) > RAIL_LIMIT and px * vx > 0:
+            px = math.copysign(RAIL_LIMIT, px)
+            vx *= -RAIL_BOUNCE
+            hit = "rail"
+        if pz < SIM_BOARD_Z and vz < 0:
+            pz = SIM_BOARD_Z
+            vx *= 0.94
+            vy *= 0.94
+            vz *= -0.78
+            hit = "board" if py >= rim_y - 0.15 else "wall"
+            bank = True
+        hx = hoop_x(elapsed + t, travel)
+        if abs(py - rim_y) * SIM_SY < reach + 0.05 and abs(pz - SIM_RIM_Z) * SIM_SZ < ring_r + reach:
+            for ox, oz in ring:
+                dx, dy, dz = px - (hx + ox), (py - rim_y) * SIM_SY, (pz - (SIM_RIM_Z + oz)) * SIM_SZ
+                d = math.sqrt(dx * dx + dy * dy + dz * dz)
+                if d >= reach or d < 1e-9:
+                    continue
+                nx, ny, nz = dx / d, dy / d, dz / d
+                wy, wz = vy * SIM_SY, vz * SIM_SZ
+                vn = vx * nx + wy * ny + wz * nz
+                if vn < 0:
+                    # a hard strike bounces; a gentle one slides off the iron
+                    e = SIM_RIM_E if vn < -0.3 else 0.0
+                    tx, ty, tz = vx - vn * nx, wy - vn * ny, wz - vn * nz
+                    vx = tx * SIM_RIM_SLIP - e * vn * nx
+                    wy = ty * SIM_RIM_SLIP - e * vn * ny
+                    wz = tz * SIM_RIM_SLIP - e * vn * nz
+                    vy, vz = wy / SIM_SY, wz / SIM_SZ
+                    if vn < -0.3:
+                        hit = "rim"
+                push = reach - d
+                px += nx * push
+                py += ny * push / SIM_SY
+                pz += nz * push / SIM_SZ
+        if hit:
+            touched = touched or hit in ("rim", "board")
+            hits += 1
+            key(hit)
+            if hits >= SIM_MAX_HITS:
+                break
+        if prev_y > rim_y >= py and vy < 0:
+            off = math.hypot(px - hx, (pz - SIM_RIM_Z) * SIM_SZ)
+            if off <= ring_r - SIM_BALL * 0.8:
+                good = True
+                key("net")
+                break
+        if py <= sim_ramp_y(pz) or py < rim_y - 1.0:
+            break
+    if not good and path[-1][0] != round(t, 4):
+        key("end")
+    swish = good and not any(k[7] in ("rim", "board") for k in path)
+    return {"good": good, "swish": swish, "bank": good and bank, "path": path, "landAt": path[-1][0]}
 
 
 BOT_SIGMA = {"easy": 0.10, "normal": 0.055, "hard": 0.03}
+BOT_HOOP_SIGMA = {"easy": 0.20, "normal": 0.12, "hard": 0.08}    # basketball: about 51%, 76% and 90% of shots go in
 BOT_PACE = {"easy": (2.6, 4.4), "normal": (2.2, 3.6), "hard": (1.9, 3.0)}
 
 
@@ -260,8 +328,8 @@ class Midway(Game):
         "Everyone plays the same carnival booth at the same time, each in your own copy, before the clock runs out.",
         "In Ring Toss and Can Slam, swipe up to throw. A longer swipe throws farther or higher. Ring Toss and Can Slam also have on-screen buttons.",
         "🎳 Skee Roll: rings pay 10–50, the corner cups 100. ⭕ Ring Toss: green 30, blue 50, red 80. 🥫 Can Slam: 10 a can, +50 for clearing the stack.",
-        "🏀 Basketball: Time shots through the moving hoop for one point each. Tap one of the five resting balls, hold and drag to aim and charge, then release. Reuse balls as they come to rest.",
-        "🔔 Skee Roll, Ring Toss and Can Slam hide a gold jackpot: the first to hit it wins +100. 🔥 Three good throws in a row and every good throw pays double until you miss.",
+        "🏀 Basketball: Time shots through the hoop for one point each; the ball bounces off the rim, glass and side rails. Tap one of the five resting balls, flick to shoot, and reuse balls as they come back. Three baskets in a row is the hot hand (double points), and a clean swish on it pays one more.",
+        "🔔 Skee Roll, Ring Toss and Can Slam hide a gold jackpot: the first to hit it wins +100. 🔥 Three good throws in a row and every good throw pays double until you miss (in every booth).",
         "Most 🎟 tickets after the last booth wins; ties go to the most jackpots.",
     ]
     name = "Midway Night"
@@ -427,15 +495,12 @@ class Midway(Game):
             x, y = hoop_land(aim, power, rng)
             shot["startX"] = round(start_x, 3)
             elapsed = now - self.t0
-            target_x = hoop_x(elapsed + HOOP_FLIGHT, self.hoop_travel)
-            good = hoop_hit(x, y, target_x)
-            if not good:
-                bank = hoop_bank(start_x, x, y, elapsed, self.hoop_travel)
-                if bank is not None:
-                    good, target_x, rebound = bank
-                    shot.update(rebound)
+            sim = hoop_sim(start_x, x, y, elapsed, self.hoop_travel)
+            good = sim["good"]
             pts = int(good)
-            shot.update(x=round(x, 3), y=round(y, 3), hoop=0 if good else None, targetX=round(target_x, 4))
+            shot.update(x=round(x, 3), y=round(y, 3), hoop=0 if good else None, path=sim["path"], landAt=sim["landAt"],
+                        swish=sim["swish"], bank=sim["bank"],
+                        targetX=round(hoop_x(elapsed + HOOP_FLIGHT, self.hoop_travel), 4))
         else:
             x, y = can_land(aim, power, rng)
             hit = can_hit(x, y, g.cans)
@@ -451,9 +516,11 @@ class Midway(Game):
                 g.cans = [True] * len(CANS)
                 g.stacks += 1
             shot.update(x=round(x, 3), y=round(y, 3), fell=fell, sweep=sweep)
-        hot = kind != "hoops" and good and g.streak >= HOT_AT
+        hot = good and g.streak >= HOT_AT
         if hot:
             pts *= 2
+            if kind == "hoops" and shot.get("swish"):
+                pts += 1     # a clean swish on the hot hand pays a ticket more
         g.streak = g.streak + 1 if good else 0
         g.best_streak = max(g.best_streak, g.streak)
         if jack:
@@ -489,9 +556,9 @@ class Midway(Game):
             self.moment(f"🥫 {nm} clears the whole stack: +{SWEEP}!", "good", "boom", at=at)
         if kind == "skee" and shot["where"] == "cup" and not shot["jack"]:
             self.moment(f"🎳 {nm} sinks a corner cup!", "good", "good", at=at)
-        if kind != "hoops" and p.g.streak == HOT_AT:
+        if p.g.streak == HOT_AT:
             self.moment(f"🔥 {nm} has a hot hand: double tickets!", "cool", "good", at=at)
-        if kind != "hoops" and p.g.streak == 5:
+        if p.g.streak == 5:
             self.award(p, "hot", at=at)
 
     # -- rounds
@@ -636,7 +703,8 @@ class Midway(Game):
         cands = self.targets(o)
         if self.kind == "hoops":
             _, x, y = cands[0]
-            return self.to_throw(x + rng.gauss(0, sig), y + rng.gauss(0, sig))
+            hs = BOT_HOOP_SIGMA[level]
+            return self.to_throw(x + rng.gauss(0, hs), y + rng.gauss(0, hs))
         if level == "easy":
             # aims at whatever looks biggest, without weighing its own shaky hand
             if self.kind == "skee":
@@ -664,7 +732,7 @@ class Midway(Game):
     def meta(self, p):
         if not hasattr(p.g, "tickets"):
             return ""
-        return f"🎟 {p.g.tickets}" + (f" · 🔥" if self.kind != "hoops" and getattr(p.g, "streak", 0) >= HOT_AT else "")
+        return f"🎟 {p.g.tickets}" + (f" · 🔥" if getattr(p.g, "streak", 0) >= HOT_AT else "")
 
     def final_scores(self):
         return {o.id: o.g.tickets for o in self.players()}
