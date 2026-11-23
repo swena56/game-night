@@ -26,8 +26,8 @@
 .fp-bar { position: relative; height: 16px; border-radius: 8px; background: #ffffff1c; overflow: hidden; }
 .fp-bar i { position: absolute; left: 0; top: 0; bottom: 0; transition: width .08s linear; }
 .fp-bar b { position: relative; font-size: 11px; padding-left: 8px; line-height: 16px; text-shadow: 0 1px 2px #000; }
-.fp-tension i { background: linear-gradient(90deg, #3ddc97, #ffd23f 60%, #ff5a3c); background-size: 300px 100%; }
-.fp-tension.hot { box-shadow: 0 0 0 2px #ff5a3c; }
+.fp-tension i { background: var(--tension-color, #ffe14a); }
+.fp-tension.hot { box-shadow: 0 0 0 2px var(--tension-color); }
 .fp-line i { background: #5ab0ff; }
 .fp-ctl { display: flex; justify-content: center; margin-top: 6px; }
 .fp-go { min-width: min(100%, 300px); height: 56px; border-radius: 999px; font-size: 18px; font-weight: 800; touch-action: none; -webkit-touch-callout: none; }

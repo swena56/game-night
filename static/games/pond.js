@@ -11,6 +11,7 @@ UI.pond = (() => {
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const nameOf = (pid) => ctx?.player(pid)?.name ?? '?';
   const colorOf = (pid) => ctx?.player(pid)?.color ?? '#ccc';
+  const lineColor = (fight) => fight?.tau > 0.7 ? '#ff5a3c' : '#ffe14a';
   const T = () => (V ? V.t + (performance.now() - recvAt) / 1000 : 0);
   const me = () => (V?.me ? V.anglers[V.me] : null);
   const line = () => me()?.line ?? { st: 'idle' };
@@ -30,7 +31,7 @@ UI.pond = (() => {
         <div class="fp-sonar" id="fpSonarBox" hidden title="Sonar: tap to fold"><canvas id="fpSonar" width="96" height="150"></canvas><div id="fpSonarTxt"></div><b class="fp-sonar-chip">📡</b></div>
         <div class="fp-fight" id="fpFight" hidden>
           <div class="fp-mood" id="fpMood"></div>
-          <div class="fp-bar fp-tension"><i id="fpTau"></i><b>tension</b></div>
+          <div class="fp-bar fp-tension"><i id="fpTau"></i><b>Tension</b></div>
           <div class="fp-bar fp-line"><i id="fpLine"></i><b id="fpLineTxt">line</b></div>
         </div>
       </div>
@@ -286,8 +287,13 @@ UI.pond = (() => {
     fightBox.hidden = ln.st !== 'fight';
     if (ln.st === 'fight') {
       const el = ln.age + (performance.now() - recvAt) / 1000, f = fightNow(ln, el), F = V.fish[ln.kind];
-      $('fpTau').style.width = `${(f.tau * 100).toFixed(0)}%`;
-      $('fpTau').parentElement.classList.toggle('hot', f.tau > 0.7);
+      const tension = $('fpTau');
+      tension.style.width = `${(f.tau * 100).toFixed(0)}%`;
+      const meter = tension.parentElement;
+      meter.style.setProperty('--tension-color', lineColor(f));
+      const hot = meter.classList.toggle('hot', f.tau > 0.7);
+      const label = hot ? 'High tension' : 'Tension';
+      if (meter.lastElementChild.textContent !== label) meter.lastElementChild.textContent = label;
       $('fpLine').style.width = `${(100 * f.p / F.L).toFixed(0)}%`;
       $('fpLineTxt').textContent = `${Math.max(0, F.L - f.p).toFixed(1)} m to go`;
       const mood = f.lunge ? '💢 LUNGING: ease off!' : '😮‍💨 Resting: reel!';
@@ -406,7 +412,7 @@ UI.pond = (() => {
     const d = lureDepth(m, t, fight), nib = performance.now() - nibAt < 450, bite = ln.st === 'bite';
     if (h && ['wait', 'bite', 'fight'].includes(ln.st)) {
       const jig = bite ? Math.sin(now / 35) * 2.5 : nib ? Math.sin(now / 30) * 1.5 : 0, ly = Y(d) + (bite ? 3 : nib ? 1.5 : 0);
-      g.strokeStyle = fight?.tau > 0.7 ? '#ff5a3c' : '#ffe14a'; g.lineWidth = 2;
+      g.strokeStyle = lineColor(fight); g.lineWidth = 2;
       g.beginPath(); g.moveTo(mid, 0); g.lineTo(mid + jig, ly); g.stroke();
       if (ln.st === 'fight') {
         const F = V.fish[ln.kind], sz = ln.kind === 'pike' ? 11 : 8;
@@ -725,6 +731,11 @@ UI.pond = (() => {
         m.g.updateMatrixWorld(true);
         const tip = m.rodPivot.localToWorld(new T3.Vector3(0.86, 0.48, 0));     // the rod's far end
         if (inLine) {
+          if (m.mine) {
+            const color = lineColor(sc.fight);
+            m.up.material.color.set(color);
+            m.down.material.color.set(color);
+          }
           const hp = W(at.x, at.y, 0.03); span(m.up, tip, hp); span(m.upO, tip, hp);
           if (under) {
             const d = sc.lure(pid), jig = st === 'bite' ? Math.sin(now / 35) * 0.12 : m.mine && sc.nib < 450 ? Math.sin(now / 30) * 0.06 : 0;
@@ -829,13 +840,13 @@ UI.pond = (() => {
         g.beginPath(); g.arc(X(rh.x), Y(rh.y), sg * k, 0, 7); g.fillStyle = '#ffe14a18'; g.fill();
         g.setLineDash([6, 5]); g.lineWidth = hot ? 3 : 2; g.strokeStyle = myLn.st === 'bite' ? '#ff5a3c' : hot ? '#ffd000' : '#e0b800'; g.stroke(); g.setLineDash([]);
       }
-      // anglers on the shore side of the hole they fish, with their line to it (yours thick and yellow)
+      // anglers on the shore side of the hole they fish, with their line to it
       for (const pid of V.seats) {
         const a = V.anglers[pid], ho = a && !a.out && a.line?.st !== 'idle' ? V.holes[a.line?.h ?? -1] : null; if (!ho) continue;
         const d = Math.hypot(ho.x, ho.y) || 1, ax = ho.x + (ho.x / d) * 0.9, ay = ho.y + (ho.y / d) * 0.9, mine = pid === V.me;
         g.lineCap = 'round';
         g.strokeStyle = '#0c1c2c'; g.lineWidth = mine ? 6 : 4; g.beginPath(); g.moveTo(X(ax), Y(ay)); g.lineTo(X(ho.x), Y(ho.y)); g.stroke();
-        g.strokeStyle = mine ? '#ffe14a' : colorOf(pid); g.lineWidth = mine ? 3 : 2; g.stroke();
+        g.strokeStyle = mine ? lineColor(sc.fight) : colorOf(pid); g.lineWidth = mine ? 3 : 2; g.stroke();
         g.beginPath(); g.arc(X(ax), Y(ay), 0.28 * k, 0, 7); g.fillStyle = colorOf(pid); g.fill(); g.lineWidth = 2; g.strokeStyle = '#fff'; g.stroke();
       }
       V.holes.forEach((ho, i) => {
