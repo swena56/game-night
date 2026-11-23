@@ -679,6 +679,9 @@ UI.midway = (() => {
       vx = vx * 0.88 + impulse * rim.x;
       vy = vy * 0.88 + impulse * rim.y;
       vz = vz * 0.88 + impulse * nz;
+      // a rim clip kicks the ball off the iron, not across the whole cabinet
+      vx = clamp(vx, -0.9, 0.9);
+      vy = clamp(vy, -3, 3.2);
     }
     const back = -2.57 + hoopRadius;
     const returnPhase = (shot.id * 2.399963) % (Math.PI * 2);
@@ -1214,10 +1217,10 @@ UI.midway = (() => {
           g.moveTo(w / 2 + offset, 0);
           g.bezierCurveTo(w / 2 + offset * 1.8, h * 0.28, w / 2 + offset * 1.8, h * 0.72, w / 2 + offset, h);
         }
-        g.lineWidth = 7;
+        g.lineWidth = 5;
         g.strokeStyle = heightMap ? '#353535' : '#5b2a14';
         g.stroke();
-        g.lineWidth = 3.5;
+        g.lineWidth = 2.6;
         g.strokeStyle = heightMap ? '#171717' : '#21140d';
         g.stroke();
       }
