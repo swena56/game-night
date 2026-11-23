@@ -309,6 +309,9 @@ class Room:
         self._replay_key = None
         self.saved = {}        # game id -> that game's settings, restored when switching back
         self.game_no = 0       # counts games started; clients rebuild the game screen for each new one
+        self.playlist = []
+        self.playlist_index = None
+        self.playlist_revision = 0
         self._eid = 0
 
     def __getstate__(self):
@@ -320,7 +323,8 @@ class Room:
     def __setstate__(self, state):
         self.__dict__.update({"chat": [], "ready": set(), "votes": {}, "ledger": {}, "history": [], "replay": [],
                               "_replay_key": None, "saved": {}, "fast": None, "fast_ver": 0, "game_no": 0, "no_bump": False,
-                              "later": [], "paused": 0})
+                              "later": [], "paused": 0, "playlist": [], "playlist_index": None,
+                              "playlist_revision": 0})
         self.__dict__.update(state)
         for k, (_, _, d) in ROOM_SETTINGS.items():
             self.settings.setdefault(k, d)
@@ -698,6 +702,8 @@ class Room:
         """Pick the next game (game over only); voting again for it takes the vote back, and a unanimous vote starts it."""
         if self.phase != "over":
             raise GameError("Voting opens when the game ends.")
+        if self.playlist_index is not None:
+            raise GameError("The playlist sets the next game.")
         if gid not in GAMES or not self.fits(gid):
             raise GameError("That game doesn't fit this many players.")
         if self.votes.get(p.id) == gid:
@@ -709,6 +715,8 @@ class Room:
 
     def host_play_vote(self, p):
         self.require_host(p, "over")
+        if self.playlist_index is not None:
+            raise GameError("The playlist sets the next game.")
         if not self.votes:
             raise GameError("Nobody has voted yet.")
         self.play_vote()
@@ -737,10 +745,60 @@ class Room:
 
     def host_start(self, p, phase):
         self.require_host(p, phase)
+        if self.playlist:
+            raise GameError("Start or clear the playlist first." if phase == "lobby" else "The playlist sets the next game.")
         self.start()
 
-    def back_to_lobby(self, p):
+    def set_playlist(self, p, a):
+        self.require_host(p, "lobby")
+        self.check_playlist_request(a, None)
+        games = a.get("games")
+        if not isinstance(games, list) or len(games) > 8 or any(
+            not isinstance(gid, str) or gid not in GAMES for gid in games
+        ):
+            raise GameError("Choose up to 8 games from the catalog.")
+        self.playlist = games.copy()
+        self.playlist_revision += 1
+
+    def check_playlist_request(self, a, index):
+        if (a.get("gameNo") != self.game_no or a.get("revision") != self.playlist_revision
+                or a.get("index") != index):
+            raise GameError("The playlist has changed. Check the current lineup.")
+
+    def playlist_block(self):
+        if self.phase == "lobby":
+            if len(self.playlist) < 2:
+                return "Add at least 2 games to start."
+            entries = enumerate(self.playlist)
+        else:
+            next_index = self.playlist_index + 1
+            entries = enumerate(self.playlist[next_index:next_index + 1], next_index)
+        for index, gid in entries:
+            try:
+                self.game_for(gid).check_players(self.seated())
+            except GameError as e:
+                return f"Game {index + 1}, {GAMES[gid].name}: {e}"
+        return None
+
+    def start_playlist_game(self, p, a, *, first):
+        self.require_host(p, "lobby" if first else "over")
+        if not first and self.playlist_index is None:
+            raise GameError("There is no active playlist.")
+        self.check_playlist_request(a, self.playlist_index)
+        index = 0 if first else self.playlist_index + 1
+        if not first and index >= len(self.playlist):
+            raise GameError("The playlist is complete.")
+        blocked = self.playlist_block()
+        if blocked:
+            raise GameError(blocked)
+        self.switch_game(self.playlist[index])
+        self.playlist_index = index
+        self.start()
+
+    def back_to_lobby(self, p, a):
         self.require_host(p, "over")
+        if self.playlist_index is not None:
+            self.check_playlist_request(a, self.playlist_index)
         self.to_lobby()
 
     def host_add_bot(self, p, level):
@@ -766,11 +824,14 @@ class Room:
         "watch": lambda r, p, a: r.set_watching(p, a.get("on")),
         "wish": lambda r, p, a: r.wish(p, a.get("game")),
         "start": lambda r, p, a: r.host_start(p, "lobby"),
+        "set_playlist": lambda r, p, a: r.set_playlist(p, a),
+        "start_playlist": lambda r, p, a: r.start_playlist_game(p, a, first=True),
+        "next_playlist": lambda r, p, a: r.start_playlist_game(p, a, first=False),
         "next_vote": lambda r, p, a: r.vote(p, a.get("game")),
         "play_vote": lambda r, p, a: r.host_play_vote(p),
         "join_game": lambda r, p, a: r.join_game(p),
         "rematch": lambda r, p, a: r.host_start(p, "over"),  # same game, same settings, straight back in
-        "lobby": lambda r, p, a: r.back_to_lobby(p),
+        "lobby": lambda r, p, a: r.back_to_lobby(p, a),
         "end_game": lambda r, p, a: r.end_game(p),
         "pause": lambda r, p, a: r.pause(p),
         "autopause": lambda r, p, a: r.pause(p, auto=True),
@@ -817,11 +878,14 @@ class Room:
             self.restore_clocks(shift, ref)
         self.add_log(why or f"▶ {p.name if p else 'The game'} resumed.")
 
-    def fits(self, gid):
+    def game_for(self, gid):
         game = GAMES[gid](self)
         game.s = self.settings if gid == self.settings["game"] else self.settings_for(gid)  # what it would start with
+        return game
+
+    def fits(self, gid):
         try:
-            game.check_players(self.seated())
+            self.game_for(gid).check_players(self.seated())
             return True
         except GameError:
             return False
@@ -914,6 +978,8 @@ class Room:
                     rules["axes_per_round"] = AXES_PER_ROUND
                     if axe_scoring == "corner":
                         rules["axe_scoring"] = axe_scoring
+        if gid == "lander" and rules["flight_rules"] == "classic":
+            del rules["flight_rules"]  # Classic uses the original Moon Lander leaderboard.
         labels = []
         for k, (name, options, _) in cls.settings_schema.items():
             if k not in rules:
@@ -1003,6 +1069,9 @@ class Room:
         self.remove_player(target)
 
     def to_lobby(self):
+        self.playlist = []
+        self.playlist_index = None
+        self.playlist_revision += 1
         self.phase = "lobby"
         self.game = None
         self.turn = None
@@ -1073,6 +1142,12 @@ class Room:
         v["chat"] = [m for m in self.chat if not (m["ghost"] and hide_ghost_chat)][-50:]
         v["ready"] = sorted(self.ready)
         v["votes"] = self.votes
+        v["playlistRevision"] = self.playlist_revision
+        v["playlist"] = {
+            "games": self.playlist,
+            "index": self.playlist_index,
+            "blocked": self.playlist_block() if self.phase != "playing" else None,
+        } if self.playlist else None
         v["history"] = self.history[-15:]
         v["roomRecords"] = getattr(self, "room_records", {})
         v["roundRecord"] = getattr(self, "round_record", None)

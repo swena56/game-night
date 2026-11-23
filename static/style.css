@@ -173,8 +173,8 @@ button.shake { animation: shake .35s; }
 .room-code b { font-size: 40px; letter-spacing: .18em; color: var(--accent); display: block; font-family: var(--font-display); font-weight: 800; line-height: 1.1; }
 #shareBtn { display: block; margin: 0 auto 8px; }
 .plist { list-style: none; padding: 0; margin: 0 0 8px; }
-.plist { display: grid; gap: var(--s1); }
-.plist li { display: flex; align-items: center; gap: var(--s3); padding: var(--s2) var(--s3); border-radius: var(--r-md); background: var(--tint-1); }
+.plist { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s1); }
+.plist li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3); padding: var(--s2) var(--s3); border-radius: var(--r-md); background: var(--tint-1); }
 .plist .watch-btn { font-size: var(--fs-sm); }
 .settings { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
 /* a setting the host changed from the game's default gets a dot; ↺ Defaults puts them all back */
@@ -543,6 +543,16 @@ body.replaying .layout { padding-bottom: 190px; }  /* the bar covers the bottom 
 @media (max-width: 600px) { .replay-bar { left: 10px; right: 10px; width: auto; transform: none; } }
 
 /* scoreboard */
+.playlist { margin-block: 12px; min-width: 0; text-align: left; }
+.playlist h3 { margin: 0 0 6px; }
+.playlist ol { margin: 0 0 8px; padding-inline-start: 1.6em; }
+.playlist li { padding-block: 3px; overflow-wrap: anywhere; }
+.playlist li[aria-current="step"] { font-weight: 800; }
+.playlist-edit { display: inline-flex; gap: 4px; margin-inline-start: 6px; vertical-align: middle; }
+.playlist-edit button { min-width: 40px; min-height: 40px; }
+.playlist .hint:empty { display: none; }
+.room-scoreboard { overflow-x: auto; }
+#overBanner .playlist { margin: 0; font-size: var(--fs-sm); }
 .scores { width: 100%; border-collapse: collapse; font-size: 14px; }
 .scores th, .scores td { padding: 5px 6px; text-align: center; border-bottom: 1px solid var(--line); }
 .scores th:first-child, .scores td:first-child { text-align: left; font-weight: 700; }
@@ -1671,8 +1681,8 @@ body.light :is(#home, #lobby) { background: radial-gradient(ellipse at 50% 0, #f
 }
 #lobby .game-chosen { flex-wrap: wrap; }
 #lobby .game-chosen:empty, #lobby .settings:empty { display: none; }
-#lobby .picker-tools, body[data-screen="home"] .picker-sheet .picker-tools { flex-wrap: wrap; }
-:is(#lobby, body[data-screen="home"] .picker-sheet) .picker-tools input { flex-basis: 8rem; }
+#lobby .picker-tools, .picker-sheet .picker-tools { flex-wrap: wrap; }
+:is(#lobby, .picker-sheet) .picker-tools input { flex-basis: 8rem; }
 :is(#lobby, body[data-screen="home"] .picker-sheet) .game-tile {
   background: linear-gradient(155deg, color-mix(in srgb, var(--tint) 15%, var(--panel2)), var(--panel2) 70%);
 }

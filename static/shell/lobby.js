@@ -207,6 +207,60 @@ function stepPicker(cur, dir) {
   best?.scrollIntoView?.({ block: 'nearest' });
   return best;
 }
+
+const playlistRequest = () => ({
+  gameNo: S.gameNo, revision: S.playlistRevision, index: S.playlist?.index ?? null,
+});
+
+function renderPlaylistGames(list, games, index = null, edit = null) {
+  list.replaceChildren();
+  games.forEach((id, i) => {
+    const g = gameInfo(id), item = el('li');
+    const label = el('span', '', `${g.icon} ${g.name}`);
+    if (i === index) item.setAttribute('aria-current', 'step');
+    item.append(label);
+    if (edit) {
+      const row = el('div', 'playlist-edit');
+      for (const [text, action, to] of [['↑', 'Move up', i - 1], ['↓', 'Move down', i + 1], ['✕', 'Remove', null]]) {
+        const btn = el('button', 'chip-btn', text);
+        btn.setAttribute('aria-label', `${action}: game ${i + 1}, ${g.name}`);
+        btn.disabled = to === -1 || to === games.length;
+        btn.onclick = () => {
+          const reordered = [...games];
+          const [game] = reordered.splice(i, 1);
+          if (to !== null) reordered.splice(to, 0, game);
+          edit(reordered);
+        };
+        row.append(btn);
+      }
+      item.append(row);
+    }
+    list.append(item);
+  });
+}
+
+function renderLobbyPlaylist(host, seated) {
+  const games = S.playlist?.games || [];
+  const request = playlistRequest();
+  const save = (lineup) => quiet(act('set_playlist', { ...request, games: lineup }));
+  const add = async () => {
+    const id = await pickGameSheet({ title: 'Add a game to the playlist', seated });
+    if (id) save([...games, id]);
+  };
+  $('#lobbyPlaylist').hidden = !games.length;
+  $('#buildPlaylistBtn').hidden = !host || !!games.length;
+  $('#buildPlaylistBtn').onclick = add;
+  $('#addPlaylistGame').hidden = !host || games.length >= 8;
+  $('#addPlaylistGame').onclick = add;
+  $('#playlistBlock').textContent = S.playlist?.blocked || '';
+  renderPlaylistGames($('#playlistGames'), games, null, host ? save : null);
+  const start = $('#startPlaylistBtn');
+  start.hidden = !host;
+  start.disabled = !!S.playlist?.blocked;
+  start.onclick = () => quiet(act('start_playlist', request));
+  if (games.length) $('#startBtn').hidden = true;
+}
+
 function renderLobby() {
   const host = S.host === S.me.id;
   const info = gameInfo();
@@ -349,6 +403,7 @@ function renderLobby() {
     : over ? `▶ Start — ${info.max} players at most` : `▶ Start ${chosenInfo.icon} ${chosenInfo.name}`;
   $('#startBtn').classList.toggle('blocked', short || over || hasBots);
   $('#startBtn').disabled = hasBots;
+  renderLobbyPlaylist(host, seated);
   $('#lobbyReplayBtn').hidden = !S.hasReplay;
   renderScores(host);
 }
@@ -366,12 +421,7 @@ function badgeShelf(p) {
   return td;
 }
 
-function renderScores(host) {
-  const played = S.players.filter((p) => p.played || p.points);
-  $('#scoreSection').hidden = !played.length && !S.history.length;
-  const board = $('#scoreboard');
-  const roomBestsOpen = board.querySelector('details.room-bests')?.open;
-  board.innerHTML = '';
+function renderScoreTable(board, played) {
   if (played.length) {
     const games = [...new Set(played.flatMap((p) => Object.keys(p.byGame)))];
     const t = el('table', 'scores');
@@ -394,6 +444,15 @@ function renderScores(host) {
     });
     board.append(t);
   }
+}
+
+function renderScores(host) {
+  const played = S.players.filter((p) => p.played || p.points);
+  $('#scoreSection').hidden = !played.length && !S.history.length;
+  const board = $('#scoreboard');
+  const roomBestsOpen = board.querySelector('details.room-bests')?.open;
+  board.innerHTML = '';
+  renderScoreTable(board, played);
   const records = Object.values(S.roomRecords || {});
   if (records.length) {
     const details = el('details', 'room-bests'), list = el('ul');

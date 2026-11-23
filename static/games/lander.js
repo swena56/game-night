@@ -10,12 +10,13 @@ UI.lander = (() => {
   // drag to look: `look` metres added to the camera's x; it springs back a moment after you let go
   let look = 0, drag = null, lookRel = 0, padHold = null, seenRes = new Set();
   // #161: tap (or drag along) the strip map to look at that spot; it stays a moment after you let go
-  let mapLook = null, mapHold = 0;
+  let mapLook = null, mapHold = 0, contractKey = '', replayKey = '';
   const $ = (id) => document.getElementById(id);
   const calm = () => document.body.classList.contains('calm');
 
   function mount(main, side) {
     V = null; gl = null; flat = null; fl = null; roundKey = ''; look = 0; drag = null; padHold = null; mapLook = null; mapHold = 0; held = { l: false, r: false, up: false }; keys = new Set(); ghosts = {}; flash = null; sent = false;
+    contractKey = replayKey = '';
     main.innerHTML = `<div class="ml"><div class="ml-stage" id="mlStage">
         <canvas class="ml-map" id="mlMap"></canvas>
         <div class="ml-hud" id="mlHud"><span id="mlAlt"></span><span id="mlVy"></span><span id="mlVx"></span><span id="mlAng"></span></div>
@@ -30,9 +31,14 @@ UI.lander = (() => {
         <button data-k="up" class="ml-burn" aria-label="Burn">🔥 Burn</button>
         <button data-k="r" aria-label="Lean right">▶</button>
       </div>
-      <p id="mlHint" class="hint"></p></div>`;
+      <p id="mlHint" class="hint"></p>
+      <section class="ml-contracts" id="mlContracts" aria-label="Flight contracts" hidden></section>
+      <details class="ml-replay" id="mlReplay" hidden>
+        <summary>Flight replay</summary>
+        <div id="mlReplayLegs"></div>
+      </details></div>`;
     side.innerHTML = '<div class="panel"><h3>🚀 Points</h3><div id="mlRace"></div><p class="hint left">Hold 🔥 to burn, ◀ ▶ to lean. Keyboard: ↑ / W / Space and ← → / A D.</p></div>';
-    main.querySelector('.ml').style.touchAction = 'none';
+    main.querySelector('.ml-stage').style.touchAction = 'none';
     for (const b of main.querySelectorAll('#mlCtl button')) {
       const k = b.dataset.k;
       const on = (e) => { e.preventDefault(); try { b.setPointerCapture(e.pointerId); } catch {} held[k] = true; b.classList.add('on'); };
@@ -41,7 +47,7 @@ UI.lander = (() => {
       b.addEventListener('contextmenu', (e) => e.preventDefault());
     }
     const KEYS = { ArrowLeft: 'l', KeyA: 'l', ArrowRight: 'r', KeyD: 'r', ArrowUp: 'up', KeyW: 'up', Space: 'up' };
-    keyDown = (e) => { if (e.target?.closest?.('input, textarea, select')) return; if (KEYS[e.code]) { e.preventDefault(); keys.add(KEYS[e.code]); } };
+    keyDown = (e) => { if (e.target?.closest?.('input, textarea, select, summary, #mlContracts button')) return; if (KEYS[e.code]) { e.preventDefault(); keys.add(KEYS[e.code]); } };
     keyUp = (e) => { if (KEYS[e.code]) keys.delete(KEYS[e.code]); };
     addEventListener('keydown', keyDown); addEventListener('keyup', keyUp);
     const stage = $('mlStage');
@@ -272,6 +278,7 @@ UI.lander = (() => {
     else if (V.stage === 'fly' && my && !fl && my.res == null && !my.out) fl = newFlight(performance.now() - V.flown * 1000);
     if (!gl && !flat && mount.pend) { const p = mount.pend; mount.pend = null; GL3.revive($('mlStage'), p); }
     renderSide();
+    renderReplay();
   }
 
   function fast(d) {
@@ -306,6 +313,84 @@ UI.lander = (() => {
     }
     $('mlCtl').classList.toggle('ml-off', !(fl && (!fl.done || fl.hopWin) && V.stage === 'fly'));
     $('mlCtl').hidden = V.me == null;
+    renderContracts();
+  }
+
+  function renderContracts() {
+    const box = $('mlContracts'), my = mine();
+    const open = V.contractOpen && !S.paused && S.phase === 'playing'
+      && (!fl || performance.now() < fl.at + V.contractWindow * 1000);
+    const key = JSON.stringify([V.round, V.contracts, V.contract, V.contractPaid, open, V.stage === 'between', S.phase]);
+    if (key === contractKey) return;
+    contractKey = key;
+    const options = V.contracts || [];
+    const chosen = options.find(([id]) => id === V.contract);
+    box.hidden = !my || (!chosen && !open);
+    box.replaceChildren();
+    if (box.hidden) return;
+    if (chosen) {
+      const [, title, rule, reward] = chosen;
+      const status = V.contractPaid ? `Complete · +${reward} pts`
+        : V.stage === 'between' || S.phase === 'over' ? 'Incomplete' : `+${reward} pts`;
+      box.append(ctx.el('strong', '', title), ctx.el('span', 'ml-contract-status', status),
+        ctx.el('p', '', rule));
+      return;
+    }
+    const choices = ctx.el('div', 'ml-choices'), round = V.round;
+    for (const [id, title, rule, reward] of options) {
+      const button = ctx.el('button', '');
+      button.type = 'button';
+      button.append(ctx.el('strong', '', `${title} · +${reward} pts`), ctx.el('span', '', rule));
+      button.addEventListener('click', async () => {
+        for (const choice of choices.children) choice.disabled = true;
+        try {
+          await ctx.act('contract', { key: id, round });
+        } catch {
+          for (const choice of choices.children) choice.disabled = false;
+        }
+      });
+      choices.append(button);
+    }
+    box.append(ctx.el('strong', '', 'Choose a flight contract'), choices);
+  }
+
+  function renderReplay() {
+    const panel = $('mlReplay'), replay = V.replay;
+    panel.hidden = !replay;
+    if (!replay) return;
+    const key = JSON.stringify(replay);
+    if (key === replayKey) return;
+    replayKey = key;
+    panel.querySelector('summary').textContent = `Flight replay · Round ${replay.round}`;
+    const legs = $('mlReplayLegs');
+    legs.replaceChildren();
+    const g = V.geo;
+    const safeTilt = Math.floor(g.angOk / g.rot) * g.rot * 180 / Math.PI;
+    legs.append(ctx.el('p', 'ml-telemetry', `Touchdown limits · ${g.vyOk} m/s down · ${g.vxOk} m/s sideways · ${safeTilt.toFixed(1)}° tilt`));
+    for (const [leg, flight] of Object.entries(replay.legs)) {
+      const title = leg === 'hop' ? 'Hop' : 'Descent';
+      const verdict = flight.how === 'land' ? `Landed on ×${flight.mult}`
+        : flight.how === 'crash' ? `Crashed (${flight.reason})` : 'Timed out';
+      const row = ctx.el('section', 'ml-replay-leg');
+      const slider = ctx.el('input', '');
+      const stats = ctx.el('p', 'ml-telemetry');
+      slider.type = 'range';
+      slider.min = 0;
+      slider.max = flight.samples.length - 1;
+      slider.value = slider.max;
+      slider.setAttribute('aria-label', `${title} timeline`);
+      const update = () => {
+        const [tick, vx, vy, lean, fuel] = flight.samples[Number(slider.value)];
+        const tilt = Math.abs(lean) * g.rot * 180 / Math.PI;
+        const time = `${(tick * g.dt).toFixed(2)} s`;
+        slider.setAttribute('aria-valuetext', time);
+        stats.textContent = `${time} · ${Math.abs(vy).toFixed(2)} m/s ${vy > 0 ? 'up' : 'down'} · ${Math.abs(vx).toFixed(2)} m/s ${vx < 0 ? 'left' : 'right'} · ${tilt.toFixed(1)}° tilt${lean ? (lean < 0 ? ' left' : ' right') : ''} · ${(fuel * g.dt).toFixed(1)} s fuel`;
+      };
+      slider.addEventListener('input', update);
+      update();
+      row.append(ctx.el('strong', '', `${title} · ${verdict}`), slider, stats);
+      legs.append(row);
+    }
   }
 
   // ---------- sound: a rocket in a vacuum is silent, so this is what you'd hear in the cabin

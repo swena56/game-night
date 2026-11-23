@@ -97,26 +97,48 @@ function renderOver() {
       && last.players.some((p) => p.id === me.id);
     goal.textContent = headToHead && leader && leader - own === 1
       ? 'Win the next round to tie the series.' : Profile.replayGoal(S);
-    goal.hidden = !goal.textContent;
+    goal.hidden = !!S.playlist || !goal.textContent;
   }
   const xp = Profile.xpCard(S); if (xp) box.append(xp);  // ✨ the XP this game earned, and any level-up
   const readyNames = S.ready.map((id) => player(id)?.name).filter(Boolean);
   const others = S.players.some((p) => p.id !== me.id && !p.bot);
-  $('#rematchBtn').hidden = !host; $('#lobbyBtn').hidden = !host;
+  const playlist = S.playlist;
+  const nextId = playlist?.games[playlist.index + 1];
+  const next = nextId && gameInfo(nextId);
+  const request = playlistRequest();
+  $('#overPlaylist').hidden = !playlist;
+  $('#overStandings').hidden = !playlist;
+  if (playlist) {
+    $('#overPlaylistTitle').textContent = next ? `Next up · ${next.name}` : 'Playlist complete';
+    $('#overPlaylistBlock').textContent = playlist.blocked || '';
+    renderPlaylistGames($('#overPlaylistGames'), playlist.games, playlist.index);
+    const board = $('#overScoreboard');
+    board.replaceChildren();
+    renderScoreTable(board, S.players.filter((p) => p.played || p.points));
+  }
+  const playNext = $('#playNextBtn');
+  playNext.hidden = !(host && next);
+  playNext.disabled = !!playlist?.blocked;
+  playNext.onclick = () => quiet(act('next_playlist', request));
+  const lobby = $('#lobbyBtn');
+  lobby.hidden = !host;
+  lobby.textContent = playlist ? (next ? 'End playlist' : 'Return to lobby') : '🏠 Lobby';
+  lobby.onclick = () => quiet(act('lobby', playlist ? request : {}));
+  $('#rematchBtn').hidden = !host || !!playlist;
   // "I'm in!" tells other people you want another round; alone with bots there's nobody to tell
   $('#readyBtn').hidden = !others;
   // one main action (#93): a game picked for next time (solo), the vote winner (host, once anyone voted), else Rematch
   const votes = S.votes || {};
   if (overPick && (overPick.at !== S.history.length || others)) overPick = null;
   const pickG = overPick && gameInfo(overPick.game);
-  $('#playPickBtn').hidden = !(host && pickG);
+  $('#playPickBtn').hidden = !!playlist || !(host && pickG);
   if (pickG) $('#playPickBtn').textContent = `▶ Play ${pickG.icon} ${pickG.name}`;
-  $('#playVoteBtn').hidden = !(host && others && Object.keys(votes).length);
+  $('#playVoteBtn').hidden = !!playlist || !(host && others && Object.keys(votes).length);
   $('#rematchBtn').className = $('#playPickBtn').hidden && $('#playVoteBtn').hidden ? 'primary' : '';
   $('#readyBtn').textContent = S.ready.includes(me.id) ? '✋ Ready!' : "🙋 I'm in!";
   $('#readyBtn').classList.toggle('on', S.ready.includes(me.id));
   $('#replayBtn').hidden = !S.hasReplay;
-  const folded = overFoldedAt === S.history.length;  // folding lasts for this game's results only
+  const folded = overFoldedAt === S.gameNo;  // folding lasts for this game's results only
   $('#overBanner').classList.toggle('folded', folded);
   $('#overFold').textContent = folded ? '▾' : '▴ Board';  // spelled out while open: the way back to the board (#81)
   $('#overFold').ariaExpanded = String(!folded);
@@ -125,15 +147,17 @@ function renderOver() {
   if (folded) for (const b of $('#overBanner .over-actions').children) {
     if (b.hidden) continue;
     const label = b.textContent.trim();
-    const icon = { playPickBtn: '▶', playVoteBtn: '🗳️', replayBtn: '🎬' }[b.id] || label.match(/^\p{Extended_Pictographic}\uFE0F?/u)?.[0] || '▶';
+    const icon = { playPickBtn: '▶', playVoteBtn: '🗳️', replayBtn: '🎬', lobbyBtn: '🏠' }[b.id] || label.match(/^\p{Extended_Pictographic}\uFE0F?/u)?.[0] || '▶';
     const m = el('button', 'icon-btn mini-act' + (b.classList.contains('primary') ? ' primary' : '') + (b.classList.contains('on') ? ' on' : ''), icon);
     m.title = label; m.ariaLabel = label;
+    m.disabled = b.disabled;
     m.onclick = (e) => { e.stopPropagation(); b.click(); };
     mini.append(m);
   }
   $('#overWait').textContent = (readyNames.length ? `Ready for more: ${readyNames.join(', ')}. ` : '')
-    + (host ? '' : 'The host starts the next game. Your vote below counts 🗳️');
-  renderVote(host, others);
+    + (host ? '' : playlist ? (next ? 'The host starts the next game.' : 'The host can return everyone to the lobby.') : 'The host starts the next game. Your vote below counts 🗳️');
+  $('#overVote').hidden = !!playlist;
+  if (!playlist) renderVote(host, others);
   syncOverBack();
 }
 // the podium: the winner in the middle, up a step, with the runners-up either side (by score when the game

@@ -65,6 +65,14 @@
         <div class="room-code">Room <b id="lobbyCode"></b></div>
         <button id="shareBtn" class="ghost-btn">📲 Invite: link &amp; QR code</button>
       </header>
+      <button id="buildPlaylistBtn" hidden>Build playlist</button>
+      <section id="lobbyPlaylist" class="playlist" aria-label="Playlist" hidden>
+        <h3>Playlist</h3>
+        <ol id="playlistGames"></ol>
+        <button id="addPlaylistGame" hidden>Add game</button>
+        <button id="startPlaylistBtn" class="primary" hidden>Start playlist</button>
+        <p id="playlistBlock" class="hint" aria-live="polite"></p>
+      </section>
       <h3>Game</h3>
       <div id="pickerTools" class="picker-tools">
         <input id="pickerFind" type="search" placeholder="🔎 Find a game" aria-label="Find a game" autocomplete="off">
@@ -92,7 +100,7 @@
       <button id="lobbyReplayBtn" class="big" hidden>▶ Watch last game's replay</button>
       <div id="scoreSection" hidden>
         <h3>Scoreboard</h3>
-        <div id="scoreboard"></div>
+        <div id="scoreboard" class="room-scoreboard"></div>
         <h3>Match history</h3>
         <ol id="history" class="history"></ol>
         <button id="resetScoresBtn" class="ghost-btn" hidden>Reset scoreboard</button>
@@ -129,7 +137,13 @@
       <div id="overPodium" class="podium" hidden></div>
       <div id="overScores" class="over-scores"></div>
       <div id="overGoal" class="over-note over-goal" hidden></div>
+      <section id="overPlaylist" class="playlist" aria-label="Playlist" hidden>
+        <h3 id="overPlaylistTitle"></h3>
+        <ol id="overPlaylistGames"></ol>
+        <p id="overPlaylistBlock" class="hint" aria-live="polite"></p>
+      </section>
       <div class="over-actions">
+        <button id="playNextBtn" class="primary" hidden>Play next</button>
         <button id="playPickBtn" class="primary" hidden></button>
         <button id="playVoteBtn" class="primary" hidden>▶ Play the vote winner</button>
         <button id="rematchBtn" class="primary">🔁 Rematch</button>
@@ -139,6 +153,10 @@
       </div>
       <span id="overWait" class="hint"></span>
       <div id="overVote" class="over-vote"></div>
+      <section id="overStandings" class="playlist" hidden>
+        <h3>Room standings</h3>
+        <div id="overScoreboard" class="room-scoreboard"></div>
+      </section>
     </div>
     <button id="joinInBtn" class="primary join-in" hidden></button>
     <div class="layout">

@@ -116,6 +116,7 @@ UI.putt = (() => {
       return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, d: Math.hypot(a.x - b.x, a.y - b.y), ang: Math.atan2(b.y - a.y, b.x - a.x) };
     };
     stage.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('.gl3-retry')) return;
       try { stage.setPointerCapture(e.pointerId); } catch {}
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pts.size === 2 && gl) { aim = null; $('ppPower').hidden = true; gest = { ...two(), kind: 'two' }; return; }
@@ -408,17 +409,33 @@ UI.putt = (() => {
     return t;
   }
 
-  // the phone threw the GPU context away (app switch, memory): start a fresh 3D view
+  // Keep the current round running while the browser makes a GPU context available again.
   function lost(stage) {
     if (!stage.isConnected) return;
-    gl?.dispose(); gl = make3d(stage);
-    if (!gl) flat ||= make2d(stage); holeKey = '';
+    const resetView = () => {
+      holeKey = '';
+      aim = null; gest = null; pts.clear();
+      $('ppPower').hidden = true;
+      $('ppCam').hidden = !gl;
+    };
+    gl?.dispose(); gl = null;
+    GL3.revive(stage, {
+      build: () => {
+        gl = make3d(stage);
+        if (gl) resetView();
+        return gl;
+      },
+      flat: () => { flat = make2d(stage); resetView(); },
+      unflat: () => { flat = null; },
+    });
   }
 
   function make3d(stage) {
     const T = window.THREE;
     let renderer;
-    renderer = GL3.renderer({}, { onLost: () => lost(stage) });
+    renderer = GL3.renderer({}, { onLost: () => {
+      if (renderer.domElement.isConnected) lost(stage);
+    } });
     if (!renderer) return null;
     stage.prepend(renderer.domElement);
     const scene = new T.Scene(); scene.background = new T.Color(0x0c1a2b);

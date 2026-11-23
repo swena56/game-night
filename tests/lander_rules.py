@@ -6,6 +6,7 @@ landing, canisters fuel mid-flight, and a hop to another pad scores ×1.5 (refus
 
     python3 tests/lander_rules.py
 """
+import hashlib
 import json
 import os
 import random
@@ -223,10 +224,13 @@ check("a canister is picked up and burns longer", withc["got"] == [0] and withc[
 check("…but only once", L.fly(h, pads, start, 200, [[0, 3]], picks=[[q[0], q[1] + 1.0, 1]], taken=[0])["got"] == [])
 
 
-def landed_game(seed=3):
+def landed_game(seed=3, contract=None):
     """Ann lands a hard bot's flight on its pad; returns (room, game, ann, bo, result)."""
     random.seed(seed)
     r, g, (a, b) = game()
+    if contract:
+        g.contracts = [contract]
+        r.act(a, {"type": "contract", "key": contract, "round": g.round_no})
     with r.cond:
         g.on_timeout(g.t0 + 0.01)
     for tries in range(20):
@@ -239,11 +243,17 @@ def landed_game(seed=3):
     return r, g, a, b, res
 
 
-r, g, a, b, res = landed_game()
+r, g, a, b, res = landed_game(contract="transfer")
 kind = g.needs[res["pad"]][0]
 gems = sum(1 for i in res["got"] if g.picks[i][2] == 0)
 want = res["pts"] + gems * L.GEM + (L.RUSH if kind == "rush" else L.LAB if kind == "lab" and res["prec"] >= L.LAB_PREC else 0)
 check("a landing scores the pad + crystals + the outpost's need", a.g.points == want, f"{a.g.points} vs {want} ({kind})")
+replay = g.view(a)["lander"]["replay"]
+check("transfer does not pay on descent", not a.g.contract_paid)
+check("descent review agrees with the official touchdown",
+      replay["legs"]["descent"]["how"] == res["how"]
+      and replay["legs"]["descent"]["samples"][-1] == [res[k] for k in ("ticks", "vx", "vy", "k", "fuel")])
+check("telemetry is only in the pilot's view", g.view(b)["lander"]["replay"] is None and "telemetry" not in a.g.res)
 check("a landing with fuel opens a hop window", isinstance(a.g.hop, dict) and a.g.hop["open"] == res["ticks"] + L.HOP_OPEN)
 check("the round waits while a hop is possible", g.stage == "fly")
 for bad in (res["ticks"], res["ticks"] + L.HOP_CLOSE + 1, "x"):
@@ -281,10 +291,16 @@ gems2 = sum(1 for i in hres["got"] if g.picks[i][2] == 0)
 k2 = g.needs[target][0]
 bonus = gems2 * L.GEM + (L.RUSH if k2 == "rush" else 0) + (L.LAB if k2 == "lab" and hres["prec"] >= L.LAB_PREC else 0)
 gain = a.g.points - pts_before
-check("a hop to another pad scores ×1.5 (+ that outpost)", gain == round(1.5 * hres["pts"]) + bonus, f"{gain} vs {round(1.5 * hres['pts'])}+{bonus}")
+reward = L.CONTRACTS["transfer"][2]
+check("a hop scores ×1.5 plus its outpost and transfer contract",
+      gain == round(1.5 * hres["pts"]) + bonus + reward and a.g.contract_paid)
+hop_review = g.view(a)["lander"]["replay"]["legs"]["hop"]
+check("hop timeline begins at liftoff and ends at the verdict",
+      hop_review["samples"][0][0] == 0 and hop_review["how"] == hres["how"]
+      and hop_review["samples"][-1] == [hres["ticks"] - lift, hres["vx"], hres["vy"], hres["k"], hres["fuel"]])
 check("the hop is done", isinstance(a.g.hop, dict) and a.g.hop["how"] == "land")
 # the same pad: no bonus; a crash keeps the first landing
-r, g, a, b, res = landed_game(5)
+r, g, a, b, res = landed_game(5, contract="transfer")
 pts1 = a.g.points
 lift = a.g.hop["open"]
 g.t0 -= 1.5
@@ -292,6 +308,7 @@ g.act(a, {"type": "lift", "t": lift})
 g.t0 -= 8
 g.act(a, {"type": "hop", "log": [[lift, 3], [lift + 45, 2]]})   # a short burn straight up, then a free fall back down
 check("a hop that crashes keeps the first landing", a.g.points == pts1 and a.g.hop["how"] in ("crash", "land") and a.g.hop["pts"] == 0, str(a.g.hop.get("how")))
+check("an unsuccessful hop does not complete a transfer", not a.g.contract_paid)
 json.dumps(g.view(a))
 # the rush pays only the first one down
 r, g, a, b, res = landed_game(3)
@@ -307,6 +324,32 @@ b.g.res = {"how": "crash", "pad": -1, "pts": 0, "fuel": 0}
 with r.cond:
     g.frame(g.t0 + (a.g.hop["close"] + 5) * L.DT + 1.5)
 check("when the hop window closes the round settles", a.g.hop is None and g.stage == "settle", f"{a.g.hop} {g.stage}")
+
+# -- Contract Flight deals six distinct offers over three rounds.
+r, g, (a, b) = game(flight_rules="contracts")
+contract_record = r.round_record["key"]
+offers = set(g.contracts)
+chosen = g.contracts[0]
+r.act(a, {"type": "contract", "key": chosen, "round": g.round_no})
+check("a contract locks for the round", g.view(a)["lander"]["contract"] == chosen and not g.view(a)["lander"]["contractOpen"])
+for player, round_no, late in [(a, 1, False), (b, 0, False), (b, 1, True)]:
+    if late:
+        g.stage = "fly"
+        g.t0 = time.time() - L.CONTRACT_WINDOW - 1
+    try:
+        r.act(player, {"type": "contract", "key": g.contracts[1], "round": round_no})
+        check("repeated, stale or late contract is rejected", False)
+    except GameError:
+        check("repeated, stale or late contract is rejected", True)
+for _ in range(2):
+    g.new_round(time.time())
+    offers.update(g.contracts)
+check("all six contracts are offered by round three", offers == set(L.CONTRACTS) and a.g.contract is None)
+r, g, (a, b) = game(flight_rules="classic")
+check("Classic has no contracts", not g.view(a)["lander"]["contractOpen"] and not g.contracts)
+legacy = json.dumps(["lander", "points", {"rounds": g.rounds}, r.settings["timer"], ["human", "human"]], sort_keys=True)
+check("Classic preserves the original leaderboard and Contract Flight has its own",
+      r.round_record["key"] == hashlib.sha256(legacy.encode()).hexdigest()[:24] != contract_record)
 
 print("\nall ok" if not fails else f"\n{len(fails)} FAILED: {fails}")
 sys.exit(1 if fails else 0)

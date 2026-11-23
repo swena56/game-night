@@ -45,3 +45,20 @@ body.focus .ml-stage { height: max(260px, calc(var(--room) - 190px)); }
 @keyframes mlNudge { 50% { transform: translateX(var(--dx)); } }
 .ml-stage { cursor: grab; }
 @media (prefers-reduced-motion: reduce) { .ml-arrows button { animation: none; } }
+
+.ml-contracts, .ml-replay {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.ml-contracts p, .ml-telemetry { margin: 4px 0 0; font-size: 13px; }
+.ml-contract-status { margin-inline-start: 10px; font-size: 13px; }
+.ml-choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 6px; }
+.ml-choices button { padding: 8px 10px; text-align: start; }
+.ml-choices span { display: block; margin-top: 3px; font-weight: 400; font-size: 13px; }
+.ml-replay summary { cursor: pointer; font-weight: 700; }
+.ml-replay-leg { margin-top: 10px; }
+.ml-replay-leg input { display: block; width: 100%; margin: 6px 0; }
+.ml-telemetry { font-variant-numeric: tabular-nums; }

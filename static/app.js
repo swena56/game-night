@@ -33,7 +33,7 @@ let S = null;               // latest server state
 let stateAt = 0;            // when S arrived (for the countdown)
 let es = null;
 let mounted = null;          // game id whose UI is mounted
-let overFoldedAt = -1;       // S.history.length of the results the player folded
+let overFoldedAt = -1;       // S.gameNo of the results the player folded
 let mountedNo = null;       // which game of the room it was mounted for: a rematch gets a fresh UI (#53)
 let lastTurn = null;
 let lastLogId = 0;
@@ -842,7 +842,7 @@ function renderGame(view = S, readOnly = false, force = false) {
   if (!readOnly && view.phase === 'over') {
     renderOver();
     // as the results appear, focus the main button so Enter starts the next round
-    if (wasHidden) [$('#rematchBtn'), $('#readyBtn'), $('#lobbyBtn')].find((b) => !b.hidden)?.focus({ preventScroll: true });
+    if (wasHidden) [$('#playNextBtn'), $('#rematchBtn'), $('#readyBtn'), $('#lobbyBtn')].find((b) => !b.hidden && !b.disabled)?.focus({ preventScroll: true });
   }
 }
 
@@ -1204,7 +1204,6 @@ $('#startBtn').onclick = () => quiet(act('start'));
 $('#rematchBtn').onclick = () => quiet(act('rematch'));
 $('#playPickBtn').onclick = () => { if (overPick) quiet(act('next_vote', { game: overPick.game })); };
 $('#playVoteBtn').onclick = () => quiet(act('play_vote'));
-$('#lobbyBtn').onclick = () => quiet(act('lobby'));
 $('#readyBtn').onclick = () => quiet(act('ready'));
 $('#replayBtn').onclick = startReplay;
 $('#lobbyReplayBtn').onclick = startReplay;
@@ -1222,8 +1221,8 @@ $('#joinInBtn').onclick = () => quiet(act('join_game'));
 addEventListener('keydown', (e) => {
   if ((e.key === 'Enter' || e.key === ' ') && e.target?.closest?.('#overBanner')) e.stopPropagation();
 }, true);
-const setOverFold = (on) => { overFoldedAt = on ? S.history.length : -1; renderOver(); };
-$('#overFold').onclick = (e) => { e.stopPropagation(); setOverFold(overFoldedAt !== S.history.length); };
+const setOverFold = (on) => { overFoldedAt = on ? S.gameNo : -1; renderOver(); };
+$('#overFold').onclick = (e) => { e.stopPropagation(); setOverFold(overFoldedAt !== S.gameNo); };
 // folded, the whole result line is the button that opens it again
 $('#overBanner .over-head').onclick = (e) => { if ($('#overBanner').classList.contains('folded') && !e.target.closest('button')) setOverFold(false); };
 // Phones: fold the log into a one-line ticker so game controls sit right under the board.
@@ -1244,8 +1243,10 @@ $('#quitBtn').onclick = async () => {
   const other = el('button', 'ghost-btn', 'Leave the room instead');
   other.onclick = () => { instead = true; ask.close?.(false); };
   const others = S.players.some((p) => p.id !== S.me.id && !p.bot);
-  const ok = await ask(others ? 'End this game for everyone and go back to the lobby? Nobody gains or loses points.' : 'End this game and go back to the lobby?',
-    { ok: '🏠 Back to lobby', body: other });
+  const prompt = S.playlist ? 'End this game and the playlist? Points from completed games carry over.'
+    : others ? 'End this game for everyone and go back to the lobby? Nobody gains or loses points.'
+      : 'End this game and go back to the lobby?';
+  const ok = await ask(prompt, { ok: '🏠 Back to lobby', body: other });
   if (ok) quiet(act('end_game'));
   else if (instead) leave();
 };

@@ -47,6 +47,15 @@ OUTPOSTS = ("Tycho Base", "Copernicus Camp", "Shackleton Ice Works", "Mare Stati
 GEM, PICK_FUEL, PICK_R2, N_PICKS = 15, 3 * 30, 2.6 * 2.6, 4
 HOP_MULT, HOP_MIN, HOP_OPEN, HOP_CLOSE = 1.5, 3 * 30, 24, 24 + 120   # ticks after touchdown: the window to lift off
 STREAK_PTS, STREAK_MAX = 5, 15   # 🔥 each landing in a row after the first adds this much (up to the max); a crash or a missed round resets it
+CONTRACT_WINDOW = 5.0  # seconds after launch to accept a contract
+CONTRACTS = {
+    "courier": ("Low-risk delivery", "Land on the wide ×1 pad", 120),
+    "precision": ("Precision survey", "Land within the middle half of a pad's safe zone", 55),
+    "reserve": ("Fuel economy", "Land with at least 8 s of fuel before the touchdown refill", 65),
+    "salvage": ("Crystal recovery", "Collect a crystal and land on the same flight", 75),
+    "sprint": ("Express delivery", "Make your first landing within 16 s", 65),
+    "transfer": ("Outpost transfer", "Land, then complete a hop to a different pad", 100),
+}
 HOP_TICKS = 35 * 30    # a hop may fly this long from its lift-off (past the round's usual end)
 BOT = {  # think every n ticks, pad choice, touchdown speed aimed for, gain noise, approach speed cap
     "easy": (6, 1, 2.0, 0.35, 4.5),
@@ -137,12 +146,22 @@ def judge(pads, x, vx, vy, k):
     return "crash", -1, 0, 0.0, 0.0
 
 
-def fly(h, pads, start, fuel, log, path_every=0, picks=(), taken=(), hop=None):
+def crash_reason(pad, vx, vy):
+    if pad < 0:
+        return "off the pads"
+    if -vy > VY_OK:
+        return "too fast"
+    if abs(vx) > VX_OK:
+        return "sliding sideways"
+    return "tilted over"
+
+
+def fly(h, pads, start, fuel, log, path_every=0, picks=(), taken=(), hop=None, record=False):
     """Replay an input log: [[tick, bits], …] where bits = thrust + 2 × (rot + 1) applies from that tick on.
     Returns a result dict; with path_every, also every n-th tick's [x, y, k, thrust] (for ghosts).
     picks: the pickups in the sky (those in `taken` are already gone); "got" lists the ones this flight touched.
     hop=(x, y, tick): a hop from a pad, standing upright at rest from that tick; it only counts as down again once it
-    has been airborne (more than 1 m up)."""
+    has been airborne (more than 1 m up). With record, sample [elapsed tick, vx, vy, lean step, fuel] for review."""
     if hop:
         x, y, t0 = hop
         vx = vy = 0.0
@@ -158,6 +177,20 @@ def fly(h, pads, start, fuel, log, path_every=0, picks=(), taken=(), hop=None):
     got = []
     gone = set(taken)
     end = t0 + HOP_TICKS if hop else MAX_TICKS
+    telemetry = []
+
+    def report(result):
+        if record:
+            final = [result["ticks"] - t0, result["vx"], result["vy"], result["k"], result["fuel"]]
+            if telemetry[-1][0] == final[0]:
+                telemetry[-1] = final
+            else:
+                telemetry.append(final)
+            result["telemetry"] = telemetry
+        return result
+
+    if record:
+        telemetry.append([0, round(vx, 2), round(vy, 2), k, fuel])
     for t in range(t0, end):
         while li < len(log) and log[li][0] <= t:
             bits = log[li][1]
@@ -188,6 +221,8 @@ def fly(h, pads, start, fuel, log, path_every=0, picks=(), taken=(), hop=None):
                         fuel += PICK_FUEL
         if path_every and (t - t0) % path_every == 0:
             path.append([round(x, 2), round(y, 2), k, 1 if on else 0])
+        if record and (t + 1 - t0) % 15 == 0:
+            telemetry.append([t + 1 - t0, round(vx, 2), round(vy, 2), k, fuel])
         gy = ground(h, x)
         if not air:
             if y > gy + 1.0:
@@ -199,11 +234,11 @@ def fly(h, pads, start, fuel, log, path_every=0, picks=(), taken=(), hop=None):
             how, pad, pts, soft, prec = judge(pads, x, vx, vy, k)
             if path_every:
                 path.append([round(x, 2), round(gy, 2), k, 0])
-            return {"how": how, "pad": pad, "pts": pts, "ticks": t + 1, "x": round(x, 2), "vx": round(vx, 2),
+            return report({"how": how, "pad": pad, "pts": pts, "ticks": t + 1, "x": round(x, 2), "vx": round(vx, 2),
                     "vy": round(vy, 2), "k": k, "fuel": fuel, "soft": round(soft, 2), "prec": round(prec, 2), "path": path,
-                    "got": got}
-    return {"how": "lost", "pad": -1, "pts": 0, "ticks": end, "x": round(x, 2), "vx": round(vx, 2), "vy": round(vy, 2),
-            "k": k, "fuel": fuel, "soft": 0, "prec": 0, "path": path, "got": got}
+                    "got": got, "reason": crash_reason(pad, vx, vy) if how == "crash" else None})
+    return report({"how": "lost", "pad": -1, "pts": 0, "ticks": end, "x": round(x, 2), "vx": round(vx, 2), "vy": round(vy, 2),
+                   "k": k, "fuel": fuel, "soft": 0, "prec": 0, "path": path, "got": got})
 
 
 def autopilot(h, pads, start, fuel, level, rng, hop=None, target=None):
@@ -300,31 +335,37 @@ class Lander(Game):
         "🔥 Land round after round and each landing in a row adds +5 (up to +15). A crash or a round without a landing resets it.",
         "Landed with fuel to spare? Burn again within 4 s to hop to a different pad for ×1.5 more. A crash on the hop keeps your first landing.",
         "Fuel carries over: the tank only gets a top-up each round, so don't waste it hovering.",
+        "In Contract Flight, pick one optional contract before launch or in the first 5 seconds. Complete it for bonus points. Review your last flight's telemetry to refine your approach.",
         "Most points after the last round wins.",
     ]
     name = "Moon Lander"
     icon = "🚀"
-    blurb = "Everyone flies the supply run at once: grab crystals, touch down softly on an outpost's pad, then hop to another. Fuel carries over."
+    blurb = "Fly supply runs and bonus contracts, bank crystals on touchdown, and hop between outposts. Fuel carries over."
     min_players = 1
     max_players = 6
     replayable = False
     badges = {**Game.badges,
               "feather": ("🪶", "Feather", "Touch down at under 0.5 m/s"),
               "bullseye": ("🎯", "Bullseye", "Land dead centre on a ×3 pad"),
-              "hopper": ("🔁", "Hopper", "Hop from one pad and land on the ×3")}
+              "hopper": ("🔁", "Hopper", "Hop from one pad and land on the ×3"),
+              "contractor": ("📋", "Contractor", "Complete three different contracts in one match")}
     settings_schema = {
         "rounds": ("Rounds", [(5, "5"), (3, "3"), (7, "7")], 5),
+        "flight_rules": ("Flight rules", [("contracts", "Contract Flight"), ("classic", "Classic")], "contracts"),
     }
 
     def start(self, seated, rng):
         self.rng = rng
         self.seats = [p.id for p in seated]
         self.rounds = int(self.s.get("rounds", 5))
+        self.flight_rules = self.s.get("flight_rules", "contracts")
         self.round_no = 0
         self.ghost_at = 0.0
         for p in seated:
             p.g.points, p.g.fuel, p.g.best = 0, TANK0, 0
-            p.g.lands = 0
+            p.g.lands, p.g.streak = 0, 0
+            p.g.completed_contracts = []
+            p.g.replay = None
         self.room.turn = None
         self.room.bot_at = 0
         self.room.add_log(f"🚀 Moon Lander: {self.rounds} rounds. Land softly; fuel carries over!", "big")
@@ -345,6 +386,7 @@ class Lander(Game):
         self.round_no += 1
         self.h, self.pads, self.start_xv = make_moon(self.rng)
         self.needs, self.picks = make_supply(self.rng, self.h, self.pads, self.start_xv)
+        self.contracts = self.round_contracts()
         self.rushed = set()               # rush outposts already reached this round
         self.stage = "count"
         self.t0 = now + COUNT
@@ -359,7 +401,20 @@ class Lander(Game):
             g.plan = None                   # a bot's planned flight: (result, started at, first tick)
             g.hop = None                    # after a landing: {"open", "close"} ticks → "up" → the hop's result
             g.land1 = None                  # the first landing's result (for the hop)
+            bot_choices = ("courier", "reserve", "precision", "sprint") if p.bot == "easy" else ("precision", "reserve", "sprint", "courier")
+            g.contract = next((key for key in bot_choices if key in self.contracts), None) if p.bot else None
+            g.contract_paid = False
         r.add_log(f"🌕 Round {self.round_no} of {self.rounds}: pads ×1, ×2 and ×3. Get ready…", "info")
+
+    def round_contracts(self):
+        if getattr(self, "flight_rules", "classic") == "classic":
+            return []
+        if (self.round_no - 1) % 3 == 0 or not hasattr(self, "contract_deck"):
+            deck_rng = random.Random()
+            deck_rng.setstate(self.rng.getstate())
+            self.contract_deck = deck_rng.sample(list(CONTRACTS), len(CONTRACTS))
+        offset = 2 * ((self.round_no - 1) % 3)
+        return self.contract_deck[offset:offset + 2]
 
     # -- flying
 
@@ -377,13 +432,23 @@ class Lander(Game):
 
     def act(self, p, a):
         kind = a.get("type")
-        if kind not in ("land", "lift", "hop"):
+        if kind not in ("land", "lift", "hop", "contract"):
             raise GameError("Unknown action.")
         if p.id not in self.seats or p.eliminated:
             raise GameError("You're watching this one.")
+        g, now = p.g, time.time()
+        if kind == "contract":
+            key = a.get("key")
+            round_no = a.get("round")
+            if type(round_no) is not int or round_no != self.round_no or key not in getattr(self, "contracts", []):
+                raise GameError("That contract is unavailable.")
+            if (getattr(g, "contract", None) or g.res is not None or self.stage not in ("count", "fly")
+                    or now >= self.t0 + CONTRACT_WINDOW):
+                raise GameError("Contract selection is closed.")
+            g.contract = key
+            return
         if self.stage not in ("fly", "settle"):
             raise GameError("Not flying right now.")
-        g, now = p.g, time.time()
         if kind == "lift":
             hop, t = g.hop, a.get("t")
             if not isinstance(hop, dict):
@@ -400,7 +465,7 @@ class Lander(Game):
             if g.hop != "up":
                 raise GameError("You're not hopping.")
             log = self._log(a.get("log"), g.lift, g.lift + HOP_TICKS)
-            res = self.fly_hop(p, log)
+            res = self.fly_hop(p, log, record=True)
             if res["ticks"] * DT > now - self.t0 + 3.0:
                 raise GameError("That flight was too quick.")
             return self.hop_done(p, res, now)
@@ -409,18 +474,18 @@ class Lander(Game):
         if g.res is not None:
             raise GameError("You've already come down this round.")
         log = self._log(a.get("log"))
-        res = fly(self.h, self.pads, self.start_xv, g.tank, log, picks=self.picks)
+        res = fly(self.h, self.pads, self.start_xv, g.tank, log, picks=self.picks, record=True)
         # the flight must have taken (about) as long as it says
         if res["ticks"] * DT > now - self.t0 + 3.0:
             raise GameError("That flight was too quick.")
         self.done(p, res, now)
 
-    def fly_hop(self, p, log, path_every=0):
+    def fly_hop(self, p, log, path_every=0, record=False):
         g = p.g
         r1 = g.land1
         top = self.pads[r1["pad"]][2]
         return fly(self.h, self.pads, None, g.fuel, log, path_every=path_every, picks=self.picks, taken=r1.get("got", []),
-                   hop=(r1["x"], top, g.lift))
+                   hop=(r1["x"], top, g.lift), record=record)
 
     def on_input(self, p, a):
         """A human's lander position while flying (for everyone else's ghost view)."""
@@ -451,13 +516,50 @@ class Lander(Game):
         elif kind == "lab" and res["prec"] >= LAB_PREC:
             pts += LAB
             words.append(f"🔬 {name} bullseye +{LAB}")
+        key = getattr(g, "contract", None)
+        hop = g.hop == "up"
+        if key and not g.contract_paid and self.contract_met(key, res, hop, gems):
+            title, _, reward = CONTRACTS[key]
+            pts += reward
+            words.append(f"📋 {title} +{reward}")
+            g.contract_paid = True
+            if key not in g.completed_contracts:
+                g.completed_contracts.append(key)
+                if len(g.completed_contracts) == 3:
+                    self.award(p, "contractor")
         res["bonus"] = pts
         res["words"] = words
         return pts
 
+    def contract_met(self, key, res, hop, gems):
+        if key == "courier":
+            return self.pads[res["pad"]][3] == 1
+        if key == "precision":
+            return res["prec"] >= 0.5
+        if key == "reserve":
+            return res["fuel"] >= 8 * 30
+        if key == "salvage":
+            return gems > 0
+        if key == "sprint":
+            return not hop and res["ticks"] <= 16 * 30
+        return key == "transfer" and hop
+
+    def save_replay(self, p, res, leg):
+        samples = res.pop("telemetry", None)
+        if not samples:
+            return
+        g = p.g
+        replay = getattr(g, "replay", None)
+        if not replay or replay["round"] != self.round_no or leg == "descent":
+            g.replay = replay = {"round": self.round_no, "legs": {}}
+        pad = res["pad"]
+        replay["legs"][leg] = {"how": res["how"], "reason": res.get("reason"), "samples": samples,
+                               "mult": self.pads[pad][3] if pad >= 0 else None}
+
     def done(self, p, res, now):
         g = p.g
         res = {k: v for k, v in res.items() if k != "path"}
+        self.save_replay(p, res, "descent")
         g.res = res
         g.fuel = res["fuel"]
         g.ghost = None
@@ -490,8 +592,7 @@ class Lander(Game):
             elif g.streak in (3, 5):
                 self.moment(f"🔥 {p.name}: {g.streak} landings in a row!", "gold", "good")
         elif res["how"] == "crash":
-            why = ("off the pads" if res["pad"] < 0 else "too fast" if -res["vy"] > VY_OK else "sliding sideways"
-                   if abs(res["vx"]) > VX_OK else "tilted over")
+            why = res.get("reason") or crash_reason(res["pad"], res["vx"], res["vy"])
             r.add_log(f"💥 {p.name} crashes ({why}).", "info")
         else:
             r.add_log(f"🛰️ {p.name} drifts off into space.", "info")
@@ -500,6 +601,7 @@ class Lander(Game):
     def hop_done(self, p, res, now):
         g, r = p.g, self.room
         res = {k: v for k, v in res.items() if k != "path"}
+        self.save_replay(p, res, "hop")
         g.fuel = res["fuel"]
         g.ghost = None
         first = g.land1["pad"]
@@ -532,6 +634,12 @@ class Lander(Game):
             self.stage = "settle"
             self.room.deadline = now + SETTLE
 
+    def bot_descent(self, p, path_every=0):
+        g = p.g
+        target = 0 if getattr(g, "contract", None) == "courier" else None  # pads are ordered by multiplier
+        log = autopilot(self.h, self.pads, self.start_xv, g.tank, p.bot, random, target=target)
+        return fly(self.h, self.pads, self.start_xv, g.tank, log, path_every=path_every, picks=self.picks)
+
     def frame(self, now):
         """Bots fly their planned flights on the clock; ghost positions stream ~10 times a second."""
         r = self.room
@@ -554,8 +662,7 @@ class Lander(Game):
                 continue
             if g.res is None:
                 if g.plan is None:
-                    log = autopilot(self.h, self.pads, self.start_xv, g.tank, p.bot, random)
-                    res = fly(self.h, self.pads, self.start_xv, g.tank, log, path_every=3, picks=self.picks)
+                    res = self.bot_descent(p, path_every=3)
                     g.plan = (res, max(0.0, t), 0)    # a stand-in who took over late starts from now
             elif isinstance(g.hop, dict) and "open" in g.hop:
                 if not self.bot_hop(p, t):
@@ -654,8 +761,7 @@ class Lander(Game):
             for p in self.present():
                 if p.bot and p.g.res is None:
                     if p.g.plan is None:
-                        log = autopilot(self.h, self.pads, self.start_xv, p.g.tank, p.bot, random)
-                        p.g.plan = (fly(self.h, self.pads, self.start_xv, p.g.tank, log, picks=self.picks), 0.0, 0)
+                        p.g.plan = (self.bot_descent(p), 0.0, 0)
                     self.done(p, p.g.plan[0], now)
                 if p.bot and isinstance(p.g.hop, dict) and "open" in p.g.hop:
                     self.bot_hop(p, now - self.t0)
@@ -704,12 +810,19 @@ class Lander(Game):
             fliers.append({"points": getattr(g, "points", 0), "fuel": getattr(g, "fuel", 0), "tank": getattr(g, "tank", 0),
                            "res": getattr(g, "res", None), "hop": getattr(g, "hop", None), "out": not o or o.eliminated})
         me = self.seat(p)
+        pilot = p.g if me is not None else None
+        contract = getattr(pilot, "contract", None)
         return {"lander": {
             "seats": self.seats, "me": me, "round": self.round_no, "rounds": self.rounds, "stage": self.stage,
             "startIn": max(0.0, round(self.t0 - now, 2)) if self.stage == "count" else 0,
             "flown": max(0.0, round(now - self.t0, 2)) if self.stage in ("fly", "settle") else 0,
             "h": self.h, "pads": self.pads, "start": list(self.start_xv), "fliers": fliers,
             "needs": self.needs, "picks": self.picks, "rushed": sorted(self.rushed),
+            "contracts": [[key, *CONTRACTS[key]] for key in getattr(self, "contracts", [])],
+            "contract": contract, "contractWindow": CONTRACT_WINDOW, "contractPaid": getattr(pilot, "contract_paid", False),
+            "contractOpen": bool(getattr(self, "contracts", []) and pilot is not None and not p.eliminated and not contract and pilot.res is None
+                                 and self.stage in ("count", "fly") and now < self.t0 + CONTRACT_WINDOW),
+            "replay": getattr(pilot, "replay", None),
             "standings": self.standings() if self.stage == "between" and len(self.seats) > 1 else None,
             "geo": {"dt": DT, "g": G, "thrust": THRUST, "rot": ROT_STEP, "kMax": K_MAX, "w": W, "seg": SEG, "startY": START_Y,
                     "ceiling": CEILING, "vyOk": VY_OK, "vxOk": VX_OK, "angOk": ANG_OK, "foot": FOOT, "maxTicks": MAX_TICKS,
