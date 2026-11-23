@@ -141,11 +141,11 @@ UI.switchyard = (() => {
     main.innerHTML = `<section class="sy">
       <div class="sy-header"><strong class="sy-score"></strong><span class="sy-clock"></span></div>
       <div class="sy-beat" aria-hidden="true"><span></span></div>
-      <div class="sy-incoming"></div>
       <div class="sy-board" role="group" aria-label="Rail yard">
         <canvas class="sy-flat" aria-hidden="true"></canvas>
         <div class="sy-scene" aria-hidden="true"></div>
         <span class="sy-entry">Entry</span>
+        <div class="sy-incoming" role="group" aria-label="Next arrivals"></div>
         <div class="sy-trains"></div>
       </div>
       <p class="sy-feedback" role="status"></p>
@@ -161,8 +161,8 @@ UI.switchyard = (() => {
     attribution = main.querySelector('.sy-attribution');
     trains = yard.querySelector('.sy-trains');
     lastArrival = trackKey = queueKey = undefined;
-    previews = [buildPreview(), buildPreview()];
-    incoming.append('Next arrivals', ...previews.map((preview) => preview.slot));
+    previews = ['Next', 'Then'].map(buildPreview);
+    incoming.append(...previews.map((preview) => preview.slot));
     place(yard.querySelector('.sy-entry'), 'entry');
     bays = depots.map((_, index) => {
       const depot = token(index);
@@ -208,15 +208,17 @@ UI.switchyard = (() => {
     loadScene(yard);
   }
 
-  function buildPreview() {
+  function buildPreview(label) {
     const slot = document.createElement('div');
     slot.className = 'sy-preview';
+    const title = document.createElement('strong');
+    title.textContent = label;
     const mark = document.createElement('span');
     const controls = document.createElement('span');
     controls.className = 'sy-call-controls';
     const caption = document.createElement('small');
     caption.className = 'sy-route-call';
-    slot.append(mark, controls, caption);
+    slot.append(title, mark, controls, caption);
     const preview = { slot, mark, controls, caption };
     preview.buttons = Object.entries(heading).map(([branch, name]) => {
       const button = document.createElement('button');
