@@ -507,20 +507,48 @@ UI.rally = (() => {
     // pickups shift colour: it could be any item
     const pickMat = new T.MeshStandardMaterial({ color: 0xff5d5d, emissive: 0xff2d2d, emissiveIntensity: 0.6, metalness: 0.3, roughness: 0.2 });
     const glowMat = (color, opacity = 1) => ({ map: dot, color, transparent: true, opacity, blending: T.AdditiveBlending, depthWrite: false });
+    const roadSurface = document.createElement('canvas');
+    roadSurface.width = 128; roadSurface.height = 256;
+    const roadInk = roadSurface.getContext('2d');
+    const across = roadInk.createLinearGradient(0, 0, roadSurface.width, 0);
+    across.addColorStop(0, '#253447');
+    across.addColorStop(0.12, '#353c53');
+    across.addColorStop(0.5, '#424861');
+    across.addColorStop(0.88, '#353c53');
+    across.addColorStop(1, '#253447');
+    roadInk.fillStyle = across;
+    roadInk.fillRect(0, 0, 128, 256);
+    for (let i = 0; i < 1300; i++) {
+      roadInk.fillStyle = i % 2 ? '#9aaac11c' : '#10182726';
+      roadInk.fillRect((i * 71.23) % 128, (i * 53.81) % 256, 1, 1);
+    }
+    roadInk.fillStyle = '#83c9cf';
+    roadInk.fillRect(5, 0, 2, 256);
+    roadInk.fillRect(121, 0, 2, 256);
+    roadInk.fillStyle = '#97a9bd';
+    roadInk.fillRect(63, 88, 2, 80);
+    const roadMap = new T.CanvasTexture(roadSurface);
+    roadMap.colorSpace = T.SRGBColorSpace;
+    roadMap.wrapT = T.RepeatWrapping;
+    roadMap.anisotropy = stg.low ? 2 : 8;
+    const roadMat = new T.MeshStandardMaterial({ map: roadMap, roughness: 0.84, side: T.DoubleSide });
     function build() {
       scene.remove(track); track = new T.Group(); scene.add(track);
       hills = null;  // worked out afresh now that there's a 3D view
       const r = S.rally, n = r.track.length, W = r.width, L = r.length;
       // the surface, with a hole where a gap is; the edge lines break there too
-      const pos = [], edges = [[], []], edgeMat = new T.LineBasicMaterial({ color: 0x4cc9f0 });
+      const pos = [], uv = [], edges = [[], []], edgeMat = new T.LineBasicMaterial({ color: 0x4cc9f0 });
       const gapAt = (k) => !!zoneAt(((r.cum[k % n] ?? 0) + (r.cum[(k + 1) % n] || L)) / 2, ['gap']);
       const endEdges = () => {
         for (const e of edges) { if (e.length > 1) track.add(new T.Line(new T.BufferGeometry().setFromPoints(e), edgeMat)); e.length = 0; }
       };
+      const repeats = Math.max(1, Math.round(L / 7));
       for (let k = 0; k <= n; k++) {
         const s = r.cum[k % n] ?? 0, w = hwAt(k);
         const a = at(s, w), b = at(s, -w);
         pos.push(a.x, a.h, -a.y, b.x, b.h, -b.y);
+        const v = (k === n ? 1 : s / L) * repeats;
+        uv.push(0, v, 1, v);
         edges[0].push(V(a, 0.05)); edges[1].push(V(b, 0.05));
         if (k < n && gapAt(k)) endEdges();
       }
@@ -528,8 +556,10 @@ UI.rally = (() => {
       const idx = [];
       for (let k = 0; k < n; k++) { if (gapAt(k)) continue; const q = k * 2; idx.push(q, q + 1, q + 2, q + 1, q + 3, q + 2); }
       const g = new T.BufferGeometry();
-      g.setAttribute('position', new T.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
-      track.add(new T.Mesh(g, new T.MeshStandardMaterial({ color: 0x24203a, roughness: 0.8, side: T.DoubleSide })));
+      g.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
+      g.setAttribute('uv', new T.Float32BufferAttribute(uv, 2));
+      g.setIndex(idx); g.computeVertexNormals();
+      track.add(new T.Mesh(g, roadMat));
       // embankments: each edge down to the ground, so the hills read as solid ground (none at a gap: the pit has walls)
       const bank = [], bankIdx = [];
       for (let k = 0; k <= n; k++) {
@@ -543,7 +573,7 @@ UI.rally = (() => {
       track.add(new T.Mesh(bg, new T.MeshStandardMaterial({ color: 0x15112a, roughness: 0.9, side: T.DoubleSide })));
       features();
       scenery();
-      const line = new T.Mesh(new T.PlaneGeometry(0.6, W * 2), new T.MeshBasicMaterial({ color: 0xffffff, side: T.DoubleSide }));
+      const line = new T.Mesh(new T.PlaneGeometry(W * 2, 0.8).rotateZ(Math.PI / 2), new T.MeshBasicMaterial({ map: checker, toneMapped: false, side: T.DoubleSide }));
       const p0 = at(0, 0); line.position.copy(V(p0, 0.02)); line.rotation.x = -Math.PI / 2; line.rotation.z = Math.atan2(p0.uy, p0.ux); track.add(line);
       for (const [pi, lat] of r.pads) {  // laid on the surface, so they follow the hills and banking
         const s = r.cum[((pi % n) + n) % n];
@@ -1079,7 +1109,7 @@ UI.rally = (() => {
       tickParts(dt);
       renderer.render(scene, camera);
     }
-    function dispose() { stg.dispose(); renderer.dispose(); renderer.domElement.remove(); stage.querySelector('.ra-mini')?.remove(); }
+    function dispose() { roadMap.dispose(); roadMat.dispose(); stg.dispose(); renderer.dispose(); renderer.domElement.remove(); stage.querySelector('.ra-mini')?.remove(); }
     return { build, draw, resize, dispose, fx };
   }
 

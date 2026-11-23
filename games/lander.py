@@ -47,6 +47,8 @@ OUTPOSTS = ("Tycho Base", "Copernicus Camp", "Shackleton Ice Works", "Mare Stati
 GEM, PICK_FUEL, PICK_R2, N_PICKS = 15, 3 * 30, 2.6 * 2.6, 4
 HOP_MULT, HOP_MIN, HOP_OPEN, HOP_CLOSE = 1.5, 3 * 30, 24, 24 + 120   # ticks after touchdown: the window to lift off
 STREAK_PTS, STREAK_MAX = 5, 15   # 🔥 each landing in a row after the first adds this much (up to the max); a crash or a missed round resets it
+BRIEFING, EXPEDITION_REFILL = 8.0, 8 * 30
+RESUPPLY = ("Resupply", "Make a successful first touchdown", 8)
 CONTRACT_WINDOW = 5.0  # seconds after launch to accept a contract
 CONTRACTS = {
     "courier": ("Low-risk delivery", "Land on the wide ×1 pad", 120),
@@ -335,6 +337,7 @@ class Lander(Game):
         "🔥 Land round after round and each landing in a row adds +5 (up to +15). A crash or a round without a landing resets it.",
         "Landed with fuel to spare? Burn again within 4 s to hop to a different pad for ×1.5 more. A crash on the hop keeps your first landing.",
         "Fuel carries over: the tank only gets a top-up each round, so don't waste it hovering.",
+        "In Expedition, choose a mission before launch. Resupply on your first touchdown or earn mission points. Between moons you get 8 seconds of fuel.",
         "In Contract Flight, pick one optional contract before launch or in the first 5 seconds. Complete it for bonus points. Review your last flight's telemetry to refine your approach.",
         "Most points after the last round wins.",
     ]
@@ -351,7 +354,7 @@ class Lander(Game):
               "contractor": ("📋", "Contractor", "Complete three different contracts in one match")}
     settings_schema = {
         "rounds": ("Rounds", [(5, "5"), (3, "3"), (7, "7")], 5),
-        "flight_rules": ("Flight rules", [("contracts", "Contract Flight"), ("classic", "Classic")], "contracts"),
+        "flight_rules": ("Flight rules", [("contracts", "Contract Flight"), ("expedition", "Expedition"), ("classic", "Classic")], "contracts"),
     }
 
     def start(self, seated, rng):
@@ -366,6 +369,8 @@ class Lander(Game):
             p.g.lands, p.g.streak = 0, 0
             p.g.completed_contracts = []
             p.g.replay = None
+            if self.expedition:
+                p.g.missions = []
         self.room.turn = None
         self.room.bot_at = 0
         self.room.add_log(f"🚀 Moon Lander: {self.rounds} rounds. Land softly; fuel carries over!", "big")
@@ -380,6 +385,10 @@ class Lander(Game):
     def seat(self, p):
         return self.seats.index(p.id) if p.id in self.seats else None
 
+    @property
+    def expedition(self):
+        return getattr(self, "flight_rules", None) == "expedition"
+
     def new_round(self, now):
         r = self.room
         self.mark_round()
@@ -388,13 +397,13 @@ class Lander(Game):
         self.needs, self.picks = make_supply(self.rng, self.h, self.pads, self.start_xv)
         self.contracts = self.round_contracts()
         self.rushed = set()               # rush outposts already reached this round
-        self.stage = "count"
-        self.t0 = now + COUNT
-        r.deadline = self.t0
+        self.stage = "briefing" if self.expedition else "count"
+        self.t0 = now + COUNT + (BRIEFING if self.expedition else 0)
+        r.deadline = self.t0 - COUNT if self.expedition else self.t0
         for p in self.players():
             g = p.g
             if self.round_no > 1:
-                g.fuel = min(TANK_MAX, g.fuel + REFILL)
+                g.fuel = min(TANK_MAX, g.fuel + (EXPEDITION_REFILL if self.expedition else REFILL))
             g.tank = g.fuel                 # what this round's flight starts with
             g.res = None                    # this round's result
             g.ghost = None                  # [x, y, k, thrust] as last posted
@@ -403,6 +412,8 @@ class Lander(Game):
             g.land1 = None                  # the first landing's result (for the hop)
             bot_choices = ("courier", "reserve", "precision", "sprint") if p.bot == "easy" else ("precision", "reserve", "sprint", "courier")
             g.contract = next((key for key in bot_choices if key in self.contracts), None) if p.bot else None
+            if self.expedition and p.bot and self.round_no < self.rounds and (g.tank < 20 * 30 or not g.contract):
+                g.contract = "resupply"
             g.contract_paid = False
         r.add_log(f"🌕 Round {self.round_no} of {self.rounds}: pads ×1, ×2 and ×3. Get ready…", "info")
 
@@ -415,6 +426,19 @@ class Lander(Game):
             self.contract_deck = deck_rng.sample(list(CONTRACTS), len(CONTRACTS))
         offset = 2 * ((self.round_no - 1) % 3)
         return self.contract_deck[offset:offset + 2]
+
+    def mission_offers(self):
+        offers = list(getattr(self, "contracts", []))
+        if self.expedition and self.round_no < self.rounds:
+            offers.append("resupply")
+        return offers
+
+    def contract_open(self, g, now):
+        if g is None or getattr(g, "contract", None) or g.res is not None:
+            return False
+        if self.expedition:
+            return self.stage == "briefing" and now < self.t0 - COUNT
+        return self.stage in ("count", "fly") and now < self.t0 + CONTRACT_WINDOW
 
     # -- flying
 
@@ -440,10 +464,9 @@ class Lander(Game):
         if kind == "contract":
             key = a.get("key")
             round_no = a.get("round")
-            if type(round_no) is not int or round_no != self.round_no or key not in getattr(self, "contracts", []):
+            if type(round_no) is not int or round_no != self.round_no or key not in self.mission_offers():
                 raise GameError("That contract is unavailable.")
-            if (getattr(g, "contract", None) or g.res is not None or self.stage not in ("count", "fly")
-                    or now >= self.t0 + CONTRACT_WINDOW):
+            if not self.contract_open(g, now):
                 raise GameError("Contract selection is closed.")
             g.contract = key
             return
@@ -518,7 +541,11 @@ class Lander(Game):
             words.append(f"🔬 {name} bullseye +{LAB}")
         key = getattr(g, "contract", None)
         hop = g.hop == "up"
-        if key and not g.contract_paid and self.contract_met(key, res, hop, gems):
+        if key == "resupply" and not g.contract_paid and not hop:
+            g.fuel = min(TANK_MAX, g.fuel + RESUPPLY[2] * 30)
+            g.contract_paid = True
+            words.append("⛽ Expedition resupply")
+        elif key in CONTRACTS and not g.contract_paid and self.contract_met(key, res, hop, gems):
             title, _, reward = CONTRACTS[key]
             pts += reward
             words.append(f"📋 {title} +{reward}")
@@ -729,6 +756,14 @@ class Lander(Game):
                 o.g.res = {"how": "lost", "pad": -1, "pts": 0, "ticks": MAX_TICKS, "x": 0, "vx": 0, "vy": 0, "k": 0,
                            "fuel": o.g.fuel, "soft": 0, "prec": 0}
                 r.add_log(f"⏰ {o.name} never touched down.", "info")
+        if self.expedition:
+            for o in self.players():
+                g = o.g
+                if g.res is not None and (not g.missions or g.missions[-1]["round"] < self.round_no):
+                    g.missions.append({"round": self.round_no, "key": g.contract, "complete": g.contract_paid,
+                                       "points": g.res["pts"], "fuel": g.fuel,
+                                       "nextTank": min(TANK_MAX, g.fuel + EXPEDITION_REFILL)
+                                       if self.round_no < self.rounds else None})
         if here:
             r.add_log(f"🌕 Round {self.round_no}: " + ", ".join(f"{o.name} {o.g.res['pts']}" for o in sorted(here, key=lambda o: -o.g.res["pts"])) + ".", "big")
 
@@ -751,6 +786,15 @@ class Lander(Game):
         now = time.time() if now is None else now
         r = self.room
         if r.phase != "playing":
+            return
+        if self.stage == "briefing":
+            if self.round_no < self.rounds:
+                for p in self.present():
+                    if not p.g.contract:
+                        p.g.contract = "resupply"
+            self.stage = "count"
+            self.t0 = now + COUNT
+            r.deadline = self.t0
             return
         if self.stage == "count":
             self.stage = "fly"
@@ -812,6 +856,7 @@ class Lander(Game):
         me = self.seat(p)
         pilot = p.g if me is not None else None
         contract = getattr(pilot, "contract", None)
+        offers = self.mission_offers()
         return {"lander": {
             "seats": self.seats, "me": me, "round": self.round_no, "rounds": self.rounds, "stage": self.stage,
             "startIn": max(0.0, round(self.t0 - now, 2)) if self.stage == "count" else 0,
@@ -820,8 +865,16 @@ class Lander(Game):
             "needs": self.needs, "picks": self.picks, "rushed": sorted(self.rushed),
             "contracts": [[key, *CONTRACTS[key]] for key in getattr(self, "contracts", [])],
             "contract": contract, "contractWindow": CONTRACT_WINDOW, "contractPaid": getattr(pilot, "contract_paid", False),
-            "contractOpen": bool(getattr(self, "contracts", []) and pilot is not None and not p.eliminated and not contract and pilot.res is None
-                                 and self.stage in ("count", "fly") and now < self.t0 + CONTRACT_WINDOW),
+            "contractOpen": bool(offers and p is not None and not p.eliminated
+                                 and self.contract_open(pilot, now)),
+            "expedition": {
+                "briefingLeft": max(0.0, self.t0 - COUNT - (r.paused or now)) if self.stage == "briefing" else 0,
+                "offers": [[key, *(RESUPPLY if key == "resupply" else CONTRACTS[key])]
+                           for key in offers],
+                "resupplyFuel": RESUPPLY[2] * 30,
+                "history": getattr(pilot, "missions", []),
+                "titles": {key: title for key, (title, _, _) in dict(CONTRACTS, resupply=RESUPPLY).items()},
+            } if self.expedition else None,
             "replay": getattr(pilot, "replay", None),
             "standings": self.standings() if self.stage == "between" and len(self.seats) > 1 else None,
             "geo": {"dt": DT, "g": G, "thrust": THRUST, "rot": ROT_STEP, "kMax": K_MAX, "w": W, "seg": SEG, "startY": START_Y,

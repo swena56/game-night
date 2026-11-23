@@ -449,7 +449,7 @@ UI.putt = (() => {
     const grass = canvasTex(T, 64, 64, (g, w, h) => {
       g.fillStyle = '#fff'; g.fillRect(0, 0, w, h);
       for (let i = 0; i < 900; i++) { g.fillStyle = `rgba(0,0,0,${Math.random() * 0.12})`; g.fillRect(Math.random() * w, Math.random() * h, 1, 2); }
-      g.fillStyle = 'rgba(255,255,255,0.10)'; g.fillRect(0, 0, w / 2, h);
+      g.fillStyle = 'rgba(0,0,0,0.08)'; g.fillRect(0, 0, w / 2, h);
     });
     const dimples = canvasTex(T, 128, 64, (g, w, h) => {
       g.fillStyle = '#fff'; g.fillRect(0, 0, w, h);
@@ -470,6 +470,26 @@ UI.putt = (() => {
       g.fillStyle = 'rgba(0,0,0,0.25)'; for (let i = 0; i < 6; i++) g.fillRect(0, i * (h / 6), w, 1.5);
       for (let i = 0; i < 300; i++) { g.fillStyle = `rgba(80,40,0,${Math.random() * 0.12})`; g.fillRect(Math.random() * w, Math.random() * h, 6, 1); }
     });
+    const waterTex = canvasTex(T, 128, 128, (g, w, h) => {
+      g.fillStyle = '#15738c'; g.fillRect(0, 0, w, h);
+      // The wave spacing repeats at the tile edges so adjacent water tiles join cleanly.
+      for (let row = 0; row < 5; row++) {
+        const y = (row + 0.5) * h / 5;
+        for (const [offset, color, width] of [[0, '#52b4be', 3], [3, '#216e87', 1]]) {
+          g.beginPath();
+          for (let x = 0; x <= w; x += 4) {
+            const waveY = y + offset + 4 * Math.sin(x / w * Math.PI * 2 + row * 1.4);
+            if (x === 0) g.moveTo(x, waveY); else g.lineTo(x, waveY);
+          }
+          g.strokeStyle = color; g.lineWidth = width; g.stroke();
+        }
+      }
+    });
+    waterTex.colorSpace = T.SRGBColorSpace;
+    const waterMat = new T.MeshStandardMaterial({ map: waterTex, roughness: 0.28, metalness: 0.12 });
+    const railMat = new T.MeshStandardMaterial({ color: 0x815436, map: planks, roughness: 0.75 });
+    const railCapMat = new T.MeshStandardMaterial({ color: 0xe0b882, roughness: 0.55 });
+    const bumperStripeMat = new T.MeshBasicMaterial({ color: 0xffe8bd, toneMapped: false });
     let course = new T.Group(); scene.add(course);
 
     // each hole's look (#69): a sky, a horizon haze, the light, and trees, flowers or lanterns around the course.
@@ -599,7 +619,7 @@ UI.putt = (() => {
           base.position.set(x + 0.5, -0.17, -(y + 0.5)); course.add(base);
         } else {
           const water = kind === 'water';
-          const mat = new T.MeshStandardMaterial({ color, roughness: water ? 0.2 : 0.9, map: water ? null : grass, transparent: water, opacity: water ? 0.85 : 1 });
+          const mat = water ? waterMat : new T.MeshStandardMaterial({ color, roughness: 0.9, map: grass });
           const tile = new T.Mesh(new T.BoxGeometry(1, 0.2, 1), mat);
           tile.position.set(x + 0.5, water ? -0.16 : -0.1, -(y + 0.5)); tile.receiveShadow = true; course.add(tile);
         }
@@ -612,15 +632,19 @@ UI.putt = (() => {
         }
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
           if (open.has(`${x + dx},${y + dy}`)) continue;
-          const wall = new T.Mesh(new T.BoxGeometry(dx ? 0.07 : 1.07, 0.17, dy ? 0.07 : 1.07), new T.MeshStandardMaterial({ color: 0x8d5a2b, roughness: 0.7 }));
+          const wall = new T.Mesh(new T.BoxGeometry(dx ? 0.07 : 1.07, 0.17, dy ? 0.07 : 1.07), railMat);
           wall.position.set(x + 0.5 + dx * 0.5, 0.05, -(y + 0.5 + dy * 0.5)); wall.castShadow = wall.receiveShadow = true; course.add(wall);
-          const cap = new T.Mesh(new T.BoxGeometry(dx ? 0.09 : 1.09, 0.02, dy ? 0.09 : 1.09), new T.MeshStandardMaterial({ color: 0xc08a4f, roughness: 0.6 }));
+          const cap = new T.Mesh(new T.BoxGeometry(dx ? 0.09 : 1.09, 0.02, dy ? 0.09 : 1.09), railCapMat);
           cap.position.set(x + 0.5 + dx * 0.5, 0.145, -(y + 0.5 + dy * 0.5)); course.add(cap);
         }
       }
       for (const [bx, by, br] of p.bumpers) {
         const b = new T.Mesh(new T.CylinderGeometry(br, br, 0.14, 28), new T.MeshStandardMaterial({ color: 0xff70a6, emissive: 0x551133 }));
         b.position.copy(W(bx, by)).setY(0.05); b.castShadow = true; course.add(b);
+        const stripe = new T.Mesh(new T.RingGeometry(br * 0.72, br * 0.89, 28), bumperStripeMat);
+        stripe.rotation.x = -Math.PI / 2;
+        stripe.position.y = 0.071;
+        b.add(stripe);
         bumperMeshes.push({ mesh: b, x: bx, y: by, kick: 0 });
       }
       if (blades.length) {
@@ -641,11 +665,11 @@ UI.putt = (() => {
         rock.position.set(rx, rr * 0.45, -ry); rock.castShadow = rock.receiveShadow = true; course.add(rock);
       }
       // banks: a straight wall at 45° across a turn's outer corner, or a curve of short wall pieces
-      const BANK = 0.38, wallMat = new T.MeshStandardMaterial({ color: 0x8d5a2b, roughness: 0.7 });
+      const BANK = 0.38;
       for (const [cx, cy, ex, ey, nx, ny, shape] of p.banks || []) {
         const qx = cx + 0.5 - 0.5 * ex - 0.5 * nx, qy = cy + 0.5 - 0.5 * ey - 0.5 * ny;
         const seg = (x1, y1, x2, y2) => {
-          const len = Math.hypot(x2 - x1, y2 - y1), w = new T.Mesh(new T.BoxGeometry(len + 0.02, 0.17, 0.06), wallMat);
+          const len = Math.hypot(x2 - x1, y2 - y1), w = new T.Mesh(new T.BoxGeometry(len + 0.02, 0.17, 0.06), railMat);
           w.position.set((x1 + x2) / 2, 0.05, -(y1 + y2) / 2); w.rotation.y = Math.atan2(y2 - y1, x2 - x1);
           w.castShadow = true; course.add(w);
         };

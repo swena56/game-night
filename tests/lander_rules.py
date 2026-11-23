@@ -9,11 +9,13 @@ landing, canisters fuel mid-flight, and a hop to another pad scores ×1.5 (refus
 import hashlib
 import json
 import os
+import pickle
 import random
 import shutil
 import subprocess
 import sys
 import time
+from unittest.mock import patch
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -136,14 +138,19 @@ else:
 
 
 # -- a game: logs are checked, quick flights refused, fuel carries over
-def game(n=2, bots=(), **settings):
+def game(n=2, bots=(), seed=None, **settings):
     r = server.Room("TEST")
     ps = [r.add_player(nm) for nm in ("Ann", "Bo", "Cy")[:n]]
     for lv in bots:
         r.add_bot(lv)
     r.switch_game("lander")
     r.settings.update(settings)
-    r.start()
+    if seed is None:
+        r.start()
+    else:
+        rngs = [random.Random(seed), random.Random()]
+        with patch.object(server.random, "Random", side_effect=rngs):
+            r.start()
     return r, r.game, list(r.players.values())
 
 
@@ -224,14 +231,15 @@ check("a canister is picked up and burns longer", withc["got"] == [0] and withc[
 check("…but only once", L.fly(h, pads, start, 200, [[0, 3]], picks=[[q[0], q[1] + 1.0, 1]], taken=[0])["got"] == [])
 
 
-def landed_game(seed=3, contract=None):
+def landed_game(seed=2, contract=None, flight_rules="contracts"):
     """Ann lands a hard bot's flight on its pad; returns (room, game, ann, bo, result)."""
-    random.seed(seed)
-    r, g, (a, b) = game()
+    r, g, (a, b) = game(seed=seed, flight_rules=flight_rules)
     if contract:
         g.contracts = [contract]
         r.act(a, {"type": "contract", "key": contract, "round": g.round_no})
     with r.cond:
+        if g.expedition:
+            g.on_timeout(r.deadline)
         g.on_timeout(g.t0 + 0.01)
     for tries in range(20):
         log = L.autopilot(g.h, g.pads, g.start_xv, a.g.tank, "hard", random.Random(tries))
@@ -243,7 +251,7 @@ def landed_game(seed=3, contract=None):
     return r, g, a, b, res
 
 
-r, g, a, b, res = landed_game(contract="transfer")
+r, g, a, b, res = landed_game(contract="transfer", flight_rules="expedition")
 kind = g.needs[res["pad"]][0]
 gems = sum(1 for i in res["got"] if g.picks[i][2] == 0)
 want = res["pts"] + gems * L.GEM + (L.RUSH if kind == "rush" else L.LAB if kind == "lab" and res["prec"] >= L.LAB_PREC else 0)
@@ -350,6 +358,78 @@ check("Classic has no contracts", not g.view(a)["lander"]["contractOpen"] and no
 legacy = json.dumps(["lander", "points", {"rounds": g.rounds}, r.settings["timer"], ["human", "human"]], sort_keys=True)
 check("Classic preserves the original leaderboard and Contract Flight has its own",
       r.round_record["key"] == hashlib.sha256(legacy.encode()).hexdigest()[:24] != contract_record)
+
+# -- Expedition briefing, fuel economy and recap.
+r, g, (a, b) = game(flight_rules="expedition", rounds=3)
+check("Expedition starts with a timed briefing", g.stage == "briefing"
+      and g.view(a)["lander"]["expedition"]["briefingLeft"] > 0)
+r.act(a, {"type": "contract", "key": "resupply", "round": 1})
+for player, round_no in ((a, 1), (b, 0)):
+    try:
+        r.act(player, {"type": "contract", "key": "resupply", "round": round_no})
+        check("Expedition rejects duplicate and stale choices", False)
+    except GameError:
+        check("Expedition rejects duplicate and stale choices", True)
+g.t0 = time.time() + L.COUNT - 1
+try:
+    r.act(b, {"type": "contract", "key": "resupply", "round": 1})
+    check("Expedition rejects choices after the deadline", False)
+except GameError:
+    check("Expedition rejects choices after the deadline", True)
+with r.cond:
+    g.on_timeout(time.time())
+    g.on_timeout(g.t0)
+    g.needs[0] = ("lab", "Test")
+    g.done(a, {"how": "land", "pad": 0, "pts": 75, "ticks": 400, "fuel": L.TANK_MAX - 30,
+               "got": [], "prec": 0, "vy": -1, "x": 1}, time.time())
+    check("Resupply caps fuel and leaves points alone", a.g.contract_paid and a.g.fuel == L.TANK_MAX
+          and a.g.points == 75)
+    a.g.fuel = 60
+    g.deliver(a, dict(a.g.res))
+    check("Resupply pays once", a.g.fuel == 60)
+    g.end_round(time.time())
+    g.end_round(time.time())
+check("Mission recap is private and records failed timeout missions",
+      g.view(a)["lander"]["expedition"]["history"] == [
+          {"round": 1, "key": "resupply", "complete": True, "points": 75, "fuel": 60, "nextTank": 300}]
+      and b.g.missions[0]["key"] == "resupply" and not b.g.missions[0]["complete"])
+g.new_round(time.time())
+check("Expedition applies the smaller top-up", a.g.tank == 300)
+g.new_round(time.time())
+check("Expedition omits final-moon resupply", "resupply" not in g.mission_offers())
+
+r, g, ps = game(1, bots=["hard", "normal"], flight_rules="expedition", rounds=3)
+ps[0].bot = "easy"
+pilot = ps[0]
+pilot.bot = None
+r.act(pilot, {"type": "contract", "key": "resupply", "round": 1})
+r.pause(pilot)
+r = pickle.loads(pickle.dumps(r))
+g = r.game
+ps = list(r.players.values())
+pilot = ps[0]
+paused_left = g.view(pilot)["lander"]["expedition"]["briefingLeft"]
+r.resume(pilot)
+check("A saved briefing preserves its mission and clock after pause",
+      g.stage == "briefing" and pilot.g.contract == "resupply"
+      and abs(paused_left - g.view(pilot)["lander"]["expedition"]["briefingLeft"]) < 0.1)
+pilot.bot = "easy"
+for _ in range(16):
+    if r.phase == "over":
+        break
+    with r.cond:
+        g.on_timeout(r.deadline)
+check("Expedition bots finish a full match", r.phase == "over" and all(len(p.g.missions) == 3 for p in ps))
+
+r, g, ps = game(1, bots=["hard"], flight_rules="expedition", rounds=3)
+ps[1].g.fuel = 0
+g.new_round(time.time())
+check("Low-fuel bots choose Resupply", ps[1].g.tank == L.EXPEDITION_REFILL
+      and ps[1].g.contract == "resupply")
+g.new_round(time.time())
+with r.cond:
+    g.after_round(time.time())
+check("Expedition declares a tie when all tiebreakers match", r.phase == "over" and "tie" in r.log[-1]["text"])
 
 print("\nall ok" if not fails else f"\n{len(fails)} FAILED: {fails}")
 sys.exit(1 if fails else 0)

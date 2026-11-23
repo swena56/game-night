@@ -62,3 +62,5 @@ body.focus .ml-stage { height: max(260px, calc(var(--room) - 190px)); }
 .ml-replay-leg { margin-top: 10px; }
 .ml-replay-leg input { display: block; width: 100%; margin: 6px 0; }
 .ml-telemetry { font-variant-numeric: tabular-nums; }
+
+.ml-count.ml-briefing { font-size: clamp(24px, 7vw, 44px); white-space: nowrap; }

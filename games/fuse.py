@@ -19,6 +19,7 @@ DASH_SPEED, DASH_SECS, DASH_COOL = 1.55, 0.22, 2.4   # ⚡ a short burst, then a
 IMMUNE = 1.1                   # the one who just passed the bomb can't be tagged straight back
 READY = 1.8                    # a pause before each new bomb: a "Ready…" for every screen
 FUSE_STEP, FUSE_MIN = 1.2, 5.5  # each round's fuse is this much shorter, never below the minimum
+CLOSE_AT, MAX_INSET = 0.5, 0.21  # walls close over the second half of the fuse
 ITEM_EVERY, ITEM_MAX, ITEM_R = (4.5, 7.5), 2, 0.035   # 🎁 a pickup appears every few seconds (two at most) on the arena floor
 BOOST_PACE, BOOST_SECS = 1.3, 4.0   # ⚡ a speed pickup: this much faster for this long
 BLOCK_IMMUNE = 0.8              # 🛡️ a shield soaks one tag; the carrier can't try that runner again for this long
@@ -39,6 +40,7 @@ class Fuse(Game):
         "The one who just passed it can't be tagged back for a second, so get away!",
         "🎁 Glowing pickups appear on the floor: 🛡️ a shield soaks one tag, ⚡ a speed boost lasts 4 seconds. First to touch one gets it.",
         "⚡ Tap Dash (or Space) for a short burst of speed, then wait a couple of seconds.",
+        "In Closing Walls, the arena gets smaller halfway through each fuse. Use the open floor before it closes.",
         "When the fuse burns out the carrier blows up and is out. A new bomb with a shorter fuse is lit; last runner standing wins.",
     ]
     name = "Fuse Frenzy"
@@ -47,8 +49,10 @@ class Fuse(Game):
     min_players = 2
     max_players = 6
     replayable = False
+    inset = 0.0  # Restored games from before Closing Walls start at the full arena size.
     settings_schema = {
         "fuse": ("Fuse", [(11, "🧨 Normal"), (8, "💨 Short"), (15, "🕯️ Long")], 11),
+        "arena": ("Arena", [("closing", "Closing Walls"), ("classic", "Classic")], "closing"),
     }
 
     # -- setup
@@ -86,12 +90,15 @@ class Fuse(Game):
 
     def new_round(self, now):
         self.round += 1
+        self.inset = 0.0
+        self._prev = None
         live = [i for i, a in enumerate(self.alive) if a]
         k = len(live)
         for j, i in enumerate(live):   # spread the survivors round the arena
             a = math.tau * j / k + 0.4
             self.pos[i] = [W / 2 + math.cos(a) * 0.32, H / 2 + math.sin(a) * 0.42]
             self.target[i] = list(self.pos[i])
+            self.dir[i] = [-math.cos(a), -math.sin(a)]
             if hasattr(self, "steer"):
                 self.steer[i] = None
             self.dash_until[i] = 0.0
@@ -102,7 +109,7 @@ class Fuse(Game):
         self.items = []
         self.carrier = self.rng.choice(live)
         base = float(self.s.get("fuse", 11))
-        self.fuse_len = max(FUSE_MIN, base - FUSE_STEP * (self.round - 1)) + self.rng.uniform(-0.8, 1.4)
+        self.fuse_len = max(FUSE_MIN, base - FUSE_STEP * (self.round - 1) + self.rng.uniform(-0.8, 1.4))
         self.paused_until = now + READY
         self.fuse_end = self.paused_until + self.fuse_len
         self.next_item = self.paused_until + self.rng.uniform(2.0, 4.0)
@@ -144,7 +151,7 @@ class Fuse(Game):
             self.dash(i, time.time())
 
     def dash(self, i, now):
-        if now < self.paused_until or now < self.dash_ready[i] or not self.alive[i]:
+        if not self.paused_until <= now < self.fuse_end or now < self.dash_ready[i] or not self.alive[i]:
             return False
         px, py = self.pos[i]
         dx, dy = self.target[i][0] - px, self.target[i][1] - py
@@ -161,13 +168,25 @@ class Fuse(Game):
 
     # -- physics
 
+    def arena_point(self, x, y):
+        edge = R + self.inset
+        return [min(W - edge, max(edge, x)), min(H - edge, max(edge, y))]
+
     def frame(self, now):
+        if now >= self.fuse_end and self.alive[self.carrier]:
+            return self.explode(now)
         if self.last_frame is None:
             self.last_frame = now
             return False
         dt = min(0.05, max(0.0, now - self.last_frame))
         self.last_frame = now
         self.frames += 1
+        if self.s.get("arena", "closing") == "closing":
+            progress = 1 - (self.fuse_end - now) / self.fuse_len
+            inset = MAX_INSET * max(0.0, (progress - CLOSE_AT) / (1 - CLOSE_AT))
+            if inset != self.inset:
+                self.inset = inset
+                self.items[:] = [it for it in self.items if self.item_fits(it[0], it[1])]
         for i, pid in enumerate(self.seats):
             p = self.room.players.get(pid)
             if p and p.bot and self.alive[i]:
@@ -178,11 +197,9 @@ class Fuse(Game):
             for i in range(len(self.seats)):
                 if self.alive[i]:
                     self.move(i, dt, now)
-            self.separate()
             changed = self.pickups(now)
             changed = self.tag(now) or changed
-            if now >= self.fuse_end and self.alive[self.carrier]:
-                return self.explode(now)
+            self.separate()
         self._prev = before
         if self.frames % 2 == 0:
             self.broadcast(now)
@@ -208,10 +225,12 @@ class Fuse(Game):
                 dx, dy = self.target[i][0] - x, self.target[i][1] - y
                 d = math.hypot(dx, dy)
                 if d < 1e-6:
+                    self.pos[i] = self.arena_point(x, y)
                     return
                 ux, uy = dx / d, dy / d
                 step = min(d, sp * dt)
-        self.pos[i] = [min(W - R, max(R, x + ux * step)), min(H - R, max(R, y + uy * step))]
+                self.dir[i] = [ux, uy]
+        self.pos[i] = self.arena_point(x + ux * step, y + uy * step)
 
     def separate(self):
         live = [i for i, a in enumerate(self.alive) if a]
@@ -220,11 +239,15 @@ class Fuse(Game):
                 i, j = live[a], live[b]
                 dx, dy = self.pos[j][0] - self.pos[i][0], self.pos[j][1] - self.pos[i][1]
                 d = math.hypot(dx, dy)
-                if 0 < d < 2 * R:
+                if d < 2 * R:
                     push = (2 * R - d) / 2
-                    nx, ny = dx / d, dy / d
-                    self.pos[i] = [self.pos[i][0] - nx * push, self.pos[i][1] - ny * push]
-                    self.pos[j] = [self.pos[j][0] + nx * push, self.pos[j][1] + ny * push]
+                    nx, ny = (dx / d, dy / d) if d else (1.0, 0.0)
+                    self.pos[i] = self.arena_point(self.pos[i][0] - nx * push, self.pos[i][1] - ny * push)
+                    self.pos[j] = self.arena_point(self.pos[j][0] + nx * push, self.pos[j][1] + ny * push)
+
+    def item_fits(self, x, y):
+        edge = self.inset + ITEM_R
+        return edge <= x <= W - edge and edge <= y <= H - edge
 
     def pickups(self, now):
         """🎁 Items appear now and then; the first runner to touch one takes it. Returns True when something changed."""
@@ -232,10 +255,11 @@ class Fuse(Game):
         if now >= self.next_item and len(self.items) < ITEM_MAX:
             self.next_item = now + self.rng.uniform(*ITEM_EVERY)
             cx, cy = self.pos[self.carrier]
+            edge = max(0.15, self.inset + ITEM_R)
             for _ in range(8):   # not right on top of the bomb
-                x, y = self.rng.uniform(0.15, W - 0.15), self.rng.uniform(0.15, H - 0.15)
-                if math.hypot(x - cx, y - cy) > 0.3:
-                    self.items.append([round(x, 3), round(y, 3), self.rng.choice(("shield", "boost"))])
+                x, y = round(self.rng.uniform(edge, W - edge), 3), round(self.rng.uniform(edge, H - edge), 3)
+                if self.item_fits(x, y) and math.hypot(x - cx, y - cy) > 0.3:
+                    self.items.append([x, y, self.rng.choice(("shield", "boost"))])
                     changed = True
                     break
         for it in list(self.items):
@@ -252,6 +276,8 @@ class Fuse(Game):
         return changed
 
     def tag(self, now):
+        if now >= self.fuse_end:
+            return False
         c = self.carrier
         for j, ok in enumerate(self.alive):
             if not ok or j == c or now < self.immune[j]:
@@ -281,29 +307,31 @@ class Fuse(Game):
             p.eliminated = True
         self.moment(f"💥 {self.name_of(c)} BLOWS UP!", "bad", "boom")
         live = [i for i, a in enumerate(self.alive) if a]
-        self.broadcast(now)
         if len(live) <= 1:
             winner = self.room.players.get(self.seats[live[0]]) if live else None
             if live:
                 self.survived[live[0]] = self.round
             self.room.finish(winner, f"🏆 {winner.name} is the last runner standing!" if winner else "💥 Nobody left.")
-            return True
-        self.new_round(now)
+        else:
+            self.new_round(now)
+        self.broadcast(now)
         return True
 
-    def broadcast(self, now):
-        r3 = lambda v: round(v, 3)
-        self.room.push_fast({
-            "p": [[r3(x), r3(y)] for x, y in self.pos],
+    def snapshot(self, now):
+        return {
+            "p": [[round(x, 3), round(y, 3)] for x, y in self.pos],
             "a": [int(v) for v in self.alive],
             "im": [round(max(0.0, t - now), 2) for t in self.immune],
             "dc": [round(max(0.0, t - now), 1) for t in self.dash_ready],
             "dn": [int(now < t) for t in self.dash_until],
             "it": self.items, "sh": [int(v) for v in self.shield], "bo": [int(now < t) for t in self.boost_until],
-            "c": self.carrier, "rd": self.round,
-            "f": round(max(0.0, self.fuse_end - now), 2), "len": round(self.fuse_len, 1),
+            "c": self.carrier, "rd": self.round, "edge": round(self.inset, 3),
+            "f": round(max(0.0, self.fuse_end - max(now, self.paused_until)), 2), "len": round(self.fuse_len, 2),
             "pause": round(max(0.0, self.paused_until - now), 2),
-        })
+        }
+
+    def broadcast(self, now):
+        self.room.push_fast(self.snapshot(now))
 
     # -- bots
 
@@ -318,12 +346,12 @@ class Fuse(Game):
             foes = [j for j, a in enumerate(self.alive) if a and j != i and now >= self.immune[j]]
             if not foes:
                 return
-            j = min(foes, key=lambda k: math.hypot(self.pos[k][0] - x, self.pos[k][1] - y))
+            j = min(foes, key=lambda k: math.hypot(self.pos[k][0] - x, self.pos[k][1] - y) + 0.15 * self.shield[k])
             d = math.hypot(self.pos[j][0] - x, self.pos[j][1] - y)
             lead = {"easy": 0.0, "normal": 0.25, "hard": 0.45}[level] * d / CARRIER_SPEED
             vx, vy = self.pos[j][0] - self.prev(j)[0], self.pos[j][1] - self.prev(j)[1]
             tx, ty = self.pos[j][0] + vx * lead * 60, self.pos[j][1] + vy * lead * 60
-            self.target[i] = [min(W - R, max(R, tx + rnd(0, noise))), min(H - R, max(R, ty + rnd(0, noise)))]
+            self.target[i] = self.arena_point(tx + rnd(0, noise), ty + rnd(0, noise))
             if dashes and 0.16 < d < 0.34 and now >= self.dash_ready[i] and self.rng.random() < dashes:
                 self.dash(i, now)
         else:                   # run from the carrier, away from walls and corners, toward open space
@@ -332,8 +360,10 @@ class Fuse(Game):
             dx, dy = x - cx, y - cy
             d = math.hypot(dx, dy) or 1e-6
             fx, fy = dx / d * (1.0 / (d + 0.15)), dy / d * (1.0 / (d + 0.15))
-            fx += (W / 2 - x) * 0.9 * (1 - min(1.0, min(x, W - x) / 0.22) if min(x, W - x) < 0.22 else 0) * 3
-            fy += (H / 2 - y) * 0.9 * (1 - min(1.0, min(y, H - y) / 0.22) if min(y, H - y) < 0.22 else 0) * 3
+            wall_x = min(x, W - x) - self.inset
+            wall_y = min(y, H - y) - self.inset
+            fx += (W / 2 - x) * 2.7 * max(0.0, 1 - wall_x / 0.22)
+            fy += (H / 2 - y) * 2.7 * max(0.0, 1 - wall_y / 0.22)
             if d < 0.4:   # slide sideways round the carrier rather than straight along a wall
                 fx += -dy / d * 0.8 * (1 if (i + c) % 2 else -1)
                 fy += dx / d * 0.8 * (1 if (i + c) % 2 else -1)
@@ -343,7 +373,7 @@ class Fuse(Game):
                 if math.hypot(it[0] - x, it[1] - y) < 0.45:
                     self.target[i] = [it[0], it[1]]
                     return
-            self.target[i] = [min(W - R, max(R, x + fx / m * 0.4 + rnd(0, noise))), min(H - R, max(R, y + fy / m * 0.4 + rnd(0, noise)))]
+            self.target[i] = self.arena_point(x + fx / m * 0.4 + rnd(0, noise), y + fy / m * 0.4 + rnd(0, noise))
             if dashes and d < 0.2 and now >= self.dash_ready[i] and self.rng.random() < dashes:
                 self.dash(i, now)
 
@@ -368,6 +398,8 @@ class Fuse(Game):
         live = [k for k, a in enumerate(self.alive) if a]
         if len(live) <= 1:
             winner = r.players.get(self.seats[live[0]]) if live else None
+            if live:
+                self.survived[live[0]] = self.round
             r.finish(winner, f"🏳️ {p.name} left — {winner.name} wins!" if winner else "Everyone left.")
         elif self.carrier == i:
             self.carrier = self.rng.choice(live)
@@ -383,11 +415,6 @@ class Fuse(Game):
         return {pid: self.survived[i] for i, pid in enumerate(self.seats)}
 
     def view(self, p):
-        now = time.time()
-        i = self.seat(p)
-        return {"fuse": {"W": W, "H": H, "R": R, "seats": self.seats, "me": i,
-                         "p": self.pos, "a": [int(v) for v in self.alive], "c": self.carrier, "rd": self.round,
-                         "f": round(max(0.0, self.fuse_end - now), 2), "len": round(self.fuse_len, 1),
-                         "pause": round(max(0.0, self.paused_until - now), 2),
-                         "dc": [round(max(0.0, t - now), 1) for t in self.dash_ready],
-                         "it": self.items, "sh": [int(v) for v in self.shield], "bo": [int(now < t) for t in self.boost_until]}}
+        now = self.room.paused or time.time()
+        return {"fuse": {**self.snapshot(now), "W": W, "H": H, "R": R, "itemR": ITEM_R,
+                         "seats": self.seats, "me": self.seat(p)}}

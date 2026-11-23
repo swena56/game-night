@@ -982,15 +982,31 @@ async function playSolo(game, seconds = 60) {
   if (mode) {
     click(d.querySelector('#soloSetupBtn'));
     await waitFor(() => w.eval('S')?.phase === 'lobby' && w.eval('S').players?.length > 1);
-    const setting = game === 'archery' ? 'course' : 'mode';
-    await w.eval(`act('settings', { settings: ${JSON.stringify({ [setting]: mode })} })`);
+    const settings = game === 'oddone' && mode === 'blank' ? { blank: true } :
+      { [game === 'archery' ? 'course' : 'mode']: mode };
+    await w.eval(`act('settings', { settings: ${JSON.stringify(settings)} })`);
     await w.eval(`act('start')`);
   } else click(d.querySelector('#soloBtn'));
   // …and the game's screen module has loaded and mounted (it loads on demand: slow on a busy host)
   if (!(await waitFor(() => !d.querySelector('#game').hidden && S()?.phase === 'playing' && !!w.eval('mounted'), 30000))) report.notes.push('never reached the game screen');
   const end = Date.now() + seconds * 1000;
+  let sawOddOneClueWords = false;
+  const clueWordIssues = new Set();
   while (Date.now() < end && S()?.phase === 'playing') {
     const s = S();
+    if (game === 'oddone') {
+      const g = s.oddone;
+      const words = [...d.querySelectorAll('#ooClues .oo-clue-word')].map((label) => label.textContent);
+      if (g.stage === 'reveal') {
+        sawOddOneClueWords = true;
+        const expected = g.order.map((id) => {
+          const word = id === g.odd ? g.oddWord : g.common;
+          return word === '🫥' ? '🫥 No word' : `“${word}”`;
+        });
+        if (words.length !== expected.length || words.some((word, i) => word !== expected[i]))
+          clueWordIssues.add('clue recap has missing or incorrect words');
+      } else if (words.length) clueWordIssues.add('clue recap showed words before the reveal');
+    }
     const mine = s.turn === s.me.id || (game === 'heist' && !s.heist.mine) || (game === 'lantern' && !s.lantern.mine) || (game === 'squares' && !s.squares.mine) || (game === 'bingo' && !!s.bingo.cards && (s.bingo.stage === 'call' || !s.bingo.ready)) || (game === 'oddone' && s.oddone.stage === 'vote' && !s.oddone.myVote) || (game === 'fibfinder' && UI_MINE(s.fibfinder)) || (game === 'holdem' && s.holdem.canRebuy) || (game === 'cribbage' && s.cribbage.stage === 'discard' && s.cribbage.discarded[s.me.id] === false)
       || (game === 'relay' && (s.relay.stage === 'play' ? !s.relay.sent : s.relay.myVote == null)) || (game === 'seabattle' && s.sea.stage === 'placing' && !s.sea.ready[s.me.id])
       || (game === 'spire' && s.spire.playing && s.spire.startIn <= 0) || (game === 'prism' && s.prism.playing && s.prism.startIn <= 0) || (game === 'marble' && s.marble.playing) || (game === 'safecracker' && ['crack', 'set'].includes(s.safecracker.stage) && !s.safecracker.mine) || (game === 'gridhunt' && s.gridhunt.stage === 'hunt')
@@ -1007,6 +1023,8 @@ async function playSolo(game, seconds = 60) {
     if (!d.querySelector('#modal').hidden) { report.dialogs = (report.dialogs || 0) + 1; click(d.querySelector('#modalOk')); }
     await sleep(game === 'spire' ? 120 : 350);
   }
+  if (game === 'oddone' && !sawOddOneClueWords) clueWordIssues.add('never reached the clue recap');
+  report.notes.push(...clueWordIssues);
   click(d.querySelector('#helpBtn'));
   report.help = d.querySelector('#modal').hidden ? 'no dialog' : `${d.querySelector('#modalTitle').textContent} (${d.querySelectorAll('#modalBody li').length} rules)`;
   click(d.querySelector('#modalOk'));
@@ -1151,8 +1169,42 @@ async function feedbackTour() {
     htmlInjected: injected, inGameReportHasGame: withGame, filters: afterDone, notes, errors };
 }
 
+async function expeditionTour() {
+  const { w, d, close, errors } = await openPage(true);
+  const assert = require('node:assert/strict');
+  try {
+    d.querySelector('#name').value = 'Tester';
+    d.querySelector('#soloGame').value = 'lander';
+    click(d.querySelector('#soloSetupBtn'));
+    assert(await waitFor(() => w.eval('S')?.phase === 'lobby' && w.eval('S').players?.length > 1));
+    await w.eval("act('settings', { settings: { flight_rules: 'expedition', rounds: 3 } })");
+    await w.eval("act('start')");
+    assert(await waitFor(() => d.querySelectorAll('#mlContracts button').length === 3
+      && d.querySelector('#mlBriefingClock')?.textContent.includes('Briefing')));
+    const choices = [...d.querySelectorAll('#mlContracts button')];
+    click(choices.find((button) => button.textContent.includes('Resupply')));
+    assert(await waitFor(() => w.eval('S').lander.contract === 'resupply'
+      && !d.querySelector('#mlContracts button')));
+    assert(await waitFor(() => w.eval('S').lander.stage === 'fly'));
+    assert(await waitFor(() => d.querySelector('#mlMissions:not([hidden])')?.textContent.includes('Resupply incomplete'), 65000));
+    assert.deepEqual([...errors, ...nodeErrors].filter((error) => !error.includes('Error creating WebGL context')), []);
+  } finally {
+    close();
+  }
+}
+
 (async () => {
   const games = process.argv.slice(2);
+  if (games[0] === 'lander:expedition') {
+    try {
+      await expeditionTour();
+      console.log('Expedition UI passed');
+      process.exit(0);
+    } catch (error) {
+      console.error(error);
+      process.exit(1);
+    }
+  }
   if (games[0] === 'feedback') { console.log('FEEDBACK', JSON.stringify(await feedbackTour(), null, 1)); process.exit(0); }
   const lt = await lobbyTour();
   console.log('LOBBY', JSON.stringify(lt));

@@ -10,6 +10,7 @@ UI.lander = (() => {
   // drag to look: `look` metres added to the camera's x; it springs back a moment after you let go
   let look = 0, drag = null, lookRel = 0, padHold = null, seenRes = new Set();
   // #161: tap (or drag along) the strip map to look at that spot; it stays a moment after you let go
+  let briefingAt = 0;
   let mapLook = null, mapHold = 0, contractKey = '', replayKey = '';
   const $ = (id) => document.getElementById(id);
   const calm = () => document.body.classList.contains('calm');
@@ -33,6 +34,7 @@ UI.lander = (() => {
       </div>
       <p id="mlHint" class="hint"></p>
       <section class="ml-contracts" id="mlContracts" aria-label="Flight contracts" hidden></section>
+      <section class="ml-contracts" id="mlMissions" aria-label="Expedition results" hidden></section>
       <details class="ml-replay" id="mlReplay" hidden>
         <summary>Flight replay</summary>
         <div id="mlReplayLegs"></div>
@@ -238,6 +240,10 @@ UI.lander = (() => {
         else if (need === 'rush' && !(V.rushed || []).includes(n)) { pts += g.rush; words.push(`🚑 +${g.rush}`); }
         else if (need === 'lab' && fl.done.prec >= g.labPrec) { pts += g.lab; words.push(`🔬 +${g.lab}`); }
       }
+      if (!hop && V.expedition && V.contract === 'resupply') {
+        fl.fuel = Math.min(g.tankMax, fl.fuel + V.expedition.resupplyFuel);
+        words.push('⛽ Expedition resupply');
+      }
       SN.touch(); setTimeout(() => SN.chime(mult), 250);
       showFlash(samePad ? '🔁 Same pad: no hop bonus' : `${hop ? '🔁 Hop' : '🛬'} ×${mult}${hop ? ` ×${g.hopMult}` : ' landing'}! +${pts}${words.length ? ' · ' + words.join(' · ') : ''}`, 2800, samePad ? '' : 'good');
       // a first landing with fuel to spare opens the hop window (as games/lander.py done() does)
@@ -262,6 +268,7 @@ UI.lander = (() => {
   // ---------- state
   function render(s, c) {
     S = s; ctx = c; V = s.lander;
+    briefingAt = performance.now() + (V.expedition?.briefingLeft || 0) * 1000;
     const key = `${V.round}`;
     if (key !== roundKey) { roundKey = key; fl = null; sent = false; ghosts = {}; beeped = 0; (gl || flat)?.rebuild?.(); seenRes = new Set(V.fliers.map((f, i) => (f.res ? i : -1))); }
     // a rival's crash (or crashed hop): a smaller boom where their ghost came down
@@ -279,6 +286,7 @@ UI.lander = (() => {
     if (!gl && !flat && mount.pend) { const p = mount.pend; mount.pend = null; GL3.revive($('mlStage'), p); }
     renderSide();
     renderReplay();
+    renderMissions();
   }
 
   function fast(d) {
@@ -312,7 +320,7 @@ UI.lander = (() => {
       standingsCard($('mlStand'), V.standings, { title: '🚀 Points', note: V.round < V.rounds ? 'Next moon in a moment…' : 'That was the last round!' });
     }
     $('mlCtl').classList.toggle('ml-off', !(fl && (!fl.done || fl.hopWin) && V.stage === 'fly'));
-    $('mlCtl').hidden = V.me == null;
+    $('mlCtl').hidden = V.me == null || V.stage === 'briefing';
     renderContracts();
   }
 
@@ -320,27 +328,40 @@ UI.lander = (() => {
     const box = $('mlContracts'), my = mine();
     const open = V.contractOpen && !S.paused && S.phase === 'playing'
       && (!fl || performance.now() < fl.at + V.contractWindow * 1000);
-    const key = JSON.stringify([V.round, V.contracts, V.contract, V.contractPaid, open, V.stage === 'between', S.phase]);
+    const key = JSON.stringify([V.round, V.contracts, V.contract, V.contractPaid, open, V.stage, S.phase]);
     if (key === contractKey) return;
     contractKey = key;
-    const options = V.contracts || [];
+    const options = V.expedition?.offers || V.contracts || [];
     const chosen = options.find(([id]) => id === V.contract);
-    box.hidden = !my || (!chosen && !open);
+    const briefing = V.expedition && V.stage === 'briefing';
+    if (briefing && box.previousElementSibling) box.parentElement.prepend(box);
+    else if (!briefing && !box.previousElementSibling) $('mlHint').after(box);
+    const recap = V.expedition && (V.stage === 'between' || S.phase === 'over');
+    box.hidden = !my || recap || (!chosen && !open && !briefing);
     box.replaceChildren();
     if (box.hidden) return;
+    if (briefing) {
+      const clock = ctx.el('span', 'ml-contract-status');
+      clock.id = 'mlBriefingClock';
+      box.append(ctx.el('strong', '', `Moon ${V.round} of ${V.rounds}`), clock,
+        ctx.el('p', '', `${fuelSeconds(my.tank)} fuel at launch`));
+    }
     if (chosen) {
-      const [, title, rule, reward] = chosen;
-      const status = V.contractPaid ? `Complete · +${reward} pts`
-        : V.stage === 'between' || S.phase === 'over' ? 'Incomplete' : `+${reward} pts`;
+      const [id, title, rule, reward] = chosen;
+      const payout = id === "resupply" ? `+${reward} s fuel` : `+${reward} pts`;
+      const status = V.contractPaid ? `Complete · ${payout}`
+        : V.stage === 'between' || S.phase === 'over' ? 'Incomplete' : briefing ? `Locked · ${payout}` : payout;
       box.append(ctx.el('strong', '', title), ctx.el('span', 'ml-contract-status', status),
         ctx.el('p', '', rule));
       return;
     }
+    if (!open) return;
+    if (briefing) box.append(ctx.el('p', '', V.round < V.rounds ? 'Default mission is Resupply.' : 'You can fly without a mission.'));
     const choices = ctx.el('div', 'ml-choices'), round = V.round;
     for (const [id, title, rule, reward] of options) {
       const button = ctx.el('button', '');
       button.type = 'button';
-      button.append(ctx.el('strong', '', `${title} · +${reward} pts`), ctx.el('span', '', rule));
+      button.append(ctx.el('strong', '', `${title} · +${reward} ${id === "resupply" ? "s fuel" : "pts"}`), ctx.el('span', '', rule));
       button.addEventListener('click', async () => {
         for (const choice of choices.children) choice.disabled = true;
         try {
@@ -351,7 +372,24 @@ UI.lander = (() => {
       });
       choices.append(button);
     }
-    box.append(ctx.el('strong', '', 'Choose a flight contract'), choices);
+    box.append(ctx.el('strong', '', V.expedition ? "Choose an expedition mission" : "Choose a flight contract"), choices);
+  }
+
+  const fuelSeconds = (ticks) => `${(ticks / 30).toFixed(1)} s`;
+
+  function renderMissions() {
+    const box = $('mlMissions'), expedition = V.expedition;
+    const history = expedition?.history || [];
+    const final = S.phase === 'over' || (V.round === V.rounds && V.stage === 'between');
+    box.hidden = !history.length || (!final && V.stage !== 'between');
+    box.replaceChildren();
+    if (box.hidden) return;
+    box.append(ctx.el('strong', '', final ? 'Expedition results' : 'Mission recap'));
+    for (const entry of final ? history : history.slice(-1)) {
+      const mission = entry.key ? `${expedition.titles[entry.key]} ${entry.complete ? 'complete' : 'incomplete'}` : 'No mission';
+      const next = entry.nextTank == null ? '' : ` · Next tank ${fuelSeconds(entry.nextTank)}`;
+      box.append(ctx.el('p', '', `Moon ${entry.round} · ${mission} · +${entry.points} pts · ${fuelSeconds(entry.fuel)} left${next}`));
+    }
   }
 
   function renderReplay() {
@@ -430,8 +468,14 @@ UI.lander = (() => {
     if (fl && !fl.done && V.stage === 'fly' && now - posAt > 140) { posAt = now; ctx.input({ at: [+fl.x.toFixed(2), +fl.y.toFixed(2), fl.k, fl.on ? 1 : 0] }); }
     // the countdown
     const cd = V.stage === 'count' && fl ? (fl.at - now) / 1000 : 0, c = Math.ceil(cd);
-    $('mlCount').hidden = !(V.stage === 'count' && S.phase === 'playing');
-    $('mlCount').textContent = cd > 0 ? String(c) : 'GO';
+    const briefing = V.stage === 'briefing';
+    $('mlCount').classList.toggle('ml-briefing', briefing);
+    const briefingClock = $('mlBriefingClock');
+    $('mlCount').hidden = !(((briefing && !briefingClock) || V.stage === 'count') && S.phase === 'playing');
+    const remaining = S.paused ? V.expedition?.briefingLeft : (briefingAt - now) / 1000;
+    const countdown = briefing ? `Briefing · ${Math.max(0, Math.ceil(remaining))} s` : cd > 0 ? String(c) : 'GO';
+    const countLabel = briefingClock || $('mlCount');
+    if (countLabel.textContent !== countdown) countLabel.textContent = countdown;
     if (c !== lastCd) { if (c > 0 && c <= 3) ctx.sfx?.('tick'); lastCd = c; }
     if (flash && now > flash.until) { flash = null; $('mlPop').hidden = true; }
     // gauges: green when inside the landing limits
@@ -471,7 +515,7 @@ UI.lander = (() => {
     const left = hw ? Math.max(0, (hw.close - clock) * g.dt) : 0, ready = hw && clock >= hw.open;
     if (burn) { const txt = hw ? (ready ? `🔁 Hop ${Math.ceil(left)}` : '🔁 …') : '🔥 Burn'; if (burn.textContent !== txt) burn.textContent = txt; burn.classList.toggle('ml-hop', !!hw); }
     const needs = V.needs ? V.pads.map(([, , , m], n) => `${iconOf(n)}×${m}`).join('  ') : '';
-    $('mlHint').textContent = S.phase !== 'playing' ? '' : V.stage === 'count' ? `Round ${V.round} of ${V.rounds}: ${needs || 'pick a pad'} · 💎 crystals pay if you land.`
+    $('mlHint').textContent = S.phase !== 'playing' ? '' : V.stage === 'briefing' ? '' : V.stage === 'count' ? `Round ${V.round} of ${V.rounds}: ${needs || 'pick a pad'} · 💎 crystals pay if you land.`
       : hw ? `🔁 Burn${ready ? '' : ' (let go first)'} within ${Math.ceil(left)} s to hop to another pad: ×${g.hopMult}!`
       : fl && !fl.done ? (fl.fuel <= 0 ? '⛽ Out of fuel!' : fl.leg === 2 ? `🔁 Hopping: land on a different pad for ×${g.hopMult}.` : fl.t < 150 ? 'Drag the sky or tap the map to look around. ⛽ refuels · 🚑 first one +40 · 🔬 dead centre +30.' : 'Gentle now: green gauges mean a safe touchdown.')
       : my?.res ? 'Watching the others come down…' : V.me == null ? 'Watching.' : '';

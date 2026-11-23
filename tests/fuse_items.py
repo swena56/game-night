@@ -3,7 +3,9 @@
 
     python3 tests/fuse_items.py
 """
+import json
 import os
+import random
 import sys
 import time
 
@@ -26,6 +28,8 @@ ps = [r.add_player(x) for x in ("Ann", "Bo", "Cy")]
 r.switch_game("fuse")
 r.start()
 g = r.game
+g.rng = random.Random(7)
+g.carrier = 0
 said = []
 g.moment = lambda text, *a, **k: said.append(text)
 now = g.paused_until + 1
@@ -99,4 +103,41 @@ g.new_round(now)
 check("a new round clears items and shields", not g.items and not any(g.shield) and not any(g.boost_until))
 check("a new round clears steering", g.steer == [None] * len(ps))
 check("the view carries them", "it" in g.view(ps[0])["fuse"] and "sh" in g.view(ps[0])["fuse"])
+
+# The ready countdown leaves the whole fuse available, and the walls begin closing halfway in.
+check("ready snapshot shows the full fuse", g.snapshot(now)["f"] == round(g.fuse_len, 2))
+g.next_item = g.fuse_end + 1
+middle = g.paused_until + g.fuse_len / 2
+with r.cond:
+    g.frame(middle - 0.02)
+    g.frame(middle)
+    check("the arena stays open through halfway", abs(g.inset) < 1e-8)
+    g.pos = [[F.R, F.R], [F.R, F.R], [F.W - F.R, F.H - F.R]]
+    g.target = [p[:] for p in g.pos]
+    g.items = [[0.15, 0.15, "shield"], [0.5, 0.65, "boost"]]
+    late = middle + g.fuse_len / 4
+    g.frame(late)
+    check("walls close progressively", abs(g.inset - F.MAX_INSET / 2) < 1e-7)
+    edge = F.R + g.inset
+    check("stationary and overlapping runners stay inside the walls",
+          all(edge <= x <= F.W - edge and edge <= y <= F.H - edge for x, y in g.pos))
+    check("items overtaken by the walls disappear", g.items == [[0.5, 0.65, "boost"]])
+    g.broadcast(late)
+    check("fast and full snapshots agree on the boundary", json.loads(r.fast)["edge"] == g.view(ps[0])["fuse"]["edge"])
+
+    # At expiry the carrier is out even if the two runners are already touching.
+    carrier = g.carrier
+    g.pos = [[0.5, 0.65] for _ in ps]
+    passes = g.passes[:]
+    g.frame(g.fuse_end)
+    check("an expired fuse cannot be handed off", not g.alive[carrier] and g.passes == passes)
+    state = json.loads(r.fast)
+    check("the next round immediately streams open walls and the elimination",
+          state["edge"] == 0 and state["rd"] == g.round and not state["a"][carrier])
+    g.s["arena"] = "classic"
+    late = g.fuse_end - 0.01
+    g.frame(late)
+    check("Classic keeps its full arena through expiry", g.inset == 0)
+    g.frame(g.fuse_end)
+    check("the final elimination ends the match with one survivor", r.phase == "over" and sum(g.alive) == 1)
 sys.exit(1 if fails else 0)

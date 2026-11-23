@@ -312,9 +312,9 @@ UI.pusher = (() => {
     const low = stg.low;
     const glow = new T.PointLight(0xffb86b, 0.3, 18); glow.position.set(0, 6, 2); scene.add(glow);
     // the cabinet
-    const red = new T.MeshStandardMaterial({ color: 0x8c1d40, roughness: 0.45, metalness: 0.2 });
+    const enamel = new T.MeshStandardMaterial({ color: 0x213a61, roughness: 0.36, metalness: 0.2 });
     const chrome = new T.MeshStandardMaterial({ color: 0xe8ecf2, metalness: 1, roughness: 0.18 });
-    const base = new T.Mesh(new T.BoxGeometry(2 * HW + 1.6, 3, EDGE + 4), red); base.position.set(0, -1.5 - 0.02, EDGE / 2 - 1.5); base.receiveShadow = true; scene.add(base);
+    const base = new T.Mesh(new T.BoxGeometry(2 * HW + 1.6, 3, EDGE + 4), enamel); base.position.set(0, -1.5 - 0.02, EDGE / 2 - 1.5); base.receiveShadow = true; scene.add(base);
     // the playfield: brushed metal with a few painted lane stripes, the bells marked on it
     const field = canvasTex(T, 256, 256, (g, w, h) => {
       const grd = g.createLinearGradient(0, 0, 0, h); grd.addColorStop(0, '#5a5f6b'); grd.addColorStop(1, '#8a909c'); g.fillStyle = grd; g.fillRect(0, 0, w, h);
@@ -355,13 +355,36 @@ UI.pusher = (() => {
     // guards (shown while the player whose drop it is has them up)
     const guards = [-1, 1].map((s) => { const m = new T.Mesh(new T.BoxGeometry(0.08, 0.5, EDGE - g0.gapY), new T.MeshStandardMaterial({ color: 0x7fd0ff, emissive: 0x3a86ff, emissiveIntensity: 0.6, transparent: true, opacity: 0.7 })); m.position.set(s * (HW + 0.04), 0.25, (EDGE + g0.gapY) / 2); m.visible = false; scene.add(m); return m; });
     // the back wall: a marquee sign ringed with chasing bulbs
-    const signTex = canvasTex(T, 512, 128, (g, w, h) => {
-      const grd = g.createLinearGradient(0, 0, w, 0); grd.addColorStop(0, '#ff4fa0'); grd.addColorStop(0.5, '#ffd23f'); grd.addColorStop(1, '#ff4fa0');
-      g.fillStyle = '#2a0f30'; g.fillRect(0, 0, w, h); g.fillStyle = grd; g.font = 'bold 74px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.font = 'bold 60px sans-serif'; g.shadowColor = '#ff4fa0'; g.shadowBlur = 18; g.fillText('COIN CASCADE', w / 2, h / 2 + 4);
+    const signTex = canvasTex(T, 768, 192, (g, w, h) => {
+      const panel = g.createLinearGradient(0, 0, 0, h);
+      panel.addColorStop(0, '#283f60');
+      panel.addColorStop(1, '#10192e');
+      g.fillStyle = panel; g.fillRect(0, 0, w, h);
+      g.strokeStyle = '#e2af65'; g.lineWidth = 4; g.strokeRect(10, 10, w - 20, h - 20);
+      for (const x of [76, w - 76]) {
+        g.fillStyle = '#b87836';
+        g.beginPath(); g.arc(x, h / 2 + 4, 30, 0, Math.PI * 2); g.fill();
+        g.fillStyle = '#f4cb7a';
+        g.beginPath(); g.arc(x, h / 2, 28, 0, Math.PI * 2); g.fill();
+        g.strokeStyle = '#af7339'; g.lineWidth = 2;
+        g.beginPath(); g.arc(x, h / 2, 21, 0, Math.PI * 2); g.stroke();
+        g.fillStyle = '#ffe6a7'; g.fillRect(x - 3, h / 2 - 12, 6, 24);
+      }
+      g.font = '900 84px system-ui, sans-serif';
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillStyle = '#101523'; g.fillText('COIN CASCADE', w / 2, h / 2 + 9, w - 230);
+      g.fillStyle = '#ffe4a2'; g.fillText('COIN CASCADE', w / 2, h / 2 + 3, w - 230);
     });
-    const back = new T.Mesh(new T.BoxGeometry(2 * HW + 1.6, 4.2, 0.3), red); back.position.set(0, 2.1, -2.0); scene.add(back);
-    const sign = new T.Mesh(new T.PlaneGeometry(2 * HW, 1.6), new T.MeshBasicMaterial({ map: signTex })); sign.position.set(0, 3.0, -1.84); scene.add(sign);
+    signTex.colorSpace = T.SRGBColorSpace;
+    const back = new T.Mesh(new T.BoxGeometry(2 * HW + 1.6, 4.2, 0.3), enamel); back.position.set(0, 2.1, -2.0); scene.add(back);
+    const sign = new T.Mesh(new T.PlaneGeometry(2 * HW, 1.6), new T.MeshBasicMaterial({ map: signTex, toneMapped: false })); sign.position.set(0, 3.0, -1.84); scene.add(sign);
+    const accent = new T.MeshBasicMaterial({ color: 0xffbf72, toneMapped: false });
+    const accentGeo = new T.BoxGeometry(0.055, 3.45, 0.045);
+    for (const side of [-1, 1]) {
+      const rail = new T.Mesh(accentGeo, accent);
+      rail.position.set(side * (HW + 0.4), 2.1, -1.83);
+      scene.add(rail);
+    }
     const NB = 44, bulbs = new T.InstancedMesh(new T.SphereGeometry(0.07, 8, 6), new T.MeshBasicMaterial({ color: 0xffffff }), NB), m4 = new T.Matrix4(), bc = new T.Color();
     for (let k = 0; k < NB; k++) {
       const f = k / NB, per = 2 * (2 * HW) + 2 * 1.6; let d = f * per, x, y;
@@ -521,7 +544,7 @@ UI.pusher = (() => {
       pGeo.attributes.position.needsUpdate = true;
       renderer.render(scene, camera);
     }
-    function dispose() { stg.dispose(); renderer.dispose(); renderer.domElement.remove(); }
+    function dispose() { signTex.dispose(); accentGeo.dispose(); accent.dispose(); stg.dispose(); renderer.dispose(); renderer.domElement.remove(); }
     resize();
     // the playfield x under a point on the screen (for aiming with a finger)
     function pick(cx, cy) {

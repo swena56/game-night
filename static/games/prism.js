@@ -1016,6 +1016,7 @@ UI.prism = (() => {
       if (ban) { ban.textContent = ev.kind === 'frost' ? `🧊 Frost from ${ev.from}!` : `🪨 Stones from ${ev.from}!`; ban.className = 'pz-hit ' + ev.kind; void ban.offsetWidth; ban.classList.add('on'); }
     }
     if (!moves().length) shuffle();
+    hint = null;
     renderGrid();
     push();
     kick();
@@ -1103,7 +1104,7 @@ UI.prism = (() => {
     hintTimer = setTimeout(() => {
       if (!st || st.busy || !canPlay()) return;
       const m = moves();
-      if (m.length) { hint = m[Math.floor(Math.random() * m.length)]; kick(); }
+      if (m.length) { hint = m[Math.floor(Math.random() * m.length)]; renderGrid(); kick(); }
     }, 5000);
   }
 
@@ -1138,6 +1139,7 @@ UI.prism = (() => {
       b.textContent = ch === STONE ? '🪨' : ch === PRISM ? '🌈' : ch === EMPTY ? '' : (sp === 'n' ? '💥' : sp ? (sp === 'h' ? '↔' : '↕') : GLYPH[k]);
       b.style.color = k != null ? COLORS[k][0] : '';
       b.classList.toggle('sel', sel === i);
+      b.classList.toggle('hinted', hint?.includes(i) ?? false);
       b.classList.toggle('possible', sel != null && neighbours(sel).includes(i) && !!swapKind(sel, i));
       b.classList.toggle('ice', FROZEN.includes(ch));
       const target = st?.incoming.find((e) => (e.cells || []).includes(i));
@@ -1227,6 +1229,7 @@ UI.prism = (() => {
   function endLevel(won) {
     const lv = st.lv;
     lv.over = true; sel = null; hint = null;
+    renderGrid();
     st.pendingMoves.length = 0; renderPendingMoves();
     const frac = lv.left / lv.def.moves, stars = won ? (frac >= 0.4 ? 3 : frac >= 0.15 ? 2 : 1) : 0;
     const d = pdata(); d.levels ||= {};
@@ -1363,7 +1366,7 @@ UI.prism = (() => {
     if (!m.length) return;
     hint = m[Math.floor(Math.random() * m.length)];
     st.hintAt = now() + 15000;
-    ctx.sfx?.('tick'); updateHud(); kick();
+    ctx.sfx?.('tick'); updateHud(); renderGrid(); kick();
   }
 
   // ---------- side panel: rival minis
@@ -1446,7 +1449,7 @@ UI.prism = (() => {
     if (bar) { bar.style.width = (100 * Math.min(1, left / (pz.length || 90))) + '%'; bar.classList.toggle('low', left < 10); }
     if (txt) txt.textContent = `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
     if (left < 10 && left > 0 && pz.playing && Math.floor(left) !== st.lastBeep) { st.lastBeep = Math.floor(left); ctx.sfx?.('tickfast'); }
-    if (left <= 0 && !st.over) { st.over = true; sel = null; hint = null; st.pendingMoves.length = 0; renderPendingMoves(); kick(); }
+    if (left <= 0 && !st.over) { st.over = true; sel = null; hint = null; st.pendingMoves.length = 0; renderPendingMoves(); renderGrid(); kick(); }
     landDue();
     updateHud();
   }
@@ -1542,7 +1545,7 @@ UI.prism = (() => {
       if (pz.startIn > 0 && !st.countdown) { st.countdown = true; setTimeout(() => { kick(); armHint(); }, pz.startIn * 1000); }
     }
     if (pz.playing) applyEvents(pz.events);
-    if (!pz.playing) { st.over = true; sel = null; hint = null; st.pendingMoves.length = 0; renderPendingMoves(); }
+    if (!pz.playing) { st.over = true; sel = null; hint = null; st.pendingMoves.length = 0; renderPendingMoves(); renderGrid(); }
     const me = pz.boards[S.me.id];
     if (levels) {
       const done = pdata().levels || {}, total = Object.values(done).reduce((a, b) => a + b, 0);

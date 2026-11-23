@@ -58,13 +58,15 @@ async function checkPlaylist(browser) {
   await act(host, 'settings', { settings: { game: 'tictactoe' } });
   await act(host, 'settings', { settings: { lucky: false } });
   await act(host, 'settings', { settings: { game: 'unmask' } });
+  assert.ok(await host.locator('#buildPlaylistBtn').isHidden());
+  await act(host, 'set_playlist', { ...await getRequest(), games: ['tictactoe'] });
+  await wait(host, () => S.playlist?.games.length === 1);
   async function add(id, length) {
-    await click(host, length === 1 ? '#buildPlaylistBtn' : '#addPlaylistGame');
+    await click(host, '#addPlaylistGame');
     await expectFit(host);
     await host.locator(`#modalBody [data-game="${id}"]`).first().click();
     await wait(host, (n) => S.playlist?.games.length === n, length);
   }
-  await add('tictactoe', 1);
   assert.ok(await host.locator('#startPlaylistBtn').isDisabled());
   await add('tictactoe', 2);
   await add('dropfour', 3);

@@ -651,7 +651,7 @@ UI.lanes = (() => {
     const divW = PITCH - W - 0.48, divGeo = new T.BoxGeometry(divW, 0.07, len);
     const edgeGeo = new T.BoxGeometry(0.012, 0.006, len);
     const pitGeo = new T.BoxGeometry(PITCH, 0.9, 0.2), pitMat = new T.MeshStandardMaterial({ color: 0x0d0816, roughness: 0.95 });
-    const maskGeo = new T.BoxGeometry(PITCH, 0.62, 1.2), maskMat = new T.MeshStandardMaterial({ color: 0x23163d, roughness: 0.5 });
+    const maskGeo = new T.BoxGeometry(PITCH, 0.62, 1.2), maskMat = new T.MeshStandardMaterial({ color: 0x17313b, roughness: 0.5 });
     const faceGeo = new T.PlaneGeometry(PITCH - 0.02, 0.6);
     const stripGeo = new T.BoxGeometry(PITCH - 0.12, 0.025, 0.025), stripMat = new T.MeshBasicMaterial({ color: 0xfff1d6, toneMapped: false });
     const barGeo = new T.BoxGeometry(W + 0.36, 0.17, 0.05), barMat = new T.MeshStandardMaterial({ roughness: 0.4, metalness: 0.4,
@@ -690,21 +690,29 @@ UI.lanes = (() => {
       for (const sx of [-1, 1]) for (const sz of [-1, 1]) { const rod = new T.Mesh(rodGeo, armMat); rod.position.set(sx * (W / 2 - 0.05), 0.62, sz * 0.45); g.add(rod); }
       return g;
     }
-    // the fascia on the masking unit: a glowing lane number and a starfield (#117)
+    // The pinsetter panels repeat the stepped brass trim from the back wall.
     const fascia = (num) => {
       const t = canvasTex(T, 512, 160, (g, w, h) => {
-        const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#2a0f4a'); gr.addColorStop(1, '#10061f');
-        g.fillStyle = gr; g.fillRect(0, 0, w, h);
-        for (let i = 0; i < 60; i++) { g.fillStyle = `rgba(255,255,255,${Math.random() * 0.7})`; g.fillRect(Math.random() * w, Math.random() * h, 1.5, 1.5); }
-        g.strokeStyle = '#4cc9f0'; g.lineWidth = 3; g.shadowColor = '#4cc9f0'; g.shadowBlur = 10;
-        g.beginPath(); g.moveTo(0, h - 8); g.lineTo(w, h - 8); g.stroke();
-        g.font = 'bold 96px sans-serif'; g.textAlign = 'center'; g.shadowColor = '#ff4fa3'; g.shadowBlur = 18; g.fillStyle = '#ffd6ee';
-        g.fillText(String(num), w / 2, 112);
-        g.font = 'bold 26px sans-serif'; g.shadowBlur = 8; g.fillStyle = '#ffe9a8';
-        g.fillText('★', w * 0.18, 92); g.fillText('★', w * 0.82, 92);
+        const enamel = g.createLinearGradient(0, 0, 0, h);
+        enamel.addColorStop(0, '#21505b');
+        enamel.addColorStop(1, '#101f31');
+        g.fillStyle = enamel; g.fillRect(0, 0, w, h);
+        g.strokeStyle = '#ce9d59'; g.lineWidth = 3;
+        g.strokeRect(8, 8, w - 16, h - 16);
+        g.strokeStyle = '#edca8b';
+        for (const side of [-1, 1]) {
+          for (let step = 0; step < 3; step++) {
+            const x = w / 2 + side * (86 + step * 13), y = 53 + step * 13;
+            g.beginPath(); g.moveTo(x, y); g.lineTo(w / 2 + side * 222, y); g.stroke();
+          }
+        }
+        g.font = '800 94px system-ui, sans-serif';
+        g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#fff1c8';
+        g.fillText(String(num), w / 2, h / 2 + 4);
       });
+      t.colorSpace = T.SRGBColorSpace;
       disposables.push(t);
-      return new T.MeshBasicMaterial({ map: t, color: 0xdddddd });
+      return new T.MeshBasicMaterial({ map: t, toneMapped: false });
     };
     const kickMat = new T.MeshStandardMaterial({ color: 0x1d1830, roughness: 0.22, metalness: 0.5 });
     const curtainMat = new T.MeshStandardMaterial({ color: 0x0b0714, roughness: 1, side: T.DoubleSide });
@@ -725,7 +733,7 @@ UI.lanes = (() => {
       const pit = new T.Mesh(pitGeo, pitMat); pit.position.set(0, 0.45, -PIT - 0.4); grp.add(pit);
       // the masking unit over the pins, its fascia facing the bowler, and the pin-deck light under it
       const mask = new T.Mesh(maskGeo, maskMat); mask.position.set(0, 1.05, -PIT + 0.2); grp.add(mask);
-      if (!low) { const f = new T.Mesh(faceGeo, fascia(12 + Math.round(x / PITCH))); f.position.set(0, 1.05, -PIT + 0.805); grp.add(f); }
+      if (!low || x === 0) { const f = new T.Mesh(faceGeo, fascia(12 + Math.round(x / PITCH))); f.position.set(0, 1.05, -PIT + 0.805); grp.add(f); }
       // the kickbacks: glossy side panels that flank the pin deck, and a dark curtain across the pit
       for (const sx of [-1, 1]) {
         const kb = new T.Mesh(new T.BoxGeometry(0.06, 0.5, 1.5), kickMat); kb.position.set(sx * (W / 2 + 0.2), 0.25, -PIT + 0.55); grp.add(kb);
@@ -798,24 +806,42 @@ UI.lanes = (() => {
     apTex.wrapS = apTex.wrapT = T.RepeatWrapping; apTex.repeat.set(SPAN * 2 / W, 4.5 / 4.5);
     const approach = new T.Mesh(new T.PlaneGeometry(SPAN * 2, 4.5), new T.MeshStandardMaterial({ map: apTex, color: 0xe6d8c8, roughness: low ? 0.5 : 0.3, metalness: 0 }));
     approach.rotation.x = -Math.PI / 2; approach.position.set(0, 0.001, 2.2); scene.add(approach);
-    const wallMat = new T.MeshStandardMaterial({ color: 0x150b28, roughness: 0.85 });
-    // the back wall: a deep violet gradient with a soft glow low down, tall light bars and a diamond panel pattern
+    const wallMat = new T.MeshStandardMaterial({ color: 0x10252e, roughness: 0.85 });
     const backTex = canvasTex(T, 1024, 512, (g, w, h) => {
-      const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#07030f'); gr.addColorStop(0.55, '#1a0d33'); gr.addColorStop(1, '#2d1457');
-      g.fillStyle = gr; g.fillRect(0, 0, w, h);
-      g.strokeStyle = 'rgba(160,120,255,.09)'; g.lineWidth = 2;
-      for (let i = -h; i < w + h; i += 64) { g.beginPath(); g.moveTo(i, h); g.lineTo(i + h, 0); g.stroke(); g.beginPath(); g.moveTo(i, 0); g.lineTo(i + h, h); g.stroke(); }
-      for (let i = 0; i < 9; i++) { const x = (i + 0.5) * w / 9, lg = g.createLinearGradient(x - 16, 0, x + 16, 0); lg.addColorStop(0, 'rgba(76,201,240,0)'); lg.addColorStop(0.5, i % 2 ? 'rgba(255,79,163,.5)' : 'rgba(76,201,240,.5)'); lg.addColorStop(1, 'rgba(76,201,240,0)'); g.fillStyle = lg; g.fillRect(x - 16, h * 0.12, 32, h * 0.8); }
-      const glow = g.createRadialGradient(w / 2, h * 0.95, 10, w / 2, h * 0.95, w * 0.5); glow.addColorStop(0, 'rgba(255,120,200,.35)'); glow.addColorStop(1, 'rgba(255,120,200,0)');
-      g.fillStyle = glow; g.fillRect(0, 0, w, h);
+      const wall = g.createLinearGradient(0, 0, 0, h);
+      wall.addColorStop(0, '#0d1927');
+      wall.addColorStop(0.65, '#17313d');
+      wall.addColorStop(1, '#28535a');
+      g.fillStyle = wall; g.fillRect(0, 0, w, h);
+      const bay = w / 11;
+      for (let i = 0; i < 11; i++) {
+        const x = (i + 0.5) * bay;
+        const wash = g.createRadialGradient(x, h * 0.63, 1, x, h * 0.63, bay * 0.78);
+        wash.addColorStop(0, '#e5ac5c66');
+        wash.addColorStop(1, '#e5ac5c00');
+        g.fillStyle = wash; g.fillRect(x - bay / 2, 0, bay, h);
+        g.fillStyle = '#0a1820';
+        g.fillRect(i * bay, 0, 5, h);
+        g.strokeStyle = '#af824e'; g.lineWidth = 2;
+        g.beginPath();
+        g.moveTo(x - bay * 0.33, h); g.lineTo(x - bay * 0.33, h * 0.38);
+        g.lineTo(x, h * 0.23); g.lineTo(x + bay * 0.33, h * 0.38);
+        g.lineTo(x + bay * 0.33, h); g.stroke();
+        g.fillStyle = '#f4cb8c'; g.fillRect(x - 1.5, h * 0.57, 3, h * 0.16);
+      }
     });
-    const back = new T.Mesh(new T.PlaneGeometry(SPAN * 2, 6), new T.MeshBasicMaterial({ map: backTex, color: 0xcccccc })); back.position.set(0, 3, -PIT - 0.62); scene.add(back);
-    const neonTex = canvasTex(T, 512, 64, (g, w, h) => {
-      g.fillStyle = '#100820'; g.fillRect(0, 0, w, h);
-      g.font = 'bold 40px sans-serif'; g.textAlign = 'center'; g.shadowColor = '#ff4fa3'; g.shadowBlur = 16; g.fillStyle = '#ffd6ee';
-      g.fillText('★ LANE NIGHT ★', w / 2, 46);
+    backTex.colorSpace = T.SRGBColorSpace;
+    const back = new T.Mesh(new T.PlaneGeometry(SPAN * 2, 6), new T.MeshBasicMaterial({ map: backTex, toneMapped: false }));
+    back.position.set(0, 3, -PIT - 0.62); scene.add(back);
+    const neonTex = canvasTex(T, 768, 132, (g, w, h) => {
+      g.fillStyle = '#10252e'; g.fillRect(0, 0, w, h);
+      g.strokeStyle = '#ce9d59'; g.lineWidth = 4; g.strokeRect(6, 6, w - 12, h - 12);
+      g.strokeStyle = '#527d7d'; g.lineWidth = 2; g.strokeRect(15, 15, w - 30, h - 30);
+      g.font = '700 76px Georgia, serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillStyle = '#ffe3a9'; g.fillText('LANE NIGHT', w / 2, h / 2 + 3);
     });
-    const neon = new T.Mesh(new T.PlaneGeometry(6, 0.75), new T.MeshBasicMaterial({ map: neonTex }));
+    neonTex.colorSpace = T.SRGBColorSpace;
+    const neon = new T.Mesh(new T.PlaneGeometry(4.4, 0.76), new T.MeshBasicMaterial({ map: neonTex, toneMapped: false }));
     neon.position.set(0, 2.1, -PIT - 0.6); scene.add(neon);
     if (!low) {
       const ceil = new T.Mesh(new T.PlaneGeometry(SPAN * 2, len + 6), wallMat); ceil.rotation.x = Math.PI / 2; ceil.position.set(0, 3.2, -(len / 2)); scene.add(ceil);
@@ -827,11 +853,6 @@ UI.lanes = (() => {
         const wall = new T.Mesh(new T.PlaneGeometry(len + 6, 3.2), wallMat); wall.rotation.y = -sx * Math.PI / 2; wall.position.set(sx * SPAN, 1.6, -(len / 2)); scene.add(wall);
         [0.55, 2.4].forEach((y, i) => { const s = new T.Mesh(new T.BoxGeometry(0.04, 0.05, len + 6), glowMats[i]); s.position.set(sx * (SPAN - 0.03), y, -(len / 2)); scene.add(s); });
       }
-      // blacklight specks on the back wall
-      const n = 160, sp = new Float32Array(n * 3);
-      for (let i = 0; i < n; i++) { sp[i * 3] = (Math.random() * 2 - 1) * SPAN; sp[i * 3 + 1] = 1.5 + Math.random() * 1.6; sp[i * 3 + 2] = -PIT - 0.6; }
-      const pg = new T.BufferGeometry(); pg.setAttribute('position', new T.BufferAttribute(sp, 3));
-      scene.add(new T.Points(pg, new T.PointsMaterial({ color: 0xb8a6ff, size: 0.03, toneMapped: false })));
     }
     // the ball, and the ball return on the capping to my right: a hood the ball rolls up into (#118)
     const ballTex = canvasTex(T, 256, 128, (g, w, h) => paintBall(g, w, h, ballStyle));

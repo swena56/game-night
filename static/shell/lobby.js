@@ -248,8 +248,7 @@ function renderLobbyPlaylist(host, seated) {
     if (id) save([...games, id]);
   };
   $('#lobbyPlaylist').hidden = !games.length;
-  $('#buildPlaylistBtn').hidden = !host || !!games.length;
-  $('#buildPlaylistBtn').onclick = add;
+  // Keep playlist creation hidden while allowing existing playlists to continue.
   $('#addPlaylistGame').hidden = !host || games.length >= 8;
   $('#addPlaylistGame').onclick = add;
   $('#playlistBlock').textContent = S.playlist?.blocked || '';

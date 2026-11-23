@@ -402,7 +402,7 @@ UI.regatta = (() => {
       uT: { value: 0 }, uW: { value: [] }, uW2: { value: [] },
       uSun: { value: new T.Vector3(-0.35, 0.5, -0.79).normalize() }, uSunC: { value: new T.Color(0xfff1d6) },
       uSkyTop: { value: new T.Color(0x3a8ae0) }, uSkyHor: { value: new T.Color(0xcfe6fa) },
-      uDeep: { value: new T.Color(0x082a4a) }, uShal: { value: new T.Color(0x16607a) },
+      uDeep: { value: new T.Color(0x0b344c) }, uShal: { value: new T.Color(0x237c88) },
       uFogC: { value: new T.Color(0xcfe6fa) }, uFog: { value: new T.Vector2(140, 520) },
       uGust: { value: Array.from({ length: 6 }, () => new T.Vector3()) },
     };
@@ -493,9 +493,26 @@ UI.regatta = (() => {
     let ws = null, wsRace = -1;
     const lift = low ? 0.07 : 0.62;     // flat guides float above the swell
     const sea = (x, y, t) => (ws ? waveAt(ws, x, -y, t) : { h: 0, gx: 0, gz: 0 });
-    // shores far off: green hills round the lake
-    const hillMat = std(0x4a7a3a, { roughness: 0.95 }), hillG = new T.SphereGeometry(1, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2);
-    for (let k = 0; k < (low ? 14 : 26); k++) { const a = k / (low ? 14 : 26) * Math.PI * 2, d = 330 + (k % 3) * 40, m = new T.Mesh(hillG, hillMat); m.scale.set(60 + (k % 4) * 20, 20 + (k % 5) * 9, 50); m.position.set(Math.cos(a) * d, -2, -60 + Math.sin(a) * d); scene3.add(m); }
+    // Two ridgelines give the lake a sense of scale. Both sit beyond the race course.
+    const hillGeo = new T.SphereGeometry(1, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+    const hillLayers = [
+      { radius: 430, color: 0x66829a, count: low ? 10 : 19, width: 105, height: 64 },
+      { radius: 345, color: 0x3e6b5b, count: low ? 12 : 24, width: 88, height: 32 },
+    ];
+    for (const { radius, color, count, width, height } of hillLayers) {
+      const material = std(color, { roughness: 1 });
+      const hills = new T.InstancedMesh(hillGeo, material, count);
+      const transform = new T.Object3D();
+      for (let k = 0; k < count; k++) {
+        const a = (k + 0.5) / count * Math.PI * 2, d = radius + (k % 3) * 11;
+        transform.position.set(Math.cos(a) * d, -2, -60 + Math.sin(a) * d);
+        transform.rotation.y = Math.PI / 2 - a;
+        transform.scale.set(width + (k % 4) * 12, height * (0.55 + (k % 5) * 0.11), 38);
+        transform.updateMatrix();
+        hills.setMatrixAt(k, transform.matrix);
+      }
+      scene3.add(hills);
+    }
     // foam: a soft speckled texture for wakes, rings round buoys and splashes
     const foamTex = tex(128, 64, (g, w, h) => {
       for (let k = 0; k < 900; k++) {
@@ -508,6 +525,7 @@ UI.regatta = (() => {
     // buoys, the next one with a beacon; each sits in a ring of foam and rides the swell
     const buoyG = new T.Group(); scene3.add(buoyG);
     const orange = std(0xff7a1a, { roughness: 0.4 }), gold = std(0xffd23f, { roughness: 0.3, emissive: 0xffa000, emissiveIntensity: 0.4 });
+    const buoyBand = std(0xfff3d6, { roughness: 0.47 });
     const buoys = [];
     const beacon = new T.Mesh(new T.CylinderGeometry(0.4, 0.4, 30, 10, 1, true), new T.MeshBasicMaterial({ color: 0xffd23f, transparent: true, opacity: 0.25, depthWrite: false, blending: T.AdditiveBlending }));
     beacon.position.y = 15; scene3.add(beacon);
@@ -526,6 +544,8 @@ UI.regatta = (() => {
         const g = new T.Group(); g.position.copy(W(x, y));
         const body = new T.Mesh(new T.CylinderGeometry(0.9, 1.1, 2.4, 16), orange); body.position.y = 0.9; body.castShadow = true; g.add(body);
         const top = new T.Mesh(new T.ConeGeometry(0.9, 1.2, 16), orange); top.position.y = 2.7; g.add(top);
+        const stripe = new T.Mesh(new T.CylinderGeometry(0.97, 1.0, 0.3, 16), buoyBand);
+        stripe.position.y = 0.34; body.add(stripe);
         const lb = label(String(n + 1)); lb.position.y = 4.6; g.add(lb);
         const foam = new T.Mesh(new T.PlaneGeometry(4.4, 4.4), ringMat); foam.rotation.x = -Math.PI / 2; foam.position.y = 0.05; g.add(foam);
         buoyG.add(g); buoys.push({ g, body, top, foam, x, y });
@@ -822,7 +842,7 @@ UI.regatta = (() => {
       draw, resize, camera,
       dispose() {
         stg.dispose();
-        scene3.traverse((m) => { m.geometry?.dispose(); for (const mat of [].concat(m.material || [])) { mat.map?.dispose(); mat.dispose(); } });
+        scene3.traverse((m) => { if (m.isInstancedMesh) m.dispose(); m.geometry?.dispose(); for (const mat of [].concat(m.material || [])) { mat.map?.dispose(); mat.dispose(); } });
         renderer.dispose(); canvas.remove();
       },
     };

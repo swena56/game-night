@@ -386,16 +386,55 @@ UI.domino = (() => {
     const W = (x, y, h = 0) => new T.Vector3(x - mid, h, mid - y);
     // the table: a wooden top with a felt playing area marked in squares
     const woodTex = tex(512, 512, (g, w, h) => { g.fillStyle = '#6a4024'; g.fillRect(0, 0, w, h); for (let k = 0; k < 90; k++) { g.strokeStyle = `rgba(${Math.random() < 0.5 ? '40,20,8' : '140,90,50'},${0.15 + Math.random() * 0.2})`; g.lineWidth = 1 + Math.random() * 2; g.beginPath(); const y = Math.random() * h; g.moveTo(0, y); g.bezierCurveTo(w / 3, y + Math.random() * 20 - 10, 2 * w / 3, y + Math.random() * 20 - 10, w, y + Math.random() * 10 - 5); g.stroke(); } });
+    woodTex.colorSpace = T.SRGBColorSpace;
     woodTex.wrapS = woodTex.wrapT = T.RepeatWrapping; woodTex.repeat.set(3, 3);
     const top = new T.Mesh(new T.BoxGeometry(N + 4, 0.4, N + 4), std(0xffffff, { map: woodTex, roughness: 0.45 }));
     top.position.y = -0.2; top.receiveShadow = true; scene3.add(top);
     const maxAniso = renderer.capabilities.getMaxAnisotropy?.() || 4;
     // #151: the felt was a 512 texture stretched over a ~900 device-px board: soft grid lines
     const FT = low ? 1024 : 2048;
-    const feltTex = tex(FT, FT, (g, w) => { g.fillStyle = '#1f5a3e'; g.fillRect(0, 0, w, w); const s = w / N; g.strokeStyle = 'rgba(255,255,255,.2)'; g.lineWidth = w / 256; for (let k = 0; k <= N; k++) { g.beginPath(); g.moveTo(k * s, 0); g.lineTo(k * s, w); g.stroke(); g.beginPath(); g.moveTo(0, k * s); g.lineTo(w, k * s); g.stroke(); } for (let k = 0; k < 3000 * (w / 512) ** 2 / 2; k++) { g.fillStyle = `rgba(0,0,0,${Math.random() * 0.08})`; g.fillRect(Math.random() * w, Math.random() * w, w / 256, w / 256); } });
-    feltTex.anisotropy = maxAniso; feltTex.colorSpace = woodTex.colorSpace;
+    const feltTex = tex(FT, FT, (g, w) => {
+      const baize = g.createRadialGradient(w / 2, w / 2, w * 0.08, w / 2, w / 2, w * 0.7);
+      baize.addColorStop(0, '#326858');
+      baize.addColorStop(1, '#193e37');
+      g.fillStyle = baize;
+      g.fillRect(0, 0, w, w);
+      const cell = w / N;
+      g.fillStyle = '#0d302529';
+      for (let y = 0; y < N; y++) {
+        for (let x = y % 2; x < N; x += 2) g.fillRect(x * cell, y * cell, cell, cell);
+      }
+      g.strokeStyle = '#d7e8c946';
+      g.lineWidth = Math.max(1, w / 512);
+      g.beginPath();
+      for (let k = 1; k < N; k++) {
+        g.moveTo(k * cell, 0); g.lineTo(k * cell, w);
+        g.moveTo(0, k * cell); g.lineTo(w, k * cell);
+      }
+      g.stroke();
+      g.fillStyle = '#e9f1c515';
+      for (let k = 0; k < 3200; k++) {
+        g.fillRect(((k * 97.37) % 512) * w / 512, ((k * 53.81) % 512) * w / 512, w / 512, w / 512);
+      }
+    });
+    feltTex.anisotropy = maxAniso;
+    feltTex.colorSpace = T.SRGBColorSpace;
     const felt = new T.Mesh(new T.PlaneGeometry(N, N), std(0xffffff, { map: feltTex, roughness: 0.95 }));
     felt.rotation.x = -Math.PI / 2; felt.position.y = 0.002; felt.receiveShadow = true; scene3.add(felt);
+    // Brass inlay frames the playing grid without covering the outer cells.
+    const frame = new T.Shape();
+    const outer = N / 2 + 0.14, inner = N / 2;
+    frame.moveTo(-outer, -outer); frame.lineTo(outer, -outer);
+    frame.lineTo(outer, outer); frame.lineTo(-outer, outer); frame.closePath();
+    const opening = new T.Path();
+    opening.moveTo(-inner, -inner); opening.lineTo(-inner, inner);
+    opening.lineTo(inner, inner); opening.lineTo(inner, -inner); opening.closePath();
+    frame.holes.push(opening);
+    const inlay = new T.Mesh(new T.ShapeGeometry(frame), std(0xcaa165, { metalness: 0.34, roughness: 0.45 }));
+    inlay.rotation.x = -Math.PI / 2;
+    inlay.position.y = 0.003;
+    inlay.receiveShadow = true;
+    scene3.add(inlay);
     // reach tiles: a soft glow on the squares each run reaches now
     const tileGeo = new T.PlaneGeometry(0.92, 0.92), tiles = [];
     const tile = (k) => { if (tiles[k]) return tiles[k]; const m = new T.Mesh(tileGeo, new T.MeshBasicMaterial({ transparent: true, opacity: 0.32, depthWrite: false })); m.rotation.x = -Math.PI / 2; scene3.add(m); return (tiles[k] = m); };

@@ -436,10 +436,10 @@ UI.tops = (() => {
     const scene = new T.Scene();
     const camera = new T.PerspectiveCamera(40, 1, 0.5, 400);
     const stg = GL3.stage(renderer, scene, {
-      exposure: 1.05, hemi: [0xcfd8ff, 0x2a1d3a, 0.55],
+      exposure: 1.05, hemi: [0xdfedff, 0x102632, 0.62],
       key: { i: 1.15, color: 0xfff1dc, pos: [-6, 16, 8], area: R + 3, near: 2, far: 50 },
       sky: { top: 0x0b0820, horizon: 0x3a1f5c, bottom: 0x140d24, band: 0.12 },
-      env: { accent: 0xff7a3d, walls: 0x1b1430 },
+      env: { accent: 0x7bd8e5, walls: 0x152638 },
     });
     const low = stg.low;
     // a warm spot over the bowl, and a coloured rim light behind
@@ -452,23 +452,41 @@ UI.tops = (() => {
     felt.wrapS = felt.wrapT = T.RepeatWrapping; felt.repeat.set(10, 10);
     const table = new T.Mesh(new T.CircleGeometry(60, 48), new T.MeshStandardMaterial({ map: felt, roughness: 0.95 }));
     table.rotation.x = -Math.PI / 2; table.position.y = -2.2; table.receiveShadow = true; scene.add(table);
-    // the bowl: a lathe from the middle out to the lip and down the outside, polished wood with painted rings
+    // the bowl: a lathe from the middle out to the lip and down the outside, brushed blue enamel, range markings and a brass lip
     const pts = [];
     for (let k = 0; k <= 40; k++) { const r = (k / 40) * R; pts.push(new T.Vector2(Math.max(0.001, r), bowlH(r, R))); }
     pts.push(new T.Vector2(R + 0.25, DEPTH + 0.3), new T.Vector2(R + 0.55, DEPTH + 0.32), new T.Vector2(R + 0.75, DEPTH + 0.1), new T.Vector2(R + 0.6, -2.2));
     const rings = canvasTex(T, 64, 1024, (g, w, h) => {
-      const grd = g.createLinearGradient(0, 0, 0, h); grd.addColorStop(0, '#3a2a1c'); grd.addColorStop(0.5, '#6b4628'); grd.addColorStop(0.85, '#8a5a32'); grd.addColorStop(1, '#3a2614');
-      g.fillStyle = grd; g.fillRect(0, 0, w, h);
-      for (let y = 0; y < h * 0.85; y += 3 + Math.random() * 6) { g.fillStyle = `rgba(30,15,5,${0.08 + Math.random() * 0.12})`; g.fillRect(0, y, w, 1 + Math.random() * 2); }
-      // painted target rings on the dish
-      [[0.2, '#ffcf6a'], [0.5, '#e8673a'], [0.76, '#ffcf6a']].forEach(([f, c]) => { g.fillStyle = c; g.fillRect(0, f * h * 0.86, w, 7); });
-      g.fillStyle = '#ffcf6a'; g.fillRect(0, h * 0.86 - 2, w, 14);
+      const enamel = g.createLinearGradient(0, 0, 0, h);
+      enamel.addColorStop(0, '#0b1827');
+      enamel.addColorStop(0.15, '#1a4152');
+      enamel.addColorStop(0.55, '#245a70');
+      enamel.addColorStop(1, '#173346');
+      g.fillStyle = enamel; g.fillRect(0, 0, w, h);
+
+      for (let y = 3; y < h; y += 5) {
+        g.fillStyle = y % 3 ? '#9edbe014' : '#071d2a26';
+        g.fillRect(0, y, w, 1);
+      }
+      // The lathe UV runs from the last profile point at the bottom of the skirt to the center.
+      const atRadius = (fraction) => h * (1 - 40 * fraction / (pts.length - 1));
+      for (const fraction of [0.25, 0.5, 0.75, 0.96]) {
+        const y = atRadius(fraction);
+        g.fillStyle = '#102b3f'; g.fillRect(0, y - 4, w, 8);
+        g.fillStyle = '#79bfcb'; g.fillRect(0, y - 1, w, 2);
+      }
+      const lip = h * (1 - 42 / (pts.length - 1));
+      g.fillStyle = '#b58550'; g.fillRect(0, lip - 15, w, 30);
+      g.fillStyle = '#f0ce91'; g.fillRect(0, lip - 5, w, 4);
+      g.fillStyle = '#091c2b'; g.fillRect(0, 2, w, 10);
     });
-    const bowlMat = new T.MeshStandardMaterial({ map: rings, roughness: 0.32, metalness: 0.05, side: T.DoubleSide });
+    rings.colorSpace = T.SRGBColorSpace;
+    rings.anisotropy = low ? 2 : 8;
+    const bowlMat = new T.MeshStandardMaterial({ map: rings, roughness: 0.39, metalness: 0.16, side: T.DoubleSide });
     const bowl = new T.Mesh(new T.LatheGeometry(pts, 72), bowlMat);
     bowl.receiveShadow = true; bowl.castShadow = !low; scene.add(bowl);
     // rim lights: little bulbs round the lip, chasing
-    const NB = 40, bulbs = new T.InstancedMesh(new T.SphereGeometry(0.08, 8, 6), new T.MeshBasicMaterial({ color: 0xffffff }), NB);
+    const NB = 40, bulbs = new T.InstancedMesh(new T.SphereGeometry(0.08, 8, 6), new T.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }), NB);
     const m4 = new T.Matrix4(), bc = new T.Color();
     for (let k = 0; k < NB; k++) { const a = (k / NB) * Math.PI * 2; m4.makeTranslation(Math.cos(a) * (R + 0.4), DEPTH + 0.36, Math.sin(a) * (R + 0.4)); bulbs.setMatrixAt(k, m4); bulbs.setColorAt(k, bc.set(0xffd27a)); }
     scene.add(bulbs);

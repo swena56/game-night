@@ -288,7 +288,7 @@ UI.spire = (() => {
     const stage = $('spStage');
     const renderer = GL3.renderer({ alpha: true }, { onLost: () => {
       if (!gfx || gfx.renderer !== renderer) return;
-      gfx.stg?.dispose(); renderer.dispose(); renderer.domElement.remove(); gfx = null;
+      disposeThree();
       if (stage.isConnected) { initThree(); resize(); }
     } });
     if (!renderer) return;
@@ -299,12 +299,41 @@ UI.spire = (() => {
     const rim = new T.PointLight(0x8e7dff, 0.8, 80); rim.position.set(-12, 10, -10); scene.add(rim);
     const R = W / (2 * Math.PI) + 0.45, arc = (2 * Math.PI * R) / W;
     const tower = new T.Group(); scene.add(tower);
-    const core = new T.Mesh(new T.CylinderGeometry(R - 0.5, R - 0.5, H + 0.2, 48, 1, true),
-      new T.MeshStandardMaterial({ color: 0x1b1530, emissive: 0x120c26, side: T.DoubleSide, roughness: 0.9 }));
+    const coreCanvas = document.createElement('canvas');
+    coreCanvas.width = 512; coreCanvas.height = 512;
+    const ink = coreCanvas.getContext('2d');
+    if (ink) {
+      ink.fillStyle = '#14283b'; ink.fillRect(0, 0, 512, 512);
+      // Subtle grid lines behind the blocks make columns and heights easier to track.
+      for (let x = 0; x < W; x++) {
+        const u = x * 512 / W;
+        ink.fillStyle = '#223c4d'; ink.fillRect(u, 0, 2, 512);
+        ink.fillStyle = '#10202f'; ink.fillRect(u + 2, 0, 3, 512);
+      }
+      for (let y = 1; y < H; y++) {
+        ink.fillStyle = y % 4 === 0 ? '#365365' : '#1e3346';
+        ink.fillRect(0, 512 - (y + 0.1) * 512 / (H + 0.2), 512, y % 4 === 0 ? 3 : 1);
+      }
+    }
+    const coreMap = ink ? new T.CanvasTexture(coreCanvas) : null;
+    if (coreMap) coreMap.colorSpace = T.SRGBColorSpace;
+    const coreGeo = new T.CylinderGeometry(R - 0.5, R - 0.5, H + 0.2, 48, 1, true);
+    // Blocks sit at the center of a column. Align the texture seams between columns.
+    const uv = coreGeo.attributes.uv;
+    for (let i = 0; i < uv.count; i++) uv.setX(i, uv.getX(i) + 0.5 / W);
+    if (coreMap) coreMap.wrapS = T.RepeatWrapping;
+    const core = new T.Mesh(coreGeo, new T.MeshStandardMaterial({
+      color: coreMap ? 0xffffff : 0x14283b, map: coreMap, emissive: 0x0b1420, side: T.DoubleSide, roughness: 0.9,
+    }));
     core.position.y = H / 2; tower.add(core);
-    const base = new T.Mesh(new T.CylinderGeometry(R + 0.8, R + 1.2, 0.5, 48), new T.MeshStandardMaterial({ color: 0x2c2540 }));
+    const base = new T.Mesh(new T.CylinderGeometry(R + 0.8, R + 1.2, 0.5, 48),
+      new T.MeshStandardMaterial({ color: 0x293e56, metalness: 0.4, roughness: 0.35 }));
     base.position.y = -0.25; tower.add(base);
-    const danger = new T.Mesh(new T.TorusGeometry(R + 0.55, 0.05, 8, 64), new T.MeshBasicMaterial({ color: 0xef476f }));
+    const trim = new T.Mesh(new T.TorusGeometry(R + 0.82, 0.037, 8, 64),
+      new T.MeshBasicMaterial({ color: 0x75c8e0, toneMapped: false }));
+    trim.rotation.x = Math.PI / 2; trim.position.y = -0.035; tower.add(trim);
+    const danger = new T.Mesh(new T.TorusGeometry(R + 0.55, 0.05, 8, 64),
+      new T.MeshBasicMaterial({ color: 0xef476f, toneMapped: false }));
     danger.rotation.x = Math.PI / 2; danger.position.y = H; tower.add(danger);
     const geo = new T.BoxGeometry(arc * 0.92, 0.92, 0.9);
     // a bevel on every block face: a lit edge and a shaded rim, drawn once and tinted by the block's colour
@@ -329,6 +358,22 @@ UI.spire = (() => {
     scene.add(stars);
     gfx = { T, renderer, scene, camera, tower, settled, piece, ghost, R, dummy: new T.Object3D(), color: new T.Color(), stars, stg };
     resize();
+  }
+
+  function disposeThree() {
+    const { scene, stg, renderer } = gfx;
+    const resources = new Set();
+    scene.traverse((object) => {
+      if (object.isInstancedMesh) resources.add(object);
+      if (object.geometry) resources.add(object.geometry);
+      if (object.material) resources.add(object.material);
+      if (object.material?.map) resources.add(object.material.map);
+    });
+    stg.dispose();
+    for (const resource of resources) resource.dispose();
+    renderer.dispose();
+    renderer.domElement.remove();
+    gfx = null;
   }
 
   function place(mesh, i, x, y, colorHex) {
@@ -580,7 +625,7 @@ UI.spire = (() => {
     clearInterval(repeat);
     if (keyHandler) removeEventListener('keydown', keyHandler);
     resizeObs?.disconnect();
-    if (gfx) { gfx.stg?.dispose(); gfx.renderer.dispose(); gfx = null; }
+    if (gfx) disposeThree();
     st = null;
   }
 

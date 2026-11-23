@@ -9,6 +9,8 @@ UI.midway = (() => {
   const $ = (id) => document.getElementById(id);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const ICON = { skee: '🎳', rings: '⭕', cans: '🥫', hoops: '🏀' };
+  const SKEE_FACE = '#123b42';
+  const SKEE_RINGS = ['#fff0c5', '#d8a964', '#cb7157', '#a3c7b7', '#487d79'];
   const nameOf = (pid) => ctx?.player(pid)?.name ?? '?';
   const colorOf = (pid) => ctx?.player(pid)?.color ?? '#ccc';
   const watched = () => V?.booths?.[watchId];
@@ -308,7 +310,7 @@ UI.midway = (() => {
     const preview = canThrow() || swipe ? spot(aim, power) : null;
     return {
       kind: V.kind, geo: V.geo, layout: V.layout, jackLive: !V.jackBy && !(V.kind === 'cans' && b?.stacks),
-      shots: (b?.shots || []).filter((s) => !pending.has(s.id)), fly, fallAt, now, preview, swiping: !!swipe, left: b?.left ?? 0,
+      shots: (b?.shots || []).filter((s) => !pending.has(s.id)), fly, fallAt, now, preview, swiping: !!swipe, charging: !!charge, chargePower: charge ? power : 0, left: b?.left ?? 0,
       pts: (b?.pts ?? 0) - (b?.shots || []).filter((s) => pending.has(s.id)).reduce((a, s) => a + s.pts, 0),
       color: colorOf(watchId),
     };
@@ -446,9 +448,9 @@ UI.midway = (() => {
       }
     }
     // a lit marquee over each booth: its name in gold, a border of bulbs
-    function marquee(text, w, h) {
+    function marquee(text, w, h, background = '#5a0f1e') {
       const t = tex(512, Math.round(512 * h / w), (g, W, H) => {
-        g.fillStyle = '#5a0f1e'; g.fillRect(0, 0, W, H);
+        g.fillStyle = background; g.fillRect(0, 0, W, H);
         g.strokeStyle = '#ffd23f'; g.lineWidth = 6; g.strokeRect(10, 10, W - 20, H - 20);
         const n = 22; g.fillStyle = '#fff2b0';
         for (let k = 0; k < n; k++) { const x = 10 + (W - 20) * k / (n - 1); for (const yy of [10, H - 10]) { g.beginPath(); g.arc(x, yy, 5, 0, 7); g.fill(); } }
@@ -465,16 +467,33 @@ UI.midway = (() => {
       const t = clamp((laneFront - z) / (laneFront - laneLip), 0, 1);
       return 0.975 + 0.1 * t + 0.08 * (Math.max(0, t - 0.82) / 0.18) ** 2;
     };
-    const cork = tex(128, 512, (g, w, h) => {
-      g.fillStyle = '#c9a879'; g.fillRect(0, 0, w, h);
-      for (let i = 0; i < 3500; i++) {
-        g.fillStyle = i % 2 ? '#76533844' : '#ffe2ad66';
-        g.fillRect(Math.random() * w, Math.random() * h, 1 + i % 3, 1 + i % 4);
+    const maple = tex(256, 512, (g, w, h) => {
+      const boards = ['#c99860', '#d7ac75', '#dfb883', '#d0a06b', '#d9b17d'];
+      for (const [i, color] of boards.entries()) {
+        const x = i * w / boards.length;
+        g.fillStyle = color;
+        g.fillRect(x, 0, w / boards.length + 1, h);
+        g.fillStyle = '#5b301b35';
+        g.fillRect(x, 0, 1, h);
       }
+      for (let i = 0; i < 260; i++) {
+        const x = (i * 97.37) % w, y = (i * 53.21) % h;
+        g.fillStyle = i % 2 ? '#63391e21' : '#fff2cd42';
+        g.fillRect(x, y, 0.5 + i % 2, 18 + i % 83);
+      }
+      const shade = g.createLinearGradient(0, 0, w, 0);
+      shade.addColorStop(0, '#30180965');
+      shade.addColorStop(0.22, '#30180900');
+      shade.addColorStop(0.78, '#30180900');
+      shade.addColorStop(1, '#30180965');
+      g.fillStyle = shade;
+      g.fillRect(0, 0, w, h);
     });
-    const lacquer = std(0x832039, { roughness: 0.4 });
-    const brass = std(0xd2a157, { roughness: 0.42, metalness: 0.35 });
-    const rubber = std(0x30232a);
+    maple.colorSpace = T.SRGBColorSpace;
+    const lacquer = std(0x174b50, { roughness: 0.36 });
+    const brass = std(0xe1b26c, { roughness: 0.42, metalness: 0.25 });
+    const rubber = std(0x172327);
+    const railLight = new T.MeshBasicMaterial({ color: 0xffcc84, toneMapped: false });
     function cabinetBox(w, h, d, x, y, z, mat) {
       const mesh = new T.Mesh(new T.BoxGeometry(w, h, d), mat);
       mesh.position.set(x, y, z);
@@ -489,67 +508,126 @@ UI.midway = (() => {
       laneVerts.setXYZ(i, laneVerts.getX(i), laneHeight(z), z);
     }
     laneGeo.computeVertexNormals();
-    const lane = new T.Mesh(laneGeo, std(0xffffff, { map: cork }));
+    const lane = new T.Mesh(laneGeo, std(0xffffff, { map: maple, roughness: 0.52 }));
     lane.receiveShadow = true; skee.add(lane);
     cabinetBox(0.92, 0.87, 3.05, 0, 0.47, -1.625, lacquer);
     cabinetBox(1.32, 0.96, 1.13, 0, 0.51, -3.73, lacquer);
     cabinetBox(1.36, 0.46, 0.24, 0, 2.22, -4.31, lacquer);
+    function laneRail(x, width, bottom, top, material) {
+      const profile = new T.Shape();
+      profile.moveTo(-laneFront, laneHeight(laneFront) + bottom);
+      for (let i = 0; i <= 48; i++) {
+        const z = laneFront + (laneLip - laneFront) * i / 48;
+        profile.lineTo(-z, laneHeight(z) + top);
+      }
+      profile.lineTo(-laneLip, laneHeight(laneLip) + bottom);
+      profile.closePath();
+      const rail = new T.Mesh(new T.ExtrudeGeometry(profile, { depth: width, bevelEnabled: false }), material);
+      rail.rotation.y = Math.PI / 2;
+      rail.position.x = x - width / 2;
+      rail.receiveShadow = true;
+      skee.add(rail);
+    }
     for (const side of [-1, 1]) {
-      cabinetBox(0.09, 0.15, 3.05, side * 0.425, 1.035, -1.625, lacquer);
-      cabinetBox(0.095, 0.025, 3.05, side * 0.425, 1.12, -1.625, brass);
+      laneRail(side * 0.425, 0.09, -0.1, 0.075, lacquer);
+      laneRail(side * 0.425, 0.095, 0.075, 0.09, brass);
+      laneRail(side * 0.425, 0.022, 0.09, 0.094, railLight);
+      cabinetBox(0.018, 0.025, 2.93, side * 0.461, 0.77, -1.625, brass);
       cabinetBox(0.06, 1.18, 1.13, side * 0.66, 0.94, -3.73, lacquer);
     }
-    cabinetBox(0.19, 0.09, 0.93, 0.59, 0.88, -0.48, rubber);
-    for (const x of [0.49, 0.69]) cabinetBox(0.028, 0.08, 0.96, x, 0.94, -0.48, lacquer);
-    for (const z of [-0.015, -0.945]) cabinetBox(0.2, 0.08, 0.025, 0.59, 0.94, z, lacquer);
-    const trayBalls = Array.from({ length: 9 }, (_, k) => { const m = new T.Mesh(new T.SphereGeometry(0.045, 14, 10), std(0xf4efe4, { roughness: 0.4 })); m.position.set(0.59, 0.97, -0.1 - k * 0.095); m.castShadow = true; skee.add(m); return m; });
-    let panelTex = null, panelVal = null;
-    const panel = new T.Mesh(new T.PlaneGeometry(0.62, 0.18), new T.MeshBasicMaterial({ color: 0xffffff }));
-    panel.position.set(0, 2.08, -4.18); skee.add(panel);
-    function paintPanel(pts) {
-      if (pts === panelVal) return;
-      panelVal = pts; panelTex?.dispose();
-      panelTex = tex(256, 80, (g, w, h) => {
-        g.fillStyle = '#0a0612'; g.fillRect(0, 0, w, h); g.strokeStyle = '#ff5ab4'; g.lineWidth = 4; g.strokeRect(3, 3, w - 6, h - 6);
-        g.font = '700 50px "Courier New", monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
-        g.shadowColor = '#ff3a3a'; g.shadowBlur = 14; g.fillStyle = '#ff6a5a'; g.fillText(String(pts).padStart(4, '0'), w / 2, h / 2 + 2);
-      });
-      panel.material.map = panelTex; panel.material.needsUpdate = true;
+    const returnX = 0.59, returnFront = -0.075, ballSpacing = 0.095;
+    const returnHeight = (z) => 0.9 + (returnFront - z) * 0.065;
+    cabinetBox(0.24, 0.73, 1.03, returnX, 0.46, -0.52, lacquer);
+    const cradle = cabinetBox(0.19, 0.035, 0.96, returnX, returnHeight(-0.52) - 0.017, -0.52, rubber);
+    cradle.rotation.x = 0.065;
+    for (const x of [0.49, 0.69]) {
+      const wall = cabinetBox(0.028, 0.077, 0.96, x, returnHeight(-0.52) + 0.025, -0.52, lacquer);
+      wall.rotation.x = cradle.rotation.x;
+      const edge = cabinetBox(0.03, 0.012, 0.96, x, wall.position.y + 0.039, -0.52, brass);
+      edge.rotation.x = cradle.rotation.x;
+    }
+    cabinetBox(0.22, 0.045, 0.035, returnX, 0.926, -0.038, brass);
+    cabinetBox(0.23, 0.035, 0.17, returnX, 1.065, -0.95, lacquer);
+    cabinetBox(0.22, 0.11, 0.028, returnX, 0.995, -1.026, rubber);
+    cabinetBox(0.92, 0.08, 3.06, 0, 0.055, -1.625, rubber);
+    cabinetBox(1.34, 0.08, 1.14, 0, 0.055, -3.73, rubber);
+    const trayBallGeo = new T.SphereGeometry(ballRadius, 14, 10);
+    const trayBallMat = std(0xb87d48, { roughness: 0.38 });
+    const trayBalls = Array.from({ length: 9 }, (_, k) => {
+      const ball = new T.Mesh(trayBallGeo, trayBallMat);
+      ball.position.set(returnX, 0, returnFront - k * ballSpacing);
+      ball.castShadow = true; skee.add(ball);
+      return ball;
+    });
+    let lastTrayCount = null;
+    const displayWidth = 512, displayHeight = 112;
+    const panelCanvas = document.createElement('canvas');
+    panelCanvas.width = displayWidth;
+    panelCanvas.height = displayHeight;
+    const panelInk = panelCanvas.getContext('2d');
+    const panelTex = new T.CanvasTexture(panelCanvas);
+    cabinetBox(1.08, 0.21, 0.034, 0, 2.08, -4.18, brass);
+    const panel = new T.Mesh(new T.PlaneGeometry(1.04, 0.18), new T.MeshBasicMaterial({ map: panelTex }));
+    panel.position.set(0, 2.08, -4.161); skee.add(panel);
+    let displayedScore, displayedCount;
+    function paintPanel(score, count) {
+      const g = panelInk;
+      if (!g || (score === displayedScore && count === displayedCount)) return;
+      displayedScore = score;
+      displayedCount = count;
+      g.fillStyle = '#183335';
+      g.fillRect(0, 0, displayWidth, displayHeight);
+      g.fillStyle = '#09070a';
+      g.fillRect(8, 8, 326, 96);
+      g.fillRect(344, 8, 160, 96);
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.font = '700 20px system-ui, sans-serif';
+      g.fillStyle = '#f4d8a6';
+      g.fillText('SCORE', 171, 25);
+      g.fillText('BALLS LEFT', 424, 25);
+      g.font = '700 62px monospace';
+      g.fillStyle = '#ffab55';
+      g.fillText(String(score).padStart(4, '0'), 171, 70, 310);
+      g.fillStyle = count ? '#ffe0a0' : '#eb9a80';
+      g.fillText(String(count), 424, 70);
+      panelTex.needsUpdate = true;
     }
     const ballTex = tex(64, 32, (g, w, h) => { g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h); g.fillStyle = 'rgba(0,0,0,.28)'; g.fillRect(0, h * 0.42, w, h * 0.16); g.fillRect(w * 0.45, 0, w * 0.1, h); });
     const board = new T.Group(); board.position.set(0, 1.18, -3.3); board.rotation.x = -0.927; skee.add(board);
     let boardTex = null, boardFace = null;
+    const scorePockets = new Map();
+    let cornerPockets = [];
     function paintBoard(geo) {
       const W = 640, H = Math.round(W * 1.2 / 1.3);
       boardTex?.dispose();
       boardTex = tex(W, H, (g) => {
         const X = (bx) => (bx + 0.65) / 1.3 * W, Y = (by) => H - by / 1.2 * H, k = W / 1.3;
-        g.fillStyle = '#6e2035'; g.fillRect(0, 0, W, H);
-        const cols = ['#b77d4c', '#f1d5a3', '#b65f48', '#e4b576', '#f4efe4'];
-        [...geo.rings].reverse().forEach(([r, pts], n) => {
-          g.beginPath(); g.arc(X(0), Y(geo.cy), r * k, 0, 7); g.fillStyle = cols[n % cols.length]; g.fill();
-          g.lineWidth = 3; g.strokeStyle = '#0b1830'; g.stroke();
-        });
-        g.font = `800 ${Math.round(k * 0.05)}px "Baloo 2", system-ui, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
-        // each ring's pocket: a dark hole at the top of its band, with the score on a lit plate beside it
-        geo.rings.forEach(([r, pts], n) => {
-          const r0 = n ? geo.rings[n - 1][0] : 0, y = n ? Y(geo.cy) - (r0 + r) / 2 * k : Y(geo.cy), hr = n ? (r - r0) * k * 0.36 : r * k * 0.55;
-          const hole = g.createRadialGradient(X(0), y - hr * 0.2, 0, X(0), y, hr); hole.addColorStop(0, '#000'); hole.addColorStop(0.8, '#05080f'); hole.addColorStop(1, '#2a3550');
-          g.fillStyle = hole; g.beginPath(); g.arc(X(0), y, hr, 0, 7); g.fill();
-          if (n) {
-            const pw = k * 0.075, ph = k * 0.05, px = X(0) + hr + pw * 0.75;
-            g.fillStyle = '#fff6d0'; g.fillRect(px - pw / 2, y - ph / 2, pw, ph); g.strokeStyle = '#0b1830'; g.lineWidth = 2; g.strokeRect(px - pw / 2, y - ph / 2, pw, ph);
-            g.fillStyle = '#0b1830'; g.fillText(String(pts), px, y + 1);
-          } else { g.fillStyle = '#ffd23f'; g.fillText(String(pts), X(0), y + hr + k * 0.03); }
-        });
-        for (const [cx, cy] of geo.cups) { g.beginPath(); g.arc(X(cx), Y(cy), geo.cupR * k, 0, 7); g.fillStyle = '#05080f'; g.fill(); g.fillStyle = '#ffd23f'; g.fillText('100', X(cx), Y(cy) + geo.cupR * k * 1.9); }
+        const enamel = g.createLinearGradient(0, 0, 0, H);
+        enamel.addColorStop(0, '#29636a');
+        enamel.addColorStop(1, SKEE_FACE);
+        g.fillStyle = enamel; g.fillRect(0, 0, W, H);
+        for (let i = geo.rings.length - 1; i >= 0; i--) {
+          const [r] = geo.rings[i];
+          g.beginPath(); g.arc(X(0), Y(geo.cy), r * k, 0, 7); g.fillStyle = SKEE_RINGS[i]; g.fill();
+          g.lineWidth = 3; g.strokeStyle = '#112d30'; g.stroke();
+        }
+        g.strokeStyle = '#f4d7a0';
+        g.lineWidth = 3;
+        g.strokeRect(13, 13, W - 26, H - 26);
       });
+      boardTex.colorSpace = T.SRGBColorSpace;
       if (!boardFace) {
         const face = new T.Shape();
         face.moveTo(-0.65, 0); face.lineTo(0.65, 0); face.lineTo(0.65, 1.2);
         face.lineTo(-0.65, 1.2); face.closePath();
-        const pockets = [[0, geo.cy, geo.rings[0][0] * 0.78],
-          ...geo.cups.map(([x, y]) => [x, y, geo.cupR])];
+        geo.rings.forEach(([outer, points], i) => {
+          const inner = i ? geo.rings[i - 1][0] : 0;
+          const y = i ? geo.cy + (inner + outer) / 2 : geo.cy;
+          scorePockets.set(String(points), [0, y, i ? (outer - inner) * 0.36 : outer * 0.78]);
+        });
+        cornerPockets = geo.cups.map(([x, y]) => [x, y, geo.cupR]);
+        const pockets = [...scorePockets.values(), ...cornerPockets];
         for (const [x, y, r] of pockets) {
           const opening = new T.Path();
           opening.absarc(x, y, r, 0, Math.PI * 2, true);
@@ -568,10 +646,37 @@ UI.midway = (() => {
         for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) + 0.65) / 1.3, uv.getY(i) / 1.2);
         boardFace = new T.Mesh(faceGeo, std(0xffffff, { roughness: 0.45 }));
         boardFace.receiveShadow = true; board.add(boardFace);
-        const rimMat = rubber;
-        for (const [r] of geo.rings) { const rim = new T.Mesh(new T.TorusGeometry(r, 0.014, 6, 48), rimMat); rim.position.set(0, geo.cy, 0.012); board.add(rim); }
-        for (const [cx, cy] of geo.cups) { const rim = new T.Mesh(new T.TorusGeometry(geo.cupR, 0.012, 6, 24), std(0xffd23f, { metalness: 0.6, roughness: 0.3 })); rim.position.set(cx, cy, 0.012); board.add(rim); }
-
+        for (const [r] of geo.rings) {
+          const rim = new T.Mesh(new T.TorusGeometry(r, 0.014, 6, 48), rubber);
+          rim.position.set(0, geo.cy, 0.012);
+          board.add(rim);
+        }
+        for (const [x, y, radius] of pockets) {
+          const rim = new T.Mesh(new T.TorusGeometry(radius, 0.004, 6, 24), brass);
+          rim.position.set(x, y, 0.003);
+          board.add(rim);
+        }
+        const badgeGeo = new T.PlaneGeometry(0.118, 0.07);
+        function scoreBadge(points, x, y) {
+          const map = tex(128, 76, (g, w, h) => {
+            g.clearRect(0, 0, w, h);
+            g.beginPath(); g.roundRect(2, 2, w - 4, h - 4, 12);
+            g.fillStyle = '#102629'; g.fill();
+            g.strokeStyle = '#e7b86c'; g.lineWidth = 4; g.stroke();
+            g.font = '900 53px system-ui, sans-serif';
+            g.fillStyle = '#fff2d7'; g.textAlign = 'center'; g.textBaseline = 'middle';
+            g.fillText(String(points), w / 2, h / 2, w - 14);
+          });
+          map.colorSpace = T.SRGBColorSpace;
+          const badge = new T.Mesh(badgeGeo, new T.MeshBasicMaterial({ map, transparent: true, alphaTest: 0.5, toneMapped: false }));
+          badge.position.set(x, y, 0.031);
+          board.add(badge);
+        }
+        geo.rings.forEach(([, points], i) => {
+          const [, y, radius] = scorePockets.get(String(points));
+          scoreBadge(points, (i % 2 ? -1 : 1) * (radius + 0.069), y);
+        });
+        for (const [x, y, radius] of cornerPockets) scoreBadge(100, x, y + radius + 0.046);
       }
       boardFace.material.map = boardTex; boardFace.material.needsUpdate = true;
     }
@@ -579,7 +684,7 @@ UI.midway = (() => {
     const skeeJack = new T.Mesh(new T.TorusGeometry(0.05, 0.014, 8, 24), goldMat); skeeJack.position.z = 0.016; board.add(skeeJack);
     const skeeBall = new T.Mesh(new T.SphereGeometry(0.045, 16, 12), std(0xffffff, { roughness: 0.35, map: ballTex })); skeeBall.castShadow = true;
     const skeeBalls = [];
-    const skeeSign = marquee('SKEE ROLL', 1.3, 0.22); skeeSign.position.set(0, 2.34, -4.18); skee.add(skeeSign);
+    const skeeSign = marquee('SKEE ROLL', 1.3, 0.22, SKEE_FACE); skeeSign.position.set(0, 2.34, -4.18); skee.add(skeeSign);
     const boardPt = (bx, by, lift = 0.05) => board.localToWorld(new T.Vector3(bx, by, lift));
 
     // ⭕ Ring Toss: a table of bottles, board (bx, by) → world (bx, 0.86, -1.5 - by)
@@ -656,6 +761,25 @@ UI.midway = (() => {
     // the preview: dots along the arc and a ring where it would land
     const dotGeo = new T.SphereGeometry(0.012, 6, 4), dotMat = new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, depthTest: false });
     const dots = Array.from({ length: 14 }, () => { const m = new T.Mesh(dotGeo, dotMat); m.renderOrder = 9; scene3.add(m); return m; });
+    const arrowShape = new T.Shape();
+    arrowShape.moveTo(-0.046, -0.035);
+    arrowShape.lineTo(0, 0.035);
+    arrowShape.lineTo(0.046, -0.035);
+    arrowShape.lineTo(0, -0.012);
+    arrowShape.closePath();
+    const arrowGeo = new T.ShapeGeometry(arrowShape);
+    const arrowBacking = new T.MeshBasicMaterial({ color: 0x102629, toneMapped: false });
+    const aimArrows = Array.from({ length: 6 }, () => {
+      const arrow = new T.Mesh(arrowGeo, new T.MeshBasicMaterial({
+        color: 0xfff3cb, toneMapped: false,
+      }));
+      const backing = new T.Mesh(arrowGeo, arrowBacking);
+      backing.scale.set(1.24, 1.24, 1);
+      backing.position.z = -0.002;
+      arrow.add(backing);
+      scene3.add(arrow);
+      return arrow;
+    });
     const mark = new T.Mesh(new T.RingGeometry(0.035, 0.05, 24), new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, depthTest: false, side: T.DoubleSide }));
     mark.renderOrder = 9; scene3.add(mark);
     // confetti for jackpots and sweeps
@@ -715,11 +839,17 @@ UI.midway = (() => {
       if (u < 0.55) { const s = 1 - (1 - u / 0.55) ** 1.6; return rollAt(s); }
       if (u < landU) return arc(lip, boardPt(sh.x, Math.max(0.02, sh.y)), 0.22, (u - 0.55) / (landU - 0.55));
       const w = Math.min(1, (u - landU) / (1 - landU));
-      if (sh.rattle) {   // 🎳 it rattles along the wire, then drops on one side (or into the cup)
-        const k = Math.min(1, w / 0.45), hop = Math.sin(Math.min(1, w / 0.45) * Math.PI * 3) * 0.012 * (1 - k);
-        return boardPt(sh.x + (sh.ex - sh.x) * k + hop, Math.max(0.02, sh.y + (sh.ey - sh.y) * k), 0.05 - 0.12 * Math.max(0, (w - 0.45) / 0.55));
-      }
-      return boardPt(sh.x, Math.max(0.02, sh.y), 0.05 - 0.12 * w);
+      const settle = sh.rattle ? Math.min(1, w / 0.25) : 1;
+      const hop = sh.rattle ? Math.sin(settle * Math.PI * 3) * 0.012 * (1 - settle) : 0;
+      const x = sh.x + (sh.ex - sh.x) * settle + hop;
+      const y = Math.max(0.02, sh.y + (sh.ey - sh.y) * settle);
+      const pocket = sh.where === 'cup' ? cornerPockets[x < 0 ? 0 : 1] : scorePockets.get(sh.where);
+      const progress = clamp((w - 0.25) / 0.55, 0, 1);
+      const approach = progress * progress * (3 - 2 * progress);
+      const targetX = pocket ? pocket[0] : x;
+      const targetY = pocket ? pocket[1] : 0.02;
+      const depth = w > 0.8 ? (w - 0.8) / 0.2 : 0;
+      return boardPt(x + (targetX - x) * approach, y + (targetY - y) * approach, 0.05 - 0.14 * depth);
     }
     function ringPath(sh, u, landU) {
       const top = 0.31, first = tablePt(sh.x, sh.y, TY + top);
@@ -749,16 +879,32 @@ UI.midway = (() => {
       const dt = Math.min(0.1, lastT ? (now - lastT) / 1000 : 0.016); lastT = now;
       build(sc);
       if (sc.kind !== kindNow) { kindNow = sc.kind; cam.init = false; if (spot) spot.target.position.set(0, sc.kind === 'rings' ? TY : 1.4, sc.kind === 'skee' ? -3.7 : sc.kind === 'rings' ? TZ - 0.5 : SZ); }
+      if (sc.kind !== 'skee') lastTrayCount = null;
+      counter.visible = front.visible = sc.kind !== 'skee' && sc.kind !== 'hoops';
       hoops.visible = sc.kind === 'hoops';
-      counter.visible = front.visible = sc.kind !== 'hoops';
       skee.visible = sc.kind === 'skee'; rings.visible = sc.kind === 'rings'; cansG.visible = sc.kind === 'cans';
       const pool = (arr, proto, parent) => { while (arr.length < sc.fly.length) { const m = proto.clone(); m.material = proto.material.clone(); parent.add(m); arr.push(m); } arr.forEach((m) => { m.visible = false; }); };
       if (sc.kind === 'skee') {
         skeeJack.visible = sc.jackLive; skeeJack.position.set(sc.layout.jack[0], sc.layout.jack[1], 0.016);
         pool(skeeBalls, skeeBall, scene3);
         sc.fly.forEach((f, k) => { const m = skeeBalls[k]; m.visible = f.u > 0 && f.u < 1; m.position.copy(skeePath(f.shot, f.u, f.landU)); m.rotation.x = -f.u * 40; m.material.color.set(sc.color); trail(k, (u) => skeePath(f.shot, u, f.landU), f, sc.color); });
-        trayBalls.forEach((m, k) => { m.visible = k < (sc.left ?? 0); });
-        paintPanel(sc.pts ?? 0);
+        const count = clamp(sc.left ?? 0, 0, trayBalls.length);
+        if (lastTrayCount === null || count > lastTrayCount) {
+          trayBalls.forEach((ball, k) => { ball.position.z = returnFront - k * ballSpacing; });
+        } else if (count < lastTrayCount) {
+          const used = lastTrayCount - count;
+          for (let k = 0; k < count; k++) trayBalls[k].position.z = trayBalls[k + used].position.z;
+        }
+        lastTrayCount = count;
+        trayBalls.forEach((ball, k) => {
+          ball.visible = k < count;
+          const target = returnFront - k * ballSpacing;
+          const step = Math.min(target - ball.position.z, dt * 0.7);
+          ball.position.z += step;
+          ball.position.y = returnHeight(ball.position.z) + ballRadius;
+          ball.rotation.x += step / ballRadius;
+        });
+        paintPanel(sc.pts ?? 0, count);
       } else if (sc.kind === 'rings') {
         bottleMeshes.forEach((m, i) => { m.material = i === sc.layout.jack && sc.jackLive ? goldMat : glass[sc.layout.colours[i]]; });
         while (ringPool.length < sc.shots.length) { const m = new T.Mesh(ringGeo, ringMat(0xffffff)); rings.add(m); ringPool.push(m); }
@@ -800,16 +946,31 @@ UI.midway = (() => {
       // the preview arc
       const pv = sc.preview;
       // #149: only the start of the throw shows (its direction and loft), never where it lands; the skee lane shows
-      // just a short arrow of dots up the lane, and the power meter is the only guide to how far
-      mark.visible = false; dots.forEach((d) => { d.visible = !!pv; });
-      if (pv) {
-        let end, h, start = HAND[sc.kind], from = 0.14, upto = 0.32;
-        if (sc.kind === 'skee') { end = new T.Vector3(clamp(pv.x * 0.7, -0.33, 0.33), laneHeight(laneLip) + ballRadius, laneLip); h = 0; from = 0.2; upto = 0.4; }
-        else if (sc.kind === 'hoops') { end = hoopPoint(pv.x, pv.y); h = 0.68; }
-        else if (sc.kind === 'rings') { end = tablePt(pv.x, pv.y, TY + 0.3); h = 0.5; }
-        else { end = new T.Vector3(pv.x, SY + pv.y, SZ + 0.12); h = 0.12; }
+      // a short row of arrows whose lighting mirrors the charge meter
+      mark.visible = false;
+      const lanePreview = sc.kind === 'skee' && pv;
+      aimArrows.forEach((arrow, i) => {
+        arrow.visible = !!lanePreview;
+        if (!lanePreview) return;
+        const t = 0.16 + i * 0.08;
+        const x = clamp(pv.x * 0.7, -0.33, 0.33) * t;
+        const z = laneFront + (laneLip - laneFront) * t;
+        const yaw = Math.atan2(x, laneFront - z);
+        arrow.position.set(x, laneHeight(z) + 0.008, z);
+        arrow.rotation.set(-Math.PI / 2 + Math.atan(0.1 / (laneFront - laneLip)), 0, -yaw);
+        const lit = sc.charging && sc.chargePower * aimArrows.length > i;
+        arrow.material.color.setHex(lit ? 0xffac30 : 0xfff3cb);
+      });
+      dots.forEach((d) => { d.visible = !!pv && !lanePreview; });
+      if (pv && !lanePreview) {
+        const start = HAND[sc.kind];
+        const ringToss = sc.kind === 'rings';
+        const basketball = sc.kind === 'hoops';
+        const end = ringToss ? tablePt(pv.x, pv.y, TY + 0.3) : basketball ? hoopPoint(pv.x, pv.y) : new T.Vector3(pv.x, SY + pv.y, SZ + 0.12);
         dotMat.opacity = sc.swiping ? 0.9 : 0.5;
-        dots.forEach((d, k) => { const p = arc(start, end, h, from + upto * (k + 1) / dots.length); if (sc.kind === 'skee') p.y = laneHeight(p.z) + ballRadius; d.position.copy(p); });
+        dots.forEach((d, k) => {
+          d.position.copy(arc(start, end, ringToss ? 0.5 : basketball ? 0.68 : 0.12, 0.14 + 0.32 * (k + 1) / dots.length));
+        });
       }
       for (let k = bits.length - 1; k >= 0; k--) {
         const m = bits[k], u = m.userData;
@@ -850,7 +1011,7 @@ UI.midway = (() => {
       dispose() {
         stg.dispose();
         scene3.traverse((m) => { m.geometry?.dispose(); for (const mat of [].concat(m.material || [])) { mat.map?.dispose(); mat.dispose(); } });
-        boardTex?.dispose(); panelTex?.dispose(); renderer.dispose(); canvas.remove();
+        boardTex?.dispose(); renderer.dispose(); canvas.remove();
       },
     };
   }
@@ -876,10 +1037,29 @@ UI.midway = (() => {
       const X = (x) => cx + x * k, Y = (y) => by - (y + 0.1) * k;
       g.lineWidth = 2;
       if (sc.kind === 'skee') {
-        g.fillStyle = '#16365c'; g.fillRect(X(-0.65), Y(1.2), 1.3 * k, 1.2 * k);
-        const cols = ['#2a6fb5', '#e8483f', '#ffd23f', '#3ddc97', '#f4efe4'];
-        [...sc.geo.rings].reverse().forEach(([r], n) => { g.beginPath(); g.arc(X(0), Y(sc.geo.cy), r * k, 0, 7); g.fillStyle = cols[n]; g.fill(); g.strokeStyle = '#0b1830'; g.stroke(); });
-        for (const [x, y] of sc.geo.cups) { g.beginPath(); g.arc(X(x), Y(y), sc.geo.cupR * k, 0, 7); g.fillStyle = '#05080f'; g.fill(); g.strokeStyle = '#ffd23f'; g.stroke(); }
+        g.fillStyle = SKEE_FACE; g.fillRect(X(-0.65), Y(1.2), 1.3 * k, 1.2 * k);
+        g.strokeStyle = '#e7b86c'; g.strokeRect(X(-0.63), Y(1.18), 1.26 * k, 1.16 * k);
+        const { rings, cy, cups, cupR } = sc.geo;
+        for (let i = rings.length - 1; i >= 0; i--) {
+          g.beginPath(); g.arc(X(0), Y(cy), rings[i][0] * k, 0, 7);
+          g.fillStyle = SKEE_RINGS[i]; g.fill(); g.strokeStyle = '#112d30'; g.stroke();
+        }
+        function label(points, x, y) {
+          g.font = `800 ${Math.max(10, k * 0.056)}px system-ui, sans-serif`;
+          g.textAlign = 'center'; g.textBaseline = 'middle';
+          g.strokeStyle = '#102629'; g.lineWidth = 3; g.strokeText(String(points), X(x), Y(y));
+          g.fillStyle = '#fff2d7'; g.fillText(String(points), X(x), Y(y));
+          g.lineWidth = 2;
+        }
+        rings.forEach(([r, points], i) => {
+          const inner = i ? rings[i - 1][0] : 0;
+          label(points, i ? (i % 2 ? -1 : 1) * (inner + r) / 2 : 0, cy);
+        });
+        for (const [x, y] of cups) {
+          g.beginPath(); g.arc(X(x), Y(y), cupR * k, 0, 7);
+          g.fillStyle = '#0a1518'; g.fill(); g.strokeStyle = '#e7b86c'; g.stroke();
+          label(100, x, y + cupR + 0.045);
+        }
         if (sc.jackLive) { g.beginPath(); g.arc(X(sc.layout.jack[0]), Y(sc.layout.jack[1]), sc.geo.jackR * k, 0, 7); g.strokeStyle = '#ffc83a'; g.lineWidth = 4; g.stroke(); g.lineWidth = 2; }
         for (const f of sc.fly) {
           if (f.u <= 0 || f.u >= 1) continue;

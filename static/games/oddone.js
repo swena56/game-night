@@ -97,6 +97,7 @@ UI.oddone = (() => {
 
     // clues, grouped by player in speaking order
     const box = $('ooClues'); box.innerHTML = '';
+    const showClueWords = g.stage === 'reveal' && g.common;
     const byPlayer = {};
     for (const [pid, text] of g.clues) (byPlayer[pid] ||= []).push(text);
     for (const pid of g.order) {
@@ -105,6 +106,10 @@ UI.oddone = (() => {
       if (g.stage === 'clue' && S.turn === pid) row.classList.add('now');
       if (g.odd === pid) row.classList.add('odd');
       row.append(dot(p), ctx.el('b', '', p?.name ?? '?'));
+      if (showClueWords) {
+        const word = pid === g.odd ? g.oddWord : g.common;
+        row.append(ctx.el('span', 'oo-clue-word', word === '🫥' ? '🫥 No word' : `“${word}”`));
+      }
       for (const t of byPlayer[pid] || []) row.append(ctx.el('span', 'oo-clue', t));
       if (g.stage === 'clue' && S.turn === pid) row.append(ctx.el('span', 'oo-clue pending', '…'));
       box.append(row);

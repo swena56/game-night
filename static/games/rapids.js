@@ -424,12 +424,22 @@ UI.rapids = (() => {
     // -- water: a ribbon down the river, tinted by the current (fast lanes lighter), white where it's white water
     const flowTex = canvasTex(T, 64, 256, (g, w, h) => {
       g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h);
-      for (let k = 0; k < 70; k++) {
-        const x = Math.random() * w, y = Math.random() * h, l = 10 + Math.random() * 30;
-        g.strokeStyle = `rgba(150,190,230,${0.25 + Math.random() * 0.35})`; g.lineWidth = 1 + Math.random() * 1.5;
-        g.beginPath(); g.moveTo(x, y); g.lineTo(x + (Math.random() - 0.5) * 3, y + l); g.stroke();
+      for (let k = 0; k < 46; k++) {
+        const x = (k * 19.37) % w, y = (k * 53.23) % h, length = 12 + (k * 17) % 42;
+        const drift = Math.sin(k * 2.7) * 5;
+        for (const ty of [y - h, y]) {
+          const glint = g.createLinearGradient(0, ty, 0, ty + length);
+          glint.addColorStop(0, '#7899ae00');
+          glint.addColorStop(0.45, k % 3 ? '#6c9aad48' : '#46758666');
+          glint.addColorStop(1, '#7899ae00');
+          g.strokeStyle = glint; g.lineWidth = 1 + k % 3 * 0.5;
+          g.beginPath(); g.moveTo(x, ty);
+          g.bezierCurveTo(x + drift, ty + length * 0.3, x - drift, ty + length * 0.7, x, ty + length);
+          g.stroke();
+        }
       }
     });
+    flowTex.colorSpace = T.SRGBColorSpace;
     flowTex.wrapS = flowTex.wrapT = T.RepeatWrapping;
     const DS = 0.5, S0 = -12, S1 = L + 18;
     function ribbon(x0f, x1f, cols, yOff, colorAt) {
@@ -454,7 +464,7 @@ UI.rapids = (() => {
       geo.setIndex(idx); geo.computeVertexNormals();
       return geo;
     }
-    const deep = new T.Color('#2f7fb8'), fastC = new T.Color('#5fb6e6'), foamC = new T.Color('#eaf6ff'), edgeC = new T.Color('#3f8f9a');
+    const deep = new T.Color('#256b90'), fastC = new T.Color('#59c3cd'), foamC = new T.Color('#eaf6ff'), edgeC = new T.Color('#438f83');
     const waterGeo = ribbon((w) => -w / 2 - 0.4, (w) => w / 2 + 0.4, low ? 10 : 16, 0, (cc, s, x) => {
       const sc = Math.max(0, Math.min(L, s)), u = C.current(sc, x), w = C.width(sc);
       cc.copy(deep).lerp(fastC, Math.max(0, Math.min(1, (u - 3.2) / 1.6)));
@@ -627,10 +637,21 @@ UI.rapids = (() => {
     function arch(s, finish) {
       const w = C.width(s) + 1.2, g = new T.Group(), post = new T.MeshStandardMaterial({ color: 0x7b5a3a, roughness: 0.8 });
       for (const side of [-1, 1]) { const p = new T.Mesh(new T.CylinderGeometry(0.12, 0.14, 3.2, 8), post); p.position.set(side * w / 2, 1.6, 0); p.castShadow = !low; g.add(p); }
-      const tex = canvasTex(T, 256, 32, (gg, tw, th) => {
-        if (finish) { for (let k = 0; k < 32; k++) for (let r = 0; r < 4; r++) { gg.fillStyle = (k + r) % 2 ? '#111' : '#fff'; gg.fillRect(k * 8, r * 8, 8, 8); } }
-        else { gg.fillStyle = '#ffcf3d'; gg.fillRect(0, 0, tw, th); gg.fillStyle = '#7a4b00'; gg.font = 'bold 22px sans-serif'; gg.textAlign = 'center'; gg.fillText('🚣 START', tw / 2, 24); }
+      const tex = canvasTex(T, 512, 64, (gg, tw, th) => {
+        gg.fillStyle = finish ? '#1b2532' : '#16595e';
+        gg.fillRect(0, 0, tw, th);
+        gg.fillStyle = '#f8dfaa';
+        gg.fillRect(0, 0, tw, 3); gg.fillRect(0, th - 3, tw, 3);
+        for (const offset of [0, tw - 112]) {
+          for (let x = 0; x < 7; x++) for (let y = 0; y < 4; y++) {
+            if ((x + y) % 2 === 0) gg.fillRect(offset + x * 16, y * 16 + 4, 16, 12);
+          }
+        }
+        gg.font = '900 40px system-ui, sans-serif';
+        gg.textAlign = 'center'; gg.textBaseline = 'middle';
+        gg.fillText(finish ? 'FINISH' : 'START', tw / 2, th / 2 + 2);
       });
+      tex.colorSpace = T.SRGBColorSpace;
       const band = new T.Mesh(new T.PlaneGeometry(w, 0.5), new T.MeshStandardMaterial({ map: tex, side: T.DoubleSide, roughness: 0.7 }));
       band.position.y = 2.9; g.add(band);
       g.position.copy(W(s, 0)); g.rotation.y = C.heading(s);

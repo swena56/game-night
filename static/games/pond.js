@@ -489,7 +489,7 @@ UI.pond = (() => {
     const stg = GL3.stage(renderer, scene3, {
       exposure: 0.95, hemi: [0xe8f0ff, 0x8aa0b8, 0.6], env: true,
       key: { color: 0xfff4e6, i: 1.0, pos: [-14, 22, 10], area: 30, near: 5, far: 80, map: 1024 },
-      sky: { top: 0x8fb4dc, horizon: 0xe6eef6, bottom: 0xdfe8f0, radius: 200, band: 0.1 },
+      sky: { top: 0x729acb, horizon: 0xf0e9e6, bottom: 0xdfe8f0, radius: 200, band: 0.1 },
     });
     const low = stg.low;
     scene3.fog = new T3.Fog(0xe6eef6, 40, 140);
@@ -508,12 +508,13 @@ UI.pond = (() => {
     snow.rotation.x = -Math.PI / 2; snow.position.y = -0.02; snow.receiveShadow = true; scene3.add(snow);
     // the ice: blue-white with cracks and drifts of snow
     const iceTex = tex(1024, 1024, (g, w) => {
-      const c = w / 2, gr = g.createRadialGradient(c, c, 0, c, c, c); gr.addColorStop(0, '#6fa6d6'); gr.addColorStop(0.7, '#94bfe4'); gr.addColorStop(0.97, '#c8def0'); gr.addColorStop(1, '#f2f6fb');
+      const c = w / 2, gr = g.createRadialGradient(c, c, 0, c, c, c); gr.addColorStop(0, '#71aec8'); gr.addColorStop(0.62, '#88bfd5'); gr.addColorStop(0.86, '#afd6e5'); gr.addColorStop(1, '#eef6fa');
       g.fillStyle = gr; g.fillRect(0, 0, w, w);
       g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 1.5;
       for (let k = 0; k < 26; k++) { let x = Math.random() * w, y = Math.random() * w; g.beginPath(); g.moveTo(x, y); for (let j = 0; j < 7; j++) { x += (Math.random() - 0.5) * 90; y += (Math.random() - 0.5) * 90; g.lineTo(x, y); } g.stroke(); }
       for (let k = 0; k < 18; k++) { const x = Math.random() * w, y = Math.random() * w, r = 30 + Math.random() * 90, d = g.createRadialGradient(x, y, 0, x, y, r); d.addColorStop(0, 'rgba(245,249,253,.7)'); d.addColorStop(1, 'rgba(245,249,253,0)'); g.fillStyle = d; g.fillRect(x - r, y - r, 2 * r, 2 * r); }
     });
+    iceTex.colorSpace = T3.SRGBColorSpace;
     const ice = new T3.Mesh(new T3.CircleGeometry(R, 72), std(0xffffff, { map: iceTex, roughness: 0.22, metalness: 0.05 }));
     ice.rotation.x = -Math.PI / 2; ice.receiveShadow = true; scene3.add(ice);
     // a snowbank round the shore
@@ -532,12 +533,34 @@ UI.pond = (() => {
       }
       tr.scale.setScalar(s); tr.position.set(Math.cos(a) * d, 0, Math.sin(a) * d); scene3.add(tr);
     }
-    const hutCols = [0xc0392b, 0x2f6fb5];
+    const siding = tex(128, 128, (g, w, h) => {
+      g.fillStyle = '#eee4d7'; g.fillRect(0, 0, w, h);
+      for (let y = 0; y < h; y += 16) {
+        g.fillStyle = '#746056'; g.fillRect(0, y, w, 2);
+        g.fillStyle = '#fff6e7'; g.fillRect(0, y + 2, w, 2);
+      }
+    });
+    siding.colorSpace = T3.SRGBColorSpace;
+    const hutCols = [0xa34a38, 0x397785];
+    const trimMat = std(0x583e32);
+    const windowMat = new T3.MeshBasicMaterial({ color: 0xffd08a, toneMapped: false });
+    const windowGeo = new T3.PlaneGeometry(0.33, 0.39);
     [[-R - 3, -4], [R + 3.2, -7]].forEach(([x, y], k) => {
       const hut = new T3.Group();
-      const body = new T3.Mesh(new T3.BoxGeometry(2.2, 1.8, 2.6), std(hutCols[k])); body.position.y = 0.9; body.castShadow = true; hut.add(body);
-      const roof = new T3.Mesh(new T3.CylinderGeometry(0.01, 1.8, 1, 4, 1), snowCap); roof.rotation.y = Math.PI / 4; roof.scale.set(1, 0.9, 1.25); roof.position.y = 2.25; hut.add(roof);
-      const door = new T3.Mesh(new T3.PlaneGeometry(0.7, 1.2), std(0x3a2a1a)); door.position.set(0, 0.6, 1.31); hut.add(door);
+      const body = new T3.Mesh(new T3.BoxGeometry(2.2, 1.8, 2.6), std(hutCols[k], { map: siding }));
+      body.position.y = 0.9; body.castShadow = true; hut.add(body);
+      const roof = new T3.Mesh(new T3.CylinderGeometry(0.01, 1.8, 1, 4, 1), snowCap);
+      roof.rotation.y = Math.PI / 4; roof.scale.set(1, 0.9, 1.25); roof.position.y = 2.25; hut.add(roof);
+      const door = new T3.Mesh(new T3.BoxGeometry(0.7, 1.2, 0.06), trimMat);
+      door.position.set(0, 0.6, 1.32); hut.add(door);
+      for (const wx of [-0.72, 0.72]) {
+        const frame = new T3.Mesh(new T3.BoxGeometry(0.43, 0.49, 0.06), trimMat);
+        frame.position.set(wx, 1.12, 1.32); hut.add(frame);
+        const pane = new T3.Mesh(windowGeo, windowMat);
+        pane.position.set(wx, 1.12, 1.352); hut.add(pane);
+        const mullion = new T3.Mesh(new T3.BoxGeometry(0.035, 0.39, 0.018), trimMat);
+        mullion.position.set(wx, 1.12, 1.36); hut.add(mullion);
+      }
       hut.position.copy(W(x, y)); hut.lookAt(0, 0, 0); scene3.add(hut);
     });
 
