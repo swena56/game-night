@@ -1195,44 +1195,53 @@ UI.midway = (() => {
     let hoopBall, rubberBump;
     function buildHoops(geo) {
       function paintRubber(g, w, h, heightMap) {
-        g.fillStyle = heightMap ? '#777' : '#eb6216';
+        // Warm leather-orange base with a soft top-to-bottom shade, then dense random pebbling.
+        const base = g.createLinearGradient(0, 0, 0, h);
+        base.addColorStop(0, heightMap ? '#777' : '#e2601a');
+        base.addColorStop(0.5, heightMap ? '#777' : '#f26f1d');
+        base.addColorStop(1, heightMap ? '#777' : '#d9561a');
+        g.fillStyle = base;
         g.fillRect(0, 0, w, h);
-        for (let row = 0; row * 5 < h; row++) {
-          // The map is equirectangular, so widen the pebbles toward the poles to keep them round on the sphere.
-          const stretch = 1 / Math.max(0.22, Math.cos(((row * 5 + 2.5) / h - 0.5) * Math.PI));
-          for (let col = 0; col * 5 * stretch < w; col++) {
-            const grain = (row * 13 + col * 23 + (row * col) % 19) % 11;
-            const x = (col * 5 + (row % 2) * 2.5 + grain * 0.16) * stretch % w;
-            const y = row * 5 + grain * 0.14;
-            g.fillStyle = heightMap ? '#c8c8c8' : grain < 5 ? '#ff943e' : '#f77a23';
-            g.beginPath(); g.ellipse(x, y, 1.65 * stretch, 1.8, 0.2, 0, Math.PI * 2); g.fill();
+        let seed = 12345;
+        const rand = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+        for (let i = 0; i < 26000; i++) {
+          const y = rand() * h;
+          // The map is equirectangular, so widen pebbles toward the poles to keep them round on the sphere.
+          const stretch = 1 / Math.max(0.2, Math.cos((y / h - 0.5) * Math.PI));
+          const x = rand() * w, r = 0.9 + rand() * 0.8;
+          const tone = rand();
+          g.fillStyle = heightMap ? (tone < 0.5 ? '#bdbdbd' : '#9a9a9a')
+            : tone < 0.35 ? '#ff9a44' : tone < 0.7 ? '#c9490f' : '#f5761f';
+          g.globalAlpha = heightMap ? 0.9 : 0.55;
+          g.beginPath(); g.ellipse(x, y, r * stretch, r, 0, 0, Math.PI * 2); g.fill();
+        }
+        g.globalAlpha = 1;
+        // Seams: a soft groove under a crisp black line. The equator and both halves of the vertical
+        // great circle stay continuous across the texture edge; two curved channels make the eight panels.
+        const seams = () => {
+          g.beginPath();
+          g.moveTo(0, h / 2); g.lineTo(w, h / 2);
+          g.moveTo(w / 2, 0); g.lineTo(w / 2, h);
+          g.moveTo(0, 0); g.lineTo(0, h);
+          g.moveTo(w, 0); g.lineTo(w, h);
+          for (const offset of [-w * 0.16, w * 0.16]) {
+            g.moveTo(w / 2 + offset, 0);
+            g.bezierCurveTo(w / 2 + offset * 1.8, h * 0.28, w / 2 + offset * 1.8, h * 0.72, w / 2 + offset, h);
           }
-        }
-        g.beginPath();
-        // Four channels form the traditional eight-panel basketball pattern.
-        // The UV sphere wraps at both sides, so keep the equator and both
-        // halves of the vertical great circle continuous at the texture edge.
-        g.moveTo(0, h / 2); g.lineTo(w, h / 2);
-        g.moveTo(w / 2, 0); g.lineTo(w / 2, h);
-        g.moveTo(0, 0); g.lineTo(0, h);
-        for (const offset of [-w * 0.16, w * 0.16]) {
-          g.moveTo(w / 2 + offset, 0);
-          g.bezierCurveTo(w / 2 + offset * 1.8, h * 0.28, w / 2 + offset * 1.8, h * 0.72, w / 2 + offset, h);
-        }
-        g.lineWidth = 5;
-        g.strokeStyle = heightMap ? '#353535' : '#5b2a14';
-        g.stroke();
-        g.lineWidth = 2.6;
-        g.strokeStyle = heightMap ? '#171717' : '#21140d';
-        g.stroke();
+        };
+        g.lineCap = 'round';
+        const passes = heightMap
+          ? [[9, '#5a5a5a'], [4.5, '#2a2a2a']]
+          : [[8, '#a63e0e'], [4.2, '#3a1a0a'], [2.2, '#120a06']];
+        for (const [width, color] of passes) { seams(); g.lineWidth = width; g.strokeStyle = color; g.stroke(); }
       }
-      const rubber = tex(512, 256, (g, w, h) => paintRubber(g, w, h, false));
-      rubberBump = tex(512, 256, (g, w, h) => paintRubber(g, w, h, true));
+      const rubber = tex(1024, 512, (g, w, h) => paintRubber(g, w, h, false));
+      rubberBump = tex(1024, 512, (g, w, h) => paintRubber(g, w, h, true));
       rubberBump.encoding = T.LinearEncoding;
       for (const map of [rubber, rubberBump]) map.wrapS = T.RepeatWrapping;
       const ballMesh = new T.Mesh(new T.SphereGeometry(hoopRadius, 40, 32), std(0xffffff, {
-        map: rubber, bumpMap: rubberBump, bumpScale: 0.0013, roughness: 0.63,
-        emissive: 0x82330d, emissiveIntensity: 0.13,
+        map: rubber, bumpMap: rubberBump, bumpScale: 0.0035, roughness: 0.78,
+        emissive: 0x82330d, emissiveIntensity: 0.07,
       }));
       hoopBall = new T.Group();
       hoopBall.add(ballMesh);
@@ -1563,7 +1572,7 @@ UI.midway = (() => {
         sc.basketballs.forEach(({ x, y, z, spin }, i) => {
           const ball = hoopBalls[i];
           ball.position.set(x, y, z);
-          ball.children[0].rotation.set(spin + 0.33, -0.48 + i * 0.24, 0.26);
+          ball.children[0].rotation.set(spin + 0.1, -0.5 + (i * 0.9) % 1.6, 0.08);
         });
       } else {
         sc.geo.cans.forEach(([cx, cy], i) => {
