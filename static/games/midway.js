@@ -504,29 +504,6 @@ UI.midway = (() => {
     cabinetBox(0.19, 0.09, 0.93, 0.59, 0.88, -0.48, rubber);
     for (const x of [0.49, 0.69]) cabinetBox(0.028, 0.08, 0.96, x, 0.94, -0.48, lacquer);
     for (const z of [-0.015, -0.945]) cabinetBox(0.2, 0.08, 0.025, 0.59, 0.94, z, lacquer);
-    const wire = [];
-    const strand = (ax, ay, az, bx, by, bz) => wire.push(ax, ay, az, bx, by, bz);
-    for (let i = 0; i <= 16; i++) {
-      const x = -0.66 + i * 1.32 / 16;
-      strand(x, 1.53, -3.18, x, 2.01, -3.18);
-    }
-    for (let i = 0; i <= 6; i++) {
-      const y = 1.53 + i * 0.08;
-      strand(-0.66, y, -3.18, 0.66, y, -3.18);
-      for (const x of [-0.66, 0.66]) strand(x, y, -3.18, x, y, -4.26);
-    }
-    for (const x of [-0.66, 0.66]) {
-      for (let i = 0; i <= 13; i++) {
-        const z = -3.18 - i * 1.08 / 13;
-        strand(x, 1.53, z, x, 2.01, z);
-      }
-    }
-    const guardGeo = new T.BufferGeometry();
-    guardGeo.setAttribute('position', new T.Float32BufferAttribute(wire, 3));
-    skee.add(new T.LineSegments(guardGeo, new T.LineBasicMaterial({
-      color: 0xbdb2a1, transparent: true, opacity: 0.28, depthWrite: false,
-    })));
-    for (const y of [1.53, 2.01]) cabinetBox(1.36, 0.018, 0.018, 0, y, -3.18, brass);
     const trayBalls = Array.from({ length: 9 }, (_, k) => { const m = new T.Mesh(new T.SphereGeometry(0.045, 14, 10), std(0xf4efe4, { roughness: 0.4 })); m.position.set(0.59, 0.97, -0.1 - k * 0.095); m.castShadow = true; skee.add(m); return m; });
     let panelTex = null, panelVal = null;
     const panel = new T.Mesh(new T.PlaneGeometry(0.62, 0.18), new T.MeshBasicMaterial({ color: 0xffffff }));
