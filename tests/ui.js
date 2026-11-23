@@ -448,6 +448,20 @@ const MOVES = {
   midway(d, S, n, w) {  // swipes up on the booth (aim + power), and the buttons / keys
     const fire = (el, type, x = 0, y = 0) => el && el.dispatchEvent(new w.MouseEvent(type, { bubbles: true, clientX: x, clientY: y }));
     const st = d.querySelector('#mwStage'), kind = n % 3;
+    if (S.midway.kind === 'skee') {
+      const roll = d.querySelector('#mwGo');
+      if (!roll || roll.disabled || roll.dataset.testCharging) return;
+      fire(st, 'pointerdown', 150, 260);
+      fire(st, 'pointermove', 150 + pick([-40, 0, 30]), 260);
+      fire(st, 'pointerup', 150, 260);
+      roll.dataset.testCharging = '1';
+      fire(roll, 'pointerdown');
+      w.setTimeout(() => {
+        fire(roll, 'pointerup');
+        delete roll.dataset.testCharging;
+      }, pick([350, 530, 920]));
+      return;
+    }
     if (kind === 0) { fire(st, 'pointerdown', 150, 260); fire(st, 'pointermove', 150 + pick([-40, 0, 30]), 260 - pick([60, 120, 180])); fire(st, 'pointerup', 150, 100); }
     else if (kind === 1) { d.querySelector(`#mwCtl [data-a="${pick([-1, 1])}"]`)?.click(); d.querySelector('#mwGo')?.click(); }
     else w.dispatchEvent(new w.KeyboardEvent('keydown', { key: pick(['ArrowUp', 'ArrowLeft', ' ']), bubbles: true }));

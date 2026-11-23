@@ -1,9 +1,10 @@
 // Midway Night: a carnival booth in 3D (three.js) or flat. Everyone throws at once in their own copy of the booth.
-// Swipe up anywhere on the booth: sideways aims, the length sets how far (or high) it goes; or nudge with ◀ ▶ ▲ ▼
-// (arrow keys) and tap 🎯 Throw (Space). The server says where each throw lands; the page plays it out.
+// Skee Roll uses drag-to-aim and a hold-to-roll button. The other booths also accept swipes and keys.
+// The server decides where each throw lands; the page plays it out.
 UI.midway = (() => {
   let S, ctx, V, gl = null, flat = null, raf = 0, ro = null, keyFn = null;
   let anims = [], seen = new Set(), watchId = null, watchKey = '', lastV = null, goAt = 0, endAt = 0;
+  let charge, cancelCharge;
   let aim = 0, power = 0.5, swipe = null, lastThrow = 0, popT = 0, lastDraw = 0, lastTick = 0, fallAt = [];
   const $ = (id) => document.getElementById(id);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -37,7 +38,8 @@ UI.midway = (() => {
     side.innerHTML = '<div class="panel"><h3>🎟 Tickets</h3><div id="mwRace" class="mw-race"></div><div id="mwFeed" class="mw-feed"></div></div>';
     $('mwCtl').addEventListener('click', (e) => {
       const b = e.target.closest('button'); if (!b) return;
-      if (b.id === 'mwGo') return fire();
+      if (b.id === 'mwGo') { if (V?.kind !== 'skee') fire(); return; }
+      if (charge) return;
       if (b.dataset.a) aim = clamp(aim + 0.08 * b.dataset.a, -1, 1);
       if (b.dataset.p) power = clamp(power + 0.04 * b.dataset.p, 0, 1);
       meter();
@@ -46,16 +48,42 @@ UI.midway = (() => {
       const row = e.target.closest('[data-pid]');
       if (row && (!V?.me || left() === 0 || V.stage !== 'play')) { watchId = row.dataset.pid; resync(); render(S, ctx); }
     });
+    const roll = $('mwGo');
+    function finishCharge(e, release = false) {
+      if (!charge || (e && e.pointerId !== charge.id)) return;
+      const { id, start } = charge;
+      charge = null;
+      if (roll.hasPointerCapture?.(id)) roll.releasePointerCapture(id);
+      power = release ? clamp((performance.now() - start) / 1000, 0, 1) : 0;
+      meter();
+      if (release) fire();
+    }
+    cancelCharge = () => finishCharge();
+    roll.addEventListener('pointerdown', (e) => {
+      if (V?.kind !== 'skee' || !canThrow() || charge || swipe || e.button !== 0) return;
+      try { roll.setPointerCapture(e.pointerId); } catch {}
+      charge = { id: e.pointerId, start: performance.now() };
+      power = 0;
+      meter();
+    });
+    roll.addEventListener('pointerup', (e) => finishCharge(e, true));
+    roll.addEventListener('pointercancel', finishCharge);
+    roll.addEventListener('lostpointercapture', finishCharge);
+    window.addEventListener('blur', cancelCharge);
     const stage = $('mwStage');
     stage.style.touchAction = 'none';
     stage.addEventListener('pointerdown', (e) => {
-      if (!canThrow() || e.target.closest('button, .mw-done')) return;
+      if (!canThrow() || charge || swipe || e.target.closest('button, .mw-done')) return;
       try { stage.setPointerCapture(e.pointerId); } catch {}
       swipe = { id: e.pointerId, x: e.clientX, y: e.clientY, a: aim, p: power, t: performance.now() };
     });
     stage.addEventListener('pointermove', (e) => {
       if (!swipe || e.pointerId !== swipe.id) return;
       const r = stage.getBoundingClientRect(), dx = e.clientX - swipe.x, dy = swipe.y - e.clientY;
+      if (V.kind === 'skee') {
+        aim = clamp(swipe.a + dx / Math.max(80, r.width * 0.38), -1, 1);
+        return;
+      }
       aim = clamp(dx / Math.max(80, r.width * 0.38), -1, 1);
       power = clamp(dy / Math.max(120, r.height * 0.62), 0, 1);
       swipe.moved = Math.max(swipe.moved || 0, dy);
@@ -63,6 +91,7 @@ UI.midway = (() => {
     });
     stage.addEventListener('pointerup', (e) => {
       if (!swipe || e.pointerId !== swipe.id) return;
+      if (V.kind === 'skee') { swipe = null; return; }
       const ok = (swipe.moved || 0) > 24;
       if (!ok) { aim = swipe.a; power = swipe.p; }
       swipe = null; meter();
@@ -70,7 +99,7 @@ UI.midway = (() => {
     });
     stage.addEventListener('pointercancel', () => { if (swipe) { aim = swipe.a; power = swipe.p; } swipe = null; });
     keyFn = (e) => {
-      if (!V || e.target.closest?.('input, textarea, select') || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (!V || V.kind === 'skee' || e.target.closest?.('input, textarea, select') || e.ctrlKey || e.metaKey || e.altKey) return;
       const k = e.key;
       if (k === 'ArrowLeft' || k === 'ArrowRight') aim = clamp(aim + (k === 'ArrowLeft' ? -0.06 : 0.06), -1, 1);
       else if (k === 'ArrowUp' || k === 'ArrowDown') power = clamp(power + (k === 'ArrowDown' ? -0.03 : 0.03), 0, 1);
@@ -87,6 +116,8 @@ UI.midway = (() => {
   }
 
   function unmount() {
+    cancelCharge?.();
+    window.removeEventListener('blur', cancelCharge); cancelCharge = null;
     cancelAnimationFrame(raf); raf = 0; ro?.disconnect(); gl?.dispose(); gl = null; flat = null; swipe = null;
     if (keyFn) window.removeEventListener('keydown', keyFn); keyFn = null;
     window.Snd?.bed('mw.crowd').set(0);
@@ -149,7 +180,7 @@ UI.midway = (() => {
     }
     if (!V.booths[watchId] || (V.me && watchId !== V.me && left() > 0 && V.stage === 'play')) watchId = V.me ?? V.seats[0];
     const key = `${V.round}:${watchId}`;
-    if (key !== watchKey) { watchKey = key; resync(); aim = 0; power = 0.5; }
+    if (key !== watchKey) { cancelCharge?.(); swipe = null; watchKey = key; resync(); aim = 0; power = 0.5; }
     const b = watched();
     let stagger = 0;
     for (const sh of b?.shots || []) {
@@ -182,6 +213,11 @@ UI.midway = (() => {
   function controls() {
     if (!V) return;
     const go = canThrow();
+    if (!go) cancelCharge?.();
+    const skee = V.kind === 'skee';
+    const label = skee ? 'Hold to roll' : '🎯 Throw';
+    if ($('mwGo').textContent !== label) $('mwGo').textContent = label;
+    $('mwCtl').classList.toggle('mw-skee', skee);
     $('mwGo').disabled = !go;
     $('mwGo').classList.toggle('mw-ready', go);
     $('mwCtl').classList.toggle('mw-off', !(V.me && left() > 0 && V.stage !== 'between'));
@@ -229,7 +265,7 @@ UI.midway = (() => {
     const t = S.phase !== 'playing' ? '' : V.stage === 'count' ? 'Get ready…'
       : V.stage === 'between' ? '' : !V.me ? 'Tap a name to watch their booth.'
         : left() === 0 ? 'Out of throws: tap a name to watch a rival.'
-          : { skee: 'Swipe up to roll: sideways aims, a longer swipe rolls further up the board. The corner cups pay 100.',
+          : { skee: 'Drag sideways to aim. Hold to charge, then release to roll. The corner cups pay 100.',
               rings: 'Swipe up to toss: a longer swipe reaches the back rows. Red bottles pay 80.',
               cans: 'Swipe up to throw: a longer swipe throws higher. Hit the bottom row and the cans above it fall too.' }[V.kind];
     if ($('mwHint').textContent !== t) $('mwHint').textContent = t;
@@ -312,6 +348,7 @@ UI.midway = (() => {
       ck.classList.toggle('low', s <= 5);
     } else ck.textContent = '';
     if ($('mwGo').disabled === canThrow()) controls();
+    if (charge) { power = clamp((now - charge.start) / 1000, 0, 1); meter(); }
     window.Snd?.bed('mw.crowd', crowdBed).set(S.phase === 'playing' && !S.paused ? 1 : 0);
     const sc = scene(now);
     const idle = !anims.length && !swipe && !(gl?.moving?.());
@@ -425,28 +462,75 @@ UI.midway = (() => {
 
     // 🎳 Skee Roll: an inclined lane up to a tilted ring board. Board coordinates (bx, by) are local x, y of `board`.
     const skee = new T.Group(); scene3.add(skee);
-    const lane = new T.Mesh(new T.BoxGeometry(0.75, 0.04, 3.1), std(0x2c6e9e, { roughness: 0.4 }));
-    lane.position.set(0, 1.0, -1.7); lane.rotation.x = 0.1; lane.receiveShadow = true; skee.add(lane);
-    for (const sx of [-0.4, 0.4]) { const rail = new T.Mesh(new T.BoxGeometry(0.05, 0.12, 3.1), std(0xffd23f, { roughness: 0.4, metalness: 0.3 })); rail.position.set(sx, 1.05, -1.7); rail.rotation.x = 0.1; skee.add(rail); }
-    // #149 the cabinet: varnished wooden sides with a lit trim strip, the hump the ball jumps off at the top of the lane,
-    // side nets up to the board, a ball-return trough holding the balls you have left, and a glowing score panel
-    const woodTex = tex(256, 64, (g, w, h) => { g.fillStyle = '#8a4f24'; g.fillRect(0, 0, w, h); for (let k = 0; k < 40; k++) { g.strokeStyle = `rgba(${60 + Math.random() * 40},${30 + Math.random() * 20},10,.35)`; g.beginPath(); const y = Math.random() * h; g.moveTo(0, y); g.bezierCurveTo(w / 3, y + Math.random() * 8 - 4, 2 * w / 3, y + Math.random() * 8 - 4, w, y); g.stroke(); } });
-    const woodMat = std(0xffffff, { map: woodTex, roughness: 0.35 });
-    const trimMat = new T.MeshBasicMaterial({ color: 0xff5ab4 });
-    for (const sx of [-1, 1]) {
-      const side = new T.Mesh(new T.BoxGeometry(0.08, 0.5, 3.3), woodMat); side.position.set(sx * 0.47, 0.88, -1.7); side.rotation.x = 0.1; side.castShadow = true; skee.add(side);
-      const trim = new T.Mesh(new T.BoxGeometry(0.02, 0.025, 3.3), trimMat); trim.position.set(sx * 0.51, 1.1, -1.72); trim.rotation.x = 0.1; skee.add(trim);
-      const net = new T.Mesh(new T.PlaneGeometry(0.9, 0.9), new T.MeshStandardMaterial({ color: 0x111111, transparent: true, opacity: 0.25, side: T.DoubleSide, depthWrite: false }));
-      net.rotation.y = Math.PI / 2; net.position.set(sx * 0.62, 1.55, -3.55); skee.add(net);
+    const laneFront = -0.1, laneLip = -3.15, ballRadius = 0.045;
+    const laneHeight = (z) => {
+      const t = clamp((laneFront - z) / (laneFront - laneLip), 0, 1);
+      return 0.975 + 0.1 * t + 0.08 * (Math.max(0, t - 0.82) / 0.18) ** 2;
+    };
+    const cork = tex(128, 512, (g, w, h) => {
+      g.fillStyle = '#c9a879'; g.fillRect(0, 0, w, h);
+      for (let i = 0; i < 3500; i++) {
+        g.fillStyle = i % 2 ? '#76533844' : '#ffe2ad66';
+        g.fillRect(Math.random() * w, Math.random() * h, 1 + i % 3, 1 + i % 4);
+      }
+    });
+    const lacquer = std(0x832039, { roughness: 0.4 });
+    const brass = std(0xd2a157, { roughness: 0.42, metalness: 0.35 });
+    const rubber = std(0x30232a);
+    function cabinetBox(w, h, d, x, y, z, mat) {
+      const mesh = new T.Mesh(new T.BoxGeometry(w, h, d), mat);
+      mesh.position.set(x, y, z);
+      mesh.receiveShadow = true;
+      skee.add(mesh);
+      return mesh;
     }
-    const cabFront = new T.Mesh(new T.BoxGeometry(1.0, 0.6, 0.08), woodMat); cabFront.position.set(0, 0.62, -0.08); skee.add(cabFront);
-    const hump = new T.Mesh(new T.CylinderGeometry(0.05, 0.05, 0.72, 20), std(0x2c6e9e, { roughness: 0.35 }));   // a roll across the lane, half sunk
-    hump.rotation.z = Math.PI / 2; hump.position.set(0, 1.15, -3.14); skee.add(hump);
-    const trough = new T.Mesh(new T.BoxGeometry(0.16, 0.06, 0.9), woodMat); trough.position.set(0.62, 0.9, -0.45); skee.add(trough);
-    const trayBalls = Array.from({ length: 9 }, (_, k) => { const m = new T.Mesh(new T.SphereGeometry(0.045, 14, 10), std(0xf4efe4, { roughness: 0.4 })); m.position.set(0.62, 0.97, -0.1 - k * 0.095); m.castShadow = true; skee.add(m); return m; });
+    const laneGeo = new T.PlaneGeometry(0.76, laneFront - laneLip, 1, 48);
+    const laneVerts = laneGeo.attributes.position;
+    for (let i = 0; i < laneVerts.count; i++) {
+      const z = (laneFront + laneLip) / 2 - laneVerts.getY(i);
+      laneVerts.setXYZ(i, laneVerts.getX(i), laneHeight(z), z);
+    }
+    laneGeo.computeVertexNormals();
+    const lane = new T.Mesh(laneGeo, std(0xffffff, { map: cork }));
+    lane.receiveShadow = true; skee.add(lane);
+    cabinetBox(0.92, 0.87, 3.05, 0, 0.47, -1.625, lacquer);
+    cabinetBox(1.32, 0.96, 1.13, 0, 0.51, -3.73, lacquer);
+    cabinetBox(1.36, 0.46, 0.24, 0, 2.22, -4.31, lacquer);
+    for (const side of [-1, 1]) {
+      cabinetBox(0.09, 0.15, 3.05, side * 0.425, 1.035, -1.625, lacquer);
+      cabinetBox(0.095, 0.025, 3.05, side * 0.425, 1.12, -1.625, brass);
+      cabinetBox(0.06, 1.18, 1.13, side * 0.66, 0.94, -3.73, lacquer);
+    }
+    cabinetBox(0.19, 0.09, 0.93, 0.59, 0.88, -0.48, rubber);
+    for (const x of [0.49, 0.69]) cabinetBox(0.028, 0.08, 0.96, x, 0.94, -0.48, lacquer);
+    for (const z of [-0.015, -0.945]) cabinetBox(0.2, 0.08, 0.025, 0.59, 0.94, z, lacquer);
+    const wire = [];
+    const strand = (ax, ay, az, bx, by, bz) => wire.push(ax, ay, az, bx, by, bz);
+    for (let i = 0; i <= 16; i++) {
+      const x = -0.66 + i * 1.32 / 16;
+      strand(x, 1.53, -3.18, x, 2.01, -3.18);
+    }
+    for (let i = 0; i <= 6; i++) {
+      const y = 1.53 + i * 0.08;
+      strand(-0.66, y, -3.18, 0.66, y, -3.18);
+      for (const x of [-0.66, 0.66]) strand(x, y, -3.18, x, y, -4.26);
+    }
+    for (const x of [-0.66, 0.66]) {
+      for (let i = 0; i <= 13; i++) {
+        const z = -3.18 - i * 1.08 / 13;
+        strand(x, 1.53, z, x, 2.01, z);
+      }
+    }
+    const guardGeo = new T.BufferGeometry();
+    guardGeo.setAttribute('position', new T.Float32BufferAttribute(wire, 3));
+    skee.add(new T.LineSegments(guardGeo, new T.LineBasicMaterial({
+      color: 0xbdb2a1, transparent: true, opacity: 0.28, depthWrite: false,
+    })));
+    for (const y of [1.53, 2.01]) cabinetBox(1.36, 0.018, 0.018, 0, y, -3.18, brass);
+    const trayBalls = Array.from({ length: 9 }, (_, k) => { const m = new T.Mesh(new T.SphereGeometry(0.045, 14, 10), std(0xf4efe4, { roughness: 0.4 })); m.position.set(0.59, 0.97, -0.1 - k * 0.095); m.castShadow = true; skee.add(m); return m; });
     let panelTex = null, panelVal = null;
-    const panel = new T.Mesh(new T.PlaneGeometry(0.62, 0.2), new T.MeshBasicMaterial({ color: 0xffffff }));
-    panel.position.set(0, 2.08, -4.25); skee.add(panel);
+    const panel = new T.Mesh(new T.PlaneGeometry(0.62, 0.18), new T.MeshBasicMaterial({ color: 0xffffff }));
+    panel.position.set(0, 2.08, -4.18); skee.add(panel);
     function paintPanel(pts) {
       if (pts === panelVal) return;
       panelVal = pts; panelTex?.dispose();
@@ -465,8 +549,8 @@ UI.midway = (() => {
       boardTex?.dispose();
       boardTex = tex(W, H, (g) => {
         const X = (bx) => (bx + 0.65) / 1.3 * W, Y = (by) => H - by / 1.2 * H, k = W / 1.3;
-        g.fillStyle = '#16365c'; g.fillRect(0, 0, W, H);
-        const cols = ['#2a6fb5', '#e8483f', '#ffd23f', '#3ddc97', '#f4efe4'];
+        g.fillStyle = '#6e2035'; g.fillRect(0, 0, W, H);
+        const cols = ['#b77d4c', '#f1d5a3', '#b65f48', '#e4b576', '#f4efe4'];
         [...geo.rings].reverse().forEach(([r, pts], n) => {
           g.beginPath(); g.arc(X(0), Y(geo.cy), r * k, 0, 7); g.fillStyle = cols[n % cols.length]; g.fill();
           g.lineWidth = 3; g.strokeStyle = '#0b1830'; g.stroke();
@@ -486,13 +570,33 @@ UI.midway = (() => {
         for (const [cx, cy] of geo.cups) { g.beginPath(); g.arc(X(cx), Y(cy), geo.cupR * k, 0, 7); g.fillStyle = '#05080f'; g.fill(); g.fillStyle = '#ffd23f'; g.fillText('100', X(cx), Y(cy) + geo.cupR * k * 1.9); }
       });
       if (!boardFace) {
-        boardFace = new T.Mesh(new T.PlaneGeometry(1.3, 1.2), std(0xffffff, { roughness: 0.45 }));
-        boardFace.position.set(0, 0.6, 0); boardFace.receiveShadow = true; board.add(boardFace);
-        const rimMat = std(0xe8e0d0, { roughness: 0.3, metalness: 0.2 });
-        for (const [r] of geo.rings) { const rim = new T.Mesh(new T.TorusGeometry(r, 0.012, 6, 48), rimMat); rim.position.set(0, geo.cy, 0.012); board.add(rim); }
+        const face = new T.Shape();
+        face.moveTo(-0.65, 0); face.lineTo(0.65, 0); face.lineTo(0.65, 1.2);
+        face.lineTo(-0.65, 1.2); face.closePath();
+        const pockets = [[0, geo.cy, geo.rings[0][0] * 0.78],
+          ...geo.cups.map(([x, y]) => [x, y, geo.cupR])];
+        for (const [x, y, r] of pockets) {
+          const opening = new T.Path();
+          opening.absarc(x, y, r, 0, Math.PI * 2, true);
+          face.holes.push(opening);
+          const well = new T.Mesh(new T.CylinderGeometry(r, r * 0.78, 0.14, 24, 1, true),
+            std(0x21141c, { side: T.DoubleSide }));
+          well.rotation.x = Math.PI / 2;
+          well.position.set(x, y, -0.07);
+          board.add(well);
+          const bottom = new T.Mesh(new T.CircleGeometry(r, 24), glow(0x130d13));
+          bottom.position.set(x, y, -0.14);
+          board.add(bottom);
+        }
+        const faceGeo = new T.ShapeGeometry(face, 24);
+        const uv = faceGeo.attributes.uv;
+        for (let i = 0; i < uv.count; i++) uv.setXY(i, (uv.getX(i) + 0.65) / 1.3, uv.getY(i) / 1.2);
+        boardFace = new T.Mesh(faceGeo, std(0xffffff, { roughness: 0.45 }));
+        boardFace.receiveShadow = true; board.add(boardFace);
+        const rimMat = rubber;
+        for (const [r] of geo.rings) { const rim = new T.Mesh(new T.TorusGeometry(r, 0.014, 6, 48), rimMat); rim.position.set(0, geo.cy, 0.012); board.add(rim); }
         for (const [cx, cy] of geo.cups) { const rim = new T.Mesh(new T.TorusGeometry(geo.cupR, 0.012, 6, 24), std(0xffd23f, { metalness: 0.6, roughness: 0.3 })); rim.position.set(cx, cy, 0.012); board.add(rim); }
-        const net = new T.Mesh(new T.PlaneGeometry(1.3, 0.6), new T.MeshStandardMaterial({ color: 0x222222, transparent: true, opacity: 0.35, side: T.DoubleSide }));
-        net.position.set(0, 1.4, 0.2); net.rotation.x = 0.6; board.add(net);
+
       }
       boardFace.material.map = boardTex; boardFace.material.needsUpdate = true;
     }
@@ -500,7 +604,7 @@ UI.midway = (() => {
     const skeeJack = new T.Mesh(new T.TorusGeometry(0.05, 0.014, 8, 24), goldMat); skeeJack.position.z = 0.016; board.add(skeeJack);
     const skeeBall = new T.Mesh(new T.SphereGeometry(0.045, 16, 12), std(0xffffff, { roughness: 0.35, map: ballTex })); skeeBall.castShadow = true;
     const skeeBalls = [];
-    const skeeSign = marquee('SKEE ROLL', 1.3, 0.3); skeeSign.position.set(0, 2.38, -4.3); skee.add(skeeSign);
+    const skeeSign = marquee('SKEE ROLL', 1.3, 0.22); skeeSign.position.set(0, 2.34, -4.18); skee.add(skeeSign);
     const boardPt = (bx, by, lift = 0.05) => board.localToWorld(new T.Vector3(bx, by, lift));
 
     // ⭕ Ring Toss: a table of bottles, board (bx, by) → world (bx, 0.86, -1.5 - by)
@@ -571,7 +675,7 @@ UI.midway = (() => {
     }
 
     const cam = { pos: new T.Vector3(0, 1.7, 1.1), look: new T.Vector3(0, 1.1, -3), init: false };
-    const VIEW = { skee: { pos: [0, 1.7, -0.5], look: [0, 1.4, -3.6], w: 0.72, d: 3.2 }, rings: { pos: [0, 1.9, 0.1], look: [0, 0.78, -2.05], w: 0.8, d: 2.6 },
+    const VIEW = { skee: { pos: [0, 1.85, 1.65], look: [0, 1.36, -2.6], w: 0.86, d: 2.7 }, rings: { pos: [0, 1.9, 0.1], look: [0, 0.78, -2.05], w: 0.8, d: 2.6 },
       cans: { pos: [0, 1.4, -0.2], look: [0, 1.18, -2.6], w: 0.55, d: 2.4 } };
     let lastT = 0, moving = 0;
     function resize() {
@@ -582,14 +686,19 @@ UI.midway = (() => {
 
     const arc = (a, b, h, u) => new T.Vector3(a.x + (b.x - a.x) * u, a.y + (b.y - a.y) * u + h * 4 * u * (1 - u), a.z + (b.z - a.z) * u);
     // where a throw is at u (0..1 of its flight to the landing), for each booth
-    const HAND = { skee: new T.Vector3(0, 1.0, -0.1), rings: new T.Vector3(0.1, 1.35, 0.25), cans: new T.Vector3(0.15, 1.35, 0.5) };
+    const HAND = { skee: new T.Vector3(0, laneHeight(laneFront) + ballRadius, laneFront), rings: new T.Vector3(0.1, 1.35, 0.25), cans: new T.Vector3(0.15, 1.35, 0.5) };
     function skeePath(sh, u, landU) {
-      const lip = new T.Vector3(sh.x * 0.7, 1.2, -3.15);
+      const lip = new T.Vector3(clamp(sh.x * 0.7, -0.33, 0.33), laneHeight(laneLip) + ballRadius, laneLip);
+      const rollAt = (s) => {
+        const p = HAND.skee.clone().lerp(lip, s);
+        p.y = laneHeight(p.z) + ballRadius;
+        return p;
+      };
       if (sh.where === 'short') {
         const top = Math.max(0.15, (sh.y + 0.08) / 1.1) * 0.95, s = u < 0.6 ? u / 0.6 * top : top * (1 - (u - 0.6) / 0.4);
-        return HAND.skee.clone().lerp(lip, s).setY(1.02 + 0.18 * s);
+        return rollAt(s);
       }
-      if (u < 0.55) { const s = 1 - (1 - u / 0.55) ** 1.6; return HAND.skee.clone().lerp(lip, s).setY(1.02 + 0.18 * s); }
+      if (u < 0.55) { const s = 1 - (1 - u / 0.55) ** 1.6; return rollAt(s); }
       if (u < landU) return arc(lip, boardPt(sh.x, Math.max(0.02, sh.y)), 0.22, (u - 0.55) / (landU - 0.55));
       const w = Math.min(1, (u - landU) / (1 - landU));
       if (sh.rattle) {   // 🎳 it rattles along the wire, then drops on one side (or into the cup)
@@ -666,11 +775,11 @@ UI.midway = (() => {
       mark.visible = false; dots.forEach((d) => { d.visible = !!pv; });
       if (pv) {
         let end, h, start = HAND[sc.kind], from = 0.14, upto = 0.32;
-        if (sc.kind === 'skee') { end = new T.Vector3(pv.x * 0.7, 1.2, -3.15); h = 0; from = 0.2; upto = 0.4; }
+        if (sc.kind === 'skee') { end = new T.Vector3(clamp(pv.x * 0.7, -0.33, 0.33), laneHeight(laneLip) + ballRadius, laneLip); h = 0; from = 0.2; upto = 0.4; }
         else if (sc.kind === 'rings') { end = tablePt(pv.x, pv.y, TY + 0.3); h = 0.5; }
         else { end = new T.Vector3(pv.x, SY + pv.y, SZ + 0.12); h = 0.12; }
         dotMat.opacity = sc.swiping ? 0.9 : 0.5;
-        dots.forEach((d, k) => { const p = arc(start, end, h, from + upto * (k + 1) / dots.length); if (sc.kind === 'skee') p.y = 1.0 + 0.07 + 0.2 * (-p.z - 0.1) / 3.05; d.position.copy(p); });
+        dots.forEach((d, k) => { const p = arc(start, end, h, from + upto * (k + 1) / dots.length); if (sc.kind === 'skee') p.y = laneHeight(p.z) + ballRadius; d.position.copy(p); });
       }
       for (let k = bits.length - 1; k >= 0; k--) {
         const m = bits[k], u = m.userData;

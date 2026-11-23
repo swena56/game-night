@@ -51,3 +51,6 @@
   .mw-ctl .mw-go { min-width: 100px; }
 }
 @media (prefers-reduced-motion: reduce) { .mw-pop-in, .mw-done, .mw-go.mw-ready, .mw-clock.low { animation: none; } }
+
+.mw-skee [data-p] { display: none; }
+.mw-skee .mw-go { touch-action: none; user-select: none; }
