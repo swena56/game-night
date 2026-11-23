@@ -13,8 +13,8 @@ of it (the same seeded layout), against a throw clock and with a set number of t
 🔔 Every booth hides a gold jackpot in a new place each round: the first to hit it wins
 +100. 🔥 Hot hand: after three good throws in a row, every good throw pays double until you miss.
 
-Nothing is simulated step by step (as in Wind Archery): a throw is an aim (-1..1, left to right) and a power
-(0..1); the server adds a little wobble, works out where it lands and what it scores, and the browsers animate it.
+A throw is an aim (-1..1, left to right) and a power (0..1). The server adds a little wobble and determines
+where it lands and what it scores. For basketball, the browser simulates the bounce and return to the rack.
 """
 import math
 import random
@@ -29,6 +29,7 @@ SHOW = {"skee": 1.6, "rings": 1.2, "cans": 1.0, "hoops": 1.35}    # seconds the 
 COUNT = 3.0          # the countdown before the bell
 BETWEEN = 6.0        # the standings between booths
 SETTLE = 2.2         # once everyone has thrown, the last throws play out for this long
+HOOP_SETTLE = 3.0    # time for the last basketball to bounce back to the rack
 GAP = 0.8            # a person can't throw again sooner than this
 JACKPOT = 100
 HOT_AT = 3           # good throws in a row before the hot hand
@@ -206,7 +207,7 @@ class Midway(Game):
         "Everyone plays the same carnival booth at the same time, each in your own copy, before the clock runs out.",
         "Swipe up to throw: the direction aims, the length sets how far (or high) it goes. Or use ◀ ▶ and the power meter.",
         "🎳 Skee Roll: rings pay 10–50, the corner cups 100. ⭕ Ring Toss: green 30, blue 50, red 80. 🥫 Can Slam: 10 a can, +50 for clearing the stack.",
-        "🏀 Basketball: aim and set your loft to sink 30, 50 or 70-ticket baskets. Higher hoops are tighter.",
+        "🏀 Basketball: pick up a ball, aim, and hold Shoot to charge. Release to shoot for 30, 50 or 70 tickets.",
         "🔔 Each booth hides a gold jackpot: the first to hit it wins +100. 🔥 Three good throws in a row and every good throw pays double until you miss.",
         "Most 🎟 tickets after the last booth wins; ties go to the most jackpots.",
     ]
@@ -396,7 +397,8 @@ class Midway(Game):
         self.tell(p, shot)
         if all(o.g.left <= 0 for o in self.present()):
             self.stage = "settle"
-            self.room.deadline = min(self.room.deadline or now + SETTLE, now + SETTLE)
+            settle = HOOP_SETTLE if kind == "hoops" else SETTLE
+            self.room.deadline = min(self.room.deadline or now + settle, now + settle)
 
     def tell(self, p, shot):
         nm, kind, at = p.name, shot["k"], time.time() + shot["t"]
@@ -478,7 +480,7 @@ class Midway(Game):
             return r.finish(None, "Everyone left.")
         if self.stage == "play" and all(o.g.left <= 0 for o in self.present()):
             self.stage = "settle"
-            r.deadline = time.time() + SETTLE
+            r.deadline = time.time() + (HOOP_SETTLE if self.kind == "hoops" else SETTLE)
 
     # -- bots: pick the target worth most to a hand as steady as theirs, then throw at it with that hand
 
