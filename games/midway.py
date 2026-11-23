@@ -201,7 +201,8 @@ class Midway(Game):
               "sweep": ("🥫", "Clean sweep", "Knock down a whole can pyramid"),
               "hot": ("🔥", "Hot hand", "Make five good throws in a row")}
     settings_schema = {
-        "booths": ("Booths", [(3, "3 (one of each)"), (6, "6 (each twice)")], 3),
+        "booths": ("Rounds", [(3, "3 rounds"), (6, "6 rounds")], 3),
+        "booth_type": ("Booth type", [("mixed", "Mixed booths")] + [(kind, NAMES[kind]) for kind in BOOTHS], "mixed"),
         "clock": ("Throw clock", [(45, "45 s"), (30, "30 s"), (60, "60 s")], 45),
     }
 
@@ -215,7 +216,8 @@ class Midway(Game):
         self.stage = "count"
         self.t0 = time.time()
         n = self.total
-        order = []
+        kind = self.s.get("booth_type")
+        order = [kind] * n if kind in BOOTHS else []
         while len(order) < n:
             run = list(BOOTHS)
             rng.shuffle(run)

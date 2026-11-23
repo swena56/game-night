@@ -163,6 +163,19 @@ r, g, (a, b) = game(booths=6)
 check("six booths: each booth twice, never twice in a row",
       sorted(g.order) == sorted(M.BOOTHS * 2) and all(x != y for x, y in zip(g.order, g.order[1:])), str(g.order))
 
+# single-booth matches
+for kind in M.BOOTHS:
+    for rounds in (3, 6):
+        r, g, (a, b) = game(booths=rounds, booth_type=kind)
+        check(f"{kind}: all {rounds} rounds use the selected booth",
+              g.view(a)["midway"]["order"] == [kind] * rounds)
+        for _ in range(rounds):
+            check(f"round {g.round_no} opens {kind}", g.kind == kind)
+            g.on_timeout()
+            g.on_timeout()
+            g.on_timeout()
+        check(f"{kind}: match ends after {rounds} rounds", r.phase == "over" and g.round_no == rounds)
+
 # leaving
 r, g, (a, b, c) = game(3)
 g.on_timeout()
