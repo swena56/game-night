@@ -144,30 +144,82 @@ check("cans: clearing the stack restacks it", all(a.g.cans) and a.g.stacks == 1 
 check("cans: the sweep pays its bonus", a.g.shots[-1]["pts"] >= M.SWEEP)
 
 # basketball
+for settings, seconds in (({}, 60), ({"clock": 90}, 90), ({"clock": 120}, 120)):
+    r, g, (a, b) = game(booth_type="hoops", **settings)
+    g.t0 = time.time()
+    g.on_timeout()
+    view = g.view(a)["midway"]
+    check(f"basketball opens with a {seconds}-second clock",
+          view["clock"] == seconds and r.deadline - g.t0 == seconds and seconds - 1 < view["timeLeft"] <= seconds)
+
 r, g, (a, b) = game(booth_type="hoops")
 g.on_timeout()
 g.rng = Still()
-g.jack = 2
-check("basketball has eight shots and exposes the shared hoops", a.g.left == 8
+_, hoop_y, _, _, _ = M.HOOPS[0]
+g.t0 = time.time() + M.HOOP_FLIGHT - (M.HOOP_CENTER_PAUSE + M.HOOP_PERIOD / 4)
+check("basketball defaults to a fixed hoop for players and bots",
+      g.view(a)["midway"]["geo"]["travel"] == 0 and g.targets(b)[0][1] == 0)
+sh = throw(g, a, 0, hoop_y)
+check("a centered shot scores with the fixed hoop", sh["targetX"] == 0 and sh["pts"] == 1)
+sh = throw(g, a, M.HOOP_TRAVEL, hoop_y)
+check("a shot away from the fixed hoop misses", sh["targetX"] == 0 and sh["pts"] == 0)
+sh = throw(g, a, 0.04, 1.0)
+check("a high shot banks off glass for one point",
+      sh["pts"] == 1 and M.HOOP_FLIGHT < sh["board"]["at"] < sh["landAt"] and sh["board"]["vz"] > 0)
+sh = throw(g, a, 0.17, 1.0)
+check("a wide bank bounces off glass without scoring", sh["pts"] == 0 and sh.get("board") is not None)
+sh = throw(g, a, 0.24, 1.0)
+check("a shot beyond the glass cannot bank in", sh["pts"] == 0 and "board" not in sh)
+bank = M.hoop_bank(0.68, 0.51, 1.0, 0.25, M.HOOP_TRAVEL)
+check("a moving bank checks hoop position when the ball drops",
+      bank is not None and bank[0] and bank[1] == M.hoop_x(0.25 + bank[2]["landAt"]))
+
+r, g, (a, b) = game(booth_type="hoops", hoop_movement="moving")
+g.on_timeout()
+g.rng = Still()
+check("basketball is timed and has one shared hoop", g.view(a)["midway"]["throws"] is None
+      and g.view(a)["midway"]["timeLeft"] > 0
       and g.view(a)["midway"]["geo"]["hoops"] == M.HOOPS
-      and g.view(b)["midway"]["layout"]["jack"] == 2)
-for i, (x, y, _, _, points) in enumerate(M.HOOPS):
-    sh = throw(g, a, x, y)
-    check(f"basketball hoop {i} scores {points}", sh["hoop"] == i and sh["good"]
-          and sh["pts"] == points + (M.JACKPOT if i == g.jack else 0), str(sh))
-sh = throw(g, a, *M.HOOPS[2][:2])
-check("another gold basket doubles on a hot hand, without another jackpot", sh["pts"] == 140
-      and sh["hot"] and not sh["jack"] and a.g.jackpots == 1)
-sh = throw(g, a, M.HOOPS[1][0], M.HOOPS[1][1] + 0.15)
-check("too much loft misses and breaks the streak", sh["hoop"] is None and sh["pts"] == 0 and a.g.streak == 0)
-sh = throw(g, b, *M.HOOPS[2][:2])
-check("a rival cannot reclaim the jackpot", sh["pts"] == 70 and not sh["jack"])
+      and len(M.HOOPS) == 1 and g.view(b)["midway"]["geo"]["travel"] == M.HOOP_TRAVEL)
+check("basketball accepts a modest power error while keeping lateral aim important",
+      M.hoop_hit(0.51, hoop_y + 0.12, 0.51) and not M.hoop_hit(0.27, hoop_y, 0.51))
+pause = M.HOOP_CENTER_PAUSE
+leg = M.HOOP_PERIOD / 2 + pause
+peak = pause + M.HOOP_PERIOD / 4
+check("the hoop pauses at center before moving in either direction",
+      M.hoop_x(pause / 2) == 0 and M.hoop_x(leg + pause / 2) == 0)
+check("the hoop travels in both directions", M.hoop_x(peak) == M.HOOP_TRAVEL
+      and M.hoop_x(leg + peak) == -M.HOOP_TRAVEL)
+
+def moving_hoop_x():
+    return M.hoop_x(time.time() - g.t0 + M.HOOP_FLIGHT)
+
+g.t0 = time.time() + M.HOOP_FLIGHT - peak
+for _ in range(5):
+    sh = throw(g, a, moving_hoop_x(), hoop_y)
+    check("a basket scores exactly one point even on a streak",
+          sh["hoop"] == 0 and sh["pts"] == 1 and not sh["jack"] and not sh["hot"], str(sh))
+check("the score counts baskets", a.g.booth_pts == 5)
+sh = throw(g, a, -moving_hoop_x(), hoop_y)
+check("a shot on the opposite side misses", sh["hoop"] is None and sh["pts"] == 0 and a.g.streak == 0)
 for level in M.BOT_SIGMA:
     b.bot = level
     b.g.next_at = 0
-    before = b.g.left
+    before = len(b.g.shots)
     g.bot_tick()
-    check(f"{level} bot takes a basketball shot", b.g.left == before - 1 and b.g.shots[-1]["k"] == "hoops")
+    check(f"{level} bot takes a basketball shot", len(b.g.shots) == before + 1 and b.g.shots[-1]["k"] == "hoops")
+for p in (a, b):
+    for _ in range(9):
+        throw(g, p, moving_hoop_x(), hoop_y)
+check("both players can exceed eight shots without ending the round",
+      len(a.g.shots) > 8 and len(b.g.shots) > 8 and g.stage == "play")
+r.deadline = time.time() - 1
+check("basketball rejects shots after the clock expires", refused(g, a, {"type": "throw", "aim": 0, "power": 0.5}))
+check("basketball bots stop at the buzzer", not g.bot_ready())
+g.on_timeout()
+check("the final basketball can return after the buzzer", g.stage == "settle")
+g.on_timeout()
+check("basketball advances to the standings", g.stage == "between")
 
 # out of throws, early finish, end of the night
 booth(g, "cans")

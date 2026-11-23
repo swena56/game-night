@@ -1,16 +1,16 @@
 """Midway Night: an original carnival-midway game for 2–6 players, everyone throwing at once.
 
 A night is a run of booths. In each round everybody plays the same booth at the same time, each in their own copy
-of it (the same seeded layout), against a throw clock and with a set number of throws:
+of it (the same seeded layout), against a throw clock. Basketball has unlimited shots:
 
 - 🎳 Skee Roll: roll balls up a ramp into rings worth 10–50; the two corner cups pay 100.
 - ⭕ Ring Toss: toss rings over a 5×5 grid of bottle necks; green, blue and red bottles pay 30, 50, 80.
 - 🥫 Can Slam: knock down a 10-can pyramid; a can falls when it is hit or when a can it stands on falls.
   Clearing the stack pays a bonus and it is stacked again.
 
-- 🏀 Basketball: arc shots through three hoops. The higher hoops are worth more.
+- 🏀 Basketball: time shots through a moving hoop for one point per basket.
 
-🔔 Every booth hides a gold jackpot in a new place each round: the first to hit it wins
+🔔 The other booths hide a gold jackpot in a new place each round: the first to hit it wins
 +100. 🔥 Hot hand: after three good throws in a row, every good throw pays double until you miss.
 
 A throw is an aim (-1..1, left to right) and a power (0..1). The server adds a little wobble and determines
@@ -24,12 +24,14 @@ from .base import Game, GameError
 
 BOOTHS = ("skee", "rings", "cans", "hoops")
 NAMES = {"skee": "🎳 Skee Roll", "rings": "⭕ Ring Toss", "cans": "🥫 Can Slam", "hoops": "🏀 Basketball"}
-THROWS = {"skee": 9, "rings": 8, "cans": 6, "hoops": 8}
-SHOW = {"skee": 1.6, "rings": 1.2, "cans": 1.0, "hoops": 1.35}    # seconds the browsers take to play a throw out
+THROWS = {"skee": 9, "rings": 8, "cans": 6}
+SHOW = {"skee": 1.6, "rings": 1.2, "cans": 1.0, "hoops": 1.1}    # seconds the browsers take to play a throw out
+THROW_CLOCKS = (30, 45, 60, 90, 120)
+DEFAULT_THROW_CLOCK = 60
 COUNT = 3.0          # the countdown before the bell
 BETWEEN = 6.0        # the standings between booths
 SETTLE = 2.2         # once everyone has thrown, the last throws play out for this long
-HOOP_SETTLE = 3.0    # time for the last basketball to bounce back to the rack
+HOOP_SETTLE = 2.2    # time for the last basketball to bounce back to the rack
 GAP = 0.8            # a person can't throw again sooner than this
 JACKPOT = 100
 HOT_AT = 3           # good throws in a row before the hot hand
@@ -57,18 +59,69 @@ CAN_AT = {(r, k): i for i, (r, k, _, _) in enumerate(CANS)}
 
 # 🏀 Basketball: (x, loft, scoring width, scoring height, tickets) at the hoop entry plane.
 BB_MAP = (0.75, 1.15, 0.0)
-HOOPS = ((-0.48, 0.70, 0.095, 0.085, 50), (0.0, 0.55, 0.13, 0.10, 30), (0.48, 0.91, 0.075, 0.065, 70))
+HOOPS = ((0.0, 0.66, 0.29, 0.30, 1),)
+HOOP_TRAVEL = 0.51
+HOOP_PERIOD = 3.2
+HOOP_CENTER_PAUSE = 0.50
+HOOP_GAP = 0.10
+HOOP_CLEAR = 0.19      # ball-centre reach that passes the rim untouched: ring radius (width + 0.052) less the ball radius
+HOOP_FLIGHT = SHOW["hoops"] * 0.73
 
 
-def hoop_land(aim, power, rng):
+def hoop_x(elapsed, travel=HOOP_TRAVEL):
+    leg = HOOP_PERIOD / 2 + HOOP_CENTER_PAUSE
+    clock = max(0.0, elapsed) % (2 * leg)
+    away = max(0.0, clock % leg - HOOP_CENTER_PAUSE)
+    direction = 1 if clock < leg else -1
+    return direction * travel * math.sin(math.tau * away / HOOP_PERIOD) ** 2
+
+
+def hoop_land(aim, power, rng, start_x=0.0):
     w, h, offset = BB_MAP
-    s = wobble(power)
+    s = wobble(power) * 0.5
     return aim * w + rng.gauss(0, s), power * h + offset + rng.gauss(0, s)
 
 
-def hoop_hit(x, y):
-    return next((i for i, (cx, cy, rx, ry, _) in enumerate(HOOPS)
-                 if ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1), None)
+def hoop_hit(x, y, target_x):
+    _, cy, _, ry, _ = HOOPS[0]
+    return ((x - target_x) / HOOP_CLEAR) ** 2 + ((y - cy) / ry) ** 2 <= 1
+
+
+def hoop_bank(start_x, x, y, elapsed, travel):
+    """Trace sphere contact with the board, then test the descending rim crossing."""
+    _, rim_y, _, _, _ = HOOPS[0]
+    gravity = 9.81
+    # The cabinet stretches along the lane, while the rendered ball stays round.
+    launch_z, rim_z = -0.50, -2.42
+    board_z = -2.57 + 0.068 / 1.68
+    vz = (rim_z - launch_z) / HOOP_FLIGHT
+    at = (board_z - launch_z) / vz
+    vx = (x - start_x) / HOOP_FLIGHT
+    vy = (y - 0.17) / HOOP_FLIGHT + gravity * HOOP_FLIGHT / 2
+    bx = start_x + vx * at
+    by = 0.17 + vy * at - gravity * at ** 2 / 2
+    board_x = hoop_x(elapsed + at, travel)
+    # Round off the expanded corners of the glass with the ball's contact radius.
+    edge_x = max(0.0, abs(bx - board_x) - 0.18)
+    edge_y = max(0.0, abs(by - rim_y - 0.11) - 0.115)
+    if math.hypot(edge_x, edge_y) > 0.035 or by <= rim_y:
+        return None
+
+    vx *= 0.94
+    vy = (vy - gravity * at) * 0.94
+    vz *= -0.78
+    drop = by - rim_y
+    rebound_time = (vy + math.sqrt(vy ** 2 + 2 * gravity * drop)) / gravity
+    entry_x = bx + vx * rebound_time
+    entry_z = board_z + vz * rebound_time
+    land_at = at + rebound_time
+    target_x = hoop_x(elapsed + land_at, travel)
+    # A slightly generous opening makes the bank useful even with a little aim error.
+    good = ((entry_x - target_x) / HOOP_CLEAR) ** 2 + ((entry_z - rim_z) / 0.09) ** 2 <= 1
+    return good, target_x, {
+        "board": {"at": at, "x": bx, "y": by + 1, "z": board_z, "vx": vx, "vy": vy, "vz": vz},
+        "landAt": land_at, "entryX": entry_x, "entryDepth": entry_z - rim_z,
+    }
 
 
 BOT_SIGMA = {"easy": 0.10, "normal": 0.055, "hard": 0.03}
@@ -205,10 +258,10 @@ class Midway(Game):
     family = None
     howto = [
         "Everyone plays the same carnival booth at the same time, each in your own copy, before the clock runs out.",
-        "Swipe up to throw: the direction aims, the length sets how far (or high) it goes. Or use ◀ ▶ and the power meter.",
+        "In Ring Toss and Can Slam, swipe up to throw. A longer swipe throws farther or higher. Ring Toss and Can Slam also have on-screen buttons.",
         "🎳 Skee Roll: rings pay 10–50, the corner cups 100. ⭕ Ring Toss: green 30, blue 50, red 80. 🥫 Can Slam: 10 a can, +50 for clearing the stack.",
-        "🏀 Basketball: pick up a ball, aim, and hold Shoot to charge. Release to shoot for 30, 50 or 70 tickets.",
-        "🔔 Each booth hides a gold jackpot: the first to hit it wins +100. 🔥 Three good throws in a row and every good throw pays double until you miss.",
+        "🏀 Basketball: Time shots through the moving hoop for one point each. Tap one of the five resting balls, hold and drag to aim and charge, then release. Reuse balls as they come to rest.",
+        "🔔 Skee Roll, Ring Toss and Can Slam hide a gold jackpot: the first to hit it wins +100. 🔥 Three good throws in a row and every good throw pays double until you miss.",
         "Most 🎟 tickets after the last booth wins; ties go to the most jackpots.",
     ]
     name = "Midway Night"
@@ -223,7 +276,8 @@ class Midway(Game):
     settings_schema = {
         "booths": ("Rounds", [(4, "4 rounds"), (3, "3 rounds"), (6, "6 rounds")], 4),
         "booth_type": ("Booth type", [("mixed", "Mixed booths")] + [(kind, NAMES[kind]) for kind in BOOTHS], "mixed"),
-        "clock": ("Throw clock", [(45, "45 s"), (30, "30 s"), (60, "60 s")], 45),
+        "hoop_movement": ("Basketball hoop", [("fixed", "Fixed hoop"), ("moving", "Moving hoop")], "fixed"),
+        "clock": ("Throw clock", [(seconds, f"{seconds} s") for seconds in THROW_CLOCKS] + [(0, "No time limit")], DEFAULT_THROW_CLOCK),
     }
 
     # -- setup
@@ -259,8 +313,12 @@ class Midway(Game):
 
     @property
     def clock(self):
-        v = self.s.get("clock", 45)
-        return v if v in (30, 45, 60) else 45
+        v = self.s.get("clock")
+        return v if v in THROW_CLOCKS or v == 0 else DEFAULT_THROW_CLOCK
+
+    @property
+    def hoop_travel(self):
+        return HOOP_TRAVEL if self.s.get("hoop_movement") == "moving" else 0.0
 
     @property
     def kind(self):
@@ -293,19 +351,20 @@ class Midway(Game):
             self.colours = cols
             self.jack = rng.randrange(10, 25)     # a bottle in the middle or back rows
         elif kind == "hoops":
-            self.jack = rng.randrange(len(HOOPS))
+            self.jack = None
         else:
             self.jack = rng.choice([i for i, (row, _, _, _) in enumerate(CANS) if row < 3])
         for p in self.players():
             g = p.g
-            g.left = THROWS[kind]
+            g.left = THROWS.get(kind)
             g.shots, g.streak, g.booth_pts = [], 0, 0
             g.cans = [True] * len(CANS)
             g.stacks = 0
             g.last_at = 0.0
             g.next_at = self.t0 + random.uniform(0.6, 1.8)
-        r.add_log(f"🔔 Booth {self.round_no} of {self.total}: {NAMES[kind]}, {THROWS[kind]} throws each. "
-                  f"A gold jackpot is hidden in it!", "info")
+        format_hint = ("Free play, no time limit" if self.clock == 0 else f"{self.clock} seconds to score") if kind == "hoops" else f"{THROWS[kind]} throws each"
+        r.add_log(f"🔔 Booth {self.round_no} of {self.total}: {NAMES[kind]}, {format_hint}. " +
+                  ("A gold jackpot is hidden in it!" if kind != "hoops" else "One point per basket."), "info")
 
     def on_restore(self, shift):
         self.t0 += shift
@@ -328,17 +387,23 @@ class Midway(Game):
             raise GameError("Bad throw.")
         if self.stage == "count":
             raise GameError("Wait for the bell!")
-        if self.stage != "play":
+        now = time.time()
+        if self.stage != "play" or (self.room.deadline is not None and now >= self.room.deadline):
             raise GameError("This booth is closed.")
-        if p.g.left <= 0:
+        if self.kind != "hoops" and p.g.left <= 0:
             raise GameError("You're out of throws: watch the others.")
-        if time.time() < p.g.last_at + GAP:
+        if now < p.g.last_at + (HOOP_GAP if self.kind == "hoops" else GAP):
             raise GameError("One at a time!")
-        self.throw(p, float(aim), float(power))
+        start_x = a.get("startX", 0.0)
+        if self.kind == "hoops" and (not isinstance(start_x, (int, float)) or isinstance(start_x, bool)
+                                     or not math.isfinite(start_x) or abs(start_x) > 0.85):
+            raise GameError("Bad ball position.")
+        self.throw(p, float(aim), float(power), float(start_x) if self.kind == "hoops" else 0.0)
 
-    def throw(self, p, aim, power):
+    def throw(self, p, aim, power, start_x=0.0):
         g, kind, rng, now = p.g, self.kind, self.rng, time.time()
-        g.left -= 1
+        if kind != "hoops":
+            g.left -= 1
         g.last_at = now
         self.shot_id += 1
         shot = {"id": self.shot_id, "aim": round(aim, 3), "power": round(power, 3), "k": kind}
@@ -360,12 +425,17 @@ class Midway(Game):
             shot.update(x=round(x, 3), y=round(y, 3), ex=round(ex, 3), ey=round(ey, 3), b=b, bounce=bounced)
         elif kind == "hoops":
             x, y = hoop_land(aim, power, rng)
-            hoop = hoop_hit(x, y)
-            if hoop is not None:
-                pts = HOOPS[hoop][4]
-                good = True
-                jack = hoop == self.jack and self.jack_by is None
-            shot.update(x=round(x, 3), y=round(y, 3), hoop=hoop)
+            shot["startX"] = round(start_x, 3)
+            elapsed = now - self.t0
+            target_x = hoop_x(elapsed + HOOP_FLIGHT, self.hoop_travel)
+            good = hoop_hit(x, y, target_x)
+            if not good:
+                bank = hoop_bank(start_x, x, y, elapsed, self.hoop_travel)
+                if bank is not None:
+                    good, target_x, rebound = bank
+                    shot.update(rebound)
+            pts = int(good)
+            shot.update(x=round(x, 3), y=round(y, 3), hoop=0 if good else None, targetX=round(target_x, 4))
         else:
             x, y = can_land(aim, power, rng)
             hit = can_hit(x, y, g.cans)
@@ -381,7 +451,7 @@ class Midway(Game):
                 g.cans = [True] * len(CANS)
                 g.stacks += 1
             shot.update(x=round(x, 3), y=round(y, 3), fell=fell, sweep=sweep)
-        hot = good and g.streak >= HOT_AT
+        hot = kind != "hoops" and good and g.streak >= HOT_AT
         if hot:
             pts *= 2
         g.streak = g.streak + 1 if good else 0
@@ -395,10 +465,9 @@ class Midway(Game):
         shot.update(pts=pts, good=good, hot=hot, jack=jack, t=SHOW[kind])
         g.shots.append(shot)
         self.tell(p, shot)
-        if all(o.g.left <= 0 for o in self.present()):
+        if kind != "hoops" and all(o.g.left <= 0 for o in self.present()):
             self.stage = "settle"
-            settle = HOOP_SETTLE if kind == "hoops" else SETTLE
-            self.room.deadline = min(self.room.deadline or now + settle, now + settle)
+            self.room.deadline = min(self.room.deadline or now + SETTLE, now + SETTLE)
 
     def tell(self, p, shot):
         nm, kind, at = p.name, shot["k"], time.time() + shot["t"]
@@ -420,9 +489,9 @@ class Midway(Game):
             self.moment(f"🥫 {nm} clears the whole stack: +{SWEEP}!", "good", "boom", at=at)
         if kind == "skee" and shot["where"] == "cup" and not shot["jack"]:
             self.moment(f"🎳 {nm} sinks a corner cup!", "good", "good", at=at)
-        if p.g.streak == HOT_AT:
+        if kind != "hoops" and p.g.streak == HOT_AT:
             self.moment(f"🔥 {nm} has a hot hand: double tickets!", "cool", "good", at=at)
-        if p.g.streak == 5:
+        if kind != "hoops" and p.g.streak == 5:
             self.award(p, "hot", at=at)
 
     # -- rounds
@@ -463,8 +532,16 @@ class Midway(Game):
             return
         if self.stage == "count":
             self.stage = "play"
-            r.deadline = self.t0 + self.clock
+            r.deadline = None if self.kind == "hoops" and self.clock == 0 else self.t0 + self.clock
             return
+        if self.stage == "play" and self.kind == "hoops":
+            if self.clock == 0:
+                return
+            last_return = max((o.g.last_at for o in self.players()), default=0) + HOOP_SETTLE
+            if time.time() < last_return:
+                self.stage = "settle"
+                r.deadline = last_return
+                return
         if self.stage in ("play", "settle"):
             return self.end_round()
         return self.after_round()
@@ -478,22 +555,25 @@ class Midway(Game):
             return r.finish(left[0], f"🏳️ Everyone else left — {left[0].name} wins!")
         if not left:
             return r.finish(None, "Everyone left.")
-        if self.stage == "play" and all(o.g.left <= 0 for o in self.present()):
+        if self.stage == "play" and self.kind != "hoops" and all(o.g.left <= 0 for o in self.present()):
             self.stage = "settle"
-            r.deadline = time.time() + (HOOP_SETTLE if self.kind == "hoops" else SETTLE)
+            r.deadline = time.time() + SETTLE
 
     # -- bots: pick the target worth most to a hand as steady as theirs, then throw at it with that hand
 
+    def can_bot_throw(self, o, now):
+        return (self.stage == "play" and (self.room.deadline is None or now < self.room.deadline)
+                and o.bot and (self.kind == "hoops" or getattr(o.g, "left", 0) > 0)
+                and now >= o.g.next_at)
+
     def bot_ready(self):
-        if self.stage != "play":
-            return False
         now = time.time()
-        return any(o.bot and getattr(o.g, "left", 0) > 0 and now >= o.g.next_at for o in self.present())
+        return any(self.can_bot_throw(o, now) for o in self.present())
 
     def bot_tick(self):
         now = time.time()
         for o in self.present():
-            if o.bot and o.g.left > 0 and now >= o.g.next_at and self.stage == "play":
+            if self.can_bot_throw(o, now):
                 aim, power = self.plan(o)
                 lo, hi = BOT_PACE.get(o.bot, BOT_PACE["normal"])
                 o.g.next_at = now + random.uniform(lo, hi)
@@ -510,7 +590,7 @@ class Midway(Game):
         if kind == "rings":
             return [(i, x, y) for i, (x, y) in enumerate(BOTTLES)]
         if kind == "hoops":
-            return [(i, x, y) for i, (x, y, _, _, _) in enumerate(HOOPS)]
+            return [(0, hoop_x(time.time() - self.t0 + HOOP_FLIGHT, self.hoop_travel), HOOPS[0][1])]
         return [(i, cx, cy) for i, (_, _, cx, cy) in enumerate(CANS) if o.g.cans[i]]
 
     def value(self, o, x, y, rng):
@@ -524,11 +604,6 @@ class Midway(Game):
             if b is None:
                 return 0
             return RT_PTS[self.colours[b]] + (JACKPOT if b == self.jack and self.jack_by is None else 0)
-        if kind == "hoops":
-            hoop = hoop_hit(x, y)
-            if hoop is None:
-                return 0
-            return HOOPS[hoop][4] + (JACKPOT if hoop == self.jack and self.jack_by is None else 0)
         hit = can_hit(x, y, o.g.cans)
         if hit is None:
             return 0
@@ -559,6 +634,9 @@ class Midway(Game):
         sig = BOT_SIGMA[level]
         rng = random.Random(self.rng.getrandbits(32))
         cands = self.targets(o)
+        if self.kind == "hoops":
+            _, x, y = cands[0]
+            return self.to_throw(x + rng.gauss(0, sig), y + rng.gauss(0, sig))
         if level == "easy":
             # aims at whatever looks biggest, without weighing its own shaky hand
             if self.kind == "skee":
@@ -573,7 +651,7 @@ class Midway(Game):
                 tot = 0.0
                 for _ in range(16):
                     aim, power = self.to_throw(t[1] + rng.gauss(0, sig), t[2] + rng.gauss(0, sig))
-                    land = {"skee": skee_land, "rings": ring_land, "cans": can_land, "hoops": hoop_land}[self.kind](aim, power, rng)
+                    land = {"skee": skee_land, "rings": ring_land, "cans": can_land}[self.kind](aim, power, rng)
                     tot += self.value(o, land[0], land[1], rng)
                 return tot / 16
             if level == "normal" and len(cands) > 6:
@@ -586,7 +664,7 @@ class Midway(Game):
     def meta(self, p):
         if not hasattr(p.g, "tickets"):
             return ""
-        return f"🎟 {p.g.tickets}" + (f" · 🔥" if getattr(p.g, "streak", 0) >= HOT_AT else "")
+        return f"🎟 {p.g.tickets}" + (f" · 🔥" if self.kind != "hoops" and getattr(p.g, "streak", 0) >= HOT_AT else "")
 
     def final_scores(self):
         return {o.id: o.g.tickets for o in self.players()}
@@ -597,7 +675,7 @@ class Midway(Game):
         booths = {}
         for o in self.players():
             g = o.g
-            booths[o.id] = {"tickets": g.tickets, "jackpots": g.jackpots, "left": g.left, "streak": g.streak,
+            booths[o.id] = {"tickets": g.tickets, "jackpots": g.jackpots, "left": None if self.kind == "hoops" else g.left, "streak": g.streak,
                             "pts": g.booth_pts, "shots": g.shots, "cans": g.cans, "stacks": g.stacks, "out": o.eliminated}
         kind = self.kind
         layout = ({"jack": list(self.jack)} if kind == "skee" else
@@ -608,14 +686,16 @@ class Midway(Game):
                {"map": [CN_W, 0.7, 0.02], "cans": [[cx, cy] for _, _, cx, cy in CANS], "w": CAN_W, "h": CAN_H, "ball": BALL_R,
                 "pts": CAN_PTS, "sweep": SWEEP})
         if kind == "hoops":
-            geo = {"map": BB_MAP, "hoops": HOOPS}
+            geo = {"map": BB_MAP, "hoops": HOOPS, "travel": self.hoop_travel, "period": HOOP_PERIOD,
+                   "centerPause": HOOP_CENTER_PAUSE}
         jb = r.players.get(self.jack_by) if self.jack_by else None
         return {"midway": {
             "seats": self.seats, "me": p.id if p.id in self.seats else None,
             "round": self.round_no, "rounds": self.total, "order": self.order, "kind": kind, "name": NAMES[kind],
-            "throws": THROWS[kind], "stage": self.stage, "clock": self.clock,
+            "throws": THROWS.get(kind), "stage": self.stage, "clock": self.clock,
+            "hoopElapsed": max(0.0, now - self.t0) if kind == "hoops" else None,
             "startIn": max(0.0, round(self.t0 - now, 2)) if self.stage == "count" else 0,
-            "timeLeft": max(0.0, round((r.deadline or now) - now, 2)) if self.stage in ("play", "settle") else 0,
-            "layout": layout, "geo": geo, "jackBy": jb.name if jb else None, "booths": booths, "gap": GAP, "hotAt": HOT_AT,
+            "timeLeft": (None if kind == "hoops" and self.clock == 0 else max(0.0, round((r.deadline or now) - now, 2))) if self.stage in ("play", "settle") else 0,
+            "layout": layout, "geo": geo, "jackBy": jb.name if jb else None, "booths": booths, "gap": HOOP_GAP if kind == "hoops" else GAP, "hotAt": HOT_AT,
             "standings": self.standings() if self.stage == "between" and len(self.seats) > 1 else None,
         }}
