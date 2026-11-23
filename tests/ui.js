@@ -445,7 +445,7 @@ const MOVES = {
     d.querySelector('#tcStage')?.dispatchEvent(new w.MouseEvent('click', { bubbles: true, clientX: 100 + Math.random() * 150, clientY: 100 + Math.random() * 150 }));
     if (n % 4 === 3) d.querySelector('#tcReady')?.click();
   },
-  midway(d, S, n, w) {  // swipes up on the booth (aim + power), and the buttons / keys
+  midway(d, S, n, w) {  // booth gestures and on-screen buttons
     const fire = (el, type, x = 0, y = 0) => el && el.dispatchEvent(new w.MouseEvent(type, { bubbles: true, clientX: x, clientY: y }));
     const st = d.querySelector('#mwStage'), kind = n % 3;
     if (S.midway.kind === 'skee') {
@@ -464,7 +464,7 @@ const MOVES = {
     }
     if (kind === 0) { fire(st, 'pointerdown', 150, 260); fire(st, 'pointermove', 150 + pick([-40, 0, 30]), 260 - pick([60, 120, 180])); fire(st, 'pointerup', 150, 100); }
     else if (kind === 1) { d.querySelector(`#mwCtl [data-a="${pick([-1, 1])}"]`)?.click(); d.querySelector('#mwGo')?.click(); }
-    else w.dispatchEvent(new w.KeyboardEvent('keydown', { key: pick(['ArrowUp', 'ArrowLeft', ' ']), bubbles: true }));
+    else { d.querySelector('#mwCtl [data-p="1"]')?.click(); d.querySelector('#mwGo')?.click(); }
   },
   planes(d, S, n, w) {  // fold chips, swipes up on the park (aim + power), the buttons and keys
     const fire = (el, type, x = 0, y = 0) => el && el.dispatchEvent(new w.MouseEvent(type, { bubbles: true, clientX: x, clientY: y }));

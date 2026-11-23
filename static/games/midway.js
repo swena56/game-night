@@ -1,8 +1,8 @@
 // Midway Night: a carnival booth in 3D (three.js) or flat. Everyone throws at once in their own copy of the booth.
-// Skee Roll uses drag-to-aim and a hold-to-roll button. The other booths also accept swipes and keys.
+// Skee Roll uses drag-to-aim and a hold-to-roll button. The other booths also accept swipes.
 // The server decides where each throw lands; the page plays it out.
 UI.midway = (() => {
-  let S, ctx, V, gl = null, flat = null, raf = 0, ro = null, keyFn = null;
+  let S, ctx, V, gl = null, flat = null, raf = 0, ro = null;
   let anims = [], seen = new Set(), watchId = null, watchKey = '', lastV = null, goAt = 0, endAt = 0;
   let charge, cancelCharge;
   let aim = 0, power = 0.5, swipe = null, lastThrow = 0, popT = 0, lastDraw = 0, lastTick = 0, fallAt = [];
@@ -98,16 +98,6 @@ UI.midway = (() => {
       if (ok) fire();
     });
     stage.addEventListener('pointercancel', () => { if (swipe) { aim = swipe.a; power = swipe.p; } swipe = null; });
-    keyFn = (e) => {
-      if (!V || V.kind === 'skee' || e.target.closest?.('input, textarea, select') || e.ctrlKey || e.metaKey || e.altKey) return;
-      const k = e.key;
-      if (k === 'ArrowLeft' || k === 'ArrowRight') aim = clamp(aim + (k === 'ArrowLeft' ? -0.06 : 0.06), -1, 1);
-      else if (k === 'ArrowUp' || k === 'ArrowDown') power = clamp(power + (k === 'ArrowDown' ? -0.03 : 0.03), 0, 1);
-      else if ((k === ' ' || k === 'Enter') && !e.target.closest?.('button')) fire();
-      else return;
-      e.preventDefault(); meter();
-    };
-    window.addEventListener('keydown', keyFn);
     ro = window.ResizeObserver ? new ResizeObserver(() => (gl || flat)?.resize()) : null;
     ro?.observe(stage);
     GL3.load().then(() => { if (stage.isConnected && !gl) GL3.revive(stage, { build: () => (gl = make3d(stage)), flat: () => { flat ||= make2d(stage); }, unflat: () => { flat?.dispose?.(); flat = null; } }); })
@@ -119,7 +109,6 @@ UI.midway = (() => {
     cancelCharge?.();
     window.removeEventListener('blur', cancelCharge); cancelCharge = null;
     cancelAnimationFrame(raf); raf = 0; ro?.disconnect(); gl?.dispose(); gl = null; flat = null; swipe = null;
-    if (keyFn) window.removeEventListener('keydown', keyFn); keyFn = null;
     window.Snd?.bed('mw.crowd').set(0);
   }
 
