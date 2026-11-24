@@ -202,11 +202,13 @@ UI.midway = (() => {
   const SND = {
     // a wooden ball trundling up the lane, then the hop
     roll: () => snd((t, K, d) => { K.burst(d, t, { type: 'lowpass', f: 260, f1: 420, q: 0.8, vol: 0.22, tau: 0.5, dur: 0.9, attack: 0.05, buf: 'brown' }); K.mode(d, t + 0.95, 180, 0.12, 0.05); }),
-    // a short airy swish as a basketball passes through the net
-    basketSwoosh: () => snd((t, K, d) => K.burst(d, t, {
-      type: 'bandpass', f: 1500, f1: 650, q: 0.7, vol: 0.10, tau: 0.13,
-      dur: 0.24, attack: 0.015, buf: 'pink',
+    // A clean make snaps the net. After contact, leave room for the rim or glass.
+    basketSwoosh: (clean) => snd((t, K, d) => K.burst(d, t, {
+      type: 'bandpass', f: clean ? 2300 : 1150, f1: 650, q: 0.7,
+      vol: clean ? 0.19 : 0.075, tau: clean ? 0.065 : 0.10,
+      dur: 0.19, attack: clean ? 0.004 : 0.018, buf: 'pink',
     })),
+    basketHot: () => snd((t, K, d) => K.mode(d, t + 0.075, 1319, 0.085, 0.075)),
     // a ball dropping into its ring, a clunk and a little rattle
     sink: (big) => snd((t, K, d) => { K.mode(d, t, 140, 0.25, 0.06, { f1: 100 }); K.burst(d, t, { type: 'bandpass', f: 1200, q: 1.5, vol: 0.12, tau: 0.02 }); for (let n = 1; n < 4; n++) K.mode(d, t + n * 0.07, 220 + n * 30, 0.06 / n, 0.03); if (big) [1047, 1319, 1568].forEach((f, n) => K.mode(d, t + 0.1 + n * 0.08, f, 0.06, 0.2)); }),
     // a ring on glass: a bright clink, ringing on a bottle
@@ -454,8 +456,8 @@ UI.midway = (() => {
     else if (sh.k === 'hoops') {
       if (sh.hoop != null) {
         netStrike = { at: now, offset: (sh.path?.at(-1)?.[1] ?? sh.x) - (sh.targetX ?? sh.x) };
-        SND.basketSwoosh();
-        SND.sink(true);
+        SND.basketSwoosh(sh.swish === true && !sh.bank);
+        if (sh.hot) SND.basketHot();
       } else if (!sh.path?.some((k) => k[7] === 'rim' || k[7] === 'board' || k[7] === 'wall')) SND.flop();
     }
     else if (sh.fell.length) {
