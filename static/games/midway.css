@@ -77,6 +77,7 @@
 .mw-row b { font-variant-numeric: tabular-nums; text-align: right; }
 .mw-row small { grid-column: 1 / -1; color: var(--muted); font-size: 10px; letter-spacing: 1px; }
 .mw-feed { margin-top: 8px; font-size: 12px; display: flex; flex-direction: column; gap: 2px; color: var(--muted); }
+.mw-feed-title { margin: 8px 0 2px; font-size: 12px; color: var(--muted); }
 .mw-f.gold { color: #ffd23f; }
 @media (max-width: 420px) {
   .mw-stage { height: 56vh; }
@@ -94,16 +95,17 @@
 }
 
 .mw-display { display: contents; }
-.mw-basketball { max-width: 880px; }
+.mw-basketball { width: 100%; max-width: 1080px; }
+#game .layout:has(.mw-basketball) { max-width: 1480px; grid-template-columns: minmax(0, 1fr) 320px; }
 .mw-basketball > .hint { margin: 0 0 8px; text-align: center; }
 .mw-basketball > .hint:empty { display: none; }
 .mw-basketball .mw-stage {
-  height: min(72vh, 660px);
-  min-height: 330px;
+  height: min(84vh, 780px);
+  min-height: min(380px, 52vh);
   background: #080f17;
   border: 1px solid #33454f;
 }
-.mw-basketball .mw-hud { justify-content: center; top: 15%; }
+.mw-basketball .mw-hud { justify-content: center; top: 8%; }
 .mw-basketball #mwBooth { display: none; }
 .mw-basketball .mw-display {
   display: flex;
@@ -140,11 +142,20 @@
 .mw-basketball .mw-display :is(.mw-clock, .mw-best) { border-left: 1px solid #ffffff17; }
 .mw-basketball .mw-clock.low { background: #1c0707 !important; color: #ff6a5e; animation: none; }
 .mw-basketball .mw-clock.low .on { fill: #ff7a6e; }
-.mw-basketball .mw-sub { top: 56px; bottom: auto; right: auto; max-width: calc(100% - 16px); }
+.mw-basketball .mw-sub { top: 8%; bottom: auto; left: 0; right: 0; max-width: none; }
+.mw-basketball #mwHot {
+  position: absolute;
+  top: -29px;
+  left: calc(50% + clamp(35px, 10vw, 48px));
+  transform: translateX(-50%);
+}
 .mw-basketball .mw-sub .mw-shot-call { background: #111923; color: #a9f3ff !important; }
 .mw-basketball .mw-sub .mw-shot-call.mw-call-flash { animation: mwCallFlash 1.8s ease-in-out infinite; }
 @keyframes mwCallFlash { 0%, 100% { opacity: 1; } 50% { opacity: .72; } }
 @media (prefers-reduced-motion: reduce) { .mw-basketball .mw-sub .mw-shot-call.mw-call-flash { animation: none; } }
+@media (max-width: 860px) {
+  #game .layout:has(.mw-basketball) { max-width: none; grid-template-columns: minmax(0, 1fr); }
+}
 .mw-basketball .mw-balls { color: #b8eaf0 !important; background: #111923; letter-spacing: 0; }
 .mw-basketball .mw-ctl { display: none; }
 .mw-basketball .mw-stage .mw-meter {

@@ -61,7 +61,7 @@ CAN_AT = {(r, k): i for i, (r, k, _, _) in enumerate(CANS)}
 
 # 🏀 Basketball: (x, loft, scoring width, scoring height, tickets) at the hoop entry plane.
 BB_MAP = (0.75, 1.15, 0.0)
-HOOPS = ((0.0, 0.80, 0.29, 0.26, 1),)
+HOOPS = ((0.0, 0.90, 0.29, 0.26, 1),)
 HOOP_TRAVEL = 0.51
 HOOP_PERIOD = 3.2
 HOOP_CENTER_PAUSE = 0.50
@@ -123,17 +123,18 @@ def hoop_sim(start_x, x, y, elapsed, travel, flight=HOOP_FLIGHT, spin=0.0, backs
     spin = max(-1.0, min(1.0, spin))
     backspin = max(0.0, min(1.0, backspin))
     ax = spin * 0.4
+    ay = backspin * 1.2
     vx = (x - start_x) / flight - ax * flight / 2
     vz = (SIM_RIM_Z - SIM_LAUNCH_Z) / flight
-    vy = (y - 0.17) / flight + SIM_G * flight / 2
+    vy = (y - 0.17) / flight + (SIM_G - ay) * flight / 2
     px, py, pz = start_x, SIM_LAUNCH_Y, SIM_LAUNCH_Z
     t = 0.0
     path = []
     hits = 0
-    good = bank = False
+    good = bank = rim_touched = False
 
     def key(kind):
-        path.append([round(t, 4), round(px, 4), round(py, 4), round(pz, 4), round(vx, 4), round(vy, 4), round(vz, 4), kind])
+        path.append([round(t, 4), round(px, 4), round(py, 4), round(pz, 4), round(vx, 4), round(vy, 4), round(vz, 4), kind, round(ax, 4), round(ay, 4)])
 
     key("launch")
     ring = [(math.cos(math.tau * k / SIM_RIM_POINTS) * ring_r, math.sin(math.tau * k / SIM_RIM_POINTS) * ring_r / SIM_SZ)
@@ -144,12 +145,13 @@ def hoop_sim(start_x, x, y, elapsed, travel, flight=HOOP_FLIGHT, spin=0.0, backs
         # End the free-flight segment at impact so replay never carries the ball through the glass.
         dt = (SIM_BOARD_Z - pz) / vz if board_contact else SIM_STEP
         px += vx * dt + ax * dt ** 2 / 2
-        py += vy * dt - SIM_G * dt ** 2 / 2
+        py += vy * dt + (ay - SIM_G) * dt ** 2 / 2
         pz += vz * dt
-        vy -= SIM_G * dt
+        vy += (ay - SIM_G) * dt
         vx += ax * dt
         t += dt
         hit = None
+        hard_rim_hit = False
         if abs(px) > RAIL_LIMIT and px * vx > 0:
             px = math.copysign(RAIL_LIMIT, px)
             vx *= -RAIL_BOUNCE
@@ -161,7 +163,10 @@ def hoop_sim(start_x, x, y, elapsed, travel, flight=HOOP_FLIGHT, spin=0.0, backs
             vz *= -SIM_BOARD_E
             hit = "board" if py >= rim_y - 0.15 else "wall"
             bank |= hit == "board"
-        hx = hoop_x(elapsed + t, travel)
+        hoop_time = elapsed + t
+        hx = hoop_x(hoop_time, travel)
+        hoop_vx = (hoop_x(hoop_time + SIM_STEP / 2, travel) -
+                   hoop_x(hoop_time - SIM_STEP / 2, travel)) / SIM_STEP if travel else 0.0
         if not board_contact and abs(py - rim_y) * SIM_SY < reach + 0.05 and abs(pz - SIM_RIM_Z) * SIM_SZ < ring_r + reach:
             for ox, oz in ring:
                 dx, dy, dz = px - (hx + ox), (py - rim_y) * SIM_SY, (pz - (SIM_RIM_Z + oz)) * SIM_SZ
@@ -170,24 +175,34 @@ def hoop_sim(start_x, x, y, elapsed, travel, flight=HOOP_FLIGHT, spin=0.0, backs
                     continue
                 nx, ny, nz = dx / d, dy / d, dz / d
                 wy, wz = vy * SIM_SY, vz * SIM_SZ
-                vn = vx * nx + wy * ny + wz * nz
+                relative_vx = vx - hoop_vx
+                vn = relative_vx * nx + wy * ny + wz * nz
                 if vn < 0:
-                    # a hard strike bounces; a gentle one slides off the iron
-                    e = SIM_RIM_E if vn < -0.3 else SIM_RIM_GLANCE_E
+                    # Blend from a soft iron graze to a firmer rebound instead
+                    # of switching restitution abruptly at one impact speed.
+                    impact = -vn
+                    blend = max(0.0, min(1.0, (impact - 0.08) / 0.67))
+                    e = SIM_RIM_GLANCE_E + (SIM_RIM_E - SIM_RIM_GLANCE_E) * blend
                     slip = SIM_RIM_SLIP + backspin * (1 - SIM_RIM_SLIP) * 0.45
-                    tx, ty, tz = vx - vn * nx, wy - vn * ny, wz - vn * nz
-                    vx = tx * slip - e * vn * nx
+                    tx, ty, tz = relative_vx - vn * nx, wy - vn * ny, wz - vn * nz
+                    vx = tx * slip - e * vn * nx + hoop_vx
                     wy = ty * slip - e * vn * ny
                     wz = tz * slip - e * vn * nz
                     vy, vz = wy / SIM_SY, wz / SIM_SZ
-                    if vn < -0.3:
-                        hit = "rim"
+                    # Even a glancing contact changes velocity, so preserve
+                    # it in the replay path as well as in the scored sim.
+                    hit = "rim"
+                    rim_touched = True
+                    hard_rim_hit |= impact > 0.3
                 push = reach - d
                 px += nx * push
                 py += ny * push / SIM_SY
                 pz = max(SIM_BOARD_Z, pz + nz * push / SIM_SZ)
         if hit:
-            hits += 1
+            # Soft rim grazes can be recorded without consuming the guard
+            # against repeated hard collisions in a crowded path.
+            if hit != "rim" or hard_rim_hit:
+                hits += 1
             key(hit)
             if hits >= SIM_MAX_HITS:
                 break
@@ -197,7 +212,7 @@ def hoop_sim(start_x, x, y, elapsed, travel, flight=HOOP_FLIGHT, spin=0.0, backs
             # to rattle around the iron, then let a downward crossing drop if
             # its center has cleared the inner edge of the rim.
             spin_help = abs(spin) * 0.035 + backspin * 0.025
-            rattled_in = hits > 0 and off <= ring_r - SIM_BALL * 0.1 + spin_help
+            rattled_in = rim_touched and off <= ring_r - SIM_BALL * 0.1 + spin_help
             clean_in = off <= ring_r - SIM_BALL * 0.55 - (SIM_BANK_CLIP if bank else 0.0) + spin_help
             if clean_in or rattled_in:
                 good = True
@@ -395,7 +410,7 @@ class Midway(Game):
         self.room.bot_at = 0
         timing = f"{self.clock} seconds each" if self.clock else "no time limit"
         title = "🏀 Basketball" if self.id == "basketball" else "🎪 Midway Night"
-        intro = "Shoot for your high score!" if self.id == "basketball" else "Step right up!"
+        intro = ("Shoot for your high score!" if len(seated) == 1 else "Shoot for the high score!") if self.id == "basketball" else "Step right up!"
         self.room.add_log(f"{title}: {n} booths, {timing}. {intro}", "big")
         self.new_round()
 
