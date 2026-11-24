@@ -173,6 +173,13 @@ kinds = lambda sim: [k[7] for k in sim["path"]]
 sh = throw(g, a, 0.04, 1.0)
 check("a high shot banks off glass for one point",
       sh["pts"] == 1 and sh["bank"] and not sh["swish"] and "board" in kinds(sh))
+for side in (-1, 1):
+    path = M.hoop_sim(side * 0.68, side * 0.5, 1.0, 0, 0)["path"]
+    contact = next(i for i, frame in enumerate(path) if frame[7] == "board")
+    before, bounce = path[contact - 1:contact + 1]
+    incoming_z = before[3] + before[6] * (bounce[0] - before[0])
+    check(f"backboard contact is continuous and reverses depth velocity from side {side}",
+          abs(incoming_z - bounce[3]) < 0.0004 and before[6] < 0 < bounce[6])
 check("a shot's path starts at launch and ends at its landing time",
       sh["path"][0][7] == "launch" and sh["path"][-1][0] == sh["landAt"] and sh["path"][-1][7] == "net")
 sh = throw(g, a, 0, hoop_y)

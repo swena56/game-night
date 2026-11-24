@@ -232,5 +232,18 @@ class NinetyNine(TrickGame):
                 t["buttons"] = [{"label": "🎰 Double or nothing: ON" if i in self.armed else "🎰 Double or nothing", "a": {"type": "double"}}]
             t["turnText"] = "🤫 Lay aside your bid"
         elif self.bids[i] is not None and self.stage == "play":
-            t["note"] = f"Your bid: {self.bids[i]} ({show(self.bidcards[i])}). You've taken {self.tricks[i]}."
+            note = f"Your bid: {self.bids[i]} ({show(self.bidcards[i])}). You've taken {self.tricks[i]}."
+            if self.room.phase == "playing":
+                remaining = 9 - sum(self.tricks)
+                need = self.bids[i] - self.tricks[i]
+                if need < 0:
+                    progress = "Bid missed. You took too many tricks."
+                elif need == 0:
+                    progress = "Avoid taking another trick."
+                elif need > remaining:
+                    progress = f"Bid out of reach. Only {remaining} trick{'s' if remaining != 1 else ''} left."
+                else:
+                    progress = f"Win {need} more trick{'s' if need != 1 else ''}."
+                note += " " + progress
+            t["note"] = note
         return t

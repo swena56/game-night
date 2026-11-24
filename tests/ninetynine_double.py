@@ -129,5 +129,23 @@ check("the recommendation gives the advertised bid and then clears",
       g.bids[0] == row["bid"] and len(g.hands[0]) == len(hand) - 3
       and "bidPlan" not in g.view(ps[0])["ninetynine"])
 
+# Private in-play note explains whether the bid is still reachable.
+room, ps, g = table()
+g.stage = "play"
+g.bids = [2, 0, 9]
+g.bidcards = [["6D"] for _ in range(3)]
+g.tricks = [1, 0, 0]
+g.hands = [["6D"] * 8 for _ in range(3)]
+check("reachable bid progress", "Win 1 more trick." in g.view(ps[0])["ninetynine"]["note"])
+check("zero bid progress", "Avoid taking another trick." in g.view(ps[1])["ninetynine"]["note"])
+check("spectator has no bid note", not g.view(room.add_player("Watcher"))["ninetynine"].get("note"))
+g.tricks = [2, 0, 0]
+check("made bid says avoid", "Avoid taking another trick." in g.view(ps[0])["ninetynine"]["note"])
+g.tricks = [3, 0, 0]
+check("overshot bid", "Bid missed" in g.view(ps[0])["ninetynine"]["note"])
+g.tricks = [0, 4, 4]
+g.hands = [["6D"] for _ in range(3)]
+check("unreachable bid", "Bid out of reach. Only 1 trick left." in g.view(ps[0])["ninetynine"]["note"])
+
 print("all ok" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(1 if fails else 0)

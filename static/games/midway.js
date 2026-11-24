@@ -146,7 +146,7 @@ UI.midway = (() => {
       if (basketball) pickUpBall(e);
       if (!canThrow()) return;
       try { stage.setPointerCapture(e.pointerId); } catch {}
-      swipe = { id: e.pointerId, x: e.clientX, y: e.clientY, a: aim, p: power };
+      swipe = { id: e.pointerId, x: e.clientX, y: e.clientY, a: aim, p: power, startX: heldBallX };
       if (basketball) {
         power = 0;
         meter();
@@ -157,6 +157,7 @@ UI.midway = (() => {
       const r = stage.getBoundingClientRect(), dx = e.clientX - swipe.x, dy = swipe.y - e.clientY;
       if (V.kind === 'hoops') {
         const dragRange = clamp(r.width * 0.48, 105, 220);
+        if (heldBall) heldBallX = clamp(swipe.startX + dx / dragRange * 0.68, -0.68, 0.68);
         aim = clamp(swipe.a + dx / dragRange, -1, 1);
         power = clamp(dy / Math.max(75, r.height * 0.42), 0, 1);
         swipe.moved = Math.max(swipe.moved || 0, Math.hypot(dx, dy));
@@ -771,9 +772,11 @@ UI.midway = (() => {
       const [x, y, z] = position.map((v, i) => v / returnScale[i]);
       const travel = Math.hypot(x - ball.x, (z - ball.z) * cabinetDepthScale);
       const nearFloor = y <= hoopRampY(z) + 0.008;
-      const quiet = z >= returnPickupZ && nearFloor && Math.hypot(...velocity) < 0.13;
+      const rackSpeed = Math.hypot(...velocity);
+      const quiet = z >= returnPickupZ && nearFloor && rackSpeed < 0.13;
       ball.quietSteps = quiet ? Math.min(12, ball.quietSteps + 1) : 0;
-      const ready = ball.quietSteps === 12;
+      // Make a slowly rolling ball available as soon as it reaches the tray.
+      const ready = z >= returnPickupZ && nearFloor && rackSpeed < 0.55;
       moved ||= travel > 1e-5 || Math.abs(y - ball.y) > 1e-5 || ready !== ball.ready;
       // A settled ball participates in swept collisions without repeatedly
       // spending the shared event budget on gravity against the tray.

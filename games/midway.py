@@ -95,7 +95,8 @@ SIM_RIM_Z = -2.42                # the hoop's centre depth
 SIM_SY, SIM_SZ = 1.14, 1.68      # rendered metres per unit of y and z
 SIM_BALL = 0.155
 SIM_TUBE = 0.013
-SIM_BOARD_Z = -2.5295            # ball centre against the glass: its surface touches the plane just behind the ring
+SIM_GLASS_Z = -2.622             # rendered glass plane behind the ring
+SIM_BOARD_Z = SIM_GLASS_Z + SIM_BALL / SIM_SZ
 SIM_RIM_E, SIM_RIM_SLIP = 0.5, 0.92
 SIM_BANK_CLIP = 0.10          # a ball kicked off the glass is moving sideways, so it needs a cleaner line through the ring
 SIM_BOARD_E, SIM_BOARD_SLIP = 0.78, 0.94    # glass: a deader bounce that also scrubs speed along its face
@@ -124,7 +125,6 @@ def hoop_sim(start_x, x, y, elapsed, travel, flight=HOOP_FLIGHT):
     path = []
     hits = 0
     good = bank = False
-    touched = False
 
     def key(kind):
         path.append([round(t, 4), round(px, 4), round(py, 4), round(pz, 4), round(vx, 4), round(vy, 4), round(vz, 4), kind])
@@ -134,25 +134,28 @@ def hoop_sim(start_x, x, y, elapsed, travel, flight=HOOP_FLIGHT):
             for k in range(SIM_RIM_POINTS)]
     while t < SIM_MAX_T:
         prev_y = py
-        px += vx * SIM_STEP
-        py += vy * SIM_STEP - SIM_G * SIM_STEP ** 2 / 2
-        pz += vz * SIM_STEP
-        vy -= SIM_G * SIM_STEP
-        t += SIM_STEP
+        board_contact = vz < 0 and pz + vz * SIM_STEP <= SIM_BOARD_Z
+        # End the free-flight segment at impact so replay never carries the ball through the glass.
+        dt = (SIM_BOARD_Z - pz) / vz if board_contact else SIM_STEP
+        px += vx * dt
+        py += vy * dt - SIM_G * dt ** 2 / 2
+        pz += vz * dt
+        vy -= SIM_G * dt
+        t += dt
         hit = None
         if abs(px) > RAIL_LIMIT and px * vx > 0:
             px = math.copysign(RAIL_LIMIT, px)
             vx *= -RAIL_BOUNCE
             hit = "rail"
-        if pz < SIM_BOARD_Z and vz < 0:
+        if board_contact:
             pz = SIM_BOARD_Z
             vx *= SIM_BOARD_SLIP
             vy *= SIM_BOARD_SLIP
             vz *= -SIM_BOARD_E
             hit = "board" if py >= rim_y - 0.15 else "wall"
-            bank = True
+            bank |= hit == "board"
         hx = hoop_x(elapsed + t, travel)
-        if abs(py - rim_y) * SIM_SY < reach + 0.05 and abs(pz - SIM_RIM_Z) * SIM_SZ < ring_r + reach:
+        if not board_contact and abs(py - rim_y) * SIM_SY < reach + 0.05 and abs(pz - SIM_RIM_Z) * SIM_SZ < ring_r + reach:
             for ox, oz in ring:
                 dx, dy, dz = px - (hx + ox), (py - rim_y) * SIM_SY, (pz - (SIM_RIM_Z + oz)) * SIM_SZ
                 d = math.sqrt(dx * dx + dy * dy + dz * dz)
@@ -174,9 +177,8 @@ def hoop_sim(start_x, x, y, elapsed, travel, flight=HOOP_FLIGHT):
                 push = reach - d
                 px += nx * push
                 py += ny * push / SIM_SY
-                pz += nz * push / SIM_SZ
+                pz = max(SIM_BOARD_Z, pz + nz * push / SIM_SZ)
         if hit:
-            touched = touched or hit in ("rim", "board")
             hits += 1
             key(hit)
             if hits >= SIM_MAX_HITS:

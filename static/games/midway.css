@@ -160,7 +160,7 @@
   display: grid;
   place-items: center;
   min-height: 1.75rem;
-  margin-top: 4px;
+  margin: 4px 0 0;
 }
 .mw-basket-toast .mw-pop {
   position: static;
