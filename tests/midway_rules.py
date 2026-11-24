@@ -289,6 +289,36 @@ check("a leaver doesn't block the round", c not in g.present() and r.phase == "p
 g.on_leave(b)
 check("the last one standing wins", r.phase != "playing")
 
+# basketball: hot hand and swish bonus
+r, g, (a, b) = game(booth_type="hoops")
+g.on_timeout()
+g.rng = Still()
+_, hoop_y, _, _, _ = M.HOOPS[0]
+swishes = [throw(g, a, 0, hoop_y) for _ in range(M.HOT_AT)]
+check("basketball: baskets before the hot hand pay one point each", [s_["pts"] for s_ in swishes] == [1] * M.HOT_AT)
+sh = throw(g, a, 0, hoop_y)
+check("basketball: a swish on the hot hand pays double plus one", sh["hot"] and sh["swish"] and sh["pts"] == 3, str(sh["pts"]))
+sh = throw(g, a, 0.04, 1.0)
+check("basketball: a bank on the hot hand pays double with no swish bonus", sh["hot"] and sh["bank"] and sh["pts"] == 2, str(sh["pts"]))
+sh = throw(g, a, 0.3, hoop_y)
+check("basketball: a miss ends the hot hand", sh["pts"] == 0 and a.g.streak == 0)
+sh = throw(g, a, 0, hoop_y)
+check("basketball: the next basket is plain again", not sh["hot"] and sh["pts"] == 1)
+
+# basketball bots land about the advertised share of shots (seeded, so this cannot flake)
+for level, lo, hi in (("easy", 0.40, 0.60), ("normal", 0.65, 0.85), ("hard", 0.80, 0.95)):
+    r, g, (a, b) = game(booth_type="hoops")
+    g.on_timeout()
+    g.rng = random.Random(7)
+    b.bot = level
+    made = 0
+    for _ in range(400):
+        aim, power = g.plan(b)
+        b.g.last_at = 0
+        g.throw(b, aim, power)
+        made += b.g.shots[-1]["pts"] > 0
+    check(f"basketball: {level} bot makes {lo:.0%}-{hi:.0%} of shots", lo <= made / 400 <= hi, f"{made / 400:.0%}")
+
 # the view is JSON and has no secrets worth hiding (every booth is public), and spectators can watch
 import json
 r, g, (a, b) = game()
