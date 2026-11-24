@@ -72,11 +72,14 @@
   margin: 6px 3px;
   border-radius: 6px;
   background: #130e0c;
+  opacity: .5;
 }
 
-.pb-charge-fill { height: 100%; background: var(--pb-teal); }
-.pb-skill-band { position: absolute; inset-block: 0; background: var(--pb-gold); opacity: .25; }
-.pb-charge.ready .pb-skill-band { opacity: .85; }
+.pb-charge.ready { opacity: 1; }
+.pb-charge-fill { height: 100%; background: linear-gradient(90deg, #317b71, var(--pb-teal)); }
+.pb-skill-band { position: absolute; inset-block: 0; background: #ffd38355; border-inline: 1px solid var(--pb-gold); }
+.pb-charge.in-band { box-shadow: 0 0 0 1px var(--pb-gold), 0 0 10px #ffd38370; }
+.pb-charge.in-band .pb-charge-fill { background: linear-gradient(90deg, #a56a2d, var(--pb-gold)); }
 
 .pb-controls, .pb-nudge-buttons {
   display: grid;

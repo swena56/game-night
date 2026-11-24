@@ -10,8 +10,10 @@
     tilt: 'TILT · scoring suspended', nudge: 'Table nudged',
     drain: 'Ball drained', done: 'Run complete', recovery: 'Ball freed',
   };
+  const sounds = { skill: 'lock', ramp: 'cheer', tilt: 'wrong', spinner: 'tickfast', drain: 'groan', done: 'groan' };
   const prefixes = { bumper: 'Bumper +100', sling: 'Slingshot +50', lane: 'Rollover +500', target: 'Target +250' };
   const label = (event) => messages[event] || prefixes[event?.replace(/[0-9]$/, '')] || '';
+  const sound = (event) => sounds[event] || (/^(bumper|sling)/.test(event) ? 'puck' : 'pop');
   const bestKey = 'pinball.best';
   const palette = { gold: '#ffd383', ivory: '#fff0ca', teal: '#59edd2', red: '#f46044', steel: '#b2bcc0' };
   const rampPoints = ({ ramp, exit }) => Array.from({ length: 33 }, (_, i) => {
@@ -146,11 +148,19 @@
           rail([x, y, x + geo.length * Math.cos(angle), y + geo.length * Math.sin(angle)], palette.ivory, .17);
           disc(x, y, .18, palette.gold);
         });
+        const [launchX, launchY] = geo.launch;
+        const plungerY = launchY + .39 + .25 * row[CHARGE] / 240;
+        rail([launchX - .22, plungerY, launchX + .22, plungerY], palette.gold, .19);
         if (row[BALLS]) {
           const [x, y, z] = ball;
           disc(x + .1, y + .1, geo.radius * 1.25, '#26141483');
-          disc(x, y - z * .14, geo.radius, palette.steel);
-          disc(x - .055, y - z * .14 - .055, geo.radius * .5, '#fff');
+          const ballY = y - z * .14;
+          const shine = c.createRadialGradient(x - .055, ballY - .065, .018, x, ballY, geo.radius);
+          shine.addColorStop(0, '#fffaf0');
+          shine.addColorStop(.45, '#c3d2d7');
+          shine.addColorStop(.8, '#657882');
+          shine.addColorStop(1, '#26313a');
+          disc(x, ballY, geo.radius, shine);
         }
       },
       dispose: () => canvas.remove(),
@@ -235,10 +245,13 @@
       disc(x, y, .21, .04, .1, lamp('lane' + i, palette.teal));
     });
     const track = rampPoints(geo);
+    const rampRail = lamp('ramp', palette.steel, row => row[BANK] === 7 ? palette.teal : palette.steel);
+    rampRail.metalness = chrome.metalness;
+    rampRail.roughness = chrome.roughness;
     for (const offset of [-.24, .24]) {
       const points = track.map(([x, y, z]) => new T.Vector3(x + offset, z + .07, y));
       const tube = new T.TubeGeometry(new T.CatmullRomCurve3(points), 32, .045, 6, false);
-      mesh(tube, chrome, 0, 0, 0);
+      mesh(tube, rampRail, 0, 0, 0);
     }
     disc(...geo.ramp, .26, .06, .04, lamp('ramp', '#60463c', row => row[BANK] === 7 ? palette.teal : '#60463c'));
     const [sx, sy] = geo.spinner;
@@ -421,12 +434,20 @@
     setText(find('nudges'), row[TILT] ? 'Tilted' : `Nudges ${3 - row[NUDGES]}`);
     setText(find('ramp'), row[BANK] === 7 ? 'Ramp ×3' : `Targets ${(row[BANK] & 1) + (row[BANK] >> 1 & 1) + (row[BANK] >> 2 & 1)}/3`);
     find('ramp').classList.toggle('lit', row[BANK] === 7);
+    const [skillStart, skillEnd] = g.skill;
+    const inBand = !!row[STAGED] && row[CHARGE] >= skillStart && row[CHARGE] <= skillEnd;
+    const launchCue = inBand ? 'Release for skill shot' : row[CHARGE] > skillEnd ? 'Release to launch' :
+      row[CHARGE] ? 'Charge into the gold band' : 'Hold to launch';
+    const feedback = performance.now() < g.flashAt ? label(row[EVENT]) : '';
     setText(find('message'), g.record ? 'New personal best' : row[TILT] ? messages.tilt :
-      (performance.now() < g.flashAt ? label(row[EVENT]) : '') || (row[STAGED] ? 'Hold to launch' : row[BALLS] ? '' : 'Run complete'));
+      row[STAGED] && row[CHARGE] ? launchCue : feedback || (row[STAGED] ? launchCue : row[BALLS] ? '' : 'Run complete'));
     find('charge-fill').style.width = `${100 * row[CHARGE] / 240}%`;
     const meter = find('charge');
     meter.setAttribute('aria-valuenow', row[CHARGE]);
     meter.classList.toggle('ready', !!row[STAGED]);
+    meter.classList.toggle('in-band', inBand);
+    const meterText = inBand ? 'Skill shot window' : `${Math.round(100 * row[CHARGE] / 240)}% power`;
+    if (meter.getAttribute('aria-valuetext') !== meterText) meter.setAttribute('aria-valuetext', meterText);
     find('best-tile').hidden = !g.solo;
     setText(find('best'), g.best === null ? '—' : g.best.toLocaleString());
 
@@ -468,7 +489,7 @@
     if (prior && prior[BALLS] !== row[BALLS]) clearControls(g);
     if (prior && prior[EVENT_ID] !== row[EVENT_ID]) {
       g.flashAt = performance.now() + 780;
-      if (viewer === g.me && !g.ctx.readOnly) g.ctx.sfx(row[TILT] ? 'wrong' : 'pop');
+      if (viewer === g.me && !g.ctx.readOnly) g.ctx.sfx(sound(row[EVENT]));
     }
     g.enabled = !!(g.active && g.me && row[BALLS]);
     if (!g.enabled || row[TILT] && !prior?.[TILT]) clearControls(g);
@@ -538,6 +559,7 @@
       if (!g.run) {
         g.run = data.pin;
         g.solo = data.solo;
+        g.skill = data.layout.skill;
         const saved = load(bestKey);
         g.best = Number.isSafeInteger(saved) && saved >= 0 ? saved : null;
         const band = g.find('skill-band');

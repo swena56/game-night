@@ -100,7 +100,12 @@ async function mobileRun(browser) {
     await page.keyboard.up('Space');
 
     await page.keyboard.down('Space');
-    await charge(page, 200, 220);
+    await page.waitForFunction(() => {
+      const meter = document.querySelector('.pb-charge.in-band');
+      const power = Number(meter?.getAttribute('aria-valuenow'));
+      return power >= 200 && power <= 216 && meter.getAttribute('aria-valuetext') === 'Skill shot window' &&
+        document.querySelector('.pb-message').textContent === 'Release for skill shot';
+    });
     await page.keyboard.up('Space');
     await text(page, '.pb-message', 'Skill shot +5,000');
     const score = Number((await page.locator('.pb-score').textContent()).replaceAll(',', ''));
