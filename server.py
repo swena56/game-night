@@ -370,6 +370,8 @@ class Room:
     def connected(self, p):
         p.streams += 1
         self.seen(p)
+        if self.phase == "playing" and hasattr(self.game, "on_connect"):
+            self.game.on_connect(p)
 
     def disconnected(self, p):
         p.streams -= 1
