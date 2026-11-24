@@ -358,10 +358,17 @@ UI.midway = (() => {
         if (pendingIndex >= 0) {
           ball = pendingShots[pendingIndex].ball;
           pendingShots.splice(pendingIndex, 1);
-        } else if (rackBalls.some((candidate) => candidate.ready && !candidate.transient)) {
+        } else {
           const launchX = sh.startX ?? hoopHandX(sh.aim);
-          ball = rackBalls.filter((candidate) => candidate.ready && !candidate.transient).reduce((a, b) => Math.abs(a.x - launchX) < Math.abs(b.x - launchX) ? a : b);
-          rackBalls = takeRackBall(rackBalls, ball);
+          const rackIndex = rackBalls.findIndex((candidate) => candidate.ready && !candidate.transient);
+          if (rackIndex >= 0) {
+            ball = rackBalls[rackIndex];
+            for (let i = rackIndex + 1; i < rackBalls.length; i++) {
+              const candidate = rackBalls[i];
+              if (candidate.ready && !candidate.transient && Math.abs(candidate.x - launchX) < Math.abs(ball.x - launchX)) ball = candidate;
+            }
+            rackBalls = takeRackBall(rackBalls, ball);
+          }
         }
       }
       // a shot this player just released has been flying since the release: carry on from there
