@@ -334,12 +334,14 @@ check("the last one standing wins", r.phase != "playing")
 bank = lambda sx, x, y: M.hoop_sim(sx, x, y, 0, 0)
 check("a centred shot off the glass scores as a bank", all(bank(sx, 0, y)["good"] and bank(sx, 0, y)["bank"] for sx in (-0.68, 0, 0.68) for y in (0.95, 1.0, 1.05)))
 check("a glass shot aimed wide of the hoop misses", not any(bank(0, x, 1.0)["good"] for x in (-0.3, 0.3)))
+check("a ball that rattles off the rim can still fall in",
+      bank(0, -0.29, 0.73)["good"] and sum(k[7] == "rim" for k in bank(0, -0.29, 0.73)["path"]) >= 2)
 check("the bank window is no wider than a few swishes",
       sum(bank(0, x / 100, y / 100)["bank"] and bank(0, x / 100, y / 100)["good"] for x in range(-48, 49, 3) for y in range(30, 120, 2))
       <= 1.5 * sum(bank(0, x / 100, y / 100)["swish"] for x in range(-48, 49, 3) for y in range(30, 120, 2)))
 
-# basketball: hot hand and swish bonus
-r, g, (a, b) = game(booth_type="hoops")
+# basketball: Classic hot hand and swish bonus
+r, g, (a, b) = game(booth_type="hoops", hoop_scoring="classic")
 g.on_timeout()
 g.rng = Still()
 _, hoop_y, _, _, _ = M.HOOPS[0]
@@ -353,6 +355,33 @@ sh = throw(g, a, 0.3, hoop_y)
 check("basketball: a miss ends the hot hand", sh["pts"] == 0 and a.g.streak == 0)
 sh = throw(g, a, 0, hoop_y)
 check("basketball: the next basket is plain again", not sh["hot"] and sh["pts"] == 1)
+
+# Swish & Bank uses the immediately preceding shot from the same player.
+r, g, (a, b) = game(booth_type="hoops")
+booth(g, "hoops")
+check("Swish & Bank is the default and shares release cues with the UI", g.view(a)["midway"]["geo"]["combo"] ==
+      {"bonus": M.HOOP_COMBO_BONUS, "swishPower": g.to_throw(0, hoop_y)[1],
+       "bankPower": g.to_throw(0, M.HOOP_BANK_LOFT)[1]})
+check("a bank alone earns one", throw(g, a, 0, M.HOOP_BANK_LOFT)["pts"] == 1)
+throw(g, a, 0, hoop_y)
+check("a swish does not arm a rival's bank", throw(g, b, 0, M.HOOP_BANK_LOFT)["pts"] == 1)
+check("an armed bot aims for glass", g.targets(a)[0][2] == M.HOOP_BANK_LOFT)
+sh = throw(g, a, 0, M.HOOP_BANK_LOFT)
+check("a bank after a swish pays the combo", sh["combo"] == M.HOOP_COMBO_BONUS and sh["pts"] == 4)
+check("a second bank does not repeat the combo", throw(g, a, 0, M.HOOP_BANK_LOFT)["pts"] == 2)
+throw(g, a, 0, hoop_y)
+sh = throw(g, a, 0, M.HOOP_BANK_LOFT)
+check("the combo bonus is added after doubling the basket", sh["hot"] and sh["pts"] == 5)
+throw(g, a, 0, hoop_y)
+throw(g, a, 0.4, hoop_y)
+check("a miss clears the combo and bot aim returns to swishes",
+      g.targets(a)[0][2] == hoop_y and throw(g, a, 0, M.HOOP_BANK_LOFT)["pts"] == 1)
+throw(g, a, 0, hoop_y)
+g.new_round()
+g.on_timeout()
+check("a new round clears combo progress", not g.bank_ready(a.g))
+del g.hoop_scoring
+check("a saved game without a scoring mode keeps Classic scoring", "combo" not in g.view(a)["midway"]["geo"])
 
 # basketball bots land about the advertised share of shots (seeded, so this cannot flake)
 for level, lo, hi in (("easy", 0.40, 0.60), ("normal", 0.65, 0.85), ("hard", 0.80, 0.95)):

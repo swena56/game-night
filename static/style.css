@@ -1070,6 +1070,7 @@ body.lowgfx .bgo-cell.near::before { animation: none; }
   .chessboard { width: min(100%, 1400px, var(--room)); container-type: inline-size; }
   .piece { font-size: clamp(26px, 9.5cqw, 90px); }
 }
+.kit-callout.edge { top: auto; bottom: 8%; }
 
 /* chess 3D */
 .chess3d { position: relative; width: min(100%, 600px, calc(var(--room) + 10px)); aspect-ratio: 1; margin: 8px auto; border-radius: var(--radius);

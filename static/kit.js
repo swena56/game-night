@@ -216,9 +216,10 @@ const Kit = (() => {
   }
   // a big word across the middle of the screen for a moment: "YACHT!", "Shoot the moon!", "BUST"
   let lastCallout = null;
-  function callout(text, kind = 'gold', { sound = null, ms = 1500 } = {}) {
+  function callout(text, kind = 'gold', { sound = null, ms = 1500, placement = '' } = {}) {
     lastCallout?.remove();
     const c = el('div', 'kit-callout ' + kind, text);
+    if (placement) c.classList.add(placement);
     if (!motionOK()) c.classList.add('still');
     layer().append(c);
     lastCallout = c;

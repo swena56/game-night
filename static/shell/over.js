@@ -60,7 +60,7 @@ function runLine() {
 }
 
 function isDraw(result) {
-  return result?.draw || (result?.game === 'midway' && result.text?.startsWith('🤝 A tie on '));
+  return result?.draw || (['midway', 'basketball'].includes(result?.game) && result.text?.startsWith('🤝 A tie on '));
 }
 
 function renderOver() {
