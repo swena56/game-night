@@ -70,6 +70,12 @@ s = Still()
 # -- pure maths
 check("skee centre scores 50", M.skee_score(0, M.SK_CY)[0] == 50)
 check("skee corner cup scores 100", M.skee_score(*M.SK_CUPS[0])[0] == 100)
+check("skee stacked cups score 50, 40, and 30 from top to bottom",
+      [M.skee_score(0, y)[0] for _, _, y in M.SK_RINGS[:3]] == [50, 40, 30])
+check("skee lower catch ring scores 20", M.skee_score(0, 0.29)[:2] == (20, "20"))
+check("skee bottom return scores 10", M.skee_score(0, 0.09)[:2] == (10, "gutter"))
+check("skee old boards retain their original scoring",
+      M.skee_score(0, 0.5, rings=M.SK_LEGACY_RINGS)[:2] == (50, "50"))
 check("skee short scores 0", M.skee_score(0, -0.1)[:2] == (0, "short"))
 import random as _r
 _rg = _r.Random(3)
@@ -261,6 +267,17 @@ for _ in range(3):
     g.on_timeout()        # clock runs out
     g.on_timeout()        # standings over
 check("the night ends after the last booth", r.phase != "playing" and g.round_no == 3)
+check("equal tickets and jackpots record a draw", r.history[-1].get("draw") is True and r.winner is None
+      and "Ann & Bo" in r.history[-1]["text"]
+      and all(not row["won"] and row["pts"] == server.POINTS_PLAYED for row in r.history[-1]["players"]))
+
+r, g, (a, b) = game()
+g.round_no = g.total
+a.g.tickets = b.g.tickets = 12
+b.g.jackpots = 1
+g.after_round()
+check("jackpots break a ticket tie", r.winner == b.id and not r.history[-1].get("draw"))
+
 r, g, (a, b) = game()
 check("the default night visits all four booths once", g.total == 4 and set(g.order) == set(M.BOOTHS), str(g.order))
 r, g, (a, b) = game(booths=6)
@@ -288,6 +305,14 @@ g.on_leave(c)
 check("a leaver doesn't block the round", c not in g.present() and r.phase == "playing")
 g.on_leave(b)
 check("the last one standing wins", r.phase != "playing")
+
+# basketball: glass shots are a real, deliberate window: centred and hard goes in, from either side too, but wide does not
+bank = lambda sx, x, y: M.hoop_sim(sx, x, y, 0, 0)
+check("a centred shot off the glass scores as a bank", all(bank(sx, 0, y)["good"] and bank(sx, 0, y)["bank"] for sx in (-0.68, 0, 0.68) for y in (0.95, 1.0, 1.05)))
+check("a glass shot aimed wide of the hoop misses", not any(bank(0, x, 1.0)["good"] for x in (-0.3, 0.3)))
+check("the bank window is no wider than a few swishes",
+      sum(bank(0, x / 100, y / 100)["bank"] and bank(0, x / 100, y / 100)["good"] for x in range(-48, 49, 3) for y in range(30, 120, 2))
+      <= 1.5 * sum(bank(0, x / 100, y / 100)["swish"] for x in range(-48, 49, 3) for y in range(30, 120, 2)))
 
 # basketball: hot hand and swish bonus
 r, g, (a, b) = game(booth_type="hoops")

@@ -37,8 +37,10 @@ JACKPOT = 100
 HOT_AT = 3           # good throws in a row before the hot hand
 
 # 🎳 Skee Roll: the ring board, in metres on its face; x across, y up the board (0 at the lip)
-SK_W, SK_H, SK_CY = 0.55, 1.1, 0.5
-SK_RINGS = ((0.06, 50), (0.13, 40), (0.21, 30), (0.30, 20), (0.40, 10))
+SK_W, SK_H, SK_CY = 0.55, 1.1, 0.91
+SK_RINGS = ((0.06, 50, SK_CY), (0.06, 40, 0.755), (0.06, 30, 0.595), (0.246, 20, 0.428))
+SK_LEGACY_RINGS = tuple((r, points, 0.5) for r, points in
+                        ((0.06, 50), (0.13, 40), (0.21, 30), (0.30, 20), (0.40, 10)))
 SK_CUPS = ((-0.42, 0.92), (0.42, 0.92))
 SK_CUP_R, SK_CUP_PTS = 0.055, 100
 SK_JACK_R = 0.05
@@ -95,7 +97,9 @@ SIM_BALL = 0.155
 SIM_TUBE = 0.013
 SIM_BOARD_Z = -2.5295            # ball centre against the glass: its surface touches the plane just behind the ring
 SIM_RIM_E, SIM_RIM_SLIP = 0.5, 0.92
-SIM_RIM_POINTS = 24
+SIM_BANK_CLIP = 0.10          # a ball kicked off the glass is moving sideways, so it needs a cleaner line through the ring
+SIM_BOARD_E, SIM_BOARD_SLIP = 0.78, 0.94    # glass: a deader bounce that also scrubs speed along its face
+SIM_RIM_POINTS = 48
 SIM_FLOOR_Y, SIM_RACK_Z, SIM_SLOPE = 0.69, -0.86, 0.24
 SIM_MAX_T = 4.0
 SIM_MAX_HITS = 14
@@ -142,9 +146,9 @@ def hoop_sim(start_x, x, y, elapsed, travel, flight=HOOP_FLIGHT):
             hit = "rail"
         if pz < SIM_BOARD_Z and vz < 0:
             pz = SIM_BOARD_Z
-            vx *= 0.94
-            vy *= 0.94
-            vz *= -0.78
+            vx *= SIM_BOARD_SLIP
+            vy *= SIM_BOARD_SLIP
+            vz *= -SIM_BOARD_E
             hit = "board" if py >= rim_y - 0.15 else "wall"
             bank = True
         hx = hoop_x(elapsed + t, travel)
@@ -179,7 +183,7 @@ def hoop_sim(start_x, x, y, elapsed, travel, flight=HOOP_FLIGHT):
                 break
         if prev_y > rim_y >= py and vy < 0:
             off = math.hypot(px - hx, (pz - SIM_RIM_Z) * SIM_SZ)
-            if off <= ring_r - SIM_BALL * 0.8:
+            if off <= ring_r - SIM_BALL * 0.8 - (SIM_BANK_CLIP if bank else 0.0):
                 good = True
                 key("net")
                 break
@@ -192,7 +196,7 @@ def hoop_sim(start_x, x, y, elapsed, travel, flight=HOOP_FLIGHT):
 
 
 BOT_SIGMA = {"easy": 0.10, "normal": 0.055, "hard": 0.03}
-BOT_HOOP_SIGMA = {"easy": 0.20, "normal": 0.12, "hard": 0.08}    # basketball: about 51%, 76% and 90% of shots go in
+BOT_HOOP_SIGMA = {"easy": 0.15, "normal": 0.087, "hard": 0.058}    # basketball: about 51%, 76% and 90% of shots go in
 BOT_PACE = {"easy": (2.6, 4.4), "normal": (2.2, 3.6), "hard": (1.9, 3.0)}
 
 
@@ -220,7 +224,7 @@ SK_LIP = 0.014      # a ball landing this close to a ring's edge rattles along t
 SK_RIMLIP = 0.022   # ...and one skimming a cup's rim may drop in
 
 
-def skee_settle(x, y, rng):
+def skee_settle(x, y, rng, rings=SK_RINGS):
     """🎳 Where a ball that first lands at (x, y) comes to rest: (x, y, rattled). Straddling a ring's wire it hops
     to either side; just outside a corner cup's rim it sometimes drops in."""
     if y < 0:
@@ -229,16 +233,16 @@ def skee_settle(x, y, rng):
         d = math.hypot(x - cx, y - cy)
         if SK_CUP_R <= d < SK_CUP_R + SK_RIMLIP and rng.random() < 0.4:
             return cx, cy, True
-    r = math.hypot(x, y - SK_CY)
-    for rad, _ in SK_RINGS:
+    for rad, _, cy in rings:
+        r = math.hypot(x, y - cy)
         if abs(r - rad) < SK_LIP:
             to = rad + rng.choice((-1, 1)) * (SK_LIP + 0.012)
             k = to / (r or 1e-6)
-            return x * k, SK_CY + (y - SK_CY) * k, True
+            return x * k, cy + (y - cy) * k, True
     return x, y, False
 
 
-def skee_score(x, y, jack=None):
+def skee_score(x, y, jack=None, rings=SK_RINGS):
     """(points, where, jackpot hit) for a skee ball that reaches (x, y) on the board."""
     if y < 0:
         return 0, "short", False
@@ -246,9 +250,8 @@ def skee_score(x, y, jack=None):
     for cx, cy in SK_CUPS:
         if math.hypot(x - cx, y - cy) < SK_CUP_R:
             return SK_CUP_PTS, "cup", jp
-    r = math.hypot(x, y - SK_CY)
-    for rad, pts in SK_RINGS:
-        if r < rad:
+    for rad, pts, cy in rings:
+        if math.hypot(x, y - cy) < rad:
             return pts, str(pts), jp
     return 10, "gutter", jp      # it rolls down into the 10 at the bottom
 
@@ -392,6 +395,10 @@ class Midway(Game):
     def kind(self):
         return self.order[self.round_no - 1]
 
+    @property
+    def skee_rings(self):
+        return SK_RINGS if getattr(self, "stacked_skee", False) else SK_LEGACY_RINGS
+
     def players(self):
         return [self.room.players[i] for i in self.seats if i in self.room.players]
 
@@ -409,6 +416,7 @@ class Midway(Game):
         self.jack_by = None
         self.colours = None
         if kind == "skee":
+            self.stacked_skee = True
             self.jack = (round(rng.uniform(-0.3, 0.3), 3), round(rng.uniform(0.72, 0.9), 3))
         elif kind == "rings":
             cols = []
@@ -478,9 +486,9 @@ class Midway(Game):
         pts, good, jack, sweep = 0, False, False, False
         if kind == "skee":
             x, y = skee_land(aim, power, rng)
-            ex, ey, rattle = skee_settle(x, y, rng)
+            ex, ey, rattle = skee_settle(x, y, rng, self.skee_rings)
             jk = self.jack if self.jack_by is None else None
-            pts, where, jack = skee_score(ex, ey, jk)
+            pts, where, jack = skee_score(ex, ey, jk, self.skee_rings)
             good = pts >= 30
             shot.update(x=round(x, 3), y=round(y, 3), ex=round(ex, 3), ey=round(ey, 3), rattle=rattle, where=where)
         elif kind == "rings":
@@ -587,7 +595,8 @@ class Midway(Game):
             top = ranked[0]
             tied = [o for o in ranked if (o.g.tickets, o.g.jackpots) == (top.g.tickets, top.g.jackpots)]
             if len(tied) > 1:
-                return r.finish(None, f"🤝 A tie on {top.g.tickets} tickets between {' & '.join(o.name for o in tied)}.")
+                return r.finish(None, f"🤝 A tie on {top.g.tickets} tickets between {' & '.join(o.name for o in tied)}.",
+                                draw=True)
             by_jack = len(ranked) > 1 and ranked[1].g.tickets == top.g.tickets
             return r.finish(top, f"🏆 {top.name} wins Midway Night with {top.g.tickets} tickets"
                             + (f" and {top.g.jackpots} jackpot{'s' if top.g.jackpots != 1 else ''}!" if by_jack else "!"))
@@ -650,7 +659,10 @@ class Midway(Game):
         """[(name, x, y)] spots on this booth worth aiming at, in its own metres."""
         kind = self.kind
         if kind == "skee":
-            out = [("50", 0.0, SK_CY)] + [("cup", x, y) for x, y in SK_CUPS]
+            out = [(str(points), 0.0, cy) for _, points, cy in self.skee_rings if points >= 30]
+            if self.skee_rings is SK_LEGACY_RINGS:
+                out = out[:1]
+            out.extend(("cup", x, y) for x, y in SK_CUPS)
             if self.jack_by is None:
                 out.append(("jack", *self.jack))
             return out
@@ -664,7 +676,7 @@ class Midway(Game):
         """Tickets one throw landing at (x, y) would earn (before the hot hand)."""
         kind = self.kind
         if kind == "skee":
-            pts, _, jp = skee_score(x, y, self.jack if self.jack_by is None else None)
+            pts, _, jp = skee_score(x, y, self.jack if self.jack_by is None else None, self.skee_rings)
             return pts + (JACKPOT if jp else 0)
         if kind == "rings":
             b, _, _, _ = ring_settle(x, y, rng)
@@ -748,7 +760,8 @@ class Midway(Game):
         kind = self.kind
         layout = ({"jack": list(self.jack)} if kind == "skee" else
                   {"colours": self.colours, "jack": self.jack} if kind == "rings" else {"jack": self.jack})
-        geo = ({"map": [SK_W, SK_H, -0.08], "rings": SK_RINGS, "cups": SK_CUPS, "cupR": SK_CUP_R, "jackR": SK_JACK_R, "cy": SK_CY}
+        geo = ({"map": [SK_W, SK_H, -0.08], "rings": self.skee_rings, "cups": SK_CUPS, "cupR": SK_CUP_R, "jackR": SK_JACK_R,
+                "cy": self.skee_rings[0][2], "stacked": getattr(self, "stacked_skee", False)}
                if kind == "skee" else
                {"map": [RT_W, RT_H, -0.05], "bottles": BOTTLES, "pts": RT_PTS, "ring": RT_RING} if kind == "rings" else
                {"map": [CN_W, 0.7, 0.02], "cans": [[cx, cy] for _, _, cx, cy in CANS], "w": CAN_W, "h": CAN_H, "ball": BALL_R,
