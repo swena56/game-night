@@ -55,7 +55,7 @@ UI.midway = (() => {
     for (const target of rackTargets) {
       if (!target.ball.ready || !rackBalls.includes(target.ball)) continue;
       const d = Math.hypot(target.x - x, target.y - y);
-      if (d < distance && d <= Math.max(19, target.radius + 7)) {
+      if (d < distance && d <= Math.max(26, target.radius + 12)) {
         best = target.ball;
         distance = d;
       }
@@ -315,10 +315,10 @@ UI.midway = (() => {
     const request = ctx.act('throw', { aim: +aim.toFixed(3), power: +power.toFixed(3), ...(V.kind === 'hoops' ? { startX: +heldBallX.toFixed(3), spin: +shotSpin.toFixed(2), backspin: +shotBackspin.toFixed(2), mode: shotMode } : {}) });
     if (V.kind === 'hoops') {
       const pending = { ball: heldBall, startX: heldBallX };
-      // the ball leaves the hand now, on the plain arc this aim and power would give; the server's flight replaces it
+      // Show the chosen shot immediately; the server's path replaces this prediction when it arrives.
       const guess = spot(aim, power);
       pending.anim = {
-        shot: { id: -(++ballUid), t: hoopShowTime, x: guess.x, y: guess.y, startX: heldBallX, aim, spin: shotSpin, hoop: null, k: 'hoops' },
+        shot: { id: -(++ballUid), t: hoopShowTime, x: guess.x, y: guess.y, startX: heldBallX, aim, spin: shotSpin, backspin: shotBackspin, mode: shotMode, hoop: null, k: 'hoops' },
         t0: performance.now(), hit: true, nextContact: 1e9, predicted: true, ball: pending.ball,
       };
       pending.anim.flightPath = basketballPath(pending.anim.shot);
@@ -403,7 +403,9 @@ UI.midway = (() => {
       if (pendingShot?.anim) {
         const guess = pendingShot.anim;
         anims = anims.filter((a) => a !== guess);
-        if (now - guess.t0 < 1200) t0 = guess.t0;
+        // Keep the release clock when the authoritative path arrives, so a
+        // slow reply corrects the arc in place instead of replaying it late.
+        t0 = guess.t0;
       }
       anims.push({ shot: sh, t0, hit: false, flightPath, ball, nextContact: 1 });
       stagger += 120;
@@ -750,7 +752,7 @@ UI.midway = (() => {
   ];
   const rackBall = (x) => ({
     x, y: hoopRampY(hoopRackZ), z: hoopRackZ, spin: 0,
-    velocity: [0, 0, 0], quietSteps: 12, ready: true, stillSteps: 12, sleeping: true,
+    velocity: [0, 0, 0], ready: true, stillSteps: 12, sleeping: true,
   });
 
   function takeRackBall(balls, ball) {
@@ -768,7 +770,7 @@ UI.midway = (() => {
     Object.assign(ball, {
       x: last[1], y: last[2], z: last[3], spin: last[0] * 9,
       velocity: returnScale.map((scale, i) => last[i + 4] * scale * slowdown[i]),
-      quietSteps: 0, ready: false, stillSteps: 0, sleeping: false, returning: true,
+      ready: false, stillSteps: 0, sleeping: false, returning: true,
     });
     return ball;
   }
@@ -863,9 +865,8 @@ UI.midway = (() => {
       const rackSpeed = Math.hypot(...velocity);
       const atBackstop = z >= hoopRackZ - 0.001;
       const quiet = atBackstop && nearFloor && rackSpeed < 0.13;
-      ball.quietSteps = quiet ? Math.min(12, ball.quietSteps + 1) : 0;
       // Keep a returning ball moving until it reaches the rack's backstop.
-      const ready = atBackstop && nearFloor && rackSpeed < 0.55;
+      const ready = quiet;
       moved ||= travel > 1e-5 || Math.abs(y - ball.y) > 1e-5 || ready !== ball.ready;
       // A settled ball participates in swept collisions without repeatedly
       // spending the shared event budget on gravity against the tray.
@@ -875,7 +876,7 @@ UI.midway = (() => {
       if (ball.sleeping) velocity.fill(0);
       ball.spin += nearFloor ? travel / hoopRadius : hoopStep * 5;
       Object.assign(ball, { x, y, z, ready });
-      if (ball.returning && atBackstop && nearFloor && rackSpeed < 0.55) ball.returning = false;
+      if (ball.returning && ready) ball.returning = false;
     }
     return moved;
   }
