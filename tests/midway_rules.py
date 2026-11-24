@@ -251,6 +251,23 @@ check("the final basketball can return after the buzzer", g.stage == "settle")
 g.on_timeout()
 check("basketball advances to the standings", g.stage == "between")
 
+# A roll already accepted at the buzzer still gets time to finish.
+r, g, (a, b) = game(booth_type="skee")
+booth(g, "skee")
+throw(g, a, 0, M.SK_CY)
+r.deadline = time.time()
+g.on_timeout()
+check("skee settles after the buzzer", g.stage == "settle" and r.deadline >= a.g.last_at + M.SHOW["skee"])
+check("skee rejects throws during settle", refused(g, b, {"type": "throw", "aim": 0, "power": 0.9}))
+
+r, g, (a, b) = game(booth_type="skee", clock=0)
+booth(g, "skee")
+check("untimed skee opens without a deadline", r.deadline is None and g.view(a)["midway"]["timeLeft"] is None)
+for p in (a, b):
+    while p.g.left:
+        throw(g, p, 0, M.SK_CY)
+check("untimed skee settles after the last ball", g.stage == "settle" and r.deadline >= b.g.last_at + M.SHOW["skee"])
+
 # out of throws, early finish, end of the night
 booth(g, "cans")
 for p in (a, b):

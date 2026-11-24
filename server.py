@@ -507,7 +507,7 @@ class Room:
             self.begin_turn(cand.id)
             return
 
-    def finish(self, winner, text, *, team_winner_ids=None):
+    def finish(self, winner, text, *, team_winner_ids=None, draw=False):
         winners = set(team_winner_ids or ())
         if winner:
             winners.add(winner.id)
@@ -578,9 +578,11 @@ class Room:
                         }
         if team_winner_ids is not None:
             self.history[-1]["teamWinnerIds"] = [p.id for p in seated if p.id in winners]
+        if draw:
+            self.history[-1]["draw"] = True
         self.history = self.history[-30:]
         for p in seated:
-            if p.bot and not p.standin and random.random() < 0.6:
+            if not draw and p.bot and not p.standin and random.random() < 0.6:
                 lines = BANTER["win" if p.id in winners else "lose"]
                 self.add_chat(p, random.choice(lines))
 

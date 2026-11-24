@@ -328,9 +328,10 @@ class Midway(Game):
     category = "action"
     family = None
     howto = [
-        "Everyone plays the same carnival booth at the same time, each in your own copy, before the clock runs out.",
+        "Everyone plays the same carnival booth at the same time, each in your own copy. If the throw clock is on, roll or throw before it runs out.",
         "In Ring Toss and Can Slam, swipe up to throw. A longer swipe throws farther or higher. Ring Toss and Can Slam also have on-screen buttons.",
-        "🎳 Skee Roll: rings pay 10–50, the corner cups 100. ⭕ Ring Toss: green 30, blue 50, red 80. 🥫 Can Slam: 10 a can, +50 for clearing the stack.",
+        "🎳 Skee Roll: drag sideways to aim, pull back and hold to charge, then release. Pockets pay 10–50, and the corner cups pay 100.",
+        "⭕ Ring Toss: green 30, blue 50, red 80. 🥫 Can Slam: 10 a can, +50 for clearing the stack.",
         "🏀 Basketball: Time shots through the hoop for one point each; the ball bounces off the rim, glass and side rails. Tap one of the five resting balls, flick to shoot, and reuse balls as they come back. Three baskets in a row is the hot hand (double points), and a clean swish on it pays one more.",
         "🔔 Skee Roll, Ring Toss and Can Slam hide a gold jackpot: the first to hit it wins +100. 🔥 Three good throws in a row and every good throw pays double until you miss (in every booth).",
         "Most 🎟 tickets after the last booth wins; ties go to the most jackpots.",
@@ -374,7 +375,8 @@ class Midway(Game):
             p.g.tickets, p.g.jackpots, p.g.best_streak = 0, 0, 0
         self.room.turn = None
         self.room.bot_at = 0
-        self.room.add_log(f"🎪 Midway Night: {n} booths, {self.clock} seconds each. Step right up!", "big")
+        timing = f"{self.clock} seconds each" if self.clock else "no time limit"
+        self.room.add_log(f"🎪 Midway Night: {n} booths, {timing}. Step right up!", "big")
         self.new_round()
 
     @property
@@ -542,7 +544,7 @@ class Midway(Game):
         self.tell(p, shot)
         if kind != "hoops" and all(o.g.left <= 0 for o in self.present()):
             self.stage = "settle"
-            self.room.deadline = min(self.room.deadline or now + SETTLE, now + SETTLE)
+            self.room.deadline = now + SETTLE
 
     def tell(self, p, shot):
         nm, kind, at = p.name, shot["k"], time.time() + shot["t"]
@@ -608,12 +610,14 @@ class Midway(Game):
             return
         if self.stage == "count":
             self.stage = "play"
-            r.deadline = None if self.kind == "hoops" and self.clock == 0 else self.t0 + self.clock
+            r.deadline = self.t0 + self.clock if self.clock else None
             return
-        if self.stage == "play" and self.kind == "hoops":
+        if self.stage == "play":
             if self.clock == 0:
+                r.deadline = None
                 return
-            last_return = max((o.g.last_at for o in self.players()), default=0) + HOOP_SETTLE
+            last_throw = max((o.g.last_at for o in self.players()), default=0)
+            last_return = last_throw + (HOOP_SETTLE if self.kind == "hoops" else SETTLE)
             if time.time() < last_return:
                 self.stage = "settle"
                 r.deadline = last_return
@@ -776,7 +780,7 @@ class Midway(Game):
             "throws": THROWS.get(kind), "stage": self.stage, "clock": self.clock,
             "hoopElapsed": max(0.0, now - self.t0) if kind == "hoops" else None,
             "startIn": max(0.0, round(self.t0 - now, 2)) if self.stage == "count" else 0,
-            "timeLeft": (None if kind == "hoops" and self.clock == 0 else max(0.0, round((r.deadline or now) - now, 2))) if self.stage in ("play", "settle") else 0,
+            "timeLeft": (None if r.deadline is None else max(0.0, round(r.deadline - now, 2))) if self.stage in ("play", "settle") else 0,
             "layout": layout, "geo": geo, "jackBy": jb.name if jb else None, "booths": booths, "gap": HOOP_GAP if kind == "hoops" else GAP, "hotAt": HOT_AT,
             "standings": self.standings() if self.stage == "between" and len(self.seats) > 1 else None,
         }}

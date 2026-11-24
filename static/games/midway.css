@@ -33,6 +33,7 @@
   line-height: 1.05;
 }
 #mwSkeeBest { color: #ffdc93; }
+.mw-skee-scores:has(+ .mw-stage .mw-done:not([hidden])) #mwSkeeScore { color: #aaff9d; }
 .mw-clock { font-variant-numeric: tabular-nums; font-weight: 700; }
 .mw-clock.low { background: #c0263acc !important; animation: pulse 1s infinite; }
 .mw-balls { letter-spacing: 2px; color: #ffd6a0 !important; }
@@ -51,6 +52,8 @@
   background: #140a24ee; color: #fff; border: 1px solid #ffd23f44; border-radius: var(--radius); padding: 10px 14px; z-index: 4; animation: mwIn .4s ease-out; cursor: default; }
 @keyframes mwIn { from { transform: translate(-50%, -56%) scale(.97); opacity: 0; } }
 .mw-done h3 { margin: 0 0 6px; text-align: center; font-size: 16px; }
+.mw-skee .mw-pop { top: 18%; max-width: calc(100% - 32px); padding: 6px 12px; border-radius: 12px; background: #10191de8; border: 1px solid #ffffff77; font-size: clamp(19px, 6vw, 36px); }
+.mw-skee .mw-pop.mw-jackpot { color: #ffdf72 !important; border-color: #ffdf72; box-shadow: 0 0 24px #ffad2d99; }
 .mw-ctl { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; margin-top: 8px; transition: opacity .2s; }
 .mw-ctl.mw-off { opacity: .45; }
 .mw-ctl button { min-width: 40px; height: 42px; padding: 0 10px; border-radius: 999px; font-size: 15px; touch-action: manipulation; }

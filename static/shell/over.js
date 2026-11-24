@@ -59,16 +59,21 @@ function runLine() {
   return line;
 }
 
+function isDraw(result) {
+  return result?.draw || (result?.game === 'midway' && result.text?.startsWith('🤝 A tie on '));
+}
+
 function renderOver() {
   const me = S.me, host = S.host === me.id;
   const w = player(S.winner);
   const last = S.history.at(-1);
   const team = last?.teamWinnerIds;
-  $('#overText').textContent = team ? last.text : w ? (w.id === me.id ? '🏆 You win!' : `🏆 ${w.name} wins!`) : (S.log.at(-1)?.text ?? 'Game over');
+  const draw = isDraw(last);
+  $('#overText').textContent = team || draw ? last.text : w ? (w.id === me.id ? '🏆 You win!' : `🏆 ${w.name} wins!`) : (S.log.at(-1)?.text ?? 'Game over');
   $('#overBanner').classList.toggle('won', w?.id === me.id || !!team?.includes(me.id));
   const scored = last?.players.filter((x) => x.score != null) ?? [];
   const mineRow = last?.players.find((x) => x.id === me.id);
-  renderPodium(w, scored, last?.low);
+  renderPodium(w, scored, last?.low, draw);
   // the scores as a small table, best first; the extra lines (stars earned, streaks, records) under it (#93)
   const box = $('#overScores'); box.innerHTML = '';
   if (scored.length > 1) {
@@ -162,9 +167,13 @@ function renderOver() {
 }
 // the podium: the winner in the middle, up a step, with the runners-up either side (by score when the game
 // keeps one, else just the winner)
-function renderPodium(w, scored, low) {
+function renderPodium(w, scored, low, draw) {
   const box = $('#overPodium'); box.innerHTML = '';
-  let places = scored.length > 1 ? [...scored].sort((a, b) => low ? a.score - b.score : b.score - a.score).slice(0, 3).map((x) => ({ p: player(x.id) || { name: x.name }, score: fmtNum(x.score) }))
+  if (draw) { box.hidden = true; return; }
+  const places = scored.length > 1 ? [...scored].sort((a, b) => {
+    const scoreOrder = low ? a.score - b.score : b.score - a.score;
+    return scoreOrder || Number(b.id === w?.id) - Number(a.id === w?.id);
+  }).slice(0, 3).map((x) => ({ p: player(x.id) || { name: x.name }, score: fmtNum(x.score) }))
     : w ? [{ p: w, score: '' }] : [];
   if (!places.length) { box.hidden = true; return; }
   box.hidden = false;

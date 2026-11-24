@@ -983,17 +983,30 @@ async function playSolo(game, seconds = 60) {
     click(d.querySelector('#soloSetupBtn'));
     await waitFor(() => w.eval('S')?.phase === 'lobby' && w.eval('S').players?.length > 1);
     const settings = game === 'oddone' && mode === 'blank' ? { blank: true } :
-      { [game === 'archery' ? 'course' : 'mode']: mode };
+      { [game === 'archery' ? 'course' : game === 'midway' ? 'booth_type' : 'mode']: mode };
     await w.eval(`act('settings', { settings: ${JSON.stringify(settings)} })`);
     await w.eval(`act('start')`);
   } else click(d.querySelector('#soloBtn'));
   // …and the game's screen module has loaded and mounted (it loads on demand: slow on a busy host)
   if (!(await waitFor(() => !d.querySelector('#game').hidden && S()?.phase === 'playing' && !!w.eval('mounted'), 30000))) report.notes.push('never reached the game screen');
-  const end = Date.now() + seconds * 1000;
+  const skeeOnly = game === 'midway' && mode === 'skee';
+  const end = Date.now() + (skeeOnly ? 180 : seconds) * 1000;
+  const skeeRounds = new Map();
+  const skeeBestMatches = () => skeeRounds.size > 0 &&
+    Math.max(...skeeRounds.values()) === w.eval("load('midway.skee.stacked.best')");
   let sawOddOneClueWords = false;
   const clueWordIssues = new Set();
   while (Date.now() < end && S()?.phase === 'playing') {
     const s = S();
+    if (skeeOnly && s.midway?.stage === 'between') {
+      skeeRounds.set(s.midway.round, s.midway.booths[s.me.id].pts);
+      const score = Number(d.querySelector('#mwSkeeScore')?.textContent);
+      if (d.querySelector('#mwSkeeScoreLabel')?.textContent !== 'Final score' ||
+          score !== s.midway.booths[s.me.id].pts) {
+        if (!report.notes.includes('Skee Roll final score differs from the server'))
+          report.notes.push('Skee Roll final score differs from the server');
+      }
+    }
     if (game === 'oddone') {
       const g = s.oddone;
       const words = [...d.querySelectorAll('#ooClues .oo-clue-word')].map((label) => label.textContent);
@@ -1030,6 +1043,12 @@ async function playSolo(game, seconds = 60) {
   click(d.querySelector('#modalOk'));
   report.ticker = d.querySelector('#logLast').textContent.slice(0, 40) + (d.querySelector('#log').hidden ? ' [log folded]' : ' [log open]');
   report.phase = S()?.phase;
+  if (skeeOnly) {
+    const settings = S()?.midway;
+    if (skeeRounds.size !== settings?.rounds || settings?.order.some((kind) => kind !== 'skee'))
+      report.notes.push('did not finish the Skee Roll rounds');
+    if (!skeeBestMatches()) report.notes.push('Skee Roll personal best differs from the completed rounds');
+  }
   report.screen = d.querySelector('#turnText')?.textContent;
   if (report.phase === 'over') {
     report.banner = d.querySelector('#overText')?.textContent;
@@ -1046,9 +1065,11 @@ async function playSolo(game, seconds = 60) {
       await waitFor(() => !d.querySelector('#replayBar').hidden, 5000);
       if (d.querySelector('#rpPlay').textContent !== '⏸') report.notes.push('replay did not start playing');
       for (let i = 0; i < 3; i++) { click(d.querySelector('#rpNext')); await sleep(150); }
+      if (skeeOnly && (!d.querySelector('#mwGo')?.disabled || !skeeBestMatches()))
+        report.notes.push('Skee Roll replay should keep controls disabled and preserve the personal best');
       report.replay = d.querySelector('#replayCaption').textContent.slice(0, 50);
       click(d.querySelector('#rpExit')); await sleep(300);
-    }
+    } else if (skeeOnly) report.notes.push('Skee Roll replay unavailable');
     // chat + prefs
     click(d.querySelector('#chatBtn'));
     d.querySelector('#chatInput').value = 'gg from the test';

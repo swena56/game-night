@@ -9,7 +9,9 @@
 //        and creeps back up when they're smooth again, so the game keeps its frame rate;
 //        hooks.cap / hooks.min override the top and bottom of that range, and r.renderStill(scene, camera)
 //        draws one frame at the top of it (not timed): for on-demand games, so the view you look at
-//        between moves is always sharp even when motion runs at a lower resolution;
+//        between moves is always sharp even when motion runs at a lower resolution.
+//        hooks.frameWindow and hooks.frameGap tune adaptive timing, and idleFullResolution: false
+//        keeps idle draws at the current adaptive resolution;
 //      * context-loss recovery: phones throw the GPU context away when you switch apps; hooks.onLost()
 //        lets the game build a new renderer instead of showing a frozen or black view;
 //      * on 🎨 Graphics: Low (gfxLevel in app.js) no antialiasing and a pixel ratio of 1.
@@ -76,8 +78,8 @@
       const now = performance.now(), dt = now - last; last = now;
       // (a game's idle redraws, ~15 fps on purpose, go through renderStill: counted here they read as a slow device
       // and shrank the picture, #107/#109)
-      if (dt > 0 && dt < 120) { sum += dt; n++; }
-      if (n >= 90) {
+      if (dt > 0 && dt < (hooks.frameGap ?? 120)) { sum += dt; n++; }
+      if (n >= (hooks.frameWindow ?? 90)) {
         const avg = sum / n; sum = 0; n = 0;
         if (avg > 24) {
           good = 0;
@@ -93,7 +95,7 @@
       use(pr);
       return render(scene, camera);
     };
-    r.renderStill = (scene, camera) => { last = 0; use(cap); return render(scene, camera); };
+    r.renderStill = (scene, camera) => { last = 0; use(hooks.idleFullResolution === false ? pr : cap); return render(scene, camera); };
     r.quality = () => shown;
     const canvas = r.domElement;
     const lost = (e) => {

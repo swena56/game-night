@@ -367,7 +367,7 @@ function blip(kind) {
   try {
     audio ||= new (window.AudioContext || window.webkitAudioContext)();
     const chime = kind === 'turn' ? TURN_CHIMES[S && gameInfo()?.category] : null;
-    const notes = chime ? chime[0] : { turn: [660, 880], chat: [520], win: [523, 659, 784, 1047], lose: [392, 330] }[kind];
+    const notes = chime ? chime[0] : { turn: [660, 880], chat: [520], win: [523, 659, 784, 1047], lose: [392, 330], draw: [523, 523] }[kind];
     notes.forEach((f, i) => {
       const o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime + i * 0.11;
       o.frequency.value = f; o.type = chime ? chime[1] : 'triangle';
@@ -533,7 +533,7 @@ addEventListener('beforeunload', (e) => {
 // the first time that game is picked or shown (it used to be 50+ scripts, ~1 MB, before the first screen).
 // the 40 games drawn by the shared card table (games/cardtable.js + .css), loaded before the game's own one-line script
 const CARDTABLE_GAMES = 'whist piquet skat truc bridge bezique pinochle belote mao eleusis canasta fivehundred ecarte pitch sixtysix ninetynine war spite cassino oldmaid gofish bigtwo ranter blitz briscola nertz ratscrew palace fantan germanwhist gin scopa gops euchre ohhell spades kowhist spoons president cheat'.split(' ');
-const UI_EXTRA = { ...Object.fromEntries(CARDTABLE_GAMES.map((g) => [g, ['cardtable']])), billiards: ['billiards3d'], chess: ['chess3d'], switchyard: ['switchyard3d'], bingo: ['bingokit'], bingotools: ['bingokit'] };  // helpers a game's screen needs first
+const UI_EXTRA = { ...Object.fromEntries(CARDTABLE_GAMES.map((g) => [g, ['cardtable']])), billiards: ['billiards3d'], midway: ['midwayball'], chess: ['chess3d'], switchyard: ['switchyard3d'], bingo: ['bingokit'], bingotools: ['bingokit'] };  // helpers a game's screen needs first
 const uiLoads = {};
 // each game's own CSS (static/games/<file>.css, split out of style.css) arrives with its script. A missing file
 // (a game with no rules of its own) or a slow one never holds the game up: the board just draws unstyled for a moment.
@@ -613,8 +613,9 @@ function onState(s) {
   if (news.length) setTimeout(() => toast(news.join(' · ')), 1500);
   if (news.some((n) => n.startsWith('🆙'))) syncLook(s, true);  // a level-up shows at the table straight away
   if (prev && prev.phase === 'playing' && s.phase === 'over' && !firstState) {
-    const won = s.winner === s.me.id || s.history.at(-1)?.teamWinnerIds?.includes(s.me.id);
-    blip(won ? 'win' : 'lose');
+    const last = s.history.at(-1);
+    const won = s.winner === s.me.id || last?.teamWinnerIds?.includes(s.me.id);
+    blip(isDraw(last) ? 'draw' : won ? 'win' : 'lose');
     if (won) confetti();
   }
   if (!replay) {
@@ -825,7 +826,7 @@ function renderGame(view = S, readOnly = false, force = false) {
   const moved = () => { if ($('#tipCard')) seenTip(view.gameId); };
   const actTip = (...a) => act(...a).then((r) => { moved(); return r; });
   const inputTip = (...a) => { moved(); return input(...a); };
-  ui.render(view, { act: readOnly ? readOnlyAct : actTip, input: readOnly ? () => {} : inputTip, quiet, toast, el, ask, player: lookup, mark: (id) => mark(lookup(id)), myTurn,
+  ui.render(view, { readOnly, act: readOnly ? readOnlyAct : actTip, input: readOnly ? () => {} : inputTip, quiet, toast, el, ask, player: lookup, mark: (id) => mark(lookup(id)), myTurn,
     peek: readOnly ? null : (extra) => api('/api/peek', { ...session, ...extra }),
     logAxeDebug: readOnly ? null : (extra) => api('/api/axe-debug', { ...session, ...extra }),
     confetti: readOnly ? () => {} : confetti, sfx: readOnly ? () => {} : sfx, buzz: readOnly ? () => {} : buzz, rerender: () => (replay ? showFrame() : renderGame(S, false, true)) });

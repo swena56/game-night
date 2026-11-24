@@ -34,8 +34,8 @@ UI.midway = (() => {
   const chargeDuration = () => V?.kind === 'hoops' ? 490 : 1000;
   let ballUid = 0;
   let rackBalls = [], rackTargets = [], heldBallX = 0, lastRackTick = 0, rackDebt = 0;
-  const canPlay = () => S?.phase === 'playing' && V?.stage === 'play' && V.me && !watched()?.out && hasShots(V) && !S.paused
-    && (V.kind !== 'hoops' || !endAt || performance.now() < endAt);
+  const canPlay = () => !ctx?.readOnly && S?.phase === 'playing' && V?.stage === 'play' && V.me &&
+    !watched()?.out && hasShots(V) && !S.paused && (!endAt || performance.now() < endAt);
   const canThrow = () => canPlay() && (V.kind !== 'hoops' || heldBall)
     && performance.now() - lastThrow > (V.gap ?? 0.8) * 1000 + 80;
 
@@ -66,7 +66,7 @@ UI.midway = (() => {
     aim = 0; power = 0.5; swipe = null; lastThrow = 0; fallAt = []; heldBall = false; pendingShots = []; netStrike = null; rackBalls = []; rackTargets = [];
     main.innerHTML = `<div class="mw">
       <div id="mwSkeeScores" class="mw-skee-scores" hidden>
-        <div><span>Round score</span><strong id="mwSkeeScore">0</strong></div>
+        <div><span id="mwSkeeScoreLabel">Round score</span><strong id="mwSkeeScore">0</strong></div>
         <div id="mwSkeeBestCard" hidden><span>Personal best</span><strong id="mwSkeeBest">—</strong></div>
       </div>
       <div class="mw-stage" id="mwStage">
@@ -223,8 +223,15 @@ UI.midway = (() => {
   const AT = { room: 'outdoor', send: 0.35 };
   const snd = (fn, pan = 0, vol = 1) => window.Snd?.play((t, K) => fn(t, K, K.at({ ...AT, pan, vol })));
   const SND = {
-    // a wooden ball trundling up the lane, then the hop
-    roll: () => snd((t, K, d) => { K.burst(d, t, { type: 'lowpass', f: 260, f1: 420, q: 0.8, vol: 0.22, tau: 0.5, dur: 0.9, attack: 0.05, buf: 'brown' }); K.mode(d, t + 0.95, 180, 0.12, 0.05); }),
+    // A dry, audible wooden rumble and a few rolling knocks, timed with the lane animation.
+    skeeRoll: () => snd((t, K, d) => {
+      K.burst(d, t + 0.06, { type: 'lowpass', f: 280, f1: 150, q: 0.55, vol: 0.34, tau: 0.28, dur: 0.72, attack: 0.018, buf: 'brown' });
+      for (let i = 0; i < 6; i++) {
+        K.mode(d, t + 0.1 + i * 0.11, 115 + (i % 3) * 18, 0.085, 0.035, { f1: 82 });
+        K.burst(d, t + 0.1 + i * 0.11, { type: 'bandpass', f: 310 + (i % 2) * 55, q: 0.65, vol: 0.065, tau: 0.025, dur: 0.07, attack: 0.002, buf: 'brown' });
+      }
+      K.burst(d, t + 0.79, { type: 'lowpass', f: 520, q: 0.6, vol: 0.18, tau: 0.025, dur: 0.12, attack: 0.002, buf: 'brown' });
+    }, 0, 1),
     // A clean make snaps the net. After contact, leave room for the rim or glass.
     basketSwoosh: (clean) => snd((t, K, d) => K.burst(d, t, {
       type: 'bandpass', f: clean ? 2300 : 1150, f1: 650, q: 0.7,
@@ -319,6 +326,7 @@ UI.midway = (() => {
   }
 
   function render(s, c) {
+    const previousShot = watched()?.shots.at(-1)?.id ?? 0;
     S = s; ctx = c; V = s.midway;
     const now = performance.now();
     if (V !== lastV) {
@@ -333,6 +341,10 @@ UI.midway = (() => {
     const key = `${V.round}:${watchId}`;
     if (key !== watchKey) { cancelCharge?.(); swipe = null; watchKey = key; resync(); aim = 0; power = 0.5; }
     const b = watched();
+    if (ctx.readOnly && previousShot > (b?.shots.at(-1)?.id ?? 0)) {
+      resync();
+      $('mwPop').hidden = true;
+    }
     let stagger = 0;
     for (const sh of b?.shots || []) {
       if (seen.has(sh.id)) continue;
@@ -361,11 +373,12 @@ UI.midway = (() => {
       }
       anims.push({ shot: sh, t0, hit: false, flightPath, ball, nextContact: 1 });
       stagger += 120;
-      if (sh.k === 'skee') SND.roll();
     }
     const basketball = V.kind === 'hoops';
     const stage = $('mwStage'), meterBox = $('mwPow').parentElement;
     $('mwSkeeScores').hidden = V.kind !== 'skee';
+    stage.classList.toggle('mw-skee', V.kind === 'skee');
+    $('mwSkeeScoreLabel').textContent = V.stage === 'between' ? 'Final score' : 'Round score';
     const expanded = stage.parentElement.classList.toggle('mw-basketball', basketball);
     if (expanded !== (meterBox.parentElement === stage)) {
       if (expanded) stage.append(meterBox);
@@ -397,7 +410,7 @@ UI.midway = (() => {
       : `midway.basketball.best.${V.clock}.${V.geo.travel > 0 ? 'moving' : 'fixed'}`;
     const saved = load(key);
     let best = Number.isSafeInteger(saved) && saved >= 0 ? saved : null;
-    const complete = V.stage === 'settle' || V.stage === 'between';
+    const complete = V.stage === 'between' || (!skee && V.stage === 'settle');
     const score = booth.pts;
     if (complete && !booth.out && Number.isSafeInteger(score) && score >= 0 &&
         (best === null || score > best)) {
@@ -515,7 +528,7 @@ UI.midway = (() => {
     const t = S.phase !== 'playing' ? '' : V.stage === 'count' ? 'Get ready…'
       : V.stage === 'between' ? '' : !V.me ? 'Tap a name to watch their booth.'
         : !hasShots(V) ? 'Out of throws: tap a name to watch a rival.'
-          : { skee: 'Drag sideways to aim. Pull back and hold to charge, then release to roll. The corner cups pay 100.',
+          : { skee: 'Drag sideways to aim. Pull back and hold to charge, then release to roll. Aim for 50, 40 or 30, or the corner 100s.',
               rings: 'Swipe up to toss: a longer swipe reaches the back rows. Red bottles pay 80.',
               hoops: 'Tap a ball to pick it up. Flick up to shoot, with a slight left or right flick to adjust aim.',
               cans: 'Swipe up to throw: a longer swipe throws higher. Hit the bottom row and the cans above it fall too.' }[V.kind];
@@ -524,12 +537,15 @@ UI.midway = (() => {
 
   function pop(sh) {
     const el = $('mwPop'); if (!el) return;
-    const words = sh.k === 'skee' ? (sh.where === 'short' ? 'Short!' : sh.where === 'cup' ? (sh.rattle ? '🏆 RATTLED IN!' : '🏆 CUP!') : (sh.rattle ? 'Rattled!' : ''))
+    const words = sh.k === 'skee' ? (sh.jack ? '🔔 Jackpot!' :
+      sh.where === 'short' ? 'Short · 0' : sh.rattle ? 'Rattled in!' :
+        sh.where === 'cup' ? 'Corner cup!' : sh.where === 'gutter' ? 'Gutter' : 'Pocket')
       : sh.k === 'hoops' ? (sh.swish ? 'SWISH!' : sh.bank ? 'BANK!' : 'BASKET')
         : sh.k === 'rings' ? (sh.b == null ? 'Miss' : 'RINGER!') : (sh.fell.length ? `${sh.fell.length} can${sh.fell.length > 1 ? 's' : ''}` : 'Miss');
-    el.textContent = `${words}${sh.pts ? ` +${sh.pts}` : ''}${sh.hot ? ' 🔥' : ''}${sh.jack ? '  🔔 JACKPOT' : ''}${sh.sweep ? '  🥫 SWEEP' : ''}`.trim();
+    el.textContent = `${words}${sh.pts ? ` +${sh.pts}` : ''}${sh.hot ? ' 🔥' : ''}${sh.jack && sh.k !== 'skee' ? '  🔔 JACKPOT' : ''}${sh.sweep ? '  🥫 SWEEP' : ''}`.trim();
     const madeBasket = sh.k === 'hoops' && sh.hoop != null;
     el.classList.toggle('mw-made', madeBasket);
+    el.classList.toggle('mw-jackpot', sh.k === 'skee' && !!sh.jack);
     el.style.color = madeBasket ? '#aaff9d' : sh.jack ? '#ffd23f' : sh.pts ? '#fff' : '#ff9a9a';
     el.hidden = false;
     if (sh.k !== 'hoops') {
@@ -543,7 +559,12 @@ UI.midway = (() => {
   // the moment a throw lands, for the watched booth
   function land(a, now) {
     const sh = a.shot, mine = watchId === V.me;
-    if (sh.k === 'skee') SND.sink(sh.pts >= 50);
+    if (sh.k === 'skee') {
+      if (!ctx.readOnly) {
+        if (sh.where === 'short') SND.tap();
+        else SND.sink(sh.pts >= 50);
+      }
+    }
     else if (sh.k === 'rings') sh.b != null ? SND.clink(true) : SND.tap();
     else if (sh.k === 'hoops') {
       if (sh.hoop != null) {
@@ -895,6 +916,10 @@ UI.midway = (() => {
     for (const a of anims) {
       if (a.predicted) { if (now - a.t0 > 2500) a.dead = true; continue; }
       const elapsed = (now - a.t0) / 1000;
+      if (a.shot.k === 'skee' && elapsed >= 0 && !a.started) {
+        a.started = true;
+        if (!ctx.readOnly) SND.skeeRoll();
+      }
       // each contact in the server's flight sounds at its own moment
       for (const path = a.shot.path; path && a.nextContact < path.length && elapsed >= path[a.nextContact][0]; a.nextContact++) {
         const kind = path[a.nextContact][7];
@@ -1321,7 +1346,24 @@ UI.midway = (() => {
       boardFace.material.map = boardTex; boardFace.material.needsUpdate = true;
     }
     const goldMat = std(0xffc83a, { metalness: 0.75, roughness: 0.25, emissive: 0x6a4a00, emissiveIntensity: 0.6 });
-    const skeeJack = new T.Mesh(new T.TorusGeometry(0.05, 0.014, 8, 24), goldMat); board.add(skeeJack);
+    const skeeJack = new T.Group();
+    const jackBeacon = new T.Mesh(new T.ConeGeometry(0.026, 0.09, 8), goldMat);
+    jackBeacon.position.y = 0.055;
+    const jackHalo = new T.Mesh(new T.TorusGeometry(0.042, 0.008, 8, 24), goldMat);
+    jackHalo.rotation.x = Math.PI / 2;
+    jackHalo.position.y = 0.02;
+    skeeJack.add(jackBeacon, jackHalo);
+    const jackLabel = new T.Mesh(new T.PlaneGeometry(0.13, 0.055), new T.MeshBasicMaterial({
+      map: tex(192, 80, (g, w, h) => {
+        g.fillStyle = '#542d08'; g.beginPath(); g.roundRect(2, 2, w - 4, h - 4, 18); g.fill();
+        g.strokeStyle = '#ffdf72'; g.lineWidth = 5; g.stroke();
+        g.font = '900 48px system-ui, sans-serif'; g.fillStyle = '#fff4c7';
+        g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('+100', w / 2, h / 2);
+      }), transparent: true, toneMapped: false, side: T.DoubleSide,
+    }));
+    jackLabel.position.y = 0.13;
+    skeeJack.add(jackLabel);
+    board.add(skeeJack);
     const skeeBall = new T.Mesh(new T.SphereGeometry(0.045, 16, 12), std(0xffffff, { roughness: 0.35, map: ballTex })); skeeBall.castShadow = true;
     const skeeBalls = [];
     const boardPt = (bx, by, lift = 0.05) => board.localToWorld(new T.Vector3(bx, by, lift));
@@ -1676,8 +1718,9 @@ UI.midway = (() => {
       if (u < landU) return arc(skee.localToWorld(lip), boardPt(sh.x, Math.max(0.02, sh.y)), 0.22, (u - 0.55) / (landU - 0.55));
       const w = Math.min(1, (u - landU) / (1 - landU));
       const settle = sh.rattle ? Math.min(1, w / 0.25) : 1;
-      const hop = sh.rattle ? Math.sin(settle * Math.PI * 3) * 0.012 * (1 - settle) : 0;
-      const x = sh.x + (sh.ex - sh.x) * settle + hop;
+      const hop = sh.rattle ? Math.abs(Math.sin(settle * Math.PI * 2)) * 0.035 * (1 - settle) : 0;
+      const rattleSide = sh.rattle ? Math.sin(settle * Math.PI * 5) * 0.018 * (1 - settle) : 0;
+      const x = sh.x + (sh.ex - sh.x) * settle + hop + rattleSide;
       const y = Math.max(0.02, sh.y + (sh.ey - sh.y) * settle);
       const pocket = sh.where === 'cup' ? cornerPockets[x < 0 ? 0 : 1] :
         scorePockets.get(sh.where === 'gutter' && V.geo.stacked ? '10' : sh.where);
@@ -1734,7 +1777,9 @@ UI.midway = (() => {
       skee.visible = sc.kind === 'skee'; rings.visible = sc.kind === 'rings'; cansG.visible = sc.kind === 'cans';
       const pool = (arr, proto, parent, count = sc.fly.length) => { while (arr.length < count) { const m = proto.clone(); m.material = proto.material.clone(); parent.add(m); arr.push(m); } arr.forEach((m) => { m.visible = false; }); };
       if (sc.kind === 'skee') {
-        skeeJack.visible = sc.jackLive; skeeJack.position.set(sc.layout.jack[0], sc.layout.jack[1], SKEE_DIVIDER_HEIGHT + 0.014);
+        skeeJack.visible = sc.jackLive;
+        skeeJack.position.set(sc.layout.jack[0], sc.layout.jack[1], SKEE_DIVIDER_HEIGHT + 0.014);
+        skeeJack.rotation.y = Math.sin(now / 260) * 0.16;
         pool(skeeBalls, skeeBall, scene3);
         sc.fly.forEach((f, k) => { const m = skeeBalls[k]; m.visible = f.u > 0 && f.u < 1; m.position.copy(skeePath(f.shot, f.u, f.landU)); m.rotation.x = -f.u * 40; m.material.color.set(sc.color); trail(k, (u) => skeePath(f.shot, u, f.landU), f, sc.color); });
         const count = clamp(sc.left ?? 0, 0, trayBalls.length);
@@ -1977,7 +2022,7 @@ UI.midway = (() => {
           g.beginPath();
           g.moveTo(cx + (2 * fraction - 1) * mouth, Y(0));
           g.lineTo(w * fraction, h);
-          g.strokeStyle = '#71471e55';
+          g.strokeStyle = '#60391488';
           g.stroke();
         }
         for (const side of [-1, 1]) {
@@ -2000,6 +2045,9 @@ UI.midway = (() => {
             g.closePath();
             g.fillStyle = sc.charging && sc.chargePower * 6 > i ? '#ffac30' : '#fff3cb';
             g.fill();
+            g.strokeStyle = '#3d2918';
+            g.lineWidth = 1;
+            g.stroke();
           }
         }
         g.lineWidth = 2;
@@ -2031,7 +2079,7 @@ UI.midway = (() => {
         function label(points, x, y) {
           g.font = `900 ${Math.max(13, k * 0.063)}px system-ui, sans-serif`;
           g.textAlign = 'center'; g.textBaseline = 'middle';
-          g.strokeStyle = '#102629'; g.lineWidth = 3; g.strokeText(String(points), X(x), Y(y));
+          g.strokeStyle = '#102629'; g.lineWidth = 4; g.strokeText(String(points), X(x), Y(y));
           g.fillStyle = '#fff2d7'; g.fillText(String(points), X(x), Y(y));
         }
         pockets.forEach(([x, y, radius], i) => {
@@ -2043,7 +2091,16 @@ UI.midway = (() => {
           label(100, x, y + cupR + 0.045);
         }
         g.lineWidth = 2;
-        if (sc.jackLive) { g.beginPath(); g.arc(X(sc.layout.jack[0]), Y(sc.layout.jack[1]), sc.geo.jackR * k, 0, 7); g.strokeStyle = '#ffc83a'; g.lineWidth = 4; g.stroke(); g.lineWidth = 2; }
+        if (sc.jackLive) {
+          const jx = X(sc.layout.jack[0]), jy = Y(sc.layout.jack[1]);
+          g.beginPath(); g.moveTo(jx, jy - 11); g.lineTo(jx + 8, jy); g.lineTo(jx, jy + 11); g.lineTo(jx - 8, jy); g.closePath();
+          g.fillStyle = '#ffc83a'; g.fill(); g.strokeStyle = '#392508'; g.lineWidth = 2; g.stroke();
+          g.beginPath(); g.arc(jx, jy, 14 + 2 * Math.sin(now / 120), 0, Math.PI * 2);
+          g.strokeStyle = '#ffdf72'; g.lineWidth = 1.5; g.stroke();
+          g.font = '900 11px system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+          g.fillStyle = '#fff4c7'; g.strokeStyle = '#542d08'; g.lineWidth = 3;
+          g.strokeText('+100', jx, jy - 17); g.fillText('+100', jx, jy - 17);
+        }
         for (const f of sc.fly) {
           if (f.u <= 0 || f.u >= 1) continue;
           const s = f.shot, v = Math.min(1, f.u / f.landU);
@@ -2051,6 +2108,11 @@ UI.midway = (() => {
           const launchY = -0.1 - laneDepth / k;
           let y = launchY + (s.y - launchY) * (s.where === 'short' ? Math.sin(Math.PI * f.u) : v);
           let radius = Math.max(4, 0.045 * k * (1.4 - 0.4 * v));
+          if (f.u >= f.landU && s.rattle && s.where !== 'short') {
+            const settle = clamp(((f.u - f.landU) / (1 - f.landU)) / 0.25, 0, 1);
+            x += Math.sin(settle * Math.PI * 5) * 0.014 * (1 - settle);
+            y += Math.abs(Math.sin(settle * Math.PI * 2)) * 0.025 * (1 - settle);
+          }
           if (stacked && f.u >= f.landU && s.where !== 'short') {
             const targetIndex = s.where === 'gutter' ? rings.length : rings.findIndex(([, value]) => String(value) === s.where);
             const target = s.where === 'cup' ? cups[s.ex < 0 ? 0 : 1] : pockets[targetIndex];
