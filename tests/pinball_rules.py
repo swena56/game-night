@@ -6,7 +6,10 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from games.pinball import BALL, BUMPS, FLIPPERS, LAUNCH, RAMP, RAMP_EXIT, ROLLOVERS, SLINGS, SPINNER, TARGETS, Table
+from games.pinball import (
+    BALL, BUMPS, FLIPPERS, JACKPOT_TICKS, LAUNCH, LAYOUT, RAMP, RAMP_EXIT, ROLLOVERS,
+    SLINGS, SPINNER, TARGETS, Table,
+)
 from server import Room
 
 
@@ -96,9 +99,12 @@ class PinballRules(unittest.TestCase):
                 table.step()
             self.assertEqual(table.score, (i + 1) * 250)
         self.assertEqual(table.bank, 7)
-        table.x, table.y = RAMP[0] + .22, RAMP[1] + .02
+        table.x, table.y = RAMP[0], 9
         table.vx, table.vy = 0, -15
-        table.step()
+        for _ in range(100):
+            table.step()
+            if table.ramp_ticks:
+                break
         self.assertTrue(table.ramp_ticks)
         for _ in range(58):
             table.step()
@@ -106,8 +112,55 @@ class PinballRules(unittest.TestCase):
         for _ in range(57):
             table.step()
         self.assertEqual((table.event, table.score, table.bank), ("ramp", 6750, 0))
+        self.assertEqual(table.jackpot_ticks, JACKPOT_TICKS)
         self.assertAlmostEqual(table.x, RAMP_EXIT[0])
         self.assertAlmostEqual(table.y, RAMP_EXIT[1])
+
+    def test_jackpot_locks_in_at_ramp_entry(self):
+        x, y = RAMP
+        table = placed(x, y + .01, vy=-15)
+        table.jackpot_ticks = 2
+        table.step()
+        self.assertEqual(table.ramp_ticks, 1)
+        for _ in range(115):
+            table.step()
+        self.assertEqual((table.event, table.score, table.jackpot_ticks), ("jackpot", 12000, 0))
+        table.x, table.y, table.vx, table.vy = x, y + .01, 0, -15
+        table.step()
+        self.assertEqual(table.ramp_ticks, 0)
+
+    def test_opening_save_relaunches_once(self):
+        table = launch(212)
+        self.assertEqual(table.save_ticks, 0)
+        for _ in range(420):
+            table.step()
+            if table.save_ticks:
+                break
+        self.assertGreater(table.save_ticks, 0)
+        for expected_balls in (3, 2):
+            table.x, table.y = 5, 17.3
+            table.vx = table.vy = 0
+            table.step()
+            self.assertEqual((table.balls, table.save_ticks), (expected_balls, 0))
+            if expected_balls == 3:
+                self.assertEqual((table.event, table.staged, table.vy), ("save", False, -30))
+                for _ in range(420):
+                    table.step()
+                self.assertLess(table.x, 8.8)
+                self.assertEqual(table.save_ticks, 0)
+        self.assertFalse(table.save_used)
+
+    def test_playfield_guides_collide_at_published_positions(self):
+        for ax, ay, bx, by in LAYOUT["rails"][-4:]:
+            with self.subTest(rail=(ax, ay, bx, by)):
+                length = math.hypot(bx - ax, by - ay)
+                nx, ny = (by - ay) / length, (ax - bx) / length
+                x, y = (ax + bx) / 2, (ay + by) / 2
+                table = placed(x + (BALL + .02) * nx, y + (BALL + .02) * ny, -12 * nx, -12 * ny)
+                table.step()
+                self.assertGreater(table.vx * nx + table.vy * ny, 0)
+                self.assertAlmostEqual((table.x - x) * nx + (table.y - y) * ny, BALL, places=4)
+                self.assertEqual(table.score, 0)
 
     def test_nudge_queue_tilt_and_ball_reset(self):
         table = placed(5, 11)

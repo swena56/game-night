@@ -38,7 +38,7 @@ async function open(browser, { flat = false, low = false, mobile = false } = {})
 }
 
 async function mobileRun(browser) {
-  const { page, errors } = await open(browser, { flat: true, mobile: true });
+  const { page, errors } = await open(browser, { flat: true, low: true, mobile: true });
   const packets = [];
   let dropHeld = false, block = null;
   await page.route('**/api/input', async (route) => {
@@ -56,9 +56,14 @@ async function mobileRun(browser) {
     const cabinet = await page.locator('.pb-cabinet').boundingBox();
     assert.ok(cabinet.width <= 320 && cabinet.x >= 0);
     assert.ok(cabinet.y + cabinet.height <= 680, 'whole table and controls fit the phone viewport');
+    await page.waitForFunction(() => {
+      const canvas = document.querySelector('.pb-flat');
+      return canvas?.width === canvas?.clientWidth;
+    });
     const client = await page.context().newCDPSession(page);
-    const flips = await Promise.all([control(page, 1).boundingBox(), control(page, 2).boundingBox()]);
-    const touchPoints = flips.map((rect, id) => ({ id, x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }));
+    let stage = await page.locator('.pb-stage').boundingBox();
+    const point = (x, y, id = 0) => ({ id, x: stage.x + x * stage.width, y: stage.y + y * stage.height });
+    const touchPoints = [point(.25, .7), point(.85, .7, 1)];
     await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints });
     await page.waitForFunction(() => [...document.querySelectorAll('.pb-controls button[aria-pressed="true"]')].length === 2);
     await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
@@ -99,15 +104,19 @@ async function mobileRun(browser) {
     await charge(page, 0, 0);
     await page.keyboard.up('Space');
 
-    await page.keyboard.down('Space');
+    stage = await page.locator('.pb-stage').boundingBox();
+    await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point(.87, .84)] });
+    await page.waitForFunction(() => document.querySelector('[data-control="2"]')?.getAttribute('aria-pressed') === 'true');
+    await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [point(.87, .91)] });
     await page.waitForFunction(() => {
       const meter = document.querySelector('.pb-charge.in-band');
       const power = Number(meter?.getAttribute('aria-valuenow'));
       return power >= 200 && power <= 216 && meter.getAttribute('aria-valuetext') === 'Skill shot window' &&
         document.querySelector('.pb-message').textContent === 'Release for skill shot';
     });
-    await page.keyboard.up('Space');
+    await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await text(page, '.pb-message', 'Skill shot +5,000');
+    await page.locator('.pb-save.lit').waitFor();
     const score = Number((await page.locator('.pb-score').textContent()).replaceAll(',', ''));
     assert.ok(score >= 5000);
 
@@ -121,6 +130,7 @@ async function mobileRun(browser) {
     assert.deepEqual(packets.slice(afterFlip).filter(p => p.nudge).map(p => p.nudge), [-1, 2, 1, 1]);
     assert.ok(packets.slice(afterFlip).filter(p => p.nudge).every(p => p.held === 1));
     assert.ok(await control(page, 1).isDisabled());
+    assert.equal(await page.locator('.pb-save.lit').count(), 0);
     await page.keyboard.up('KeyA');
     await text(page, '.pb-balls', '2', 25000);
     await text(page, '.pb-nudges', 'Nudges 3');
@@ -147,6 +157,15 @@ async function threeRun(browser, low) {
     const canvas = page.locator('.pb-three');
     const size = () => canvas.evaluate(c => [c.width, c.height, c.clientWidth, !!(c.getContext('webgl2') || c.getContext('webgl'))]);
     const before = await size();
+    const stage = await canvas.boundingBox();
+    for (const [x, flip] of [[.25, 1], [.85, 2]]) {
+      await page.mouse.move(stage.x + stage.width * x, stage.y + stage.height * .6);
+      await page.mouse.down();
+      assert.equal(await control(page, flip).getAttribute('aria-pressed'), 'true');
+      await page.mouse.up();
+      assert.equal(await control(page, flip).getAttribute('aria-pressed'), 'false');
+      assert.equal(await control(page, 4).isEnabled(), true, 'clicking either side keeps the ball staged');
+    }
     assert.equal(before[0], before[2] * (low ? 1 : 2), 'pixel ratio reflects graphics quality');
     assert.equal(before[3], true);
     await page.setViewportSize({ width: 480, height: 620 });

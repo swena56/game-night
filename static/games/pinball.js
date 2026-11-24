@@ -1,21 +1,24 @@
 (() => {
-  const [X, Y, VX, VY, Z, LEFT, RIGHT, SCORE, BALLS, BANK, NUDGES, TILT, STAGED, CHARGE, EVENT_ID, EVENT, SPIN] =
-    Array.from({ length: 17 }, (_, i) => i);
+  const [X, Y, VX, VY, Z, LEFT, RIGHT, SCORE, BALLS, BANK, NUDGES, TILT, STAGED, CHARGE, EVENT_ID, EVENT, SPIN, SAVE, JACKPOT] =
+    Array.from({ length: 19 }, (_, i) => i);
   const keys = {
     KeyA: 1, ArrowLeft: 1, KeyD: 2, ArrowRight: 2, Space: 4,
     KeyQ: -1, KeyW: -2, KeyE: -3,
   };
   const messages = {
-    skill: 'Skill shot +5,000', spinner: 'Spinner +100', ramp: 'Ramp jackpot +6,000',
+    skill: 'Skill shot +5,000', spinner: 'Spinner +100', ramp: 'Ramp +6,000 · Jackpot lit', jackpot: 'Jackpot +12,000', save: 'Ball saved · Auto launch',
     tilt: 'TILT · scoring suspended', nudge: 'Table nudged',
     drain: 'Ball drained', done: 'Run complete', recovery: 'Ball freed',
   };
-  const sounds = { skill: 'lock', ramp: 'cheer', tilt: 'wrong', spinner: 'tickfast', drain: 'groan', done: 'groan' };
+  const sounds = { skill: 'lock', ramp: 'cheer', jackpot: 'cheer', save: 'lock', tilt: 'wrong', spinner: 'tickfast', drain: 'groan', done: 'groan' };
   const prefixes = { bumper: 'Bumper +100', sling: 'Slingshot +50', lane: 'Rollover +500', target: 'Target +250' };
   const label = (event) => messages[event] || prefixes[event?.replace(/[0-9]$/, '')] || '';
   const sound = (event) => sounds[event] || (/^(bumper|sling)/.test(event) ? 'puck' : 'pop');
   const bestKey = 'pinball.best';
-  const palette = { gold: '#ffd383', ivory: '#fff0ca', teal: '#59edd2', red: '#f46044', steel: '#b2bcc0' };
+  const palette = { gold: '#ffd383', ivory: '#fff0ca', teal: '#59edd2', red: '#ff6854', steel: '#c1d2e5' };
+  const bumperColors = ['#ff9b59', '#c699ff', '#58e5d5'];
+  const flipperColors = ['#42cfeb', '#ff78bc'];
+  const guideColors = ['#a896ff', '#a896ff', '#ffcf76', '#ffcf76'];
   const rampPoints = ({ ramp, exit }) => Array.from({ length: 33 }, (_, i) => {
     const t = i / 32, arch = Math.sin(t * Math.PI);
     return [ramp[0] + (exit[0] - ramp[0]) * t, ramp[1] + (exit[1] - ramp[1]) * t - 4.8 * arch, 1.6 * arch];
@@ -27,37 +30,74 @@
     canvas.height = 1020;
     const c = canvas.getContext('2d');
     c.scale(60, 60);
-    const grain = c.createLinearGradient(0, 0, 10, 17);
-    grain.addColorStop(0, '#7c301b');
-    grain.addColorStop(.48, '#b7652e');
-    grain.addColorStop(1, '#532017');
-    c.fillStyle = grain;
+    const sky = c.createLinearGradient(0, 0, 0, 17);
+    sky.addColorStop(0, '#151940');
+    sky.addColorStop(.37, '#47256a');
+    sky.addColorStop(.64, '#963f68');
+    sky.addColorStop(1, '#101936');
+    c.fillStyle = sky;
     c.fillRect(0, 0, 10, 17);
-    for (let i = 0; i < 400; i++) {
-      const x = (i * 0.28391) % 10;
-      c.strokeStyle = i % 3 === 0 ? '#ffd69328' : '#39130934';
-      c.lineWidth = 0.01 + (i % 5) * 0.004;
-      c.beginPath();
-      c.moveTo(x, 0);
-      c.bezierCurveTo(x - .25, 4, x + .3, 10, x - .1, 17);
-      c.stroke();
+    for (let i = 0; i < 145; i++) {
+      c.fillStyle = i % 4 === 0 ? '#ffe0a5af' : '#f9ccff55';
+      const size = i % 7 === 0 ? .039 : .021;
+      c.fillRect(.22 + (i * 1.71828) % 8.5, .27 + (i * 2.41421) % 9.8, size, size);
     }
-    c.fillStyle = '#281a17';
+    const sun = c.createLinearGradient(0, 6, 0, 11);
+    sun.addColorStop(0, '#fff0ba');
+    sun.addColorStop(.48, '#ffab70');
+    sun.addColorStop(1, '#e65e8c');
+    c.save();
+    c.beginPath();
+    c.arc(4.64, 8.65, 2.55, 0, 2 * Math.PI);
+    c.clip();
+    c.fillStyle = sun;
+    for (let i = 0; i < 15; i++) c.fillRect(2, 6.1 + i * .34, 5.3, .33 - i * .014);
+    c.restore();
+    const ridge = [[0, 9.8], [1.3, 8.9], [2.6, 9.8], [3.55, 9.25], [4.6, 10.4],
+      [6.05, 9.6], [7.25, 8.65], [8.8, 9.65]];
+    c.beginPath();
+    ridge.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y));
+    c.lineTo(8.8, 17);
+    c.lineTo(0, 17);
+    c.closePath();
+    c.fillStyle = '#171937';
+    c.fill();
+    c.save();
+    c.clip();
+    c.strokeStyle = '#c578bc53';
+    c.lineWidth = .028;
+    c.beginPath();
+    for (let i = -8; i <= 8; i++) {
+      c.moveTo(4.5, 9.2);
+      c.lineTo(4.5 + i * 1.65, 17);
+    }
+    for (const y of [10.3, 10.7, 11.2, 11.85, 12.7, 13.8, 15.25, 17]) {
+      c.moveTo(0, y);
+      c.lineTo(8.8, y);
+    }
+    c.stroke();
+    c.restore();
+    c.fillStyle = '#161f3c';
     c.fillRect(8.83, 2.85, 1.17, 13.4);
     c.fillRect(0, 16.4, 8.8, .6);
+    const fieldWash = c.createRadialGradient(5, 7.1, .3, 5, 7.1, 5.8);
+    fieldWash.addColorStop(0, '#a995ff18');
+    fieldWash.addColorStop(1, '#16224e00');
+    c.fillStyle = fieldWash;
+    c.fillRect(.25, 4.2, 8.35, 6.4);
+    const inserts = c.createLinearGradient(0, 3.25, 0, 4.15);
+    inserts.addColorStop(0, '#75dfff00');
+    inserts.addColorStop(.5, '#75dfff25');
+    inserts.addColorStop(1, '#75dfff00');
+    c.fillStyle = inserts;
+    c.fillRect(.35, 3.15, 8.1, 1.1);
+    c.fillStyle = '#161f3c';
+    c.fillRect(.35, 3.02, 8.1, .09);
+    c.fillRect(.35, 4.28, 8.1, .09);
     c.save();
-    c.translate(4.9, 10.15);
-    c.strokeStyle = '#ffe0a583';
-    c.lineWidth = .025;
-    for (let i = 0; i < 28; i++) {
-      const theta = i * Math.PI / 14;
-      c.beginPath();
-      c.moveTo(1.95 * Math.cos(theta), 1.55 * Math.sin(theta));
-      c.lineTo(4.45 * Math.cos(theta), 3.9 * Math.sin(theta));
-      c.stroke();
-    }
+    c.translate(4.6, 11.45);
     c.scale(1.2, 1);
-    c.fillStyle = '#392322';
+    c.fillStyle = '#282050';
     c.strokeStyle = palette.gold;
     c.lineWidth = .04;
     c.beginPath();
@@ -74,18 +114,88 @@
     c.fillText('P I N B A L L', 0, 48);
     c.restore();
 
+    c.save();
+    c.lineCap = 'round';
+    c.setLineDash([.12, .14]);
+    c.lineWidth = .035;
+    c.strokeStyle = '#9ce9ff88';
+    c.beginPath();
+    c.moveTo(1.35, 4.32);
+    c.bezierCurveTo(2.3, 3.82, 7.7, 3.82, 8.65, 4.32);
+    c.stroke();
+    for (const x of [3.25, 5.25]) {
+      c.setLineDash([]);
+      c.strokeStyle = '#d9dcffbb';
+      c.lineWidth = .07;
+      c.beginPath();
+      c.moveTo(x, 2.95);
+      c.lineTo(x, 4.15);
+      c.stroke();
+    }
+    c.setLineDash([]);
+    c.strokeStyle = '#ffd3837a';
+    c.lineWidth = .045;
+    const [targetX, targetY] = geo.targets[0];
+    const targetEnd = geo.targets.at(-1)[3];
+    c.strokeRect(targetX - .43, targetY - .25, .86, targetEnd - targetY + .5);
+    for (const [x, y, radius] of geo.bumps) {
+      c.beginPath();
+      c.arc(x, y, radius + .18, 0, Math.PI * 2);
+      c.strokeStyle = '#ffffff30';
+      c.lineWidth = .035;
+      c.stroke();
+    }
+    const [rx, ry] = geo.ramp;
+    c.strokeStyle = '#59edd270';
+    c.lineWidth = .04;
+    c.beginPath();
+    c.moveTo(rx - .5, ry + .6);
+    c.lineTo(rx + .5, ry + .6);
+    c.stroke();
+    c.fillStyle = '#ffd383aa';
+    c.beginPath();
+    c.arc(5, 10.15, .07, 0, Math.PI * 2);
+    c.fill();
+    c.beginPath();
+    c.arc(4.9, 15.8, .14, 0, Math.PI * 2);
+    c.fill();
+    c.restore();
+
+    c.save();
+    c.strokeStyle = '#c699ff52';
+    c.lineWidth = .035;
+    c.beginPath();
+    c.moveTo(.55, 4.55);
+    c.lineTo(.55, 9.5);
+    c.quadraticCurveTo(.55, 10.1, 1.05, 10.45);
+    c.moveTo(8.45, 4.55);
+    c.lineTo(8.45, 9.5);
+    c.quadraticCurveTo(8.45, 10.1, 7.95, 10.45);
+    c.stroke();
+    c.restore();
+
     c.fillStyle = palette.ivory;
     c.textAlign = 'center';
     c.scale(.01, .01);
     c.font = 'bold 25px sans-serif';
     c.fillText('S K I L L   S H O T', 425, 268);
-    c.fillText('RAMP', geo.ramp[0] * 100, (geo.ramp[1] + .64) * 100);
+    c.fillText('3× RAMP', geo.ramp[0] * 100, (geo.ramp[1] + .94) * 100);
     c.fillText('D R A I N', 500, 1681);
+    c.fillStyle = palette.teal;
+    c.font = 'bold 21px sans-serif';
+    c.fillText('ROLLOVER LANES', 500, 231);
+    c.fillText('TARGET BANK', targetX * 100, (targetEnd + .5) * 100);
+    c.fillStyle = palette.gold;
+    c.fillText('SPINNER', geo.spinner[0] * 100, (geo.spinner[1] + .42) * 100);
+    c.fillText('BUMPERS', 487, 451);
     c.translate(940, 1100);
     c.rotate(-Math.PI / 2);
     c.fillText('L A U N C H', 0, 9);
     return canvas;
   }
+
+  const rampLit = row => row[BANK] === 7 || row[JACKPOT] > 0;
+  const rampColor = row => row[JACKPOT] ? palette.gold : palette.teal;
 
   function flatRenderer(stage, geo, art) {
     const canvas = document.createElement('canvas');
@@ -110,8 +220,9 @@
     const rail = ([ax, ay, bx, by], color, width) => line([[ax, ay], [bx, by]], width, color);
     return {
       draw(row, ball, flash) {
-        const width = Math.round(stage.clientWidth * Math.min(2, window.devicePixelRatio || 1));
-        const height = Math.round(stage.clientHeight * Math.min(2, window.devicePixelRatio || 1));
+        const ratio = GL3.level() === 'low' ? 1 : Math.min(2, window.devicePixelRatio || 1);
+        const width = Math.round(stage.clientWidth * ratio);
+        const height = Math.round(stage.clientHeight * ratio);
         if (!width || !height) return;
         if (canvas.width !== width || canvas.height !== height) {
           canvas.width = width;
@@ -119,33 +230,48 @@
         }
         c.setTransform(width / 11, 0, 0, height / 18.7, width / 22, height * .85 / 18.7);
         c.clearRect(-.5, -.85, 11, 18.7);
-        c.fillStyle = '#382019';
+        c.fillStyle = '#211c3d';
         c.fillRect(-.46, -.78, 10.92, 18.56);
         c.drawImage(art, 0, 0, geo.width, geo.height);
         c.lineCap = 'round';
-        geo.rails.forEach((r) => { rail(r, '#37271f', .28); rail(r, palette.steel, .13); });
-        geo.slings.forEach((r, i) => rail(r, flash === 'sling' + i ? palette.ivory : palette.red, .24));
-        geo.targets.forEach((r, i) => rail(r, flash === 'target' + i ? palette.ivory : row[BANK] & (1 << i) ? '#513330' : palette.red, .28));
+        geo.rails.forEach((r, i) => {
+          rail(r, '#17152f', .3);
+          rail(r, i >= 9 ? guideColors[i - 9] : palette.steel, .14);
+        });
+        geo.slings.forEach((r, i) => {
+          rail(r, '#252049', .34);
+          rail(r, flash === 'sling' + i ? palette.ivory : palette.red, .23);
+        });
+        geo.targets.forEach((r, i) => rail(r, flash === 'target' + i ? palette.ivory : row[BANK] & (1 << i) ? '#38325c' : palette.red, .28));
         geo.bumps.forEach(([x, y, radius], i) => {
-          disc(x, y, radius, '#512922');
-          disc(x, y - .035, radius - .08, flash === 'bumper' + i ? palette.ivory : palette.gold);
-          disc(x, y - .07, radius - .24, '#a83d28');
+          disc(x, y, radius, '#252049');
+          if (flash === 'bumper' + i) {
+            disc(x, y, radius + .12, '#fff3a8');
+            disc(x, y, radius + .02, '#211c3d');
+          }
+          disc(x, y - .035, radius - .08, flash === 'bumper' + i ? palette.ivory : bumperColors[i]);
+          disc(x, y - .07, radius - .24, '#30244f');
           disc(x, y - .12, .18, palette.ivory);
         });
         geo.lanes.forEach(([x, y], i) => {
-          disc(x, y, .26, '#492d25');
+          disc(x, y, .26, '#252049');
           disc(x, y, .2, flash === 'lane' + i || flash === 'skill' ? palette.ivory : palette.teal);
         });
-        line(track, .4, '#372f2c');
-        line(track, .09, row[BANK] === 7 ? palette.teal : palette.steel);
-        disc(...geo.ramp, .21, row[BANK] === 7 ? palette.teal : '#54362d');
+        const lit = rampLit(row);
+        const rampHit = flash === 'ramp' || flash === 'jackpot';
+        const glow = rampHit ? palette.ivory : rampColor(row);
+        line(track, .4, lit || rampHit ? glow + '55' : '#252049');
+        line(track, .09, rampHit || lit ? glow : palette.steel);
+        if (rampHit || lit) disc(...geo.ramp, .35, glow + '55');
+        disc(...geo.ramp, .21, rampHit || lit ? glow : '#38325c');
         const [sx, sy] = geo.spinner;
+        disc(sx, sy, .18, flash === 'spinner' ? '#fff0ca88' : '#c1d2e522');
         rail([sx - .47, sy, sx + .47, sy], flash === 'spinner' ? palette.ivory : palette.steel,
           .08 + .19 * Math.abs(Math.cos(row[SPIN] * 2 * Math.PI)));
         geo.flips.forEach(([x, y], i) => {
           const angle = ball[3 + i];
-          rail([x, y, x + geo.length * Math.cos(angle), y + geo.length * Math.sin(angle)], '#652a24', .29);
-          rail([x, y, x + geo.length * Math.cos(angle), y + geo.length * Math.sin(angle)], palette.ivory, .17);
+          rail([x, y, x + geo.length * Math.cos(angle), y + geo.length * Math.sin(angle)], '#211b40', .29);
+          rail([x, y, x + geo.length * Math.cos(angle), y + geo.length * Math.sin(angle)], flipperColors[i], .17);
           disc(x, y, .18, palette.gold);
         });
         const [launchX, launchY] = geo.launch;
@@ -160,7 +286,15 @@
           shine.addColorStop(.45, '#c3d2d7');
           shine.addColorStop(.8, '#657882');
           shine.addColorStop(1, '#26313a');
-          disc(x, ballY, geo.radius, shine);
+          const bumperHit = flash?.startsWith('bumper');
+          if (bumperHit) {
+            c.beginPath();
+            c.arc(x, ballY, geo.radius * 1.8, 0, Math.PI * 2);
+            c.strokeStyle = '#fff3a8';
+            c.lineWidth = .055;
+            c.stroke();
+          }
+          disc(x, ballY, geo.radius * (bumperHit ? 1.28 : 1), shine);
         }
       },
       dispose: () => canvas.remove(),
@@ -171,11 +305,11 @@
     const renderer = GL3.renderer({ alpha: false }, { onLost, cap: GL3.level() === 'low' ? 1 : undefined });
     if (!renderer) return null;
     const scene = new T.Scene();
-    scene.background = new T.Color('#261917');
+    scene.background = new T.Color('#17172f');
     const lighting = GL3.stage(renderer, scene, {
-      exposure: .89, hemi: [0xffebcc, 0xa44d32, .68],
-      key: { color: 0xffe0b8, i: 1.15, pos: [-4, 14, 2], area: 11 },
-      env: { walls: 0x2c211d, lamp: 0xffe7c8, accent: 0x805337 },
+      exposure: 1.02, hemi: [0xd9dcff, 0x42356f, .82],
+      key: { color: 0xc9d8ff, i: 1.28, pos: [-4, 14, 2], area: 11 },
+      env: { walls: 0x252047, lamp: 0xffe5b2, accent: 0x7360c5 },
     });
     // Keep the shadow volume centered on the whole playfield.
     lighting.key.position.add(new T.Vector3(5, 0, 8.5));
@@ -188,8 +322,8 @@
       new T.MeshStandardMaterial({ color, metalness, roughness });
     const chrome = material(palette.steel, lighting.low ? .28 : .72, .29);
     const brass = material(palette.gold, .38, .32);
-    const dark = material('#482d22');
-    const red = material('#ba402b');
+    const dark = material('#26204a');
+    const red = material('#ff6854');
     const ivory = material(palette.ivory);
     const lights = [];
     function lamp(tag, normal, active, color = palette.ivory) {
@@ -226,18 +360,21 @@
     bed.castShadow = false;
     for (const x of [-.26, 10.26]) rail([x, -.37, x, 17.4], .24, .23, .1, chrome);
     for (const y of [-.37, 17.4]) rail([-.23, y, 10.23, y], .22, .23, .1, brass);
-    geo.rails.forEach((r) => rail(r, .16, .34, .15, chrome));
+    geo.rails.forEach((r, i) => {
+      const trim = i >= 9 ? material(guideColors[i - 9], .35, .34) : chrome;
+      rail(r, .18, .35, .15, trim);
+    });
     geo.slings.forEach((r, i) => {
-      rail(r, .48, .2, .17, red);
-      rail(r, .27, .15, .33, lamp('sling' + i, palette.red));
+      rail(r, .5, .2, .17, dark);
+      rail(r, .28, .15, .33, lamp('sling' + i, palette.red));
     });
     geo.targets.forEach((r, i) =>
-      rail(r, .26, .58, .3, lamp('target' + i, palette.red, row => row[BANK] & (1 << i) ? '#553944' : palette.red)));
+      rail(r, .26, .58, .3, lamp('target' + i, palette.red, row => row[BANK] & (1 << i) ? '#38325c' : palette.red)));
     geo.bumps.forEach(([x, y, radius], i) => {
       disc(x, y, radius - .05, .31, .18, chrome);
       disc(x, y, radius, .08, .36, red);
-      disc(x, y, radius - .09, .13, .46, lamp('bumper' + i, palette.gold));
-      disc(x, y, radius - .25, .09, .55, red);
+      disc(x, y, radius - .09, .13, .46, lamp('bumper' + i, bumperColors[i]));
+      disc(x, y, radius - .25, .09, .55, dark);
       disc(x, y, .18, .03, .61, brass);
     });
     geo.lanes.forEach(([x, y], i) => {
@@ -245,7 +382,7 @@
       disc(x, y, .21, .04, .1, lamp('lane' + i, palette.teal));
     });
     const track = rampPoints(geo);
-    const rampRail = lamp('ramp', palette.steel, row => row[BANK] === 7 ? palette.teal : palette.steel);
+    const rampRail = lamp('ramp', palette.steel, row => rampLit(row) ? rampColor(row) : palette.steel);
     rampRail.metalness = chrome.metalness;
     rampRail.roughness = chrome.roughness;
     for (const offset of [-.24, .24]) {
@@ -253,18 +390,20 @@
       const tube = new T.TubeGeometry(new T.CatmullRomCurve3(points), 32, .045, 6, false);
       mesh(tube, rampRail, 0, 0, 0);
     }
-    disc(...geo.ramp, .26, .06, .04, lamp('ramp', '#60463c', row => row[BANK] === 7 ? palette.teal : '#60463c'));
+    disc(...geo.ramp, .26, .06, .04, lamp('ramp', '#38325c', row => rampLit(row) ? rampColor(row) : '#38325c'));
     const [sx, sy] = geo.spinner;
+    disc(sx, sy, .2, .04, .08, material('#c1d2e5', .2, .3));
     for (const dx of [-.57, .57]) disc(sx + dx, sy, .094, .57, .28, brass);
     const spinner = box(.91, .085, .3, lamp('spinner', palette.steel), sx, sy, .35);
 
-    const paddles = geo.flips.map(([x, y]) => {
+    const paddles = geo.flips.map(([x, y], i) => {
+      const paddle = material(flipperColors[i]);
       const pivot = new T.Group();
       scene.add(pivot);
       pivot.position.set(x, .15, y);
-      pivot.add(box(geo.length, .24, .23, red, geo.length / 2, 0, 0),
+      pivot.add(box(geo.length, .24, .23, paddle, geo.length / 2, 0, 0),
         box(geo.length, .18, .1, ivory, geo.length / 2, 0, .14),
-        disc(0, 0, .18, .36, .04, brass), disc(geo.length, 0, .12, .23, 0, red));
+        disc(0, 0, .18, .36, .04, brass), disc(geo.length, 0, .12, .23, 0, paddle));
       return pivot;
     });
     const sphere = mesh(new T.SphereGeometry(geo.radius, 20, 14), chrome, 0, 0, 0);
@@ -289,14 +428,19 @@
         }
         sphere.visible = row[BALLS] > 0;
         sphere.position.set(ball[0], geo.radius + ball[2], Math.min(17.25, ball[1]));
+        const bumperHit = flash?.startsWith('bumper');
+        sphere.scale.setScalar(bumperHit ? 1.28 : 1);
         paddles.forEach((paddle, i) => { paddle.rotation.y = -ball[3 + i]; });
         plunger.position.z = geo.launch[1] + .4 + .33 * row[CHARGE] / 240;
         spinner.rotation.x = row[SPIN] * 2 * Math.PI;
+        const pulse = .58 + .32 * Math.sin(performance.now() / 190);
         for (const { m, tag, normal, active, color } of lights) {
-          const hit = flash === tag || flash === 'skill' && tag.startsWith('lane');
-          m.color.set(hit ? color : active?.(row) || normal);
-          m.emissive.set(hit ? color : row[BANK] === 7 && tag === 'ramp' ? palette.teal : '#000000');
-          m.emissiveIntensity = .45;
+          const hit = flash === tag || flash === 'jackpot' && tag === 'ramp' || flash === 'skill' && tag.startsWith('lane');
+          const lit = active?.(row);
+          const glow = hit ? color : rampLit(row) && tag === 'ramp' ? rampColor(row) : null;
+          m.color.set(hit ? palette.ivory : lit || normal);
+          m.emissive.set(glow || '#000000');
+          m.emissiveIntensity = hit ? 1.8 + pulse : glow ? pulse : 0;
         }
         renderer.render(scene, camera);
       },
@@ -326,7 +470,13 @@
           <div class="pb-best-tile" hidden><span class="pb-caption">Best</span><strong class="pb-best">—</strong></div>
         </div>
         <div class="pb-status"><span class="pb-ramp">Ramp</span><span class="pb-message" role="status"></span><span class="pb-nudges"></span></div>
-        <div class="pb-stage" role="img" aria-label="Golden Hour pinball playfield"></div>
+        <div class="pb-stage" aria-label="Golden Hour pinball playfield">
+          <span class="pb-pull" hidden>Pull ↓</span>
+          <div class="pb-inserts" aria-hidden="true">
+            <span class="pb-save">Ball save</span>
+            <span class="pb-jackpot" hidden></span>
+          </div>
+        </div>
         <div class="pb-charge" role="meter" aria-label="Launch power" aria-valuemin="0" aria-valuemax="240" aria-valuenow="0">
           <div class="pb-charge-fill"></div><div class="pb-skill-band" title="Skill shot window"></div>
         </div>
@@ -346,7 +496,7 @@
     const find = (s) => root.querySelector('.pb-' + s);
     const stage = find('stage');
     const listeners = new AbortController();
-    const g = game = { root, stage, find, listeners, sources: new Map(), held: 0, tick: -1, flashAt: 0 };
+    const g = game = { root, stage, find, listeners, sources: new Map(), pulls: new Map(), held: 0, tick: -1, flashAt: 0 };
     const on = (target, event, handler) => target.addEventListener(event, handler, { signal: listeners.signal });
     const setHeld = () => {
       const previous = g.held;
@@ -365,20 +515,45 @@
       setHeld();
     };
     const release = (source) => { if (g.sources.delete(source)) setHeld(); };
-    for (const button of root.querySelectorAll('button')) {
-      const control = Number(button.dataset.control);
-      const source = (e) => 'pointer' + e.pointerId;
-      on(button, 'pointerdown', (e) => {
-        if (e.button !== 0) return;
+    const source = (e) => 'pointer' + e.pointerId;
+    const bindPointer = (element, start) => {
+      on(element, 'pointerdown', (e) => {
+        if (e.button !== 0 || e.target.closest('button') && element === stage) return;
         e.preventDefault();
-        button.setPointerCapture(e.pointerId);
-        press(source(e), control);
+        element.setPointerCapture(e.pointerId);
+        start(e, source(e));
       });
-      on(button, 'pointerup', (e) => release(source(e)));
-      on(button, 'pointercancel', () => clearControls(g, true));
-      on(button, 'lostpointercapture', (e) => {
+      on(element, 'pointerup', (e) => {
+        g.pulls.delete(source(e));
+        release(source(e));
+      });
+      on(element, 'pointercancel', () => clearControls(g, true));
+      on(element, 'lostpointercapture', (e) => {
         if (g.sources.has(source(e))) clearControls(g, true);
       });
+    };
+    bindPointer(stage, (e, key) => {
+      const rect = stage.getBoundingClientRect();
+      const x = (e.clientX - rect.left) / rect.width;
+      press(key, x < .5 ? 1 : 2);
+      const y = (e.clientY - rect.top) / rect.height;
+      if (g.sources.has(key) && g.row[STAGED] && x >= .82 && x <= .95 && y >= .78 && y <= .95) {
+        g.pulls.set(key, e.clientY);
+        g.find('pull').hidden = false;
+      }
+    });
+    on(stage, 'pointermove', (e) => {
+      const key = source(e);
+      const startY = g.pulls.get(key);
+      if (startY === undefined || e.clientY - startY < 10) return;
+      g.pulls.delete(key);
+      if (!g.enabled || !g.row[STAGED]) return;
+      g.sources.set(key, 4);
+      setHeld();
+    });
+    for (const button of root.querySelectorAll('button[data-control]')) {
+      const control = Number(button.dataset.control);
+      bindPointer(button, (_e, key) => press(key, control));
       on(button, 'keydown', (e) => {
         if (!['Enter', 'Space'].includes(e.code)) return;
         e.preventDefault();
@@ -409,6 +584,7 @@
   function clearControls(g, notify = false) {
     const held = g.held;
     g.sources.clear();
+    g.pulls.clear();
     g.held = 0;
     if (notify && held) send(g, { reset: true }, true);
     paintControls(g);
@@ -416,6 +592,7 @@
 
   function paintControls(g) {
     if (!g.row) return;
+    g.find('pull').hidden = !g.enabled || !g.row[STAGED] || !!(g.held & 4);
     for (const button of g.root.querySelectorAll('button[data-control]')) {
       const control = Number(button.dataset.control);
       button.disabled = !g.enabled || (control === 4 ? !g.row[STAGED] : !!g.row[TILT] || control < 0 && !!g.row[STAGED]);
@@ -432,12 +609,15 @@
     setText(find('score'), row[SCORE].toLocaleString());
     setText(find('balls'), row[BALLS]);
     setText(find('nudges'), row[TILT] ? 'Tilted' : `Nudges ${3 - row[NUDGES]}`);
-    setText(find('ramp'), row[BANK] === 7 ? 'Ramp ×3' : `Targets ${(row[BANK] & 1) + (row[BANK] >> 1 & 1) + (row[BANK] >> 2 & 1)}/3`);
-    find('ramp').classList.toggle('lit', row[BANK] === 7);
+    setText(find('ramp'), row[JACKPOT] ? 'Jackpot lit' : rampLit(row) ? 'Ramp ready' : `Targets ${(row[BANK] & 1) + (row[BANK] >> 1 & 1) + (row[BANK] >> 2 & 1)}/3`);
+    find('ramp').classList.toggle('lit', !!rampLit(row));
+    find('save').classList.toggle('lit', row[SAVE] > 0);
+    find('jackpot').hidden = !row[JACKPOT];
+    setText(find('jackpot'), row[JACKPOT] ? `Jackpot · ${row[JACKPOT]}s` : '');
     const [skillStart, skillEnd] = g.skill;
     const inBand = !!row[STAGED] && row[CHARGE] >= skillStart && row[CHARGE] <= skillEnd;
     const launchCue = inBand ? 'Release for skill shot' : row[CHARGE] > skillEnd ? 'Release to launch' :
-      row[CHARGE] ? 'Charge into the gold band' : 'Hold to launch';
+      row[CHARGE] ? 'Charge into the gold band' : 'Pull the plunger shaft down or hold Launch';
     const feedback = performance.now() < g.flashAt ? label(row[EVENT]) : '';
     setText(find('message'), g.record ? 'New personal best' : row[TILT] ? messages.tilt :
       row[STAGED] && row[CHARGE] ? launchCue : feedback || (row[STAGED] ? launchCue : row[BALLS] ? '' : 'Run complete'));
@@ -484,7 +664,7 @@
     g.root.hidden = false;
     const prior = g.viewer === viewer ? g.row : null;
     g.viewer = viewer;
-    if (!prior || prior[BALLS] !== row[BALLS] || prior[STAGED] !== row[STAGED] || row[EVENT] === 'recovery' &&
+    if (!prior || prior[BALLS] !== row[BALLS] || prior[STAGED] !== row[STAGED] || ['recovery', 'save'].includes(row[EVENT]) &&
         prior[EVENT_ID] !== row[EVENT_ID]) g.ball = null;
     if (prior && prior[BALLS] !== row[BALLS]) clearControls(g);
     if (prior && prior[EVENT_ID] !== row[EVENT_ID]) {

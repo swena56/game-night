@@ -10,16 +10,22 @@ WIDTH, HEIGHT, BALL = 10, 17, 0.19
 STEP = 1 / 240
 LAUNCH = (9.4, 15.8)
 SKILL_CHARGE = (197, 228)
+SAVE_TICKS = 4 * 240
+JACKPOT_TICKS = 20 * 240
 FLIPPERS = ((3.22, 14.95, 0.42, -0.66), (6.78, 14.95, math.pi - 0.42, math.pi + 0.66))
 LENGTH, FLIP_RADIUS = 1.56, 0.12
-# The shooter lane feeds around the top rail. The lower guides funnel shots toward the flippers.
+# Keep the shooter feed open above the rollover dividers.
+# The lower guides direct rebounds toward the slings and flippers.
 RAILS = (
     (0, 17, 0, 2.2), (0, 2.2, 1.5, 0), (1.5, 0, 7.8, 0),
     (7.8, 0, 10, 2.8), (10, 2.8, 10, 17), (8.8, 3.1, 8.8, 17),
     (8.8, 16.25, 10, 16.25), (0, 12.3, 3.22, 14.95), (8.8, 13.25, 6.78, 14.95),
+    (3.25, 2.95, 3.25, 4.15), (5.25, 2.95, 5.25, 4.15),
+    (2.55, 9.55, 3.15, 10.35), (7.45, 9.55, 6.85, 10.35),
 )
 SLINGS = ((1.35, 10.75, 2.85, 12.5), (7.73, 10.75, 6.48, 12.6))
-BUMPS = ((3.12, 5.65, 0.68), (6.62, 5.7, 0.68), (4.4, 7.64, 0.68))
+# Offset the lower bumper to clear a straight shot to the ramp mouth.
+BUMPS = ((3.12, 5.65, 0.68), (6.62, 5.7, 0.68), (4.05, 7.64, 0.68))
 TARGETS = ((1.25, 6.6, 1.25, 7.3), (1.25, 7.48, 1.25, 8.18), (1.25, 8.36, 1.25, 9.06))
 ROLLOVERS = ((2.25, 3.5), (4.25, 3.5), (6.25, 3.5))
 SPINNER = (7.95, 7.4)
@@ -67,6 +73,10 @@ class Table:
     still: int = 0
     still_origin: tuple = LAUNCH
     rollovers: int = 0
+    save_ticks: int = 0
+    save_used: bool = False
+    jackpot_ticks: int = 0
+    jackpot_shot: bool = False
 
     def signal(self, event, points=0):
         self.score += points
@@ -109,6 +119,7 @@ class Table:
         if self.nudges == 3:
             self.tilt = True
             self.skill = False
+            self.save_ticks = self.jackpot_ticks = 0
             self.signal("tilt")
             return
         self.nudges += 1
@@ -118,6 +129,8 @@ class Table:
 
     def drain(self):
         self.balls -= 1
+        self.save_used = self.jackpot_shot = False
+        self.save_ticks = self.jackpot_ticks = 0
         self.reset_controls()
         self.staged = bool(self.balls)
         self.x, self.y = LAUNCH
@@ -198,8 +211,9 @@ class Table:
         if abs(self.x - sx) < 0.55 and (old_y < sy <= self.y or self.y <= sy < old_y):
             self.spin_left += max(1, min(5, int(abs(self.vy) / 5)))
         rx, ry = RAMP
-        if self.bank == 7 and self.vy < -7 and self.y <= ry < old_y and abs(self.x - rx) < 0.65:
+        if (self.bank == 7 or self.jackpot_ticks) and self.vy < -7 and self.y <= ry < old_y and abs(self.x - rx) < 0.65:
             self.ramp_ticks = 1
+            self.jackpot_shot = bool(self.jackpot_ticks)
 
     def step(self):
         if not self.balls or self.departed:
@@ -212,6 +226,8 @@ class Table:
             if self.held & 4:
                 self.charge = min(240, self.charge + 1)
             return
+        self.save_ticks = max(0, self.save_ticks - 1)
+        self.jackpot_ticks = max(0, self.jackpot_ticks - 1)
         if self.spin_left:
             turn = min(self.spin_left, 8 * STEP)
             old_spin = self.spin
@@ -229,8 +245,12 @@ class Table:
                 self.ramp_ticks = 0
                 self.vx, self.vy = -4, 9
                 if not self.tilt:
-                    self.bank = 0
-                    self.signal("ramp", 2000 * 3)
+                    if self.jackpot_shot:
+                        self.signal("jackpot", 12000)
+                    else:
+                        self.bank = 0
+                        self.jackpot_ticks = JACKPOT_TICKS
+                        self.signal("ramp", 6000)
             return
         old_y = self.y
         self.vx *= 0.999
@@ -250,13 +270,27 @@ class Table:
                 for i in range(2):
                     self.flipper_contact(i, previous[i], sample / samples)
         self.mechanisms(old_y)
+        if self.smooth_launch and self.x < 8.8 and self.y < 5:
+            self.smooth_launch = False
+            if not self.save_used and not self.tilt:
+                self.save_ticks = SAVE_TICKS
+                self.save_used = True
         if self.smooth_launch and self.x > 9 and self.y > 15.7 and self.vy > 0:
             self.x, self.y = LAUNCH
             self.vx = self.vy = 0
             self.staged = True
             self.smooth_launch = self.skill = False
         elif self.y > HEIGHT + BALL:
-            self.drain()
+            if self.save_ticks:
+                self.save_ticks = 0
+                self.x, self.y = LAUNCH
+                self.vx, self.vy = 0, -30
+                self.still = 0
+                self.still_origin = LAUNCH
+                self.skill = False
+                self.signal("save")
+            else:
+                self.drain()
         elif math.hypot(self.x - self.still_origin[0], self.y - self.still_origin[1]) < BALL:
             self.still += 1
             if self.still >= 720:
@@ -273,7 +307,8 @@ class Table:
         """Packed renderer state shared by full views and 30 Hz snapshots."""
         return [*[round(v, 3) for v in (self.x, self.y, self.vx, self.vy, self.height, *self.angles)],
                 self.score, self.balls, self.bank, self.nudges, int(self.tilt), int(self.staged),
-                self.charge, self.event_id, self.event, round(self.spin % 1, 3)]
+                self.charge, self.event_id, self.event, round(self.spin % 1, 3),
+                math.ceil(self.save_ticks / 240), math.ceil(self.jackpot_ticks / 240)]
 
 
 class Pinball(Game):
@@ -283,12 +318,12 @@ class Pinball(Game):
     icon = "🕹️"
     min_players, max_players = 1, 6
     replayable = False
-    blurb = "Three balls on a wood-and-chrome table. Bank shots off the bumpers, light the ramp, and chase a high score."
+    blurb = "Three balls on a colorful chrome-trimmed table. Bank shots off the bumpers, light the ramp, and chase a high score."
     howto = [
-        "Hold and release Space or Launch to plunge. The gold charge band lines up the skill shot.",
-        "Use A and D, the left and right arrows, or the on-screen flippers. Use Q, W, E or the nudge buttons to move the table.",
-        "The fourth nudge tilts the table and ends scoring until that ball drains. Clear all three targets to light the 3× ramp.",
-        "Everyone plays three balls on a separate table. Highest score wins.",
+        "Pull down on the plunger shaft at the right side of the playfield and release to launch. You can also hold and release Space or Launch. Aim for the gold charge band.",
+        "Tap or click either half of the playfield to flip on that side. A and D, arrow keys, and the Flip buttons also work. Use Q, W, E or the nudge buttons to move the table.",
+        "The fourth nudge tilts the table and ends scoring until that ball drains. Clear all three targets, then shoot the ramp for 6,000 and start a 20-second jackpot round. Repeat ramp shots for 12,000 each.",
+        "Each ball has one automatic save during its first four seconds on the playfield. Everyone plays three balls on a separate table. Highest score wins.",
     ]
 
     def start(self, seated, rng):
