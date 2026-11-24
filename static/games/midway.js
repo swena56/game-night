@@ -11,6 +11,12 @@ UI.midway = (() => {
   let shotSpin = 0, shotBackspin = 0, shotMode = '';
   const $ = (id) => document.getElementById(id);
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const basketballSwipeMode = (dx, dy, dragRange, height) => {
+    const sideways = Math.abs(dx);
+    const bank = dy > height * 0.18 && sideways > dragRange * 0.30 && sideways / Math.max(1, dy) > 0.72;
+    const floater = dy > height * 0.34 && sideways < dragRange * 0.15;
+    return bank ? 'bank' : floater ? 'floater' : '';
+  };
   const ICON = { skee: '🎳', rings: '⭕', cans: '🥫', hoops: '🏀' };
   const SKEE_FACE = '#123b42';
   const SKEE_RINGS = ['#fff0c5', '#d8a964', '#cb7157', '#a3c7b7', '#487d79'];
@@ -73,7 +79,7 @@ UI.midway = (() => {
       </div>
       <div class="mw-stage" id="mwStage">
         <div class="mw-hud"><span id="mwBooth"></span><div class="mw-display"><span id="mwScore" class="mw-score"></span><span id="mwClock" class="mw-clock"></span><span id="mwBest" class="mw-best" hidden></span></div></div>
-        <div class="mw-sub"><span id="mwBalls" class="mw-balls"></span><span id="mwHot" class="mw-hot" hidden>🔥 ×2</span><span id="mwJack" class="mw-jack"></span></div>
+        <div class="mw-sub"><span id="mwThrowCount" class="mw-balls"></span><span id="mwHot" class="mw-hot" hidden>🔥 ×2</span><span id="mwJack" class="mw-jack"></span></div>
         <div class="mw-watch" id="mwWatch" hidden></div>
         <div class="mw-count" id="mwCount" hidden></div>
         <div class="mw-pop" id="mwPop" hidden></div>
@@ -81,14 +87,14 @@ UI.midway = (() => {
       </div>
       <div class="mw-ctl" id="mwCtl">
         <button data-a="-1" aria-label="Aim left">◀</button>
-        <div class="mw-meter" title="Power"><i id="mwPow"></i><span id="mwPowerMark" class="mw-power-mark" hidden></span></div>
+        <div class="mw-meter" title="Power · gold tick targets the rim center"><i id="mwPow"></i><span id="mwPowerMark" class="mw-power-mark" hidden></span></div>
         <button data-a="1" aria-label="Aim right">▶</button>
         <button data-p="-1" aria-label="Less power">▼</button><button data-p="1" aria-label="More power">▲</button>
         <button class="mw-go" id="mwGo">🎯 Throw</button>
       </div>
       <div class="mw-basket-toast" id="mwBasketToast" role="status"></div>
       <p id="mwHint" class="hint"></p></div>`;
-    side.innerHTML = '<div class="panel"><h3 id="mwSideTitle">🎟 Tickets</h3><div id="mwRace" class="mw-race"></div><h4 id="mwFeedTitle" class="mw-feed-title" hidden></h4><div id="mwFeed" class="mw-feed"></div></div>';
+    side.innerHTML = '<div class="panel"><div id="mwBalls" class="mw-balls mw-scoreboard-balls" hidden></div><h3 id="mwSideTitle">🎟 Tickets</h3><div id="mwRace" class="mw-race"></div><h4 id="mwFeedTitle" class="mw-feed-title" hidden></h4><div id="mwFeed" class="mw-feed"></div></div>';
     $('mwCtl').addEventListener('click', (e) => {
       const b = e.target.closest('button'); if (!b) return;
       if (b.id === 'mwGo') { if (!holdToThrow()) fire(); return; }
@@ -166,10 +172,12 @@ UI.midway = (() => {
         aim = clamp(swipe.a + dx / dragRange, -1, 1);
         if (dy > r.height * 0.32 && swipe.hookStartX == null) swipe.hookStartX = dx;
         shotSpin = swipe.hookStartX == null ? 0 : clamp((dx - swipe.hookStartX) / dragRange * 5, -1, 1);
-        const hoopHeightScale = (V.geo.hoops?.[0]?.[1] ?? 0.8) / 0.8;
-        power = clamp(dy / Math.max(75, r.height * 0.42) * hoopHeightScale, 0, 1);
         swipe.moved = Math.max(swipe.moved || 0, Math.hypot(dx, dy));
         swipe.dy = Math.max(swipe.dy || 0, dy);
+        const hoopHeightScale = (V.geo.hoops?.[0]?.[1] ?? 0.8) / 0.8;
+        power = clamp(swipe.dy / Math.max(75, r.height * 0.42) * hoopHeightScale, 0, 1);
+        shotMode = basketballSwipeMode(dx, swipe.dy, dragRange, r.height);
+        if (shotMode === 'bank') power = V.geo.combo?.bankPower ?? 1 / V.geo.map[1];
         if (swipe.lastY != null && dy < swipe.lastY && swipe.dy > r.height * 0.2) {
           shotBackspin = clamp((swipe.lastY - dy) / Math.max(24, r.height * 0.1), 0, 1);
         }
@@ -198,9 +206,7 @@ UI.midway = (() => {
         const rect = stage.getBoundingClientRect();
         const dx = e.clientX - swipe.x;
         const dragRange = clamp(rect.width * 0.48, 105, 220);
-        const diagonal = Math.abs(dx) > dragRange * 0.16 && Math.abs(dx) / Math.max(1, swipe.dy) > 0.34;
-        const steep = swipe.dy > rect.height * 0.34 && Math.abs(dx) < dragRange * 0.15;
-        shotMode = diagonal ? 'bank' : steep ? 'floater' : '';
+        shotMode = basketballSwipeMode(dx, swipe.dy || 0, dragRange, rect.height);
         if (shotMode === 'bank') power = V.geo.combo?.bankPower ?? 1 / V.geo.map[1];
         if (!flicked) { aim = swipe.a; power = swipe.p; }
         swipe = null;
@@ -269,11 +275,12 @@ UI.midway = (() => {
       K.mode(d, t, K.R(520, 640), 0.05, 0.10);
       K.burst(d, t, { type: 'lowpass', f: 900, q: 0.7, vol: 0.12, tau: 0.025, buf: 'brown' });
     }),
-    // a ball against the backboard (or a side rail, softer): a deep thud with a short glassy boom
+    // A padded ball smacking the backboard: a dull thwap with a brief frame rattle,
+    // kept noise-based so it doesn't ring like a tuned note.
     backboard: (vol = 1) => snd((t, K, d) => {
-      K.mode(d, t, K.R(110, 140), 0.32, 0.09, { f1: 85 });
-      K.mode(d, t, K.R(300, 360), 0.07, 0.14);
-      K.burst(d, t, { type: 'lowpass', f: 700, q: 0.7, vol: 0.14, tau: 0.03, buf: 'brown' });
+      K.burst(d, t, { type: 'lowpass', f: 520, f1: 150, q: 0.55, vol: 0.34, tau: 0.045, dur: 0.22, attack: 0.001, buf: 'brown' });
+      K.burst(d, t, { type: 'bandpass', f: 1050, f1: 430, q: 0.8, vol: 0.12, tau: 0.022, dur: 0.11, attack: 0.001, buf: 'pink' });
+      K.burst(d, t + 0.025, { type: 'bandpass', f: 1700, f1: 720, q: 1.1, vol: 0.045, tau: 0.016, dur: 0.075, attack: 0.001, buf: 'pink' });
     }, 0, vol),
     // a ring landing on the table
     tap: () => snd((t, K, d) => { K.burst(d, t, { type: 'bandpass', f: 900, q: 1.2, vol: 0.16, tau: 0.02 }); K.mode(d, t, 300, 0.05, 0.03); }),
@@ -456,10 +463,9 @@ UI.midway = (() => {
     const b = watched();
     $('mwBooth').textContent = `${ICON[V.kind]} ${V.name.replace(/^\S+ /, '')} · ${V.round}/${V.rounds}`;
     const n = b?.left ?? 0;
-    if (V.kind !== 'hoops') {
-      const balls = $('mwBalls');
-      balls.textContent = '●'.repeat(n) + '○'.repeat(Math.max(0, V.throws - n));
-    }
+    const throwCount = $('mwThrowCount');
+    throwCount.hidden = V.kind === 'hoops';
+    if (!throwCount.hidden) throwCount.textContent = '●'.repeat(n) + '○'.repeat(Math.max(0, V.throws - n));
     const hot = $('mwHot');
     hot.hidden = !(b && (b.streak > 0 || V.kind === 'hoops' && V.stage === 'play'));
     if (b && V.kind === 'hoops') {
@@ -481,19 +487,24 @@ UI.midway = (() => {
     const combo = V.geo.combo;
     const mark = $('mwPowerMark');
     const jack = $('mwJack');
-    const active = combo && S.phase === 'playing' && (V.stage === 'count' || V.stage === 'play');
-    mark.hidden = !active;
-    jack.classList.toggle('mw-shot-call', !!active);
-    jack.classList.toggle('mw-call-flash', !!active);
+    const playing = S.phase === 'playing' && (V.stage === 'count' || V.stage === 'play');
+    const active = !!combo && playing;
+    const bank = active && watched()?.shots.at(-1)?.swish;
+    mark.hidden = !playing;
+    jack.classList.toggle('mw-shot-call', active);
+    jack.classList.toggle('mw-call-flash', active);
+    if (playing) {
+      const rimCenterPower = V.geo.hoops[0][1] / V.geo.map[1];
+      mark.style.bottom = `${100 * (bank ? combo.bankPower : combo?.swishPower ?? rimCenterPower)}%`;
+      mark.title = bank ? 'Bank-shot power target' : 'Rim-center power target';
+    }
     if (!active) {
       jack.textContent = '';
       return;
     }
     // A player can start the next flick while a ball is still in flight. Give
     // them the server's current call as soon as the throw is acknowledged.
-    const bank = watched()?.shots.at(-1)?.swish;
     jack.textContent = bank ? `Bank next · +${combo.bonus} bonus` : 'Swish to set up a bank';
-    mark.style.bottom = `${100 * (bank ? combo.bankPower : combo.swishPower)}%`;
   }
 
   function meter() {
@@ -518,8 +529,8 @@ UI.midway = (() => {
     return y1 === y2 ? `${x1},${y1} ${x1 + 1},${y1 - 1} ${x2 - 1},${y1 - 1} ${x2},${y1} ${x2 - 1},${y1 + 1} ${x1 + 1},${y1 + 1}`
       : `${x1},${y1} ${x1 + 1},${y1 + 1} ${x1 + 1},${y2 - 1} ${x1},${y2} ${x1 - 1},${y2 - 1} ${x1 - 1},${y1 + 1}`;
   }
-  function setLed(el, label, value) {
-    const key = label + value;
+  function setLed(el, label, value, overline = '') {
+    const key = label + value + overline;
     if (el.dataset.led === key) return false;
     el.dataset.led = key;
     const digits = [...value].map((ch, i) => {
@@ -527,7 +538,7 @@ UI.midway = (() => {
       return `<g transform="translate(${i * 13} 0)">${Object.entries(LED_BARS).map(([seg, bar]) =>
         `<polygon class="${lit.includes(seg) ? 'on' : 'off'}" points="${ledBar(bar)}"/>`).join('')}</g>`;
     }).join('');
-    el.innerHTML = `<small>${label}</small><svg class="mw-led" viewBox="-1 -1 ${value.length * 13 + 1} 20" role="img" aria-label="${label} ${value}">${digits}</svg>`;
+    el.innerHTML = `${overline ? `<small class="mw-round">${overline}</small>` : ''}<small>${label}</small><svg class="mw-led" viewBox="-1 -1 ${value.length * 13 + 1} 20" role="img" aria-label="${label} ${value}">${digits}</svg>`;
     return true;
   }
 
@@ -605,10 +616,10 @@ UI.midway = (() => {
           : { skee: 'Drag sideways to aim. Pull back and hold to charge, then release to roll. Aim for 50, 40 or 30, or the corner 100s.',
               rings: 'Swipe up to toss: a longer swipe reaches the back rows. Red bottles pay 80.',
               hoops: !watched()?.shots?.length
-                ? 'Tap a ball, then flick up to shoot. Swipe farther for more power; the dotted arc previews the path. Flick sideways to aim.'
+                ? 'Tap a ball, then flick up to shoot. Match the gold power tick for rim-center height; the dotted arc previews your path. Flick sideways to aim.'
                 : V.geo.combo
-                  ? 'Flick up for a high floater. Add a diagonal flick to target the backboard, or dip at release for backspin.'
-                  : 'Tap a ball to pick it up. Flick up to shoot, with a slight left or right flick to adjust aim.',
+                  ? 'Match the gold tick for rim-center height. Flick up for a floater, diagonally for a bank, or dip at release for backspin.'
+                  : 'Tap a ball to pick it up. Match the gold tick for rim-center height; use a slight left or right flick to adjust aim.',
               cans: 'Swipe up to throw: a longer swipe throws higher. Hit the bottom row and the cans above it fall too.' }[V.kind];
     if ($('mwHint').textContent !== t) $('mwHint').textContent = t;
   }
@@ -657,7 +668,7 @@ UI.midway = (() => {
       if (sh.sweep) a.restack = now + 1100;
     } else SND.flop();
     if (mine) ctx.buzz?.(sh.jack ? [40, 30, 60] : sh.pts ? 25 : 8);
-    if (sh.k !== 'hoops' || sh.hoop != null || V.geo.combo) pop(sh);
+    pop(sh);
     (gl || flat)?.impact?.(sh);
   }
 
@@ -687,7 +698,7 @@ UI.midway = (() => {
       } else fly.push({ shot: a.shot, u: Math.min(1, u), landU: HIT[a.shot.k] });
     }
     const pending = new Set(anims.filter((a) => !a.hit).map((a) => a.shot.id));
-    const preview = canThrow() || swipe ? { ...spot(aim, power), aim, spin: shotSpin, backspin: shotBackspin, startX: heldBall ? heldBallX : hoopHandX(aim) } : null;
+    const preview = canThrow() || swipe ? { ...spot(aim, power), aim, spin: shotSpin, backspin: shotBackspin, mode: shotMode, startX: heldBall ? heldBallX : hoopHandX(aim) } : null;
     if (V.kind === 'hoops') {
       basketballs.push(...rackBalls.map((ball) => ({ ...ball, uid: ball.uid ??= ++ballUid })));
       if (heldBall) basketballs.push({ x: heldBallX, y: 1.17, z: hoopLaunchZ, spin: heldBall.spin ?? 0, uid: heldBall.uid ??= ++ballUid });
@@ -721,8 +732,6 @@ UI.midway = (() => {
 
   const returnScale = [1, cabinetHeightScale, cabinetDepthScale];
   const returnDiameter = 2 * hoopRadius;
-  // A ball stopped behind the front row is still within reach in the tray.
-  const returnPickupZ = hoopRackZ - returnDiameter / cabinetDepthScale - 0.01;
   const returnWall = 0.92 - hoopRadius;
   const returnFloorSlope = hoopSlope * cabinetHeightScale / cabinetDepthScale;
   const returnFloorLength = Math.hypot(1, returnFloorSlope);
@@ -759,7 +768,7 @@ UI.midway = (() => {
     Object.assign(ball, {
       x: last[1], y: last[2], z: last[3], spin: last[0] * 9,
       velocity: returnScale.map((scale, i) => last[i + 4] * scale * slowdown[i]),
-      quietSteps: 0, ready: false, stillSteps: 0, sleeping: false,
+      quietSteps: 0, ready: false, stillSteps: 0, sleeping: false, returning: true,
     });
     return ball;
   }
@@ -779,6 +788,9 @@ UI.midway = (() => {
         if (inTray && Math.abs(velocity[0]) < 0.045) velocity[0] = 0;
         const normalSpeed = dotReturn(velocity, returnFloor);
         for (let i = 0; i < 3; i++) velocity[i] -= (velocity[i] - returnFloor[i] * normalSpeed) * drag;
+        // A gentle centerward bias on the final stretch guides returning balls
+        // toward the middle of the backstop at an easy roll.
+        if (body.ball.returning && body.ball.z > -2.1) velocity[0] -= position[0] * 0.72 * hoopStep;
       }
       if (!body.ball.sleeping) velocity[1] -= gravity * cabinetHeightScale * hoopStep;
     }
@@ -850,10 +862,10 @@ UI.midway = (() => {
       const nearFloor = y <= hoopRampY(z) + 0.008;
       const rackSpeed = Math.hypot(...velocity);
       const atBackstop = z >= hoopRackZ - 0.001;
-      const quiet = z >= returnPickupZ && nearFloor && rackSpeed < 0.13;
+      const quiet = atBackstop && nearFloor && rackSpeed < 0.13;
       ball.quietSteps = quiet ? Math.min(12, ball.quietSteps + 1) : 0;
       // Keep a returning ball moving until it reaches the rack's backstop.
-      const ready = z >= returnPickupZ && nearFloor && rackSpeed < 0.55;
+      const ready = atBackstop && nearFloor && rackSpeed < 0.55;
       moved ||= travel > 1e-5 || Math.abs(y - ball.y) > 1e-5 || ready !== ball.ready;
       // A settled ball participates in swept collisions without repeatedly
       // spending the shared event budget on gravity against the tray.
@@ -863,6 +875,7 @@ UI.midway = (() => {
       if (ball.sleeping) velocity.fill(0);
       ball.spin += nearFloor ? travel / hoopRadius : hoopStep * 5;
       Object.assign(ball, { x, y, z, ready });
+      if (ball.returning && atBackstop && nearFloor && rackSpeed < 0.55) ball.returning = false;
     }
     return moved;
   }
@@ -880,6 +893,7 @@ UI.midway = (() => {
 
   const hoopLaunchZ = -0.50;
   const hoopShowTime = 1.1;
+  const floaterTime = 1.15;
   const gravity = 9.81;
 
   const hoopHandX = (aim) => (aim ?? 0) * 0.28;
@@ -955,7 +969,7 @@ UI.midway = (() => {
   // Both renderers show the whole predicted arc to the hoop entry plane.
   function basketballGuide(shot, index, count) {
     const t = index / (count - 1);
-    const duration = hoopShowTime * HIT.hoops;
+    const duration = hoopShowTime * HIT.hoops * (shot.mode === 'floater' ? floaterTime : 1);
     return basketballFlight(shot, (0.06 + 0.88 * t) * duration, duration);
   }
 
@@ -972,7 +986,7 @@ UI.midway = (() => {
 
   function basketballPath(shot) {
     if (shot.path) return shot.path;
-    const T = shot.t * HIT.hoops, startX = shot.startX ?? hoopHandX(shot.aim);
+    const T = shot.t * HIT.hoops * (shot.mode === 'floater' ? floaterTime : 1), startX = shot.startX ?? hoopHandX(shot.aim);
     const ax = (shot.spin ?? 0) * 0.4, ay = (shot.backspin ?? 0) * 1.2;
     const vx = (shot.x - startX) / T - ax * T / 2;
     return [[0, startX, 1.17, hoopLaunchZ, vx, (shot.y - 0.17) / T + (gravity - ay) * T / 2, (hoopDepth - hoopLaunchZ) / T, 'launch', ax, ay],
@@ -1057,17 +1071,18 @@ UI.midway = (() => {
     } else if (!cnt.hidden && !(goAt && now - goAt < 700)) cnt.hidden = true;
     else if (!cnt.hidden && cnt.textContent !== 'GO!') { cnt.textContent = 'GO!'; if (!hoopsClock) SND.bell(); }
     const ck = $('mwClock');
+    const roundLabel = hoopsClock ? `ROUND ${V.round}/${V.rounds}` : '';
     if (clockEnded) {
-      setLed(ck, 'TIME', '00');
+      setLed(ck, 'TIME', '00', roundLabel);
       ck.classList.add('low');
     } else if (hoopsClock && (V.stage === 'count' || (V.stage === 'play' && V.timeLeft == null))) {
       const startingTime = V.stage === 'count' && V.clock > 0 ? String(V.clock).padStart(2, '0') : '--';
-      setLed(ck, 'TIME', startingTime);
+      setLed(ck, 'TIME', startingTime, roundLabel);
       ck.classList.remove('low');
     } else if (endAt && V.stage !== 'between') {
       const s = Math.max(0, Math.ceil((endAt - now) / 1000));
       const txt = V.kind === 'hoops' ? String(s).padStart(2, '0') : `⏱ ${s}`;
-      if (V.kind === 'hoops' ? setLed(ck, 'TIME', txt) : ck.textContent !== txt && (ck.textContent = txt, true)) {
+      if (V.kind === 'hoops' ? setLed(ck, 'TIME', txt, roundLabel) : ck.textContent !== txt && (ck.textContent = txt, true)) {
         if (s <= 5 && s > 0 && V.stage === 'play' && hasShots(V) && now - lastTick > 500) { lastTick = now; ctx.sfx?.('tickfast'); }
       }
       ck.classList.toggle('low', s <= 5);
@@ -1076,8 +1091,9 @@ UI.midway = (() => {
     if (charge) { power = clamp((now - charge.start) / chargeDuration(), 0, 1); meter(); }
     window.Snd?.bed('mw.crowd', crowdBed).set(S.phase === 'playing' && !S.paused ? 1 : 0);
     const sc = scene(now);
-    if (sc.kind === 'hoops') {
-      const balls = $('mwBalls');
+    const balls = $('mwBalls');
+    balls.hidden = sc.kind !== 'hoops';
+    if (!balls.hidden) {
       const available = sc.rack.length;
       const rack = heldBall ? 'Ball in hand' : available ? `Balls ready ${available}/${hoopRackSize}` : 'Waiting for a ball';
       const status = `Round ${V.round}/${V.rounds} · ${rack}`;

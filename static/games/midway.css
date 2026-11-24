@@ -37,6 +37,7 @@
 .mw-clock { font-variant-numeric: tabular-nums; font-weight: 700; }
 .mw-clock.low { background: #c0263acc !important; animation: pulse 1s infinite; }
 .mw-balls { letter-spacing: 2px; color: #ffd6a0 !important; }
+.mw-scoreboard-balls { margin: 0 0 8px; padding: 5px 9px; border-radius: 8px; background: #111923; color: #b8eaf0 !important; font-size: 12px; font-weight: 700; letter-spacing: 0; text-align: center; }
 .mw-hot { background: #e8593ccc !important; font-weight: 700; }
 .mw-basketball .mw-hot { background: #172431e8 !important; color: #ffc879 !important; border: 1px solid #ffbf6955; }
 .mw-basketball .mw-hot-active { background: #a73e2de8 !important; color: #fff2da !important; border-color: #ff8c5a; }
@@ -133,6 +134,7 @@
   letter-spacing: 0.16em;
   color: #a6b5c3;
 }
+.mw-basketball .mw-display .mw-round { color: #ffc879; letter-spacing: 0.12em; }
 .mw-led { display: block; height: clamp(22px, 6vw, 32px); width: auto; overflow: visible; }
 .mw-led .off { fill: #2a0b0c; }
 .mw-led .on { fill: #ff3b30; }
@@ -156,13 +158,12 @@
 @media (max-width: 860px) {
   #game .layout:has(.mw-basketball) { max-width: none; grid-template-columns: minmax(0, 1fr); }
 }
-.mw-basketball .mw-balls { color: #b8eaf0 !important; background: #111923; letter-spacing: 0; }
 .mw-basketball .mw-ctl { display: none; }
 .mw-basketball .mw-stage .mw-meter {
   position: absolute;
   z-index: 2;
   right: 6px;
-  bottom: 12%;
+  bottom: 22%;
   width: 12px;
   height: clamp(74px, 24%, 140px);
   border: 1px solid #41798a;

@@ -67,6 +67,7 @@ HOOP_PERIOD = 3.2
 HOOP_CENTER_PAUSE = 0.50
 HOOP_GAP = 0.10
 HOOP_FLIGHT = SHOW["hoops"] * 0.73
+HOOP_FLOATER_TIME = 1.15
 HOOP_BANK_LOFT = 1.0
 HOOP_BANK_FLIGHT = 0.907  # time for a centered bank at HOOP_BANK_LOFT to reach the net
 HOOP_COMBO_BONUS = 3
@@ -113,13 +114,15 @@ def sim_ramp_y(z):
     return SIM_FLOOR_Y + SIM_BALL + (SIM_RACK_Z - z) * SIM_SLOPE
 
 
-def hoop_sim(start_x, x, y, elapsed, travel, flight=HOOP_FLIGHT, spin=0.0, backspin=0.0):
+def hoop_sim(start_x, x, y, elapsed, travel, flight=HOOP_FLIGHT, spin=0.0, backspin=0.0, mode=""):
     """Fly a ball released at (start_x, launch) so that, undisturbed, it would reach the hoop's depth at (x, y), and follow
     it through the rim, glass and side rails. Returns {good, swish, bank, path, landAt}: `path` is a list of keyframes
-    [t, x, y, z, vx, vy, vz, kind], the launch and each contact; between two keyframes the ball is in free fall."""
+    [t, x, y, z, vx, vy, vz, kind, ax, ay], the launch and each contact; between two keyframes the ball is in free fall."""
     ring_r = HOOPS[0][2] + 0.052
     rim_y = 1 + HOOPS[0][1]
     reach = SIM_BALL + SIM_TUBE
+    if mode == "floater":
+        flight *= HOOP_FLOATER_TIME
     spin = max(-1.0, min(1.0, spin))
     backspin = max(0.0, min(1.0, backspin))
     ax = spin * 0.4
@@ -566,13 +569,13 @@ class Midway(Game):
             x, y = hoop_land(aim, power, rng)
             shot["startX"] = round(start_x, 3)
             elapsed = now - self.t0
-            sim = hoop_sim(start_x, x, y, elapsed, self.hoop_travel, spin=spin, backspin=backspin)
+            sim = hoop_sim(start_x, x, y, elapsed, self.hoop_travel, spin=spin, backspin=backspin, mode=mode)
             good = sim["good"]
             pts = int(good)
             shot.update(x=round(x, 3), y=round(y, 3), spin=round(spin, 2), backspin=round(backspin, 2), mode=mode,
                         hoop=0 if good else None, path=sim["path"], landAt=sim["landAt"],
                         swish=sim["swish"], bank=sim["bank"],
-                        targetX=round(hoop_x(elapsed + HOOP_FLIGHT, self.hoop_travel), 4))
+                        targetX=round(hoop_x(elapsed + sim["landAt"], self.hoop_travel), 4))
         else:
             x, y = can_land(aim, power, rng)
             hit = can_hit(x, y, g.cans)
