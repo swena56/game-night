@@ -85,6 +85,12 @@ function renderOver() {
     });
     box.append(tbl);
   }
+  if (mineRow && typeof mineRow.score === 'number') {
+    const best = Profile.bestLabel(last.game, last.record);
+    if (best) {
+      box.append(el('div', 'over-note', `🏅 Personal best · ${best}`));
+    }
+  }
   const notes = [
     mineRow?.pts ? `You earned +${mineRow.pts} ⭐ (now ${player(me.id)?.points ?? 0})` : '',
     w?.streak > 1 ? `🔥 ${w.id === me.id ? 'You have' : w.name + ' has'} won ${w.streak} in a row` : '',

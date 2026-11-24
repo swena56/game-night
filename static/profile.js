@@ -551,6 +551,13 @@ const Profile = (() => {
   const showNew = () => triedCount() >= 3;
   // per-game extras a game keeps on this device (Prism Pop: 🎯 level stars, XP, board theme)
   const best = (gid, rules) => rules ? get().benchmarks?.[rules.key]?.best ?? null : get().games[gid]?.best ?? null;
+  const bestLabel = (gid, rules) => {
+    const profile = get();
+    const benchmark = rules ? profile.benchmarks?.[rules.key] : null;
+    if (benchmark?.best != null) return recordValue(benchmark.best, benchmark.kind);
+    const gameBest = profile.games?.[gid]?.best;
+    return gameBest == null ? '' : recordValue(gameBest, profile.games?.[gid]?.low ? 'lowPoints' : 'points');
+  };
   const gameData = (gid) => ({ ...(get().games[gid]?.data || {}) });
   function saveGameData(gid, data) { const p = get(); (p.games[gid] ||= { played: 0, wins: 0 }).data = data; store(KEY, p); }
 
@@ -558,7 +565,7 @@ const Profile = (() => {
   const played = (gid) => get().games[gid]?.played || 0;
   const lastAt = (gid) => get().games[gid]?.lastAt || '';
 
-  return { onState, replayGoal, formatBenchmark: recordValue, overLine, show, suggest, stars, tried, starText, showNew, best, gameData, saveGameData, played, lastAt,
+  return { onState, replayGoal, formatBenchmark: recordValue, overLine, show, suggest, stars, tried, starText, showNew, best, bestLabel, gameData, saveGameData, played, lastAt,
     xpCard, homeLine, look, level, levelOf, xpFor, unlocked, unlockAt, titleName, lockText, sync, dev, migrate, UNLOCKS, PACKS,
     set onSynced(f) { onSynced = f; }, set onLook(f) { onLook = f; } };
 })();

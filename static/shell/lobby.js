@@ -24,6 +24,8 @@ function gameTile(g, seated, current, newTags = Profile.showNew()) {
   const st = Profile.stars(g.id);
   if (st) b.append(el('span', 'tile-stars', Profile.starText(st)));
   else if (newTags && !Profile.tried(g.id)) b.append(el('span', 'tile-new', 'new'));
+  const personalBest = Profile.bestLabel(g.id);
+  if (personalBest) b.append(el('small', 'tile-best', `Best ${personalBest}`));
   b.setAttribute('aria-pressed', g.id === current);
   b.dataset.game = g.id;
   return b;
