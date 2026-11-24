@@ -2224,6 +2224,7 @@ UI.archery = (() => {
           <div class="ar-darts-tools">
             <button type="button" class="ar-darts-inspect" aria-pressed="false" aria-label="Inspect dartboard at an angle">Inspect</button>
             <button type="button" class="ar-darts-hintbtn" aria-label="Strategy hint" aria-pressed="false">💡 Hint</button>
+            <button type="button" class="ar-darts-hintbtn ar-darts-flashbtn" aria-label="Flash the section a dart hits" aria-pressed="false">✨ Flash</button>
           </div>
         </header>
         <div class="ar-darts-board-wrap"><div class="ar-darts-stage"><div class="ar-darts-tabletop">
@@ -2400,6 +2401,14 @@ UI.archery = (() => {
       tabletopResize = window.ResizeObserver ? new ResizeObserver(applyView) : null;
       tabletopResize?.observe(tabletop);
       hintButton.addEventListener('click', () => { hintOn = !hintOn; paintHint(); });
+      const flashButton = find('flashbtn');
+      flashButton.setAttribute('aria-pressed', String(sectionFlashOn()));
+      flashButton.addEventListener('click', () => {
+        const on = !sectionFlashOn();
+        try { localStorage.setItem('ar-section-flash', on ? '1' : '0'); } catch {}
+        flashButton.setAttribute('aria-pressed', String(on));
+        if (!on) hitFlash.classList.remove('ar-darts-lit');
+      });
       inspectButton.addEventListener('click', () => {
         if (inspectButton.disabled) return;
         if (inspecting) { resetView(); return; }
@@ -3042,8 +3051,13 @@ UI.archery = (() => {
     }
 
     // Light up the exact section the dart landed in, briefly.
+    function sectionFlashOn() {
+      try { return localStorage.getItem('ar-section-flash') === '1'; } catch { return false; }
+    }
+
     function flashSection(shot) {
       hitFlash.innerHTML = '';
+      if (!sectionFlashOn()) return;
       const [bull, outer, t0, t1, d0, edge] = view.radii.map((r) => r * SCALE);
       const r = Math.hypot(shot.x, shot.y) * SCALE, i = view.numbers.indexOf(shot.number);
       if (view.axeRings ? !shot.value : !shot.number) return;

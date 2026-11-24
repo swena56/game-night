@@ -112,6 +112,7 @@ button.danger { background: linear-gradient(180deg, #ff5d82, #ef476f 55%, #d9325
   box-shadow: 0 3px 12px #ef476f40, inset 0 1px 0 #fff4; }
 button.danger.on { outline: 3px solid #fff; animation: pulse 1s infinite; }
 button.big { width: 100%; padding: 13px; font-size: 17px; }
+#lobbyReplayBtn { margin-top: 14px; }
 .ghost-btn { background: none; border: 0; color: var(--muted); text-decoration: underline; }
 .icon-btn { background: none; border: 0; font-size: var(--fs-lg); padding: 4px 6px; min-width: 40px; min-height: 40px; display: inline-grid; place-items: center; }
 .icon-btn svg { display: block; }
