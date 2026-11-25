@@ -252,8 +252,10 @@
           rail(r, '#17152f', .3);
           rail(r, i >= 9 ? guideColors[i - 9] : palette.steel, .14);
         });
-        rail(geo.gate, '#17152f', .22);
-        rail(geo.gate, palette.gold, .08);
+        if (geo.gate) {
+          rail(geo.gate, '#17152f', .22);
+          rail(geo.gate, palette.gold, .08);
+        }
         geo.slings.forEach((r, i) => {
           rail(r, '#252049', .34);
           rail(r, flash === 'sling' + i ? palette.ivory : palette.red, .23);
@@ -381,7 +383,7 @@
       const trim = i >= 9 ? material(guideColors[i - 9], .35, .34) : chrome;
       rail(r, .18, .35, .15, trim);
     });
-    rail(geo.gate, .14, .3, .15, brass);
+    if (geo.gate) rail(geo.gate, .14, .3, .15, brass);
     geo.slings.forEach((r, i) => {
       rail(r, .5, .2, .17, dark);
       rail(r, .28, .15, .33, lamp('sling' + i, palette.red));
@@ -652,7 +654,7 @@
     find('save').classList.toggle('lit', row[SAVE] > 0);
     setText(find('save'), row[SAVE] > 0 ? `Ball save ${row[SAVE]}s` : 'Ball save');
     const lanes = '●'.repeat([0, 1, 2].filter(i => row[LANES] >> i & 1).length).padEnd(3, '○');
-    find('mult').hidden = row[MULT] < 2 && !row[LANES];
+    find('mult').hidden = !(row[MULT] > 1 || row[LANES]);
     setText(find('mult'), `${row[MULT]}× ${lanes}`);
     find('jackpot').hidden = !row[JACKPOT];
     setText(find('jackpot'), row[JACKPOT] ? `Jackpot · ${row[JACKPOT]}s` : '');
