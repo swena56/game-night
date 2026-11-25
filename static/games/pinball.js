@@ -939,6 +939,20 @@
       g.stage.classList.add('shake');
     }
     g.stage.classList.toggle('white', row[EVENT] === 'extra' || row[EVENT] === 'super');
+    // a jackpot, super, multiball or extra ball throws a ring of sparks from the ball; the table pulse takes the event's colour
+    const sparks = { jackpot: 14, super: 28, multiball: 22, extra: 22, hurry: 14 }[row[EVENT]];
+    g.stage.dataset.pulse = row[EVENT];
+    if (sparks && !reduce && g.me === g.viewer) {
+      const cx = 100 * (g.ball?.[0] ?? row[X]) / 10, cy = 100 * (g.ball?.[1] ?? row[Y]) / 18.7;
+      for (let i = 0; i < sparks; i++) {
+        const spark = document.createElement('span');
+        const angle = (i / sparks) * Math.PI * 2 + Math.random() * .4, reach = 40 + Math.random() * 60;
+        spark.className = 'pb-spark';
+        spark.style.cssText = `left:${cx}%;top:${cy}%;--dx:${Math.cos(angle) * reach}px;--dy:${Math.sin(angle) * reach}px`;
+        spark.addEventListener('animationend', () => spark.remove());
+        g.stage.appendChild(spark);
+      }
+    }
     if (['ramp', 'jackpot', 'super', 'kickback', 'bonus', 'extra', 'lock', 'multiball'].includes(row[EVENT]) && !reduce) {
       g.stage.classList.remove('thump');
       void g.stage.offsetWidth;
