@@ -62,6 +62,20 @@
     c.closePath();
     c.fillStyle = '#171937';
     c.fill();
+    // Layered canyon silhouettes make the upper playfield read as a landscape.
+    const peaks = [
+      { points: [[0, 7.1], [.65, 6.4], [1.35, 7.15], [2.3, 6.3], [3.2, 7.05], [4.2, 6.55], [5.1, 7.2], [6.2, 6.45], [7.15, 7.05], [8.1, 6.2], [8.8, 6.9]], color: '#302653' },
+      { points: [[0, 8.2], [.8, 7.6], [1.75, 8.25], [2.7, 7.45], [3.65, 8.3], [4.65, 7.7], [5.7, 8.35], [6.65, 7.55], [7.75, 8.15], [8.8, 7.45]], color: '#211f47' },
+    ];
+    peaks.forEach(({ points, color }) => {
+      c.beginPath();
+      points.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y));
+      c.lineTo(8.8, 10.1);
+      c.lineTo(0, 10.1);
+      c.closePath();
+      c.fillStyle = color;
+      c.fill();
+    });
     c.save();
     c.clip();
     c.strokeStyle = '#c578bc53';
