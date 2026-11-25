@@ -786,8 +786,8 @@
           <div class="rs-best-tile"><span class="rs-cap">Best</span><strong class="rs-best">—</strong></div>
         </div>
         <div class="rs-bar rs-bar-x" role="meter" aria-label="Field sealed" aria-valuemin="0" aria-valuemax="100"><div class="rs-fill"></div><div class="rs-goal" title="75% to clear"></div><span class="rs-pct">0%</span><span class="rs-combo" hidden></span><span class="rs-slow" hidden></span></div>
-        <div class="rs-stage" aria-label="Rift Split field"><span class="rs-msg" role="status"></span><span class="rs-power" role="status" hidden></span><span class="rs-slowpill" hidden><span></span><i></i></span><span class="rs-ready" aria-hidden="true" hidden></span><div class="rs-zoom" role="group" aria-label="Zoom"><button type="button" class="rs-zin" aria-label="Zoom in" title="Zoom in">+</button><button type="button" class="rs-zout" aria-label="Zoom out" title="Zoom out">−</button><button type="button" class="rs-zreset" aria-label="Reset zoom" title="Reset zoom" hidden>1×</button></div><div class="rs-coach" aria-hidden="true"><b>Hold</b> to aim · <b>slide</b> to move · <b>release</b> to grow a wall<small>Seal off the orbs. Don't let them hit a growing wall. You can run two walls at once.</small></div></div>
-        <div class="rs-controls"><button type="button" class="rs-view" aria-label="Camera view" title="Camera view" hidden>⬓</button><button type="button" class="rs-bright" aria-label="Brightness" title="Brightness">☀</button><button type="button" class="rs-fxbtn" aria-label="Glow and blur effects" title="Glow and blur effects">✨</button><button type="button" class="rs-themebtn" aria-label="Colour theme" title="Colour theme">🎨</button><div class="rs-dirs" role="group" aria-label="Wall direction"><button type="button" class="rs-dir" data-v="0" aria-pressed="true"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Horizontal</span></button><button type="button" class="rs-dir rs-v" data-v="1" aria-pressed="false"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Vertical</span></button></div><span class="rs-tip">Hold to preview, release to grow a wall (two can grow at once) · Space / right-click turns it · ⛶ for fullscreen</span></div>
+        <div class="rs-stage" aria-label="Rift Split field"><span class="rs-msg" role="status"></span><span class="rs-power" role="status" hidden></span><span class="rs-slowpill" hidden><span></span><i></i></span><span class="rs-ready" aria-hidden="true" hidden></span><div class="rs-coach" aria-hidden="true"><b>Tap</b> or <b>swipe</b> to grow a wall<small>Seal off the orbs; don't let them hit a growing wall. Two walls can grow at once.</small></div></div>
+        <div class="rs-controls"><div class="rs-dirs" role="group" aria-label="Wall direction"><button type="button" class="rs-dir" data-v="0" aria-pressed="true"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Across</span></button><button type="button" class="rs-dir rs-v" data-v="1" aria-pressed="false"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Down</span></button><button type="button" class="rs-swipe" aria-pressed="false" title="Swipe to draw: the wall runs the way you drag"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 22C8 8 16 6 24 8M24 8l-6-3M24 8l-4 5"/></svg><span>Swipe</span></button></div><button type="button" class="rs-gear" aria-label="More options" title="More options" aria-expanded="false">⚙</button><div class="rs-more" hidden><button type="button" class="rs-view" aria-label="Camera view" title="Camera view" hidden>⬓</button><button type="button" class="rs-bright" aria-label="Brightness" title="Brightness">☀</button><button type="button" class="rs-fxbtn" aria-label="Glow and blur effects" title="Glow and blur effects">✨</button><button type="button" class="rs-themebtn" aria-label="Colour theme" title="Colour theme">🎨</button></div></div>
         <ol class="rs-standings" aria-label="Scores" hidden></ol>
       </section>`;
     const root = arena.querySelector('.rs-cabinet');
@@ -868,58 +868,46 @@
     });
     for (const b of root.querySelectorAll('.rs-dir')) on(b, 'click', () => setDirection(b.dataset.v === '1'));
     g.zoom = 1; g.panX = 0; g.panY = 0;
-    const setZoom = (z, px = g.panX, py = g.panY, say = false) => {
-      g.zoom = Math.max(1, Math.min(3.5, Math.round(z * 100) / 100));
-      const mx = g.W / 2 * (1 - 1 / g.zoom), my = g.H / 2 * (1 - 1 / g.zoom);   // keep the view inside the field
-      g.panX = Math.max(-mx, Math.min(mx, g.zoom > 1 ? px : 0)); g.panY = Math.max(-my, Math.min(my, g.zoom > 1 ? py : 0));
-      g.find('zreset').hidden = g.zoom <= 1;
-      g.find('zreset').textContent = g.zoom.toFixed(1).replace('.0', '') + '×';
-      g.flat?.view?.();
-      if (say) g.msg('Zoom ' + g.zoom.toFixed(1).replace('.0', '') + '×');
-    };
-    g.setZoom = setZoom;
-    on(g.find('zin'), 'click', () => setZoom(g.zoom * 1.5, g.panX, g.panY, true));
-    on(g.find('zout'), 'click', () => setZoom(g.zoom / 1.5, g.panX, g.panY, true));
-    on(g.find('zreset'), 'click', () => setZoom(1, 0, 0, true));
-    for (const b of g.root.querySelectorAll('.rs-zoom button')) on(b, 'pointerdown', (e) => e.stopPropagation());   // not a wall
-    on(stage, 'wheel', (e) => {   // wheel / trackpad pinch zooms toward the cursor
-      e.preventDefault();
-      const r = (g.three || g.flat)?.pick(e), z = g.zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15);
-      if (r && g.zoom < 3.5 && e.deltaY < 0) setZoom(z, g.panX + (r.x + 0.5 - g.W / 2 - g.panX) * 0.25, g.panY + (g.H / 2 - r.y - 0.5 - g.panY) * 0.25);
-      else setZoom(z);
-    }, { passive: false });
-    const pts = new Map();
-    let pinchD = 0, pinchMid = null;
+    try { g.swipe = localStorage.getItem('riftsplit.swipe') === '1'; } catch { g.swipe = false; }
+    const syncSwipe = () => { g.find('swipe').setAttribute('aria-pressed', String(g.swipe)); g.root.classList.toggle('rs-swiping', g.swipe); };
+    syncSwipe();
+    on(g.find('swipe'), 'click', () => {
+      g.swipe = !g.swipe; syncSwipe();
+      try { localStorage.setItem('riftsplit.swipe', g.swipe ? '1' : '0'); } catch { /* private mode */ }
+      g.msg(g.swipe ? 'Swipe: drag the way the wall should run' : 'Tap mode: pick Across or Down');
+    });
+    on(g.find('gear'), 'click', () => { const m = g.find('more'); m.hidden = !m.hidden; g.find('gear').setAttribute('aria-expanded', String(!m.hidden)); });
+    on(stage, 'wheel', (e) => e.preventDefault(), { passive: false });
+    let swipeFrom = null;   // swipe mode: where the finger landed and where the wall will start
     let down = false;
     // Hold to see where the wall would run, slide to aim, release to place it (a mouse previews on hover).
     const fingers = new Set();
-    let pinched = false;   // a second finger landed: this gesture is a zoom, not a wall
+    let pinched = false;   // a second finger landed: ignore the gesture rather than place a wall
     on(stage, 'pointerdown', (e) => {
       if (e.button === 2) return;
       e.preventDefault();
-      fingers.add(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]);
-      if (fingers.size > 1) {
-        const [a, b] = [...pts.values()]; pinchD = Math.hypot(a[0] - b[0], a[1] - b[1]); pinchMid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; pinched = true; down = false; g.hover = null; return; }
+      fingers.add(e.pointerId);
+      if (fingers.size > 1) { pinched = true; down = false; g.hover = null; swipeFrom = null; return; }
       stage.setPointerCapture?.(e.pointerId);
       g.touching = e.pointerType !== 'mouse';
       down = true;
       g.hover = (g.three || g.flat)?.pick(e);
+      swipeFrom = g.swipe && g.hover ? { x: e.clientX, y: e.clientY, cell: g.hover } : null;
     });
     on(stage, 'pointermove', (e) => {
-      if (pts.has(e.pointerId)) pts.set(e.pointerId, [e.clientX, e.clientY]);
-      if (pts.size === 2 && pinchD > 0) {   // two fingers: pinch to zoom, drag to pan
-        const [a, b] = [...pts.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]), mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-        const perPx = g.W / g.zoom / (stage.clientWidth || 1);
-        setZoom(g.zoom * d / pinchD, g.panX - (mid[0] - pinchMid[0]) * perPx, g.panY + (mid[1] - pinchMid[1]) * perPx);
-        pinchD = d; pinchMid = mid;
+      if (swipeFrom && down && !pinched) {   // the drag picks the direction; the wall starts where the finger landed
+        const dx = e.clientX - swipeFrom.x, dy = e.clientY - swipeFrom.y;
+        if (Math.hypot(dx, dy) > 12 && g.vertical !== (Math.abs(dy) > Math.abs(dx))) setDirection(Math.abs(dy) > Math.abs(dx));
+        g.hover = swipeFrom.cell;
         return;
       }
       const r = g.three || g.flat;
       if (r && !pinched && (down || e.pointerType === 'mouse')) g.hover = r.pick(e);
     });
     const lift = (e, placeIt) => {
-      fingers.delete(e.pointerId); pts.delete(e.pointerId);
-      if (placeIt && down && !pinched) place((g.three || g.flat)?.pick(e) || g.hover, g.vertical);
+      fingers.delete(e.pointerId);
+      if (placeIt && down && !pinched) place(swipeFrom ? swipeFrom.cell : ((g.three || g.flat)?.pick(e) || g.hover), g.vertical);
+      swipeFrom = null;
       if (!fingers.size) { down = false; pinched = false; if (g.touching || !placeIt) g.hover = null; }
     };
     on(stage, 'pointerup', (e) => lift(e, true));

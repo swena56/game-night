@@ -160,16 +160,29 @@ body.focus .rs-cabinet { width: min(100%, 1100px); }
 .rs-stage.rs-sharp .rs-banner, .rs-stage.rs-sharp .rs-power { box-shadow: none; }
 .rs-stage.rs-sharp::before { display: none; }
 @media (orientation: landscape) and (max-height: 540px) {
-  .rs-controls { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
-  .rs-controls .rs-dirs { grid-column: 1 / -1; grid-row: 2; }
   .rs-view, .rs-bright, .rs-fxbtn, .rs-themebtn { min-width: 0; min-height: 34px; padding: 0; }
   .rs-power { top: 6px; padding: 4px 12px; } .rs-power small { display: none; }
 }
 
-/* zoom: + / − on the field (pinch and wheel work too); 1× appears when zoomed */
-.rs-zoom { position: absolute; right: 6px; top: 6px; z-index: 3; display: flex; flex-direction: column; gap: 4px; }
-.rs-zoom button { width: 34px; height: 34px; padding: 0; border-radius: 9px; border: 1px solid #ffffff40; background: #070b22cc; color: #dfe9ff; font: 700 1.1rem/1 inherit; cursor: pointer; }
-.rs-zoom button[hidden] { display: none; }
-.rs-zoom button:active { background: #1a2a68; }
-.rs-zoom .rs-zreset { font-size: .72rem; }
-@media (orientation: landscape) and (max-height: 540px) { .rs-zoom button { width: 30px; height: 30px; } }
+/* cleaner controls: one row (Across / Down / Swipe + a gear), the rest tucked behind the gear */
+.rs-tip { display: none !important; }
+.rs-controls { display: flex !important; flex-wrap: wrap; align-items: center; gap: 6px; }
+.rs-dirs { flex: 1 1 0; display: flex !important; }
+.rs-dirs .rs-dir, .rs-swipe { flex: 1 1 0; }
+.rs-swipe { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; padding: 0 12px; border-radius: 9px; border: 0; background: transparent; color: #8fa6e6; font: inherit; font-size: .85rem; cursor: pointer; }
+.rs-swipe svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.rs-swipe[aria-pressed="true"] { background: linear-gradient(180deg, #17a37e, #0c6b57); color: #fff; box-shadow: 0 0 12px #2de2b080, inset 0 1px 0 #ffffff30; }
+.rs-gear { min-height: 46px; min-width: 46px; border-radius: 12px; border: 1px solid #2a3f84; background: #0a1030; color: #8fa6e6; font-size: 1.1rem; cursor: pointer; }
+.rs-gear[aria-expanded="true"] { color: #ffd166; border-color: #5a7de0; }
+.rs-more { flex: 1 0 100%; display: flex; gap: 6px; }
+.rs-more[hidden] { display: none; }
+.rs-more button { flex: 1; }
+.rs-swiping .rs-dir { opacity: .75; }
+@media (max-width: 400px) { .rs-dir span, .rs-swipe span { font-size: .74rem; } .rs-dir, .rs-swipe { padding: 0 6px; gap: 4px; } }
+@media (orientation: landscape) and (max-height: 540px) {
+  .rs-controls { flex-wrap: wrap; }
+  .rs-dirs { display: grid !important; grid-template-columns: repeat(3, 1fr); flex: 1 1 100%; }
+  .rs-dir, .rs-swipe { flex-direction: column; gap: 0; min-height: 44px; padding: 0 2px; font-size: .68rem; min-width: 0; }
+  .rs-gear { min-height: 34px; flex: 1 0 100%; }
+  .rs-more button { min-height: 34px; min-width: 0; }
+}
