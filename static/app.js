@@ -442,6 +442,11 @@ const SFX = {
   // pinball: a pop bumper's bright electric boing (pitch by bumper), a slingshot's rubber thwack
   pbumper: (n = 0) => { const f = 640 + (n % 3) * 150; tone(f * 1.8, f, 0.11, 'square', 0.04); tone(f * 2.7, f * 1.5, 0.07, 'triangle', 0.05, 0.01); noise(0.02, 3000, 1.5, 0.15); },
   psling: () => { noise(0.04, 1200, 1.2, 0.35); tone(300, 140, 0.07, 'sawtooth', 0.05); },
+  // pinball: a spinner's ratchet flick, a ramp's rising whoosh, a jackpot's bell run, a kickback's solenoid punch
+  pspin: () => { tone(1700, 1300, 0.03, 'triangle', 0.05); noise(0.012, 4200, 2, 0.12); },
+  pramp: () => { noise(0.35, 700, 0.6, 0.3); tone(300, 900, 0.3, 'sine', 0.07); tone(900, 1350, 0.12, 'triangle', 0.06, 0.28); },
+  pjackpot: () => { [784, 988, 1175, 1568, 1175, 1568].forEach((f, i) => { tone(f, f, 0.2, 'triangle', 0.09, i * 0.07); tone(f * 2, f * 2, 0.12, 'sine', 0.03, i * 0.07); }); noise(0.5, 2200, 0.4, 0.14); },
+  pkick: () => { tone(160, 60, 0.12, 'square', 0.08); noise(0.05, 700, 1, 0.4); },
   rail: () => { noise(0.04, 900, 1.4, 0.22); tone(240, 180, 0.05, 'sine', 0.06); },
   cheer: () => { noise(0.9, 1400, 0.35, 0.18); [659, 784, 988].forEach((f, i) => tone(f, f, 0.18, 'triangle', 0.08, 0.12 + i * 0.09)); },
   groan: () => { tone(330, 196, 0.5, 'triangle', 0.07); tone(262, 165, 0.5, 'triangle', 0.05, 0.04); },
