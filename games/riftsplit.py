@@ -20,7 +20,7 @@ STEP = 1 / 60
 CLEAR_PAUSE = 2.6
 SLOW_SECS, SLOW_FACTOR = 8.0, 0.45
 MAX_LEVEL = 99
-BOT = {"easy": (1.3, 0), "normal": (0.9, 8), "hard": (0.6, 22)}   # seconds between walls, candidates to simulate
+BOT = {"easy": (1.6, 2), "normal": (0.9, 8), "hard": (0.6, 22)}   # seconds between walls, candidates to simulate
 
 
 def ball_speed(level):
