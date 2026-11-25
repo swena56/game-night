@@ -534,6 +534,11 @@
     const sc = g.find('score'), scText = s.score.toLocaleString();
     if (sc.textContent !== scText) { sc.textContent = scText; sc.classList.remove('rs-bump'); void sc.offsetWidth; sc.classList.add('rs-bump'); }
     g.find('level').textContent = s.lv;
+    if (s === g.boards[g.me]) {
+      if (g.lastLv != null && s.lv > g.lastLv && s.st === 'play') g.banner('LEVEL ' + s.lv, 'rs-banner-lv');
+      g.lastLv = s.lv;
+      if (g.solo && g.best > 0 && !g.beat && s.score > g.best && g.startBest > 0) { g.beat = true; g.banner('NEW BEST!', 'rs-banner-lv'); }
+    }
     if (s === g.boards[g.me] && g.lastLives != null && s.lives < g.lastLives) {
       const el = g.find('lives'); el.classList.remove('rs-lost'); void el.offsetWidth; el.classList.add('rs-lost');
     }
@@ -644,10 +649,13 @@
         void stage.offsetWidth;   // restart the animation if one is still running
         stage.classList.add(cls);
         if (kind === 'clear' || kind === 'over') {
-          const el = document.createElement('div');
-          el.className = 'rs-banner'; el.textContent = kind === 'clear' ? 'LEVEL CLEAR' : 'GAME OVER';
-          stage.append(el); setTimeout(() => el.remove(), 1800);
+          g.banner(kind === 'clear' ? 'LEVEL CLEAR' : 'GAME OVER');
         }
+      },
+      banner(text, cls = '') {
+        const el = document.createElement('div');
+        el.className = 'rs-banner ' + cls; el.textContent = text;
+        stage.append(el); setTimeout(() => el.remove(), 1800);
       },
       msg(text) {
         const el = stage.querySelector('.rs-msg');
@@ -731,7 +739,7 @@
       if (!g || !d) return;
       g.ctx = ctx;
       if (g.run !== d.rift) {
-        g.run = d.rift; g.tick = -1; g.lastScore = null; g.lastLives = null; g.W = d.layout.w; g.H = d.layout.h; g.solo = d.solo; g.boards = {};
+        g.run = d.rift; g.tick = -1; g.lastScore = null; g.lastLives = null; g.lastLv = null; g.beat = false; g.startBest = g.best; g.W = d.layout.w; g.H = d.layout.h; g.solo = d.solo; g.boards = {};
         g.order = Object.keys(d.boards);
       }
       g.me = d.me;
