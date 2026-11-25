@@ -197,6 +197,8 @@
 }
 
 .pb-popup.go { animation: pb-rise .8s ease-out; }
+.pb-popup.big { color: var(--pb-gold); font-size: 1.15rem; text-shadow: 0 0 8px #ffd36699, 0 1px 3px #000; }
+.pb-popup.huge { color: var(--pb-gold); font-size: 1.4rem; white-space: nowrap; text-shadow: 0 0 12px #ffd366cc, 0 2px 4px #000; animation-duration: 1.4s; }
 
 @keyframes pb-rise {
   from { opacity: 1; margin-top: 0; }

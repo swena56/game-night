@@ -744,7 +744,7 @@
 
   const popupText = (row) => {
     const text = label(row[EVENT], row);
-    return /\+[\d,]+/.exec(text)?.[0] || '';
+    return row[EVENT] === 'extra' ? '★ EXTRA BALL ★' : /\+[\d,]+/.exec(text)?.[0] || '';
   };
 
   function popup(g, row) {
@@ -755,6 +755,8 @@
       el.hidden = false;
       el.style.left = `${100 * (g.ball?.[0] ?? row[X]) / 10}%`;
       el.style.top = `${100 * ((g.ball?.[1] ?? row[Y]) + .85) / 18.7}%`;
+      el.classList.toggle('big', ['ramp', 'jackpot', 'bonus', 'skill'].includes(row[EVENT]));
+      el.classList.toggle('huge', row[EVENT] === 'extra');
       el.classList.remove('go');
       void el.offsetWidth;
       el.classList.add('go');
