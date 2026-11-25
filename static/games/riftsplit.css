@@ -49,6 +49,8 @@
 .rs-stage.rs-flash-hit::before { animation: rsFlash .5s ease-out; background: radial-gradient(ellipse at center, #ff2a4d00 35%, #ff2a4dbb 100%); }
 .rs-stage.rs-flash-seal::before { animation: rsFlash .6s ease-out; background: radial-gradient(ellipse at center, #ffffff00 40%, color-mix(in srgb, var(--rs-glow, #3cf5e0) 70%, transparent) 100%); }
 .rs-stage.rs-flash-clear::before { animation: rsFlash 1s ease-out; background: radial-gradient(ellipse at center, #ffd16666, #ffd16600 70%); }
+.rs-stage.rs-place::before { animation: rsPlace .42s ease-out; background: radial-gradient(circle at var(--rs-place-x, 50%) var(--rs-place-y, 50%), #ffffffcc 0, color-mix(in srgb, var(--rs-glow, #3cf5e0) 65%, transparent) 2%, transparent 18%); }
+@keyframes rsPlace { from { opacity: .9; } to { opacity: 0; } }
 @keyframes rsFlash { from { opacity: 1; } to { opacity: 0; } }
 .rs-banner { position: absolute; left: 50%; top: 40%; z-index: 2; padding: 8px 26px; border-radius: 12px; font-size: clamp(1.2rem, 5vw, 2.2rem); font-weight: 900; letter-spacing: .12em; color: #fff; background: #070b22cc; border: 1px solid #ffffff40; text-shadow: 0 0 16px var(--rs-glow, #3cf5e0); box-shadow: 0 0 30px color-mix(in srgb, var(--rs-glow, #3cf5e0) 60%, transparent); pointer-events: none; animation: rsBanner 1.8s ease-out forwards; }
 @keyframes rsBanner { 0% { opacity: 0; transform: translate(-50%, 0) scale(.6); } 15% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); } 25% { transform: translate(-50%, -50%) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -70%) scale(1); } }
@@ -112,9 +114,13 @@ body.focus .rs-cabinet { width: min(100%, 1100px); }
 @keyframes rsBump { 0% { transform: scale(1.3); color: #3cf5e0; } 100% { transform: scale(1); } }
 .rs-coach { position: absolute; left: 50%; bottom: 12px; z-index: 1; transform: translateX(-50%); width: max-content; max-width: 92%; padding: 8px 16px; border-radius: 14px; border: 1px solid #ffffff30; background: #070b22d9; color: #dfe9ff; font-size: .85rem; text-align: center; pointer-events: none; box-shadow: 0 0 18px #3cf5e033; animation: rsCoach 2.4s ease-in-out infinite; }
 .rs-coach b { color: #6df0c8; }
+.rs-aim { position: absolute; left: 50%; top: 10px; z-index: 3; transform: translateX(-50%); max-width: calc(100% - 20px); overflow: hidden; padding: 6px 11px; border: 1px solid #6df0c877; border-radius: 10px; background: #070b22e8; color: #b8ffe8; font-size: .78rem; font-weight: 800; box-shadow: 0 0 14px #3cf5e044; pointer-events: none; text-overflow: ellipsis; white-space: nowrap; }
+.rs-aim.rs-risk { color: #ff9aa6; border-color: #ff536b99; background: #260916e8; box-shadow: 0 0 14px #ff405044; }
+.rs-aim[hidden] { display: none; }
 .rs-coach small { display: block; margin-top: 2px; font-size: .72rem; color: #8fa6e6; }
 @keyframes rsCoach { 50% { opacity: .72; } }
 @media (prefers-reduced-motion: reduce) { .rs-score.rs-bump, .rs-coach { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .rs-stage.rs-place::before { animation: none; opacity: 0; } }
 
 .rs-banner.rs-banner-lv { top: 30%; font-size: clamp(1rem, 4vw, 1.7rem); color: #ffd166; border-color: #ffd16666; }
 
@@ -172,8 +178,10 @@ body.focus .rs-cabinet { width: min(100%, 1100px); }
 .rs-swipe { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; padding: 0 12px; border-radius: 9px; border: 0; background: transparent; color: #8fa6e6; font: inherit; font-size: .85rem; cursor: pointer; }
 .rs-swipe svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
 .rs-swipe[aria-pressed="true"] { background: linear-gradient(180deg, #17a37e, #0c6b57); color: #fff; box-shadow: 0 0 12px #2de2b080, inset 0 1px 0 #ffffff30; }
+.rs-swipe:focus-visible, .rs-gear:focus-visible, .rs-more button:focus-visible { outline: 2px solid #6df0c8; outline-offset: 2px; }
 .rs-gear { min-height: 46px; min-width: 46px; border-radius: 12px; border: 1px solid #2a3f84; background: #0a1030; color: #8fa6e6; font-size: 1.1rem; cursor: pointer; }
 .rs-gear[aria-expanded="true"] { color: #ffd166; border-color: #5a7de0; }
+.rs-swipe:hover, .rs-gear:hover, .rs-more button:hover { border-color: #5a7de0; color: #fff; }
 .rs-more { flex: 1 0 100%; display: flex; gap: 6px; }
 .rs-more[hidden] { display: none; }
 .rs-more button { flex: 1; }

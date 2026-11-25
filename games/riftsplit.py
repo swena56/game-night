@@ -34,7 +34,9 @@ BOT = {"easy": (1.6, 2), "normal": (0.9, 8), "hard": (0.6, 22)}   # seconds betw
 
 
 def ball_speed(level):
-    return min(10.5, 5.6 + 0.5 * level)   # slower orbs (was 8 + 0.7/level, cap 15)
+    if 1 <= level <= 3:
+        return (4.9, 5.7, 6.5)[level - 1]
+    return min(10.5, 5.6 + 0.5 * level)
 
 
 class Board:

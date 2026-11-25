@@ -142,7 +142,7 @@
     const c = canvas.getContext('2d');
     if (!c) { canvas.remove(); return null; }
     const fx = true;   // glow is core to the look: only the Sharp toggle turns it off
-    const flatRoll = [], strikes = [], lastRects = [];
+    const flatRoll = [], strikes = [], lastRects = [], bounceFx = [];
     let bgLayer = null, cellLayer = null, cellKey = null, bgTheme = null;
     let size = [0, 0], lastGrid = '0'.repeat(g.W * g.H), animUntil = 0, last = 0, shake = 0;
     const born = new Float32Array(g.W * g.H), pending = [], parts = [], hist = [], prevHalf = [['', ''], ['', '']];
@@ -254,8 +254,10 @@
         }
         c.globalAlpha = 1;
         if (s.ghost) {   // where the wall would run: a faint fill with a dashed outline
-          c.fillStyle = '#ffffff18'; c.fillRect(...s.ghost);
-          c.setLineDash([0.35, 0.22]); c.lineWidth = 0.09; c.strokeStyle = '#ffffffdd'; c.strokeRect(s.ghost[0] + 0.045, s.ghost[1] + 0.045, s.ghost[2] - 0.09, s.ghost[3] - 0.09); c.setLineDash([]);
+          const pulse = 0.65 + 0.25 * Math.sin(now / 180);
+          c.fillStyle = s.ghost[4] ? `rgba(255,64,80,${0.12 * pulse})` : `rgba(109,240,200,${0.13 * pulse})`;
+          c.shadowColor = s.ghost[4] ? '#ff4050' : '#6df0c8'; c.shadowBlur = 0.25 + pulse * 0.3; c.fillRect(...s.ghost.slice(0, 4)); c.shadowBlur = 0;
+          c.setLineDash([0.35, 0.22]); c.lineWidth = 0.09; c.strokeStyle = s.ghost[4] ? '#ff6677' : '#9dffe0'; c.strokeRect(s.ghost[0] + 0.045, s.ghost[1] + 0.045, s.ghost[2] - 0.09, s.ghost[3] - 0.09); c.setLineDash([]);
         }
         // orbs: tail, glow, core
         s.b.forEach((b, i) => {
@@ -276,6 +278,11 @@
           // the split swings between edge-on and pole-on (one colour) as it rolls
           const fs = (flatRoll[i] ||= { x: b[0], y: b[1], ph: i * 1.3, hd: 0 });
           const mvx = b[0] - fs.x, mvy = b[1] - fs.y, dist = Math.hypot(mvx, mvy);
+          if ((Math.abs(mvx) > 0.012 && Math.abs(fs.dx || 0) > 0.012 && mvx * fs.dx < 0)
+              || (Math.abs(mvy) > 0.012 && Math.abs(fs.dy || 0) > 0.012 && mvy * fs.dy < 0)) {
+            if (!g.nofx) { burst(b[0], b[1], 9, RED, 4.5); bounceFx.push({ x: b[0], y: b[1], age: 0 }); }
+          }
+          if (Math.abs(mvx) + Math.abs(mvy) > 0.002) { fs.dx = mvx; fs.dy = mvy; }
           if (dist > 1e-4 && dist < 3) { fs.ph += dist / 0.36; fs.hd = Math.atan2(mvy, mvx) + Math.PI / 2; }
           fs.x = b[0]; fs.y = b[1];
           const tt = Math.cos(fs.ph);
@@ -286,6 +293,13 @@
           c.restore();
         });
         hist.length = s.b.length;
+        for (let i = bounceFx.length - 1; i >= 0; i--) {
+          const fx = bounceFx[i]; fx.age += dt;
+          if (fx.age >= 0.34) { bounceFx.splice(i, 1); continue; }
+          const p = fx.age / 0.34;
+          c.globalAlpha = 1 - p; c.strokeStyle = '#fff2f2'; c.lineWidth = 0.08 * (1 - p * 0.45);
+          c.beginPath(); c.arc(fx.x, fx.y, 0.35 + p * 0.8, 0, Math.PI * 2); c.stroke();
+        }
         for (let q = pending.length - 1; q >= 0; q--) if (pending[q][0] <= now) { burst(pending[q][1], pending[q][2], pending[q][3], s.color, 4); pending.splice(q, 1); }
         for (let i = parts.length - 1; i >= 0; i--) {
           const q = parts[i]; q.l -= dt;
@@ -497,7 +511,8 @@
       draw(s, now) {
         resize();
         const col = new T.Color(s.color);
-        mats.ghost.color.set(0xffffff);
+        mats.ghost.color.set(s.ghost?.[4] ? 0xff4050 : 0xffffff);
+        mats.ghost.opacity = s.ghost?.[4] ? 0.22 : 0.12;
         edgeMat.color.copy(col); edgeMat.opacity = 0.6 + 0.2 * Math.sin(now / 700);
         const dt = Math.min(0.05, Math.max(0, (now - (lastNow || now)) / 1000)); lastNow = now;
         if (s.grid !== lastGrid) {
@@ -608,6 +623,8 @@
           m.material.color.set(on ? 0xff2a4d : 0xffb3bf); m.material.opacity = Math.max(0, 1 - (now - q.t) / STRIKE_MS) * (on ? 1 : 0.6);
         });
         if (s.ghost) box(ghost, s.ghost[0], s.ghost[0] + s.ghost[2], s.ghost[1], s.ghost[1] + s.ghost[3], 0.2); else ghost.visible = false;
+        ghost.material.color.set(s.ghost?.[4] ? 0xff4050 : 0xffffff);
+        ghost.children[0].material.color.set(s.ghost?.[4] ? 0xff6677 : 0xffffff);
         // pickups persist between frames (keyed by cell) and only spin
         const keep = new Set();
         for (const p of s.p) {
@@ -688,7 +705,7 @@
     if (sc.textContent !== scText) { sc.textContent = scText; sc.classList.remove('rs-bump'); void sc.offsetWidth; sc.classList.add('rs-bump'); }
     g.find('level').textContent = s.lv;
     const gp = Math.round((s.goal || 0.75) * 100) + '%';
-    if (g.goalTxt !== gp) { g.goalTxt = gp; const gm = g.find('goal'); gm.style.left = gp; gm.dataset.g = gp; }
+    if (g.goalTxt !== gp) { g.goalTxt = gp; const gm = g.find('goal'); gm.style.left = gp; gm.dataset.g = gp; gm.title = gp + ' to clear'; }
     if (s === g.boards[g.me]) {
       if (g.lastLv != null && s.lv > g.lastLv && s.st === 'play') g.banner('LEVEL ' + s.lv + ' · ' + s.b.length + (s.b.length === 1 ? ' ORB' : ' ORBS') + ' · SEAL ' + Math.round((s.goal || 0.75) * 100) + '%', 'rs-banner-lv');
       g.lastLv = s.lv;
@@ -727,6 +744,13 @@
     if (!cell || !s || !g.enabled || s.st !== 'play' || s.w2?.length) return;
     if (!cellFree(s.grid, cell.x, cell.y) || lineCells(s).has(`${cell.x},${cell.y}`)) return;
     g.root.querySelector('.rs-coach')?.remove();
+    clearTimeout(g.placeTimer);
+    if (!g.nofx && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      g.stage.style.setProperty('--rs-place-x', `${(cell.x + 0.5) / g.W * 100}%`);
+      g.stage.style.setProperty('--rs-place-y', `${(cell.y + 0.5) / g.H * 100}%`);
+      g.stage.classList.remove('rs-place'); void g.stage.offsetWidth; g.stage.classList.add('rs-place');
+      g.placeTimer = setTimeout(() => g.stage?.classList.remove('rs-place'), 420);
+    }
     g.ctx.input({ x: cell.x, y: cell.y, v: vertical });
     if (!voice('place')) g.ctx.sfx('pop');
   }
@@ -734,13 +758,63 @@
   function ghostFor(cell) {
     const s = mine();
     if (!cell || !s || s.st !== 'play' || s.w2?.length || !g.enabled) return null;
+    const cacheKey = `${g.tick}:${s.rev}:${cell.x}:${cell.y}:${g.vertical}`;
+    if (g.ghostCache?.key === cacheKey) return g.ghostCache.value;
     const occ = lineCells(s), free = (x, y) => cellFree(s.grid, x, y) && !occ.has(`${x},${y}`);
     if (!free(cell.x, cell.y)) return null;
+    const sealedEstimate = (cells) => {
+      const grid = s.grid.split('');
+      occ.forEach((key) => { const [x, y] = key.split(',').map(Number); grid[y * g.W + x] = '1'; });
+      cells.forEach(([x, y]) => { if (x >= 0 && y >= 0 && x < g.W && y < g.H) grid[y * g.W + x] = '1'; });
+      const seen = new Uint8Array(grid.length), occupied = new Set(s.b.map(([x, y]) => Math.floor(y) * g.W + Math.floor(x)));
+      let total = 0;
+      for (let start = 0; start < grid.length; start++) {
+        if (grid[start] === '1' || seen[start]) continue;
+        let region = 0, alive = false, stack = [start]; seen[start] = 1;
+        while (stack.length) {
+          const at = stack.pop(), x = at % g.W, y = Math.floor(at / g.W); region++; alive ||= occupied.has(at);
+          for (const next of [x ? at - 1 : -1, x + 1 < g.W ? at + 1 : -1, y ? at - g.W : -1, y + 1 < g.H ? at + g.W : -1]) {
+            if (next >= 0 && grid[next] === '0' && !seen[next]) { seen[next] = 1; stack.push(next); }
+          }
+        }
+        if (!alive) total += region;
+      }
+      return total;
+    };
+    const danger = (x0, x1, y0, y1) => s.b.some(([x, y], i) => {
+      const [vx, vy] = s.bv?.[i] || [0, 0];
+      let px = x, py = y, dx = vx, dy = vy;
+      for (let t = 0.1; t <= 1.4; t += 0.1) {
+        const step = 0.1;
+        const blocked = (bx, by) => [[-0.42, -0.42], [0.42, -0.42], [-0.42, 0.42], [0.42, 0.42]].some(([ox, oy]) => {
+          const cx = Math.floor(bx + ox), cy = Math.floor(by + oy);
+          return cx < 0 || cy < 0 || cx >= g.W || cy >= g.H || s.grid[cy * g.W + cx] === '1';
+        });
+        if (blocked(px + dx * step, py)) dx = -dx; else px += dx * step;
+        if (blocked(px, py + dy * step)) dy = -dy; else py += dy * step;
+        const grown = Math.min(t * 15, 20);
+        const loX = g.vertical ? cell.x : Math.max(x0, cell.x + 0.5 - grown);
+        const hiX = g.vertical ? cell.x + 1 : Math.min(x1, cell.x + 0.5 + grown);
+        const loY = g.vertical ? Math.max(y0, cell.y + 0.5 - grown) : cell.y;
+        const hiY = g.vertical ? Math.min(y1, cell.y + 0.5 + grown) : cell.y + 1;
+        if (px >= loX - 0.42 && px <= hiX + 0.42 && py >= loY - 0.42 && py <= hiY + 0.42) return true;
+      }
+      return false;
+    });
     // Preview the whole line until it meets a sealed cell, another wall or the edge.
     let a = cell.x, b = cell.x, c = cell.y, d = cell.y;
-    if (g.vertical) { while (free(cell.x, c - 1)) c--; while (free(cell.x, d + 1)) d++; return [cell.x, c, 1, d - c + 1]; }
+    if (g.vertical) {
+      while (free(cell.x, c - 1)) c--; while (free(cell.x, d + 1)) d++;
+      const cells = Array.from({ length: d - c + 1 }, (_, i) => [cell.x, c + i]);
+      const preview = [cell.x, c, 1, d - c + 1, danger(cell.x, cell.x + 1, c, d + 1), sealedEstimate(cells)];
+      g.ghostCache = { key: cacheKey, value: preview };
+      return preview;
+    }
     while (free(a - 1, cell.y)) a--; while (free(b + 1, cell.y)) b++;
-    return [a, cell.y, b - a + 1, 1];
+    const cells = Array.from({ length: b - a + 1 }, (_, i) => [a + i, cell.y]);
+    const preview = [a, cell.y, b - a + 1, 1, danger(a, b + 1, cell.y, cell.y + 1), sealedEstimate(cells)];
+    g.ghostCache = { key: cacheKey, value: preview };
+    return preview;
   }
 
   function setDirection(vertical) {
@@ -784,7 +858,20 @@
     const pct = Math.floor(s.shown * 100 + 0.001) + '%', fill = Math.min(100, s.shown * 100).toFixed(1) + '%';
     if (g.pctText !== pct) { g.find('pct').textContent = g.pctText = pct; g.root.querySelector('.rs-bar-x').setAttribute('aria-valuenow', String(parseInt(pct, 10))); }
     if (g.pctFill !== fill) g.find('fill').style.width = g.pctFill = fill;
-    r.draw({ ...s, b: s.bs, ghost: g.hover ? ghostFor(g.hover) : null }, now);
+    const ghost = g.hover ? ghostFor(g.hover) : null;
+    const aim = g.find('aim');
+    aim.hidden = !ghost;
+    if (ghost) {
+      const scoreEstimate = ghost[5] * 10 * (s.mu || 1);
+      const fieldPercent = (ghost[5] * 100 / (g.W * g.H)).toFixed(1);
+      const text = `${ghost[4] ? '⚠ Risk · ' : ''}+${fieldPercent}% · ~${scoreEstimate.toLocaleString()} pts`;
+      if (aim.textContent !== text) aim.textContent = text;
+      aim.classList.toggle('rs-risk', ghost[4]);
+      const detail = `${ghost[4] ? 'Risk of orb collision. ' : ''}Estimated seal ${fieldPercent} percent of the field for about ${scoreEstimate.toLocaleString()} points.`;
+      if (aim.getAttribute('aria-label') !== detail) aim.setAttribute('aria-label', detail);
+      aim.title = detail;
+    }
+    r.draw({ ...s, b: s.bs, ghost }, now);
     if (g.lockFx) { g.lockFx = false; if (s === g.boards[g.me]) voice('lock'); }
   }
 
@@ -797,8 +884,8 @@
           <div><span class="rs-cap">Lives</span><strong class="rs-lives"></strong></div>
           <div class="rs-best-tile"><span class="rs-cap">Best</span><strong class="rs-best">—</strong></div>
         </div>
-        <div class="rs-bar rs-bar-x" role="meter" aria-label="Field sealed" aria-valuemin="0" aria-valuemax="100"><div class="rs-fill"></div><div class="rs-goal" title="75% to clear"></div><span class="rs-pct">0%</span><span class="rs-combo" hidden></span><span class="rs-slow" hidden></span></div>
-        <div class="rs-stage" aria-label="Rift Split field"><span class="rs-msg" role="status"></span><span class="rs-power" role="status" hidden></span><span class="rs-slowpill" hidden><span></span><i></i></span><span class="rs-ready" aria-hidden="true" hidden></span><div class="rs-coach" aria-hidden="true"><b>Tap</b> or <b>swipe</b> to grow a wall<small>Seal off the orbs; don't let them hit a growing wall. Two walls can grow at once.</small></div></div>
+        <div class="rs-bar rs-bar-x" role="meter" aria-label="Field sealed" aria-valuemin="0" aria-valuemax="100"><div class="rs-fill"></div><div class="rs-goal" title="70% to clear"></div><span class="rs-pct">0%</span><span class="rs-combo" hidden></span><span class="rs-slow" hidden></span></div>
+        <div class="rs-stage" aria-label="Rift Split field"><span class="rs-msg" role="status"></span><span class="rs-aim" aria-live="off" hidden></span><span class="rs-power" role="status" hidden></span><span class="rs-slowpill" hidden><span></span><i></i></span><span class="rs-ready" aria-hidden="true" hidden></span><div class="rs-coach" aria-hidden="true"><b>Tap</b> or <b>swipe</b> to grow a wall<small>Seal off the orbs; don't let them hit a growing wall. Two walls can grow at once.</small></div></div>
         <div class="rs-controls"><div class="rs-dirs" role="group" aria-label="Wall direction"><button type="button" class="rs-dir" data-v="0" aria-pressed="true"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Across</span></button><button type="button" class="rs-dir rs-v" data-v="1" aria-pressed="false"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Down</span></button><button type="button" class="rs-swipe" aria-pressed="false" title="Swipe to draw: the wall runs the way you drag"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 22C8 8 16 6 24 8M24 8l-6-3M24 8l-4 5"/></svg><span>Swipe</span></button></div><button type="button" class="rs-gear" aria-label="More options" title="More options" aria-expanded="false">⚙</button><div class="rs-more" hidden><button type="button" class="rs-bright" aria-label="Brightness" title="Brightness">☀</button><button type="button" class="rs-fxbtn" aria-label="Glow and blur effects" title="Glow and blur effects">✨</button><button type="button" class="rs-themebtn" aria-label="Colour theme" title="Colour theme">🎨</button></div></div>
         <ol class="rs-standings" aria-label="Scores" hidden></ol>
       </section>`;
@@ -954,7 +1041,7 @@
       if (!g || !d) return;
       g.ctx = ctx;
       if (g.run !== d.rift) {
-        g.run = d.rift; g.tick = -1; g.lastScore = null; g.lastLives = null; g.lastLv = null; g.beat = false; g.startBest = g.best; g.W = d.layout.w; g.H = d.layout.h; g.solo = d.solo; g.boards = {};
+        g.run = d.rift; g.tick = -1; g.ghostCache = null; g.lastScore = null; g.lastLives = null; g.lastLv = null; g.beat = false; g.startBest = g.best; g.W = d.layout.w; g.H = d.layout.h; g.solo = d.solo; g.boards = {};
         g.order = Object.keys(d.boards);
       }
       g.me = d.me;
@@ -970,6 +1057,7 @@
       g.listeners.abort();
       cancelAnimationFrame(g.raf);
       clearTimeout(g.msgTimer);
+      clearTimeout(g.placeTimer);
       g.three?.dispose(); g.flat?.dispose();
       g.root.remove();
       g = null;
