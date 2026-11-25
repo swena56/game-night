@@ -23,6 +23,8 @@ MAX_LEVEL = 99
 MAX_LIVES = 6
 MAX_WALLS = 2       # two walls may grow at once, on lines that don't cross
 MAX_ORBS = 9        # late stages stay readable: orbs and starting lives stop growing
+NEAR = 0.8          # an orb this close to a growing tip (cells) counts as a near miss
+CLOSE_BONUS = 25
 HOLD_SECS = 2.1     # a 3-2-1 before every level, orbs frozen
 BOT = {"easy": (1.6, 2), "normal": (0.9, 8), "hard": (0.6, 22)}   # seconds between walls, candidates to simulate
 
@@ -159,6 +161,10 @@ class Board:
                     self.hit()
                     break
             else:
+                if not self.sim and half["len"] < half["room"] and any(
+                        rx0 - RADIUS - NEAR < b[0] < rx1 + RADIUS + NEAR and ry0 - RADIUS - NEAR < b[1] < ry1 + RADIUS + NEAR
+                        for b in self.balls):
+                    w["near"] = True   # an orb grazed the growing tip and missed
                 if half["len"] >= half["room"]:
                     for x, y in self.half_cells(w, half):
                         if not self.grid[y][x]:   # another wall's seal may have filled it already
@@ -167,7 +173,12 @@ class Board:
                     half["st"] = "done"
         if all(h["st"] != "grow" for h in w["h"]):
             self.walls.remove(w)
+            before = self.event_id
             self.seal()
+            if w.get("near") and not self.sim and self.event == "seal" and self.event_id != before \
+                    and all(h["st"] == "done" for h in w["h"]):
+                self.score += CLOSE_BONUS   # a close call that still sealed: small bonus and a callout
+                self.emit("close")
 
     def hit(self):
         self.streak = 0

@@ -1,11 +1,11 @@
 // Rift Split: grow walls to seal off bouncing orbs. three.js field (flat canvas fallback); the server owns the physics.
 (() => {
   const MSG = {
-    seal: 'Sealed!', big: 'Huge seal!', hit: 'Wall shattered · life lost', shield: 'Shield absorbed it',
+    seal: 'Sealed!', close: '⚡ Close call! +25', big: 'Huge seal!', hit: 'Wall shattered · life lost', shield: 'Shield absorbed it',
     'shield+': 'Shield ready', life: 'Giant seal · +1 life', slow: 'Orbs slowed', clear: 'Level clear!', over: 'Out of lives',
   };
   const POWER = { slow: ['⏳', 'SLOW DOWN', 'Every orb crawls for 8 seconds'], 'shield+': ['🛡️', 'SHIELD READY', 'Blocks the next hit'], life: ['❤️', 'EXTRA LIFE', '+1 life'] };
-  const SND = { seal: 'lock', big: 'cheer', hit: 'wrong', shield: 'lock', 'shield+': 'pop', slow: 'pop', clear: 'cheer', life: 'cheer', over: 'groan' };
+  const SND = { seal: 'lock', close: 'cheer', big: 'cheer', hit: 'wrong', shield: 'lock', 'shield+': 'pop', slow: 'pop', clear: 'cheer', life: 'cheer', over: 'groan' };
   // Rift Split's own sounds, synthesised on the shared Snd kit: pitched glass-and-chime tones instead of the app's generic blips
   const NOTE = (n) => 220 * 2 ** (n / 12);
   const VOICE = {
@@ -805,7 +805,7 @@
       },
       // full-field feedback: a red flash when a wall shatters, a glow on a seal, a banner for a cleared level
       fx(kind) {
-        const cls = { over: 'rs-flash-hit', hit: 'rs-flash-hit', seal: 'rs-flash-seal', big: 'rs-flash-seal', life: 'rs-flash-seal', clear: 'rs-flash-clear' }[kind];
+        const cls = { over: 'rs-flash-hit', hit: 'rs-flash-hit', seal: 'rs-flash-seal', close: 'rs-flash-seal', big: 'rs-flash-seal', life: 'rs-flash-seal', clear: 'rs-flash-clear' }[kind];
         if (!cls) return;
         stage.classList.remove('rs-flash-hit', 'rs-flash-seal', 'rs-flash-clear');
         void stage.offsetWidth;   // restart the animation if one is still running

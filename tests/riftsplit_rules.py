@@ -33,5 +33,18 @@ check("both walls finish", not b.walls)
 check("orbs capped", len(R.Board(random.Random(1), 40).balls) <= R.MAX_ORBS)
 check("lives capped", R.Board(random.Random(1), 40).lives <= R.MAX_LIVES)
 check("speed capped", R.ball_speed(99) <= 10.5)
+c = R.Board(random.Random(3), 1)
+c.balls = [[3 + 1 + R.RADIUS + 0.4, 15.0, 0.0, 0.0]]
+c.place(3, 15, True)
+sc = c.score
+for _ in range(900):
+    c.step(R.STEP, 0)
+check("near miss that still seals: close call + bonus", c.event == "close" and c.score >= sc + R.CLOSE_BONUS, f"{c.event} {c.score}")
+d = R.Board(random.Random(3), 1)
+d.balls = [[20.5, 15.0, 0.0, 0.0]]
+d.place(3, 15, True)
+for _ in range(900):
+    d.step(R.STEP, 0)
+check("clear sweep is a plain seal", d.event == "seal", d.event)
 print("FAILED" if fails else "all ok")
 sys.exit(1 if fails else 0)
