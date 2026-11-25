@@ -656,6 +656,7 @@
         }
       },
       banner(text, cls = '') {
+        stage.querySelectorAll('.rs-banner').forEach((o) => o.remove());   // one banner at a time
         const el = document.createElement('div');
         el.className = 'rs-banner ' + cls; el.textContent = text;
         stage.append(el); setTimeout(() => el.remove(), 1800);
