@@ -488,6 +488,18 @@ body.calm .nudge { animation: none; box-shadow: 0 0 0 2px #ffb70388; }
 .pod-crown { position: absolute; top: -14px; left: 50%; transform: translateX(-50%); font-size: 22px; animation: crownIn .5s .35s cubic-bezier(.2, 1.6, .4, 1) both; filter: drop-shadow(0 2px 3px #0008); }
 @keyframes podUp { from { transform: translateY(16px) scale(.8); opacity: 0; } }
 @keyframes crownIn { from { transform: translate(-50%, -14px) scale(0); opacity: 0; } }
+/* a phone on its side: a wide, short card (head across the top, podium + scores + buttons side by side) so the results fit without scrolling */
+@media (orientation: landscape) and (max-height: 540px) {
+  #overBanner:not(.folded) { width: min(96vw, 860px); max-height: calc(100dvh - 12px); padding: 8px 14px; gap: 6px 16px; font-size: 15px; flex-direction: row; align-items: center; }
+  #overBanner:not(.folded) > .over-head { flex: 1 0 100%; font-size: 17px; }
+  #overBanner:not(.folded) > div { min-width: 0; }
+  #overBanner:not(.folded) .podium { flex: 0 0 auto; gap: 8px; padding: 0; }
+  #overBanner:not(.folded) .pod { min-width: 56px; }
+  #overBanner:not(.folded) .pod .avatar { width: 34px; height: 34px; }
+  #overBanner:not(.folded) .pod-1 .avatar { width: 46px; height: 46px; }
+  #overBanner:not(.folded) .over-scores { flex: 1 1 200px; max-height: calc(100dvh - 90px); overflow-y: auto; }
+  #overBanner:not(.folded) .over-actions { flex: 1 1 180px; }
+}
 #overBanner.folded .podium { display: none; }
 /* folded: a slim bar at the top, no dimming, so the board can be looked over */
 #overBanner.folded { top: calc(var(--bar-h, 52px) + 8px); transform: translateX(-50%); box-shadow: var(--sh-2); animation: none; }

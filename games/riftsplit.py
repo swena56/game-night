@@ -20,11 +20,15 @@ STEP = 1 / 60
 CLEAR_PAUSE = 2.6
 SLOW_SECS, SLOW_FACTOR = 8.0, 0.45
 MAX_LEVEL = 99
+MAX_LIVES = 6
+MAX_WALLS = 2       # two walls may grow at once, on lines that don't cross
+MAX_ORBS = 9        # late stages stay readable: orbs and starting lives stop growing
+HOLD_SECS = 2.1     # a 3-2-1 before every level, orbs frozen
 BOT = {"easy": (1.6, 2), "normal": (0.9, 8), "hard": (0.6, 22)}   # seconds between walls, candidates to simulate
 
 
 def ball_speed(level):
-    return min(15.0, 8.0 + 0.7 * level)
+    return min(10.5, 5.6 + 0.5 * level)   # slower orbs (was 8 + 0.7/level, cap 15)
 
 
 class Board:
@@ -48,14 +52,16 @@ class Board:
     # ----- level setup -----
     def setup(self, level):
         self.level = level
-        self.lives = level + 1
+        self.lives = min(MAX_LIVES, level + 1)
+        self.hold = 0.0
+        self.holding = False
         self.grid = [bytearray(W) for _ in range(H)]
         self.filled = 0
-        self.wall = None
+        self.walls = []
         self.state = "play"
         speed = ball_speed(level)
         self.balls = []
-        for _ in range(level + 1):
+        for _ in range(min(MAX_ORBS, level + 1)):
             ang = self.rng.uniform(0.35, 1.2) + self.rng.choice((0, 1.57, 3.14, 4.71))
             vx, vy = speed * math.cos(ang), speed * math.sin(ang)
             self.balls.append([self.rng.uniform(2, W - 2), self.rng.uniform(2, H - 2), vx, vy])
@@ -63,6 +69,8 @@ class Board:
         for kind in ("slow", "shield"):
             for _ in range(1 if level < 3 else 2):
                 self.pickups.append([self.rng.randrange(3, W - 3), self.rng.randrange(3, H - 3), kind])
+        if level >= 5:   # late stages: a heart to seal in, worth a life back
+            self.pickups.append([self.rng.randrange(3, W - 3), self.rng.randrange(3, H - 3), "heart"])
         self.rev += 1
 
     @property
@@ -99,44 +107,52 @@ class Board:
     def free(self, cx, cy):
         return 0 <= cx < W and 0 <= cy < H and not self.grid[cy][cx]
 
+    def line_cells(self):
+        """Cells on the lines of walls that are still growing: a second wall may not cross them."""
+        occ = set()
+        for w in self.walls:
+            for half in w["h"]:
+                occ.update(self.half_cells(w, half))
+        return occ
+
     def can_place(self, cx, cy):
-        return self.state == "play" and self.wall is None and self.free(cx, cy)
+        return (self.state == "play" and not self.holding and len(self.walls) < MAX_WALLS and self.free(cx, cy)
+                and (cx, cy) not in self.line_cells())
 
     def place(self, cx, cy, vertical):
         if not self.can_place(cx, cy):
             return False
         halves = []
+        occ = self.line_cells()
         for d in (-1, 1):
             n = 0
             while True:
                 k = (cy if vertical else cx) + (-n if d < 0 else n + 1)
-                if not (self.free(cx, k) if vertical else self.free(k, cy)):
+                cell = (cx, k) if vertical else (k, cy)
+                if not self.free(*cell) or cell in occ:
                     break
                 n += 1
             halves.append({"d": d, "room": n, "len": 0.0, "st": "grow" if n else "done"})
-        self.wall = {"v": bool(vertical), "cx": cx, "cy": cy, "h": halves}
+        self.walls.append({"v": bool(vertical), "cx": cx, "cy": cy, "h": halves})
         return True
 
-    def half_rect(self, half):
-        w = self.wall
+    def half_rect(self, w, half):
         c = w["cy"] if w["v"] else w["cx"]
         lo, hi = (c + 1 - half["len"], c + 1) if half["d"] < 0 else (c + 1, c + 1 + half["len"])
         return (w["cx"], w["cx"] + 1, lo, hi) if w["v"] else (lo, hi, w["cy"], w["cy"] + 1)
 
-    def half_cells(self, half):
-        w = self.wall
+    def half_cells(self, w, half):
         c = w["cy"] if w["v"] else w["cx"]
         for i in range(half["room"]):
             k = c - i if half["d"] < 0 else c + 1 + i
             yield (w["cx"], k) if w["v"] else (k, w["cy"])
 
-    def step_wall(self, dt):
-        w = self.wall
+    def step_wall(self, w, dt):
         for half in w["h"]:
             if half["st"] != "grow":
                 continue
             half["len"] = min(half["room"], half["len"] + GROW * dt)
-            rx0, rx1, ry0, ry1 = self.half_rect(half)
+            rx0, rx1, ry0, ry1 = self.half_rect(w, half)
             for b in self.balls:
                 if rx0 - RADIUS < b[0] < rx1 + RADIUS and ry0 - RADIUS < b[1] < ry1 + RADIUS:
                     half["st"] = "dead"
@@ -144,12 +160,13 @@ class Board:
                     break
             else:
                 if half["len"] >= half["room"]:
-                    for x, y in self.half_cells(half):
-                        self.grid[y][x] = 1
-                        self.filled += 1
+                    for x, y in self.half_cells(w, half):
+                        if not self.grid[y][x]:   # another wall's seal may have filled it already
+                            self.grid[y][x] = 1
+                            self.filled += 1
                     half["st"] = "done"
         if all(h["st"] != "grow" for h in w["h"]):
-            self.wall = None
+            self.walls.remove(w)
             self.seal()
 
     def hit(self):
@@ -194,7 +211,11 @@ class Board:
             self.streak += 1
             mult = min(5, 1 + self.streak // 2)
             self.score += len(sealed) * 10 * mult
-            self.emit("big" if len(sealed) >= 90 else "seal")
+            if len(sealed) >= 150 and self.lives < MAX_LIVES:   # a giant seal earns a life back
+                self.lives += 1
+                self.emit("life")
+            else:
+                self.emit("big" if len(sealed) >= 90 else "seal")
         elif sealed:
             self.rev += 1
         if not self.sim:
@@ -206,7 +227,10 @@ class Board:
         for p in list(self.pickups):
             if self.grid[p[1]][p[0]]:
                 self.pickups.remove(p)
-                if p[2] == "shield":
+                if p[2] == "heart":
+                    self.lives = min(MAX_LIVES, self.lives + 1)
+                    self.emit("life")
+                elif p[2] == "shield":
                     self.shield = 1
                     self.emit("shield+")
                 else:
@@ -217,24 +241,30 @@ class Board:
     def step(self, dt, now):
         if self.state != "play":
             return
+        if not self.sim and now < self.hold:
+            self.holding = True
+            return
+        self.holding = False
         scale = SLOW_FACTOR if now < self.slow_until else 1.0
         for b in self.balls:
             self.move_ball(b, dt * scale)
-        if self.wall:
-            self.step_wall(dt)
+        for w in list(self.walls):
+            if self.state == "play":
+                self.step_wall(w, dt)
         if self.lives <= 0:
             self.state = "over"
-            self.wall = None
+            self.walls = []
             self.emit("over")
         elif self.pct >= GOAL:
             self.state = "clear"
-            self.wall = None
+            self.walls = []
             self.until = now + CLEAR_PAUSE
-            self.score += 500 * self.level + 250 * self.lives
+            self.score += 500 * self.level + 250 * self.lives + max(0, int((self.pct - GOAL) * 100)) * 40   # overshoot bonus: every % past the goal
             self.emit("clear")
 
-    def next_level(self):
+    def next_level(self, now=0.0):
         self.setup(self.level + 1)
+        self.hold = now + HOLD_SECS
 
     # ----- bots -----
     def probe(self, cx, cy, vertical):
@@ -242,9 +272,11 @@ class Board:
         sim = Board.__new__(Board)
         sim.__dict__ = dict(self.__dict__)
         sim.sim = True
+        sim.holding = False
         sim.lost = False
         sim.grid = [bytearray(r) for r in self.grid]
         sim.balls = [list(b) for b in self.balls]
+        sim.walls = []
         sim.captured = 0
         if not sim.place(cx, cy, vertical):
             return -1
@@ -252,7 +284,7 @@ class Board:
             sim.step(STEP, 0.0)
             if sim.lost:
                 return -1
-            if sim.wall is None:
+            if not sim.walls:
                 break
         return sim.captured
 
@@ -279,13 +311,13 @@ class Board:
         return "".join("".join("1" if c else "0" for c in row) for row in self.grid)
 
     def public(self, now, full=False):
-        walls = []
-        if self.wall:
-            w = self.wall
-            walls = [int(w["v"]), w["cx"], w["cy"]] + [v for h in w["h"] for v in (round(h["len"], 2), h["room"], "x" if h["st"] == "dead" else h["st"][0])]
+        def wire(w):
+            return [int(w["v"]), w["cx"], w["cy"]] + [v for h in w["h"] for v in (round(h["len"], 2), h["room"], "x" if h["st"] == "dead" else h["st"][0])]
+        walls = wire(self.walls[0]) if self.walls else []
+        walls2 = wire(self.walls[1]) if len(self.walls) > 1 else []
         out = {"lv": self.level, "lives": self.lives, "score": self.score, "pct": round(self.pct, 4), "st": self.state,
-               "b": [[round(b[0], 2), round(b[1], 2)] for b in self.balls], "w": walls,
-               "p": self.pickups, "mu": min(5, 1 + self.streak // 2), "sh": self.shield, "slow": max(0, round(self.slow_until - now, 1)),
+               "b": [[round(b[0], 2), round(b[1], 2)] for b in self.balls], "w": walls, "w2": walls2,
+               "p": self.pickups, "mu": min(5, 1 + self.streak // 2), "hd": max(0, round(self.hold - now, 1)), "sh": self.shield, "slow": max(0, round(self.slow_until - now, 1)),
                "ev": [self.event_id, self.event], "rev": self.rev}
         if full:
             out["g"] = self.grid_str()
@@ -301,8 +333,8 @@ class RiftSplit(Game):
     replayable = False
     blurb = "Grow glowing walls to wall in the bouncing orbs. Seal 75% of the field before they break your wall."
     howto = [
-        "Press and hold a spot to preview the line, slide to aim, and let go to grow a wall both ways from it (click on a computer). Tap the ↔ / ↕ buttons, press Space, or right-click to switch direction.",
-        "While a wall is growing, an orb that touches either half shatters that half and costs a life. A half that reaches a barrier locks in solid.",
+        "Press and hold a spot to preview the line, slide to aim, and let go to grow a wall both ways from it (click on a computer). Tap the ↔ / ↕ buttons, press Space, or right-click to switch direction. You can start a second wall while the first is still growing.",
+        "While a wall is growing (you can have two at once, on lines that don't cross), an orb that touches either half shatters that half and costs a life. A half that reaches a barrier locks in solid.",
         "When a wall finishes, every pocket with no orb inside is sealed. Seal 75% of the field to clear the level; each level adds an orb, and a life.",
         "Chain clean seals for a score multiplier. Seal a 🛡️ to block one hit, or a ⏳ to slow every orb for a few seconds. Everyone plays their own field; the highest score wins.",
     ]
@@ -313,6 +345,8 @@ class RiftSplit(Game):
         self.run = uuid4().hex
         self.frames = 0
         self.last = time.time()
+        for b in self.boards.values():
+            b.hold = self.last + HOLD_SECS
         self.solo = len(seated) == 1 and not seated[0].bot
         self.room.turn = self.room.deadline = None
 
@@ -336,8 +370,8 @@ class RiftSplit(Game):
             for _ in range(steps):
                 board.step(dt / steps, now)
             if board.state == "clear" and now >= board.until:
-                board.next_level()
-            if player and player.bot and board.state == "play" and board.wall is None and now >= board.bot_at:
+                board.next_level(now)
+            if player and player.bot and board.state == "play" and not board.walls and now >= board.bot_at:
                 board.bot_move(player.bot if player.bot in BOT else "normal")
                 board.bot_at = now + BOT[player.bot if player.bot in BOT else "normal"][0]
         self.frames += 1

@@ -2,12 +2,38 @@
 (() => {
   const MSG = {
     seal: 'Sealed!', big: 'Huge seal!', hit: 'Wall shattered · life lost', shield: 'Shield absorbed it',
-    'shield+': 'Shield ready', slow: 'Orbs slowed', clear: 'Level clear!', over: 'Out of lives',
+    'shield+': 'Shield ready', life: 'Giant seal · +1 life', slow: 'Orbs slowed', clear: 'Level clear!', over: 'Out of lives',
   };
-  const SND = { seal: 'lock', big: 'cheer', hit: 'wrong', shield: 'lock', 'shield+': 'pop', slow: 'pop', clear: 'cheer', over: 'groan' };
+  const POWER = { slow: ['⏳', 'SLOW DOWN', 'Every orb crawls for 8 seconds'], 'shield+': ['🛡️', 'SHIELD READY', 'Blocks the next hit'], life: ['❤️', 'EXTRA LIFE', '+1 life'] };
+  const SND = { seal: 'lock', big: 'cheer', hit: 'wrong', shield: 'lock', 'shield+': 'pop', slow: 'pop', clear: 'cheer', life: 'cheer', over: 'groan' };
+  // Rift Split's own sounds, synthesised on the shared Snd kit: pitched glass-and-chime tones instead of the app's generic blips
+  const NOTE = (n) => 220 * 2 ** (n / 12);
+  const VOICE = {
+    lock: (t, K) => { const d = K.at({ send: 0.3 }); K.sweep(d, t, { f0: 160, f1: 60, dur: 0.16, vol: 0.2 }); K.mode(d, t, 1800, 0.1, 0.03); K.mode(d, t + 0.02, 950, 0.09, 0.06); K.burst(d, t, { type: 'bandpass', f: 2600, q: 2, vol: 0.1, tau: 0.012 }); },
+    place: (t, K) => { const d = K.at({ send: 0.15 }); K.sweep(d, t, { f0: 300, f1: 620, dur: 0.14, vol: 0.09, type: 'triangle' }); K.burst(d, t, { type: 'highpass', f: 4000, vol: 0.04, tau: 0.01 }); },
+    seal: (t, K) => { const d = K.at({ send: 0.5 }); [0, 4, 7].forEach((n, i) => K.mode(d, t + i * 0.055, NOTE(n + 12), 0.13, 0.16)); K.sweep(d, t, { f0: 180, f1: 70, dur: 0.18, vol: 0.12 }); },
+    big: (t, K) => { const d = K.at({ send: 0.7 }); [0, 4, 7, 12, 16].forEach((n, i) => { K.mode(d, t + i * 0.06, NOTE(n + 12), 0.14, 0.24); K.mode(d, t + i * 0.06, NOTE(n + 24), 0.05, 0.3); }); K.burst(d, t, { f: 2500, f1: 9000, q: 1.2, vol: 0.06, dur: 0.35, tau: 0.08 }); },
+    hit: (t, K) => { const d = K.at({ send: 0.4 }); K.sweep(d, t, { f0: 420, f1: 70, dur: 0.3, vol: 0.2, type: 'sawtooth' }); K.burst(d, t, { type: 'lowpass', f: 3000, f1: 300, vol: 0.2, dur: 0.25, tau: 0.06 }); K.mode(d, t, 1400, 0.1, 0.05); },
+    shield: (t, K) => { const d = K.at({ send: 0.5 }); [7, 12, 19].forEach((n, i) => K.mode(d, t + i * 0.05, NOTE(n), 0.12, 0.3)); },
+    'shield+': (t, K) => { const d = K.at({ send: 0.5 }); [0, 7, 12].forEach((n, i) => K.mode(d, t + i * 0.05, NOTE(n + 12), 0.1, 0.22)); K.sweep(d, t, { f0: 400, f1: 1200, dur: 0.2, vol: 0.06, type: 'triangle' }); },
+    slow: (t, K) => { const d = K.at({ send: 0.6, room: 'hall' }); K.sweep(d, t, { f0: 900, f1: 180, dur: 0.6, vol: 0.12, type: 'sine', attack: 0.03 }); K.sweep(d, t, { f0: 905, f1: 187, dur: 0.6, vol: 0.08, type: 'triangle', attack: 0.03 }); },
+    life: (t, K) => { const d = K.at({ send: 0.7 }); [0, 7, 12, 16, 19].forEach((n, i) => K.mode(d, t + i * 0.05, NOTE(n + 12), 0.13, 0.26)); K.sweep(d, t, { f0: 300, f1: 900, dur: 0.3, vol: 0.07, type: 'triangle' }); },
+    clear: (t, K) => { const d = K.at({ send: 0.8 }); [0, 4, 7, 12, 16, 19, 24].forEach((n, i) => { K.mode(d, t + i * 0.075, NOTE(n + 12), 0.14, 0.3); }); K.burst(d, t + 0.4, { f: 3000, f1: 11000, q: 1, vol: 0.07, dur: 0.5, tau: 0.1 }); },
+    over: (t, K) => { const d = K.at({ send: 0.7, room: 'hall' }); [7, 3, 0, -5].forEach((n, i) => { K.mode(d, t + i * 0.16, NOTE(n), 0.16, 0.28, { type: 'triangle' }); K.sweep(d, t + i * 0.16, { f0: NOTE(n), f1: NOTE(n) * 0.97, dur: 0.3, vol: 0.06, type: 'sawtooth' }); }); },
+  };
+  const voice = (name) => { if (VOICE[name] && window.Snd) { Snd.play(VOICE[name]); return true; } return false; };
   const COLORS = ['#3cf5e0', '#ff6fb5', '#ffd166', '#9d8bff', '#7dff8a', '#ff9a4d'];
   const bestKey = 'riftsplit.best';
-  const HALF = ['#3cf5e0', '#ffd166'];   // the two sides of a growing wall: cyan and gold
+  // colour themes: the field, grid, frame and the two sides of a growing wall (orbs stay red/white, sealed cells keep each player's colour)
+  const THEMES = {
+    neon: { name: 'Neon', floor: '#15245a', grid: '#3d62c4', flatGrid: '#3358b8', bgA: '#24367d', bgM: '#121c52', bgB: '#070b22', frame: 0x1a2650, half: ['#3cf5e0', '#ffd166'], glow: '#3cf5e0' },
+    ember: { name: 'Ember', floor: '#3a1a14', grid: '#c2603d', flatGrid: '#a2502f', bgA: '#6a2a1c', bgM: '#3a150f', bgB: '#1a0806', frame: 0x3a1a14, half: ['#ffb347', '#ff5e7e'], glow: '#ff8a4d' },
+    forest: { name: 'Forest', floor: '#123a2a', grid: '#3da36a', flatGrid: '#2f8a58', bgA: '#1d6046', bgM: '#0e3224', bgB: '#05140d', frame: 0x123a2a, half: ['#9dff7a', '#fff27a'], glow: '#6dff9a' },
+    mono: { name: 'Mono', floor: '#262a33', grid: '#7b8394', flatGrid: '#677086', bgA: '#454b5a', bgM: '#252932', bgB: '#0c0e12', frame: 0x262a33, half: ['#ffffff', '#9ad1ff'], glow: '#c8d4ff' },
+  };
+  const THEME_KEYS = Object.keys(THEMES);
+  const THM = () => THEMES[g?.theme] || THEMES.neon;
+  let HALF = THEMES.neon.half;
   const RED = '#ff4d4d';                  // orbs are red on one hemisphere and white on the other
   let g;
 
@@ -53,10 +79,32 @@
   }
 
   // A wall half that was growing and is now gone was struck by an orb. Updates `prev` and returns the head [x, y] of each shattered half.
+  const wallList = (s) => [s.w || [], s.w2 || []];   // up to two walls grow at once
+  const shattersAll = (prev, s) => wallList(s).flatMap((w, k) => shatters(prev[k], w).map((q) => [...q, k]));
+  // a struck wall flashes red where it was: strikes hold the rect it had on its last frame
+  const STRIKE_MS = 520;
+  function trackStrikes(strikes, lastRects, s, now, hits) {
+    for (const [, , i, k] of hits) { const r = lastRects[k * 2 + i]; if (r) strikes.push({ r, t: now }); }
+    lastRects.length = 0;
+    wallList(s).forEach((w, k) => { for (const r of wallRects(w)) lastRects[k * 2 + r[5]] = r; });
+    for (let q = strikes.length - 1; q >= 0; q--) if (now - strikes[q].t > STRIKE_MS) strikes.splice(q, 1);
+  }
+  // cells on the lines of the growing walls: a second wall can't start on, or cross, them
+  function lineCells(s) {
+    const out = new Set();
+    for (const w of wallList(s)) {
+      if (!w.length) continue;
+      const v = w[0], c = v ? w[2] : w[1];
+      for (let i = 0; i < w[4]; i++) { const k = c - i; out.add(v ? `${w[1]},${k}` : `${k},${w[2]}`); }
+      for (let i = 0; i < w[7]; i++) { const k = c + 1 + i; out.add(v ? `${w[1]},${k}` : `${k},${w[2]}`); }
+    }
+    return out;
+  }
   function shatters(prev, w) {
     const out = [];
     for (let i = 0; i < 2; i++) {
       const st = w.length ? w[5 + i * 3] : '';
+      if (prev[i] === 'g' && (st === 'd' || st === '') && g) g.lockFx = true;   // grew to the barrier and locked in
       if (prev[i] === 'g' && st === 'x') {
         const v = w[0], c = v ? w[2] : w[1], head = i === 0 ? c + 1 - w[3 + i * 3] : c + 1 + w[3 + i * 3];
         out.push(v ? [w[1] + 0.5, head, i] : [head, w[2] + 0.5, i]);
@@ -75,6 +123,10 @@
       x.beginPath(); x.moveTo(0, -48); x.lineTo(38, -34); x.lineTo(38, 2); x.quadraticCurveTo(36, 34, 0, 50); x.quadraticCurveTo(-36, 34, -38, 2); x.lineTo(-38, -34); x.closePath();
       x.fillStyle = grad; x.fill(); x.lineWidth = 6; x.strokeStyle = '#eafff3'; x.stroke();
       x.beginPath(); x.moveTo(-16, 2); x.lineTo(-4, 16); x.lineTo(18, -12); x.lineWidth = 10; x.strokeStyle = '#0b5c36'; x.stroke();
+    } else if (kind === 'heart') {
+      grad.addColorStop(0, '#ffc2d6'); grad.addColorStop(1, '#e0245e');
+      x.beginPath(); x.moveTo(0, 44); x.bezierCurveTo(-60, 6, -46, -46, -2, -22); x.bezierCurveTo(46, -46, 60, 6, 0, 44); x.closePath();
+      x.fillStyle = grad; x.fill(); x.lineWidth = 6; x.strokeStyle = '#fff0f5'; x.stroke();
     } else {
       grad.addColorStop(0, '#fff2b0'); grad.addColorStop(1, '#f2a516');
       x.beginPath(); x.moveTo(-30, -44); x.lineTo(30, -44); x.lineTo(6, -2); x.lineTo(30, 44); x.lineTo(-30, 44); x.lineTo(-6, -2); x.closePath();
@@ -92,8 +144,10 @@
     const c = canvas.getContext('2d');
     if (!c) { canvas.remove(); return null; }
     const fx = GL3.level() !== 'low';
+    const flatRoll = [], strikes = [], lastRects = [];
+    let bgLayer = null, cellLayer = null, cellKey = null, bgTheme = null;
     let size = [0, 0], lastGrid = '0'.repeat(g.W * g.H), animUntil = 0, last = 0, shake = 0;
-    const born = new Float32Array(g.W * g.H), pending = [], parts = [], hist = [], prevHalf = ['', ''];
+    const born = new Float32Array(g.W * g.H), pending = [], parts = [], hist = [], prevHalf = [['', ''], ['', '']];
     const icons = {};
     const icon = (kind) => icons[kind] ||= (() => { const k = document.createElement('canvas'); k.width = k.height = 128; const x = k.getContext('2d'); if (x) drawPickupIcon(x, kind); return k; })();
     const burst = (x, y, n, color, speed = 6) => {
@@ -116,14 +170,20 @@
         const k = canvas.width / g.W;
         c.setTransform(k, 0, 0, k, 0, 0);
         if (shake > 0.02) { c.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake); shake *= Math.exp(-dt * 7); } else shake = 0;
-        const bg = c.createRadialGradient(g.W / 2, g.H / 2, 2, g.W / 2, g.H / 2, g.W * 0.65);
-        bg.addColorStop(0, '#1a2b6a'); bg.addColorStop(1, '#0a1030');
-        c.fillStyle = bg; c.fillRect(0, 0, g.W, g.H);
-        c.strokeStyle = '#3358b8'; c.lineWidth = 0.04;
-        c.beginPath();
-        for (let x = 0; x <= g.W; x++) { c.moveTo(x, 0); c.lineTo(x, g.H); }
-        for (let y = 0; y <= g.H; y++) { c.moveTo(0, y); c.lineTo(g.W, y); }
-        c.stroke();
+        // the backdrop and grid never change: paint them once per size and blit
+        if (!bgLayer || bgLayer.width !== canvas.width || bgLayer.height !== canvas.height || bgTheme !== g.theme) {
+          bgTheme = g.theme;
+          bgLayer = document.createElement('canvas'); bgLayer.width = canvas.width; bgLayer.height = canvas.height;
+          const b = bgLayer.getContext('2d'); b.setTransform(k, 0, 0, k, 0, 0);
+          const bg = b.createRadialGradient(g.W / 2, g.H / 2, 2, g.W / 2, g.H / 2, g.W * 0.65);
+          bg.addColorStop(0, THM().bgA); bg.addColorStop(1, THM().bgB);
+          b.fillStyle = bg; b.fillRect(0, 0, g.W, g.H);
+          b.strokeStyle = THM().flatGrid; b.lineWidth = 0.04; b.beginPath();
+          for (let x = 0; x <= g.W; x++) { b.moveTo(x, 0); b.lineTo(x, g.H); }
+          for (let y = 0; y <= g.H; y++) { b.moveTo(0, y); b.lineTo(g.W, y); }
+          b.stroke(); cellKey = null;
+        }
+        c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.drawImage(bgLayer, 0, 0); c.restore();
         if (s.grid !== lastGrid) {
           const r = ripple(lastGrid, s.grid, now, born);
           if (fx) pending.push(...r.sparks);
@@ -131,42 +191,70 @@
         }
         // sealed cells: interior darker, cells touching open space lit like a rim; new ones rise in
         const open = (i, x, y) => (x > 0 && s.grid[i - 1] === '0') || (x < g.W - 1 && s.grid[i + 1] === '0') || (y > 0 && s.grid[i - g.W] === '0') || (y < g.H - 1 && s.grid[i + g.W] === '0');
-        for (let i = 0; i < s.grid.length; i++) {
-          if (s.grid[i] !== '1') continue;
-          const x = i % g.W, y = (i - x) / g.W, t = now < animUntil + 60 ? Math.max(0, Math.min(1, (now - born[i]) / 350)) : 1;
-          if (t <= 0) continue;
-          const e = 1 - (1 - t) ** 3, inset = (1 - e) * 0.4;
-          c.globalAlpha = e;
-          c.fillStyle = s.color;
-          c.fillRect(x + inset, y + inset, 1 - inset * 2, 1 - inset * 2);
-          c.fillStyle = open(i, x, y) ? '#ffffffaa' : '#ffffff38';
-          c.fillRect(x + inset, y + inset, 1 - inset * 2, 1 - inset * 2);
+        const settled = now >= animUntil + 60;
+        if (settled) {   // at rest: one cached layer instead of ~2 fills per sealed cell per frame
+          if (cellKey?.[0] !== s.grid || cellKey[1] !== s.color || cellKey[2] !== canvas.width) {
+            cellKey = [s.grid, s.color, canvas.width];
+            if (!cellLayer || cellLayer.width !== canvas.width || cellLayer.height !== canvas.height) { cellLayer = document.createElement('canvas'); cellLayer.width = canvas.width; cellLayer.height = canvas.height; }
+            const lc = cellLayer.getContext('2d'); lc.setTransform(1, 0, 0, 1, 0, 0); lc.clearRect(0, 0, cellLayer.width, cellLayer.height); lc.setTransform(k, 0, 0, k, 0, 0);
+            for (let i = 0; i < s.grid.length; i++) {
+              if (s.grid[i] !== '1') continue;
+              const x = i % g.W, y = (i - x) / g.W;
+              lc.fillStyle = s.color; lc.fillRect(x, y, 1, 1);
+              lc.fillStyle = open(i, x, y) ? '#ffffff55' : '#00000030'; lc.fillRect(x, y, 1, 1);
+            }
+          }
+          c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.drawImage(cellLayer, 0, 0); c.restore();
+        } else {
+          for (let i = 0; i < s.grid.length; i++) {
+            if (s.grid[i] !== '1') continue;
+            const x = i % g.W, y = (i - x) / g.W, t = now < animUntil + 60 ? Math.max(0, Math.min(1, (now - born[i]) / 350)) : 1;
+            if (t <= 0) continue;
+            const e = 1 - (1 - t) ** 3, inset = (1 - e) * 0.4;
+            c.globalAlpha = e;
+            c.fillStyle = s.color;
+            c.fillRect(x + inset, y + inset, 1 - inset * 2, 1 - inset * 2);
+            c.fillStyle = open(i, x, y) ? '#ffffff55' : '#00000030';
+            c.fillRect(x + inset, y + inset, 1 - inset * 2, 1 - inset * 2);
+          }
+
         }
         c.globalAlpha = 1;
         for (const p of s.p) {
-          const sz = 1.35 + 0.12 * Math.sin(now / 260 + p[0]), tint = p[2] === 'shield' ? '#59ff9a' : '#ffd84a';
-          const gl = c.createRadialGradient(p[0] + 0.5, p[1] + 0.5, 0, p[0] + 0.5, p[1] + 0.5, 1.3);
-          gl.addColorStop(0, tint + '88'); gl.addColorStop(1, tint + '00');
-          c.fillStyle = gl; c.fillRect(p[0] - 1, p[1] - 1, 3, 3);
+          const sz = 1.35 + 0.12 * Math.sin(now / 260 + p[0]), tint = p[2] === 'shield' ? '#59ff9a' : p[2] === 'heart' ? '#ff6fa0' : '#ffd84a';
+          if (!g.nofx) {
+            const gl = c.createRadialGradient(p[0] + 0.5, p[1] + 0.5, 0, p[0] + 0.5, p[1] + 0.5, 1.3);
+            gl.addColorStop(0, tint + '88'); gl.addColorStop(1, tint + '00');
+            c.fillStyle = gl; c.fillRect(p[0] - 1, p[1] - 1, 3, 3);
+          }
           c.drawImage(icon(p[2]), p[0] + 0.5 - sz / 2, p[1] + 0.5 - sz / 2, sz, sz);
         }
         // growing walls: a bright core inside a pulsing glow
         c.save();
-        c.shadowBlur = fx ? 0.9 * k : 0;
-        for (const [x0, x1, y0, y1, st, i] of wallRects(s.w)) {
+                for (const [x0, x1, y0, y1, st, i] of wallList(s).flatMap(wallRects)) {
           const wide = x1 - x0 >= y1 - y0, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, hc = HALF[i];
-          c.shadowColor = hc;
-          c.globalAlpha = 0.3 + 0.2 * Math.sin(now / 90); c.fillStyle = hc; c.fillRect(x0, y0, x1 - x0, y1 - y0);
+          c.globalAlpha = 0.3 + 0.2 * Math.sin(now / 90); c.fillStyle = hc; if (!g.nofx) c.fillRect(x0 - 0.2, y0 - 0.2, x1 - x0 + 0.4, y1 - y0 + 0.4);   // glow without shadowBlur (slow on phones)
+          c.globalAlpha = 0.5; c.fillRect(x0, y0, x1 - x0, y1 - y0);
           c.globalAlpha = 1; c.fillStyle = '#fff';
-          if (wide) c.fillRect(x0, cy - 0.15, x1 - x0, 0.3); else c.fillRect(cx - 0.15, y0, 0.3, y1 - y0);
+          c.fillRect(x0, y0, x1 - x0, y1 - y0);   // the growing line is as wide as a finished one
           const hx = wide ? (i === 0 ? x0 : x1) : cx, hy = wide ? cy : (i === 0 ? y0 : y1);
           if (fx && Math.random() < 0.4) burst(hx, hy, 1, hc, 2);
-          const tip = c.createRadialGradient(hx, hy, 0, hx, hy, 1.4);
-          tip.addColorStop(0, '#ffffffee'); tip.addColorStop(0.4, hc + 'aa'); tip.addColorStop(1, hc + '00');
-          c.fillStyle = tip; c.fillRect(hx - 1.5, hy - 1.5, 3, 3);
+          if (!g.nofx) {
+            const tip = c.createRadialGradient(hx, hy, 0, hx, hy, 1.4);
+            tip.addColorStop(0, '#ffffffee'); tip.addColorStop(0.4, hc + 'aa'); tip.addColorStop(1, hc + '00');
+            c.fillStyle = tip; c.fillRect(hx - 1.5, hy - 1.5, 3, 3);
+          }
         }
         c.restore();
-        for (const [x, y, i] of shatters(prevHalf, s.w)) { burst(x, y, 34, HALF[i], 8); shake = 0.3; }
+        const hits = shattersAll(prevHalf, s);
+        for (const [x, y, i] of hits) { burst(x, y, 34, '#ff4d4d', 8); shake = 0.3; }
+        trackStrikes(strikes, lastRects, s, now, hits);
+        for (const q of strikes) {   // the struck line flashes white, then red, and fades
+          const a = 1 - (now - q.t) / STRIKE_MS, on = Math.floor((now - q.t) / 70) % 2 === 0;
+          c.globalAlpha = Math.max(0, a) * (on ? 1 : 0.55); c.fillStyle = on ? '#ff2a4d' : '#ffb3bf';
+          c.fillRect(q.r[0] - 0.1, q.r[2] - 0.1, q.r[1] - q.r[0] + 0.2, q.r[3] - q.r[2] + 0.2);
+        }
+        c.globalAlpha = 1;
         if (s.ghost) {   // where the wall would run: a faint fill with a dashed outline
           c.fillStyle = '#ffffff18'; c.fillRect(...s.ghost);
           c.setLineDash([0.35, 0.22]); c.lineWidth = 0.09; c.strokeStyle = '#ffffffdd'; c.strokeRect(s.ghost[0] + 0.045, s.ghost[1] + 0.045, s.ghost[2] - 0.09, s.ghost[3] - 0.09); c.setLineDash([]);
@@ -175,18 +263,28 @@
         s.b.forEach((b, i) => {
           const hh = hist[i] ||= [];
           if (!hh.at || now - hh.at > 22) { hh.unshift([b[0], b[1]]); hh.length = Math.min(hh.length, 7); hh.at = now; }
-          if (fx && i < 16) hh.forEach((q, j) => {
+          if (fx && !g.nofx && i < 16) hh.forEach((q, j) => {
             const f = 1 - (j + 1) / 8, gl = c.createRadialGradient(q[0], q[1], 0, q[0], q[1], 0.75 * f);
             gl.addColorStop(0, RED + '77'); gl.addColorStop(1, RED + '00');
             c.fillStyle = gl; c.fillRect(q[0] - 1, q[1] - 1, 2, 2);
           });
-          const gl = c.createRadialGradient(b[0], b[1], 0, b[0], b[1], 1.2);
-          gl.addColorStop(0, '#ffffffcc'); gl.addColorStop(0.35, RED + '55'); gl.addColorStop(1, RED + '00');
-          c.fillStyle = gl; c.fillRect(b[0] - 1.3, b[1] - 1.3, 2.6, 2.6);
+          if (!g.nofx) {
+            const gl = c.createRadialGradient(b[0], b[1], 0, b[0], b[1], 1.2);
+            gl.addColorStop(0, '#ffffffcc'); gl.addColorStop(0.35, RED + '55'); gl.addColorStop(1, RED + '00');
+            c.fillStyle = gl; c.fillRect(b[0] - 1.3, b[1] - 1.3, 2.6, 2.6);
+          }
           // two hemispheres, red and white, turning as the orb travels
-          c.save(); c.translate(b[0], b[1]); c.rotate(now / 180 + i);
+          // it rolls: the turn follows the distance travelled, so a fast orb spins fast and a slowed one barely turns;
+          // the split swings between edge-on and pole-on (one colour) as it rolls
+          const fs = (flatRoll[i] ||= { x: b[0], y: b[1], ph: i * 1.3, hd: 0 });
+          const mvx = b[0] - fs.x, mvy = b[1] - fs.y, dist = Math.hypot(mvx, mvy);
+          if (dist > 1e-4 && dist < 3) { fs.ph += dist / 0.36; fs.hd = Math.atan2(mvy, mvx) + Math.PI / 2; }
+          fs.x = b[0]; fs.y = b[1];
+          const tt = Math.cos(fs.ph);
+          c.save(); c.translate(b[0], b[1]); c.rotate(fs.hd);
           c.fillStyle = RED; c.beginPath(); c.arc(0, 0, 0.36, Math.PI, 0); c.fill();
           c.fillStyle = '#fff'; c.beginPath(); c.arc(0, 0, 0.36, 0, Math.PI); c.fill();
+          if (Math.abs(tt) > 0.02) { c.fillStyle = tt > 0 ? RED : '#fff'; c.beginPath(); c.ellipse(0, 0, 0.36, 0.36 * Math.abs(tt), 0, tt > 0 ? 0 : Math.PI, tt > 0 ? Math.PI : 2 * Math.PI); c.fill(); }
           c.restore();
         });
         hist.length = s.b.length;
@@ -199,6 +297,7 @@
         }
         c.globalAlpha = 1;
       },
+      view() { canvas.style.transform = g.zoom > 1 ? `scale(${g.zoom}) translate(${(-g.panX / g.W * 100).toFixed(2)}%, ${(g.panY / g.H * 100).toFixed(2)}%)` : ''; },
       dispose() { canvas.remove(); },
     };
   }
@@ -225,23 +324,25 @@
     const orbLights = GL3.level() === 'low' ? [] : [0, 1, 2].map(() => { const l = new T.PointLight(0xffffff, 0, 9, 1.6); l.position.z = 1.4; scene.add(l); return l; });
 
     // Floor with a grid.
-    const tex = document.createElement('canvas'); tex.width = 1024; tex.height = 614;
+    const tex = document.createElement('canvas'); tex.width = g.W * 48; tex.height = g.H * 48;   // 48 px per cell: grid lines stay crisp when the camera zooms in
+    const TW = tex.width, TH = tex.height;
     const t = tex.getContext('2d');
-    t.fillStyle = '#15245a'; t.fillRect(0, 0, 1024, 614);
-    t.strokeStyle = '#3d62c4'; t.lineWidth = 1.5;
-    for (let i = 0; i <= g.W; i++) { t.beginPath(); t.moveTo(i * 1024 / g.W, 0); t.lineTo(i * 1024 / g.W, 614); t.stroke(); }
-    for (let i = 0; i <= g.H; i++) { t.beginPath(); t.moveTo(0, i * 614 / g.H); t.lineTo(1024, i * 614 / g.H); t.stroke(); }
-    const vg = t.createRadialGradient(512, 307, 180, 512, 307, 620);   // darken the corners so the field glows from the middle
+    t.fillStyle = THM().floor; t.fillRect(0, 0, TW, TH);
+    t.strokeStyle = THM().grid; t.lineWidth = 2.5;
+    for (let i = 0; i <= g.W; i++) { t.beginPath(); t.moveTo(i * TW / g.W, 0); t.lineTo(i * TW / g.W, TH); t.stroke(); }
+    for (let i = 0; i <= g.H; i++) { t.beginPath(); t.moveTo(0, i * TH / g.H); t.lineTo(TW, i * TH / g.H); t.stroke(); }
+    const vg = t.createRadialGradient(TW / 2, TH / 2, TH * 0.3, TW / 2, TH / 2, TW * 0.6);   // darken the corners so the field glows from the middle
     vg.addColorStop(0, '#0000'); vg.addColorStop(1, '#02061a99');
-    t.fillStyle = vg; t.fillRect(0, 0, 1024, 614);
-    const floor = new T.Mesh(new T.PlaneGeometry(g.W, g.H), new T.MeshStandardMaterial({ map: new T.CanvasTexture(tex), emissive: 0xffffff, emissiveMap: new T.CanvasTexture(tex), emissiveIntensity: 0.85, roughness: 0.85, metalness: 0 }));
+    t.fillStyle = vg; t.fillRect(0, 0, TW, TH);
+    const floorTex = new T.CanvasTexture(tex); floorTex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+    const floor = new T.Mesh(new T.PlaneGeometry(g.W, g.H), new T.MeshStandardMaterial({ map: floorTex, emissive: 0xffffff, emissiveMap: floorTex, emissiveIntensity: 0.85, roughness: 0.85, metalness: 0 }));
     scene.add(floor);
-    const frame = new T.Mesh(new T.BoxGeometry(g.W + 1, g.H + 1, 0.5), new T.MeshStandardMaterial({ color: 0x1a2650, roughness: 0.6 }));
+    const frame = new T.Mesh(new T.BoxGeometry(g.W + 1, g.H + 1, 0.5), new T.MeshStandardMaterial({ color: THM().frame, roughness: 0.6 }));
     frame.position.z = -0.4; scene.add(frame);
     // a deep gradient backdrop with a scatter of faint stars behind the field
     const bgc = document.createElement('canvas'); bgc.width = 256; bgc.height = 160;
     const bgx = bgc.getContext('2d'), bgg = bgx.createRadialGradient(128, 80, 10, 128, 80, 150);
-    bgg.addColorStop(0, '#24367d'); bgg.addColorStop(0.6, '#121c52'); bgg.addColorStop(1, '#070b22');
+    bgg.addColorStop(0, THM().bgA); bgg.addColorStop(0.6, THM().bgM); bgg.addColorStop(1, THM().bgB);
     bgx.fillStyle = bgg; bgx.fillRect(0, 0, 256, 160);
     const backdrop = new T.Mesh(new T.PlaneGeometry(g.W * 3.2, g.H * 3.2), new T.MeshBasicMaterial({ map: new T.CanvasTexture(bgc) }));
     backdrop.position.z = -3; scene.add(backdrop);
@@ -273,7 +374,9 @@
     const rimCol = new T.Color(), pending = [];   // pending: seal sparks waiting for the ripple to reach their cell
     const born = new Float32Array(g.W * g.H);
     let lastGrid = '0'.repeat(g.W * g.H), animUntil = 0;
-    const dummy = new T.Object3D();
+    const rollAxis = new T.Vector3(), zAxis = new T.Vector3(0, 0, 1);
+    const dummy = new T.Object3D(), white = new T.Color(0xffffff), rimF = new Uint8Array(g.W * g.H);
+    let rimFor = null;
 
     // Effects (glow, trails, sparks) are skipped on the app's Low graphics setting.
     const fx = GL3.level() !== 'low';
@@ -336,10 +439,12 @@
     };
     const balls = [], trails = [];
     const beamGeo = new T.BoxGeometry(1, 1, 0.9);
-    const halves = [0, 1].map((i) => { const m = new T.Mesh(beamGeo, mats.core[i]); m.visible = false; scene.add(m); return m; });
-    const glows = [0, 1].map((i) => { const m = new T.Mesh(beamGeo, mats.glow[i]); m.visible = false; scene.add(m); return m; });
-    const tips = [sprite(0.9), sprite(0.9)];
-    const prevHalf = ['', ''];
+    const halves = [0, 1, 2, 3].map((i) => { const m = new T.Mesh(beamGeo, mats.core[i & 1]); m.visible = false; scene.add(m); return m; });
+    const glows = [0, 1, 2, 3].map((i) => { const m = new T.Mesh(beamGeo, mats.glow[i & 1]); m.visible = false; scene.add(m); return m; });
+    const strikes = [], lastRects = [];
+    const strikeMeshes = [0, 1, 2, 3].map(() => { const m = new T.Mesh(beamGeo, new T.MeshBasicMaterial({ color: 0xff2a4d, transparent: true, depthWrite: false })); m.visible = false; scene.add(m); return m; });
+    const tips = [sprite(0.9), sprite(0.9), sprite(0.9), sprite(0.9)];
+    const prevHalf = [['', ''], ['', '']];
     const ghost = new T.Mesh(new T.BoxGeometry(1, 1, 0.3), mats.ghost); ghost.visible = false; scene.add(ghost);
     ghost.add(new T.LineSegments(new T.EdgesGeometry(new T.BoxGeometry(1, 1, 1)), new T.LineBasicMaterial({ color: 0xffffff })));   // the outline hint
     const pickMeshes = new Map();
@@ -391,16 +496,22 @@
           lastGrid = s.grid; animUntil = r.until;
         }
         if (now < animUntil + 60 || blocks.userData.col !== s.color) {
+          // no allocations in here: it runs for every sealed cell on every frame of the rise animation
+          if (rimFor !== s.grid) {   // which cells touch open space only changes with the grid, not per frame
+            rimFor = s.grid;
+            for (let i = 0; i < s.grid.length; i++) {
+              const x = i % g.W, y = (i - x) / g.W;
+              rimF[i] = (x > 0 && s.grid[i - 1] === '0') || (x < g.W - 1 && s.grid[i + 1] === '0') || (y > 0 && s.grid[i - g.W] === '0') || (y < g.H - 1 && s.grid[i + g.W] === '0') ? 1 : 0;
+            }
+          }
           let n = 0;
+          const settled = now >= animUntil;
           for (let i = 0; i < s.grid.length; i++) {
             if (s.grid[i] !== '1') continue;
-            const k = Math.max(0, Math.min(1, (now - born[i]) / 350)), z = 0.15 + 0.35 * (1 - (1 - k) ** 3);
-            dummy.position.set(gx(i % g.W + 0.5), gy(Math.floor(i / g.W) + 0.5), z / 2 - 0.05);
+            const x = i % g.W, y = (i - x) / g.W, k = settled ? 1 : Math.max(0, Math.min(1, (now - born[i]) / 350)), z = 0.15 + 0.35 * (1 - (1 - k) ** 3);
+            dummy.position.set(x + 0.5 - g.W / 2, g.H / 2 - (y + 0.5), z / 2 - 0.05);
             dummy.scale.set(1, 1, z); dummy.updateMatrix();
-            const x = i % g.W, y = (i - x) / g.W;
-            const open = (j, ok) => ok && s.grid[j] === '0';
-            const rim = open(i - 1, x > 0) || open(i + 1, x < g.W - 1) || open(i - g.W, y > 0) || open(i + g.W, y < g.H - 1);
-            rimCol.copy(col).multiplyScalar(rim ? 1 : 0.62 + 0.06 * ((x + y) & 1)).lerp(new T.Color(0xffffff), rim ? 0.55 : 0);   // deep, faintly checkered interior; bright lit rim
+            if (rimF[i]) rimCol.copy(col).lerp(white, 0.3); else rimCol.copy(col).multiplyScalar(0.62 + 0.06 * ((x + y) & 1));   // deep, faintly checkered interior; bright lit rim
             blocks.setColorAt(n, rimCol);
             blocks.setMatrixAt(n++, dummy.matrix);
           }
@@ -432,7 +543,15 @@
           } else if (u.last) u.dir = [bx - u.last[0], by - u.last[1]];
           u.last = [bx, by]; u.pulse = Math.max(0, u.pulse - dt * 4);
           m.position.set(gx(bx), gy(by), 0.5); m.userData.sh.position.set(gx(bx) + 0.12, gy(by) - 0.12, 0.06);
-          m.rotation.z = now / 180 + i;
+          // the ball rolls: it turns about the axis across its path, at the rate that matches how fast it is moving
+          // (distance / radius), with a little wobble so a pole sometimes faces the camera and one colour shows
+          if (u.px !== undefined && dt > 0) {
+            const mx = bx - u.px, my = -(by - u.py), dist = Math.hypot(mx, my);
+            if (dist > 1e-5 && dist < 3) { rollAxis.set(-my, mx, 0).normalize(); m.rotateOnWorldAxis(rollAxis, dist / 0.34); }
+            u.wob = (u.wob || 0) + dt;
+            m.rotateOnWorldAxis(zAxis, Math.sin(u.wob * 1.7 + i) * 0.012);
+          }
+          u.px = bx; u.py = by;
           const light = orbLights[i];
           if (light) { light.position.set(gx(bx), gy(by), 1.4); light.color.set('#ff8a8a'); light.intensity = 1.1 + u.pulse * 1.2; }
           const gs = 2.4 + u.pulse * 1.6;
@@ -451,24 +570,33 @@
             });
           }
         });
-        const rects = [];
-        for (const r of wallRects(s.w)) rects[r[5]] = r;
+        const rects = [], wl = wallList(s);
+        wl.forEach((w, wi) => { for (const r of wallRects(w)) rects[wi * 2 + r[5]] = r; });
         const pulse = 0.35 + 0.15 * Math.sin(now / 90);
-        halves.forEach((m, i) => {
-          m.visible = glows[i].visible = tips[i].visible = false;
-          const r = rects[i];
+        halves.forEach((m, k) => {
+          m.visible = glows[k].visible = tips[k].visible = false;
+          const r = rects[k], i = k & 1, w = wl[k >> 1];
           if (r) {
-            box(m, r[0], r[1], r[2], r[3], 0.45, 0.3);
-            box(glows[i], r[0], r[1], r[2], r[3], 0.45, 1.0);
+            box(m, r[0], r[1], r[2], r[3], 0.45, 1.0);   // as wide as a finished line
+            box(glows[k], r[0], r[1], r[2], r[3], 0.45, 1.5);
             mats.glow[i].opacity = 0.3 + 0.2 * Math.sin(now / 90);
-            const v = s.w[0], head = i === 0 ? [v ? r[2] : r[0]] : [v ? r[3] : r[1]];
-            tips[i].visible = true;
-            tips[i].position.set(gx(v ? s.w[1] + 0.5 : head[0]), gy(v ? head[0] : s.w[2] + 0.5), 0.8);
-            tips[i].scale.set(2.6 + pulse, 2.6 + pulse, 1); tips[i].material.color.set(HALF[i]);
-            if (fx && Math.random() < 0.4) burst(v ? s.w[1] + 0.5 : head[0], v ? head[0] : s.w[2] + 0.5, 1, HALF[i], 2);
+            const v = w[0], head = i === 0 ? [v ? r[2] : r[0]] : [v ? r[3] : r[1]];
+            tips[k].visible = true;
+            tips[k].position.set(gx(v ? w[1] + 0.5 : head[0]), gy(v ? head[0] : w[2] + 0.5), 0.8);
+            tips[k].scale.set(2.6 + pulse, 2.6 + pulse, 1); tips[k].material.color.set(HALF[i]);
+            if (fx && Math.random() < 0.4) burst(v ? w[1] + 0.5 : head[0], v ? head[0] : w[2] + 0.5, 1, HALF[i], 2);
           }
         });
-        for (const [x, y, i] of shatters(prevHalf, s.w)) { burst(x, y, 34, HALF[i], 8); GL3.shake(cam, 0.32); }
+        const hits = shattersAll(prevHalf, s);
+        for (const [x, y] of hits) { burst(x, y, 34, 0xff4d4d, 8); GL3.shake(cam, 0.32); }
+        trackStrikes(strikes, lastRects, s, now, hits);
+        strikeMeshes.forEach((m, j) => {   // the struck line flashes white, then red, and fades
+          const q = strikes[j];
+          if (!q) { m.visible = false; return; }
+          const on = Math.floor((now - q.t) / 70) % 2 === 0;
+          box(m, q.r[0] - 0.1, q.r[1] + 0.1, q.r[2] - 0.1, q.r[3] + 0.1, 0.6, 1);
+          m.material.color.set(on ? 0xff2a4d : 0xffb3bf); m.material.opacity = Math.max(0, 1 - (now - q.t) / STRIKE_MS) * (on ? 1 : 0.6);
+        });
         if (s.ghost) box(ghost, s.ghost[0], s.ghost[0] + s.ghost[2], s.ghost[1], s.ghost[1] + s.ghost[3], 0.2); else ghost.visible = false;
         // pickups persist between frames (keyed by cell) and only spin
         const keep = new Set();
@@ -479,7 +607,7 @@
           if (!m) {
             m = new T.Sprite(new T.SpriteMaterial({ map: pickTex(p[2]), transparent: true, depthWrite: false }));
             m.position.set(gx(p[0] + 0.5), gy(p[1] + 0.5), 0.7);
-            m.userData = { pos: [p[0] + 0.5, p[1] + 0.5], tint: p[2] === 'shield' ? 0x59ff9a : 0xffd84a };
+            m.userData = { pos: [p[0] + 0.5, p[1] + 0.5], tint: p[2] === 'shield' ? 0x59ff9a : p[2] === 'heart' ? 0xff6fa0 : 0xffd84a };
             const halo = sprite(0.5); halo.visible = true; halo.material.color.set(m.userData.tint); halo.scale.set(2.6, 2.6, 1); m.add(halo);
             scene.add(m); pickMeshes.set(key, m);
           }
@@ -493,7 +621,14 @@
         }
         for (let q = pending.length - 1; q >= 0; q--) if (pending[q][0] <= now) { burst(pending[q][1], pending[q][2], pending[q][3], s.color, 4); pending.splice(q, 1); }
         stepSparks(dt);
-        cam.position.copy(camBase); GL3.tickShake(cam, dt);
+        cam.position.copy(camBase);
+        if (g.zoom > 1 || g.panX || g.panY) { cam.position.set(camBase.x + g.panX, camBase.y + g.panY, camBase.z / g.zoom); cam.lookAt(g.panX, g.panY, 0); }   // zoom = dolly in, so it stays crisp
+        else cam.lookAt(0, 0, 0);
+        GL3.tickShake(cam, dt);
+        if (g.nofx) {   // 'sharp' mode: no additive glows, halos, trails or sparks
+          scene.traverse((o) => { if (o.isSprite && o.material.blending === T.AdditiveBlending) o.visible = false; });
+          sparks.visible = false; glows.forEach((m) => { m.visible = false; });
+        } else sparks.visible = true;
         renderer.render(scene, cam);
       },
       dispose() { renderer.dispose(); canvas.remove(); },
@@ -510,7 +645,8 @@
       if (b.g) prev.grid = b.g;
       else if (b.rev !== prev.rev) prev.stale = true;
       prev.rev = b.rev;
-      Object.assign(prev, { w: b.w, p: b.p, lives: b.lives, score: b.score, pct: b.pct, st: b.st, lv: b.lv, mu: b.mu || 1, sh: b.sh, slow: b.slow, b: b.b });
+      const before = prev.pct ?? 0;
+      Object.assign(prev, { w: b.w, p: b.p, lives: b.lives, score: b.score, pct: b.pct, st: b.st, lv: b.lv, mu: b.mu || 1, sh: b.sh, slow: b.slow, hd: b.hd || 0, w2: b.w2 || [], b: b.b });
       if (!prev.bs || prev.bs.length !== b.b.length) { prev.bs = b.b.map((q) => q.slice()); prev.bv = b.b.map(() => [0, 0]); }
       // orb velocity from the last two packets, so the drawn orbs keep moving between the ~30 Hz updates
       const dt = (g.receivedAt - (prev.at ?? 0)) / 1000;
@@ -520,7 +656,14 @@
       if (dt > 0.01 || !prev.at) { prev.last = b.b; prev.at = g.receivedAt; }
       if (b.ev[0] !== prev.evSeen) {
         prev.evSeen = b.ev[0];
-        if (pid === g.me && g.ctx && !g.ctx.readOnly) { g.ctx.sfx(SND[b.ev[1]] || 'pop'); g.msg(MSG[b.ev[1]] || ''); g.fx(b.ev[1]); }
+        if (pid === g.me && g.ctx && !g.ctx.readOnly) { if (!voice(b.ev[1])) g.ctx.sfx(SND[b.ev[1]] || 'pop'); {
+          const pw = POWER[b.ev[1]], gain = Math.round((b.pct - before) * 100), tot = Math.floor(b.pct * 100);
+          if (pw) g.power(...pw);
+          else if ((b.ev[1] === 'seal' || b.ev[1] === 'big') && gain > 0) {   // how much that wall took, and where the level stands
+            const goal = before < 0.75 && b.pct >= 0.75, half = before < 0.5 && b.pct >= 0.5, q = before < 0.25 && b.pct >= 0.25;
+            g.msg(goal ? `🎯 ${tot}% · goal reached! every extra % scores` : half ? `Halfway there · +${gain}% (${tot}%)` : q ? `A quarter done · +${gain}% (${tot}%)` : `${b.ev[1] === 'big' ? 'Huge seal' : 'Sealed'} +${gain}% · ${tot}% of the field`);
+          } else g.msg(MSG[b.ev[1]] || '');
+        } g.fx(b.ev[1]); try { const v = { hit: [60, 40, 90], over: [200], big: [30, 30, 30], life: [30, 30, 30], clear: [40, 40, 80] }[b.ev[1]]; if (v && (typeof prefs === 'undefined' || prefs.sound !== false)) navigator.vibrate?.(v); } catch { /* no haptics */ } }
       }
     });
     paint();
@@ -543,7 +686,7 @@
       const el = g.find('lives'); el.classList.remove('rs-lost'); void el.offsetWidth; el.classList.add('rs-lost');
     }
     if (s === g.boards[g.me]) g.lastLives = s.lives;
-    g.find('lives').textContent = '❤️'.repeat(Math.max(0, s.lives)) + (s.sh ? '🛡️' : '');
+    g.find('lives').textContent = (s.lives > 4 ? '❤️×' + s.lives : '❤️'.repeat(Math.max(0, s.lives))) + (s.sh ? '🛡️' : '');   // many lives collapse to ❤️×N so the HUD never grows tall
     const cb = g.find('combo');
     cb.hidden = !(s.mu > 1 && s.st === 'play');
     if (!cb.hidden && cb.dataset.mu !== String(s.mu)) { cb.dataset.mu = s.mu; cb.textContent = '🔥 ×' + s.mu + ' combo'; cb.classList.remove('rs-bump'); void cb.offsetWidth; cb.classList.add('rs-bump'); }
@@ -568,20 +711,22 @@
 
   function place(cell, vertical) {
     const s = g.boards[g.me];
-    if (!cell || !s || !g.enabled || s.st !== 'play' || s.w.length) return;
-    if (!cellFree(s.grid, cell.x, cell.y)) return;
+    if (!cell || !s || !g.enabled || s.st !== 'play' || s.w2?.length) return;
+    if (!cellFree(s.grid, cell.x, cell.y) || lineCells(s).has(`${cell.x},${cell.y}`)) return;
     g.root.querySelector('.rs-coach')?.remove();
     g.ctx.input({ x: cell.x, y: cell.y, v: vertical });
-    g.ctx.sfx('pop');
+    if (!voice('place')) g.ctx.sfx('pop');
   }
 
   function ghostFor(cell) {
     const s = mine();
-    if (!cell || !s || s.st !== 'play' || s.w.length || !g.enabled || !cellFree(s.grid, cell.x, cell.y)) return null;
-    // Preview the whole line until it meets a sealed cell or the edge.
+    if (!cell || !s || s.st !== 'play' || s.w2?.length || !g.enabled) return null;
+    const occ = lineCells(s), free = (x, y) => cellFree(s.grid, x, y) && !occ.has(`${x},${y}`);
+    if (!free(cell.x, cell.y)) return null;
+    // Preview the whole line until it meets a sealed cell, another wall or the edge.
     let a = cell.x, b = cell.x, c = cell.y, d = cell.y;
-    if (g.vertical) { while (cellFree(s.grid, cell.x, c - 1)) c--; while (cellFree(s.grid, cell.x, d + 1)) d++; return [cell.x, c, 1, d - c + 1]; }
-    while (cellFree(s.grid, a - 1, cell.y)) a--; while (cellFree(s.grid, b + 1, cell.y)) b++;
+    if (g.vertical) { while (free(cell.x, c - 1)) c--; while (free(cell.x, d + 1)) d++; return [cell.x, c, 1, d - c + 1]; }
+    while (free(a - 1, cell.y)) a--; while (free(b + 1, cell.y)) b++;
     return [a, cell.y, b - a + 1, 1];
   }
 
@@ -598,8 +743,13 @@
     if (!s || !r) return;
     g.find('view').hidden = !g.three;   // the flat view has no camera to tilt
     g.root.querySelector('.rs-bar-x').classList.toggle('rs-goal-hit', s.pct >= 0.75);
-    g.stage.classList.toggle('rs-slowed', s.slow > 0);
-    g.stage.classList.toggle('rs-shielded', !!s.sh);
+    g.stage.classList.toggle('rs-last', s === g.boards[g.me] && s.lives === 1 && s.st === 'play');   // the only haze: red, on the last life
+    const sp = g.find('slowpill');
+    sp.hidden = !(s.slow > 0);
+    if (s.slow > 0) { sp.firstChild.textContent = '⏳ SLOW ' + Math.ceil(s.slow) + 's'; sp.lastChild.style.width = Math.min(100, s.slow / 8 * 100) + '%'; }
+    const rd = g.find('ready'), hd = s.hd || 0;   // a slow 3-2-1 before each level
+    rd.hidden = !(hd > 0 && s.st === 'play');
+    if (!rd.hidden) { const n = String(Math.ceil(hd / 0.7)); if (rd.textContent !== n) { rd.textContent = n; rd.classList.remove('rs-tick'); void rd.offsetWidth; rd.classList.add('rs-tick'); if (window.Snd) Snd.play((t, K) => { const d = K.at({ send: 0.2 }); K.mode(d, t, n === '1' ? 880 : 660, 0.12, 0.12, { type: 'triangle' }); }); } }
     if (g.glow !== s.color) { g.glow = s.color; g.stage.style.setProperty('--rs-glow', s.color); }
     const k = 1 - Math.exp(-Math.min(60, now - (g.drawn ?? now)) / 38);
     g.drawn = now;
@@ -611,10 +761,19 @@
     // the sealed-percent readout and bar glide to the new value instead of stepping
     s.shown = (s.shown ?? s.pct) + (s.pct - (s.shown ?? s.pct)) * (1 - Math.exp(-Math.min(60, now - (g.pctAt ?? now)) / 160));
     g.pctAt = now;
+    // the bar filling has a sound: soft ticks climbing in pitch while it grows, a bright chime on crossing the goal
+    if (s === g.boards[g.me]) {
+      if (s.shown < (g.tickAt ?? 0) - 0.02) g.tickAt = s.shown;   // a new level restarts the bar
+      if (s.shown - (g.tickAt ?? 0) > 0.003 && now - (g.tickT ?? 0) > 45) { g.tickAt = s.shown; g.tickT = now; if (window.Snd) { const f = 420 + s.shown * 1100; Snd.play((t, K) => { const d = K.at({ send: 0.2 }); K.mode(d, t, f, 0.16, 0.07, { type: 'triangle' }); K.mode(d, t, f * 2, 0.05, 0.05); K.burst(d, t, { type: 'highpass', f: 5000, vol: 0.03, tau: 0.01 }); }); } }
+      const over = s.shown >= 0.75;
+      if (over && g.goalSeen === false && window.Snd) Snd.play((t, K) => { const d = K.at({ send: 0.6 }); [0, 7, 12].forEach((n, i) => K.mode(d, t + i * 0.07, NOTE(n + 24), 0.1, 0.3)); });
+      g.goalSeen = over;
+    }
     const pct = Math.floor(s.shown * 100 + 0.001) + '%', fill = Math.min(100, s.shown * 100).toFixed(1) + '%';
-    if (g.pctText !== pct) g.find('pct').textContent = g.pctText = pct;
+    if (g.pctText !== pct) { g.find('pct').textContent = g.pctText = pct; g.root.querySelector('.rs-bar-x').setAttribute('aria-valuenow', String(parseInt(pct, 10))); }
     if (g.pctFill !== fill) g.find('fill').style.width = g.pctFill = fill;
     r.draw({ ...s, b: s.bs, ghost: g.hover ? ghostFor(g.hover) : null }, now);
+    if (g.lockFx) { g.lockFx = false; if (s === g.boards[g.me]) voice('lock'); }
   }
 
   function mount(arena) {
@@ -627,8 +786,8 @@
           <div class="rs-best-tile"><span class="rs-cap">Best</span><strong class="rs-best">—</strong></div>
         </div>
         <div class="rs-bar rs-bar-x" role="meter" aria-label="Field sealed" aria-valuemin="0" aria-valuemax="100"><div class="rs-fill"></div><div class="rs-goal" title="75% to clear"></div><span class="rs-pct">0%</span><span class="rs-combo" hidden></span><span class="rs-slow" hidden></span></div>
-        <div class="rs-stage" aria-label="Rift Split field"><span class="rs-msg" role="status"></span><div class="rs-coach" aria-hidden="true"><b>Hold</b> to aim · <b>slide</b> to move · <b>release</b> to grow a wall<small>Seal off the orbs. Don't let them hit a growing wall.</small></div></div>
-        <div class="rs-controls"><button type="button" class="rs-view" aria-label="Camera view" title="Camera view" hidden>⬓</button><button type="button" class="rs-bright" aria-label="Brightness" title="Brightness">☀</button><div class="rs-dirs" role="group" aria-label="Wall direction"><button type="button" class="rs-dir" data-v="0" aria-pressed="true"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Horizontal</span></button><button type="button" class="rs-dir rs-v" data-v="1" aria-pressed="false"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Vertical</span></button></div><span class="rs-tip">Hold to preview, release to grow a wall · Space / right-click turns it · ⛶ for fullscreen</span></div>
+        <div class="rs-stage" aria-label="Rift Split field"><span class="rs-msg" role="status"></span><span class="rs-power" role="status" hidden></span><span class="rs-slowpill" hidden><span></span><i></i></span><span class="rs-ready" aria-hidden="true" hidden></span><div class="rs-zoom" role="group" aria-label="Zoom"><button type="button" class="rs-zin" aria-label="Zoom in" title="Zoom in">+</button><button type="button" class="rs-zout" aria-label="Zoom out" title="Zoom out">−</button><button type="button" class="rs-zreset" aria-label="Reset zoom" title="Reset zoom" hidden>1×</button></div><div class="rs-coach" aria-hidden="true"><b>Hold</b> to aim · <b>slide</b> to move · <b>release</b> to grow a wall<small>Seal off the orbs. Don't let them hit a growing wall. You can run two walls at once.</small></div></div>
+        <div class="rs-controls"><button type="button" class="rs-view" aria-label="Camera view" title="Camera view" hidden>⬓</button><button type="button" class="rs-bright" aria-label="Brightness" title="Brightness">☀</button><button type="button" class="rs-fxbtn" aria-label="Glow and blur effects" title="Glow and blur effects">✨</button><button type="button" class="rs-themebtn" aria-label="Colour theme" title="Colour theme">🎨</button><div class="rs-dirs" role="group" aria-label="Wall direction"><button type="button" class="rs-dir" data-v="0" aria-pressed="true"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Horizontal</span></button><button type="button" class="rs-dir rs-v" data-v="1" aria-pressed="false"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Vertical</span></button></div><span class="rs-tip">Hold to preview, release to grow a wall (two can grow at once) · Space / right-click turns it · ⛶ for fullscreen</span></div>
         <ol class="rs-standings" aria-label="Scores" hidden></ol>
       </section>`;
     const root = arena.querySelector('.rs-cabinet');
@@ -646,7 +805,7 @@
       },
       // full-field feedback: a red flash when a wall shatters, a glow on a seal, a banner for a cleared level
       fx(kind) {
-        const cls = { over: 'rs-flash-hit', hit: 'rs-flash-hit', seal: 'rs-flash-seal', big: 'rs-flash-seal', clear: 'rs-flash-clear' }[kind];
+        const cls = { over: 'rs-flash-hit', hit: 'rs-flash-hit', seal: 'rs-flash-seal', big: 'rs-flash-seal', life: 'rs-flash-seal', clear: 'rs-flash-clear' }[kind];
         if (!cls) return;
         stage.classList.remove('rs-flash-hit', 'rs-flash-seal', 'rs-flash-clear');
         void stage.offsetWidth;   // restart the animation if one is still running
@@ -661,6 +820,12 @@
         el.className = 'rs-banner ' + cls; el.textContent = text;
         stage.append(el); setTimeout(() => el.remove(), 1800);
       },
+      power(icon, title, sub) {   // a bigger, longer toast for pickups
+        const el = stage.querySelector('.rs-power');
+        el.innerHTML = '<b></b><small></small>'; el.firstChild.textContent = icon + ' ' + title; el.lastChild.textContent = sub;
+        el.hidden = false; el.classList.remove('on'); void el.offsetWidth; el.classList.add('on');
+        clearTimeout(g.powerTimer); g.powerTimer = setTimeout(() => { el.hidden = true; }, 2600);
+      },
       msg(text) {
         const el = stage.querySelector('.rs-msg');
         el.textContent = text; el.classList.toggle('on', !!text);
@@ -673,8 +838,26 @@
       try { localStorage.setItem('riftsplit.tilt', g.tilt ? '1' : '0'); } catch { /* private mode */ }
       g.msg(g.tilt ? 'Tilted view' : 'Top-down view');
     });
-    const BRIGHT = [1, 1.3, 1.6, 2];
-    const loadB = () => { try { const v = Number(localStorage.getItem('riftsplit.bright')); return BRIGHT.includes(v) ? v : 1.3; } catch { return 1.3; } };
+    const pref = (k, d) => { try { return localStorage.getItem('riftsplit.' + k) ?? d; } catch { return d; } };
+    const setPref = (k, v) => { try { localStorage.setItem('riftsplit.' + k, v); } catch { /* private mode */ } };
+    g.nofx = pref('nofx', '0') === '1';
+    g.theme = THEMES[pref('theme', 'neon')] ? pref('theme', 'neon') : 'neon';
+    const applyLook = () => {
+      HALF = THEMES[g.theme].half;
+      stage.style.setProperty('--rs-glow', THEMES[g.theme].glow);
+      stage.classList.toggle('rs-sharp', g.nofx);
+      g.find('fxbtn').setAttribute('aria-pressed', String(!g.nofx));
+      g.find('fxbtn').classList.toggle('rs-off', g.nofx);
+    };
+    applyLook();
+    on(g.find('fxbtn'), 'click', () => { g.nofx = !g.nofx; setPref('nofx', g.nofx ? '1' : '0'); applyLook(); g.msg(g.nofx ? 'Sharp mode: glow and blur off' : 'Glow effects on'); });
+    on(g.find('themebtn'), 'click', () => {
+      g.theme = THEME_KEYS[(THEME_KEYS.indexOf(g.theme) + 1) % THEME_KEYS.length]; setPref('theme', g.theme); applyLook();
+      if (g.three) { g.three.dispose(); g.three = null; g.rebuild?.(); }   // the 3D floor and frame are built from the theme
+      g.msg('Theme: ' + THEMES[g.theme].name);
+    });
+    const BRIGHT = [1, 1.1, 1.3, 1.6, 2];
+    const loadB = () => { try { const v = Number(localStorage.getItem('riftsplit.bright')); return BRIGHT.includes(v) ? v : 1.1; } catch { return 1.1; } };
     g.bright = loadB();
     stage.style.setProperty('--rs-bright', g.bright);
     on(g.find('bright'), 'click', () => {
@@ -684,6 +867,29 @@
       g.msg('Brightness ' + Math.round(g.bright * 100) + '%');
     });
     for (const b of root.querySelectorAll('.rs-dir')) on(b, 'click', () => setDirection(b.dataset.v === '1'));
+    g.zoom = 1; g.panX = 0; g.panY = 0;
+    const setZoom = (z, px = g.panX, py = g.panY, say = false) => {
+      g.zoom = Math.max(1, Math.min(3.5, Math.round(z * 100) / 100));
+      const mx = g.W / 2 * (1 - 1 / g.zoom), my = g.H / 2 * (1 - 1 / g.zoom);   // keep the view inside the field
+      g.panX = Math.max(-mx, Math.min(mx, g.zoom > 1 ? px : 0)); g.panY = Math.max(-my, Math.min(my, g.zoom > 1 ? py : 0));
+      g.find('zreset').hidden = g.zoom <= 1;
+      g.find('zreset').textContent = g.zoom.toFixed(1).replace('.0', '') + '×';
+      g.flat?.view?.();
+      if (say) g.msg('Zoom ' + g.zoom.toFixed(1).replace('.0', '') + '×');
+    };
+    g.setZoom = setZoom;
+    on(g.find('zin'), 'click', () => setZoom(g.zoom * 1.5, g.panX, g.panY, true));
+    on(g.find('zout'), 'click', () => setZoom(g.zoom / 1.5, g.panX, g.panY, true));
+    on(g.find('zreset'), 'click', () => setZoom(1, 0, 0, true));
+    for (const b of g.root.querySelectorAll('.rs-zoom button')) on(b, 'pointerdown', (e) => e.stopPropagation());   // not a wall
+    on(stage, 'wheel', (e) => {   // wheel / trackpad pinch zooms toward the cursor
+      e.preventDefault();
+      const r = (g.three || g.flat)?.pick(e), z = g.zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15);
+      if (r && g.zoom < 3.5 && e.deltaY < 0) setZoom(z, g.panX + (r.x + 0.5 - g.W / 2 - g.panX) * 0.25, g.panY + (g.H / 2 - r.y - 0.5 - g.panY) * 0.25);
+      else setZoom(z);
+    }, { passive: false });
+    const pts = new Map();
+    let pinchD = 0, pinchMid = null;
     let down = false;
     // Hold to see where the wall would run, slide to aim, release to place it (a mouse previews on hover).
     const fingers = new Set();
@@ -691,19 +897,28 @@
     on(stage, 'pointerdown', (e) => {
       if (e.button === 2) return;
       e.preventDefault();
-      fingers.add(e.pointerId);
-      if (fingers.size > 1) { pinched = true; down = false; g.hover = null; return; }
+      fingers.add(e.pointerId); pts.set(e.pointerId, [e.clientX, e.clientY]);
+      if (fingers.size > 1) {
+        const [a, b] = [...pts.values()]; pinchD = Math.hypot(a[0] - b[0], a[1] - b[1]); pinchMid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; pinched = true; down = false; g.hover = null; return; }
       stage.setPointerCapture?.(e.pointerId);
       g.touching = e.pointerType !== 'mouse';
       down = true;
       g.hover = (g.three || g.flat)?.pick(e);
     });
     on(stage, 'pointermove', (e) => {
+      if (pts.has(e.pointerId)) pts.set(e.pointerId, [e.clientX, e.clientY]);
+      if (pts.size === 2 && pinchD > 0) {   // two fingers: pinch to zoom, drag to pan
+        const [a, b] = [...pts.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]), mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+        const perPx = g.W / g.zoom / (stage.clientWidth || 1);
+        setZoom(g.zoom * d / pinchD, g.panX - (mid[0] - pinchMid[0]) * perPx, g.panY + (mid[1] - pinchMid[1]) * perPx);
+        pinchD = d; pinchMid = mid;
+        return;
+      }
       const r = g.three || g.flat;
       if (r && !pinched && (down || e.pointerType === 'mouse')) g.hover = r.pick(e);
     });
     const lift = (e, placeIt) => {
-      fingers.delete(e.pointerId);
+      fingers.delete(e.pointerId); pts.delete(e.pointerId);
       if (placeIt && down && !pinched) place((g.three || g.flat)?.pick(e) || g.hover, g.vertical);
       if (!fingers.size) { down = false; pinched = false; if (g.touching || !placeIt) g.hover = null; }
     };
@@ -725,7 +940,8 @@
         me.three = threeRenderer(T, stage, () => { me.three?.dispose(); me.three = null; GL3.revive(stage, { build, flat, unflat }); });
         return me.three;
       };
-      const flat = () => { me.flat ||= flatRenderer(stage); };
+      me.rebuild = () => { try { build(); } catch (err) { console.warn('Rift Split could not rebuild 3D', err); } };
+      const flat = () => { me.flat ||= flatRenderer(stage); me.flat?.view?.(); };
       const unflat = () => { me.flat?.dispose(); me.flat = null; };
       try { if (build()) { unflat(); return; } } catch (err) { console.warn('Rift Split could not start 3D', err); }
       unflat(); flat();
