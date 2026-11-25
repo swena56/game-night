@@ -452,6 +452,10 @@ const SFX = {
   plaunch: () => { tone(120, 380, 0.14, 'sawtooth', 0.05); noise(0.08, 1800, 0.8, 0.3); tone(380, 200, 0.1, 'sine', 0.05, 0.1); },
   psave: () => [523, 784, 1047].forEach((f, i) => tone(f, f * 1.02, 0.14, 'sine', 0.08, i * 0.07)),
   pskill: () => { [880, 1175, 1568, 2093].forEach((f, i) => tone(f, f, 0.12, 'triangle', 0.07, i * 0.05)); noise(0.2, 5000, 0.8, 0.1, 0.1); },
+  // pinball lane rollovers climb the scale left to right; target bank hits are a dull woody knock; countdown tick
+  plane: (n = 0) => { const f = 740 * 2 ** ([0, 4, 7][n % 3] / 12); tone(f, f, 0.12, 'sine', 0.08); tone(f * 2, f * 2, 0.08, 'triangle', 0.025, 0.01); },
+  ptarget: (n = 0) => { tone(260 + n * 40, 150 + n * 20, 0.07, 'triangle', 0.09); noise(0.03, 1400, 1.5, 0.3); },
+  ptick: () => { tone(1500, 1500, 0.03, 'square', 0.04); },
   rail: () => { noise(0.04, 900, 1.4, 0.22); tone(240, 180, 0.05, 'sine', 0.06); },
   cheer: () => { noise(0.9, 1400, 0.35, 0.18); [659, 784, 988].forEach((f, i) => tone(f, f, 0.18, 'triangle', 0.08, 0.12 + i * 0.09)); },
   groan: () => { tone(330, 196, 0.5, 'triangle', 0.07); tone(262, 165, 0.5, 'triangle', 0.05, 0.04); },

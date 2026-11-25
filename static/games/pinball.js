@@ -11,7 +11,7 @@
     mystery_points: 'Mystery · +10,000', mystery_save: 'Mystery · Ball save 10s', mystery_mult: 'Mystery · Multiplier up!', mystery_hold: 'Mystery · Bonus held', lock: 'Ball locked', multiball: 'MULTIBALL · Shoot the ramp for jackpots +5,000',
     drain: 'Ball drained', done: 'Run complete', recovery: 'Ball freed',
   };
-  const sounds = { skill: 'pskill', ramp: 'pramp', jackpot: 'pjackpot', save: 'psave', tilt: 'wrong', mult: 'cheer', kickback: 'pkick', extra: 'pjackpot', post: 'psave', hurry: 'pjackpot', super: 'pjackpot', mystery_points: 'cheer', mystery_save: 'psave', mystery_mult: 'cheer', mystery_hold: 'pskill', lock: 'psave', multiball: 'pjackpot', bonus: 'cheer', spinner: 'pspin', drain: 'groan', done: 'groan' };
+  const sounds = { skill: 'pskill', ramp: 'pramp', jackpot: 'pjackpot', save: 'psave', tilt: 'wrong', nudge: 'thud', mult: 'cheer', kickback: 'pkick', extra: 'pjackpot', post: 'psave', hurry: 'pjackpot', super: 'pjackpot', mystery_points: 'cheer', mystery_save: 'psave', mystery_mult: 'cheer', mystery_hold: 'pskill', lock: 'psave', multiball: 'pjackpot', bonus: 'cheer', spinner: 'pspin', drain: 'groan', done: 'groan' };
   const prefixes = { bumper: 'Bumper +100', sling: 'Slingshot +50', lane: 'Rollover +500', target: 'Target +250' };
   const label = (event, row) => {
     if (event === 'bonus' && row) return `Ball bonus +${row[BONUS].toLocaleString()}`;
@@ -19,8 +19,10 @@
     // levelled and multiplied awards: show what was actually paid
     return row?.[POINTS] > 0 && !event.startsWith('mystery_') ? text.replace(/\+[\d,]+/, `+${row[POINTS].toLocaleString()}`) : text;
   };
-  const sound = (event) => sounds[event] || (/^bumper/.test(event) ? 'pbumper' : /^sling/.test(event) ? 'psling' : 'pop');
-  const soundArg = (event) => (/^bumper/.test(event) ? Number(event.slice(6)) || 0 : undefined);
+  const sound = (event) => sounds[event] || (/^bumper/.test(event) ? 'pbumper' : /^sling/.test(event) ? 'psling' :
+    /^lane/.test(event) ? 'plane' : /^target/.test(event) ? 'ptarget' : 'pop');
+  const soundArg = (event) => (/^bumper/.test(event) ? Number(event.slice(6)) || 0 : /^lane/.test(event) ? Number(event.slice(4)) || 0 :
+    /^target/.test(event) ? Number(event.slice(6)) || 0 : undefined);
   // each table keeps its own personal best and top-scores list
   // the ball's trail warms from ivory to hot orange as the bonus multiplier climbs (1x..5x)
   const TRAIL_TINT = ['255,240,202', '255,226,150', '255,200,110', '255,160,90', '255,110,90'];
@@ -927,6 +929,11 @@
     if (!prior || prior[BALLS] !== row[BALLS] || prior[STAGED] !== row[STAGED] || ['recovery', 'save'].includes(row[EVENT]) &&
         prior[EVENT_ID] !== row[EVENT_ID]) g.ball = null;
     if (prior && prior[BALLS] !== row[BALLS]) clearControls(g);
+    // the final seconds of a jackpot or hurry-up window tick down
+    if (prior && viewer === g.me && !g.ctx.readOnly && !row[STAGED]) {
+      const ending = (now, before) => now > 0 && now <= 3 && before > now;
+      if (ending(row[JACKPOT], prior[JACKPOT]) || ending(row[HURRY], prior[HURRY])) g.ctx.sfx('ptick');
+    }
     // the last nudge before tilt: a warning buzz for the player
     if (prior && viewer === g.me && !g.ctx.readOnly && row[NUDGES] === 3 && prior[NUDGES] < 3) g.ctx.sfx('alarm');
     if (prior && prior[EVENT_ID] !== row[EVENT_ID]) {
