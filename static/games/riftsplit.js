@@ -109,16 +109,17 @@
         return { x: Math.floor((e.clientX - r.left) / r.width * g.W), y: Math.floor((e.clientY - r.top) / r.height * g.H) };
       },
       draw(s, now) {
-        const w = canvas.clientWidth, h = canvas.clientHeight;
-        if (size[0] !== w || size[1] !== h) { canvas.width = w * devicePixelRatio; canvas.height = h * devicePixelRatio; size = [w, h]; }
+        const w = canvas.clientWidth, h = canvas.clientHeight, dpr = devicePixelRatio || 1;
+        if (!w || !h) return;   // mid-zoom or hidden: nothing to draw into
+        if (size[0] !== w || size[1] !== h || size[2] !== dpr) { canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); size = [w, h, dpr]; }
         const dt = Math.min(0.05, Math.max(0, (now - (last || now)) / 1000)); last = now;
         const k = canvas.width / g.W;
         c.setTransform(k, 0, 0, k, 0, 0);
         if (shake > 0.02) { c.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake); shake *= Math.exp(-dt * 7); } else shake = 0;
         const bg = c.createRadialGradient(g.W / 2, g.H / 2, 2, g.W / 2, g.H / 2, g.W * 0.65);
-        bg.addColorStop(0, '#0e1a44'); bg.addColorStop(1, '#050816');
+        bg.addColorStop(0, '#1a2b6a'); bg.addColorStop(1, '#0a1030');
         c.fillStyle = bg; c.fillRect(0, 0, g.W, g.H);
-        c.strokeStyle = '#1d3170'; c.lineWidth = 0.035;
+        c.strokeStyle = '#3358b8'; c.lineWidth = 0.04;
         c.beginPath();
         for (let x = 0; x <= g.W; x++) { c.moveTo(x, 0); c.lineTo(x, g.H); }
         for (let y = 0; y <= g.H; y++) { c.moveTo(0, y); c.lineTo(g.W, y); }
@@ -138,7 +139,7 @@
           c.globalAlpha = e;
           c.fillStyle = s.color;
           c.fillRect(x + inset, y + inset, 1 - inset * 2, 1 - inset * 2);
-          c.fillStyle = open(i, x, y) ? '#ffffff70' : '#ffffff10';
+          c.fillStyle = open(i, x, y) ? '#ffffffaa' : '#ffffff38';
           c.fillRect(x + inset, y + inset, 1 - inset * 2, 1 - inset * 2);
         }
         c.globalAlpha = 1;
@@ -226,18 +227,18 @@
     // Floor with a grid.
     const tex = document.createElement('canvas'); tex.width = 1024; tex.height = 614;
     const t = tex.getContext('2d');
-    t.fillStyle = '#0a1230'; t.fillRect(0, 0, 1024, 614);
-    t.strokeStyle = '#26407f'; t.lineWidth = 1.5;
+    t.fillStyle = '#15245a'; t.fillRect(0, 0, 1024, 614);
+    t.strokeStyle = '#3d62c4'; t.lineWidth = 1.5;
     for (let i = 0; i <= g.W; i++) { t.beginPath(); t.moveTo(i * 1024 / g.W, 0); t.lineTo(i * 1024 / g.W, 614); t.stroke(); }
     for (let i = 0; i <= g.H; i++) { t.beginPath(); t.moveTo(0, i * 614 / g.H); t.lineTo(1024, i * 614 / g.H); t.stroke(); }
-    const floor = new T.Mesh(new T.PlaneGeometry(g.W, g.H), new T.MeshStandardMaterial({ map: new T.CanvasTexture(tex), emissive: 0xffffff, emissiveMap: new T.CanvasTexture(tex), emissiveIntensity: 0.55, roughness: 0.85, metalness: 0 }));
+    const floor = new T.Mesh(new T.PlaneGeometry(g.W, g.H), new T.MeshStandardMaterial({ map: new T.CanvasTexture(tex), emissive: 0xffffff, emissiveMap: new T.CanvasTexture(tex), emissiveIntensity: 0.85, roughness: 0.85, metalness: 0 }));
     scene.add(floor);
     const frame = new T.Mesh(new T.BoxGeometry(g.W + 1, g.H + 1, 0.5), new T.MeshStandardMaterial({ color: 0x1a2650, roughness: 0.6 }));
     frame.position.z = -0.4; scene.add(frame);
     // a deep gradient backdrop with a scatter of faint stars behind the field
     const bgc = document.createElement('canvas'); bgc.width = 256; bgc.height = 160;
     const bgx = bgc.getContext('2d'), bgg = bgx.createRadialGradient(128, 80, 10, 128, 80, 150);
-    bgg.addColorStop(0, '#16215a'); bgg.addColorStop(0.6, '#0a1033'); bgg.addColorStop(1, '#03050f');
+    bgg.addColorStop(0, '#24367d'); bgg.addColorStop(0.6, '#121c52'); bgg.addColorStop(1, '#070b22');
     bgx.fillStyle = bgg; bgx.fillRect(0, 0, 256, 160);
     const backdrop = new T.Mesh(new T.PlaneGeometry(g.W * 3.2, g.H * 3.2), new T.MeshBasicMaterial({ map: new T.CanvasTexture(bgc) }));
     backdrop.position.z = -3; scene.add(backdrop);
@@ -338,13 +339,13 @@
     const sphere = new T.SphereGeometry(0.34, 20, 14);
     let lastNow = 0;
     const ray = new T.Raycaster(), plane = new T.Plane(new T.Vector3(0, 0, 1), 0), hit = new T.Vector3();
-    let w = 0, h = 0;
+    let w = 0, h = 0, lastDpr = 0;
     const camBase = new T.Vector3();
 
     function resize() {
-      const cw = stage.clientWidth, ch = stage.clientHeight;
-      if (cw === w && ch === h) return;
-      w = cw; h = ch; renderer.setSize(w, h, false);
+      const cw = stage.clientWidth, ch = stage.clientHeight, dpr = devicePixelRatio || 1;
+      if (!cw || !ch || (cw === w && ch === h && dpr === lastDpr)) return;   // zooming changes the pixel ratio even when the CSS size holds
+      w = cw; h = ch; lastDpr = dpr; renderer.setSize(w, h, false);
       cam.aspect = w / h;
       const need = Math.max((g.H / 2 + 1.2) / Math.tan(cam.fov * Math.PI / 360), (g.W / 2 + 1.2) / (Math.tan(cam.fov * Math.PI / 360) * cam.aspect));
       const tilt = cam.aspect > g.W / g.H ? 0 : 0.22;   // a very wide stage has no spare height for the tilt
@@ -385,7 +386,7 @@
             const x = i % g.W, y = (i - x) / g.W;
             const open = (j, ok) => ok && s.grid[j] === '0';
             const rim = open(i - 1, x > 0) || open(i + 1, x < g.W - 1) || open(i - g.W, y > 0) || open(i + g.W, y < g.H - 1);
-            rimCol.copy(col).multiplyScalar(rim ? 1 : 0.8); if (rim) rimCol.lerp(new T.Color(0xffffff), 0.4);
+            rimCol.copy(col).lerp(new T.Color(0xffffff), rim ? 0.65 : 0.22);
             blocks.setColorAt(n, rimCol);
             blocks.setMatrixAt(n++, dummy.matrix);
           }
@@ -593,7 +594,7 @@
         </div>
         <div class="rs-bar" role="meter" aria-label="Field sealed" aria-valuemin="0" aria-valuemax="100"><div class="rs-fill"></div><div class="rs-goal" title="75% to clear"></div><span class="rs-pct">0%</span><span class="rs-slow" hidden></span></div>
         <div class="rs-stage" aria-label="Rift Split field"><span class="rs-msg" role="status"></span></div>
-        <div class="rs-controls"><div class="rs-dirs" role="group" aria-label="Wall direction"><button type="button" class="rs-dir" data-v="0" aria-pressed="true"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Horizontal</span></button><button type="button" class="rs-dir rs-v" data-v="1" aria-pressed="false"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Vertical</span></button></div><span class="rs-tip">Hold to preview, release to grow a wall · Space / right-click turns it · ⛶ for fullscreen</span></div>
+        <div class="rs-controls"><button type="button" class="rs-bright" aria-label="Brightness" title="Brightness">☀</button><div class="rs-dirs" role="group" aria-label="Wall direction"><button type="button" class="rs-dir" data-v="0" aria-pressed="true"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Horizontal</span></button><button type="button" class="rs-dir rs-v" data-v="1" aria-pressed="false"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Vertical</span></button></div><span class="rs-tip">Hold to preview, release to grow a wall · Space / right-click turns it · ⛶ for fullscreen</span></div>
         <ol class="rs-standings" aria-label="Scores" hidden></ol>
       </section>`;
     const root = arena.querySelector('.rs-cabinet');
@@ -615,12 +616,26 @@
         clearTimeout(g.msgTimer); g.msgTimer = setTimeout(() => el.classList.remove('on'), 1600);
       },
     };
+    const BRIGHT = [1, 1.3, 1.6, 2];
+    const loadB = () => { try { const v = Number(localStorage.getItem('riftsplit.bright')); return BRIGHT.includes(v) ? v : 1.3; } catch { return 1.3; } };
+    g.bright = loadB();
+    stage.style.setProperty('--rs-bright', g.bright);
+    on(g.find('bright'), 'click', () => {
+      g.bright = BRIGHT[(BRIGHT.indexOf(g.bright) + 1) % BRIGHT.length];
+      stage.style.setProperty('--rs-bright', g.bright);
+      try { localStorage.setItem('riftsplit.bright', String(g.bright)); } catch { /* private mode */ }
+      g.msg('Brightness ' + Math.round(g.bright * 100) + '%');
+    });
     for (const b of root.querySelectorAll('.rs-dir')) on(b, 'click', () => setDirection(b.dataset.v === '1'));
     let down = false;
     // Hold to see where the wall would run, slide to aim, release to place it (a mouse previews on hover).
+    const fingers = new Set();
+    let pinched = false;   // a second finger landed: this gesture is a zoom, not a wall
     on(stage, 'pointerdown', (e) => {
       if (e.button === 2) return;
       e.preventDefault();
+      fingers.add(e.pointerId);
+      if (fingers.size > 1) { pinched = true; down = false; g.hover = null; return; }
       stage.setPointerCapture?.(e.pointerId);
       g.touching = e.pointerType !== 'mouse';
       down = true;
@@ -628,14 +643,15 @@
     });
     on(stage, 'pointermove', (e) => {
       const r = g.three || g.flat;
-      if (r && (down || e.pointerType === 'mouse')) g.hover = r.pick(e);
+      if (r && !pinched && (down || e.pointerType === 'mouse')) g.hover = r.pick(e);
     });
-    on(stage, 'pointerup', (e) => {
-      if (down) place((g.three || g.flat)?.pick(e) || g.hover, g.vertical);
-      down = false;
-      if (g.touching) g.hover = null;
-    });
-    on(stage, 'pointercancel', () => { down = false; g.hover = null; });
+    const lift = (e, placeIt) => {
+      fingers.delete(e.pointerId);
+      if (placeIt && down && !pinched) place((g.three || g.flat)?.pick(e) || g.hover, g.vertical);
+      if (!fingers.size) { down = false; pinched = false; if (g.touching || !placeIt) g.hover = null; }
+    };
+    on(stage, 'pointerup', (e) => lift(e, true));
+    on(stage, 'pointercancel', (e) => lift(e, false));
     on(stage, 'pointerleave', () => { if (!down) g.hover = null; });
     on(stage, 'contextmenu', (e) => { e.preventDefault(); toggle(); });
     on(window, 'keydown', (e) => {
