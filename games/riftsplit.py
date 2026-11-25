@@ -21,11 +21,11 @@ def level_goal(level):
 
 
 def orb_count(level):
-    return min(MAX_ORBS, 2 + (level - 1) // 2)   # an extra orb every 2 levels: 2,2,3,3,... cap at L21
+    return min(MAX_ORBS, 2 + (level - 1) // 3)   # an extra orb every 3 levels: 2,2,2,3,3,3,... cap at L28
 
 
 def start_lives(level):
-    return min(MAX_LIVES, 2 + (level - 1) // 2)
+    return min(MAX_LIVES, 3 + (level - 1) // 3)   # 3 lives at L1, one more every 3 levels, cap 6 at L10
 RADIUS = 0.42
 GROW = 15.0              # wall cells per second at level 1
 
@@ -49,7 +49,7 @@ BOT = {"easy": (1.6, 2), "normal": (0.9, 8), "hard": (0.6, 22)}   # seconds betw
 def ball_speed(level):
     if 1 <= level <= 3:
         return (4.9, 5.7, 6.5)[level - 1]
-    return min(MAX_SPEED, 6.5 + 0.3 * (level - 3))   # +0.3 per level, cap at L18
+    return min(MAX_SPEED, 6.5 + 0.25 * (level - 3))   # +0.25 per level, cap at L21
 
 
 class Board:

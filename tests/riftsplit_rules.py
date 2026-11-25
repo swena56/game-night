@@ -31,18 +31,18 @@ check("third wall refused", not b.can_place(30, 10))
 for _ in range(600):
     b.step(R.STEP, 0)
 check("both walls finish", not b.walls)
-for level, speed in enumerate((4.9, 5.7, 6.5, 6.8), start=1):
+for level, speed in enumerate((4.9, 5.7, 6.5, 6.75), start=1):
     board = R.Board(random.Random(1), level)
     check(f"level {level} orb speed is {speed}", R.ball_speed(level) == speed
           and all(math.isclose(math.hypot(vx, vy), speed) for _, _, vx, vy in board.balls))
 
 later_levels = range(4, R.MAX_LEVEL + 1)
 check("level 4 onward retains the speed curve and cap",
-      all(R.ball_speed(level) == min(11.0, 6.5 + 0.3 * (level - 3)) for level in later_levels))
+      all(R.ball_speed(level) == min(11.0, 6.5 + 0.25 * (level - 3)) for level in later_levels))
 later_boards = (R.Board(random.Random(1), level) for level in later_levels)
 check("level 4 onward retains orb counts, lives, and seal goals",
-      all(len(board.balls) == min(11, 2 + (board.level - 1) // 2)
-          and board.lives == min(6, 2 + (board.level - 1) // 2)
+      all(len(board.balls) == min(11, 2 + (board.level - 1) // 3)
+          and board.lives == min(6, 3 + (board.level - 1) // 3)
           and math.isclose(R.level_goal(board.level), min(0.86, 0.52 + 0.03 * board.level))
           for board in later_boards))
 check("early goals are gentle", R.level_goal(1) == 0.55 and R.level_goal(5) < 0.7)

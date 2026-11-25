@@ -65,6 +65,7 @@
 
   // The seal ripples inward: each new cell waits in proportion to its distance from the cells that were already solid.
   // Sets born[] (ms timestamps) and returns when the animation ends plus sparks to fire: [time, x, y, count].
+  const FADE_MS = 150;   // sealed cells rise in quickly: the colour must show the moment the wall locks
   function ripple(prev, grid, now, born) {
     const dist = new Int16Array(grid.length).fill(-1), queue = [];
     for (let i = 0; i < grid.length; i++) if (prev[i] === '1') { dist[i] = 0; queue.push(i); }
@@ -76,11 +77,11 @@
         dist[j] = dist[i] + 1; far = Math.max(far, dist[j]); queue.push(j);
       }
     }
-    const step = Math.min(24, 420 / Math.max(1, far)), fresh = [];
+    const step = Math.min(8, 130 / Math.max(1, far)), fresh = [];
     for (let i = 0; i < grid.length; i++) if (grid[i] === '1' && prev[i] !== '1') { born[i] = now + Math.max(0, dist[i]) * step; fresh.push(i); }
     const every = Math.max(1, Math.floor(fresh.length / 40)), big = fresh.length >= 90, sparks = [];
     for (let q = 0; q < fresh.length; q += every) sparks.push([born[fresh[q]], fresh[q] % g.W + 0.5, Math.floor(fresh[q] / g.W) + 0.5, big ? 5 : 3]);
-    return { until: now + far * step + 450, sparks };
+    return { until: now + far * step + 200, sparks };
   }
 
   // A wall half that was growing and is now gone was struck by an orb. Updates `prev` and returns the head [x, y] of each shattered half.
@@ -211,7 +212,7 @@
         } else {
           for (let i = 0; i < s.grid.length; i++) {
             if (s.grid[i] !== '1') continue;
-            const x = i % g.W, y = (i - x) / g.W, t = now < animUntil + 60 ? Math.max(0, Math.min(1, (now - born[i]) / 350)) : 1;
+            const x = i % g.W, y = (i - x) / g.W, t = now < animUntil + 60 ? Math.max(0, Math.min(1, (now - born[i]) / FADE_MS)) : 1;
             if (t <= 0) continue;
             const e = 1 - (1 - t) ** 3, inset = (1 - e) * 0.4;
             c.globalAlpha = e;
@@ -538,7 +539,7 @@
           const settled = now >= animUntil;
           for (let i = 0; i < s.grid.length; i++) {
             if (s.grid[i] !== '1') continue;
-            const x = i % g.W, y = (i - x) / g.W, k = settled ? 1 : Math.max(0, Math.min(1, (now - born[i]) / 350)), z = 0.15 + 0.35 * (1 - (1 - k) ** 3);
+            const x = i % g.W, y = (i - x) / g.W, k = settled ? 1 : Math.max(0, Math.min(1, (now - born[i]) / FADE_MS)), z = 0.15 + 0.35 * (1 - (1 - k) ** 3);
             dummy.position.set(x + 0.5 - g.W / 2, g.H / 2 - (y + 0.5), z / 2 - 0.05);
             dummy.scale.set(1, 1, z); dummy.updateMatrix();
             if (rimF[i]) rimCol.copy(col).lerp(white, 0.3); else rimCol.copy(col).multiplyScalar(0.62 + 0.06 * ((x + y) & 1));   // deep, faintly checkered interior; bright lit rim
