@@ -801,6 +801,8 @@
       popup(g, row);
       if (viewer === g.me && !g.ctx.readOnly) g.ctx.sfx(sound(row[EVENT]), soundArg(row[EVENT]));
     }
+    // the plunger lets go: a spring thwack as the ball shoots up the lane
+    if (prior && prior[STAGED] && !row[STAGED] && prior[BALLS] === row[BALLS] && viewer === g.me && !g.ctx.readOnly) g.ctx.sfx('plaunch');
     g.enabled = !!(g.active && g.me && row[BALLS]);
     if (!g.enabled || row[TILT] && !prior?.[TILT]) clearControls(g);
     g.row = row;
