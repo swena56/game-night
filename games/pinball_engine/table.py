@@ -18,7 +18,7 @@ SHOT_OF = dict(lane="lane", skill="lane", target="target", spinner="spinner", ra
 SPEED_CAP = 42
 # Per-ball state: the table swaps these between the main ball and each extra multiball ball.
 BALL_STATE = ("x", "y", "vx", "vy", "height", "ramp_ticks", "rollovers", "skill", "smooth_launch",
-              "still", "still_origin", "jackpot_shot", "saucer_ticks", "subway_ticks")
+              "still", "still_origin", "jackpot_shot", "saucer_ticks", "subway_ticks", "english")
 
 
 @dataclass
@@ -52,6 +52,7 @@ class Table:
     ramp_ticks: int = 0
     saucer_ticks: int = 0
     subway_ticks: int = 0
+    english: float = 0.0        # ball spin: curves the path after a glancing hit on rubber
     magnet_ticks: int = 0       # >0 while the magnet is energised
     magnet_cool: int = 0
     sling_cool: dict = field(default_factory=dict)   # sling index -> ticks until it can fire again
@@ -309,7 +310,7 @@ class Table:
         self.reset_controls()
         self.staged = bool(self.balls)
         self.x, self.y = self.layout.launch
-        self.vx = self.vy = self.height = self.spin = self.spin_left = 0
+        self.vx = self.vy = self.height = self.spin = self.spin_left = self.english = 0
         self.nudges = self.still = self.ramp_ticks = self.rollovers = 0
         self.still_origin = self.layout.launch
         self.tilt = self.skill = self.smooth_launch = False
@@ -331,6 +332,10 @@ class Table:
         approach = (self.vx - sx) * nx + (self.vy - sy) * ny
         if approach >= 0:
             return False
+        # a glancing hit on a grippy surface spins the ball; the spin then bends its path (english)
+        slide = (self.vx - sx) * -ny + (self.vy - sy) * nx
+        if not self.smooth_launch:
+            self.english = max(-2.0, min(2.0, self.english * 0.5 - slide * 0.03))
         impulse = max(kick, -(1 + bounce) * approach)
         self.vx += impulse * nx
         self.vy += impulse * ny
@@ -358,8 +363,13 @@ class Table:
         bx, by = ax + lay.flipper_length * math.cos(angle), ay + lay.flipper_length * math.sin(angle)
         cx, cy = closest(self.x, self.y, ax, ay, bx, by)
         speed = travel / STEP
-        self.contact(cx, cy, lay.ball + lay.flipper_radius, 0.55, 0,
-                     -(cy - ay) * speed, (cx - ax) * speed)
+        # a still (resting or held) flipper gives a dead catch; a swinging one gives a live bounce
+        moving = abs(speed) > 1
+        if self.contact(cx, cy, lay.ball + lay.flipper_radius, 0.55 if moving else 0.3, 0,
+                        -(cy - ay) * speed, (cx - ax) * speed) and not moving \
+                and math.hypot(self.vx, self.vy) < 4:
+            self.vx *= 0.96        # a slow ball cradles on the bat and rolls to a stop
+            self.vy *= 0.96
 
     def mechanisms(self, old_y):
         lay, rules = self.layout, self.rules
@@ -430,7 +440,7 @@ class Table:
             cx, cy, radius = lay.saucer
             if math.hypot(self.x - cx, self.y - cy) < radius * 0.7 and math.hypot(self.vx, self.vy) < 22:
                 self.saucer_ticks = rules.saucer_ticks
-                self.x, self.y, self.vx, self.vy = cx, cy, 0, 0
+                self.x, self.y, self.vx, self.vy, self.english = cx, cy, 0, 0, 0
                 if not self.tilt:
                     self.signal("saucer", rules.saucer)
         if lay.subway and lay.subway_exit and not self.subway_ticks:
@@ -526,7 +536,7 @@ class Table:
 
     def free_ball(self, x, y, vx, vy):
         return dict(x=x, y=y, vx=vx, vy=vy, height=0, ramp_ticks=0, rollovers=0, skill=False,
-                    smooth_launch=False, still=0, still_origin=(x, y), jackpot_shot=False, saucer_ticks=0, subway_ticks=0)
+                    smooth_launch=False, still=0, still_origin=(x, y), jackpot_shot=False, saucer_ticks=0, subway_ticks=0, english=0.0)
 
     def run_ball(self, previous):
         lay = self.layout
@@ -546,8 +556,15 @@ class Table:
             return
         old_y = self.y
         self.pull_magnet()
-        self.vx *= 0.999
-        self.vy = self.vy * 0.999 + self.rules.gravity * STEP
+        # rolling resistance grows with speed (a faster ball loses a little more per tick)
+        drag = 0.9994 - 0.00001 * min(40.0, math.hypot(self.vx, self.vy))
+        self.vx *= drag
+        self.vy = self.vy * drag + self.rules.gravity * STEP
+        if self.english:
+            bend = self.english * 0.3 * STEP
+            self.vx, self.vy = (self.vx * math.cos(bend) - self.vy * math.sin(bend),
+                                self.vx * math.sin(bend) + self.vy * math.cos(bend))
+            self.english *= 0.997
         speed = math.hypot(self.vx, self.vy)
         if speed > SPEED_CAP:
             self.vx *= SPEED_CAP / speed

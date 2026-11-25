@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from games.pinball import (
-    BALL, BUMPS, FLIPPERS, JACKPOT_TICKS, LAUNCH, LAYOUT, RAMP, RAMP_EXIT, ROLLOVERS,
+    BALL, BUMPS, FLIP_RADIUS, FLIPPERS, JACKPOT_TICKS, LAUNCH, LAYOUT, RAMP, RAMP_EXIT, ROLLOVERS,
     SLINGS, SPINNER, TABLES, TARGETS, Table as GoldenHour,
 )
 from dataclasses import dataclass
@@ -238,6 +238,30 @@ class PinballRules(unittest.TestCase):
         table.vx, table.vy = -12 * nx, -12 * ny
         table.step()
         self.assertEqual(table.score, 50)         # the second hit inside the cooldown does not fire
+
+    def test_ball_physics_details(self):
+        # a faster ball is slowed more per tick, and a glancing hit on rubber spins it
+        slow, fast = placed(5, 4, 0, 5), placed(5, 4, 0, 30)
+        slow.step(); fast.step()
+        self.assertGreater(abs(fast.vy - 30), abs(slow.vy - 5) - .5)
+        table = placed(BALL + .02, 4, -6, -9)     # skims the left wall
+        table.step()
+        self.assertNotEqual(table.english, 0)
+        # english curves the path; it is zeroed when the ball drains
+        table = placed(5, 4, 0, 10)
+        table.english = 2
+        table.step()
+        self.assertNotEqual(table.vx, 0)
+        # a held flipper gives a dead catch; a swinging one throws the ball harder
+        fx, fy, rest, up = FLIPPERS[0]
+        reach = LAYOUT["length"] / 2
+        ux, uy = math.sin(up), -math.cos(up)           # the bat's upward normal
+        gap = BALL + FLIP_RADIUS - .02
+        dead = placed(fx + reach * math.cos(up) + ux * gap, fy + reach * math.sin(up) + uy * gap, -8 * ux, -8 * uy)
+        dead.angles[0] = up
+        dead.held = 1
+        dead.step()
+        self.assertLess(math.hypot(dead.vx, dead.vy), 4)
 
     def test_lanes_spinner_bank_and_ramp(self):
         table = placed(*ROLLOVERS[0])

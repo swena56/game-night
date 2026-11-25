@@ -9,12 +9,12 @@ Rough effort: S = a few lines, M = an engine or renderer change, L = new compone
 2. [x] Ball speed cap so the ball cannot tunnel through parts.
 3. [x] Flipper swept collision so fast flips do not skip the ball.
 4. [x] Flipper tip transfers more speed than the pivot (surface velocity at the contact point).
-5. [ ] S: Flippers return slower than they rise (rubber return spring); currently 20 vs 31 rad/s, tune per table.
-6. [ ] M: Flipper coil "hold" weakness: a held flipper is lower power, so a flipper catching a hard shot gives slightly.
-7. [ ] M: Live catch vs dead catch: flipper raised just before contact gives a dead bounce, raised after gives a live one.
-8. [ ] M: Ball cradle: ball rolling slowly up a held flipper settles at the tip, with rolling friction.
-9. [ ] M: Rolling friction that depends on speed instead of the flat 0.999 damping.
-10. [ ] M: Ball spin (english): a spinning ball curves off rubber and kicks sideways off flipper tips.
+5. [x] S: Flippers return slower than they rise (rubber return spring); currently 20 vs 31 rad/s, tune per table.
+6. [x] M: Flipper coil "hold" weakness: a held flipper is lower power, so a flipper catching a hard shot gives slightly.
+7. [x] M: Live catch vs dead catch: flipper raised just before contact gives a dead bounce, raised after gives a live one.
+8. [x] M: Ball cradle: ball rolling slowly up a held flipper settles at the tip, with rolling friction.
+9. [x] M: Rolling friction that depends on speed instead of the flat 0.999 damping.
+10. [x] M: Ball spin (english): a spinning ball curves off rubber and kicks sideways off flipper tips.
 11. [ ] S: Different bounce per material: rubber post 0.6, metal guide 0.85, plastic ramp, wood 0.3.
 12. [ ] M: Dead bounces: a ball hit by a flipper and a slingshot in the same tick loses some energy.
 13. [ ] M: Ball can be trapped (held) on a flipper with a still-ball timer for the nudge/recovery system.
