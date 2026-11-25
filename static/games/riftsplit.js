@@ -29,10 +29,15 @@
     neon: { name: 'Neon', floor: '#15245a', grid: '#3d62c4', flatGrid: '#3358b8', bgA: '#24367d', bgM: '#121c52', bgB: '#070b22', frame: 0x1a2650, half: ['#3cf5e0', '#ffd166'], glow: '#3cf5e0' },
     ember: { name: 'Ember', floor: '#3a1a14', grid: '#c2603d', flatGrid: '#a2502f', bgA: '#6a2a1c', bgM: '#3a150f', bgB: '#1a0806', frame: 0x3a1a14, half: ['#ffb347', '#ff5e7e'], glow: '#ff8a4d' },
     forest: { name: 'Forest', floor: '#123a2a', grid: '#3da36a', flatGrid: '#2f8a58', bgA: '#1d6046', bgM: '#0e3224', bgB: '#05140d', frame: 0x123a2a, half: ['#9dff7a', '#fff27a'], glow: '#6dff9a' },
+    ocean: { name: 'Ocean', floor: '#0f3350', grid: '#3d9ac4', flatGrid: '#3086b0', bgA: '#1a5a7d', bgM: '#0d3048', bgB: '#04121d', frame: 0x0f3350, half: ['#7df0ff', '#ffe08a'], glow: '#4dd2ff' },
+    violet: { name: 'Violet', floor: '#2a1650', grid: '#9a62d8', flatGrid: '#8450c0', bgA: '#4a2a86', bgM: '#26134a', bgB: '#0e0620', frame: 0x2a1650, half: ['#d9a0ff', '#ffd166'], glow: '#b86dff' },
     mono: { name: 'Mono', floor: '#262a33', grid: '#7b8394', flatGrid: '#677086', bgA: '#454b5a', bgM: '#252932', bgB: '#0c0e12', frame: 0x262a33, half: ['#ffffff', '#9ad1ff'], glow: '#c8d4ff' },
   };
-  const THEME_KEYS = Object.keys(THEMES);
-  const THM = () => THEMES[g?.theme] || THEMES.neon;
+  const THEME_KEYS = ['auto', ...Object.keys(THEMES)];   // Auto: the field changes colour every few levels
+  const TIERS = ['neon', 'ocean', 'forest', 'ember', 'violet', 'mono'], TIER_LEN = 4;   // levels 1-4 neon, 5-8 ocean, ...
+  const tierTheme = (lv) => TIERS[Math.floor(Math.max(0, (lv || 1) - 1) / TIER_LEN) % TIERS.length];
+  const effTheme = () => (g?.theme === 'auto' ? tierTheme(g.lv) : g?.theme);
+  const THM = () => THEMES[effTheme()] || THEMES.neon;
   let HALF = THEMES.neon.half;
   const RED = '#ff4d4d';                  // orbs are red on one hemisphere and white on the other
   let g;
@@ -169,8 +174,8 @@
         c.setTransform(k, 0, 0, k, 0, 0);
         if (shake > 0.02) { c.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake); shake *= Math.exp(-dt * 7); } else shake = 0;
         // the backdrop and grid never change: paint them once per size and blit
-        if (!bgLayer || bgLayer.width !== canvas.width || bgLayer.height !== canvas.height || bgTheme !== g.theme) {
-          bgTheme = g.theme;
+        if (!bgLayer || bgLayer.width !== canvas.width || bgLayer.height !== canvas.height || bgTheme !== effTheme()) {
+          bgTheme = effTheme();
           bgLayer = document.createElement('canvas'); bgLayer.width = canvas.width; bgLayer.height = canvas.height;
           const b = bgLayer.getContext('2d'); b.setTransform(k, 0, 0, k, 0, 0);
           const bg = b.createRadialGradient(g.W / 2, g.H / 2, 2, g.W / 2, g.H / 2, g.W * 0.65);
@@ -709,6 +714,7 @@
     if (s === g.boards[g.me]) {
       if (g.lastLv != null && s.lv > g.lastLv && s.st === 'play') g.banner('LEVEL ' + s.lv + ' · ' + s.b.length + (s.b.length === 1 ? ' ORB' : ' ORBS') + ' · SEAL ' + Math.round((s.goal || 0.75) * 100) + '%', 'rs-banner-lv');
       g.lastLv = s.lv;
+      if (g.syncTheme?.(s.lv)) g.banner('NEW WORLD · ' + THM().name.toUpperCase(), 'rs-banner-lv');
       if (g.solo && g.best > 0 && !g.beat && s.score > g.best && g.startBest > 0) { g.beat = true; g.banner('NEW BEST!', 'rs-banner-lv'); }
     }
     if (s === g.boards[g.me] && g.lastLives != null && s.lives < g.lastLives) {
@@ -847,10 +853,10 @@
     // the sealed-percent readout and bar glide to the new value instead of stepping
     s.shown = (s.shown ?? s.pct) + (s.pct - (s.shown ?? s.pct)) * (1 - Math.exp(-Math.min(60, now - (g.pctAt ?? now)) / 160));
     g.pctAt = now;
-    // the bar filling has a sound: soft ticks climbing in pitch while it grows, a bright chime on crossing the goal
+    // a bright chime on crossing the goal (no ticks while the bar fills)
     if (s === g.boards[g.me]) {
       if (s.shown < (g.tickAt ?? 0) - 0.02) g.tickAt = s.shown;   // a new level restarts the bar
-      if (s.shown - (g.tickAt ?? 0) > 0.003 && now - (g.tickT ?? 0) > 45) { g.tickAt = s.shown; g.tickT = now; if (window.Snd) { const f = 420 + s.shown * 1100; Snd.play((t, K) => { const d = K.at({ send: 0.2 }); K.mode(d, t, f, 0.16, 0.07, { type: 'triangle' }); K.mode(d, t, f * 2, 0.05, 0.05); K.burst(d, t, { type: 'highpass', f: 5000, vol: 0.03, tau: 0.01 }); }); } }
+      if (s.shown - (g.tickAt ?? 0) > 0.003) g.tickAt = s.shown;   // (the climbing tick sound was removed: it was annoying)
       const over = s.shown >= (s.goal || 0.75);
       if (over && g.goalSeen === false && window.Snd) Snd.play((t, K) => { const d = K.at({ send: 0.6 }); [0, 7, 12].forEach((n, i) => K.mode(d, t + i * 0.07, NOTE(n + 24), 0.1, 0.3)); });
       g.goalSeen = over;
@@ -935,20 +941,27 @@
     const pref = (k, d) => { try { return localStorage.getItem('riftsplit.' + k) ?? d; } catch { return d; } };
     const setPref = (k, v) => { try { localStorage.setItem('riftsplit.' + k, v); } catch { /* private mode */ } };
     g.nofx = pref('nofx', '0') === '1';
-    g.theme = THEMES[pref('theme', 'neon')] ? pref('theme', 'neon') : 'neon';
+    g.theme = THEME_KEYS.includes(pref('theme', 'auto')) ? pref('theme', 'auto') : 'auto';
     const applyLook = () => {
-      HALF = THEMES[g.theme].half;
-      stage.style.setProperty('--rs-glow', THEMES[g.theme].glow);
+      HALF = THM().half;
+      stage.style.setProperty('--rs-glow', THM().glow);
       stage.classList.toggle('rs-sharp', g.nofx);
       g.find('fxbtn').setAttribute('aria-pressed', String(!g.nofx));
       g.find('fxbtn').classList.toggle('rs-off', g.nofx);
     };
     applyLook();
+    g.syncTheme = (lv) => {   // Auto theme: a new colour world every TIER_LEN levels
+      const was = effTheme(); g.lv = lv;
+      if (g.theme !== 'auto' || effTheme() === was) return false;
+      applyLook();
+      if (g.three) { g.three.dispose(); g.three = null; g.rebuild?.(); }
+      return true;
+    };
     on(g.find('fxbtn'), 'click', () => { g.nofx = !g.nofx; setPref('nofx', g.nofx ? '1' : '0'); applyLook(); g.msg(g.nofx ? 'Sharp mode: glow and blur off' : 'Glow effects on'); });
     on(g.find('themebtn'), 'click', () => {
       g.theme = THEME_KEYS[(THEME_KEYS.indexOf(g.theme) + 1) % THEME_KEYS.length]; setPref('theme', g.theme); applyLook();
       if (g.three) { g.three.dispose(); g.three = null; g.rebuild?.(); }   // the 3D floor and frame are built from the theme
-      g.msg('Theme: ' + THEMES[g.theme].name);
+      g.msg('Theme: ' + (g.theme === 'auto' ? 'Auto (changes every ' + TIER_LEN + ' levels)' : THEMES[g.theme].name));
     });
     const BRIGHT = [1, 1.1, 1.3, 1.6, 2];
     const loadB = () => { try { const v = Number(localStorage.getItem('riftsplit.bright')); return BRIGHT.includes(v) ? v : 1.1; } catch { return 1.1; } };
@@ -1041,7 +1054,7 @@
       if (!g || !d) return;
       g.ctx = ctx;
       if (g.run !== d.rift) {
-        g.run = d.rift; g.tick = -1; g.ghostCache = null; g.lastScore = null; g.lastLives = null; g.lastLv = null; g.beat = false; g.startBest = g.best; g.W = d.layout.w; g.H = d.layout.h; g.solo = d.solo; g.boards = {};
+        g.run = d.rift; g.tick = -1; g.syncTheme?.(1); g.ghostCache = null; g.lastScore = null; g.lastLives = null; g.lastLv = null; g.beat = false; g.startBest = g.best; g.W = d.layout.w; g.H = d.layout.h; g.solo = d.solo; g.boards = {};
         g.order = Object.keys(d.boards);
       }
       g.me = d.me;
