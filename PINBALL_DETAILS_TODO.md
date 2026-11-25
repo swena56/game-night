@@ -53,7 +53,7 @@ Rough effort: S = a few lines, M = an engine or renderer change, L = new compone
 42. [ ] M: Spot target (lights a lane or award when hit).
 43. [x] S: Lane change: flippers rotate the lit lanes left/right (every pinball machine has this).
 44. [ ] S: Inlane/outlane lights (special on outlane, return lane value on inlanes).
-45. [ ] M: Outlane special: lit outlane awards a ball save or extra ball.
+45. [x] M: Outlane special: lit outlane awards a ball save or extra ball.
 46. [ ] S: Rollover switch triggers only when the ball crosses fully (not on grazes).
 47. [ ] S: Rollover lights stay off when the lane cannot be reached (tilt).
 48. [ ] M: Roll-under switch (a ball that rolls under a gate counts once).
@@ -88,7 +88,7 @@ Rough effort: S = a few lines, M = an engine or renderer change, L = new compone
 73. [x] Nudge and tilt (with a plumb-bob warning count).
 74. [ ] S: Plunger spring sound and a rattle when the ball rolls into the shooter lane.
 75. [ ] S: Auto-plunger: a coil launches the ball for a ball save and multiball.
-76. [ ] M: Ball search: if the ball is stuck, the machine fires all coils to free it (replace the "recovery" teleport).
+76. [x] M: Ball search: if the ball is stuck, the machine fires all coils to free it (replace the "recovery" teleport).
 77. [ ] S: Trough shows balls remaining and a ball locked.
 78. [ ] S: Ball counter, "BALL 2" display and "PLAYER 1 UP" lamp.
 79. [ ] S: Slam tilt: a hard slam ends the game (separate from the plumb bob).

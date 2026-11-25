@@ -263,6 +263,26 @@ class PinballRules(unittest.TestCase):
         dead.step()
         self.assertLess(math.hypot(dead.vx, dead.vy), 4)
 
+    def test_right_outlane_special_and_ball_search(self):
+        from games.pinball import SPECIAL
+        table = placed(SPECIAL[0] + .4, SPECIAL[1] + .2, 0, 3)
+        table.step()
+        self.assertEqual(table.score, 0)           # unlit at 1x
+        table = placed(SPECIAL[0] + .4, SPECIAL[1] + .2, 0, 3)
+        table.mult = 2
+        table.step()
+        self.assertEqual((table.event, table.score, table.save_ticks > 0), ("special", 10000, True))
+        table.y, table.vy = SPECIAL[1] + .2, 3
+        table.step()
+        self.assertEqual(table.score, 10000)       # once per ball
+        table = placed(3, 4, 0, 0)
+        events = set()
+        for _ in range(table.rules.search_ticks + 5):
+            table.x, table.y, table.vx, table.vy = 3, 4, 0, 0
+            table.step()
+            events.add(table.event)
+        self.assertIn("search", events)
+
     def test_lanes_spinner_bank_and_ramp(self):
         table = placed(*ROLLOVERS[0])
         for _ in range(4):
@@ -390,7 +410,8 @@ class PinballRules(unittest.TestCase):
         for i in range(720):
             table.vx = table.vy = 0
             table.step()
-            self.assertEqual(table.event_id, int(i == 719))
+            # the ball search fires once at 360 ticks, then the recovery at 720
+            self.assertEqual(table.event_id, (i >= 359) + (i == 719))
         self.assertEqual((table.event, table.score, table.balls, table.vy), ("recovery", 0, 3, 4))
 
     def test_timeout_and_reset_do_not_release_plunger(self):

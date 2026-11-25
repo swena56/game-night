@@ -34,6 +34,7 @@ class Layout:
     outlane: tuple | None = None
     subway: tuple | None = None       # (x, y, radius) mouth; the ball travels under the playfield to subway_exit
     subway_exit: tuple | None = None  # (x, y, vx, vy): where the ball reappears and how it is fired
+    special: tuple | None = None      # (x, y): inner edge of the right outlane; lights while the multiplier is 2x or more
     posts: tuple = ()                 # (x, y, radius) passive rubber posts: they bounce the ball, no score
     magnet: tuple | None = None       # (x, y, pull radius): grabs and holds the ball while energised
     saucer: tuple | None = None   # (x, y, radius) scoop: captures a slow ball, holds it, then kicks it back out
@@ -59,7 +60,7 @@ class Layout:
     def public(self):
         """The layout dict sent to the browser renderers."""
         return dict(rails=self.rails, gate=self.gate, slings=self.slings, bumps=self.bumps,
-                    targets=self.targets, lanes=self.lanes, spinner=self.spinner, ramp=self.ramp, saucer=self.saucer, posts=self.posts, magnet=self.magnet, subway=self.subway, subway_exit=self.subway_exit,
+                    targets=self.targets, lanes=self.lanes, spinner=self.spinner, ramp=self.ramp, saucer=self.saucer, posts=self.posts, special=self.special, magnet=self.magnet, subway=self.subway, subway_exit=self.subway_exit,
                     exit=self.ramp_exit, flips=self.flippers, length=self.flipper_length,
                     radius=self.ball, skill=self.skill_charge, width=self.width,
                     height=self.height, launch=self.launch, theme=self.theme)

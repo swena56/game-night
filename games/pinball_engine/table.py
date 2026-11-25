@@ -71,6 +71,7 @@ class Table:
     ramps: int = 0
     bonus: int = 0
     kickback: bool = True
+    special_used: bool = False
     combo: int = 0
     combo_ticks: int = 0
     last_shot: str = ""
@@ -301,6 +302,7 @@ class Table:
             self.mult = 1
             self.hold = False
         self.kickback = True
+        self.special_used = False
         self.mission = -1
         self.skill_lane = (self.skill_lane + 1) % max(1, len(self.layout.lanes))
         self.combo = self.combo_ticks = 0
@@ -408,6 +410,11 @@ class Table:
             if self.segment(rail, ball + 0.08) and not self.tilt:
                 self.bank |= 1 << i
                 self.signal(f"target{i}", rules.target)
+        if lay.special and self.special_lit() and not self.special_used and self.vy > 0 \
+                and lay.special[0] < self.x < lay.lane_x and self.y > lay.special[1]:
+            self.special_used = True
+            self.save_ticks = max(self.save_ticks, rules.special_save_ticks)
+            self.signal("special", rules.special_points)
         if lay.outlane and self.kickback and not self.tilt and self.vy > 0 \
                 and self.x < lay.outlane[0] and self.y > lay.outlane[1]:
             self.kickback = False
@@ -582,6 +589,9 @@ class Table:
         self.mechanisms(old_y)
         self.lane_and_drain()
 
+    def special_lit(self):
+        return bool(self.layout.special) and not self.tilt and self.mult >= 2
+
     def magnet_armed(self):
         return bool(self.layout.magnet) and not self.tilt and bool(self.jackpot_ticks or self.others)
 
@@ -727,9 +737,11 @@ class Table:
                 self.drain()
         elif math.hypot(self.x - self.still_origin[0], self.y - self.still_origin[1]) < lay.ball:
             self.still += 1
-            if self.still == 480 and self.y < lay.flipper_zone[0]:
+            if self.still == self.rules.search_ticks and self.y < lay.flipper_zone[0]:
+                # ball search: every coil fires at once, which jolts the ball loose
                 self.vx += 2.5 * (1 if self.x < lay.center[0] else -1)
                 self.vy -= 2
+                self.signal("search")
             if self.still >= 720:
                 self.x, self.y, self.vx, self.vy = *lay.center, 0, 4
                 self.still = 0
@@ -759,6 +771,7 @@ class Table:
                 {"jackpot": self.jackpots, "multiball": self.multiballs, "hurry": self.hurry_wins,
                  "mystery": self.mysteries, "extra": self.extras, "combo": self.best_combo,
                  "wizard": self.wizards, "skill_lane": self.skill_lane, "missions": self.missions_done,
+                 "special": int(self.special_lit() and not self.special_used),
                  "magnet": 2 if self.magnet_ticks else 1 if self.magnet_armed() and not self.magnet_cool else 0,
                  "mission": ([self.rules.missions[self.mission][0], self.mission_progress, self.rules.missions[self.mission][2],
                               math.ceil(self.mission_ticks / 240)] if self.mission >= 0 else None), "mode": self.mode, "clock": math.ceil(self.clock / 240)}]

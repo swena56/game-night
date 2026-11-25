@@ -9,9 +9,9 @@
     skill: 'Skill shot +5,000', spinner: 'Spinner +100', ramp: 'Ramp +6,000 · Jackpot lit', jackpot: 'Jackpot +12,000', save: 'Ball saved · Auto launch',
     tilt: 'TILT · scoring suspended', nudge: 'Table nudged', mult: 'Multiplier up!', kickback: 'Kickback!', extra: 'EXTRA BALL!', post: 'Centre post save!', hurry: 'HURRY-UP +15,000', super: 'SUPER JACKPOT +50,000',
     mystery_points: 'Mystery · +10,000', mystery_save: 'Mystery · Ball save 10s', mystery_mult: 'Mystery · Multiplier up!', mystery_hold: 'Mystery · Bonus held', lock: 'Ball locked', mission: 'Mission complete +5,000', wizard: 'WIZARD MODE · Four balls, jackpots lit!', multiball: 'MULTIBALL · Shoot the ramp for jackpots +5,000',
-    saucer: 'Saucer +1,000', subway: 'Subway +2,000', magnet: 'Magnet grab +1,500', drain: 'Ball drained', done: 'Run complete', recovery: 'Ball freed',
+    saucer: 'Saucer +1,000', subway: 'Subway +2,000', magnet: 'Magnet grab +1,500', special: 'SPECIAL · Ball save +5,000', search: 'Ball search', drain: 'Ball drained', done: 'Run complete', recovery: 'Ball freed',
   };
-  const sounds = { skill: 'pskill', ramp: 'pramp', jackpot: 'pjackpot', save: 'psave', tilt: 'wrong', nudge: 'thud', mult: 'cheer', kickback: 'pkick', extra: 'pjackpot', post: 'psave', hurry: 'pjackpot', super: 'pjackpot', mystery_points: 'cheer', mystery_save: 'psave', mystery_mult: 'cheer', mystery_hold: 'pskill', lock: 'psave', multiball: 'pjackpot', wizard: 'pjackpot', mission: 'cheer', saucer: 'ptarget', subway: 'pramp', magnet: 'pskill', bonus: 'cheer', spinner: 'pspin', drain: 'groan', done: 'groan' };
+  const sounds = { skill: 'pskill', ramp: 'pramp', jackpot: 'pjackpot', save: 'psave', tilt: 'wrong', nudge: 'thud', mult: 'cheer', kickback: 'pkick', extra: 'pjackpot', post: 'psave', hurry: 'pjackpot', super: 'pjackpot', mystery_points: 'cheer', mystery_save: 'psave', mystery_mult: 'cheer', mystery_hold: 'pskill', lock: 'psave', multiball: 'pjackpot', wizard: 'pjackpot', mission: 'cheer', saucer: 'ptarget', subway: 'pramp', magnet: 'pskill', special: 'psave', search: 'pkick', bonus: 'cheer', spinner: 'pspin', drain: 'groan', done: 'groan' };
   const prefixes = { bumper: 'Bumper +100', sling: 'Slingshot +50', lane: 'Rollover +500', target: 'Target +250' };
   const label = (event, row) => {
     if (event === 'bonus' && row) return `Ball bonus +${row[BONUS].toLocaleString()}`;
@@ -442,6 +442,11 @@
           disc(hx, hy, .13, palette.gold);
           disc(hx, hy, .045, '#17152f');
         }
+        if (geo.special) {
+          const sx = (geo.special[0] + geo.width - 1.2) / 2, sy = geo.special[1] + .5, lit = row[STATS]?.special;
+          disc(sx, sy, .26, '#252049');
+          disc(sx, sy, .2, flash === 'special' ? palette.ivory : lit ? palette.gold : '#38325c');
+        }
         if (geo.magnet) {
           const [mx, my, mr] = geo.magnet, mag = row[STATS]?.magnet || 0;
           if (mag) disc(mx, my, mr * (mag === 2 ? .8 : .5), mag === 2 ? '#59edd233' : '#59edd214');
@@ -674,6 +679,11 @@
       disc(hx, hy, .2, .5, .3, brass);
       disc(hx, hy, .07, .05, .58, dark);
       disc(hx, hy + len, .1, .5, .3, brass);
+    }
+    if (geo.special) {
+      const sx = (geo.special[0] + geo.width - 1.2) / 2, sy = geo.special[1] + .5;
+      disc(sx, sy, .27, .03, .04, brass);
+      disc(sx, sy, .2, .04, .08, lamp('special', '#38325c', row => row[STATS]?.special ? palette.gold : '#38325c'));
     }
     if (geo.magnet) {
       const [mx, my] = geo.magnet;
