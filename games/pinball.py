@@ -31,12 +31,14 @@ BUMPS = ((3.12, 5.65, 0.68), (6.62, 5.7, 0.68), (4.05, 7.64, 0.68))
 TARGETS = ((1.25, 6.6, 1.25, 7.3), (1.25, 7.48, 1.25, 8.18), (1.25, 8.36, 1.25, 9.06))
 ROLLOVERS = ((2.25, 3.5), (4.25, 3.5), (6.25, 3.5))
 SPINNER = (7.95, 7.4)
+# Scoop on the upper left: holds the ball briefly, then kicks it back toward the bumpers.
+SAUCER = (1.6, 4.7, 0.3)
 RAMP = (5.25, 6.02)
 RAMP_EXIT = (7.75, 8.6)
 GOLDEN_HOUR = Layout(
     rails=RAILS, gate=GATE, slings=SLINGS, bumps=BUMPS, targets=TARGETS, lanes=ROLLOVERS,
     spinner=SPINNER, ramp=RAMP, ramp_exit=RAMP_EXIT, flippers=FLIPPERS, launch=LAUNCH,
-    outlane=OUTLANE, width=WIDTH, height=HEIGHT, ball=BALL, flipper_length=LENGTH,
+    outlane=OUTLANE, saucer=SAUCER, width=WIDTH, height=HEIGHT, ball=BALL, flipper_length=LENGTH,
     flipper_radius=FLIP_RADIUS, skill_charge=SKILL_CHARGE)
 LAYOUT = GOLDEN_HOUR.public()
 
@@ -47,7 +49,7 @@ NEON_RAILS = RAILS[:-2] + ((2.3, 9.4, 3.05, 10.3), (7.7, 9.4, 6.95, 10.3))
 NEON_ARCADE = Layout(
     rails=NEON_RAILS, gate=GATE, slings=SLINGS, bumps=NEON_BUMPS, targets=TARGETS, lanes=ROLLOVERS,
     spinner=SPINNER, ramp=RAMP, ramp_exit=RAMP_EXIT, flippers=FLIPPERS, launch=LAUNCH,
-    outlane=OUTLANE, width=WIDTH, height=HEIGHT, ball=BALL, flipper_length=LENGTH,
+    outlane=OUTLANE, saucer=SAUCER, width=WIDTH, height=HEIGHT, ball=BALL, flipper_length=LENGTH,
     flipper_radius=FLIP_RADIUS, skill_charge=SKILL_CHARGE, theme="neon")
 
 

@@ -9,9 +9,9 @@
     skill: 'Skill shot +5,000', spinner: 'Spinner +100', ramp: 'Ramp +6,000 · Jackpot lit', jackpot: 'Jackpot +12,000', save: 'Ball saved · Auto launch',
     tilt: 'TILT · scoring suspended', nudge: 'Table nudged', mult: 'Multiplier up!', kickback: 'Kickback!', extra: 'EXTRA BALL!', post: 'Centre post save!', hurry: 'HURRY-UP +15,000', super: 'SUPER JACKPOT +50,000',
     mystery_points: 'Mystery · +10,000', mystery_save: 'Mystery · Ball save 10s', mystery_mult: 'Mystery · Multiplier up!', mystery_hold: 'Mystery · Bonus held', lock: 'Ball locked', mission: 'Mission complete +5,000', wizard: 'WIZARD MODE · Four balls, jackpots lit!', multiball: 'MULTIBALL · Shoot the ramp for jackpots +5,000',
-    drain: 'Ball drained', done: 'Run complete', recovery: 'Ball freed',
+    saucer: 'Saucer +1,000', drain: 'Ball drained', done: 'Run complete', recovery: 'Ball freed',
   };
-  const sounds = { skill: 'pskill', ramp: 'pramp', jackpot: 'pjackpot', save: 'psave', tilt: 'wrong', nudge: 'thud', mult: 'cheer', kickback: 'pkick', extra: 'pjackpot', post: 'psave', hurry: 'pjackpot', super: 'pjackpot', mystery_points: 'cheer', mystery_save: 'psave', mystery_mult: 'cheer', mystery_hold: 'pskill', lock: 'psave', multiball: 'pjackpot', wizard: 'pjackpot', mission: 'cheer', bonus: 'cheer', spinner: 'pspin', drain: 'groan', done: 'groan' };
+  const sounds = { skill: 'pskill', ramp: 'pramp', jackpot: 'pjackpot', save: 'psave', tilt: 'wrong', nudge: 'thud', mult: 'cheer', kickback: 'pkick', extra: 'pjackpot', post: 'psave', hurry: 'pjackpot', super: 'pjackpot', mystery_points: 'cheer', mystery_save: 'psave', mystery_mult: 'cheer', mystery_hold: 'pskill', lock: 'psave', multiball: 'pjackpot', wizard: 'pjackpot', mission: 'cheer', saucer: 'ptarget', bonus: 'cheer', spinner: 'pspin', drain: 'groan', done: 'groan' };
   const prefixes = { bumper: 'Bumper +100', sling: 'Slingshot +50', lane: 'Rollover +500', target: 'Target +250' };
   const label = (event, row) => {
     if (event === 'bonus' && row) return `Ball bonus +${row[BONUS].toLocaleString()}`;
@@ -478,6 +478,11 @@
         line(track, .09, rampHit || lit ? glow : palette.steel);
         if (rampHit || lit) disc(...geo.ramp, .35, glow + '55');
         disc(...geo.ramp, .21, rampHit || lit ? glow : '#38325c');
+        if (geo.saucer) {
+          const [ux, uy, ur] = geo.saucer;
+          disc(ux, uy, ur + .07, '#252049');
+          disc(ux, uy, ur, row[EVENT] === 'saucer' ? '#fff0ca88' : '#0c0a1c');
+        }
         const [sx, sy] = geo.spinner;
         disc(sx, sy, .18, flash === 'spinner' ? '#fff0ca88' : '#c1d2e522');
         rail([sx - .47, sy, sx + .47, sy], flash === 'spinner' ? palette.ivory : palette.steel,
@@ -685,6 +690,11 @@
       mesh(tube, rampRail, 0, 0, 0);
     }
     disc(...geo.ramp, .26, .06, .04, lamp('ramp', '#38325c', row => rampLit(row) ? rampColor(row) : '#38325c'));
+    if (geo.saucer) {
+      const [ux, uy, ur] = geo.saucer;
+      disc(ux, uy, ur + .07, .05, .03, brass);
+      disc(ux, uy, ur, .06, .06, material('#0c0a1c', .6, .2));
+    }
     const [sx, sy] = geo.spinner;
     disc(sx, sy, .2, .04, .08, material('#c1d2e5', .2, .3));
     for (const dx of [-.57, .57]) disc(sx + dx, sy, .094, .57, .28, brass);

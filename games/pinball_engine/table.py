@@ -18,7 +18,7 @@ SHOT_OF = dict(lane="lane", skill="lane", target="target", spinner="spinner", ra
 SPEED_CAP = 42
 # Per-ball state: the table swaps these between the main ball and each extra multiball ball.
 BALL_STATE = ("x", "y", "vx", "vy", "height", "ramp_ticks", "rollovers", "skill", "smooth_launch",
-              "still", "still_origin", "jackpot_shot")
+              "still", "still_origin", "jackpot_shot", "saucer_ticks")
 
 
 @dataclass
@@ -50,6 +50,7 @@ class Table:
     vy: float = 0
     height: float = 0
     ramp_ticks: int = 0
+    saucer_ticks: int = 0
     spin: float = 0
     spin_left: float = 0
     still: int = 0
@@ -400,6 +401,13 @@ class Table:
             sx, sy = lay.spinner
             if abs(self.x - sx) < 0.55 and (old_y < sy <= self.y or self.y <= sy < old_y):
                 self.spin_left += max(1, min(5, int(abs(self.vy) / 5)))
+        if lay.saucer and not self.saucer_ticks:
+            cx, cy, radius = lay.saucer
+            if math.hypot(self.x - cx, self.y - cy) < radius * 0.7 and math.hypot(self.vx, self.vy) < 22:
+                self.saucer_ticks = rules.saucer_ticks
+                self.x, self.y, self.vx, self.vy = cx, cy, 0, 0
+                if not self.tilt:
+                    self.signal("saucer", rules.saucer)
         if lay.ramp:
             rx, ry = lay.ramp
             jackpot = bool(self.jackpot_ticks or self.others)
@@ -480,12 +488,15 @@ class Table:
 
     def free_ball(self, x, y, vx, vy):
         return dict(x=x, y=y, vx=vx, vy=vy, height=0, ramp_ticks=0, rollovers=0, skill=False,
-                    smooth_launch=False, still=0, still_origin=(x, y), jackpot_shot=False)
+                    smooth_launch=False, still=0, still_origin=(x, y), jackpot_shot=False, saucer_ticks=0)
 
     def run_ball(self, previous):
         lay = self.layout
         if self.ramp_ticks:
             self.ride_ramp()
+            return
+        if self.saucer_ticks:
+            self.hold_in_saucer()
             return
         old_y = self.y
         self.vx *= 0.999
@@ -506,6 +517,20 @@ class Table:
                     self.flipper_contact(i, previous[i], sample / samples)
         self.mechanisms(old_y)
         self.lane_and_drain()
+
+    def hold_in_saucer(self):
+        """The ball rests in the dish, then the kicker fires it back into play."""
+        cx, cy, radius = self.layout.saucer
+        self.saucer_ticks -= 1
+        if not self.saucer_ticks:
+            speed = 7 if self.tilt else 9 + 3 * self.rng.random()
+            angle = math.radians(35 + 20 * self.rng.random())     # down and toward the table centre
+            side = 1 if cx < self.layout.center[0] else -1
+            dx, dy = side * math.cos(angle), math.sin(angle)
+            self.x, self.y = cx + dx * (radius + self.layout.ball + 0.05), cy + dy * (radius + self.layout.ball + 0.05)
+            self.vx, self.vy = dx * speed, dy * speed
+            self.still = 0
+            self.still_origin = (self.x, self.y)
 
     def ride_ramp(self):
         lay, rules = self.layout, self.rules

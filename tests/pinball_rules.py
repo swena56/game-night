@@ -170,6 +170,21 @@ class PinballRules(unittest.TestCase):
         table.step()
         self.assertLess(table.vx, 0)
 
+    def test_saucer_holds_then_kicks_the_ball_out(self):
+        from games.pinball import SAUCER
+        x, y, radius = SAUCER
+        table = placed(x, y + .1, 0, -3)
+        table.step()
+        self.assertEqual((table.event, table.score), ("saucer", 1000))
+        for _ in range(table.rules.saucer_ticks - 2):
+            table.step()
+        self.assertEqual((table.x, table.y), (x, y))
+        for _ in range(3):
+            table.step()
+        self.assertGreater(math.hypot(table.x - x, table.y - y), radius)
+        self.assertGreater(table.vx, 0)
+        self.assertEqual(table.score, 1000)
+
     def test_lanes_spinner_bank_and_ramp(self):
         table = placed(*ROLLOVERS[0])
         for _ in range(4):
