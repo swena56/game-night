@@ -670,6 +670,7 @@
           <button type="button" data-control="-3" aria-label="Nudge right (E)">↦</button>
         </div>
         <ol class="pb-standings" aria-label="Scores" hidden></ol>
+        <div class="pb-run" hidden><span class="pb-caption">Run highlights</span><p></p></div>
         <div class="pb-top" hidden><span class="pb-caption">Top scores</span><ol></ol></div>
       </section>`;
     const root = arena.querySelector('.pb-cabinet');
@@ -852,6 +853,15 @@
         }));
       }
     }
+    const run = find('run');
+    run.hidden = !g.over || !g.me || !g.stats;
+    if (!run.hidden) {
+      const st = g.stats, plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+      const bits = [st.jackpot && plural(st.jackpot, 'jackpot'), st.multiball && plural(st.multiball, 'multiball'),
+        st.hurry && plural(st.hurry, 'hurry-up'), st.mystery && plural(st.mystery, 'mystery prize'),
+        st.extra && plural(st.extra, 'extra ball'), st.combo >= 2 && `best combo ×${st.combo}`].filter(Boolean);
+      setText(run.querySelector('p'), bits.length ? bits.join(' · ') : 'No jackpots this time - light the ramp next run!');
+    }
     const top = find('top');
     top.hidden = !g.solo || !g.over || !g.topScores?.length;
     if (!top.hidden) {
@@ -938,6 +948,16 @@
     if (prior && viewer === g.me && !g.ctx.readOnly && row[NUDGES] === 3 && prior[NUDGES] < 3) g.ctx.sfx('alarm');
     if (prior && prior[EVENT_ID] !== row[EVENT_ID]) {
       g.flashAt = performance.now() + 780;
+      if (viewer === g.me) {
+        const stats = g.stats ||= { jackpot: 0, multiball: 0, extra: 0, mystery: 0, combo: 0, hurry: 0 };
+        const event = row[EVENT];
+        if (event === 'jackpot' || event === 'super') stats.jackpot++;
+        else if (event === 'multiball') stats.multiball++;
+        else if (event === 'extra') stats.extra++;
+        else if (event === 'hurry') stats.hurry++;
+        else if (event?.startsWith('mystery_')) stats.mystery++;
+        stats.combo = Math.max(stats.combo, row[COMBO]);
+      }
       popup(g, row);
       if (viewer === g.me && !g.ctx.readOnly) g.ctx.sfx(sound(row[EVENT]), soundArg(row[EVENT]));
     }

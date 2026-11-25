@@ -226,6 +226,8 @@
   75% { transform: translateX(var(--shake, 3px)); }
 }
 
+.pb-run { text-align: center; margin: .3rem 0; }
+.pb-run p { margin: .15rem 0 0; font: 600 .8rem system-ui, sans-serif; color: var(--pb-ivory); }
 .pb-top { text-align: center; }
 .pb-top ol { margin: .2rem 0 0; padding: 0; list-style: none; font: 700 .8rem ui-monospace, monospace; color: var(--pb-ivory); }
 .pb-top li:first-child { color: var(--pb-gold); }
