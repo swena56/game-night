@@ -233,7 +233,7 @@
     };
     const rail = ([ax, ay, bx, by], color, width) => line([[ax, ay], [bx, by]], width, color);
     return {
-      draw(row, ball, flash, trail = []) {
+      draw(row, ball, flash, trail = [], gate = 0) {
         const ratio = GL3.level() === 'low' ? 1 : Math.min(2, window.devicePixelRatio || 1);
         const width = Math.round(stage.clientWidth * ratio);
         const height = Math.round(stage.clientHeight * ratio);
@@ -253,8 +253,15 @@
           rail(r, i >= 9 ? guideColors[i - 9] : palette.steel, .14);
         });
         if (geo.gate) {
-          rail(geo.gate, '#17152f', .22);
-          rail(geo.gate, palette.gold, .08);
+          const [hx, hy, , ey] = geo.gate, a = 1.25 * gate, len = ey - hy;
+          const tip = [hx + len * Math.sin(a), hy + len * Math.cos(a)];
+          rail([hx, hy, ...tip], '#17152f', .26);
+          rail([hx, hy, ...tip], palette.steel, .13);
+          rail([hx, hy, ...tip], '#ffffff55', .035);
+          disc(...tip, .08, palette.gold);
+          disc(hx, hy, .19, '#17152f');
+          disc(hx, hy, .13, palette.gold);
+          disc(hx, hy, .045, '#17152f');
         }
         geo.slings.forEach((r, i) => {
           rail(r, '#252049', .34);
@@ -383,7 +390,17 @@
       const trim = i >= 9 ? material(guideColors[i - 9], .35, .34) : chrome;
       rail(r, .18, .35, .15, trim);
     });
-    if (geo.gate) rail(geo.gate, .14, .3, .15, brass);
+    let gateFlap;
+    if (geo.gate) {
+      const [hx, hy, , ey] = geo.gate, len = ey - hy;
+      gateFlap = new T.Group();
+      gateFlap.position.set(hx, .3, hy);
+      gateFlap.add(box(len, .1, .3, chrome, len / 2, 0, 0), box(.2, .16, .08, brass, len - .1, 0, .19));
+      scene.add(gateFlap);
+      disc(hx, hy, .2, .5, .3, brass);
+      disc(hx, hy, .07, .05, .58, dark);
+      disc(hx, hy + len, .1, .5, .3, brass);
+    }
     geo.slings.forEach((r, i) => {
       rail(r, .5, .2, .17, dark);
       rail(r, .28, .15, .33, lamp('sling' + i, palette.red));
@@ -441,7 +458,7 @@
     stage.prepend(canvas);
     let width = 0, height = 0;
     return {
-      draw(row, ball, flash, trail = []) {
+      draw(row, ball, flash, trail = [], gate = 0) {
         if (!stage.clientWidth || !stage.clientHeight) return;
         if (width !== stage.clientWidth || height !== stage.clientHeight) {
           width = stage.clientWidth;
@@ -463,6 +480,7 @@
             dot.material.opacity = .08 + .25 * (i + 1) / dots.length;
           }
         });
+        if (gateFlap) gateFlap.rotation.y = -(Math.PI / 2 - 1.25 * gate);
         sphere.visible = row[BALLS] > 0;
         sphere.position.set(ball[0], geo.radius + ball[2], Math.min(17.25, ball[1]));
         const bumperHit = flash?.startsWith('bumper');
@@ -793,7 +811,11 @@
       if (g.trail.length > 8) g.trail.shift();
       g.trailAt = now + 24;
     }
-    (g.three || g.flat)?.draw(row, g.ball, flash, g.trail);
+    // The gate flap swings open for a ball rising through the shooter lane, then drops shut.
+    const rising = !row[STAGED] && g.ball[0] > 8.9 && g.ball[1] < 5;
+    g.gate = (g.gate || 0) + ((rising ? 1 : 0) - (g.gate || 0)) * (1 - Math.exp(-Math.min(60, now - (g.gateAt ?? now)) / (rising ? 40 : 90)));
+    g.gateAt = now;
+    (g.three || g.flat)?.draw(row, g.ball, flash, g.trail, g.gate);
   }
 
   function initRenderer(g, geo) {
