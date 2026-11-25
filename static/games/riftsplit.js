@@ -268,8 +268,8 @@
       }
       return new T.CanvasTexture(c);
     })() }), g.W * g.H);   // unlit: colour is exactly what is set per cell
+    blocks.setColorAt(0, new T.Color(0xffffff));   // allocates the per-cell colour buffer; this three.js sizes it from .count, so it must run before count is zeroed
     blocks.count = 0; scene.add(blocks);
-    blocks.setColorAt(0, new T.Color(0xffffff));
     const rimCol = new T.Color(), pending = [];   // pending: seal sparks waiting for the ripple to reach their cell
     const born = new Float32Array(g.W * g.H);
     let lastGrid = '0'.repeat(g.W * g.H), animUntil = 0;
