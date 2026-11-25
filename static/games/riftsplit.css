@@ -35,7 +35,8 @@
 .rs-stage.rs-slowed::after { opacity: 1; background: radial-gradient(ellipse at center, #5ec8ff00 45%, #3a8cff55 100%), #4fb4ff14; }
 .rs-stage.rs-shielded::after { opacity: 1; box-shadow: inset 0 0 0 2px #59ff9a99, inset 0 0 18px #59ff9a55; }
 .rs-canvas { display: block; width: 100%; height: 100%; filter: brightness(var(--rs-bright, 1.3)) saturate(1.1); }
-.rs-bright { min-height: 40px; min-width: 40px; border-radius: 10px; border: 1px solid #2a3f84; background: #0a1030; color: #ffd166; font-size: 1.1rem; cursor: pointer; }
+.rs-view, .rs-bright { min-height: 40px; min-width: 40px; border-radius: 10px; border: 1px solid #2a3f84; background: #0a1030; color: #ffd166; font-size: 1.1rem; cursor: pointer; }
+.rs-view[hidden] { display: none; }
 .rs-msg { position: absolute; left: 0; right: 0; top: 10px; text-align: center; font-weight: 700; text-shadow: 0 2px 8px #000; opacity: 0; transition: opacity .2s; pointer-events: none; }
 .rs-msg.on { opacity: 1; }
 .rs-pop { position: absolute; left: 50%; top: 42%; transform: translateX(-50%); font-size: 1.6rem; font-weight: 800; color: #fff; text-shadow: 0 0 10px #3cf5e0, 0 2px 6px #000; pointer-events: none; animation: rsPop 1.1s ease-out forwards; }

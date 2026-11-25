@@ -339,16 +339,16 @@
     const sphere = new T.SphereGeometry(0.34, 20, 14);
     let lastNow = 0;
     const ray = new T.Raycaster(), plane = new T.Plane(new T.Vector3(0, 0, 1), 0), hit = new T.Vector3();
-    let w = 0, h = 0, lastDpr = 0;
+    let w = 0, h = 0, lastDpr = 0, lastTilt = null;
     const camBase = new T.Vector3();
 
     function resize() {
       const cw = stage.clientWidth, ch = stage.clientHeight, dpr = devicePixelRatio || 1;
-      if (!cw || !ch || (cw === w && ch === h && dpr === lastDpr)) return;   // zooming changes the pixel ratio even when the CSS size holds
-      w = cw; h = ch; lastDpr = dpr; renderer.setSize(w, h, false);
+      if (!cw || !ch || (cw === w && ch === h && dpr === lastDpr && g.tilt === lastTilt)) return;   // zooming changes the pixel ratio even when the CSS size holds
+      w = cw; h = ch; lastDpr = dpr; lastTilt = g.tilt; renderer.setSize(w, h, false);
       cam.aspect = w / h;
       const need = Math.max((g.H / 2 + 1.2) / Math.tan(cam.fov * Math.PI / 360), (g.W / 2 + 1.2) / (Math.tan(cam.fov * Math.PI / 360) * cam.aspect));
-      const tilt = cam.aspect > g.W / g.H ? 0 : 0.22;   // a very wide stage has no spare height for the tilt
+      const tilt = g.tilt && cam.aspect <= g.W / g.H ? 0.22 : 0;   // straight down by default; a very wide stage has no spare height for the tilt
       cam.position.set(0, -need * tilt, need * (tilt ? 0.97 : 1)); cam.lookAt(0, 0, 0); cam.updateProjectionMatrix();
       camBase.copy(cam.position);
     }
@@ -565,6 +565,7 @@
     const s = mine();
     const r = g.three || g.flat;
     if (!s || !r) return;
+    g.find('view').hidden = !g.three;   // the flat view has no camera to tilt
     g.stage.classList.toggle('rs-slowed', s.slow > 0);
     g.stage.classList.toggle('rs-shielded', !!s.sh);
     const k = 1 - Math.exp(-Math.min(60, now - (g.drawn ?? now)) / 38);
@@ -594,7 +595,7 @@
         </div>
         <div class="rs-bar" role="meter" aria-label="Field sealed" aria-valuemin="0" aria-valuemax="100"><div class="rs-fill"></div><div class="rs-goal" title="75% to clear"></div><span class="rs-pct">0%</span><span class="rs-slow" hidden></span></div>
         <div class="rs-stage" aria-label="Rift Split field"><span class="rs-msg" role="status"></span></div>
-        <div class="rs-controls"><button type="button" class="rs-bright" aria-label="Brightness" title="Brightness">☀</button><div class="rs-dirs" role="group" aria-label="Wall direction"><button type="button" class="rs-dir" data-v="0" aria-pressed="true"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Horizontal</span></button><button type="button" class="rs-dir rs-v" data-v="1" aria-pressed="false"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Vertical</span></button></div><span class="rs-tip">Hold to preview, release to grow a wall · Space / right-click turns it · ⛶ for fullscreen</span></div>
+        <div class="rs-controls"><button type="button" class="rs-view" aria-label="Camera view" title="Camera view" hidden>⬓</button><button type="button" class="rs-bright" aria-label="Brightness" title="Brightness">☀</button><div class="rs-dirs" role="group" aria-label="Wall direction"><button type="button" class="rs-dir" data-v="0" aria-pressed="true"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Horizontal</span></button><button type="button" class="rs-dir rs-v" data-v="1" aria-pressed="false"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Vertical</span></button></div><span class="rs-tip">Hold to preview, release to grow a wall · Space / right-click turns it · ⛶ for fullscreen</span></div>
         <ol class="rs-standings" aria-label="Scores" hidden></ol>
       </section>`;
     const root = arena.querySelector('.rs-cabinet');
@@ -616,6 +617,12 @@
         clearTimeout(g.msgTimer); g.msgTimer = setTimeout(() => el.classList.remove('on'), 1600);
       },
     };
+    try { g.tilt = localStorage.getItem('riftsplit.tilt') === '1'; } catch { g.tilt = false; }   // straight down unless the player chose the tilted view
+    on(g.find('view'), 'click', () => {
+      g.tilt = !g.tilt;
+      try { localStorage.setItem('riftsplit.tilt', g.tilt ? '1' : '0'); } catch { /* private mode */ }
+      g.msg(g.tilt ? 'Tilted view' : 'Top-down view');
+    });
     const BRIGHT = [1, 1.3, 1.6, 2];
     const loadB = () => { try { const v = Number(localStorage.getItem('riftsplit.bright')); return BRIGHT.includes(v) ? v : 1.3; } catch { return 1.3; } };
     g.bright = loadB();
