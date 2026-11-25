@@ -205,7 +205,7 @@
               if (s.grid[i] !== '1') continue;
               const x = i % g.W, y = (i - x) / g.W;
               lc.fillStyle = s.color; lc.fillRect(x, y, 1, 1);
-              lc.fillStyle = open(i, x, y) ? '#ffffff55' : '#00000030'; lc.fillRect(x, y, 1, 1);
+              lc.fillStyle = open(i, x, y) ? '#ffffff26' : '#00000038'; lc.fillRect(x, y, 1, 1);
             }
           }
           c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.drawImage(cellLayer, 0, 0); c.restore();
@@ -218,7 +218,7 @@
             c.globalAlpha = e;
             c.fillStyle = s.color;
             c.fillRect(x + inset, y + inset, 1 - inset * 2, 1 - inset * 2);
-            c.fillStyle = open(i, x, y) ? '#ffffff55' : '#00000030';
+            c.fillStyle = open(i, x, y) ? '#ffffff26' : '#00000038';
             c.fillRect(x + inset, y + inset, 1 - inset * 2, 1 - inset * 2);
           }
 
@@ -275,9 +275,9 @@
             c.fillStyle = gl; c.fillRect(q[0] - 1, q[1] - 1, 2, 2);
           });
           if (!g.nofx) {
-            const gl = c.createRadialGradient(b[0], b[1], 0, b[0], b[1], 1.2);
-            gl.addColorStop(0, '#ffffffcc'); gl.addColorStop(0.35, RED + '55'); gl.addColorStop(1, RED + '00');
-            c.fillStyle = gl; c.fillRect(b[0] - 1.3, b[1] - 1.3, 2.6, 2.6);
+            const gl = c.createRadialGradient(b[0], b[1], 0, b[0], b[1], 0.95);
+            gl.addColorStop(0, '#ffffffcc'); gl.addColorStop(0.35, RED + '38'); gl.addColorStop(1, RED + '00');
+            c.fillStyle = gl; c.fillRect(b[0] - 1, b[1] - 1, 2, 2);
           }
           // two hemispheres, red and white, turning as the orb travels
           // it rolls: the turn follows the distance travelled, so a fast orb spins fast and a slowed one barely turns;
