@@ -73,11 +73,13 @@ class Pinball(Game):
     replayable = False
     settings_schema = {"table": ("Table", [("golden", "🌇 Golden Hour"), ("neon", "🌃 Neon Arcade")], "golden")}
     blurb = "Three balls on a colorful chrome-trimmed table. Bank shots off the bumpers, light the ramp, and chase a high score."
+    tip_lines = 2
     howto = [
-        "Pull down on the plunger shaft at the right side of the playfield and release to launch. You can also hold and release Space or Launch. Aim for the gold charge band.",
-        "Tap or click either half of the playfield to flip on that side. A and D, Z and /, either Shift key, the arrow keys, and the Flip buttons also work. Use Q, W, E or the nudge buttons to move the table.",
-        "The fourth nudge tilts the table and ends scoring until that ball drains. Clear all three targets, then shoot the ramp for 6,000 and start a 20-second jackpot round. Repeat ramp shots for 12,000 each. The first lit ramp shot locks your ball and serves a new one; the second releases the locked ball and a spare for three-ball MULTIBALL, where every ramp shot is a jackpot and bumpers pay double. Every fourth jackpot is a 50,000 super jackpot. The spinner and bumpers pay more the more you hit them, completing all rollover lanes starts an 8-second spinner hurry-up worth up to 15,000, and every third lit-shot double awards a mystery prize: bonus points, a ball save, a multiplier, or a held bonus that carries to your next ball.",
-        "Each ball has one automatic save during its first four seconds on the playfield. Once per game a centre post also catches a draining ball, and completing the rollover lanes re-arms the left kickback. Neon Arcade is a busier table with four bumpers and bigger scores; its extra balls come at 60,000 and 160,000. Everyone plays three balls on a separate table. Reach 40,000 and 120,000 points for an extra ball. Highest score wins.",
+        "Pull down on the plunger shaft at the right side of the playfield and release to launch. You can also hold and release Space or Launch. Aim for the gold charge band for a skill shot.",
+        "Tap or click either half of the playfield to flip on that side. A and D, Z and /, either Shift key, the arrow keys, and the Flip buttons also work. Use Q, W, E or the nudge buttons to move the table; the fourth nudge tilts it and ends scoring until that ball drains.",
+        "Clear all three targets, then shoot the ramp for 6,000 and start a 20-second jackpot round (12,000 per ramp shot; every fourth is a 50,000 super jackpot). The first ramp shot also locks your ball; the second releases it plus a spare for three-ball MULTIBALL, where every ramp shot is a jackpot and bumpers pay double.",
+        "Complete all rollover lanes for a multiplier, a re-armed left kickback and an 8-second spinner hurry-up worth up to 15,000. The spinner and bumpers pay more the more you hit them. Every third hit on the lit 2× shot awards a mystery prize: bonus points, a ball save, a multiplier, or a held bonus that carries to your next ball.",
+        "Each ball has one automatic save during its first four seconds on the playfield, and once per game a centre post catches a draining ball. Neon Arcade is a busier table with four bumpers and bigger scores; its extra balls come at 60,000 and 160,000. Reach 40,000 and 120,000 on Golden Hour for an extra ball. Everyone plays three balls on a separate table. Highest score wins.",
     ]
 
     def start(self, seated, rng):
