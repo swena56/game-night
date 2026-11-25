@@ -35,6 +35,8 @@ class Rules:
     hurry_ticks: int = 8 * 240    # spinner hurry-up after completing the rollover lanes
     hurry_max: int = 15000
     hurry_min: int = 1500
+    multiball_save_ticks: int = 8 * 240   # drained multiball balls are returned for this long after the start
+    center_post: bool = False             # one drain per game is saved by a pop-up centre post
     extra_ball_scores: tuple = (40000, 120000)
     shots: tuple = ("lane", "target", "spinner", "ramp")
     first_lit: int = 3

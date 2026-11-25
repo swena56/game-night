@@ -80,6 +80,8 @@ class Table:
     last_points: int = 0
     mystery_due: bool = False
     hurry_ticks: int = 0
+    mb_save_ticks: int = 0
+    post_used: bool = False
     rng: random.Random = field(default_factory=random.Random, repr=False)
     gone: bool = False
 
@@ -309,6 +311,7 @@ class Table:
                 if self.lane_bits == (1 << len(lay.lanes)) - 1:
                     self.lane_bits = 0
                     self.mult = min(rules.max_mult, self.mult + 1)
+                    self.kickback = True       # a full set of lanes re-arms the outlane kickback
                     self.signal("mult")
                     if lay.spinner and rules.hurry_ticks:
                         self.hurry_ticks = rules.hurry_ticks
@@ -344,6 +347,7 @@ class Table:
         self.jackpot_ticks = max(0, self.jackpot_ticks - 1)
         self.combo_ticks = max(0, self.combo_ticks - 1)
         self.hurry_ticks = max(0, self.hurry_ticks - 1)
+        self.mb_save_ticks = max(0, self.mb_save_ticks - 1)
         if self.spin_left:
             turn = min(self.spin_left, 8 * STEP)
             old_spin = self.spin
@@ -460,6 +464,7 @@ class Table:
             side = -1 if i % 2 else 1
             self.others.append(self.free_ball(ex + 0.45 * side * (i // 2 + 1), ey, -4 + 2.6 * side * (i // 2 + 1), 8))
         self.jackpot_ticks = max(self.jackpot_ticks, rules.multiball_ticks)
+        self.mb_save_ticks = rules.multiball_save_ticks
         self.locked = 0
         self.signal("multiball", rules.multiball_start)
 
@@ -476,8 +481,23 @@ class Table:
             self.staged = True
             self.smooth_launch = self.skill = False
         elif self.y > lay.height + lay.ball:
-            if self.others:
+            if self.others and self.mb_save_ticks and not self.tilt:
+                # early in multiball a drained ball is fed straight back from the ramp exit
+                self.x, self.y = self.layout.ramp_exit
+                self.vx, self.vy = -3, 8
+                self.still = 0
+                self.still_origin = (self.x, self.y)
+                self.signal("save")
+            elif self.others:
                 self.gone = True
+            elif not self.save_ticks and self.rules.center_post and not self.post_used and not self.tilt:
+                # a one-time centre post pops up and bounces the ball back into play
+                self.post_used = True
+                self.x, self.y = self.layout.center
+                self.vx, self.vy = 0, -9
+                self.still = 0
+                self.still_origin = (self.x, self.y)
+                self.signal("post")
             elif self.save_ticks:
                 self.save_ticks = 0
                 self.x, self.y = lay.launch

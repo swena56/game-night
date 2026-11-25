@@ -8,9 +8,15 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from games.pinball import (
     BALL, BUMPS, FLIPPERS, JACKPOT_TICKS, LAUNCH, LAYOUT, RAMP, RAMP_EXIT, ROLLOVERS,
-    SLINGS, SPINNER, TARGETS, Table,
+    SLINGS, SPINNER, TARGETS, Table as GoldenHour,
 )
+from dataclasses import dataclass
 from server import Room
+
+
+@dataclass
+class Table(GoldenHour):
+    post_used: bool = True      # most checks want a plain drain, not the one-time centre post
 
 
 def launch(charge):
@@ -250,6 +256,7 @@ class PinballRules(unittest.TestCase):
             self.assertFalse(ta.staged)
             self.assertTrue(tb.staged)
             ta.score = 200
+            ta.post_used = True
             for i in range(3):
                 ta.x, ta.y, ta.staged = 5, 17.3, False
                 self.assertFalse(game.frame(1 + i / 60))
@@ -402,6 +409,29 @@ class PinballRules(unittest.TestCase):
         late.step()
         self.assertLess(late.last_points, 2000)
 
+    def test_centre_post_and_multiball_saves(self):
+        table = GoldenHour(staged=False, x=5, y=LAYOUT["height"] + 1)
+        table.step()
+        self.assertEqual((table.event, table.balls, table.post_used), ("post", 3, True))
+        table.x, table.y = 5, LAYOUT["height"] + 1
+        table.step()
+        self.assertEqual(table.balls, 2)         # only one post save per game
+        table = placed(5, 9)
+        table.others, table.mb_save_ticks = [table.free_ball(3, 8, 0, 0)], 100
+        table.y = LAYOUT["height"] + 1
+        table.step()
+        self.assertEqual((table.event, len(table.others)), ("save", 1))
+        self.assertLess(table.y, 12)
+
+    def test_lanes_rearm_kickback(self):
+        table = placed(5, 9)
+        table.kickback = False
+        table.lane_bits = 3
+        x, y = ROLLOVERS[2]
+        table.x, table.y = x, y
+        table.mechanisms(y)
+        self.assertTrue(table.kickback)
+
     def test_tilt_forfeits_bonus(self):
         table = placed(5, 17.4)
         table.bumper_hits, table.tilt = 10, True
@@ -430,6 +460,7 @@ class PinballRules(unittest.TestCase):
                 table = game.tables[player.id]
                 table.balls = 1
                 table.staged = False
+                table.post_used = True
                 table.y = 17.4
             self.assertTrue(game.frame(1))
             self.assertEqual((room.phase, room.winner), ("over", None))
