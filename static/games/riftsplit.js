@@ -231,6 +231,9 @@
     t.strokeStyle = '#3d62c4'; t.lineWidth = 1.5;
     for (let i = 0; i <= g.W; i++) { t.beginPath(); t.moveTo(i * 1024 / g.W, 0); t.lineTo(i * 1024 / g.W, 614); t.stroke(); }
     for (let i = 0; i <= g.H; i++) { t.beginPath(); t.moveTo(0, i * 614 / g.H); t.lineTo(1024, i * 614 / g.H); t.stroke(); }
+    const vg = t.createRadialGradient(512, 307, 180, 512, 307, 620);   // darken the corners so the field glows from the middle
+    vg.addColorStop(0, '#0000'); vg.addColorStop(1, '#02061a99');
+    t.fillStyle = vg; t.fillRect(0, 0, 1024, 614);
     const floor = new T.Mesh(new T.PlaneGeometry(g.W, g.H), new T.MeshStandardMaterial({ map: new T.CanvasTexture(tex), emissive: 0xffffff, emissiveMap: new T.CanvasTexture(tex), emissiveIntensity: 0.85, roughness: 0.85, metalness: 0 }));
     scene.add(floor);
     const frame = new T.Mesh(new T.BoxGeometry(g.W + 1, g.H + 1, 0.5), new T.MeshStandardMaterial({ color: 0x1a2650, roughness: 0.6 }));
@@ -254,7 +257,17 @@
       .map(([ew, eh, ex, ey]) => { const m = new T.Mesh(new T.BoxGeometry(ew, eh, 0.3), edgeMat); m.position.set(ex, ey, -0.1); scene.add(m); return m; });
 
     // Sealed cells: one instanced mesh; new cells rise up.
-    const blocks = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), new T.MeshBasicMaterial({ color: 0xffffff }), g.W * g.H);   // unlit: colour is exactly what is set per cell
+    const blocks = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), new T.MeshBasicMaterial({ color: 0xffffff, map: (() => {   // a soft bevel: light top-left edge, shaded bottom-right, flat centre
+      const c = document.createElement('canvas'); c.width = c.height = 64;
+      const x = c.getContext('2d');
+      if (x) {
+        x.fillStyle = '#e6e6e6'; x.fillRect(0, 0, 64, 64);
+        x.fillStyle = '#ffffff'; x.fillRect(0, 0, 64, 5); x.fillRect(0, 0, 5, 64);
+        x.fillStyle = '#b4b4b4'; x.fillRect(0, 59, 64, 5); x.fillRect(59, 0, 5, 64);
+        x.fillStyle = '#ffffff'; x.fillRect(10, 10, 44, 44);
+      }
+      return new T.CanvasTexture(c);
+    })() }), g.W * g.H);   // unlit: colour is exactly what is set per cell
     blocks.count = 0; scene.add(blocks);
     blocks.setColorAt(0, new T.Color(0xffffff));
     const rimCol = new T.Color(), pending = [];   // pending: seal sparks waiting for the ripple to reach their cell
@@ -310,12 +323,13 @@
       sparks.userData.live = live;
     };
     const mats = {
-      ball: new T.MeshBasicMaterial({ map: (() => {   // red upper hemisphere, white lower; the mesh spins so the split turns
+      ball: (() => {   // red upper hemisphere, white lower; the mesh spins so the split turns. Mostly self-lit, with a glossy highlight
         const c = document.createElement('canvas'); c.width = 64; c.height = 128;
         const x = c.getContext('2d');
         if (x) { x.fillStyle = '#e8262b'; x.fillRect(0, 0, 64, 64); x.fillStyle = '#ffffff'; x.fillRect(0, 64, 64, 64); }
-        return new T.CanvasTexture(c);
-      })() }),
+        const tx = new T.CanvasTexture(c);
+        return new T.MeshPhongMaterial({ map: tx, emissive: 0xffffff, emissiveMap: tx, emissiveIntensity: 0.55, specular: 0xffffff, shininess: 70 });
+      })(),
       core: HALF.map((hex) => new T.MeshBasicMaterial({ color: new T.Color(hex).lerp(new T.Color(0xffffff), 0.55) })),
       glow: HALF.map((hex) => new T.MeshBasicMaterial({ color: hex, transparent: true, opacity: 0.4, blending: T.AdditiveBlending, depthWrite: false })),
       ghost: new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.1, depthWrite: false }),
@@ -568,6 +582,7 @@
     g.find('view').hidden = !g.three;   // the flat view has no camera to tilt
     g.stage.classList.toggle('rs-slowed', s.slow > 0);
     g.stage.classList.toggle('rs-shielded', !!s.sh);
+    if (g.glow !== s.color) { g.glow = s.color; g.stage.style.setProperty('--rs-glow', s.color); }
     const k = 1 - Math.exp(-Math.min(60, now - (g.drawn ?? now)) / 38);
     g.drawn = now;
     const lead = Math.min(0.06, Math.max(0, (now - (s.at ?? now)) / 1000));
