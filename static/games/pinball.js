@@ -306,6 +306,14 @@
         if (row[BALLS]) {
           trail.forEach(([tx, ty], i) => disc(tx, ty, geo.radius * (.3 + .5 * i / trail.length), `rgba(255,240,202,${.05 + .14 * i / trail.length})`));
           const [x, y, z] = ball;
+          // a fast ball burns brighter: a warm halo that grows with its speed
+          const last = trail[trail.length - 1], speed = last ? Math.hypot(x - last[0], y - last[1]) : 0;
+          if (speed > .12) {
+            const halo = c.createRadialGradient(x, y - z * .14, geo.radius * .6, x, y - z * .14, geo.radius * (2 + 4 * Math.min(speed, .6)));
+            halo.addColorStop(0, `rgba(255,214,130,${Math.min(.45, speed)})`);
+            halo.addColorStop(1, 'rgba(255,214,130,0)');
+            disc(x, y - z * .14, geo.radius * (2 + 4 * Math.min(speed, .6)), halo);
+          }
           disc(x + .1, y + .1, geo.radius * 1.25, '#26141483');
           const ballY = y - z * .14;
           const shine = c.createRadialGradient(x - .055, ballY - .065, .018, x, ballY, geo.radius);
