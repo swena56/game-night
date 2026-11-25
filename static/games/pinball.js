@@ -237,7 +237,11 @@
   const rampLit = row => row[BANK] === 7 || row[JACKPOT] > 0;
   const rampColor = row => row[JACKPOT] ? palette.gold : palette.teal;
 
+  // players who ask for reduced motion get no speed halo, squash/stretch, ripples or score roll
+  const calm = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+
   function flatRenderer(stage, geo, art) {
+    const still = calm();
     const canvas = document.createElement('canvas');
     canvas.className = 'pb-flat';
     const c = canvas.getContext('2d');
@@ -281,7 +285,7 @@
     // the ball stretches along its direction of travel and squashes across it, like a fast-moving sphere
     const drawBall = (x, y, scale = 1, dx = 0, dy = 0, speed = 0) => {
       const r = geo.radius * scale;
-      if (speed < .12) return c.drawImage(sprites.ball, x - r, y - r, r * 2, r * 2);
+      if (still || speed < .12) return c.drawImage(sprites.ball, x - r, y - r, r * 2, r * 2);
       const k = Math.min(.22, (speed - .12) * .4);
       c.save();
       c.translate(x, y);
@@ -342,11 +346,13 @@
           if (flash === 'bumper' + i) {
             if (rippleTag !== flash) { rippleTag = flash; rippleAt = performance.now(); }
             const age = Math.min(1, (performance.now() - rippleAt) / 420);
+            if (!still) {
             c.beginPath();
             c.arc(x, y, radius + .1 + age * .75, 0, Math.PI * 2);
             c.strokeStyle = `rgba(255,243,168,${.8 * (1 - age)})`;
             c.lineWidth = .07 * (1 - age) + .01;
             c.stroke();
+            }
             disc(x, y, radius + .12, '#fff3a8');
             disc(x, y, radius + .02, '#211c3d');
           }
@@ -384,7 +390,7 @@
           const [x, y, z] = ball;
           // a fast ball burns brighter: a warm halo that grows with its speed
           const last = trail[trail.length - 1], speed = last ? Math.hypot(x - last[0], y - last[1]) : 0;
-          if (speed > .12) {
+          if (!still && speed > .12) {
             const reach = geo.radius * (2 + 4 * Math.min(speed, .6));
             c.globalAlpha = Math.min(.45, speed);
             c.drawImage(sprites.halo, x - reach, y - z * .14 - reach, reach * 2, reach * 2);
@@ -540,6 +546,7 @@
     });
     const sphere = mesh(new T.SphereGeometry(geo.radius, 20, 14), chrome, 0, 0, 0);
     const extraBalls = [];
+    const still = calm();
     // a fast ball glows on the table beneath it; a ball save wraps it in a teal bubble
     const halo = new T.Mesh(new T.CircleGeometry(geo.radius * 3.2, 28),
       new T.MeshBasicMaterial({ color: '#ffd382', transparent: true, opacity: 0, depthWrite: false }));
@@ -595,7 +602,7 @@
         {
           const last = trail[trail.length - 1];
           const speed = last ? Math.hypot(ball[0] - last[0], ball[1] - last[1]) : 0;
-          halo.visible = row[BALLS] > 0 && speed > .12;
+          halo.visible = row[BALLS] > 0 && speed > .12 && !still;
           halo.material.opacity = Math.min(.4, speed * .8);
           halo.scale.setScalar(.6 + Math.min(speed, .6) * 1.6);
           halo.position.set(ball[0], .03, Math.min(17.25, ball[1]));
@@ -703,6 +710,23 @@
       setHeld();
     };
     const release = (source) => { if (g.sources.delete(source)) setHeld(); };
+    // Gamepads: triggers, bumpers and the d-pad flip; A launches; X / Y / B nudge left / up / right.
+    const PAD = [[[4, 6, 14], 1], [[5, 7, 15], 2], [[0], 4], [[2], -1], [[3], -2], [[1], -3]];
+    const padDown = new Set();
+    g.pollPad = () => {
+      const pad = [...(navigator.getGamepads?.() || [])].find(Boolean);
+      if (!pad) {
+        if (padDown.size) { padDown.forEach((key) => release('pad:' + key)); padDown.clear(); }
+        return;
+      }
+      PAD.forEach(([buttons, control]) => {
+        const down = buttons.some((i) => pad.buttons[i]?.pressed) ||
+          (control === 1 && pad.axes[0] < -.6) || (control === 2 && pad.axes[0] > .6);
+        const key = String(control);
+        if (down && !padDown.has(key)) { padDown.add(key); press('pad:' + key, control); }
+        else if (!down && padDown.has(key)) { padDown.delete(key); release('pad:' + key); }
+      });
+    };
     const source = (e) => 'pointer' + e.pointerId;
     const bindPointer = (element, start) => {
       on(element, 'pointerdown', (e) => {
@@ -984,6 +1008,7 @@
 
   function draw(g, now) {
     g.raf = requestAnimationFrame((next) => draw(g, next));
+    g.pollPad?.();
     const row = g.row;
     if (!row) return;
     // Predict at most one fast packet ahead; converge on each authoritative sample.
@@ -993,6 +1018,7 @@
     g.ball = g.ball ? g.ball.map((value, i) => value + (target[i] - value) * blend) : target;
     g.drawnAt = now;
     // the score counts up to its new value instead of snapping
+    if (g.scoreShown !== undefined && g.scoreShown < g.scoreTarget && calm()) g.scoreShown = g.scoreTarget;
     if (g.scoreShown !== undefined && g.scoreShown < g.scoreTarget) {
       g.scoreShown = Math.min(g.scoreTarget, g.scoreShown + Math.max(10, (g.scoreTarget - g.scoreShown) * .2));
       setText(g.find('score'), Math.round(g.scoreShown).toLocaleString());
