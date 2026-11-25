@@ -450,6 +450,8 @@ const SFX = {
   pflip: () => { tone(190, 90, 0.05, 'square', 0.07); noise(0.025, 1500, 1.2, 0.3); },
   pflipup: () => { tone(130, 90, 0.03, 'triangle', 0.04); noise(0.015, 1000, 1, 0.12); },
   plaunch: () => { tone(120, 380, 0.14, 'sawtooth', 0.05); noise(0.08, 1800, 0.8, 0.3); tone(380, 200, 0.1, 'sine', 0.05, 0.1); },
+  psave: () => [523, 784, 1047].forEach((f, i) => tone(f, f * 1.02, 0.14, 'sine', 0.08, i * 0.07)),
+  pskill: () => { [880, 1175, 1568, 2093].forEach((f, i) => tone(f, f, 0.12, 'triangle', 0.07, i * 0.05)); noise(0.2, 5000, 0.8, 0.1, 0.1); },
   rail: () => { noise(0.04, 900, 1.4, 0.22); tone(240, 180, 0.05, 'sine', 0.06); },
   cheer: () => { noise(0.9, 1400, 0.35, 0.18); [659, 784, 988].forEach((f, i) => tone(f, f, 0.18, 'triangle', 0.08, 0.12 + i * 0.09)); },
   groan: () => { tone(330, 196, 0.5, 'triangle', 0.07); tone(262, 165, 0.5, 'triangle', 0.05, 0.04); },
