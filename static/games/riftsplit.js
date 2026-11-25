@@ -207,6 +207,21 @@
               lc.fillStyle = s.color; lc.fillRect(x, y, 1, 1);
               lc.fillStyle = open(i, x, y) ? '#ffffff26' : '#00000038'; lc.fillRect(x, y, 1, 1);
             }
+            // crisp bright edge on every side that faces open space, then a soft top-left sheen over the sealed mass
+            lc.fillStyle = '#ffffffc8';
+            const E = 0.09;
+            for (let i = 0; i < s.grid.length; i++) {
+              if (s.grid[i] !== '1') continue;
+              const x = i % g.W, y = (i - x) / g.W;
+              if (x > 0 && s.grid[i - 1] === '0') lc.fillRect(x, y, E, 1);
+              if (x < g.W - 1 && s.grid[i + 1] === '0') lc.fillRect(x + 1 - E, y, E, 1);
+              if (y > 0 && s.grid[i - g.W] === '0') lc.fillRect(x, y, 1, E);
+              if (y < g.H - 1 && s.grid[i + g.W] === '0') lc.fillRect(x, y + 1 - E, 1, E);
+            }
+            lc.save(); lc.globalCompositeOperation = 'source-atop'; lc.setTransform(1, 0, 0, 1, 0, 0);
+            const sh = lc.createLinearGradient(0, 0, cellLayer.width, cellLayer.height);
+            sh.addColorStop(0, '#ffffff22'); sh.addColorStop(0.5, '#ffffff00'); sh.addColorStop(1, '#00000030');
+            lc.fillStyle = sh; lc.fillRect(0, 0, cellLayer.width, cellLayer.height); lc.restore();
           }
           c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.drawImage(cellLayer, 0, 0); c.restore();
         } else {
