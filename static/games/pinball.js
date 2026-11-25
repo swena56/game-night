@@ -22,6 +22,9 @@
   const sound = (event) => sounds[event] || (/^bumper/.test(event) ? 'pbumper' : /^sling/.test(event) ? 'psling' : 'pop');
   const soundArg = (event) => (/^bumper/.test(event) ? Number(event.slice(6)) || 0 : undefined);
   // each table keeps its own personal best and top-scores list
+  // the ball's trail warms from ivory to hot orange as the bonus multiplier climbs (1x..5x)
+  const TRAIL_TINT = ['255,240,202', '255,226,150', '255,200,110', '255,160,90', '255,110,90'];
+  const TRAIL_HEX = ['#fff0ca', '#ffe296', '#ffc86e', '#ffa05a', '#ff6e5a'];
   const bestKey = (g) => g.table === 'neon' ? 'pinball.best.neon' : 'pinball.best';
   const topKey = (g) => g.table === 'neon' ? 'pinball.top.neon' : 'pinball.top';
   const palette = { gold: '#ffd383', ivory: '#fff0ca', teal: '#59edd2', red: '#ff6854', steel: '#c1d2e5' };
@@ -374,7 +377,8 @@
         const plungerY = launchY + .39 + .25 * row[CHARGE] / 240;
         rail([launchX - .22, plungerY, launchX + .22, plungerY], palette.gold, .19);
         if (row[BALLS]) {
-          trail.forEach(([tx, ty], i) => disc(tx, ty, geo.radius * (.3 + .5 * i / trail.length), `rgba(255,240,202,${.05 + .14 * i / trail.length})`));
+          const tint = TRAIL_TINT[Math.min(row[MULT], 5) - 1] || TRAIL_TINT[0];
+          trail.forEach(([tx, ty], i) => disc(tx, ty, geo.radius * (.3 + .5 * i / trail.length), `rgba(${tint},${.05 + .14 * i / trail.length})`));
           const [x, y, z] = ball;
           // a fast ball burns brighter: a warm halo that grows with its speed
           const last = trail[trail.length - 1], speed = last ? Math.hypot(x - last[0], y - last[1]) : 0;
@@ -571,6 +575,7 @@
           camera.updateProjectionMatrix();
         }
         dots.forEach((dot, i) => {
+          dot.material.color.set(TRAIL_HEX[Math.min(row[MULT], 5) - 1] || TRAIL_HEX[0]);
           const point = trail[i - (dots.length - trail.length)];
           dot.visible = !!point && row[BALLS] > 0;
           if (point) {
@@ -864,7 +869,9 @@
   const popupText = (row) => {
     const text = label(row[EVENT], row);
     if (row[EVENT]?.startsWith('mystery_')) return text.replace('Mystery · ', '? ');
-    return row[EVENT] === 'extra' ? '★ EXTRA BALL ★' : /\+[\d,]+/.exec(text)?.[0] || '';
+    if (row[EVENT] === 'extra') return '★ EXTRA BALL ★';
+    const points = /\+[\d,]+/.exec(text)?.[0] || '';
+    return row[COMBO] >= 5 && points ? `COMBO ×${row[COMBO]}! ${points}` : points;
   };
 
   function popup(g, row) {
@@ -881,11 +888,15 @@
       void el.offsetWidth;
       el.classList.add('go');
     }
-    if (['tilt', 'nudge'].includes(row[EVENT]) && !reduce) {
+    // table shake scales with the moment: a nudge is a shove, a jackpot or multiball a slam
+    const shove = { nudge: 3, tilt: 4, jackpot: 5, super: 8, multiball: 7, extra: 6 }[row[EVENT]];
+    if (shove && !reduce) {
+      g.stage.style.setProperty('--shake', `${shove}px`);
       g.stage.classList.remove('shake');
       void g.stage.offsetWidth;
       g.stage.classList.add('shake');
     }
+    g.stage.classList.toggle('white', row[EVENT] === 'extra' || row[EVENT] === 'super');
     if (['ramp', 'jackpot', 'super', 'kickback', 'bonus', 'extra', 'lock', 'multiball'].includes(row[EVENT]) && !reduce) {
       g.stage.classList.remove('thump');
       void g.stage.offsetWidth;

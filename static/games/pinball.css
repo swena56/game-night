@@ -213,6 +213,7 @@
 .pb-stage.tilted::after { box-shadow: inset 0 0 36px #ff2d2dbb; opacity: 1; }
 .pb-stage::before { box-shadow: inset 0 0 28px #ffd366aa, inset 0 0 6px #ffd366; }
 .pb-stage.thump::before { animation: pb-thump .35s ease-out; }
+.pb-stage.white.thump::before { background: #ffffff99; animation-duration: .6s; }
 
 /* a ramp or jackpot lands with a brief golden pulse around the table */
 @keyframes pb-thump {
@@ -221,8 +222,8 @@
 }
 
 @keyframes pb-shake {
-  25% { transform: translateX(-3px); }
-  75% { transform: translateX(3px); }
+  25% { transform: translateX(calc(var(--shake, 3px) * -1)); }
+  75% { transform: translateX(var(--shake, 3px)); }
 }
 
 .pb-top { text-align: center; }
