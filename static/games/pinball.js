@@ -561,7 +561,12 @@
     const setHeld = () => {
       const previous = g.held;
       g.held = [...g.sources.values()].reduce((mask, value) => mask | value, 0);
-      if (previous !== g.held) send(g, {}, true);
+      if (previous !== g.held) {
+        // a flipper's solenoid clack on press (bits 1 and 2), a softer one on release
+        const flip = (g.held ^ previous) & 3;
+        if (flip && g.enabled && !g.ctx.readOnly) g.ctx.sfx((g.held & flip) ? 'pflip' : 'pflipup');
+        send(g, {}, true);
+      }
       paintControls(g);
     };
     const press = (source, control) => {
