@@ -48,7 +48,7 @@ Rough effort: S = a few lines, M = an engine or renderer change, L = new compone
 37. [x] Rollover lanes with skill-shot lane that rotates.
 38. [ ] S: Drop target bank resets with a rising sound and a short sweep light.
 39. [ ] M: Stand-up targets score with a firm hit only (lighter touches bounce off).
-40. [ ] S: Targets flash when the ball is nearby (lit shot) and when they complete a set.
+40. [x] S: Targets flash when the ball is nearby (lit shot) and when they complete a set.
 41. [ ] M: Standup target bank with a "special" target that lights when others are down.
 42. [ ] M: Spot target (lights a lane or award when hit).
 43. [x] S: Lane change: flippers rotate the lit lanes left/right (every pinball machine has this).
@@ -108,7 +108,7 @@ Rough effort: S = a few lines, M = an engine or renderer change, L = new compone
 91. [ ] M: Bonus multiplier held by a lit "hold bonus" lamp (already partially, show the lamp).
 92. [ ] S: Score reels or a dot-matrix showing ball save, multipliers and call-outs together.
 93. [x] S: Ball-save light blinks fast and then slow before it ends.
-94. [ ] S: Mode lamps: shot lamps blink while a mode is running and stay lit when finished.
+94. [x] S: Mode lamps: shot lamps blink while a mode is running and stay lit when finished.
 95. [ ] M: Mode select via a saucer (a "choose your mode" hold and flipper select).
 
 ## Sound, lights and attract mode

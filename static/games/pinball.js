@@ -319,6 +319,28 @@
   }
 
   // A full set of lanes chases its lights across the rollovers for a moment (the 'mult' callout).
+  // Shot-arrow insert lamps, as on a real playfield: each lights while its shot is live, and the lit 2x shot pulses.
+  const INSERT_OFF = '#38325c';
+  function insertLamps(geo) {
+    const lamps = [];
+    if (geo.ramp) lamps.push({ tag: 'ins_ramp', x: geo.ramp[0], y: geo.ramp[1] + .75, shot: 3 });
+    if (geo.spinner) lamps.push({ tag: 'ins_spinner', x: geo.spinner[0], y: geo.spinner[1] + .8, shot: 2 });
+    geo.targets.forEach((r, i) => lamps.push({ tag: 'ins_target' + i, x: r[0] - .55, y: (r[1] + r[3]) / 2, shot: 1, target: i }));
+    if (geo.orbit) lamps.push({ tag: 'ins_orbit', x: geo.orbit[0] + .3, y: geo.orbit[1] + .75 });
+    if (geo.saucer) lamps.push({ tag: 'ins_saucer', x: geo.saucer[0], y: geo.saucer[1] + .6 });
+    if (geo.subway) lamps.push({ tag: 'ins_subway', x: geo.subway[0], y: geo.subway[1] + .6 });
+    return lamps;
+  }
+  // The colour of one insert for this state, or the dark "off" colour.
+  function insertColor(l, row) {
+    if (row[TILT]) return INSERT_OFF;
+    if (l.tag === 'ins_ramp') return rampLit(row) ? rampColor(row) : row[LIT] === 3 ? palette.gold + '88' : INSERT_OFF;
+    if (l.tag === 'ins_spinner') return row[HURRY] ? palette.teal : row[LIT] === 2 ? palette.gold : INSERT_OFF;
+    if (l.target !== undefined) return row[BANK] >> l.target & 1 ? INSERT_OFF : row[LIT] === 1 ? palette.gold : palette.red;
+    if (l.tag === 'ins_orbit') return row[STATS]?.orbit ? palette.teal : INSERT_OFF;
+    return palette.teal;     // saucer and subway are always open
+  }
+
   // Attract mode: before the first flip of a game the lamps chase around the table, like a machine waiting for a coin.
   function attractTag(geo, now) {
     const tags = [...geo.lanes.map((_, i) => 'lane' + i), 'ramp', ...geo.bumps.map((_, i) => 'bumper' + i), 'sling0', 'spinner',
@@ -449,6 +471,12 @@
           disc(hx, hy, .13, palette.gold);
           disc(hx, hy, .045, '#17152f');
         }
+        insertLamps(geo).forEach((l) => {
+          const color = insertColor(l, row), on = color !== INSERT_OFF;
+          const blink = on && l.shot === row[LIT] && Math.floor(performance.now() / 220) % 2;
+          disc(l.x, l.y, .17, '#17152f');
+          disc(l.x, l.y, .12, flash === l.tag ? palette.ivory : blink ? palette.ivory : color);
+        });
         if (geo.orbit) {
           const [ox, oy, orad] = geo.orbit, open = row[STATS]?.orbit;
           line(geo.orbit_path, .3, '#252049');
@@ -693,6 +721,10 @@
       disc(hx, hy, .07, .05, .58, dark);
       disc(hx, hy + len, .1, .5, .3, brass);
     }
+    insertLamps(geo).forEach((l) => {
+      disc(l.x, l.y, .17, .02, .035, dark);
+      disc(l.x, l.y, .12, .03, .06, lamp(l.tag, INSERT_OFF, (row) => { const c = insertColor(l, row); return c === INSERT_OFF ? null : c.slice(0, 7); }));
+    });
     if (geo.orbit) {
       const orbitRail = lamp('orbit', palette.steel, row => row[STATS]?.orbit ? palette.teal : palette.steel);
       orbitRail.metalness = chrome.metalness;
@@ -862,7 +894,7 @@
           const hit = flash === tag || flash === 'jackpot' && tag === 'ramp' || flash === 'skill' && tag.startsWith('lane') ||
             flash === 'mult' && tag === 'lane' + sweep;
           const lit = active?.(row);
-          const glow = hit ? color : rampLit(row) && tag === 'ramp' ? rampColor(row) : null;
+          const glow = hit ? color : rampLit(row) && tag === 'ramp' ? rampColor(row) : tag.startsWith('ins_') && lit ? lit : null;
           m.color.set(hit ? palette.ivory : lit || normal);
           m.emissive.set(glow || '#000000');
           m.emissiveIntensity = hit ? 1.8 + pulse : glow ? pulse : 0;
