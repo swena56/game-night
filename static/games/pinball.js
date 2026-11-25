@@ -460,10 +460,47 @@
 
     const material = (color, metalness = .05, roughness = .48) =>
       new T.MeshStandardMaterial({ color, metalness, roughness });
-    const chrome = material(palette.steel, lighting.low ? .28 : .72, .29);
+    // Procedural grey maps: fine speckle for rubber, long streaks for brushed metal. Skipped on Low graphics.
+    function grain(w, h, paint) {
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      const g2 = cv.getContext('2d');
+      paint(g2, w, h);
+      const t = new T.Texture(cv);
+      t.wrapS = t.wrapT = T.RepeatWrapping;
+      t.needsUpdate = true;
+      return t;
+    }
+    const rubberBump = lighting.low ? null : grain(128, 128, (g2, w, h) => {
+      g2.fillStyle = '#808080'; g2.fillRect(0, 0, w, h);
+      for (let i = 0; i < 1800; i++) {
+        const v = 90 + Math.random() * 110 | 0;
+        g2.fillStyle = `rgb(${v},${v},${v})`;
+        g2.fillRect(Math.random() * w, Math.random() * h, 1 + Math.random() * 2, 1 + Math.random() * 2);
+      }
+    });
+    const brushed = lighting.low ? null : grain(256, 64, (g2, w, h) => {
+      g2.fillStyle = '#d0d0d0'; g2.fillRect(0, 0, w, h);
+      for (let i = 0; i < 260; i++) {
+        const v = 150 + Math.random() * 105 | 0;
+        g2.fillStyle = `rgba(${v},${v},${v},.55)`;
+        g2.fillRect(Math.random() * w, Math.random() * h, 30 + Math.random() * 160, 1);
+      }
+    });
+    const chrome = material(palette.steel, lighting.low ? .28 : .95, .2);
+    if (brushed) { chrome.roughnessMap = brushed; chrome.envMapIntensity = 1.5; }
+    // the ball is a polished mirror: no roughness map, a stronger reflection
+    const ballSteel = material('#f3f6ff', lighting.low ? .3 : 1, lighting.low ? .3 : .06);
+    if (!lighting.low) ballSteel.envMapIntensity = 1.9;
+    const rubber = (color) => {
+      const m = material(color, 0, .92);
+      if (rubberBump) { m.bumpMap = rubberBump; m.bumpScale = .8; }
+      return m;
+    };
+    const rubberRed = rubber('#d94a38');
+    const rubberDark = rubber('#2b2548');
     const brass = material(palette.gold, .38, .32);
     const dark = material('#26204a');
-    const red = material('#ff6854');
     const ivory = material(palette.ivory);
     const lights = [];
     function lamp(tag, normal, active, color = palette.ivory) {
@@ -516,14 +553,14 @@
       disc(hx, hy + len, .1, .5, .3, brass);
     }
     geo.slings.forEach((r, i) => {
-      rail(r, .5, .2, .17, dark);
+      rail(r, .5, .2, .17, rubberDark);
       rail(r, .28, .15, .33, lamp('sling' + i, palette.red));
     });
     geo.targets.forEach((r, i) =>
       rail(r, .26, .58, .3, lamp('target' + i, palette.red, row => row[BANK] & (1 << i) ? '#38325c' : palette.red)));
     geo.bumps.forEach(([x, y, radius], i) => {
       disc(x, y, radius - .05, .31, .18, chrome);
-      disc(x, y, radius, .08, .36, red);
+      disc(x, y, radius, .14, .33, rubberRed);
       disc(x, y, radius - .09, .13, .46, lamp('bumper' + i, bumperColors[i]));
       disc(x, y, radius - .25, .09, .55, dark);
       disc(x, y, .18, .03, .61, brass);
@@ -557,7 +594,7 @@
         disc(0, 0, .24, .44, .04, brass), disc(geo.length, 0, .17, .3, 0, paddle));
       return pivot;
     });
-    const sphere = mesh(new T.SphereGeometry(geo.radius, 20, 14), chrome, 0, 0, 0);
+    const sphere = mesh(new T.SphereGeometry(geo.radius, lighting.low ? 20 : 32, lighting.low ? 14 : 22), ballSteel, 0, 0, 0);
     const extraBalls = [];
     const still = calm();
     const size = sizeOf(stage);
@@ -608,7 +645,7 @@
           }
         });
         if (gateFlap) gateFlap.rotation.y = -(Math.PI / 2 - 1.25 * gate);
-        while (extraBalls.length < others.length) extraBalls.push(mesh(new T.SphereGeometry(geo.radius, 20, 14), chrome, 0, 0, 0));
+        while (extraBalls.length < others.length) extraBalls.push(mesh(new T.SphereGeometry(geo.radius, 20, 14), ballSteel, 0, 0, 0));
         extraBalls.forEach((m, i) => {
           m.visible = i < others.length;
           if (m.visible) m.position.set(others[i][0], geo.radius + others[i][2], Math.min(17.25, others[i][1]));
