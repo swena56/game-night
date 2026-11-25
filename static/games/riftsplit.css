@@ -114,5 +114,5 @@ body.focus .rs-cabinet { width: min(100%, 1100px); }
 
 .rs-banner.rs-banner-lv { top: 30%; font-size: clamp(1rem, 4vw, 1.7rem); color: #ffd166; border-color: #ffd16666; }
 
-.rs-combo { position: absolute; left: 50px; top: 0; font-size: .7rem; line-height: 16px; font-weight: 800; color: #ffb347; text-shadow: 0 0 8px #ff7a1a; }
+.rs-combo { position: absolute; left: 52px; top: 1px; padding: 0 8px; border-radius: 8px; font-size: .68rem; line-height: 14px; font-weight: 800; color: #ffd08a; background: #2a1200e6; border: 1px solid #ff9a3d99; box-shadow: 0 0 8px #ff7a1a88; }
 .rs-combo.rs-bump { animation: rsBump .35s ease-out; }
