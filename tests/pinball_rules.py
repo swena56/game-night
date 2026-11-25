@@ -258,6 +258,20 @@ class PinballRules(unittest.TestCase):
             game.on_input(player, action)
             self.assertEqual(table.held, 0)
 
+    def test_lane_multiplier_and_bonus(self):
+        table = placed(*ROLLOVERS[0])
+        for i, (x, y) in enumerate(ROLLOVERS):
+            table.x, table.y = x, y
+            table.mechanisms(y)
+            table.x, table.y = 5, 9
+            table.mechanisms(9)
+        self.assertEqual((table.mult, table.lane_bits, table.event), (2, 0, "mult"))
+        table.bumper_hits, table.ramps = 5, 1
+        before = table.score
+        table.drain()
+        self.assertEqual((table.bonus, table.score - before, table.mult, table.event), (2100, 2100, 1, "bonus"))
+        self.assertEqual(len(table.public()), 22)
+
     def test_tied_completion(self):
         room, players = self.room(2)
         game = room.game

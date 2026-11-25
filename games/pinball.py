@@ -77,9 +77,14 @@ class Table:
     save_used: bool = False
     jackpot_ticks: int = 0
     jackpot_shot: bool = False
+    lane_bits: int = 0
+    mult: int = 1
+    bumper_hits: int = 0
+    ramps: int = 0
+    bonus: int = 0
 
-    def signal(self, event, points=0):
-        self.score += points
+    def signal(self, event, points=0, scaled=True):
+        self.score += points * (self.mult if scaled else 1)
         self.event = event
         self.event_id += 1
 
@@ -129,6 +134,10 @@ class Table:
 
     def drain(self):
         self.balls -= 1
+        self.bonus = (self.bumper_hits * 10 + self.ramps * 1000) * self.mult
+        self.score += self.bonus
+        self.bumper_hits = self.ramps = self.lane_bits = 0
+        self.mult = 1
         self.save_used = self.jackpot_shot = False
         self.save_ticks = self.jackpot_ticks = 0
         self.reset_controls()
@@ -139,7 +148,7 @@ class Table:
         self.still_origin = LAUNCH
         self.tilt = self.skill = self.smooth_launch = False
         self.angles[:] = [flip[2] for flip in FLIPPERS]
-        self.signal("drain" if self.balls else "done")
+        self.signal("bonus" if self.bonus and self.balls else "drain" if self.balls else "done", scaled=False)
 
     def contact(self, cx, cy, radius, bounce, kick=0, sx=0, sy=0):
         dx, dy = self.x - cx, self.y - cy
@@ -191,7 +200,8 @@ class Table:
                 self.signal(f"sling{i}", 50)
         for i, (x, y, radius) in enumerate(BUMPS):
             if self.contact(x, y, BALL + radius, 0.86, 0 if self.tilt else 16) and not self.tilt:
-                self.signal(f"bumper{i}", 100)
+                self.bumper_hits += 1
+                self.signal(f"bumper{i}", 200 if self.jackpot_ticks else 100)
         for i, rail in enumerate(TARGETS):
             if self.segment(rail, BALL + 0.08) and not self.tilt and not self.bank & (1 << i):
                 self.bank |= 1 << i
@@ -204,6 +214,11 @@ class Table:
                 points = 5000 if self.skill else 500
                 self.signal("skill" if self.skill else f"lane{i}", points)
                 self.skill = False
+                self.lane_bits |= 1 << i
+                if self.lane_bits == 7:
+                    self.lane_bits = 0
+                    self.mult = min(5, self.mult + 1)
+                    self.signal("mult")
         self.rollovers = current
         if self.x < 8.8 and self.y > 5:
             self.skill = False
@@ -246,8 +261,10 @@ class Table:
                 self.vx, self.vy = -4, 9
                 if not self.tilt:
                     if self.jackpot_shot:
+                        self.ramps += 1
                         self.signal("jackpot", 12000)
                     else:
+                        self.ramps += 1
                         self.bank = 0
                         self.jackpot_ticks = JACKPOT_TICKS
                         self.signal("ramp", 6000)
@@ -293,6 +310,9 @@ class Table:
                 self.drain()
         elif math.hypot(self.x - self.still_origin[0], self.y - self.still_origin[1]) < BALL:
             self.still += 1
+            if self.still == 480 and self.y < 13.6:
+                self.vx += 2.5 * (1 if self.x < 5 else -1)
+                self.vy -= 2
             if self.still >= 720:
                 self.x, self.y, self.vx, self.vy = 5, 12, 0, 4
                 self.still = 0
@@ -308,7 +328,8 @@ class Table:
         return [*[round(v, 3) for v in (self.x, self.y, self.vx, self.vy, self.height, *self.angles)],
                 self.score, self.balls, self.bank, self.nudges, int(self.tilt), int(self.staged),
                 self.charge, self.event_id, self.event, round(self.spin % 1, 3),
-                math.ceil(self.save_ticks / 240), math.ceil(self.jackpot_ticks / 240)]
+                math.ceil(self.save_ticks / 240), math.ceil(self.jackpot_ticks / 240),
+                self.mult, self.bonus, self.lane_bits]
 
 
 class Pinball(Game):
@@ -363,7 +384,7 @@ class Pinball(Game):
             if player and player.bot:
                 # Bots and stand-ins launch and pulse the flippers while the ball is in reach.
                 held = (4 if table.charge < 200 else 0) if table.staged else (
-                    3 if 13.3 < table.y < 15.15 and self.frames % 20 < 10 else 0)
+                    (1 if table.x < 5 else 2) if 13.3 < table.y < 15.15 and self.frames % 20 < 10 else 0)
                 table.input(held, 0, now)
             else:
                 table.expire(now)

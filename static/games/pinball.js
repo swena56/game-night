@@ -1,18 +1,18 @@
 (() => {
-  const [X, Y, VX, VY, Z, LEFT, RIGHT, SCORE, BALLS, BANK, NUDGES, TILT, STAGED, CHARGE, EVENT_ID, EVENT, SPIN, SAVE, JACKPOT] =
-    Array.from({ length: 19 }, (_, i) => i);
+  const [X, Y, VX, VY, Z, LEFT, RIGHT, SCORE, BALLS, BANK, NUDGES, TILT, STAGED, CHARGE, EVENT_ID, EVENT, SPIN, SAVE, JACKPOT, MULT, BONUS, LANES] =
+    Array.from({ length: 22 }, (_, i) => i);
   const keys = {
     KeyA: 1, ArrowLeft: 1, KeyD: 2, ArrowRight: 2, Space: 4,
     KeyQ: -1, KeyW: -2, KeyE: -3,
   };
   const messages = {
     skill: 'Skill shot +5,000', spinner: 'Spinner +100', ramp: 'Ramp +6,000 · Jackpot lit', jackpot: 'Jackpot +12,000', save: 'Ball saved · Auto launch',
-    tilt: 'TILT · scoring suspended', nudge: 'Table nudged',
+    tilt: 'TILT · scoring suspended', nudge: 'Table nudged', mult: 'Multiplier up!',
     drain: 'Ball drained', done: 'Run complete', recovery: 'Ball freed',
   };
-  const sounds = { skill: 'lock', ramp: 'cheer', jackpot: 'cheer', save: 'lock', tilt: 'wrong', spinner: 'tickfast', drain: 'groan', done: 'groan' };
+  const sounds = { skill: 'lock', ramp: 'cheer', jackpot: 'cheer', save: 'lock', tilt: 'wrong', mult: 'cheer', bonus: 'cheer', spinner: 'tickfast', drain: 'groan', done: 'groan' };
   const prefixes = { bumper: 'Bumper +100', sling: 'Slingshot +50', lane: 'Rollover +500', target: 'Target +250' };
-  const label = (event) => messages[event] || prefixes[event?.replace(/[0-9]$/, '')] || '';
+  const label = (event, row) => event === 'bonus' && row ? `Ball bonus +${row[BONUS].toLocaleString()}` : messages[event] || prefixes[event?.replace(/[0-9]$/, '')] || '';
   const sound = (event) => sounds[event] || (/^(bumper|sling)/.test(event) ? 'puck' : 'pop');
   const bestKey = 'pinball.best';
   const palette = { gold: '#ffd383', ivory: '#fff0ca', teal: '#59edd2', red: '#ff6854', steel: '#c1d2e5' };
@@ -486,8 +486,10 @@
         <div class="pb-status"><span class="pb-ramp">Ramp</span><span class="pb-message" role="status"></span><span class="pb-nudges"></span></div>
         <div class="pb-stage" aria-label="Golden Hour pinball playfield">
           <span class="pb-pull" hidden>Pull ↓</span>
+          <span class="pb-popup" aria-hidden="true" hidden></span>
           <div class="pb-inserts" aria-hidden="true">
             <span class="pb-save">Ball save</span>
+            <span class="pb-mult" hidden></span>
             <span class="pb-jackpot" hidden></span>
           </div>
         </div>
@@ -626,13 +628,17 @@
     setText(find('ramp'), row[JACKPOT] ? 'Jackpot lit' : rampLit(row) ? 'Ramp ready' : `Targets ${(row[BANK] & 1) + (row[BANK] >> 1 & 1) + (row[BANK] >> 2 & 1)}/3`);
     find('ramp').classList.toggle('lit', !!rampLit(row));
     find('save').classList.toggle('lit', row[SAVE] > 0);
+    setText(find('save'), row[SAVE] > 0 ? `Ball save ${row[SAVE]}s` : 'Ball save');
+    const lanes = '●'.repeat([0, 1, 2].filter(i => row[LANES] >> i & 1).length).padEnd(3, '○');
+    find('mult').hidden = row[MULT] < 2 && !row[LANES];
+    setText(find('mult'), `${row[MULT]}× ${lanes}`);
     find('jackpot').hidden = !row[JACKPOT];
     setText(find('jackpot'), row[JACKPOT] ? `Jackpot · ${row[JACKPOT]}s` : '');
     const [skillStart, skillEnd] = g.skill;
     const inBand = !!row[STAGED] && row[CHARGE] >= skillStart && row[CHARGE] <= skillEnd;
     const launchCue = inBand ? 'Release for skill shot' : row[CHARGE] > skillEnd ? 'Release to launch' :
       row[CHARGE] ? 'Charge into the gold band' : 'Pull the plunger shaft down or hold Launch';
-    const feedback = performance.now() < g.flashAt ? label(row[EVENT]) : '';
+    const feedback = performance.now() < g.flashAt ? label(row[EVENT], row) : '';
     setText(find('message'), g.record ? 'New personal best' : row[TILT] ? messages.tilt :
       row[STAGED] && row[CHARGE] ? launchCue : feedback || (row[STAGED] ? launchCue : row[BALLS] ? '' : 'Run complete'));
     find('charge-fill').style.width = `${100 * row[CHARGE] / 240}%`;
@@ -663,6 +669,31 @@
     paintControls(g);
   }
 
+  const popupText = (row) => {
+    const text = label(row[EVENT], row);
+    return /\+[\d,]+/.exec(text)?.[0] || '';
+  };
+
+  function popup(g, row) {
+    const el = g.find('popup'), text = popupText(row);
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (text && g.me === g.viewer && !reduce) {
+      el.textContent = text;
+      el.hidden = false;
+      el.style.left = `${100 * (g.ball?.[0] ?? row[X]) / 10}%`;
+      el.style.top = `${100 * ((g.ball?.[1] ?? row[Y]) + .85) / 18.7}%`;
+      el.classList.remove('go');
+      void el.offsetWidth;
+      el.classList.add('go');
+    }
+    if (['tilt', 'nudge'].includes(row[EVENT]) && !reduce) {
+      g.stage.classList.remove('shake');
+      void g.stage.offsetWidth;
+      g.stage.classList.add('shake');
+    }
+    if (g.me === g.viewer && /^(bumper|sling)/.test(row[EVENT])) navigator.vibrate?.(12);
+  }
+
   function receive(g, data) {
     if (!g || data?.pin !== g.run || data.tick < g.tick) return;
     g.tick = data.tick;
@@ -683,6 +714,7 @@
     if (prior && prior[BALLS] !== row[BALLS]) clearControls(g);
     if (prior && prior[EVENT_ID] !== row[EVENT_ID]) {
       g.flashAt = performance.now() + 780;
+      popup(g, row);
       if (viewer === g.me && !g.ctx.readOnly) g.ctx.sfx(sound(row[EVENT]));
     }
     g.enabled = !!(g.active && g.me && row[BALLS]);
