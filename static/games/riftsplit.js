@@ -7,6 +7,8 @@
   const SND = { seal: 'lock', big: 'cheer', hit: 'wrong', shield: 'lock', 'shield+': 'pop', slow: 'pop', clear: 'cheer', over: 'groan' };
   const COLORS = ['#3cf5e0', '#ff6fb5', '#ffd166', '#9d8bff', '#7dff8a', '#ff9a4d'];
   const bestKey = 'riftsplit.best';
+  const HALF = ['#3cf5e0', '#ffd166'];   // the two sides of a growing wall: cyan and gold
+  const RED = '#ff4d4d';                  // orbs are red on one hemisphere and white on the other
   let g;
 
   const store = {
@@ -57,7 +59,7 @@
       const st = w.length ? w[5 + i * 3] : '';
       if (prev[i] === 'g' && st === 'x') {
         const v = w[0], c = v ? w[2] : w[1], head = i === 0 ? c + 1 - w[3 + i * 3] : c + 1 + w[3 + i * 3];
-        out.push(v ? [w[1] + 0.5, head] : [head, w[2] + 0.5]);
+        out.push(v ? [w[1] + 0.5, head, i] : [head, w[2] + 0.5, i]);
       }
       prev[i] = st;
     }
@@ -132,11 +134,11 @@
           if (s.grid[i] !== '1') continue;
           const x = i % g.W, y = (i - x) / g.W, t = now < animUntil + 60 ? Math.max(0, Math.min(1, (now - born[i]) / 350)) : 1;
           if (t <= 0) continue;
-          const e = 1 - (1 - t) ** 3, inset = 0.04 + (1 - e) * 0.4;
+          const e = 1 - (1 - t) ** 3, inset = (1 - e) * 0.4;
           c.globalAlpha = e;
           c.fillStyle = s.color;
           c.fillRect(x + inset, y + inset, 1 - inset * 2, 1 - inset * 2);
-          c.fillStyle = open(i, x, y) ? '#ffffff70' : '#ffffff14';
+          c.fillStyle = open(i, x, y) ? '#ffffff70' : '#ffffff10';
           c.fillRect(x + inset, y + inset, 1 - inset * 2, 1 - inset * 2);
         }
         c.globalAlpha = 1;
@@ -149,34 +151,42 @@
         }
         // growing walls: a bright core inside a pulsing glow
         c.save();
-        c.shadowColor = s.color; c.shadowBlur = fx ? 0.9 * k : 0;
+        c.shadowBlur = fx ? 0.9 * k : 0;
         for (const [x0, x1, y0, y1, st, i] of wallRects(s.w)) {
-          const wide = x1 - x0 >= y1 - y0, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
-          c.globalAlpha = 0.3 + 0.2 * Math.sin(now / 90); c.fillStyle = s.color; c.fillRect(x0, y0, x1 - x0, y1 - y0);
+          const wide = x1 - x0 >= y1 - y0, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, hc = HALF[i];
+          c.shadowColor = hc;
+          c.globalAlpha = 0.3 + 0.2 * Math.sin(now / 90); c.fillStyle = hc; c.fillRect(x0, y0, x1 - x0, y1 - y0);
           c.globalAlpha = 1; c.fillStyle = '#fff';
           if (wide) c.fillRect(x0, cy - 0.15, x1 - x0, 0.3); else c.fillRect(cx - 0.15, y0, 0.3, y1 - y0);
           const hx = wide ? (i === 0 ? x0 : x1) : cx, hy = wide ? cy : (i === 0 ? y0 : y1);
-          if (fx && Math.random() < 0.4) burst(hx, hy, 1, s.color, 2);
+          if (fx && Math.random() < 0.4) burst(hx, hy, 1, hc, 2);
           const tip = c.createRadialGradient(hx, hy, 0, hx, hy, 1.4);
-          tip.addColorStop(0, '#ffffffee'); tip.addColorStop(0.4, s.color + 'aa'); tip.addColorStop(1, s.color + '00');
+          tip.addColorStop(0, '#ffffffee'); tip.addColorStop(0.4, hc + 'aa'); tip.addColorStop(1, hc + '00');
           c.fillStyle = tip; c.fillRect(hx - 1.5, hy - 1.5, 3, 3);
         }
         c.restore();
-        for (const [x, y] of shatters(prevHalf, s.w)) { burst(x, y, 34, s.color, 8); shake = 0.3; }
-        if (s.ghost) { c.fillStyle = '#ffffff30'; c.fillRect(...s.ghost); }
+        for (const [x, y, i] of shatters(prevHalf, s.w)) { burst(x, y, 34, HALF[i], 8); shake = 0.3; }
+        if (s.ghost) {   // where the wall would run: a faint fill with a dashed outline
+          c.fillStyle = '#ffffff18'; c.fillRect(...s.ghost);
+          c.setLineDash([0.35, 0.22]); c.lineWidth = 0.09; c.strokeStyle = '#ffffffdd'; c.strokeRect(s.ghost[0] + 0.045, s.ghost[1] + 0.045, s.ghost[2] - 0.09, s.ghost[3] - 0.09); c.setLineDash([]);
+        }
         // orbs: tail, glow, core
         s.b.forEach((b, i) => {
           const hh = hist[i] ||= [];
           if (!hh.at || now - hh.at > 22) { hh.unshift([b[0], b[1]]); hh.length = Math.min(hh.length, 7); hh.at = now; }
           if (fx && i < 16) hh.forEach((q, j) => {
             const f = 1 - (j + 1) / 8, gl = c.createRadialGradient(q[0], q[1], 0, q[0], q[1], 0.75 * f);
-            gl.addColorStop(0, s.color + '77'); gl.addColorStop(1, s.color + '00');
+            gl.addColorStop(0, RED + '77'); gl.addColorStop(1, RED + '00');
             c.fillStyle = gl; c.fillRect(q[0] - 1, q[1] - 1, 2, 2);
           });
           const gl = c.createRadialGradient(b[0], b[1], 0, b[0], b[1], 1.2);
-          gl.addColorStop(0, '#ffffffcc'); gl.addColorStop(0.35, s.color + '66'); gl.addColorStop(1, s.color + '00');
+          gl.addColorStop(0, '#ffffffcc'); gl.addColorStop(0.35, RED + '55'); gl.addColorStop(1, RED + '00');
           c.fillStyle = gl; c.fillRect(b[0] - 1.3, b[1] - 1.3, 2.6, 2.6);
-          c.fillStyle = '#fff'; c.beginPath(); c.arc(b[0], b[1], 0.34, 0, 7); c.fill();
+          // two hemispheres, red and white, turning as the orb travels
+          c.save(); c.translate(b[0], b[1]); c.rotate(now / 180 + i);
+          c.fillStyle = RED; c.beginPath(); c.arc(0, 0, 0.36, Math.PI, 0); c.fill();
+          c.fillStyle = '#fff'; c.beginPath(); c.arc(0, 0, 0.36, 0, Math.PI); c.fill();
+          c.restore();
         });
         hist.length = s.b.length;
         for (let q = pending.length - 1; q >= 0; q--) if (pending[q][0] <= now) { burst(pending[q][1], pending[q][2], pending[q][3], s.color, 4); pending.splice(q, 1); }
@@ -240,7 +250,7 @@
       .map(([ew, eh, ex, ey]) => { const m = new T.Mesh(new T.BoxGeometry(ew, eh, 0.3), edgeMat); m.position.set(ex, ey, -0.1); scene.add(m); return m; });
 
     // Sealed cells: one instanced mesh; new cells rise up.
-    const blocks = new T.InstancedMesh(new T.BoxGeometry(0.94, 0.94, 1), new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35, metalness: 0.2 }), g.W * g.H);
+    const blocks = new T.InstancedMesh(new T.BoxGeometry(1, 1, 1), new T.MeshBasicMaterial({ color: 0xffffff }), g.W * g.H);   // unlit: colour is exactly what is set per cell
     blocks.count = 0; scene.add(blocks);
     blocks.setColorAt(0, new T.Color(0xffffff));
     const rimCol = new T.Color(), pending = [];   // pending: seal sparks waiting for the ripple to reach their cell
@@ -296,18 +306,24 @@
       sparks.userData.live = live;
     };
     const mats = {
-      ball: new T.MeshBasicMaterial({ color: 0xffffff }),
-      core: new T.MeshBasicMaterial({ color: 0xffffff }),
-      glow: new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4, blending: T.AdditiveBlending, depthWrite: false }),
-      ghost: new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.18 }),
+      ball: new T.MeshBasicMaterial({ map: (() => {   // red upper hemisphere, white lower; the mesh spins so the split turns
+        const c = document.createElement('canvas'); c.width = 64; c.height = 128;
+        const x = c.getContext('2d');
+        if (x) { x.fillStyle = '#e8262b'; x.fillRect(0, 0, 64, 64); x.fillStyle = '#ffffff'; x.fillRect(0, 64, 64, 64); }
+        return new T.CanvasTexture(c);
+      })() }),
+      core: HALF.map((hex) => new T.MeshBasicMaterial({ color: new T.Color(hex).lerp(new T.Color(0xffffff), 0.55) })),
+      glow: HALF.map((hex) => new T.MeshBasicMaterial({ color: hex, transparent: true, opacity: 0.4, blending: T.AdditiveBlending, depthWrite: false })),
+      ghost: new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.1, depthWrite: false }),
     };
     const balls = [], trails = [];
     const beamGeo = new T.BoxGeometry(1, 1, 0.9);
-    const halves = [0, 1].map(() => { const m = new T.Mesh(beamGeo, mats.core); m.visible = false; scene.add(m); return m; });
-    const glows = [0, 1].map(() => { const m = new T.Mesh(beamGeo, mats.glow); m.visible = false; scene.add(m); return m; });
+    const halves = [0, 1].map((i) => { const m = new T.Mesh(beamGeo, mats.core[i]); m.visible = false; scene.add(m); return m; });
+    const glows = [0, 1].map((i) => { const m = new T.Mesh(beamGeo, mats.glow[i]); m.visible = false; scene.add(m); return m; });
     const tips = [sprite(0.9), sprite(0.9)];
     const prevHalf = ['', ''];
     const ghost = new T.Mesh(new T.BoxGeometry(1, 1, 0.3), mats.ghost); ghost.visible = false; scene.add(ghost);
+    ghost.add(new T.LineSegments(new T.EdgesGeometry(new T.BoxGeometry(1, 1, 1)), new T.LineBasicMaterial({ color: 0xffffff })));   // the outline hint
     const pickMeshes = new Map();
     const pickTexs = {};
     const pickTex = (kind) => pickTexs[kind] ||= (() => {
@@ -348,11 +364,8 @@
       draw(s, now) {
         resize();
         const col = new T.Color(s.color);
-        mats.glow.color.copy(col); mats.ghost.color.copy(col);
-        blocks.material.emissive.copy(col).multiplyScalar(0.45);   // self-lit, so sealed cells never read as black
-        blocks.material.emissiveIntensity = 1;
+        mats.ghost.color.set(0xffffff);
         edgeMat.color.copy(col); edgeMat.opacity = 0.6 + 0.2 * Math.sin(now / 700);
-        mats.core.color.copy(col).lerp(new T.Color(0xffffff), 0.7);
         const dt = Math.min(0.05, Math.max(0, (now - (lastNow || now)) / 1000)); lastNow = now;
         if (s.grid !== lastGrid) {
           const r = ripple(lastGrid, s.grid, now, born);
@@ -363,13 +376,13 @@
           let n = 0;
           for (let i = 0; i < s.grid.length; i++) {
             if (s.grid[i] !== '1') continue;
-            const k = Math.max(0, Math.min(1, (now - born[i]) / 350)), z = 0.2 + 0.8 * (1 - (1 - k) ** 3);
+            const k = Math.max(0, Math.min(1, (now - born[i]) / 350)), z = 0.15 + 0.35 * (1 - (1 - k) ** 3);
             dummy.position.set(gx(i % g.W + 0.5), gy(Math.floor(i / g.W) + 0.5), z / 2 - 0.05);
             dummy.scale.set(1, 1, z); dummy.updateMatrix();
             const x = i % g.W, y = (i - x) / g.W;
             const open = (j, ok) => ok && s.grid[j] === '0';
             const rim = open(i - 1, x > 0) || open(i + 1, x < g.W - 1) || open(i - g.W, y > 0) || open(i + g.W, y < g.H - 1);
-            rimCol.copy(col).multiplyScalar(rim ? 1 : 0.88); if (rim) rimCol.lerp(new T.Color(0xffffff), 0.45);
+            rimCol.copy(col).multiplyScalar(rim ? 1 : 0.8); if (rim) rimCol.lerp(new T.Color(0xffffff), 0.4);
             blocks.setColorAt(n, rimCol);
             blocks.setMatrixAt(n++, dummy.matrix);
           }
@@ -392,16 +405,17 @@
           if (u.last && u.dir) {
             const dx = bx - u.last[0], dy = by - u.last[1];
             if (Math.abs(dx) > 0.004 && Math.abs(u.dir[0]) > 0.004 && dx * u.dir[0] < 0 || Math.abs(dy) > 0.004 && Math.abs(u.dir[1]) > 0.004 && dy * u.dir[1] < 0) {
-              u.pulse = 1; burst(bx, by, 4, s.color, 3);
+              u.pulse = 1; burst(bx, by, 4, RED, 3);
             }
             if (Math.abs(dx) + Math.abs(dy) > 0.002) u.dir = [dx, dy];
           } else if (u.last) u.dir = [bx - u.last[0], by - u.last[1]];
           u.last = [bx, by]; u.pulse = Math.max(0, u.pulse - dt * 4);
           m.position.set(gx(bx), gy(by), 0.5);
+          m.rotation.z = now / 180 + i;
           const light = orbLights[i];
-          if (light) { light.position.set(gx(bx), gy(by), 1.4); light.color.copy(col).lerp(mats.ball.color, 0.35); light.intensity = 1.1 + u.pulse * 1.2; }
+          if (light) { light.position.set(gx(bx), gy(by), 1.4); light.color.set('#ff8a8a'); light.intensity = 1.1 + u.pulse * 1.2; }
           const gs = 2.4 + u.pulse * 1.6;
-          u.halo.scale.set(gs, gs, 1); u.halo.material.color.copy(col).lerp(mats.ball.color, 0.25);
+          u.halo.scale.set(gs, gs, 1); u.halo.material.color.set('#ff6a6a');
           const tr = trails[i];
           if (tr) {   // a fading tail: each sprite follows the one ahead of it
             u.hist = u.hist || [];
@@ -412,7 +426,7 @@
               if (!q) return;
               sp.position.set(gx(q[0]), gy(q[1]), 0.45);
               const k = 1 - (j + 1) / (tr.length + 1);
-              sp.scale.set(1.5 * k, 1.5 * k, 1); sp.material.opacity = 0.4 * k; sp.material.color.copy(col);
+              sp.scale.set(1.5 * k, 1.5 * k, 1); sp.material.opacity = 0.4 * k; sp.material.color.set('#ff6a6a');
             });
           }
         });
@@ -425,15 +439,15 @@
           if (r) {
             box(m, r[0], r[1], r[2], r[3], 0.45, 0.3);
             box(glows[i], r[0], r[1], r[2], r[3], 0.45, 1.0);
-            mats.glow.opacity = 0.3 + 0.2 * Math.sin(now / 90);
+            mats.glow[i].opacity = 0.3 + 0.2 * Math.sin(now / 90);
             const v = s.w[0], head = i === 0 ? [v ? r[2] : r[0]] : [v ? r[3] : r[1]];
             tips[i].visible = true;
             tips[i].position.set(gx(v ? s.w[1] + 0.5 : head[0]), gy(v ? head[0] : s.w[2] + 0.5), 0.8);
-            tips[i].scale.set(2.6 + pulse, 2.6 + pulse, 1); tips[i].material.color.copy(col);
-            if (fx && Math.random() < 0.4) burst(v ? s.w[1] + 0.5 : head[0], v ? head[0] : s.w[2] + 0.5, 1, s.color, 2);
+            tips[i].scale.set(2.6 + pulse, 2.6 + pulse, 1); tips[i].material.color.set(HALF[i]);
+            if (fx && Math.random() < 0.4) burst(v ? s.w[1] + 0.5 : head[0], v ? head[0] : s.w[2] + 0.5, 1, HALF[i], 2);
           }
         });
-        for (const [x, y] of shatters(prevHalf, s.w)) { burst(x, y, 34, s.color, 8); GL3.shake(cam, 0.32); }
+        for (const [x, y, i] of shatters(prevHalf, s.w)) { burst(x, y, 34, HALF[i], 8); GL3.shake(cam, 0.32); }
         if (s.ghost) box(ghost, s.ghost[0], s.ghost[0] + s.ghost[2], s.ghost[1], s.ghost[1] + s.ghost[3], 0.2); else ghost.visible = false;
         // pickups persist between frames (keyed by cell) and only spin
         const keep = new Set();
@@ -562,7 +576,7 @@
     const pct = Math.floor(s.shown * 100 + 0.001) + '%', fill = Math.min(100, s.shown * 100).toFixed(1) + '%';
     if (g.pctText !== pct) g.find('pct').textContent = g.pctText = pct;
     if (g.pctFill !== fill) g.find('fill').style.width = g.pctFill = fill;
-    r.draw({ ...s, b: s.bs, ghost: g.hover && !g.touching ? ghostFor(g.hover) : null }, now);
+    r.draw({ ...s, b: s.bs, ghost: g.hover ? ghostFor(g.hover) : null }, now);
   }
 
   function mount(arena) {
@@ -576,7 +590,7 @@
         </div>
         <div class="rs-bar" role="meter" aria-label="Field sealed" aria-valuemin="0" aria-valuemax="100"><div class="rs-fill"></div><div class="rs-goal" title="75% to clear"></div><span class="rs-pct">0%</span><span class="rs-slow" hidden></span></div>
         <div class="rs-stage" aria-label="Rift Split field"><span class="rs-msg" role="status"></span></div>
-        <div class="rs-controls"><div class="rs-dirs" role="group" aria-label="Wall direction"><button type="button" class="rs-dir" data-v="0" aria-pressed="true"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Horizontal</span></button><button type="button" class="rs-dir rs-v" data-v="1" aria-pressed="false"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Vertical</span></button></div><span class="rs-tip">Tap to grow a wall · Space / right-click turns it · ⛶ for fullscreen</span></div>
+        <div class="rs-controls"><div class="rs-dirs" role="group" aria-label="Wall direction"><button type="button" class="rs-dir" data-v="0" aria-pressed="true"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Horizontal</span></button><button type="button" class="rs-dir rs-v" data-v="1" aria-pressed="false"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Vertical</span></button></div><span class="rs-tip">Hold to preview, release to grow a wall · Space / right-click turns it · ⛶ for fullscreen</span></div>
         <ol class="rs-standings" aria-label="Scores" hidden></ol>
       </section>`;
     const root = arena.querySelector('.rs-cabinet');
@@ -599,29 +613,27 @@
       },
     };
     for (const b of root.querySelectorAll('.rs-dir')) on(b, 'click', () => setDirection(b.dataset.v === '1'));
-    let down = null;
+    let down = false;
+    // Hold to see where the wall would run, slide to aim, release to place it (a mouse previews on hover).
     on(stage, 'pointerdown', (e) => {
       if (e.button === 2) return;
       e.preventDefault();
       stage.setPointerCapture?.(e.pointerId);
       g.touching = e.pointerType !== 'mouse';
-      down = { x: e.clientX, y: e.clientY, cell: (g.three || g.flat)?.pick(e), done: false };
+      down = true;
+      g.hover = (g.three || g.flat)?.pick(e);
     });
     on(stage, 'pointermove', (e) => {
       const r = g.three || g.flat;
-      if (!r) return;
-      if (e.pointerType === 'mouse' || !down) g.hover = r.pick(e);
-      if (down && !down.done && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 16) {
-        down.done = true;
-        place(down.cell, Math.abs(e.clientY - down.y) > Math.abs(e.clientX - down.x));
-      }
+      if (r && (down || e.pointerType === 'mouse')) g.hover = r.pick(e);
     });
     on(stage, 'pointerup', (e) => {
-      if (down && !down.done) place((g.three || g.flat)?.pick(e) || down.cell, g.vertical);
-      down = null;
+      if (down) place((g.three || g.flat)?.pick(e) || g.hover, g.vertical);
+      down = false;
+      if (g.touching) g.hover = null;
     });
-    on(stage, 'pointercancel', () => { down = null; });
-    on(stage, 'pointerleave', () => { g.hover = null; });
+    on(stage, 'pointercancel', () => { down = false; g.hover = null; });
+    on(stage, 'pointerleave', () => { if (!down) g.hover = null; });
     on(stage, 'contextmenu', (e) => { e.preventDefault(); toggle(); });
     on(window, 'keydown', (e) => {
       if (e.code !== 'Space' || e.target.closest?.('input, textarea, select, button, [contenteditable], dialog[open]')) return;

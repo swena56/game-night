@@ -301,7 +301,7 @@ class RiftSplit(Game):
     replayable = False
     blurb = "Grow glowing walls to wall in the bouncing orbs. Seal 75% of the field before they break your wall."
     howto = [
-        "Tap or click a spot to grow a wall both ways from it. Tap the ↔ / ↕ button, press Space, or right-click to switch direction. On a phone you can also drag sideways or up and down to choose.",
+        "Press and hold a spot to preview the line, slide to aim, and let go to grow a wall both ways from it (click on a computer). Tap the ↔ / ↕ buttons, press Space, or right-click to switch direction.",
         "While a wall is growing, an orb that touches either half shatters that half and costs a life. A half that reaches a barrier locks in solid.",
         "When a wall finishes, every pocket with no orb inside is sealed. Seal 75% of the field to clear the level; each level adds an orb, and a life.",
         "Chain clean seals for a score multiplier. Seal a 🛡️ to block one hit, or a ⏳ to slow every orb for a few seconds. Everyone plays their own field; the highest score wins.",
