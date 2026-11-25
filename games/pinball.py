@@ -95,8 +95,10 @@ class Pinball(Game):
             player = self.room.players.get(pid)
             if player and player.bot:
                 # Bots and stand-ins launch and pulse the flippers while the ball is in reach.
+                balls = [(table.x, table.y), *((o["x"], o["y"]) for o in table.others)]
+                near = [x for x, y in balls if 13.3 < y < 15.15]   # multiball: cover every ball in reach
                 held = (4 if table.charge < 200 else 0) if table.staged else (
-                    (1 if table.x < 5 else 2) if 13.3 < table.y < 15.15 and self.frames % 20 < 10 else 0)
+                    (1 if near[0] < 5 else 2) if near and self.frames % 20 < 10 else 0)
                 table.input(held, 0, now)
             else:
                 table.expire(now)
