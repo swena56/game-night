@@ -48,6 +48,7 @@ class Rules:
     subway: int = 2000
     subway_ticks: int = 100       # time the ball spends under the playfield
     saucer_ticks: int = 150       # how long the saucer holds the ball before kicking it out
+    sling_cooldown: int = 12      # ticks before a slingshot can fire again (the kicker arm must reset)
     sling_threshold: float = 4.0  # ball speed into the blade needed to fire a slingshot
     gravity: float = 11.0        # table slope: higher plays faster
     wizard_at: int = 8            # the Nth jackpot of a game starts a free four-ball Wizard multiball (0 disables it)

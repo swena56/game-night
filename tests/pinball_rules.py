@@ -216,6 +216,29 @@ class PinballRules(unittest.TestCase):
         self.assertEqual(table.magnet_ticks, 0)
         self.assertGreater(table.magnet_cool, 0)
 
+    def test_flippers_rotate_lit_lanes_and_slings_reset(self):
+        table = placed(5, 11)
+        table.staged = False
+        table.lane_bits = 0b001
+        table.input(2, 0, 0)          # right flipper: lit lane moves right
+        self.assertEqual(table.lane_bits, 0b010)
+        table.input(0, 0, 0)
+        table.input(1, 0, 0)          # left flipper: moves back
+        self.assertEqual(table.lane_bits, 0b001)
+        table.input(0, 0, 0)
+        table.input(1, 0, 0)
+        self.assertEqual(table.lane_bits, 0b100)   # wraps around
+        ax, ay, bx, by = SLINGS[0]
+        n = math.hypot(bx - ax, by - ay)
+        nx, ny = (by - ay) / n, -(bx - ax) / n
+        table = placed((ax + bx) / 2 + .31 * nx, (ay + by) / 2 + .31 * ny, -12 * nx, -12 * ny)
+        table.step()
+        self.assertIn(0, table.sling_cool)
+        table.x, table.y = (ax + bx) / 2 + .31 * nx, (ay + by) / 2 + .31 * ny
+        table.vx, table.vy = -12 * nx, -12 * ny
+        table.step()
+        self.assertEqual(table.score, 50)         # the second hit inside the cooldown does not fire
+
     def test_lanes_spinner_bank_and_ramp(self):
         table = placed(*ROLLOVERS[0])
         for _ in range(4):

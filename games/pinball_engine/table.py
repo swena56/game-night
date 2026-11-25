@@ -54,6 +54,7 @@ class Table:
     subway_ticks: int = 0
     magnet_ticks: int = 0       # >0 while the magnet is energised
     magnet_cool: int = 0
+    sling_cool: dict = field(default_factory=dict)   # sling index -> ticks until it can fire again
     spin: float = 0
     spin_left: float = 0
     still: int = 0
@@ -222,6 +223,8 @@ class Table:
         for i in range(2):
             if held & (1 << i) and not self.held & (1 << i):
                 self.buffer[i] = 12
+                if not self.staged and not self.tilt:
+                    self.lane_change(1 if i else -1)
         if self.held & 4 and not held & 4 and self.staged and self.charge:
             strength = self.charge / 240
             self.staged = False
@@ -233,6 +236,18 @@ class Table:
         self.held = held
         if nudge and not self.staged and not self.tilt and len(self.pending) < 4:
             self.pending.append(nudge)
+
+    def lane_change(self, direction):
+        """A flipper press rotates the lit rollover lanes toward that side, as on a real machine."""
+        count = len(self.layout.lanes)
+        if count < 2 or not self.lane_bits:
+            return
+        bits = self.lane_bits
+        if direction > 0:
+            bits = ((bits << 1) | (bits >> (count - 1))) & ((1 << count) - 1)
+        else:
+            bits = ((bits >> 1) | ((bits & 1) << (count - 1))) & ((1 << count) - 1)
+        self.lane_bits = bits
 
     def expire(self, now):
         if now - self.last_input >= 0.25:
@@ -353,15 +368,20 @@ class Table:
             self.segment(rail)
         if lay.gate and not self.smooth_launch:
             self.segment(lay.gate, bounce=0.5)
+        for i in list(self.sling_cool):
+            self.sling_cool[i] -= 1
+            if self.sling_cool[i] <= 0:
+                del self.sling_cool[i]
         for i, rail in enumerate(lay.slings):
             # A real slingshot only fires when the blade switch is struck hard; a gentle roll just
             # bounces off dead rubber.
             cx, cy = closest(self.x, self.y, *rail)
             dx, dy = self.x - cx, self.y - cy
             gap = math.hypot(dx, dy)
-            hard = gap > 1e-8 and -(self.vx * dx + self.vy * dy) / gap >= rules.sling_threshold
+            hard = i not in self.sling_cool and gap > 1e-8 and -(self.vx * dx + self.vy * dy) / gap >= rules.sling_threshold
             if self.segment(rail, ball + 0.09, bounce=0.77 if hard else 0.4,
                             kick=13 if hard and not self.tilt else 0) and hard and not self.tilt:
+                self.sling_cool[i] = rules.sling_cooldown
                 self.signal(f"sling{i}", rules.sling)
         for x, y, radius in lay.posts:
             self.contact(x, y, ball + radius, 0.62)

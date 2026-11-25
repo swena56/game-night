@@ -227,6 +227,10 @@
   box-shadow: 0 0 9px #59edd26e;
 }
 
+@keyframes pb-save-blink { 50% { opacity: .25; } }
+.pb-inserts .pb-save.urgent { animation: pb-save-blink .25s steps(1) infinite; }
+@media (prefers-reduced-motion: reduce) { .pb-inserts .pb-save.urgent { animation: none; } }
+
 .pb-inserts .pb-jackpot {
   border-color: var(--pb-gold);
   color: var(--pb-gold);
