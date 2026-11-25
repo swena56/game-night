@@ -410,12 +410,15 @@
         }
         while (balls.length < s.b.length) {
           const m = new T.Mesh(sphere, mats.ball), halo = sprite(0.55);
-          halo.visible = true; halo.scale.set(2.4, 2.4, 1); m.add(halo); m.userData = { halo, pulse: 0, last: null };
+          halo.visible = true; halo.scale.set(2.4, 2.4, 1); m.add(halo);
+          const sh = new T.Sprite(new T.SpriteMaterial({ map: glowTex, color: 0x000000, transparent: true, opacity: 0.45, depthWrite: false }));   // soft contact shadow on the floor
+          sh.scale.set(1.5, 1.5, 1); scene.add(sh);
+          m.userData = { halo, sh, pulse: 0, last: null };
           scene.add(m); balls.push(m);
           if (fx && balls.length <= 16) trails[balls.length - 1] = Array.from({ length: 7 }, () => sprite(0));
         }
         balls.forEach((m, i) => {
-          m.visible = i < s.b.length;
+          m.visible = i < s.b.length; m.userData.sh.visible = m.visible;
           if (orbLights[i]) orbLights[i].intensity = 0;
           if (!m.visible) return;
           const bx = s.b[i][0], by = s.b[i][1], u = m.userData;
@@ -428,7 +431,7 @@
             if (Math.abs(dx) + Math.abs(dy) > 0.002) u.dir = [dx, dy];
           } else if (u.last) u.dir = [bx - u.last[0], by - u.last[1]];
           u.last = [bx, by]; u.pulse = Math.max(0, u.pulse - dt * 4);
-          m.position.set(gx(bx), gy(by), 0.5);
+          m.position.set(gx(bx), gy(by), 0.5); m.userData.sh.position.set(gx(bx) + 0.12, gy(by) - 0.12, 0.06);
           m.rotation.z = now / 180 + i;
           const light = orbLights[i];
           if (light) { light.position.set(gx(bx), gy(by), 1.4); light.color.set('#ff8a8a'); light.intensity = 1.1 + u.pulse * 1.2; }
@@ -528,7 +531,8 @@
   function paint() {
     const s = mine();
     if (!s) return;
-    g.find('score').textContent = s.score.toLocaleString();
+    const sc = g.find('score'), scText = s.score.toLocaleString();
+    if (sc.textContent !== scText) { sc.textContent = scText; sc.classList.remove('rs-bump'); void sc.offsetWidth; sc.classList.add('rs-bump'); }
     g.find('level').textContent = s.lv;
     if (s === g.boards[g.me] && g.lastLives != null && s.lives < g.lastLives) {
       const el = g.find('lives'); el.classList.remove('rs-lost'); void el.offsetWidth; el.classList.add('rs-lost');
@@ -558,6 +562,7 @@
     const s = g.boards[g.me];
     if (!cell || !s || !g.enabled || s.st !== 'play' || s.w.length) return;
     if (!cellFree(s.grid, cell.x, cell.y)) return;
+    g.root.querySelector('.rs-coach')?.remove();
     g.ctx.input({ x: cell.x, y: cell.y, v: vertical });
     g.ctx.sfx('pop');
   }
@@ -584,6 +589,7 @@
     const r = g.three || g.flat;
     if (!s || !r) return;
     g.find('view').hidden = !g.three;   // the flat view has no camera to tilt
+    g.root.querySelector('.rs-bar-x').classList.toggle('rs-goal-hit', s.pct >= 0.75);
     g.stage.classList.toggle('rs-slowed', s.slow > 0);
     g.stage.classList.toggle('rs-shielded', !!s.sh);
     if (g.glow !== s.color) { g.glow = s.color; g.stage.style.setProperty('--rs-glow', s.color); }
@@ -612,8 +618,8 @@
           <div><span class="rs-cap">Lives</span><strong class="rs-lives"></strong></div>
           <div class="rs-best-tile"><span class="rs-cap">Best</span><strong class="rs-best">—</strong></div>
         </div>
-        <div class="rs-bar" role="meter" aria-label="Field sealed" aria-valuemin="0" aria-valuemax="100"><div class="rs-fill"></div><div class="rs-goal" title="75% to clear"></div><span class="rs-pct">0%</span><span class="rs-slow" hidden></span></div>
-        <div class="rs-stage" aria-label="Rift Split field"><span class="rs-msg" role="status"></span></div>
+        <div class="rs-bar rs-bar-x" role="meter" aria-label="Field sealed" aria-valuemin="0" aria-valuemax="100"><div class="rs-fill"></div><div class="rs-goal" title="75% to clear"></div><span class="rs-pct">0%</span><span class="rs-slow" hidden></span></div>
+        <div class="rs-stage" aria-label="Rift Split field"><span class="rs-msg" role="status"></span><div class="rs-coach" aria-hidden="true"><b>Hold</b> to aim · <b>slide</b> to move · <b>release</b> to grow a wall<small>Seal off the orbs. Don't let them hit a growing wall.</small></div></div>
         <div class="rs-controls"><button type="button" class="rs-view" aria-label="Camera view" title="Camera view" hidden>⬓</button><button type="button" class="rs-bright" aria-label="Brightness" title="Brightness">☀</button><div class="rs-dirs" role="group" aria-label="Wall direction"><button type="button" class="rs-dir" data-v="0" aria-pressed="true"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Horizontal</span></button><button type="button" class="rs-dir rs-v" data-v="1" aria-pressed="false"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Vertical</span></button></div><span class="rs-tip">Hold to preview, release to grow a wall · Space / right-click turns it · ⛶ for fullscreen</span></div>
         <ol class="rs-standings" aria-label="Scores" hidden></ol>
       </section>`;
