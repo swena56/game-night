@@ -23,6 +23,8 @@ RAILS = (
     (3.25, 2.95, 3.25, 4.15), (5.25, 2.95, 5.25, 4.15),
     (2.55, 9.55, 3.15, 10.35), (7.45, 9.55, 6.85, 10.35),
 )
+# One-way gate: closed once the ball has left the shooter lane, so it cannot re-enter from the top.
+GATE = (8.8, 1.2, 8.8, 3.1)
 SLINGS = ((1.35, 10.75, 2.85, 12.5), (7.73, 10.75, 6.48, 12.6))
 # Offset the lower bumper to clear a straight shot to the ramp mouth.
 BUMPS = ((3.12, 5.65, 0.68), (6.62, 5.7, 0.68), (4.05, 7.64, 0.68))
@@ -31,7 +33,7 @@ ROLLOVERS = ((2.25, 3.5), (4.25, 3.5), (6.25, 3.5))
 SPINNER = (7.95, 7.4)
 RAMP = (5.25, 6.02)
 RAMP_EXIT = (7.75, 8.6)
-LAYOUT = dict(rails=RAILS, slings=SLINGS, bumps=BUMPS, targets=TARGETS, lanes=ROLLOVERS,
+LAYOUT = dict(rails=RAILS, gate=GATE, slings=SLINGS, bumps=BUMPS, targets=TARGETS, lanes=ROLLOVERS,
               spinner=SPINNER, ramp=RAMP, exit=RAMP_EXIT, flips=FLIPPERS, length=LENGTH,
               radius=BALL, skill=SKILL_CHARGE, width=WIDTH, height=HEIGHT, launch=LAUNCH)
 
@@ -195,6 +197,8 @@ class Table:
     def mechanisms(self, old_y):
         for rail in RAILS:
             self.segment(rail)
+        if not self.smooth_launch:
+            self.segment(GATE, bounce=0.5)
         for i, rail in enumerate(SLINGS):
             if self.segment(rail, BALL + 0.09, kick=0 if self.tilt else 13) and not self.tilt:
                 self.signal(f"sling{i}", 50)
@@ -302,6 +306,7 @@ class Table:
                 self.save_ticks = 0
                 self.x, self.y = LAUNCH
                 self.vx, self.vy = 0, -30
+                self.smooth_launch = True
                 self.still = 0
                 self.still_origin = LAUNCH
                 self.skill = False

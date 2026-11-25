@@ -252,6 +252,8 @@
           rail(r, '#17152f', .3);
           rail(r, i >= 9 ? guideColors[i - 9] : palette.steel, .14);
         });
+        rail(geo.gate, '#17152f', .22);
+        rail(geo.gate, palette.gold, .08);
         geo.slings.forEach((r, i) => {
           rail(r, '#252049', .34);
           rail(r, flash === 'sling' + i ? palette.ivory : palette.red, .23);
@@ -378,6 +380,7 @@
       const trim = i >= 9 ? material(guideColors[i - 9], .35, .34) : chrome;
       rail(r, .18, .35, .15, trim);
     });
+    rail(geo.gate, .14, .3, .15, brass);
     geo.slings.forEach((r, i) => {
       rail(r, .5, .2, .17, dark);
       rail(r, .28, .15, .33, lamp('sling' + i, palette.red));

@@ -272,6 +272,20 @@ class PinballRules(unittest.TestCase):
         self.assertEqual((table.bonus, table.score - before, table.mult, table.event), (2100, 2100, 1, "bonus"))
         self.assertEqual(len(table.public()), 22)
 
+    def test_gate_blocks_launch_lane_reentry(self):
+        table = placed(8.4, 2.2, vx=14, vy=0)
+        for _ in range(240):
+            table.step()
+            self.assertLess(table.x, 8.8)
+        saved = placed(*LAUNCH)
+        saved.save_ticks, saved.y = 240, 17.4
+        saved.step()
+        for _ in range(600):
+            saved.step()
+            if saved.x < 8.8 and saved.y < 5:
+                break
+        self.assertLess(saved.y, 5)
+
     def test_tied_completion(self):
         room, players = self.room(2)
         game = room.game
