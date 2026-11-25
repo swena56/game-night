@@ -112,8 +112,8 @@ Rough effort: S = a few lines, M = an engine or renderer change, L = new compone
 95. [ ] M: Mode select via a saucer (a "choose your mode" hold and flipper select).
 
 ## Sound, lights and attract mode
-96. [ ] S: Attract mode: lamps chase and a "press start" demo when nobody is playing.
-97. [ ] S: Insert lamps flash in set patterns (chase, pulse, rotate) for each award.
+96. [x] S: Attract mode: lamps chase and a "press start" demo when nobody is playing.
+97. [x] S: Insert lamps flash in set patterns (chase, pulse, rotate) for each award.
 98. [ ] S: Mechanical sounds: knocker on a replay, chime bank, coil buzz, relay clicks.
 99. [ ] S: Backglass and back-box lamps flash with the score events (done partially).
 100. [ ] S: Service/test mode: a page that lists each coil and switch and lets the user test each one.

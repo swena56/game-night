@@ -319,6 +319,13 @@
   }
 
   // A full set of lanes chases its lights across the rollovers for a moment (the 'mult' callout).
+  // Attract mode: before the first flip of a game the lamps chase around the table, like a machine waiting for a coin.
+  function attractTag(geo, now) {
+    const tags = [...geo.lanes.map((_, i) => 'lane' + i), 'ramp', ...geo.bumps.map((_, i) => 'bumper' + i), 'sling0', 'spinner',
+      'sling1', ...geo.targets.map((_, i) => 'target' + i)];
+    return tags[Math.floor(now / 260) % tags.length];
+  }
+
   function laneSweep(state, flash, lanes) {
     if (flash !== 'mult') { state.at = 0; return -1; }
     const now = performance.now();
@@ -1350,6 +1357,8 @@
       setText(g.find('score'), Math.round(g.scoreShown).toLocaleString());
     }
     const flash = now < g.flashAt ? row[EVENT] : '';
+    const attract = g.geo && idle && !flash && !row[SCORE] && !row[CHARGE] && row[BALLS] > 0 && !calm();
+    const shown = flash || (attract ? attractTag(g.geo, now) : '');
     if (!flash && g.flashing) updateHud(g, row);
     g.flashing = !!flash;
     const last = g.trail.at(-1);
@@ -1367,10 +1376,11 @@
     const others = (row[OTHERS] || []).filter((o) => o[4] > -.5).map(([x, y, vx, vy, z]) => [x + vx * ahead, y + vy * ahead, z]);
     // the backglass repaints at ~20 fps (10 on Low graphics) and only crawls under reduced motion
     if (g.glass && now - (g.glassAt ?? -1e9) > (window.gfxLevel?.() === 'low' ? 100 : 50)) { g.glassAt = now; g.glass.draw(now, row, calm()); }
-    (g.three || g.flat)?.draw(row, g.ball, flash, g.trail, g.gate, others, !!idle);
+    (g.three || g.flat)?.draw(row, g.ball, shown, g.trail, g.gate, others, !!idle);
   }
 
   function initRenderer(g, geo) {
+    g.geo = geo;
     const art = makeArt(geo);
     const flat = () => { g.flat ||= flatRenderer(g.stage, geo, art); };
     const unflat = () => { g.flat?.dispose(); g.flat = null; };
