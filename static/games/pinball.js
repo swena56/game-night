@@ -9,9 +9,9 @@
     skill: 'Skill shot +5,000', spinner: 'Spinner +100', ramp: 'Ramp +6,000 · Jackpot lit', jackpot: 'Jackpot +12,000', save: 'Ball saved · Auto launch',
     tilt: 'TILT · scoring suspended', nudge: 'Table nudged', mult: 'Multiplier up!', kickback: 'Kickback!', extra: 'EXTRA BALL!', post: 'Centre post save!', hurry: 'HURRY-UP +15,000', super: 'SUPER JACKPOT +50,000',
     mystery_points: 'Mystery · +10,000', mystery_save: 'Mystery · Ball save 10s', mystery_mult: 'Mystery · Multiplier up!', mystery_hold: 'Mystery · Bonus held', lock: 'Ball locked', mission: 'Mission complete +5,000', wizard: 'WIZARD MODE · Four balls, jackpots lit!', multiball: 'MULTIBALL · Shoot the ramp for jackpots +5,000',
-    saucer: 'Saucer +1,000', subway: 'Subway +2,000', magnet: 'Magnet grab +1,500', special: 'SPECIAL · Ball save +5,000', orbit: 'Orbit +3,000', search: 'Ball search', drain: 'Ball drained', done: 'Run complete', recovery: 'Ball freed',
+    saucer: 'Saucer +1,000', subway: 'Subway +2,000', magnet: 'Magnet grab +1,500', special: 'SPECIAL · Ball save +5,000', danger: 'DANGER · One more nudge tilts', rampfall: 'Ramp shot fell back', orbit: 'Orbit +3,000', search: 'Ball search', drain: 'Ball drained', done: 'Run complete', recovery: 'Ball freed',
   };
-  const sounds = { skill: 'pskill', ramp: 'pramp', jackpot: 'pjackpot', save: 'psave', tilt: 'wrong', nudge: 'thud', mult: 'cheer', kickback: 'pkick', extra: 'pjackpot', post: 'psave', hurry: 'pjackpot', super: 'pjackpot', mystery_points: 'cheer', mystery_save: 'psave', mystery_mult: 'cheer', mystery_hold: 'pskill', lock: 'psave', multiball: 'pjackpot', wizard: 'pjackpot', mission: 'cheer', saucer: 'ptarget', subway: 'pramp', magnet: 'pskill', special: 'psave', orbit: 'pramp', search: 'pkick', bonus: 'cheer', spinner: 'pspin', drain: 'groan', done: 'groan' };
+  const sounds = { skill: 'pskill', ramp: 'pramp', jackpot: 'pjackpot', save: 'psave', tilt: 'wrong', nudge: 'thud', mult: 'cheer', kickback: 'pkick', extra: 'pknock', danger: 'wrong', rampfall: 'rail', search: 'pkick', post: 'psave', hurry: 'pjackpot', super: 'pjackpot', mystery_points: 'cheer', mystery_save: 'psave', mystery_mult: 'cheer', mystery_hold: 'pskill', lock: 'psave', multiball: 'pjackpot', wizard: 'pjackpot', mission: 'cheer', saucer: 'ptarget', subway: 'pramp', magnet: 'pskill', special: 'psave', orbit: 'pramp', search: 'pkick', bonus: 'cheer', spinner: 'pspin', drain: 'groan', done: 'groan' };
   const prefixes = { bumper: 'Bumper +100', sling: 'Slingshot +50', lane: 'Rollover +500', target: 'Target +250' };
   const label = (event, row) => {
     if (event === 'bonus' && row) return `Ball bonus +${row[BONUS].toLocaleString()}`;
@@ -212,6 +212,12 @@
     c.fillText('S K I L L   S H O T', 425, 268);
     c.fillText('3× RAMP', geo.ramp[0] * 100, (geo.ramp[1] + .94) * 100);
     c.fillText('D R A I N', 500, 1681);
+    // the apron card, as printed under the flippers of a real machine
+    c.save();
+    c.font = 'bold 14px sans-serif';
+    c.fillStyle = palette.gold + 'bb';
+    c.fillText('FLIP  A · D  or  ← →     PLUNGE  SPACE     NUDGE  Q · W · E', 500, 1656);
+    c.restore();
     c.fillStyle = palette.teal;
     c.font = 'bold 21px sans-serif';
     c.fillText('ROLLOVER LANES', 500, 231);
@@ -326,6 +332,7 @@
     if (geo.ramp) lamps.push({ tag: 'ins_ramp', x: geo.ramp[0], y: geo.ramp[1] + .75, shot: 3 });
     if (geo.spinner) lamps.push({ tag: 'ins_spinner', x: geo.spinner[0], y: geo.spinner[1] + .8, shot: 2 });
     geo.targets.forEach((r, i) => lamps.push({ tag: 'ins_target' + i, x: r[0] - .55, y: (r[1] + r[3]) / 2, shot: 1, target: i }));
+    if (geo.outlane) lamps.push({ tag: 'ins_kick', x: geo.outlane[0] - .45, y: geo.outlane[1] - .5 });
     if (geo.orbit) lamps.push({ tag: 'ins_orbit', x: geo.orbit[0] + .3, y: geo.orbit[1] + .75 });
     if (geo.saucer) lamps.push({ tag: 'ins_saucer', x: geo.saucer[0], y: geo.saucer[1] + .6 });
     if (geo.subway) lamps.push({ tag: 'ins_subway', x: geo.subway[0], y: geo.subway[1] + .6 });
@@ -337,6 +344,7 @@
     if (l.tag === 'ins_ramp') return rampLit(row) ? rampColor(row) : row[LIT] === 3 ? palette.gold + '88' : INSERT_OFF;
     if (l.tag === 'ins_spinner') return row[HURRY] ? palette.teal : row[LIT] === 2 ? palette.gold : INSERT_OFF;
     if (l.target !== undefined) return row[BANK] >> l.target & 1 ? INSERT_OFF : row[LIT] === 1 ? palette.gold : palette.red;
+    if (l.tag === 'ins_kick') return row[KICK] ? palette.gold : INSERT_OFF;
     if (l.tag === 'ins_orbit') return row[STATS]?.orbit ? palette.teal : INSERT_OFF;
     return palette.teal;     // saucer and subway are always open
   }
@@ -500,10 +508,10 @@
           disc(mx, my, .24, '#252049');
           disc(mx, my, .16, mag === 2 ? palette.ivory : mag ? palette.teal : '#38325c');
         }
-        (geo.posts || []).forEach(([x, y, r]) => { disc(x, y, r + .05, '#252049'); disc(x, y, r, palette.ivory); });
+        (geo.posts || []).forEach(([x, y, r]) => { disc(x, y, r + .05, '#252049'); disc(x, y, r, row[STATS]?.post > 0 ? palette.gold : palette.ivory); });
         geo.slings.forEach((r, i) => {
           rail(r, '#252049', .34);
-          rail(r, flash === 'sling' + i ? palette.ivory : palette.red, .23);
+          rail(r, flash === 'sling' + i ? palette.ivory : palette.red, flash === 'sling' + i ? .15 : .23);   // the rubber squashes under the kick
         });
         geo.targets.forEach((r, i) => rail(r, flash === 'target' + i ? palette.ivory : row[BANK] & (1 << i) ? '#38325c' : palette.red, .28));
         FLASHERS.forEach(([fx, fy], i) => {
@@ -517,7 +525,7 @@
           disc(fx, fy, .17, color ? color : '#4a2e46');
         });
         // during a jackpot round or multiball the bumper caps chase in gold
-        const chase = !row[TILT] && jackpotLit(row) ? Math.floor(performance.now() / 180) % geo.bumps.length : -1;
+        const chase = !row[TILT] && (jackpotLit(row) || row[STATS]?.streak >= 2) ? Math.floor(performance.now() / 180) % geo.bumps.length : -1;
         geo.bumps.forEach(([x, y, radius], i) => {
           disc(x, y, radius, '#252049');
           if (flash === 'bumper' + i) {
@@ -533,7 +541,7 @@
             disc(x, y, radius + .12, '#fff3a8');
             disc(x, y, radius + .02, '#211c3d');
           }
-          disc(x, y - .035, radius - .08, flash === 'bumper' + i ? palette.ivory : chase === i ? palette.gold : bumperColors[i]);
+          disc(x, y - .035, radius - (flash === 'bumper' + i ? .14 : .08), flash === 'bumper' + i ? palette.ivory : chase === i ? palette.gold : bumperColors[i]);   // the skirt dips on a hit
           disc(x, y - .07, radius - .24, '#30244f');
           disc(x, y - .12, .18, palette.ivory);
         });
@@ -552,12 +560,12 @@
         if (geo.saucer) {
           const [ux, uy, ur] = geo.saucer;
           disc(ux, uy, ur + .07, '#252049');
-          disc(ux, uy, ur, row[EVENT] === 'saucer' ? '#fff0ca88' : '#0c0a1c');
+          disc(ux, uy, ur, row[EVENT] === 'saucer' ? '#fff0ca88' : row[STATS]?.hold && Math.floor(performance.now() / 150) % 2 ? palette.gold : '#0c0a1c');   // the lamp flashes while the ball is held
         }
         if (geo.subway) {
           const [wx, wy, wr] = geo.subway;
           disc(wx, wy, wr + .07, '#252049');
-          disc(wx, wy, wr, row[EVENT] === 'subway' ? '#59edd288' : '#0c0a1c');
+          disc(wx, wy, wr, row[EVENT] === 'subway' || row[STATS]?.under ? '#59edd288' : '#0c0a1c');   // lit while a ball is underneath
         }
         const [sx, sy] = geo.spinner;
         disc(sx, sy, .18, flash === 'spinner' ? '#fff0ca88' : '#c1d2e522');
@@ -766,7 +774,7 @@
       disc(mx, my, .24, .03, .03, brass);
       disc(mx, my, .16, .05, .05, lamp('magnet', '#38325c', row => row[STATS]?.magnet === 2 ? palette.ivory : row[STATS]?.magnet ? palette.teal : '#38325c'));
     }
-    (geo.posts || []).forEach(([x, y, r]) => disc(x, y, r, .4, .2, rubber('#f2ecdd')));
+    (geo.posts || []).forEach(([x, y, r]) => disc(x, y, r, .4, .2, lamp('post', '#f2ecdd', (row) => row[STATS]?.post > 0 ? palette.gold : null)));
     geo.slings.forEach((r, i) => {
       rail(r, .5, .2, .17, rubberDark);
       rail(r, .28, .15, .33, lamp('sling' + i, palette.red));
@@ -777,7 +785,7 @@
       disc(x, y, radius - .05, .31, .18, chrome);
       disc(x, y, radius, .14, .33, rubberRed);
       disc(x, y, radius - .09, .13, .46, lamp('bumper' + i, bumperColors[i],
-        (row) => !row[TILT] && jackpotLit(row) && Math.floor(performance.now() / 180) % geo.bumps.length === i ? palette.gold : null));
+        (row) => !row[TILT] && (jackpotLit(row) || row[STATS]?.streak >= 2) && Math.floor(performance.now() / 180) % geo.bumps.length === i ? palette.gold : null));
       disc(x, y, radius - .25, .09, .55, dark);
       disc(x, y, .18, .03, .61, brass);
     });
@@ -1279,7 +1287,7 @@
       el.classList.add('go');
     }
     // table shake scales with the moment: a nudge is a shove, a jackpot or multiball a slam
-    const shove = { nudge: 3, tilt: 4, jackpot: 5, super: 8, multiball: 7, extra: 6, wizard: 9 }[row[EVENT]];
+    const shove = { nudge: 3, danger: 4, tilt: 4, jackpot: 5, super: 8, multiball: 7, extra: 6, wizard: 9 }[row[EVENT]];
     if (shove && !reduce) {
       g.stage.style.setProperty('--shake', `${shove}px`);
       g.stage.classList.remove('shake');
@@ -1345,6 +1353,16 @@
         stop() { try { o.stop(); o.disconnect(); } catch {} },
       };
     }).set(whirl > .12 ? whirl : 0);
+    // the magnet hums while it is energised
+    Snd.bed('pin-hum', (K, dst) => {
+      const o = K.ctx.createOscillator(), gain = K.ctx.createGain();
+      o.type = 'sawtooth'; o.frequency.value = 60; gain.gain.value = 0;
+      o.connect(gain).connect(dst); o.start();
+      return {
+        set(level) { gain.gain.setTargetAtTime(level * .035, K.ctx.currentTime, .1); },
+        stop() { try { o.stop(); o.disconnect(); } catch {} },
+      };
+    }).set(row[STATS]?.magnet === 2 && !row[TILT] ? 1 : 0);
   }
 
   function receive(g, data) {
@@ -1371,6 +1389,7 @@
       if (!row[TILT] && ((!row[OTHERS]?.length && ending(row[JACKPOT], prior[JACKPOT])) ||
           ending(row[HURRY], prior[HURRY]))) g.ctx.sfx('ptick');
     }
+    if (prior && viewer === g.me && !g.ctx.readOnly && prior[BANK] === 7 && row[BANK] === 0) g.ctx.sfx('pbank');
     // the last nudge before tilt: a warning buzz for the player
     if (prior && viewer === g.me && !g.ctx.readOnly && row[NUDGES] === 3 && prior[NUDGES] < 3) g.ctx.sfx('alarm');
     if (prior && prior[EVENT_ID] !== row[EVENT_ID]) {

@@ -446,6 +446,9 @@ const SFX = {
   pspin: () => { tone(1700, 1300, 0.03, 'triangle', 0.05); noise(0.012, 4200, 2, 0.12); },
   pramp: () => { noise(0.35, 700, 0.6, 0.3); tone(300, 900, 0.3, 'sine', 0.07); tone(900, 1350, 0.12, 'triangle', 0.06, 0.28); },
   pjackpot: () => { [784, 988, 1175, 1568, 1175, 1568].forEach((f, i) => { tone(f, f, 0.2, 'triangle', 0.09, i * 0.07); tone(f * 2, f * 2, 0.12, 'sine', 0.03, i * 0.07); }); noise(0.5, 2200, 0.4, 0.14); },
+  // pinball: the replay knocker (a deep thump) with a bell flourish, and the drop-target bank's rising reset chime
+  pknock: () => { tone(90, 50, 0.12, 'square', 0.14); noise(0.04, 400, 1, 0.5); [1047, 1319, 1568].forEach((f, i) => tone(f, f, 0.16, 'triangle', 0.07, 0.1 + i * 0.06)); },
+  pbank: () => [392, 494, 587, 784].forEach((f, i) => tone(f, f, 0.08, 'triangle', 0.06, i * 0.05)),
   pkick: () => { tone(160, 60, 0.12, 'square', 0.08); noise(0.05, 700, 1, 0.4); },
   pflip: () => { tone(190, 90, 0.05, 'square', 0.07); noise(0.025, 1500, 1.2, 0.3); },
   pflipup: () => { tone(130, 90, 0.03, 'triangle', 0.04); noise(0.015, 1000, 1, 0.12); },
