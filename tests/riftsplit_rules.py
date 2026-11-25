@@ -31,23 +31,23 @@ check("third wall refused", not b.can_place(30, 10))
 for _ in range(600):
     b.step(R.STEP, 0)
 check("both walls finish", not b.walls)
-for level, speed in enumerate((4.9, 5.7, 6.5, 7.6), start=1):
+for level, speed in enumerate((4.9, 5.7, 6.5, 6.8), start=1):
     board = R.Board(random.Random(1), level)
     check(f"level {level} orb speed is {speed}", R.ball_speed(level) == speed
           and all(math.isclose(math.hypot(vx, vy), speed) for _, _, vx, vy in board.balls))
 
 later_levels = range(4, R.MAX_LEVEL + 1)
 check("level 4 onward retains the speed curve and cap",
-      all(R.ball_speed(level) == min(10.5, 5.6 + 0.5 * level) for level in later_levels))
+      all(R.ball_speed(level) == min(11.0, 6.5 + 0.3 * (level - 3)) for level in later_levels))
 later_boards = (R.Board(random.Random(1), level) for level in later_levels)
 check("level 4 onward retains orb counts, lives, and seal goals",
-      all(len(board.balls) == min(9, board.level + 1)
-          and board.lives == min(6, board.level + 1)
-          and math.isclose(R.level_goal(board.level), min(0.82, 0.68 + 0.02 * board.level))
+      all(len(board.balls) == min(11, 2 + (board.level - 1) // 2)
+          and board.lives == min(6, 2 + (board.level - 1) // 2)
+          and math.isclose(R.level_goal(board.level), min(0.86, 0.685 + 0.015 * board.level))
           for board in later_boards))
 check("orbs capped", len(R.Board(random.Random(1), 40).balls) <= R.MAX_ORBS)
 check("lives capped", R.Board(random.Random(1), 40).lives <= R.MAX_LIVES)
-check("speed capped", R.ball_speed(99) <= 10.5)
+check("speed capped", R.ball_speed(99) <= 11.0)
 c = R.Board(random.Random(3), 1)
 c.balls = [[3 + 1 + R.RADIUS + 0.4, 15.0, 0.0, 0.0]]
 c.place(3, 15, True)

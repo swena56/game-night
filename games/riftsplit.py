@@ -17,7 +17,15 @@ GOAL = 0.75        # kept for the layout default; the real target climbs with th
 
 
 def level_goal(level):
-    return min(0.82, 0.68 + 0.02 * level)   # L1 66%... L7+ 82%: early levels are gentler, late ones demand more
+    return min(0.86, 0.685 + 0.015 * level)   # L1 70% ... L12+ 86%: a slow climb, late levels demand more
+
+
+def orb_count(level):
+    return min(MAX_ORBS, 2 + (level - 1) // 2)   # an extra orb every 2 levels: 2,2,3,3,... cap at L21
+
+
+def start_lives(level):
+    return min(MAX_LIVES, 2 + (level - 1) // 2)
 RADIUS = 0.42
 GROW = 15.0              # wall cells per second
 STEP = 1 / 60
@@ -26,7 +34,8 @@ SLOW_SECS, SLOW_FACTOR = 8.0, 0.45
 MAX_LEVEL = 99
 MAX_LIVES = 6
 MAX_WALLS = 2       # two walls may grow at once, on lines that don't cross
-MAX_ORBS = 9        # late stages stay readable: orbs and starting lives stop growing
+MAX_SPEED = 11.0
+MAX_ORBS = 11       # late stages stay readable: orbs and starting lives stop growing
 NEAR = 0.8          # an orb this close to a growing tip (cells) counts as a near miss
 CLOSE_BONUS = 25
 HOLD_SECS = 2.1     # a 3-2-1 before every level, orbs frozen
@@ -36,7 +45,7 @@ BOT = {"easy": (1.6, 2), "normal": (0.9, 8), "hard": (0.6, 22)}   # seconds betw
 def ball_speed(level):
     if 1 <= level <= 3:
         return (4.9, 5.7, 6.5)[level - 1]
-    return min(10.5, 5.6 + 0.5 * level)
+    return min(MAX_SPEED, 6.5 + 0.3 * (level - 3))   # +0.3 per level, cap at L18
 
 
 class Board:
@@ -60,7 +69,7 @@ class Board:
     # ----- level setup -----
     def setup(self, level):
         self.level = level
-        self.lives = min(MAX_LIVES, level + 1)
+        self.lives = start_lives(level)
         self.hold = 0.0
         self.holding = False
         self.grid = [bytearray(W) for _ in range(H)]
@@ -69,7 +78,7 @@ class Board:
         self.state = "play"
         speed = ball_speed(level)
         self.balls = []
-        for _ in range(min(MAX_ORBS, level + 1)):
+        for _ in range(orb_count(level)):
             ang = self.rng.uniform(0.35, 1.2) + self.rng.choice((0, 1.57, 3.14, 4.71))
             vx, vy = speed * math.cos(ang), speed * math.sin(ang)
             self.balls.append([self.rng.uniform(2, W - 2), self.rng.uniform(2, H - 2), vx, vy])
