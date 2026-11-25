@@ -272,6 +272,12 @@ class PinballRules(unittest.TestCase):
         self.assertEqual((table.bonus, table.score - before, table.mult, table.event), (2100, 2100, 1, "bonus"))
         self.assertEqual(len(table.public()), 22)
 
+    def test_tilt_forfeits_bonus(self):
+        table = placed(5, 17.4)
+        table.bumper_hits, table.tilt = 10, True
+        table.drain()
+        self.assertEqual((table.bonus, table.score, table.event), (0, 0, "drain"))
+
     def test_gate_blocks_launch_lane_reentry(self):
         table = placed(8.4, 2.2, vx=14, vy=0)
         for _ in range(240):

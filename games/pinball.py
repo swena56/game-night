@@ -136,7 +136,7 @@ class Table:
 
     def drain(self):
         self.balls -= 1
-        self.bonus = (self.bumper_hits * 10 + self.ramps * 1000) * self.mult
+        self.bonus = 0 if self.tilt else (self.bumper_hits * 10 + self.ramps * 1000) * self.mult
         self.score += self.bonus
         self.bumper_hits = self.ramps = self.lane_bits = 0
         self.mult = 1
