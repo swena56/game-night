@@ -244,6 +244,80 @@
   // players who ask for reduced motion get no speed halo, squash/stretch, ripples or score roll
   const calm = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
+  // The backglass: an animated skyline painted behind the score panel. Golden Hour is a dusk with a sun, drifting
+  // ridges and twinkling stars; Neon Arcade a magenta sun over a scrolling city. Big events flare through it.
+  function glassArt(marquee, neon) {
+    const canvas = document.createElement('canvas');
+    canvas.className = 'pb-glass';
+    canvas.setAttribute('aria-hidden', 'true');
+    marquee.prepend(canvas);
+    const c = canvas.getContext('2d');
+    if (!c) return null;
+    const size = sizeOf(marquee);
+    const stars = Array.from({ length: 26 }, (_, i) => [((i * 37) % 100) / 100, ((i * 53) % 55) / 100, (i % 5) + 1]);
+    const towers = Array.from({ length: 22 }, (_, i) => [i / 22, .05 + (((i * 7) % 9) / 9) * .5, .035 + (i % 3) * .012]);
+    let react = { kind: '', at: -1e9 };
+    const ridge = (w, h, base, amp, speed, now, color, seed) => {
+      c.beginPath(); c.moveTo(0, h);
+      for (let x = 0; x <= w; x += 6) c.lineTo(x, base - amp * (Math.sin((x + now * speed) / 34 + seed) * .6 + Math.sin((x + now * speed) / 13 + seed * 2) * .4) - amp);
+      c.lineTo(w, h); c.closePath(); c.fillStyle = color; c.fill();
+    };
+    return {
+      react(kind) { react = { kind, at: performance.now() }; },
+      draw(now, row, calmMode) {
+        const ratio = Math.min(2, window.devicePixelRatio || 1);
+        const w = Math.round(size.w * ratio), h = Math.round(size.h * ratio);
+        if (!w || !h) return;
+        if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+        c.setTransform(ratio, 0, 0, ratio, 0, 0);
+        const W = size.w, H = size.h, t = calmMode ? 0 : now;
+        const age = (now - react.at) / 1000;
+        const flare = Math.max(0, 1 - age / 1.6);
+        const sky = c.createLinearGradient(0, 0, 0, H);
+        if (neon) { sky.addColorStop(0, '#0c0624'); sky.addColorStop(.6, '#3a0f55'); sky.addColorStop(1, '#8a1f78'); }
+        else { sky.addColorStop(0, '#241a45'); sky.addColorStop(.55, '#7a3a5c'); sky.addColorStop(1, '#f08a4b'); }
+        c.fillStyle = sky; c.fillRect(0, 0, W, H);
+        if (!neon) for (const [x, y, k] of stars) { c.globalAlpha = .35 + .35 * Math.sin(t / 500 * k + x * 9); c.fillStyle = '#fff0ca'; c.fillRect(x * W, y * H, 1.4, 1.4); }
+        c.globalAlpha = 1;
+        // the sun, swelling with jackpot-type events
+        const sx = W * .5, sy = H * (neon ? .5 : .8), sr = H * (.34 + .12 * flare * (react.kind === 'jackpot' || react.kind === 'super' ? 1 : .4)) + Math.sin(t / 1800) * 1.5;
+        if (flare && ['jackpot', 'super', 'hurry', 'mission', 'extra'].includes(react.kind)) {
+          c.save(); c.translate(sx, sy); c.rotate(t / 4000); c.fillStyle = `rgba(255,222,150,${.35 * flare})`;
+          for (let i = 0; i < 12; i++) { c.rotate(Math.PI / 6); c.beginPath(); c.moveTo(0, 0); c.lineTo(W * .7, -7); c.lineTo(W * .7, 7); c.closePath(); c.fill(); }
+          c.restore();
+        }
+        const sun = c.createLinearGradient(0, sy - sr, 0, sy + sr);
+        if (neon) { sun.addColorStop(0, '#ff6ad5'); sun.addColorStop(1, '#ff3ea5'); } else { sun.addColorStop(0, '#fff0ca'); sun.addColorStop(1, '#ffb25a'); }
+        c.fillStyle = sun; c.beginPath(); c.arc(sx, sy, sr, 0, Math.PI * 2); c.fill();
+        if (neon) { c.fillStyle = '#3a0f55'; for (let i = 1; i < 5; i++) c.fillRect(sx - sr, sy + (i - 2) * sr * .28, sr * 2, i * .9); }
+        if (neon) {
+          for (const [x, hgt, wid] of towers) {
+            const tx = ((x * W - t * .012) % W + W) % W, th = hgt * H * .8 + H * .1;
+            c.fillStyle = '#150a2e'; c.fillRect(tx, H - th, wid * W, th);
+            c.fillStyle = '#ff9bf0'; for (let r = 0; r < 3; r++) c.fillRect(tx + 2 + r * 4, H - th + 4 + ((x * 100 | 0) % 3) * 5, 1.5, 1.5);
+          }
+        } else {
+          ridge(W, H, H * .98, H * .1, .004, t, '#3a2a5e', 1);
+          ridge(W, H, H * 1.0, H * .09, .009, t, '#2a2049', 3);
+          ridge(W, H, H * 1.04, H * .08, .016, t, '#1a1633', 5);
+        }
+        // aurora ribbons for multiball and wizard mode, while they last
+        if ((row?.[OTHERS]?.length || flare) && (row?.[OTHERS]?.length || ['multiball', 'wizard'].includes(react.kind))) {
+          const a = row?.[OTHERS]?.length ? .5 : flare * .6;
+          for (let k = 0; k < 3; k++) {
+            c.beginPath(); c.moveTo(0, H * .2 + k * 5);
+            for (let x = 0; x <= W; x += 8) c.lineTo(x, H * (.2 + k * .09) + Math.sin(x / 28 + t / 420 + k) * 5);
+            c.strokeStyle = k % 2 ? `rgba(198,153,255,${a})` : `rgba(88,229,213,${a})`; c.lineWidth = 5; c.stroke();
+          }
+        }
+        if (row?.[TILT]) { c.fillStyle = 'rgba(255,45,45,.38)'; c.fillRect(0, 0, W, H); }
+        else if (flare && (react.kind === 'drain' || react.kind === 'done')) { c.fillStyle = `rgba(8,4,20,${.55 * flare})`; c.fillRect(0, 0, W, H); }
+        else if (flare && (react.kind === 'extra' || react.kind === 'wizard')) { c.fillStyle = `rgba(255,255,255,${.4 * flare})`; c.fillRect(0, 0, W, H); }
+        c.fillStyle = 'rgba(10,8,30,.28)'; c.fillRect(0, 0, W, H);    // a veil so the score stays readable
+      },
+    };
+  }
+
   // A full set of lanes chases its lights across the rollovers for a moment (the 'mult' callout).
   function laneSweep(state, flash, lanes) {
     if (flash !== 'mult') { state.at = 0; return -1; }
@@ -1180,6 +1254,7 @@
     if (prior && viewer === g.me && !g.ctx.readOnly && row[NUDGES] === 3 && prior[NUDGES] < 3) g.ctx.sfx('alarm');
     if (prior && prior[EVENT_ID] !== row[EVENT_ID]) {
       g.flashAt = performance.now() + 780;
+      g.glass?.react(row[EVENT]);
       popup(g, row);
       if (viewer === g.me && !g.ctx.readOnly) g.ctx.sfx(sound(row[EVENT]), soundArg(row[EVENT]));
     }
@@ -1246,6 +1321,8 @@
     g.gateAt = now;
     // the other multiball balls are extrapolated by their velocity from the last packet
     const others = (row[OTHERS] || []).map(([x, y, vx, vy, z]) => [x + vx * ahead, y + vy * ahead, z]);
+    // the backglass repaints at ~20 fps (10 on Low graphics) and only crawls under reduced motion
+    if (g.glass && now - (g.glassAt ?? -1e9) > (window.gfxLevel?.() === 'low' ? 100 : 50)) { g.glassAt = now; g.glass.draw(now, row, calm()); }
     (g.three || g.flat)?.draw(row, g.ball, flash, g.trail, g.gate, others, !!idle);
   }
 
@@ -1300,6 +1377,7 @@
         band.style.left = `${100 * data.layout.skill[0] / 240}%`;
         band.style.width = `${100 * (data.layout.skill[1] - data.layout.skill[0] + 1) / 240}%`;
         initRenderer(g, data.layout);
+        g.glass = glassArt(g.find('marquee'), g.table === 'neon');
       }
       g.ctx = ctx;
       g.me = data.me;

@@ -28,7 +28,13 @@
   border-color: #b0856a;
   background: radial-gradient(ellipse at 50% 125%, #693450, #16152b 72%);
   box-shadow: inset 0 0 12px #0a0a1b, 0 2px 4px #0005;
+  position: relative;
+  overflow: hidden;
 }
+
+/* the animated backglass paints behind the score, balls and best tiles */
+.pb-glass { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+.pb-marquee > div { position: relative; z-index: 1; }
 
 .pb-caption {
   display: block;
