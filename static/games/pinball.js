@@ -260,6 +260,12 @@
     const c = canvas.getContext('2d');
     if (!c) return null;
     stage.prepend(canvas);
+    // The static table art lives on its own canvas underneath, painted once per resize instead of every frame.
+    const back = document.createElement('canvas');
+    back.className = 'pb-flat-bg';
+    back.setAttribute('aria-hidden', 'true');
+    stage.prepend(back);
+    const bc = back.getContext('2d');
     const track = rampPoints(geo);
     const line = (points, width, color) => {
       c.beginPath();
@@ -323,16 +329,17 @@
         if (!width || !height) return;
         if (!flash?.startsWith('bumper')) rippleTag = '';
         if (canvas.width !== width || canvas.height !== height) {
-          canvas.width = width;
-          canvas.height = height;
+          canvas.width = back.width = width;
+          canvas.height = back.height = height;
           sprites = null;
+          bc.setTransform(width / 11, 0, 0, height / 18.7, width / 22, height * .85 / 18.7);
+          bc.fillStyle = '#211c3d';
+          bc.fillRect(-.46, -.78, 10.92, 18.56);
+          bc.drawImage(art, 0, 0, geo.width, geo.height);
         }
         if (!sprites) sprites = makeSprites(width / 11);
         c.setTransform(width / 11, 0, 0, height / 18.7, width / 22, height * .85 / 18.7);
         c.clearRect(-.5, -.85, 11, 18.7);
-        c.fillStyle = '#211c3d';
-        c.fillRect(-.46, -.78, 10.92, 18.56);
-        c.drawImage(art, 0, 0, geo.width, geo.height);
         c.lineCap = 'round';
         geo.rails.forEach((r, i) => {
           rail(r, '#17152f', .3);
