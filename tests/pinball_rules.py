@@ -196,6 +196,26 @@ class PinballRules(unittest.TestCase):
         self.assertEqual((table.height, table.vx, table.vy), (0, SUBWAY_EXIT[2], SUBWAY_EXIT[3] + 0))
         self.assertEqual(table.score, 2000)
 
+    def test_posts_bounce_and_magnet_only_grabs_when_armed(self):
+        from games.pinball import MAGNET, POSTS
+        x, y, r = POSTS[0]
+        table = placed(x + r + BALL + .02, y, -6)
+        table.step()
+        self.assertGreater(table.vx, 0)
+        self.assertEqual(table.score, 0)
+        table = placed(MAGNET[0] + .6, MAGNET[1], 0, 0)
+        table.step()
+        self.assertEqual((table.magnet_ticks, table.score), (0, 0))   # idle outside a jackpot round
+        table = placed(MAGNET[0] + .6, MAGNET[1], 0, 0)
+        table.jackpot_ticks = 5000
+        table.step()
+        self.assertEqual((table.event, table.score), ("magnet", 1500))
+        self.assertLess(table.vx, 0)
+        for _ in range(table.rules.magnet_ticks):
+            table.step()
+        self.assertEqual(table.magnet_ticks, 0)
+        self.assertGreater(table.magnet_cool, 0)
+
     def test_lanes_spinner_bank_and_ramp(self):
         table = placed(*ROLLOVERS[0])
         for _ in range(4):
@@ -461,7 +481,7 @@ class PinballRules(unittest.TestCase):
         self.assertEqual(table.balls, 2)         # only the last ball costs one
 
     def test_multiball_extras_score_and_nudge(self):
-        table = placed(5, 9)
+        table = placed(5, 11)
         x, y, r = BUMPS[0]
         table.others = [table.free_ball(x + r + .2, y, -10, 0)]
         table.step()

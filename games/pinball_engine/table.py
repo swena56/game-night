@@ -52,6 +52,8 @@ class Table:
     ramp_ticks: int = 0
     saucer_ticks: int = 0
     subway_ticks: int = 0
+    magnet_ticks: int = 0       # >0 while the magnet is energised
+    magnet_cool: int = 0
     spin: float = 0
     spin_left: float = 0
     still: int = 0
@@ -361,6 +363,8 @@ class Table:
             if self.segment(rail, ball + 0.09, bounce=0.77 if hard else 0.4,
                             kick=13 if hard and not self.tilt else 0) and hard and not self.tilt:
                 self.signal(f"sling{i}", rules.sling)
+        for x, y, radius in lay.posts:
+            self.contact(x, y, ball + radius, 0.62)
         for i, (x, y, radius) in enumerate(lay.bumps):
             if self.contact(x, y, ball + radius, 0.86, 0 if self.tilt else 16) and not self.tilt:
                 self.bumper_hits += 1
@@ -444,6 +448,11 @@ class Table:
         self.combo_ticks = max(0, self.combo_ticks - 1)
         self.hurry_ticks = max(0, self.hurry_ticks - 1)
         self.mb_save_ticks = max(0, self.mb_save_ticks - 1)
+        if self.magnet_ticks:
+            self.magnet_ticks -= 1
+            if not self.magnet_ticks:
+                self.magnet_cool = rules.magnet_cooldown
+        self.magnet_cool = max(0, self.magnet_cool - 1)
         if self.mission >= 0:
             self.mission_ticks -= 1
             if self.mission_ticks <= 0:
@@ -516,6 +525,7 @@ class Table:
             self.hold_in_saucer()
             return
         old_y = self.y
+        self.pull_magnet()
         self.vx *= 0.999
         self.vy = self.vy * 0.999 + self.rules.gravity * STEP
         speed = math.hypot(self.vx, self.vy)
@@ -534,6 +544,28 @@ class Table:
                     self.flipper_contact(i, previous[i], sample / samples)
         self.mechanisms(old_y)
         self.lane_and_drain()
+
+    def magnet_armed(self):
+        return bool(self.layout.magnet) and not self.tilt and bool(self.jackpot_ticks or self.others)
+
+    def pull_magnet(self):
+        """Under the playfield: while energised it drags any ball in range toward its centre and damps it."""
+        lay = self.layout
+        if not lay.magnet or self.height:
+            return
+        cx, cy, reach = lay.magnet
+        dx, dy = cx - self.x, cy - self.y
+        distance = math.hypot(dx, dy)
+        if distance >= reach:
+            return
+        if not self.magnet_ticks:
+            if self.magnet_cool or not self.magnet_armed():
+                return
+            self.magnet_ticks = self.rules.magnet_ticks
+            self.signal("magnet", self.rules.magnet)
+        pull = 60 * (1 - distance / reach) * STEP
+        self.vx = self.vx * 0.97 + dx / max(distance, 0.05) * pull
+        self.vy = self.vy * 0.97 + dy / max(distance, 0.05) * pull
 
     def hold_in_saucer(self):
         """The ball rests in the dish, then the kicker fires it back into play."""
@@ -690,5 +722,6 @@ class Table:
                 {"jackpot": self.jackpots, "multiball": self.multiballs, "hurry": self.hurry_wins,
                  "mystery": self.mysteries, "extra": self.extras, "combo": self.best_combo,
                  "wizard": self.wizards, "skill_lane": self.skill_lane, "missions": self.missions_done,
+                 "magnet": 2 if self.magnet_ticks else 1 if self.magnet_armed() and not self.magnet_cool else 0,
                  "mission": ([self.rules.missions[self.mission][0], self.mission_progress, self.rules.missions[self.mission][2],
                               math.ceil(self.mission_ticks / 240)] if self.mission >= 0 else None), "mode": self.mode, "clock": math.ceil(self.clock / 240)}]

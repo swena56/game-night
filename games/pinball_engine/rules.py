@@ -42,6 +42,9 @@ class Rules:
     shots: tuple = ("lane", "target", "spinner", "ramp")
     first_lit: int = 3
     saucer: int = 1000
+    magnet: int = 1500
+    magnet_ticks: int = 216       # how long the magnet holds a ball once it grabs it
+    magnet_cooldown: int = 4 * 240
     subway: int = 2000
     subway_ticks: int = 100       # time the ball spends under the playfield
     saucer_ticks: int = 150       # how long the saucer holds the ball before kicking it out
