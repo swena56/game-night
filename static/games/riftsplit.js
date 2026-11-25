@@ -136,7 +136,7 @@
           c.globalAlpha = e;
           c.fillStyle = s.color;
           c.fillRect(x + inset, y + inset, 1 - inset * 2, 1 - inset * 2);
-          c.fillStyle = open(i, x, y) ? '#ffffff55' : '#00000066';
+          c.fillStyle = open(i, x, y) ? '#ffffff70' : '#ffffff14';
           c.fillRect(x + inset, y + inset, 1 - inset * 2, 1 - inset * 2);
         }
         c.globalAlpha = 1;
@@ -349,6 +349,8 @@
         resize();
         const col = new T.Color(s.color);
         mats.glow.color.copy(col); mats.ghost.color.copy(col);
+        blocks.material.emissive.copy(col).multiplyScalar(0.45);   // self-lit, so sealed cells never read as black
+        blocks.material.emissiveIntensity = 1;
         edgeMat.color.copy(col); edgeMat.opacity = 0.6 + 0.2 * Math.sin(now / 700);
         mats.core.color.copy(col).lerp(new T.Color(0xffffff), 0.7);
         const dt = Math.min(0.05, Math.max(0, (now - (lastNow || now)) / 1000)); lastNow = now;
@@ -367,7 +369,7 @@
             const x = i % g.W, y = (i - x) / g.W;
             const open = (j, ok) => ok && s.grid[j] === '0';
             const rim = open(i - 1, x > 0) || open(i + 1, x < g.W - 1) || open(i - g.W, y > 0) || open(i + g.W, y < g.H - 1);
-            rimCol.copy(col).multiplyScalar(rim ? 1 : 0.55); if (rim) rimCol.lerp(new T.Color(0xffffff), 0.35);
+            rimCol.copy(col).multiplyScalar(rim ? 1 : 0.88); if (rim) rimCol.lerp(new T.Color(0xffffff), 0.45);
             blocks.setColorAt(n, rimCol);
             blocks.setMatrixAt(n++, dummy.matrix);
           }
