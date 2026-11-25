@@ -241,8 +241,20 @@
   // players who ask for reduced motion get no speed halo, squash/stretch, ripples or score roll
   const calm = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
+  // The stage size is cached and refreshed by a ResizeObserver, so drawing never forces a layout read.
+  function sizeOf(stage) {
+    const size = { w: stage.clientWidth, h: stage.clientHeight };
+    if (window.ResizeObserver) {
+      new ResizeObserver(() => { size.w = stage.clientWidth; size.h = stage.clientHeight; }).observe(stage);
+    } else {
+      Object.defineProperties(size, { w: { get: () => stage.clientWidth }, h: { get: () => stage.clientHeight } });
+    }
+    return size;
+  }
+
   function flatRenderer(stage, geo, art) {
     const still = calm();
+    const size = sizeOf(stage);
     const canvas = document.createElement('canvas');
     canvas.className = 'pb-flat';
     const c = canvas.getContext('2d');
@@ -306,8 +318,8 @@
     return {
       draw(row, ball, flash, trail = [], gate = 0, others = []) {
         const ratio = GL3.level() === 'low' ? 1 : Math.min(1.5, window.devicePixelRatio || 1);
-        const width = Math.round(stage.clientWidth * ratio);
-        const height = Math.round(stage.clientHeight * ratio);
+        const width = Math.round(size.w * ratio);
+        const height = Math.round(size.h * ratio);
         if (!width || !height) return;
         if (!flash?.startsWith('bumper')) rippleTag = '';
         if (canvas.width !== width || canvas.height !== height) {
@@ -548,6 +560,7 @@
     const sphere = mesh(new T.SphereGeometry(geo.radius, 20, 14), chrome, 0, 0, 0);
     const extraBalls = [];
     const still = calm();
+    const size = sizeOf(stage);
     // a fast ball glows on the table beneath it; a ball save wraps it in a teal bubble
     const halo = new T.Mesh(new T.CircleGeometry(geo.radius * 3.2, 28),
       new T.MeshBasicMaterial({ color: '#ffd382', transparent: true, opacity: 0, depthWrite: false }));
@@ -572,10 +585,10 @@
     let width = 0, height = 0;
     return {
       draw(row, ball, flash, trail = [], gate = 0, others = []) {
-        if (!stage.clientWidth || !stage.clientHeight) return;
-        if (width !== stage.clientWidth || height !== stage.clientHeight) {
-          width = stage.clientWidth;
-          height = stage.clientHeight;
+        if (!size.w || !size.h) return;
+        if (width !== size.w || height !== size.h) {
+          width = size.w;
+          height = size.h;
           renderer.setSize(width, height, false);
           const halfHeight = Math.max(9.35, 5.5 * height / width);
           camera.top = halfHeight;
@@ -1028,6 +1041,10 @@
     if (!row || g.root.hidden || document.hidden) return;
     // low graphics: draw at most ~45 fps so slow phones spend the time on input instead
     if (GL3.level() === 'low' && g.drawnAt !== undefined && now - g.drawnAt < 21) return;
+    // Idle: ball parked in the plunger lane, no event animating, gate shut. Redraw at ~10 fps (lamp pulses only).
+    const idle = row[STAGED] && now >= g.flashAt && !g.trail.length && (g.gate || 0) < .01 && g.ball &&
+      Math.hypot(g.ball[0] - row[X], g.ball[1] - row[Y]) < .01;
+    if (idle && g.drawnAt !== undefined && now - g.drawnAt < 100) return;
     // Predict at most one fast packet ahead; converge on each authoritative sample.
     const ahead = g.active && !row[STAGED] && !row[Z] ? Math.min(.034, Math.max(0, (now - g.receivedAt) / 1000)) : 0;
     const target = [row[X] + row[VX] * ahead, row[Y] + row[VY] * ahead, row[Z], row[LEFT], row[RIGHT]];
