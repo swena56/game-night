@@ -273,10 +273,19 @@
       h.fillRect(0, 0, 64, 64);
       return { ball, halo, unit };
     };
-    const drawBall = (x, y, scale = 1) => {
+    // the ball stretches along its direction of travel and squashes across it, like a fast-moving sphere
+    const drawBall = (x, y, scale = 1, dx = 0, dy = 0, speed = 0) => {
       const r = geo.radius * scale;
-      c.drawImage(sprites.ball, x - r, y - r, r * 2, r * 2);
+      if (speed < .12) return c.drawImage(sprites.ball, x - r, y - r, r * 2, r * 2);
+      const k = Math.min(.22, (speed - .12) * .4);
+      c.save();
+      c.translate(x, y);
+      c.rotate(Math.atan2(dy, dx));
+      c.scale(1 + k, 1 - k * .7);
+      c.drawImage(sprites.ball, -r, -r, r * 2, r * 2);
+      c.restore();
     };
+    let rippleTag = '', rippleAt = 0;
     const disc = (x, y, radius, color) => {
       c.beginPath();
       c.arc(x, y, radius, 0, 2 * Math.PI);
@@ -290,6 +299,7 @@
         const width = Math.round(stage.clientWidth * ratio);
         const height = Math.round(stage.clientHeight * ratio);
         if (!width || !height) return;
+        if (!flash?.startsWith('bumper')) rippleTag = '';
         if (canvas.width !== width || canvas.height !== height) {
           canvas.width = width;
           canvas.height = height;
@@ -325,6 +335,13 @@
         geo.bumps.forEach(([x, y, radius], i) => {
           disc(x, y, radius, '#252049');
           if (flash === 'bumper' + i) {
+            if (rippleTag !== flash) { rippleTag = flash; rippleAt = performance.now(); }
+            const age = Math.min(1, (performance.now() - rippleAt) / 420);
+            c.beginPath();
+            c.arc(x, y, radius + .1 + age * .75, 0, Math.PI * 2);
+            c.strokeStyle = `rgba(255,243,168,${.8 * (1 - age)})`;
+            c.lineWidth = .07 * (1 - age) + .01;
+            c.stroke();
             disc(x, y, radius + .12, '#fff3a8');
             disc(x, y, radius + .02, '#211c3d');
           }
@@ -377,7 +394,16 @@
             c.lineWidth = .055;
             c.stroke();
           }
-          drawBall(x, ballY, bumperHit ? 1.28 : 1);
+          if (row[SAVE] > 0 && !row[STAGED]) {
+            c.beginPath();
+            c.arc(x, ballY, geo.radius * 1.9, 0, Math.PI * 2);
+            c.fillStyle = 'rgba(94,230,200,.16)';
+            c.fill();
+            c.strokeStyle = 'rgba(94,230,200,.7)';
+            c.lineWidth = .03;
+            c.stroke();
+          }
+          drawBall(x, ballY, bumperHit ? 1.28 : 1, last ? x - last[0] : 0, last ? y - last[1] : 0, speed);
         }
         // multiball: the other balls in play
         others.forEach(([ox, oy, oz]) => {
@@ -508,6 +534,15 @@
     });
     const sphere = mesh(new T.SphereGeometry(geo.radius, 20, 14), chrome, 0, 0, 0);
     const extraBalls = [];
+    // a fast ball glows on the table beneath it; a ball save wraps it in a teal bubble
+    const halo = new T.Mesh(new T.CircleGeometry(geo.radius * 3.2, 28),
+      new T.MeshBasicMaterial({ color: '#ffd382', transparent: true, opacity: 0, depthWrite: false }));
+    halo.rotation.x = -Math.PI / 2;
+    scene.add(halo);
+    const bubble = new T.Mesh(new T.SphereGeometry(geo.radius * 1.9, 20, 12),
+      new T.MeshBasicMaterial({ color: '#5ee6c8', transparent: true, opacity: .2, depthWrite: false }));
+    bubble.visible = false;
+    scene.add(bubble);
     const dots = Array.from({ length: 8 }, () => {
       const m = material(palette.ivory);
       m.transparent = true;
@@ -550,6 +585,16 @@
           m.visible = i < others.length;
           if (m.visible) m.position.set(others[i][0], geo.radius + others[i][2], Math.min(17.25, others[i][1]));
         });
+        {
+          const last = trail[trail.length - 1];
+          const speed = last ? Math.hypot(ball[0] - last[0], ball[1] - last[1]) : 0;
+          halo.visible = row[BALLS] > 0 && speed > .12;
+          halo.material.opacity = Math.min(.4, speed * .8);
+          halo.scale.setScalar(.6 + Math.min(speed, .6) * 1.6);
+          halo.position.set(ball[0], .03, Math.min(17.25, ball[1]));
+          bubble.visible = row[BALLS] > 0 && row[SAVE] > 0 && !row[STAGED];
+          bubble.position.set(ball[0], geo.radius + ball[2], Math.min(17.25, ball[1]));
+        }
         sphere.visible = row[BALLS] > 0;
         sphere.position.set(ball[0], geo.radius + ball[2], Math.min(17.25, ball[1]));
         const bumperHit = flash?.startsWith('bumper');
@@ -748,7 +793,9 @@
       scoreEl.classList.add('jump');
     }
     g.lastScore = row[SCORE];
-    setText(find('score'), row[SCORE].toLocaleString());
+    g.scoreTarget = row[SCORE];
+    if (g.scoreShown === undefined || g.scoreShown > row[SCORE]) g.scoreShown = row[SCORE];
+    setText(find('score'), Math.round(g.scoreShown).toLocaleString());
     setText(find('balls'), row[BALLS]);
     find('nudges').classList.toggle('warn', !row[TILT] && row[NUDGES] >= 2);
     const nextExtra = (g.extra || []).find((v) => v > row[SCORE]);
@@ -907,6 +954,11 @@
     const blend = 1 - Math.exp(-Math.min(60, now - (g.drawnAt ?? now)) / 25);
     g.ball = g.ball ? g.ball.map((value, i) => value + (target[i] - value) * blend) : target;
     g.drawnAt = now;
+    // the score counts up to its new value instead of snapping
+    if (g.scoreShown !== undefined && g.scoreShown < g.scoreTarget) {
+      g.scoreShown = Math.min(g.scoreTarget, g.scoreShown + Math.max(10, (g.scoreTarget - g.scoreShown) * .2));
+      setText(g.find('score'), Math.round(g.scoreShown).toLocaleString());
+    }
     const flash = now < g.flashAt ? row[EVENT] : '';
     if (!flash && g.flashing) updateHud(g, row);
     g.flashing = !!flash;
