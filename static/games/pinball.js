@@ -2,7 +2,7 @@
   const [X, Y, VX, VY, Z, LEFT, RIGHT, SCORE, BALLS, BANK, NUDGES, TILT, STAGED, CHARGE, EVENT_ID, EVENT, SPIN, SAVE, JACKPOT, MULT, BONUS, LANES, KICK, COMBO, LIT] =
     Array.from({ length: 25 }, (_, i) => i);
   const keys = {
-    KeyA: 1, ArrowLeft: 1, KeyD: 2, ArrowRight: 2, Space: 4,
+    KeyA: 1, ArrowLeft: 1, KeyZ: 1, ShiftLeft: 1, KeyD: 2, ArrowRight: 2, Slash: 2, ShiftRight: 2, Space: 4,
     KeyQ: -1, KeyW: -2, KeyE: -3,
   };
   const messages = {

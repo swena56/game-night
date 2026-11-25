@@ -54,7 +54,7 @@ class Pinball(Game):
     blurb = "Three balls on a colorful chrome-trimmed table. Bank shots off the bumpers, light the ramp, and chase a high score."
     howto = [
         "Pull down on the plunger shaft at the right side of the playfield and release to launch. You can also hold and release Space or Launch. Aim for the gold charge band.",
-        "Tap or click either half of the playfield to flip on that side. A and D, arrow keys, and the Flip buttons also work. Use Q, W, E or the nudge buttons to move the table.",
+        "Tap or click either half of the playfield to flip on that side. A and D, Z and /, either Shift key, the arrow keys, and the Flip buttons also work. Use Q, W, E or the nudge buttons to move the table.",
         "The fourth nudge tilts the table and ends scoring until that ball drains. Clear all three targets, then shoot the ramp for 6,000 and start a 20-second jackpot round. Repeat ramp shots for 12,000 each.",
         "Each ball has one automatic save during its first four seconds on the playfield. Everyone plays three balls on a separate table. Reach 60,000 and 180,000 points for an extra ball. Highest score wins.",
     ]
