@@ -390,9 +390,21 @@
           .08 + .19 * Math.abs(Math.cos(row[SPIN] * 2 * Math.PI)));
         geo.flips.forEach(([x, y], i) => {
           const angle = ball[3 + i];
-          rail([x, y, x + geo.length * Math.cos(angle), y + geo.length * Math.sin(angle)], '#211b40', .42);
-          rail([x, y, x + geo.length * Math.cos(angle), y + geo.length * Math.sin(angle)], flipperColors[i], .3);
-          disc(x, y, .22, palette.gold);
+          // tapered rubber: round pivot end (r .26) to round tip (r .15)
+          const ex = x + geo.length * Math.cos(angle), ey = y + geo.length * Math.sin(angle);
+          const nx = -Math.sin(angle), ny = Math.cos(angle);
+          for (const [color, grow] of [['#211b40', .05], [flipperColors[i], 0]]) {
+            c.beginPath();
+            c.moveTo(x + nx * (.26 + grow), y + ny * (.26 + grow));
+            c.lineTo(ex + nx * (.15 + grow), ey + ny * (.15 + grow));
+            c.arc(ex, ey, .15 + grow, angle + Math.PI / 2, angle - Math.PI / 2, true);
+            c.lineTo(x - nx * (.26 + grow), y - ny * (.26 + grow));
+            c.arc(x, y, .26 + grow, angle - Math.PI / 2, angle + Math.PI / 2, true);
+            c.closePath();
+            c.fillStyle = color;
+            c.fill();
+          }
+          disc(x, y, .1, palette.gold);
         });
         const [launchX, launchY] = geo.launch;
         const plungerY = launchY + .39 + .25 * row[CHARGE] / 240;
@@ -585,13 +597,27 @@
     const spinner = box(.91, .085, .3, lamp('spinner', palette.steel), sx, sy, .35);
 
     const paddles = geo.flips.map(([x, y], i) => {
-      const paddle = material(flipperColors[i]);
+      // a rubber-sleeved flipper: fat at the pivot (.26), tapering to the tip (.15, the collision radius)
+      const paddle = rubber(flipperColors[i]);
       const pivot = new T.Group();
       scene.add(pivot);
       pivot.position.set(x, .15, y);
-      pivot.add(box(geo.length, .3, .34, paddle, geo.length / 2, 0, 0),
-        box(geo.length, .22, .12, ivory, geo.length / 2, 0, .2),
-        disc(0, 0, .24, .44, .04, brass), disc(geo.length, 0, .17, .3, 0, paddle));
+      const taper = new T.CylinderGeometry(.15, .26, geo.length, lighting.low ? 14 : 28, 1);
+      taper.rotateZ(-Math.PI / 2);
+      taper.translate(geo.length / 2, 0, 0);
+      taper.scale(1, .66, 1);
+      const body = new T.Mesh(taper, paddle);
+      const cap = (r, px) => {
+        const m = new T.Mesh(new T.SphereGeometry(r, lighting.low ? 10 : 20, lighting.low ? 8 : 14), paddle);
+        m.position.set(px, 0, 0);
+        m.scale.y = .66;
+        return m;
+      };
+      for (const m of [body, cap(.26, 0), cap(.15, geo.length)]) {
+        m.castShadow = m.receiveShadow = !lighting.low;
+        pivot.add(m);
+      }
+      pivot.add(disc(0, 0, .17, .12, .2, brass));   // the brass pivot screw on the thick end
       return pivot;
     });
     const sphere = mesh(new T.SphereGeometry(geo.radius, lighting.low ? 20 : 32, lighting.low ? 14 : 22), ballSteel, 0, 0, 0);
