@@ -204,3 +204,33 @@ body.focus .rs-cabinet { width: min(100%, 1100px); }
 .rs-standings .rs-n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
 .rs-standings .rs-m { color: #8fa6e6; font-size: .72rem; }
 .rs-standings .rs-v { font-variant-numeric: tabular-nums; font-weight: 800; min-width: 3.5em; text-align: right; }
+
+/* phone landscape, round 4: the field and the side panel sit together as one centred unit (no dead strip beside the field),
+   the panel is wider, evenly spaced and vertically centred, and nothing in it clips */
+@media (orientation: landscape) and (max-height: 540px) {
+  .rs-cabinet { grid-template-columns: auto minmax(150px, 210px); justify-content: center; align-items: stretch; gap: 4px 10px; grid-template-rows: auto auto auto auto 1fr; }
+  .rs-stage { grid-row: 1 / span 5; width: min(calc((var(--room) - 14px) * 5 / 3), calc(100vw - 250px)); justify-self: start; }
+  .rs-hud, .rs-bar, .rs-controls, .rs-standings { grid-column: 2; }
+  .rs-hud { grid-template-columns: 1fr 1fr; gap: 4px; align-self: end; }
+  .rs-hud > div { padding: 4px 6px; }
+  .rs-hud strong { font-size: 1rem; }
+  .rs-hud .rs-score { font-size: 1.3rem; }
+  .rs-hud > div:first-child { background: linear-gradient(180deg, #3cf5e01c, #3cf5e008); border-color: #3cf5e033; }
+  .rs-lives { overflow: visible; letter-spacing: 0; font-size: .95rem; }
+  .rs-bar { height: 26px; border-radius: 13px; }
+  .rs-pct { left: 10px; font-size: .8rem; font-weight: 800; line-height: 24px; }
+  .rs-combo { left: auto; right: 6px; top: 3px; line-height: 16px; }
+  .rs-slow { line-height: 24px; }
+  .rs-goal::after { top: 4px; line-height: 16px; }
+  .rs-controls { align-self: start; gap: 4px; }
+  .rs-dirs { flex: 1 1 100%; gap: 3px; padding: 3px; border-radius: 12px; background: #ffffff08; }
+  .rs-dir, .rs-swipe { min-height: 46px; font-size: .72rem; }
+  .rs-gear { min-height: 32px; flex: 1 0 100%; font-size: 1rem; }
+  .rs-more { gap: 4px; }
+}
+@media (orientation: landscape) and (max-height: 540px) {
+  .rs-hud > .rs-best-tile { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; padding: 3px 12px; }
+  .rs-hud > .rs-best-tile .rs-cap { margin: 0; }
+  .rs-controls { align-items: stretch; }
+  .rs-dirs { width: 100%; box-sizing: border-box; }
+}
