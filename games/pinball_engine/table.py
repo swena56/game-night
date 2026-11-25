@@ -150,8 +150,7 @@ class Table:
     def drain(self):
         rules = self.rules
         self.balls -= 1
-        self.bonus = 0 if self.tilt else (
-            self.bumper_hits * rules.bumper_bonus + self.ramps * rules.ramp_bonus) * self.mult
+        self.bonus = self.live_bonus()
         self.score += self.bonus
         self.bumper_hits = self.ramps = self.lane_bits = 0
         self.mult = 1
@@ -368,11 +367,17 @@ class Table:
             self.still = 0
             self.still_origin = (self.x, self.y)
 
+    def live_bonus(self):
+        """The end-of-ball bonus as it stands now (the packed BONUS slot while a ball is in play)."""
+        if self.tilt:
+            return 0
+        return (self.bumper_hits * self.rules.bumper_bonus + self.ramps * self.rules.ramp_bonus) * self.mult
+
     def public(self):
         """Packed renderer state shared by full views and 30 Hz snapshots."""
         return [*[round(v, 3) for v in (self.x, self.y, self.vx, self.vy, self.height, *self.angles)],
                 self.score, self.balls, self.bank, self.nudges, int(self.tilt), int(self.staged),
                 self.charge, self.event_id, self.event, round(self.spin % 1, 3),
                 math.ceil(self.save_ticks / 240), math.ceil(self.jackpot_ticks / 240),
-                self.mult, self.bonus, self.lane_bits, int(self.kickback),
+                self.mult, self.bonus if self.staged else self.live_bonus(), self.lane_bits, int(self.kickback),
                 self.combo if self.combo_ticks else 0, self.lit]

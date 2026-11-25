@@ -674,8 +674,8 @@
     find('save').classList.toggle('lit', row[SAVE] > 0);
     setText(find('save'), row[SAVE] > 0 ? `Ball save ${row[SAVE]}s` : 'Ball save');
     const lanes = '●'.repeat([0, 1, 2].filter(i => row[LANES] >> i & 1).length).padEnd(3, '○');
-    find('mult').hidden = !(row[MULT] > 1 || row[LANES]);
-    setText(find('mult'), `${row[MULT]}× ${lanes}`);
+    find('mult').hidden = !(row[MULT] > 1 || row[LANES] || !row[STAGED] && row[BONUS]);
+    setText(find('mult'), `${row[MULT]}× ${lanes}${!row[STAGED] && row[BONUS] ? ` · Bonus ${row[BONUS].toLocaleString()}` : ''}`);
     const shot = ['Lane', 'Targets', 'Spinner', 'Ramp'][row[LIT]];
     setText(find('shot'), `${row[COMBO] > 1 ? `Combo ${row[COMBO]} · ` : ''}2× ${shot}${row[KICK] ? ' · Kickback' : ''}`);
     find('jackpot').hidden = !row[JACKPOT];
