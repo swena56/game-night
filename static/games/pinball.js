@@ -8,10 +8,10 @@
   const messages = {
     skill: 'Skill shot +5,000', spinner: 'Spinner +100', ramp: 'Ramp +6,000 · Jackpot lit', jackpot: 'Jackpot +12,000', save: 'Ball saved · Auto launch',
     tilt: 'TILT · scoring suspended', nudge: 'Table nudged', mult: 'Multiplier up!', kickback: 'Kickback!', extra: 'EXTRA BALL!', post: 'Centre post save!', hurry: 'HURRY-UP +15,000', super: 'SUPER JACKPOT +50,000',
-    mystery_points: 'Mystery · +10,000', mystery_save: 'Mystery · Ball save 10s', mystery_mult: 'Mystery · Multiplier up!', mystery_hold: 'Mystery · Bonus held', lock: 'Ball locked', wizard: 'WIZARD MODE · Four balls, jackpots lit!', multiball: 'MULTIBALL · Shoot the ramp for jackpots +5,000',
+    mystery_points: 'Mystery · +10,000', mystery_save: 'Mystery · Ball save 10s', mystery_mult: 'Mystery · Multiplier up!', mystery_hold: 'Mystery · Bonus held', lock: 'Ball locked', mission: 'Mission complete +5,000', wizard: 'WIZARD MODE · Four balls, jackpots lit!', multiball: 'MULTIBALL · Shoot the ramp for jackpots +5,000',
     drain: 'Ball drained', done: 'Run complete', recovery: 'Ball freed',
   };
-  const sounds = { skill: 'pskill', ramp: 'pramp', jackpot: 'pjackpot', save: 'psave', tilt: 'wrong', nudge: 'thud', mult: 'cheer', kickback: 'pkick', extra: 'pjackpot', post: 'psave', hurry: 'pjackpot', super: 'pjackpot', mystery_points: 'cheer', mystery_save: 'psave', mystery_mult: 'cheer', mystery_hold: 'pskill', lock: 'psave', multiball: 'pjackpot', wizard: 'pjackpot', bonus: 'cheer', spinner: 'pspin', drain: 'groan', done: 'groan' };
+  const sounds = { skill: 'pskill', ramp: 'pramp', jackpot: 'pjackpot', save: 'psave', tilt: 'wrong', nudge: 'thud', mult: 'cheer', kickback: 'pkick', extra: 'pjackpot', post: 'psave', hurry: 'pjackpot', super: 'pjackpot', mystery_points: 'cheer', mystery_save: 'psave', mystery_mult: 'cheer', mystery_hold: 'pskill', lock: 'psave', multiball: 'pjackpot', wizard: 'pjackpot', mission: 'cheer', bonus: 'cheer', spinner: 'pspin', drain: 'groan', done: 'groan' };
   const prefixes = { bumper: 'Bumper +100', sling: 'Slingshot +50', lane: 'Rollover +500', target: 'Target +250' };
   const label = (event, row) => {
     if (event === 'bonus' && row) return `Ball bonus +${row[BONUS].toLocaleString()}`;
@@ -395,7 +395,7 @@
         const sweep = laneSweep(sweepState, flash, geo.lanes.length);
         geo.lanes.forEach(([x, y], i) => {
           disc(x, y, .26, '#252049');
-          disc(x, y, .2, flash === 'lane' + i || flash === 'skill' || sweep === i ? palette.ivory : palette.teal);
+          disc(x, y, .2, flash === 'lane' + i || flash === 'skill' || sweep === i ? palette.ivory : row[STAGED] && row[STATS]?.skill_lane === i ? palette.gold : palette.teal);
         });
         const lit = rampLit(row);
         const rampHit = flash === 'ramp' || flash === 'jackpot';
@@ -599,7 +599,7 @@
     });
     geo.lanes.forEach(([x, y], i) => {
       disc(x, y, .29, .075, .05, brass);
-      disc(x, y, .21, .04, .1, lamp('lane' + i, palette.teal));
+      disc(x, y, .21, .04, .1, lamp('lane' + i, palette.teal, (row) => row[STAGED] && row[STATS]?.skill_lane === i ? palette.gold : null));
     });
     const track = rampPoints(geo);
     const rampRail = lamp('ramp', palette.steel, row => rampLit(row) ? rampColor(row) : palette.steel);
@@ -987,13 +987,15 @@
     find('mult').hidden = !(row[MULT] > 1 || row[LANES] || row[HOLD] || !row[STAGED] && row[BONUS]);
     setText(find('mult'), `${row[MULT]}× ${lanes}${!row[STAGED] && row[BONUS] ? ` · Bonus ${row[BONUS].toLocaleString()}` : ''}${row[HOLD] ? ' · Hold' : ''}`);
     const shot = ['Lane', 'Targets', 'Spinner', 'Ramp'][row[LIT]];
-    setText(find('shot'), `${row[COMBO] > 1 ? `Combo ${row[COMBO]} · ` : ''}2× ${shot}${row[KICK] ? ' · Kickback' : ''}`);
+    const mission = row[STATS]?.mission;
+    setText(find('shot'), `${row[COMBO] > 1 ? `Combo ${row[COMBO]} · ` : ''}2× ${shot}${row[KICK] ? ' · Kickback' : ''}${mission ? ` · ${mission[0]} ${mission[1]}/${mission[2]} · ${mission[3]}s` : ''}`);
     find('jackpot').hidden = !jackpotLit(row) && !(row[HURRY] && !row[TILT]);
     setText(find('jackpot'), row[HURRY] ? `Spinner hurry-up · ${row[HURRY]}s` :
       row[OTHERS]?.length ? 'Multiball · Jackpot lit' : row[JACKPOT] ? `Jackpot · ${row[JACKPOT]}s` : '');
     const [skillStart, skillEnd] = g.skill;
     const inBand = !!row[STAGED] && row[CHARGE] >= skillStart && row[CHARGE] <= skillEnd;
-    const launchCue = inBand ? 'Release for skill shot' : row[CHARGE] > skillEnd ? 'Release to launch' :
+    const skillLane = ['left', 'middle', 'right'][row[STATS]?.skill_lane] || 'lit';
+    const launchCue = inBand ? `Release for skill shot · ${skillLane} lane pays most` : row[CHARGE] > skillEnd ? 'Release to launch' :
       row[CHARGE] ? 'Charge into the gold band' : 'Pull the plunger shaft down or hold Launch';
     const feedback = performance.now() < g.flashAt ? label(row[EVENT], row) : '';
     setText(find('message'), g.record ? 'New personal best' : row[TILT] ? messages.tilt :
@@ -1052,6 +1054,7 @@
     const text = label(row[EVENT], row);
     if (row[EVENT]?.startsWith('mystery_')) return text.replace('Mystery · ', '? ');
     if (row[EVENT] === 'extra') return '★ EXTRA BALL ★';
+    if (row[EVENT] === 'mission') return `MISSION ✓ ${/\+[\d,]+/.exec(text)?.[0] || ''}`;
     const points = /\+[\d,]+/.exec(text)?.[0] || '';
     return row[COMBO] >= 5 && points ? `COMBO ×${row[COMBO]}! ${points}` : points;
   };
@@ -1074,7 +1077,7 @@
       el.hidden = false;
       el.style.left = `${100 * (g.ball?.[0] ?? row[X]) / 10}%`;
       el.style.top = `${100 * ((g.ball?.[1] ?? row[Y]) + .85) / 18.7}%`;
-      el.classList.toggle('big', ['ramp', 'jackpot', 'super', 'hurry', 'bonus', 'skill', 'multiball', 'wizard'].includes(row[EVENT]));
+      el.classList.toggle('big', ['ramp', 'jackpot', 'super', 'hurry', 'bonus', 'skill', 'multiball', 'wizard', 'mission'].includes(row[EVENT]));
       el.classList.toggle('huge', row[EVENT] === 'extra' || row[EVENT] === 'wizard');
       el.classList.remove('go');
       void el.offsetWidth;

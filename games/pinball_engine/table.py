@@ -79,6 +79,14 @@ class Table:
     hurry_wins: int = 0
     mysteries: int = 0
     wizards: int = 0
+    mission: int = -1            # index into rules.missions, -1 when none is running
+    mission_progress: int = 0
+    mission_ticks: int = 0
+    missions_done: int = 0
+    mission_next: int = 0
+    skill_lane: int = 0
+    mission_reward: int = 0
+    mission_complete: bool = False
     best_combo: int = 0
     spins: int = 0
     hold: bool = False
@@ -100,6 +108,7 @@ class Table:
         self.y = lay.launch[1] if self.y is None else self.y
         self.still_origin = lay.launch if self.still_origin is None else self.still_origin
         self.lit = rules.first_lit if self.lit is None else self.lit
+        self.skill_lane = len(lay.lanes) // 2     # the lit skill-shot lane starts in the middle and rotates each ball
 
     # -- scoring ---------------------------------------------------------------------------------
 
@@ -113,12 +122,19 @@ class Table:
         kind = SHOT_OF.get(event.rstrip("0123456789"))
         if kind and points and not self.tilt:
             self.chain(kind, points)
+        if self.mission >= 0 and not self.tilt and points:
+            self.mission_hit(event.rstrip("0123456789"))
         self.last_points = self.score - before
         self.event = event
         self.event_id += 1
         if self.mystery_due:
             self.mystery_due = False
             self.mystery()
+        if self.mission_complete:
+            self.mission_complete = False
+            self.last_points += self.mission_reward
+            self.event = "mission"
+            self.event_id += 1
         scores = self.rules.extra_ball_scores
         if self.extras < len(scores) and self.score >= scores[self.extras] and not self.tilt \
                 and event not in ("bonus", "drain", "done", "tilt"):
@@ -126,6 +142,25 @@ class Table:
             self.balls += 1
             self.event = "extra"
             self.event_id += 1
+
+    def start_mission(self):
+        rules = self.rules
+        self.mission = self.mission_next % len(rules.missions)
+        self.mission_next += 1
+        self.mission_progress = 0
+        self.mission_ticks = rules.mission_ticks
+
+    def mission_hit(self, kind):
+        title, shot, goal, reward = self.rules.missions[self.mission]
+        if kind != shot:
+            return
+        self.mission_progress += 1
+        if self.mission_progress >= goal:
+            self.mission = -1
+            self.missions_done += 1
+            self.score += reward
+            self.mission_reward = reward
+            self.mission_complete = True
 
     def chain(self, kind, points):
         """Pay combos for different shots in quick succession and double the lit shot."""
@@ -232,6 +267,10 @@ class Table:
         self.balls -= 1
         self.bonus = self.live_bonus()
         self.score += self.bonus
+        if not self.balls and not self.tilt and self.mode != "practice":
+            final = (self.jackpots + self.multiballs + self.wizards) * rules.final_bonus
+            self.bonus += final
+            self.score += final
         self.lane_bits = self.locked = 0
         self.others.clear()
         self.hurry_ticks = 0
@@ -242,6 +281,8 @@ class Table:
             self.mult = 1
             self.hold = False
         self.kickback = True
+        self.mission = -1
+        self.skill_lane = (self.skill_lane + 1) % max(1, len(self.layout.lanes))
         self.combo = self.combo_ticks = 0
         self.save_used = self.jackpot_shot = False
         self.jackpot_pool = 0
@@ -332,7 +373,8 @@ class Table:
         current = sum(1 << i for i, (x, y) in enumerate(lay.lanes) if math.hypot(self.x - x, self.y - y) < 0.44)
         for i in range(len(lay.lanes)):
             if current & ~self.rollovers & (1 << i):
-                self.signal("skill" if self.skill else f"lane{i}", rules.skill if self.skill else rules.lane)
+                self.signal("skill" if self.skill else f"lane{i}",
+                            (rules.skill if i == self.skill_lane else rules.skill_miss) if self.skill else rules.lane)
                 self.skill = False
                 self.lane_bits |= 1 << i
                 if self.lane_bits == (1 << len(lay.lanes)) - 1:
@@ -376,6 +418,10 @@ class Table:
         self.combo_ticks = max(0, self.combo_ticks - 1)
         self.hurry_ticks = max(0, self.hurry_ticks - 1)
         self.mb_save_ticks = max(0, self.mb_save_ticks - 1)
+        if self.mission >= 0:
+            self.mission_ticks -= 1
+            if self.mission_ticks <= 0:
+                self.mission = -1
         if self.clock:
             self.clock -= 1
             if not self.clock:
@@ -477,6 +523,8 @@ class Table:
                     self.bank = 0
                     self.jackpot_ticks = rules.jackpot_ticks
                     self.signal("ramp", rules.ramp)
+                    if rules.missions and self.mission < 0 and not self.others:
+                        self.start_mission()
                     if rules.lock_balls and not self.others:
                         self.lock_ball()
 
@@ -521,7 +569,7 @@ class Table:
         if self.smooth_launch and self.x < lay.lane_x and self.y < lay.lane_exit_y:
             self.smooth_launch = False
             if not self.save_used and not self.tilt:
-                self.save_ticks = self.rules.save_ticks
+                self.save_ticks = self.rules.save_ticks + (self.rules.last_ball_save if self.balls == 1 else 0)
                 self.save_used = True
         if self.smooth_launch and self.x > lay.lane_x + 0.2 and self.y > lay.launch[1] - 0.1 and self.vy > 0:
             self.x, self.y = lay.launch
@@ -590,4 +638,6 @@ class Table:
                  for o in self.others], self.last_points, int(self.hold), math.ceil(self.hurry_ticks / 240),
                 {"jackpot": self.jackpots, "multiball": self.multiballs, "hurry": self.hurry_wins,
                  "mystery": self.mysteries, "extra": self.extras, "combo": self.best_combo,
-                 "wizard": self.wizards, "mode": self.mode, "clock": math.ceil(self.clock / 240)}]
+                 "wizard": self.wizards, "skill_lane": self.skill_lane, "missions": self.missions_done,
+                 "mission": ([self.rules.missions[self.mission][0], self.mission_progress, self.rules.missions[self.mission][2],
+                              math.ceil(self.mission_ticks / 240)] if self.mission >= 0 else None), "mode": self.mode, "clock": math.ceil(self.clock / 240)}]

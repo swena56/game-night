@@ -44,3 +44,10 @@ class Rules:
     gravity: float = 11.0         # table slope: higher plays faster
     wizard_at: int = 8            # the Nth jackpot of a game starts a free four-ball Wizard multiball (0 disables it)
     wizard_points: int = 25000
+    # timed missions, started by a ramp shot: (title, shot prefix to count, goal, reward)
+    missions: tuple = (("Bumper bash", "bumper", 6, 6000), ("Spin it", "spinner", 8, 5000),
+                       ("Slingshots", "sling", 5, 4000), ("Rollovers", "lane", 4, 4000))
+    mission_ticks: int = 30 * 240
+    skill_miss: int = 1000        # a skill shot into the wrong lane pays this much
+    last_ball_save: int = 3 * 240 # extra ball-save time on the final ball
+    final_bonus: int = 2500       # end of game: per jackpot and per multiball won

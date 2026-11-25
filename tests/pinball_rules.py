@@ -80,6 +80,32 @@ class PinballRules(unittest.TestCase):
         table.ride_ramp()
         self.assertEqual(table.wizards, 1)      # only once per game
 
+    def test_missions_skill_lane_and_final_bonus(self):
+        table = Table()
+        table.staged = False
+        table.start_mission()
+        title, shot, goal, reward = table.rules.missions[0]
+        self.assertEqual(shot, "bumper")
+        before = table.score
+        for _ in range(goal):
+            table.signal("bumper0", 100)
+        self.assertEqual((table.mission, table.missions_done), (-1, 1))
+        self.assertGreaterEqual(table.score - before, reward + goal * 100)
+        table.start_mission()
+        table.mission_ticks = 1
+        table.step()
+        self.assertEqual(table.mission, -1)      # timed out
+        # the lit skill lane rotates every ball
+        lane = table.skill_lane
+        table.drain()
+        self.assertNotEqual(table.skill_lane, lane)
+        # the last ball pays a bonus for jackpots and multiballs
+        end = Table(balls=1)
+        end.jackpots, end.multiballs = 2, 1
+        end.staged = False
+        end.drain()
+        self.assertEqual(end.bonus, 3 * end.rules.final_bonus)
+
     def test_plunge_and_skill_shot(self):
         weak = launch(10)
         self.assertFalse(weak.staged)
@@ -96,7 +122,7 @@ class PinballRules(unittest.TestCase):
                 self.assertEqual(a.public(), b.public())
                 seen.add(a.event)
             self.assertIn("skill", seen)
-            self.assertGreaterEqual(a.score, 5000)
+            self.assertGreaterEqual(a.score, a.rules.skill_miss)   # 5,000 in the lit lane, 1,000 in the others
         strong = launch(450)
         self.assertEqual(strong.vy, -32)
         self.assertFalse(strong.skill)

@@ -125,7 +125,7 @@ async function mobileRun(browser) {
       const meter = document.querySelector('.pb-charge.in-band');
       const power = Number(meter?.getAttribute('aria-valuenow'));
       return power >= 200 && power <= 216 && meter.getAttribute('aria-valuetext') === 'Skill shot window' &&
-        document.querySelector('.pb-message').textContent === 'Release for skill shot';
+        document.querySelector('.pb-message').textContent.startsWith('Release for skill shot');
     });
     await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await text(page, '.pb-message', 'Skill shot +5,000');
