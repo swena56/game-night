@@ -226,3 +226,9 @@
 .pb-top { text-align: center; }
 .pb-top ol { margin: .2rem 0 0; padding: 0; list-style: none; font: 700 .8rem ui-monospace, monospace; color: var(--pb-ivory); }
 .pb-top li:first-child { color: var(--pb-gold); }
+
+/* a big score gain makes the number pop and flash gold */
+.pb-score.jump { animation: pb-score-jump .5s ease-out; }
+@keyframes pb-score-jump {
+  30% { transform: scale(1.25); color: var(--pb-gold); }
+}

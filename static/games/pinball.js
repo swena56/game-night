@@ -680,6 +680,13 @@
 
   function updateHud(g, row) {
     const { find } = g;
+    const scoreEl = find('score');
+    if (g.lastScore !== undefined && row[SCORE] - g.lastScore >= 1000 && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      scoreEl.classList.remove('jump');
+      void scoreEl.offsetWidth;
+      scoreEl.classList.add('jump');
+    }
+    g.lastScore = row[SCORE];
     setText(find('score'), row[SCORE].toLocaleString());
     setText(find('balls'), row[BALLS]);
     const nextExtra = (g.extra || []).find((v) => v > row[SCORE]);
