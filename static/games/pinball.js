@@ -1025,7 +1025,9 @@
     g.raf = requestAnimationFrame((next) => draw(g, next));
     g.pollPad?.();
     const row = g.row;
-    if (!row) return;
+    if (!row || g.root.hidden || document.hidden) return;
+    // low graphics: draw at most ~45 fps so slow phones spend the time on input instead
+    if (GL3.level() === 'low' && g.drawnAt !== undefined && now - g.drawnAt < 21) return;
     // Predict at most one fast packet ahead; converge on each authoritative sample.
     const ahead = g.active && !row[STAGED] && !row[Z] ? Math.min(.034, Math.max(0, (now - g.receivedAt) / 1000)) : 0;
     const target = [row[X] + row[VX] * ahead, row[Y] + row[VY] * ahead, row[Z], row[LEFT], row[RIGHT]];
