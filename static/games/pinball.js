@@ -295,9 +295,9 @@
           .08 + .19 * Math.abs(Math.cos(row[SPIN] * 2 * Math.PI)));
         geo.flips.forEach(([x, y], i) => {
           const angle = ball[3 + i];
-          rail([x, y, x + geo.length * Math.cos(angle), y + geo.length * Math.sin(angle)], '#211b40', .29);
-          rail([x, y, x + geo.length * Math.cos(angle), y + geo.length * Math.sin(angle)], flipperColors[i], .17);
-          disc(x, y, .18, palette.gold);
+          rail([x, y, x + geo.length * Math.cos(angle), y + geo.length * Math.sin(angle)], '#211b40', .42);
+          rail([x, y, x + geo.length * Math.cos(angle), y + geo.length * Math.sin(angle)], flipperColors[i], .3);
+          disc(x, y, .22, palette.gold);
         });
         const [launchX, launchY] = geo.launch;
         const plungerY = launchY + .39 + .25 * row[CHARGE] / 240;
@@ -438,9 +438,9 @@
       const pivot = new T.Group();
       scene.add(pivot);
       pivot.position.set(x, .15, y);
-      pivot.add(box(geo.length, .24, .23, paddle, geo.length / 2, 0, 0),
-        box(geo.length, .18, .1, ivory, geo.length / 2, 0, .14),
-        disc(0, 0, .18, .36, .04, brass), disc(geo.length, 0, .12, .23, 0, paddle));
+      pivot.add(box(geo.length, .3, .34, paddle, geo.length / 2, 0, 0),
+        box(geo.length, .22, .12, ivory, geo.length / 2, 0, .2),
+        disc(0, 0, .24, .44, .04, brass), disc(geo.length, 0, .17, .3, 0, paddle));
       return pivot;
     });
     const sphere = mesh(new T.SphereGeometry(geo.radius, 20, 14), chrome, 0, 0, 0);

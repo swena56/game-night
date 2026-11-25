@@ -13,7 +13,7 @@ SKILL_CHARGE = (197, 228)
 SAVE_TICKS = 4 * 240
 JACKPOT_TICKS = 20 * 240
 FLIPPERS = ((3.22, 14.95, 0.42, -0.66), (6.78, 14.95, math.pi - 0.42, math.pi + 0.66))
-LENGTH, FLIP_RADIUS = 1.56, 0.12
+LENGTH, FLIP_RADIUS = 1.56, 0.15
 # Keep the shooter feed open above the rollover dividers.
 # The lower guides direct rebounds toward the slings and flippers.
 RAILS = (
