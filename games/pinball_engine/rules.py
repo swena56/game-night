@@ -22,6 +22,6 @@ class Rules:
     combo_step: int = 250
     max_mult: int = 5
     max_nudges: int = 3
-    extra_ball_scores: tuple = (60000, 180000)
+    extra_ball_scores: tuple = (40000, 120000)
     shots: tuple = ("lane", "target", "spinner", "ramp")
     first_lit: int = 3
