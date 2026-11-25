@@ -204,6 +204,13 @@
 }
 
 .pb-stage.shake { animation: pb-shake .3s; }
+.pb-stage.thump { animation: pb-thump .35s ease-out; }
+
+/* a ramp or jackpot lands with a brief golden pulse around the table */
+@keyframes pb-thump {
+  0% { box-shadow: 0 0 0 0 #ffd36688, inset 0 0 28px #ffd36655; }
+  100% { box-shadow: 0 0 0 14px #ffd36600, inset 0 0 0 #ffd36600; }
+}
 
 @keyframes pb-shake {
   25% { transform: translateX(-3px); }

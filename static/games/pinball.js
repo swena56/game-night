@@ -750,7 +750,16 @@
       void g.stage.offsetWidth;
       g.stage.classList.add('shake');
     }
-    if (g.me === g.viewer && /^(bumper|sling)/.test(row[EVENT])) navigator.vibrate?.(12);
+    if (['ramp', 'jackpot', 'kickback', 'bonus'].includes(row[EVENT]) && !reduce) {
+      g.stage.classList.remove('thump');
+      void g.stage.offsetWidth;
+      g.stage.classList.add('thump');
+    }
+    if (g.me === g.viewer) {
+      if (/^(bumper|sling)/.test(row[EVENT])) navigator.vibrate?.(12);
+      else if (row[EVENT] === 'jackpot') navigator.vibrate?.([30, 40, 30, 40, 60]);
+      else if (['ramp', 'kickback'].includes(row[EVENT])) navigator.vibrate?.(30);
+    }
   }
 
   function receive(g, data) {
