@@ -116,3 +116,4 @@ body.focus .rs-cabinet { width: min(100%, 1100px); }
 
 .rs-combo { position: absolute; left: 52px; top: 1px; padding: 0 8px; border-radius: 8px; font-size: .68rem; line-height: 14px; font-weight: 800; color: #ffd08a; background: #2a1200e6; border: 1px solid #ff9a3d99; box-shadow: 0 0 8px #ff7a1a88; }
 .rs-combo.rs-bump { animation: rsBump .35s ease-out; }
+@media (orientation: landscape) and (max-height: 540px) { .rs-coach { bottom: 4px; padding: 3px 10px; font-size: .68rem; border-radius: 10px; } .rs-coach small { display: none; } }
