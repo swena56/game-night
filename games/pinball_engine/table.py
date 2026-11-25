@@ -136,7 +136,7 @@ class Table:
             self.staged = False
             self.smooth_launch = True
             low, high = self.layout.skill_charge
-            self.skill = low <= self.charge <= high
+            self.skill = low <= self.charge <= high and not self.locked   # a lock re-serve pays no skill shot
             self.vy = -(13 + 19 * strength)
             self.charge = 0
         self.held = held

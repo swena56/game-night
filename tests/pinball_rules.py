@@ -317,6 +317,18 @@ class PinballRules(unittest.TestCase):
         self.assertEqual(len(table.public()[-1]), 2)
         self.assertGreater(table.jackpot_ticks, 30 * 240)
 
+    def test_lock_reserve_has_no_skill_shot(self):
+        table = Table()
+        table.locked = 1
+        table.input(4, 0, 0)
+        for tick in range(212):
+            if tick % 24 == 0:
+                table.input(4, 0, tick / 240)
+            table.step()
+        table.input(0, 0, 212 / 240)
+        self.assertFalse(table.skill)
+        self.assertFalse(table.staged)
+
     def test_multiball_drains_balls_one_at_a_time(self):
         table = placed(5, 9)
         table.others = [table.free_ball(3, 8, 0, 0), table.free_ball(6, 8, 0, 0)]
