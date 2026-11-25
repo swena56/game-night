@@ -116,22 +116,20 @@
 
   // Pickup icons drawn with canvas paths (no emoji font needed): a shield with a check, an hourglass. 128x128 box.
   function drawPickupIcon(x, kind) {
+    // a flat colour disc with a single bold white glyph: readable at a glance, no gradients or outlines to clutter it
+    const col = kind === 'shield' ? '#17b36a' : kind === 'heart' ? '#e0245e' : '#f2a516';
     x.save(); x.translate(64, 64); x.lineJoin = x.lineCap = 'round';
-    const grad = x.createLinearGradient(0, -48, 0, 48);
+    x.beginPath(); x.arc(0, 0, 58, 0, 6.283); x.fillStyle = col; x.fill();
+    x.lineWidth = 5; x.strokeStyle = '#ffffffcc'; x.stroke();
+    x.fillStyle = '#fff'; x.strokeStyle = '#fff';
     if (kind === 'shield') {
-      grad.addColorStop(0, '#b9ffd6'); grad.addColorStop(1, '#19b86a');
-      x.beginPath(); x.moveTo(0, -48); x.lineTo(38, -34); x.lineTo(38, 2); x.quadraticCurveTo(36, 34, 0, 50); x.quadraticCurveTo(-36, 34, -38, 2); x.lineTo(-38, -34); x.closePath();
-      x.fillStyle = grad; x.fill(); x.lineWidth = 6; x.strokeStyle = '#eafff3'; x.stroke();
-      x.beginPath(); x.moveTo(-16, 2); x.lineTo(-4, 16); x.lineTo(18, -12); x.lineWidth = 10; x.strokeStyle = '#0b5c36'; x.stroke();
+      x.beginPath(); x.moveTo(0, -32); x.lineTo(26, -22); x.lineTo(26, 2); x.quadraticCurveTo(24, 24, 0, 36); x.quadraticCurveTo(-24, 24, -26, 2); x.lineTo(-26, -22); x.closePath(); x.fill();
+      x.beginPath(); x.moveTo(-11, 2); x.lineTo(-3, 11); x.lineTo(12, -8); x.lineWidth = 8; x.strokeStyle = col; x.stroke();
     } else if (kind === 'heart') {
-      grad.addColorStop(0, '#ffc2d6'); grad.addColorStop(1, '#e0245e');
-      x.beginPath(); x.moveTo(0, 44); x.bezierCurveTo(-60, 6, -46, -46, -2, -22); x.bezierCurveTo(46, -46, 60, 6, 0, 44); x.closePath();
-      x.fillStyle = grad; x.fill(); x.lineWidth = 6; x.strokeStyle = '#fff0f5'; x.stroke();
+      x.beginPath(); x.moveTo(0, 32); x.bezierCurveTo(-46, 4, -34, -34, -1, -16); x.bezierCurveTo(34, -34, 46, 4, 0, 32); x.closePath(); x.fill();
     } else {
-      grad.addColorStop(0, '#fff2b0'); grad.addColorStop(1, '#f2a516');
-      x.beginPath(); x.moveTo(-30, -44); x.lineTo(30, -44); x.lineTo(6, -2); x.lineTo(30, 44); x.lineTo(-30, 44); x.lineTo(-6, -2); x.closePath();
-      x.fillStyle = grad; x.fill(); x.lineWidth = 6; x.strokeStyle = '#fff8dc'; x.stroke();
-      x.beginPath(); x.moveTo(-18, 38); x.lineTo(18, 38); x.lineTo(0, 16); x.closePath(); x.fillStyle = '#7a4a00'; x.fill();   // the sand
+      x.beginPath(); x.moveTo(-20, -32); x.lineTo(20, -32); x.lineTo(4, -2); x.lineTo(20, 32); x.lineTo(-20, 32); x.lineTo(-4, -2); x.closePath(); x.fill();
+      x.beginPath(); x.moveTo(-11, 28); x.lineTo(11, 28); x.lineTo(0, 12); x.closePath(); x.fillStyle = col; x.fill();
     }
     x.restore();
   }
@@ -143,7 +141,7 @@
     stage.append(canvas);
     const c = canvas.getContext('2d');
     if (!c) { canvas.remove(); return null; }
-    const fx = GL3.level() !== 'low';
+    const fx = true;   // glow is core to the look: only the Sharp toggle turns it off
     const flatRoll = [], strikes = [], lastRects = [];
     let bgLayer = null, cellLayer = null, cellKey = null, bgTheme = null;
     let size = [0, 0], lastGrid = '0'.repeat(g.W * g.H), animUntil = 0, last = 0, shake = 0;
@@ -379,7 +377,7 @@
     let rimFor = null;
 
     // Effects (glow, trails, sparks) are skipped on the app's Low graphics setting.
-    const fx = GL3.level() !== 'low';
+    const fx = true;
     const glowTex = (() => {
       const c = document.createElement('canvas'); c.width = c.height = 64;
       const x = c.getContext('2d'), grad = x.createRadialGradient(32, 32, 0, 32, 32, 32);
@@ -425,6 +423,18 @@
       if (live || sparks.userData.live) pGeo.attributes.position.needsUpdate = pGeo.attributes.color.needsUpdate = true;
       sparks.userData.live = live;
     };
+    // bounce shockwave: a pooled set of expanding rings
+    const ringTex = (() => {
+      const c = document.createElement('canvas'); c.width = c.height = 64;
+      const x = c.getContext('2d'), gr = x.createRadialGradient(32, 32, 14, 32, 32, 31);
+      gr.addColorStop(0, '#fff0'); gr.addColorStop(0.7, '#ffffffee'); gr.addColorStop(1, '#fff0');
+      x.fillStyle = gr; x.fillRect(0, 0, 64, 64);
+      return new T.CanvasTexture(c);
+    })();
+    const rings = Array.from({ length: 10 }, () => { const m = new T.Sprite(new T.SpriteMaterial({ map: ringTex, color: 0xff8a8a, transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false })); m.visible = false; m.userData = { t: 1 }; scene.add(m); return m; });
+    let ringNext = 0;
+    const ring = (x, y) => { const m = rings[ringNext++ % rings.length]; m.position.set(gx(x), gy(y), 0.55); m.userData.t = 0; m.visible = true; };
+    const stepRings = (dt) => { for (const m of rings) { if (m.userData.t >= 1) continue; m.userData.t = Math.min(1, m.userData.t + dt * 3.2); const k = m.userData.t; m.scale.set(0.8 + k * 3.4, 0.8 + k * 3.4, 1); m.material.opacity = 0.9 * (1 - k); if (k >= 1) m.visible = false; } };
     const mats = {
       ball: (() => {   // red upper hemisphere, white lower; the mesh spins so the split turns. Mostly self-lit, with a glossy highlight
         const c = document.createElement('canvas'); c.width = 64; c.height = 128;
@@ -521,7 +531,7 @@
         }
         while (balls.length < s.b.length) {
           const m = new T.Mesh(sphere, mats.ball), halo = sprite(0.55);
-          halo.visible = true; halo.scale.set(2.4, 2.4, 1); m.add(halo);
+          halo.material.opacity = 0.8; halo.visible = true; halo.scale.set(3.2, 3.2, 1); m.add(halo);
           const sh = new T.Sprite(new T.SpriteMaterial({ map: glowTex, color: 0x000000, transparent: true, opacity: 0.45, depthWrite: false }));   // soft contact shadow on the floor
           sh.scale.set(1.5, 1.5, 1); scene.add(sh);
           m.userData = { halo, sh, pulse: 0, last: null };
@@ -537,7 +547,7 @@
           if (u.last && u.dir) {
             const dx = bx - u.last[0], dy = by - u.last[1];
             if (Math.abs(dx) > 0.004 && Math.abs(u.dir[0]) > 0.004 && dx * u.dir[0] < 0 || Math.abs(dy) > 0.004 && Math.abs(u.dir[1]) > 0.004 && dy * u.dir[1] < 0) {
-              u.pulse = 1; burst(bx, by, 4, RED, 3);
+              u.pulse = 1; burst(bx, by, 9, RED, 4.5); ring(bx, by); if (window.Snd && now - (g.bounceT ?? 0) > 90) { g.bounceT = now; Snd.play((t, K) => { const d = K.at({ send: 0.15 }); K.mode(d, t, 1500, 0.05, 0.05); }); }
             }
             if (Math.abs(dx) + Math.abs(dy) > 0.002) u.dir = [dx, dy];
           } else if (u.last) u.dir = [bx - u.last[0], by - u.last[1]];
@@ -554,7 +564,7 @@
           u.px = bx; u.py = by;
           const light = orbLights[i];
           if (light) { light.position.set(gx(bx), gy(by), 1.4); light.color.set('#ff8a8a'); light.intensity = 1.1 + u.pulse * 1.2; }
-          const gs = 2.4 + u.pulse * 1.6;
+          const gs = 3.2 + u.pulse * 2.4;
           u.halo.scale.set(gs, gs, 1); u.halo.material.color.set('#ff6a6a');
           const tr = trails[i];
           if (tr) {   // a fading tail: each sprite follows the one ahead of it
@@ -620,7 +630,7 @@
           scene.remove(m); m.material.dispose(); pickMeshes.delete(key);
         }
         for (let q = pending.length - 1; q >= 0; q--) if (pending[q][0] <= now) { burst(pending[q][1], pending[q][2], pending[q][3], s.color, 4); pending.splice(q, 1); }
-        stepSparks(dt);
+        stepSparks(dt); stepRings(dt);
         cam.position.copy(camBase);
         if (g.zoom > 1 || g.panX || g.panY) { cam.position.set(camBase.x + g.panX, camBase.y + g.panY, camBase.z / g.zoom); cam.lookAt(g.panX, g.panY, 0); }   // zoom = dolly in, so it stays crisp
         else cam.lookAt(0, 0, 0);
@@ -646,7 +656,7 @@
       else if (b.rev !== prev.rev) prev.stale = true;
       prev.rev = b.rev;
       const before = prev.pct ?? 0;
-      Object.assign(prev, { w: b.w, p: b.p, lives: b.lives, score: b.score, pct: b.pct, st: b.st, lv: b.lv, mu: b.mu || 1, sh: b.sh, slow: b.slow, hd: b.hd || 0, w2: b.w2 || [], b: b.b });
+      Object.assign(prev, { goal: b.goal || 0.75, w: b.w, p: b.p, lives: b.lives, score: b.score, pct: b.pct, st: b.st, lv: b.lv, mu: b.mu || 1, sh: b.sh, slow: b.slow, hd: b.hd || 0, w2: b.w2 || [], b: b.b });
       if (!prev.bs || prev.bs.length !== b.b.length) { prev.bs = b.b.map((q) => q.slice()); prev.bv = b.b.map(() => [0, 0]); }
       // orb velocity from the last two packets, so the drawn orbs keep moving between the ~30 Hz updates
       const dt = (g.receivedAt - (prev.at ?? 0)) / 1000;
@@ -660,7 +670,7 @@
           const pw = POWER[b.ev[1]], gain = Math.round((b.pct - before) * 100), tot = Math.floor(b.pct * 100);
           if (pw) g.power(...pw);
           else if ((b.ev[1] === 'seal' || b.ev[1] === 'big') && gain > 0) {   // how much that wall took, and where the level stands
-            const goal = before < 0.75 && b.pct >= 0.75, half = before < 0.5 && b.pct >= 0.5, q = before < 0.25 && b.pct >= 0.25;
+            const gl = b.goal || 0.75, goal = before < gl && b.pct >= gl, half = before < 0.5 && b.pct >= 0.5, q = before < 0.25 && b.pct >= 0.25;
             g.msg(goal ? `🎯 ${tot}% · goal reached! every extra % scores` : half ? `Halfway there · +${gain}% (${tot}%)` : q ? `A quarter done · +${gain}% (${tot}%)` : `${b.ev[1] === 'big' ? 'Huge seal' : 'Sealed'} +${gain}% · ${tot}% of the field`);
           } else g.msg(MSG[b.ev[1]] || '');
         } g.fx(b.ev[1]); try { const v = { hit: [60, 40, 90], over: [200], big: [30, 30, 30], life: [30, 30, 30], clear: [40, 40, 80] }[b.ev[1]]; if (v && (typeof prefs === 'undefined' || prefs.sound !== false)) navigator.vibrate?.(v); } catch { /* no haptics */ } }
@@ -677,8 +687,10 @@
     const sc = g.find('score'), scText = s.score.toLocaleString();
     if (sc.textContent !== scText) { sc.textContent = scText; sc.classList.remove('rs-bump'); void sc.offsetWidth; sc.classList.add('rs-bump'); }
     g.find('level').textContent = s.lv;
+    const gp = Math.round((s.goal || 0.75) * 100) + '%';
+    if (g.goalTxt !== gp) { g.goalTxt = gp; const gm = g.find('goal'); gm.style.left = gp; gm.dataset.g = gp; }
     if (s === g.boards[g.me]) {
-      if (g.lastLv != null && s.lv > g.lastLv && s.st === 'play') g.banner('LEVEL ' + s.lv, 'rs-banner-lv');
+      if (g.lastLv != null && s.lv > g.lastLv && s.st === 'play') g.banner('LEVEL ' + s.lv + ' · ' + s.b.length + (s.b.length === 1 ? ' ORB' : ' ORBS') + ' · SEAL ' + Math.round((s.goal || 0.75) * 100) + '%', 'rs-banner-lv');
       g.lastLv = s.lv;
       if (g.solo && g.best > 0 && !g.beat && s.score > g.best && g.startBest > 0) { g.beat = true; g.banner('NEW BEST!', 'rs-banner-lv'); }
     }
@@ -702,7 +714,8 @@
       list.replaceChildren(...Object.entries(g.boards).sort((a, b) => b[1].score - a[1].score).map(([pid, b]) => {
         const li = document.createElement('li');
         li.style.setProperty('--rs-c', b.color);
-        li.textContent = `${g.ctx.player(pid)?.name || '?'} · Lv ${b.lv} · ${Math.floor(b.pct * 100)}% · ${b.score.toLocaleString()}${b.st === 'over' ? ' ✖' : ''}`;
+        const cell = (cls, t) => { const e = document.createElement('span'); e.className = cls; e.textContent = t; return e; };
+        li.append(cell('rs-n', g.ctx.player(pid)?.name || '?'), cell('rs-m', `Lv ${b.lv} · ${Math.floor(b.pct * 100)}%`), cell('rs-v', b.score.toLocaleString() + (b.st === 'over' ? ' ✖' : '')));
         if (pid === g.me) li.className = 'rs-me';
         return li;
       }));
@@ -741,8 +754,7 @@
     const s = mine();
     const r = g.three || g.flat;
     if (!s || !r) return;
-    g.find('view').hidden = !g.three;   // the flat view has no camera to tilt
-    g.root.querySelector('.rs-bar-x').classList.toggle('rs-goal-hit', s.pct >= 0.75);
+    g.root.querySelector('.rs-bar-x').classList.toggle('rs-goal-hit', s.pct >= (s.goal || 0.75));
     g.stage.classList.toggle('rs-last', s === g.boards[g.me] && s.lives === 1 && s.st === 'play');   // the only haze: red, on the last life
     const sp = g.find('slowpill');
     sp.hidden = !(s.slow > 0);
@@ -765,7 +777,7 @@
     if (s === g.boards[g.me]) {
       if (s.shown < (g.tickAt ?? 0) - 0.02) g.tickAt = s.shown;   // a new level restarts the bar
       if (s.shown - (g.tickAt ?? 0) > 0.003 && now - (g.tickT ?? 0) > 45) { g.tickAt = s.shown; g.tickT = now; if (window.Snd) { const f = 420 + s.shown * 1100; Snd.play((t, K) => { const d = K.at({ send: 0.2 }); K.mode(d, t, f, 0.16, 0.07, { type: 'triangle' }); K.mode(d, t, f * 2, 0.05, 0.05); K.burst(d, t, { type: 'highpass', f: 5000, vol: 0.03, tau: 0.01 }); }); } }
-      const over = s.shown >= 0.75;
+      const over = s.shown >= (s.goal || 0.75);
       if (over && g.goalSeen === false && window.Snd) Snd.play((t, K) => { const d = K.at({ send: 0.6 }); [0, 7, 12].forEach((n, i) => K.mode(d, t + i * 0.07, NOTE(n + 24), 0.1, 0.3)); });
       g.goalSeen = over;
     }
@@ -787,7 +799,7 @@
         </div>
         <div class="rs-bar rs-bar-x" role="meter" aria-label="Field sealed" aria-valuemin="0" aria-valuemax="100"><div class="rs-fill"></div><div class="rs-goal" title="75% to clear"></div><span class="rs-pct">0%</span><span class="rs-combo" hidden></span><span class="rs-slow" hidden></span></div>
         <div class="rs-stage" aria-label="Rift Split field"><span class="rs-msg" role="status"></span><span class="rs-power" role="status" hidden></span><span class="rs-slowpill" hidden><span></span><i></i></span><span class="rs-ready" aria-hidden="true" hidden></span><div class="rs-coach" aria-hidden="true"><b>Tap</b> or <b>swipe</b> to grow a wall<small>Seal off the orbs; don't let them hit a growing wall. Two walls can grow at once.</small></div></div>
-        <div class="rs-controls"><div class="rs-dirs" role="group" aria-label="Wall direction"><button type="button" class="rs-dir" data-v="0" aria-pressed="true"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Across</span></button><button type="button" class="rs-dir rs-v" data-v="1" aria-pressed="false"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Down</span></button><button type="button" class="rs-swipe" aria-pressed="false" title="Swipe to draw: the wall runs the way you drag"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 22C8 8 16 6 24 8M24 8l-6-3M24 8l-4 5"/></svg><span>Swipe</span></button></div><button type="button" class="rs-gear" aria-label="More options" title="More options" aria-expanded="false">⚙</button><div class="rs-more" hidden><button type="button" class="rs-view" aria-label="Camera view" title="Camera view" hidden>⬓</button><button type="button" class="rs-bright" aria-label="Brightness" title="Brightness">☀</button><button type="button" class="rs-fxbtn" aria-label="Glow and blur effects" title="Glow and blur effects">✨</button><button type="button" class="rs-themebtn" aria-label="Colour theme" title="Colour theme">🎨</button></div></div>
+        <div class="rs-controls"><div class="rs-dirs" role="group" aria-label="Wall direction"><button type="button" class="rs-dir" data-v="0" aria-pressed="true"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Across</span></button><button type="button" class="rs-dir rs-v" data-v="1" aria-pressed="false"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Down</span></button><button type="button" class="rs-swipe" aria-pressed="false" title="Swipe to draw: the wall runs the way you drag"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 22C8 8 16 6 24 8M24 8l-6-3M24 8l-4 5"/></svg><span>Swipe</span></button></div><button type="button" class="rs-gear" aria-label="More options" title="More options" aria-expanded="false">⚙</button><div class="rs-more" hidden><button type="button" class="rs-bright" aria-label="Brightness" title="Brightness">☀</button><button type="button" class="rs-fxbtn" aria-label="Glow and blur effects" title="Glow and blur effects">✨</button><button type="button" class="rs-themebtn" aria-label="Colour theme" title="Colour theme">🎨</button></div></div>
         <ol class="rs-standings" aria-label="Scores" hidden></ol>
       </section>`;
     const root = arena.querySelector('.rs-cabinet');
@@ -832,12 +844,7 @@
         clearTimeout(g.msgTimer); g.msgTimer = setTimeout(() => el.classList.remove('on'), 1600);
       },
     };
-    try { g.tilt = localStorage.getItem('riftsplit.tilt') === '1'; } catch { g.tilt = false; }   // straight down unless the player chose the tilted view
-    on(g.find('view'), 'click', () => {
-      g.tilt = !g.tilt;
-      try { localStorage.setItem('riftsplit.tilt', g.tilt ? '1' : '0'); } catch { /* private mode */ }
-      g.msg(g.tilt ? 'Tilted view' : 'Top-down view');
-    });
+    g.tilt = false;   // always straight down
     const pref = (k, d) => { try { return localStorage.getItem('riftsplit.' + k) ?? d; } catch { return d; } };
     const setPref = (k, v) => { try { localStorage.setItem('riftsplit.' + k, v); } catch { /* private mode */ } };
     g.nofx = pref('nofx', '0') === '1';
@@ -941,7 +948,7 @@
   UI.riftsplit = {
     focus: true,
     mount,
-    turnText: (view) => view.phase === 'over' ? 'Rift Split results' : 'Seal 75% of the field',
+    turnText: (view) => view.phase === 'over' ? 'Rift Split results' : 'Seal the goal % of the field',
     render(view, ctx) {
       const d = view.riftsplit;
       if (!g || !d) return;

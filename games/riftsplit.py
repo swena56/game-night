@@ -13,7 +13,11 @@ from uuid import uuid4
 from .base import Game, GameError
 
 W, H = 40, 24
-GOAL = 0.75
+GOAL = 0.75        # kept for the layout default; the real target climbs with the level
+
+
+def level_goal(level):
+    return min(0.82, 0.68 + 0.02 * level)   # L1 66%... L7+ 82%: early levels are gentler, late ones demand more
 RADIUS = 0.42
 GROW = 15.0              # wall cells per second
 STEP = 1 / 60
@@ -266,11 +270,11 @@ class Board:
             self.state = "over"
             self.walls = []
             self.emit("over")
-        elif self.pct >= GOAL:
+        elif self.pct >= level_goal(self.level):
             self.state = "clear"
             self.walls = []
             self.until = now + CLEAR_PAUSE
-            self.score += 500 * self.level + 250 * self.lives + max(0, int((self.pct - GOAL) * 100)) * 40   # overshoot bonus: every % past the goal
+            self.score += 500 * self.level + 250 * self.lives + max(0, int((self.pct - level_goal(self.level)) * 100)) * 40   # overshoot bonus: every % past the goal
             self.emit("clear")
 
     def next_level(self, now=0.0):
@@ -326,7 +330,7 @@ class Board:
             return [int(w["v"]), w["cx"], w["cy"]] + [v for h in w["h"] for v in (round(h["len"], 2), h["room"], "x" if h["st"] == "dead" else h["st"][0])]
         walls = wire(self.walls[0]) if self.walls else []
         walls2 = wire(self.walls[1]) if len(self.walls) > 1 else []
-        out = {"lv": self.level, "lives": self.lives, "score": self.score, "pct": round(self.pct, 4), "st": self.state,
+        out = {"lv": self.level, "lives": self.lives, "score": self.score, "pct": round(self.pct, 4), "goal": level_goal(self.level), "st": self.state,
                "b": [[round(b[0], 2), round(b[1], 2)] for b in self.balls], "w": walls, "w2": walls2,
                "p": self.pickups, "mu": min(5, 1 + self.streak // 2), "hd": max(0, round(self.hold - now, 1)), "sh": self.shield, "slow": max(0, round(self.slow_until - now, 1)),
                "ev": [self.event_id, self.event], "rev": self.rev}
@@ -342,11 +346,11 @@ class RiftSplit(Game):
     icon = "🔷"
     min_players, max_players = 1, 6
     replayable = False
-    blurb = "Grow glowing walls to wall in the bouncing orbs. Seal 75% of the field before they break your wall."
+    blurb = "Grow glowing walls to wall in the bouncing orbs. Seal enough of the field before they break your wall."
     howto = [
         "Press and hold a spot to preview the line, slide to aim, and let go to grow a wall both ways from it (click on a computer). Tap the ↔ / ↕ buttons, press Space, or right-click to switch direction. You can start a second wall while the first is still growing.",
         "While a wall is growing (you can have two at once, on lines that don't cross), an orb that touches either half shatters that half and costs a life. A half that reaches a barrier locks in solid.",
-        "When a wall finishes, every pocket with no orb inside is sealed. Seal 75% of the field to clear the level; each level adds an orb, and a life.",
+        "When a wall finishes, every pocket with no orb inside is sealed. Seal the goal % of the field (it rises each level, from 70%) to clear the level; each level adds an orb, and a life.",
         "Chain clean seals for a score multiplier. Seal a 🛡️ to block one hit, or a ⏳ to slow every orb for a few seconds. Everyone plays their own field; the highest score wins.",
     ]
 
