@@ -517,7 +517,7 @@
       if (dt > 0.01 || !prev.at) { prev.last = b.b; prev.at = g.receivedAt; }
       if (b.ev[0] !== prev.evSeen) {
         prev.evSeen = b.ev[0];
-        if (pid === g.me && g.ctx && !g.ctx.readOnly) { g.ctx.sfx(SND[b.ev[1]] || 'pop'); g.msg(MSG[b.ev[1]] || ''); }
+        if (pid === g.me && g.ctx && !g.ctx.readOnly) { g.ctx.sfx(SND[b.ev[1]] || 'pop'); g.msg(MSG[b.ev[1]] || ''); g.fx(b.ev[1]); }
       }
     });
     paint();
@@ -530,6 +530,10 @@
     if (!s) return;
     g.find('score').textContent = s.score.toLocaleString();
     g.find('level').textContent = s.lv;
+    if (s === g.boards[g.me] && g.lastLives != null && s.lives < g.lastLives) {
+      const el = g.find('lives'); el.classList.remove('rs-lost'); void el.offsetWidth; el.classList.add('rs-lost');
+    }
+    if (s === g.boards[g.me]) g.lastLives = s.lives;
     g.find('lives').textContent = '❤️'.repeat(Math.max(0, s.lives)) + (s.sh ? '🛡️' : '');
     g.find('slow').hidden = !(s.slow > 0);
     if (s.slow > 0) g.find('slow').textContent = '⏳ ' + Math.ceil(s.slow);
@@ -626,6 +630,19 @@
         stage.append(el);
         setTimeout(() => el.remove(), 1200);
       },
+      // full-field feedback: a red flash when a wall shatters, a glow on a seal, a banner for a cleared level
+      fx(kind) {
+        const cls = { over: 'rs-flash-hit', hit: 'rs-flash-hit', seal: 'rs-flash-seal', big: 'rs-flash-seal', clear: 'rs-flash-clear' }[kind];
+        if (!cls) return;
+        stage.classList.remove('rs-flash-hit', 'rs-flash-seal', 'rs-flash-clear');
+        void stage.offsetWidth;   // restart the animation if one is still running
+        stage.classList.add(cls);
+        if (kind === 'clear' || kind === 'over') {
+          const el = document.createElement('div');
+          el.className = 'rs-banner'; el.textContent = kind === 'clear' ? 'LEVEL CLEAR' : 'GAME OVER';
+          stage.append(el); setTimeout(() => el.remove(), 1800);
+        }
+      },
       msg(text) {
         const el = stage.querySelector('.rs-msg');
         el.textContent = text; el.classList.toggle('on', !!text);
@@ -708,7 +725,7 @@
       if (!g || !d) return;
       g.ctx = ctx;
       if (g.run !== d.rift) {
-        g.run = d.rift; g.tick = -1; g.lastScore = null; g.W = d.layout.w; g.H = d.layout.h; g.solo = d.solo; g.boards = {};
+        g.run = d.rift; g.tick = -1; g.lastScore = null; g.lastLives = null; g.W = d.layout.w; g.H = d.layout.h; g.solo = d.solo; g.boards = {};
         g.order = Object.keys(d.boards);
       }
       g.me = d.me;
