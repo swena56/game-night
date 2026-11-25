@@ -1,5 +1,5 @@
 """Static description of a pinball table. Coordinates are playfield units, down-table is +y."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import math
 
 STEP = 1 / 240  # the simulation advances in fixed 240 Hz ticks
@@ -52,6 +52,7 @@ class Layout:
     lane_exit_y: float = 5
     center: tuple = (5, 12)
     theme: str = ""          # lets a renderer restyle the shared artwork (e.g. "neon")
+    paint: dict = field(default_factory=dict, hash=False, compare=False)   # custom tables: part name -> colours, e.g. {"bumps": ["#ff0000", ...]}
 
     @property
     def lane_x(self):
@@ -67,7 +68,7 @@ class Layout:
                     targets=self.targets, lanes=self.lanes, spinner=self.spinner, ramp=self.ramp, saucer=self.saucer, posts=self.posts, orbit=self.orbit, orbit_path=self.orbit_path, special=self.special, magnet=self.magnet, subway=self.subway, subway_exit=self.subway_exit,
                     exit=self.ramp_exit, flips=self.flippers, length=self.flipper_length,
                     radius=self.ball, skill=self.skill_charge, width=self.width,
-                    height=self.height, launch=self.launch, theme=self.theme)
+                    height=self.height, launch=self.launch, theme=self.theme, paint=self.paint)
 
 
 def flipper_pair(y, left_x, right_x, rest=0.42, up=0.66):

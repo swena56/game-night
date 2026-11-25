@@ -117,8 +117,11 @@ class Table:
     clock: int = 0              # time attack: ticks of play left
     rng: random.Random = field(default_factory=random.Random, repr=False)
     gone: bool = False
+    layout_override: Layout = field(default=None, repr=False)   # a custom table brings its own layout
 
     def __post_init__(self):
+        if self.layout_override is not None:
+            self.layout = self.layout_override
         lay, rules = self.layout, self.rules
         self.balls = rules.balls if self.balls is None else self.balls
         self.angles = lay.resting_angles() if self.angles is None else self.angles
@@ -650,10 +653,10 @@ class Table:
         self.lane_and_drain()
 
     def special_lit(self):
-        return bool(self.layout.special) and not self.tilt and self.mult >= 2
+        return bool(self.layout.special) and not self.tilt and (self.mult >= 2 or self.rules.always_on)
 
     def magnet_armed(self):
-        return bool(self.layout.magnet) and not self.tilt and bool(self.jackpot_ticks or self.others)
+        return bool(self.layout.magnet) and not self.tilt and bool(self.jackpot_ticks or self.others or self.rules.always_on)
 
     def pull_magnet(self):
         """Under the playfield: while energised it drags any ball in range toward its centre and damps it."""

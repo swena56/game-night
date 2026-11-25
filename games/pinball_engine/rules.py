@@ -69,3 +69,4 @@ class Rules:
     skill_miss: int = 1000        # a skill shot into the wrong lane pays this much
     last_ball_save: int = 3 * 240 # extra ball-save time on the final ball
     final_bonus: int = 2500       # end of game: per jackpot and per multiball won
+    always_on: bool = False        # test tables: the magnet and the special outlane are live without earning them

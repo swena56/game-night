@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Pinball table editor</title>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/pinball-editor.css">
+</head>
+<body class="pe-body">
+  <header class="pe-top">
+    <a class="pe-back" href="/" title="Back to Game Night">← Game Night</a>
+    <h1>🛠️ Pinball table editor</h1>
+    <input id="peName" class="pe-name" maxlength="40" placeholder="Table name" aria-label="Table name">
+    <div class="pe-actions">
+      <button id="peUndo" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
+      <button id="peRedo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">↷</button>
+      <button id="peSnap" aria-pressed="true" title="Snap parts to a grid">▦ Snap</button>
+      <button id="peClear" title="Remove every part">Clear</button>
+      <button id="peTables" title="Templates and your saved tables">📁 Tables</button>
+      <button id="peShare" title="Get a share code, or load one">Share…</button>
+      <button id="pePlay" class="primary">▶ Play this table</button>
+    </div>
+  </header>
+  <p id="peMsg" class="pe-msg" role="status" aria-live="polite"></p>
+  <main class="pe-main">
+    <aside class="pe-palette" id="pePalette" aria-label="Parts. Drag one onto the table, or tap to add it."></aside>
+    <section class="pe-stage"><canvas id="peCanvas" aria-label="Table. Drag parts to move them."></canvas></section>
+    <aside class="pe-inspector" id="peInspector" aria-label="Selected part">
+      <h2 id="peTitle">Nothing selected</h2>
+      <p id="peHint" class="hint">Drag a part from the list onto the table. Click a part to change it; drag the round handles to resize or turn it.</p>
+      <div id="peFields" hidden>
+        <label>X <input id="peX" type="number" step="0.05"></label>
+        <label>Y <input id="peY" type="number" step="0.05"></label>
+        <label id="peSizeRow"><span id="peSizeLabel">Size</span> <input id="peSize" type="number" step="0.05"></label>
+        <label id="peAngleRow">Angle <input id="peAngle" type="number" step="5"></label>
+        <label id="peColorRow">Colour <input id="peColor" type="color"></label>
+        <div id="peSwatches" class="pe-swatches" aria-label="Colour presets"></div>
+        <p id="peKindHint" class="hint"></p>
+        <div id="pePointRow" class="pe-row" hidden>
+          <button id="peAddPt" title="Add a point to the end of the wire">+ Point</button>
+          <button id="peDelPt" title="Remove the last point">− Point</button>
+        </div>
+        <div class="pe-row">
+          <button id="peDup">Duplicate</button>
+          <button id="peDel" class="danger">Delete</button>
+        </div>
+      </div>
+      <label class="pe-check"><input id="peKick" type="checkbox"> Kickback + special outlanes <small>(the lit outlane lanes by the flippers)</small></label>
+      <p id="peCount" class="hint"></p>
+    </aside>
+  </main>
+  <dialog id="peTablesDlg" class="pe-dialog">
+    <form method="dialog">
+      <h2>Tables</h2>
+      <h3>Start from a template</h3>
+      <div id="peTemplates" class="pe-list"></div>
+      <h3>Your saved tables</h3>
+      <div id="peSaved" class="pe-list"></div>
+      <div class="pe-row">
+        <button id="peSaveAs" type="button" class="primary">Save this table</button>
+        <button value="close">Close</button>
+      </div>
+    </form>
+  </dialog>
+  <dialog id="peShareDlg" class="pe-dialog">
+    <form method="dialog">
+      <h2>Share a table</h2>
+      <p class="hint">Copy this share code to send your table to someone, or paste a code here and load it.</p>
+      <textarea id="peShareText" rows="8" spellcheck="false"></textarea>
+      <div class="pe-row">
+        <button id="peCopy" type="button">Copy</button>
+        <button id="peLoad" type="button" class="primary">Load pasted table</button>
+        <button value="close">Close</button>
+      </div>
+    </form>
+  </dialog>
+  <script src="/pinball-editor.js"></script>
+</body>
+</html>

@@ -278,6 +278,8 @@ def health():
 
 
 class Room:
+    custom_table = None    # a pinball table from the editor (see set_pinball_table); old saved rooms lack it
+
     def __init__(self, code):
         self.code = code
         self.cond = threading.Condition()
@@ -805,6 +807,12 @@ class Room:
             self.check_playlist_request(a, self.playlist_index)
         self.to_lobby()
 
+    def set_pinball_table(self, p, table):
+        """A table built in the pinball editor: checked here, kept with the room, used when the table setting is 'custom'."""
+        self.require_host(p, "lobby")
+        from games.pinball_custom import build
+        self.custom_table = build(table)[1]
+
     def host_add_bot(self, p, level):
         self.require_host(p, "lobby")
         if self.settings["game"] == "switchyard":
@@ -823,6 +831,7 @@ class Room:
         "reset_scores": lambda r, p, a: r.reset_scores(p),
         "leave": lambda r, p, a: r.leave(p),
         "settings": lambda r, p, a: r.change_settings(p, a.get("settings") or {}),
+        "pinball_table": lambda r, p, a: r.set_pinball_table(p, a.get("table")),
         "add_bot": lambda r, p, a: r.host_add_bot(p, a.get("level")),
         "remove_bot": lambda r, p, a: r.remove_bot(p, a.get("bot")),
         "watch": lambda r, p, a: r.set_watching(p, a.get("on")),

@@ -8,7 +8,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from games.pinball import (
     BALL, BUMPS, FLIP_RADIUS, FLIPPERS, JACKPOT_TICKS, LAUNCH, LAYOUT, RAMP, RAMP_EXIT, ROLLOVERS,
-    SLINGS, SPINNER, TABLES, TARGETS, Table as GoldenHour,
+    SANDBOX_PARTS, SLINGS, SPINNER, TABLES, TARGETS, Table as GoldenHour,
 )
 from dataclasses import dataclass
 from server import Room
@@ -755,6 +755,187 @@ class PinballRules(unittest.TestCase):
             self.assertTrue(game.frame(1))
             self.assertEqual((room.phase, room.winner), ("over", None))
             self.assertEqual(game.final_scores(), dict.fromkeys((p.id for p in players), 0))
+
+
+class SandboxTables(unittest.TestCase):
+    """The sandbox keeps the cabinet but removes every playfield part except the one picked."""
+
+    PARTS = ("bumps", "slings", "targets", "lanes", "spinner", "ramp", "orbit", "saucer", "subway", "magnet", "posts", "outlane", "special")
+
+    def test_each_part_is_alone_and_runs(self):
+        for part, (_, extra) in SANDBOX_PARTS.items():
+            with self.subTest(part=part):
+                table = TABLES["sandbox_" + part][1](balls=99)
+                lay = table.layout
+                present = {name for name in self.PARTS if getattr(lay, name)}
+                self.assertLessEqual(present, set(extra) | {"rails"} | ({"posts"} if part == "lanes" else set()))
+                for name in extra:
+                    if name not in ("rails", "orbit_path", "orbit_exit", "ramp_exit", "subway_exit"):
+                        self.assertTrue(getattr(lay, name), name)
+                for tick in range(240 * 20):
+                    if table.staged:
+                        table.input(4 if table.charge < 150 else 0, 0, tick / 240)
+                    else:
+                        table.input((1, 2, 0, 3)[tick // 25 % 4], 0, tick / 240)
+                    table.step()
+                self.assertGreater(table.balls, 0)
+                self.assertTrue(table.balls <= 99)
+                self.assertEqual(len(table.public()), 31)
+
+    def test_sandbox_rooms_survive_saving(self):
+        import pickle
+        for part in SANDBOX_PARTS:
+            table = TABLES["sandbox_" + part][1](balls=99)
+            clone = pickle.loads(pickle.dumps(table))
+            self.assertIs(type(clone), type(table))
+
+    def test_real_tables_are_untouched(self):
+        for key in ("golden", "neon"):
+            lay = TABLES[key][1].layout
+            self.assertTrue(lay.bumps and lay.ramp and lay.spinner and lay.targets and lay.magnet and lay.subway)
+
+    def test_magnet_is_live_on_its_own_table(self):
+        table = TABLES["sandbox_magnet"][1](balls=99)
+        self.assertEqual(table.public()[-1]["magnet"], 1)
+        self.assertEqual(GoldenHour().public()[-1]["magnet"], 0)
+        table.staged = False
+        table.x, table.y, table.vx, table.vy = table.layout.magnet[0] + .3, table.layout.magnet[1], 0, 0
+        for _ in range(5):
+            table.step()
+        self.assertGreater(table.magnet_ticks, 0)
+
+
+class CustomTables(unittest.TestCase):
+    """Tables from the editor are checked, clamped, playable, savable and kept with the room."""
+
+    SPEC = {"v": 1, "name": "  My   table ", "items": [
+        ["bump", 3, 5.5, .65, "#ff9b59"], ["sling", 1.35, 10.75, 2.85, 12.5, "#ff6854"], ["target", 1.2, 6.6, 1.2, 7.3, "#0000ff"],
+        ["lane", 2.2, 3.5, "#59edd2"], ["post", 3.2, 2.8, .11, "#fff0ca"], ["wall", 3, 9, 4, 10, "#aaaaaa"],
+        ["spinner", 7.9, 7.4, "#c1d2e5"], ["saucer", 1.6, 4.7, .3, "#ffd383"], ["magnet", 5, 9.6, 1.1, "#59edd2"], ["kick", "#ffffff"]]}
+
+    def test_build_makes_a_layout_with_paint(self):
+        from games.pinball_custom import build
+        layout, clean = build(self.SPEC)
+        self.assertEqual(layout.bumps, ((3.0, 5.5, .65),))
+        self.assertEqual(layout.paint["bumps"], ["#ff9b59"])
+        self.assertEqual(layout.paint["name"], "My table")
+        self.assertEqual(len(layout.rails), 11 + 1)
+        self.assertTrue(layout.outlane and layout.special and layout.spinner and layout.saucer and layout.magnet)
+        self.assertEqual(build(clean)[1], clean)          # cleaning is stable
+
+    def test_build_clamps_and_rejects(self):
+        from games.pinball_custom import build
+        from games.base import GameError
+        layout, _ = build({"items": [["bump", -5, 99, 9, "#FFFFFF"], ["wall", 1, 1, 1, 1, "#ffffff"], ["wall", 1, 1, 9, 1, "#ffffff"]]})
+        x, y, r = layout.bumps[0]
+        self.assertTrue(.45 <= x <= 8.35 and .45 <= y <= 14.2 and r <= 1.0)
+        for wall in layout.rails[11:]:
+            self.assertTrue(.25 - 1e-6 <= math.hypot(wall[2] - wall[0], wall[3] - wall[1]) <= 4.5 + 1e-6)
+        for bad in ({}, {"items": "x"}, {"items": [["nope"]]}, {"items": [["bump", 1, 1, .5, "red"]]}, {"items": [["bump", 1, "1", .5, "#ffffff"]]},
+                    {"items": [["bump", 1, 1, .5, "#ffffff"]] * 13}, {"items": [["spinner", 1, 1, "#ffffff"]] * 2},
+                    {"items": [["lane", 1, 1, "#ffffff"]] * 81}, {"items": [["bump", 1, 1, "#ffffff"]]}):
+            with self.assertRaises(GameError, msg=str(bad)[:60]):
+                build(bad)
+
+    def test_random_tables_run_and_pickle(self):
+        import pickle, random
+        from games.pinball import CustomTable
+        from games.pinball_custom import build, LIMITS
+        for seed in range(12):
+            rng = random.Random(seed)
+            items = []
+            for kind, limit in LIMITS.items():
+                for _ in range(rng.randint(0, min(limit, 5))):
+                    x, y, c = rng.uniform(.5, 8.3), rng.uniform(.5, 14.1), "#%06x" % rng.randrange(1 << 24)
+                    if kind in ("bump", "post", "saucer", "magnet"):
+                        items.append([kind, x, y, rng.uniform(.05, 2), c])
+                    elif kind == "orbit":
+                        items.append([kind, *[rng.uniform(.5, 8.3) for _ in range(rng.randint(2, 6) * 2)], c])
+                    elif kind in ("sling", "target", "wall", "ramp", "subway"):
+                        items.append([kind, x, y, rng.uniform(.5, 8), rng.uniform(.5, 14), c])
+                    elif kind == "kick":
+                        items.append([kind, c])
+                    else:
+                        items.append([kind, x, y, c])
+            layout, _ = build({"items": items})
+            table = CustomTable(balls=99, layout_override=layout)
+            for tick in range(240 * 15):
+                if table.staged:
+                    table.input(4 if table.charge < 150 else 0, 0, tick / 240)
+                else:
+                    table.input((1, 2, 0, 3)[tick // 25 % 4], 0, tick / 240)
+                table.step()
+            self.assertGreater(table.balls, 0, seed)
+            self.assertEqual(len(table.public()), 31)
+            clone = pickle.loads(pickle.dumps(table))
+            self.assertEqual(clone.layout.bumps, layout.bumps)
+
+    def table_with(self, *items):
+        from games.pinball import CustomTable
+        from games.pinball_custom import build
+        layout, _ = build({"items": list(items)})
+        table = CustomTable(balls=99, layout_override=layout, post_used=True)
+        table.staged = False
+        return table
+
+    def test_custom_ramp_scores_and_exits_where_placed(self):
+        table = self.table_with(["ramp", 5.0, 6.0, 7.0, 9.0, "#59edd2"])
+        table.x, table.y, table.vx, table.vy = 5.0, 7.0, 0, -9.5      # a hard shot up the middle of the mouth
+        before = table.score
+        for _ in range(240 * 3):
+            table.step()
+            if table.ramp_ticks:
+                break
+        self.assertTrue(table.ramp_ticks, "the shot entered the ramp")
+        for _ in range(240 * 2):
+            table.step()
+            if not table.ramp_ticks:
+                break
+        self.assertGreater(table.score, before)
+        self.assertEqual(table.event.startswith("ramp") or table.event in ("ramp", "lock"), True, table.event)
+
+    def test_custom_subway_and_orbit_trigger(self):
+        table = self.table_with(["subway", 6.0, 6.0, 2.0, 9.0, "#c699ff"])
+        table.x, table.y, table.vx, table.vy = 6.0, 6.0, 0, 0
+        table.step()
+        self.assertTrue(table.subway_ticks)
+        for _ in range(240):
+            table.step()
+        self.assertFalse(table.subway_ticks)
+        self.assertGreater(table.vy, 0, "the exit fires the ball down the table")
+        table = self.table_with(["orbit", 1.0, 6.0, 1.0, 3.0, 3.0, 1.0, "#9ce9ff"])
+        table.x, table.y, table.vx, table.vy = 1.0, 6.0, 0, -6
+        table.step()
+        self.assertTrue(table.orbit_ticks)
+        for _ in range(240 * 4):
+            table.step()
+            if not table.orbit_ticks:
+                break
+        self.assertFalse(table.orbit_ticks)
+        self.assertGreater(table.score, 0)
+
+    def test_room_keeps_the_table_and_plays_it(self):
+        from games.base import GameError
+        room = Room("PINCUST")
+        host = room.add_player("Builder")
+        room.switch_game("pinball")
+        room.act(host, {"type": "settings", "settings": {"table": "custom"}})
+        with self.assertRaises(GameError):                  # no table built yet
+            room.act(host, {"type": "start"})
+        room.act(host, {"type": "pinball_table", "table": self.SPEC})
+        with self.assertRaises(GameError):
+            room.act(host, {"type": "pinball_table", "table": {"items": [["bump"]]}})
+        self.assertEqual(room.custom_table["name"], "My table")
+        room.act(host, {"type": "start"})
+        view = room.game.view(host)["pinball"]
+        self.assertEqual(view["table"], "custom")
+        self.assertEqual(len(view["layout"]["bumps"]), 1)
+        self.assertEqual(view["layout"]["paint"]["bumps"], ["#ff9b59"])
+        table = room.game.tables[host.id]
+        self.assertEqual(table.balls, 99)
+        self.assertIs(table.layout, room.game.custom_layout)
+        import pickle
+        pickle.dumps(room.game.tables)
 
 
 if __name__ == "__main__":

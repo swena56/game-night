@@ -1172,6 +1172,7 @@ async function solo(startNow) {
     if (startNow) await act('start');
   } catch (e) { toast(e.message); }
 }
+$('#pinballEditorBtn').onclick = () => { location.href = '/pinball-editor.html'; };
 $('#soloBtn').onclick = () => solo(true);
 $('#soloSetupBtn').onclick = () => solo(false);
 $('#addBotBtn').onclick = () => quiet(act('add_bot', { level: $('#botLevel').value }));

@@ -3,6 +3,7 @@ import time
 from uuid import uuid4
 
 from .base import Game, GameError
+from . import pinball_custom
 from .pinball_engine import Layout, Rules, Table as EngineTable, flipper_pair
 
 WIDTH, HEIGHT, BALL = 10, 17, 0.19
@@ -80,10 +81,47 @@ class NeonTable(EngineTable):
                   extra_ball_scores=(60000, 160000), super_every=3, gravity=11.6)
 
 
+# Sandbox: the same cabinet, flippers and shooter lane with every playfield part removed except the one you pick,
+# so each component can be play tested on its own. (Golden Hour and Neon Arcade are untouched.)
+SANDBOX_BASE = RAILS[:11]
+SANDBOX_PARTS = {
+    "bare": ("⬜ Nothing (flippers only)", {}),
+    "bumpers": ("🔴 Pop bumpers", dict(bumps=BUMPS)),
+    "slings": ("🔺 Slingshots", dict(slings=SLINGS)),
+    "targets": ("🎯 Drop targets", dict(targets=TARGETS)),
+    "lanes": ("🛤️ Rollover lanes", dict(lanes=ROLLOVERS, rails=SANDBOX_BASE + RAILS[11:13], posts=POSTS[:2])),
+    "spinner": ("🌀 Spinner", dict(spinner=SPINNER)),
+    "ramp": ("🛝 Ramp", dict(ramp=RAMP, ramp_exit=RAMP_EXIT)),
+    "orbit": ("🔄 Orbit lane", dict(orbit=ORBIT, orbit_path=ORBIT_PATH, orbit_exit=ORBIT_EXIT)),
+    "saucer": ("🥣 Saucer", dict(saucer=SAUCER)),
+    "subway": ("🚇 Subway", dict(subway=SUBWAY, subway_exit=SUBWAY_EXIT)),
+    "magnet": ("🧲 Magnet", dict(magnet=MAGNET)),
+    "posts": ("⚫ Rubber posts", dict(posts=POSTS)),
+    "outlanes": ("↩️ Kickback + special outlanes", dict(outlane=OUTLANE, special=SPECIAL)),
+}
+
+
+def sandbox_table(part):
+    kwargs = dict(rails=SANDBOX_BASE, flippers=FLIPPERS, launch=LAUNCH, gate=GATE, width=WIDTH, height=HEIGHT, ball=BALL,
+                  flipper_length=LENGTH, flipper_radius=FLIP_RADIUS, skill_charge=SKILL_CHARGE, theme="sandbox")
+    kwargs.update(SANDBOX_PARTS[part][1])
+    layout = Layout(**kwargs)
+    cls = type(f"Sandbox_{part}", (EngineTable,), {"layout": layout, "rules": Rules(lock_balls=2, center_post=True, always_on=True)})
+    globals()[cls.__name__] = cls       # rooms are pickled to disk, so the class must be findable by name
+    return cls
+
+
 # per-mode starting state: practice and time attack never run out of balls; time attack is three minutes of play
 MODES = {"classic": {}, "zen": dict(mode="zen"), "practice": dict(mode="practice", balls=99),
          "timeattack": dict(mode="timeattack", balls=99, clock=180 * 240)}
-TABLES = {"golden": ("Golden Hour", Table), "neon": ("Neon Arcade", NeonTable)}
+class CustomTable(EngineTable):
+    """A table from the editor: the layout arrives with each game (layout_override); this one is only the fallback."""
+    layout = sandbox_table("bare").layout
+    rules = Rules(lock_balls=2, center_post=True, always_on=True)
+
+
+TABLES = {"golden": ("Golden Hour", Table), "neon": ("Neon Arcade", NeonTable), "custom": ("My table", CustomTable),
+          **{f"sandbox_{part}": (f"Sandbox · {label}", sandbox_table(part)) for part, (label, _) in SANDBOX_PARTS.items()}}
 class Pinball(Game):
     id = "pinball"
     name = "Pinball"
@@ -91,7 +129,10 @@ class Pinball(Game):
     icon = "🕹️"
     min_players, max_players = 1, 6
     replayable = False
-    settings_schema = {"table": ("Table", [("golden", "🌇 Golden Hour"), ("neon", "🌃 Neon Arcade")], "golden"),
+    # the sandbox tables are listed last: one per part, so records for Golden Hour and Neon keep their keys
+    settings_schema = {"table": ("Table", [("golden", "🌇 Golden Hour"), ("neon", "🌃 Neon Arcade"),
+                                           ("custom", "🛠️ My table (from the editor)"),
+                                           *((f"sandbox_{k}", f"🧪 Sandbox · {v[0]}") for k, v in SANDBOX_PARTS.items())], "golden"),
                        "mode": ("Mode", [("classic", "🎱 Classic"), ("timeattack", "⏱️ Time attack (3 min)"),
                                          ("zen", "🧘 Zen (no tilt)"), ("practice", "🎯 Practice (endless)")], "classic")}
     blurb = "Three balls on a colorful chrome-trimmed table. Bank shots off the bumpers, light the ramp, and chase a high score."
@@ -104,11 +145,26 @@ class Pinball(Game):
         "Each ball has one automatic save during its first four seconds on the playfield, and once per game a centre post catches a draining ball. Neon Arcade is a busier table with four bumpers and bigger scores; its extra balls come at 60,000 and 160,000. Reach 40,000 and 120,000 on Golden Hour for an extra ball. Everyone plays three balls on a separate table. Highest score wins.",
     ]
 
+    def check_players(self, seated):
+        super().check_players(seated)
+        # checked before the room changes phase, so a refused start leaves the lobby as it was
+        if self.s.get("table") == "custom" and not getattr(self.room, "custom_table", None):
+            raise GameError("Build a table in the table editor first (home screen, 🛠️ Pinball table editor).")
+
     def start(self, seated, rng):
         self.table_id = self.s.get("table") if self.s.get("table") in TABLES else "golden"
         table_class = TABLES[self.table_id][1]
         self.mode = self.s.get("mode") if self.s.get("mode") in MODES else "classic"
-        self.tables = {p.id: table_class(**MODES[self.mode]) for p in seated}
+        start = dict(MODES[self.mode])
+        if self.table_id.startswith("sandbox_") or self.table_id == "custom":
+            start["balls"] = 99        # a test table never runs out of balls
+        if self.table_id == "custom":
+            spec = getattr(self.room, "custom_table", None)
+            if not spec:
+                raise GameError("Build a table in the table editor first.")
+            self.custom_layout = pinball_custom.build(spec)[0]
+            start["layout_override"] = self.custom_layout
+        self.tables = {p.id: table_class(**start) for p in seated}
         self.run = uuid4().hex
         self.frames = 0
         self.solo = len(seated) == 1 and not seated[0].bot
@@ -191,6 +247,8 @@ class Pinball(Game):
                 "tables": {pid: t.public() for pid, t in self.tables.items() if not t.departed}}
 
     def layout_public(self):
+        if getattr(self, "table_id", "golden") == "custom":
+            return self.custom_layout.public()
         return TABLES[getattr(self, "table_id", "golden")][1].layout.public()
 
     def view(self, p):
