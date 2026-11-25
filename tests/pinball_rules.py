@@ -93,6 +93,7 @@ class PinballRules(unittest.TestCase):
         self.assertEqual(int(table.spin), 2)  # two rotations plus a slingshot on the way down
 
         table = placed(*LAUNCH)
+        table.lit = 0
         for i, (x, y, _, end) in enumerate(TARGETS):
             for _ in range(2):
                 table.x, table.y, table.vx, table.vy = x + .29, (y + end) / 2, -10, 0
@@ -111,14 +112,38 @@ class PinballRules(unittest.TestCase):
         self.assertGreater(table.height, 1.5)
         for _ in range(57):
             table.step()
-        self.assertEqual((table.event, table.score, table.bank), ("ramp", 6750, 0))
+        self.assertEqual((table.event, table.score, table.bank), ("ramp", 7000, 0))
         self.assertEqual(table.jackpot_ticks, JACKPOT_TICKS)
         self.assertAlmostEqual(table.x, RAMP_EXIT[0])
         self.assertAlmostEqual(table.y, RAMP_EXIT[1])
 
+    def test_combo_lit_shot_and_kickback(self):
+        table = placed(*ROLLOVERS[0])
+        table.lit = 0
+        for _ in range(4):
+            table.step()
+        self.assertEqual((table.score, table.lit, table.combo), (1000, 1, 1))  # lit lane pays double
+        x, y, _, end = TARGETS[0]
+        table.x, table.y, table.vx, table.vy = x + .29, (y + end) / 2, -10, 0
+        table.step()
+        self.assertEqual((table.combo, table.lit), (2, 2))
+        self.assertEqual(table.score, 1000 + 250 + 250 + 250)  # target, lit double, combo bonus
+        self.assertEqual(table.public()[-2], 2)
+        table.combo_ticks = 1
+        table.step()
+        self.assertEqual(table.public()[-2], 0)
+        table = placed(.4, 14.5, vy=6)
+        table.step()
+        self.assertEqual((table.event, table.kickback, table.vy < 0), ("kickback", False, True))
+        table.x, table.y, table.vx, table.vy = .4, 14.5, 0, 6
+        table.step()
+        self.assertNotEqual(table.event_id, 0)
+        self.assertGreater(table.vy, 0)  # only once per ball
+
     def test_jackpot_locks_in_at_ramp_entry(self):
         x, y = RAMP
         table = placed(x, y + .01, vy=-15)
+        table.lit = 0
         table.jackpot_ticks = 2
         table.step()
         self.assertEqual(table.ramp_ticks, 1)
@@ -270,7 +295,7 @@ class PinballRules(unittest.TestCase):
         before = table.score
         table.drain()
         self.assertEqual((table.bonus, table.score - before, table.mult, table.event), (2100, 2100, 1, "bonus"))
-        self.assertEqual(len(table.public()), 22)
+        self.assertEqual(len(table.public()), 25)
 
     def test_tilt_forfeits_bonus(self):
         table = placed(5, 17.4)

@@ -19,10 +19,16 @@ LENGTH, FLIP_RADIUS = 1.56, 0.15
 RAILS = (
     (0, 17, 0, 2.2), (0, 2.2, 1.5, 0), (1.5, 0, 7.8, 0),
     (7.8, 0, 10, 2.8), (10, 2.8, 10, 17), (8.8, 3.1, 8.8, 17),
-    (8.8, 16.25, 10, 16.25), (0, 12.3, 3.22, 14.95), (8.8, 13.25, 6.78, 14.95),
+    (8.8, 16.25, 10, 16.25), (0.9, 12.2, 0.9, 13.5), (0.9, 13.5, 3.22, 14.95),
+    (7.9, 12.4, 7.9, 13.8), (7.9, 13.8, 6.78, 14.95),
     (3.25, 2.95, 3.25, 4.15), (5.25, 2.95, 5.25, 4.15),
     (2.55, 9.55, 3.15, 10.35), (7.45, 9.55, 6.85, 10.35),
 )
+# Outlanes run down the walls outside the inlane guides; the left one holds a one-time kickback.
+OUTLANE = (0.9, 13.9)
+SHOTS = ("lane", "target", "spinner", "ramp")
+SHOT_OF = dict(lane="lane", skill="lane", target="target", spinner="spinner", ramp="ramp", jackpot="ramp")
+COMBO_TICKS = 3 * 240
 # One-way gate: closed once the ball has left the shooter lane, so it cannot re-enter from the top.
 GATE = (8.8, 1.2, 8.8, 3.1)
 SLINGS = ((1.35, 10.75, 2.85, 12.5), (7.73, 10.75, 6.48, 12.6))
@@ -84,11 +90,32 @@ class Table:
     bumper_hits: int = 0
     ramps: int = 0
     bonus: int = 0
+    kickback: bool = True
+    combo: int = 0
+    combo_ticks: int = 0
+    last_shot: str = ""
+    lit: int = 3
 
     def signal(self, event, points=0, scaled=True):
         self.score += points * (self.mult if scaled else 1)
+        kind = SHOT_OF.get(event.rstrip("0123456789"))
+        if kind and points and not self.tilt:
+            self.chain(kind, points)
         self.event = event
         self.event_id += 1
+
+    def chain(self, kind, points):
+        """Pay combos for different shots in quick succession and double the lit shot."""
+        if not self.combo_ticks:
+            self.combo = 1
+        elif kind != self.last_shot:
+            self.combo += 1
+        self.combo_ticks, self.last_shot = COMBO_TICKS, kind
+        extra = 250 * (self.combo - 1)
+        if SHOTS[self.lit] == kind:
+            extra += points
+            self.lit = (self.lit + 1) % len(SHOTS)
+        self.score += extra * self.mult
 
     def reset_controls(self):
         self.held = self.charge = 0
@@ -140,6 +167,8 @@ class Table:
         self.score += self.bonus
         self.bumper_hits = self.ramps = self.lane_bits = 0
         self.mult = 1
+        self.kickback = True
+        self.combo = self.combo_ticks = 0
         self.save_used = self.jackpot_shot = False
         self.save_ticks = self.jackpot_ticks = 0
         self.reset_controls()
@@ -210,9 +239,13 @@ class Table:
             if self.segment(rail, BALL + 0.08) and not self.tilt and not self.bank & (1 << i):
                 self.bank |= 1 << i
                 self.signal(f"target{i}", 250)
+        if self.kickback and self.x < OUTLANE[0] and self.y > OUTLANE[1] and self.vy > 0 and not self.tilt:
+            self.kickback = False
+            self.vx, self.vy = 1.5, -34
+            self.signal("kickback")
         if self.tilt:
             return
-        current = sum(1 << i for i, (x, y) in enumerate(ROLLOVERS) if math.hypot(self.x - x, self.y - y) < 0.44)
+        current =sum(1 << i for i, (x, y) in enumerate(ROLLOVERS) if math.hypot(self.x - x, self.y - y) < 0.44)
         for i in range(3):
             if current & ~self.rollovers & (1 << i):
                 points = 5000 if self.skill else 500
@@ -247,6 +280,7 @@ class Table:
             return
         self.save_ticks = max(0, self.save_ticks - 1)
         self.jackpot_ticks = max(0, self.jackpot_ticks - 1)
+        self.combo_ticks = max(0, self.combo_ticks - 1)
         if self.spin_left:
             turn = min(self.spin_left, 8 * STEP)
             old_spin = self.spin
@@ -334,7 +368,8 @@ class Table:
                 self.score, self.balls, self.bank, self.nudges, int(self.tilt), int(self.staged),
                 self.charge, self.event_id, self.event, round(self.spin % 1, 3),
                 math.ceil(self.save_ticks / 240), math.ceil(self.jackpot_ticks / 240),
-                self.mult, self.bonus, self.lane_bits]
+                self.mult, self.bonus, self.lane_bits, int(self.kickback),
+                self.combo if self.combo_ticks else 0, self.lit]
 
 
 class Pinball(Game):

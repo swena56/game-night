@@ -1,16 +1,16 @@
 (() => {
-  const [X, Y, VX, VY, Z, LEFT, RIGHT, SCORE, BALLS, BANK, NUDGES, TILT, STAGED, CHARGE, EVENT_ID, EVENT, SPIN, SAVE, JACKPOT, MULT, BONUS, LANES] =
-    Array.from({ length: 22 }, (_, i) => i);
+  const [X, Y, VX, VY, Z, LEFT, RIGHT, SCORE, BALLS, BANK, NUDGES, TILT, STAGED, CHARGE, EVENT_ID, EVENT, SPIN, SAVE, JACKPOT, MULT, BONUS, LANES, KICK, COMBO, LIT] =
+    Array.from({ length: 25 }, (_, i) => i);
   const keys = {
     KeyA: 1, ArrowLeft: 1, KeyD: 2, ArrowRight: 2, Space: 4,
     KeyQ: -1, KeyW: -2, KeyE: -3,
   };
   const messages = {
     skill: 'Skill shot +5,000', spinner: 'Spinner +100', ramp: 'Ramp +6,000 · Jackpot lit', jackpot: 'Jackpot +12,000', save: 'Ball saved · Auto launch',
-    tilt: 'TILT · scoring suspended', nudge: 'Table nudged', mult: 'Multiplier up!',
+    tilt: 'TILT · scoring suspended', nudge: 'Table nudged', mult: 'Multiplier up!', kickback: 'Kickback!',
     drain: 'Ball drained', done: 'Run complete', recovery: 'Ball freed',
   };
-  const sounds = { skill: 'lock', ramp: 'cheer', jackpot: 'cheer', save: 'lock', tilt: 'wrong', mult: 'cheer', bonus: 'cheer', spinner: 'tickfast', drain: 'groan', done: 'groan' };
+  const sounds = { skill: 'lock', ramp: 'cheer', jackpot: 'cheer', save: 'lock', tilt: 'wrong', mult: 'cheer', kickback: 'lock', bonus: 'cheer', spinner: 'tickfast', drain: 'groan', done: 'groan' };
   const prefixes = { bumper: 'Bumper +100', sling: 'Slingshot +50', lane: 'Rollover +500', target: 'Target +250' };
   const label = (event, row) => event === 'bonus' && row ? `Ball bonus +${row[BONUS].toLocaleString()}` : messages[event] || prefixes[event?.replace(/[0-9]$/, '')] || '';
   const sound = (event) => sounds[event] || (/^(bumper|sling)/.test(event) ? 'puck' : 'pop');
@@ -531,6 +531,7 @@
           <div class="pb-inserts" aria-hidden="true">
             <span class="pb-save">Ball save</span>
             <span class="pb-mult" hidden></span>
+            <span class="pb-shot"></span>
             <span class="pb-jackpot" hidden></span>
           </div>
         </div>
@@ -674,6 +675,8 @@
     const lanes = '●'.repeat([0, 1, 2].filter(i => row[LANES] >> i & 1).length).padEnd(3, '○');
     find('mult').hidden = !(row[MULT] > 1 || row[LANES]);
     setText(find('mult'), `${row[MULT]}× ${lanes}`);
+    const shot = ['Lane', 'Targets', 'Spinner', 'Ramp'][row[LIT]];
+    setText(find('shot'), `${row[COMBO] > 1 ? `Combo ${row[COMBO]} · ` : ''}2× ${shot}${row[KICK] ? ' · Kickback' : ''}`);
     find('jackpot').hidden = !row[JACKPOT];
     setText(find('jackpot'), row[JACKPOT] ? `Jackpot · ${row[JACKPOT]}s` : '');
     const [skillStart, skillEnd] = g.skill;

@@ -180,6 +180,7 @@
   box-shadow: inset 0 1px #ffe8ae65, 0 0 9px #ffc56930;
 }
 
+.pb-inserts .pb-shot,
 .pb-inserts .pb-mult {
   border-color: var(--pb-gold);
   color: var(--pb-gold);
