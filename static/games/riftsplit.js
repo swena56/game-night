@@ -10,7 +10,7 @@
   const NOTE = (n) => 220 * 2 ** (n / 12);
   const VOICE = {
     lock: (t, K) => { const d = K.at({ send: 0.3 }); K.sweep(d, t, { f0: 160, f1: 60, dur: 0.16, vol: 0.2 }); K.mode(d, t, 1800, 0.1, 0.03); K.mode(d, t + 0.02, 950, 0.09, 0.06); K.burst(d, t, { type: 'bandpass', f: 2600, q: 2, vol: 0.1, tau: 0.012 }); },
-    place: (t, K) => { const d = K.at({ send: 0.15 }); K.sweep(d, t, { f0: 300, f1: 620, dur: 0.14, vol: 0.09, type: 'triangle' }); K.burst(d, t, { type: 'highpass', f: 4000, vol: 0.04, tau: 0.01 }); },
+    place: (t, K) => { const d = K.at({ send: 0.3 }); K.sweep(d, t, { f0: 70, f1: 150, dur: 0.85, vol: 0.07, type: 'sawtooth', attack: 0.12 }); K.sweep(d, t, { f0: 74, f1: 158, dur: 0.85, vol: 0.05, type: 'triangle', attack: 0.12 }); K.sweep(d, t + 0.04, { f0: 300, f1: 520, dur: 0.6, vol: 0.025, type: 'sine', attack: 0.2 }); },   // a slow light-saber ignition hum while the wall extends
     seal: (t, K) => { const d = K.at({ send: 0.5 }); [0, 4, 7].forEach((n, i) => K.mode(d, t + i * 0.055, NOTE(n + 12), 0.13, 0.16)); K.sweep(d, t, { f0: 180, f1: 70, dur: 0.18, vol: 0.12 }); },
     big: (t, K) => { const d = K.at({ send: 0.7 }); [0, 4, 7, 12, 16].forEach((n, i) => { K.mode(d, t + i * 0.06, NOTE(n + 12), 0.14, 0.24); K.mode(d, t + i * 0.06, NOTE(n + 24), 0.05, 0.3); }); K.burst(d, t, { f: 2500, f1: 9000, q: 1.2, vol: 0.06, dur: 0.35, tau: 0.08 }); },
     hit: (t, K) => { const d = K.at({ send: 0.4 }); K.sweep(d, t, { f0: 420, f1: 70, dur: 0.3, vol: 0.2, type: 'sawtooth' }); K.burst(d, t, { type: 'lowpass', f: 3000, f1: 300, vol: 0.2, dur: 0.25, tau: 0.06 }); K.mode(d, t, 1400, 0.1, 0.05); },
@@ -893,7 +893,7 @@
         </div>
         <div class="rs-bar rs-bar-x" role="meter" aria-label="Field sealed" aria-valuemin="0" aria-valuemax="100"><div class="rs-fill"></div><div class="rs-goal" title="70% to clear"></div><span class="rs-pct">0%</span><span class="rs-combo" hidden></span><span class="rs-slow" hidden></span></div>
         <div class="rs-stage" aria-label="Rift Split field"><span class="rs-msg" role="status"></span><span class="rs-aim" aria-live="off" hidden></span><span class="rs-power" role="status" hidden></span><span class="rs-slowpill" hidden><span></span><i></i></span><span class="rs-ready" aria-hidden="true" hidden></span><div class="rs-coach" aria-hidden="true"><b>Tap</b> or <b>swipe</b> to grow a wall<small>Seal off the orbs; don't let them hit a growing wall. Two walls can grow at once.</small></div></div>
-        <div class="rs-controls"><div class="rs-dirs" role="group" aria-label="Wall direction"><button type="button" class="rs-dir" data-v="0" aria-pressed="true"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Across</span></button><button type="button" class="rs-dir rs-v" data-v="1" aria-pressed="false"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Down</span></button><button type="button" class="rs-swipe" aria-pressed="false" title="Swipe to draw: the wall runs the way you drag"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 22C8 8 16 6 24 8M24 8l-6-3M24 8l-4 5"/></svg><span>Swipe</span></button></div><button type="button" class="rs-gear" aria-label="More options" title="More options" aria-expanded="false">⚙</button><div class="rs-more" hidden><button type="button" class="rs-bright" aria-label="Brightness" title="Brightness">☀</button></div></div>
+        <div class="rs-controls"><div class="rs-dirs" role="group" aria-label="Wall direction"><button type="button" class="rs-dir" data-v="0" aria-pressed="true"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Across</span></button><button type="button" class="rs-dir rs-v" data-v="1" aria-pressed="false"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Down</span></button><button type="button" class="rs-swipe" aria-pressed="false" title="Swipe to draw: the wall runs the way you drag"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 22C8 8 16 6 24 8M24 8l-6-3M24 8l-4 5"/></svg><span>Swipe</span></button></div><button type="button" class="rs-gear" aria-label="More options" title="More options" aria-expanded="false">⚙</button><div class="rs-more" hidden><button type="button" class="rs-fxbtn" aria-pressed="true" title="Blur and glow on/off"><span aria-hidden="true">✨</span> Blur</button></div></div>
         <ol class="rs-standings" aria-label="Scores" hidden></ol>
       </section>`;
     const root = arena.querySelector('.rs-cabinet');
@@ -941,12 +941,14 @@
     g.tilt = false;   // always straight down
     const pref = (k, d) => { try { return localStorage.getItem('riftsplit.' + k) ?? d; } catch { return d; } };
     const setPref = (k, v) => { try { localStorage.setItem('riftsplit.' + k, v); } catch { /* private mode */ } };
-    g.nofx = false;   // glow is always on (the toggle was removed)
+    g.nofx = pref('nofx', '0') === '1';   // ✨ Blur button in the ⚙ menu: off = crisp, no glow or blur
     g.theme = 'auto';   // colours follow the level (the manual picker was removed)
     const applyLook = () => {
       HALF = THM().half;
       stage.style.setProperty('--rs-glow', THM().glow);
       stage.classList.toggle('rs-sharp', g.nofx);
+      g.find('fxbtn').setAttribute('aria-pressed', String(!g.nofx));
+      g.find('fxbtn').classList.toggle('rs-off', g.nofx);
     };
     applyLook();
     g.syncTheme = (lv) => {   // Auto theme: a new colour world every TIER_LEN levels
@@ -956,16 +958,9 @@
       if (g.three) { g.three.dispose(); g.three = null; g.rebuild?.(); }
       return true;
     };
-    const BRIGHT = [1, 1.1, 1.3, 1.6, 2];
-    const loadB = () => { try { const v = Number(localStorage.getItem('riftsplit.bright')); return BRIGHT.includes(v) ? v : 1.1; } catch { return 1.1; } };
-    g.bright = loadB();
-    stage.style.setProperty('--rs-bright', g.bright);
-    on(g.find('bright'), 'click', () => {
-      g.bright = BRIGHT[(BRIGHT.indexOf(g.bright) + 1) % BRIGHT.length];
-      stage.style.setProperty('--rs-bright', g.bright);
-      try { localStorage.setItem('riftsplit.bright', String(g.bright)); } catch { /* private mode */ }
-      g.msg('Brightness ' + Math.round(g.bright * 100) + '%');
-    });
+    stage.style.setProperty('--rs-bright', 1.1);   // fixed brightness (the button was removed)
+    on(g.find('fxbtn'), 'click', () => { g.nofx = !g.nofx; setPref('nofx', g.nofx ? '1' : '0'); applyLook(); g.msg(g.nofx ? 'Blur and glow off' : 'Blur and glow on'); });
+
     for (const b of root.querySelectorAll('.rs-dir')) on(b, 'click', () => setDirection(b.dataset.v === '1'));
     g.zoom = 1; g.panX = 0; g.panY = 0;
     try { g.swipe = localStorage.getItem('riftsplit.swipe') === '1'; } catch { g.swipe = false; }

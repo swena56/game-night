@@ -234,3 +234,13 @@ body.focus .rs-cabinet { width: min(100%, 1100px); }
   .rs-controls { align-items: stretch; }
   .rs-dirs { width: 100%; box-sizing: border-box; }
 }
+
+/* round 5: big numbers and the hearts row stay inside their tiles in landscape */
+.rs-hud > div { min-width: 0; }
+.rs-best-tile strong, .rs-score { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+@media (orientation: landscape) and (max-height: 540px) {
+  .rs-lives { white-space: normal; line-height: 1.15; font-size: .85rem; }
+  .rs-best-tile strong { font-size: clamp(.8rem, 2.6vw, 1rem); }
+  .rs-hud .rs-score { font-size: clamp(1rem, 3vw, 1.3rem); }
+  .rs-more { justify-content: center; }
+}
