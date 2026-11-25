@@ -49,6 +49,22 @@ class PinballRules(unittest.TestCase):
         self.assertGreaterEqual(table.score - before, table.rules.jackpot + table.rules.jackpot_growth)
         self.assertEqual(table.jackpot_pool, 0)
 
+    def test_modes(self):
+        from games.pinball import MODES
+        attack = Table(**MODES["timeattack"])
+        attack.staged, attack.clock = False, 10
+        for _ in range(12):
+            attack.step()
+        self.assertEqual((attack.balls, attack.event, attack.clock), (0, "done", 0))
+        zen = Table(**MODES["zen"])
+        zen.staged = False
+        for _ in range(10):
+            zen.nudge(1)
+        self.assertFalse(zen.tilt)
+        practice = Table(**MODES["practice"])
+        self.assertEqual(practice.balls, 99)
+        self.assertEqual(practice.public()[-1]["mode"], "practice")
+
     def test_plunge_and_skill_shot(self):
         weak = launch(10)
         self.assertFalse(weak.staged)

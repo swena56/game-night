@@ -27,8 +27,11 @@
   // the ball's trail warms from ivory to hot orange as the bonus multiplier climbs (1x..5x)
   const TRAIL_TINT = ['255,240,202', '255,226,150', '255,200,110', '255,160,90', '255,110,90'];
   const TRAIL_HEX = ['#fff0ca', '#ffe296', '#ffc86e', '#ffa05a', '#ff6e5a'];
-  const bestKey = (g) => g.table === 'neon' ? 'pinball.best.neon' : 'pinball.best';
-  const topKey = (g) => g.table === 'neon' ? 'pinball.top.neon' : 'pinball.top';
+  // personal bests are kept per table and per mode (practice keeps none)
+  const modeTag = (g) => (g.mode && g.mode !== 'classic' ? '.' + g.mode : '');
+  const bestKey = (g) => `pinball.best${g.table === 'neon' ? '.neon' : ''}${modeTag(g)}`;
+  const topKey = (g) => `pinball.top${g.table === 'neon' ? '.neon' : ''}${modeTag(g)}`;
+  const clockText = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   const palette = { gold: '#ffd383', ivory: '#fff0ca', teal: '#59edd2', red: '#ff6854', steel: '#c1d2e5' };
   const bumperColors = ['#ff9b59', '#c699ff', '#58e5d5', '#ff78bc'];
   const flipperColors = ['#42cfeb', '#ff78bc'];
@@ -917,10 +920,12 @@
     g.scoreTarget = row[SCORE];
     if (g.scoreShown === undefined || g.scoreShown > row[SCORE]) g.scoreShown = row[SCORE];
     setText(find('score'), Math.round(g.scoreShown).toLocaleString());
-    setText(find('balls'), row[BALLS]);
+    setText(find('balls'), g.mode === 'practice' || g.mode === 'timeattack' ? '∞' : row[BALLS]);
     find('nudges').classList.toggle('warn', !row[TILT] && row[NUDGES] >= 2);
     const nextExtra = (g.extra || []).find((v) => v > row[SCORE]);
-    setText(find('nudges'), row[TILT] ? 'Tilted' : `Nudges ${3 - row[NUDGES]}${nextExtra ? ` · Extra ball ${nextExtra.toLocaleString()}` : ''}`);
+    const timer = g.mode === 'timeattack' ? ` · ⏱ ${clockText(row[STATS]?.clock ?? 0)}` : '';
+    setText(find('nudges'), row[TILT] ? 'Tilted' : g.mode === 'zen' ? 'Zen · no tilt' : g.mode === 'practice' ? 'Practice · not scored' :
+      `Nudges ${3 - row[NUDGES]}${nextExtra ? ` · Extra ball ${nextExtra.toLocaleString()}` : ''}${timer}`);
     setText(find('ramp'), row[OTHERS]?.length ? `MULTIBALL ×${row[OTHERS].length + 1}` : row[JACKPOT] ? 'Jackpot lit' : rampLit(row) ? 'Ramp ready' : `Targets ${(row[BANK] & 1) + (row[BANK] >> 1 & 1) + (row[BANK] >> 2 & 1)}/3${row[LOCKED] ? ` · ${row[LOCKED]} locked` : ''}`);
     find('ramp').classList.toggle('lit', !!rampLit(row));
     g.stage.classList.toggle('tilted', !!row[TILT]);
@@ -1005,6 +1010,16 @@
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     if (text && g.me === g.viewer && !reduce) {
       el.textContent = text;
+      // the end-of-ball bonus is tallied up from zero instead of appearing at once
+      clearInterval(g.tally);
+      if (row[EVENT] === 'bonus' && row[BONUS] > 0) {
+        const total = row[BONUS], t0 = performance.now();
+        g.tally = setInterval(() => {
+          const k = Math.min(1, (performance.now() - t0) / 700);
+          el.textContent = `Ball bonus +${Math.round(total * (1 - (1 - k) ** 2)).toLocaleString()}`;
+          if (k >= 1) clearInterval(g.tally);
+        }, 40);
+      }
       el.hidden = false;
       el.style.left = `${100 * (g.ball?.[0] ?? row[X]) / 10}%`;
       el.style.top = `${100 * ((g.ball?.[1] ?? row[Y]) + .85) / 18.7}%`;
@@ -1086,7 +1101,7 @@
     if (!g.enabled || row[TILT] && !prior?.[TILT]) clearControls(g);
     g.row = row;
     if (prior !== row) g.receivedAt = performance.now();
-    if (g.over && g.solo && g.me && !row[BALLS] && !g.topSaved) {
+    if (g.over && g.solo && g.me && !row[BALLS] && !g.topSaved && g.mode !== 'practice') {
       g.topSaved = true;
       const saved = load(topKey(g));
       const entries = (Array.isArray(saved) ? saved : [])
@@ -1097,7 +1112,7 @@
       g.topScores = top.map(entry => entry.score);
       store(topKey(g), top);
     }
-    if (g.over && g.solo && g.me && !row[BALLS] && (g.best === null || row[SCORE] > g.best)) {
+    if (g.over && g.solo && g.me && !row[BALLS] && g.mode !== 'practice' && (g.best === null || row[SCORE] > g.best)) {
       g.best = row[SCORE];
       g.record = true;
       store(bestKey(g), g.best);
@@ -1186,6 +1201,7 @@
         g.run = data.pin;
         g.solo = data.solo;
         g.table = data.table || 'golden';
+        g.mode = Object.values(data.tables)[0]?.[STATS]?.mode || 'classic';
         g.stage.setAttribute('aria-label', `${g.table === 'neon' ? 'Neon Arcade' : 'Golden Hour'} pinball playfield`);
         g.skill = data.layout.skill;
         g.extra = data.extra || [];
@@ -1219,6 +1235,7 @@
       game.listeners.abort();
       cancelAnimationFrame(game.raf);
       clearInterval(game.heartbeat);
+      clearInterval(game.tally);
       game.three?.dispose();
       game.flat?.dispose();
       game.root.remove();

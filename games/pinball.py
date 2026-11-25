@@ -63,6 +63,9 @@ class NeonTable(EngineTable):
                   extra_ball_scores=(60000, 160000), super_every=3)
 
 
+# per-mode starting state: practice and time attack never run out of balls; time attack is three minutes of play
+MODES = {"classic": {}, "zen": dict(mode="zen"), "practice": dict(mode="practice", balls=99),
+         "timeattack": dict(mode="timeattack", balls=99, clock=180 * 240)}
 TABLES = {"golden": ("Golden Hour", Table), "neon": ("Neon Arcade", NeonTable)}
 class Pinball(Game):
     id = "pinball"
@@ -71,7 +74,9 @@ class Pinball(Game):
     icon = "🕹️"
     min_players, max_players = 1, 6
     replayable = False
-    settings_schema = {"table": ("Table", [("golden", "🌇 Golden Hour"), ("neon", "🌃 Neon Arcade")], "golden")}
+    settings_schema = {"table": ("Table", [("golden", "🌇 Golden Hour"), ("neon", "🌃 Neon Arcade")], "golden"),
+                       "mode": ("Mode", [("classic", "🎱 Classic"), ("timeattack", "⏱️ Time attack (3 min)"),
+                                         ("zen", "🧘 Zen (no tilt)"), ("practice", "🎯 Practice (endless)")], "classic")}
     blurb = "Three balls on a colorful chrome-trimmed table. Bank shots off the bumpers, light the ramp, and chase a high score."
     tip_lines = 2
     howto = [
@@ -85,7 +90,8 @@ class Pinball(Game):
     def start(self, seated, rng):
         self.table_id = self.s.get("table") if self.s.get("table") in TABLES else "golden"
         table_class = TABLES[self.table_id][1]
-        self.tables = {p.id: table_class() for p in seated}
+        self.mode = self.s.get("mode") if self.s.get("mode") in MODES else "classic"
+        self.tables = {p.id: table_class(**MODES[self.mode]) for p in seated}
         self.run = uuid4().hex
         self.frames = 0
         self.solo = len(seated) == 1 and not seated[0].bot

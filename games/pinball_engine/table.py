@@ -87,6 +87,8 @@ class Table:
     hurry_ticks: int = 0
     mb_save_ticks: int = 0
     post_used: bool = False
+    mode: str = "classic"      # classic | zen (no tilt) | practice (endless balls) | timeattack (a clock ends the run)
+    clock: int = 0              # time attack: ticks of play left
     rng: random.Random = field(default_factory=random.Random, repr=False)
     gone: bool = False
 
@@ -200,6 +202,8 @@ class Table:
     def nudge(self, direction):
         if self.tilt or self.staged:
             return
+        if self.nudges >= self.rules.max_nudges and self.mode == "zen":
+            self.nudges = 0                # zen: the table never tilts; the nudge counter just refills
         if self.nudges == self.rules.max_nudges:
             self.tilt = True
             self.skill = False
@@ -213,6 +217,15 @@ class Table:
         self.vx += 4.8 * direction
         self.vy -= 3.4 if not direction else 1.8
         self.signal("nudge")
+
+    def time_up(self):
+        """Time attack: the clock ends the run on the spot; the ball in play still banks its bonus."""
+        self.bonus = self.live_bonus()
+        self.score += self.bonus
+        self.balls = 0
+        self.others.clear()
+        self.reset_controls()
+        self.signal("done", scaled=False)
 
     def drain(self):
         rules = self.rules
@@ -363,6 +376,11 @@ class Table:
         self.combo_ticks = max(0, self.combo_ticks - 1)
         self.hurry_ticks = max(0, self.hurry_ticks - 1)
         self.mb_save_ticks = max(0, self.mb_save_ticks - 1)
+        if self.clock:
+            self.clock -= 1
+            if not self.clock:
+                self.time_up()
+                return
         if self.spin_left:
             turn = min(self.spin_left, 8 * STEP)
             old_spin = self.spin
@@ -557,4 +575,5 @@ class Table:
                 [[round(o["x"], 3), round(o["y"], 3), round(o["vx"], 2), round(o["vy"], 2), round(o["height"], 2)]
                  for o in self.others], self.last_points, int(self.hold), math.ceil(self.hurry_ticks / 240),
                 {"jackpot": self.jackpots, "multiball": self.multiballs, "hurry": self.hurry_wins,
-                 "mystery": self.mysteries, "extra": self.extras, "combo": self.best_combo}]
+                 "mystery": self.mysteries, "extra": self.extras, "combo": self.best_combo,
+                 "mode": self.mode, "clock": math.ceil(self.clock / 240)}]
