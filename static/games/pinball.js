@@ -573,6 +573,7 @@
         // a flipper's solenoid clack on press (bits 1 and 2), a softer one on release
         const flip = (g.held ^ previous) & 3;
         if (flip && g.enabled && !g.ctx.readOnly) g.ctx.sfx((g.held & flip) ? 'pflip' : 'pflipup');
+        if (flip & g.held) navigator.vibrate?.(6);
         send(g, {}, true);
       }
       paintControls(g);
