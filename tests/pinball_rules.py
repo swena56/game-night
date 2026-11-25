@@ -134,10 +134,10 @@ class PinballRules(unittest.TestCase):
         table.step()
         self.assertEqual((table.combo, table.lit), (2, 2))
         self.assertEqual(table.score, 1000 + 250 + 250 + 250)  # target, lit double, combo bonus
-        self.assertEqual(table.public()[-7], 2)
+        self.assertEqual(table.public()[23], 2)
         table.combo_ticks = 1
         table.step()
-        self.assertEqual(table.public()[-7], 0)
+        self.assertEqual(table.public()[23], 0)
         table = placed(.4, 14.5, vy=6)
         table.step()
         self.assertEqual((table.event, table.kickback, table.vy < 0), ("kickback", False, True))
@@ -302,7 +302,7 @@ class PinballRules(unittest.TestCase):
         before = table.score
         table.drain()
         self.assertEqual((table.bonus, table.score - before, table.mult, table.event), (2100, 2100, 1, "bonus"))
-        self.assertEqual(len(table.public()), 30)
+        self.assertEqual(len(table.public()), 31)
 
     def shoot_ramp(self, table):
         table.bank = 7
@@ -321,7 +321,7 @@ class PinballRules(unittest.TestCase):
         table.vx = table.vy = 0
         self.shoot_ramp(table)
         self.assertEqual((table.event, table.locked, table.balls, len(table.others)), ("multiball", 0, 3, 2))
-        self.assertEqual(len(table.public()[-4]), 2)
+        self.assertEqual(len(table.public()[26]), 2)
         self.assertGreater(table.jackpot_ticks, 30 * 240)
 
     def test_lock_reserve_has_no_skill_shot(self):
@@ -355,9 +355,22 @@ class PinballRules(unittest.TestCase):
         x, y, r = BUMPS[0]
         table.others = [table.free_ball(x + r + .2, y, -10, 0)]
         table.step()
-        self.assertEqual(table.score, 100)
+        self.assertEqual(table.score, table.rules.bumper_jackpot)
         table.nudge(1)
         self.assertGreater(table.others[0]["vx"], table.vx - 1)
+
+    def test_multiball_jackpot_survives_timer_and_counts_with_extra_ball(self):
+        x, y = RAMP
+        table = placed(x, y + .02, vy=-10)
+        table.score = table.rules.extra_ball_scores[0] - 1
+        table.others = [table.free_ball(3, 8, 0, 0)]
+        table.step()
+        self.assertTrue(table.jackpot_shot)
+        table.ramp_ticks = 115
+        table.step()
+        self.assertEqual(table.event, "extra")
+        self.assertEqual(table.public()[30]["jackpot"], 1)
+        self.assertEqual(table.public()[30]["extra"], 1)
 
     def test_mystery_super_spinner_bumper_levels_and_hold(self):
         table = Table()

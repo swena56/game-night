@@ -75,6 +75,10 @@ class Table:
     locked: int = 0
     lit_hits: int = 0
     jackpots: int = 0
+    multiballs: int = 0
+    hurry_wins: int = 0
+    mysteries: int = 0
+    best_combo: int = 0
     spins: int = 0
     hold: bool = False
     last_points: int = 0
@@ -98,6 +102,10 @@ class Table:
 
     def signal(self, event, points=0, scaled=True):
         before = self.score
+        if event == "multiball":
+            self.multiballs += 1
+        elif event == "hurry":
+            self.hurry_wins += 1
         self.score += points * (self.mult if scaled else 1)
         kind = SHOT_OF.get(event.rstrip("0123456789"))
         if kind and points and not self.tilt:
@@ -124,6 +132,7 @@ class Table:
         elif kind != self.last_shot:
             self.combo += 1
         self.combo_ticks, self.last_shot = rules.combo_ticks, kind
+        self.best_combo = max(self.best_combo, self.combo)
         extra = rules.combo_step * (self.combo - 1)
         if rules.shots[self.lit] == kind:
             extra += points
@@ -134,6 +143,7 @@ class Table:
 
     def mystery(self):
         """A random prize for every few lit-shot doubles."""
+        self.mysteries += 1
         rules = self.rules
         prizes = ["points", "save"]
         if self.mult < rules.max_mult:
@@ -290,7 +300,7 @@ class Table:
             if self.contact(x, y, ball + radius, 0.86, 0 if self.tilt else 16) and not self.tilt:
                 self.bumper_hits += 1
                 level = 1 + min(2, self.bumper_hits // rules.bumper_step)
-                self.signal(f"bumper{i}", (rules.bumper_jackpot if self.jackpot_ticks else rules.bumper) * level)
+                self.signal(f"bumper{i}", (rules.bumper_jackpot if self.jackpot_ticks or self.others else rules.bumper) * level)
         for i, rail in enumerate(lay.targets):
             if self.segment(rail, ball + 0.08) and not self.tilt and not self.bank & (1 << i):
                 self.bank |= 1 << i
@@ -324,10 +334,11 @@ class Table:
                 self.spin_left += max(1, min(5, int(abs(self.vy) / 5)))
         if lay.ramp:
             rx, ry = lay.ramp
-            lit = self.bank == (1 << len(lay.targets)) - 1 or self.jackpot_ticks
+            jackpot = bool(self.jackpot_ticks or self.others)
+            lit = jackpot or self.bank == (1 << len(lay.targets)) - 1
             if lit and self.vy < -7 and self.y <= ry < old_y and abs(self.x - rx) < 0.65:
                 self.ramp_ticks = 1
-                self.jackpot_shot = bool(self.jackpot_ticks)
+                self.jackpot_shot = jackpot
 
     # -- simulation ------------------------------------------------------------------------------
 
@@ -539,4 +550,6 @@ class Table:
                 self.mult, self.bonus if self.staged else self.live_bonus(), self.lane_bits, int(self.kickback),
                 self.combo if self.combo_ticks else 0, self.lit, self.locked,
                 [[round(o["x"], 3), round(o["y"], 3), round(o["vx"], 2), round(o["vy"], 2), round(o["height"], 2)]
-                 for o in self.others], self.last_points, int(self.hold), math.ceil(self.hurry_ticks / 240)]
+                 for o in self.others], self.last_points, int(self.hold), math.ceil(self.hurry_ticks / 240),
+                {"jackpot": self.jackpots, "multiball": self.multiballs, "hurry": self.hurry_wins,
+                 "mystery": self.mysteries, "extra": self.extras, "combo": self.best_combo}]

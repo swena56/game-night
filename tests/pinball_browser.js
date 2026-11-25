@@ -17,6 +17,7 @@ async function open(browser, { flat = false, low = false, mobile = false } = {})
     viewport: mobile ? { width: 320, height: 680 } : { width: 1000, height: 830 },
     isMobile: mobile, hasTouch: mobile, deviceScaleFactor: 2,
   });
+  page.setDefaultTimeout(30000);
   const errors = [];
   page.on('pageerror', (error) => errors.push(String(error)));
   await page.addInitScript(({ flat, low }) => {
@@ -53,6 +54,18 @@ async function mobileRun(browser) {
     else await route.continue();
   });
   try {
+    await page.evaluate(() => {
+      const pad = { axes: [0], buttons: Array.from({ length: 16 }, () => ({ pressed: false })) };
+      pad.buttons[0].pressed = true;
+      window.pinballTestPad = pad;
+      Object.defineProperty(navigator, 'getGamepads', { value: () => [window.pinballTestPad] });
+    });
+    await charge(page, 30);
+    await page.evaluate(() => { window.pinballTestPad = null; });
+    await charge(page, 0, 0);
+    assert.ok(await control(page, 4).isEnabled(), 'disconnecting the gamepad cancels the launch');
+    assert.ok(packets.some(p => p.reset && p.held === 0));
+
     const cabinet = await page.locator('.pb-cabinet').boundingBox();
     assert.ok(cabinet.width <= 320 && cabinet.x >= 0);
     assert.ok(cabinet.y + cabinet.height <= 680, 'whole table and controls fit the phone viewport');
@@ -145,6 +158,8 @@ async function mobileRun(browser) {
     assert.ok(best >= score);
     await page.reload();
     await text(page, '.pb-best', best.toLocaleString());
+    await page.locator('.pb-top li').first().waitFor();
+    assert.equal(await page.locator('.pb-top li').count(), 1, 'reloading results keeps one entry per run');
     assert.deepEqual(errors, []);
   } finally {
     await page.close();
@@ -181,8 +196,10 @@ async function threeRun(browser, low) {
         extension.loseContext();
       });
       await page.locator('.pb-flat').waitFor();
-      await page.evaluate(() => { window.blockPinballGL = false; });
-      await page.locator('.gl3-retry').click();
+      await page.evaluate(() => {
+        window.blockPinballGL = false;
+        document.querySelector('.gl3-retry')?.click();
+      });
       await canvas.waitFor();
       await page.locator('.pb-flat').waitFor({ state: 'detached' });
     }
@@ -198,9 +215,9 @@ async function threeRun(browser, low) {
     args: ['--headless=new', '--no-sandbox', `--use-angle=${process.env.CHROMIUM_ANGLE || 'swiftshader'}`, '--enable-unsafe-swiftshader'],
   });
   try {
+    await mobileRun(browser);
     await threeRun(browser, false);
     await threeRun(browser, true);
-    await mobileRun(browser);
     console.log('Pinball browser checks passed with live controls, Canvas fallback, and WebGL recovery');
   } finally {
     await browser.close();

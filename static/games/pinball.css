@@ -74,6 +74,13 @@
 
 .pb-stage canvas { display: block; width: 100%; height: 100%; }
 
+@media (max-width: 480px) {
+  .pb-stage {
+    width: min(100%, clamp(130px, calc((min(var(--stage-h, 560px), 100svh - 110px) - 202px) * .5882), 370px));
+  }
+  .pb-inserts { flex-wrap: wrap; }
+}
+
 .pb-pull {
   position: absolute;
   right: 3%;

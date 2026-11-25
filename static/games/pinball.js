@@ -1,6 +1,6 @@
 (() => {
-  const [X, Y, VX, VY, Z, LEFT, RIGHT, SCORE, BALLS, BANK, NUDGES, TILT, STAGED, CHARGE, EVENT_ID, EVENT, SPIN, SAVE, JACKPOT, MULT, BONUS, LANES, KICK, COMBO, LIT, LOCKED, OTHERS, POINTS, HOLD, HURRY] =
-    Array.from({ length: 30 }, (_, i) => i);
+  const [X, Y, VX, VY, Z, LEFT, RIGHT, SCORE, BALLS, BANK, NUDGES, TILT, STAGED, CHARGE, EVENT_ID, EVENT, SPIN, SAVE, JACKPOT, MULT, BONUS, LANES, KICK, COMBO, LIT, LOCKED, OTHERS, POINTS, HOLD, HURRY, STATS] =
+    Array.from({ length: 31 }, (_, i) => i);
   const keys = {
     KeyA: 1, ArrowLeft: 1, KeyZ: 1, ShiftLeft: 1, KeyD: 2, ArrowRight: 2, Slash: 2, ShiftRight: 2, Space: 4,
     KeyQ: -1, KeyW: -2, KeyE: -3,
@@ -30,7 +30,7 @@
   const bestKey = (g) => g.table === 'neon' ? 'pinball.best.neon' : 'pinball.best';
   const topKey = (g) => g.table === 'neon' ? 'pinball.top.neon' : 'pinball.top';
   const palette = { gold: '#ffd383', ivory: '#fff0ca', teal: '#59edd2', red: '#ff6854', steel: '#c1d2e5' };
-  const bumperColors = ['#ff9b59', '#c699ff', '#58e5d5'];
+  const bumperColors = ['#ff9b59', '#c699ff', '#58e5d5', '#ff78bc'];
   const flipperColors = ['#42cfeb', '#ff78bc'];
   const guideColors = ['#a896ff', '#a896ff', '#ffcf76', '#ffcf76'];
   const rampPoints = ({ ramp, exit }) => Array.from({ length: 33 }, (_, i) => {
@@ -234,8 +234,9 @@
     return canvas;
   }
 
-  const rampLit = row => row[BANK] === 7 || row[JACKPOT] > 0;
-  const rampColor = row => row[JACKPOT] ? palette.gold : palette.teal;
+  const jackpotLit = row => !row[TILT] && (row[JACKPOT] > 0 || row[OTHERS]?.length > 0);
+  const rampLit = row => !row[TILT] && (row[BANK] === 7 || jackpotLit(row));
+  const rampColor = row => jackpotLit(row) ? palette.gold : palette.teal;
 
   // players who ask for reduced motion get no speed halo, squash/stretch, ripples or score roll
   const calm = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -716,7 +717,11 @@
     g.pollPad = () => {
       const pad = [...(navigator.getGamepads?.() || [])].find(Boolean);
       if (!pad) {
-        if (padDown.size) { padDown.forEach((key) => release('pad:' + key)); padDown.clear(); }
+        if (padDown.size) {
+          if (g.sources.has('pad:4')) clearControls(g, true);
+          else padDown.forEach((key) => release('pad:' + key));
+          padDown.clear();
+        }
         return;
       }
       PAD.forEach(([buttons, control]) => {
@@ -843,8 +848,9 @@
     setText(find('mult'), `${row[MULT]}× ${lanes}${!row[STAGED] && row[BONUS] ? ` · Bonus ${row[BONUS].toLocaleString()}` : ''}${row[HOLD] ? ' · Hold' : ''}`);
     const shot = ['Lane', 'Targets', 'Spinner', 'Ramp'][row[LIT]];
     setText(find('shot'), `${row[COMBO] > 1 ? `Combo ${row[COMBO]} · ` : ''}2× ${shot}${row[KICK] ? ' · Kickback' : ''}`);
-    find('jackpot').hidden = !row[JACKPOT] && !row[HURRY];
-    setText(find('jackpot'), row[HURRY] ? `Spinner hurry-up · ${row[HURRY]}s` : row[JACKPOT] ? `Jackpot · ${row[JACKPOT]}s` : '');
+    find('jackpot').hidden = !jackpotLit(row) && !(row[HURRY] && !row[TILT]);
+    setText(find('jackpot'), row[HURRY] ? `Spinner hurry-up · ${row[HURRY]}s` :
+      row[OTHERS]?.length ? 'Multiball · Jackpot lit' : row[JACKPOT] ? `Jackpot · ${row[JACKPOT]}s` : '');
     const [skillStart, skillEnd] = g.skill;
     const inBand = !!row[STAGED] && row[CHARGE] >= skillStart && row[CHARGE] <= skillEnd;
     const launchCue = inBand ? 'Release for skill shot' : row[CHARGE] > skillEnd ? 'Release to launch' :
@@ -878,9 +884,9 @@
       }
     }
     const run = find('run');
-    run.hidden = !g.over || !g.me || !g.stats;
+    run.hidden = !g.over || !g.me || !row[STATS];
     if (!run.hidden) {
-      const st = g.stats, plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+      const st = row[STATS], plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
       const bits = [st.jackpot && plural(st.jackpot, 'jackpot'), st.multiball && plural(st.multiball, 'multiball'),
         st.hurry && plural(st.hurry, 'hurry-up'), st.mystery && plural(st.mystery, 'mystery prize'),
         st.extra && plural(st.extra, 'extra ball'), st.combo >= 2 && `best combo ×${st.combo}`].filter(Boolean);
@@ -966,22 +972,13 @@
     // the final seconds of a jackpot or hurry-up window tick down
     if (prior && viewer === g.me && !g.ctx.readOnly && !row[STAGED]) {
       const ending = (now, before) => now > 0 && now <= 3 && before > now;
-      if (ending(row[JACKPOT], prior[JACKPOT]) || ending(row[HURRY], prior[HURRY])) g.ctx.sfx('ptick');
+      if (!row[TILT] && ((!row[OTHERS]?.length && ending(row[JACKPOT], prior[JACKPOT])) ||
+          ending(row[HURRY], prior[HURRY]))) g.ctx.sfx('ptick');
     }
     // the last nudge before tilt: a warning buzz for the player
     if (prior && viewer === g.me && !g.ctx.readOnly && row[NUDGES] === 3 && prior[NUDGES] < 3) g.ctx.sfx('alarm');
     if (prior && prior[EVENT_ID] !== row[EVENT_ID]) {
       g.flashAt = performance.now() + 780;
-      if (viewer === g.me) {
-        const stats = g.stats ||= { jackpot: 0, multiball: 0, extra: 0, mystery: 0, combo: 0, hurry: 0 };
-        const event = row[EVENT];
-        if (event === 'jackpot' || event === 'super') stats.jackpot++;
-        else if (event === 'multiball') stats.multiball++;
-        else if (event === 'extra') stats.extra++;
-        else if (event === 'hurry') stats.hurry++;
-        else if (event?.startsWith('mystery_')) stats.mystery++;
-        stats.combo = Math.max(stats.combo, row[COMBO]);
-      }
       popup(g, row);
       if (viewer === g.me && !g.ctx.readOnly) g.ctx.sfx(sound(row[EVENT]), soundArg(row[EVENT]));
     }
@@ -994,9 +991,13 @@
     if (g.over && g.solo && g.me && !row[BALLS] && !g.topSaved) {
       g.topSaved = true;
       const saved = load(topKey(g));
-      g.topScores = [...(Array.isArray(saved) ? saved.filter(Number.isSafeInteger) : []), row[SCORE]]
-        .sort((a, b) => b - a).slice(0, 5);
-      store(topKey(g), g.topScores);
+      const entries = (Array.isArray(saved) ? saved : [])
+        .map(entry => Number.isSafeInteger(entry) ? { score: entry } : entry)
+        .filter(entry => Number.isSafeInteger(entry?.score) && entry.run !== g.run);
+      entries.push({ run: g.run, score: row[SCORE] });
+      const top = entries.sort((a, b) => b.score - a.score).slice(0, 5);
+      g.topScores = top.map(entry => entry.score);
+      store(topKey(g), top);
     }
     if (g.over && g.solo && g.me && !row[BALLS] && (g.best === null || row[SCORE] > g.best)) {
       g.best = row[SCORE];
@@ -1083,6 +1084,7 @@
         g.run = data.pin;
         g.solo = data.solo;
         g.table = data.table || 'golden';
+        g.stage.setAttribute('aria-label', `${g.table === 'neon' ? 'Neon Arcade' : 'Golden Hour'} pinball playfield`);
         g.skill = data.layout.skill;
         g.extra = data.extra || [];
         const saved = load(bestKey(g));
