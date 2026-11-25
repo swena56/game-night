@@ -685,6 +685,8 @@
     setText(find('nudges'), row[TILT] ? 'Tilted' : `Nudges ${3 - row[NUDGES]}${nextExtra ? ` · Extra ball ${nextExtra.toLocaleString()}` : ''}`);
     setText(find('ramp'), row[JACKPOT] ? 'Jackpot lit' : rampLit(row) ? 'Ramp ready' : `Targets ${(row[BANK] & 1) + (row[BANK] >> 1 & 1) + (row[BANK] >> 2 & 1)}/3`);
     find('ramp').classList.toggle('lit', !!rampLit(row));
+    g.stage.classList.toggle('tilted', !!row[TILT]);
+    g.stage.classList.toggle('saving', row[SAVE] > 0 && !row[STAGED]);
     find('save').classList.toggle('lit', row[SAVE] > 0);
     setText(find('save'), row[SAVE] > 0 ? `Ball save ${row[SAVE]}s` : 'Ball save');
     const lanes = '●'.repeat([0, 1, 2].filter(i => row[LANES] >> i & 1).length).padEnd(3, '○');
