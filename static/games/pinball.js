@@ -456,7 +456,7 @@
           drawBall(ox, oyy);
         });
       },
-      dispose: () => canvas.remove(),
+      dispose: () => { canvas.remove(); back.remove(); },
     };
   }
 
