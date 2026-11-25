@@ -341,6 +341,12 @@
     return palette.teal;     // saucer and subway are always open
   }
 
+  // Flasher domes: bright lamps under coloured domes that flare on big awards and glow while a jackpot round runs.
+  const FLASHERS = [[3, 1.8], [5.5, 1.8]];
+  const FLASH_EVENTS = new Set(['ramp', 'jackpot', 'super', 'multiball', 'wizard', 'lock', 'mission', 'extra', 'hurry', 'mult']);
+  const flasherColor = (row, flash) => row[TILT] ? null : FLASH_EVENTS.has(flash) ? palette.ivory : row[OTHERS]?.length ? palette.teal :
+    row[JACKPOT] ? palette.gold : null;
+
   // Attract mode: before the first flip of a game the lamps chase around the table, like a machine waiting for a coin.
   function attractTag(geo, now) {
     const tags = [...geo.lanes.map((_, i) => 'lane' + i), 'ramp', ...geo.bumps.map((_, i) => 'bumper' + i), 'sling0', 'spinner',
@@ -500,6 +506,18 @@
           rail(r, flash === 'sling' + i ? palette.ivory : palette.red, .23);
         });
         geo.targets.forEach((r, i) => rail(r, flash === 'target' + i ? palette.ivory : row[BANK] & (1 << i) ? '#38325c' : palette.red, .28));
+        FLASHERS.forEach(([fx, fy], i) => {
+          const color = flasherColor(row, flash);
+          disc(fx, fy, .26, '#17152f');
+          if (color) {
+            const wave = .6 + .4 * Math.sin(performance.now() / 120 + i * Math.PI);
+            disc(fx, fy, .6, color + '22');
+            disc(fx, fy, .38, color + (wave > .8 ? 'aa' : '66'));
+          }
+          disc(fx, fy, .17, color ? color : '#4a2e46');
+        });
+        // during a jackpot round or multiball the bumper caps chase in gold
+        const chase = !row[TILT] && jackpotLit(row) ? Math.floor(performance.now() / 180) % geo.bumps.length : -1;
         geo.bumps.forEach(([x, y, radius], i) => {
           disc(x, y, radius, '#252049');
           if (flash === 'bumper' + i) {
@@ -515,7 +533,7 @@
             disc(x, y, radius + .12, '#fff3a8');
             disc(x, y, radius + .02, '#211c3d');
           }
-          disc(x, y - .035, radius - .08, flash === 'bumper' + i ? palette.ivory : bumperColors[i]);
+          disc(x, y - .035, radius - .08, flash === 'bumper' + i ? palette.ivory : chase === i ? palette.gold : bumperColors[i]);
           disc(x, y - .07, radius - .24, '#30244f');
           disc(x, y - .12, .18, palette.ivory);
         });
@@ -721,6 +739,10 @@
       disc(hx, hy, .07, .05, .58, dark);
       disc(hx, hy + len, .1, .5, .3, brass);
     }
+    FLASHERS.forEach(([fx, fy], i) => {
+      disc(fx, fy, .26, .03, .03, dark);
+      disc(fx, fy, .17, .06, .06, lamp('flash' + i, '#4a2e46', null));
+    });
     insertLamps(geo).forEach((l) => {
       disc(l.x, l.y, .17, .02, .035, dark);
       disc(l.x, l.y, .12, .03, .06, lamp(l.tag, INSERT_OFF, (row) => { const c = insertColor(l, row); return c === INSERT_OFF ? null : c.slice(0, 7); }));
@@ -754,7 +776,8 @@
     geo.bumps.forEach(([x, y, radius], i) => {
       disc(x, y, radius - .05, .31, .18, chrome);
       disc(x, y, radius, .14, .33, rubberRed);
-      disc(x, y, radius - .09, .13, .46, lamp('bumper' + i, bumperColors[i]));
+      disc(x, y, radius - .09, .13, .46, lamp('bumper' + i, bumperColors[i],
+        (row) => !row[TILT] && jackpotLit(row) && Math.floor(performance.now() / 180) % geo.bumps.length === i ? palette.gold : null));
       disc(x, y, radius - .25, .09, .55, dark);
       disc(x, y, .18, .03, .61, brass);
     });
@@ -891,10 +914,10 @@
         const zoom = !still && row[Z] > .2 ? 1.14 : 1;
         if (Math.abs(zoom - camera.zoom) > .002) { camera.zoom += (zoom - camera.zoom) * .12; camera.updateProjectionMatrix(); }
         for (const { m, tag, normal, active, color } of lights) {
-          const hit = flash === tag || flash === 'jackpot' && tag === 'ramp' || flash === 'skill' && tag.startsWith('lane') ||
+          const hit = tag.startsWith('flash') && !row[TILT] && FLASH_EVENTS.has(flash) || flash === tag || flash === 'jackpot' && tag === 'ramp' || flash === 'skill' && tag.startsWith('lane') ||
             flash === 'mult' && tag === 'lane' + sweep;
           const lit = active?.(row);
-          const glow = hit ? color : rampLit(row) && tag === 'ramp' ? rampColor(row) : tag.startsWith('ins_') && lit ? lit : null;
+          const glow = hit ? color : rampLit(row) && tag === 'ramp' ? rampColor(row) : tag.startsWith('ins_') && lit ? lit : tag.startsWith('flash') ? flasherColor(row, '') : null;
           m.color.set(hit ? palette.ivory : lit || normal);
           m.emissive.set(glow || '#000000');
           m.emissiveIntensity = hit ? 1.8 + pulse : glow ? pulse : 0;

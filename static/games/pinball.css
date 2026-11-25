@@ -277,6 +277,8 @@
 /* glows are opacity-only so they never repaint the canvas beneath */
 .pb-stage::after { transition: opacity .2s; box-shadow: inset 0 0 36px #ff2d2dbb; }
 .pb-stage.saving::after { box-shadow: inset 0 0 22px #5ee6c866; opacity: 1; }
+/* tilt cuts the general illumination: the whole playfield dims under the red warning edge */
+.pb-stage.tilted canvas { filter: brightness(.7) saturate(.8); }
 .pb-stage.tilted::after { box-shadow: inset 0 0 36px #ff2d2dbb; opacity: 1; }
 .pb-stage::before { box-shadow: inset 0 0 28px #ffd366aa, inset 0 0 6px #ffd366; }
 .pb-stage.thump::before { animation: pb-thump .35s ease-out; }

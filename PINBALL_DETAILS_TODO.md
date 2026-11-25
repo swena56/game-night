@@ -35,7 +35,7 @@ Rough effort: S = a few lines, M = an engine or renderer change, L = new compone
 26. [ ] S: Pop bumper skirt (ring) dips when hit and the cap light flashes.
 27. [ ] S: Pop bumper lights flash in sequence when two or more are hit in a row.
 28. [ ] M: Pop bumper kick strength decays when hit rapidly (coil heat / voltage drop).
-29. [ ] S: Bumper cap colours match the table (red, white, blue) and light when lit.
+29. [x] S: Bumper cap colours match the table (red, white, blue) and light when lit.
 30. [ ] S: Rubber ring posts glow when the ball touches them.
 31. [ ] S: Rubber "bumper bands" around the playfield edge that bounce lightly.
 32. [ ] M: Posts on the lane dividers (done) and on both sides of the outlane gap with different sizes.
