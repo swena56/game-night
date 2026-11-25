@@ -19,7 +19,6 @@ SPEED_CAP = 42
 # Per-ball state: the table swaps these between the main ball and each extra multiball ball.
 BALL_STATE = ("x", "y", "vx", "vy", "height", "ramp_ticks", "rollovers", "skill", "smooth_launch",
               "still", "still_origin", "jackpot_shot")
-GRAVITY = 11
 
 
 @dataclass
@@ -79,6 +78,7 @@ class Table:
     multiballs: int = 0
     hurry_wins: int = 0
     mysteries: int = 0
+    wizards: int = 0
     best_combo: int = 0
     spins: int = 0
     hold: bool = False
@@ -434,7 +434,7 @@ class Table:
             return
         old_y = self.y
         self.vx *= 0.999
-        self.vy = self.vy * 0.999 + GRAVITY * STEP
+        self.vy = self.vy * 0.999 + self.rules.gravity * STEP
         speed = math.hypot(self.vx, self.vy)
         if speed > SPEED_CAP:
             self.vx *= SPEED_CAP / speed
@@ -471,12 +471,26 @@ class Table:
                     else:
                         self.signal("jackpot", rules.jackpot + self.jackpot_pool)
                     self.jackpot_pool = 0
+                    if rules.wizard_at and self.jackpots == rules.wizard_at and not self.wizards:
+                        self.wizard()
                 else:
                     self.bank = 0
                     self.jackpot_ticks = rules.jackpot_ticks
                     self.signal("ramp", rules.ramp)
                     if rules.lock_balls and not self.others:
                         self.lock_ball()
+
+    def wizard(self):
+        """The reward for a run of jackpots: three extra balls, a full jackpot window and a big bonus."""
+        lay, rules = self.layout, self.rules
+        self.wizards += 1
+        ex, ey = lay.ramp_exit
+        for i in range(3):
+            side = -1 if i % 2 else 1
+            self.others.append(self.free_ball(ex + 0.45 * side * (i // 2 + 1), ey, -4 + 2.6 * side * (i // 2 + 1), 8))
+        self.jackpot_ticks = max(self.jackpot_ticks, rules.multiball_ticks)
+        self.mb_save_ticks = rules.multiball_save_ticks
+        self.signal("wizard", rules.wizard_points)
 
     def lock_ball(self):
         """A ramp shot locks the ball; the last lock releases every locked ball at once."""
@@ -576,4 +590,4 @@ class Table:
                  for o in self.others], self.last_points, int(self.hold), math.ceil(self.hurry_ticks / 240),
                 {"jackpot": self.jackpots, "multiball": self.multiballs, "hurry": self.hurry_wins,
                  "mystery": self.mysteries, "extra": self.extras, "combo": self.best_combo,
-                 "mode": self.mode, "clock": math.ceil(self.clock / 240)}]
+                 "wizard": self.wizards, "mode": self.mode, "clock": math.ceil(self.clock / 240)}]

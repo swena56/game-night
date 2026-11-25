@@ -8,10 +8,10 @@
   const messages = {
     skill: 'Skill shot +5,000', spinner: 'Spinner +100', ramp: 'Ramp +6,000 · Jackpot lit', jackpot: 'Jackpot +12,000', save: 'Ball saved · Auto launch',
     tilt: 'TILT · scoring suspended', nudge: 'Table nudged', mult: 'Multiplier up!', kickback: 'Kickback!', extra: 'EXTRA BALL!', post: 'Centre post save!', hurry: 'HURRY-UP +15,000', super: 'SUPER JACKPOT +50,000',
-    mystery_points: 'Mystery · +10,000', mystery_save: 'Mystery · Ball save 10s', mystery_mult: 'Mystery · Multiplier up!', mystery_hold: 'Mystery · Bonus held', lock: 'Ball locked', multiball: 'MULTIBALL · Shoot the ramp for jackpots +5,000',
+    mystery_points: 'Mystery · +10,000', mystery_save: 'Mystery · Ball save 10s', mystery_mult: 'Mystery · Multiplier up!', mystery_hold: 'Mystery · Bonus held', lock: 'Ball locked', wizard: 'WIZARD MODE · Four balls, jackpots lit!', multiball: 'MULTIBALL · Shoot the ramp for jackpots +5,000',
     drain: 'Ball drained', done: 'Run complete', recovery: 'Ball freed',
   };
-  const sounds = { skill: 'pskill', ramp: 'pramp', jackpot: 'pjackpot', save: 'psave', tilt: 'wrong', nudge: 'thud', mult: 'cheer', kickback: 'pkick', extra: 'pjackpot', post: 'psave', hurry: 'pjackpot', super: 'pjackpot', mystery_points: 'cheer', mystery_save: 'psave', mystery_mult: 'cheer', mystery_hold: 'pskill', lock: 'psave', multiball: 'pjackpot', bonus: 'cheer', spinner: 'pspin', drain: 'groan', done: 'groan' };
+  const sounds = { skill: 'pskill', ramp: 'pramp', jackpot: 'pjackpot', save: 'psave', tilt: 'wrong', nudge: 'thud', mult: 'cheer', kickback: 'pkick', extra: 'pjackpot', post: 'psave', hurry: 'pjackpot', super: 'pjackpot', mystery_points: 'cheer', mystery_save: 'psave', mystery_mult: 'cheer', mystery_hold: 'pskill', lock: 'psave', multiball: 'pjackpot', wizard: 'pjackpot', bonus: 'cheer', spinner: 'pspin', drain: 'groan', done: 'groan' };
   const prefixes = { bumper: 'Bumper +100', sling: 'Slingshot +50', lane: 'Rollover +500', target: 'Target +250' };
   const label = (event, row) => {
     if (event === 'bonus' && row) return `Ball bonus +${row[BONUS].toLocaleString()}`;
@@ -1023,23 +1023,23 @@
       el.hidden = false;
       el.style.left = `${100 * (g.ball?.[0] ?? row[X]) / 10}%`;
       el.style.top = `${100 * ((g.ball?.[1] ?? row[Y]) + .85) / 18.7}%`;
-      el.classList.toggle('big', ['ramp', 'jackpot', 'super', 'hurry', 'bonus', 'skill', 'multiball'].includes(row[EVENT]));
-      el.classList.toggle('huge', row[EVENT] === 'extra');
+      el.classList.toggle('big', ['ramp', 'jackpot', 'super', 'hurry', 'bonus', 'skill', 'multiball', 'wizard'].includes(row[EVENT]));
+      el.classList.toggle('huge', row[EVENT] === 'extra' || row[EVENT] === 'wizard');
       el.classList.remove('go');
       void el.offsetWidth;
       el.classList.add('go');
     }
     // table shake scales with the moment: a nudge is a shove, a jackpot or multiball a slam
-    const shove = { nudge: 3, tilt: 4, jackpot: 5, super: 8, multiball: 7, extra: 6 }[row[EVENT]];
+    const shove = { nudge: 3, tilt: 4, jackpot: 5, super: 8, multiball: 7, extra: 6, wizard: 9 }[row[EVENT]];
     if (shove && !reduce) {
       g.stage.style.setProperty('--shake', `${shove}px`);
       g.stage.classList.remove('shake');
       void g.stage.offsetWidth;
       g.stage.classList.add('shake');
     }
-    g.stage.classList.toggle('white', row[EVENT] === 'extra' || row[EVENT] === 'super');
+    g.stage.classList.toggle('white', ['extra', 'super', 'wizard'].includes(row[EVENT]));
     // a jackpot, super, multiball or extra ball throws a ring of sparks from the ball; the table pulse takes the event's colour
-    const sparks = { jackpot: 14, super: 28, multiball: 22, extra: 22, hurry: 14 }[row[EVENT]];
+    const sparks = { jackpot: 14, super: 28, multiball: 22, extra: 22, hurry: 14, wizard: 40 }[row[EVENT]];
     g.stage.dataset.pulse = row[EVENT];
     if (sparks && !reduce && g.me === g.viewer) {
       const cx = 100 * (g.ball?.[0] ?? row[X]) / 10, cy = 100 * (g.ball?.[1] ?? row[Y]) / 18.7;
@@ -1052,7 +1052,7 @@
         g.stage.appendChild(spark);
       }
     }
-    if (['ramp', 'jackpot', 'super', 'kickback', 'bonus', 'extra', 'lock', 'multiball'].includes(row[EVENT]) && !reduce) {
+    if (['ramp', 'jackpot', 'super', 'kickback', 'bonus', 'extra', 'lock', 'multiball', 'wizard'].includes(row[EVENT]) && !reduce) {
       g.stage.classList.remove('thump');
       void g.stage.offsetWidth;
       g.stage.classList.add('thump');

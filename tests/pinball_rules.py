@@ -65,6 +65,21 @@ class PinballRules(unittest.TestCase):
         self.assertEqual(practice.balls, 99)
         self.assertEqual(practice.public()[-1]["mode"], "practice")
 
+    def test_wizard_multiball_on_eighth_jackpot(self):
+        table = Table()
+        table.staged = False
+        table.jackpots = 7
+        table.jackpot_shot, table.ramp_ticks = True, 116
+        before = table.score
+        table.ride_ramp()
+        self.assertEqual((table.jackpots, table.wizards, len(table.others)), (8, 1, 3))
+        self.assertGreaterEqual(table.score - before, table.rules.wizard_points)
+        table.others.clear()
+        table.jackpot_shot, table.ramp_ticks = True, 116
+        table.jackpots = 8
+        table.ride_ramp()
+        self.assertEqual(table.wizards, 1)      # only once per game
+
     def test_plunge_and_skill_shot(self):
         weak = launch(10)
         self.assertFalse(weak.staged)

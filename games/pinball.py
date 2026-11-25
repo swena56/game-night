@@ -60,7 +60,7 @@ class NeonTable(EngineTable):
     layout = NEON_ARCADE
     rules = Rules(lock_balls=2, center_post=True, bumper=150, bumper_jackpot=300, sling=75, target=300,
                   lane=600, ramp=8000, jackpot=15000, hurry_ticks=6 * 240, hurry_max=20000,
-                  extra_ball_scores=(60000, 160000), super_every=3)
+                  extra_ball_scores=(60000, 160000), super_every=3, gravity=11.6)
 
 
 # per-mode starting state: practice and time attack never run out of balls; time attack is three minutes of play
