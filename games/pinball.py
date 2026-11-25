@@ -1,18 +1,15 @@
-"""Pinball's fixed-step simulation. Coordinates are in playfield units, down-table is +y."""
-from dataclasses import dataclass, field
-import math
+"""Golden Hour: the Game Night pinball table, built on the reusable games.pinball_engine."""
 import time
 from uuid import uuid4
 
 from .base import Game, GameError
+from .pinball_engine import Layout, Rules, Table as EngineTable, flipper_pair
 
 WIDTH, HEIGHT, BALL = 10, 17, 0.19
-STEP = 1 / 240
 LAUNCH = (9.4, 15.8)
 SKILL_CHARGE = (197, 228)
-SAVE_TICKS = 4 * 240
 JACKPOT_TICKS = 20 * 240
-FLIPPERS = ((3.22, 14.95, 0.42, -0.66), (6.78, 14.95, math.pi - 0.42, math.pi + 0.66))
+FLIPPERS = flipper_pair(14.95, 3.22, 6.78)
 LENGTH, FLIP_RADIUS = 1.56, 0.15
 # Keep the shooter feed open above the rollover dividers.
 # The lower guides direct rebounds toward the slings and flippers.
@@ -26,9 +23,6 @@ RAILS = (
 )
 # Outlanes run down the walls outside the inlane guides; the left one holds a one-time kickback.
 OUTLANE = (0.9, 13.9)
-SHOTS = ("lane", "target", "spinner", "ramp")
-SHOT_OF = dict(lane="lane", skill="lane", target="target", spinner="spinner", ramp="ramp", jackpot="ramp")
-COMBO_TICKS = 3 * 240
 # One-way gate: closed once the ball has left the shooter lane, so it cannot re-enter from the top.
 GATE = (8.8, 1.2, 8.8, 3.1)
 SLINGS = ((1.35, 10.75, 2.85, 12.5), (7.73, 10.75, 6.48, 12.6))
@@ -39,339 +33,17 @@ ROLLOVERS = ((2.25, 3.5), (4.25, 3.5), (6.25, 3.5))
 SPINNER = (7.95, 7.4)
 RAMP = (5.25, 6.02)
 RAMP_EXIT = (7.75, 8.6)
-LAYOUT = dict(rails=RAILS, gate=GATE, slings=SLINGS, bumps=BUMPS, targets=TARGETS, lanes=ROLLOVERS,
-              spinner=SPINNER, ramp=RAMP, exit=RAMP_EXIT, flips=FLIPPERS, length=LENGTH,
-              radius=BALL, skill=SKILL_CHARGE, width=WIDTH, height=HEIGHT, launch=LAUNCH)
+GOLDEN_HOUR = Layout(
+    rails=RAILS, gate=GATE, slings=SLINGS, bumps=BUMPS, targets=TARGETS, lanes=ROLLOVERS,
+    spinner=SPINNER, ramp=RAMP, ramp_exit=RAMP_EXIT, flippers=FLIPPERS, launch=LAUNCH,
+    outlane=OUTLANE, width=WIDTH, height=HEIGHT, ball=BALL, flipper_length=LENGTH,
+    flipper_radius=FLIP_RADIUS, skill_charge=SKILL_CHARGE)
+LAYOUT = GOLDEN_HOUR.public()
 
 
-def closest(x, y, ax, ay, bx, by):
-    dx, dy = bx - ax, by - ay
-    fraction = max(0, min(1, ((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy)))
-    return ax + dx * fraction, ay + dy * fraction
-
-
-@dataclass
-class Table:
-    score: int = 0
-    balls: int = 3
-    bank: int = 0
-    event: str = ""
-    event_id: int = 0
-    departed: bool = False
-    epoch: str = field(default_factory=lambda: uuid4().hex)
-    held: int = 0
-    last_input: float = -math.inf
-    buffer: list = field(default_factory=lambda: [0, 0])
-    angles: list = field(default_factory=lambda: [f[2] for f in FLIPPERS])
-    nudges: int = 0
-    pending: list = field(default_factory=list)
-    tilt: bool = False
-    staged: bool = True
-    charge: int = 0
-    smooth_launch: bool = False
-    skill: bool = False
-    x: float = LAUNCH[0]
-    y: float = LAUNCH[1]
-    vx: float = 0
-    vy: float = 0
-    height: float = 0
-    ramp_ticks: int = 0
-    spin: float = 0
-    spin_left: float = 0
-    still: int = 0
-    still_origin: tuple = LAUNCH
-    rollovers: int = 0
-    save_ticks: int = 0
-    save_used: bool = False
-    jackpot_ticks: int = 0
-    jackpot_shot: bool = False
-    lane_bits: int = 0
-    mult: int = 1
-    bumper_hits: int = 0
-    ramps: int = 0
-    bonus: int = 0
-    kickback: bool = True
-    combo: int = 0
-    combo_ticks: int = 0
-    last_shot: str = ""
-    lit: int = 3
-
-    def signal(self, event, points=0, scaled=True):
-        self.score += points * (self.mult if scaled else 1)
-        kind = SHOT_OF.get(event.rstrip("0123456789"))
-        if kind and points and not self.tilt:
-            self.chain(kind, points)
-        self.event = event
-        self.event_id += 1
-
-    def chain(self, kind, points):
-        """Pay combos for different shots in quick succession and double the lit shot."""
-        if not self.combo_ticks:
-            self.combo = 1
-        elif kind != self.last_shot:
-            self.combo += 1
-        self.combo_ticks, self.last_shot = COMBO_TICKS, kind
-        extra = 250 * (self.combo - 1)
-        if SHOTS[self.lit] == kind:
-            extra += points
-            self.lit = (self.lit + 1) % len(SHOTS)
-        self.score += extra * self.mult
-
-    def reset_controls(self):
-        self.held = self.charge = 0
-        self.buffer[:] = [0, 0]
-        self.pending.clear()
-
-    def invalidate_controls(self):
-        self.reset_controls()
-        self.epoch = uuid4().hex
-
-    def input(self, held, nudge, now):
-        self.expire(now)
-        self.last_input = now
-        for i in range(2):
-            if held & (1 << i) and not self.held & (1 << i):
-                self.buffer[i] = 12
-        if self.held & 4 and not held & 4 and self.staged and self.charge:
-            strength = self.charge / 240
-            self.staged = False
-            self.smooth_launch = True
-            self.skill = SKILL_CHARGE[0] <= self.charge <= SKILL_CHARGE[1]
-            self.vy = -(13 + 19 * strength)
-            self.charge = 0
-        self.held = held
-        if nudge and not self.staged and not self.tilt and len(self.pending) < 4:
-            self.pending.append(nudge)
-
-    def expire(self, now):
-        if now - self.last_input >= 0.25:
-            self.reset_controls()
-
-    def nudge(self, direction):
-        if self.tilt or self.staged:
-            return
-        if self.nudges == 3:
-            self.tilt = True
-            self.skill = False
-            self.save_ticks = self.jackpot_ticks = 0
-            self.signal("tilt")
-            return
-        self.nudges += 1
-        self.vx += 4.8 * direction
-        self.vy -= 3.4 if not direction else 1.8
-        self.signal("nudge")
-
-    def drain(self):
-        self.balls -= 1
-        self.bonus = 0 if self.tilt else (self.bumper_hits * 10 + self.ramps * 1000) * self.mult
-        self.score += self.bonus
-        self.bumper_hits = self.ramps = self.lane_bits = 0
-        self.mult = 1
-        self.kickback = True
-        self.combo = self.combo_ticks = 0
-        self.save_used = self.jackpot_shot = False
-        self.save_ticks = self.jackpot_ticks = 0
-        self.reset_controls()
-        self.staged = bool(self.balls)
-        self.x, self.y = LAUNCH
-        self.vx = self.vy = self.height = self.spin = self.spin_left = 0
-        self.nudges = self.still = self.ramp_ticks = self.rollovers = 0
-        self.still_origin = LAUNCH
-        self.tilt = self.skill = self.smooth_launch = False
-        self.angles[:] = [flip[2] for flip in FLIPPERS]
-        self.signal("bonus" if self.bonus and self.balls else "drain" if self.balls else "done", scaled=False)
-
-    def contact(self, cx, cy, radius, bounce, kick=0, sx=0, sy=0):
-        dx, dy = self.x - cx, self.y - cy
-        distance = math.hypot(dx, dy)
-        if distance >= radius:
-            return False
-        if distance > 1e-8:
-            nx, ny = dx / distance, dy / distance
-        else:
-            nx, ny = 0, -1
-        self.x, self.y = cx + nx * (radius + 1e-5), cy + ny * (radius + 1e-5)
-        approach = (self.vx - sx) * nx + (self.vy - sy) * ny
-        if approach >= 0:
-            return False
-        impulse = max(kick, -(1 + bounce) * approach)
-        self.vx += impulse * nx
-        self.vy += impulse * ny
-        return True
-
-    def segment(self, rail, radius=BALL, bounce=0.77, kick=0):
-        cx, cy = closest(self.x, self.y, *rail)
-        return self.contact(cx, cy, radius, bounce, kick)
-
-    def move_flippers(self):
-        previous = self.angles[:]
-        for i, (_, _, rest, up) in enumerate(FLIPPERS):
-            active = not self.tilt and (self.held & (1 << i) or self.buffer[i])
-            target = up if active else rest
-            speed = (31 if active else 20) * STEP
-            self.angles[i] += max(-speed, min(speed, target - self.angles[i]))
-            self.buffer[i] = max(0, self.buffer[i] - 1)
-        return previous
-
-    def flipper_contact(self, i, start, elapsed):
-        ax, ay, _, _ = FLIPPERS[i]
-        travel = self.angles[i] - start
-        angle = start + travel * elapsed
-        bx, by = ax + LENGTH * math.cos(angle), ay + LENGTH * math.sin(angle)
-        cx, cy = closest(self.x, self.y, ax, ay, bx, by)
-        speed = travel / STEP
-        self.contact(cx, cy, BALL + FLIP_RADIUS, 0.55, 0,
-                     -(cy - ay) * speed, (cx - ax) * speed)
-
-    def mechanisms(self, old_y):
-        for rail in RAILS:
-            self.segment(rail)
-        if not self.smooth_launch:
-            self.segment(GATE, bounce=0.5)
-        for i, rail in enumerate(SLINGS):
-            if self.segment(rail, BALL + 0.09, kick=0 if self.tilt else 13) and not self.tilt:
-                self.signal(f"sling{i}", 50)
-        for i, (x, y, radius) in enumerate(BUMPS):
-            if self.contact(x, y, BALL + radius, 0.86, 0 if self.tilt else 16) and not self.tilt:
-                self.bumper_hits += 1
-                self.signal(f"bumper{i}", 200 if self.jackpot_ticks else 100)
-        for i, rail in enumerate(TARGETS):
-            if self.segment(rail, BALL + 0.08) and not self.tilt and not self.bank & (1 << i):
-                self.bank |= 1 << i
-                self.signal(f"target{i}", 250)
-        if self.kickback and self.x < OUTLANE[0] and self.y > OUTLANE[1] and self.vy > 0 and not self.tilt:
-            self.kickback = False
-            self.vx, self.vy = 1.5, -34
-            self.signal("kickback")
-        if self.tilt:
-            return
-        current =sum(1 << i for i, (x, y) in enumerate(ROLLOVERS) if math.hypot(self.x - x, self.y - y) < 0.44)
-        for i in range(3):
-            if current & ~self.rollovers & (1 << i):
-                points = 5000 if self.skill else 500
-                self.signal("skill" if self.skill else f"lane{i}", points)
-                self.skill = False
-                self.lane_bits |= 1 << i
-                if self.lane_bits == 7:
-                    self.lane_bits = 0
-                    self.mult = min(5, self.mult + 1)
-                    self.signal("mult")
-        self.rollovers = current
-        if self.x < 8.8 and self.y > 5:
-            self.skill = False
-        sx, sy = SPINNER
-        if abs(self.x - sx) < 0.55 and (old_y < sy <= self.y or self.y <= sy < old_y):
-            self.spin_left += max(1, min(5, int(abs(self.vy) / 5)))
-        rx, ry = RAMP
-        if (self.bank == 7 or self.jackpot_ticks) and self.vy < -7 and self.y <= ry < old_y and abs(self.x - rx) < 0.65:
-            self.ramp_ticks = 1
-            self.jackpot_shot = bool(self.jackpot_ticks)
-
-    def step(self):
-        if not self.balls or self.departed:
-            return
-        while self.pending:
-            direction = self.pending.pop(0)
-            self.nudge(0 if direction == 2 else direction)
-        previous = self.move_flippers()
-        if self.staged:
-            if self.held & 4:
-                self.charge = min(240, self.charge + 1)
-            return
-        self.save_ticks = max(0, self.save_ticks - 1)
-        self.jackpot_ticks = max(0, self.jackpot_ticks - 1)
-        self.combo_ticks = max(0, self.combo_ticks - 1)
-        if self.spin_left:
-            turn = min(self.spin_left, 8 * STEP)
-            old_spin = self.spin
-            self.spin += turn
-            self.spin_left -= turn
-            if int(self.spin + 1e-8) > int(old_spin + 1e-8) and not self.tilt:
-                self.signal("spinner", 100)
-        if self.ramp_ticks:
-            t = self.ramp_ticks / 115
-            self.x = RAMP[0] + (RAMP_EXIT[0] - RAMP[0]) * t
-            self.y = RAMP[1] + (RAMP_EXIT[1] - RAMP[1]) * t - 4.8 * math.sin(math.pi * t)
-            self.height = 1.6 * math.sin(math.pi * t)
-            self.ramp_ticks += 1
-            if self.ramp_ticks > 115:
-                self.ramp_ticks = 0
-                self.vx, self.vy = -4, 9
-                if not self.tilt:
-                    if self.jackpot_shot:
-                        self.ramps += 1
-                        self.signal("jackpot", 12000)
-                    else:
-                        self.ramps += 1
-                        self.bank = 0
-                        self.jackpot_ticks = JACKPOT_TICKS
-                        self.signal("ramp", 6000)
-            return
-        old_y = self.y
-        self.vx *= 0.999
-        self.vy = self.vy * 0.999 + 11 * STEP
-        speed = math.hypot(self.vx, self.vy)
-        if speed > 42:
-            self.vx *= 42 / speed
-            self.vy *= 42 / speed
-        near_flippers = 13.6 < self.y < 16.2 and self.x < 8.8
-        # Sweep moving capsules through intermediate angles and ball positions. At the speed cap
-        # each sample advances the relative surfaces by less than a ball radius.
-        samples = 3 if near_flippers else 1
-        for sample in range(1, samples + 1):
-            self.x += self.vx * STEP / samples
-            self.y += self.vy * STEP / samples
-            if near_flippers:
-                for i in range(2):
-                    self.flipper_contact(i, previous[i], sample / samples)
-        self.mechanisms(old_y)
-        if self.smooth_launch and self.x < 8.8 and self.y < 5:
-            self.smooth_launch = False
-            if not self.save_used and not self.tilt:
-                self.save_ticks = SAVE_TICKS
-                self.save_used = True
-        if self.smooth_launch and self.x > 9 and self.y > 15.7 and self.vy > 0:
-            self.x, self.y = LAUNCH
-            self.vx = self.vy = 0
-            self.staged = True
-            self.smooth_launch = self.skill = False
-        elif self.y > HEIGHT + BALL:
-            if self.save_ticks:
-                self.save_ticks = 0
-                self.x, self.y = LAUNCH
-                self.vx, self.vy = 0, -30
-                self.smooth_launch = True
-                self.still = 0
-                self.still_origin = LAUNCH
-                self.skill = False
-                self.signal("save")
-            else:
-                self.drain()
-        elif math.hypot(self.x - self.still_origin[0], self.y - self.still_origin[1]) < BALL:
-            self.still += 1
-            if self.still == 480 and self.y < 13.6:
-                self.vx += 2.5 * (1 if self.x < 5 else -1)
-                self.vy -= 2
-            if self.still >= 720:
-                self.x, self.y, self.vx, self.vy = 5, 12, 0, 4
-                self.still = 0
-                self.still_origin = (self.x, self.y)
-                self.skill = False
-                self.signal("recovery")
-        else:
-            self.still = 0
-            self.still_origin = (self.x, self.y)
-
-    def public(self):
-        """Packed renderer state shared by full views and 30 Hz snapshots."""
-        return [*[round(v, 3) for v in (self.x, self.y, self.vx, self.vy, self.height, *self.angles)],
-                self.score, self.balls, self.bank, self.nudges, int(self.tilt), int(self.staged),
-                self.charge, self.event_id, self.event, round(self.spin % 1, 3),
-                math.ceil(self.save_ticks / 240), math.ceil(self.jackpot_ticks / 240),
-                self.mult, self.bonus, self.lane_bits, int(self.kickback),
-                self.combo if self.combo_ticks else 0, self.lit]
-
-
+class Table(EngineTable):
+    layout = GOLDEN_HOUR
+    rules = Rules()
 class Pinball(Game):
     id = "pinball"
     name = "Pinball"
