@@ -689,6 +689,7 @@
     g.lastScore = row[SCORE];
     setText(find('score'), row[SCORE].toLocaleString());
     setText(find('balls'), row[BALLS]);
+    find('nudges').classList.toggle('warn', !row[TILT] && row[NUDGES] >= 2);
     const nextExtra = (g.extra || []).find((v) => v > row[SCORE]);
     setText(find('nudges'), row[TILT] ? 'Tilted' : `Nudges ${3 - row[NUDGES]}${nextExtra ? ` · Extra ball ${nextExtra.toLocaleString()}` : ''}`);
     setText(find('ramp'), row[JACKPOT] ? 'Jackpot lit' : rampLit(row) ? 'Ramp ready' : `Targets ${(row[BANK] & 1) + (row[BANK] >> 1 & 1) + (row[BANK] >> 2 & 1)}/3`);

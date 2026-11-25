@@ -232,3 +232,6 @@
 @keyframes pb-score-jump {
   30% { transform: scale(1.25); color: var(--pb-gold); }
 }
+
+/* one nudge from tilt: the nudge counter turns red */
+.pb-nudges.warn { color: #ff6b6b; font-weight: 800; }
