@@ -893,7 +893,7 @@
         </div>
         <div class="rs-bar rs-bar-x" role="meter" aria-label="Field sealed" aria-valuemin="0" aria-valuemax="100"><div class="rs-fill"></div><div class="rs-goal" title="70% to clear"></div><span class="rs-pct">0%</span><span class="rs-combo" hidden></span><span class="rs-slow" hidden></span></div>
         <div class="rs-stage" aria-label="Rift Split field"><span class="rs-msg" role="status"></span><span class="rs-aim" aria-live="off" hidden></span><span class="rs-power" role="status" hidden></span><span class="rs-slowpill" hidden><span></span><i></i></span><span class="rs-ready" aria-hidden="true" hidden></span><div class="rs-coach" aria-hidden="true"><b>Tap</b> or <b>swipe</b> to grow a wall<small>Seal off the orbs; don't let them hit a growing wall. Two walls can grow at once.</small></div></div>
-        <div class="rs-controls"><div class="rs-dirs" role="group" aria-label="Wall direction"><button type="button" class="rs-dir" data-v="0" aria-pressed="true"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Across</span></button><button type="button" class="rs-dir rs-v" data-v="1" aria-pressed="false"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Down</span></button><button type="button" class="rs-swipe" aria-pressed="false" title="Swipe to draw: the wall runs the way you drag"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 22C8 8 16 6 24 8M24 8l-6-3M24 8l-4 5"/></svg><span>Swipe</span></button></div><button type="button" class="rs-gear" aria-label="More options" title="More options" aria-expanded="false">⚙</button><div class="rs-more" hidden><button type="button" class="rs-bright" aria-label="Brightness" title="Brightness">☀</button><button type="button" class="rs-fxbtn" aria-label="Glow and blur effects" title="Glow and blur effects">✨</button><button type="button" class="rs-themebtn" aria-label="Colour theme" title="Colour theme">🎨</button></div></div>
+        <div class="rs-controls"><div class="rs-dirs" role="group" aria-label="Wall direction"><button type="button" class="rs-dir" data-v="0" aria-pressed="true"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Across</span></button><button type="button" class="rs-dir rs-v" data-v="1" aria-pressed="false"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Down</span></button><button type="button" class="rs-swipe" aria-pressed="false" title="Swipe to draw: the wall runs the way you drag"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 22C8 8 16 6 24 8M24 8l-6-3M24 8l-4 5"/></svg><span>Swipe</span></button></div><button type="button" class="rs-gear" aria-label="More options" title="More options" aria-expanded="false">⚙</button><div class="rs-more" hidden><button type="button" class="rs-bright" aria-label="Brightness" title="Brightness">☀</button></div></div>
         <ol class="rs-standings" aria-label="Scores" hidden></ol>
       </section>`;
     const root = arena.querySelector('.rs-cabinet');
@@ -941,14 +941,12 @@
     g.tilt = false;   // always straight down
     const pref = (k, d) => { try { return localStorage.getItem('riftsplit.' + k) ?? d; } catch { return d; } };
     const setPref = (k, v) => { try { localStorage.setItem('riftsplit.' + k, v); } catch { /* private mode */ } };
-    g.nofx = pref('nofx', '0') === '1';
-    g.theme = THEME_KEYS.includes(pref('theme', 'auto')) ? pref('theme', 'auto') : 'auto';
+    g.nofx = false;   // glow is always on (the toggle was removed)
+    g.theme = 'auto';   // colours follow the level (the manual picker was removed)
     const applyLook = () => {
       HALF = THM().half;
       stage.style.setProperty('--rs-glow', THM().glow);
       stage.classList.toggle('rs-sharp', g.nofx);
-      g.find('fxbtn').setAttribute('aria-pressed', String(!g.nofx));
-      g.find('fxbtn').classList.toggle('rs-off', g.nofx);
     };
     applyLook();
     g.syncTheme = (lv) => {   // Auto theme: a new colour world every TIER_LEN levels
@@ -958,12 +956,6 @@
       if (g.three) { g.three.dispose(); g.three = null; g.rebuild?.(); }
       return true;
     };
-    on(g.find('fxbtn'), 'click', () => { g.nofx = !g.nofx; setPref('nofx', g.nofx ? '1' : '0'); applyLook(); g.msg(g.nofx ? 'Sharp mode: glow and blur off' : 'Glow effects on'); });
-    on(g.find('themebtn'), 'click', () => {
-      g.theme = THEME_KEYS[(THEME_KEYS.indexOf(g.theme) + 1) % THEME_KEYS.length]; setPref('theme', g.theme); applyLook();
-      if (g.three) { g.three.dispose(); g.three = null; g.rebuild?.(); }   // the 3D floor and frame are built from the theme
-      g.msg('Theme: ' + (g.theme === 'auto' ? 'Auto (changes every ' + TIER_LEN + ' levels)' : THEMES[g.theme].name));
-    });
     const BRIGHT = [1, 1.1, 1.3, 1.6, 2];
     const loadB = () => { try { const v = Number(localStorage.getItem('riftsplit.bright')); return BRIGHT.includes(v) ? v : 1.1; } catch { return 1.1; } };
     g.bright = loadB();

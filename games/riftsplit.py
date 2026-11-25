@@ -17,7 +17,7 @@ GOAL = 0.75        # kept for the layout default; the real target climbs with th
 
 
 def level_goal(level):
-    return min(0.86, 0.52 + 0.03 * level)   # L1 55%, L5 67%, L10 82%, L12+ 86%: gentle early, demanding late
+    return min(0.85, 0.50 + 0.015 * level)   # L1 52%, L5 58%, L10 65%, L20 80%, L24+ 85%: a slow climb
 
 
 def orb_count(level):
@@ -31,7 +31,7 @@ GROW = 15.0              # wall cells per second at level 1
 
 
 def grow_speed(level):
-    return max(11.0, GROW - 0.5 * (level - 1))   # walls grow slower each level, so they stay exposed longer (floor 11 from L9)
+    return max(8.0, GROW - 0.4 * (level - 1))   # walls extend slower each level, so they stay exposed longer (floor 8 from L19)
 STEP = 1 / 60
 CLEAR_PAUSE = 2.6
 SLOW_SECS, SLOW_FACTOR = 8.0, 0.45
@@ -366,7 +366,7 @@ class RiftSplit(Game):
     howto = [
         "Press and hold a spot to preview the line, slide to aim, and let go to grow a wall both ways from it (click on a computer). Tap the ↔ / ↕ buttons, press Space, or right-click to switch direction. You can start a second wall while the first is still growing.",
         "While a wall is growing (you can have two at once, on lines that don't cross), an orb that touches either half shatters that half and costs a life. A half that reaches a barrier locks in solid.",
-        "When a wall finishes, every pocket with no orb inside is sealed. Seal the goal % of the field (it rises each level, from 55%) to clear the level; each level adds an orb, and a life.",
+        "When a wall finishes, every pocket with no orb inside is sealed. Seal the goal % of the field (it rises slowly each level, from 52%) to clear the level; each level adds an orb, and a life.",
         "Chain clean seals for a score multiplier. Seal a 🛡️ to block one hit, or a ⏳ to slow every orb for a few seconds. Everyone plays their own field; the highest score wins.",
     ]
 
