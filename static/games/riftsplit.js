@@ -206,6 +206,9 @@
   function threeRenderer(T, stage, onLost) {
     const renderer = GL3.renderer({}, { onLost });
     if (!renderer) return null;
+    // GL3 stores every colour linear and marks canvas textures sRGB; the output has to be sRGB too (as GL3.stage does)
+    // or the whole scene, sealed cells included, comes out dark. No tone mapping, so colours stay as authored.
+    renderer.outputEncoding = T.sRGBEncoding;
     renderer.setClearColor(0x060a1c, 1);
     const canvas = renderer.domElement;
     canvas.className = 'rs-canvas';
@@ -214,7 +217,7 @@
     const cam = new T.PerspectiveCamera(34, 1, 1, 200);
     const gx = (x) => x - g.W / 2, gy = (y) => g.H / 2 - y;
     // cool sky / warm floor bounce, one soft key from the upper left, and a faint rim from the opposite side
-    scene.add(new T.HemisphereLight(0x8fb4ff, 0x1a1030, 0.75));
+    scene.add(new T.HemisphereLight(0x8fb4ff, 0x1a1030, 0.6));
     const sun = new T.DirectionalLight(0xfff1dc, 0.85); sun.position.set(-12, 10, 22); scene.add(sun);
     const rim = new T.DirectionalLight(0x4aa8ff, 0.35); rim.position.set(14, -8, 10); scene.add(rim);
     // the first few orbs light the field around them (skipped on the Low graphics setting)
