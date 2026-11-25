@@ -764,11 +764,46 @@
           <button type="button" data-control="-2" aria-label="Nudge up (W)">Nudge ↑</button>
           <button type="button" data-control="-3" aria-label="Nudge right (E)">↦</button>
         </div>
+        <button type="button" class="pb-gear" aria-label="Options" aria-expanded="false" title="Options">⚙</button>
+        <div class="pb-opts" role="group" aria-label="Display and control options" hidden>
+          <button type="button" data-opt="lefty" aria-pressed="false" title="Put Launch on the left">↔ Left-handed</button>
+          <button type="button" data-opt="contrast" aria-pressed="false" title="Stronger contrast and saturation">◐ Contrast</button>
+          <button type="button" data-opt="cb" aria-pressed="false" title="Colour-blind safe palette (applies from the next game)">🎨 Colour-safe</button>
+        </div>
         <ol class="pb-standings" aria-label="Scores" hidden></ol>
         <div class="pb-run" hidden><span class="pb-caption">Run highlights</span><p></p></div>
         <div class="pb-top" hidden><span class="pb-caption">Top scores</span><ol></ol></div>
       </section>`;
     const root = arena.querySelector('.pb-cabinet');
+    // display / control options, remembered on this device
+    const optKey = 'pinball.opts';
+    let opts = {};
+    try { opts = JSON.parse(localStorage.getItem(optKey)) || {}; } catch {}
+    const applyOpts = () => {
+      root.classList.toggle('pb-lefty', !!opts.lefty);
+      root.classList.toggle('pb-contrast', !!opts.contrast);
+      for (const b of root.querySelectorAll('button[data-opt]')) b.setAttribute('aria-pressed', String(!!opts[b.dataset.opt]));
+    };
+    for (const b of root.querySelectorAll('button[data-opt]')) {
+      b.addEventListener('click', () => {
+        opts[b.dataset.opt] = !opts[b.dataset.opt];
+        try { localStorage.setItem(optKey, JSON.stringify(opts)); } catch {}
+        applyOpts();
+      });
+    }
+    const gear = root.querySelector('.pb-gear'), panel = root.querySelector('.pb-opts');
+    gear.addEventListener('click', () => {
+      panel.hidden = !panel.hidden;
+      gear.setAttribute('aria-expanded', String(!panel.hidden));
+    });
+    applyOpts();
+    if (opts.cb) {   // colour-blind safe: blue / amber / white instead of cyan / pink / violet / teal
+      flipperColors.splice(0, 2, '#4aa8ff', '#ffb000');
+      bumperColors.splice(0, 4, '#ffb000', '#4aa8ff', '#ffffff', '#ffd9a0');
+    } else {
+      flipperColors.splice(0, 2, '#42cfeb', '#ff78bc');
+      bumperColors.splice(0, 4, '#ff9b59', '#c699ff', '#58e5d5', '#ff78bc');
+    }
     const found = new Map();
     const find = (s) => found.get(s) || (found.set(s, root.querySelector('.pb-' + s)), found.get(s));
     const stage = find('stage');
