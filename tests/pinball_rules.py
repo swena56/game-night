@@ -112,10 +112,10 @@ class PinballRules(unittest.TestCase):
         self.assertGreater(table.height, 1.5)
         for _ in range(57):
             table.step()
-        self.assertEqual((table.event, table.score, table.bank), ("ramp", 7000, 0))
+        self.assertEqual((table.event, table.score, table.bank), ("lock", 7000, 0))
         self.assertEqual(table.jackpot_ticks, JACKPOT_TICKS)
-        self.assertAlmostEqual(table.x, RAMP_EXIT[0])
-        self.assertAlmostEqual(table.y, RAMP_EXIT[1])
+        self.assertTrue(table.staged)            # the first ramp shot locks the ball and re-serves
+        self.assertEqual((table.x, table.y), LAUNCH)
 
     def test_combo_lit_shot_and_kickback(self):
         table = placed(*ROLLOVERS[0])
@@ -128,10 +128,10 @@ class PinballRules(unittest.TestCase):
         table.step()
         self.assertEqual((table.combo, table.lit), (2, 2))
         self.assertEqual(table.score, 1000 + 250 + 250 + 250)  # target, lit double, combo bonus
-        self.assertEqual(table.public()[-2], 2)
+        self.assertEqual(table.public()[-4], 2)
         table.combo_ticks = 1
         table.step()
-        self.assertEqual(table.public()[-2], 0)
+        self.assertEqual(table.public()[-4], 0)
         table = placed(.4, 14.5, vy=6)
         table.step()
         self.assertEqual((table.event, table.kickback, table.vy < 0), ("kickback", False, True))
@@ -295,7 +295,50 @@ class PinballRules(unittest.TestCase):
         before = table.score
         table.drain()
         self.assertEqual((table.bonus, table.score - before, table.mult, table.event), (2100, 2100, 1, "bonus"))
-        self.assertEqual(len(table.public()), 25)
+        self.assertEqual(len(table.public()), 27)
+
+    def shoot_ramp(self, table):
+        table.bank = 7
+        rx, ry = RAMP
+        table.x, table.y, table.vx, table.vy = rx, ry + .02, 0, -12
+        for _ in range(130):
+            table.step()
+
+    def test_ramp_locks_then_starts_multiball(self):
+        table = placed(5, 9)
+        self.shoot_ramp(table)
+        self.assertEqual((table.event, table.locked, table.staged, table.balls, len(table.others)),
+                         ("lock", 1, True, 3, 0))
+        table.staged, table.jackpot_ticks = False, 0
+        table.x, table.y = 5, 9
+        table.vx = table.vy = 0
+        self.shoot_ramp(table)
+        self.assertEqual((table.event, table.locked, table.balls, len(table.others)), ("multiball", 0, 3, 2))
+        self.assertEqual(len(table.public()[-1]), 2)
+        self.assertGreater(table.jackpot_ticks, 30 * 240)
+
+    def test_multiball_drains_balls_one_at_a_time(self):
+        table = placed(5, 9)
+        table.others = [table.free_ball(3, 8, 0, 0), table.free_ball(6, 8, 0, 0)]
+        table.y = LAYOUT["height"] + 1          # the main ball drains first
+        table.step()
+        self.assertEqual((table.balls, len(table.others)), (3, 1))
+        self.assertLess(table.y, 12)             # an extra took over as the main ball
+        table.others[0]["y"] = LAYOUT["height"] + 1
+        table.step()
+        self.assertEqual((table.balls, len(table.others)), (3, 0))
+        table.y = LAYOUT["height"] + 1
+        table.step()
+        self.assertEqual(table.balls, 2)         # only the last ball costs one
+
+    def test_multiball_extras_score_and_nudge(self):
+        table = placed(5, 9)
+        x, y, r = BUMPS[0]
+        table.others = [table.free_ball(x + r + .2, y, -10, 0)]
+        table.step()
+        self.assertEqual(table.score, 100)
+        table.nudge(1)
+        self.assertGreater(table.others[0]["vx"], table.vx - 1)
 
     def test_tilt_forfeits_bonus(self):
         table = placed(5, 17.4)

@@ -22,6 +22,9 @@ class Rules:
     combo_step: int = 250
     max_mult: int = 5
     max_nudges: int = 3
+    lock_balls: int = 0          # ramp locks needed to start multiball (0 disables it)
+    multiball_ticks: int = 40 * 240
+    multiball_start: int = 5000
     extra_ball_scores: tuple = (40000, 120000)
     shots: tuple = ("lane", "target", "spinner", "ramp")
     first_lit: int = 3

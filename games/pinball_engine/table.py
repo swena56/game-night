@@ -15,6 +15,9 @@ from .rules import Rules
 
 SHOT_OF = dict(lane="lane", skill="lane", target="target", spinner="spinner", ramp="ramp", jackpot="ramp")
 SPEED_CAP = 42
+# Per-ball state: the table swaps these between the main ball and each extra multiball ball.
+BALL_STATE = ("x", "y", "vx", "vy", "height", "ramp_ticks", "rollovers", "skill", "smooth_launch",
+              "still", "still_origin", "jackpot_shot")
 GRAVITY = 11
 
 
@@ -67,6 +70,9 @@ class Table:
     last_shot: str = ""
     lit: int = None
     extras: int = 0
+    others: list = field(default_factory=list)   # state dicts of the other balls in play
+    locked: int = 0
+    gone: bool = False
 
     def __post_init__(self):
         lay, rules = self.layout, self.rules
@@ -151,6 +157,9 @@ class Table:
             self.signal("tilt")
             return
         self.nudges += 1
+        for ball in self.others:
+            ball["vx"] += 4.8 * direction
+            ball["vy"] -= 3.4 if not direction else 1.8
         self.vx += 4.8 * direction
         self.vy -= 3.4 if not direction else 1.8
         self.signal("nudge")
@@ -160,7 +169,8 @@ class Table:
         self.balls -= 1
         self.bonus = self.live_bonus()
         self.score += self.bonus
-        self.bumper_hits = self.ramps = self.lane_bits = 0
+        self.bumper_hits = self.ramps = self.lane_bits = self.locked = 0
+        self.others.clear()
         self.mult = 1
         self.kickback = True
         self.combo = self.combo_ticks = 0
@@ -294,6 +304,41 @@ class Table:
             self.spin_left -= turn
             if int(self.spin + 1e-8) > int(old_spin + 1e-8) and not self.tilt:
                 self.signal("spinner", rules.spinner)
+        self.run_ball(previous)
+        if self.gone:      # the main ball drained while others are in play: another takes over
+            self.gone = False
+            self.load(self.others.pop(0))
+        k = 0
+        while k < len(self.others):
+            self.swap(k)
+            self.run_ball(previous)
+            if self.gone:  # this extra drained; the main ball (parked in others[k]) comes back
+                self.gone = False
+                self.load(self.others.pop(k))
+            else:
+                self.swap(k)
+                k += 1
+
+    # -- multiball: extra balls are kept as state dicts and swapped in to reuse the one-ball physics ----
+
+    def state(self):
+        return {name: getattr(self, name) for name in BALL_STATE}
+
+    def load(self, state):
+        for name, value in state.items():
+            setattr(self, name, value)
+
+    def swap(self, k):
+        mine = self.state()
+        self.load(self.others[k])
+        self.others[k] = mine
+
+    def free_ball(self, x, y, vx, vy):
+        return dict(x=x, y=y, vx=vx, vy=vy, height=0, ramp_ticks=0, rollovers=0, skill=False,
+                    smooth_launch=False, still=0, still_origin=(x, y), jackpot_shot=False)
+
+    def run_ball(self, previous):
+        lay = self.layout
         if self.ramp_ticks:
             self.ride_ramp()
             return
@@ -335,6 +380,31 @@ class Table:
                     self.bank = 0
                     self.jackpot_ticks = rules.jackpot_ticks
                     self.signal("ramp", rules.ramp)
+                    if rules.lock_balls and not self.others:
+                        self.lock_ball()
+
+    def lock_ball(self):
+        """A ramp shot locks the ball; the last lock releases every locked ball at once."""
+        lay, rules = self.layout, self.rules
+        self.locked += 1
+        if self.locked < rules.lock_balls:
+            # the ball is held in the lock and a fresh one waits in the shooter lane
+            self.x, self.y = lay.launch
+            self.vx = self.vy = self.height = 0
+            self.staged = True
+            self.smooth_launch = self.skill = False
+            self.still = 0
+            self.still_origin = lay.launch
+            self.reset_controls()
+            self.signal("lock")
+            return
+        ex, ey = lay.ramp_exit
+        for i in range(rules.lock_balls):
+            side = -1 if i % 2 else 1
+            self.others.append(self.free_ball(ex + 0.45 * side * (i // 2 + 1), ey, -4 + 2.6 * side * (i // 2 + 1), 8))
+        self.jackpot_ticks = max(self.jackpot_ticks, rules.multiball_ticks)
+        self.locked = 0
+        self.signal("multiball", rules.multiball_start)
 
     def lane_and_drain(self):
         lay = self.layout
@@ -349,7 +419,9 @@ class Table:
             self.staged = True
             self.smooth_launch = self.skill = False
         elif self.y > lay.height + lay.ball:
-            if self.save_ticks:
+            if self.others:
+                self.gone = True
+            elif self.save_ticks:
                 self.save_ticks = 0
                 self.x, self.y = lay.launch
                 self.vx, self.vy = 0, -30
@@ -388,4 +460,6 @@ class Table:
                 self.charge, self.event_id, self.event, round(self.spin % 1, 3),
                 math.ceil(self.save_ticks / 240), math.ceil(self.jackpot_ticks / 240),
                 self.mult, self.bonus if self.staged else self.live_bonus(), self.lane_bits, int(self.kickback),
-                self.combo if self.combo_ticks else 0, self.lit]
+                self.combo if self.combo_ticks else 0, self.lit, self.locked,
+                [[round(o["x"], 3), round(o["y"], 3), round(o["vx"], 2), round(o["vy"], 2), round(o["height"], 2)]
+                 for o in self.others]]

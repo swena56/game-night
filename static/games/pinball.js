@@ -1,16 +1,16 @@
 (() => {
-  const [X, Y, VX, VY, Z, LEFT, RIGHT, SCORE, BALLS, BANK, NUDGES, TILT, STAGED, CHARGE, EVENT_ID, EVENT, SPIN, SAVE, JACKPOT, MULT, BONUS, LANES, KICK, COMBO, LIT] =
-    Array.from({ length: 25 }, (_, i) => i);
+  const [X, Y, VX, VY, Z, LEFT, RIGHT, SCORE, BALLS, BANK, NUDGES, TILT, STAGED, CHARGE, EVENT_ID, EVENT, SPIN, SAVE, JACKPOT, MULT, BONUS, LANES, KICK, COMBO, LIT, LOCKED, OTHERS] =
+    Array.from({ length: 27 }, (_, i) => i);
   const keys = {
     KeyA: 1, ArrowLeft: 1, KeyZ: 1, ShiftLeft: 1, KeyD: 2, ArrowRight: 2, Slash: 2, ShiftRight: 2, Space: 4,
     KeyQ: -1, KeyW: -2, KeyE: -3,
   };
   const messages = {
     skill: 'Skill shot +5,000', spinner: 'Spinner +100', ramp: 'Ramp +6,000 · Jackpot lit', jackpot: 'Jackpot +12,000', save: 'Ball saved · Auto launch',
-    tilt: 'TILT · scoring suspended', nudge: 'Table nudged', mult: 'Multiplier up!', kickback: 'Kickback!', extra: 'EXTRA BALL!',
+    tilt: 'TILT · scoring suspended', nudge: 'Table nudged', mult: 'Multiplier up!', kickback: 'Kickback!', extra: 'EXTRA BALL!', lock: 'Ball locked', multiball: 'MULTIBALL · Shoot the ramp for jackpots +5,000',
     drain: 'Ball drained', done: 'Run complete', recovery: 'Ball freed',
   };
-  const sounds = { skill: 'pskill', ramp: 'pramp', jackpot: 'pjackpot', save: 'psave', tilt: 'wrong', mult: 'cheer', kickback: 'pkick', extra: 'pjackpot', bonus: 'cheer', spinner: 'pspin', drain: 'groan', done: 'groan' };
+  const sounds = { skill: 'pskill', ramp: 'pramp', jackpot: 'pjackpot', save: 'psave', tilt: 'wrong', mult: 'cheer', kickback: 'pkick', extra: 'pjackpot', lock: 'psave', multiball: 'pjackpot', bonus: 'cheer', spinner: 'pspin', drain: 'groan', done: 'groan' };
   const prefixes = { bumper: 'Bumper +100', sling: 'Slingshot +50', lane: 'Rollover +500', target: 'Target +250' };
   const label = (event, row) => event === 'bonus' && row ? `Ball bonus +${row[BONUS].toLocaleString()}` : messages[event] || prefixes[event?.replace(/[0-9]$/, '')] || '';
   const sound = (event) => sounds[event] || (/^bumper/.test(event) ? 'pbumper' : /^sling/.test(event) ? 'psling' : 'pop');
@@ -234,7 +234,7 @@
     };
     const rail = ([ax, ay, bx, by], color, width) => line([[ax, ay], [bx, by]], width, color);
     return {
-      draw(row, ball, flash, trail = [], gate = 0) {
+      draw(row, ball, flash, trail = [], gate = 0, others = []) {
         const ratio = GL3.level() === 'low' ? 1 : Math.min(2, window.devicePixelRatio || 1);
         const width = Math.round(stage.clientWidth * ratio);
         const height = Math.round(stage.clientHeight * ratio);
@@ -331,6 +331,17 @@
           }
           disc(x, ballY, geo.radius * (bumperHit ? 1.28 : 1), shine);
         }
+        // multiball: the other balls in play
+        others.forEach(([ox, oy, oz]) => {
+          const oyy = oy - oz * .14;
+          disc(ox + .1, oy + .1, geo.radius * 1.25, '#26141483');
+          const glint = c.createRadialGradient(ox - .055, oyy - .065, .018, ox, oyy, geo.radius);
+          glint.addColorStop(0, '#fffaf0');
+          glint.addColorStop(.45, '#c3d2d7');
+          glint.addColorStop(.8, '#657882');
+          glint.addColorStop(1, '#26313a');
+          disc(ox, oyy, geo.radius, glint);
+        });
       },
       dispose: () => canvas.remove(),
     };
@@ -453,6 +464,7 @@
       return pivot;
     });
     const sphere = mesh(new T.SphereGeometry(geo.radius, 20, 14), chrome, 0, 0, 0);
+    const extraBalls = [];
     const dots = Array.from({ length: 8 }, () => {
       const m = material(palette.ivory);
       m.transparent = true;
@@ -467,7 +479,7 @@
     stage.prepend(canvas);
     let width = 0, height = 0;
     return {
-      draw(row, ball, flash, trail = [], gate = 0) {
+      draw(row, ball, flash, trail = [], gate = 0, others = []) {
         if (!stage.clientWidth || !stage.clientHeight) return;
         if (width !== stage.clientWidth || height !== stage.clientHeight) {
           width = stage.clientWidth;
@@ -490,6 +502,11 @@
           }
         });
         if (gateFlap) gateFlap.rotation.y = -(Math.PI / 2 - 1.25 * gate);
+        while (extraBalls.length < others.length) extraBalls.push(mesh(new T.SphereGeometry(geo.radius, 20, 14), chrome, 0, 0, 0));
+        extraBalls.forEach((m, i) => {
+          m.visible = i < others.length;
+          if (m.visible) m.position.set(others[i][0], geo.radius + others[i][2], Math.min(17.25, others[i][1]));
+        });
         sphere.visible = row[BALLS] > 0;
         sphere.position.set(ball[0], geo.radius + ball[2], Math.min(17.25, ball[1]));
         const bumperHit = flash?.startsWith('bumper');
@@ -692,7 +709,7 @@
     find('nudges').classList.toggle('warn', !row[TILT] && row[NUDGES] >= 2);
     const nextExtra = (g.extra || []).find((v) => v > row[SCORE]);
     setText(find('nudges'), row[TILT] ? 'Tilted' : `Nudges ${3 - row[NUDGES]}${nextExtra ? ` · Extra ball ${nextExtra.toLocaleString()}` : ''}`);
-    setText(find('ramp'), row[JACKPOT] ? 'Jackpot lit' : rampLit(row) ? 'Ramp ready' : `Targets ${(row[BANK] & 1) + (row[BANK] >> 1 & 1) + (row[BANK] >> 2 & 1)}/3`);
+    setText(find('ramp'), row[OTHERS]?.length ? `MULTIBALL ×${row[OTHERS].length + 1}` : row[JACKPOT] ? 'Jackpot lit' : rampLit(row) ? 'Ramp ready' : `Targets ${(row[BANK] & 1) + (row[BANK] >> 1 & 1) + (row[BANK] >> 2 & 1)}/3${row[LOCKED] ? ` · ${row[LOCKED]} locked` : ''}`);
     find('ramp').classList.toggle('lit', !!rampLit(row));
     g.stage.classList.toggle('tilted', !!row[TILT]);
     g.stage.classList.toggle('saving', row[SAVE] > 0 && !row[STAGED]);
@@ -766,7 +783,7 @@
       el.hidden = false;
       el.style.left = `${100 * (g.ball?.[0] ?? row[X]) / 10}%`;
       el.style.top = `${100 * ((g.ball?.[1] ?? row[Y]) + .85) / 18.7}%`;
-      el.classList.toggle('big', ['ramp', 'jackpot', 'bonus', 'skill'].includes(row[EVENT]));
+      el.classList.toggle('big', ['ramp', 'jackpot', 'bonus', 'skill', 'multiball'].includes(row[EVENT]));
       el.classList.toggle('huge', row[EVENT] === 'extra');
       el.classList.remove('go');
       void el.offsetWidth;
@@ -777,7 +794,7 @@
       void g.stage.offsetWidth;
       g.stage.classList.add('shake');
     }
-    if (['ramp', 'jackpot', 'kickback', 'bonus', 'extra'].includes(row[EVENT]) && !reduce) {
+    if (['ramp', 'jackpot', 'kickback', 'bonus', 'extra', 'lock', 'multiball'].includes(row[EVENT]) && !reduce) {
       g.stage.classList.remove('thump');
       void g.stage.offsetWidth;
       g.stage.classList.add('thump');
@@ -857,7 +874,9 @@
     const rising = !row[STAGED] && g.ball[0] > 8.9 && g.ball[1] < 5;
     g.gate = (g.gate || 0) + ((rising ? 1 : 0) - (g.gate || 0)) * (1 - Math.exp(-Math.min(60, now - (g.gateAt ?? now)) / (rising ? 40 : 90)));
     g.gateAt = now;
-    (g.three || g.flat)?.draw(row, g.ball, flash, g.trail, g.gate);
+    // the other multiball balls are extrapolated by their velocity from the last packet
+    const others = (row[OTHERS] || []).map(([x, y, vx, vy, z]) => [x + vx * ahead, y + vy * ahead, z]);
+    (g.three || g.flat)?.draw(row, g.ball, flash, g.trail, g.gate, others);
   }
 
   function initRenderer(g, geo) {
