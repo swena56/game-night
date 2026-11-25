@@ -13,7 +13,8 @@
   const sounds = { skill: 'lock', ramp: 'cheer', jackpot: 'cheer', save: 'lock', tilt: 'wrong', mult: 'cheer', kickback: 'lock', bonus: 'cheer', spinner: 'tickfast', drain: 'groan', done: 'groan' };
   const prefixes = { bumper: 'Bumper +100', sling: 'Slingshot +50', lane: 'Rollover +500', target: 'Target +250' };
   const label = (event, row) => event === 'bonus' && row ? `Ball bonus +${row[BONUS].toLocaleString()}` : messages[event] || prefixes[event?.replace(/[0-9]$/, '')] || '';
-  const sound = (event) => sounds[event] || (/^(bumper|sling)/.test(event) ? 'puck' : 'pop');
+  const sound = (event) => sounds[event] || (/^bumper/.test(event) ? 'pbumper' : /^sling/.test(event) ? 'psling' : 'pop');
+  const soundArg = (event) => (/^bumper/.test(event) ? Number(event.slice(6)) || 0 : undefined);
   const bestKey = 'pinball.best', topKey = 'pinball.top';
   const palette = { gold: '#ffd383', ivory: '#fff0ca', teal: '#59edd2', red: '#ff6854', steel: '#c1d2e5' };
   const bumperColors = ['#ff9b59', '#c699ff', '#58e5d5'];
@@ -773,7 +774,7 @@
     if (prior && prior[EVENT_ID] !== row[EVENT_ID]) {
       g.flashAt = performance.now() + 780;
       popup(g, row);
-      if (viewer === g.me && !g.ctx.readOnly) g.ctx.sfx(sound(row[EVENT]));
+      if (viewer === g.me && !g.ctx.readOnly) g.ctx.sfx(sound(row[EVENT]), soundArg(row[EVENT]));
     }
     g.enabled = !!(g.active && g.me && row[BALLS]);
     if (!g.enabled || row[TILT] && !prior?.[TILT]) clearControls(g);

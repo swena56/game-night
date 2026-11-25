@@ -439,6 +439,9 @@ const SFX = {
   wrong: () => { tone(220, 160, 0.18, 'triangle', 0.08); tone(208, 150, 0.18, 'triangle', 0.07, 0.02); },
   // air hockey: a hard plastic puck clack (louder for a harder hit), a dull rail knock, a crowd swell and a groan
   puck: (hard = 0) => { noise(0.025, 3400, 2.2, 0.28 + hard * 0.2); tone(1500, 900, 0.03, 'square', 0.025 + hard * 0.02); },
+  // pinball: a pop bumper's bright electric boing (pitch by bumper), a slingshot's rubber thwack
+  pbumper: (n = 0) => { const f = 640 + (n % 3) * 150; tone(f * 1.8, f, 0.11, 'square', 0.04); tone(f * 2.7, f * 1.5, 0.07, 'triangle', 0.05, 0.01); noise(0.02, 3000, 1.5, 0.15); },
+  psling: () => { noise(0.04, 1200, 1.2, 0.35); tone(300, 140, 0.07, 'sawtooth', 0.05); },
   rail: () => { noise(0.04, 900, 1.4, 0.22); tone(240, 180, 0.05, 'sine', 0.06); },
   cheer: () => { noise(0.9, 1400, 0.35, 0.18); [659, 784, 988].forEach((f, i) => tone(f, f, 0.18, 'triangle', 0.08, 0.12 + i * 0.09)); },
   groan: () => { tone(330, 196, 0.5, 'triangle', 0.07); tone(262, 165, 0.5, 'triangle', 0.05, 0.04); },
