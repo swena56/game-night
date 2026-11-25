@@ -66,6 +66,7 @@ class Table:
     combo_ticks: int = 0
     last_shot: str = ""
     lit: int = None
+    extras: int = 0
 
     def __post_init__(self):
         lay, rules = self.layout, self.rules
@@ -85,6 +86,13 @@ class Table:
             self.chain(kind, points)
         self.event = event
         self.event_id += 1
+        scores = self.rules.extra_ball_scores
+        if self.extras < len(scores) and self.score >= scores[self.extras] and not self.tilt \
+                and event not in ("bonus", "drain", "done", "tilt"):
+            self.extras += 1
+            self.balls += 1
+            self.event = "extra"
+            self.event_id += 1
 
     def chain(self, kind, points):
         """Pay combos for different shots in quick succession and double the lit shot."""

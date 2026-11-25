@@ -7,10 +7,10 @@
   };
   const messages = {
     skill: 'Skill shot +5,000', spinner: 'Spinner +100', ramp: 'Ramp +6,000 · Jackpot lit', jackpot: 'Jackpot +12,000', save: 'Ball saved · Auto launch',
-    tilt: 'TILT · scoring suspended', nudge: 'Table nudged', mult: 'Multiplier up!', kickback: 'Kickback!',
+    tilt: 'TILT · scoring suspended', nudge: 'Table nudged', mult: 'Multiplier up!', kickback: 'Kickback!', extra: 'EXTRA BALL!',
     drain: 'Ball drained', done: 'Run complete', recovery: 'Ball freed',
   };
-  const sounds = { skill: 'lock', ramp: 'pramp', jackpot: 'pjackpot', save: 'lock', tilt: 'wrong', mult: 'cheer', kickback: 'pkick', bonus: 'cheer', spinner: 'pspin', drain: 'groan', done: 'groan' };
+  const sounds = { skill: 'lock', ramp: 'pramp', jackpot: 'pjackpot', save: 'lock', tilt: 'wrong', mult: 'cheer', kickback: 'pkick', extra: 'pjackpot', bonus: 'cheer', spinner: 'pspin', drain: 'groan', done: 'groan' };
   const prefixes = { bumper: 'Bumper +100', sling: 'Slingshot +50', lane: 'Rollover +500', target: 'Target +250' };
   const label = (event, row) => event === 'bonus' && row ? `Ball bonus +${row[BONUS].toLocaleString()}` : messages[event] || prefixes[event?.replace(/[0-9]$/, '')] || '';
   const sound = (event) => sounds[event] || (/^bumper/.test(event) ? 'pbumper' : /^sling/.test(event) ? 'psling' : 'pop');
@@ -763,14 +763,14 @@
       void g.stage.offsetWidth;
       g.stage.classList.add('shake');
     }
-    if (['ramp', 'jackpot', 'kickback', 'bonus'].includes(row[EVENT]) && !reduce) {
+    if (['ramp', 'jackpot', 'kickback', 'bonus', 'extra'].includes(row[EVENT]) && !reduce) {
       g.stage.classList.remove('thump');
       void g.stage.offsetWidth;
       g.stage.classList.add('thump');
     }
     if (g.me === g.viewer) {
       if (/^(bumper|sling)/.test(row[EVENT])) navigator.vibrate?.(12);
-      else if (row[EVENT] === 'jackpot') navigator.vibrate?.([30, 40, 30, 40, 60]);
+      else if (['jackpot', 'extra'].includes(row[EVENT])) navigator.vibrate?.([30, 40, 30, 40, 60]);
       else if (['ramp', 'kickback'].includes(row[EVENT])) navigator.vibrate?.(30);
     }
   }
