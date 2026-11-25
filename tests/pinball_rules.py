@@ -185,6 +185,17 @@ class PinballRules(unittest.TestCase):
         self.assertGreater(table.vx, 0)
         self.assertEqual(table.score, 1000)
 
+    def test_subway_hides_the_ball_then_fires_it_from_the_exit(self):
+        from games.pinball import SUBWAY, SUBWAY_EXIT
+        table = placed(SUBWAY[0], SUBWAY[1] + .1, 0, -3)
+        table.step()
+        self.assertEqual((table.event, table.score, table.height), ("subway", 2000, -1))
+        self.assertEqual((table.x, table.y), SUBWAY_EXIT[:2])
+        for _ in range(table.rules.subway_ticks):
+            table.step()
+        self.assertEqual((table.height, table.vx, table.vy), (0, SUBWAY_EXIT[2], SUBWAY_EXIT[3] + 0))
+        self.assertEqual(table.score, 2000)
+
     def test_lanes_spinner_bank_and_ramp(self):
         table = placed(*ROLLOVERS[0])
         for _ in range(4):

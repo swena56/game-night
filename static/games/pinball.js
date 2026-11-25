@@ -9,9 +9,9 @@
     skill: 'Skill shot +5,000', spinner: 'Spinner +100', ramp: 'Ramp +6,000 · Jackpot lit', jackpot: 'Jackpot +12,000', save: 'Ball saved · Auto launch',
     tilt: 'TILT · scoring suspended', nudge: 'Table nudged', mult: 'Multiplier up!', kickback: 'Kickback!', extra: 'EXTRA BALL!', post: 'Centre post save!', hurry: 'HURRY-UP +15,000', super: 'SUPER JACKPOT +50,000',
     mystery_points: 'Mystery · +10,000', mystery_save: 'Mystery · Ball save 10s', mystery_mult: 'Mystery · Multiplier up!', mystery_hold: 'Mystery · Bonus held', lock: 'Ball locked', mission: 'Mission complete +5,000', wizard: 'WIZARD MODE · Four balls, jackpots lit!', multiball: 'MULTIBALL · Shoot the ramp for jackpots +5,000',
-    saucer: 'Saucer +1,000', drain: 'Ball drained', done: 'Run complete', recovery: 'Ball freed',
+    saucer: 'Saucer +1,000', subway: 'Subway +2,000', drain: 'Ball drained', done: 'Run complete', recovery: 'Ball freed',
   };
-  const sounds = { skill: 'pskill', ramp: 'pramp', jackpot: 'pjackpot', save: 'psave', tilt: 'wrong', nudge: 'thud', mult: 'cheer', kickback: 'pkick', extra: 'pjackpot', post: 'psave', hurry: 'pjackpot', super: 'pjackpot', mystery_points: 'cheer', mystery_save: 'psave', mystery_mult: 'cheer', mystery_hold: 'pskill', lock: 'psave', multiball: 'pjackpot', wizard: 'pjackpot', mission: 'cheer', saucer: 'ptarget', bonus: 'cheer', spinner: 'pspin', drain: 'groan', done: 'groan' };
+  const sounds = { skill: 'pskill', ramp: 'pramp', jackpot: 'pjackpot', save: 'psave', tilt: 'wrong', nudge: 'thud', mult: 'cheer', kickback: 'pkick', extra: 'pjackpot', post: 'psave', hurry: 'pjackpot', super: 'pjackpot', mystery_points: 'cheer', mystery_save: 'psave', mystery_mult: 'cheer', mystery_hold: 'pskill', lock: 'psave', multiball: 'pjackpot', wizard: 'pjackpot', mission: 'cheer', saucer: 'ptarget', subway: 'pramp', bonus: 'cheer', spinner: 'pspin', drain: 'groan', done: 'groan' };
   const prefixes = { bumper: 'Bumper +100', sling: 'Slingshot +50', lane: 'Rollover +500', target: 'Target +250' };
   const label = (event, row) => {
     if (event === 'bonus' && row) return `Ball bonus +${row[BONUS].toLocaleString()}`;
@@ -483,6 +483,11 @@
           disc(ux, uy, ur + .07, '#252049');
           disc(ux, uy, ur, row[EVENT] === 'saucer' ? '#fff0ca88' : '#0c0a1c');
         }
+        if (geo.subway) {
+          const [wx, wy, wr] = geo.subway;
+          disc(wx, wy, wr + .07, '#252049');
+          disc(wx, wy, wr, row[EVENT] === 'subway' ? '#59edd288' : '#0c0a1c');
+        }
         const [sx, sy] = geo.spinner;
         disc(sx, sy, .18, flash === 'spinner' ? '#fff0ca88' : '#c1d2e522');
         rail([sx - .47, sy, sx + .47, sy], flash === 'spinner' ? palette.ivory : palette.steel,
@@ -508,7 +513,7 @@
         const [launchX, launchY] = geo.launch;
         const plungerY = launchY + .39 + .25 * row[CHARGE] / 240;
         rail([launchX - .22, plungerY, launchX + .22, plungerY], palette.gold, .19);
-        if (row[BALLS]) {
+        if (row[BALLS] && ball[2] > -.5) {
           const tint = TRAIL_TINT[Math.min(row[MULT], 5) - 1] || TRAIL_TINT[0];
           trail.forEach(([tx, ty], i) => disc(tx, ty, geo.radius * (.3 + .5 * i / trail.length), `rgba(${tint},${.05 + .14 * i / trail.length})`));
           const [x, y, z] = ball;
@@ -695,6 +700,11 @@
       disc(ux, uy, ur + .07, .05, .03, brass);
       disc(ux, uy, ur, .06, .06, material('#0c0a1c', .6, .2));
     }
+    if (geo.subway) {
+      const [wx, wy, wr] = geo.subway;
+      disc(wx, wy, wr + .07, .05, .03, brass);
+      disc(wx, wy, wr, .06, .06, material('#0c0a1c', .6, .2));
+    }
     const [sx, sy] = geo.spinner;
     disc(sx, sy, .2, .04, .08, material('#c1d2e5', .2, .3));
     for (const dx of [-.57, .57]) disc(sx + dx, sy, .094, .57, .28, brass);
@@ -791,7 +801,7 @@
           bubble.visible = row[BALLS] > 0 && row[SAVE] > 0 && !row[STAGED];
           bubble.position.set(ball[0], geo.radius + ball[2], Math.min(17.25, ball[1]));
         }
-        sphere.visible = row[BALLS] > 0;
+        sphere.visible = row[BALLS] > 0 && ball[2] > -.5;
         sphere.position.set(ball[0], geo.radius + ball[2], Math.min(17.25, ball[1]));
         const bumperHit = flash?.startsWith('bumper');
         sphere.scale.setScalar(bumperHit ? 1.28 : 1);
@@ -1330,7 +1340,7 @@
     g.gate = (g.gate || 0) + ((rising ? 1 : 0) - (g.gate || 0)) * (1 - Math.exp(-Math.min(60, now - (g.gateAt ?? now)) / (rising ? 40 : 90)));
     g.gateAt = now;
     // the other multiball balls are extrapolated by their velocity from the last packet
-    const others = (row[OTHERS] || []).map(([x, y, vx, vy, z]) => [x + vx * ahead, y + vy * ahead, z]);
+    const others = (row[OTHERS] || []).filter((o) => o[4] > -.5).map(([x, y, vx, vy, z]) => [x + vx * ahead, y + vy * ahead, z]);
     // the backglass repaints at ~20 fps (10 on Low graphics) and only crawls under reduced motion
     if (g.glass && now - (g.glassAt ?? -1e9) > (window.gfxLevel?.() === 'low' ? 100 : 50)) { g.glassAt = now; g.glass.draw(now, row, calm()); }
     (g.three || g.flat)?.draw(row, g.ball, flash, g.trail, g.gate, others, !!idle);

@@ -32,6 +32,8 @@ class Layout:
     ramp: tuple | None = None
     ramp_exit: tuple | None = None
     outlane: tuple | None = None
+    subway: tuple | None = None       # (x, y, radius) mouth; the ball travels under the playfield to subway_exit
+    subway_exit: tuple | None = None  # (x, y, vx, vy): where the ball reappears and how it is fired
     saucer: tuple | None = None   # (x, y, radius) scoop: captures a slow ball, holds it, then kicks it back out
     width: float = 10
     height: float = 17
@@ -55,7 +57,7 @@ class Layout:
     def public(self):
         """The layout dict sent to the browser renderers."""
         return dict(rails=self.rails, gate=self.gate, slings=self.slings, bumps=self.bumps,
-                    targets=self.targets, lanes=self.lanes, spinner=self.spinner, ramp=self.ramp, saucer=self.saucer,
+                    targets=self.targets, lanes=self.lanes, spinner=self.spinner, ramp=self.ramp, saucer=self.saucer, subway=self.subway, subway_exit=self.subway_exit,
                     exit=self.ramp_exit, flips=self.flippers, length=self.flipper_length,
                     radius=self.ball, skill=self.skill_charge, width=self.width,
                     height=self.height, launch=self.launch, theme=self.theme)

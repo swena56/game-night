@@ -42,6 +42,8 @@ class Rules:
     shots: tuple = ("lane", "target", "spinner", "ramp")
     first_lit: int = 3
     saucer: int = 1000
+    subway: int = 2000
+    subway_ticks: int = 100       # time the ball spends under the playfield
     saucer_ticks: int = 150       # how long the saucer holds the ball before kicking it out
     sling_threshold: float = 4.0  # ball speed into the blade needed to fire a slingshot
     gravity: float = 11.0        # table slope: higher plays faster

@@ -18,7 +18,7 @@ SHOT_OF = dict(lane="lane", skill="lane", target="target", spinner="spinner", ra
 SPEED_CAP = 42
 # Per-ball state: the table swaps these between the main ball and each extra multiball ball.
 BALL_STATE = ("x", "y", "vx", "vy", "height", "ramp_ticks", "rollovers", "skill", "smooth_launch",
-              "still", "still_origin", "jackpot_shot", "saucer_ticks")
+              "still", "still_origin", "jackpot_shot", "saucer_ticks", "subway_ticks")
 
 
 @dataclass
@@ -51,6 +51,7 @@ class Table:
     height: float = 0
     ramp_ticks: int = 0
     saucer_ticks: int = 0
+    subway_ticks: int = 0
     spin: float = 0
     spin_left: float = 0
     still: int = 0
@@ -408,6 +409,14 @@ class Table:
                 self.x, self.y, self.vx, self.vy = cx, cy, 0, 0
                 if not self.tilt:
                     self.signal("saucer", rules.saucer)
+        if lay.subway and lay.subway_exit and not self.subway_ticks:
+            cx, cy, radius = lay.subway
+            if math.hypot(self.x - cx, self.y - cy) < radius * 0.7 and self.height >= 0:
+                # the ball drops through the mouth and rolls unseen to the exit (height -1 hides it)
+                self.subway_ticks = rules.subway_ticks
+                self.x, self.y, self.vx, self.vy, self.height = *lay.subway_exit[:2], 0, 0, -1
+                if not self.tilt:
+                    self.signal("subway", rules.subway)
         if lay.ramp:
             rx, ry = lay.ramp
             jackpot = bool(self.jackpot_ticks or self.others)
@@ -488,12 +497,20 @@ class Table:
 
     def free_ball(self, x, y, vx, vy):
         return dict(x=x, y=y, vx=vx, vy=vy, height=0, ramp_ticks=0, rollovers=0, skill=False,
-                    smooth_launch=False, still=0, still_origin=(x, y), jackpot_shot=False, saucer_ticks=0)
+                    smooth_launch=False, still=0, still_origin=(x, y), jackpot_shot=False, saucer_ticks=0, subway_ticks=0)
 
     def run_ball(self, previous):
         lay = self.layout
         if self.ramp_ticks:
             self.ride_ramp()
+            return
+        if self.subway_ticks:
+            self.subway_ticks -= 1
+            if not self.subway_ticks:
+                ex, ey, evx, evy = self.layout.subway_exit
+                self.height, self.vx, self.vy = 0, evx, evy
+                self.still = 0
+                self.still_origin = (ex, ey)
             return
         if self.saucer_ticks:
             self.hold_in_saucer()
