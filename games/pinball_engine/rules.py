@@ -14,6 +14,7 @@ class Rules:
     spinner: int = 100
     ramp: int = 6000
     jackpot: int = 12000
+    jackpot_growth: int = 100     # each bumper hit while the jackpot is lit adds this to the next jackpot
     bumper_bonus: int = 10
     ramp_bonus: int = 1000
     save_ticks: int = 4 * 240

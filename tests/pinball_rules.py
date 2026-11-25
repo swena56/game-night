@@ -35,6 +35,20 @@ def placed(x, y, vx=0, vy=0):
 
 
 class PinballRules(unittest.TestCase):
+    def test_progressive_jackpot_pool(self):
+        table = Table()
+        table.staged = False
+        table.jackpot_ticks = 1000
+        x, y, radius = BUMPS[0]
+        table.x, table.y, table.vx, table.vy = x, y - BALL - radius + .01, 0, 5
+        table.mechanisms(table.y)
+        self.assertEqual(table.jackpot_pool, table.rules.jackpot_growth)
+        table.jackpot_shot, table.ramp_ticks = True, 116
+        before = table.score
+        table.ride_ramp()
+        self.assertGreaterEqual(table.score - before, table.rules.jackpot + table.rules.jackpot_growth)
+        self.assertEqual(table.jackpot_pool, 0)
+
     def test_plunge_and_skill_shot(self):
         weak = launch(10)
         self.assertFalse(weak.staged)

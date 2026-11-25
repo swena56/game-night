@@ -75,6 +75,7 @@ class Table:
     locked: int = 0
     lit_hits: int = 0
     jackpots: int = 0
+    jackpot_pool: int = 0
     multiballs: int = 0
     hurry_wins: int = 0
     mysteries: int = 0
@@ -230,6 +231,7 @@ class Table:
         self.kickback = True
         self.combo = self.combo_ticks = 0
         self.save_used = self.jackpot_shot = False
+        self.jackpot_pool = 0
         self.save_ticks = self.jackpot_ticks = 0
         self.reset_controls()
         self.staged = bool(self.balls)
@@ -300,6 +302,8 @@ class Table:
             if self.contact(x, y, ball + radius, 0.86, 0 if self.tilt else 16) and not self.tilt:
                 self.bumper_hits += 1
                 level = 1 + min(2, self.bumper_hits // rules.bumper_step)
+                if self.jackpot_ticks or self.others:
+                    self.jackpot_pool += rules.jackpot_growth
                 self.signal(f"bumper{i}", (rules.bumper_jackpot if self.jackpot_ticks or self.others else rules.bumper) * level)
         for i, rail in enumerate(lay.targets):
             if self.segment(rail, ball + 0.08) and not self.tilt and not self.bank & (1 << i):
@@ -445,9 +449,10 @@ class Table:
                 if self.jackpot_shot:
                     self.jackpots += 1
                     if rules.super_every and self.jackpots % rules.super_every == 0:
-                        self.signal("super", rules.super_jackpot)
+                        self.signal("super", rules.super_jackpot + self.jackpot_pool)
                     else:
-                        self.signal("jackpot", rules.jackpot)
+                        self.signal("jackpot", rules.jackpot + self.jackpot_pool)
+                    self.jackpot_pool = 0
                 else:
                     self.bank = 0
                     self.jackpot_ticks = rules.jackpot_ticks
