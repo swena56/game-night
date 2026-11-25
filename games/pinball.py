@@ -56,7 +56,7 @@ class Pinball(Game):
         "Pull down on the plunger shaft at the right side of the playfield and release to launch. You can also hold and release Space or Launch. Aim for the gold charge band.",
         "Tap or click either half of the playfield to flip on that side. A and D, arrow keys, and the Flip buttons also work. Use Q, W, E or the nudge buttons to move the table.",
         "The fourth nudge tilts the table and ends scoring until that ball drains. Clear all three targets, then shoot the ramp for 6,000 and start a 20-second jackpot round. Repeat ramp shots for 12,000 each.",
-        "Each ball has one automatic save during its first four seconds on the playfield. Everyone plays three balls on a separate table. Highest score wins.",
+        "Each ball has one automatic save during its first four seconds on the playfield. Everyone plays three balls on a separate table. Reach 60,000 and 180,000 points for an extra ball. Highest score wins.",
     ]
 
     def start(self, seated, rng):
@@ -142,6 +142,6 @@ class Pinball(Game):
 
     def view(self, p):
         table = self.tables.get(p.id)
-        return {"pinball": {**self.snapshot(), "layout": LAYOUT, "solo": self.solo,
+        return {"pinball": {**self.snapshot(), "layout": LAYOUT, "extra": list(Table.rules.extra_ball_scores), "solo": self.solo,
                             "me": p.id if table and not table.departed else None,
                             "epoch": table.epoch if table else None}}

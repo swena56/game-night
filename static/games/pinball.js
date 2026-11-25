@@ -681,7 +681,8 @@
     const { find } = g;
     setText(find('score'), row[SCORE].toLocaleString());
     setText(find('balls'), row[BALLS]);
-    setText(find('nudges'), row[TILT] ? 'Tilted' : `Nudges ${3 - row[NUDGES]}`);
+    const nextExtra = (g.extra || []).find((v) => v > row[SCORE]);
+    setText(find('nudges'), row[TILT] ? 'Tilted' : `Nudges ${3 - row[NUDGES]}${nextExtra ? ` · Extra ball ${nextExtra.toLocaleString()}` : ''}`);
     setText(find('ramp'), row[JACKPOT] ? 'Jackpot lit' : rampLit(row) ? 'Ramp ready' : `Targets ${(row[BANK] & 1) + (row[BANK] >> 1 & 1) + (row[BANK] >> 2 & 1)}/3`);
     find('ramp').classList.toggle('lit', !!rampLit(row));
     find('save').classList.toggle('lit', row[SAVE] > 0);
@@ -885,6 +886,7 @@
         g.run = data.pin;
         g.solo = data.solo;
         g.skill = data.layout.skill;
+        g.extra = data.extra || [];
         const saved = load(bestKey);
         g.best = Number.isSafeInteger(saved) && saved >= 0 ? saved : null;
         const band = g.find('skill-band');
