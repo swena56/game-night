@@ -283,6 +283,25 @@ class PinballRules(unittest.TestCase):
             events.add(table.event)
         self.assertIn("search", events)
 
+    def test_orbit_carries_the_ball_then_the_diverter_shuts(self):
+        from games.pinball import ORBIT, ORBIT_EXIT, ORBIT_PATH
+        table = placed(ORBIT[0], ORBIT[1] + .1, 0, -8)
+        table.step()
+        self.assertGreater(table.orbit_ticks, 0)
+        seen = []
+        for _ in range(table.rules.orbit_ticks + 2):
+            table.step()
+            seen.append((table.x, table.y, table.height))
+        self.assertTrue(all(h == .45 for *_, h in seen[:table.rules.orbit_ticks - 2]))
+        self.assertEqual((table.event, table.score), ("orbit", 3000))
+        self.assertAlmostEqual(table.vx, ORBIT_EXIT[0], delta=2.1)
+        self.assertAlmostEqual(table.vy, ORBIT_EXIT[1], delta=.2)
+        self.assertGreater(table.orbit_cool, 0)
+        # the diverter is shut: a second shot up the wall is just a wall hit
+        table.x, table.y, table.vx, table.vy = ORBIT[0], ORBIT[1] + .1, 0, -8
+        table.step()
+        self.assertEqual(table.orbit_ticks, 0)
+
     def test_lanes_spinner_bank_and_ramp(self):
         table = placed(*ROLLOVERS[0])
         for _ in range(4):

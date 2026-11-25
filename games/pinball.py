@@ -33,6 +33,10 @@ ROLLOVERS = ((2.25, 3.5), (4.25, 3.5), (6.25, 3.5))
 SPINNER = (7.95, 7.4)
 # Scoop on the upper left: holds the ball briefly, then kicks it back toward the bumpers.
 SAUCER = (1.6, 4.7, 0.3)
+# Left orbit: a wall-hugging wire lane from the left wall up and across the top, closed by a diverter after each use.
+ORBIT = (0.5, 5.6, 0.4)
+ORBIT_PATH = ((0.5, 5.6), (0.45, 3.2), (1.0, 1.2), (2.2, 0.7), (7.0, 0.8))
+ORBIT_EXIT = (-1, 6)
 # Right outlane special: lit at 2x or more, awards a ball save once per ball.
 SPECIAL = (7.9, 13.9)
 # Rubber posts cap the rollover dividers and guard the slingshot tips.
@@ -47,7 +51,7 @@ RAMP_EXIT = (7.75, 8.6)
 GOLDEN_HOUR = Layout(
     rails=RAILS, gate=GATE, slings=SLINGS, bumps=BUMPS, targets=TARGETS, lanes=ROLLOVERS,
     spinner=SPINNER, ramp=RAMP, ramp_exit=RAMP_EXIT, flippers=FLIPPERS, launch=LAUNCH,
-    outlane=OUTLANE, saucer=SAUCER, special=SPECIAL, posts=POSTS, magnet=MAGNET, subway=SUBWAY, subway_exit=SUBWAY_EXIT, width=WIDTH, height=HEIGHT, ball=BALL, flipper_length=LENGTH,
+    outlane=OUTLANE, saucer=SAUCER, orbit=ORBIT, orbit_path=ORBIT_PATH, orbit_exit=ORBIT_EXIT, special=SPECIAL, posts=POSTS, magnet=MAGNET, subway=SUBWAY, subway_exit=SUBWAY_EXIT, width=WIDTH, height=HEIGHT, ball=BALL, flipper_length=LENGTH,
     flipper_radius=FLIP_RADIUS, skill_charge=SKILL_CHARGE)
 LAYOUT = GOLDEN_HOUR.public()
 
@@ -58,7 +62,7 @@ NEON_RAILS = RAILS[:-2] + ((2.3, 9.4, 3.05, 10.3), (7.7, 9.4, 6.95, 10.3))
 NEON_ARCADE = Layout(
     rails=NEON_RAILS, gate=GATE, slings=SLINGS, bumps=NEON_BUMPS, targets=TARGETS, lanes=ROLLOVERS,
     spinner=SPINNER, ramp=RAMP, ramp_exit=RAMP_EXIT, flippers=FLIPPERS, launch=LAUNCH,
-    outlane=OUTLANE, saucer=SAUCER, special=SPECIAL, posts=POSTS, magnet=MAGNET, subway=SUBWAY, subway_exit=SUBWAY_EXIT, width=WIDTH, height=HEIGHT, ball=BALL, flipper_length=LENGTH,
+    outlane=OUTLANE, saucer=SAUCER, orbit=ORBIT, orbit_path=ORBIT_PATH, orbit_exit=ORBIT_EXIT, special=SPECIAL, posts=POSTS, magnet=MAGNET, subway=SUBWAY, subway_exit=SUBWAY_EXIT, width=WIDTH, height=HEIGHT, ball=BALL, flipper_length=LENGTH,
     flipper_radius=FLIP_RADIUS, skill_charge=SKILL_CHARGE, theme="neon")
 
 

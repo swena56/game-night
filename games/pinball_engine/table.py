@@ -14,11 +14,11 @@ from uuid import uuid4
 from .layout import STEP, Layout, closest
 from .rules import Rules
 
-SHOT_OF = dict(lane="lane", skill="lane", target="target", spinner="spinner", ramp="ramp", jackpot="ramp", super="ramp", hurry="spinner")
+SHOT_OF = dict(orbit="orbit", lane="lane", skill="lane", target="target", spinner="spinner", ramp="ramp", jackpot="ramp", super="ramp", hurry="spinner")
 SPEED_CAP = 42
 # Per-ball state: the table swaps these between the main ball and each extra multiball ball.
 BALL_STATE = ("x", "y", "vx", "vy", "height", "ramp_ticks", "rollovers", "skill", "smooth_launch",
-              "still", "still_origin", "jackpot_shot", "saucer_ticks", "subway_ticks", "english")
+              "still", "still_origin", "jackpot_shot", "saucer_ticks", "subway_ticks", "english", "orbit_ticks")
 
 
 @dataclass
@@ -52,6 +52,8 @@ class Table:
     ramp_ticks: int = 0
     saucer_ticks: int = 0
     subway_ticks: int = 0
+    orbit_ticks: int = 0
+    orbit_cool: int = 0         # ticks the orbit diverter stays shut
     english: float = 0.0        # ball spin: curves the path after a glancing hit on rubber
     magnet_ticks: int = 0       # >0 while the magnet is energised
     magnet_cool: int = 0
@@ -450,6 +452,10 @@ class Table:
                 self.x, self.y, self.vx, self.vy, self.english = cx, cy, 0, 0, 0
                 if not self.tilt:
                     self.signal("saucer", rules.saucer)
+        if lay.orbit and not self.orbit_ticks and not self.orbit_cool and self.vy < -3 and not self.height:
+            ox, oy, radius = lay.orbit
+            if math.hypot(self.x - ox, self.y - oy) < radius:
+                self.orbit_ticks = 1        # the diverter swings open and the ball rides the wire lane
         if lay.subway and lay.subway_exit and not self.subway_ticks:
             cx, cy, radius = lay.subway
             if math.hypot(self.x - cx, self.y - cy) < radius * 0.7 and self.height >= 0:
@@ -490,6 +496,7 @@ class Table:
             if not self.magnet_ticks:
                 self.magnet_cool = rules.magnet_cooldown
         self.magnet_cool = max(0, self.magnet_cool - 1)
+        self.orbit_cool = max(0, self.orbit_cool - 1)
         if self.mission >= 0:
             self.mission_ticks -= 1
             if self.mission_ticks <= 0:
@@ -543,12 +550,15 @@ class Table:
 
     def free_ball(self, x, y, vx, vy):
         return dict(x=x, y=y, vx=vx, vy=vy, height=0, ramp_ticks=0, rollovers=0, skill=False,
-                    smooth_launch=False, still=0, still_origin=(x, y), jackpot_shot=False, saucer_ticks=0, subway_ticks=0, english=0.0)
+                    smooth_launch=False, still=0, still_origin=(x, y), jackpot_shot=False, saucer_ticks=0, subway_ticks=0, english=0.0, orbit_ticks=0)
 
     def run_ball(self, previous):
         lay = self.layout
         if self.ramp_ticks:
             self.ride_ramp()
+            return
+        if self.orbit_ticks:
+            self.ride_orbit()
             return
         if self.subway_ticks:
             self.subway_ticks -= 1
@@ -613,6 +623,28 @@ class Table:
         pull = 60 * (1 - distance / reach) * STEP
         self.vx = self.vx * 0.97 + dx / max(distance, 0.05) * pull
         self.vy = self.vy * 0.97 + dy / max(distance, 0.05) * pull
+
+    def ride_orbit(self):
+        """The ball follows the orbit's waypoints at a steady pace, a little above the playfield."""
+        lay, rules = self.layout, self.rules
+        path = lay.orbit_path
+        t = self.orbit_ticks / rules.orbit_ticks * (len(path) - 1)
+        i = min(int(t), len(path) - 2)
+        f = t - i
+        self.x = path[i][0] + (path[i + 1][0] - path[i][0]) * f
+        self.y = path[i][1] + (path[i + 1][1] - path[i][1]) * f
+        self.height = 0.45
+        self.english = 0
+        self.orbit_ticks += 1
+        if self.orbit_ticks > rules.orbit_ticks:
+            self.orbit_ticks = 0
+            self.height = 0
+            self.vx, self.vy = lay.orbit_exit[0] + (self.rng.random() - .5) * 4, lay.orbit_exit[1]   # the exit flap spreads shots
+            self.orbit_cool = rules.orbit_cooldown
+            self.still = 0
+            self.still_origin = (self.x, self.y)
+            if not self.tilt:
+                self.signal("orbit", rules.orbit)
 
     def hold_in_saucer(self):
         """The ball rests in the dish, then the kicker fires it back into play."""
@@ -771,6 +803,7 @@ class Table:
                 {"jackpot": self.jackpots, "multiball": self.multiballs, "hurry": self.hurry_wins,
                  "mystery": self.mysteries, "extra": self.extras, "combo": self.best_combo,
                  "wizard": self.wizards, "skill_lane": self.skill_lane, "missions": self.missions_done,
+                 "orbit": int(bool(self.layout.orbit) and not self.orbit_cool and not self.tilt),
                  "special": int(self.special_lit() and not self.special_used),
                  "magnet": 2 if self.magnet_ticks else 1 if self.magnet_armed() and not self.magnet_cool else 0,
                  "mission": ([self.rules.missions[self.mission][0], self.mission_progress, self.rules.missions[self.mission][2],

@@ -42,6 +42,9 @@ class Rules:
     shots: tuple = ("lane", "target", "spinner", "ramp")
     first_lit: int = 3
     saucer: int = 1000
+    orbit: int = 3000
+    orbit_ticks: int = 120        # time the ball spends riding the orbit
+    orbit_cooldown: int = 2 * 240  # the diverter flap stays shut this long after an orbit
     special_points: int = 5000
     special_save_ticks: int = 8 * 240
     search_ticks: int = 360       # a ball that has not moved this long triggers a ball search (all coils fire)

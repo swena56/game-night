@@ -68,9 +68,9 @@ Rough effort: S = a few lines, M = an engine or renderer change, L = new compone
 55. [x] Magnet holds a ball in a jackpot round.
 56. [ ] S: Spinner coasts and slows down by friction, with the sound slowing too.
 57. [ ] S: Spinner scores only when hit from the front; backside hits spin it but do not score.
-58. [ ] M: Ramp diverter (lets the ball pass the ramp mouth or sends it to the lane).
+58. [x] M: Ramp diverter (lets the ball pass the ramp mouth or sends it to the lane).
 59. [ ] M: Ramp has two or three exits (left orbit, right orbit, inner loop) with different scores.
-60. [ ] M: Orbit shots: full-table loop with a one-way gate and a "combo" lit shot.
+60. [x] M: Orbit shots: full-table loop with a one-way gate and a "combo" lit shot.
 61. [ ] S: Ramp "made" and "fall back" sound: ball can roll back down an under-powered shot.
 62. [ ] M: Wire ramp (open sides): the ball is visible all the way and may jump out on a fast shot.
 63. [ ] S: Saucer/ball-eject: lamp flashes during hold and the ball is kicked on a rhythm.
