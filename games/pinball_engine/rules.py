@@ -54,6 +54,9 @@ class Rules:
     subway: int = 2000
     subway_ticks: int = 100       # time the ball spends under the playfield
     saucer_ticks: int = 150       # how long the saucer holds the ball before kicking it out
+    target_threshold: float = 2.5  # a stand-up target needs a firm hit; a light touch just bounces
+    flipper_power: tuple = (1.0, 0.97)   # left and right bats differ slightly, as worn coils do
+    slam_ticks: int = 96           # this many nudges inside this window is a slam tilt
     sling_cooldown: int = 12      # ticks before a slingshot can fire again (the kicker arm must reset)
     sling_threshold: float = 4.0  # ball speed into the blade needed to fire a slingshot
     gravity: float = 11.0        # table slope: higher plays faster

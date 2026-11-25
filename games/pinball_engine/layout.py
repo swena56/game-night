@@ -38,6 +38,7 @@ class Layout:
     orbit: tuple | None = None        # (x, y, radius) mouth of an orbit lane the ball rides along orbit_path
     orbit_path: tuple = ()            # waypoints (x, y) from the mouth to the exit
     orbit_exit: tuple = (0, 5)        # (vx, vy) the ball leaves with
+    guides_from: int = 9              # rails from this index on are metal guides (livelier than the walls)
     posts: tuple = ()                 # (x, y, radius) passive rubber posts: they bounce the ball, no score
     magnet: tuple | None = None       # (x, y, pull radius): grabs and holds the ball while energised
     saucer: tuple | None = None   # (x, y, radius) scoop: captures a slow ball, holds it, then kicks it back out

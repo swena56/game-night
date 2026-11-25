@@ -54,6 +54,15 @@ class Table:
     subway_ticks: int = 0
     orbit_ticks: int = 0
     orbit_cool: int = 0         # ticks the orbit diverter stays shut
+    flip_contact: bool = False   # a flipper touched the ball this tick
+    bumper_heat: float = 0.0     # rapid bumper hits weaken the coil a little
+    bumper_streak: int = 0
+    streak_ticks: int = 0
+    post_glow: int = 0
+    wear: int = 0                # rubber hits so far; worn rubber is slightly deader
+    ticks: int = 0
+    nudge_times: list = field(default_factory=list)
+    spin_front: bool = True
     english: float = 0.0        # ball spin: curves the path after a glancing hit on rubber
     magnet_ticks: int = 0       # >0 while the magnet is energised
     magnet_cool: int = 0
@@ -268,13 +277,18 @@ class Table:
             self.save_ticks = self.jackpot_ticks = 0
             self.signal("tilt")
             return
+        self.nudge_times = [t for t in self.nudge_times if self.ticks - t < self.rules.slam_ticks] + [self.ticks]
+        if len(self.nudge_times) > self.rules.max_nudges and self.mode != "zen":
+            self.nudges = self.rules.max_nudges        # a slam: too many nudges too fast tilts at once
+            self.nudge(0)
+            return
         self.nudges += 1
         for ball in self.others:
             ball["vx"] += 4.8 * direction
             ball["vy"] -= 3.4 if not direction else 1.8
         self.vx += 4.8 * direction
         self.vy -= 3.4 if not direction else 1.8
-        self.signal("nudge")
+        self.signal("danger" if self.nudges == self.rules.max_nudges else "nudge")
 
     def time_up(self):
         """Time attack: the clock ends the run on the spot; the ball in play still banks its bonus."""
@@ -354,7 +368,7 @@ class Table:
         for i, (_, _, rest, up) in enumerate(self.layout.flippers):
             active = not self.tilt and (self.held & (1 << i) or self.buffer[i])
             target = up if active else rest
-            speed = (31 if active else 20) * STEP
+            speed = (31 * self.rules.flipper_power[i % 2] if active else 20) * STEP
             self.angles[i] += max(-speed, min(speed, target - self.angles[i]))
             self.buffer[i] = max(0, self.buffer[i] - 1)
         return previous
@@ -369,8 +383,12 @@ class Table:
         speed = travel / STEP
         # a still (resting or held) flipper gives a dead catch; a swinging one gives a live bounce
         moving = abs(speed) > 1
-        if self.contact(cx, cy, lay.ball + lay.flipper_radius, 0.55 if moving else 0.3, 0,
-                        -(cy - ay) * speed, (cx - ax) * speed) and not moving \
+        # a slow ball rolled along a swinging bat is dribbled off softly instead of being thrown
+        bounce = 0.3 if not moving else 0.35 if math.hypot(self.vx, self.vy) < 3 else 0.55
+        touched = self.contact(cx, cy, lay.ball + lay.flipper_radius, bounce, 0,
+                               -(cy - ay) * speed, (cx - ax) * speed)
+        self.flip_contact = self.flip_contact or touched
+        if touched and not moving \
                 and math.hypot(self.vx, self.vy) < 4:
             self.vx *= 0.96        # a slow ball cradles on the bat and rolls to a stop
             self.vy *= 0.96
@@ -378,8 +396,8 @@ class Table:
     def mechanisms(self, old_y):
         lay, rules = self.layout, self.rules
         ball = lay.ball
-        for rail in lay.rails:
-            self.segment(rail)
+        for i, rail in enumerate(lay.rails):
+            self.segment(rail, bounce=0.85 if i >= lay.guides_from else 0.77)
         if lay.gate and not self.smooth_launch:
             self.segment(lay.gate, bounce=0.5)
         for i in list(self.sling_cool):
@@ -392,15 +410,31 @@ class Table:
             cx, cy = closest(self.x, self.y, *rail)
             dx, dy = self.x - cx, self.y - cy
             gap = math.hypot(dx, dy)
-            hard = i not in self.sling_cool and gap > 1e-8 and -(self.vx * dx + self.vy * dy) / gap >= rules.sling_threshold
-            if self.segment(rail, ball + 0.09, bounce=0.77 if hard else 0.4,
-                            kick=13 if hard and not self.tilt else 0) and hard and not self.tilt:
-                self.sling_cool[i] = rules.sling_cooldown
-                self.signal(f"sling{i}", rules.sling)
+            length = math.hypot(rail[2] - rail[0], rail[3] - rail[1])
+            along = math.hypot(cx - rail[0], cy - rail[1]) / length
+            # the kicker arm sits in the middle of the rubber: hits near the ends are just rubber
+            hard = i not in self.sling_cool and gap > 1e-8 and 0.12 < along < 0.88 \
+                and -(self.vx * dx + self.vy * dy) / gap >= rules.sling_threshold
+            worn = 1 - min(0.12, self.wear / 20000)
+            if self.segment(rail, ball + 0.09, bounce=(0.77 if hard else 0.4) * worn,
+                            kick=13 if hard and not self.tilt else 0):
+                self.wear += 1
+                if hard and not self.tilt:
+                    self.sling_cool[i] = rules.sling_cooldown
+                    if self.flip_contact:          # flipper and sling in the same instant: the hit is partly absorbed
+                        self.vx *= 0.88
+                        self.vy *= 0.88
+                    self.signal(f"sling{i}", rules.sling)
         for x, y, radius in lay.posts:
-            self.contact(x, y, ball + radius, 0.62)
+            worn = 1 - min(0.12, self.wear / 20000)
+            if self.contact(x, y, ball + radius, (0.62 + (self.rng.random() - 0.5) * 0.08) * worn):
+                self.wear += 1
+                self.post_glow = 18
         for i, (x, y, radius) in enumerate(lay.bumps):
-            if self.contact(x, y, ball + radius, 0.86, 0 if self.tilt else 16) and not self.tilt:
+            if self.contact(x, y, ball + radius, 0.86, 0 if self.tilt else 16 * max(0.7, 1 - self.bumper_heat)) and not self.tilt:
+                self.bumper_heat = min(0.5, self.bumper_heat + 0.07)
+                self.bumper_streak = self.bumper_streak + 1 if self.streak_ticks else 1
+                self.streak_ticks = 240
                 self.bumper_hits += 1
                 level = 1 + min(2, self.bumper_hits // rules.bumper_step)
                 if self.jackpot_ticks or self.others:
@@ -409,8 +443,14 @@ class Table:
         for i, rail in enumerate(lay.targets):
             if self.bank & (1 << i):
                 continue       # a dropped target is flush with the playfield until the bank resets
-            if self.segment(rail, ball + 0.08) and not self.tilt:
+            cx, cy = closest(self.x, self.y, *rail)
+            gap = math.hypot(self.x - cx, self.y - cy)
+            firm = gap > 1e-8 and -(self.vx * (self.x - cx) + self.vy * (self.y - cy)) / gap >= rules.target_threshold
+            if self.segment(rail, ball + 0.08) and firm and not self.tilt:
                 self.bank |= 1 << i
+                spot = self.lane_bits | (1 << (i % max(1, len(lay.lanes))))
+                if lay.lanes and spot != (1 << len(lay.lanes)) - 1:
+                    self.lane_bits = spot          # a target spots its rollover lane
                 self.signal(f"target{i}", rules.target)
         if lay.special and self.special_lit() and not self.special_used and self.vy > 0 \
                 and lay.special[0] < self.x < lay.lane_x and self.y > lay.special[1]:
@@ -424,7 +464,7 @@ class Table:
             self.signal("kickback")
         if self.tilt:
             return
-        current = sum(1 << i for i, (x, y) in enumerate(lay.lanes) if math.hypot(self.x - x, self.y - y) < 0.44)
+        current = sum(1 << i for i, (x, y) in enumerate(lay.lanes) if math.hypot(self.x - x, self.y - y) < 0.3)
         for i in range(len(lay.lanes)):
             if current & ~self.rollovers & (1 << i):
                 self.signal("skill" if self.skill else f"lane{i}",
@@ -445,6 +485,7 @@ class Table:
             sx, sy = lay.spinner
             if abs(self.x - sx) < 0.55 and (old_y < sy <= self.y or self.y <= sy < old_y):
                 self.spin_left += max(1, min(5, int(abs(self.vy) / 5)))
+                self.spin_front = self.vy < 0
         if lay.saucer and not self.saucer_ticks:
             cx, cy, radius = lay.saucer
             if math.hypot(self.x - cx, self.y - cy) < radius * 0.7 and math.hypot(self.vx, self.vy) < 22:
@@ -468,6 +509,9 @@ class Table:
             rx, ry = lay.ramp
             jackpot = bool(self.jackpot_ticks or self.others)
             lit = jackpot or self.bank == (1 << len(lay.targets)) - 1
+            if lit and -7 <= self.vy < -2 and self.y <= ry < old_y and abs(self.x - rx) < 0.65:
+                self.vy = abs(self.vy) * 0.6        # an under-powered shot rolls back down the ramp mouth
+                self.signal("rampfall")
             if lit and self.vy < -7 and self.y <= ry < old_y and abs(self.x - rx) < 0.65:
                 self.ramp_ticks = 1
                 self.jackpot_shot = jackpot
@@ -486,6 +530,10 @@ class Table:
             if self.held & 4:
                 self.charge = min(240, self.charge + 1)
             return
+        self.ticks += 1
+        self.post_glow = max(0, self.post_glow - 1)
+        self.streak_ticks = max(0, self.streak_ticks - 1)
+        self.bumper_heat *= 0.998
         self.save_ticks = max(0, self.save_ticks - 1)
         self.jackpot_ticks = max(0, self.jackpot_ticks - 1)
         self.combo_ticks = max(0, self.combo_ticks - 1)
@@ -507,7 +555,7 @@ class Table:
                 self.time_up()
                 return
         if self.spin_left:
-            turn = min(self.spin_left, 8 * STEP)
+            turn = min(self.spin_left, min(8 * STEP, max(3 * STEP, self.spin_left * 8 * STEP)))   # slows as it runs down
             old_spin = self.spin
             self.spin += turn
             self.spin_left -= turn
@@ -518,7 +566,8 @@ class Table:
                     self.hurry_ticks = 0
                     self.signal("hurry", value)
                 else:
-                    self.signal("spinner", rules.spinner * (1 + min(4, self.spins // rules.spinner_step)))
+                    value = rules.spinner * (1 + min(4, self.spins // rules.spinner_step))
+                    self.signal("spinner", value if self.spin_front else value // 2)   # the back of the paddle pays half
         self.run_ball(previous)
         if self.gone:      # the main ball drained while others are in play: another takes over
             self.gone = False
@@ -572,6 +621,7 @@ class Table:
             self.hold_in_saucer()
             return
         old_y = self.y
+        self.flip_contact = False
         self.pull_magnet()
         # rolling resistance grows with speed (a faster ball loses a little more per tick)
         drag = 0.9994 - 0.00001 * min(40.0, math.hypot(self.vx, self.vy))
@@ -769,6 +819,8 @@ class Table:
                 self.drain()
         elif math.hypot(self.x - self.still_origin[0], self.y - self.still_origin[1]) < lay.ball:
             self.still += 1
+            if self.still == 150 and lay.flipper_zone[0] < self.y < lay.flipper_zone[1]:
+                self.vx += 1.2 * (1 if self.x < lay.center[0] else -1)     # a ball left on a lowered bat creeps toward the drain
             if self.still == self.rules.search_ticks and self.y < lay.flipper_zone[0]:
                 # ball search: every coil fires at once, which jolts the ball loose
                 self.vx += 2.5 * (1 if self.x < lay.center[0] else -1)
@@ -805,6 +857,7 @@ class Table:
                  "wizard": self.wizards, "skill_lane": self.skill_lane, "missions": self.missions_done,
                  "orbit": int(bool(self.layout.orbit) and not self.orbit_cool and not self.tilt),
                  "special": int(self.special_lit() and not self.special_used),
-                 "magnet": 2 if self.magnet_ticks else 1 if self.magnet_armed() and not self.magnet_cool else 0,
+                 "post": self.post_glow, "streak": self.bumper_streak if self.streak_ticks else 0, "hold": int(self.saucer_ticks > 0),
+                 "under": int(self.subway_ticks > 0), "magnet": 2 if self.magnet_ticks else 1 if self.magnet_armed() and not self.magnet_cool else 0,
                  "mission": ([self.rules.missions[self.mission][0], self.mission_progress, self.rules.missions[self.mission][2],
                               math.ceil(self.mission_ticks / 240)] if self.mission >= 0 else None), "mode": self.mode, "clock": math.ceil(self.clock / 240)}]

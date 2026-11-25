@@ -40,7 +40,8 @@ ORBIT_EXIT = (-1, 6)
 # Right outlane special: lit at 2x or more, awards a ball save once per ball.
 SPECIAL = (7.9, 13.9)
 # Rubber posts cap the rollover dividers and guard the slingshot tips.
-POSTS = ((3.25, 2.85, 0.11), (5.25, 2.85, 0.11), (3.55, 12.9, 0.11), (6.45, 12.9, 0.11))
+POSTS = ((3.25, 2.85, 0.11), (5.25, 2.85, 0.11), (3.55, 12.9, 0.11), (6.45, 12.9, 0.11),
+         (0.9, 12.1, 0.09), (7.9, 12.3, 0.13))
 # The magnet sits mid-table and only wakes during jackpot rounds and multiball.
 MAGNET = (5.0, 9.6, 1.1)
 # Subway: a mouth by the right wall drops the ball under the playfield; it comes back up on the left.
@@ -58,10 +59,11 @@ LAYOUT = GOLDEN_HOUR.public()
 # Neon Arcade: the same cabinet and outer walls with a busier field - four bumpers in a zig-zag, shifted
 # inlane guides and a hotter rule set (more points, quicker hurry-up, extra balls come later).
 NEON_BUMPS = ((2.7, 5.4, 0.6), (6.7, 4.95, 0.6), (3.0, 7.9, 0.5), (6.35, 8.15, 0.5))
+NEON_FLIPPERS = flipper_pair(14.95, 3.22, 6.78, rest=0.46, up=0.70)   # a steeper bat for the busier table
 NEON_RAILS = RAILS[:-2] + ((2.3, 9.4, 3.05, 10.3), (7.7, 9.4, 6.95, 10.3))
 NEON_ARCADE = Layout(
     rails=NEON_RAILS, gate=GATE, slings=SLINGS, bumps=NEON_BUMPS, targets=TARGETS, lanes=ROLLOVERS,
-    spinner=SPINNER, ramp=RAMP, ramp_exit=RAMP_EXIT, flippers=FLIPPERS, launch=LAUNCH,
+    spinner=SPINNER, ramp=RAMP, ramp_exit=RAMP_EXIT, flippers=NEON_FLIPPERS, launch=LAUNCH,
     outlane=OUTLANE, saucer=SAUCER, orbit=ORBIT, orbit_path=ORBIT_PATH, orbit_exit=ORBIT_EXIT, special=SPECIAL, posts=POSTS, magnet=MAGNET, subway=SUBWAY, subway_exit=SUBWAY_EXIT, width=WIDTH, height=HEIGHT, ball=BALL, flipper_length=LENGTH,
     flipper_radius=FLIP_RADIUS, skill_charge=SKILL_CHARGE, theme="neon")
 

@@ -302,6 +302,50 @@ class PinballRules(unittest.TestCase):
         table.step()
         self.assertEqual(table.orbit_ticks, 0)
 
+    def test_batch_of_small_realism_details(self):
+        # danger on the last allowed nudge, slam tilt on a burst of nudges
+        table = placed(5, 11)
+        table.staged = False
+        events = []
+        for _ in range(3):
+            table.nudge(1)
+            events.append(table.event)
+            table.ticks += 200
+        self.assertEqual(events, ["nudge", "nudge", "danger"])
+        slam = placed(5, 11)
+        slam.staged = False
+        for _ in range(4):
+            slam.nudge(1)
+        self.assertTrue(slam.tilt)
+        # a light touch on a stand-up target bounces; a firm one drops it and spots its rollover lane
+        x, y, _, end = TARGETS[0]
+        light = placed(x + .29, (y + end) / 2, -1, 0)
+        light.step()
+        self.assertEqual((light.bank, light.score), (0, 0))
+        firm = placed(x + .29, (y + end) / 2, -10, 0)
+        firm.step()
+        self.assertEqual((firm.bank, firm.lane_bits), (1, 1))
+        # rapid bumper hits weaken the coil and set a streak; posts glow on contact
+        table = placed(5, 11)
+        bx, by, br = BUMPS[0]
+        table.bumper_heat = .4
+        table.x, table.y, table.vx, table.vy = bx + br + .2, by, -10, 0
+        table.step()
+        self.assertEqual(table.bumper_streak, 1)
+        self.assertLess(table.vx, 16 * .7 + 10)
+        from games.pinball import POSTS
+        px, py, pr = POSTS[0]
+        table = placed(px + pr + BALL + .02, py, -6)
+        table.step()
+        self.assertGreater(table.post_glow, 0)
+        # an under-powered shot at the lit ramp rolls back instead of going up
+        rx, ry = RAMP
+        table = placed(rx, ry + .01, 0, -4)
+        table.bank = 7
+        table.step()
+        self.assertEqual(table.event, "rampfall")
+        self.assertGreater(table.vy, 0)
+
     def test_lanes_spinner_bank_and_ramp(self):
         table = placed(*ROLLOVERS[0])
         for _ in range(4):
@@ -309,10 +353,11 @@ class PinballRules(unittest.TestCase):
         self.assertEqual(table.score, 500)
         x, y = SPINNER
         table = placed(x, y - .01, vy=13)
-        for _ in range(85):
+        for _ in range(100):
             table.step()
-        self.assertEqual((table.event, table.score), ("spinner", 250))
-        self.assertEqual(int(table.spin), 2)  # two rotations plus a slingshot on the way down
+        # a ball dropping onto the back of the paddle pays half: two rotations at 50 each (the spinner coasts to a stop)
+        self.assertEqual((table.event, table.score), ("spinner", 100))
+        self.assertEqual(table.spins, 2)
 
         table = placed(*LAUNCH)
         table.lit = 0
