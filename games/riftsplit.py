@@ -285,7 +285,7 @@ class Board:
             walls = [int(w["v"]), w["cx"], w["cy"]] + [v for h in w["h"] for v in (round(h["len"], 2), h["room"], "x" if h["st"] == "dead" else h["st"][0])]
         out = {"lv": self.level, "lives": self.lives, "score": self.score, "pct": round(self.pct, 4), "st": self.state,
                "b": [[round(b[0], 2), round(b[1], 2)] for b in self.balls], "w": walls,
-               "p": self.pickups, "sh": self.shield, "slow": max(0, round(self.slow_until - now, 1)),
+               "p": self.pickups, "mu": min(5, 1 + self.streak // 2), "sh": self.shield, "slow": max(0, round(self.slow_until - now, 1)),
                "ev": [self.event_id, self.event], "rev": self.rev}
         if full:
             out["g"] = self.grid_str()

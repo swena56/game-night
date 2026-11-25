@@ -510,7 +510,7 @@
       if (b.g) prev.grid = b.g;
       else if (b.rev !== prev.rev) prev.stale = true;
       prev.rev = b.rev;
-      Object.assign(prev, { w: b.w, p: b.p, lives: b.lives, score: b.score, pct: b.pct, st: b.st, lv: b.lv, sh: b.sh, slow: b.slow, b: b.b });
+      Object.assign(prev, { w: b.w, p: b.p, lives: b.lives, score: b.score, pct: b.pct, st: b.st, lv: b.lv, mu: b.mu || 1, sh: b.sh, slow: b.slow, b: b.b });
       if (!prev.bs || prev.bs.length !== b.b.length) { prev.bs = b.b.map((q) => q.slice()); prev.bv = b.b.map(() => [0, 0]); }
       // orb velocity from the last two packets, so the drawn orbs keep moving between the ~30 Hz updates
       const dt = (g.receivedAt - (prev.at ?? 0)) / 1000;
@@ -544,6 +544,9 @@
     }
     if (s === g.boards[g.me]) g.lastLives = s.lives;
     g.find('lives').textContent = '❤️'.repeat(Math.max(0, s.lives)) + (s.sh ? '🛡️' : '');
+    const cb = g.find('combo');
+    cb.hidden = !(s.mu > 1 && s.st === 'play');
+    if (!cb.hidden && cb.dataset.mu !== String(s.mu)) { cb.dataset.mu = s.mu; cb.textContent = '🔥 ×' + s.mu + ' combo'; cb.classList.remove('rs-bump'); void cb.offsetWidth; cb.classList.add('rs-bump'); }
     g.find('slow').hidden = !(s.slow > 0);
     if (s.slow > 0) g.find('slow').textContent = '⏳ ' + Math.ceil(s.slow);
     if (s === g.boards[g.me] && g.lastScore != null && s.score > g.lastScore && s.st === 'play') g.pop('+' + (s.score - g.lastScore).toLocaleString());
@@ -623,7 +626,7 @@
           <div><span class="rs-cap">Lives</span><strong class="rs-lives"></strong></div>
           <div class="rs-best-tile"><span class="rs-cap">Best</span><strong class="rs-best">—</strong></div>
         </div>
-        <div class="rs-bar rs-bar-x" role="meter" aria-label="Field sealed" aria-valuemin="0" aria-valuemax="100"><div class="rs-fill"></div><div class="rs-goal" title="75% to clear"></div><span class="rs-pct">0%</span><span class="rs-slow" hidden></span></div>
+        <div class="rs-bar rs-bar-x" role="meter" aria-label="Field sealed" aria-valuemin="0" aria-valuemax="100"><div class="rs-fill"></div><div class="rs-goal" title="75% to clear"></div><span class="rs-pct">0%</span><span class="rs-combo" hidden></span><span class="rs-slow" hidden></span></div>
         <div class="rs-stage" aria-label="Rift Split field"><span class="rs-msg" role="status"></span><div class="rs-coach" aria-hidden="true"><b>Hold</b> to aim · <b>slide</b> to move · <b>release</b> to grow a wall<small>Seal off the orbs. Don't let them hit a growing wall.</small></div></div>
         <div class="rs-controls"><button type="button" class="rs-view" aria-label="Camera view" title="Camera view" hidden>⬓</button><button type="button" class="rs-bright" aria-label="Brightness" title="Brightness">☀</button><div class="rs-dirs" role="group" aria-label="Wall direction"><button type="button" class="rs-dir" data-v="0" aria-pressed="true"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Horizontal</span></button><button type="button" class="rs-dir rs-v" data-v="1" aria-pressed="false"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Vertical</span></button></div><span class="rs-tip">Hold to preview, release to grow a wall · Space / right-click turns it · ⛶ for fullscreen</span></div>
         <ol class="rs-standings" aria-label="Scores" hidden></ol>

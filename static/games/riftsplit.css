@@ -113,3 +113,6 @@ body.focus .rs-cabinet { width: min(100%, 1100px); }
 @media (prefers-reduced-motion: reduce) { .rs-score.rs-bump, .rs-coach { animation: none; } }
 
 .rs-banner.rs-banner-lv { top: 30%; font-size: clamp(1rem, 4vw, 1.7rem); color: #ffd166; border-color: #ffd16666; }
+
+.rs-combo { position: absolute; left: 50px; top: 0; font-size: .7rem; line-height: 16px; font-weight: 800; color: #ffb347; text-shadow: 0 0 8px #ff7a1a; }
+.rs-combo.rs-bump { animation: rsBump .35s ease-out; }
