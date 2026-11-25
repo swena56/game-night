@@ -400,7 +400,7 @@
             const x = i % g.W, y = (i - x) / g.W;
             const open = (j, ok) => ok && s.grid[j] === '0';
             const rim = open(i - 1, x > 0) || open(i + 1, x < g.W - 1) || open(i - g.W, y > 0) || open(i + g.W, y < g.H - 1);
-            rimCol.copy(col).lerp(new T.Color(0xffffff), rim ? 0.65 : 0.22);
+            rimCol.copy(col).multiplyScalar(rim ? 1 : 0.62 + 0.06 * ((x + y) & 1)).lerp(new T.Color(0xffffff), rim ? 0.55 : 0);   // deep, faintly checkered interior; bright lit rim
             blocks.setColorAt(n, rimCol);
             blocks.setMatrixAt(n++, dummy.matrix);
           }
