@@ -195,19 +195,23 @@ class Board:
             mult = min(5, 1 + self.streak // 2)
             self.score += len(sealed) * 10 * mult
             self.emit("big" if len(sealed) >= 90 else "seal")
-            taken = {(x, y) for y, x in sealed}
-            for p in list(self.pickups):
-                if (p[0], p[1]) in taken:
-                    self.pickups.remove(p)
-                    if p[2] == "shield":
-                        self.shield = 1
-                        self.emit("shield+")
-                    else:
-                        self.slow_until = time.time() + SLOW_SECS
-                        self.emit("slow")
         elif sealed:
             self.rev += 1
+        if not self.sim:
+            self.collect()
         return len(sealed)
+
+    def collect(self):
+        """A pickup is yours once its cell is solid: sealed in, or under the wall line itself."""
+        for p in list(self.pickups):
+            if self.grid[p[1]][p[0]]:
+                self.pickups.remove(p)
+                if p[2] == "shield":
+                    self.shield = 1
+                    self.emit("shield+")
+                else:
+                    self.slow_until = time.time() + SLOW_SECS
+                    self.emit("slow")
 
     # ----- clock -----
     def step(self, dt, now):
@@ -278,7 +282,7 @@ class Board:
         walls = []
         if self.wall:
             w = self.wall
-            walls = [int(w["v"]), w["cx"], w["cy"]] + [v for h in w["h"] for v in (round(h["len"], 2), h["room"], h["st"][0])]
+            walls = [int(w["v"]), w["cx"], w["cy"]] + [v for h in w["h"] for v in (round(h["len"], 2), h["room"], "x" if h["st"] == "dead" else h["st"][0])]
         out = {"lv": self.level, "lives": self.lives, "score": self.score, "pct": round(self.pct, 4), "st": self.state,
                "b": [[round(b[0], 2), round(b[1], 2)] for b in self.balls], "w": walls,
                "p": self.pickups, "sh": self.shield, "slow": max(0, round(self.slow_until - now, 1)),

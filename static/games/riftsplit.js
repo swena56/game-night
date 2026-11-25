@@ -21,9 +21,9 @@
     const v = w[0], cx = w[1], cy = w[2], c = v ? cy : cx, out = [];
     for (let i = 0; i < 2; i++) {
       const len = w[3 + i * 3], st = w[5 + i * 3];
-      if (!len || st === 'd') continue;
+      if (!len || st === 'd' || st === 'x') continue;   // locked into the grid, or shattered
       const lo = i === 0 ? c + 1 - len : c + 1, hi = i === 0 ? c + 1 : c + 1 + len;
-      out.push(v ? [cx, cx + 1, lo, hi, st] : [lo, hi, cy, cy + 1, st]);
+      out.push(v ? [cx, cx + 1, lo, hi, st, i] : [lo, hi, cy, cy + 1, st, i]);   // i: which half
     }
     return out;
   }
@@ -92,22 +92,85 @@
     // Sealed cells: one instanced mesh; new cells rise up.
     const blocks = new T.InstancedMesh(new T.BoxGeometry(0.94, 0.94, 1), new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35, metalness: 0.2 }), g.W * g.H);
     blocks.count = 0; scene.add(blocks);
+    blocks.setColorAt(0, new T.Color(0xffffff));
+    const rimCol = new T.Color(), pending = [];   // pending: seal sparks waiting for the ripple to reach their cell
     const born = new Float32Array(g.W * g.H);
     let lastGrid = '0'.repeat(g.W * g.H), animUntil = 0;
     const dummy = new T.Object3D();
 
+    // Effects (glow, trails, sparks) are skipped on the app's Low graphics setting.
+    const fx = GL3.level() !== 'low';
+    const glowTex = (() => {
+      const c = document.createElement('canvas'); c.width = c.height = 64;
+      const x = c.getContext('2d'), grad = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+      grad.addColorStop(0, '#fff'); grad.addColorStop(0.3, '#ffffffaa'); grad.addColorStop(1, '#fff0');
+      x.fillStyle = grad; x.fillRect(0, 0, 64, 64);
+      return new T.CanvasTexture(c);
+    })();
+    const sprite = (opacity) => {
+      const m = new T.Sprite(new T.SpriteMaterial({ map: glowTex, color: 0xffffff, transparent: true, opacity, blending: T.AdditiveBlending, depthWrite: false }));
+      m.visible = false; scene.add(m); return m;
+    };
+    // One pooled Points object carries every spark; dead slots sit far off-screen.
+    const CAP = 320, pPos = new Float32Array(CAP * 3).fill(-999), pCol = new Float32Array(CAP * 3);
+    const pVel = new Float32Array(CAP * 3), pLife = new Float32Array(CAP);
+    const pGeo = new T.BufferGeometry();
+    pGeo.setAttribute('position', new T.BufferAttribute(pPos, 3)); pGeo.setAttribute('color', new T.BufferAttribute(pCol, 3));
+    const sparks = new T.Points(pGeo, new T.PointsMaterial({ size: 0.38, map: glowTex, vertexColors: true, transparent: true, blending: T.AdditiveBlending, depthWrite: false }));
+    sparks.frustumCulled = false; scene.add(sparks);
+    let pNext = 0;
+    const tmpCol = new T.Color();
+    const burst = (x, y, n, color, speed = 6) => {
+      if (!fx) return;
+      tmpCol.set(color);
+      for (let k = 0; k < n; k++) {
+        const i = pNext++ % CAP, a = Math.random() * 6.283, v = speed * (0.35 + Math.random() * 0.8);
+        pPos.set([gx(x), gy(y), 0.6], i * 3);
+        pVel.set([Math.cos(a) * v, -Math.sin(a) * v, (Math.random() - 0.3) * v * 0.5], i * 3);
+        const white = Math.random() < 0.35;
+        pCol.set(white ? [1, 1, 1] : [tmpCol.r, tmpCol.g, tmpCol.b], i * 3);
+        pLife[i] = 0.5 + Math.random() * 0.5;
+      }
+    };
+    const stepSparks = (dt) => {
+      let live = false;
+      for (let i = 0; i < CAP; i++) {
+        if (pLife[i] <= 0) continue;
+        pLife[i] -= dt; live = true;
+        const k = i * 3;
+        if (pLife[i] <= 0) { pPos[k + 2] = -999; continue; }
+        pPos[k] += pVel[k] * dt; pPos[k + 1] += pVel[k + 1] * dt; pPos[k + 2] += pVel[k + 2] * dt;
+        const d = Math.exp(-3 * dt); pVel[k] *= d; pVel[k + 1] *= d; pVel[k + 2] *= d;
+      }
+      if (live || sparks.userData.live) pGeo.attributes.position.needsUpdate = pGeo.attributes.color.needsUpdate = true;
+      sparks.userData.live = live;
+    };
     const mats = {
       ball: new T.MeshBasicMaterial({ color: 0xffffff }),
-      wall: new T.MeshBasicMaterial({ color: 0xffffff }),
+      core: new T.MeshBasicMaterial({ color: 0xffffff }),
+      glow: new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4, blending: T.AdditiveBlending, depthWrite: false }),
       ghost: new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.18 }),
     };
-    const balls = [];
-    const halves = [0, 1].map(() => { const m = new T.Mesh(new T.BoxGeometry(1, 1, 0.9), mats.wall); m.visible = false; scene.add(m); return m; });
+    const balls = [], trails = [];
+    const beamGeo = new T.BoxGeometry(1, 1, 0.9);
+    const halves = [0, 1].map(() => { const m = new T.Mesh(beamGeo, mats.core); m.visible = false; scene.add(m); return m; });
+    const glows = [0, 1].map(() => { const m = new T.Mesh(beamGeo, mats.glow); m.visible = false; scene.add(m); return m; });
+    const tips = [sprite(0.9), sprite(0.9)];
+    const prevHalf = ['', ''];
     const ghost = new T.Mesh(new T.BoxGeometry(1, 1, 0.3), mats.ghost); ghost.visible = false; scene.add(ghost);
-    const pickMeshes = [];
-    const sphere = new T.SphereGeometry(0.42, 20, 14), halo = new T.SphereGeometry(0.7, 12, 8);
+    const pickMeshes = new Map();
+    const pickTexs = {};
+    const pickTex = (kind) => pickTexs[kind] ||= (() => {
+      const c = document.createElement('canvas'); c.width = c.height = 96;
+      const x = c.getContext('2d');
+      if (x) { x.font = '64px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(kind === 'shield' ? '🛡️' : '⏳', 48, 52); }
+      return new T.CanvasTexture(c);
+    })();
+    const sphere = new T.SphereGeometry(0.34, 20, 14);
+    let lastNow = 0;
     const ray = new T.Raycaster(), plane = new T.Plane(new T.Vector3(0, 0, 1), 0), hit = new T.Vector3();
     let w = 0, h = 0;
+    const camBase = new T.Vector3();
 
     function resize() {
       const cw = stage.clientWidth, ch = stage.clientHeight;
@@ -115,10 +178,14 @@
       w = cw; h = ch; renderer.setSize(w, h, false);
       cam.aspect = w / h;
       const need = Math.max((g.H / 2 + 1.2) / Math.tan(cam.fov * Math.PI / 360), (g.W / 2 + 1.2) / (Math.tan(cam.fov * Math.PI / 360) * cam.aspect));
-      cam.position.set(0, -need * 0.22, need * 0.97); cam.lookAt(0, 0, 0); cam.updateProjectionMatrix();
+      const tilt = cam.aspect > g.W / g.H ? 0 : 0.22;   // a very wide stage has no spare height for the tilt
+      cam.position.set(0, -need * tilt, need * (tilt ? 0.97 : 1)); cam.lookAt(0, 0, 0); cam.updateProjectionMatrix();
+      camBase.copy(cam.position);
     }
-    const box = (m, x0, x1, y0, y1, z) => {
-      m.visible = true; m.scale.set(x1 - x0, y1 - y0, 0.9);
+    // cross < 1 thins the box across its short side (a bright core inside a wider glow)
+    const box = (m, x0, x1, y0, y1, z, cross = 1) => {
+      const wide = x1 - x0 >= y1 - y0;
+      m.visible = true; m.scale.set(wide ? x1 - x0 : cross * (x1 - x0), wide ? cross * (y1 - y0) : y1 - y0, 0.9);
       m.position.set(gx((x0 + x1) / 2), gy((y0 + y1) / 2), z);
     };
     return {
@@ -131,40 +198,136 @@
       draw(s, now) {
         resize();
         const col = new T.Color(s.color);
-        mats.wall.color.copy(col); mats.ghost.color.copy(col);
+        mats.glow.color.copy(col); mats.ghost.color.copy(col);
+        mats.core.color.copy(col).lerp(new T.Color(0xffffff), 0.7);
+        const dt = Math.min(0.05, Math.max(0, (now - (lastNow || now)) / 1000)); lastNow = now;
         if (s.grid !== lastGrid) {
-          for (let i = 0; i < s.grid.length; i++) if (s.grid[i] === '1' && lastGrid[i] !== '1') born[i] = now;
-          lastGrid = s.grid; animUntil = now + 450;
+          // the seal ripples inward: each new cell waits in proportion to its distance from the walls that were already there
+          const dist = new Int16Array(s.grid.length).fill(-1), queue = [];
+          for (let i = 0; i < s.grid.length; i++) if (lastGrid[i] === '1') { dist[i] = 0; queue.push(i); }
+          let far = 0;
+          for (let q = 0; q < queue.length; q++) {
+            const i = queue[q], x = i % g.W, y = (i - x) / g.W;
+            for (const j of [x > 0 ? i - 1 : -1, x < g.W - 1 ? i + 1 : -1, y > 0 ? i - g.W : -1, y < g.H - 1 ? i + g.W : -1]) {
+              if (j < 0 || dist[j] >= 0 || s.grid[j] !== '1') continue;
+              dist[j] = dist[i] + 1; far = Math.max(far, dist[j]); queue.push(j);
+            }
+          }
+          const step = Math.min(24, 420 / Math.max(1, far)), lastGridPrev = lastGrid;
+          for (let i = 0; i < s.grid.length; i++) if (s.grid[i] === '1' && lastGrid[i] !== '1') born[i] = now + Math.max(0, dist[i]) * step;
+          if (fx) {
+            const fresh = [];
+            for (let i = 0; i < s.grid.length; i++) if (s.grid[i] === '1' && born[i] > 0 && lastGridPrev[i] !== '1') fresh.push(i);
+            const every = Math.max(1, Math.floor(fresh.length / 40)), big = fresh.length >= 90;
+            for (let q = 0; q < fresh.length; q += every) pending.push([born[fresh[q]], fresh[q] % g.W + 0.5, Math.floor(fresh[q] / g.W) + 0.5, big ? 5 : 3]);
+          }
+          lastGrid = s.grid; animUntil = now + far * step + 450;
         }
         if (now < animUntil + 60 || blocks.userData.col !== s.color) {
           let n = 0;
           for (let i = 0; i < s.grid.length; i++) {
             if (s.grid[i] !== '1') continue;
-            const k = Math.min(1, (now - born[i]) / 350), z = 0.2 + 0.8 * (1 - (1 - k) ** 3);
+            const k = Math.max(0, Math.min(1, (now - born[i]) / 350)), z = 0.2 + 0.8 * (1 - (1 - k) ** 3);
             dummy.position.set(gx(i % g.W + 0.5), gy(Math.floor(i / g.W) + 0.5), z / 2 - 0.05);
             dummy.scale.set(1, 1, z); dummy.updateMatrix();
+            const x = i % g.W, y = (i - x) / g.W;
+            const open = (j, ok) => ok && s.grid[j] === '0';
+            const rim = open(i - 1, x > 0) || open(i + 1, x < g.W - 1) || open(i - g.W, y > 0) || open(i + g.W, y < g.H - 1);
+            rimCol.copy(col).multiplyScalar(rim ? 1 : 0.55); if (rim) rimCol.lerp(new T.Color(0xffffff), 0.35);
+            blocks.setColorAt(n, rimCol);
             blocks.setMatrixAt(n++, dummy.matrix);
           }
+          if (blocks.instanceColor) blocks.instanceColor.needsUpdate = true;
           blocks.count = n; blocks.instanceMatrix.needsUpdate = true;
-          blocks.material.color.copy(col); blocks.userData.col = s.color;
+          blocks.userData.col = s.color;
         }
         while (balls.length < s.b.length) {
-          const m = new T.Mesh(sphere, mats.ball), a = new T.Mesh(halo, new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.18 }));
-          m.add(a); scene.add(m); balls.push(m);
+          const m = new T.Mesh(sphere, mats.ball), halo = sprite(0.55);
+          halo.visible = true; halo.scale.set(2.4, 2.4, 1); m.add(halo); m.userData = { halo, pulse: 0, last: null };
+          scene.add(m); balls.push(m);
+          if (fx && balls.length <= 16) trails[balls.length - 1] = Array.from({ length: 7 }, () => sprite(0));
         }
         balls.forEach((m, i) => {
           m.visible = i < s.b.length;
-          if (m.visible) m.position.set(gx(s.b[i][0]), gy(s.b[i][1]), 0.5);
+          if (!m.visible) return;
+          const bx = s.b[i][0], by = s.b[i][1], u = m.userData;
+          // a flip in direction is a bounce: flare the glow and throw a few sparks
+          if (u.last && u.dir) {
+            const dx = bx - u.last[0], dy = by - u.last[1];
+            if (Math.abs(dx) > 0.004 && Math.abs(u.dir[0]) > 0.004 && dx * u.dir[0] < 0 || Math.abs(dy) > 0.004 && Math.abs(u.dir[1]) > 0.004 && dy * u.dir[1] < 0) {
+              u.pulse = 1; burst(bx, by, 4, s.color, 3);
+            }
+            if (Math.abs(dx) + Math.abs(dy) > 0.002) u.dir = [dx, dy];
+          } else if (u.last) u.dir = [bx - u.last[0], by - u.last[1]];
+          u.last = [bx, by]; u.pulse = Math.max(0, u.pulse - dt * 4);
+          m.position.set(gx(bx), gy(by), 0.5);
+          const gs = 2.4 + u.pulse * 1.6;
+          u.halo.scale.set(gs, gs, 1); u.halo.material.color.copy(col).lerp(mats.ball.color, 0.25);
+          const tr = trails[i];
+          if (tr) {   // a fading tail: each sprite follows the one ahead of it
+            u.hist = u.hist || [];
+            if (!u.histAt || now - u.histAt > 22) { u.hist.unshift([bx, by]); u.hist.length = Math.min(u.hist.length, tr.length); u.histAt = now; }
+            tr.forEach((sp, j) => {
+              const q = u.hist[j];
+              sp.visible = !!q;
+              if (!q) return;
+              sp.position.set(gx(q[0]), gy(q[1]), 0.45);
+              const k = 1 - (j + 1) / (tr.length + 1);
+              sp.scale.set(1.5 * k, 1.5 * k, 1); sp.material.opacity = 0.4 * k; sp.material.color.copy(col);
+            });
+          }
         });
-        const rects = wallRects(s.w);
-        halves.forEach((m, i) => { m.visible = false; const r = rects[i]; if (r) box(m, r[0], r[1], r[2], r[3], 0.45); });
+        const rects = [];
+        for (const r of wallRects(s.w)) rects[r[5]] = r;
+        const pulse = 0.35 + 0.15 * Math.sin(now / 90);
+        halves.forEach((m, i) => {
+          m.visible = glows[i].visible = tips[i].visible = false;
+          const r = rects[i];
+          if (r) {
+            box(m, r[0], r[1], r[2], r[3], 0.45, 0.3);
+            box(glows[i], r[0], r[1], r[2], r[3], 0.45, 1.0);
+            mats.glow.opacity = 0.3 + 0.2 * Math.sin(now / 90);
+            const v = s.w[0], head = i === 0 ? [v ? r[2] : r[0]] : [v ? r[3] : r[1]];
+            tips[i].visible = true;
+            tips[i].position.set(gx(v ? s.w[1] + 0.5 : head[0]), gy(v ? head[0] : s.w[2] + 0.5), 0.8);
+            tips[i].scale.set(2.6 + pulse, 2.6 + pulse, 1); tips[i].material.color.copy(col);
+            if (fx && Math.random() < 0.4) burst(v ? s.w[1] + 0.5 : head[0], v ? head[0] : s.w[2] + 0.5, 1, s.color, 2);
+          }
+          // a half that was growing and is now gone was struck by an orb: it shatters
+          const st = s.w.length ? s.w[5 + i * 3] : '';
+          if (prevHalf[i] === 'g' && st === 'x') {
+            const v = s.w[0], c = v ? s.w[2] : s.w[1], len = s.w[3 + i * 3];
+            const head = i === 0 ? c + 1 - len : c + 1 + len;
+            burst(v ? s.w[1] + 0.5 : head, v ? head : s.w[2] + 0.5, 34, s.color, 8);
+            GL3.shake(cam, 0.32);
+          }
+          prevHalf[i] = st;
+        });
         if (s.ghost) box(ghost, s.ghost[0], s.ghost[0] + s.ghost[2], s.ghost[1], s.ghost[1] + s.ghost[3], 0.2); else ghost.visible = false;
-        while (pickMeshes.length) { const m = pickMeshes.pop(); scene.remove(m); m.material.dispose(); }
+        // pickups persist between frames (keyed by cell) and only spin
+        const keep = new Set();
         for (const p of s.p) {
-          const m = new T.Mesh(new T.OctahedronGeometry(0.55), new T.MeshBasicMaterial({ color: p[2] === 'shield' ? 0x59ff9a : 0xffd84a }));
-          m.position.set(gx(p[0] + 0.5), gy(p[1] + 0.5), 0.6); m.rotation.z = now / 400; m.rotation.x = 1;
-          scene.add(m); pickMeshes.push(m);
+          const key = `${p[0]},${p[1]},${p[2]}`;
+          keep.add(key);
+          let m = pickMeshes.get(key);
+          if (!m) {
+            m = new T.Sprite(new T.SpriteMaterial({ map: pickTex(p[2]), transparent: true, depthWrite: false }));
+            m.position.set(gx(p[0] + 0.5), gy(p[1] + 0.5), 0.7);
+            m.userData = { pos: [p[0] + 0.5, p[1] + 0.5], tint: p[2] === 'shield' ? 0x59ff9a : 0xffd84a };
+            const halo = sprite(0.5); halo.visible = true; halo.material.color.set(m.userData.tint); halo.scale.set(2.6, 2.6, 1); m.add(halo);
+            scene.add(m); pickMeshes.set(key, m);
+          }
+          const bob = 1.35 + 0.12 * Math.sin(now / 260 + p[0]);
+          m.scale.set(bob, bob, 1);
         }
+        for (const [key, m] of pickMeshes) {
+          if (keep.has(key)) continue;
+          burst(m.userData.pos[0], m.userData.pos[1], 22, m.userData.tint, 6);   // collected (sealed in)
+          scene.remove(m); m.material.dispose(); pickMeshes.delete(key);
+        }
+        for (let q = pending.length - 1; q >= 0; q--) if (pending[q][0] <= now) { burst(pending[q][1], pending[q][2], pending[q][3], s.color, 4); pending.splice(q, 1); }
+        stepSparks(dt);
+        cam.position.copy(camBase); GL3.tickShake(cam, dt);
         renderer.render(scene, cam);
       },
       dispose() { renderer.dispose(); canvas.remove(); },
@@ -182,7 +345,13 @@
       else if (b.rev !== prev.rev) prev.stale = true;
       prev.rev = b.rev;
       Object.assign(prev, { w: b.w, p: b.p, lives: b.lives, score: b.score, pct: b.pct, st: b.st, lv: b.lv, sh: b.sh, slow: b.slow, b: b.b });
-      if (!prev.bs || prev.bs.length !== b.b.length) prev.bs = b.b.map((q) => q.slice());
+      if (!prev.bs || prev.bs.length !== b.b.length) { prev.bs = b.b.map((q) => q.slice()); prev.bv = b.b.map(() => [0, 0]); }
+      // orb velocity from the last two packets, so the drawn orbs keep moving between the ~30 Hz updates
+      const dt = (g.receivedAt - (prev.at ?? 0)) / 1000;
+      if (prev.last && prev.last.length === b.b.length && dt > 0.01 && dt < 0.2) {
+        prev.bv = b.b.map((q, j) => [Math.max(-20, Math.min(20, (q[0] - prev.last[j][0]) / dt)), Math.max(-20, Math.min(20, (q[1] - prev.last[j][1]) / dt))]);
+      }
+      if (dt > 0.01 || !prev.at) { prev.last = b.b; prev.at = g.receivedAt; }
       if (b.ev[0] !== prev.evSeen) {
         prev.evSeen = b.ev[0];
         if (pid === g.me && g.ctx && !g.ctx.readOnly) { g.ctx.sfx(SND[b.ev[1]] || 'pop'); g.msg(MSG[b.ev[1]] || ''); }
@@ -199,10 +368,10 @@
     g.find('score').textContent = s.score.toLocaleString();
     g.find('level').textContent = s.lv;
     g.find('lives').textContent = '❤️'.repeat(Math.max(0, s.lives)) + (s.sh ? '🛡️' : '');
-    g.find('pct').textContent = Math.floor(s.pct * 100) + '%';
-    g.find('fill').style.width = Math.min(100, s.pct * 100) + '%';
     g.find('slow').hidden = !(s.slow > 0);
     if (s.slow > 0) g.find('slow').textContent = '⏳ ' + Math.ceil(s.slow);
+    if (s === g.boards[g.me] && g.lastScore != null && s.score > g.lastScore && s.st === 'play') g.pop('+' + (s.score - g.lastScore).toLocaleString());
+    if (s === g.boards[g.me]) g.lastScore = s.score;
     if (g.me && s.score > g.best && g.solo) { g.best = s.score; store.set(g.best); }
     g.find('best').textContent = g.best ? g.best.toLocaleString() : '—';
     const list = g.find('standings');
@@ -248,7 +417,17 @@
     if (!s || !r) return;
     const k = 1 - Math.exp(-Math.min(60, now - (g.drawn ?? now)) / 38);
     g.drawn = now;
-    s.bs.forEach((q, i) => { const t = s.b[i] || q; q[0] += (t[0] - q[0]) * k; q[1] += (t[1] - q[1]) * k; });
+    const lead = Math.min(0.06, Math.max(0, (now - (s.at ?? now)) / 1000));
+    s.bs.forEach((q, i) => {
+      const t = s.b[i] || q, v = s.bv?.[i] || [0, 0];
+      q[0] += (t[0] + v[0] * lead - q[0]) * k; q[1] += (t[1] + v[1] * lead - q[1]) * k;
+    });
+    // the sealed-percent readout and bar glide to the new value instead of stepping
+    s.shown = (s.shown ?? s.pct) + (s.pct - (s.shown ?? s.pct)) * (1 - Math.exp(-Math.min(60, now - (g.pctAt ?? now)) / 160));
+    g.pctAt = now;
+    const pct = Math.floor(s.shown * 100 + 0.001) + '%', fill = Math.min(100, s.shown * 100).toFixed(1) + '%';
+    if (g.pctText !== pct) g.find('pct').textContent = g.pctText = pct;
+    if (g.pctFill !== fill) g.find('fill').style.width = g.pctFill = fill;
     r.draw({ ...s, b: s.bs, ghost: g.hover && !g.touching ? ghostFor(g.hover) : null }, now);
   }
 
@@ -263,7 +442,7 @@
         </div>
         <div class="rs-bar" role="meter" aria-label="Field sealed" aria-valuemin="0" aria-valuemax="100"><div class="rs-fill"></div><div class="rs-goal" title="75% to clear"></div><span class="rs-pct">0%</span><span class="rs-slow" hidden></span></div>
         <div class="rs-stage" aria-label="Rift Split field"><span class="rs-msg" role="status"></span></div>
-        <div class="rs-controls"><button type="button" class="rs-dir">↔ Horizontal</button><span class="rs-tip">Tap to grow a wall · Space / right-click turns it</span></div>
+        <div class="rs-controls"><button type="button" class="rs-dir">↔ Horizontal</button><span class="rs-tip">Tap to grow a wall · Space / right-click turns it · ⛶ for fullscreen</span></div>
         <ol class="rs-standings" aria-label="Scores" hidden></ol>
       </section>`;
     const root = arena.querySelector('.rs-cabinet');
@@ -273,6 +452,12 @@
     g = {
       root, stage, listeners, W: 40, H: 24, boards: {}, order: [], tick: -1, vertical: false, best: store.get(), msgTimer: 0,
       find: (c) => root.querySelector('.rs-' + c),
+      pop(text) {
+        const el = document.createElement('span');
+        el.className = 'rs-pop'; el.textContent = text;
+        stage.append(el);
+        setTimeout(() => el.remove(), 1200);
+      },
       msg(text) {
         const el = stage.querySelector('.rs-msg');
         el.textContent = text; el.classList.toggle('on', !!text);
@@ -336,7 +521,7 @@
       if (!g || !d) return;
       g.ctx = ctx;
       if (g.run !== d.rift) {
-        g.run = d.rift; g.tick = -1; g.W = d.layout.w; g.H = d.layout.h; g.solo = d.solo; g.boards = {};
+        g.run = d.rift; g.tick = -1; g.lastScore = null; g.W = d.layout.w; g.H = d.layout.h; g.solo = d.solo; g.boards = {};
         g.order = Object.keys(d.boards);
       }
       g.me = d.me;
