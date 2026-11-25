@@ -21,7 +21,9 @@
   };
   const sound = (event) => sounds[event] || (/^bumper/.test(event) ? 'pbumper' : /^sling/.test(event) ? 'psling' : 'pop');
   const soundArg = (event) => (/^bumper/.test(event) ? Number(event.slice(6)) || 0 : undefined);
-  const bestKey = 'pinball.best', topKey = 'pinball.top';
+  // each table keeps its own personal best and top-scores list
+  const bestKey = (g) => g.table === 'neon' ? 'pinball.best.neon' : 'pinball.best';
+  const topKey = (g) => g.table === 'neon' ? 'pinball.top.neon' : 'pinball.top';
   const palette = { gold: '#ffd383', ivory: '#fff0ca', teal: '#59edd2', red: '#ff6854', steel: '#c1d2e5' };
   const bumperColors = ['#ff9b59', '#c699ff', '#58e5d5'];
   const flipperColors = ['#42cfeb', '#ff78bc'];
@@ -212,6 +214,18 @@
     c.translate(940, 1100);
     c.rotate(-Math.PI / 2);
     c.fillText('L A U N C H', 0, 9);
+    if (geo.theme === 'neon') {
+      // restyle the sunset cabinet as a night arcade: a hue shift when the browser can filter canvases
+      const tinted = document.createElement('canvas');
+      tinted.width = canvas.width;
+      tinted.height = canvas.height;
+      const t = tinted.getContext('2d');
+      if ('filter' in t) {
+        t.filter = 'hue-rotate(-75deg) saturate(1.35) brightness(.92)';
+        t.drawImage(canvas, 0, 0);
+        return tinted;
+      }
+    }
     return canvas;
   }
 
@@ -870,15 +884,15 @@
     if (prior !== row) g.receivedAt = performance.now();
     if (g.over && g.solo && g.me && !row[BALLS] && !g.topSaved) {
       g.topSaved = true;
-      const saved = load(topKey);
+      const saved = load(topKey(g));
       g.topScores = [...(Array.isArray(saved) ? saved.filter(Number.isSafeInteger) : []), row[SCORE]]
         .sort((a, b) => b - a).slice(0, 5);
-      store(topKey, g.topScores);
+      store(topKey(g), g.topScores);
     }
     if (g.over && g.solo && g.me && !row[BALLS] && (g.best === null || row[SCORE] > g.best)) {
       g.best = row[SCORE];
       g.record = true;
-      store(bestKey, g.best);
+      store(bestKey(g), g.best);
     }
     updateHud(g, row);
   }
@@ -952,9 +966,10 @@
       if (!g.run) {
         g.run = data.pin;
         g.solo = data.solo;
+        g.table = data.table || 'golden';
         g.skill = data.layout.skill;
         g.extra = data.extra || [];
-        const saved = load(bestKey);
+        const saved = load(bestKey(g));
         g.best = Number.isSafeInteger(saved) && saved >= 0 ? saved : null;
         const band = g.find('skill-band');
         band.style.left = `${100 * data.layout.skill[0] / 240}%`;

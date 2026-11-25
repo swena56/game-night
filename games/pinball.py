@@ -40,10 +40,30 @@ GOLDEN_HOUR = Layout(
     flipper_radius=FLIP_RADIUS, skill_charge=SKILL_CHARGE)
 LAYOUT = GOLDEN_HOUR.public()
 
+# Neon Arcade: the same cabinet and outer walls with a busier field - four bumpers in a zig-zag, shifted
+# inlane guides and a hotter rule set (more points, quicker hurry-up, extra balls come later).
+NEON_BUMPS = ((2.7, 5.4, 0.6), (6.7, 4.95, 0.6), (3.0, 7.9, 0.5), (6.35, 8.15, 0.5))
+NEON_RAILS = RAILS[:-2] + ((2.3, 9.4, 3.05, 10.3), (7.7, 9.4, 6.95, 10.3))
+NEON_ARCADE = Layout(
+    rails=NEON_RAILS, gate=GATE, slings=SLINGS, bumps=NEON_BUMPS, targets=TARGETS, lanes=ROLLOVERS,
+    spinner=SPINNER, ramp=RAMP, ramp_exit=RAMP_EXIT, flippers=FLIPPERS, launch=LAUNCH,
+    outlane=OUTLANE, width=WIDTH, height=HEIGHT, ball=BALL, flipper_length=LENGTH,
+    flipper_radius=FLIP_RADIUS, skill_charge=SKILL_CHARGE, theme="neon")
+
 
 class Table(EngineTable):
     layout = GOLDEN_HOUR
     rules = Rules(lock_balls=2, center_post=True)
+
+
+class NeonTable(EngineTable):
+    layout = NEON_ARCADE
+    rules = Rules(lock_balls=2, center_post=True, bumper=150, bumper_jackpot=300, sling=75, target=300,
+                  lane=600, ramp=8000, jackpot=15000, hurry_ticks=6 * 240, hurry_max=20000,
+                  extra_ball_scores=(60000, 160000), super_every=3)
+
+
+TABLES = {"golden": ("Golden Hour", Table), "neon": ("Neon Arcade", NeonTable)}
 class Pinball(Game):
     id = "pinball"
     name = "Pinball"
@@ -51,16 +71,19 @@ class Pinball(Game):
     icon = "🕹️"
     min_players, max_players = 1, 6
     replayable = False
+    settings_schema = {"table": ("Table", [("golden", "🌇 Golden Hour"), ("neon", "🌃 Neon Arcade")], "golden")}
     blurb = "Three balls on a colorful chrome-trimmed table. Bank shots off the bumpers, light the ramp, and chase a high score."
     howto = [
         "Pull down on the plunger shaft at the right side of the playfield and release to launch. You can also hold and release Space or Launch. Aim for the gold charge band.",
         "Tap or click either half of the playfield to flip on that side. A and D, Z and /, either Shift key, the arrow keys, and the Flip buttons also work. Use Q, W, E or the nudge buttons to move the table.",
         "The fourth nudge tilts the table and ends scoring until that ball drains. Clear all three targets, then shoot the ramp for 6,000 and start a 20-second jackpot round. Repeat ramp shots for 12,000 each. The first lit ramp shot locks your ball and serves a new one; the second releases the locked ball and a spare for three-ball MULTIBALL, where every ramp shot is a jackpot and bumpers pay double. Every fourth jackpot is a 50,000 super jackpot. The spinner and bumpers pay more the more you hit them, completing all rollover lanes starts an 8-second spinner hurry-up worth up to 15,000, and every third lit-shot double awards a mystery prize: bonus points, a ball save, a multiplier, or a held bonus that carries to your next ball.",
-        "Each ball has one automatic save during its first four seconds on the playfield. Once per game a centre post also catches a draining ball, and completing the rollover lanes re-arms the left kickback. Everyone plays three balls on a separate table. Reach 40,000 and 120,000 points for an extra ball. Highest score wins.",
+        "Each ball has one automatic save during its first four seconds on the playfield. Once per game a centre post also catches a draining ball, and completing the rollover lanes re-arms the left kickback. Neon Arcade is a busier table with four bumpers and bigger scores; its extra balls come at 60,000 and 160,000. Everyone plays three balls on a separate table. Reach 40,000 and 120,000 points for an extra ball. Highest score wins.",
     ]
 
     def start(self, seated, rng):
-        self.tables = {p.id: Table() for p in seated}
+        self.table_id = self.s.get("table") if self.s.get("table") in TABLES else "golden"
+        table_class = TABLES[self.table_id][1]
+        self.tables = {p.id: table_class() for p in seated}
         self.run = uuid4().hex
         self.frames = 0
         self.solo = len(seated) == 1 and not seated[0].bot
@@ -142,8 +165,12 @@ class Pinball(Game):
         return {"pin": self.run, "tick": self.frames,
                 "tables": {pid: t.public() for pid, t in self.tables.items() if not t.departed}}
 
+    def layout_public(self):
+        return TABLES[getattr(self, "table_id", "golden")][1].layout.public()
+
     def view(self, p):
         table = self.tables.get(p.id)
-        return {"pinball": {**self.snapshot(), "layout": LAYOUT, "extra": list(Table.rules.extra_ball_scores), "solo": self.solo,
+        return {"pinball": {**self.snapshot(), "layout": self.layout_public(), "table": getattr(self, "table_id", "golden"),
+                            "extra": list(TABLES[getattr(self, "table_id", "golden")][1].rules.extra_ball_scores), "solo": self.solo,
                             "me": p.id if table and not table.departed else None,
                             "epoch": table.epoch if table else None}}

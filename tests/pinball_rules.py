@@ -8,7 +8,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from games.pinball import (
     BALL, BUMPS, FLIPPERS, JACKPOT_TICKS, LAUNCH, LAYOUT, RAMP, RAMP_EXIT, ROLLOVERS,
-    SLINGS, SPINNER, TARGETS, Table as GoldenHour,
+    SLINGS, SPINNER, TABLES, TARGETS, Table as GoldenHour,
 )
 from dataclasses import dataclass
 from server import Room
@@ -431,6 +431,21 @@ class PinballRules(unittest.TestCase):
         table.x, table.y = x, y
         table.mechanisms(y)
         self.assertTrue(table.kickback)
+
+    def test_neon_arcade_table_is_playable(self):
+        neon = TABLES["neon"][1]
+        self.assertEqual(neon.layout.public()["theme"], "neon")
+        self.assertEqual(len(neon.layout.bumps), 4)
+        table = neon(staged=False, x=5, y=9, post_used=True)
+        x, y, r = neon.layout.bumps[0]
+        table.x, table.y, table.vx, table.vy = x + r + .2, y, -10, 0
+        table.step()
+        self.assertEqual(table.score, 150)       # Neon bumpers pay more
+        for _ in range(240 * 20):
+            table.step()
+            if not table.balls:
+                break
+        self.assertTrue(math.isfinite(table.x))
 
     def test_tilt_forfeits_bonus(self):
         table = placed(5, 17.4)

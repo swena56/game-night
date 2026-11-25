@@ -41,6 +41,7 @@ class Layout:
     flipper_zone: tuple = (13.6, 16.2)
     lane_exit_y: float = 5
     center: tuple = (5, 12)
+    theme: str = ""          # lets a renderer restyle the shared artwork (e.g. "neon")
 
     @property
     def lane_x(self):
@@ -56,7 +57,7 @@ class Layout:
                     targets=self.targets, lanes=self.lanes, spinner=self.spinner, ramp=self.ramp,
                     exit=self.ramp_exit, flips=self.flippers, length=self.flipper_length,
                     radius=self.ball, skill=self.skill_charge, width=self.width,
-                    height=self.height, launch=self.launch)
+                    height=self.height, launch=self.launch, theme=self.theme)
 
 
 def flipper_pair(y, left_x, right_x, rest=0.42, up=0.66):
