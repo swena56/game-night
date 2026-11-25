@@ -798,7 +798,7 @@
         });
         if (blocked(px + dx * step, py)) dx = -dx; else px += dx * step;
         if (blocked(px, py + dy * step)) dy = -dy; else py += dy * step;
-        const grown = Math.min(t * 15, 20);
+        const grown = Math.min(t * (s.gr || 15), 20);
         const loX = g.vertical ? cell.x : Math.max(x0, cell.x + 0.5 - grown);
         const hiX = g.vertical ? cell.x + 1 : Math.min(x1, cell.x + 0.5 + grown);
         const loY = g.vertical ? Math.max(y0, cell.y + 0.5 - grown) : cell.y;

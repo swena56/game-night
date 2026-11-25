@@ -3,7 +3,7 @@
 Every player has their own glowing field with bouncing orbs. Tap a spot to grow a wall from it in both
 directions (horizontal or vertical). A wall half that an orb strikes while it is still growing shatters and costs a
 life; a half that reaches a barrier locks in. When the wall is done, every pocket with no orb inside is sealed off.
-Seal 75% of the field to clear the level. The server owns the physics (fixed grid, circle-vs-cell collisions)
+Seal the goal % of the field to clear the level. The server owns the physics (fixed grid, circle-vs-cell collisions)
 and streams each field to every browser."""
 import math
 import random
@@ -17,7 +17,7 @@ GOAL = 0.75        # kept for the layout default; the real target climbs with th
 
 
 def level_goal(level):
-    return min(0.86, 0.685 + 0.015 * level)   # L1 70% ... L12+ 86%: a slow climb, late levels demand more
+    return min(0.86, 0.52 + 0.03 * level)   # L1 55%, L5 67%, L10 82%, L12+ 86%: gentle early, demanding late
 
 
 def orb_count(level):
@@ -27,7 +27,11 @@ def orb_count(level):
 def start_lives(level):
     return min(MAX_LIVES, 2 + (level - 1) // 2)
 RADIUS = 0.42
-GROW = 15.0              # wall cells per second
+GROW = 15.0              # wall cells per second at level 1
+
+
+def grow_speed(level):
+    return max(11.0, GROW - 0.5 * (level - 1))   # walls grow slower each level, so they stay exposed longer (floor 11 from L9)
 STEP = 1 / 60
 CLEAR_PAUSE = 2.6
 SLOW_SECS, SLOW_FACTOR = 8.0, 0.45
@@ -77,16 +81,17 @@ class Board:
         self.walls = []
         self.state = "play"
         speed = ball_speed(level)
+        self.grow = grow_speed(level)
         self.balls = []
         for _ in range(orb_count(level)):
             ang = self.rng.uniform(0.35, 1.2) + self.rng.choice((0, 1.57, 3.14, 4.71))
             vx, vy = speed * math.cos(ang), speed * math.sin(ang)
             self.balls.append([self.rng.uniform(2, W - 2), self.rng.uniform(2, H - 2), vx, vy])
         self.pickups = []
-        for kind in ("slow", "shield"):
-            for _ in range(1 if level < 3 else 2):
-                self.pickups.append([self.rng.randrange(3, W - 3), self.rng.randrange(3, H - 3), kind])
-        if level >= 5:   # late stages: a heart to seal in, worth a life back
+        kinds = ("slow", "shield") if level < 9 else (("slow",) if level % 2 else ("shield",))   # fewer power-ups from L9
+        for kind in kinds:
+            self.pickups.append([self.rng.randrange(3, W - 3), self.rng.randrange(3, H - 3), kind])
+        if level >= 5 and level % 2:   # a heart to seal in, worth a life back, every other level
             self.pickups.append([self.rng.randrange(3, W - 3), self.rng.randrange(3, H - 3), "heart"])
         self.rev += 1
 
@@ -168,7 +173,7 @@ class Board:
         for half in w["h"]:
             if half["st"] != "grow":
                 continue
-            half["len"] = min(half["room"], half["len"] + GROW * dt)
+            half["len"] = min(half["room"], half["len"] + self.grow * dt)
             rx0, rx1, ry0, ry1 = self.half_rect(w, half)
             for b in self.balls:
                 if rx0 - RADIUS < b[0] < rx1 + RADIUS and ry0 - RADIUS < b[1] < ry1 + RADIUS:
@@ -237,7 +242,7 @@ class Board:
             self.streak += 1
             mult = min(5, 1 + self.streak // 2)
             self.score += len(sealed) * 10 * mult
-            if len(sealed) >= 150 and self.lives < MAX_LIVES:   # a giant seal earns a life back
+            if len(sealed) >= (150 if self.level < 9 else 200) and self.lives < MAX_LIVES:   # a giant seal earns a life back
                 self.lives += 1
                 self.emit("life")
             else:
@@ -343,7 +348,7 @@ class Board:
         walls2 = wire(self.walls[1]) if len(self.walls) > 1 else []
         out = {"lv": self.level, "lives": self.lives, "score": self.score, "pct": round(self.pct, 4), "goal": level_goal(self.level), "st": self.state,
                "b": [[round(b[0], 2), round(b[1], 2)] for b in self.balls], "w": walls, "w2": walls2,
-               "p": self.pickups, "mu": min(5, 1 + self.streak // 2), "hd": max(0, round(self.hold - now, 1)), "sh": self.shield, "slow": max(0, round(self.slow_until - now, 1)),
+               "p": self.pickups, "gr": self.grow, "mu": min(5, 1 + self.streak // 2), "hd": max(0, round(self.hold - now, 1)), "sh": self.shield, "slow": max(0, round(self.slow_until - now, 1)),
                "ev": [self.event_id, self.event], "rev": self.rev}
         if full:
             out["g"] = self.grid_str()
@@ -361,7 +366,7 @@ class RiftSplit(Game):
     howto = [
         "Press and hold a spot to preview the line, slide to aim, and let go to grow a wall both ways from it (click on a computer). Tap the ↔ / ↕ buttons, press Space, or right-click to switch direction. You can start a second wall while the first is still growing.",
         "While a wall is growing (you can have two at once, on lines that don't cross), an orb that touches either half shatters that half and costs a life. A half that reaches a barrier locks in solid.",
-        "When a wall finishes, every pocket with no orb inside is sealed. Seal the goal % of the field (it rises each level, from 70%) to clear the level; each level adds an orb, and a life.",
+        "When a wall finishes, every pocket with no orb inside is sealed. Seal the goal % of the field (it rises each level, from 55%) to clear the level; each level adds an orb, and a life.",
         "Chain clean seals for a score multiplier. Seal a 🛡️ to block one hit, or a ⏳ to slow every orb for a few seconds. Everyone plays their own field; the highest score wins.",
     ]
 
