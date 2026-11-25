@@ -1118,6 +1118,40 @@
     }
   }
 
+  // Looping beds that follow the table: a low rumble that rises with the ball's speed, and a whirring spinner.
+  function ambience(g, row, prior, viewer) {
+    const Snd = window.Snd;
+    if (!Snd || viewer !== g.me || g.ctx.readOnly) return;
+    const now = performance.now();
+    const rolling = row[BALLS] && !row[STAGED] && !row[TILT] && !row[Z] ? Math.min(1, Math.hypot(row[VX], row[VY]) / 30) : 0;
+    Snd.bed('pin-roll', (K, dst) => {
+      const src = K.loopSrc('brown'), lp = K.ctx.createBiquadFilter(), gain = K.ctx.createGain();
+      lp.type = 'lowpass'; lp.frequency.value = 220; gain.gain.value = 0;
+      src.connect(lp).connect(gain).connect(dst);
+      return {
+        set(level) { const t = K.ctx.currentTime; gain.gain.setTargetAtTime(level * .5, t, .08); lp.frequency.setTargetAtTime(160 + level * 520, t, .08); },
+        stop() { try { src.stop(); src.disconnect(); } catch {} },
+      };
+    }).set(rolling * rolling);
+    // spin rate from how far the blade turned since the last packet
+    if (prior) {
+      const dt = Math.max(.016, (now - (g.spinSeen ?? now)) / 1000);
+      const turned = ((row[SPIN] - prior[SPIN]) % 1 + 1) % 1;
+      if (prior !== row) g.spinRate = turned < .001 ? (g.spinRate || 0) * .6 : Math.min(8, turned / dt);
+    }
+    g.spinSeen = now;
+    const whirl = Math.min(1, (g.spinRate || 0) / 6);
+    Snd.bed('pin-whir', (K, dst) => {
+      const o = K.ctx.createOscillator(), gain = K.ctx.createGain();
+      o.type = 'triangle'; o.frequency.value = 220; gain.gain.value = 0;
+      o.connect(gain).connect(dst); o.start();
+      return {
+        set(level) { const t = K.ctx.currentTime; gain.gain.setTargetAtTime(level * .05, t, .05); o.frequency.setTargetAtTime(200 + level * 420, t, .05); },
+        stop() { try { o.stop(); o.disconnect(); } catch {} },
+      };
+    }).set(whirl > .12 ? whirl : 0);
+  }
+
   function receive(g, data) {
     if (!g || data?.pin !== g.run || data.tick < g.tick) return;
     g.tick = data.tick;
@@ -1155,6 +1189,7 @@
     if (!g.enabled || row[TILT] && !prior?.[TILT]) clearControls(g);
     g.row = row;
     if (prior !== row) g.receivedAt = performance.now();
+    ambience(g, row, prior, viewer);
     if (g.over && g.solo && g.me && !row[BALLS] && !g.topSaved && g.mode !== 'practice') {
       g.topSaved = true;
       const saved = load(topKey(g));
@@ -1290,6 +1325,8 @@
       cancelAnimationFrame(game.raf);
       clearInterval(game.heartbeat);
       clearInterval(game.tally);
+      window.Snd?.bed('pin-roll').set(0);
+      window.Snd?.bed('pin-whir').set(0);
       game.three?.dispose();
       game.flat?.dispose();
       game.root.remove();
