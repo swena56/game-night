@@ -244,6 +244,14 @@
   // players who ask for reduced motion get no speed halo, squash/stretch, ripples or score roll
   const calm = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
+  // A full set of lanes chases its lights across the rollovers for a moment (the 'mult' callout).
+  function laneSweep(state, flash, lanes) {
+    if (flash !== 'mult') { state.at = 0; return -1; }
+    const now = performance.now();
+    state.at ||= now;
+    return Math.floor((now - state.at) / 110) % lanes;
+  }
+
   // The stage size is cached and refreshed by a ResizeObserver, so drawing never forces a layout read.
   function sizeOf(stage) {
     const size = { w: stage.clientWidth, h: stage.clientHeight };
@@ -317,6 +325,7 @@
       c.restore();
     };
     let rippleTag = '', rippleAt = 0;
+    const sweepState = {};
     const disc = (x, y, radius, color) => {
       c.beginPath();
       c.arc(x, y, radius, 0, 2 * Math.PI);
@@ -383,9 +392,10 @@
           disc(x, y - .07, radius - .24, '#30244f');
           disc(x, y - .12, .18, palette.ivory);
         });
+        const sweep = laneSweep(sweepState, flash, geo.lanes.length);
         geo.lanes.forEach(([x, y], i) => {
           disc(x, y, .26, '#252049');
-          disc(x, y, .2, flash === 'lane' + i || flash === 'skill' ? palette.ivory : palette.teal);
+          disc(x, y, .2, flash === 'lane' + i || flash === 'skill' || sweep === i ? palette.ivory : palette.teal);
         });
         const lit = rampLit(row);
         const rampHit = flash === 'ramp' || flash === 'jackpot';
@@ -634,6 +644,7 @@
     const extraBalls = [];
     const still = calm();
     const size = sizeOf(stage);
+    const sweepState = {};
     // a fast ball glows on the table beneath it; a ball save wraps it in a teal bubble
     const halo = new T.Mesh(new T.CircleGeometry(geo.radius * 3.2, 28),
       new T.MeshBasicMaterial({ color: '#ffd382', transparent: true, opacity: 0, depthWrite: false }));
@@ -704,8 +715,13 @@
         plunger.position.z = geo.launch[1] + .4 + .33 * row[CHARGE] / 240;
         spinner.rotation.x = row[SPIN] * 2 * Math.PI;
         const pulse = .58 + .32 * Math.sin(performance.now() / 190);
+        const sweep = laneSweep(sweepState, flash, geo.lanes.length);
+        // a ramp shot nudges the camera in a little while the ball is up on the ramp
+        const zoom = !still && row[Z] > .2 ? 1.14 : 1;
+        if (Math.abs(zoom - camera.zoom) > .002) { camera.zoom += (zoom - camera.zoom) * .12; camera.updateProjectionMatrix(); }
         for (const { m, tag, normal, active, color } of lights) {
-          const hit = flash === tag || flash === 'jackpot' && tag === 'ramp' || flash === 'skill' && tag.startsWith('lane');
+          const hit = flash === tag || flash === 'jackpot' && tag === 'ramp' || flash === 'skill' && tag.startsWith('lane') ||
+            flash === 'mult' && tag === 'lane' + sweep;
           const lit = active?.(row);
           const glow = hit ? color : rampLit(row) && tag === 'ramp' ? rampColor(row) : null;
           m.color.set(hit ? palette.ivory : lit || normal);
@@ -1087,7 +1103,7 @@
         g.stage.appendChild(spark);
       }
     }
-    if (['ramp', 'jackpot', 'super', 'kickback', 'bonus', 'extra', 'lock', 'multiball', 'wizard'].includes(row[EVENT]) && !reduce) {
+    if (['ramp', 'jackpot', 'super', 'kickback', 'bonus', 'extra', 'lock', 'multiball', 'wizard', 'drain', 'done'].includes(row[EVENT]) && !reduce) {
       g.stage.classList.remove('thump');
       void g.stage.offsetWidth;
       g.stage.classList.add('thump');

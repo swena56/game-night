@@ -275,6 +275,7 @@
 /* the pulse takes a colour from the event that caused it */
 .pb-stage[data-pulse="multiball"]::before { box-shadow: inset 0 0 30px #58e5d5cc, inset 0 0 6px #58e5d5; }
 .pb-stage[data-pulse="hurry"]::before, .pb-stage[data-pulse="kickback"]::before { box-shadow: inset 0 0 30px #ff9b59cc, inset 0 0 6px #ff9b59; }
+.pb-stage[data-pulse="drain"]::before, .pb-stage[data-pulse="done"]::before { box-shadow: inset 0 -60px 50px -20px #ff2d2dcc, inset 0 0 20px #ff2d2d88; }
 .pb-stage[data-pulse="super"]::before, .pb-stage[data-pulse="extra"]::before { box-shadow: inset 0 0 34px #c699ffcc, inset 0 0 6px #fff; }
 
 /* jackpot sparks fly outward from the ball and fade */
@@ -309,6 +310,14 @@
 .pb-top { text-align: center; }
 .pb-top ol { margin: .2rem 0 0; padding: 0; list-style: none; font: 700 .8rem ui-monospace, monospace; color: var(--pb-ivory); }
 .pb-top li:first-child { color: var(--pb-gold); }
+
+/* the score reads like an amber dot-matrix display */
+.pb-score {
+  font-family: ui-monospace, "Courier New", monospace;
+  letter-spacing: .08em;
+  color: #ffb347;
+  text-shadow: 0 0 6px #ff9a1fcc, 0 0 1px #ffe2a8;
+}
 
 /* a big score gain makes the number pop and flash gold */
 .pb-score.jump { animation: pb-score-jump .5s ease-out; }
