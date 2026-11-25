@@ -129,10 +129,11 @@ from .meteorshot import MeteorShot
 from .skydrop import SkyDrop
 from .starguard import StarGuard
 from .minesweeper import Minesweeper
+from .pinball import Pinball
 
 # Order here is the order of the lobby's game picker.
 GAMES = {g.id: g for g in (Unmask, OddOne, Relay, Trivia, Doodle, Bingo, Pond, Domino, Lucky, Switchyard, Spire, Prism, Marble, Riders, Whisker, PaintBlast, Sumo, Putt, Rally, Hockey, Fuse, Snowball, Rapids, Midway, Planes, Orbit, Regatta, Tops, Lander, Pusher, Tide, Billiards, Cannon, Stones, Archery, MeteorShot, Lanes, Wobble, Wordsmith, WordBomb, GridHunt, WordSearch, Garden, Safecracker, FibFinder, Ladder, Chess, Checkers, Backgammon, Go, Oware, Reversi, Hedgerow, Kindred, Realm, Drift, LastCard, Lantern, Holdem, Cribbage, Hearts, Speed, Rummy, Klondike, FreeCell, Cheat, President, Spoons, KnockOutWhist, Spades, OhHell, Euchre, Gops, Scopa, Gin, GermanWhist, FanTan, Palace, Ratscrew, Nertz, Whist, Briscola, Blitz, Ranter, BigTwo, GoFish, OldMaid, Cassino, Spite, War, NinetyNine, SixtySix, Pitch, Ecarte, FiveHundred, Canasta, Eleusis, Mao, Belote, Pinochle, Bezique, Bridge, Truc, Skat, Piquet, SeaBattle,
-                           DropFour, Boxes, TicTacToe, Ultimate, Morris, Sudoku, Minesweeper, Heist, MoonShot, Yacht, Farkle, Qork, ShipCrew, ShutBox, LiarsDice, Midnight, Mia, Squares, Brawl, Derby, TwentyOne, SkyDrop, StarGuard, Basketball)}
+                           DropFour, Boxes, TicTacToe, Ultimate, Morris, Sudoku, Minesweeper, Heist, MoonShot, Yacht, Farkle, Qork, ShipCrew, ShutBox, LiarsDice, Midnight, Mia, Squares, Brawl, Derby, TwentyOne, SkyDrop, StarGuard, Basketball, Pinball)}
 # Subgroups for the two big categories (#98): the picker shows them as small headers, in this order.
 FAMILIES = {
     "cards": [("Trick-taking", "hearts kowhist spades ohhell euchre germanwhist whist ninetynine pitch fivehundred bridge"),
