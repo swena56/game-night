@@ -74,8 +74,12 @@
     const scene = new T.Scene();
     const cam = new T.PerspectiveCamera(34, 1, 1, 200);
     const gx = (x) => x - g.W / 2, gy = (y) => g.H / 2 - y;
-    scene.add(new T.AmbientLight(0x8899cc, 0.8));
-    const sun = new T.DirectionalLight(0xffffff, 0.9); sun.position.set(-10, 14, 24); scene.add(sun);
+    // cool sky / warm floor bounce, one soft key from the upper left, and a faint rim from the opposite side
+    scene.add(new T.HemisphereLight(0x8fb4ff, 0x1a1030, 0.75));
+    const sun = new T.DirectionalLight(0xfff1dc, 0.85); sun.position.set(-12, 10, 22); scene.add(sun);
+    const rim = new T.DirectionalLight(0x4aa8ff, 0.35); rim.position.set(14, -8, 10); scene.add(rim);
+    // the first few orbs light the field around them (skipped on the Low graphics setting)
+    const orbLights = GL3.level() === 'low' ? [] : [0, 1, 2].map(() => { const l = new T.PointLight(0xffffff, 0, 9, 1.6); l.position.z = 1.4; scene.add(l); return l; });
 
     // Floor with a grid.
     const tex = document.createElement('canvas'); tex.width = 1024; tex.height = 614;
@@ -84,7 +88,7 @@
     t.strokeStyle = '#26407f'; t.lineWidth = 1.5;
     for (let i = 0; i <= g.W; i++) { t.beginPath(); t.moveTo(i * 1024 / g.W, 0); t.lineTo(i * 1024 / g.W, 614); t.stroke(); }
     for (let i = 0; i <= g.H; i++) { t.beginPath(); t.moveTo(0, i * 614 / g.H); t.lineTo(1024, i * 614 / g.H); t.stroke(); }
-    const floor = new T.Mesh(new T.PlaneGeometry(g.W, g.H), new T.MeshBasicMaterial({ map: new T.CanvasTexture(tex) }));
+    const floor = new T.Mesh(new T.PlaneGeometry(g.W, g.H), new T.MeshStandardMaterial({ map: new T.CanvasTexture(tex), emissive: 0xffffff, emissiveMap: new T.CanvasTexture(tex), emissiveIntensity: 0.55, roughness: 0.85, metalness: 0 }));
     scene.add(floor);
     const frame = new T.Mesh(new T.BoxGeometry(g.W + 1, g.H + 1, 0.5), new T.MeshStandardMaterial({ color: 0x1a2650, roughness: 0.6 }));
     frame.position.z = -0.4; scene.add(frame);
@@ -160,10 +164,25 @@
     const ghost = new T.Mesh(new T.BoxGeometry(1, 1, 0.3), mats.ghost); ghost.visible = false; scene.add(ghost);
     const pickMeshes = new Map();
     const pickTexs = {};
+    // vector icons drawn on a canvas (no emoji font needed): a shield with a check, an hourglass
     const pickTex = (kind) => pickTexs[kind] ||= (() => {
-      const c = document.createElement('canvas'); c.width = c.height = 96;
+      const c = document.createElement('canvas'); c.width = c.height = 128;
       const x = c.getContext('2d');
-      if (x) { x.font = '64px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(kind === 'shield' ? '🛡️' : '⏳', 48, 52); }
+      if (x) {
+        x.translate(64, 64); x.lineJoin = x.lineCap = 'round';
+        const grad = x.createLinearGradient(0, -48, 0, 48);
+        if (kind === 'shield') {
+          grad.addColorStop(0, '#b9ffd6'); grad.addColorStop(1, '#19b86a');
+          x.beginPath(); x.moveTo(0, -48); x.lineTo(38, -34); x.lineTo(38, 2); x.quadraticCurveTo(36, 34, 0, 50); x.quadraticCurveTo(-36, 34, -38, 2); x.lineTo(-38, -34); x.closePath();
+          x.fillStyle = grad; x.fill(); x.lineWidth = 6; x.strokeStyle = '#eafff3'; x.stroke();
+          x.beginPath(); x.moveTo(-16, 2); x.lineTo(-4, 16); x.lineTo(18, -12); x.lineWidth = 10; x.strokeStyle = '#0b5c36'; x.stroke();
+        } else {
+          grad.addColorStop(0, '#fff2b0'); grad.addColorStop(1, '#f2a516');
+          x.beginPath(); x.moveTo(-30, -44); x.lineTo(30, -44); x.lineTo(6, -2); x.lineTo(30, 44); x.lineTo(-30, 44); x.lineTo(-6, -2); x.closePath();
+          x.fillStyle = grad; x.fill(); x.lineWidth = 6; x.strokeStyle = '#fff8dc'; x.stroke();
+          x.beginPath(); x.moveTo(-18, 38); x.lineTo(18, 38); x.lineTo(0, 16); x.closePath(); x.fillStyle = '#7a4a00'; x.fill();   // the sand
+        }
+      }
       return new T.CanvasTexture(c);
     })();
     const sphere = new T.SphereGeometry(0.34, 20, 14);
@@ -249,6 +268,7 @@
         }
         balls.forEach((m, i) => {
           m.visible = i < s.b.length;
+          if (orbLights[i]) orbLights[i].intensity = 0;
           if (!m.visible) return;
           const bx = s.b[i][0], by = s.b[i][1], u = m.userData;
           // a flip in direction is a bounce: flare the glow and throw a few sparks
@@ -261,6 +281,8 @@
           } else if (u.last) u.dir = [bx - u.last[0], by - u.last[1]];
           u.last = [bx, by]; u.pulse = Math.max(0, u.pulse - dt * 4);
           m.position.set(gx(bx), gy(by), 0.5);
+          const light = orbLights[i];
+          if (light) { light.position.set(gx(bx), gy(by), 1.4); light.color.copy(col).lerp(mats.ball.color, 0.35); light.intensity = 1.1 + u.pulse * 1.2; }
           const gs = 2.4 + u.pulse * 1.6;
           u.halo.scale.set(gs, gs, 1); u.halo.material.color.copy(col).lerp(mats.ball.color, 0.25);
           const tr = trails[i];
@@ -405,10 +427,11 @@
     return [a, cell.y, b - a + 1, 1];
   }
 
-  function toggle() {
-    g.vertical = !g.vertical;
-    g.find('dir').textContent = g.vertical ? '↕ Vertical' : '↔ Horizontal';
+  function setDirection(vertical) {
+    g.vertical = vertical;
+    for (const b of g.root.querySelectorAll('.rs-dir')) b.setAttribute('aria-pressed', String((b.dataset.v === '1') === vertical));
   }
+  const toggle = () => setDirection(!g.vertical);
 
   function loop(now) {
     g.raf = requestAnimationFrame(loop);
@@ -442,7 +465,7 @@
         </div>
         <div class="rs-bar" role="meter" aria-label="Field sealed" aria-valuemin="0" aria-valuemax="100"><div class="rs-fill"></div><div class="rs-goal" title="75% to clear"></div><span class="rs-pct">0%</span><span class="rs-slow" hidden></span></div>
         <div class="rs-stage" aria-label="Rift Split field"><span class="rs-msg" role="status"></span></div>
-        <div class="rs-controls"><button type="button" class="rs-dir">↔ Horizontal</button><span class="rs-tip">Tap to grow a wall · Space / right-click turns it · ⛶ for fullscreen</span></div>
+        <div class="rs-controls"><div class="rs-dirs" role="group" aria-label="Wall direction"><button type="button" class="rs-dir" data-v="0" aria-pressed="true"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Horizontal</span></button><button type="button" class="rs-dir rs-v" data-v="1" aria-pressed="false"><svg viewBox="0 0 28 28" aria-hidden="true"><path d="M4 14h20M4 14l5-5M4 14l5 5M24 14l-5-5M24 14l-5 5"/></svg><span>Vertical</span></button></div><span class="rs-tip">Tap to grow a wall · Space / right-click turns it · ⛶ for fullscreen</span></div>
         <ol class="rs-standings" aria-label="Scores" hidden></ol>
       </section>`;
     const root = arena.querySelector('.rs-cabinet');
@@ -464,7 +487,7 @@
         clearTimeout(g.msgTimer); g.msgTimer = setTimeout(() => el.classList.remove('on'), 1600);
       },
     };
-    on(g.find('dir'), 'click', toggle);
+    for (const b of root.querySelectorAll('.rs-dir')) on(b, 'click', () => setDirection(b.dataset.v === '1'));
     let down = null;
     on(stage, 'pointerdown', (e) => {
       if (e.button === 2) return;
