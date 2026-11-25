@@ -14,7 +14,7 @@
   const prefixes = { bumper: 'Bumper +100', sling: 'Slingshot +50', lane: 'Rollover +500', target: 'Target +250' };
   const label = (event, row) => event === 'bonus' && row ? `Ball bonus +${row[BONUS].toLocaleString()}` : messages[event] || prefixes[event?.replace(/[0-9]$/, '')] || '';
   const sound = (event) => sounds[event] || (/^(bumper|sling)/.test(event) ? 'puck' : 'pop');
-  const bestKey = 'pinball.best';
+  const bestKey = 'pinball.best', topKey = 'pinball.top';
   const palette = { gold: '#ffd383', ivory: '#fff0ca', teal: '#59edd2', red: '#ff6854', steel: '#c1d2e5' };
   const bumperColors = ['#ff9b59', '#c699ff', '#58e5d5'];
   const flipperColors = ['#42cfeb', '#ff78bc'];
@@ -233,7 +233,7 @@
     };
     const rail = ([ax, ay, bx, by], color, width) => line([[ax, ay], [bx, by]], width, color);
     return {
-      draw(row, ball, flash) {
+      draw(row, ball, flash, trail = []) {
         const ratio = GL3.level() === 'low' ? 1 : Math.min(2, window.devicePixelRatio || 1);
         const width = Math.round(stage.clientWidth * ratio);
         const height = Math.round(stage.clientHeight * ratio);
@@ -294,6 +294,7 @@
         const plungerY = launchY + .39 + .25 * row[CHARGE] / 240;
         rail([launchX - .22, plungerY, launchX + .22, plungerY], palette.gold, .19);
         if (row[BALLS]) {
+          trail.forEach(([tx, ty], i) => disc(tx, ty, geo.radius * (.3 + .5 * i / trail.length), `rgba(255,240,202,${.05 + .14 * i / trail.length})`));
           const [x, y, z] = ball;
           disc(x + .1, y + .1, geo.radius * 1.25, '#26141483');
           const ballY = y - z * .14;
@@ -424,13 +425,21 @@
       return pivot;
     });
     const sphere = mesh(new T.SphereGeometry(geo.radius, 20, 14), chrome, 0, 0, 0);
+    const dots = Array.from({ length: 8 }, () => {
+      const m = material(palette.ivory);
+      m.transparent = true;
+      const dot = mesh(new T.SphereGeometry(geo.radius * .7, 8, 6), m, 0, 0, 0);
+      dot.castShadow = false;
+      dot.visible = false;
+      return dot;
+    });
     const plunger = box(.43, .49, .32, brass, geo.launch[0], geo.launch[1] + .4, .16);
     const canvas = renderer.domElement;
     canvas.className = 'pb-three';
     stage.prepend(canvas);
     let width = 0, height = 0;
     return {
-      draw(row, ball, flash) {
+      draw(row, ball, flash, trail = []) {
         if (!stage.clientWidth || !stage.clientHeight) return;
         if (width !== stage.clientWidth || height !== stage.clientHeight) {
           width = stage.clientWidth;
@@ -443,6 +452,15 @@
           camera.right = -camera.left;
           camera.updateProjectionMatrix();
         }
+        dots.forEach((dot, i) => {
+          const point = trail[i - (dots.length - trail.length)];
+          dot.visible = !!point && row[BALLS] > 0;
+          if (point) {
+            dot.position.set(point[0], geo.radius, Math.min(17.25, point[1]));
+            dot.scale.setScalar(.35 + .55 * (i + 1) / dots.length);
+            dot.material.opacity = .08 + .25 * (i + 1) / dots.length;
+          }
+        });
         sphere.visible = row[BALLS] > 0;
         sphere.position.set(ball[0], geo.radius + ball[2], Math.min(17.25, ball[1]));
         const bumperHit = flash?.startsWith('bumper');
@@ -510,12 +528,13 @@
           <button type="button" data-control="-3" aria-label="Nudge right (E)">↦</button>
         </div>
         <ol class="pb-standings" aria-label="Scores" hidden></ol>
+        <div class="pb-top" hidden><span class="pb-caption">Top scores</span><ol></ol></div>
       </section>`;
     const root = arena.querySelector('.pb-cabinet');
     const find = (s) => root.querySelector('.pb-' + s);
     const stage = find('stage');
     const listeners = new AbortController();
-    const g = game = { root, stage, find, listeners, sources: new Map(), pulls: new Map(), held: 0, tick: -1, flashAt: 0 };
+    const g = game = { root, stage, find, listeners, trail: [], sources: new Map(), pulls: new Map(), held: 0, tick: -1, flashAt: 0 };
     const on = (target, event, handler) => target.addEventListener(event, handler, { signal: listeners.signal });
     const setHeld = () => {
       const previous = g.held;
@@ -669,6 +688,19 @@
         }));
       }
     }
+    const top = find('top');
+    top.hidden = !g.solo || !g.over || !g.topScores?.length;
+    if (!top.hidden) {
+      const items = g.topScores.map(value => value.toLocaleString());
+      if (JSON.stringify(items) !== g.topKey) {
+        g.topKey = JSON.stringify(items);
+        top.querySelector('ol').replaceChildren(...items.map((text) => {
+          const item = document.createElement('li');
+          item.textContent = text;
+          return item;
+        }));
+      }
+    }
     paintControls(g);
   }
 
@@ -724,6 +756,13 @@
     if (!g.enabled || row[TILT] && !prior?.[TILT]) clearControls(g);
     g.row = row;
     if (prior !== row) g.receivedAt = performance.now();
+    if (g.over && g.solo && g.me && !row[BALLS] && !g.topSaved) {
+      g.topSaved = true;
+      const saved = load(topKey);
+      g.topScores = [...(Array.isArray(saved) ? saved.filter(Number.isSafeInteger) : []), row[SCORE]]
+        .sort((a, b) => b - a).slice(0, 5);
+      store(topKey, g.topScores);
+    }
     if (g.over && g.solo && g.me && !row[BALLS] && (g.best === null || row[SCORE] > g.best)) {
       g.best = row[SCORE];
       g.record = true;
@@ -745,7 +784,14 @@
     const flash = now < g.flashAt ? row[EVENT] : '';
     if (!flash && g.flashing) updateHud(g, row);
     g.flashing = !!flash;
-    (g.three || g.flat)?.draw(row, g.ball, flash);
+    const last = g.trail.at(-1);
+    if (!row[BALLS] || row[STAGED] || last && Math.hypot(last[0] - g.ball[0], last[1] - g.ball[1]) > 2) g.trail.length = 0;
+    if (!row[STAGED] && !(now < (g.trailAt ?? 0))) {
+      g.trail.push([g.ball[0], g.ball[1]]);
+      if (g.trail.length > 8) g.trail.shift();
+      g.trailAt = now + 24;
+    }
+    (g.three || g.flat)?.draw(row, g.ball, flash, g.trail);
   }
 
   function initRenderer(g, geo) {
