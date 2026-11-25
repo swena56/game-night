@@ -52,6 +52,8 @@
 .rs-stage.rs-place::before { animation: rsPlace .42s ease-out; background: radial-gradient(circle at var(--rs-place-x, 50%) var(--rs-place-y, 50%), #ffffffcc 0, color-mix(in srgb, var(--rs-glow, #3cf5e0) 65%, transparent) 2%, transparent 18%); }
 @keyframes rsPlace { from { opacity: .9; } to { opacity: 0; } }
 @keyframes rsFlash { from { opacity: 1; } to { opacity: 0; } }
+/* the flash overlays rest invisible: without this a finished flash snapped back to full opacity and tinted the whole field (red/teal) until the next one */
+.rs-stage.rs-flash-hit::before, .rs-stage.rs-flash-seal::before, .rs-stage.rs-flash-clear::before, .rs-stage.rs-place::before { opacity: 0; animation-fill-mode: forwards; }
 .rs-banner { position: absolute; left: 50%; top: 40%; z-index: 2; padding: 8px 26px; border-radius: 12px; font-size: clamp(1.2rem, 5vw, 2.2rem); font-weight: 900; letter-spacing: .12em; color: #fff; background: #070b22cc; border: 1px solid #ffffff40; text-shadow: 0 0 16px var(--rs-glow, #3cf5e0); box-shadow: 0 0 30px color-mix(in srgb, var(--rs-glow, #3cf5e0) 60%, transparent); pointer-events: none; animation: rsBanner 1.8s ease-out forwards; }
 @keyframes rsBanner { 0% { opacity: 0; transform: translate(-50%, 0) scale(.6); } 15% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); } 25% { transform: translate(-50%, -50%) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -70%) scale(1); } }
 @media (prefers-reduced-motion: reduce) { .rs-banner, .rs-lives.rs-lost { animation-duration: .01s; } }

@@ -916,6 +916,8 @@
         stage.classList.remove('rs-flash-hit', 'rs-flash-seal', 'rs-flash-clear');
         void stage.offsetWidth;   // restart the animation if one is still running
         stage.classList.add(cls);
+        clearTimeout(g.flashTimer);
+        g.flashTimer = setTimeout(() => stage.classList.remove('rs-flash-hit', 'rs-flash-seal', 'rs-flash-clear'), 1100);
         if (kind === 'clear' || kind === 'over') {
           g.banner(kind === 'clear' ? 'LEVEL CLEAR' : 'GAME OVER');
         }
@@ -1058,7 +1060,7 @@
       g.listeners.abort();
       cancelAnimationFrame(g.raf);
       clearTimeout(g.msgTimer);
-      clearTimeout(g.placeTimer);
+      clearTimeout(g.placeTimer); clearTimeout(g.flashTimer);
       g.three?.dispose(); g.flat?.dispose();
       g.root.remove();
       g = null;
