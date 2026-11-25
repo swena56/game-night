@@ -157,6 +157,19 @@ class PinballRules(unittest.TestCase):
             table.step()
             self.assertEqual((table.event, table.score), (f"sling{i}", 50))
 
+    def test_slings_need_a_hard_hit_and_dropped_targets_are_flush(self):
+        ax, ay, bx, by = SLINGS[0]
+        n = math.hypot(bx - ax, by - ay)
+        nx, ny = (by - ay) / n, -(bx - ax) / n
+        table = placed((ax + bx) / 2 + .31 * nx, (ay + by) / 2 + .31 * ny, -1.5 * nx, -1.5 * ny)
+        table.step()
+        self.assertEqual(table.score, 0)
+        x, y, _, end = TARGETS[0]
+        table = placed(x + .29, (y + end) / 2, -10, 0)
+        table.bank = 1
+        table.step()
+        self.assertLess(table.vx, 0)
+
     def test_lanes_spinner_bank_and_ramp(self):
         table = placed(*ROLLOVERS[0])
         for _ in range(4):

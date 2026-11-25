@@ -350,7 +350,14 @@ class Table:
         if lay.gate and not self.smooth_launch:
             self.segment(lay.gate, bounce=0.5)
         for i, rail in enumerate(lay.slings):
-            if self.segment(rail, ball + 0.09, kick=0 if self.tilt else 13) and not self.tilt:
+            # A real slingshot only fires when the blade switch is struck hard; a gentle roll just
+            # bounces off dead rubber.
+            cx, cy = closest(self.x, self.y, *rail)
+            dx, dy = self.x - cx, self.y - cy
+            gap = math.hypot(dx, dy)
+            hard = gap > 1e-8 and -(self.vx * dx + self.vy * dy) / gap >= rules.sling_threshold
+            if self.segment(rail, ball + 0.09, bounce=0.77 if hard else 0.4,
+                            kick=13 if hard and not self.tilt else 0) and hard and not self.tilt:
                 self.signal(f"sling{i}", rules.sling)
         for i, (x, y, radius) in enumerate(lay.bumps):
             if self.contact(x, y, ball + radius, 0.86, 0 if self.tilt else 16) and not self.tilt:
@@ -360,7 +367,9 @@ class Table:
                     self.jackpot_pool += rules.jackpot_growth
                 self.signal(f"bumper{i}", (rules.bumper_jackpot if self.jackpot_ticks or self.others else rules.bumper) * level)
         for i, rail in enumerate(lay.targets):
-            if self.segment(rail, ball + 0.08) and not self.tilt and not self.bank & (1 << i):
+            if self.bank & (1 << i):
+                continue       # a dropped target is flush with the playfield until the bank resets
+            if self.segment(rail, ball + 0.08) and not self.tilt:
                 self.bank |= 1 << i
                 self.signal(f"target{i}", rules.target)
         if lay.outlane and self.kickback and not self.tilt and self.vy > 0 \

@@ -41,7 +41,8 @@ class Rules:
     extra_ball_scores: tuple = (40000, 120000)
     shots: tuple = ("lane", "target", "spinner", "ramp")
     first_lit: int = 3
-    gravity: float = 11.0         # table slope: higher plays faster
+    sling_threshold: float = 4.0  # ball speed into the blade needed to fire a slingshot
+    gravity: float = 11.0        # table slope: higher plays faster
     wizard_at: int = 8            # the Nth jackpot of a game starts a free four-ball Wizard multiball (0 disables it)
     wizard_points: int = 25000
     # timed missions, started by a ramp shot: (title, shot prefix to count, goal, reward)
