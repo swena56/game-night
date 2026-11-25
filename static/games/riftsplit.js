@@ -29,6 +29,59 @@
   }
   const cellFree = (grid, x, y) => x >= 0 && y >= 0 && x < g.W && y < g.H && grid[y * g.W + x] === '0';
 
+
+  // The seal ripples inward: each new cell waits in proportion to its distance from the cells that were already solid.
+  // Sets born[] (ms timestamps) and returns when the animation ends plus sparks to fire: [time, x, y, count].
+  function ripple(prev, grid, now, born) {
+    const dist = new Int16Array(grid.length).fill(-1), queue = [];
+    for (let i = 0; i < grid.length; i++) if (prev[i] === '1') { dist[i] = 0; queue.push(i); }
+    let far = 0;
+    for (let q = 0; q < queue.length; q++) {
+      const i = queue[q], x = i % g.W, y = (i - x) / g.W;
+      for (const j of [x > 0 ? i - 1 : -1, x < g.W - 1 ? i + 1 : -1, y > 0 ? i - g.W : -1, y < g.H - 1 ? i + g.W : -1]) {
+        if (j < 0 || dist[j] >= 0 || grid[j] !== '1') continue;
+        dist[j] = dist[i] + 1; far = Math.max(far, dist[j]); queue.push(j);
+      }
+    }
+    const step = Math.min(24, 420 / Math.max(1, far)), fresh = [];
+    for (let i = 0; i < grid.length; i++) if (grid[i] === '1' && prev[i] !== '1') { born[i] = now + Math.max(0, dist[i]) * step; fresh.push(i); }
+    const every = Math.max(1, Math.floor(fresh.length / 40)), big = fresh.length >= 90, sparks = [];
+    for (let q = 0; q < fresh.length; q += every) sparks.push([born[fresh[q]], fresh[q] % g.W + 0.5, Math.floor(fresh[q] / g.W) + 0.5, big ? 5 : 3]);
+    return { until: now + far * step + 450, sparks };
+  }
+
+  // A wall half that was growing and is now gone was struck by an orb. Updates `prev` and returns the head [x, y] of each shattered half.
+  function shatters(prev, w) {
+    const out = [];
+    for (let i = 0; i < 2; i++) {
+      const st = w.length ? w[5 + i * 3] : '';
+      if (prev[i] === 'g' && st === 'x') {
+        const v = w[0], c = v ? w[2] : w[1], head = i === 0 ? c + 1 - w[3 + i * 3] : c + 1 + w[3 + i * 3];
+        out.push(v ? [w[1] + 0.5, head] : [head, w[2] + 0.5]);
+      }
+      prev[i] = st;
+    }
+    return out;
+  }
+
+  // Pickup icons drawn with canvas paths (no emoji font needed): a shield with a check, an hourglass. 128x128 box.
+  function drawPickupIcon(x, kind) {
+    x.save(); x.translate(64, 64); x.lineJoin = x.lineCap = 'round';
+    const grad = x.createLinearGradient(0, -48, 0, 48);
+    if (kind === 'shield') {
+      grad.addColorStop(0, '#b9ffd6'); grad.addColorStop(1, '#19b86a');
+      x.beginPath(); x.moveTo(0, -48); x.lineTo(38, -34); x.lineTo(38, 2); x.quadraticCurveTo(36, 34, 0, 50); x.quadraticCurveTo(-36, 34, -38, 2); x.lineTo(-38, -34); x.closePath();
+      x.fillStyle = grad; x.fill(); x.lineWidth = 6; x.strokeStyle = '#eafff3'; x.stroke();
+      x.beginPath(); x.moveTo(-16, 2); x.lineTo(-4, 16); x.lineTo(18, -12); x.lineWidth = 10; x.strokeStyle = '#0b5c36'; x.stroke();
+    } else {
+      grad.addColorStop(0, '#fff2b0'); grad.addColorStop(1, '#f2a516');
+      x.beginPath(); x.moveTo(-30, -44); x.lineTo(30, -44); x.lineTo(6, -2); x.lineTo(30, 44); x.lineTo(-30, 44); x.lineTo(-6, -2); x.closePath();
+      x.fillStyle = grad; x.fill(); x.lineWidth = 6; x.strokeStyle = '#fff8dc'; x.stroke();
+      x.beginPath(); x.moveTo(-18, 38); x.lineTo(18, 38); x.lineTo(0, 16); x.closePath(); x.fillStyle = '#7a4a00'; x.fill();   // the sand
+    }
+    x.restore();
+  }
+
   // ---------- flat renderer ----------
   function flatRenderer(stage) {
     const canvas = document.createElement('canvas');
@@ -36,7 +89,18 @@
     stage.append(canvas);
     const c = canvas.getContext('2d');
     if (!c) { canvas.remove(); return null; }
-    let size = [0, 0];
+    const fx = GL3.level() !== 'low';
+    let size = [0, 0], lastGrid = '0'.repeat(g.W * g.H), animUntil = 0, last = 0, shake = 0;
+    const born = new Float32Array(g.W * g.H), pending = [], parts = [], hist = [], prevHalf = ['', ''];
+    const icons = {};
+    const icon = (kind) => icons[kind] ||= (() => { const k = document.createElement('canvas'); k.width = k.height = 128; const x = k.getContext('2d'); if (x) drawPickupIcon(x, kind); return k; })();
+    const burst = (x, y, n, color, speed = 6) => {
+      if (!fx) return;
+      for (let i = 0; i < n && parts.length < 240; i++) {
+        const a = Math.random() * 6.283, v = speed * (0.35 + Math.random() * 0.8);
+        parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, l: 0.5 + Math.random() * 0.5, c: Math.random() < 0.35 ? '#fff' : color });
+      }
+    };
     return {
       pick(e) {
         const r = canvas.getBoundingClientRect();
@@ -45,19 +109,84 @@
       draw(s, now) {
         const w = canvas.clientWidth, h = canvas.clientHeight;
         if (size[0] !== w || size[1] !== h) { canvas.width = w * devicePixelRatio; canvas.height = h * devicePixelRatio; size = [w, h]; }
+        const dt = Math.min(0.05, Math.max(0, (now - (last || now)) / 1000)); last = now;
         const k = canvas.width / g.W;
         c.setTransform(k, 0, 0, k, 0, 0);
-        c.fillStyle = '#080d22'; c.fillRect(0, 0, g.W, g.H);
-        c.strokeStyle = '#1b2a55'; c.lineWidth = 0.03;
-        for (let x = 0; x <= g.W; x++) { c.beginPath(); c.moveTo(x, 0); c.lineTo(x, g.H); c.stroke(); }
-        for (let y = 0; y <= g.H; y++) { c.beginPath(); c.moveTo(0, y); c.lineTo(g.W, y); c.stroke(); }
-        c.fillStyle = s.color;
-        for (let i = 0; i < s.grid.length; i++) if (s.grid[i] === '1') c.fillRect(i % g.W + 0.04, Math.floor(i / g.W) + 0.04, 0.92, 0.92);
-        for (const p of s.p) { c.font = '1px sans-serif'; c.fillText(p[2] === 'shield' ? '🛡️' : '⏳', p[0], p[1] + 0.85); }
-        for (const [x0, x1, y0, y1, st] of wallRects(s.w)) { c.fillStyle = st === 'g' ? '#fff' : s.color; c.fillRect(x0, y0, x1 - x0, y1 - y0); }
+        if (shake > 0.02) { c.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake); shake *= Math.exp(-dt * 7); } else shake = 0;
+        const bg = c.createRadialGradient(g.W / 2, g.H / 2, 2, g.W / 2, g.H / 2, g.W * 0.65);
+        bg.addColorStop(0, '#0e1a44'); bg.addColorStop(1, '#050816');
+        c.fillStyle = bg; c.fillRect(0, 0, g.W, g.H);
+        c.strokeStyle = '#1d3170'; c.lineWidth = 0.035;
+        c.beginPath();
+        for (let x = 0; x <= g.W; x++) { c.moveTo(x, 0); c.lineTo(x, g.H); }
+        for (let y = 0; y <= g.H; y++) { c.moveTo(0, y); c.lineTo(g.W, y); }
+        c.stroke();
+        if (s.grid !== lastGrid) {
+          const r = ripple(lastGrid, s.grid, now, born);
+          if (fx) pending.push(...r.sparks);
+          lastGrid = s.grid; animUntil = r.until;
+        }
+        // sealed cells: interior darker, cells touching open space lit like a rim; new ones rise in
+        const open = (i, x, y) => (x > 0 && s.grid[i - 1] === '0') || (x < g.W - 1 && s.grid[i + 1] === '0') || (y > 0 && s.grid[i - g.W] === '0') || (y < g.H - 1 && s.grid[i + g.W] === '0');
+        for (let i = 0; i < s.grid.length; i++) {
+          if (s.grid[i] !== '1') continue;
+          const x = i % g.W, y = (i - x) / g.W, t = now < animUntil + 60 ? Math.max(0, Math.min(1, (now - born[i]) / 350)) : 1;
+          if (t <= 0) continue;
+          const e = 1 - (1 - t) ** 3, inset = 0.04 + (1 - e) * 0.4;
+          c.globalAlpha = e;
+          c.fillStyle = s.color;
+          c.fillRect(x + inset, y + inset, 1 - inset * 2, 1 - inset * 2);
+          c.fillStyle = open(i, x, y) ? '#ffffff55' : '#00000066';
+          c.fillRect(x + inset, y + inset, 1 - inset * 2, 1 - inset * 2);
+        }
+        c.globalAlpha = 1;
+        for (const p of s.p) {
+          const sz = 1.35 + 0.12 * Math.sin(now / 260 + p[0]), tint = p[2] === 'shield' ? '#59ff9a' : '#ffd84a';
+          const gl = c.createRadialGradient(p[0] + 0.5, p[1] + 0.5, 0, p[0] + 0.5, p[1] + 0.5, 1.3);
+          gl.addColorStop(0, tint + '88'); gl.addColorStop(1, tint + '00');
+          c.fillStyle = gl; c.fillRect(p[0] - 1, p[1] - 1, 3, 3);
+          c.drawImage(icon(p[2]), p[0] + 0.5 - sz / 2, p[1] + 0.5 - sz / 2, sz, sz);
+        }
+        // growing walls: a bright core inside a pulsing glow
+        c.save();
+        c.shadowColor = s.color; c.shadowBlur = fx ? 0.9 * k : 0;
+        for (const [x0, x1, y0, y1, st, i] of wallRects(s.w)) {
+          const wide = x1 - x0 >= y1 - y0, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+          c.globalAlpha = 0.3 + 0.2 * Math.sin(now / 90); c.fillStyle = s.color; c.fillRect(x0, y0, x1 - x0, y1 - y0);
+          c.globalAlpha = 1; c.fillStyle = '#fff';
+          if (wide) c.fillRect(x0, cy - 0.15, x1 - x0, 0.3); else c.fillRect(cx - 0.15, y0, 0.3, y1 - y0);
+          const hx = wide ? (i === 0 ? x0 : x1) : cx, hy = wide ? cy : (i === 0 ? y0 : y1);
+          if (fx && Math.random() < 0.4) burst(hx, hy, 1, s.color, 2);
+          const tip = c.createRadialGradient(hx, hy, 0, hx, hy, 1.4);
+          tip.addColorStop(0, '#ffffffee'); tip.addColorStop(0.4, s.color + 'aa'); tip.addColorStop(1, s.color + '00');
+          c.fillStyle = tip; c.fillRect(hx - 1.5, hy - 1.5, 3, 3);
+        }
+        c.restore();
+        for (const [x, y] of shatters(prevHalf, s.w)) { burst(x, y, 34, s.color, 8); shake = 0.3; }
         if (s.ghost) { c.fillStyle = '#ffffff30'; c.fillRect(...s.ghost); }
-        c.fillStyle = '#fff';
-        for (const b of s.b) { c.beginPath(); c.arc(b[0], b[1], 0.42, 0, 7); c.fill(); }
+        // orbs: tail, glow, core
+        s.b.forEach((b, i) => {
+          const hh = hist[i] ||= [];
+          if (!hh.at || now - hh.at > 22) { hh.unshift([b[0], b[1]]); hh.length = Math.min(hh.length, 7); hh.at = now; }
+          if (fx && i < 16) hh.forEach((q, j) => {
+            const f = 1 - (j + 1) / 8, gl = c.createRadialGradient(q[0], q[1], 0, q[0], q[1], 0.75 * f);
+            gl.addColorStop(0, s.color + '77'); gl.addColorStop(1, s.color + '00');
+            c.fillStyle = gl; c.fillRect(q[0] - 1, q[1] - 1, 2, 2);
+          });
+          const gl = c.createRadialGradient(b[0], b[1], 0, b[0], b[1], 1.2);
+          gl.addColorStop(0, '#ffffffcc'); gl.addColorStop(0.35, s.color + '66'); gl.addColorStop(1, s.color + '00');
+          c.fillStyle = gl; c.fillRect(b[0] - 1.3, b[1] - 1.3, 2.6, 2.6);
+          c.fillStyle = '#fff'; c.beginPath(); c.arc(b[0], b[1], 0.34, 0, 7); c.fill();
+        });
+        hist.length = s.b.length;
+        for (let q = pending.length - 1; q >= 0; q--) if (pending[q][0] <= now) { burst(pending[q][1], pending[q][2], pending[q][3], s.color, 4); pending.splice(q, 1); }
+        for (let i = parts.length - 1; i >= 0; i--) {
+          const q = parts[i]; q.l -= dt;
+          if (q.l <= 0) { parts.splice(i, 1); continue; }
+          q.x += q.vx * dt; q.y += q.vy * dt; q.vx *= Math.exp(-3 * dt); q.vy *= Math.exp(-3 * dt);
+          c.globalAlpha = Math.min(1, q.l * 2); c.fillStyle = q.c; c.fillRect(q.x - 0.07, q.y - 0.07, 0.14, 0.14);
+        }
+        c.globalAlpha = 1;
       },
       dispose() { canvas.remove(); },
     };
@@ -92,6 +221,23 @@
     scene.add(floor);
     const frame = new T.Mesh(new T.BoxGeometry(g.W + 1, g.H + 1, 0.5), new T.MeshStandardMaterial({ color: 0x1a2650, roughness: 0.6 }));
     frame.position.z = -0.4; scene.add(frame);
+    // a deep gradient backdrop with a scatter of faint stars behind the field
+    const bgc = document.createElement('canvas'); bgc.width = 256; bgc.height = 160;
+    const bgx = bgc.getContext('2d'), bgg = bgx.createRadialGradient(128, 80, 10, 128, 80, 150);
+    bgg.addColorStop(0, '#16215a'); bgg.addColorStop(0.6, '#0a1033'); bgg.addColorStop(1, '#03050f');
+    bgx.fillStyle = bgg; bgx.fillRect(0, 0, 256, 160);
+    const backdrop = new T.Mesh(new T.PlaneGeometry(g.W * 3.2, g.H * 3.2), new T.MeshBasicMaterial({ map: new T.CanvasTexture(bgc) }));
+    backdrop.position.z = -3; scene.add(backdrop);
+    if (GL3.level() !== 'low') {
+      const n = 140, pos = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) pos.set([(Math.random() - 0.5) * g.W * 2.6, (Math.random() - 0.5) * g.H * 2.6, -2.5], i * 3);
+      const sg = new T.BufferGeometry(); sg.setAttribute('position', new T.BufferAttribute(pos, 3));
+      scene.add(new T.Points(sg, new T.PointsMaterial({ size: 0.28, color: 0x9bb8ff, transparent: true, opacity: 0.55, depthWrite: false })));
+    }
+    // lit edges: four thin bars in the board colour, pulsing softly
+    const edgeMat = new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 });
+    const edges = [[g.W + 1, 0.16, 0, g.H / 2 + 0.5], [g.W + 1, 0.16, 0, -g.H / 2 - 0.5], [0.16, g.H + 1, g.W / 2 + 0.5, 0], [0.16, g.H + 1, -g.W / 2 - 0.5, 0]]
+      .map(([ew, eh, ex, ey]) => { const m = new T.Mesh(new T.BoxGeometry(ew, eh, 0.3), edgeMat); m.position.set(ex, ey, -0.1); scene.add(m); return m; });
 
     // Sealed cells: one instanced mesh; new cells rise up.
     const blocks = new T.InstancedMesh(new T.BoxGeometry(0.94, 0.94, 1), new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35, metalness: 0.2 }), g.W * g.H);
@@ -164,25 +310,10 @@
     const ghost = new T.Mesh(new T.BoxGeometry(1, 1, 0.3), mats.ghost); ghost.visible = false; scene.add(ghost);
     const pickMeshes = new Map();
     const pickTexs = {};
-    // vector icons drawn on a canvas (no emoji font needed): a shield with a check, an hourglass
     const pickTex = (kind) => pickTexs[kind] ||= (() => {
       const c = document.createElement('canvas'); c.width = c.height = 128;
       const x = c.getContext('2d');
-      if (x) {
-        x.translate(64, 64); x.lineJoin = x.lineCap = 'round';
-        const grad = x.createLinearGradient(0, -48, 0, 48);
-        if (kind === 'shield') {
-          grad.addColorStop(0, '#b9ffd6'); grad.addColorStop(1, '#19b86a');
-          x.beginPath(); x.moveTo(0, -48); x.lineTo(38, -34); x.lineTo(38, 2); x.quadraticCurveTo(36, 34, 0, 50); x.quadraticCurveTo(-36, 34, -38, 2); x.lineTo(-38, -34); x.closePath();
-          x.fillStyle = grad; x.fill(); x.lineWidth = 6; x.strokeStyle = '#eafff3'; x.stroke();
-          x.beginPath(); x.moveTo(-16, 2); x.lineTo(-4, 16); x.lineTo(18, -12); x.lineWidth = 10; x.strokeStyle = '#0b5c36'; x.stroke();
-        } else {
-          grad.addColorStop(0, '#fff2b0'); grad.addColorStop(1, '#f2a516');
-          x.beginPath(); x.moveTo(-30, -44); x.lineTo(30, -44); x.lineTo(6, -2); x.lineTo(30, 44); x.lineTo(-30, 44); x.lineTo(-6, -2); x.closePath();
-          x.fillStyle = grad; x.fill(); x.lineWidth = 6; x.strokeStyle = '#fff8dc'; x.stroke();
-          x.beginPath(); x.moveTo(-18, 38); x.lineTo(18, 38); x.lineTo(0, 16); x.closePath(); x.fillStyle = '#7a4a00'; x.fill();   // the sand
-        }
-      }
+      if (x) drawPickupIcon(x, kind);
       return new T.CanvasTexture(c);
     })();
     const sphere = new T.SphereGeometry(0.34, 20, 14);
@@ -218,29 +349,13 @@
         resize();
         const col = new T.Color(s.color);
         mats.glow.color.copy(col); mats.ghost.color.copy(col);
+        edgeMat.color.copy(col); edgeMat.opacity = 0.6 + 0.2 * Math.sin(now / 700);
         mats.core.color.copy(col).lerp(new T.Color(0xffffff), 0.7);
         const dt = Math.min(0.05, Math.max(0, (now - (lastNow || now)) / 1000)); lastNow = now;
         if (s.grid !== lastGrid) {
-          // the seal ripples inward: each new cell waits in proportion to its distance from the walls that were already there
-          const dist = new Int16Array(s.grid.length).fill(-1), queue = [];
-          for (let i = 0; i < s.grid.length; i++) if (lastGrid[i] === '1') { dist[i] = 0; queue.push(i); }
-          let far = 0;
-          for (let q = 0; q < queue.length; q++) {
-            const i = queue[q], x = i % g.W, y = (i - x) / g.W;
-            for (const j of [x > 0 ? i - 1 : -1, x < g.W - 1 ? i + 1 : -1, y > 0 ? i - g.W : -1, y < g.H - 1 ? i + g.W : -1]) {
-              if (j < 0 || dist[j] >= 0 || s.grid[j] !== '1') continue;
-              dist[j] = dist[i] + 1; far = Math.max(far, dist[j]); queue.push(j);
-            }
-          }
-          const step = Math.min(24, 420 / Math.max(1, far)), lastGridPrev = lastGrid;
-          for (let i = 0; i < s.grid.length; i++) if (s.grid[i] === '1' && lastGrid[i] !== '1') born[i] = now + Math.max(0, dist[i]) * step;
-          if (fx) {
-            const fresh = [];
-            for (let i = 0; i < s.grid.length; i++) if (s.grid[i] === '1' && born[i] > 0 && lastGridPrev[i] !== '1') fresh.push(i);
-            const every = Math.max(1, Math.floor(fresh.length / 40)), big = fresh.length >= 90;
-            for (let q = 0; q < fresh.length; q += every) pending.push([born[fresh[q]], fresh[q] % g.W + 0.5, Math.floor(fresh[q] / g.W) + 0.5, big ? 5 : 3]);
-          }
-          lastGrid = s.grid; animUntil = now + far * step + 450;
+          const r = ripple(lastGrid, s.grid, now, born);
+          if (fx) pending.push(...r.sparks);
+          lastGrid = s.grid; animUntil = r.until;
         }
         if (now < animUntil + 60 || blocks.userData.col !== s.color) {
           let n = 0;
@@ -315,16 +430,8 @@
             tips[i].scale.set(2.6 + pulse, 2.6 + pulse, 1); tips[i].material.color.copy(col);
             if (fx && Math.random() < 0.4) burst(v ? s.w[1] + 0.5 : head[0], v ? head[0] : s.w[2] + 0.5, 1, s.color, 2);
           }
-          // a half that was growing and is now gone was struck by an orb: it shatters
-          const st = s.w.length ? s.w[5 + i * 3] : '';
-          if (prevHalf[i] === 'g' && st === 'x') {
-            const v = s.w[0], c = v ? s.w[2] : s.w[1], len = s.w[3 + i * 3];
-            const head = i === 0 ? c + 1 - len : c + 1 + len;
-            burst(v ? s.w[1] + 0.5 : head, v ? head : s.w[2] + 0.5, 34, s.color, 8);
-            GL3.shake(cam, 0.32);
-          }
-          prevHalf[i] = st;
         });
+        for (const [x, y] of shatters(prevHalf, s.w)) { burst(x, y, 34, s.color, 8); GL3.shake(cam, 0.32); }
         if (s.ghost) box(ghost, s.ghost[0], s.ghost[0] + s.ghost[2], s.ghost[1], s.ghost[1] + s.ghost[3], 0.2); else ghost.visible = false;
         // pickups persist between frames (keyed by cell) and only spin
         const keep = new Set();
@@ -438,6 +545,8 @@
     const s = mine();
     const r = g.three || g.flat;
     if (!s || !r) return;
+    g.stage.classList.toggle('rs-slowed', s.slow > 0);
+    g.stage.classList.toggle('rs-shielded', !!s.sh);
     const k = 1 - Math.exp(-Math.min(60, now - (g.drawn ?? now)) / 38);
     g.drawn = now;
     const lead = Math.min(0.06, Math.max(0, (now - (s.at ?? now)) / 1000));

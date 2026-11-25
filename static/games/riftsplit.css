@@ -31,6 +31,9 @@
   cursor: crosshair;
   user-select: none;
 }
+.rs-stage::after { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .35s; }
+.rs-stage.rs-slowed::after { opacity: 1; background: radial-gradient(ellipse at center, #5ec8ff00 45%, #3a8cff55 100%), #4fb4ff14; }
+.rs-stage.rs-shielded::after { opacity: 1; box-shadow: inset 0 0 0 2px #59ff9a99, inset 0 0 18px #59ff9a55; }
 .rs-canvas { display: block; width: 100%; height: 100%; }
 .rs-msg { position: absolute; left: 0; right: 0; top: 10px; text-align: center; font-weight: 700; text-shadow: 0 2px 8px #000; opacity: 0; transition: opacity .2s; pointer-events: none; }
 .rs-msg.on { opacity: 1; }
