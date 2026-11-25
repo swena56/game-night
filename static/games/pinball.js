@@ -647,7 +647,7 @@
     stage.prepend(canvas);
     let width = 0, height = 0;
     return {
-      draw(row, ball, flash, trail = [], gate = 0, others = []) {
+      draw(row, ball, flash, trail = [], gate = 0, others = [], idle = false) {
         if (!size.w || !size.h) return;
         if (width !== size.w || height !== size.h) {
           width = size.w;
@@ -702,7 +702,8 @@
           m.emissive.set(glow || '#000000');
           m.emissiveIntensity = hit ? 1.8 + pulse : glow ? pulse : 0;
         }
-        renderer.render(scene, camera);
+        // idle redraws are deliberate, slow ones: renderStill keeps them out of the adaptive-resolution timing
+        if (idle) renderer.renderStill(scene, camera); else renderer.render(scene, camera);
       },
       dispose() {
         lighting.key.shadow.map?.dispose();
@@ -1102,8 +1103,6 @@
     g.pollPad?.();
     const row = g.row;
     if (!row || g.root.hidden || document.hidden) return;
-    // low graphics: draw at most ~45 fps so slow phones spend the time on input instead
-    if (GL3.level() === 'low' && g.drawnAt !== undefined && now - g.drawnAt < 21) return;
     // Idle: ball parked in the plunger lane, no event animating, gate shut. Redraw at ~10 fps (lamp pulses only).
     const idle = row[STAGED] && now >= g.flashAt && !g.trail.length && (g.gate || 0) < .01 && g.ball &&
       Math.hypot(g.ball[0] - row[X], g.ball[1] - row[Y]) < .01;
@@ -1136,7 +1135,7 @@
     g.gateAt = now;
     // the other multiball balls are extrapolated by their velocity from the last packet
     const others = (row[OTHERS] || []).map(([x, y, vx, vy, z]) => [x + vx * ahead, y + vy * ahead, z]);
-    (g.three || g.flat)?.draw(row, g.ball, flash, g.trail, g.gate, others);
+    (g.three || g.flat)?.draw(row, g.ball, flash, g.trail, g.gate, others, !!idle);
   }
 
   function initRenderer(g, geo) {
