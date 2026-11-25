@@ -232,6 +232,37 @@
       c.strokeStyle = color;
       c.stroke();
     };
+    // The ball and its halo are pre-rendered once per canvas size: building radial gradients every
+    // frame (for each multiball ball too) was the flat renderer's main per-frame cost.
+    let sprites = null;
+    const makeSprites = (unit) => {
+      const size = Math.max(8, Math.round(geo.radius * 2 * unit)), mid = size / 2;
+      const ball = document.createElement('canvas');
+      ball.width = ball.height = size;
+      const b = ball.getContext('2d');
+      const shine = b.createRadialGradient(mid - .055 * unit, mid - .065 * unit, .018 * unit, mid, mid, mid);
+      shine.addColorStop(0, '#fffaf0');
+      shine.addColorStop(.45, '#c3d2d7');
+      shine.addColorStop(.8, '#657882');
+      shine.addColorStop(1, '#26313a');
+      b.fillStyle = shine;
+      b.beginPath();
+      b.arc(mid, mid, mid, 0, Math.PI * 2);
+      b.fill();
+      const halo = document.createElement('canvas');
+      halo.width = halo.height = 64;
+      const h = halo.getContext('2d');
+      const glow = h.createRadialGradient(32, 32, 6, 32, 32, 32);
+      glow.addColorStop(0, 'rgba(255,214,130,1)');
+      glow.addColorStop(1, 'rgba(255,214,130,0)');
+      h.fillStyle = glow;
+      h.fillRect(0, 0, 64, 64);
+      return { ball, halo, unit };
+    };
+    const drawBall = (x, y, scale = 1) => {
+      const r = geo.radius * scale;
+      c.drawImage(sprites.ball, x - r, y - r, r * 2, r * 2);
+    };
     const disc = (x, y, radius, color) => {
       c.beginPath();
       c.arc(x, y, radius, 0, 2 * Math.PI);
@@ -241,14 +272,16 @@
     const rail = ([ax, ay, bx, by], color, width) => line([[ax, ay], [bx, by]], width, color);
     return {
       draw(row, ball, flash, trail = [], gate = 0, others = []) {
-        const ratio = GL3.level() === 'low' ? 1 : Math.min(2, window.devicePixelRatio || 1);
+        const ratio = GL3.level() === 'low' ? 1 : Math.min(1.5, window.devicePixelRatio || 1);
         const width = Math.round(stage.clientWidth * ratio);
         const height = Math.round(stage.clientHeight * ratio);
         if (!width || !height) return;
         if (canvas.width !== width || canvas.height !== height) {
           canvas.width = width;
           canvas.height = height;
+          sprites = null;
         }
+        if (!sprites) sprites = makeSprites(width / 11);
         c.setTransform(width / 11, 0, 0, height / 18.7, width / 22, height * .85 / 18.7);
         c.clearRect(-.5, -.85, 11, 18.7);
         c.fillStyle = '#211c3d';
@@ -315,18 +348,13 @@
           // a fast ball burns brighter: a warm halo that grows with its speed
           const last = trail[trail.length - 1], speed = last ? Math.hypot(x - last[0], y - last[1]) : 0;
           if (speed > .12) {
-            const halo = c.createRadialGradient(x, y - z * .14, geo.radius * .6, x, y - z * .14, geo.radius * (2 + 4 * Math.min(speed, .6)));
-            halo.addColorStop(0, `rgba(255,214,130,${Math.min(.45, speed)})`);
-            halo.addColorStop(1, 'rgba(255,214,130,0)');
-            disc(x, y - z * .14, geo.radius * (2 + 4 * Math.min(speed, .6)), halo);
+            const reach = geo.radius * (2 + 4 * Math.min(speed, .6));
+            c.globalAlpha = Math.min(.45, speed);
+            c.drawImage(sprites.halo, x - reach, y - z * .14 - reach, reach * 2, reach * 2);
+            c.globalAlpha = 1;
           }
           disc(x + .1, y + .1, geo.radius * 1.25, '#26141483');
           const ballY = y - z * .14;
-          const shine = c.createRadialGradient(x - .055, ballY - .065, .018, x, ballY, geo.radius);
-          shine.addColorStop(0, '#fffaf0');
-          shine.addColorStop(.45, '#c3d2d7');
-          shine.addColorStop(.8, '#657882');
-          shine.addColorStop(1, '#26313a');
           const bumperHit = flash?.startsWith('bumper');
           if (bumperHit) {
             c.beginPath();
@@ -335,18 +363,13 @@
             c.lineWidth = .055;
             c.stroke();
           }
-          disc(x, ballY, geo.radius * (bumperHit ? 1.28 : 1), shine);
+          drawBall(x, ballY, bumperHit ? 1.28 : 1);
         }
         // multiball: the other balls in play
         others.forEach(([ox, oy, oz]) => {
           const oyy = oy - oz * .14;
           disc(ox + .1, oy + .1, geo.radius * 1.25, '#26141483');
-          const glint = c.createRadialGradient(ox - .055, oyy - .065, .018, ox, oyy, geo.radius);
-          glint.addColorStop(0, '#fffaf0');
-          glint.addColorStop(.45, '#c3d2d7');
-          glint.addColorStop(.8, '#657882');
-          glint.addColorStop(1, '#26313a');
-          disc(ox, oyy, geo.radius, glint);
+          drawBall(ox, oyy);
         });
       },
       dispose: () => canvas.remove(),
@@ -584,7 +607,8 @@
         <div class="pb-top" hidden><span class="pb-caption">Top scores</span><ol></ol></div>
       </section>`;
     const root = arena.querySelector('.pb-cabinet');
-    const find = (s) => root.querySelector('.pb-' + s);
+    const found = new Map();
+    const find = (s) => found.get(s) || (found.set(s, root.querySelector('.pb-' + s)), found.get(s));
     const stage = find('stage');
     const listeners = new AbortController();
     const g = game = { root, stage, find, listeners, trail: [], sources: new Map(), pulls: new Map(), held: 0, tick: -1, flashAt: 0 };
