@@ -14,7 +14,7 @@ from uuid import uuid4
 from .layout import STEP, Layout, closest
 from .rules import Rules
 
-SHOT_OF = dict(lane="lane", skill="lane", target="target", spinner="spinner", ramp="ramp", jackpot="ramp", super="ramp")
+SHOT_OF = dict(lane="lane", skill="lane", target="target", spinner="spinner", ramp="ramp", jackpot="ramp", super="ramp", hurry="spinner")
 SPEED_CAP = 42
 # Per-ball state: the table swaps these between the main ball and each extra multiball ball.
 BALL_STATE = ("x", "y", "vx", "vy", "height", "ramp_ticks", "rollovers", "skill", "smooth_launch",
@@ -79,6 +79,7 @@ class Table:
     hold: bool = False
     last_points: int = 0
     mystery_due: bool = False
+    hurry_ticks: int = 0
     rng: random.Random = field(default_factory=random.Random, repr=False)
     gone: bool = False
 
@@ -207,6 +208,7 @@ class Table:
         self.score += self.bonus
         self.lane_bits = self.locked = 0
         self.others.clear()
+        self.hurry_ticks = 0
         if self.hold and not self.tilt:
             self.hold = False                  # the bonus and its multiplier carry to the next ball
         else:
@@ -308,6 +310,8 @@ class Table:
                     self.lane_bits = 0
                     self.mult = min(rules.max_mult, self.mult + 1)
                     self.signal("mult")
+                    if lay.spinner and rules.hurry_ticks:
+                        self.hurry_ticks = rules.hurry_ticks
         self.rollovers = current
         if self.x < lay.lane_x and self.y > lay.lane_exit_y:
             self.skill = False
@@ -339,6 +343,7 @@ class Table:
         self.save_ticks = max(0, self.save_ticks - 1)
         self.jackpot_ticks = max(0, self.jackpot_ticks - 1)
         self.combo_ticks = max(0, self.combo_ticks - 1)
+        self.hurry_ticks = max(0, self.hurry_ticks - 1)
         if self.spin_left:
             turn = min(self.spin_left, 8 * STEP)
             old_spin = self.spin
@@ -346,7 +351,12 @@ class Table:
             self.spin_left -= turn
             if int(self.spin + 1e-8) > int(old_spin + 1e-8) and not self.tilt:
                 self.spins += 1
-                self.signal("spinner", rules.spinner * (1 + min(4, self.spins // rules.spinner_step)))
+                if self.hurry_ticks:       # collect the decaying hurry-up on this spin
+                    value = rules.hurry_min + (rules.hurry_max - rules.hurry_min) * self.hurry_ticks // rules.hurry_ticks
+                    self.hurry_ticks = 0
+                    self.signal("hurry", value)
+                else:
+                    self.signal("spinner", rules.spinner * (1 + min(4, self.spins // rules.spinner_step)))
         self.run_ball(previous)
         if self.gone:      # the main ball drained while others are in play: another takes over
             self.gone = False
@@ -509,4 +519,4 @@ class Table:
                 self.mult, self.bonus if self.staged else self.live_bonus(), self.lane_bits, int(self.kickback),
                 self.combo if self.combo_ticks else 0, self.lit, self.locked,
                 [[round(o["x"], 3), round(o["y"], 3), round(o["vx"], 2), round(o["vy"], 2), round(o["height"], 2)]
-                 for o in self.others], self.last_points, int(self.hold)]
+                 for o in self.others], self.last_points, int(self.hold), math.ceil(self.hurry_ticks / 240)]

@@ -32,6 +32,9 @@ class Rules:
     super_jackpot: int = 50000
     spinner_step: int = 25        # spins per spinner level (up to +4 levels)
     bumper_step: int = 40         # bumper hits per ball per bumper level (up to +2 levels)
+    hurry_ticks: int = 8 * 240    # spinner hurry-up after completing the rollover lanes
+    hurry_max: int = 15000
+    hurry_min: int = 1500
     extra_ball_scores: tuple = (40000, 120000)
     shots: tuple = ("lane", "target", "spinner", "ramp")
     first_lit: int = 3
