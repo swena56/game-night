@@ -25,6 +25,13 @@ class Rules:
     lock_balls: int = 0          # ramp locks needed to start multiball (0 disables it)
     multiball_ticks: int = 40 * 240
     multiball_start: int = 5000
+    mystery_every: int = 3        # every Nth lit-shot double awards a mystery prize (0 disables)
+    mystery_points: int = 10000
+    mystery_save_ticks: int = 10 * 240
+    super_every: int = 4          # every Nth jackpot is a super jackpot
+    super_jackpot: int = 50000
+    spinner_step: int = 25        # spins per spinner level (up to +4 levels)
+    bumper_step: int = 40         # bumper hits per ball per bumper level (up to +2 levels)
     extra_ball_scores: tuple = (40000, 120000)
     shots: tuple = ("lane", "target", "spinner", "ramp")
     first_lit: int = 3

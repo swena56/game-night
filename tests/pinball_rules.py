@@ -128,10 +128,10 @@ class PinballRules(unittest.TestCase):
         table.step()
         self.assertEqual((table.combo, table.lit), (2, 2))
         self.assertEqual(table.score, 1000 + 250 + 250 + 250)  # target, lit double, combo bonus
-        self.assertEqual(table.public()[-4], 2)
+        self.assertEqual(table.public()[-6], 2)
         table.combo_ticks = 1
         table.step()
-        self.assertEqual(table.public()[-4], 0)
+        self.assertEqual(table.public()[-6], 0)
         table = placed(.4, 14.5, vy=6)
         table.step()
         self.assertEqual((table.event, table.kickback, table.vy < 0), ("kickback", False, True))
@@ -295,7 +295,7 @@ class PinballRules(unittest.TestCase):
         before = table.score
         table.drain()
         self.assertEqual((table.bonus, table.score - before, table.mult, table.event), (2100, 2100, 1, "bonus"))
-        self.assertEqual(len(table.public()), 27)
+        self.assertEqual(len(table.public()), 29)
 
     def shoot_ramp(self, table):
         table.bank = 7
@@ -314,7 +314,7 @@ class PinballRules(unittest.TestCase):
         table.vx = table.vy = 0
         self.shoot_ramp(table)
         self.assertEqual((table.event, table.locked, table.balls, len(table.others)), ("multiball", 0, 3, 2))
-        self.assertEqual(len(table.public()[-1]), 2)
+        self.assertEqual(len(table.public()[-3]), 2)
         self.assertGreater(table.jackpot_ticks, 30 * 240)
 
     def test_lock_reserve_has_no_skill_shot(self):
@@ -351,6 +351,42 @@ class PinballRules(unittest.TestCase):
         self.assertEqual(table.score, 100)
         table.nudge(1)
         self.assertGreater(table.others[0]["vx"], table.vx - 1)
+
+    def test_mystery_super_spinner_bumper_levels_and_hold(self):
+        table = Table()
+        table.rng.seed(1)
+        # every third lit-shot double pays a mystery prize
+        for _ in range(3):
+            table.lit = 1
+            table.signal("target0", 250)
+        self.assertTrue(table.event.startswith("mystery_"))
+        table.hold, table.mult, table.bumper_hits, table.ramps = True, 2, 5, 1
+        table.drain()
+        self.assertEqual((table.mult, table.bumper_hits, table.ramps, table.hold), (2, 5, 1, False))
+        table.drain()
+        self.assertEqual((table.mult, table.bumper_hits, table.ramps), (1, 0, 0))
+        # spinner and bumper levels grow with use
+        table = Table()
+        table.spins = 25
+        table.spin, table.spin_left = .99, 1
+        table.staged = False
+        before = table.score
+        table.step()
+        self.assertEqual(table.score - before, 200)
+        table.bumper_hits = 40
+        x, y, r = BUMPS[0]
+        table.x, table.y, table.vx, table.vy = x + r + .2, y, -10, 0
+        before = table.score
+        table.step()
+        self.assertEqual(table.score - before, 200)
+        # every fourth jackpot is a super jackpot
+        table = Table()
+        table.jackpots, table.lit, table.extras = 3, 0, 2
+        table.jackpot_shot = True
+        table.ramp_ticks = 115
+        table.staged = False
+        table.step()
+        self.assertEqual((table.event, table.score), ("super", 50000))
 
     def test_tilt_forfeits_bonus(self):
         table = placed(5, 17.4)

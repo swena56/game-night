@@ -27,7 +27,7 @@ class EngineTests(unittest.TestCase):
         table = Mini()
         self.assertEqual((table.balls, table.x, table.y), (2, 5.5, 7))
         self.assertEqual(len(table.angles), 2)
-        self.assertEqual(len(table.public()), 27)
+        self.assertEqual(len(table.public()), 29)
         self.assertEqual(Mini.layout.public()["launch"], (5.5, 7))
 
     def test_custom_points_and_optional_parts(self):

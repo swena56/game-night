@@ -55,7 +55,7 @@ class Pinball(Game):
     howto = [
         "Pull down on the plunger shaft at the right side of the playfield and release to launch. You can also hold and release Space or Launch. Aim for the gold charge band.",
         "Tap or click either half of the playfield to flip on that side. A and D, Z and /, either Shift key, the arrow keys, and the Flip buttons also work. Use Q, W, E or the nudge buttons to move the table.",
-        "The fourth nudge tilts the table and ends scoring until that ball drains. Clear all three targets, then shoot the ramp for 6,000 and start a 20-second jackpot round. Repeat ramp shots for 12,000 each. The first lit ramp shot locks your ball and serves a new one; the second releases the locked ball and a spare for three-ball MULTIBALL, where every ramp shot is a jackpot and bumpers pay double.",
+        "The fourth nudge tilts the table and ends scoring until that ball drains. Clear all three targets, then shoot the ramp for 6,000 and start a 20-second jackpot round. Repeat ramp shots for 12,000 each. The first lit ramp shot locks your ball and serves a new one; the second releases the locked ball and a spare for three-ball MULTIBALL, where every ramp shot is a jackpot and bumpers pay double. Every fourth jackpot is a 50,000 super jackpot. The spinner and bumpers pay more the more you hit them, and every third lit-shot double awards a mystery prize: bonus points, a ball save, a multiplier, or a held bonus that carries to your next ball.",
         "Each ball has one automatic save during its first four seconds on the playfield. Everyone plays three balls on a separate table. Reach 40,000 and 120,000 points for an extra ball. Highest score wins.",
     ]
 

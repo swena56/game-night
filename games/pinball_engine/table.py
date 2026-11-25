@@ -7,13 +7,14 @@ Subclass Table and set `layout` (and optionally `rules`) to define a machine:
 """
 from dataclasses import dataclass, field
 import math
+import random
 from typing import ClassVar
 from uuid import uuid4
 
 from .layout import STEP, Layout, closest
 from .rules import Rules
 
-SHOT_OF = dict(lane="lane", skill="lane", target="target", spinner="spinner", ramp="ramp", jackpot="ramp")
+SHOT_OF = dict(lane="lane", skill="lane", target="target", spinner="spinner", ramp="ramp", jackpot="ramp", super="ramp")
 SPEED_CAP = 42
 # Per-ball state: the table swaps these between the main ball and each extra multiball ball.
 BALL_STATE = ("x", "y", "vx", "vy", "height", "ramp_ticks", "rollovers", "skill", "smooth_launch",
@@ -72,6 +73,13 @@ class Table:
     extras: int = 0
     others: list = field(default_factory=list)   # state dicts of the other balls in play
     locked: int = 0
+    lit_hits: int = 0
+    jackpots: int = 0
+    spins: int = 0
+    hold: bool = False
+    last_points: int = 0
+    mystery_due: bool = False
+    rng: random.Random = field(default_factory=random.Random, repr=False)
     gone: bool = False
 
     def __post_init__(self):
@@ -86,12 +94,17 @@ class Table:
     # -- scoring ---------------------------------------------------------------------------------
 
     def signal(self, event, points=0, scaled=True):
+        before = self.score
         self.score += points * (self.mult if scaled else 1)
         kind = SHOT_OF.get(event.rstrip("0123456789"))
         if kind and points and not self.tilt:
             self.chain(kind, points)
+        self.last_points = self.score - before
         self.event = event
         self.event_id += 1
+        if self.mystery_due:
+            self.mystery_due = False
+            self.mystery()
         scores = self.rules.extra_ball_scores
         if self.extras < len(scores) and self.score >= scores[self.extras] and not self.tilt \
                 and event not in ("bonus", "drain", "done", "tilt"):
@@ -112,7 +125,30 @@ class Table:
         if rules.shots[self.lit] == kind:
             extra += points
             self.lit = (self.lit + 1) % len(rules.shots)
+            self.lit_hits += 1
+            self.mystery_due = bool(rules.mystery_every) and self.lit_hits % rules.mystery_every == 0
         self.score += extra * self.mult
+
+    def mystery(self):
+        """A random prize for every few lit-shot doubles."""
+        rules = self.rules
+        prizes = ["points", "save"]
+        if self.mult < rules.max_mult:
+            prizes.append("mult")
+        if not self.hold:
+            prizes.append("hold")
+        prize = self.rng.choice(prizes)
+        if prize == "points":
+            self.score += rules.mystery_points
+            self.last_points += rules.mystery_points
+        elif prize == "save":
+            self.save_ticks = max(self.save_ticks, rules.mystery_save_ticks)
+        elif prize == "mult":
+            self.mult += 1
+        else:
+            self.hold = True
+        self.event = f"mystery_{prize}"
+        self.event_id += 1
 
     # -- controls --------------------------------------------------------------------------------
 
@@ -169,9 +205,14 @@ class Table:
         self.balls -= 1
         self.bonus = self.live_bonus()
         self.score += self.bonus
-        self.bumper_hits = self.ramps = self.lane_bits = self.locked = 0
+        self.lane_bits = self.locked = 0
         self.others.clear()
-        self.mult = 1
+        if self.hold and not self.tilt:
+            self.hold = False                  # the bonus and its multiplier carry to the next ball
+        else:
+            self.bumper_hits = self.ramps = 0
+            self.mult = 1
+            self.hold = False
         self.kickback = True
         self.combo = self.combo_ticks = 0
         self.save_used = self.jackpot_shot = False
@@ -244,7 +285,8 @@ class Table:
         for i, (x, y, radius) in enumerate(lay.bumps):
             if self.contact(x, y, ball + radius, 0.86, 0 if self.tilt else 16) and not self.tilt:
                 self.bumper_hits += 1
-                self.signal(f"bumper{i}", rules.bumper_jackpot if self.jackpot_ticks else rules.bumper)
+                level = 1 + min(2, self.bumper_hits // rules.bumper_step)
+                self.signal(f"bumper{i}", (rules.bumper_jackpot if self.jackpot_ticks else rules.bumper) * level)
         for i, rail in enumerate(lay.targets):
             if self.segment(rail, ball + 0.08) and not self.tilt and not self.bank & (1 << i):
                 self.bank |= 1 << i
@@ -303,7 +345,8 @@ class Table:
             self.spin += turn
             self.spin_left -= turn
             if int(self.spin + 1e-8) > int(old_spin + 1e-8) and not self.tilt:
-                self.signal("spinner", rules.spinner)
+                self.spins += 1
+                self.signal("spinner", rules.spinner * (1 + min(4, self.spins // rules.spinner_step)))
         self.run_ball(previous)
         if self.gone:      # the main ball drained while others are in play: another takes over
             self.gone = False
@@ -375,7 +418,11 @@ class Table:
             if not self.tilt:
                 self.ramps += 1
                 if self.jackpot_shot:
-                    self.signal("jackpot", rules.jackpot)
+                    self.jackpots += 1
+                    if rules.super_every and self.jackpots % rules.super_every == 0:
+                        self.signal("super", rules.super_jackpot)
+                    else:
+                        self.signal("jackpot", rules.jackpot)
                 else:
                     self.bank = 0
                     self.jackpot_ticks = rules.jackpot_ticks
@@ -462,4 +509,4 @@ class Table:
                 self.mult, self.bonus if self.staged else self.live_bonus(), self.lane_bits, int(self.kickback),
                 self.combo if self.combo_ticks else 0, self.lit, self.locked,
                 [[round(o["x"], 3), round(o["y"], 3), round(o["vx"], 2), round(o["vy"], 2), round(o["height"], 2)]
-                 for o in self.others]]
+                 for o in self.others], self.last_points, int(self.hold)]

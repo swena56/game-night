@@ -1,18 +1,24 @@
 (() => {
-  const [X, Y, VX, VY, Z, LEFT, RIGHT, SCORE, BALLS, BANK, NUDGES, TILT, STAGED, CHARGE, EVENT_ID, EVENT, SPIN, SAVE, JACKPOT, MULT, BONUS, LANES, KICK, COMBO, LIT, LOCKED, OTHERS] =
-    Array.from({ length: 27 }, (_, i) => i);
+  const [X, Y, VX, VY, Z, LEFT, RIGHT, SCORE, BALLS, BANK, NUDGES, TILT, STAGED, CHARGE, EVENT_ID, EVENT, SPIN, SAVE, JACKPOT, MULT, BONUS, LANES, KICK, COMBO, LIT, LOCKED, OTHERS, POINTS, HOLD] =
+    Array.from({ length: 29 }, (_, i) => i);
   const keys = {
     KeyA: 1, ArrowLeft: 1, KeyZ: 1, ShiftLeft: 1, KeyD: 2, ArrowRight: 2, Slash: 2, ShiftRight: 2, Space: 4,
     KeyQ: -1, KeyW: -2, KeyE: -3,
   };
   const messages = {
     skill: 'Skill shot +5,000', spinner: 'Spinner +100', ramp: 'Ramp +6,000 · Jackpot lit', jackpot: 'Jackpot +12,000', save: 'Ball saved · Auto launch',
-    tilt: 'TILT · scoring suspended', nudge: 'Table nudged', mult: 'Multiplier up!', kickback: 'Kickback!', extra: 'EXTRA BALL!', lock: 'Ball locked', multiball: 'MULTIBALL · Shoot the ramp for jackpots +5,000',
+    tilt: 'TILT · scoring suspended', nudge: 'Table nudged', mult: 'Multiplier up!', kickback: 'Kickback!', extra: 'EXTRA BALL!', super: 'SUPER JACKPOT +50,000',
+    mystery_points: 'Mystery · +10,000', mystery_save: 'Mystery · Ball save 10s', mystery_mult: 'Mystery · Multiplier up!', mystery_hold: 'Mystery · Bonus held', lock: 'Ball locked', multiball: 'MULTIBALL · Shoot the ramp for jackpots +5,000',
     drain: 'Ball drained', done: 'Run complete', recovery: 'Ball freed',
   };
-  const sounds = { skill: 'pskill', ramp: 'pramp', jackpot: 'pjackpot', save: 'psave', tilt: 'wrong', mult: 'cheer', kickback: 'pkick', extra: 'pjackpot', lock: 'psave', multiball: 'pjackpot', bonus: 'cheer', spinner: 'pspin', drain: 'groan', done: 'groan' };
+  const sounds = { skill: 'pskill', ramp: 'pramp', jackpot: 'pjackpot', save: 'psave', tilt: 'wrong', mult: 'cheer', kickback: 'pkick', extra: 'pjackpot', super: 'pjackpot', mystery_points: 'cheer', mystery_save: 'psave', mystery_mult: 'cheer', mystery_hold: 'pskill', lock: 'psave', multiball: 'pjackpot', bonus: 'cheer', spinner: 'pspin', drain: 'groan', done: 'groan' };
   const prefixes = { bumper: 'Bumper +100', sling: 'Slingshot +50', lane: 'Rollover +500', target: 'Target +250' };
-  const label = (event, row) => event === 'bonus' && row ? `Ball bonus +${row[BONUS].toLocaleString()}` : messages[event] || prefixes[event?.replace(/[0-9]$/, '')] || '';
+  const label = (event, row) => {
+    if (event === 'bonus' && row) return `Ball bonus +${row[BONUS].toLocaleString()}`;
+    const text = messages[event] || prefixes[event?.replace(/[0-9]$/, '')] || '';
+    // levelled and multiplied awards: show what was actually paid
+    return row?.[POINTS] > 0 && !event.startsWith('mystery_') ? text.replace(/\+[\d,]+/, `+${row[POINTS].toLocaleString()}`) : text;
+  };
   const sound = (event) => sounds[event] || (/^bumper/.test(event) ? 'pbumper' : /^sling/.test(event) ? 'psling' : 'pop');
   const soundArg = (event) => (/^bumper/.test(event) ? Number(event.slice(6)) || 0 : undefined);
   const bestKey = 'pinball.best', topKey = 'pinball.top';
@@ -716,8 +722,8 @@
     find('save').classList.toggle('lit', row[SAVE] > 0);
     setText(find('save'), row[SAVE] > 0 ? `Ball save ${row[SAVE]}s` : 'Ball save');
     const lanes = '●'.repeat([0, 1, 2].filter(i => row[LANES] >> i & 1).length).padEnd(3, '○');
-    find('mult').hidden = !(row[MULT] > 1 || row[LANES] || !row[STAGED] && row[BONUS]);
-    setText(find('mult'), `${row[MULT]}× ${lanes}${!row[STAGED] && row[BONUS] ? ` · Bonus ${row[BONUS].toLocaleString()}` : ''}`);
+    find('mult').hidden = !(row[MULT] > 1 || row[LANES] || row[HOLD] || !row[STAGED] && row[BONUS]);
+    setText(find('mult'), `${row[MULT]}× ${lanes}${!row[STAGED] && row[BONUS] ? ` · Bonus ${row[BONUS].toLocaleString()}` : ''}${row[HOLD] ? ' · Hold' : ''}`);
     const shot = ['Lane', 'Targets', 'Spinner', 'Ramp'][row[LIT]];
     setText(find('shot'), `${row[COMBO] > 1 ? `Combo ${row[COMBO]} · ` : ''}2× ${shot}${row[KICK] ? ' · Kickback' : ''}`);
     find('jackpot').hidden = !row[JACKPOT];
@@ -772,6 +778,7 @@
 
   const popupText = (row) => {
     const text = label(row[EVENT], row);
+    if (row[EVENT]?.startsWith('mystery_')) return text.replace('Mystery · ', '? ');
     return row[EVENT] === 'extra' ? '★ EXTRA BALL ★' : /\+[\d,]+/.exec(text)?.[0] || '';
   };
 
@@ -783,7 +790,7 @@
       el.hidden = false;
       el.style.left = `${100 * (g.ball?.[0] ?? row[X]) / 10}%`;
       el.style.top = `${100 * ((g.ball?.[1] ?? row[Y]) + .85) / 18.7}%`;
-      el.classList.toggle('big', ['ramp', 'jackpot', 'bonus', 'skill', 'multiball'].includes(row[EVENT]));
+      el.classList.toggle('big', ['ramp', 'jackpot', 'super', 'bonus', 'skill', 'multiball'].includes(row[EVENT]));
       el.classList.toggle('huge', row[EVENT] === 'extra');
       el.classList.remove('go');
       void el.offsetWidth;
@@ -794,14 +801,14 @@
       void g.stage.offsetWidth;
       g.stage.classList.add('shake');
     }
-    if (['ramp', 'jackpot', 'kickback', 'bonus', 'extra', 'lock', 'multiball'].includes(row[EVENT]) && !reduce) {
+    if (['ramp', 'jackpot', 'super', 'kickback', 'bonus', 'extra', 'lock', 'multiball'].includes(row[EVENT]) && !reduce) {
       g.stage.classList.remove('thump');
       void g.stage.offsetWidth;
       g.stage.classList.add('thump');
     }
     if (g.me === g.viewer) {
       if (/^(bumper|sling)/.test(row[EVENT])) navigator.vibrate?.(12);
-      else if (['jackpot', 'extra'].includes(row[EVENT])) navigator.vibrate?.([30, 40, 30, 40, 60]);
+      else if (['jackpot', 'super', 'extra'].includes(row[EVENT])) navigator.vibrate?.([30, 40, 30, 40, 60]);
       else if (['ramp', 'kickback'].includes(row[EVENT])) navigator.vibrate?.(30);
     }
   }
