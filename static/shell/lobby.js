@@ -387,6 +387,7 @@ function renderLobby() {
     lab.append(sel); box.append(lab);
   }
   $('#defaultsBtn').hidden = !host || info.settings.every((f) => isDefault(f));
+  $('#lobbyEditorBtn').hidden = !(S.gameId === 'pinball' && window.gnEditor);
   // table size: a Start that says what's missing, and one tap to seat the right number of bots
   const rec = recSeats(info), short = seated < info.min, over = seated > info.max;
   const humanOnly = S.gameId === "switchyard";

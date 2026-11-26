@@ -292,12 +292,28 @@ function show(id) {
   if (id === 'game' && document.body.dataset.screen !== 'game' && document.scrollingElement) document.scrollingElement.scrollTop = 0;  // the lobby may have scrolled (#72)
   for (const s of ['loading', 'home', 'utils', 'lobby', 'game', 'bingoTools']) $('#' + s).hidden = s !== id;
   if (id !== 'bingoTools' && $('#bingoTools').childElementCount) UI.bingotools?.close();
+  guardLobbyBack(id === 'lobby');
   if (id !== 'game') { document.body.classList.remove('focus'); closeMenu(); closeSheets(); }
   document.body.dataset.screen = id;
   if (id !== 'loading') clearTimeout(show.slow);
   $('#fabs').hidden = id === 'home' || id === 'utils' || id === 'bingoTools';
   if (id === 'utils') { $('#chatPanel').hidden = true; document.title = 'Utilities · Game Night'; }
   if (id === 'home') { $('#chatPanel').hidden = true; document.title = 'Game Night'; if (typeof fillSoloGames === 'function') fillSoloGames(); }
+}
+// Back in the lobby goes home. Alone (or with bots) it leaves at once; with other people in the room it asks first.
+let lobbyGuarded = false;
+function guardLobbyBack(on) {
+  if (on === lobbyGuarded) return;
+  lobbyGuarded = on;
+  if (on) backOpen(onLobbyBack); else backClosed(onLobbyBack);
+}
+function onLobbyBack() {
+  setTimeout(async () => {  // after the popstate handler is done, so a dialog gets its own history entry
+    if (!S?.players.some((p) => p.id !== S.me.id && !p.bot)) return act('leave').catch(() => {}).then(leaveLocal);
+    if (await leave()) return;
+    lobbyGuarded = false;  // stayed: guard the lobby again
+    guardLobbyBack(!$('#lobby').hidden);
+  });
 }
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 const player = (id) => S.players.find((p) => p.id === id);
@@ -1190,7 +1206,7 @@ function scrollToSettings(bots, tries = 40) {
     requestAnimationFrame(() => $('.settings-head').scrollIntoView?.({ behavior: 'smooth', block: 'start' }));
   } else if (tries) setTimeout(() => scrollToSettings(bots, tries - 1), 100);
 }
-$('#pinballEditorBtn').onclick = () => { location.href = '/pinball-editor.html'; };
+$('#pinballEditorBtn').onclick = $('#lobbyEditorBtn').onclick = () => { location.href = '/pinball-editor.html'; };
 // the button shows unless the server has the table editor switched off (GAME_NIGHT_EDITOR=0)
 fetch('/api/dev').then((r) => r.json()).then((d) => { window.gnEditor = !!d.editor; $('#pinballEditorBtn').hidden = !d.editor; }).catch(() => {});
 $('#soloBtn').onclick = () => solo(true);
@@ -1260,8 +1276,9 @@ $('#resetScoresBtn').onclick = async () =>
   (await ask('Reset the scoreboard and match history for everyone?', { ok: 'Reset', danger: true })) && quiet(act('reset_scores'));
 const leave = async () => {
   const playing = S?.phase === 'playing' && !S.me.spectator && !S.me.eliminated;
-  if (await ask(playing ? 'Leave this room? You will forfeit the current game and lose 2 ⭐ for walking out.' : 'Leave this room?', { ok: 'Leave', danger: playing }))
-    act('leave').catch(() => {}).then(leaveLocal);
+  const ok = await ask(playing ? 'Leave this room? You will forfeit the current game and lose 2 ⭐ for walking out.' : 'Leave this room?', { ok: 'Leave', danger: playing });
+  if (ok) act('leave').catch(() => {}).then(leaveLocal);
+  return ok;
 };
 $('#helpBtn').onclick = () => showHelp();
 $('#joinInBtn').onclick = () => quiet(act('join_game'));
