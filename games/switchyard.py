@@ -23,6 +23,7 @@ WAVE_PATTERNS = (
 
 class Switchyard(Game):
     id = "switchyard"
+    solo_bots = 0
     category = "action"
     name = "Switchyard Scramble"
     icon = "🚦"

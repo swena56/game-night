@@ -36,6 +36,7 @@ ITEMS = {  # kind: (icon, what the log says it did)
 
 class Riders(Game):
     id = "riders"
+    solo_bots = 3
     category = "action"
     howto = [
         "Your light bike never stops, and leaves a wall of light behind it.",

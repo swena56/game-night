@@ -16,6 +16,7 @@ class Game:
     blurb = ""
     min_players = 2
     max_players = 2
+    solo_bots = 1      # computer players that 🤖 Play solo seats; 0 for a game you play on your own
     # key -> (label, [(value, option label), ...], default)
     settings_schema = {}
     replayable = True  # real-time games opt out of move-by-move replays
@@ -33,7 +34,7 @@ class Game:
             "id": cls.id, "name": cls.name, "icon": cls.icon, "blurb": cls.blurb,
             "category": cls.category, "family": cls.family, "howto": cls.howto,
             "tipLines": getattr(cls, "tip_lines", None),
-            "min": cls.min_players, "max": cls.max_players, "lateJoin": hasattr(cls, "late_join"),
+            "min": cls.min_players, "max": cls.max_players, "soloBots": cls.solo_bots, "lateJoin": hasattr(cls, "late_join"),
             "badges": {k: list(v) for k, v in cls.badges.items()},
             "settings": [{"key": k, "label": lbl, "options": opts, "default": d}
                          for k, (lbl, opts, d) in cls.settings_schema.items()],

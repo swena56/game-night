@@ -32,7 +32,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
 
-from games import FAMILIES, GAME_INFO, GAME_LIST, GAMES, GameError
+from games import CATEGORIES, FAMILIES, GAME_INFO, GAME_LIST, GAMES, GameError
 from games.bar_darts import AXES_PER_ROUND
 from games.base import shift_times
 from games import admin_auth, garden, wordbomb
@@ -2048,6 +2048,16 @@ class Handler(BaseHTTPRequestHandler):
             tls = "tls" if isinstance(self.connection, ssl.SSLSocket) else "plain"
             print(f"{self.client_address[0]} {tls} {fmt % args} host={self.headers.get('Host') if self.headers else None}")
 
+    def send_script(self, text):
+        """A script made on the spot: the page's lists that only the server knows."""
+        body = text.encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/javascript; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+        self.wfile.write(body)
+
     def send_json(self, status, data, *, retry_after=None, headers=()):
         body = json.dumps(data).encode()
         self.send_response(status)
@@ -2186,17 +2196,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(200, health())
         if url.path == "/api/games":  # the catalogue for the home screen's game picker (#98)
             return self.send_json(200, {"games": GAME_LIST, "families": {c: [f for f, _ in fs] for c, fs in FAMILIES.items()}})
+        if url.path == "/games/list.js":  # the games and their groups, loaded before app.js so the page never keeps its own copy
+            data = {"categories": CATEGORIES, "games": [{k: g[k] for k in ("id", "name", "icon", "soloBots")} for g in GAME_LIST]}
+            return self.send_script(f"window.GAME_CATALOG={json.dumps(data, ensure_ascii=False)};")
         if url.path == "/games/css.js":  # which games have their own stylesheet (static/games/*.css): app.js needUI loads only those
             if time.time() - Handler.scanned > 5:
                 Handler.files, Handler.scanned = static_files(), time.time()
             names = sorted(p[7:-4] for p in self.files if p.startswith("/games/") and p.endswith(".css"))
-            body = ("window.GAME_CSS = " + json.dumps(names) + ";\n").encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "text/javascript; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.send_header("Cache-Control", "no-cache")
-            self.end_headers()
-            return self.wfile.write(body)
+            return self.send_script("window.GAME_CSS = " + json.dumps(names) + ";\n")
         if url.path == "/api/events":
             return self.events(parse_qs(url.query))
         if url.path not in self.files:

@@ -142,6 +142,7 @@ class Kid:
 
 class Snowball(Game):
     id = "snowball"
+    solo_bots = 3
     category = "action"
     family = None
     howto = [

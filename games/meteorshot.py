@@ -63,6 +63,7 @@ def points_for(x, y, target, center_y=RING_Y, center_x=None):
 
 class MeteorShot(Game):
     id = "meteorshot"
+    solo_bots = 2
     category = "action"
     name = "Meteor Shot"
     icon = "☄️"

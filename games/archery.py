@@ -94,6 +94,7 @@ def kmh(wind):
 
 class Archery(Game):
     id = "archery"
+    solo_bots = 2
     category = "action"
     family = None
     howto = [

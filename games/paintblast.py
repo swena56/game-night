@@ -32,6 +32,7 @@ GOLD_POINTS = 3  # ⭐ a gold tile, painted in your colour at the end of the rou
 
 class PaintBlast(Game):
     id = "paintblast"
+    solo_bots = 3
     category = "action"
     howto = [
         "Move with a swipe-and-hold on the arena, the arrows, or the keyboard (arrows / WASD). Tap the arena, 💣 or Space to drop a bomb.",

@@ -130,6 +130,7 @@ class Pirate:
 
 class Regatta(Game):
     id = "regatta"
+    solo_bots = 3
     category = "action"
     family = None
     replayable = False

@@ -50,6 +50,7 @@ RULE = {k: (name, f) for k, name, f in RULES}
 
 class Eleusis(CardGame):
     id = "eleusis"
+    solo_bots = 2
     name = "Eleusis"
     icon = "🔮"
     blurb = "Crack the secret rule from the cards it accepts and rejects. Shed your hand, or name the rule."

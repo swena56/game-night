@@ -35,6 +35,7 @@ def sort_key(card):
 
 class Hearts(Game):
     id = "hearts"
+    solo_bots = 3
     category = "cards"
     howto = [
         "Each hand, pass three cards (left, right, across with four players, then no pass), then play tricks.",

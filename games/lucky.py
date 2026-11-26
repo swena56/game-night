@@ -68,6 +68,7 @@ def words_by_len():
 
 class Lucky(Game):
     id = "lucky"
+    solo_bots = 2
     category = "words"
     howto = [
         "Spin the wheel, then call a consonant. Each time it appears, you earn the wedge's value.",

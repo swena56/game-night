@@ -27,6 +27,7 @@ GAME_NAME = {"D": "♦ diamonds", "H": "♥ hearts", "S": "♠ spades", "C": "�
 
 class Skat(TrickGame):
     id = "skat"
+    solo_bots = 2
     name = "Skat"
     icon = "🍺"
     blurb = "One declarer against two: bid your game's value, take the skat, and make 61 with the jacks on top."

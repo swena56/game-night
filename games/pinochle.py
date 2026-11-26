@@ -48,6 +48,7 @@ def meld_of(hand, t):
 
 class Pinochle(TrickGame):
     id = "pinochle"
+    solo_bots = 3
     name = "Pinochle"
     icon = "💍"
     blurb = "Bid your side's meld and tricks, name trumps, show your pinochles and marriages. Four players in pairs."

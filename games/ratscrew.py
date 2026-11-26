@@ -19,6 +19,7 @@ MISS = {"easy": 0.35, "normal": 0.15, "hard": 0.04}   # a bot misses a slap this
 
 class Ratscrew(CardGame):
     id = "ratscrew"
+    solo_bots = 2
     name = "Egyptian Ratscrew"
     icon = "🐀"
     blurb = "Flip cards onto the pile and slap doubles and sandwiches first. Face cards demand an answer."

@@ -185,6 +185,7 @@ def to_real(t, wins):
 
 class Domino(Game):
     id = "domino"
+    solo_bots = 2
     category = "party"
     family = None
     howto = [

@@ -24,6 +24,7 @@ def pegs(code, guess):
 
 class Safecracker(Game):
     id = "safecracker"
+    solo_bots = 2
     category = "words"
     howto = [
         "Everyone cracks the same hidden colour code. Each round, tap colours to build a guess and lock it in.",

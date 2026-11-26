@@ -200,6 +200,7 @@ class Boat:
 
 class Rapids(Game):
     id = "rapids"
+    solo_bots = 3
     category = "action"
     family = None
     howto = [

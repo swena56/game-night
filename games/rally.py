@@ -171,6 +171,7 @@ class Craft:
 
 class Rally(Game):
     id = "rally"
+    solo_bots = 3
     category = "action"
     howto = [
         "Your hover craft speeds up by itself — you only steer. Hold the left or right side of the screen, the arrows, or A / D.",

@@ -19,6 +19,7 @@ PACE = {"easy": (2.6, 3.8), "normal": (1.6, 2.5), "hard": (1.0, 1.6)}   # second
 
 class Nertz(CardGame):
     id = "nertz"
+    solo_bots = 2
     name = "Nertz"
     icon = "🏁"
     blurb = "Real-time racing solitaire: everyone plays at once onto shared aces. Empty your Nertz pile first!"

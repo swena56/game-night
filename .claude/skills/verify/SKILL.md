@@ -16,7 +16,7 @@ description: Drive the real Game Night app in headless Chromium to verify a chan
 
 ## Driving
 - Start a solo game: `#name` → select `#soloGame` = `<game id>` → click `#soloBtn`. Solo seats
-  `SOLO_BOTS[game]` bots (static/app.js), e.g. Twenty-One seats 2.
+  the game class's `solo_bots` (default 1), e.g. Twenty-One seats 2.
 - Rematch: `#rematchBtn`. The page's own `act(type, extra)` is global and can be called with
   `page.evaluate` (useful to fire two actions at once).
 - Rare deals or states: run the real server through a small wrapper that monkeypatches the game

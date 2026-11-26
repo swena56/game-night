@@ -376,6 +376,7 @@ def make_hole(rng, feature):
 
 class Orbit(Game):
     id = "orbit"
+    solo_bots = 2
     category = "action"
     family = None
     howto = [

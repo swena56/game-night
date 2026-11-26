@@ -29,6 +29,7 @@ def pretty(card):
 
 class LastCard(Game):
     id = "lastcard"
+    solo_bots = 2
     category = "cards"
     howto = [
         "Play a card matching the top card's suit or rank — or draw one.",

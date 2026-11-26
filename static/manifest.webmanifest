@@ -1,7 +1,7 @@
 {
   "name": "Game Night",
   "short_name": "Game Night",
-  "description": "Multiplayer party games in the browser: one room, one invite link, 44 games.",
+  "description": "Multiplayer party games in the browser: one room, one invite link.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

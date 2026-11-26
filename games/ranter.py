@@ -17,6 +17,7 @@ def low(c):
 
 class Ranter(CardGame):
     id = "ranter"
+    solo_bots = 3
     name = "Ranter-Go-Round"
     icon = "🔄"
     blurb = "Chase the Ace: one card each, swap it with your neighbour or keep it, and don't be the lowest."

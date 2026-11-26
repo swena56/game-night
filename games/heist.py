@@ -19,6 +19,7 @@ PERSONAS = {"greedy": ("🦊", 1.6, 0.7), "cautious": ("🐢", 0.5, 0.9), "watch
 
 class Heist(Game):
     id = "heist"
+    solo_bots = 3
     marked = frozenset()  # 🎯 rooms saved before Marked thief have none
     category = "party"
     howto = [

@@ -61,6 +61,7 @@ def done(card, cells):
 
 class Bingo(Game):
     id = "bingo"
+    solo_bots = 3
     category = "party"
     howto = [
         "Pick your cards. The caller draws a ball every few seconds: tap that number wherever you hold it. A card glows and names the pattern when one daub remains.",

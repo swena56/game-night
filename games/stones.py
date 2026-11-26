@@ -256,6 +256,7 @@ def measure(stones):
 
 class Stones(Game):
     id = "stones"
+    solo_bots = 2
     category = "action"
     family = None
     howto = [

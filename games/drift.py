@@ -64,6 +64,7 @@ def dist(a, b):
 
 class Drift(Game):
     id = "drift"
+    solo_bots = 3
     category = "strategy"
     family = None
     howto = [

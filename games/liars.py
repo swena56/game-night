@@ -43,6 +43,7 @@ def public_odds(q, f, total, shown, wild):
 
 class LiarsDice(Game):
     id = "liars"
+    solo_bots = 3
     category = "dice"
     howto = [
         "Everyone rolls five dice in secret. You see only your own.",

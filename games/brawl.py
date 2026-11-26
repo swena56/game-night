@@ -95,6 +95,7 @@ def preview(dice, hold, guards, target, missing):
 
 class Brawl(Game):
     id = "brawl"
+    solo_bots = 2
     max_rolls = ROLLS   # a turn's rolls (a last stand adds one); a class default so older saves still load
     category = "dice"
     howto = [

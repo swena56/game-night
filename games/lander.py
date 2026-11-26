@@ -326,6 +326,7 @@ def autopilot(h, pads, start, fuel, level, rng, hop=None, target=None):
 
 class Lander(Game):
     id = "lander"
+    solo_bots = 2
     category = "action"
     family = None
     howto = [

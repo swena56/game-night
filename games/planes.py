@@ -157,6 +157,7 @@ def score(goal, targets, path, land, air):
 
 class Planes(Game):
     id = "planes"
+    solo_bots = 2
     category = "action"
     family = None
     howto = [

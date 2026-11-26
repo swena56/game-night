@@ -229,6 +229,7 @@ def score(rolls, nframes, cosmic=None):
 
 class Lanes(Game):
     id = "lanes"
+    solo_bots = 2
     category = "action"
     family = None
     howto = [

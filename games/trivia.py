@@ -20,6 +20,7 @@ STREAK_PTS, STREAK_CAP = 50, 3   # streak bonus per right answer in a row beyond
 
 class Trivia(Game):
     id = "trivia"
+    solo_bots = 3
     category = "party"
     howto = [
         "Everyone gets the same question at the same time, with four answers to pick from.",

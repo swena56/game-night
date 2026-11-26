@@ -42,6 +42,7 @@ TWISTS = [
 
 class Relay(Game):
     id = "relay"
+    solo_bots = 3
     category = "party"
     howto = [
         "Everyone writes a phrase to start their own chain.",

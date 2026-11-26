@@ -193,6 +193,7 @@ def describe(cards):
 
 class BigTwo(CardGame):
     id = "bigtwo"
+    solo_bots = 3
     name = "Big Two"
     icon = "🐉"
     blurb = "Climb with singles, pairs and poker hands. 2 is top, spades break ties. Shed all thirteen first."

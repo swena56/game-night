@@ -59,6 +59,7 @@ def pretty(c):
 
 class TwentyOne(Game):
     id = "twentyone"
+    solo_bots = 2
     category = "dice"
     howto = [
         "Everyone stacks up a bet at once (tap chips, then Deal; ↺ repeats your last bet), then plays against the dealer: Hit for a card, Stand to stop, or Double (one card, double bet) on your first two.",

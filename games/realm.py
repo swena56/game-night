@@ -187,6 +187,7 @@ def win_chance(a, d, fort=False):
 
 class Realm(Game):
     id = "realm"
+    solo_bots = 3
     category = "strategy"
     howto = [
         "Draft: you get troops for your lands (÷3, at least 3) plus a bonus for each whole island you hold. Tap your lands to place them (↶ takes one back).",

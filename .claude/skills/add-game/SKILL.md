@@ -153,8 +153,9 @@ Guidelines:
 Wire-up:
 - No `<script>` tag: game screens load on demand (`needUI` in `static/app.js`). If your screen needs a helper file
   loaded first (like `billiards3d.js`), add it to `UI_EXTRA` in `static/app.js`.
-- `static/app.js`: add `['<id>', '<icon> <Name>']` to `SOLO_GAMES`, and an entry in `SOLO_BOTS` if
-  solo play needs more than one bot.
+- No list to edit in the browser: the home screen's games, counts and group headings come from `games/__init__.py`
+  (served as `/games/list.js`). Set `solo_bots` on the class if 🤖 Play solo needs other than one bot. A new `cards`
+  or `dice` game also joins a family in `FAMILIES`; `tests/catalog_rules.py` checks this.
 - `static/games/<id>.css`: all of the game's own rules (its phone, focus-mode and keyboard-open rules
   too), starting with a one-line `/* <id>: … */` comment. `needUI` in `app.js` loads it with the script
   (the server lists which games have one at `/games/css.js`; a new file shows up within seconds), and it
@@ -163,7 +164,6 @@ Wire-up:
   Reuse the tokens (`--panel`, `--accent`, `--accent-a20`, `--s3`, `--r-md`, `--sh-2`, …) and the
   shared pieces in style.css section 5 (cards, dice, timer bar, arena banners). Rules several games
   share stay in style.css section 6.
-- Bump the game count in the home-screen tagline (`index.html`, the `.tag` paragraph).
 
 ## Step 4: Test, in this order
 

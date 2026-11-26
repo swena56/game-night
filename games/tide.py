@@ -224,6 +224,7 @@ def copy_plot(plot):
 
 class Tide(Game):
     id = "tide"
+    solo_bots = 2
     category = "strategy"
     family = None
     howto = [

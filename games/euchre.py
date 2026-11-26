@@ -17,6 +17,7 @@ SAME = {"S": "C", "C": "S", "H": "D", "D": "H"}
 
 class Euchre(TrickGame):
     id = "euchre"
+    solo_bots = 3
     name = "Euchre"
     icon = "🃎"
     blurb = "Order up trumps with your partner; the two jacks rule. Take three of five tricks or get euchred."

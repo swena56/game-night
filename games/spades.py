@@ -15,6 +15,7 @@ NIL = 0
 
 class Spades(TrickGame):
     id = "spades"
+    solo_bots = 3
     name = "Spades"
     icon = "♠️"
     blurb = "Bid your tricks with a partner, spades always trump. Make your contract, mind the bags."

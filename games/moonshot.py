@@ -11,6 +11,7 @@ SOLO_TURNS = {30: 4, 50: 6, 75: 9}  # alone: reach the moon within this many tur
 
 class MoonShot(Game):
     id = "moonshot"
+    solo_bots = 2
     category = "dice"
     howto = [
         'Roll two dice to build fuel, then Fly to move that far. The route forecast shows where Fly or each possible next roll could take you.',

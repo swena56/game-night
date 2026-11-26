@@ -33,6 +33,7 @@ def near(dice):
 
 class Qork(Game):
     id = "qork"
+    solo_bots = 3
     category = "dice"
     howto = [
         "One player is the 🥤 Cupper and keeps rolling two dice; everyone else is a Corker with a Qork (a cork on a string) in the middle of the mat.",

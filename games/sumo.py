@@ -82,6 +82,7 @@ class Saucer:
 
 class Sumo(Game):
     id = "sumo"
+    solo_bots = 3
     # (class defaults for rooms saved before these existed)
     pit = 0.0
     target = None

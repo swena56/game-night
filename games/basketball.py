@@ -5,6 +5,7 @@ from .midway import Midway, THROW_CLOCKS, DEFAULT_THROW_CLOCK, HOT_AT
 
 class Basketball(Midway):
     id = "basketball"
+    solo_bots = 0
     name = "Basketball"
     icon = "🏀"
     min_players = 1

@@ -112,6 +112,7 @@ def chunk_count(c):
 
 class WordBomb(Game):
     id = "wordbomb"
+    solo_bots = 2
     category = "words"
     name = "Word Bomb"
     icon = "💣"

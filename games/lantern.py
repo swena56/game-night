@@ -33,6 +33,7 @@ def winner_of(bids):
 
 class Lantern(Game):
     id = "lantern"
+    solo_bots = 3
     category = "cards"
     howto = [
         "Each round a lot goes up for sale. Everyone secretly plays one of their bid tiles, then all bids are shown together.",

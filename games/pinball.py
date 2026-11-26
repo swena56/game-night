@@ -167,6 +167,7 @@ def refresh_curated():
 
 class Pinball(Game):
     id = "pinball"
+    solo_bots = 0
     name = "Pinball"
     category = "action"
     icon = "🕹️"

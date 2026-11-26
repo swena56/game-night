@@ -67,6 +67,7 @@ class Ship:
 
 class StarGuard(Game):
     id = "starguard"
+    solo_bots = 2
     category = "action"
     howto = [
         "Drag left and right to slide your ship along the bottom. It fires on its own.",

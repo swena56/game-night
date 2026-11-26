@@ -177,6 +177,7 @@ def simulate(coins, phase, n, guard=False, extra=0.0, frames=True, adds=(), stre
 
 class Pusher(Game):
     id = "pusher"
+    solo_bots = 2
     category = "party"
     family = None
     howto = [

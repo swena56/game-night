@@ -37,6 +37,7 @@ def bid_name(b):
 
 class FiveHundred(TrickGame):
     id = "fivehundred"
+    solo_bots = 3
     name = "Five Hundred"
     icon = "5️⃣"
     blurb = "Bid tricks and trumps, grab the kitty, ride the joker and bowers to 500."

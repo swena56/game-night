@@ -60,6 +60,7 @@ ALL_NAMES = {norm(x) for d in DRAWINGS for x in [d[0], *d[2]]}
 
 class Doodle(Game):
     id = "doodle"
+    solo_bots = 2
     category = "party"
     howto = [
         "The computer draws a picture, one line at a time.",

@@ -17,6 +17,7 @@ TRUMPS = ["D", "S", "H", "C", None]
 
 class NinetyNine(TrickGame):
     id = "ninetynine"
+    solo_bots = 2
     name = "Ninety-Nine"
     icon = "💯"
     blurb = "Bid by discarding three cards, then take exactly that many tricks. Three players, nine tricks."

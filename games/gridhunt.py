@@ -95,6 +95,7 @@ FRENZY_SECS = 15  # ⚡ the end of each round, when words count double (an optio
 
 class GridHunt(Game):
     id = "gridhunt"
+    solo_bots = 2
     category = "words"
     howto = [
         "Everyone hunts in the same letter grid at the same time.",

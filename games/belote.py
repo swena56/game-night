@@ -20,6 +20,7 @@ PTS_TRUMP = {"J": 20, "9": 14, "A": 11, "T": 10, "K": 4, "Q": 3}
 
 class Belote(TrickGame):
     id = "belote"
+    solo_bots = 3
     name = "Belote"
     icon = "🥖"
     blurb = "The French classic: take trumps, ride the jack and nine, and call belote. Four players in pairs."

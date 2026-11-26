@@ -18,6 +18,7 @@ SORT = lambda c: (ORDER.index(rank(c)), suit(c))
 
 class OldMaid(CardGame):
     id = "oldmaid"
+    solo_bots = 3
     name = "Old Maid"
     icon = "👵"
     blurb = "Pair up your cards and pass the odd queen along. Don't be left holding the Old Maid!"

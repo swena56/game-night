@@ -166,6 +166,7 @@ class Flyer:
 
 class SkyDrop(Game):
     id = "skydrop"
+    solo_bots = 3
     category = "action"
     name = "Sky Drop"
     icon = "🪂"

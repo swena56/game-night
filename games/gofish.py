@@ -19,6 +19,7 @@ SORT = lambda c: (ORDER.index(rank(c)), suit(c))
 
 class GoFish(CardGame):
     id = "gofish"
+    solo_bots = 2
     name = "Go Fish"
     icon = "🐟"
     blurb = "Ask for the cards you need, remember who has what, and collect books of four. Go fish!"

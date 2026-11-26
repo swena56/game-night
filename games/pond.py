@@ -117,6 +117,7 @@ def lunging(f, t):
 
 class Pond(Game):
     id = "pond"
+    solo_bots = 2
     category = "party"
     family = None
     howto = [

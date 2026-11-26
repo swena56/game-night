@@ -140,6 +140,7 @@ def equity(mine, board, opponents, trials, rng):
 
 class Holdem(Game):
     id = "holdem"
+    solo_bots = 3
     category = "cards"
     howto = [
         "You get two private cards. Five shared cards come out: the flop (3), the turn and the river.",

@@ -26,6 +26,7 @@ def titles(n):
 
 class President(CardGame):
     id = "president"
+    solo_bots = 3
     name = "President"
     icon = "👑"
     blurb = "Climb out of your hand first: beat the pile with higher pairs and sets, and become President."

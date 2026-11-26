@@ -168,6 +168,7 @@ class Tower:
 
 class Spire(Game):
     id = "spire"
+    solo_bots = 2
     category = "action"
     howto = [
         'Pieces fall onto a tower that wraps all the way around.',

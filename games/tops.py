@@ -99,6 +99,7 @@ class Top:
 
 class Tops(Game):
     id = "tops"
+    solo_bots = 3
     category = "action"
     family = None
     howto = [

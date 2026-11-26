@@ -14,6 +14,7 @@ from .tricks import TrickGame
 
 class OhHell(TrickGame):
     id = "ohhell"
+    solo_bots = 3
     name = "Oh Hell"
     icon = "🔥"
     blurb = "Bid exactly how many tricks you'll take. One too many is as bad as one too few."

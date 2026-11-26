@@ -12,6 +12,7 @@ from .tricks import TrickGame
 
 class Whist(TrickGame):
     id = "whist"
+    solo_bots = 3
     name = "Whist"
     icon = "🎩"
     blurb = "The grand old partnership trick-taker: thirteen tricks, trumps turned up, every trick over six scores."

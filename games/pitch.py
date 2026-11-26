@@ -17,6 +17,7 @@ GAME_PTS = {"A": 4, "K": 3, "Q": 2, "J": 1, "T": 10}
 
 class Pitch(TrickGame):
     id = "pitch"
+    solo_bots = 3
     name = "Pitch"
     icon = "⚾"
     blurb = "Bid for High, Low, Jack and Game, then pitch your trump. Make the bid or get set back."

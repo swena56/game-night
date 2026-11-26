@@ -254,6 +254,7 @@ def fmt(ms):
 
 class Marble(Game):
     id = "marble"
+    solo_bots = 2
     category = "action"
     howto = [
         'Everyone gets the same maze board. Tilt it to roll your marble from the 🟢 start pad to the 🏁 goal cup.',

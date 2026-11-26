@@ -147,6 +147,7 @@ def find_contract(hand, k, m):
 
 class Rummy(Game):
     id = "rummy"
+    solo_bots = 2
     category = "cards"
     howto = [
         "Every hand has a contract, like two sets of 3 or a set of 3 and a run of 4. Sets: same rank. Runs: same suit in sequence. Jokers are wild (each meld needs two real cards).",

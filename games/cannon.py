@@ -220,6 +220,7 @@ def blast_damage(dmg, r, d):
 
 class Cannon(Game):
     id = "cannon"
+    solo_bots = 2
     category = "action"
     howto = [
         "On your turn, aim your cannon: drag back from it like a slingshot, or use ◀ ▶ for the angle and − + for the power. Pick a shell and 🔥 Fire. The aim guide shows only the start of the arc.",

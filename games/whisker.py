@@ -181,6 +181,7 @@ def cut_holes(g, w, h, pairs, rng):
 
 class Whisker(Game):
     id = "whisker"
+    solo_bots = 2
     category = "action"
     howto = [
         "Each round some players are 🐭 mice and the rest are 🐱 cats — the roles rotate, so everyone hunts.",

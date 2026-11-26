@@ -57,6 +57,7 @@ def contract_score(level, strain, dbl, vul, took):
 
 class Bridge(TrickGame):
     id = "bridge"
+    solo_bots = 3
     name = "Bridge"
     icon = "🌉"
     blurb = "Contract Bridge with Chicago scoring: bid with your partner, declare, and play dummy's hand too."

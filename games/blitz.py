@@ -27,6 +27,7 @@ def value(hand, trips=False):
 
 class Blitz(CardGame):
     id = "blitz"
+    solo_bots = 3
     name = "Blitz"
     icon = "⚡"
     blurb = "Thirty-One: draw and discard toward 31 in one suit, knock when you're ahead, and hang on to your lives."

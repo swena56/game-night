@@ -68,6 +68,7 @@ SPRINT_SECS = 15  # 🏃 what's left on the clock once someone finishes
 
 class Ladder(Game):
     id = "ladder"
+    solo_bots = 2
     category = "words"
     howto = [
         "Everyone gets the same two words. Climb from the top word to the bottom one.",

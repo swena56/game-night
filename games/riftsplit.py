@@ -385,6 +385,7 @@ class Board:
 
 class RiftSplit(Game):
     id = "riftsplit"
+    solo_bots = 0
     name = "Rift Split"
     category = "action"
     icon = "🔷"

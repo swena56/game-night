@@ -456,6 +456,7 @@ def bot_move(board, level, rng):
 
 class Prism(Game):
     id = "prism"
+    solo_bots = 2
     category = "action"
     howto = [
         'Everyone plays their own board at the same time. Swap two neighbouring gems to line up 3 or more of a kind.',

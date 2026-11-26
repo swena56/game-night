@@ -492,6 +492,7 @@ def pull_risk(tower, lean, bid, g):
 
 class Wobble(Game):
     id = "wobble"
+    solo_bots = 2
     category = "party"
     family = None
     howto = [

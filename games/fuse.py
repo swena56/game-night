@@ -34,6 +34,7 @@ BOT = {  # reaction interval (s), speed factor, aim noise (units), dashes
 
 class Fuse(Game):
     id = "fuse"
+    solo_bots = 3
     category = "action"
     howto = [
         "Drag on the arena like a joystick and lift to stop. Use WASD or arrow keys to steer on a keyboard.",

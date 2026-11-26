@@ -19,6 +19,7 @@ SORT = by_suit(ORDER, "SHDC")
 
 class FanTan(CardGame):
     id = "fantan"
+    solo_bots = 3
     name = "Fan Tan"
     icon = "🪭"
     blurb = "Sevens: build each suit up and down from its seven. Block your rivals, and run out first."

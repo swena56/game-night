@@ -63,6 +63,7 @@ def apply(pos, dice, order):
 
 class Derby(Game):
     id = "derby"
+    solo_bots = 2
     category = "dice"
     howto = [
         "Six horses, 1–6. Each race you're dealt two secret 🎟️ tickets: the horses you're backing.",

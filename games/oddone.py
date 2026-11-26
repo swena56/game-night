@@ -20,6 +20,7 @@ BLANK = "🫥"  # the odd one's "word" in 🫥 Blank mode
 
 class OddOne(Game):
     id = "oddone"
+    solo_bots = 3
     category = "party"
     howto = [
         "Everyone gets a secret word, but one player's word is slightly different. Nobody knows who.",

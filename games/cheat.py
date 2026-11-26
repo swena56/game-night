@@ -23,6 +23,7 @@ def word(n, r):
 
 class Cheat(CardGame):
     id = "cheat"
+    solo_bots = 3
     name = "Cheat"
     icon = "🙊"
     blurb = "Play face down and say what they are. Lie when you must, and call out the liars."

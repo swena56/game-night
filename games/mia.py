@@ -57,6 +57,7 @@ def true_chance(prev, c):
 
 class Mia(Game):
     id = "mia"
+    solo_bots = 2
     category = "dice"
     howto = [
         "Roll two dice in secret and read the high die first: 3 and 5 is 53. Doubles beat plain numbers, and 2-1 (🎭 Mia) beats everything.",

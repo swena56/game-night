@@ -12,6 +12,7 @@ from .tricks import TrickGame
 
 class KnockOutWhist(TrickGame):
     id = "kowhist"
+    solo_bots = 3
     name = "Knock Out Whist"
     icon = "🥊"
     blurb = "Win at least one trick or you're out. Each hand has one card fewer, and the most tricks picks trumps."

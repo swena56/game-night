@@ -19,6 +19,7 @@ SURE_WIN, SURE_LOSS = 5, 2  # ✌️ a "sure" pick: the truth pays this instead 
 
 class FibFinder(Game):
     id = "fibfinder"
+    solo_bots = 3
     category = "words"
     howto = [
         "A strange-but-true fact appears with a word missing.",

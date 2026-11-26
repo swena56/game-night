@@ -23,6 +23,7 @@ SAYS = ["spades", "nice", "king", "pair", "hearts", "queen", "mao"]
 
 class Mao(CardGame):
     id = "mao"
+    solo_bots = 2
     name = "Mao"
     icon = "🤐"
     blurb = "Shed your cards, but the rules are secret: learn them from the penalties, and say the right things."

@@ -22,6 +22,7 @@ def strength(c):
 
 class Palace(CardGame):
     id = "palace"
+    solo_bots = 3
     name = "Palace"
     icon = "🏰"
     blurb = "Shed your hand, then your face-up cards, then the blind ones. 2 resets, 10 burns, can't play? Take the pile."

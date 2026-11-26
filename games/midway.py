@@ -359,6 +359,7 @@ def can_knock(hit, x, up, rng):
 
 class Midway(Game):
     id = "midway"
+    solo_bots = 2
     category = "action"
     family = None
     howto = [

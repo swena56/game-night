@@ -17,6 +17,7 @@ GRAB_SECS = 6
 
 class Spoons(CardGame):
     id = "spoons"
+    solo_bots = 3
     name = "Spoons"
     icon = "🥄"
     blurb = "Pass cards round the table all at once; get four of a kind and grab a spoon. One spoon too few!"
