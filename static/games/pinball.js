@@ -60,6 +60,24 @@
     return [ramp[0] + (exit[0] - ramp[0]) * t, ramp[1] + (exit[1] - ramp[1]) * t - 4.8 * arch, 1.6 * arch];
   });
 
+  // the two rails of a ramp, square to its path. At the top the path turns tighter than the ramp is wide, so there the rails
+  // draw together (never wider than most of the turn's radius): at a fixed width they crossed over each other and looked broken
+  const RAMP_HALF = .24;
+  const rampRails = (track) => {
+    const widths = track.map((p, i) => {
+      const a = track[Math.max(0, i - 1)], b = track[Math.min(track.length - 1, i + 1)];
+      const ab = Math.hypot(p[0] - a[0], p[1] - a[1]), bc = Math.hypot(b[0] - p[0], b[1] - p[1]), ca = Math.hypot(a[0] - b[0], a[1] - b[1]);
+      const area = Math.abs((p[0] - a[0]) * (b[1] - a[1]) - (b[0] - a[0]) * (p[1] - a[1])) / 2;
+      const radius = area > 1e-6 ? ab * bc * ca / (4 * area) : Infinity;
+      return Math.max(.06, Math.min(RAMP_HALF, radius * .75));
+    });
+    const eased = widths.map((_, i) => Math.min(...[-2, -1, 0, 1, 2].map((k) => widths[Math.max(0, Math.min(widths.length - 1, i + k))] + Math.abs(k) * .035)));
+    return [-1, 1].map((side) => track.map(([x, y, z], i) => {
+      const a = track[Math.max(0, i - 1)], b = track[Math.min(track.length - 1, i + 1)], n = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+      return [x - (b[1] - a[1]) / n * eased[i] * side, y + (b[0] - a[0]) / n * eased[i] * side, z];
+    }));
+  };
+
   const jackpotLit = row => !row[TILT] && (row[JACKPOT] > 0 || row[OTHERS]?.length > 0);
   // a table has any number of drop targets: the ramp opens when every one of them is down
   const targetCount = row => row[STATS]?.targets ?? 3;
@@ -889,7 +907,10 @@
     (geo.flaps || []).forEach((r, i) => rail(r, .1, .5, .12, material(paintOf(geo, 'flaps', i, palette.gold), .4, .3)));
     if (geo.portals) {
       const [x1, y1, x2, y2, pr] = geo.portals, col = paintOf(geo, 'portal', undefined, palette.teal);
-      for (const [px, py] of [[x1, y1], [x2, y2]]) { disc(px, py, pr + .07, .05, .03, brass); disc(px, py, pr, .06, .05, lamp('portal', col, row => row[EVENT] === 'portal' ? palette.ivory : null)); }
+      const hole = material('#0c0a1c', .9, .1), glow = lamp('portal', col, row => row[EVENT] === 'portal' ? palette.ivory : null);
+      for (const [px, py] of [[x1, y1], [x2, y2]]) {          // a bright ring round a dark mouth with a spark in it: a hole to aim at, not a lamp
+        disc(px, py, pr + .09, .05, .03, brass); disc(px, py, pr + .02, .06, .05, glow); disc(px, py, pr * .72, .07, .06, hole); disc(px, py, pr * .22, .08, .07, glow);
+      }
     }
     (geo.posts || []).forEach(([x, y, r], i) => disc(x, y, r, .4, .2, lamp('post', paintOf(geo, 'posts', i, '#f2ecdd'), (row) => row[STATS]?.post > 0 ? palette.gold : null)));
     const hits = hitTracker(), plungeAt = plungerSpring(), hurryLeft = hurryClock(), slingBars = [], bumperParts = [], bumperRings = [];
@@ -936,8 +957,8 @@
     const rampRail = lamp('ramp', paintOf(geo, 'ramp', undefined, palette.steel), row => rampLit(row) ? rampColor(row) : paintOf(geo, 'ramp', undefined, palette.steel));
     rampRail.metalness = chrome.metalness;
     rampRail.roughness = chrome.roughness;
-    for (const offset of geo.ramp ? [-.24, .24] : []) {
-      const points = track.map(([x, y, z]) => new T.Vector3(x + offset, z + .07, y));
+    for (const side of geo.ramp ? rampRails(track) : []) {
+      const points = side.map(([x, y, z]) => new T.Vector3(x, z + .07, y));
       const tube = new T.TubeGeometry(new T.CatmullRomCurve3(points), 32, .045, 6, false);
       mesh(tube, rampRail, 0, 0, 0);
     }

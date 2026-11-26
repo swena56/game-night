@@ -27,13 +27,12 @@ Draw your own art and name: no logos, brand names or copied artwork. A raised de
 | `"even_guides": true` | | the right lane guide matches the left (smooth cabinet only) |
 | `"fl"` | `[2.48, 14.95, 6.32, 14.95]` | centred on 4.4, with a 0.69 gap. The editor's old `FLIP_GAP` limits count tip centres, not free space: `[2.62, …, 6.18, …]` passed them and the ball could not fit through |
 | slings | `(1.45,10.65)-(2.55,12.4)`, mirrored (`x → 8.8 - x`) | slings facing each other closely juggled the ball for 30 s |
-| posts | `(0.9,12.15,r .09)` and `(0.45,11.4,r .07)`, both mirrored | the wall-side post took side exits from 14% to 3% and leaves the lane open. At y 11.75 it nearly seals the lane; a post *above the guide* makes drains worse |
+| posts | `(0.9,12.15,r .09)`, mirrored, on top of each guide | **never** a post beside a cabinet wall (x 0.45 or 8.35): the gap is 0.38, the ball 0.42. It caught balls and blocked the shot into left-hand wire lanes (Golden Hour: 26 of 240 shots down to 5) |
 | `["kick", …]` | | left outlane save plus the side-lane lamps |
 
 Guides end on top of the resting bats by themselves (`flush_end`): ending at the pivot left a lip the ball hopped on. They are
 drawn 0.30 thick, hung under the line the ball rolls on. Official tables made before this recipe (Golden Hour, Neon Arcade) only
-got the wider gap (`"fl": [3.08, 14.95, 6.92, 14.95]`) and the two wall-side posts, which took their side drains from ~12% to ~2%.
-The posts did little on Speedway and Zen Garden, whose curved walls feed the side lanes.
+got the wider gap (`"fl": [3.08, 14.95, 6.92, 14.95]`). Check any table with `python3 -m unittest tests.pinball_levels`.
 
 Mirror everything below y 11. The flippers on the older tables are centred on 5.0, which is why one side drains so much.
 
