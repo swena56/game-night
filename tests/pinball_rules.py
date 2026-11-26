@@ -36,6 +36,28 @@ def placed(x, y, vx=0, vy=0):
 
 
 class PinballRules(unittest.TestCase):
+    def test_zen_garden_has_no_side_drains(self):
+        from games import pinball_tables
+        from games.pinball_custom import build, build_rules
+        spec = pinball_tables.load()["t_zen-garden"]["spec"]
+        layout, clean = build(spec)
+        self.assertTrue(clean["closed_sides"])
+        rules = build_rules(spec)
+        for seed in range(24):                       # balls dropped down both side channels, from high and low
+            table = CustomTable(layout_override=layout, rules_override=rules, balls=1)
+            table.rng = random.Random(seed)
+            x = (0.25 + 0.3 * (seed % 3)) if seed % 2 else (8.55 - 0.3 * (seed % 3))
+            table.staged, table.x, table.y, table.vx, table.vy = False, x, 3.5 + seed % 5, 0, 2
+            table.still_origin = (table.x, table.y)
+            for _ in range(240 * 8):
+                table.step()
+                if table.y > 12.9:
+                    self.assertTrue(0.9 < table.x < 7.9, f"drop {seed} went down a side lane at x={table.x:.2f}")
+                    break
+                self.assertNotIn(table.event, ("search", "recovery"), f"drop {seed} got stuck near ({table.x:.2f}, {table.y:.2f})")
+            else:
+                self.fail(f"drop {seed} never came down: ({table.x:.2f}, {table.y:.2f})")
+
     def test_a_held_ball_is_counted_down_for_the_screen(self):
         table = placed(5, 8)
         self.assertEqual(table.public()[-1]["held"], 0)
