@@ -27,7 +27,12 @@
   </header>
   <p id="peMsg" class="pe-msg" role="status" aria-live="polite"></p>
   <main class="pe-main">
-    <aside class="pe-palette" id="pePalette" aria-label="Parts. Drag one onto the table, or tap to add it."></aside>
+    <aside class="pe-side" aria-label="Parts">
+      <input id="peSearch" class="pe-search" type="search" placeholder="Search parts…" aria-label="Search parts" autocomplete="off">
+      <div id="peTabs" class="pe-tabs" role="tablist" aria-label="Part categories"></div>
+      <div class="pe-palette" id="pePalette" aria-label="Parts. Drag one onto the table, or tap to add it."></div>
+      <p class="hint pe-tip">Tap a part to add it, or drag it onto the table.</p>
+    </aside>
     <section class="pe-stage"><canvas id="peCanvas" aria-label="Table. Drag parts to move them."></canvas></section>
     <aside class="pe-inspector" id="peInspector" aria-label="Selected part">
       <h2 id="peTitle">Nothing selected</h2>

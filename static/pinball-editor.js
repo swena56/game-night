@@ -247,8 +247,9 @@
 
   // ---- drawing ------------------------------------------------------------------------------------------
   function fit() {
-    const room = canvas.parentElement.clientWidth || 380;
-    const cssW = Math.max(220, Math.min(room, 440, (innerHeight - 140) / 1.7)) * zoom;
+    const stage = canvas.parentElement, pad = 8;          // the board is sized to the stage, so the whole cabinet is visible
+    const w = Math.max(160, (stage.clientWidth || 380) - pad), h = Math.max(272, (stage.clientHeight || 700) - pad);
+    const cssW = Math.max(160, Math.min(w, h / 1.7)) * zoom;
     const dpr = devicePixelRatio || 1;
     canvas.style.width = cssW + 'px'; canvas.style.height = cssW * 1.7 + 'px';
     canvas.width = Math.round(cssW * dpr); canvas.height = Math.round(cssW * 1.7 * dpr);
@@ -454,22 +455,35 @@
   canvas.addEventListener('pointercancel', endDrag);
 
   // ---- palette (pointer-based drag so it works with touch too) ------------------------------------------
+  const TABS = ['All', 'Scoring', 'Walls & guides', 'Mechanisms', 'Decals'];
+  let tab = 'All', query = '';
+  const groupOf = (k) => KINDS[k].group || GROUPS[k] || 'Scoring';
   function buildPalette() {
-    const box = $('pePalette');
-    box.textContent = '';
-    let group = '';
-    const order = ['Scoring', 'Walls & guides', 'Mechanisms', 'Decals'], groupOf = (k) => KINDS[k].group || GROUPS[k] || 'Scoring';
-    const sorted = Object.entries(KINDS).sort((a, b) => order.indexOf(groupOf(a[0])) - order.indexOf(groupOf(b[0])));
-    for (const [k, d] of sorted) {
-      const g = groupOf(k);
-      if (g && g !== group) { group = g; const h = document.createElement('h3'); h.className = 'pe-group'; h.textContent = g; box.append(h); }
+    const tabs = $('peTabs'), box = $('pePalette');
+    tabs.textContent = ''; box.textContent = '';
+    for (const t of TABS) {
       const b = document.createElement('button');
-      b.className = 'pe-part'; b.type = 'button'; b.dataset.kind = k;
+      b.type = 'button'; b.className = 'pe-tab'; b.textContent = t; b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(t === tab));
+      b.onclick = () => { tab = t; buildPalette(); refresh(false); };
+      tabs.append(b);
+    }
+    const order = TABS.slice(1), q = query.trim().toLowerCase();
+    const list = Object.entries(KINDS)
+      .filter(([k, d]) => (tab === 'All' || groupOf(k) === tab) && (!q || (d.label + ' ' + groupOf(k)).toLowerCase().includes(q)))
+      .sort((a, b) => order.indexOf(groupOf(a[0])) - order.indexOf(groupOf(b[0])));
+    let group = '';
+    for (const [k, d] of list) {
+      const g = groupOf(k);
+      if (tab === 'All' && g !== group) { group = g; const h = document.createElement('h3'); h.className = 'pe-group'; h.textContent = g; box.append(h); }
+      const b = document.createElement('button');
+      b.className = 'pe-part'; b.type = 'button'; b.dataset.kind = k; b.title = d.hint || d.label;
       b.innerHTML = `<span class="pe-icon">${d.icon}</span><span>${d.label}</span><small></small>`;
       b.addEventListener('pointerdown', (e) => startPaletteDrag(e, k, b));
       box.append(b);
     }
+    if (!list.length) { const p = document.createElement('p'); p.className = 'pe-none'; p.textContent = 'No parts match.'; box.append(p); }
   }
+  $('peSearch').oninput = () => { query = $('peSearch').value; buildPalette(); refresh(false); };
   function startPaletteDrag(e, k, button) {
     if (button.disabled || e.button > 0) return;
     e.preventDefault();
