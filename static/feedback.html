@@ -36,6 +36,8 @@
     async function load() {
       const list = document.getElementById('list');
       try {
+        // Adding and editing live in the admin tool: go there whenever the server allows it (localhost:8000 only).
+        if ((await fetch('/api/admin/feedback')).ok) return location.replace('/admin.html');
         const r = await fetch('/api/feedback');
         const j = await r.json();
         if (!r.ok) throw new Error(j.error);
