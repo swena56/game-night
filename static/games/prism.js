@@ -337,7 +337,7 @@ UI.prism = (() => {
   }
 
   // ---------- animation state
-  const vis = () => Array.from({ length: N * N }, () => ({ ox: 0, oy: 0, vy: 0, land: 0, born: 0, ice: 0 }));
+  const vis = () => Array.from({ length: N * N }, () => ({ ox: 0, oy: 0, sx: 0, sy: 0, vy: 0, land: 0, born: 0, ice: 0 }));
   let cells = vis();
   let pops = [], fx = [], pfx = Fx2D.create({ cap: 320 }), sel = null, cursor = null, hint = null, lastAct = 0;
   let falling = null, swapAnim = null;
@@ -540,7 +540,7 @@ UI.prism = (() => {
       const ch = g[i], c = cells[i];
       if (ch === EMPTY) continue;
       let [x, y] = cellXY(i);
-      x += c.ox * cs; y += c.oy * cs;
+      x += (c.ox + c.sx) * cs; y += (c.oy + c.sy) * cs;
       let sxs = 1, sys = 1;
       const since = t - c.land;
       if (c.land && since < 220) { const q = Math.sin(since / 220 * Math.PI) * 0.14; sxs = 1 + q; sys = 1 - q; busy = true; }
@@ -651,6 +651,16 @@ UI.prism = (() => {
       busy = true;
     }
     pfx.draw(p);  // shards, sparks and the floating points
+    // (#252) a swap that has to wait is marked on its two gems straight away, so the tap visibly registered
+    (st.pendingMoves || []).forEach(([a, b], n) => {
+      const [x0, y0] = cellXY(a), [x1, y1] = cellXY(b);
+      p.save(); p.strokeStyle = '#ffe48c'; p.fillStyle = '#ffe48c2e'; p.lineWidth = Math.max(2, cs * 0.06);
+      p.beginPath(); p.rect(Math.min(x0, x1) - cs * 0.45, Math.min(y0, y1) - cs * 0.45, Math.abs(x1 - x0) + cs * 0.9, Math.abs(y1 - y0) + cs * 0.9); p.fill(); p.stroke();
+      const bx = Math.max(x0, x1) + cs * 0.31, by = Math.min(y0, y1) - cs * 0.31;
+      p.fillStyle = '#ffe48c'; p.beginPath(); p.arc(bx, by, cs * 0.17, 0, Math.PI * 2); p.fill();
+      p.fillStyle = '#231a00'; p.font = `900 ${Math.max(9, cs * 0.24)}px sans-serif`; p.textAlign = 'center'; p.textBaseline = 'middle'; p.fillText(String(n + 1), bx, by + 1);
+      p.restore();
+    });
     // keyboard cursor
     if (cursor != null) {
       const x = (cursor % N) * cs, y = ((cursor / N) | 0) * cs;
@@ -796,11 +806,53 @@ UI.prism = (() => {
     q.push([a, b]);
     renderPendingMoves();
     ctx.sfx?.('tick');
+    buzz?.(8);
+    kick();
+  }
+
+  // (#249) match while a cascade plays: a swap of two gems that are sitting still happens at once, and the
+  // cascade's next step clears it
+  const MAX_JOINS = 6;   // per cascade, so a chain can't hold off incoming attacks for ever
+  function still(i) {   // not empty, not falling, and nothing under it is about to drop it
+    if (g[i] === EMPTY || cells[i].oy || cells[i].sx || cells[i].sy) return false;
+    for (let j = i + N; j < N * N; j += N) if (g[j] === EMPTY) return false;
+    return true;
+  }
+  function joinMove(a, b) {
+    if (!st?.open || st.joins >= MAX_JOINS || !canPlay() || (st.lv && st.lv.left <= 0)) return false;
+    // a gem already in a line is about to clear: it can't be pulled out
+    if (!still(a) || !still(b) || lined(a) || lined(b) || swapKind(a, b) !== 'match') return false;
+    [g[a], g[b]] = [g[b], g[a]];
+    st.joined.push(a, b);
+    st.joins++; st.stats.moves++;
+    if (st.lv) { st.lv.left--; renderGoal(); }
+    hint = null; lastAct = now();
+    ctx.sfx?.('flip');
+    slideIn(a, b);
+    renderGrid();
+    return true;
+  }
+  // slides on its own offsets (sx, sy): ox and oy belong to the falling gems
+  function slideIn(a, b) {
+    if (!motion() || !c2) return;
+    const dx = b % N - a % N, dy = ((b / N) | 0) - ((a / N) | 0), t0 = now(), A = cells[a], B = cells[b];
+    const step = () => {
+      const left = 1 - Math.min(1, (now() - t0) / 130);
+      A.sx = dx * left; A.sy = dy * left; B.sx = -dx * left; B.sy = -dy * left;
+      kick();
+      if (left > 0) requestAnimationFrame(step);
+    };
+    step();
+  }
+  function joinQueued() {   // swaps that had to wait go in as soon as their gems come to rest
+    const before = st.pendingMoves.length;
+    st.pendingMoves = st.pendingMoves.filter(([a, b]) => !joinMove(a, b));
+    if (st.pendingMoves.length !== before) renderPendingMoves();
   }
 
   async function runMove(a, b) {
     if (!st || !canPlay()) return;
-    if (st.busy) { queueMove(a, b); return; }
+    if (st.busy) { if (!joinMove(a, b)) queueMove(a, b); return; }
     hint = null; lastAct = now();
     const what = swapKind(a, b);
     st.busy = true;
@@ -812,6 +864,7 @@ UI.prism = (() => {
       if (st.lv) st.lv.left--;
       const m = mult();
       await animSwap(a, b, false);
+      st.joined = []; st.joins = 0; st.open = true;   // from here until the board settles, more swaps can join in
       const fired = [], madeList = [];
       let pts = 0, step = 0;
       if (what === 'prism' || what === 'combo') {
@@ -857,9 +910,13 @@ UI.prism = (() => {
       }
       let prefer = [a, b];
       for (;;) {
+        joinQueued();
         const gs = groups();
         if (!gs.length) break;
-        step++;
+        // your own mid-cascade match scores at the current step: only matches that fall into place raise ×N
+        const mine = st.joined.splice(0);
+        if (!step || !mine.length || !gs.every((gr) => mine.some((i) => gr.cells.has(i)))) step++;
+        prefer = prefer.concat(mine);
         let clear = new Set();
         const created = [];
         for (const gr of gs) {
@@ -879,9 +936,11 @@ UI.prism = (() => {
         await waitFall(gravity());
         prefer = [];
       }
+      st.open = false;
       if (!moves().length) await reshuffle();
       st.score += pts;
       scoreTo(st.score);
+      if (!st.lv) renderStanding(Object.entries(S.prism.boards).sort((x, y) => y[1].score - x[1].score));
       afterMove(step, fired, madeList);
       push();
       if (step >= 3 || fired.length || madeList.length) {
@@ -898,7 +957,7 @@ UI.prism = (() => {
         } else ctx.quiet(ctx.act('burst', burst));
       }
     } finally {
-      if (st) { st.busy = false; flushEvents(); }
+      if (st) { st.busy = false; st.open = false; flushEvents(); }
       kick();
       armHint();
       const nx = st?.pendingMoves.shift();
@@ -1170,7 +1229,7 @@ UI.prism = (() => {
     try { pb = Profile.best('prism', S.roundRecord); } catch {}
     st = { seed: pz.seed, score: mine?.score || 0, applied: applied != null ? +applied : Math.max(0, ...pz.events.map((e) => e.id)),
       appliedKey, queue: [], incoming: [], busy: false, pushed: mine?.rows, pushedScore: mine?.score || 0, endAt: now() + pz.timeLeft * 1000, over: false, lastT: 0,
-      pendingMoves: [],
+      pendingMoves: [], open: false, joined: [], joins: 0,
       fever: { meter: 0, until: 0, t: now() }, hintAt: 0, pb, pbShown: false, rushShown: false, lv: null,
       stats: { best: 0, popped: 0, made: 0, fevers: 0, sent: 0, got: 0, parried: 0, moves: 0 } };
     rng = mulberry32((pz.seed ^ (st.score * 2654435761)) >>> 0);
@@ -1387,6 +1446,21 @@ UI.prism = (() => {
     anim.onfinish = () => c.remove();
     setTimeout(() => c.remove(), 1200);
   }
+  // (#250) where I stand, right above the board: the rival cards are below it, out of sight on a phone
+  function renderStanding(entries) {
+    const el = $('pzStand'), mine = entries?.find(([pid]) => pid === S.me.id);
+    if (!el) return;
+    el.hidden = !mine || entries.length < 2 || !S.prism.playing;
+    if (el.hidden) return;
+    const score = Math.max(mine[1].score, st?.score || 0);
+    const [rid, best] = entries.filter(([pid]) => pid !== S.me.id).reduce((a, b) => (b[1].score > a[1].score ? b : a));
+    const gap = score - best.score, place = 1 + entries.filter(([pid, b]) => pid !== S.me.id && b.score > score).length;
+    const who = ctx.player(rid)?.name ?? '?', suffix = ['th', 'st', 'nd', 'rd'][place < 4 ? place : 0];
+    const text = gap < 0 ? `▼ ${place}${suffix} · ${(-gap).toLocaleString()} behind ${who}` : gap > 0 ? `👑 1st · ${gap.toLocaleString()} ahead of ${who}` : `🤝 Level with ${who}`;
+    if (el.textContent !== text) el.textContent = text;
+    el.className = 'pz-stand ' + (gap < 0 ? 'behind' : gap > 0 ? 'ahead' : '');
+  }
+
   function renderRivals() {
     const box = $('pzRivals');
     if (!box) return;
@@ -1400,6 +1474,7 @@ UI.prism = (() => {
       try { Kit.callout(lead === S.me.id ? '👑 You take the lead!' : `👑 ${lp?.name ?? '?'} takes the lead`, lead === S.me.id ? 'gold' : 'cool', { ms: 1300 }); } catch {}
     }
     renderRivals.lead = lead;
+    renderStanding(entries);
     entries.forEach(([pid, b], rank) => {
       const p = ctx.player(pid);
       const card = ctx.el('div', 'pz-rival' + (pid === S.me.id ? ' me' : '') + (b.alive ? '' : ' down'));
@@ -1462,6 +1537,7 @@ UI.prism = (() => {
         <div class="pz-scorebox"><span class="pz-score" id="pzScore">0</span><small class="pz-pb" id="pzPB"></small></div></div>
       <div class="pz-sub"><span class="pz-rank" id="pzRank"></span><div class="pz-fever" id="pzFever" title="🔥 Fever: quick matches fill it; full = double points for 6 s"><i></i></div><span class="pz-mult" id="pzMult"></span></div>
       <div id="pzGoal" class="pz-goal" hidden></div>
+      <div id="pzStand" class="pz-stand" role="status" hidden></div>
       <div id="pzStage" class="pz-stage"><canvas id="pzCanvas" tabindex="0" aria-label="Your gem board"></canvas><div id="pzGrid" class="pz-grid" hidden></div>
         <div id="pzWarn" class="pz-warn"></div><div id="pzMap" class="pz-map" hidden></div>
         <div id="pzCount" class="pz-count" hidden></div><div id="pzBanner" class="pz-hit"></div><div id="pzQueue" class="pz-queue" aria-live="polite" hidden></div><div id="pzTarget" class="pz-target-prompt" role="group" aria-label="Choose attack target" hidden></div><div id="pzOver" class="pz-over" hidden></div></div></div>`;
@@ -1470,7 +1546,7 @@ UI.prism = (() => {
       <div id="pzRivals" class="pz-rivals"></div>
       <div id="pzLevelSide"></div>
       <div id="pzThemes" class="pz-themes"></div>
-      <p class="hint left"><b>Swap to make a line of 3.</b> Swipe a gem, or tap it and a neighbour. During animations, tap or swipe to queue up to 4 swaps. ⌨️ Arrows move; Enter/Space selects; H gives a hint.<br>
+      <p class="hint left"><b>Swap to make a line of 3.</b> Swipe a gem, or tap it and a neighbour. You can keep matching while a cascade plays; a swap on gems that are still falling waits for them (up to 4). ⌨️ Arrows move; Enter/Space selects; H gives a hint.<br>
       4 makes a row/column ⚡ · L/T makes a 3×3 💥 · 5 makes a colour-clearing 🌈. Match beside 🧊 or 🪨 to clear them. Chain matches for bigger scores; a special or ×3 chain can parry an incoming hit.</p></div>`;
     cv = $('pzCanvas');
     c2 = cv.getContext?.('2d') || null;
@@ -1570,7 +1646,7 @@ UI.prism = (() => {
     } else if (S.phase === 'over' && me) buildRecap(pz, me);
     else { over.hidden = true; }
     tickClock();
-    if (!levels) renderRivals(); else $('pzRivals').innerHTML = '';
+    if (!levels) renderRivals(); else { $('pzRivals').innerHTML = ''; renderStanding(null); }
     if (!$('pzThemes').firstChild) renderThemes();
     renderGoal();
     kick();
@@ -1584,9 +1660,10 @@ UI.prism = (() => {
   // test hooks: a legal move and the keyboard cursor; an attack as if a rival had sent it (lands at once, or
   // after the parry warning with warn=true)
   const testState = () => ({ move: st && !st.busy ? moves()[0] || null : null, cursor, busy: !!st?.busy, rows: g.join(''), score: st?.score,
+    queued: st?.pendingMoves?.length || 0, joinable: st?.open ? moves().find(([a, b]) => still(a) && still(b) && !lined(a) && !lined(b) && swapKind(a, b) === 'match') || null : null, joins: st?.joins || 0,
     level: st?.lv ? { n: st.lv.n, left: st.lv.left, over: st.lv.over, have: goalProgress(), want: goalTarget() } : null,
     fever: st ? { meter: feverMeter(), on: feverOn() } : null, incoming: st?.incoming.length || 0, stats: st?.stats });
   const testHit = (kind_, n, warn = false) => st && applyEvents([{ id: st.applied + 1, kind: kind_, n, from: 'Test' }], !warn);
   const testBoard = (rows) => { if (st && rows.length === N * N) { g = rows.split(''); kick(); } };
-  return { mount, render, unmount, turnText, focus: true, testState, testHit, testBoard };
+  return { mount, render, unmount, turnText, focus: true, testTap: tap, testState, testHit, testBoard };
 })();

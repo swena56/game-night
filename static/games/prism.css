@@ -106,6 +106,10 @@
 @keyframes pzHit { 0% { opacity: 0; transform: scale(1.6); } 12% { opacity: 1; transform: scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: translateY(-20px); } }
 .pz-over { position: absolute; left: 0; right: 0; top: 40%; text-align: center; font-size: 26px; font-weight: 900; padding: 14px;
   background: #000b; pointer-events: none; }
+.pz-stand { margin-bottom: 6px; padding: 4px 10px; border-radius: 8px; border: 1px solid #ffffff2e; background: #ffffff0d; text-align: center; font-weight: 800; font-size: 14px; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pz-stand[hidden] { display: none; }
+.pz-stand.behind { color: #ffb3bd; border-color: #ff4d6d99; background: #ff4d6d22; }
+.pz-stand.ahead { color: #a8ffd0; border-color: #35e6a088; background: #35e6a01c; }
 .pz-rivals { display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
 .pz-rival { position: relative; display: flex; align-items: center; gap: 8px; background: #ffffff08; border-radius: 10px; padding: 5px 8px; }
 .pz-rival canvas { width: 46px; height: 46px; border-radius: 5px; flex: none; }
