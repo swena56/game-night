@@ -1172,6 +1172,25 @@
     } catch (e) { msg.textContent = e.message; }
     $('peSugSend').disabled = false;
   };
+  // 💬 feedback about the editor itself, into the same inbox as the app's reports (#276)
+  const fbDlg = $('peFbDlg');
+  $('peFeedback').onclick = () => { $('peFbMsg').textContent = ''; $('peFbSend').disabled = false; fbDlg.showModal(); };
+  $('peFbSend').onclick = async () => {
+    const msg = $('peFbMsg'), text = $('peFbText').value.trim();
+    if (text.length < 5) { msg.textContent = 'Please describe it in a few words.'; return; }
+    msg.textContent = 'Sending…'; $('peFbSend').disabled = true;
+    try {
+      const context = { view: 'pinball editor', screen: `${innerWidth}×${innerHeight}`, userAgent: navigator.userAgent.slice(0, 200) };
+      if ($('peFbTable').checked) {
+        const code = await shareCode(toSpec());
+        if (code.length <= 4500) context.pinball_table = code;  // the server drops details over 6,000 characters
+        else context.note = 'table too big to include';
+      }
+      const r = await post('/api/feedback', { kind: $('peFbKind').value, text, context });
+      $('peFbText').value = '';
+      msg.textContent = `Thanks! Sent as #${r.id}.`;
+    } catch (e) { msg.textContent = e.message; $('peFbSend').disabled = false; }
+  };
   // On the server's own device only (the server refuses anyone else): write the editor's table into games/pinball_tables.
   async function listedCall(path, body, done) {
     try { await post(path, body); await loadCurated(); say(done); } catch (e) { say(e.message); }

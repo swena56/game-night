@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read, resolve, or reopen Game Night feedback over SSH."""
+"""Read, resolve, reopen, or merge into the local inbox Game Night feedback over SSH."""
 
 import argparse
 import ipaddress
@@ -9,6 +9,8 @@ from pathlib import Path
 import shlex
 import subprocess
 import sys
+from urllib.error import URLError
+from urllib.request import Request, urlopen
 
 from droplet import DigitalOcean, DropletError, find_droplet, ssh_command, ssh_environment
 
@@ -52,6 +54,14 @@ print(json.dumps(data, indent=2))
 """
 
 
+def merge_local(items, source, url):
+    """Add the reports to the local server's inbox; ones merged before are skipped."""
+    request = Request(url.rstrip("/") + "/api/feedback/import", data=json.dumps({"source": source, "items": items}).encode(),
+                      headers={"Content-Type": "application/json"})
+    with urlopen(request, timeout=30) as response:
+        return json.load(response)["added"]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("id", nargs="?", type=int, help="DigitalOcean Droplet ID")
@@ -61,6 +71,9 @@ def main():
     action.add_argument("--status", choices=("open", "done"), help="filter the inbox by status")
     action.add_argument("--resolve", nargs="+", type=int, metavar="REPORT_ID",
                         help="mark verified reports done and read back their status")
+    action.add_argument("--merge", action="store_true",
+                        help="copy the Droplet's reports into the local inbox (new ones only)")
+    parser.add_argument("--local", default="http://127.0.0.1:8000", help="local server for --merge (default: %(default)s)")
     action.add_argument("--reopen", nargs="+", type=int, metavar="REPORT_ID",
                         help="reopen reports and read back their status")
     args = parser.parse_args()
@@ -103,7 +116,17 @@ def main():
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, check=True,
             timeout=120, env=ssh_environment(),
         )
-        print(json.dumps(json.loads(response.stdout), indent=2))
+        data = json.loads(response.stdout)
+        if args.merge:
+            try:
+                added = merge_local(data["items"], droplet["name"][:60], args.local)
+            except URLError as error:
+                print(f"Could not reach the local server at {args.local}: {error.reason}. Is it running, and up to date?", file=sys.stderr)
+                return 1
+            print(f"Merged {len(added)} new report(s) of {len(data['items'])} from {droplet['name']}"
+                  + (f" as local #{added[0]}–#{added[-1]}." if added else "; nothing new."))
+            return 0
+        print(json.dumps(data, indent=2))
         return 0
     except (DropletError, OSError, KeyError, ValueError) as error:
         message = str(error).replace(token, "[redacted]") if token else str(error)

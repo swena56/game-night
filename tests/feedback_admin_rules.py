@@ -134,6 +134,20 @@ class AdminTest(unittest.TestCase):
         self.assertEqual(self.call("/api/admin/feedback/update", {"ids": [report, 99999], "add_images": [PNG]})[0], 400)
         self.assertEqual(os.listdir(server.SHOT_DIR), before)
 
+    def test_import_merges_only_new_reports(self):
+        items = [{"id": 7, "kind": "bug", "text": "Board is cut off", "at": 1000.5, "name": "Pat", "context": {"game": "chess"}, "status": "done"},
+                 {"id": 8, "kind": "idea", "text": "Add a clock please", "at": 2000.0, "context": {}, "status": "open"},
+                 {"id": 9, "kind": "nonsense", "text": "ignored", "at": 3.0}]
+        body = {"source": "prod", "items": items}
+        status, data, _ = self.call("/api/feedback/import", body)
+        self.assertEqual((status, len(data["added"])), (200, 2))
+        self.assertEqual(self.call("/api/feedback/import", body)[1]["added"], [])
+        got = {e["id"]: e for e in self.call("/api/feedback")[1]["items"]}
+        first, second = (got[i] for i in data["added"])
+        self.assertEqual((first["origin"], first["at"], first["status"]), ({"source": "prod", "id": 7}, 1000.5, "done"))
+        self.assertEqual(second["status"], "open")
+        self.assertEqual(self.call("/api/feedback/import", body, REMOTE)[0], 404)
+
 
 if __name__ == "__main__":
     unittest.main()

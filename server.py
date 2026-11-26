@@ -1730,6 +1730,39 @@ def admin_add_feedback(body):
     return {"ok": True, "id": entry["id"]}
 
 
+def import_feedback(body):
+    """Merge reports from another instance's inbox into this one (#274; fetch_feedback.py --merge). Each keeps
+    its text, time and details and remembers where it came from, so merging again adds only what is new."""
+    source, items = body.get("source"), body.get("items")
+    if not isinstance(source, str) or not source.strip() or len(source) > 60:
+        raise GameError("Name the inbox the reports come from.")
+    if not isinstance(items, list) or len(items) > 2000:
+        raise GameError("Send a list of up to 2,000 reports.")
+    local = list_feedback()["items"]
+    have = {(e["origin"]["source"], e["origin"]["id"]) for e in local if isinstance(e.get("origin"), dict)}
+    texts = {(e.get("kind"), e.get("text"), round(e.get("at", 0))) for e in local}   # the same report, copied by hand
+    added, done = [], []
+    for item in sorted((i for i in items if isinstance(i, dict) and type(i.get("id")) is int), key=lambda i: i["id"]):
+        kind, text, at = item.get("kind"), str(item.get("text") or "").strip()[:2000], item.get("at")
+        if kind not in FEEDBACK_KINDS or not text or type(at) not in (int, float):
+            continue
+        if (source, item["id"]) in have or (kind, text, round(at)) in texts:
+            continue
+        context = item.get("context") if isinstance(item.get("context"), dict) else {}
+        if len(json.dumps(context)) > 10_000:
+            context = {"note": "details too large, dropped"}
+        entry = append_feedback(kind, text, clean_name(item.get("name")), context, at=at,
+                                origin={"source": source, "id": item["id"]})
+        have.add((source, item["id"]))
+        added.append(entry["id"])
+        if item.get("status") == "done":
+            done.append(entry["id"])
+    if done:
+        with FEEDBACK_LOCK:
+            write_feedback_status(done, "done")
+    return {"ok": True, "added": added}
+
+
 def admin_update_feedback(body):
     """Change one report, or the status / priority of many at once. All of it is checked before anything is written."""
     ids = body.get("ids")
@@ -2209,6 +2242,8 @@ class Handler(BaseHTTPRequestHandler):
                   "/api/feedback": submit_feedback, "/api/axe-debug": log_axe_debug}
         if self.local():
             routes["/api/feedback/status"] = set_feedback_status
+        if self.dev_local():   # on this machine and not through a proxy
+            routes["/api/feedback/import"] = import_feedback
         if self.admin_ok():
             routes["/api/admin/feedback/add"] = admin_add_feedback
             routes["/api/admin/feedback/update"] = admin_update_feedback
@@ -2229,7 +2264,7 @@ class Handler(BaseHTTPRequestHandler):
             self.close_connection = True
             return self.send_json(400, {"error": "Invalid request body length."})
         if not route or length > (PROFILE_WITH_BENCHMARKS_MAX if path == "/api/profile/put" else 200_000 if path in ("/api/pinball-tables/save", "/api/pinball-check")
-                                  else 12_000_000 if path in ("/api/admin/feedback/add", "/api/admin/feedback/update")
+                                  else 12_000_000 if path in ("/api/admin/feedback/add", "/api/admin/feedback/update", "/api/feedback/import")
                                   else 10_000):
             self.close_connection = True   # the unread body would otherwise be parsed as the next request
             return self.send_json(404 if not route else 413, {"error": "Not found" if not route else "Too large"})

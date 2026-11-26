@@ -203,6 +203,7 @@
         box.append(shots);
       }
       const extra = (title, text) => { const d = el('details'); d.append(el('summary', '', title), el('pre', '', text)); box.append(d); };
+      if (i.origin) box.append(el('div', 'hint', `Merged from ${i.origin.source}, where it is report #${i.origin.id}.`));
       if (i.original_text && i.original_text !== i.text) extra('Original text (edited)', i.original_text);
       if (Object.keys(ctx).length) extra('Technical details', JSON.stringify(ctx, null, 2));
       const actions = el('div', 'row actions');

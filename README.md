@@ -88,7 +88,11 @@ runs through SSH and prints JSON. Report IDs belong to the selected Droplet.
 ```sh
 python3 fetch_feedback.py --status open  # List open reports
 python3 fetch_feedback.py                # List all reports
+python3 fetch_feedback.py --merge        # Copy new ones into the local inbox (local server running)
 ```
+
+A merged report keeps its text, time and details and records its Droplet ID, so merging
+again adds only new reports. Resolving it locally does not resolve it on the Droplet.
 
 Fix and verify the report locally, deploy, and reproduce the original scenario
 at the public URL. Close only reports verified on that instance.

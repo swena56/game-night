@@ -105,3 +105,5 @@
 .pe-bar i { display: block; height: 10px; border-radius: 5px; background: #ffd383; }
 .pe-bar.pe-wide { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 40px; }
 .pe-bad { color: #ff8f7c; }
+.pe-dialog .pe-check { display: flex; align-items: center; gap: 8px; }
+.pe-dialog .pe-check input { width: auto; flex: none; }
