@@ -4,6 +4,8 @@
 // The arena fills the room; scores and the boost button float on top of it. Swipe anywhere (or, in
 // tap mode, tap the left/right half to turn relative to your bike); your bike turns on screen at
 // once, before the server confirms. Crashes cost a life: the wreck clears and you respawn.
+// 🐍 Snake mode draws the same trails as snake bodies that eat orbs. A body can cross itself, so fast
+// updates are lined up by each snake's count of cells moved (`sq`) instead of by looking cells up.
 UI.riders = (() => {
   let S, ctx, trails = [], live = [], lastTick = 0, tickAt = 0, round = 0, ring = 0, lastTwo = 0;  // ring: 🧱 closed bands
   let gl = null, flat = null, raf = 0, ro = null, keyHandler = null, swipe = null, root = null;
@@ -11,11 +13,15 @@ UI.riders = (() => {
   let items = new Map(), slow = [], grabsSeen = new Set();  // 🎁 power-ups on the grid (cell → kind), 🐌 slowed riders
   const ITEM = { bolt: ['⚡', '#ffd166'], slow: ['🐌', '#8ce99a'], life: ['❤️', '#ff6b8b'], cut: ['✂️', '#a5d8ff'] };
   const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+  let orbs = new Map(), seq = [], size = [];  // 🐍 orbs on the grid (cell → worth), cells each snake has moved, body lengths
+  const ORB = ['#ffd166', '#8ce99a', '#ff8fab', '#a5d8ff', '#e599f7'];
+  const BEADS = 152;  // 🐍 body beads per snake in 3D: the longest body (150) plus the gliding ends
+  const isSnake = () => S?.riders?.mode === 'snake';
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
     S = null; trails = []; live = []; round = 0; gl = null; flat = null; pred = null; lastCount = '';
-    items = new Map(); slow = []; grabsSeen = new Set();
+    items = new Map(); slow = []; grabsSeen = new Set(); orbs = new Map(); seq = []; size = []; sideKey = '';
     tapTurn = !!load('riders.tapTurn');
     main.innerHTML = `<div class="lr" id="lrRoot"><div class="lr-stage" id="lrStage">
         <div class="lr-hud" id="lrHud"></div>
@@ -30,11 +36,6 @@ UI.riders = (() => {
     side.innerHTML = `<div class="panel"><div id="lrRiders"></div>
       <label class="check"><input type="checkbox" id="lrTap"> Tap left / right side to turn</label>
       <p class="hint left" id="lrHow"></p></div>`;
-    const how = () => {
-      $('lrHow').textContent = tapTurn
-        ? 'Tap the left or right half of the screen to turn left or right from where your bike is heading. Keys: arrows / WASD, Q/E turn, Space boosts, X brakes.'
-        : 'Swipe anywhere to steer, or use the keyboard (arrows / WASD, Q/E turn, Space boosts, X brakes). Ride beside a trail to grind a boost back.';
-    };
     $('lrTap').checked = tapTurn;
     $('lrTap').addEventListener('change', (e) => { tapTurn = e.target.checked; store('riders.tapTurn', tapTurn || null); how(); });
     how();
@@ -80,6 +81,14 @@ UI.riders = (() => {
     ready.then(() => { if (stage.isConnected && !gl) gl = make3d(stage); }).catch(() => {})
       .finally(() => { if (stage.isConnected && !gl && !flat) flat = make2d(stage); if (S) (gl || flat)?.reset(); });
     raf = requestAnimationFrame(loop);
+  }
+
+  function how() {
+    const el = $('lrHow'); if (!el) return;
+    el.textContent = (tapTurn
+      ? `Tap the left or right half of the screen to turn left or right from where your ${isSnake() ? 'snake' : 'bike'} is heading. Keys: arrows / WASD, Q/E turn, Space boosts, X brakes.`
+      : 'Swipe anywhere to steer, or use the keyboard (arrows / WASD, Q/E turn, Space boosts, X brakes).')
+      + (isSnake() ? ' Skim past another snake to grind a boost back.' : tapTurn ? '' : ' Ride beside a trail to grind a boost back.');
   }
 
   function unmount() {
@@ -166,6 +175,11 @@ UI.riders = (() => {
     if (!fresh) live.forEach((L, i) => { events(i, old[i], L); if (old[i]?.boosting) L.boosting = true; });
     else { pred = null; grabsSeen = new Set(); }
     nudges = [];
+    const ate = !fresh && r.mode === 'snake' && r.me != null && r.size[r.me] > (size[r.me] ?? Infinity);
+    orbs = new Map(r.orbs || []); seq = [...(r.sq || [])]; size = [...(r.size || [])];
+    if (ate) snd.play('ping');
+    S.endsAt = r.timeLeft != null ? performance.now() + r.timeLeft * 1000 : null;
+    how();
     items = new Map(r.items || []); slow = r.slow || [];
     grabs(r.grabs, fresh || !old.length);
     lastTick = r.tick; tickAt = performance.now();
@@ -180,13 +194,16 @@ UI.riders = (() => {
     const t0 = performance.now(), drawn = noteHeads(t0);
     data.p.forEach(([len, alive, dir, boosts, boosting, lives, grind, braking, brakes, ...tail], i) => {
       const t = trails[i]; if (!t) return;
-      // the newest cells line up with what we hold (cells never repeat within a trail), so this also
-      // follows a ✂️ cut, which drops cells from the start
-      const at = tail.length ? t.lastIndexOf(tail[0]) : -1;
-      if (at >= 0 && t.length - at <= tail.length + 1) { t.length = at; t.push(...tail); if (t.length > len) t.splice(0, t.length - len); }
+      if (data.sq) follow(t, i, len, data.sq[i], tail);
       else {
-        if (len < t.length) t.length = 0;  // the trail was wiped (a crash with lives left, or a respawn)
-        for (let idx = Math.max(t.length, len - tail.length); idx < len; idx++) t.push(tail[idx - (len - tail.length)]);
+        // the newest cells line up with what we hold (cells never repeat within a trail), so this also
+        // follows a ✂️ cut, which drops cells from the start
+        const at = tail.length ? t.lastIndexOf(tail[0]) : -1;
+        if (at >= 0 && t.length - at <= tail.length + 1) { t.length = at; t.push(...tail); if (t.length > len) t.splice(0, t.length - len); }
+        else {
+          if (len < t.length) t.length = 0;  // the trail was wiped (a crash with lives left, or a respawn)
+          for (let idx = Math.max(t.length, len - tail.length); idx < len; idx++) t.push(tail[idx - (len - tail.length)]);
+        }
       }
       const was = live[i];
       live[i] = { alive: !!alive, dir, boosts, boosting: !!boosting, brakes, braking: !!braking, lives, grind, respawnAt: was?.respawnAt ?? null };
@@ -195,12 +212,18 @@ UI.riders = (() => {
     });
     if (data.k !== lastTick) { lastTick = data.k; tickAt = performance.now(); }
     nudgeHeads(drawn, t0);
+    if (data.sq) {
+      const me = mine();
+      if (me != null && data.sz[me] > (size[me] ?? Infinity)) snd.play('ping');
+      size = data.sz; orbs = new Map(data.or);
+      S.endsAt = performance.now() + data.tl * 1000; S.riders.won = data.wn;
+    }
     if (data.it) items = new Map(data.it);
     if (data.sl) slow = data.sl;
     grabs(data.gr);
     // three or more started and two are left riding: the showdown
     const riding = live.filter((L) => L?.alive || L?.respawnAt).length;
-    if (trails.length > 2 && riding === 2 && lastTwo !== round && data.st === 'ride') { lastTwo = round; Kit.callout('⚔️ Last two riders!', 'gold', { ms: 1400 }); ctx.sfx('rise', 8); }
+    if (trails.length > 2 && riding === 2 && lastTwo !== round && data.st === 'ride') { lastTwo = round; Kit.callout(isSnake() ? '⚔️ Last two snakes!' : '⚔️ Last two riders!', 'gold', { ms: 1400 }); ctx.sfx('rise', 8); }
     if ((data.w || 0) > ring) { if (!ring) { Kit.callout('🧱 The walls are closing in!', 'bad', { ms: 1500 }); ctx.sfx('alarm'); } ring = data.w; }
     const L = live[mine()];
     if (pred && L && (L.dir === pred.dir || lastTick > pred.k + 3)) pred = null;
@@ -208,6 +231,22 @@ UI.riders = (() => {
     (gl || flat)?.sync();
     renderSide();
   }
+
+  // 🐍 append the cells snake i has moved since the last update, then draw its tail in to the new length.
+  // (A gap longer than the update carries is put right by the next full view.)
+  function follow(t, i, len, count, tail) {
+    const moved = count - (seq[i] ?? 0);
+    if (moved < 0) return;
+    seq[i] = count;
+    if (!len) { t.length = 0; return; }
+    if (moved > tail.length) t.length = 0;
+    if (moved) t.push(...tail.slice(-moved));
+    if (t.length > len) t.splice(0, t.length - len);
+  }
+  const timeText = (now) => {
+    const s = Math.max(0, Math.ceil(((S.endsAt ?? now) - now) / 1000));
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  };
 
   let sideKey = '';
   function renderSide() {
@@ -224,25 +263,29 @@ UI.riders = (() => {
     br.hidden = r.me == null;
     $('lrPad').hidden = r.me == null;
     // fast updates arrive every tick: only rebuild the panels when something on them changed (#32)
-    const key = JSON.stringify([r.round, r.stage, r.wins, r.seats, r.me, slow, live.map((L) => [L?.alive, L?.lives, L?.respawnAt != null])]);
+    const snake = isSnake(), clock = snake ? timeText(performance.now()) : '';
+    const key = JSON.stringify([r.round, r.stage, r.wins, r.seats, r.me, slow, size, clock, live.map((L) => [L?.alive, L?.lives, L?.respawnAt != null])]);
     if (key === sideKey && box.childElementCount) return;
     sideKey = key;
     const lifeText = (i) => (r.maxLives > 1 ? ' ' + '♥'.repeat(Math.max(0, live[i]?.lives ?? 0)) : '');
     box.innerHTML = '';
     box.append(ctx.el('div', 'hint left', `Round ${r.round} · first to ${r.target}${r.maxLives > 1 ? ` · ${r.maxLives} lives` : ''}`));
+    if (snake) box.append(ctx.el('div', 'hint left', '🐍 Eat orbs to grow. Crossing yourself is safe; running into another snake is not. The edge just turns you. Longest snake takes the round when time runs out.'));
     if (r.pickups) box.append(ctx.el('div', 'hint left', '🎁 Ride over power-ups: ⚡ boosts back · 🐌 rivals crawl · ❤️ a life · ✂️ half your trail gone'));
     const hud = $('lrHud'); hud.innerHTML = '';
+    if (snake) hud.append(ctx.el('span', 'lr-chip', `⏱ ${clock}`));
     r.seats.forEach((pid, i) => {
       const p = ctx.player(pid), L = live[i];
       const out = !L?.alive && L?.respawnAt == null;
       const row = ctx.el('div', 'seat-row lr-row' + (L?.alive ? '' : ' out'));
       const dot = ctx.el('span', 'mini-disc'); dot.style.background = colorOf(i); dot.style.boxShadow = `0 0 8px ${colorOf(i)}`;
-      row.append(dot, ctx.el('span', 'grow', `${p?.name ?? 'left'}${i === r.me ? ' (you)' : ''}${L?.alive ? '' : out ? ' 💥' : ' ⟳'}${lifeText(i)}`),
+      const long = snake && L?.alive ? ` · ${size[i]} long` : '';
+      row.append(dot, ctx.el('span', 'grow', `${p?.name ?? 'left'}${i === r.me ? ' (you)' : ''}${L?.alive ? '' : out ? ' 💥' : ' ⟳'}${lifeText(i)}${long}`),
         ctx.el('b', '', '★'.repeat(r.wins[i]) || '·'));
       box.append(row);
       const chip = ctx.el('span', 'lr-chip' + (i === r.me ? ' me' : '') + (out ? ' out' : ''));
       const c = ctx.el('i'); c.style.background = colorOf(i); c.style.boxShadow = `0 0 6px ${colorOf(i)}`;
-      chip.append(c, ctx.el('span', '', `${i === r.me ? 'You' : (p?.name ?? '—').slice(0, 8)} ${'★'.repeat(r.wins[i])}${lifeText(i)}${L?.alive ? (slow[i] ? ' 🐌' : '') : out ? ' 💥' : ' ⟳'}`));
+      chip.append(c, ctx.el('span', '', `${i === r.me ? 'You' : (p?.name ?? '—').slice(0, 8)}${snake && L?.alive ? ` 🐍${size[i]}` : ''} ${'★'.repeat(r.wins[i])}${lifeText(i)}${L?.alive ? (slow[i] ? ' 🐌' : '') : out ? ' 💥' : ' ⟳'}`));
       hud.append(chip);
     });
   }
@@ -260,7 +303,18 @@ UI.riders = (() => {
     // a little way into the next cell, so a short hiccup reads as a stumble rather than a stop-and-jump.
     const g = f < 0.8 ? f : 0.8 + 0.6 * (1 - Math.exp(-(f - 0.8) / 0.6));
     const [dx, dy] = DIRS[headDir(i)];
-    return [x + dx * g, y + dy * g];
+    if (!isSnake()) return [x + dx * g, y + dy * g];
+    const clamp = (v) => Math.min(n - 1, Math.max(0, v));
+    return [clamp(x + dx * g), clamp(y + dy * g)];
+  }
+  // 🐍 where a body ends: a full-grown snake's last cell slides toward the next one as the head moves on
+  function tailPos(i, now) {
+    const t = trails[i], n = S.riders.n, at = (c) => [c % n, Math.floor(c / n)];
+    const a = at(t[0]), head = headPos(i, now);
+    if (t.length < 2 || t.length < size[i] || !head) return a;
+    const [hx, hy] = at(t[t.length - 1]), b = at(t[1]);
+    const g = Math.min(1, Math.hypot(head[0] - hx, head[1] - hy));
+    return [a[0] + (b[0] - a[0]) * g, a[1] + (b[1] - a[1]) * g];
   }
   // When an update lands, the head's true spot can differ from where it was drawn a moment ago (a late or
   // bunched-up packet). Rather than snap, carry the difference and let it fade out over ~70 ms.
@@ -292,8 +346,9 @@ UI.riders = (() => {
     let text = '', small = false;
     if (S.phase === 'playing' && r.stage === 'countdown') text = left > 0 ? String(Math.ceil(left)) : 'GO!';
     else if (S.phase === 'playing' && r.stage === 'over') {
-      const w = live.findIndex((L) => L?.alive);
-      text = w < 0 ? '🤝 Draw' : w === r.me ? '🏁 You take the round!' : `🏁 ${ctx.player(r.seats[w])?.name ?? '?'} takes it`;
+      // 🐍 several snakes can be alive when the clock runs out, so the server names the winner
+      const w = isSnake() ? r.won : live.findIndex((L) => L?.alive);
+      text = w == null ? '' : w < 0 ? '🤝 Draw' : w === r.me ? '🏁 You take the round!' : `🏁 ${ctx.player(r.seats[w])?.name ?? '?'} takes it`;
       small = text.length > 14;
     }
     else if (S.phase === 'playing' && me && !me.alive) {
@@ -301,13 +356,17 @@ UI.riders = (() => {
       text = me.respawnAt != null ? `💥 Respawning in ${Math.max(0, (me.respawnAt - now) / 1000).toFixed(1)}` : '💥 Out — watching';
     }
     banner.hidden = !text; banner.textContent = text; banner.classList.toggle('small', small);
+    if (S.phase === 'playing' && r.stage === 'ride' && isSnake()) {  // the clock ticks between updates too
+      const chip = $('lrHud')?.firstElementChild, t = `⏱ ${timeText(now)}`;
+      if (chip && chip.textContent !== t) chip.textContent = t;
+    }
     // countdown beeps and the GO, once each
     const count = S.phase !== 'playing' ? '' : r.stage === 'countdown' && left > 0 ? String(Math.ceil(left)) : r.stage === 'ride' ? 'GO' : '';
     if (count !== lastCount) {
       if (me && count && (count !== 'GO' || lastCount)) snd.play(count === 'GO' ? 'go' : 'beep');  // no GO when joining mid-ride
       lastCount = count;
     }
-    snd.engine(S.phase === 'playing' && r.stage === 'ride' && me?.alive ? (me.braking ? 0.5 : me.boosting ? 2 : 1) : null);
+    snd.engine(S.phase === 'playing' && r.stage === 'ride' && !isSnake() && me?.alive ? (me.braking ? 0.5 : me.boosting ? 2 : 1) : null);
   }
 
   // ---------- sound: an engine hum while you ride and short synthesized hits (no files)
@@ -389,7 +448,7 @@ UI.riders = (() => {
     // a night sky that rides with the camera, the arena floor fading into it
     const stg = GL3.stage(renderer, scene, { exposure: 1.05, sky: { bottom: 0x05060f, horizon: 0x16214d, top: 0x02030a, stars: 500, radius: 300 },
       fog: [0x05060f, 80, 220], hemi: [0x9fb4ff, 0x0a0a1a, 0.5], key: { i: 0.5, pos: [-20, 60, 30], shadow: false } });
-    let n = 0, world = null, ribbons = [], bikes = [], tips = [], drawn = [], pend = [], you = null, arrow = null, sparks = null, walls = [];
+    let n = 0, mode = null, beadTint = new T.Color(), orbMesh = null, world = null, ribbons = [], bikes = [], tips = [], drawn = [], pend = [], you = null, arrow = null, sparks = null, walls = [];
     const segGeo = new T.BoxGeometry(1, 1, 1);
     // 🎁 power-ups: a floating badge per item (one texture per kind)
     const itemTex = {}, itemSprites = new Map();
@@ -426,7 +485,7 @@ UI.riders = (() => {
       for (const sp of itemSprites.values()) sp.material.dispose();
       itemSprites.clear();
       world = new T.Group(); scene.add(world);
-      n = S.riders.n;
+      n = S.riders.n; mode = S.riders.mode;
       const half = n / 2;
       // floor with a glowing grid texture
       const c = document.createElement('canvas'); c.width = c.height = 512;
@@ -446,8 +505,15 @@ UI.riders = (() => {
         const m = new T.Mesh(new T.BoxGeometry(w, 1.2, d), wallMat); m.position.set(x, 0.6, z); world.add(m); walls.push(m);
       }
       ribbons = []; bikes = []; tips = []; drawn = []; pend = [];
+      orbMesh = null;
+      if (isSnake()) {
+        orbMesh = new T.InstancedMesh(new T.SphereGeometry(1, 10, 8), new T.MeshBasicMaterial({ color: 0xffffff }), n * n);
+        for (let k = 0; k < n * n; k++) orbMesh.setColorAt(k, beadTint.set(ORB[0]));
+        orbMesh.count = 0; orbMesh.frustumCulled = false; world.add(orbMesh);
+      }
       S.riders.seats.forEach((_, i) => {
         const color = new T.Color(colorOf(i));
+        if (isSnake()) return buildSnake(color);
         const rm = new T.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.85, transparent: true, opacity: 0.9 });
         const inst = new T.InstancedMesh(segGeo, rm, n * n); inst.count = 0; world.add(inst); ribbons.push(inst);
         const tip = new T.Mesh(segGeo, rm); world.add(tip); tips.push(tip);
@@ -478,6 +544,56 @@ UI.riders = (() => {
       sparks.pts.frustumCulled = false; world.add(sparks.pts);
       resize();
     }
+    // 🐍 a body of beads in two shades, and a head with eyes (it stands in for the bike in every effect)
+    function buildSnake(color) {
+      const skin = new T.MeshStandardMaterial({ color: 0xffffff, emissive: color, emissiveIntensity: 0.3, roughness: 0.5 });
+      const body = new T.InstancedMesh(new T.SphereGeometry(0.52, 10, 8), skin, BEADS);
+      const dark = color.clone().multiplyScalar(0.55);
+      for (let k = 0; k < BEADS; k++) body.setColorAt(k, color);
+      body.userData = { color: color.clone(), dark };
+      body.count = 0; body.frustumCulled = false; world.add(body); ribbons.push(body);
+      const none = new T.Group(); world.add(none); tips.push(none);
+      const head = new T.Group();
+      const skull = new T.Mesh(new T.SphereGeometry(0.7, 18, 14), new T.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.55, roughness: 0.4 }));
+      skull.position.y = 0.6; head.add(skull);
+      for (const x of [-0.3, 0.3]) {
+        const eye = new T.Mesh(new T.SphereGeometry(0.23, 10, 8), new T.MeshBasicMaterial({ color: 0xffffff }));
+        eye.position.set(x, 1.12, 0.32); head.add(eye);
+        const pupil = new T.Mesh(new T.SphereGeometry(0.12, 8, 6), new T.MeshBasicMaterial({ color: 0x05060f }));
+        pupil.position.set(x, 1.28, 0.42); head.add(pupil);
+      }
+      head.scale.setScalar(1.2);
+      world.add(head); bikes.push(head); drawn.push(0);
+    }
+    function drawBody(i, now) {
+      const body = ribbons[i], t = trails[i];
+      if (!t.length) { body.count = 0; return; }
+      const { color, dark } = body.userData;
+      let k = 0;
+      // stripes are counted from the first cell the snake ever moved onto, so they stay put as it slides
+      const put = (x, z, num, scale) => {
+        if (k >= BEADS) return;
+        sc.setScalar(scale); v.set(x, 0.5, z); q.identity();
+        mtx.compose(v, q, sc); body.setMatrixAt(k, mtx);
+        body.setColorAt(k, Math.floor(num / 3) % 2 ? dark : color); k++;
+      };
+      const first = (seq[i] ?? t.length) - t.length, end = tailPos(i, now);
+      put(end[0] - n / 2 + 0.5, end[1] - n / 2 + 0.5, first, 0.75);
+      for (let j = 1; j < t.length; j++) { const [x, z] = at(t[j]); put(x, z, first + j, j < 4 ? 0.75 + j * 0.08 : 1); }
+      body.count = k;
+      body.instanceMatrix.needsUpdate = true; body.instanceColor.needsUpdate = true;
+    }
+    function drawOrbs(now) {
+      if (!orbMesh) return;
+      let k = 0;
+      for (const [c, worth] of orbs) {
+        const [x, z] = at(c);
+        sc.setScalar((worth > 1 ? 0.48 : 0.36) * (1 + 0.15 * Math.sin(now / 220 + c))); v.set(x, 0.55, z); q.identity();
+        mtx.compose(v, q, sc); orbMesh.setMatrixAt(k, mtx); orbMesh.setColorAt(k, beadTint.set(ORB[c % ORB.length])); k++;
+      }
+      orbMesh.count = k;
+      orbMesh.instanceMatrix.needsUpdate = true; orbMesh.instanceColor.needsUpdate = true;
+    }
     const at = (c) => [(c % n) - n / 2 + 0.5, Math.floor(c / n) - n / 2 + 0.5];
     const mtx = new T.Matrix4(), q = new T.Quaternion(), up = new T.Vector3(0, 1, 0), v = new T.Vector3(), sc = new T.Vector3();
     function segment(a, b, setMatrix) {  // a thin glowing wall from point a to point b (x, z)
@@ -488,7 +604,8 @@ UI.riders = (() => {
       setMatrix(mtx);
     }
     function sync() {
-      if (!world || S.riders.n !== n || ribbons.length !== trails.length) return build();
+      if (!world || S.riders.n !== n || S.riders.mode !== mode || ribbons.length !== trails.length) return build();
+      if (isSnake()) return;  // bodies are redrawn every frame
       trails.forEach((t, i) => {
         const inst = ribbons[i];
         inst.material.opacity = live[i]?.alive || !riding() ? 0.9 : 0.3;  // the final board stays lit (#79)
@@ -626,10 +743,11 @@ UI.riders = (() => {
         walls[0].position.z = -h - 0.25; walls[1].position.z = h + 0.25; walls[2].position.x = -h - 0.25; walls[3].position.x = h + 0.25;
         walls.forEach((m) => { m.scale.set(m.geometry.parameters.width > 1 ? span : 1, 1, m.geometry.parameters.depth > 1 ? span : 1); m.material.color.setHex(ring ? 0xff6b6b : 0x8ecae6); m.material.emissive.setHex(ring ? 0xff6b6b : 0x8ecae6); });
       }
-      tickBooms(dt); tickSparks(dt); drawItems(now);
+      tickBooms(dt); tickSparks(dt); drawItems(now); drawOrbs(now);
       const me = S.riders.me;
       trails.forEach((t, i) => {
         const pos = headPos(i, now), bike = bikes[i], tip = tips[i];
+        if (isSnake()) drawBody(i, now);
         if (!pos) { bike.visible = tip.visible = false; return; }
         const p = [pos[0] - n / 2 + 0.5, pos[1] - n / 2 + 0.5];
         bike.visible = !!live[i]?.alive;
@@ -696,9 +814,16 @@ UI.riders = (() => {
       }
       g.strokeStyle = '#1f6fff22'; g.lineWidth = 1;
       for (let k = 0; k <= n; k += 4) { g.beginPath(); g.moveTo(k * cell, 0); g.lineTo(k * cell, canvas.height); g.moveTo(0, k * cell); g.lineTo(canvas.width, k * cell); g.stroke(); }
+      if (isSnake()) {  // 🐍 orbs lie under the snakes
+        for (const [c, worth] of orbs) {
+          g.fillStyle = ORB[c % ORB.length];
+          g.beginPath(); g.arc((c % n + 0.5) * cell, (Math.floor(c / n) + 0.5) * cell, cell * (worth > 1 ? 0.45 : 0.32), 0, 6.283); g.fill();
+        }
+      }
       trails.forEach((t, i) => {
         if (!t.length) return;
         const color = colorOf(i), alive = live[i]?.alive;
+        if (isSnake()) { drawSnake2d(i, t, color, now); return ring2d(i, now); }
         g.save(); g.strokeStyle = color; g.globalAlpha = alive || !riding() ? 1 : 0.35; g.lineWidth = cell * 0.45; g.lineJoin = g.lineCap = 'round';
         g.shadowColor = color; g.shadowBlur = cell * 1.5;
         g.beginPath();
@@ -708,20 +833,48 @@ UI.riders = (() => {
         g.stroke();
         if (pos && alive) { g.fillStyle = '#fff'; g.fillRect((pos[0] + 0.15) * cell, (pos[1] + 0.15) * cell, cell * 0.7, cell * 0.7); }
         g.restore();
-        if (pos && alive && i === S.riders.me) {  // you: a pulsing ring, and an arrow during the countdown
-          const cx = (pos[0] + 0.5) * cell, cy = (pos[1] + 0.5) * cell, counting = S.riders.stage === 'countdown';
-          g.save(); g.strokeStyle = '#fff'; g.globalAlpha = 0.85; g.lineWidth = Math.max(2, cell * 0.2);
-          g.beginPath(); g.arc(cx, cy, cell * ((counting ? 2.2 : 1.4) + 0.2 * Math.sin(now / 160)), 0, 6.283); g.stroke();
-          if (counting) {
-            const [dx, dy] = DIRS[headDir(i)], L = cell * (3 + 0.6 * Math.abs(Math.sin(now / 220)));
-            g.lineWidth = cell * 0.5; g.lineCap = 'round';
-            g.beginPath(); g.moveTo(cx + dx * cell * 1.5, cy + dy * cell * 1.5); g.lineTo(cx + dx * L, cy + dy * L);
-            g.moveTo(cx + dx * L - dy * cell - dx * cell, cy + dy * L + dx * cell - dy * cell); g.lineTo(cx + dx * L, cy + dy * L);
-            g.lineTo(cx + dx * L + dy * cell - dx * cell, cy + dy * L - dx * cell - dy * cell); g.stroke();
-          }
-          g.restore();
-        }
+        ring2d(i, now);
       });
+      drawRest(now);
+    }
+    function drawSnake2d(i, t, color, now) {
+      const n = S.riders.n, mid = (v) => (v + 0.5) * cell;
+      const head = headPos(i, now), end = tailPos(i, now);
+      const path = () => {
+        g.beginPath(); g.moveTo(mid(end[0]), mid(end[1]));
+        for (let k = 1; k < t.length; k++) g.lineTo(mid(t[k] % n), mid(Math.floor(t[k] / n)));
+        g.lineTo(mid(head[0]), mid(head[1]));
+      };
+      g.save(); g.lineJoin = g.lineCap = 'round';
+      g.strokeStyle = color; g.lineWidth = cell * 0.95; path(); g.stroke();
+      g.strokeStyle = '#0005'; g.lineWidth = cell * 0.55; g.setLineDash?.([cell * 0.4, cell * 1.4]); path(); g.stroke(); g.setLineDash?.([]);
+      const x = mid(head[0]), y = mid(head[1]), [dx, dy] = DIRS[headDir(i)];
+      g.fillStyle = color; g.beginPath(); g.arc(x, y, cell * 0.75, 0, 6.283); g.fill();
+      for (const side of [-1, 1]) {
+        const ex = x + dx * cell * 0.25 - dy * side * cell * 0.33, ey = y + dy * cell * 0.25 + dx * side * cell * 0.33;
+        g.fillStyle = '#fff'; g.beginPath(); g.arc(ex, ey, cell * 0.25, 0, 6.283); g.fill();
+        g.fillStyle = '#05060f'; g.beginPath(); g.arc(ex + dx * cell * 0.08, ey + dy * cell * 0.08, cell * 0.13, 0, 6.283); g.fill();
+      }
+      g.restore();
+    }
+    function ring2d(i, now) {
+      const pos = headPos(i, now), alive = live[i]?.alive;
+      if (pos && alive && i === S.riders.me) {  // you: a pulsing ring, and an arrow during the countdown
+        const cx = (pos[0] + 0.5) * cell, cy = (pos[1] + 0.5) * cell, counting = S.riders.stage === 'countdown';
+        g.save(); g.strokeStyle = '#fff'; g.globalAlpha = 0.85; g.lineWidth = Math.max(2, cell * 0.2);
+        g.beginPath(); g.arc(cx, cy, cell * ((counting ? 2.2 : 1.4) + 0.2 * Math.sin(now / 160)), 0, 6.283); g.stroke();
+        if (counting) {
+          const [dx, dy] = DIRS[headDir(i)], L = cell * (3 + 0.6 * Math.abs(Math.sin(now / 220)));
+          g.lineWidth = cell * 0.5; g.lineCap = 'round';
+          g.beginPath(); g.moveTo(cx + dx * cell * 1.5, cy + dy * cell * 1.5); g.lineTo(cx + dx * L, cy + dy * L);
+          g.moveTo(cx + dx * L - dy * cell - dx * cell, cy + dy * L + dx * cell - dy * cell); g.lineTo(cx + dx * L, cy + dy * L);
+          g.lineTo(cx + dx * L + dy * cell - dx * cell, cy + dy * L - dx * cell - dy * cell); g.stroke();
+        }
+        g.restore();
+      }
+    }
+    function drawRest(now) {
+      const n = S.riders.n;
       if (items.size) {  // 🎁 power-ups
         g.save(); g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = `${Math.round(cell * 1.5)}px sans-serif`;
         for (const [c, kind] of items) {
@@ -748,7 +901,7 @@ UI.riders = (() => {
     return { sync() {}, reset: resize, resize, draw, grind, grab };
   }
 
-  const turnText = (s) => (s.phase === 'playing' ? `🏍️ Round ${s.riders.round} — first to ${s.riders.target}` : null);
+  const turnText = (s) => (s.phase === 'playing' ? `${s.riders.mode === 'snake' ? '🐍' : '🏍️'} Round ${s.riders.round} — first to ${s.riders.target}` : null);
   const myMove = (s) => s.phase === 'playing' && s.riders.stage === 'ride' && s.riders.me != null && s.riders.alive[s.riders.me];
 
   return { mount, render, unmount, fast, turnText, myMove, focus: true };
