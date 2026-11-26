@@ -163,7 +163,7 @@ def setup(spec):
         out["feel"] = feel
     if spec.get("even_guides") is True and spec.get("cabinet") != "classic":      # the right inlane guide matches the left one
         out["even_guides"] = True
-    if spec.get("closed_sides") is True and spec.get("cabinet") != "classic":      # no side drains: a curved lid over each side lane
+    if spec.get("closed_sides") is True and spec.get("cabinet") != "classic":      # no side drains: one wall per side, cabinet to flipper
         out["closed_sides"] = True
     pivots = flipper_pivots(spec)
     if pivots:
@@ -203,15 +203,19 @@ def flush_end(flipper, radius):
     return round(x + radius * nx, 3), round(y + radius * ny, 3)
 
 
-def side_lids(right_top, steps=8):
-    """The rails that close both side lanes: a curve from the cabinet wall down onto the top of each inlane guide, so a ball coming down
-    the side is fed to the flippers. They reach the walls themselves, which placed parts cannot, so no ball can squeeze past."""
+def funnel_walls(ends, rest, steps=14):
+    """For a table with no side drains: instead of inlane guides with a lane outside each, one wall per side curves from the cabinet
+    wall straight onto the resting bat, arriving at the bat's own slope so the ball rolls on without a bump. There is nothing behind
+    it, and it reaches the cabinet walls themselves (placed parts cannot), so the only way out is between the flippers."""
     out = []
-    for (ax, ay), (cx, cy), (bx, by) in (((0, 9.9), (0.15, 11.6), (0.9, 12.2)), ((8.8, right_top - 2.3), (8.65, right_top - 0.6), (7.9, right_top))):
-        pts = [(round((1 - t) ** 2 * ax + 2 * (1 - t) * t * cx + t * t * bx, 3), round((1 - t) ** 2 * ay + 2 * (1 - t) * t * cy + t * t * by, 3))
+    for wall_x, inward, (ex, ey) in ((0, 1, ends[0]), (8.8, -1, ends[1])):
+        cx = wall_x + 0.4 * inward
+        control = (cx, ey - abs(ex - cx) * math.tan(rest))
+        start = (wall_x, control[1] - 2.0)
+        pts = [tuple(round((1 - t) ** 2 * start[k] + 2 * (1 - t) * t * control[k] + t * t * (ex, ey)[k], 3) for k in (0, 1))
                for t in (i / steps for i in range(steps + 1))]
-        out += [(*p, *q) for p, q in zip(pts, pts[1:])]
-    return tuple(out)
+        out.append(tuple((*p, *q) for p, q in zip(pts, pts[1:])))
+    return out
 
 
 FX_MODES = ("steady", "flash", "cycle", "pulse", "twinkle")
@@ -436,8 +440,9 @@ def build(spec, mode="classic"):
         base = base[:8] + ((0.9, 13.5, *left_end),) + base[9:10] + ((7.9, 13.8, *right_end),)
     else:
         left, right = cabinet.fillet(((0.9, 12.2), (0.9, 13.5), left_end), (0.5,)), cabinet.fillet(((7.9, top), (7.9, knee), right_end), (0.5,))
-        lids = side_lids(top) if choice.get("closed_sides") else ()          # before the guides, which must stay last
-        base = cabinet.SMOOTH_WALL + ((8.8, 3.1, 8.8, 17), (8.8, 16.25, 10, 16.25)) + lids + left + right
+        if choice.get("closed_sides"):          # no side drains: the guides are replaced by walls from the cabinet onto the bats
+            left, right = funnel_walls((left_end, right_end), pair[0][2])
+        base = cabinet.SMOOTH_WALL + ((8.8, 3.1, 8.8, 17), (8.8, 16.25, 10, 16.25)) + left + right
         guides_from, guide_run = len(base) - len(right), len(right)
     flippers = pair + flippers[2:]
     layout = Layout(

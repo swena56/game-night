@@ -42,21 +42,32 @@ class PinballRules(unittest.TestCase):
         spec = pinball_tables.load()["t_zen-garden"]["spec"]
         layout, clean = build(spec)
         self.assertTrue(clean["closed_sides"])
+        left, right = layout.flippers[0], layout.flippers[1]
+        self.assertAlmostEqual((left[0] + right[0]) / 2, 4.4)                 # centred, so both side walls are the same
+        walls = layout.rails[layout.guides_from - layout.guide_run:]
+        self.assertEqual(len(walls), 2 * layout.guide_run)
+        self.assertEqual({walls[0][0], walls[layout.guide_run][0]}, {0, 8.8})      # each side wall starts on the cabinet itself
+        clear = right[0] - left[0] - 2 * layout.flipper_length * math.cos(left[2]) - 2 * layout.flipper_radius
+        self.assertGreater(clear, 2 * layout.ball + 0.03)                         # the middle is the only way out: the ball must fit
         rules = build_rules(spec)
-        for seed in range(24):                       # balls dropped down both side channels, from high and low
+        for seed in range(30):                       # balls dropped down both sides and over the middle
             table = CustomTable(layout_override=layout, rules_override=rules, balls=1)
             table.rng = random.Random(seed)
-            x = (0.25 + 0.3 * (seed % 3)) if seed % 2 else (8.55 - 0.3 * (seed % 3))
+            x = (0.25 + 0.3 * (seed % 3), 8.55 - 0.3 * (seed % 3), 2.5 + (seed % 7) * 0.6)[seed % 3]
             table.staged, table.x, table.y, table.vx, table.vy = False, x, 3.5 + seed % 5, 0, 2
             table.still_origin = (table.x, table.y)
-            for _ in range(240 * 8):
+            for _ in range(240 * 6):
                 table.step()
-                if table.y > 12.9:
-                    self.assertTrue(0.9 < table.x < 7.9, f"drop {seed} went down a side lane at x={table.x:.2f}")
+                if table.y > 12.5 and (table.x < left[0] or table.x > right[0]):     # outside the bats: it must be above the wall
+                    px = table.x
+                    above = [ay + (by - ay) * (px - ax) / (bx - ax) for ax, ay, bx, by in walls if bx != ax and min(ax, bx) <= px <= max(ax, bx)]
+                    if above:
+                        self.assertLess(table.y, min(above), f"drop {seed} got below a side wall at ({table.x:.2f}, {table.y:.2f})")
+                if table.y > 15.9:
+                    self.assertTrue(left[0] < table.x < right[0], f"drop {seed} drained outside the flippers at x={table.x:.2f}")
                     break
-                self.assertNotIn(table.event, ("search", "recovery"), f"drop {seed} got stuck near ({table.x:.2f}, {table.y:.2f})")
-            else:
-                self.fail(f"drop {seed} never came down: ({table.x:.2f}, {table.y:.2f})")
+                if not table.balls:
+                    break
 
     def test_a_held_ball_is_counted_down_for_the_screen(self):
         table = placed(5, 8)

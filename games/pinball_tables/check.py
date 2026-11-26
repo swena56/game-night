@@ -28,7 +28,7 @@ def _play(spec, seed):
     table.rng = random.Random(seed)
     target, spans, last = rng.randint(150, 235), [], 0
     drains, at, last_event = [], (5.0, 12.0), "launch"
-    even, cradled, release = spec.get("even_guides"), 0, 0
+    even, cradled, release = spec.get("even_guides") or spec.get("closed_sides"), 0, 0
     for tick in range(TICK_LIMIT):
         if not table.balls:
             break

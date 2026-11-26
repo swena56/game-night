@@ -131,12 +131,15 @@
     const [px, py, qx, qy] = flipsNow(), nx = .15 * Math.sin(restOf()), ny = .15 * Math.cos(restOf());
     const [lx, ly, rx, ry] = [px + nx, py - ny, qx - nx, qy - ny];
     if (state.cabinet === 'classic') return [...RAILS_CLASSIC.slice(0, 8), [.9, 13.5, lx, ly], RAILS_CLASSIC[9], [7.9, 13.8, rx, ry]];
-    // no side drains (as side_lids() on the server): a curve from each wall onto the top of its guide
-    const top = state.even ? 12.2 : 12.4, lids = !state.closed ? [] : [[[0, 9.9], [.15, 11.6], [.9, 12.2]], [[8.8, top - 2.3], [8.65, top - .6], [7.9, top]]].flatMap(([a, c, b]) => {
-      const pts = Array.from({ length: 9 }, (_, i) => { const t = i / 8; return [0, 1].map((k) => (1 - t) ** 2 * a[k] + 2 * (1 - t) * t * c[k] + t * t * b[k]); });
-      return pts.slice(1).map((q, i) => [...pts[i], ...q]);
-    });
-    return [...RAILS.slice(0, RAILS.length - 2 * GUIDE_LEN), ...lids, ...fillet([[.9, 12.2], [.9, 13.5], [lx, ly]], [.5]), ...fillet([[7.9, state.even ? 12.2 : 12.4], [7.9, state.even ? 13.5 : 13.8], [rx, ry]], [.5])];
+    if (state.closed) {          // no side drains (as funnel_walls() on the server): one wall per side, from the cabinet onto the bat
+      const funnel = [[0, 1, lx, ly], [8.8, -1, rx, ry]].flatMap(([wall, inward, ex, ey]) => {
+        const cx = wall + .4 * inward, control = [cx, ey - Math.abs(ex - cx) * Math.tan(restOf())], start = [wall, control[1] - 2];
+        const pts = Array.from({ length: 15 }, (_, i) => { const t = i / 14; return [0, 1].map((k) => (1 - t) ** 2 * start[k] + 2 * (1 - t) * t * control[k] + t * t * [ex, ey][k]); });
+        return pts.slice(1).map((q, i) => [...pts[i], ...q]);
+      });
+      return [...RAILS.slice(0, RAILS.length - 2 * GUIDE_LEN), ...funnel];
+    }
+    return [...RAILS.slice(0, RAILS.length - 2 * GUIDE_LEN), ...fillet([[.9, 12.2], [.9, 13.5], [lx, ly]], [.5]), ...fillet([[7.9, state.even ? 12.2 : 12.4], [7.9, state.even ? 13.5 : 13.8], [rx, ry]], [.5])];
   }
 
   let state = { name: '', items: [], kick: false, lock: false, pts: {}, cabinet: 'smooth', look: 'custom', feel: {}, flips: null, even: false, closed: false };

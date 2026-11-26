@@ -1,6 +1,6 @@
 {
  "name": "Zen Garden",
- "blurb": "A calm table with no side drains: the ball only leaves between the flippers. One wire lane, soft bumpers.",
+ "blurb": "A calm table with no side drains: both sides sweep the ball down to the flippers. One wire lane, soft bumpers.",
  "author": "Game Night",
  "spec": {
   "v": 1,
@@ -87,10 +87,10 @@
    ],
    [
     "sling",
-    7.73,
+    7.45,
     10.75,
-    6.48,
-    12.6,
+    5.95,
+    12.5,
     "#ff6854"
    ],
    [
@@ -102,7 +102,7 @@
    ],
    [
     "post",
-    6.45,
+    5.25,
     12.9,
     0.11,
     "#fff0ca"
@@ -439,6 +439,12 @@
     }
    ]
   ],
-  "closed_sides": true
+  "closed_sides": true,
+  "fl": [
+   2.58,
+   14.95,
+   6.22,
+   14.95
+  ]
  }
 }

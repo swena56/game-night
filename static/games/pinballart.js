@@ -162,10 +162,13 @@
     c.font = 'bold 55px Georgia';
     const titleWidth = c.measureText(title).width;
     if (titleWidth > 330) c.font = `bold ${Math.max(22, Math.floor(55 * 330 / titleWidth))}px Georgia`;   // long names shrink to fit the medallion
-    c.fillText(title, 0, -3);
-    c.fillStyle = palette.gold;
-    c.font = 'bold 24px sans-serif';
-    c.fillText(geo.theme === 'custom' ? 'C U S T O M' : 'P I N B A L L', 0, 48);
+    const plain = geo.theme === 'custom';                 // editor-built tables show just their name, centred in the medallion
+    c.fillText(title, 0, plain ? 18 : -3);
+    if (!plain) {
+      c.fillStyle = palette.gold;
+      c.font = 'bold 24px sans-serif';
+      c.fillText('P I N B A L L', 0, 48);
+    }
     c.restore();
 
     c.save();
