@@ -1552,6 +1552,7 @@ UI.archery = (() => {
       mesh(face, new T.RingGeometry(edge + 0.85, 115, 128), material(DART_NUMBER_BAND), 0, 0, 0.25);
       holes = new T.CanvasTexture(holeCanvas);
       if (T.SRGBColorSpace) holes.colorSpace = T.SRGBColorSpace;
+      holes.anisotropy = Math.min(8, renderer.capabilities?.getMaxAnisotropy?.() ?? 1);  // the board's filtering
       holeLayer = mesh(face, new T.CircleGeometry(113, 64), new T.MeshBasicMaterial({ map: holes, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }), 0, 0, 0.38);
       const wireSeat = material(DART_WIRE_BASE);
       const spokeTube = new T.CylinderGeometry(0.49, 0.49, edge - outer, 8);
@@ -1641,12 +1642,12 @@ UI.archery = (() => {
       g.clearRect(0, 0, 1024, 1024);
       for (const h of list) {
         const x = 512 + h.x * 98 * unit, y = 512 - h.y * 98 * unit, r = 1.5 * unit;
-        const halo = g.createRadialGradient(x, y, r * 0.5, x, y, r * 2.1);
-        halo.addColorStop(0, 'rgba(20,14,10,0.55)'); halo.addColorStop(1, 'rgba(20,14,10,0)');
-        g.fillStyle = halo; g.beginPath(); g.arc(x, y, r * 2.1, 0, 7); g.fill();
-        const pit = g.createRadialGradient(x, y, 0, x, y, r);
-        pit.addColorStop(0, '#050403'); pit.addColorStop(0.7, '#0b0807'); pit.addColorStop(1, 'rgba(11,8,7,0.2)');
-        g.fillStyle = pit; g.beginPath(); g.arc(x, y, r, 0, 7); g.fill();
+        // a small hard-edged pit and a lit lower lip: as sharp as the board around it (a wide soft halo looked
+        // like a blurry patch, #22)
+        g.fillStyle = 'rgba(20,14,10,0.3)'; g.beginPath(); g.arc(x, y, r * 1.1, 0, 7); g.fill();
+        g.fillStyle = '#0a0706'; g.beginPath(); g.arc(x, y, r * 0.72, 0, 7); g.fill();
+        g.strokeStyle = 'rgba(236,220,180,0.75)'; g.lineWidth = 1.6;
+        g.beginPath(); g.arc(x, y, r * 0.82, 0.35, 2.8); g.stroke();
         g.strokeStyle = 'rgba(214,196,150,0.5)'; g.lineWidth = 0.9;   // torn fibres round the rim
         for (let n = 0; n < 7; n++) {
           const a = h.seed * 9 + n * 0.9 + Math.sin(n * 7 + h.seed * 13) * 0.3, l = r * (1.1 + 0.6 * ((n * 37 + h.seed * 100) % 7) / 7);
@@ -1661,7 +1662,7 @@ UI.archery = (() => {
     const steel = material(0xf0e8db, { roughness: 0.31, metalness: 0.43 });
     const pointSteel = material(0xbfc8cd, { roughness: 0.28, metalness: 0.48 });
     const brass = material(0xc59b62, { roughness: 0.39, metalness: 0.48 });
-    const groove = material(0x503929, { roughness: 0.54 });
+    const groove = material(0x8a6c46, { roughness: 0.54 });  // close to the brass: dark rings read as noise (#22)
     const defaultFinColor = 0x24516c;
     const defaultAxeHandleColor = 0xe8c99f;
     const foldHighlight = material(0x97a9b3, { side: T.DoubleSide, roughness: 0.6 });
@@ -1686,7 +1687,7 @@ UI.archery = (() => {
     const barrelGeometry = new T.CylinderGeometry(2.15, 1.95, 22, 18);
     const collarGeometry = new T.CylinderGeometry(1.88, 0.9, 2.5, 14);
     const shaftGeometry = new T.CylinderGeometry(0.82, 0.68, 38, 10);
-    const gripRing = new T.TorusGeometry(2.06, 0.17, 4, 18);
+    const gripRing = new T.TorusGeometry(2.08, 0.2, 6, 24);
     const finGeo = new T.ExtrudeGeometry(flightShape, {
       depth: 0.22, bevelThickness: 0.1, bevelSize: 0.1, bevelSegments: 1, curveSegments: 5,
     }).translate(0, 0, -0.11);
@@ -1717,8 +1718,8 @@ UI.archery = (() => {
       mesh(group, tipGeometry, pointSteel);
       mesh(group, noseGeometry, steel, 0, 23.85);
       mesh(group, barrelGeometry, brass, 0, 11.55);
-      for (let i = 0; i < 12; i++) {
-        mesh(group, gripRing, groove, 0, 1.4 + i * 1.7).rotation.x = Math.PI / 2;
+      for (let i = 0; i < 5; i++) {  // few enough to stay separate lines at board size (#22)
+        mesh(group, gripRing, groove, 0, 3 + i * 4.2).rotation.x = Math.PI / 2;
       }
       mesh(group, collarGeometry, steel, 0, -0.65);
       mesh(group, shaftGeometry, steel, 0, -19.7);
