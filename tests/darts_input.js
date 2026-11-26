@@ -105,7 +105,7 @@ async function test() {
     tick();
     document.querySelector('.ar-darts-hintbtn').click();
     tick();
-    assert.equal(hint.hidden, false);
+    assert.equal(hint.hasAttribute('hidden'), false);
     press(board, 'ArrowUp');
     tick();
     assert.equal(spread.hidden, false);

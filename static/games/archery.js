@@ -2228,7 +2228,7 @@ UI.archery = (() => {
           </div>
         </header>
         <div class="ar-darts-board-wrap"><div class="ar-darts-stage"><div class="ar-darts-tabletop">
-          <div class="ar-darts-aim" aria-hidden="true" hidden></div>
+          <svg class="ar-darts-aim" viewBox="0 0 250 250" aria-hidden="true" hidden></svg>
           <div class="ar-darts-spread" aria-hidden="true" hidden></div>
           <svg class="ar-darts-trail" viewBox="0 0 250 250" aria-hidden="true" hidden>
             ${Array.from({ length: 5 }, (_, i) => `<line opacity="${(0.14 + i * 0.16).toFixed(2)}" stroke-width="${(0.55 + i * 0.23).toFixed(2)}"/>`).join('')}
@@ -2735,9 +2735,12 @@ UI.archery = (() => {
       hintButton.setAttribute('aria-pressed', String(hintOn));
       setText(hintAdvice, hintOn && hint ? `Aim for ${hint.label}. ${hint.reason ?? ''}`.trim() : '');
       hintButton.textContent = hintOn && hint ? `💡 Aim: ${hint.label}` : '💡 Hint';
-      if (hint) {
-        aim.style.left = `${xAt(hint.x) / WIDTH * 100}%`;
-        aim.style.top = `${yAt(hint.y) / WIDTH * 100}%`;
+      // the target itself lights up, in its own shape, then fades away; a new target or a new dart lights it again
+      const shape = hint ? sectionShape(hint.x, hint.y) : '';
+      if (aim.dataset.shape !== shape) {
+        aim.dataset.shape = shape;
+        aim.innerHTML = shape;
+        for (const anim of aim.getAnimations?.() ?? []) { anim.cancel(); anim.play(); }
       }
     }
 
@@ -3055,30 +3058,41 @@ UI.archery = (() => {
       try { return localStorage.getItem('ar-section-flash') === '1'; } catch { return false; }
     }
 
+    // The outline of the section under (x, y): `shot` names it for a dart that landed, a hint only gives the point.
+    function sectionShape(x, y, shot = null) {
+      const [bull, outer, t0, t1, d0, edge] = view.radii.map((r) => r * SCALE);
+      const r = Math.hypot(x, y) * SCALE;
+      if (view.axeRings) {
+        const corner = (view.axeCorners ?? []).find(([cx, cy, radius]) => Math.hypot(x - cx, y - cy) <= radius);
+        if (shot ? shot.value === 7 && view.axeCorners : corner) {
+          const [cx, cy, radius] = shot ? view.axeCorners[shot.x > 0 ? 1 : 0] : corner;
+          return `<circle cx="${xAt(cx)}" cy="${yAt(cy)}" r="${radius * SCALE}"/>`;
+        }
+        const index = view.axeRings.findIndex(([limit, points]) => (shot ? points === shot.value : r <= limit * SCALE));
+        if (index < 0) return '';
+        const out = view.axeRings[index][0] * SCALE;
+        const inner = (view.axeRings[index - 1]?.[0] ?? 0) * SCALE;
+        return inner ? `<circle cx="125" cy="125" r="${(out + inner) / 2}"
+          style="fill:none;stroke:#fff2b8;stroke-width:${out - inner};stroke-opacity:.42"/>`
+          : `<circle cx="125" cy="125" r="${out}"/>`;
+      }
+      const number = shot ? shot.number : r > edge ? null : r <= outer ? 25
+        : view.numbers[(Math.round(Math.atan2(x, y) / STEP) + 20) % 20];
+      const multiplier = shot ? shot.multiplier : r <= bull ? 2 : r >= d0 ? 2 : r >= t0 && r <= t1 ? 3 : 1;
+      if (number === 25) return multiplier === 2 ? `<circle cx="125" cy="125" r="${bull}"/>`
+        : `<path fill-rule="evenodd" d="M${CENTER - outer} ${CENTER}a${outer} ${outer} 0 1 0 ${outer * 2} 0a${outer} ${outer} 0 1 0 ${-outer * 2} 0ZM${CENTER - bull} ${CENTER}a${bull} ${bull} 0 1 0 ${bull * 2} 0a${bull} ${bull} 0 1 0 ${-bull * 2} 0Z"/>`;
+      const i = view.numbers.indexOf(number);
+      if (i < 0) return '';
+      const [inner, outerR] = multiplier === 2 ? [d0, edge]
+        : multiplier === 3 ? [t0, t1] : r < (t0 + t1) / 2 ? [outer, t0] : [t1, d0];
+      return sector(i * STEP, inner, outerR, '');
+    }
+
     function flashSection(shot) {
       hitFlash.innerHTML = '';
       if (!sectionFlashOn()) return;
-      const [bull, outer, t0, t1, d0, edge] = view.radii.map((r) => r * SCALE);
-      const r = Math.hypot(shot.x, shot.y) * SCALE, i = view.numbers.indexOf(shot.number);
       if (view.axeRings ? !shot.value : !shot.number) return;
-      let shape;
-      if (view.axeCorners && shot.value === 7) {
-        const [x, y, radius] = view.axeCorners[shot.x > 0 ? 1 : 0];
-        shape = `<circle cx="${xAt(x)}" cy="${yAt(y)}" r="${radius * SCALE}"/>`;
-      } else if (view.axeRings) {
-        const index = view.axeRings.findIndex(([, points]) => points === shot.value);
-        const outer = view.axeRings[index][0] * SCALE;
-        const inner = (view.axeRings[index - 1]?.[0] ?? 0) * SCALE;
-        shape = inner ? `<circle cx="125" cy="125" r="${(outer + inner) / 2}"
-          style="fill:none;stroke:#fff2b8;stroke-width:${outer - inner};stroke-opacity:.42"/>`
-          : `<circle cx="125" cy="125" r="${outer}"/>`;
-      } else if (shot.number === 25 && shot.multiplier === 2) shape = `<circle cx="125" cy="125" r="${bull}"/>`;
-      else if (shot.number === 25) shape = `<path fill-rule="evenodd" d="M${CENTER - outer} ${CENTER}a${outer} ${outer} 0 1 0 ${outer * 2} 0a${outer} ${outer} 0 1 0 ${-outer * 2} 0ZM${CENTER - bull} ${CENTER}a${bull} ${bull} 0 1 0 ${bull * 2} 0a${bull} ${bull} 0 1 0 ${-bull * 2} 0Z"/>`;
-      else if (i >= 0) {
-        const [inner, outerR] = shot.multiplier === 2 ? [d0, edge]
-          : shot.multiplier === 3 ? [t0, t1] : r < (t0 + t1) / 2 ? [outer, t0] : [t1, d0];
-        shape = sector(i * STEP, inner, outerR, '');
-      }
+      const shape = sectionShape(shot.x, shot.y, shot);
       if (!shape) return;
       hitFlash.innerHTML = shape + (reduce() ? '' :
         `<circle class="ar-darts-impact-ring" cx="${xAt(shot.x)}" cy="${yAt(shot.y)}" r="5"/>`);
@@ -3125,7 +3139,12 @@ UI.archery = (() => {
         impactMark.classList.add('ar-darts-impact-active');
       }
       callout.textContent = shot.bust ? 'Bust' : view.axeRings && !shot.value ? `${shot.label} · 0 points` : hitName(shot);
-      callout.dataset.tone = shot.bust || (view.axeRings ? !shot.value : !shot.number) ? 'miss' : shot.multiplier >= 2 ? 'bull' : '';
+      // #21 a colour and an icon for each kind of hit
+      const tone = shot.bust ? 'bust' : (view.axeRings ? !shot.value : !shot.number) ? 'miss'
+        : view.axeRings ? (shot.value >= 5 ? 'bull' : 'single') : shot.number === 25 ? 'bull'
+          : ['', 'single', 'double', 'triple'][shot.multiplier];
+      callout.dataset.tone = tone;
+      callout.dataset.icon = { bust: '💥', miss: '💨', single: '🎯', double: '✨', triple: '🔥', bull: '🐂' }[tone];
       callout.hidden = false;
       void callout.offsetWidth;
       callout.classList.add('ar-darts-flash');
@@ -3194,7 +3213,7 @@ UI.archery = (() => {
         spreadEl.style.top = `${yAt(o.y + preview.dy) / WIDTH * 100}%`;
         spreadEl.style.width = `${2 * radius * SCALE / WIDTH * 100}%`;
       }
-      aim.hidden = !(hintOn && view.hint && show);
+      aim.toggleAttribute('hidden', !(hintOn && view.hint && show));  // hiding and showing restarts the fade
       swipeButton.hidden = !!view.roundRecap;
       held.toggleAttribute('hidden', !drawHand);
       guide.toggleAttribute('hidden', hand.aiming || !!view.axeRings);
