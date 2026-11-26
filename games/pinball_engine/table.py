@@ -427,8 +427,9 @@ class Table:
         touched = self.contact(cx, cy, lay.ball + lay.flipper_radius, bounce, 0,
                                -(cy - ay) * speed, (cx - ax) * speed)
         self.flip_contact = self.flip_contact or touched
-        if touched and not moving \
-                and math.hypot(self.vx, self.vy) < 4:
+        raised = abs(self.angles[i] - lay.flippers[i][3]) < 1e-6
+        if touched and raised and not moving \
+                and math.hypot(self.vx, self.vy) < 4:   # (#269) only a raised bat catches: on a resting one the ball rolls free
             self.vx *= 0.96        # a slow ball cradles on the bat and rolls to a stop
             self.vy *= 0.96
 

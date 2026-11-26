@@ -79,6 +79,16 @@
   };
 
   const jackpotLit = row => !row[TILT] && (row[JACKPOT] > 0 || row[OTHERS]?.length > 0);
+  // (#270) what makes the two rails read as a ramp: crosspieces up the climb, arrows leading in, and a flared mouth
+  const rampDetail = (track) => {
+    const rails = rampRails(track), [l, r] = rails, mix = (a, b, k) => a.map((v, j) => v + (b[j] - v) * k);
+    const ties = [4, 8, 12, 16, 20, 24, 28].map((i) => [l[i], r[i]]);
+    const arrows = [1, 4, 7].map((i) => [mix(track[i], l[i], .62), track[i + 2], mix(track[i], r[i], .62)]);
+    const [a, b] = track, n = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, bx = (a[0] - b[0]) / n, by = (a[1] - b[1]) / n;
+    const mouth = rails.map((side) => [[side[0][0] + bx * .32 + (side[0][0] - a[0]) * .8, side[0][1] + by * .32 + (side[0][1] - a[1]) * .8, 0], side[0]]);
+    return { rails, ties, arrows, mouth };
+  };
+
   // a table has any number of drop targets: the ramp opens when every one of them is down
   const targetCount = row => row[STATS]?.targets ?? 3;
   const targetsDown = row => { let n = 0; for (let b = row[BANK]; b; b >>= 1) n += b & 1; return n; };
@@ -619,8 +629,14 @@
         const rampHit = flash === 'ramp' || flash === 'jackpot';
         const glow = rampHit ? palette.ivory : rampColor(row);
         if (geo.ramp) {
-          line(track, .4, lit || rampHit ? glow + '55' : '#252049');
-          line(track, .09, rampHit || lit ? glow : paintOf(geo, 'ramp', undefined, palette.steel));
+          const { rails, ties, arrows, mouth } = rampDetail(track), on = rampHit || lit, edge = on ? glow : paintOf(geo, 'ramp', undefined, palette.steel);
+          c.beginPath();
+          [...rails[0], ...[...rails[1]].reverse()].forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y));
+          c.closePath(); c.fillStyle = on ? glow + '66' : '#8fb7ff4d'; c.fill();
+          for (const tie of ties) line(tie, .045, edge);
+          for (const side of rails) line(side, .09, edge);
+          for (const arrow of arrows) line(arrow, .07, on ? palette.ivory : '#fff0ca');
+          for (const flare of mouth) line(flare, .11, edge);
           if (rampHit || lit) disc(...geo.ramp, .35, glow + '55');
           disc(...geo.ramp, .21, rampHit || lit ? glow : '#38325c');
         }
@@ -957,10 +973,30 @@
     const rampRail = lamp('ramp', paintOf(geo, 'ramp', undefined, palette.steel), row => rampLit(row) ? rampColor(row) : paintOf(geo, 'ramp', undefined, palette.steel));
     rampRail.metalness = chrome.metalness;
     rampRail.roughness = chrome.roughness;
-    for (const side of geo.ramp ? rampRails(track) : []) {
-      const points = side.map(([x, y, z]) => new T.Vector3(x, z + .07, y));
-      const tube = new T.TubeGeometry(new T.CatmullRomCurve3(points), 32, .045, 6, false);
-      mesh(tube, rampRail, 0, 0, 0);
+    if (geo.ramp) {
+      const { rails, ties, arrows, mouth } = rampDetail(track), lift = .07;
+      const v = ([x, y, z]) => new T.Vector3(x, z + lift, y);
+      const wire = (points, radius, m, steps = 1) => mesh(new T.TubeGeometry(steps > 1 ? new T.CatmullRomCurve3(points.map(v)) : new T.LineCurve3(v(points[0]), v(points[1])), steps, radius, 6, false), m, 0, 0, 0);
+      // a see-through floor between the rails, so the climb has a surface
+      const floorGeo = new T.BufferGeometry(), verts = [], faces = [];
+      track.forEach((_, i) => verts.push(...[rails[0][i], rails[1][i]].flatMap(([x, y, z]) => [x, z + lift - .02, y])));
+      for (let i = 0; i < track.length - 1; i++) faces.push(2 * i, 2 * i + 1, 2 * i + 2, 2 * i + 1, 2 * i + 3, 2 * i + 2);
+      floorGeo.setAttribute('position', new T.Float32BufferAttribute(verts, 3));
+      floorGeo.setIndex(faces);
+      floorGeo.computeVertexNormals();
+      const floorColor = (row) => rampLit(row) ? rampColor(row) : '#8fb7ff';
+      const floor = lamp('ramp', '#8fb7ff', floorColor);
+      floor.transparent = true; floor.opacity = .34; floor.side = T.DoubleSide; floor.depthWrite = false;
+      mesh(floorGeo, floor, 0, 0, 0).castShadow = false;
+      for (const side of rails) wire(side.map(([x, y, z]) => [x, y, z + .06]), .055, rampRail, 32);
+      for (const tie of ties) wire(tie, .022, chrome);
+      const mark = lamp('ramp', '#fff0ca', (row) => rampLit(row) ? rampColor(row) : '#fff0ca');
+      for (const [a, tip, b] of arrows) { wire([a, tip].map(([x, y, z]) => [x, y, z + .03]), .03, mark); wire([tip, b].map(([x, y, z]) => [x, y, z + .03]), .03, mark); }
+      for (const flare of mouth) wire(flare.map(([x, y, z]) => [x, y, z + .06]), .06, chrome);
+      for (const side of rails) for (const i of [7, 25]) {      // thin legs: the ramp stands on the table instead of floating
+        const [x, y, z] = side[i];
+        disc(x, y, .04, z + lift, (z + lift) / 2, chrome);
+      }
     }
     if (geo.ramp) disc(...geo.ramp, .26, .06, .04, lamp('ramp', '#38325c', row => rampLit(row) ? rampColor(row) : '#38325c'));
     if (geo.saucer) {
