@@ -518,6 +518,19 @@ or the ❓ How-to-play dialog during a game ("Something wrong with …?").
   If you ever put the server behind a reverse proxy, all requests look local, so protect the inbox
   another way.
 
+### Feedback admin tool
+
+Open **http://localhost:8000/admin.html** on the device running the server to review, add, edit and resolve
+reports.
+- **Review:** filter by status, kind, priority or game, search (or type `#12`), sort, or group by game.
+- **Work in bulk:** tick reports (or all shown) to resolve, reopen, set priority, or copy them as a list.
+- **Add and edit:** add your own bugs and ideas, and give any report a priority and a private note. When you
+  edit a report's text, the original is kept. Table suggestions can't be added here or change kind.
+- **Access:** only a server running on port 8000 has it, and only for a `localhost` / `127.0.0.1` address
+  opened on that device. Other devices, other ports, proxied or tunnelled requests and other websites get
+  "Not found". With Docker's published port, requests don't arrive as loopback, so it isn't reachable from
+  the host's browser.
+
 ## Refreshes and dropped connections
 
 | Situation | What happens |

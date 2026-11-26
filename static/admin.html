@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Feedback Admin</title>
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    .admin { max-width: 900px; margin: 0 auto; padding: 16px; }
+    .admin h1 { font-size: 24px; }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .admin select { width: auto; }
+    .admin input[type=search] { flex: 1; min-width: 180px; }
+    .admin input[type=checkbox] { width: 18px; height: 18px; margin: 0; flex: none; }
+    .admin textarea { width: 100%; box-sizing: border-box; font: inherit; color: inherit; background: var(--field);
+      border: 1px solid var(--line); border-radius: var(--r-md); padding: 9px 10px; resize: vertical; }
+    .admin label.field { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--muted); }
+    .bulk { position: sticky; top: 0; z-index: 2; background: var(--panel2); border: 1px solid var(--line);
+      border-radius: var(--radius); padding: 8px 12px; margin: 12px 0; }
+    .item { background: var(--panel); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 10px; border-left: 4px solid var(--danger); }
+    .item.idea { border-left-color: var(--accent2); }
+    .item.table { border-left-color: var(--accent); }
+    .item.done { opacity: .6; }
+    .item .meta { color: var(--muted); font-size: 12px; display: flex; flex-wrap: wrap; gap: 4px 12px; margin-bottom: 6px; align-items: center; }
+    .item .text { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .item .note { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 8px; padding: 6px 10px; border-left: 3px solid var(--accent); background: var(--tint-2); font-size: 13px; }
+    .item details { margin-top: 8px; font-size: 12px; color: var(--muted); }
+    .item pre { white-space: pre-wrap; overflow-wrap: anywhere; background: #0008; padding: 8px; border-radius: 8px; max-height: 260px; overflow: auto; }
+    .item .row.actions { margin-top: 8px; }
+    .high { color: var(--danger); font-weight: 700; }
+    form.edit { background: var(--panel); border: 1px solid var(--accent); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 8px; }
+    .group { margin: 18px 0 8px; }
+    .empty { text-align: center; color: var(--muted); padding: 40px 0; }
+    #message { min-height: 1.4em; color: var(--accent); }
+    #copyBox { margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+  <main class="admin">
+    <h1>🛠️ Feedback admin</h1>
+    <p class="hint left">Review, add, edit and resolve player reports. Only works at <code>localhost:8000</code> on the device running the server.</p>
+    <div class="row">
+      <button class="primary" id="add">➕ Add report</button>
+      <button id="refresh">🔄 Refresh</button>
+      <span id="counts" class="hint"></span>
+    </div>
+    <div id="addBox"></div>
+    <div class="row" style="margin-top:12px">
+      <select id="fStatus" aria-label="Status"><option value="open">Open</option><option value="done">Done</option><option value="">Open + done</option></select>
+      <select id="fKind" aria-label="Kind"><option value="">All kinds</option><option value="bug">🐞 Bugs</option><option value="idea">💡 Ideas</option><option value="table">🎱 Tables</option></select>
+      <select id="fPriority" aria-label="Priority"><option value="any">Any priority</option><option value="high">High</option><option value="">Normal</option><option value="low">Low</option></select>
+      <select id="fGame" aria-label="Game"><option value="*">All games</option></select>
+      <select id="sort" aria-label="Order"><option value="new">Newest first</option><option value="old">Oldest first</option><option value="priority">By priority</option><option value="game">Grouped by game</option></select>
+      <input type="search" id="search" placeholder="Search text, notes, names, #id" aria-label="Search">
+    </div>
+    <div class="bulk row">
+      <label class="row"><input type="checkbox" id="all"> <span id="picked">Select all shown</span></label>
+      <button data-bulk='{"status":"done"}'>✅ Resolve</button>
+      <button data-bulk='{"status":"open"}'>↩︎ Reopen</button>
+      <select id="bulkPriority" aria-label="Set priority of selected"><option value="-">Set priority…</option><option value="high">High</option><option value="">Normal</option><option value="low">Low</option></select>
+      <button id="copy" title="Copy the selected reports as a list">📋 Copy</button>
+    </div>
+    <p id="message" role="status"></p>
+    <div id="copyBox"></div>
+    <div id="list"></div>
+  </main>
+  <script>
+    // Everything from a report goes into the page through textContent or .value: reports are untrusted input.
+    const KINDS = { bug: '🐞 Bug', idea: '💡 Idea', table: '🎱 Table' };
+    const PRIORITIES = [['high', 'High'], ['', 'Normal'], ['low', 'Low']];
+    const $ = (id) => document.getElementById(id);
+    const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+    const button = (text, onclick, cls = '') => { const b = el('button', cls, text); b.type = 'button'; b.onclick = onclick; return b; };
+    const picked = new Set();
+    const drafts = new Map();   // report id -> its open edit form, kept across redraws so typing isn't lost
+    let items = [];
+    const gameOf = (i) => i.context?.game || '';
+    const say = (text) => { $('message').textContent = text; };
+
+    async function api(path, body) {
+      const r = await fetch(path, body && { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || `The server answered ${r.status}.`);
+      return j;
+    }
+
+    async function load() {
+      try {
+        items = (await api('/api/admin/feedback')).items;
+      } catch (e) {
+        say(`⚠️ Couldn't load the inbox: ${e.message}`);
+        return false;
+      }
+      for (const id of picked) if (!items.some((i) => i.id === id)) picked.delete(id);
+      const games = [...new Set(items.map(gameOf).filter(Boolean))].sort();
+      const select = $('fGame'), was = select.value;
+      select.replaceChildren(new Option('All games', '*'), new Option('No game', ''), ...games.map((g) => new Option(g, g)));
+      select.value = [...select.options].some((o) => o.value === was) ? was : '*';
+      render();
+      return true;
+    }
+
+    // Send a change, then reload. Returns false (and says why) when the server refused it.
+    async function save(path, body, done) {
+      try { await api(path, body); } catch (e) { say(`⚠️ ${e.message}`); return false; }
+      say(done);
+      return true;
+    }
+    const update = async (ids, change, done) => { if (await save('/api/admin/feedback/update', { ids, ...change }, done)) await load(); };
+
+    function shown() {
+      const status = $('fStatus').value, kind = $('fKind').value, priority = $('fPriority').value, game = $('fGame').value;
+      const q = $('search').value.trim().toLowerCase();
+      const list = items.filter((i) => (!status || i.status === status) && (!kind || i.kind === kind)
+        && (priority === 'any' || (i.priority || '') === priority) && (game === '*' || gameOf(i) === game)
+        && (!q || (q[0] === '#' ? `#${i.id}` === q : [i.text, i.note, i.name, gameOf(i)].join('\n').toLowerCase().includes(q))));
+      const rank = (i) => PRIORITIES.findIndex(([v]) => v === (i.priority || ''));
+      const by = { new: (a, b) => b.id - a.id, old: (a, b) => a.id - b.id, priority: (a, b) => rank(a) - rank(b) || b.id - a.id,
+        game: (a, b) => gameOf(a).localeCompare(gameOf(b)) || b.id - a.id };
+      return list.sort(by[$('sort').value]);
+    }
+
+    // The actions apply only to ticked reports you can see, so a filter never leaves hidden ones to be changed by surprise.
+    const selected = () => shown().filter((i) => picked.has(i.id));
+
+    function syncBulk() {
+      const list = shown(), n = selected().length;
+      $('picked').textContent = n ? `${n} selected` : 'Select all shown';
+      $('all').checked = n > 0 && n === list.length;
+      $('all').indeterminate = n > 0 && n < list.length;
+      for (const c of document.querySelectorAll('.bulk button, #bulkPriority')) c.disabled = !n;
+    }
+
+    function render() {
+      const open = items.filter((i) => i.status === 'open');
+      $('counts').textContent = `${open.length} open (${open.filter((i) => i.priority === 'high').length} high) · ${items.length - open.length} done`;
+      const list = $('list'), rows = shown(), grouped = $('sort').value === 'game';
+      list.replaceChildren();
+      if (!rows.length) list.append(el('p', 'empty', 'No reports match. 🎉'));
+      let group = null;
+      for (const i of rows) {
+        if (grouped && gameOf(i) !== group) {
+          group = gameOf(i);
+          list.append(el('h3', 'group', `${group || 'No game'} (${rows.filter((x) => gameOf(x) === group).length})`));
+        }
+        list.append(drafts.get(i.id) || card(i));
+      }
+      syncBulk();
+    }
+
+    function card(i) {
+      const box = el('div', `item ${i.kind} ${i.status}`);
+      const meta = el('div', 'meta'), ctx = i.context || {};
+      const tick = el('input'); tick.type = 'checkbox'; tick.checked = picked.has(i.id); tick.setAttribute('aria-label', `Select report ${i.id}`);
+      tick.onchange = () => { tick.checked ? picked.add(i.id) : picked.delete(i.id); syncBulk(); };
+      meta.append(tick, el('b', '', `${KINDS[i.kind] || i.kind} #${i.id}`), el('span', '', new Date(i.at * 1000).toLocaleString()),
+        el('span', '', i.source === 'admin' ? `added here${i.name ? ` for ${i.name}` : ''}` : i.name ? `from ${i.name}` : 'anonymous'));
+      if (ctx.game) meta.append(el('span', '', `${ctx.game} · ${ctx.phase}`));
+      if (ctx.errors?.length) meta.append(el('span', '', `⚠️ ${ctx.errors.length} JS error(s)`));
+      if (i.priority) meta.append(el('span', i.priority === 'high' ? 'high' : '', i.priority === 'high' ? '▲ High' : '▼ Low'));
+      if (i.status === 'done') meta.append(el('span', '', '✅ Done'));
+      box.append(meta, el('div', 'text', i.text));
+      if (i.note) box.append(el('div', 'note', `📝 ${i.note}`));
+      const extra = (title, text) => { const d = el('details'); d.append(el('summary', '', title), el('pre', '', text)); box.append(d); };
+      if (i.original_text && i.original_text !== i.text) extra('Original text (edited)', i.original_text);
+      if (Object.keys(ctx).length) extra('Technical details', JSON.stringify(ctx, null, 2));
+      const actions = el('div', 'row actions');
+      const next = i.status === 'done' ? 'open' : 'done';
+      actions.append(
+        button(next === 'done' ? '✅ Resolve' : '↩︎ Reopen', () => update([i.id], { status: next }, `#${i.id} is now ${next}.`), next === 'done' ? 'primary' : ''),
+        button('✏️ Edit', () => { drafts.set(i.id, editor(i)); render(); }));
+      box.append(actions);
+      return box;
+    }
+
+    // The add form (no report) and the edit form (one report) are the same fields.
+    function editor(i) {
+      const form = el('form', 'edit');
+      const field = (label, control, value) => { const l = el('label', 'field', label); control.value = value; l.append(control); return [l, control]; };
+      const choose = (options) => { const s = el('select'); s.append(...options.map(([v, t]) => new Option(t, v))); return s; };
+      const isTable = i?.kind === 'table';
+      const [kindRow, kind] = field('Kind', choose(Object.entries(KINDS).filter(([k]) => isTable ? k === 'table' : k !== 'table')), i?.kind || 'bug');
+      const [prioRow, priority] = field('Priority', choose(PRIORITIES), i?.priority || '');
+      const [nameRow, name] = field('From (optional)', Object.assign(el('input'), { maxLength: 16 }), i?.name || '');
+      const [textRow, text] = field('Report', Object.assign(el('textarea'), { rows: 4, maxLength: 2000, required: true, minLength: 5 }), i?.text || '');
+      const [noteRow, note] = field('Admin note (players never see this)', Object.assign(el('textarea'), { rows: 2, maxLength: 4000 }), i?.note || '');
+      const top = el('div', 'row'); top.append(kindRow, prioRow, nameRow);
+      const close = () => { if (i) { drafts.delete(i.id); render(); } else $('addBox').replaceChildren(); };
+      const submit = el('button', 'primary', i ? '💾 Save' : '➕ Add'); submit.type = 'submit';
+      const buttons = el('div', 'row'); buttons.append(submit, button('Cancel', close));
+      form.append(el('b', '', i ? `Editing #${i.id}` : 'New report'), top, textRow, noteRow, buttons);
+      // only what was changed is sent, so saving a note can't undo someone else's edit of the text
+      const read = () => ({ kind: kind.value, priority: priority.value, name: name.value, text: text.value, note: note.value });
+      const before = read();
+      form.onsubmit = async (event) => {
+        event.preventDefault();
+        submit.disabled = true;
+        const now = read();
+        const change = i ? Object.fromEntries(Object.entries(now).filter(([k, v]) => v !== before[k])) : now;
+        const ok = await save(i ? '/api/admin/feedback/update' : '/api/admin/feedback/add', i ? { ids: [i.id], ...change } : change, i ? `Saved #${i.id}.` : 'Report added.');
+        submit.disabled = false;
+        if (!ok) return;
+        close();
+        await load();
+      };
+      return form;
+    }
+
+    function markdown(list) {
+      return list.map((i) => `- #${i.id} [${i.kind}${i.priority ? `, ${i.priority}` : ''}${gameOf(i) ? `, ${gameOf(i)}` : ''}, ${i.status}] ${i.text.replace(/\s+/g, ' ')}`
+        + (i.note ? `\n  - Note: ${i.note.replace(/\s+/g, ' ')}` : '')).join('\n');
+    }
+
+    $('add').onclick = () => { if (!$('addBox').firstChild) $('addBox').replaceChildren(editor()); $('addBox').querySelector('textarea').focus(); };
+    $('refresh').onclick = async () => { if (await load()) say('Refreshed.'); };
+    for (const id of ['fStatus', 'fKind', 'fPriority', 'fGame', 'sort']) $(id).onchange = () => { $('copyBox').replaceChildren(); render(); };
+    $('search').oninput = render;
+    $('all').onchange = () => { for (const i of shown()) $('all').checked ? picked.add(i.id) : picked.delete(i.id); render(); };
+    for (const b of document.querySelectorAll('[data-bulk]')) {
+      b.onclick = () => {
+        const change = JSON.parse(b.dataset.bulk), ids = selected().map((i) => i.id);
+        if (ids.length > 1 && !confirm(`Mark ${ids.length} reports ${change.status}?`)) return;
+        picked.clear();
+        update(ids, change, `${ids.length} report(s) now ${change.status}.`);
+      };
+    }
+    $('bulkPriority').onchange = () => {
+      const priority = $('bulkPriority').value, ids = selected().map((i) => i.id);
+      $('bulkPriority').value = '-';
+      update(ids, { priority }, `Priority set on ${ids.length} report(s).`);
+    };
+    $('copy').onclick = async () => {
+      const text = markdown(selected());
+      try {
+        await navigator.clipboard.writeText(text);
+        say(`Copied ${selected().length} report(s).`);
+      } catch {   // no clipboard access: show the list to copy by hand
+        const box = Object.assign(el('textarea'), { rows: 8, readOnly: true, value: text });
+        $('copyBox').replaceChildren(box);
+        box.select();
+      }
+    };
+    // pick up reports that arrived while the tab was in the background
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
+    load();
+  </script>
+</body>
+</html>

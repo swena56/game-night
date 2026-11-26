@@ -80,6 +80,9 @@ AXE_DEBUG_LOCK = threading.Lock()
 FEEDBACK_STATUS = FEEDBACK_FILE.rsplit(".", 1)[0] + "-status.json"
 FEEDBACK_KINDS = ("bug", "idea", "table")      # "table" = a pinball table a player suggests for the curated list
 FEEDBACK_MAX_BYTES = 8 * 1024 * 1024
+FEEDBACK_PRIORITIES = ("high", "", "low")      # "" = normal; set in the admin tool
+ADMIN_PORT = 8000                              # the feedback admin tool exists only on a server running on this port
+ADMIN_FILES = ("/admin.html",)
 MAX_ROOMS = 32
 MAX_STREAMS = 64
 MAX_STREAMS_PER_CLIENT = 20
@@ -1504,7 +1507,16 @@ def submit_feedback(body):
         context = {"pinball_table": code, "parts": parts}
     elif len(json.dumps(context)) > 6000:
         context = {"note": "details too large, dropped"}
-    now = time.time()
+    entry = append_feedback(kind, text, clean_name(body.get("name")), context)
+    print(f"{'🐞' if kind == 'bug' else '🎱' if kind == 'table' else '💡'} Feedback #{entry['id']}: {text[:80]}")
+    return {"ok": True, "id": entry["id"]}
+
+
+def clean_name(name):
+    return " ".join(str(name or "").split())[:16] or None
+
+
+def append_feedback(kind, text, name, context, **extra):
     with FEEDBACK_LOCK:
         try:
             if os.path.getsize(FEEDBACK_FILE) >= FEEDBACK_MAX_BYTES:
@@ -1513,12 +1525,10 @@ def submit_feedback(body):
                 next_id = sum(1 for _ in f) + 1
         except FileNotFoundError:
             next_id = 1
-        entry = {"id": next_id, "at": now, "kind": kind, "text": text,
-                 "name": " ".join(str(body.get("name") or "").split())[:16] or None, "context": context}
+        entry = {"id": next_id, "at": time.time(), "kind": kind, "text": text, "name": name, "context": context, **extra}
         with open(FEEDBACK_FILE, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-    print(f"{'🐞' if kind == 'bug' else '🎱' if kind == 'table' else '💡'} Feedback #{next_id}: {text[:80]}")
-    return {"ok": True, "id": next_id}
+    return entry
 
 
 def feedback_status():
@@ -1576,12 +1586,100 @@ def set_feedback_status(body):
     if body.get("status") not in ("open", "done") or not isinstance(body.get("id"), int):
         raise GameError("Bad status.")
     with FEEDBACK_LOCK:
-        status = feedback_status()
-        status[str(body["id"])] = body["status"]
-        tmp = FEEDBACK_STATUS + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(status, f)
-        os.replace(tmp, FEEDBACK_STATUS)
+        write_feedback_status([body["id"]], body["status"])
+    return {"ok": True}
+
+
+def write_feedback_status(ids, value):
+    """Call with FEEDBACK_LOCK held."""
+    status = feedback_status()
+    status.update((str(i), value) for i in ids)
+    tmp = FEEDBACK_STATUS + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(status, f)
+    os.replace(tmp, FEEDBACK_STATUS)
+
+
+def admin_fields(body):
+    """The report fields the admin tool sent, checked and cleaned."""
+    fields = {}
+    if "kind" in body:
+        if body["kind"] not in FEEDBACK_KINDS:
+            raise GameError("Unknown kind of report.")
+        fields["kind"] = body["kind"]
+    if "text" in body:
+        text = body["text"].strip() if isinstance(body["text"], str) else ""
+        if not 5 <= len(text) <= 2000:
+            raise GameError("The report text needs 5 to 2,000 characters.")
+        fields["text"] = text
+    if "name" in body:
+        fields["name"] = clean_name(body["name"])
+    if "note" in body:
+        if not isinstance(body["note"], str) or len(body["note"].strip()) > 4000:
+            raise GameError("A note can be up to 4,000 characters.")
+        fields["note"] = body["note"].strip()
+    if "priority" in body:
+        if body["priority"] not in FEEDBACK_PRIORITIES:
+            raise GameError("Unknown priority.")
+        fields["priority"] = body["priority"]
+    return fields
+
+
+def admin_add_feedback(body):
+    fields = admin_fields({"kind": None, "text": None, **body})
+    if fields["kind"] == "table":
+        raise GameError("Table suggestions come from the pinball editor, which attaches the share code.")
+    extra = {k: fields[k] for k in ("note", "priority") if fields.get(k)}
+    entry = append_feedback(fields["kind"], fields["text"], fields.get("name"), {}, source="admin", **extra)
+    return {"ok": True, "id": entry["id"]}
+
+
+def admin_update_feedback(body):
+    """Change one report, or the status / priority of many at once. All of it is checked before anything is written."""
+    ids = body.get("ids")
+    if not isinstance(ids, list) or not ids or not all(type(i) is int for i in ids):
+        raise GameError("Pick at least one report.")
+    ids = set(ids)
+    status = body.get("status")
+    if "status" in body and status not in ("open", "done"):
+        raise GameError("Bad status.")
+    fields = admin_fields(body)
+    if len(ids) > 1 and set(fields) - {"priority"}:
+        raise GameError("Only status and priority can be changed on several reports at once.")
+    with FEEDBACK_LOCK:
+        try:
+            with open(FEEDBACK_FILE, encoding="utf-8") as f:
+                lines = f.readlines()
+        except FileNotFoundError:
+            lines = []
+        found, changed = set(), False
+        for n, line in enumerate(lines):
+            try:
+                e = json.loads(line)
+            except json.JSONDecodeError:
+                continue   # kept as it is: new ids come from the number of lines, so none may be dropped
+            if e.get("id") not in ids:
+                continue
+            found.add(e["id"])
+            new = {k: v for k, v in fields.items() if v != e.get(k, None if k == "name" else "")}
+            if not new:
+                continue
+            if "kind" in new and "table" in (new["kind"], e["kind"]):
+                raise GameError("A table suggestion can't change kind, and nothing else can become one.")
+            if "text" in new:
+                e.setdefault("original_text", e["text"])   # what the player actually wrote stays on record
+            e.update(new, edited_at=time.time())
+            lines[n] = json.dumps(e, ensure_ascii=False) + "\n"
+            changed = True
+        if ids - found:
+            raise GameError("Unknown report IDs: " + ", ".join(map(str, sorted(ids - found))))
+        if changed:
+            tmp = FEEDBACK_FILE + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                f.writelines(lines)
+            os.replace(tmp, FEEDBACK_FILE)
+        if status:
+            write_feedback_status(sorted(ids), status)
     return {"ok": True}
 
 
@@ -1841,6 +1939,17 @@ class Handler(BaseHTTPRequestHandler):
         """Writing to the repo is for someone sitting at the server: loopback, and not through a reverse proxy on the same machine."""
         return self.local() and not any(self.headers.get(h) for h in ("X-Forwarded-For", "X-Real-IP", "Forwarded"))
 
+    def admin_ok(self):
+        """The feedback admin tool: only a server on port 8000, opened as localhost on the device running it. The Host check
+        stops tunnels and DNS rebinding; the Origin check stops other web pages in this browser from writing to the inbox."""
+        if PORT != ADMIN_PORT or not self.dev_local() or any(self.headers.get(h) for h in ("X-Forwarded-Proto", "X-Forwarded-Host")):
+            return False
+        host = (self.headers.get("Host") or "").lower()
+        if host not in {f"{name}:{PORT}" for name in ("localhost", "127.0.0.1", "[::1]")}:
+            return False
+        origin = self.headers.get("Origin")
+        return origin is None or origin.lower() in (f"http://{host}", f"https://{host}")
+
     EDITOR_FILES = ("/pinball-editor.html", "/pinball-editor.js", "/pinball-editor.css")
 
     def editor_ok(self):
@@ -1852,6 +1961,11 @@ class Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         if url.path in self.EDITOR_FILES and not self.editor_ok():
             return self.send_json(404, {"error": "Not found"})
+        if url.path in ADMIN_FILES or url.path == "/api/admin/feedback":
+            if not self.admin_ok():
+                return self.send_json(404, {"error": "Not found"})
+            if url.path == "/api/admin/feedback":
+                return self.send_json(200, list_feedback())
         if url.path == "/api/pinball-clones":   # Golden Hour and Neon Arcade as editor tables, derived from the live production layouts
             from games.pinball_clone import BLURBS, clone_specs
             names = {"golden": "Golden Hour", "neon": "Neon Arcade", "star": "Star Cadet"}
@@ -1923,6 +2037,9 @@ class Handler(BaseHTTPRequestHandler):
                   "/api/feedback": submit_feedback, "/api/axe-debug": log_axe_debug}
         if self.local():
             routes["/api/feedback/status"] = set_feedback_status
+        if self.admin_ok():
+            routes["/api/admin/feedback/add"] = admin_add_feedback
+            routes["/api/admin/feedback/update"] = admin_update_feedback
         if self.dev_local() and self.editor_ok():
             routes["/api/pinball-tables/save"] = save_listed_table
             routes["/api/pinball-tables/delete"] = delete_listed_table
@@ -1936,7 +2053,8 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             self.close_connection = True
             return self.send_json(400, {"error": "Invalid request body length."})
-        if not route or length > (PROFILE_WITH_BENCHMARKS_MAX if path == "/api/profile/put" else 200_000 if path in ("/api/pinball-tables/save", "/api/pinball-check") else 10_000):
+        if not route or length > (PROFILE_WITH_BENCHMARKS_MAX if path == "/api/profile/put" else 200_000 if path in ("/api/pinball-tables/save", "/api/pinball-check")
+                                  else 40_000 if path.startswith("/api/admin/") else 10_000):
             self.close_connection = True   # the unread body would otherwise be parsed as the next request
             return self.send_json(404 if not route else 413, {"error": "Not found" if not route else "Too large"})
         if path in REQUEST_LIMITS:
