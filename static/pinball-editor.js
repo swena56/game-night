@@ -87,7 +87,10 @@
   let zoom = 1;
   const hiddenLayers = new Set();
   const group = new Set();                        // shift-click adds parts: duplicate, delete, nudge and drag then act on all of them
-  const selected = () => (group.size > 1 ? [...group].sort((a, b) => a - b) : sel >= 0 ? [sel] : []);
+  const selected = () => {
+    for (const i of [...group]) if (!state.items[i]) group.delete(i);       // an undo, load or delete can leave stale numbers behind
+    return group.size > 1 ? [...group].sort((a, b) => a - b) : sel >= 0 && state.items[sel] ? [sel] : [];
+  };
   const LAYERS = ['Scoring', 'Walls & guides', 'Mechanisms', 'Decals'];
   const layerOf = (k) => KINDS[k].group || GROUPS[k] || 'Scoring';
   const shown = (it) => !hiddenLayers.has(layerOf(it.k));
@@ -387,7 +390,7 @@
     try { localStorage.setItem(STORE, now); } catch {}
     refresh();
   }
-  function restore(text) { state = fromSpec(JSON.parse(text)); sel = -1; try { localStorage.setItem(STORE, text); } catch {} refresh(); }
+  function restore(text) { state = fromSpec(JSON.parse(text)); sel = -1; group.clear(); try { localStorage.setItem(STORE, text); } catch {} refresh(); }
   $('peUndo').onclick = () => { if (history.length > 1) { future.push(history.pop()); restore(history.at(-1)); } };
   $('peRedo').onclick = () => { if (future.length) { const t = future.pop(); history.push(t); restore(t); } };
   addEventListener('keydown', (e) => {
@@ -642,12 +645,15 @@
       b.className = 'pe-part'; b.type = 'button'; b.dataset.kind = k; b.title = d.hint || d.label;
       b.innerHTML = `<span class="pe-icon">${d.icon}</span><span>${d.label}</span><small></small>`;
       b.addEventListener('pointerdown', (e) => startPaletteDrag(e, k, b));
+      b.addEventListener('click', () => { if (b.dataset.touch === '1' && !b.disabled) addPart(k, 4.4 + (count(k) % 4) * .5, 7 + (state.items.length % 6) * .6); });
       box.append(b);
     }
     if (!list.length) { const p = document.createElement('p'); p.className = 'pe-none'; p.textContent = 'No parts match.'; box.append(p); }
   }
   $('peSearch').oninput = () => { query = $('peSearch').value; buildPalette(); refresh(false); };
   function startPaletteDrag(e, k, button) {
+    button.dataset.touch = e.pointerType === 'touch' ? '1' : '';
+    if (e.pointerType === 'touch') return;          // a finger scrolls the row; a tap (the click below) adds the part
     if (button.disabled || e.button > 0) return;
     e.preventDefault();
     const ghost = document.createElement('div');
@@ -745,7 +751,7 @@
   for (const c of document.querySelectorAll('#peModes input')) c.onchange = () => editSel((it) => {
     let mask = 0;
     for (const x of document.querySelectorAll('#peModes input')) if (x.checked) mask |= +x.dataset.bit;
-    if (!mask) { say('A part has to be active in at least one mode.'); return; }
+    if (!mask) { say('A part has to be active in at least one mode.'); fillInspector(); return; }
     if (mask === 15) delete it.modes; else it.modes = mask;
   });
   $('peDel').onclick = removeSel;
@@ -787,7 +793,7 @@
       const m = normalize(mirrored(it));
       if (out.filter((i) => i.k === m.k).length < KINDS[m.k].max && out.length < MAX_PARTS) out.push(m);
     }
-    state.items = out; sel = -1; commit(); say('Left half mirrored onto the right.');
+    state.items = out; sel = -1; group.clear(); commit(); say('Left half mirrored onto the right.');
   }
   function nudgeSel(dx, dy) { for (const i of selected()) { const it = state.items[i]; mapPts(it, ([x, y]) => [x + dx, y + dy]); normalize(it); } draw(); fillInspector(); commit(); }
   function addBank() {                        // five standup targets in a tidy column, one placement
@@ -813,13 +819,18 @@
     else if (k === 'd' || k === 'D') $('peDup').click(); else return;
     e.preventDefault();
   });
+  // phones: the board fills the screen and the parts sit below it, so one button flips between them
+  const jump = $('peJump');
+  const onBoard = () => scrollY < innerHeight * .4;
+  jump.onclick = () => scrollTo({ top: onBoard() ? document.querySelector('.pe-side').offsetTop - 56 : 0, behavior: 'smooth' });
+  addEventListener('scroll', () => { jump.textContent = onBoard() ? '▼ Parts' : '▲ Board'; }, { passive: true });
   $('peZoom').onclick = () => { zoom = zoom >= 2 ? 1 : zoom + .5; $('peZoom').textContent = `🔍 ${zoom}×`; fit(); };
   $('peName').oninput = () => { state.name = $('peName').value; };
   $('peName').onchange = commit;
   $('peLock').onchange = () => { state.lock = $('peLock').checked; commit(); };
   $('peKick').onchange = () => { state.kick = $('peKick').checked; commit(); };
   $('peSnap').onclick = () => { snap = !snap; $('peSnap').setAttribute('aria-pressed', String(snap)); draw(); };
-  $('peClear').onclick = () => { if (!state.items.length && !state.kick) return; if (confirm('Remove every part from this table?')) { state.items = []; state.kick = false; state.lock = false; state.pts = {}; sel = -1; commit(); } };
+  $('peClear').onclick = () => { if (!state.items.length && !state.kick) return; if (confirm('Remove every part from this table?')) { state.items = []; state.kick = false; state.lock = false; state.pts = {}; sel = -1; group.clear(); commit(); } };
 
   function renderList() {
     const ol = $('peList'), n = state.items.length;
@@ -905,7 +916,7 @@
   $('peShare').onclick = async () => { $('peShareText').value = await shareCode(toSpec()); dlg.showModal(); };
   $('peCopy').onclick = () => { $('peShareText').select(); try { navigator.clipboard?.writeText($('peShareText').value); } catch {} say('Copied.'); };
   $('peLoad').onclick = async () => {
-    try { state = fromSpec(await readCode($('peShareText').value)); sel = -1; commit(); dlg.close(); say('Table loaded.'); }
+    try { state = fromSpec(await readCode($('peShareText').value)); sel = -1; group.clear(); commit(); dlg.close(); say('Table loaded.'); }
     catch (e) { say(e instanceof SyntaxError || /atob|decode|inflate|deflate|Invalid/i.test(e.message) ? "That isn't a table code." : e.message); }
   };
 
@@ -925,7 +936,7 @@
     return row;
   }
   const button = (text, onclick) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = text; b.onclick = onclick; return b; };
-  function load(spec) { state = fromSpec(spec); sel = -1; commit(); tablesDlg.close(); say(`Loaded "${state.name || 'table'}".`); }
+  function load(spec) { state = fromSpec(spec); sel = -1; group.clear(); commit(); tablesDlg.close(); say(`Loaded "${state.name || 'table'}".`); }
   function renderTables() {
     const templates = $('peTemplates'), saved = $('peSaved');
     templates.textContent = ''; saved.textContent = '';

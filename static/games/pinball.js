@@ -1056,7 +1056,7 @@
           <button type="button" data-opt="lefty" aria-pressed="false" title="Put Launch on the left">↔ Left-handed</button>
           <button type="button" data-opt="contrast" aria-pressed="false" title="Stronger contrast and saturation">◐ Contrast</button>
           <button type="button" data-opt="cb" aria-pressed="false" title="Colour-blind safe palette (applies from the next game)">🎨 Colour-safe</button>
-          <button type="button" class="pb-edit" hidden title="Back to the table editor (local dev only)">🛠️ Edit this table</button>
+          <button type="button" class="pb-edit" hidden title="Back to the table editor">🛠️ Edit this table</button>
         </div>
         <ol class="pb-standings" aria-label="Scores" hidden></ol>
         <div class="pb-run" hidden><span class="pb-caption">Run highlights</span><p></p></div>
@@ -1083,7 +1083,7 @@
     const editBtn = root.querySelector('.pb-edit');
     editBtn.addEventListener('click', () => { location.href = '/pinball-editor.html'; });
     gear.addEventListener('click', () => {
-      editBtn.hidden = !(window.gnEditor && game?.geo?.theme === 'custom');       // only on a local dev server, only on an editor table
+      editBtn.hidden = !(window.gnEditor && game?.geo?.theme === 'custom');       // only on an editor table, and only where the editor is switched on
       panel.hidden = !panel.hidden;
       gear.setAttribute('aria-expanded', String(!panel.hidden));
     });
