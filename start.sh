@@ -4,11 +4,15 @@
 #   ./start.sh stop | restart | status | log
 # The server keeps running after you close Termux's session or Claude Code. Output goes to
 # data/server.log. Set PORT=9000 (etc.) in the environment to use another port.
+# The pinball table editor is served only to localhost. To open it from another device on a dev machine, run
+#   GAME_NIGHT_EDITOR=1 bash start.sh restart       (or `touch data/editor-on` once: every start then allows it)
+# Never on the public server: GAME_NIGHT_EDITOR=0 (or leaving it unset) keeps it off.
 set -u
 cd "$(dirname "$(readlink -f "$0")")"   # works from anywhere, and after the folder is renamed
 PIDFILE=data/server.pid
 LOG=data/server.log
 PORT=${PORT:-8000}
+[ -f data/editor-on ] && [ -z "${GAME_NIGHT_EDITOR:-}" ] && export GAME_NIGHT_EDITOR=1
 mkdir -p data
 
 running() { [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; }
