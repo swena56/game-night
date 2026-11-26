@@ -50,6 +50,8 @@ for tw in (None, "lucky"):
     g.twist = tw
     g.target = [0.0, 10.0]
     g.target_drift = 0.0
+    g.stars, g.rocks = [], []  # the ring alone
+    g.gravity, g.target_phase = 4.9, 0.0  # both games must be the same
     p = fire(r, g)
     base[tw] = p.g.score
 check("a lucky ring pays more", base["lucky"] > base[None], f"{base}")
@@ -169,6 +171,32 @@ try:
     check("old save keeps playing", True)
 except Exception as e:  # noqa: BLE001
     check("old save keeps playing", False, repr(e))
+
+# ⭐ the star field: one shot (the route) takes every star and passes every asteroid
+every, clear = True, True
+rocks_seen = 0
+for sd in range(60):
+    r, g, ps = game(2, shots=5)
+    g.rng.seed(sd)
+    g.round = 1 + sd % 4
+    g.new_target()
+    if not g.route:
+        every = False
+        continue
+    got, broke = M.along(g.route, g.target, g.wind, g.gravity, g.stars, g.rocks)
+    every &= len(got) == 3
+    clear &= broke is None
+    rocks_seen += len(g.rocks)
+check("one arc takes all three stars", every)
+check("and the asteroids leave that arc open", clear and rocks_seen > 40, f"{rocks_seen}")
+r, g, ps = game(2)
+check("round 1 has no asteroids", len(g.rocks) == 0 and len(g.stars) == 3)
+p = fire(r, g, angle=g.route[0], power=g.route[1], aim=g.route[2])
+check("stars score", len(g.last["got"]) == 3 and p.g.score >= 3 * M.STAR_PTS, f"{p.g.score}")
+r, g, ps = game(2)
+g.stars, g.rocks = [], [list(M.at(45, 14, 0, g.wind, g.gravity, 0.4))]
+p = fire(r, g)
+check("an asteroid breaks the comet up", g.last["broke"] is not None and p.g.score == 0, f"{g.last['broke']} {p.g.score}")
 
 print("all ok" if not fails else f"{len(fails)} FAILED: {fails}")
 sys.exit(1 if fails else 0)

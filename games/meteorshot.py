@@ -2,7 +2,8 @@
 
 Each player fires `shots` comets, one each per round, in turn. A launch has an angle (up), a power and an aim
 (left/right); wind bends the comet sideways the longer it flies. The ring drifts during flight, and the ring, wind
-and gravity change every round.
+and gravity change every round. Each round also hangs ⭐ stars along one route to the ring (fly through them
+for points; all of them and the ring is a constellation) and, from round 2, 🪨 asteroids that stop a comet.
 """
 import math
 import time
@@ -27,6 +28,34 @@ def fly(angle, power, aim, target, wind, gravity=4.9):
     return x, vy * t - gravity * t * t
 
 
+STAR_PTS, CONSTELLATION = 20, 40      # each star flown through; all of them in one shot that also scores on the ring
+STAR_R, ROCK_R = 0.75, 0.8            # how close the comet has to pass to a star, or to hit an asteroid
+
+
+def at(angle, power, aim, wind, gravity, t):
+    """The comet t seconds after launch: (x, y, distance down-range)."""
+    rad = math.radians(angle)
+    vz, vy = power * math.cos(rad), power * math.sin(rad)
+    return math.tan(math.radians(aim)) * vz * t + wind * t * t * 0.8, vy * t - gravity * t * t, vz * t
+
+
+def along(shot, target, wind, gravity, stars, rocks, steps=90):
+    """What a shot meets on the way to the ring's plane: (stars flown through [[index, seconds]], when it hits an
+    asteroid or None). Nothing past an asteroid counts."""
+    angle, power, aim = shot
+    total = target[1] / (power * math.cos(math.radians(angle)))
+    got = {}
+    for k in range(1, steps + 1):
+        t = total * k / steps
+        p = at(angle, power, aim, wind, gravity, t)
+        if any(math.dist(p, rock) < ROCK_R for rock in rocks):
+            return [[i, s] for i, s in got.items()], round(t, 3)
+        for i, star in enumerate(stars):
+            if i not in got and math.dist(p, star) < STAR_R:
+                got[i] = round(t, 3)
+    return [[i, s] for i, s in got.items()], None
+
+
 def points_for(x, y, target, center_y=RING_Y, center_x=None):
     center_x = target[0] if center_x is None else center_x
     return max(0, 100 - int(math.hypot(x - center_x, y - center_y) * 22))
@@ -41,9 +70,11 @@ class MeteorShot(Game):
     min_players = 1
     max_players = 6
     howto = [
-        "Set the angle (how high), power (how far) and aim (left or right), then lead the drifting ring.",
+        "Set the angle (how high), power (how far) and aim (left or right), then lead the drifting ring. The guide shows only the first part of the arc.",
+        "⭐ Fly through stars on the way: +20 each. All three in a shot that also scores on the ring is a 🌌 constellation: +40 more. One arc can take them all.",
+        "🪨 From round 2, asteroids hang in the way: a comet that hits one breaks up and misses the ring (stars it already took still count).",
         "Wind pushes the comet sideways, more the longer it flies. Aim into the wind.",
-        "The ring drifts while your comet is in flight. Lead its ghost ring and time your shot using the live score estimate.",
+        "The ring drifts while your comet is in flight, so time your shot.",
         "The ring and wind change every round. Score 80+ to build a streak: each follow-up streak hit adds 15 points (up to +45).",
         "Once per game, fire a Nova shot for 1.5× points. Save it for your best aim—or use it to catch the leader.",
         "🏁 The final round is the Finale: every shot scores double, so nobody is out of it until the last comet.",
@@ -52,7 +83,9 @@ class MeteorShot(Game):
         "🌀 Some rounds have a twist: a 🌪️ gale doubles the wind, a 🍀 lucky ring pays ×1.5.",
         "The best-scoring shot each round earns a 25-point Round MVP bonus. Tied best shots all earn it.",
     ]
-    settings_schema = {"shots": ("Shots", [(3, "3 shots"), (5, "5 shots")], 3)}
+    settings_schema = {"shots": ("Shots", [(3, "3 shots"), (5, "5 shots")], 3),
+                       "guide": ("Aim help", [("part", "Start of the arc"), ("full", "Whole path and score estimate (easy)")], "part")}
+    stars, rocks, route = (), (), None  # games saved before the star field have none
 
     def start(self, seated, rng):
         self.rng = rng
@@ -86,6 +119,37 @@ class MeteorShot(Game):
         self.twist = None if getattr(self, "round", 0) == 0 else self.rng.choice((None, "gale", "lucky"))
         if self.twist == "gale":
             self.wind = round(math.copysign(max(0.9, min(1.4, abs(self.wind) * 2)), self.wind or 1), 2)
+        self.new_field()
+
+    def new_field(self):
+        """Hang this round's stars along one shot that reaches the ring, and asteroids clear of that route."""
+        routes = []
+        for _ in range(60):
+            angle, power = self.rng.uniform(28, 66), self.rng.uniform(10, 19)
+            t = self.target[1] / (power * math.cos(math.radians(angle)))
+            drift = self.wind * t * t * 0.8
+            aim = math.degrees(math.atan((self.target[0] - drift) / self.target[1]))
+            x, y = fly(angle, power, aim, self.target, self.wind, self.gravity)
+            if AIM[0] <= aim <= AIM[1]:
+                routes.append((abs(y - RING_Y), angle, power, aim))
+            if routes and routes[-1][0] < 0.5:
+                break
+        self.stars, self.rocks, self.route = [], [], None
+        if not routes:
+            return
+        _, angle, power, aim = min(routes)
+        self.route = [round(angle, 1), round(power, 1), round(aim, 1)]
+        total = self.target[1] / (power * math.cos(math.radians(angle)))
+        self.stars = [[round(v, 2) for v in at(angle, power, aim, self.wind, self.gravity, total * f)] for f in (0.3, 0.52, 0.74)]
+        want = 0 if getattr(self, "round", 0) == 0 else 2 if self.round >= getattr(self, "shots", 3) - 1 else 1
+        way = [at(angle, power, aim, self.wind, self.gravity, total * k / 40) for k in range(41)]
+        for _ in range(80):
+            if len(self.rocks) >= want:
+                break
+            rock = [round(self.rng.uniform(-2.2, 2.2), 2), round(self.rng.uniform(1.2, 4.8), 2),
+                    round(self.target[1] * self.rng.uniform(0.35, 0.75), 2)]
+            if all(math.dist(rock, p) > ROCK_R + 0.8 for p in way) and all(math.dist(rock, o) > 1.8 for o in self.rocks):
+                self.rocks.append(rock)
 
     def target_at(self, elapsed):
         phase = getattr(self, "target_phase", 0) + elapsed * getattr(self, "target_speed", 0)
@@ -116,9 +180,14 @@ class MeteorShot(Game):
         pts = points_for(x, y, self.target, impact_target[1], impact_target[0])
         if getattr(self, "sd", None):
             return self.shoot_off_shot(p, angle, power, aim, x, y, pts, impact_target, elapsed)
+        got, broke = along((angle, power, aim), self.target, self.wind, self.gravity, self.stars, self.rocks)
+        if broke is not None:
+            pts = 0
+        constellation = len(got) >= 3 and pts > 0
+        star_pts = STAR_PTS * len(got) + (CONSTELLATION if constellation else 0)
         finale = self.round == self.shots - 1     # 🏁 the last round counts double: a trailing player can still catch up
         lucky = getattr(self, "twist", None) == "lucky"
-        scored = int(pts * (1.5 if nova else 1.0) * (2 if finale else 1) * (1.5 if lucky else 1))
+        scored = int(pts * (1.5 if nova else 1.0) * (2 if finale else 1) * (1.5 if lucky else 1)) + star_pts
         p.g.score += scored
         p.g.shots += 1
         p.g.best = max(getattr(p.g, "best", 0), scored)
@@ -131,12 +200,17 @@ class MeteorShot(Game):
                      "points": scored + bonus, "base": pts, "nova": nova, "finale": finale, "bonus": bonus, "streak": p.g.streak,
                      "target": list(self.target), "targetImpact": [round(impact_target[0], 3), round(impact_target[1], 3)],
                      "elapsed": elapsed, "wind": self.wind, "gravity": self.gravity,
+                     "stars": [list(s) for s in self.stars], "rocks": [list(r) for r in self.rocks],
+                     "got": got, "broke": broke, "starPts": star_pts,
                      "n": getattr(self, "fired_total", 0) + 1}
         self.fired_total = self.last["n"]
         tag = " 🎯 Bullseye!" if pts >= 90 else ""
         combo = f" (+{bonus} streak bonus!)" if bonus else ""
         mult = (" 🌟 NOVA ×1.5!" if nova else "") + (" 🏁 FINALE ×2!" if finale else "")
-        self.room.add_log(f"☄️ {p.name} scores {scored + bonus}{mult}{combo}{tag} ({p.g.shots}/{self.shots}).", "info")
+        extra = (" 🪨 broke up on an asteroid!" if broke is not None else "") + (f" ⭐×{len(got)}" if got else "")
+        self.room.add_log(f"☄️ {p.name} scores {scored + bonus}{mult}{combo}{tag}{extra} ({p.g.shots}/{self.shots}).", "info")
+        if constellation:
+            self.moment(f"🌌 {p.name}: CONSTELLATION!", "gold", "fanfare")
         if pts >= 90:
             self.moment(f"🎯 {p.name}: {scored + bonus}!", "gold", "fanfare")
         live = self.live_seats()
@@ -198,6 +272,7 @@ class MeteorShot(Game):
         self.started_at = time.time()
         self.new_target()
         self.twist = None
+        self.stars, self.rocks, self.route = [], [], None  # a shoot-off is about the ring alone
         self.last = None
         self.moment(f"⚔️ SHOOT-OFF! {' vs '.join(p.name for p in tied)} tied on {top}: one shot each.", "gold", "alarm")
         self.room.begin_turn(self.sd[0])
@@ -250,6 +325,7 @@ class MeteorShot(Game):
         seated = p.id in getattr(self, "seats", [])
         return {"meteor": {"score": getattr(g, "score", 0) if seated else None, "shots": getattr(g, "shots", 0) if seated else 0,
                 "shotsMax": self.shots, "finale": getattr(self, "round", 0) == self.shots - 1, "round": getattr(self, "round", 0) + 1, "target": self.target, "wind": self.wind, "twist": getattr(self, "twist", None),
+                "stars": [list(s) for s in self.stars], "rocks": [list(r) for r in self.rocks], "guide": self.s.get("guide", "part"),
                 "gravity": getattr(self, "gravity", 4.9), "elapsed": time.time() - getattr(self, "started_at", time.time()),
                 "motion": {"phase": getattr(self, "target_phase", 0), "drift": getattr(self, "target_drift", 0),
                            "speed": getattr(self, "target_speed", 0)},
@@ -264,6 +340,19 @@ class MeteorShot(Game):
     def final_scores(self):
         return {i: self.room.players[i].g.score for i in self.seats if i in self.room.players}
 
+    def worth(self, angle, power, aim, elapsed):
+        """What a launch would score from the ring and the star field, for the bots."""
+        gravity = getattr(self, "gravity", 4.9)
+        impact = self.target_at(elapsed + self.target[1] / (power * math.cos(math.radians(angle))))
+        x, y = fly(angle, power, aim, self.target, self.wind, gravity)
+        pts = points_for(x, y, self.target, impact[1], impact[0])
+        if not self.stars and not self.rocks:
+            return pts
+        got, broke = along((angle, power, aim), self.target, self.wind, gravity, self.stars, self.rocks, steps=45)
+        if broke is not None:
+            pts = 0
+        return pts + STAR_PTS * len(got) + (CONSTELLATION if len(got) >= 3 and pts else 0)
+
     def bot_turn(self, p):
         # the best launch on a coarse grid, then a level-sized wobble in the hand
         best = (-1, 45, 14, 0)
@@ -275,10 +364,13 @@ class MeteorShot(Game):
                 drift = self.wind * t * t * 0.8
                 impact = self.target_at(elapsed + t)
                 aim = clamp(math.degrees(math.atan((impact[0] - drift) / self.target[1])), AIM)
-                x, y = fly(angle, power, aim, self.target, self.wind, getattr(self, "gravity", 4.9))
-                pts = points_for(x, y, self.target, impact[1], impact[0])
-                if pts > best[0]:
-                    best = (pts, angle, power, aim)
+                value = self.worth(angle, power, aim, elapsed)
+                if value > best[0]:
+                    best = (value, angle, power, aim)
+        if self.route and (p.bot or "normal") != "easy":   # the starry route, for a bot good enough to spot it
+            value = self.worth(*self.route, elapsed)
+            if value > best[0]:
+                best = (value, *self.route)
         sa, sp, sm = BOT_ERR.get(p.bot or "normal", BOT_ERR["normal"])
         g = self.rng.gauss
         # Bots hold their one Nova for halfway through, unless they are chasing the leader.

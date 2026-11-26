@@ -20,13 +20,19 @@ UI.meteorshot = (() => {
     const m = S?.motion || {}, phase = (m.phase || 0) + elapsed * (m.speed || 0);
     return [(S?.target?.[0] || 0) + (m.drift || 0) * Math.sin(phase), RING_Y + (m.drift || 0) * 0.2 * Math.cos(phase * 0.8), -(S?.target?.[1] || ringAt[1])];
   }
+  // the stars and asteroids on screen: a shot being replayed keeps its own round's, even after the next round starts
+  const field = () => (flight ? [flight.s.stars || [], flight.s.rocks || []] : [S?.stars || [], S?.rocks || []]);
+  const taken = (i) => !!flight && (flight.s.got || []).some(([k, t]) => k === i && flight.t >= t);
+  const endOf = (f) => (f.s.broke != null ? pos(f.s, f.s.broke) : [f.hit[0], f.hit[1], -f.s.target[1]]);
   function preview() {
     const s = { ...aimOf, target: ringAt, wind: S?.wind || 0, gravity: S?.gravity ?? 4.9 };
     const T = flightTime(s), hit = pos(s, T);
     const targetHit = targetAt(elapsedNow() + T);
     const base = Math.max(0, 100 - Math.floor(Math.hypot(hit[0] - targetHit[0], hit[1] - targetHit[1]) * 22));
     const me = S?.board?.find((b) => b.id === ctx?.me), streakBonus = base >= 80 ? Math.min(45, (me?.streak || 0) * 15) : 0;
-    return { s, T, hit, targetHit, points: Math.floor(base * (novaShot ? 1.5 : 1) * (S?.finale ? 2 : 1)) + streakBonus };
+    // without full aim help only the first part of the arc is drawn, and there's no estimate
+    const full = S?.guide === 'full', shown = full ? T : T * 0.38;
+    return { s, T, shown, full, hit, targetHit, points: Math.floor(base * (novaShot ? 1.5 : 1) * (S?.finale ? 2 : 1)) + streakBonus };
   }
 
   function mount(main, side) {
@@ -39,7 +45,7 @@ UI.meteorshot = (() => {
         <button id="msNova" type="button" aria-pressed="false">🌟 Nova ×1.5</button>
         <button id="msFire" type="button">☄️ Fire</button>
       </div>
-      <p class="hint">The ring drifts while your comet flies: lead its ghost ring and fire when the live estimate peaks. Gravity and wind shift each round. Score 80+ for streak bonuses; use your one Nova shot for 1.5× points. Keys: ↑↓ angle, ←→ aim, W/S power, Space fires.</p></div>`;
+      <p class="hint">Bend your comet through the ⭐ stars and into the drifting ring, round the 🪨 asteroids. Only the start of the arc is shown. Score 80+ on the ring for streak bonuses; use your one Nova shot for 1.5× points. Keys: ↑↓ angle, ←→ aim, W/S power, Space fires.</p></div>`;
     side.innerHTML = '<div class="panel"><h3>☄️ Scores</h3><div id="msSide"></div><p class="hint left">The ring and wind change each round. Each player gets one Nova shot worth 1.5×.</p></div>';
     stage = $('msStage');
     for (const k of ['angle', 'power', 'aim']) {
@@ -153,12 +159,20 @@ UI.meteorshot = (() => {
     stars.setAttribute('color', new T.BufferAttribute(starColors, 3));
     scene.add(new T.Points(stars, new T.PointsMaterial({ color: 0xffffff, vertexColors: true, size: 0.17, sizeAttenuation: true, transparent: true, opacity: 0.9 })));
 
+    const starGeo = new T.OctahedronGeometry(0.36), starMat = new T.MeshStandardMaterial({ color: 0xffe36a, emissive: 0xd9a400, emissiveIntensity: 1.4 });
+    const rockGeo = new T.DodecahedronGeometry(0.62), rockMat = new T.MeshStandardMaterial({ color: 0x8a7766, roughness: 1, flatShading: true });
+    const starMeshes = [], rockMeshes = [];
+    const dropGeo = new T.BufferGeometry(); dropGeo.setAttribute('position', new T.BufferAttribute(new Float32Array(8 * 6), 3));
+    const drops = new T.LineSegments(dropGeo, new T.LineBasicMaterial({ color: 0x9be9ff, transparent: true, opacity: 0.35 }));
+    drops.frustumCulled = false; scene.add(drops);
+
     function draw(now) {
       const w = host.clientWidth || 320, h = host.clientHeight || 300;
       if (canvas.width !== Math.round(w * renderer.getPixelRatio()) || camera.aspect !== w / h) { renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); }
       // behind the launcher, looking down-range; a narrow screen backs off so the ring's sideways range fits
       const back = w / h < 0.8 ? 4 : 0;
-      camera.position.set(0, 4.2 + back * 0.3, 7 + back); camera.lookAt(0, 2.2, -10);
+      // off to one side, so that how far along each star hangs can be read
+      camera.position.set(4.2, 4.6 + back * 0.3, 6.6 + back); camera.lookAt(-0.2, 2.2, -8.5);
       const currentTarget = targetAt(elapsedNow());
       ring.position.set(...currentTarget); ring.rotation.z = Math.sin(now * 0.0008) * 0.12;
       halo.position.copy(ring.position); halo.rotation.z = -ring.rotation.z * 1.4 + now * 0.00012;
@@ -174,21 +188,31 @@ UI.meteorshot = (() => {
       ghostTarget.visible = arrow.visible;
       if (previewLine.visible) {
         const pv = preview(), arr = previewGeo.attributes.position.array;
-        for (let i = 0; i < 48; i++) arr.set(pos(pv.s, pv.T * i / 47), i * 3);
+        for (let i = 0; i < 48; i++) arr.set(pos(pv.s, pv.shown * i / 47), i * 3);
         previewGeo.attributes.position.needsUpdate = true; landing.position.set(...pv.hit);
+        landing.visible = ghostTarget.visible = pv.full;
         ghostTarget.position.set(...pv.targetHit); ghostTarget.rotation.z = ring.rotation.z;
       }
       const f = flight;
+      const [stars, rocks] = field();
+      while (starMeshes.length < stars.length) { const m = new T.Mesh(starGeo, starMat); starMeshes.push(m); scene.add(m); }
+      while (rockMeshes.length < rocks.length) { const m = new T.Mesh(rockGeo, rockMat); rockMeshes.push(m); scene.add(m); }
+      starMeshes.forEach((m, i) => { m.visible = !!stars[i] && !taken(i); if (stars[i]) { m.position.set(stars[i][0], stars[i][1], -stars[i][2]); m.rotation.y = now * 0.002 + i; m.scale.setScalar(1 + Math.sin(now * 0.005 + i) * 0.12); } });
+      rockMeshes.forEach((m, i) => { m.visible = !!rocks[i]; if (rocks[i]) { m.position.set(rocks[i][0], rocks[i][1], -rocks[i][2]); m.rotation.set(now * 0.0004 + i, now * 0.0007, 0); } });
+      const marks = [...stars, ...rocks];   // a drop line to the floor under each
+      const lines = dropGeo.attributes.position.array; lines.fill(0);
+      marks.slice(0, 8).forEach(([x, y, d], i) => lines.set([x, y, -d, x, -0.1, -d], i * 6));
+      dropGeo.attributes.position.needsUpdate = true; dropGeo.setDrawRange(0, Math.min(8, marks.length) * 2);
       if (f) {
-        const t = f.t, p = pos(f.s, t);
-        comet.visible = t <= f.T * 1.12; comet.position.set(...p);
+        const t = f.t, p = pos(f.s, Math.min(t, f.s.broke ?? t));
+        comet.visible = t <= (f.s.broke ?? f.T * 1.12); comet.position.set(...p);
         const arr = trailGeo.attributes.position.array;
-        for (let i = 0; i < TRAIL; i++) arr.set(pos(f.s, Math.max(0, t - (TRAIL - 1 - i) * 0.018)), i * 3);
+        for (let i = 0; i < TRAIL; i++) arr.set(pos(f.s, Math.max(0, Math.min(f.s.broke ?? t, t - (TRAIL - 1 - i) * 0.018))), i * 3);
         trailGeo.attributes.position.needsUpdate = true; sparksGeo.attributes.position.array.set(arr); sparksGeo.attributes.position.needsUpdate = true;
         trail.visible = true; sparks.visible = true;
         if (t >= f.T) {
           const k = Math.min(1, (t - f.T) / 0.6);
-          burst.visible = k < 1; burst.position.set(f.hit[0], f.hit[1], -f.s.target[1]); burst.scale.setScalar(1 + k * 5);
+          burst.visible = k < 1; burst.position.set(...endOf(f)); burst.scale.setScalar(1 + k * 5);
           burst.material.opacity = 1 - k;
           const pts = f.s.points, kk = Math.min(1, (t - f.T) / 0.9);
           if (!f.shook && pts >= 60) { f.shook = 1; window.GL3?.shake?.(camera, pts >= 90 ? 0.55 : 0.28); }   // a good hit thumps the screen
@@ -250,30 +274,36 @@ UI.meteorshot = (() => {
       g.fillStyle = '#ff8c24'; g.beginPath(); g.arc(rx, ry, Math.max(2, rs * 0.25), 0, Math.PI * 2); g.fill();
       const pad = P([0, 0, 0]); g.shadowColor = '#20cfff'; g.shadowBlur = pad[2] * 0.6; g.fillStyle = '#2b5a7a'; g.beginPath(); g.ellipse(pad[0], pad[1], pad[2] * 0.8, pad[2] * 0.25, 0, 0, Math.PI * 2); g.fill();
       g.shadowBlur = 0; g.strokeStyle = '#53ddff'; g.lineWidth = 2; g.beginPath(); g.ellipse(pad[0], pad[1], pad[2] * 0.8, pad[2] * 0.25, 0, 0, Math.PI * 2); g.stroke();
+      const [stars, rocks] = field();
+      const dot = (q, r, fill, sides) => { g.fillStyle = fill; g.beginPath(); for (let k = 0; k < sides; k++) { const a = k * 2 * Math.PI / sides - Math.PI / 2, rr = sides === 10 && k % 2 ? r * 0.45 : r; g.lineTo(q[0] + Math.cos(a) * rr, q[1] + Math.sin(a) * rr); } g.fill(); };
+      stars.forEach(([x, y, d], i) => { if (!taken(i)) { const q = P([x, y, -d]); dot(q, Math.max(5, q[2] * 0.42), '#ffe36a', 10); } });
+      rocks.forEach(([x, y, d]) => { const q = P([x, y, -d]); dot(q, Math.max(6, q[2] * 0.7), '#8a7766', 7); });
       if (!flight && ctx?.myTurn) {
         const a = aimOf.angle * Math.PI / 180, m = aimOf.aim * Math.PI / 180, L = aimOf.power * 0.16;
         const tip = P([Math.sin(m) * Math.cos(a) * L, 0.2 + Math.sin(a) * L, -Math.cos(m) * Math.cos(a) * L]), base = P([0, 0.2, 0]);
         g.strokeStyle = '#ffffffb0'; g.lineWidth = 3; g.beginPath(); g.moveTo(base[0], base[1]); g.lineTo(tip[0], tip[1]); g.stroke();
         const pv = preview();
         g.strokeStyle = '#53ddff99'; g.lineWidth = 2; g.setLineDash([4, 5]); g.beginPath();
-        for (let i = 0; i < 48; i++) { const q = P(pos(pv.s, pv.T * i / 47)); i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]); }
+        for (let i = 0; i < 48; i++) { const q = P(pos(pv.s, pv.shown * i / 47)); i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]); }
         g.stroke(); g.setLineDash([]);
+        if (pv.full) {
         const [gx, gy, gr] = P(pv.targetHit); g.strokeStyle = '#53ddff88'; g.lineWidth = Math.max(1, gr * 0.06); g.setLineDash([4, 5]);
         g.beginPath(); g.arc(gx, gy, gr * 1.45, 0, Math.PI * 2); g.stroke(); g.setLineDash([]);
         const q = P(pv.hit); g.fillStyle = '#53ddff'; g.beginPath(); g.arc(q[0], q[1], Math.max(4, q[2] * 0.14), 0, Math.PI * 2); g.fill();
+        }
       }
       const f = flight;
       if (f) {
         g.shadowColor = '#53ddff'; g.shadowBlur = 10; g.strokeStyle = '#9be9ff'; g.lineWidth = 3; g.beginPath();
-        for (let i = 0; i <= 50; i++) { const q = P(pos(f.s, Math.max(0, f.t - (50 - i) * 0.02))); i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]); }
+        for (let i = 0; i <= 50; i++) { const q = P(pos(f.s, Math.max(0, Math.min(f.s.broke ?? f.t, f.t - (50 - i) * 0.02)))); i ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]); }
         g.stroke(); g.shadowBlur = 0;
-        if (f.t <= f.T * 1.12) {
+        if (f.t <= (f.s.broke ?? f.T * 1.12)) {
           const q = P(pos(f.s, f.t)), glow = g.createRadialGradient(q[0], q[1], 0, q[0], q[1], Math.max(12, q[2] * 0.8));
           glow.addColorStop(0, '#ffffff'); glow.addColorStop(0.16, '#9ff5ff'); glow.addColorStop(0.5, '#26cfffaa'); glow.addColorStop(1, '#26cfff00');
           g.fillStyle = glow; g.beginPath(); g.arc(q[0], q[1], Math.max(12, q[2] * 0.8), 0, Math.PI * 2); g.fill();
         }
         if (f.t >= f.T) {
-          const k = Math.min(1, (f.t - f.T) / 0.6), q = P([f.hit[0], f.hit[1], -f.s.target[1]]);
+          const k = Math.min(1, (f.t - f.T) / 0.6), q = P(endOf(f));
           g.strokeStyle = `rgba(255,224,138,${1 - k})`; g.lineWidth = 3; g.beginPath(); g.arc(q[0], q[1], q[2] * (0.4 + k * 2.5), 0, Math.PI * 2); g.stroke();
         }
       }
@@ -288,7 +318,9 @@ UI.meteorshot = (() => {
     if (!stage?.isConnected) return;
     const dt = Math.min(0.05, (now - (lastT || now)) / 1000); lastT = now;
     if (flight) {
+      const before = flight.t;
       flight.t += dt / 1.4;   // a little slower than real time, so the arc can be followed
+      for (const [, t] of flight.s.got || []) if (before < t && flight.t >= t) ctx?.sfx?.('pop');
       if (flight.t >= flight.T && !flight.popped) { flight.popped = true; pop(flight.s); }
       if (flight.t > flight.T + 1.3) { flight = null; ringAt = S?.target || ringAt; paint(); }
       dirty = true;
@@ -304,7 +336,7 @@ UI.meteorshot = (() => {
   function pop(s) {
     const el = $('msPop'); if (!el) return;
     const who = ctx?.me === s.pid ? 'You' : (S?.board?.find((b) => b.id === s.pid)?.name || '');
-    el.textContent = `${s.nova ? '🌟 ' : ''}${s.points >= 90 ? '🎯 ' : ''}${s.points}${s.bonus ? ` (+${s.bonus} streak!)` : ''}${who ? ` · ${who}` : ''}`;
+    el.textContent = `${s.broke != null ? '🪨 Asteroid! ' : ''}${s.got?.length ? `⭐${s.got.length} ` : ''}${s.nova ? '🌟 ' : ''}${s.points >= 90 ? '🎯 ' : ''}${s.points}${s.bonus ? ` (+${s.bonus} streak!)` : ''}${who ? ` · ${who}` : ''}`;
     el.className = `meteor-pop ${s.points >= 90 ? 'gold' : s.points >= 60 ? 'good' : s.points > 0 ? '' : 'miss'}`;
     el.hidden = false; void el.offsetWidth; el.classList.add('show');
     clearTimeout(pop.t); pop.t = setTimeout(() => { el.hidden = true; }, 1500);
@@ -315,7 +347,7 @@ UI.meteorshot = (() => {
     const wind = Math.abs(S.wind) < 0.1 ? 'calm' : `${S.wind > 0 ? '→' : '←'} ${Math.abs(S.wind).toFixed(1)}`;
     const grav = S.gravity < 4 ? '🌕 Low-G' : S.gravity > 5.5 ? '🪨 Heavy-G' : '🪐 Standard-G';
     const mine = S.score != null;
-    const pv = ctx?.myTurn && !flight ? preview() : null;
+    const pv = ctx?.myTurn && !flight && S.guide === 'full' ? preview() : null;
     $('msHud').innerHTML = `${mine ? `<span>☄️ ${S.score}</span>` : ''}<span>${S.finale ? '🏁 FINALE ×2' : `Round ${Math.min(S.round, S.shotsMax)}/${S.shotsMax}`}</span><span>💨 ${wind}</span>${S.twist ? `<span>${S.twist === 'gale' ? '🌪️ GALE' : '🍀 LUCKY ×1.5'}</span>` : ''}<span>${grav}</span>${pv ? `<span>${novaShot ? '🌟' : '🎯'} Est. ${pv.points}${pv.points >= 80 ? ' 🔥' : ''}</span>` : ''}`;
     const turnName = S.board?.find((b) => b.id === ctx?.turn)?.name;
     const wait = $('msWait');
@@ -352,7 +384,7 @@ UI.meteorshot = (() => {
       if (fresh && L.target) {   // play the new shot (not an old one found on (re)join)
         const s = { ...L, wind: L.wind ?? state.wind, gravity: L.gravity ?? state.gravity ?? 4.9 };
         ringAt = L.target;
-        flight = { s, t: 0, T: flightTime(s), hit: L.landing, targetImpact: L.targetImpact };
+        flight = { s, t: 0, T: s.broke ?? flightTime(s), hit: L.landing, targetImpact: L.targetImpact };
       }
     } else if (!L) seen = 0;
     if (Date.now() - sentAt > 1500 || !c.myTurn) sentAt = 0;
