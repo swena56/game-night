@@ -258,7 +258,9 @@ async function reportDialog(kind = 'bug', retry = {}) {
     el('p', 'hint left', 'Sent to whoever runs this Game Night server, along with your name.'));
   kinds.onchange = () => { text.placeholder = placeholder(); };
   text.placeholder = placeholder();
-  setTimeout(() => (perfect.checked ? perfect : text).focus(), 50);
+  // (#251) on a touch screen, leave the box unfocused: focus set by a timer often comes without the keyboard, and a tap
+  // on an already-focused box may not bring it up. The player's own tap does.
+  if (!matchMedia('(pointer: coarse)').matches) setTimeout(() => (perfect.checked ? perfect : text).focus(), 50);
 
   if (!(await ask('', { title: 'Report a bug or suggest an idea', body, ok: 'Send' }))) return;
   const selected = body.querySelector('input[name=reportKind]:checked').value;
