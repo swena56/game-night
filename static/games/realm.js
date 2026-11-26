@@ -886,7 +886,7 @@ UI.realm = (() => {
     const adv = ctx.el('div', 'rw-advbox' + (advise ? ' open' : ''));
     const tog = btn(advise ? '💡 Advisor' : '💡 Advice', 'rw-advtog' + (advise ? ' on' : ''), () => { advise = !advise; try { localStorage.setItem('rwAdvise', advise ? '1' : '0'); } catch {} paint(); });
     tog.setAttribute('aria-pressed', String(advise));
-    adv.append(tog);
+    if (S.hintsOk) adv.append(tog);
     if (advise && m.advice) {
       const body = ctx.el('div', 'rw-advbody');
       body.append(ctx.el('span', 'rw-advwhy', m.advice.why || ''));

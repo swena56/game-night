@@ -118,6 +118,10 @@ class Game:
 
     # -- shared behaviour
 
+    def require_hints(self):
+        if not self.room.hints_ok():
+            raise GameError("Hints are off at this table.")
+
     def require_turn(self, p):
         if self.room.turn != p.id:
             raise GameError("It's not your turn.")

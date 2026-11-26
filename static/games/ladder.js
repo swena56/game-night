@@ -106,6 +106,7 @@ UI.ladder = (() => {
     const can = live();
     for (const id of ['ldInput', 'ldGo', 'ldHint']) $(id).disabled = !can;
     $('ldPeek').disabled = !can || l.peek != null;
+    $('ldPeek').hidden = $('ldHint').hidden = !S.hintsOk;
     $('ldUndo').disabled = !can || l.path.length < 2;
     $('ldForm').hidden = !l.playing;
     // keep the entry row's space when you finish or the clock runs out, so the goal and note don't jump (#73)

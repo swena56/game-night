@@ -281,12 +281,14 @@ class Ladder(Game):
             path.pop()
             self.undos = {**getattr(self, "undos", {}), p.id: getattr(self, "undos", {}).get(p.id, 0) + 1}
         elif kind == "hint":
+            self.require_hints()
             nxt = self.best_step(path[-1], path)
             if nxt is None:   # the ladder doubled back on itself: undo to get unstuck
                 raise GameError("No way on from here without repeating — take a step back.")
             self.hints[p.id] = self.hints.get(p.id, 0) + 1
             self.add_step(p, nxt)
         elif kind == "peek":
+            self.require_hints()
             peek = getattr(self, "peek", {})
             if peek.get(p.id, [None])[0] == path[-1]:
                 raise GameError("You've already peeked at this step.")

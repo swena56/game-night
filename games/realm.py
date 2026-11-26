@@ -1107,8 +1107,8 @@ class Realm(Game):
             "ambitionsOn": bool(self.use_ambitions),
             "ambDone": [getattr(r.players[pid].g, "amb_done", 0) if pid in r.players else 0 for pid in self.seats],
             "ambition": self.amb_view(p, s),
-            "advice": self.advice(p, s) if mine and r.phase == "playing" else None,
-            "gambitHint": self.gambit_hint(p, s) if mine and r.phase == "playing" and self.phase != "claim" else None,
+            "advice": self.advice(p, s) if mine and r.phase == "playing" and r.hints_ok() else None,
+            "gambitHint": self.gambit_hint(p, s) if mine and r.phase == "playing" and self.phase != "claim" and r.hints_ok() else None,
         }}
 
     def amb_view(self, p, s):

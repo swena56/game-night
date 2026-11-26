@@ -210,6 +210,7 @@ UI.sudoku = (() => {
     $('sdPencil').setAttribute('aria-pressed', String(pencil));
     $('sdPencil').disabled = $('sdHint').disabled = $('sdBank').disabled = !can;
     if (v.hintsLeft === 0) $('sdHint').disabled = true;
+    $('sdHint').hidden = !S.hintsOk;
     $('sdHint').querySelector('small').textContent = v.hintsLeft == null ? 'Hint' : `Hint (${v.hintsLeft})`;
     $('sdErase').disabled = !can || !(sel >= 0 && notes[sel]);
     $('sdRoot').classList.toggle('off', !can);

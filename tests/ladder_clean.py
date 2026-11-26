@@ -23,6 +23,7 @@ def climb(clean=None):
     r = server.Room("TEST")
     ann, bo = (r.add_player(n) for n in ("Ann", "Bo"))
     r.switch_game("ladder")
+    r.settings["assist"] = "on"   # two people here, and the checks use 🔎 and 💡
     if clean is not None:
         r.settings["clean"] = clean
     r.start()

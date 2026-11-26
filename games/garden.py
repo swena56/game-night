@@ -246,6 +246,7 @@ class Garden(PuzzleRace):
                 raise GameError("Spell a word from the ring.")
             return self.say(p, st, w.upper())
         if kind == "hint":
+            self.require_hints()
             return self.hint(p, st)
         raise GameError("Unknown action.")
 

@@ -412,6 +412,7 @@ const Patience = (() => {
       const can = live();
       $('Undo').disabled = !can || !view.undo;
       $('Hint').disabled = !can;
+      $('Hint').hidden = !S.hintsOk;
       $('Auto').disabled = !can || !view.auto;
       $('Auto').classList.toggle('pt-glow', can && !!B.clear && view.auto);
       $('Bank').disabled = !can;

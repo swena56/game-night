@@ -281,7 +281,7 @@ UI.lanes = (() => {
     const sv = $('lnSaver');
     sv.hidden = !(L().spare && L().saver && L().me != null);
     sv.classList.toggle('on', saver);
-    const sb = $('lnSpare'); if (sb) sb.hidden = !(L().me != null && L().standing.length && L().standing.length < 10 && canBowl());
+    const sb = $('lnSpare'); if (sb) sb.hidden = !(S.hintsOk && L().me != null && L().standing.length && L().standing.length < 10 && canBowl());
     const bl = $('lnBall'); if (bl) bl.textContent = `🎨 ${BALLS[ballStyle]}`;
     const wb = $('lnWt'); if (wb) wb.textContent = WTS[weight];
     const bb = $('lnBowler'); if (bb) { bb.classList.toggle('on', bowlerOn); bb.setAttribute('aria-pressed', bowlerOn ? 'true' : 'false'); bb.textContent = bowlerOn ? '🧑 Bowler: on' : '🧑 Bowler: off'; }

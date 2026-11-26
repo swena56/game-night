@@ -242,7 +242,7 @@ UI.cribbage = (() => {
     }
     $('cbDiscard').hidden = !discarding;
     const humans = S.players.filter((p) => !p.spectator && !p.bot && !p.eliminated).length;
-    $('cbTip').hidden = !discarding || humans !== 1 || !ctx.peek;
+    $('cbTip').hidden = !discarding || !S.hintsOk || !ctx.peek;
     $('cbDiscard').disabled = picked.size !== g.need;
     $('cbDiscard').textContent = `✂️ Send ${g.need === 1 ? 'this card' : `these ${g.need}`} to ${g.dealer === me ? 'your' : `${dealerName}'s`} crib`
       + (picked.size !== g.need ? ` (${picked.size}/${g.need})` : '');

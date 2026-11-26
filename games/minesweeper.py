@@ -154,6 +154,7 @@ class Minesweeper(PuzzleRace):
                 if not st["o"][j] and not st["f"][j]:
                     self.open(st, j)
         elif kind == "hint":
+            self.require_hints()
             if self.hints_left(st) == 0:
                 raise GameError("No hints left for this field." if self.s.get("hints", 3) else "Hints are off in this game.")
             i = self.hint_cell(st)

@@ -152,6 +152,7 @@ UI.minesweeper = (() => {
     $('swpFlag').setAttribute('aria-pressed', String(flagMode));
     $('swpFlag').disabled = $('swpHint').disabled = $('swpBank').disabled = !can;
     if (v.hintsLeft === 0) $('swpHint').disabled = true;
+    $('swpHint').hidden = !S.hintsOk;
     $('swpHint').querySelector('small').textContent = v.hintsLeft == null ? 'Hint' : `Hint (${v.hintsLeft})`;
     $('swpRoot').classList.toggle('off', !can);
 

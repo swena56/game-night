@@ -1161,7 +1161,7 @@ UI.prism = (() => {
   function armHint() {
     clearTimeout(hintTimer);
     hintTimer = setTimeout(() => {
-      if (!st || st.busy || !canPlay()) return;
+      if (!st || st.busy || !canPlay() || !S.hintsOk) return;
       const m = moves();
       if (m.length) { hint = m[Math.floor(Math.random() * m.length)]; renderGrid(); kick(); }
     }, 5000);
@@ -1415,12 +1415,12 @@ UI.prism = (() => {
     const pb = $('pzPB');
     if (pb) pb.textContent = st.lv || pz?.mode === 'levels' ? '' : st.pb ? `best ${st.pb.toLocaleString()}` : '';
     const hb = $('pzHintBtn');
-    if (hb) { const left = st.hintAt - now(); hb.disabled = left > 0 || !canPlay(); hb.style.setProperty('--cd', Math.max(0, left / 15000)); }
+    if (hb) { hb.hidden = !S.hintsOk; const left = st.hintAt - now(); hb.disabled = left > 0 || !canPlay(); hb.style.setProperty('--cd', Math.max(0, left / 15000)); }
     const rk = $('pzRank');
     if (rk) { const r = rankOf(pdata().xp || 0); rk.textContent = `${RANKS[r][2]} ${RANKS[r][1]}`; }
   }
   function useHint() {
-    if (!st || !canPlay() || st.busy || now() < st.hintAt) return;
+    if (!st || !S.hintsOk || !canPlay() || st.busy || now() < st.hintAt) return;
     const m = moves();
     if (!m.length) return;
     hint = m[Math.floor(Math.random() * m.length)];

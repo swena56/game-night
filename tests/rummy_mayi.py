@@ -86,6 +86,7 @@ check("bots call May I? sometimes", sum(g.buys) > 0, g.buys)
 
 # hint and recap
 r, g, ps = table(None)
+r.settings["assist"] = "on"   # three people at the table
 ann = ps[0]
 i = g.seat(ann)
 res = g.peek(ann, {"what": "contract"})

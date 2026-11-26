@@ -54,6 +54,8 @@ ROOM_SETTINGS = {
     "timer": ("Turn timer", [(0, "Off"), (30, "30s"), (60, "60s"), (90, "90s"), (120, "120s")], 0),
     "ghost_chat": ("Ghost & spectator chat", [("private", "👻 Ghosts only during play"), ("open", "💬 Everyone")], "private"),
     "locked": ("Room", [(False, "🔓 Open to join"), (True, "🔒 Locked")], False),
+    # 💡 hint buttons and advisors (#32): by default only while no more than one person is playing
+    "assist": ("💡 Hints", [("auto", "Only against bots"), ("on", "On for everyone"), ("off", "🚫 Off")], "auto"),
     # off: nothing moves for a person who drops out or sits idle (#31). The turn timer is its own setting.
     "autoplay": ("Idle auto-play", [(True, "🤖 Covers idle & dropped players"), (False, "✋ Off: wait for them")], True),
 }
@@ -901,6 +903,11 @@ class Room:
     def humans(self):
         return [o for o in self.seated() if o.human()]
 
+    def hints_ok(self):
+        """May players ask for a hint? What each game's own hint settings allow still applies on top."""
+        mode = self.settings["assist"]
+        return mode == "on" or (mode == "auto" and len(self.humans()) <= 1)
+
     def can_pause(self, p):
         return self.phase == "playing" and p in self.seated() and p.human() and len(self.humans()) == 1
 
@@ -1187,7 +1194,7 @@ class Room:
             "host": self.host,
             "turn": self.turn,
             "timeLeft": max(0.0, self.deadline - (self.paused or time.time())) if self.deadline else None,
-            "paused": bool(self.paused), "canPause": self.can_pause(p),
+            "paused": bool(self.paused), "canPause": self.can_pause(p), "hintsOk": self.hints_ok(),
             "winner": self.winner,
             "reactions": self.reactions,
             "log": [e for e in self.log if e["to"] is None or e["to"] == p.id or see_all][-80:],

@@ -201,7 +201,7 @@ UI.rummy = (() => {
 
     if (!drag?.moved) renderHand(r, inStage, myTurn && r.drawn);  // never rebuild the hand under a card being dragged
     renderButtons(r, me, myTurn);
-    $('ruHint').hidden = me == null || r.down[me] || S.phase !== 'playing' || !ctx.peek;
+    $('ruHint').hidden = !S.hintsOk || me == null || r.down[me] || S.phase !== 'playing' || !ctx.peek;
     const buy = $('ruMayI');
     buy.hidden = !r.mayi || me == null || S.phase !== 'playing';
     buy.disabled = !r.canBuy;

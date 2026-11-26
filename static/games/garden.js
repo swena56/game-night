@@ -255,6 +255,7 @@ UI.garden = (() => {
     $('gdInfo').textContent = `${v.found}/${v.total} words · 🌱 ${v.bonus.length} bonus` + (v.charged ? ` · 💧 −${v.charged}` : '');
     $('gdDrops').textContent = `${v.drops} · −${v.hintCost ?? 1}`;
     $('gdHint').disabled = !canHint();
+    $('gdHint').hidden = !S.hintsOk;
     $('gdBank').disabled = !live();
     $('gdBarBox').hidden = !v.clock || v.stage !== 'play';
     $('gdRoot').classList.toggle('over', v.stage !== 'play');

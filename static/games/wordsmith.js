@@ -162,8 +162,7 @@ UI.wordsmith = (() => {
     $('wsPass').disabled = !ctx.myTurn;
     $('wsSwap').disabled = !ctx.myTurn || !playing;
     $('wsSwap').textContent = !swapMode ? 'Swap tiles…' : swapSel.size ? `Swap ${swapSel.size}` : 'Cancel swap';
-    const humans = S.players.filter((p) => !p.bot && !p.spectator).length;
-    $('wsHint').hidden = humans !== 1 || !ctx.peek || !rack.length;
+    $('wsHint').hidden = !S.hintsOk || !ctx.peek || !rack.length;
     $('wsHint').disabled = !ctx.myTurn || swapMode;
     preview();
   }

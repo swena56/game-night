@@ -204,7 +204,7 @@ UI.twentyone = (() => {
       const tip = ctx.el('button', 'ghost-btn to-tips' + (tips ? ' on' : ''), tips ? '💡 Tips on' : '💡 Tips');
       tip.title = 'Show which move basic strategy picks';
       tip.onclick = () => { tips = !tips; try { localStorage.setItem('twentyone.tips', tips ? '1' : ''); } catch {} ctx.rerender(); };
-      bar.append(tip);
+      if (S.hintsOk) bar.append(tip);
       const hs = t.seatHands[me];
       note = hs.length > 1 ? `Hand ${t.cur[me] + 1} of ${hs.length}: you have ${hs[t.cur[me]].total}.` : `You have ${hs[0].total}.`;
     } else if (playing && t.stage === 'insure' && t.ins?.[me] === null) {
@@ -235,7 +235,8 @@ UI.twentyone = (() => {
   const MOVE = { hit: '➕ Hit', stand: '✋ Stand', double: '💰 Double', split: '✂️ Split', surrender: '🏳️ Surrender' };
   function plan(pl) {
     const box = $('toPlan');
-    box.hidden = !pl || !(pl.hands.length > 1 || tips);
+    const advised = tips && S.hintsOk;
+    box.hidden = !pl || !(pl.hands.length > 1 || advised);
     if (box.hidden) { box.innerHTML = ''; return; }
     box.innerHTML = '';
     const head = ctx.el('div', 'to-plan-head');
@@ -251,7 +252,7 @@ UI.twentyone = (() => {
         h.advice ? ctx.el('span', 'to-plan-tip', `💡 ${MOVE[h.advice] ?? h.advice}`) : ctx.el('span', 'hint', h.note));
       box.append(row);
     });
-    box.append(ctx.el('div', 'hint left', `💡 Advisory only: basic strategy for this table (4 decks, dealer stands on 17${pl.surrender ? ', surrender on' : ''}). ${pl.chips} chips free for doubles and splits.`));
+    box.append(ctx.el('div', 'hint left', S.hintsOk ? `💡 Advisory only: basic strategy for this table (4 decks, dealer stands on 17${pl.surrender ? ', surrender on' : ''}). ${pl.chips} chips free for doubles and splits.` : `${pl.chips} chips free for doubles and splits.`));
   }
 
   const turnText = (s) => (s.phase === 'playing' && s.twentyone.stage === 'insure' ? '🛡️ Insurance?'

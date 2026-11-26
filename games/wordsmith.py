@@ -252,10 +252,9 @@ class Wordsmith(Game):
         return placements, idx
 
     def peek(self, p, a):
-        """What the tiles you've placed would score (live preview), or, alone against bots, a hint."""
+        """What the tiles you've placed would score (live preview), or, where the room allows hints, a hint."""
         if a.get("what") == "hint":
-            if len([o for o in self.room.contenders() if o.human()]) > 1:
-                raise GameError("Hints are for solo games against bots.")
+            self.require_hints()
             moves = self.find_moves(getattr(p.g, "rack", []), 1.2)
             if not moves:
                 return {"none": True}
@@ -272,8 +271,8 @@ class Wordsmith(Game):
     def plan(self, p, tiles):
         """🔮 Rack planning (private, a dry run): if p made this play, what could the tiles p keeps do next turn
         on the board as it would then be? Nothing is committed: the board, rack, bag and scores are untouched.
-        The new tiles p would draw are unknown, so only the kept tiles count. Alone against bots the best next
-        turns are named; with other people at the table only their scores and number show (like the 💡 hint)."""
+        The new tiles p would draw are unknown, so only the kept tiles count. Where the room allows 💡 hints the
+        best next turns are named; otherwise only their scores and number show."""
         try:
             placements, idx = self.placements(p, tiles)
             score, texts, _ = self.check_play(placements, p)
@@ -295,7 +294,7 @@ class Wordsmith(Game):
                 seen.add(k)
                 if len(best) < 3:
                     best.append({"score": s, "words": w})
-        named = len([o for o in self.room.contenders() if o.human()]) <= 1
+        named = self.room.hints_ok()
         if not named:
             best = [{"score": b["score"]} for b in best]
         return {"score": score, "words": texts, "leave": "".join(leave), "count": len(seen), "next": best, "named": named}

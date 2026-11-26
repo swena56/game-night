@@ -524,7 +524,7 @@ class TwentyOne(Game):
             "result": self.result, "lastBets": self.last_bet, "minBet": MIN_BET, "canDouble": mine and self.can_double(i), "canSplit": mine and self.can_split(i), "betOptions": list(BETS),
             "canSurrender": mine and self.can_surrender(i),
             # 💡 the move basic strategy picks for your hand (the hard bot's table); the page shows it if you ask
-            "advice": self.advice(i) if mine else None,
+            "advice": self.advice(i) if mine and self.room.hints_ok() else None,
             "plan": self.hand_plan(i),
             "pairs": bool(self.s["pairs"]), "pairBet": PAIR_BET, "pair": self.pair, "pairRes": self.pair_res,
             "lastPairs": self.last_pair, "pairPays": PAIR_PAYS,
@@ -616,7 +616,7 @@ class TwentyOne(Game):
             else:
                 state, note = ("now" if self.room.turn == self.seats[i] and k == self.cur[i] else "next"), ""
             rows.append({"bet": h["bet"], "total": t, "soft": soft and t <= 21, "state": state, "note": note,
-                         "advice": self.advice(i, k) if state != "done" else None})
+                         "advice": self.advice(i, k) if state != "done" and self.room.hints_ok() else None})
         return {"up": self.dealer[0], "hands": rows, "surrender": bool(self.s.get("surrender")),
                 "chips": self.chips[i] - self.committed(i)}
 

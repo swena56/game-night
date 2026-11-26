@@ -31,6 +31,7 @@ class DartsTests(unittest.TestCase):
         self.room = room = Room("DART")
         self.players = [room.add_player(name) for name in ("Ada", "Ben", "Cory")[:players]]
         room.switch_game("archery")
+        room.settings["assist"] = "on"  # several people here, and some checks read the 💡 hint
         if mode is not None:
             settings = {"course": mode, "finish": finish}
             if axe_scoring is not None:

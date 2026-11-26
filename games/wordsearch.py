@@ -219,6 +219,7 @@ class WordSearch(PuzzleRace):
                 return self.take(p, st, text[::-1], [r2, c2, r1, c1])
             raise GameError(f"{text} isn't one of the words.")
         if kind == "hint":
+            self.require_hints()
             left = [w for w in self.words if w not in st["found"] and w not in self.claims
                     and not any(h == self.where[w][:2] for h in st["hints"])]
             if not left:

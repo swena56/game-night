@@ -399,6 +399,7 @@ class Rummy(Game):
         i = self.seat(p)
         if a.get("what") != "contract" or i is None or self.down[i]:
             raise GameError("No hint right now.")
+        self.require_hints()
         found = find_contract(self.hands[i], self.k, self.m)
         return {"groups": [{"kind": k, "cards": cs} for k, cs in found] if found else None}
 

@@ -236,6 +236,7 @@ class Sudoku(PuzzleRace):
                 raise GameError(f"Digits go from 1 to {self.n}.")
             self.put(st, i, d)
         elif kind == "hint":
+            self.require_hints()
             if self.hints_left(st) == 0:
                 raise GameError("No hints left for this puzzle." if self.s.get("hints", 3) else "Hints are off in this game.")
             s = single_step(st["g"], Shape(self.n), 2)

@@ -211,6 +211,7 @@ UI.wordsearch = (() => {
 
     const can = live();
     $('wfHint').disabled = $('wfBank').disabled = !can;
+    $('wfHint').hidden = !S.hintsOk;
     $('wfRoot').classList.toggle('off', !can);
     $('wfRound').textContent = `🔍 ${v.rounds > 1 ? `${v.round}/${v.rounds} · ` : ''}${v.theme}`;
     const got = v.found.length, open = v.words.length - Object.keys(v.owners).length;

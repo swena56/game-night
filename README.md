@@ -402,7 +402,7 @@ Every game has **Easy / Normal / Hard bots**:
 
 - **Settings.**
   - Each game's options appear in the lobby automatically.
-  - Room options: turn timer, 🔒 lock the room, and a ghost chat rule.
+  - Room options: turn timer, 🔒 lock the room, a ghost chat rule, 💡 hints (by default only while one person is playing against bots) and idle auto-play.
   - Each game remembers its last settings when you switch away and back.
   - The host can remove players, and every settings change is noted in the log.
   - ⚙️ **My settings** (stored on your device): sound, vibration, animations and chat pop-ups.
@@ -835,7 +835,7 @@ Items that become ✅ move into the per-game plan.
 **Cards**
 - 🃏 **Last Card:** play several cards of one rank at once (option). **M**
 - ♠️ **Texas Hold'em:** ✅ your best hand named live under your cards ("Pair of 7s", "Kings full of 3s").
-- 📍 **Cribbage:** ✅ 💡 Suggest a discard (against bots only): picks the cards the hard bot would throw and says what the
+- 📍 **Cribbage:** ✅ 💡 Suggest a discard (💡 Hints room setting; by default against bots only): picks the cards the hard bot would throw and says what the
   four you keep score on average over every starter.
 - ♥️ **Hearts:** ✅ an optional 💎 J♦ −10 (bots keep it, and win tricks for it).
 - ⚡ **Speed:** the face-to-face two-phone layout. **M**

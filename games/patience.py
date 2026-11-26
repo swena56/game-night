@@ -208,6 +208,7 @@ class Patience(Game):
         if p.id in self.banked:
             raise GameError("You've called this deal a day.")
         if kind == "hint":
+            self.require_hints()
             b = self.boards[p.id]
             mv = self.find_hint(p, b)
             if not mv:

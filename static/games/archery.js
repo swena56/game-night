@@ -2733,11 +2733,12 @@ UI.archery = (() => {
       const hint = callCorner
         ? { x: view.axeCorners[1][0], y: view.axeCorners[1][1], label: '7-point corner', reason: 'Either green target scores.' }
         : view?.hint;
+      hintButton.hidden = !state?.hintsOk;
       hintButton.setAttribute('aria-pressed', String(hintOn));
       setText(hintAdvice, hintOn && hint ? `Aim for ${hint.label}. ${hint.reason ?? ''}`.trim() : '');
       hintButton.textContent = hintOn && hint ? `💡 Aim: ${hint.label}` : '💡 Hint';
       // the target itself lights up, in its own shape, then fades away; a new target or a new dart lights it again
-      const shape = hint ? sectionShape(hint.x, hint.y) : '';
+      const shape = hint && state?.hintsOk ? sectionShape(hint.x, hint.y) : '';
       if (aim.dataset.shape !== shape) {
         aim.dataset.shape = shape;
         aim.innerHTML = shape;

@@ -81,7 +81,7 @@ class PuzzleRace(Game):
         self.room.turn = None
         self.room.bot_at = 0
         today = time.strftime("%Y-%m-%d")
-        key = " ".join(str(v) for k, v in sorted(self.s.items()) if k not in ("rounds", "secs", "daily", "hints"))
+        key = " ".join(str(v) for k, v in sorted(self.s.items()) if k not in ("rounds", "secs", "daily", "hints", "assist", "autoplay"))
         self.prng = random.Random(f"{self.id} {today} {key}") if self.s.get("daily") else rng
         n = self.s["rounds"]
         self.room.add_log(f"{self.icon} {self.name}! {n} {self.noun}{'s' if n > 1 else ''}, everyone gets the same one"

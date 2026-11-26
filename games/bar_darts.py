@@ -594,7 +594,7 @@ class DartMatch:
         left = self.throws_left(next_seat) if next_seat is not None and self.grabbing is None else 0
         route = checkout(self.points[next_seat], left, self.double_out) if self.mode in X01 and left else ()
         hint = None
-        if next_seat is not None and p.id in self.seats and next_seat == self.seats.index(p.id) and left:
+        if next_seat is not None and p.id in self.seats and next_seat == self.seats.index(p.id) and left and self.room.hints_ok():
             pace = 0 if getattr(self, "aim_control", False) else SWIPE_PACE
             x, y, reason = self.recommend(next_seat, SCATTER * spread(pace))
             hint = {"label": axe_label(axe_hit(x, y)) if self.mode == "axe" else label(*hit_at(x, y)), "x": x, "y": y, "reason": reason}
