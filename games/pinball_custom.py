@@ -14,11 +14,11 @@ COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 X_MIN, X_MAX = 0.45, 8.35        # the shooter lane wall is at x = 8.8
 Y_MIN, Y_MAX = 0.45, 14.2        # flippers start near y = 14.95
 SEGMENT = (0.25, 4.5)
-GLYPHS = ("star", "heart", "bolt", "diamond", "moon", "ring")      # painted under the glass: no collision, no score
-RADIUS = {"bump": (0.3, 1.0), "post": (0.07, 0.3), "saucer": (0.25, 0.6), "hole": (0.25, 0.6), "magnet": (0.6, 2.0), **{g: (0.25, 1.6) for g in GLYPHS}}
+GLYPHS = ("star", "heart", "bolt", "diamond", "moon", "ring", "dot")      # painted under the glass: no collision, no score
+RADIUS = {"bump": (0.3, 1.0), "post": (0.07, 0.3), "saucer": (0.25, 0.6), "hole": (0.25, 0.6), "magnet": (0.6, 2.0), **{g: (0.25, 1.6) for g in GLYPHS}, "dot": (0.1, 1.6)}
 DEFAULT_RADIUS = {"bump": 0.6, "post": 0.11, "saucer": 0.3, "magnet": 1.1}
 LIMITS = {"bump": 12, "sling": 6, "target": 8, "lane": 6, "post": 16, "wall": 16, "spinner": 1, "saucer": 1, "magnet": 1, "kick": 1,
-          "ramp": 1, "subway": 1, "orbit": 1, "arc": 6, "flap": 4, "portal": 1, "rubber": 6, "mover": 3, "hole": 3, "flip": 4, **dict.fromkeys(GLYPHS, 4)}
+          "ramp": 1, "subway": 1, "orbit": 1, "arc": 6, "flap": 4, "portal": 1, "rubber": 6, "mover": 3, "hole": 3, "flip": 4, **dict.fromkeys(GLYPHS, 12)}
 # kind -> number layout: "p" a point, "r" a radius, "s" a segment, "w" a wire path of 2-6 points, "" nothing
 SHAPE = {"bump": "pr", "post": "pr", "saucer": "pr", "magnet": "pr", "lane": "p", "spinner": "p",
          "sling": "s", "target": "s", "wall": "s", "kick": "", "ramp": "s", "subway": "s", "orbit": "w",
@@ -131,7 +131,7 @@ def wires(parts, classic=False):
 
 PART_VALUE = {"bump": "bump", "sling": "sling", "target": "target", "lane": "lane", "mover": "mover"}      # parts that can carry their own score
 POINTS = {"bumper": (100, "bump"), "sling": (50, "sling"), "target": (250, "target"), "lane": (500, "lane"), "spinner": (100, "spinner"),
-          "ramp": (6000, "ramp"), "saucer": (1000, "saucer"), "portal": (250, "portal"), "mover": (300, "mover"),
+          "ramp": (6000, "ramp"), "bank_points": (2000, "target"), "saucer": (1000, "saucer"), "portal": (250, "portal"), "mover": (300, "mover"),
           "jackpot": (12000, ""), "hurry": (15000, "")}
 CABINETS = ("smooth", "classic")           # classic = the original sharp-cornered cabinet of Golden Hour and Neon Arcade
 LOOKS = {"custom": "custom", "golden": "", "neon": "neon"}      # which printed art the playfield wears
@@ -161,7 +161,103 @@ def setup(spec):
             feel["extra_balls"] = sorted(int(round(min(1_000_000, max(1000, v)))) for v in eb)
     if feel:
         out["feel"] = feel
+    pivots = flipper_pivots(spec)
+    if pivots:
+        out["fl"] = pivots
     return out
+
+
+FLIP_X = ((2.4, 4.0), (6.0, 7.6))     # where each main flipper's pivot may sit
+FLIP_Y = (14.3, 15.4)
+FLIP_DEFAULT = [3.22, 14.95, 6.78, 14.95]
+FLIP_GAP = (0.5, 1.5)                 # the drain between the two tips, in table units (the ball is 0.42 wide)
+
+
+def flipper_pivots(spec):
+    """Where the player moved the two main flippers: [left x, left y, right x, right y], clamped so the ball can still drain and still be
+    caught, or None for the standard cabinet position."""
+    raw = spec.get("fl") if isinstance(spec, dict) else None
+    if not (isinstance(raw, list) and len(raw) == 4 and all(type(v) in (int, float) and math.isfinite(v) for v in raw)):
+        return None
+    lx, ly, rx, ry = number(raw[0], *FLIP_X[0]), number(raw[1], *FLIP_Y), number(raw[2], *FLIP_X[1]), number(raw[3], *FLIP_Y)
+    rest = 0.46 if isinstance(spec.get("feel"), dict) and spec["feel"].get("steep_flippers") is True else 0.42
+    reach = 2 * 1.56 * math.cos(rest)
+    gap = rx - lx - reach
+    if gap < FLIP_GAP[0] or gap > FLIP_GAP[1]:
+        shift = (min(FLIP_GAP[1], max(FLIP_GAP[0], gap)) - gap) / 2
+        lx, rx = round(lx - shift, 2), round(rx + shift, 2)
+    lx, rx = round(min(FLIP_X[0][1], max(FLIP_X[0][0], lx)), 2), round(min(FLIP_X[1][1], max(FLIP_X[1][0], rx)), 2)
+    return None if [lx, ly, rx, ry] == FLIP_DEFAULT else [lx, ly, rx, ry]
+
+
+FX_MODES = ("steady", "flash", "cycle", "pulse", "twinkle")
+FX_TRIGGERS = ("always", "timer", "motion", "hit", "event")
+FX_SOURCE = {"bump": "bumper", "sling": "sling", "target": "target", "lane": "lane", "mover": "mover", "spinner": "spinner", "ramp": "ramp"}
+# game events a light can follow: the first five last while they are true, the rest are moments (the light stays on for its hold time)
+FX_EVENTS = ("bank", "multiball", "jackpot", "save", "tilt", "hurry", "skill", "extra", "mult", "lock", "mission", "orbit", "kickback", "special", "saucer", "subway", "magnet", "drain")
+FX_TRIGGER_MAX = 3
+HOLD_DEFAULT = 1.4
+
+
+def clean_trigger(fx):
+    """One thing that switches a light on: always, a timer, the ball passing close, a part being hit, or a game event. None if it is not one."""
+    if not isinstance(fx, dict) or fx.get("on") not in FX_TRIGGERS:
+        return None
+    t = {"on": fx["on"]}
+    if t["on"] == "timer":
+        t["ev"] = number(fx.get("ev", 6), 1, 120)
+        t["du"] = min(t["ev"], number(fx.get("du", 2), 0.3, 60))
+    elif t["on"] == "motion":
+        t["nr"] = number(fx.get("nr", 1.2), 0.3, 5)
+    elif t["on"] == "hit" and (type(fx.get("src")) is int or fx.get("src") in FX_SOURCE):
+        t["src"] = fx["src"]          # a part's item index, or a kind name for "any of those" (any bumper)
+    elif t["on"] == "event":
+        t["gv"] = fx["gv"] if fx.get("gv") in FX_EVENTS else "multiball"
+    return t
+
+
+def light_effects(spec):
+    """Decal lights: {item index: effect}. A decal can flash, fade or twinkle through up to four colours, always or only while a trigger
+    holds: a timer, a ball passing close ("motion"), one of the table's parts being hit, or a game event. The first trigger sits beside the
+    colours ("on" ...), up to two more in "x"; any of them lights it. "dl" delays the start, "ho" is how long a moment keeps it lit.
+    Only known keys survive; numbers are clamped."""
+    raw = spec.get("fx") if isinstance(spec, dict) else None
+    out = {}
+    for pair in raw if isinstance(raw, list) else []:
+        if not (isinstance(pair, list) and len(pair) == 2 and type(pair[0]) is int and isinstance(pair[1], dict)):
+            continue
+        fx = pair[1]
+        c2 = fx.get("c2")
+        mode = fx.get("m")
+        eff = {"m": mode if mode in FX_MODES else "flash", "c2": c2.lower() if isinstance(c2, str) and COLOR.match(c2) else "#ffffff",
+               "r": number(fx["r"], 0.2, 10) if "r" in fx and type(fx["r"]) in (int, float) else 1.0}
+        for key in ("c3", "c4"):             # up to two more colours for the effect to step or fade through
+            extra = fx.get(key)
+            if isinstance(extra, str) and COLOR.match(extra) and (key == "c3" or "c3" in eff):
+                eff[key] = extra.lower()
+        if type(fx.get("dl")) in (int, float) and number(fx["dl"], 0, 10) > 0:
+            eff["dl"] = number(fx["dl"], 0, 10)
+        if type(fx.get("ho")) in (int, float) and number(fx["ho"], 0.2, 30) != HOLD_DEFAULT:
+            eff["ho"] = number(fx["ho"], 0.2, 30)
+        eff.update(clean_trigger(fx) or {"on": "always"})
+        more = [t for t in (clean_trigger(x) for x in fx.get("x") if isinstance(x, dict)) if t] if isinstance(fx.get("x"), list) else []
+        if more:
+            eff["x"] = more[:FX_TRIGGER_MAX - 1]
+        out[pair[0]] = eff
+    return out
+
+
+TRIGGER_KEYS = ("on", "ev", "du", "nr", "src", "gv")
+
+
+def layout_light(eff, tag_of):
+    """The effect as the browser renders it: colours and timing, and "tr", the list of triggers (a hit names the game's event for its part)."""
+    triggers = [{k: eff[k] for k in TRIGGER_KEYS if k in eff}, *(dict(t) for t in eff.get("x", []))]
+    for t in triggers:
+        if "src" in t:
+            src = t.pop("src")
+            t["tag"] = f"{FX_SOURCE[src]}*" if isinstance(src, str) else tag_of.get(src, "")
+    return {**{k: v for k, v in eff.items() if k not in TRIGGER_KEYS and k != "x"}, "tr": triggers}
 
 
 def points(spec):
@@ -239,6 +335,7 @@ def build(spec, mode="classic"):
     bit = MODE_BIT.get(mode, 1)
     part_pts, clean_pv = {}, []
     clean, parts, paint = [], {k: [] for k in LIMITS}, {k: [] for k in LIMITS}
+    where, tag_of = {k: [] for k in LIMITS}, {}        # item index of each part that is in the layout; a part's name in the game's hit events
     for index, item in enumerate(spec["items"]):
         if not isinstance(item, list) or not item or not isinstance(item[0], str) or item[0] not in SHAPE:
             raise GameError("The table has an unknown part.")
@@ -270,6 +367,9 @@ def build(spec, mode="classic"):
             continue                       # kept in the saved table, absent in this mode
         if kind in PART_VALUE and index in own:
             part_pts.setdefault(PART_VALUE[kind], {})[len(parts[kind])] = own[index]
+        if kind in FX_SOURCE:
+            tag_of[index] = FX_SOURCE[kind] + (str(len(parts[kind])) if kind not in ("spinner", "ramp") else "")
+        where[kind].append(index)
         parts[kind].append(tuple(nums))
         paint[kind].append(color)
     # imported late: pinball.py owns the cabinet constants and imports this module
@@ -288,14 +388,31 @@ def build(spec, mode="classic"):
     holes = tuple((x, y, r, round(math.degrees(math.atan2(6.0, 5 - x)), 1)) for x, y, r in parts["hole"])    # fired down toward the middle
     middle = cabinet.WIDTH * 0.44
     flippers = cabinet.FLIPPERS + tuple((x, y, 0.3, -0.75) if x < middle else (x, y, math.pi - 0.3, math.pi + 0.75) for x, y in parts["flip"])
-    decals = [[g, *p, c] for g in GLYPHS for p, c in zip(parts[g], paint[g])]
     choice = setup(spec)
+    effects = light_effects(spec)
+    decals = []
+    for g in GLYPHS:
+        for p, c, index in zip(parts[g], paint[g], where[g]):
+            decal = [g, *p, c]
+            if index in effects:
+                decal.append(layout_light(effects[index], tag_of))
+            decals.append(decal)
     classic = choice.get("cabinet") == "classic"
     base = cabinet.RAILS[:11] if classic else cabinet.BASE_RAILS
-    if choice.get("feel", {}).get("steep_flippers"):
-        flippers = cabinet.NEON_FLIPPERS + flippers[2:]
+    guides_from, guide_run = (9 if classic else cabinet.GUIDES_FROM), (2 if classic else len(cabinet.RIGHT_GUIDE))
+    pair = cabinet.NEON_FLIPPERS if choice.get("feel", {}).get("steep_flippers") else cabinet.FLIPPERS
+    if "fl" in choice:        # the player moved the two main flippers: the inlane guides lead to the new pivots
+        lx, ly, rx, ry = choice["fl"]
+        pair = ((lx, ly, pair[0][2], pair[0][3]), (rx, ry, pair[1][2], pair[1][3]))
+        if classic:
+            base = base[:8] + ((0.9, 13.5, lx, ly),) + base[9:10] + ((7.9, 13.8, rx, ry),)
+        else:
+            left, right = cabinet.fillet(((0.9, 12.2), (0.9, 13.5), (lx, ly)), (0.5,)), cabinet.fillet(((7.9, 12.4), (7.9, 13.8), (rx, ry)), (0.5,))
+            base = cabinet.SMOOTH_WALL + ((8.8, 3.1, 8.8, 17), (8.8, 16.25, 10, 16.25)) + left + right
+            guides_from, guide_run = len(base) - len(right), len(right)
+    flippers = pair + flippers[2:]
     layout = Layout(
-        rails=base + walls, guides_from=9 if classic else cabinet.GUIDES_FROM, guide_run=2 if classic else len(cabinet.RIGHT_GUIDE),
+        rails=base + walls, guides_from=guides_from, guide_run=guide_run,
         part_pts=part_pts, flaps=tuple(parts["flap"]), portals=portals, rubbers=tuple(parts["rubber"]), holes=holes,
         movers=tuple((*m, 1.0) for m in parts["mover"]), flippers=flippers, launch=cabinet.LAUNCH, gate=cabinet.GATE,
         bumps=tuple(parts["bump"]), slings=tuple(parts["sling"]), targets=tuple(parts["target"]),
@@ -321,6 +438,9 @@ def build(spec, mode="classic"):
         clean_spec["modes"] = [[i, m] for i, m in sorted(modes.items()) if i < len(clean)]
     if clean_pv:
         clean_spec["pv"] = clean_pv
+    lights = [[i, e] for i, e in sorted(effects.items()) if i < len(clean) and clean[i][0] in GLYPHS]
+    if lights:
+        clean_spec["fx"] = lights
     if points(spec):
         clean_spec["pts"] = points(spec)
     return layout, clean_spec

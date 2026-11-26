@@ -26,7 +26,7 @@ def _play(spec, seed):
     table = CustomTable(layout_override=layout, rules_override=build_rules(spec), balls=BALLS)
     table.rng = random.Random(seed)
     target, spans, last = rng.randint(150, 235), [], 0
-    used = set()
+    used, drains, at, last_event = set(), [], (5.0, 12.0), "launch"
     for tick in range(TICK_LIMIT):
         if not table.balls:
             break
@@ -43,17 +43,33 @@ def _play(spec, seed):
             if tick % 90 < 12:
                 held |= 3
         before, event_id = table.balls, table.event_id
+        if not table.staged and table.y > 9:
+            at = (table.x, table.y)                  # where the ball was just before it can drain
         table.input(held, 0, tick / 240)
         table.step()
         if table.event_id != event_id and table.event:
             used.add(table.event.rstrip("0123456789"))
+            if table.event not in ("drain", "bonus", "nudge"):
+                last_event = table.event.rstrip("0123456789")
         if table.balls < before:
             spans.append((tick - last) / 240)
             last = tick
-    return {"score": table.score, "spans": spans, "finished": not table.balls, "used": used}
+            drains.append((drain_lane(at[0], layout), last_event))
+            last_event = "launch"
+    return {"score": table.score, "spans": spans, "finished": not table.balls, "used": used, "drains": drains}
 
 
-def check(spec):
+def drain_lane(x, layout):
+    """Which way a ball left the table: down a side outlane (outside the inlane guides) or between the flippers, on the left or right half."""
+    inner = (layout.flippers[0][0] + layout.flippers[1][0]) / 2
+    if x < 0.95:
+        return "left_outlane"
+    if x > 7.85:
+        return "right_outlane"
+    return "left" if x < inner else "right"
+
+
+def check(spec, games=GAMES):
     """Return {"ok": bool, "problems": [...], "notes": [...], "stats": {...}} for a table spec, code or dict."""
     problems, notes = [], []
     try:
@@ -69,12 +85,22 @@ def check(spec):
         problems.append("Too many parts.")
     if not kinds & SCORING:
         problems.append("Nothing on it scores (add a bumper, target, lane, ramp...).")
-    runs = [_play(clean, s) for s in range(GAMES)]
+    runs = [_play(clean, s) for s in range(games)]
     spans = [x for r in runs for x in r["spans"]]
     scores = [r["score"] for r in runs]
     stats = {"parts": len(items), "kinds": len(kinds), "avg_score": round(statistics.mean(scores)), "min_score": min(scores),
              "avg_ball_s": round(statistics.mean(spans), 1) if spans else None, "min_ball_s": round(min(spans), 1) if spans else None,
              "unfinished_games": sum(1 for r in runs if not r["finished"])}
+    lanes = [d for r in runs for d, _ in r["drains"]]
+    side_after = {}
+    for r in runs:
+        for lane, event in r["drains"]:
+            if lane.endswith("outlane"):
+                side_after[event] = side_after.get(event, 0) + 1
+    if side_after:
+        stats["side_after"] = dict(sorted(side_after.items(), key=lambda kv: -kv[1]))
+    if lanes:
+        stats["drains"] = {k: round(100 * lanes.count(k) / len(lanes)) for k in ("left_outlane", "left", "right", "right_outlane")}
     if not spans:
         problems.append("No ball ever drained in the test games: the ball gets stuck or there is no way down.")
     else:
@@ -85,7 +111,9 @@ def check(spec):
     if stats["avg_score"] < MIN_AVG_SCORE:
         problems.append(f"The test player scores too little ({stats['avg_score']} on average; need {MIN_AVG_SCORE}).")
     if stats["unfinished_games"]:
-        notes.append(f"{stats['unfinished_games']} of {GAMES} test games did not finish within the time limit.")
+        notes.append(f"{stats['unfinished_games']} of {games} test games did not finish within the time limit.")
+    if lanes and stats["drains"]["left_outlane"] + stats["drains"]["right_outlane"] >= 40:
+        notes.append(f"{stats['drains']['left_outlane'] + stats['drains']['right_outlane']}% of balls drained down the side outlanes: widen or move the inlane guides, or add a post above each outlane.")
     seen = set().union(*(r["used"] for r in runs))
     idle = sorted(k for k in ("bump", "sling", "target", "lane", "spinner", "ramp", "saucer", "subway", "orbit", "mover", "hole", "portal", "magnet")
                   if k in kinds and {"bump": "bumper"}.get(k, k) not in seen)

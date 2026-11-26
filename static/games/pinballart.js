@@ -2,6 +2,65 @@
 // so a table looks the same in both. PinballArt.make(geo) returns a 600x1020 canvas (60 px per table unit).
 (() => {
   const palette = { gold: '#ffd383', ivory: '#fff0ca', teal: '#59edd2', red: '#ff6854', steel: '#c1d2e5' };
+  // the outline of a decal glyph around (0, 0) at unit size u (a path on c, not yet filled)
+  function glyphPath(c, glyph, u) {
+    c.beginPath();
+    if (glyph === 'star') for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? u * .45 : u; c[i ? 'lineTo' : 'moveTo'](rr * Math.cos(a), rr * Math.sin(a)); }
+    else if (glyph === 'heart') { c.moveTo(0, u * .85); c.bezierCurveTo(-u * 1.3, u * .1, -u * .55, -u * .9, 0, -u * .3); c.bezierCurveTo(u * .55, -u * .9, u * 1.3, u * .1, 0, u * .85); }
+    else if (glyph === 'bolt') { c.moveTo(u * .2, -u); c.lineTo(-u * .55, u * .1); c.lineTo(-u * .05, u * .1); c.lineTo(-u * .2, u); c.lineTo(u * .55, -u * .2); c.lineTo(u * .05, -u * .2); }
+    else if (glyph === 'diamond') { c.moveTo(0, -u); c.lineTo(u * .65, 0); c.lineTo(0, u); c.lineTo(-u * .65, 0); }
+    else if (glyph === 'moon') { c.arc(0, 0, u, -Math.PI * .1, Math.PI * 1.1, false); c.arc(u * .38, -u * .1, u * .8, Math.PI * .85, -Math.PI * .2, true); }
+    else if (glyph === 'dot') c.arc(0, 0, u, 0, Math.PI * 2);
+    else { c.arc(0, 0, u, 0, Math.PI * 2); c.moveTo(u * .62, 0); c.arc(0, 0, u * .62, 0, Math.PI * 2); }
+    c.closePath();
+  }
+
+  const mixHex = (a, b, t) => {
+    const p = (h, i) => parseInt(h.slice(1 + i * 2, 3 + i * 2), 16);
+    return '#' + [0, 1, 2].map((i) => Math.round(p(a, i) + (p(b, i) - p(a, i)) * t).toString(16).padStart(2, '0')).join('');
+  };
+  const HOLD = 1.4;        // seconds a motion or hit trigger keeps the light going after the last touch
+
+  // Decal lights: a decal with an effect (geo.paint.decals[n][5]) shows its colour, and steps, fades or twinkles through up to four colours.
+  // fx.tr lists what lights it (any one of them does): always, a timer, a ball passing close (motion), a hit on one of the table's parts
+  // (the game's event names: bumper0, sling1, target2, ...; a tag ending in * means any of them: bumper*) or a game event (multiball, jackpot...).
+  // fx.dl delays the start after a trigger, fx.ho is how long a moment keeps it going. Flashing is capped at three colour changes a second.
+  // update(now ms, { balls: [[x, y]], flash, states: Set of game states, calm }) returns what to paint now: [{ glyph, x, y, r, color, alpha }].
+  function lights(geo) {
+    const decals = (geo.paint?.decals || []).filter((d) => d[5]);
+    const triggers = (fx) => fx.tr || [fx];          // an effect made by the editor may carry its single trigger beside the colours
+    const seen = decals.map((d) => triggers(d[5]).map(() => ({ last: -1e9, start: -1e9 }))), begin = performance.now();
+    const tagHit = (tag, flash) => !!tag && !!flash && (tag.endsWith('*') ? flash.startsWith(tag.slice(0, -1)) : flash === tag);
+    return {
+      count: decals.length,
+      update(now, env = {}) {
+        const { balls = [], flash = '', states, calm = false } = env, t = (now - begin) / 1000;
+        return decals.map(([glyph, x, y, r, color, fx], i) => {
+          const dl = fx.dl || 0, ho = fx.ho ?? HOLD;
+          let on = false;
+          triggers(fx).forEach((g, k) => {
+            if (g.on === 'always') { on = on || t >= dl; return; }
+            if (g.on === 'timer') { on = on || t >= dl && (t - dl) % g.ev < g.du; return; }
+            const hot = g.on === 'motion' ? balls.some((b) => Math.hypot(b[0] - x, b[1] - y) <= g.nr + r)
+              : g.on === 'hit' ? tagHit(g.tag, flash) : !!(states?.has(g.gv) || flash === g.gv);
+            const s = seen[i][k];
+            if (hot) { if (now - s.last > 500) s.start = now; s.last = now; }
+            on = on || ((now - s.last) / 1000 < ho && (now - s.start) / 1000 >= dl);
+          });
+          if (!on) return { glyph, x, y, r, color, alpha: .22 };       // waiting for its trigger: dim
+          const cs = [color, fx.c2, fx.c3, fx.c4].filter(Boolean), n = cs.length;
+          if (calm || fx.m === 'steady') return { glyph, x, y, r, color: cs[n - 1], alpha: .85 };      // reduced motion: lit, not flashing
+          const period = fx.m === 'flash' ? Math.max(fx.r, .33 * n) : fx.m === 'twinkle' ? Math.max(fx.r, .5) : fx.r, phase = (t / period) % 1;
+          if (fx.m === 'flash') return { glyph, x, y, r, color: cs[Math.floor(phase * n)], alpha: .85 };        // steps through every colour in turn
+          if (fx.m === 'cycle') { const at = phase * n, k = Math.floor(at); return { glyph, x, y, r, color: mixHex(cs[k], cs[(k + 1) % n], at - k), alpha: .8 }; }     // fades through them and back round
+          if (fx.m === 'pulse') return { glyph, x, y, r, color: mixHex(color, fx.c2, .35), alpha: .35 + .6 * (.5 - .5 * Math.cos(phase * 2 * Math.PI)) };
+          const q = x * 12.9 + y * 7.7, a = Math.sin(t * 7.3 / period + q) * Math.sin(t * 3.1 / period + q * 1.7);     // twinkle
+          return { glyph, x, y, r, color: cs[Math.floor(t / period + q) % n], alpha: .25 + .7 * a * a };
+        });
+      },
+    };
+  }
+
   function makeArt(geo) {
     const canvas = document.createElement('canvas');
     canvas.width = 600;
@@ -184,16 +243,11 @@
     c.fillStyle = palette.gold + 'bb';
     c.fillText('FLIP  A · D  or  ← →     PLUNGE  SPACE     NUDGE  Q · W · E', 500, 1656);
     c.restore();
-    for (const [glyph, gx, gy, gr, gc] of geo.paint?.decals || []) {     // custom-table decals painted under the glass
+    for (const [glyph, gx, gy, gr, gc, fx] of geo.paint?.decals || []) {     // custom-table decals painted under the glass (lights are drawn live: see lights())
+      if (fx) continue;
       c.save(); c.translate(gx * 100, gy * 100); const u = gr * 100;
-      c.globalAlpha = .55; c.fillStyle = c.strokeStyle = gc; c.lineWidth = u * .16; c.lineJoin = 'round'; c.beginPath();
-      if (glyph === 'star') for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? u * .45 : u; c[i ? 'lineTo' : 'moveTo'](rr * Math.cos(a), rr * Math.sin(a)); }
-      else if (glyph === 'heart') { c.moveTo(0, u * .85); c.bezierCurveTo(-u * 1.3, u * .1, -u * .55, -u * .9, 0, -u * .3); c.bezierCurveTo(u * .55, -u * .9, u * 1.3, u * .1, 0, u * .85); }
-      else if (glyph === 'bolt') { c.moveTo(u * .2, -u); c.lineTo(-u * .55, u * .1); c.lineTo(-u * .05, u * .1); c.lineTo(-u * .2, u); c.lineTo(u * .55, -u * .2); c.lineTo(u * .05, -u * .2); }
-      else if (glyph === 'diamond') { c.moveTo(0, -u); c.lineTo(u * .65, 0); c.lineTo(0, u); c.lineTo(-u * .65, 0); }
-      else if (glyph === 'moon') { c.arc(0, 0, u, -Math.PI * .1, Math.PI * 1.1, false); c.arc(u * .38, -u * .1, u * .8, Math.PI * .85, -Math.PI * .2, true); }
-      else { c.arc(0, 0, u, 0, Math.PI * 2); c.moveTo(u * .62, 0); c.arc(0, 0, u * .62, 0, Math.PI * 2); }
-      c.closePath(); glyph === 'ring' ? c.stroke() : c.fill(); c.restore();
+      c.globalAlpha = .55; c.fillStyle = c.strokeStyle = gc; c.lineWidth = u * .16; c.lineJoin = 'round'; glyphPath(c, glyph, u);
+      glyph === 'ring' ? c.stroke() : c.fill(); c.restore();
     }
     c.fillStyle = palette.teal;
     c.font = 'bold 21px sans-serif';
@@ -221,5 +275,5 @@
     return canvas;
   }
 
-  window.PinballArt = { make: makeArt };
+  window.PinballArt = { make: makeArt, lights, glyphPath };
 })();

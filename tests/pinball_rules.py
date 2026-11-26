@@ -916,6 +916,16 @@ class TableSuggestionsAndTool(unittest.TestCase):
         packer = zlib.compressobj(wbits=-15)
         return "PT1." + base64.urlsafe_b64encode(packer.compress(json.dumps(spec).encode()) + packer.flush()).decode().rstrip("=")
 
+    def test_check_reports_where_balls_drain(self):
+        from games.pinball_tables import check
+        stats = check.check(self.GOOD, games=2)["stats"]
+        self.assertEqual(set(stats["drains"]), {"left_outlane", "left", "right", "right_outlane"})
+        self.assertAlmostEqual(sum(stats["drains"].values()), 100, delta=4)       # rounded shares of every ball that drained
+        from games.pinball_engine import Layout
+        flippers = ((3.22, 14.95, .42, -.66), (6.78, 14.95, 2.72, 3.8))
+        layout = Layout(rails=(), flippers=flippers, launch=(9, 15))
+        self.assertEqual([check.drain_lane(x, layout) for x in (.5, 3, 6, 8.2)], ["left_outlane", "left", "right", "right_outlane"])
+
     def test_suggestions_are_checked_on_arrival_and_the_tool_reads_them(self):
         import contextlib, io, json, os, tempfile
         import server
@@ -1271,6 +1281,88 @@ class CustomTables(unittest.TestCase):
         table = CustomTable(balls=99, layout_override=layout, post_used=True)
         table.staged = False
         return table
+
+    def test_main_flippers_can_be_repositioned_and_the_guides_follow(self):
+        from games.pinball_custom import build
+        layout, clean = build({"items": [["bump", 4, 5, .6, "#ff0000"]], "fl": [3.9, 15.2, 6.1, 14.6]})
+        left, right = layout.flippers[:2]
+        self.assertEqual((left[1], right[1]), (15.2, 14.6))
+        self.assertGreaterEqual(right[0] - left[0] - 2 * 1.56 * math.cos(left[2]), .5 - .02)       # too close together: pushed apart so the ball can drain
+        self.assertEqual(clean["fl"], [left[0], 15.2, right[0], 14.6])
+        self.assertEqual(layout.rails[-1][2:], (right[0], 14.6))                                    # the right inlane guide ends at the moved pivot
+        for classic in (False, True):
+            layout, _ = build({"items": [], "cabinet": "classic" if classic else "smooth", "fl": [2.4, 14.3, 7.6, 14.3]})
+            self.assertEqual((layout.flippers[0][:2], layout.flippers[1][:2]), ((layout.flippers[0][0], 14.3), (layout.flippers[1][0], 14.3)))
+            self.assertLessEqual(layout.flippers[1][0] - layout.flippers[0][0] - 2 * 1.56 * math.cos(layout.flippers[0][2]), 1.5 + .02)
+        self.assertNotIn("fl", build({"items": [], "fl": [3.22, 14.95, 6.78, 14.95]})[1])
+        self.assertNotIn("fl", build({"items": [], "fl": ["x", 1, 2, 3]})[1])
+
+    def test_decal_lights_are_cleaned_and_name_the_part_that_triggers_them(self):
+        from games.pinball_custom import build
+        spec = {"items": [["bump", 4, 5, .6, "#ff0000"], ["star", 2, 3, .6, "#ffd383"], ["moon", 6, 3, .6, "#ffd383"], ["heart", 5, 9, .6, "#ffd383"],
+                          ["ring", 5, 11, .6, "#ffd383"]],
+                "fx": [[1, {"m": "bogus", "c2": "nope", "r": 99, "on": "hit", "src": 0}], [2, {"m": "cycle", "c2": "#00FF00", "on": "timer", "ev": 5, "du": 50}],
+                       [3, {"on": "motion", "nr": 0}], [0, {"m": "flash"}], [9, {}], "x"]}
+        layout, clean = build(spec)
+        decals = {d[0]: d for d in layout.paint["decals"]}
+        self.assertEqual(decals["star"][5], {"m": "flash", "c2": "#ffffff", "r": 10.0, "tr": [{"on": "hit", "tag": "bumper0"}]})
+        self.assertEqual(decals["moon"][5], {"m": "cycle", "c2": "#00ff00", "r": 1.0, "tr": [{"on": "timer", "ev": 5.0, "du": 5.0}]})
+        self.assertEqual(decals["heart"][5]["tr"], [{"on": "motion", "nr": 0.3}])
+        self.assertEqual(len(decals["ring"]), 5)                                                   # no effect: painted into the art as before
+        self.assertEqual([i for i, _ in clean["fx"]], [1, 2, 3])                                 # only decals keep an effect
+        self.assertEqual(build(clean)[1]["fx"], clean["fx"])
+
+    def test_a_light_can_have_several_triggers_a_delay_and_game_events(self):
+        from games.pinball_custom import build
+        spec = {"items": [["bump", 4, 5, .6, "#ff0000"], ["dot", 2, 3, .2, "#ffffff"]],
+                "fx": [[1, {"m": "flash", "on": "event", "gv": "jackpot", "dl": 99, "ho": 3,
+                            "x": [{"on": "hit", "src": "bump"}, {"on": "timer", "ev": 10, "du": 1}, {"on": "motion"}, {"on": "bogus"}, "x"]}]]}
+        layout, clean = build(spec)
+        fx = layout.paint["decals"][0][5]
+        self.assertEqual(fx["tr"], [{"on": "event", "gv": "jackpot"}, {"on": "hit", "tag": "bumper*"}, {"on": "timer", "ev": 10.0, "du": 1.0}])   # three at most
+        self.assertEqual((fx["dl"], fx["ho"]), (10.0, 3.0))
+        self.assertEqual(clean["fx"][0][1]["x"][0], {"on": "hit", "src": "bump"})                  # the saved table keeps the part kind, not the tag
+        self.assertEqual(build(clean)[1]["fx"], clean["fx"])
+        bad = build({"items": [["dot", 2, 3, .2, "#ffffff"]], "fx": [[0, {"on": "event", "gv": "nope"}]]})[0].paint["decals"][0][5]
+        self.assertEqual(bad["tr"], [{"on": "event", "gv": "multiball"}])
+
+    def test_many_dot_lamps_with_up_to_four_colours(self):
+        from games.pinball_custom import build
+        items = [["dot", 1 + i * .6, 2, .15, "#ff0000"] for i in range(12)]
+        fx = [[0, {"m": "flash", "c2": "#00ff00", "c3": "#0000FF", "c4": "#ffff00"}], [1, {"m": "twinkle", "c2": "#00ff00", "c4": "#ffff00"}], [2, {"m": "cycle", "c2": "#00ff00", "c3": "nope"}]]
+        layout, clean = build({"items": items, "fx": fx})
+        lamps = layout.paint["decals"]
+        self.assertEqual(len(lamps), 12)
+        self.assertEqual((lamps[0][3], lamps[0][5]["c3"], lamps[0][5]["c4"]), (.15, "#0000ff", "#ffff00"))
+        self.assertNotIn("c4", lamps[1][5])               # a fourth colour needs a third
+        self.assertNotIn("c3", lamps[2][5])
+        self.assertEqual(lamps[1][5]["m"], "twinkle")
+        from games.base import GameError
+        with self.assertRaises(GameError):
+            build({"items": items + [["dot", 5, 5, .2, "#ffffff"]]})
+        self.assertEqual(build(clean)[1]["fx"], clean["fx"])
+
+    def test_a_cleared_target_bank_pays_and_resets_on_a_table_without_a_ramp(self):
+        from games.pinball_custom import build, build_rules
+        from games.pinball_engine import Table as EngineTable
+        spec = {"items": [["target", 1.2, 6.6, 1.2, 7.3, "#ff0000"], ["target", 1.2, 7.5, 1.2, 8.2, "#ff0000"]]}
+        layout, _ = build(spec)
+
+        class Plain(EngineTable):
+            pass
+        Plain.layout, Plain.rules = layout, build_rules(spec)
+        table = Plain(staged=False, x=1.49, y=7.65, vx=-10, vy=0, still_origin=(1.49, 7.65))
+        table.bank = 1                                   # the first target is already down
+        table.step()
+        self.assertEqual((table.event, table.bank), ("bank", 3))
+        self.assertEqual(table.score, 250 + 2000)
+        for _ in range(3 * 240 - 1):
+            table.step()
+        self.assertEqual(table.bank, 3)
+        table.step()
+        self.assertEqual(table.bank, 0)
+        # Golden Hour has a ramp: its bank is reset by the ramp shot, as before
+        self.assertEqual(Table().bank_ticks, 0)
 
     def test_custom_ramp_scores_and_exits_where_placed(self):
         table = self.table_with(["ramp", 5.0, 6.0, 7.0, 9.0, "#59edd2"])

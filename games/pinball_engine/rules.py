@@ -9,6 +9,8 @@ class Rules:
     bumper_jackpot: int = 200
     sling: int = 50
     target: int = 250
+    bank_points: int = 2000        # all the targets down on a table with no ramp to reset them: a bonus, then the bank pops back up
+    bank_ticks: int = 3 * 240      # how long the cleared bank stays down before it resets
     lane: int = 500
     skill: int = 5000
     spinner: int = 100

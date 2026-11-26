@@ -51,7 +51,7 @@ class Layout:
     guide_run: int = 2                # how many of the guide rails (from guides_from) are the violet inlane guides
     width: float = 10
     height: float = 17
-    ball: float = 0.19
+    ball: float = 0.21
     flipper_length: float = 1.56
     flipper_radius: float = 0.15
     skill_charge: tuple = (197, 228)

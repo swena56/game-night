@@ -6,7 +6,7 @@ from .base import Game, GameError
 from . import pinball_custom, pinball_tables
 from .pinball_engine import Layout, Rules, Table as EngineTable, flipper_pair
 
-WIDTH, HEIGHT, BALL = 10, 17, 0.19
+WIDTH, HEIGHT, BALL = 10, 17, 0.21
 LAUNCH = (9.4, 15.8)
 SKILL_CHARGE = (197, 228)
 JACKPOT_TICKS = 20 * 240
@@ -151,6 +151,18 @@ def official_spec(key):
 
 TABLES = {"golden": ("Golden Hour", Table), "neon": ("Neon Arcade", NeonTable), "custom": ("My table", CustomTable),
           **{table_id: (entry["name"], CustomTable) for table_id, entry in CURATED.items()}}
+
+
+def refresh_curated():
+    """Re-read games/pinball_tables after the local editor saved or deleted a table, so the lobby and gallery follow without a restart."""
+    CURATED.clear()
+    CURATED.update(pinball_tables.load())
+    for table_id in [t for t in TABLES if t.startswith("t_")]:
+        del TABLES[table_id]
+    TABLES.update({table_id: (entry["name"], CustomTable) for table_id, entry in CURATED.items()})
+    Pinball.settings_schema["table"] = ("Table", [("golden", "🌇 Golden Hour"), ("neon", "🌃 Neon Arcade"),
+                                                  *((table_id, f"⭐ {entry['name']}") for table_id, entry in CURATED.items()),
+                                                  ("custom", "🛠️ My table (from the editor)")], "golden")
 
 
 class Pinball(Game):

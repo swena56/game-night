@@ -8,7 +8,7 @@
   const messages = {
     skill: 'Skill shot +5,000', spinner: 'Spinner +100', ramp: 'Ramp +6,000 · Jackpot lit', jackpot: 'Jackpot +12,000', save: 'Ball saved · Auto launch',
     tilt: 'TILT · scoring suspended', nudge: 'Table nudged', mult: 'Multiplier up!', kickback: 'Kickback!', extra: 'EXTRA BALL!', post: 'Centre post save!', hurry: 'HURRY-UP +15,000', super: 'SUPER JACKPOT +50,000',
-    mystery_points: 'Mystery · +10,000', mystery_save: 'Mystery · Ball save 10s', mystery_mult: 'Mystery · Multiplier up!', mystery_hold: 'Mystery · Bonus held', lock: 'Ball locked', mission: 'Mission complete +5,000', wizard: 'WIZARD MODE · Four balls, jackpots lit!', multiball: 'MULTIBALL · Shoot the ramp for jackpots +5,000',
+    mystery_points: 'Mystery · +10,000', mystery_save: 'Mystery · Ball save 10s', mystery_mult: 'Mystery · Multiplier up!', mystery_hold: 'Mystery · Bonus held', lock: 'Ball locked', mission: 'Mission complete +5,000', bank: 'Target bank cleared +2,000', wizard: 'WIZARD MODE · Four balls, jackpots lit!', multiball: 'MULTIBALL · Shoot the ramp for jackpots +5,000',
     portal: 'Portal +250', hole: 'Kicker hole +1,000', mover: 'Moving target +300', saucer: 'Saucer +1,000', subway: 'Subway +2,000', magnet: 'Magnet grab +1,500', special: 'SPECIAL · Ball save +5,000', danger: 'DANGER · One more nudge tilts', rampfall: 'Ramp shot fell back', orbit: 'Orbit +3,000', search: 'Ball search', drain: 'Ball drained', done: 'Run complete', recovery: 'Ball freed',
   };
   const sounds = { portal: 'psave', skill: 'pskill', ramp: 'pramp', jackpot: 'pjackpot', save: 'psave', tilt: 'wrong', nudge: 'thud', mult: 'cheer', kickback: 'pkick', extra: 'pknock', danger: 'wrong', rampfall: 'rail', search: 'pkick', post: 'psave', hurry: 'pjackpot', super: 'pjackpot', mystery_points: 'cheer', mystery_save: 'psave', mystery_mult: 'cheer', mystery_hold: 'pskill', lock: 'psave', multiball: 'pjackpot', wizard: 'pjackpot', mission: 'cheer', saucer: 'ptarget', subway: 'pramp', magnet: 'pskill', special: 'psave', orbit: 'pramp', search: 'pkick', bonus: 'cheer', spinner: 'pspin', drain: 'groan', done: 'groan' };
@@ -197,6 +197,63 @@
     return size;
   }
 
+  // When each part was last hit (by event id, so two quick hits on the same bumper both count) and when a held ball was last kicked out,
+  // so a part's hit animation runs its full length even if another event arrives first. age(tag, now, ms) is 0 at the hit and 1 when it is over.
+  const hitTracker = () => {
+    const at = new Map();
+    let id = null, held = false;
+    return {
+      note(row, now) {
+        if (row[EVENT_ID] !== id) { if (id !== null && row[EVENT]) at.set(row[EVENT], now); id = row[EVENT_ID]; }
+        const hold = !!row[STATS]?.hold;
+        if (held && !hold) at.set('eject', now);
+        held = hold;
+      },
+      age(tag, now, ms) { const t = at.get(tag); return t === undefined ? 1 : Math.min(1, Math.max(0, (now - t) / ms)); },
+    };
+  };
+  // The plunger head follows the pull while it is held; on release it springs past rest and settles (a damped spring) instead of snapping back.
+  const plungerSpring = () => {
+    const st = { x: 0, v: 0, at: 0 };
+    return (target, now, still) => {
+      const dt = Math.min(.05, (now - (st.at || now)) / 1000);
+      st.at = now;
+      if (target > 0 || still) { st.x = target; st.v = 0; } else { st.v += (-170 * st.x - 9 * st.v) * dt; st.x += st.v * dt; }
+      return st.x;
+    };
+  };
+  // A kicker or saucer: a ring closes in on the hole when it catches the ball, and when it fires the ball out a bright ring and rays burst
+  // away (along the eject direction for a kicker hole). Only the hole nearest the ball animates, as the engine's events do not say which.
+  function kickerBurst(c, x, y, r, ball, holes, i, hits, now, angle) {
+    if (calm()) return;
+    const nearest = holes.reduce((best, h, k) => (Math.hypot(h[0] - ball[0], h[1] - ball[1]) < Math.hypot(holes[best][0] - ball[0], holes[best][1] - ball[1]) ? k : best), 0);
+    if (nearest !== i && holes.length > 1) return;
+    const take = hits.age('hole', now, 520), take2 = hits.age('saucer', now, 520), eject = hits.age('eject', now, 520);
+    const grab = Math.min(take, take2);
+    if (grab < 1) {
+      c.beginPath(); c.arc(x, y, r + .08 + .9 * grab, 0, Math.PI * 2);
+      c.strokeStyle = `rgba(255,240,202,${.8 * (1 - grab)})`; c.lineWidth = .07 * (1 - grab) + .01; c.stroke();
+    }
+    if (eject < 1) {
+      const reach = .35 + 1.3 * eject;
+      c.strokeStyle = `rgba(255,211,131,${.9 * (1 - eject)})`; c.lineWidth = .06 * (1 - eject) + .01;
+      c.beginPath(); c.arc(x, y, r + .08 + .5 * eject, 0, Math.PI * 2); c.stroke();
+      for (let k = 0; k < 8; k++) {
+        const th = angle === null || angle === undefined ? k * Math.PI / 4 : angle + (k - 3.5) * .22, co = Math.cos(th), si = Math.sin(th);
+        c.beginPath(); c.moveTo(x + co * (r + .1), y + si * (r + .1)); c.lineTo(x + co * (r + .1 + reach), y + si * (r + .1 + reach)); c.stroke();
+      }
+    }
+  }
+  // what a decal light can react to: the ball(s), the last event, and the game states that last (multiball, a jackpot round, a ball save, tilt, hurry-up)
+  const lampEnv = (row, ball, others, flash) => {
+    const states = new Set();
+    if (row[OTHERS]?.length) states.add('multiball');
+    if (row[JACKPOT] > 0) states.add('jackpot');
+    if (row[SAVE] > 0 && !row[STAGED]) states.add('save');
+    if (row[TILT]) states.add('tilt');
+    if (row[HURRY] > 0) states.add('hurry');
+    return { balls: row[BALLS] ? [ball, ...others] : [], flash, states, calm: calm() };
+  };
   function flatRenderer(stage, geo, art) {
     const still = calm();
     const size = sizeOf(stage);
@@ -267,8 +324,12 @@
       c.fill();
     };
     const rail = ([ax, ay, bx, by], color, width) => line([[ax, ay], [bx, by]], width, color);
+    const lamps = PinballArt.lights(geo);       // decals with a light effect are drawn live, not baked into the art
+    const hits = hitTracker(), plungeAt = plungerSpring();
     return {
       draw(row, ball, flash, trail = [], gate = 0, others = []) {
+        const tNow = performance.now();
+        hits.note(row, tNow);
         const ratio = GL3.level() === 'low' ? 1 : Math.min(1.5, window.devicePixelRatio || 1);
         const width = Math.round(size.w * ratio);
         const height = Math.round(size.h * ratio);
@@ -287,6 +348,12 @@
         c.setTransform(width / 11, 0, 0, height / 18.7, width / 22, height * .85 / 18.7);
         c.clearRect(-.5, -.85, 11, 18.7);
         c.lineCap = 'round';
+        if (lamps.count) {
+          for (const l of lamps.update(performance.now(), lampEnv(row, ball, others, flash))) {
+            c.save(); c.translate(l.x, l.y); c.globalAlpha = l.alpha * .8; c.fillStyle = c.strokeStyle = l.color; c.lineWidth = l.r * .16; c.lineJoin = 'round';
+            PinballArt.glyphPath(c, l.glyph, l.r); l.glyph === 'ring' ? c.stroke() : c.fill(); c.restore();
+          }
+        }
         geo.rails.forEach((r, i) => {
           rail(r, '#17152f', .3);
           rail(r, railTrim(geo, i, palette.steel), .14);
@@ -354,6 +421,7 @@
           const col = paintOf(geo, 'holes', i, palette.gold), a = ha * Math.PI / 180;
           disc(hx, hy, hr + .07, '#252049'); disc(hx, hy, hr, row[EVENT] === 'hole' ? '#fff0ca88' : '#0c0a1c');
           rail([hx + Math.cos(a) * hr * .6, hy + Math.sin(a) * hr * .6, hx + Math.cos(a) * (hr + .3), hy + Math.sin(a) * (hr + .3)], col, .08);
+          kickerBurst(c, hx, hy, hr, ball, geo.holes, i, hits, tNow, a);
         });
         (geo.flaps || []).forEach((r, i) => {          // one-way flaps: a thin hinged gate with a hinge dot
           rail(r, '#17152f', .2); rail(r, paintOf(geo, 'flaps', i, palette.gold), .09); disc(r[0], r[1], .1, palette.ivory);
@@ -368,10 +436,42 @@
         }
         (geo.posts || []).forEach(([x, y, r], i) => { disc(x, y, r + .05, '#252049'); disc(x, y, r, row[STATS]?.post > 0 ? palette.gold : paintOf(geo, 'posts', i, palette.ivory)); });
         geo.slings.forEach((r, i) => {
-          rail(r, '#252049', .34);
-          rail(r, flash === 'sling' + i ? palette.ivory : paintOf(geo, 'slings', i, palette.red), flash === 'sling' + i ? .15 : .23);   // the rubber squashes under the kick
+          // a kick: the rubber squashes flat, springs past its rest width and settles; the bar flares and sparks fly off it toward the table
+          const age = hits.age('sling' + i, tNow, 460), kick = 1 - age;
+          const width = still ? .23 : .23 + (age < .2 ? -.11 * (1 - age / .2) : .08 * Math.exp(-(age - .2) * 7));
+          rail(r, '#252049', .34 + (still ? 0 : .08 * kick));
+          if (!still && age < 1) {
+            rail(r, `rgba(255,243,168,${.5 * kick})`, .3 + .5 * kick);
+            const mx = (r[0] + r[2]) / 2, my = (r[1] + r[3]) / 2;
+            let nx = r[3] - r[1], ny = r[0] - r[2];
+            const nl = Math.hypot(nx, ny) || 1;
+            nx /= nl; ny /= nl;
+            if (nx * (5 - mx) + ny * (8 - my) < 0) { nx = -nx; ny = -ny; }
+            c.strokeStyle = `rgba(255,243,168,${.9 * kick})`;
+            c.lineWidth = .045;
+            for (let k = -2; k <= 2; k++) {
+              const t = .5 + k * .17, bx = r[0] + (r[2] - r[0]) * t, by = r[1] + (r[3] - r[1]) * t, reach = .25 + .75 * age;
+              c.beginPath();
+              c.moveTo(bx + nx * .25, by + ny * .25);
+              c.lineTo(bx + nx * (.25 + reach) + ny * k * .06, by + ny * (.25 + reach) - nx * k * .06);
+              c.stroke();
+            }
+          }
+          rail(r, kick > .55 ? palette.ivory : paintOf(geo, 'slings', i, palette.red), Math.max(.08, width));
         });
-        geo.targets.forEach((r, i) => rail(r, flash === 'target' + i ? palette.ivory : row[BANK] & (1 << i) ? '#38325c' : paintOf(geo, 'targets', i, palette.red), .28));
+        geo.targets.forEach((r, i) => {
+          rail(r, flash === 'target' + i ? palette.ivory : row[BANK] & (1 << i) ? '#38325c' : paintOf(geo, 'targets', i, palette.red), .28);
+          const age = hits.age('target' + i, tNow, 420);
+          if (!still && age < 1) {            // a hit: a flash along the target and sparks off its face
+            rail(r, `rgba(255,243,168,${.6 * (1 - age)})`, .28 + .3 * (1 - age));
+            const mx = (r[0] + r[2]) / 2, my = (r[1] + r[3]) / 2;
+            c.strokeStyle = `rgba(255,243,168,${.9 * (1 - age)})`; c.lineWidth = .04;
+            for (let k = 0; k < 5; k++) {
+              const th = (k - 2) * .5, co = Math.cos(th), si = Math.sin(th), d0 = .22, d1 = .22 + .7 * age;
+              c.beginPath(); c.moveTo(mx + co * d0, my + si * d0); c.lineTo(mx + co * d1, my + si * d1); c.stroke();
+            }
+          }
+        });
         FLASHERS.forEach(([fx, fy], i) => {
           const color = flasherColor(row, flash);
           disc(fx, fy, .26, '#17152f');
@@ -385,23 +485,38 @@
         // during a jackpot round or multiball the bumper caps chase in gold
         const chase = !row[TILT] && (jackpotLit(row) || row[STATS]?.streak >= 2) ? Math.floor(performance.now() / 180) % geo.bumps.length : -1;
         geo.bumps.forEach(([x, y, radius], i) => {
-          disc(x, y, radius, '#252049');
-          if (flash === 'bumper' + i) {
-            if (rippleTag !== flash) { rippleTag = flash; rippleAt = performance.now(); }
-            const age = Math.min(1, (performance.now() - rippleAt) / 420);
-            if (!still) {
-            c.beginPath();
-            c.arc(x, y, radius + .1 + age * .75, 0, Math.PI * 2);
-            c.strokeStyle = `rgba(255,243,168,${.8 * (1 - age)})`;
-            c.lineWidth = .07 * (1 - age) + .01;
-            c.stroke();
+          // a hit: the whole bumper pops out and rings back to rest, two shock rings and a starburst fly out, and a bloom lights the felt
+          const age = hits.age('bumper' + i, tNow, 600), pop = 1 - age, hit = age < .3;
+          const spring = still ? 1 : 1 + .22 * Math.exp(-5 * age) * Math.cos(age * 15), rr = radius * spring;
+          if (!still && age < 1) {
+            disc(x, y, radius + .55 * pop, `rgba(255,243,168,${.32 * pop * pop})`);
+            for (const [delay, grow, width] of [[0, 1.3, .1], [.22, 1, .06]]) {
+              const a = Math.min(1, Math.max(0, age - delay) / (1 - delay));
+              if (a > 0 && a < 1) {
+                c.beginPath();
+                c.arc(x, y, radius + .1 + a * grow, 0, Math.PI * 2);
+                c.strokeStyle = `rgba(255,243,168,${.85 * (1 - a)})`;
+                c.lineWidth = width * (1 - a) + .01;
+                c.stroke();
+              }
             }
-            disc(x, y, radius + .12, '#fff3a8');
-            disc(x, y, radius + .02, '#211c3d');
+            if (age < .55) {
+              c.strokeStyle = `rgba(255,255,255,${.9 * (1 - age / .55)})`;
+              c.lineWidth = .05;
+              for (let k = 0; k < 8; k++) {
+                const th = k * Math.PI / 4 + Math.PI / 8, co = Math.cos(th), si = Math.sin(th);
+                c.beginPath();
+                c.moveTo(x + co * (radius + .14 + age * .5), y + si * (radius + .14 + age * .5));
+                c.lineTo(x + co * (radius + .32 + age * 1.2), y + si * (radius + .32 + age * 1.2));
+                c.stroke();
+              }
+            }
           }
-          disc(x, y - .035, radius - (flash === 'bumper' + i ? .14 : .08), flash === 'bumper' + i ? palette.ivory : chase === i ? palette.gold : paintOf(geo, 'bumps', i, bumperColors[i]));   // the skirt dips on a hit
-          disc(x, y - .07, radius - .24, '#30244f');
-          disc(x, y - .12, .18, palette.ivory);
+          disc(x, y, rr, '#252049');
+          if (hit) { disc(x, y, rr + .12, '#fff3a8'); disc(x, y, rr + .02, '#211c3d'); }
+          disc(x, y - .035, rr - (hit ? .14 : .08), hit ? palette.ivory : chase === i ? palette.gold : paintOf(geo, 'bumps', i, bumperColors[i]));   // the skirt dips on a hit
+          disc(x, y - .07, rr - .24, '#30244f');
+          disc(x, y - .12, .18 * spring, palette.ivory);
         });
         const sweep = laneSweep(sweepState, flash, geo.lanes.length);
         geo.lanes.forEach(([x, y], i) => {
@@ -421,6 +536,7 @@
           const [ux, uy, ur] = geo.saucer;
           disc(ux, uy, ur + .07, '#252049');
           disc(ux, uy, ur, row[EVENT] === 'saucer' ? '#fff0ca88' : row[STATS]?.hold && Math.floor(performance.now() / 150) % 2 ? palette.gold : '#0c0a1c');   // the lamp flashes while the ball is held
+          kickerBurst(c, ux, uy, ur, ball, [geo.saucer], 0, hits, tNow, null);
         }
         if (geo.subway) {
           const [wx, wy, wr] = geo.subway;
@@ -452,8 +568,18 @@
           disc(x, y, .1, palette.gold);
         });
         const [launchX, launchY] = geo.launch;
-        const plungerY = launchY + .39 + .25 * row[CHARGE] / 240;
-        rail([launchX - .22, plungerY, launchX + .22, plungerY], palette.gold, .19);
+        const pull = plungeAt(row[CHARGE] / 240, tNow, still), plungerY = launchY + .39 + .25 * pull, baseY = 17.15;
+        // the launch spring: a coil that squeezes (and warms to gold) as the plunger is pulled, a rod down its middle and a domed head
+        const coil = [];
+        for (let i = 0; i <= 18; i++) coil.push([launchX + (i % 2 ? .19 : -.19) * (i && i < 18 ? 1 : 0), plungerY + .12 + (baseY - plungerY - .12) * i / 18]);
+        rail([launchX, plungerY, launchX, baseY, ], '#2b2750', .09);
+        line(coil, .085, '#17152f');
+        line(coil, .05, pull > .8 ? palette.gold : palette.steel);
+        line(coil.map(([x, y]) => [x - .02, y]), .014, '#ffffff66');
+        if (pull > .02) disc(launchX, plungerY, .34, `rgba(255,211,131,${.28 * pull})`);
+        rail([launchX - .2, plungerY, launchX + .2, plungerY], '#17152f', .27);
+        rail([launchX - .2, plungerY, launchX + .2, plungerY], palette.gold, .19);
+        rail([launchX - .15, plungerY - .05, launchX + .15, plungerY - .05], '#fff0ca99', .035);
         if (row[BALLS] && ball[2] > -.5) {
           const tint = TRAIL_TINT[Math.min(row[MULT], 5) - 1] || TRAIL_TINT[0];
           trail.forEach(([tx, ty], i) => disc(tx, ty, geo.radius * (.3 + .5 * i / trail.length), `rgba(${tint},${.05 + .14 * i / trail.length})`));
@@ -592,6 +718,20 @@
     const bed = mesh(new T.PlaneGeometry(10, 17), bedMaterial, 5, 8.5, 0);
     bed.rotation.x = -Math.PI / 2;
     bed.castShadow = false;
+    // decals with a light effect: a white glyph texture tinted and faded every frame, just above the printed art
+    const lamps = PinballArt.lights(geo), lampMeshes = [];
+    for (const [glyph, x, y, r] of (geo.paint?.decals || []).filter((d) => d[5])) {
+      const glyphCanvas = document.createElement('canvas');
+      glyphCanvas.width = glyphCanvas.height = 128;
+      const gc = glyphCanvas.getContext('2d');
+      gc.translate(64, 64); gc.fillStyle = gc.strokeStyle = '#fff'; gc.lineWidth = 8; gc.lineJoin = 'round';
+      PinballArt.glyphPath(gc, glyph, 50); glyph === 'ring' ? gc.stroke() : gc.fill();
+      const lampMesh = new T.Mesh(new T.PlaneGeometry(r * 2.56, r * 2.56), new T.MeshBasicMaterial({ map: new T.CanvasTexture(glyphCanvas), transparent: true, depthWrite: false }));
+      lampMesh.position.set(x, .02, y);
+      lampMesh.rotation.x = -Math.PI / 2;
+      scene.add(lampMesh);
+      lampMeshes.push(lampMesh);
+    }
     for (const x of [-.26, 10.26]) rail([x, -.37, x, 17.4], .24, .23, .1, chrome);
     for (const y of [-.37, 17.4]) rail([-.23, y, 10.23, y], .22, .23, .1, brass);
     geo.rails.forEach((r, i) => {
@@ -658,20 +798,35 @@
       for (const [px, py] of [[x1, y1], [x2, y2]]) { disc(px, py, pr + .07, .05, .03, brass); disc(px, py, pr, .06, .05, lamp('portal', col, row => row[EVENT] === 'portal' ? palette.ivory : null)); }
     }
     (geo.posts || []).forEach(([x, y, r], i) => disc(x, y, r, .4, .2, lamp('post', paintOf(geo, 'posts', i, '#f2ecdd'), (row) => row[STATS]?.post > 0 ? palette.gold : null)));
+    const hits = hitTracker(), plungeAt = plungerSpring(), slingBars = [], bumperParts = [], bumperRings = [];
+    const flashRing = (x, y, r, color) => {            // a flat ring that expands and fades: shock rings for bumpers, pulses for kickers
+      const ring = new T.Mesh(new T.TorusGeometry(r, .035, 6, 36), new T.MeshBasicMaterial({ color, transparent: true, opacity: 0, depthWrite: false }));
+      ring.position.set(x, .4, y);
+      ring.rotation.x = Math.PI / 2;
+      ring.visible = false;
+      scene.add(ring);
+      return ring;
+    };
     geo.slings.forEach((r, i) => {
       rail(r, .5, .2, .17, rubberDark);
-      rail(r, .28, .15, .33, lamp('sling' + i, paintOf(geo, 'slings', i, palette.red)));
+      slingBars.push(rail(r, .28, .15, .33, lamp('sling' + i, paintOf(geo, 'slings', i, palette.red))));
     });
     geo.targets.forEach((r, i) =>
       rail(r, .26, .58, .3, lamp('target' + i, paintOf(geo, 'targets', i, palette.red), row => row[BANK] & (1 << i) ? '#38325c' : paintOf(geo, 'targets', i, palette.red))));
     geo.bumps.forEach(([x, y, radius], i) => {
-      disc(x, y, radius - .05, .31, .18, chrome);
-      disc(x, y, radius, .14, .33, rubberRed);
-      disc(x, y, radius - .09, .13, .46, lamp('bumper' + i, paintOf(geo, 'bumps', i, bumperColors[i]),
-        (row) => !row[TILT] && (jackpotLit(row) || row[STATS]?.streak >= 2) && Math.floor(performance.now() / 180) % geo.bumps.length === i ? palette.gold : null));
-      disc(x, y, radius - .25, .09, .55, dark);
-      disc(x, y, .18, .03, .61, brass);
+      const parts = [
+        disc(x, y, radius - .05, .31, .18, chrome),
+        disc(x, y, radius, .14, .33, rubberRed),
+        disc(x, y, radius - .09, .13, .46, lamp('bumper' + i, paintOf(geo, 'bumps', i, bumperColors[i]),
+          (row) => !row[TILT] && (jackpotLit(row) || row[STATS]?.streak >= 2) && Math.floor(performance.now() / 180) % geo.bumps.length === i ? palette.gold : null)),
+        disc(x, y, radius - .25, .09, .55, dark),
+        disc(x, y, .18, .03, .61, brass),
+      ];
+      parts.forEach((part) => { part.userData.y0 = part.position.y; });
+      bumperParts.push(parts);
+      bumperRings.push([flashRing(x, y, radius + .1, '#fff3a8'), flashRing(x, y, radius + .1, '#ffffff')]);
     });
+    const kickerRings = [...(geo.holes || []).map(([x, y, r]) => [x, y, r]), ...(geo.saucer ? [geo.saucer] : [])].map(([x, y, r]) => ({ x, y, r, grab: flashRing(x, y, r + .08, '#fff0ca'), out: flashRing(x, y, r + .08, '#ffd383') }));
     geo.lanes.forEach(([x, y], i) => {
       disc(x, y, .29, .075, .05, brass);
       disc(x, y, .21, .04, .1, lamp('lane' + i, paintOf(geo, 'lanes', i, palette.teal), (row) => row[STAGED] && row[STATS]?.skill_lane === i ? palette.gold : null));
@@ -749,7 +904,15 @@
       dot.visible = false;
       return dot;
     });
-    const plunger = box(.43, .49, .32, brass, geo.launch[0], geo.launch[1] + .4, .16);
+    // the plunger: a brass head on a rod, over a coil spring that squeezes when the plunger is pulled back
+    const plunger = disc(geo.launch[0], geo.launch[1] + .4, .22, .16, .16, brass);
+    box(.09, 1.1, .09, chrome, geo.launch[0], 16.75, .14);
+    const springRings = Array.from({ length: 10 }, () => {
+      const ring = new T.Mesh(new T.TorusGeometry(.17, .028, 6, 16), chrome);
+      ring.position.set(geo.launch[0], .15, 0);
+      scene.add(ring);
+      return ring;
+    });
     const canvas = renderer.domElement;
     canvas.className = 'pb-three';
     stage.prepend(canvas);
@@ -778,6 +941,31 @@
             dot.material.opacity = .08 + .25 * (i + 1) / dots.length;
           }
         });
+        const tNow = performance.now();
+        hits.note(row, tNow);
+        geo.bumps.forEach((_, i) => {
+          // a hit: the whole bumper pops up and rings back to rest while two shock rings expand across the felt
+          const age = hits.age('bumper' + i, tNow, 600), spring = still ? 1 : 1 + .22 * Math.exp(-5 * age) * Math.cos(age * 15);
+          bumperParts[i].forEach((part) => { part.scale.set(spring, 1, spring); part.position.y = part.userData.y0 + Math.max(0, spring - 1) * .9; });
+          bumperRings[i].forEach((ring, k) => {
+            const a = Math.min(1, Math.max(0, age - k * .22) / (1 - k * .22));
+            ring.visible = !still && age < 1 && a > 0 && a < 1;
+            if (ring.visible) { ring.scale.setScalar(1 + a * (k ? 1.4 : 1.9)); ring.material.opacity = .85 * (1 - a); }
+          });
+        });
+        slingBars.forEach((bar, i) => {
+          const age = hits.age('sling' + i, tNow, 460), squash = still ? 0 : age < .2 ? -.5 * (1 - age / .2) : .3 * Math.exp(-(age - .2) * 7);
+          bar.scale.set(1, 1 + squash, 1 + squash * 1.6);
+        });
+        const grabAge = Math.min(hits.age('hole', tNow, 520), hits.age('saucer', tNow, 520)), ejectAge = hits.age('eject', tNow, 520);
+        const near = kickerRings.reduce((best, k, n) => (Math.hypot(k.x - ball[0], k.y - ball[1]) < Math.hypot(kickerRings[best].x - ball[0], kickerRings[best].y - ball[1]) ? n : best), 0);
+        kickerRings.forEach((k, n) => {
+          const mine = n === near, g = mine && !still && grabAge < 1, e = mine && !still && ejectAge < 1;
+          k.grab.visible = g; k.out.visible = e;
+          if (g) { k.grab.scale.setScalar(1 + 2.2 * (1 - grabAge)); k.grab.material.opacity = .8 * (1 - grabAge); }      // closes in on the hole
+          if (e) { k.out.scale.setScalar(1 + 3 * ejectAge); k.out.material.opacity = .9 * (1 - ejectAge); }             // bursts out
+        });
+        if (lampMeshes.length) lamps.update(performance.now(), lampEnv(row, ball, others, flash)).forEach((l, i) => { lampMeshes[i].material.color.set(l.color); lampMeshes[i].material.opacity = l.alpha; });
         if (gateFlap) gateFlap.rotation.y = -(Math.PI / 2 - 1.25 * gate);
         while (extraBalls.length < others.length) extraBalls.push(mesh(new T.SphereGeometry(geo.radius, 20, 14), ballSteel, 0, 0, 0));
         extraBalls.forEach((m, i) => {
@@ -800,7 +988,8 @@
         sphere.scale.setScalar(bumperHit ? 1.28 : 1);
         moverMeshes.forEach((m, i) => { const p = row[STATS]?.movers?.[i]; if (p) m.position.set(p[0], .3, p[1]); });
         paddles.forEach((paddle, i) => { paddle.rotation.y = -(i < 2 ? ball[3 + i] : row[STATS]?.flips2?.[i - 2] ?? geo.flips[i][2]); });
-        plunger.position.z = geo.launch[1] + .4 + .33 * row[CHARGE] / 240;
+        plunger.position.z = geo.launch[1] + .4 + .33 * plungeAt(row[CHARGE] / 240, tNow, still);
+        springRings.forEach((ring, i) => { ring.position.z = plunger.position.z + .14 + (17.1 - plunger.position.z - .14) * (i + .5) / springRings.length; });
         if (spinner) spinner.rotation.x = row[SPIN] * 2 * Math.PI;
         const pulse = .58 + .32 * Math.sin(performance.now() / 190);
         const sweep = laneSweep(sweepState, flash, geo.lanes.length);
@@ -823,6 +1012,7 @@
         lighting.key.shadow.map?.dispose();
         lighting.dispose();
         texture.dispose();
+        lampMeshes.forEach((m) => m.material.map.dispose());
         const materials = new Set();
         scene.traverse((obj) => {
           obj.geometry?.dispose();

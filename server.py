@@ -1547,6 +1547,31 @@ def list_feedback():
     return {"items": items[::-1]}
 
 
+def save_listed_table(body):
+    """Localhost only: write or overwrite one table of the curated list (games/pinball_tables) from the editor."""
+    from games import pinball, pinball_tables
+    slug = body.get("slug")
+    slug = pinball_tables.save(body.get("name"), body.get("blurb"), body.get("author"), body.get("spec"), slug if isinstance(slug, str) else None)
+    pinball.refresh_curated()
+    return {"ok": True, "slug": slug, "id": "t_" + slug}
+
+
+def check_table(body):
+    """Localhost only: play the table with the test bot (a few games) and report how it plays, for the editor's Check table button."""
+    from games.pinball_tables import check
+    spec = body.get("table")
+    if not isinstance(spec, dict):
+        raise GameError("Bad table.")
+    return check.check(spec, games=3)
+
+
+def delete_listed_table(body):
+    from games import pinball, pinball_tables
+    pinball_tables.delete(body.get("slug"))
+    pinball.refresh_curated()
+    return {"ok": True}
+
+
 def set_feedback_status(body):
     if body.get("status") not in ("open", "done") or not isinstance(body.get("id"), int):
         raise GameError("Bad status.")
@@ -1812,6 +1837,10 @@ class Handler(BaseHTTPRequestHandler):
         """The feedback inbox is only for whoever runs the server, on that device."""
         return self.client_address[0] in ("127.0.0.1", "::1", "::ffff:127.0.0.1")
 
+    def dev_local(self):
+        """Writing to the repo is for someone sitting at the server: loopback, and not through a reverse proxy on the same machine."""
+        return self.local() and not any(self.headers.get(h) for h in ("X-Forwarded-For", "X-Real-IP", "Forwarded"))
+
     EDITOR_FILES = ("/pinball-editor.html", "/pinball-editor.js", "/pinball-editor.css")
 
     def editor_ok(self):
@@ -1829,10 +1858,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(200, {"tables": [{"id": k, "name": names[k], "blurb": BLURBS[k], "spec": v} for k, v in clone_specs().items()]})
         if url.path == "/api/pinball-tables":   # the curated tables, for the editor's gallery
             from games.pinball import CURATED
-            return self.send_json(200, {"tables": [{"id": i, "name": e["name"], "blurb": e["blurb"], "author": e["author"], "spec": e["spec"]}
+            return self.send_json(200, {"tables": [{"id": i, "name": e["name"], "slug": e["slug"], "blurb": e["blurb"], "author": e["author"], "spec": e["spec"]}
                                                    for i, e in CURATED.items()]})
         if url.path == "/api/dev":
-            return self.send_json(200, {"editor": self.editor_ok()})
+            return self.send_json(200, {"editor": self.editor_ok(), "local": self.dev_local() and self.editor_ok()})
         if url.path == "/api/feedback":
             if not self.local():
                 return self.send_json(403, {"error": "Open the feedback inbox on the device running the server."})
@@ -1894,6 +1923,10 @@ class Handler(BaseHTTPRequestHandler):
                   "/api/feedback": submit_feedback, "/api/axe-debug": log_axe_debug}
         if self.local():
             routes["/api/feedback/status"] = set_feedback_status
+        if self.dev_local() and self.editor_ok():
+            routes["/api/pinball-tables/save"] = save_listed_table
+            routes["/api/pinball-tables/delete"] = delete_listed_table
+            routes["/api/pinball-check"] = check_table
         path = urlparse(self.path).path
         route = routes.get(path)
         try:
@@ -1903,7 +1936,7 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             self.close_connection = True
             return self.send_json(400, {"error": "Invalid request body length."})
-        if not route or length > (PROFILE_WITH_BENCHMARKS_MAX if path == "/api/profile/put" else 10_000):
+        if not route or length > (PROFILE_WITH_BENCHMARKS_MAX if path == "/api/profile/put" else 200_000 if path in ("/api/pinball-tables/save", "/api/pinball-check") else 10_000):
             self.close_connection = True   # the unread body would otherwise be parsed as the next request
             return self.send_json(404 if not route else 413, {"error": "Not found" if not route else "Too large"})
         if path in REQUEST_LIMITS:

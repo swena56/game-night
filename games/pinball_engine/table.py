@@ -118,6 +118,7 @@ class Table:
     last_points: int = 0
     mystery_due: bool = False
     hurry_ticks: int = 0
+    bank_ticks: int = 0          # a cleared target bank on a ramp-less table resets when this runs out
     mb_save_ticks: int = 0
     post_used: bool = False
     mode: str = "classic"      # classic | zen (no tilt) | practice (endless balls) | timeattack (a clock ends the run)
@@ -475,6 +476,9 @@ class Table:
                 if lay.lanes and spot != (1 << len(lay.lanes)) - 1:
                     self.lane_bits = spot          # a target spots its rollover lane
                 self.signal(f"target{i}", self.pts("target", i, rules.target))
+                if not lay.ramp and not self.bank_ticks and self.bank == (1 << len(lay.targets)) - 1:
+                    self.bank_ticks = rules.bank_ticks         # nothing on this table resets the bank, so clearing it pays and then resets it
+                    self.signal("bank", rules.bank_points)
         if lay.special and self.special_lit() and not self.special_used and self.vy > 0 \
                 and lay.special[0] < self.x < lay.lane_x and self.y > lay.special[1]:
             self.special_used = True
@@ -596,6 +600,10 @@ class Table:
         self.jackpot_ticks = max(0, self.jackpot_ticks - 1)
         self.combo_ticks = max(0, self.combo_ticks - 1)
         self.hurry_ticks = max(0, self.hurry_ticks - 1)
+        if self.bank_ticks:
+            self.bank_ticks -= 1
+            if not self.bank_ticks:
+                self.bank = 0
         self.mb_save_ticks = max(0, self.mb_save_ticks - 1)
         if self.magnet_ticks:
             self.magnet_ticks -= 1

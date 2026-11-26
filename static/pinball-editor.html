@@ -19,7 +19,10 @@
       <button id="peSnap" aria-pressed="true" title="Snap parts to a grid">▦ Snap</button>
       <button id="peBank" title="Add a column of standup targets">🎯 Bank</button>
       <button id="peMirrorAll" title="Copy the left half of the table onto the right">⇋ Mirror table</button>
+      <button id="peLights" title="Run the decal light effects: the mouse is the ball, a selected part counts as hit">💡 Preview lights</button>
       <button id="peClear" title="Remove every part">Clear</button>
+      <button id="peCheck" title="Play this table with the test bot and report how it plays: score, ball time, where balls drain, parts never used (on the device running the server)">🔍 Check table</button>
+      <button id="peFeature" title="Add this table to the featured list everyone can pick, or overwrite the featured table with the same name (on the device running the server)">⭐ Feature</button>
       <button id="peTables" title="Templates and your saved tables">📁 Tables</button>
       <button id="peSuggest" title="Suggest this table for the table list everyone can pick">📮 Suggest</button>
       <button id="peShare" title="Get a share code, or load one">Share…</button>
@@ -49,6 +52,24 @@
         <label id="pePvRow">Points <input id="pePv" type="number" min="0" max="20000" step="50" placeholder="table default"></label>
         <div id="peModes" class="pe-modes"><span>Active in</span> <label><input type="checkbox" data-bit="1" checked> Classic</label> <label><input type="checkbox" data-bit="2" checked> Zen</label> <label><input type="checkbox" data-bit="4" checked> Practice</label> <label><input type="checkbox" data-bit="8" checked> Time attack</label></div>
         <div id="peSwatches" class="pe-swatches" aria-label="Colour presets"></div>
+        <div id="peFx" class="pe-fx" hidden>
+          <label title="Make this decal a light: it can flash or fade between its colour and a second one">Light effect <select id="peFxMode"><option value="">None (just painted)</option><option value="steady">Lit</option><option value="flash">Flash</option><option value="cycle">Fade between colours</option><option value="pulse">Pulse</option><option value="twinkle">Twinkle</option></select></label>
+          <label>Preset <select id="peFxPreset"><option value="">Apply a preset…</option></select></label>
+          <div id="peFxBody" hidden>
+            <label>Colours <select id="peFxCount"><option value="2">2 (its own + flash colour)</option><option value="3">3</option><option value="4">4</option></select></label>
+            <label>Flash colour <input id="peFxC2" type="color" value="#ffffff"></label>
+            <label id="peFxC3Row">Colour 3 <input id="peFxC3" type="color" value="#59edd2"></label>
+            <label id="peFxC4Row">Colour 4 <input id="peFxC4" type="color" value="#ffd383"></label>
+            <label>Seconds per cycle <input id="peFxRate" type="number" min="0.2" max="10" step="0.1"></label>
+                        <div id="peFxTriggers" class="pe-trigs"></div>
+            <button id="peFxAddTrig" type="button">+ Another trigger</button>
+            <label title="How long after a trigger before the light starts">Delay (seconds) <input id="peFxDl" type="number" min="0" max="10" step="0.05"></label>
+            <label title="How long a ball pass, hit or game event keeps the light going">Stays lit after (seconds) <input id="peFxHo" type="number" min="0.2" max="30" step="0.1"></label>
+            <div class="pe-row"><button id="peFxCopy" type="button">Copy effect</button><button id="peFxPaste" type="button">Paste</button></div>
+            <div class="pe-row"><button id="peFxChase" type="button" title="Shift-click several decals first: they light one after another, left to right">Chase group</button><label>every <input id="peFxStep" type="number" min="0.05" max="2" step="0.05" value="0.15"> s</label></div>
+            <label>Preview event <select id="peFxTest"><option value="">none</option></select></label>
+          </div>
+        </div>
         <p id="peKindHint" class="hint"></p>
         <div id="pePointRow" class="pe-row" hidden>
           <button id="peAddPt" title="Add a point to the end of the wire">+ Point</button>
@@ -73,6 +94,7 @@
         <label>Printed art <select id="peLook"><option value="custom">Custom</option><option value="golden">Golden Hour</option><option value="neon">Neon Arcade</option></select></label>
         <label>Gravity <input id="peGravity" type="number" min="8" max="16" step="0.1"></label>
         <label>Steeper flippers <input id="peSteep" type="checkbox"></label>
+        <label title="Drag the dashed circle on either flipper to move it. The guides follow, and the gap between the tips stays playable.">Main flippers <button id="peFlipReset" type="button">Reset position</button></label>
         <label title="Off: the magnet only works in jackpot rounds and the special outlane only at 2x. On: both are always live.">Classic lamps <input id="peClassic" type="checkbox"></label>
         <label>Hurry-up seconds <input id="peHurry" type="number" min="0" max="20" step="1"></label>
         <label>Super jackpot every <input id="peSuper" type="number" min="1" max="10" step="1"></label>
@@ -84,6 +106,13 @@
     </aside>
   </main>
   <button id="peJump" class="pe-jump" type="button" aria-label="Jump between the board and the parts">▼ Parts</button>
+  <dialog id="peCheckDlg" class="pe-dialog">
+    <form method="dialog">
+      <h2>Table check</h2>
+      <div id="peCheckBody" class="pe-check-body"></div>
+      <div class="pe-row"><button value="close">Close</button></div>
+    </form>
+  </dialog>
   <dialog id="peTablesDlg" class="pe-dialog">
     <form method="dialog">
       <h2>Tables</h2>
@@ -91,6 +120,8 @@
       <div id="peClones" class="pe-list pe-thumbs"></div>
       <h3 id="peFeaturedHead" hidden>Featured tables</h3>
       <div id="peFeatured" class="pe-list pe-thumbs"></div>
+      <button id="peListSave" type="button" title="Only on the device running the server">Add this table to the featured list</button>
+      <p id="peLocalHint" class="hint" hidden>Add, Overwrite and Delete for featured tables work only when this page is open on the device running the server (http://localhost:8000).</p>
       <h3>Start from a template</h3>
       <div id="peTemplates" class="pe-list pe-thumbs"></div>
       <h3>Your saved tables</h3>

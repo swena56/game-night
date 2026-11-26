@@ -42,8 +42,8 @@
   .pe-body { height: auto; overflow: visible; min-height: 100dvh; }
   .pe-top { padding: 6px 10px; gap: 6px 10px; }
   .pe-top h1 { font-size: 15px; }
-  .pe-actions { flex-wrap: nowrap; overflow-x: auto; width: 100%; margin-left: 0; padding-bottom: 2px; }
-  .pe-actions button { flex: 0 0 auto; white-space: nowrap; }
+  .pe-actions { flex-wrap: wrap; width: 100%; margin-left: 0; gap: 4px; }      /* every button visible: a sideways-scrolling row hid Check table, Feature, Tables and Play off-screen */
+  .pe-actions button { flex: 0 0 auto; white-space: nowrap; padding: 5px 8px; font-size: 12px; }
   .pe-main { grid-template-columns: minmax(0, 1fr); padding: 6px 10px 12px; }
   .pe-main > * { min-width: 0; }
   .pe-stage { order: -1; height: calc(100dvh - 170px); min-height: 360px; }     /* the whole board first, then the parts */
@@ -96,3 +96,11 @@
 .pe-item .pe-itemtext b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pe-item .pe-itemtext small { color: var(--muted, #b9b3c9); font-size: 11px; line-height: 1.3; white-space: normal; }
 .pe-item .pe-itembtns { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.pe-fx { margin: 8px 0; padding: 8px 0; border-top: 1px solid #ffffff22; display: grid; gap: 6px; }
+#peLights.on { background: #ffd383; color: #1b1a44; }
+.pe-trig { display: grid; gap: 4px; padding: 6px; border: 1px solid #ffffff22; border-radius: 8px; }
+.pe-trigs { display: grid; gap: 6px; }
+.pe-check-body { display: grid; gap: 6px; min-width: min(420px, 80vw); }
+.pe-bar { display: grid; grid-template-columns: 110px 1fr 40px; gap: 6px; align-items: center; font-size: 13px; }
+.pe-bar i { display: block; height: 10px; border-radius: 5px; background: #ffd383; }
+.pe-bad { color: #ff8f7c; }
