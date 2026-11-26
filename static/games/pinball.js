@@ -9,10 +9,10 @@
     skill: 'Skill shot +5,000', spinner: 'Spinner +100', ramp: 'Ramp +6,000 · Jackpot lit', jackpot: 'Jackpot +12,000', save: 'Ball saved · Auto launch',
     tilt: 'TILT · scoring suspended', nudge: 'Table nudged', mult: 'Multiplier up!', kickback: 'Kickback!', extra: 'EXTRA BALL!', post: 'Centre post save!', hurry: 'HURRY-UP +15,000', super: 'SUPER JACKPOT +50,000',
     mystery_points: 'Mystery · +10,000', mystery_save: 'Mystery · Ball save 10s', mystery_mult: 'Mystery · Multiplier up!', mystery_hold: 'Mystery · Bonus held', lock: 'Ball locked', mission: 'Mission complete +5,000', wizard: 'WIZARD MODE · Four balls, jackpots lit!', multiball: 'MULTIBALL · Shoot the ramp for jackpots +5,000',
-    saucer: 'Saucer +1,000', subway: 'Subway +2,000', magnet: 'Magnet grab +1,500', special: 'SPECIAL · Ball save +5,000', danger: 'DANGER · One more nudge tilts', rampfall: 'Ramp shot fell back', orbit: 'Orbit +3,000', search: 'Ball search', drain: 'Ball drained', done: 'Run complete', recovery: 'Ball freed',
+    portal: 'Portal +250', hole: 'Kicker hole +1,000', mover: 'Moving target +300', saucer: 'Saucer +1,000', subway: 'Subway +2,000', magnet: 'Magnet grab +1,500', special: 'SPECIAL · Ball save +5,000', danger: 'DANGER · One more nudge tilts', rampfall: 'Ramp shot fell back', orbit: 'Orbit +3,000', search: 'Ball search', drain: 'Ball drained', done: 'Run complete', recovery: 'Ball freed',
   };
-  const sounds = { skill: 'pskill', ramp: 'pramp', jackpot: 'pjackpot', save: 'psave', tilt: 'wrong', nudge: 'thud', mult: 'cheer', kickback: 'pkick', extra: 'pknock', danger: 'wrong', rampfall: 'rail', search: 'pkick', post: 'psave', hurry: 'pjackpot', super: 'pjackpot', mystery_points: 'cheer', mystery_save: 'psave', mystery_mult: 'cheer', mystery_hold: 'pskill', lock: 'psave', multiball: 'pjackpot', wizard: 'pjackpot', mission: 'cheer', saucer: 'ptarget', subway: 'pramp', magnet: 'pskill', special: 'psave', orbit: 'pramp', search: 'pkick', bonus: 'cheer', spinner: 'pspin', drain: 'groan', done: 'groan' };
-  const prefixes = { bumper: 'Bumper +100', sling: 'Slingshot +50', lane: 'Rollover +500', target: 'Target +250' };
+  const sounds = { portal: 'psave', skill: 'pskill', ramp: 'pramp', jackpot: 'pjackpot', save: 'psave', tilt: 'wrong', nudge: 'thud', mult: 'cheer', kickback: 'pkick', extra: 'pknock', danger: 'wrong', rampfall: 'rail', search: 'pkick', post: 'psave', hurry: 'pjackpot', super: 'pjackpot', mystery_points: 'cheer', mystery_save: 'psave', mystery_mult: 'cheer', mystery_hold: 'pskill', lock: 'psave', multiball: 'pjackpot', wizard: 'pjackpot', mission: 'cheer', saucer: 'ptarget', subway: 'pramp', magnet: 'pskill', special: 'psave', orbit: 'pramp', search: 'pkick', bonus: 'cheer', spinner: 'pspin', drain: 'groan', done: 'groan' };
+  const prefixes = { bumper: 'Bumper +100', sling: 'Slingshot +50', lane: 'Rollover +500', target: 'Target +250', mover: 'Moving target +300' };
   const label = (event, row) => {
     if (event === 'bonus' && row) return `Ball bonus +${row[BONUS].toLocaleString()}`;
     const text = messages[event] || prefixes[event?.replace(/[0-9]$/, '')] || '';
@@ -37,7 +37,12 @@
   const bumperColors = ['#ff9b59', '#c699ff', '#58e5d5', '#ff78bc'];
   // custom tables carry their own colours per part (geo.paint); everything else keeps the built-in look
   const paintOf = (geo, part, i, fallback) => (i === undefined ? geo.paint?.[part] : geo.paint?.[part]?.[i]) || fallback;
-  const railTrim = (geo, i, fallback) => (geo.theme === 'custom' && i >= 11 ? paintOf(geo, 'walls', i - 11, fallback) : i >= 9 ? guideColors[i - 9] : fallback);
+  // rails from geo.guides on are the metal guides; a custom table's own walls start after its smooth cabinet base
+  const railTrim = (geo, i, fallback) => {
+    const base = geo.paint?.base ?? 11, from = geo.guides ?? 9;
+    if (geo.theme === 'custom' && i >= base) return paintOf(geo, 'walls', i - base, fallback);
+    return i >= from ? (i - from < (geo.guide_run ?? 2) ? '#a896ff' : '#ffcf76') : fallback;
+  };
   const flipperColors = ['#42cfeb', '#ff78bc'];
   const guideColors = ['#a896ff', '#a896ff', '#ffcf76', '#ffcf76'];
   const rampPoints = ({ ramp, exit }) => Array.from({ length: 33 }, (_, i) => {
@@ -227,6 +232,17 @@
     c.fillStyle = palette.gold + 'bb';
     c.fillText('FLIP  A · D  or  ← →     PLUNGE  SPACE     NUDGE  Q · W · E', 500, 1656);
     c.restore();
+    for (const [glyph, gx, gy, gr, gc] of geo.paint?.decals || []) {     // custom-table decals painted under the glass
+      c.save(); c.translate(gx * 100, gy * 100); const u = gr * 100;
+      c.globalAlpha = .55; c.fillStyle = c.strokeStyle = gc; c.lineWidth = u * .16; c.lineJoin = 'round'; c.beginPath();
+      if (glyph === 'star') for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? u * .45 : u; c[i ? 'lineTo' : 'moveTo'](rr * Math.cos(a), rr * Math.sin(a)); }
+      else if (glyph === 'heart') { c.moveTo(0, u * .85); c.bezierCurveTo(-u * 1.3, u * .1, -u * .55, -u * .9, 0, -u * .3); c.bezierCurveTo(u * .55, -u * .9, u * 1.3, u * .1, 0, u * .85); }
+      else if (glyph === 'bolt') { c.moveTo(u * .2, -u); c.lineTo(-u * .55, u * .1); c.lineTo(-u * .05, u * .1); c.lineTo(-u * .2, u); c.lineTo(u * .55, -u * .2); c.lineTo(u * .05, -u * .2); }
+      else if (glyph === 'diamond') { c.moveTo(0, -u); c.lineTo(u * .65, 0); c.lineTo(0, u); c.lineTo(-u * .65, 0); }
+      else if (glyph === 'moon') { c.arc(0, 0, u, -Math.PI * .1, Math.PI * 1.1, false); c.arc(u * .38, -u * .1, u * .8, Math.PI * .85, -Math.PI * .2, true); }
+      else { c.arc(0, 0, u, 0, Math.PI * 2); c.moveTo(u * .62, 0); c.arc(0, 0, u * .62, 0, Math.PI * 2); }
+      c.closePath(); glyph === 'ring' ? c.stroke() : c.fill(); c.restore();
+    }
     c.fillStyle = palette.teal;
     c.font = 'bold 21px sans-serif';
     const stock = geo.theme !== 'custom' && geo.theme !== 'sandbox';   // the printed labels below sit where Golden Hour's parts are
@@ -518,6 +534,29 @@
           disc(mx, my, .24, '#252049');
           disc(mx, my, .16, mag === 2 ? palette.ivory : mag ? palette.teal : '#38325c');
         }
+        (geo.rubbers || []).forEach((r, i) => { rail(r, '#252049', .24); rail(r, row[STATS]?.post > 0 ? palette.gold : paintOf(geo, 'rubbers', i, palette.ivory), .15); });
+        (geo.movers || []).forEach(([x1, y1, x2, y2], i) => {          // a sliding target: dotted track plus the paddle itself
+          const [mx, my] = row[STATS]?.movers?.[i] || [x1, y1], nx = y2 - y1, ny = x1 - x2, n = Math.hypot(nx, ny) || 1;
+          c.setLineDash([.08, .1]); rail([x1, y1, x2, y2], '#ffffff33', .04); c.setLineDash([]);
+          const hit = flash === 'mover' + i, col = hit ? palette.ivory : paintOf(geo, 'movers', i, palette.red);
+          rail([mx - nx / n * .3, my - ny / n * .3, mx + nx / n * .3, my + ny / n * .3], '#252049', .38); rail([mx - nx / n * .3, my - ny / n * .3, mx + nx / n * .3, my + ny / n * .3], col, .28);
+        });
+        (geo.holes || []).forEach(([hx, hy, hr, ha], i) => {
+          const col = paintOf(geo, 'holes', i, palette.gold), a = ha * Math.PI / 180;
+          disc(hx, hy, hr + .07, '#252049'); disc(hx, hy, hr, row[EVENT] === 'hole' ? '#fff0ca88' : '#0c0a1c');
+          rail([hx + Math.cos(a) * hr * .6, hy + Math.sin(a) * hr * .6, hx + Math.cos(a) * (hr + .3), hy + Math.sin(a) * (hr + .3)], col, .08);
+        });
+        (geo.flaps || []).forEach((r, i) => {          // one-way flaps: a thin hinged gate with a hinge dot
+          rail(r, '#17152f', .2); rail(r, paintOf(geo, 'flaps', i, palette.gold), .09); disc(r[0], r[1], .1, palette.ivory);
+        });
+        if (geo.portals) {
+          const [x1, y1, x2, y2, pr] = geo.portals, col = paintOf(geo, 'portal', undefined, palette.teal), t = performance.now() / 600;
+          for (const [px, py] of [[x1, y1], [x2, y2]]) {
+            disc(px, py, pr + .1, '#252049'); disc(px, py, pr, '#0c0a1c');
+            c.beginPath(); c.arc(px, py, pr * (.55 + .25 * Math.abs(Math.sin(t))), 0, Math.PI * 2); c.strokeStyle = col; c.lineWidth = .05; c.stroke();
+          }
+          if (row[EVENT] === 'portal') { disc(x1, y1, pr, '#ffffff66'); disc(x2, y2, pr, '#ffffff66'); }
+        }
         (geo.posts || []).forEach(([x, y, r], i) => { disc(x, y, r + .05, '#252049'); disc(x, y, r, row[STATS]?.post > 0 ? palette.gold : paintOf(geo, 'posts', i, palette.ivory)); });
         geo.slings.forEach((r, i) => {
           rail(r, '#252049', .34);
@@ -586,11 +625,11 @@
             .08 + .19 * Math.abs(Math.cos(row[SPIN] * 2 * Math.PI)));
         }
         geo.flips.forEach(([x, y], i) => {
-          const angle = ball[3 + i];
+          const angle = i < 2 ? ball[3 + i] : row[STATS]?.flips2?.[i - 2] ?? geo.flips[i][2];
           // tapered rubber: round pivot end (r .26) to round tip (r .15)
           const ex = x + geo.length * Math.cos(angle), ey = y + geo.length * Math.sin(angle);
           const nx = -Math.sin(angle), ny = Math.cos(angle);
-          for (const [color, grow] of [['#211b40', .05], [flipperColors[i], 0]]) {
+          for (const [color, grow] of [['#211b40', .05], [flipperColors[i % 2], 0]]) {
             c.beginPath();
             c.moveTo(x + nx * (.26 + grow), y + ny * (.26 + grow));
             c.lineTo(ex + nx * (.15 + grow), ey + ny * (.15 + grow));
@@ -747,7 +786,7 @@
     for (const x of [-.26, 10.26]) rail([x, -.37, x, 17.4], .24, .23, .1, chrome);
     for (const y of [-.37, 17.4]) rail([-.23, y, 10.23, y], .22, .23, .1, brass);
     geo.rails.forEach((r, i) => {
-      const trim = i >= 9 ? material(railTrim(geo, i, palette.steel), .35, .34) : chrome;
+      const trim = i >= (geo.guides ?? 9) ? material(railTrim(geo, i, palette.steel), .35, .34) : chrome;
       rail(r, .18, .35, .15, trim);
     });
     let gateFlap;
@@ -787,6 +826,19 @@
       const [mx, my] = geo.magnet;
       disc(mx, my, .24, .03, .03, brass);
       disc(mx, my, .16, .05, .05, lamp('magnet', '#38325c', row => row[STATS]?.magnet === 2 ? palette.ivory : row[STATS]?.magnet ? palette.teal : '#38325c'));
+    }
+    (geo.rubbers || []).forEach((r, i) => rail(r, .15, .3, .2, material(paintOf(geo, 'rubbers', i, '#f2ecdd'), .8, .1)));
+    (geo.holes || []).forEach(([hx, hy, hr], i) => { disc(hx, hy, hr + .07, .05, .03, brass); disc(hx, hy, hr, .06, .02, material('#0c0a1c', .9, .1)); });
+    const moverMeshes = (geo.movers || []).map(([x1, y1, x2, y2], i) => {
+      const len = Math.hypot(x2 - x1, y2 - y1), ang = Math.atan2(y2 - y1, x2 - x1);
+      rail([x1, y1, x2, y2], .04, .5, .05, chrome);
+      const m = box(.12, .3, .6, lamp('mover' + i, paintOf(geo, 'movers', i, palette.red)), x1, .3, y1);
+      m.rotation.y = -ang; return m;
+    });
+    (geo.flaps || []).forEach((r, i) => rail(r, .1, .5, .12, material(paintOf(geo, 'flaps', i, palette.gold), .4, .3)));
+    if (geo.portals) {
+      const [x1, y1, x2, y2, pr] = geo.portals, col = paintOf(geo, 'portal', undefined, palette.teal);
+      for (const [px, py] of [[x1, y1], [x2, y2]]) { disc(px, py, pr + .07, .05, .03, brass); disc(px, py, pr, .06, .05, lamp('portal', col, row => row[EVENT] === 'portal' ? palette.ivory : null)); }
     }
     (geo.posts || []).forEach(([x, y, r], i) => disc(x, y, r, .4, .2, lamp('post', paintOf(geo, 'posts', i, '#f2ecdd'), (row) => row[STATS]?.post > 0 ? palette.gold : null)));
     geo.slings.forEach((r, i) => {
@@ -836,7 +888,7 @@
 
     const paddles = geo.flips.map(([x, y], i) => {
       // a rubber-sleeved flipper: fat at the pivot (.26), tapering to the tip (.15, the collision radius)
-      const paddle = rubber(flipperColors[i]);
+      const paddle = rubber(flipperColors[i % 2]);
       const pivot = new T.Group();
       scene.add(pivot);
       pivot.position.set(x, .15, y);
@@ -929,7 +981,8 @@
         sphere.position.set(ball[0], geo.radius + ball[2], Math.min(17.25, ball[1]));
         const bumperHit = flash?.startsWith('bumper');
         sphere.scale.setScalar(bumperHit ? 1.28 : 1);
-        paddles.forEach((paddle, i) => { paddle.rotation.y = -ball[3 + i]; });
+        moverMeshes.forEach((m, i) => { const p = row[STATS]?.movers?.[i]; if (p) m.position.set(p[0], .3, p[1]); });
+        paddles.forEach((paddle, i) => { paddle.rotation.y = -(i < 2 ? ball[3 + i] : row[STATS]?.flips2?.[i - 2] ?? geo.flips[i][2]); });
         plunger.position.z = geo.launch[1] + .4 + .33 * row[CHARGE] / 240;
         if (spinner) spinner.rotation.x = row[SPIN] * 2 * Math.PI;
         const pulse = .58 + .32 * Math.sin(performance.now() / 190);

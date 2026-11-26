@@ -15,7 +15,10 @@
     <div class="pe-actions">
       <button id="peUndo" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
       <button id="peRedo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">↷</button>
+      <button id="peZoom" title="Zoom the table (scroll to pan)">🔍 1×</button>
       <button id="peSnap" aria-pressed="true" title="Snap parts to a grid">▦ Snap</button>
+      <button id="peBank" title="Add a column of standup targets">🎯 Bank</button>
+      <button id="peMirrorAll" title="Copy the left half of the table onto the right">⇋ Mirror table</button>
       <button id="peClear" title="Remove every part">Clear</button>
       <button id="peTables" title="Templates and your saved tables">📁 Tables</button>
       <button id="peShare" title="Get a share code, or load one">Share…</button>
@@ -28,7 +31,7 @@
     <section class="pe-stage"><canvas id="peCanvas" aria-label="Table. Drag parts to move them."></canvas></section>
     <aside class="pe-inspector" id="peInspector" aria-label="Selected part">
       <h2 id="peTitle">Nothing selected</h2>
-      <p id="peHint" class="hint">Drag a part from the list onto the table. Click a part to change it; drag the round handles to resize or turn it.</p>
+      <p id="peHint" class="hint">Drag a part from the list onto the table. Click a part to change it; drag the round handles to resize, turn or bend it. Arrow keys nudge it, R rotates, M mirrors, D duplicates.</p>
       <div id="peFields" hidden>
         <label>X <input id="peX" type="number" step="0.05"></label>
         <label>Y <input id="peY" type="number" step="0.05"></label>
@@ -42,11 +45,17 @@
           <button id="peDelPt" title="Remove the last point">− Point</button>
         </div>
         <div class="pe-row">
-          <button id="peDup">Duplicate</button>
+          <button id="peRotL" title="Rotate left 15° (Shift+R)">↺ 15°</button>
+          <button id="peRotR" title="Rotate right 15° (R)">↻ 15°</button>
+          <button id="peMirror" title="Flip left ↔ right (M)">⇋ Mirror</button>
+        </div>
+        <div class="pe-row">
+          <button id="peDup" title="Duplicate (D)">Duplicate</button>
           <button id="peDel" class="danger">Delete</button>
         </div>
       </div>
       <label class="pe-check"><input id="peKick" type="checkbox"> Kickback + special outlanes <small>(the lit outlane lanes by the flippers)</small></label>
+      <details class="pe-pts"><summary>Point values</summary><div id="pePtsBody" class="pe-ptsbody"></div></details>
       <p id="peCount" class="hint"></p>
     </aside>
   </main>

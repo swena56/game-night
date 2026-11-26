@@ -83,7 +83,43 @@ class NeonTable(EngineTable):
 
 # Sandbox: the same cabinet, flippers and shooter lane with every playfield part removed except the one you pick,
 # so each component can be play tested on its own. (Golden Hour and Neon Arcade are untouched.)
-SANDBOX_BASE = RAILS[:11]
+def fillet(points, radii, steps=7):
+    """A polyline with every interior corner swapped for a circular arc, returned as short rail segments (no sharp edges)."""
+    import math
+    out = [points[0]]
+    for i in range(1, len(points) - 1):
+        (ax, ay), (bx, by), (cx, cy) = points[i - 1], points[i], points[i + 1]
+        r = radii[i - 1]
+        v1, v2 = (ax - bx, ay - by), (cx - bx, cy - by)
+        l1, l2 = math.hypot(*v1), math.hypot(*v2)
+        u1, u2 = (v1[0] / l1, v1[1] / l1), (v2[0] / l2, v2[1] / l2)
+        ang = math.acos(max(-1, min(1, u1[0] * u2[0] + u1[1] * u2[1])))
+        if r <= 0 or ang > math.pi - 1e-3:
+            out.append((bx, by)); continue
+        d = min(r / math.tan(ang / 2), l1 / 2 if i > 1 else l1 * .9, l2 / 2 if i < len(points) - 2 else l2 * .9)
+        r = d * math.tan(ang / 2)
+        p1, p2 = (bx + u1[0] * d, by + u1[1] * d), (bx + u2[0] * d, by + u2[1] * d)
+        bis = (u1[0] + u2[0], u1[1] + u2[1]); bl = math.hypot(*bis)
+        cd = r / math.sin(ang / 2)
+        ctr = (bx + bis[0] / bl * cd, by + bis[1] / bl * cd)
+        a1, a2 = math.atan2(p1[1] - ctr[1], p1[0] - ctr[0]), math.atan2(p2[1] - ctr[1], p2[0] - ctr[0])
+        da = (a2 - a1 + math.pi) % (2 * math.pi) - math.pi
+        for k in range(steps + 1):
+            a = a1 + da * k / steps
+            out.append((round(ctr[0] + r * math.cos(a), 3), round(ctr[1] + r * math.sin(a), 3)))
+    out.append(points[-1])
+    return tuple((*a, *b) for a, b in zip(out, out[1:]))
+
+
+# Empty-table cabinet: the outer wall as one smooth sweep (round top corners, a soft shooter-lane turn) and gently
+# rounded inlane/outlane guide bends.
+SMOOTH_WALL = fillet(((0, 17), (0, 2.2), (1.5, 0), (7.8, 0), (10, 2.8), (10, 17)), (1.9, 1.3, 1.6, 1.9))
+LEFT_GUIDE = fillet(((0.9, 12.2), (0.9, 13.5), (3.22, 14.95)), (0.5,))
+RIGHT_GUIDE = fillet(((7.9, 12.4), (7.9, 13.8), (6.78, 14.95)), (0.5,))
+SMOOTH_GUIDES = LEFT_GUIDE + RIGHT_GUIDE
+SANDBOX_BASE = SMOOTH_WALL + ((8.8, 3.1, 8.8, 17), (8.8, 16.25, 10, 16.25)) + SMOOTH_GUIDES
+# rails from here on are the livelier metal guides: the right inlane guide, then anything the table adds
+GUIDES_FROM = len(SANDBOX_BASE) - len(RIGHT_GUIDE)
 SANDBOX_PARTS = {
     "bare": ("⬜ Nothing (flippers only)", {}),
     "bumpers": ("🔴 Pop bumpers", dict(bumps=BUMPS)),
@@ -103,7 +139,8 @@ SANDBOX_PARTS = {
 
 def sandbox_table(part):
     kwargs = dict(rails=SANDBOX_BASE, flippers=FLIPPERS, launch=LAUNCH, gate=GATE, width=WIDTH, height=HEIGHT, ball=BALL,
-                  flipper_length=LENGTH, flipper_radius=FLIP_RADIUS, skill_charge=SKILL_CHARGE, theme="sandbox")
+                  flipper_length=LENGTH, flipper_radius=FLIP_RADIUS, skill_charge=SKILL_CHARGE, theme="sandbox",
+                  guides_from=GUIDES_FROM, guide_run=len(RIGHT_GUIDE))
     kwargs.update(SANDBOX_PARTS[part][1])
     layout = Layout(**kwargs)
     cls = type(f"Sandbox_{part}", (EngineTable,), {"layout": layout, "rules": Rules(lock_balls=2, center_post=True, always_on=True)})
@@ -164,6 +201,7 @@ class Pinball(Game):
                 raise GameError("Build a table in the table editor first.")
             self.custom_layout = pinball_custom.build(spec)[0]
             start["layout_override"] = self.custom_layout
+            start["rules_override"] = pinball_custom.build_rules(spec)
         self.tables = {p.id: table_class(**start) for p in seated}
         self.run = uuid4().hex
         self.frames = 0

@@ -14,18 +14,22 @@ COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
 X_MIN, X_MAX = 0.45, 8.35        # the shooter lane wall is at x = 8.8
 Y_MIN, Y_MAX = 0.45, 14.2        # flippers start near y = 14.95
 SEGMENT = (0.25, 4.5)
-RADIUS = {"bump": (0.3, 1.0), "post": (0.07, 0.3), "saucer": (0.25, 0.6), "magnet": (0.6, 2.0)}
+GLYPHS = ("star", "heart", "bolt", "diamond", "moon", "ring")      # painted under the glass: no collision, no score
+RADIUS = {"bump": (0.3, 1.0), "post": (0.07, 0.3), "saucer": (0.25, 0.6), "hole": (0.25, 0.6), "magnet": (0.6, 2.0), **{g: (0.25, 1.6) for g in GLYPHS}}
 DEFAULT_RADIUS = {"bump": 0.6, "post": 0.11, "saucer": 0.3, "magnet": 1.1}
 LIMITS = {"bump": 12, "sling": 6, "target": 8, "lane": 6, "post": 16, "wall": 16, "spinner": 1, "saucer": 1, "magnet": 1, "kick": 1,
-          "ramp": 1, "subway": 1, "orbit": 1}
+          "ramp": 1, "subway": 1, "orbit": 1, "arc": 6, "flap": 4, "portal": 1, "rubber": 6, "mover": 3, "hole": 3, "flip": 4, **dict.fromkeys(GLYPHS, 4)}
 # kind -> number layout: "p" a point, "r" a radius, "s" a segment, "w" a wire path of 2-6 points, "" nothing
 SHAPE = {"bump": "pr", "post": "pr", "saucer": "pr", "magnet": "pr", "lane": "p", "spinner": "p",
-         "sling": "s", "target": "s", "wall": "s", "kick": "", "ramp": "s", "subway": "s", "orbit": "w"}
-SEGMENTS = {"ramp": (1.5, 9.0), "subway": (0.6, 9.0)}      # long runs: the default 0.25-4.5 applies to everything else
+         "sling": "s", "target": "s", "wall": "s", "kick": "", "ramp": "s", "subway": "s", "orbit": "w",
+         "flap": "s", "portal": "s", "arc": "a", "rubber": "s", "mover": "s", "hole": "pr", "flip": "p", **dict.fromkeys(GLYPHS, "pr")}
+SEGMENTS = {"ramp": (1.5, 9.0), "subway": (0.6, 9.0), "portal": (0.8, 9.0), "arc": (0.8, 6.0), "flap": (0.4, 2.5), "rubber": (0.3, 4.5), "mover": (0.8, 4.5)}      # long runs: the default 0.25-4.5 applies to everything else
+Y_RANGE = {"flip": (5.0, 12.2)}                              # an extra flipper lives mid-table, clear of the lower pair
 Y_FLOOR = {"ramp": 4.8}                                     # a ramp arcs 4.8 up the table, so its ends stay below that line
 PATH_POINTS = (2, 6)
 MOUTH = {"orbit": 0.4, "subway": 0.3}
 MAX_ITEMS = 80
+ARC_STEPS = 10
 NAME_MAX = 40
 
 
@@ -72,6 +76,31 @@ def wires(parts):
     return out
 
 
+POINTS = {"bumper": (100, "bump"), "sling": (50, "sling"), "target": (250, "target"), "lane": (500, "lane"), "spinner": (100, "spinner"),
+          "ramp": (6000, "ramp"), "saucer": (1000, "saucer"), "portal": (250, "portal"), "mover": (300, "mover")}
+
+
+def points(spec):
+    """The table's own point values: only known keys, whole numbers 0-20,000, anything at its default is dropped."""
+    raw = spec.get("pts") if isinstance(spec, dict) else None
+    out = {}
+    if isinstance(raw, dict):
+        for key, (default, _) in POINTS.items():
+            v = raw.get(key)
+            if type(v) in (int, float) and math.isfinite(v) and round(min(20000, max(0, v))) != default:
+                out[key] = int(round(min(20000, max(0, v))))
+    return out
+
+
+def build_rules(spec):
+    from .pinball_engine import Rules
+    pts = points(spec)
+    extra = {k: v for k, v in pts.items()}
+    if "bumper" in extra:
+        extra["bumper_jackpot"] = extra["bumper"] * 2
+    return Rules(lock_balls=2, center_post=True, always_on=True, **extra)
+
+
 def build(spec):
     """Return (Layout, cleaned spec) for an editor table, or raise GameError."""
     if not isinstance(spec, dict) or not isinstance(spec.get("items"), list):
@@ -87,7 +116,7 @@ def build(spec):
             raise GameError("The table has an unknown part.")
         kind, shape = item[0], SHAPE[item[0]]
         wide = shape == "w" and PATH_POINTS[0] * 2 <= len(item) - 2 <= PATH_POINTS[1] * 2 and len(item) % 2 == 0
-        if not wide and (shape == "w" or len(item) != 2 + {"p": 2, "pr": 3, "s": 4, "": 0}[shape]) or type(item[-1]) is not str or not COLOR.match(item[-1]):
+        if not wide and (shape == "w" or len(item) != 2 + {"p": 2, "pr": 3, "s": 4, "a": 6, "": 0}[shape]) or type(item[-1]) is not str or not COLOR.match(item[-1]):
             raise GameError(f"A {kind} on the table is malformed.")
         counts[kind] += 1
         if counts[kind] > LIMITS[kind]:
@@ -96,12 +125,14 @@ def build(spec):
         values = item[1:-1]
         if shape == "s":
             nums = segment(values, kind)
+        elif shape == "a":                # a curved wall: two ends and the point the curve bends toward
+            nums = segment(values[:4], kind) + [number(values[4], X_MIN, X_MAX), number(values[5], Y_MIN, Y_MAX)]
         elif shape == "w":
             nums = [number(v, X_MIN, X_MAX) if i % 2 == 0 else number(v, Y_MIN, Y_MAX) for i, v in enumerate(values)]
         elif shape == "":
             nums = []
         else:
-            nums = [number(values[0], X_MIN, X_MAX), number(values[1], Y_MIN, Y_MAX)]
+            nums = [number(values[0], X_MIN, X_MAX), number(values[1], *Y_RANGE.get(kind, (Y_MIN, Y_MAX)))]
             if shape == "pr":
                 nums.append(number(values[2], *RADIUS[kind]))
         clean.append([kind, *nums, color])
@@ -109,9 +140,25 @@ def build(spec):
         paint[kind].append(color)
     # imported late: pinball.py owns the cabinet constants and imports this module
     from . import pinball as cabinet
-    walls = tuple(tuple(w) for w in parts["wall"])
+    walls = [tuple(w) for w in parts["wall"]]
+    wall_paint = list(paint["wall"])
+    for (x1, y1, x2, y2, cx, cy), color in zip(parts["arc"], paint["arc"]):      # a quadratic curve, cut into short rails
+        pts = [((1 - t) ** 2 * x1 + 2 * (1 - t) * t * cx + t * t * x2, (1 - t) ** 2 * y1 + 2 * (1 - t) * t * cy + t * t * y2)
+               for t in (i / ARC_STEPS for i in range(ARC_STEPS + 1))]
+        for a, b in zip(pts, pts[1:]):
+            if math.hypot(b[0] - a[0], b[1] - a[1]) > 0.01:
+                walls.append((round(a[0], 3), round(a[1], 3), round(b[0], 3), round(b[1], 3)))
+                wall_paint.append(color)
+    walls = tuple(walls)
+    portals = (*parts["portal"][0], 0.32) if parts["portal"] else None
+    holes = tuple((x, y, r, round(math.degrees(math.atan2(6.0, 5 - x)), 1)) for x, y, r in parts["hole"])    # fired down toward the middle
+    middle = cabinet.WIDTH * 0.44
+    flippers = cabinet.FLIPPERS + tuple((x, y, 0.3, -0.75) if x < middle else (x, y, math.pi - 0.3, math.pi + 0.75) for x, y in parts["flip"])
+    decals = [[g, *p, c] for g in GLYPHS for p, c in zip(parts[g], paint[g])]
     layout = Layout(
-        rails=cabinet.SANDBOX_BASE + walls, flippers=cabinet.FLIPPERS, launch=cabinet.LAUNCH, gate=cabinet.GATE,
+        rails=cabinet.SANDBOX_BASE + walls, guides_from=cabinet.GUIDES_FROM, guide_run=len(cabinet.RIGHT_GUIDE),
+        flaps=tuple(parts["flap"]), portals=portals, rubbers=tuple(parts["rubber"]), holes=holes,
+        movers=tuple((*m, 1.0) for m in parts["mover"]), flippers=flippers, launch=cabinet.LAUNCH, gate=cabinet.GATE,
         bumps=tuple(parts["bump"]), slings=tuple(parts["sling"]), targets=tuple(parts["target"]),
         lanes=tuple(parts["lane"]), posts=tuple(parts["post"]),
         spinner=parts["spinner"][0] if parts["spinner"] else None,
@@ -122,8 +169,12 @@ def build(spec):
         width=cabinet.WIDTH, height=cabinet.HEIGHT, ball=cabinet.BALL, flipper_length=cabinet.LENGTH,
         flipper_radius=cabinet.FLIP_RADIUS, skill_charge=cabinet.SKILL_CHARGE, theme="custom",
         paint={"bumps": paint["bump"], "slings": paint["sling"], "targets": paint["target"], "lanes": paint["lane"],
-               "posts": paint["post"], "walls": paint["wall"], "ramp": paint["ramp"][0] if paint["ramp"] else None,
+               "posts": paint["post"], "walls": wall_paint, "base": len(cabinet.SANDBOX_BASE), "decals": decals,
+               "flaps": paint["flap"], "rubbers": paint["rubber"], "movers": paint["mover"], "holes": paint["hole"], "flips": paint["flip"], "portal": paint["portal"][0] if paint["portal"] else None, "ramp": paint["ramp"][0] if paint["ramp"] else None,
                "orbit": paint["orbit"][0] if paint["orbit"] else None, "subway": paint["subway"][0] if paint["subway"] else None, "spinner": paint["spinner"][0] if paint["spinner"] else None,
                "saucer": paint["saucer"][0] if paint["saucer"] else None, "magnet": paint["magnet"][0] if paint["magnet"] else None,
                "kick": paint["kick"][0] if paint["kick"] else None, "name": name})
-    return layout, {"v": 1, "name": name, "items": clean}
+    clean_spec = {"v": 1, "name": name, "items": clean}
+    if points(spec):
+        clean_spec["pts"] = points(spec)
+    return layout, clean_spec

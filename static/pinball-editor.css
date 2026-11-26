@@ -10,11 +10,12 @@
 .pe-palette { display: flex; flex-direction: column; gap: 6px; }
 .pe-part { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; background: var(--panel, #221e3a); border: 1px solid #ffffff1a;
   color: inherit; font: inherit; text-align: left; cursor: grab; touch-action: none; user-select: none; }
+.pe-group { margin: 8px 2px 0; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted, #b9b3c9); }
 .pe-part:hover:not(:disabled) { border-color: var(--accent, #ffb703); }
 .pe-part:disabled { opacity: .4; cursor: not-allowed; }
 .pe-part .pe-icon { font-size: 18px; width: 22px; text-align: center; }
 .pe-part small { margin-left: auto; color: var(--muted, #b9b3c9); font-size: 11px; }
-.pe-stage { display: flex; justify-content: center; }
+.pe-stage { display: flex; justify-content: safe center; }
 #peCanvas { max-width: 100%; border-radius: 12px; border: 1px solid #ffffff22; touch-action: none; background: #17142e; cursor: crosshair; }
 .pe-inspector { background: var(--panel, #221e3a); border-radius: 12px; padding: 12px 14px; }
 .pe-inspector h2 { font-size: 16px; margin: 0 0 6px; }
@@ -33,6 +34,7 @@
   .pe-main { grid-template-columns: 1fr; }
   .pe-palette { flex-direction: row; overflow-x: auto; padding-bottom: 4px; }
   .pe-part { flex: 0 0 auto; }
+  .pe-group { display: none; }
   .pe-part small { display: none; }
 }
 .pe-dialog h3 { font-size: 13px; margin: 12px 0 6px; color: var(--muted, #b9b3c9); text-transform: uppercase; letter-spacing: .05em; }
@@ -41,3 +43,9 @@
 .pe-list .pe-item span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pe-list .pe-item small { color: var(--muted, #b9b3c9); }
 .pe-list .pe-empty { color: var(--muted, #b9b3c9); font-size: 13px; }
+
+.pe-stage { overflow: auto; }
+.pe-pts { margin: 8px 0; }
+.pe-pts summary { cursor: pointer; font-weight: 600; }
+.pe-ptsbody label { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 4px 0; font-size: 13px; }
+.pe-ptsbody input { width: 84px; }

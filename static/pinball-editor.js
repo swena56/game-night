@@ -24,14 +24,64 @@
     orbit: { label: 'Orbit wire', icon: '🔄', shape: 'w', color: '#9ce9ff', max: 1, paint: true,
       hint: 'The first point is the mouth: shoot up into it and the ball rides the wire to the last point. Drag the dots to bend it.' },
   };
+  Object.assign(KINDS, {
+    arc: { label: 'Curved wall', icon: '◠', shape: 'a', color: '#c1d2e5', len: 2.4, max: 6, paint: true, seg: [.8, 6], group: 'Walls & guides',
+      hint: 'Drag the two end dots, then the middle dot to bend the wall like a curved guide rail.' },
+    flap: { label: 'One-way flap', icon: '⤵️', shape: 's', color: '#ffd383', len: 1, max: 4, paint: true, seg: [.4, 2.5], group: 'Walls & guides',
+      hint: 'The ball passes through from the right-hand side of the line (looking from the start dot to the end dot) and cannot come back.' },
+    portal: { label: 'Portal pair', icon: '🌀', shape: 's', color: '#59edd2', len: 4, max: 1, paint: true, seg: [.8, 9], group: 'Mechanisms',
+      hint: 'Two linked holes: a ball that rolls into one leaves from the other, keeping its speed.' },
+  });
+  Object.assign(KINDS, {
+    rubber: { label: 'Rubber band', icon: '➰', shape: 's', color: '#f2ecdd', len: 1.2, max: 6, paint: true, seg: [.3, 4.5], group: 'Walls & guides',
+      hint: 'Bouncy dead rubber: it kicks the ball back but scores nothing.' },
+    mover: { label: 'Moving target', icon: '↔️', shape: 's', color: '#ff6854', len: 3, max: 3, paint: true, seg: [.8, 4.5], group: 'Mechanisms',
+      hint: 'The two dots are the ends of its track. The target slides back and forth along it; a firm hit scores 300.' },
+    hole: { label: 'Kicker hole', icon: '🕳️', shape: 'pr', color: '#ffd383', r: [.25, .6], r0: .3, max: 3, paint: true, group: 'Mechanisms',
+      hint: 'Holds the ball for a moment, then fires it down the table toward the middle (+1,000).' },
+    flip: { label: 'Extra flipper', icon: '🏓', shape: 'p', color: '#42cfeb', max: 4, group: 'Mechanisms', yMin: 5, yMax: 12.2,
+      hint: 'A mid-table flipper. Left of the middle it follows the left button, right of the middle the right button.' },
+  });
+  const GLYPH = { star: ['⭐', 'Star'], heart: ['💗', 'Heart'], bolt: ['⚡', 'Bolt'], diamond: ['🔷', 'Diamond'], moon: ['🌙', 'Moon'], ring: ['⭕', 'Ring'] };
+  for (const [g, [icon, label]] of Object.entries(GLYPH)) KINDS[g] = { label: label + ' decal', icon, shape: 'pr', color: '#ffd383', r: [.25, 1.6], r0: .6, max: 4, paint: true, group: 'Decals',
+    hint: 'Painted on the playfield under the glass. It only decorates: the ball rolls over it.' };
+  const GROUPS = { rubber: 'Walls & guides', wall: 'Walls & guides', post: 'Walls & guides', spinner: 'Mechanisms', saucer: 'Mechanisms', magnet: 'Mechanisms', ramp: 'Mechanisms', subway: 'Mechanisms', orbit: 'Mechanisms' };
+  // the table's own point values (defaults match the game's rules)
+  const POINTS = { bumper: [100, 'Pop bumper'], sling: [50, 'Slingshot'], target: [250, 'Target'], lane: [500, 'Rollover lane'], spinner: [100, 'Spinner'],
+    ramp: [6000, 'Ramp'], saucer: [1000, 'Saucer / kicker hole'], portal: [250, 'Portal'], mover: [300, 'Moving target'] };
   const SWATCHES = ['#ff6854', '#ff9b59', '#ffd383', '#fff0ca', '#59edd2', '#42cfeb', '#c699ff', '#ff78bc', '#c1d2e5'];
   // the fixed cabinet, as in the game: outer walls, shooter lane, outlane walls, inlane guides, flippers
-  const RAILS = [[0, 17, 0, 2.2], [0, 2.2, 1.5, 0], [1.5, 0, 7.8, 0], [7.8, 0, 10, 2.8], [10, 2.8, 10, 17], [8.8, 3.1, 8.8, 17],
-    [8.8, 16.25, 10, 16.25], [.9, 12.2, .9, 13.5], [.9, 13.5, 3.22, 14.95], [7.9, 12.4, 7.9, 13.8], [7.9, 13.8, 6.78, 14.95]];
+  // same corner rounding as games/pinball.py fillet(): arcs instead of sharp joins
+  const fillet = (pts, radii, steps = 7) => {
+    const out = [pts[0]];
+    for (let i = 1; i < pts.length - 1; i++) {
+      const [ax, ay] = pts[i - 1], [bx, by] = pts[i], [cx, cy] = pts[i + 1];
+      const v1 = [ax - bx, ay - by], v2 = [cx - bx, cy - by], l1 = Math.hypot(...v1), l2 = Math.hypot(...v2);
+      const u1 = [v1[0] / l1, v1[1] / l1], u2 = [v2[0] / l2, v2[1] / l2];
+      const ang = Math.acos(Math.max(-1, Math.min(1, u1[0] * u2[0] + u1[1] * u2[1])));
+      let r = radii[i - 1];
+      if (r <= 0 || ang > Math.PI - 1e-3) { out.push([bx, by]); continue; }
+      const d = Math.min(r / Math.tan(ang / 2), i > 1 ? l1 / 2 : l1 * .9, i < pts.length - 2 ? l2 / 2 : l2 * .9);
+      r = d * Math.tan(ang / 2);
+      const p1 = [bx + u1[0] * d, by + u1[1] * d], p2 = [bx + u2[0] * d, by + u2[1] * d];
+      const bis = [u1[0] + u2[0], u1[1] + u2[1]], bl = Math.hypot(...bis), cd = r / Math.sin(ang / 2);
+      const ctr = [bx + bis[0] / bl * cd, by + bis[1] / bl * cd];
+      const a1 = Math.atan2(p1[1] - ctr[1], p1[0] - ctr[0]), a2 = Math.atan2(p2[1] - ctr[1], p2[0] - ctr[0]);
+      const da = ((a2 - a1 + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+      for (let k = 0; k <= steps; k++) { const a = a1 + da * k / steps; out.push([ctr[0] + r * Math.cos(a), ctr[1] + r * Math.sin(a)]); }
+    }
+    out.push(pts[pts.length - 1]);
+    return out.slice(1).map((b, i) => [...out[i], ...b]);
+  };
+  // the fixed cabinet, as in the game: smooth outer wall, shooter lane, outlane walls, inlane guides, flippers
+  const RAILS = [...fillet([[0, 17], [0, 2.2], [1.5, 0], [7.8, 0], [10, 2.8], [10, 17]], [1.9, 1.3, 1.6, 1.9]),
+    [8.8, 3.1, 8.8, 17], [8.8, 16.25, 10, 16.25],
+    ...fillet([[.9, 12.2], [.9, 13.5], [3.22, 14.95]], [.5]), ...fillet([[7.9, 12.4], [7.9, 13.8], [6.78, 14.95]], [.5])];
   const FLIPS = [[3.22, 14.95, .42], [6.78, 14.95, Math.PI - .42]];
   const FLIP_LEN = 1.56;
 
-  let state = { name: '', items: [], kick: false };
+  let state = { name: '', items: [], kick: false, pts: {} };
+  let zoom = 1;
   let sel = -1;
   let snap = true;
   let history = [], future = [];
@@ -45,8 +95,22 @@
   const count = (k) => state.items.filter((i) => i.k === k).length;
   const say = (text) => { $('peMsg').textContent = text || ''; };
   const copy = (o) => JSON.parse(JSON.stringify(o));
-  const yRange = (k) => [KINDS[k].yMin ?? Y[0], Y[1]];
+  const yRange = (k) => [KINDS[k].yMin ?? Y[0], KINDS[k].yMax ?? Y[1]];
   const segRange = (k) => KINDS[k].seg || SEG;
+
+  // every coordinate pair of a part, so rotate / mirror / nudge work for any shape
+  function mapPts(it, f) {
+    const d = KINDS[it.k];
+    if (d.shape === 'w') { it.pts = it.pts.map(f); [it.x, it.y] = it.pts[0]; return it; }
+    [it.x, it.y] = f([it.x, it.y]);
+    if ('x2' in it) [it.x2, it.y2] = f([it.x2, it.y2]);
+    if ('cx' in it) [it.cx, it.cy] = f([it.cx, it.cy]);
+    return it;
+  }
+  const centre = (it) => {
+    const all = []; mapPts(copy(it), (p) => { all.push(p); return p; });
+    return [all.reduce((a, p) => a + p[0], 0) / all.length, all.reduce((a, p) => a + p[1], 0) / all.length];
+  };
 
   // ---- model --------------------------------------------------------------------------------------------
   function fixLength(it) {
@@ -61,13 +125,15 @@
     if (d.shape === 'w') { it.pts = it.pts.map(([x, y]) => [clamp(x, ...X), clamp(y, y0, y1)]); [it.x, it.y] = it.pts[0]; return it; }
     it.x = clamp(it.x, ...X); it.y = clamp(it.y, y0, y1);
     if (d.shape === 'pr') it.r = clamp(it.r, ...d.r);
+    if (d.shape === 'a') { it.x2 = clamp(it.x2, ...X); it.y2 = clamp(it.y2, y0, y1); fixLength(it); it.cx = clamp(it.cx, ...X); it.cy = clamp(it.cy, y0, y1); }
     if (d.shape === 's') { it.x2 = clamp(it.x2, ...X); it.y2 = clamp(it.y2, y0, y1); fixLength(it); }
     return it;
   }
   function make(k, x, y) {
     const d = KINDS[k], it = { k, x, y, c: d.color };
     if (d.shape === 'pr') it.r = d.r0;
-    if (d.shape === 's') { const across = k !== 'target'; it.x2 = x + (across ? d.len : 0); it.y2 = y + (across ? 0 : d.len); }
+    if (d.shape === 's' || d.shape === 'a') { const across = k !== 'target'; it.x2 = x + (across ? d.len : 0); it.y2 = y + (across ? 0 : d.len); }
+    if (d.shape === 'a') { it.cx = (x + it.x2) / 2; it.cy = y - 1.2; }
     if (d.shape === 'w') it.pts = [[x, y], [x, y - 1.2], [x + 1.2, y - 2.2]];
     return normalize(it);
   }
@@ -75,15 +141,20 @@
     const items = state.items.map((i) => {
       const d = KINDS[i.k];
       return d.shape === 's' ? [i.k, round2(i.x), round2(i.y), round2(i.x2), round2(i.y2), i.c]
+        : d.shape === 'a' ? [i.k, round2(i.x), round2(i.y), round2(i.x2), round2(i.y2), round2(i.cx), round2(i.cy), i.c]
         : d.shape === 'w' ? [i.k, ...i.pts.flat().map(round2), i.c]
         : d.shape === 'pr' ? [i.k, round2(i.x), round2(i.y), round2(i.r), i.c] : [i.k, round2(i.x), round2(i.y), i.c];
     });
     if (state.kick) items.push(['kick', '#ffffff']);
-    return { v: 1, name: state.name.trim().slice(0, 40), items };
+    const out = { v: 1, name: state.name.trim().slice(0, 40), items };
+    const pts = Object.fromEntries(Object.entries(state.pts || {}).filter(([k, v]) => POINTS[k] && v !== POINTS[k][0]));
+    if (Object.keys(pts).length) out.pts = pts;
+    return out;
   }
   function fromSpec(spec) {
     if (!spec || !Array.isArray(spec.items)) throw new Error("That isn't a table.");
-    const next = { name: typeof spec.name === 'string' ? spec.name.slice(0, 40) : '', items: [], kick: false };
+    const next = { name: typeof spec.name === 'string' ? spec.name.slice(0, 40) : '', items: [], kick: false, pts: {} };
+    if (spec.pts && typeof spec.pts === 'object') for (const [k, v] of Object.entries(spec.pts)) if (POINTS[k] && typeof v === 'number' && isFinite(v)) next.pts[k] = clamp(Math.round(v), 0, 20000);
     const num = (v) => (typeof v === 'number' && isFinite(v) ? v : 0);
     for (const a of spec.items) {
       if (!Array.isArray(a)) continue;
@@ -94,6 +165,7 @@
       const it = { k: a[0], x: num(a[1]), y: num(a[2]), c: color };
       if (d.shape === 'pr') it.r = num(a[3]) || d.r0;
       if (d.shape === 's') { it.x2 = num(a[3]); it.y2 = num(a[4]); }
+      if (d.shape === 'a') { it.x2 = num(a[3]); it.y2 = num(a[4]); it.cx = num(a[5]); it.cy = num(a[6]); }
       if (d.shape === 'w') {
         const flat = a.slice(1, -1).map(num);
         if (flat.length < 4 || flat.length % 2) continue;
@@ -123,6 +195,12 @@
       ['lane', 2.25, 3.5, '#59edd2'], ['lane', 4.25, 3.5, '#59edd2'], ['lane', 6.25, 3.5, '#59edd2'],
       ['target', 1.25, 6.6, 1.25, 7.3, '#ff6854'], ['spinner', 7.95, 7.4, '#c1d2e5'], ['kick', '#ffffff']]],
     GOLDEN,
+    ['Portals & curves', [['arc', .9, 9.6, 3.2, 9.6, 1.2, 7.6, '#ffd383'], ['arc', 7.8, 9.6, 5.4, 9.6, 7.6, 7.6, '#ffd383'],
+      ['portal', 1.4, 4.2, 7.4, 6.2, '#59edd2'], ['bump', 4.4, 6.2, .65, '#ff78bc'], ['flap', 4.4, 11.4, 4.4, 10.4, '#ffd383'],
+      ['star', 4.4, 8.6, .8, '#ff9b59'], ['heart', 4.4, 3.2, .6, '#ff78bc'], ['kick', '#ffffff']]],
+    ['Mid-table flippers', [['flip', 2.2, 9.4, '#42cfeb'], ['flip', 6.6, 9.4, '#ff78bc'], ['mover', 2.4, 5.2, 6.4, 5.2, '#ff6854'],
+      ['hole', 1.5, 6.8, .3, '#ffd383'], ['rubber', 1, 11.8, 2.4, 12.4, '#f2ecdd'], ['rubber', 7.8, 11.8, 6.4, 12.4, '#f2ecdd'],
+      ['bump', 4.4, 7.2, .6, '#c699ff'], ['kick', '#ffffff']]],
     ['Wire playground', [['ramp', 4, 8, 7, 10, '#59edd2'], ['orbit', .6, 8, .6, 4, 2, 1.2, 6.5, 1.2, '#9ce9ff'], ['subway', 7.8, 6, 2.5, 10.5, '#c699ff'],
       ['bump', 4.5, 5.2, .6, '#ff78bc'], ['kick', '#ffffff']]],
   ];
@@ -151,7 +229,7 @@
   // ---- drawing ------------------------------------------------------------------------------------------
   function fit() {
     const room = canvas.parentElement.clientWidth || 380;
-    const cssW = Math.max(220, Math.min(room, 440, (innerHeight - 140) / 1.7));
+    const cssW = Math.max(220, Math.min(room, 440, (innerHeight - 140) / 1.7)) * zoom;
     const dpr = devicePixelRatio || 1;
     canvas.style.width = cssW + 'px'; canvas.style.height = cssW * 1.7 + 'px';
     canvas.width = Math.round(cssW * dpr); canvas.height = Math.round(cssW * 1.7 * dpr);
@@ -217,12 +295,46 @@
       disc(it.pts[0][0], it.pts[0][1], .4, '#0c0a1c', it.c);
       const [lx, ly] = it.pts.at(-1), [ux, uy] = exitDir(lx, ly); arrow(lx + ux * .35, ly + uy * .35, ux, uy, it.c);
       if (on) poly(it.pts, '#ffffff44', .3);
+    } else if (it.k === 'rubber') {
+      seg(it.x, it.y, it.x2, it.y2, '#252049', .24); seg(it.x, it.y, it.x2, it.y2, it.c, .15);
+      if (on) seg(it.x, it.y, it.x2, it.y2, '#ffffff55', .3);
+    } else if (it.k === 'mover') {
+      ctx.setLineDash([.08, .1]); seg(it.x, it.y, it.x2, it.y2, '#ffffff55', .04); ctx.setLineDash([]);
+      const mx = (it.x + it.x2) / 2, my = (it.y + it.y2) / 2, nx = it.y2 - it.y, ny = it.x - it.x2, n = Math.hypot(nx, ny) || 1;
+      seg(mx - nx / n * .3, my - ny / n * .3, mx + nx / n * .3, my + ny / n * .3, '#252049', .38); seg(mx - nx / n * .3, my - ny / n * .3, mx + nx / n * .3, my + ny / n * .3, it.c, .28);
+      disc(it.x, it.y, .1, '#fff0ca'); disc(it.x2, it.y2, .1, '#fff0ca');
+      if (on) seg(it.x, it.y, it.x2, it.y2, '#ffffff44', .3);
+    } else if (it.k === 'hole') {
+      disc(it.x, it.y, it.r + .07, '#252049'); disc(it.x, it.y, it.r, '#0c0a1c', it.c);
+      const a = Math.atan2(6, 5 - it.x); arrow(it.x + Math.cos(a) * (it.r + .3), it.y + Math.sin(a) * (it.r + .3), Math.cos(a), Math.sin(a), it.c);
+      if (on) disc(it.x, it.y, it.r + .16, null, glow);
+    } else if (it.k === 'flip') {
+      const left = it.x < W * .44, a0 = left ? .3 : Math.PI - .3, ex = it.x + FLIP_LEN * Math.cos(a0), ey = it.y + FLIP_LEN * Math.sin(a0);
+      seg(it.x, it.y, ex, ey, '#211b40', .5); seg(it.x, it.y, ex, ey, left ? '#42cfeb' : '#ff78bc', .32); disc(it.x, it.y, .2, '#fff0ca');
+      if (on) disc(it.x, it.y, .5, null, glow);
+    } else if (GLYPH[it.k]) {
+      ctx.save(); ctx.translate(it.x, it.y); glyphPath(it.k, it.r); ctx.globalAlpha = .7; ctx.fillStyle = ctx.strokeStyle = it.c; ctx.lineWidth = it.r * .16;
+      it.k === 'ring' ? ctx.stroke() : ctx.fill(); ctx.restore();
+      if (on) disc(it.x, it.y, it.r + .1, null, glow);
     } else if (d.shape === 'pr') {
       if (it.k === 'magnet') { ctx.setLineDash([.12, .12]); disc(it.x, it.y, it.r, '#59edd214', '#59edd2'); ctx.setLineDash([]); disc(it.x, it.y, .16, it.c); }
       else if (it.k === 'saucer') { disc(it.x, it.y, it.r + .07, '#252049'); disc(it.x, it.y, it.r, '#0c0a1c', it.c); }
       else if (it.k === 'post') { disc(it.x, it.y, it.r + .05, '#252049'); disc(it.x, it.y, it.r, it.c); }
       else { disc(it.x, it.y, it.r + .1, '#fff3a8'); disc(it.x, it.y, it.r + .02, '#211c3d'); disc(it.x, it.y, it.r - .08, it.c); disc(it.x, it.y, .18, '#fff0ca'); }
       if (on) disc(it.x, it.y, it.r + .16, null, glow);
+    } else if (d.shape === 'a') {
+      const curve = arcCurve(it);
+      poly(curve, '#17152f', .3); poly(curve, it.c, .14);
+      if (on) { poly(curve, '#ffffff55', .3); ctx.setLineDash([.1, .1]); seg(it.x, it.y, it.cx, it.cy, '#ffffff55', .03); seg(it.x2, it.y2, it.cx, it.cy, '#ffffff55', .03); ctx.setLineDash([]); }
+    } else if (it.k === 'flap') {
+      seg(it.x, it.y, it.x2, it.y2, '#17152f', .2); seg(it.x, it.y, it.x2, it.y2, it.c, .09); disc(it.x, it.y, .1, '#fff0ca');
+      const mx = (it.x + it.x2) / 2, my = (it.y + it.y2) / 2, nx = (it.y2 - it.y), ny = -(it.x2 - it.x), n = Math.hypot(nx, ny) || 1;
+      arrow(mx + nx / n * .35, my + ny / n * .35, -nx, -ny, it.c);                       // the way the ball may pass
+      if (on) seg(it.x, it.y, it.x2, it.y2, '#ffffff55', .3);
+    } else if (it.k === 'portal') {
+      ctx.setLineDash([.12, .12]); seg(it.x, it.y, it.x2, it.y2, it.c + '55', .05); ctx.setLineDash([]);
+      for (const [px, py] of [[it.x, it.y], [it.x2, it.y2]]) { disc(px, py, .42, '#252049'); disc(px, py, .32, '#0c0a1c', it.c); disc(px, py, .16, null, it.c); }
+      if (on) for (const [px, py] of [[it.x, it.y], [it.x2, it.y2]]) disc(px, py, .5, null, glow);
     } else if (d.shape === 's') {
       const w = it.k === 'wall' ? .14 : it.k === 'target' ? .28 : .23;
       if (it.k !== 'wall') seg(it.x, it.y, it.x2, it.y2, '#252049', w + .1);
@@ -237,8 +349,21 @@
     }
     if (on) handles(it).forEach(([hx, hy], i) => disc(hx, hy, .17, d.shape === 'w' && i === 0 ? '#ffffff' : '#ffb703', '#1a1630'));
   }
+  const arcCurve = (it) => Array.from({ length: 21 }, (_, i) => { const t = i / 20, u = 1 - t;
+    return [u * u * it.x + 2 * u * t * it.cx + t * t * it.x2, u * u * it.y + 2 * u * t * it.cy + t * t * it.y2]; });
+  function glyphPath(g, u) {      // same shapes the game paints under the glass
+    ctx.beginPath();
+    if (g === 'star') for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? u * .45 : u; ctx[i ? 'lineTo' : 'moveTo'](r * Math.cos(a), r * Math.sin(a)); }
+    else if (g === 'heart') { ctx.moveTo(0, u * .85); ctx.bezierCurveTo(-u * 1.3, u * .1, -u * .55, -u * .9, 0, -u * .3); ctx.bezierCurveTo(u * .55, -u * .9, u * 1.3, u * .1, 0, u * .85); }
+    else if (g === 'bolt') { ctx.moveTo(u * .2, -u); ctx.lineTo(-u * .55, u * .1); ctx.lineTo(-u * .05, u * .1); ctx.lineTo(-u * .2, u); ctx.lineTo(u * .55, -u * .2); ctx.lineTo(u * .05, -u * .2); }
+    else if (g === 'diamond') { ctx.moveTo(0, -u); ctx.lineTo(u * .65, 0); ctx.lineTo(0, u); ctx.lineTo(-u * .65, 0); }
+    else if (g === 'moon') { ctx.arc(0, 0, u, -Math.PI * .1, Math.PI * 1.1, false); ctx.arc(u * .38, -u * .1, u * .8, Math.PI * .85, -Math.PI * .2, true); }
+    else { ctx.arc(0, 0, u, 0, Math.PI * 2); ctx.moveTo(u * .62, 0); ctx.arc(0, 0, u * .62, 0, Math.PI * 2); }
+    ctx.closePath();
+  }
   function handles(it) {
     const d = KINDS[it.k];
+    if (d.shape === 'a') return [[it.x, it.y], [it.x2, it.y2], [it.cx, it.cy]];
     if (d.shape === 'pr') return [[it.x + it.r, it.y]];
     if (d.shape === 's') return [[it.x, it.y], [it.x2, it.y2]];
     if (d.shape === 'w') return it.pts;
@@ -256,6 +381,7 @@
       const it = state.items[i], d = KINDS[it.k];
       const near = d.shape === 'pr' ? Math.hypot(px - it.x, py - it.y) <= (it.k === 'magnet' ? Math.min(it.r, .5) : it.r + .1)
         : it.k === 'ramp' ? rampCurve(it).some(([cx, cy], j, c) => j && distSeg(px, py, c[j - 1][0], c[j - 1][1], cx, cy) <= .3)
+        : d.shape === 'a' ? arcCurve(it).some(([cx, cy], j, c) => j && distSeg(px, py, c[j - 1][0], c[j - 1][1], cx, cy) <= .3)
         : d.shape === 's' ? distSeg(px, py, it.x, it.y, it.x2, it.y2) <= .3 || Math.hypot(px - it.x, py - it.y) <= .4
         : d.shape === 'w' ? it.pts.some(([x, y], j) => (j && distSeg(px, py, it.pts[j - 1][0], it.pts[j - 1][1], x, y) <= .3) || Math.hypot(px - x, py - y) <= .4)
         : it.k === 'spinner' ? Math.abs(px - it.x) <= .55 && Math.abs(py - it.y) <= .3 : Math.hypot(px - it.x, py - it.y) <= .38;
@@ -281,6 +407,7 @@
     if (drag.mode === 'handle') {
       if (d.shape === 'pr') it.r = round2(clamp(Math.hypot(px - it.x, py - it.y), ...d.r));
       else if (d.shape === 'w') { it.pts[drag.h] = [grid(px), grid(py)]; normalize(it); }
+      else if (d.shape === 'a' && drag.h === 2) { it.cx = grid(px); it.cy = grid(py); normalize(it); }
       else {
         if (drag.h === 0) { it.x = grid(px); it.y = grid(py); } else { it.x2 = grid(px); it.y2 = grid(py); }
         normalize(it);
@@ -288,6 +415,7 @@
     } else {
       const nx = grid(px - drag.dx), ny = grid(py - drag.dy), sx = nx - it.x, sy = ny - it.y;
       if (d.shape === 's') { it.x2 += sx; it.y2 += sy; it.x = nx; it.y = ny; }
+      else if (d.shape === 'a') { it.x2 += sx; it.y2 += sy; it.cx += sx; it.cy += sy; it.x = nx; it.y = ny; }
       else if (d.shape === 'w') it.pts = it.pts.map(([x, y]) => [x + sx, y + sy]);
       else { it.x = nx; it.y = ny; }
       normalize(it);
@@ -302,7 +430,12 @@
   function buildPalette() {
     const box = $('pePalette');
     box.textContent = '';
-    for (const [k, d] of Object.entries(KINDS)) {
+    let group = '';
+    const order = ['Scoring', 'Walls & guides', 'Mechanisms', 'Decals'], groupOf = (k) => KINDS[k].group || GROUPS[k] || 'Scoring';
+    const sorted = Object.entries(KINDS).sort((a, b) => order.indexOf(groupOf(a[0])) - order.indexOf(groupOf(b[0])));
+    for (const [k, d] of sorted) {
+      const g = groupOf(k);
+      if (g && g !== group) { group = g; const h = document.createElement('h3'); h.className = 'pe-group'; h.textContent = g; box.append(h); }
       const b = document.createElement('button');
       b.className = 'pe-part'; b.type = 'button'; b.dataset.kind = k;
       b.innerHTML = `<span class="pe-icon">${d.icon}</span><span>${d.label}</span><small></small>`;
@@ -346,7 +479,7 @@
     $('peFields').hidden = !it; $('peHint').hidden = !!it;
     $('peTitle').textContent = it ? `${KINDS[it.k].icon} ${KINDS[it.k].label}` : 'Nothing selected';
     if (!it) return;
-    const d = KINDS[it.k], segment = d.shape === 's', wire = d.shape === 'w';
+    const d = KINDS[it.k], segment = d.shape === 's' || d.shape === 'a', wire = d.shape === 'w';
     const cx = segment ? (it.x + it.x2) / 2 : it.x, cy = segment ? (it.y + it.y2) / 2 : it.y;
     $('peX').value = round2(cx); $('peY').value = round2(cy);
     $('peSizeRow').hidden = d.shape === 'p' || wire;
@@ -360,18 +493,26 @@
     $('peColorRow').hidden = $('peSwatches').hidden = !d.paint;
     $('peColor').value = it.c;
     $('peDup').disabled = count(it.k) >= d.max;
+    $('peRotL').disabled = $('peRotR').disabled = d.shape === 'p' || d.shape === 'pr';
   }
   function editSel(fn) { const it = state.items[sel]; if (!it) return; fn(it, KINDS[it.k]); normalize(it); draw(); commit(); }
   const num = (id) => { const v = parseFloat($(id).value); return isFinite(v) ? v : null; };
   function reposition(it, d) {
     const x = num('peX'), y = num('peY');
     if (x === null || y === null) return;
-    if (d.shape === 's') { const hx = (it.x2 - it.x) / 2, hy = (it.y2 - it.y) / 2; it.x = x - hx; it.y = y - hy; it.x2 = x + hx; it.y2 = y + hy; }
+    if (d.shape === 'a') { const sx = x - (it.x + it.x2) / 2, sy = y - (it.y + it.y2) / 2; mapPts(it, ([px, py]) => [px + sx, py + sy]); }
+    else if (d.shape === 's') { const hx = (it.x2 - it.x) / 2, hy = (it.y2 - it.y) / 2; it.x = x - hx; it.y = y - hy; it.x2 = x + hx; it.y2 = y + hy; }
     else if (d.shape === 'w') { const sx = x - it.x, sy = y - it.y; it.pts = it.pts.map(([px, py]) => [px + sx, py + sy]); }
     else { it.x = x; it.y = y; }
   }
   $('peX').onchange = $('peY').onchange = () => editSel(reposition);
   const turn = (it, length, angle) => {     // rebuild a segment about its midpoint
+    if ('cx' in it) {                        // a curved wall turns as a whole
+      const mx = (it.x + it.x2) / 2, my = (it.y + it.y2) / 2, cur = Math.atan2(it.y2 - it.y, it.x2 - it.x), old = Math.hypot(it.x2 - it.x, it.y2 - it.y) || 1;
+      const k = length / old, da = angle - cur, co = Math.cos(da), si = Math.sin(da);
+      mapPts(it, ([px, py]) => [mx + ((px - mx) * co - (py - my) * si) * k, my + ((px - mx) * si + (py - my) * co) * k]);
+      return;
+    }
     const mx = (it.x + it.x2) / 2, my = (it.y + it.y2) / 2, h = length / 2;
     it.x = mx - h * Math.cos(angle); it.y = my - h * Math.sin(angle); it.x2 = mx + h * Math.cos(angle); it.y2 = my + h * Math.sin(angle);
   };
@@ -397,16 +538,60 @@
     const it = state.items[sel];
     if (!it || count(it.k) >= KINDS[it.k].max) return;
     const c = copy(it);
-    for (const f of ['x', 'x2']) if (f in c) c[f] += .5;
-    for (const f of ['y', 'y2']) if (f in c) c[f] += .5;
+    for (const f of ['x', 'x2', 'cx']) if (f in c) c[f] += .5;
+    for (const f of ['y', 'y2', 'cy']) if (f in c) c[f] += .5;
     if (c.pts) c.pts = c.pts.map(([x, y]) => [x + .5, y + .5]);
     state.items.push(normalize(c)); sel = state.items.length - 1; commit();
   };
+  // ---- transform tools: rotate, mirror, nudge, target bank ---------------------------------------------------
+  const MID = W * .44;                                                       // the playfield's middle line (inside the shooter lane)
+  function rotateSel(deg) {
+    const it = state.items[sel]; if (!it) return;
+    const a = deg * Math.PI / 180, co = Math.cos(a), si = Math.sin(a), [mx, my] = centre(it);
+    mapPts(it, ([x, y]) => [mx + (x - mx) * co - (y - my) * si, my + (x - mx) * si + (y - my) * co]);
+    normalize(it); draw(); commit();
+  }
+  const mirrored = (it) => mapPts(copy(it), ([x, y]) => [2 * MID - x, y]);
+  function mirrorSel() {                      // flip the part left <-> right in place
+    const it = state.items[sel]; if (!it) return;
+    mapPts(it, ([x, y]) => [2 * MID - x, y]);
+    normalize(it); draw(); commit();
+  }
+  function mirrorTable() {                    // copy the left half onto the right half (parts that only come once stay put)
+    const keep = state.items.filter((i) => centre(i)[0] <= MID + .01);
+    const out = keep.slice();
+    for (const it of keep) {
+      if (Math.abs(centre(it)[0] - MID) < .15 || KINDS[it.k].max === 1) continue;
+      const m = normalize(mirrored(it));
+      if (out.filter((i) => i.k === m.k).length < KINDS[m.k].max && out.length < 80) out.push(m);
+    }
+    state.items = out; sel = -1; commit(); say('Left half mirrored onto the right.');
+  }
+  function nudgeSel(dx, dy) { const it = state.items[sel]; if (!it) return; mapPts(it, ([x, y]) => [x + dx, y + dy]); normalize(it); draw(); fillInspector(); commit(); }
+  function addBank() {                        // five standup targets in a tidy column, one placement
+    const room = KINDS.target.max - count('target'), n = Math.min(5, room);
+    if (n < 2) return say('Not enough room for a target bank (a table can have 8 targets).');
+    const x = 1.25, y0 = 6.2;
+    for (let i = 0; i < n; i++) { const it = make('target', x, y0 + i * .9); it.y2 = it.y + .7; state.items.push(normalize(it)); }
+    sel = state.items.length - 1; commit(); say(`A bank of ${n} targets: clear them all to light the ramp.`);
+  }
+  $('peRotL').onclick = () => rotateSel(-15); $('peRotR').onclick = () => rotateSel(15);
+  $('peMirror').onclick = mirrorSel; $('peMirrorAll').onclick = mirrorTable; $('peBank').onclick = addBank;
+  addEventListener('keydown', (e) => {
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || sel < 0 || e.ctrlKey || e.metaKey) return;
+    const step = e.shiftKey ? .25 : .05, k = e.key;
+    if (k === 'ArrowLeft') nudgeSel(-step, 0); else if (k === 'ArrowRight') nudgeSel(step, 0);
+    else if (k === 'ArrowUp') nudgeSel(0, -step); else if (k === 'ArrowDown') nudgeSel(0, step);
+    else if (k === 'r' || k === 'R') rotateSel(e.shiftKey ? -15 : 15); else if (k === 'm' || k === 'M') mirrorSel();
+    else if (k === 'd' || k === 'D') $('peDup').click(); else return;
+    e.preventDefault();
+  });
+  $('peZoom').onclick = () => { zoom = zoom >= 2 ? 1 : zoom + .5; $('peZoom').textContent = `🔍 ${zoom}×`; fit(); };
   $('peName').oninput = () => { state.name = $('peName').value; };
   $('peName').onchange = commit;
   $('peKick').onchange = () => { state.kick = $('peKick').checked; commit(); };
   $('peSnap').onclick = () => { snap = !snap; $('peSnap').setAttribute('aria-pressed', String(snap)); draw(); };
-  $('peClear').onclick = () => { if (!state.items.length && !state.kick) return; if (confirm('Remove every part from this table?')) { state.items = []; state.kick = false; sel = -1; commit(); } };
+  $('peClear').onclick = () => { if (!state.items.length && !state.kick) return; if (confirm('Remove every part from this table?')) { state.items = []; state.kick = false; state.pts = {}; sel = -1; commit(); } };
 
   function refresh(redraw = true) {
     for (const b of document.querySelectorAll('.pe-part')) {
@@ -418,8 +603,19 @@
     $('peUndo').disabled = history.length < 2; $('peRedo').disabled = !future.length;
     const bytes = new Blob([snapshot()]).size;
     $('peCount').textContent = `${state.items.length + (state.kick ? 1 : 0)} parts · ${bytes.toLocaleString()} of ${MAX_BYTES.toLocaleString()} bytes`;
+    fillPoints();
     fillInspector();
     if (redraw) draw();
+  }
+  function fillPoints() {
+    const body = $('pePtsBody');
+    if (!body.children.length) for (const [k, [def, label]] of Object.entries(POINTS)) {
+      const l = document.createElement('label'), i = document.createElement('input');
+      l.textContent = label + ' '; i.type = 'number'; i.min = 0; i.max = 20000; i.step = 50; i.dataset.k = k;
+      i.onchange = () => { const v = parseInt(i.value, 10); state.pts[k] = isFinite(v) ? clamp(v, 0, 20000) : def; commit(); };
+      l.append(i); body.append(l);
+    }
+    for (const i of body.querySelectorAll('input')) if (document.activeElement !== i) i.value = state.pts?.[i.dataset.k] ?? POINTS[i.dataset.k][0];
   }
   const swatches = $('peSwatches');
   for (const c of SWATCHES) {

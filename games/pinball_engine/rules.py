@@ -12,6 +12,8 @@ class Rules:
     lane: int = 500
     skill: int = 5000
     spinner: int = 100
+    portal: int = 250
+    mover: int = 300
     ramp: int = 6000
     jackpot: int = 12000
     jackpot_growth: int = 100     # each bumper hit while the jackpot is lit adds this to the next jackpot

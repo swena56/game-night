@@ -42,6 +42,12 @@ class Layout:
     posts: tuple = ()                 # (x, y, radius) passive rubber posts: they bounce the ball, no score
     magnet: tuple | None = None       # (x, y, pull radius): grabs and holds the ball while energised
     saucer: tuple | None = None   # (x, y, radius) scoop: captures a slow ball, holds it, then kicks it back out
+    rubbers: tuple = ()               # (x1, y1, x2, y2) dead-rubber bands: bouncy, no score
+    movers: tuple = ()                # (x1, y1, x2, y2, speed) a target that slides along a track
+    holes: tuple = ()                 # (x, y, radius, angle in degrees) extra kicker holes: hold the ball, then fire it out
+    portals: tuple | None = None      # (x1, y1, x2, y2, radius): a linked pair of holes; a ball entering one leaves from the other
+    flaps: tuple = ()                 # (x1, y1, x2, y2) one-way flaps: solid from the left of a->b, the ball passes from the right
+    guide_run: int = 2                # how many of the guide rails (from guides_from) are the violet inlane guides
     width: float = 10
     height: float = 17
     ball: float = 0.19
@@ -68,7 +74,8 @@ class Layout:
                     targets=self.targets, lanes=self.lanes, spinner=self.spinner, ramp=self.ramp, saucer=self.saucer, posts=self.posts, orbit=self.orbit, orbit_path=self.orbit_path, special=self.special, magnet=self.magnet, subway=self.subway, subway_exit=self.subway_exit,
                     exit=self.ramp_exit, flips=self.flippers, length=self.flipper_length,
                     radius=self.ball, skill=self.skill_charge, width=self.width,
-                    height=self.height, launch=self.launch, theme=self.theme, paint=self.paint)
+                    height=self.height, launch=self.launch, theme=self.theme, paint=self.paint,
+                    portals=self.portals, flaps=self.flaps, rubbers=self.rubbers, movers=self.movers, holes=self.holes, guides=self.guides_from, guide_run=self.guide_run)
 
 
 def flipper_pair(y, left_x, right_x, rest=0.42, up=0.66):

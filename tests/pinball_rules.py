@@ -814,22 +814,24 @@ class CustomTables(unittest.TestCase):
         ["spinner", 7.9, 7.4, "#c1d2e5"], ["saucer", 1.6, 4.7, .3, "#ffd383"], ["magnet", 5, 9.6, 1.1, "#59edd2"], ["kick", "#ffffff"]]}
 
     def test_build_makes_a_layout_with_paint(self):
+        from games import pinball as cabinet
         from games.pinball_custom import build
         layout, clean = build(self.SPEC)
         self.assertEqual(layout.bumps, ((3.0, 5.5, .65),))
         self.assertEqual(layout.paint["bumps"], ["#ff9b59"])
         self.assertEqual(layout.paint["name"], "My table")
-        self.assertEqual(len(layout.rails), 11 + 1)
+        self.assertEqual(len(layout.rails), len(cabinet.SANDBOX_BASE) + 1)
         self.assertTrue(layout.outlane and layout.special and layout.spinner and layout.saucer and layout.magnet)
         self.assertEqual(build(clean)[1], clean)          # cleaning is stable
 
     def test_build_clamps_and_rejects(self):
         from games.pinball_custom import build
+        from games import pinball as cabinet
         from games.base import GameError
         layout, _ = build({"items": [["bump", -5, 99, 9, "#FFFFFF"], ["wall", 1, 1, 1, 1, "#ffffff"], ["wall", 1, 1, 9, 1, "#ffffff"]]})
         x, y, r = layout.bumps[0]
         self.assertTrue(.45 <= x <= 8.35 and .45 <= y <= 14.2 and r <= 1.0)
-        for wall in layout.rails[11:]:
+        for wall in layout.rails[len(cabinet.SANDBOX_BASE):]:
             self.assertTrue(.25 - 1e-6 <= math.hypot(wall[2] - wall[0], wall[3] - wall[1]) <= 4.5 + 1e-6)
         for bad in ({}, {"items": "x"}, {"items": [["nope"]]}, {"items": [["bump", 1, 1, .5, "red"]]}, {"items": [["bump", 1, "1", .5, "#ffffff"]]},
                     {"items": [["bump", 1, 1, .5, "#ffffff"]] * 13}, {"items": [["spinner", 1, 1, "#ffffff"]] * 2},
@@ -837,21 +839,95 @@ class CustomTables(unittest.TestCase):
             with self.assertRaises(GameError, msg=str(bad)[:60]):
                 build(bad)
 
+    def test_new_parts_build(self):
+        from games.pinball_custom import build
+        from games import pinball as cabinet
+        layout, clean = build({"items": [["arc", 1, 5, 4, 5, 2.5, 3, "#ff0000"], ["flap", 3, 8, 4, 8, "#ffffff"],
+                                         ["portal", 1, 9, 5, 9, "#00ff00"], ["star", 3, 3, .5, "#ffffff"], ["moon", 6, 3, 9, "#ffffff"]]})
+        self.assertGreater(len(layout.rails), len(cabinet.SANDBOX_BASE) + 5)
+        self.assertEqual(len(layout.paint["walls"]), len(layout.rails) - len(cabinet.SANDBOX_BASE))
+        self.assertEqual(layout.flaps, ((3.0, 8.0, 4.0, 8.0),))
+        self.assertEqual(layout.portals, (1.0, 9.0, 5.0, 9.0, .32))
+        self.assertEqual([d[0] for d in layout.paint["decals"]], ["star", "moon"])
+        self.assertLessEqual(layout.paint["decals"][1][3], 1.6)
+        self.assertTrue(layout.public()["portals"])
+        # a degenerate curve is stretched, never a zero-length rail
+        layout, _ = build({"items": [["arc", 3, 3, 3, 3, 3, 3, "#ff0000"]]})
+        self.assertTrue(all(r[:2] != r[2:] for r in layout.rails))
+        with self.assertRaises(Exception):
+            build({"items": [["arc", 1, 2, 3, 4, "#ff0000"]]})
+
+    def test_extra_flippers_movers_holes_and_points(self):
+        from games.pinball import CustomTable
+        from games.pinball_custom import build, build_rules
+        W = "#ffffff"
+        spec = {"pts": {"bumper": 500, "bogus": 9, "target": 250}, "items": [["flip", 2, 8, W], ["flip", 7, 8, W], ["mover", 2, 5, 5, 5, "#ff0000"],
+                                                                         ["hole", 3, 6, .3, "#ffff00"], ["rubber", 1, 6, 2, 7, "#00ff00"]]}
+        layout, clean = build(spec)
+        self.assertEqual(len(layout.flippers), 4)
+        self.assertLess(layout.flippers[2][2], 1.5)          # left of the middle: left-button flipper
+        self.assertGreater(layout.flippers[3][2], 1.5)       # right of the middle: right-button flipper
+        self.assertEqual(clean["pts"], {"bumper": 500})      # defaults and unknown keys are dropped
+        self.assertEqual(build_rules(spec).bumper, 500)
+        t = CustomTable(layout_override=layout, rules_override=build_rules(spec), balls=9)
+        t.staged = False
+        t.input(1, 0, 0)                                     # hold the left button: the extra left flipper rises too
+        for _ in range(120):
+            t.step()
+        self.assertLess(t.angles[2], .3)
+        self.assertEqual(len(t.public()[-1]["flips2"]), 2)
+        self.assertEqual(len(t.public()[-1]["movers"]), 1)
+        # a ball dropped into the hole is held, then fired out
+        t.x, t.y, t.vx, t.vy = 3.0, 6.0, 0, 0
+        t.step()
+        self.assertGreater(t.hole_ticks, 0)
+        for _ in range(200):
+            t.step()
+        self.assertEqual(t.hole_ticks, 0)
+
+    def test_portal_teleports_and_flap_is_one_way(self):
+        from games.pinball import CustomTable
+        from games.pinball_custom import build
+        layout, _ = build({"items": [["portal", 2, 5, 6, 5, "#00ff00"]]})
+        t = CustomTable(layout_override=layout)
+        t.staged = False
+        t.x, t.y, t.vx, t.vy = 2.05, 5.0, 0, 0
+        t.step()
+        self.assertGreater(t.x, 5)
+        before = t.x
+        for _ in range(10):                 # the cooldown stops it bouncing straight back
+            t.step()
+        self.assertGreater(t.x, 5)
+        layout, _ = build({"items": [["flap", 3, 8, 5, 8, "#ffffff"]]})
+        wrong, right = [], []
+        for y0, vy, out in ((7.5, 6, wrong), (8.5, -6, right)):
+            t = CustomTable(layout_override=layout)
+            t.staged = False
+            t.x, t.y, t.vx, t.vy = 4, y0, 0, vy
+            for _ in range(240):
+                t.step()
+                out.append(t.y)
+        # one side is a wall (the ball never crosses it), the other lets it through
+        crossed = (max(wrong) > 8.2) != (min(right) < 7.8)
+        self.assertTrue(crossed)
+
     def test_random_tables_run_and_pickle(self):
         import pickle, random
         from games.pinball import CustomTable
-        from games.pinball_custom import build, LIMITS
+        from games.pinball_custom import build, LIMITS, GLYPHS
         for seed in range(12):
             rng = random.Random(seed)
             items = []
             for kind, limit in LIMITS.items():
                 for _ in range(rng.randint(0, min(limit, 5))):
                     x, y, c = rng.uniform(.5, 8.3), rng.uniform(.5, 14.1), "#%06x" % rng.randrange(1 << 24)
-                    if kind in ("bump", "post", "saucer", "magnet"):
+                    if kind in ("bump", "post", "saucer", "magnet", "hole") or kind in GLYPHS:
                         items.append([kind, x, y, rng.uniform(.05, 2), c])
+                    elif kind == "arc":
+                        items.append([kind, x, y, rng.uniform(.5, 8), rng.uniform(.5, 14), rng.uniform(.5, 8), rng.uniform(.5, 14), c])
                     elif kind == "orbit":
                         items.append([kind, *[rng.uniform(.5, 8.3) for _ in range(rng.randint(2, 6) * 2)], c])
-                    elif kind in ("sling", "target", "wall", "ramp", "subway"):
+                    elif kind in ("sling", "target", "wall", "ramp", "subway", "flap", "portal", "rubber", "mover"):
                         items.append([kind, x, y, rng.uniform(.5, 8), rng.uniform(.5, 14), c])
                     elif kind == "kick":
                         items.append([kind, c])

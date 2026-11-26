@@ -18,7 +18,7 @@ SHOT_OF = dict(orbit="orbit", lane="lane", skill="lane", target="target", spinne
 SPEED_CAP = 42
 # Per-ball state: the table swaps these between the main ball and each extra multiball ball.
 BALL_STATE = ("x", "y", "vx", "vy", "height", "ramp_ticks", "rollovers", "skill", "smooth_launch",
-              "still", "still_origin", "jackpot_shot", "saucer_ticks", "subway_ticks", "english", "orbit_ticks")
+              "still", "still_origin", "jackpot_shot", "saucer_ticks", "subway_ticks", "english", "orbit_ticks", "hole_ticks", "hole_at")
 
 
 @dataclass
@@ -51,8 +51,12 @@ class Table:
     height: float = 0
     ramp_ticks: int = 0
     saucer_ticks: int = 0
+    hole_ticks: int = 0          # >0 while the ball sits in an extra kicker hole
+    hole_at: int = 0
+    mover_bank: int = 0          # bit per moving target hit (just for the renderer's flash)
     subway_ticks: int = 0
     orbit_ticks: int = 0
+    portal_cool: int = 0         # ticks before a teleported ball can enter a portal again
     orbit_cool: int = 0         # ticks the orbit diverter stays shut
     flip_contact: bool = False   # a flipper touched the ball this tick
     bumper_heat: float = 0.0     # rapid bumper hits weaken the coil a little
@@ -118,10 +122,13 @@ class Table:
     rng: random.Random = field(default_factory=random.Random, repr=False)
     gone: bool = False
     layout_override: Layout = field(default=None, repr=False)   # a custom table brings its own layout
+    rules_override: Rules = field(default=None, repr=False)     # ...and its own point values
 
     def __post_init__(self):
         if self.layout_override is not None:
             self.layout = self.layout_override
+        if self.rules_override is not None:
+            self.rules = self.rules_override
         lay, rules = self.layout, self.rules
         self.balls = rules.balls if self.balls is None else self.balls
         self.angles = lay.resting_angles() if self.angles is None else self.angles
@@ -369,11 +376,12 @@ class Table:
     def move_flippers(self):
         previous = self.angles[:]
         for i, (_, _, rest, up) in enumerate(self.layout.flippers):
-            active = not self.tilt and (self.held & (1 << i) or self.buffer[i])
+            side = i % 2                       # extra flippers follow the left / right button of their side
+            active = not self.tilt and (self.held & (1 << side) or self.buffer[side])
             target = up if active else rest
             speed = (31 * self.rules.flipper_power[i % 2] if active else 20) * STEP
             self.angles[i] += max(-speed, min(speed, target - self.angles[i]))
-            self.buffer[i] = max(0, self.buffer[i] - 1)
+            self.buffer[side] = max(0, self.buffer[side] - 1) if i < 2 else self.buffer[side]
         return previous
 
     def flipper_contact(self, i, start, elapsed):
@@ -403,6 +411,10 @@ class Table:
             self.segment(rail, bounce=0.85 if i >= lay.guides_from else 0.77)
         if lay.gate and not self.smooth_launch:
             self.segment(lay.gate, bounce=0.5)
+        for ax, ay, bx, by in lay.flaps:
+            # a one-way flap is a wall only for a ball on its left side (travelling a -> b); from the right it swings open
+            if (bx - ax) * (self.y - ay) - (by - ay) * (self.x - ax) > 0:
+                self.segment((ax, ay, bx, by), bounce=0.5)
         for i in list(self.sling_cool):
             self.sling_cool[i] -= 1
             if self.sling_cool[i] <= 0:
@@ -489,6 +501,41 @@ class Table:
             if abs(self.x - sx) < 0.55 and (old_y < sy <= self.y or self.y <= sy < old_y):
                 self.spin_left += max(1, min(5, int(abs(self.vy) / 5)))
                 self.spin_front = self.vy < 0
+        for rail in lay.rubbers:
+            if self.segment(rail, ball + 0.05, bounce=0.62 * (1 - min(0.12, self.wear / 20000))):
+                self.wear += 1
+                self.post_glow = 18
+        for i, (x1, y1, x2, y2, speed) in enumerate(lay.movers):
+            cx, cy = self.mover_at(i)
+            nx, ny = y2 - y1, x1 - x2
+            norm = math.hypot(nx, ny) or 1
+            ax, ay, bx, by = cx - nx / norm * 0.3, cy - ny / norm * 0.3, cx + nx / norm * 0.3, cy + ny / norm * 0.3
+            gx, gy = closest(self.x, self.y, ax, ay, bx, by)
+            gap = math.hypot(self.x - gx, self.y - gy)
+            firm = gap > 1e-8 and -(self.vx * (self.x - gx) + self.vy * (self.y - gy)) / gap >= rules.target_threshold
+            if self.segment((ax, ay, bx, by), ball + 0.08) and firm and not self.tilt:
+                self.mover_bank = i + 1
+                self.signal(f"mover{i}", rules.mover)
+        for i, (hx, hy, hr, _) in enumerate(lay.holes):
+            if not self.hole_ticks and not self.saucer_ticks and math.hypot(self.x - hx, self.y - hy) < hr * 0.7 \
+                    and math.hypot(self.vx, self.vy) < 22:
+                self.hole_ticks, self.hole_at = rules.saucer_ticks, i
+                self.x, self.y, self.vx, self.vy, self.english = hx, hy, 0, 0, 0
+                if not self.tilt:
+                    self.signal("hole", rules.saucer)
+                break
+        if lay.portals and not self.height:
+            x1, y1, x2, y2, pr = lay.portals
+            if self.portal_cool > 0:
+                self.portal_cool -= 1
+            else:
+                for (ax, ay), (bx, by) in (((x1, y1), (x2, y2)), ((x2, y2), (x1, y1))):
+                    if math.hypot(self.x - ax, self.y - ay) < pr * 0.8:
+                        self.x, self.y = bx, by
+                        self.portal_cool = 120
+                        if not self.tilt:
+                            self.signal("portal", rules.portal)
+                        break
         if lay.saucer and not self.saucer_ticks:
             cx, cy, radius = lay.saucer
             if math.hypot(self.x - cx, self.y - cy) < radius * 0.7 and math.hypot(self.vx, self.vy) < 22:
@@ -602,7 +649,7 @@ class Table:
 
     def free_ball(self, x, y, vx, vy):
         return dict(x=x, y=y, vx=vx, vy=vy, height=0, ramp_ticks=0, rollovers=0, skill=False,
-                    smooth_launch=False, still=0, still_origin=(x, y), jackpot_shot=False, saucer_ticks=0, subway_ticks=0, english=0.0, orbit_ticks=0)
+                    smooth_launch=False, still=0, still_origin=(x, y), jackpot_shot=False, saucer_ticks=0, subway_ticks=0, english=0.0, orbit_ticks=0, hole_ticks=0, hole_at=0)
 
     def run_ball(self, previous):
         lay = self.layout
@@ -623,6 +670,9 @@ class Table:
         if self.saucer_ticks:
             self.hold_in_saucer()
             return
+        if self.hole_ticks:
+            self.hold_in_hole()
+            return
         old_y = self.y
         self.flip_contact = False
         self.pull_magnet()
@@ -639,7 +689,8 @@ class Table:
         if speed > SPEED_CAP:
             self.vx *= SPEED_CAP / speed
             self.vy *= SPEED_CAP / speed
-        near_flippers = lay.flipper_zone[0] < self.y < lay.flipper_zone[1] and self.x < lay.lane_x
+        near_flippers = (lay.flipper_zone[0] < self.y < lay.flipper_zone[1]
+                         or any(abs(self.y - f[1]) < 1.8 and abs(self.x - f[0]) < 2.6 for f in lay.flippers[2:])) and self.x < lay.lane_x
         # Sweep moving capsules through intermediate angles and ball positions. At the speed cap
         # each sample advances the relative surfaces by less than a ball radius.
         samples = 3 if near_flippers else 1
@@ -651,6 +702,11 @@ class Table:
                     self.flipper_contact(i, previous[i], sample / samples)
         self.mechanisms(old_y)
         self.lane_and_drain()
+
+    def mover_at(self, i):
+        x1, y1, x2, y2, speed = self.layout.movers[i]
+        t = 0.5 - 0.5 * math.cos(2 * math.pi * self.ticks * speed / (240 * 6))      # a full there-and-back every 6 s at speed 1
+        return x1 + (x2 - x1) * t, y1 + (y2 - y1) * t
 
     def special_lit(self):
         return bool(self.layout.special) and not self.tilt and (self.mult >= 2 or self.rules.always_on)
@@ -698,6 +754,18 @@ class Table:
             self.still_origin = (self.x, self.y)
             if not self.tilt:
                 self.signal("orbit", rules.orbit)
+
+    def hold_in_hole(self):
+        """An extra kicker hole: the ball rests, then is fired out along the hole's own angle."""
+        cx, cy, radius, angle = self.layout.holes[self.hole_at]
+        self.hole_ticks -= 1
+        if not self.hole_ticks:
+            speed = 7 if self.tilt else 10 + 2 * self.rng.random()
+            dx, dy = math.cos(math.radians(angle)), math.sin(math.radians(angle))
+            self.x, self.y = cx + dx * (radius + self.layout.ball + 0.05), cy + dy * (radius + self.layout.ball + 0.05)
+            self.vx, self.vy = dx * speed, dy * speed
+            self.still = 0
+            self.still_origin = (self.x, self.y)
 
     def hold_in_saucer(self):
         """The ball rests in the dish, then the kicker fires it back into play."""
@@ -847,7 +915,7 @@ class Table:
 
     def public(self):
         """Packed renderer state shared by full views and 30 Hz snapshots."""
-        return [*[round(v, 3) for v in (self.x, self.y, self.vx, self.vy, self.height, *self.angles)],
+        return [*[round(v, 3) for v in (self.x, self.y, self.vx, self.vy, self.height, *self.angles[:2])],
                 self.score, self.balls, self.bank, self.nudges, int(self.tilt), int(self.staged),
                 self.charge, self.event_id, self.event, round(self.spin % 1, 3),
                 math.ceil(self.save_ticks / 240), math.ceil(self.jackpot_ticks / 240),
@@ -860,7 +928,9 @@ class Table:
                  "wizard": self.wizards, "skill_lane": self.skill_lane, "missions": self.missions_done,
                  "orbit": int(bool(self.layout.orbit) and not self.orbit_cool and not self.tilt),
                  "special": int(self.special_lit() and not self.special_used),
-                 "post": self.post_glow, "streak": self.bumper_streak if self.streak_ticks else 0, "hold": int(self.saucer_ticks > 0),
+                 "post": self.post_glow, "streak": self.bumper_streak if self.streak_ticks else 0, "hold": int(self.saucer_ticks > 0 or self.hole_ticks > 0),
+                 "movers": [[round(v, 2) for v in self.mover_at(i)] for i in range(len(self.layout.movers))],
+                 "flips2": [round(a, 3) for a in self.angles[2:]],
                  "under": int(self.subway_ticks > 0), "magnet": 2 if self.magnet_ticks else 1 if self.magnet_armed() and not self.magnet_cool else 0,
                  "mission": ([self.rules.missions[self.mission][0], self.mission_progress, self.rules.missions[self.mission][2],
                               math.ceil(self.mission_ticks / 240)] if self.mission >= 0 else None), "mode": self.mode, "clock": math.ceil(self.clock / 240)}]
