@@ -190,6 +190,20 @@ const Profile = (() => {
     return result?.key === key ? result?.goal || '' : '';
   }
 
+  // ♟ Elo for chess (#25): bots have fixed ratings, people bring their own; a quicker K for the first 20 games
+  const ELO_START = 1000, ELO_BOT = { easy: 700, normal: 1100, hard: 1500 };
+  function rateChess(g, last, me) {
+    const foe = last.players.find((x) => x.id !== me.id);
+    if (last.players.length !== 2 || !foe || last.low) return null;
+    const data = g.data ||= {}, mine = data.elo ?? ELO_START, rated = data.eloGames || 0;
+    const theirs = foe.bot ? ELO_BOT[foe.bot] ?? ELO_START : foe.elo ?? ELO_START;
+    const score = me.won ? 1 : foe.won ? 0 : 0.5;
+    const next = Math.max(100, Math.round(mine + (rated < 20 ? 40 : 20) * (score - 1 / (1 + 10 ** ((theirs - mine) / 400)))));
+    Object.assign(data, { elo: next, eloGames: rated + 1 });
+    return `♟ Elo ${next} (${next >= mine ? '+' : '−'}${Math.abs(next - mine)} against ${theirs})`;
+  }
+  const chessElo = () => get().games.chess?.data?.elo ?? ELO_START;
+
   function record(p, last, me, key = '') {
     const news = [], gid = last.game, name = `${last.icon} ${last.name}`;
     const before = triedCount(p);
@@ -198,6 +212,8 @@ const Profile = (() => {
     const lines = [['Finished', XP.finish]];
     if (!g.played) lines.push(['🆕 First play', XP.firstPlay]);
     g.played++; g.lastAt = today();
+    const rating = gid === 'chess' ? rateChess(g, last, me) : null;
+    if (rating) news.push(rating);
     const humans = last.players.filter((x) => !x.bot), bots = last.players.filter((x) => x.bot);
     if (me.won) {
       g.wins++;
@@ -409,6 +425,7 @@ const Profile = (() => {
         const tr = el('tr');
         tr.append(el('td', '', label(gid)), el('td', 'rec-stars', starText(g.stars || 0)), el('td', '', g.played), el('td', '', g.wins),
           el('td', '', g.best != null ? fmt(g.best) : ''));
+        if (g.data?.elo) tr.lastChild.append(el('div', 'hint', `♟ Elo ${g.data.elo}`));
         const lv = g.data?.levels && Object.values(g.data.levels).reduce((a, b) => a + b, 0);
         if (lv) tr.lastChild.append(el('div', 'hint', `🎯 ${lv}★`));
         t.append(tr);
@@ -565,7 +582,7 @@ const Profile = (() => {
   const played = (gid) => get().games[gid]?.played || 0;
   const lastAt = (gid) => get().games[gid]?.lastAt || '';
 
-  return { onState, replayGoal, formatBenchmark: recordValue, overLine, show, suggest, stars, tried, starText, showNew, best, bestLabel, gameData, saveGameData, played, lastAt,
+  return { chessElo, onState, replayGoal, formatBenchmark: recordValue, overLine, show, suggest, stars, tried, starText, showNew, best, bestLabel, gameData, saveGameData, played, lastAt,
     xpCard, homeLine, look, level, levelOf, xpFor, unlocked, unlockAt, titleName, lockText, sync, dev, migrate, UNLOCKS, PACKS,
     set onSynced(f) { onSynced = f; }, set onLook(f) { onLook = f; } };
 })();

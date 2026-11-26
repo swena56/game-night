@@ -96,6 +96,7 @@ function renderOver() {
     w?.streak > 1 ? `🔥 ${w.id === me.id ? 'You have' : w.name + ' has'} won ${w.streak} in a row` : '',
     roomRecord(last),
     Profile.overLine(S),
+    last?.game === 'chess' && mineRow ? `♟ Your Elo: ${Profile.chessElo()}` : '',
   ].filter(Boolean);
   for (const n of notes) box.append(el('div', 'over-note', n));
   const run = runLine(); if (run) box.append(run);
@@ -193,8 +194,11 @@ function renderPodium(w, scored, low, draw) {
     box.append(col);
   }
 }
-// the open (unfolded) results banner is an overlay the phone's Back button folds
-const foldOver = () => setOverFold(true);
+// Back on the open results: the host goes to the lobby (#28); anyone else folds them to see the board
+const foldOver = () => {
+  if (S?.phase === 'over' && S.host === S.me.id) setTimeout(() => backFromResults().then(syncOverBack));
+  else setOverFold(true);
+};
 function syncOverBack() {
   const open = !$('#overBanner').hidden && !$('#overBanner').classList.contains('folded');
   const held = backNav.stack.includes(foldOver);

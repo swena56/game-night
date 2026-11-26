@@ -355,6 +355,7 @@ class Chess(Undo, Game):
         'Checkmate the enemy king to win. Stalemate, repetition and the 50-move rule are draws.',
         'Castling, en passant and promotion all work — you pick the promotion piece.',
         'You can offer a draw or resign from the side panel.',
+        '♟ Your Elo rating (starting at 1000) moves after each two-player game; bots are rated 700, 1100 and 1500. In untimed games the clocks show the time each side has used.',
         'With a clock, your time runs only on your turn; run out and you lose (a draw if your opponent has only a king).',
         '👑 King of the Hill (an option): walk your king onto one of the four centre squares (d4, e4, d5, e5) to win at once.',
         '3️⃣ Three-check (an option): give check three times to win at once. Checkmate still wins too.',
@@ -372,6 +373,7 @@ class Chess(Undo, Game):
     }
     INCREMENT = {180: 2, 300: 0, 600: 5}
     clock, inc, turn_at = None, 0, 0.0  # games saved before clocks existed have none
+    used = None  # nor a count of thinking time
     sans = ()  # nor a move list
     trail = ()  # (position before, move) for each ply, for the post-game review
     review = None  # None until the game is over; then {"done": bool, "swings": [...]}
@@ -393,6 +395,7 @@ class Chess(Undo, Game):
         base = self.s.get("clock", 0)
         self.clock = {pid: float(base) for pid in self.seats} if base else None
         self.inc = self.INCREMENT.get(base, 0)
+        self.used = {pid: 0.0 for pid in self.seats}  # thinking time per player, shown when there's no clock (#27)
         self.room.add_log(f"♔ {seated[0].name} plays White, ♚ {seated[1].name} plays Black.", "big")
         self.room.begin_turn(seated[0].id)
         self.start_clock()
@@ -400,8 +403,10 @@ class Chess(Undo, Game):
     # -- clock: the mover's time runs from turn_at; the room deadline is their flag-fall
 
     def start_clock(self):
-        if self.clock and self.room.phase == "playing":
-            self.turn_at = time.time()
+        if self.room.phase != "playing":
+            return
+        self.turn_at = time.time()
+        if self.clock:
             self.room.deadline = self.turn_at + self.clock[self.room.turn]
 
     def left(self, pid):
@@ -410,10 +415,21 @@ class Chess(Undo, Game):
             t -= time.time() - self.turn_at
         return max(0.0, t)
 
+    def spent(self, pid):
+        t = self.used[pid]
+        if pid == self.room.turn and self.room.phase == "playing" and self.turn_at:
+            t += (self.room.paused or time.time()) - self.turn_at
+        return max(0.0, t)
+
     def on_restore(self, shift):
+        self.turn_at += shift  # downtime doesn't count against the mover
         if self.clock:
-            self.turn_at += shift  # downtime doesn't count against the mover
             self.room.deadline = self.turn_at + self.clock[self.room.turn]
+
+    def bank_time(self, pid):
+        if self.used is not None and self.turn_at:
+            self.used = {**self.used, pid: self.used[pid] + max(0.0, time.time() - self.turn_at)}
+            self.turn_at = 0.0  # banked: don't count this stretch again
 
     def on_timeout(self):
         if not self.clock:
@@ -450,6 +466,7 @@ class Chess(Undo, Game):
             raise GameError("You're not playing.")
         opp = self.room.players.get(self.seats[1 - self.seats.index(p.id)])
         if t == "resign":
+            self.bank_time(self.room.turn)
             return self.room.finish(opp, f"🏳️ {p.name} resigned — {opp.name} wins!")
         if t == "draw_offer":
             if self.draw_offer:
@@ -487,6 +504,7 @@ class Chess(Undo, Game):
             self.clock[p.id] = self.left(p.id) + self.inc
         else:
             self.snapshot(p)
+        self.bank_time(p.id)
         before = self.pos
         self.trail = [*self.trail, (before, move)]
         self.pos, captured = apply(before, move)
@@ -534,7 +552,8 @@ class Chess(Undo, Game):
 
     def meta(self, p):
         c = self.color(p)
-        return {"w": "♔ White", "b": "♚ Black"}.get(c, "")
+        elo = getattr(p, "elo", None)
+        return {"w": "♔ White", "b": "♚ Black"}.get(c, "") + (f" · {elo}" if c and elo else "")
 
     def review_view(self):
         """Start the review (once, in a background thread) when the game is over, and report where it is."""
@@ -571,6 +590,7 @@ class Chess(Undo, Game):
             "moves": [list(m) for m in moves], "last": self.last, "check": check,
             "captured": self.captured, "drawOffer": self.draw_offer, "sans": list(self.sans),
             "clock": {pid: round(self.left(pid), 1) for pid in self.seats} if self.clock else None, "inc": self.inc,
+            "used": {pid: round(self.spent(pid), 1) for pid in self.seats} if self.used and not self.clock else None,
             "hill": self.hill(), "checks": dict(self.checks) if self.three() else None, "undo": None if self.clock else self.undo_view(p),
             "review": self.review_view(),
         }}

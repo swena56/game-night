@@ -293,6 +293,7 @@ function show(id) {
   for (const s of ['loading', 'home', 'utils', 'lobby', 'game', 'bingoTools']) $('#' + s).hidden = s !== id;
   if (id !== 'bingoTools' && $('#bingoTools').childElementCount) UI.bingotools?.close();
   guardLobbyBack(id === 'lobby');
+  guardGameBack(id === 'game');
   if (id !== 'game') { document.body.classList.remove('focus'); closeMenu(); closeSheets(); }
   document.body.dataset.screen = id;
   if (id !== 'loading') clearTimeout(show.slow);
@@ -314,6 +315,27 @@ function onLobbyBack() {
     lobbyGuarded = false;  // stayed: guard the lobby again
     guardLobbyBack(!$('#lobby').hidden);
   });
+}
+// Back in a game (#28 #29): after a warning, the game ends for the lobby (the host) or you leave (anyone
+// else). Behind the results the host goes straight to the lobby.
+let gameGuarded = false;
+function guardGameBack(on) {
+  if (on === gameGuarded) return;
+  gameGuarded = on;
+  if (on) backOpen(onGameBack); else backClosed(onGameBack);
+}
+function onGameBack() {
+  gameGuarded = false;  // the guard is used up; it goes back on if we stay in the game
+  setTimeout(async () => {
+    if (S?.phase === 'over' && S.host === S.me.id) await backFromResults();
+    else await $('#quitBtn').onclick();
+    if (!$('#game').hidden) guardGameBack(true);
+  });
+}
+// the host's Back on the results is the 🏠 Lobby button; ending a playlist asks first
+async function backFromResults() {
+  if (S?.playlist && !await ask('Leave these results for the lobby? This ends the playlist.', { ok: '🏠 Lobby' })) return;
+  $('#lobbyBtn').click();
 }
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
 const player = (id) => S.players.find((p) => p.id === id);
@@ -626,6 +648,14 @@ function syncIcon(s) {
   iconSentAt = Date.now();
   quiet(act('icon', { icon: want || '' }));
 }
+// ♟ and the chess rating, so a game between two people is rated against the right number (#25)
+let eloSentAt = 0;
+function syncElo(s) {
+  const mine = s.players?.find((p) => p.id === s.me?.id), want = Profile.chessElo();
+  if (!mine || s.gameId !== 'chess' || mine.elo === want || Date.now() - eloSentAt < 5000) return;
+  eloSentAt = Date.now();
+  quiet(act('elo', { elo: want }));
+}
 // ✨ and the level look (level, frame, title): on joining, on a level-up and whenever a new one is picked
 let lookSentAt = 0;
 function syncLook(s, force = false) {
@@ -643,7 +673,7 @@ function onState(s) {
   const prev = S;
   s.games ??= prev?.games ?? [];  // the server sends the game catalogue once per connection
   S = s; stateAt = performance.now();
-  syncIcon(s); syncLook(s);
+  syncIcon(s); syncLook(s); syncElo(s);
   const axeDebug = new URLSearchParams(location.search).get('axeDebug') === '1';
   history.replaceState(null, '', '?room=' + s.code + (axeDebug ? '&axeDebug=1' : ''));
   if (s.phase === 'playing' && prev?.phase !== 'playing' && s.gameId) {  // "Played lately" in the lobby (#67), this device only
@@ -874,6 +904,7 @@ function renderGame(view = S, readOnly = false, force = false) {
   renderLog(ui, view);
 
   // ⏸ pause (#119): only offered to the one human in a game against bots
+  renderRestart(view, readOnly);
   $('#pauseBtn').hidden = readOnly || !view.canPause || view.paused;
   $('#pauseBtn').title = view.paused ? 'Resume game' : 'Pause game';
   $('#pauseBtn').ariaLabel = view.paused ? 'Resume game' : 'Pause game';
@@ -1373,6 +1404,31 @@ $('#menuChat').onclick = () => $('#chatBtn').click();
 $('#menuPrefs').onclick = () => $('#prefsBtn').click();
 $('#pauseBtn').onclick = () => act(S?.paused ? 'resume' : 'pause');
 $('#resumeBtn').onclick = () => act('resume');
+// tapping outside the card resumes too (#273)
+$('#pausedCover').onclick = (e) => { if (e.target === e.currentTarget && !$('#resumeBtn').hidden) act('resume'); };
+// 🔁 restart (#17): alone with bots it just asks "sure?"; with other people, every one of them has to agree
+$('#restartBtn').onclick = async () => {
+  closeMenu();
+  const others = S.restartNeeds.length > 1;
+  const ok = await ask(others ? 'Ask everyone to restart this game? It starts over once all players agree.'
+    : 'Restart this game from the beginning? Nobody gains or loses points.', { ok: others ? '🔁 Ask' : '🔁 Restart' });
+  if (ok) quiet(act('restart', { agree: true }));
+};
+$('#restartYes').onclick = () => quiet(act('restart', { agree: true }));
+$('#restartNo').onclick = () => quiet(act('restart', { agree: false }));
+function renderRestart(view, readOnly) {
+  const needs = view.restartNeeds || [], agreed = view.restart || [], me = view.me.id;
+  const seated = !readOnly && view.phase === 'playing' && needs.includes(me);
+  $('#restartBtn').hidden = !seated || agreed.includes(me);
+  const open = seated && agreed.length > 0;
+  $('#restartBar').hidden = !open;
+  if (!open) return;
+  const mine = agreed.includes(me);
+  const asker = view.players.find((p) => p.id === agreed[0])?.name || 'A player';
+  $('#restartText').textContent = `${mine ? 'Waiting for the others' : asker + ' wants to restart'} (${agreed.length}/${needs.length} agree)`;
+  $('#restartYes').hidden = mine;
+  $('#restartNo').textContent = mine ? 'Cancel' : 'No';
+}
 function setReactOpen(open) { $('#dockReactBar').hidden = !open; $('#dockReact').ariaExpanded = String(open); }
 $('#dockReact').onclick = () => setReactOpen($('#dockReactBar').hidden);
 // phones: the log is a sheet that slides up from the dock (opened at full length)

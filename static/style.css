@@ -464,6 +464,10 @@ body.calm .nudge { animation: none; box-shadow: 0 0 0 2px #ffb70388; }
 
 /* game-over banner: scores, replay options and the next-game vote; folded, only the result line shows */
 /* it floats centred over the game, out of the page flow, so the board keeps its size */
+/* 🔁 the restart vote (#17): a slim bar under the top bar */
+.restart-bar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.restart-bar[hidden] { display: none; }
+.restart-bar span { flex: 1; min-width: 0; }
 /* ⏸ paused (#119): the game stands still under a soft cover */
 .paused-cover { position: fixed; inset: 0; z-index: 27; display: grid; place-items: center; background: #0b0816b3; backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
 .paused-cover > div { text-align: center; padding: 22px 28px; border-radius: var(--r-lg, 16px); background: var(--panel); box-shadow: var(--sh-3, 0 10px 30px #0008); }

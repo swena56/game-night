@@ -565,7 +565,7 @@ class Room:
             # id and bot level let each device keep its own lifetime record (static/profile.js)
             "players": [{"id": p.id, "bot": None if p.standin else p.bot,
                          "name": p.name, "color": p.color, "score": scores.get(p.id), "pts": p.last_pts,
-                         "won": p.id in winners} for p in seated],
+                         "won": p.id in winners, "elo": getattr(p, "elo", None)} for p in seated],
         })
         record = getattr(self, "round_record", None)
         if record:
@@ -763,6 +763,31 @@ class Room:
         self.add_log(f"🛑 {p.name} ended the game.", "big")
         self.to_lobby()
 
+    def restart(self, p, agree):
+        """🔁 Start the running game over (#17). Every seated person has to agree; one "no" drops the request."""
+        if self.phase != "playing":
+            raise GameError("There's no game to restart.")
+        needs = self.restart_needs()
+        if p.id not in needs:
+            raise GameError("Only players in this game can ask for a restart.")
+        votes = [i for i in getattr(self, "restart_votes", []) if i in needs]
+        if not agree:
+            if votes:
+                self.restart_votes = []
+                self.add_log(f"{p.name} said no to a restart.")
+            return
+        if p.id not in votes:
+            votes.append(p.id)
+        self.restart_votes = votes
+        if len(votes) < len(needs):
+            self.add_log(f"🔁 {p.name} agrees to restart ({len(votes)}/{len(needs)}).")
+            return
+        self.start()
+        self.add_log("🔁 The game starts over.", "big")
+
+    def restart_needs(self):
+        return [o.id for o in self.seated() if o.human() and not o.eliminated]
+
     def host_start(self, p, phase):
         self.require_host(p, phase)
         if self.playlist:
@@ -839,6 +864,7 @@ class Room:
         "chat": lambda r, p, a: r.chat_message(p, a.get("text")),
         "profile": lambda r, p, a: r.set_profile(p, a.get("name"), a.get("color")),
         "icon": lambda r, p, a: r.set_icon(p, a.get("icon")),
+        "elo": lambda r, p, a: r.set_elo(p, a.get("elo")),
         "look": lambda r, p, a: r.set_look(p, a),
         "ready": lambda r, p, a: r.toggle_ready(p),
         "kick": lambda r, p, a: r.kick(p, a.get("player")),
@@ -860,6 +886,7 @@ class Room:
         "rematch": lambda r, p, a: r.host_start(p, "over"),  # same game, same settings, straight back in
         "lobby": lambda r, p, a: r.back_to_lobby(p, a),
         "end_game": lambda r, p, a: r.end_game(p),
+        "restart": lambda r, p, a: r.restart(p, a.get("agree")),
         "pause": lambda r, p, a: r.pause(p),
         "autopause": lambda r, p, a: r.pause(p, auto=True),
         "resume": lambda r, p, a: r.resume(p),
@@ -964,6 +991,7 @@ class Room:
         game = cls(self)
         seated = self.seated()
         game.check_players(seated)
+        self.restart_votes = []
         for p in self.players.values():
             p.reset()
             if p.wish == self.settings["game"]:
@@ -1046,6 +1074,12 @@ class Room:
         if name != p.name:
             self.add_log(f"✏️ {p.name} is now {name}.")
         p.name, p.color = name, color
+
+    def set_elo(self, p, elo):
+        """The player's chess rating, kept on their device (#25); the table only needs it to rate a game fairly."""
+        if isinstance(elo, bool) or not isinstance(elo, int) or not 100 <= elo <= 4000:
+            raise GameError("Bad rating.")
+        p.elo = elo
 
     def set_icon(self, p, icon):
         """#144 pick your avatar: a generated face ('f:<0–9999>') or one emoji; empty goes back to the face from your name."""
@@ -1154,7 +1188,7 @@ class Room:
             "reactions": self.reactions,
             "log": [e for e in self.log if e["to"] is None or e["to"] == p.id or see_all][-80:],
             "players": [{
-                "id": o.id, "name": o.name, "color": o.color, "icon": getattr(o, "icon", None), "look": getattr(o, "look", None), "spectator": o.spectator,
+                "id": o.id, "name": o.name, "color": o.color, "icon": getattr(o, "icon", None), "look": getattr(o, "look", None), "elo": getattr(o, "elo", None), "spectator": o.spectator,
                 "watching": o.watching, "wish": o.wish,
                 "eliminated": o.eliminated, "online": not o.shown_away, "wins": o.wins,
                 "bot": None if o.standin else o.bot, "meta": self.game.meta(o) if self.game else "",
@@ -1168,6 +1202,8 @@ class Room:
         hide_ghost_chat = self.phase == "playing" and not ghost
         v["chat"] = [m for m in self.chat if not (m["ghost"] and hide_ghost_chat)][-50:]
         v["ready"] = sorted(self.ready)
+        v["restart"] = getattr(self, "restart_votes", []) if self.phase == "playing" else []
+        v["restartNeeds"] = self.restart_needs() if self.phase == "playing" else []
         v["votes"] = self.votes
         v["playlistRevision"] = self.playlist_revision
         v["playlist"] = {

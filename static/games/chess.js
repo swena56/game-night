@@ -243,17 +243,18 @@ UI.chess = (() => {
   function tickClock() {
     const box = $('chClock'), ch = S?.chess;
     if (!box) return;
-    box.hidden = !ch?.clock;
-    if (!ch?.clock) return;
-    const since = (performance.now() - clockAt) / 1000, running = S.phase === 'playing' ? S.turn : null;
+    const times = ch?.clock || ch?.used;  // a countdown with a clock, else the time each player has used
+    box.hidden = !times;
+    if (!times) return;
+    const since = (performance.now() - clockAt) / 1000, running = S.phase === 'playing' && !S.paused ? S.turn : null;
     box.innerHTML = '';
     // the opponent's clock first, then mine (Black, then White when watching)
     const order = ch.me === 'b' ? [...ch.seats] : [...ch.seats].reverse();
     for (const pid of order) {
       const p = ctx.player(pid);
-      const t = ch.clock[pid] - (pid === running ? since : 0);
-      const row = ctx.el('div', 'ch-clock' + (pid === running ? ' on' : '') + (pid === running && t < 20 ? ' low' : ''));
-      row.append(ctx.el('span', '', `${ch.seats[0] === pid ? '♔' : '♚'} ${p?.name ?? '?'}${ch.inc ? ` · +${ch.inc}s` : ''}`), ctx.el('b', '', fmt(t)));
+      const t = times[pid] + (pid === running ? (ch.clock ? -since : since) : 0);
+      const row = ctx.el('div', 'ch-clock' + (pid === running ? ' on' : '') + (ch.clock && pid === running && t < 20 ? ' low' : ''));
+      row.append(ctx.el('span', '', `${ch.seats[0] === pid ? '♔' : '♚'} ${p?.name ?? '?'}${ch.inc ? ` · +${ch.inc}s` : ''}`), ctx.el('b', '', ch.clock ? fmt(t) : `⏱ ${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`));
       box.append(row);
     }
   }

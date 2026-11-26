@@ -2,7 +2,7 @@
 // truth for selection, targets and promotion): sync() copies the 2D squares' highlight classes onto
 // 3D tiles, and taps are mapped back to the same square index. Drag to turn and tilt, right-drag to pan, wheel or pinch to zoom (#40).
 const Chess3D = (() => {
-  const LIGHT = 0xf0d9b5, DARK = 0xb58863;
+  const LIGHT = 0xc89f6e, DARK = 0x74492b;  // darker than the flat board, so the ivory pieces stand out (#26)
   const MARK = { sel: 0x2b8a3e, check: 0xef476f, last: 0xffe066, capture: 0xe8590c };
 
   function create(stage, onSquare, onLost) {
@@ -30,10 +30,12 @@ const Chess3D = (() => {
 
     // pieces: shared geometry per kind, two materials
     const mats = {
-      w: new T.MeshStandardMaterial({ color: 0xf7efe0, roughness: 0.35, metalness: 0.05 }),
+      w: new T.MeshStandardMaterial({ color: 0xfffaf0, roughness: 0.35, metalness: 0.05 }),
       b: new T.MeshStandardMaterial({ color: 0x24201c, roughness: 0.3, metalness: 0.2 }),
     };
     const kinds = buildKinds(T);
+    // a dark rim round each white piece: the same shape, a little fatter, drawn inside-out
+    const rim = new T.MeshBasicMaterial({ color: 0x2a170a, side: T.BackSide });
     const pieces = new T.Group(); scene.add(pieces);
 
     // an orbit camera (#40): yaw turns round the board, pitch tilts, dist zooms, (tx, tz) pans
@@ -149,6 +151,11 @@ const Chess3D = (() => {
         const g = new T.Group();
         for (const geo of kinds[p.kind]) {
           const m = new T.Mesh(geo, mats[p.color]); m.castShadow = true; g.add(m);
+          if (p.color === 'w') {
+            geo.boundingBox || geo.computeBoundingBox();
+            const c = geo.boundingBox.getCenter(new T.Vector3()), o = new T.Mesh(geo, rim), k = 1.07;
+            o.scale.set(k, 1.025, k); o.position.set(c.x * (1 - k), c.y * -0.025, c.z * (1 - k)); g.add(o);
+          }
         }
         if (p.kind === 'N' && p.color !== bottom) g.rotation.y = Math.PI;  // knights face the enemy
         const t = tiles[p.i].position;
