@@ -31,7 +31,7 @@
     <section class="pe-stage"><canvas id="peCanvas" aria-label="Table. Drag parts to move them."></canvas></section>
     <aside class="pe-inspector" id="peInspector" aria-label="Selected part">
       <h2 id="peTitle">Nothing selected</h2>
-      <p id="peHint" class="hint">Drag a part from the list onto the table. Click a part to change it; drag the round handles to resize, turn or bend it. Arrow keys nudge it, R rotates, M mirrors, D duplicates.</p>
+      <p id="peHint" class="hint">Drag a part from the list onto the table. Click a part to change it; drag the round handles to resize, turn or bend it. Arrow keys nudge it, R rotates, M mirrors, D duplicates. Shift-click adds parts to a group (Ctrl+A selects all).</p>
       <div id="peFields" hidden>
         <label>X <input id="peX" type="number" step="0.05"></label>
         <label>Y <input id="peY" type="number" step="0.05"></label>
@@ -39,6 +39,7 @@
         <label id="peAngleRow">Angle <input id="peAngle" type="number" step="5"></label>
         <label id="peColorRow">Colour <input id="peColor" type="color"></label>
         <label id="pePvRow">Points <input id="pePv" type="number" min="0" max="20000" step="50" placeholder="table default"></label>
+        <div id="peModes" class="pe-modes"><span>Active in</span> <label><input type="checkbox" data-bit="1" checked> Classic</label> <label><input type="checkbox" data-bit="2" checked> Zen</label> <label><input type="checkbox" data-bit="4" checked> Practice</label> <label><input type="checkbox" data-bit="8" checked> Time attack</label></div>
         <div id="peSwatches" class="pe-swatches" aria-label="Colour presets"></div>
         <p id="peKindHint" class="hint"></p>
         <div id="pePointRow" class="pe-row" hidden>

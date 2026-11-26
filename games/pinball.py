@@ -199,7 +199,7 @@ class Pinball(Game):
             spec = getattr(self.room, "custom_table", None)
             if not spec:
                 raise GameError("Build a table in the table editor first.")
-            self.custom_layout = pinball_custom.build(spec)[0]
+            self.custom_layout = pinball_custom.build(spec, self.mode)[0]
             start["layout_override"] = self.custom_layout
             start["rules_override"] = pinball_custom.build_rules(spec)
         self.tables = {p.id: table_class(**start) for p in seated}

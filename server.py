@@ -810,8 +810,8 @@ class Room:
     def set_pinball_table(self, p, table):
         """A table built in the pinball editor: checked here, kept with the room, used when the table setting is 'custom'."""
         self.require_host(p, "lobby")
-        from games.pinball_custom import build
-        self.custom_table = build(table)[1]
+        from games.pinball_custom import build, decode_table
+        self.custom_table = build(decode_table(table))[1]
 
     def host_add_bot(self, p, level):
         self.require_host(p, "lobby")

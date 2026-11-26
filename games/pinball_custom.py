@@ -28,7 +28,9 @@ Y_RANGE = {"flip": (5.0, 12.2)}                              # an extra flipper 
 Y_FLOOR = {"ramp": 4.8}                                     # a ramp arcs 4.8 up the table, so its ends stay below that line
 PATH_POINTS = (2, 6)
 MOUTH = {"orbit": 0.4, "subway": 0.3}
-MAX_ITEMS = 80
+MAX_ITEMS = 120
+MODE_BIT = {"classic": 1, "zen": 2, "practice": 4, "timeattack": 8}      # a part can be limited to some play modes
+TABLE_JSON_MAX = 80_000                                              # decompressed size of a table sent as a share code
 ARC_STEPS = 10
 NAME_MAX = 40
 
@@ -102,8 +104,28 @@ def build_rules(spec):
     return Rules(lock_balls=2, center_post=True, always_on=True, **extra)
 
 
-def build(spec):
-    """Return (Layout, cleaned spec) for an editor table, or raise GameError."""
+def decode_table(table):
+    """A table arrives either as a dict or as a share code (PT0. = base64 JSON, PT1. = deflated); big tables use the code
+    because requests are capped at 10,000 bytes. Decompression is size-capped."""
+    if not isinstance(table, str):
+        return table
+    import base64, binascii, json, zlib
+    if len(table) > 12_000 or table[:4] not in ("PT0.", "PT1."):
+        raise GameError("That isn't a table code.")
+    try:
+        raw = base64.urlsafe_b64decode(table[4:] + "=" * (-len(table[4:]) % 4))
+        if table[:4] == "PT1.":
+            inflater = zlib.decompressobj(-15)
+            raw = inflater.decompress(raw, TABLE_JSON_MAX)
+            if inflater.unconsumed_tail:
+                raise GameError("That table is too big.")
+        return json.loads(raw.decode("utf-8"))
+    except (binascii.Error, zlib.error, ValueError, UnicodeDecodeError):
+        raise GameError("That isn't a table code.")
+
+
+def build(spec, mode="classic"):
+    """Return (Layout, cleaned spec) for an editor table, or raise GameError. Parts limited to other play modes are left out of the Layout."""
     if not isinstance(spec, dict) or not isinstance(spec.get("items"), list):
         raise GameError("That isn't a table.")
     if len(spec["items"]) > MAX_ITEMS:
@@ -116,6 +138,11 @@ def build(spec):
     for pair in raw_pv:
         if isinstance(pair, list) and len(pair) == 2 and type(pair[0]) is int and type(pair[1]) in (int, float) and math.isfinite(pair[1]):
             own[pair[0]] = int(round(min(20000, max(0, pair[1]))))
+    modes = {}
+    for pair in spec.get("modes") if isinstance(spec.get("modes"), list) else []:
+        if isinstance(pair, list) and len(pair) == 2 and type(pair[0]) is int and type(pair[1]) is int and 1 <= pair[1] <= 14:
+            modes[pair[0]] = pair[1]
+    bit = MODE_BIT.get(mode, 1)
     part_pts, clean_pv = {}, []
     clean, parts, paint = [], {k: [] for k in LIMITS}, {k: [] for k in LIMITS}
     for index, item in enumerate(spec["items"]):
@@ -127,7 +154,6 @@ def build(spec):
             raise GameError(f"A {kind} on the table is malformed.")
         counts[kind] += 1
         if kind in PART_VALUE and index in own:
-            part_pts.setdefault(PART_VALUE[kind], {})[counts[kind] - 1] = own[index]
             clean_pv.append([index, own[index]])
         if counts[kind] > LIMITS[kind]:
             raise GameError(f"Too many of one part (a table can have {LIMITS[kind]} {kind}).")
@@ -146,6 +172,10 @@ def build(spec):
             if shape == "pr":
                 nums.append(number(values[2], *RADIUS[kind]))
         clean.append([kind, *nums, color])
+        if not modes.get(index, 15) & bit:
+            continue                       # kept in the saved table, absent in this mode
+        if kind in PART_VALUE and index in own:
+            part_pts.setdefault(PART_VALUE[kind], {})[len(parts[kind])] = own[index]
         parts[kind].append(tuple(nums))
         paint[kind].append(color)
     # imported late: pinball.py owns the cabinet constants and imports this module
@@ -185,6 +215,8 @@ def build(spec):
                "saucer": paint["saucer"][0] if paint["saucer"] else None, "magnet": paint["magnet"][0] if paint["magnet"] else None,
                "kick": paint["kick"][0] if paint["kick"] else None, "name": name})
     clean_spec = {"v": 1, "name": name, "items": clean}
+    if modes:
+        clean_spec["modes"] = [[i, m] for i, m in sorted(modes.items()) if i < len(clean)]
     if clean_pv:
         clean_spec["pv"] = clean_pv
     if points(spec):

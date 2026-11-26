@@ -204,6 +204,37 @@ const base = process.env.BASE || 'http://localhost:8794';
     const hb = await p2.locator('#peCanvas').boundingBox();
     await p2.mouse.click(hb.x + 3 / 10 * hb.width, hb.y + 5 / 17 * hb.height);
     assert.equal(await p2.locator('#peTitle').textContent(), 'Nothing selected', 'a hidden layer can not be clicked');
+    // group duplicate, per-part modes, big tables
+    await p2.locator('#peLayersBody label', { hasText: 'Scoring' }).locator('input').check();
+    await p2.evaluate(() => { const e = window.pinballEditor; e.state.items = []; e.addPart('bump', 2, 5); e.addPart('bump', 4, 5); e.addPart('post', 6, 5); });
+    const gb = await p2.locator('#peCanvas').boundingBox();
+    const gat = (x, y) => ({ x: gb.x + x / 10 * gb.width, y: gb.y + y / 17 * gb.height });
+    await p2.mouse.click(gat(2, 5).x, gat(2, 5).y);
+    await p2.keyboard.down('Shift'); await p2.mouse.click(gat(4, 5).x, gat(4, 5).y); await p2.mouse.click(gat(6, 5).x, gat(6, 5).y); await p2.keyboard.up('Shift');
+    await p2.locator('#peDup').click();
+    assert.equal(await count2('bump'), 4, 'duplicating a group copies every part in it');
+    assert.equal(await count2('post'), 2);
+    await p2.keyboard.press('Delete');
+    assert.equal((await count2('bump')) + (await count2('post')), 3, 'delete removes the whole group');
+    await p2.evaluate(() => window.pinballEditor.select(0));
+    await p2.locator('#peModes input[data-bit="2"]').uncheck();
+    assert.deepEqual((await p2.evaluate(() => window.pinballEditor.toSpec())).modes, [[0, 13]]);
+    await p2.keyboard.press('Control+a');
+    assert.equal(await p2.evaluate(() => document.querySelector('#peTitle').textContent.length > 0), true);
+    // a big table plays: it travels as a deflated share code and is rebuilt on the server
+    await p2.addInitScript?.(() => {});
+    await p2.evaluate(() => {
+      localStorage.setItem('unmask.name', JSON.stringify('Table Builder'));
+      const e = window.pinballEditor; e.state.items = [];
+      for (const [k, n] of [['bump', 12], ['post', 16], ['wall', 16], ['target', 8], ['lane', 6], ['sling', 6], ['arc', 6], ['rubber', 6], ['star', 4], ['heart', 4]])
+        for (let i = 0; i < n; i++) e.addPart(k, 1 + (i * 1.7) % 7, 2 + (i * 2.3) % 11);
+    });
+    assert.ok((await p2.evaluate(() => JSON.stringify(window.pinballEditor.toSpec()).length)) > 2500, 'the table is big enough to travel as a code');
+    await p2.locator('#pePlay').click();
+    await p2.waitForURL(base + '/');
+    await p2.waitForFunction(() => S?.pinball?.layout);
+    const big = await p2.evaluate(() => ({ posts: S.pinball.layout.posts.length, bumps: S.pinball.layout.bumps.length }));
+    assert.deepEqual(big, { posts: 16, bumps: 12 });
     console.log('Pinball editor checks passed: drag, move, resize, inspector, undo, limits, wires, share codes, saved tables and play');
   } finally {
     await browser.close();

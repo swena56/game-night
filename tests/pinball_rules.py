@@ -885,6 +885,33 @@ class CustomTables(unittest.TestCase):
             t.step()
         self.assertEqual(t.hole_ticks, 0)
 
+    def test_modes_and_table_codes(self):
+        import base64, json, zlib
+        from games.pinball_custom import build, decode_table
+        from games.base import GameError
+        W = "#ffffff"
+        spec = {"items": [["bump", 3, 5, .6, W], ["bump", 5, 8, .6, W], ["star", 4, 4, .5, W]], "modes": [[1, 2], [2, 99], ["x", 1]], "pv": [[1, 700]]}
+        classic, clean = build(spec, "classic")
+        zen, _ = build(spec, "zen")
+        self.assertEqual(len(classic.bumps), 1)             # the second bumper is Zen-only
+        self.assertEqual(len(zen.bumps), 2)
+        self.assertEqual(zen.part_pts, {"bump": {1: 700}})
+        self.assertEqual(clean["modes"], [[1, 2]])
+        self.assertEqual(len(clean["items"]), 3)            # the saved table keeps every part
+        big = {"items": [["bump", 1 + i % 7, 1 + i % 13, .5, W] for i in range(12)] + [["post", 1 + i % 7, 1 + i % 13, .1, W] for i in range(16)]}
+        raw = json.dumps(big).encode()
+        packer = zlib.compressobj(wbits=-15)
+        code = "PT1." + base64.urlsafe_b64encode(packer.compress(raw) + packer.flush()).decode().rstrip("=")
+        self.assertEqual(decode_table(code)["items"][0], big["items"][0])
+        self.assertEqual(decode_table(big), big)
+        for bad in ("PT1.@@@", "PT2.abc", "nope", "PT0." + base64.urlsafe_b64encode(b"[").decode()):
+            with self.assertRaises(GameError):
+                decode_table(bad)
+        bomb = zlib.compressobj(wbits=-15)
+        boom = "PT1." + base64.urlsafe_b64encode(bomb.compress(b" " * 5_000_000) + bomb.flush()).decode().rstrip("=")
+        with self.assertRaises(GameError):                  # a decompression bomb is refused
+            decode_table(boom)
+
     def test_per_part_points(self):
         from games.pinball import CustomTable
         from games.pinball_custom import build

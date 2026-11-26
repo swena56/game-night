@@ -4,7 +4,9 @@
   const $ = (id) => document.getElementById(id);
   const W = 10, H = 17;
   const X = [.45, 8.35], Y = [.45, 14.2], SEG = [.25, 4.5];
-  const MAX_BYTES = 8500;      // the server accepts 10,000 bytes per request
+  const MAX_BYTES = 40000;     // a table's raw JSON; big ones travel as a deflated share code (the server caps requests at 10,000 bytes)
+  const MAX_CODE = 9500;       // ...so the share code, not the JSON, must fit
+  const MAX_PARTS = 120;
   const STORE = 'pinball.editor.table', SLOTS = 'pinball.editor.slots';
   // shape: p = point, pr = point + radius, s = segment (two ends), w = a wire of 2-6 points; paint: the game draws it in your colour
   const KINDS = {
@@ -84,6 +86,8 @@
   let state = { name: '', items: [], kick: false, pts: {} };
   let zoom = 1;
   const hiddenLayers = new Set();
+  const group = new Set();                        // shift-click adds parts: duplicate, delete, nudge and drag then act on all of them
+  const selected = () => (group.size > 1 ? [...group].sort((a, b) => a - b) : sel >= 0 ? [sel] : []);
   const LAYERS = ['Scoring', 'Walls & guides', 'Mechanisms', 'Decals'];
   const layerOf = (k) => KINDS[k].group || GROUPS[k] || 'Scoring';
   const shown = (it) => !hiddenLayers.has(layerOf(it.k));
@@ -155,6 +159,9 @@
     const pv = [];
     state.items.forEach((i, n) => { if (OWN_POINTS.has(i.k) && Number.isFinite(i.pv)) pv.push([n, i.pv]); });
     if (pv.length) out.pv = pv;
+    const modes = [];
+    state.items.forEach((i, n) => { if (Number.isInteger(i.modes) && i.modes > 0 && i.modes < 15) modes.push([n, i.modes]); });
+    if (modes.length) out.modes = modes;
     const pts = Object.fromEntries(Object.entries(state.pts || {}).filter(([k, v]) => POINTS[k] && v !== POINTS[k][0]));
     if (Object.keys(pts).length) out.pts = pts;
     return out;
@@ -165,6 +172,7 @@
     if (spec.pts && typeof spec.pts === 'object') for (const [k, v] of Object.entries(spec.pts)) if (POINTS[k] && typeof v === 'number' && isFinite(v)) next.pts[k] = clamp(Math.round(v), 0, 20000);
     const num = (v) => (typeof v === 'number' && isFinite(v) ? v : 0);
     const own = new Map((Array.isArray(spec.pv) ? spec.pv : []).filter((p) => Array.isArray(p) && Number.isInteger(p[0]) && Number.isFinite(p[1])).map((p) => [p[0], clamp(Math.round(p[1]), 0, 20000)]));
+    const live = new Map((Array.isArray(spec.modes) ? spec.modes : []).filter((p) => Array.isArray(p) && Number.isInteger(p[0]) && Number.isInteger(p[1]) && p[1] > 0 && p[1] < 15));
     for (const [n, a] of spec.items.entries()) {
       if (!Array.isArray(a)) continue;
       if (a[0] === 'kick') { next.kick = true; continue; }
@@ -182,6 +190,7 @@
         for (let i = 0; i < Math.min(flat.length, 12); i += 2) it.pts.push([flat[i], flat[i + 1]]);
       }
       if (OWN_POINTS.has(it.k) && own.has(n)) it.pv = own.get(n);
+      if (live.has(n)) it.modes = live.get(n);
       next.items.push(normalize(it));
     }
     return next;
@@ -280,7 +289,7 @@
     seg(8.8, 1.2, 8.8, 3.1, '#ffd383', .1);                              // the one-way gate
     for (const [fx, fy, a] of FLIPS) { seg(fx, fy, fx + FLIP_LEN * Math.cos(a), fy + FLIP_LEN * Math.sin(a), '#211b40', .5); seg(fx, fy, fx + FLIP_LEN * Math.cos(a), fy + FLIP_LEN * Math.sin(a), '#42cfeb', .32); }
     if (state.kick) for (const x of [.9, 7.9]) { disc(x, 13.9, .2, '#ffd383'); }
-    state.items.forEach((it, i) => { if (shown(it)) drawItem(it, i === sel); });
+    state.items.forEach((it, i) => { if (shown(it)) { drawItem(it, i === sel); if (group.size > 1 && group.has(i)) { const [gx, gy] = centre(it); ctx.setLineDash([.1, .08]); disc(gx, gy, .55, null, '#ffb703'); ctx.setLineDash([]); } } });
     ctx.fillStyle = '#ffffff55'; ctx.font = '.32px sans-serif'; ctx.textAlign = 'center';
     ctx.fillText('DRAIN', 5, 16.6); ctx.fillText('LAUNCH', 9.4, 12);
   }
@@ -408,6 +417,12 @@
       if (h >= 0) { drag = { mode: 'handle', h }; canvas.setPointerCapture(e.pointerId); return; }
     }
     const i = hit(px, py);
+    if (e.shiftKey && i >= 0) {
+      if (sel >= 0) group.add(sel);
+      if (group.has(i) && group.size > 1) group.delete(i); else group.add(i);
+      sel = i; refresh(); return;
+    }
+    if (!group.has(i)) group.clear();
     sel = i;
     if (i >= 0) { drag = { mode: 'move', dx: px - state.items[i].x, dy: py - state.items[i].y }; canvas.setPointerCapture(e.pointerId); }
     refresh(false);
@@ -430,6 +445,7 @@
       else if (d.shape === 'w') it.pts = it.pts.map(([x, y]) => [x + sx, y + sy]);
       else { it.x = nx; it.y = ny; }
       normalize(it);
+      if (group.size > 1) for (const g of group) if (g !== sel && state.items[g]) { mapPts(state.items[g], ([x, y]) => [x + sx, y + sy]); normalize(state.items[g]); }
     }
     draw(); fillInspector();
   });
@@ -476,13 +492,13 @@
   function addPart(k, x, y) {
     const d = KINDS[k];
     if (count(k) >= d.max) return say(`A table can have ${d.max} ${d.label.toLowerCase()}${d.max > 1 ? 's' : ''}.`);
-    if (state.items.length >= 80) return say('That is a lot of parts. Remove some first.');
+    if (state.items.length >= MAX_PARTS) return say('That is a lot of parts. Remove some first.');
     state.items.push(make(k, grid(x), grid(y)));
     sel = state.items.length - 1;
     say('');
     commit();
   }
-  function removeSel() { if (sel < 0) return; state.items.splice(sel, 1); sel = -1; commit(); }
+  function removeSel() { const all = selected(); if (!all.length) return; for (const i of all.reverse()) state.items.splice(i, 1); sel = -1; group.clear(); commit(); }
 
   // ---- inspector ----------------------------------------------------------------------------------------
   function fillInspector() {
@@ -503,6 +519,7 @@
     $('peKindHint').textContent = d.hint || ''; $('peKindHint').hidden = !d.hint;
     $('peColorRow').hidden = $('peSwatches').hidden = !d.paint;
     $('peColor').value = it.c;
+    for (const c of document.querySelectorAll('#peModes input')) c.checked = !!((it.modes ?? 15) & +c.dataset.bit);
     $('pePvRow').hidden = !OWN_POINTS.has(it.k);
     if (OWN_POINTS.has(it.k)) { $('pePv').value = Number.isFinite(it.pv) ? it.pv : ''; $('pePv').placeholder = String(POINTS[it.k === 'bump' ? 'bumper' : it.k][0]); }
     $('peDup').disabled = count(it.k) >= d.max;
@@ -547,15 +564,28 @@
   $('peColor').oninput = () => { const it = state.items[sel]; if (it) { it.c = $('peColor').value; draw(); } };
   $('peColor').onchange = () => editSel((it) => { it.c = $('peColor').value; });
   $('pePv').onchange = () => editSel((it) => { const v = parseInt($('pePv').value, 10); if (Number.isFinite(v)) it.pv = clamp(v, 0, 20000); else delete it.pv; });
+  for (const c of document.querySelectorAll('#peModes input')) c.onchange = () => editSel((it) => {
+    let mask = 0;
+    for (const x of document.querySelectorAll('#peModes input')) if (x.checked) mask |= +x.dataset.bit;
+    if (!mask) { say('A part has to be active in at least one mode.'); return; }
+    if (mask === 15) delete it.modes; else it.modes = mask;
+  });
   $('peDel').onclick = removeSel;
-  $('peDup').onclick = () => {
-    const it = state.items[sel];
-    if (!it || count(it.k) >= KINDS[it.k].max) return;
-    const c = copy(it);
-    for (const f of ['x', 'x2', 'cx']) if (f in c) c[f] += .5;
-    for (const f of ['y', 'y2', 'cy']) if (f in c) c[f] += .5;
-    if (c.pts) c.pts = c.pts.map(([x, y]) => [x + .5, y + .5]);
-    state.items.push(normalize(c)); sel = state.items.length - 1; commit();
+  $('peDup').onclick = () => {                     // one part, or the whole shift-click group
+    const picks = selected(), made = [], left = {};
+    for (const i of picks) {
+      const it = state.items[i];
+      left[it.k] ??= KINDS[it.k].max - count(it.k);
+      if (!it || left[it.k]-- <= 0 || state.items.length + made.length >= MAX_PARTS) continue;
+      const c = copy(it);
+      mapPts(c, ([x, y]) => [x + .5, y + .5]);
+      made.push(normalize(c));
+    }
+    if (!made.length) return say('No room for copies of that.');
+    group.clear();
+    for (const c of made) { state.items.push(c); group.add(state.items.length - 1); }
+    sel = state.items.length - 1; if (made.length < 2) group.clear();
+    commit();
   };
   // ---- transform tools: rotate, mirror, nudge, target bank ---------------------------------------------------
   const MID = W * .44;                                                       // the playfield's middle line (inside the shooter lane)
@@ -577,11 +607,11 @@
     for (const it of keep) {
       if (Math.abs(centre(it)[0] - MID) < .15 || KINDS[it.k].max === 1) continue;
       const m = normalize(mirrored(it));
-      if (out.filter((i) => i.k === m.k).length < KINDS[m.k].max && out.length < 80) out.push(m);
+      if (out.filter((i) => i.k === m.k).length < KINDS[m.k].max && out.length < MAX_PARTS) out.push(m);
     }
     state.items = out; sel = -1; commit(); say('Left half mirrored onto the right.');
   }
-  function nudgeSel(dx, dy) { const it = state.items[sel]; if (!it) return; mapPts(it, ([x, y]) => [x + dx, y + dy]); normalize(it); draw(); fillInspector(); commit(); }
+  function nudgeSel(dx, dy) { for (const i of selected()) { const it = state.items[i]; mapPts(it, ([x, y]) => [x + dx, y + dy]); normalize(it); } draw(); fillInspector(); commit(); }
   function addBank() {                        // five standup targets in a tidy column, one placement
     const room = KINDS.target.max - count('target'), n = Math.min(5, room);
     if (n < 2) return say('Not enough room for a target bank (a table can have 8 targets).');
@@ -592,6 +622,9 @@
   $('peRotL').onclick = () => rotateSel(-15); $('peRotR').onclick = () => rotateSel(15);
   $('peMirror').onclick = mirrorSel; $('peMirrorAll').onclick = mirrorTable; $('peBank').onclick = addBank;
   addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a' && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) {
+      e.preventDefault(); group.clear(); state.items.forEach((it, i) => { if (shown(it)) group.add(i); }); sel = group.size ? [...group][0] : -1; refresh(); return;
+    }
     if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || sel < 0 || e.ctrlKey || e.metaKey) return;
     const step = e.shiftKey ? .25 : .05, k = e.key;
     if (k === 'ArrowLeft') nudgeSel(-step, 0); else if (k === 'ArrowRight') nudgeSel(step, 0);
@@ -721,6 +754,9 @@
   $('pePlay').onclick = async () => {
     const spec = toSpec();
     if (new Blob([JSON.stringify(spec)]).size > MAX_BYTES) return say('This table is too big to play. Remove some parts.');
+    const raw = JSON.stringify(spec).length;
+    const code = raw > 2500 ? await shareCode(spec) : null;      // requests are capped at 10,000 bytes: big tables go as a deflated code
+    if (code && code.length > MAX_CODE) return say('This table is too big to play. Remove some parts.');
     const stored = (() => { try { return JSON.parse(localStorage.getItem('unmask.name')); } catch { return null; } })();
     const name = (stored || prompt('Your name for the game:') || '').trim();
     if (!name) return say('Enter a name to play.');
@@ -729,7 +765,7 @@
     try {
       const id = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
       const session = await post('/api/create', { name, game: 'pinball' });
-      await post('/api/action', { ...session, type: 'pinball_table', table: spec, aid: id() });
+      await post('/api/action', { ...session, type: 'pinball_table', table: code || spec, aid: id() });
       await post('/api/action', { ...session, type: 'settings', settings: { table: 'custom' }, aid: id() });
       await post('/api/action', { ...session, type: 'start', aid: id() });
       localStorage.setItem('unmask.session', JSON.stringify(session));
