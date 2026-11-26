@@ -31,6 +31,11 @@
     form.edit { background: var(--panel); border: 1px solid var(--accent); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 8px; }
     .group { margin: 18px 0 8px; }
     .empty { text-align: center; color: var(--muted); padding: 40px 0; }
+    .shots { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .shots img { display: block; max-width: 160px; max-height: 160px; border: 1px solid var(--line); border-radius: 8px; }
+    .shots figure { margin: 0; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+    #login { max-width: 320px; display: flex; flex-direction: column; gap: 8px; }
+    .admin [hidden] { display: none; }
     #message { min-height: 1.4em; color: var(--accent); }
     #copyBox { margin-bottom: 10px; }
   </style>
@@ -38,10 +43,17 @@
 <body>
   <main class="admin">
     <h1>🛠️ Feedback admin</h1>
-    <p class="hint left">Review, add, edit and resolve player reports. Only works at <code>localhost:8000</code> on the device running the server.</p>
+    <p class="hint left">Review, add, edit and resolve player reports. Open it on the server's own device at <code>localhost:8000</code>, or from elsewhere over HTTPS with the admin password.</p>
+    <p id="loginMessage" role="status"></p>
+    <form id="login" hidden>
+      <label class="field">Admin password<input type="password" id="password" autocomplete="current-password" maxlength="200" required></label>
+      <button class="primary" type="submit">🔑 Sign in</button>
+    </form>
+    <div id="tool" hidden>
     <div class="row">
       <button class="primary" id="add">➕ Add report</button>
       <button id="refresh">🔄 Refresh</button>
+      <button id="signOut" hidden>🚪 Sign out</button>
       <span id="counts" class="hint"></span>
     </div>
     <div id="addBox"></div>
@@ -63,6 +75,7 @@
     <p id="message" role="status"></p>
     <div id="copyBox"></div>
     <div id="list"></div>
+    </div>
   </main>
   <script>
     // Everything from a report goes into the page through textContent or .value: reports are untrusted input.
@@ -80,15 +93,29 @@
     async function api(path, body) {
       const r = await fetch(path, body && { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j.error || `The server answered ${r.status}.`);
+      if (!r.ok) throw Object.assign(new Error(j.error || `The server answered ${r.status}.`), { status: r.status });
       return j;
+    }
+
+    const sayLogin = (text) => { $('loginMessage').textContent = text; };
+    let remote = false;
+    // The tool is hidden, not emptied, so a half-typed report survives a sign-in that ran out.
+    function showLogin(text) {
+      $('tool').hidden = true; $('login').hidden = false;
+      sayLogin(text);
     }
 
     async function load() {
       try {
-        items = (await api('/api/admin/feedback')).items;
+        const data = await api('/api/admin/feedback');
+        items = data.items;
+        remote = !!data.remote;
+        $('signOut').hidden = !remote;
+        $('tool').hidden = false; $('login').hidden = true;
+        sayLogin('');
       } catch (e) {
-        say(`⚠️ Couldn't load the inbox: ${e.message}`);
+        if (e.status === 401) showLogin(remote ? 'Your sign-in ended. Sign in again.' : '');
+        else { $('tool').hidden = false; say(`⚠️ Couldn't load the inbox: ${e.message}`); }
         return false;
       }
       for (const id of picked) if (!items.some((i) => i.id === id)) picked.delete(id);
@@ -102,7 +129,12 @@
 
     // Send a change, then reload. Returns false (and says why) when the server refused it.
     async function save(path, body, done) {
-      try { await api(path, body); } catch (e) { say(`⚠️ ${e.message}`); return false; }
+      try { await api(path, body); } catch (e) {
+        // a remote sign-in that ran out loses the save route, so the server answers "Not found"
+        if (remote && (e.status === 401 || e.status === 404)) showLogin('Your sign-in ended. Sign in again; what you typed is kept.');
+        else say(`⚠️ ${e.message}`);
+        return false;
+      }
       say(done);
       return true;
     }
@@ -161,6 +193,15 @@
       if (i.status === 'done') meta.append(el('span', '', '✅ Done'));
       box.append(meta, el('div', 'text', i.text));
       if (i.note) box.append(el('div', 'note', `📝 ${i.note}`));
+      if (i.images?.length) {
+        const shots = el('div', 'shots');
+        for (const name of i.images) {
+          const link = el('a'); link.href = shotUrl(name); link.target = '_blank'; link.rel = 'noopener';
+          link.append(picture(link.href, `Screenshot on report ${i.id}`));
+          shots.append(link);
+        }
+        box.append(shots);
+      }
       const extra = (title, text) => { const d = el('details'); d.append(el('summary', '', title), el('pre', '', text)); box.append(d); };
       if (i.original_text && i.original_text !== i.text) extra('Original text (edited)', i.original_text);
       if (Object.keys(ctx).length) extra('Technical details', JSON.stringify(ctx, null, 2));
@@ -171,6 +212,56 @@
         button('✏️ Edit', () => { drafts.set(i.id, editor(i)); render(); }));
       box.append(actions);
       return box;
+    }
+
+    const shotUrl = (name) => `/api/admin/image?name=${encodeURIComponent(name)}`;
+    const picture = (src, alt) => Object.assign(el('img'), { src, alt, loading: 'lazy' });
+    const MAX_SHOTS = 4, MAX_SIDE = 1600, MAX_URL = 2.6e6;
+
+    // A pasted or chosen picture as a data URL the server takes: scaled to fit, PNG when small enough, else JPEG.
+    async function shrink(file) {
+      const bitmap = await createImageBitmap(file);
+      const scale = Math.min(1, MAX_SIDE / Math.max(bitmap.width, bitmap.height));
+      const canvas = Object.assign(el('canvas'), { width: Math.round(bitmap.width * scale) || 1, height: Math.round(bitmap.height * scale) || 1 });
+      const g = canvas.getContext('2d');
+      g.fillStyle = '#fff'; g.fillRect(0, 0, canvas.width, canvas.height);
+      g.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      const png = canvas.toDataURL('image/png');
+      return png.length <= MAX_URL ? png : canvas.toDataURL('image/jpeg', 0.85);
+    }
+
+    // The screenshot part of a form: paste anywhere in the form, or pick files (phones).
+    function shotField(form, saved) {
+      const added = [], removed = new Set();
+      const box = el('div', 'field'), list = el('div', 'shots');
+      const input = Object.assign(el('input'), { type: 'file', accept: 'image/*', multiple: true, hidden: true });
+      const count = () => saved.length - removed.size + added.length;
+      function draw() {
+        const figure = (src, remove) => { const f = el('figure'); f.append(picture(src, 'Screenshot'), button('✖ Remove', () => { remove(); draw(); })); return f; };
+        list.replaceChildren(...saved.filter((n) => !removed.has(n)).map((n) => figure(shotUrl(n), () => removed.add(n))),
+          ...added.map((url) => figure(url, () => added.splice(added.indexOf(url), 1))));
+      }
+      async function take(files) {
+        for (const file of files) {
+          let url;
+          try { url = await shrink(file); } catch { say("⚠️ That file isn't a picture this browser can read."); continue; }
+          if (count() >= MAX_SHOTS) { say(`⚠️ A report holds up to ${MAX_SHOTS} screenshots.`); break; }
+          added.push(url);
+        }
+        draw();
+      }
+      form.addEventListener('paste', (event) => {
+        const files = [...event.clipboardData?.items || []].filter((x) => x.kind === 'file' && x.type.startsWith('image/')).map((x) => x.getAsFile()).filter(Boolean);
+        if (!files.length) return;   // ordinary text pastes as usual
+        event.preventDefault();
+        take(files);
+      });
+      input.onchange = () => { take([...input.files]); input.value = ''; };
+      const pick = el('div', 'row');
+      pick.append(button('📎 Add screenshot', () => input.click()), el('span', '', 'or paste one while typing (Ctrl+V)'));
+      box.append(el('span', '', 'Screenshots'), pick, input, list);
+      draw();
+      return { box, read: () => ({ ...(added.length && { add_images: added }), ...(removed.size && { remove_images: [...removed] }) }) };
     }
 
     // The add form (no report) and the edit form (one report) are the same fields.
@@ -188,7 +279,8 @@
       const close = () => { if (i) { drafts.delete(i.id); render(); } else $('addBox').replaceChildren(); };
       const submit = el('button', 'primary', i ? '💾 Save' : '➕ Add'); submit.type = 'submit';
       const buttons = el('div', 'row'); buttons.append(submit, button('Cancel', close));
-      form.append(el('b', '', i ? `Editing #${i.id}` : 'New report'), top, textRow, noteRow, buttons);
+      const shots = shotField(form, i?.images || []);
+      form.append(el('b', '', i ? `Editing #${i.id}` : 'New report'), top, textRow, shots.box, noteRow, buttons);
       // only what was changed is sent, so saving a note can't undo someone else's edit of the text
       const read = () => ({ kind: kind.value, priority: priority.value, name: name.value, text: text.value, note: note.value });
       const before = read();
@@ -196,7 +288,7 @@
         event.preventDefault();
         submit.disabled = true;
         const now = read();
-        const change = i ? Object.fromEntries(Object.entries(now).filter(([k, v]) => v !== before[k])) : now;
+        const change = { ...(i ? Object.fromEntries(Object.entries(now).filter(([k, v]) => v !== before[k])) : now), ...shots.read() };
         const ok = await save(i ? '/api/admin/feedback/update' : '/api/admin/feedback/add', i ? { ids: [i.id], ...change } : change, i ? `Saved #${i.id}.` : 'Report added.');
         submit.disabled = false;
         if (!ok) return;
@@ -208,9 +300,27 @@
 
     function markdown(list) {
       return list.map((i) => `- #${i.id} [${i.kind}${i.priority ? `, ${i.priority}` : ''}${gameOf(i) ? `, ${gameOf(i)}` : ''}, ${i.status}] ${i.text.replace(/\s+/g, ' ')}`
-        + (i.note ? `\n  - Note: ${i.note.replace(/\s+/g, ' ')}` : '')).join('\n');
+        + (i.note ? `\n  - Note: ${i.note.replace(/\s+/g, ' ')}` : '')
+        + (i.images?.length ? `\n  - Screenshots in data/feedback-shots/: ${i.images.join(', ')}` : '')).join('\n');
     }
 
+    $('login').onsubmit = async (event) => {
+      event.preventDefault();
+      try {
+        await api('/api/admin/login', { password: $('password').value });
+      } catch (e) {
+        sayLogin(`⚠️ ${e.message}`);
+        return;
+      }
+      $('password').value = '';
+      load();
+    };
+    $('signOut').onclick = async () => {
+      await api('/api/admin/logout', {}).catch(() => {});
+      items = []; remote = false; picked.clear(); drafts.clear();
+      for (const id of ['list', 'addBox', 'copyBox']) $(id).replaceChildren();
+      showLogin('Signed out.');
+    };
     $('add').onclick = () => { if (!$('addBox').firstChild) $('addBox').replaceChildren(editor()); $('addBox').querySelector('textarea').focus(); };
     $('refresh').onclick = async () => { if (await load()) say('Refreshed.'); };
     for (const id of ['fStatus', 'fKind', 'fPriority', 'fGame', 'sort']) $(id).onchange = () => { $('copyBox').replaceChildren(); render(); };

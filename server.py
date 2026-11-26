@@ -7,6 +7,8 @@ http://localhost:8000. Friends on the same network join via your LAN IP.
 Transport: clients POST actions to /api/action and receive their own
 per-player view of the room over Server-Sent Events (/api/events).
 """
+import base64
+import binascii
 import gc
 import hashlib
 import ipaddress
@@ -14,6 +16,7 @@ import json
 import os
 import pickle
 import random
+import re
 import secrets
 import socket
 import ssl
@@ -32,7 +35,7 @@ from urllib.parse import parse_qs, urlparse
 from games import FAMILIES, GAME_INFO, GAME_LIST, GAMES, GameError
 from games.bar_darts import AXES_PER_ROUND
 from games.base import shift_times
-from games import garden, wordbomb
+from games import admin_auth, garden, wordbomb
 from games.wordsmith import warm_up, words
 
 PORT = int(os.environ.get("PORT", 8000))
@@ -82,6 +85,13 @@ FEEDBACK_KINDS = ("bug", "idea", "table")      # "table" = a pinball table a pla
 FEEDBACK_MAX_BYTES = 8 * 1024 * 1024
 FEEDBACK_PRIORITIES = ("high", "", "low")      # "" = normal; set in the admin tool
 ADMIN_PORT = 8000                              # the feedback admin tool exists only on a server running on this port
+ADMIN_COOKIE = "gn_admin"
+# Screenshots pasted into the admin tool (#272): files beside the inbox, named by the server, listed on their report.
+SHOT_DIR = FEEDBACK_FILE.rsplit(".", 1)[0] + "-shots"
+SHOT_TYPES = {"png": ("image/png", b"\x89PNG\r\n\x1a\n"), "jpg": ("image/jpeg", b"\xff\xd8\xff"), "webp": ("image/webp", b"RIFF")}
+SHOT_NAME = re.compile(r"[0-9]{1,9}-[0-9a-f]{12}\.(?:png|jpg|webp)")
+SHOT_MAX_BYTES, SHOTS_PER_REPORT = 2 * 1024 * 1024, 4
+SHOT_TOTAL_BYTES = 100 * 1024 * 1024
 ADMIN_FILES = ("/admin.html",)
 MAX_ROOMS = 32
 MAX_STREAMS = 64
@@ -98,6 +108,7 @@ REQUEST_LIMITS = {
     "/api/axe-debug": (180, 60),
     "/api/profile/put": (60, 60),
     "/api/events": (60, 60),
+    "/api/admin/login": (5, 300),
 }
 
 
@@ -1625,12 +1636,61 @@ def admin_fields(body):
     return fields
 
 
+def decode_shots(value):
+    """The pasted screenshots as (extension, bytes), all checked before any is written."""
+    if not isinstance(value, list) or len(value) > SHOTS_PER_REPORT:
+        raise GameError(f"A report holds up to {SHOTS_PER_REPORT} screenshots.")
+    shots = []
+    for url in value:
+        head, _, data = url.partition(",") if isinstance(url, str) else ("", "", "")
+        ext = next((e for e, (ctype, _) in SHOT_TYPES.items() if head == f"data:{ctype};base64"), None)
+        try:
+            raw = base64.b64decode(data, validate=True) if ext else b""
+        except (binascii.Error, ValueError):
+            raw = b""
+        if not raw or not raw.startswith(SHOT_TYPES[ext][1]) or (ext == "webp" and raw[8:12] != b"WEBP"):
+            raise GameError("A screenshot must be a PNG, JPEG or WebP picture.")
+        if len(raw) > SHOT_MAX_BYTES:
+            raise GameError("A screenshot can be up to 2 MB.")
+        shots.append((ext, raw))
+    return shots
+
+
+def save_shots(report_id, shots):
+    """Call with FEEDBACK_LOCK held. Returns the new file names."""
+    if not shots:
+        return []
+    os.makedirs(SHOT_DIR, exist_ok=True)
+    with os.scandir(SHOT_DIR) as entries:
+        used = sum(e.stat().st_size for e in entries if e.is_file())
+    if used + sum(len(raw) for _, raw in shots) > SHOT_TOTAL_BYTES:
+        raise CapacityError("The screenshot folder is full. Remove some screenshots first.")
+    names = []
+    for ext, raw in shots:
+        names.append(f"{report_id}-{secrets.token_hex(6)}.{ext}")
+        with open(os.path.join(SHOT_DIR, names[-1]), "wb") as f:
+            f.write(raw)
+    return names
+
+
+def delete_shots(names):
+    for name in names:
+        if SHOT_NAME.fullmatch(name):
+            try:
+                os.remove(os.path.join(SHOT_DIR, name))
+            except FileNotFoundError:
+                pass
+
+
 def admin_add_feedback(body):
     fields = admin_fields({"kind": None, "text": None, **body})
     if fields["kind"] == "table":
         raise GameError("Table suggestions come from the pinball editor, which attaches the share code.")
     extra = {k: fields[k] for k in ("note", "priority") if fields.get(k)}
+    shots = decode_shots(body.get("add_images", []))
     entry = append_feedback(fields["kind"], fields["text"], fields.get("name"), {}, source="admin", **extra)
+    if shots:   # the files are named after the report, so they are attached once it has its number
+        admin_update_feedback({"ids": [entry["id"]], "add_images": body["add_images"]})
     return {"ok": True, "id": entry["id"]}
 
 
@@ -1644,7 +1704,11 @@ def admin_update_feedback(body):
     if "status" in body and status not in ("open", "done"):
         raise GameError("Bad status.")
     fields = admin_fields(body)
-    if len(ids) > 1 and set(fields) - {"priority"}:
+    shots = decode_shots(body.get("add_images", []))
+    drop = body.get("remove_images", [])
+    if not isinstance(drop, list) or not all(isinstance(n, str) for n in drop):
+        raise GameError("Bad screenshot list.")
+    if len(ids) > 1 and (set(fields) - {"priority"} or shots or drop):
         raise GameError("Only status and priority can be changed on several reports at once.")
     with FEEDBACK_LOCK:
         try:
@@ -1652,7 +1716,7 @@ def admin_update_feedback(body):
                 lines = f.readlines()
         except FileNotFoundError:
             lines = []
-        found, changed = set(), False
+        found, changed, added, dropped = set(), False, [], []
         for n, line in enumerate(lines):
             try:
                 e = json.loads(line)
@@ -1662,10 +1726,20 @@ def admin_update_feedback(body):
                 continue
             found.add(e["id"])
             new = {k: v for k, v in fields.items() if v != e.get(k, None if k == "name" else "")}
-            if not new:
+            have = e.get("images", [])
+            if not new and not shots and not set(drop) & set(have):
                 continue
             if "kind" in new and "table" in (new["kind"], e["kind"]):
                 raise GameError("A table suggestion can't change kind, and nothing else can become one.")
+            if shots or drop:   # one report only, and nothing after this can refuse the change
+                keep = [name for name in have if name not in drop]
+                if len(keep) + len(shots) > SHOTS_PER_REPORT:
+                    raise GameError(f"A report holds up to {SHOTS_PER_REPORT} screenshots.")
+                if ids - {e["id"]}:
+                    raise GameError("Screenshots change one report at a time.")
+                added = save_shots(e["id"], shots)
+                dropped = [name for name in have if name in drop]
+                new["images"] = keep + added
             if "text" in new:
                 e.setdefault("original_text", e["text"])   # what the player actually wrote stays on record
             e.update(new, edited_at=time.time())
@@ -1675,9 +1749,14 @@ def admin_update_feedback(body):
             raise GameError("Unknown report IDs: " + ", ".join(map(str, sorted(ids - found))))
         if changed:
             tmp = FEEDBACK_FILE + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as f:
-                f.writelines(lines)
-            os.replace(tmp, FEEDBACK_FILE)
+            try:
+                with open(tmp, "w", encoding="utf-8") as f:
+                    f.writelines(lines)
+                os.replace(tmp, FEEDBACK_FILE)
+            except OSError:
+                delete_shots(added)
+                raise
+            delete_shots(dropped)
         if status:
             write_feedback_status(sorted(ids), status)
     return {"ok": True}
@@ -1889,11 +1968,13 @@ class Handler(BaseHTTPRequestHandler):
             tls = "tls" if isinstance(self.connection, ssl.SSLSocket) else "plain"
             print(f"{self.client_address[0]} {tls} {fmt % args} host={self.headers.get('Host') if self.headers else None}")
 
-    def send_json(self, status, data, *, retry_after=None):
+    def send_json(self, status, data, *, retry_after=None, headers=()):
         body = json.dumps(data).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        for name, value in headers:
+            self.send_header(name, value)
         if retry_after is not None:
             self.send_header("Retry-After", str(retry_after))
         if self.close_connection:
@@ -1940,7 +2021,40 @@ class Handler(BaseHTTPRequestHandler):
         return self.local() and not any(self.headers.get(h) for h in ("X-Forwarded-For", "X-Real-IP", "Forwarded"))
 
     def admin_ok(self):
-        """The feedback admin tool: only a server on port 8000, opened as localhost on the device running it. The Host check
+        """May this request read and change the inbox: from the server's own device, or signed in from elsewhere (#271)."""
+        return self.admin_local() or self.admin_remote() and admin_auth.valid(self.admin_token())
+
+    def admin_remote(self):
+        """May this request use the password sign-in: only on port 8000, once a password is set, over HTTPS (here or at a
+        proxy in front), and never on behalf of another website."""
+        https = isinstance(self.connection, ssl.SSLSocket) or (self.headers.get("X-Forwarded-Proto") or "").strip().lower() == "https"
+        if PORT != ADMIN_PORT or not https or not admin_auth.stored():
+            return False
+        origin = self.headers.get("Origin")
+        return origin is None or origin.lower() == f"https://{(self.headers.get('Host') or '').lower()}"
+
+    def admin_token(self):
+        for part in (self.headers.get("Cookie") or "").split(";"):
+            name, _, value = part.strip().partition("=")
+            if name == ADMIN_COOKIE:
+                return value
+        return ""
+
+    def admin_cookie(self, value, max_age):
+        return ("Set-Cookie", f"{ADMIN_COOKIE}={value}; Path=/api/admin; Max-Age={max_age}; HttpOnly; Secure; SameSite=Strict")
+
+    def admin_sign_in(self, body):
+        token = admin_auth.login(body.get("password"))
+        if not token:
+            return self.send_json(401, {"error": "Wrong password."})
+        self.send_json(200, {"ok": True}, headers=[self.admin_cookie(token, admin_auth.SESSION_SECONDS)])
+
+    def admin_sign_out(self, body):
+        admin_auth.logout(self.admin_token())
+        self.send_json(200, {"ok": True}, headers=[self.admin_cookie("", 0)])
+
+    def admin_local(self):
+        """No password needed: only a server on port 8000, opened as localhost on the device running it. The Host check
         stops tunnels and DNS rebinding; the Origin check stops other web pages in this browser from writing to the inbox."""
         if PORT != ADMIN_PORT or not self.dev_local() or any(self.headers.get(h) for h in ("X-Forwarded-Proto", "X-Forwarded-Host")):
             return False
@@ -1961,11 +2075,17 @@ class Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         if url.path in self.EDITOR_FILES and not self.editor_ok():
             return self.send_json(404, {"error": "Not found"})
-        if url.path in ADMIN_FILES or url.path == "/api/admin/feedback":
+        if url.path in ADMIN_FILES:   # the page holds no data; from elsewhere it opens on its sign-in form
+            if not (self.admin_local() or self.admin_remote()):
+                return self.send_json(404, {"error": "Not found"})
+        if url.path in ("/api/admin/feedback", "/api/admin/image"):
             if not self.admin_ok():
+                if self.admin_remote():
+                    return self.send_json(401, {"error": "Sign in first."})
                 return self.send_json(404, {"error": "Not found"})
             if url.path == "/api/admin/feedback":
-                return self.send_json(200, list_feedback())
+                return self.send_json(200, {**list_feedback(), "remote": not self.admin_local()})
+            return self.send_shot((parse_qs(url.query).get("name") or [""])[0])
         if url.path == "/api/pinball-clones":   # Golden Hour and Neon Arcade as editor tables, derived from the live production layouts
             from games.pinball_clone import BLURBS, clone_specs
             names = {"golden": "Golden Hour", "neon": "Neon Arcade", "star": "Star Cadet"}
@@ -2030,6 +2150,22 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def send_shot(self, name):
+        try:
+            if not SHOT_NAME.fullmatch(name):
+                raise FileNotFoundError(name)
+            with open(os.path.join(SHOT_DIR, name), "rb") as f:
+                body = f.read()
+        except FileNotFoundError:
+            return self.send_json(404, {"error": "Not found"})
+        self.send_response(200)
+        self.send_header("Content-Type", SHOT_TYPES[name.rsplit(".", 1)[1]][0])
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Cache-Control", "private, no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
     def do_POST(self):
         routes = {"/api/create": create_room, "/api/join": join_room, "/api/action": do_action, "/api/input": realtime_input,
                   "/api/status": status, "/api/replay": replay, "/api/peek": peek,
@@ -2044,8 +2180,11 @@ class Handler(BaseHTTPRequestHandler):
             routes["/api/pinball-tables/save"] = save_listed_table
             routes["/api/pinball-tables/delete"] = delete_listed_table
             routes["/api/pinball-check"] = check_table
+        sign_in = {}
+        if self.admin_remote():
+            sign_in = {"/api/admin/login": self.admin_sign_in, "/api/admin/logout": self.admin_sign_out}
         path = urlparse(self.path).path
-        route = routes.get(path)
+        route = routes.get(path) or sign_in.get(path)
         try:
             length = int(self.headers.get("Content-Length") or 0)
             if length < 0 or self.headers.get("Transfer-Encoding"):
@@ -2054,7 +2193,8 @@ class Handler(BaseHTTPRequestHandler):
             self.close_connection = True
             return self.send_json(400, {"error": "Invalid request body length."})
         if not route or length > (PROFILE_WITH_BENCHMARKS_MAX if path == "/api/profile/put" else 200_000 if path in ("/api/pinball-tables/save", "/api/pinball-check")
-                                  else 40_000 if path.startswith("/api/admin/") else 10_000):
+                                  else 12_000_000 if path in ("/api/admin/feedback/add", "/api/admin/feedback/update")
+                                  else 10_000):
             self.close_connection = True   # the unread body would otherwise be parsed as the next request
             return self.send_json(404 if not route else 413, {"error": "Not found" if not route else "Too large"})
         if path in REQUEST_LIMITS:
@@ -2074,6 +2214,8 @@ class Handler(BaseHTTPRequestHandler):
                     return self.send_json(413, {"error": "Too large"})
             if path == "/api/action" and body.get("type") == "pinball_table" and not self.editor_ok():
                 raise GameError("The table editor is switched off on this server.")
+            if path in sign_in:
+                return route(body)
             self.send_json(200, route(body))
         except CapacityError as e:
             self.send_json(503, {"error": str(e)}, retry_after=30)

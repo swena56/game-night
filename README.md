@@ -526,10 +526,18 @@ reports.
 - **Work in bulk:** tick reports (or all shown) to resolve, reopen, set priority, or copy them as a list.
 - **Add and edit:** add your own bugs and ideas, and give any report a priority and a private note. When you
   edit a report's text, the original is kept. Table suggestions can't be added here or change kind.
-- **Access:** only a server running on port 8000 has it, and only for a `localhost` / `127.0.0.1` address
-  opened on that device. Other devices, other ports, proxied or tunnelled requests and other websites get
-  "Not found". With Docker's published port, requests don't arrive as loopback, so it isn't reachable from
-  the host's browser.
+- **Screenshots:** paste one (Ctrl+V) while typing in the add or edit form, or use **📎 Add screenshot**.
+  A report holds up to 4. Large pictures are scaled to 1600 px. They are saved in `data/feedback-shots/`.
+- **On the server's own device:** only a server running on port 8000 has the tool. At a `localhost` /
+  `127.0.0.1` address on that device it never asks for a password.
+- **From elsewhere:** off ("Not found") until you set a password with `python3 -m games.admin_auth`
+  (10 characters or more; `--remove` switches it off again). With Docker, including the Droplet, run
+  `python -m games.admin_auth` with `docker compose exec game-night`. Then open `/admin.html` on your server
+  and sign in. It works only over HTTPS, so not on a Droplet deployed without it. A sign-in lasts 12 hours,
+  and ends sooner at sign-out, a server restart or a password change. Each address gets 5 sign-in attempts per
+  5 minutes. Only a salted scrypt hash of the password is stored, in `data/admin-password.json`. Tunnels and
+  reverse proxies count as "elsewhere" when they send forwarding headers or a public host name, and must send
+  `X-Forwarded-Proto: https`.
 
 ## Refreshes and dropped connections
 
