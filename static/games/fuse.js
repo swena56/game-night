@@ -3,14 +3,14 @@
 UI.fuse = (() => {
   let S, ctx, canvas, g2, raf = 0, ro = null, net = null, shown = [], keys = {}, keyDown = null, keyUp = null;
   let snapshotAt = 0;
-  let lastItems = [], lastShield = null, lastCarrier = -1, lastRound = 0, lastAlive = null, lastTickSec = -1, lastFrame = 0, flash = 0;
+  let lastItems = [], lastShield = null, lastCarrier = -1, lastRound = 0, lastAlive = null, lastTickSec = -1, lastFrame = 0, flash = 0, blast = null;
   let drag = null, direction = '', steering = null, clearInput;
   const pfx = Fx2D.create({ cap: 160 });
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
     S = null; net = null; shown = []; keys = {}; lastItems = []; lastShield = null; lastCarrier = -1; lastRound = 0; lastAlive = null; lastTickSec = -1;
-    drag = null; direction = ''; steering = null; lastFrame = 0; flash = 0;
+    drag = null; direction = ''; steering = null; lastFrame = 0; flash = 0; blast = null;
     main.innerHTML = `<div class="fz"><div class="fz-hud"><strong id="fzRole" aria-live="polite"></strong>
       <span id="fzClock" role="timer"></span></div><div class="fz-stage" id="fzStage"><canvas id="fzCanvas"></canvas>
       <div class="fz-banner" id="fzBanner" hidden></div></div>
@@ -157,6 +157,17 @@ UI.fuse = (() => {
     pfx.step((now - lastFrame) / 1000); lastFrame = now;
     pfx.begin(g2);
     const r = f.R * u;
+    if (blast) {   // the fireball swells and burns out over a scorch mark that lasts until the next round
+      const age = (now - blast.at) / 1000, x = blast.x * u, y = blast.y * u;
+      const scorch = g2.createRadialGradient(x, y, 0, x, y, u * 0.2);
+      scorch.addColorStop(0, '#000000cc'); scorch.addColorStop(1, '#00000000');
+      g2.fillStyle = scorch; g2.beginPath(); g2.arc(x, y, u * 0.2, 0, 7); g2.fill();
+      if (age < 0.8) {
+        const R = u * (0.06 + 0.3 * Math.min(1, age * 3)), fire = g2.createRadialGradient(x, y, 0, x, y, R);
+        fire.addColorStop(0, '#ffffff'); fire.addColorStop(0.35, '#ffd166'); fire.addColorStop(0.75, '#ff5d1a'); fire.addColorStop(1, '#ff2a0000');
+        g2.save(); g2.globalAlpha = 1 - age / 0.8; g2.fillStyle = fire; g2.beginPath(); g2.arc(x, y, R, 0, 7); g2.fill(); g2.restore();
+      }
+    }
     for (const [ix, iy, kind] of src.it || []) {   // 🎁 floor pickups: a glowing disc with the power's icon
       const sx = ix * u, sy = iy * u, pulse = 1 + 0.12 * Math.sin(now / 160);
       g2.save(); g2.shadowColor = kind === 'shield' ? '#6cecff' : '#ffd166'; g2.shadowBlur = r * 1.4;
@@ -197,13 +208,14 @@ UI.fuse = (() => {
     const banner = $('fzBanner'), me = mine();
     const role = $('fzRole'), clock = $('fzClock');
     const hunting = me != null && src.a[me] && src.c === me;
-    const roleText = S.phase !== 'playing' ? 'Match over' : S.paused ? 'Paused'
+    const gone = src.boom == null ? null : ctx.player(f.seats[src.boom])?.name ?? 'A runner';
+    const roleText = S.phase !== 'playing' ? 'Match over' : S.paused ? 'Paused' : gone ? `💥 ${gone} is out!`
       : me == null || !src.a[me] ? 'Watching' : hunting ? '💣 Tag someone!' : '🏃 Dodge the bomb';
     if (role.textContent !== roleText) role.textContent = roleText;
     const clockText = S.phase === 'playing' ? `${left.toFixed(1)}s` : '';
     if (clock.textContent !== clockText) clock.textContent = clockText;
     clock.classList.toggle('fz-hot', hot);
-    banner.hidden = !(pause > 0 && S.phase === 'playing');
+    banner.hidden = !(pause > 0 && S.phase === 'playing' && !gone);  // the aftermath is left clear to watch
     banner.textContent = pause > 0.7 ? `Round ${src.rd}` : 'Run!';
     const btn = $('fzDash');
     if (btn) {
@@ -237,7 +249,15 @@ UI.fuse = (() => {
           const [x, y] = at(i);
           pfx.ring(x, y, { r0: u * 0.03, r1: u * 0.55, color: '#ff7a2f', width: u * 0.03, life: 0.7 });
           pfx.spark(x, y, 36, { color: '#ffb703', speed: [u * 0.2, u * 1.1], size: [u * 0.006, u * 0.016] });
-          flash = 0.45; ctx.sfx?.('boom'); ctx.buzz?.(i === f.me ? [120, 40, 160] : 40);
+          // #277 a proper explosion: a fireball and scorch mark, two shockwaves, debris, smoke and a hard shake
+          blast = { x: data.p[i][0], y: data.p[i][1], at: performance.now() };
+          pfx.ring(x, y, { r0: u * 0.02, r1: u * 0.95, color: '#fff1c2', width: u * 0.018, life: 0.9 });
+          pfx.spark(x, y, 40, { color: '#ff5d3a', speed: [u * 0.1, u * 0.8], size: [u * 0.008, u * 0.022] });
+          pfx.burst(x, y, 24, { color: '#2b2b33', speed: [u * 0.2, u * 0.9], gravity: u * 0.6, size: [u * 0.008, u * 0.018], life: 1.2, spin: 8 });
+          pfx.smoke(x, y, 14, { color: '#554a46', size: [u * 0.05, u * 0.11], speed: [u * 0.02, u * 0.18], rise: u * 0.12, life: [1.2, 2.4], grow: 2 });
+          pfx.text(x, y - u * 0.08, 'BOOM!', { color: '#ffd166', size: Math.max(24, u * 0.13), ms: 1500, rise: u * 0.1 });
+          pfx.shake(u * 0.045); pfx.flash('#fff', 0.5, 300);
+          flash = 0.7; ctx.sfx?.('boom'); setTimeout(() => ctx.sfx?.('thud'), 140); ctx.buzz?.(i === f.me ? [120, 40, 160] : 40);
         }
       });
       for (const old of data.rd === lastRound ? lastItems : []) {
@@ -258,7 +278,7 @@ UI.fuse = (() => {
         }
       });
       if (data.rd !== lastRound && lastRound) {
-        shown = [];
+        shown = []; blast = null;
         ctx.sfx?.('rise');
       }
     }

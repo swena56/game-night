@@ -132,7 +132,16 @@ with r.cond:
     g.frame(g.fuse_end)
     check("an expired fuse cannot be handed off", not g.alive[carrier] and g.passes == passes)
     state = json.loads(r.fast)
-    check("the next round immediately streams open walls and the elimination",
+    # (#277) the blast is held on screen before anything moves on
+    check("the blast streams the elimination and holds the round",
+          state["boom"] == carrier and not state["a"][carrier] and state["rd"] == g.round)
+    held = g.boom[1]
+    still = [p[:] for p in g.pos]
+    g.frame(held - 0.05)
+    check("nothing moves during the aftermath", g.pos == still and g.boom)
+    g.frame(held)
+    state = json.loads(r.fast)
+    check("the next round then streams open walls and the elimination",
           state["edge"] == 0 and state["rd"] == g.round and not state["a"][carrier])
     g.s["arena"] = "classic"
     late = g.fuse_end - 0.01

@@ -4,9 +4,28 @@ UI.trivia = (() => {
   let S, ctx, receivedAt = 0, tickTimer = 0, seenQ = '', myRank = null, lastTick = 0;
   const $ = (id) => document.getElementById(id);
   const LETTERS = 'ABCD';
+  // 🔊 read each new question aloud (#281): off unless the player turns it on, and only on devices that can speak
+  const canSpeak = () => typeof speechSynthesis !== 'undefined' && typeof SpeechSynthesisUtterance !== 'undefined';
+  const reading = () => { try { return localStorage.getItem('trivia.read') === '1'; } catch { return false; } };
+  let spoken = '';
+  const hush = () => { if (canSpeak()) speechSynthesis.cancel(); };
+  function readOut() {
+    const t = S?.trivia;
+    if (!t || !canSpeak() || !reading() || S.phase !== 'playing' || t.stage !== 'ask' || S.paused || spoken === `${S.gameNo}:${t.n}`) return;
+    spoken = `${S.gameNo}:${t.n}`;
+    hush();
+    const choices = t.claim ? `${t.claim}. True or false?` : t.options.map((o, i) => `${LETTERS[i]}: ${o}.`).join(' ');
+    speechSynthesis.speak(new SpeechSynthesisUtterance(`${t.text} ${choices}`));
+  }
+  function paintRead() {
+    const b = $('tvRead'); if (!b) return;
+    b.hidden = !canSpeak();
+    b.setAttribute('aria-pressed', String(reading()));
+    b.textContent = reading() ? '🔊 Read aloud: on' : '🔈 Read aloud: off';
+  }
 
   function mount(main, side) {
-    seenQ = ''; myRank = null;
+    seenQ = ''; myRank = null; spoken = '';
     main.innerHTML = `<div class="tv">
       <div class="tv-head"><span id="tvNum"></span><span id="tvTopic" class="tv-topic"></span></div>
       <div class="dd-bar"><span id="tvBar"></span></div>
@@ -14,13 +33,20 @@ UI.trivia = (() => {
       <div id="tvOpts" class="tv-opts"></div>
       <div id="tvExplain" class="tv-explain" hidden></div>
       <button id="tvFifty" class="tv-fifty" hidden>✂️ 50:50</button>
-      <div id="tvNote" class="tv-note"></div></div>`;
+      <div id="tvNote" class="tv-note"></div>
+      <button id="tvRead" class="tv-read ghost-btn" type="button" hidden></button></div>`;
     side.innerHTML = '<div class="panel"><h3>Scores</h3><div id="tvScores"></div><p class="hint left">Right answers score 100, plus up to 100 for speed. The last question counts double.</p></div>';
     tickTimer = setInterval(tick, 150);
+    $('tvRead').onclick = () => {
+      try { localStorage.setItem('trivia.read', reading() ? '0' : '1'); } catch {}
+      spoken = ''; paintRead();
+      if (reading()) readOut(); else hush();
+    };
+    paintRead();
     $('tvFifty').onclick = () => { ctx.sfx('whoosh'); ctx.quiet(ctx.act('fifty')); };
   }
 
-  function unmount() { clearInterval(tickTimer); }
+  function unmount() { clearInterval(tickTimer); hush(); }
 
   function tick() {
     if (!S?.trivia || !$('tvBar')) return;
@@ -124,6 +150,8 @@ UI.trivia = (() => {
       box.append(row);
     }
     Kit.glide(box, before, 450);
+    if (S.phase !== 'playing' || S.paused) hush();
+    readOut();
     tick();
   }
 

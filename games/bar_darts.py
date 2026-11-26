@@ -53,6 +53,7 @@ COUNTUP_VISITS = 8
 AXES_PER_ROUND = 5
 PAUSE = 0.85
 VISIT_RECAP = 1.65
+ROUND_LOOK = 4.0   # the round's darts stay up this much longer before they're pulled, for a look at the board (#279)
 DART_ORIGIN = (1.04, -0.55)
 SWIPE_PACE = 2.2
 SCATTER = 1.0       # 0 turns off the hand's wobble (tests): fast flicks scatter more than steady throws
@@ -434,6 +435,7 @@ class DartMatch:
             return self.advance(i, delay)
         if collect and (self.darts or self.last_darts):
             self.grabbing = i
+            delay += ROUND_LOOK
             self.ready_at = time.time() + delay
             self.room.deadline = self.ready_at
             return

@@ -163,11 +163,11 @@
 }
 .ar-darts-spread[hidden] { display: none; }
 .ar-darts-aim { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 3; overflow: visible; pointer-events: none;
-  animation: ar-aim-fade 3.6s ease-out both; }
-.ar-darts-aim > * { fill: #ffe14dcc; stroke: #fff; stroke-width: 1.1; filter: drop-shadow(0 0 3px #ffb300); }
+  animation: ar-aim-fade 4.5s ease-out both; }
+.ar-darts-aim > * { fill: #12d8ffe6; stroke: #fff; stroke-width: 1.3; filter: drop-shadow(0 0 2.5px #001b24); }  /* cyan: nothing else on the board is (#280) */
 .ar-darts-aim[hidden] { display: none; }
-@keyframes ar-aim-fade { 0% { opacity: 0; } 8%, 55% { opacity: 1; } 28% { opacity: .55; } 100% { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .ar-darts-aim { animation: ar-aim-fade 3.6s steps(1, end) both; } }
+@keyframes ar-aim-fade { 0% { opacity: 0; } 5%, 65% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .ar-darts-aim { animation: ar-aim-fade 4.5s steps(1, end) both; } }
 .ar-darts-webgl { filter: drop-shadow(0 12px 14px #000a); }
 .ar-darts-swipe { min-height: 44px; touch-action: none; cursor: grab; padding-inline: 12px; }
 .ar-darts-swipe[hidden] { display: none; }
@@ -271,11 +271,6 @@
 }
 @keyframes ar-darts-static-impact { from { opacity: 1; } to { opacity: 0; } }
 
-.ar-darts-aim {
-  border-color: #ffe7af;
-  background: #ffd78f26;
-  box-shadow: 0 0 0 1px #241a11, 0 0 8px #ffd36a88;
-}
 .ar-darts-hintbtn[aria-pressed="true"] {
   border-color: #ffdc97;
   box-shadow: inset 0 0 0 1px #ffdc9755;
@@ -407,3 +402,12 @@
   .ar-darts-stage { margin-inline: -10px; border-radius: 0; }
   .ar-darts header { padding: 2px 2px 6px; }
 }
+
+/* #278 the score strip: every player on one line above the board */
+.ar-darts-strip { display: flex; gap: 4px; margin: 0 0 4px; }
+.ar-darts-strip span { flex: 1 1 0; min-width: 0; display: flex; justify-content: center; align-items: baseline; gap: 5px; padding: 3px 6px; border-radius: 8px; background: var(--panel); border-bottom: 3px solid var(--pc); }
+.ar-darts-strip i { font-style: normal; font-size: .75rem; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.ar-darts-strip b { font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+.ar-darts-strip .now { box-shadow: inset 0 0 0 2px var(--accent); }
+.ar-darts-strip .now i { color: var(--text); }
+.ar-darts-strip .out { opacity: .5; }

@@ -2227,6 +2227,7 @@ UI.archery = (() => {
             <button type="button" class="ar-darts-hintbtn ar-darts-flashbtn" aria-label="Flash the section a dart hits" aria-pressed="false">✨ Flash</button>
           </div>
         </header>
+        <p class="ar-darts-strip" aria-label="Scores"></p>
         <div class="ar-darts-board-wrap"><div class="ar-darts-stage"><div class="ar-darts-tabletop">
           <svg class="ar-darts-aim" viewBox="0 0 250 250" aria-hidden="true" hidden></svg>
           <div class="ar-darts-spread" aria-hidden="true" hidden></div>
@@ -3472,6 +3473,14 @@ UI.archery = (() => {
         body.append(row);
       });
       score.replaceChildren(table);
+      // #278 everyone's score on one line above the board, so it's in view without scrolling
+      const total = (i) => (clock ? `at ${clockLabel(view.nextNumbers[i])}` : String(view.points[i] - (view.axeRings && flight?.shot.o === i ? flight.shot.gain ?? flight.shot.value ?? 0 : 0)));
+      root.querySelector('.ar-darts-strip').replaceChildren(...view.seats.map((_, i) => {
+        const chip = ctx.el('span', (view.next === i ? 'now' : '') + (view.active.includes(i) ? '' : ' out'));
+        chip.append(ctx.el('i', '', player(i)?.name ?? '?'), ctx.el('b', '', total(i)));
+        chip.style.setProperty('--pc', ownerColor(i) ?? '#888');
+        return chip;
+      }));
       if (view.checkout.length) score.append(ctx.el('p', 'ar-darts-checkout', `Checkout · ${view.checkout.join(' → ')}`));
     }
 

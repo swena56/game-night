@@ -18,6 +18,7 @@ SPEED, CARRIER_SPEED = 0.46, 0.54   # arena units per second; the carrier is abo
 DASH_SPEED, DASH_SECS, DASH_COOL = 1.55, 0.22, 2.4   # ⚡ a short burst, then a wait
 IMMUNE = 1.1                   # the one who just passed the bomb can't be tagged straight back
 READY = 1.8                    # a pause before each new bomb: a "Ready…" for every screen
+AFTERMATH = 2.8   # after a blast everything holds still this long before the next round (#277)
 FUSE_STEP, FUSE_MIN = 1.2, 5.5  # each round's fuse is this much shorter, never below the minimum
 CLOSE_AT, MAX_INSET = 0.5, 0.21  # walls close over the second half of the fuse
 ITEM_EVERY, ITEM_MAX, ITEM_R = (4.5, 7.5), 2, 0.035   # 🎁 a pickup appears every few seconds (two at most) on the arena floor
@@ -88,7 +89,10 @@ class Fuse(Game):
         self.room.add_log("💣 Fuse Frenzy! Pass the bomb on before it blows.", "big")
         self.new_round(time.time())
 
+    boom = None  # [seat, when the next round starts] while the smoke clears; saves from before have none
+
     def new_round(self, now):
+        self.boom = None
         self.round += 1
         self.inset = 0.0
         self._prev = None
@@ -173,6 +177,17 @@ class Fuse(Game):
         return [min(W - edge, max(edge, x)), min(H - edge, max(edge, y))]
 
     def frame(self, now):
+        if self.boom:
+            if now >= self.boom[1]:
+                self.new_round(now)
+                self.last_frame = now
+                self.broadcast(now)
+                return True
+            self.last_frame = now
+            self.frames += 1
+            if self.frames % 2 == 0:
+                self.broadcast(now)
+            return False
         if now >= self.fuse_end and self.alive[self.carrier]:
             return self.explode(now)
         if self.last_frame is None:
@@ -313,7 +328,7 @@ class Fuse(Game):
                 self.survived[live[0]] = self.round
             self.room.finish(winner, f"🏆 {winner.name} is the last runner standing!" if winner else "💥 Nobody left.")
         else:
-            self.new_round(now)
+            self.boom = [c, now + AFTERMATH]
         self.broadcast(now)
         return True
 
@@ -325,7 +340,7 @@ class Fuse(Game):
             "dc": [round(max(0.0, t - now), 1) for t in self.dash_ready],
             "dn": [int(now < t) for t in self.dash_until],
             "it": self.items, "sh": [int(v) for v in self.shield], "bo": [int(now < t) for t in self.boost_until],
-            "c": self.carrier, "rd": self.round, "edge": round(self.inset, 3),
+            "c": self.carrier, "boom": self.boom[0] if self.boom else None, "rd": self.round, "edge": round(self.inset, 3),
             "f": round(max(0.0, self.fuse_end - max(now, self.paused_until)), 2), "len": round(self.fuse_len, 2),
             "pause": round(max(0.0, self.paused_until - now), 2),
         }
