@@ -912,6 +912,23 @@ class CustomTables(unittest.TestCase):
         with self.assertRaises(GameError):                  # a decompression bomb is refused
             decode_table(boom)
 
+    def test_ramp_does_not_swallow_the_ball_unless_lock_is_on(self):
+        from games.pinball import CustomTable
+        from games.pinball_custom import build, build_rules
+        spec = {"items": [["ramp", 4, 8, 6, 10, "#59edd2"]]}
+        self.assertEqual(build_rules(spec).lock_balls, 0)
+        self.assertEqual(build_rules({**spec, "lock": True}).lock_balls, 2)
+        self.assertTrue(build({**spec, "lock": True})[1]["lock"])
+        layout, _ = build(spec)
+        t = CustomTable(layout_override=layout, rules_override=build_rules(spec), balls=9)
+        t.staged = False
+        t.x, t.y, t.vx, t.vy = 4.0, 8.4, 0, -12            # a firm shot up the ramp mouth
+        for _ in range(240 * 2):
+            t.step()
+            self.assertFalse(t.staged, "the ball was taken back to the plunger")
+            self.assertEqual(t.locked, 0)
+        self.assertEqual(t.ramps, 1)                        # the ride finished and scored
+
     def test_per_part_points(self):
         from games.pinball import CustomTable
         from games.pinball_custom import build

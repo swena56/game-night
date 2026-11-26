@@ -143,7 +143,7 @@ def sandbox_table(part):
                   guides_from=GUIDES_FROM, guide_run=len(RIGHT_GUIDE))
     kwargs.update(SANDBOX_PARTS[part][1])
     layout = Layout(**kwargs)
-    cls = type(f"Sandbox_{part}", (EngineTable,), {"layout": layout, "rules": Rules(lock_balls=2, center_post=True, always_on=True)})
+    cls = type(f"Sandbox_{part}", (EngineTable,), {"layout": layout, "rules": Rules(lock_balls=0, center_post=True, always_on=True)})
     globals()[cls.__name__] = cls       # rooms are pickled to disk, so the class must be findable by name
     return cls
 
@@ -154,7 +154,7 @@ MODES = {"classic": {}, "zen": dict(mode="zen"), "practice": dict(mode="practice
 class CustomTable(EngineTable):
     """A table from the editor: the layout arrives with each game (layout_override); this one is only the fallback."""
     layout = sandbox_table("bare").layout
-    rules = Rules(lock_balls=2, center_post=True, always_on=True)
+    rules = Rules(lock_balls=0, center_post=True, always_on=True)
 
 
 TABLES = {"golden": ("Golden Hour", Table), "neon": ("Neon Arcade", NeonTable), "custom": ("My table", CustomTable),

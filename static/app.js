@@ -1173,6 +1173,8 @@ async function solo(startNow) {
   } catch (e) { toast(e.message); }
 }
 $('#pinballEditorBtn').onclick = () => { location.href = '/pinball-editor.html'; };
+// the table editor is a dev tool: the server only serves it to a local dev session, so the button only shows there
+fetch('/api/dev').then((r) => r.json()).then((d) => { window.gnEditor = !!d.editor; $('#pinballEditorBtn').hidden = !d.editor; }).catch(() => {});
 $('#soloBtn').onclick = () => solo(true);
 $('#soloSetupBtn').onclick = () => solo(false);
 $('#addBotBtn').onclick = () => quiet(act('add_bot', { level: $('#botLevel').value }));

@@ -235,6 +235,43 @@ const base = process.env.BASE || 'http://localhost:8794';
     await p2.waitForFunction(() => S?.pinball?.layout);
     const big = await p2.evaluate(() => ({ posts: S.pinball.layout.posts.length, bumps: S.pinball.layout.bumps.length }));
     assert.deepEqual(big, { posts: 16, bumps: 12 });
+    await p2.goto(base + '/pinball-editor.html');          // back from the game: the editor comes back with the same table
+    assert.ok((await count2('bump')) + (await count2('post')) > 10, 'the table is still there after switching back');
+    // the editor is a dev tool: served to a direct localhost request only
+    const http = require('node:http');
+    const get = (path, headers = {}, method = 'GET', body = null) => new Promise((resolve, reject) => {
+      const u = new URL(base);
+      const req = http.request({ host: u.hostname, port: u.port, path, method, headers: { ...(body ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } : {}), ...headers } },
+        (res) => { let text = ''; res.on('data', (d) => (text += d)); res.on('end', () => resolve({ status: res.statusCode, text })); });
+      req.on('error', reject); if (body) req.write(body); req.end();
+    });
+    assert.equal((await get('/pinball-editor.js')).status, 200);
+    assert.equal((await get('/pinball-editor.js', { 'X-Forwarded-For': '203.0.113.9' })).status, 404, 'behind a proxy: not served');
+    assert.equal((await get('/pinball-editor.html', { Host: 'games.example.com' })).status, 404, 'a public host name: not served');
+    assert.equal((await get('/pinball-editor.css', { 'X-Forwarded-Proto': 'https' })).status, 404);
+    assert.equal(JSON.parse((await get('/api/dev')).text).editor, true);
+    assert.equal(JSON.parse((await get('/api/dev', { 'X-Forwarded-For': '1.2.3.4' })).text).editor, false);
+    const denied = await get('/api/action', { 'X-Forwarded-For': '1.2.3.4' }, 'POST', JSON.stringify({ type: 'pinball_table', code: 'ZZZZ', pid: 'x', token: 'y', table: { items: [] } }));
+    assert.equal(denied.status, 400); assert.match(denied.text, /local dev server/);
+    // selecting: a long subway line no longer hides the bumper under it, a quick second tap steps through a stack, [ ] and the list walk the parts
+    await p2.evaluate(() => { const e = window.pinballEditor; e.state.items = []; e.addPart('bump', 4, 8); e.addPart('subway', 2, 6); e.addPart('bump', 6.5, 12); });
+    await p2.locator('#peLayersBody label', { hasText: 'Scoring' }).locator('input').check();
+    const sb = await p2.locator('#peCanvas').boundingBox();
+    const sat = (x, y) => ({ x: sb.x + x / 10 * sb.width, y: sb.y + y / 17 * sb.height });
+    await p2.mouse.click(sat(4, 8).x, sat(4, 8).y);
+    assert.equal(await p2.locator('#peTitle').textContent(), '🔴 Pop bumper', 'the bumper under the subway run is selectable');
+    await p2.mouse.click(sat(0.3, 16).x, sat(0.3, 16).y);
+    assert.equal(await p2.locator('#peTitle').textContent(), 'Nothing selected');
+    await p2.mouse.click(sat(4, 8).x, sat(4, 8).y);
+    assert.equal(await p2.locator('#peTitle').textContent(), '🔴 Pop bumper', 'and reselectable after deselecting');
+    await p2.keyboard.press(']');
+    assert.match(await p2.locator('#peNavCount').textContent(), /2 of/);
+    await p2.keyboard.press('[');
+    assert.match(await p2.locator('#peNavCount').textContent(), /1 of/);
+    await p2.locator('#pePrev').click();
+    assert.equal(await p2.locator('#pePitemCount, .pe-pitem.on').count(), 1);
+    await p2.locator('.pe-pitem', { hasText: 'Subway' }).click();
+    assert.equal(await p2.locator('#peTitle').textContent(), '🚇 Subway', 'the parts list selects a part');
     console.log('Pinball editor checks passed: drag, move, resize, inspector, undo, limits, wires, share codes, saved tables and play');
   } finally {
     await browser.close();

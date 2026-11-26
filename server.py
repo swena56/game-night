@@ -1804,8 +1804,27 @@ class Handler(BaseHTTPRequestHandler):
         """The feedback inbox is only for whoever runs the server, on that device."""
         return self.client_address[0] in ("127.0.0.1", "::1", "::ffff:127.0.0.1")
 
+    EDITOR_FILES = ("/pinball-editor.html", "/pinball-editor.js", "/pinball-editor.css")
+
+    def editor_ok(self):
+        """The pinball table editor is a development tool: it is served only to the machine running the server, opened as
+        localhost with no proxy in between (a public site sits behind one, which adds X-Forwarded-* headers). GAME_NIGHT_EDITOR=1
+        allows it for every client (testing from a phone on the LAN); =0 turns it off everywhere."""
+        flag = os.environ.get("GAME_NIGHT_EDITOR")
+        if flag in ("0", "1"):
+            return flag == "1"
+        if not self.local():
+            return False
+        host = (self.headers.get("Host") or "").rsplit(":", 1)[0].strip("[]").lower()
+        proxied = any(self.headers.get(h) for h in ("X-Forwarded-For", "X-Forwarded-Host", "X-Forwarded-Proto", "Forwarded", "Via", "X-Game-Night-Client"))
+        return host in ("localhost", "127.0.0.1", "::1") and not proxied
+
     def do_GET(self):
         url = urlparse(self.path)
+        if url.path in self.EDITOR_FILES and not self.editor_ok():
+            return self.send_json(404, {"error": "Not found"})
+        if url.path == "/api/dev":
+            return self.send_json(200, {"editor": self.editor_ok()})
         if url.path == "/api/feedback":
             if not self.local():
                 return self.send_json(403, {"error": "Open the feedback inbox on the device running the server."})
@@ -1894,6 +1913,8 @@ class Handler(BaseHTTPRequestHandler):
                 profile = body.get("profile")
                 if not isinstance(profile, dict) or not isinstance(profile.get("benchmarks"), dict) or not profile_fits(profile):
                     return self.send_json(413, {"error": "Too large"})
+            if path == "/api/action" and body.get("type") == "pinball_table" and not self.editor_ok():
+                raise GameError("The table editor only works on a local dev server.")
             self.send_json(200, route(body))
         except CapacityError as e:
             self.send_json(503, {"error": str(e)}, retry_after=30)

@@ -83,7 +83,7 @@
   const FLIPS = [[3.22, 14.95, .42], [6.78, 14.95, Math.PI - .42]];
   const FLIP_LEN = 1.56;
 
-  let state = { name: '', items: [], kick: false, pts: {} };
+  let state = { name: '', items: [], kick: false, lock: false, pts: {} };
   let zoom = 1;
   const hiddenLayers = new Set();
   const group = new Set();                        // shift-click adds parts: duplicate, delete, nudge and drag then act on all of them
@@ -155,7 +155,9 @@
         : d.shape === 'pr' ? [i.k, round2(i.x), round2(i.y), round2(i.r), i.c] : [i.k, round2(i.x), round2(i.y), i.c];
     });
     if (state.kick) items.push(['kick', '#ffffff']);
+    const lock = state.lock;
     const out = { v: 1, name: state.name.trim().slice(0, 40), items };
+    if (lock) out.lock = true;
     const pv = [];
     state.items.forEach((i, n) => { if (OWN_POINTS.has(i.k) && Number.isFinite(i.pv)) pv.push([n, i.pv]); });
     if (pv.length) out.pv = pv;
@@ -168,7 +170,7 @@
   }
   function fromSpec(spec) {
     if (!spec || !Array.isArray(spec.items)) throw new Error("That isn't a table.");
-    const next = { name: typeof spec.name === 'string' ? spec.name.slice(0, 40) : '', items: [], kick: false, pts: {} };
+    const next = { name: typeof spec.name === 'string' ? spec.name.slice(0, 40) : '', items: [], kick: false, lock: spec.lock === true, pts: {} };
     if (spec.pts && typeof spec.pts === 'object') for (const [k, v] of Object.entries(spec.pts)) if (POINTS[k] && typeof v === 'number' && isFinite(v)) next.pts[k] = clamp(Math.round(v), 0, 20000);
     const num = (v) => (typeof v === 'number' && isFinite(v) ? v : 0);
     const own = new Map((Array.isArray(spec.pv) ? spec.pv : []).filter((p) => Array.isArray(p) && Number.isInteger(p[0]) && Number.isFinite(p[1])).map((p) => [p[0], clamp(Math.round(p[1]), 0, 20000)]));
@@ -396,20 +398,29 @@
     const dx = x2 - x1, dy = y2 - y1, t = clamp(((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy || 1), 0, 1);
     return Math.hypot(px - (x1 + dx * t), py - (y1 + dy * t));
   }
-  function hit(px, py) {
-    for (let i = state.items.length - 1; i >= 0; i--) {
-      const it = state.items[i], d = KINDS[it.k];
-      if (!shown(it)) continue;
-      const near = d.shape === 'pr' ? Math.hypot(px - it.x, py - it.y) <= (it.k === 'magnet' ? Math.min(it.r, .5) : it.r + .1)
-        : it.k === 'ramp' ? rampCurve(it).some(([cx, cy], j, c) => j && distSeg(px, py, c[j - 1][0], c[j - 1][1], cx, cy) <= .3)
-        : d.shape === 'a' ? arcCurve(it).some(([cx, cy], j, c) => j && distSeg(px, py, c[j - 1][0], c[j - 1][1], cx, cy) <= .3)
-        : d.shape === 's' ? distSeg(px, py, it.x, it.y, it.x2, it.y2) <= .3 || Math.hypot(px - it.x, py - it.y) <= .4
-        : d.shape === 'w' ? it.pts.some(([x, y], j) => (j && distSeg(px, py, it.pts[j - 1][0], it.pts[j - 1][1], x, y) <= .3) || Math.hypot(px - x, py - y) <= .4)
-        : it.k === 'spinner' ? Math.abs(px - it.x) <= .55 && Math.abs(py - it.y) <= .3 : Math.hypot(px - it.x, py - it.y) <= .38;
-      if (near) return i;
-    }
-    return -1;
+  // every part under the pointer, best first: round parts and short ones beat long lines and wires that happen to pass under them
+  function hitList(px, py) {
+    const found = [];
+    state.items.forEach((it, i) => {
+      if (!shown(it)) return;
+      const d = KINDS[it.k];
+      let dist = 99, weight = 0;
+      if (d.shape === 'pr') { dist = Math.hypot(px - it.x, py - it.y); if (!(dist <= (it.k === 'magnet' ? Math.min(it.r, .5) : it.r + .1))) return; }
+      else if (it.k === 'ramp') { const c = rampCurve(it); dist = Math.min(...c.slice(1).map(([x, y], j) => distSeg(px, py, c[j][0], c[j][1], x, y))); weight = 2; if (dist > .2) return; }
+      else if (d.shape === 'a') { const c = arcCurve(it); dist = Math.min(...c.slice(1).map(([x, y], j) => distSeg(px, py, c[j][0], c[j][1], x, y))); weight = 1; if (dist > .25) return; }
+      else if (d.shape === 'w') { dist = Math.min(...it.pts.map(([x, y], j) => (j ? distSeg(px, py, it.pts[j - 1][0], it.pts[j - 1][1], x, y) : 9)), ...it.pts.map(([x, y]) => Math.hypot(px - x, py - y) - .15)); weight = 2; if (dist > .18) return; }
+      else if (it.k === 'subway' || it.k === 'portal') { dist = Math.min(Math.hypot(px - it.x, py - it.y), Math.hypot(px - it.x2, py - it.y2)) - .1; weight = 0; if (dist > .32) return; }      // the dotted run underneath is not clickable
+      else if (d.shape === 's') { dist = Math.min(distSeg(px, py, it.x, it.y, it.x2, it.y2), Math.hypot(px - it.x, py - it.y) - .1); weight = 1; if (dist > .28) return; }
+      else if (it.k === 'spinner') { if (!(Math.abs(px - it.x) <= .55 && Math.abs(py - it.y) <= .3)) return; dist = Math.hypot(px - it.x, py - it.y) * .5; }
+      else { dist = Math.hypot(px - it.x, py - it.y); if (dist > .38) return; }
+      found.push({ i, weight, dist, order: i });
+    });
+    found.sort((p, q) => p.weight - q.weight || p.dist - q.dist || q.order - p.order);
+    return found.map((f) => f.i);
   }
+  const hit = (px, py) => hitList(px, py)[0] ?? -1;
+  let lastTap = null;        // a quick second tap on the same spot steps through the parts stacked there
+
   canvas.addEventListener('pointerdown', (e) => {
     const [px, py] = world(e);
     const pad = Math.max(.3, 14 * (devicePixelRatio || 1) / scale);
@@ -417,7 +428,10 @@
       const h = handles(state.items[sel]).findIndex(([hx, hy]) => Math.hypot(px - hx, py - hy) <= pad);
       if (h >= 0) { drag = { mode: 'handle', h }; canvas.setPointerCapture(e.pointerId); return; }
     }
-    const i = hit(px, py);
+    const stack = hitList(px, py);
+    let i = stack[0] ?? -1;
+    if (stack.length > 1 && lastTap && performance.now() - lastTap.t < 600 && Math.hypot(px - lastTap.x, py - lastTap.y) < .2 && stack.includes(sel)) i = stack[(stack.indexOf(sel) + 1) % stack.length];
+    lastTap = { x: px, y: py, t: performance.now() };
     if (e.shiftKey && i >= 0) {
       if (sel >= 0) group.add(sel);
       if (group.has(i) && group.size > 1) group.delete(i); else group.add(i);
@@ -577,6 +591,7 @@
   $('peDelPt').onclick = () => editSel((it) => { if (it.pts.length > 2) it.pts.pop(); });
   $('peColor').oninput = () => { const it = state.items[sel]; if (it) { it.c = $('peColor').value; draw(); } };
   $('peColor').onchange = () => editSel((it) => { it.c = $('peColor').value; });
+  $('pePrev').onclick = () => step(-1); $('peNext').onclick = () => step(1);
   $('pePv').onchange = () => editSel((it) => { const v = parseInt($('pePv').value, 10); if (Number.isFinite(v)) it.pv = clamp(v, 0, 20000); else delete it.pv; });
   for (const c of document.querySelectorAll('#peModes input')) c.onchange = () => editSel((it) => {
     let mask = 0;
@@ -639,10 +654,12 @@
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a' && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) {
       e.preventDefault(); group.clear(); state.items.forEach((it, i) => { if (shown(it)) group.add(i); }); sel = group.size ? [...group][0] : -1; refresh(); return;
     }
-    if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || sel < 0 || e.ctrlKey || e.metaKey) return;
-    const step = e.shiftKey ? .25 : .05, k = e.key;
-    if (k === 'ArrowLeft') nudgeSel(-step, 0); else if (k === 'ArrowRight') nudgeSel(step, 0);
-    else if (k === 'ArrowUp') nudgeSel(0, -step); else if (k === 'ArrowDown') nudgeSel(0, step);
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.ctrlKey || e.metaKey) return;
+    if (e.key === ']' || e.key === '[') { e.preventDefault(); step(e.key === ']' ? 1 : -1); return; }
+    if (sel < 0) return;
+    const amount = e.shiftKey ? .25 : .05, k = e.key;
+    if (k === 'ArrowLeft') nudgeSel(-amount, 0); else if (k === 'ArrowRight') nudgeSel(amount, 0);
+    else if (k === 'ArrowUp') nudgeSel(0, -amount); else if (k === 'ArrowDown') nudgeSel(0, amount);
     else if (k === 'r' || k === 'R') rotateSel(e.shiftKey ? -15 : 15); else if (k === 'm' || k === 'M') mirrorSel();
     else if (k === 'd' || k === 'D') $('peDup').click(); else return;
     e.preventDefault();
@@ -650,21 +667,44 @@
   $('peZoom').onclick = () => { zoom = zoom >= 2 ? 1 : zoom + .5; $('peZoom').textContent = `🔍 ${zoom}×`; fit(); };
   $('peName').oninput = () => { state.name = $('peName').value; };
   $('peName').onchange = commit;
+  $('peLock').onchange = () => { state.lock = $('peLock').checked; commit(); };
   $('peKick').onchange = () => { state.kick = $('peKick').checked; commit(); };
   $('peSnap').onclick = () => { snap = !snap; $('peSnap').setAttribute('aria-pressed', String(snap)); draw(); };
-  $('peClear').onclick = () => { if (!state.items.length && !state.kick) return; if (confirm('Remove every part from this table?')) { state.items = []; state.kick = false; state.pts = {}; sel = -1; commit(); } };
+  $('peClear').onclick = () => { if (!state.items.length && !state.kick) return; if (confirm('Remove every part from this table?')) { state.items = []; state.kick = false; state.lock = false; state.pts = {}; sel = -1; commit(); } };
 
+  function renderList() {
+    const ol = $('peList'), n = state.items.length;
+    $('peListSum').textContent = `Parts on the table (${n})`;
+    $('peNavCount').textContent = n ? (sel >= 0 ? `${sel + 1} of ${n}` : `${n} parts`) : 'no parts yet';
+    ol.textContent = '';
+    state.items.forEach((it, i) => {
+      const d = KINDS[it.k], [cx, cy] = centre(it), li = document.createElement('li'), b = document.createElement('button');
+      b.type = 'button'; b.className = 'pe-pitem' + (i === sel ? ' on' : '') + (group.has(i) ? ' grp' : '') + (shown(it) ? '' : ' dim');
+      b.innerHTML = `<span>${d.icon}</span><span>${d.label}</span><small>${cx.toFixed(1)}, ${cy.toFixed(1)}</small>`;
+      b.onclick = (e) => { if (e.shiftKey) { if (sel >= 0) group.add(sel); group.add(i); } else group.clear(); sel = i; refresh(); };
+      li.append(b); ol.append(li);
+      if (i === sel) queueMicrotask(() => b.scrollIntoView({ block: 'nearest' }));
+    });
+    $('pePrev').disabled = $('peNext').disabled = n < 2;
+  }
+  function step(dir) {                       // walk through the parts one by one (skipping hidden layers)
+    const n = state.items.length; if (!n) return;
+    let i = sel;
+    for (let k = 0; k < n; k++) { i = (i + dir + n) % n; if (shown(state.items[i])) break; }
+    group.clear(); sel = i; refresh();
+  }
   function refresh(redraw = true) {
     for (const b of document.querySelectorAll('.pe-part')) {
       const k = b.dataset.kind, d = KINDS[k];
       b.disabled = count(k) >= d.max;
       b.querySelector('small').textContent = `${count(k)}/${d.max}`;
     }
-    $('peName').value = state.name; $('peKick').checked = state.kick;
+    $('peName').value = state.name; $('peKick').checked = state.kick; $('peLock').checked = state.lock;
     $('peUndo').disabled = history.length < 2; $('peRedo').disabled = !future.length;
     const bytes = new Blob([snapshot()]).size;
     $('peCount').textContent = `${state.items.length + (state.kick ? 1 : 0)} parts · ${bytes.toLocaleString()} of ${MAX_BYTES.toLocaleString()} bytes`;
     fillPoints();
+    renderList();
     fillInspector();
     if (redraw) draw();
   }
@@ -778,10 +818,30 @@
     play.disabled = true; say('Starting your table…');
     try {
       const id = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
-      const session = await post('/api/create', { name, game: 'pinball' });
-      await post('/api/action', { ...session, type: 'pinball_table', table: code || spec, aid: id() });
-      await post('/api/action', { ...session, type: 'settings', settings: { table: 'custom' }, aid: id() });
-      await post('/api/action', { ...session, type: 'start', aid: id() });
+      const act = (session, type, extra = {}) => post('/api/action', { ...session, type, ...extra, aid: id() });
+      const table = code || spec;
+      // coming back from the game: reuse the same room (every Play used to open a new one and hit the room limits)
+      let session = null;
+      try { session = JSON.parse(localStorage.getItem('unmask.session')); } catch {}
+      const reuse = async () => {
+        if (!session?.code || localStorage.getItem('pinball.editor.room') !== session.code) return false;     // only a room this editor made
+        try {
+          await act(session, 'end_game').catch(() => {});           // a game still running -> over
+          await act(session, 'lobby').catch(() => {});              // over -> lobby (already there is fine)
+          await act(session, 'settings', { settings: { game: 'pinball' } });
+          await act(session, 'pinball_table', { table });
+          await act(session, 'settings', { settings: { table: 'custom' } });
+          await act(session, 'start');
+          return true;
+        } catch { return false; }
+      };
+      if (!(await reuse())) {
+        session = await post('/api/create', { name, game: 'pinball' });
+        try { localStorage.setItem('pinball.editor.room', session.code); } catch {}
+        await act(session, 'pinball_table', { table });
+        await act(session, 'settings', { settings: { table: 'custom' } });
+        await act(session, 'start');
+      }
       localStorage.setItem('unmask.session', JSON.stringify(session));
       localStorage.setItem('unmask.name', JSON.stringify(name));
       location.href = '/';

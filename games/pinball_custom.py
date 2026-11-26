@@ -101,7 +101,9 @@ def build_rules(spec):
     extra = {k: v for k, v in pts.items()}
     if "bumper" in extra:
         extra["bumper_jackpot"] = extra["bumper"] * 2
-    return Rules(lock_balls=2, center_post=True, always_on=True, **extra)
+    # a ramp shot normally locks the ball and serves a fresh one (multiball after two locks): confusing on a table you built,
+    # so it is off unless the table asks for it
+    return Rules(lock_balls=2 if isinstance(spec, dict) and spec.get("lock") is True else 0, center_post=True, always_on=True, **extra)
 
 
 def decode_table(table):
@@ -215,6 +217,8 @@ def build(spec, mode="classic"):
                "saucer": paint["saucer"][0] if paint["saucer"] else None, "magnet": paint["magnet"][0] if paint["magnet"] else None,
                "kick": paint["kick"][0] if paint["kick"] else None, "name": name})
     clean_spec = {"v": 1, "name": name, "items": clean}
+    if spec.get("lock") is True:
+        clean_spec["lock"] = True
     if modes:
         clean_spec["modes"] = [[i, m] for i, m in sorted(modes.items()) if i < len(clean)]
     if clean_pv:
