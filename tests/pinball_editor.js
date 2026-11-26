@@ -272,6 +272,20 @@ const base = process.env.BASE || 'http://localhost:8794';
     assert.equal(await p2.locator('#pePitemCount, .pe-pitem.on').count(), 1);
     await p2.locator('.pe-pitem', { hasText: 'Subway' }).click();
     assert.equal(await p2.locator('#peTitle').textContent(), '🚇 Subway', 'the parts list selects a part');
+    // every template in the gallery is accepted by the server and plays
+    await p2.goto(base + '/pinball-editor.html');
+    const names = await p2.evaluate(async () => {
+      const out = [];
+      document.getElementById('peTables').click();
+      for (const row of document.querySelectorAll('#peTemplates .pe-item')) { row.querySelector('button').click(); out.push(JSON.stringify(window.pinballEditor.toSpec())); document.getElementById('peTables').click(); }
+      return out;
+    });
+    assert.ok(names.length >= 11, 'the gallery has the hand-built tables');
+    const made = JSON.parse(await (await fetch(base + '/api/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Tmpl', game: 'pinball' }) })).text());
+    for (const text of names) {
+      const r = await fetch(base + '/api/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...made, type: 'pinball_table', table: JSON.parse(text), aid: Math.random().toString(36).slice(2) }) });
+      assert.equal(r.status, 200, `template ${JSON.parse(text).name} was rejected: ${await r.text()}`);
+    }
     console.log('Pinball editor checks passed: drag, move, resize, inspector, undo, limits, wires, share codes, saved tables and play');
   } finally {
     await browser.close();

@@ -80,3 +80,8 @@
 .pe-pitem.on { border-color: var(--accent, #ffb703); background: #ffb70322; }
 .pe-pitem.grp { border-color: #ffb70088; }
 .pe-pitem.dim { opacity: .4; }
+.pe-list .pe-item { flex-wrap: wrap; }
+.pe-blurb { flex-basis: 100%; margin: 0; font-size: 11px; line-height: 1.3; color: var(--muted, #b9b3c9); }
+#peTemplates { max-height: 46vh; }
+#peSaved { max-height: 18vh; }
+.pe-dialog { max-height: 92vh; overflow-y: auto; }
