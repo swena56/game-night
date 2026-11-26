@@ -192,6 +192,15 @@ def flipper_pivots(spec):
     return None if [lx, ly, rx, ry] == FLIP_DEFAULT else [lx, ly, rx, ry]
 
 
+def flush_end(flipper, radius):
+    """Where a lane guide should end so it runs straight onto a resting flipper: on the bat's upper face, level with its pivot."""
+    x, y, rest, _ = flipper
+    nx, ny = math.sin(rest), -math.cos(rest)
+    if ny > 0:
+        nx, ny = -nx, -ny
+    return round(x + radius * nx, 3), round(y + radius * ny, 3)
+
+
 FX_MODES = ("steady", "flash", "cycle", "pulse", "twinkle")
 FX_TRIGGERS = ("always", "timer", "motion", "hit", "event")
 FX_SOURCE = {"bump": "bumper", "sling": "sling", "target": "target", "lane": "lane", "mover": "mover", "spinner": "spinner", "ramp": "ramp"}
@@ -404,16 +413,18 @@ def build(spec, mode="classic"):
     guides_from, guide_run = (9 if classic else cabinet.GUIDES_FROM), (2 if classic else len(cabinet.RIGHT_GUIDE))
     pair = cabinet.NEON_FLIPPERS if choice.get("feel", {}).get("steep_flippers") else cabinet.FLIPPERS
     even = choice.get("even_guides", False)
-    if "fl" in choice or even:    # moved flippers or even guides: the inlane guides are redrawn to lead to the pivots
-        lx, ly, rx, ry = choice.get("fl", FLIP_DEFAULT)
-        top, knee = (12.2, 13.5) if even else (12.4, 13.8)      # even: the right guide starts and bends as high as the left
+    if "fl" in choice:        # the player moved the two main flippers: the inlane guides lead to the new pivots
+        lx, ly, rx, ry = choice["fl"]
         pair = ((lx, ly, pair[0][2], pair[0][3]), (rx, ry, pair[1][2], pair[1][3]))
-        if classic:
-            base = base[:8] + ((0.9, 13.5, lx, ly),) + base[9:10] + ((7.9, 13.8, rx, ry),)
-        else:
-            left, right = cabinet.fillet(((0.9, 12.2), (0.9, 13.5), (lx, ly)), (0.5,)), cabinet.fillet(((7.9, top), (7.9, knee), (rx, ry)), (0.5,))
-            base = cabinet.SMOOTH_WALL + ((8.8, 3.1, 8.8, 17), (8.8, 16.25, 10, 16.25)) + left + right
-            guides_from, guide_run = len(base) - len(right), len(right)
+    # each guide ends on top of its resting bat, not at the pivot: a bat is thick, and ending at its centre left a lip there
+    left_end, right_end = (flush_end(f, cabinet.FLIP_RADIUS) for f in pair)
+    top, knee = (12.2, 13.5) if even else (12.4, 13.8)      # even: the right guide starts and bends as high as the left
+    if classic:
+        base = base[:8] + ((0.9, 13.5, *left_end),) + base[9:10] + ((7.9, 13.8, *right_end),)
+    else:
+        left, right = cabinet.fillet(((0.9, 12.2), (0.9, 13.5), left_end), (0.5,)), cabinet.fillet(((7.9, top), (7.9, knee), right_end), (0.5,))
+        base = cabinet.SMOOTH_WALL + ((8.8, 3.1, 8.8, 17), (8.8, 16.25, 10, 16.25)) + left + right
+        guides_from, guide_run = len(base) - len(right), len(right)
     flippers = pair + flippers[2:]
     layout = Layout(
         rails=base + walls, guides_from=guides_from, guide_run=guide_run,

@@ -5,7 +5,7 @@ description: Design, test and ship a new pinball table (level) for Game Night, i
 
 # Making a pinball level
 
-Star Cadet (`games/pinball_tables/star-cadet.json`), built from a player's screenshot, was called the best level in the game.
+Star Cadet (`games/pinball_official/star.json`, now an official table), built from a player's screenshot, was called the best level in the game.
 Start from it. Every rule below fixes something that went wrong while building it.
 
 A level is one JSON file, `games/pinball_tables/<slug>.json`: `{"name", "blurb", "author", "spec"}`. The spec is an editor
@@ -30,6 +30,11 @@ Draw your own art and name: no logos, brand names or copied artwork. A raised de
 | posts | `(0.9,12.15,r .09)` and `(0.45,11.4,r .07)`, both mirrored | the wall-side post took side exits from 14% to 3% and leaves the lane open. At y 11.75 it nearly seals the lane; a post *above the guide* makes drains worse |
 | `["kick", …]` | | left outlane save plus the side-lane lamps |
 
+Guides end on top of the resting bats by themselves (`flush_end`): ending at the pivot left a lip the ball hopped on. They are
+drawn 0.30 thick, hung under the line the ball rolls on. Official tables made before this recipe (Golden Hour, Neon Arcade) only
+got the wider gap (`"fl": [3.08, 14.95, 6.92, 14.95]`) and the two wall-side posts, which took their side drains from ~12% to ~2%.
+The posts did little on Speedway and Zen Garden, whose curved walls feed the side lanes.
+
 Mirror everything below y 11. The flippers on the older tables are centred on 5.0, which is why one side drains so much.
 
 ## 3. Rails: put mouths where the ball really goes
@@ -45,10 +50,13 @@ Lights are decals (`dot`, `ring`, `diamond`, `star` …) with an entry in `spec[
 that flash on a hit, markers on posts that protect a lane, arrows leading to the ramp, a slow pulse on the centre toy.
 `"feel": {"classic_lamps": true}` keeps the magnet off until a jackpot round.
 
+**Look and screen.** On phones the table is as wide as it can be while the buttons stay on screen. Do not size it with `vw`, do not
+zoom the camera during play (players reported pulsing), and keep the ball one size.
+
 ## 5. Measure
     python3 tools/pinball_level.py report TABLE.json --quick     # while editing
     python3 tools/pinball_level.py report TABLE.json             # before shipping: all lines must pass
-    python3 tools/pinball_level.py games TABLE.json games/pinball_tables/star-cadet.json --games 40
+    python3 tools/pinball_level.py games TABLE.json games/pinball_official/star.json --games 40
     python3 tools/pinball_table.py check TABLE.json              # the gate for the curated list
 
 The report checks the flipper gap, drains down the middle and sides, resting balls, slingshot loops, parts no flipper shot

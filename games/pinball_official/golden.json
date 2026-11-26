@@ -1,4 +1,4 @@
-{"v": 1, "name": "Golden Hour", "cabinet": "classic", "look": "golden", "lock": true, "feel": {"classic_lamps": true},
+{"v": 1, "name": "Golden Hour", "cabinet": "classic", "look": "golden", "lock": true, "feel": {"classic_lamps": true}, "fl": [3.08, 14.95, 6.92, 14.95],
  "items": [
   ["bump", 3.12, 5.65, 0.68, "#ff9b59"],
   ["bump", 6.62, 5.7, 0.68, "#c699ff"],
@@ -34,5 +34,7 @@
   ["star", 7.3, 1.95, 0.24, "#fff0ca"],
   ["diamond", 5.0, 13.5, 0.3, "#ffd383"],
   ["diamond", 4.15, 13.85, 0.18, "#fff0ca"],
-  ["diamond", 5.85, 13.85, 0.18, "#fff0ca"]
+  ["diamond", 5.85, 13.85, 0.18, "#fff0ca"],
+  ["post", 0.45, 11.4, 0.07, "#ffd93d"],
+  ["post", 8.35, 11.4, 0.07, "#ffd93d"]
  ]}

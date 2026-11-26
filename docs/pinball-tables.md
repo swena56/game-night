@@ -5,7 +5,7 @@ the room that uploaded them and disappear with it. The **table list** (the lobby
 tables*) is different: it is a small, reviewed set, so every entry is a table worth playing. Getting onto it is a five-step process.
 
 ## 0. Start from an official table
-Golden Hour and Neon Arcade are editor tables too: the game plays the files `games/pinball_official/golden.json` and `neon.json`, so the
+Golden Hour, Neon Arcade and Star Cadet are editor tables too: the game plays the files `games/pinball_official/golden.json`, `neon.json` and `star.json`, so the
 copy the editor's Tables dialog offers (**Official tables**, via `games/pinball_clone.py`) is the live board by construction, art and
 decals included. **Clone** loads one into the editor; **▶ Play** starts a solo game on it. The editor paints the same printed playfield
 as the game (`static/games/pinballart.js`). To polish an official table, edit its JSON (or clone, change and paste the share code's spec back)

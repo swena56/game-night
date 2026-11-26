@@ -149,7 +149,7 @@ def official_spec(key):
     return _OFFICIAL[key]
 
 
-TABLES = {"golden": ("Golden Hour", Table), "neon": ("Neon Arcade", NeonTable), "custom": ("My table", CustomTable),
+TABLES = {"golden": ("Golden Hour", Table), "neon": ("Neon Arcade", NeonTable), "star": ("Star Cadet", CustomTable), "custom": ("My table", CustomTable),
           **{table_id: (entry["name"], CustomTable) for table_id, entry in CURATED.items()}}
 
 
@@ -160,7 +160,7 @@ def refresh_curated():
     for table_id in [t for t in TABLES if t.startswith("t_")]:
         del TABLES[table_id]
     TABLES.update({table_id: (entry["name"], CustomTable) for table_id, entry in CURATED.items()})
-    Pinball.settings_schema["table"] = ("Table", [("golden", "🌇 Golden Hour"), ("neon", "🌃 Neon Arcade"),
+    Pinball.settings_schema["table"] = ("Table", [("golden", "🌇 Golden Hour"), ("neon", "🌃 Neon Arcade"), ("star", "🚀 Star Cadet"),
                                                   *((table_id, f"⭐ {entry['name']}") for table_id, entry in CURATED.items()),
                                                   ("custom", "🛠️ My table (from the editor)")], "golden")
 
@@ -173,7 +173,7 @@ class Pinball(Game):
     min_players, max_players = 1, 6
     replayable = False
     # curated tables are listed after the built-in ones so records for Golden Hour and Neon keep their keys
-    settings_schema = {"table": ("Table", [("golden", "🌇 Golden Hour"), ("neon", "🌃 Neon Arcade"),
+    settings_schema = {"table": ("Table", [("golden", "🌇 Golden Hour"), ("neon", "🌃 Neon Arcade"), ("star", "🚀 Star Cadet"),
                                            *((table_id, f"⭐ {entry['name']}") for table_id, entry in CURATED.items()),
                                            ("custom", "🛠️ My table (from the editor)")], "golden"),
                        "mode": ("Mode", [("classic", "🎱 Classic"), ("timeattack", "⏱️ Time attack (3 min)"),
@@ -207,7 +207,7 @@ class Pinball(Game):
                 raise GameError("Build a table in the table editor first.")
         elif self.table_id in CURATED:
             spec = CURATED[self.table_id]["spec"]
-        elif self.table_id in ("golden", "neon"):      # the official tables are editor tables too: games/pinball_official/*.json
+        elif self.table_id in ("golden", "neon", "star"):      # the official tables are editor tables too: games/pinball_official/*.json
             spec = official_spec(self.table_id)
         if spec:
             self.custom_layout = pinball_custom.build(spec, self.mode)[0]

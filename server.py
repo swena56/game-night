@@ -1854,7 +1854,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(404, {"error": "Not found"})
         if url.path == "/api/pinball-clones":   # Golden Hour and Neon Arcade as editor tables, derived from the live production layouts
             from games.pinball_clone import BLURBS, clone_specs
-            names = {"golden": "Golden Hour", "neon": "Neon Arcade"}
+            names = {"golden": "Golden Hour", "neon": "Neon Arcade", "star": "Star Cadet"}
             return self.send_json(200, {"tables": [{"id": k, "name": names[k], "blurb": BLURBS[k], "spec": v} for k, v in clone_specs().items()]})
         if url.path == "/api/pinball-tables":   # the curated tables, for the editor's gallery
             from games.pinball import CURATED

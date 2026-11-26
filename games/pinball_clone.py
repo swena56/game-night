@@ -45,20 +45,22 @@ def legacy_specs():
 
 
 BLURBS = {"golden": "The Golden Hour table, rebuilt part for part. Change anything and make it yours.",
-          "neon": "Neon Arcade: four zig-zag bumpers, steeper flippers, hotter scoring and faster jackpots."}
+          "neon": "Neon Arcade: four zig-zag bumpers, steeper flippers, hotter scoring and faster jackpots.",
+          "star": "Star Cadet: an even lower half, a bumper nest, a gravity well, a ramp and a curved wire lane."}
 
 
 import json as _json
 import os as _os
 
+OFFICIAL = ("golden", "neon", "star")
 OFFICIAL_DIR = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "pinball_official")
 
 
 def clone_specs():
-    """{"golden": spec, "neon": spec}: the official tables. The game plays exactly these files (games/pinball_official/*.json), so the
+    """{"golden": spec, "neon": spec, "star": spec}: the official tables. The game plays exactly these files (games/pinball_official/*.json), so the
     editor copy and the live table are the same data by construction; polish a table by editing its file or loading it in the editor."""
     out = {}
-    for key in ("golden", "neon"):
+    for key in OFFICIAL:
         with open(_os.path.join(OFFICIAL_DIR, key + ".json"), encoding="utf-8") as f:
             out[key] = _json.load(f)
     return out

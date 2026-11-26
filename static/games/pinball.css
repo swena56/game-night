@@ -83,11 +83,18 @@
 .pb-stage canvas.pb-flat { position: relative; }
 
 @media (max-width: 480px) {
-  .pb-stage {
-    width: min(100%, clamp(130px, calc((min(var(--stage-h, 560px), 100svh - 110px) - 208px) * .5882), 370px));
-  }
   .pb-inserts { flex-wrap: wrap; }
 }
+
+/* phones: the table is as wide as the screen allows while the whole table and the buttons under it stay in view (it keeps its shape, so
+   full width needs a tall screen). --pb-chrome is everything on screen that is not the table. */
+@media (max-width: 600px) {
+  .pb-cabinet { --pb-chrome: 250px; width: auto; margin-inline: -10px; padding: 4px 0; border-inline: 0; border-radius: 0; }      /* over the page's 10px side padding (not vw: that counts a scrollbar) */
+  .pb-stage { width: min(100%, max(150px, calc((100svh - var(--pb-chrome)) * .5882))); border-radius: 0; }
+  .pb-marquee, .pb-status, .pb-charge, .pb-controls, .pb-nudge-buttons { margin-inline: 6px; }
+  .pb-charge { margin-block: 3px; }
+}
+@media (max-width: 360px) { .pb-cabinet { --pb-chrome: 288px; } }      /* the status line wraps to three lines here */
 
 .pb-pull {
   position: absolute;

@@ -127,9 +127,10 @@
   const GUIDE_LEN = fillet([[.9, 12.2], [.9, 13.5], [3.22, 14.95]], [.5]).length;
   // the cabinet rails: the inlane guides lead down to wherever the flippers are
   function cabinetRails() {
-    const [lx, ly, rx, ry] = flipsNow();
+    // as on the server: each guide ends on top of its resting bat (radius .15), so there is no lip where they meet
+    const [px, py, qx, qy] = flipsNow(), nx = .15 * Math.sin(restOf()), ny = .15 * Math.cos(restOf());
+    const [lx, ly, rx, ry] = [px + nx, py - ny, qx - nx, qy - ny];
     if (state.cabinet === 'classic') return [...RAILS_CLASSIC.slice(0, 8), [.9, 13.5, lx, ly], RAILS_CLASSIC[9], [7.9, 13.8, rx, ry]];
-    if (!state.flips && !state.even) return RAILS;
     return [...RAILS.slice(0, RAILS.length - 2 * GUIDE_LEN), ...fillet([[.9, 12.2], [.9, 13.5], [lx, ly]], [.5]), ...fillet([[7.9, state.even ? 12.2 : 12.4], [7.9, state.even ? 13.5 : 13.8], [rx, ry]], [.5])];
   }
 

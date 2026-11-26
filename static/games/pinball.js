@@ -39,7 +39,7 @@
     };
     return { funnel: guides(p[0], d0, .5, .17, .42), flare: guides(p[p.length - 1], d1, -.5, .17, .42) };
   };
-  const tableTag = (g) => g.table === 'neon' ? '.neon' : g.table === 'custom' ? '.custom' : g.table?.startsWith('t_') ? '.' + g.table : '';   // t_<slug> = a curated table, with its own records
+  const tableTag = (g) => g.table === 'neon' ? '.neon' : g.table === 'star' ? '.star' : g.table === 'custom' ? '.custom' : g.table?.startsWith('t_') ? '.' + g.table : '';   // t_<slug> = a curated table, with its own records
   const bestKey = (g) => `pinball.best${tableTag(g)}${modeTag(g)}`;
   const topKey = (g) => `pinball.top${tableTag(g)}${modeTag(g)}`;
   const clockText = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -222,6 +222,42 @@
       return st.x;
     };
   };
+  // The two inlane guides as thick bars, as thick as the bats they feed. Their top face is the line the ball rolls on (physics is
+  // unchanged), so each bar is drawn half a width underneath it and ends on its flipper's pivot: guide and bat read as one piece.
+  const GUIDE_WIDTH = .3;
+  const guideBars = (geo) => {
+    const from = geo.guides ?? 9, run = geo.guide_run ?? 2;
+    if (!run || from - run < 0 || from + run > geo.rails.length) return [];
+    return [0, 1].map((side) => {
+      const first = from - run + side * run, parts = geo.rails.slice(first, first + run);
+      const line = [parts[0].slice(0, 2), ...parts.map((r) => r.slice(2, 4))];
+      const down = parts.map(([ax, ay, bx, by]) => {              // each piece's normal toward the outside of the inlane
+        const dx = bx - ax, dy = by - ay, n = Math.hypot(dx, dy) || 1, sign = side ? -1 : 1;
+        return [-dy / n * sign, dx / n * sign];
+      });
+      const points = line.map(([x, y], k) => {
+        const a = down[Math.max(0, k - 1)], b = down[Math.min(down.length - 1, k)], nx = a[0] + b[0], ny = a[1] + b[1], n = Math.hypot(nx, ny) || 1;
+        return [x + nx / n * GUIDE_WIDTH / 2, y + ny / n * GUIDE_WIDTH / 2];
+      });
+      points[points.length - 1] = geo.flips[side].slice(0, 2);
+      return { points, top: line, indexes: parts.map((_, k) => first + k) };
+    });
+  };
+  // A slingshot's rubber, stretched between its two pegs. On a kick the middle snaps out toward the playfield and twangs back (a damped
+  // spring). points runs peg to peg along the rubber; (nx, ny) faces the playfield; bow is how far the middle is pushed out right now.
+  const SLING_MS = 620, SLING_PIECES = 10;
+  const slingPose = ([ax, ay, bx, by], age, still, width) => {
+    let nx = by - ay, ny = ax - bx;
+    const nl = Math.hypot(nx, ny) || 1;
+    nx /= nl; ny /= nl;
+    if (nx * (width * .44 - (ax + bx) / 2) + ny * (8 - (ay + by) / 2) < 0) { nx = -nx; ny = -ny; }
+    const bow = still || age >= 1 ? 0 : .42 * Math.exp(-4.2 * age) * Math.cos(age * 19) * (1 - age);
+    const points = Array.from({ length: SLING_PIECES + 1 }, (_, k) => {
+      const t = k / SLING_PIECES, lift = bow * Math.pow(Math.sin(Math.PI * t), 1.4);
+      return [ax + (bx - ax) * t + nx * lift, ay + (by - ay) * t + ny * lift];
+    });
+    return { points, nx, ny, bow };
+  };
   // A kicker or saucer: a ring closes in on the hole when it catches the ball, and when it fires the ball out a bright ring and rays burst
   // away (along the eject direction for a kicker hole). Only the hole nearest the ball animates, as the engine's events do not say which.
   function kickerBurst(c, x, y, r, ball, holes, i, hits, now, angle) {
@@ -344,10 +380,19 @@
             PinballArt.glyphPath(c, l.glyph, l.r); l.glyph === 'ring' ? c.stroke() : c.fill(); c.restore();
           }
         }
+        const bars = guideBars(geo), thick = new Set(bars.flatMap((b) => b.indexes));
         geo.rails.forEach((r, i) => {
+          if (thick.has(i)) return;
           rail(r, '#17152f', .3);
           rail(r, railTrim(geo, i, palette.steel), .14);
         });
+        c.lineJoin = 'round';
+        for (const { points, top, indexes } of bars) {
+          line(points.map(([x, y]) => [x + .04, y + .07]), GUIDE_WIDTH + .04, '#00000055');
+          line(points, GUIDE_WIDTH + .05, '#17152f');
+          line(points, GUIDE_WIDTH - .02, railTrim(geo, indexes[indexes.length - 1], palette.steel));
+          line(top.map(([x, y], k) => [x + (points[k][0] - x) * .45, y + (points[k][1] - y) * .45]), .06, '#ffffff77');
+        }
         if (geo.gate) {
           const [hx, hy, , ey] = geo.gate, a = 1.25 * gate, len = ey - hy;
           const tip = [hx + len * Math.sin(a), hy + len * Math.cos(a)];
@@ -424,34 +469,52 @@
           }
           if (row[EVENT] === 'portal') { disc(x1, y1, pr, '#ffffff66'); disc(x2, y2, pr, '#ffffff66'); }
         }
-        (geo.posts || []).forEach(([x, y, r], i) => { disc(x, y, r + .05, '#252049'); disc(x, y, r, row[STATS]?.post > 0 ? palette.gold : paintOf(geo, 'posts', i, palette.ivory)); });
+        // a post is a peg in a rubber ring: a shadow, the ring, a metal cap and a glint
+        (geo.posts || []).forEach(([x, y, r], i) => {
+          disc(x + .04, y + .06, r + .07, '#00000055');
+          disc(x, y, r + .05, '#17152f');
+          disc(x, y, r, row[STATS]?.post > 0 ? palette.gold : paintOf(geo, 'posts', i, palette.ivory));
+          disc(x, y, r * .55, '#9fb0c8');
+          disc(x - r * .18, y - r * .2, r * .22, '#ffffff');
+        });
         geo.slings.forEach((r, i) => {
-          // a kick: the rubber squashes flat, springs past its rest width and settles; the bar flares and sparks fly off it toward the table
-          const age = hits.age('sling' + i, tNow, 460), kick = 1 - age;
-          const width = still ? .23 : .23 + (age < .2 ? -.11 * (1 - age / .2) : .08 * Math.exp(-(age - .2) * 7));
-          rail(r, '#252049', .34 + (still ? 0 : .08 * kick));
-          if (!still && age < 1) {
-            rail(r, `rgba(255,243,168,${.5 * kick})`, .3 + .5 * kick);
-            const mx = (r[0] + r[2]) / 2, my = (r[1] + r[3]) / 2;
-            let nx = r[3] - r[1], ny = r[0] - r[2];
-            const nl = Math.hypot(nx, ny) || 1;
-            nx /= nl; ny /= nl;
-            if (nx * (5 - mx) + ny * (8 - my) < 0) { nx = -nx; ny = -ny; }
+          // a kick: the rubber bows out toward the ball and twangs back while the kicker arm drives in behind it; the pegs flare and sparks fly
+          const age = hits.age('sling' + i, tNow, SLING_MS), kick = 1 - age, lit = !still && age < 1;
+          const { points, nx, ny, bow } = slingPose(r, age, still, geo.width);
+          const colour = lit && age < .22 ? palette.ivory : paintOf(geo, 'slings', i, palette.red);
+          const mx = (r[0] + r[2]) / 2, my = (r[1] + r[3]) / 2;
+          rail(r, '#252049', .3);                                                              // the channel the rubber sits in
+          rail([mx - nx * .3, my - ny * .3, mx + nx * (bow - .13), my + ny * (bow - .13)], '#9fb0c8', .1);      // the kicker arm
+          disc(mx + nx * (bow - .13), my + ny * (bow - .13), .11, lit && kick > .5 ? palette.gold : '#c1d2e5');
+          if (lit) line(points, .3 + .45 * kick, `rgba(255,243,168,${.45 * kick})`);
+          line(points.map(([x, y]) => [x + .04, y + .07]), .22, '#00000055');
+          line(points, .24, '#17152f');
+          line(points, .17, colour);
+          line(points.map(([x, y]) => [x + nx * .035, y + ny * .035]), .04, '#ffffff88');
+          for (const [px, py] of [[r[0], r[1]], [r[2], r[3]]]) {
+            disc(px, py, .17 + (lit ? .04 * kick : 0), '#17152f'); disc(px, py, .12, colour); disc(px, py, .065, '#c1d2e5'); disc(px - .02, py - .025, .025, '#ffffff');
+          }
+          if (lit) {
             c.strokeStyle = `rgba(255,243,168,${.9 * kick})`;
             c.lineWidth = .045;
             for (let k = -2; k <= 2; k++) {
               const t = .5 + k * .17, bx = r[0] + (r[2] - r[0]) * t, by = r[1] + (r[3] - r[1]) * t, reach = .25 + .75 * age;
               c.beginPath();
-              c.moveTo(bx + nx * .25, by + ny * .25);
-              c.lineTo(bx + nx * (.25 + reach) + ny * k * .06, by + ny * (.25 + reach) - nx * k * .06);
+              c.moveTo(bx + nx * .45, by + ny * .45);
+              c.lineTo(bx + nx * (.45 + reach) + ny * k * .06, by + ny * (.45 + reach) - nx * k * .06);
               c.stroke();
             }
           }
-          rail(r, kick > .55 ? palette.ivory : paintOf(geo, 'slings', i, palette.red), Math.max(.08, width));
         });
         geo.targets.forEach((r, i) => {
-          rail(r, flash === 'target' + i ? palette.ivory : row[BANK] & (1 << i) ? '#38325c' : paintOf(geo, 'targets', i, palette.red), .28);
-          const age = hits.age('target' + i, tNow, 420);
+          const age = hits.age('target' + i, tNow, 420), down = row[BANK] & (1 << i);
+          // a standing target is a raised face with a shadow and a stripe; a hit rocks it back, a dropped one lies flush
+          const away = slingPose(r, 1, true, geo.width), rock = still || age >= 1 ? 0 : .16 * Math.exp(-4 * age) * Math.cos(age * 14);
+          const face = [r[0] - away.nx * rock, r[1] - away.ny * rock, r[2] - away.nx * rock, r[3] - away.ny * rock];
+          if (!down) rail([r[0] + .07, r[1] + .09, r[2] + .07, r[3] + .09], '#00000066', .3);
+          rail(face, '#17152f', .34);
+          rail(face, flash === 'target' + i ? palette.ivory : down ? '#38325c' : paintOf(geo, 'targets', i, palette.red), down ? .16 : .26);
+          if (!down) rail([face[0] + away.nx * .06, face[1] + away.ny * .06, face[2] + away.nx * .06, face[3] + away.ny * .06], '#ffffff99', .05);
           if (!still && age < 1) {            // a hit: a flash along the target and sparks off its face
             rail(r, `rgba(255,243,168,${.6 * (1 - age)})`, .28 + .3 * (1 - age));
             const mx = (r[0] + r[2]) / 2, my = (r[1] + r[3]) / 2;
@@ -724,10 +787,17 @@
     }
     for (const x of [-.26, 10.26]) rail([x, -.37, x, 17.4], .24, .23, .1, chrome);
     for (const y of [-.37, 17.4]) rail([-.23, y, 10.23, y], .22, .23, .1, brass);
+    const bars = guideBars(geo), thick = new Set(bars.flatMap((b) => b.indexes));
     geo.rails.forEach((r, i) => {
+      if (thick.has(i)) return;
       const trim = i >= (geo.guides ?? 9) ? material(railTrim(geo, i, palette.steel), .35, .34) : chrome;
       rail(r, .18, .35, .15, trim);
     });
+    for (const { points, indexes } of bars) {
+      const trim = material(railTrim(geo, indexes[indexes.length - 1], palette.steel), .35, .34);
+      points.slice(1).forEach((b, k) => rail([...points[k], ...b], GUIDE_WIDTH, .38, .19, trim));
+      for (const [x, y] of points) disc(x, y, GUIDE_WIDTH / 2, .38, .19, trim);        // rounded joints and ends
+    }
     let gateFlap;
     if (geo.gate) {
       const [hx, hy, , ey] = geo.gate, len = ey - hy;
@@ -798,8 +868,13 @@
       return ring;
     };
     geo.slings.forEach((r, i) => {
-      rail(r, .5, .2, .17, rubberDark);
-      slingBars.push(rail(r, .28, .15, .33, lamp('sling' + i, paintOf(geo, 'slings', i, palette.red))));
+      rail(r, .4, .2, .17, rubberDark);
+      const colour = lamp('sling' + i, paintOf(geo, 'slings', i, palette.red)), pose = slingPose(r, 1, true, geo.width);
+      const piece = Math.hypot(r[2] - r[0], r[3] - r[1]) / SLING_PIECES;
+      const band = pose.points.slice(1).map((b, k) => rail([...pose.points[k], ...b], .17, .2, .36, colour));
+      for (const [px, py] of [[r[0], r[1]], [r[2], r[3]]]) { disc(px, py, .15, .46, .25, rubberDark); disc(px, py, .075, .1, .52, chrome); }
+      const arm = disc((r[0] + r[2]) / 2 - pose.nx * .13, (r[1] + r[3]) / 2 - pose.ny * .13, .11, .24, .3, chrome);
+      slingBars.push({ r, band, piece, arm });
     });
     geo.targets.forEach((r, i) =>
       rail(r, .26, .58, .3, lamp('target' + i, paintOf(geo, 'targets', i, palette.red), row => row[BANK] & (1 << i) ? '#38325c' : paintOf(geo, 'targets', i, palette.red))));
@@ -943,9 +1018,15 @@
             if (ring.visible) { ring.scale.setScalar(1 + a * (k ? 1.4 : 1.9)); ring.material.opacity = .85 * (1 - a); }
           });
         });
-        slingBars.forEach((bar, i) => {
-          const age = hits.age('sling' + i, tNow, 460), squash = still ? 0 : age < .2 ? -.5 * (1 - age / .2) : .3 * Math.exp(-(age - .2) * 7);
-          bar.scale.set(1, 1 + squash, 1 + squash * 1.6);
+        slingBars.forEach(({ r, band, piece, arm }, i) => {
+          const { points, nx, ny, bow } = slingPose(r, hits.age('sling' + i, tNow, SLING_MS), still, geo.width);
+          band.forEach((part, k) => {
+            const [ax, ay] = points[k], [bx, by] = points[k + 1];
+            part.position.x = (ax + bx) / 2; part.position.z = (ay + by) / 2;
+            part.rotation.y = -Math.atan2(by - ay, bx - ax);
+            part.scale.x = Math.hypot(bx - ax, by - ay) / piece * 1.08;        // a little overlap hides the joints
+          });
+          arm.position.x = (r[0] + r[2]) / 2 + nx * (bow - .13); arm.position.z = (r[1] + r[3]) / 2 + ny * (bow - .13);
         });
         const grabAge = Math.min(hits.age('hole', tNow, 520), hits.age('saucer', tNow, 520)), ejectAge = hits.age('eject', tNow, 520);
         const near = kickerRings.reduce((best, k, n) => (Math.hypot(k.x - ball[0], k.y - ball[1]) < Math.hypot(kickerRings[best].x - ball[0], kickerRings[best].y - ball[1]) ? n : best), 0);
@@ -981,9 +1062,6 @@
         if (spinner) spinner.rotation.x = row[SPIN] * 2 * Math.PI;
         const pulse = .58 + .32 * Math.sin(performance.now() / 190);
         const sweep = laneSweep(sweepState, flash, geo.lanes.length);
-        // a ramp shot nudges the camera in a little while the ball is up on the ramp
-        const zoom = !still && row[Z] > .2 ? 1.14 : 1;
-        if (Math.abs(zoom - camera.zoom) > .002) { camera.zoom += (zoom - camera.zoom) * .12; camera.updateProjectionMatrix(); }
         for (const { m, tag, normal, active, color } of lights) {
           const hit = tag.startsWith('flash') && !row[TILT] && FLASH_EVENTS.has(flash) || flash === tag || flash === 'jackpot' && tag === 'ramp' || flash === 'skill' && tag.startsWith('lane') ||
             flash === 'mult' && tag === 'lane' + sweep;
@@ -1579,7 +1657,7 @@
         g.solo = data.solo;
         g.table = data.table || 'golden';
         g.mode = Object.values(data.tables)[0]?.[STATS]?.mode || 'classic';
-        g.stage.setAttribute('aria-label', `${g.table === 'neon' ? 'Neon Arcade' : g.table === 'custom' ? 'Custom' : g.table?.startsWith('t_') ? 'Curated' : 'Golden Hour'} pinball playfield`);
+        g.stage.setAttribute('aria-label', `${g.table === 'neon' ? 'Neon Arcade' : g.table === 'star' ? 'Star Cadet' : g.table === 'custom' ? 'Custom' : g.table?.startsWith('t_') ? 'Curated' : 'Golden Hour'} pinball playfield`);
         g.skill = data.layout.skill;
         g.extra = data.extra || [];
         const saved = load(bestKey(g));

@@ -380,8 +380,16 @@ class Table:
         return True
 
     def segment(self, rail, radius=None, bounce=0.77, kick=0):
-        cx, cy = closest(self.x, self.y, *rail)
-        return self.contact(cx, cy, self.layout.ball if radius is None else radius, bounce, kick)
+        if radius is None:
+            radius = self.layout.ball
+        # most rails are nowhere near the ball: skip them on their bounding box before measuring (most of a tick was spent here)
+        ax, ay, bx, by = rail
+        x, y = self.x, self.y
+        if (x - ax >= radius and x - bx >= radius) or (ax - x >= radius and bx - x >= radius) \
+                or (y - ay >= radius and y - by >= radius) or (ay - y >= radius and by - y >= radius):
+            return False
+        cx, cy = closest(x, y, ax, ay, bx, by)
+        return self.contact(cx, cy, radius, bounce, kick)
 
     def move_flippers(self):
         previous = self.angles[:]

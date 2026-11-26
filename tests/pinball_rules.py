@@ -758,6 +758,14 @@ class PinballRules(unittest.TestCase):
             self.assertEqual(game.final_scores(), dict.fromkeys((p.id for p in players), 0))
 
 
+def flush_guides(layout):
+    """The hand-written production boards end their inlane guides at the flipper pivots; built tables end them on top of the bats."""
+    import dataclasses
+    from games.pinball_custom import flush_end
+    ends = {flipper[:2]: flush_end(flipper, layout.flipper_radius) for flipper in layout.flippers[:2]}
+    return dataclasses.replace(layout, rails=tuple((*r[:2], *ends.get(tuple(r[2:]), r[2:])) for r in layout.rails))
+
+
 class CuratedTables(unittest.TestCase):
     """The curated list: player-made tables that were reviewed and added to games/pinball_tables."""
 
@@ -862,6 +870,7 @@ class ProductionClones(unittest.TestCase):
         for key, real, rules in (("golden", GOLDEN_HOUR, Golden.rules), ("neon", NEON_ARCADE, NeonTable.rules)):
             spec = clone_specs()[key]
             layout, clean = build(spec)
+            real = flush_guides(real)
             for f in dataclasses.fields(real):
                 if f.name not in ("paint", "part_pts"):
                     self.assertEqual(getattr(layout, f.name), getattr(real, f.name), f"{key}.{f.name}")
@@ -881,7 +890,7 @@ class ProductionClones(unittest.TestCase):
         for key, original in (("golden", Golden), ("neon", NeonTable)):
             spec = clone_specs()[key]
             layout, _ = build(spec)
-            a = original(balls=3)
+            a = original(balls=3, layout_override=flush_guides(original.layout))
             b = original(balls=3, layout_override=layout, rules_override=build_rules(spec))
             for t in (a, b):
                 t.rng = random.Random(5)
@@ -1289,7 +1298,8 @@ class CustomTables(unittest.TestCase):
         self.assertEqual((left[1], right[1]), (15.2, 14.6))
         self.assertGreaterEqual(right[0] - left[0] - 2 * 1.56 * math.cos(left[2]), .5 - .02)       # too close together: pushed apart so the ball can drain
         self.assertEqual(clean["fl"], [left[0], 15.2, right[0], 14.6])
-        self.assertEqual(layout.rails[-1][2:], (right[0], 14.6))                                    # the right inlane guide ends at the moved pivot
+        from games.pinball_custom import flush_end
+        self.assertEqual(layout.rails[-1][2:], flush_end(right, layout.flipper_radius))              # the right inlane guide runs onto the moved bat
         for classic in (False, True):
             layout, _ = build({"items": [], "cabinet": "classic" if classic else "smooth", "fl": [2.4, 14.3, 7.6, 14.3]})
             self.assertEqual((layout.flippers[0][:2], layout.flippers[1][:2]), ((layout.flippers[0][0], 14.3), (layout.flippers[1][0], 14.3)))
