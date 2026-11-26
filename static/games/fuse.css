@@ -1,6 +1,6 @@
 /* fuse: this game's own rules, loaded with static/games/fuse.js (needUI in app.js). Shared pieces and
    the theme tokens live in static/style.css, which always loads first. */
-.fz { display: flex; flex-direction: column; align-items: center; }
+.fz { position: relative; display: flex; flex-direction: column; align-items: center; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; overscroll-behavior: none; }
 .fz-hud { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; margin-bottom: 8px; font-size: .9rem; }
 #fzClock { color: #ffd166; font-weight: 800; font-variant-numeric: tabular-nums; }
 #fzClock.fz-hot { color: #ff896f; }
@@ -10,5 +10,12 @@
   white-space: nowrap; text-shadow: 0 0 20px #ff7a2f; pointer-events: none; }
 .fz .fz-out, .fz-out { opacity: .45; text-decoration: line-through; }
 .fz-dash { width: 100%; max-width: 520px; min-height: 48px; margin-top: 10px; font-size: 18px; font-weight: 800; touch-action: manipulation; }
-.fz-stick { position: absolute; width: 76px; height: 76px; transform: translate(-50%, -50%); border: 2px solid #fff8; border-radius: 50%; background: #15234466; pointer-events: none; }
+.fz-deck { display: flex; gap: 10px; width: 100%; max-width: 520px; margin-top: 10px; }
+.fz-deck .fz-dash { margin-top: 0; flex: 1; }
+.fz-pad { display: none; }
+@media (pointer: coarse) {
+  .fz-pad { display: flex; align-items: center; justify-content: center; flex: 1.6; min-height: 118px; border: 2px dashed #8ecae666; border-radius: 18px; background: #1d2a4499; color: #cfe6f5; font-weight: 700; font-size: 14px; touch-action: none; }
+  .fz-pad.fz-off { display: none; }
+}
+.fz-stick { z-index: 2; position: absolute; width: 76px; height: 76px; transform: translate(-50%, -50%); border: 2px solid #fff8; border-radius: 50%; background: #15234466; pointer-events: none; }
 .fz-stick i { position: absolute; inset: 25px; border-radius: 50%; background: #fff; }

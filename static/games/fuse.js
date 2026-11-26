@@ -13,25 +13,30 @@ UI.fuse = (() => {
     drag = null; direction = ''; steering = null; lastFrame = 0; flash = 0;
     main.innerHTML = `<div class="fz"><div class="fz-hud"><strong id="fzRole" aria-live="polite"></strong>
       <span id="fzClock" role="timer"></span></div><div class="fz-stage" id="fzStage"><canvas id="fzCanvas"></canvas>
-      <div class="fz-stick" id="fzStick" hidden><i></i></div><div class="fz-banner" id="fzBanner" hidden></div></div><button class="btn fz-dash" id="fzDash" type="button">⚡ Dash</button></div>`;
+      <div class="fz-banner" id="fzBanner" hidden></div></div>
+      <div class="fz-deck"><div class="fz-pad" id="fzPad" aria-hidden="true">🕹️ Drag here to steer</div><button class="btn fz-dash" id="fzDash" type="button">⚡ Dash</button></div>
+      <div class="fz-stick" id="fzStick" hidden><i></i></div></div>`;
     side.innerHTML = `<div class="panel"><div id="fzSeats"></div>
       <p class="hint left" id="fzHint">Drag to steer like a joystick. Lift to stop. Use Dash for a burst. Keyboard: WASD or arrows, Space to dash.</p></div>`;
     canvas = $('fzCanvas');
     g2 = canvas.getContext('2d');
     if (!g2) { $('fzStage').append('Your browser cannot draw this game.'); return; }
     canvas.style.touchAction = 'none';
-    canvas.addEventListener('pointerdown', (e) => {
-      if (drag || e.button !== 0) return;
-      drag = { id: e.pointerId, x: e.clientX, y: e.clientY, dx: 0, dy: 0 };
-      canvas.setPointerCapture?.(e.pointerId);
-      point(e);
-    });
-    canvas.addEventListener('pointermove', (e) => { if (drag && e.pointerId === drag.id) point(e); });
-    for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) {
-      canvas.addEventListener(event, (e) => {
-        if (!drag || e.pointerId !== drag.id) return;
-        drag = null; $('fzStick').hidden = true; sendKeys();
+    // (#253) the arena still steers, and so does the thumb pad under it, where your thumb hides nothing
+    for (const surface of [canvas, $('fzPad')]) {
+      surface.addEventListener('pointerdown', (e) => {
+        if (drag || e.button !== 0) return;
+        drag = { id: e.pointerId, x: e.clientX, y: e.clientY, dx: 0, dy: 0 };
+        surface.setPointerCapture?.(e.pointerId);
+        point(e);
       });
+      surface.addEventListener('pointermove', (e) => { if (drag && e.pointerId === drag.id) point(e); });
+      for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+        surface.addEventListener(event, (e) => {
+          if (!drag || e.pointerId !== drag.id) return;
+          drag = null; $('fzStick').hidden = true; sendKeys();
+        });
+      }
     }
     clearInput = () => {
       drag = null; keys = {}; $('fzStick').hidden = true; sendKeys();
@@ -89,7 +94,7 @@ UI.fuse = (() => {
   }
 
   function point(e) {
-    const stick = $('fzStick'), bounds = $('fzStage').getBoundingClientRect();
+    const stick = $('fzStick'), bounds = stick.parentElement.getBoundingClientRect();
     if (mine() == null || S.phase !== 'playing' || !alive(mine())) return;
     const reach = 28, dx = e.clientX - drag.x, dy = e.clientY - drag.y;
     const length = Math.hypot(dx, dy), scale = Math.min(1, reach / (length || 1));
@@ -106,7 +111,8 @@ UI.fuse = (() => {
     const stage = $('fzStage');
     if (!stage || !S?.fuse) return;
     const ratio = S.fuse.H / S.fuse.W;
-    const available = window.innerHeight - (document.body.classList.contains('focus') ? 176 : 232);
+    const deck = matchMedia('(pointer: coarse)').matches ? 70 : 0;   // the thumb pad is taller than a lone Dash button
+    const available = window.innerHeight - (document.body.classList.contains('focus') ? 176 : 232) - deck;
     const width = Math.min(stage.clientWidth || 320, Math.max(110, available / ratio), 520);
     Fx2D.fit(canvas, width, width * ratio);
     $('fzRole').parentElement.style.width = `${width}px`;
@@ -170,6 +176,11 @@ UI.fuse = (() => {
       g2.fillStyle = grad; g2.beginPath(); g2.arc(sx, sy, r, 0, 7); g2.fill();
       g2.lineWidth = r * (i === f.me ? 0.22 : 0.1); g2.strokeStyle = i === f.me ? '#fff' : '#0008'; g2.stroke();
       g2.restore();
+      if (i === f.me) {   // (#253) which one is me, at a glance
+        g2.save(); g2.font = `900 ${Math.max(11, r * 0.8)}px system-ui, sans-serif`; g2.textAlign = 'center'; g2.textBaseline = 'middle'; g2.lineWidth = Math.max(3, r * 0.22);
+        const ly = sy + r * 1.75 > canvas.height - r * 0.5 ? sy - r * 2.7 : sy + r * 1.75;
+        g2.strokeStyle = '#000c'; g2.strokeText('YOU', sx, ly); g2.fillStyle = '#fff'; g2.fillText('YOU', sx, ly); g2.restore();
+      }
       if (src.sh?.[i]) { g2.save(); g2.strokeStyle = '#6cecff'; g2.shadowColor = '#6cecff'; g2.shadowBlur = r; g2.lineWidth = r * 0.16; g2.globalAlpha = 0.8; g2.beginPath(); g2.arc(sx, sy, r * 1.45, 0, 7); g2.stroke(); g2.restore(); }
       if (src.bo?.[i]) { pfx.spark(sx, sy, 1, { color: '#ffd166', speed: [u * 0.03, u * 0.12], size: [u * 0.003, u * 0.007] }); }
       if (isC) { g2.font = `${r * 1.5}px system-ui, "Noto Color Emoji", sans-serif`; g2.textAlign = 'center'; g2.textBaseline = 'middle'; g2.fillText('💣', sx, sy - r * 1.7); }
@@ -201,6 +212,7 @@ UI.fuse = (() => {
       const label = cd > 0 ? `⚡ Dash ${cd.toFixed(1)}` : '⚡ Dash';
       if (btn.textContent !== label) btn.textContent = label;
       btn.hidden = me == null;
+      $('fzPad').classList.toggle('fz-off', me == null || !src.a[me]);
     }
     // the countdown ticks over the last 3 seconds
     const sec = Math.ceil(left);
