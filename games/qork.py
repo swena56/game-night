@@ -3,6 +3,7 @@ Corkers yank their Qorks off the mat and the Cupper slams the cup down to trap t
 
 Reaction times are measured in each browser from the moment the dice appear there, so a slow
 network doesn't cost anyone the race. Bots get reaction times drawn by difficulty."""
+import math
 import random
 import time
 
@@ -98,7 +99,8 @@ class Qork(Game):
         self.stage = "wait" if self.dice is None else "dice"
         self.ok_at = self.now() + after
         bot = self.room.players[self.cupper].bot
-        self.auto_at = self.ok_at + (random.uniform(0.5, 1.3) if bot else AUTO_ROLL)
+        idle = AUTO_ROLL if self.room.settings["autoplay"] else math.inf  # off: the Cupper has to roll
+        self.auto_at = self.ok_at + (random.uniform(0.5, 1.3) if bot else idle)
         self.sched()
 
     def next_event(self):
@@ -113,7 +115,8 @@ class Qork(Game):
         return min(times + [t for t, _ in self.plans[:1]])
 
     def sched(self):
-        self.room.deadline = self.next_event() - self.skew
+        at = self.next_event()
+        self.room.deadline = None if at == math.inf else at - self.skew
 
     # -- clock hooks
 
@@ -325,7 +328,7 @@ class Qork(Game):
             "lucky": getattr(self, "lucky", None),
             "acted": {pid: ms >= 0 and self.stage in ("snap", "result") for pid, ms in self.acted.items()},
             "canRoll": max(0.0, self.ok_at - now) if self.stage in ("wait", "dice") else None,
-            "auto": max(0.0, self.auto_at - now) if self.stage in ("wait", "dice") else None,
+            "auto": max(0.0, self.auto_at - now) if self.stage in ("wait", "dice") and self.auto_at < math.inf else None,
             "window": WINDOW, "result": self.result,
             "corkers": [q.id for q in self.room.contenders() if q.id != self.cupper],
             "scores": {q.id: q.g.score for q in self.room.contenders() if hasattr(q.g, "score")},

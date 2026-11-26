@@ -88,6 +88,25 @@ r, (a, b) = room("lanes", humans=2, bots=0)
 a.last_seen = time.time() - 60
 r.check_offline(time.time())
 check("two humans: no pause, the autopilot covers", not r.paused and a.standin)
+# 🎚️ idle auto-play off (#31): nobody is played for, and no idle timers roll or move
+r, (a, b) = room("lanes", humans=2, bots=0)
+check("idle auto-play is on unless turned off", r.settings["autoplay"] is True and r.deadline)
+r.phase = "lobby"
+r.act(r.players[r.host], {"type": "settings", "settings": {"autoplay": False}})
+r.start()
+a.last_seen = time.time() - 60
+r.check_offline(time.time())
+check("off: a dropped player isn't taken over", not a.standin and not a.bot and a.shown_away)
+check("off: no idle roll clock at Lane Night", r.deadline is None)
+r.game.on_timeout()
+check("off: a timeout rolls nothing", not a.g.rolls and not b.g.rolls and r.deadline is None)
+r, (a, b) = room("qork", humans=2, bots=0)
+r.phase = "lobby"
+r.settings["autoplay"] = False
+r.start()
+g = r.game
+check("off: Qork waits for the Cupper to roll", r.deadline is None and r.view(a)["qork"]["auto"] is None and not g.bot_ready())
+
 r, (ann,) = room("snowball")
 r.act(ann, {"type": "autopause"})
 check("the page's own autopause", r.paused)

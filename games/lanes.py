@@ -276,9 +276,13 @@ class Lanes(Game):
             g.streak = 0
             g.splits, g.saved = [], []  # roll numbers: a first ball that left a split, a ball the spare saver finished
             g.oil = self.oil
-        r.deadline = now + IDLE
+        r.deadline = self.idle_deadline(now)
         r.bot_at = 0
         r.add_log(f"🎳 Lane Night: {self.nframes} frames each, everyone at once. 🌟 Frame {self.cosmic + 1} is the cosmic frame.", "big")
+
+    def idle_deadline(self, now):
+        """When an idle bowler gets an automatic roll; never, if the room turned idle auto-play off."""
+        return now + IDLE if self.room.settings["autoplay"] else None
 
     def players(self):
         return [self.room.players[i] for i in self.seats if i in self.room.players]
@@ -424,7 +428,7 @@ class Lanes(Game):
         g.busy = time.time() + frames / 30 + 1.2
         g.woke = False
         g.next_at = g.busy + random.uniform(0.6, 2.0)
-        self.room.deadline = time.time() + IDLE
+        self.room.deadline = self.idle_deadline(time.time())
         self.after_roll(p, lands)
         if g.done:
             total = self.total(p)
@@ -487,11 +491,11 @@ class Lanes(Game):
         for p in self.bowlers():
             p.g.busy = min(p.g.busy, now)
         for p in self.bowlers():
-            if not p.bot and not self.can_bowl(p):
+            if self.room.settings["autoplay"] and not p.bot and not self.can_bowl(p):
                 self.room.add_log(f"⏰ {p.name} was idle: an automatic roll.", "power")
                 self.bowl(p, *self.plan(p, "easy"))
         if self.room.phase == "playing":
-            self.room.deadline = time.time() + IDLE
+            self.room.deadline = self.idle_deadline(time.time())
 
     def on_restore(self, shift):
         """The server was down (or the room paused) for `shift` seconds: move every clock on with it."""

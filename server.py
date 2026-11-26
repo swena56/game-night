@@ -54,6 +54,8 @@ ROOM_SETTINGS = {
     "timer": ("Turn timer", [(0, "Off"), (30, "30s"), (60, "60s"), (90, "90s"), (120, "120s")], 0),
     "ghost_chat": ("Ghost & spectator chat", [("private", "👻 Ghosts only during play"), ("open", "💬 Everyone")], "private"),
     "locked": ("Room", [(False, "🔓 Open to join"), (True, "🔒 Locked")], False),
+    # off: nothing moves for a person who drops out or sits idle (#31). The turn timer is its own setting.
+    "autoplay": ("Idle auto-play", [(True, "🤖 Covers idle & dropped players"), (False, "✋ Off: wait for them")], True),
 }
 RECORD_SCORES = {"trivia": "points", "prism": "points", "yacht": "points", "lander": "points",
                  "shutbox": "lowPoints", "putt": "strokes", "marble": "time", "minesweeper": "time"}
@@ -409,7 +411,7 @@ class Room:
             if len(hs) == 1 and not hs[0].standin and hs[0].silent_for(now) > OFFLINE_GRACE:
                 self.pause(hs[0], auto=True)
                 changed = True
-        if self.phase == "playing" and not self.paused:
+        if self.phase == "playing" and not self.paused and self.settings["autoplay"]:
             for p in self.contenders():
                 if not p.bot and away(p):
                     self.record_interrupted = True
