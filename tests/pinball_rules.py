@@ -11,7 +11,7 @@ from games.pinball import (
     BALL, BUMPS, FLIP_RADIUS, FLIPPERS, JACKPOT_TICKS, LAUNCH, LAYOUT, RAMP, RAMP_EXIT, ROLLOVERS,
     CustomTable, SLINGS, SPINNER, TABLES, TARGETS, Table as GoldenHour,
 )
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from server import Room
 
 
@@ -61,6 +61,8 @@ class PinballRules(unittest.TestCase):
         table.swap(0)
         self.assertEqual(table.portal_cool, 90)
         self.assertEqual(table.public()[-1]["targets"], len(table.layout.targets))      # the screen needs the bank's size
+        self.assertEqual(table.public()[-1]["ramp"], 1)                                      # ...and whether there is a ramp to light
+        self.assertEqual(CustomTable(layout_override=replace(table.layout, ramp=None)).public()[-1]["ramp"], 0)
 
     def test_progressive_jackpot_pool(self):
         table = Table()

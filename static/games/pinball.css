@@ -346,3 +346,5 @@
 
 /* one nudge from tilt: the nudge counter turns red */
 .pb-nudges.warn { color: #ff6b6b; font-weight: 800; }
+
+.pb-best-tile.chasing .pb-best { color: var(--pb-gold); font-size: .95em; white-space: nowrap; }

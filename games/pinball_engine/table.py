@@ -997,7 +997,7 @@ class Table:
                  for o in self.others], self.last_points, int(self.hold), math.ceil(self.hurry_ticks / 240),
                 {"jackpot": self.jackpots, "multiball": self.multiballs, "hurry": self.hurry_wins,
                  "mystery": self.mysteries, "extra": self.extras, "combo": self.best_combo,
-                 "wizard": self.wizards, "targets": len(self.layout.targets), "skill_lane": self.skill_lane, "missions": self.missions_done,
+                 "wizard": self.wizards, "targets": len(self.layout.targets), "ramp": int(bool(self.layout.ramp)), "skill_lane": self.skill_lane, "missions": self.missions_done,
                  "orbit": int(bool(self.layout.orbit) and not self.orbit_cool and not self.tilt),
                  "special": int(self.special_lit() and not self.special_used), "special_used": int(self.special_used),
                  "post": self.post_glow, "streak": self.bumper_streak if self.streak_ticks else 0, "hold": int(self.saucer_ticks > 0 or self.hole_ticks > 0),

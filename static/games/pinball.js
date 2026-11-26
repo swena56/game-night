@@ -65,7 +65,7 @@
   const targetCount = row => row[STATS]?.targets ?? 3;
   const targetsDown = row => { let n = 0; for (let b = row[BANK]; b; b >>= 1) n += b & 1; return n; };
   const lastTarget = (row, i) => !row[TILT] && targetCount(row) > 1 && targetCount(row) - targetsDown(row) === 1 && !(row[BANK] >> i & 1);   // the one still standing
-  const rampLit = row => !row[TILT] && (row[BANK] === (1 << targetCount(row)) - 1 || jackpotLit(row));
+  const rampLit = row => !row[TILT] && ((row[STATS]?.ramp ?? 1) !== 0 && row[BANK] === (1 << targetCount(row)) - 1 || jackpotLit(row));
   const rampColor = row => jackpotLit(row) ? palette.gold : palette.teal;
 
   // players who ask for reduced motion get no speed halo, squash/stretch, ripples or score roll
@@ -294,6 +294,18 @@
     if (row[HURRY] > 0) states.add('hurry');
     return { balls: row[BALLS] ? [ball, ...others] : [], flash, states, calm: calm() };
   };
+  // how much of the spinner hurry-up is left, 1 -> 0 (0 when none is running)
+  const hurryClock = () => {
+    let total = 0, last = 0, since = 0;
+    return (row, now) => {
+      const left = row[TILT] ? 0 : row[HURRY];
+      if (!left) { total = last = 0; return 0; }
+      if (left > last) total = Math.max(total, left);
+      if (left !== last) { last = left; since = now; }
+      return Math.max(0, Math.min(1, (left - Math.min(1, (now - since) / 1000)) / total));
+    };
+  };
+
   function flatRenderer(stage, geo, art) {
     const still = calm();
     const size = sizeOf(stage);
@@ -355,7 +367,7 @@
     };
     const rail = ([ax, ay, bx, by], color, width) => line([[ax, ay], [bx, by]], width, color);
     const lamps = PinballArt.lights(geo);       // decals with a light effect are drawn live, not baked into the art
-    const hits = hitTracker(), plungeAt = plungerSpring();
+    const hits = hitTracker(), plungeAt = plungerSpring(), hurryLeft = hurryClock();
     return {
       draw(row, ball, flash, trail = [], gate = 0, others = []) {
         const tNow = performance.now();
@@ -610,6 +622,13 @@
           disc(sx, sy, .18, flash === 'spinner' ? '#fff0ca88' : '#c1d2e522');
           rail([sx - .47, sy, sx + .47, sy], flash === 'spinner' ? palette.ivory : paintOf(geo, 'spinner', undefined, palette.steel),
             .08 + .19 * Math.abs(Math.cos(row[SPIN] * 2 * Math.PI)));
+          const hurry = hurryLeft(row, tNow);
+          if (hurry) {          // the hurry-up prize running out: a ring that empties, red in the last quarter
+            c.lineCap = 'butt';
+            c.beginPath(); c.arc(sx, sy, .72, 0, Math.PI * 2); c.strokeStyle = '#17152fcc'; c.lineWidth = .16; c.stroke();
+            c.beginPath(); c.arc(sx, sy, .72, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * hurry); c.strokeStyle = hurry < .25 ? palette.red : palette.gold; c.lineWidth = .11; c.stroke();
+            c.lineCap = 'round';
+          }
         }
         geo.flips.forEach(([x, y], i) => {
           const angle = i < 2 ? ball[3 + i] : row[STATS]?.flips2?.[i - 2] ?? geo.flips[i][2];
@@ -867,7 +886,7 @@
       for (const [px, py] of [[x1, y1], [x2, y2]]) { disc(px, py, pr + .07, .05, .03, brass); disc(px, py, pr, .06, .05, lamp('portal', col, row => row[EVENT] === 'portal' ? palette.ivory : null)); }
     }
     (geo.posts || []).forEach(([x, y, r], i) => disc(x, y, r, .4, .2, lamp('post', paintOf(geo, 'posts', i, '#f2ecdd'), (row) => row[STATS]?.post > 0 ? palette.gold : null)));
-    const hits = hitTracker(), plungeAt = plungerSpring(), slingBars = [], bumperParts = [], bumperRings = [];
+    const hits = hitTracker(), plungeAt = plungerSpring(), hurryLeft = hurryClock(), slingBars = [], bumperParts = [], bumperRings = [];
     const flashRing = (x, y, r, color) => {            // a flat ring that expands and fades: shock rings for bumpers, pulses for kickers
       const ring = new T.Mesh(new T.TorusGeometry(r, .035, 6, 36), new T.MeshBasicMaterial({ color, transparent: true, opacity: 0, depthWrite: false }));
       ring.position.set(x, .4, y);
@@ -900,6 +919,7 @@
       bumperParts.push(parts);
       bumperRings.push([flashRing(x, y, radius + .1, '#fff3a8'), flashRing(x, y, radius + .1, '#ffffff')]);
     });
+    const hurryRing = geo.spinner ? flashRing(...geo.spinner, .7, palette.gold) : null;      // shrinks as the hurry-up runs out
     const kickerRings = [...(geo.holes || []).map(([x, y, r]) => [x, y, r]), ...(geo.saucer ? [geo.saucer] : [])].map(([x, y, r]) => ({ x, y, r, grab: flashRing(x, y, r + .08, '#fff0ca'), out: flashRing(x, y, r + .08, '#ffd383') }));
     geo.lanes.forEach(([x, y], i) => {
       disc(x, y, .29, .075, .05, brass);
@@ -1027,6 +1047,11 @@
             if (ring.visible) { ring.scale.setScalar(1 + a * (k ? 1.4 : 1.9)); ring.material.opacity = .85 * (1 - a); }
           });
         });
+        if (hurryRing) {
+          const hurry = hurryLeft(row, tNow);
+          hurryRing.visible = hurry > 0;
+          if (hurry) { hurryRing.scale.setScalar(.55 + .85 * hurry); hurryRing.material.color.set(hurry < .25 ? palette.red : palette.gold); hurryRing.material.opacity = .9; }
+        }
         slingBars.forEach(({ r, band, piece, arm }, i) => {
           const { points, nx, ny, bow } = slingPose(r, hits.age('sling' + i, tNow, SLING_MS), still, geo.width);
           band.forEach((part, k) => {
@@ -1334,7 +1359,7 @@
     const timer = g.mode === 'timeattack' ? ` · ⏱ ${clockText(row[STATS]?.clock ?? 0)}` : '';
     setText(find('nudges'), row[TILT] ? 'Tilted' : g.mode === 'zen' ? 'Zen · no tilt' : g.mode === 'practice' ? 'Practice · not scored' :
       `Nudges ${3 - row[NUDGES]}${nextExtra ? ` · Extra ball ${nextExtra.toLocaleString()}` : ''}${timer}`);
-    setText(find('ramp'), row[OTHERS]?.length ? `MULTIBALL ×${row[OTHERS].length + 1}` : row[JACKPOT] ? 'Jackpot lit' : rampLit(row) ? 'Ramp ready' : `Targets ${targetsDown(row)}/${targetCount(row)}${row[LOCKED] ? ` · ${row[LOCKED]} locked` : ''}`);
+    setText(find('ramp'), row[OTHERS]?.length ? `MULTIBALL ×${row[OTHERS].length + 1}` : row[JACKPOT] ? 'Jackpot lit' : rampLit(row) ? 'Ramp ready' : !targetCount(row) ? '' : `Targets ${targetsDown(row)}/${targetCount(row)}${row[LOCKED] ? ` · ${row[LOCKED]} locked` : ''}`);
     find('ramp').classList.toggle('lit', !!rampLit(row));
     g.stage.classList.toggle('tilted', !!row[TILT]);
     g.stage.classList.toggle('saving', row[SAVE] > 0 && !row[STAGED]);
@@ -1366,7 +1391,10 @@
     const meterText = inBand ? 'Skill shot window' : `${Math.round(100 * row[CHARGE] / 240)}% power`;
     if (meter.getAttribute('aria-valuetext') !== meterText) meter.setAttribute('aria-valuetext', meterText);
     find('best-tile').hidden = !g.solo;
-    setText(find('best'), g.best === null ? '—' : g.best.toLocaleString());
+    const chase = chaseText(g, row[SCORE]);
+    setText(find('best'), g.best === null ? '—' : chase || g.best.toLocaleString());
+    find('best-tile').classList.toggle('chasing', !!chase);
+    setText(find('best-tile').querySelector('.pb-caption'), chase ? `Best ${g.best.toLocaleString()}` : 'Best');
 
     const list = find('standings');
     list.hidden = g.solo || Object.keys(g.tables).length < 2;
@@ -1417,6 +1445,22 @@
     const points = /\+[\d,]+/.exec(text)?.[0] || '';
     return row[COMBO] >= 5 && points ? `COMBO ×${row[COMBO]}! ${points}` : points;
   };
+
+  // chasing your own record: the Best tile counts down once you are close, and passing it is celebrated there and then
+  const CHASE_FROM = .7;          // show what is left from 70% of the best
+  const chaseText = (g, score) => (g.solo && g.me && !g.over && g.mode !== 'practice' && g.best > 0 && score >= g.best * CHASE_FROM ?
+    score > g.best ? 'beaten!' : `${(g.best - score + 1).toLocaleString()} to go` : '');
+  function celebrateBest(g) {
+    const el = g.find('popup');
+    g.stage.dataset.pulse = 'extra';
+    g.ctx.sfx('fanfare');
+    if (calm()) return;
+    el.textContent = '🏆 NEW BEST! 🏆';
+    el.hidden = false;
+    el.style.left = '50%'; el.style.top = '38%';
+    el.classList.add('big', 'huge');
+    el.classList.remove('go'); void el.offsetWidth; el.classList.add('go');
+  }
 
   function popup(g, row) {
     const el = g.find('popup'), text = popupText(row);
@@ -1553,6 +1597,11 @@
       g.glass?.react(row[EVENT]);
       popup(g, row);
       if (viewer === g.me && !g.ctx.readOnly) g.ctx.sfx(sound(row[EVENT]), soundArg(row[EVENT], row));
+    }
+    if (prior && viewer === g.me && g.solo && !g.ctx.readOnly && g.mode !== 'practice' && g.best > 0 && !g.passedBest &&
+        prior[SCORE] <= g.best && row[SCORE] > g.best) {
+      g.passedBest = true;
+      g.bestTimer = setTimeout(() => celebrateBest(g), 700);      // after the points that did it have been shown
     }
     // the plunger lets go: a spring thwack as the ball shoots up the lane
     if (prior && prior[STAGED] && !row[STAGED] && prior[BALLS] === row[BALLS] && viewer === g.me && !g.ctx.readOnly) g.ctx.sfx('plaunch');
@@ -1702,6 +1751,7 @@
       cancelAnimationFrame(game.raf);
       clearInterval(game.heartbeat);
       clearInterval(game.tally);
+      clearTimeout(game.bestTimer);
       window.Snd?.bed('pin-roll').set(0);
       window.Snd?.bed('pin-whir').set(0);
       game.three?.dispose();
