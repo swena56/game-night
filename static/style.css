@@ -342,7 +342,9 @@ body.calm .nudge { animation: none; box-shadow: 0 0 0 2px #ffb70388; }
 .swatch:disabled { opacity: .2; }
 
 /* bug reports & suggestions */
-.report-link { display: block; margin: 14px auto 0; font-size: var(--fs-sm); }
+.report-link { font-size: var(--fs-sm); }
+.home-foot { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 8px; margin-top: 14px; }
+.home-foot .report-link { padding-inline: 6px; }
 .report textarea { width: 100%; background: var(--field); color: var(--text); border: 1px solid var(--line); border-radius: var(--r-md);
   padding: 9px 10px; font: inherit; resize: vertical; margin: 8px 0; }
 .report-pre { max-height: 180px; overflow: auto; font-size: var(--fs-xs); background: #0008; padding: 8px; border-radius: var(--r-sm); white-space: pre-wrap; }
@@ -971,7 +973,9 @@ body.lowgfx .bgo-cell.near::before { animation: none; }
 .bgo-over-cards .bgo-card { width: min(200px, 44vw); }
 .bgo-card.won { animation: bgo-heat 1s ease-in-out infinite alternate; }
 /* bingotools + bingoscan: the 🔵 Bingo tools screen (paper-cards helper, caller) and its card scanner; cards reuse .bgo-* */
-.bingo-tools-btn { margin-top: 6px; width: 100%; }
+.utils-btn { margin-top: 6px; width: 100%; }
+.utils-link { display: block; box-sizing: border-box; text-align: center; padding: 10px; color: inherit; text-decoration: none; background: var(--panel2); border: 1px solid var(--line); border-radius: var(--r-md); }
+.utils-link[hidden] { display: none; }
 #pinballEditorBtn[hidden] { display: none; }
 #bingoTools { padding: 12px 16px 40px; max-width: 760px; margin: 0 auto; }
 .bgt-card .bgo-cell, .bgt-ed input { cursor: default; }

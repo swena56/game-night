@@ -290,12 +290,13 @@ async function reportDialog(kind = 'bug', retry = {}) {
 const logHasEntries = () => $('#log').childElementCount > 0;
 function show(id) {
   if (id === 'game' && document.body.dataset.screen !== 'game' && document.scrollingElement) document.scrollingElement.scrollTop = 0;  // the lobby may have scrolled (#72)
-  for (const s of ['loading', 'home', 'lobby', 'game', 'bingoTools']) $('#' + s).hidden = s !== id;
+  for (const s of ['loading', 'home', 'utils', 'lobby', 'game', 'bingoTools']) $('#' + s).hidden = s !== id;
   if (id !== 'bingoTools' && $('#bingoTools').childElementCount) UI.bingotools?.close();
   if (id !== 'game') { document.body.classList.remove('focus'); closeMenu(); closeSheets(); }
   document.body.dataset.screen = id;
   if (id !== 'loading') clearTimeout(show.slow);
-  $('#fabs').hidden = id === 'home' || id === 'bingoTools';
+  $('#fabs').hidden = id === 'home' || id === 'utils' || id === 'bingoTools';
+  if (id === 'utils') { $('#chatPanel').hidden = true; document.title = 'Utilities · Game Night'; }
   if (id === 'home') { $('#chatPanel').hidden = true; document.title = 'Game Night'; if (typeof fillSoloGames === 'function') fillSoloGames(); }
 }
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
@@ -1154,13 +1155,21 @@ $('#newGameBtn').onclick = () => { const id = Profile.suggest(); pickSolo(id); t
 $('#recordBtn').onclick = () => Profile.show(pickSolo).then(() => Profile.homeLine($('#homeLevel')));
 $('#homeLevel').onclick = () => $('#recordBtn').click();
 Profile.sync(300);  // ✨ back up (and on a cleared browser, bring back) the lifetime record
-// 🔵 Bingo tools: a local-only screen (no room); Back returns home
+// 🧰 Utilities: the tools that are not games. Back (button or phone) returns home.
+const onUtilsBack = () => show('home');
+function openUtils() { show('utils'); backOpen(onUtilsBack); }
+$('#utilsBtn').onclick = openUtils;
+$('#utilsBack').onclick = () => { backClosed(onUtilsBack); show('home'); };
+// the feedback inbox only opens on the device running the server, so only that device gets the link
+const isLocalhost = () => ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+$('#feedbackInboxLink').hidden = !isLocalhost();
+// 🔵 Bingo tools: a local-only screen (no room); Back returns to Utilities
 $('#bingoToolsBtn').onclick = () => needUI('bingotools').then(() => {
   let open = true;
-  const onBack = () => { if (!open) return; open = false; show('home'); };
+  const onBack = () => { if (!open) return; open = false; show('utils'); };
   show('bingoTools');
   backOpen(onBack);
-  UI.bingotools.open($('#bingoTools'), { toast, sfx, confetti, ask, back: () => { if (!open) return; open = false; backClosed(onBack); show('home'); } });
+  UI.bingotools.open($('#bingoTools'), { toast, sfx, confetti, ask, back: () => { if (!open) return; open = false; backClosed(onBack); show('utils'); } });
 }).catch(() => toast('The Bingo tools did not load: check the connection.'));
 $('#lobbyRecordBtn').onclick = () => Profile.show();
 $('#createBtn').onclick = () => api('/api/create', { name: $('#name').value }).then(enter).catch((e) => toast(e.message));
@@ -1172,7 +1181,14 @@ async function solo(startNow) {
     enter(await api('/api/create', { name: $('#name').value, game }));
     for (let i = 0; i < (SOLO_BOTS[game] ?? 1); i++) await act('add_bot', { level: $('#soloLevel').value });
     if (startNow) await act('start');
+    else scrollToSettings(SOLO_BOTS[game] ?? 1);
   } catch (e) { toast(e.message); }
+}
+// the lobby arrives over the event stream: wait until it shows every bot (the player list sits above the settings)
+function scrollToSettings(bots, tries = 40) {
+  if (S?.phase === 'lobby' && !$('#lobby').hidden && S.players.length > bots) {
+    requestAnimationFrame(() => $('.settings-head').scrollIntoView?.({ behavior: 'smooth', block: 'start' }));
+  } else if (tries) setTimeout(() => scrollToSettings(bots, tries - 1), 100);
 }
 $('#pinballEditorBtn').onclick = () => { location.href = '/pinball-editor.html'; };
 // the button shows unless the server has the table editor switched off (GAME_NIGHT_EDITOR=0)
@@ -1212,7 +1228,7 @@ async function editProfile() {
 // the invite: a QR code to scan across the table, plus the link to copy or share. A host on the server's
 // own device (localhost) gets the Wi-Fi address instead, since "localhost" means nothing on a friend's phone.
 $('#shareBtn').onclick = () => {
-  const local = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+  const local = isLocalhost();
   const url = `${local && S.lan ? S.lan : location.origin}/?room=${S.code}`;
   const body = el('div', 'invite');
   const qr = QR.qrSvg(url);
@@ -1472,4 +1488,6 @@ if ('serviceWorker' in navigator && window.isSecureContext) navigator.serviceWor
 
 const roomParam = (new URLSearchParams(location.search).get('room') || '').toUpperCase();
 if (roomParam) $('#code').value = roomParam;
-if (session && (!roomParam || roomParam === session.code)) connect(); else show('home');
+if (session && (!roomParam || roomParam === session.code)) connect();
+else if (location.hash === '#utils') { history.replaceState(history.state, '', location.pathname + location.search); show('home'); openUtils(); }
+else show('home');

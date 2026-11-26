@@ -79,6 +79,7 @@ const CARD = [7, 21, 38, 52, 66, 12, 17, 44, 49, 70, 3, 29, 0, 60, 61, 14, 25, 3
   fs.utimesSync(file, new Date(Date.now() - 60000), new Date(Date.now() - 60000));  // taken first: page 1
   // 2. open the tools → Scan cards → pick both photos at once (a page each)
   await p.fill('#name', 'Tester');
+  await p.click('#utilsBtn');
   await p.click('#bingoToolsBtn');
   await p.waitForSelector('.bgt-tabs');
   await p.click('text=📷 Scan cards');

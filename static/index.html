@@ -48,14 +48,26 @@
         <button id="newGameBtn" class="ghost-btn" title="Pick a game you haven't played yet (or one with the fewest ★)">🎲 Something new</button>
         <button id="recordBtn" class="ghost-btn" title="Your games, wins, ★ bot-ladder stars and badges, kept on this device">🏆 My record</button>
       </div>
-      <button id="bingoToolsBtn" class="ghost-btn bingo-tools-btn" title="For bingo in real life: track your paper cards, or be the caller">🔵 Bingo tools: paper cards &amp; caller</button>
-      <button id="pinballEditorBtn" class="ghost-btn bingo-tools-btn" title="Design your own pinball table: drag parts on, recolour them, then play it">🛠️ Pinball table editor</button>
       <div class="or">or join a friend</div>
       <div class="row">
         <input id="code" maxlength="4" placeholder="CODE" class="code-input" autocapitalize="characters">
         <button id="joinBtn">Join</button>
       </div>
-      <button id="reportLink" class="ghost-btn report-link">🐞 Report a bug · 💡 Suggest an idea</button>
+      <div class="home-foot">
+        <button id="reportLink" class="ghost-btn report-link">🐞 Report a bug · 💡 Suggest an idea</button>
+        <button id="utilsBtn" class="ghost-btn report-link" title="Extra tools: bingo with paper cards and the pinball table editor">🧰 Utilities</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- UTILITIES: the tools that are not games -->
+  <section id="utils" class="screen center" hidden>
+    <div class="panel narrow">
+      <h2>🧰 Utilities</h2>
+      <button id="bingoToolsBtn" class="utils-btn" title="For bingo in real life: track your paper cards, or be the caller">🔵 Bingo tools: paper cards &amp; caller</button>
+      <button id="pinballEditorBtn" class="utils-btn" title="Design your own pinball table: drag parts on, recolour them, then play it">🛠️ Pinball table editor</button>
+      <a id="feedbackInboxLink" class="utils-btn utils-link" href="/feedback.html" title="Bug reports and ideas from players (only on the device running the server)" hidden>📬 Feedback inbox</a>
+      <button id="utilsBack" class="ghost-btn utils-btn">← Back</button>
     </div>
   </section>
 
