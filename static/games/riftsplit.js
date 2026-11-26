@@ -695,7 +695,7 @@
       else if (b.rev !== prev.rev) prev.stale = true;
       prev.rev = b.rev;
       const before = prev.pct ?? 0;
-      Object.assign(prev, { goal: b.goal || 0.75, w: b.w, p: b.p, lives: b.lives, score: b.score, pct: b.pct, st: b.st, lv: b.lv, mu: b.mu || 1, sh: b.sh, slow: b.slow, hd: b.hd || 0, w2: b.w2 || [], b: b.b });
+      Object.assign(prev, { goal: b.goal || 0.75, w: b.w, p: b.p, lives: b.lives, score: b.score, pct: b.pct, st: b.st, lv: b.lv, mu: b.mu || 1, sh: b.sh, slow: b.slow, hd: b.hd || 0, w2: b.w2 || [], b: b.b, tl: b.tl, rush: b.rush || 1 });
       if (!prev.bs || prev.bs.length !== b.b.length) { prev.bs = b.b.map((q) => q.slice()); prev.bv = b.b.map(() => [0, 0]); }
       // orb velocity from the last two packets, so the drawn orbs keep moving between the ~30 Hz updates
       const dt = (g.receivedAt - (prev.at ?? 0)) / 1000;
@@ -726,6 +726,18 @@
     const sc = g.find('score'), scText = s.score.toLocaleString();
     if (sc.textContent !== scText) { sc.textContent = scText; sc.classList.remove('rs-bump'); void sc.offsetWidth; sc.classList.add('rs-bump'); }
     g.find('level').textContent = s.lv;
+    // ⏱ the level clock: time left, then how much faster the orbs have become
+    const clock = g.find('clock'), timed = s.tl != null && s.st === 'play';
+    clock.hidden = !timed;
+    if (timed) {
+      const text = s.tl > 0 ? `⏱ ${Math.floor(s.tl / 60)}:${String(s.tl % 60).padStart(2, '0')}` : s.rush > 1 ? `⚡ +${Math.round((s.rush - 1) * 100)}%` : '⏱ 0:00';
+      if (clock.textContent !== text) clock.textContent = text;
+      clock.classList.toggle('rs-low', s.tl <= 10);
+      if (s === g.boards[g.me]) {
+        if (s.rush > (g.lastRush || 1)) { g.banner(`⚡ TIME! ORBS +${Math.round((s.rush - 1) * 100)}%`, 'rs-banner-lv'); g.ctx?.sfx?.('rise'); }
+        g.lastRush = s.rush;
+      }
+    }
     const gp = Math.round((s.goal || 0.75) * 100) + '%';
     if (g.goalTxt !== gp) { g.goalTxt = gp; const gm = g.find('goal'); gm.style.left = gp; gm.dataset.g = gp; gm.title = gp + ' to clear'; }
     if (s === g.boards[g.me]) {
@@ -903,7 +915,7 @@
       <section class="rs-cabinet" aria-label="Rift Split">
         <div class="rs-hud">
           <div><span class="rs-cap">Score</span><strong class="rs-score">0</strong></div>
-          <div><span class="rs-cap">Level</span><strong class="rs-level">1</strong></div>
+          <div><span class="rs-cap">Level</span><strong class="rs-level">1</strong><small class="rs-clock" hidden></small></div>
           <div><span class="rs-cap">Lives</span><strong class="rs-lives"></strong></div>
           <div class="rs-best-tile"><span class="rs-cap">Best</span><strong class="rs-best">—</strong></div>
         </div>

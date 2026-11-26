@@ -3,7 +3,8 @@
 Every player has their own glowing field with bouncing orbs. Tap a spot to grow a wall from it in both
 directions (horizontal or vertical). A wall half that an orb strikes while it is still growing shatters and costs a
 life; a half that reaches a barrier locks in. When the wall is done, every pocket with no orb inside is sealed off.
-Seal the goal % of the field to clear the level. The server owns the physics (fixed grid, circle-vs-cell collisions)
+Seal the goal % of the field to clear the level. Each level runs on a clock that gets tighter as levels climb: beat
+it for a bonus, or the orbs speed up in steps until you clear. The server owns the physics (fixed grid, circle-vs-cell collisions)
 and streams each field to every browser."""
 import math
 import random
@@ -46,6 +47,19 @@ HOLD_SECS = 2.1     # a 3-2-1 before every level, orbs frozen
 BOT = {"easy": (1.6, 2), "normal": (0.9, 8), "hard": (0.6, 22)}   # seconds between walls, candidates to simulate
 
 
+RUSH_EVERY, RUSH_STEP, RUSH_MAX = 10.0, 0.08, 0.6   # overtime: every 10 s the orbs get 8% faster, up to +60%
+TIME_BONUS = 10                                     # points per second left on the clock, times the level
+
+
+def level_time(level):
+    return max(45, 92 - 2 * level)   # 90 s at level 1, tightening to 45 s from level 24
+
+
+def rush_at(over):
+    """How much faster the orbs move, `over` seconds past the level's time."""
+    return 1 + min(RUSH_MAX, RUSH_STEP * (1 + int(over // RUSH_EVERY))) if over > 0 else 1.0
+
+
 def ball_speed(level):
     if 1 <= level <= 3:
         return (4.9, 5.7, 6.5)[level - 1]
@@ -53,7 +67,10 @@ def ball_speed(level):
 
 
 class Board:
-    def __init__(self, rng, level=1, score=0):
+    timed, elapsed, rush = False, 0.0, 1.0   # boards saved before the level clock run without one
+
+    def __init__(self, rng, level=1, score=0, timed=True):
+        self.timed = timed
         self.rng = rng
         self.score = score
         self.rev = 0
@@ -73,6 +90,7 @@ class Board:
     # ----- level setup -----
     def setup(self, level):
         self.level = level
+        self.elapsed, self.rush = 0.0, 1.0
         self.lives = start_lives(level)
         self.hold = 0.0
         self.holding = False
@@ -277,6 +295,13 @@ class Board:
             return
         self.holding = False
         scale = SLOW_FACTOR if now < self.slow_until else 1.0
+        if self.timed and not self.sim:
+            self.elapsed += dt
+            rush = rush_at(self.elapsed - level_time(self.level))
+            if rush > self.rush:
+                self.rush = rush
+                self.emit("rush")
+        scale *= self.rush
         for b in self.balls:
             self.move_ball(b, dt * scale)
         for w in list(self.walls):
@@ -290,6 +315,8 @@ class Board:
             self.state = "clear"
             self.walls = []
             self.until = now + CLEAR_PAUSE
+            if self.timed:
+                self.score += int(max(0.0, level_time(self.level) - self.elapsed)) * TIME_BONUS * self.level
             self.score += 500 * self.level + 250 * self.lives + max(0, int((self.pct - level_goal(self.level)) * 100)) * 40   # overshoot bonus: every % past the goal
             self.emit("clear")
 
@@ -349,7 +376,8 @@ class Board:
         out = {"lv": self.level, "lives": self.lives, "score": self.score, "pct": round(self.pct, 4), "goal": level_goal(self.level), "st": self.state,
                "b": [[round(b[0], 2), round(b[1], 2)] for b in self.balls], "w": walls, "w2": walls2,
                "p": self.pickups, "gr": self.grow, "mu": min(5, 1 + self.streak // 2), "hd": max(0, round(self.hold - now, 1)), "sh": self.shield, "slow": max(0, round(self.slow_until - now, 1)),
-               "ev": [self.event_id, self.event], "rev": self.rev}
+               "ev": [self.event_id, self.event], "rev": self.rev,
+               "tl": math.ceil(level_time(self.level) - self.elapsed) if self.timed else None, "rush": round(self.rush, 2)}
         if full:
             out["g"] = self.grid_str()
         return out
@@ -367,12 +395,16 @@ class RiftSplit(Game):
         "Press and hold a spot to preview the line, slide to aim, and let go to grow a wall both ways from it (click on a computer). Tap the ↔ / ↕ buttons, press Space, or right-click to switch direction. You can start a second wall while the first is still growing.",
         "While a wall is growing (you can have two at once, on lines that don't cross), an orb that touches either half shatters that half and costs a life. A half that reaches a barrier locks in solid.",
         "When a wall finishes, every pocket with no orb inside is sealed. Seal the goal % of the field (it rises slowly each level, from 52%) to clear the level; each level adds an orb, and a life.",
+        "⏱ Each level has a time limit that tightens as you climb (90 s down to 45 s). Beat it for bonus points; once it runs out the orbs get 8% faster every 10 seconds (up to +60%) until you clear the level.",
         "Chain clean seals for a score multiplier. Seal a 🛡️ to block one hit, or a ⏳ to slow every orb for a few seconds. Everyone plays their own field; the highest score wins.",
     ]
 
+    settings_schema = {"clock": ("⏱ Level clock", [(1, "On: the orbs speed up when time runs out"), (0, "Off: take your time")], 1)}
+
     def start(self, seated, rng):
         self.rng = rng
-        self.boards = {p.id: Board(random.Random(rng.random())) for p in seated}
+        timed = bool(self.s.get("clock", 1))
+        self.boards = {p.id: Board(random.Random(rng.random()), timed=timed) for p in seated}
         self.run = uuid4().hex
         self.frames = 0
         self.last = time.time()

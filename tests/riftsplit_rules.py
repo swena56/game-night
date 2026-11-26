@@ -64,5 +64,19 @@ d.place(3, 15, True)
 for _ in range(900):
     d.step(R.STEP, 0)
 check("clear sweep is a plain seal", d.event == "seal", d.event)
+# ⏱ the level clock: tighter as levels climb, then the orbs speed up in steps; beating it pays
+check("the time limit tightens with the level", R.level_time(1) == 90 and R.level_time(10) < R.level_time(1) and R.level_time(60) == 45)
+check("no rush inside the limit, then capped steps", R.rush_at(0) == 1 and R.rush_at(1) == 1.08 and R.rush_at(11) == 1.16 and R.rush_at(999) == 1.6)
+e = R.Board(random.Random(4), 1)
+e.balls = [[20.5, 12.0, 0.0, 0.0]]
+e.elapsed = R.level_time(1) - R.STEP / 2
+e.step(R.STEP, 10.0)
+check("running out of time starts the rush", e.rush == 1.08 and e.event == "rush" and e.public(10.0)["tl"] <= 0, f"{e.rush} {e.event}")
+e.next_level(10.0)
+check("a new level resets the clock", e.rush == 1 and e.public(10.0)["tl"] == R.level_time(2))
+f = R.Board(random.Random(4), 1, timed=False)
+f.elapsed = 500
+f.step(R.STEP, 10.0)
+check("the clock can be switched off", f.rush == 1 and f.public(10.0)["tl"] is None)
 print("FAILED" if fails else "all ok")
 sys.exit(1 if fails else 0)

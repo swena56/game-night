@@ -262,3 +262,8 @@ body.focus .rs-cabinet { width: min(100%, 1100px); }
 .rs-swipe[aria-pressed="true"] { background: linear-gradient(180deg, #1fc79a, #0c6b57); }
 .rs-dir:active, .rs-swipe:active { transform: scale(.96); }
 .rs-stage.rs-sharp .rs-banner, .rs-stage.rs-sharp .rs-power, .rs-stage.rs-sharp .rs-msg, .rs-stage.rs-sharp .rs-coach { backdrop-filter: none; }
+
+/* ⏱ the level clock under the level number (#275) */
+.rs-clock { display: block; font-size: .7rem; line-height: 1.1; color: #9fb8ee; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rs-clock[hidden] { display: none; }
+.rs-clock.rs-low { color: #ff7a8a; font-weight: 800; }
