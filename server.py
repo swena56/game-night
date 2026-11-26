@@ -35,7 +35,7 @@ from urllib.parse import parse_qs, urlparse
 from games import CATEGORIES, FAMILIES, GAME_INFO, GAME_LIST, GAMES, GameError
 from games.bar_darts import AXES_PER_ROUND
 from games.base import shift_times
-from games import admin_auth, garden, wordbomb
+from games import admin_auth, garden, implement, release, wordbomb
 from games.wordsmith import warm_up, words
 
 PORT = int(os.environ.get("PORT", 8000))
@@ -92,6 +92,8 @@ ADMIN_PORT = 8000                              # the feedback admin tool exists 
 ADMIN_COOKIE = "gn_admin"
 # Screenshots pasted into the admin tool (#272): files beside the inbox, named by the server, listed on their report.
 SHOT_DIR = FEEDBACK_FILE.rsplit(".", 1)[0] + "-shots"
+# Runs of the admin tool's Implement button (games/implement.py): one pair of files per report.
+IMPLEMENT_DIR = FEEDBACK_FILE.rsplit(".", 1)[0] + "-implement"
 SHOT_TYPES = {"png": ("image/png", b"\x89PNG\r\n\x1a\n"), "jpg": ("image/jpeg", b"\xff\xd8\xff"), "webp": ("image/webp", b"RIFF")}
 SHOT_NAME = re.compile(r"[0-9]{1,9}-[0-9a-f]{12}\.(?:png|jpg|webp)")
 SHOT_MAX_BYTES, SHOTS_PER_REPORT = 2 * 1024 * 1024, 4
@@ -1842,6 +1844,67 @@ def admin_update_feedback(body):
     return {"ok": True}
 
 
+def implement_feedback(body):
+    """Localhost only: run Claude Code on one report, in this repository."""
+    report_id = body.get("id")
+    report = next((i for i in list_feedback()["items"] if type(report_id) is int and i["id"] == report_id), None)
+    if not report:
+        raise GameError("Unknown report.")
+    if report["status"] != "open":
+        raise GameError("Reopen the report first.")
+    if report["kind"] == "table":
+        raise GameError("Table suggestions are added by hand (docs/pinball-tables.md).")
+    implement.start(IMPLEMENT_DIR, report, APP_DIR, SHOT_DIR)
+    return {"ok": True}
+
+
+def _run_files(body):
+    if type(body.get("id")) is not int:
+        raise GameError("Unknown report.")
+    files = body.get("files")
+    if files is not None and not (isinstance(files, list) and all(isinstance(f, str) for f in files)):
+        raise GameError("Bad file list.")
+    return body["id"], files
+
+
+def review_implement(body):
+    report_id, files = _run_files(body)
+    return {"ok": True, **implement.review(IMPLEMENT_DIR, report_id, APP_DIR, files)}
+
+
+def ship_implement(body):
+    """The admin page's "Commit, push & resolve". The report is resolved only once the push has gone through."""
+    report_id, files = _run_files(body)
+    message = str(body.get("message") or "").strip()
+    if not any(i["id"] == report_id for i in list_feedback()["items"]):
+        raise GameError("Unknown report.")
+    if not 5 <= len(message) <= 4000:
+        raise GameError("Write a commit message.")
+    sha = implement.ship(IMPLEMENT_DIR, report_id, APP_DIR, files, body.get("token"), message + "\n")
+    admin_update_feedback({"ids": [report_id], "status": "done"})
+    return {"ok": True, "commit": sha}
+
+
+def restart_server(body):
+    busy = next((i for i, job in implement.jobs(IMPLEMENT_DIR, APP_DIR).items() if job["state"] == "running"), None)
+    if busy is not None:
+        raise GameError(f"Claude is working on #{busy}: the code may be half written. Wait for it or stop it.")
+    release.restart(APP_DIR)
+    return {"ok": True}
+
+
+def dev_server():
+    return {"boot": release.BOOT, "stale": release.stale_code(APP_DIR), "cant": release.cant_restart(APP_DIR),
+            "players": health()["streams"]}
+
+
+def stop_implement(body):
+    if type(body.get("id")) is not int:
+        raise GameError("Unknown report.")
+    implement.stop(IMPLEMENT_DIR, body["id"])
+    return {"ok": True}
+
+
 _SAVED = {}   # code -> (room version, pickled room): an unchanged room isn't pickled again
 
 
@@ -2168,6 +2231,19 @@ class Handler(BaseHTTPRequestHandler):
         if url.path in ADMIN_FILES:   # the page holds no data; from elsewhere it opens on its sign-in form
             if not (self.admin_local() or self.admin_remote()):
                 return self.send_json(404, {"error": "Not found"})
+        if url.path in ("/api/admin/implement", "/api/admin/implement/log"):   # never from elsewhere, signed in or not: it runs code on this machine
+            if not self.admin_local():
+                return self.send_json(404, {"error": "Not found"})
+            if url.path == "/api/admin/implement":
+                return self.send_json(200, {"jobs": implement.jobs(IMPLEMENT_DIR, APP_DIR), "server": dev_server()})
+            query = parse_qs(url.query)
+            try:
+                report_id, offset = (int(query.get(k, [""])[0]) for k in ("id", "from"))
+                return self.send_json(200, implement.log_since(IMPLEMENT_DIR, report_id, offset))
+            except (ValueError, OverflowError):
+                return self.send_json(400, {"error": "Bad request."})
+            except GameError as e:
+                return self.send_json(400, {"error": str(e)})
         if url.path in ("/api/admin/feedback", "/api/admin/image"):
             if not self.admin_ok():
                 if self.admin_remote():
@@ -2265,6 +2341,12 @@ class Handler(BaseHTTPRequestHandler):
         if self.admin_ok():
             routes["/api/admin/feedback/add"] = admin_add_feedback
             routes["/api/admin/feedback/update"] = admin_update_feedback
+        if self.admin_local():   # not admin_ok: a remote sign-in must never start Claude here
+            routes["/api/admin/feedback/implement"] = implement_feedback
+            routes["/api/admin/feedback/implement/stop"] = stop_implement
+            routes["/api/admin/feedback/implement/review"] = review_implement
+            routes["/api/admin/feedback/implement/ship"] = ship_implement
+            routes["/api/admin/restart"] = restart_server
         if self.dev_local() and self.editor_ok():
             routes["/api/pinball-tables/save"] = save_listed_table
             routes["/api/pinball-tables/delete"] = delete_listed_table

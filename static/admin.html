@@ -38,6 +38,22 @@
     .admin [hidden] { display: none; }
     #message { min-height: 1.4em; color: var(--accent); }
     #copyBox { margin-bottom: 10px; }
+    .item .run { margin-top: 8px; font-size: 13px; }
+    .item .run pre { font-size: 12px; color: var(--muted); }
+    .item .run pre.log { max-height: 360px; min-height: 3em; background: var(--field); }
+    .log div { margin-bottom: 4px; }
+    .log .text, .log .result { color: var(--text); }
+    .log .tool { color: var(--accent); }
+    .log .error { color: var(--danger); }
+    .log .output { padding-left: 14px; opacity: .75; }
+    .banner, .item .ship { background: var(--panel2); border: 1px solid var(--accent); border-radius: var(--radius); padding: 10px 12px; margin: 10px 0 0; }
+    .steps { display: flex; flex-wrap: wrap; gap: 4px 6px; margin: 8px 0; font-size: 12px; color: var(--muted); }
+    .steps span + span::before { content: '→ '; }
+    .steps .now { color: var(--accent); font-weight: 700; }
+    .ship { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+    .ship .warn { color: var(--danger); white-space: pre-wrap; overflow-wrap: anywhere; }
+    .ship ul { margin: 0; padding-left: 18px; overflow-wrap: anywhere; }
+    .ship label.file { display: flex; gap: 8px; align-items: flex-start; overflow-wrap: anywhere; }
   </style>
 </head>
 <body>
@@ -56,6 +72,7 @@
       <button id="signOut" hidden>🚪 Sign out</button>
       <span id="counts" class="hint"></span>
     </div>
+    <div id="restartBox" role="status"></div>
     <div id="addBox"></div>
     <div class="row" style="margin-top:12px">
       <select id="fStatus" aria-label="Status"><option value="open">Open</option><option value="done">Done</option><option value="">Open + done</option></select>
@@ -87,6 +104,230 @@
     const picked = new Set();
     const drafts = new Map();   // report id -> its open edit form, kept across redraws so typing isn't lost
     let items = [];
+    let jobs = null;            // report id -> its Claude run; null where the server doesn't offer Implement (not localhost)
+    const openRuns = new Map(); // report id -> whether its run output is unfolded, kept across redraws
+    const logs = new Map();     // report id -> its live log view, kept across redraws so it keeps its lines and scroll position
+    const MAX_LOG_LINES = 1500;
+    let poll = 0;
+    let dev = null;             // the dev server: when it loaded its code, and which files changed since
+    let restarting = false;
+    const ships = new Map();    // report id -> its open "commit, push & resolve" panel, kept across redraws
+    const RUN_STATES = { running: '⏳ Claude is working', done: '🤖 Claude finished: review the changes', failed: '⚠️ The run failed',
+      stopped: '⏹ Stopped', 'timed out': '⌛ Timed out' };
+    const running = () => Object.values(jobs || {}).some((j) => j.state === 'running');
+
+    // Redraws only when a run changed (a running one reports through its live log), and keeps checking while one is going.
+    async function loadJobs() {
+      clearTimeout(poll);
+      const key = () => JSON.stringify([jobs && Object.entries(jobs).map(([id, j]) => [id, j.state, j.started, j.files, j.commit, j.pushed]), dev?.stale, dev?.cant]);
+      const was = key(), before = jobs;
+      try { ({ jobs, server: dev = null } = await api('/api/admin/implement')); } catch (e) { if (e.status === 404) jobs = dev = null; }
+      for (const [id, j] of Object.entries(jobs || {})) {
+        if (before?.[id]?.state !== 'running' || j.state === 'running') continue;
+        openRuns.set(+id, true);
+        say(`${RUN_STATES[j.state] || j.state} (#${id}).${dev?.stale.length ? ' Restart the dev server to try it: see the top of the page.' : ' Reload the game page to try it.'}`);
+      }
+      drawRestart();
+      if (running()) poll = setTimeout(loadJobs, 5000);
+      if (key() !== was) render();
+    }
+
+    // Shown while the server runs older Python than what is on disk. Pages and scripts under static/ only need a reload.
+    function drawRestart() {
+      const box = $('restartBox');
+      if (!restarting && !dev?.stale.length) { box.replaceChildren(); return; }
+      const banner = el('div', 'banner');
+      if (restarting) banner.append(el('b', '', '🔁 Restarting the dev server…'));
+      else {
+        const some = dev.stale.slice(0, 4).join(', ') + (dev.stale.length > 4 ? ` and ${dev.stale.length - 4} more` : '');
+        banner.append(el('b', '', '🔁 Restart the dev server to run the new code'), el('p', 'hint left', `Changed since it started: ${some}`));
+        if (dev.cant) banner.append(el('p', 'hint left', dev.cant));
+        else {
+          const go = button('🔁 Restart dev server', restartServer, 'primary');
+          go.disabled = running();
+          if (go.disabled) banner.append(el('p', 'hint left', 'Claude is still working. Restart when it has finished.'));
+          banner.append(go);
+        }
+      }
+      box.replaceChildren(banner);
+    }
+
+    async function restartServer() {
+      const players = dev.players ? `${dev.players} player connection(s) are open and will drop for a few seconds. ` : '';
+      if (!confirm(`Restart the dev server? ${players}Rooms are saved and come back.`)) return;
+      const boot = dev.boot;
+      if (!await save('/api/admin/restart', {}, 'Restarting…')) return;
+      restarting = true; drawRestart();
+      let back = false;
+      for (let n = 0; n < 30 && !back; n++) {
+        await new Promise((done) => setTimeout(done, 1000));
+        try { back = (await api('/api/admin/implement')).server.boot !== boot; } catch { /* still down */ }
+      }
+      restarting = false;
+      say(back ? 'The dev server restarted. Reload the game page and try the change.' : "⚠️ The dev server didn't come back. Look at data/server.log.");
+      await loadJobs();
+      drawRestart();
+    }
+
+    // Where a report is: Claude works, you restart and try it, then Resolve commits and pushes.
+    function steps(i, job) {
+      const at = job.state === 'running' ? 0 : i.status === 'done' ? 3 : job.commit || ships.has(i.id) ? 2 : 1;
+      const row = el('div', 'steps');
+      row.append(...['1 Implement', '2 Restart & try it', '3 Review, commit & push', '4 Resolved'].map((name, n) => el('span', n === at ? 'now' : '', name)));
+      return row;
+    }
+
+    const hasChanges = (job) => job && job.state !== 'running' && !job.pushed && (job.commit || job.files?.length);
+
+    function openShip(i) {
+      const box = el('div', 'ship');
+      const view = { box, message: Object.assign(el('textarea'), { rows: 4, maxLength: 3900 }), picked: null };
+      view.message.value = `Implement feedback #${i.id} (${i.kind}${gameOf(i) ? `, ${gameOf(i)}` : ''})\n\nCo-Authored-By: Claude <noreply@anthropic.com>`;
+      ships.set(i.id, view);
+      render();
+      review(i);
+    }
+    const closeShip = (id) => { ships.delete(id); render(); };
+
+    async function review(i) {
+      const view = ships.get(i.id);
+      if (!view) return;
+      view.box.replaceChildren(el('div', '', 'Checking what would be committed…'));
+      let plan, error;
+      try { plan = await api('/api/admin/feedback/implement/review', { id: i.id, ...(view.picked && { files: view.picked }) }); } catch (e) { error = e.message; }
+      if (ships.get(i.id) !== view) return;
+      const parts = [el('b', '', `Resolve #${i.id}: commit and push`)];
+      const note = (cls, text) => parts.push(el('div', cls, text));
+      if (error) note('warn', error);
+      if (plan?.commit) note('', `Already committed as ${plan.commit.slice(0, 7)}. Only the push is left.`);
+      if (plan?.blocked) note('warn', plan.blocked);
+      for (const f of plan?.files || []) {
+        const row = el('label', 'file'), tick = Object.assign(el('input'), { type: 'checkbox', checked: f.picked });
+        tick.onchange = () => {
+          view.picked = plan.files.filter((x) => x.path === f.path ? tick.checked : x.picked).map((x) => x.path);
+          review(i);
+        };
+        const notes = [f.earlier && "has other uncommitted work, which stays out", f.later && 'edited again after the run: those edits are included'].filter(Boolean);
+        row.append(tick, el('span', '', f.path + (notes.length ? ` (${notes.join('; ')})` : '')));
+        parts.push(row);
+      }
+      if (plan?.files?.some((f) => f.earlier || !f.picked)) note('hint left', "The commit holds less than what you tried: it hasn't been run on its own.");
+      if (plan?.diff) { const d = el('details'); d.append(el('summary', '', 'Show the diff'), el('pre', '', plan.diff)); parts.push(d); }
+      if (plan?.ahead.length) {
+        const list = el('ul'); list.append(...plan.ahead.map((line) => el('li', '', line)));
+        const d = el('details'); d.append(el('summary', 'warn', `The push also sends ${plan.ahead.length} earlier commit(s) to ${plan.upstream}`), list); parts.push(d);
+      }
+      if (dev?.stale.length) note('warn', "The dev server hasn't been restarted since the code changed, so it isn't running this version.");
+      if (plan?.token) { const label = el('label', 'field', 'Commit message (pushed as written)'); label.append(view.message); parts.push(label); }
+      const actions = el('div', 'row');
+      if (plan?.token || plan?.commit) {
+        const go = button(plan.commit ? '⬆️ Push & resolve' : '⬆️ Commit, push & resolve', async () => {
+          if (!confirm(`${plan.commit ? 'Push' : 'Commit and push'} to ${plan.upstream}${plan.ahead.length ? `, along with ${plan.ahead.length} earlier commit(s)` : ''}, and resolve #${i.id}?`)) return;
+          go.disabled = true; go.textContent = '⏳ Pushing…';
+          const ok = await save('/api/admin/feedback/implement/ship', { id: i.id, token: plan.token, message: view.message.value, ...(view.picked && { files: view.picked }) },
+            `#${i.id} is committed, pushed and resolved.`);
+          if (ok) { ships.delete(i.id); await load(); return; }
+          const why = $('message').textContent;
+          await loadJobs();
+          await review(i);
+          say(why);
+        }, 'primary');
+        actions.append(go);
+      }
+      actions.append(button('🔄 Review again', () => review(i)),
+        button('✅ Resolve only', () => {
+          if (!confirm(`Resolve #${i.id} without committing or pushing anything?`)) return;
+          ships.delete(i.id);
+          update([i.id], { status: 'done' }, `#${i.id} is now done. Nothing was committed or pushed.`);
+        }),
+        button('Cancel', () => closeShip(i.id)));
+      parts.push(actions);
+      view.box.replaceChildren(...parts);
+    }
+
+    async function implementReport(i) {
+      if (!confirm(`Run Claude on #${i.id}? It edits the files in this repository. It doesn't commit, restart the server or resolve the report.`)) return;
+      if (await save('/api/admin/feedback/implement', { id: i.id }, `Claude started on #${i.id}.`)) await loadJobs();
+    }
+
+    function logView(id, job) {
+      let view = logs.get(id);
+      if (view?.started === job.started) return view;
+      clearTimeout(view?.timer);
+      view = { started: job.started, next: 0, top: 0, follow: true, busy: false, timer: 0, pre: el('pre', 'log') };
+      // follow the newest line until the reader scrolls up; scrolling back to the bottom follows again
+      view.pre.onscroll = () => {
+        const p = view.pre;
+        view.top = p.scrollTop;
+        view.follow = p.scrollHeight - p.scrollTop - p.clientHeight < 30;
+      };
+      logs.set(id, view);
+      return view;
+    }
+    const placeLog = (view) => { view.pre.scrollTop = view.follow ? view.pre.scrollHeight : view.top; };
+
+    // Fetches the lines added since last time, and again shortly while the run goes on and its box is open and on the page.
+    async function followLog(id) {
+      const view = logs.get(id);
+      if (!view || view.busy || !view.pre.isConnected || !view.pre.closest('details').open) return;
+      clearTimeout(view.timer);
+      view.busy = true;
+      const wasRunning = jobs?.[id]?.state === 'running';   // asked before reading, so the last lines of a run aren't missed
+      let wait = wasRunning ? 1500 : 0;
+      try {
+        const data = await api(`/api/admin/implement/log?id=${id}&from=${view.next}`);
+        view.next = data.next;
+        view.pre.append(...data.entries.map(([kind, text]) => el('div', kind, text)));
+        while (view.pre.childElementCount > MAX_LOG_LINES) view.pre.firstChild.remove();
+        if (data.entries.length) placeLog(view);
+        view.error?.remove();
+        if (data.more) wait = 50;
+      } catch (e) {
+        view.error?.remove();
+        view.error = el('div', 'error', e.status === 404 ? 'No live log. If the server is older than this page, restart it.' : `Couldn't read the log: ${e.message}`);
+        view.pre.append(view.error);
+        wait = e.status ? 0 : 5000;   // the server answered: asking again won't help. No answer: it may be restarting
+      }
+      view.busy = false;
+      if (logs.get(id) === view && wait) view.timer = setTimeout(() => followLog(id), wait);
+    }
+
+    async function copyText(text, done) {
+      try {
+        await navigator.clipboard.writeText(text);
+        say(done);
+      } catch {   // no clipboard access: show it to copy by hand
+        const box = Object.assign(el('textarea'), { rows: Math.min(8, text.split('\n').length + 1), readOnly: true, value: text });
+        $('copyBox').replaceChildren(box);
+        box.select();
+      }
+    }
+
+    function runBox(i, job) {
+      const box = el('details', 'run'), view = logView(i.id, job);
+      box.open = openRuns.get(i.id) ?? job.state === 'running';
+      box.ontoggle = () => { openRuns.set(i.id, box.open); if (box.open) { placeLog(view); followLog(i.id); } };
+      box.append(el('summary', '', `${RUN_STATES[job.state] || job.state} · started ${new Date(job.started * 1000).toLocaleString()}`));
+      if (job.state !== 'running') box.append(el('pre', '', job.detail));
+      box.append(view.pre);
+      if (job.state !== 'running') {
+        const next = job.pushed ? `Pushed as ${job.commit.slice(0, 7)}.`
+          : job.commit ? `Committed as ${job.commit.slice(0, 7)}, not pushed yet. Press Resolve to push.`
+          : job.files?.length ? `Changed ${job.files.length} file(s). ${dev?.stale.length ? 'Restart the dev server (top of the page), then try it.' : 'Reload the game page and try it.'} Then press Resolve to review, commit and push.`
+          : job.files ? 'The run changed no files.' : "This run has no starting snapshot, so Resolve can't commit it.";
+        box.append(el('div', 'hint left', next));
+      }
+      if (job.resume) {
+        const row = el('div', 'row');
+        const copy = button('📋 Copy resume command', () => copyText(job.resume,
+          job.state === 'running' ? 'Copied. Claude is still working: stop it or let it finish before you resume.' : 'Copied the resume command. Paste it in a terminal.'));
+        copy.title = job.resume;
+        row.append(copy);
+        box.append(row);
+      }
+      box.append(el('div', 'hint', `Full log: ${job.log}`));
+      return box;
+    }
     const gameOf = (i) => i.context?.game || '';
     const say = (text) => { $('message').textContent = text; };
 
@@ -124,6 +365,7 @@
       select.replaceChildren(new Option('All games', '*'), new Option('No game', ''), ...games.map((g) => new Option(g, g)));
       select.value = [...select.options].some((o) => o.value === was) ? was : '*';
       render();
+      loadJobs();
       return true;
     }
 
@@ -177,6 +419,7 @@
         }
         list.append(drafts.get(i.id) || card(i));
       }
+      for (const [id, view] of logs) if (view.pre.isConnected) { placeLog(view); followLog(id); }
       syncBulk();
     }
 
@@ -208,10 +451,27 @@
       if (Object.keys(ctx).length) extra('Technical details', JSON.stringify(ctx, null, 2));
       const actions = el('div', 'row actions');
       const next = i.status === 'done' ? 'open' : 'done';
+      const job = jobs?.[i.id];
+      // with uncommitted changes from a run, Resolve opens the commit & push review first
+      const ship = next === 'done' && hasChanges(job);
       actions.append(
-        button(next === 'done' ? '✅ Resolve' : '↩︎ Reopen', () => update([i.id], { status: next }, `#${i.id} is now ${next}.`), next === 'done' ? 'primary' : ''),
+        button(ship ? '✅ Resolve…' : next === 'done' ? '✅ Resolve' : '↩︎ Reopen',
+          () => ship ? openShip(i) : update([i.id], { status: next }, `#${i.id} is now ${next}.`), next === 'done' ? 'primary' : ''),
         button('✏️ Edit', () => { drafts.set(i.id, editor(i)); render(); }));
+      if (job?.state === 'running') {
+        actions.append(button('⏹ Stop Claude', async () => {
+          if (await save('/api/admin/feedback/implement/stop', { id: i.id }, `Stopped the run on #${i.id}.`)) await loadJobs();
+        }));
+      } else if (jobs && i.status === 'open' && i.kind !== 'table') {
+        const go = button(job ? '🤖 Implement again' : '🤖 Implement', () => implementReport(i));
+        go.disabled = running();
+        if (go.disabled) go.title = 'Claude is working on another report';
+        actions.append(go);
+      }
       box.append(actions);
+      if (job) box.append(steps(i, job));
+      if (ships.has(i.id) && i.status === 'open') box.append(ships.get(i.id).box);
+      if (job) box.append(runBox(i, job));
       return box;
     }
 
@@ -318,8 +578,8 @@
     };
     $('signOut').onclick = async () => {
       await api('/api/admin/logout', {}).catch(() => {});
-      items = []; remote = false; picked.clear(); drafts.clear();
-      for (const id of ['list', 'addBox', 'copyBox']) $(id).replaceChildren();
+      items = []; remote = false; picked.clear(); drafts.clear(); logs.clear(); ships.clear();
+      for (const id of ['list', 'addBox', 'copyBox', 'restartBox']) $(id).replaceChildren();
       showLogin('Signed out.');
     };
     $('add').onclick = () => { if (!$('addBox').firstChild) $('addBox').replaceChildren(editor()); $('addBox').querySelector('textarea').focus(); };
@@ -330,7 +590,10 @@
     for (const b of document.querySelectorAll('[data-bulk]')) {
       b.onclick = () => {
         const change = JSON.parse(b.dataset.bulk), ids = selected().map((i) => i.id);
-        if (ids.length > 1 && !confirm(`Mark ${ids.length} reports ${change.status}?`)) return;
+        const unshipped = change.status === 'done' ? ids.filter((id) => hasChanges(jobs?.[id])) : [];
+        if (unshipped.length) {
+          if (!confirm(`Mark ${ids.length} report(s) done? This commits and pushes nothing, including Claude's changes for #${unshipped.join(', #')}.`)) return;
+        } else if (ids.length > 1 && !confirm(`Mark ${ids.length} reports ${change.status}?`)) return;
         picked.clear();
         update(ids, change, `${ids.length} report(s) now ${change.status}.`);
       };
@@ -340,17 +603,7 @@
       $('bulkPriority').value = '-';
       update(ids, { priority }, `Priority set on ${ids.length} report(s).`);
     };
-    $('copy').onclick = async () => {
-      const text = markdown(selected());
-      try {
-        await navigator.clipboard.writeText(text);
-        say(`Copied ${selected().length} report(s).`);
-      } catch {   // no clipboard access: show the list to copy by hand
-        const box = Object.assign(el('textarea'), { rows: 8, readOnly: true, value: text });
-        $('copyBox').replaceChildren(box);
-        box.select();
-      }
-    };
+    $('copy').onclick = () => copyText(markdown(selected()), `Copied ${selected().length} report(s).`);
     // pick up reports that arrived while the tab was in the background
     document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
     load();
