@@ -1,5 +1,6 @@
 """Deterministic checks of the table, controllers and room lifecycle."""
 import math
+import random
 from pathlib import Path
 import sys
 import unittest
@@ -8,7 +9,7 @@ from unittest.mock import patch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from games.pinball import (
     BALL, BUMPS, FLIP_RADIUS, FLIPPERS, JACKPOT_TICKS, LAUNCH, LAYOUT, RAMP, RAMP_EXIT, ROLLOVERS,
-    SANDBOX_PARTS, SLINGS, SPINNER, TABLES, TARGETS, Table as GoldenHour,
+    CustomTable, SLINGS, SPINNER, TABLES, TARGETS, Table as GoldenHour,
 )
 from dataclasses import dataclass
 from server import Room
@@ -757,45 +758,81 @@ class PinballRules(unittest.TestCase):
             self.assertEqual(game.final_scores(), dict.fromkeys((p.id for p in players), 0))
 
 
-class SandboxTables(unittest.TestCase):
-    """The sandbox keeps the cabinet but removes every playfield part except the one picked."""
-
-    PARTS = ("bumps", "slings", "targets", "lanes", "spinner", "ramp", "orbit", "saucer", "subway", "magnet", "posts", "outlane", "special")
-
-    def test_each_part_is_alone_and_runs(self):
-        for part, (_, extra) in SANDBOX_PARTS.items():
-            with self.subTest(part=part):
-                table = TABLES["sandbox_" + part][1](balls=99)
-                lay = table.layout
-                present = {name for name in self.PARTS if getattr(lay, name)}
-                self.assertLessEqual(present, set(extra) | {"rails"} | ({"posts"} if part == "lanes" else set()))
-                for name in extra:
-                    if name not in ("rails", "orbit_path", "orbit_exit", "ramp_exit", "subway_exit"):
-                        self.assertTrue(getattr(lay, name), name)
-                for tick in range(240 * 20):
-                    if table.staged:
-                        table.input(4 if table.charge < 150 else 0, 0, tick / 240)
-                    else:
-                        table.input((1, 2, 0, 3)[tick // 25 % 4], 0, tick / 240)
-                    table.step()
-                self.assertGreater(table.balls, 0)
-                self.assertTrue(table.balls <= 99)
-                self.assertEqual(len(table.public()), 31)
-
-    def test_sandbox_rooms_survive_saving(self):
-        import pickle
-        for part in SANDBOX_PARTS:
-            table = TABLES["sandbox_" + part][1](balls=99)
-            clone = pickle.loads(pickle.dumps(table))
-            self.assertIs(type(clone), type(table))
+class CuratedTables(unittest.TestCase):
+    """The curated list: player-made tables that were reviewed and added to games/pinball_tables."""
 
     def test_real_tables_are_untouched(self):
         for key in ("golden", "neon"):
             lay = TABLES[key][1].layout
             self.assertTrue(lay.bumps and lay.ramp and lay.spinner and lay.targets and lay.magnet and lay.subway)
 
-    def test_magnet_is_live_on_its_own_table(self):
-        table = TABLES["sandbox_magnet"][1](balls=99)
+    def test_no_test_sandbox_tables_are_left(self):
+        from games.pinball import Pinball
+        ids = [k for k, _ in Pinball.settings_schema["table"][1]]
+        self.assertFalse([i for i in ids + list(TABLES) if "sandbox" in i])
+
+    def test_every_curated_table_is_listed_and_builds(self):
+        from games.pinball import CURATED, Pinball
+        from games.pinball_custom import build
+        self.assertGreaterEqual(len(CURATED), 7)
+        listed = [k for k, _ in Pinball.settings_schema["table"][1]]
+        for table_id, entry in CURATED.items():
+            with self.subTest(table=table_id):
+                self.assertTrue(table_id.startswith("t_"))
+                self.assertIn(table_id, listed)
+                self.assertIn(table_id, TABLES)
+                layout, _ = build(entry["spec"])
+                self.assertTrue(entry["name"] and entry["blurb"])
+                self.assertLessEqual(len(layout.rails), 400)
+
+    def test_a_curated_table_plays_in_a_room_and_survives_saving(self):
+        import pickle
+        from games.pinball import CURATED
+        for table_id in CURATED:
+            with self.subTest(table=table_id):
+                players = [type("P", (), {"id": "p1", "name": "A", "bot": False})()]
+                room = type("R", (), {"turn": None, "deadline": None, "custom_table": None, "settings": {}})()
+                game = Pinball_for(room, table_id)
+                game.start(players, random.Random(1))
+                table = game.tables["p1"]
+                self.assertEqual(table.balls, 3)                  # a listed table is a real game, not the endless test table
+                self.assertEqual(game.layout_public()["theme"], "custom")
+                for tick in range(240 * 10):
+                    table.input(4 if table.staged and table.charge < 150 else (1, 2, 0, 3)[tick // 25 % 4], 0, tick / 240)
+                    table.step()
+                self.assertIs(type(pickle.loads(pickle.dumps(table))), type(table))
+
+    def test_the_loader_skips_broken_files(self):
+        import json, tempfile, os
+        from games import pinball_tables
+        with tempfile.TemporaryDirectory() as folder:
+            good = {"name": "Fine Table", "blurb": "ok", "spec": {"items": [["bump", 4, 5, .6, "#ffffff"]]}}
+            for name, entry in {"fine-table": good, "bad-spec": {"name": "Bad Spec", "spec": {"items": [["nope"]]}},
+                                "no-name": {"spec": good["spec"]}, "Bad Slug!": good}.items():
+                with open(os.path.join(folder, name + ".json"), "w") as f:
+                    json.dump(entry, f)
+            with open(os.path.join(folder, "broken.json"), "w") as f:
+                f.write("{not json")
+            self.assertEqual(list(pinball_tables.load(folder)), ["t_fine-table"])
+
+    def test_the_table_check_accepts_good_tables_and_rejects_bad_ones(self):
+        from games.pinball import CURATED
+        from games.pinball_tables.check import check
+        self.assertTrue(check(CURATED["t_pop-pit"]["spec"])["ok"])
+        empty = check({"items": []})
+        self.assertFalse(empty["ok"])
+        self.assertTrue(any("parts" in p for p in empty["problems"]))
+        self.assertFalse(check({"items": [["nope"]]})["ok"])
+        self.assertFalse(check("PT1.not-a-code")["ok"])
+        # parts that do not score: a table of posts and walls
+        dull = check({"items": [["post", 1 + i, 3, .2, "#ffffff"] for i in range(7)]})
+        self.assertFalse(dull["ok"])
+        self.assertTrue(any("scores" in p for p in dull["problems"]))
+
+    def test_magnet_is_live_on_a_table_with_one(self):
+        from games.pinball_custom import build, build_rules
+        layout, _ = build({"items": [["magnet", 4, 8, 1.2, "#59edd2"]]})
+        table = CustomTable(layout_override=layout, rules_override=build_rules({}), balls=99)
         self.assertEqual(table.public()[-1]["magnet"], 1)
         self.assertEqual(GoldenHour().public()[-1]["magnet"], 0)
         table.staged = False
@@ -803,6 +840,78 @@ class SandboxTables(unittest.TestCase):
         for _ in range(5):
             table.step()
         self.assertGreater(table.magnet_ticks, 0)
+
+
+def Pinball_for(room, table_id):
+    from games.pinball import Pinball
+    game = Pinball(room)
+    game.s = {"table": table_id, "mode": "classic"}
+    return game
+
+
+class TableSuggestionsAndTool(unittest.TestCase):
+    """A player's suggestion reaches the inbox only if it builds, and the maintainer tool turns it into a curated file."""
+
+    GOOD = {"v": 1, "name": "Tool Test", "items": [["bump", 3, 5, .6, "#ff9b59"], ["bump", 5.5, 5, .6, "#c699ff"], ["bump", 4.4, 7.5, .6, "#58e5d5"],
+                                                    ["lane", 3.4, 2.4, "#59edd2"], ["lane", 4.4, 2.4, "#59edd2"], ["lane", 5.4, 2.4, "#59edd2"],
+                                                    ["sling", 1.35, 10.75, 2.85, 12.5, "#ff6854"], ["sling", 7.73, 10.75, 6.48, 12.6, "#ff6854"]]}
+
+    @staticmethod
+    def code(spec):
+        import base64, json, zlib
+        packer = zlib.compressobj(wbits=-15)
+        return "PT1." + base64.urlsafe_b64encode(packer.compress(json.dumps(spec).encode()) + packer.flush()).decode().rstrip("=")
+
+    def test_suggestions_are_checked_on_arrival_and_the_tool_reads_them(self):
+        import contextlib, io, json, os, tempfile
+        import server
+        from games import pinball_tables
+        from games.base import GameError
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
+        import pinball_table as tool
+        with tempfile.TemporaryDirectory() as folder:
+            inbox = os.path.join(folder, "feedback.jsonl")
+            with patch.object(server, "FEEDBACK_FILE", inbox), patch.object(pinball_tables, "FOLDER", folder):
+                result = server.submit_feedback({"kind": "table", "text": 'Table suggestion: "Tool Test" (8 parts)', "name": "Sam",
+                                                 "context": {"pinball_table": self.code(self.GOOD)}})
+                self.assertEqual(result["id"], 1)
+                for bad in ({"pinball_table": "PT1.nonsense"}, {"pinball_table": 5}, {}, {"pinball_table": "PT1." + "A" * 9000},
+                            {"pinball_table": self.code({"items": [["nope"]]})}):
+                    with self.assertRaises(GameError, msg=repr(bad)[:40]):
+                        server.submit_feedback({"kind": "table", "text": "Table suggestion: nope", "context": bad})
+                with open(inbox, encoding="utf-8") as f:
+                    saved = [json.loads(line) for line in f]
+                self.assertEqual(len(saved), 1)                                     # only the good one was stored
+                self.assertEqual((saved[0]["kind"], saved[0]["context"]["parts"], saved[0]["name"]), ("table", 8, "Sam"))
+                out = io.StringIO()
+                with contextlib.redirect_stdout(out):
+                    self.assertEqual(tool.main(["inbox", "--inbox", inbox]), 0)
+                    self.assertEqual(tool.main(["check", "#1", "--inbox", inbox]), 0)
+                self.assertIn("#1", out.getvalue())
+                self.assertIn("PASS", out.getvalue())
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(tool.main(["add", "#1", "--inbox", inbox, "--name", "Tool Test", "--blurb", "Three bumpers."]), 0)
+                    with self.assertRaises(SystemExit):                                   # the name is taken
+                        tool.main(["add", "#1", "--inbox", inbox, "--name", "Tool Test"])
+                listed = pinball_tables.load(folder)
+                self.assertEqual(list(listed), ["t_tool-test"])
+                self.assertEqual((listed["t_tool-test"]["author"], listed["t_tool-test"]["blurb"]), ("Sam", "Three bumpers."))
+                with contextlib.redirect_stdout(io.StringIO()):
+                    tool.main(["remove", "tool-test"])
+                self.assertEqual(pinball_tables.load(folder), {})
+
+    def test_the_tool_refuses_a_failing_table_unless_forced(self):
+        import contextlib, io, os, tempfile
+        from games import pinball_tables
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tools"))
+        import pinball_table as tool
+        dull = self.code({"items": [["post", 1 + i, 3, .2, "#ffffff"] for i in range(7)]})
+        with tempfile.TemporaryDirectory() as folder, patch.object(pinball_tables, "FOLDER", folder), contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaises(SystemExit):
+                tool.main(["add", dull, "--name", "Dull One"])
+            self.assertEqual(os.listdir(folder), [])
+            self.assertEqual(tool.main(["add", dull, "--name", "Dull One", "--force"]), 0)
+            self.assertEqual(os.listdir(folder), ["dull-one.json"])
 
 
 class CustomTables(unittest.TestCase):
@@ -820,7 +929,7 @@ class CustomTables(unittest.TestCase):
         self.assertEqual(layout.bumps, ((3.0, 5.5, .65),))
         self.assertEqual(layout.paint["bumps"], ["#ff9b59"])
         self.assertEqual(layout.paint["name"], "My table")
-        self.assertEqual(len(layout.rails), len(cabinet.SANDBOX_BASE) + 1)
+        self.assertEqual(len(layout.rails), len(cabinet.BASE_RAILS) + 1)
         self.assertTrue(layout.outlane and layout.special and layout.spinner and layout.saucer and layout.magnet)
         self.assertEqual(build(clean)[1], clean)          # cleaning is stable
 
@@ -831,7 +940,7 @@ class CustomTables(unittest.TestCase):
         layout, _ = build({"items": [["bump", -5, 99, 9, "#FFFFFF"], ["wall", 1, 1, 1, 1, "#ffffff"], ["wall", 1, 1, 9, 1, "#ffffff"]]})
         x, y, r = layout.bumps[0]
         self.assertTrue(.45 <= x <= 8.35 and .45 <= y <= 14.2 and r <= 1.0)
-        for wall in layout.rails[len(cabinet.SANDBOX_BASE):]:
+        for wall in layout.rails[len(cabinet.BASE_RAILS):]:
             self.assertTrue(.25 - 1e-6 <= math.hypot(wall[2] - wall[0], wall[3] - wall[1]) <= 4.5 + 1e-6)
         for bad in ({}, {"items": "x"}, {"items": [["nope"]]}, {"items": [["bump", 1, 1, .5, "red"]]}, {"items": [["bump", 1, "1", .5, "#ffffff"]]},
                     {"items": [["bump", 1, 1, .5, "#ffffff"]] * 13}, {"items": [["spinner", 1, 1, "#ffffff"]] * 2},
@@ -844,8 +953,8 @@ class CustomTables(unittest.TestCase):
         from games import pinball as cabinet
         layout, clean = build({"items": [["arc", 1, 5, 4, 5, 2.5, 3, "#ff0000"], ["flap", 3, 8, 4, 8, "#ffffff"],
                                          ["portal", 1, 9, 5, 9, "#00ff00"], ["star", 3, 3, .5, "#ffffff"], ["moon", 6, 3, 9, "#ffffff"]]})
-        self.assertGreater(len(layout.rails), len(cabinet.SANDBOX_BASE) + 5)
-        self.assertEqual(len(layout.paint["walls"]), len(layout.rails) - len(cabinet.SANDBOX_BASE))
+        self.assertGreater(len(layout.rails), len(cabinet.BASE_RAILS) + 5)
+        self.assertEqual(len(layout.paint["walls"]), len(layout.rails) - len(cabinet.BASE_RAILS))
         self.assertEqual(layout.flaps, ((3.0, 8.0, 4.0, 8.0),))
         self.assertEqual(layout.portals, (1.0, 9.0, 5.0, 9.0, .32))
         self.assertEqual([d[0] for d in layout.paint["decals"]], ["star", "moon"])

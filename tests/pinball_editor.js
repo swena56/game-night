@@ -152,7 +152,7 @@ const base = process.env.BASE || 'http://localhost:8794';
     await page.locator('#peName').fill('Green Machine');
     await page.locator('#peName').dispatchEvent('change');
     await page.locator('#pePlay').click();
-    await page.waitForURL(base + '/');
+    await page.waitForURL((u) => new URL(u).pathname === '/');
     await page.locator('.pb-flat').waitFor();
     await page.waitForFunction(() => S?.pinball?.layout);
     const game = await page.evaluate(() => { const l = S.pinball.layout; return { table: S.pinball.table, bumps: l.bumps.length, paint: l.paint.bumps[0],
@@ -231,8 +231,8 @@ const base = process.env.BASE || 'http://localhost:8794';
     });
     assert.ok((await p2.evaluate(() => JSON.stringify(window.pinballEditor.toSpec()).length)) > 2500, 'the table is big enough to travel as a code');
     await p2.locator('#pePlay').click();
-    await p2.waitForURL(base + '/');
-    await p2.waitForFunction(() => S?.pinball?.layout);
+    await p2.waitForURL((u) => new URL(u).pathname === '/', { waitUntil: 'commit' });
+    await p2.waitForFunction(() => typeof S !== 'undefined' && S?.pinball?.layout, null, { timeout: 90000 });
     const big = await p2.evaluate(() => ({ posts: S.pinball.layout.posts.length, bumps: S.pinball.layout.bumps.length }));
     assert.deepEqual(big, { posts: 16, bumps: 12 });
     await p2.goto(base + '/pinball-editor.html');          // back from the game: the editor comes back with the same table
@@ -266,15 +266,20 @@ const base = process.env.BASE || 'http://localhost:8794';
     assert.equal(await p2.locator('#pePitemCount, .pe-pitem.on').count(), 1);
     await p2.locator('.pe-pitem', { hasText: 'Subway' }).click();
     assert.equal(await p2.locator('#peTitle').textContent(), '🚇 Subway', 'the parts list selects a part');
-    // every template in the gallery is accepted by the server and plays
+    // every template and every featured table in the gallery is accepted by the server
     await p2.goto(base + '/pinball-editor.html');
+    await p2.waitForFunction(() => fetch('/api/pinball-tables').then((r) => r.json()).then((d) => d.tables.length >= 7));
+    await p2.waitForTimeout(300);
     const names = await p2.evaluate(async () => {
       const out = [];
       document.getElementById('peTables').click();
-      for (const row of document.querySelectorAll('#peTemplates .pe-item')) { row.querySelector('button').click(); out.push(JSON.stringify(window.pinballEditor.toSpec())); document.getElementById('peTables').click(); }
+      const rows = [...document.querySelectorAll('#peTemplates .pe-item, #peFeatured .pe-item')];
+      for (const row of rows) { row.querySelector('button').click(); out.push(JSON.stringify(window.pinballEditor.toSpec())); document.getElementById('peTables').click(); }
       return out;
     });
-    assert.ok(names.length >= 11, 'the gallery has the hand-built tables');
+    assert.ok(names.length >= 10, 'the gallery has the starter tables and the curated ones');
+    assert.ok(names.some((t) => JSON.parse(t).name === 'Pop Pit'), 'a curated table is featured');
+    assert.ok(!names.some((t) => /Wire playground|Portals & curves|Sandbox/.test(JSON.parse(t).name)), 'the junk templates are gone');
     const made = JSON.parse(await (await fetch(base + '/api/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Tmpl', game: 'pinball' }) })).text());
     for (const text of names) {
       const r = await fetch(base + '/api/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...made, type: 'pinball_table', table: JSON.parse(text), aid: Math.random().toString(36).slice(2) }) });
@@ -303,6 +308,17 @@ const base = process.env.BASE || 'http://localhost:8794';
     await tp.waitForFunction(() => scrollY > 100);
     assert.match(await tp.locator('#peJump').textContent(), /Board/);
     await touch.close();
+    // suggesting a table: it lands in the feedback inbox as a table suggestion
+    await p2.goto(base + '/pinball-editor.html');
+    await p2.evaluate(() => { const e = window.pinballEditor; e.state.items = []; for (const [k, x, y] of [['bump', 3, 5], ['bump', 5.5, 5], ['bump', 4.4, 7.5], ['lane', 3.4, 2.4], ['lane', 4.4, 2.4], ['lane', 5.4, 2.4], ['wall', 1, 9]]) e.addPart(k, x, y); });
+    await p2.locator('#peSuggest').click();
+    await p2.locator('#peSugName').fill('Ab');
+    await p2.locator('#peSugSend').click();
+    assert.match(await p2.locator('#peSugMsg').textContent(), /3 to 24/);
+    await p2.locator('#peSugName').fill('Browser Test');
+    await p2.locator('#peSugSend').click();
+    await p2.waitForFunction(() => /Suggestion #\d+ is in the queue/.test(document.getElementById('peSugMsg').textContent));
+    await p2.keyboard.press('Escape');
     console.log('Pinball editor checks passed: drag, move, resize, inspector, undo, limits, wires, share codes, saved tables and play');
   } finally {
     await browser.close();

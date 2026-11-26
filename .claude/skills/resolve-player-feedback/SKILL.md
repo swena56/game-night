@@ -22,3 +22,9 @@ description: Fetch and triage feedback submitted by Game Night players through t
 
 - Report the outcome for each ID or duplicate group, including the tests run and any pending verification.
 - Change live inbox status only with authorization and after verifying the resolution on the intended instance. For an authorized update after public verification, run `python3 fetch_feedback.py --resolve REPORT_ID [REPORT_ID ...]` with the same Droplet selector used to fetch the reports. The CLI reads back the affected reports. Use `--reopen` to reverse a closure. A verified workspace fix can be reported immediately with its live rollout status.
+
+## Pinball table suggestions
+
+Reports of kind `table` are tables players suggest for the pinball table list, not bugs. Do not fix them in code. Follow
+`docs/pinball-tables.md`: run `python3 tools/pinball_table.py inbox`, then `check "#ID"`, play it, and only then `add`. Adding a table needs
+the maintainer's say-so; report the check result and your impression, and let them decide.

@@ -3,7 +3,7 @@ import time
 from uuid import uuid4
 
 from .base import Game, GameError
-from . import pinball_custom
+from . import pinball_custom, pinball_tables
 from .pinball_engine import Layout, Rules, Table as EngineTable, flipper_pair
 
 WIDTH, HEIGHT, BALL = 10, 17, 0.19
@@ -117,35 +117,12 @@ SMOOTH_WALL = fillet(((0, 17), (0, 2.2), (1.5, 0), (7.8, 0), (10, 2.8), (10, 17)
 LEFT_GUIDE = fillet(((0.9, 12.2), (0.9, 13.5), (3.22, 14.95)), (0.5,))
 RIGHT_GUIDE = fillet(((7.9, 12.4), (7.9, 13.8), (6.78, 14.95)), (0.5,))
 SMOOTH_GUIDES = LEFT_GUIDE + RIGHT_GUIDE
-SANDBOX_BASE = SMOOTH_WALL + ((8.8, 3.1, 8.8, 17), (8.8, 16.25, 10, 16.25)) + SMOOTH_GUIDES
+BASE_RAILS = SMOOTH_WALL + ((8.8, 3.1, 8.8, 17), (8.8, 16.25, 10, 16.25)) + SMOOTH_GUIDES
 # rails from here on are the livelier metal guides: the right inlane guide, then anything the table adds
-GUIDES_FROM = len(SANDBOX_BASE) - len(RIGHT_GUIDE)
-SANDBOX_PARTS = {
-    "bare": ("⬜ Nothing (flippers only)", {}),
-    "bumpers": ("🔴 Pop bumpers", dict(bumps=BUMPS)),
-    "slings": ("🔺 Slingshots", dict(slings=SLINGS)),
-    "targets": ("🎯 Drop targets", dict(targets=TARGETS)),
-    "lanes": ("🛤️ Rollover lanes", dict(lanes=ROLLOVERS, rails=SANDBOX_BASE + RAILS[11:13], posts=POSTS[:2])),
-    "spinner": ("🌀 Spinner", dict(spinner=SPINNER)),
-    "ramp": ("🛝 Ramp", dict(ramp=RAMP, ramp_exit=RAMP_EXIT)),
-    "orbit": ("🔄 Orbit lane", dict(orbit=ORBIT, orbit_path=ORBIT_PATH, orbit_exit=ORBIT_EXIT)),
-    "saucer": ("🥣 Saucer", dict(saucer=SAUCER)),
-    "subway": ("🚇 Subway", dict(subway=SUBWAY, subway_exit=SUBWAY_EXIT)),
-    "magnet": ("🧲 Magnet", dict(magnet=MAGNET)),
-    "posts": ("⚫ Rubber posts", dict(posts=POSTS)),
-    "outlanes": ("↩️ Kickback + special outlanes", dict(outlane=OUTLANE, special=SPECIAL)),
-}
-
-
-def sandbox_table(part):
-    kwargs = dict(rails=SANDBOX_BASE, flippers=FLIPPERS, launch=LAUNCH, gate=GATE, width=WIDTH, height=HEIGHT, ball=BALL,
-                  flipper_length=LENGTH, flipper_radius=FLIP_RADIUS, skill_charge=SKILL_CHARGE, theme="sandbox",
-                  guides_from=GUIDES_FROM, guide_run=len(RIGHT_GUIDE))
-    kwargs.update(SANDBOX_PARTS[part][1])
-    layout = Layout(**kwargs)
-    cls = type(f"Sandbox_{part}", (EngineTable,), {"layout": layout, "rules": Rules(lock_balls=0, center_post=True, always_on=True)})
-    globals()[cls.__name__] = cls       # rooms are pickled to disk, so the class must be findable by name
-    return cls
+GUIDES_FROM = len(BASE_RAILS) - len(RIGHT_GUIDE)
+BARE_TABLE = Layout(rails=BASE_RAILS, flippers=FLIPPERS, launch=LAUNCH, gate=GATE, width=WIDTH, height=HEIGHT, ball=BALL,
+                    flipper_length=LENGTH, flipper_radius=FLIP_RADIUS, skill_charge=SKILL_CHARGE, theme="custom",
+                    guides_from=GUIDES_FROM, guide_run=len(RIGHT_GUIDE))
 
 
 # per-mode starting state: practice and time attack never run out of balls; time attack is three minutes of play
@@ -153,12 +130,16 @@ MODES = {"classic": {}, "zen": dict(mode="zen"), "practice": dict(mode="practice
          "timeattack": dict(mode="timeattack", balls=99, clock=180 * 240)}
 class CustomTable(EngineTable):
     """A table from the editor: the layout arrives with each game (layout_override); this one is only the fallback."""
-    layout = sandbox_table("bare").layout
+    layout = BARE_TABLE
     rules = Rules(lock_balls=0, center_post=True, always_on=True)
 
 
+# Player-made tables that were added to the curated list (see docs/pinball-tables.md): one folder of JSON files, one lobby entry each.
+CURATED = pinball_tables.load()
 TABLES = {"golden": ("Golden Hour", Table), "neon": ("Neon Arcade", NeonTable), "custom": ("My table", CustomTable),
-          **{f"sandbox_{part}": (f"Sandbox · {label}", sandbox_table(part)) for part, (label, _) in SANDBOX_PARTS.items()}}
+          **{table_id: (entry["name"], CustomTable) for table_id, entry in CURATED.items()}}
+
+
 class Pinball(Game):
     id = "pinball"
     name = "Pinball"
@@ -166,10 +147,10 @@ class Pinball(Game):
     icon = "🕹️"
     min_players, max_players = 1, 6
     replayable = False
-    # the sandbox tables are listed last: one per part, so records for Golden Hour and Neon keep their keys
+    # curated tables are listed after the built-in ones so records for Golden Hour and Neon keep their keys
     settings_schema = {"table": ("Table", [("golden", "🌇 Golden Hour"), ("neon", "🌃 Neon Arcade"),
-                                           ("custom", "🛠️ My table (from the editor)"),
-                                           *((f"sandbox_{k}", f"🧪 Sandbox · {v[0]}") for k, v in SANDBOX_PARTS.items())], "golden"),
+                                           *((table_id, f"⭐ {entry['name']}") for table_id, entry in CURATED.items()),
+                                           ("custom", "🛠️ My table (from the editor)")], "golden"),
                        "mode": ("Mode", [("classic", "🎱 Classic"), ("timeattack", "⏱️ Time attack (3 min)"),
                                          ("zen", "🧘 Zen (no tilt)"), ("practice", "🎯 Practice (endless)")], "classic")}
     blurb = "Three balls on a colorful chrome-trimmed table. Bank shots off the bumpers, light the ramp, and chase a high score."
@@ -193,12 +174,15 @@ class Pinball(Game):
         table_class = TABLES[self.table_id][1]
         self.mode = self.s.get("mode") if self.s.get("mode") in MODES else "classic"
         start = dict(MODES[self.mode])
-        if self.table_id.startswith("sandbox_") or self.table_id == "custom":
-            start["balls"] = 99        # a test table never runs out of balls
+        spec = None
         if self.table_id == "custom":
+            start["balls"] = 99        # a table you are building never runs out of balls
             spec = getattr(self.room, "custom_table", None)
             if not spec:
                 raise GameError("Build a table in the table editor first.")
+        elif self.table_id in CURATED:
+            spec = CURATED[self.table_id]["spec"]
+        if spec:
             self.custom_layout = pinball_custom.build(spec, self.mode)[0]
             start["layout_override"] = self.custom_layout
             start["rules_override"] = pinball_custom.build_rules(spec)
@@ -285,7 +269,7 @@ class Pinball(Game):
                 "tables": {pid: t.public() for pid, t in self.tables.items() if not t.departed}}
 
     def layout_public(self):
-        if getattr(self, "table_id", "golden") == "custom":
+        if getattr(self, "custom_layout", None) is not None:
             return self.custom_layout.public()
         return TABLES[getattr(self, "table_id", "golden")][1].layout.public()
 

@@ -29,7 +29,7 @@
   const TRAIL_HEX = ['#fff0ca', '#ffe296', '#ffc86e', '#ffa05a', '#ff6e5a'];
   // personal bests are kept per table and per mode (practice keeps none)
   const modeTag = (g) => (g.mode && g.mode !== 'classic' ? '.' + g.mode : '');
-  const tableTag = (g) => g.table === 'neon' ? '.neon' : g.table?.startsWith('sandbox') ? '.sandbox' : g.table === 'custom' ? '.custom' : '';
+  const tableTag = (g) => g.table === 'neon' ? '.neon' : g.table === 'custom' ? '.custom' : g.table?.startsWith('t_') ? '.' + g.table : '';   // t_<slug> = a curated table, with its own records
   const bestKey = (g) => `pinball.best${tableTag(g)}${modeTag(g)}`;
   const topKey = (g) => `pinball.top${tableTag(g)}${modeTag(g)}`;
   const clockText = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -147,14 +147,14 @@
     c.fillStyle = palette.ivory;
     c.textAlign = 'center';
     c.scale(.01, .01);
-    const title = geo.theme === 'sandbox' ? 'Sandbox' : geo.theme === 'custom' ? (geo.paint?.name || 'My Table') : 'Golden Hour';
+    const title = geo.theme === 'custom' ? (geo.paint?.name || 'My Table') : 'Golden Hour';
     c.font = 'bold 55px Georgia';
     const titleWidth = c.measureText(title).width;
     if (titleWidth > 330) c.font = `bold ${Math.max(22, Math.floor(55 * 330 / titleWidth))}px Georgia`;   // long names shrink to fit the medallion
     c.fillText(title, 0, -3);
     c.fillStyle = palette.gold;
     c.font = 'bold 24px sans-serif';
-    c.fillText(geo.theme === 'sandbox' ? 'T E S T   T A B L E' : geo.theme === 'custom' ? 'C U S T O M' : 'P I N B A L L', 0, 48);
+    c.fillText(geo.theme === 'custom' ? 'C U S T O M' : 'P I N B A L L', 0, 48);
     c.restore();
 
     c.save();
@@ -245,7 +245,7 @@
     }
     c.fillStyle = palette.teal;
     c.font = 'bold 21px sans-serif';
-    const stock = geo.theme !== 'custom' && geo.theme !== 'sandbox';   // the printed labels below sit where Golden Hour's parts are
+    const stock = geo.theme !== 'custom';   // the printed labels below sit where Golden Hour's parts are
     if (geo.lanes.length && stock) c.fillText('ROLLOVER LANES', 500, 231);
     if (geo.targets.length) c.fillText('TARGET BANK', targetX * 100, (targetEnd + .5) * 100);
     c.fillStyle = palette.gold;
@@ -1584,7 +1584,7 @@
         g.solo = data.solo;
         g.table = data.table || 'golden';
         g.mode = Object.values(data.tables)[0]?.[STATS]?.mode || 'classic';
-        g.stage.setAttribute('aria-label', `${g.table === 'neon' ? 'Neon Arcade' : g.table?.startsWith('sandbox') ? 'Sandbox' : g.table === 'custom' ? 'Custom' : 'Golden Hour'} pinball playfield`);
+        g.stage.setAttribute('aria-label', `${g.table === 'neon' ? 'Neon Arcade' : g.table === 'custom' ? 'Custom' : g.table?.startsWith('t_') ? 'Curated' : 'Golden Hour'} pinball playfield`);
         g.skill = data.layout.skill;
         g.extra = data.extra || [];
         const saved = load(bestKey(g));

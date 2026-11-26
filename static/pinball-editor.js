@@ -219,164 +219,10 @@
       ['lane', 2.25, 3.5, '#59edd2'], ['lane', 4.25, 3.5, '#59edd2'], ['lane', 6.25, 3.5, '#59edd2'],
       ['target', 1.25, 6.6, 1.25, 7.3, '#ff6854'], ['spinner', 7.95, 7.4, '#c1d2e5'], ['kick', '#ffffff']]],
     GOLDEN,
-    // hand-built tables: each is tuned by simulated play (ball lasts 13-20 s, every part gets used)
-    ['Pop Pit', [
-      ['bump',4.4,4.7,0.62,'#ff9b59'],
-      ['bump',3.1,6.3,0.62,'#c699ff'],
-      ['bump',5.7,6.3,0.62,'#59edd2'],
-      ['bump',1.9,7.9,0.6,'#ff78bc'],
-      ['bump',4.4,7.8,0.64,'#ffd383'],
-      ['bump',6.9,7.9,0.6,'#42cfeb'],
-      ['lane',3.3,2.5,'#59edd2'],
-      ['lane',4.4,2.5,'#59edd2'],
-      ['lane',5.5,2.5,'#59edd2'],
-      ['wall',3.85,1.9,3.85,3.1,'#c1d2e5'],
-      ['wall',4.95,1.9,4.95,3.1,'#c1d2e5'],
-      ['spinner',7.6,4.4,'#c1d2e5'],
-      ['arc',0.8,10.0,2.6,9.2,0.9,8.6,'#ffd383'],
-      ['arc',7.9,10.0,6.2,9.2,7.8,8.6,'#ffd383'],
-      ['sling',1.35,10.75,2.85,12.5,'#ff6854'],
-      ['sling',7.73,10.75,6.48,12.6,'#ff6854'],
-      ['post',3.55,12.9,0.11,'#fff0ca'],
-      ['post',6.45,12.9,0.11,'#fff0ca'],
-      ['kick','#ffffff']],
-      {'pts':{'bumper':150}}, 'Arcade chaos: six pop bumpers worth 150 each, a spinner and curved kickers.'],
-    ['Wizard Tower', [
-      ['target',1.25,6.0,1.25,6.7,'#ff6854'],
-      ['target',1.25,6.9,1.25,7.6,'#ff6854'],
-      ['target',1.25,7.8,1.25,8.5,'#ff6854'],
-      ['target',1.25,8.7,1.25,9.4,'#ff6854'],
-      ['bump',3.0,4.3,0.6,'#ff9b59'],
-      ['bump',6.8,4.3,0.6,'#c699ff'],
-      ['ramp',5.25,6.02,7.75,8.6,'#59edd2'],
-      ['subway',8.15,4.8,2.0,8.9,'#c699ff'],
-      ['magnet',4.0,9.6,1.0,'#59edd2'],
-      ['saucer',1.6,4.7,0.3,'#ffd383'],
-      ['spinner',7.95,7.4,'#c1d2e5'],
-      ['lane',2.25,3.0,'#59edd2'],
-      ['lane',4.25,3.0,'#59edd2'],
-      ['lane',6.25,3.0,'#59edd2'],
-      ['wall',3.25,2.5,3.25,3.7,'#c1d2e5'],
-      ['wall',5.25,2.5,5.25,3.7,'#c1d2e5'],
-      ['star',4.4,11.0,0.55,'#ffd383'],
-      ['moon',4.4,2.0,0.45,'#42cfeb'],
-      ['sling',1.35,10.75,2.85,12.5,'#ff6854'],
-      ['sling',7.73,10.75,6.48,12.6,'#ff6854'],
-      ['post',3.55,12.9,0.11,'#fff0ca'],
-      ['post',6.45,12.9,0.11,'#fff0ca'],
-      ['kick','#ffffff']],
-      {'lock':true}, 'Clear the 4-target bank to light the ramp; ramp shots lock balls for multiball. Magnet, saucer and subway too.'],
-    ['Portal Run', [
-      ['portal',1.2,5.0,7.4,9.0,'#59edd2'],
-      ['arc',0.7,11.0,2.0,7.0,0.5,8.4,'#42cfeb'],
-      ['arc',8.1,11.0,6.9,7.0,8.3,8.4,'#42cfeb'],
-      ['flap',3.4,6.2,4.4,6.2,'#ffd383'],
-      ['flap',5.4,6.2,4.4,6.2,'#ffd383'],
-      ['mover',2.6,4.2,6.2,4.2,'#ff6854'],
-      ['bump',3.2,8.0,0.55,'#ff9b59'],
-      ['bump',5.6,8.0,0.55,'#c699ff'],
-      ['bump',4.4,9.6,0.55,'#ff78bc'],
-      ['lane',3.4,2.4,'#59edd2'],
-      ['lane',4.4,2.4,'#59edd2'],
-      ['lane',5.4,2.4,'#59edd2'],
-      ['spinner',4.4,3.4,'#c1d2e5'],
-      ['heart',4.4,7.0,0.6,'#ff78bc'],
-      ['sling',1.35,10.75,2.85,12.5,'#ff6854'],
-      ['sling',7.73,10.75,6.48,12.6,'#ff6854'],
-      ['post',3.55,12.9,0.11,'#fff0ca'],
-      ['post',6.45,12.9,0.11,'#fff0ca'],
-      ['kick','#ffffff']],
-      {}, 'A portal pair teleports the ball across the table. One-way flaps, curved lanes and a sliding target.'],
-    ['Zen Garden', [
-      ['orbit',0.6,8.5,0.5,4.0,1.2,1.8,3.0,1.2,6.9,1.4,'#59edd2'],
-      ['bump',3.4,6.0,0.5,'#42cfeb'],
-      ['bump',5.4,7.2,0.5,'#c699ff'],
-      ['bump',2.6,8.8,0.45,'#59edd2'],
-      ['arc',0.8,12.0,2.4,9.8,0.9,10.4,'#ffd383'],
-      ['arc',7.9,12.0,6.4,9.8,7.8,10.4,'#ffd383'],
-      ['moon',4.4,4.2,0.9,'#42cfeb'],
-      ['star',2.0,6.0,0.4,'#ffd383'],
-      ['star',6.6,5.0,0.35,'#ffd383'],
-      ['ring',4.4,9.0,1.1,'#ff78bc'],
-      ['rubber',0.8,6.8,1.1,8.0,'#fff0ca'],
-      ['sling',1.35,10.75,2.85,12.5,'#ff6854'],
-      ['sling',7.73,10.75,6.48,12.6,'#ff6854'],
-      ['post',3.55,12.9,0.11,'#fff0ca'],
-      ['post',6.45,12.9,0.11,'#fff0ca'],
-      ['kick','#ffffff']],
-      {'pts':{'bumper':50,'lane':250}}, 'Calm and low-scoring: a long orbit, soft bumpers and moon, star and ring decals. Good for relaxed play.'],
-    ['Double Decker', [
-      ['flip',2.0,9.2,'#42cfeb'],
-      ['flip',6.8,9.2,'#ff78bc'],
-      ['bump',3.4,4.4,0.6,'#ff9b59'],
-      ['bump',5.4,4.4,0.6,'#c699ff'],
-      ['bump',4.4,6.2,0.6,'#59edd2'],
-      ['mover',2.4,7.4,6.4,7.4,'#ff6854'],
-      ['hole',1.0,5.6,0.3,'#ffd383'],
-      ['hole',7.8,5.6,0.3,'#ffd383'],
-      ['rubber',0.7,6.8,1.0,8.0,'#fff0ca'],
-      ['rubber',8.1,6.8,7.8,8.0,'#fff0ca'],
-      ['lane',3.4,2.4,'#59edd2'],
-      ['lane',4.4,2.4,'#59edd2'],
-      ['lane',5.4,2.4,'#59edd2'],
-      ['sling',1.35,10.75,2.85,12.5,'#ff6854'],
-      ['sling',7.73,10.75,6.48,12.6,'#ff6854'],
-      ['post',3.55,12.9,0.11,'#fff0ca'],
-      ['post',6.45,12.9,0.11,'#fff0ca'],
-      ['kick','#ffffff']],
-      {}, 'Two extra mid-table flippers, a sliding target and kicker holes in the upper corners.'],
-    ['Target Range', [
-      ['target',1.0,5.0,1.0,5.8,'#ff6854'],
-      ['target',1.0,6.2,1.0,7.0,'#ff6854'],
-      ['target',1.0,7.4,1.0,8.2,'#ff6854'],
-      ['target',7.6,5.0,7.6,5.8,'#ff9b59'],
-      ['target',7.6,6.2,7.6,7.0,'#ff9b59'],
-      ['target',7.6,7.4,7.6,8.2,'#ff9b59'],
-      ['mover',2.4,5.0,6.2,5.0,'#ff6854'],
-      ['mover',2.4,7.4,6.2,7.4,'#ff9b59'],
-      ['bump',4.4,9.4,0.6,'#ffd383'],
-      ['bump',3.0,3.8,0.5,'#c699ff'],
-      ['bump',5.8,3.8,0.5,'#c699ff'],
-      ['lane',3.4,2.2,'#59edd2'],
-      ['lane',4.4,2.2,'#59edd2'],
-      ['lane',5.4,2.2,'#59edd2'],
-      ['sling',1.35,10.75,2.85,12.5,'#ff6854'],
-      ['sling',7.73,10.75,6.48,12.6,'#ff6854'],
-      ['post',3.55,12.9,0.11,'#fff0ca'],
-      ['post',6.45,12.9,0.11,'#fff0ca'],
-      ['kick','#ffffff']],
-      {'pv':[[0,500],[1,500],[2,500],[3,500],[4,500],[5,500],[6,1000],[7,1000]]}, 'Eight high-value targets (500 and 1,000) and two sliding targets. Aim for accuracy.'],
-    ['Speedway', [
-      ['orbit',0.6,9.0,0.5,4.0,1.0,1.5,2.4,1.0,7.0,1.2,'#42cfeb'],
-      ['ramp',4.4,6.4,6.9,9.4,'#59edd2'],
-      ['lane',1.6,2.4,'#59edd2'],
-      ['lane',2.7,2.4,'#59edd2'],
-      ['lane',3.8,2.4,'#59edd2'],
-      ['lane',4.9,2.4,'#59edd2'],
-      ['lane',6.0,2.4,'#59edd2'],
-      ['lane',7.1,2.4,'#59edd2'],
-      ['spinner',7.6,5.6,'#c1d2e5'],
-      ['bump',2.6,5.2,0.55,'#ff9b59'],
-      ['bump',4.4,4.2,0.55,'#c699ff'],
-      ['arc',0.9,12.2,2.1,10.0,0.8,10.8,'#ffd383'],
-      ['arc',7.9,12.2,6.7,10.0,7.9,10.8,'#ffd383'],
-      ['target',2.0,7.8,2.8,7.8,'#ff6854'],
-      ['target',3.0,7.8,3.8,7.8,'#ff6854'],
-      ['sling',1.35,10.75,2.85,12.5,'#ff6854'],
-      ['sling',7.73,10.75,6.48,12.6,'#ff6854'],
-      ['post',3.55,12.9,0.11,'#fff0ca'],
-      ['post',6.45,12.9,0.11,'#fff0ca'],
-      ['kick','#ffffff']],
-      {'pv':[[2,1000],[3,1000],[4,1000],[5,1000],[6,1000],[7,1000]]}, 'Six rollover lanes worth 1,000 each, a long orbit and a ramp. Chase speed combos.'],
-    ['Portals & curves', [['arc', .9, 9.6, 3.2, 9.6, 1.2, 7.6, '#ffd383'], ['arc', 7.8, 9.6, 5.4, 9.6, 7.6, 7.6, '#ffd383'],
-      ['portal', 1.4, 4.2, 7.4, 6.2, '#59edd2'], ['bump', 4.4, 6.2, .65, '#ff78bc'], ['flap', 4.4, 11.4, 4.4, 10.4, '#ffd383'],
-      ['star', 4.4, 8.6, .8, '#ff9b59'], ['heart', 4.4, 3.2, .6, '#ff78bc'], ['kick', '#ffffff']]],
-    ['Mid-table flippers', [['flip', 2.2, 9.4, '#42cfeb'], ['flip', 6.6, 9.4, '#ff78bc'], ['mover', 2.4, 5.2, 6.4, 5.2, '#ff6854'],
-      ['hole', 1.5, 6.8, .3, '#ffd383'], ['rubber', 1, 11.8, 2.4, 12.4, '#f2ecdd'], ['rubber', 7.8, 11.8, 6.4, 12.4, '#f2ecdd'],
-      ['bump', 4.4, 7.2, .6, '#c699ff'], ['kick', '#ffffff']]],
-    ['Wire playground', [['ramp', 4, 8, 7, 10, '#59edd2'], ['orbit', .6, 8, .6, 4, 2, 1.2, 6.5, 1.2, '#9ce9ff'], ['subway', 7.8, 6, 2.5, 10.5, '#c699ff'],
-      ['bump', 4.5, 5.2, .6, '#ff78bc'], ['kick', '#ffffff']]],
+    // the curated tables (Pop Pit, Speedway...) come from the server: games/pinball_tables/*.json
   ];
+  let curated = [];                 // the server's curated tables, fetched once
+  fetch('/api/pinball-tables').then((r) => r.json()).then((d) => { curated = Array.isArray(d.tables) ? d.tables : []; if (typeof tablesDlg !== 'undefined' && tablesDlg.open) renderTables(); }).catch(() => {});
   const templateSpec = ([name, items, extra]) => ({ v: 1, name, items, ...(extra || {}) });
   const demo = () => fromSpec(templateSpec(TEMPLATES[1]));
 
@@ -941,6 +787,10 @@
     const templates = $('peTemplates'), saved = $('peSaved');
     templates.textContent = ''; saved.textContent = '';
     for (const t of TEMPLATES) templates.append(listItem(t[0], `${t[1].length} parts`, [button('Use', () => load(templateSpec(t)))], t[3]));
+    const featured = $('peFeatured');
+    featured.textContent = '';
+    for (const t of curated) featured.append(listItem(t.name, `${t.spec.items.length} parts`, [button('Use', () => load({ ...t.spec, name: t.name }))], t.blurb + (t.author ? ` (by ${t.author})` : '')));
+    $('peFeaturedHead').hidden = !curated.length;
     const slots = readSlots(), names = Object.keys(slots);
     if (!names.length) { const p = document.createElement('p'); p.className = 'pe-empty'; p.textContent = 'Nothing saved yet. Name your table and press Save.'; saved.append(p); }
     for (const name of names) {
@@ -950,6 +800,32 @@
       ]));
     }
   }
+  // ---- suggest a table for the curated list ------------------------------------------------------------
+  // The suggestion goes to the same inbox as player feedback (kind "table"); the server checks that it builds. What happens next is
+  // described in docs/pinball-tables.md: an automatic check, a play-through by a person, then it is added to games/pinball_tables.
+  const sugDlg = $('peSuggestDlg');
+  $('peSuggest').onclick = () => {
+    const spec = toSpec();
+    $('peSugName').value = state.name || '';
+    $('peSugMsg').textContent = spec.items.length < 6 ? 'A table needs at least 6 parts before it can be suggested.' : '';
+    $('peSugSend').disabled = spec.items.length < 6;
+    sugDlg.showModal();
+  };
+  $('peSugSend').onclick = async () => {
+    const name = $('peSugName').value.replace(/\s+/g, ' ').trim();
+    const msg = $('peSugMsg');
+    if (name.length < 3 || name.length > 24) { msg.textContent = 'Give the table a name of 3 to 24 characters.'; return; }
+    const spec = { ...toSpec(), name };
+    try {
+      msg.textContent = 'Sending…'; $('peSugSend').disabled = true;
+      const code = await shareCode(spec);
+      if (code.length > 8000) throw new Error('This table is too big to send. Remove some parts.');
+      const credit = $('peSugBy').value.replace(/\s+/g, ' ').trim().slice(0, 16);
+      const r = await post('/api/feedback', { kind: 'table', text: `Table suggestion: "${name}" (${spec.items.length} parts)`, name: credit || undefined, context: { pinball_table: code } });
+      msg.textContent = `Thanks! Suggestion #${r.id} is in the queue. If it passes the checks and plays well it joins the table list.`;
+    } catch (e) { msg.textContent = e.message; }
+    $('peSugSend').disabled = false;
+  };
   $('peTables').onclick = () => { renderTables(); tablesDlg.showModal(); };
   $('peSaveAs').onclick = () => {
     const name = (state.name || '').trim() || prompt('Name this table:');

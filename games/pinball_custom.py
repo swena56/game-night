@@ -198,7 +198,7 @@ def build(spec, mode="classic"):
     flippers = cabinet.FLIPPERS + tuple((x, y, 0.3, -0.75) if x < middle else (x, y, math.pi - 0.3, math.pi + 0.75) for x, y in parts["flip"])
     decals = [[g, *p, c] for g in GLYPHS for p, c in zip(parts[g], paint[g])]
     layout = Layout(
-        rails=cabinet.SANDBOX_BASE + walls, guides_from=cabinet.GUIDES_FROM, guide_run=len(cabinet.RIGHT_GUIDE),
+        rails=cabinet.BASE_RAILS + walls, guides_from=cabinet.GUIDES_FROM, guide_run=len(cabinet.RIGHT_GUIDE),
         part_pts=part_pts, flaps=tuple(parts["flap"]), portals=portals, rubbers=tuple(parts["rubber"]), holes=holes,
         movers=tuple((*m, 1.0) for m in parts["mover"]), flippers=flippers, launch=cabinet.LAUNCH, gate=cabinet.GATE,
         bumps=tuple(parts["bump"]), slings=tuple(parts["sling"]), targets=tuple(parts["target"]),
@@ -211,7 +211,7 @@ def build(spec, mode="classic"):
         width=cabinet.WIDTH, height=cabinet.HEIGHT, ball=cabinet.BALL, flipper_length=cabinet.LENGTH,
         flipper_radius=cabinet.FLIP_RADIUS, skill_charge=cabinet.SKILL_CHARGE, theme="custom",
         paint={"bumps": paint["bump"], "slings": paint["sling"], "targets": paint["target"], "lanes": paint["lane"],
-               "posts": paint["post"], "walls": wall_paint, "base": len(cabinet.SANDBOX_BASE), "decals": decals,
+               "posts": paint["post"], "walls": wall_paint, "base": len(cabinet.BASE_RAILS), "decals": decals,
                "flaps": paint["flap"], "rubbers": paint["rubber"], "movers": paint["mover"], "holes": paint["hole"], "flips": paint["flip"], "portal": paint["portal"][0] if paint["portal"] else None, "ramp": paint["ramp"][0] if paint["ramp"] else None,
                "orbit": paint["orbit"][0] if paint["orbit"] else None, "subway": paint["subway"][0] if paint["subway"] else None, "spinner": paint["spinner"][0] if paint["spinner"] else None,
                "saucer": paint["saucer"][0] if paint["saucer"] else None, "magnet": paint["magnet"][0] if paint["magnet"] else None,

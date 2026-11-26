@@ -78,7 +78,7 @@ FEEDBACK_FILE = os.environ.get("FEEDBACK_FILE") or os.path.join(DATA_DIR, f"feed
 AXE_DEBUG_FILE = os.environ.get("AXE_DEBUG_FILE") or os.path.join(DATA_DIR, f"axe-debug{_SUFFIX}.jsonl")
 AXE_DEBUG_LOCK = threading.Lock()
 FEEDBACK_STATUS = FEEDBACK_FILE.rsplit(".", 1)[0] + "-status.json"
-FEEDBACK_KINDS = ("bug", "idea")
+FEEDBACK_KINDS = ("bug", "idea", "table")      # "table" = a pinball table a player suggests for the curated list
 FEEDBACK_MAX_BYTES = 8 * 1024 * 1024
 MAX_ROOMS = 32
 MAX_STREAMS = 64
@@ -1494,7 +1494,15 @@ def submit_feedback(body):
     if len(text) < 5:
         raise GameError("Please describe it in a few words.")
     context = body.get("context") if isinstance(body.get("context"), dict) else {}
-    if len(json.dumps(context)) > 6000:
+    if kind == "table":
+        # a table submission carries its share code; it must be a table that builds, so the inbox only ever holds real candidates
+        from games.pinball_custom import build, decode_table
+        code = context.get("pinball_table")
+        if not isinstance(code, str) or len(code) > 8000:
+            raise GameError("Send the table's share code (up to 8,000 characters).")
+        parts = len(build(decode_table(code))[1]["items"])
+        context = {"pinball_table": code, "parts": parts}
+    elif len(json.dumps(context)) > 6000:
         context = {"note": "details too large, dropped"}
     now = time.time()
     with FEEDBACK_LOCK:
@@ -1509,7 +1517,7 @@ def submit_feedback(body):
                  "name": " ".join(str(body.get("name") or "").split())[:16] or None, "context": context}
         with open(FEEDBACK_FILE, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-    print(f"{'🐞' if kind == 'bug' else '💡'} Feedback #{next_id}: {text[:80]}")
+    print(f"{'🐞' if kind == 'bug' else '🎱' if kind == 'table' else '💡'} Feedback #{next_id}: {text[:80]}")
     return {"ok": True, "id": next_id}
 
 
@@ -1815,6 +1823,10 @@ class Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         if url.path in self.EDITOR_FILES and not self.editor_ok():
             return self.send_json(404, {"error": "Not found"})
+        if url.path == "/api/pinball-tables":   # the curated tables, for the editor's gallery
+            from games.pinball import CURATED
+            return self.send_json(200, {"tables": [{"id": i, "name": e["name"], "blurb": e["blurb"], "author": e["author"], "spec": e["spec"]}
+                                                   for i, e in CURATED.items()]})
         if url.path == "/api/dev":
             return self.send_json(200, {"editor": self.editor_ok()})
         if url.path == "/api/feedback":
