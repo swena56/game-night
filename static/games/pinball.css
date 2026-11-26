@@ -261,6 +261,7 @@
 }
 
 .pb-popup {
+  white-space: nowrap;
   position: absolute;
   transform: translate(-50%, 0);
   color: var(--pb-ivory);

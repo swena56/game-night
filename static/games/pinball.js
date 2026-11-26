@@ -612,6 +612,12 @@
           disc(ux, uy, ur, row[EVENT] === 'saucer' ? '#fff0ca88' : row[STATS]?.hold && Math.floor(performance.now() / 150) % 2 ? palette.gold : '#0c0a1c');   // the lamp flashes while the ball is held
           kickerBurst(c, ux, uy, ur, ball, [geo.saucer], 0, hits, tNow, null);
         }
+        if (row[STATS]?.held) {          // a caught ball: the ring empties until the kicker fires (it turns red just before)
+          const [hx, hy, hr, left] = row[STATS].held;
+          c.lineCap = 'butt';
+          c.beginPath(); c.arc(hx, hy, hr + .24, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * left); c.strokeStyle = left <= .35 ? palette.red : palette.teal; c.lineWidth = .1; c.stroke();
+          c.lineCap = 'round';
+        }
         if (geo.subway) {
           const [wx, wy, wr] = geo.subway;
           disc(wx, wy, wr + .07, paintOf(geo, 'subway', undefined, '#252049'));
@@ -920,6 +926,7 @@
       bumperRings.push([flashRing(x, y, radius + .1, '#fff3a8'), flashRing(x, y, radius + .1, '#ffffff')]);
     });
     const hurryRing = geo.spinner ? flashRing(...geo.spinner, .7, palette.gold) : null;      // shrinks as the hurry-up runs out
+    const holdRing = geo.saucer || geo.holes?.length ? flashRing(0, 0, .6, palette.teal) : null;      // closes in as a caught ball's wait runs out
     const kickerRings = [...(geo.holes || []).map(([x, y, r]) => [x, y, r]), ...(geo.saucer ? [geo.saucer] : [])].map(([x, y, r]) => ({ x, y, r, grab: flashRing(x, y, r + .08, '#fff0ca'), out: flashRing(x, y, r + .08, '#ffd383') }));
     geo.lanes.forEach(([x, y], i) => {
       disc(x, y, .29, .075, .05, brass);
@@ -1051,6 +1058,11 @@
           const hurry = hurryLeft(row, tNow);
           hurryRing.visible = hurry > 0;
           if (hurry) { hurryRing.scale.setScalar(.55 + .85 * hurry); hurryRing.material.color.set(hurry < .25 ? palette.red : palette.gold); hurryRing.material.opacity = .9; }
+        }
+        if (holdRing) {
+          const held = row[STATS]?.held;
+          holdRing.visible = !!held;
+          if (held) { holdRing.position.set(held[0], .5, held[1]); holdRing.scale.setScalar((held[2] + .1 + .45 * held[3]) / .6); holdRing.material.color.set(held[3] <= .35 ? palette.red : palette.teal); holdRing.material.opacity = .95; }
         }
         slingBars.forEach(({ r, band, piece, arm }, i) => {
           const { points, nx, ny, bow } = slingPose(r, hits.age('sling' + i, tNow, SLING_MS), still, geo.width);
@@ -1436,14 +1448,18 @@
     paintControls(g);
   }
 
-  const popupText = (row) => {
+  // what just changed since the last event: the bank filled up (the ramp is now open), or a combo grew
+  const rampOpened = (row, prior) => !!prior && !!row[STATS]?.ramp && targetCount(row) > 0 && /^target/.test(row[EVENT]) && rampLit(row) && !rampLit(prior);
+  const comboGrew = (row, prior) => !!prior && row[COMBO] >= 2 && row[COMBO] > prior[COMBO];
+  const popupText = (row, prior) => {
     const text = label(row[EVENT], row);
+    if (rampOpened(row, prior)) return 'RAMP LIT! Shoot it';
     if (row[EVENT]?.startsWith('mystery_')) return text.replace('Mystery · ', '? ');
     if (row[EVENT] === 'extra') return '★ EXTRA BALL ★';
     if (row[EVENT] === 'frenzy') return `FRENZY! ${/\+[\d,]+/.exec(text)?.[0] || ''}`;
     if (row[EVENT] === 'mission') return `MISSION ✓ ${/\+[\d,]+/.exec(text)?.[0] || ''}`;
     const points = /\+[\d,]+/.exec(text)?.[0] || '';
-    return row[COMBO] >= 5 && points ? `COMBO ×${row[COMBO]}! ${points}` : points;
+    return points && (comboGrew(row, prior) || row[COMBO] >= 5) ? `COMBO ×${row[COMBO]}! ${points}` : points;
   };
 
   // chasing your own record: the Best tile counts down once you are close, and passing it is celebrated there and then
@@ -1462,8 +1478,8 @@
     el.classList.remove('go'); void el.offsetWidth; el.classList.add('go');
   }
 
-  function popup(g, row) {
-    const el = g.find('popup'), text = popupText(row);
+  function popup(g, row, prior) {
+    const el = g.find('popup'), text = popupText(row, prior), opened = rampOpened(row, prior);
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     if (text && g.me === g.viewer && !reduce) {
       el.textContent = text;
@@ -1478,9 +1494,9 @@
         }, 40);
       }
       el.hidden = false;
-      el.style.left = `${100 * (g.ball?.[0] ?? row[X]) / 10}%`;
+      el.style.left = `${Math.max(30, Math.min(70, 100 * (g.ball?.[0] ?? row[X]) / 10))}%`;      // one line, clear of both edges
       el.style.top = `${100 * ((g.ball?.[1] ?? row[Y]) + .85) / 18.7}%`;
-      el.classList.toggle('big', ['ramp', 'jackpot', 'super', 'hurry', 'bonus', 'skill', 'multiball', 'wizard', 'mission', 'frenzy'].includes(row[EVENT]));
+      el.classList.toggle('big', ['ramp', 'jackpot', 'super', 'hurry', 'bonus', 'skill', 'multiball', 'wizard', 'mission', 'frenzy'].includes(row[EVENT]) || opened || comboGrew(row, prior) && !!text);
       el.classList.toggle('huge', row[EVENT] === 'extra' || row[EVENT] === 'wizard');
       el.classList.remove('go');
       void el.offsetWidth;
@@ -1595,14 +1611,21 @@
     if (prior && prior[EVENT_ID] !== row[EVENT_ID]) {
       g.flashAt = performance.now() + 780;
       g.glass?.react(row[EVENT]);
-      popup(g, row);
-      if (viewer === g.me && !g.ctx.readOnly) g.ctx.sfx(sound(row[EVENT]), soundArg(row[EVENT], row));
+      popup(g, row, prior);
+      if (viewer === g.me && !g.ctx.readOnly) {
+        g.ctx.sfx(sound(row[EVENT]), soundArg(row[EVENT], row));
+        // a beat after the hit's own sound: a chime that climbs with the combo, or the ramp opening
+        const after = rampOpened(row, prior) ? ['pbank'] : comboGrew(row, prior) ? ['rise', row[COMBO]] : null;
+        if (after) setTimeout(() => g.ctx.sfx(...after), 110);
+      }
     }
     if (prior && viewer === g.me && g.solo && !g.ctx.readOnly && g.mode !== 'practice' && g.best > 0 && !g.passedBest &&
         prior[SCORE] <= g.best && row[SCORE] > g.best) {
       g.passedBest = true;
       g.bestTimer = setTimeout(() => celebrateBest(g), 700);      // after the points that did it have been shown
     }
+    const held = row[STATS]?.held, was = prior?.[STATS]?.held;
+    if (held && was && held[3] <= .35 && was[3] > .35 && viewer === g.me && !g.ctx.readOnly) g.ctx.sfx('ptick');
     // the plunger lets go: a spring thwack as the ball shoots up the lane
     if (prior && prior[STAGED] && !row[STAGED] && prior[BALLS] === row[BALLS] && viewer === g.me && !g.ctx.readOnly) g.ctx.sfx('plaunch');
     g.enabled = !!(g.active && g.me && row[BALLS]);

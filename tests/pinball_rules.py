@@ -36,6 +36,13 @@ def placed(x, y, vx=0, vy=0):
 
 
 class PinballRules(unittest.TestCase):
+    def test_a_held_ball_is_counted_down_for_the_screen(self):
+        table = placed(5, 8)
+        self.assertEqual(table.public()[-1]["held"], 0)
+        x, y, radius = table.layout.saucer
+        table.x, table.y, table.saucer_ticks = x, y, table.rules.saucer_ticks // 2
+        self.assertEqual(table.public()[-1]["held"], [x, y, radius, 0.5])
+
     def test_a_quick_run_of_bumper_hits_pays_a_frenzy(self):
         table = placed(5, 8)
         bx, by, radius = table.layout.bumps[0]

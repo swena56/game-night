@@ -985,6 +985,14 @@ class Table:
             return 0
         return (self.bumper_hits * self.rules.bumper_bonus + self.ramps * self.rules.ramp_bonus) * self.mult
 
+    def holding(self):
+        """The ball resting in a saucer or kicker hole as [x, y, radius, share of the wait left], or 0: the screen counts it down."""
+        ticks = self.saucer_ticks or self.hole_ticks
+        if not ticks:
+            return 0
+        x, y, radius = self.layout.saucer if self.saucer_ticks else self.layout.holes[self.hole_at][:3]
+        return [x, y, radius, round(ticks / self.rules.saucer_ticks, 2)]
+
     def public(self):
         """Packed renderer state shared by full views and 30 Hz snapshots."""
         return [*[round(v, 3) for v in (self.x, self.y, self.vx, self.vy, self.height, *self.angles[:2])],
@@ -1000,7 +1008,7 @@ class Table:
                  "wizard": self.wizards, "targets": len(self.layout.targets), "ramp": int(bool(self.layout.ramp)), "skill_lane": self.skill_lane, "missions": self.missions_done,
                  "orbit": int(bool(self.layout.orbit) and not self.orbit_cool and not self.tilt),
                  "special": int(self.special_lit() and not self.special_used), "special_used": int(self.special_used),
-                 "post": self.post_glow, "streak": self.bumper_streak if self.streak_ticks else 0, "hold": int(self.saucer_ticks > 0 or self.hole_ticks > 0),
+                 "post": self.post_glow, "streak": self.bumper_streak if self.streak_ticks else 0, "hold": int(self.saucer_ticks > 0 or self.hole_ticks > 0), "held": self.holding(),
                  "movers": [[round(v, 2) for v in self.mover_at(i)] for i in range(len(self.layout.movers))],
                  "flips2": [round(a, 3) for a in self.angles[2:]],
                  "under": int(self.subway_ticks > 0), "magnet": 2 if self.magnet_ticks else 1 if self.magnet_armed() and not self.magnet_cool else 0,
