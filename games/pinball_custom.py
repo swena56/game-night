@@ -165,6 +165,8 @@ def setup(spec):
         out["even_guides"] = True
     if spec.get("closed_sides") is True and spec.get("cabinet") != "classic":      # no side drains: one wall per side, cabinet to flipper
         out["closed_sides"] = True
+    if spec.get("true_aim") is True:      # kicker holes fire at the real playfield centre, x 4.4 (older tables aim at 5)
+        out["true_aim"] = True
     pivots = flipper_pivots(spec)
     if pivots:
         out["fl"] = pivots
@@ -413,7 +415,8 @@ def build(spec, mode="classic"):
                 wall_paint.append(color)
     walls = tuple(walls)
     portals = (*parts["portal"][0], 0.32) if parts["portal"] else None
-    holes = tuple((x, y, r, round(math.degrees(math.atan2(6.0, 5 - x)), 1)) for x, y, r in parts["hole"])    # fired down toward the middle
+    aim = 4.4 if spec.get("true_aim") is True else 5
+    holes = tuple((x, y, r, round(math.degrees(math.atan2(6.0, aim - x)), 1)) for x, y, r in parts["hole"])    # fired down toward the middle
     middle = cabinet.WIDTH * 0.44
     flippers = cabinet.FLIPPERS + tuple((x, y, 0.3, -0.75) if x < middle else (x, y, math.pi - 0.3, math.pi + 0.75) for x, y in parts["flip"])
     choice = setup(spec)
@@ -454,7 +457,9 @@ def build(spec, mode="classic"):
         spinner=parts["spinner"][0] if parts["spinner"] else None,
         saucer=parts["saucer"][0] if parts["saucer"] else None,
         magnet=parts["magnet"][0] if parts["magnet"] else None,
-        outlane=cabinet.OUTLANE if parts["kick"] else None, special=cabinet.SPECIAL if parts["kick"] else None,
+        # with no side drains there are no side lanes for a kickback or its lamps to sit in
+        outlane=cabinet.OUTLANE if parts["kick"] and not choice.get("closed_sides") else None,
+        special=cabinet.SPECIAL if parts["kick"] and not choice.get("closed_sides") else None,
         **wires(parts, classic),
         width=cabinet.WIDTH, height=cabinet.HEIGHT, ball=cabinet.BALL, flipper_length=cabinet.LENGTH,
         flipper_radius=cabinet.FLIP_RADIUS, skill_charge=cabinet.SKILL_CHARGE, theme=LOOKS[choice.get("look", "custom")],

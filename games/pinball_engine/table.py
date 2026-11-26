@@ -141,7 +141,7 @@ class Table:
         self.x = lay.launch[0] if self.x is None else self.x
         self.y = lay.launch[1] if self.y is None else self.y
         self.still_origin = lay.launch if self.still_origin is None else self.still_origin
-        self.lit = rules.first_lit if self.lit is None else self.lit
+        self.lit = self.next_shot(rules.first_lit) if self.lit is None else self.lit
         self.skill_lane = len(lay.lanes) // 2     # the lit skill-shot lane starts in the middle and rotates each ball
 
     # -- scoring ---------------------------------------------------------------------------------
@@ -198,6 +198,16 @@ class Table:
             self.mission_reward = reward
             self.mission_complete = True
 
+    def next_shot(self, index):
+        """Where the lit 2x shot goes from `index` on: the next shot this table can actually make, or -1 for none. It must never wait
+        on a missing part (a table without a ramp would show "2x ramp" for ever and never pay a lit shot or a mystery prize), and it
+        has to have somewhere to move to: on a table with only one kind of shot it would just double that shot all game."""
+        lay, shots = self.layout, self.rules.shots
+        has = {"lane": bool(lay.lanes), "target": bool(lay.targets), "spinner": bool(lay.spinner), "ramp": bool(lay.ramp)}
+        if sum(has.get(shot, True) for shot in shots) < 2:
+            return -1
+        return next((index + step) % len(shots) for step in range(len(shots)) if has.get(shots[(index + step) % len(shots)], True))
+
     def chain(self, kind, points):
         """Pay combos for different shots in quick succession and double the lit shot."""
         rules = self.rules
@@ -208,9 +218,9 @@ class Table:
         self.combo_ticks, self.last_shot = rules.combo_ticks, kind
         self.best_combo = max(self.best_combo, self.combo)
         extra = rules.combo_step * (self.combo - 1)
-        if rules.shots[self.lit] == kind:
+        if self.lit >= 0 and rules.shots[self.lit] == kind:
             extra += points
-            self.lit = (self.lit + 1) % len(rules.shots)
+            self.lit = self.next_shot(self.lit + 1)
             self.lit_hits += 1
             self.mystery_due = bool(rules.mystery_every) and self.lit_hits % rules.mystery_every == 0
         self.score += extra * self.mult
@@ -1005,7 +1015,7 @@ class Table:
                  for o in self.others], self.last_points, int(self.hold), math.ceil(self.hurry_ticks / 240),
                 {"jackpot": self.jackpots, "multiball": self.multiballs, "hurry": self.hurry_wins,
                  "mystery": self.mysteries, "extra": self.extras, "combo": self.best_combo,
-                 "wizard": self.wizards, "targets": len(self.layout.targets), "ramp": int(bool(self.layout.ramp)), "skill_lane": self.skill_lane, "missions": self.missions_done,
+                 "wizard": self.wizards, "targets": len(self.layout.targets), "ramp": int(bool(self.layout.ramp)), "kicker": int(bool(self.layout.outlane)), "skill_lane": self.skill_lane, "missions": self.missions_done,
                  "orbit": int(bool(self.layout.orbit) and not self.orbit_cool and not self.tilt),
                  "special": int(self.special_lit() and not self.special_used), "special_used": int(self.special_used),
                  "post": self.post_glow, "streak": self.bumper_streak if self.streak_ticks else 0, "hold": int(self.saucer_ticks > 0 or self.hole_ticks > 0), "held": self.holding(),

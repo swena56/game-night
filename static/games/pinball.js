@@ -1383,7 +1383,11 @@
     setText(find('mult'), `${row[MULT]}× ${lanes}${!row[STAGED] && row[BONUS] ? ` · Bonus ${row[BONUS].toLocaleString()}` : ''}${row[HOLD] ? ' · Hold' : ''}`);
     const shot = ['Lane', 'Targets', 'Spinner', 'Ramp'][row[LIT]];
     const mission = row[STATS]?.mission;
-    setText(find('shot'), `${row[COMBO] > 1 ? `Combo ${row[COMBO]} · ` : ''}2× ${shot}${row[KICK] ? ' · Kickback' : ''}${mission ? ` · ${mission[0]} ${mission[1]}/${mission[2]} · ${mission[3]}s` : ''}`);
+    // a table with fewer than two kinds of shot has no lit 2× (row[LIT] is -1), and one without side lanes no kickback
+    const chip = [row[COMBO] > 1 && `Combo ${row[COMBO]}`, shot && `2× ${shot}`, row[KICK] && (row[STATS]?.kicker ?? 1) && 'Kickback',
+      mission && `${mission[0]} ${mission[1]}/${mission[2]} · ${mission[3]}s`].filter(Boolean).join(' · ');
+    setText(find('shot'), chip);
+    find('shot').hidden = !chip;
     find('jackpot').hidden = !jackpotLit(row) && !(row[HURRY] && !row[TILT]);
     setText(find('jackpot'), row[HURRY] ? `Spinner hurry-up · ${row[HURRY]}s` :
       row[OTHERS]?.length ? 'Multiball · Jackpot lit' : row[JACKPOT] ? `Jackpot · ${row[JACKPOT]}s` : '');

@@ -2,6 +2,8 @@
 """Measure how a pinball level plays, while you build it. See .claude/skills/make-pinball-level/SKILL.md.
 
   python3 tools/pinball_level.py report TABLE.json [--quick]    gap, side drains, slingshot loops, flipper reach (pass / FAIL)
+  python3 tools/pinball_level.py all [--quick]                  the same report for every shipped table, then a summary
+  python3 tools/pinball_level.py baseline                       save today's flipper-shot counts (tests/pinball_levels.py compares)
   python3 tools/pinball_level.py mouths TABLE.json              where real flipper shots go: places for a ramp or wire-lane mouth
   python3 tools/pinball_level.py games TABLE.json... [--games N]   full games by a tapping test player (slow; compare tables)
 
@@ -20,9 +22,32 @@ from games.pinball import CustomTable                             # noqa: E402
 from games.pinball_custom import build, build_rules               # noqa: E402
 from games.pinball_tables.reach import RARE, SHOTS, WEAK_UP, reach  # noqa: E402
 
-MIN_CLEAR = 1.3        # space between the resting flippers, in ball widths
+MIN_CLEAR = 1.1        # space between the resting flippers, in ball widths (under 1.0 the ball rests between the bats)
 MAX_SIDE = 6.0         # percent of rolled balls that may leave by a side lane (Star Cadet: 2.9, older tables: 11-14)
 MAX_SLING_RUN = 5      # slingshot kicks in a row with nothing else hit
+INSTANT = 5.0          # a ball gone this many seconds after it was launched never really got played
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BASELINE = os.path.join(ROOT, "tests", "pinball_shot_baseline.json")
+GOALS = ("lane", "target", "mover", "hole", "spinner", "ramp", "orbit", "saucer", "subway", "magnet", "portal")  # not bumpers or slings
+MATTERS, KEEP = 8, 0.5  # a goal that took 8+ shots must keep at least half of them
+
+
+def shipped():
+    """{name: spec} for every table the game ships: the official three and the listed ones."""
+    from games import pinball_tables
+    from games.pinball import official_spec
+    return {**{k: official_spec(k) for k in ("golden", "neon", "star")},
+            **{v["slug"]: v["spec"] for v in pinball_tables.load().values()}}
+
+
+def goal_hits(shots):
+    return {p["key"]: p["hits"] for p in shots["parts"] if p["key"].rstrip("0123456789") in GOALS}
+
+
+def lost_shots(shots, before):
+    """{key: (hits before, hits now)} for goals that lost more than half the flipper shots they used to get."""
+    now = goal_hits(shots)
+    return {k: (h, now.get(k, 0)) for k, h in before.items() if h >= MATTERS and now.get(k, 0) < KEEP * h}
 
 
 def load(path):
@@ -36,6 +61,7 @@ class Level:
         self.layout, _ = build(spec)
         self.rules = build_rules(spec)
         self.mid = (self.layout.flippers[0][0] + self.layout.flippers[1][0]) / 2
+        self.closed = bool(spec.get("closed_sides"))       # no side lanes to drain down
 
     def table(self, seed):
         table = CustomTable(layout_override=self.layout, rules_override=self.rules, balls=3)
@@ -80,7 +106,7 @@ def side_drains(level, balls):
         still = 0
         for _ in range(240 * 8):
             table.step()
-            if 12.9 < table.y < 13.6 and not table.height and not 0.9 <= table.x <= 7.9:
+            if not level.closed and 12.9 < table.y < 13.6 and not table.height and not 0.9 <= table.x <= 7.9:
                 side += 1
                 break
             if table.balls < 3 or table.staged or (table.y > 14.2 and 0.9 < table.x < 7.9):
@@ -112,35 +138,40 @@ def sling_runs(level, drops):
     return longest
 
 
-def report(spec, quick=False):
+def report(spec, quick=False, shots=None, balls=True):
+    """Print the report and return the ids of the checks that failed."""
     level = Level(spec)
     failed = []
 
-    def line(ok, text):
+    def line(ok, check, text):
         print(("pass  " if ok else "FAIL  ") + text, flush=True)
         if not ok:
-            failed.append(text)
+            failed.append(check)
 
     gap, ball = clear_gap(level), 2 * level.layout.ball
-    line(gap >= MIN_CLEAR * ball, f"flipper gap {gap:.2f}, ball {ball:.2f} ({gap / ball:.1f} balls; need {MIN_CLEAR})")
+    line(gap >= MIN_CLEAR * ball, "gap", f"flipper gap {gap:.2f}, ball {ball:.2f} ({gap / ball:.2f} balls; need {MIN_CLEAR})")
     drained, count = middle_drops(level)
-    line(drained == count, f"{drained} of {count} balls dropped down the middle drain once the saves are spent")
+    line(drained == count, "middle", f"{drained} of {count} balls dropped down the middle drain once the saves are spent")
     side, stuck = side_drains(level, 500 if quick else 1500)
-    line(side <= MAX_SIDE, f"side lanes take {side:.1f}% of balls rolled from mid-table (limit {MAX_SIDE}%)")
-    line(not stuck, f"{stuck} rolled balls came to rest somewhere")
+    line(side <= MAX_SIDE, "side", "no side lanes" if level.closed else f"side lanes take {side:.1f}% of balls rolled from mid-table (limit {MAX_SIDE}%)")
+    line(not stuck, "rest", f"{stuck} rolled balls came to rest somewhere")
     run = sling_runs(level, 100 if quick else 300)
-    line(run <= MAX_SLING_RUN, f"longest slingshot run {run} (limit {MAX_SLING_RUN}; more means the slings juggle the ball)")
-    shots = reach(spec, shots=5 if quick else SHOTS)
+    line(run <= MAX_SLING_RUN, "sling", f"longest slingshot run {run} (limit {MAX_SLING_RUN}; more means the slings juggle the ball)")
+    shots = shots or reach(spec, shots=5 if quick else SHOTS)
     never = [p["label"] for p in shots["parts"] if not p["hits"]]
-    line(not never, "every part was hit by a flipper shot" if not never else "never hit: " + ", ".join(never))
+    line(not never, "reach", "every part was hit by a flipper shot" if not never else "never hit: " + ", ".join(never))
     weak = [f"{s['flipper']} {s['spot']} {s['ball']} {s['up']}%" for s in shots["spots"] if s["up"] < WEAK_UP]
-    line(not weak, "every flipper spot gets the ball up the table" if not weak else "weak spots: " + ", ".join(weak))
+    line(not weak, "weak", "every flipper spot gets the ball up the table" if not weak else "weak spots: " + ", ".join(weak))
     rare = RARE if not quick else 1
     for p in shots["parts"]:
         if p["key"] in ("ramp", "orbit") or 0 < p["hits"] <= rare:
             print(f"      {p['label']}: {p['hits']} of {shots['shots']} shots")
+    if balls:                                   # for information: how balls are lost (a few games only, so rough)
+        g = play(spec, 4 if quick else 20)
+        print(f"      {g['drained']} test balls: first one lasted {g['first_drain_s']} s (median), {g['instant_percent']}% gone within "
+              f"{INSTANT:.0f} s of launch, {g['no_flipper_percent']}% never touched a flipper", flush=True)
     print("\nOK" if not failed else f"\n{len(failed)} check(s) failed")
-    return not failed
+    return failed
 
 
 def mouths(spec, top=6):
@@ -183,10 +214,12 @@ def play(spec, games, first_seed=3000):
     """Full three-ball games by a player who taps a flipper as the ball reaches it (it never holds the ball)."""
     level = Level(spec)
     drains, unfinished = [], 0
+    firsts, instant, untouched = [], 0, 0
     for seed in range(first_seed, first_seed + games):
         rng = random.Random(seed)
         table = level.table(seed)
         target, press, cool, x = rng.randint(150, 235), [0, 0], [0, 0], level.mid
+        launched, touched, first = None, False, True
         for tick in range(240 * 150):
             if not table.balls:
                 break
@@ -214,21 +247,53 @@ def play(spec, games, first_seed=3000):
             balls = table.balls
             table.input(held, 0, tick / 240)
             table.step()
+            if launched is None and not table.staged:
+                launched = tick
+            touched = touched or table.flip_contact
             if table.balls < balls:
-                drains.append("side" if not 0.95 <= x <= 7.85 else "middle")
+                drains.append("side" if not level.closed and not 0.95 <= x <= 7.85 else "middle")
+                lasted = (tick - (launched if launched is not None else tick)) / 240
+                if first:
+                    firsts.append(lasted)
+                    first = False
+                instant += lasted < INSTANT
+                untouched += not touched
+                launched, touched = None, False
         unfinished += bool(table.balls)
     share = drains.count("side") / max(1, len(drains))
     margin = 200 * math.sqrt(share * (1 - share) / max(1, len(drains)))
-    return {"drained": len(drains), "side_percent": round(100 * share), "margin": round(margin), "unfinished_games": unfinished}
+    lost = max(1, len(drains))
+    return {"drained": len(drains), "side_percent": round(100 * share), "margin": round(margin), "unfinished_games": unfinished,
+            "first_drain_s": round(sorted(firsts)[len(firsts) // 2], 1) if firsts else None,
+            "instant_percent": round(100 * instant / lost), "no_flipper_percent": round(100 * untouched / lost)}
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=("report", "mouths", "games"))
-    parser.add_argument("tables", nargs="+")
+    parser.add_argument("command", choices=("report", "all", "baseline", "mouths", "games"))
+    parser.add_argument("tables", nargs="*")
     parser.add_argument("--quick", action="store_true", help="report: fewer balls and shots, for use while editing")
     parser.add_argument("--games", type=int, default=40)
     args = parser.parse_args(argv)
+    if args.command == "all":
+        results = {}
+        for name, spec in shipped().items():
+            print(f"\n== {name}", flush=True)
+            results[name] = report(spec, args.quick)
+        print("\n== summary")
+        for name, failed in results.items():
+            print(f"{name:16} {'OK' if not failed else 'failed: ' + ', '.join(failed)}")
+        return 1 if any(results.values()) else 0
+    if args.command == "baseline":
+        saved = {}
+        for name, spec in shipped().items():
+            saved[name] = goal_hits(reach(spec))
+            print(name, saved[name], flush=True)
+        with open(BASELINE, "w", encoding="utf-8") as f:
+            json.dump(saved, f, indent=1, sort_keys=True)
+        return 0
+    if not args.tables:
+        parser.error("name at least one table file")
     if args.command == "games":
         for path in args.tables:
             print(os.path.basename(path), play(load(path), args.games), flush=True)
@@ -236,7 +301,7 @@ def main(argv=None):
     if args.command == "mouths":
         mouths(load(args.tables[0]))
         return 0
-    return 0 if report(load(args.tables[0]), args.quick) else 1
+    return 1 if report(load(args.tables[0]), args.quick) else 0
 
 
 if __name__ == "__main__":

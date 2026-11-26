@@ -1,0 +1,124 @@
+{
+ "double-decker": {
+  "hole0": 10,
+  "hole1": 10,
+  "lane0": 8,
+  "lane1": 7,
+  "lane2": 8,
+  "mover0": 41
+ },
+ "golden": {
+  "lane0": 8,
+  "lane1": 9,
+  "lane2": 14,
+  "magnet": 210,
+  "orbit": 5,
+  "ramp": 12,
+  "saucer": 6,
+  "spinner": 43,
+  "subway": 32,
+  "target0": 12,
+  "target1": 12,
+  "target2": 12
+ },
+ "neon": {
+  "lane0": 10,
+  "lane1": 20,
+  "lane2": 16,
+  "magnet": 223,
+  "orbit": 10,
+  "ramp": 12,
+  "saucer": 5,
+  "spinner": 44,
+  "subway": 21,
+  "target0": 20,
+  "target1": 10,
+  "target2": 21
+ },
+ "neon-cadet": {
+  "hole0": 8,
+  "lane0": 13,
+  "lane1": 4,
+  "lane2": 19,
+  "magnet": 217,
+  "orbit": 8,
+  "portal": 45,
+  "ramp": 4,
+  "saucer": 7,
+  "spinner": 53,
+  "subway": 21,
+  "target0": 17,
+  "target1": 10,
+  "target2": 24
+ },
+ "pop-pit": {
+  "lane0": 5,
+  "lane1": 4,
+  "lane2": 9,
+  "spinner": 21
+ },
+ "portal-run": {
+  "lane0": 11,
+  "lane1": 19,
+  "lane2": 19,
+  "mover0": 25,
+  "portal": 43,
+  "spinner": 22
+ },
+ "speedway": {
+  "lane0": 36,
+  "lane1": 21,
+  "lane2": 13,
+  "lane3": 23,
+  "lane4": 25,
+  "lane5": 35,
+  "orbit": 12,
+  "ramp": 10,
+  "spinner": 70,
+  "target0": 33,
+  "target1": 33
+ },
+ "star": {
+  "lane0": 20,
+  "lane1": 60,
+  "lane2": 26,
+  "magnet": 186,
+  "orbit": 60,
+  "ramp": 38,
+  "saucer": 19,
+  "spinner": 47,
+  "target0": 21,
+  "target1": 16
+ },
+ "target-range": {
+  "lane0": 13,
+  "lane1": 21,
+  "lane2": 13,
+  "mover0": 31,
+  "mover1": 52,
+  "target0": 18,
+  "target1": 15,
+  "target2": 16,
+  "target3": 29,
+  "target4": 20,
+  "target5": 23
+ },
+ "wizard-tower": {
+  "lane0": 2,
+  "lane1": 5,
+  "lane2": 19,
+  "magnet": 160,
+  "ramp": 1,
+  "saucer": 8,
+  "spinner": 31,
+  "subway": 25,
+  "target0": 13,
+  "target1": 9,
+  "target2": 8,
+  "target3": 9
+ },
+ "zen-garden": {
+  "mover0": 7,
+  "orbit": 14
+ }
+}

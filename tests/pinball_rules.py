@@ -36,6 +36,72 @@ def placed(x, y, vx=0, vy=0):
 
 
 class PinballRules(unittest.TestCase):
+    def test_the_ball_fits_between_the_flippers_on_every_shipped_table(self):
+        from games import pinball_tables
+        from games.pinball import official_spec
+        from games.pinball_custom import build
+        specs = {**{k: official_spec(k) for k in ("golden", "neon", "star")}, **{k: v["spec"] for k, v in pinball_tables.load().items()}}
+        for name, spec in specs.items():
+            layout = build(spec)[0]
+            tips = [(x + layout.flipper_length * math.cos(rest), y + layout.flipper_length * math.sin(rest)) for x, y, rest, _ in layout.flippers[:2]]
+            self.assertGreater(math.dist(*tips) - 2 * layout.flipper_radius, 2 * layout.ball + 0.03, name)
+
+    def test_the_lit_shot_only_waits_on_parts_the_table_has(self):
+        layout = replace(placed(5, 8).layout, ramp=None, ramp_exit=None, spinner=None)
+        table = CustomTable(layout_override=layout)
+        seen = {table.lit}
+        for kind in ("lane", "target", "lane", "target", "lane", "target"):
+            table.chain(table.rules.shots[table.lit], 100)
+            seen.add(table.lit)
+        self.assertEqual({table.rules.shots[i] for i in seen}, {"lane", "target"})      # never the missing ramp or spinner
+        self.assertEqual(table.lit_hits, 6)
+        self.assertEqual(Table().lit, Table().rules.first_lit)                       # a full table still starts on the ramp
+        for bare in (replace(layout, targets=()), replace(layout, targets=(), lanes=())):    # one kind of shot, or none: no lit shot
+            table = CustomTable(layout_override=bare)
+            self.assertEqual(table.lit, -1)
+            table.chain("lane", 100)
+            self.assertEqual((table.lit, table.lit_hits), (-1, 0))
+
+    def test_no_kickback_or_outlane_lamps_where_there_are_no_side_lanes(self):
+        from games.pinball_custom import build
+        spec = {"items": [["kick", "#ffffff"]]}
+        self.assertIsNotNone(build(spec)[0].outlane)
+        closed = build({**spec, "closed_sides": True})[0]
+        self.assertEqual((closed.outlane, closed.special), (None, None))
+        self.assertEqual(CustomTable(layout_override=closed).public()[-1]["kicker"], 0)
+
+    def test_true_aim_points_kicker_holes_at_the_playfield_centre(self):
+        from games.pinball_custom import build
+        spec = {"items": [["hole", 4.4, 6.0, 0.3, "#ffffff"]]}
+        old, clean_old = build(spec)
+        new, clean_new = build({**spec, "true_aim": True})
+        self.assertLess(old.holes[0][3], 90)                  # aims right of straight down, at x 5
+        self.assertEqual(new.holes[0][3], 90.0)               # straight down from the centre
+        self.assertNotIn("true_aim", clean_old)
+        self.assertTrue(clean_new["true_aim"])
+
+    def test_a_cleared_bank_always_has_a_way_back_up(self):
+        full = lambda table: (1 << len(table.layout.targets)) - 1
+        # with a ramp: the cleared bank stays down on purpose (it is what lights the ramp) and the ramp shot stands it up
+        table = placed(5, 8)
+        table.bank = full(table)
+        table.ramp_ticks = 115
+        table.ride_ramp()
+        self.assertEqual(table.bank, 0)
+        # cleared during a jackpot round: the jackpot shot leaves it down, and once the round is over the next ramp shot stands it up
+        table.bank, table.ramp_ticks, table.jackpot_shot = full(table), 115, True
+        table.ride_ramp()
+        self.assertEqual(table.bank, full(table))
+        table.jackpot_ticks, table.ramp_ticks, table.jackpot_shot = 0, 115, False
+        table.ride_ramp()
+        self.assertEqual(table.bank, 0)
+        # without a ramp (or with it switched off in this mode) a timer stands it up
+        bare = CustomTable(layout_override=replace(table.layout, ramp=None, ramp_exit=None))
+        bare.staged, bare.x, bare.y = False, 4.4, 6.0
+        bare.bank, bare.bank_ticks = full(bare), 2
+        bare.step(); bare.step()
+        self.assertEqual(bare.bank, 0)
+
     def test_zen_garden_has_no_side_drains(self):
         from games import pinball_tables
         from games.pinball_custom import build, build_rules

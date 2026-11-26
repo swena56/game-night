@@ -142,7 +142,7 @@
     return [...RAILS.slice(0, RAILS.length - 2 * GUIDE_LEN), ...fillet([[.9, 12.2], [.9, 13.5], [lx, ly]], [.5]), ...fillet([[7.9, state.even ? 12.2 : 12.4], [7.9, state.even ? 13.5 : 13.8], [rx, ry]], [.5])];
   }
 
-  let state = { name: '', items: [], kick: false, lock: false, pts: {}, cabinet: 'smooth', look: 'custom', feel: {}, flips: null, even: false, closed: false };
+  let state = { name: '', items: [], kick: false, lock: false, pts: {}, cabinet: 'smooth', look: 'custom', feel: {}, flips: null, even: false, closed: false, aim: false };
   let zoom = 1;
   const hiddenLayers = new Set();
   const group = new Set();                        // shift-click adds parts: duplicate, delete, nudge and drag then act on all of them
@@ -229,6 +229,7 @@
     if (state.flips) out.fl = state.flips.map(round2);
     if (state.even && state.cabinet !== 'classic') out.even_guides = true;
     if (state.closed && state.cabinet !== 'classic') out.closed_sides = true;
+    if (state.aim) out.true_aim = true;
     if (state.look && state.look !== 'custom') out.look = state.look;
     const feel = {};
     for (const [k, v] of Object.entries(state.feel || {})) {
@@ -269,7 +270,7 @@
   }
   function fromSpec(spec) {
     if (!spec || !Array.isArray(spec.items)) throw new Error("That isn't a table.");
-    const next = { name: typeof spec.name === 'string' ? spec.name.slice(0, 40) : '', items: [], kick: false, lock: spec.lock === true, pts: {}, cabinet: spec.cabinet === 'classic' ? 'classic' : 'smooth', look: ['golden', 'neon'].includes(spec.look) ? spec.look : 'custom', feel: {}, flips: null, closed: spec.closed_sides === true, even: spec.even_guides === true };
+    const next = { name: typeof spec.name === 'string' ? spec.name.slice(0, 40) : '', items: [], kick: false, lock: spec.lock === true, pts: {}, cabinet: spec.cabinet === 'classic' ? 'classic' : 'smooth', look: ['golden', 'neon'].includes(spec.look) ? spec.look : 'custom', feel: {}, flips: null, closed: spec.closed_sides === true, aim: spec.true_aim === true, even: spec.even_guides === true };
     if (spec.feel && typeof spec.feel === 'object') for (const [k, v] of Object.entries(spec.feel)) if (k in FEEL && (k === 'extra_balls' ? Array.isArray(v) && v.length === 2 && v.every(Number.isFinite) : typeof v === (typeof FEEL[k][0] === 'boolean' ? 'boolean' : 'number') && (typeof v !== 'number' || Number.isFinite(v)))) next.feel[k] = v;
     if (spec.pts && typeof spec.pts === 'object') for (const [k, v] of Object.entries(spec.pts)) if (POINTS[k] && typeof v === 'number' && isFinite(v)) next.pts[k] = clamp(Math.round(v), 0, 20000);
     const num = (v) => (typeof v === 'number' && isFinite(v) ? v : 0);
@@ -964,7 +965,7 @@
   $('peLock').onchange = () => { state.lock = $('peLock').checked; commit(); };
   $('peKick').onchange = () => { state.kick = $('peKick').checked; commit(); };
   $('peSnap').onclick = () => { snap = !snap; $('peSnap').setAttribute('aria-pressed', String(snap)); draw(); };
-  $('peClear').onclick = () => { if (!state.items.length && !state.kick) return; if (confirm('Remove every part from this table?')) { state.items = []; state.kick = false; state.lock = false; state.pts = {}; state.cabinet = 'smooth'; state.look = 'custom'; state.feel = {}; state.even = false; state.closed = false; sel = -1; group.clear(); commit(); } };
+  $('peClear').onclick = () => { if (!state.items.length && !state.kick) return; if (confirm('Remove every part from this table?')) { state.items = []; state.kick = false; state.lock = false; state.pts = {}; state.cabinet = 'smooth'; state.look = 'custom'; state.feel = {}; state.even = false; state.closed = false; state.aim = false; sel = -1; group.clear(); commit(); } };
 
   function renderList() {
     const ol = $('peList'), n = state.items.length;
@@ -1011,6 +1012,7 @@
     set('peEB1', (f.extra_balls ?? FEEL.extra_balls[0])[0]); set('peEB2', (f.extra_balls ?? FEEL.extra_balls[0])[1]);
     $('peSteep').checked = !!f.steep_flippers; $('peClassic').checked = !!f.classic_lamps;
     $('peFlipReset').disabled = !state.flips;
+    $('peAim').checked = !!state.aim;
     $('peClosed').checked = !!state.closed; $('peClosed').disabled = state.cabinet === 'classic';
     $('peEven').checked = !!state.even; $('peEven').disabled = state.cabinet === 'classic';
   }
@@ -1020,6 +1022,7 @@
   $('peSteep').onchange = () => { state.feel = { ...state.feel, steep_flippers: $('peSteep').checked }; if (state.flips) state.flips = clampFlips(state.flips, restOf()); commit(); };
   $('peEven').onchange = () => { state.even = $('peEven').checked; commit(); };
   $('peClosed').onchange = () => { state.closed = $('peClosed').checked; commit(); };
+  $('peAim').onchange = () => { state.aim = $('peAim').checked; commit(); };
   $('peFlipReset').onclick = () => { state.flips = null; commit(); };
   $('peClassic').onchange = () => { state.feel = { ...state.feel, classic_lamps: $('peClassic').checked }; commit(); };
   for (const [id, key, lo, hi] of [['peGravity', 'gravity', 8, 16], ['peHurry', 'hurry_seconds', 0, 20], ['peSuper', 'super_every', 1, 10]]) {
