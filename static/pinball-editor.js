@@ -49,6 +49,7 @@
   // the table's own point values (defaults match the game's rules)
   const POINTS = { bumper: [100, 'Pop bumper'], sling: [50, 'Slingshot'], target: [250, 'Target'], lane: [500, 'Rollover lane'], spinner: [100, 'Spinner'],
     ramp: [6000, 'Ramp'], saucer: [1000, 'Saucer / kicker hole'], portal: [250, 'Portal'], mover: [300, 'Moving target'] };
+  const OWN_POINTS = new Set(['bump', 'sling', 'target', 'lane', 'mover']);   // parts that can carry their own score
   const SWATCHES = ['#ff6854', '#ff9b59', '#ffd383', '#fff0ca', '#59edd2', '#42cfeb', '#c699ff', '#ff78bc', '#c1d2e5'];
   // the fixed cabinet, as in the game: outer walls, shooter lane, outlane walls, inlane guides, flippers
   // same corner rounding as games/pinball.py fillet(): arcs instead of sharp joins
@@ -82,6 +83,10 @@
 
   let state = { name: '', items: [], kick: false, pts: {} };
   let zoom = 1;
+  const hiddenLayers = new Set();
+  const LAYERS = ['Scoring', 'Walls & guides', 'Mechanisms', 'Decals'];
+  const layerOf = (k) => KINDS[k].group || GROUPS[k] || 'Scoring';
+  const shown = (it) => !hiddenLayers.has(layerOf(it.k));
   let sel = -1;
   let snap = true;
   let history = [], future = [];
@@ -147,6 +152,9 @@
     });
     if (state.kick) items.push(['kick', '#ffffff']);
     const out = { v: 1, name: state.name.trim().slice(0, 40), items };
+    const pv = [];
+    state.items.forEach((i, n) => { if (OWN_POINTS.has(i.k) && Number.isFinite(i.pv)) pv.push([n, i.pv]); });
+    if (pv.length) out.pv = pv;
     const pts = Object.fromEntries(Object.entries(state.pts || {}).filter(([k, v]) => POINTS[k] && v !== POINTS[k][0]));
     if (Object.keys(pts).length) out.pts = pts;
     return out;
@@ -156,7 +164,8 @@
     const next = { name: typeof spec.name === 'string' ? spec.name.slice(0, 40) : '', items: [], kick: false, pts: {} };
     if (spec.pts && typeof spec.pts === 'object') for (const [k, v] of Object.entries(spec.pts)) if (POINTS[k] && typeof v === 'number' && isFinite(v)) next.pts[k] = clamp(Math.round(v), 0, 20000);
     const num = (v) => (typeof v === 'number' && isFinite(v) ? v : 0);
-    for (const a of spec.items) {
+    const own = new Map((Array.isArray(spec.pv) ? spec.pv : []).filter((p) => Array.isArray(p) && Number.isInteger(p[0]) && Number.isFinite(p[1])).map((p) => [p[0], clamp(Math.round(p[1]), 0, 20000)]));
+    for (const [n, a] of spec.items.entries()) {
       if (!Array.isArray(a)) continue;
       if (a[0] === 'kick') { next.kick = true; continue; }
       const d = KINDS[a[0]];
@@ -172,6 +181,7 @@
         it.pts = [];
         for (let i = 0; i < Math.min(flat.length, 12); i += 2) it.pts.push([flat[i], flat[i + 1]]);
       }
+      if (OWN_POINTS.has(it.k) && own.has(n)) it.pv = own.get(n);
       next.items.push(normalize(it));
     }
     return next;
@@ -270,7 +280,7 @@
     seg(8.8, 1.2, 8.8, 3.1, '#ffd383', .1);                              // the one-way gate
     for (const [fx, fy, a] of FLIPS) { seg(fx, fy, fx + FLIP_LEN * Math.cos(a), fy + FLIP_LEN * Math.sin(a), '#211b40', .5); seg(fx, fy, fx + FLIP_LEN * Math.cos(a), fy + FLIP_LEN * Math.sin(a), '#42cfeb', .32); }
     if (state.kick) for (const x of [.9, 7.9]) { disc(x, 13.9, .2, '#ffd383'); }
-    state.items.forEach((it, i) => drawItem(it, i === sel));
+    state.items.forEach((it, i) => { if (shown(it)) drawItem(it, i === sel); });
     ctx.fillStyle = '#ffffff55'; ctx.font = '.32px sans-serif'; ctx.textAlign = 'center';
     ctx.fillText('DRAIN', 5, 16.6); ctx.fillText('LAUNCH', 9.4, 12);
   }
@@ -379,6 +389,7 @@
   function hit(px, py) {
     for (let i = state.items.length - 1; i >= 0; i--) {
       const it = state.items[i], d = KINDS[it.k];
+      if (!shown(it)) continue;
       const near = d.shape === 'pr' ? Math.hypot(px - it.x, py - it.y) <= (it.k === 'magnet' ? Math.min(it.r, .5) : it.r + .1)
         : it.k === 'ramp' ? rampCurve(it).some(([cx, cy], j, c) => j && distSeg(px, py, c[j - 1][0], c[j - 1][1], cx, cy) <= .3)
         : d.shape === 'a' ? arcCurve(it).some(([cx, cy], j, c) => j && distSeg(px, py, c[j - 1][0], c[j - 1][1], cx, cy) <= .3)
@@ -492,6 +503,8 @@
     $('peKindHint').textContent = d.hint || ''; $('peKindHint').hidden = !d.hint;
     $('peColorRow').hidden = $('peSwatches').hidden = !d.paint;
     $('peColor').value = it.c;
+    $('pePvRow').hidden = !OWN_POINTS.has(it.k);
+    if (OWN_POINTS.has(it.k)) { $('pePv').value = Number.isFinite(it.pv) ? it.pv : ''; $('pePv').placeholder = String(POINTS[it.k === 'bump' ? 'bumper' : it.k][0]); }
     $('peDup').disabled = count(it.k) >= d.max;
     $('peRotL').disabled = $('peRotR').disabled = d.shape === 'p' || d.shape === 'pr';
   }
@@ -533,6 +546,7 @@
   $('peDelPt').onclick = () => editSel((it) => { if (it.pts.length > 2) it.pts.pop(); });
   $('peColor').oninput = () => { const it = state.items[sel]; if (it) { it.c = $('peColor').value; draw(); } };
   $('peColor').onchange = () => editSel((it) => { it.c = $('peColor').value; });
+  $('pePv').onchange = () => editSel((it) => { const v = parseInt($('pePv').value, 10); if (Number.isFinite(v)) it.pv = clamp(v, 0, 20000); else delete it.pv; });
   $('peDel').onclick = removeSel;
   $('peDup').onclick = () => {
     const it = state.items[sel];
@@ -616,6 +630,11 @@
       l.append(i); body.append(l);
     }
     for (const i of body.querySelectorAll('input')) if (document.activeElement !== i) i.value = state.pts?.[i.dataset.k] ?? POINTS[i.dataset.k][0];
+  }
+  for (const name of LAYERS) {
+    const l = document.createElement('label'), c = document.createElement('input');
+    c.type = 'checkbox'; c.checked = true; c.onchange = () => { c.checked ? hiddenLayers.delete(name) : hiddenLayers.add(name); if (sel >= 0 && !shown(state.items[sel])) sel = -1; refresh(); };
+    l.append(c, ' ' + name); $('peLayersBody').append(l);
   }
   const swatches = $('peSwatches');
   for (const c of SWATCHES) {

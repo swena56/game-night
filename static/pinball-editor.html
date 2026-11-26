@@ -38,6 +38,7 @@
         <label id="peSizeRow"><span id="peSizeLabel">Size</span> <input id="peSize" type="number" step="0.05"></label>
         <label id="peAngleRow">Angle <input id="peAngle" type="number" step="5"></label>
         <label id="peColorRow">Colour <input id="peColor" type="color"></label>
+        <label id="pePvRow">Points <input id="pePv" type="number" min="0" max="20000" step="50" placeholder="table default"></label>
         <div id="peSwatches" class="pe-swatches" aria-label="Colour presets"></div>
         <p id="peKindHint" class="hint"></p>
         <div id="pePointRow" class="pe-row" hidden>
@@ -55,6 +56,7 @@
         </div>
       </div>
       <label class="pe-check"><input id="peKick" type="checkbox"> Kickback + special outlanes <small>(the lit outlane lanes by the flippers)</small></label>
+      <details class="pe-pts"><summary>Layers (show / hide)</summary><div id="peLayersBody" class="pe-ptsbody"></div></details>
       <details class="pe-pts"><summary>Point values</summary><div id="pePtsBody" class="pe-ptsbody"></div></details>
       <p id="peCount" class="hint"></p>
     </aside>

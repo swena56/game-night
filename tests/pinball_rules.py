@@ -885,6 +885,23 @@ class CustomTables(unittest.TestCase):
             t.step()
         self.assertEqual(t.hole_ticks, 0)
 
+    def test_per_part_points(self):
+        from games.pinball import CustomTable
+        from games.pinball_custom import build
+        W = "#ffffff"
+        layout, clean = build({"items": [["bump", 3, 5, .6, W], ["bump", 5, 8, .6, W]], "pv": [[1, 900], [0, 99999], ["x", 5], [7, 5]]})
+        self.assertEqual(layout.part_pts, {"bump": {0: 20000, 1: 900}})
+        self.assertEqual(clean["pv"], [[0, 20000], [1, 900]])      # clamped; junk and out-of-range entries are dropped
+        t = CustomTable(layout_override=layout, balls=9)
+        t.staged = False
+        t.x, t.y, t.vx, t.vy = 5, 8 + .6 + .19 + .05, 0, -6     # roll into the second bumper
+        before = t.score
+        for _ in range(30):
+            t.step()
+            if t.score > before:
+                break
+        self.assertEqual(t.score - before, 900)
+
     def test_portal_teleports_and_flap_is_one_way(self):
         from games.pinball import CustomTable
         from games.pinball_custom import build

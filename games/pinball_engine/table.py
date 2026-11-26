@@ -439,7 +439,7 @@ class Table:
                     if self.flip_contact:          # flipper and sling in the same instant: the hit is partly absorbed
                         self.vx *= 0.88
                         self.vy *= 0.88
-                    self.signal(f"sling{i}", rules.sling)
+                    self.signal(f"sling{i}", self.pts("sling", i, rules.sling))
         for x, y, radius in lay.posts:
             worn = 1 - min(0.12, self.wear / 20000)
             if self.contact(x, y, ball + radius, (0.62 + (self.rng.random() - 0.5) * 0.08) * worn):
@@ -454,7 +454,10 @@ class Table:
                 level = 1 + min(2, self.bumper_hits // rules.bumper_step)
                 if self.jackpot_ticks or self.others:
                     self.jackpot_pool += rules.jackpot_growth
-                self.signal(f"bumper{i}", (rules.bumper_jackpot if self.jackpot_ticks or self.others else rules.bumper) * level)
+                hot = bool(self.jackpot_ticks or self.others)
+                own = lay.part_pts.get("bump", {}).get(i)
+                base = own * (2 if hot else 1) if own is not None else (rules.bumper_jackpot if hot else rules.bumper)
+                self.signal(f"bumper{i}", base * level)
         for i, rail in enumerate(lay.targets):
             if self.bank & (1 << i):
                 continue       # a dropped target is flush with the playfield until the bank resets
@@ -466,7 +469,7 @@ class Table:
                 spot = self.lane_bits | (1 << (i % max(1, len(lay.lanes))))
                 if lay.lanes and spot != (1 << len(lay.lanes)) - 1:
                     self.lane_bits = spot          # a target spots its rollover lane
-                self.signal(f"target{i}", rules.target)
+                self.signal(f"target{i}", self.pts("target", i, rules.target))
         if lay.special and self.special_lit() and not self.special_used and self.vy > 0 \
                 and lay.special[0] < self.x < lay.lane_x and self.y > lay.special[1]:
             self.special_used = True
@@ -483,7 +486,7 @@ class Table:
         for i in range(len(lay.lanes)):
             if current & ~self.rollovers & (1 << i):
                 self.signal("skill" if self.skill else f"lane{i}",
-                            (rules.skill if i == self.skill_lane else rules.skill_miss) if self.skill else rules.lane)
+                            (rules.skill if i == self.skill_lane else rules.skill_miss) if self.skill else self.pts("lane", i, rules.lane))
                 self.skill = False
                 self.lane_bits |= 1 << i
                 if self.lane_bits == (1 << len(lay.lanes)) - 1:
@@ -515,7 +518,7 @@ class Table:
             firm = gap > 1e-8 and -(self.vx * (self.x - gx) + self.vy * (self.y - gy)) / gap >= rules.target_threshold
             if self.segment((ax, ay, bx, by), ball + 0.08) and firm and not self.tilt:
                 self.mover_bank = i + 1
-                self.signal(f"mover{i}", rules.mover)
+                self.signal(f"mover{i}", self.pts("mover", i, rules.mover))
         for i, (hx, hy, hr, _) in enumerate(lay.holes):
             if not self.hole_ticks and not self.saucer_ticks and math.hypot(self.x - hx, self.y - hy) < hr * 0.7 \
                     and math.hypot(self.vx, self.vy) < 22:
@@ -702,6 +705,10 @@ class Table:
                     self.flipper_contact(i, previous[i], sample / samples)
         self.mechanisms(old_y)
         self.lane_and_drain()
+
+    def pts(self, kind, i, default):
+        """A part's own score if the table gave it one, else the rules' value."""
+        return self.layout.part_pts.get(kind, {}).get(i, default)
 
     def mover_at(self, i):
         x1, y1, x2, y2, speed = self.layout.movers[i]

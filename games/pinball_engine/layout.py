@@ -45,6 +45,7 @@ class Layout:
     rubbers: tuple = ()               # (x1, y1, x2, y2) dead-rubber bands: bouncy, no score
     movers: tuple = ()                # (x1, y1, x2, y2, speed) a target that slides along a track
     holes: tuple = ()                 # (x, y, radius, angle in degrees) extra kicker holes: hold the ball, then fire it out
+    part_pts: dict = field(default_factory=dict, hash=False, compare=False)   # custom tables: {'bump': {index: points}} overrides the rules' score for one part
     portals: tuple | None = None      # (x1, y1, x2, y2, radius): a linked pair of holes; a ball entering one leaves from the other
     flaps: tuple = ()                 # (x1, y1, x2, y2) one-way flaps: solid from the left of a->b, the ball passes from the right
     guide_run: int = 2                # how many of the guide rails (from guides_from) are the violet inlane guides

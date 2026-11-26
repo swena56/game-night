@@ -186,13 +186,24 @@ const base = process.env.BASE || 'http://localhost:8794';
     // flippers, moving targets, kicker holes, rubber bands, point values and zoom
     await p2.evaluate(() => { const e = window.pinballEditor; e.state.items = []; e.addPart('flip', 2.2, 9); e.addPart('mover', 2, 5); e.addPart('hole', 1.5, 7); e.addPart('rubber', 1, 11); });
     for (const k of ['flip', 'mover', 'hole', 'rubber']) assert.equal(await count2(k), 1, k);
-    await p2.locator('.pe-pts summary').click();
+    await p2.locator('.pe-pts summary', { hasText: 'Point values' }).click();
     await p2.locator('#pePtsBody input[data-k="bumper"]').fill('750');
     await p2.locator('#pePtsBody input[data-k="bumper"]').dispatchEvent('change');
     assert.equal((await p2.evaluate(() => window.pinballEditor.toSpec())).pts.bumper, 750);
     const before = (await p2.locator('#peCanvas').boundingBox()).width;
     await p2.locator('#peZoom').click();
     assert.ok((await p2.locator('#peCanvas').boundingBox()).width > before * 1.4, 'zoom enlarges the table');
+    // per-part points and layers
+    await p2.evaluate(() => { const e = window.pinballEditor; e.state.items = []; e.addPart('bump', 3, 5); e.addPart('wall', 5, 9); e.select(0); });
+    await p2.locator('#pePv').fill('900'); await p2.locator('#pePv').dispatchEvent('change');
+    assert.deepEqual((await p2.evaluate(() => window.pinballEditor.toSpec())).pv, [[0, 900]]);
+    await p2.locator('#pePv').fill(''); await p2.locator('#pePv').dispatchEvent('change');
+    assert.equal((await p2.evaluate(() => window.pinballEditor.toSpec())).pv, undefined, 'blank goes back to the table default');
+    await p2.locator('.pe-pts summary', { hasText: 'Layers' }).click();
+    await p2.locator('#peLayersBody label', { hasText: 'Scoring' }).locator('input').uncheck();
+    const hb = await p2.locator('#peCanvas').boundingBox();
+    await p2.mouse.click(hb.x + 3 / 10 * hb.width, hb.y + 5 / 17 * hb.height);
+    assert.equal(await p2.locator('#peTitle').textContent(), 'Nothing selected', 'a hidden layer can not be clicked');
     console.log('Pinball editor checks passed: drag, move, resize, inspector, undo, limits, wires, share codes, saved tables and play');
   } finally {
     await browser.close();

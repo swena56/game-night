@@ -76,6 +76,7 @@ def wires(parts):
     return out
 
 
+PART_VALUE = {"bump": "bump", "sling": "sling", "target": "target", "lane": "lane", "mover": "mover"}      # parts that can carry their own score
 POINTS = {"bumper": (100, "bump"), "sling": (50, "sling"), "target": (250, "target"), "lane": (500, "lane"), "spinner": (100, "spinner"),
           "ramp": (6000, "ramp"), "saucer": (1000, "saucer"), "portal": (250, "portal"), "mover": (300, "mover")}
 
@@ -110,8 +111,14 @@ def build(spec):
     name = spec.get("name")
     name = " ".join(name.split())[:NAME_MAX] if isinstance(name, str) else ""
     counts = dict.fromkeys(LIMITS, 0)
+    raw_pv = spec.get("pv") if isinstance(spec.get("pv"), list) else []
+    own = {}
+    for pair in raw_pv:
+        if isinstance(pair, list) and len(pair) == 2 and type(pair[0]) is int and type(pair[1]) in (int, float) and math.isfinite(pair[1]):
+            own[pair[0]] = int(round(min(20000, max(0, pair[1]))))
+    part_pts, clean_pv = {}, []
     clean, parts, paint = [], {k: [] for k in LIMITS}, {k: [] for k in LIMITS}
-    for item in spec["items"]:
+    for index, item in enumerate(spec["items"]):
         if not isinstance(item, list) or not item or item[0] not in SHAPE:
             raise GameError("The table has an unknown part.")
         kind, shape = item[0], SHAPE[item[0]]
@@ -119,6 +126,9 @@ def build(spec):
         if not wide and (shape == "w" or len(item) != 2 + {"p": 2, "pr": 3, "s": 4, "a": 6, "": 0}[shape]) or type(item[-1]) is not str or not COLOR.match(item[-1]):
             raise GameError(f"A {kind} on the table is malformed.")
         counts[kind] += 1
+        if kind in PART_VALUE and index in own:
+            part_pts.setdefault(PART_VALUE[kind], {})[counts[kind] - 1] = own[index]
+            clean_pv.append([index, own[index]])
         if counts[kind] > LIMITS[kind]:
             raise GameError(f"Too many of one part (a table can have {LIMITS[kind]} {kind}).")
         color = item[-1].lower()
@@ -157,7 +167,7 @@ def build(spec):
     decals = [[g, *p, c] for g in GLYPHS for p, c in zip(parts[g], paint[g])]
     layout = Layout(
         rails=cabinet.SANDBOX_BASE + walls, guides_from=cabinet.GUIDES_FROM, guide_run=len(cabinet.RIGHT_GUIDE),
-        flaps=tuple(parts["flap"]), portals=portals, rubbers=tuple(parts["rubber"]), holes=holes,
+        part_pts=part_pts, flaps=tuple(parts["flap"]), portals=portals, rubbers=tuple(parts["rubber"]), holes=holes,
         movers=tuple((*m, 1.0) for m in parts["mover"]), flippers=flippers, launch=cabinet.LAUNCH, gate=cabinet.GATE,
         bumps=tuple(parts["bump"]), slings=tuple(parts["sling"]), targets=tuple(parts["target"]),
         lanes=tuple(parts["lane"]), posts=tuple(parts["post"]),
@@ -175,6 +185,8 @@ def build(spec):
                "saucer": paint["saucer"][0] if paint["saucer"] else None, "magnet": paint["magnet"][0] if paint["magnet"] else None,
                "kick": paint["kick"][0] if paint["kick"] else None, "name": name})
     clean_spec = {"v": 1, "name": name, "items": clean}
+    if clean_pv:
+        clean_spec["pv"] = clean_pv
     if points(spec):
         clean_spec["pts"] = points(spec)
     return layout, clean_spec
