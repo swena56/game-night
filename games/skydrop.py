@@ -13,6 +13,7 @@ LENGTH = 720.0
 STEP = 1 / 30
 SEND_EVERY = 2
 COUNTDOWN = 3.0
+INTRO = 6.0   # (#247) the first run counts down longer, so there is time to read the briefing card
 COIN_PTS, GEM_PTS, COIN_R = 2, 10, 1.8   # 🪙 coins and 💎 gems hang between the rings: fly through them for points
 DRAFT_GAP, DRAFT_R, DRAFT_BOOST = 8.0, 2.0, 1.12   # 🌬️ tuck in close behind a rival and you ride their slipstream: a bit more speed
 STREAK_EVERY, STREAK_PTS, STREAK_SURGE = 5, 10, 1.5   # 🔥 every 5th ring in a row: bonus points and a short free speed surge
@@ -275,7 +276,7 @@ class SkyDrop(Game):
             if not p or p.eliminated:
                 self.flyers[i].done_at = -1
         self.stage = "countdown"
-        self.go_at = now + COUNTDOWN
+        self.go_at = now + (INTRO if self.run == 1 else COUNTDOWN)
         self.last = now
         self.frames = 0
         self.finished = []
@@ -647,7 +648,7 @@ class SkyDrop(Game):
 
     def fast_view(self, now, full=False):
         return {"stage": self.stage, "run": self.run, "runs": self.runs, "go": self.go_at,
-                "time": now, "raceStarted": self.race_started, "length": LENGTH, "seed": self.seed, "course": self.s.get("course", "spire"), "level": self.level, "ringR": self.ring_r, "ramp": LEVELS[self.level]["ramp"], "drifts": self.drifts, "dark": self.dark,
+                "time": now, "raceStarted": self.race_started, "length": LENGTH, "seed": self.seed, "course": self.s.get("course", "spire"), "level": self.level, "levelName": LEVELS[self.level]["name"], "ringR": self.ring_r, "ramp": LEVELS[self.level]["ramp"], "drifts": self.drifts, "dark": self.dark,
                 "rings": self.rings, "hazards": self.hazards, "streams": self.streams, "gusts": self.gusts, **({"coins": self.coins} if full else {}),
                 "finished": self.finished, "events": self.events,
                 "flyers": [[f.depth, f.x, f.z, f.vx, f.vz, f.score, f.rings, f.combo,

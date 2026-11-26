@@ -244,11 +244,26 @@ UI.skydrop = (() => {
   function renderHud(v){if(!v||!Array.isArray(v.flyers)||!Array.isArray(v.seats))return;const i0=me(),watching=!(i0>=0&&v.flyers[i0]),f=watching?(v.flyers.reduce((a,b)=>(b[0]>a[0]?b:a),state(-1))):state(i0),depth=f[0]||0;
     const place=f[10]||(1+v.flyers.filter((a,j)=>j!==i0&&(a[9]>0?a[9]<=(f[9]||Infinity):!f[9]&&a[0]>depth)).length),ord=(n)=>n+(n%100>10&&n%100<14?'th':['th','st','nd','rd'][n%10]||'th');
     $('sdPlace').textContent=v.stage==='countdown'?`🪂 Run ${v.run} · get ready`:watching?`👀 Watching only · leader ${Math.floor(depth/v.length*100)}% · play from the lobby`:`${ord(place)} · ${Math.floor(depth/v.length*100)}%`;
-    $('sdScore').textContent=`${f[5]||0} pts · ${f[6]||0} rings · ×${Math.max(1,f[7]||0)}`;$('sdCharges').textContent=f[8]??3;{const pk=f[14]||'';if(pk)$('sdScore').textContent+=' · '+({magnet:'🧲',wide:'⭕',shield:'🛡️'}[pk]||'');const pp=$('sdPerks');if(pp)pp.hidden=!(f[15]&&!watching&&v.stage==='race');}
+    $('sdScore').textContent=`${f[5]||0} pts · ${f[6]||0} rings · ×${Math.max(1,f[7]||0)}`;if(!watching)showGain(v,f[5]||0);$('sdCharges').textContent=f[8]??3;{const pk=f[14]||'';if(pk)$('sdScore').textContent+=' · '+({magnet:'🧲',wide:'⭕',shield:'🛡️'}[pk]||'');const pp=$('sdPerks');if(pp)pp.hidden=!(f[15]&&!watching&&v.stage==='race');}
     $('sdProgress').style.width=`${Math.min(100,depth/v.length*100)}%`;$('sdClock').textContent=`Run ${v.run}/${v.runs}`;
-    const banner=$('sdBanner');if(v.stage==='results'&&hyperRun===v.run&&performance.now()-hyperAt<HYPER)banner.hidden=true;else if(v.stage==='results'){banner.hidden=false;banner.replaceChildren();const title=document.createElement('b');title.textContent=`Run ${v.run} complete`;banner.append(title);for(const [n,i] of v.finished.entries()){const row=document.createElement('p');row.textContent=`${n+1}. ${name(i)} · ${state(i)[5]} pts`;banner.append(row);}}else if(v.stage==='countdown'){banner.hidden=false;banner.textContent=`${Math.max(1,Math.ceil((v.go-Date.now()/1000)))}…`;}else banner.hidden=true;
+    const banner=$('sdBanner');if(v.stage==='results'&&hyperRun===v.run&&performance.now()-hyperAt<HYPER)banner.hidden=true;else if(v.stage==='results'){banner.hidden=false;banner.replaceChildren();const title=document.createElement('b');title.textContent=`Run ${v.run} complete`;banner.append(title);for(const [n,i] of v.finished.entries()){const row=document.createElement('p');row.textContent=`${n+1}. ${name(i)} · ${state(i)[5]} pts`;banner.append(row);}}else if(v.stage==='countdown')briefing(banner,v,watching);else banner.hidden=true;
     const seats=$('sdSeats');const key=JSON.stringify([v.points,v.ringTotals,v.flyers.map(a=>a[0])]);if(seats.dataset.key!==key){seats.dataset.key=key;seats.replaceChildren();v.seats.forEach((_,i)=>{const row=document.createElement('div');row.className='sd-row';const swatch=document.createElement('i');swatch.style.background=color(i);const label=document.createElement('span');label.textContent=name(i);const score=document.createElement('b');score.textContent=`${v.points[i]+(v.stage==='results'?0:state(i)[5])} pts`;const progress=document.createElement('small');progress.textContent=`${Math.floor(state(i)[0]/v.length*100)}%`;row.append(swatch,label,score,progress);seats.append(row);});}
   }
+  // (#248) every change to my score floats up from the middle of the shaft, bigger for a bigger gain, and the score pill pops
+  let gained=null;
+  function showGain(v,score){const key=`${v.seed}:${v.run}`,was=gained;gained={key,score};if(was?.key!==key||score===was.score)return;
+    const n=score-was.score,e=document.createElement('span');e.className=`sd-gain${n<0?' lost':n>=10?' big':''}`;e.textContent=n>0?`+${n}`:`−${-n}`;
+    e.style.left=`${42+Math.random()*16}%`;e.setAttribute('aria-hidden','true');stage.append(e);setTimeout(()=>e.remove(),950);
+    const pill=$('sdScore');pill.classList.remove('sd-bump','lost');void pill.offsetWidth;pill.classList.add('sd-bump');if(n<0)pill.classList.add('lost');}
+  // (#247) the start card: which dive this is, what scores, how to steer, and the count
+  function briefing(banner,v,watching){banner.hidden=false;const key=`${v.seed}:${watching}`;let card=banner.querySelector('.sd-brief');
+    if(card?.dataset.key!==key){card=document.createElement('div');card.className='sd-brief';card.dataset.key=key;
+      const add=(tag,text)=>{const e=document.createElement(tag);e.textContent=text;card.append(e);};
+      add('b',`Level ${v.level}${v.levelName?` · ${v.levelName}`:''}`);add('small',`Run ${v.run} of ${v.runs} · most points wins`);
+      add('p','⭕ Fly through the rings. Rings in a row build a combo.');add('p','💥 Dodge hazards. A hit breaks your combo.');
+      add('p',watching?'👀 You are watching this dive.':'👆 Drag to steer · ⚡ Boost for speed');add('strong','');
+      banner.replaceChildren(card);}
+    const count=String(Math.max(1,Math.ceil(v.go-Date.now()/1000))),big=card.lastChild;if(big.textContent!==count)big.textContent=count;}
   function render(S0, ctx0) {
     const resumed = S?.paused && !S0.paused;
     S = S0; ctx = ctx0;

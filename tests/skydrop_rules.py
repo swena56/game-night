@@ -53,7 +53,7 @@ def tick(g, secs, step=1 / 60, each=None):
 
 
 def to_race(g):
-    tick(g, M.COUNTDOWN + 0.1)
+    tick(g, M.INTRO + 0.1)
     return g.stage == "race"
 
 

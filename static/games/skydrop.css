@@ -11,6 +11,18 @@
 .sd-progress i { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg,#66e7fa,#8fffd1 58%,#ffdf7a); box-shadow: 0 0 12px #6cecff; transition: width .15s linear; }
 .sd-banner { position: absolute; z-index: 3; left: 50%; top: 50%; transform: translate(-50%,-50%); min-width: 180px; max-width: calc(100% - 28px); padding: 12px 18px; border: 1px solid #ffffff70; border-radius: var(--r-md); color: #f8fbff; text-align: center; font: 800 24px var(--font-display); background: #10152be8; box-shadow: 0 8px 30px #07091a88; }
 .sd-banner p { margin: 4px 0; font: 700 15px var(--font-display); text-align: left; }
+.sd-gain { position: absolute; z-index: 3; top: 56%; transform: translateX(-50%); pointer-events: none; color: #ffe17d; font: 800 26px var(--font-display); text-shadow: 0 2px 4px #000, 0 0 14px #ffb62e; animation: sdGain .95s ease-out both; }
+.sd-gain.big { font-size: 40px; color: #8fffd1; text-shadow: 0 2px 4px #000, 0 0 18px #35e6a0; }
+.sd-gain.lost { color: #ff8095; text-shadow: 0 2px 4px #000, 0 0 14px #ff2a4d; }
+@keyframes sdGain { 0% { opacity: 0; transform: translate(-50%, 14px) scale(.6); } 18% { opacity: 1; transform: translate(-50%, 0) scale(1.15); } 70% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -70px) scale(1); } }
+.sd-hud > .sd-bump { animation: sdBump .35s ease-out; border-color: #ffe17d; }
+.sd-hud > .sd-bump.lost { border-color: #ff8095; }
+@keyframes sdBump { 40% { transform: scale(1.1); background: #3a3414; } }
+@media (prefers-reduced-motion: reduce) { .sd-gain { animation: none; } .sd-hud > .sd-bump { animation: none; } }
+.sd-brief { width: min(300px, 74vw); }
+.sd-brief b, .sd-brief small, .sd-brief strong { display: block; }
+.sd-brief small { margin-bottom: var(--s2); font-size: 13px; opacity: .75; }
+.sd-brief strong { margin-top: var(--s2); font-size: 44px; line-height: 1; color: #8fffd1; }
 .sd-stick { position: absolute; z-index: 2; width: 80px; height: 80px; margin: -40px; border: 1px solid #ffffff8c; border-radius: 50%; background: #c7f6ff18; box-shadow: inset 0 0 24px #8deeff16,0 5px 24px #080a2050; backdrop-filter: blur(2px); pointer-events: none; }
 .sd-stick::before,.sd-stick::after { content: ""; position: absolute; background: #ffffff2c; }
 .sd-stick::before { width: 1px; height: 100%; left: 50%; }
