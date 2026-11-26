@@ -440,7 +440,7 @@ const SFX = {
   // air hockey: a hard plastic puck clack (louder for a harder hit), a dull rail knock, a crowd swell and a groan
   puck: (hard = 0) => { noise(0.025, 3400, 2.2, 0.28 + hard * 0.2); tone(1500, 900, 0.03, 'square', 0.025 + hard * 0.02); },
   // pinball: a pop bumper's bright electric boing (pitch by bumper), a slingshot's rubber thwack
-  pbumper: (n = 0) => { const f = 640 + (n % 3) * 150; tone(f * 1.8, f, 0.11, 'square', 0.04); tone(f * 2.7, f * 1.5, 0.07, 'triangle', 0.05, 0.01); noise(0.02, 3000, 1.5, 0.15); },
+  pbumper: (n = 0) => { const f = (640 + (n % 100 % 3) * 150) * 2 ** (Math.max(0, Math.min(8, Math.floor(n / 100)) - 1) / 12); tone(f * 1.8, f, 0.11, 'square', 0.04); tone(f * 2.7, f * 1.5, 0.07, 'triangle', 0.05, 0.01); noise(0.02, 3000, 1.5, 0.15); },
   psling: () => { noise(0.04, 1200, 1.2, 0.35); tone(300, 140, 0.07, 'sawtooth', 0.05); },
   // pinball: a spinner's ratchet flick, a ramp's rising whoosh, a jackpot's bell run, a kickback's solenoid punch
   pspin: () => { tone(1700, 1300, 0.03, 'triangle', 0.05); noise(0.012, 4200, 2, 0.12); },

@@ -9,9 +9,9 @@
     skill: 'Skill shot +5,000', spinner: 'Spinner +100', ramp: 'Ramp +6,000 · Jackpot lit', jackpot: 'Jackpot +12,000', save: 'Ball saved · Auto launch',
     tilt: 'TILT · scoring suspended', nudge: 'Table nudged', mult: 'Multiplier up!', kickback: 'Kickback!', extra: 'EXTRA BALL!', post: 'Centre post save!', hurry: 'HURRY-UP +15,000', super: 'SUPER JACKPOT +50,000',
     mystery_points: 'Mystery · +10,000', mystery_save: 'Mystery · Ball save 10s', mystery_mult: 'Mystery · Multiplier up!', mystery_hold: 'Mystery · Bonus held', lock: 'Ball locked', mission: 'Mission complete +5,000', bank: 'Target bank cleared +2,000', wizard: 'WIZARD MODE · Four balls, jackpots lit!', multiball: 'MULTIBALL · Shoot the ramp for jackpots +5,000',
-    portal: 'Portal +250', hole: 'Kicker hole +1,000', mover: 'Moving target +300', saucer: 'Saucer +1,000', subway: 'Subway +2,000', magnet: 'Magnet grab +1,500', special: 'SPECIAL · Ball save +5,000', danger: 'DANGER · One more nudge tilts', rampfall: 'Ramp shot fell back', orbit: 'Orbit +3,000', search: 'Ball search', drain: 'Ball drained', done: 'Run complete', recovery: 'Ball freed',
+    frenzy: 'BUMPER FRENZY +2,500', portal: 'Portal +250', hole: 'Kicker hole +1,000', mover: 'Moving target +300', saucer: 'Saucer +1,000', subway: 'Subway +2,000', magnet: 'Magnet grab +1,500', special: 'SPECIAL · Ball save +5,000', danger: 'DANGER · One more nudge tilts', rampfall: 'Ramp shot fell back', orbit: 'Orbit +3,000', search: 'Ball search', drain: 'Ball drained', done: 'Run complete', recovery: 'Ball freed',
   };
-  const sounds = { portal: 'psave', skill: 'pskill', ramp: 'pramp', jackpot: 'pjackpot', save: 'psave', tilt: 'wrong', nudge: 'thud', mult: 'cheer', kickback: 'pkick', extra: 'pknock', danger: 'wrong', rampfall: 'rail', search: 'pkick', post: 'psave', hurry: 'pjackpot', super: 'pjackpot', mystery_points: 'cheer', mystery_save: 'psave', mystery_mult: 'cheer', mystery_hold: 'pskill', lock: 'psave', multiball: 'pjackpot', wizard: 'pjackpot', mission: 'cheer', saucer: 'ptarget', subway: 'pramp', magnet: 'pskill', special: 'psave', orbit: 'pramp', search: 'pkick', bonus: 'cheer', spinner: 'pspin', drain: 'groan', done: 'groan' };
+  const sounds = { frenzy: 'pbank', portal: 'psave', skill: 'pskill', ramp: 'pramp', jackpot: 'pjackpot', save: 'psave', tilt: 'wrong', nudge: 'thud', mult: 'cheer', kickback: 'pkick', extra: 'pknock', danger: 'wrong', rampfall: 'rail', search: 'pkick', post: 'psave', hurry: 'pjackpot', super: 'pjackpot', mystery_points: 'cheer', mystery_save: 'psave', mystery_mult: 'cheer', mystery_hold: 'pskill', lock: 'psave', multiball: 'pjackpot', wizard: 'pjackpot', mission: 'cheer', saucer: 'ptarget', subway: 'pramp', magnet: 'pskill', special: 'psave', orbit: 'pramp', search: 'pkick', bonus: 'cheer', spinner: 'pspin', drain: 'groan', done: 'groan' };
   const prefixes = { bumper: 'Bumper +100', sling: 'Slingshot +50', lane: 'Rollover +500', target: 'Target +250', mover: 'Moving target +300' };
   const label = (event, row) => {
     if (event === 'bonus' && row) return `Ball bonus +${row[BONUS].toLocaleString()}`;
@@ -21,7 +21,7 @@
   };
   const sound = (event) => sounds[event] || (/^bumper/.test(event) ? 'pbumper' : /^sling/.test(event) ? 'psling' :
     /^lane/.test(event) ? 'plane' : /^target/.test(event) ? 'ptarget' : 'pop');
-  const soundArg = (event) => (/^bumper/.test(event) ? Number(event.slice(6)) || 0 : /^lane/.test(event) ? Number(event.slice(4)) || 0 :
+  const soundArg = (event, row) => (/^bumper/.test(event) ? (Number(event.slice(6)) || 0) + 100 * (row?.[STATS]?.streak || 0) : /^lane/.test(event) ? Number(event.slice(4)) || 0 :
     /^target/.test(event) ? Number(event.slice(6)) || 0 : undefined);
   // each table keeps its own personal best and top-scores list
   // the ball's trail warms from ivory to hot orange as the bonus multiplier climbs (1x..5x)
@@ -61,7 +61,11 @@
   });
 
   const jackpotLit = row => !row[TILT] && (row[JACKPOT] > 0 || row[OTHERS]?.length > 0);
-  const rampLit = row => !row[TILT] && (row[BANK] === 7 || jackpotLit(row));
+  // a table has any number of drop targets: the ramp opens when every one of them is down
+  const targetCount = row => row[STATS]?.targets ?? 3;
+  const targetsDown = row => { let n = 0; for (let b = row[BANK]; b; b >>= 1) n += b & 1; return n; };
+  const lastTarget = (row, i) => !row[TILT] && targetCount(row) > 1 && targetCount(row) - targetsDown(row) === 1 && !(row[BANK] >> i & 1);   // the one still standing
+  const rampLit = row => !row[TILT] && (row[BANK] === (1 << targetCount(row)) - 1 || jackpotLit(row));
   const rampColor = row => jackpotLit(row) ? palette.gold : palette.teal;
 
   // players who ask for reduced motion get no speed halo, squash/stretch, ripples or score roll
@@ -514,6 +518,11 @@
           if (!down) rail([r[0] + .07, r[1] + .09, r[2] + .07, r[3] + .09], '#00000066', .3);
           rail(face, '#17152f', .34);
           rail(face, flash === 'target' + i ? palette.ivory : down ? '#38325c' : paintOf(geo, 'targets', i, palette.red), down ? .16 : .26);
+          if (lastTarget(row, i)) {          // the last one standing in the bank: a blinking gold ring
+            const on = still || Math.floor(tNow / 220) % 2;
+            c.beginPath(); c.arc((r[0] + r[2]) / 2, (r[1] + r[3]) / 2, .5 + (still ? 0 : .08 * Math.sin(tNow / 140)), 0, Math.PI * 2);
+            c.strokeStyle = on ? palette.gold : '#ffd38355'; c.lineWidth = .06; c.stroke();
+          }
           if (!down) rail([face[0] + away.nx * .06, face[1] + away.ny * .06, face[2] + away.nx * .06, face[3] + away.ny * .06], '#ffffff99', .05);
           if (!still && age < 1) {            // a hit: a flash along the target and sparks off its face
             rail(r, `rgba(255,243,168,${.6 * (1 - age)})`, .28 + .3 * (1 - age));
@@ -877,7 +886,7 @@
       slingBars.push({ r, band, piece, arm });
     });
     geo.targets.forEach((r, i) =>
-      rail(r, .26, .58, .3, lamp('target' + i, paintOf(geo, 'targets', i, palette.red), row => row[BANK] & (1 << i) ? '#38325c' : paintOf(geo, 'targets', i, palette.red))));
+      rail(r, .26, .58, .3, lamp('target' + i, paintOf(geo, 'targets', i, palette.red), row => row[BANK] & (1 << i) ? '#38325c' : lastTarget(row, i) && Math.floor(performance.now() / 220) % 2 ? palette.gold : paintOf(geo, 'targets', i, palette.red))));
     geo.bumps.forEach(([x, y, radius], i) => {
       const parts = [
         disc(x, y, radius - .05, .31, .18, chrome),
@@ -1325,7 +1334,7 @@
     const timer = g.mode === 'timeattack' ? ` · ⏱ ${clockText(row[STATS]?.clock ?? 0)}` : '';
     setText(find('nudges'), row[TILT] ? 'Tilted' : g.mode === 'zen' ? 'Zen · no tilt' : g.mode === 'practice' ? 'Practice · not scored' :
       `Nudges ${3 - row[NUDGES]}${nextExtra ? ` · Extra ball ${nextExtra.toLocaleString()}` : ''}${timer}`);
-    setText(find('ramp'), row[OTHERS]?.length ? `MULTIBALL ×${row[OTHERS].length + 1}` : row[JACKPOT] ? 'Jackpot lit' : rampLit(row) ? 'Ramp ready' : `Targets ${(row[BANK] & 1) + (row[BANK] >> 1 & 1) + (row[BANK] >> 2 & 1)}/3${row[LOCKED] ? ` · ${row[LOCKED]} locked` : ''}`);
+    setText(find('ramp'), row[OTHERS]?.length ? `MULTIBALL ×${row[OTHERS].length + 1}` : row[JACKPOT] ? 'Jackpot lit' : rampLit(row) ? 'Ramp ready' : `Targets ${targetsDown(row)}/${targetCount(row)}${row[LOCKED] ? ` · ${row[LOCKED]} locked` : ''}`);
     find('ramp').classList.toggle('lit', !!rampLit(row));
     g.stage.classList.toggle('tilted', !!row[TILT]);
     g.stage.classList.toggle('saving', row[SAVE] > 0 && !row[STAGED]);
@@ -1403,6 +1412,7 @@
     const text = label(row[EVENT], row);
     if (row[EVENT]?.startsWith('mystery_')) return text.replace('Mystery · ', '? ');
     if (row[EVENT] === 'extra') return '★ EXTRA BALL ★';
+    if (row[EVENT] === 'frenzy') return `FRENZY! ${/\+[\d,]+/.exec(text)?.[0] || ''}`;
     if (row[EVENT] === 'mission') return `MISSION ✓ ${/\+[\d,]+/.exec(text)?.[0] || ''}`;
     const points = /\+[\d,]+/.exec(text)?.[0] || '';
     return row[COMBO] >= 5 && points ? `COMBO ×${row[COMBO]}! ${points}` : points;
@@ -1426,7 +1436,7 @@
       el.hidden = false;
       el.style.left = `${100 * (g.ball?.[0] ?? row[X]) / 10}%`;
       el.style.top = `${100 * ((g.ball?.[1] ?? row[Y]) + .85) / 18.7}%`;
-      el.classList.toggle('big', ['ramp', 'jackpot', 'super', 'hurry', 'bonus', 'skill', 'multiball', 'wizard', 'mission'].includes(row[EVENT]));
+      el.classList.toggle('big', ['ramp', 'jackpot', 'super', 'hurry', 'bonus', 'skill', 'multiball', 'wizard', 'mission', 'frenzy'].includes(row[EVENT]));
       el.classList.toggle('huge', row[EVENT] === 'extra' || row[EVENT] === 'wizard');
       el.classList.remove('go');
       void el.offsetWidth;
@@ -1442,7 +1452,7 @@
     }
     g.stage.classList.toggle('white', ['extra', 'super', 'wizard'].includes(row[EVENT]));
     // a jackpot, super, multiball or extra ball throws a ring of sparks from the ball; the table pulse takes the event's colour
-    const sparks = { jackpot: 14, super: 28, multiball: 22, extra: 22, hurry: 14, wizard: 40 }[row[EVENT]];
+    const sparks = { jackpot: 14, super: 28, multiball: 22, extra: 22, hurry: 14, wizard: 40, frenzy: 18 }[row[EVENT]];
     g.stage.dataset.pulse = row[EVENT];
     if (sparks && !reduce && g.me === g.viewer) {
       const cx = 100 * (g.ball?.[0] ?? row[X]) / 10, cy = 100 * (g.ball?.[1] ?? row[Y]) / 18.7;
@@ -1535,14 +1545,14 @@
       if (!row[TILT] && ((!row[OTHERS]?.length && ending(row[JACKPOT], prior[JACKPOT])) ||
           ending(row[HURRY], prior[HURRY]))) g.ctx.sfx('ptick');
     }
-    if (prior && viewer === g.me && !g.ctx.readOnly && prior[BANK] === 7 && row[BANK] === 0) g.ctx.sfx('pbank');
+    if (prior && viewer === g.me && !g.ctx.readOnly && prior[BANK] && prior[BANK] === (1 << targetCount(prior)) - 1 && row[BANK] === 0) g.ctx.sfx('pbank');
     // the last nudge before tilt: a warning buzz for the player
     if (prior && viewer === g.me && !g.ctx.readOnly && row[NUDGES] === 3 && prior[NUDGES] < 3) g.ctx.sfx('alarm');
     if (prior && prior[EVENT_ID] !== row[EVENT_ID]) {
       g.flashAt = performance.now() + 780;
       g.glass?.react(row[EVENT]);
       popup(g, row);
-      if (viewer === g.me && !g.ctx.readOnly) g.ctx.sfx(sound(row[EVENT]), soundArg(row[EVENT]));
+      if (viewer === g.me && !g.ctx.readOnly) g.ctx.sfx(sound(row[EVENT]), soundArg(row[EVENT], row));
     }
     // the plunger lets go: a spring thwack as the ball shoots up the lane
     if (prior && prior[STAGED] && !row[STAGED] && prior[BALLS] === row[BALLS] && viewer === g.me && !g.ctx.readOnly) g.ctx.sfx('plaunch');

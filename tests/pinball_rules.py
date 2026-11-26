@@ -36,6 +36,32 @@ def placed(x, y, vx=0, vy=0):
 
 
 class PinballRules(unittest.TestCase):
+    def test_a_quick_run_of_bumper_hits_pays_a_frenzy(self):
+        table = placed(5, 8)
+        bx, by, radius = table.layout.bumps[0]
+        seen = []
+        for hit in range(10):
+            table.x, table.y, table.vx, table.vy = bx, by - radius - table.layout.ball + 0.02, 0, 5
+            before = table.score
+            table.mechanisms(table.y)
+            seen.append((table.event, table.score - before))
+        self.assertEqual([i for i, (event, _) in enumerate(seen) if event == "frenzy"], [4, 9])
+        self.assertGreater(seen[9][1], seen[4][1])      # the longer the run, the bigger the frenzy
+        table.streak_ticks = 0                           # a pause ends the run
+        table.x, table.y, table.vx, table.vy = bx, by - radius - table.layout.ball + 0.02, 0, 5
+        table.mechanisms(table.y)
+        self.assertEqual(table.bumper_streak, 1)
+
+    def test_every_ball_has_its_own_portal_cooldown(self):
+        table = placed(5, 8)
+        table.portal_cool = 90
+        table.others.append(table.free_ball(2, 6, 0, 0))
+        table.swap(0)
+        self.assertEqual(table.portal_cool, 0)
+        table.swap(0)
+        self.assertEqual(table.portal_cool, 90)
+        self.assertEqual(table.public()[-1]["targets"], len(table.layout.targets))      # the screen needs the bank's size
+
     def test_progressive_jackpot_pool(self):
         table = Table()
         table.staged = False

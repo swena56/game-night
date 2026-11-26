@@ -18,7 +18,7 @@ SHOT_OF = dict(orbit="orbit", lane="lane", skill="lane", target="target", spinne
 SPEED_CAP = 42
 # Per-ball state: the table swaps these between the main ball and each extra multiball ball.
 BALL_STATE = ("x", "y", "vx", "vy", "height", "ramp_ticks", "rollovers", "skill", "smooth_launch",
-              "still", "still_origin", "jackpot_shot", "saucer_ticks", "subway_ticks", "english", "orbit_ticks", "hole_ticks", "hole_at")
+              "still", "still_origin", "jackpot_shot", "saucer_ticks", "subway_ticks", "english", "orbit_ticks", "hole_ticks", "hole_at", "portal_cool")
 
 
 @dataclass
@@ -482,6 +482,8 @@ class Table:
                 own = lay.part_pts.get("bump", {}).get(i)
                 base = own * (2 if hot else 1) if own is not None else (rules.bumper_jackpot if hot else rules.bumper)
                 self.signal(f"bumper{i}", base * level)
+                if rules.frenzy_at and self.bumper_streak % rules.frenzy_at == 0:
+                    self.signal("frenzy", rules.frenzy_points * min(3, self.bumper_streak // rules.frenzy_at))
         for i, rail in enumerate(lay.targets):
             if self.bank & (1 << i):
                 continue       # a dropped target is flush with the playfield until the bank resets
@@ -683,7 +685,7 @@ class Table:
 
     def free_ball(self, x, y, vx, vy):
         return dict(x=x, y=y, vx=vx, vy=vy, height=0, ramp_ticks=0, rollovers=0, skill=False,
-                    smooth_launch=False, still=0, still_origin=(x, y), jackpot_shot=False, saucer_ticks=0, subway_ticks=0, english=0.0, orbit_ticks=0, hole_ticks=0, hole_at=0)
+                    smooth_launch=False, still=0, still_origin=(x, y), jackpot_shot=False, saucer_ticks=0, subway_ticks=0, english=0.0, orbit_ticks=0, hole_ticks=0, hole_at=0, portal_cool=0)
 
     def run_ball(self, previous):
         lay = self.layout
@@ -995,7 +997,7 @@ class Table:
                  for o in self.others], self.last_points, int(self.hold), math.ceil(self.hurry_ticks / 240),
                 {"jackpot": self.jackpots, "multiball": self.multiballs, "hurry": self.hurry_wins,
                  "mystery": self.mysteries, "extra": self.extras, "combo": self.best_combo,
-                 "wizard": self.wizards, "skill_lane": self.skill_lane, "missions": self.missions_done,
+                 "wizard": self.wizards, "targets": len(self.layout.targets), "skill_lane": self.skill_lane, "missions": self.missions_done,
                  "orbit": int(bool(self.layout.orbit) and not self.orbit_cool and not self.tilt),
                  "special": int(self.special_lit() and not self.special_used), "special_used": int(self.special_used),
                  "post": self.post_glow, "streak": self.bumper_streak if self.streak_ticks else 0, "hold": int(self.saucer_ticks > 0 or self.hole_ticks > 0),

@@ -26,6 +26,8 @@ class Rules:
     combo_ticks: int = 3 * 240
     combo_step: int = 250
     max_mult: int = 5
+    frenzy_at: int = 5            # every Nth bumper hit of a quick run (each within a second of the last) pays a frenzy bonus (0 disables)
+    frenzy_points: int = 2500     # ...times 1, 2, then 3 as the same run goes on
     max_nudges: int = 3
     lock_balls: int = 0          # ramp locks needed to start multiball (0 disables it)
     multiball_ticks: int = 40 * 240
