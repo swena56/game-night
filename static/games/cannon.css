@@ -12,6 +12,9 @@
 .cn-dial { display: flex; align-items: center; gap: 4px; background: var(--panel); border-radius: 999px; padding: 3px; }
 .cn-dial button { width: 40px; height: 40px; padding: 0; border-radius: 50%; font-size: 18px; touch-action: manipulation; }
 .cn-dial b { min-width: 4.2em; text-align: center; font-variant-numeric: tabular-nums; }
+.cn-walk[hidden] { display: none; }
+.cn-walk button { width: auto; min-width: 48px; border-radius: 999px; padding: 0 6px; font-size: 14px; }
+.cn-walk b { min-width: 2.6em; }
 .cn-fire { min-width: 120px; min-height: 44px; font-size: 16px; }
 .cn-fire.cn-ready { animation: pulse 1.6s infinite; }
 .cn-shells { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 8px; }

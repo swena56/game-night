@@ -1,5 +1,7 @@
 """Cannon Hills: an original artillery duel for 2–6 players.
 
+🚶 Before firing on your turn you can walk a few steps; 📦 supply crates drop onto the hills.
+
 Everyone has a cannon on a side-on range of generated hills. On your turn you set an angle and a power,
 pick a shell and fire; the server flies the shell (gravity and that turn's wind), blows a crater (or
 builds a mound), hurts every cannon near the blast, and drops cannons whose ground was blown away onto
@@ -34,6 +36,16 @@ SHOTS_PER_ROUND = 14     # each, before the round goes to whoever has the most �
 GRIT_HP = 30             # last stand: at or below this many ❤️ a cannon is handed a Big Bang
 STREAK_HITS = 2          # this many direct hits in a row on your own shots hand you a Big Bang
 SPLIT_SPREAD = 14.0      # a splitter's outer bomblets leave this much faster / slower sideways
+WALK = 36                # 🚶 ground a cannon can cover on its turn
+STRIDE = 4               # ...one step at a time
+CLIMB = 6                # the tallest rise one step can take
+GAP = 11                 # cannons can't stand closer than this
+FUSE = 3.0               # 💣 a grenade goes off this long after leaving the barrel
+BOUNCE, ROLL = 0.45, 0.75  # how much of its speed it keeps off the ground: bouncing back, and along it
+GRENADE_WIND = 0.25      # ...and how much of the wind it feels
+CRATE_EVERY = 3          # 📦 a supply crate drops every this many turns, if none is lying about
+CRATE_HP = 25
+CRATE_KINDS = ("health", "health", "big", "grenade", "warp")
 
 # key: (icon, name, blast radius, damage, per round (None = endless), what it does)
 SHELLS = {
@@ -41,6 +53,8 @@ SHELLS = {
     "big": ("💥", "Big Bang", 30, 55, 1, "A huge blast."),
     "split": ("✨", "Splitter", 12, 22, 1, "Splits into three at the top of its arc."),
     "dirt": ("🪨", "Dirt Bomb", 18, 0, 2, "Builds a mound instead of a crater: a wall, no damage."),
+    "grenade": ("💣", "Grenade", 18, 45, 2, "Bounces off the hills and goes off after 3 seconds. The wind barely moves it."),
+    "warp": ("🌀", "Warp", 6, 0, 1, "No blast: your cannon jumps to where it lands."),
 }
 WIND = {"off": 0, "light": 5, "wild": 10}
 
@@ -84,6 +98,18 @@ def make_terrain(rng, style, n):
     return terrain, xs
 
 
+def bounce_off(terrain, x, vx, vy):
+    """A grenade's velocity after it strikes the ground at x: reflected off the slope there, with some speed lost."""
+    c = int(x)
+    slope = (terrain[min(W - 1, c + 2)] - terrain[max(0, c - 2)]) / 4
+    n = math.hypot(slope, 1.0)
+    nx, ny = -slope / n, 1.0 / n
+    into = vx * nx + vy * ny
+    if into >= 0:
+        return vx, vy
+    return (vx - into * nx) * ROLL - into * nx * BOUNCE, (vy - into * ny) * ROLL - into * ny * BOUNCE
+
+
 def fly(terrain, tanks, owner, x, y, vx, vy, ax, split=False, record=True, step0=0, at=0, by=None, shell="shell"):
     """Fly one shell; returns a list of segments {f: frames, at: first frame's index, boom: {...} | None}.
     A splitter's segment ends at the top of its arc and three more segments carry on from there.
@@ -91,8 +117,14 @@ def fly(terrain, tanks, owner, x, y, vx, vy, ax, split=False, record=True, step0
     frames, t, step = [], 0.0, step0
     armed = owner is None
     end = None
+    bouncy = shell == "grenade"
+    if bouncy:
+        ax *= GRENADE_WIND
     while t < MAX_T:
-        pvy = vy
+        if bouncy and t >= FUSE:
+            end = {"kind": "ground", "x": x, "y": y, "hit": None}
+            break
+        px, pvy = x, vy
         vx += ax * DT
         vy -= G * DT
         x += vx * DT
@@ -114,7 +146,7 @@ def fly(terrain, tanks, owner, x, y, vx, vy, ax, split=False, record=True, step0
                     out.append(s)
             return out
         hit = None
-        for j, (tx, ty, hp) in enumerate(tanks):
+        for j, (tx, ty, hp) in enumerate([] if bouncy else tanks):
             if hp <= 0:
                 continue
             d = math.hypot(x - tx, y - (ty + TANK_UP))
@@ -129,6 +161,13 @@ def fly(terrain, tanks, owner, x, y, vx, vy, ax, split=False, record=True, step0
             end = {"kind": "tank", "x": x, "y": y, "hit": hit}
             break
         surface = max(terrain[int(x)], WATER)
+        if y <= surface and bouncy and terrain[int(x)] >= WATER:
+            if surface - y > 3 and terrain[int(px)] < y:  # ran into the side of a cliff: come back off it
+                x, vx = px, -vx * BOUNCE
+            else:
+                y = float(surface)
+                vx, vy = bounce_off(terrain, x, vx, vy)
+            continue
         if y <= surface:
             end = {"kind": "water" if terrain[int(x)] < WATER else "ground", "x": x, "y": float(surface), "hit": None}
             break
@@ -183,11 +222,13 @@ class Cannon(Game):
     id = "cannon"
     category = "action"
     howto = [
-        "On your turn, aim your cannon: drag back from it like a slingshot, or use ◀ ▶ for the angle and − + for the power. Pick a shell and 🔥 Fire.",
+        "On your turn, aim your cannon: drag back from it like a slingshot, or use ◀ ▶ for the angle and − + for the power. Pick a shell and 🔥 Fire. The aim guide shows only the start of the arc.",
+        "🚶 Before you fire you can walk a little way: find a better angle or get out of a hole. Steep walls stop you, long drops hurt and the sea sinks you. (Not in ⚡ All at once.)",
+        "📦 Supply crates drop onto the hills: walk (or warp) into one for ❤️ or extra shells. A blast destroys it.",
         "The wind (top corner) changes every turn and pushes shells sideways. Your last shot's trail stays as a dashed line, to help you adjust.",
         "🎯 Two direct hits in a row earn a free Big Bang.",
         "Blasts hurt every cannon nearby (yours too) and blow craters. A cannon whose ground is blown away drops, and a long drop hurts. Sink into the sea and you're out.",
-        "Shells: 🔵 plain (endless), 💥 Big Bang (huge blast), ✨ Splitter (splits in three at the top of its arc), 🪨 Dirt Bomb (builds a wall). Big Bang and Splitter once a round, Dirt Bomb twice.",
+        "Shells: 🔵 plain (endless), 💥 Big Bang (huge blast), ✨ Splitter (splits in three at the top of its arc), 🪨 Dirt Bomb (builds a wall), 💣 Grenade (bounces, 3-second fuse), 🌀 Warp (jump to where it lands). Big Bang, Splitter and Warp once a round, Dirt Bomb and Grenade twice.",
         "🔥 Last stand (an option, on by default): the first time a cannon drops to 30 ❤️ or less in a round, it is handed a free Big Bang.",
         "Last cannon standing wins the round; most rounds wins. ⚡ All at once (an option): everyone aims in secret and the shells fly together.",
     ]
@@ -205,7 +246,10 @@ class Cannon(Game):
         "terrain": ("Terrain", [("rolling", "🎲 Rolling hills"), ("mountains", "⛰️ Mountains"), ("islands", "🏝️ Islands")], "rolling"),
         "grit": ("🔥 Last stand", [(1, "On: a free Big Bang at 30 ❤️"), (0, "Off")], 1),
         "volley": ("Firing", [(0, "Take turns"), (1, "⚡ All at once")], 0),
+        "guide": ("Aim guide", [("short", "Short: the first bit of the arc"), ("none", "None"), ("full", "Full preview (easy)")], "short"),
     }
+    # games saved before walking and crates have none of these
+    fuel, crate, turns = WALK, None, 0
 
     # -- setup
 
@@ -247,6 +291,7 @@ class Cannon(Game):
     def new_round(self):
         self.between = False
         self.streak = {}
+        self.hit_now = set()
         self.mark_round()
         self.round_no += 1
         n = len(self.seats)
@@ -261,6 +306,7 @@ class Cannon(Game):
         self.trails = [None] * n
         self.grit = set()  # cannons that have already had their last-stand Big Bang this round
         self.fired = [0] * n
+        self.crate, self.turns, self.fuel = None, 0, WALK
         self.shot = None
         self.locked = {}
         self.ready_at = 0.0
@@ -284,6 +330,10 @@ class Cannon(Game):
             i = (after + k) % n
             if self.tanks[i][2] > 0 and self.present(i):
                 self.room.begin_turn(self.seats[i])
+                self.fuel = WALK
+                self.turns += 1
+                if self.turns % CRATE_EVERY == 0 and not self.crate:
+                    self.drop_crate()
                 r = self.room
                 if wait:  # nobody fires again until this shell has landed on screen
                     if self.pl(i).bot:
@@ -292,6 +342,73 @@ class Cannon(Game):
                         r.deadline += wait
                 return
         self.end_round()
+
+    # -- 🚶 walking and 📦 crates
+
+    def drop_crate(self):
+        for _ in range(12):
+            x = self.rng.uniform(10, W - 10)
+            y = ground_at(self.terrain, x)
+            if y > WATER and all(t[2] <= 0 or abs(t[0] - x) > 22 for t in self.tanks):
+                self.crate = [round(x, 1), float(y), self.rng.choice(CRATE_KINDS)]
+                self.room.add_log("📦 A supply crate drops onto the hills.", "info")
+                return
+
+    def take_crate(self):
+        """Whoever is standing on the crate gets what's in it."""
+        if not self.crate:
+            return
+        x, y, kind = self.crate
+        for i, t in enumerate(self.tanks):
+            if t[2] > 0 and abs(t[0] - x) <= 7 and abs(t[1] - y) <= 9:
+                self.crate = None
+                if kind == "health":
+                    got = min(CRATE_HP, HP - t[2])
+                    t[2] += got
+                    text = f"❤️ +{got}"
+                else:
+                    self.ammo[i][kind] = self.ammo[i].get(kind, 0) + 1
+                    text = f"{SHELLS[kind][0]} {SHELLS[kind][1]}"
+                self.moment(f"📦 {self.name_of(i)} grabs a crate: {text}", "gold", "fanfare")
+                self.room.add_log(f"📦 {self.name_of(i)} opens a crate: {text}.", "power")
+                return
+
+    def settle_crate(self):
+        if self.crate:
+            y = ground_at(self.terrain, self.crate[0])
+            if y < WATER:
+                self.crate = None
+            else:
+                self.crate = [self.crate[0], float(y), self.crate[2]]
+
+    def walk_to(self, i, direction):
+        """The spot one step away in `direction`, or why the cannon can't go there."""
+        t = self.tanks[i]
+        x = t[0] + direction * STRIDE
+        if not 4 <= x <= W - 4:
+            return None, "That's the edge of the range."
+        if ground_at(self.terrain, x) - t[1] > CLIMB:
+            return None, "Too steep to climb."
+        if any(j != i and o[2] > 0 and abs(o[0] - x) < GAP and abs(o[0] - x) < abs(o[0] - t[0]) for j, o in enumerate(self.tanks)):
+            return None, "Another cannon is in the way."
+        return x, None
+
+    def walk(self, i, direction):
+        if self.fuel < STRIDE:
+            raise GameError("No steps left this turn.")
+        x, why = self.walk_to(i, direction)
+        if why:
+            raise GameError(why)
+        self.fuel -= STRIDE
+        self.tanks[i][0] = round(x, 1)
+        for j, n, drown in self.settle():
+            if drown:
+                self.room.add_log(f"🌊 {self.name_of(j)} walks into the sea!", "power")
+            elif n:
+                self.room.add_log(f"🪂 {self.name_of(j)} drops and takes {n}.", "power")
+        self.take_crate()
+        if self.tanks[i][2] <= 0 and not self.round_over():
+            self.next_turn(i)
 
     def open_volley(self, wait):
         """⚡ All at once: everyone still standing aims in secret; the shells fly when all are locked in."""
@@ -309,13 +426,22 @@ class Cannon(Game):
     # -- actions
 
     def act(self, p, a):
-        if a.get("type") != "fire":
+        if a.get("type") not in ("fire", "walk"):
             raise GameError("Unknown action.")
         i = self.seat(p)
         if i is None:
             raise GameError("You're not in this game.")
         if self.between:
             raise GameError("The next round is coming up.")
+        if a["type"] == "walk":
+            if self.volley:
+                raise GameError("No walking when everyone fires at once.")
+            self.require_turn(p)
+            if self.tanks[i][2] <= 0:
+                raise GameError("Your cannon is out this round.")
+            if type(a.get("dir")) is not int or a["dir"] not in (-1, 1):
+                raise GameError("Walk left or right.")
+            return self.walk(i, a["dir"])
         ang, pw, shell = a.get("angle"), a.get("power"), a.get("shell", "shell")
         if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in (ang, pw)):
             raise GameError("Bad shot.")
@@ -401,6 +527,11 @@ class Cannon(Game):
         icon, nm, r, dmg, _, _ = SHELLS[shell]
         x, y = b["x"], b["y"]
         hurt = []
+        if shell == "warp":
+            return self.warp(by, b, at)
+        if self.crate and shell != "dirt" and math.hypot(x - self.crate[0], y - self.crate[1]) < r:
+            self.crate = None
+            self.room.add_log("📦 The crate is blown to bits.", "info")
         if shell == "dirt":
             mound(self.terrain, x, y, r)
         else:
@@ -420,6 +551,8 @@ class Cannon(Game):
                 self.award(self.seats[by], "direct")
                 self.hit_now.add(by)
         falls = self.settle()
+        self.settle_crate()
+        self.take_crate()
         names = []
         for j, n in hurt:
             names.append(f"{'themselves' if j == by else self.name_of(j)} −{n}")
@@ -452,9 +585,26 @@ class Cannon(Game):
         for j, t in enumerate(self.tanks):
             if t[2] <= 0 and any(h[0] == j for h in hurt + [[f[0]] for f in falls]):
                 self.room.add_log(f"💀 {self.name_of(j)}'s cannon is out!", "big")
-        return {"at": at, "x": x, "y": y, "r": r, "shell": shell, "by": by, "kind": b["kind"], "hit": b["hit"],
-                "dmg": hurt + [[j, n] for j, n, _ in falls if n], "terrain": list(self.terrain),
-                "tanks": [list(t) for t in self.tanks]}
+        return self.boom_view(by, shell, b, at, hurt + [[j, n] for j, n, _ in falls if n])
+
+    def boom_view(self, by, shell, b, at, hurt):
+        return {"at": at, "x": b["x"], "y": b["y"], "r": SHELLS[shell][2], "shell": shell, "by": by, "kind": b["kind"],
+                "hit": b["hit"], "dmg": hurt, "terrain": list(self.terrain), "tanks": [list(t) for t in self.tanks]}
+
+    def warp(self, by, b, at):
+        """🌀 The shooter's cannon jumps to where the warp shell came down (beside any cannon already there)."""
+        t = self.tanks[by]
+        x = min(W - 4.0, max(4.0, b["x"]))
+        for o in self.tanks:
+            if o is not t and o[2] > 0 and abs(o[0] - x) < GAP:
+                x = min(W - 4.0, max(4.0, o[0] + (GAP if x >= o[0] else -GAP)))
+        if t[2] > 0 and b["kind"] != "water" and ground_at(self.terrain, x) >= WATER:
+            t[0], t[1] = round(x, 1), float(ground_at(self.terrain, x))
+            self.room.add_log(f"🌀 {self.name_of(by)} warps across the hills.", "power")
+            self.take_crate()
+        else:
+            self.room.add_log(f"🌀 {self.name_of(by)}'s warp fizzles.", "info")
+        return self.boom_view(by, "warp", b, at, [])
 
     def settle(self):
         """Drop cannons whose ground has gone onto the new surface (and lift any a mound has covered)."""
@@ -596,6 +746,7 @@ class Cannon(Game):
             "round": self.round_no, "rounds": self.s.get("rounds", 3), "style": self.s.get("terrain", "rolling"),
             "terrain": self.terrain, "tanks": self.tanks, "ammo": self.ammo, "wind": self.wind, "windMax": WIND.get(self.s.get("wind", "light"), 5),
             "wins": self.wins, "dealt": self.dealt, "shot": self.shot, "trails": self.trails,
+            "fuel": self.fuel, "walk": WALK, "crate": self.crate, "guide": self.s.get("guide", "short"),
             "between": between, "roundWinner": getattr(self, "round_winner", None) if between else None,
             "volley": self.volley, "locked": sorted(self.locked) if self.volley else [],
             "readyIn": max(0.0, round(self.ready_at - time.time(), 2)) if self.volley else 0,
@@ -614,7 +765,7 @@ class Cannon(Game):
         ammo = self.ammo[i]
         ax = self.wind * WIND_K
 
-        def aim_at(tx, ty, tries):
+        def aim_at(tx, ty, tries, kind="shell"):
             right = tx >= me[0]
             best, best_d = None, float("inf")
             cands = []
@@ -623,7 +774,7 @@ class Cannon(Game):
                 cands.append((a if right else 180 - a, rng.uniform(0.25, 1.0)))
             def score(c):
                 x, y, vx, vy = launch(me, *c)
-                seg = fly(self.terrain, self.tanks, i, x, y, vx, vy, ax, record=False)[-1]
+                seg = fly(self.terrain, self.tanks, i, x, y, vx, vy, ax, record=False, shell=kind)[-1]
                 e = seg["end"]
                 if e["kind"] in ("off", "lost"):
                     return 400.0
@@ -676,6 +827,10 @@ class Cannon(Game):
                 shell = "big"
             elif ammo.get("split", 0) and level == "hard" and d > 6:
                 shell = "split"
+        if level != "easy" and shell == "shell" and d > 12 and ammo.get("grenade", 0):  # a lob round the hill
+            lob, near = aim_at(self.tanks[j][0], self.tanks[j][1] + TANK_UP, tries, "grenade")
+            if near < min(14, d):
+                (a, pw), shell = lob, "grenade"
         noise_a, noise_p = {"easy": (4.0, 0.07), "normal": (1.4, 0.025), "hard": (0.5, 0.01)}.get(level, (1.4, 0.025))
         a = min(180.0, max(0.0, a + random.gauss(0, noise_a)))
         pw = min(1.0, max(0.05, pw * (1 + random.gauss(0, noise_p))))
@@ -698,6 +853,21 @@ class Cannon(Game):
             return
         self.bot_turn(self.room.players[self.room.turn])
 
+    def bot_walk(self, i, level):
+        """Walk to a crate within reach, if the way there is safe: no drop and no sea."""
+        if level == "easy" or self.volley or not self.crate or abs(self.crate[0] - self.tanks[i][0]) > self.fuel + 5:
+            return
+        direction = 1 if self.crate[0] > self.tanks[i][0] else -1
+        while self.crate and self.fuel >= STRIDE and abs(self.crate[0] - self.tanks[i][0]) > 5:
+            x, why = self.walk_to(i, direction)
+            if why:
+                return
+            g = ground_at(self.terrain, x)
+            if g < WATER or self.tanks[i][1] - g > FALL_FREE:
+                return
+            self.walk(i, direction)
+
     def bot_turn(self, p):
         i = self.seat(p)
+        self.bot_walk(i, p.bot)
         self.fire_turn(i, *self.plan_shot(i, p.bot))

@@ -55,7 +55,8 @@ UI.cannon = (() => {
       <div class="cn-ctl" id="cnCtl">
         <div class="cn-dial"><button data-k="a+" aria-label="Aim further left">◀</button><b id="cnAng"></b><button data-k="a-" aria-label="Aim further right">▶</button></div>
         <div class="cn-dial"><button data-k="p-" aria-label="Less power">−</button><b id="cnPow"></b><button data-k="p+" aria-label="More power">＋</button></div>
-        <button id="cnPrev" class="ghost-btn" aria-label="Aim preview" title="Show where your shell will land">🎯</button>
+        <div class="cn-dial cn-walk" id="cnWalk"><button data-w="-1" aria-label="Walk left" title="Walk left (A)">🚶⬅</button><b id="cnFuel"></b><button data-w="1" aria-label="Walk right" title="Walk right (D)">➡🚶</button></div>
+        <button id="cnPrev" class="ghost-btn" aria-label="Aim guide" title="Show or hide the aim guide">🎯</button>
         <button id="cnFire" class="primary cn-fire">🔥 Fire</button>
       </div>
       <div class="cn-shells" id="cnShells"></div>
@@ -105,6 +106,7 @@ UI.cannon = (() => {
       b.addEventListener('click', (e) => { if (e.detail === 0) nudge(b.dataset.k); });  // keyboard Enter / Space
     });
     $('cnFire').onclick = fire;
+    $('cnWalk').querySelectorAll('[data-w]').forEach((b) => { b.onclick = () => walk(+b.dataset.w); });
     const pv = $('cnPrev'), pvShow = () => { pv.style.opacity = previewOn ? 1 : 0.45; pv.setAttribute('aria-pressed', String(previewOn)); };
     pv.onclick = () => { previewOn = !previewOn; try { localStorage.setItem('cn.preview', previewOn ? '1' : '0'); } catch {} pvShow(); };
     pvShow();
@@ -116,7 +118,8 @@ UI.cannon = (() => {
       else if (k === 'ArrowUp') { aim.power = Math.min(1, Math.round(aim.power * 100 + big) / 100); aim.set = true; showAim(); }
       else if (k === 'ArrowDown') { aim.power = Math.max(0.05, Math.round(aim.power * 100 - big) / 100); aim.set = true; showAim(); }
       else if (k === ' ' && !e.target.closest?.('button')) fire();
-      else if ('1234'.includes(k) && k.length === 1) { const sh = S.cannon.shells[+k - 1]; if (sh) pickShell(sh[0]); }
+      else if (k === 'a' || k === 'd') walk(k === 'a' ? -1 : 1);
+      else if ('123456'.includes(k) && k.length === 1) { const sh = S.cannon.shells[+k - 1]; if (sh) pickShell(sh[0]); }
       else return;
       e.preventDefault();
     };
@@ -176,6 +179,12 @@ UI.cannon = (() => {
     $('cnFire').disabled = true;
   }
 
+  function walk(dir) {
+    const c = C();
+    if (!c || c.volley || !canFire() || c.fuel < 4) return;
+    ctx.quiet(ctx.act('walk', { dir }));
+  }
+
   function pickShell(k) {
     if (left(k) <= 0) return;
     aim.shell = k;
@@ -230,6 +239,10 @@ UI.cannon = (() => {
     const f = $('cnFire');
     f.disabled = !canFire();
     f.classList.toggle('cn-ready', canFire());
+    $('cnWalk').hidden = !!c.volley;
+    $('cnFuel').textContent = canFire() ? `👣 ${Math.floor(c.fuel / 4)}` : '👣';
+    $('cnWalk').querySelectorAll('[data-w]').forEach((b) => { b.disabled = !canFire() || c.fuel < 4; });
+    $('cnPrev').hidden = c.guide === 'none';
     const locked = c.volley && c.me != null && c.locked.includes(c.me);
     f.textContent = locked ? '✅ Locked in' : c.volley ? '⚡ Lock in' : '🔥 Fire';
     hint();
@@ -241,7 +254,7 @@ UI.cannon = (() => {
     if (S.phase === 'playing' && c && mine() != null) {
       if (c.between) t = 'Next round in a moment…';
       else if (!alive(c.me)) t = '💀 Your cannon is out this round. Watch the rest fight it out.';
-      else if (canFire()) t = c.volley ? 'Everyone aims at once: drag on the range (or ◀ ▶ − +), then ⚡ Lock in.' : 'Your shot: drag back on the range like a slingshot (or ◀ ▶ − +), then 🔥 Fire.';
+      else if (canFire()) t = c.volley ? 'Everyone aims at once: drag on the range (or ◀ ▶ − +), then ⚡ Lock in.' : 'Your shot: walk if you like (🚶), drag back like a slingshot (or ◀ ▶ − +), then 🔥 Fire.';
       else if (busy()) t = 'Incoming…';
       else t = c.volley ? 'Locked in: waiting for the others.' : 'Line up your next shot while you wait.';
     }
@@ -352,6 +365,13 @@ UI.cannon = (() => {
   }
 
   function boom(b, now, was) {
+    if (b.shell === 'warp') {  // 🌀 no blast: a purple ring where the cannon arrives
+      const s0 = cv.width / C().w, [wx, wy] = px(b.x, b.y);
+      pfx.ring(wx, wy, { r0: 2 * s0, r1: 22 * s0, color: '#b794ff', width: Math.max(2, s0 * 1.4), life: 0.7 });
+      pfx.burst(wx, wy, 20, { color: '#d6c2ff', spread: Math.PI * 2, speed: [20 * s0, 70 * s0], gravity: 0, drag: 1.5, size: [0.8 * s0, 1.6 * s0], life: 0.7 });
+      ctx.sfx('sweep');
+      return;
+    }
     callBoom(b, was);
     crump(b.r);
     const s = cv.width / C().w, dpr = cv.width / (cv.clientWidth || cv.width || 1), [bx, by] = px(b.x, b.y);
@@ -428,7 +448,8 @@ UI.cannon = (() => {
       g2.beginPath(); trail.forEach(([x, y], k) => (k ? g2.lineTo(X(x), Y(y)) : g2.moveTo(X(x), Y(y)))); g2.stroke(); g2.restore();
     }
     // 🎯 aim preview: where the shell will come down under this turn's wind, and the size of its blast (same physics as the server)
-    if (previewOn && me != null && canAim() && !anim && tanks[me] && tanks[me][2] > 0) drawPreview(c, me, X, Y, s, dpr, terrain, tanks);
+    if (previewOn && c.guide !== 'none' && me != null && canAim() && !anim && tanks[me] && tanks[me][2] > 0) drawPreview(c, me, X, Y, s, dpr, terrain, tanks);
+    if (c.crate && !anim) drawCrate(c.crate, X, Y, s, now);
     // cannons
     tanks.forEach((t, i) => drawTank(t, i, s, X, Y, dpr, now));
     // shells in the air
@@ -443,7 +464,7 @@ UI.cannon = (() => {
         if (y > H) {  // above the top of the screen: a marker on the edge
           g2.fillStyle = colorOf(p.by); g2.beginPath(); g2.moveTo(X(x), 2 * dpr); g2.lineTo(X(x) - 5 * dpr, 10 * dpr); g2.lineTo(X(x) + 5 * dpr, 10 * dpr); g2.fill();
         } else {
-          g2.fillStyle = p.shell === 'big' ? '#ff6b35' : p.shell === 'dirt' ? '#8a6a3a' : p.shell === 'split' ? '#ffd60a' : '#222';
+          g2.fillStyle = p.shell === 'big' ? '#ff6b35' : p.shell === 'dirt' ? '#8a6a3a' : p.shell === 'split' ? '#ffd60a' : p.shell === 'grenade' ? '#3f7d3a' : p.shell === 'warp' ? '#b794ff' : '#222';
           g2.beginPath(); g2.arc(X(x), Y(y), Math.max(2.5, s * (p.shell === 'big' ? 2.4 : 1.6)), 0, 7); g2.fill();
           g2.strokeStyle = colorOf(p.by); g2.lineWidth = 1.2 * dpr; g2.stroke();
         }
@@ -538,10 +559,17 @@ UI.cannon = (() => {
   }
 
   // mirrors games/cannon.py's fly(): gravity 60, muzzle speed 140 x power, wind x 2.2 sideways, 120 steps a second
-  const BLAST = { shell: 16, big: 30, split: 12, dirt: 18 };
+  const BLAST = { shell: 16, big: 30, split: 12, dirt: 18, grenade: 18, warp: 6 };
+  // 📦 a supply crate: a box with a ribbon, bobbing a little so it catches the eye
+  function drawCrate([x, y], X, Y, s, now) {
+    const w = 8 * s, left = X(x) - w / 2, top = Y(y) - w - Math.abs(Math.sin(now / 400)) * 1.5 * s;
+    g2.fillStyle = '#c98a3c'; g2.fillRect(left, top, w, w);
+    g2.strokeStyle = '#5a3a18'; g2.lineWidth = Math.max(1.5, s * 0.8); g2.strokeRect(left, top, w, w);
+    g2.fillStyle = '#ffe08a'; g2.fillRect(left + w * 0.42, top, w * 0.16, w); g2.fillRect(left, top + w * 0.42, w, w * 0.16);
+  }
   let previewOn = (() => { try { return localStorage.getItem('cn.preview') !== '0'; } catch { return true; } })();
   function drawPreview(c, me, X, Y, s, dpr, terrain, tanks) {
-    const t = tanks[me], a = (aim.angle * Math.PI) / 180, v = 140 * aim.power, ax = (c.wind || 0) * 2.2, DT = 1 / 120;
+    const t = tanks[me], a = (aim.angle * Math.PI) / 180, v = 140 * aim.power, ax = (c.wind || 0) * 2.2 * (aim.shell === 'grenade' ? 0.25 : 1), DT = 1 / 120;
     let x = t[0] + 8 * Math.cos(a), y = t[1] + 4 + 8 * Math.sin(a), vx = v * Math.cos(a), vy = v * Math.sin(a), armed = false, pvy, end = null;
     const pts = [[x, y]];
     for (let i = 0; i < 1440; i++) {
@@ -561,7 +589,9 @@ UI.cannon = (() => {
     }
     g2.save();
     g2.fillStyle = '#ffffffcc';
-    pts.forEach(([px, py], k) => { if (k % 2) return; g2.beginPath(); g2.arc(X(px), Y(py), 1.3 * dpr, 0, 7); g2.fill(); });
+    const full = c.guide === 'full';  // otherwise only the start of the arc: judging the rest is the game
+    if (!full) end = null;
+    pts.slice(0, full ? pts.length : 11).forEach(([px, py], k) => { if (k % 2) return; g2.beginPath(); g2.arc(X(px), Y(py), 1.3 * dpr, 0, 7); g2.fill(); });
     if (end) {
       const r = (BLAST[aim.shell] || 16) * s, ex = X(end.x), ey = Y(end.y), pulse = 0.6 + 0.4 * Math.sin(performance.now() / 180);
       g2.strokeStyle = end.split ? '#9be7ff' : '#ff8a5c'; g2.globalAlpha = 0.5 + 0.3 * pulse; g2.lineWidth = 1.5 * dpr;

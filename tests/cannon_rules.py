@@ -177,5 +177,54 @@ import json  # noqa: E402
 json.dumps(g.view(a))
 check("the view serialises", True)
 
+# 🚶 walking: a few steps a turn, no cliffs, long drops hurt, the sea sinks you
+r, g, ps = game()
+flat(g)
+me, other = first(r, g, ps)
+i = g.seat(me)
+g.tanks[i][0], g.tanks[1 - i][0] = 60.0, 260.0
+for _ in range(C.WALK // C.STRIDE):
+    g.act(me, {"type": "walk", "dir": 1})
+check("walking moves the cannon", g.tanks[i][0] == 60 + C.WALK, f"{g.tanks[i][0]}")
+check("steps run out", bool(refused(g, me, {"type": "walk", "dir": 1})))
+check("walking out of turn is refused", bool(refused(g, other, {"type": "walk", "dir": 1})))
+check("walking takes no turn", r.turn == me.id)
+g.fuel = C.WALK
+for c in range(int(g.tanks[i][0]) + 3, C.W):
+    g.terrain[c] = 90
+check("a cliff stops you", "steep" in (refused(g, me, {"type": "walk", "dir": 1}) or ""))
+check("a bad direction is refused", bool(refused(g, me, {"type": "walk", "dir": 5})))
+
+# 📦 crates: walk into one for what's inside; a blast destroys it
+r, g, ps = game()
+flat(g)
+me, _ = first(r, g, ps)
+i = g.seat(me)
+g.tanks[i][0], g.tanks[1 - i][0] = 60.0, 260.0
+g.tanks[i][2] = 50
+g.crate = [70.0, 60.0, "health"]
+g.act(me, {"type": "walk", "dir": 1})
+check("walking into a crate opens it", g.crate is None and g.tanks[i][2] == 50 + C.CRATE_HP, f"{g.tanks[i][2]}")
+g.crate = [150.0, 60.0, "big"]
+g.blast(i, "shell", {"x": 150.0, "y": 60.0, "hit": None, "kind": "ground"}, 0)
+check("a blast destroys a crate", g.crate is None)
+
+# 🌀 warp moves the shooter and hurts nobody; 💣 a grenade bounces and goes off on its fuse
+r, g, ps = game()
+flat(g)
+me, _ = first(r, g, ps)
+i = g.seat(me)
+g.tanks[i][0], g.tanks[1 - i][0] = 60.0, 260.0
+g.blast(i, "warp", {"x": 150.0, "y": 60.0, "hit": None, "kind": "ground"}, 0)
+check("warp moves the cannon", g.tanks[i][0] == 150 and g.tanks[i][2] == C.HP and g.terrain[150] == 60)
+g.blast(i, "warp", {"x": 150.0, "y": 8.0, "hit": None, "kind": "water"}, 0)
+check("a warp into the sea fizzles", g.tanks[i][0] == 150)
+x, y, vx, vy = C.launch([40.0, 60.0, 100], 40, 0.5)
+seg = C.fly([60] * C.W, [], None, x, y, vx, vy, 0, shell="grenade")[0]
+heights = [p[1] for p in seg["f"]]
+bounces = sum(1 for a, b, c in zip(heights, heights[1:], heights[2:]) if b < a and b <= c and b < 63)
+check("a grenade bounces", bounces >= 1, f"{bounces}")
+check("and goes off after its fuse", abs(seg["t"] - C.FUSE) < 0.05 and seg["boom"], f"{seg['t']:.2f}")
+
 print("\nall ok" if not fails else f"\n{len(fails)} failed: {fails}")
 sys.exit(1 if fails else 0)
