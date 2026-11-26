@@ -56,7 +56,7 @@ ROOM_SETTINGS = {
     "locked": ("Room", [(False, "🔓 Open to join"), (True, "🔒 Locked")], False),
 }
 RECORD_SCORES = {"trivia": "points", "prism": "points", "yacht": "points", "lander": "points",
-                 "shutbox": "lowPoints", "putt": "strokes", "marble": "time"}
+                 "shutbox": "lowPoints", "putt": "strokes", "marble": "time", "minesweeper": "time"}
 ROOM_SETTINGS_INFO = [{"key": k, "label": lbl, "options": opts, "default": d} for k, (lbl, opts, d) in ROOM_SETTINGS.items()]
 CHAT_KEEP = 100
 BANTER = {
@@ -579,6 +579,8 @@ class Room:
                 if gid == "marble" and any(board.get(row["id"], {}).get("dnf", True)
                                            for board in self.game.results):
                     score = None
+                if hasattr(self.game, "record_value"):  # a record that isn't the score, such as a clearing time
+                    score = self.game.record_value(row["id"])
                 if not row["bot"] and record["kind"] not in ("wins", "crew", "progress"):
                     row["recordScore"] = score
             if record["kind"] not in ("wins", "crew", "progress"):

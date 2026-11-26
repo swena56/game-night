@@ -68,6 +68,7 @@ class Minesweeper(PuzzleRace):
         "Tap a square to uncover it (+1 each). Hit a mine and you lose 4 points, but you play on. 🚩 switches to flags: mark a mine you've worked out (a right flag scores +1 when the field ends, a wrong one −1). Tap a number whose flags are all placed to uncover the rest around it.",
         "💡 uncovers a square that is safe, for 1 point (3 per field unless the host changes it). 🔥 Six safe uncovers in a row, with no mine between, pay +3.",
         "Clearing every safe square scores +10, and +5 more for finishing first. Most points after the last field wins.",
+        "⏱ High score: your fastest time to clear every field, kept for each choice of settings (🏆 My record, and the results card).",
         "Alone, clear every field before the clock runs out to win (or just clear them, with 🌿 No clock).",
     ]
     settings_schema = {
@@ -79,6 +80,13 @@ class Minesweeper(PuzzleRace):
     }
     badges = {**PuzzleRace.badges, "clean": ("🧹", "Clean sweep", "Clear a field without setting off a mine or using a hint")}
     BOT = {"easy": 6.0, "normal": 4.0, "hard": 2.4}   # seconds per square
+
+    def record_value(self, pid):
+        """⏱ The high score is the time taken to clear every field, in milliseconds; None unless all were cleared."""
+        p = self.room.players.get(pid)
+        if not p or getattr(p.g, "cleared", 0) < self.s["rounds"]:
+            return None
+        return round(p.g.secs * 1000)
 
     def new_puzzle(self, rng):
         lv = self.s.get("level", "easy")
