@@ -240,7 +240,7 @@
         }
         c.globalAlpha = 1;
         for (const p of s.p) {
-          const sz = 1.35 + 0.12 * Math.sin(now / 260 + p[0]), tint = p[2] === 'shield' ? '#59ff9a' : p[2] === 'heart' ? '#ff6fa0' : '#ffd84a';
+          const sz = 1.7 + 0.12 * Math.sin(now / 260 + p[0]), tint = p[2] === 'shield' ? '#59ff9a' : p[2] === 'heart' ? '#ff6fa0' : '#ffd84a';
           if (!g.nofx) {
             const gl = c.createRadialGradient(p[0] + 0.5, p[1] + 0.5, 0, p[0] + 0.5, p[1] + 0.5, 1.3);
             gl.addColorStop(0, tint + '88'); gl.addColorStop(1, tint + '00');
@@ -656,10 +656,11 @@
             m = new T.Sprite(new T.SpriteMaterial({ map: pickTex(p[2]), transparent: true, depthWrite: false }));
             m.position.set(gx(p[0] + 0.5), gy(p[1] + 0.5), 0.7);
             m.userData = { pos: [p[0] + 0.5, p[1] + 0.5], tint: p[2] === 'shield' ? 0x59ff9a : p[2] === 'heart' ? 0xff6fa0 : 0xffd84a };
-            const halo = sprite(0.5); halo.visible = true; halo.material.color.set(m.userData.tint); halo.scale.set(2.6, 2.6, 1); m.add(halo);
+            const halo = sprite(0.28); halo.visible = true; halo.material.color.set(m.userData.tint); halo.scale.set(1.9, 1.9, 1); m.add(halo);
+            halo.renderOrder = 1; m.renderOrder = 2;   // (#257) the glow goes behind: drawn on top it washed the icon into a blank dot
             scene.add(m); pickMeshes.set(key, m);
           }
-          const bob = 1.35 + 0.12 * Math.sin(now / 260 + p[0]);
+          const bob = 1.7 + 0.12 * Math.sin(now / 260 + p[0]);
           m.scale.set(bob, bob, 1);
         }
         for (const [key, m] of pickMeshes) {
@@ -737,7 +738,7 @@
       const el = g.find('lives'); el.classList.remove('rs-lost'); void el.offsetWidth; el.classList.add('rs-lost');
     }
     if (s === g.boards[g.me]) g.lastLives = s.lives;
-    g.find('lives').textContent = (s.lives > 4 ? '❤️×' + s.lives : '❤️'.repeat(Math.max(0, s.lives))) + (s.sh ? '🛡️' : '');   // many lives collapse to ❤️×N so the HUD never grows tall
+    g.find('lives').textContent = (s.lives + (s.sh ? 1 : 0) > 3 ? '❤️×' + s.lives : '❤️'.repeat(Math.max(0, s.lives))) + (s.sh ? '🛡️' : '');   // (#262) the tile holds 3 icons, the shield included: beyond that the hearts collapse to ❤️×N
     const cb = g.find('combo');
     cb.hidden = !(s.mu > 1 && s.st === 'play');
     if (!cb.hidden && cb.dataset.mu !== String(s.mu)) { cb.dataset.mu = s.mu; cb.textContent = '🔥 ×' + s.mu + ' combo'; cb.classList.remove('rs-bump'); void cb.offsetWidth; cb.classList.add('rs-bump'); }
