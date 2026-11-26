@@ -148,7 +148,7 @@ def build(spec, mode="classic"):
     part_pts, clean_pv = {}, []
     clean, parts, paint = [], {k: [] for k in LIMITS}, {k: [] for k in LIMITS}
     for index, item in enumerate(spec["items"]):
-        if not isinstance(item, list) or not item or item[0] not in SHAPE:
+        if not isinstance(item, list) or not item or not isinstance(item[0], str) or item[0] not in SHAPE:
             raise GameError("The table has an unknown part.")
         kind, shape = item[0], SHAPE[item[0]]
         wide = shape == "w" and PATH_POINTS[0] * 2 <= len(item) - 2 <= PATH_POINTS[1] * 2 and len(item) % 2 == 0

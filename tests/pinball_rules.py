@@ -929,6 +929,18 @@ class CustomTables(unittest.TestCase):
             self.assertEqual(t.locked, 0)
         self.assertEqual(t.ramps, 1)                        # the ride finished and scored
 
+    def test_hostile_tables_get_clean_errors(self):
+        from games.pinball_custom import build, decode_table
+        from games.base import GameError
+        for bad in ({"items": [[[1], 2, "#ffffff"]]}, {"items": [[{"a": 1}, "#ffffff"]]}, {"items": [["bump", [1], [2], [3], "#ffffff"]]},
+                    {"items": [["bump", float("nan"), 1, .5, "#ffffff"]]}, {"items": "x"}, {"items": [None]}, [], 5):
+            with self.assertRaises(GameError, msg=repr(bad)):
+                build(bad)
+        for odd in ({"items": [], "pv": "z"}, {"items": [], "modes": [[1]]}, {"items": [], "pts": [1]}, {"items": [], "name": [1]}):
+            build(odd)                                      # junk in the optional fields is ignored, never an error
+        with self.assertRaises(GameError):
+            decode_table("PT1." + "A" * 20000)
+
     def test_per_part_points(self):
         from games.pinball import CustomTable
         from games.pinball_custom import build
