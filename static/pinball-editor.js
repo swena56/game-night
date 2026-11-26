@@ -129,11 +129,11 @@
   function cabinetRails() {
     const [lx, ly, rx, ry] = flipsNow();
     if (state.cabinet === 'classic') return [...RAILS_CLASSIC.slice(0, 8), [.9, 13.5, lx, ly], RAILS_CLASSIC[9], [7.9, 13.8, rx, ry]];
-    if (!state.flips) return RAILS;
-    return [...RAILS.slice(0, RAILS.length - 2 * GUIDE_LEN), ...fillet([[.9, 12.2], [.9, 13.5], [lx, ly]], [.5]), ...fillet([[7.9, 12.4], [7.9, 13.8], [rx, ry]], [.5])];
+    if (!state.flips && !state.even) return RAILS;
+    return [...RAILS.slice(0, RAILS.length - 2 * GUIDE_LEN), ...fillet([[.9, 12.2], [.9, 13.5], [lx, ly]], [.5]), ...fillet([[7.9, state.even ? 12.2 : 12.4], [7.9, state.even ? 13.5 : 13.8], [rx, ry]], [.5])];
   }
 
-  let state = { name: '', items: [], kick: false, lock: false, pts: {}, cabinet: 'smooth', look: 'custom', feel: {}, flips: null };
+  let state = { name: '', items: [], kick: false, lock: false, pts: {}, cabinet: 'smooth', look: 'custom', feel: {}, flips: null, even: false };
   let zoom = 1;
   const hiddenLayers = new Set();
   const group = new Set();                        // shift-click adds parts: duplicate, delete, nudge and drag then act on all of them
@@ -218,6 +218,7 @@
     if (lock) out.lock = true;
     if (state.cabinet === 'classic') out.cabinet = 'classic';
     if (state.flips) out.fl = state.flips.map(round2);
+    if (state.even && state.cabinet !== 'classic') out.even_guides = true;
     if (state.look && state.look !== 'custom') out.look = state.look;
     const feel = {};
     for (const [k, v] of Object.entries(state.feel || {})) {
@@ -258,7 +259,7 @@
   }
   function fromSpec(spec) {
     if (!spec || !Array.isArray(spec.items)) throw new Error("That isn't a table.");
-    const next = { name: typeof spec.name === 'string' ? spec.name.slice(0, 40) : '', items: [], kick: false, lock: spec.lock === true, pts: {}, cabinet: spec.cabinet === 'classic' ? 'classic' : 'smooth', look: ['golden', 'neon'].includes(spec.look) ? spec.look : 'custom', feel: {}, flips: null };
+    const next = { name: typeof spec.name === 'string' ? spec.name.slice(0, 40) : '', items: [], kick: false, lock: spec.lock === true, pts: {}, cabinet: spec.cabinet === 'classic' ? 'classic' : 'smooth', look: ['golden', 'neon'].includes(spec.look) ? spec.look : 'custom', feel: {}, flips: null, even: spec.even_guides === true };
     if (spec.feel && typeof spec.feel === 'object') for (const [k, v] of Object.entries(spec.feel)) if (k in FEEL && (k === 'extra_balls' ? Array.isArray(v) && v.length === 2 && v.every(Number.isFinite) : typeof v === (typeof FEEL[k][0] === 'boolean' ? 'boolean' : 'number') && (typeof v !== 'number' || Number.isFinite(v)))) next.feel[k] = v;
     if (spec.pts && typeof spec.pts === 'object') for (const [k, v] of Object.entries(spec.pts)) if (POINTS[k] && typeof v === 'number' && isFinite(v)) next.pts[k] = clamp(Math.round(v), 0, 20000);
     const num = (v) => (typeof v === 'number' && isFinite(v) ? v : 0);
@@ -953,7 +954,7 @@
   $('peLock').onchange = () => { state.lock = $('peLock').checked; commit(); };
   $('peKick').onchange = () => { state.kick = $('peKick').checked; commit(); };
   $('peSnap').onclick = () => { snap = !snap; $('peSnap').setAttribute('aria-pressed', String(snap)); draw(); };
-  $('peClear').onclick = () => { if (!state.items.length && !state.kick) return; if (confirm('Remove every part from this table?')) { state.items = []; state.kick = false; state.lock = false; state.pts = {}; state.cabinet = 'smooth'; state.look = 'custom'; state.feel = {}; sel = -1; group.clear(); commit(); } };
+  $('peClear').onclick = () => { if (!state.items.length && !state.kick) return; if (confirm('Remove every part from this table?')) { state.items = []; state.kick = false; state.lock = false; state.pts = {}; state.cabinet = 'smooth'; state.look = 'custom'; state.feel = {}; state.even = false; sel = -1; group.clear(); commit(); } };
 
   function renderList() {
     const ol = $('peList'), n = state.items.length;
@@ -1000,11 +1001,13 @@
     set('peEB1', (f.extra_balls ?? FEEL.extra_balls[0])[0]); set('peEB2', (f.extra_balls ?? FEEL.extra_balls[0])[1]);
     $('peSteep').checked = !!f.steep_flippers; $('peClassic').checked = !!f.classic_lamps;
     $('peFlipReset').disabled = !state.flips;
+    $('peEven').checked = !!state.even; $('peEven').disabled = state.cabinet === 'classic';
   }
   const numberIn = (id, lo, hi) => { const v = parseFloat($(id).value); return Number.isFinite(v) ? clamp(v, lo, hi) : null; };
   $('peCabinet').onchange = () => { state.cabinet = $('peCabinet').value; commit(); };
   $('peLook').onchange = () => { state.look = $('peLook').value; commit(); };
   $('peSteep').onchange = () => { state.feel = { ...state.feel, steep_flippers: $('peSteep').checked }; if (state.flips) state.flips = clampFlips(state.flips, restOf()); commit(); };
+  $('peEven').onchange = () => { state.even = $('peEven').checked; commit(); };
   $('peFlipReset').onclick = () => { state.flips = null; commit(); };
   $('peClassic').onchange = () => { state.feel = { ...state.feel, classic_lamps: $('peClassic').checked }; commit(); };
   for (const [id, key, lo, hi] of [['peGravity', 'gravity', 8, 16], ['peHurry', 'hurry_seconds', 0, 20], ['peSuper', 'super_every', 1, 10]]) {
@@ -1177,7 +1180,7 @@
   $('peCheck').onclick = async () => {
     if (!localDev) return say(LOCAL_ONLY);
     const body = $('peCheckBody');
-    body.textContent = 'Playing the table with the test bot (about 10 seconds)…';
+    body.textContent = 'Playing the table and testing every flipper shot (up to a couple of minutes)…';
     checkDlg.showModal();
     try {
       const r = await post('/api/pinball-check', { table: toSpec() }), st = r.stats || {};
@@ -1190,6 +1193,14 @@
       }
       for (const p of r.problems || []) body.append(el('p', { className: 'pe-bad', textContent: '✖ ' + p }));
       for (const n of r.notes || []) body.append(el('p', { textContent: 'ℹ ' + n }));
+      if (st.reach) {
+        const bar = (label, pct, value) => el('div', { className: 'pe-bar pe-wide' }, el('span', { textContent: label }), el('i', { style: `width:${pct}%` }), el('b', { textContent: value }));
+        const { shots, parts, spots } = st.reach;
+        body.append(el('h4', { textContent: `What the flippers can hit (${shots} shots, least hit first)` }));
+        for (const p of parts) body.append(bar((p.hits ? '' : '✖ ') + p.label, Math.round(100 * p.hits / shots), String(p.hits)));
+        body.append(el('h4', { textContent: 'Shots that get up the table, by flipper spot (start = near the pivot, end = near the tip)' }));
+        for (const s of spots) body.append(bar(`${s.flipper} ${s.spot}, ball ${s.ball}`, s.up, `${s.up}%`));
+      }
     } catch (e) { body.textContent = e.message; }
   };
   $('peTables').onclick = () => { renderTables(); tablesDlg.showModal(); };

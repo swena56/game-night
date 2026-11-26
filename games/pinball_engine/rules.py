@@ -63,6 +63,8 @@ class Rules:
     slam_ticks: int = 96           # this many nudges inside this window is a slam tilt
     sling_cooldown: int = 12      # ticks before a slingshot can fire again (the kicker arm must reset)
     sling_threshold: float = 4.0  # ball speed into the blade needed to fire a slingshot
+    sling_run_max: int = 6        # this many kicks in a row, with nothing else hit and no flipper touch, is two slings juggling the ball...
+    sling_rest_ticks: int = 360   # ...so both go soft for this long and let it fall
     gravity: float = 11.0        # table slope: higher plays faster
     wizard_at: int = 8            # the Nth jackpot of a game starts a free four-ball Wizard multiball (0 disables it)
     wizard_points: int = 25000

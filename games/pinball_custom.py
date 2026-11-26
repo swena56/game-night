@@ -161,6 +161,8 @@ def setup(spec):
             feel["extra_balls"] = sorted(int(round(min(1_000_000, max(1000, v)))) for v in eb)
     if feel:
         out["feel"] = feel
+    if spec.get("even_guides") is True and spec.get("cabinet") != "classic":      # the right inlane guide matches the left one
+        out["even_guides"] = True
     pivots = flipper_pivots(spec)
     if pivots:
         out["fl"] = pivots
@@ -401,13 +403,15 @@ def build(spec, mode="classic"):
     base = cabinet.RAILS[:11] if classic else cabinet.BASE_RAILS
     guides_from, guide_run = (9 if classic else cabinet.GUIDES_FROM), (2 if classic else len(cabinet.RIGHT_GUIDE))
     pair = cabinet.NEON_FLIPPERS if choice.get("feel", {}).get("steep_flippers") else cabinet.FLIPPERS
-    if "fl" in choice:        # the player moved the two main flippers: the inlane guides lead to the new pivots
-        lx, ly, rx, ry = choice["fl"]
+    even = choice.get("even_guides", False)
+    if "fl" in choice or even:    # moved flippers or even guides: the inlane guides are redrawn to lead to the pivots
+        lx, ly, rx, ry = choice.get("fl", FLIP_DEFAULT)
+        top, knee = (12.2, 13.5) if even else (12.4, 13.8)      # even: the right guide starts and bends as high as the left
         pair = ((lx, ly, pair[0][2], pair[0][3]), (rx, ry, pair[1][2], pair[1][3]))
         if classic:
             base = base[:8] + ((0.9, 13.5, lx, ly),) + base[9:10] + ((7.9, 13.8, rx, ry),)
         else:
-            left, right = cabinet.fillet(((0.9, 12.2), (0.9, 13.5), (lx, ly)), (0.5,)), cabinet.fillet(((7.9, 12.4), (7.9, 13.8), (rx, ry)), (0.5,))
+            left, right = cabinet.fillet(((0.9, 12.2), (0.9, 13.5), (lx, ly)), (0.5,)), cabinet.fillet(((7.9, top), (7.9, knee), (rx, ry)), (0.5,))
             base = cabinet.SMOOTH_WALL + ((8.8, 3.1, 8.8, 17), (8.8, 16.25, 10, 16.25)) + left + right
             guides_from, guide_run = len(base) - len(right), len(right)
     flippers = pair + flippers[2:]

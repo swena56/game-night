@@ -10,6 +10,7 @@ import statistics
 from ..base import GameError
 from ..pinball import CustomTable
 from ..pinball_custom import MAX_ITEMS, build, build_rules, decode_table
+from .reach import RARE, WEAK_UP, reach
 
 # what a table has to do to be listed
 MIN_PARTS = 6                 # fewer is an empty table
@@ -26,7 +27,8 @@ def _play(spec, seed):
     table = CustomTable(layout_override=layout, rules_override=build_rules(spec), balls=BALLS)
     table.rng = random.Random(seed)
     target, spans, last = rng.randint(150, 235), [], 0
-    used, drains, at, last_event = set(), [], (5.0, 12.0), "launch"
+    drains, at, last_event = [], (5.0, 12.0), "launch"
+    even, cradled, release = spec.get("even_guides"), 0, 0
     for tick in range(TICK_LIMIT):
         if not table.balls:
             break
@@ -42,13 +44,18 @@ def _play(spec, seed):
                 held |= rng.choice((1, 2, 3))
             if tick % 90 < 12:
                 held |= 3
+            if even:        # centred flippers: a ball can rest on a raised bat for the rest of the game, so let go and let it roll
+                cradled = cradled + 1 if held and table.y > 12.6 and abs(table.vx) + abs(table.vy) < 2.5 else 0
+                if cradled > 180:
+                    cradled, release = 0, 150
+                if release:
+                    release, held = release - 1, 0
         before, event_id = table.balls, table.event_id
         if not table.staged and table.y > 9:
             at = (table.x, table.y)                  # where the ball was just before it can drain
         table.input(held, 0, tick / 240)
         table.step()
         if table.event_id != event_id and table.event:
-            used.add(table.event.rstrip("0123456789"))
             if table.event not in ("drain", "bonus", "nudge"):
                 last_event = table.event.rstrip("0123456789")
         if table.balls < before:
@@ -56,7 +63,7 @@ def _play(spec, seed):
             last = tick
             drains.append((drain_lane(at[0], layout), last_event))
             last_event = "launch"
-    return {"score": table.score, "spans": spans, "finished": not table.balls, "used": used, "drains": drains}
+    return {"score": table.score, "spans": spans, "finished": not table.balls, "drains": drains}
 
 
 def drain_lane(x, layout):
@@ -114,9 +121,14 @@ def check(spec, games=GAMES):
         notes.append(f"{stats['unfinished_games']} of {games} test games did not finish within the time limit.")
     if lanes and stats["drains"]["left_outlane"] + stats["drains"]["right_outlane"] >= 40:
         notes.append(f"{stats['drains']['left_outlane'] + stats['drains']['right_outlane']}% of balls drained down the side outlanes: widen or move the inlane guides, or add a post above each outlane.")
-    seen = set().union(*(r["used"] for r in runs))
-    idle = sorted(k for k in ("bump", "sling", "target", "lane", "spinner", "ramp", "saucer", "subway", "orbit", "mover", "hole", "portal", "magnet")
-                  if k in kinds and {"bump": "bumper"}.get(k, k) not in seen)
-    if idle:
-        notes.append("Parts the test player never triggered: " + ", ".join(idle) + " (may just be hard to reach).")
+    shots = stats["reach"] = reach(clean)
+    never = [p["label"] for p in shots["parts"] if not p["hits"]]
+    rare = [p["label"] for p in shots["parts"] if 0 < p["hits"] <= RARE]
+    if never:
+        notes.append(f"No flipper shot hit: {', '.join(never)}.")
+    if rare:
+        notes.append(f"Hard to hit ({RARE} shots or fewer of {shots['shots']}): {', '.join(rare)}.")
+    for s in shots["spots"]:
+        if s["up"] < WEAK_UP:
+            notes.append(f"Weak shot: {s['flipper'].lower()} flipper, {s['spot']}, ball {s['ball']}: only {s['up']}% got up the table.")
     return {"ok": not problems, "problems": problems, "notes": notes, "stats": stats}

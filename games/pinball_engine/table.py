@@ -74,6 +74,8 @@ class Table:
     magnet_ticks: int = 0       # >0 while the magnet is energised
     magnet_cool: int = 0
     sling_cool: dict = field(default_factory=dict)   # sling index -> ticks until it can fire again
+    sling_run: int = 0           # sling kicks in a row with nothing else in between
+    sling_rest: int = 0          # ticks the slings stay soft after juggling the ball
     spin: float = 0
     spin_left: float = 0
     still: int = 0
@@ -145,6 +147,8 @@ class Table:
     # -- scoring ---------------------------------------------------------------------------------
 
     def signal(self, event, points=0, scaled=True):
+        if not event.startswith("sling"):
+            self.sling_run = 0
         before = self.score
         if event == "multiball":
             self.multiballs += 1
@@ -425,6 +429,9 @@ class Table:
             self.sling_cool[i] -= 1
             if self.sling_cool[i] <= 0:
                 del self.sling_cool[i]
+        self.sling_rest = max(0, self.sling_rest - 1)
+        if self.flip_contact:
+            self.sling_run = 0
         for i, rail in enumerate(lay.slings):
             # A real slingshot only fires when the blade switch is struck hard; a gentle roll just
             # bounces off dead rubber.
@@ -434,7 +441,7 @@ class Table:
             length = math.hypot(rail[2] - rail[0], rail[3] - rail[1])
             along = math.hypot(cx - rail[0], cy - rail[1]) / length
             # the kicker arm sits in the middle of the rubber: hits near the ends are just rubber
-            hard = i not in self.sling_cool and gap > 1e-8 and 0.12 < along < 0.88 \
+            hard = not self.sling_rest and i not in self.sling_cool and gap > 1e-8 and 0.12 < along < 0.88 \
                 and -(self.vx * dx + self.vy * dy) / gap >= rules.sling_threshold
             worn = 1 - min(0.12, self.wear / 20000)
             if self.segment(rail, ball + 0.09, bounce=(0.77 if hard else 0.4) * worn,
@@ -446,6 +453,9 @@ class Table:
                         self.vx *= 0.88
                         self.vy *= 0.88
                     self.signal(f"sling{i}", self.pts("sling", i, rules.sling))
+                    self.sling_run += 1
+                    if self.sling_run >= rules.sling_run_max:
+                        self.sling_run, self.sling_rest = 0, rules.sling_rest_ticks
         for x, y, radius in lay.posts:
             worn = 1 - min(0.12, self.wear / 20000)
             if self.contact(x, y, ball + radius, (0.62 + (self.rng.random() - 0.5) * 0.08) * worn):
@@ -842,7 +852,7 @@ class Table:
         self.ramp_ticks += 1
         if self.ramp_ticks > 115:
             self.ramp_ticks = 0
-            self.vx, self.vy = -4, 9
+            self.vx, self.vy = -4 if lay.ramp_exit[0] > lay.width * 0.44 else 4, 9      # roll off toward the middle
             if not self.tilt:
                 self.ramps += 1
                 if self.jackpot_shot:

@@ -103,4 +103,5 @@
 .pe-check-body { display: grid; gap: 6px; min-width: min(420px, 80vw); }
 .pe-bar { display: grid; grid-template-columns: 110px 1fr 40px; gap: 6px; align-items: center; font-size: 13px; }
 .pe-bar i { display: block; height: 10px; border-radius: 5px; background: #ffd383; }
+.pe-bar.pe-wide { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 40px; }
 .pe-bad { color: #ff8f7c; }

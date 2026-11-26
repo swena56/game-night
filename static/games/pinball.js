@@ -303,18 +303,8 @@
       h.fillRect(0, 0, 64, 64);
       return { ball, halo, unit };
     };
-    // the ball stretches along its direction of travel and squashes across it, like a fast-moving sphere
-    const drawBall = (x, y, scale = 1, dx = 0, dy = 0, speed = 0) => {
-      const r = geo.radius * scale;
-      if (still || speed < .12) return c.drawImage(sprites.ball, x - r, y - r, r * 2, r * 2);
-      const k = Math.min(.22, (speed - .12) * .4);
-      c.save();
-      c.translate(x, y);
-      c.rotate(Math.atan2(dy, dx));
-      c.scale(1 + k, 1 - k * .7);
-      c.drawImage(sprites.ball, -r, -r, r * 2, r * 2);
-      c.restore();
-    };
+    // the ball keeps one size and stays round: swelling or stretching it reads as the ball itself changing size
+    const drawBall = (x, y) => c.drawImage(sprites.ball, x - geo.radius, y - geo.radius, geo.radius * 2, geo.radius * 2);
     let rippleTag = '', rippleAt = 0;
     const sweepState = {};
     const disc = (x, y, radius, color) => {
@@ -611,7 +601,7 @@
             c.lineWidth = .03;
             c.stroke();
           }
-          drawBall(x, ballY, bumperHit ? 1.28 : 1, last ? x - last[0] : 0, last ? y - last[1] : 0, speed);
+          drawBall(x, ballY);
         }
         // multiball: the other balls in play
         others.forEach(([ox, oy, oz]) => {
@@ -984,8 +974,6 @@
         }
         sphere.visible = row[BALLS] > 0 && ball[2] > -.5;
         sphere.position.set(ball[0], geo.radius + ball[2], Math.min(17.25, ball[1]));
-        const bumperHit = flash?.startsWith('bumper');
-        sphere.scale.setScalar(bumperHit ? 1.28 : 1);
         moverMeshes.forEach((m, i) => { const p = row[STATS]?.movers?.[i]; if (p) m.position.set(p[0], .3, p[1]); });
         paddles.forEach((paddle, i) => { paddle.rotation.y = -(i < 2 ? ball[3 + i] : row[STATS]?.flips2?.[i - 2] ?? geo.flips[i][2]); });
         plunger.position.z = geo.launch[1] + .4 + .33 * plungeAt(row[CHARGE] / 240, tNow, still);
