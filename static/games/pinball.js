@@ -29,6 +29,16 @@
   const TRAIL_HEX = ['#fff0ca', '#ffe296', '#ffc86e', '#ffa05a', '#ff6e5a'];
   // personal bests are kept per table and per mode (practice keeps none)
   const modeTag = (g) => (g.mode && g.mode !== 'classic' ? '.' + g.mode : '');
+  // an orbit wire's mouth and tail: a funnel at the entrance (two guide rails flaring out) and a flare at the exit, both lined up with the wire
+  const orbitEnds = (geo) => {
+    const p = geo.orbit_path, k = Math.min(3, p.length - 1), unit = (a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], n = Math.hypot(dx, dy) || 1; return [dx / n, dy / n]; };
+    const d0 = unit(p[0], p[k]), d1 = unit(p[p.length - 1 - k], p[p.length - 1]);
+    const guides = (from, d, back, near, far) => {           // two rails either side of `from`, opening out `back` units behind it
+      const [nx, ny] = [-d[1], d[0]];
+      return [1, -1].map((s) => [from[0] - d[0] * back + nx * far * s, from[1] - d[1] * back + ny * far * s, from[0] + nx * near * s, from[1] + ny * near * s]);
+    };
+    return { funnel: guides(p[0], d0, .5, .17, .42), flare: guides(p[p.length - 1], d1, -.5, .17, .42) };
+  };
   const tableTag = (g) => g.table === 'neon' ? '.neon' : g.table === 'custom' ? '.custom' : g.table?.startsWith('t_') ? '.' + g.table : '';   // t_<slug> = a curated table, with its own records
   const bestKey = (g) => `pinball.best${tableTag(g)}${modeTag(g)}`;
   const topKey = (g) => `pinball.top${tableTag(g)}${modeTag(g)}`;
@@ -40,7 +50,7 @@
   // rails from geo.guides on are the metal guides; a custom table's own walls start after its smooth cabinet base
   const railTrim = (geo, i, fallback) => {
     const base = geo.paint?.base ?? 11, from = geo.guides ?? 9;
-    if (geo.theme === 'custom' && i >= base) return paintOf(geo, 'walls', i - base, fallback);
+    if (geo.paint?.base != null && i >= base) return paintOf(geo, 'walls', i - base, fallback);       // a table built in the editor keeps its own wall colours under any art
     return i >= from ? (i - from < (geo.guide_run ?? 2) ? '#a896ff' : '#ffcf76') : fallback;
   };
   const flipperColors = ['#42cfeb', '#ff78bc'];
@@ -522,11 +532,29 @@
           line(geo.orbit_path, .3, '#252049');
           line(geo.orbit_path, .08, open || flash === 'orbit' ? palette.teal : paintOf(geo, 'orbit', undefined, palette.steel));
           disc(ox, oy, orad * .6, flash === 'orbit' ? palette.ivory : open ? '#59edd266' : '#0c0a1c');
+          const ends = orbitEnds(geo), rim = open || flash === 'orbit' ? palette.teal : paintOf(geo, 'orbit', undefined, palette.steel);
+          for (const g of [...ends.funnel, ...ends.flare]) { rail(g, '#252049', .13); rail(g, rim, .06); }
+        }
+        // the two outlane lamps: gold = ready; once the kickback has fired (red ✕) or the special has paid out (green ✓) it goes dark until re-armed
+        const lampMark = (sx, sy, mark, color) => {
+          c.beginPath(); c.strokeStyle = color; c.lineWidth = .05; c.lineCap = 'round';
+          if (mark === 'x') { c.moveTo(sx - .09, sy - .09); c.lineTo(sx + .09, sy + .09); c.moveTo(sx + .09, sy - .09); c.lineTo(sx - .09, sy + .09); }
+          else { c.moveTo(sx - .1, sy + .01); c.lineTo(sx - .03, sy + .08); c.lineTo(sx + .1, sy - .08); }
+          c.stroke();
+        };
+        if (geo.outlane) {
+          const sx = geo.outlane[0] / 2, sy = geo.outlane[1] - 1, armed = row[KICK], pulse = .55 + .45 * Math.abs(Math.sin(performance.now() / 280));
+          disc(sx, sy, .26, '#252049');
+          disc(sx, sy, .2, flash === 'kickback' ? palette.ivory : armed ? palette.gold : '#3a1f2e');
+          if (armed && flash !== 'kickback') { c.globalAlpha = pulse * .5; disc(sx, sy, .3, palette.gold); c.globalAlpha = 1; }
+          if (!armed) lampMark(sx, sy, 'x', '#ff6854');
         }
         if (geo.special) {
-          const sx = (geo.special[0] + geo.width - 1.2) / 2, sy = geo.special[1] + .5, lit = row[STATS]?.special;
+          const sx = (geo.special[0] + geo.width - 1.2) / 2, sy = geo.special[1] - 1, lit = row[STATS]?.special, used = row[STATS]?.special_used;
           disc(sx, sy, .26, '#252049');
-          disc(sx, sy, .2, flash === 'special' ? palette.ivory : lit ? palette.gold : '#38325c');
+          disc(sx, sy, .2, flash === 'special' ? palette.ivory : lit ? palette.gold : used ? '#1f3a33' : '#38325c');
+          if (lit && flash !== 'special') { c.globalAlpha = (.55 + .45 * Math.abs(Math.sin(performance.now() / 280))) * .5; disc(sx, sy, .3, palette.gold); c.globalAlpha = 1; }
+          if (used) lampMark(sx, sy, 'tick', '#59edd2');
         }
         if (geo.magnet) {
           const [mx, my, mr] = geo.magnet, mag = row[STATS]?.magnet || 0;
@@ -812,15 +840,23 @@
       const orbitRail = lamp('orbit', paintOf(geo, 'orbit', undefined, palette.steel), row => row[STATS]?.orbit ? palette.teal : paintOf(geo, 'orbit', undefined, palette.steel));
       orbitRail.metalness = chrome.metalness;
       orbitRail.roughness = chrome.roughness;
-      for (const offset of [-.16, .16]) {
-        const points = geo.orbit_path.map(([x, y]) => new T.Vector3(x + (y < 3 ? 0 : offset), .45, y + (y < 3 ? offset : 0)));
-        mesh(new T.TubeGeometry(new T.CatmullRomCurve3(points), 32, .04, 6, false), orbitRail, 0, 0, 0);
+      const base = new T.CatmullRomCurve3(geo.orbit_path.map(([x, y]) => new T.Vector3(x, .45, y)));
+      for (const side of [-.16, .16]) {       // two wire rails, offset square to the wire all the way round
+        const points = Array.from({ length: 64 }, (_, i) => { const u = i / 63, q = base.getPointAt(u), t = base.getTangentAt(u); return new T.Vector3(q.x - t.z * side, .45, q.z + t.x * side); });
+        mesh(new T.TubeGeometry(new T.CatmullRomCurve3(points), 64, .04, 6, false), orbitRail, 0, 0, 0);
       }
+      const ends = orbitEnds(geo);
+      for (const g of [...ends.funnel, ...ends.flare]) rail(g, .07, .3, .32, chrome);
     }
     if (geo.special) {
-      const sx = (geo.special[0] + geo.width - 1.2) / 2, sy = geo.special[1] + .5;
+      const sx = (geo.special[0] + geo.width - 1.2) / 2, sy = geo.special[1] - 1;
       disc(sx, sy, .27, .03, .04, brass);
-      disc(sx, sy, .2, .04, .08, lamp('special', '#38325c', row => row[STATS]?.special ? palette.gold : '#38325c'));
+      disc(sx, sy, .2, .04, .08, lamp('special', '#38325c', row => row[STATS]?.special ? palette.gold : row[STATS]?.special_used ? '#59edd2' : '#38325c'));
+    }
+    if (geo.outlane) {      // the kickback lamp on the left: gold while armed, red once it has fired
+      const sx = geo.outlane[0] / 2, sy = geo.outlane[1] - 1;
+      disc(sx, sy, .27, .03, .04, brass);
+      disc(sx, sy, .2, .04, .08, lamp('kicklamp', '#ff6854', row => row[KICK] ? palette.gold : '#ff6854'));
     }
     if (geo.magnet) {
       const [mx, my] = geo.magnet;

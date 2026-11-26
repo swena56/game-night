@@ -53,6 +53,9 @@ class Table:
     saucer_ticks: int = 0
     hole_ticks: int = 0          # >0 while the ball sits in an extra kicker hole
     hole_at: int = 0
+    idle_ticks: int = 0          # ticks the ball has gone without scoring or reaching the flippers (ball search watchdog)
+    idle_score: int = 0
+    rescues: int = 0             # ball searches on this ball so far
     mover_bank: int = 0          # bit per moving target hit (just for the renderer's flash)
     subway_ticks: int = 0
     orbit_ticks: int = 0
@@ -340,6 +343,8 @@ class Table:
         self.x, self.y = self.layout.launch
         self.vx = self.vy = self.height = self.spin = self.spin_left = self.english = 0
         self.nudges = self.still = self.ramp_ticks = self.rollovers = 0
+        self.idle_ticks = self.rescues = 0
+        self.idle_score = self.score
         self.still_origin = self.layout.launch
         self.tilt = self.skill = self.smooth_launch = False
         self.angles[:] = self.layout.resting_angles()
@@ -705,6 +710,7 @@ class Table:
                     self.flipper_contact(i, previous[i], sample / samples)
         self.mechanisms(old_y)
         self.lane_and_drain()
+        self.watchdog()
 
     def pts(self, kind, i, default):
         """A part's own score if the table gave it one, else the rules' value."""
@@ -761,6 +767,37 @@ class Table:
             self.still_origin = (self.x, self.y)
             if not self.tilt:
                 self.signal("orbit", rules.orbit)
+
+    def watchdog(self):
+        """A ball that rattles around a closed pocket never counts as 'still', so it is rescued by time instead: after 30 s with no
+        score and no visit to the flippers it is dropped back into play; a second rescue on the same ball serves a fresh one at the plunger."""
+        lay = self.layout
+        if (self.staged or self.others or self.height or not self.balls or self.saucer_ticks or self.hole_ticks or self.subway_ticks
+                or self.orbit_ticks or self.ramp_ticks or self.magnet_ticks or self.departed):
+            self.idle_ticks, self.idle_score = 0, self.score
+            return
+        if self.score != self.idle_score or self.y >= lay.flipper_zone[0]:
+            self.idle_ticks, self.idle_score = 0, self.score
+            return
+        self.idle_ticks += 1
+        if self.idle_ticks < 30 * 240:
+            return
+        self.idle_ticks = 0
+        self.rescues += 1
+        self.still = 0
+        if self.rescues >= 2:
+            self.rescues = 0
+            self.x, self.y = lay.launch
+            self.vx = self.vy = 0
+            self.staged = True
+            self.smooth_launch = self.skill = False
+            self.still_origin = lay.launch
+            self.reset_controls()
+        else:
+            self.x, self.y, self.vx, self.vy = *lay.center, 0, 4
+            self.still_origin = (self.x, self.y)
+            self.skill = False
+        self.signal("recovery")
 
     def hold_in_hole(self):
         """An extra kicker hole: the ball rests, then is fired out along the hole's own angle."""
@@ -934,7 +971,7 @@ class Table:
                  "mystery": self.mysteries, "extra": self.extras, "combo": self.best_combo,
                  "wizard": self.wizards, "skill_lane": self.skill_lane, "missions": self.missions_done,
                  "orbit": int(bool(self.layout.orbit) and not self.orbit_cool and not self.tilt),
-                 "special": int(self.special_lit() and not self.special_used),
+                 "special": int(self.special_lit() and not self.special_used), "special_used": int(self.special_used),
                  "post": self.post_glow, "streak": self.bumper_streak if self.streak_ticks else 0, "hold": int(self.saucer_ticks > 0 or self.hole_ticks > 0),
                  "movers": [[round(v, 2) for v in self.mover_at(i)] for i in range(len(self.layout.movers))],
                  "flips2": [round(a, 3) for a in self.angles[2:]],

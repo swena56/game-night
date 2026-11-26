@@ -849,6 +849,60 @@ def Pinball_for(room, table_id):
     return game
 
 
+class ProductionClones(unittest.TestCase):
+    """Golden Hour and Neon Arcade can be rebuilt part for part in the editor, and the copy is the production board."""
+
+    def test_clones_match_the_production_layouts_and_rules(self):
+        import dataclasses
+        from games.pinball import GOLDEN_HOUR, NEON_ARCADE, NeonTable
+        from games.pinball import Table as Golden
+        from games.pinball_clone import clone_specs
+        from games.pinball_custom import build, build_rules
+        from games.pinball_engine import Rules
+        for key, real, rules in (("golden", GOLDEN_HOUR, Golden.rules), ("neon", NEON_ARCADE, NeonTable.rules)):
+            spec = clone_specs()[key]
+            layout, clean = build(spec)
+            for f in dataclasses.fields(real):
+                if f.name not in ("paint", "part_pts"):
+                    self.assertEqual(getattr(layout, f.name), getattr(real, f.name), f"{key}.{f.name}")
+            clone_rules = build_rules(spec)
+            for f in Rules.__dataclass_fields__:
+                self.assertEqual(getattr(clone_rules, f), getattr(rules, f), f"{key} rules.{f}")
+            for k in ("cabinet", "look", "feel"):
+                self.assertIn(k, clean)                                       # the table-wide choices survive a round trip
+            self.assertEqual(build(clean)[0].rails, layout.rails)
+
+    def test_clones_play_like_the_originals(self):
+        import random
+        from games.pinball import NeonTable
+        from games.pinball import Table as Golden
+        from games.pinball_clone import clone_specs
+        from games.pinball_custom import build, build_rules
+        for key, original in (("golden", Golden), ("neon", NeonTable)):
+            spec = clone_specs()[key]
+            layout, _ = build(spec)
+            a = original(balls=3)
+            b = original(balls=3, layout_override=layout, rules_override=build_rules(spec))
+            for t in (a, b):
+                t.rng = random.Random(5)
+            for tick in range(240 * 20):                                       # the same inputs give the same ball, tick for tick
+                held = 4 if (a.staged and a.charge < 190) else 0 if a.staged else (1, 2, 0, 3)[tick // 25 % 4]
+                for t in (a, b):
+                    t.input(held, 0, tick / 240)
+                    t.step()
+            self.assertEqual((a.score, a.balls, round(a.x, 3), round(a.y, 3)), (b.score, b.balls, round(b.x, 3), round(b.y, 3)), key)
+
+    def test_a_moved_wire_gets_the_editor_ride_again(self):
+        from games.pinball_clone import clone_specs
+        from games.pinball_custom import build
+        spec = clone_specs()["golden"]
+        for item in spec["items"]:
+            if item[0] == "orbit":
+                item[2] += .5                                                  # nudge the mouth: now it is your own wire
+        layout, _ = build(spec)
+        self.assertGreater(len(layout.orbit_path), 10)
+
+
 class TableSuggestionsAndTool(unittest.TestCase):
     """A player's suggestion reaches the inbox only if it builds, and the maintainer tool turns it into a curated file."""
 
@@ -1049,6 +1103,88 @@ class CustomTables(unittest.TestCase):
             build(odd)                                      # junk in the optional fields is ignored, never an error
         with self.assertRaises(GameError):
             decode_table("PT1." + "A" * 20000)
+
+    def test_orbit_wire_is_smooth_even_and_exits_downward(self):
+        from games.pinball_custom import build, smooth_path, exit_velocity
+        W = "#ffffff"
+        layout, _ = build({"items": [["orbit", .6, 8.5, .5, 4.0, 1.2, 1.8, 3.0, 1.2, 6.9, 1.4, W]]})
+        path = layout.orbit_path
+        self.assertGreater(len(path), 20)                                    # a spline, not the five dots
+        self.assertEqual(path[0], (.6, 8.5))
+        self.assertEqual(path[-1], (6.9, 1.4))
+        gaps = [math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in zip(path, path[1:])]
+        self.assertLess(max(gaps), .31)                                      # even steps: the ball rides at a steady pace
+        for a, b, c in zip(path, path[1:], path[2:]):                        # no corners: the direction turns gently
+            d1, d2 = (b[0] - a[0], b[1] - a[1]), (c[0] - b[0], c[1] - b[1])
+            n1, n2 = math.hypot(*d1), math.hypot(*d2)
+            if n1 > .05 and n2 > .05:
+                self.assertGreater((d1[0] * d2[0] + d1[1] * d2[1]) / (n1 * n2), .8)
+        # whatever way the wire ends, the ball leaves heading down the table
+        for pts in ([(1, 5), (1, 2)], [(1, 2), (6, 1)], [(2, 8), (2, 3), (7, 3)], [(7, 6), (4, 1), (1, 6)]):
+            vx, vy = exit_velocity(smooth_path(pts), 6.1)
+            self.assertGreater(vy, 1)
+            self.assertAlmostEqual(math.hypot(vx, vy), 6.1, places=1)
+        # a two-dot wire stays a straight line
+        self.assertEqual(smooth_path([(1, 5), (3, 2)]), [(1, 5), (3, 2)])
+        # and the ball really completes the ride
+        t = CustomTable(layout_override=layout, rules_override=__import__("games.pinball_custom", fromlist=["x"]).build_rules({}), balls=9)
+        t.staged = False
+        t.x, t.y, t.vx, t.vy = .6, 8.6, 0, -8
+        rode = False
+        for _ in range(240 * 8):
+            t.step()
+            rode = rode or t.event == "orbit"
+        self.assertTrue(rode)                                                 # the ball completed the ride and scored it
+
+    def test_outlane_lamps_report_used_state(self):
+        t = GoldenHour()
+        stats = t.public()[-1]
+        self.assertEqual((stats["special_used"], t.public()[22]), (0, 1))     # nothing used yet, kickback armed
+        t.special_used = True
+        t.kickback = False
+        self.assertEqual((t.public()[-1]["special_used"], t.public()[22]), (1, 0))
+
+    def test_a_ball_trapped_in_a_closed_pocket_is_rescued(self):
+        from games.pinball_custom import build, build_rules
+        W = "#ffffff"
+        # four rubber bands box in a patch of playfield: the ball can bounce around in there for ever
+        box = [["rubber", 3.0, 4.0, 5.8, 4.0, W], ["rubber", 5.8, 4.0, 5.8, 6.4, W], ["rubber", 5.8, 6.4, 3.0, 6.4, W], ["rubber", 3.0, 6.4, 3.0, 4.0, W]]
+        layout, _ = build({"items": box})
+        table = CustomTable(layout_override=layout, rules_override=build_rules({}), balls=3)
+        table.staged = False
+        table.x, table.y, table.vx, table.vy = 4.4, 5.2, 3, 2
+        events = []
+        for tick in range(240 * 40):
+            table.step()
+            if table.event == "recovery" and not events:
+                events.append((tick / 240, table.balls, table.y))
+        self.assertTrue(events, "the trapped ball was never rescued")
+        seconds, balls, y = events[0]
+        self.assertLess(seconds, 35)                                          # the first rescue comes after about 30 s
+        self.assertEqual(balls, 3)                                            # it costs no ball
+        self.assertGreater(y, 9)                                              # and puts the ball back near the flippers
+
+    def test_a_second_rescue_serves_a_fresh_ball(self):
+        from games.pinball_custom import build, build_rules
+        W = "#ffffff"
+        box = [["rubber", 3.0, 4.0, 5.8, 4.0, W], ["rubber", 5.8, 4.0, 5.8, 6.4, W], ["rubber", 5.8, 6.4, 3.0, 6.4, W], ["rubber", 3.0, 6.4, 3.0, 4.0, W]]
+        layout, _ = build({"items": box})
+        table = CustomTable(layout_override=layout, rules_override=build_rules({}), balls=3)
+        table.staged = False
+        table.rescues = 1
+        table.x, table.y, table.vx, table.vy = 4.4, 5.2, 3, 2
+        for _ in range(240 * 32):
+            table.step()
+        self.assertTrue(table.staged)                                         # back at the plunger, ready to launch again
+        self.assertEqual((table.balls, table.rescues), (3, 0))
+
+    def test_the_watchdog_leaves_normal_play_alone(self):
+        t = Table(balls=3)
+        t.staged = False
+        t.x, t.y, t.vx, t.vy = 4.4, 9, 0, 0
+        for _ in range(240 * 3):
+            t.step()
+        self.assertEqual(t.rescues, 0)
 
     def test_per_part_points(self):
         from games.pinball import CustomTable

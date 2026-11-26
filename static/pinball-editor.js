@@ -47,10 +47,38 @@
   const GLYPH = { star: ['⭐', 'Star'], heart: ['💗', 'Heart'], bolt: ['⚡', 'Bolt'], diamond: ['🔷', 'Diamond'], moon: ['🌙', 'Moon'], ring: ['⭕', 'Ring'] };
   for (const [g, [icon, label]] of Object.entries(GLYPH)) KINDS[g] = { label: label + ' decal', icon, shape: 'pr', color: '#ffd383', r: [.25, 1.6], r0: .6, max: 4, paint: true, group: 'Decals',
     hint: 'Painted on the playfield under the glass. It only decorates: the ball rolls over it.' };
+  // what each part is for (shown in the inspector when it is selected, and as the tooltip on its palette tile)
+  const DESC = {
+    bump: 'Pop bumper: kicks the ball away hard when it touches. Scores more the more you hit it (up to 3 levels), and double during a jackpot round.',
+    sling: 'Slingshot: a rubber edge that fires the ball back when it is hit firmly; a gentle roll just bounces off. Put one above each flipper.',
+    target: 'Standup target: drops flat when hit firmly. Clear every target on the table to light the ramp. Also lights the rollover lanes.',
+    lane: 'Rollover lane: scores when the ball rolls over it. Light every lane to raise the bonus multiplier (up to 5x) and re-arm the kickback.',
+    post: 'Rubber post: a small bouncy peg for steering the ball. Scores nothing. Its size is set in the Radius box, not by dragging.',
+    wall: 'Wall or guide: a solid metal rail. Use it to channel the ball toward a shot, or to keep it away from somewhere.',
+    arc: 'Curved wall: a smooth guide rail that bends. Drag the two end dots and the middle dot to shape it.',
+    flap: 'One-way flap: the ball can pass through from one side only and cannot come back. The arrow shows the way through.',
+    rubber: 'Rubber band: a bouncy dead-rubber wall. It kicks the ball back but scores nothing. Good for soft side walls.',
+    spinner: 'Spinner: a flap that spins as the ball passes over it and scores for every spin. The faster the ball, the more spins.',
+    saucer: 'Saucer: a dish that catches a slow ball, holds it for a moment, then kicks it back into play (+1,000).',
+    hole: 'Kicker hole: swallows the ball, holds it, then fires it out down the table toward the middle (+1,000). Up to three per table.',
+    magnet: 'Magnet: during jackpot rounds and multiball it grabs a ball in range and holds it briefly (+1,500). The circle is its reach.',
+    ramp: 'Ramp: a raised lane. It lights once every target is cleared; a fast shot up the mouth scores 6,000 and starts a jackpot round.',
+    subway: 'Subway: the ball drops in the mouth, travels under the playfield, and comes out the other end, fired down the table (+2,000).',
+    orbit: 'Orbit wire: a lane the ball rides around the table. Shoot up into the funnel and it comes out the flared end (+3,000). Drag the grip to move the whole wire.',
+    portal: 'Portal pair: two linked holes. A ball that rolls into one comes out of the other at the same speed (+250).',
+    mover: 'Moving target: a target that slides back and forth along its track. A firm hit scores 300.',
+    flip: 'Extra flipper: a mid-table flipper. Left of the middle it follows the left button, right of the middle the right button.',
+  };
+  for (const [k, text] of Object.entries(DESC)) if (KINDS[k]) KINDS[k].desc = text;
+  for (const g of Object.keys(GLYPH)) KINDS[g].desc = 'Decal: a picture painted on the playfield under the glass. It only decorates: the ball rolls straight over it.';
   const GROUPS = { rubber: 'Walls & guides', wall: 'Walls & guides', post: 'Walls & guides', spinner: 'Mechanisms', saucer: 'Mechanisms', magnet: 'Mechanisms', ramp: 'Mechanisms', subway: 'Mechanisms', orbit: 'Mechanisms' };
+  // table-wide choices (the production tables are built from these): [default, label]
+  const FEEL = { gravity: [11, 'Gravity'], hurry_seconds: [8, 'Hurry-up seconds'], super_every: [4, 'Super jackpot every'], extra_balls: [[40000, 120000], 'Extra balls at'],
+    classic_lamps: [false, 'Classic lamps'], steep_flippers: [false, 'Steeper flippers'] };
   // the table's own point values (defaults match the game's rules)
   const POINTS = { bumper: [100, 'Pop bumper'], sling: [50, 'Slingshot'], target: [250, 'Target'], lane: [500, 'Rollover lane'], spinner: [100, 'Spinner'],
-    ramp: [6000, 'Ramp'], saucer: [1000, 'Saucer / kicker hole'], portal: [250, 'Portal'], mover: [300, 'Moving target'] };
+    ramp: [6000, 'Ramp'], saucer: [1000, 'Saucer / kicker hole'], portal: [250, 'Portal'], mover: [300, 'Moving target'],
+    jackpot: [12000, 'Jackpot'], hurry: [15000, 'Hurry-up top prize'] };
   const OWN_POINTS = new Set(['bump', 'sling', 'target', 'lane', 'mover']);   // parts that can carry their own score
   const SWATCHES = ['#ff6854', '#ff9b59', '#ffd383', '#fff0ca', '#59edd2', '#42cfeb', '#c699ff', '#ff78bc', '#c1d2e5'];
   // the fixed cabinet, as in the game: outer walls, shooter lane, outlane walls, inlane guides, flippers
@@ -80,10 +108,13 @@
   const RAILS = [...fillet([[0, 17], [0, 2.2], [1.5, 0], [7.8, 0], [10, 2.8], [10, 17]], [1.9, 1.3, 1.6, 1.9]),
     [8.8, 3.1, 8.8, 17], [8.8, 16.25, 10, 16.25],
     ...fillet([[.9, 12.2], [.9, 13.5], [3.22, 14.95]], [.5]), ...fillet([[7.9, 12.4], [7.9, 13.8], [6.78, 14.95]], [.5])];
-  const FLIPS = [[3.22, 14.95, .42], [6.78, 14.95, Math.PI - .42]];
+  const RAILS_CLASSIC = [[0, 17, 0, 2.2], [0, 2.2, 1.5, 0], [1.5, 0, 7.8, 0], [7.8, 0, 10, 2.8], [10, 2.8, 10, 17], [8.8, 3.1, 8.8, 17], [8.8, 16.25, 10, 16.25],
+    [.9, 12.2, .9, 13.5], [.9, 13.5, 3.22, 14.95], [7.9, 12.4, 7.9, 13.8], [7.9, 13.8, 6.78, 14.95]];      // the original sharp cabinet of the production tables
+  const flipPair = (rest) => [[3.22, 14.95, rest], [6.78, 14.95, Math.PI - rest]];
+  const FLIPS = flipPair(.42);
   const FLIP_LEN = 1.56;
 
-  let state = { name: '', items: [], kick: false, lock: false, pts: {} };
+  let state = { name: '', items: [], kick: false, lock: false, pts: {}, cabinet: 'smooth', look: 'custom', feel: {} };
   let zoom = 1;
   const hiddenLayers = new Set();
   const group = new Set();                        // shift-click adds parts: duplicate, delete, nudge and drag then act on all of them
@@ -98,7 +129,7 @@
   let snap = true;
   let history = [], future = [];
   let drag = null;
-  const canvas = $('peCanvas'), ctx = canvas.getContext('2d');
+  const canvas = $('peCanvas'); let ctx = canvas.getContext('2d');
   let scale = 40;
 
   const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -161,6 +192,15 @@
     const lock = state.lock;
     const out = { v: 1, name: state.name.trim().slice(0, 40), items };
     if (lock) out.lock = true;
+    if (state.cabinet === 'classic') out.cabinet = 'classic';
+    if (state.look && state.look !== 'custom') out.look = state.look;
+    const feel = {};
+    for (const [k, v] of Object.entries(state.feel || {})) {
+      const def = FEEL[k]?.[0];
+      if (def === undefined) continue;
+      if (k === 'extra_balls' ? (v[0] !== def[0] || v[1] !== def[1]) : v !== def && v !== false) feel[k] = v;
+    }
+    if (Object.keys(feel).length) out.feel = feel;
     const pv = [];
     state.items.forEach((i, n) => { if (OWN_POINTS.has(i.k) && Number.isFinite(i.pv)) pv.push([n, i.pv]); });
     if (pv.length) out.pv = pv;
@@ -173,7 +213,8 @@
   }
   function fromSpec(spec) {
     if (!spec || !Array.isArray(spec.items)) throw new Error("That isn't a table.");
-    const next = { name: typeof spec.name === 'string' ? spec.name.slice(0, 40) : '', items: [], kick: false, lock: spec.lock === true, pts: {} };
+    const next = { name: typeof spec.name === 'string' ? spec.name.slice(0, 40) : '', items: [], kick: false, lock: spec.lock === true, pts: {}, cabinet: spec.cabinet === 'classic' ? 'classic' : 'smooth', look: ['golden', 'neon'].includes(spec.look) ? spec.look : 'custom', feel: {} };
+    if (spec.feel && typeof spec.feel === 'object') for (const [k, v] of Object.entries(spec.feel)) if (k in FEEL && (k === 'extra_balls' ? Array.isArray(v) && v.length === 2 && v.every(Number.isFinite) : typeof v === (typeof FEEL[k][0] === 'boolean' ? 'boolean' : 'number') && (typeof v !== 'number' || Number.isFinite(v)))) next.feel[k] = v;
     if (spec.pts && typeof spec.pts === 'object') for (const [k, v] of Object.entries(spec.pts)) if (POINTS[k] && typeof v === 'number' && isFinite(v)) next.pts[k] = clamp(Math.round(v), 0, 20000);
     const num = (v) => (typeof v === 'number' && isFinite(v) ? v : 0);
     const own = new Map((Array.isArray(spec.pv) ? spec.pv : []).filter((p) => Array.isArray(p) && Number.isInteger(p[0]) && Number.isFinite(p[1])).map((p) => [p[0], clamp(Math.round(p[1]), 0, 20000)]));
@@ -201,26 +242,16 @@
     return next;
   }
   // a Golden Hour look-alike: every kind of part in the places the real table has them
-  const GOLDEN = ['Golden Hour copy', [
-    ['bump', 3.12, 5.65, .68, '#ff9b59'], ['bump', 6.62, 5.7, .68, '#c699ff'], ['bump', 4.05, 7.64, .68, '#58e5d5'],
-    ['sling', 1.35, 10.75, 2.85, 12.5, '#ff6854'], ['sling', 7.73, 10.75, 6.48, 12.6, '#ff6854'],
-    ['target', 1.25, 6.6, 1.25, 7.3, '#ff6854'], ['target', 1.25, 7.48, 1.25, 8.18, '#ff6854'], ['target', 1.25, 8.36, 1.25, 9.06, '#ff6854'],
-    ['lane', 2.25, 3.5, '#59edd2'], ['lane', 4.25, 3.5, '#59edd2'], ['lane', 6.25, 3.5, '#59edd2'],
-    ['wall', 3.25, 2.95, 3.25, 4.15, '#c1d2e5'], ['wall', 5.25, 2.95, 5.25, 4.15, '#c1d2e5'],
-    ['wall', 2.55, 9.55, 3.15, 10.35, '#ffcf76'], ['wall', 7.45, 9.55, 6.85, 10.35, '#ffcf76'],
-    ['post', 3.25, 2.85, .11, '#fff0ca'], ['post', 5.25, 2.85, .11, '#fff0ca'], ['post', 3.55, 12.9, .11, '#fff0ca'], ['post', 6.45, 12.9, .11, '#fff0ca'],
-    ['spinner', 7.95, 7.4, '#c1d2e5'], ['saucer', 1.6, 4.7, .3, '#ffd383'], ['magnet', 5, 9.6, 1.1, '#59edd2'],
-    ['ramp', 5.25, 6.02, 7.75, 8.6, '#59edd2'], ['subway', 8.15, 4.8, 2, 8.9, '#c699ff'],
-    ['orbit', .5, 5.6, .45, 3.2, 1, 1.2, 2.2, .7, 7, .8, '#9ce9ff'], ['kick', '#ffffff']]];
   const TEMPLATES = [
     ['Empty table', []],
     ['Demo table', [['bump', 3, 5.5, .65, '#ff9b59'], ['bump', 6.4, 5.5, .65, '#c699ff'], ['bump', 4.7, 7.6, .65, '#58e5d5'],
       ['sling', 1.35, 10.75, 2.85, 12.5, '#ff6854'], ['sling', 7.7, 10.75, 6.5, 12.6, '#ff6854'],
       ['lane', 2.25, 3.5, '#59edd2'], ['lane', 4.25, 3.5, '#59edd2'], ['lane', 6.25, 3.5, '#59edd2'],
       ['target', 1.25, 6.6, 1.25, 7.3, '#ff6854'], ['spinner', 7.95, 7.4, '#c1d2e5'], ['kick', '#ffffff']]],
-    GOLDEN,
     // the curated tables (Pop Pit, Speedway...) come from the server: games/pinball_tables/*.json
   ];
+  let production = [];              // Golden Hour and Neon Arcade, as editor tables
+  fetch('/api/pinball-clones').then((r) => r.json()).then((d) => { production = Array.isArray(d.tables) ? d.tables : []; if (typeof tablesDlg !== 'undefined' && tablesDlg.open) renderTables(); }).catch(() => {});
   let curated = [];                 // the server's curated tables, fetched once
   fetch('/api/pinball-tables').then((r) => r.json()).then((d) => { curated = Array.isArray(d.tables) ? d.tables : []; if (typeof tablesDlg !== 'undefined' && tablesDlg.open) renderTables(); }).catch(() => {});
   const templateSpec = ([name, items, extra]) => ({ v: 1, name, items, ...(extra || {}) });
@@ -286,14 +317,32 @@
       for (let gx = .25; gx < 10; gx += .5) for (let gy = .25; gy < 17; gy += .5) ctx.fillRect(gx - .012, gy - .012, .025, .025);
     }
     ctx.fillStyle = '#ffffff0c'; ctx.fillRect(X[0] - .1, Y[1], X[1] - X[0] + .2, 14.95 - Y[1] + .5);   // too close to the flippers
-    for (const r of RAILS) { seg(...r, '#17152f', .3); seg(...r, '#c1d2e5', .14); }
+    for (const r of (state.cabinet === 'classic' ? RAILS_CLASSIC : RAILS)) { seg(...r, '#17152f', .3); seg(...r, '#c1d2e5', .14); }
     seg(8.8, 1.2, 8.8, 3.1, '#ffd383', .1);                              // the one-way gate
-    for (const [fx, fy, a] of FLIPS) { seg(fx, fy, fx + FLIP_LEN * Math.cos(a), fy + FLIP_LEN * Math.sin(a), '#211b40', .5); seg(fx, fy, fx + FLIP_LEN * Math.cos(a), fy + FLIP_LEN * Math.sin(a), '#42cfeb', .32); }
-    if (state.kick) for (const x of [.9, 7.9]) { disc(x, 13.9, .2, '#ffd383'); }
+    for (const [fx, fy, a] of (state.feel?.steep_flippers ? flipPair(.46) : FLIPS)) { seg(fx, fy, fx + FLIP_LEN * Math.cos(a), fy + FLIP_LEN * Math.sin(a), '#211b40', .5); seg(fx, fy, fx + FLIP_LEN * Math.cos(a), fy + FLIP_LEN * Math.sin(a), '#42cfeb', .32); }
+    if (state.kick) for (const x of [.45, 8.35]) { disc(x, 12.9, .26, '#252049'); disc(x, 12.9, .2, '#ffd383'); }
     state.items.forEach((it, i) => { if (shown(it)) { drawItem(it, i === sel); if (group.size > 1 && group.has(i)) { const [gx, gy] = centre(it); ctx.setLineDash([.1, .08]); disc(gx, gy, .55, null, '#ffb703'); ctx.setLineDash([]); } } });
     ctx.fillStyle = '#ffffff55'; ctx.font = '.32px sans-serif'; ctx.textAlign = 'center';
     ctx.fillText('DRAIN', 5, 16.6); ctx.fillText('LAUNCH', 9.4, 12);
   }
+  // an orbit wire as the game rides it: a smooth Catmull-Rom curve through your dots, with a funnel at the mouth and a flare at the exit
+  const wireCurve = (pts) => {
+    if (pts.length < 3) return pts;
+    const e = [pts[0], ...pts, pts.at(-1)], out = [];
+    for (let i = 1; i < e.length - 2; i++) for (let k = 0; k < 16; k++) {
+      const t = k / 16, [p0, p1, p2, p3] = [e[i - 1], e[i], e[i + 1], e[i + 2]];
+      out.push([0, 1].map((j) => .5 * (2 * p1[j] + (-p0[j] + p2[j]) * t + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * t * t + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * t ** 3)));
+    }
+    out.push(pts.at(-1));
+    return out;
+  };
+  function wireEnds(curve) {
+    const unit = (a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], n = Math.hypot(dx, dy) || 1; return [dx / n, dy / n]; };
+    const k = Math.min(6, curve.length - 1), d0 = unit(curve[0], curve[k]), d1 = unit(curve.at(-1 - k), curve.at(-1));
+    const guides = (from, d, back, near, far) => [1, -1].map((s) => [from[0] - d[0] * back - d[1] * far * s, from[1] - d[1] * back + d[0] * far * s, from[0] - d[1] * near * s, from[1] + d[0] * near * s]);
+    return { funnel: guides(curve[0], d0, .5, .17, .42), flare: guides(curve.at(-1), d1, -.5, .17, .42) };
+  }
+  const wireGrip = (it) => { const c = wireCurve(it.pts); return c[Math.floor(c.length / 2)]; };       // a big handle on the middle of the wire: drag it to move the whole wire
   const rampCurve = (it) => Array.from({ length: 25 }, (_, i) => { const t = i / 24; return [it.x + (it.x2 - it.x) * t, it.y + (it.y2 - it.y) * t - 4.8 * Math.sin(Math.PI * t)]; });
   function exitDir(x, y) { const dx = 5 - x, dy = 6, n = Math.hypot(dx, dy); return [dx / n, dy / n]; }
   function drawItem(it, on) {
@@ -311,10 +360,12 @@
       const [ux, uy] = exitDir(it.x2, it.y2); arrow(it.x2 + ux * .5, it.y2 + uy * .5, ux, uy, it.c);
       if (on) disc(it.x, it.y, .5, null, glow);
     } else if (it.k === 'orbit') {
-      poly(it.pts, '#252049', .24); poly(it.pts, it.c, .09);
-      disc(it.pts[0][0], it.pts[0][1], .4, '#0c0a1c', it.c);
-      const [lx, ly] = it.pts.at(-1), [ux, uy] = exitDir(lx, ly); arrow(lx + ux * .35, ly + uy * .35, ux, uy, it.c);
-      if (on) poly(it.pts, '#ffffff44', .3);
+      const curve = wireCurve(it.pts), ends = wireEnds(curve);
+      poly(curve, '#252049', .24); poly(curve, it.c, .09);
+      for (const g of [...ends.funnel, ...ends.flare]) { seg(...g, '#252049', .13); seg(...g, it.c, .06); }       // funnel in, flare out
+      disc(it.pts[0][0], it.pts[0][1], .22, '#0c0a1c', it.c);
+      const [lx, ly] = it.pts.at(-1), [px, py] = curve.at(-4); arrow(lx + (lx - px) * .5, ly + (ly - py) * .5, lx - px, ly - py, it.c);
+      if (on) { poly(curve, '#ffffff44', .3); const [gx, gy] = wireGrip(it); disc(gx, gy, .3, '#ffb70333', '#ffb703'); seg(gx - .14, gy, gx + .14, gy, '#ffb703', .05); seg(gx, gy - .14, gx, gy + .14, '#ffb703', .05); }
     } else if (it.k === 'rubber') {
       seg(it.x, it.y, it.x2, it.y2, '#252049', .24); seg(it.x, it.y, it.x2, it.y2, it.c, .15);
       if (on) seg(it.x, it.y, it.x2, it.y2, '#ffffff55', .3);
@@ -384,6 +435,7 @@
   function handles(it) {
     const d = KINDS[it.k];
     if (d.shape === 'a') return [[it.x, it.y], [it.x2, it.y2], [it.cx, it.cy]];
+    if (it.k === 'post') return [];                    // a post is tiny: dragging it must move it, never resize it (use the Radius box)
     if (d.shape === 'pr') return [[it.x + it.r, it.y]];
     if (d.shape === 's') return [[it.x, it.y], [it.x2, it.y2]];
     if (d.shape === 'w') return it.pts;
@@ -397,6 +449,16 @@
     return Math.hypot(px - (x1 + dx * t), py - (y1 + dy * t));
   }
   // every part under the pointer, best first: round parts and short ones beat long lines and wires that happen to pass under them
+  // moving a whole part (a wire, a rail, a ramp...) slides it rigidly: the shift is limited so no point leaves the table, so the shape never squashes at an edge
+  function rigidShift(it, sx, sy) {
+    const all = []; mapPts(copy(it), (p) => { all.push(p); return p; });
+    const [y0, y1] = yRange(it.k), xs = all.map((p) => p[0]), ys = all.map((p) => p[1]);
+    return [clamp(sx, X[0] - Math.min(...xs), X[1] - Math.max(...xs)), clamp(sy, y0 - Math.min(...ys), y1 - Math.max(...ys))];
+  }
+  function shiftGroup(sx, sy) {
+    if (group.size < 2) return;
+    for (const g of group) if (g !== sel && state.items[g]) { const o = state.items[g], [mx, my] = KINDS[o.k].shape === 'p' || KINDS[o.k].shape === 'pr' ? [sx, sy] : rigidShift(o, sx, sy); mapPts(o, ([x, y]) => [x + mx, y + my]); normalize(o); }
+  }
   function hitList(px, py) {
     const found = [];
     state.items.forEach((it, i) => {
@@ -406,7 +468,7 @@
       if (d.shape === 'pr') { dist = Math.hypot(px - it.x, py - it.y); if (!(dist <= (it.k === 'magnet' ? Math.min(it.r, .5) : it.r + .1))) return; }
       else if (it.k === 'ramp') { const c = rampCurve(it); dist = Math.min(...c.slice(1).map(([x, y], j) => distSeg(px, py, c[j][0], c[j][1], x, y))); weight = 2; if (dist > .2) return; }
       else if (d.shape === 'a') { const c = arcCurve(it); dist = Math.min(...c.slice(1).map(([x, y], j) => distSeg(px, py, c[j][0], c[j][1], x, y))); weight = 1; if (dist > .25) return; }
-      else if (d.shape === 'w') { dist = Math.min(...it.pts.map(([x, y], j) => (j ? distSeg(px, py, it.pts[j - 1][0], it.pts[j - 1][1], x, y) : 9)), ...it.pts.map(([x, y]) => Math.hypot(px - x, py - y) - .15)); weight = 2; if (dist > .18) return; }
+      else if (d.shape === 'w') { const c = wireCurve(it.pts); dist = Math.min(...c.slice(1).map(([x, y], j) => distSeg(px, py, c[j][0], c[j][1], x, y)), ...it.pts.map(([x, y]) => Math.hypot(px - x, py - y) - .15)); weight = 2; if (dist > .26) return; }
       else if (it.k === 'subway' || it.k === 'portal') { dist = Math.min(Math.hypot(px - it.x, py - it.y), Math.hypot(px - it.x2, py - it.y2)) - .1; weight = 0; if (dist > .32) return; }      // the dotted run underneath is not clickable
       else if (d.shape === 's') { dist = Math.min(distSeg(px, py, it.x, it.y, it.x2, it.y2), Math.hypot(px - it.x, py - it.y) - .1); weight = 1; if (dist > .28) return; }
       else if (it.k === 'spinner') { if (!(Math.abs(px - it.x) <= .55 && Math.abs(py - it.y) <= .3)) return; dist = Math.hypot(px - it.x, py - it.y) * .5; }
@@ -422,8 +484,11 @@
   canvas.addEventListener('pointerdown', (e) => {
     const [px, py] = world(e);
     const pad = Math.max(.3, 14 * (devicePixelRatio || 1) / scale);
-    if (sel >= 0) {
-      const h = handles(state.items[sel]).findIndex(([hx, hy]) => Math.hypot(px - hx, py - hy) <= pad);
+    if (sel >= 0 && state.items[sel]) {
+      const it0 = state.items[sel];
+      if (it0.pts) { const [gx, gy] = wireGrip(it0); if (Math.hypot(px - gx, py - gy) <= Math.max(.36, pad)) { drag = { mode: 'move', dx: px - it0.x, dy: py - it0.y }; canvas.setPointerCapture(e.pointerId); return; } }
+      const inBody = KINDS[it0.k].shape === 'pr' && Math.hypot(px - it0.x, py - it0.y) < it0.r * .7;      // pressing inside a round part moves it
+      const h = inBody ? -1 : handles(it0).findIndex(([hx, hy]) => Math.hypot(px - hx, py - hy) <= pad);
       if (h >= 0) { drag = { mode: 'handle', h }; canvas.setPointerCapture(e.pointerId); return; }
     }
     const stack = hitList(px, py);
@@ -452,13 +517,9 @@
         normalize(it);
       }
     } else {
-      const nx = grid(px - drag.dx), ny = grid(py - drag.dy), sx = nx - it.x, sy = ny - it.y;
-      if (d.shape === 's') { it.x2 += sx; it.y2 += sy; it.x = nx; it.y = ny; }
-      else if (d.shape === 'a') { it.x2 += sx; it.y2 += sy; it.cx += sx; it.cy += sy; it.x = nx; it.y = ny; }
-      else if (d.shape === 'w') it.pts = it.pts.map(([x, y]) => [x + sx, y + sy]);
-      else { it.x = nx; it.y = ny; }
-      normalize(it);
-      if (group.size > 1) for (const g of group) if (g !== sel && state.items[g]) { mapPts(state.items[g], ([x, y]) => [x + sx, y + sy]); normalize(state.items[g]); }
+      const nx = grid(px - drag.dx), ny = grid(py - drag.dy);
+      if (d.shape === 'p' || d.shape === 'pr') { const sx = nx - it.x, sy = ny - it.y; it.x = nx; it.y = ny; normalize(it); shiftGroup(sx, sy); }
+      else { const [sx, sy] = rigidShift(it, nx - it.x, ny - it.y); mapPts(it, ([x, y]) => [x + sx, y + sy]); shiftGroup(sx, sy); }
     }
     draw(); fillInspector();
   });
@@ -488,7 +549,7 @@
       const g = groupOf(k);
       if (tab === 'All' && g !== group) { group = g; const h = document.createElement('h3'); h.className = 'pe-group'; h.textContent = g; box.append(h); }
       const b = document.createElement('button');
-      b.className = 'pe-part'; b.type = 'button'; b.dataset.kind = k; b.title = d.hint || d.label;
+      b.className = 'pe-part'; b.type = 'button'; b.dataset.kind = k; b.title = d.desc || d.hint || d.label;
       b.innerHTML = `<span class="pe-icon">${d.icon}</span><span>${d.label}</span><small></small>`;
       b.addEventListener('pointerdown', (e) => startPaletteDrag(e, k, b));
       b.addEventListener('click', () => { if (b.dataset.touch === '1' && !b.disabled) addPart(k, 4.4 + (count(k) % 4) * .5, 7 + (state.items.length % 6) * .6); });
@@ -532,7 +593,7 @@
   // ---- inspector ----------------------------------------------------------------------------------------
   function fillInspector() {
     const it = state.items[sel];
-    $('peFields').hidden = !it; $('peHint').hidden = !!it;
+    $('peFields').hidden = !it; $('peHint').hidden = !!it; if (!it) $('peDesc').hidden = true;
     $('peTitle').textContent = it ? `${KINDS[it.k].icon} ${KINDS[it.k].label}` : 'Nothing selected';
     if (!it) return;
     const d = KINDS[it.k], segment = d.shape === 's' || d.shape === 'a', wire = d.shape === 'w';
@@ -545,6 +606,7 @@
     if (segment) $('peAngle').value = Math.round(Math.atan2(it.y2 - it.y, it.x2 - it.x) * 180 / Math.PI);
     $('pePointRow').hidden = !wire;
     if (wire) { $('peAddPt').disabled = it.pts.length >= 6; $('peDelPt').disabled = it.pts.length <= 2; }
+    $('peDesc').textContent = d.desc || ''; $('peDesc').hidden = !d.desc;
     $('peKindHint').textContent = d.hint || ''; $('peKindHint').hidden = !d.hint;
     $('peColorRow').hidden = $('peSwatches').hidden = !d.paint;
     $('peColor').value = it.c;
@@ -676,7 +738,7 @@
   $('peLock').onchange = () => { state.lock = $('peLock').checked; commit(); };
   $('peKick').onchange = () => { state.kick = $('peKick').checked; commit(); };
   $('peSnap').onclick = () => { snap = !snap; $('peSnap').setAttribute('aria-pressed', String(snap)); draw(); };
-  $('peClear').onclick = () => { if (!state.items.length && !state.kick) return; if (confirm('Remove every part from this table?')) { state.items = []; state.kick = false; state.lock = false; state.pts = {}; sel = -1; group.clear(); commit(); } };
+  $('peClear').onclick = () => { if (!state.items.length && !state.kick) return; if (confirm('Remove every part from this table?')) { state.items = []; state.kick = false; state.lock = false; state.pts = {}; state.cabinet = 'smooth'; state.look = 'custom'; state.feel = {}; sel = -1; group.clear(); commit(); } };
 
   function renderList() {
     const ol = $('peList'), n = state.items.length;
@@ -689,7 +751,7 @@
       b.innerHTML = `<span>${d.icon}</span><span>${d.label}</span><small>${cx.toFixed(1)}, ${cy.toFixed(1)}</small>`;
       b.onclick = (e) => { if (e.shiftKey) { if (sel >= 0) group.add(sel); group.add(i); } else group.clear(); sel = i; refresh(); };
       li.append(b); ol.append(li);
-      if (i === sel) queueMicrotask(() => b.scrollIntoView({ block: 'nearest' }));
+      if (i === sel) queueMicrotask(() => { const top = b.offsetTop - ol.offsetTop, bottom = top + b.offsetHeight; if (top < ol.scrollTop) ol.scrollTop = top; else if (bottom > ol.scrollTop + ol.clientHeight) ol.scrollTop = bottom - ol.clientHeight; });
     });
     $('pePrev').disabled = $('peNext').disabled = n < 2;
   }
@@ -710,10 +772,31 @@
     const bytes = new Blob([snapshot()]).size;
     $('peCount').textContent = `${state.items.length + (state.kick ? 1 : 0)} parts · ${bytes.toLocaleString()} of ${MAX_BYTES.toLocaleString()} bytes`;
     fillPoints();
+    fillSetup();
     renderList();
     fillInspector();
     if (redraw) draw();
   }
+  // ---- table setup: cabinet, art and feel ----------------------------------------------------------------------
+  function fillSetup() {
+    const f = state.feel || {}, set = (id, v) => { const el = $(id); if (document.activeElement !== el) el.value = v; };
+    $('peCabinet').value = state.cabinet; $('peLook').value = state.look;
+    set('peGravity', f.gravity ?? FEEL.gravity[0]); set('peHurry', f.hurry_seconds ?? FEEL.hurry_seconds[0]); set('peSuper', f.super_every ?? FEEL.super_every[0]);
+    set('peEB1', (f.extra_balls ?? FEEL.extra_balls[0])[0]); set('peEB2', (f.extra_balls ?? FEEL.extra_balls[0])[1]);
+    $('peSteep').checked = !!f.steep_flippers; $('peClassic').checked = !!f.classic_lamps;
+  }
+  const numberIn = (id, lo, hi) => { const v = parseFloat($(id).value); return Number.isFinite(v) ? clamp(v, lo, hi) : null; };
+  $('peCabinet').onchange = () => { state.cabinet = $('peCabinet').value; commit(); };
+  $('peLook').onchange = () => { state.look = $('peLook').value; commit(); };
+  $('peSteep').onchange = () => { state.feel = { ...state.feel, steep_flippers: $('peSteep').checked }; commit(); };
+  $('peClassic').onchange = () => { state.feel = { ...state.feel, classic_lamps: $('peClassic').checked }; commit(); };
+  for (const [id, key, lo, hi] of [['peGravity', 'gravity', 8, 16], ['peHurry', 'hurry_seconds', 0, 20], ['peSuper', 'super_every', 1, 10]]) {
+    $(id).onchange = () => { const v = numberIn(id, lo, hi); state.feel = { ...state.feel, [key]: v === null ? FEEL[key][0] : key === 'gravity' ? Math.round(v * 10) / 10 : Math.round(v) }; commit(); };
+  }
+  for (const id of ['peEB1', 'peEB2']) $(id).onchange = () => {
+    const a = numberIn('peEB1', 1000, 1e6), b = numberIn('peEB2', 1000, 1e6);
+    state.feel = { ...state.feel, extra_balls: [a ?? FEEL.extra_balls[0][0], b ?? FEEL.extra_balls[0][1]].sort((x, y) => x - y).map(Math.round) }; commit();
+  };
   function fillPoints() {
     const body = $('pePtsBody');
     if (!body.children.length) for (const [k, [def, label]] of Object.entries(POINTS)) {
@@ -770,34 +853,57 @@
   const readSlots = () => { try { return JSON.parse(localStorage.getItem(SLOTS)) || {}; } catch { return {}; } };
   const writeSlots = (slots) => { try { localStorage.setItem(SLOTS, JSON.stringify(slots)); } catch { say("Couldn't save: the browser's storage is full."); } };
   const tablesDlg = $('peTablesDlg');
-  function listItem(name, detail, buttons, tip) {
+  // a small picture of a table, drawn with the editor's own drawing code
+  const thumbCache = new Map();
+  function thumbnail(spec) {
+    const key = JSON.stringify(spec);
+    if (thumbCache.has(key)) return thumbCache.get(key);
+    const c = document.createElement('canvas'); c.width = 112; c.height = 190;
+    const keep = { ctx, scale, state, sel, snap }, grouped = [...group];
+    try { ctx = c.getContext('2d'); scale = c.width / W; state = fromSpec(spec); sel = -1; snap = false; group.clear(); draw(); }
+    finally { ({ ctx, scale, state, sel, snap } = keep); for (const i of grouped) group.add(i); }
+    const url = c.toDataURL();
+    thumbCache.set(key, url);
+    return url;
+  }
+  function listItem(name, detail, buttons, tip, spec) {
     const row = document.createElement('div');
     row.className = 'pe-item';
     if (tip) row.title = tip;
     row.dataset.tip = tip || '';
-    const label = document.createElement('span'); label.textContent = name;
-    const small = document.createElement('small'); small.textContent = detail;
-    row.append(label, small, ...buttons);
-    if (tip) { const p = document.createElement('p'); p.className = 'pe-blurb'; p.textContent = tip; row.append(p); }
+    if (spec) { const img = document.createElement('img'); img.className = 'pe-thumb'; img.alt = ''; img.src = thumbnail(spec); row.append(img); }
+    const text = document.createElement('span'); text.className = 'pe-itemtext';
+    const label = document.createElement('b'); label.textContent = name;
+    const small = document.createElement('small'); small.textContent = tip ? `${detail} · ${tip}` : detail;
+    text.append(label, small);
+    const btns = document.createElement('span'); btns.className = 'pe-itembtns'; btns.append(...buttons);
+    row.append(text, btns);
     return row;
   }
   const button = (text, onclick) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = text; b.onclick = onclick; return b; };
   function load(spec) { state = fromSpec(spec); sel = -1; group.clear(); commit(); tablesDlg.close(); say(`Loaded "${state.name || 'table'}".`); }
   function renderTables() {
-    const templates = $('peTemplates'), saved = $('peSaved');
-    templates.textContent = ''; saved.textContent = '';
-    for (const t of TEMPLATES) templates.append(listItem(t[0], `${t[1].length} parts`, [button('Use', () => load(templateSpec(t)))], t[3]));
-    const featured = $('peFeatured');
-    featured.textContent = '';
-    for (const t of curated) featured.append(listItem(t.name, `${t.spec.items.length} parts`, [button('Use', () => load({ ...t.spec, name: t.name }))], t.blurb + (t.author ? ` (by ${t.author})` : '')));
+    const templates = $('peTemplates'), saved = $('peSaved'), clones = $('peClones'), featured = $('peFeatured');
+    for (const box of [templates, saved, clones, featured]) box.textContent = '';
+    for (const t of TEMPLATES) { const spec = templateSpec(t); templates.append(listItem(t[0], `${t[1].length} parts`, [button('Use', () => load(spec))], t[3], spec)); }
+    for (const t of production) {                 // exact copies of the tables in the game, read from the server's live layouts
+      const spec = { ...t.spec, name: t.name };
+      clones.append(listItem(t.name, `${t.spec.items.length} parts`, [button('Clone', () => load(spec)), button('▶ Play', () => playSpec(spec))], t.blurb, spec));
+    }
+    $('peClonesHead').hidden = !production.length;
+    for (const t of curated) {
+      const spec = { ...t.spec, name: t.name };
+      featured.append(listItem(t.name, `${t.spec.items.length} parts`, [button('Use', () => load(spec)), button('▶ Play', () => playSpec(spec))], t.blurb + (t.author ? ` (by ${t.author})` : ''), spec));
+    }
     $('peFeaturedHead').hidden = !curated.length;
     const slots = readSlots(), names = Object.keys(slots);
     if (!names.length) { const p = document.createElement('p'); p.className = 'pe-empty'; p.textContent = 'Nothing saved yet. Name your table and press Save.'; saved.append(p); }
     for (const name of names) {
       saved.append(listItem(name, `${slots[name].items.length} parts`, [
         button('Open', () => load(slots[name])),
+        button('▶ Play', () => playSpec(slots[name])),
         button('Delete', () => { const s = readSlots(); delete s[name]; writeSlots(s); renderTables(); }),
-      ]));
+      ], '', slots[name]));
     }
   }
   // ---- suggest a table for the curated list ------------------------------------------------------------
@@ -844,8 +950,8 @@
     if (!r.ok) throw new Error(j.error || 'Request failed');
     return j;
   }
-  $('pePlay').onclick = async () => {
-    const spec = toSpec();
+  // start a solo game on any table (the one in the editor, a saved one, a production copy or a featured one)
+  async function playSpec(spec) {
     if (new Blob([JSON.stringify(spec)]).size > MAX_BYTES) return say('This table is too big to play. Remove some parts.');
     const raw = JSON.stringify(spec).length;
     const code = raw > 2500 ? await shareCode(spec) : null;      // requests are capped at 10,000 bytes: big tables go as a deflated code
@@ -885,7 +991,8 @@
       localStorage.setItem('unmask.name', JSON.stringify(name));
       location.href = '/';
     } catch (e) { say(e.message); play.disabled = false; }
-  };
+  }
+  $('pePlay').onclick = () => playSpec(toSpec());
 
   // ---- start --------------------------------------------------------------------------------------------
   buildPalette();
@@ -898,5 +1005,5 @@
   addEventListener('resize', fit);
   refresh();
   fit();
-  window.pinballEditor = { get state() { return state; }, toSpec, addPart, select: (i) => { sel = i; refresh(); }, shareCode, readCode };
+  window.pinballEditor = { get state() { return state; }, wireGrip: () => wireGrip(state.items[sel]), toSpec, addPart, select: (i) => { sel = i; refresh(); }, shareCode, readCode };
 })();

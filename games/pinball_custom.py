@@ -55,6 +55,50 @@ def segment(values, kind="wall"):
     return [x1, y1, round(min(X_MAX, max(X_MIN, x2)), 2), round(min(Y_MAX, max(y_min, y2)), 2)]
 
 
+def smooth_path(points, step=0.3):
+    """A wire's waypoints as a smooth curve of evenly spaced points (a Catmull-Rom spline through the dots you placed), so the ball
+    rides at an even pace around the bends and the wire has no corners."""
+    pts = [tuple(p) for p in points]
+    if len(pts) < 3:
+        return pts
+    ext = [pts[0], *pts, pts[-1]]
+    dense = []
+    for i in range(1, len(ext) - 2):
+        p0, p1, p2, p3 = ext[i - 1], ext[i], ext[i + 1], ext[i + 2]
+        for k in range(16):
+            t = k / 16
+            dense.append(tuple(0.5 * ((2 * p1[j]) + (-p0[j] + p2[j]) * t + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * t * t
+                                        + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * t ** 3) for j in (0, 1)))
+    dense.append(pts[-1])
+    out, carried = [dense[0]], 0.0
+    for a, b in zip(dense, dense[1:]):                      # resample at a fixed spacing along the curve
+        seg = math.hypot(b[0] - a[0], b[1] - a[1])
+        while seg and carried + seg >= step:
+            f = (step - carried) / seg
+            a = (a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f)
+            out.append(a)
+            seg = math.hypot(b[0] - a[0], b[1] - a[1])
+            carried = 0.0
+        carried += seg
+    if math.hypot(out[-1][0] - dense[-1][0], out[-1][1] - dense[-1][1]) > 0.05:
+        out.append(dense[-1])
+    else:
+        out[-1] = dense[-1]
+    return [(round(x, 3), round(y, 3)) for x, y in out]
+
+
+def exit_velocity(path, speed):
+    """Leave the wire the way it points, bent toward the table's middle so the ball always heads down-table."""
+    (ax, ay), (bx, by) = path[-2], path[-1]
+    tx, ty = bx - ax, by - ay
+    tn = math.hypot(tx, ty) or 1
+    dx, dy = downward(bx, by, 1)
+    vx, vy = 0.5 * tx / tn + 0.5 * dx, 0.5 * ty / tn + 0.5 * dy
+    vy = max(vy, 0.45)
+    n = math.hypot(vx, vy)
+    return round(vx / n * speed, 2), round(vy / n * speed, 2)
+
+
 def downward(x, y, speed):
     """Exit velocity for a wire or tunnel: always leaves heading down the table, toward the middle."""
     dx, dy = 5 - x, 6.0
@@ -62,8 +106,11 @@ def downward(x, y, speed):
     return round(dx / norm * speed, 2), round(dy / norm * speed, 2)
 
 
-def wires(parts):
-    """Layout fields for the ramp, subway and orbit, which are placed as a start and an end (or a path of points)."""
+def wires(parts, classic=False):
+    """Layout fields for the ramp, subway and orbit, which are placed as a start and an end (or a path of points).
+    On the classic cabinet a wire that is still exactly where the production table has it keeps the production table's hand-tuned
+    ride (the raw five-point orbit and its exit, the subway's exit speed), so a clone plays identically until you move that wire."""
+    from . import pinball as cabinet
     out = {}
     if parts["ramp"]:
         x1, y1, x2, y2 = parts["ramp"][0]
@@ -71,16 +118,50 @@ def wires(parts):
     if parts["subway"]:
         x1, y1, x2, y2 = parts["subway"][0]
         out.update(subway=(x1, y1, MOUTH["subway"]), subway_exit=(x2, y2, *downward(x2, y2, 6.4)))
+        if classic and (x1, y1, x2, y2) == (cabinet.SUBWAY[0], cabinet.SUBWAY[1], *cabinet.SUBWAY_EXIT[:2]):
+            out["subway_exit"] = cabinet.SUBWAY_EXIT
     if parts["orbit"]:
         flat = parts["orbit"][0]
-        path = tuple((flat[i], flat[i + 1]) for i in range(0, len(flat), 2))
-        out.update(orbit=(*path[0], MOUTH["orbit"]), orbit_path=path, orbit_exit=downward(*path[-1], 6.1))
+        path = tuple(smooth_path([(flat[i], flat[i + 1]) for i in range(0, len(flat), 2)]))
+        out.update(orbit=(*path[0], MOUTH["orbit"]), orbit_path=path, orbit_exit=exit_velocity(path, 6.1))
+        if classic and tuple(flat) == tuple(v for pt in cabinet.ORBIT_PATH for v in pt):
+            out.update(orbit_path=tuple(cabinet.ORBIT_PATH), orbit_exit=cabinet.ORBIT_EXIT)
     return out
 
 
 PART_VALUE = {"bump": "bump", "sling": "sling", "target": "target", "lane": "lane", "mover": "mover"}      # parts that can carry their own score
 POINTS = {"bumper": (100, "bump"), "sling": (50, "sling"), "target": (250, "target"), "lane": (500, "lane"), "spinner": (100, "spinner"),
-          "ramp": (6000, "ramp"), "saucer": (1000, "saucer"), "portal": (250, "portal"), "mover": (300, "mover")}
+          "ramp": (6000, "ramp"), "saucer": (1000, "saucer"), "portal": (250, "portal"), "mover": (300, "mover"),
+          "jackpot": (12000, ""), "hurry": (15000, "")}
+CABINETS = ("smooth", "classic")           # classic = the original sharp-cornered cabinet of Golden Hour and Neon Arcade
+LOOKS = {"custom": "custom", "golden": "", "neon": "neon"}      # which printed art the playfield wears
+FEEL_RANGES = {"gravity": (8.0, 16.0), "hurry_seconds": (0, 20), "super_every": (1, 10)}
+
+
+def setup(spec):
+    """The table-wide choices: cabinet shape, art and feel (gravity, flipper pitch, lamp rules, jackpot timing). Defaults are dropped."""
+    out = {}
+    if not isinstance(spec, dict):
+        return out
+    if spec.get("cabinet") in CABINETS and spec["cabinet"] != "smooth":
+        out["cabinet"] = spec["cabinet"]
+    if spec.get("look") in LOOKS and spec["look"] != "custom":
+        out["look"] = spec["look"]
+    raw, feel = spec.get("feel"), {}
+    if isinstance(raw, dict):
+        for key, (low, high) in FEEL_RANGES.items():
+            v = raw.get(key)
+            if type(v) in (int, float) and math.isfinite(v):
+                feel[key] = round(min(high, max(low, v)), 2) if key == "gravity" else int(round(min(high, max(low, v))))
+        for key in ("classic_lamps", "steep_flippers"):
+            if raw.get(key) is True:
+                feel[key] = True
+        eb = raw.get("extra_balls")
+        if isinstance(eb, list) and len(eb) == 2 and all(type(v) in (int, float) and math.isfinite(v) for v in eb):
+            feel["extra_balls"] = sorted(int(round(min(1_000_000, max(1000, v)))) for v in eb)
+    if feel:
+        out["feel"] = feel
+    return out
 
 
 def points(spec):
@@ -98,12 +179,23 @@ def points(spec):
 def build_rules(spec):
     from .pinball_engine import Rules
     pts = points(spec)
-    extra = {k: v for k, v in pts.items()}
+    extra = {k: v for k, v in pts.items() if k not in ("hurry",)}
     if "bumper" in extra:
         extra["bumper_jackpot"] = extra["bumper"] * 2
+    if "hurry" in pts:
+        extra["hurry_max"] = pts["hurry"]
+    feel = setup(spec).get("feel", {})
+    if "gravity" in feel:
+        extra["gravity"] = feel["gravity"]
+    if "hurry_seconds" in feel:
+        extra["hurry_ticks"] = feel["hurry_seconds"] * 240
+    if "super_every" in feel:
+        extra["super_every"] = feel["super_every"]
+    if "extra_balls" in feel:
+        extra["extra_ball_scores"] = tuple(feel["extra_balls"])
     # a ramp shot normally locks the ball and serves a fresh one (multiball after two locks): confusing on a table you built,
     # so it is off unless the table asks for it
-    return Rules(lock_balls=2 if isinstance(spec, dict) and spec.get("lock") is True else 0, center_post=True, always_on=True, **extra)
+    return Rules(lock_balls=2 if isinstance(spec, dict) and spec.get("lock") is True else 0, center_post=True, always_on=not feel.get("classic_lamps"), **extra)
 
 
 def decode_table(table):
@@ -197,8 +289,13 @@ def build(spec, mode="classic"):
     middle = cabinet.WIDTH * 0.44
     flippers = cabinet.FLIPPERS + tuple((x, y, 0.3, -0.75) if x < middle else (x, y, math.pi - 0.3, math.pi + 0.75) for x, y in parts["flip"])
     decals = [[g, *p, c] for g in GLYPHS for p, c in zip(parts[g], paint[g])]
+    choice = setup(spec)
+    classic = choice.get("cabinet") == "classic"
+    base = cabinet.RAILS[:11] if classic else cabinet.BASE_RAILS
+    if choice.get("feel", {}).get("steep_flippers"):
+        flippers = cabinet.NEON_FLIPPERS + flippers[2:]
     layout = Layout(
-        rails=cabinet.BASE_RAILS + walls, guides_from=cabinet.GUIDES_FROM, guide_run=len(cabinet.RIGHT_GUIDE),
+        rails=base + walls, guides_from=9 if classic else cabinet.GUIDES_FROM, guide_run=2 if classic else len(cabinet.RIGHT_GUIDE),
         part_pts=part_pts, flaps=tuple(parts["flap"]), portals=portals, rubbers=tuple(parts["rubber"]), holes=holes,
         movers=tuple((*m, 1.0) for m in parts["mover"]), flippers=flippers, launch=cabinet.LAUNCH, gate=cabinet.GATE,
         bumps=tuple(parts["bump"]), slings=tuple(parts["sling"]), targets=tuple(parts["target"]),
@@ -207,11 +304,11 @@ def build(spec, mode="classic"):
         saucer=parts["saucer"][0] if parts["saucer"] else None,
         magnet=parts["magnet"][0] if parts["magnet"] else None,
         outlane=cabinet.OUTLANE if parts["kick"] else None, special=cabinet.SPECIAL if parts["kick"] else None,
-        **wires(parts),
+        **wires(parts, classic),
         width=cabinet.WIDTH, height=cabinet.HEIGHT, ball=cabinet.BALL, flipper_length=cabinet.LENGTH,
-        flipper_radius=cabinet.FLIP_RADIUS, skill_charge=cabinet.SKILL_CHARGE, theme="custom",
+        flipper_radius=cabinet.FLIP_RADIUS, skill_charge=cabinet.SKILL_CHARGE, theme=LOOKS[choice.get("look", "custom")],
         paint={"bumps": paint["bump"], "slings": paint["sling"], "targets": paint["target"], "lanes": paint["lane"],
-               "posts": paint["post"], "walls": wall_paint, "base": len(cabinet.BASE_RAILS), "decals": decals,
+               "posts": paint["post"], "walls": wall_paint, "base": len(base), "decals": decals,
                "flaps": paint["flap"], "rubbers": paint["rubber"], "movers": paint["mover"], "holes": paint["hole"], "flips": paint["flip"], "portal": paint["portal"][0] if paint["portal"] else None, "ramp": paint["ramp"][0] if paint["ramp"] else None,
                "orbit": paint["orbit"][0] if paint["orbit"] else None, "subway": paint["subway"][0] if paint["subway"] else None, "spinner": paint["spinner"][0] if paint["spinner"] else None,
                "saucer": paint["saucer"][0] if paint["saucer"] else None, "magnet": paint["magnet"][0] if paint["magnet"] else None,
@@ -219,6 +316,7 @@ def build(spec, mode="classic"):
     clean_spec = {"v": 1, "name": name, "items": clean}
     if spec.get("lock") is True:
         clean_spec["lock"] = True
+    clean_spec.update(choice)
     if modes:
         clean_spec["modes"] = [[i, m] for i, m in sorted(modes.items()) if i < len(clean)]
     if clean_pv:

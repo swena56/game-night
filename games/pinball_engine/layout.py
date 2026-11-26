@@ -76,7 +76,7 @@ class Layout:
                     exit=self.ramp_exit, flips=self.flippers, length=self.flipper_length,
                     radius=self.ball, skill=self.skill_charge, width=self.width,
                     height=self.height, launch=self.launch, theme=self.theme, paint=self.paint,
-                    portals=self.portals, flaps=self.flaps, rubbers=self.rubbers, movers=self.movers, holes=self.holes, guides=self.guides_from, guide_run=self.guide_run)
+                    outlane=self.outlane, portals=self.portals, flaps=self.flaps, rubbers=self.rubbers, movers=self.movers, holes=self.holes, guides=self.guides_from, guide_run=self.guide_run)
 
 
 def flipper_pair(y, left_x, right_x, rest=0.42, up=0.66):

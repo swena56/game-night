@@ -38,6 +38,7 @@
     <aside class="pe-inspector" id="peInspector" aria-label="Selected part">
       <div class="pe-nav"><button id="pePrev" type="button" title="Previous part ([)" aria-label="Previous part">◀</button><span id="peNavCount">no parts yet</span><button id="peNext" type="button" title="Next part (])" aria-label="Next part">▶</button></div>
       <h2 id="peTitle">Nothing selected</h2>
+      <p id="peDesc" class="pe-desc" hidden></p>
       <p id="peHint" class="hint">Drag a part from the list onto the table. Click a part to change it; drag the round handles to resize, turn or bend it. Arrow keys nudge it, R rotates, M mirrors, D duplicates. Shift-click adds parts to a group (Ctrl+A selects all). [ and ] step through the parts; tap twice on stacked parts to pick the one underneath.</p>
       <div id="peFields" hidden>
         <label>X <input id="peX" type="number" step="0.05"></label>
@@ -67,6 +68,17 @@
       <label class="pe-check"><input id="peKick" type="checkbox"> Kickback + special outlanes <small>(the lit outlane lanes by the flippers)</small></label>
       <details class="pe-pts" open><summary id="peListSum">Parts on the table</summary><ol id="peList" class="pe-plist"></ol></details>
       <details class="pe-pts"><summary>Layers (show / hide)</summary><div id="peLayersBody" class="pe-ptsbody"></div></details>
+      <details class="pe-pts"><summary>Table setup (look and feel)</summary><div class="pe-ptsbody pe-setup">
+        <label>Cabinet <select id="peCabinet"><option value="smooth">Smooth (rounded)</option><option value="classic">Classic (original)</option></select></label>
+        <label>Printed art <select id="peLook"><option value="custom">Custom</option><option value="golden">Golden Hour</option><option value="neon">Neon Arcade</option></select></label>
+        <label>Gravity <input id="peGravity" type="number" min="8" max="16" step="0.1"></label>
+        <label>Steeper flippers <input id="peSteep" type="checkbox"></label>
+        <label title="Off: the magnet only works in jackpot rounds and the special outlane only at 2x. On: both are always live.">Classic lamps <input id="peClassic" type="checkbox"></label>
+        <label>Hurry-up seconds <input id="peHurry" type="number" min="0" max="20" step="1"></label>
+        <label>Super jackpot every <input id="peSuper" type="number" min="1" max="10" step="1"></label>
+        <label>Extra ball 1 at <input id="peEB1" type="number" min="1000" step="1000"></label>
+        <label>Extra ball 2 at <input id="peEB2" type="number" min="1000" step="1000"></label>
+      </div></details>
       <details class="pe-pts"><summary>Point values</summary><div id="pePtsBody" class="pe-ptsbody"></div></details>
       <p id="peCount" class="hint"></p>
     </aside>
@@ -75,12 +87,14 @@
   <dialog id="peTablesDlg" class="pe-dialog">
     <form method="dialog">
       <h2>Tables</h2>
+      <h3 id="peClonesHead" hidden>Production tables: exact copies</h3>
+      <div id="peClones" class="pe-list pe-thumbs"></div>
       <h3 id="peFeaturedHead" hidden>Featured tables</h3>
-      <div id="peFeatured" class="pe-list"></div>
+      <div id="peFeatured" class="pe-list pe-thumbs"></div>
       <h3>Start from a template</h3>
-      <div id="peTemplates" class="pe-list"></div>
+      <div id="peTemplates" class="pe-list pe-thumbs"></div>
       <h3>Your saved tables</h3>
-      <div id="peSaved" class="pe-list"></div>
+      <div id="peSaved" class="pe-list pe-thumbs"></div>
       <div class="pe-row">
         <button id="peSaveAs" type="button" class="primary">Save this table</button>
         <button value="close">Close</button>

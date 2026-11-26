@@ -4,6 +4,13 @@ Anyone can build a table in the **pinball table editor** (home screen → 🛠�
 the room that uploaded them and disappear with it. The **table list** (the lobby's *Table* setting and the editor's *Featured
 tables*) is different: it is a small, reviewed set, so every entry is a table worth playing. Getting onto it is a five-step process.
 
+## 0. Start from a production table
+The editor's Tables dialog opens with **Production tables: exact copies**: Golden Hour and Neon Arcade rebuilt part for part from the live
+layouts (`games/pinball_clone.py`), so a copy never drifts from the game. **Clone** loads one into the editor to change; **▶ Play** starts a
+solo game on it. A copy plays tick for tick like the original until you edit it (tests/pinball_rules.py `ProductionClones`). Every table
+also has a *Table setup* panel: cabinet (smooth or the classic original), printed art, gravity, flipper pitch, classic lamp rules, hurry-up
+and super-jackpot timing, extra-ball scores. Saved tables, featured tables and clones all have **▶ Play** (a solo game, one click).
+
 ## 1. Build and play it
 Build the table in the editor and play it until it feels right (the ▶ Play button). Nothing to submit yet.
 
@@ -69,4 +76,5 @@ Then:
 | Maintainer tool | `tools/pinball_table.py` |
 | Player suggestion (server) | `submit_feedback` in `server.py`, kind `table` |
 | Lobby setting and game start | `games/pinball.py` (`CURATED`, `TABLES`) |
-| Editor gallery and 📮 Suggest | `static/pinball-editor.js`, endpoint `GET /api/pinball-tables` |
+| Editor gallery and 📮 Suggest | `static/pinball-editor.js`, endpoints `GET /api/pinball-tables` and `GET /api/pinball-clones` |
+| Production clones | `games/pinball_clone.py` |

@@ -142,9 +142,11 @@ const base = process.env.BASE || 'http://localhost:8794';
     await page.locator('#peSaved .pe-item', { hasText: 'Wire test' }).locator('text=Open').click();
     assert.deepEqual((await spec()).items, wires.items);
 
-    // the Golden Hour copy template has every kind of part; recolour a bumper and play it
+    // the production Golden Hour clone has every kind of part; recolour a bumper and play it
     await page.locator('#peTables').click();
-    await page.locator('#peTemplates .pe-item', { hasText: 'Golden Hour copy' }).locator('text=Use').click();
+    await page.locator('#peClones .pe-item', { hasText: 'Golden Hour' }).first().locator('text=Clone').click();
+    const cloned = await spec();
+    assert.equal(cloned.cabinet, 'classic'); assert.equal(cloned.look, 'golden'); assert.equal(cloned.lock, true); assert.equal(cloned.feel.classic_lamps, true);
     assert.equal(await count('bump'), 3);
     assert.equal(await count('ramp') + await count('subway') + await count('orbit') + await count('saucer') + await count('magnet'), 5);
     await page.evaluate(() => window.pinballEditor.select(0));
@@ -152,9 +154,9 @@ const base = process.env.BASE || 'http://localhost:8794';
     await page.locator('#peName').fill('Green Machine');
     await page.locator('#peName').dispatchEvent('change');
     await page.locator('#pePlay').click();
-    await page.waitForURL((u) => new URL(u).pathname === '/');
-    await page.locator('.pb-flat').waitFor();
-    await page.waitForFunction(() => S?.pinball?.layout);
+    await page.waitForURL((u) => new URL(u).pathname === '/', { waitUntil: 'commit' });
+    await page.locator('.pb-flat').waitFor({ timeout: 90000 });
+    await page.waitForFunction(() => typeof S !== 'undefined' && S?.pinball?.layout, null, { timeout: 90000 });
     const game = await page.evaluate(() => { const l = S.pinball.layout; return { table: S.pinball.table, bumps: l.bumps.length, paint: l.paint.bumps[0],
       name: l.paint.name, targets: l.targets.length, ramp: !!l.ramp, exit: !!l.exit, subway: !!l.subway, orbit: l.orbit_path.length, spinner: !!l.spinner, magnet: !!l.magnet, saucer: !!l.saucer }; });
     assert.deepEqual(game, { table: 'custom', bumps: 3, paint: '#12ab34', name: 'Green Machine', targets: 3, ramp: true, exit: true, subway: true, orbit: 5, spinner: true, magnet: true, saucer: true });
@@ -273,13 +275,15 @@ const base = process.env.BASE || 'http://localhost:8794';
     const names = await p2.evaluate(async () => {
       const out = [];
       document.getElementById('peTables').click();
-      const rows = [...document.querySelectorAll('#peTemplates .pe-item, #peFeatured .pe-item')];
+      const rows = [...document.querySelectorAll('#peTemplates .pe-item, #peClones .pe-item, #peFeatured .pe-item')];
       for (const row of rows) { row.querySelector('button').click(); out.push(JSON.stringify(window.pinballEditor.toSpec())); document.getElementById('peTables').click(); }
       return out;
     });
-    assert.ok(names.length >= 10, 'the gallery has the starter tables and the curated ones');
+    assert.ok(names.length >= 11, 'the gallery has the starter tables, the production clones and the curated ones');
     assert.ok(names.some((t) => JSON.parse(t).name === 'Pop Pit'), 'a curated table is featured');
-    assert.ok(!names.some((t) => /Wire playground|Portals & curves|Sandbox/.test(JSON.parse(t).name)), 'the junk templates are gone');
+    assert.ok(!names.some((t) => /Wire playground|Portals & curves|Sandbox|Golden Hour copy/.test(JSON.parse(t).name)), 'the junk templates are gone');
+    assert.ok(names.some((t) => JSON.parse(t).name === 'Neon Arcade' && JSON.parse(t).feel.gravity === 11.6), 'Neon Arcade can be cloned with its own feel');
+    assert.ok(await p2.evaluate(() => [...document.querySelectorAll('.pe-thumb')].length >= 10 && [...document.querySelectorAll('.pe-thumb')].every((i) => i.src.startsWith('data:image/png'))), 'every table has a preview');
     const made = JSON.parse(await (await fetch(base + '/api/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Tmpl', game: 'pinball' }) })).text());
     for (const text of names) {
       const r = await fetch(base + '/api/action', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...made, type: 'pinball_table', table: JSON.parse(text), aid: Math.random().toString(36).slice(2) }) });
@@ -319,6 +323,56 @@ const base = process.env.BASE || 'http://localhost:8794';
     await p2.locator('#peSugSend').click();
     await p2.waitForFunction(() => /Suggestion #\d+ is in the queue/.test(document.getElementById('peSugMsg').textContent));
     await p2.keyboard.press('Escape');
+    // polish: descriptions, posts never resize while dragged, a whole orbit wire moves rigidly, selecting never scrolls the page
+    await p2.goto(base + '/pinball-editor.html');
+    await p2.evaluate(() => { const e = window.pinballEditor; e.state.items = []; e.addPart('post', 3, 6); e.addPart('orbit', 1.2, 9); e.addPart('bump', 6, 6); e.select(0); });
+    assert.match(await p2.locator('#peDesc').textContent(), /Rubber post/, 'the selected part is described');
+    assert.ok((await p2.locator('.pe-part[data-kind="orbit"]').getAttribute('title')).length > 40, 'tiles describe their part too');
+    const pb = await p2.locator('#peCanvas').boundingBox();
+    const pat = (x, y) => ({ x: pb.x + x / 10 * pb.width, y: pb.y + y / 17 * pb.height });
+    const post0 = (await p2.evaluate(() => window.pinballEditor.toSpec())).items.find((i) => i[0] === 'post');
+    await p2.mouse.move(pat(post0[1] + post0[3], post0[2]).x, pat(post0[1] + post0[3], post0[2]).y);      // press right on its rim, where a resize handle used to be
+    await p2.mouse.down(); await p2.mouse.move(pat(5, 8).x, pat(5, 8).y, { steps: 6 }); await p2.mouse.up();
+    const post1 = (await p2.evaluate(() => window.pinballEditor.toSpec())).items.find((i) => i[0] === 'post');
+    assert.equal(post1[3], post0[3], 'dragging a post moves it, it never resizes');
+    assert.ok(Math.abs(post1[1] - 5) < .6 && Math.abs(post1[2] - 8) < .6, 'and it moved');
+    const wire = async () => (await p2.evaluate(() => window.pinballEditor.toSpec())).items.find((i) => i[0] === 'orbit').slice(1, -1);
+    const w0 = await wire();
+    await p2.evaluate(() => window.pinballEditor.select(1));
+    const grip = await p2.evaluate(() => window.pinballEditor.wireGrip());
+    await p2.mouse.move(pat(...grip).x, pat(...grip).y); await p2.mouse.down();
+    await p2.mouse.move(pat(grip[0] - 9, grip[1] + 1).x, pat(grip[0] - 9, grip[1] + 1).y, { steps: 8 });      // far past the left edge
+    await p2.mouse.up();
+    const w1 = await wire();
+    const shifts = w0.map((v, i) => +(w1[i] - v).toFixed(2));
+    assert.ok(shifts.some((v) => v !== 0), 'the wire moved');
+    for (let i = 2; i < shifts.length; i += 2) { assert.equal(shifts[i], shifts[0], 'every point moves by the same x'); assert.equal(shifts[i + 1], shifts[1], 'and the same y'); }
+    assert.ok(Math.min(...w1.filter((_, i) => i % 2 === 0)) >= .44, 'and the wire stays on the table');
+    const tc = await browser.newContext({ viewport: { width: 390, height: 800 }, hasTouch: true, isMobile: true });
+    const ph = await tc.newPage();
+    await ph.goto(base + '/pinball-editor.html');
+    await ph.evaluate(() => { const e = window.pinballEditor; e.state.items = []; e.addPart('bump', 4, 6); e.addPart('bump', 6, 9); e.select(-1); window.scrollTo(0, 0); });
+    const pbx = await ph.locator('#peCanvas').boundingBox();
+    await ph.touchscreen.tap(pbx.x + 6 / 10 * pbx.width, pbx.y + 9 / 17 * pbx.height);
+    assert.equal(await ph.evaluate(() => scrollY), 0, 'selecting a part on the board does not scroll the page');
+    await tc.close();
+    // table setup, and a production clone plays solo exactly as its art says
+    await p2.goto(base + '/pinball-editor.html');
+    await p2.evaluate(() => { const e = window.pinballEditor; e.state.items = []; e.addPart('bump', 4, 5); });
+    await p2.locator('summary', { hasText: 'Table setup' }).click();
+    await p2.locator('#peCabinet').selectOption('classic');
+    await p2.locator('#peGravity').fill('12.5'); await p2.locator('#peGravity').dispatchEvent('change');
+    await p2.locator('#peClassic').check();
+    const setup = await p2.evaluate(() => window.pinballEditor.toSpec());
+    assert.equal(setup.cabinet, 'classic'); assert.equal(setup.feel.gravity, 12.5); assert.equal(setup.feel.classic_lamps, true);
+    await p2.locator('#peGravity').fill('11'); await p2.locator('#peGravity').dispatchEvent('change');
+    assert.equal((await p2.evaluate(() => window.pinballEditor.toSpec())).feel.gravity, undefined, 'a default value is not stored');
+    await p2.locator('#peTables').click();
+    await p2.waitForSelector('#peClones .pe-item');
+    await p2.locator('#peClones .pe-item', { hasText: 'Neon Arcade' }).locator('text=Play').click();
+    await p2.waitForFunction(() => typeof S !== 'undefined' && S?.pinball?.layout, null, { timeout: 90000 });
+    const prod = await p2.evaluate(() => ({ theme: S.pinball.layout.theme, bumps: S.pinball.layout.bumps.length, flip: S.pinball.layout.flips[0][2] }));
+    assert.deepEqual(prod, { theme: 'neon', bumps: 4, flip: 0.46 }, 'the Neon Arcade clone plays with its own art, bumpers and steeper flippers');
     console.log('Pinball editor checks passed: drag, move, resize, inspector, undo, limits, wires, share codes, saved tables and play');
   } finally {
     await browser.close();
