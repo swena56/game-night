@@ -225,10 +225,10 @@ UI.lanes = (() => {
       drag = { id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY };
     });
     stage.addEventListener('pointermove', (e) => {
-      if (drag?.id === e.pointerId) { drag.x = e.clientX; drag.y = e.clientY; }
+      if (drag && drag.id === e.pointerId) { drag.x = e.clientX; drag.y = e.clientY; }
     });
     const endDrag = (e) => {
-      if (drag?.id !== e.pointerId) return;
+      if (!drag || drag.id !== e.pointerId) return;
       drag.x = e.clientX; drag.y = e.clientY;
       const r = e.type === 'pointerup' && aimed();
       drag = null;
