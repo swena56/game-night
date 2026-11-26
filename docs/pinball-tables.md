@@ -4,12 +4,14 @@ Anyone can build a table in the **pinball table editor** (home screen → 🛠�
 the room that uploaded them and disappear with it. The **table list** (the lobby's *Table* setting and the editor's *Featured
 tables*) is different: it is a small, reviewed set, so every entry is a table worth playing. Getting onto it is a five-step process.
 
-## 0. Start from a production table
-The editor's Tables dialog opens with **Production tables: exact copies**: Golden Hour and Neon Arcade rebuilt part for part from the live
-layouts (`games/pinball_clone.py`), so a copy never drifts from the game. **Clone** loads one into the editor to change; **▶ Play** starts a
-solo game on it. A copy plays tick for tick like the original until you edit it (tests/pinball_rules.py `ProductionClones`). Every table
-also has a *Table setup* panel: cabinet (smooth or the classic original), printed art, gravity, flipper pitch, classic lamp rules, hurry-up
-and super-jackpot timing, extra-ball scores. Saved tables, featured tables and clones all have **▶ Play** (a solo game, one click).
+## 0. Start from an official table
+Golden Hour and Neon Arcade are editor tables too: the game plays the files `games/pinball_official/golden.json` and `neon.json`, so the
+copy the editor's Tables dialog offers (**Official tables**, via `games/pinball_clone.py`) is the live board by construction, art and
+decals included. **Clone** loads one into the editor; **▶ Play** starts a solo game on it. The editor paints the same printed playfield
+as the game (`static/games/pinballart.js`). To polish an official table, edit its JSON (or clone, change and paste the share code's spec back)
+and keep `python3 -m unittest tests.pinball_rules` green. Every table has a *Table setup* panel: cabinet (smooth or the classic original),
+printed art, gravity, flipper pitch, classic lamp rules, hurry-up and super-jackpot timing, extra-ball scores.
+Saved tables, featured tables and clones all have **▶ Play** (a solo game, one click).
 
 ## 1. Build and play it
 Build the table in the editor and play it until it feels right (the ▶ Play button). Nothing to submit yet.

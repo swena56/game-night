@@ -305,12 +305,28 @@
     ctx.beginPath(); ctx.moveTo(x + ux * .3, y + uy * .3); ctx.lineTo(x - uy * .2 - ux * .1, y + ux * .2 - uy * .1); ctx.lineTo(x + uy * .2 - ux * .1, y - ux * .2 - uy * .1);
     ctx.closePath(); ctx.fillStyle = color; ctx.fill();
   };
+  // the printed art the game would wear for this table (shared painter in games/pinballart.js), redrawn only when something it reads changes
+  const artCache = new Map();
+  function printedArt() {
+    if (!window.PinballArt) return null;
+    const of = (k) => state.items.filter((it) => it.k === k);
+    const geo = { theme: state.look === 'golden' ? '' : state.look === 'neon' ? 'neon' : 'custom', paint: { name: state.name || 'My Table', decals: [] },
+      bumps: of('bump').map((i) => [i.x, i.y, i.r]), targets: of('target').map((i) => [i.x, i.y, i.x2, i.y2]), lanes: of('lane').map((i) => [i.x, i.y]),
+      ramp: of('ramp')[0] ? [of('ramp')[0].x, of('ramp')[0].y] : null, spinner: of('spinner')[0] ? [of('spinner')[0].x, of('spinner')[0].y] : null };
+    const key = JSON.stringify(geo);
+    if (!artCache.has(key)) {
+      if (artCache.size > 14) artCache.delete(artCache.keys().next().value);
+      let made = null; try { made = window.PinballArt.make(geo); } catch {}
+      artCache.set(key, made);
+    }
+    return artCache.get(key);
+  }
   function draw() {
     ctx.setTransform(scale, 0, 0, scale, 0, 0);
     ctx.clearRect(0, 0, W, H);
-    const bg = ctx.createLinearGradient(0, 0, 0, H);
-    bg.addColorStop(0, '#1b1a44'); bg.addColorStop(.5, '#3b2260'); bg.addColorStop(1, '#2a1740');
-    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+    const art = printedArt();
+    if (art) ctx.drawImage(art, 0, 0, W, H);                             // the same printed playfield the game paints: sky, sun, canyon, medallion, labels
+    else { const bg = ctx.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#1b1a44'); bg.addColorStop(.5, '#3b2260'); bg.addColorStop(1, '#2a1740'); ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H); }
     ctx.fillStyle = '#00000040'; ctx.fillRect(8.8, 0, 1.2, H);          // the shooter lane
     if (snap) {                                                         // grid dots
       ctx.fillStyle = '#ffffff18';
@@ -322,8 +338,7 @@
     for (const [fx, fy, a] of (state.feel?.steep_flippers ? flipPair(.46) : FLIPS)) { seg(fx, fy, fx + FLIP_LEN * Math.cos(a), fy + FLIP_LEN * Math.sin(a), '#211b40', .5); seg(fx, fy, fx + FLIP_LEN * Math.cos(a), fy + FLIP_LEN * Math.sin(a), '#42cfeb', .32); }
     if (state.kick) for (const x of [.45, 8.35]) { disc(x, 12.9, .26, '#252049'); disc(x, 12.9, .2, '#ffd383'); }
     state.items.forEach((it, i) => { if (shown(it)) { drawItem(it, i === sel); if (group.size > 1 && group.has(i)) { const [gx, gy] = centre(it); ctx.setLineDash([.1, .08]); disc(gx, gy, .55, null, '#ffb703'); ctx.setLineDash([]); } } });
-    ctx.fillStyle = '#ffffff55'; ctx.font = '.32px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText('DRAIN', 5, 16.6); ctx.fillText('LAUNCH', 9.4, 12);
+    if (!art) { ctx.fillStyle = '#ffffff55'; ctx.font = '.32px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('DRAIN', 5, 16.6); ctx.fillText('LAUNCH', 9.4, 12); }
   }
   // an orbit wire as the game rides it: a smooth Catmull-Rom curve through your dots, with a funnel at the mouth and a flare at the exit
   const wireCurve = (pts) => {

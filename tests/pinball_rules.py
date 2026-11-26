@@ -856,7 +856,7 @@ class ProductionClones(unittest.TestCase):
         import dataclasses
         from games.pinball import GOLDEN_HOUR, NEON_ARCADE, NeonTable
         from games.pinball import Table as Golden
-        from games.pinball_clone import clone_specs
+        from games.pinball_clone import legacy_specs as clone_specs
         from games.pinball_custom import build, build_rules
         from games.pinball_engine import Rules
         for key, real, rules in (("golden", GOLDEN_HOUR, Golden.rules), ("neon", NEON_ARCADE, NeonTable.rules)):
@@ -876,7 +876,7 @@ class ProductionClones(unittest.TestCase):
         import random
         from games.pinball import NeonTable
         from games.pinball import Table as Golden
-        from games.pinball_clone import clone_specs
+        from games.pinball_clone import legacy_specs as clone_specs
         from games.pinball_custom import build, build_rules
         for key, original in (("golden", Golden), ("neon", NeonTable)):
             spec = clone_specs()[key]
@@ -893,7 +893,7 @@ class ProductionClones(unittest.TestCase):
             self.assertEqual((a.score, a.balls, round(a.x, 3), round(a.y, 3)), (b.score, b.balls, round(b.x, 3), round(b.y, 3)), key)
 
     def test_a_moved_wire_gets_the_editor_ride_again(self):
-        from games.pinball_clone import clone_specs
+        from games.pinball_clone import legacy_specs as clone_specs
         from games.pinball_custom import build
         spec = clone_specs()["golden"]
         for item in spec["items"]:

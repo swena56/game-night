@@ -1,4 +1,4 @@
-"""Editor copies of the production tables.
+"""The official tables as editor tables.
 
 ``clone_specs()`` reads the real Golden Hour and Neon Arcade constants in games/pinball.py and returns each as an editor table, so the
 copy you load in the editor is the board that is in the game today and can never drift from it. Every part of a production table can be
@@ -29,8 +29,8 @@ def _items(bumps, walls):
     return items
 
 
-def clone_specs():
-    """{"golden": spec, "neon": spec}: the production boards as editor tables."""
+def legacy_specs():
+    """The two boards as the original hand-written constants in games/pinball.py describe them (kept to prove the spec files match them)."""
     golden = {"v": 1, "name": "Golden Hour", "cabinet": "classic", "look": "golden", "lock": True,
               "feel": {"classic_lamps": True}, "items": _items(p.BUMPS, p.RAILS[11:15])}
     neon = {"v": 1, "name": "Neon Arcade", "cabinet": "classic", "look": "neon", "lock": True,
@@ -46,3 +46,19 @@ def clone_specs():
 
 BLURBS = {"golden": "The Golden Hour table, rebuilt part for part. Change anything and make it yours.",
           "neon": "Neon Arcade: four zig-zag bumpers, steeper flippers, hotter scoring and faster jackpots."}
+
+
+import json as _json
+import os as _os
+
+OFFICIAL_DIR = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "pinball_official")
+
+
+def clone_specs():
+    """{"golden": spec, "neon": spec}: the official tables. The game plays exactly these files (games/pinball_official/*.json), so the
+    editor copy and the live table are the same data by construction; polish a table by editing its file or loading it in the editor."""
+    out = {}
+    for key in ("golden", "neon"):
+        with open(_os.path.join(OFFICIAL_DIR, key + ".json"), encoding="utf-8") as f:
+            out[key] = _json.load(f)
+    return out

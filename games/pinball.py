@@ -136,6 +136,19 @@ class CustomTable(EngineTable):
 
 # Player-made tables that were added to the curated list (see docs/pinball-tables.md): one folder of JSON files, one lobby entry each.
 CURATED = pinball_tables.load()
+
+
+_OFFICIAL = {}
+
+
+def official_spec(key):
+    """The editor table the official Golden Hour / Neon Arcade is played from (games/pinball_official/*.json, read once)."""
+    if not _OFFICIAL:
+        from .pinball_clone import clone_specs
+        _OFFICIAL.update(clone_specs())
+    return _OFFICIAL[key]
+
+
 TABLES = {"golden": ("Golden Hour", Table), "neon": ("Neon Arcade", NeonTable), "custom": ("My table", CustomTable),
           **{table_id: (entry["name"], CustomTable) for table_id, entry in CURATED.items()}}
 
@@ -182,6 +195,8 @@ class Pinball(Game):
                 raise GameError("Build a table in the table editor first.")
         elif self.table_id in CURATED:
             spec = CURATED[self.table_id]["spec"]
+        elif self.table_id in ("golden", "neon"):      # the official tables are editor tables too: games/pinball_official/*.json
+            spec = official_spec(self.table_id)
         if spec:
             self.custom_layout = pinball_custom.build(spec, self.mode)[0]
             start["layout_override"] = self.custom_layout
