@@ -474,14 +474,16 @@ body.calm .nudge { animation: none; box-shadow: 0 0 0 2px #ffb70388; }
 .paused-cover b { font: 800 30px/1.1 var(--font-display, sans-serif); }
 .paused-cover p { color: var(--muted); margin: 6px 0 14px; }
 .paused-cover button { font-size: 18px; padding: 10px 26px; }
-#overBanner { position: fixed; z-index: 28; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(92vw, 480px);
-  max-height: calc(100dvh - 32px); overflow-y: auto; padding: 16px; border-radius: var(--radius); border: 1px solid var(--line);
+/* hung from under the top bar, not centred: what arrives late (a vote, "I'm in", the next-game list) only
+   makes it longer, so nothing already on screen moves (#11) */
+#overBanner { position: fixed; z-index: 28; left: 50%; top: calc(var(--bar-h, 52px) + 8px); transform: translateX(-50%); width: min(92vw, 480px);
+  max-height: calc(100dvh - var(--bar-h, 52px) - 24px); overflow-y: auto; padding: 16px; border-radius: var(--radius); border: 1px solid var(--line);
   background: linear-gradient(90deg, var(--accent-a20), #ef476f33), var(--panel); box-shadow: 0 0 0 100vmax #0007, 0 12px 40px #000c;
   display: flex; gap: 12px; align-items: stretch; flex-wrap: wrap; font-size: 17px; font-weight: 700; flex-direction: column; }
 #overBanner > div { flex: 1; min-width: 200px; }
 #overBanner:not([hidden]) { animation: overIn .4s cubic-bezier(.2, 1.4, .4, 1); }
 #overBanner.won { background: linear-gradient(100deg, var(--accent-a40), #06d6a033, var(--accent-a40)), var(--panel); background-size: 200% 100%; animation: overIn .4s cubic-bezier(.2, 1.4, .4, 1), sheen 5s linear infinite; }
-@keyframes overIn { from { transform: translate(-50%, -50%) scale(.9); opacity: 0; } }
+@keyframes overIn { from { transform: translateX(-50%) scale(.9); opacity: 0; } }
 /* the podium: avatars of the top three, the winner up a step with a crown */
 .podium { display: flex; justify-content: center; align-items: flex-end; gap: 14px; padding: 2px 0 4px; font-weight: 400; }
 .pod { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 72px; font-size: var(--fs-sm); }
@@ -496,7 +498,7 @@ body.calm .nudge { animation: none; box-shadow: 0 0 0 2px #ffb70388; }
 @keyframes crownIn { from { transform: translate(-50%, -14px) scale(0); opacity: 0; } }
 /* a phone on its side: a wide, short card (head across the top, podium + scores + buttons side by side) so the results fit without scrolling */
 @media (orientation: landscape) and (max-height: 540px) {
-  #overBanner:not(.folded) { width: min(96vw, 860px); max-height: calc(100dvh - 12px); padding: 8px 14px; gap: 6px 16px; font-size: 15px; flex-direction: row; align-items: center; }
+  #overBanner:not(.folded) { top: 6px; width: min(96vw, 860px); max-height: calc(100dvh - 12px); padding: 8px 14px; gap: 6px 16px; font-size: 15px; flex-direction: row; align-items: flex-start; }
   #overBanner:not(.folded) > .over-head { flex: 1 0 100%; font-size: 17px; }
   #overBanner:not(.folded) > div { min-width: 0; }
   #overBanner:not(.folded) .podium { flex: 0 0 auto; gap: 8px; padding: 0; }
@@ -505,6 +507,8 @@ body.calm .nudge { animation: none; box-shadow: 0 0 0 2px #ffb70388; }
   #overBanner:not(.folded) .pod-1 .avatar { width: 46px; height: 46px; }
   #overBanner:not(.folded) .over-scores { flex: 1 1 200px; max-height: calc(100dvh - 90px); overflow-y: auto; }
   #overBanner:not(.folded) .over-actions { flex: 1 1 180px; }
+  /* text and the vote go on their own rows underneath: beside the buttons they squeezed them as they arrived */
+  #overBanner:not(.folded) > :is(.over-goal, #overWait, .over-vote, .playlist) { flex: 1 0 100%; }
 }
 #overBanner.folded .podium { display: none; }
 /* folded: a slim bar at the top, no dimming, so the board can be looked over */
@@ -523,6 +527,9 @@ body.calm .nudge { animation: none; box-shadow: 0 0 0 2px #ffb70388; }
 .over-scores { font-size: 14px; font-weight: 400; color: var(--muted); }
 .over-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .over-actions button { flex: 1; min-width: 120px; }
+/* Rematch keeps its own row; a vote winner or a picked game joins below the other buttons (#11) */
+.over-actions #rematchBtn { flex-basis: 100%; min-height: 50px; }
+.over-actions :is(#playPickBtn, #playVoteBtn) { order: 1; flex-basis: 100%; }
 #readyBtn.on { background: var(--ok); color: #002; border: 0; }
 /* #93: scores as a table; the next game as tiles under the buttons, in a fold */
 .over-scores { display: grid; gap: 4px; font-weight: 400; font-size: 14px; }
