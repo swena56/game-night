@@ -158,7 +158,7 @@ UI.skydrop = (() => {
     }
     let seed=-1,vgLast=-1;
     function resize(){const w=stage.clientWidth||320,h=stage.clientHeight||400;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();}
-    function render(v){if(!v||!Array.isArray(v.flyers)||!Array.isArray(v.seats))return; if(seed!==v.seed){seed=v.seed;buildCourse(v);}
+    function render(v){if(!v||!Array.isArray(v.flyers)||!Array.isArray(v.seats))return; if(seed!==v.seed){seed=v.seed;buildCourse(v);warmUp();}
       const pal=v.course==='storm'?['#241428',0xffc16f]:v.course==='aurora'?['#08263c',0x8effe8]:['#11132b',0x6cecff];const course=v.course==='storm'?1:v.course==='aurora'?2:0;let bgc=pal[0];
       if(course===1&&!low){const ph=((v.time||0)+Math.max(0,(performance.now()-gotAt)/1000))%4.3;if(ph<.18)bgc=ph<.07||ph>.11?'#6a4f78':'#241428';}
       scene.background.set(bgc);scene.fog.color.set(bgc);gateMat.color.set(pal[1]);gateMat.emissive.set(pal[1]);
@@ -194,6 +194,9 @@ UI.skydrop = (() => {
     const spGeo=new T.BufferGeometry();spGeo.setAttribute('position',new T.BufferAttribute(new Float32Array(SP*3),3));
     const spPts=new T.Points(spGeo,new T.PointsMaterial({size:.5,map:dot,color:0xffd34d,transparent:true,depthWrite:false,blending:T.AdditiveBlending}));spPts.visible=false;spPts.frustumCulled=false;scene.add(spPts);
     let spAt=0;
+    // #13 compile every material before the dive: the sparkle is hidden until the first coin, and building its
+    // shader then stalled the picture just as the player picked something up
+    function warmUp(){const was=spPts.visible;spPts.visible=true;renderer.compile?.(scene,camera);spPts.visible=was;}
     function sparkle(gem){spAt=performance.now();spPts.material.color.setHex(gem===2?0xff4b5f:gem?0x6ff0ff:0xffd34d);}
     // (#235) threading a ring makes it flare: it swells, whitens and fades back over about half a second
     let curDepth=0;

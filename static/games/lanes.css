@@ -69,3 +69,6 @@
 .ln-manual .ln-row { min-height: 44px; justify-content: flex-start; }
 .ln-manual label { min-width: 3em; }
 .ln-manual #lnRoll { min-height: 44px; }
+
+/* #8 the ball, weight and bowler switches read as buttons, not links */
+.ln-ctl .ln-saver.ghost-btn { min-height: 40px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--text); text-decoration: none; }
