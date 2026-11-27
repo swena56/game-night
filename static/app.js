@@ -103,14 +103,16 @@ async function act(type, extra = {}) {
 }
 const quiet = (p) => p.catch(() => {});
 // Real-time input: fire-and-forget, one request in flight. Positions (mallets) coalesce, so only the
-// newest pending one is sent; inputs sent with keep = true (turns) are all delivered, in order.
+// newest pending one is sent; inputs sent with keep = true (turns) are all delivered, in order. now = true
+// doesn't wait its turn at all: for input that numbers itself, so a late or repeated arrival does no harm.
 const input = (() => {
   let busy = false, queue = [];
-  const send = (data, keep = false) => {
+  const post = (data) => fetch('/api/input', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...session, ...data }) }).catch(() => {});
+  const send = (data, keep = false, now = false) => {
+    if (now) { post(data); return; }
     if (busy) { queue = keep ? [...queue, { data, keep }] : [...queue.filter((q) => q.keep), { data, keep }]; return; }
     busy = true;
-    fetch('/api/input', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...session, ...data }) })
-      .catch(() => {}).finally(() => { busy = false; const next = queue.shift(); if (next) send(next.data, next.keep); });
+    post(data).finally(() => { busy = false; const next = queue.shift(); if (next) send(next.data, next.keep); });
   };
   return send;
 })();
@@ -607,7 +609,7 @@ addEventListener('beforeunload', (e) => {
 // the first time that game is picked or shown (it used to be 50+ scripts, ~1 MB, before the first screen).
 // the 40 games drawn by the shared card table (games/cardtable.js + .css), loaded before the game's own one-line script
 const CARDTABLE_GAMES = 'whist piquet skat truc bridge bezique pinochle belote mao eleusis canasta fivehundred ecarte pitch sixtysix ninetynine war spite cassino oldmaid gofish bigtwo ranter blitz briscola nertz ratscrew palace fantan germanwhist gin scopa gops euchre ohhell spades kowhist spoons president cheat'.split(' ');
-const UI_EXTRA = { pinball: ['pinballart'], ...Object.fromEntries(CARDTABLE_GAMES.map((g) => [g, ['cardtable']])), billiards: ['billiards3d'], midway: ['midwayball'], basketball: ['midwayball', 'midway'], chess: ['chess3d'], switchyard: ['switchyard3d'], bingo: ['bingokit'], bingotools: ['bingokit'] };  // helpers a game's screen needs first
+const UI_EXTRA = { pinball: ['pinballart'], ...Object.fromEntries(CARDTABLE_GAMES.map((g) => [g, ['cardtable']])), billiards: ['billiards3d'], midway: ['midwayball'], basketball: ['midwayball', 'midway'], chess: ['chess3d'], switchyard: ['switchyard3d'], bingo: ['bingokit'], bingotools: ['bingokit'], snake: ['riders'] };  // helpers a game's screen needs first
 const uiLoads = {};
 // each game's own CSS (static/games/<file>.css, split out of style.css) arrives with its script. A missing file
 // (a game with no rules of its own) or a slow one never holds the game up: the board just draws unstyled for a moment.

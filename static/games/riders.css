@@ -20,6 +20,48 @@
 .lr-pad[hidden] { display: none !important; }
 .lr-pad button { height: 36px; padding: 0; font-size: 16px; background: #000a; color: #fff; }
 .lr-pad:hover { opacity: 1; }
+/* lives as hearts (#346): on each score chip, and your own, large, at the foot of the arena */
+.lr-hearts { display: inline-flex; gap: 1px; font-size: 16px; line-height: 1; }
+.lr-hearts .on { color: #ff4d6d; text-shadow: 0 0 6px #ff4d6d99; }
+.lr-hearts .off { color: #ffffff59; }
+.lr-hearts:empty { display: none; }
+.lr-mine { position: absolute; left: 50%; bottom: 10px; z-index: 2; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 2px;
+  padding: 5px 14px 6px; border-radius: var(--r-md); background: #000b; color: #fff; pointer-events: none; white-space: nowrap; }
+.lr-mine[hidden] { display: none; }
+.lr-mine .lr-hearts { font-size: 28px; gap: 3px; }
+.lr-mine small { font-size: 13px; font-weight: 700; }
+.lr-mine.last { box-shadow: 0 0 0 2px #ff4d6d, 0 0 18px #ff4d6d88; }
+.lr-mine.hit { animation: lr-hit .7s ease-out; }
+@keyframes lr-hit { 0%, 40% { transform: translateX(-50%) scale(1.45); background: #7a0f24ee; } 100% { transform: translateX(-50%) scale(1); } }
+@media (max-width: 560px) {  /* between the arrow pad's side and the boost buttons */
+  .lr-mine { left: 12px; bottom: 136px; transform: none; padding: 4px 10px; }
+  .lr-mine .lr-hearts { font-size: 22px; }
+  @media (pointer: coarse) { .lr-mine { bottom: 14px; } }  /* no arrow pad on a touch screen */
+  @keyframes lr-hit { 0%, 40% { transform: scale(1.3); background: #7a0f24ee; } 100% { transform: scale(1); } }
+}
+/* 🐍 what a meal was worth, floating up from the head that ate it */
+.lr-pops { position: absolute; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; }
+.lr-pop { position: absolute; transform: translate(-50%, -100%); font: 900 18px/1 var(--font-display, sans-serif); color: #e8f0ff; text-shadow: 0 0 3px #000, 0 2px 4px #000; animation: lr-pop 1.05s ease-out forwards; }
+.lr-pop.green { color: #69f08c; }
+.lr-pop.gold { color: #ffd84d; font-size: 26px; }
+.lr-pop.me { font-size: 28px; }
+.lr-pop.me.gold { font-size: 40px; }
+@keyframes lr-pop { 0% { opacity: 0; margin-top: 0; scale: .6; } 15% { opacity: 1; scale: 1.15; } 100% { opacity: 0; margin-top: -46px; scale: 1; } }
+.lr-key { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; margin: 6px 0; font-size: var(--fs-sm); }
+.lr-key span { display: inline-flex; align-items: center; gap: 5px; }
+.lr-key i { width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 6px #0006; }
+.lr-key small { color: var(--muted); }
+.lr-boost.paid { font-size: 17px; }
+.lr-goal { display: block; width: 100%; min-width: 96px; height: 6px; margin-top: 2px; border-radius: 99px; background: #ffffff33; overflow: hidden; }
+.lr-goal i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #69f08c, #ffc933); }
+.lr-stage > canvas.lr-map { position: absolute; right: 8px; top: 74px; z-index: 2; width: 104px; height: auto; border: 2px solid #b98a52; border-radius: 6px; pointer-events: none; }
+.lr-map[hidden] { display: none; }
+@media (min-width: 861px) { .lr-follow { display: none !important; } }
+.lr.keys .lr-pad { display: none !important; }
+.lr-stage.nope { animation: lr-nope .35s ease-out; }
+@keyframes lr-nope { 0%, 100% { translate: 0; } 25% { translate: -5px 0; } 75% { translate: 5px 0; } }
+.lr-swipe { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: var(--fs-sm); margin: 6px 0; }
+.lr-swipe select { width: auto; margin: 0; }
 @media (hover: hover) and (pointer: fine) {
   .lr-pad { display: grid; }
 }

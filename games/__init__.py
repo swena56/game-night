@@ -106,6 +106,7 @@ from .rally import Rally
 from .relay import Relay
 from .reversi import Reversi
 from .riders import Riders
+from .orbsnake import OrbSnakes
 from .rummy import Rummy
 from .safecracker import Safecracker
 from .seabattle import SeaBattle
@@ -133,7 +134,7 @@ from .pinball import Pinball
 from .riftsplit import RiftSplit
 
 # Order here is the order of the lobby's game picker.
-GAMES = {g.id: g for g in (Unmask, OddOne, Relay, Trivia, Doodle, Bingo, Pond, Domino, Lucky, Switchyard, Spire, Prism, Marble, Riders, Whisker, PaintBlast, Sumo, Putt, Rally, Hockey, Fuse, Snowball, Rapids, Midway, Planes, Orbit, Regatta, Tops, Lander, Pusher, Tide, Billiards, Cannon, Stones, Archery, MeteorShot, Lanes, Wobble, Wordsmith, WordBomb, GridHunt, WordSearch, Garden, Safecracker, FibFinder, Ladder, Chess, Checkers, Backgammon, Go, Oware, Reversi, Hedgerow, Kindred, Realm, Drift, LastCard, Lantern, Holdem, Cribbage, Hearts, Speed, Rummy, Klondike, FreeCell, Cheat, President, Spoons, KnockOutWhist, Spades, OhHell, Euchre, Gops, Scopa, Gin, GermanWhist, FanTan, Palace, Ratscrew, Nertz, Whist, Briscola, Blitz, Ranter, BigTwo, GoFish, OldMaid, Cassino, Spite, War, NinetyNine, SixtySix, Pitch, Ecarte, FiveHundred, Canasta, Eleusis, Mao, Belote, Pinochle, Bezique, Bridge, Truc, Skat, Piquet, SeaBattle,
+GAMES = {g.id: g for g in (Unmask, OddOne, Relay, Trivia, Doodle, Bingo, Pond, Domino, Lucky, Switchyard, Spire, Prism, Marble, Riders, OrbSnakes, Whisker, PaintBlast, Sumo, Putt, Rally, Hockey, Fuse, Snowball, Rapids, Midway, Planes, Orbit, Regatta, Tops, Lander, Pusher, Tide, Billiards, Cannon, Stones, Archery, MeteorShot, Lanes, Wobble, Wordsmith, WordBomb, GridHunt, WordSearch, Garden, Safecracker, FibFinder, Ladder, Chess, Checkers, Backgammon, Go, Oware, Reversi, Hedgerow, Kindred, Realm, Drift, LastCard, Lantern, Holdem, Cribbage, Hearts, Speed, Rummy, Klondike, FreeCell, Cheat, President, Spoons, KnockOutWhist, Spades, OhHell, Euchre, Gops, Scopa, Gin, GermanWhist, FanTan, Palace, Ratscrew, Nertz, Whist, Briscola, Blitz, Ranter, BigTwo, GoFish, OldMaid, Cassino, Spite, War, NinetyNine, SixtySix, Pitch, Ecarte, FiveHundred, Canasta, Eleusis, Mao, Belote, Pinochle, Bezique, Bridge, Truc, Skat, Piquet, SeaBattle,
                            DropFour, Boxes, TicTacToe, Ultimate, Morris, Sudoku, Minesweeper, Heist, MoonShot, Yacht, Farkle, Qork, ShipCrew, ShutBox, LiarsDice, Midnight, Mia, Squares, Brawl, Derby, TwentyOne, SkyDrop, StarGuard, Basketball, Pinball, RiftSplit)}
 # The lobby's groups: their order and headings. The browser gets these and the games from /games/list.js.
 CATEGORIES = [("party", "🎉 Party"), ("action", "⚡ Action"), ("strategy", "♟️ Strategy"), ("classic", "✏️ Quick classics"),

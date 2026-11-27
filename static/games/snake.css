@@ -1,0 +1,9 @@
+/* snake: Orb Snakes' own rules; the arena itself is styled by riders.css, which loads with it */
+.lr.is-snake .lr-stage { background: #0a1f17; box-shadow: inset 0 0 0 1px #8ee6a633, 0 0 30px #1fff6f22, 0 12px 30px #000a; }
+.lr.is-snake .lr-pad { opacity: .5; }
+.lr.is-snake .lr-pad:hover { opacity: 1; }
+/* a wide screen gives the arena the whole width: the scores are already on it, so the side panel goes underneath */
+@media (min-width: 861px) {
+  #game .layout:has(.lr.is-snake) { grid-template-columns: minmax(0, 1fr); max-width: none; }
+  #game .layout:has(.lr.is-snake) > aside { position: static; max-height: none; overflow: visible; }
+}

@@ -8,26 +8,69 @@
 // updates are lined up by each snake's count of cells moved (`sq`) instead of by looking cells up.
 UI.riders = (() => {
   let S, ctx, trails = [], live = [], lastTick = 0, tickAt = 0, round = 0, ring = 0, lastTwo = 0;  // ring: 🧱 closed bands
+  let shape = '', fitFor = 0;  // the board's size, and the round whose countdown has had our screen's shape
+  let meals = [], spilled = new Map(), closing = new Set(), follow_ = false;  // 🐍 meals on their way down bodies, new white orbs, who's been called as close, the zoomed view
   let gl = null, flat = null, raf = 0, ro = null, keyHandler = null, swipe = null, root = null;
-  let pred = null, tapTurn = false, lastCount = '';
+  let preds = [], recent = [], turnNo = 0, tapTurn = false, lastCount = '';  // preds: turns drawn before the server confirms them, oldest first
   let items = new Map(), slow = [], grabsSeen = new Set();  // 🎁 power-ups on the grid (cell → kind), 🐌 slowed riders
   const ITEM = { bolt: ['⚡', '#ffd166'], slow: ['🐌', '#8ce99a'], life: ['❤️', '#ff6b8b'], cut: ['✂️', '#a5d8ff'] };
   const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];
   let orbs = new Map(), seq = [], size = [];  // 🐍 orbs on the grid (cell → worth), cells each snake has moved, body lengths
-  const ORB = ['#ffd166', '#8ce99a', '#ff8fab', '#a5d8ff', '#e599f7'];
-  const BEADS = 304;  // 🐍 body slices per snake in 3D: two a cell for the longest body (150), plus the gliding ends
+  let orbTick = 0;  // the tick our orbs are right up to
+  let swipeScale = 1;  // how far a swipe has to go, against the usual distance
+  // 🐍 what an orb is worth decides its look (#346): white (spilled by a crashed snake), green, and the rare gold
+  const ORBS = { 1: { color: '#e8f0ff', r: 0.28, name: 'white' }, 2: { color: '#69f08c', r: 0.38, name: 'green' }, 5: { color: '#ffc933', r: 0.62, name: 'gold' } };
+  const orbKind = (worth) => ORBS[worth] || ORBS[worth > 2 ? 5 : 2];
+  const ROOM = 160;  // 🐍 the points a body's buffers start with room for; there's no longest snake, so they grow
   // how thick a body is, `fromTail` and `fromHead` cells in from its ends: a pointed tail and a slight neck
-  const girth = (fromTail, fromHead) => Math.min(0.4 + 0.6 * Math.min(1, fromTail / 6), fromHead < 2 ? 0.84 + 0.08 * fromHead : 1);
+  const girth = (fromTail, fromHead) => Math.min(0.16 + 0.84 * Math.min(1, fromTail / 7), fromHead < 2 ? 0.84 + 0.08 * fromHead : 1);
+  // 🐍 the line a body follows (#345): through the points tail to head, with every bend rounded off instead of a
+  // square corner. Writes x, y, along (points counted from the tail) into `line` and returns how many samples. Only
+  // bends need several: a straight stretch gets one a point, which cuts the work and the geometry several times over.
+  let line = new Float32Array(ROOM * 6 * 3);
+  function curve(pts, per) {
+    const last = pts.length - 1;
+    if (line.length < (last * (per + 1) + 3) * 3) line = new Float32Array((last * (per + 1) + 3) * 6);
+    let count = 0;
+    const add = (x, y, along) => {
+      const o = count * 3;
+      if (count && Math.abs(x - line[o - 3]) + Math.abs(y - line[o - 2]) <= 1e-3) return;
+      line[o] = x; line[o + 1] = y; line[o + 2] = along; count++;
+    };
+    add(pts[0][0], pts[0][1], 0);
+    for (let j = 1; j < last; j++) {
+      const [ax, ay] = pts[j - 1], [bx, by] = pts[j], [cx, cy] = pts[j + 1];
+      // straight on: the same direction in and out
+      if (Math.abs((bx - ax) * (cy - by) - (by - ay) * (cx - bx)) < 1e-6 && (bx - ax) * (cx - bx) + (by - ay) * (cy - by) >= 0) {
+        add(bx, by, j); continue;
+      }
+      for (let k = 0; k <= per; k++) {  // a quadratic bend from halfway in to halfway out
+        const t = k / per, u = 1 - t;
+        add(u * u * (ax + bx) / 2 + 2 * u * t * bx + t * t * (bx + cx) / 2, u * u * (ay + by) / 2 + 2 * u * t * by + t * t * (by + cy) / 2, j - 0.5 + t);
+      }
+    }
+    add(pts[last][0], pts[last][1], last);
+    return count;
+  }
+  // how dark the soft bands along a body are at `n` cells from where they started (0 to 1)
+  const band = (n) => (0.5 + 0.5 * Math.cos((n * Math.PI) / 3)) ** 2;
+  // the board is n × n until it's fitted to the host's screen
+  const cols = () => S?.riders?.w ?? S?.riders?.n ?? 40, rows = () => S?.riders?.h ?? S?.riders?.n ?? 40;
+
   const isSnake = () => S?.riders?.mode === 'snake';
+  const paysLength = () => isSnake() && S.riders.boostCost > 0;  // (a server from before this has charges instead)
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
-    S = null; trails = []; live = []; round = 0; gl = null; flat = null; pred = null; lastCount = '';
+    S = null; trails = []; live = []; round = 0; shape = ''; fitFor = 0; meals = []; spilled = new Map(); closing = new Set(); follow_ = !!load('snake.follow'); gl = null; flat = null; preds = []; recent = []; lastCount = '';
     items = new Map(); slow = []; grabsSeen = new Set(); orbs = new Map(); seq = []; size = []; sideKey = '';
     tapTurn = !!load('riders.tapTurn');
     main.innerHTML = `<div class="lr" id="lrRoot"><div class="lr-stage" id="lrStage">
         <div class="lr-hud" id="lrHud"></div>
         <div class="lr-banner" id="lrBanner" hidden></div>
+        <div class="lr-pops" id="lrPops" aria-hidden="true"></div>
+        <div class="lr-mine" id="lrMine" role="status" hidden></div>
+        <canvas class="lr-map" id="lrMap" width="192" height="192" aria-hidden="true" hidden></canvas>
         <div class="lr-pad" id="lrPad">
           <span></span><button data-d="0" aria-label="Up">▲</button><span></span>
           <button data-d="3" aria-label="Left">◀</button><span></span><button data-d="1" aria-label="Right">▶</button>
@@ -37,8 +80,15 @@ UI.riders = (() => {
       </div></div>`;
     side.innerHTML = `<div class="panel"><div id="lrRiders"></div>
       <label class="check"><input type="checkbox" id="lrTap"> Tap left / right side to turn</label>
+      <label class="lr-swipe">Swipe sensitivity <select id="lrSwipe"><option value="1.6">Low</option><option value="1">Normal</option><option value="0.65">High</option></select></label>
+      <label class="check lr-follow" hidden><input type="checkbox" id="lrFollow"> 🔍 Zoom in on my snake (small screens)</label>
       <p class="hint left" id="lrHow"></p></div>`;
     $('lrTap').checked = tapTurn;
+    swipeScale = +load('riders.swipe') || 1;
+    $('lrSwipe').value = String(swipeScale);
+    $('lrSwipe').addEventListener('change', (e) => { swipeScale = +e.target.value || 1; store('riders.swipe', swipeScale === 1 ? null : swipeScale); });
+    $('lrFollow').checked = follow_;
+    $('lrFollow').addEventListener('change', (e) => { follow_ = e.target.checked; store('snake.follow', follow_ || null); });
     $('lrTap').addEventListener('change', (e) => { tapTurn = e.target.checked; store('riders.tapTurn', tapTurn || null); how(); });
     how();
     for (const b of $('lrPad').querySelectorAll('button[data-d]')) b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); steer(+b.dataset.d); });
@@ -62,7 +112,7 @@ UI.riders = (() => {
       if (!swipe) return;
       const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y;
       // about 6% of the arena's width: small enough for a phone, not twitchy on a tablet
-      if (Math.hypot(dx, dy) < Math.max(18, Math.min(48, root.clientWidth * 0.06))) return;
+      if (Math.hypot(dx, dy) < Math.max(18, Math.min(48, root.clientWidth * 0.06)) * swipeScale) return;
       steer(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 1 : 3) : (dy > 0 ? 2 : 0));
       swipe = { x: e.clientX, y: e.clientY };  // keep swiping in the same gesture
     });
@@ -71,6 +121,7 @@ UI.riders = (() => {
       if (e.target?.closest?.('input, textarea, select') && e.target.type !== 'checkbox') return;
       const k = { ArrowUp: 0, KeyW: 0, ArrowRight: 1, KeyD: 1, ArrowDown: 2, KeyS: 2, ArrowLeft: 3, KeyA: 3 }[e.code];
       const rel = { KeyQ: 3, Comma: 3, KeyE: 1, Period: 1 }[e.code];
+      if (k != null || rel != null) root?.classList.add('keys');  // a keyboard player: the arrows can leave the board
       if (k != null) { e.preventDefault(); steer(k); }
       else if (rel != null) { e.preventDefault(); turn(rel); }
       else if (['Space', 'ShiftLeft', 'ShiftRight', 'Enter'].includes(e.code)) { e.preventDefault(); boost(); }
@@ -87,10 +138,11 @@ UI.riders = (() => {
 
   function how() {
     const el = $('lrHow'); if (!el) return;
+    const keys = paysLength() ? 'Space boosts' : 'Space boosts, X brakes';
     el.textContent = (tapTurn
-      ? `Tap the left or right half of the screen to turn left or right from where your ${isSnake() ? 'snake' : 'bike'} is heading. Keys: arrows / WASD, Q/E turn, Space boosts, X brakes.`
-      : 'Swipe anywhere to steer, or use the keyboard (arrows / WASD, Q/E turn, Space boosts, X brakes).')
-      + (isSnake() ? ' Skim past another snake to grind a boost back.' : tapTurn ? '' : ' Ride beside a trail to grind a boost back.');
+      ? `Tap the left or right half of the screen to turn left or right from where your ${isSnake() ? 'snake' : 'bike'} is heading. Keys: arrows / WASD, Q/E turn, ${keys}.`
+      : `Swipe anywhere to steer, or use the keyboard (arrows / WASD, Q/E turn, ${keys}).`)
+      + (paysLength() ? ` A boost costs ${S.riders.boostCost} length and drops it behind you.` : isSnake() || tapTurn ? '' : ' Ride beside a trail to grind a boost back.');
   }
 
   function unmount() {
@@ -102,26 +154,47 @@ UI.riders = (() => {
   const mine = () => S?.riders?.me;
   const riding = () => S?.phase === 'playing' && S.riders.stage === 'ride';
   const canSteer = () => mine() != null && S.phase === 'playing' && S.riders.stage !== 'over' && live[mine()]?.alive;
-  // the way my bike is heading on screen: the last turn I sent, until the server confirms or drops it
-  const myDir = () => pred?.dir ?? live[mine()]?.dir ?? 0;
+  // the way I'll be heading once every turn I've sent has happened (what the next turn is measured from)
+  const myDir = () => preds[preds.length - 1]?.dir ?? live[mine()]?.dir ?? 0;
+  // the way my head is drawn: turns happen one a tick, so the oldest one still waiting is the one in sight
+  const drawnDir = () => preds[0]?.dir ?? live[mine()]?.dir ?? 0;
+  // an update confirms or drops the turns waiting
+  function settleTurns() {
+    const L = live[mine()];
+    if (!L) return;
+    if (preds.length && L.dir === preds[0].dir) preds.shift();
+    while (preds.length && lastTick > preds[0].k + 3) preds.shift();
+  }
   function steer(d) {
     if (!canSteer()) return;
     const cur = myDir();
-    if (d === cur || d === (cur + 2) % 4) return;  // the server ignores these too (no U-turns)
-    pred = { dir: d, k: lastTick };
+    if (d === cur) return;
+    if (d === (cur + 2) % 4) return noTurn();  // the server ignores these too (no U-turns)
+    if (preds.length >= 3) return;  // the server keeps three
+    preds.push({ dir: d, k: lastTick + preds.length });
     buzz(10); snd.play('turn');
-    ctx.input({ dir: d }, true);
+    // sent at once, with the turns of the last second: each has a number, so crossed or lost requests do no harm
+    const now = performance.now();
+    turnNo = Math.max(turnNo + 1, Date.now());
+    recent = [...recent.filter((t) => now - t.at < 1000), { n: turnNo, d, at: now }].slice(-3);
+    ctx.input({ dir: d, turns: recent.map((t) => [t.n, t.d]) }, true, true);  // (dir: for a server from before numbers)
+  }
+  // a swipe or key straight back: a short buzz and a mark, so it doesn't feel as if nothing was heard
+  function noTurn() {
+    buzz(30);
+    const stage = $('lrStage'); if (!stage) return;
+    stage.classList.remove('nope'); void stage.offsetWidth; stage.classList.add('nope');
   }
   const turn = (side) => steer((myDir() + side) % 4);  // 1 = right, 3 = left, relative to the bike
   function boost() {
     const L = live[mine()];
-    if (!canSteer() || S.riders.stage !== 'ride' || !L.boosts || L.boosting) return;
+    if (!canSteer() || S.riders.stage !== 'ride' || L.boosting || (paysLength() ? (size[mine()] ?? 0) < S.riders.boostMin : !L.boosts)) return;
     snd.play('boost');
     ctx.input({ boost: true }, true);
   }
   function brake() {
     const L = live[mine()];
-    if (!canSteer() || S.riders.stage !== 'ride' || !L.brakes || L.braking) return;
+    if (paysLength() || !canSteer() || S.riders.stage !== 'ride' || !L.brakes || L.braking) return;
     snd.play('turn');
     ctx.input({ brake: true }, true);
   }
@@ -135,10 +208,11 @@ UI.riders = (() => {
     if (was.alive && !now.alive) {
       (gl || flat)?.crash?.(i);
       snd.play(me ? 'crashMe' : 'crash');
-      if (me) { buzz([80, 50, 160]); pred = null; }
+      if (me) { buzz([80, 50, 160]); preds = []; }
+      if (me && S.riders.maxLives > 1 && now.lives > 0) Kit.callout(`💔 Lost a life: ${now.lives} left`, 'bad', { ms: 1500 });
     } else if (!was.alive && now.alive && S.riders.stage === 'ride') {
       (gl || flat)?.pulse?.(i);
-      if (me) { snd.play('respawn'); buzz(20); pred = null; }
+      if (me) { snd.play('respawn'); buzz(20); preds = []; }
     }
     if (now.alive && now.grind > was.grind) (gl || flat)?.grind?.(i);
     if (me && now.alive && was.alive && now.boosts > was.boosts && !now.boosting) { snd.play('earn'); (gl || flat)?.grind?.(i); }
@@ -166,7 +240,8 @@ UI.riders = (() => {
   function render(s, c) {
     S = s; ctx = c;
     const r = s.riders;
-    const fresh = r.round !== round;
+    const size_ = `${r.w ?? r.n}x${r.h ?? r.n}`, fresh = r.round !== round || size_ !== shape;
+    shape = size_;
     ring = r.ring || 0;  // a full view carries the closed band (a new round opens it again)
     round = r.round;
     trails = r.trails.map((t) => [...t]);
@@ -175,12 +250,14 @@ UI.riders = (() => {
       brakes: r.brakes?.[i] ?? 0, braking: !!r.braking?.[i],
       lives: r.lives?.[i] ?? 1, grind: r.grind?.[i] ?? 0, respawnAt: r.respawning?.[i] != null ? performance.now() + r.respawning[i] * 1000 : null }));
     if (!fresh) live.forEach((L, i) => { events(i, old[i], L); if (old[i]?.boosting) L.boosting = true; });
-    else { pred = null; grabsSeen = new Set(); }
+    else { preds = []; grabsSeen = new Set(); }
     nudges = [];
     const ate = !fresh && r.mode === 'snake' && r.me != null && r.size[r.me] > (size[r.me] ?? Infinity);
-    orbs = new Map(r.orbs || []); seq = [...(r.sq || [])]; size = [...(r.size || [])];
+    const grew = !fresh && r.mode === 'snake' ? gains(r.size) : [];
+    const nextOrbs = new Map(r.orbs || []);
+    noteSpill(nextOrbs, fresh || !old.length);
+    orbs = nextOrbs; orbTick = r.tick; seq = [...(r.sq || [])]; size = [...(r.size || [])];
     if (ate) snd.play('ping');
-    S.endsAt = r.timeLeft != null ? performance.now() + r.timeLeft * 1000 : null;
     how();
     items = new Map(r.items || []); slow = r.slow || [];
     grabs(r.grabs, fresh || !old.length);
@@ -188,7 +265,54 @@ UI.riders = (() => {
     if (fresh) (gl || flat)?.reset(); else (gl || flat)?.sync();
     S.countdownAt = performance.now() + r.countdown * 1000;
     if (fresh) S.roundAt = performance.now();
+    root.classList.toggle('is-snake', r.mode === 'snake');
     renderSide();
+    pops(grew);
+  }
+
+  // 🐍 how much fatter snake i is `fromHead` cells back: each recent meal is a bulge sliding toward the tail
+  function swell(i, fromHead, now) {
+    let by = 1;
+    for (const m of meals) {
+      if (m.i !== i) continue;
+      const gone = ((now - m.at) / 1000) * 26, d = (fromHead - 1.5 - gone) / 1.2;
+      if (Math.abs(d) < 3) by += 0.34 * m.big * Math.exp(-d * d) * Math.max(0, 1 - gone / 60);
+    }
+    return by;
+  }
+  // new white orbs (a crash, or a boost's price) pop into view
+  function noteSpill(next, quietly) {
+    const now = performance.now();
+    if (!quietly) for (const [c, worth] of next) if (worth === 1 && !orbs.has(c)) spilled.set(c, now);
+    for (const [c, at] of spilled) if (now - at > 900 || !next.has(c)) spilled.delete(c);
+  }
+  const popIn = (c, now) => (spilled.has(c) ? 1 + 1.6 * Math.exp(-Math.max(0, now - spilled.get(c)) / 170) : 1);
+  // 🐍 an update carries what changed among the orbs since a tick a little way back (`oc`: [that tick, [cell, worth;
+  // 0 is gone]]). A browser that has fallen further behind than that keeps what it has until the next full view.
+  function nextFood(data) {
+    if (data.or) return new Map(data.or);  // (a server from before this sends them all)
+    if (!data.oc || data.oc[0] > orbTick) return null;
+    const next = new Map(orbs);
+    for (const [c, worth] of data.oc[1]) { if (worth) next.set(c, worth); else next.delete(c); }
+    orbTick = data.k;
+    return next;
+  }
+  // 🐍 who just ate, and how much: [snake, length gained]
+  const gains = (next) => (next || []).map((s, i) => [i, s - (size[i] ?? s)]).filter(([i, d]) => d > 0 && live[i]?.alive);
+  // float each meal's value up from the head that ate it
+  function pops(list) {
+    const layer = $('lrPops'), view = gl || flat;
+    if (!layer || !view?.project) return;
+    for (const [i, worth] of list) {
+      meals = [...meals.filter((m) => performance.now() - m.at < 2500), { i, at: performance.now(), big: Math.min(1.6, 0.7 + worth * 0.18) }];
+      const at = headPos(i, performance.now()); if (!at) continue;
+      const [x, y] = view.project(at[0], at[1]);
+      const tag = ctx.el('span', `lr-pop ${orbKind(worth).name}${i === mine() ? ' me' : ''}`, `+${worth}`);
+      tag.style.left = `${x}px`; tag.style.top = `${y}px`;
+      layer.append(tag);
+      setTimeout(() => tag.remove(), 1100);
+      if (i === mine() && worth >= 5) { ctx.sfx('rise', 6); buzz(40); }
+    }
   }
 
   function fast(data) {
@@ -217,8 +341,12 @@ UI.riders = (() => {
     if (data.sq) {
       const me = mine();
       if (me != null && data.sz[me] > (size[me] ?? Infinity)) snd.play('ping');
-      size = data.sz; orbs = new Map(data.or);
-      S.endsAt = performance.now() + data.tl * 1000; S.riders.won = data.wn;
+      const grew = gains(data.sz);
+      size = data.sz;
+      const nextOrbs = nextFood(data);
+      if (nextOrbs) { noteSpill(nextOrbs, false); orbs = nextOrbs; }
+      pops(grew);
+      S.riders.won = data.wn;
     }
     if (data.it) items = new Map(data.it);
     if (data.sl) slow = data.sl;
@@ -228,7 +356,7 @@ UI.riders = (() => {
     if (trails.length > 2 && riding === 2 && lastTwo !== round && data.st === 'ride') { lastTwo = round; Kit.callout(isSnake() ? '⚔️ Last two snakes!' : '⚔️ Last two riders!', 'gold', { ms: 1400 }); ctx.sfx('rise', 8); }
     if ((data.w || 0) > ring) { if (!ring) { Kit.callout('🧱 The walls are closing in!', 'bad', { ms: 1500 }); ctx.sfx('alarm'); } ring = data.w; }
     const L = live[mine()];
-    if (pred && L && (L.dir === pred.dir || lastTick > pred.k + 3)) pred = null;
+    settleTurns();
     S.riders.stage = data.st;
     (gl || flat)?.sync();
     renderSide();
@@ -245,57 +373,103 @@ UI.riders = (() => {
     if (moved) t.push(...tail.slice(-moved));
     if (t.length > len) t.splice(0, t.length - len);
   }
-  const timeText = (now) => {
-    const s = Math.max(0, Math.ceil(((S.endsAt ?? now) - now) / 1000));
-    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
-  };
-
+  // 🐍 the one clear longest snake alive, once anyone has grown (-1: nobody leads)
+  function leaderOf() {
+    const ranked = size.map((s, i) => [live[i]?.alive ? s : 0, i]).sort((a, b) => b[0] - a[0]);
+    return ranked.length > 1 && ranked[0][0] > ranked[1][0] && ranked[0][0] > 8 ? ranked[0][1] : -1;
+  }
+  // once a round for each snake: it's nearly at the goal, so go and stop it (or hurry)
+  function callClose() {
+    const r = S.riders;
+    if (!r.goal || r.stage !== 'ride' || S.phase !== 'playing') return;
+    size.forEach((s, i) => {
+      if (!live[i]?.alive || s < r.goal * 0.8 || s >= r.goal || closing.has(`${r.round}:${i}`)) return;
+      closing.add(`${r.round}:${i}`);
+      Kit.callout(i === r.me ? `🔥 Almost there: ${s} of ${r.goal}` : `🔥 ${ctx.player(r.seats[i])?.name ?? '?'} is close: ${s} of ${r.goal}`, i === r.me ? 'gold' : 'bad', { ms: 1500 });
+    });
+  }
   let sideKey = '';
   function renderSide() {
     const r = S.riders, box = $('lrRiders'); if (!box) return;
     const me = r.me != null ? live[r.me] : null;
     const b = $('lrBoost');
-    b.textContent = me ? `⚡${me.boosts}` : '⚡';
-    b.style.setProperty('--g', me ? Math.min(1, me.grind / (r.grindFull || 25)) : 0);
-    b.disabled = !me || !me.alive || !me.boosts || r.stage !== 'ride';
+    const paid = paysLength();  // 🐍 a boost is bought with length
+    b.textContent = paid ? `⚡−${r.boostCost}` : me ? `⚡${me.boosts}` : '⚡';
+    b.title = b.ariaLabel = paid ? `Boost: costs ${r.boostCost} length` : 'Boost';
+    b.classList.toggle('paid', paid);
+    b.style.setProperty('--g', me && !paid ? Math.min(1, me.grind / (r.grindFull || 25)) : 0);
+    b.disabled = !me || !me.alive || r.stage !== 'ride' || (paid ? (size[r.me] ?? 0) < r.boostMin : !me.boosts);
     b.hidden = r.me == null;
     const br = $('lrBrake');
     br.textContent = me ? `🛑${me.brakes}` : '🛑';
     br.disabled = !me || !me.alive || !me.brakes || me.braking || r.stage !== 'ride';
-    br.hidden = r.me == null;
+    br.hidden = r.me == null || paid;
     $('lrPad').hidden = r.me == null;
     // fast updates arrive every tick: only rebuild the panels when something on them changed (#32)
-    const snake = isSnake(), clock = snake ? timeText(performance.now()) : '';
-    const key = JSON.stringify([r.round, r.stage, r.wins, r.seats, r.me, slow, size, clock, live.map((L) => [L?.alive, L?.lives, L?.respawnAt != null])]);
+    const snake = isSnake();
+    if (snake) callClose();
+    document.querySelector('.lr-follow').hidden = !snake || !gl;
+    const key = JSON.stringify([r.round, r.stage, r.wins, r.seats, r.me, slow, size, live.map((L) => [L?.alive, L?.lives, L?.respawnAt != null])]);
     if (key === sideKey && box.childElementCount) return;
     sideKey = key;
-    const lifeText = (i) => (r.maxLives > 1 ? ' ' + '♥'.repeat(Math.max(0, live[i]?.lives ?? 0)) : '');
+    // lives as hearts: red for each one left, a dim outline for each one gone (#346)
+    const hearts = (i) => {
+      const left = Math.max(0, live[i]?.lives ?? 0), box_ = ctx.el('span', 'lr-hearts');
+      if (r.maxLives < 2) return box_;
+      box_.title = box_.ariaLabel = `${left} ${left === 1 ? 'life' : 'lives'} left`;
+      for (let k = 0; k < Math.max(r.maxLives, left); k++) box_.append(ctx.el('span', k < left ? 'on' : 'off', k < left ? '♥' : '♡'));
+      return box_;
+    };
     box.innerHTML = '';
     box.append(ctx.el('div', 'hint left', `Round ${r.round} · first to ${r.target}${r.maxLives > 1 ? ` · ${r.maxLives} lives` : ''}`));
-    if (snake) box.append(ctx.el('div', 'hint left', '🐍 Eat orbs to grow. Crossing yourself is safe; running into another snake is not. The edge just turns you. Longest snake takes the round when time runs out.'));
+    if (snake) {
+      box.append(ctx.el('div', 'hint left', `🐍 ${r.goal ? `First to length ${r.goal} takes the round, or the last snake with lives left.` : 'The last snake with lives left takes the round.'} Running into another snake, or the 5 blocks behind your own head, costs a life. Farther back you can cross yourself; the edge just turns you.`));
+      const key_ = ctx.el('div', 'lr-key');
+      for (const [worth, what] of [[1, 'from a crash'], [2, ''], [5, 'rare']]) {
+        const item = ctx.el('span', ''), dot = ctx.el('i'); dot.style.background = ORBS[worth].color;
+        item.append(dot, ctx.el('b', '', `+${worth}`), ctx.el('small', '', what)); key_.append(item);
+      }
+      box.append(key_);
+    }
     if (r.pickups) box.append(ctx.el('div', 'hint left', '🎁 Ride over power-ups: ⚡ boosts back · 🐌 rivals crawl · ❤️ a life · ✂️ half your trail gone'));
     const hud = $('lrHud'); hud.innerHTML = '';
-    if (snake) hud.append(ctx.el('span', 'lr-chip', `⏱ ${clock}`));
+    const leader = snake ? leaderOf() : -1;
+    const reach = (i) => (r.goal ? `${size[i]}/${r.goal}` : `${size[i]}`);
     r.seats.forEach((pid, i) => {
       const p = ctx.player(pid), L = live[i];
       const out = !L?.alive && L?.respawnAt == null;
       const row = ctx.el('div', 'seat-row lr-row' + (L?.alive ? '' : ' out'));
       const dot = ctx.el('span', 'mini-disc'); dot.style.background = colorOf(i); dot.style.boxShadow = `0 0 8px ${colorOf(i)}`;
-      const long = snake && L?.alive ? ` · ${size[i]} long` : '';
-      row.append(dot, ctx.el('span', 'grow', `${p?.name ?? 'left'}${i === r.me ? ' (you)' : ''}${L?.alive ? '' : out ? ' 💥' : ' ⟳'}${lifeText(i)}${long}`),
-        ctx.el('b', '', '★'.repeat(r.wins[i]) || '·'));
+      const long = snake && L?.alive ? ` · ${reach(i)} long${i === leader ? ' 👑' : ''}` : '';
+      row.append(dot, ctx.el('span', 'grow', `${p?.name ?? 'left'}${i === r.me ? ' (you)' : ''}${L?.alive ? '' : out ? ' 💥' : ' ⟳'}${long}`),
+        hearts(i), ctx.el('b', '', '★'.repeat(r.wins[i]) || '·'));
       box.append(row);
       const chip = ctx.el('span', 'lr-chip' + (i === r.me ? ' me' : '') + (out ? ' out' : ''));
       const c = ctx.el('i'); c.style.background = colorOf(i); c.style.boxShadow = `0 0 6px ${colorOf(i)}`;
-      chip.append(c, ctx.el('span', '', `${i === r.me ? 'You' : (p?.name ?? '—').slice(0, 8)}${snake && L?.alive ? ` 🐍${size[i]}` : ''} ${'★'.repeat(r.wins[i])}${lifeText(i)}${L?.alive ? (slow[i] ? ' 🐌' : '') : out ? ' 💥' : ' ⟳'}`));
+      chip.append(c, ctx.el('span', '', `${i === r.me ? 'You' : (p?.name ?? '—').slice(0, 8)}${snake && L?.alive ? ` ${i === leader ? '👑' : '🐍'}${reach(i)}` : ''} ${'★'.repeat(r.wins[i])}`), hearts(i),
+        ctx.el('span', '', L?.alive ? (slow[i] ? ' 🐌' : '') : out ? ' 💥' : ' ⟳'));
       hud.append(chip);
     });
+    // your own lives (and length), large at the foot of the arena
+    const own = $('lrMine');
+    own.hidden = r.me == null || (r.maxLives < 2 && !snake);
+    if (!own.hidden) {
+      const left = Math.max(0, live[r.me]?.lives ?? 0);
+      const was = Number(own.dataset.lives ?? left); own.dataset.lives = left;
+      own.replaceChildren(hearts(r.me), ctx.el('small', '', [r.maxLives > 1 ? (left ? `${left} ${left === 1 ? 'life' : 'lives'} left` : 'Out of lives') : '', snake ? `🐍 ${size[r.me] ?? 0}${r.goal ? ` / ${r.goal}` : ' long'}` : ''].filter(Boolean).join(' · ')));
+      if (snake && r.goal) {  // how far to the goal
+        const bar = ctx.el('span', 'lr-goal'), fill = ctx.el('i');
+        fill.style.width = `${Math.min(100, ((size[r.me] ?? 0) / r.goal) * 100)}%`; bar.append(fill); own.append(bar);
+      }
+      own.classList.toggle('last', r.maxLives > 1 && left === 1);
+      if (left < was) { own.classList.remove('hit'); void own.offsetWidth; own.classList.add('hit'); }
+    }
   }
 
   // where a rider's bike is drawn: past its last cell by the fraction of a tick that has elapsed
   function rawHead(i, now) {
     const t = trails[i]; if (!t?.length) return null;
-    const n = S.riders.n, c = t[t.length - 1], x = c % n, y = Math.floor(c / n);
+    const w = cols(), c = t[t.length - 1], x = c % w, y = Math.floor(c / w);
     const L = live[i];
     if (!L?.alive || S.riders.stage !== 'ride') return [x, y];
     const per = 1000 / S.riders.speed, step = (now - tickAt) / per;
@@ -306,12 +480,12 @@ UI.riders = (() => {
     const g = f < 0.8 ? f : 0.8 + 0.6 * (1 - Math.exp(-(f - 0.8) / 0.6));
     const [dx, dy] = DIRS[headDir(i)];
     if (!isSnake()) return [x + dx * g, y + dy * g];
-    const clamp = (v) => Math.min(n - 1, Math.max(0, v));
-    return [clamp(x + dx * g), clamp(y + dy * g)];
+    const clamp = (v, most) => Math.min(most - 1, Math.max(0, v));
+    return [clamp(x + dx * g, w), clamp(y + dy * g, rows())];
   }
   // 🐍 where a body ends: a full-grown snake's last cell slides toward the next one as the head moves on
   function tailPos(i, now) {
-    const t = trails[i], n = S.riders.n, at = (c) => [c % n, Math.floor(c / n)];
+    const t = trails[i], w = cols(), at = (c) => [c % w, Math.floor(c / w)];
     const a = at(t[0]), head = headPos(i, now);
     if (t.length < 2 || t.length < size[i] || !head) return a;
     const [hx, hy] = at(t[t.length - 1]), b = at(t[1]);
@@ -337,7 +511,7 @@ UI.riders = (() => {
     if (w < 0.02) { nudges[i] = null; return p; }
     return [p[0] + k.ox * w, p[1] + k.oy * w];
   }
-  const headDir = (i) => (i === mine() ? myDir() : live[i]?.dir ?? 0);
+  const headDir = (i) => (i === mine() ? drawnDir() : live[i]?.dir ?? 0);
 
   function loop(now) {
     raf = requestAnimationFrame(loop);
@@ -348,7 +522,7 @@ UI.riders = (() => {
     let text = '', small = false;
     if (S.phase === 'playing' && r.stage === 'countdown') text = left > 0 ? String(Math.ceil(left)) : 'GO!';
     else if (S.phase === 'playing' && r.stage === 'over') {
-      // 🐍 several snakes can be alive when the clock runs out, so the server names the winner
+      // 🐍 a round that is called early leaves several snakes alive, so the server names the winner
       const w = isSnake() ? r.won : live.findIndex((L) => L?.alive);
       text = w == null ? '' : w < 0 ? '🤝 Draw' : w === r.me ? '🏁 You take the round!' : `🏁 ${ctx.player(r.seats[w])?.name ?? '?'} takes it`;
       small = text.length > 14;
@@ -358,9 +532,9 @@ UI.riders = (() => {
       text = me.respawnAt != null ? `💥 Respawning in ${Math.max(0, (me.respawnAt - now) / 1000).toFixed(1)}` : '💥 Out — watching';
     }
     banner.hidden = !text; banner.textContent = text; banner.classList.toggle('small', small);
-    if (S.phase === 'playing' && r.stage === 'ride' && isSnake()) {  // the clock ticks between updates too
-      const chip = $('lrHud')?.firstElementChild, t = `⏱ ${timeText(now)}`;
-      if (chip && chip.textContent !== t) chip.textContent = t;
+    if (S.phase === 'playing' && r.stage === 'countdown' && fitFor !== r.round && S.host === S.me?.id) {
+      const stage = $('lrStage');
+      if (stage?.clientWidth && stage.clientHeight) { fitFor = r.round; ctx.input({ fit: (stage.clientWidth / stage.clientHeight) * (isSnake() ? 1.1 : 0.96) }, true); }  // (snakes leave the top for the chips)
     }
     // countdown beeps and the GO, once each
     const count = S.phase !== 'playing' ? '' : r.stage === 'countdown' && left > 0 ? String(Math.ceil(left)) : r.stage === 'ride' ? 'GO' : '';
@@ -450,7 +624,7 @@ UI.riders = (() => {
     // a night sky that rides with the camera, the arena floor fading into it
     const stg = GL3.stage(renderer, scene, { exposure: 1.15, sky: { bottom: 0x0b1030, horizon: 0x24357a, top: 0x050820, stars: 500, radius: 300 },
       fog: [0x0b1030, 110, 260], hemi: [0xdbe6ff, 0x3a3f6e, 0.95], key: { i: 0.75, pos: [-20, 60, 30], shadow: false } });
-    let n = 0, mode = null, beadTint = new T.Color(), orbMesh = null, world = null, ribbons = [], bikes = [], tips = [], drawn = [], pend = [], you = null, arrow = null, sparks = null, walls = [];
+    let n = 0, high = 0, mode = null, beadTint = new T.Color(), orbMesh = null, haloMesh = null, world = null, ribbons = [], bikes = [], tips = [], drawn = [], pend = [], you = null, arrow = null, sparks = null, walls = [];
     const segGeo = new T.BoxGeometry(1, 1, 1);
     // 🎁 power-ups: a floating badge per item (one texture per kind)
     const itemTex = {}, itemSprites = new Map();
@@ -484,35 +658,50 @@ UI.riders = (() => {
 
     function build() {
       if (world) scene.remove(world);
+      for (const m of ribbons) if (m.userData.dark) m.geometry.dispose();  // each snake has a body of its own
       for (const sp of itemSprites.values()) sp.material.dispose();
       itemSprites.clear();
       world = new T.Group(); scene.add(world);
-      n = S.riders.n; mode = S.riders.mode;
-      const half = n / 2;
+      n = cols(); high = rows(); mode = S.riders.mode;
+      const half = n / 2, deep = high / 2;
       // floor with a glowing grid texture
       const c = document.createElement('canvas'); c.width = c.height = 512;
       const g = c.getContext('2d');
       let mat = new T.MeshStandardMaterial({ color: 0x1b2a66, roughness: 0.9 });
+      const garden = isSnake();  // 🐍 a lawn of two greens with a wooden fence, so the snakes and orbs stand out
       if (g) {
         g.fillStyle = '#16214f'; g.fillRect(0, 0, 512, 512);
         g.strokeStyle = '#5b9dff66'; g.lineWidth = 3;
         for (let k = 0; k <= 8; k++) { const p = (k * 512) / 8; g.beginPath(); g.moveTo(p, 0); g.lineTo(p, 512); g.moveTo(0, p); g.lineTo(512, p); g.stroke(); }
-        const tex = new T.CanvasTexture(c); tex.wrapS = tex.wrapT = T.RepeatWrapping; tex.repeat.set(n / 8, n / 8);
+        if (garden) {
+          for (let x = 0; x < 4; x++) for (let y = 0; y < 4; y++) { g.fillStyle = (x + y) % 2 ? '#16482f' : '#1b5437'; g.fillRect(x * 128, y * 128, 128, 128); }
+          for (let k = 0; k < 900; k++) {  // blades of grass, the same every time
+            const x = (k * 197) % 512, y = (k * 331) % 512;
+            g.strokeStyle = k % 3 ? '#2f7a4e55' : '#0c2c1c66'; g.lineWidth = 2; g.beginPath(); g.moveTo(x, y); g.lineTo(x + (k % 5) - 2, y - 7); g.stroke();
+          }
+        }
+        const tex = new T.CanvasTexture(c); tex.wrapS = tex.wrapT = T.RepeatWrapping; tex.repeat.set(n / 8, high / 8);
         tex.anisotropy = Math.min(4, renderer.capabilities?.getMaxAnisotropy?.() ?? 1);  // the grid stays visible at the far edge
         // the floor's own picture glows, so the grid lines light up and not just the lamps' share of them
-        mat = new T.MeshStandardMaterial({ map: tex, roughness: 0.85, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.32 });
+        mat = new T.MeshStandardMaterial({ map: tex, roughness: 0.85, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: garden ? 0.18 : 0.32 });
       }
-      const floor = new T.Mesh(new T.PlaneGeometry(n, n), mat); floor.rotation.x = -Math.PI / 2; world.add(floor);
-      const wallMat = new T.MeshStandardMaterial({ color: 0x8ecae6, emissive: 0x8ecae6, emissiveIntensity: 0.9 });
+      const floor = new T.Mesh(new T.PlaneGeometry(n, high), mat); floor.rotation.x = -Math.PI / 2; world.add(floor);
+      const wallMat = garden ? new T.MeshStandardMaterial({ color: 0xb98a52, emissive: 0x4a2f14, emissiveIntensity: 0.6, roughness: 0.7 })
+        : new T.MeshStandardMaterial({ color: 0x8ecae6, emissive: 0x8ecae6, emissiveIntensity: 0.9 });
       walls = [];
-      for (const [w, d, x, z] of [[n + 1, 0.5, 0, -half - 0.25], [n + 1, 0.5, 0, half + 0.25], [0.5, n + 1, -half - 0.25, 0], [0.5, n + 1, half + 0.25, 0]]) {
+      for (const [w, d, x, z] of [[n + 1, 0.5, 0, -deep - 0.25], [n + 1, 0.5, 0, deep + 0.25], [0.5, high + 1, -half - 0.25, 0], [0.5, high + 1, half + 0.25, 0]]) {
         const m = new T.Mesh(new T.BoxGeometry(w, 1.2, d), wallMat); m.position.set(x, 0.6, z); world.add(m); walls.push(m);
       }
       ribbons = []; bikes = []; tips = []; drawn = []; pend = [];
-      orbMesh = null;
+      orbMesh = null; haloMesh = null;
       if (isSnake()) {
-        orbMesh = new T.InstancedMesh(new T.SphereGeometry(1, 10, 8), new T.MeshBasicMaterial({ color: 0xffffff }), n * n);
-        for (let k = 0; k < n * n; k++) orbMesh.setColorAt(k, beadTint.set(ORB[0]));
+        // a soft pool of light under each orb
+        haloMesh = new T.InstancedMesh(new T.CircleGeometry(1, 20).rotateX(-Math.PI / 2),
+          new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.13, blending: T.AdditiveBlending, depthWrite: false, toneMapped: false }), n * high);
+        for (let k = 0; k < n * high; k++) haloMesh.setColorAt(k, beadTint.set(ORBS[2].color));
+        haloMesh.count = 0; haloMesh.frustumCulled = false; world.add(haloMesh);
+        orbMesh = new T.InstancedMesh(new T.SphereGeometry(1, 10, 8), new T.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }), n * high);
+        for (let k = 0; k < n * high; k++) orbMesh.setColorAt(k, beadTint.set(ORBS[2].color));
         orbMesh.count = 0; orbMesh.frustumCulled = false; world.add(orbMesh);
       }
       S.riders.seats.forEach((_, i) => {
@@ -520,7 +709,7 @@ UI.riders = (() => {
         if (isSnake()) return buildSnake(color);
         // (no tone mapping here either: the trails keep their full colour against the lit floor)
         const rm = new T.MeshStandardMaterial({ color: color.clone().multiplyScalar(0.3), emissive: color, emissiveIntensity: 0.85, transparent: true, opacity: 0.9, toneMapped: false });
-        const inst = new T.InstancedMesh(segGeo, rm, n * n); inst.count = 0; world.add(inst); ribbons.push(inst);
+        const inst = new T.InstancedMesh(segGeo, rm, n * high); inst.count = 0; world.add(inst); ribbons.push(inst);
         const tip = new T.Mesh(segGeo, rm); world.add(tip); tips.push(tip);
         const bike = new T.Group();
         const body = new T.Mesh(new T.BoxGeometry(0.7, 0.55, 1.5), new T.MeshStandardMaterial({ color: 0x111122, emissive: color, emissiveIntensity: 0.35, metalness: 0.6, roughness: 0.3 }));
@@ -549,18 +738,40 @@ UI.riders = (() => {
       sparks.pts.frustumCulled = false; world.add(sparks.pts);
       resize();
     }
-    // 🐍 a smooth banded body with diamonds down its back, and a wedge head with eyes and a flicking tongue (the
-    // head stands in for the bike in every effect)
+    // a body's buffers: `most` rings of `around` points each, joined up
+    function tubeGeo(most, around) {
+      const geo = new T.BufferGeometry(), verts = most * around * 3;
+      for (const key of ['position', 'normal', 'color']) geo.setAttribute(key, new T.BufferAttribute(new Float32Array(verts), 3).setUsage(T.DynamicDrawUsage));
+      const index = [];
+      for (let r = 0; r + 1 < most; r++) {
+        for (let a = 0; a < around; a++) {
+          const p = r * around + a, q_ = r * around + ((a + 1) % around);
+          index.push(p, p + around, q_, q_, p + around, q_ + around);
+        }
+      }
+      geo.setIndex(index); geo.setDrawRange(0, 0);
+      return geo;
+    }
+    // 🐍 one smooth softly-banded body that bends round its corners, and a wedge head with eyes and a flicking tongue
+    // (the head stands in for the bike in every effect)
     function buildSnake(color) {
       // no tone mapping on the snake: it washes bright player colours out to pastel
       const tone = color.clone().multiplyScalar(0.62);
-      const skin = new T.MeshStandardMaterial({ color: 0xffffff, emissive: color, emissiveIntensity: 0.1, roughness: 0.42, metalness: 0.1, toneMapped: false });
-      const body = new T.InstancedMesh(new T.SphereGeometry(0.6, stg.low ? 9 : 14, stg.low ? 7 : 10), skin, BEADS);
-      const pale = color.clone().lerp(new T.Color(0xffffff), 0.45), dark = tone.clone().multiplyScalar(0.45);
-      for (let k = 0; k < BEADS; k++) body.setColorAt(k, tone);
-      const marks = new T.InstancedMesh(new T.OctahedronGeometry(1), new T.MeshStandardMaterial({ color: pale, emissive: pale, emissiveIntensity: 0.15, roughness: 0.45, toneMapped: false }), BEADS / 4);
-      body.userData = { color: tone, dark, marks };
-      for (const m of [body, marks]) { m.count = 0; m.frustumCulled = false; world.add(m); }
+      const skin = new T.MeshStandardMaterial({ vertexColors: true, emissive: color, emissiveIntensity: 0.1, roughness: 0.42, metalness: 0.1, toneMapped: false });
+      // a tube of rings along the body's line: room for the longest snake, drawn as far as it reaches
+      const per = stg.low ? 3 : 5, around = stg.low ? 8 : 14, most = ROOM * 2;
+      const geo = tubeGeo(most, around);
+      const body = new T.Mesh(geo, skin);
+      body.frustumCulled = false; world.add(body);
+      let pendingShadow = null;
+      // its shadow: the same shape pressed flat, a little to one side (not on low graphics: it draws every body twice)
+      if (!stg.low) {
+      const shadow = new T.Mesh(geo, new T.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.28, depthWrite: false }));
+      shadow.scale.y = 0.02; shadow.position.set(0.3, 0.03, 0.35); shadow.frustumCulled = false; world.add(shadow);
+      pendingShadow = shadow;
+      }
+      const pale = color.clone().lerp(new T.Color(0xffffff), 0.45), dark = tone.clone().multiplyScalar(0.55);
+      body.userData = { color: tone, dark, pale, per, around, most, shadow: pendingShadow };
       ribbons.push(body);
       const none = new T.Group(); world.add(none); tips.push(none);
       const head = new T.Group();
@@ -572,7 +783,7 @@ UI.riders = (() => {
       const white = new T.MeshBasicMaterial({ color: 0xfff7c2 }), black = new T.MeshBasicMaterial({ color: 0x05060f });
       part(flesh, 0.68, 0.44, 0.82, 0, 0.56, 0.1);   // skull, wide at the jaws
       part(flesh, 0.45, 0.32, 0.62, 0, 0.52, 0.62);  // snout
-      part(body.userData.marks.material, 0.13, 0.07, 0.3, 0, 0.98, -0.1);  // a pale flash on the crown
+      part(new T.MeshStandardMaterial({ color: pale, emissive: pale, emissiveIntensity: 0.15, roughness: 0.45, toneMapped: false }), 0.13, 0.07, 0.3, 0, 0.98, -0.1);  // a pale flash on the crown
       for (const x of [-1, 1]) {
         part(flesh, 0.27, 0.22, 0.3, x * 0.37, 0.84, 0.3);        // brow
         part(white, 0.2, 0.17, 0.21, x * 0.39, 0.94, 0.38);       // eye
@@ -600,53 +811,90 @@ UI.riders = (() => {
       if (tongue.visible) tongue.scale.z = 0.35 + 0.65 * Math.abs(Math.sin((t / 420) * Math.PI * 2));
     }
     function drawBody(i, now) {
-      const body = ribbons[i], t = trails[i], { color, dark, marks } = body.userData;
-      let k = 0, d = 0;
+      const body = ribbons[i], t = trails[i], { color, dark, pale, per, around } = body.userData;
+      let geo = body.geometry;
       const head = headPos(i, now);
-      if (!t.length || !head) { body.count = marks.count = 0; return; }
-      const half = n / 2 - 0.5, end = tailPos(i, now);
-      // tail end, then every cell, then the gliding head; a slice at each point and one halfway to it
-      const pts = [[end[0] - half, end[1] - half]];
+      if (!t.length || !head) { geo.setDrawRange(0, 0); body.userData.same = ''; return; }
+      const halfX = n / 2 - 0.5, halfZ = high / 2 - 0.5, end = tailPos(i, now);
+      // tail end, then every cell, then the gliding head
+      const pts = [[end[0] - halfX, end[1] - halfZ]];
       for (let j = 1; j < t.length; j++) pts.push(at(t[j]));
-      pts.push([head[0] - half, head[1] - half]);
-      const last = pts.length - 1;
-      // stripes are counted from the first cell the snake ever moved onto, so they stay put as it slides
+      pts.push([head[0] - halfX, head[1] - halfZ]);
+      // bands are counted from the first cell the snake ever moved onto, so they stay put as it slides
       const first = (seq[i] ?? t.length) - t.length;
-      const put = (x, z, num, r) => {
-        if (k >= BEADS) return;
-        sc.set(r, r * 0.82, r); v.set(x, 0.5 * r, z); q.identity();
-        mtx.compose(v, q, sc); body.setMatrixAt(k, mtx);
-        body.setColorAt(k, Math.floor(num / 4) % 2 ? dark : color); k++;
-      };
-      // from the head back, so a body too long for the buffer loses the far tip of its tail, not its neck
-      for (let j = last; j >= 0; j--) {
-        const [x, z] = pts[j], r = girth(j, last - j);
-        put(x, z, first + j, r);
-        if (!j) continue;
-        const [px, pz] = pts[j - 1];
-        put((x + px) / 2, (z + pz) / 2, first + j, (r + girth(j - 1, last - j + 1)) / 2);
-        if ((first + j) % 4 === 2 && j > 2 && j < last - 1 && d < BEADS / 4 && (x !== px || z !== pz)) {
-          q.setFromAxisAngle(up, Math.atan2(x - px, z - pz));
-          v.set(x, 1.0 * r, z); sc.set(0.27 * r, 0.1, 0.58 * r);
-          mtx.compose(v, q, sc); marks.setMatrixAt(d++, mtx);
+      // nothing moved (the countdown, a round just over) and no meal on its way down: last frame's body still stands
+      const same = `${head[0].toFixed(3)},${head[1].toFixed(3)},${end[0].toFixed(3)},${end[1].toFixed(3)},${t.length},${first}`;
+      const eating = meals.some((m) => m.i === i && now - m.at < 2500);
+      if (!eating && body.userData.same === same) return;
+      body.userData.same = eating ? '' : same;
+      const last = pts.length - 1, count = curve(pts, per);
+      const rings = count;
+      if (rings > body.userData.most) {  // longer than ever: make room for half as much again
+        body.userData.most = Math.ceil(rings * 1.5);
+        const bigger = tubeGeo(body.userData.most, around);
+        if (body.userData.shadow) body.userData.shadow.geometry = bigger;
+        geo.dispose(); geo = body.geometry = bigger;
+      }
+      const pos = geo.attributes.position.array, nor = geo.attributes.normal.array, col = geo.attributes.color.array;
+      let o = 0;
+      for (let k = 0; k < rings; k++) {
+        const at_ = k * 3, x = line[at_], z = line[at_ + 1], along = line[at_ + 2];
+        const a = Math.max(0, k - 1) * 3, b = Math.min(count - 1, k + 1) * 3;
+        const dx = line[b] - line[a], dz = line[b + 1] - line[a + 1], len = Math.hypot(dx, dz) || 1, tx = dx / len, tz = dz / len;
+        const r = girth(along, last - along) * swell(i, last - along, now), wide = 0.6 * r, tall = 0.47 * r, shade = 0.95 * band(first + along);
+        const y = 0.48 * r + 0.05 + along * 0.0004;  // nearer the head lies a hair higher, so a crossing doesn't flicker
+        for (let v_ = 0; v_ < around; v_++, o += 3) {
+          const turn_ = (v_ / around) * Math.PI * 2, c = Math.cos(turn_), s = Math.sin(turn_);
+          pos[o] = x - tz * c * wide; pos[o + 1] = y + s * tall; pos[o + 2] = z + tx * c * wide;
+          const nx = -tz * c / 0.6, ny = s / 0.47, nz = tx * c / 0.6, m = Math.hypot(nx, ny, nz) || 1;
+          nor[o] = nx / m; nor[o + 1] = ny / m; nor[o + 2] = nz / m;
+          const spine = Math.max(0, (s - 0.8) / 0.2) * 0.3;  // a pale line along the back
+          col[o] = color.r + (dark.r - color.r) * shade; col[o + 1] = color.g + (dark.g - color.g) * shade; col[o + 2] = color.b + (dark.b - color.b) * shade;
+          col[o] += (pale.r - col[o]) * spine; col[o + 1] += (pale.g - col[o + 1]) * spine; col[o + 2] += (pale.b - col[o + 2]) * spine;
         }
       }
-      body.count = k; marks.count = d;
-      body.instanceMatrix.needsUpdate = true; body.instanceColor.needsUpdate = true;
-      marks.instanceMatrix.needsUpdate = true;
+      geo.setDrawRange(0, Math.max(0, rings - 1) * around * 6);
+      for (const key of ['position', 'normal', 'color']) {
+        const attr = geo.attributes[key];
+        attr.updateRange.offset = 0; attr.updateRange.count = o;  // only the rings in use, not room for the longest snake
+        attr.needsUpdate = true;
+      }
+    }
+    // gold orbs carry their value over them
+    const goldTags = new Map();
+    let goldTex = null;
+    function goldLabel() {
+      if (goldTex) return goldTex;
+      const c = document.createElement('canvas'); c.width = 128; c.height = 64;
+      const g = c.getContext('2d');
+      if (g) {
+        g.font = '900 46px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+        g.lineWidth = 9; g.strokeStyle = '#3b2600'; g.strokeText('+5', 64, 34); g.fillStyle = '#ffe27a'; g.fillText('+5', 64, 34);
+      }
+      return (goldTex = new T.CanvasTexture(c));
     }
     function drawOrbs(now) {
       if (!orbMesh) return;
       let k = 0;
       for (const [c, worth] of orbs) {
-        const [x, z] = at(c);
-        sc.setScalar((worth > 1 ? 0.48 : 0.36) * (1 + 0.15 * Math.sin(now / 220 + c))); v.set(x, 0.55, z); q.identity();
-        mtx.compose(v, q, sc); orbMesh.setMatrixAt(k, mtx); orbMesh.setColorAt(k, beadTint.set(ORB[c % ORB.length])); k++;
+        const [x, z] = at(c), kind = orbKind(worth), pulse_ = 1 + (worth >= 5 ? 0.22 : 0.1) * Math.sin(now / (worth >= 5 ? 150 : 220) + c);
+        sc.setScalar(kind.r * 1.15 * pulse_ * popIn(c, now)); v.set(x, 0.6, z); q.identity();
+        mtx.compose(v, q, sc); orbMesh.setMatrixAt(k, mtx); orbMesh.setColorAt(k, beadTint.set(kind.color));
+        sc.setScalar(kind.r * 3 * pulse_); v.set(x, 0.07, z);
+        mtx.compose(v, q, sc); haloMesh.setMatrixAt(k, mtx); haloMesh.setColorAt(k, beadTint); k++;
+        if (worth >= 5 && !goldTags.has(c)) {
+          const tag = new T.Sprite(new T.SpriteMaterial({ map: goldLabel(), transparent: true, depthWrite: false }));
+          tag.scale.set(3.6, 1.8, 1); goldTags.set(c, tag);
+        }
       }
-      orbMesh.count = k;
-      orbMesh.instanceMatrix.needsUpdate = true; orbMesh.instanceColor.needsUpdate = true;
+      for (const [c, tag] of goldTags) {
+        if ((orbs.get(c) ?? 0) < 5) { tag.parent?.remove(tag); tag.material.dispose(); goldTags.delete(c); continue; }
+        if (tag.parent !== world) world.add(tag);
+        const [x, z] = at(c); tag.position.set(x, 2.2 + 0.25 * Math.sin(now / 300 + c), z);
+      }
+      for (const m of [orbMesh, haloMesh]) { m.count = k; m.instanceMatrix.needsUpdate = true; m.instanceColor.needsUpdate = true; }
     }
-    const at = (c) => [(c % n) - n / 2 + 0.5, Math.floor(c / n) - n / 2 + 0.5];
+    const at = (c) => [(c % n) - n / 2 + 0.5, Math.floor(c / n) - high / 2 + 0.5];
     const mtx = new T.Matrix4(), q = new T.Quaternion(), up = new T.Vector3(0, 1, 0), v = new T.Vector3(), sc = new T.Vector3();
     function segment(a, b, setMatrix) {  // a thin glowing wall from point a to point b (x, z)
       const dx = b[0] - a[0], dz = b[1] - a[1], len = Math.hypot(dx, dz) + 0.3;
@@ -656,7 +904,7 @@ UI.riders = (() => {
       setMatrix(mtx);
     }
     function sync() {
-      if (!world || S.riders.n !== n || S.riders.mode !== mode || ribbons.length !== trails.length) return build();
+      if (!world || cols() !== n || rows() !== high || S.riders.mode !== mode || ribbons.length !== trails.length) return build();
       if (isSnake()) return;  // bodies are redrawn every frame
       trails.forEach((t, i) => {
         const inst = ribbons[i];
@@ -675,24 +923,25 @@ UI.riders = (() => {
       });
     }
     function reset() { build(); drawn = drawn.map(() => 0); sync(); }
-    // Fit the whole arena. A tall (portrait) box looks almost straight down so the square fills its
-    // width; a wide box keeps a lower, more dramatic angle. Then back off until all four corners fit.
+    // Fit the whole arena. A tall (portrait) box looks almost straight down so the board fills its
+    // width; a wide box keeps a slight angle. Then back off until all four corners fit.
     const base = new T.Vector3(), target = new T.Vector3();
     function resize() {
       const w = stage.clientWidth || 320, h = stage.clientHeight || 320;
       renderer.setSize(w, h, false); camera.aspect = w / h;
-      const half = (n || 40) / 2 + 1;
+      const halfX = (n || 40) / 2 + 0.8, halfZ = (high || 40) / 2 + 0.8;
       const k = Math.min(1, Math.max(0, (camera.aspect - 0.7) / 0.8));   // 0 portrait … 1 wide
-      const back = 0.12 + 0.34 * k;                                       // ~83° down on a phone, ~63° wide
-      target.set(0, 0, half * 0.05 * k);
-      let dist = half * 1.2;
-      for (let j = 0; j < 90; j++) {
+      const back = isSnake() ? 0.08 + 0.1 * k : 0.12 + 0.2 * k;           // snakes: near overhead, so the board is bigger
+      target.set(0, 0, halfZ * 0.04 * k);
+      let dist = Math.max(halfX, halfZ) * 0.6;
+      for (let j = 0; j < 140; j++) {
         camera.position.set(0, dist * 0.9, dist * back); camera.lookAt(target); camera.updateProjectionMatrix(); camera.updateMatrixWorld();
-        const fits = [[-half, -half], [half, -half], [-half, half], [half, half]].every(([x, z]) => {
-          const p = new T.Vector3(x, 0, z).project(camera); return Math.abs(p.x) < 0.98 && Math.abs(p.y) < 0.96;
+        const fits = [[-halfX, -halfZ], [halfX, -halfZ], [-halfX, halfZ], [halfX, halfZ]].every(([x, z]) => {
+          // (Orb Snakes keeps the board's far edge clear of the score chips along the top)
+          const p = new T.Vector3(x, 0, z).project(camera); return Math.abs(p.x) < 0.99 && p.y > -0.98 && p.y < (isSnake() ? 0.86 : 0.98);
         });
         if (fits) break;
-        dist *= 1.025;
+        dist *= 1.02;
       }
       base.copy(camera.position);
     }
@@ -784,16 +1033,21 @@ UI.riders = (() => {
         world?.remove(b.ring); b.ring.geometry.dispose(); b.ring.material.dispose();
       }
     }
-    const close = new T.Vector3(), look = new T.Vector3();
+    const close = new T.Vector3(), look = new T.Vector3(), focus = new T.Vector3();
+    let zoomed = false;
     function draw(now) {
       if (!world) return;
       const dt = Math.min(0.1, (now - lastDraw) / 1000); lastDraw = now;
       // 🧱 the walls move in, ring by ring
       if (walls.length === 4 && walls.ring !== ring) {
         walls.ring = ring;
-        const h = n / 2 - ring, span = (n - 2 * ring + 1) / (n + 1);
-        walls[0].position.z = -h - 0.25; walls[1].position.z = h + 0.25; walls[2].position.x = -h - 0.25; walls[3].position.x = h + 0.25;
-        walls.forEach((m) => { m.scale.set(m.geometry.parameters.width > 1 ? span : 1, 1, m.geometry.parameters.depth > 1 ? span : 1); m.material.color.setHex(ring ? 0xff6b6b : 0x8ecae6); m.material.emissive.setHex(ring ? 0xff6b6b : 0x8ecae6); });
+        const hx = n / 2 - ring, hz = high / 2 - ring, spanX = (n - 2 * ring + 1) / (n + 1), spanZ = (high - 2 * ring + 1) / (high + 1);
+        walls[0].position.z = -hz - 0.25; walls[1].position.z = hz + 0.25; walls[2].position.x = -hx - 0.25; walls[3].position.x = hx + 0.25;
+        walls.forEach((m) => {
+          m.scale.set(m.geometry.parameters.width > 1 ? spanX : 1, 1, m.geometry.parameters.depth > 1 ? spanZ : 1);
+          if (isSnake()) return;  // 🐍 the wooden fence keeps its colour (the arena never closes in)
+          m.material.color.setHex(ring ? 0xff6b6b : 0x8ecae6); m.material.emissive.setHex(ring ? 0xff6b6b : 0x8ecae6);
+        });
       }
       tickBooms(dt); tickSparks(dt); drawItems(now); drawOrbs(now);
       const me = S.riders.me;
@@ -801,7 +1055,7 @@ UI.riders = (() => {
         const pos = headPos(i, now), bike = bikes[i], tip = tips[i];
         if (isSnake()) { drawBody(i, now); flick(i, now); }
         if (!pos) { bike.visible = tip.visible = false; return; }
-        const p = [pos[0] - n / 2 + 0.5, pos[1] - n / 2 + 0.5];
+        const p = [pos[0] - n / 2 + 0.5, pos[1] - high / 2 + 0.5];
         bike.visible = !!live[i]?.alive;
         bike.position.set(p[0], 0, p[1]);
         const [dx, dy] = DIRS[headDir(i)];
@@ -829,15 +1083,50 @@ UI.riders = (() => {
         camera.position.lerpVectors(close, base, s);
         look.lerpVectors(myBike.position, target, s);
       }
+      // 🔍 zoom: stay over your own snake, without looking far past the fence
+      const zoom = follow_ && isSnake() && !!myBike?.visible && !counting && stage.clientWidth <= 560;
+      if (zoom) {
+        const clampTo = (v_, most) => Math.max(-most, Math.min(most, v_));
+        close.set(clampTo(myBike.position.x, n * 0.3), 0, clampTo(myBike.position.z, high * 0.3));
+        if (!zoomed) focus.copy(close); else focus.lerp(close, Math.min(1, dt * 8));
+        camera.position.copy(base).sub(target).multiplyScalar(0.55).add(focus);
+        look.copy(focus);
+      }
+      zoomed = zoom;
+      drawMap(zoom);
       camera.lookAt(look);
       GL3.tickShake(camera, dt);
       stg.follow(camera);
       renderer.render(scene, camera);
       pend = [];
     }
+    // the whole board in a corner while zoomed in: gold orbs, every snake, and you ringed
+    function drawMap(show) {
+      const map = $('lrMap'); if (!map) return;
+      map.hidden = !show;
+      const g = show && map.getContext('2d'); if (!g) return;
+      const cell = 192 / Math.max(n, high), w = Math.round(n * cell), h = Math.round(high * cell);
+      if (map.width !== w || map.height !== h) { map.width = w; map.height = h; map.style.aspectRatio = `${w} / ${h}`; }
+      g.fillStyle = '#10331fe6'; g.fillRect(0, 0, w, h);
+      g.fillStyle = ORBS[5].color;
+      for (const [c, worth] of orbs) if (worth >= 5) g.fillRect((c % n) * cell - 1, Math.floor(c / n) * cell - 1, cell + 2, cell + 2);
+      trails.forEach((t, i) => {
+        if (!live[i]?.alive || !t.length) return;
+        g.strokeStyle = colorOf(i); g.lineWidth = Math.max(2, cell * 1.2); g.beginPath();
+        t.forEach((c, k) => g[k ? 'lineTo' : 'moveTo'](((c % n) + 0.5) * cell, (Math.floor(c / n) + 0.5) * cell));
+        g.stroke();
+        if (i === mine()) { const c = t[t.length - 1]; g.strokeStyle = '#fff'; g.lineWidth = 2; g.beginPath(); g.arc(((c % n) + 0.5) * cell, (Math.floor(c / n) + 0.5) * cell, 7, 0, 6.283); g.stroke(); }
+      });
+    }
     function dispose() { stg.dispose(); renderer.dispose(); renderer.domElement.remove(); }
     if (S) build();
-    return { sync, reset, resize, draw, dispose, crash, pulse, grind, grab: grab3d };
+    // where board cell (x, y) is on screen, in the stage's own pixels
+    const spot = new T.Vector3();
+    function project(x, y) {
+      spot.set(x - n / 2 + 0.5, 0.8, y - high / 2 + 0.5).project(camera);
+      return [((spot.x + 1) / 2) * stage.clientWidth, ((1 - spot.y) / 2) * stage.clientHeight];
+    }
+    return { sync, reset, resize, draw, dispose, crash, pulse, grind, grab: grab3d, project };
   }
 
   // ---------- flat fallback
@@ -848,28 +1137,39 @@ UI.riders = (() => {
     let cell = 8;
     const glints = [];  // grind sparks: [x, y, born]
     function resize() {
-      const n = S?.riders?.n || 40, dpr = Math.min(devicePixelRatio || 1, 2);
-      const size = Math.min(stage.clientWidth || 320, stage.clientHeight || 320);
-      canvas.style.width = canvas.style.height = `${size}px`;
-      canvas.width = canvas.height = Math.round(size * dpr);
-      cell = canvas.width / n;
+      const w = cols(), h = rows(), dpr = Math.min(devicePixelRatio || 1, 2);
+      const side = Math.min((stage.clientWidth || 320) / w, (stage.clientHeight || 320) / h);  // one cell on screen
+      canvas.style.width = `${side * w}px`; canvas.style.height = `${side * h}px`;
+      canvas.width = Math.round(side * w * dpr); canvas.height = Math.round(side * h * dpr);
+      cell = canvas.width / w;
     }
     function draw(now) {
-      const n = S.riders.n;
+      const n = cols(), high = rows();
       if (!canvas.width) resize();
-      g.fillStyle = '#131c45'; g.fillRect(0, 0, canvas.width, canvas.height);
+      const garden = isSnake();
+      g.fillStyle = garden ? '#16482f' : '#131c45'; g.fillRect(0, 0, canvas.width, canvas.height);
+      if (garden) {
+        g.fillStyle = '#1b5437';
+        for (let x = 0; x < n; x += 4) for (let y = (x / 4) % 2 ? 4 : 0; y < high; y += 8) g.fillRect(x * cell, y * cell, 4 * cell, 4 * cell);
+      }
       if (ring) {  // 🧱 the closed band round the edge
         g.fillStyle = '#ff6b6b33';
         g.fillRect(0, 0, canvas.width, ring * cell); g.fillRect(0, canvas.height - ring * cell, canvas.width, ring * cell);
         g.fillRect(0, 0, ring * cell, canvas.height); g.fillRect(canvas.width - ring * cell, 0, ring * cell, canvas.height);
         g.strokeStyle = '#ff6b6b'; g.lineWidth = 2; g.strokeRect(ring * cell, ring * cell, canvas.width - 2 * ring * cell, canvas.height - 2 * ring * cell);
       }
-      g.strokeStyle = '#5b9dff44'; g.lineWidth = 1;
-      for (let k = 0; k <= n; k += 4) { g.beginPath(); g.moveTo(k * cell, 0); g.lineTo(k * cell, canvas.height); g.moveTo(0, k * cell); g.lineTo(canvas.width, k * cell); g.stroke(); }
-      if (isSnake()) {  // 🐍 orbs lie under the snakes
+      g.strokeStyle = garden ? '#ffffff0d' : '#5b9dff44'; g.lineWidth = 1;
+      for (let k = 0; k <= n; k += 4) { g.beginPath(); g.moveTo(k * cell, 0); g.lineTo(k * cell, canvas.height); g.stroke(); }
+      for (let k = 0; k <= high; k += 4) { g.beginPath(); g.moveTo(0, k * cell); g.lineTo(canvas.width, k * cell); g.stroke(); }
+      if (garden) {  // 🐍 orbs lie under the snakes, sized and coloured by what they're worth
         for (const [c, worth] of orbs) {
-          g.fillStyle = ORB[c % ORB.length];
-          g.beginPath(); g.arc((c % n + 0.5) * cell, (Math.floor(c / n) + 0.5) * cell, cell * (worth > 1 ? 0.45 : 0.32), 0, 6.283); g.fill();
+          const kind = orbKind(worth), x = (c % n + 0.5) * cell, y = (Math.floor(c / n) + 0.5) * cell;
+          g.fillStyle = kind.color + '33'; g.beginPath(); g.arc(x, y, cell * kind.r * 2.2, 0, 6.283); g.fill();
+          g.fillStyle = kind.color; g.beginPath(); g.arc(x, y, cell * kind.r * popIn(c, now) * (worth >= 5 ? 1 + 0.15 * Math.sin(now / 150 + c) : 1), 0, 6.283); g.fill();
+          if (worth >= 5) {
+            g.save(); g.font = `900 ${Math.max(10, Math.round(cell * 0.85))}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+            g.fillStyle = '#3b2600'; g.fillText('+5', x, y + cell * 0.05); g.restore();
+          }
         }
       }
       trails.forEach((t, i) => {
@@ -889,36 +1189,51 @@ UI.riders = (() => {
       });
       drawRest(now);
     }
+    // `color` darkened toward black by `by` (0 to 1)
+    const darker = (color, by) => {
+      const hex = color.length === 4 ? [...color.slice(1)].map((c) => c + c).join('') : color.slice(1, 7);
+      const v = parseInt(hex, 16);
+      return Number.isNaN(v) ? color : `rgb(${[v >> 16, (v >> 8) & 255, v & 255].map((c) => Math.round(c * (1 - by))).join(',')})`;
+    };
     function drawSnake2d(i, t, color, now) {
-      const n = S.riders.n, mid = (v) => (v + 0.5) * cell;
+      const n = cols(), mid = (v) => (v + 0.5) * cell;
       const head = headPos(i, now), end = tailPos(i, now);
       const pts = [[mid(end[0]), mid(end[1])]];
       for (let k = 1; k < t.length; k++) pts.push([mid(t[k] % n), mid(Math.floor(t[k] / n))]);
       pts.push([mid(head[0]), mid(head[1])]);
-      const last = pts.length - 1, first = (seq[i] ?? t.length) - t.length;
+      const last = pts.length - 1, first = (seq[i] ?? t.length) - t.length, count = curve(pts, 4);
       g.save(); g.lineJoin = g.lineCap = 'round';
-      // one stroke per cell so the body can taper: a dark rim all along first, then the banded skin inside it
-      const pass = (width, style) => {
-        for (let j = 1; j <= last; j++) {
-          g.strokeStyle = style(first + j); g.lineWidth = cell * width * girth(j - 0.5, last - j + 0.5);
-          g.beginPath(); g.moveTo(...pts[j - 1]); g.lineTo(...pts[j]); g.stroke();
+      // short strokes along the rounded line so the body can taper: a dark rim all along first, then the banded skin
+      // Neighbours that share a width (to the half pixel) and a shade (one of six) are drawn as one path: a
+      // stroke for every sample took most of a frame with long snakes.
+      const shades = [0, 1, 2, 3, 4, 5].map((k) => darker(color, 0.09 * k));
+      const pass = (width, shaded) => {
+        let open = false, wide = -1, shade = -1;
+        for (let j = 1; j < count; j++) {
+          const o = j * 3, at_ = (line[o + 2] + line[o - 1]) / 2;
+          const w_ = Math.round(2 * cell * width * girth(at_, last - at_) * swell(i, last - at_, now)) / 2;
+          const s_ = shaded ? Math.round(5 * band(first + at_)) : 0;
+          if (!open || w_ !== wide || s_ !== shade) {
+            if (open) g.stroke();
+            wide = w_; shade = s_; open = true;
+            g.lineWidth = wide; g.strokeStyle = shaded ? shades[shade] : '#000a';
+            g.beginPath(); g.moveTo(line[o - 3], line[o - 2]);
+          }
+          g.lineTo(line[o], line[o + 1]);
         }
+        if (open) g.stroke();
       };
-      pass(1.3, () => '#000a');
-      pass(1.02, () => color);
-      g.lineCap = 'butt';  // see-through strokes: round ends would overlap into blobs
-      pass(1.02, (num) => (Math.floor(num / 4) % 2 ? '#0004' : '#0000'));
-      pass(0.3, () => '#fff3');  // light along the back
-      g.lineCap = 'round';
-      g.fillStyle = '#ffffffa6';
-      for (let j = 3; j < last - 1; j++) {  // diamonds down the spine
-        if ((first + j) % 4 !== 2) continue;
-        const [x, y] = pts[j], [px, py] = pts[j - 1], len = Math.hypot(x - px, y - py);
-        if (!len) continue;
-        const ux = (x - px) / len, uy = (y - py) / len, r = cell * girth(j, last - j);
-        g.beginPath(); g.moveTo(x + ux * r * 0.5, y + uy * r * 0.5); g.lineTo(x - uy * r * 0.24, y + ux * r * 0.24);
-        g.lineTo(x - ux * r * 0.5, y - uy * r * 0.5); g.lineTo(x + uy * r * 0.24, y - ux * r * 0.24); g.fill();
+      pass(1.28, false);
+      pass(1.04, true);
+      // light along the back, as one stroke so its see-through ends can't pile up into beads
+      g.strokeStyle = '#fff4'; g.lineWidth = cell * 0.24; g.beginPath();
+      let started = false;
+      for (let j = 0; j < count; j++) {
+        const o = j * 3;
+        if (line[o + 2] <= 4) continue;
+        g[started ? 'lineTo' : 'moveTo'](line[o], line[o + 1]); started = true;
       }
+      g.stroke();
       // the head, drawn facing right and turned to the heading
       const [dx, dy] = DIRS[headDir(i)];
       g.translate(...pts[last]); g.rotate(Math.atan2(dy, dx)); g.scale(cell, cell);
@@ -956,7 +1271,7 @@ UI.riders = (() => {
       }
     }
     function drawRest(now) {
-      const n = S.riders.n;
+      const n = cols();
       if (items.size) {  // 🎁 power-ups
         g.save(); g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = `${Math.round(cell * 1.5)}px sans-serif`;
         for (const [c, kind] of items) {
@@ -972,7 +1287,7 @@ UI.riders = (() => {
         if (age > 1) { glints.splice(k, 1); continue; }
         g.fillStyle = `rgba(255,255,255,${1 - age})`; g.beginPath(); g.arc(x, y, cell * 0.25 * (1 + age), 0, 6.283); g.fill();
       }
-      g.strokeStyle = '#8ecae6'; g.lineWidth = 3; g.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
+      g.strokeStyle = isSnake() ? '#b98a52' : '#8ecae6'; g.lineWidth = isSnake() ? Math.max(4, cell * 0.5) : 3; g.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
     }
     function grind(i) {
       const pos = headPos(i, performance.now()); if (!pos) return;
@@ -980,7 +1295,12 @@ UI.riders = (() => {
     }
     resize();
     const grab = (i) => { for (let k = 0; k < 4; k++) grind(i); };
-    return { sync() {}, reset: resize, resize, draw, grind, grab };
+    // where board cell (x, y) is on screen, in the stage's own pixels (the canvas sits centred in the stage)
+    const project = (x, y) => {
+      const side = canvas.clientWidth / cols();
+      return [canvas.offsetLeft + (x + 0.5) * side, canvas.offsetTop + (y + 0.5) * side];
+    };
+    return { sync() {}, reset: resize, resize, draw, grind, grab, project };
   }
 
   const turnText = (s) => (s.phase === 'playing' ? `${s.riders.mode === 'snake' ? '🐍' : '🏍️'} Round ${s.riders.round} — first to ${s.riders.target}` : null);
