@@ -56,6 +56,8 @@ VISIT_RECAP = 1.65
 ROUND_LOOK = 4.0   # the round's darts stay up this much longer before they're pulled, for a look at the board (#279)
 DART_ORIGIN = (1.04, -0.55)
 SWIPE_PACE = 2.2
+AIM_SWAY = 0.11     # (#336) Adjust and release: how far (board radii) the aim drifts round the chosen spot, so the
+                    # moment of release is the skill. At 0.11 a single is easy to time and a triple takes practice
 SCATTER = 1.0       # 0 turns off the hand's wobble (tests): fast flicks scatter more than steady throws
 
 
@@ -621,6 +623,7 @@ class DartMatch:
             "checkout": [label(*hit) for hit in route],
             "doubleOut": self.double_out, "hint": hint,
             "aimControl": getattr(self, "aim_control", False),
+            "aimSway": AIM_SWAY if getattr(self, "aim_control", False) else 0,
             "roundRecap": self.grabbing is not None,
             "visitDarts": [shot for shot in self.darts if shot["o"] == round_seat] if self.alternating_axes else self.darts,
             "completedVisit": self.completed_visit,

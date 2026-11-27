@@ -2799,10 +2799,19 @@ UI.archery = (() => {
       if (element.textContent !== text) element.textContent = text;
     }
 
+    // (#336) Aim and release takes timing: the aim drifts round the spot the sliders set, in a loose figure that never
+    // quite repeats, and the dart goes where the ring is at the moment of release
+    function aimSway(now = performance.now()) {
+      const a = (!view.axeRings && view.aimSway) || 0;
+      if (!a) return { x: 0, y: 0 };
+      const t = now / 1000;
+      return { x: a * (0.8 * Math.sin(t * 3.5) + 0.2 * Math.sin(t * 8.3 + 1)), y: a * (0.75 * Math.sin(t * 4.7 + 2) + 0.25 * Math.sin(t * 2.1)) };
+    }
+
     function adjustPayload() {
-      const { x, y } = origin();
-      const dx = Number(aimX.value) / 100 - x;
-      return throwPayload(axePlacement ? dx : Math.min(-0.05, dx), Number(aimY.value) / 100 - y, 0, 0);
+      const { x, y } = origin(), drift = aimSway();
+      const dx = Number(aimX.value) / 100 + drift.x - x;
+      return throwPayload(axePlacement ? dx : Math.min(-0.05, dx), Number(aimY.value) / 100 + drift.y - y, 0, 0);
     }
 
     function announceAim({ dx, dy, vx, vy }) {
@@ -3638,6 +3647,7 @@ UI.archery = (() => {
         : `Next target: ${clockLabel(view.nextNumbers[view.next])}.`;
       if (view.mode === 'countup') rule = `Highest score after ${view.visitLimit} visits wins.`;
       hint.textContent = view.roundRecap ? 'The board clears after the recap.'
+        : mine() && view.aimControl && view.aimSway && !view.axeRings ? `Set the aim with the sliders. The ring drifts around it: press Release as it crosses your target. You can still swipe from the right half of the board, or from anywhere on it with a mouse. Select Inspect to rotate. ${rule}`
         : mine() && view.aimControl ? `Adjust horizontal and vertical aim, then release. Swipe from the right half of the board, or from anywhere on it with a mouse. Select Inspect to rotate. ${rule}`
         : mine() ? matchMedia('(pointer: fine)').matches
           ? `Hold the mouse button anywhere on the board, swipe inward and release when the ring is over your target. A faster swipe scatters more. Select Inspect to rotate. ${rule}`
