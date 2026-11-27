@@ -412,6 +412,11 @@
 .ar-darts-strip .now i { color: var(--text); }
 .ar-darts-strip .out { opacity: .5; }
 
+/* just below the two-column width the stacked board shrinks to fit a short window */
+@media (min-width: 861px) and (max-width: 1099px) and (max-height: 700px) {
+  .ar-darts .ar-darts-tabletop { width: min(100%, calc(var(--room) - 108px)); }
+}
+
 /* Darts on a wide screen: the board takes the height the window has, and the scores, result, messages and buttons stand
    beside it. Stacked under a 485px board they started below the first screen at 1536×735. */
 @media (min-width: 1100px) {
