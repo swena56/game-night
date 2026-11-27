@@ -382,6 +382,8 @@ function renderLobby() {
     for (const [v, l] of f.options) { const o = el('option', '', l); o.value = JSON.stringify(v); sel.append(o); }
     sel.value = JSON.stringify(S.settings[f.key]);
     sel.disabled = !host;
+    // judged on every option, so the layout doesn't jump when the choice changes
+    if (f.options.some(([, l]) => [...String(l)].length > 23)) lab.classList.add('wide');
     sel.onchange = () => quiet(act('settings', { settings: { [f.key]: JSON.parse(sel.value) } }));
     if (!isDefault(f)) { lab.classList.add('changed'); lab.title = 'Changed from the default (' + (f.options.find(([v]) => sameVal(v, f.default))?.[1] ?? '?') + ')'; }
     lab.append(sel); box.append(lab);

@@ -112,7 +112,8 @@ button.danger { background: linear-gradient(180deg, #ff5d82, #ef476f 55%, #d9325
   box-shadow: 0 3px 12px #ef476f40, inset 0 1px 0 #fff4; }
 button.danger.on { outline: 3px solid #fff; animation: pulse 1s infinite; }
 button.big { width: 100%; padding: 13px; font-size: 17px; }
-#lobbyReplayBtn { margin-top: 14px; }
+#startBtn, #lobbyReplayBtn { margin-top: 14px; }
+#lobbyEditorBtn:not([hidden]) + #startBtn { margin-top: 0; }  /* the editor button already leaves room below it */
 .ghost-btn { background: none; border: 0; color: var(--muted); text-decoration: underline; }
 .icon-btn { background: none; border: 0; font-size: var(--fs-lg); padding: 4px 6px; min-width: 40px; min-height: 40px; display: inline-grid; place-items: center; }
 .icon-btn svg { display: block; }
@@ -177,7 +178,9 @@ button.shake { animation: shake .35s; }
 .plist { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--s1); }
 .plist li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3); padding: var(--s2) var(--s3); border-radius: var(--r-md); background: var(--tint-1); }
 .plist .watch-btn { font-size: var(--fs-sm); }
-.settings { display: grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+.settings { display: grid; grid-template-columns: 1fr 1fr; grid-auto-flow: row dense; gap: 0 10px; }
+.settings label.wide { grid-column: 1 / -1; }  /* an option too long for half a phone gets the whole row */
+@media (max-width: 484px) { .settings { grid-template-columns: minmax(0, 1fr); } }
 /* a setting the host changed from the game's default gets a dot; ↺ Defaults puts them all back */
 .settings label.changed::before { content: "• "; color: var(--accent); font-weight: 700; }
 .settings-head { display: flex; align-items: center; gap: 8px; }
@@ -267,6 +270,11 @@ body.calm .nudge { animation: none; box-shadow: 0 0 0 2px #ffb70388; }
   /* Start stays at the bottom of the screen however long the lobby is; the ⚙️ 💬 buttons sit above it */
   #lobby #startBtn { position: sticky; bottom: max(10px, env(safe-area-inset-bottom)); z-index: 5; box-shadow: 0 6px 24px #000a, 0 3px 12px var(--accent-a40); }
   body[data-screen="lobby"] .fabs { bottom: calc(74px + env(safe-area-inset-bottom)); }
+}
+/* the floating ⚙️ 💬 buttons reach into the lobby card up to about 660px wide, and Start and the replay button
+   scroll past them: inset both so neither is ever covered */
+@media (max-width: 660px) {
+  #lobby #startBtn, #lobby #lobbyReplayBtn { width: calc(100% - 64px); margin-inline: 32px; padding-inline: 6px; }
 }
 .game-chosen { display: flex; align-items: center; gap: 10px; margin: 16px 0 0; padding-top: 12px; border-top: 1px solid var(--line);
   font-size: 20px; scroll-margin-top: 12px; }
