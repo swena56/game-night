@@ -44,6 +44,8 @@ ZOOM_SECS, ZOOM_PACE, ZOOM_PTS = 3.0, 1.35, 3   # ⚡ a zoomies pickup: a mouse 
 POUNCE_RANGE, POUNCE_SECS, POUNCE_COOL, POUNCE_PACE = 5, 1.0, 8.0, 1.35   # 🐾 a cat with a clear run at a mouse lunges: faster for a second, then a wait
 CRUMB, BELL, BONK, CATCH = 1, 5, 20, 8               # points
 CLEAR_BONUS, SWEEP_BONUS = 25, 25  # every crumb gone (each mouse still in) / every mouse out (each cat)
+LONE_MOUSE = 1.5                  # a mouse with the whole maze to itself gets this much more time: even a perfect
+                                  # path with no cat takes about two thirds of the normal round
 INF = 10 ** 6
 
 
@@ -192,6 +194,7 @@ class Whisker(Game):
         "🔔 A mouse that rings a bell makes every cat panic: bump one then to send it back to its basket.",
         "🕳️ Mouse holes let mice through the walls but not cats — though a cat at either end can reach in.",
         "Every round is a new maze: the 🌿 garden, the 🫙 pantry, the 🕯️ cellar. More mice, bigger maze.",
+        "⏱ A lone mouse has the whole maze to clear, so that round runs half as long again.",
         "Most points after every round wins. Run off one side of the tunnel and you pop out the other.",
     ]
     name = "Whisker Run"
@@ -265,6 +268,7 @@ class Whisker(Game):
         alley = self.s.get("alley", -1)
         if alley < 0:  # a hunter for nobody, when the mice would otherwise run riot
             alley = 1 if mi > ci else 0
+        self.round_secs = round(self.s.get("length", 75) * (LONE_MOUSE if mi == 1 else 1))
         self.pace = CAT_PACE + (OUTNUMBERED * (mi - ci) if ci >= 2 and mi > ci else 0)
         for _ in range(alley):
             self.ents.append(self.critter("a", None, cat_spawns[ci]))
@@ -419,7 +423,7 @@ class Whisker(Game):
         if self.stage == "countdown":
             if now >= self.next_at:
                 self.stage = "play"
-                self.end_at = now + self.s.get("length", 75)
+                self.end_at = now + getattr(self, "round_secs", self.s.get("length", 75))
                 self.acc = 0.0
                 return True
             return False

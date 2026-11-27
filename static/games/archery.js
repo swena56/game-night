@@ -2244,7 +2244,7 @@ UI.archery = (() => {
           </svg>
           <svg class="ar-darts-hitflash" viewBox="0 0 250 250" aria-hidden="true"></svg>
           <svg class="ar-darts-input" viewBox="0 0 250 250" tabindex="0" role="group"
-            aria-label="Dartboard. Activate Inspect to rotate the board. Touch the right half to pick up a dart and swipe inward. With a keyboard, use arrows to aim, Shift and arrows for larger steps, Enter or Space to throw, and Escape to clear aim.">
+            aria-label="Dartboard. Activate Inspect to rotate the board. Touch the right half to pick up a dart and swipe inward; with a mouse, press on the board, move to your target and let go. With a keyboard, use arrows to aim, Shift and arrows for larger steps, Enter or Space to throw, and Escape to clear aim.">
             <g class="ar-darts-board"></g><g class="ar-darts-holes"></g><g class="ar-darts-pins"></g>
             <circle class="ar-darts-axe-contact-marker" r="3" hidden aria-hidden="true"/>
             <g class="ar-darts-grip" aria-hidden="true"><rect x="-25" y="-25" width="48" height="50" rx="14"/></g>
@@ -2536,7 +2536,8 @@ UI.archery = (() => {
           const onBoard = board.contains(e.target);
           const bounds = board.getBoundingClientRect();
           const onGrabSide = e.clientX >= bounds.left + bounds.width / 2;
-          if (onBoard && onGrabSide && !view.axeRings && !inspecting && ready() && contacts.size <= 1) {
+          // a mouse can pick the dart up from anywhere on the board; the right-half rule is there for stray touches
+          if (onBoard && (onGrabSide || e.pointerType === 'mouse') && !view.axeRings && !inspecting && ready() && contacts.size <= 1) {
             pickUp(e);
             return;
           }
@@ -2606,6 +2607,8 @@ UI.archery = (() => {
         e.preventDefault();
         keys = null;
         swipe = { id: e.pointerId, scale, x: e.clientX, y: e.clientY, samples: [], dx: 0, dy: 0, pickedAt: performance.now() };
+        // a mouse on the board points and releases: the dart goes at the spot let go over, at the standard pace
+        swipe.point = !view.axeRings && e.pointerType === 'mouse' && e.currentTarget !== swipeButton;
         if (view.axeRings) swipe.capture = {
           pointer: e.pointerType || 'mouse', start: e.timeStamp,
           points: [], count: 0, path: 0, peak: 0, lastMovement: e.timeStamp,
@@ -2627,6 +2630,7 @@ UI.archery = (() => {
         sample(e);
         clearTimeout(aimTimer);
         const { dx, dy, vx, vy } = swipePayload();
+        const pointed = swipe.point, off = swipe.off;
         const hand = pose();
         const from = view.axeRings ? hand : darts3d?.releasePoint(hand) ?? {
           x: hand.x - 0.04,
@@ -2636,7 +2640,8 @@ UI.archery = (() => {
         };
         const swipeStats = swipe.capture && axeSwipeStats();
         swipe = null;
-        if ((!axePlacement && dx > -0.05) || Math.hypot(dx, dy) < (view.axeRings ? 0.18 : 0.1)) {
+        if (pointed && off) { setText(aimStatus, 'Let go off the board: no throw.'); return; }
+        if (!pointed && ((!axePlacement && dx > -0.05) || Math.hypot(dx, dy) < (view.axeRings ? 0.18 : 0.1))) {
           setText(aimStatus, view.axeRings ? 'Make a longer swipe toward your target.' : 'Swipe inward to throw. Try again.');
           return;
         }
@@ -2861,11 +2866,20 @@ UI.archery = (() => {
     }
 
     function swipePayload() {
+      // the same target limit and pace as a keyboard throw, so the scatter is the same
+      if (swipe.point) return throwPayload(Math.min(-0.05, swipe.dx), swipe.dy, -view.swipePace, 0);
       const { vx, vy } = swipeReleaseVelocity();
       return throwPayload(swipe.dx, swipe.dy, swipe.capture && !vx && !vy ? -0.001 : vx, vy);
     }
 
     function sample(e) {
+      if (swipe.point) {
+        const r = board.getBoundingClientRect(), o = origin();
+        const px = (e.clientX - r.left) / r.width * WIDTH, py = (e.clientY - r.top) / r.height * WIDTH;
+        swipe.dx = (px - CENTER) / SCALE - o.x; swipe.dy = (CENTER - py) / SCALE - o.y;
+        swipe.off = px < 0 || px > WIDTH || py < 0 || py > WIDTH;
+        return;
+      }
       const dx = (e.clientX - swipe.x) / swipe.scale, dy = (swipe.y - e.clientY) / swipe.scale;
       const capture = swipe.capture;
       if (capture) {
@@ -3637,8 +3651,10 @@ UI.archery = (() => {
         : `Next target: ${clockLabel(view.nextNumbers[view.next])}.`;
       if (view.mode === 'countup') rule = `Highest score after ${view.visitLimit} visits wins.`;
       hint.textContent = view.roundRecap ? 'The board clears after the recap.'
-        : mine() && view.aimControl ? `Adjust horizontal and vertical aim, then release. Swipe from the right half of the board or select Inspect to rotate. ${rule}`
-        : mine() ? `Select Inspect to rotate. Start on the right half or the throw button. Swipe inward and release when the ring is over your target. Pinch to zoom. ${rule}`
+        : mine() && view.aimControl ? `Adjust horizontal and vertical aim, then release. Swipe from the right half of the board, or with a mouse press on your target and let go. Select Inspect to rotate. ${rule}`
+        : mine() ? matchMedia('(pointer: fine)').matches
+          ? `Press on the board, move the ring over your target and let go. Let go off the board to cancel. Select Inspect to rotate. ${rule}`
+          : `Select Inspect to rotate. Start on the right half or the throw button. Swipe inward and release when the ring is over your target. Pinch to zoom. ${rule}`
         : `Select Inspect to rotate. Pinch to zoom. ${rule}`;
     }
 

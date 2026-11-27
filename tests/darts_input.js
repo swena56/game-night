@@ -732,6 +732,43 @@ async function test() {
     closeTo(placedThrow.axeOrigin[0] + placedThrow.dx, 0);
     closeTo(placedThrow.axeOrigin[1] + placedThrow.dy, 0);
     assert.ok(placedThrow.vx > 0);
+
+    // last, on a fresh table
+    ui.unmount?.();
+    ui.mount(document.querySelector('main'), document.querySelector('aside'));
+    rejectThrow = false;
+    reducedMotion = true;
+    const plain = {
+      title: '301', mode: '301', x01: true, readyIn: 0, roundRecap: false, seats: ['a'],
+      active: [0], me: 0, next: 0, left: 3, visit: 1, numbers: [20], darts: [],
+      points: [301], checkout: [], swipePace: 2.2, spreadBase: 0.03, spreadPerPace: 0.012,
+      radii: [0.037, 0.094, 0.58, 0.63, 0.953, 1],
+    };
+    ui.render({ phase: 'playing', darts: plain }, context);
+    frame(window.performance.now());
+    actions.length = 0;
+    {
+    const board = document.querySelector('.ar-darts svg[tabindex]');
+    // a mouse points and releases: the dart goes at the spot it lets go over, at the keyboard's pace
+    const mouse = (type, x, y) => {
+      const event = new window.MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0 });
+      Object.defineProperties(event, { pointerId: { value: 7 }, pointerType: { value: 'mouse' } });
+      board.dispatchEvent(event);
+    };
+    board.getBoundingClientRect = () => ({ left: 0, top: 0, width: 250, height: 250 });
+    mouse('pointerdown', 40, 200);
+    mouse('pointermove', 125 - 0.3 * 98, 125 - 0.4 * 98);
+    mouse('pointerup', 125 - 0.3 * 98, 125 - 0.4 * 98);
+    assert.equal(actions.length, 1);
+    closeTo(1.04 + actions[0].payload.dx, -0.3);
+    closeTo(-0.55 + actions[0].payload.dy, 0.4);
+    closeTo(actions[0].payload.vx, -plain.swipePace);
+    closeTo(actions[0].payload.vy, 0);
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    mouse('pointerdown', 125, 125);
+    mouse('pointerup', 400, 125);
+    assert.equal(actions.length, 1, 'letting go off the board throws nothing');
+    }
   } finally {
     ui.unmount();
     window.close();

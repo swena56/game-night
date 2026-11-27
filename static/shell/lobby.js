@@ -51,6 +51,12 @@ function renderPickerBar(bar, pick, redraw) {
     c.onclick = () => { store('pickerSort', key === 'type' ? null : key); redraw(); };
     sorts.append(c);
   }
+  // tiles or a one-per-line list (#315), remembered on this device
+  const list = el('button', 'chip-btn', '☰ List');
+  list.title = 'Show the games as a list instead of tiles';
+  list.setAttribute('aria-pressed', load('pickerView') === 'list');
+  list.onclick = () => { store('pickerView', load('pickerView') === 'list' ? null : 'list'); redraw(); };
+  sorts.prepend(list);
   bar.append(sorts);
   if (sort !== 'type' || load('pickerKind')) return;  // only card games showing (#189): nothing to jump between
   const jump = el('div', 'picker-jump');
@@ -73,6 +79,7 @@ function renderPickerGrid(pick, opts) {
   let { games, seated = 0, current = null, query = '', onlyFits = false, kind = load('pickerKind'), tile, redraw } = opts;
   redraw ||= () => renderPickerGrid(pick, opts);
   pick.innerHTML = '';
+  pick.classList.toggle('as-list', load('pickerView') === 'list');
   query = query.trim().toLowerCase();
   const hidden = hiddenGames();
   // 🙈 hidden games leave every group, unless you're searching or it's the game picked right now

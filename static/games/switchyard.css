@@ -20,14 +20,14 @@
   background: #182b34; color: var(--depot); border: 2px solid var(--depot);
   border-radius: .5rem; font-size: 1.1rem; line-height: 1;
 }
-.sy-depot { width: clamp(30px, 9%, 60px); height: 13%; border-width: 3px; border-radius: .6rem .6rem .25rem .25rem; }
+.sy-depot { width: clamp(36px, 11%, 64px); height: 13%; font-size: 1.6rem; border-width: 3px; border-radius: .6rem .6rem .25rem .25rem; }
 .sy-switch {
   display: grid; align-content: center; gap: .1rem; z-index: 1;
   min-width: 76px; min-height: 46px; padding: .25rem .45rem; line-height: 1.15;
   background: #243d48; border: 1px solid #92bbc6; border-radius: .55rem; color: #fff;
   font-size: clamp(.7rem, 2.4vw, .88rem); white-space: nowrap; touch-action: manipulation;
 }
-.sy-switch > span { color: #97f9df; }
+.sy-switch > span { color: #fff; font-weight: 700; }
 .sy-switch:focus-visible { outline: 3px solid #ffe7a4; outline-offset: 3px; }
 .sy-switch:disabled { opacity: .8; }
 .sy-train {
@@ -36,7 +36,8 @@
   border-radius: .45rem .45rem .2rem .2rem; box-shadow: 0 2px 0 #08191e;
 }
 .sy-train[data-node="entry"] { transform: translate(calc(-50% + 49px), -50%); }
-.sy-train small { font-size: .8em; color: #f4f7fa; }
+.sy-train { font-size: 1.35rem; }
+.sy-train small { font-size: .6em; color: #f4f7fa; }
 .sy-feedback { min-height: 1.5em; margin-block: .55rem 0; font-weight: 700; }
 .sy-correct { color: #72e6c2; }
 .sy-wrong { color: #ffae9d; }
@@ -65,7 +66,7 @@
 .sy-scene { position: absolute; inset: 0; pointer-events: none; }
 .sy-3d .sy-flat { display: none; }
 .sy-3d .sy-entry { transform: translate(-50%, -135%); }
-.sy-3d .sy-depot { width: 29px; height: 29px; border-width: 1px; }
+.sy-3d .sy-depot { width: 40px; height: 40px; border-width: 2px; font-size: 1.6rem; }
 .sy-3d .sy-train {
   width: 1px; height: 1px; min-width: 0; min-height: 0;
   clip-path: inset(50%); overflow: hidden;
@@ -83,6 +84,7 @@
   padding: .25rem; border-radius: .5rem; background: #172c33;
 }
 .sy-preview > strong { font-size: .78rem; }
+.sy-preview .sy-token { min-width: 2.3rem; min-height: 2.3rem; font-size: 1.5rem; }
 .sy-preview > .sy-call-controls, .sy-preview > .sy-route-call { grid-column: 1 / -1; }
 .sy-route-call:empty { display: none; }
 .sy-call-controls { display: inline-flex; gap: .2rem; }

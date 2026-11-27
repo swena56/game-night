@@ -73,13 +73,19 @@
 .bl-over .bl-spin { width: auto; flex-direction: row; gap: 6px; }
 .bl-busy.bl-over .bl-controls { opacity: .3; }
 .bl-over .bl-controls:hover, .bl-over .bl-controls:focus-within { opacity: 1; }
-body.focus #game .layout:has(.bl-fill) > aside { position: fixed; top: calc(var(--bar-h, 52px) + 10px); left: 50%; transform: translateX(-50%);
-  width: max-content; max-width: min(760px, calc(100vw - 24px)); max-height: none; overflow: visible; z-index: 5; pointer-events: none; transition: opacity .25s; }
-body.focus #game .layout:has(.bl-fill) #sideGame { flex: none; }
-body.focus #game .layout:has(.bl-fill) .bl-side { margin: 0; padding: 4px 12px; border-radius: 12px; background: #0b0f14a6;
-  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); box-shadow: 0 4px 18px #0007; }
+/* on a wide screen the game info is a slim strip above the table: floating over it, it hid the far rail and pockets.
+   The two settings wait behind ⚙ so the strip stays one line and the table keeps its height. */
+body.focus #game .layout:has(.bl-fill) { row-gap: 4px; }
+body.focus #game .layout:has(.bl-fill) > aside { order: -1; position: static; max-height: none; overflow: visible; justify-content: center; }
+body.focus #game .layout:has(.bl-fill) #sideGame { flex: 0 1 auto; }
+body.focus #game .layout:has(.bl-fill) .bl-side { margin: 0; padding: 2px 10px; gap: 4px 10px; justify-content: center; border-radius: 12px; }
 body.focus #game .layout:has(.bl-fill) .bl-side #blStatus { flex: 0 1 auto; }
-body.focus #game .layout:has(.bl-busy) > aside { opacity: .2; }
+body.focus #game .layout:has(.bl-fill) .bl-rack { padding: 2px 6px; gap: 3px; }
+body.focus #game .layout:has(.bl-fill) .bl-rack .bl-dot { width: 17px; height: 17px; font-size: 8px; box-shadow: inset 0 0 0 4px var(--c), inset 0 0 0 9px #fff; }
+body.focus #game .layout:has(.bl-fill) .bl-rack .bl-dot.stripe { box-shadow: inset 0 0 0 9px transparent; }
+.bl-gear { display: none; padding: 2px 9px; font-size: 14px; }
+body.focus #game .layout:has(.bl-fill) .bl-gear { display: inline-block; }
+body.focus #game .layout:has(.bl-fill) .bl-side:not(.open) .bl-tablevol { display: none; }
 .bl-racks { display: grid; gap: 6px; margin: 8px 0; }
 .bl-keys { opacity: 0.8; }
 @media (hover: none) {

@@ -411,3 +411,17 @@
 .ar-darts-strip .now { box-shadow: inset 0 0 0 2px var(--accent); }
 .ar-darts-strip .now i { color: var(--text); }
 .ar-darts-strip .out { opacity: .5; }
+
+/* Darts on a wide screen: the board takes the height the window has, and the scores, result, messages and buttons stand
+   beside it. Stacked under a 485px board they started below the first screen at 1536×735. */
+@media (min-width: 1100px) {
+  .ar-darts { max-width: 1160px; display: grid; grid-template-columns: minmax(0, 1fr) clamp(260px, 22vw, 340px); column-gap: 16px;
+    grid-template-rows: repeat(12, auto) 1fr; align-items: start; }
+  .ar-darts > * { grid-column: 2; min-width: 0; }
+  .ar-darts > .ar-darts-board-wrap { grid-column: 1; grid-row: 1 / -1; justify-self: end; width: min(100%, max(360px, var(--room, calc(100vh - 150px))), 780px); }
+  .ar-darts .ar-darts-tabletop { width: min(100%, max(344px, calc(var(--room, calc(100vh - 150px)) - 16px)), 764px); }
+  .ar-darts > header { flex-wrap: wrap; padding-top: 0; }
+  .ar-darts-strip { flex-direction: column; }
+  .ar-darts-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  .ar-darts-result { flex: 1 1 9rem; text-align: left; }
+}

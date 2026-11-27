@@ -6,6 +6,7 @@ UI.ultimate = (() => {
   const threats = (boards, seat) => new Set(boards.map((v, b) => b).filter((b) => boards[b] == null
     && LINES.some((l) => l.includes(b) && l.every((x) => x === b || boards[x] === seat))));
   const MARK = ['✕', '◯'];
+  const $ = (id) => document.getElementById(id);  // app.js's $ takes a CSS selector; this file looks things up by id
   // 🧭 where would playing this square send my rival? (hover or focus a legal square; touch players get it as a hint line)
   function route(u, i) {
     const b = Math.floor(i / 9), k = i % 9;
@@ -19,7 +20,8 @@ UI.ultimate = (() => {
     const u = S?.ultimate, hint = $('utHint');
     if (!hint) return;
     big.querySelectorAll('.route,.route-closed').forEach((el) => el.classList.remove('route', 'route-closed'));
-    if (i == null || !u || S.phase !== 'playing') { hint.textContent = baseHint; return; }
+    // the preview is a hint (#319), so it follows the room's hint setting
+    if (i == null || !u || S.phase !== 'playing' || !S.hintsOk) { hint.textContent = baseHint; return; }
     const r = route(u, i);
     big.children[r.board].classList.add(r.closed ? 'route-closed' : 'route');
     hint.textContent = r.closed ? `🧭 Board ${r.board + 1} is closed, so your rival may play in any open board.` : `🧭 Sends your rival to board ${r.board + 1}.`;

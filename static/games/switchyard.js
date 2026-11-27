@@ -92,7 +92,7 @@ UI.switchyard = (() => {
       pen.strokeStyle = '#48595b';
       pen.stroke();
       pen.lineWidth = 8;
-      pen.strokeStyle = selected ? '#a9e9d6' : '#829393';
+      pen.strokeStyle = selected ? '#eef6f8' : '#829393';
       pen.stroke();
       pen.lineWidth = 4;
       pen.strokeStyle = '#1a292e';
@@ -114,7 +114,7 @@ UI.switchyard = (() => {
         pen.strokeStyle = '#1a292e';
         pen.stroke();
         pen.lineWidth = 3;
-        pen.strokeStyle = '#a9e9d6';
+        pen.strokeStyle = '#eef6f8';
         pen.stroke();
       }
     }
@@ -351,6 +351,7 @@ UI.switchyard = (() => {
       const suggested = board.hints?.[node];
       const hint = suggested === undefined ? '' : suggested === position ? ' · Ready' : ' · Flip';
       button.lastChild.textContent += hint;
+      button.lastChild.style.color = heading[route] ? '' : depots[route][2];  // a depot's name wears its colour (#317)
       button.classList.toggle('sy-suggest', suggested !== undefined && suggested !== position);
       button.setAttribute('aria-label', `${names[node]}, set to ${label}${hint}.${due ? ' Train arriving next beat.' : ''}${misses.has(node) ? ' A train went off route here.' : ''} Flip switch.`);
       button.classList.toggle('sy-due', due);

@@ -10,7 +10,10 @@
 // Usage: start a server (e.g. PORT=8767 python3 server.py), then in tests/:
 //   npm install && BASE=http://localhost:8767 node layout.js [game ...]
 //   SHOTS=/some/dir  also saves a screenshot per game and width;  WIDTHS=485,1280 (the default; a size
-//   such as 844x390 sets the height too, for a phone on its side)
+//   such as 844x390 sets the height too, for a phone on its side).
+// At desktop widths (861px up) it also prints notes to review, which don't fail the run: how much of the space the
+// biggest board takes, whether that board runs off the first screen, and which game buttons start below it.
+//   WIDTHS=1280x635,1536x735,1920x1080
 // It uses the system Chromium (CHROMIUM=/usr/bin/chromium by default) through playwright-core.
 const { chromium } = require('playwright-core');
 const BASE = process.env.BASE || 'http://localhost:8767';
@@ -72,7 +75,32 @@ function inspect() {
   return problems;
 }
 
-async function check(game, width) {
+// Desktop notes, taken at scroll 0.
+function desktopNotes() {
+  if (innerWidth < 861) return [];
+  window.scrollTo(0, 0);
+  const arena = document.querySelector('#arena');
+  if (!arena) return [];
+  const ar = arena.getBoundingClientRect(), room = innerHeight - ar.top;
+  const seen = (e) => { const r = e.getBoundingClientRect(), cs = getComputedStyle(e); return r.width > 4 && r.height > 4 && cs.visibility !== 'hidden' && !e.closest('[hidden]'); };
+  const notes = [];
+  let board = null, area = 0;
+  for (const e of arena.querySelectorAll('canvas, svg, [class*="stage"], [class*="board"], [class*="table"], [class*="grid"], [class*="felt"]')) {
+    if (!seen(e)) continue;
+    const r = e.getBoundingClientRect();
+    if (r.width * r.height > area) { board = e; area = r.width * r.height; }
+  }
+  if (board) {
+    const r = board.getBoundingClientRect(), name = String(board.getAttribute('class') || board.id || board.tagName).split(/\s+/)[0];
+    notes.push(`board ${name} ${Math.round(r.width)}×${Math.round(r.height)} in ${Math.round(ar.width)}×${Math.round(room)}` +
+      ` (${Math.round(100 * r.width / ar.width)}% wide, ${Math.round(100 * r.height / room)}% tall)` + (r.bottom > innerHeight + 2 ? ` CUT OFF by ${Math.round(r.bottom - innerHeight)}px` : ''));
+  }
+  const below = [...arena.querySelectorAll('button')].filter((b) => !b.disabled && seen(b) && b.getBoundingClientRect().bottom > innerHeight + 2);
+  if (below.length) notes.push(`${below.length} button(s) below the first screen, e.g. ${below.slice(0, 4).map((b) => b.id || b.textContent.trim().slice(0, 16) || b.className).join(', ')}`);
+  return notes;
+}
+
+async function check(game, width, notes) {
   // A fresh browser per game: several WebGL games in one browser (or several browsers at once) can crash it.
   const browser = await chromium.launch({ executablePath: CHROMIUM, args: ['--no-sandbox'] });
   const errors = [];
@@ -83,12 +111,13 @@ async function check(game, width) {
     page.on('console', (m) => m.type() === 'error' && !/favicon|Failed to load resource|WebGL|GPU stall/i.test(m.text()) && errors.push(m.text()));
     await page.goto(BASE + '/');
     await page.fill('#name', 'Layout');
-    await page.selectOption('#soloGame', game);
+    await page.selectOption('#soloGame', game, { force: true });  // the select is hidden behind the picker
     await page.click('#soloBtn');
     await page.waitForSelector('#arena', { state: 'attached', timeout: 15000 });
     await sleep(2500);  // let the board draw, the bots move and the first animations finish
     let problems = await page.evaluate(inspect);
     if (problems.length) { await sleep(1500); problems = await page.evaluate(inspect); }  // ignore a passing animation
+    notes.push(...await page.evaluate(desktopNotes));
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/${game}-${width}.png` });
     return [...problems, ...errors.map((e) => 'JavaScript error: ' + e)];
   } catch (e) {
@@ -115,9 +144,9 @@ async function check(game, width) {
   let bad = 0;
   for (const game of games) {
     for (const width of WIDTHS) {
-      const problems = await check(game, width);
+      const notes = [], problems = await check(game, width, notes);
       bad += problems.length ? 1 : 0;
-      console.log(`${problems.length ? '✗' : '✓'} ${game.padEnd(12)} ${String(width).padStart(4)}px` + (problems.length ? '\n    ' + problems.join('\n    ') : ''));
+      console.log(`${problems.length ? '✗' : '✓'} ${game.padEnd(12)} ${String(width).padStart(4)}px` + [...problems, ...notes.map((n) => '· ' + n)].map((l) => '\n    ' + l).join(''));
     }
   }
   console.log(`\n${games.length} games × ${WIDTHS.length} widths: ${bad ? bad + ' with problems' : 'all fit'}`);

@@ -489,7 +489,7 @@ body.calm .nudge { animation: none; box-shadow: 0 0 0 2px #ffb70388; }
 #overBanner { position: fixed; z-index: 28; left: 50%; top: calc(var(--bar-h, 52px) + 8px); transform: translateX(-50%); width: min(92vw, 480px);
   max-height: calc(100dvh - var(--bar-h, 52px) - 24px); overflow-y: auto; padding: 16px; border-radius: var(--radius); border: 1px solid var(--line);
   background: linear-gradient(90deg, var(--accent-a20), #ef476f33), var(--panel); box-shadow: 0 0 0 100vmax #0007, 0 12px 40px #000c;
-  display: flex; gap: 12px; align-items: stretch; flex-wrap: wrap; font-size: 17px; font-weight: 700; flex-direction: column; }
+  display: flex; gap: 12px; align-items: stretch; flex-wrap: nowrap; font-size: 17px; font-weight: 700; flex-direction: column; }
 #overBanner > div { flex: 1; min-width: 200px; }
 #overBanner:not([hidden]) { animation: overIn .4s cubic-bezier(.2, 1.4, .4, 1); }
 #overBanner.won { background: linear-gradient(100deg, var(--accent-a40), #06d6a033, var(--accent-a40)), var(--panel); background-size: 200% 100%; animation: overIn .4s cubic-bezier(.2, 1.4, .4, 1), sheen 5s linear infinite; }
@@ -508,7 +508,7 @@ body.calm .nudge { animation: none; box-shadow: 0 0 0 2px #ffb70388; }
 @keyframes crownIn { from { transform: translate(-50%, -14px) scale(0); opacity: 0; } }
 /* a phone on its side: a wide, short card (head across the top, podium + scores + buttons side by side) so the results fit without scrolling */
 @media (orientation: landscape) and (max-height: 540px) {
-  #overBanner:not(.folded) { top: 6px; width: min(96vw, 860px); max-height: calc(100dvh - 12px); padding: 8px 14px; gap: 6px 16px; font-size: 15px; flex-direction: row; align-items: flex-start; }
+  #overBanner:not(.folded) { top: 6px; width: min(96vw, 860px); max-height: calc(100dvh - 12px); padding: 8px 14px; gap: 6px 16px; font-size: 15px; flex-direction: row; flex-wrap: wrap; align-items: flex-start; }
   #overBanner:not(.folded) > .over-head { flex: 1 0 100%; font-size: 17px; }
   #overBanner:not(.folded) > div { min-width: 0; }
   #overBanner:not(.folded) .podium { flex: 0 0 auto; gap: 8px; padding: 0; }
@@ -519,6 +519,15 @@ body.calm .nudge { animation: none; box-shadow: 0 0 0 2px #ffb70388; }
   #overBanner:not(.folded) .over-actions { flex: 1 1 180px; }
   /* text and the vote go on their own rows underneath: beside the buttons they squeezed them as they arrived */
   #overBanner:not(.folded) > :is(.over-goal, #overWait, .over-vote, .playlist) { flex: 1 0 100%; }
+}
+/* a wide screen: who won and the buttons on the left, the scores and XP beside them, so Rematch is on screen without
+   scrolling. Everything else runs the full width underneath. */
+@media (min-width: 861px) and (min-height: 541px) {
+  #overBanner:not(.folded):not([hidden]) { display: grid; width: min(94vw, 820px); grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px 18px; align-content: start; }
+  #overBanner:not(.folded) > * { grid-column: 1 / -1; min-width: 0; }
+  #overBanner:not(.folded) > .podium { grid-column: 1; grid-row: 2; align-self: start; }
+  #overBanner:not(.folded) > .over-actions { grid-column: 1; grid-row: 3; align-self: start; }
+  #overBanner:not(.folded) > .over-scores { grid-column: 2; grid-row: 2 / span 2; align-self: start; }
 }
 #overBanner.folded .podium { display: none; }
 /* folded: a slim bar at the top, no dimming, so the board can be looked over */
@@ -646,7 +655,10 @@ body.replaying .layout { padding-bottom: 190px; }  /* the bar covers the bottom 
 .avatar { flex: none; width: 22px; height: 22px; border-radius: 50%; overflow: hidden; box-shadow: 0 0 0 1px #0004; }
 .avatar svg { display: block; width: 100%; height: 100%; }
 .avatar-emoji { display: inline-grid; place-items: center; background: radial-gradient(circle at 35% 30%, #fff6, transparent 60%), var(--ac, #888);
-  font-size: 13px; line-height: 1; }
+  font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif; font-size: 13px; line-height: 1; }
+/* the places below set the avatar's display for their drawn faces; an emoji has to stay a grid to sit in the middle */
+.pod .avatar.avatar-emoji { display: grid; place-items: center; }
+.msg b .avatar.avatar-emoji { display: inline-grid; }
 .pod .avatar-emoji { font-size: 26px; }
 .pod-1 .avatar-emoji { font-size: 38px; }
 .plist .avatar-emoji { font-size: 20px; }
@@ -1737,3 +1749,10 @@ body.light :is(#home, #lobby) { background: radial-gradient(ellipse at 50% 0, #f
 }
 :is(#lobby, body[data-screen="home"] .picker-sheet) .game-tile:focus-visible { outline-offset: -4px; }
 body.lowgfx :is(#lobby, body[data-screen="home"] .picker-sheet) .game-tile .gicon { filter: none; }
+/* #315: the list view: icon, name, players on one row; stars and "new" move to the end of it */
+.picker.as-list .game-tile { flex-direction: row; gap: 10px; padding: 6px 10px; text-align: left; }
+.picker.as-list .game-tile .gicon { --gi: 34px; font-size: 19px; margin-block: 0; }
+.picker.as-list .game-tile b { flex: 1; width: auto; min-width: 0; height: auto; text-align: left; font-size: var(--fs-sm); letter-spacing: normal; }
+.picker.as-list .game-tile small { display: block; position: static; transform: none; flex: none; height: auto; max-width: 40%; padding: 0; border: 0; background: none; font-size: var(--fs-xs); }
+.picker.as-list .game-tile :is(.tile-stars, .tile-new, .wishes) { position: static; flex: none; }
+.picker.as-list .game-tile .tile-unhide { position: static; }

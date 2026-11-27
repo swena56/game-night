@@ -1338,6 +1338,7 @@ UI.billiards = (() => {
     side.innerHTML = `<div class="panel bl-side">
       <div id="blStatus" class="seat-row"></div>
       <div id="blRacks" class="bl-racks"></div>
+      <button id="blGear" class="bl-gear" type="button" title="Table sound and camera" aria-label="Table sound and camera" aria-expanded="false">⚙</button>
       <p class="hint left" id="blHint">Drag the cue stick for slow, fine aim, or anywhere else on the table to turn it quickly. ◀ ▶ fine-tune (hold to speed up). Pull the power bar back and let go to shoot. ✋ With ball in hand, drag the cue ball to move it.</p>
       <label class="bl-tablevol" title="The balls rolling on the cloth and down the pocket's return. The clicks and thumps are always on (with sound on).">🔈 Table sound
         <select id="blTableVol"><option value="normal">Normal</option><option value="quiet">Quiet</option><option value="off">Off</option></select></label>
@@ -1443,6 +1444,8 @@ UI.billiards = (() => {
     // the browser reports "ResizeObserver loop completed with undelivered notifications"
     ro = window.ResizeObserver ? new ResizeObserver(() => { cancelAnimationFrame(roRaf); roRaf = requestAnimationFrame(layout); }) : null;
     ro?.observe($('blStage')); ro?.observe($('blStage').nextElementSibling);  // the controls wrapping to two rows shrinks the table
+    ro?.observe(side.firstElementChild);  // so does the info strip above it growing a row
+    $('blGear').onclick = () => $('blGear').setAttribute('aria-expanded', side.firstElementChild.classList.toggle('open'));
     raf = requestAnimationFrame(tick);
   }
 

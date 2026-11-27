@@ -337,7 +337,7 @@ UI.prism = (() => {
   }
 
   // ---------- animation state
-  const vis = () => Array.from({ length: N * N }, () => ({ ox: 0, oy: 0, sx: 0, sy: 0, vy: 0, land: 0, born: 0, ice: 0 }));
+  const vis = () => Array.from({ length: N * N }, () => ({ ox: 0, oy: 0, sx: 0, sy: 0, lx: 0, ly: 0, vy: 0, land: 0, born: 0, ice: 0 }));
   let cells = vis();
   let pops = [], fx = [], pfx = Fx2D.create({ cap: 320 }), sel = null, cursor = null, hint = null, lastAct = 0;
   let falling = null, swapAnim = null;
@@ -540,7 +540,7 @@ UI.prism = (() => {
       const ch = g[i], c = cells[i];
       if (ch === EMPTY) continue;
       let [x, y] = cellXY(i);
-      x += (c.ox + c.sx) * cs; y += (c.oy + c.sy) * cs;
+      x += (c.ox + c.sx + c.lx) * cs; y += (c.oy + c.sy + c.ly) * cs;
       let sxs = 1, sys = 1;
       const since = t - c.land;
       if (c.land && since < 220) { const q = Math.sin(since / 220 * Math.PI) * 0.14; sxs = 1 + q; sys = 1 - q; busy = true; }
@@ -756,13 +756,32 @@ UI.prism = (() => {
     return [x / list.length, y / list.length];
   };
 
-  async function animSwap(a, b, bounce) {
+  // while a swipe is short of swapping, the gem and the neighbour it's heading for follow the finger or mouse
+  let leaning = [];
+  function unlean() {
+    if (!leaning.length) return;
+    for (const i of leaning) cells[i].lx = cells[i].ly = 0;
+    leaning = []; kick();
+  }
+  function lean(a, b, k) {
+    unlean();
+    if (!motion() || !c2 || st.busy || !still(a) || !still(b) || !movable(a) || !movable(b)) return;
+    const dx = b % N - a % N, dy = ((b / N) | 0) - ((a / N) | 0);
+    cells[a].lx = dx * k; cells[a].ly = dy * k; cells[b].lx = -dx * k; cells[b].ly = -dy * k;
+    leaning = [a, b]; kick();
+  }
+
+  // from: how far (0–1 of a cell) a swipe has already carried the two gems, so the swap carries on from there
+  async function animSwap(a, b, bounce, from = 0) {
     if (!motion() || !c2) return;
     const ax = a % N, ay = (a / N) | 0, bx = b % N, by = (b / N) | 0;
-    const dur = 150, t0 = now();
+    const dur = from ? 170 : 190, t0 = now();
     await new Promise((res) => {
       const step = () => {
-        const k = Math.min(1, (now() - t0) / dur), e = bounce ? Math.sin(k * Math.PI) * 0.45 : k * k * (3 - 2 * k);
+        const k = Math.min(1, (now() - t0) / dur);
+        // mid-swipe the gems are already moving, so they only slow down; from a standstill they ease in too
+        const e = bounce ? from * (1 - k) + Math.sin(k * Math.PI) * (0.45 - from / 2)
+          : from ? from + (1 - from) * k * (2 - k) : k * k * (3 - 2 * k);
         cells[a].ox = (bx - ax) * e; cells[a].oy = (by - ay) * e; cells[b].ox = (ax - bx) * e; cells[b].oy = (ay - by) * e;
         kick();
         if (k < 1) requestAnimationFrame(step); else res();
@@ -850,7 +869,7 @@ UI.prism = (() => {
     if (st.pendingMoves.length !== before) renderPendingMoves();
   }
 
-  async function runMove(a, b) {
+  async function runMove(a, b, from = 0) {
     if (!st || !canPlay()) return;
     if (st.busy) { if (!joinMove(a, b)) queueMove(a, b); return; }
     hint = null; lastAct = now();
@@ -858,12 +877,12 @@ UI.prism = (() => {
     st.busy = true;
     try {
       ctx.sfx?.('flip');
-      if (!what) { ctx.sfx?.('wrong'); await animSwap(a, b, true); return; }
+      if (!what) { ctx.sfx?.('wrong'); await animSwap(a, b, true, from); return; }
       if (what === 'combo') { try { Kit.callout('💥 SPECIAL COMBO!', 'gold'); } catch {} }
       else if (what === 'prism') { try { Kit.callout('🌈 PRISM SWEEP!', 'cool'); } catch {} }
       if (st.lv) st.lv.left--;
       const m = mult();
-      await animSwap(a, b, false);
+      await animSwap(a, b, false, from);
       st.joined = []; st.joins = 0; st.open = true;   // from here until the board settles, more swaps can join in
       const fired = [], madeList = [];
       let pts = 0, step = 0;
@@ -1561,16 +1580,19 @@ UI.prism = (() => {
     cv.onpointermove = (e) => {
       if (!start || !st) return;
       const dx = e.clientX - start.x, dy = e.clientY - start.y, cell = size / N;
-      if (Math.max(Math.abs(dx), Math.abs(dy)) < cell * 0.4) return;
+      const far = Math.max(Math.abs(dx), Math.abs(dy)) / cell;
       const x = start.i % N, y = (start.i / N) | 0;
       const [nx, ny] = Math.abs(dx) > Math.abs(dy) ? [x + Math.sign(dx), y] : [x, y + Math.sign(dy)];
-      const a = start.i;
+      const a = start.i, off = nx < 0 || nx >= N || ny < 0 || ny >= N;
+      if (far < 0.4) { if (off || !canPlay()) unlean(); else lean(a, ny * N + nx, far); return; }
       start = null;
-      if (nx < 0 || nx >= N || ny < 0 || ny >= N || !canPlay()) return;
-      sel = null; runMove(a, ny * N + nx);
+      const from = leaning[0] === a && leaning[1] === ny * N + nx ? 0.4 : 0;
+      unlean();
+      if (off || !canPlay()) return;
+      sel = null; runMove(a, ny * N + nx, from);
     };
-    cv.onpointerup = () => { if (start) tap(start.i); start = null; };
-    cv.onpointercancel = () => { start = null; };
+    cv.onpointerup = () => { unlean(); if (start) tap(start.i); start = null; };
+    cv.onpointercancel = () => { unlean(); start = null; };
     keyHandler = (e) => {
       if (e.target?.closest?.('input, textarea, select, button, [role="button"]')) return;
       if (!st || !canPlay()) return;

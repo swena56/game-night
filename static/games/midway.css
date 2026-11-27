@@ -158,6 +158,16 @@
 @media (max-width: 860px) {
   #game .layout:has(.mw-basketball) { max-width: none; grid-template-columns: minmax(0, 1fr); }
 }
+/* On a wide screen the cabinet fits the window's height, and the scoreboard stands on the bare wall to the left of
+   it: across the top it covered the hoop and backboard. */
+@media (min-width: 861px) {
+  .mw-basketball .mw-stage { height: min(780px, max(340px, calc(var(--app-h, 100vh) - 132px))); }
+  .mw-basketball .mw-hud { left: 8px; right: auto; top: 8px; justify-content: flex-start; }
+  .mw-basketball .mw-display { flex-direction: column; gap: 0; }
+  .mw-basketball .mw-display :is(.mw-clock, .mw-best) { border-left: 0; border-top: 1px solid #ffffff17; }
+  .mw-basketball .mw-sub { left: 8px; right: auto; top: auto; bottom: 8px; flex-direction: column; align-items: flex-start; }
+  .mw-basketball #mwHot { position: static; transform: none; }
+}
 .mw-basketball .mw-ctl { display: none; }
 .mw-basketball .mw-stage .mw-meter {
   position: absolute;

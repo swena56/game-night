@@ -128,6 +128,8 @@ body.focus .pz-wrap { width: min(100%, 680px, calc(var(--room, 100vh) - 60px)); 
   .pz-rivals { flex-direction: row; flex-wrap: wrap; }
   .pz-rival { flex: 1 1 140px; }
 }
+/* in the wide focus view the clock, meter and standing line above the board need 90px, or the bottom row is off the screen */
+@media (min-width: 861px) { body.focus .pz-wrap { width: min(100%, 680px, calc(var(--room, 100vh) - 90px)); } }
 @media (max-width: 380px) {
   .pz-wrap { min-width: 0; }
   .pz-top { gap: 6px; }

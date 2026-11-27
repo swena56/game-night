@@ -55,7 +55,7 @@ check('a glancing hit deflects both balls along their contact normal',
   struck.velocity[0] > 0 && struck.velocity[2] > 0 && glancing.velocity[2] < 0 &&
   gap(glancing, struck) >= 2 * P.hoopRadius - 1e-5);
 const front = P.rackBall(0);
-const behind = returning(0.29, -0.925, 0, 0);
+const behind = returning(0.29, P.hoopRackZ - 0.065, 0, 0);
 for (let i = 0; i < 240; i++) P.stepBasketballReturn([front, behind]);
 const blockedZ = behind.z, rested = behind.ready;
 const freed = P.takeRackBall([front, behind], front);
@@ -64,8 +64,8 @@ check('removing the blocker lets a parked ball roll to the backstop',
   rested && blockedZ < P.hoopRackZ - 0.005 && behind.ready && Math.abs(behind.z - P.hoopRackZ) < 1e-6);
 
 const leader = P.rackBall(0);
-const follower = returning(0.29, -0.927, 0, 0);
-const tail = returning(0.58, -0.993, 0, 0);
+const follower = returning(0.29, P.hoopRackZ - 0.067, 0, 0);
+const tail = returning(0.58, P.hoopRackZ - 0.133, 0, 0);
 for (let i = 0; i < 240; i++) P.stepBasketballReturn([leader, follower, tail]);
 const runner = returning(-0.65, -2.1, 0, 0.4);
 const soloRunner = returning(-0.65, -2.1, 0, 0.4);
@@ -76,7 +76,8 @@ for (let i = 0; i < 30; i++) {
 check('a resting pile does not slow an unrelated returning ball', gap(runner, soloRunner) < 1e-7);
 const followerZ = follower.z, tailZ = tail.z;
 const freedChain = P.takeRackBall([leader, follower, tail], leader);
-for (let i = 0; i < 120; i++) P.stepBasketballReturn(freedChain);
+// 2 s: the tail comes to rest leaning on the follower, and counts as ready after a second of that
+for (let i = 0; i < 240; i++) P.stepBasketballReturn(freedChain);
 check('removing the first ball releases a chain without merging the followers',
   follower.z > followerZ + 0.02 && tail.z > tailZ + 0.02 &&
   follower.ready && tail.ready && gap(follower, tail) >= 2 * P.hoopRadius - 1e-5);
@@ -99,6 +100,32 @@ const early4 = runReturn(4, 0.5), early120 = runReturn(120, 0.5);
 check('moving and settled balls agree at 4 and 120 render frames per second',
   early4.balls.every((ball, i) => gap(ball, early120.balls[i]) < 1e-8) &&
   at4.balls.every((ball, i) => gap(ball, at120.balls[i]) < 1e-8));
+// a full rack shot over and over: balls that end up leaning on others must still come to rest and be shootable
+let stuck = 0;
+for (const seed of [3, 11, 29, 101]) {
+  let r = seed;
+  const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647;
+  let rack = [-2, -1, 0, 1, 2].map((i) => P.rackBall(i * 0.34));
+  const flying = [];
+  for (let step = 0; step < 52 * 120; step++) {
+    if (step < 40 * 120 && step % 108 === 0) {
+      const free = rack.filter((ball) => ball.ready);
+      if (free.length) {
+        const ball = free[Math.floor(rnd() * free.length)];
+        rack = P.takeRackBall(rack, ball);
+        flying.push([step + 108, ball]);
+      }
+    }
+    while (flying.length && flying[0][0] <= step) {
+      const made = rnd() < 0.5;
+      rack.push(P.beginBasketballReturn(flying.shift()[1], { hoop: made ? 0 : null },
+        [1, (rnd() - 0.5) * 1.2, made ? 1.5 : 1.2 + rnd(), -2.4, rnd() - 0.5, -1 - rnd(), made ? -0.3 : 1 + rnd(), 'end']));
+    }
+    P.stepBasketballReturn(rack);
+  }
+  stuck += rack.filter((ball) => !ball.ready || !ball.sleeping).length + (P.stepBasketballReturn(rack) ? 1 : 0);
+}
+check('after a long round every ball is back in the rack and still', stuck === 0);
 const afterResume = returning(0, -1.6, 0, 0), afterShortFrame = returning(0, -1.6, 0, 0);
 P.advanceBasketballReturn([afterResume], 0, 30);
 P.advanceBasketballReturn([afterShortFrame], 0, 0.125);

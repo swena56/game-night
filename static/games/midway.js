@@ -759,6 +759,8 @@ UI.midway = (() => {
     const remaining = balls.filter((resting) => resting !== ball);
     // Removing a support can release other balls even without an impact.
     for (const resting of remaining) {
+      resting.parked = false;
+      resting.anchor = null;
       resting.sleeping = false;
       resting.stillSteps = 0;
     }
@@ -770,9 +772,22 @@ UI.midway = (() => {
     Object.assign(ball, {
       x: last[1], y: last[2], z: last[3], spin: last[0] * 9,
       velocity: returnScale.map((scale, i) => last[i + 4] * scale * slowdown[i]),
-      ready: false, stillSteps: 0, sleeping: false, returning: true,
+      ready: false, stillSteps: 0, sleeping: false, returning: true, parked: false, anchor: null,
     });
     return ball;
+  }
+
+  // A ball leaning on others can creep a thousandth of a unit a second for ever, never counting as back in the rack
+  // and keeping the booth drawing at full rate (a hot, slow phone). One that stays this close to a spot this long is
+  // parked there.
+  const parkDistance = 0.03, parkSteps = 120;
+  function parkCreeping(ball, x, y, z) {
+    const a = ball.anchor;
+    if (!a || Math.hypot(x - a.x, y - a.y, z - a.z) > parkDistance) {
+      ball.anchor = { x, y, z, steps: 0 };
+      ball.parked = false;
+    } else if (++a.steps >= parkSteps) ball.parked = true;
+    return ball.parked;
   }
 
   function stepBasketballReturn(balls) {
@@ -866,13 +881,15 @@ UI.midway = (() => {
       const atBackstop = z >= hoopRackZ - 0.001;
       const quiet = atBackstop && nearFloor && rackSpeed < 0.13;
       // Keep a returning ball moving until it reaches the rack's backstop.
-      const ready = quiet;
+      // a parked ball stays asleep until something moves it
+      const parked = parkCreeping(ball, x, y, z);
+      const ready = quiet || parked;
       moved ||= travel > 1e-5 || Math.abs(y - ball.y) > 1e-5 || ready !== ball.ready;
       // A settled ball participates in swept collisions without repeatedly
       // spending the shared event budget on gravity against the tray.
       const still = quiet && travel < 0.00025 && Math.abs(y - ball.y) < 0.00025;
       ball.stillSteps = still ? Math.min(12, ball.stillSteps + 1) : 0;
-      ball.sleeping = ball.stillSteps === 12;
+      ball.sleeping = parked || ball.stillSteps === 12;
       if (ball.sleeping) velocity.fill(0);
       ball.spin += nearFloor ? travel / hoopRadius : hoopStep * 5;
       Object.assign(ball, { x, y, z, ready });

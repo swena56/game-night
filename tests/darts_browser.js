@@ -131,14 +131,14 @@ async function check(browser, mobile, axe = false, reducedMotion = mobile, missi
         darts.darts = darts.visitDarts = [darts.shot];
         if (axe) darts.points[0] = darts.shot.value;
         darts.left = 2;
-        UI.archery.render({ phase: 'playing', darts }, context);
+        UI.archery.render({ phase: 'playing', hintsOk: true, darts }, context);
       };
       window.addRivalAxe = () => {
         darts.darts = [...darts.darts, { ...darts.shot, id: 2, o: 1, x: 0.14 }];
-        UI.archery.render({ phase: 'playing', darts }, context);
+        UI.archery.render({ phase: 'playing', hintsOk: true, darts }, context);
       };
       UI.archery.mount(document.querySelector('main'), document.querySelector('aside'));
-      UI.archery.render({ phase: 'playing', darts }, context);
+      UI.archery.render({ phase: 'playing', hintsOk: true, darts }, context);
     }, { axe, mobile, cornerScoring });
     await page.waitForFunction(() => window.THREE, null, { polling: 20 });
     if (axe && !reducedMotion) await page.evaluate(() => stepDartsFrame(16));
@@ -153,7 +153,9 @@ async function check(browser, mobile, axe = false, reducedMotion = mobile, missi
     if (axe) {
       const scoreboard = await page.locator('main .ar-darts-score-panel').boundingBox();
       const target = await page.locator('.ar-darts-board-wrap').boundingBox();
-      assert.ok(scoreboard.y >= 0 && scoreboard.y + scoreboard.height <= target.y);
+      // stacked above the target on a narrow page; in the column beside it from 1100px
+      const wide = (await page.viewportSize()).width >= 1100;
+      assert.ok(scoreboard.y >= 0 && (wide ? scoreboard.x >= target.x + target.width : scoreboard.y + scoreboard.height <= target.y));
       assert.ok(scoreboard.y + scoreboard.height <= (await page.viewportSize()).height);
     } else {
       assert.equal(await page.locator('aside .ar-darts-score-panel').count(), 1);
@@ -210,7 +212,9 @@ async function check(browser, mobile, axe = false, reducedMotion = mobile, missi
     assert.match(await page.locator('.ar-darts-turn[role=status]').textContent(), axe ? /Your throw.*5 left/ : /Your visit.*3 left/);
     if (axe) assert.match(await page.locator('.ar-darts-hint').textContent(), /A clean stick scores 1–5 points.*8 rounds wins/);
     const grab = page.getByRole('group', { name: /^Axe starting position/ });
-    const tabOrder = axe ? [...focusOrder.slice(0, 3), grab, ...focusOrder.slice(3)] : focusOrder;
+    const flash = page.getByRole('button', { name: 'Flash the section a dart hits' });
+    const board = axe ? [focusOrder[2], grab] : [focusOrder[2]];
+    const tabOrder = [...focusOrder.slice(0, 2), ...(await flash.isVisible() ? [flash] : []), ...board, ...focusOrder.slice(3)];
     for (const control of tabOrder) {
       await page.keyboard.press('Tab');
       assert.ok(await control.evaluate((element) => element === document.activeElement), await control.getAttribute('class'));

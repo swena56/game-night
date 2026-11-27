@@ -54,19 +54,23 @@ const Switchyard3D = (() => {
     }
 
     const roadbed = mat('#253b3e'), ties = mat('#637069'), steel = mat('#b2bab5');
-    const active = mat('#a2efdb', false), idle = mat('#55747a', false);
+    const active = mat('#eef6f8', false), idle = mat('#55747a', false);
     const shadow = mat('#142629', false), platform = mat('#29474e'), trim = mat('#779494');
     const lamps = depots.map(([, , color]) => mat(color, false));
     const shells = depots.map(([, , color]) => mat(color));
     const roof = mat('#19323b'), windowGlass = mat('#c7ecf0', false);
-    const symbols = depots.map(([symbol]) => {
+    // the badge on a train matches its depot's token: same symbol, same colour, dark face (#317, #318)
+    const symbols = depots.map(([symbol, , color]) => {
       const canvas = document.createElement('canvas');
       canvas.width = canvas.height = 64;
       const ctx = canvas.getContext('2d');
       ctx.fillStyle = '#19323b';
       ctx.fillRect(0, 0, 64, 64);
-      ctx.font = 'bold 50px system-ui, sans-serif';
-      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 6;
+      ctx.strokeRect(3, 3, 58, 58);
+      ctx.font = 'bold 52px system-ui, sans-serif';
+      ctx.fillStyle = color;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(symbol, 32, 31);
@@ -74,7 +78,7 @@ const Switchyard3D = (() => {
       textures.push(texture);
       return new T.MeshBasicMaterial({ map: texture });
     });
-    const sign = new T.PlaneGeometry(13, 13);
+    const sign = new T.PlaneGeometry(21, 21);
     const errorLamp = mat('#ff8978', false);
 
     function rebuild() {

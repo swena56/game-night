@@ -301,15 +301,15 @@ async function reportForm(kind, retry = {}) {
 const logHasEntries = () => $('#log').childElementCount > 0;
 function show(id) {
   if (id === 'game' && document.body.dataset.screen !== 'game' && document.scrollingElement) document.scrollingElement.scrollTop = 0;  // the lobby may have scrolled (#72)
-  for (const s of ['loading', 'home', 'utils', 'lobby', 'game', 'bingoTools']) $('#' + s).hidden = s !== id;
+  for (const s of ['loading', 'home', 'lobby', 'game', 'bingoTools']) $('#' + s).hidden = s !== id;
+  if (id !== 'bingoTools') closeUtils();
   if (id !== 'bingoTools' && $('#bingoTools').childElementCount) UI.bingotools?.close();
   guardLobbyBack(id === 'lobby');
   guardGameBack(id === 'game');
   if (id !== 'game') { document.body.classList.remove('focus'); closeMenu(); closeSheets(); }
   document.body.dataset.screen = id;
   if (id !== 'loading') clearTimeout(show.slow);
-  $('#fabs').hidden = id === 'home' || id === 'utils' || id === 'bingoTools';
-  if (id === 'utils') { $('#chatPanel').hidden = true; document.title = 'Utilities · Game Night'; }
+  $('#fabs').hidden = id === 'home' || id === 'bingoTools';
   if (id === 'home') { $('#chatPanel').hidden = true; document.title = 'Game Night'; if (typeof fillSoloGames === 'function') fillSoloGames(); }
 }
 // Back in the lobby goes home. Alone (or with bots) it leaves at once; with other people in the room it asks first.
@@ -716,7 +716,8 @@ function fitPicker(pick = $('#gamePicker')) {
   const tile = window.matchMedia?.('(max-width: 600px)').matches ? 78 : 104;  // phones get compact tiles (style.css)
   const most = width ? Math.max(2, Math.floor((width + 8) / tile)) : 4;
   // every group gets the same columns, so every tile in the picker is the same size (#191)
-  for (const g of pick.querySelectorAll('.picker-group')) g.style.gridTemplateColumns = `repeat(${most}, minmax(0, 1fr))`;
+  const columns = pick.classList.contains('as-list') ? Math.max(1, Math.floor(width / 260)) : most;
+  for (const g of pick.querySelectorAll('.picker-group')) g.style.gridTemplateColumns = `repeat(${columns}, minmax(0, 1fr))`;
 }
 
 // the picker's wiring; its code is in shell/lobby.js
@@ -1181,7 +1182,17 @@ function confetti() {
 }
 
 // ---------- wiring
-$('#name').value = load('unmask.name') || '';
+// nobody has to think of a name first (#316): a new device gets Player1234, kept until the player changes it.
+// Their record is filed under the device, not the name, so renaming loses nothing.
+function ensureName() {
+  if ($('#name').value.trim()) return;
+  const name = load('unmask.name') || 'Player' + (1000 + Math.floor(Math.random() * 9000));
+  $('#name').value = name; store('unmask.name', name);
+}
+$('#name').value = '';
+ensureName();
+$('#name').addEventListener('change', ensureName);  // a cleared box gets the saved name back
+$('#name').onfocus = () => /^Player\d{4}$/.test($('#name').value) && $('#name').select();  // typing replaces a made-up name
 // solo choices carry this device's ★ bot-ladder stars, and "new" for games never finished here
 function fillSoloGames() {
   const sel = $('#soloGame'), was = sel.value, newTags = Profile.showNew();
@@ -1213,21 +1224,26 @@ $('#newGameBtn').onclick = () => { const id = Profile.suggest(); pickSolo(id); t
 $('#recordBtn').onclick = () => Profile.show(pickSolo).then(() => Profile.homeLine($('#homeLevel')));
 $('#homeLevel').onclick = () => $('#recordBtn').click();
 Profile.sync(300);  // ✨ back up (and on a cleared browser, bring back) the lifetime record
-// 🧰 Utilities: the tools that are not games. Back (button or phone) returns home.
-const onUtilsBack = () => show('home');
-function openUtils() { show('utils'); backOpen(onUtilsBack); }
+// 🧰 Utilities: the tools that are not games, in a box over the home screen. ✕, Escape, a tap outside or Back closes it.
+function onUtilsBack() { $('#utils').hidden = true; }
+function closeUtils() { if (!$('#utils').hidden) { onUtilsBack(); backClosed(onUtilsBack); } }
+function openUtils() { $('#utils').hidden = false; backOpen(onUtilsBack); $('#bingoToolsBtn').focus(); }
 $('#utilsBtn').onclick = openUtils;
-$('#utilsBack').onclick = () => { backClosed(onUtilsBack); show('home'); };
+$('#utilsX').onclick = closeUtils;
+$('#utils').onclick = (e) => { if (e.target === e.currentTarget) closeUtils(); };
+$('#utils').onkeydown = (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeUtils(); $('#utilsBtn').focus(); } };
 // the feedback inbox only opens on the device running the server, so only that device gets the link
 const isLocalhost = () => ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
 $('#feedbackInboxLink').hidden = !isLocalhost();
 // 🔵 Bingo tools: a local-only screen (no room); Back returns to Utilities
 $('#bingoToolsBtn').onclick = () => needUI('bingotools').then(() => {
   let open = true;
-  const onBack = () => { if (!open) return; open = false; show('utils'); };
+  const toUtils = () => { show('home'); $('#utils').hidden = false; };  // its Back entry is still on the stack
+  const onBack = () => { if (!open) return; open = false; toUtils(); };
   show('bingoTools');
+  $('#utils').hidden = true;
   backOpen(onBack);
-  UI.bingotools.open($('#bingoTools'), { toast, sfx, confetti, ask, back: () => { if (!open) return; open = false; backClosed(onBack); show('utils'); } });
+  UI.bingotools.open($('#bingoTools'), { toast, sfx, confetti, ask, back: () => { if (!open) return; open = false; backClosed(onBack); toUtils(); } });
 }).catch(() => toast('The Bingo tools did not load: check the connection.'));
 $('#lobbyRecordBtn').onclick = () => Profile.show();
 $('#createBtn').onclick = () => api('/api/create', { name: $('#name').value }).then(enter).catch((e) => toast(e.message));
@@ -1390,6 +1406,7 @@ $('#chatBubble').onclick = () => $('#chatBtn').click();
 $('#chatForm').onsubmit = (e) => { e.preventDefault(); sendChat($('#chatInput').value); $('#chatInput').value = ''; };
 for (const q of QUICK_CHAT) { const b = el('button', '', q); b.type = 'button'; b.onclick = () => sendChat(q); $('#quickChat').append(b); }
 $('#prefsBtn').onclick = () => { renderPrefs(); $('#prefsPanel').hidden = !$('#prefsPanel').hidden; $('#chatPanel').hidden = true; };
+$('#homePrefsBtn').onclick = () => $('#prefsBtn').click();
 $('#prefsClose').onclick = () => ($('#prefsPanel').hidden = true);
 function setBadge() {
   for (const b of [$('#chatBadge'), $('#dockBadge')]) { b.hidden = !unread; b.textContent = unread; }
@@ -1461,7 +1478,7 @@ document.addEventListener('pointerdown', (e) => {
   if (!$('#dockReactBar').hidden && !t.closest?.('#dock')) setReactOpen(false);
   if (logSheet() && !t.closest?.('.log-panel, #dockLog, #modal')) setLogSheet(false);
   if ($('#chatPanel').hidden && $('#prefsPanel').hidden) return;
-  if (t.closest?.('.drawer, #fabs, #dockChat, #gameMenu, #menuBtn, #chatBubble, #modal')) return;
+  if (t.closest?.('.drawer, #fabs, #homePrefsBtn, #dockChat, #gameMenu, #menuBtn, #chatBubble, #modal')) return;
   $('#chatPanel').hidden = true; $('#prefsPanel').hidden = true;
 }, true);
 document.addEventListener('keydown', (e) => {

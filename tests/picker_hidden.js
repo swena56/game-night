@@ -14,7 +14,7 @@ w.eval(`
   function store(k, v) { v == null ? delete mem[k] : (mem[k] = JSON.stringify(v)); }
   function el(tag, cls = '', text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
   const $ = (s) => document.querySelector(s);
-  const Profile = { showNew: () => false, stars: () => 0, tried: () => true, starText: () => '', lastAt: () => '', played: () => 0 };
+  const Profile = { showNew: () => false, bestLabel: () => '', stars: () => 0, tried: () => true, starText: () => '', lastAt: () => '', played: () => 0 };
   const CATEGORIES = [['dice', '🎲 Dice'], ['words', '🔤 Words']];
   const SOLO_BOTS = {}; const SOLO_GAMES = [];
   function fitPicker() {}
