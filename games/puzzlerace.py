@@ -219,12 +219,12 @@ class PuzzleRace(Game):
     def on_finish(self, p, secs):
         pass
 
-    def bank(self, p):
+    def bank(self, p, why=None):
         if p.id in self.banked:
             raise GameError("You've already called it.")
         self.banked.add(p.id)
         self.plans = [x for x in self.plans if x[1] != p.id]
-        self.room.add_log(f"🏳️ {p.name} calls it a day.")
+        self.room.add_log(why or f"🏳️ {p.name} calls it a day.")
         if self.stage == "play" and not self.waiting_on():
             self.reveal()
 

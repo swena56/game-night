@@ -1054,6 +1054,8 @@ class Room:
             del rules["flight_rules"]  # Classic uses the original Moon Lander leaderboard.
         if gid == "skydrop" and rules["style"] == "dive":
             del rules["style"]  # the free dive keeps the leaderboard it had before there was a second play style
+        if gid == "minesweeper" and not rules["death"]:
+            del rules["death"]  # best times set before instant death existed keep their board
         labels = []
         for k, (name, options, _) in cls.settings_schema.items():
             if k not in rules:

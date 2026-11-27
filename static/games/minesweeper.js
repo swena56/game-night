@@ -100,7 +100,7 @@ UI.minesweeper = (() => {
     const board = $('swpBoard');
     if (v.miss != null) {
       const cell = board.children[v.miss];
-      ctx.sfx('wrong'); ctx.buzz?.(60); Kit.callout('💥 Mine! −4', 'bad', { ms: 700 });
+      ctx.sfx('wrong'); ctx.buzz?.(60); Kit.callout(v.dead ? '💀 Boom! Your field is over' : '💥 Mine! −4', 'bad', { ms: v.dead ? 1800 : 700 });
       if (cell) { cell.classList.remove('boom'); void cell.offsetWidth; cell.classList.add('boom'); }
       board.classList.remove('shake'); void board.offsetWidth; board.classList.add('shake');   // the whole field jolts
       return;
@@ -163,10 +163,11 @@ UI.minesweeper = (() => {
     let note = '';
     if (v.gained) note = v.playing ? `+${v.gained[S.me.id] ?? 0} this field` + (left > 0 ? ' · the mines are shown' : '') : '';
     else if (v.done) note = '🏁 Cleared! Waiting for the others…';
+    else if (v.dead) note = '💀 You hit a mine: out of this field. Waiting for the others…';
     else if (v.banked) note = '🏳️ You called it a day. Waiting for the others…';
     else if (!v.playing) note = 'Watching: the field as it was dealt.';
     else if (flagMode) note = '🚩 Flag mode: tap a square to mark a mine.';
-    else note = 'Tap to uncover · long-press (or 🚩) to flag · tap a number with its flags placed to clear around it.';
+    else note = `${v.death ? '💀 Instant death: one mine ends your field. ' : ''}Tap to uncover · long-press (or 🚩) to flag · tap a number with its flags placed to clear around it.`;
     $('swpNote').textContent = note;
   }
 
@@ -190,7 +191,7 @@ UI.minesweeper = (() => {
   const turnText = (s) => {
     const x = s.minesweeper;
     if (s.phase !== 'playing' || !x) return null;
-    return x.stage === 'reveal' ? '💣 Field over' : !x.playing ? '💣 Watching' : x.done ? '🏁 Cleared — waiting' : x.banked ? '🏳️ Waiting' : '💣 Sweep!';
+    return x.stage === 'reveal' ? '💣 Field over' : !x.playing ? '💣 Watching' : x.done ? '🏁 Cleared — waiting' : x.dead ? '💀 Out — waiting' : x.banked ? '🏳️ Waiting' : '💣 Sweep!';
   };
   const myMove = (s) => s.phase === 'playing' && s.minesweeper?.stage === 'play' && s.minesweeper.playing && !s.minesweeper.done && !s.minesweeper.banked;
 

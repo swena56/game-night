@@ -66,6 +66,7 @@ class Minesweeper(PuzzleRace):
     howto = [
         "Numbers say how many of the 8 squares around them hide a mine. Uncover every safe square and none of the mines. Everyone gets the same field, with a patch already open.",
         "Tap a square to uncover it (+1 each). Hit a mine and you lose 4 points, but you play on. 🚩 switches to flags: mark a mine you've worked out (a right flag scores +1 when the field ends, a wrong one −1). Tap a number whose flags are all placed to uncover the rest around it.",
+        "💀 With Instant death (a room setting), your first mine ends your field: you keep your other points, less the 4, and the others play on.",
         "💡 uncovers a square that is safe, for 1 point (3 per field unless the host changes it). 🔥 Six safe uncovers in a row, with no mine between, pay +3.",
         "Clearing every safe square scores +10, and +5 more for finishing first. Most points after the last field wins.",
         "⏱ High score: your fastest time to clear every field, kept for each choice of settings (🏆 My record, and the results card).",
@@ -77,6 +78,7 @@ class Minesweeper(PuzzleRace):
         "secs": ("Time per field", [(300, "5 min"), (180, "3 min"), (600, "10 min"), (0, "🌿 No clock")], 300),
         "hints": ("💡 Hints per field", [(3, "3"), (1, "1"), (5, "5"), (0, "None"), (-1, "Unlimited")], 3),
         "daily": ("Fields", [(False, "🎲 Random"), (True, "📅 Today's fields (the same everywhere)")], False),
+        "death": ("Hitting a mine", [(False, "−4 points, play on"), (True, "💀 Instant death: your field is over")], False),
     }
     badges = {**PuzzleRace.badges, "clean": ("🧹", "Clean sweep", "Clear a field without setting off a mine or using a hint")}
     BOT = {"easy": 6.0, "normal": 4.0, "hard": 2.4}   # seconds per square
@@ -153,6 +155,8 @@ class Minesweeper(PuzzleRace):
             for j in around:
                 if not st["o"][j] and not st["f"][j]:
                     self.open(st, j)
+                    if self.dead(st):   # a chord stops at the mine that kills
+                        break
         elif kind == "hint":
             self.require_hints()
             if self.hints_left(st) == 0:
@@ -166,6 +170,15 @@ class Minesweeper(PuzzleRace):
             st["hint"] = i
         else:
             raise GameError("Unknown action.")
+
+    def dead(self, st):
+        return bool(self.s.get("death")) and st["boom"] > 0
+
+    def after_move(self, p):
+        st = self.st.get(p.id)
+        if st and self.dead(st) and self.playing(p.id):   # 💀 the same as calling it a day, but not by choice
+            return self.bank(p, f"💀 {p.name} hit a mine: out of this field.")
+        super().after_move(p)
 
     def hints_left(self, st):
         cap = self.s.get("hints", 3)
@@ -287,7 +300,8 @@ class Minesweeper(PuzzleRace):
         out = {"n": self.n, "mines": self.k, "level": self.level, "grid": grid, "flags": flags,
                "boom": st["boom"] if st else 0, "hints": st["hints"] if st else 0, "mine": st["mine"] if st else 0,
                "miss": st["miss"] if st else None, "hint": st["hint"] if st else None, "seq": st["seq"] if st else 0,
-               "hintsLeft": self.hints_left(st) if st else None, "safe": self.safe, "show": None}
+               "hintsLeft": self.hints_left(st) if st else None, "safe": self.safe, "show": None,
+               "death": bool(self.s.get("death")), "dead": bool(st) and self.dead(st)}
         if self.stage == "reveal" or self.room.phase == "over":
             out["show"] = self.mine
         return out

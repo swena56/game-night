@@ -32,3 +32,24 @@ body.focus .swp { --swpw: min(100%, 640px, max(260px, calc(var(--room) - 175px))
 @keyframes swpWave { 50% { background: #c9f2dc; transform: scale(1.06); } }
 body.calm .swp-board.shake, body.calm .swp-board.cleared, body.calm .swp-cell.boom, body.calm .swp-cell.hinted, body.calm .swp-cell.wave { animation: none; }
 @media (max-width: 420px) { .swp { padding: 4px 2px; } .swp-board { gap: 1.5px; padding: 3px; } }
+/* #311 the field fills more of the screen */
+/* a phone held upright: the full width, and the first-time tip can't squeeze it under 400px (the page scrolls) */
+@media (max-width: 860px) and (orientation: portrait) {
+  #arena .swp { --swpw: min(100%, 640px, max(400px, calc(var(--room) - 175px))); padding: 4px 0; }
+}
+/* a wide screen is short of height: the buttons and the help line go beside the field, which takes their room */
+@media (min-width: 861px) and (orientation: landscape) {
+  #arena .swp { --swpw: min(calc(100% - 172px), 900px, calc(var(--room) - 70px)); display: grid; grid-template-columns: var(--swpw) 160px;
+    grid-template-rows: auto auto auto 1fr; justify-content: center; column-gap: 12px; max-width: none; padding-top: 2px; }
+  #arena .swp > :is(.pt-head, .dd-bar, .swp-board) { grid-column: 1; width: 100%; min-width: 0; }
+  #arena .swp > .swp-board { grid-row: 3 / span 2; align-self: start; margin-top: 2px; }
+  #arena .swp > .pt-tools { grid-column: 2; grid-row: 3; flex-direction: column; margin-top: 2px; }
+  #arena .swp > .pt-note { grid-column: 2; grid-row: 4; align-self: start; margin-top: 10px; }
+}
+@media (min-width: 1200px) and (orientation: landscape) {
+  /* the tip and the players move to a column of their own, left of the field */
+  #game .layout > main:has(.swp) { display: grid; grid-template-columns: 230px minmax(0, 1fr); grid-template-rows: auto auto 1fr; column-gap: 12px; align-content: start; }
+  #game .layout > main:has(.swp) > * { grid-column: 1; min-width: 0; }
+  #game .layout > main:has(.swp) > #players { flex-direction: column; align-items: stretch; align-self: start; }
+  #game .layout > main:has(.swp) > #arena { grid-column: 2; grid-row: 1 / span 3; }
+}
