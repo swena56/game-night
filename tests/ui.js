@@ -1148,7 +1148,9 @@ async function feedbackTour() {
   const home = await openPage();
   const d = home.d, w = home.w;
   d.querySelector('#name').value = 'Tester';
-  click(d.querySelector('#reportLink'));
+  click(d.querySelector('#homePrefsBtn'));   // the report button lives in Settings (#339)
+  await sleep(100);
+  click(d.querySelector('#reportBtn'));
   await waitFor(() => !d.querySelector('#modal').hidden, 3000) || notes.push('report dialog never opened');
   const radios = [...d.querySelectorAll('input[name=reportKind]')].map((r) => r.value).join('/');
   click(d.querySelector('#modalOk'));  // empty → should re-open with a hint

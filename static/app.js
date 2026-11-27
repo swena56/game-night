@@ -171,8 +171,8 @@ function ask(text, { ok = 'OK', cancel = 'Cancel', danger = false, title = '', b
 }
 function showHelp(id = S?.gameId) {
   const g = gameInfo(id);
-  const body = el('div');
-  const ul = el('ul', 'rules');
+  const body = el('div', 'help-body'), extra = el('div', 'help-extra');   // (#338) a wide screen puts the extras beside the rules
+  const ul = el('ul', 'rules help-rules');
   for (const line of g.howto) ul.append(el('li', '', line));
   const badges = Object.entries(g.badges || {});
   if (badges.length) {
@@ -182,11 +182,12 @@ function showHelp(id = S?.gameId) {
       const li = el('li', mine[`${g.id}:${k}`] ? 'got' : '', `${emo} ${name}: ${how}`);
       bl.append(li);
     }
-    body.append(el('h4', '', '🏅 Badges'), bl);
+    extra.append(el('h4', '', '🏅 Badges'), bl);
   }
   const report = el('button', 'ghost-btn', `🐞 Something wrong with ${g.name}? Tell us`);
   report.onclick = () => reportDialog('bug');
-  body.prepend(ul); body.append(report);
+  extra.append(report);
+  body.append(ul, extra);
   // which variant this table is playing: the settings changed from the defaults, above the rules
   if (S?.settings && S.gameId === g.id) {
     const changed = g.settings.filter((f) => !isDefault(f));
@@ -1523,7 +1524,6 @@ document.addEventListener('keydown', (e) => {
   if (!$('#gameMenu').hidden) { closeMenu(); $('#menuBtn').focus(); return; }
   closeSheets();
 });
-$('#reportLink').onclick = () => reportDialog('bug');
 $('#reportBtn').onclick = () => { $('#prefsPanel').hidden = true; reportDialog('bug'); };
 applyPrefs();
 

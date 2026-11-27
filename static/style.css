@@ -73,6 +73,20 @@ body.light .logo { background-image: linear-gradient(90deg, #e09a00, #e0457b, #1
 * { box-sizing: border-box; }
 /* the display face (static/fonts, OFL): the logo, callouts, big numbers; body text stays the system font */
 @font-face { font-family: 'Baloo 2'; font-style: normal; font-weight: 800; font-display: swap; src: url(/fonts/baloo2-800-latin.woff2) format('woff2'); }
+/* (#341) slim rounded scrollbars in the theme's colours, for mouse screens only: phones keep their own fading ones.
+   Rows that hide theirs (scrollbar-width: none) stay hidden. */
+@media (pointer: fine) {
+  ::-webkit-scrollbar { width: 12px; height: 12px; }
+  ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+  ::-webkit-scrollbar-thumb { min-height: 40px; min-width: 40px; border: 3px solid transparent; border-radius: 99px;
+    background: color-mix(in srgb, var(--muted) 45%, transparent) padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background-color: color-mix(in srgb, var(--muted) 70%, transparent); }
+  ::-webkit-scrollbar-thumb:active { background-color: var(--accent); }
+  @supports not selector(::-webkit-scrollbar) {  /* Firefox */
+    :root { scrollbar-color: color-mix(in srgb, var(--muted) 55%, transparent) transparent; }
+    :where(*) { scrollbar-width: thin; }
+  }
+}
 :root { --font-display: 'Baloo 2', system-ui, -apple-system, "Segoe UI", sans-serif; }
 body { margin: 0; background: var(--bg) radial-gradient(circle at 20% 0, var(--glow) 0, transparent 60%); color: var(--text);
   font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; min-height: 100vh; min-height: 100dvh; }
@@ -345,6 +359,21 @@ body.calm .nudge { animation: none; box-shadow: 0 0 0 2px #ffb70388; }
 .modal-x { position: absolute; top: 6px; right: 6px; z-index: 1; font-size: 16px; color: var(--muted); }
 #modalTitle, #modalText { padding-right: 28px; }
 .modal-card .rules { font-size: 14px; line-height: 1.5; }
+/* #338 How to play on a large screen: a wide card, each rule in its own box in two columns, the settings in play and
+   badges down the side */
+@media (min-width: 861px) {
+  .modal-card:has(.help-body) { width: min(100%, 1180px); padding: 20px 24px; }
+  .modal-card:has(.help-body) :is(#modalTitle, #modalText) { text-align: center; }
+  .modal-card:has(.help-body) .row { align-self: center; width: min(100%, 320px); }
+  .help-body { display: grid; grid-template-columns: minmax(0, 1fr) 280px; grid-template-rows: auto 1fr; column-gap: 20px; align-items: start; text-align: left; }
+  .help-body > .help-rules { grid-column: 1; grid-row: 1 / span 2; columns: 2 320px; column-gap: 10px; list-style: none; padding: 0; margin: 0; }
+  .help-body > .help-rules li { break-inside: avoid; margin: 0 0 10px; padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    border-radius: var(--r-md); background: var(--tint-1); font-size: 14.5px; }
+  .help-body > .help-settings { grid-column: 2; grid-row: 1; }
+  .help-body > .help-extra { grid-column: 2; grid-row: 2; }
+  .help-body :is(.help-settings, .help-extra) h4 { margin: 0 0 6px; }
+  .help-body .help-settings { margin-bottom: 14px; }
+}
 .invite { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .invite-qr { display: block; width: min(240px, 70vw); height: auto; border-radius: var(--r-md); }
 .invite input { width: 100%; text-align: center; }
@@ -456,6 +485,19 @@ body.calm .nudge { animation: none; box-shadow: 0 0 0 2px #ffb70388; }
 #prefsPanel { overflow-y: auto; overscroll-behavior: contain; }  /* on a phone the report button sits below the fold */
 #prefsPanel > * { flex: none; }
 .drawer-x { min-width: 36px; min-height: 36px; font-size: 16px; color: var(--muted); }
+/* #339 settings on a large screen: a wide card in the middle over a dimmed page, the choices in two columns.
+   (The shade sits just before the panel and shows with it; a click on it counts as a click outside.) */
+.prefs-shade { display: none; }
+@media (min-width: 861px) {
+  .prefs-shade:has(+ #prefsPanel:not([hidden])) { display: block; position: fixed; inset: 0; z-index: 29; background: #000a; }
+  #prefsPanel.drawer { inset: 0; margin: auto; width: min(760px, calc(100vw - 48px)); height: fit-content; max-height: min(90vh, 760px); padding: 18px 24px; border-radius: var(--r-lg); animation: none; }
+  #prefsPanel header b { font-size: var(--fs-lg); }
+  #prefsList { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 24px; align-items: end; }
+  #prefsList > label { margin: 6px 0; }
+  #prefsList > label.check.check { align-self: center; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r-md); margin: 3px 0; cursor: pointer; }
+  #prefsList > button { grid-column: 1 / -1; justify-self: start; margin-top: 8px; }
+  #reportBtn { align-self: center; width: min(100%, 420px); margin-top: 12px; }
+}
 .chat-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; min-height: 120px; font-size: 14px; }
 .msg { background: var(--tint-1); border-radius: var(--r-md); padding: 6px 10px; align-self: flex-start; max-width: 85%; word-wrap: break-word; }
 .msg b { display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); }
@@ -742,7 +784,7 @@ body.calm .xp-lines li, body.calm .xp-up { opacity: 1; transform: none; }
 .home-icon { flex: none; width: 48px; height: 48px; margin-bottom: 8px; padding: 0; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; overflow: hidden; }
 .home-icon .avatar { width: 100%; height: 100%; }
 .home-icon .avatar.avatar-emoji { display: grid; place-items: center; font-size: 26px; }
-.unlock-track { display: flex; gap: var(--s2); overflow-x: auto; padding: var(--s3) 0 var(--s1); scrollbar-width: thin; }
+.unlock-track { display: flex; gap: var(--s2); overflow-x: auto; padding: var(--s3) 0 var(--s1); }
 .ut-item { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 76px; max-width: 96px; padding: var(--s2);
   border-radius: var(--r-md); background: var(--panel2); border: 1px dashed var(--line); text-align: center; font-size: var(--fs-xs); }
 .ut-item i { font-style: normal; font-size: 18px; filter: grayscale(.6); }
@@ -1555,7 +1597,7 @@ body.focus .wf { --wfw: min(100%, 680px, max(260px, calc(var(--room) - 190px)));
   #game .layout { max-width: none; grid-template-columns: minmax(0, 1fr) clamp(260px, 18vw, 300px); gap: 12px; }
   #game .layout > aside .react-bar button { flex: 1 1 0; min-width: 0; }
   /* seven reactions fit the slimmer column */
-  #game .layout > aside { position: sticky; top: 64px; max-height: calc(var(--app-h, 100vh) - 76px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; } }
+  #game .layout > aside { position: sticky; top: 64px; max-height: calc(var(--app-h, 100vh) - 76px); overflow-y: auto; overscroll-behavior: contain; } }
 /* a phone on its side (#64): the side panel sits beside the game instead of below it, so the controls are on screen without scrolling */
 @media (orientation: landscape) and (max-height: 540px) and (min-width: 600px) {
   #game .layout { grid-template-columns: minmax(0, 1fr) minmax(250px, 36%); align-items: start; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
@@ -1740,9 +1782,12 @@ body[data-color] .home-art { background-color: var(--c); background-blend-mode: 
 #lobby .room-code b { color: var(--table-accent); font-size: clamp(1.5rem, 6vw, 2rem); }
 #lobby #shareBtn, #lobby #leaveBtn { margin: 0; }
 /* the header stays on screen down the long page, so Leave and Invite are always in reach */
-#lobby .room-header { position: sticky; top: max(6px, env(safe-area-inset-top)); z-index: 6; gap: 4px 12px; padding-block: 6px; box-shadow: 0 6px 18px #0006; }
+/* (#340) it sticks flush with the top and has square top corners: any gap there shows the page scrolling past behind it */
+#lobby .room-header { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 6; gap: 4px 12px; padding-block: 6px; box-shadow: 0 6px 18px #0006;
+  border-radius: 0 0 var(--r-md) var(--r-md); }
+#lobby .room-header::before { content: ""; position: absolute; inset: auto -1px 100%; height: env(safe-area-inset-top, 0px); background: var(--panel2); }  /* behind a phone's status bar */
 #lobby :is(#shareBtn, #leaveBtn) { width: auto; padding-inline: 4px; }
-#lobby .settings-head { scroll-margin-top: 84px; }
+#lobby :is(.settings-head, .game-chosen) { scroll-margin-top: 84px; }
 @media (max-width: 560px) {
   #lobby .share-more { display: none; }
   #lobby .room-header { gap: 4px 6px; padding-inline: 10px; }
@@ -1799,6 +1844,31 @@ body[data-color] :is(#home, #lobby) { background: radial-gradient(ellipse at 50%
 body[data-color]::before { background: radial-gradient(circle at 15% 20%, color-mix(in srgb, var(--c) 28%, transparent) 0, transparent 32%),
   radial-gradient(circle at 85% 30%, var(--accent-a10) 0, transparent 30%); }
 body.light[data-color] #arena { background: radial-gradient(circle at 30% 0, color-mix(in srgb, var(--c) 45%, #101114), color-mix(in srgb, var(--c) 20%, #08090b) 70%); }
+/* #337 the room page on a large screen. With the game list open it sits on the left, scrolling by itself, with the
+   chosen game, players and settings beside it. Folded away, the game and players and the settings share the width. */
+/* below that the three groups don't exist for layout, so the page flows (and Start sticks) as it always has */
+.lobby-pick, .lobby-about, .lobby-go { display: contents; }
+@media (min-width: 1000px) {
+  #lobby > .panel > :is(.lobby-pick, .lobby-about, .lobby-go) { display: block; }
+  /* (#340) the room takes the whole window; the right-hand padding keeps the floating ⚙️ 💬 buttons off the settings */
+  #lobby.screen.center { align-items: stretch; padding: 12px 84px 12px 12px; }
+  #lobby > .panel { max-width: none; margin-bottom: 0; display: grid; align-content: start; align-items: start; column-gap: 18px;
+    grid-template-columns: minmax(0, 1.65fr) minmax(360px, 1fr); }
+  #lobby > .panel > * { grid-column: 1 / -1; min-width: 0; }
+  #lobby > .panel > .lobby-pick { grid-column: 1; grid-row: span 2; position: sticky; top: 84px;
+    max-height: calc(var(--app-h, 100vh) - 96px); overflow-y: auto; overscroll-behavior: contain; padding-right: 6px; }
+  #lobby > .panel > :is(.lobby-about, .lobby-go) { grid-column: 2; }
+  #lobby > .panel:has(#gamePicker.folded) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  #lobby > .panel:has(#gamePicker.folded) > .lobby-pick { display: none; }
+  #lobby > .panel:has(#gamePicker.folded) > .lobby-about { grid-column: 1; }
+}
+@media (min-width: 1400px) {
+  #lobby .settings { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+  #lobby .settings label.wide { grid-column: auto; }  /* each column is wider than half a phone, so no option needs a row */
+}
+@media (min-width: 1700px) {
+  #lobby :is(#gameDesc, #howto) { font-size: var(--fs-md); }
+}
 /* #315: the list view: icon, name, players on one row; stars and "new" move to the end of it */
 .picker.as-list .game-tile { flex-direction: row; gap: 10px; padding: 6px 10px; text-align: left; }
 .picker.as-list .game-tile .gicon { --gi: 34px; font-size: 19px; margin-block: 0; }
