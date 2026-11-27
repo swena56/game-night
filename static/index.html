@@ -31,31 +31,39 @@
       <h1 class="logo">🎲 Game Night</h1>
       <p class="tag"><span id="gameCount"></span> games · play with friends or bots</p>
       <div class="home-art" aria-hidden="true"></div>
+      <!-- (#344) the three cards behind the groups below, on a wide screen only (style.css) -->
+      <div class="home-card-bg you" aria-hidden="true">🙂 You</div>
+      <div class="home-card-bg friends" aria-hidden="true">👋 Play with friends</div>
+      <div class="home-card-bg solo" aria-hidden="true">🤖 Play solo</div>
       <div class="name-row">
         <button id="homeIcon" class="home-icon" type="button" title="Your icon: tap to change it" aria-label="Your icon. Change it"></button>
         <label>Your name <input id="name" maxlength="16" autocomplete="nickname" placeholder="e.g. Sam"></label>
       </div>
       <button id="createBtn" class="primary big">Create a room</button>
       <button id="homeLevel" class="home-level" type="button"></button>
-      <div class="or">or play solo</div>
-      <div class="row">
+      <div class="or or-solo">or play solo</div>
+      <div class="row solo-pick-row">
         <select id="soloGame" hidden></select>
         <button id="soloPick" class="solo-pick" title="Choose a game: search, sort, favourites" aria-haspopup="dialog"></button>
         <select id="soloLevel"><option value="easy" selected>Easy</option><option value="normal">Normal</option><option value="hard">Hard</option></select>
       </div>
-      <div class="row solo-row">
+      <div class="row solo-row solo-go-row">
         <button id="soloBtn" class="big">🤖 Play solo</button>
         <button id="soloSetupBtn" class="big" title="Open the lobby to change the game's options before starting">⚙️ Options first</button>
       </div>
-      <div class="row solo-row">
+      <div class="row solo-row solo-more-row">
         <button id="newGameBtn" class="ghost-btn" title="Pick a game you haven't played yet (or one with the fewest ★)">🎲 Something new</button>
         <button id="recordBtn" class="ghost-btn" title="Your games, wins, ★ bot-ladder stars and badges, kept on this device">🏆 My record</button>
       </div>
-      <div class="or">or join a friend</div>
-      <div class="row">
+      <div class="or or-join">or join a friend</div>
+      <div class="row join-row">
         <input id="code" maxlength="4" placeholder="CODE" class="code-input" autocapitalize="characters">
         <button id="joinBtn">Join</button>
       </div>
+      <section id="homeShelf" class="home-shelf" aria-label="Pick a game to play solo">
+        <div class="home-shelf-head"><h3>Pick a game</h3><button id="homeAllBtn" class="chip-btn" type="button" aria-haspopup="dialog">All games →</button></div>
+        <div id="homeTiles" class="picker-group"></div>
+      </section>
       <div class="home-foot">
         <button id="homePrefsBtn" class="ghost-btn report-link" title="Theme, colours, graphics and sound for this device, and reporting a bug">⚙️ Settings</button>
         <button id="utilsBtn" class="ghost-btn report-link" title="Extra tools: bingo with paper cards and the pinball table editor">🧰 Utilities</button>
@@ -79,7 +87,7 @@
     <div class="panel narrow wide">
       <header class="room-header">
         <div class="room-code">Room <b id="lobbyCode"></b></div>
-        <button id="shareBtn" class="ghost-btn" title="Invite: link &amp; QR code">📲 Invite<span class="share-more">: link &amp; QR code</span></button>
+        <button id="shareBtn" class="ghost-btn" title="Invite: link &amp; QR code">📲 Invite</button>
         <button id="leaveBtn" class="ghost-btn">🚪 Leave room</button>
       </header>
       <button id="buildPlaylistBtn" hidden>Build playlist</button>
@@ -92,7 +100,7 @@
       </section>
       <!-- (#337) on a wide screen these three groups sit side by side; on a phone they simply follow one another -->
       <div class="lobby-pick">
-      <h3>Game</h3>
+      <h3>Game<span class="wide-only"> library</span></h3>
       <div id="pickerTools" class="picker-tools">
         <input id="pickerFind" type="search" placeholder="🔎 Find a game" aria-label="Find a game" autocomplete="off">
         <button id="pickerFits" class="chip-btn" aria-pressed="false" title="Show only games for the players here">👥 Fits us</button>
@@ -102,11 +110,16 @@
       <div id="pickerBar" class="picker-bar"></div>
       <div id="gamePicker" class="picker" aria-label="Games (arrow keys move, Enter picks)"></div>
       </div>
+      <div class="lobby-side">
       <div class="lobby-about">
+      <div class="lobby-card game-card">
       <div id="gameChosen" class="game-chosen"></div>
+      <p id="gameMeta" class="game-meta wide-only"></p>
       <p id="gameDesc" class="hint"></p>
       <ul id="howto" class="rules howto"></ul>
-      <h3>Players</h3>
+      </div>
+      <div class="lobby-card players-card">
+      <h3>Players<span id="playerCount" class="wide-only"></span></h3>
       <ul id="lobbyPlayers" class="plist"></ul>
       <div id="botRow" class="row">
         <select id="botLevel"><option value="easy" selected>Easy</option><option value="normal">Normal</option><option value="hard">Hard</option></select>
@@ -114,10 +127,13 @@
         <button id="fillBtn" hidden></button>
       </div>
       </div>
+      </div>
       <div class="lobby-go">
+      <div class="lobby-card settings-card">
       <div class="settings-head"><h3 id="settingsHead">Settings</h3>
         <button id="defaultsBtn" class="ghost-btn" hidden title="Put this game's settings back to their defaults (the room settings stay)">↺ Defaults</button></div>
       <div id="settingsBox" class="settings"></div>
+      </div>
       <button id="lobbyEditorBtn" class="utils-btn" title="Design your own pinball table. This room is kept: ← Game Night in the editor brings you back" hidden>🛠️ Pinball table editor</button>
       <button id="startBtn" class="primary big">Start game</button>
       <p id="waitHost" class="hint">Waiting for the host to start… Tap a game to ask the host for it.</p>
@@ -130,6 +146,7 @@
         <button id="resetScoresBtn" class="ghost-btn" hidden>Reset scoreboard</button>
       </div>
       <button id="lobbyRecordBtn" class="ghost-btn">🏆 My record</button>
+      </div>
       </div>
     </div>
   </section>

@@ -1219,8 +1219,35 @@ function fillSoloGames() {
   showSoloPick();
   $('#gameCount').textContent = SOLO_GAMES.length;
   Profile.homeLine($('#homeLevel'));
-
+  renderHomeShelf();
 }
+// (#344) a wide screen has room for a shelf of games under the home cards: your favourites and the ones you played lately,
+// then a different handful of the rest each day. Tapping one chooses it for solo play.
+const wideHome = window.matchMedia?.('(min-width: 1000px)');
+async function renderHomeShelf() {
+  if (!wideHome?.matches) return;
+  let games;
+  try { games = await loadCatalog(); } catch { return; }  // the cards still work without it
+  if ($('#home').hidden) return;  // columns can't be counted while hidden; coming home draws it again
+  const day = Math.floor(Date.now() / 864e5);
+  const mix = (id) => [...id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 100003, day);
+  const mine = [...(load('favGames') || []), ...(load('recentGames') || [])];
+  const ids = [...new Set([...mine, ...games.map((g) => g.id).sort((a, b) => mix(a) - mix(b))])].filter((id) => !isHidden(id));
+  const list = ids.map((id) => games.find((g) => g.id === id)).filter((g) => g && SOLO_GAMES.some(([s]) => s === g.id));
+  const grid = $('#homeTiles'), current = $('#soloGame').value;
+  const tile = (g) => {
+    const b = gameTile(g, 0, current);
+    b.onclick = () => { pickSolo(g.id); for (const t of grid.children) { const on = t === b; t.classList.toggle('on', on); t.setAttribute('aria-pressed', on); } };
+    return b;
+  };
+  grid.replaceChildren(...list.slice(0, 40).map(tile));
+  // keep to whole rows: two on a tall window, one otherwise
+  const columns = getComputedStyle(grid).gridTemplateColumns.split(' ').length;
+  for (const extra of [...grid.children].slice(columns * (window.innerHeight >= 880 ? 2 : 1))) extra.remove();
+}
+let shelfTimer = 0;
+window.addEventListener('resize', () => { clearTimeout(shelfTimer); shelfTimer = setTimeout(() => { if (!$('#home').hidden) renderHomeShelf(); }, 200); });
+$('#homeAllBtn').onclick = async () => { const id = await pickGameSheet({ current: $('#soloGame').value }); if (id) { pickSolo(id); renderHomeShelf(); } };
 // the home screen's game button opens the full picker (#98); the hidden select keeps the value
 function showSoloPick() {
   const o = $('#soloGame').selectedOptions[0], b = $('#soloPick');

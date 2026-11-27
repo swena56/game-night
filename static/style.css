@@ -1789,7 +1789,6 @@ body[data-color] .home-art { background-color: var(--c); background-blend-mode: 
 #lobby :is(#shareBtn, #leaveBtn) { width: auto; padding-inline: 4px; }
 #lobby :is(.settings-head, .game-chosen) { scroll-margin-top: 84px; }
 @media (max-width: 560px) {
-  #lobby .share-more { display: none; }
   #lobby .room-header { gap: 4px 6px; padding-inline: 10px; }
   #lobby .room-code b { letter-spacing: .1em; }
   #lobby :is(#shareBtn, #leaveBtn) { font-size: var(--fs-sm); padding-inline: 2px; }
@@ -1804,10 +1803,10 @@ body[data-color] .home-art { background-color: var(--c); background-blend-mode: 
 #lobby .game-chosen:empty, #lobby .settings:empty { display: none; }
 #lobby .picker-tools, .picker-sheet .picker-tools { flex-wrap: wrap; }
 :is(#lobby, .picker-sheet) .picker-tools input { flex-basis: 8rem; }
-:is(#lobby, body[data-screen="home"] .picker-sheet) .game-tile {
+:is(#lobby, #homeShelf, body[data-screen="home"] .picker-sheet) .game-tile {
   background: linear-gradient(155deg, color-mix(in srgb, var(--tint) 15%, var(--panel2)), var(--panel2) 70%);
 }
-:is(#lobby, body[data-screen="home"] .picker-sheet) .game-tile.on {
+:is(#lobby, #homeShelf, body[data-screen="home"] .picker-sheet) .game-tile.on {
   border-color: var(--table-accent);
   box-shadow: inset 0 0 0 1px var(--table-accent);
 }
@@ -1815,8 +1814,8 @@ body[data-color] .home-art { background-color: var(--c); background-blend-mode: 
   outline: 2px solid var(--table-focus);
   outline-offset: 2px;
 }
-:is(#lobby, body[data-screen="home"] .picker-sheet) .game-tile:focus-visible { outline-offset: -4px; }
-body.lowgfx :is(#lobby, body[data-screen="home"] .picker-sheet) .game-tile .gicon { filter: none; }
+:is(#lobby, #homeShelf, body[data-screen="home"] .picker-sheet) .game-tile:focus-visible { outline-offset: -4px; }
+body.lowgfx :is(#lobby, #homeShelf, body[data-screen="home"] .picker-sheet) .game-tile .gicon { filter: none; }
 
 /* 🖌️ #321 a chosen background colour (prefs.js; green sets no data-color, so none of this applies to it). Each colour
    is one base, --c, and every surface is a shade of it: here, after the tabletop rules above, so it replaces them. */
@@ -1844,30 +1843,86 @@ body[data-color] :is(#home, #lobby) { background: radial-gradient(ellipse at 50%
 body[data-color]::before { background: radial-gradient(circle at 15% 20%, color-mix(in srgb, var(--c) 28%, transparent) 0, transparent 32%),
   radial-gradient(circle at 85% 30%, var(--accent-a10) 0, transparent 30%); }
 body.light[data-color] #arena { background: radial-gradient(circle at 30% 0, color-mix(in srgb, var(--c) 45%, #101114), color-mix(in srgb, var(--c) 20%, #08090b) 70%); }
-/* #337 the room page on a large screen. With the game list open it sits on the left, scrolling by itself, with the
-   chosen game, players and settings beside it. Folded away, the game and players and the settings share the width. */
-/* below that the three groups don't exist for layout, so the page flows (and Start sticks) as it always has */
-.lobby-pick, .lobby-about, .lobby-go { display: contents; }
+/* #337 the room page on a large screen: the game library on the left, scrolling by itself, with the chosen game,
+   players and settings beside it. */
+/* below that the groups and cards don't exist for layout, so the page flows (and Start sticks) as it always has */
+.lobby-pick, .lobby-side, .lobby-about, .lobby-go, .lobby-card { display: contents; }
+.wide-only { display: none; }
 @media (min-width: 1000px) {
-  #lobby > .panel > :is(.lobby-pick, .lobby-about, .lobby-go) { display: block; }
+  #lobby > .panel > .lobby-pick { display: block; }
   /* (#340) the room takes the whole window; the right-hand padding keeps the floating ⚙️ 💬 buttons off the settings */
   #lobby.screen.center { align-items: stretch; padding: 12px 84px 12px 12px; }
   #lobby > .panel { max-width: none; margin-bottom: 0; display: grid; align-content: start; align-items: start; column-gap: 18px;
     grid-template-columns: minmax(0, 1.65fr) minmax(360px, 1fr); }
   #lobby > .panel > * { grid-column: 1 / -1; min-width: 0; }
-  #lobby > .panel > .lobby-pick { grid-column: 1; grid-row: span 2; position: sticky; top: 84px;
-    max-height: calc(var(--app-h, 100vh) - 96px); overflow-y: auto; overscroll-behavior: contain; padding-right: 6px; }
-  #lobby > .panel > :is(.lobby-about, .lobby-go) { grid-column: 2; }
-  #lobby > .panel:has(#gamePicker.folded) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  #lobby > .panel:has(#gamePicker.folded) > .lobby-pick { display: none; }
-  #lobby > .panel:has(#gamePicker.folded) > .lobby-about { grid-column: 1; }
-}
-@media (min-width: 1400px) {
-  #lobby .settings { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
-  #lobby .settings label.wide { grid-column: auto; }  /* each column is wider than half a phone, so no option needs a row */
+  /* both columns are as tall as the window and scroll by themselves; Start stays at the foot of the right one */
+  #lobby > .panel > :is(.lobby-pick, .lobby-side) { position: sticky; top: 78px; height: calc(var(--app-h, 100vh) - 136px); min-height: 420px;
+    overflow-y: auto; overscroll-behavior: contain; }
+  #lobby > .panel > .lobby-pick { grid-column: 1; }
+  #lobby > .panel > .lobby-side { grid-column: 2; display: flex; flex-direction: column; padding-right: 6px; }
+  #lobby .lobby-side > * , #lobby .lobby-side :is(.lobby-about, .lobby-go) > * { flex: none; }
+  /* (#342, #343) the right-hand column is three cards: the chosen game, who's playing, and its settings */
+  .wide-only { display: inline; }
+  p.wide-only { display: flex; }
+  #lobby > .panel > .lobby-pick, #lobby .lobby-card { border: 1px solid var(--line); border-radius: var(--r-lg, 16px); background: var(--field); }
+  #lobby > .panel > .lobby-pick { padding: 4px 8px 12px; }
+  #lobby .lobby-pick .game-tile { padding-inline: 3px; }
+  #lobby > .panel > .lobby-pick .picker-bar { background: var(--field); }
+  #lobby .lobby-card { display: block; padding: 12px 14px; margin-bottom: 12px; }
+  #lobby .lobby-card h3 { margin: 0 0 8px; }
+  #lobby .players-card > h3::before { content: "👥 "; }
+  #lobby #settingsHead::before { content: "⚙️ "; }
+  #lobby .game-card .game-chosen { margin: 0; padding: 0; border: 0; background: none; gap: 12px; font-size: 26px; }
+  #lobby .game-card .game-chosen .gicon { display: grid; place-items: center; width: 68px; height: 68px; font-size: 40px;
+    border-radius: 18px; border: 1px solid var(--table-accent); background: radial-gradient(circle at 35% 25%, var(--panel2), var(--panel)); }
+  .game-meta { flex-wrap: wrap; gap: 6px; margin: 10px 0 0; }
+  .meta-chip { padding: 3px 10px; border-radius: var(--r-pill); border: 1px solid var(--line); background: var(--panel2); font-size: var(--fs-sm); }
+  #lobby .game-card #gameDesc { text-align: left; color: var(--text); margin: 10px 0; }
+  /* the rules are numbered steps; a long list scrolls inside its box so the settings and Start stay close */
+  #lobby .game-card .howto { list-style: none; counter-reset: step; margin: 0; padding: 10px; max-height: max(130px, calc(var(--app-h, 100vh) - 780px)); overflow-y: auto;
+    border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel); }
+  #lobby .game-card .howto li { counter-increment: step; position: relative; padding-left: 32px; margin-bottom: 8px; min-height: 22px; }
+  #lobby .game-card .howto li:last-child { margin-bottom: 0; }
+  #lobby .game-card .howto li::before { content: counter(step); position: absolute; left: 0; top: 0; width: 22px; height: 22px; border-radius: 50%;
+    display: grid; place-items: center; font-size: var(--fs-xs); font-weight: 700; background: var(--table-accent); color: var(--panel); }
+  #lobby .players-card .plist { margin-bottom: 8px; }
+  #lobby .players-card #botRow { margin-bottom: 0; }
+  #lobby .settings-card .settings { padding: 0; border: 0; background: none; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+  #lobby .settings-card .settings label.wide { grid-column: span 2; }
+  #lobby #startBtn { position: sticky; bottom: 0; z-index: 5; margin-top: 0; padding-block: 14px; font-size: 1.25rem; box-shadow: 0 -8px 18px #0007, 0 0 22px var(--accent-a40); }
+  /* Invite and Leave sit together at the end of the header, as buttons */
+  #lobby .room-header #shareBtn { margin-left: auto; }
+  #lobby .room-header :is(#shareBtn, #leaveBtn) { padding: 8px 16px; text-decoration: none; border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel); color: var(--text); }
+  #lobby .room-header :is(#shareBtn, #leaveBtn):hover { border-color: var(--table-accent); }
 }
 @media (min-width: 1700px) {
   #lobby :is(#gameDesc, #howto) { font-size: var(--fs-md); }
+}
+/* #344 the home screen on a large one: a banner, three cards side by side (you, friends, solo) and a shelf of games.
+   The cards are empty boxes behind the controls, so a phone keeps its own order in the same page. */
+.home-card-bg, .home-shelf { display: none; }
+@media (min-width: 1000px) {
+  #home > .panel { max-width: 1800px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 18px; align-content: start;
+    grid-template-rows: auto auto 40px repeat(3, minmax(54px, auto)) 14px; padding: 12px 18px; margin-bottom: 0; }
+  #home > .panel > * { grid-column: 1 / -1; min-width: 0; }
+  #home .logo { grid-area: 1 / 1; align-self: end; margin: 0; font-size: clamp(2.2rem, 3.6vw, 3.4rem); text-align: center; }
+  #home .tag { grid-area: 2 / 1; align-self: start; margin: 6px 0 0; text-align: center; font-size: var(--fs-md); }
+  #home .home-art { grid-area: 1 / 2 / span 2 / span 2; height: clamp(110px, calc(100vh - 590px), 260px); margin: 0; }
+  #home .home-card-bg { display: block; grid-row: 3 / 8; margin-top: 14px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 16px;
+    background: var(--field); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; font-size: var(--fs-sm); color: var(--table-accent); }
+  #home .home-card-bg:not(.you, .friends, .solo) { display: none; }
+  #home .home-card-bg.you { grid-column: 1; } #home .home-card-bg.friends { grid-column: 2; } #home .home-card-bg.solo { grid-column: 3; }
+  #home > .panel > :is(.name-row, #homeLevel, #createBtn, .or-join, .join-row, .solo-pick-row, .solo-go-row, .solo-more-row) {
+    position: relative; z-index: 1; align-self: end; width: auto; margin: 14px 16px 0; }
+  #home .name-row { grid-area: 4 / 1; } #home #homeLevel { grid-area: 5 / 1 / span 2 / span 1; align-self: start; }
+  #home #createBtn { grid-area: 4 / 2; } #home .or-join { grid-area: 5 / 2; } #home .join-row { grid-area: 6 / 2; }
+  #home .solo-pick-row { grid-area: 4 / 3; } #home .solo-go-row { grid-area: 5 / 3; } #home .solo-more-row { grid-area: 6 / 3; }
+  #home .or-solo { display: none; }
+  #home .home-shelf { display: block; grid-row: 8; margin-top: 12px; }
+  #home .home-shelf-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+  #home .home-shelf-head h3 { margin: 0; }
+  #home #homeTiles { grid-template-columns: repeat(auto-fill, minmax(126px, 1fr)); }
+  #home .home-foot { grid-row: 9; margin-top: 6px; }
 }
 /* #315: the list view: icon, name, players on one row; stars and "new" move to the end of it */
 .picker.as-list .game-tile { flex-direction: row; gap: 10px; padding: 6px 10px; text-align: left; }

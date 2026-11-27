@@ -192,6 +192,9 @@ async function pickGameSheet({ title = '🎮 Choose a game', current = null, sea
 }
 let pickedGame = null;  // the game this host just tapped, scrolled to once the server confirms it
 let pickerFolded = false;  // the host has picked: the picker folds away until 🔄 Change game (or the next lobby visit)
+// (#343) on a large screen the game library has its own column, so it never folds (the same width as style.css's)
+const wideLobby = window.matchMedia?.('(min-width: 1000px)');
+wideLobby?.addEventListener?.('change', () => { if (S?.phase === 'lobby') renderLobby(); });
 const unfoldPicker = () => { if (!pickerFolded) return false; pickerFolded = false; renderLobby(); return true; };
 // seats a game is best with: the solo bot count plus you, within the game's limits
 const recSeats = (g) => Math.min(g.max, Math.max(g.min, (SOLO_BOTS[g.id] ?? 1) + 1));
@@ -297,6 +300,7 @@ function renderLobby() {
       }
       b.title = host ? '' : g.id === S.gameId ? 'The host picked this game' : 'Ask the host for this game (tap again to take it back)';
       b.onclick = () => {
+        if (host && g.id === S.gameId && wideLobby?.matches) return;  // already chosen and in view
         if (host && g.id === S.gameId) { pickerFolded = true; renderLobby(); $('#gameChosen').scrollIntoView?.({ behavior: 'smooth', block: 'start' }); }
         else if (host) { pickedGame = g.id; quiet(act('settings', { settings: { game: g.id } })); }
         else quiet(act('wish', { game: g.id }));
@@ -329,10 +333,10 @@ function renderLobby() {
   document.title = `${info.name} — Game Night`;
   if (pickedGame && pickedGame === S.gameId) {
     pickedGame = null; pickerFolded = host;
-    requestAnimationFrame(() => chosen.scrollIntoView?.({ behavior: 'smooth', block: 'start' }));
+    requestAnimationFrame(() => chosen.scrollIntoView?.({ behavior: 'smooth', block: wideLobby?.matches ? 'nearest' : 'start' }));
   }
   // folded: the chosen game heads the lobby with a way back to the full list
-  if (!host) pickerFolded = false;
+  if (!host || wideLobby?.matches) pickerFolded = false;
   $('#pickerTools').classList.toggle('folded', pickerFolded); $('#pickerBar').classList.toggle('folded', pickerFolded); pick.classList.toggle('folded', pickerFolded);
   chosen.classList.toggle('folded', pickerFolded);
   if (pickerFolded) {
@@ -343,9 +347,12 @@ function renderLobby() {
     if (focused || document.activeElement?.closest?.('#gamePicker')) change.focus({ preventScroll: true });  // keyboard users land on it
   }
   $('#gameDesc').textContent = (course && !darts ? 'Read the wind and aim at apples, balloons, and a swinging target.' : info.blurb) + (S.gameId === 'unmask' ? ' ' + MODE_DESC[S.settings.mode] : '');
+  const family = CATEGORIES.find(([cat]) => cat === info.category)?.[1];
+  $('#gameMeta').replaceChildren(...[family, `👥 ${playersText(info)}`].filter(Boolean).map((t) => el('span', 'meta-chip', t)));
   $('#howto').innerHTML = '';
   for (const line of info.howto) $('#howto').append(el('li', '', line));
 
+  $('#playerCount').textContent = ` (${S.players.length})`;
   const ul = $('#lobbyPlayers'); ul.innerHTML = '';
   for (const p of S.players) {
     const li = el('li');
