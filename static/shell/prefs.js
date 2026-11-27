@@ -3,6 +3,11 @@
 // (S, $, el, act, prefs, …), which exist by the time anything here is called.
 // ---------- personal settings
 const THEMES = [['dark', '🌙 Dark'], ['light', '☀️ Light'], ['system', '🌓 Match my phone']];
+// 🖌️ Background colour of the whole app (#321). Green is the look the app ships with and adds no rules; each other
+// one is a base colour that style.css mixes its shades from. The second value is the phone's address bar (dark theme).
+const COLORS_BG = [['green', '🟢 Green felt', null], ['blue', '🔵 Ocean blue', '#101c2c'], ['purple', '🟣 Royal purple', '#1a132c'],
+  ['red', '🔴 Burgundy', '#2a1019'], ['pink', '🌸 Rose', '#2a1220'], ['brown', '🟤 Walnut', '#261a10'],
+  ['slate', '🩶 Slate grey', '#161a1f'], ['black', '⚫ Midnight', '#0b0b0d']];
 // 🎨 Graphics: Auto turns shadows, reflections and extra particles off on a weak device (few cores or little
 // memory, data saver, or a 3D game that had to drop its resolution to keep up: GL3.strained)
 const GFX = [['auto', '🪄 Auto'], ['high', '✨ High (shadows, reflections, more particles)'], ['low', '🔋 Low (smoother, saves battery)']];
@@ -20,7 +25,10 @@ function applyPrefs() {
   const light = prefs.theme === 'light' || (prefs.theme === 'system' && !!lightQuery?.matches);
   document.body.classList.toggle('light', light);
   document.body.dataset.back = prefs.cardBack || 'blue';   // the colour of every card back (style.css)
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', light ? '#f4f1fa' : '#16131f');
+  const colour = COLORS_BG.find(([k]) => k === prefs.color);
+  if (colour?.[2]) document.body.dataset.color = colour[0];
+  else delete document.body.dataset.color;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', light ? '#f4f1fa' : colour?.[2] || '#16131f');
   const low = gfxLevel() === 'low';
   if (document.body.classList.contains('lowgfx') !== low) {
     document.body.classList.toggle('lowgfx', low);
@@ -37,6 +45,13 @@ function renderPrefs() {
   pick.onchange = () => { prefs.theme = pick.value; store('unmask.prefs', prefs); applyPrefs(); };
   theme.append(pick);
   box.append(theme);
+  const colour = el('label', '', '🖌️ Background colour');
+  const cpick = el('select');
+  for (const [k, label] of COLORS_BG) cpick.append(Object.assign(el('option', '', label), { value: k }));
+  cpick.value = COLORS_BG.some(([k]) => k === prefs.color) ? prefs.color : 'green';
+  cpick.onchange = () => { prefs.color = cpick.value; store('unmask.prefs', prefs); applyPrefs(); };
+  colour.append(cpick);
+  box.append(colour);
   const gfx = el('label', '', '🎨 Graphics');
   const gpick = el('select');
   for (const [k, label] of GFX) gpick.append(Object.assign(el('option', '', label), { value: k }));

@@ -32,6 +32,7 @@ UI.lanes = (() => {
   }
   let bowlerOn = (() => { try { return localStorage.getItem('ln.bowler') !== '0'; } catch { return true; } })();
   const LEAD = 0.8;  // seconds of approach before the ball leaves the hand
+  let keyAim = false, keyHandler = null;
   let anim = null, seen = 0, primed = false, drag = null, rolledAt = 0, lastDraw = 0, holdUntil = 0, settleAt = 0, settled = true;
   let start = 0.2, spin = 0.5, saver = false, coach = '';  // coach: what the last ball did at the rack, and how to fix it
   const $ = (id) => document.getElementById(id);
@@ -198,7 +199,7 @@ UI.lanes = (() => {
         <div class="ln-row"><span class="ln-lbl">🌀 Hook</span><span class="ln-end">⟲</span>
           <input type="range" id="lnSpin" min="-100" max="100" step="5" aria-label="Hook: left to right"><span class="ln-end">⟳</span><b id="lnSpinV" class="ln-spinv"></b></div>
       </div>
-      <p id="lnHint" class="hint"></p></div>`;
+      <p id="lnHint" class="hint"></p><p id="lnKeys" class="hint ln-keys"></p></div>`;
     side.innerHTML = '<div class="panel"><h3>Scoresheet</h3><div id="lnSheet" class="ln-sheet"></div></div>';
     $('lnSpin').value = Math.round(-spin * 100);
     $('lnRoll').addEventListener('click', () => { if (canBowl()) bowl(manualAim()); });
@@ -222,6 +223,7 @@ UI.lanes = (() => {
     stage.addEventListener('pointerdown', (e) => {
       if (drag || e.button !== 0 || !canBowl()) return;
       try { stage.setPointerCapture(e.pointerId); } catch {}
+      keyAim = false;
       drag = { id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY };
     });
     stage.addEventListener('pointermove', (e) => {
@@ -236,6 +238,10 @@ UI.lanes = (() => {
       if (r && r.speed > 0.08 && canBowl()) bowl(r);
     };
     for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) stage.addEventListener(event, endDrag);
+    keyAim = false;
+    keyHandler = (e) => onKey(e);
+    addEventListener('keydown', keyHandler);
+    keyText();
     ro = window.ResizeObserver ? new ResizeObserver(() => (gl || flat)?.resize()) : null;
     ro?.observe(stage);
     GL3.load().then(() => { if (stage.isConnected && !gl) GL3.revive(stage, { build: () => (gl = make3d(stage)), flat: () => { flat ||= make2d(stage); }, unflat: () => { flat?.dispose?.(); flat = null; } }); })
@@ -243,7 +249,43 @@ UI.lanes = (() => {
     raf = requestAnimationFrame(loop);
   }
 
-  function unmount() { cancelAnimationFrame(raf); raf = 0; rumble(0); hum = null; ro?.disconnect(); gl?.dispose(); gl = null; flat = null; ret = null; }
+  // ⌨️ (#289) bowling from the keyboard. It sets the same aim and power sliders as "Set aim and power", and the
+  // aim line shows on the lane while you adjust them.
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  function onKey(e) {
+    if (e.ctrlKey || e.metaKey || e.altKey || !S || S.phase !== 'playing' || S.paused) return;
+    if (e.target?.closest?.('input, textarea, select, [contenteditable]') || document.querySelector('#modal:not([hidden])') || !$('lnStage')) return;
+    const roll = e.code === 'Space' || e.code === 'Enter';
+    if (roll && e.target?.closest?.('button, summary, a')) return;   // that press belongs to the button
+    const nudge = (id, by) => { const el = $(id); el.value = String(clamp(+el.value + by, +el.min, +el.max)); keyAim = true; };
+    const stand = (by) => { start = clamp(Math.round((start + by) * 100) / 100, -0.4, 0.4); };
+    const hook = (by) => { const el = $('lnSpin'); el.value = String(clamp(+el.value + by, -100, 100)); spin = -el.value / 100; };
+    const fine = e.shiftKey ? 1 : 4;
+    if (e.code === 'ArrowLeft') nudge('lnAim', -fine);
+    else if (e.code === 'ArrowRight') nudge('lnAim', fine);
+    else if (e.code === 'ArrowUp') nudge('lnManualPower', fine);
+    else if (e.code === 'ArrowDown') nudge('lnManualPower', -fine);
+    else if (e.code === 'KeyA') stand(-0.04);
+    else if (e.code === 'KeyD') stand(0.04);
+    else if (e.code === 'KeyQ') hook(-5);
+    else if (e.code === 'KeyE') hook(5);
+    else if (roll) {
+      if (e.repeat || !canBowl()) return;
+      e.preventDefault();
+      const r = manualAim(); keyAim = false; bowl(r); keyText();
+      return;
+    } else return;
+    e.preventDefault();
+    controls(); hint(); keyText();
+  }
+  function keyText() {
+    const el = $('lnKeys'); if (!el) return;
+    const aim = +$('lnAim').value;
+    el.textContent = keyAim ? `⌨️ Aim ${aim ? `${aim < 0 ? 'left' : 'right'} ${Math.abs(aim)}` : 'straight'} · power ${$('lnManualPower').value}% · Space to roll`
+      : '⌨️ A / D stand · ← → aim · ↑ ↓ power · Q / E hook · Space roll (Shift: finer)';
+  }
+
+  function unmount() { removeEventListener('keydown', keyHandler); cancelAnimationFrame(raf); raf = 0; rumble(0); hum = null; ro?.disconnect(); gl?.dispose(); gl = null; flat = null; ret = null; }
 
   const manualAim = () => ({ angle: +$('lnAim').value * MAXA / 100, speed: +$('lnManualPower').value / 100 });
 
@@ -522,7 +564,7 @@ UI.lanes = (() => {
     if (!settled && !anim && now >= settleAt && now > holdUntil) { settled = true; controls(); hint(); }
     const ready = canBowl(), rollButton = $('lnRoll');
     if (rollButton.disabled === ready) rollButton.disabled = !ready;
-    const r = aimed() || (ready && rollButton.closest('details').open ? manualAim() : null), bar = $('lnPower');
+    const r = aimed() || (ready && (keyAim || rollButton.closest('details').open) ? manualAim() : null), bar = $('lnPower');
     bar.hidden = !r;
     if (r) { const fill = bar.firstElementChild; fill.style.height = `${r.speed * 100}%`; fill.style.background = powerCss(r.speed); }
     const idle = !anim && !drag && !(gl?.moving?.());
@@ -621,7 +663,7 @@ UI.lanes = (() => {
         }
       });
     }
-    const gutterMat = new T.MeshStandardMaterial({ color: 0x5a5868, roughness: 0.42, metalness: 0.6, side: T.DoubleSide, envMapIntensity: 1.2 });
+    const gutterMat = new T.MeshStandardMaterial({ color: 0x3f3d4e, roughness: 0.34, metalness: 0.7, side: T.DoubleSide, envMapIntensity: 1.2 });
     const capMat = new T.MeshStandardMaterial({ color: 0x23212b, roughness: 0.4, metalness: 0.2 });  // (was purple: with its pink edge it read as part of the lane, #132)
     const glowMats = [0x9b6bff, 0x4cc9f0].map((c) => new T.MeshBasicMaterial({ color: c, toneMapped: false }));
     // #136 a tenpin's turned profile (radius, height in m): the base, the belly at 11 cm, the neck at 25 cm, the head
@@ -717,6 +759,15 @@ UI.lanes = (() => {
     const kickMat = new T.MeshStandardMaterial({ color: 0x1d1830, roughness: 0.22, metalness: 0.5 });
     const curtainMat = new T.MeshStandardMaterial({ color: 0x0b0714, roughness: 1, side: T.DoubleSide });
     const lanes = [];  // [{x, grp, pins: [mesh x10], bar, setter, id}]
+    // how high the ball's middle is: on the boards, falling over the edge, then riding the channel's curve
+    const LOW = R - 0.118;   // resting on the bottom of the 12 cm half pipe
+    function ballHeight(x) {
+      const over = Math.abs(x) - W / 2, u = over - 0.12;
+      if (over <= 0) return R;
+      return u < 0 ? R + (LOW - R) * Math.sin((over / 0.12) * Math.PI / 2) : LOW + Math.min(0.05, (u / 0.05) ** 2 * 0.04);
+    }
+    // bright steel lips along both edges of each channel, so its shape shows
+    const gutLipGeo = new T.BoxGeometry(0.014, 0.01, len), gutLipMat = new T.MeshStandardMaterial({ color: 0xc9cbd6, roughness: 0.25, metalness: 0.85, envMapIntensity: 1.5 });
     function buildLane(x, empty) {
       const grp = new T.Group(); grp.position.x = x;
       const deck = new T.Mesh(deckGeo, laneMat); deck.rotation.x = -Math.PI / 2; deck.position.z = zMid; deck.receiveShadow = true; grp.add(deck);
@@ -724,6 +775,7 @@ UI.lanes = (() => {
         const gut = new T.Mesh(gutGeo, gutterMat);
         gut.rotation.set(Math.PI / 2, 0, -Math.PI / 2, 'ZYX');  // a half pipe along the lane, open side up
         gut.position.set(sx * (W / 2 + 0.12), 0, zMid); grp.add(gut);
+        for (const edge of [0.004, 0.236]) { const lip = new T.Mesh(gutLipGeo, gutLipMat); lip.position.set(sx * (W / 2 + edge), 0.002, zMid); grp.add(lip); }
       }
       // the capping between this lane and the next on the right (and on my lane's left too), with neon edges
       for (const dx of x === 0 ? [-1, 1] : [1]) {
@@ -792,7 +844,7 @@ UI.lanes = (() => {
     // can lights over the cappings, and neon stripes down the side walls
     const SPAN = PITCH * 5.5;
     const floor = new T.Mesh(new T.PlaneGeometry(SPAN * 2, len + 20), new T.MeshStandardMaterial({ color: 0x140e22, roughness: 0.9 }));
-    floor.rotation.x = -Math.PI / 2; floor.position.set(0, -0.01, -(len / 2)); scene.add(floor);
+    floor.rotation.x = -Math.PI / 2; floor.position.set(0, -0.135, -(len / 2)); scene.add(floor);   // under the channels: at -0.01 it covered them (#291)
     const apTex = canvasTex(T, 512, 512, (g, w, h) => {  // (#226) the approach is the same maple boards as the lane, running on behind the foul line
       const boards = 39, bw = w / boards;
       for (let b = 0; b < boards; b++) {
@@ -1072,8 +1124,7 @@ UI.lanes = (() => {
       if (st.ball) {
         ball.visible = st.ball.y < PIT;
         const prev = ball.position.clone();
-        const gutterDepth = Math.min(1, Math.max(0, (Math.abs(st.ball.x) - W / 2 - 0.02) / (R * 0.9 - 0.02)));
-        ball.position.set(st.ball.x, R - gutterDepth * R * 0.65, -st.ball.y);
+        ball.position.set(st.ball.x, ballHeight(st.ball.x), -st.ball.y);
         spinA += prev.distanceTo(ball.position) / R;
         ball.rotation.set(-spinA, 0, 0);
       } else {
@@ -1117,7 +1168,10 @@ UI.lanes = (() => {
       const k = 1 - Math.exp(-dt * (anim ? 5 : 3));
       cam.pos.lerp(cam.tp, k); cam.look.lerp(cam.tl, k); cam.fov += (cam.tf - cam.fov) * k;
       cam.moving = cam.pos.distanceTo(cam.tp) > 0.01 || cam.look.distanceTo(cam.tl) > 0.01 || cosmicK % 1 > 0.01 && cosmicK < 0.99;
-      if (Math.abs(camera.fov - cam.fov) > 0.01) { camera.fov = cam.fov; camera.updateProjectionMatrix(); }
+      // (#291) closer in a wide view, except while following the ball: zoomed there, it ran off the bottom of the picture
+      const following = st.ball && st.ball.y < HEAD - 5.5;
+      const fov = cam.fov * (camera.aspect > 1.5 && !following ? Math.max(0.84, Math.sqrt(1.5 / camera.aspect)) : 1);
+      if (Math.abs(camera.fov - fov) > 0.01) { camera.fov = fov; camera.updateProjectionMatrix(); }
       camera.position.copy(cam.pos); camera.lookAt(cam.look);
       GL3.tickShake(camera, dt);
       stg.follow(camera);

@@ -64,3 +64,18 @@ body.focus .ml-stage { height: max(260px, calc(var(--room) - 190px)); }
 .ml-telemetry { font-variant-numeric: tabular-nums; }
 
 .ml-count.ml-briefing { font-size: clamp(24px, 7vw, 44px); white-space: nowrap; }
+/* #293 why land: each base's need and what delivering is worth, in the side panel and over the view before a launch */
+.ml-base { display: flex; gap: 8px; align-items: center; padding: 6px 8px; margin: 5px 0; border-left: 4px solid var(--pc); border-radius: 8px; background: #ffffff0d; }
+.ml-base i { flex: none; min-width: 3.1em; font: 800 15px/1 var(--font-display); font-style: normal; color: var(--pc); }
+.ml-base b { display: block; font-size: 13px; }
+.ml-base small { display: block; font-size: 12px; opacity: .85; line-height: 1.35; }
+.ml-why { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); width: min(94%, 440px); z-index: 4; pointer-events: none;
+  padding: 8px 10px; border-radius: var(--radius); background: #0b1020e6; color: #fff; border: 1px solid #ffffff33; }
+.ml-why[hidden] { display: none; }
+.ml-why p { margin: 0 0 4px; font-size: 13px; font-weight: 700; }
+/* #293 a wide screen: the flight view takes the width and the height there is (contracts and replay sit below) */
+@media (min-width: 861px) and (orientation: landscape) {
+  .ml { max-width: none; }
+  .ml-stage, body.focus .ml-stage { height: max(300px, calc(var(--room) - 112px)); }
+  .ml-ctl, .ml #mlHint { max-width: 760px; margin-left: auto; margin-right: auto; }
+}

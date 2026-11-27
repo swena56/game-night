@@ -72,3 +72,34 @@
 
 /* #8 the ball, weight and bowler switches read as buttons, not links */
 .ln-ctl .ln-saver.ghost-btn { min-height: 40px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--text); text-decoration: none; }
+/* #289 large view: ten frames and a total don't fit the usual narrow side column, so Lane Night's is wider and the
+   sheet fills it, every frame in sight */
+@media (min-width: 1000px) {
+  #game .layout:has(#lnSheet) { grid-template-columns: minmax(0, 1fr) clamp(480px, 36vw, 560px); }
+  #lnSheet .ln-tab { width: 100%; table-layout: fixed; border-spacing: 2px; font-size: 14px; }
+  #lnSheet .ln-tab tr:first-child th:first-child { width: 5.8em; }
+  #lnSheet .ln-tab tr:first-child th:nth-last-child(2) { width: 3.1em; }   /* the last frame has three balls */
+  #lnSheet .ln-tab tr:first-child th:last-child { width: 2.9em; }
+  #lnSheet .ln-tab th { min-width: 0; padding: 5px 0; font-size: 12px; overflow: hidden; }
+  #lnSheet .ln-tab td { min-width: 0; padding: 4px 0; }
+  #lnSheet .ln-tab .ln-nm { max-width: none; padding-left: 4px; font-size: 13px; }
+  #lnSheet .ln-balls { gap: 1px; font-size: 12px; min-height: 1.4em; }
+  #lnSheet .ln-balls span { min-width: .7em; }
+  #lnSheet .ln-cum { font-size: 14px; min-height: 1.4em; letter-spacing: -.02em; }
+  #lnSheet .ln-tot { font-size: 15px; }
+  #game .layout:has(#lnSheet) #sideGame .panel { padding-inline: 10px; }
+}
+/* #289 the key list is only for a device with a keyboard and pointer */
+.ln-keys { min-height: 1.4em; font-size: 12px; margin-top: 2px; }
+@media (pointer: coarse) { .ln-keys { display: none; } }
+/* #291 large view: the lane takes the width and more of the height; the controls sit side by side under it */
+@media (min-width: 861px) and (orientation: landscape) {
+  .ln { max-width: none; }
+  .ln-stage, body.focus .ln-stage { height: max(340px, calc(var(--room) - 212px)); }
+  .ln-ctl { flex-flow: row wrap; justify-content: center; align-items: center; column-gap: 18px; row-gap: 6px; }
+  .ln-ctl .ln-row { flex: 0 1 auto; }
+  .ln-ctl .ln-row input[type=range] { width: 220px; flex: 0 1 220px; }
+  .ln-ctl .ln-manual { flex: 0 1 auto; }
+  .ln-ctl .ln-manual[open] { flex-basis: 100%; }
+  #lnHint { min-height: 1.45em; margin-bottom: 0; }
+}

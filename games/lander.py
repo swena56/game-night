@@ -38,6 +38,7 @@ PADS = ((1, 7), (2, 5), (3, 3))        # multiplier, width in segments
 MAX_TICKS = int(45 / DT)
 TANK0, REFILL, TANK_MAX = 24 * 30, 14 * 30, 36 * 30   # fuel, in ticks of burn
 COUNT, BETWEEN, SETTLE = 3.0, 6.0, 1.2
+FIRST_READ = 4.0       # #293 the first countdown runs this much longer: time to read what each base needs
 GHOST_HZ = 10
 # the supply run: outposts on the pads, pickups in the sky, the hop
 NEEDS = ("fuel", "rush", "lab")
@@ -399,7 +400,7 @@ class Lander(Game):
         self.contracts = self.round_contracts()
         self.rushed = set()               # rush outposts already reached this round
         self.stage = "briefing" if self.expedition else "count"
-        self.t0 = now + COUNT + (BRIEFING if self.expedition else 0)
+        self.t0 = now + COUNT + (BRIEFING if self.expedition else FIRST_READ if self.round_no == 1 else 0)
         r.deadline = self.t0 - COUNT if self.expedition else self.t0
         for p in self.players():
             g = p.g

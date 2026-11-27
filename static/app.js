@@ -679,7 +679,7 @@ function syncLook(s, force = false) {
   quiet(act('look', want));
 }
 Profile.onLook = () => { if (S) syncLook(S, true); };
-Profile.onSynced = () => { if (S) syncLook(S, true); if (!$('#home').hidden) Profile.homeLine($('#homeLevel')); };
+Profile.onSynced = () => { if (S) syncLook(S, true); if (!$('#home').hidden) { Profile.homeLine($('#homeLevel')); paintHomeIcon(); } };
 function onState(s) {
   const prev = S;
   s.games ??= prev?.games ?? [];  // the server sends the game catalogue once per connection
@@ -905,7 +905,8 @@ function renderGame(view = S, readOnly = false, force = false) {
   const readOnlyAct = () => { toast('This is a replay.'); return Promise.reject(new Error('replay')); };
   kitMuted = readOnly;
   // the player's first move (or real-time input) means they've got going: the tip card goes
-  const moved = () => { if ($('#tipCard')) seenTip(view.gameId); };
+  // (a drag-on-the-board game sets keepTip: removing the card moves and resizes the board, here in mid-move, #327)
+  const moved = () => { if (!$('#tipCard')) return; if (ui.keepTip) store('seen:' + view.gameId, 1); else seenTip(view.gameId); };
   const actTip = (...a) => act(...a).then((r) => { moved(); return r; });
   const inputTip = (...a) => { moved(); return input(...a); };
   ui.render(view, { readOnly, act: readOnly ? readOnlyAct : actTip, input: readOnly ? () => {} : inputTip, quiet, toast, el, ask, player: lookup, mark: (id) => mark(lookup(id)), myTurn,
@@ -1189,9 +1190,20 @@ function ensureName() {
   const name = load('unmask.name') || 'Player' + (1000 + Math.floor(Math.random() * 9000));
   $('#name').value = name; store('unmask.name', name);
 }
+// #326 your icon beside your name; tapping it picks another (the same picker as in My record)
+function paintHomeIcon() {
+  $('#homeIcon').replaceChildren(avatar({ name: $('#name').value.trim() || 'Player', icon: load('gn.icon') || '', color: '#5a6b80' }));
+}
+$('#homeIcon').onclick = () => {
+  const box = Profile.iconPicker();
+  box.addEventListener('click', paintHomeIcon);
+  ask('', { body: box, ok: 'Done', cancel: '' }).then(paintHomeIcon);
+};
+$('#name').addEventListener('input', paintHomeIcon);
 $('#name').value = '';
 ensureName();
-$('#name').addEventListener('change', ensureName);  // a cleared box gets the saved name back
+paintHomeIcon();
+$('#name').addEventListener('change', () => { ensureName(); paintHomeIcon(); });  // a cleared box gets the saved name back
 $('#name').onfocus = () => /^Player\d{4}$/.test($('#name').value) && $('#name').select();  // typing replaces a made-up name
 // solo choices carry this device's ★ bot-ladder stars, and "new" for games never finished here
 function fillSoloGames() {
@@ -1221,19 +1233,32 @@ fillSoloGames();
 const pickSolo = (id) => { $('#soloGame').value = id; store('unmask.soloGame', id); showSoloPick(); $('#soloPick').focus(); };
 $('#soloPick').onclick = async () => { const id = await pickGameSheet({ current: $('#soloGame').value }); if (id) pickSolo(id); };
 $('#newGameBtn').onclick = () => { const id = Profile.suggest(); pickSolo(id); toast(`How about ${$('#soloGame').selectedOptions[0].textContent.replace(/ {2}.*/, '')}?`); };
-$('#recordBtn').onclick = () => Profile.show(pickSolo).then(() => Profile.homeLine($('#homeLevel')));
+$('#recordBtn').onclick = () => Profile.show(pickSolo).then(() => { Profile.homeLine($('#homeLevel')); paintHomeIcon(); });
 $('#homeLevel').onclick = () => $('#recordBtn').click();
 Profile.sync(300);  // ✨ back up (and on a cleared browser, bring back) the lifetime record
 // 🧰 Utilities: the tools that are not games, in a box over the home screen. ✕, Escape, a tap outside or Back closes it.
 function onUtilsBack() { $('#utils').hidden = true; }
 function closeUtils() { if (!$('#utils').hidden) { onUtilsBack(); backClosed(onUtilsBack); } }
 function openUtils() { $('#utils').hidden = false; backOpen(onUtilsBack); $('#bingoToolsBtn').focus(); }
+// Close the box, then load the page. Closing steps back over the box's history entry, so wait for that to land first:
+// a page load started before it would be cancelled.
+function leaveUtils(url) {
+  closeUtils();
+  if (backNav.guard === 'leaving') addEventListener('popstate', () => { location.href = url; }, { once: true });
+  else location.href = url;
+}
 $('#utilsBtn').onclick = openUtils;
 $('#utilsX').onclick = closeUtils;
 $('#utils').onclick = (e) => { if (e.target === e.currentTarget) closeUtils(); };
 $('#utils').onkeydown = (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeUtils(); $('#utilsBtn').focus(); } };
 // the feedback inbox only opens on the device running the server, so only that device gets the link
 const isLocalhost = () => ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
+$('#feedbackInboxLink').addEventListener('click', (e) => {
+  const url = e.currentTarget.getAttribute('href');
+  if (!url || e.ctrlKey || e.metaKey || e.shiftKey) return;  // locked (it only says why), or opened in another tab
+  e.preventDefault();
+  leaveUtils(url);
+});
 $('#feedbackInboxLink').hidden = !isLocalhost();
 // 🔵 Bingo tools: a local-only screen (no room); Back returns to Utilities
 $('#bingoToolsBtn').onclick = () => needUI('bingotools').then(() => {
@@ -1264,9 +1289,21 @@ function scrollToSettings(bots, tries = 40) {
     requestAnimationFrame(() => $('.settings-head').scrollIntoView?.({ behavior: 'smooth', block: 'start' }));
   } else if (tries) setTimeout(() => scrollToSettings(bots, tries - 1), 100);
 }
-$('#pinballEditorBtn').onclick = $('#lobbyEditorBtn').onclick = () => { location.href = '/pinball-editor.html'; };
+$('#pinballEditorBtn').onclick = () => leaveUtils('/pinball-editor.html');
+$('#lobbyEditorBtn').onclick = () => { location.href = '/pinball-editor.html'; };
 // the button shows unless the server has the table editor switched off (GAME_NIGHT_EDITOR=0)
-fetch('/api/dev').then((r) => r.json()).then((d) => { window.gnEditor = !!d.editor; $('#pinballEditorBtn').hidden = !d.editor; }).catch(() => {});
+fetch('/api/dev').then((r) => r.json()).then((d) => { window.gnEditor = !!d.editor; $('#pinballEditorBtn').hidden = !d.editor; inboxLink(d.inbox); }).catch(() => {});
+// on another device the server says whether this one may have the feedback admin (a development server, never production)
+function inboxLink(state) {
+  const a = $('#feedbackInboxLink');
+  if (isLocalhost() || !state) return;
+  a.hidden = false;
+  if (state === 'open') { a.href = '/admin.html'; a.title = 'Bug reports and ideas from players (asks for the admin password)'; return; }
+  a.removeAttribute('href');
+  a.tabIndex = 0;
+  a.textContent = '🔒 Feedback inbox: set an admin password first';
+  a.onclick = () => toast('On the server, run: python3 -m games.admin_auth');
+}
 $('#soloBtn').onclick = () => solo(true);
 $('#soloSetupBtn').onclick = () => solo(false);
 $('#addBotBtn').onclick = () => quiet(act('add_bot', { level: $('#botLevel').value }));

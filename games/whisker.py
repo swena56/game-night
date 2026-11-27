@@ -46,6 +46,8 @@ CRUMB, BELL, BONK, CATCH = 1, 5, 20, 8               # points
 CLEAR_BONUS, SWEEP_BONUS = 25, 25  # every crumb gone (each mouse still in) / every mouse out (each cat)
 LONE_MOUSE = 1.5                  # a mouse with the whole maze to itself gets this much more time: even a perfect
                                   # path with no cat takes about two thirds of the normal round
+NO_LIMIT_CAP = 600                # "No time limit" shows no clock, but a round nobody can finish (a mouse hiding for
+                                  # good, or everyone gone quiet) still ends after ten minutes
 INF = 10 ** 6
 
 
@@ -195,6 +197,7 @@ class Whisker(Game):
         "🕳️ Mouse holes let mice through the walls but not cats — though a cat at either end can reach in.",
         "Every round is a new maze: the 🌿 garden, the 🫙 pantry, the 🕯️ cellar. More mice, bigger maze.",
         "⏱ A lone mouse has the whole maze to clear, so that round runs half as long again.",
+        "With No time limit, a round ends when every crumb is eaten or every mouse is out (or after 10 minutes).",
         "Most points after every round wins. Run off one side of the tunnel and you pop out the other.",
     ]
     name = "Whisker Run"
@@ -205,7 +208,7 @@ class Whisker(Game):
     replayable = False
     settings_schema = {
         "speed": ("Speed", [(7.0, "Normal"), (5.5, "Chill"), (8.5, "Fast")], 7.0),
-        "length": ("Round length", [(75, "75 s"), (50, "50 s"), (100, "100 s")], 75),
+        "length": ("Round length", [(75, "75 s"), (50, "50 s"), (100, "100 s"), (0, "No time limit")], 75),
         "laps": ("Rounds", [(1, "Everyone hunts once"), (2, "Everyone hunts twice")], 1),
         "alley": ("🐈‍⬛ Alley cats", [(-1, "Auto: one when mice outnumber cats"), (0, "None"), (1, "1"), (2, "2")], -1),
         "maze": ("Maze", [(0.3, "Roomy"), (0.15, "Twisty"), (0.45, "Wide open")], 0.3),
@@ -268,7 +271,8 @@ class Whisker(Game):
         alley = self.s.get("alley", -1)
         if alley < 0:  # a hunter for nobody, when the mice would otherwise run riot
             alley = 1 if mi > ci else 0
-        self.round_secs = round(self.s.get("length", 75) * (LONE_MOUSE if mi == 1 else 1))
+        length = self.s.get("length", 75)
+        self.round_secs = round(length * (LONE_MOUSE if mi == 1 else 1)) if length else NO_LIMIT_CAP
         self.pace = CAT_PACE + (OUTNUMBERED * (mi - ci) if ci >= 2 and mi > ci else 0)
         for _ in range(alley):
             self.ents.append(self.critter("a", None, cat_spawns[ci]))
@@ -622,10 +626,13 @@ class Whisker(Game):
         self.stage = "over"
         self.next_at = now + ROUND_PAUSE
 
+    def timed(self):
+        return bool(self.s.get("length", 75))
+
     def broadcast(self, now):
         self.room.push_fast({
             "k": self.tick, "st": self.stage, "left": len(self.food), "e": self.eaten, "ev": self.events,
-            "t": round(max(0.0, (self.end_at or now) - now), 1) if self.stage == "play" else None,
+            "t": round(max(0.0, (self.end_at or now) - now), 1) if self.stage == "play" and self.timed() else None,
             "sc": self.score,
             # the last field is the move's head start: how far into its next step the critter already is
             # (in hundredths), so browsers glide at an even pace instead of in 15 Hz jumps
@@ -845,7 +852,7 @@ class Whisker(Game):
             "ents": [{"role": e["role"], "seat": e["seat"], "cell": e["cell"], "dir": e["dir"], "st": self.state_of(e, now),
                       "v": round(self.speed_of(e, now) * 10), "lives": e["lives"], "pouch": e["pouch"],
                       "back": max(0.0, (e["out_until"] or 0) - now), "spook": max(0.0, e["spook_until"] - now)} for e in self.ents],
-            "timeLeft": max(0.0, self.end_at - now) if self.stage == "play" and self.end_at else None,
+            "timeLeft": max(0.0, self.end_at - now) if self.stage == "play" and self.end_at and self.timed() else None,
             "countdown": max(0.0, self.next_at - now) if self.stage in ("countdown", "over") else 0,
             "next": [("c" if i in self.hunters(self.round) else "m") for i in range(len(self.seats))] if self.round < self.rounds else None,
         }}

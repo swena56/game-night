@@ -98,7 +98,7 @@ class Archery(Game):
     category = "action"
     family = None
     howto = [
-        "In darts, start on the right half of the board or on the throw button, then swipe inward. Release when the aim ring is over your target. With a mouse, press on the board, move to your target and let go. The ring grows on faster swipes to show the extra scatter. Each visit has up to three darts, and the board clears automatically after the last visit of the round.",
+        "In darts, start on the right half of the board or on the throw button, then swipe inward. Release when the aim ring is over your target. With a mouse, hold the button anywhere on the board and swipe the same way. The ring grows on faster swipes to show the extra scatter. Each visit has up to three darts, and the board clears automatically after the last visit of the round.",
         "301 and 501: count down to exactly zero; any dart can finish. Going below zero busts the whole visit. With the Double out setting you must finish on a double, and leaving one or hitting zero without a double busts too.",
         "Cricket: hit 15–20 and bull three times each. Extra marks score while a rival still has that target open. Close every target and at least tie the high score to win.",
         "Around the Clock: hit 1 through 20 in order, then either bull. A double or triple clears only that number.",

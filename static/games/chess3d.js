@@ -13,7 +13,7 @@ const Chess3D = (() => {
 
     const scene = new T.Scene(), camera = new T.PerspectiveCamera(36, 1, 0.1, 100);
     // on-demand: shadows are redrawn only on frames that change something (stg.relight)
-    const stg = GL3.stage(renderer, scene, { exposure: 1.1, still: true, hemi: [0xfff4e0, 0x302040, 0.75], key: { i: 0.8, pos: [-4, 10, 6], area: 6, near: 1, far: 30 } });
+    const stg = GL3.stage(renderer, scene, { exposure: 1.0, still: true, hemi: [0xfff4e0, 0x302040, 0.5], key: { i: 0.95, pos: [-9, 7, 3], area: 6, near: 1, far: 30 } });
 
     // board: frame + 64 tiles (tile index = 2D board's display index: row 0 is the far side)
     const frame = new T.Mesh(new T.BoxGeometry(9, 0.4, 9), new T.MeshStandardMaterial({ color: 0x5b3a1e, roughness: 0.6 }));
@@ -30,7 +30,7 @@ const Chess3D = (() => {
 
     // pieces: shared geometry per kind, two materials
     const mats = {
-      w: new T.MeshStandardMaterial({ color: 0xfffaf0, roughness: 0.35, metalness: 0.05 }),
+      w: new T.MeshStandardMaterial({ color: 0xd8c39c, roughness: 0.5, metalness: 0.05 }),  // ivory, not white, so its shading shows (#307)
       b: new T.MeshStandardMaterial({ color: 0x24201c, roughness: 0.3, metalness: 0.2 }),
     };
     const kinds = buildKinds(T);
@@ -153,8 +153,8 @@ const Chess3D = (() => {
           const m = new T.Mesh(geo, mats[p.color]); m.castShadow = true; g.add(m);
           if (p.color === 'w') {
             geo.boundingBox || geo.computeBoundingBox();
-            const c = geo.boundingBox.getCenter(new T.Vector3()), o = new T.Mesh(geo, rim), k = 1.07;
-            o.scale.set(k, 1.025, k); o.position.set(c.x * (1 - k), c.y * -0.025, c.z * (1 - k)); g.add(o);
+            const c = geo.boundingBox.getCenter(new T.Vector3()), o = new T.Mesh(geo, rim), k = 1.11;
+            o.scale.set(k, 1.03, k); o.position.set(c.x * (1 - k), c.y * -0.03, c.z * (1 - k)); g.add(o);
           }
         }
         if (p.kind === 'N' && p.color !== bottom) g.rotation.y = Math.PI;  // knights face the enemy

@@ -28,6 +28,10 @@ PIN_FALL = 0.10       # a falling pin sweeps a wider circle than a standing one 
 BALL_DECEL = 0.25
 LIP = 0.02           # a grazing ball can hook back before it falls into the channel
 GUTTER_DECEL = 0.55
+# the channel is a half pipe: a ball that drops in swings across it, knocks the far side and settles along the bottom
+CHANNEL = 0.12                     # from the lane's edge to the middle of the channel (as lanes.js draws it)
+G_SPRING, G_DAMP = 230.0, 9.0      # the pull back to the bottom, and how fast the rocking dies down
+G_WALL, G_BOUNCE = 0.05, 0.45      # how far up the outer side it can ride, and how much it comes back off the kickback
 HOOK = 2.2            # m/s² sideways at full spin on dry boards
 VMIN, VMAX = 5.5, 9.5
 DT = 1 / 120
@@ -86,10 +90,14 @@ def roll(standing, start, angle, speed, spin, oil, record=True, weight=1):
                 can_hook_back = by > oil and bx * spin > 0 and abs(bx) < LANE / 2 + LIP
                 if not can_hook_back:
                     gutter = True
-            if gutter:
-                channel = math.copysign(LANE / 2 + BALL_R * 0.9, bx)
-                bx += (channel - bx) * min(1, 28 * DT)
-                vx = 0.0
+            if gutter:   # u: how far outward of the channel's middle (less than 0 is toward the lane, which it can't regain)
+                side = math.copysign(1.0, bx)
+                u, vu = abs(bx) - (LANE / 2 + CHANNEL), vx * side
+                vu += (-G_SPRING * u - G_DAMP * vu) * DT
+                if u > G_WALL:
+                    u, vu = G_WALL, -abs(vu) * G_BOUNCE
+                u = max(-CHANNEL + 0.002, u)
+                bx, vx = side * (LANE / 2 + CHANNEL + u), vu * side
             if by > PIT:
                 ball_on = False
         # ball against pins
@@ -233,6 +241,7 @@ class Lanes(Game):
     category = "action"
     family = None
     howto = [
+        "⌨️ With a keyboard: A / D move where you stand, ← → aim, ↑ ↓ set the power, Q / E add hook, and Space or Enter rolls.",
         "Everyone bowls their own lane at the same time. Set where you stand (◀ ▶) and the hook, then drag back from the ball and let go: the drag sets the line and the speed.",
         "The ball skids straight through the oil, then hooks the way you spun it. Aim for the pocket, just beside the head pin.",
         "📉 Your lane's oil breaks down as you bowl, so the hook starts earlier and earlier: ease the spin, or move your start and aim, to keep finding the pocket.",

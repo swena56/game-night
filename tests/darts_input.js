@@ -749,25 +749,22 @@ async function test() {
     actions.length = 0;
     {
     const board = document.querySelector('.ar-darts svg[tabindex]');
-    // a mouse points and releases: the dart goes at the spot it lets go over, at the keyboard's pace
+    // a mouse swipes like a finger (the aim moves by the drag, not to the pointer), but may start anywhere
     const mouse = (type, x, y) => {
       const event = new window.MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0 });
       Object.defineProperties(event, { pointerId: { value: 7 }, pointerType: { value: 'mouse' } });
       board.dispatchEvent(event);
     };
     board.getBoundingClientRect = () => ({ left: 0, top: 0, width: 250, height: 250 });
-    mouse('pointerdown', 40, 200);
-    mouse('pointermove', 125 - 0.3 * 98, 125 - 0.4 * 98);
-    mouse('pointerup', 125 - 0.3 * 98, 125 - 0.4 * 98);
-    assert.equal(actions.length, 1);
-    closeTo(1.04 + actions[0].payload.dx, -0.3);
-    closeTo(-0.55 + actions[0].payload.dy, 0.4);
-    closeTo(actions[0].payload.vx, -plain.swipePace);
-    closeTo(actions[0].payload.vy, 0);
-    await new Promise((resolve) => window.setTimeout(resolve, 0));
     mouse('pointerdown', 125, 125);
-    mouse('pointerup', 400, 125);
-    assert.equal(actions.length, 1, 'letting go off the board throws nothing');
+    mouse('pointerup', 125, 125);
+    assert.equal(actions.length, 0, 'a click throws nothing');
+    mouse('pointerdown', 100, 180);
+    mouse('pointermove', 100 - 98, 180 - 0.5 * 98);
+    mouse('pointerup', 100 - 98, 180 - 0.5 * 98);
+    assert.equal(actions.length, 1, 'a swipe from the left half throws');
+    closeTo(actions[0].payload.dx, -1);
+    closeTo(actions[0].payload.dy, 0.5);
     }
   } finally {
     ui.unmount();

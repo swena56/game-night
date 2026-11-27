@@ -31,7 +31,10 @@
       <h1 class="logo">🎲 Game Night</h1>
       <p class="tag"><span id="gameCount"></span> games · play with friends or bots</p>
       <div class="home-art" aria-hidden="true"></div>
-      <label>Your name <input id="name" maxlength="16" autocomplete="nickname" placeholder="e.g. Sam"></label>
+      <div class="name-row">
+        <button id="homeIcon" class="home-icon" type="button" title="Your icon: tap to change it" aria-label="Your icon. Change it"></button>
+        <label>Your name <input id="name" maxlength="16" autocomplete="nickname" placeholder="e.g. Sam"></label>
+      </div>
       <button id="createBtn" class="primary big">Create a room</button>
       <button id="homeLevel" class="home-level" type="button"></button>
       <div class="or">or play solo</div>
@@ -77,7 +80,8 @@
     <div class="panel narrow wide">
       <header class="room-header">
         <div class="room-code">Room <b id="lobbyCode"></b></div>
-        <button id="shareBtn" class="ghost-btn">📲 Invite: link &amp; QR code</button>
+        <button id="shareBtn" class="ghost-btn" title="Invite: link &amp; QR code">📲 Invite<span class="share-more">: link &amp; QR code</span></button>
+        <button id="leaveBtn" class="ghost-btn">🚪 Leave room</button>
       </header>
       <button id="buildPlaylistBtn" hidden>Build playlist</button>
       <section id="lobbyPlaylist" class="playlist" aria-label="Playlist" hidden>
@@ -121,7 +125,6 @@
         <button id="resetScoresBtn" class="ghost-btn" hidden>Reset scoreboard</button>
       </div>
       <button id="lobbyRecordBtn" class="ghost-btn">🏆 My record</button>
-      <button id="leaveBtn" class="ghost-btn">Leave room</button>
     </div>
   </section>
 

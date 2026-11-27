@@ -63,3 +63,30 @@ body.calm .ws-cell.justplayed, body.calm .ws-cell.nope { animation: none; }
 .ws-plan { background: var(--panel2); border-radius: var(--r-md, 10px); padding: 6px 8px; margin: 4px 0; font-size: 13px; min-width: 0; overflow-wrap: anywhere; }
 .ws-plan-list { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
 .ws-plan-chip { background: var(--accent-a20); border-radius: 999px; padding: 1px 8px; font-weight: 700; font-size: 12px; }
+/* 🎨 #333 board looks (the picker is in wordsmith.js). 'felt' adds nothing, so the board keeps the colours above.
+   Each other look sets its own variables; the rules after them put those on the board. Tiles stay light on dark ink. */
+.ws-lookpick { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.ws-lookpick select { flex: 1; min-width: 0; margin: 0; }
+.ws-board[data-look="cream"] { --frame: #7b5a36; --sq: #eadfc4; --ink: #5b4a2e; --dl: #a9d3ea; --tl: #3f8fc4; --dw: #f0b3b0; --tw: #cf4b3c; --star: #e9a93c;
+  --dlink: #123a52; --dwink: #5c1d1a; }
+.ws-board[data-look="night"] { --frame: #070b16; --sq: #1a2440; --ink: #c3ccea; --dl: #2b6f9e; --tl: #4338ca; --dw: #8e3b76; --tw: #a82d4a; --star: #b8860b;
+  --dlink: #fff; --dwink: #fff; --tile: linear-gradient(160deg, #e8edf8, #c5cde2); }
+.ws-board[data-look="walnut"] { --frame: #3a2212; --sq: #8a5a32; --ink: #ffe9c9; --dl: #3f7f8c; --tl: #23566b; --dw: #b5654a; --tw: #8f2f22; --star: #c99a2e;
+  --dlink: #fff; --dwink: #fff; }
+.ws-board[data-look="contrast"] { --frame: #000; --sq: #1c1c1c; --ink: #fff; --dl: #7fd4ff; --tl: #0057e7; --dw: #ffb3d1; --tw: #d50000; --star: #ffd400;
+  --dlink: #000; --dwink: #000; --tile: linear-gradient(160deg, #fff, #f2f2f2); }
+.ws-board[data-look]:not([data-look="felt"]) { background: var(--frame); }
+.ws-board[data-look]:not([data-look="felt"]) .ws-cell:not(.tile) { background: var(--sq); color: var(--ink); }
+.ws-board[data-look]:not([data-look="felt"]) .ws-cell.p2L:not(.tile) { background: var(--dl); color: var(--dlink); }
+.ws-board[data-look]:not([data-look="felt"]) .ws-cell.p3L:not(.tile) { background: var(--tl); color: #fff; }
+.ws-board[data-look]:not([data-look="felt"]) .ws-cell.p2W:not(.tile) { background: var(--dw); color: var(--dwink); }
+.ws-board[data-look]:not([data-look="felt"]) .ws-cell.p3W:not(.tile) { background: var(--tw); color: #fff; }
+.ws-board[data-look]:not([data-look="felt"]) .ws-cell.pstar:not(.tile) { background: var(--star); color: #1d1400; }
+.ws-board:is([data-look="night"], [data-look="contrast"]) .ws-cell.tile:not(.pending) { background: var(--tile); }
+/* #333 a wide screen is short of height: the tip and the players move beside the board, and it takes their height */
+@media (min-width: 1200px) and (orientation: landscape) {
+  #game .layout > main:has(.ws-board) { display: grid; grid-template-columns: 230px minmax(0, 1fr); grid-template-rows: auto auto 1fr; column-gap: 12px; align-content: start; }
+  #game .layout > main:has(.ws-board) > * { grid-column: 1; min-width: 0; }
+  #game .layout > main:has(.ws-board) > #players { flex-direction: column; align-items: stretch; align-self: start; }
+  #game .layout > main:has(.ws-board) > #arena { grid-column: 2; grid-row: 1 / span 3; }
+}

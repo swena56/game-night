@@ -23,6 +23,7 @@ UI.lander = (() => {
         <div class="ml-hud" id="mlHud"><span id="mlAlt"></span><span id="mlVy"></span><span id="mlVx"></span><span id="mlAng"></span></div>
         <div class="ml-fuel"><i id="mlFuel"></i><b id="mlFuelT"></b></div>
         <div class="ml-count" id="mlCount" hidden></div>
+        <div class="ml-why" id="mlWhy" hidden></div>
         <div class="ml-pop" id="mlPop" hidden></div>
         <div class="ml-arrows ml-left" id="mlPadL"></div><div class="ml-arrows ml-right" id="mlPadR"></div>
         <div class="ml-done" id="mlDone" hidden><h3 id="mlDoneTitle"></h3><div id="mlStand"></div></div>
@@ -39,7 +40,8 @@ UI.lander = (() => {
         <summary>Flight replay</summary>
         <div id="mlReplayLegs"></div>
       </details></div>`;
-    side.innerHTML = '<div class="panel"><h3>🚀 Points</h3><div id="mlRace"></div><p class="hint left">Hold 🔥 to burn, ◀ ▶ to lean. Keyboard: ↑ / W / Space and ← → / A D.</p></div>';
+    basesKey = cardKey = '';
+    side.innerHTML = '<div class="panel"><h3>🚀 Points</h3><div id="mlRace"></div></div><div class="panel"><h3>🌕 Why land?</h3><div id="mlBases"></div><p class="hint left">Hold 🔥 to burn, ◀ ▶ to lean. Keyboard: ↑ / W / Space and ← → / A D.</p></div>';
     main.querySelector('.ml-stage').style.touchAction = 'none';
     for (const b of main.querySelectorAll('#mlCtl button')) {
       const k = b.dataset.k;
@@ -179,6 +181,36 @@ UI.lander = (() => {
   const NEED = { fuel: ['⛽', 'refinery'], rush: ['🚑', 'medical rush'], lab: ['🔬', 'survey lab'] };
   const needOf = (n) => V.needs?.[n] || ['', ''];
   const iconOf = (n) => NEED[needOf(n)[0]]?.[0] || '';
+  // #293 why land at all: every pad is a moon base that is cut off, and only a ship on its pad can hand over what it needs
+  const STORY = {
+    fuel: { need: 'a fuel depot with fuel to trade', cargo: 'Supplies delivered', get: (g) => `they refill your tank, +${Math.round(g.needFuel * g.dt)} s of fuel` },
+    rush: { need: 'someone is hurt and needs medicine', cargo: 'Medicine delivered', get: (g) => `first ship down gets +${g.rush}` },
+    lab: { need: 'scientists need instruments set down carefully', cargo: 'Instruments delivered', get: (g) => `land dead centre for +${g.lab}` },
+  };
+  const WHY = '📦 You’re the supply ship: these moon bases are cut off. Land on a base’s pad to deliver what it needs.';
+  // one line per base, easiest pad first: what it needs, and what delivering is worth to you
+  function baseList() {
+    const box = ctx.el('div', 'ml-bases'), g = G();
+    V.pads.map((pad, n) => [pad, n]).sort((a, b) => a[0][3] - b[0][3]).forEach(([[, , , mult], n]) => {
+      const [need, name] = needOf(n), story = STORY[need];
+      if (!story) return;
+      const row = ctx.el('div', 'ml-base'); row.style.setProperty('--pc', PAD_COL[mult]);
+      const text = ctx.el('span', ''); text.append(ctx.el('b', '', name), ctx.el('small', '', `${story.need}: ${story.get(g)}`));
+      row.append(ctx.el('i', '', `${iconOf(n)}×${mult}`), text);
+      box.append(row);
+    });
+    return box;
+  }
+  let basesKey = '', cardKey = '';
+  function renderBases() {
+    const box = $('mlBases'), card = $('mlWhy'); if (!box || !card || !V?.pads || !V.needs) return;
+    const key = `${V.round}:${V.pads.map((p) => p[0]).join()}:${(V.rushed || []).join()}`;
+    if (basesKey !== key) { basesKey = key; box.replaceChildren(ctx.el('p', 'hint left', WHY), baseList()); }
+    // before each launch, the same over the view
+    const show = V.stage === 'count' && S.phase === 'playing';
+    card.hidden = !show;
+    if (show && cardKey !== key) { cardKey = key; card.replaceChildren(ctx.el('p', '', WHY), baseList()); }
+  }
   function input() {
     const l = held.l || keys.has('l'), r = held.r || keys.has('r'), up = held.up || keys.has('up');
     return { thrust: up ? 1 : 0, rot: (r ? 1 : 0) - (l ? 1 : 0) };
@@ -236,6 +268,7 @@ UI.lander = (() => {
       const words = [];
       if (!samePad) {
         if (gems) { pts += g.gem * gems; words.push(`💎×${gems}`); }
+        if (STORY[need]) words.push(`📦 ${STORY[need].cargo} to ${name}`);
         if (need === 'fuel') { fl.fuel = Math.min(g.tankMax, fl.fuel + g.needFuel); words.push(`⛽ ${name} refuels you`); }
         else if (need === 'rush' && !(V.rushed || []).includes(n)) { pts += g.rush; words.push(`🚑 +${g.rush}`); }
         else if (need === 'lab' && fl.done.prec >= g.labPrec) { pts += g.lab; words.push(`🔬 +${g.lab}`); }
@@ -303,6 +336,7 @@ UI.lander = (() => {
 
   function renderSide() {
     const box = $('mlRace'); if (!box) return;
+    renderBases();
     box.innerHTML = '';
     const order = V.seats.map((_, i) => i).sort((a, b) => V.fliers[b].points - V.fliers[a].points);
     for (const i of order) {

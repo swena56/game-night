@@ -583,6 +583,6 @@ const Profile = (() => {
   const lastAt = (gid) => get().games[gid]?.lastAt || '';
 
   return { chessElo, onState, replayGoal, formatBenchmark: recordValue, overLine, show, suggest, stars, tried, starText, showNew, best, bestLabel, gameData, saveGameData, played, lastAt,
-    xpCard, homeLine, look, level, levelOf, xpFor, unlocked, unlockAt, titleName, lockText, sync, dev, migrate, UNLOCKS, PACKS,
+    xpCard, homeLine, iconPicker, look, level, levelOf, xpFor, unlocked, unlockAt, titleName, lockText, sync, dev, migrate, UNLOCKS, PACKS,
     set onSynced(f) { onSynced = f; }, set onLook(f) { onLook = f; } };
 })();

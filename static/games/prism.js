@@ -337,11 +337,13 @@ UI.prism = (() => {
   }
 
   // ---------- animation state
-  const vis = () => Array.from({ length: N * N }, () => ({ ox: 0, oy: 0, sx: 0, sy: 0, lx: 0, ly: 0, vy: 0, land: 0, born: 0, ice: 0 }));
+  const vis = () => Array.from({ length: N * N }, () => ({ ox: 0, oy: 0, sx: 0, sy: 0, lx: 0, ly: 0, tx: 0, ty: 0, vy: 0, land: 0, born: 0, ice: 0 }));
   let cells = vis();
   let pops = [], fx = [], pfx = Fx2D.create({ cap: 320 }), sel = null, cursor = null, hint = null, lastAct = 0;
   let falling = null, swapAnim = null;
   const motion = () => (typeof motionOK === 'function' ? motionOK() : true);
+  // the large view plays swaps, falls and cascades at two thirds of the phone's speed, so they can be followed
+  const pace = () => (window.matchMedia?.('(min-width: 861px)')?.matches ? 1.5 : 1);
   const sleep = (ms) => new Promise((r) => setTimeout(r, motion() ? ms : Math.min(ms, 60)));
   const cellXY = (i) => [(i % N + 0.5) * cs, (((i / N) | 0) + 0.5) * cs];
   const now = () => performance.now();
@@ -494,11 +496,22 @@ UI.prism = (() => {
       let moving = false;
       for (const c of cells) {
         if (c.oy < 0) {
-          c.vy += 38 * dt; c.oy = Math.min(0, c.oy + c.vy * dt);
+          c.vy += 38 / pace() ** 2 * dt; c.oy = Math.min(0, c.oy + c.vy * dt);
           if (c.oy === 0) { c.vy = 0; c.land = t; } else moving = true;
         }
       }
       if (!moving) { const done = falling; falling = null; done(); }
+      busy = true;
+    }
+    // drag offsets glide to their targets, so a short release or a change of direction never jumps
+    if (leaning.length && st.busy && !leaning.every(still)) drop();
+    const eased = (tau) => 1 - Math.exp(-Math.max(0, Math.min(dt, 0.034)) / tau);
+    const held = eased(0.016), home = eased(0.045 * pace());   // under the finger they keep right up; let go, they glide back
+    for (const c of cells) {
+      if (c.lx === c.tx && c.ly === c.ty) continue;
+      const glide = c.tx || c.ty ? held : home;
+      c.lx += (c.tx - c.lx) * glide; c.ly += (c.ty - c.ly) * glide;
+      if (Math.abs(c.tx - c.lx) + Math.abs(c.ty - c.ly) < 0.004) { c.lx = c.tx; c.ly = c.ty; }
       busy = true;
     }
     const p = c2;
@@ -535,19 +548,27 @@ UI.prism = (() => {
         p.setLineDash([cs * 0.08, cs * 0.08]); p.strokeRect(nx - cs * 0.4, ny - cs * 0.4, cs * 0.8, cs * 0.8); p.restore();
       }
     }
-    // gems
-    for (let i = 0; i < N * N; i++) {
+    // gems, the one being dragged last so it passes over the others
+    for (let n = 0; n <= N * N; n++) {
+      const i = n === N * N ? grab : n === grab ? null : n;
+      if (i == null) continue;
       const ch = g[i], c = cells[i];
       if (ch === EMPTY) continue;
       let [x, y] = cellXY(i);
       x += (c.ox + c.sx + c.lx) * cs; y += (c.oy + c.sy + c.ly) * cs;
       let sxs = 1, sys = 1;
       const since = t - c.land;
-      if (c.land && since < 220) { const q = Math.sin(since / 220 * Math.PI) * 0.14; sxs = 1 + q; sys = 1 - q; busy = true; }
+      const squash = 220 * pace();
+      if (c.land && since < squash) { const q = Math.sin(since / squash * Math.PI) * 0.14; sxs = 1 + q; sys = 1 - q; busy = true; }
       const born = t - c.born;
       let scale = 1;
       if (c.born && born < 420) { scale = 1 + 0.35 * Math.sin(born / 420 * Math.PI); busy = true; }
       if (sel === i) scale *= 1.06 + 0.04 * Math.sin(t / 120);
+      if (grab === i) {
+        scale *= 1.16;
+        p.save(); p.fillStyle = '#00000070'; p.beginPath(); p.ellipse(x + cs * 0.05, y + cs * 0.3, cs * 0.34, cs * 0.17, 0, 0, Math.PI * 2); p.fill(); p.restore();
+        y -= cs * 0.08;
+      }
       p.save();
       p.translate(x, y + (1 - sys) * cs * 0.35); p.scale(sxs, sys);
       drawGem(p, ch, 0, 0, scale, ambient ? t : 0, i);
@@ -690,7 +711,7 @@ UI.prism = (() => {
   // ---------- moves, step by step with effects
   function waitFall(drop) {
     let any = false;
-    drop.forEach((d, i) => { if (d > 0) { cells[i].oy = -d; cells[i].vy = 2; any = true; } else { cells[i].oy = 0; } });
+    drop.forEach((d, i) => { if (d > 0) { cells[i].oy = -d; cells[i].vy = 2 / pace(); any = true; } else { cells[i].oy = 0; } });
     if (!any || !motion() || !c2) { cells.forEach((c) => { c.oy = 0; }); return Promise.resolve(); }
     return new Promise((res) => { falling = res; kick(); });
   }
@@ -704,7 +725,7 @@ UI.prism = (() => {
   }
   async function animStep(out, step, pts, center) {
     const t = now();
-    for (const [i, ch] of out.popped) { pops.push({ i, ch, t0: t + (out.order?.get(i) || 0), dur: 260 }); }
+    for (const [i, ch] of out.popped) { pops.push({ i, ch, t0: t + (out.order?.get(i) || 0), dur: 260 * pace() }); }
     const lowG = window.gfxLevel?.() === 'low', more = (lowG ? 0.5 : 1) * (1 + 0.15 * Math.min(step - 1, 5));
     out.popped.forEach(([i, ch], n) => n < 40 && burstParts(i, ch, (out.popped.length > 20 ? 0.6 : 1) * more));
     out.broke.forEach((i) => { burstParts(i, STONE, 1.2); ctx.sfx?.('crack'); });
@@ -737,7 +758,7 @@ UI.prism = (() => {
       doShake(step - 1.5);
     }
     kick();
-    await sleep(260);
+    await sleep(260 * pace());
   }
   // the board's frame glows hotter with each cascade step, then cools
   const HEAT_COL = ['', '#7b5cff', '#2fd0ff', '#16c66b', '#ffd166', '#ff8a3d', '#ff4d6d', '#ff5cf4'];
@@ -756,32 +777,43 @@ UI.prism = (() => {
     return [x / list.length, y / list.length];
   };
 
+  const SWAP_AT = 0.4;   // of a cell: let go past this and the two gems swap
   // while a swipe is short of swapping, the gem and the neighbour it's heading for follow the finger or mouse
-  let leaning = [];
+  let leaning = [], grab = null;   // grab: the gem under the finger or mouse button, drawn picked up
   function unlean() {
     if (!leaning.length) return;
-    for (const i of leaning) cells[i].lx = cells[i].ly = 0;
+    for (const i of leaning) cells[i].tx = cells[i].ty = 0;
     leaning = []; kick();
   }
+  const drop = () => { unlean(); if (grab != null) { grab = null; kick(); } };
   function lean(a, b, k) {
     unlean();
-    if (!motion() || !c2 || st.busy || !still(a) || !still(b) || !movable(a) || !movable(b)) return;
+    // mid-cascade, only gems that are sitting still can be dragged (the same ones that can join in)
+    if (!motion() || !c2 || (st.busy && !st.open) || !still(a) || !still(b) || !movable(a) || !movable(b)) return;
     const dx = b % N - a % N, dy = ((b / N) | 0) - ((a / N) | 0);
-    cells[a].lx = dx * k; cells[a].ly = dy * k; cells[b].lx = -dx * k; cells[b].ly = -dy * k;
-    leaning = [a, b]; kick();
+    cells[a].tx = dx * k; cells[a].ty = dy * k; cells[b].tx = -dx * k; cells[b].ty = -dy * k;
+    leaning = [a, b]; grab = a; kick();
   }
+  // how far (0–1 of a cell) a drag has visibly carried a and b towards each other; the swap animation takes
+  // that over, so it starts exactly where the gems are drawn
+  function takeLean(a, b) {
+    const dx = b % N - a % N, dy = ((b / N) | 0) - ((a / N) | 0);
+    const along = (c, sign) => sign * (c.lx * dx + c.ly * dy);
+    const from = Math.max(0, Math.min(along(cells[a], 1), along(cells[b], -1)));
+    for (const [c, sign] of [[cells[a], 1], [cells[b], -1]]) { c.lx -= sign * dx * from; c.ly -= sign * dy * from; }
+    return from;
+  }
+  // from a standstill a swap eases in and out; mid-drag the gems are already moving, so they only slow down
+  const swapEase = (k, from) => from + (1 - from) * (from > 0.15 ? k * (2 - k) : k * k * (3 - 2 * k));
 
-  // from: how far (0–1 of a cell) a swipe has already carried the two gems, so the swap carries on from there
-  async function animSwap(a, b, bounce, from = 0) {
+  async function animSwap(a, b, bounce) {
     if (!motion() || !c2) return;
     const ax = a % N, ay = (a / N) | 0, bx = b % N, by = (b / N) | 0;
-    const dur = from ? 170 : 190, t0 = now();
+    const from = takeLean(a, b), t0 = now(), dur = bounce ? 220 * pace() : Math.max(90, 220 * pace() * (1 - from));
     await new Promise((res) => {
       const step = () => {
         const k = Math.min(1, (now() - t0) / dur);
-        // mid-swipe the gems are already moving, so they only slow down; from a standstill they ease in too
-        const e = bounce ? from * (1 - k) + Math.sin(k * Math.PI) * (0.45 - from / 2)
-          : from ? from + (1 - from) * k * (2 - k) : k * k * (3 - 2 * k);
+        const e = bounce ? from * (1 - k) + Math.sin(k * Math.PI) * Math.max(0, 0.45 - from / 2) : swapEase(k, from);
         cells[a].ox = (bx - ax) * e; cells[a].oy = (by - ay) * e; cells[b].ox = (ax - bx) * e; cells[b].oy = (ay - by) * e;
         kick();
         if (k < 1) requestAnimationFrame(step); else res();
@@ -855,8 +887,9 @@ UI.prism = (() => {
   function slideIn(a, b) {
     if (!motion() || !c2) return;
     const dx = b % N - a % N, dy = ((b / N) | 0) - ((a / N) | 0), t0 = now(), A = cells[a], B = cells[b];
+    const from = takeLean(a, b), dur = Math.max(80, 200 * pace() * (1 - from));
     const step = () => {
-      const left = 1 - Math.min(1, (now() - t0) / 130);
+      const left = 1 - swapEase(Math.min(1, (now() - t0) / dur), from);
       A.sx = dx * left; A.sy = dy * left; B.sx = -dx * left; B.sy = -dy * left;
       kick();
       if (left > 0) requestAnimationFrame(step);
@@ -869,7 +902,7 @@ UI.prism = (() => {
     if (st.pendingMoves.length !== before) renderPendingMoves();
   }
 
-  async function runMove(a, b, from = 0) {
+  async function runMove(a, b) {
     if (!st || !canPlay()) return;
     if (st.busy) { if (!joinMove(a, b)) queueMove(a, b); return; }
     hint = null; lastAct = now();
@@ -877,12 +910,12 @@ UI.prism = (() => {
     st.busy = true;
     try {
       ctx.sfx?.('flip');
-      if (!what) { ctx.sfx?.('wrong'); await animSwap(a, b, true, from); return; }
+      if (!what) { ctx.sfx?.('wrong'); await animSwap(a, b, true); return; }
       if (what === 'combo') { try { Kit.callout('💥 SPECIAL COMBO!', 'gold'); } catch {} }
       else if (what === 'prism') { try { Kit.callout('🌈 PRISM SWEEP!', 'cool'); } catch {} }
       if (st.lv) st.lv.left--;
       const m = mult();
-      await animSwap(a, b, false, from);
+      await animSwap(a, b, false);
       st.joined = []; st.joins = 0; st.open = true;   // from here until the board settles, more swaps can join in
       const fired = [], madeList = [];
       let pts = 0, step = 0;
@@ -1084,7 +1117,7 @@ UI.prism = (() => {
           if (!spots.length) spots = g.map((c, i) => (PLAIN.includes(c) ? i : -1)).filter((i) => i >= 0);
           spots = spots.sort(() => Math.random() - 0.5).slice(0, n);
         }
-        spots.forEach((i) => { g[i] = STONE; cells[i].oy = -2 - ((i / N) | 0); cells[i].vy = 4; });
+        spots.forEach((i) => { g[i] = STONE; cells[i].oy = -2 - ((i / N) | 0); cells[i].vy = 4 / pace(); });
         if (spots.length && motion() && c2) falling ||= (() => { doShake(2.5); ctx.sfx?.('thud'); });
         else { spots.forEach((i) => { cells[i].oy = 0; }); ctx.sfx?.('thud'); }
         ctx.toast(`🪨 ${ev.from} dropped ${spots.length} stones on you! Match next to them to break them.`);
@@ -1259,7 +1292,7 @@ UI.prism = (() => {
       const def = pz.levels[pz.level - 1];
       st.lv = { n: pz.level, def, left: def.moves, frozen0: count(FROZEN), stones0: count(STONE), colour: 0, made: 0, prisms: 0, over: false };
     }
-    cells = vis(); pops = []; fx = []; pfx.clear(); sel = null; hint = null;
+    cells = vis(); pops = []; fx = []; pfx.clear(); sel = null; hint = null; leaning = []; grab = null;
     renderPendingMoves();
     for (const k of Object.keys(prevHits)) delete prevHits[k];
     for (const k of Object.keys(prevScore)) delete prevScore[k];
@@ -1572,27 +1605,42 @@ UI.prism = (() => {
     if (!c2) { cv.hidden = true; $('pzGrid').hidden = false; }
     $('pzHintBtn').onclick = useHint;
     let start = null;
+    // where a drag from the grabbed gem points: how far (in cells, along one axis) and at which neighbour
+    const aim = (e) => {
+      const dx = e.clientX - start.x, dy = e.clientY - start.y, far = Math.max(Math.abs(dx), Math.abs(dy)) / (size / N);
+      const x = start.i % N, y = (start.i / N) | 0;
+      const [nx, ny] = Math.abs(dx) > Math.abs(dy) ? [x + Math.sign(dx), y] : [x, y + Math.sign(dy)];
+      return { far, b: ny * N + nx, off: nx < 0 || nx >= N || ny < 0 || ny >= N };
+    };
+    const swipe = (a, b) => {   // the drag is done: swap, from wherever the gems have got to
+      start = null;
+      drop();   // they glide home unless the swap takes them over first
+      if (!canPlay()) return;
+      sel = null; runMove(a, b);
+    };
     cv.onpointerdown = (e) => {
       const i = cellAt(e); if (i == null) return;
-      start = { i, x: e.clientX, y: e.clientY };
+      start = { i, x: e.clientX, y: e.clientY, far: 0 };
+      if (motion() && st && canPlay() && !st.busy && still(i) && movable(i)) { grab = i; kick(); }
       try { cv.setPointerCapture(e.pointerId); } catch {}
     };
     cv.onpointermove = (e) => {
       if (!start || !st) return;
-      const dx = e.clientX - start.x, dy = e.clientY - start.y, cell = size / N;
-      const far = Math.max(Math.abs(dx), Math.abs(dy)) / cell;
-      const x = start.i % N, y = (start.i / N) | 0;
-      const [nx, ny] = Math.abs(dx) > Math.abs(dy) ? [x + Math.sign(dx), y] : [x, y + Math.sign(dy)];
-      const a = start.i, off = nx < 0 || nx >= N || ny < 0 || ny >= N;
-      if (far < 0.4) { if (off || !canPlay()) unlean(); else lean(a, ny * N + nx, far); return; }
-      start = null;
-      const from = leaning[0] === a && leaning[1] === ny * N + nx ? 0.4 : 0;
-      unlean();
-      if (off || !canPlay()) return;
-      sel = null; runMove(a, ny * N + nx, from);
+      const { far, b, off } = aim(e), a = start.i;
+      start.far = Math.max(start.far, far);
+      if (off || far < 0.04 || !canPlay()) { unlean(); if (off && far >= SWAP_AT) { start = null; drop(); } return; }
+      lean(a, b, Math.min(1, far));   // the gem goes where the finger goes, and its neighbour makes way
+      // it swaps when you let go, or on arriving; gems that can't be dragged just now (still falling) swap as before
+      if (far >= 1 || (far >= SWAP_AT && leaning[0] !== a)) swipe(a, b);
     };
-    cv.onpointerup = () => { unlean(); if (start) tap(start.i); start = null; };
-    cv.onpointercancel = () => { unlean(); start = null; };
+    cv.onpointerup = (e) => {
+      if (!start || !st) { drop(); start = null; return; }
+      const { far, b, off } = aim(e), a = start.i, wandered = Math.max(start.far, far);
+      if (!off && far >= SWAP_AT) return swipe(a, b);
+      drop(); start = null;
+      if (wandered < 0.2) tap(a);   // a tap; a drag taken back just puts the gem down
+    };
+    cv.onpointercancel = () => { drop(); start = null; };
     keyHandler = (e) => {
       if (e.target?.closest?.('input, textarea, select, button, [role="button"]')) return;
       if (!st || !canPlay()) return;
@@ -1687,5 +1735,5 @@ UI.prism = (() => {
     fever: st ? { meter: feverMeter(), on: feverOn() } : null, incoming: st?.incoming.length || 0, stats: st?.stats });
   const testHit = (kind_, n, warn = false) => st && applyEvents([{ id: st.applied + 1, kind: kind_, n, from: 'Test' }], !warn);
   const testBoard = (rows) => { if (st && rows.length === N * N) { g = rows.split(''); kick(); } };
-  return { mount, render, unmount, turnText, focus: true, testTap: tap, testState, testHit, testBoard };
+  return { mount, render, unmount, turnText, focus: true, keepTip: true, testTap: tap, testState, testHit, testBoard };
 })();

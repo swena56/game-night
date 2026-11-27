@@ -16,6 +16,10 @@ UI.wordsmith = (() => {
   // a tile's face: the letter, then its points (a blank's letter is shown, with no points)
   const face = (el, ch, blank) => { el.classList.toggle('blank', blank); el.append(ch, Object.assign(document.createElement('sub'), { textContent: blank ? '' : S.ws.values[ch] })); };
 
+  // 🎨 #333 board looks, kept on this device; 'felt' is the board as it has always been (wordsmith.css has the colours)
+  const LOOKS = [['felt', '🟢 Green felt'], ['cream', '📜 Classic cream'], ['night', '🌙 Midnight'], ['walnut', '🪵 Walnut'], ['contrast', '🔲 High contrast']];
+  const savedLook = () => { const v = load('ws.look'); return LOOKS.some(([k]) => k === v) ? v : 'felt'; };
+
   function mount(main, side) {
     pending = []; selected = null; order = []; rackKey = ''; swapMode = false; swapSel.clear(); previewKey = ''; seenLast = null; prevScores = null; seenBounty = null;
     main.innerHTML = '<div class="ws-board"></div>';
@@ -27,11 +31,16 @@ UI.wordsmith = (() => {
       <div id="wsPlan" class="ws-plan" hidden></div>
       <div class="row"><button id="wsPlay" class="primary">Play</button><button id="wsRecall">Recall</button><button id="wsShuffle">🔀</button></div>
       <div class="row"><button id="wsSwap">Swap tiles…</button><button id="wsPass">Pass</button><button id="wsHint" hidden>💡 Hint</button></div>
+      <label class="ws-lookpick">🎨 Board look <select id="wsLook"></select></label>
       <p class="hint left">Drag a tile onto a square, or tap a tile and then a square. Drag a placed tile to move it,
       or off the board (or tap it) to take it back.
       DL/TL = double/triple letter, DW/TW = double/triple word.</p></div>
       <div class="panel"><h3>Turns</h3><div id="wsPlays" class="ws-plays"></div></div>`;
     board = main.querySelector('.ws-board');
+    const look = $('wsLook');
+    for (const [k, name] of LOOKS) look.append(Object.assign(document.createElement('option'), { value: k, textContent: name }));
+    look.value = board.dataset.look = savedLook();
+    look.onchange = () => { board.dataset.look = look.value; store('ws.look', look.value); };
     for (let r = 0; r < 11; r++)
       for (let c = 0; c < 11; c++) {
         const cell = document.createElement('button');

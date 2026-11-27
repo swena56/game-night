@@ -21,3 +21,11 @@
 .wk-me { display: flex; align-items: center; justify-content: center; font-size: 22px; }
 .wk-row.out { opacity: .5; }
 .wk-row .grow { flex: 1; }
+/* #332: a wide screen is short of height, not width, so the arrow pad goes beside the maze and the maze takes the
+   height the pad had (the sizes above stay for phones) */
+@media (min-width: 861px) and (orientation: landscape) {
+  .wk { flex-direction: row; align-items: flex-end; gap: 8px; }
+  .wk:has(.wk-pad:not([hidden])) { --padH: 0px; }
+  .wk-stage { flex: 1; min-width: 0; }
+  .wk-pad { flex: none; }
+}

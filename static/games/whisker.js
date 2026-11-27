@@ -7,14 +7,15 @@ UI.whisker = (() => {
   const trails = [];
   let walls = null, food = new Map(), ents = [], pos = [], round = 0, lastEv = 0, lastTick = 0;
   let mazeImg = null, foodImg = null, foodDirty = true, cell = 16, offX = 0, offY = 0, cssW = 0, cssH = 0, ratio = 1, last = 0;
-  let pend = null, swipe = null, showPad = true, timeLeft = null, timeAt = 0, lastCount = '', nibbleAt = 0;
+  let pend = null, swipe = null, showPad = true, timeLeft = null, timeAt = 0, lastCount = '', nibbleAt = 0, sentDir = null, sentAt = 0;
+  const RESEND_MS = 400;  // the same direction again is worth sending after this long (a lost one, a new round)
   const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];
   const $ = (id) => document.getElementById(id);
   const ICON = { m: '🐭', c: '🐱', a: '🐈‍⬛', spook: '🙀', basket: '😾' };
 
   function mount(main, side) {
     trails.length = 0; S = null; walls = null; food = new Map(); ents = []; pos = []; round = 0; lastEv = 0; lastTick = 0;
-    mazeImg = foodImg = null; foodDirty = true; pend = null; swipe = null; timeLeft = null; lastCount = ''; sprites.clear(); hudCache = null;
+    mazeImg = foodImg = null; foodDirty = true; pend = null; swipe = null; sentDir = null; timeLeft = null; lastCount = ''; sprites.clear(); hudCache = null;
     showPad = load('whisker.pad') ?? true;
     main.innerHTML = `<div class="wk" id="wkRoot"><div class="wk-stage" id="wkStage">
         <div class="wk-hud" id="wkHud"></div>
@@ -74,9 +75,13 @@ UI.whisker = (() => {
   const canSteer = () => S?.phase === 'playing' && myEnt() && S.whisker.stage !== 'over' && myEnt().st !== 5;
   function steer(d) {
     if (!canSteer()) return;
+    const now = performance.now();
+    // a held key or a long swipe says the same thing over and over: sending each one put the next turn behind them all
+    if (d === sentDir && now - sentAt < RESEND_MS) return;
+    sentDir = d; sentAt = now;
     pend = d;
     buzz(8);
-    ctx.input({ dir: d }, true);
+    ctx.input({ dir: d });   // not kept: if one is still on its way, only the newest direction waits behind it
     renderPadMe();
   }
   // a tap on the maze: head that way from where your critter is (the longer axis wins)
@@ -97,7 +102,7 @@ UI.whisker = (() => {
     const fresh = k.round !== round;
     if (fresh || !walls) {
       walls = new Uint8Array(k.walls.match(/../g).map((h) => parseInt(h, 16)));
-      round = k.round; mazeImg = null; pos = []; pend = null; hudCache = null;
+      round = k.round; mazeImg = null; pos = []; pend = null; sentDir = null; hudCache = null;
       lastEv = Math.max(lastEv, ...k.ev.map((e) => e[0]), 0);
     }
     food = new Map(k.food); foodDirty = true;
@@ -200,8 +205,25 @@ UI.whisker = (() => {
   }
   function drawPos(i, now) {
     const p = pos[i]; if (!p) return null;
-    const f = Math.min(1, (now - p.at) / p.dur);
-    return [p.fx + (p.tx - p.fx) * f, p.fy + (p.ty - p.fy) * f];
+    const raw = (now - p.at) / p.dur, f = Math.min(1, raw);
+    let x = p.fx + (p.tx - p.fx) * f, y = p.fy + (p.ty - p.fy) * f;
+    if (raw > 1) {   // the next step is late (a slow network): drift on towards the next cell if the way is clear
+      const d = ahead(i, p);
+      if (d) { const more = Math.min(COAST, raw - 1); x += d[0] * more; y += d[1] * more; }
+    }
+    return [x, y];
+  }
+  const COAST = 0.3;   // of a cell: enough to hide a late update, short enough that a surprise turn barely shows
+  function ahead(i, p) {
+    const e = ents[i], k = S.whisker;
+    if (!e || !walls || k.stage !== 'play' || S.paused || (e.st !== 0 && e.st !== 2 && e.st !== 4)) return null;
+    const d = DIRS[e.dir]; if (!d) return null;
+    // only on from a step it was making that way, and never while my own turn is waiting to happen
+    if (Math.sign(p.tx - p.fx) !== d[0] || Math.sign(p.ty - p.fy) !== d[1] || (i === k.mine && pend != null && pend !== e.dir)) return null;
+    const x = p.tx + d[0], y = p.ty + d[1];
+    if (x < 0 || y < 0 || x >= k.w || y >= k.h) return null;
+    const there = walls[y * k.w + x];
+    return there === 0 || (there === 2 && e.role === 'm') ? d : null;
   }
 
   // ---------- drawing
@@ -220,11 +242,15 @@ UI.whisker = (() => {
 
   // each round's theme: floor, floor checks, wall base, wall crown, wall flecks, the den rug and its stitching
   const THEME = {
-    garden: { bg: '#16100a', floor: '#3a2a1c', check: '#ffffff08', base: '#1d4a2a', crown: '#3f8f4a', fleck: '#6cc070', rug: '#7a3b2e', stitch: '#c0703f' },
-    pantry: { bg: '#140d07', floor: '#33251a', check: '#ffffff06', base: '#6b4423', crown: '#b57d45', fleck: '#f2d28c', rug: '#2f5d7a', stitch: '#a9d3ef', planks: '#00000030' },
-    cellar: { bg: '#0b0b10', floor: '#23232b', check: '#ffffff07', base: '#3e3e4b', crown: '#77778c', fleck: '#a9a9bd', rug: '#5a2a4a', stitch: '#c27aa6' },
+    garden: { art: 'leaves', light: '#b6f29a55', bg: '#16100a', floor: '#3a2a1c', check: '#ffffff08', base: '#1d4a2a', crown: '#3f8f4a', fleck: '#6cc070', rug: '#7a3b2e', stitch: '#c0703f' },
+    pantry: { art: 'jars', light: '#ffe8bd66', bg: '#140d07', floor: '#33251a', check: '#ffffff06', base: '#6b4423', crown: '#b57d45', fleck: '#f2d28c', rug: '#2f5d7a', stitch: '#a9d3ef', planks: '#00000030' },
+    cellar: { art: 'bricks', light: '#e4e4f455', flags: '#00000040', bg: '#0b0b10', floor: '#23232b', check: '#ffffff07', base: '#3e3e4b', crown: '#77778c', fleck: '#a9a9bd', rug: '#5a2a4a', stitch: '#c27aa6' },
   };
   const theme = () => THEME[S?.whisker?.theme] || THEME.garden;
+
+  // a steady pseudo-random 0–1 for a cell, so the scatter is the same every time the maze is redrawn
+  const noise = (x, y, n = 0) => { const v = Math.sin(x * 127.1 + y * 311.7 + n * 74.7) * 43758.5453; return v - Math.floor(v); };
+  function dot(m, x, y, rx, ry, a, color) { m.fillStyle = color; m.beginPath(); m.ellipse(x, y, rx, ry, a, 0, 6.3); m.fill(); }
 
   function buildMaze() {
     const w = W(), h = Hh(), k = S.whisker, T = theme();
@@ -235,30 +261,89 @@ UI.whisker = (() => {
     m.fillStyle = T.floor; m.fillRect(0, 0, w * cell, h * cell);
     m.fillStyle = T.check;
     for (let y = 0; y < h; y++) for (let x = (y % 2); x < w; x += 2) m.fillRect(x * cell, y * cell, cell, cell);
-    if (T.planks) {  // pantry floorboards
+    // grit on the ground: soil and pebbles, flour on the boards, chips on the flags
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) for (let n = 0; n < 3; n++) {
+      const r = cell * (0.025 + 0.035 * noise(x, y, n + 6));
+      dot(m, (x + noise(x, y, n)) * cell, (y + noise(x, y, n + 3)) * cell, r, r * 0.7, noise(x, y, n + 9) * 3, noise(x, y, n + 12) > 0.5 ? '#ffffff12' : '#00000030');
+    }
+    if (T.planks) {  // pantry floorboards, with the ends of the boards staggered
       m.fillStyle = T.planks;
-      for (let y = 0; y < h; y++) m.fillRect(0, y * cell + cell - 1, w * cell, 1);
+      for (let y = 0; y < h; y++) {
+        m.fillRect(0, y * cell + cell - 1, w * cell, 1);
+        for (let x = (y * 2) % 5; x < w; x += 5) m.fillRect(x * cell, y * cell, 1, cell);
+      }
+    }
+    if (T.flags) {  // cellar flagstones
+      m.strokeStyle = T.flags; m.lineWidth = Math.max(1, cell * 0.05);
+      for (let y = 0; y < h; y += 2) for (let x = (y % 4) ? -1 : 0; x < w; x += 2) m.strokeRect(x * cell + 0.5, y * cell + 0.5, cell * 2, cell * 2);
     }
     const [x0, y0, x1, y1] = k.den;  // the cats' basket: a rug
     m.fillStyle = T.rug; rounded(m, x0 * cell + 2, y0 * cell + 2, (x1 - x0 + 1) * cell - 4, (y1 - y0 + 1) * cell - 4, cell * 0.5); m.fill();
     m.strokeStyle = T.stitch; m.lineWidth = Math.max(1, cell * 0.08); m.setLineDash([cell * 0.25, cell * 0.18]); m.stroke(); m.setLineDash([]);
     // walls (1) and mouse holes (2) are drawn alike — a dark base with a lighter crown that joins up with its
-    // neighbours — and then each hole gets its opening
+    // neighbours, rounded where it ends — and then each hole gets its opening
     const at = (x, y) => (x >= 0 && y >= 0 && x < w && y < h ? walls[y * w + x] : 0);
     const wall = (x, y) => at(x, y) > 0;
-    m.fillStyle = T.base;
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (wall(x, y)) m.fillRect(x * cell, y * cell, cell, cell);
-    const ins = cell * 0.2;
-    m.fillStyle = T.crown;
+    // one cell of wall, pulled in by `ins` on its open sides and rounded on the corners where both sides are open
+    const block = (x, y, ins, round, dy = 0) => {
+      const L = wall(x - 1, y), R = wall(x + 1, y), U = wall(x, y - 1), D = wall(x, y + 1);
+      const px0 = x * cell + (L ? -0.5 : ins), px1 = (x + 1) * cell + (R ? 0.5 : -ins);
+      const py0 = y * cell + (U ? -0.5 : ins) + dy, py1 = (y + 1) * cell + (D ? 0.5 : -ins) + dy;
+      const corner = (a, b) => (a || b ? 0 : round);
+      const tl = corner(L, U), tr = corner(R, U), br = corner(R, D), bl = corner(L, D);
+      m.moveTo(px0 + tl, py0); m.lineTo(px1 - tr, py0); m.quadraticCurveTo(px1, py0, px1, py0 + tr);
+      m.lineTo(px1, py1 - br); m.quadraticCurveTo(px1, py1, px1 - br, py1);
+      m.lineTo(px0 + bl, py1); m.quadraticCurveTo(px0, py1, px0, py1 - bl);
+      m.lineTo(px0, py0 + tl); m.quadraticCurveTo(px0, py0, px0 + tl, py0); m.closePath();
+    };
+    const layer = (color, ins, round, dy) => {
+      m.fillStyle = color; m.beginPath();
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (wall(x, y)) block(x, y, ins, round, dy);
+      m.fill();
+    };
+    layer('#00000030', 0, cell * 0.45, cell * 0.26);   // the shadow each wall casts on the floor
+    layer('#00000038', 0, cell * 0.45, cell * 0.14);
+    layer(T.base, 0, cell * 0.42, 0);
+    layer(T.crown, cell * 0.16, cell * 0.3, -cell * 0.05);
+    // light along the top edge of every wall that has open floor above it
+    m.fillStyle = T.light;
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      if (!wall(x, y)) continue;
-      const l = wall(x - 1, y) ? 0 : ins, r = wall(x + 1, y) ? 0 : ins, t = wall(x, y - 1) ? 0 : ins, b = wall(x, y + 1) ? 0 : ins;
-      m.fillRect(x * cell + l, y * cell + t, cell - l - r, cell - t - b);
+      if (!wall(x, y) || wall(x, y - 1)) continue;
+      const l = wall(x - 1, y) ? 0 : cell * 0.3, r = wall(x + 1, y) ? 0 : cell * 0.3;
+      m.fillRect(x * cell + l, y * cell + cell * 0.13, cell - l - r, Math.max(1, cell * 0.09));
     }
-    m.fillStyle = T.fleck;  // leaves, jars, stones
+    // each theme's walls: leaves and blossom in the garden, jars on the pantry shelves, brickwork in the cellar
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      if (at(x, y) !== 1 || (x * 7 + y * 13) % 3) continue;
-      m.beginPath(); m.arc((x + 0.3 + ((x * 5 + y) % 4) * 0.12) * cell, (y + 0.35 + ((y * 3 + x) % 3) * 0.12) * cell, cell * 0.07, 0, 6.3); m.fill();
+      if (at(x, y) !== 1) continue;
+      const cx = (x + 0.5) * cell, cy = (y + 0.45) * cell;
+      if (T.art === 'leaves') {
+        for (let n = 0; n < 5; n++) {
+          dot(m, cx + (noise(x, y, n) - 0.5) * cell * 0.62, cy + (noise(x, y, n + 5) - 0.5) * cell * 0.56, cell * 0.13, cell * 0.07,
+            noise(x, y, n + 10) * 3.1, n % 2 ? T.fleck : T.base);
+        }
+        if (noise(x, y, 40) > 0.88) {
+          const fx0 = cx + (noise(x, y, 41) - 0.5) * cell * 0.4, fy0 = cy + (noise(x, y, 42) - 0.5) * cell * 0.4, petal = noise(x, y, 43) > 0.5 ? '#ffd9ec' : '#fff3b0';
+          for (let n = 0; n < 4; n++) dot(m, fx0 + Math.cos(n * 1.57) * cell * 0.07, fy0 + Math.sin(n * 1.57) * cell * 0.07, cell * 0.055, cell * 0.055, 0, petal);
+          dot(m, fx0, fy0, cell * 0.045, cell * 0.045, 0, '#e8940c');
+        }
+      } else if (T.art === 'jars') {
+        m.strokeStyle = '#00000030'; m.lineWidth = Math.max(1, cell * 0.04);
+        m.beginPath(); m.moveTo(x * cell + cell * 0.2, cy - cell * 0.1); m.quadraticCurveTo(cx, cy - cell * (0.2 * noise(x, y, 1)), x * cell + cell * 0.8, cy - cell * 0.08); m.stroke();
+        if (noise(x, y, 2) > 0.62) {
+          dot(m, cx, cy + cell * 0.04, cell * 0.21, cell * 0.21, 0, '#00000040');
+          dot(m, cx, cy, cell * 0.2, cell * 0.2, 0, ['#c2463c', '#e0a52e', '#6f9e4c', '#7b5aa6'][Math.floor(noise(x, y, 3) * 4)]);
+          dot(m, cx, cy, cell * 0.11, cell * 0.11, 0, T.fleck);
+          dot(m, cx - cell * 0.09, cy - cell * 0.1, cell * 0.05, cell * 0.035, -0.6, '#ffffffaa');
+        }
+      } else {
+        m.strokeStyle = '#00000045'; m.lineWidth = Math.max(1, cell * 0.05);
+        m.beginPath();
+        m.moveTo(x * cell + cell * 0.18, cy + cell * 0.03); m.lineTo(x * cell + cell * 0.82, cy + cell * 0.03);
+        const j = x * cell + cell * (0.35 + 0.3 * noise(x, y, 1)), j2 = x * cell + cell * (0.25 + 0.5 * noise(x, y, 2));
+        m.moveTo(j, cy - cell * 0.25); m.lineTo(j, cy + cell * 0.03); m.moveTo(j2, cy + cell * 0.03); m.lineTo(j2, cy + cell * 0.31);
+        m.stroke();
+        if (noise(x, y, 4) > 0.8) dot(m, cx + (noise(x, y, 5) - 0.5) * cell * 0.4, cy + cell * 0.18, cell * 0.14, cell * 0.08, noise(x, y, 6), '#5f7f4a99');  // moss
+      }
     }
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       if (at(x, y) !== 2) continue;
@@ -274,6 +359,9 @@ UI.whisker = (() => {
     // the tunnel mouths
     m.fillStyle = '#00000088';
     for (const x of [0, w - 1]) { m.beginPath(); m.ellipse((x + 0.5) * cell, (k.tunnel + 0.5) * cell, cell * 0.45, cell * 0.38, 0, 0, 6.3); m.fill(); }
+    const lamp = m.createRadialGradient(w * cell / 2, h * cell / 2, Math.min(w, h) * cell * 0.2, w * cell / 2, h * cell / 2, Math.max(w, h) * cell * 0.68);
+    lamp.addColorStop(0, '#ffffff0c'); lamp.addColorStop(0.5, '#00000000'); lamp.addColorStop(1, '#0000004d');
+    m.fillStyle = lamp; m.fillRect(0, 0, w * cell, h * cell);
     return c;
   }
 
@@ -286,15 +374,17 @@ UI.whisker = (() => {
     if (c.height !== ch) c.height = ch;
     const m = c.getContext?.('2d'); if (!m) return null;
     m.setTransform(1, 0, 0, 1, 0, 0); m.clearRect(0, 0, c.width, c.height); m.scale(ratio, ratio);
-    m.fillStyle = '#ffd166';
-    const cr = Math.max(1.5, cell * 0.12);
-    m.beginPath();
-    for (const [f, kind] of food) {
-      if (kind !== 'c') continue;
-      const x = (f % w + 0.5) * cell, y = (Math.floor(f / w) + 0.5) * cell;
-      m.moveTo(x + cr, y); m.arc(x, y, cr, 0, 6.3);
+    const cr = Math.max(1.5, cell * 0.13);
+    // the shadow, the crumb, then its highlight: one path each
+    for (const [color, ox, oy, r] of [['#00000066', 0, cr * 0.45, cr * 1.15], ['#ffd166', 0, 0, cr], ['#fff6cf', -cr * 0.3, -cr * 0.3, cr * 0.42]]) {
+      m.fillStyle = color; m.beginPath();
+      for (const [f, kind] of food) {
+        if (kind !== 'c') continue;
+        const x = (f % w + 0.5) * cell + ox, y = (Math.floor(f / w) + 0.5) * cell + oy;
+        m.moveTo(x + r, y); m.arc(x, y, r, 0, 6.3);
+      }
+      m.fill();
     }
-    m.fill();
     foodDirty = false;
     return c;
   }

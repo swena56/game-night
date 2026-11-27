@@ -35,7 +35,7 @@
 .pz-hintbtn:disabled { opacity: .55; }
 .pz-scorebox { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.05; }
 .pz-pb { font-size: 11px; color: var(--muted); font-weight: 600; min-height: 1em; }
-.pz-sub { display: flex; align-items: center; gap: 8px; margin: -2px 0 6px; font-size: 12px; font-weight: 700; }
+.pz-sub { display: flex; align-items: center; gap: 8px; min-height: 22px; margin: -2px 0 6px; font-size: 12px; font-weight: 700; }  /* as tall as the ×2 label, so it can't nudge the board */
 .pz-rank { color: var(--muted); white-space: nowrap; }
 .pz-fever { flex: 1; height: 6px; border-radius: 3px; background: #ffffff10; overflow: hidden; }
 .pz-fever i { display: block; height: 100%; width: 0; border-radius: 3px; background: linear-gradient(90deg, #ff8a3d, #ff5cf4); transition: width .25s linear; }
@@ -128,8 +128,8 @@ body.focus .pz-wrap { width: min(100%, 680px, calc(var(--room, 100vh) - 60px)); 
   .pz-rivals { flex-direction: row; flex-wrap: wrap; }
   .pz-rival { flex: 1 1 140px; }
 }
-/* in the wide focus view the clock, meter and standing line above the board need 90px, or the bottom row is off the screen */
-@media (min-width: 861px) { body.focus .pz-wrap { width: min(100%, 680px, calc(var(--room, 100vh) - 90px)); } }
+/* in the wide focus view the clock, meter and standing line above the board need 100px, or the bottom row is off the screen */
+@media (min-width: 861px) { body.focus .pz-wrap { width: min(100%, 680px, calc(var(--room, 100vh) - 100px)); } }
 @media (max-width: 380px) {
   .pz-wrap { min-width: 0; }
   .pz-top { gap: 6px; }
