@@ -448,6 +448,8 @@ body.calm .nudge { animation: none; box-shadow: 0 0 0 2px #ffb70388; }
   border-radius: var(--radius); z-index: 30; padding: var(--s4); }
 .drawer header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .drawer header b { flex: 1; }
+#prefsPanel { overflow-y: auto; overscroll-behavior: contain; }  /* on a phone the report button sits below the fold */
+#prefsPanel > * { flex: none; }
 .drawer-x { min-width: 36px; min-height: 36px; font-size: 16px; color: var(--muted); }
 .chat-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; min-height: 120px; font-size: 14px; }
 .msg { background: var(--tint-1); border-radius: var(--r-md); padding: 6px 10px; align-self: flex-start; max-width: 85%; word-wrap: break-word; }

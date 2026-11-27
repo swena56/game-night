@@ -222,7 +222,20 @@ function reportContext() {
   return ctx;
 }
 
-async function reportDialog(kind = 'bug', retry = {}) {
+// ⏸ writing a report takes a while, so a game that can be paused (one human, against bots) waits for it. The
+// returned function lets it run again, and does nothing if the game was already paused before.
+function holdGame() {
+  if (!(S?.phase === 'playing' && S.canPause && !S.paused && !replay)) return async () => {};
+  const seat = session, held = act('pause').then(() => true, () => false);
+  return async () => { if (await held && session === seat) quiet(act('resume')); };
+}
+
+async function reportDialog(kind = 'bug') {
+  const release = holdGame();
+  try { await reportForm(kind); } finally { release(); }
+}
+
+async function reportForm(kind, retry = {}) {
   const {
     draft = '', includeDetails = true, endorsed = false,
     game = S && gameInfo(), gameContext = game ? reportContext() : null,
@@ -264,7 +277,7 @@ async function reportDialog(kind = 'bug', retry = {}) {
   const selected = body.querySelector('input[name=reportKind]:checked').value;
   const chosen = perfect.checked ? 'idea' : selected;
   const note = perfect.checked ? `👍 Perfect as is: ${game.name}` : text.value;
-  const reopen = () => reportDialog(selected, {
+  const reopen = () => reportForm(selected, {
     draft: text.value, includeDetails: include.checked, endorsed: perfect.checked, game, gameContext,
   });
   if (note.trim().length < 5) {

@@ -1,7 +1,7 @@
 /* riders: this game's own rules, loaded with static/games/riders.js (needUI in app.js). Shared pieces and
    the theme tokens live in static/style.css, which always loads first. */
 .lr-stage { position: relative; height: max(220px, calc(var(--room) - 8px)); border-radius: var(--radius); overflow: hidden; display: flex; justify-content: center; align-items: center;
-  background: #05060f; box-shadow: inset 0 0 0 1px #8ecae633, 0 0 30px #1f6fff33, 0 12px 30px #000a; }
+  background: #0b1030; box-shadow: inset 0 0 0 1px #8ecae633, 0 0 30px #1f6fff33, 0 12px 30px #000a; }
 .lr-stage > canvas { display: block; width: 100%; height: 100%; }
 .lr-hud { position: absolute; top: 8px; left: 8px; right: 8px; z-index: 2; display: flex; flex-wrap: wrap; gap: 4px; pointer-events: none; }
 .lr-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px; background: #000a; color: #fff; font-size: 13px; font-weight: 700; white-space: nowrap; }

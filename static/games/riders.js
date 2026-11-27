@@ -15,7 +15,9 @@ UI.riders = (() => {
   const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];
   let orbs = new Map(), seq = [], size = [];  // 🐍 orbs on the grid (cell → worth), cells each snake has moved, body lengths
   const ORB = ['#ffd166', '#8ce99a', '#ff8fab', '#a5d8ff', '#e599f7'];
-  const BEADS = 152;  // 🐍 body beads per snake in 3D: the longest body (150) plus the gliding ends
+  const BEADS = 304;  // 🐍 body slices per snake in 3D: two a cell for the longest body (150), plus the gliding ends
+  // how thick a body is, `fromTail` and `fromHead` cells in from its ends: a pointed tail and a slight neck
+  const girth = (fromTail, fromHead) => Math.min(0.4 + 0.6 * Math.min(1, fromTail / 6), fromHead < 2 ? 0.84 + 0.08 * fromHead : 1);
   const isSnake = () => S?.riders?.mode === 'snake';
   const $ = (id) => document.getElementById(id);
 
@@ -446,8 +448,8 @@ UI.riders = (() => {
     const scene = new T.Scene();
     const camera = new T.PerspectiveCamera(38, 1, 0.5, 500);
     // a night sky that rides with the camera, the arena floor fading into it
-    const stg = GL3.stage(renderer, scene, { exposure: 1.05, sky: { bottom: 0x05060f, horizon: 0x16214d, top: 0x02030a, stars: 500, radius: 300 },
-      fog: [0x05060f, 80, 220], hemi: [0x9fb4ff, 0x0a0a1a, 0.5], key: { i: 0.5, pos: [-20, 60, 30], shadow: false } });
+    const stg = GL3.stage(renderer, scene, { exposure: 1.15, sky: { bottom: 0x0b1030, horizon: 0x24357a, top: 0x050820, stars: 500, radius: 300 },
+      fog: [0x0b1030, 110, 260], hemi: [0xdbe6ff, 0x3a3f6e, 0.95], key: { i: 0.75, pos: [-20, 60, 30], shadow: false } });
     let n = 0, mode = null, beadTint = new T.Color(), orbMesh = null, world = null, ribbons = [], bikes = [], tips = [], drawn = [], pend = [], you = null, arrow = null, sparks = null, walls = [];
     const segGeo = new T.BoxGeometry(1, 1, 1);
     // 🎁 power-ups: a floating badge per item (one texture per kind)
@@ -490,13 +492,15 @@ UI.riders = (() => {
       // floor with a glowing grid texture
       const c = document.createElement('canvas'); c.width = c.height = 512;
       const g = c.getContext('2d');
-      let mat = new T.MeshStandardMaterial({ color: 0x0a1030, roughness: 0.9 });
+      let mat = new T.MeshStandardMaterial({ color: 0x1b2a66, roughness: 0.9 });
       if (g) {
-        g.fillStyle = '#070b22'; g.fillRect(0, 0, 512, 512);
-        g.strokeStyle = '#1f6fff55'; g.lineWidth = 2;
+        g.fillStyle = '#16214f'; g.fillRect(0, 0, 512, 512);
+        g.strokeStyle = '#5b9dff66'; g.lineWidth = 3;
         for (let k = 0; k <= 8; k++) { const p = (k * 512) / 8; g.beginPath(); g.moveTo(p, 0); g.lineTo(p, 512); g.moveTo(0, p); g.lineTo(512, p); g.stroke(); }
         const tex = new T.CanvasTexture(c); tex.wrapS = tex.wrapT = T.RepeatWrapping; tex.repeat.set(n / 8, n / 8);
-        mat = new T.MeshStandardMaterial({ map: tex, roughness: 0.85, emissive: 0x0b1a55, emissiveIntensity: 0.25 });
+        tex.anisotropy = Math.min(4, renderer.capabilities?.getMaxAnisotropy?.() ?? 1);  // the grid stays visible at the far edge
+        // the floor's own picture glows, so the grid lines light up and not just the lamps' share of them
+        mat = new T.MeshStandardMaterial({ map: tex, roughness: 0.85, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.32 });
       }
       const floor = new T.Mesh(new T.PlaneGeometry(n, n), mat); floor.rotation.x = -Math.PI / 2; world.add(floor);
       const wallMat = new T.MeshStandardMaterial({ color: 0x8ecae6, emissive: 0x8ecae6, emissiveIntensity: 0.9 });
@@ -514,7 +518,8 @@ UI.riders = (() => {
       S.riders.seats.forEach((_, i) => {
         const color = new T.Color(colorOf(i));
         if (isSnake()) return buildSnake(color);
-        const rm = new T.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.85, transparent: true, opacity: 0.9 });
+        // (no tone mapping here either: the trails keep their full colour against the lit floor)
+        const rm = new T.MeshStandardMaterial({ color: color.clone().multiplyScalar(0.3), emissive: color, emissiveIntensity: 0.85, transparent: true, opacity: 0.9, toneMapped: false });
         const inst = new T.InstancedMesh(segGeo, rm, n * n); inst.count = 0; world.add(inst); ribbons.push(inst);
         const tip = new T.Mesh(segGeo, rm); world.add(tip); tips.push(tip);
         const bike = new T.Group();
@@ -544,44 +549,91 @@ UI.riders = (() => {
       sparks.pts.frustumCulled = false; world.add(sparks.pts);
       resize();
     }
-    // 🐍 a body of beads in two shades, and a head with eyes (it stands in for the bike in every effect)
+    // 🐍 a smooth banded body with diamonds down its back, and a wedge head with eyes and a flicking tongue (the
+    // head stands in for the bike in every effect)
     function buildSnake(color) {
-      const skin = new T.MeshStandardMaterial({ color: 0xffffff, emissive: color, emissiveIntensity: 0.3, roughness: 0.5 });
-      const body = new T.InstancedMesh(new T.SphereGeometry(0.52, 10, 8), skin, BEADS);
-      const dark = color.clone().multiplyScalar(0.55);
-      for (let k = 0; k < BEADS; k++) body.setColorAt(k, color);
-      body.userData = { color: color.clone(), dark };
-      body.count = 0; body.frustumCulled = false; world.add(body); ribbons.push(body);
+      // no tone mapping on the snake: it washes bright player colours out to pastel
+      const tone = color.clone().multiplyScalar(0.62);
+      const skin = new T.MeshStandardMaterial({ color: 0xffffff, emissive: color, emissiveIntensity: 0.1, roughness: 0.42, metalness: 0.1, toneMapped: false });
+      const body = new T.InstancedMesh(new T.SphereGeometry(0.6, stg.low ? 9 : 14, stg.low ? 7 : 10), skin, BEADS);
+      const pale = color.clone().lerp(new T.Color(0xffffff), 0.45), dark = tone.clone().multiplyScalar(0.45);
+      for (let k = 0; k < BEADS; k++) body.setColorAt(k, tone);
+      const marks = new T.InstancedMesh(new T.OctahedronGeometry(1), new T.MeshStandardMaterial({ color: pale, emissive: pale, emissiveIntensity: 0.15, roughness: 0.45, toneMapped: false }), BEADS / 4);
+      body.userData = { color: tone, dark, marks };
+      for (const m of [body, marks]) { m.count = 0; m.frustumCulled = false; world.add(m); }
+      ribbons.push(body);
       const none = new T.Group(); world.add(none); tips.push(none);
       const head = new T.Group();
-      const skull = new T.Mesh(new T.SphereGeometry(0.7, 18, 14), new T.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.55, roughness: 0.4 }));
-      skull.position.y = 0.6; head.add(skull);
-      for (const x of [-0.3, 0.3]) {
-        const eye = new T.Mesh(new T.SphereGeometry(0.23, 10, 8), new T.MeshBasicMaterial({ color: 0xffffff }));
-        eye.position.set(x, 1.12, 0.32); head.add(eye);
-        const pupil = new T.Mesh(new T.SphereGeometry(0.12, 8, 6), new T.MeshBasicMaterial({ color: 0x05060f }));
-        pupil.position.set(x, 1.28, 0.42); head.add(pupil);
+      const ball = new T.SphereGeometry(1, 20, 14);
+      const part = (mat, sx, sy, sz, x, y, z, parent = head) => {
+        const m = new T.Mesh(ball, mat); m.scale.set(sx, sy, sz); m.position.set(x, y, z); parent.add(m); return m;
+      };
+      const flesh = new T.MeshStandardMaterial({ color: tone, emissive: color, emissiveIntensity: 0.14, roughness: 0.38, metalness: 0.1, toneMapped: false });
+      const white = new T.MeshBasicMaterial({ color: 0xfff7c2 }), black = new T.MeshBasicMaterial({ color: 0x05060f });
+      part(flesh, 0.68, 0.44, 0.82, 0, 0.56, 0.1);   // skull, wide at the jaws
+      part(flesh, 0.45, 0.32, 0.62, 0, 0.52, 0.62);  // snout
+      part(body.userData.marks.material, 0.13, 0.07, 0.3, 0, 0.98, -0.1);  // a pale flash on the crown
+      for (const x of [-1, 1]) {
+        part(flesh, 0.27, 0.22, 0.3, x * 0.37, 0.84, 0.3);        // brow
+        part(white, 0.2, 0.17, 0.21, x * 0.39, 0.94, 0.38);       // eye
+        part(black, 0.065, 0.1, 0.15, x * 0.4, 1.08, 0.43);       // slit pupil
+        part(white, 0.035, 0.03, 0.035, x * 0.37, 1.18, 0.49);    // glint
+        part(black, 0.05, 0.04, 0.07, x * 0.16, 0.82, 1.0);       // nostril
       }
-      head.scale.setScalar(1.2);
+      const tongue = new T.Group(); tongue.position.set(0, 0.42, 1.15); head.add(tongue);
+      const red = new T.MeshBasicMaterial({ color: 0xff3b5c });
+      const stem = new T.Mesh(new T.BoxGeometry(0.11, 0.05, 0.5), red); stem.position.z = 0.2; tongue.add(stem);
+      for (const x of [-1, 1]) {
+        const fork = new T.Mesh(new T.BoxGeometry(0.08, 0.05, 0.34), red);
+        fork.position.set(x * 0.1, 0, 0.57); fork.rotation.y = x * 0.55; tongue.add(fork);
+      }
+      head.userData.tongue = tongue;
+      head.scale.setScalar(1.35);
       world.add(head); bikes.push(head); drawn.push(0);
     }
+    // out and back about once every 1.6 s, each snake in its own time
+    function flick(i, now) {
+      const tongue = bikes[i]?.userData.tongue;
+      if (!tongue) return;
+      const t = (now + i * 530) % 1600;
+      tongue.visible = t < 420;
+      if (tongue.visible) tongue.scale.z = 0.35 + 0.65 * Math.abs(Math.sin((t / 420) * Math.PI * 2));
+    }
     function drawBody(i, now) {
-      const body = ribbons[i], t = trails[i];
-      if (!t.length) { body.count = 0; return; }
-      const { color, dark } = body.userData;
-      let k = 0;
+      const body = ribbons[i], t = trails[i], { color, dark, marks } = body.userData;
+      let k = 0, d = 0;
+      const head = headPos(i, now);
+      if (!t.length || !head) { body.count = marks.count = 0; return; }
+      const half = n / 2 - 0.5, end = tailPos(i, now);
+      // tail end, then every cell, then the gliding head; a slice at each point and one halfway to it
+      const pts = [[end[0] - half, end[1] - half]];
+      for (let j = 1; j < t.length; j++) pts.push(at(t[j]));
+      pts.push([head[0] - half, head[1] - half]);
+      const last = pts.length - 1;
       // stripes are counted from the first cell the snake ever moved onto, so they stay put as it slides
-      const put = (x, z, num, scale) => {
+      const first = (seq[i] ?? t.length) - t.length;
+      const put = (x, z, num, r) => {
         if (k >= BEADS) return;
-        sc.setScalar(scale); v.set(x, 0.5, z); q.identity();
+        sc.set(r, r * 0.82, r); v.set(x, 0.5 * r, z); q.identity();
         mtx.compose(v, q, sc); body.setMatrixAt(k, mtx);
-        body.setColorAt(k, Math.floor(num / 3) % 2 ? dark : color); k++;
+        body.setColorAt(k, Math.floor(num / 4) % 2 ? dark : color); k++;
       };
-      const first = (seq[i] ?? t.length) - t.length, end = tailPos(i, now);
-      put(end[0] - n / 2 + 0.5, end[1] - n / 2 + 0.5, first, 0.75);
-      for (let j = 1; j < t.length; j++) { const [x, z] = at(t[j]); put(x, z, first + j, j < 4 ? 0.75 + j * 0.08 : 1); }
-      body.count = k;
+      // from the head back, so a body too long for the buffer loses the far tip of its tail, not its neck
+      for (let j = last; j >= 0; j--) {
+        const [x, z] = pts[j], r = girth(j, last - j);
+        put(x, z, first + j, r);
+        if (!j) continue;
+        const [px, pz] = pts[j - 1];
+        put((x + px) / 2, (z + pz) / 2, first + j, (r + girth(j - 1, last - j + 1)) / 2);
+        if ((first + j) % 4 === 2 && j > 2 && j < last - 1 && d < BEADS / 4 && (x !== px || z !== pz)) {
+          q.setFromAxisAngle(up, Math.atan2(x - px, z - pz));
+          v.set(x, 1.0 * r, z); sc.set(0.27 * r, 0.1, 0.58 * r);
+          mtx.compose(v, q, sc); marks.setMatrixAt(d++, mtx);
+        }
+      }
+      body.count = k; marks.count = d;
       body.instanceMatrix.needsUpdate = true; body.instanceColor.needsUpdate = true;
+      marks.instanceMatrix.needsUpdate = true;
     }
     function drawOrbs(now) {
       if (!orbMesh) return;
@@ -747,7 +799,7 @@ UI.riders = (() => {
       const me = S.riders.me;
       trails.forEach((t, i) => {
         const pos = headPos(i, now), bike = bikes[i], tip = tips[i];
-        if (isSnake()) drawBody(i, now);
+        if (isSnake()) { drawBody(i, now); flick(i, now); }
         if (!pos) { bike.visible = tip.visible = false; return; }
         const p = [pos[0] - n / 2 + 0.5, pos[1] - n / 2 + 0.5];
         bike.visible = !!live[i]?.alive;
@@ -805,14 +857,14 @@ UI.riders = (() => {
     function draw(now) {
       const n = S.riders.n;
       if (!canvas.width) resize();
-      g.fillStyle = '#05060f'; g.fillRect(0, 0, canvas.width, canvas.height);
+      g.fillStyle = '#131c45'; g.fillRect(0, 0, canvas.width, canvas.height);
       if (ring) {  // 🧱 the closed band round the edge
         g.fillStyle = '#ff6b6b33';
         g.fillRect(0, 0, canvas.width, ring * cell); g.fillRect(0, canvas.height - ring * cell, canvas.width, ring * cell);
         g.fillRect(0, 0, ring * cell, canvas.height); g.fillRect(canvas.width - ring * cell, 0, ring * cell, canvas.height);
         g.strokeStyle = '#ff6b6b'; g.lineWidth = 2; g.strokeRect(ring * cell, ring * cell, canvas.width - 2 * ring * cell, canvas.height - 2 * ring * cell);
       }
-      g.strokeStyle = '#1f6fff22'; g.lineWidth = 1;
+      g.strokeStyle = '#5b9dff44'; g.lineWidth = 1;
       for (let k = 0; k <= n; k += 4) { g.beginPath(); g.moveTo(k * cell, 0); g.lineTo(k * cell, canvas.height); g.moveTo(0, k * cell); g.lineTo(canvas.width, k * cell); g.stroke(); }
       if (isSnake()) {  // 🐍 orbs lie under the snakes
         for (const [c, worth] of orbs) {
@@ -840,20 +892,50 @@ UI.riders = (() => {
     function drawSnake2d(i, t, color, now) {
       const n = S.riders.n, mid = (v) => (v + 0.5) * cell;
       const head = headPos(i, now), end = tailPos(i, now);
-      const path = () => {
-        g.beginPath(); g.moveTo(mid(end[0]), mid(end[1]));
-        for (let k = 1; k < t.length; k++) g.lineTo(mid(t[k] % n), mid(Math.floor(t[k] / n)));
-        g.lineTo(mid(head[0]), mid(head[1]));
-      };
+      const pts = [[mid(end[0]), mid(end[1])]];
+      for (let k = 1; k < t.length; k++) pts.push([mid(t[k] % n), mid(Math.floor(t[k] / n))]);
+      pts.push([mid(head[0]), mid(head[1])]);
+      const last = pts.length - 1, first = (seq[i] ?? t.length) - t.length;
       g.save(); g.lineJoin = g.lineCap = 'round';
-      g.strokeStyle = color; g.lineWidth = cell * 0.95; path(); g.stroke();
-      g.strokeStyle = '#0005'; g.lineWidth = cell * 0.55; g.setLineDash?.([cell * 0.4, cell * 1.4]); path(); g.stroke(); g.setLineDash?.([]);
-      const x = mid(head[0]), y = mid(head[1]), [dx, dy] = DIRS[headDir(i)];
-      g.fillStyle = color; g.beginPath(); g.arc(x, y, cell * 0.75, 0, 6.283); g.fill();
+      // one stroke per cell so the body can taper: a dark rim all along first, then the banded skin inside it
+      const pass = (width, style) => {
+        for (let j = 1; j <= last; j++) {
+          g.strokeStyle = style(first + j); g.lineWidth = cell * width * girth(j - 0.5, last - j + 0.5);
+          g.beginPath(); g.moveTo(...pts[j - 1]); g.lineTo(...pts[j]); g.stroke();
+        }
+      };
+      pass(1.3, () => '#000a');
+      pass(1.02, () => color);
+      g.lineCap = 'butt';  // see-through strokes: round ends would overlap into blobs
+      pass(1.02, (num) => (Math.floor(num / 4) % 2 ? '#0004' : '#0000'));
+      pass(0.3, () => '#fff3');  // light along the back
+      g.lineCap = 'round';
+      g.fillStyle = '#ffffffa6';
+      for (let j = 3; j < last - 1; j++) {  // diamonds down the spine
+        if ((first + j) % 4 !== 2) continue;
+        const [x, y] = pts[j], [px, py] = pts[j - 1], len = Math.hypot(x - px, y - py);
+        if (!len) continue;
+        const ux = (x - px) / len, uy = (y - py) / len, r = cell * girth(j, last - j);
+        g.beginPath(); g.moveTo(x + ux * r * 0.5, y + uy * r * 0.5); g.lineTo(x - uy * r * 0.24, y + ux * r * 0.24);
+        g.lineTo(x - ux * r * 0.5, y - uy * r * 0.5); g.lineTo(x + uy * r * 0.24, y - ux * r * 0.24); g.fill();
+      }
+      // the head, drawn facing right and turned to the heading
+      const [dx, dy] = DIRS[headDir(i)];
+      g.translate(...pts[last]); g.rotate(Math.atan2(dy, dx)); g.scale(cell, cell);
+      const flick = (now + i * 530) % 1600;
+      if (flick < 420 && live[i]?.alive) {
+        const out = 1.2 + 0.7 * Math.abs(Math.sin((flick / 420) * Math.PI * 2));
+        g.strokeStyle = '#ff3b5c'; g.lineWidth = 0.16;
+        g.beginPath(); g.moveTo(0.9, 0); g.lineTo(out, 0); g.lineTo(out + 0.4, -0.3); g.moveTo(out, 0); g.lineTo(out + 0.4, 0.3); g.stroke();
+      }
+      g.beginPath(); g.moveTo(-0.5, -0.6);
+      g.bezierCurveTo(0.35, -1.1, 0.8, -0.5, 1.2, -0.28); g.quadraticCurveTo(1.38, 0, 1.2, 0.28);
+      g.bezierCurveTo(0.8, 0.5, 0.35, 1.1, -0.5, 0.6); g.closePath();
+      g.fillStyle = color; g.strokeStyle = '#000a'; g.lineWidth = 0.14; g.fill(); g.stroke();
       for (const side of [-1, 1]) {
-        const ex = x + dx * cell * 0.25 - dy * side * cell * 0.33, ey = y + dy * cell * 0.25 + dx * side * cell * 0.33;
-        g.fillStyle = '#fff'; g.beginPath(); g.arc(ex, ey, cell * 0.25, 0, 6.283); g.fill();
-        g.fillStyle = '#05060f'; g.beginPath(); g.arc(ex + dx * cell * 0.08, ey + dy * cell * 0.08, cell * 0.13, 0, 6.283); g.fill();
+        g.fillStyle = '#fff7c2'; g.beginPath(); g.arc(0.3, side * 0.44, 0.27, 0, 6.283); g.fill();
+        g.fillStyle = '#05060f'; g.beginPath(); g.ellipse(0.38, side * 0.44, 0.18, 0.08, 0, 0, 6.283); g.fill();
+        g.beginPath(); g.arc(1.05, side * 0.15, 0.07, 0, 6.283); g.fill();
       }
       g.restore();
     }
@@ -886,7 +968,7 @@ UI.riders = (() => {
         g.restore();
       }
       for (let k = glints.length - 1; k >= 0; k--) {
-        const [x, y, born] = glints[k], age = (now - born) / 400;
+        const [x, y, born] = glints[k], age = Math.max(0, now - born) / 400;  // a frame's clock can trail performance.now()
         if (age > 1) { glints.splice(k, 1); continue; }
         g.fillStyle = `rgba(255,255,255,${1 - age})`; g.beginPath(); g.arc(x, y, cell * 0.25 * (1 + age), 0, 6.283); g.fill();
       }
