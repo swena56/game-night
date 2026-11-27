@@ -8,6 +8,16 @@ UI.skydrop = (() => {
   const HYPER = 1900;
   const dark = (v, d, rel) => rel > 25 && (v?.dark || []).some(([a, b]) => d > a && d < b);   // 🌑 level 5: rings and coins hide until 25 units ahead
   const V = () => S?.skydrop;
+  const tubeRun = () => V()?.style === 'runner';   // 🌀 the Tube Runner play style (games/skydrop_tube.py)
+  // where on the tube's wall a point is: 0 at the bottom, the same angle the server uses
+  const angleOf = (x, z) => Math.atan2(x, -z);
+  const shortWay = (a, b) => ((b - a + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+  let rollAngle = 0, rollAt = 0;   // the view's roll: it follows your ship round the wall, a little behind
+  function roll(x, z) {
+    const now = performance.now(), k = 1 - Math.exp(-Math.min(.1, (now - rollAt) / 1000) * 7);
+    rollAt = now; rollAngle += shortWay(rollAngle, angleOf(x, z)) * k;
+    return rollAngle;
+  }
   const me = () => V()?.me ?? -1;
   const color = (i) => ctx?.player?.(V()?.seats?.[i])?.color || ['#58d7ff','#ff6b8a','#ffc857','#b68aff','#72e59b','#ff9c56'][((i%6)+6)%6];
   const name = (i) => ctx?.player?.(V()?.seats?.[i])?.name || `Diver ${i + 1}`;
@@ -20,18 +30,27 @@ UI.skydrop = (() => {
       <div class="sd-progress"><i id="sdProgress"></i></div><div class="sd-hyper" id="sdHyper"></div><div class="sd-banner" id="sdBanner" hidden></div>
       <div class="sd-stick" id="sdStick" hidden><i></i></div>
       <div class="sd-perks" id="sdPerks" hidden><b>🎁 Checkpoint! Pick a perk</b><div><button data-perk="magnet">🧲 Magnet</button><button data-perk="wide">⭕ Wide rings</button><button data-perk="shield">🛡️ Shield</button></div></div></div>
-      <div class="sd-controls"><span class="hint" id="sdHint">Drag anywhere to steer · release to stabilize · thread the rings</span><div><button id="sdTilt">📱 Tilt</button> <button id="sdBoost" class="primary">⚡ Boost <small id="sdCharges">3</small></button></div></div></div>`;
+      <div class="sd-controls"><span class="hint" id="sdHint">Drag anywhere to steer · release to stabilize · thread the rings</span><div><button id="sdTilt">📱 Tilt</button> <button id="sdJump" class="primary" hidden>⤴️ Jump</button> <button id="sdBoost" class="primary">⚡ Boost <small id="sdCharges">3</small></button></div></div></div>`;
     side.innerHTML = `<div class="panel"><h3>🪂 Sky Drop</h3><div id="sdSeats"></div><p class="hint left">Steer in two directions. Rings build your combo, dead centre pays +50%; hazards break it. Reach a checkpoint to refill boosts.</p></div>`;
     stage = $('sdStage'); stage.style.touchAction = 'none';
     stage.addEventListener('pointerdown', (e) => {
       if (drag || e.button !== 0 || e.target.closest?.('button')) return;
-      drag = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      drag = { id: e.pointerId, x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, low: e.clientY, at: e.timeStamp };
       stage.setPointerCapture?.(e.pointerId);
       steerFrom(e);
     });
-    stage.addEventListener('pointermove', (e) => { if (drag && e.pointerId === drag.id) steerFrom(e); });
+    stage.addEventListener('pointermove', (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      if (tubeRun()) {   // a quick swipe up jumps; the finger has to come down again before the next one
+        if (e.clientY > drag.low) drag.low = e.clientY;
+        else if (drag.low - e.clientY > 28) { drag.low = e.clientY; jump(); }
+      }
+      steerFrom(e);
+    });
     const end = (e) => {
       if (!drag || e.pointerId !== drag.id) return;
+      // 🌀 a tap (no drag) jumps too
+      if (tubeRun() && e.type === 'pointerup' && e.timeStamp - drag.at < 300 && Math.hypot(e.clientX - drag.x0, e.clientY - drag.y0) < 10) jump();
       drag = null;
       $('sdStick').hidden = true;
       keySteer();
@@ -40,11 +59,16 @@ UI.skydrop = (() => {
     let boostTap = 0;
     $('sdBoost').addEventListener('pointerdown', (e) => { e.preventDefault(); boostTap = performance.now(); boost(); });
     $('sdBoost').addEventListener('click', () => { if (performance.now() - boostTap > 600) boost(); });
+    let jumpTap = 0;
+    $('sdJump').addEventListener('pointerdown', (e) => { e.preventDefault(); jumpTap = performance.now(); jump(); });
+    $('sdJump').addEventListener('click', () => { if (performance.now() - jumpTap > 600) jump(); });
     $('sdTilt').addEventListener('click', toggleTilt);
     $('sdPerks').addEventListener('pointerdown', (e) => { const b = e.target.closest('[data-perk]'); if (!b) return; e.preventDefault(); e.stopPropagation(); if (S?.phase === 'playing') ctx.input({ perk: b.dataset.perk }, true); $('sdPerks').hidden = true; });
     keyDown = (e) => {
       if (e.target?.closest?.('input,textarea,select')) return;
-      if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','KeyW','KeyA','KeyS','KeyD'].includes(e.code)) { e.preventDefault(); keys.add(e.code); if (!drag) keySteer(); }
+      if (tubeRun() && ['Space', 'ArrowUp', 'KeyW'].includes(e.code)) { e.preventDefault(); if (!e.repeat) jump(); }
+      else if (tubeRun() && ['KeyB', 'ShiftLeft', 'ShiftRight'].includes(e.code)) { e.preventDefault(); if (!e.repeat) boost(); }
+      else if (['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','KeyW','KeyA','KeyS','KeyD'].includes(e.code)) { e.preventDefault(); keys.add(e.code); if (!drag) keySteer(); }
       else if (e.code === 'Space') { e.preventDefault(); if (!e.repeat) boost(); }
     };
     keyUp = (e) => { if (keys.delete(e.code) && !drag) keySteer(); };
@@ -78,6 +102,7 @@ UI.skydrop = (() => {
     if (force||wait<=0) { sentAt=now; ctx.input({sx:+x.toFixed(2),sz:+z.toFixed(2)}); return; }
     steerTimer=setTimeout(()=>{ steerTimer=0; sentAt=performance.now(); if (S?.phase === 'playing' && !S.paused) ctx.input({sx:+sx.toFixed(2),sz:+sz.toFixed(2)}); },wait);  // never drop the latest position
   }
+  function jump() { if (tubeRun() && S?.phase === 'playing' && !S.paused) ctx.input({ jump: true }, true); }
   function boost() { if (S?.phase === 'playing' && !S.paused) ctx.input({sx:+sx.toFixed(2),sz:+sz.toFixed(2),boost:true},true); }
   async function toggleTilt() {
     if (tiltOn) { tiltOn=false; tiltZero=null; if(tiltHandler)removeEventListener('deviceorientation',tiltHandler); tiltHandler=null; $('sdTilt').classList.remove('primary'); if(!drag)keySteer(); return; }
@@ -111,7 +136,7 @@ UI.skydrop = (() => {
     const key=new T.DirectionalLight(0xffe8b5,2.0); key.position.set(-7,12,12); scene.add(key);
     const shaft=new T.Group(); scene.add(shaft);
     const farGlow=new T.Sprite(new T.SpriteMaterial({map:dot,color:0x6cecff,transparent:true,opacity:.55,blending:T.AdditiveBlending,depthWrite:false,fog:false}));farGlow.scale.set(60,40,1);scene.add(farGlow);
-    const wallMat=new T.MeshStandardMaterial({color:0x222b53,map:panelTex,roughness:.72,metalness:.16,side:T.DoubleSide});
+    const wallMat=new T.MeshStandardMaterial({color:0x222b53,map:panelTex,emissive:0x000000,emissiveMap:panelTex,roughness:.72,metalness:.16,side:T.DoubleSide});
     // 🥚 a round tunnel (an ellipse, like the physics wall) that rides with you; the panels scroll past so you feel the fall
     const walls=new T.Group();scene.add(walls);const tunGeo=new T.CylinderGeometry(1,1,240,48,1,true);tunGeo.rotateX(Math.PI/2);const tunnel=new T.Mesh(tunGeo,wallMat);tunnel.scale.set(9.3,6.4,1);tunnel.position.z=-90;walls.add(tunnel);
     const GRID=11,gridRings=[];
@@ -125,6 +150,12 @@ UI.skydrop = (() => {
     const starShape=new T.Shape();for(let q=0;q<8;q++){const a=q*Math.PI/4,r=q%2?.55:1.5;q?starShape.lineTo(Math.cos(a)*r,Math.sin(a)*r):starShape.moveTo(r,0);}starShape.closePath();const starGeo=new T.ExtrudeGeometry(starShape,{depth:.25,bevelEnabled:false});starGeo.translate(0,0,-.12);
     const hazardMats=[0xff576f,0xffb843,0xc477ff,0xff1f3d,0xff8a2b,0x4de6ff,0x4de6ff].map(c=>new T.MeshStandardMaterial({color:c,emissive:c,emissiveIntensity:1.3,metalness:.2,roughness:.32}));
     const streamMat=new T.MeshBasicMaterial({color:0x6cf5d5,transparent:true,opacity:.45});
+    // 🌀 lines running along the tube's wall, so you can see the surface you ride and which way you're turning
+    const lanePos=new Float32Array(24*6);for(let i=0;i<24;i++){const a=i*Math.PI/12;lanePos.set([Math.cos(a),Math.sin(a),30,Math.cos(a),Math.sin(a),-190],i*6);}
+    const laneGeo=new T.BufferGeometry();laneGeo.setAttribute('position',new T.BufferAttribute(lanePos,3));
+    const lanes=new T.LineSegments(laneGeo,new T.LineBasicMaterial({color:0x7f9cff,transparent:true,opacity:.34,blending:T.AdditiveBlending,depthWrite:false}));lanes.visible=false;lanes.frustumCulled=false;scene.add(lanes);
+    // 🌀 your ship's shadow on the tube wall: how high you are
+    const shadow=new T.Mesh(new T.CircleGeometry(.95,24),new T.MeshBasicMaterial({color:0x000000,transparent:true,opacity:.6,depthWrite:false,side:T.DoubleSide}));shadow.visible=false;scene.add(shadow);
     const playerMeshes=[]; const divers=new T.Group(); scene.add(divers);
     const ringMeshes=[],hazardMeshes=[],streamMeshes=[],coinMeshes=[];
     const coinGeo=new T.CylinderGeometry(.5,.5,.12,16),gemGeo=new T.OctahedronGeometry(.62),coinMat=new T.MeshStandardMaterial({color:0xffd34d,emissive:0xd89a00,emissiveIntensity:1.6,metalness:.5,roughness:.25}),gemMat=new T.MeshStandardMaterial({color:0x6ff0ff,emissive:0x00b4d8,emissiveIntensity:2.2,metalness:.2,roughness:.1});
@@ -149,7 +180,7 @@ UI.skydrop = (() => {
       for(const o of coinMeshes) if(o.parent)o.parent.remove(o);
       ringMeshes.length=hazardMeshes.length=streamMeshes.length=coinMeshes.length=0;
       for(const [d,x,y,k] of v?.coins||[]){const o=new T.Mesh(k?gemGeo:coinGeo,k?gemMat:coinMat);o.position.set(x,y,-d);if(!k)o.rotation.x=Math.PI/2;o.userData={depth:d,gem:!!k};scene.add(o);coinMeshes.push(o);}
-      for(let i=0;i<(v?.rings||[]).length;i++){const [d,x,y,m]=v.rings[i],gold=m>1,o=new T.Mesh(new T.TorusGeometry((gold?1:.88)*(v?.ringR||2.05),.15,12,48),gateMat.clone());if(gold){o.material.color.set(0xffdd79);o.material.emissive.set(0xffae36);}o.material.emissiveIntensity=gold?3.5:2.8;o.position.set(x,y,-d);o.userData.depth=d;o.userData.gold=gold;o.userData.i=i;o.userData.bx=x;o.userData.by=y;if(!low){const gl2=new T.Sprite(new T.SpriteMaterial({map:dot,color:gold?0xffc24a:0x6cecff,transparent:true,opacity:.28,blending:T.AdditiveBlending,depthWrite:false}));gl2.scale.setScalar(gold?6.4:5.6);o.add(gl2);o.userData.glow=gl2;if(gold){const orb=new T.Points(new T.BufferGeometry().setAttribute('position',new T.BufferAttribute(new Float32Array(18),3)),new T.PointsMaterial({size:.45,map:dot,color:0xffe9a0,transparent:true,depthWrite:false,blending:T.AdditiveBlending}));orb.frustumCulled=false;o.add(orb);o.userData.orb=orb;}}scene.add(o);ringMeshes.push(o);}
+      for(let i=0;i<(v?.rings||[]).length;i++){const [d,x,y,m]=v.rings[i],gold=m>1,o=new T.Mesh(new T.TorusGeometry((v?.style==='runner'?.82:gold?1:.88)*(v?.ringR||2.05),.15,12,48),gateMat.clone());if(gold){o.material.color.set(0xffdd79);o.material.emissive.set(0xffae36);}o.material.emissiveIntensity=gold?3.5:2.8;o.position.set(x,y,-d);o.userData.depth=d;o.userData.gold=gold;o.userData.i=i;o.userData.bx=x;o.userData.by=y;if(!low){const gl2=new T.Sprite(new T.SpriteMaterial({map:dot,color:gold?0xffc24a:0x6cecff,transparent:true,opacity:.28,blending:T.AdditiveBlending,depthWrite:false}));gl2.scale.setScalar(gold?6.4:5.6);o.add(gl2);o.userData.glow=gl2;if(gold){const orb=new T.Points(new T.BufferGeometry().setAttribute('position',new T.BufferAttribute(new Float32Array(18),3)),new T.PointsMaterial({size:.45,map:dot,color:0xffe9a0,transparent:true,depthWrite:false,blending:T.AdditiveBlending}));orb.frustumCulled=false;o.add(orb);o.userData.orb=orb;}}scene.add(o);ringMeshes.push(o);}
       for(const [d,x,y,k,p] of v?.hazards||[]){const g=k===0?starGeo:k===1?new T.CylinderGeometry(.82,.82,.3,12):k===3?new T.IcosahedronGeometry(1.1,1):k===4?new T.SphereGeometry(1.1,14,10):new T.OctahedronGeometry(.95),o=new T.Mesh(g,hazardMats[k]);if(!low){const h=new T.Sprite(new T.SpriteMaterial({map:dot,color:hazardMats[k].color,transparent:true,opacity:.4,blending:T.AdditiveBlending,depthWrite:false}));h.scale.setScalar(k===3?5:3.6);o.add(h);}o.position.set(x,y,-d);o.rotation.x=k===0?0:Math.PI/2;o.userData={depth:d,phase:p,kind:k,baseX:x,baseY:y};scene.add(o);hazardMeshes.push(o);if(k===4){const rail=new T.Mesh(new T.BoxGeometry(8.8,.05,.05),new T.MeshBasicMaterial({color:0xff8a2b,transparent:true,opacity:.35}));rail.position.set(x,y,-d);scene.add(rail);}}
       for(const [d,x,y,dx,dy] of v?.streams||[]){const o=new T.Mesh(new T.TorusGeometry(2.1,.035,4,32),streamMat);o.position.set(x,y,-d);scene.add(o);streamMeshes.push(o);}for(const [g0,g1,gd] of low?[]:v?.gusts||[])for(let k=0;k<16;k++){const o=new T.Mesh(new T.BoxGeometry(3.2,.04,.04),new T.MeshBasicMaterial({color:0xbfefff,transparent:true,opacity:.35,depthWrite:false}));const dd=g0+(g1-g0)*((k*0.618)%1);o.position.set(0,((k*37)%11)/11*7-3.5,-dd);o.userData={gust:gd,gx:(k*5.3)%17};scene.add(o);streamMeshes.push(o);}
       for(const m of playerMeshes){divers.remove(m);m.traverse(o=>{if(o.material){o.material.map?.dispose();o.material.dispose();}});}
@@ -165,20 +196,23 @@ UI.skydrop = (() => {
       if(course===2&&!low)wallMat.color.setHSL(.47+.08*Math.sin(performance.now()/4000),.55,.24);else wallMat.color.set(course===1?0x4a2a3c:0x222b53);hemi.color.set(course===1?0xffc79a:course===2?0x9affd8:0x9adfff);farGlow.material.color.set(pal[1]);
       const idx=me(),f=sample(idx),depth=f[0],px=f[1],py=f[2];farGlow.position.set(0,0,-depth-170);
       {const sp=Math.min(1,(12.5*(1+(v.ramp||0)*depth/(v.length||720))+(((v.time||0)+Math.max(0,(performance.now()-gotAt)/1000))<(f[13]||0)?4:0))/16.5),tt=performance.now()/1000,rum=v.stage==='race'?.03+.05*sp:0;   // 🌬️ falling: wind rumble, the camera banks into your turns, and the world rushes harder the faster you drop
-        camera.position.set(px*.35+Math.sin(tt*37)*rum,py*.35+3.4+Math.sin(tt*43)*rum,-depth+12);camera.lookAt(px,py,-depth-12);camera.rotation.z+=-(f[3]||0)*.012+Math.sin(tt*1.3)*.008;}
+        if(v.style==='runner'){const a=roll(px,py),sa=Math.sin(a),ca=Math.cos(a);camera.up.set(-sa,ca,0);camera.position.set(sa*1.5+Math.sin(tt*37)*rum,-ca*1.5+Math.sin(tt*43)*rum,-depth+10.5);camera.lookAt(sa*3.3,-ca*3.3,-depth-9);}
+        else{camera.up.set(0,1,0);camera.position.set(px*.35+Math.sin(tt*37)*rum,py*.35+3.4+Math.sin(tt*43)*rum,-depth+12);camera.lookAt(px,py,-depth-12);camera.rotation.z+=-(f[3]||0)*.012+Math.sin(tt*1.3)*.008;}}
       const nowT=performance.now()/1000,boosting=((v.time||0)+Math.max(0,(performance.now()-gotAt)/1000))<(f[13]||0);
-      walls.position.z=-depth;panelTex.offset.y=-depth/8;
+      const tubed=v.style==='runner',rim=(v.wall||6)+1.35;lanes.visible=tubed;lanes.position.z=-depth;lanes.scale.set(rim-.06,rim-.06,1);if(tubed){tunnel.scale.set(rim,rim,1);for(const g of gridRings)g.scale.set(rim/9.05,rim/9.05,1);}else{tunnel.scale.set(9.3,6.4,1);for(const g of gridRings)g.scale.set(1,.69,1);}
+      shadow.visible=tubed&&idx>=0&&!f[9]&&v.stage!=='results';if(shadow.visible){const a=angleOf(px,py),w=(v.wall||6)+1.15,up=Math.max(0,(v.wall||6)-Math.hypot(px,py));shadow.position.set(Math.sin(a)*w,-Math.cos(a)*w,-depth);shadow.lookAt(0,0,-depth);shadow.scale.setScalar(1-Math.min(.45,up*.18));shadow.material.opacity=.6-Math.min(.25,up*.1);}
+      walls.position.z=-depth;panelTex.offset.y=-depth/8;wallMat.emissive.setHex(v.style!=='runner'?0x000000:course===1?0x2c1424:course===2?0x0c2e2c:0x18214c);   // 🌀 the wall you ride glows a little, all the way round
       shaft.position.z=-(depth-depth%GRID);   // the hoops are fixed in the tunnel: they stream past you in steps of 11
       const baseK=Math.floor(depth/GRID);curDepth=depth;
       for(const o of ringMeshes){const t=o.userData.pulse?(performance.now()-o.userData.pulse)/500:1,k=t<1?1-t:0;if(k||o.userData.lit){o.scale.setScalar(1+.7*k);o.material.emissiveIntensity=(o.userData.gold?3.5:2.8)+6*k;o.userData.lit=k>0;}if(o.userData.orb&&Math.abs(o.userData.depth-depth)<70){const q=o.userData.orb.geometry.attributes.position.array;for(let j=0;j<6;j++){const a=nowT*1.8+j*1.047;q[j*3]=Math.cos(a)*2.05;q[j*3+1]=Math.sin(a)*2.05;q[j*3+2]=0;}o.userData.orb.geometry.attributes.position.needsUpdate=true;}
         if(o.userData.glow)o.userData.glow.material.opacity=.24+.1*Math.sin(nowT*3+o.userData.depth)+.5*k;}
       for(const g of gridRings){const k=g.userData.k+baseK,m=g.material;m.color.setHSL(((k*.045+nowT*.05)%1+1)%1,.75,.58);m.opacity=.18+.4*Math.max(0,1-(g.userData.k*GRID-depth%GRID)/200);}
-      const hk=hyperRun===v.run&&hyperAt?Math.min(1,(performance.now()-hyperAt)/HYPER):1,hy=hk<1?hk*hk:0,len=(boosting?7:3.2+3*Math.min(1,depth/(v.length||720)))+hy*46;for(let i=0;i<NS;i++){const [sx0,sy0,z0]=streakSeed[i],rel=((z0-depth)%220+220)%220,zz=-depth-rel+12;streakPos.set([sx0,sy0,zz,sx0,sy0,zz-len],i*6);}
+      const hk=hyperRun===v.run&&hyperAt?Math.min(1,(performance.now()-hyperAt)/HYPER):1,hy=hk<1?hk*hk:0,len=(boosting?7:3.2+3*Math.min(1,depth/(v.length||720)))+hy*46;for(let i=0;i<NS;i++){const [sx1,sy1,z0]=streakSeed[i],sx0=tubed?sx1*.53:sx1,sy0=tubed?sy1*1.06:sy1,rel=((z0-depth)%220+220)%220,zz=-depth-rel+12;streakPos.set([sx0,sy0,zz,sx0,sy0,zz-len],i*6);}
       streakGeo.attributes.position.needsUpdate=true;
       {const sp=Math.min(1,(12.5+(boosting?4:0))/16.5),vg=Math.max(hy,boosting?.75:.25*sp);if(Math.abs(vg-vgLast)>.02){vgLast=vg;stage.style.setProperty('--sdv',vg.toFixed(2));}}streaks.material.opacity=hy?.95:boosting?.9:.5;
       const fov=63+(boosting?9:0)+6*Math.min(1,depth/(v.length||720))+hy*62;camera.fov+=(fov-camera.fov)*.12;camera.updateProjectionMatrix();
       const pulse=1+Math.sin(performance.now()/260)*.06;
-      for(let i=0;i<playerMeshes.length;i++){const a=sample(i),o=playerMeshes[i];o.position.set(a[1],a[2],-a[0]);o.visible=!a[9]||(i===me()&&hy>0&&hy<1);if(i===me()&&hy>0)o.position.z-=hy*140;o.rotation.z=-a[3]*.09;o.rotation.x=a[4]*.03;
+      for(let i=0;i<playerMeshes.length;i++){const a=sample(i),o=playerMeshes[i];o.position.set(a[1],a[2],-a[0]);o.visible=!a[9]||(i===me()&&hy>0&&hy<1);if(i===me()&&hy>0)o.position.z-=hy*140;o.rotation.z=tubed?angleOf(a[1],a[2]):-a[3]*.09;o.rotation.x=tubed?0:a[4]*.03;
         const tr=trails[i];if(tr){const q=tr.pos;q.copyWithin(3,0,(TL-1)*3);q[0]=o.position.x;q[1]=o.position.y+.1;q[2]=o.position.z+1.2;tr.n=Math.min(TL,tr.n+1);tr.pts.geometry.attributes.position.needsUpdate=true;tr.pts.material.opacity=a[9]?0:(boosting&&i===idx?1:.75);if(a[9]||hy>0)tr.n=0,q.fill(1e4);}
         for(const c of o.children)if(c.userData.halo)c.scale.setScalar(pulse);}
       const elapsed=(v.time||0)+Math.max(0,(performance.now()-gotAt)/1000)-(v.raceStarted||v.go||0);
@@ -208,7 +242,26 @@ UI.skydrop = (() => {
     const c=document.createElement('canvas');c.className='sd-canvas';stage.append(c);const x=c.getContext('2d');if(!x)return {resize(){},render(){},dispose(){c.remove();}};
     let flare=null,curD=0;const trail=[];
     function resize(){const r=stage.getBoundingClientRect(),d=Math.min(devicePixelRatio||1,2);c.width=Math.round(r.width*d);c.height=Math.round(r.height*d);c.style.width=`${r.width}px`;c.style.height=`${r.height}px`;}
-    function render(v){if(!v||!Array.isArray(v.flyers)||!Array.isArray(v.seats))return;const w=c.width,h=c.height,idx=me(),f=sample(idx),g=x.createLinearGradient(0,0,0,h),top=v.course==='storm'?'#331b32':v.course==='aurora'?'#0a3448':'#151633',bottom=v.course==='storm'?'#8a4655':v.course==='aurora'?'#287e85':'#493778';g.addColorStop(0,top);g.addColorStop(1,bottom);x.fillStyle=g;x.fillRect(0,0,w,h);
+    // 🌀 the tube without 3D: looking down it, rolled so your ship is at the bottom; farther things are nearer the middle
+    function renderTube(v){const w=c.width,h=c.height,idx=me(),f=sample(idx),unit=Math.min(w,h)*.074,cx=w/2,cy=h*.44,a0=roll(f[1],f[2]),dpr=Math.min(2,devicePixelRatio||1);
+      const at=(d,px,pz)=>{const rel=d-f[0],k=13/(13+Math.max(-6,rel)*.8),a=angleOf(px,pz)-a0,r=Math.hypot(px,pz)*unit*k;return [cx+Math.sin(a)*r,cy+Math.cos(a)*r,k,rel];};
+      x.fillStyle=v.course==='storm'?'#331b32':v.course==='aurora'?'#0a3448':'#151633';x.fillRect(0,0,w,h);
+      x.lineWidth=dpr;for(let n=12;n>=0;n--){const rel=n*9-f[0]%9,k=13/(13+Math.max(-6,rel)*.8);x.strokeStyle=`rgba(130,152,255,${Math.max(.06,.45-rel/260)})`;x.beginPath();x.arc(cx,cy,(v.wall||6)*1.12*unit*k,0,Math.PI*2);x.stroke();}
+      const el=(v.time||0)+Math.max(0,(performance.now()-gotAt)/1000)-(v.raceStarted||v.go||0);
+      const things=[];
+      for(const [d,a,b,k] of v.coins||[])things.push([d,a,b,()=>(at(d,a,b)),k?'gem':'coin']);
+      for(const [d,a,b,k] of v.hazards||[])things.push([d,a,b,null,'hazard',k]);
+      (v.rings||[]).forEach(([d,a,b,m])=>things.push([d,a,b,null,'ring',m]));
+      for(let i=0;i<v.flyers.length;i++){const p=sample(i);if(!p[9])things.push([p[0],p[1],p[2],null,'ship',i]);}
+      things.sort((p,q)=>q[0]-p[0]);   // far ones first
+      for(const [d,a,b,,kind,extra] of things){const [sx2,sy2,k,rel]=at(d,a,b);if(rel<-5||rel>85)continue;const size=unit*k;x.globalAlpha=Math.min(1,(88-rel)/30);
+        if(kind==='ring'){x.strokeStyle=extra>1?'#ffe17d':'#7df6ff';x.lineWidth=Math.max(2,.2*size);x.beginPath();x.arc(sx2,sy2,(v.ringR||1.4)*.85*size,0,Math.PI*2);x.stroke();}
+        else if(kind==='coin'||kind==='gem'){x.fillStyle=kind==='gem'?'#6ff0ff':'#ffd34d';x.beginPath();x.arc(sx2,sy2,Math.max(2,(kind==='gem'?.55:.32)*size),0,Math.PI*2);x.fill();}
+        else if(kind==='hazard'){x.fillStyle=extra===3?'#ff1f3d':extra===1?'#ffb843':'#ff576f';x.beginPath();const spikes=extra===1?4:8;for(let q=0;q<spikes*2;q++){const ang=q*Math.PI/spikes+el*2,r=(q%2?.5:1.05)*size;x.lineTo(sx2+Math.cos(ang)*r,sy2+Math.sin(ang)*r);}x.closePath();x.fill();}
+        else{const mine=extra===idx;x.fillStyle=color(extra);x.beginPath();x.arc(sx2,sy2,(mine?.62:.45)*size,0,Math.PI*2);x.fill();if(mine){x.strokeStyle='#fff';x.lineWidth=2*dpr;x.stroke();x.fillStyle='#fff';x.font=`900 ${12*dpr}px system-ui,sans-serif`;x.textAlign='center';x.fillText('YOU',sx2,sy2-size);}}
+      }
+      x.globalAlpha=1;curD=f[0];}
+    function render(v){if(!v||!Array.isArray(v.flyers)||!Array.isArray(v.seats))return;if(v.style==='runner')return renderTube(v);const w=c.width,h=c.height,idx=me(),f=sample(idx),g=x.createLinearGradient(0,0,0,h),top=v.course==='storm'?'#331b32':v.course==='aurora'?'#0a3448':'#151633',bottom=v.course==='storm'?'#8a4655':v.course==='aurora'?'#287e85':'#493778';g.addColorStop(0,top);g.addColorStop(1,bottom);x.fillStyle=g;x.fillRect(0,0,w,h);
       const glow=x.createRadialGradient(w*.5,h*.35,4,w*.5,h*.35,w*.72);glow.addColorStop(0,'#98efff22');glow.addColorStop(1,'#10112600');x.fillStyle=glow;x.fillRect(0,0,w,h);x.strokeStyle='#8298ff44';x.lineWidth=2;
       for(let i=0;i<13;i++){let yy=(i*h/12+(performance.now()*.04)% (h/12));x.beginPath();x.ellipse(w/2,yy,w*.42,24,0,0,Math.PI*2);x.stroke();}
       const yy=h*.68,px=w/2+f[1]*w/22,py=yy+f[2]*h/14;
@@ -242,7 +295,27 @@ UI.skydrop = (() => {
   function sample(i){const m=smooth[i];if(m&&m.f===frameNo)return m.v;const raw=sampleRaw(i);if(!raw||!V()?.flyers?.[i])return raw;const now=performance.now();
     if(!m||m.run!==V().run||raw[9]||Math.abs(raw[0]-m.v[0])>8){smooth[i]={f:frameNo,t:now,run:V().run,v:raw.slice()};return smooth[i].v;}
     const k=1-Math.exp(-Math.min(.05,(now-m.t)/1000)*(i===me()?30:16)),v=raw.slice();for(let j=0;j<3;j++)v[j]=m.v[j]+(raw[j]-m.v[j])*k;m.v=v;m.t=now;m.f=frameNo;return v;}
-  function sampleRaw(i){const raw=state(i);if(!raw||!V()?.flyers?.[i])return raw;const dt=Math.max(0,Math.min(.13,(performance.now()-gotAt)/1000));const v=V(),serverNow=(v.time||0)+dt,boosting=serverNow<(raw[13]||0),out=raw.slice();if(!raw[9]&&v.stage==='race'){out[0]=Math.min(v.length,raw[0]+(12.5*(1+(v.ramp||0)*raw[0]/v.length)+(boosting?4:0))*dt);out[1]=raw[1]+raw[3]*dt;out[2]=raw[2]+raw[4]*dt;}return out;}
+  function sampleRaw(i){const raw=state(i);if(!raw||!V()?.flyers?.[i])return raw;const dt=Math.max(0,Math.min(.13,(performance.now()-gotAt)/1000));const v=V(),serverNow=(v.time||0)+dt,boosting=serverNow<(raw[13]||0),out=raw.slice();if(!raw[9]&&v.stage==='race'){out[0]=Math.min(v.length,raw[0]+(12.5*(1+(v.ramp||0)*raw[0]/v.length)+(boosting?4:0))*dt);out[1]=raw[1]+raw[3]*dt;out[2]=raw[2]+raw[4]*dt;if(i===v.me)lead(v,raw,out,dt);}return out;}
+  // #283 your own ship answers your stick at once, instead of after the trip to the server and back: it's drawn a little
+  // ahead, the way the server is about to move it. LEAD is about that trip; updates then confirm it, so nothing piles up.
+  const LEAD = .13;
+  let lx = 0, lz = 0, ledAt = 0;   // the stick as the lead sees it: eased, so a flick doesn't make the ship twitch
+  function lead(v, raw, out, dt) {
+    if (!v.steer || S?.paused || serverClock(v) < (raw[11] || 0)) return;   // not while stunned
+    const now = performance.now(), k = 1 - Math.exp(-Math.min(.1, (now - ledAt) / 1000) * 18);
+    if (now !== ledAt) { lx += (sx - lx) * k; lz += (sz - lz) * k; ledAt = now; }
+    const [topX, topZ, response, turn] = v.steer;
+    if (v.style === 'runner') {   // round the wall: add the turn the stick asks for beyond the one under way
+      const r = Math.hypot(out[1], out[2]), a = angleOf(out[1], out[2]), spin = r > 1 ? (raw[3] * Math.cos(a) + raw[4] * Math.sin(a)) / r : 0;
+      const to = a + (lx * turn - spin) * LEAD;
+      out[1] = r * Math.sin(to); out[2] = -r * Math.cos(to);
+      return;
+    }
+    out[1] += (lx * topX * .9 - raw[3]) * LEAD; out[2] += (lz * topZ * .9 - raw[4]) * LEAD;
+    const e = Math.hypot(out[1] / 8.5, out[2] / 5.5);
+    if (e > 1) { out[1] /= e; out[2] /= e; }
+  }
+  const serverClock = (v) => (v.time || 0) + Math.max(0, (performance.now() - gotAt) / 1000);
   function loop(){frameNo++;ensureView();if(S){const v=V();(gl||flat)?.render(v);renderHud(v);}raf=requestAnimationFrame(loop);}
   function renderHud(v){if(!v||!Array.isArray(v.flyers)||!Array.isArray(v.seats))return;const i0=me(),watching=!(i0>=0&&v.flyers[i0]),f=watching?(v.flyers.reduce((a,b)=>(b[0]>a[0]?b:a),state(-1))):state(i0),depth=f[0]||0;
     const place=f[10]||(1+v.flyers.filter((a,j)=>j!==i0&&(a[9]>0?a[9]<=(f[9]||Infinity):!f[9]&&a[0]>depth)).length),ord=(n)=>n+(n%100>10&&n%100<14?'th':['th','st','nd','rd'][n%10]||'th');
@@ -263,8 +336,9 @@ UI.skydrop = (() => {
     if(card?.dataset.key!==key){card=document.createElement('div');card.className='sd-brief';card.dataset.key=key;
       const add=(tag,text)=>{const e=document.createElement(tag);e.textContent=text;card.append(e);};
       add('b',`Level ${v.level}${v.levelName?` · ${v.levelName}`:''}`);add('small',`Run ${v.run} of ${v.runs} · most points wins`);
-      add('p','⭕ Fly through the rings. Rings in a row build a combo.');add('p','💥 Dodge hazards. A hit breaks your combo.');
-      add('p',watching?'👀 You are watching this dive.':'👆 Drag to steer · ⚡ Boost for speed');add('strong','');
+      const tubed=v.style==='runner';
+      add('p',tubed?'🌀 Ride the tube wall. Jump for the floating 🟡 rings and 💎 gems.':'⭕ Fly through the rings. Rings in a row build a combo.');add('p',tubed?'💥 Steer round hazards, or jump over them.':'💥 Dodge hazards. A hit breaks your combo.');
+      add('p',watching?'👀 You are watching this dive.':tubed?'👆 Drag left/right · tap or swipe up to jump · ⚡ Boost':'👆 Drag to steer · ⚡ Boost for speed');add('strong','');
       banner.replaceChildren(card);}
     const count=String(Math.max(1,Math.ceil(v.go-Date.now()/1000))),big=card.lastChild;if(big.textContent!==count)big.textContent=count;}
   function render(S0, ctx0) {
@@ -275,9 +349,20 @@ UI.skydrop = (() => {
     snap = V(); gotAt = performance.now();
     if (lastSeq < 0) events(V());
     ensureView();
+    dress();
+  }
+  // the buttons and help for the play style
+  let dressed = null;
+  function dress() {
+    const style = V()?.style, hint = $('sdHint');
+    if (!hint || dressed === hint.dataset.style && dressed === style) return;
+    dressed = style; hint.dataset.style = style;
+    hint.closest('.sd')?.classList.toggle('sd-tube', tubeRun());
+    $('sdJump').hidden = !tubeRun();
+    if (tubeRun()) hint.textContent = 'Drag left or right to run round the tube · tap, swipe up or ⤴️ to jump · keys: ← → , Space jumps, B boosts';
   }
   function fast(data){if(data.skydrop){const old=V()||{};S={...S,skydrop:{...data.skydrop,me:old.me,seats:old.seats,coins:old.seed===data.skydrop.seed?old.coins:undefined}};snap=S.skydrop;gotAt=performance.now();ensureView();events(S.skydrop);}}
   function events(v){const evs=v?.events||[];if(lastSeq<0||evs.some(e=>e[0]<lastSeq-40)){lastSeq=evs.at(-1)?.[0]??0;return;}for(const [n,kind,i] of evs){if(n<=lastSeq)continue;lastSeq=n;if(i!==me())continue;
     if(kind==='ring'){ctx?.sfx?.('chip');ctx?.buzz?.(8);(gl||flat)?.pulse?.();}else if(kind==='hit'){gl?.sparkle?.(2);ctx?.sfx?.('thud');ctx?.buzz?.(40);(gl||flat)?.shake?.(.35);}else if(kind==='bullseye'){ctx?.sfx?.('pop');ctx?.buzz?.(15);}else if(kind==='draft'){if(typeof Kit!=='undefined')Kit.callout('🌬️ Slipstream!','cool',{ms:600});}else if(kind==='coin'){ctx?.sfx?.('tick');ctx?.buzz?.(6);gl?.sparkle?.(false);}else if(kind==='gem'){ctx?.sfx?.('pop');ctx?.buzz?.(14);gl?.sparkle?.(true);if(typeof Kit!=='undefined')Kit.callout('💎 +10','gold',{ms:600});}else if(kind==='boom'){gl?.sparkle?.(2);ctx?.sfx?.('thud');ctx?.buzz?.([60,40,90]);(gl||flat)?.shake?.(.6);if(typeof Kit!=='undefined')Kit.callout('💥 Mine! −12','bad',{ms:1000});}else if(kind==='graze'){ctx?.sfx?.('tick');ctx?.buzz?.(10);if(typeof Kit!=='undefined')Kit.callout('😮‍💨 Close call! +3','gold',{ms:700});}else if(kind==='streak'){ctx?.sfx?.('rise');ctx?.buzz?.([10,30,10]);if(typeof Kit!=='undefined')Kit.callout('🔥 Hot streak! +10','gold',{ms:800});}else if(kind==='gustl'||kind==='gustr'){ctx?.sfx?.('whoosh');if(typeof Kit!=='undefined')Kit.callout(kind==='gustr'?'💨 Gust ahead: pushes right →':'💨 Gust ahead: pushes left ←','cool',{ms:1400});}else if(kind==='boost')ctx?.sfx?.('whoosh');else if(kind==='finish'){hyperAt=performance.now();hyperRun=V()?.run;ctx?.sfx?.('whoosh');setTimeout(()=>ctx?.sfx?.('fanfare'),HYPER*.7);const h=$('sdHyper');if(h){h.classList.remove('go');void h.offsetWidth;h.classList.add('go');}}else if(kind==='checkpoint')ctx?.sfx?.('rise');else if(kind==='sling'){ctx?.sfx?.('whoosh');ctx?.buzz?.([10,20,10]);(gl||flat)?.shake?.(.2);if(typeof Kit!=='undefined')Kit.callout('🚀 Slingshot!','gold',{ms:700});}else if(kind==='perk'){ctx?.sfx?.('pop');}else if(kind==='shield'){ctx?.sfx?.('pop');ctx?.buzz?.(20);if(typeof Kit!=='undefined')Kit.callout('🛡️ Shield blocked it!','cool',{ms:900});}else if(kind==='finish')ctx?.sfx?.('fanfare');}}
-  return {mount,render,fast,unmount,turnText:()=> '🪂 Dive through the rings · highest score wins'};
+  return {mount,render,fast,unmount,turnText:(s)=> s?.skydrop?.style==='runner' ? '🌀 Run the tube · highest score wins' : '🪂 Dive through the rings · highest score wins'};
 })();

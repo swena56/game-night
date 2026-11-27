@@ -1052,6 +1052,8 @@ class Room:
                         rules["axe_scoring"] = axe_scoring
         if gid == "lander" and rules["flight_rules"] == "classic":
             del rules["flight_rules"]  # Classic uses the original Moon Lander leaderboard.
+        if gid == "skydrop" and rules["style"] == "dive":
+            del rules["style"]  # the free dive keeps the leaderboard it had before there was a second play style
         labels = []
         for k, (name, options, _) in cls.settings_schema.items():
             if k not in rules:

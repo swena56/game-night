@@ -7,6 +7,7 @@ import math
 import random
 import time
 
+from . import skydrop_tube as tube
 from .base import Game, GameError
 
 LENGTH = 720.0
@@ -22,6 +23,8 @@ GRAZE, GRAZE_PTS = 0.8, 3   # skim a hazard within this much of its edge for a f
 PLACE_BONUS = (40, 26, 16, 10, 6, 2)   # 1st through 6th. Enough to swing a close run; a missed shaft still loses.
 FORK_OFF = 3.8   # greed gem sits this far off the ring-to-ring line, past the coin grab radius
 SHAFT_X, SHAFT_Z = 8.5, 5.5
+STEER_X, STEER_Z = 10.8, 8.6   # the speed full stick asks for (#283: 8 and 6.6 took over two seconds to cross the shaft)
+STEER_RESPONSE = 12.0           # how fast you reach it: about 80 ms
 # 🎚️ Levels: 1 is the classic dive. Higher levels shrink the rings, crowd the dive with set pieces (corridor, pendulum,
 # mine field: each one has a flyable line through it) and, at 5, ramp the speed up as you fall.
 # ring_r, set-piece spacing in rings (0 = none), speed ramp at the bottom, stream strength, recovery window after a hit.
@@ -162,6 +165,9 @@ class Flyer:
         self.perk = ""              # 🎁 this stretch's checkpoint perk; "shield" is spent by the next hit
         self.slinging = False
         self.offer = False          # a checkpoint perk choice is waiting
+        self.angle = self.spin = 0.0     # 🌀 Tube Runner: where on the wall, and how fast you're turning round it
+        self.height = self.rise = 0.0    # how far above the wall, and how fast you're rising
+        self.jump_at = -9.0
 
 
 class SkyDrop(Game):
@@ -185,13 +191,18 @@ class SkyDrop(Game):
         "Cloud Spire mixes those forks in. Stormwell hangs the gem on a moving gate. Aurora Shaft slides the gold rings off the coin line.",
         "🧩 Every dive is a brand-new course built from sections (slalom, spiral, zigzag, drift, breather) and it gets busier the deeper you go.",
         "Finish order pays 40, 26, 16, 10, 6, then 2. Ring points still decide a messy dive.",
+        "🌀 Play style: Tube Runner is a different way to play. You ride the inside of a round tube: left and right turn you round the wall, all the way if you like. Jump (⤴️ button, tap, swipe up, Space or ↑) and you're pulled back to the wall. Jump for the floating rings and gems, and over hazards. Boost with ⚡, B or Shift. There are no air currents, gusts or dark stretches.",
     ]
     settings_schema = {
         "course": ("Course", [("spire", "🏙️ Cloud Spire"), ("storm", "⛈️ Stormwell"), ("aurora", "🌌 Aurora Shaft")], "spire"),
         "runs": ("Runs", [(1, "1 run"), (3, "3 runs")], 1),
         "level": ("Level", [(0, "📈 Climb each run"), (1, "1 · Open Sky"), (2, "2 · Crosswinds"), (3, "3 · Gauntlet"), (4, "4 · Needle Eye"), (5, "5 · Redline"), (6, "6 · Storm Front"), (7, "7 · Shutters"), (8, "8 · Zero Hour")], 1),
         "hazards": ("Hazards", [(True, "On"), (False, "Off")], True),
+        "style": ("Play style", [("dive", "🪂 Free dive: steer anywhere in the shaft"), ("runner", "🌀 Tube Runner: ride the wall and jump")], "dive"),
     }
+
+    def runner(self):
+        return self.s.get("style") == "runner"
 
     def start(self, seated, rng):
         self.rng = rng
@@ -242,7 +253,7 @@ class SkyDrop(Game):
                 self.coins.append([gd, gx, gz, 1])
                 self.forks[j] = (gd, gx, gz)
         self.hazards = []
-        if self.s.get("hazards", True):
+        if self.s.get("hazards", True) and not self.runner():
             hazard_gap = 27 if theme == "storm" else 36
             d = 48
             while d < int(LENGTH) - 20:
@@ -251,6 +262,10 @@ class SkyDrop(Game):
                 d += round(hazard_gap * (1 - 0.4 * d / LENGTH))   # 📈 the dive gets busier the deeper you go
             if lv["sets"]:
                 self._set_pieces(r, lv["sets"], lv.get("shutters"))
+        if self.runner():   # 🌀 its own course, all on or just above the tube's wall
+            tube.build(self, r, depths, self.level)
+            self.ring_r = round(lv["ring_r"] * tube.RING_SCALE, 2)
+            lv = {**lv, "drift": 0, "gusts": False}
         # 🌀 level 4+: some rings drift on a slow orbit, so you lead the shot. They pay more. Rings with a set piece in front stay put.
         self.drifts = [None] * len(self.rings)
         if lv["drift"]:
@@ -259,7 +274,7 @@ class SkyDrop(Game):
                     self.drifts[j] = [lv["amp"], round(lv["amp"] * 0.55, 2), round(r.uniform(0, math.tau), 2), round(r.uniform(1.0, 1.4), 2)]
                     self.rings[j][3] = max(self.rings[j][3], 1.3)
         # 🌑 level 5: dark stretches where rings and coins only show up 25 units ahead (hazards still glow)
-        self.dark = [[d, d + 90] for d in range(200, int(LENGTH) - 100, lv.get("dark", 220))] if self.level >= 5 else []
+        self.dark = [[d, d + 90] for d in range(200, int(LENGTH) - 100, lv.get("dark", 220))] if self.level >= 5 and not self.runner() else []
         # 💨 level 6+: gusts, each a stretch of the dive where the wind shoves you sideways
         self.gusts = []
         if lv.get("gusts"):
@@ -268,7 +283,7 @@ class SkyDrop(Game):
                 self.gusts.append([round(d, 1), round(d + GUST_LEN, 1), r.choice((-1, 1))])
                 d += GUST_LEN + r.uniform(70, 110)
         self.streams = []
-        for d in range(42, int(LENGTH) - 30, 54):
+        for d in range(42, int(LENGTH) - 30, 54) if not self.runner() else ():
             self.streams.append([d, r.uniform(-5, 5), r.uniform(-3, 3), r.choice([-1, 1]), r.uniform(-1, 1)])
         lanes = [(-2.2 + i * 4.4 / max(1, len(self.seats) - 1)) for i in range(len(self.seats))]
         self.flyers = [Flyer(lanes[i]) for i in range(len(self.seats))]
@@ -276,6 +291,10 @@ class SkyDrop(Game):
             p = self.room.players.get(pid)
             if not p or p.eliminated:
                 self.flyers[i].done_at = -1
+            if self.runner():   # side by side along the bottom of the tube
+                f = self.flyers[i]
+                f.angle = lanes[i] / tube.WALL
+                f.x, f.z = tube.spot(f.angle)
         self.stage = "countdown"
         self.go_at = now + (INTRO if self.run == 1 else COUNTDOWN)
         self.last = now
@@ -335,6 +354,8 @@ class SkyDrop(Game):
             if f.offer and self.stage == "race" and f.done_at == 0:
                 f.perk, f.offer = perk, False
                 self.event(time.time(), "perk", i)
+        if a.get("jump") is True and self.runner() and self.stage == "race" and f.done_at == 0:
+            tube.jump(f, time.time())
         if a.get("boost") is True:
             now = time.time()
             if self.stage == "race" and f.done_at == 0 and now >= f.boost_cool and f.boosts:
@@ -431,12 +452,14 @@ class SkyDrop(Game):
             prev_depth, prev_x, prev_z = f.depth, f.x, f.z
             if now < f.stun_until:
                 f.depth = min(LENGTH, f.depth + 4.2 * dt)
+                if self.runner():   # stunned: still falls back to the wall
+                    tube.move(f, dt, now, True)
             else:
                 # Course currents are local force fields, with a small oscillation for movement.
                 # Steering is a velocity target with gentle damping. This keeps a release or
                 # direction change predictable on touch screens, while currents still matter.
-                target_vx, target_vz = f.sx * 8.0, f.sz * 6.6
-                response = min(1.0, dt * 9.0) * (0.6 if f.slinging else 1.0)   # snappy: ~110 ms to reach the stick's speed (was ~240 ms)
+                target_vx, target_vz = f.sx * STEER_X, f.sz * STEER_Z
+                response = min(1.0, dt * STEER_RESPONSE) * (0.6 if f.slinging else 1.0)
                 f.vx += (target_vx - f.vx) * response
                 f.vz += (target_vz - f.vz) * response
                 ax = az = 0.0
@@ -456,8 +479,8 @@ class SkyDrop(Game):
                         self.event(now, "gustr" if gdir > 0 else "gustl", i)
                     if g0 <= f.depth < g1:
                         ax += gdir * GUST_ACC
-                f.vx = max(-9, min(9, (f.vx + ax * dt) * (1 - 1.2 * dt)))
-                f.vz = max(-7.5, min(7.5, (f.vz + az * dt) * (1 - 1.35 * dt)))
+                f.vx = max(-12, min(12, (f.vx + ax * dt) * (1 - 1.2 * dt)))
+                f.vz = max(-10, min(10, (f.vz + az * dt) * (1 - 1.35 * dt)))
                 speed = 12.5 * (1 + LEVELS[self.level]["ramp"] * f.depth / LENGTH) + (4.0 if now < f.boost_until else 0) + (3.0 if now < f.surge_until else 0)
                 tow = any(0 < o.depth - f.depth < DRAFT_GAP and math.hypot(o.x - f.x, o.z - f.z) < DRAFT_R
                           for j, o in enumerate(self.flyers) if o is not f and self.active(j) and not o.done_at)
@@ -476,9 +499,12 @@ class SkyDrop(Game):
                     if tow:
                         self.event(now, "draft", i)
                 f.depth = min(LENGTH, f.depth + speed * dt)
-                f.x += f.vx * dt
-                f.z += f.vz * dt
-                e = math.hypot(f.x / SHAFT_X, f.z / SHAFT_Z)   # 🥚 a round tunnel: the wall is an ellipse, not a box
+                if self.runner():
+                    tube.move(f, dt, now, False)
+                else:
+                    f.x += f.vx * dt
+                    f.z += f.vz * dt
+                e = 0 if self.runner() else math.hypot(f.x / SHAFT_X, f.z / SHAFT_Z)   # 🥚 a round tunnel: the wall is an ellipse, not a box
                 if e > 1:
                     f.x, f.z = f.x / e, f.z / e
                     f.vx *= -0.45
@@ -540,6 +566,7 @@ class SkyDrop(Game):
                     f.hit_cool_until = now + 1.0
                     f.vx += (1 if f.x < x else -1) * 4.5
                     f.vz += (1 if f.z < z else -1) * 3.0
+                    f.spin *= -0.5
                     f.combo = 0
                     f.score = max(0, f.score - (MINE_PTS if kind == 3 else 4))
                     f.hits += 1
@@ -562,6 +589,8 @@ class SkyDrop(Game):
 
     def bot_think(self, i, level, now):
         f = self.flyers[i]
+        if self.runner():
+            return tube.bot_think(self, f, level, now, 12.5 * (1 + LEVELS[self.level]["ramp"] * f.depth / LENGTH))
         interval, noise, focus = BOT.get(level, BOT["normal"])
         if now < f.next_bot:
             return
@@ -597,8 +626,9 @@ class SkyDrop(Game):
             x += f.aim_dx
             z += f.aim_dz
             # Lead toward ring to account for steering inertia.
-            f.sx = max(-1, min(1, (x - f.x - f.vx * 0.45) / 3.0 + self.rng.uniform(-noise, noise)))
-            f.sz = max(-1, min(1, (z - f.z - f.vz * 0.45) / 2.5 + self.rng.uniform(-noise, noise)))
+            # (the divisors grow with the stick's speed, so a bot asks for the same speed for the same distance as it was tuned to)
+            f.sx = max(-1, min(1, (x - f.x - f.vx * 0.45) / (3.0 * STEER_X / 8.0) + self.rng.uniform(-noise, noise) * 8.0 / STEER_X))
+            f.sz = max(-1, min(1, (z - f.z - f.vz * 0.45) / (2.5 * STEER_Z / 6.6) + self.rng.uniform(-noise, noise) * 6.6 / STEER_Z))
         if f.boosts and now >= f.boost_cool and ri is not None and abs(self.rings[ri][0] - f.depth) < 14:
             f.boosts -= 1
             f.boost_until, f.boost_cool = now + 1.25, now + 2.5
@@ -649,7 +679,7 @@ class SkyDrop(Game):
 
     def fast_view(self, now, full=False):
         return {"stage": self.stage, "run": self.run, "runs": self.runs, "go": self.go_at,
-                "time": now, "raceStarted": self.race_started, "length": LENGTH, "seed": self.seed, "course": self.s.get("course", "spire"), "level": self.level, "levelName": LEVELS[self.level]["name"], "ringR": self.ring_r, "ramp": LEVELS[self.level]["ramp"], "drifts": self.drifts, "dark": self.dark,
+                "time": now, "raceStarted": self.race_started, "style": "runner" if self.runner() else "dive", "wall": tube.WALL, "length": LENGTH, "seed": self.seed, "course": self.s.get("course", "spire"), "level": self.level, "levelName": LEVELS[self.level]["name"], "ringR": self.ring_r, "ramp": LEVELS[self.level]["ramp"], "steer": [STEER_X, STEER_Z, STEER_RESPONSE, tube.TURN], "drifts": self.drifts, "dark": self.dark,
                 "rings": self.rings, "hazards": self.hazards, "streams": self.streams, "gusts": self.gusts, **({"coins": self.coins} if full else {}),
                 "finished": self.finished, "events": self.events,
                 "flyers": [[f.depth, f.x, f.z, f.vx, f.vz, f.score, f.rings, f.combo,
