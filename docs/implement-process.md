@@ -1,6 +1,7 @@
 # From report to shipped fix (admin page)
 
-Works only on the server's own device at `localhost:8000`. Each report with a run shows which step it is on.
+Works on the server's own device at `localhost:8000`, and, if switched on, from a signed-in device on the same network
+([below](#from-another-device-on-your-network)). Each report with a run shows which step it is on.
 
 | Step | What happens | You do | Move on when |
 |---|---|---|---|
@@ -29,6 +30,30 @@ It refuses when:
 - files or commits changed after the review (review again);
 - the run's changes build on uncommitted work, so they can't be committed alone (commit that work first);
 - the branch has no upstream.
+
+## From another device on your network
+
+Off by default. On the development machine:
+
+```sh
+python3 -m games.admin_auth                       # set the admin password, if there isn't one
+python3 -m games.admin_auth --network-tools on    # `off` switches it back; no restart needed
+```
+
+Then open `https://<server's network address>:8000/admin.html`, accept the self-signed certificate and sign in.
+
+All of these must hold, or the server answers "Not found":
+
+- the switch is on (the file `data/admin-network-tools`, which is never part of the Docker image);
+- the server isn't in a container and has neither `TRUST_CADDY` nor `GAME_NIGHT_RELEASE` set, so **never in production**;
+- the connection is this server's own HTTPS on port 8000, with no proxy or tunnel headers;
+- the device's address is a home or office network address, not loopback or public;
+- it is signed in with the admin password.
+
+Anyone with the password can then run Claude, commit and push from this machine. Use a strong one, only on a network you
+trust. A VPN address outside the usual private ranges (such as Tailscale's 100.x) isn't accepted. A restart ends the
+sign-in, so you sign in again after **Restart dev server**. Saving to the pinball table list and the player inbox at
+`/api/feedback` stay on the server's own device.
 
 ## Limits
 

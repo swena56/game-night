@@ -99,6 +99,10 @@ SHOT_NAME = re.compile(r"[0-9]{1,9}-[0-9a-f]{12}\.(?:png|jpg|webp)")
 SHOT_MAX_BYTES, SHOTS_PER_REPORT = 2 * 1024 * 1024, 4
 SHOT_TOTAL_BYTES = 100 * 1024 * 1024
 ADMIN_FILES = ("/admin.html",)
+# where the developer tools may be reached from once switched on: home and office networks, never loopback (a tunnel on
+# this machine arrives from there) and never a public address
+LAN_NETWORKS = tuple(map(ipaddress.ip_network, ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16",
+                                                "fc00::/7", "fe80::/10")))
 MAX_ROOMS = 32
 MAX_STREAMS = 64
 MAX_STREAMS_PER_CLIENT = 20
@@ -1682,6 +1686,10 @@ def admin_fields(body):
         if body["priority"] not in FEEDBACK_PRIORITIES:
             raise GameError("Unknown priority.")
         fields["priority"] = body["priority"]
+    if "verify" in body:   # a change is in place and waits for the maintainer to check it, then resolve the report
+        if type(body["verify"]) is not bool:
+            raise GameError("Bad check flag.")
+        fields["verify"] = body["verify"]
     return fields
 
 
@@ -1777,7 +1785,7 @@ def import_feedback(body):
 
 
 def admin_update_feedback(body):
-    """Change one report, or the status / priority of many at once. All of it is checked before anything is written."""
+    """Change one report, or the status / priority / check flag of many at once. All of it is checked before anything is written."""
     ids = body.get("ids")
     if not isinstance(ids, list) or not ids or not all(type(i) is int for i in ids):
         raise GameError("Pick at least one report.")
@@ -1790,8 +1798,10 @@ def admin_update_feedback(body):
     drop = body.get("remove_images", [])
     if not isinstance(drop, list) or not all(isinstance(n, str) for n in drop):
         raise GameError("Bad screenshot list.")
-    if len(ids) > 1 and (set(fields) - {"priority"} or shots or drop):
-        raise GameError("Only status and priority can be changed on several reports at once.")
+    if len(ids) > 1 and (set(fields) - {"priority", "verify"} or shots or drop):
+        raise GameError("Only status, priority and the check flag can be changed on several reports at once.")
+    if status == "open":   # reopened: whatever was waiting to be checked didn't do it
+        fields["verify"] = False
     with FEEDBACK_LOCK:
         try:
             with open(FEEDBACK_FILE, encoding="utf-8") as f:
@@ -1807,7 +1817,7 @@ def admin_update_feedback(body):
             if e.get("id") not in ids:
                 continue
             found.add(e["id"])
-            new = {k: v for k, v in fields.items() if v != e.get(k, None if k == "name" else "")}
+            new = {k: v for k, v in fields.items() if v != e.get(k, {"name": None, "verify": False}.get(k, ""))}
             have = e.get("images", [])
             if not new and not shots and not set(drop) & set(have):
                 continue
@@ -1824,6 +1834,8 @@ def admin_update_feedback(body):
                 new["images"] = keep + added
             if "text" in new:
                 e.setdefault("original_text", e["text"])   # what the player actually wrote stays on record
+                if e.get("verify") and "verify" not in fields:   # reworded: the change waiting to be checked answered the old text
+                    new["verify"] = False
             e.update(new, edited_at=time.time())
             lines[n] = json.dumps(e, ensure_ascii=False) + "\n"
             changed = True
@@ -1845,7 +1857,7 @@ def admin_update_feedback(body):
 
 
 def implement_feedback(body):
-    """Localhost only: run Claude Code on one report, in this repository."""
+    """Developer tools only (Handler.dev_tools): run Claude Code on one report, in this repository."""
     report_id = body.get("id")
     report = next((i for i in list_feedback()["items"] if type(report_id) is int and i["id"] == report_id), None)
     if not report:
@@ -1891,6 +1903,10 @@ def restart_server(body):
         raise GameError(f"Claude is working on #{busy}: the code may be half written. Wait for it or stop it.")
     release.restart(APP_DIR)
     return {"ok": True}
+
+
+def in_container():
+    return os.path.exists("/.dockerenv") or os.path.exists("/run/.containerenv")
 
 
 def dev_server():
@@ -2186,6 +2202,40 @@ class Handler(BaseHTTPRequestHandler):
         origin = self.headers.get("Origin")
         return origin is None or origin.lower() == f"https://{(self.headers.get('Host') or '').lower()}"
 
+    def network_device(self):
+        """Is this a device on the development server's own network, with the developer tools switched on? It says nothing
+        about being signed in. Never in production: that runs in a container, behind a proxy that does the HTTPS, and any
+        one of those is enough to say no."""
+        if TRUST_CADDY or RELEASE or in_container() or not admin_auth.network_tools() or PORT != ADMIN_PORT:
+            return False
+        if not isinstance(self.connection, ssl.SSLSocket):   # this server's own HTTPS, not a proxy's word for it
+            return False
+        if any(self.headers.get(h) for h in ("X-Forwarded-For", "X-Real-IP", "Forwarded", "X-Forwarded-Proto", "X-Forwarded-Host")):
+            return False
+        try:
+            peer = ipaddress.ip_address(self.client_address[0].split("%")[0])
+        except ValueError:
+            return False
+        peer = getattr(peer, "ipv4_mapped", None) or peer
+        return any(peer in net for net in LAN_NETWORKS)
+
+    def inbox_link(self):
+        """Should the home screen link to the feedback admin: "open", "password" (one has to be set first) or None."""
+        if self.admin_local():
+            return "open"
+        if not self.network_device():
+            return None
+        return "open" if admin_auth.stored() else "password"
+
+    def admin_network(self):
+        """May a signed-in device on this network use the developer tools (Implement, review/push, restart)? Only on a
+        development server where `python3 -m games.admin_auth --network-tools on` was run (see network_device)."""
+        return self.network_device() and self.admin_remote() and admin_auth.valid(self.admin_token())
+
+    def dev_tools(self):
+        """May this request run code on this machine: at localhost on it, or from the network where that was switched on."""
+        return self.admin_local() or self.admin_network()
+
     def admin_token(self):
         for part in (self.headers.get("Cookie") or "").split(";"):
             name, _, value = part.strip().partition("=")
@@ -2231,8 +2281,8 @@ class Handler(BaseHTTPRequestHandler):
         if url.path in ADMIN_FILES:   # the page holds no data; from elsewhere it opens on its sign-in form
             if not (self.admin_local() or self.admin_remote()):
                 return self.send_json(404, {"error": "Not found"})
-        if url.path in ("/api/admin/implement", "/api/admin/implement/log"):   # never from elsewhere, signed in or not: it runs code on this machine
-            if not self.admin_local():
+        if url.path in ("/api/admin/implement", "/api/admin/implement/log"):   # it runs code on this machine: see dev_tools
+            if not self.dev_tools():
                 return self.send_json(404, {"error": "Not found"})
             if url.path == "/api/admin/implement":
                 return self.send_json(200, {"jobs": implement.jobs(IMPLEMENT_DIR, APP_DIR), "server": dev_server()})
@@ -2261,7 +2311,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json(200, {"tables": [{"id": i, "name": e["name"], "slug": e["slug"], "blurb": e["blurb"], "author": e["author"], "spec": e["spec"]}
                                                    for i, e in CURATED.items()]})
         if url.path == "/api/dev":
-            return self.send_json(200, {"editor": self.editor_ok(), "local": self.dev_local() and self.editor_ok()})
+            return self.send_json(200, {"editor": self.editor_ok(), "local": self.dev_local() and self.editor_ok(),
+                                        "inbox": self.inbox_link()})
         if url.path == "/api/feedback":
             if not self.local():
                 return self.send_json(403, {"error": "Open the feedback inbox on the device running the server."})
@@ -2341,7 +2392,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.admin_ok():
             routes["/api/admin/feedback/add"] = admin_add_feedback
             routes["/api/admin/feedback/update"] = admin_update_feedback
-        if self.admin_local():   # not admin_ok: a remote sign-in must never start Claude here
+        if self.dev_tools():   # not admin_ok: a sign-in alone (as in production) must never start Claude here
             routes["/api/admin/feedback/implement"] = implement_feedback
             routes["/api/admin/feedback/implement/stop"] = stop_implement
             routes["/api/admin/feedback/implement/review"] = review_implement

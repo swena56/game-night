@@ -59,7 +59,7 @@
 <body>
   <main class="admin">
     <h1>🛠️ Feedback admin</h1>
-    <p class="hint left">Review, add, edit and resolve player reports. Open it on the server's own device at <code>localhost:8000</code>, or from elsewhere over HTTPS with the admin password.</p>
+    <p class="hint left">Review, add, edit and resolve player reports. Open it on the server's own device at <code>localhost:8000</code>, or from elsewhere over HTTPS with the admin password. Implement, review and restart need <code>localhost</code>, unless a development server has them switched on for its own network.</p>
     <p id="loginMessage" role="status"></p>
     <form id="login" hidden>
       <label class="field">Admin password<input type="password" id="password" autocomplete="current-password" maxlength="200" required></label>
@@ -75,17 +75,19 @@
     <div id="restartBox" role="status"></div>
     <div id="addBox"></div>
     <div class="row" style="margin-top:12px">
-      <select id="fStatus" aria-label="Status"><option value="open">Open</option><option value="done">Done</option><option value="">Open + done</option></select>
+      <select id="fStatus" aria-label="Status"><option value="open">Open</option><option value="done">Done</option><option value="">Open + done</option><option value="verify">👀 Needs my check</option></select>
       <select id="fKind" aria-label="Kind"><option value="">All kinds</option><option value="bug">🐞 Bugs</option><option value="idea">💡 Ideas</option><option value="table">🎱 Tables</option></select>
       <select id="fPriority" aria-label="Priority"><option value="any">Any priority</option><option value="high">High</option><option value="">Normal</option><option value="low">Low</option></select>
       <select id="fGame" aria-label="Game"><option value="*">All games</option></select>
-      <select id="sort" aria-label="Order"><option value="new">Newest first</option><option value="old">Oldest first</option><option value="priority">By priority</option><option value="game">Grouped by game</option></select>
+      <select id="sort" aria-label="Order"><option value="new">Newest first</option><option value="old">Oldest first</option><option value="verify">Needs my check first</option><option value="priority">By priority</option><option value="game">Grouped by game</option></select>
       <input type="search" id="search" placeholder="Search text, notes, names, #id" aria-label="Search">
     </div>
     <div class="bulk row">
       <label class="row"><input type="checkbox" id="all"> <span id="picked">Select all shown</span></label>
       <button data-bulk='{"status":"done"}'>✅ Resolve</button>
       <button data-bulk='{"status":"open"}'>↩︎ Reopen</button>
+      <button data-bulk='{"verify":true}' title="Add to the list waiting for your check">👀 Needs check</button>
+      <button data-bulk='{"verify":false}' title="Take off the list waiting for your check">🚫 Clear check</button>
       <select id="bulkPriority" aria-label="Set priority of selected"><option value="-">Set priority…</option><option value="high">High</option><option value="">Normal</option><option value="low">Low</option></select>
       <button id="copy" title="Copy the selected reports as a list">📋 Copy</button>
     </div>
@@ -104,7 +106,7 @@
     const picked = new Set();
     const drafts = new Map();   // report id -> its open edit form, kept across redraws so typing isn't lost
     let items = [];
-    let jobs = null;            // report id -> its Claude run; null where the server doesn't offer Implement (not localhost)
+    let jobs = null;            // report id -> its Claude run; null where the server doesn't offer Implement to this device
     const openRuns = new Map(); // report id -> whether its run output is unfolded, kept across redraws
     const logs = new Map();     // report id -> its live log view, kept across redraws so it keeps its lines and scroll position
     const MAX_LOG_LINES = 1500;
@@ -158,12 +160,14 @@
       const boot = dev.boot;
       if (!await save('/api/admin/restart', {}, 'Restarting…')) return;
       restarting = true; drawRestart();
-      let back = false;
+      let back = false, signedOut = false;
       for (let n = 0; n < 30 && !back; n++) {
         await new Promise((done) => setTimeout(done, 1000));
-        try { back = (await api('/api/admin/implement')).server.boot !== boot; } catch { /* still down */ }
+        // a restart ends every sign-in, so from another device the new server answers "Not found"; while it is down there is no answer
+        try { back = (await api('/api/admin/implement')).server.boot !== boot; } catch (e) { if (remote && [401, 404].includes(e.status)) back = signedOut = true; }
       }
       restarting = false;
+      if (signedOut) { drawRestart(); return showLogin('The dev server restarted. Sign in again.'); }
       say(back ? 'The dev server restarted. Reload the game page and try the change.' : "⚠️ The dev server didn't come back. Look at data/server.log.");
       await loadJobs();
       drawRestart();
@@ -329,6 +333,8 @@
       return box;
     }
     const gameOf = (i) => i.context?.game || '';
+    // open, and either marked as waiting for your check or holding a finished run's changes that aren't pushed yet
+    const needsCheck = (i) => i.status === 'open' && !!(i.verify || hasChanges(jobs?.[i.id]));
     const say = (text) => { $('message').textContent = text; };
 
     async function api(path, body) {
@@ -344,6 +350,7 @@
     function showLogin(text) {
       $('tool').hidden = true; $('login').hidden = false;
       sayLogin(text);
+      $('password').focus();
     }
 
     async function load() {
@@ -385,11 +392,11 @@
     function shown() {
       const status = $('fStatus').value, kind = $('fKind').value, priority = $('fPriority').value, game = $('fGame').value;
       const q = $('search').value.trim().toLowerCase();
-      const list = items.filter((i) => (!status || i.status === status) && (!kind || i.kind === kind)
+      const list = items.filter((i) => (!status || (status === 'verify' ? needsCheck(i) : i.status === status)) && (!kind || i.kind === kind)
         && (priority === 'any' || (i.priority || '') === priority) && (game === '*' || gameOf(i) === game)
         && (!q || (q[0] === '#' ? `#${i.id}` === q : [i.text, i.note, i.name, gameOf(i)].join('\n').toLowerCase().includes(q))));
       const rank = (i) => PRIORITIES.findIndex(([v]) => v === (i.priority || ''));
-      const by = { new: (a, b) => b.id - a.id, old: (a, b) => a.id - b.id, priority: (a, b) => rank(a) - rank(b) || b.id - a.id,
+      const by = { verify: (a, b) => needsCheck(b) - needsCheck(a) || rank(a) - rank(b) || b.id - a.id, new: (a, b) => b.id - a.id, old: (a, b) => a.id - b.id, priority: (a, b) => rank(a) - rank(b) || b.id - a.id,
         game: (a, b) => gameOf(a).localeCompare(gameOf(b)) || b.id - a.id };
       return list.sort(by[$('sort').value]);
     }
@@ -407,7 +414,7 @@
 
     function render() {
       const open = items.filter((i) => i.status === 'open');
-      $('counts').textContent = `${open.length} open (${open.filter((i) => i.priority === 'high').length} high) · ${items.length - open.length} done`;
+      $('counts').textContent = `${open.length} open (${open.filter((i) => i.priority === 'high').length} high, ${open.filter(needsCheck).length} to check) · ${items.length - open.length} done`;
       const list = $('list'), rows = shown(), grouped = $('sort').value === 'game';
       list.replaceChildren();
       if (!rows.length) list.append(el('p', 'empty', 'No reports match. 🎉'));
@@ -433,6 +440,7 @@
       if (ctx.game) meta.append(el('span', '', `${ctx.game} · ${ctx.phase}`));
       if (ctx.errors?.length) meta.append(el('span', '', `⚠️ ${ctx.errors.length} JS error(s)`));
       if (i.priority) meta.append(el('span', i.priority === 'high' ? 'high' : '', i.priority === 'high' ? '▲ High' : '▼ Low'));
+      if (needsCheck(i)) meta.append(el('span', '', '👀 Needs your check'));
       if (i.status === 'done') meta.append(el('span', '', '✅ Done'));
       box.append(meta, el('div', 'text', i.text));
       if (i.note) box.append(el('div', 'note', `📝 ${i.note}`));
@@ -455,9 +463,13 @@
       // with uncommitted changes from a run, Resolve opens the commit & push review first
       const ship = next === 'done' && hasChanges(job);
       actions.append(
-        button(ship ? '✅ Resolve…' : next === 'done' ? '✅ Resolve' : '↩︎ Reopen',
+        button(ship ? '✅ Resolve…' : next === 'done' ? (i.verify ? '✅ Checked: resolve' : '✅ Resolve') : '↩︎ Reopen',
           () => ship ? openShip(i) : update([i.id], { status: next }, `#${i.id} is now ${next}.`), next === 'done' ? 'primary' : ''),
         button('✏️ Edit', () => { drafts.set(i.id, editor(i)); render(); }));
+      if (i.status === 'open') {
+        actions.append(button(i.verify ? '🚫 Clear check' : '👀 Needs check',
+          () => update([i.id], { verify: !i.verify }, i.verify ? `#${i.id} is off your check list.` : `#${i.id} is waiting for your check.`)));
+      }
       if (job?.state === 'running') {
         actions.append(button('⏹ Stop Claude', async () => {
           if (await save('/api/admin/feedback/implement/stop', { id: i.id }, `Stopped the run on #${i.id}.`)) await loadJobs();
@@ -590,12 +602,13 @@
     for (const b of document.querySelectorAll('[data-bulk]')) {
       b.onclick = () => {
         const change = JSON.parse(b.dataset.bulk), ids = selected().map((i) => i.id);
+        const what = change.status ? `mark ${change.status}` : change.verify ? 'add to your check list' : 'take off your check list';
         const unshipped = change.status === 'done' ? ids.filter((id) => hasChanges(jobs?.[id])) : [];
         if (unshipped.length) {
           if (!confirm(`Mark ${ids.length} report(s) done? This commits and pushes nothing, including Claude's changes for #${unshipped.join(', #')}.`)) return;
-        } else if (ids.length > 1 && !confirm(`Mark ${ids.length} reports ${change.status}?`)) return;
+        } else if (ids.length > 1 && !confirm(`${what[0].toUpperCase()}${what.slice(1)}: ${ids.length} reports?`)) return;
         picked.clear();
-        update(ids, change, `${ids.length} report(s) now ${change.status}.`);
+        update(ids, change, change.status ? `${ids.length} report(s) now ${change.status}.` : `${ids.length} report(s) updated.`);
       };
     }
     $('bulkPriority').onchange = () => {

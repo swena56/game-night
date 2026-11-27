@@ -3,6 +3,9 @@
 Run `python3 -m games.admin_auth` to set or change it, with `--remove` to switch remote access off again.
 The server notices at once; no restart is needed. Opening the admin tool on the server's own device never asks
 for a password.
+
+`--network-tools on` also lets a signed-in device on your own network use Implement, review/push and restart on a
+development server (`off` switches it back). Those run code on this machine. A container (production) ignores it.
 """
 import getpass
 import hashlib
@@ -16,6 +19,8 @@ import time
 
 PASSWORD_FILE = os.environ.get("ADMIN_PASSWORD_FILE") or os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "admin-password.json")
+# its presence is the opt-in; data/ is never part of the Docker image
+NETWORK_FILE = os.environ.get("ADMIN_NETWORK_FILE") or os.path.join(os.path.dirname(PASSWORD_FILE), "admin-network-tools")
 MIN_LENGTH, MAX_LENGTH = 10, 200
 SESSION_SECONDS = 12 * 3600
 MAX_SESSIONS = 32
@@ -37,6 +42,22 @@ def set_password(password):
     with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as f:
         json.dump({"salt": salt.hex(), "hash": _hash(password, salt).hex()}, f)
     os.replace(tmp, PASSWORD_FILE)
+
+
+def network_tools():
+    return os.path.isfile(NETWORK_FILE)
+
+
+def set_network_tools(on):
+    if on:
+        os.makedirs(os.path.dirname(NETWORK_FILE), exist_ok=True)
+        with open(NETWORK_FILE, "w", encoding="utf-8") as f:
+            f.write("Developer tools are open to signed-in devices on this network. Delete this file to switch that off.\n")
+    else:
+        try:
+            os.remove(NETWORK_FILE)
+        except FileNotFoundError:
+            pass
 
 
 def stored():
@@ -89,6 +110,12 @@ def main(argv):
             print("Password removed: the admin tool now opens only on the server's own device.")
         except FileNotFoundError:
             print("No password was set.")
+        return 0
+    if argv in (["--network-tools", "on"], ["--network-tools", "off"]):
+        set_network_tools(argv[1] == "on")
+        print(f"Developer tools over the network: {argv[1]}.")
+        if argv[1] == "on" and not stored():
+            print("They stay closed until you set an admin password: python3 -m games.admin_auth")
         return 0
     if argv:
         print(__doc__)

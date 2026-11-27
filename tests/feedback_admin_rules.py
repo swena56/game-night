@@ -4,6 +4,7 @@ import base64
 import json
 import os
 import pathlib
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -11,9 +12,11 @@ import threading
 import time
 import unittest
 from http.client import HTTPConnection
+from unittest import mock
 
 TMP = tempfile.mkdtemp()
 os.environ.update(FEEDBACK_FILE=os.path.join(TMP, "feedback.jsonl"), ADMIN_PASSWORD_FILE=os.path.join(TMP, "pw.json"),
+                  ADMIN_NETWORK_FILE=os.path.join(TMP, "network-tools"),
                   ROOMS_FILE=os.path.join(TMP, "rooms.pickle"), PORT="8000")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -40,6 +43,7 @@ class AdminTest(unittest.TestCase):
 
     def setUp(self):
         server.REQUEST_HITS.clear()
+        admin_auth.set_network_tools(False)
         if os.path.exists(admin_auth.PASSWORD_FILE):
             os.remove(admin_auth.PASSWORD_FILE)
 
@@ -110,6 +114,79 @@ class AdminTest(unittest.TestCase):
 
     def test_the_player_inbox_stays_local(self):
         self.assertEqual(self.call("/api/feedback")[0], 200)
+
+    def test_developer_tools_over_the_network(self):
+        admin_auth.set_password(PASSWORD)
+        token = admin_auth.login(PASSWORD)
+
+        def allowed(peer="192.168.1.20", tls=True, cookie=token, **headers):
+            h = server.Handler.__new__(server.Handler)
+            h.client_address = (peer, 50000)
+            h.connection = mock.MagicMock(spec=ssl.SSLSocket) if tls else object()
+            h.headers = {"Host": "192.168.1.5:8000", "Cookie": f"{server.ADMIN_COOKIE}={cookie}",
+                         **{k.replace("_", "-"): v for k, v in headers.items()}}
+            return h.inbox_link() if allowed.link else h.dev_tools()
+
+        allowed.link = False
+
+        with mock.patch.object(server, "in_container", return_value=False):
+            self.assertFalse(allowed())   # off until switched on
+            admin_auth.set_network_tools(True)
+            for peer in ("192.168.1.20", "10.1.2.3", "172.20.0.9", "::ffff:192.168.1.20", "fe80::1%wlan0", "fd00::7"):
+                self.assertTrue(allowed(peer), peer)
+            for peer in ("203.0.113.9", "8.8.8.8", "172.32.0.1", "127.0.0.1", "::1", "::ffff:8.8.8.8", "nonsense"):
+                self.assertFalse(allowed(peer), peer)
+            self.assertFalse(allowed(cookie="forged"))
+            self.assertFalse(allowed(tls=False))
+            self.assertFalse(allowed(tls=False, X_Forwarded_Proto="https"))   # a proxy's HTTPS doesn't count
+            for name in ("X_Forwarded_For", "X_Real_IP", "Forwarded", "X_Forwarded_Proto", "X_Forwarded_Host"):
+                self.assertFalse(allowed(**{name: "https"}), name)
+            self.assertFalse(allowed(Origin="https://evil.example"))
+            self.assertTrue(allowed(Origin="https://192.168.1.5:8000"))
+            for setting, value in (("TRUST_CADDY", True), ("RELEASE", "0123456789abcdef"), ("PORT", 8001)):
+                with mock.patch.object(server, setting, value):
+                    self.assertFalse(allowed(), setting)
+            admin_auth.set_password("a different long one")
+            self.assertFalse(allowed())   # the old sign-in ended
+            allowed.link = True   # the home screen's link needs no sign-in: the page it opens asks for one
+            self.assertEqual(allowed(cookie=""), "open")
+            self.assertIsNone(allowed(peer="8.8.8.8"))
+            with mock.patch.object(server, "TRUST_CADDY", True):
+                self.assertIsNone(allowed())
+            os.remove(admin_auth.PASSWORD_FILE)
+            self.assertEqual(allowed(), "password")
+            allowed.link = False
+            admin_auth.set_password("a different long one")
+            token = admin_auth.login("a different long one")
+            self.assertTrue(allowed(cookie=token))
+        with mock.patch.object(server, "in_container", return_value=True):
+            self.assertFalse(allowed(cookie=token))
+        # and over real HTTP as production sees it: signed in and switched on, the tools still aren't there
+        _, _, session = self.sign_in("a different long one")
+        self.assertEqual(self.call("/api/admin/implement", headers=session)[0], 404)
+        self.assertEqual(self.call("/api/admin/restart", {}, session)[0], 404)
+
+    def test_the_check_flag(self):
+        add = lambda text: self.call("/api/admin/feedback/add", {"kind": "bug", "text": text})[1]["id"]
+        ids = [add("first to check"), add("second to check")]
+        update = lambda **change: self.call("/api/admin/feedback/update", {"ids": ids, **change})[0]
+        got = lambda: [i for i in server.list_feedback()["items"] if i["id"] in ids]
+        self.assertEqual(update(verify=True), 200)
+        self.assertEqual([i["verify"] for i in got()], [True, True])
+        for bad in ("yes", 1, None):
+            self.assertEqual(update(verify=bad), 400, bad)
+        self.assertEqual(update(status="done"), 200)
+        self.assertEqual([(i["status"], i["verify"]) for i in got()], [("done", True)] * 2)
+        self.assertEqual(update(status="open"), 200)   # reopened: no longer waiting to be checked
+        self.assertEqual([(i["status"], i["verify"]) for i in got()], [("open", False)] * 2)
+        # rewording a report clears its flag; saving the same text or another field doesn't
+        one = ids[:1]
+        edit = lambda **change: self.call("/api/admin/feedback/update", {"ids": one, **change})[0]
+        self.assertEqual(edit(verify=True), 200)
+        self.assertEqual(edit(text="first to check", priority="low"), 200)
+        self.assertEqual([i["verify"] for i in got() if i["id"] in one], [True])
+        self.assertEqual(edit(text="first to check, and more"), 200)
+        self.assertEqual({i["id"]: i["verify"] for i in got()}[one[0]], False)
 
     def test_screenshots(self):
         status, data, _ = self.call("/api/admin/feedback/add", {"kind": "bug", "text": "with a picture", "add_images": [PNG]})

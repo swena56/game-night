@@ -532,8 +532,8 @@ reports.
   edit a report's text, the original is kept. Table suggestions can't be added here or change kind.
 - **Screenshots:** paste one (Ctrl+V) while typing in the add or edit form, or use **📎 Add screenshot**.
   A report holds up to 4. Large pictures are scaled to 1600 px. They are saved in `data/feedback-shots/`.
-- **🤖 Implement:** runs Claude Code on one open bug or idea, in this repository, on this machine. It shows only at
-  the `localhost` address on the server's own device, never over a remote sign-in. It needs the `claude` command,
+- **🤖 Implement:** runs Claude Code on one open bug or idea, in this repository, on this machine. It shows at
+  the `localhost` address on the server's own device, or over your network if the developer tools are switched on. It needs the `claude` command,
   signed in (`CLAUDE_BIN` sets its path). One report runs at a time, for up to an hour, and **⏹ Stop Claude** ends it.
   It uses `auto` permission mode and is told not to commit, restart the server or resolve the report: review the
   changes yourself. Report text comes from players, so read it before you click. Logs are in
@@ -541,8 +541,14 @@ reports.
 - **After a run:** the page asks you to restart the dev server when Python files changed. **✅ Resolve…** then shows
   what would ship, commits only the run's changes, pushes, and marks the report done. The steps and their limits are
   in [`docs/implement-process.md`](docs/implement-process.md).
+- **Waiting for your check:** mark reports **👀 Needs check** when a change is in place. The **👀 Needs my check** filter
+  lists them (plus finished Implement runs not pushed yet), and **Needs my check first** sorts them to the top. Check
+  the change, then press **✅ Checked: resolve**. Reopening a report clears the mark.
 - **On the server's own device:** only a server running on port 8000 has the tool. At a `localhost` /
   `127.0.0.1` address on that device it never asks for a password.
+- **Developer tools:** Implement, review/push and restart stay on `localhost` unless you switch them on for your own
+  network with `python3 -m games.admin_auth --network-tools on`. Production never allows it:
+  [`docs/implement-process.md`](docs/implement-process.md#from-another-device-on-your-network).
 - **From elsewhere:** off ("Not found") until you set a password with `python3 -m games.admin_auth`
   (10 characters or more; `--remove` switches it off again). With Docker, including the Droplet, run
   `python -m games.admin_auth` with `docker compose exec game-night`. Then open `/admin.html` on your server
