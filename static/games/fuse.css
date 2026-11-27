@@ -19,3 +19,10 @@
 }
 .fz-stick { z-index: 2; position: absolute; width: 76px; height: 76px; transform: translate(-50%, -50%); border: 2px solid #fff8; border-radius: 50%; background: #15234466; pointer-events: none; }
 .fz-stick i { position: absolute; inset: 25px; border-radius: 50%; background: #fff; }
+/* #284 follow-my-finger: the arena is the control, so the thumb pad goes and Dash keeps the whole row */
+.fz-mode { display: none; margin-top: 6px; font-size: 13px; }
+@media (pointer: coarse) {
+  .fz-mode { display: inline-block; }
+  .fz.fz-follow .fz-pad { display: none; }
+  .fz.fz-follow .fz-dash { min-height: 64px; }
+}

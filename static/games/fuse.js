@@ -5,19 +5,34 @@ UI.fuse = (() => {
   let snapshotAt = 0;
   let lastItems = [], lastShield = null, lastCarrier = -1, lastRound = 0, lastAlive = null, lastTickSec = -1, lastFrame = 0, flash = 0, blast = null;
   let drag = null, direction = '', steering = null, clearInput;
+  // 👆 (#284) follow the finger: where I'm heading, the finger doing the guiding, and the last tap (for a double tap)
+  let goal = null, guide = null, lastTap = null, goalSentAt = 0, goalTimer = 0;
+  let touchMode = 'follow';
+  const savedMode = () => { try { return localStorage.getItem('fz.touch') === 'stick' ? 'stick' : 'follow'; } catch { return 'follow'; } };
   const pfx = Fx2D.create({ cap: 160 });
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
     S = null; net = null; shown = []; keys = {}; lastItems = []; lastShield = null; lastCarrier = -1; lastRound = 0; lastAlive = null; lastTickSec = -1;
-    drag = null; direction = ''; steering = null; lastFrame = 0; flash = 0; blast = null;
+    drag = null; direction = ''; steering = null; lastFrame = 0; flash = 0; blast = null; goal = guide = lastTap = null; touchMode = savedMode();
     main.innerHTML = `<div class="fz"><div class="fz-hud"><strong id="fzRole" aria-live="polite"></strong>
       <span id="fzClock" role="timer"></span></div><div class="fz-stage" id="fzStage"><canvas id="fzCanvas"></canvas>
       <div class="fz-banner" id="fzBanner" hidden></div></div>
       <div class="fz-deck"><div class="fz-pad" id="fzPad" aria-hidden="true">🕹️ Drag here to steer</div><button class="btn fz-dash" id="fzDash" type="button">⚡ Dash</button></div>
+      <button class="ghost-btn fz-mode" id="fzMode" type="button"></button>
       <div class="fz-stick" id="fzStick" hidden><i></i></div></div>`;
+    const showMode = () => {
+      $('fzMode').textContent = touchMode === 'follow' ? '🎮 Touch: 👆 follow my finger' : '🎮 Touch: 🕹️ joystick';
+      main.querySelector('.fz').classList.toggle('fz-follow', touchMode === 'follow');
+    };
+    showMode();
+    $('fzMode').addEventListener('click', () => {
+      touchMode = touchMode === 'follow' ? 'stick' : 'follow';
+      try { localStorage.setItem('fz.touch', touchMode); } catch {}
+      goal = guide = drag = null; direction = ''; steer(0, 0); showMode(); resize();
+    });
     side.innerHTML = `<div class="panel"><div id="fzSeats"></div>
-      <p class="hint left" id="fzHint">Drag to steer like a joystick. Lift to stop. Use Dash for a burst. Keyboard: WASD or arrows, Space to dash.</p></div>`;
+      <p class="hint left" id="fzHint">Touch: tap or drag where you want to run; a second finger or a double tap dashes. Mouse: drag like a joystick. Keyboard: WASD or arrows, Space to dash.</p></div>`;
     canvas = $('fzCanvas');
     g2 = canvas.getContext('2d');
     if (!g2) { $('fzStage').append('Your browser cannot draw this game.'); return; }
@@ -25,21 +40,26 @@ UI.fuse = (() => {
     // (#253) the arena still steers, and so does the thumb pad under it, where your thumb hides nothing
     for (const surface of [canvas, $('fzPad')]) {
       surface.addEventListener('pointerdown', (e) => {
+        if (surface === canvas && following(e)) { press(e); return; }
         if (drag || e.button !== 0) return;
         drag = { id: e.pointerId, x: e.clientX, y: e.clientY, dx: 0, dy: 0 };
         surface.setPointerCapture?.(e.pointerId);
         point(e);
       });
-      surface.addEventListener('pointermove', (e) => { if (drag && e.pointerId === drag.id) point(e); });
+      surface.addEventListener('pointermove', (e) => {
+        if (guide === e.pointerId) head(e);
+        else if (drag && e.pointerId === drag.id) point(e);
+      });
       for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) {
         surface.addEventListener(event, (e) => {
+          if (guide === e.pointerId) { guide = null; return; }   // lifted: the runner carries on to the spot
           if (!drag || e.pointerId !== drag.id) return;
           drag = null; $('fzStick').hidden = true; sendKeys();
         });
       }
     }
     clearInput = () => {
-      drag = null; keys = {}; $('fzStick').hidden = true; sendKeys();
+      drag = null; keys = {}; goal = guide = null; $('fzStick').hidden = true; sendKeys();
     };
     window.addEventListener('blur', clearInput);
     const dashButton = $('fzDash');
@@ -59,7 +79,7 @@ UI.fuse = (() => {
   }
 
   function unmount() {
-    cancelAnimationFrame(raf); ro?.disconnect();
+    clearTimeout(goalTimer); cancelAnimationFrame(raf); ro?.disconnect();
     window.removeEventListener('blur', clearInput);
     window.removeEventListener('keydown', keyDown); window.removeEventListener('keyup', keyUp);
   }
@@ -67,6 +87,44 @@ UI.fuse = (() => {
   const KEYS = { KeyW: [0, -1], ArrowUp: [0, -1], KeyS: [0, 1], ArrowDown: [0, 1], KeyA: [-1, 0], ArrowLeft: [-1, 0], KeyD: [1, 0], ArrowRight: [1, 0] };
   const mine = () => (S?.fuse?.me != null && S.fuse.me >= 0 ? S.fuse.me : null);
   const alive = (i) => (net ? net.a : S.fuse.a)[i];
+
+  const following = (e) => e.pointerType !== 'mouse' && touchMode === 'follow';
+  function press(e) {
+    e.preventDefault();
+    const now = performance.now();
+    if (guide != null) { dash(); return; }   // a second finger while the first one guides: dash
+    const twice = lastTap && now - lastTap.at < 320 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 60;
+    lastTap = { at: now, x: e.clientX, y: e.clientY };
+    guide = e.pointerId;
+    canvas.setPointerCapture?.(e.pointerId);
+    head(e, true);
+    if (twice) { lastTap = null; setTimeout(dash, 60); }   // after the new heading has gone, so the dash goes that way
+  }
+  // head for the touched spot. The newest spot always gets sent, at most about 20 times a second
+  function head(e, at = false) {
+    const me = mine(), f = S?.fuse;
+    if (me == null || !f || S.phase !== 'playing' || S.paused || !alive(me)) return;
+    const r = canvas.getBoundingClientRect();
+    goal = [Math.max(f.R, Math.min(f.W - f.R, (e.clientX - r.left) / r.width * f.W)), Math.max(f.R, Math.min(f.H - f.R, (e.clientY - r.top) / r.height * f.H))];
+    steering = null; direction = '';
+    const send = () => { goalTimer = 0; goalSentAt = performance.now(); if (goal && S?.phase === 'playing' && !S.paused) ctx.input({ x: +goal[0].toFixed(3), y: +goal[1].toFixed(3) }); };
+    clearTimeout(goalTimer);
+    const wait = 50 - (performance.now() - goalSentAt);
+    if (at || wait <= 0) send(); else goalTimer = setTimeout(send, wait);
+  }
+  // my own runner is drawn a little ahead, the way the server is about to move it, so it answers at once
+  const LEAD = 0.12, PACE = 0.46, CARRY_PACE = 0.54;
+  function ahead(src, me) {
+    const [x, y] = src.p[me];
+    if (S.phase !== 'playing' || S.paused || src.boom != null || (src.pause || 0) > 0) return [x, y];
+    let dx = 0, dy = 0, far = Infinity;
+    if (goal) { dx = goal[0] - x; dy = goal[1] - y; far = Math.hypot(dx, dy); }
+    else if (steering) { dx = steering.dx; dy = steering.dy; }
+    const d = Math.hypot(dx, dy);
+    if (d < 0.004) return [x, y];
+    const step = Math.min(far, (src.c === me ? CARRY_PACE : PACE) * (src.bo?.[me] ? 1.3 : 1) * LEAD), edge = (src.edge || 0) + S.fuse.R;
+    return [Math.max(edge, Math.min(S.fuse.W - edge, x + dx / d * step)), Math.max(edge, Math.min(S.fuse.H - edge, y + dy / d * step))];
+  }
 
   function sendKeys() {
     let dx = 0, dy = 0;
@@ -77,6 +135,7 @@ UI.fuse = (() => {
   function steer(dx, dy) {
     const me = mine();
     if (me == null || S.phase !== 'playing' || S.paused || !alive(me)) return;
+    if (dx || dy) goal = null;
     const length = Math.hypot(dx, dy) || 1;
     const data = { dx: +(dx / length).toFixed(2), dy: +(dy / length).toFixed(2) };
     const next = `${(net || S.fuse).rd}:${data.dx},${data.dy}`;
@@ -127,9 +186,11 @@ UI.fuse = (() => {
     const u = canvas.width / f.W;
     if (drag) steer(drag.dx, drag.dy);
     else if (Object.keys(keys).length) sendKeys();
-    for (let i = 0; i < src.p.length; i++) {   // ease each runner toward its server position
-      shown[i] = shown[i] ? [shown[i][0] + (src.p[i][0] - shown[i][0]) * 0.4, shown[i][1] + (src.p[i][1] - shown[i][1]) * 0.4] : [...src.p[i]];
+    for (let i = 0; i < src.p.length; i++) {   // ease each runner toward its server position (mine: a little ahead of it)
+      const own = i === f.me && src.a[i], to = own ? ahead(src, i) : src.p[i], k = own ? 0.55 : 0.4;
+      shown[i] = shown[i] ? [shown[i][0] + (to[0] - shown[i][0]) * k, shown[i][1] + (to[1] - shown[i][1]) * k] : [...src.p[i]];
     }
+    if (goal && f.me != null && src.p[f.me] && Math.hypot(goal[0] - src.p[f.me][0], goal[1] - src.p[f.me][1]) < 0.015 && guide == null) goal = null;
     const elapsed = S.paused || S.phase !== 'playing' ? 0 : Math.max(0, (now - src.at) / 1000);
     const left = Math.max(0, src.f - Math.max(0, elapsed - src.pause));
     const pause = Math.max(0, src.pause - elapsed);
@@ -154,6 +215,12 @@ UI.fuse = (() => {
     g2.strokeRect(edge, edge, canvas.width - 2 * edge, canvas.height - 2 * edge); g2.restore();
     if (flash > 0) { g2.fillStyle = `rgba(255,170,60,${flash})`; g2.fillRect(0, 0, canvas.width, canvas.height); flash = Math.max(0, flash - 0.04); }
 
+    if (goal && f.me != null && src.a[f.me]) {   // where I'm headed: a ring wider than a fingertip, and the way there
+      const gx = goal[0] * u, gy = goal[1] * u, [mx, my] = [shown[f.me][0] * u, shown[f.me][1] * u];
+      g2.save(); g2.strokeStyle = '#ffffffaa'; g2.lineWidth = Math.max(2, u * 0.006); g2.setLineDash([u * 0.02, u * 0.018]);
+      g2.beginPath(); g2.moveTo(mx, my); g2.lineTo(gx, gy); g2.stroke(); g2.setLineDash([]);
+      g2.beginPath(); g2.arc(gx, gy, u * (0.075 + 0.008 * Math.sin(now / 110)), 0, 7); g2.stroke(); g2.restore();
+    }
     pfx.step((now - lastFrame) / 1000); lastFrame = now;
     pfx.begin(g2);
     const r = f.R * u;
@@ -162,11 +229,15 @@ UI.fuse = (() => {
       const scorch = g2.createRadialGradient(x, y, 0, x, y, u * 0.2);
       scorch.addColorStop(0, '#000000cc'); scorch.addColorStop(1, '#00000000');
       g2.fillStyle = scorch; g2.beginPath(); g2.arc(x, y, u * 0.2, 0, 7); g2.fill();
-      if (age < 0.8) {
-        const R = u * (0.06 + 0.3 * Math.min(1, age * 3)), fire = g2.createRadialGradient(x, y, 0, x, y, R);
+      const ball = (bx, by, since, size, lasts) => {
+        if (since < 0 || since >= lasts) return;
+        const R = u * (0.06 + size * Math.min(1, since * 3)), fire = g2.createRadialGradient(bx, by, 0, bx, by, R);
         fire.addColorStop(0, '#ffffff'); fire.addColorStop(0.35, '#ffd166'); fire.addColorStop(0.75, '#ff5d1a'); fire.addColorStop(1, '#ff2a0000');
-        g2.save(); g2.globalAlpha = 1 - age / 0.8; g2.fillStyle = fire; g2.beginPath(); g2.arc(x, y, R, 0, 7); g2.fill(); g2.restore();
-      }
+        g2.save(); g2.globalCompositeOperation = 'lighter'; g2.globalAlpha = 1 - (since / lasts) ** 2; g2.fillStyle = fire; g2.beginPath(); g2.arc(bx, by, R, 0, 7); g2.fill(); g2.restore();
+      };
+      ball(x, y, age, 0.5, 1.7);
+      [[0.16, -0.09, 0.22, 0.2], [-0.18, 0.05, 0.42, 0.17], [0.05, 0.17, 0.66, 0.22], [-0.09, -0.16, 0.9, 0.15], [0.14, 0.11, 1.2, 0.13]]
+        .forEach(([ox, oy, at, size]) => ball(x + ox * u, y + oy * u, age - at, size, 0.85));
     }
     for (const [ix, iy, kind] of src.it || []) {   // 🎁 floor pickups: a glowing disc with the power's icon
       const sx = ix * u, sy = iy * u, pulse = 1 + 0.12 * Math.sin(now / 160);
@@ -257,6 +328,16 @@ UI.fuse = (() => {
           pfx.smoke(x, y, 14, { color: '#554a46', size: [u * 0.05, u * 0.11], speed: [u * 0.02, u * 0.18], rise: u * 0.12, life: [1.2, 2.4], grow: 2 });
           pfx.text(x, y - u * 0.08, 'BOOM!', { color: '#ffd166', size: Math.max(24, u * 0.13), ms: 1500, rise: u * 0.1 });
           pfx.shake(u * 0.045); pfx.flash('#fff', 0.5, 300);
+          // the smaller blasts that follow: each with its own sparks, thump and shudder
+          for (const [ox, oy, at] of [[0.16, -0.09, 220], [-0.18, 0.05, 420], [0.05, 0.17, 660], [-0.09, -0.16, 900], [0.14, 0.11, 1200]]) {
+            const when = blast.at;
+            setTimeout(() => {
+              if (blast?.at !== when) return;
+              pfx.spark(x + ox * u, y + oy * u, 18, { color: '#ffd166', speed: [u * 0.15, u * 0.7], size: [u * 0.005, u * 0.014] });
+              pfx.smoke(x + ox * u, y + oy * u, 4, { color: '#3f3836', size: [u * 0.05, u * 0.1], speed: [u * 0.02, u * 0.12], rise: u * 0.1, life: [1.2, 2.2], grow: 2 });
+              pfx.shake(u * 0.022); ctx.sfx?.('thud');
+            }, at);
+          }
           flash = 0.7; ctx.sfx?.('boom'); setTimeout(() => ctx.sfx?.('thud'), 140); ctx.buzz?.(i === f.me ? [120, 40, 160] : 40);
         }
       });
@@ -278,7 +359,7 @@ UI.fuse = (() => {
         }
       });
       if (data.rd !== lastRound && lastRound) {
-        shown = []; blast = null;
+        shown = []; blast = null; goal = null;
         ctx.sfx?.('rise');
       }
     }

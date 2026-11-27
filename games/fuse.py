@@ -18,7 +18,7 @@ SPEED, CARRIER_SPEED = 0.46, 0.54   # arena units per second; the carrier is abo
 DASH_SPEED, DASH_SECS, DASH_COOL = 1.55, 0.22, 2.4   # ⚡ a short burst, then a wait
 IMMUNE = 1.1                   # the one who just passed the bomb can't be tagged straight back
 READY = 1.8                    # a pause before each new bomb: a "Ready…" for every screen
-AFTERMATH = 2.8   # after a blast everything holds still this long before the next round (#277)
+AFTERMATH = 3.4   # after a blast everything holds still this long before the next round, or the result (#277)
 FUSE_STEP, FUSE_MIN = 1.2, 5.5  # each round's fuse is this much shorter, never below the minimum
 CLOSE_AT, MAX_INSET = 0.5, 0.21  # walls close over the second half of the fuse
 ITEM_EVERY, ITEM_MAX, ITEM_R = (4.5, 7.5), 2, 0.035   # 🎁 a pickup appears every few seconds (two at most) on the arena floor
@@ -37,7 +37,7 @@ class Fuse(Game):
     solo_bots = 3
     category = "action"
     howto = [
-        "Drag on the arena like a joystick and lift to stop. Use WASD or arrow keys to steer on a keyboard.",
+        "👆 On a touch screen, tap or drag where you want to run: your runner keeps going after you lift. Tap with a second finger, or double tap, to dash. 🕹️ The Touch button swaps to a joystick. With a mouse, drag like a joystick; or use WASD / arrow keys.",
         "💣 One runner holds the bomb. It runs a little faster, and touching someone passes the bomb on.",
         "The one who just passed it can't be tagged back for a second, so get away!",
         "🎁 Glowing pickups appear on the floor: 🛡️ a shield soaks one tag, ⚡ a speed boost lasts 4 seconds. First to touch one gets it.",
@@ -180,6 +180,9 @@ class Fuse(Game):
     def frame(self, now):
         if self.boom:
             if now >= self.boom[1]:
+                if len(self.boom) > 2:   # that was the last blast: now the result
+                    self.finish_after_blast()
+                    return True
                 self.new_round(now)
                 self.last_frame = now
                 self.broadcast(now)
@@ -323,15 +326,18 @@ class Fuse(Game):
             p.eliminated = True
         self.moment(f"💥 {self.name_of(c)} BLOWS UP!", "bad", "boom")
         live = [i for i, a in enumerate(self.alive) if a]
-        if len(live) <= 1:
-            winner = self.room.players.get(self.seats[live[0]]) if live else None
-            if live:
-                self.survived[live[0]] = self.round
-            self.room.finish(winner, f"🏆 {winner.name} is the last runner standing!" if winner else "💥 Nobody left.")
-        else:
-            self.boom = [c, now + AFTERMATH]
+        # the blast is watched in full either way: the third entry marks the one that ends the match
+        self.boom = [c, now + AFTERMATH, "last"] if len(live) <= 1 else [c, now + AFTERMATH]
         self.broadcast(now)
         return True
+
+    def finish_after_blast(self):
+        live = [i for i, a in enumerate(self.alive) if a]
+        winner = self.room.players.get(self.seats[live[0]]) if live else None
+        if live:
+            self.survived[live[0]] = self.round
+        self.boom = None
+        self.room.finish(winner, f"🏆 {winner.name} is the last runner standing!" if winner else "💥 Nobody left.")
 
     def snapshot(self, now):
         return {

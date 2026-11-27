@@ -148,5 +148,23 @@ with r.cond:
     g.frame(late)
     check("Classic keeps its full arena through expiry", g.inset == 0)
     g.frame(g.fuse_end)
-    check("the final elimination ends the match with one survivor", r.phase == "over" and sum(g.alive) == 1)
+    # (#277) the last blast is watched too: the result waits for it
+    check("the final blast is held before the result", r.phase == "playing" and g.boom and sum(g.alive) == 1)
+    g.frame(g.boom[1] - 0.05)
+    check("still held just before it ends", r.phase == "playing")
+    g.frame(g.boom[1])
+    check("the final elimination ends the match with one survivor", r.phase == "over" and sum(g.alive) == 1 and g.survived[g.alive.index(True)] == g.round)
+    # the last survivor's rival leaving during that pause ends it once, with no second result
+    r2 = server.Room("LAST")
+    two = [r2.add_player(x) for x in ("Ann", "Bo")]
+    r2.switch_game("fuse")
+    r2.start()
+    g2 = r2.game
+    with r2.cond:
+        out = g2.carrier
+        g2.frame(g2.fuse_end)
+        g2.on_leave(two[out])   # the one who just blew up walks out
+        check("leaving after blowing up doesn't cut the last blast short", r2.phase == "playing")
+        g2.frame(g2.boom[1])
+    check("and the match then ends once", r2.phase == "over" and sum("last runner" in e["text"] for e in r2.log) <= 1)
 sys.exit(1 if fails else 0)
