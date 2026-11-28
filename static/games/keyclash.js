@@ -3,23 +3,32 @@ UI.keyclash = (() => {
   let S, ctx, raf, round, idx, stream, typed, errs, offer, pending, acceptedAt, sending, live;
   let seen, fx, launches, leftAt, left, milestoneUntil, cleanup, reduced, prefs;
   let previewKey, letterKey, offerKey, nextClock, completed;
-  let skippedUntil;
+  let skippedUntil, selectedPower, streamDraft, recovery;
+  let roster = [], hues = new Map();
   const $ = (id) => document.getElementById(id);
-  const HUES = [205, 350, 135, 45, 280, 20];
+  const HUES = [205, 28, 355, 163, 45, 284, 340, 132];
+  const ARENAS = {
+    dusk: ['#120f2b', '#2a2052', '#4a2d5e', '#2b2148', '#1f1838', '#54406e', '#1d1629'],
+    aurora: ['#091a29', '#125051', '#1b6b6e', '#183842', '#11272f', '#346066', '#13262d'],
+    ember: ['#25101b', '#5d293f', '#884d47', '#4b3042', '#331e2f', '#7a504d', '#281923'],
+  };
   const K = () => S?.keyclash;
   const local = () => K()?.fighters.find((f) => f.id === S.me.id);
-  const fighters = () => [...K().fighters].sort((a, b) => Number(b.id === S.me.id) - Number(a.id === S.me.id));
-  const hue = (id) => HUES[Math.max(0, (S ? fighters().findIndex((p) => p.id === id) : 0)) % HUES.length];
+  const fighters = () => roster;
+  const hue = (id) => hues.get(id) ?? HUES[0];
+  const POWER_NAMES = { shield: 'Shield', strike: 'Strike', heal: 'Heal' };
+  const POWER_KEYS = ['shield', 'strike', 'heal'];
   const ICON = { shield: '🛡️', strike: '💥', heal: '💚' };
   const MILESTONES = { 3: 'Heating Up', 5: 'On Fire', 10: 'Rampage', 15: 'Unstoppable', 20: 'Legendary' };
-  const DEFAULTS = { size: 'auto', motion: false, shake: false, keys: false, sound: true, particles: 'normal', contrast: false, colorblind: false, skip: false };
-  const motionOff = () => reduced.matches || prefs.motion;
+  const DEFAULTS = { size: 'auto', arena: 'dusk', motion: false, shake: false, keys: false, sound: true, particles: 'normal', contrast: false, colorblind: false, skip: false, focus: false };
+  const motionOff = () => reduced.matches || prefs.motion || prefs.focus;
   const blocked = () => ['modal', 'chatPanel', 'prefsPanel', 'gameMenu', 'keyclashPrefs'].some((id) => $(id)?.hidden === false);
+  const preparing = () => !!K()?.preparing && !ctx?.readOnly && !S.paused && S.phase === 'playing';
   const interactive = (el) => el?.closest?.('input, textarea, select, button, a[href], [contenteditable], [role="button"], [role="textbox"]');
 
   function mount(main) {
     S = ctx = null; round = null; live = false; seen = 0; nextClock = 0; bgCache = null;
-    reportKey = ''; reportRound = null;
+    reportKey = ''; reportRound = null; dismissedMatch = null;
     previewKey = letterKey = offerKey = null;
     cleanup = new AbortController();
     const { signal } = cleanup;
@@ -30,7 +39,7 @@ UI.keyclash = (() => {
       <div class="kc-top"><div id="kcFighters" class="kc-fighters"></div>
         <div class="kc-clock"><span id="kcRound"></span><b id="kcLeft"></b><div class="kc-time"><i id="kcTime"></i></div>
         <span id="kcScore"></span></div></div>
-      <div class="kc-arena"><canvas id="kcCanvas" aria-hidden="true"></canvas><div id="kcBanner" class="kc-banner" hidden></div>
+      <div class="kc-arena"><canvas id="kcCanvas" aria-hidden="true"></canvas><p id="kcGoal" class="kc-goal" hidden></p><div id="kcBanner" class="kc-banner" hidden></div>
         <div id="kcMilestone" class="kc-milestone" role="status" hidden></div><div id="kcReport" class="kc-report" hidden></div></div>
       <div class="kc-type" id="kcType">
         <div class="kc-console-top"><div id="kcCombo" class="kc-combo"></div><div id="kcSpecial" class="kc-special">
@@ -47,6 +56,8 @@ UI.keyclash = (() => {
         <div id="kcOffer" class="kc-offer" hidden></div>
       </div>
       <div class="kc-controls">
+        <button id="kcReady" class="ghost-btn" hidden>Ready to type</button>
+        <button id="kcCharts" class="ghost-btn" aria-controls="kcReport" aria-expanded="false" hidden>Match charts</button>
         <button id="kcOptions" class="ghost-btn" aria-expanded="false" aria-controls="keyclashPrefs">Typing settings</button>
         <button id="kcActivity" class="ghost-btn" aria-expanded="false" aria-controls="log">Activity</button>
         <button id="kcChat" class="ghost-btn" data-keep-drawer aria-expanded="false" aria-controls="chatPanel">Chat</button>
@@ -66,6 +77,14 @@ UI.keyclash = (() => {
     $('kcStream').onclick = focusTyping;
     $('kcChat').onclick = () => { $('chatBtn')?.click(); syncFocus(); };
     $('kcActivity').onclick = () => setActivity($('kcActivity').getAttribute('aria-expanded') !== 'true');
+    $('kcReady').onclick = () => {
+      if (focusTyping() && K().stage === 'ready' && !K().ready) ctx.quiet(ctx.act('clash_ready', { rid: round }));
+    };
+    $('kcCharts').onclick = () => {
+      dismissedMatch = $('kcReport').hidden ? null : round;
+      paintReport();
+      if (!$('kcReport').hidden) $('kcReport').querySelector('.kc-rep-close')?.focus();
+    };
     $('kcOptions').onclick = () => toggleOptions($('keyclashPrefs').hidden);
     buildOptions();
     applyOptions();
@@ -131,8 +150,9 @@ UI.keyclash = (() => {
       };
     };
     select('size', 'Typing size', [['small', 'Small'], ['auto', 'Default'], ['large', 'Large']]);
+    select('arena', 'Arena lighting', [['dusk', 'Moonlit dusk'], ['aurora', 'Aurora'], ['ember', 'Ember sunset']]);
     select('particles', 'Particles', [['off', 'Off'], ['low', 'Low'], ['normal', 'Full']]);
-    for (const [key, title] of Object.entries({ skip: 'Allow skipping mistyped words', motion: 'Reduce motion', shake: 'Screen shake', keys: 'Keystroke sounds', sound: 'Combat sounds', contrast: 'High contrast', colorblind: 'Colorblind feedback' })) {
+    for (const [key, title] of Object.entries({ skip: 'Allow skipping mistyped words', focus: 'Focus layout', motion: 'Reduce motion', shake: 'Screen shake', keys: 'Keystroke sounds', sound: 'Combat sounds', contrast: 'High contrast', colorblind: 'Colorblind feedback' })) {
       const input = document.createElement('input');
       input.type = 'checkbox'; input.checked = prefs[key];
       add(key, title, input, () => input.checked);
@@ -144,6 +164,7 @@ UI.keyclash = (() => {
   function applyOptions() {
     const board = $('kcType').closest('.kc');
     board.dataset.size = prefs.size;
+    board.classList.toggle('kc-focus-layout', prefs.focus);
     board.classList.toggle('kc-reduced', motionOff());
     board.classList.toggle('kc-contrast', prefs.contrast);
     board.classList.toggle('kc-colorblind', prefs.colorblind);
@@ -152,7 +173,7 @@ UI.keyclash = (() => {
     if (motionOff()) {
       $('kcTrack').getAnimations().forEach((animation) => animation.cancel());
     }
-    previewKey = null;
+    previewKey = letterKey = null;
     if (round) paintTyping();
   }
 
@@ -160,20 +181,30 @@ UI.keyclash = (() => {
     const input = $('kcInput');
     if (!input) return;
     const focused = document.activeElement === input && document.hasFocus() && !blocked();
-    $('kcType').classList.toggle('kc-focused', live && focused);
+    $('kcType').classList.toggle('kc-focused', (live || preparing()) && focused);
     $('kcFocus').hidden = !live || focused || blocked();
     $('kcChat').setAttribute('aria-expanded', String($('chatPanel')?.hidden === false));
   }
 
   function focusTyping() {
-    if (!live || blocked()) return false;
+    if ((!live && !preparing()) || blocked()) return false;
     $('kcInput').focus({ preventScroll: true });
     syncFocus();
     return true;
   }
 
   function shortcuts(e) {
-    if (e.defaultPrevented || e.repeat || e.ctrlKey || e.altKey || e.metaKey || ctx?.readOnly) return;
+    if (e.defaultPrevented || e.repeat || e.ctrlKey || e.metaKey || ctx?.readOnly) return;
+    if (live && !blocked() && (e.target === $('kcInput') || e.target?.closest?.('#kcOffer'))) {
+      const kind = e.altKey ? POWER_KEYS[Number(e.code.slice(-1)) - 1] : null;
+      if (kind && offer?.[kind] && /^Digit[1-3]$/.test(e.code)) {
+        e.preventDefault(); e.stopPropagation(); selectPower(kind); return;
+      }
+      if (e.key === 'Escape' && selectedPower) {
+        e.preventDefault(); e.stopPropagation(); selectPower(selectedPower); return;
+      }
+    }
+    if (e.altKey) return;
     if (e.key === 'Escape' && $('keyclashPrefs')?.hidden === false && !$('modal')?.matches(':not([hidden])')) {
       e.preventDefault(); e.stopPropagation(); toggleOptions(false); return;
     }
@@ -204,20 +235,32 @@ UI.keyclash = (() => {
   }
 
   const target = () => stream.get(idx) || '';
-  const choices = () => [['', target()], ...Object.entries(offer || {})];
   function activeChoice() {
-    const options = choices();
-    for (let n = typed.length; n; n--) {
-      const match = options.find(([, word]) => word.startsWith(typed.slice(0, n)));
-      if (match) return match;
+    return selectedPower && offer?.[selectedPower] ? [selectedPower, offer[selectedPower]] : ['', target()];
+  }
+
+  function clearPower() {
+    selectedPower = null;
+    ({ typed, errs } = streamDraft ?? { typed: '', errs: 0 });
+    streamDraft = null;
+  }
+
+  function selectPower(kind) {
+    if (!live || !offer?.[kind]) return;
+    if (selectedPower === kind) clearPower();
+    else {
+      streamDraft ??= { typed, errs };
+      selectedPower = kind;
+      typed = ''; errs = 0;
     }
-    return options[0];
+    $('kcNote').textContent = '';
+    paintTyping(); paintLocal(); focusTyping();
   }
 
   function addLetter(letter) {
     if (!target()) return;
     const [, expected] = activeChoice();
-    if (typed.length > expected.length && !choices().some(([, word]) => word.startsWith(typed + letter))) return;
+    if (typed.length > expected.length) return;
     typed += letter;
     const [, word] = activeChoice();
     const wrong = word[typed.length - 1] !== letter;
@@ -255,14 +298,31 @@ UI.keyclash = (() => {
     return { chars, errors: errors + errs, combo: errs ? 0 : combo, charge };
   }
 
+  function recoverStream() {
+    if (!recovery) return;
+    recovery.entries = recovery.entries.filter((entry) => entry.body.i >= idx);
+    while (recovery.entries[0]?.body.i === idx) {
+      const { body, skip } = recovery.entries.shift();
+      if (!skip && body.word !== target()) break;
+      const number = (pending.at(-1)?.number ?? local().words) + 1;
+      pending.push({ number, power: null, skip, body: { ...body, number } });
+      idx++;
+    }
+    if (idx === recovery.draft.idx && target() === recovery.draft.word) {
+      ({ typed, errs } = recovery.draft);
+      recovery = null;
+    } else if (idx >= recovery.draft.idx) {
+      recovery = null;
+    }
+  }
+
   function submit(bySpace) {
     if (!typed) return;
-    const power = Object.keys(offer || {}).find((kind) => offer[kind] === typed);
+    const [power, word] = activeChoice();
     let skip = false;
-    if (!power && typed !== target()) {
-      const [activePower, word] = activeChoice();
+    if (typed !== word) {
       const mistake = firstMistake(word);
-      skip = bySpace && canSkip(activePower, word, mistake);
+      skip = bySpace && canSkip(power, word, mistake);
       if (!skip) {
         if (mistake < 0) $('kcNote').textContent = 'Finish the word before pressing Space.';
         return;
@@ -276,10 +336,9 @@ UI.keyclash = (() => {
     body.number = number;
     pending.push({ number, power, skip, body });
     completed = skip ? '' : typed;
-    if (power) offer = null;
-    else idx++;
     const perfect = !errs;
-    typed = ''; errs = 0;
+    if (power) { offer = null; clearPower(); }
+    else { idx++; typed = ''; errs = 0; recoverStream(); }
     const now = performance.now();
     $('kcNote').textContent = '';
     if (skip) {
@@ -289,7 +348,7 @@ UI.keyclash = (() => {
     } else {
       const { combo } = projection();
       launches.push({ at: now, power, combo });
-      if (perfect && MILESTONES[combo]) {
+      if (perfect && !prefs.focus && MILESTONES[combo]) {
         $('kcMilestone').textContent = `${MILESTONES[combo]} · ${combo} perfect words`;
         $('kcMilestone').hidden = false; milestoneUntil = now + 1200;
         if (prefs.sound) ctx.sfx?.(combo >= 10 ? 'fanfare' : 'good');
@@ -302,6 +361,7 @@ UI.keyclash = (() => {
     const entry = queue.find((item) => !item.sent);
     if (queue !== pending || !live || sending || !entry) return;
     sending = true;
+    let retry = false;
     // Respect the existing server speed limit even when several words were typed during a slow request.
     const ms = Math.max(0, acceptedAt + entry.body.word.length * (K().minCharMs ?? 30) + 4 - performance.now());
     if (ms > 0) await new Promise((resolve) => setTimeout(resolve, ms));
@@ -315,15 +375,43 @@ UI.keyclash = (() => {
     } catch (error) {
       if (queue !== pending || !S) return;
       if (error.message === 'The game is paused.') return;
-      pending = []; sending = false; typed = ''; completed = ''; errs = 0; idx = local()?.idx ?? K().base;
-      offer = K().offer || null; launches = [];
+      if (error.message === 'Too fast.' && !entry.retried && queue.includes(entry)) {
+        entry.retried = retry = true;
+        acceptedAt = performance.now();
+        return;
+      }
+      const me = local();
+      if (!me || !live) return;
+      if (me.words >= entry.number) {
+        entry.sent = true;
+        acceptedAt = performance.now();
+        return;
+      }
+      const acknowledged = queue.filter((item) => item.sent && item.number > me.words);
+      const lastStream = acknowledged.filter((item) => !item.power).at(-1);
+      const draft = streamDraft ?? { typed, errs };
+      recovery = {
+        entries: [...queue.filter((item) => item !== entry && !item.sent && !item.power && item.number > me.words),
+          ...(recovery?.entries ?? [])],
+        draft: recovery?.draft ?? { ...draft, idx, word: target() },
+      };
+      pending = acknowledged; sending = false;
+      idx = Math.max(me.idx, lastStream ? lastStream.body.i + 1 : 0);
+      completed = typed = ''; errs = 0; selectedPower = streamDraft = null;
+      offer = acknowledged.some((item) => item.power) ? null : K().offer;
+      launches = [];
+      if (!acknowledged.length) acceptedAt = performance.now() - (K().wordAge ?? 0) * 1000;
       $('kcSkipped').hidden = true;
-      $('kcNote').textContent = 'Word could not be confirmed. Continue from the displayed word.';
+      recoverStream();
+      const message = entry.power ? `Power word “${entry.body.word}” was not accepted.`
+        : `Retype “${target()}” to continue.`;
+      $('kcNote').textContent = message + (recovery ? ' Later words are saved.' : '');
+      sendNext(pending);
       paintTyping(); paintLocal();
     } finally {
       if (queue === pending && S) {
         sending = false;
-        if (entry.sent) sendNext(queue);
+        if (entry.sent || retry) sendNext(queue);
       }
     }
   }
@@ -333,9 +421,15 @@ UI.keyclash = (() => {
     S = s; ctx = c;
     const k = K();
     if (!k) return;
+    roster = [...k.fighters].sort((a, b) => Number(b.id === s.me.id) - Number(a.id === s.me.id));
+    hues = new Map(roster.map((fighter, index) => {
+      const paletteIndex = s.palette?.indexOf(c.player(fighter.id)?.color) ?? -1;
+      return [fighter.id, HUES[paletteIndex] ?? HUES[index]];
+    }));
     const changed = k.rid !== round;
     const me = local();
     if (changed) {
+      selectedPower = streamDraft = recovery = null;
       round = k.rid; idx = k.base; typed = ''; completed = ''; errs = 0; stream = new Map(); offer = null;
       pending = []; sending = false; fx = []; launches = []; parts = []; knocked.clear(); celebrated.clear();
       shakeUntil = milestoneUntil = -Infinity;
@@ -348,17 +442,25 @@ UI.keyclash = (() => {
     k.words.forEach((word, i) => stream.set(k.base + i, word));
     for (const i of stream.keys()) { if (i < k.base - 1) stream.delete(i); }
     while (pending.length && pending[0].number <= (me?.words ?? 0)) pending.shift();
-    if (me && me.idx > idx) { idx = me.idx; typed = ''; errs = 0; }
+    if (me && me.idx > idx) {
+      idx = me.idx; typed = ''; errs = 0;
+      if (live && recovery) recoverStream();
+    }
     if (!me) idx = k.base;
-    offer = pending.some((entry) => entry.power) ? null : k.offer;
+    const nextOffer = pending.some((entry) => entry.power) ? null : k.offer;
+    if (selectedPower && offer?.[selectedPower] !== nextOffer?.[selectedPower]) clearPower();
+    offer = nextOffer;
     left = k.left; leftAt = performance.now();
     for (const e of k.events) if (e.n > seen) { seen = e.n; play(e); }
     live = !c.readOnly && s.phase === 'playing' && k.playing && !s.paused;
     const inp = $('kcInput');
-    inp.disabled = !live;
+    inp.disabled = !live && !preparing();
+    const ready = $('kcReady');
+    ready.hidden = !preparing();
+    ready.textContent = k.stage === 'ready' && !k.ready ? 'Ready to type' : 'Focus typing';
     if (!k.playing || s.phase !== 'playing') {
       if (pending.length) { pending = []; sending = false; }
-      typed = ''; errs = 0;
+      typed = ''; errs = 0; recovery = null;
     }
     if (live && !wasLive && !sending) acceptedAt = performance.now() - (k.wordAge ?? 0) * 1000;
     if (live && (!wasLive || changed)) {
@@ -370,19 +472,30 @@ UI.keyclash = (() => {
       requestAnimationFrame(() => { if (inp.isConnected && !inp.disabled) focusOnStart(); });
     }
     syncFocus();
-    $('kcRound').textContent = `Round ${k.round} / ${k.rounds}`;
-    $('kcScore').textContent = fighters().length === 2 ? fighters().map((f) => f.wins).join(' : ') : `First to ${k.need}`;
+    const maxRounds = k.maxRounds ?? k.rounds + 2;
+    const extra = k.round === maxRounds ? ' · last round' : k.round > k.rounds ? ` · extra (max ${maxRounds})` : '';
+    $('kcRound').textContent = `Round ${k.round}${extra} · first to ${k.need}`;
+    $('kcRound').title = `Round wins needed: ${k.need}. At most ${maxRounds} rounds, including draws.`;
+    $('kcScore').textContent = fighters().length === 2 ? fighters().map((f) => f.wins).join(' : ') : '';
+    const goal = $('kcGoal');
+    goal.hidden = s.phase !== 'playing' || k.stage === 'reveal';
+    const aim = me?.target && ['lms', 'siege'].includes(k.mode)
+      ? ` Target: ${nameOf(me.target)}${me.retaliating ? ' (last to hit you)' : ''}.` : '';
+    const rope = prefs.focus && k.mode === 'tug' && Math.abs(k.rope) >= 0.5
+      ? ` ${k.teams[Number(k.rope > 0)]} leads by ${Math.abs(k.rope)}.` : '';
+    const objective = keyClashRules(k.mode, k.unlimited || k.goal ? 0 : k.secs).goal + aim + rope;
+    if (goal.textContent !== objective) goal.textContent = objective;
     paintFighters(); paintTyping(); paintLocal(); paintBanner(); paintReport();
     sendNext(pending);
   }
 
   // ---------- (#381) typing analytics: between rounds the round just played, after the match every round
 
-  let reportRound = null, reportKey = '';
+  let reportRound = null, reportKey = '', dismissedMatch = null;
   const SVG = 'http://www.w3.org/2000/svg';
   const svgEl = (tag, attrs = {}) => { const e = document.createElementNS(SVG, tag); for (const [a, v] of Object.entries(attrs)) e.setAttribute(a, v); return e; };
   const color = (id) => `hsl(${hue(id)} 80% 62%)`;
-  const nameOf = (id) => ctx.player(id)?.name ?? '?';
+  const nameOf = (id) => ctx.player(id)?.name ?? K()?.history?.find((h) => h.names?.[id])?.names[id] ?? '?';
 
   // speed through the round: words a minute over the last five words, at each word
   function speedLine(trace) {
@@ -395,13 +508,18 @@ UI.keyclash = (() => {
   function paintReport() {
     const k = K(), box = $('kcReport');
     const over = S.phase !== 'playing', hist = k.history || [];
-    if (!hist.length || (!over && k.stage !== 'reveal')) { box.hidden = true; reportKey = ''; return; }
+    const toggle = $('kcCharts'), available = hist.length > 0 && (over || k.stage === 'reveal');
+    toggle.hidden = !over || !available;
+    box.hidden = !available || (over && dismissedMatch === k.rid);
+    toggle.setAttribute('aria-expanded', String(!box.hidden));
+    if (box.hidden) return;
     const key = `${k.rid}:${hist.length}:${over}`;
-    if (key === reportKey && !box.hidden) return;   // drawn already: keep the hover state
+    if (key === reportKey) return;   // drawn already: keep the hover state
     reportKey = key;
     if (!over || reportRound == null || reportRound >= hist.length) reportRound = hist.length - 1;
     box.hidden = false;
-    const h = hist[reportRound], ids = Object.keys(h.trace).filter((id) => k.fighters.some((f) => f.id === id) || h.stats[id]);
+    const h = hist[reportRound], ids = Object.keys(h.stats);
+    const tableIds = over ? [...new Set(hist.flatMap((entry) => Object.keys(entry.stats)))] : ids;
     const head = ctx.el('div', 'kc-rep-head');
     const won = h.winners.length === 1 ? ` · 🏆 ${nameOf(h.winners[0])}` : h.winners.length ? ` · 🏆 ${h.winners.map(nameOf).join(', ')}` : ' · 🤝 a draw';
     head.append(ctx.el('b', '', (over ? `📈 How everyone typed · round ${h.round}` : `📈 Round ${h.round}`) + won));
@@ -410,8 +528,18 @@ UI.keyclash = (() => {
       hist.forEach((x, i) => { const b = ctx.el('button', 'ghost-btn' + (i === reportRound ? ' on' : ''), `Round ${x.round}`); b.onclick = () => { reportRound = i; reportKey = ''; paintReport(); }; tabs.append(b); });
       head.append(tabs);
     }
-    if (over) { const x = ctx.el('button', 'ghost-btn kc-rep-close', '✕'); x.title = 'Hide the charts'; x.onclick = () => { box.hidden = true; }; head.append(x); }
-    box.replaceChildren(head, chart(h, ids), legend(ids), table(hist, ids, over ? null : reportRound));
+    if (over) {
+      const x = ctx.el('button', 'ghost-btn kc-rep-close', '✕');
+      x.setAttribute('aria-label', 'Hide the charts');
+      x.onclick = () => { dismissedMatch = k.rid; paintReport(); toggle.focus(); };
+      head.append(x);
+    }
+    if (over && k.missedWords?.length && !ctx.readOnly) {
+      const drill = ctx.el('button', 'ghost-btn', 'Practice missed words');
+      drill.onclick = () => openPractice(k.missedWords);
+      head.append(drill);
+    }
+    box.replaceChildren(head, chart(h, ids), legend(ids), ctx.el('p', 'kc-wpm-note', 'WPM counts five correct letters as one word and uses the full round time.'), table(hist, tableIds, over ? null : reportRound));
   }
 
   function chart(h, ids) {
@@ -447,20 +575,42 @@ UI.keyclash = (() => {
     const hit = svgEl('rect', { x: L, y: T, width: W - L - R, height: H - T - B, fill: 'transparent' });
     svg.append(cross, hit);
     const wrap = ctx.el('div', 'kc-chart-wrap');
-    hit.addEventListener('pointermove', (ev) => {
-      const r = svg.getBoundingClientRect(), t = ((ev.clientX - r.left) * (W / r.width) - L) / (W - L - R) * tMax;
+    const scrub = Object.assign(document.createElement('input'), { type: 'range', min: 0, max: Math.ceil(tMax), value: 0 });
+    const label = ctx.el('label', 'kc-scrub', 'Chart time');
+    label.append(scrub);
+    const chartLabel = (id, t) => {
+      const points = lines[id];
+      let lo = 0, hi = points.length;
+      while (lo < hi) {
+        const mid = Math.floor((lo + hi) / 2);
+        if (points[mid].t <= t) lo = mid + 1;
+        else hi = mid;
+      }
+      return lo > 0 ? `${Math.round(points[lo - 1].wpm)} wpm` : '–';
+    };
+    function inspect(t) {
+      const values = ids.map((id) => [id, chartLabel(id, t)]);
+      scrub.value = String(Math.round(t));
+      scrub.setAttribute('aria-valuetext', `${Math.round(t)} seconds. ${values.map(([id, value]) => `${nameOf(id)} ${value}`).join(', ')}`);
       cross.setAttribute('x1', x(t)); cross.setAttribute('x2', x(t)); cross.setAttribute('visibility', 'visible');
-      tip.replaceChildren(ctx.el('b', '', `${Math.round(t)} s`), ...ids.map((id) => {
-        const p = [...lines[id]].reverse().find((q) => q.t <= t);
+      tip.replaceChildren(ctx.el('b', '', `${Math.round(t)} s`), ...values.map(([id, value]) => {
         const row = ctx.el('div', 'kc-tip-row'), sw = ctx.el('i'); sw.style.background = color(id);
-        row.append(sw, ctx.el('span', '', nameOf(id)), ctx.el('b', '', p ? `${Math.round(p.wpm)} wpm` : '–'));
+        row.append(sw, ctx.el('span', '', nameOf(id)), ctx.el('b', '', value));
         return row;
       }));
       tip.hidden = false;
-      tip.style.left = `${Math.min(r.width - 150, ev.clientX - r.left + 12)}px`;
-    });
-    hit.addEventListener('pointerleave', () => { cross.setAttribute('visibility', 'hidden'); tip.hidden = true; });
-    wrap.append(svg, tip);
+      const width = svg.clientWidth;
+      tip.style.left = `${Math.max(0, Math.min(width - tip.offsetWidth, x(t) * width / W + 12))}px`;
+    }
+    const inspectPointer = (ev) => {
+      const r = svg.getBoundingClientRect(), t = ((ev.clientX - r.left) * (W / r.width) - L) / (W - L - R) * tMax;
+      inspect(Math.max(0, Math.min(tMax, t)));
+    };
+    hit.addEventListener('pointermove', inspectPointer);
+    hit.addEventListener('pointerdown', inspectPointer);
+    scrub.addEventListener('input', () => inspect(Math.min(tMax, scrub.valueAsNumber)));
+    scrub.addEventListener('focus', () => inspect(Math.min(tMax, scrub.valueAsNumber)));
+    wrap.append(svg, tip, label);
     return wrap;
   }
 
@@ -482,7 +632,12 @@ UI.keyclash = (() => {
       const row = ctx.el('tr');
       row.append(ctx.el('th', '', `Round ${h.round}`), ...ids.map((id) => {
         const s = h.stats[id];
-        return ctx.el('td', h.winners.includes(id) ? 'won' : '', s ? `${s.wpm} wpm · ${s.acc}% · ${s.words} words` + (h.winners.includes(id) ? ' 🏆' : '') : '–');
+        const cell = ctx.el('td', h.winners.includes(id) ? 'won' : '', s ? `${s.wpm} wpm · ${s.acc}% · ${s.words} words` + (h.winners.includes(id) ? ' 🏆' : '') : '–');
+        if (s?.active != null) {
+          cell.append(ctx.el('small', 'kc-round-detail',
+            `${s.corrected} corrected · ${s.skips} skipped · ${s.active.toFixed(1)}s active`));
+        }
+        return cell;
       }));
       t.append(row);
     }
@@ -490,9 +645,18 @@ UI.keyclash = (() => {
       const row = ctx.el('tr', 'kc-rep-total');
       row.append(ctx.el('th', '', 'Match'), ...ids.map((id) => {
         const rs = hist.map((h) => h.stats[id]).filter(Boolean);
-        const wpm = Math.round(rs.reduce((a, s) => a + s.wpm, 0) / Math.max(1, rs.length)), best = Math.max(0, ...rs.map((s) => s.best || 0));
-        const acc = Math.round(rs.reduce((a, s) => a + s.acc, 0) / Math.max(1, rs.length));
-        return ctx.el('td', '', `avg ${wpm} wpm · ${acc}% · best 🔥${best}`);
+        const best = Math.max(0, ...rs.map((s) => s.best || 0));
+        if (rs.some((s) => s.chars == null || s.errors == null || s.secs == null)) {
+          const wpm = Math.round(rs.reduce((sum, s) => sum + s.wpm, 0) / rs.length);
+          const acc = Math.round(rs.reduce((sum, s) => sum + s.acc, 0) / rs.length);
+          return ctx.el('td', '', `Round avg ${wpm} wpm · ${acc}% · best 🔥${best}`);
+        }
+        const chars = rs.reduce((sum, s) => sum + s.chars, 0);
+        const errors = rs.reduce((sum, s) => sum + s.errors, 0);
+        const secs = rs.reduce((sum, s) => sum + s.secs, 0);
+        const wpm = secs ? Math.round(chars * 12 / secs) : 0;
+        const acc = chars + errors ? Math.round(100 * chars / (chars + errors)) : 100;
+        return ctx.el('td', '', `${wpm} wpm · ${acc}% · best 🔥${best}`);
       }));
       t.append(row);
     }
@@ -504,7 +668,7 @@ UI.keyclash = (() => {
 
   function paintFighters() {
     const k = K(), box = $('kcFighters'), list = fighters();
-    const key = JSON.stringify(list.map((f) => [f.id, nameOf(f.id)]));
+    const key = JSON.stringify(list.map((f) => [f.id, nameOf(f.id), hue(f.id)]));
     if (box.dataset.key !== key) {
       box.dataset.key = key; hud.clear(); box.replaceChildren();
       for (const f of list) {
@@ -583,10 +747,10 @@ UI.keyclash = (() => {
   function paintLetters(box, word, value) {
     const cells = [...word].map((ch, i) => {
       const state = i >= value.length ? 'untyped' : value[i] === ch ? 'ok' : 'bad';
-      return ctx.el('span', `kc-letter ${state}`, value[i] ?? ch);
+      return el('span', `kc-letter ${state}`, value[i] ?? ch);
     });
     if (value.length > word.length) {
-      for (const ch of value.slice(word.length)) cells.push(ctx.el('span', 'kc-overflow', ch));
+      for (const ch of value.slice(word.length)) cells.push(el('span', 'kc-overflow', ch));
     }
     box.replaceChildren(...cells);
   }
@@ -594,20 +758,22 @@ UI.keyclash = (() => {
   function paintTyping(advanced = false) {
     const [power, word] = activeChoice();
     const cur = $('kcCurrent'), next = $('kcPreview'), track = $('kcTrack');
-    const words = Array.from({ length: 6 }, (_, i) => stream.get(idx + i + Number(!power))).filter(Boolean);
+    const words = Array.from({ length: prefs.focus ? 2 : 6 }, (_, i) => stream.get(idx + i + Number(!power))).filter(Boolean);
     const upcoming = JSON.stringify(words);
     if (upcoming !== previewKey) {
       previewKey = upcoming;
       next.replaceChildren(...words.map((w) => ctx.el('span', 'kc-next', w)));
     }
-    const letters = JSON.stringify([idx, word, typed, power, completed, live]);
+    const caretVisible = live || preparing();
+    const letters = JSON.stringify([idx, word, typed, power, completed, caretVisible]);
     if (letters !== letterKey || advanced) {
       letterKey = letters;
       track.getAnimations().forEach((animation) => animation.cancel());
       paintLetters(cur, word, typed);
       $('kcCompleted').textContent = completed;
-      $('kcCaret').hidden = !live || !word;
-      track.style.transform = `translateX(-${typed.length}ch)`;
+      $('kcCaret').hidden = !caretVisible || !word;
+      track.style.transform = prefs.focus ? '' : `translateX(-${typed.length}ch)`;
+      $('kcCaret').style.setProperty('--kc-caret-offset', prefs.focus ? `${Math.min(typed.length, word.length)}ch` : '0ch');
       if (advanced && !motionOff()) {
         track.animate([{ transform: 'translateX(1.2ch)' }, { transform: 'translateX(0)' }], { duration: 85, easing: 'ease-out' });
       }
@@ -629,15 +795,27 @@ UI.keyclash = (() => {
   function paintOffer(active) {
     const box = $('kcOffer');
     box.hidden = !offer || !live;
-    const key = JSON.stringify([offer, active]);
+    const me = local(), k = K();
+    const key = JSON.stringify([offer, active, me?.hp, me?.shield]);
     if (box.hidden || offerKey === key) return;
     offerKey = key;
     box.replaceChildren(...Object.entries(offer).map(([kind, word]) => {
-      const chip = ctx.el('span', 'kc-pw kc-pw-' + kind + (active === kind ? ' on' : ''));
+      const label = POWER_NAMES[kind];
+      const chip = ctx.el('button', 'kc-pw kc-pw-' + kind + (active === kind ? ' on' : ''));
+      const key = POWER_KEYS.indexOf(kind) + 1;
+      chip.type = 'button';
+      chip.setAttribute('aria-pressed', String(active === kind));
+      chip.setAttribute('aria-keyshortcuts', `Alt+${key}`);
+      chip.title = active === kind ? 'Cancel power (Escape)' : `Select ${label} (Alt+${key})`;
+      chip.onmousedown = (event) => event.preventDefault();
+      chip.onclick = () => selectPower(kind);
       const letters = ctx.el('b', 'kc-power-letters');
-      const effect = K().effects?.[kind] ?? '';
+      let effect = k.effects?.[kind] ?? '';
+      if (kind === 'heal' && k.healAmount != null) effect = `+${Math.min(k.healAmount, k.hp - me.hp)} health`;
+      if (kind === 'shield' && k.shieldAmount != null) effect = `${me.shield} → ${k.shieldAmount} shield`;
+      if (kind === 'strike' && k.strikeBase != null) effect += ` · ${k.strikeBase + word.length} power`;
       paintLetters(letters, word, '');
-      chip.append(ICON[kind] + ' ', letters, ctx.el('small', 'kc-pw-what', effect));
+      chip.append(`${ICON[kind]} ${label} `, letters, ctx.el('small', 'kc-pw-what', active === kind ? `${effect} · tap to cancel` : effect));
       return chip;
     }));
   }
@@ -661,13 +839,27 @@ UI.keyclash = (() => {
     // (#384) words a minute move with the clock, not only when a word lands: letters so far over the time so far
     if (k.stage === 'play' && k.elapsed != null) {
       const t = k.elapsed + (S.paused ? 0 : (performance.now() - leftAt) / 1000);
-      if (t > 1) for (const el of document.querySelectorAll('#kcFighters .kc-wpm')) el.textContent = `${Math.round(+el.dataset.chars / 5 / (t / 60))} WPM`;
+      if (t > 1) for (const { wpm } of hud.values()) {
+        const text = `${Math.round(+wpm.dataset.chars * 12 / t)} WPM`;
+        if (wpm.textContent !== text) wpm.textContent = text;
+      }
     }
     const l = Math.max(0, left - (S.paused ? 0 : (performance.now() - leftAt) / 1000));   // (#383) a paused clock stands still
     const t = $('kcTime'), lb = $('kcLeft');
-    if (k.unlimited) {   // (#379) no time limit: the round goes on until someone wins
+    if (S.phase !== 'playing') {
+      t.style.width = '0%';
+      lb.textContent = '';
+      return;
+    }
+    if (k.stage === 'ready' || k.stage === 'countdown') {
+      t.classList.remove('low', 'none');
+      t.style.width = `${(100 * l) / k.secs}%`;
+      lb.textContent = k.stage === 'ready' ? `${k.readyCount}/${k.typistCount} ready · ${Math.ceil(l)}s` : `Starts in ${Math.ceil(l)}`;
+      return;
+    }
+    if (k.unlimited) {
       if (t) { t.style.width = '100%'; t.classList.remove('low'); t.classList.add('none'); }
-      if (lb) lb.textContent = k.overtime ? 'Overtime' : '∞ Unlimited';
+      if (lb) lb.textContent = l <= 60 ? `Cutoff in ${Math.ceil(l)}s` : k.overtime ? 'Overtime' : 'Play to win';
       return;
     }
     t?.classList.remove('none');
@@ -680,16 +872,17 @@ UI.keyclash = (() => {
   // (#382) the backdrop: dusk sky, a low moon, two ranges of hills, spotlights and a stage floor with perspective
   let bgCache = null;
   function backdrop(w, h, dpr) {
-    const key = `${w}x${h}x${dpr}`;
+    const key = `${w}x${h}x${dpr}:${prefs.arena}`;
     if (bgCache?.key === key) return bgCache.cv;
     const cv = document.createElement('canvas');
     cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
     const g = cv.getContext('2d');
     if (!g) return cv;
     g.scale(dpr, dpr);
+    const [skyTop, skyMid, skyBottom, far, near, floorTop, floorBottom] = ARENAS[prefs.arena] ?? ARENAS.dusk;
     const floorY = h * 0.79;
     const sky = g.createLinearGradient(0, 0, 0, floorY);
-    sky.addColorStop(0, '#120f2b'); sky.addColorStop(0.55, '#2a2052'); sky.addColorStop(1, '#4a2d5e');
+    sky.addColorStop(0, skyTop); sky.addColorStop(0.55, skyMid); sky.addColorStop(1, skyBottom);
     g.fillStyle = sky; g.fillRect(0, 0, w, h);
     for (let i = 0; i < 40; i++) { g.fillStyle = `rgba(255,255,255,${0.08 + (i % 5) * 0.04})`; g.fillRect((i * 97.3) % w, (i * 41.7) % (h * 0.5), i % 7 ? 1 : 2, i % 7 ? 1 : 2); }
     const mx = w * 0.8, my = h * 0.22, mr = Math.min(w, h) * 0.07;   // the moon, with a halo
@@ -703,15 +896,15 @@ UI.keyclash = (() => {
       for (let x = 0; x <= w + 20; x += 20) g.lineTo(x, base - amp * (0.5 + 0.5 * Math.sin(x / (w * 0.13) + seed) * Math.cos(x / (w * 0.31) + seed * 2)));
       g.lineTo(w, floorY); g.closePath(); g.fill();
     };
-    hills(floorY - h * 0.12, h * 0.22, '#2b2148', 1.3);
-    hills(floorY - h * 0.02, h * 0.14, '#1f1838', 4.1);
+    hills(floorY - h * 0.12, h * 0.22, far, 1.3);
+    hills(floorY - h * 0.02, h * 0.14, near, 4.1);
     for (const sx of [0.18, 0.82]) {   // two spotlights on the stage
       const beam = g.createLinearGradient(0, 0, 0, floorY);
       beam.addColorStop(0, 'rgba(255,240,200,0)'); beam.addColorStop(1, 'rgba(255,240,200,0.10)');
       g.fillStyle = beam; g.beginPath(); g.moveTo(w * sx - 6, 0); g.lineTo(w * sx + 6, 0); g.lineTo(w * (sx + (sx < 0.5 ? 0.22 : -0.22)) + w * 0.12, floorY); g.lineTo(w * (sx + (sx < 0.5 ? 0.22 : -0.22)) - w * 0.12, floorY); g.closePath(); g.fill();
     }
     const fl = g.createLinearGradient(0, floorY, 0, h);
-    fl.addColorStop(0, '#54406e'); fl.addColorStop(1, '#1d1629');
+    fl.addColorStop(0, floorTop); fl.addColorStop(1, floorBottom);
     g.fillStyle = fl; g.fillRect(0, floorY, w, h - floorY);
     g.strokeStyle = 'rgba(255,255,255,0.06)'; g.lineWidth = 1;
     for (let i = -8; i <= 8; i++) { g.beginPath(); g.moveTo(w / 2 + i * w * 0.04, floorY); g.lineTo(w / 2 + i * w * 0.16, h); g.stroke(); }
@@ -775,6 +968,7 @@ UI.keyclash = (() => {
 
   const HURTS = new Set(['hit', 'strike', 'army', 'bite', 'boss']);
   function play(e) {
+    if (prefs.focus) return;
     const now = performance.now();
     fx.push({ ...e, at: now });
     if (e.to === S.me.id && (e.kind === 'strike' || e.kind === 'boss') && prefs.shake && !motionOff()) shakeUntil = now + 180;
@@ -799,7 +993,7 @@ UI.keyclash = (() => {
 
   function draw() {
     const cv = $('kcCanvas');
-    if (!cv || !S || !K()) return;
+    if (!cv || !S || !K() || prefs.focus || !$('kcReport').hidden) return;
     const r = cv.getBoundingClientRect(), dpr = Math.min(2, devicePixelRatio || 1);
     if (!r.width || !r.height) return;
     if (cv.width !== Math.round(r.width * dpr) || cv.height !== Math.round(r.height * dpr)) { cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr); }
@@ -1123,10 +1317,159 @@ UI.keyclash = (() => {
     return null;
   }
 
+  const PRACTICE_WORDS = {
+    'Familiar short words': 'home lake tree rain book road bird game fish bike snow wind bread water stone light',
+    'Everyday words': 'apple winter pocket table garden jacket window rabbit morning pencil market planet button coffee',
+    'Long words': 'adventure butterfly electricity grandfather instrument neighborhood opportunity punctuation watermelon',
+  };
+
+  function openPractice(missed = []) {
+    const box = el('div', 'kc kc-practice');
+    const preset = document.createElement('select');
+    const lists = Object.fromEntries(Object.entries(PRACTICE_WORDS).map(([name, words]) => [name, words.split(' ')]));
+    if (missed.length) lists['Missed in this match'] = [...missed];
+    for (const name of Object.keys(lists)) preset.add(new Option(name, name));
+    if (missed.length) preset.value = 'Missed in this match';
+    const label = el('label', '', 'Word list ');
+    label.append(preset);
+    const wordDisplay = el('div', 'kc-practice-word');
+    const correction = el('div', 'kc-correction');
+    const stats = el('div', 'kc-practice-stats');
+    const input = document.createElement('input');
+    Object.assign(input, { type: 'text', autocomplete: 'off', autocapitalize: 'none', spellcheck: false, enterKeyHint: 'done' });
+    input.setAttribute('autocorrect', 'off');
+    input.setAttribute('aria-label', 'Practice word');
+    input.addEventListener('paste', (event) => event.preventDefault());
+    input.addEventListener('drop', (event) => event.preventDefault());
+    const row = el('div', 'kc-practice-actions');
+    const check = el('button', 'ghost-btn', 'Check word');
+    const skip = el('button', 'ghost-btn', 'Skip word');
+    const restart = el('button', 'ghost-btn', 'Restart drill');
+    const powers = el('div', 'kc-practice-actions');
+    const powerWords = { shield: 'guard', strike: 'comet', heal: 'mend' };
+    const powerButtons = POWER_KEYS.map((kind) => {
+      const button = el('button', 'ghost-btn', POWER_NAMES[kind]);
+      button.onclick = () => choosePower(kind);
+      powers.append(button);
+      return button;
+    });
+    let words, index, chars, errors, skips, streak, power, draft, last, started, feedback;
+    let drillErrors;
+    const expected = () => power ? powerWords[power] : words[index];
+    const typing = () => input.value.toLowerCase();
+    const focusInput = () => input.focus({ preventScroll: true });
+
+    function render() {
+      const word = expected();
+      const value = typing();
+      input.disabled = check.disabled = !word;
+      skip.disabled = !word || !!power;
+      if (word) paintLetters(wordDisplay, word, value);
+      else wordDisplay.textContent = 'Drill complete';
+      const mistake = [...value].findIndex((ch, i) => ch !== word?.[i]);
+      correction.textContent = mistake < 0 ? feedback :
+        mistake < word.length ? `Expected ${word[mistake]}. Use Backspace to correct.` : 'Remove the extra letters.';
+      const seconds = started ? (performance.now() - started) / 1000 : 0;
+      const speed = seconds ? Math.round(chars * 12 / Math.max(1, seconds)) : 0;
+      const accuracy = chars + errors ? Math.round(100 * chars / (chars + errors)) : 100;
+      stats.textContent = `${index}/${words.length} words · ${speed} WPM · ${accuracy}% accuracy · ${skips} skipped`;
+      powerButtons.forEach((button, i) => {
+        const active = power === POWER_KEYS[i];
+        button.disabled = !word || streak < 3;
+        button.setAttribute('aria-pressed', String(active));
+        button.textContent = active ? `Cancel ${POWER_NAMES[power]}` : POWER_NAMES[POWER_KEYS[i]];
+      });
+    }
+
+    function reset(focus = true) {
+      words = lists[preset.value];
+      index = chars = errors = skips = streak = started = drillErrors = 0;
+      power = null;
+      input.value = last = draft = feedback = '';
+      render();
+      if (focus) focusInput();
+    }
+
+    function choosePower(kind) {
+      feedback = '';
+      if (kind === power) {
+        power = null;
+        input.value = last = draft;
+      } else {
+        if (!power) draft = input.value;
+        power = kind;
+        input.value = last = '';
+      }
+      render();
+      focusInput();
+    }
+
+    function finishWord(skipped = false) {
+      if (!expected()) return;
+      if (!skipped && typing() !== expected()) { focusInput(); return; }
+      if (skipped) { skips++; streak = 0; }
+      else { chars += expected().length; streak = drillErrors ? 0 : streak + 1; }
+      drillErrors = 0;
+      if (power) {
+        feedback = `${POWER_NAMES[power]} practiced`;
+        streak = 0;
+        power = null;
+        input.value = last = draft;
+      } else {
+        feedback = skipped ? 'Word skipped' : '';
+        index++;
+        input.value = last = '';
+      }
+      render();
+      if (input.disabled) restart.focus(); else focusInput();
+    }
+
+    input.addEventListener('input', () => {
+      input.value = typing().replace(/[^a-z ]/g, '');
+      if (input.value.endsWith(' ')) {
+        input.value = input.value.trim();
+        finishWord();
+      }
+      const value = typing();
+      if (!started && value) started = performance.now();
+      const word = expected() ?? '';
+      for (let i = 0; i < value.length; i++) {
+        if (value[i] !== last[i] && value[i] !== word[i]) {
+          errors++;
+          drillErrors++;
+        }
+      }
+      last = value;
+      render();
+    });
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        finishWord();
+      } else if (event.key === 'Escape' && power) {
+        event.stopPropagation();
+        choosePower(power);
+      }
+    });
+    preset.onchange = () => reset();
+    check.onclick = () => finishWord();
+    skip.onclick = () => finishWord(true);
+    restart.onclick = () => reset();
+    row.append(check, skip, restart);
+    box.append(label, wordDisplay, input, correction, stats, row, powers);
+    reset(false);
+    const dialog = ask('Type each word and press Space or Enter. Three perfect words unlock power practice.', {
+      title: 'Key Clash practice', ok: 'Close practice', cancel: '', body: box,
+    });
+    focusInput();
+    return dialog;
+  }
+
   function turnText(s) {
     const k = s.keyclash;
     if (!k || s.phase !== 'playing') return null;
     if (k.stage === 'reveal') return 'Round over';
+    if (k.stage === 'ready' || k.stage === 'countdown') return '';
     return s.paused ? 'Paused' : k.playing ? '' : 'Watching';
   }
 
@@ -1135,5 +1478,5 @@ UI.keyclash = (() => {
   // the round's clock is on the screen itself; the room's deadline is only the next bot's word
   const ownTimer = () => true;
 
-  return { mount, render, unmount, turnText, myMove, ownTimer, ownSounds: true, compactLog: true };
+  return { mount, render, unmount, turnText, myMove, ownTimer, ownSounds: true, compactLog: true, openPractice };
 })();

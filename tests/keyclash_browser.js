@@ -60,8 +60,37 @@ async function duel(browser, errors) {
     await guest.locator('#name').fill('Key Guest');
     await guest.locator('#joinBtn').click();
     await until(host, () => S.players.length === 2);
-    await roomAction(host, 'settings', { settings: { game: 'keyclash', mode: 'duel', secs: 0, words: 'easy' } });
+    await roomAction(host, 'settings', { settings: { game: 'keyclash' } });
     await host.waitForFunction(() => S.gameId === 'keyclash');
+    await roomAction(host, 'settings', { settings: { mode: 'tug' } });
+    await until(host, () => !!S.keyclashTeams);
+    const teams = host.locator('.kc-team-setup');
+    await teams.getByLabel('Key Host').selectOption('1');
+    await until(host, () => Object.values(S.settings.tug_teams || {}).includes(1));
+    await teams.getByLabel('Key Guest').selectOption('1');
+    await until(host, () => document.querySelector('#startBtn').disabled);
+    await teams.getByLabel('Key Guest').selectOption('');
+    await until(host, () => !document.querySelector('#startBtn').disabled);
+    await roomAction(host, 'settings', { settings: { mode: 'duel', secs: 0, words: 'easy', rounds: 3 } });
+    await until(host, () => S.settings.rounds === 3 && S.settings.secs === 0 && S.settings.words === 'easy');
+    await host.getByRole('button', { name: 'Solo typing practice' }).click();
+    const practice = host.getByRole('textbox', { name: 'Practice word' });
+    await practice.press('z');
+    assert.match(await host.locator('.kc-practice .kc-correction').textContent(), /Expected h/);
+    await practice.press('Backspace');
+    await submit(host, 'home');
+    await submit(host, 'lake');
+    await submit(host, 'tree');
+    await submit(host, 'rain');
+    await host.locator('.kc-practice').getByRole('button', { name: 'Shield' }).click();
+    await submit(host, 'guard');
+    assert.equal(await host.locator('.kc-practice .kc-correction').textContent(), 'Shield practiced');
+    await host.getByRole('button', { name: 'Skip word' }).click();
+    assert.match(await host.locator('.kc-practice-stats').textContent(), /1 skipped/);
+    await host.getByRole('button', { name: 'Restart drill' }).click();
+    assert.equal(await host.locator('.kc-practice-word').textContent(), 'home');
+    await host.getByRole('button', { name: 'Close practice' }).click();
+    assert.equal(await host.evaluate(() => S.phase), 'lobby');
     await host.locator('#startBtn').click();
     await focus(host);
     await guest.locator('#kcFocus').waitFor({ state: 'attached' });
@@ -111,8 +140,10 @@ async function duel(browser, errors) {
     await host.keyboard.type(words[0].slice(2));
     const range = words[0].length - 1;
     assert.equal(await correction.textContent(), `Expected ${words[0][1]} · ${range} Backspace${range === 1 ? '' : 's'}`);
-    assert.deepEqual(await feedback.boundingBox(), correctionBox);
-    assert.deepEqual(await host.locator('.kc-arena').boundingBox(), arenaBox);
+    for (const [actual, before] of [[await feedback.boundingBox(), correctionBox],
+      [await host.locator('.kc-arena').boundingBox(), arenaBox]]) {
+      for (const key of ['x', 'y', 'width', 'height']) assert.ok(Math.abs(actual[key] - before[key]) < 1);
+    }
     await host.keyboard.press('Space');
     assert.equal(await letters.nth(1).textContent(), wrong);
     assert.equal((await fighter(host, 0)).words, 0);
@@ -230,9 +261,90 @@ async function duel(browser, errors) {
     assert.equal(await guest.locator('#kcTrack').evaluate((track) => track.getAnimations().length), 0);
     await until(host, () => S.keyclash.fighters.find((f) => f.id !== S.me.id).words === 1);
     await host.bringToFront();
+    if (await host.locator('#kcFocus').isVisible()) await host.locator('#kcFocus').click();
+    await focus(host);
+    const beforeRejection = await fighter(host, 0);
+    const [retryWord, savedWord, secondSavedWord, draftWord] = (await state(host)).words;
+    let rejectWord;
+    const rejection = new Promise((resolve) => { rejectWord = resolve; });
+    let intercept = true;
+    const rejectFirst = async (route) => {
+      if (intercept && route.request().postDataJSON().type === 'word') {
+        intercept = false;
+        await rejection;
+        return route.fulfill({ status: 400, json: { error: "That's not the word." } });
+      }
+      return route.continue();
+    };
+    await host.route('**/api/action', rejectFirst);
+    await submit(host, retryWord);
+    await submit(host, savedWord);
+    await submit(host, secondSavedWord);
+    await host.keyboard.type(draftWord[0]);
+    rejectWord();
+    await host.getByText(`Retype “${retryWord}” to continue. Later words are saved.`).waitFor();
+    await submit(host, retryWord);
+    assert.equal(await current(host), draftWord);
+    assert.equal(await host.locator('#kcCurrent .ok').count(), 1);
+    await host.waitForFunction((n) => S.keyclash.fighters.find((f) => f.id === S.me.id).words === n, beforeRejection.words + 3);
+    await host.keyboard.press('Backspace');
+    await host.unroute('**/api/action', rejectFirst);
+    for (let i = 0; !(await state(host)).offer && i < 20; i++) {
+      const number = (await fighter(host, 0)).words + 1;
+      await submit(host, await current(host));
+      await host.waitForFunction((n) => S.keyclash.fighters.find((f) => f.id === S.me.id).words === n, number);
+    }
+    const streamWord = await current(host), powers = (await state(host)).offer;
+    assert.ok(powers?.shield);
+    await host.keyboard.type(streamWord[0]);
+    await host.keyboard.press('Alt+1');
+    assert.equal(await current(host), powers.shield);
+    await host.keyboard.press('Escape');
+    assert.equal(await current(host), streamWord);
+    assert.equal(await host.locator('#kcCurrent .ok').count(), 1);
+    await host.getByRole('button', { name: /Shield/ }).click();
+    assert.equal(await current(host), powers.shield);
+    await focus(host);
+    await submit(host, powers.shield);
+    assert.equal(await current(host), streamWord);
+    assert.equal(await host.locator('#kcCurrent .ok').count(), 1);
+    await until(host, () => S.keyclash.fighters.find((f) => f.id === S.me.id).shield > 0);
     await host.reload({ waitUntil: 'domcontentloaded' });
     await host.locator('#kcOptions').click();
     assert.equal(await skipOption.isChecked(), true);
+    await host.getByRole('button', { name: 'Done' }).click();
+    await focus(host);
+    for (let round = 1; round <= 2; round++) {
+      await host.waitForFunction((n) => S.keyclash.round === n && S.keyclash.playing, round);
+      await focus(host);
+      for (let i = 0; (await state(host)).playing && i < 60; i++) {
+        const number = (await fighter(host, 0)).words + 1;
+        await submit(host, await current(host));
+        await host.waitForFunction((n) => S.keyclash.fighters.find((f) => f.id === S.me.id).words === n, number);
+      }
+    }
+    await until(host, () => S.phase === 'over');
+    await host.locator('#overFold').click();
+    const chart = host.locator('#kcReport');
+    const summaries = await host.evaluate(() => S.keyclash.history.map((h) => h.stats[S.me.id]));
+    assert.equal(summaries.length, 2);
+    const chars = summaries.reduce((n, row) => n + row.chars, 0);
+    const errors = summaries.reduce((n, row) => n + row.errors, 0);
+    const secs = summaries.reduce((n, row) => n + row.secs, 0);
+    const matchCell = await chart.locator('.kc-rep-total td').first().textContent();
+    assert.match(matchCell, new RegExp(`^${Math.round(12 * chars / secs)} wpm · ${Math.round(100 * chars / (chars + errors))}%`));
+    await chart.getByLabel('Chart time').press('End');
+    assert.match(await chart.getByLabel('Chart time').getAttribute('aria-valuetext'), /seconds.*wpm/);
+    await chart.getByRole('button', { name: 'Hide the charts' }).click();
+    assert.equal(await chart.isVisible(), false);
+    await roomAction(guest, 'ready');
+    await until(host, () => S.ready.length > 0);
+    assert.equal(await chart.isVisible(), false);
+    await host.getByRole('button', { name: 'Match charts' }).click();
+    assert.equal(await chart.isVisible(), true);
+    await chart.getByRole('button', { name: 'Practice missed words' }).click();
+    assert.equal(await host.locator('.kc-practice-word').textContent(), words[0]);
+    await host.getByRole('button', { name: 'Close practice' }).click();
   } finally {
     if (errors.length) console.error(errors);
     await host.close();
@@ -277,6 +389,53 @@ async function pause(browser, errors) {
     assert.equal(await page.locator('#kcCorrection').textContent(), 'Backspace to remove the extra letter');
     await page.keyboard.press('Backspace');
     assert.equal(await page.locator('#kcCorrection').textContent(), '');
+    await page.keyboard.press('Space');
+    await page.setViewportSize({ width: 390, height: 410 });
+    await page.locator('#kcOptions').click();
+    await page.getByLabel('Focus layout').check();
+    await page.getByRole('button', { name: 'Done' }).click();
+    await focus(page);
+    assert.equal(await page.locator('#kcCanvas').isVisible(), false);
+    assert.equal(await page.locator('#kcPreview .kc-next').count(), 2);
+    const firstX = (await page.locator('#kcCurrent').boundingBox()).x;
+    const focusWord = await current(page);
+    await page.keyboard.type(focusWord[0]);
+    assert.equal((await page.locator('#kcCurrent').boundingBox()).x, firstX);
+    await page.keyboard.type(focusWord[1] === 'x' ? 'z' : 'x');
+    assert.match(await page.locator('#kcCorrection').textContent(), /Expected . · 1 Backspace/);
+    assert.equal(await page.locator('#kcCaret').isVisible(), true);
+  } finally {
+    await page.close();
+  }
+}
+
+async function ready(browser, errors) {
+  const page = await browser.newPage({ viewport: { width: 390, height: 650 }, isMobile: true, hasTouch: true });
+  page.setDefaultTimeout(TIMEOUT);
+  page.on('pageerror', (error) => errors.push(error.message));
+  try {
+    await page.goto(BASE, { waitUntil: 'domcontentloaded' });
+    await page.locator('#name').fill('Mobile Typist');
+    await page.selectOption('#soloGame', 'keyclash', { force: true });
+    await page.locator('#soloSetupBtn').tap();
+    await until(page, () => S?.phase === 'lobby' && S.players.length === 2);
+    await roomAction(page, 'settings', { settings: { round_ready: 'ready' } });
+    await until(page, () => S.settings.round_ready === 'ready');
+    await page.locator('#startBtn').tap();
+    await until(page, () => S.keyclash?.stage === 'ready');
+    assert.equal((await state(page)).elapsed, null);
+    await page.getByRole('button', { name: 'Ready to type' }).tap();
+    await focus(page);
+    await page.setViewportSize({ width: 390, height: 410 });
+    await until(page, () => S.keyclash?.stage === 'countdown');
+    assert.equal((await state(page)).elapsed, null);
+    await page.keyboard.type('abc');
+    assert.equal(await page.locator('#kcCurrent .ok').count(), 0);
+    await until(page, () => S.keyclash?.stage === 'play');
+    assert.ok((await state(page)).left >= 59);
+    await focus(page);
+    await submit(page, await current(page));
+    await until(page, () => S.keyclash.fighters.find((f) => f.id === S.me.id).words === 1);
   } finally {
     await page.close();
   }
@@ -291,6 +450,7 @@ async function pause(browser, errors) {
   try {
     await duel(browser, errors);
     await pause(browser, errors);
+    await ready(browser, errors);
     assert.deepEqual(errors, []);
     console.log('Key Clash browser checks passed');
   } finally {

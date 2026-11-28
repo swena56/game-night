@@ -76,6 +76,8 @@ body.light #game .layout:has(.kc) #arena { padding: 0; }
 .kc-hp .kc-health-trail.kc-damage { transition: width 350ms 120ms; }
 
 .kc-arena { position: relative; border-radius: 10px; overflow: hidden; background: #211a37; }
+.kc-goal { position: absolute; inset: 0 8px auto; margin: 4px auto; width: fit-content; max-width: calc(100% - 16px);
+  padding: 3px 8px; background: #141226ee; border-radius: 6px; color: #fff; font-size: 0.75rem; pointer-events: none; }
 .kc-arena canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .kc-banner, .kc-milestone {
   position: absolute; left: 50%; top: 9%; transform: translateX(-50%); max-width: 94%;
@@ -89,6 +91,13 @@ body.light #game .layout:has(.kc) #arena { padding: 0; }
   background: radial-gradient(ellipse at top left, #272044, transparent 55%), #171529;
   box-shadow: inset 0 2px #8074b46a; --kc-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
 }
+.kc.kc-focus-layout:has(#kcReport[hidden]) { height: auto; grid-template-rows: auto auto auto auto; }
+.kc-focus-layout .kc-arena:has(#kcReport[hidden]) { min-height: 28px; }
+.kc-focus-layout canvas, .kc-focus-layout .kc-milestone, .kc-focus-layout .kc-completed { display: none; }
+.kc-focus-layout .kc-type { --kc-anchor: 12px; }
+.kc-focus-layout .kc-stream { mask-image: none; }
+.kc-focus-layout .kc-caret { left: calc(var(--kc-anchor) + var(--kc-caret-offset, 0ch)); }
+.kc-focus-layout .kc-banner { top: 0; }
 .kc-type.kc-focused { box-shadow: inset 0 2px #8bd6ffab; }
 .kc-console-top { display: flex; align-items: center; gap: clamp(8px, 2vw, 24px); color: #c6bfd8; font: 650 11px system-ui; }
 .kc-combo { margin-right: auto; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -146,7 +155,8 @@ body.light #game .layout:has(.kc) #arena { padding: 0; }
 #kcNote:not(:empty) + #kcSkipped { margin-left: 8px; }
 .kc-offer { display: flex; gap: 6px; flex-wrap: wrap; }
 .kc-pw {
-  padding: 3px 8px; border-radius: 5px; position: relative;
+  z-index: 3;
+  padding: 3px 8px; border: 0; border-radius: 5px; position: relative;
   font: 600 clamp(12px, 1.7vw, 17px)/1.3 var(--kc-mono); background: #ffffff10;
 }
 .kc-pw.on { box-shadow: inset 0 0 0 1px currentColor; }
@@ -191,6 +201,9 @@ body.light #game .layout:has(.kc) #arena { padding: 0; }
 .kc-rep-tabs .on { background: var(--accent-a20, #ffffff22); }
 .kc-rep-close { margin-left: auto; }
 .kc-chart-wrap { position: relative; }
+.kc-scrub { display: flex; align-items: center; gap: 8px; font-size: 0.75rem; }
+.kc-scrub input { flex: 1; min-width: 0; }
+.kc-wpm-note { margin: 0; font-size: 0.75rem; color: var(--muted); }
 .kc-chart { width: 100%; max-height: 240px; display: block; }
 .kc-grid { stroke: #ffffff14; stroke-width: 1; }
 .kc-axis { fill: var(--muted); font-size: 10px; }
@@ -209,7 +222,14 @@ body.light #game .layout:has(.kc) #arena { padding: 0; }
 .kc-rep-table { font-size: 12px; border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
 .kc-rep-table th, .kc-rep-table td { padding: 4px 8px; text-align: left; border-bottom: 1px solid #ffffff10; white-space: nowrap; }
 .kc-rep-table th { color: var(--muted); font-weight: 600; }
+.kc-round-detail { display: block; color: var(--muted); font-weight: 500; }
 .kc-rep-table td.won { color: var(--text, #fff); font-weight: 700; }
 .kc-rep-total td, .kc-rep-total th { border-top: 1px solid #ffffff33; }
 /* (#384) the live words-a-minute figure */
 .kc-wpm { color: var(--text, #fff); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.kc.kc-practice { height: auto; display: grid; grid-template-rows: none; gap: 8px; }
+.kc-practice-word { overflow-wrap: anywhere; font: 600 clamp(20px, 4vw, 36px) ui-monospace, monospace; }
+.kc-practice-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.kc-practice-actions [aria-pressed="true"] { outline: 2px solid currentColor; }
+.kc-practice-stats { font-variant-numeric: tabular-nums; }

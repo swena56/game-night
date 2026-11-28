@@ -291,5 +291,102 @@ g.words[0] = "guard"
 a.g.last_at -= 60
 check("a queued word cannot land in a later round", refused(lambda: g.act(a, ordinary)) and a.g.idx == 0)
 
+# Results and scheduled events reported in #401–#406.
+r, g, team = room(("Ann", "Bo", "Cam", "Dee"), mode="tug", rounds=1)
+with r.cond:
+    g.round_over(team[::2])
+    g.next_match_step()
+check("each winning teammate earns win and streak credit",
+      all(p.wins == p.streak == 1 and p.last_pts == server.POINTS_WIN for p in team[::2])
+      and set(r.history[-1]["teamWinnerIds"]) == {p.id for p in team[::2]})
+
+for reveal in (False, True):
+    r, g, team = room(("Ann", "Bo", "Cam"), mode="tug", rounds=3)
+    with r.cond:
+        if reveal:
+            g.round_over([])
+        g.on_leave(team[1])
+    check(f"team forfeit ends the match immediately (recap={reveal})",
+          r.phase == "over" and g.round == 1 and "forfeit" in r.history[-1]["text"]
+          and set(r.history[-1]["teamWinnerIds"]) == {team[0].id, team[2].id})
+
+for event in ("boss", "army", "foe", "bot"):
+    r, g, (a, b) = room(mode="boss")
+    g.end = g.now() - 1
+    g.timers = []
+    processed = []
+    g.fire = lambda kind, data: processed.append(kind)
+    if event == "bot":
+        g.plans = [(g.end + offset, a.id, (None, g.words[0]), False) for offset in (-0.1, 0, 0.1)]
+        g.typed = lambda *args: processed.append("bot")
+        g.plan = lambda p: None
+    else:
+        for offset in (-0.1, 0, 0.1):
+            g.timer(g.end + offset, event, None)
+    with r.cond:
+        g.process()
+    check(f"late tick counts only {event} events strictly before the deadline",
+          processed == [event] and g.stage == "reveal")
+
+for cutoff, attacks in ((2 * kc.BOSS_EVERY, 1), (2 * kc.BOSS_EVERY + 0.1, 2)):
+    r, g, (a, b) = room(mode="boss")
+    g.timers = [(g.t0 + kc.BOSS_EVERY, "boss", None)]
+    g.end = g.t0 + cutoff
+    g.skew += cutoff + 1
+    g.process()
+    check(f"late boss tick applies {attacks} scheduled attacks before the cutoff",
+          a.g.hp == b.g.hp == kc.HP - attacks * kc.BOSS_HIT)
+
+r, g, (a, b) = room(mode="boss", secs=0)
+g.timers = []
+g.timer(g.now() + 1, "overtime", None)
+g.timer(g.now() + 5, "boss", None)
+check("boss countdown ignores overtime", 4.5 < g.view(a)["keyclash"]["bossIn"] <= 5)
+
+r, g, (a, b) = room(mode="race", rounds=1)
+a.g.chars_total, a.g.errs_total, b.g.chars_total = 130, 5, 100
+with r.cond:
+    g.finish_game()
+check("Pure Typing breaks a tie using typing totals", r.winner == a.id and "130 letters" in r.history[-1]["text"])
+check("round status exposes the draw cutoff", g.view(a)["keyclash"]["maxRounds"] == 3)
+
+r = server.Room("TEST")
+a, b, c = [r.add_player(name) for name in ("Ann", "Bo", "Cam")]
+r.switch_game("keyclash")
+r.change_settings(a, {"mode": "tug"})
+r.change_settings(a, {"tug_team": {"id": a.id, "side": 1}})
+r.change_settings(a, {"tug_team": {"id": b.id, "side": 1}})
+preview = r.view(a)["keyclashTeams"]
+check("Tug lobby honors fixed teams and balances automatic seats",
+      preview == {a.id: 1, b.id: 1, c.id: 0})
+r.change_settings(a, {"tug_team": {"id": c.id, "side": 1}})
+check("Tug rejects a roster with an empty team", refused(r.start))
+r.change_settings(a, {"tug_team": {"id": c.id, "side": None}})
+with r.cond:
+    r.start()
+check("the match uses the lobby's team preview", {p.id: p.g.team for p in (a, b, c)} == preview)
+
+r, g, (a, b) = room(round_ready="ready")
+ready_action = {"type": "clash_ready", "rid": g.view(a)["keyclash"]["rid"]}
+check("ready stage has no active typing or running match clock",
+      g.stage == "ready" and not g.view(a)["keyclash"]["playing"] and refused(lambda: type_next(g, a)))
+g.act(a, ready_action)
+check("one typist's confirmation leaves the other typist time to focus",
+      g.stage == "ready" and g.view(b)["keyclash"]["readyCount"] == 1)
+g.act(b, ready_action)
+check("all typists ready starts the countdown", g.stage == "countdown")
+g.skew += kc.COUNTDOWN_SECS + 1
+g.process()
+check("the round clock starts after the countdown",
+      g.stage == "play" and g.view(a)["keyclash"]["left"] >= 59.9 and a.g.last_at == g.t0)
+with r.cond:
+    g.round_over([a])
+    g.next_match_step()
+check("the next round needs fresh confirmation", g.stage == "ready" and not g.round_ready)
+check("confirmation from a prior round is rejected", refused(lambda: g.act(a, ready_action)))
+g.skew += kc.READY_SECS + 1
+g.process()
+check("missing confirmations advance after the ready timeout", g.stage == "countdown")
+
 print("\n" + ("keyclash rules OK" if not fails else f"{len(fails)} FAILED: {', '.join(fails)}"))
 sys.exit(1 if fails else 0)

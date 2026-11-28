@@ -15,9 +15,12 @@ pulls the rope).
 Typing happens in the browser, which sends each finished word with the number of typos made on it; the
 server checks the word against the shared stream, times it on its own clock and keeps all the scores.
 Bots type at a steady speed by level and sometimes make a typo, which costs them time and their combo."""
+from bisect import bisect_right
 import functools
 import os
 import time
+
+from operator import itemgetter
 
 from .base import Game, GameError
 from .garden import BASE6, BASE7
@@ -26,6 +29,7 @@ from .ladder_words import COMMON
 
 HP = 100
 REVEAL_SECS = 6
+READY_SECS, COUNTDOWN_SECS = 15, 3
 STREAM = 400                 # words in a round's stream: more than anyone types in the longest round
 WINDOW = 40                  # words of it sent ahead of where each viewer is
 CHARGE = 100
@@ -55,6 +59,7 @@ SHIELD, STRIKE, HEAL = 15, 16, 18
 MARCH = 5.0
 # 🧟 Survival: wave w has 3 + w enemies of 4 + 2w health, one every SPAWN_GAP s, walking for max(4, 7 - 0.3w) s
 SPAWN_GAP, WAVE_GAP = 1.6, 3.0
+FOE_SPAWN, FOE_ARRIVAL = itemgetter("spawn"), itemgetter("arrive")
 # 👹 Boss Rush: each boss has BOSS_HP and hits every fighter for BOSS_HIT every BOSS_EVERY s
 BOSS_HP, BOSS_HIT, BOSS_EVERY = 120, 6, 5.0
 # 🚀 Hyperdrive: the finish line; 🪢 Tug-of-War: the rope wins at ±ROPE
@@ -108,7 +113,7 @@ class KeyClash(Game):
         "Everyone types the same words. Press space (or Enter) after each one.",
         "Each word typed right is a hit: longer words hit harder, perfect words in a row build a combo.",
         "A typo breaks your combo. Fix it to earn credit, or enable skipping regular words in Typing settings.",
-        f"Fill the ⚡ charge and three power words appear: type one to 🛡️ shield (blocks the next {SHIELD} damage), 💥 strike (a big hit) or 💚 heal (+{HEAL} health).",
+        f"Fill the ⚡ charge, select a power (Alt+1, Alt+2 or Alt+3), then type its word to 🛡️ shield (blocks the next {SHIELD} damage), 💥 strike (a big hit) or 💚 heal (+{HEAL} health).",
         "Eight modes: duel, free-for-all, castles, waves, bosses, a race, a ship race and a tug-of-war.",
     ]
     tip_lines = ["Accuracy beats speed: a typo costs time and your combo."]
@@ -125,9 +130,35 @@ class KeyClash(Game):
         "mode": ("Mode", MODES, "duel"),
         "words": ("Words", [("easy", "Short"), ("normal", "Everyday"), ("hard", "Long")], "normal"),
         "theme": ("Theme", list(THEME_NAMES.items()), "mixed"),
-        "secs": ("Round", [(45, "45 s"), (60, "1 min"), (90, "90 s"), (120, "2 min"), (0, "No limit: play to a winner")], 60),
+        "secs": ("Round", [(45, "45 s"), (60, "1 min"), (90, "90 s"), (120, "2 min"), (0, "Play to win (15 min cutoff)")], 60),
         "rounds": ("Match", [(1, "1 round"), (3, "Best of 3"), (5, "Best of 5")], 3),
+        "round_ready": ("Round start", [("off", "Immediate"), ("countdown", "3-second countdown"),
+                                        ("ready", "Wait for typists (up to 15 s)")], "off"),
     }
+
+    def teams_for(self, seated):
+        choices = self.s.get("tug_teams", {})
+        teams = {p.id: choices[p.id] for p in seated if p.id in choices}
+        counts = [list(teams.values()).count(side) for side in range(len(TEAMS))]
+        for p in seated:
+            if p.id not in teams:
+                side = int(counts[1] < counts[0])
+                teams[p.id] = side
+                counts[side] += 1
+        return teams
+
+    def change_team(self, pid, side):
+        seated = self.room.seated()
+        if not isinstance(pid, str) or not any(p.id == pid for p in seated):
+            raise GameError("Choose a seated typist.")
+        if side is not None and (type(side) is not int or side not in (0, 1)):
+            raise GameError("Choose Red, Blue, or Auto.")
+        choices = {p.id: self.s["tug_teams"][p.id] for p in seated if p.id in self.s.get("tug_teams", {})}
+        if side is None:
+            choices.pop(pid, None)
+        else:
+            choices[pid] = side
+        self.s["tug_teams"] = choices
 
     def check_players(self, seated):
         super().check_players(seated)
@@ -136,6 +167,8 @@ class KeyClash(Game):
             raise GameError("A Duel is for two fighters: pick Last Typist Standing for more, or Pure Typing.")
         if mode in ("lms", "siege", "tug") and len(seated) < 2:
             raise GameError(f"{dict(self.MODES)[mode]} needs at least two typists.")
+        if mode == "tug" and len(set(self.teams_for(seated).values())) < 2:
+            raise GameError("Seat at least one typist on each Tug-of-War team.")
 
     # -- setup
 
@@ -147,36 +180,38 @@ class KeyClash(Game):
         self.ids = [p.id for p in seated]
         self.need = self.s["rounds"] // 2 + 1
         self.round = 0
+        self.practice_words = {}
         self.history = []            # (#381) each finished round's stats and typing traces, for the charts afterwards
         self.events = []             # recent hits for the screens to animate: {n, kind, by, to, dmg, t}
         self.seq = 0
-        for k, p in enumerate(seated):
+        teams = self.teams_for(seated) if self.mode == "tug" else {}
+        for p in seated:
             p.g.wins = 0
             p.g.dealt_total = 0
             p.g.chars_total = 0
             p.g.errs_total = 0
             p.g.best_combo = 0
-            p.g.team = k % 2         # 🪢 seats alternate red, blue
+            p.g.team = teams.get(p.id, 0)
         self.room.turn = None
         self.room.bot_at = 0
         mode = dict(self.MODES)[self.mode]
         if self.mode == "tug":
             teams = " vs ".join(f"{TEAMS[t]} ({', '.join(p.name for p in seated if p.g.team == t)})" for t in (0, 1))
             mode += f": {teams}"
-        limit = "no time limit" + (f", first to {RACE_GOAL} letters" if self.mode == "race" else "") if not self.s["secs"] else f"{self.s['secs']} s rounds"
+        limit = "play to win (15-minute cutoff)" + (f", first to {RACE_GOAL} letters" if self.mode == "race" else "") if not self.s["secs"] else f"{self.s['secs']} s rounds"
         self.room.add_log(f"⌨️ Key Clash: {mode}, {limit}, first to {self.need} round{'s' if self.need > 1 else ''}. Get typing!", "big")
         self.next_round()
 
     # a game saved by older code (a dev-server restart mid-game) lacks state added since: fill it in, so it carries on
     GAME_DEFAULTS = {"overtime": False, "timers": [], "armies": [], "foes": [], "rope": 0.0, "gid": "", "events": [], "seq": 0,
-                     "history": []}
-    PLAYER_DEFAULTS = {"dist": 0.0, "kills": 0, "boss": BOSS_HP, "foe_hp": {}, "team": 0, "trace": [], "skips": 0}
+                     "history": [], "round_ready": set(), "practice_words": {}}
+    PLAYER_DEFAULTS = {"dist": 0.0, "kills": 0, "boss": BOSS_HP, "foe_hp": {}, "team": 0, "trace": [], "skips": 0, "skip_errors": 0, "ko_at": None}
 
     def __setstate__(self, state):
         self.__dict__.update(state)
         for k, v in self.GAME_DEFAULTS.items():
             if not hasattr(self, k):
-                setattr(self, k, type(v)(v) if isinstance(v, (list, dict)) else v)
+                setattr(self, k, type(v)(v) if isinstance(v, (list, dict, set)) else v)
         self.upgraded = False
 
     def upgrade(self):
@@ -190,7 +225,8 @@ class KeyClash(Game):
                     setattr(q.g, key, (k % 2) if key == "team" else type(v)(v) if isinstance(v, (list, dict)) else v)
 
     def now(self):
-        return time.time() + self.skew
+        event_at = getattr(self, 'event_at', None)
+        return time.time() + self.skew if event_at is None else event_at
 
     def on_restore(self, shift):
         self.skew -= shift
@@ -206,39 +242,59 @@ class KeyClash(Game):
         self.mark_round()
         words = pool(self.s["words"], self.s.get("theme", "mixed"))
         self.words = [self.rng.choice(words) for _ in range(STREAM)]
-        self.stage = "play"
         self.t0 = self.now()
-        self.end = self.t0 + (self.s["secs"] or NO_LIMIT)
         self.events = []
         self.result = None
+        self.overtime = False
         self.plans = []
         self.timers = []             # (time, kind, data): soldiers arriving, enemies arriving, the boss's beat
         self.armies = []             # 🏰 {n, by, to, power, t0}
         self.rope = 0.0              # 🪢 below 0 red is winning, above 0 blue
         self.foes = []               # 🧟 the round's enemies, the same for everyone: {i, hp, spawn, arrive, wave}
+        for p in self.live():
+            g = p.g
+            g.idx, g.hp, g.shield, g.combo, g.charge = 0, HP, 0, 0, 0
+            g.chars, g.errs, g.words, g.dealt, g.taken, g.ko = 0, 0, 0, 0, 0, False
+            g.skips, g.skip_errors, g.ko_at = 0, 0, None
+            g.offer, g.last_at, g.by = None, self.t0, None
+            g.dist, g.kills, g.boss = 0.0, 0, BOSS_HP
+            g.foe_hp = {}            # 🧟 enemy index -> health left, once hit
+            g.trace = []             # (#381) every word: [seconds into the round, letters so far, typos on it]
+        self.round_ready = set()
+        setting = self.s.get("round_ready", "off")
+        if setting == "ready":
+            self.stage = "ready"
+            self.end = self.now() + READY_SECS
+            self.sync()
+        elif setting == "countdown":
+            self.start_countdown()
+        else:
+            self.begin_round()
+
+    def start_countdown(self):
+        self.stage = "countdown"
+        self.end = self.now() + COUNTDOWN_SECS
+        self.sync()
+
+    def begin_round(self):
+        self.stage = "play"
+        self.t0 = self.now()
+        self.end = self.t0 + (self.s["secs"] or NO_LIMIT)
         if self.mode == "survival":
             t, w = self.t0 + 2.0, 1
             while t < self.end:
                 for _ in range(3 + w):
                     self.foes.append({"i": len(self.foes), "hp": 4 + 2 * w, "spawn": t, "arrive": t + max(4.0, 7 - 0.3 * w), "wave": w})
-                    self.timer(self.foes[-1]["arrive"], "foe", len(self.foes) - 1)
+                    self.timers.append((self.foes[-1]["arrive"], "foe", len(self.foes) - 1))
                     t += SPAWN_GAP
                 t += WAVE_GAP
                 w += 1
         if self.mode == "boss":
             self.timer(self.t0 + BOSS_EVERY, "boss", None)
-        self.overtime = False
-        if not self.s["secs"] and self.mode not in ("race", "survival"):
+        if not self.s["secs"] and self.mode in ("duel", "lms", "siege", "boss", "tug"):
             self.timer(self.t0 + OVERTIME, "overtime", None)
         for p in self.live():
-            g = p.g
-            g.idx, g.hp, g.shield, g.combo, g.charge = 0, HP, 0, 0, 0
-            g.chars, g.errs, g.words, g.dealt, g.taken, g.ko = 0, 0, 0, 0, 0, False
-            g.skips = 0
-            g.offer, g.last_at, g.by = None, self.t0, None
-            g.dist, g.kills, g.boss = 0.0, 0, BOSS_HP
-            g.foe_hp = {}            # 🧟 enemy index -> health left, once hit
-            g.trace = []             # (#381) every word: [seconds into the round, letters so far, typos on it]
+            p.g.last_at = self.t0
             if p.bot:
                 self.plan(p)
         self.sync()
@@ -301,34 +357,50 @@ class KeyClash(Game):
     def process(self):
         self.upgrade()
         now = self.now()
+        if self.stage == "ready":
+            if now >= self.end:
+                self.start_countdown()
+            return
+        if self.stage == "countdown":
+            if now >= self.end:
+                self.begin_round()
+            return
         if self.stage == "reveal":
             if now >= self.end:
                 self.next_match_step()
             return
+        # The deadline wins ties with scheduled events.
         while self.stage == "play":
-            due = [x for x in (self.plans[:1] + self.timers[:1]) if x[0] <= now]
+            due = [x for x in (self.plans[:1] + self.timers[:1]) if x[0] <= now and x[0] < self.end]
             if not due:
                 break
             first = min(due, key=lambda x: x[0])
-            if self.timers and first is self.timers[0]:
-                _, kind, data = self.timers.pop(0)
-                self.fire(kind, data)
-                continue
-            _, pid, (kind, word), slip = self.plans.pop(0)
-            p = self.room.players.get(pid)
-            if not p or p not in self.fighting():
-                continue
-            if kind and p.g.offer and p.g.offer.get(kind) == word:
-                self.power(p, kind, word, 1 if slip else 0)
-            elif not kind and self.words[p.g.idx] == word:
-                self.typed(p, word, 1 if slip else 0)
-            if self.stage == "play" and p in self.fighting():
-                self.plan(p)
+            self.event_at = first[0]
+            try:
+                self.apply_event(first)
+            finally:
+                self.event_at = None
         if self.stage != "play":
             return
         if now >= self.end:
             return self.round_over(None)
         self.sync()
+
+    def apply_event(self, event):
+        if self.timers and event is self.timers[0]:
+            _, kind, data = self.timers.pop(0)
+            self.fire(kind, data)
+            return
+        _, pid, (kind, word), slip = self.plans.pop(0)
+        p = self.room.players.get(pid)
+        if not p or p not in self.fighting():
+            return
+        if kind and p.g.offer and p.g.offer.get(kind) == word:
+            self.power(p, kind, word, int(slip))
+        elif not kind and self.words[p.g.idx] == word:
+            self.typed(p, word, int(slip))
+        if self.stage == "play" and p in self.fighting():
+            self.plan(p)
 
     def surge(self):
         """How much harder everything hits in overtime (1 before it)."""
@@ -344,7 +416,12 @@ class KeyClash(Game):
         """A timed event comes due."""
         if kind == "overtime":
             self.overtime = True
-            self.moment("⏱️ Overtime! Every hit grows stronger" + (", and the castles can't stop soldiers any more!" if self.mode == "siege" else "!"), "bad", "alarm")
+            effect = {
+                "siege": "Hits grow stronger and castles stop blocking armies.",
+                "boss": "Your hits on the boss grow stronger.",
+                "tug": "Pulls grow stronger and the line moves closer.",
+            }.get(self.mode, "Hits grow stronger.")
+            self.moment(f"⏱️ Overtime! {effect}", "bad", "alarm")
             return
         if kind == "army":       # 🏰 soldiers reach a castle
             a = next((x for x in self.armies if x["n"] == data), None)
@@ -375,6 +452,15 @@ class KeyClash(Game):
     def act(self, p, a):
         self.upgrade()
         action = a.get("type")
+        if action == "clash_ready":
+            if self.stage != "ready" or a.get("rid") != f"{getattr(self, 'gid', '')}:{self.round}":
+                raise GameError("The countdown has already started.")
+            if p not in self.live():
+                raise GameError("You're watching this game.")
+            self.round_ready.add(p.id)
+            if all(q.bot or q.id in self.round_ready for q in self.live()):
+                self.start_countdown()
+            return
         if action not in ("word", "skip"):
             raise GameError("Unknown action.")
         skip = action == "skip"
@@ -415,7 +501,10 @@ class KeyClash(Game):
                     or not word.isascii() or not word.isalpha() or not word.islower()):
                 raise GameError("That word cannot be skipped.")
             mismatches = len(word) - len(expected) + sum(ch != typed for ch, typed in zip(expected, word))
-            self.count(p, "", max(errs, mismatches))
+            skip_errors = max(errs, mismatches)
+            self.remember_miss(p, expected)
+            self.count(p, "", skip_errors)
+            p.g.skip_errors += skip_errors
             p.g.skips += 1
             self.advance_word(p)
             return
@@ -434,6 +523,13 @@ class KeyClash(Game):
         back = next((q for q in rivals if q.id == p.g.by), None)
         return back or min(rivals, key=lambda q: (q.g.hp, self.ids.index(q.id)))
 
+    def remember_miss(self, p, word):
+        if p.bot:
+            return
+        words = self.practice_words.setdefault(p.id, [])
+        if word not in words and len(words) < 40:
+            words.append(word)
+
     def count(self, p, word, errs):
         g = p.g
         g.chars += len(word)
@@ -443,6 +539,8 @@ class KeyClash(Game):
         if len(g.trace) < 1500:
             g.trace.append([round(g.last_at - self.t0, 2), g.chars, errs])
         if errs:
+            if word:
+                self.remember_miss(p, word)
             g.combo = 0
         else:
             g.combo += 1
@@ -514,10 +612,9 @@ class KeyClash(Game):
             return
         if mode == "survival":
             now = self.now()
-            front = [f for f in self.foes if f["spawn"] <= now < f["arrive"] and p.g.foe_hp.get(f["i"], f["hp"]) > 0]
-            if not front:
+            f = next((f for f in self.walking_foes(now) if p.g.foe_hp.get(f["i"], f["hp"]) > 0), None)
+            if f is None:
                 return
-            f = min(front, key=lambda x: x["arrive"])
             left = p.g.foe_hp.get(f["i"], f["hp"]) - dmg
             p.g.foe_hp[f["i"]] = max(0, left)
             p.g.dealt += min(dmg, left + dmg)
@@ -581,6 +678,7 @@ class KeyClash(Game):
         self.event("block" if not dmg else kind, by, to, dmg or soak)
         if g.hp <= 0:
             g.ko = True
+            g.ko_at = self.now()
             g.offer = None
             self.plans = [x for x in self.plans if x[1] != to.id]
             what = {"army": "storms the castle of", "bite": None, "boss": None}.get(kind, "knocks out")
@@ -624,7 +722,9 @@ class KeyClash(Game):
             q.g.dealt_total += q.g.dealt
             stats[q.id] = {"wpm": round(q.g.chars / 5 / (secs / 60)), "acc": self.accuracy(q.g.chars, q.g.errs),
                            "words": q.g.words - q.g.skips, "dealt": q.g.dealt, "hp": q.g.hp, "best": q.g.best_combo,
-                           "kills": q.g.kills}
+                           "kills": q.g.kills, "chars": q.g.chars, "errors": q.g.errs, "secs": secs,
+                           "corrected": q.g.errs - q.g.skip_errors, "skips": q.g.skips,
+                           "active": min(secs, max(0, q.g.ko_at - self.t0)) if q.g.ko_at else secs}
         for w in winners:
             w.g.wins += 1
             if self.mode in ("duel", "lms", "siege", "boss", "survival") and w.g.taken == 0 and len(live) > 1:
@@ -643,7 +743,8 @@ class KeyClash(Game):
         self.result = {"winner": winners[0].id if len(winners) == 1 else None, "winners": [w.id for w in winners],
                        "team": winners[0].g.team if self.mode == "tug" and winners else None, "stats": stats}
         self.history.append({"round": self.round, "secs": round(secs, 1), "winners": [w.id for w in winners],
-                             "stats": stats, "trace": {q.id: q.g.trace for q in live}})
+                             "stats": stats, "names": {q.id: q.name for q in live},
+                             "trace": {q.id: q.g.trace for q in live}})
         self.stage = "reveal"
         self.plans = []
         self.timers = []
@@ -653,6 +754,8 @@ class KeyClash(Game):
 
     def next_match_step(self):
         live = self.live()
+        if self.mode == "tug" and len({q.g.team for q in live}) < 2:
+            return self.finish_game()
         top = max((q.g.wins for q in live), default=0)
         if top >= self.need or self.round >= self.s["rounds"] + 2 or not live:
             return self.finish_game()
@@ -665,18 +768,32 @@ class KeyClash(Game):
         if self.mode == "tug":
             score = {t: max((q.g.wins for q in live if q.g.team == t), default=-1) for t in (0, 1)}
             if score[0] == score[1]:
-                return r.finish(None, f"🤝 A tie! {TEAMS[0]} {score[0]} · {TEAMS[1]} {score[1]}")
+                return r.finish(None, f"🤝 A tie! {TEAMS[0]} {score[0]} · {TEAMS[1]} {score[1]}", draw=True)
             side = 0 if score[0] > score[1] else 1
             team = [q for q in live if q.g.team == side]
-            return r.finish(team[0], f"🏆 {TEAMS[side]} ({', '.join(q.name for q in team)}) wins the tug-of-war "
-                                     f"{score[side]}–{score[1 - side]}!")
-        ranked = sorted(live, key=lambda q: (q.g.wins, q.g.dealt_total, q.g.chars_total), reverse=True)
+            names = ', '.join(q.name for q in team)
+            if score[1 - side] < 0:
+                result = f"🏆 {TEAMS[side]} ({names}) wins by forfeit. {TEAMS[1 - side]} left the match."
+            else:
+                result = f"🏆 {TEAMS[side]} ({names}) wins the tug-of-war {score[side]}–{score[1 - side]}!"
+            return r.finish(team[0], result, team_winner_ids=[q.id for q in team])
+        if self.mode == "race":
+            def match_key(q):
+                return q.g.wins, q.g.chars_total - q.g.errs_total, -q.g.errs_total
+        else:
+            def match_key(q):
+                return q.g.wins, q.g.dealt_total
+        ranked = sorted(live, key=match_key, reverse=True)
         text = " · ".join(f"{q.name} {q.g.wins}" for q in ranked)
+        if self.mode == "race":
+            totals = " · ".join(f"{q.name} {q.g.chars_total} letters, {q.g.errs_total} errors"
+                                f" ({q.g.chars_total - q.g.errs_total} net)" for q in ranked)
+            text += f". Typing totals: {totals}."
         if len(ranked) == 1:
             p = ranked[0]
             return r.finish(p if p.g.wins else None, f"⌨️ {p.name}: {p.g.wins} round{'s' if p.g.wins != 1 else ''} won.")
-        if ranked[0].g.wins == ranked[1].g.wins and ranked[0].g.dealt_total == ranked[1].g.dealt_total:
-            return r.finish(None, f"🤝 A tie! {text}")
+        if match_key(ranked[0]) == match_key(ranked[1]):
+            return r.finish(None, f"🤝 A tie! {text}", draw=True)
         r.finish(ranked[0], f"🏆 {ranked[0].name} wins Key Clash! {text}")
 
     def on_leave(self, p):
@@ -684,12 +801,14 @@ class KeyClash(Game):
         p.eliminated = True
         self.plans = [x for x in self.plans if x[1] != p.id]
         live = self.live()
+        if self.mode == "tug" and len({q.g.team for q in live}) < 2:
+            return self.finish_game()
         if len(live) < (1 if len(self.ids) == 1 else 2):
             return self.finish_game()
+        if self.stage == "ready" and all(q.bot or q.id in self.round_ready for q in live):
+            return self.start_countdown()
         if self.stage != "play":
             return
-        if self.mode == "tug" and len({q.g.team for q in live}) < 2:
-            return self.round_over([q for q in live])
         if self.mode in ("duel", "lms", "siege") and len(self.fighting()) <= 1:
             self.round_over(self.fighting()[:1] or None)
 
@@ -709,15 +828,22 @@ class KeyClash(Game):
     def final_scores(self):
         return {q.id: q.g.wins for q in self.room.seated() if hasattr(q.g, "wins")}
 
+    def walking_foes(self, now):
+        # Both times increase with spawn order: travel time drops by less than the gap between waves.
+        first = bisect_right(self.foes, now, key=FOE_ARRIVAL)
+        last = bisect_right(self.foes, now, key=FOE_SPAWN)
+        return self.foes[first:last]
+
     def foes_of(self, q, now):
         """🧟 the enemies walking at q: [progress 0..1, health left, full health]."""
         out = []
-        for f in self.foes:
-            if f["spawn"] <= now < f["arrive"]:
-                hp = q.g.foe_hp.get(f["i"], f["hp"])
-                if hp > 0:
-                    out.append([round((now - f["spawn"]) / (f["arrive"] - f["spawn"]), 3), hp, f["hp"]])
-        return out[:10]
+        for f in self.walking_foes(now):
+            hp = q.g.foe_hp.get(f["i"], f["hp"])
+            if hp > 0:
+                out.append([round((now - f["spawn"]) / (f["arrive"] - f["spawn"]), 3), hp, f["hp"]])
+                if len(out) == 10:
+                    break
+        return out
 
     def view(self, p):
         self.upgrade()
@@ -736,6 +862,7 @@ class KeyClash(Game):
             tgt = self.target(q) if self.stage == "play" and not g.ko else None
             f = {"id": q.id, "hp": g.hp, "shield": g.shield, "combo": g.combo, "charge": g.charge,
                  "ko": g.ko, "wins": g.wins, "idx": g.idx, "words": g.words, "target": tgt.id if tgt else None,
+                 "retaliating": bool(tgt and g.by == tgt.id),
                  # (#384) live while typing; between rounds and after the match, the round's final figure
                  "wpm": round(g.chars / 5 / (secs / 60)) if self.stage == "play" else ((self.result or {}).get("stats", {}).get(q.id, {}).get("wpm", 0)),
                  "acc": self.accuracy(g.chars, g.errs), "errors": g.errs, "chars": g.chars, "power": bool(g.offer), "team": g.team}
@@ -749,15 +876,23 @@ class KeyClash(Game):
             fighters.append(f)
         out = {
             "mode": self.mode, "stage": self.stage, "round": self.round, "rid": f"{getattr(self, 'gid', '')}:{self.round}", "need": self.need, "rounds": self.s["rounds"],
-            "left": round(max(0.0, self.end - now), 2), "secs": (self.s["secs"] or NO_LIMIT) if self.stage == "play" else REVEAL_SECS,
+            "maxRounds": self.s["rounds"] + 2,
+            "preparing": me and self.stage in ("ready", "countdown"),
+            "ready": self.stage == "ready" and p.id in self.round_ready,
+            "readyCount": sum(not q.bot and q.id in self.round_ready for q in live) if self.stage == "ready" else None,
+            "typistCount": sum(not q.bot for q in live) if self.stage == "ready" else None,
+            "left": round(max(0.0, self.end - now), 2), "secs": {"ready": READY_SECS, "countdown": COUNTDOWN_SECS, "reveal": REVEAL_SECS}.get(
+                self.stage, self.s["secs"] or NO_LIMIT),
             "unlimited": not self.s["secs"] and self.stage == "play", "overtime": self.overtime and self.stage == "play", "goal": RACE_GOAL if self.mode == "race" and not self.s["secs"] else None,
             "elapsed": round(max(0.0, now - self.t0), 2) if self.stage == "play" else None,
             "base": at, "words": self.words[at:at + WINDOW], "playing": me and not p.g.ko and self.stage == "play",
             "offer": p.g.offer if me else None, "fighters": fighters, "events": self.events,
             "wordAge": max(0.0, now - p.g.last_at) if me else None, "minCharMs": MIN_CHAR_SECS * 1000,
+            "missedWords": self.practice_words.get(p.id, []) if self.room.phase == "over" else [],
             "result": self.result, "hp": HP, "charge": CHARGE, "powered": self.mode in POWERED,
             # (#381) the charts: shown between rounds and after the match, never while a round is being typed
             "history": self.history if self.stage == "reveal" or self.room.phase != "playing" else None,
+            "shieldAmount": SHIELD, "healAmount": HEAL, "strikeBase": STRIKE,
             "effects": {"shield": f"blocks the next {SHIELD} damage", "heal": f"+{HEAL} health",
                         "strike": {"siege": "a big army", "survival": "a big hit on the front enemy", "boss": "a big hit on the boss"}.get(self.mode, "a big hit")},
         }
@@ -770,8 +905,9 @@ class KeyClash(Game):
             out["track"] = TRACK
         elif self.mode == "boss":
             out["bossMax"] = BOSS_HP
-            out["bossIn"] = round(max(0.0, self.timers[0][0] - now), 2) if self.timers else None
+            boss_at = next((t for t, kind, _ in self.timers if kind == "boss" and t < self.end), None)
+            out["bossIn"] = round(max(0.0, boss_at - now), 2) if boss_at is not None else None
         elif self.mode == "survival":
-            waves = [f["wave"] for f in self.foes if f["spawn"] <= now]
-            out["wave"] = max(waves) if waves else 1
+            spawned = bisect_right(self.foes, now, key=FOE_SPAWN)
+            out["wave"] = self.foes[spawned - 1]["wave"] if spawned else 1
         return {self.id: out}

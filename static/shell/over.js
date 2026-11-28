@@ -69,7 +69,8 @@ function renderOver() {
   const last = S.history.at(-1);
   const team = last?.teamWinnerIds;
   const draw = isDraw(last);
-  $('#overText').textContent = team || draw ? last.text : w ? (w.id === me.id ? '🏆 You win!' : `🏆 ${w.name} wins!`) : (S.log.at(-1)?.text ?? 'Game over');
+  const typingResult = S.gameId === 'keyclash' && S.keyclash?.mode === 'race' && last?.text;
+  $('#overText').textContent = team || draw || typingResult ? last.text : w ? (w.id === me.id ? '🏆 You win!' : `🏆 ${w.name} wins!`) : (S.log.at(-1)?.text ?? 'Game over');
   $('#overBanner').classList.toggle('won', w?.id === me.id || !!team?.includes(me.id));
   const scored = last?.players.filter((x) => x.score != null) ?? [];
   const mineRow = last?.players.find((x) => x.id === me.id);

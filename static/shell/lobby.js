@@ -197,6 +197,28 @@ const wideLobby = window.matchMedia?.('(min-width: 1000px)');
 wideLobby?.addEventListener?.('change', () => { if (S?.phase === 'lobby') renderLobby(); });
 const unfoldPicker = () => { if (!pickerFolded) return false; pickerFolded = false; renderLobby(); return true; };
 // seats a game is best with: the solo bot count plus you, within the game's limits
+const KEY_CLASH_RULES = {
+  duel: { min: 2, max: 2, goal: 'Knock out your rival.', timeout: 'Health, then damage dealt.', powers: true },
+  lms: { min: 2, max: 6, goal: 'Be the last fighter standing.', timeout: 'Survival, then health, then damage dealt.', powers: true },
+  siege: { min: 2, max: 6, goal: 'Send armies and be the last castle standing.', timeout: 'Survival, then castle health, then damage dealt.', powers: true },
+  survival: { min: 1, max: 6, goal: 'Survive waves and defeat as many enemies as you can.', timeout: 'Survival, then enemies defeated, then health.', powers: true },
+  boss: { min: 1, max: 6, goal: 'Be first to defeat your boss.', timeout: 'Boss defeated, then damage dealt, survival and health.', powers: true },
+  hyper: { min: 1, max: 6, goal: 'Be first to cross the finish line.', timeout: 'Furthest distance.' },
+  tug: { min: 2, max: 6, goal: 'Pull the rope across your team’s line.', timeout: 'The team ahead wins. A nearly centered rope is a draw.' },
+  race: { min: 1, max: 6, goal: 'Type the most letters after subtracting errors.', timeout: 'Net letters, then fewest errors.' },
+};
+
+function keyClashRules(mode, secs) {
+  const rule = KEY_CLASH_RULES[mode] ?? KEY_CLASH_RULES.duel;
+  const goal = !secs && mode === 'race' ? 'Be first to type 400 correct letters.' : rule.goal;
+  const overtime = {
+    duel: 'Hits get stronger', lms: 'Hits get stronger', siege: 'Hits get stronger and castles stop blocking armies',
+    boss: 'Typed attacks get stronger', tug: 'Pulls get stronger and the line moves closer',
+  }[mode];
+  const limit = secs ? '' : `15-minute cutoff. ${overtime ? overtime + ' after 2 minutes. ' : ''}`;
+  return { ...rule, goal, details: `${limit}At the deadline: ${rule.timeout} ${rule.powers ? 'Shield, Strike and Heal are available.' : 'No power words.'}` };
+}
+
 const recSeats = (g) => Math.min(g.max, Math.max(g.min, (SOLO_BOTS[g.id] ?? 1) + 1));
 const sameVal = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 const isDefault = (f, settings = S.settings) => f.default === undefined || sameVal(settings[f.key], f.default);
@@ -401,6 +423,38 @@ function renderLobby() {
     sel.onchange = () => quiet(act('settings', { settings: { [f.key]: JSON.parse(sel.value) } }));
     if (!isDefault(f)) { lab.classList.add('changed'); lab.title = 'Changed from the default (' + (f.options.find(([v]) => sameVal(v, f.default))?.[1] ?? '?') + ')'; }
     lab.append(sel); box.append(lab);
+    if (S.gameId === 'keyclash' && f.key === 'mode') {
+      const rules = keyClashRules(S.settings.mode, S.settings.secs);
+      const seats = rules.min === rules.max ? rules.min : `${rules.min}–${rules.max}`;
+      box.append(el('p', 'kc-lobby-rules', `${seats} players. ${rules.goal} ${rules.details}`));
+    }
+  }
+  if (S.gameId === 'keyclash') {
+    const practice = el('button', 'ghost-btn kc-lobby-practice', 'Solo typing practice');
+    practice.onclick = () => quiet(needUI('keyclash').then(() => UI.keyclash.openPractice()));
+    box.append(practice);
+  }
+  if (S.keyclashTeams) {
+    const choices = S.settings.tug_teams ?? {};
+    const names = ['🔴 Red', '🔵 Blue'];
+    const teams = Object.values(S.keyclashTeams);
+    const setup = el('fieldset', 'kc-team-setup');
+    setup.append(el('legend', '', names.map((name, side) => `${name} (${teams.filter((t) => t === side).length})`).join(' vs ')));
+    for (const player of S.players.filter((p) => !p.spectator)) {
+      const label = el('label', '', player.name);
+      const select = el('select');
+      const team = S.keyclashTeams[player.id];
+      select.add(new Option(`Auto (${names[team]})`, ''));
+      names.forEach((name, side) => select.add(new Option(name, side)));
+      select.value = choices[player.id] ?? '';
+      select.disabled = !host;
+      select.onchange = () => quiet(act('settings', { settings: { tug_team: {
+        id: player.id, side: select.value === '' ? null : Number(select.value),
+      } } }));
+      label.append(select);
+      setup.append(label);
+    }
+    box.append(setup);
   }
   if (S.gameId === 'putt') {
     const saved = S.settings.course_code ?? '';
@@ -417,7 +471,10 @@ function renderLobby() {
   $('#defaultsBtn').hidden = !host || info.settings.every((f) => isDefault(f));
   $('#lobbyEditorBtn').hidden = !(S.gameId === 'pinball' && window.gnEditor);
   // table size: a Start that says what's missing, and one tap to seat the right number of bots
-  const rec = recSeats(info), short = seated < info.min, over = seated > info.max;
+  const limits = S.gameId === 'keyclash' ? keyClashRules(S.settings.mode, S.settings.secs) : info;
+  const rec = recSeats({ ...info, min: limits.min, max: limits.max });
+  const short = seated < limits.min, over = seated > limits.max;
+  const emptySide = !!S.keyclashTeams && new Set(Object.values(S.keyclashTeams)).size < 2;
   const humanOnly = S.gameId === "switchyard";
   const hasBots = humanOnly && S.players.some((p) => !p.spectator && p.bot);
   const fill = $('#fillBtn');
@@ -429,10 +486,11 @@ function renderLobby() {
   const chosenInfo = gameInfo(S.gameId);
   $('#startBtn').textContent = !chosenInfo ? 'Start game'
     : hasBots ? "Remove computer players to start"
-    : short ? `▶ Start — needs ${info.min === info.max ? info.min : info.min + '+'} players`
-    : over ? `▶ Start — ${info.max} players at most` : `▶ Start ${chosenInfo.icon} ${chosenInfo.name}`;
-  $('#startBtn').classList.toggle('blocked', short || over || hasBots);
-  $('#startBtn').disabled = hasBots;
+    : short ? `▶ Start — needs ${limits.min === limits.max ? limits.min : limits.min + '+'} players`
+    : over ? `▶ Start — ${limits.max} players at most`
+    : emptySide ? 'Seat a typist on each team' : `▶ Start ${chosenInfo.icon} ${chosenInfo.name}`;
+  $('#startBtn').classList.toggle('blocked', short || over || hasBots || emptySide);
+  $('#startBtn').disabled = hasBots || (S.gameId === 'keyclash' && (short || over || emptySide));
   renderLobbyPlaylist(host, seated);
   $('#lobbyReplayBtn').hidden = !S.hasReplay;
   renderScores(host);

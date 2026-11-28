@@ -193,6 +193,11 @@ button.shake { animation: shake .35s; }
 .plist li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s3); padding: var(--s2) var(--s3); border-radius: var(--r-md); background: var(--tint-1); }
 .plist .watch-btn { font-size: var(--fs-sm); }
 .settings { display: grid; grid-template-columns: 1fr 1fr; grid-auto-flow: row dense; gap: 0 10px; }
+.settings .kc-lobby-practice { grid-column: 1 / -1; justify-self: start; }
+.settings .kc-team-setup { grid-column: 1 / -1; display: grid; gap: 6px; min-width: 0; }
+.settings .kc-team-setup label { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.settings .kc-team-setup select { width: auto; }
+.settings .kc-lobby-rules { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 0.9rem; }
 .settings label.wide { grid-column: 1 / -1; }  /* an option too long for half a phone gets the whole row */
 @media (max-width: 484px) { .settings { grid-template-columns: minmax(0, 1fr); } }
 /* a setting the host changed from the game's default gets a dot; ↺ Defaults puts them all back */

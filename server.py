@@ -993,6 +993,12 @@ class Room:
                 raise GameError("Unknown game.")
             if s["game"] != self.settings["game"]:
                 return self.switch_game(s["game"])
+        if self.settings["game"] == "keyclash" and self.settings.get("mode") == "tug" and "tug_team" in s:
+            team = s["tug_team"]
+            if not isinstance(team, dict) or "side" not in team:
+                raise GameError("Choose a typist and a team.")
+            self.game_for("keyclash").change_team(team.get("id"), team["side"])
+            return
         if self.settings["game"] == "putt":
             if "course_code" in s:
                 code = s["course_code"]
@@ -1050,6 +1056,8 @@ class Room:
         elif gid == "starguard" and len(seated) > 1:
             kind = "progress"
         rules = {k: self.settings.get(k, schema[2]) for k, schema in cls.settings_schema.items()}
+        if gid == "keyclash":
+            del rules["round_ready"]
         if gid == "archery":
             if rules["course"] == "archery":
                 del rules["course"]
@@ -1232,6 +1240,8 @@ class Room:
             "me": {"id": p.id, "name": p.name, "spectator": p.spectator,
                    "eliminated": p.eliminated, "ghost": ghost},
         }
+        if self.phase == "lobby" and v["gameId"] == "keyclash" and self.settings["mode"] == "tug":
+            v["keyclashTeams"] = self.game_for("keyclash").teams_for(self.seated())
         hide_ghost_chat = self.phase == "playing" and not ghost
         v["chat"] = [m for m in self.chat if not (m["ghost"] and hide_ghost_chat)][-50:]
         v["ready"] = sorted(self.ready)
