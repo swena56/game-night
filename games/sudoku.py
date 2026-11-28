@@ -171,7 +171,7 @@ class Sudoku(PuzzleRace):
     id = "sudoku"
     category = "classic"
     name = "Sudoku"
-    icon = "🔢"
+    icon = "🧩"
     noun = "puzzle"
     blurb = "The number-place puzzle as a race: everyone gets the same grid, and every right digit scores."
     howto = [

@@ -68,7 +68,7 @@ class Mia(Game):
         "Last player with lives left wins.",
     ]
     name = "Mia"
-    icon = "🎭"
+    icon = "🍀"
     blurb = "The traditional two-dice bluffing game: always beat the last call, or lift the cup on a liar."
     min_players = 2
     max_players = 6

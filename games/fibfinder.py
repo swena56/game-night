@@ -29,7 +29,7 @@ class FibFinder(Game):
         "📖 Once the picks are in, a fact card explains the truth and says where to read more.",
     ]
     name = "Fib Finder"
-    icon = "🤥"
+    icon = "🧐"
     blurb = "Real facts, fake answers. Write a fib that fools your friends, then sniff out the truth."
     min_players = 2
     max_players = 6

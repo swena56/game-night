@@ -108,6 +108,20 @@ class AdminTest(unittest.TestCase):
             admin_auth.set_password("short")
         self.assertEqual(os.stat(admin_auth.PASSWORD_FILE).st_mode & 0o777, 0o600)
 
+    def test_a_session_survives_a_restart_but_not_a_logout(self):
+        import importlib
+        admin_auth.set_password(PASSWORD)
+        token = admin_auth.login(PASSWORD)
+        self.assertTrue(admin_auth.valid(token))
+        importlib.reload(admin_auth)   # what a restart does to the module's memory
+        self.assertTrue(admin_auth.valid(token))
+        with open(admin_auth.SESSIONS_FILE, encoding="utf-8") as f:
+            self.assertNotIn(token, f.read())   # only a hash is stored
+        self.assertEqual(os.stat(admin_auth.SESSIONS_FILE).st_mode & 0o777, 0o600)
+        admin_auth.logout(token)
+        importlib.reload(admin_auth)
+        self.assertFalse(admin_auth.valid(token))
+
     def test_sign_in_is_rate_limited(self):
         admin_auth.set_password(PASSWORD)
         self.assertEqual([self.sign_in("wrong password!!")[0] for _ in range(6)], [401] * 5 + [429])

@@ -8,7 +8,8 @@ UI.putt = (() => {
   let S, ctx, gl = null, flat = null, raf = 0, ro = null, holeKey = '', aim = null;
   // shots play back in order: `anim` is the one rolling now, `queue` the ones still to come
   let anim = null, queue = [], seenShot = 0, primed = false;
-  let pts = new Map(), gest = null, behindFor = '', onKey = null, clockOff = 0;
+  let aimSet = null;   // (#395) a shot set by the aim panel, keys or a tap instead of a drag: {angle, power}
+  let pts = new Map(), gest = null, lastTap = null, behindFor = '', onKey = null, clockOff = 0, holeShownAt = 0, behindTimer = 0;
   const COLORS = { fair: ['#2f9e44', '#37b24d'], sand: '#e9c46a', water: '#3a86ff', slope: '#74c69d', fringe: '#2b7a3b', long: '#1f5f2e', ramp: '#b5835a' };
   const $ = (id) => document.getElementById(id);
   const GRAB = 56;  // px: how near your ball a drag has to start to be a putt
@@ -79,7 +80,17 @@ UI.putt = (() => {
     gl = null; flat = null; holeKey = ''; aim = null;
     anim = null; queue = []; seenShot = 0; primed = false;
     pts = new Map(); gest = null; behindFor = '';
-    main.innerHTML = `<div class="pp"><div class="pp-hud"><span id="ppHole"></span><span id="ppTurn"></span><button id="ppPick" class="ghost-btn pp-pick" hidden title="Pick up your ball: this hole costs your strokes so far +1">⛳ Pick up</button></div>
+    main.innerHTML = `<div class="pp"><div class="pp-hud"><span id="ppHole"></span><span id="ppTurn"></span><button id="ppAimBtn" class="ghost-btn pp-pick" hidden title="Aim with buttons or keys instead of dragging (Z X turn, C V power, Enter putts)">🎯 Aim</button><button id="ppPick" class="ghost-btn pp-pick" hidden title="Pick up your ball: this hole costs your strokes so far +1">⛳ Pick up</button></div>
+      <div class="pp-aim" id="ppAim" hidden role="group" aria-label="Aim your putt">
+        <button data-a="left" title="Turn the aim left (Z; Shift for fine)" aria-label="Turn the aim left">⟲</button>
+        <button data-a="right" title="Turn the aim right (X; Shift for fine)" aria-label="Turn the aim right">⟳</button>
+        <button data-a="less" title="Less power (C)" aria-label="Less power">−</button>
+        <output id="ppAimPow" aria-live="polite">40%</output>
+        <button data-a="more" title="More power (V)" aria-label="More power">+</button>
+        <button data-a="go" class="primary" title="Putt (Enter)">⛳ Putt</button>
+        <button data-a="close" title="Close (Esc)" aria-label="Close the aim panel">✕</button>
+        <span class="pp-aim-tip">Tap the course to aim there</span>
+      </div>
       <div class="pp-stage" id="ppStage"><div class="pp-power" id="ppPower" hidden><span></span></div>
         <div class="pp-cam" id="ppCam" hidden>
           <button data-c="left" title="Turn anticlockwise (←)" aria-label="Turn the course anticlockwise">⟲</button>
@@ -94,6 +105,13 @@ UI.putt = (() => {
       <p id="ppHint" class="hint"></p></div>`;
     side.innerHTML = '<div class="panel"><h3>Scorecard</h3><div id="ppCard" class="pp-card"></div></div>';
     const stage = $('ppStage');
+    // (#395) aim without dragging: a panel (and keys) set the direction and power, the same putt goes to the server
+    $('ppAimBtn').onclick = () => (aimSet ? closeAim() : openAim());
+    $('ppAim').addEventListener('click', (e) => {
+      const a = e.target.closest('button')?.dataset.a;
+      if (a) aimStep(a, e.shiftKey);
+    });
+    $('ppAim').addEventListener('pointerdown', (e) => e.stopPropagation());
     $('ppPick').onclick = async () => {
       const n = (S.putt.strokes[S.putt.me] ?? 0) + 1;
       if (await ctx.ask(`Pick up? This hole will cost you ${n}.`, { ok: '⛳ Pick up' })) ctx.quiet(ctx.act('pickup'));
@@ -128,8 +146,14 @@ UI.putt = (() => {
         aim = { x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY };
         return;
       }
+      // a second tap on the same spot flies the view there (a mouse has dblclick)
+      if (gl && e.pointerType === 'touch') {
+        const now = performance.now();
+        if (lastTap && now - lastTap.t < 320 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30) { gl.view.focus(e.clientX, e.clientY); lastTap = null; return; }
+        lastTap = { t: now, x: e.clientX, y: e.clientY };
+      }
       // elsewhere: a drag turns and tilts the view; a right-, middle- or shift-drag pans it
-      if (gl) gest = { x: e.clientX, y: e.clientY, kind: e.button === 2 || e.button === 1 || e.shiftKey ? 'pan' : 'orbit' };
+      if (gl) { gl.view.stop(); gest = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, kind: e.button === 2 || e.button === 1 || e.shiftKey ? 'pan' : 'orbit', vx: 0, vy: 0, t: performance.now() }; }
     });
     stage.addEventListener('pointermove', (e) => {
       if (!pts.has(e.pointerId)) return;
@@ -147,33 +171,51 @@ UI.putt = (() => {
       } else if (gest?.kind === 'orbit' && v) {
         v.rotate((e.clientX - gest.x) * 0.008, true);
         v.tilt((e.clientY - gest.y) * 0.005, true);
-        gest = { ...gest, x: e.clientX, y: e.clientY };
+        const now = performance.now(), dt = Math.max(1, now - gest.t);   // how fast it's turning, for a flick to carry on
+        gest = { ...gest, x: e.clientX, y: e.clientY, vx: 0.7 * gest.vx + 0.3 * ((e.clientX - gest.x) * 0.008 / dt), vy: 0.7 * gest.vy + 0.3 * ((e.clientY - gest.y) * 0.005 / dt), t: now };
       } else if (aim) { aim.x = e.clientX; aim.y = e.clientY; }
     });
+    // (#395) with the aim panel open, a tap on the course (no drag) aims there
+    const tapAim = (e) => {
+      const g = (gl || flat)?.groundAt?.(e.clientX, e.clientY), p = S.putt;
+      if (!g || !aimSet || p.me == null) return false;
+      const [bx, by] = p.balls[p.me];
+      if (Math.hypot(g[0] - bx, g[1] - by) < 0.05) return false;
+      aimSet.angle = Math.atan2(g[1] - by, g[0] - bx); paintAim();
+      return true;
+    };
     const release = (e) => {
       pts.delete(e.pointerId);
-      if (gest) { if (!pts.size || gest.kind === 'two') gest = null; return; }
+      if (gest && gest.kind === 'orbit' && aimSet && Math.hypot(e.clientX - gest.x0, e.clientY - gest.y0) < 6 && tapAim(e)) { gest = null; return; }
+      if (gest) {
+        // (#385) a flick keeps the view turning for a moment, slowing to a stop
+        if (gest.kind === 'orbit' && gl && performance.now() - gest.t < 80 && Math.abs(gest.vx) > 0.0004) gl.view.spin(gest.vx * 1000, gest.vy * 1000);
+        if (!pts.size || gest.kind === 'two') gest = null;
+        return;
+      }
       if (!aim) return;
       const shot = aimShot();
       aim = null;
       $('ppPower').hidden = true;
-      if (shot && shot.power > 0.03 && myTurn()) {
-        // feedback straight away (#73): the tock and a puff at the ball, before the server's roll arrives
-        strike(shot.power); struckAt = performance.now(); ctx.buzz?.(15);
-        const me = S.putt.me;
-        if (gl && me != null) gl.burst(...S.putt.balls[me], 0xffffff, 6, 0.3 + shot.power * 0.4);
-        ctx.quiet(ctx.act('putt', { angle: +shot.angle.toFixed(4), power: +shot.power.toFixed(3) }));
-      }
+      if (shot && shot.power > 0.03 && myTurn()) { closeAim(); fire(shot); }
+      else if (!shot && aimSet) tapAim(e);   // the flat view: every press starts a drag, a tap without one aims
     };
     stage.addEventListener('pointerup', release);
     stage.addEventListener('pointercancel', (e) => { pts.delete(e.pointerId); gest = null; aim = null; $('ppPower').hidden = true; });
     stage.addEventListener('contextmenu', (e) => e.preventDefault());
-    stage.addEventListener('wheel', (e) => { if (!gl) return; e.preventDefault(); gl.view.zoom(e.deltaY < 0 ? 1.12 : 1 / 1.12, true); }, { passive: false });
+    // (#385) the wheel zooms toward what's under the cursor; a double-click (or double-tap) flies the view to a spot
+    stage.addEventListener('wheel', (e) => { if (!gl) return; e.preventDefault(); gl.view.zoomAt(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX, e.clientY); }, { passive: false });
+    stage.addEventListener('dblclick', (e) => { if (gl && !e.target.closest('#ppCam')) gl.view.focus(e.clientX, e.clientY); });
     // keys: ← → turn, ↑ ↓ tilt, + − zoom, W A S D pan
     onKey = (e) => {
       if (!gl || e.target.closest?.('input, textarea, select') || e.ctrlKey || e.metaKey || e.altKey) return;
       const v = gl.view, k = e.key;
-      if (k === 'ArrowLeft') v.rotate(Math.PI / 16); else if (k === 'ArrowRight') v.rotate(-Math.PI / 16);
+      // (#395) aim by keys: Z X turn (Shift: fine), C V power, Enter putts, Esc closes
+      const ak = { z: 'left', x: 'right', c: 'less', v: 'more' }[k.toLowerCase()];
+      if (ak && myTurn()) { aimStep(ak, e.shiftKey); e.preventDefault(); return; }
+      if (k === 'Enter' && aimSet && myTurn()) { aimStep('go'); e.preventDefault(); return; }
+      if (k === 'Escape' && aimSet) { closeAim(); e.preventDefault(); return; }
+      if (k === 'ArrowLeft' || k === 'q' || k === 'Q') v.rotate(Math.PI / 16); else if (k === 'ArrowRight' || k === 'e' || k === 'E') v.rotate(-Math.PI / 16);
       else if (k === 'ArrowUp') v.tilt(-0.08); else if (k === 'ArrowDown') v.tilt(0.08);
       else if (k === '+' || k === '=') v.zoom(1.15); else if (k === '-' || k === '_') v.zoom(1 / 1.15);
       else if (k.length === 1 && 'wasd'.includes(k.toLowerCase())) {
@@ -196,7 +238,7 @@ UI.putt = (() => {
   }
 
   function unmount() {
-    cancelAnimationFrame(raf); ro?.disconnect(); gl?.dispose(); gl = null; flat = null;
+    cancelAnimationFrame(raf); clearTimeout(behindTimer); behindTimer = 0; ro?.disconnect(); gl?.dispose(); gl = null; flat = null;
     if (onKey) window.removeEventListener('keydown', onKey);
     onKey = null;
   }
@@ -209,9 +251,45 @@ UI.putt = (() => {
   // aim colour by power (#82): green for a tap, amber mid-way, red at full power
   const powerHue = (t) => (1 - Math.min(1, Math.max(0, t))) * 120;
   const powerCss = (t, a = 1) => `hsla(${powerHue(t).toFixed(0)}, 90%, 55%, ${a})`;
+  // (#395) the aim panel: it opens aimed at the cup at 40%, and steps the angle and power
+  function openAim() {
+    const p = S?.putt;
+    if (!p || p.me == null || !myTurn()) return;
+    const [bx, by] = p.balls[p.me];
+    aimSet = { angle: Math.atan2(p.cup[1] - by, p.cup[0] - bx), power: 0.4 };
+    paintAim();
+  }
+  function closeAim() { aimSet = null; paintAim(); }
+  function aimStep(a, fine) {
+    if (!aimSet && a !== 'close') openAim();
+    if (!aimSet) return;
+    const turn = fine ? Math.PI / 180 * 0.5 : Math.PI / 180 * 3, step = fine ? 0.01 : 0.05;
+    if (a === 'left') aimSet.angle += turn;
+    else if (a === 'right') aimSet.angle -= turn;
+    else if (a === 'less') aimSet.power = Math.max(0.02, aimSet.power - step);
+    else if (a === 'more') aimSet.power = Math.min(1, aimSet.power + step);
+    else if (a === 'go') { const shot = { ...aimSet }; closeAim(); fire(shot); return; }
+    else if (a === 'close') { closeAim(); return; }
+    paintAim();
+  }
+  function paintAim() {
+    const box = $('ppAim');
+    if (!box) return;
+    box.hidden = !aimSet;
+    $('ppAimBtn')?.classList.toggle('on', !!aimSet);
+    if (aimSet) $('ppAimPow').textContent = `${Math.round(aimSet.power * 100)}%`;
+  }
+  // a putt, from a drag or the aim panel: feedback straight away (#73), then the server
+  function fire(shot) {
+    if (!shot || shot.power <= 0.03 || !myTurn()) return;
+    strike(shot.power); struckAt = performance.now(); ctx.buzz?.(15);
+    const me = S.putt.me;
+    if (gl && me != null) gl.burst(...S.putt.balls[me], 0xffffff, 6, 0.3 + shot.power * 0.4);
+    ctx.quiet(ctx.act('putt', { angle: +shot.angle.toFixed(4), power: +shot.power.toFixed(3) }));
+  }
   // the drag, turned into a course direction (server x/y) and a power 0..1; full power is a short pull
   function aimShot() {
-    if (!aim) return null;
+    if (!aim) return aimSet && myTurn() ? aimSet : null;
     const stage = $('ppStage'), size = Math.min(stage.clientWidth || 320, stage.clientHeight || 320);
     const sx = aim.x0 - aim.x, sy = aim.y0 - aim.y;  // slingshot: the ball goes opposite to the drag
     const len = Math.hypot(sx, sy);
@@ -224,11 +302,15 @@ UI.putt = (() => {
     S = s; ctx = c;
     const p = S.putt;
     if (p.now) clockOff = p.now - performance.now() / 1000;  // server time = performance time + clockOff (the windmills)
-    if (!primed) { primed = true; seenShot = p.shot?.id ?? 0; }  // a putt from before you opened the page isn't replayed
-    if (p.shot && p.shot.id !== seenShot) {
-      seenShot = p.shot.id;
-      if (p.shot.frames?.length && p.shot.by < p.balls.length) {
-        queue.push({ by: p.shot.by, frames: p.shot.frames, from: p.shot.from, result: p.shot.result, hits: p.shot.hits || [], hole: p.hole, clock: p.shot.t0 });
+    // (#389) every putt since the last one seen, in order (the server keeps the last few), so a quick second putt
+    // or a missed update doesn't drop one from the replay
+    const recent = (p.shots?.length ? p.shots : p.shot ? [p.shot] : []).slice().sort((a, b) => a.id - b.id);
+    if (!primed) { primed = true; seenShot = recent.length ? recent[recent.length - 1].id : 0; }  // a putt from before you opened the page isn't replayed
+    for (const sh of recent) {
+      if (sh.id <= seenShot) continue;
+      seenShot = sh.id;
+      if (sh.frames?.length && sh.by < p.balls.length && (sh.hole ?? p.hole) === p.hole) {   // never an old hole's putt on this course
+        queue.push({ by: sh.by, frames: sh.frames, from: sh.from, result: sh.result, hits: sh.hits || [], hole: sh.hole ?? p.hole, clock: sh.t0 });
       }
     }
     $('ppHole').textContent = `⛳ Hole ${p.hole} of ${p.holes} · par ${p.par ?? 3}`;
@@ -236,6 +318,8 @@ UI.putt = (() => {
     $('ppTurn').textContent = p.between ? `Hole ${p.hole} done` : turn >= 0 ? `${turn === p.me ? 'Your' : (ctx.player(S.turn)?.name ?? '?') + "'s"} putt · stroke ${p.strokes[turn] + 1}${p.cap ? ` of ${p.cap}` : ''}` : '';
     // with no stroke limit (#68), you can give up on a hole once you've had a go
     $('ppPick').hidden = !(p.cap == null && myTurn() && p.strokes[p.me] > 0);
+    $('ppAimBtn').hidden = !myTurn() || !!p.between;
+    if (aimSet && (!myTurn() || p.between)) closeAim();
     hint();
     renderCard();
     renderDone();
@@ -243,8 +327,8 @@ UI.putt = (() => {
 
   function hint() {
     const p = S.putt;
-    const cam = !gl ? '' : coarse() ? ' Drag elsewhere to turn the view; two fingers pan and zoom.'
-      : ' Drag elsewhere to turn the view; right-drag pans, the wheel zooms (or ← → ↑ ↓, W A S D, + −).';
+    const cam = !gl ? '' : coarse() ? ' Drag elsewhere to turn the view; two fingers pan and zoom; double-tap flies there.'
+      : ' Drag elsewhere to turn the view (flick it to spin); right-drag pans, the wheel zooms where you point, double-click flies there (or ← → / Q E, ↑ ↓, W A S D, + −).';
     const t = S.phase !== 'playing' ? '' : p.between ? 'Next hole in a moment…'
       : !myTurn() ? cam.trim()
         : gl ? 'Drag back from your ball (the ringed one) and let go to putt.' + cam : 'Drag back and let go to putt.';
@@ -252,9 +336,40 @@ UI.putt = (() => {
     if (h && h.textContent !== t) h.textContent = t;
   }
 
+  // (#368, #392) the course's corners, for both views and as the server's physics has them: a tile's outer corner
+  // (walled on both sides) is a bank's curve or 45° cut where the server put one, else rounded to roundR. Corners are
+  // numbered 0 (+x,-y), 1 (+x,+y), 2 (-x,+y), 3 (-x,-y); each is null (square), ['round', r] or ['flat', r].
+  const TILE_CORNERS = [[1, -1], [1, 1], [-1, 1], [-1, -1]], BANK_R = 0.38;
+  function cornerRule(p) {
+    const open = new Set(p.cells.map(([x, y]) => `${x},${y}`)), R = p.roundR || 0.22;
+    const bankAt = new Map((p.banks || []).map(([cx, cy, ex, ey, nx, ny, shape]) => [`${cx},${cy}`, [-(ex + nx), -(ey + ny), shape]]));
+    return (x, y, sx, sy) => {
+      if (open.has(`${x + sx},${y}`) || open.has(`${x},${y + sy}`)) return null;
+      const b = bankAt.get(`${x},${y}`);
+      if (b && b[0] === sx && b[1] === sy) return b[2] === 'flat' ? ['flat', BANK_R] : ['round', BANK_R];
+      return ['round', R];
+    };
+  }
+  // a tile's outline as points in course units, its corners rounded or cut as above (n points per quarter circle)
+  function tileOutline(x, y, corner, n = 8) {
+    const pts = [];
+    TILE_CORNERS.forEach(([sx, sy], k) => {
+      const c = corner[k], cx = x + 0.5 + 0.5 * sx, cy = y + 0.5 + 0.5 * sy;
+      if (!c) { pts.push([cx, cy]); return; }
+      const r = c[1], into = k % 2 ? [cx, cy - r * sy] : [cx - r * sx, cy], out = k % 2 ? [cx - r * sx, cy] : [cx, cy - r * sy];
+      if (c[0] === 'flat') { pts.push(into, out); return; }
+      const ox = cx - r * sx, oy = cy - r * sy, a0 = -Math.PI / 2 + k * Math.PI / 2;
+      for (let i = 0; i <= n; i++) { const a = a0 + (Math.PI / 2) * (i / n); pts.push([ox + r * Math.cos(a), oy + r * Math.sin(a)]); }
+    });
+    return pts;
+  }
+
   // golf words for a score against par, and the card's mark (circle under par, square over)
   const VS_PAR = { '-3': 'Albatross! 🦅🦅', '-2': 'Eagle! 🦅', '-1': 'Birdie! 🐦', 0: 'Par', 1: 'Bogey', 2: 'Double bogey' };
-  const vsPar = (n, par) => (n === 1 ? '🎯 Hole in one!' : VS_PAR[n - par] ?? `${n - par > 0 ? '+' : ''}${n - par}`);
+  // ls: this score had a long shot's stroke taken off (#387): a credited 1 is then no hole in one, and it says so
+  const vsPar = (n, par, ls = false) => (ls ? `${VS_PAR[n - par] ?? (n - par > 0 ? '+' : '') + (n - par)} · 🚀 long shot (played ${n + 1})`
+    : n === 1 ? '🎯 Hole in one!' : VS_PAR[n - par] ?? `${n - par > 0 ? '+' : ''}${n - par}`);
+  const longShot = (i, hole) => !!S.putt.longShots?.[i]?.includes(hole);
   const markCls = (n, par) => (n - par <= -2 ? 'eagle' : n - par === -1 ? 'birdie' : n - par === 1 ? 'bogey' : n - par >= 2 ? 'dbl' : '');
   const toPar = (d) => (d === 0 ? 'E' : d > 0 ? `+${d}` : String(d));
 
@@ -286,7 +401,8 @@ UI.putt = (() => {
       p.cards[i].forEach((v, k) => {
         const par = pars[k] ?? 3; diff += v - par;
         const td = ctx.el('td'); td.append(ctx.el('span', 'pp-mark ' + markCls(v, par), String(v)));
-        td.title = vsPar(v, par); addMadePutt(td, i, k + 1); row.append(td);
+        td.title = p.autoPicked?.[i]?.includes(k + 1) ? `${v}: picked up automatically at 20 strokes` : vsPar(v, par, longShot(i, k + 1));
+        addMadePutt(td, i, k + 1); row.append(td);
       });
       const locked = p.holeScores?.[i];
       const current = locked ?? p.strokes[i];
@@ -316,7 +432,10 @@ UI.putt = (() => {
       const r = ctx.el('div', 'pp-done-row');
       const nm = ctx.el('span', '', ctx.player(pid)?.name ?? '?'); nm.style.color = colorOf(i);
       const par = p.pars?.[p.hole - 1] ?? 3;
-      r.append(nm, ctx.el('b', 'pp-res ' + markCls(s, par), p.holed[i] ? (s === 1 ? '🎯 Hole in one!' : `${s} · ${vsPar(s, par)}`) : `${s} (picked up)`));
+      const ls = longShot(i, p.hole);
+      // (#394) why a ball that didn't sink stopped: picked up, the stroke limit, or the automatic stop with no limit
+      const why = p.autoPicked?.[i]?.includes(p.hole) ? 'picked up automatically at 20' : p.picked?.[i] ? 'picked up' : p.cap ? `stroke limit ${p.cap}` : 'picked up';
+      r.append(nm, ctx.el('b', 'pp-res ' + markCls(s, par), p.holed[i] ? (s === 1 && !ls ? '🎯 Hole in one!' : `${s} · ${vsPar(s, par, ls)}`) : `${s} (${why})`));
       rows.append(r);
     });
     standingsCard($('ppStand'), p.standings, { title: 'Total so far', note: 'Fewest strokes wins.', lower: true });
@@ -346,7 +465,7 @@ UI.putt = (() => {
     if (!S?.putt) return;
     const p = S.putt, key = `${p.hole}:${JSON.stringify(p.cells)}`;
     if (key !== holeKey && (gl || flat)) {
-      holeKey = key; behindFor = '';
+      holeKey = key; behindFor = ''; holeShownAt = performance.now();
       queue = queue.filter((q) => q.hole === p.hole); if (anim && anim.hole !== p.hole) anim = null;
       (gl || flat).build();
     }
@@ -367,8 +486,9 @@ UI.putt = (() => {
           gl?.burst(x, y, 0xffffff, 18); knock(1400, 0.12); setTimeout(() => knock(1000, 0.1), 90);
           if (anim.by === p.me) ctx.confetti?.();
           // a big hole gets its name on screen: a hole in one, or two or more under par
-          const sk = p.strokes?.[anim.by], par = p.par ?? 3;
-          if (sk && typeof Kit !== 'undefined' && (sk === 1 || sk - par <= -2)) {
+          // (#387) not for a long shot: its credited 1 was played in 2, and the server's own callout says so
+          const sk = p.strokes?.[anim.by], par = p.par ?? 3, ls = longShot(anim.by, anim.hole ?? p.hole);
+          if (sk && !ls && typeof Kit !== 'undefined' && (sk === 1 || sk - par <= -2)) {
             const who = anim.by === p.me ? 'You' : (ctx.player(p.seats?.[anim.by])?.name ?? 'Someone');
             Kit.callout(`${sk === 1 ? '🎯 Hole in one' : '🦅 Eagle'}: ${who}!`, 'gold', { ms: 1800 });
             ctx.sfx?.('fanfare');
@@ -381,9 +501,11 @@ UI.putt = (() => {
     // while your ball rolls, the camera follows it; once it stops, it swings round behind it
     if (gl && mine) gl.view.follow(...ballPos(me, now));
     const mineWaiting = me != null && queue.some((q) => q.by === me);
-    if (gl && me != null && S.phase === 'playing' && !p.between && !p.holed[me] && p.strokes[me] > 0 && !mine && !mineWaiting) {
-      const k = `${p.hole}:${p.strokes[me]}`;
-      if (k !== behindFor) { behindFor = k; gl.view.behind(); }
+    if (gl && me != null && S.phase === 'playing' && !p.between && !p.holed[me] && !mine && !mineWaiting) {
+      // (#386) every putt, the first of a hole too: there the whole hole shows for a moment before the view steps behind the ball
+      const k = `${p.hole}:${p.strokes[me]}`, wait = p.strokes[me] === 0 ? 2500 - (performance.now() - holeShownAt) : 0;
+      if (k !== behindFor && wait <= 0) { behindFor = k; gl.view.behind(); }
+      else if (k !== behindFor && !behindTimer) behindTimer = setTimeout(() => { behindTimer = 0; ctx.rerender?.(); }, wait + 50);
     }
     $('ppDone').hidden = !p.between || rolling();
     const shot = aimShot();
@@ -392,6 +514,7 @@ UI.putt = (() => {
     if (shot) {
       const fill = bar.firstElementChild;
       fill.style.width = `${shot.power * 100}%`;
+      bar.dataset.pct = `${Math.round(shot.power * 100)}%`;   // (#395) the number beside the colour
       fill.style.background = powerCss(shot.power); fill.style.boxShadow = `0 0 10px ${powerCss(shot.power, 0.8)}`;
     }
     (gl || flat)?.draw(now, shot);
@@ -442,9 +565,8 @@ UI.putt = (() => {
     const camera = new T.PerspectiveCamera(45, 1, 0.05, 120);
     const stg = GL3.stage(renderer, scene, { exposure: 1.1, hemi: [0xdff3ff, 0x1d3b1d, 0.75], key: { i: 0.75, area: 10, near: 1, far: 25 } });
     const hemi = stg.hemi, sun = stg.key;
-    // the rough around the course, so the fairway doesn't float in space
-    const rough = new T.Mesh(new T.PlaneGeometry(80, 80), new T.MeshStandardMaterial({ color: 0x173d27, roughness: 1 }));
-    rough.rotation.x = -Math.PI / 2; rough.position.y = -0.22; rough.receiveShadow = true; scene.add(rough);
+    // (#385) the land round the course is built per hole in dress(): rolling ground that rises into hills away from it
+    const lowGfx = () => window.gfxLevel?.() === 'low';
     // textures, drawn once: mown grass (stripes and speckle) and a dimpled golf ball
     const grass = canvasTex(T, 64, 64, (g, w, h) => {
       g.fillStyle = '#fff'; g.fillRect(0, 0, w, h);
@@ -515,7 +637,12 @@ UI.putt = (() => {
         for (let i = 0; i < 140; i++) { g.fillStyle = `rgba(255,255,255,${0.3 + Math.random() * 0.7})`; g.fillRect(Math.random() * w, Math.random() * h * 0.7, 1, 1); }
       });
     }
-    const crownGeo = new T.ConeGeometry(0.42, 1.1, 7), trunkGeo = new T.CylinderGeometry(0.06, 0.08, 0.4, 6);
+    const trunkGeo = new T.CylinderGeometry(0.05, 0.08, 0.4, 6);
+    // (#385) a pine's three tiers, a leafy tree's blobs (also bushes and cloud puffs), a rock
+    const pineGeo = [new T.ConeGeometry(0.62, 0.5, 8), new T.ConeGeometry(0.5, 0.42, 8), new T.ConeGeometry(0.36, 0.36, 8)];
+    const leafGeo = new T.IcosahedronGeometry(0.42, 1), rockGeo = new T.DodecahedronGeometry(0.16, 0);
+    const pineFar = [new T.ConeGeometry(0.62, 0.5, 5), new T.ConeGeometry(0.5, 0.42, 5), new T.ConeGeometry(0.36, 0.36, 5)];
+    const leafFar = new T.IcosahedronGeometry(0.42, 0);
     const bloomGeo = new T.SphereGeometry(0.04, 6, 4), lampGeo = new T.SphereGeometry(0.08, 10, 8), poleGeo = new T.CylinderGeometry(0.02, 0.02, 0.5, 5);
     let skyFor = '';
     function dress(p) {
@@ -527,41 +654,150 @@ UI.putt = (() => {
         scene.fog = new T.Fog(th.fog, 16, 46);
         hemi.color.setHex(th.hemi[0]); hemi.groundColor.setHex(th.hemi[1]); hemi.intensity = th.hemi[2];
         sun.color.setHex(th.sun[0]); sun.intensity = th.sun[1];
-        rough.material.color.setHex(th.rough);
       }
       // a little random sequence of the hole's own, the same on every phone
       let seed = (p.hole * 7919 + p.cells.length * 104729 + Math.round(p.cup[0] * 31)) >>> 0;
       const rnd = () => { seed = (seed + 0x6d2b79f5) >>> 0; let t = seed; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
       const near = (x, y, d) => p.cells.some(([cx, cy]) => x > cx - d && x < cx + 1 + d && y > cy - d && y < cy + 1 + d);
-      const trees = [], blooms = [], lamps = [];
-      for (let y = -3; y < p.rows + 4; y += 0.9) for (let x = -4; x < p.cols + 4; x += 0.9) {
+      // (#385) the land: flat by the course, rising into rolling hills away from it, shaded darker in the dips
+      const b0 = bounds(), low = lowGfx();
+      const away = (x, y) => {   // distance from the nearest tile of the course
+        let d = Infinity;
+        for (const [cx, cy] of p.cells) d = Math.min(d, Math.hypot(Math.max(cx - x, 0, x - cx - 1), Math.max(cy - y, 0, y - cy - 1)));
+        return d;
+      };
+      const ss = (a, b, t) => { const u = Math.min(1, Math.max(0, (t - a) / (b - a))); return u * u * (3 - 2 * u); };
+      const terrainH = (x, y) => {
+        const n = Math.sin(x * 0.33 + 1.3) * Math.cos(y * 0.27 + 0.7) + 0.55 * Math.sin(x * 0.71 + y * 0.53 + 2.1) + 0.3 * Math.cos(x * 1.3 - y * 1.1);
+        return -0.22 + ss(1.2, 7, away(x, y)) * (0.5 + 0.85 * (n * 0.45 + 0.5)) * 1.7;
+      };
+      {
+        const S_ = 90, N = low ? 40 : 64, geo = new T.PlaneGeometry(S_, S_, N, N);
+        geo.rotateX(-Math.PI / 2);
+        const pos = geo.attributes.position, cols = [], base = new T.Color(th.rough), c = new T.Color();
+        for (let i = 0; i < pos.count; i++) {
+          const x = pos.getX(i) + b0.cx, z = pos.getZ(i) + b0.cz, h = terrainH(x, -z);
+          pos.setXYZ(i, x, h, z);
+          const shade = 0.78 + 0.3 * Math.min(1, (h + 0.22) / 2.2) + 0.05 * Math.sin(x * 2.3 + z * 1.7);
+          c.copy(base).multiplyScalar(shade); cols.push(c.r, c.g, c.b);
+        }
+        geo.setAttribute('color', new T.Float32BufferAttribute(cols, 3));
+        geo.computeVertexNormals();
+        const land = new T.Mesh(geo, new T.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: !low }));
+        land.receiveShadow = true; course.add(land);
+      }
+      // far mountains round the edge, half lost in the haze
+      {
+        const ring = [], hz = new T.Color(th.fog).lerp(new T.Color(th.rough), 0.45);
+        for (let i = 0; i < 22; i++) {
+          const a = (i / 22) * Math.PI * 2 + rnd() * 0.2, r = 34 + rnd() * 8;
+          ring.push([b0.cx + Math.cos(a) * r, b0.cz + Math.sin(a) * r, 5 + rnd() * 7, 4 + rnd() * 5]);
+        }
+        const im = new T.InstancedMesh(new T.ConeGeometry(1, 1, 6), new T.MeshLambertMaterial({ color: hz, flatShading: true }), ring.length);
+        const m4 = new T.Matrix4();
+        ring.forEach(([x, z, h, w], i) => { m4.compose(new T.Vector3(x, h / 2 - 0.5, z), new T.Quaternion().setFromEuler(new T.Euler(0, rnd() * 3, 0)), new T.Vector3(w, h, w)); im.setMatrixAt(i, m4); });
+        course.add(im);
+      }
+      const trees = [], blooms = [], lamps = [], rocks = [], bushes = [];
+      const reach = low ? 5 : 8;
+      for (let y = -reach; y < p.rows + reach; y += 0.9) for (let x = -reach; x < p.cols + reach; x += 0.9) {
         const jx = x + rnd() * 0.8, jy = y + rnd() * 0.8;
         if (near(jx, jy, 0.55)) continue;
-        const r = rnd();
+        const r = rnd(), far = away(jx, jy), h = terrainH(jx, jy);
         // no trees right behind the tee or round the cup: that's where the camera stands to look down the hole
         const clear = Math.hypot(jx - p.tee[0], jy - p.tee[1]) < 3.2 || Math.hypot(jx - p.cup[0], jy - p.cup[1]) < 1.6;
-        if (r < 0.27 && !clear) trees.push([jx, jy, 0.7 + rnd() * 0.7, Math.floor(rnd() * th.crown.length)]);
-        else if (r < 0.5 && th.bloom.length && near(jx, jy, 1.6)) blooms.push([jx, jy, Math.floor(rnd() * th.bloom.length)]);
+        const dense = far < 4 ? 0.27 : 0.4;   // woods thicken toward the hills
+        const k = 0.7 + rnd() * 0.8, pine = th.lamps ? rnd() < 0.85 : p.theme === 'autumn' ? rnd() < 0.25 : rnd() < 0.55;
+        // a tree keeps its crown clear of the course: the bigger and rounder, the further back it stands
+        const room = far > 0.35 + k * (pine ? 0.55 : 0.75);
+        if (r < dense && !clear && room) trees.push({ x: jx, y: jy, h, near: far < 3, k, c: Math.floor(rnd() * th.crown.length), pine, lean: pine ? [rnd() - 0.5, rnd() - 0.5] : [0, 0], turn: rnd() * 6.3, tint: 0.85 + rnd() * 0.3 });
+        else if (r < 0.5 && th.bloom.length && far < 1.6) blooms.push([jx, jy, Math.floor(rnd() * th.bloom.length)]);
+        else if (r < 0.56 && far < 4) rocks.push({ x: jx, y: jy, h, k: 0.6 + rnd() * 1.1, turn: rnd() * 6 });
+        else if (r < 0.66 && far < 3) bushes.push({ x: jx, y: jy, h, k: 0.6 + rnd() * 0.7, turn: rnd() * 6, tint: 0.8 + rnd() * 0.3 });
       }
+      if (low) trees.splice(Math.floor(trees.length * 0.6));
       if (th.lamps) for (const [x, y] of p.path.filter((_, k) => k % 3 === 1)) {
         const side = rnd() < 0.5 ? -0.25 : 1.25;
         if (!near(x + side, y + 0.5, 0.05)) lamps.push([x + side, y + 0.5]);
       }
       const m4 = new T.Matrix4(), q = new T.Quaternion(), sc = new T.Vector3(), at = new T.Vector3(), up = new T.Euler();
-      const group = (geo, mat, list, place) => {
+      const group = (geo, mat, list, place, shadow = false) => {
         if (!list.length) return;
         const im = new T.InstancedMesh(geo, mat, list.length);
-        list.forEach((it, i) => { place(it); m4.compose(at, q.setFromEuler(up), sc); im.setMatrixAt(i, m4); });
-        list.forEach((it, i) => it.color != null && im.setColorAt(i, new T.Color(it.color)));
+        const col = new T.Color();
+        list.forEach((it, i) => {
+          const tint = place(it, col);
+          m4.compose(at, q.setFromEuler(up), sc); im.setMatrixAt(i, m4);
+          if (tint) im.setColorAt(i, col);
+        });
+        im.castShadow = shadow && !low; im.receiveShadow = true;
+        im.frustumCulled = false;   // r128 culls an instanced mesh by one instance's bounds at the origin
         course.add(im);
       };
-      trees.forEach((t) => (t.color = th.crown[t[3]]));
-      group(trunkGeo, new T.MeshLambertMaterial({ color: 0x5c3d2e }), trees, ([x, y, k]) => { at.set(x, -0.22 + 0.2 * k, -y); sc.set(k, k, k); up.set(0, 0, 0); });
-      group(crownGeo, new T.MeshLambertMaterial({ color: 0xffffff }), trees, ([x, y, k]) => { at.set(x, -0.22 + (0.4 + 0.5) * k, -y); sc.set(k, k, k); up.set(0, x * 3, 0); });
+      // (#385) trees: pines of three tiers, or round leafy trees of a few clustered blobs; each its own size, lean and shade
+      // near the course: full detail and shadows; further off, simpler shapes and no shadows (the far ones are many)
+      const sets = [[trees.filter((t) => t.near), pineGeo, leafGeo, true], [trees.filter((t) => !t.near), pineFar, leafFar, false]];
+      const tilt = (t, y0) => { up.set(t.lean[0] * 0.07, t.turn, t.lean[1] * 0.07); return y0; };   // pines lean a little
+      const crown = (t, col, light) => col.setHex(th.crown[t.c]).multiplyScalar(t.tint * light);
+      group(trunkGeo, new T.MeshLambertMaterial({ color: 0x5c3d2e }), trees, (t) => { at.set(t.x, t.h + 0.2 * t.k, -t.y); sc.set(t.k, t.k * (t.pine ? 1 : 1.4), t.k); tilt(t); });
+      for (const [set, pg, lg, shadow] of sets) {
+        const pines = set.filter((t) => t.pine), leafy = set.filter((t) => !t.pine);
+        [[0.42, 0.8], [0.78, 0.95], [1.08, 1.1]].forEach(([y, light], tier) => {
+          group(pg[tier], new T.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), pines, (t, col) => {
+            at.set(t.x, t.h + y * t.k, -t.y); sc.set(t.k, t.k, t.k); tilt(t); crown(t, col, light); return true;
+          }, shadow);
+        });
+        [[0, 0.95, 0, 1, 1], [0.24, 0.8, 0.1, 0.75, 0.9], [-0.2, 0.84, -0.14, 0.8, 1.08]].forEach(([dx, y, dz, r, light]) => {
+          group(lg, new T.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), leafy, (t, col) => {
+            const c = Math.cos(t.turn), s2 = Math.sin(t.turn);
+            at.set(t.x + (dx * c - dz * s2) * t.k, t.h + y * t.k * 1.2, -t.y + (dx * s2 + dz * c) * t.k);
+            sc.set(t.k * r, t.k * r * 0.9, t.k * r); up.set(0, t.turn, 0); crown(t, col, light); return true;
+          }, shadow);
+        });
+      }
+      group(rockGeo, new T.MeshStandardMaterial({ color: 0x8a8f98, roughness: 0.95, flatShading: true }), rocks, (r) => { at.set(r.x, r.h + 0.03 * r.k, -r.y); sc.set(r.k, r.k * 0.6, r.k * 0.9); up.set(0, r.turn, 0); }, true);
+      group(leafGeo, new T.MeshLambertMaterial({ color: 0xffffff, flatShading: true }), bushes, (b, col) => {
+        at.set(b.x, b.h + 0.08 * b.k, -b.y); sc.set(b.k * 0.42, b.k * 0.3, b.k * 0.42); up.set(0, b.turn, 0);
+        col.setHex(th.crown[0]).multiplyScalar(b.tint); return true;
+      });
       blooms.forEach((b) => (b.color = th.bloom[b[2]]));
-      group(bloomGeo, new T.MeshLambertMaterial({ color: 0xffffff }), blooms, ([x, y]) => { at.set(x, -0.19, -y); sc.set(1, 1, 1); up.set(0, 0, 0); });
+      group(bloomGeo, new T.MeshLambertMaterial({ color: 0xffffff }), blooms, ([x, y, c], col) => { at.set(x, -0.19, -y); sc.set(1, 1, 1); up.set(0, 0, 0); col.setHex(th.bloom[c]); return true; });
       group(poleGeo, new T.MeshLambertMaterial({ color: 0x333a44 }), lamps, ([x, y]) => { at.set(x, 0.03, -y); sc.set(1, 1, 1); up.set(0, 0, 0); });
       group(lampGeo, new T.MeshBasicMaterial({ color: 0xffe8a3 }), lamps, ([x, y]) => { at.set(x, 0.3, -y); sc.set(1, 1, 1); up.set(0, 0, 0); });
+      // (#385) the sky moves: clouds drift over by day; at night fireflies hang about the course
+      clouds = null; flies = null;
+      if (!th.stars) {
+        clouds = new T.Group();
+        const mat = new T.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.85, flatShading: true });
+        for (let i = 0; i < (low ? 4 : 9); i++) {
+          const cl = new T.Group(), cx = b0.cx + (rnd() - 0.5) * 50, cz = b0.cz + (rnd() - 0.5) * 50, y = 9 + rnd() * 5;
+          for (let j = 0; j < 4; j++) {
+            const puff = new T.Mesh(leafGeo, mat);
+            puff.position.set((j - 1.5) * 1.1 + rnd(), rnd() * 0.5, rnd()); puff.scale.set(2 + rnd(), 1 + rnd() * 0.6, 1.6 + rnd());
+            cl.add(puff);
+          }
+          cl.position.set(cx, y, cz); clouds.add(cl);
+        }
+        course.add(clouds);
+      } else {
+        const n = low ? 20 : 45, geo = new T.BufferGeometry(), pos = new Float32Array(n * 3);
+        flies = { seeds: [], geo };
+        for (let i = 0; i < n; i++) {
+          const [cx, cy] = p.cells[Math.floor(rnd() * p.cells.length)];
+          flies.seeds.push([cx + rnd() * 1.4 - 0.2, cy + rnd() * 1.4 - 0.2, 0.15 + rnd() * 0.5, rnd() * 6]);
+        }
+        geo.setAttribute('position', new T.BufferAttribute(pos, 3));
+        course.add(new T.Points(geo, new T.PointsMaterial({ color: 0xfff3a0, size: 0.06, transparent: true, opacity: 0.9, toneMapped: false })));
+      }
+    }
+    let clouds = null, flies = null;
+    function ambient(dt, now) {   // (#385) drifting clouds, wandering fireflies
+      if (clouds) for (const cl of clouds.children) { cl.position.x += dt * 0.25; if (cl.position.x > box.cx + 30) cl.position.x -= 60; }
+      if (flies) {
+        const pos = flies.geo.attributes.position, t = now / 1000;
+        flies.seeds.forEach(([x, y, hgt, ph], i) => pos.setXYZ(i, x + 0.25 * Math.sin(t * 0.6 + ph), hgt + 0.08 * Math.sin(t * 1.7 + ph * 2), -(y + 0.25 * Math.cos(t * 0.5 + ph))));
+        pos.needsUpdate = true;
+      }
     }
     const balls = [], ballGeo = new T.SphereGeometry(1, 28, 18);
     let flag = null, flagBase = null, cupGlow = null;
@@ -733,15 +969,7 @@ UI.putt = (() => {
       const blades = [];  // grass blades to stand on the fringe and the long grass: [x, y, height]
       mills.length = 0;
       dress(p);
-      const R = p.roundR || 0.22, BANK = 0.38;
-      const bankAt = new Map((p.banks || []).map(([cx, cy, ex, ey, nx, ny, shape]) => [`${cx},${cy}`, [-(ex + nx), -(ey + ny), shape]]));
-      // (#368) a tile's outer corner (walled on both sides): a bank's curve or cut where the server put one, else rounded
-      const cornerOf = (x, y, sx, sy) => {
-        if (open.has(`${x + sx},${y}`) || open.has(`${x},${y + sy}`)) return null;
-        const b = bankAt.get(`${x},${y}`);
-        if (b && b[0] === sx && b[1] === sy) return b[2] === 'flat' ? ['flat', BANK] : ['round', BANK];
-        return ['round', R];
-      };
+      const cornerOf = cornerRule(p);   // (#368) shared with the flat view (#392)
       const rounded = (x, y) => CORNERS.map(([sx, sy]) => cornerOf(x, y, sx, sy));
       buildRails(open, cornerOf);
       for (const [x, y] of p.cells) {
@@ -941,7 +1169,7 @@ UI.putt = (() => {
     // The view: turned by yaw (0 = looking up the course from behind the tee), tilted (radians below the
     // horizon), zoomed in from the fit that shows the whole hole, and panned (world x/z). `goal` is where the
     // camera is heading; `view` follows it smoothly, except for finger and mouse drags, which move both.
-    const HOME = { yaw: 0, tilt: 1.05, zoom: 1, px: 0, pz: 0 };
+    const HOME = { yaw: 0, tilt: 1.05, zoom: 1, px: 0, pz: 0 }, AIM_TILT = 0.74;
     const view = { ...HOME }, goal = { ...HOME };
     let box = null, fitD = 10, fitKey = '', last = 0;
     const forward = (yaw, tilt) => new T.Vector3(Math.sin(yaw) * Math.cos(tilt), -Math.sin(tilt), -Math.cos(yaw) * Math.cos(tilt));
@@ -969,7 +1197,7 @@ UI.putt = (() => {
     }
     function clamp(v) {
       v.zoom = Math.min(8, Math.max(0.6, v.zoom));
-      v.tilt = Math.min(1.45, Math.max(0.5, v.tilt));
+      v.tilt = Math.min(1.45, Math.max(0.3, v.tilt));   // (#385) down to a low look along the course
       // keep the point you look at over the course, give or take a tile
       v.px = Math.min(box.x1 + 1 - box.cx, Math.max(box.x0 - 1 - box.cx, v.px));
       v.pz = Math.min(-box.y0 + 1 - box.cz, Math.max(-box.y1 - 1 - box.cz, v.pz));
@@ -991,6 +1219,13 @@ UI.putt = (() => {
     }
     // ease the camera toward its goal
     function glide(dt) {
+      if (spinV) {
+        goal.yaw += spinV.yaw * dt; view.yaw = goal.yaw;
+        goal.tilt += spinV.tilt * dt; clamp(goal); view.tilt = goal.tilt;
+        const f = Math.exp(-dt * 3.5); spinV.yaw *= f; spinV.tilt *= f;
+        if (Math.abs(spinV.yaw) < 0.02 && Math.abs(spinV.tilt) < 0.02) spinV = null;
+        place();
+      }
       const k = 1 - Math.exp(-dt * 5);
       let moved = false;
       for (const key of ['yaw', 'tilt', 'zoom', 'px', 'pz']) {
@@ -1024,19 +1259,52 @@ UI.putt = (() => {
       return !!b && Math.hypot(x - b.x, y - b.y) <= r;
     }
     // which way the fairway goes from (x, y): toward the next cell of the tee-to-cup path, or the cup
+    // (#386) where to look from the ball: the cup if there's a clear straight line to it, else the furthest point
+    // down the fairway you can see straight to (not just the next tile), so the view lines up with a real putt
     function downFairway(x, y) {
       const p = S.putt, path = p.path || [];
       if (!path.length) return [p.cup[0] - x, p.cup[1] - y];
+      const open = new Set(p.cells.map(([cx, cy]) => `${cx},${cy}`));
+      const clear = (tx, ty) => {   // the line from the ball stays on the course, a ball's width from any wall
+        const n = Math.ceil(Math.hypot(tx - x, ty - y) / 0.08);
+        for (let i = 1; i <= n; i++) {
+          const u = i / n, sx = x + (tx - x) * u, sy = y + (ty - y) * u;
+          for (const [ox, oy] of [[0, 0], [0.07, 0], [-0.07, 0], [0, 0.07], [0, -0.07]]) if (!open.has(`${Math.floor(sx + ox)},${Math.floor(sy + oy)}`)) return false;
+        }
+        return true;
+      };
       let k = path.findIndex(([cx, cy]) => cx === Math.floor(x) && cy === Math.floor(y));
       if (k < 0) k = path.reduce((best, c, j) => (Math.hypot(c[0] + 0.5 - x, c[1] + 0.5 - y) < Math.hypot(path[best][0] + 0.5 - x, path[best][1] + 0.5 - y) ? j : best), 0);
+      if (clear(...p.cup)) return [p.cup[0] - x, p.cup[1] - y];
+      for (let j = path.length - 1; j > k; j--) {
+        const tx = path[j][0] + 0.5, ty = path[j][1] + 0.5;
+        if (clear(tx, ty)) return [tx - x, ty - y];
+      }
       const [tx, ty] = k >= path.length - 1 ? p.cup : [path[k + 1][0] + 0.5, path[k + 1][1] + 0.5];
       return [tx - x, ty - y];
     }
     // close enough to see the ball clearly, far enough to show about three tiles across (a tall phone sees
     // much less side to side than up and down, so the distance follows the screen's shape)
     const nearDist = () => Math.max(3.6, 1.6 / (camera.aspect * Math.tan((camera.fov / 2) * Math.PI / 180)));
+    let spinV = null;   // (#385) a flicked view still turning: radians a second, yaw and tilt
     const viewApi = {
-      fit() { Object.assign(goal, HOME); },
+      fit() { spinV = null; Object.assign(goal, HOME); },
+      spin(vyaw, vtilt) { spinV = { yaw: vyaw, tilt: vtilt }; },
+      stop() { spinV = null; },
+      // zoom by f keeping the ground under screen point (x, y) where it is
+      zoomAt(f, x, y) {
+        const a = toGround(x, y);
+        goal.zoom *= f; clamp(goal); view.zoom = goal.zoom; place();
+        const b = toGround(x, y);
+        if (a && b) { for (const v of [view, goal]) { v.px += a.x - b.x; v.pz += a.z - b.z; } place(); }
+      },
+      // fly the view to the ground under screen point (x, y), a little closer
+      focus(x, y) {
+        const g = toGround(x, y);
+        if (!g || !box) return;
+        spinV = null;
+        goal.px = g.x - box.cx; goal.pz = g.z - box.cz; goal.zoom = Math.min(8, Math.max(goal.zoom * 1.5, 1.6));
+      },
       rotate(da, now) { goal.yaw += da; if (now) { view.yaw = goal.yaw; place(); } },
       tilt(dt, now) { goal.tilt += dt; clamp(goal); if (now) { view.tilt = goal.tilt; place(); } },
       zoom(f, now) { goal.zoom *= f; if (now) { view.zoom = goal.zoom; place(); } },
@@ -1066,9 +1334,12 @@ UI.putt = (() => {
         let yaw = Math.atan2(dx, dy);
         while (yaw - view.yaw > Math.PI) yaw -= 2 * Math.PI;   // turn the short way round
         while (yaw - view.yaw < -Math.PI) yaw += 2 * Math.PI;
-        const d = fitFor(yaw, HOME.tilt), dist = nearDist(), ahead = Math.min(1.4, dist * 0.25);
+        // (#386) lower than the overview (about 42°), looking at a point part way to the target, back far enough that
+        // the ball sits low in the picture and the target is in it too
+        const tilt = AIM_TILT, d = fitFor(yaw, tilt);
+        const dist = Math.min(7.5, Math.max(nearDist() * 0.8, 2.8, len * 0.75 + 2)), ahead = Math.min(len * 0.45, 2.4);
         fitKey = '';
-        Object.assign(goal, { yaw, tilt: HOME.tilt, zoom: d / dist, px: bx + (dx / len) * ahead - box.cx, pz: -(by + (dy / len) * ahead) - box.cz });
+        Object.assign(goal, { yaw, tilt, zoom: d / dist, px: bx + (dx / len) * ahead - box.cx, pz: -(by + (dy / len) * ahead) - box.cz });
         place();  // fitFor() moved the camera while measuring: put it back where the view is now
       },
     };
@@ -1076,12 +1347,16 @@ UI.putt = (() => {
       ensureBalls();
       const dt = Math.min(0.1, last ? (now - last) / 1000 : 0); last = now;
       glide(dt);
+      if (box) ambient(dt, now);
       const p = S.putt;
       balls.forEach((b, i) => {
         const at = ballPos(i, now), m = b.mesh;
         const playing = (anim && anim.by === i) || queue.some((q) => q.by === i);
         const sunk = p.holed[i] && !playing;
         m.visible = (!sunk || i === p.me) && !unplayed(i);
+        // (#388) out of the hole (picked up, capped, gone): a faded ghost where it lay, which nothing bumps into
+        const ghost = !!p.out?.[i] && !playing;
+        if (m.material.transparent !== ghost) { m.material.transparent = ghost; m.material.opacity = ghost ? 0.3 : 1; m.material.needsUpdate = true; }
         const r = p.ball * 1.3, pos = W(at[0], at[1]), z = at[2] || 0;
         pos.y = sunk ? -0.05 : z < 0 ? -0.06 + r * 0.6 + z * 1.2 : pos.y + r + z;   // flying over a jump, or sinking
         // roll: turn the ball about the axis across its path, by the distance travelled over its radius
@@ -1154,7 +1429,8 @@ UI.putt = (() => {
       renderer.render(scene, camera);
     }
     function dispose() { stg.dispose(); renderer.dispose(); renderer.domElement.remove(); }
-    return { build, draw, resize, dispose, screenDir, nearBall, ballOnScreen, effect, burst, view: viewApi };
+    const groundAt = (cx, cy) => { const g = toGround(cx, cy); return g ? [g.x, -g.z] : null; };   // (#395) course x, y under a screen point
+    return { build, draw, resize, dispose, screenDir, nearBall, ballOnScreen, effect, burst, groundAt, view: viewApi };
   }
 
   // ---------- flat top-down fallback
@@ -1177,10 +1453,13 @@ UI.putt = (() => {
       const p = S.putt;
       if (!canvas.width) resize();
       g.fillStyle = '#0c1a2b'; g.fillRect(0, 0, canvas.width, canvas.height);
+      // (#392) tiles with the corners the physics has: rounded outer corners, banks curved or cut
+      const cornerOf = cornerRule(p);
       for (const [x, y] of p.cells) {
         const kind = p.kinds[`${x},${y}`];
         g.fillStyle = kind ? COLORS[kind] : COLORS.fair[(x + y) % 2];
-        g.fillRect(X(x), Y(y + 1), k, k);
+        const pts = tileOutline(x, y, TILE_CORNERS.map(([sx, sy]) => cornerOf(x, y, sx, sy)));
+        g.beginPath(); pts.forEach(([px, py], i) => (i ? g.lineTo(X(px), Y(py)) : g.moveTo(X(px), Y(py)))); g.closePath(); g.fill();
       }
       for (const [hx, hy, a] of p.hills || []) {  // a hump is lighter in the middle, a bowl darker
         const gr = g.createRadialGradient(X(hx + 0.5), Y(hy + 0.5), 0, X(hx + 0.5), Y(hy + 0.5), k * 0.5);
@@ -1191,9 +1470,16 @@ UI.putt = (() => {
       for (const [px, py, ph] of p.posts || []) { g.fillStyle = '#9aa5b1'; g.fillRect(X(px - ph), Y(py + ph), ph * 2 * k, ph * 2 * k); }
       for (const [rx, ry, rr] of p.rocks || []) { g.fillStyle = '#7d7f86'; g.beginPath(); g.arc(X(rx), Y(ry), rr * k, 0, 7); g.fill(); }
       g.strokeStyle = '#8d5a2b'; g.lineWidth = Math.max(2, k * 0.06);
-      for (const [cx, cy, ex, ey, nx, ny, shape] of p.banks || []) {  // drawn straight in the flat view
+      for (const [cx, cy, ex, ey, nx, ny, shape] of p.banks || []) {  // (#392) a curve where the physics curves, a cut where it cuts
         const qx = cx + 0.5 - 0.5 * ex - 0.5 * nx, qy = cy + 0.5 - 0.5 * ey - 0.5 * ny;
-        g.beginPath(); g.moveTo(X(qx + 0.38 * nx), Y(qy + 0.38 * ny)); g.lineTo(X(qx + 0.38 * ex), Y(qy + 0.38 * ey)); g.stroke();
+        g.beginPath();
+        if (shape === 'flat') { g.moveTo(X(qx + BANK_R * nx), Y(qy + BANK_R * ny)); g.lineTo(X(qx + BANK_R * ex), Y(qy + BANK_R * ey)); }
+        else {
+          const ox = qx + BANK_R * (ex + nx), oy = qy + BANK_R * (ey + ny), a0 = Math.atan2(-ny, -nx);
+          let da = Math.atan2(-ey, -ex) - a0; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
+          for (let i = 0; i <= 12; i++) { const a = a0 + (da * i) / 12, px = ox + BANK_R * Math.cos(a), py = oy + BANK_R * Math.sin(a); i ? g.lineTo(X(px), Y(py)) : g.moveTo(X(px), Y(py)); }
+        }
+        g.stroke();
       }
       for (const [mx, my] of p.mills || []) {  // the windmill's wall, its doorway open or shut right now
         const clock = anim ? anim.clock + (now - anim.t0) / 1000 : now / 1000 + clockOff;
@@ -1214,14 +1500,21 @@ UI.putt = (() => {
       }
       p.seats.forEach((_, i) => {
         if (unplayed(i)) return;
+        // (#391) as in 3D: a ball that has sunk is gone once its putt has finished playing, so the cup stays clear;
+        // a ball out of the hole without sinking (#388) is a faded ghost
+        const playing = (anim && anim.by === i) || queue.some((q) => q.by === i);
+        if (p.holed[i] && !playing) return;
+        const ghost = !!p.out?.[i] && !playing;
+        if (ghost) g.globalAlpha = 0.3;
         const at = ballPos(i, now), bx = X(at[0]), by = Y(at[1]), br = Math.max(4, p.ball * k * 1.3);
         g.fillStyle = 'rgba(0,0,0,0.28)'; g.beginPath(); g.ellipse(bx + br * 0.25, by + br * 0.4, br * 1.05, br * 0.8, 0, 0, 7); g.fill();
         const bg = g.createRadialGradient(bx - br * 0.35, by - br * 0.4, br * 0.1, bx, by, br);
         bg.addColorStop(0, '#fff'); bg.addColorStop(0.35, colorOf(i)); bg.addColorStop(1, colorOf(i));
         g.fillStyle = colorOf(i); g.strokeStyle = i === p.me ? '#fff' : '#000'; g.lineWidth = 2;
         g.beginPath(); g.arc(bx, by, br, 0, 7); g.fill(); g.stroke();
-        g.fillStyle = bg; g.globalAlpha = 0.65; g.beginPath(); g.arc(bx, by, br, 0, 7); g.fill(); g.globalAlpha = 1;
+        g.fillStyle = bg; g.globalAlpha = ghost ? 0.2 : 0.65; g.beginPath(); g.arc(bx, by, br, 0, 7); g.fill(); g.globalAlpha = ghost ? 0.3 : 1;
         g.fillStyle = 'rgba(255,255,255,0.9)'; g.beginPath(); g.arc(bx - br * 0.35, by - br * 0.38, br * 0.2, 0, 7); g.fill();
+        g.globalAlpha = 1;
       });
       if (shot && p.me != null) {  // a dotted guide with an arrowhead, in the power colour (#82)
         const [bx, by] = p.balls[p.me], len = 0.4 + shot.power * 2.2;
@@ -1238,7 +1531,11 @@ UI.putt = (() => {
       }
     }
     resize();
-    return { build: resize, draw, resize, screenDir: (a, sx, sy) => [sx, -sy] };
+    const groundAt = (cx, cy) => {   // (#395) course x, y under a screen point
+      const r = canvas.getBoundingClientRect(), px = (cx - r.left) * (canvas.width / r.width), py = (cy - r.top) * (canvas.height / r.height);
+      return [px / k, (canvas.height - py) / k];
+    };
+    return { build: resize, draw, resize, groundAt, screenDir: (a, sx, sy) => [sx, -sy] };
   }
 
   const turnText = (s) => (s.phase === 'playing' ? `⛳ Hole ${s.putt.hole} of ${s.putt.holes}` : null);

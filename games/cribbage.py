@@ -90,7 +90,7 @@ class Cribbage(Game):
         "🔥 Hot streak: score with three of your own plays in a row during the play and peg a bonus 1 (the streak then restarts).",
     ]
     name = "Cribbage"
-    icon = "📍"
+    icon = "🪵"
     blurb = "The classic pegging card game: make fifteens, pairs and runs, and race your peg to 121."
     min_players = 2
     max_players = 3

@@ -80,7 +80,7 @@ class Lucky(Game):
         "📚 The puzzle archive lists every solved phrase with its category and who solved it. A rematch brings new puzzles.",
     ]
     name = "Lucky Letters"
-    icon = "🎡"
+    icon = "🔡"
     blurb = "Spin the 3D prize wheel, call letters and solve the hidden phrase before your rivals do."
     badges = {**Game.badges, "mind_reader": ("🔮", "Mind reader", "Solve a puzzle with half its letters or more still hidden")}
     min_players = 2

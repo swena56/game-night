@@ -71,7 +71,7 @@ class Bingo(Game):
         "Settings can add a false-claim penalty and strict claims (💤 sleepers: claim before the next ball or lose it).",
     ]
     name = "Bingo Bash"
-    icon = "🔵"
+    icon = "🎟️"
     blurb = "75-ball bingo on up to eight cards: rack up lines, race to the first bingo, hunt shapes or climb the ladder."
     min_players = 2
     max_players = 6

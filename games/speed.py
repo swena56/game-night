@@ -44,7 +44,7 @@ class Speed(Game):
         "With 🔥 Streak on, play 3 cards in a row without your rival playing in between and you shed a bonus card from your stock.",
     ]
     name = "Speed"
-    icon = "⚡"
+    icon = "🏃"
     blurb = "The two-player race card game: slap cards one up or down onto the piles before your rival does."
     min_players = 2
     max_players = 2

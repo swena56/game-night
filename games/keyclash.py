@@ -1,7 +1,7 @@
 """Key Clash (#374): a typing battle. Everyone types the same stream of words at once; each word typed
 right is an attack on a rival. Longer words hit harder, perfect words in a row build a combo, and a full
-charge offers three power words (shield, strike, heal) that fire when typed. A typo has to be fixed
-before the word counts, and it breaks the combo. A round ends at a knock-out or when the clock runs out;
+charge offers three power words (shield, strike, heal) that fire when typed. A typo breaks the combo
+and must be fixed for the word to count. A round ends at a knock-out or when the clock runs out;
 first to win most of the rounds takes the match.
 
 Modes: ⚔️ Duel (two fighters), 🏟️ Last Typist Standing (everyone; each word hits your target, the last
@@ -107,7 +107,7 @@ class KeyClash(Game):
     howto = [
         "Everyone types the same words. Press space (or Enter) after each one.",
         "Each word typed right is a hit: longer words hit harder, perfect words in a row build a combo.",
-        "A typo turns the word red: fix it before it counts. It also breaks your combo.",
+        "A typo breaks your combo. Fix it to earn credit, or enable skipping regular words in Typing settings.",
         f"Fill the ⚡ charge and three power words appear: type one to 🛡️ shield (blocks the next {SHIELD} damage), 💥 strike (a big hit) or 💚 heal (+{HEAL} health).",
         "Eight modes: duel, free-for-all, castles, waves, bosses, a race, a ship race and a tug-of-war.",
     ]
@@ -170,7 +170,7 @@ class KeyClash(Game):
     # a game saved by older code (a dev-server restart mid-game) lacks state added since: fill it in, so it carries on
     GAME_DEFAULTS = {"overtime": False, "timers": [], "armies": [], "foes": [], "rope": 0.0, "gid": "", "events": [], "seq": 0,
                      "history": []}
-    PLAYER_DEFAULTS = {"dist": 0.0, "kills": 0, "boss": BOSS_HP, "foe_hp": {}, "team": 0, "trace": []}
+    PLAYER_DEFAULTS = {"dist": 0.0, "kills": 0, "boss": BOSS_HP, "foe_hp": {}, "team": 0, "trace": [], "skips": 0}
 
     def __setstate__(self, state):
         self.__dict__.update(state)
@@ -234,6 +234,7 @@ class KeyClash(Game):
             g = p.g
             g.idx, g.hp, g.shield, g.combo, g.charge = 0, HP, 0, 0, 0
             g.chars, g.errs, g.words, g.dealt, g.taken, g.ko = 0, 0, 0, 0, 0, False
+            g.skips = 0
             g.offer, g.last_at, g.by = None, self.t0, None
             g.dist, g.kills, g.boss = 0.0, 0, BOSS_HP
             g.foe_hp = {}            # 🧟 enemy index -> health left, once hit
@@ -373,8 +374,10 @@ class KeyClash(Game):
 
     def act(self, p, a):
         self.upgrade()
-        if a.get("type") != "word":
+        action = a.get("type")
+        if action not in ("word", "skip"):
             raise GameError("Unknown action.")
+        skip = action == "skip"
         if p.id not in self.ids or p.eliminated:
             raise GameError("You're watching this game.")
         if self.stage != "play" or self.now() >= self.end:
@@ -385,14 +388,17 @@ class KeyClash(Game):
         if not isinstance(word, str) or type(errs) is not int or not 0 <= errs <= 99:
             raise GameError("Bad word.")
         # Older clients omit these fields. New clients bind queued words to a round and submission.
-        if "rid" in a and a["rid"] != f"{getattr(self, 'gid', '')}:{self.round}":
+        if (skip or "rid" in a) and a.get("rid") != f"{getattr(self, 'gid', '')}:{self.round}":
             raise GameError("This round is over.")
-        if "number" in a and (type(a["number"]) is not int or a["number"] != p.g.words + 1):
+        number = a.get("number")
+        if (skip or "number" in a) and (type(number) is not int or number != p.g.words + 1):
             raise GameError("Out of step: that word was already counted.")
         if self.now() - p.g.last_at < len(word) * MIN_CHAR_SECS:
             raise GameError("Too fast.")
         offer = p.g.offer or {}
-        if "number" in a:
+        if skip:
+            kind = None
+        elif "number" in a:
             kind = a.get("power")
             if kind is not None and (not isinstance(kind, str) or offer.get(kind) != word):
                 raise GameError("That power word is no longer available.")
@@ -403,7 +409,17 @@ class KeyClash(Game):
         i = a.get("i")
         if type(i) is not int or i != p.g.idx:
             raise GameError("Out of step: that word was already counted.")
-        if self.words[i] != word:
+        expected = self.words[i]
+        if skip:
+            if (a.get("power") is not None or len(word) < len(expected) or word == expected
+                    or not word.isascii() or not word.isalpha() or not word.islower()):
+                raise GameError("That word cannot be skipped.")
+            mismatches = len(word) - len(expected) + sum(ch != typed for ch, typed in zip(expected, word))
+            self.count(p, "", max(errs, mismatches))
+            p.g.skips += 1
+            self.advance_word(p)
+            return
+        if expected != word:
             raise GameError("That's not the word.")
         self.typed(p, word, errs)
 
@@ -438,13 +454,16 @@ class KeyClash(Game):
     def power_of(self, p, word):
         return max(1, round(len(word) * 0.5 * (1 + 0.06 * min(p.g.combo, 10)) * self.surge()))
 
+    def advance_word(self, p):
+        p.g.idx += 1
+        if len(self.words) - p.g.idx < WINDOW + 10:   # a long round: the stream goes on
+            self.words += [self.rng.choice(pool(self.s["words"], self.s.get("theme", "mixed"))) for _ in range(200)]
+
     def typed(self, p, word, errs):
         g = p.g
         self.count(p, word, errs)
-        g.idx += 1
+        self.advance_word(p)
         mode = self.mode
-        if len(self.words) - g.idx < WINDOW + 10:   # a long round: the stream goes on
-            self.words += [self.rng.choice(pool(self.s["words"], self.s.get("theme", "mixed"))) for _ in range(200)]
         if mode == "race":
             if not self.s["secs"] and g.chars >= RACE_GOAL:
                 self.moment(f"⌨️ {p.name} types {RACE_GOAL} letters first!", "cool", "fanfare")
@@ -604,7 +623,7 @@ class KeyClash(Game):
             q.g.errs_total += q.g.errs
             q.g.dealt_total += q.g.dealt
             stats[q.id] = {"wpm": round(q.g.chars / 5 / (secs / 60)), "acc": self.accuracy(q.g.chars, q.g.errs),
-                           "words": q.g.words, "dealt": q.g.dealt, "hp": q.g.hp, "best": q.g.best_combo,
+                           "words": q.g.words - q.g.skips, "dealt": q.g.dealt, "hp": q.g.hp, "best": q.g.best_combo,
                            "kills": q.g.kills}
         for w in winners:
             w.g.wins += 1

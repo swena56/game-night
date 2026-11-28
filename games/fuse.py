@@ -46,7 +46,7 @@ class Fuse(Game):
         "When the fuse burns out the carrier blows up and is out. A new bomb with a shorter fuse is lit; last runner standing wins.",
     ]
     name = "Fuse Frenzy"
-    icon = "💣"
+    icon = "🧨"
     blurb = "Hot-potato tag with a lit bomb: run, dash, and pass it on before it blows."
     min_players = 2
     max_players = 6

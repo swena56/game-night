@@ -22,7 +22,7 @@ class MoonShot(Game):
         'First to the moon wins. Alone, reach it within a turn limit (4, 6 or 9 turns by distance).',
     ]
     name = "Moon Shot"
-    icon = "🚀"
+    icon = "🌕"
     blurb = ("Roll two dice to build fuel, then bank it to fly. A 1 loses this turn's fuel, double 1s crash you "
              "back to the start. Stars boost, meteors knock you back, wormholes swap you with the leader.")
     min_players = 1

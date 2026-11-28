@@ -121,7 +121,7 @@ class Morris(Undo, Game):
         "↶ Undo asks your rival to take back your last move.",
     ]
     name = "Nine Men's Morris"
-    icon = "⚫"
+    icon = "🔘"
     blurb = "The ancient mill game: place, slide and make lines of three to take your rival's men."
     min_players = 2
     max_players = 2

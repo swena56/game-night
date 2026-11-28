@@ -24,7 +24,7 @@ class Palace(CardGame):
     id = "palace"
     solo_bots = 3
     name = "Palace"
-    icon = "🏰"
+    icon = "🏯"
     blurb = "Shed your hand, then your face-up cards, then the blind ones. 2 resets, 10 burns, can't play? Take the pile."
     howto = [
         "Three cards face down, three face up on them, three in hand. First, swap hand cards with your face-ups if you like.",

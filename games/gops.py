@@ -15,7 +15,7 @@ VAL = {r: k + 1 for k, r in enumerate(ORDER)}
 class Gops(CardGame):
     id = "gops"
     name = "GOPS"
-    icon = "🎯"
+    icon = "🏷️"
     blurb = "Bid for each prize card with a card of your own, all at once. No luck, just nerve."
     howto = [
         "The diamonds are prizes (ace 1 … king 13). Everyone holds a whole suit of their own.",

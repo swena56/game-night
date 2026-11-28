@@ -2,7 +2,8 @@
 UI.keyclash = (() => {
   let S, ctx, raf, round, idx, stream, typed, errs, offer, pending, acceptedAt, sending, live;
   let seen, fx, launches, leftAt, left, milestoneUntil, cleanup, reduced, prefs;
-  let previewKey, letterKey, offerKey, lastSubmitted, nextClock, completed;
+  let previewKey, letterKey, offerKey, nextClock, completed;
+  let skippedUntil;
   const $ = (id) => document.getElementById(id);
   const HUES = [205, 350, 135, 45, 280, 20];
   const K = () => S?.keyclash;
@@ -11,7 +12,7 @@ UI.keyclash = (() => {
   const hue = (id) => HUES[Math.max(0, (S ? fighters().findIndex((p) => p.id === id) : 0)) % HUES.length];
   const ICON = { shield: '🛡️', strike: '💥', heal: '💚' };
   const MILESTONES = { 3: 'Heating Up', 5: 'On Fire', 10: 'Rampage', 15: 'Unstoppable', 20: 'Legendary' };
-  const DEFAULTS = { size: 'auto', motion: false, shake: false, keys: false, sound: true, particles: 'normal', contrast: false, colorblind: false };
+  const DEFAULTS = { size: 'auto', motion: false, shake: false, keys: false, sound: true, particles: 'normal', contrast: false, colorblind: false, skip: false };
   const motionOff = () => reduced.matches || prefs.motion;
   const blocked = () => ['modal', 'chatPanel', 'prefsPanel', 'gameMenu', 'keyclashPrefs'].some((id) => $(id)?.hidden === false);
   const interactive = (el) => el?.closest?.('input, textarea, select, button, a[href], [contenteditable], [role="button"], [role="textbox"]');
@@ -37,10 +38,13 @@ UI.keyclash = (() => {
           <div id="kcAttack" class="kc-attack"><span>Attack</span><div class="kc-charge"><i id="kcAttackFill"></i></div></div></div>
         <div id="kcStream" class="kc-stream"><div id="kcTrack" class="kc-track"><span id="kcCompleted" class="kc-completed" aria-hidden="true"></span><span id="kcCurrent" class="kc-cur"></span><div id="kcPreview" class="kc-preview"></div></div><span id="kcCaret" class="kc-caret" aria-hidden="true"></span></div>
         <input id="kcInput" class="kc-input" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false"
-          aria-label="Typing console. Type the active word, then press Space." aria-describedby="kcCurrent kcOffer">
+          aria-label="Typing console. Type the active word, then press Space." aria-describedby="kcCurrent kcCorrection kcOffer">
+        <div class="kc-feedback">
+          <div id="kcCorrection" class="kc-correction"></div>
+          <div class="kc-note" role="status"><span id="kcNote"></span><span id="kcSkipped" hidden>Skipped</span></div>
+        </div>
         <button id="kcFocus" class="kc-focus" hidden>Click to resume typing</button>
         <div id="kcOffer" class="kc-offer" hidden></div>
-        <div id="kcNote" class="kc-note" role="status"></div>
       </div>
       <div class="kc-controls">
         <button id="kcOptions" class="ghost-btn" aria-expanded="false" aria-controls="keyclashPrefs">Typing settings</button>
@@ -128,7 +132,7 @@ UI.keyclash = (() => {
     };
     select('size', 'Typing size', [['small', 'Small'], ['auto', 'Default'], ['large', 'Large']]);
     select('particles', 'Particles', [['off', 'Off'], ['low', 'Low'], ['normal', 'Full']]);
-    for (const [key, title] of Object.entries({ motion: 'Reduce motion', shake: 'Screen shake', keys: 'Keystroke sounds', sound: 'Combat sounds', contrast: 'High contrast', colorblind: 'Colorblind feedback' })) {
+    for (const [key, title] of Object.entries({ skip: 'Allow skipping mistyped words', motion: 'Reduce motion', shake: 'Screen shake', keys: 'Keystroke sounds', sound: 'Combat sounds', contrast: 'High contrast', colorblind: 'Colorblind feedback' })) {
       const input = document.createElement('input');
       input.type = 'checkbox'; input.checked = prefs[key];
       add(key, title, input, () => input.checked);
@@ -186,7 +190,7 @@ UI.keyclash = (() => {
     if (!['Backspace', ' ', 'Enter'].includes(e.key) && !/^[a-z]$/i.test(e.key)) return;
     e.preventDefault(); e.stopPropagation();
     if (e.key === 'Backspace') backspace();
-    else if (e.key === ' ' || e.key === 'Enter') { if (!e.repeat) submit(); }
+    else if (e.key === ' ' || e.key === 'Enter') { if (!e.repeat) submit(e.key === ' '); }
     else addLetter(e.key.toLowerCase());
   }
 
@@ -195,7 +199,7 @@ UI.keyclash = (() => {
     if (!live || blocked() || e.isComposing) return;
     if (e.inputType === 'deleteContentBackward') backspace();
     if (e.inputType !== 'insertText') return;
-    if (e.data === ' ') submit();
+    if (e.data === ' ') submit(true);
     else if (/^[a-z]$/i.test(e.data ?? '')) addLetter(e.data.toLowerCase());
   }
 
@@ -229,47 +233,67 @@ UI.keyclash = (() => {
     paintTyping(); paintLocal();
   }
 
+  const firstMistake = (word) => [...typed].findIndex((ch, i) => word[i] !== ch);
+  const canSkip = (power, word, mistake) => prefs.skip && !power && mistake >= 0 && typed.length >= word.length;
+
   function projection() {
     const me = local();
     if (!me) return { chars: 0, errors: 0, combo: 0, charge: 0 };
     let { chars, combo, charge } = me, errors = me.errors ?? 0;
     for (const entry of pending) {
       if (entry.number <= me.words) continue;
+      errors += entry.body.errs;
+      if (entry.skip) {
+        combo = 0;
+        continue;
+      }
       const n = entry.body.word.length;
-      chars += n; errors += entry.body.errs;
+      chars += n;
       combo = entry.body.errs ? 0 : combo + 1;
       charge = entry.power ? 0 : Math.min(K().charge, charge + n * (entry.body.errs ? 1 : 3));
     }
     return { chars, errors: errors + errs, combo: errs ? 0 : combo, charge };
   }
 
-  function submit() {
+  function submit(bySpace) {
     if (!typed) return;
     const power = Object.keys(offer || {}).find((kind) => offer[kind] === typed);
+    let skip = false;
     if (!power && typed !== target()) {
-      const [, word] = activeChoice();
-      $('kcNote').textContent = [...typed].some((ch, i) => word[i] !== ch) ? 'Backspace to correct the underlined letters.' : 'Finish the word before pressing Space.';
-      return;
+      const [activePower, word] = activeChoice();
+      const mistake = firstMistake(word);
+      skip = bySpace && canSkip(activePower, word, mistake);
+      if (!skip) {
+        if (mistake < 0) $('kcNote').textContent = 'Finish the word before pressing Space.';
+        return;
+      }
     }
     const me = local(), last = pending.at(-1);
     const body = { rid: round, i: idx, word: typed, errs };
+    if (skip) body.errs = Math.max(errs, [...typed].filter((ch, i) => target()[i] !== ch).length);
     if (power) body.power = power;
     const number = Math.max(me.words, last?.number ?? 0) + 1;
     body.number = number;
-    pending.push({ number, power, body });
-    completed = typed;
+    pending.push({ number, power, skip, body });
+    completed = skip ? '' : typed;
     if (power) offer = null;
     else idx++;
     const perfect = !errs;
     typed = ''; errs = 0;
-    lastSubmitted = performance.now();
+    const now = performance.now();
     $('kcNote').textContent = '';
-    const { combo } = projection();
-    launches.push({ at: lastSubmitted, power, combo });
-    if (perfect && MILESTONES[combo]) {
-      $('kcMilestone').textContent = `${MILESTONES[combo]} · ${combo} perfect words`;
-      $('kcMilestone').hidden = false; milestoneUntil = lastSubmitted + 1200;
-      if (prefs.sound) ctx.sfx?.(combo >= 10 ? 'fanfare' : 'good');
+    if (skip) {
+      skippedUntil = now + 900;
+      $('kcSkipped').hidden = false;
+      $('kcMilestone').hidden = true;
+    } else {
+      const { combo } = projection();
+      launches.push({ at: now, power, combo });
+      if (perfect && MILESTONES[combo]) {
+        $('kcMilestone').textContent = `${MILESTONES[combo]} · ${combo} perfect words`;
+        $('kcMilestone').hidden = false; milestoneUntil = now + 1200;
+        if (prefs.sound) ctx.sfx?.(combo >= 10 ? 'fanfare' : 'good');
+      }
     }
     paintTyping(true); paintLocal(); sendNext(pending);
   }
@@ -284,7 +308,7 @@ UI.keyclash = (() => {
     if (queue !== pending || !S) return;
     try {
       if (!live) return;
-      await ctx.act('word', entry.body);
+      await ctx.act(entry.skip ? 'skip' : 'word', entry.body);
       if (queue !== pending || !S) return;
       entry.sent = true;
       acceptedAt = performance.now();
@@ -293,6 +317,7 @@ UI.keyclash = (() => {
       if (error.message === 'The game is paused.') return;
       pending = []; sending = false; typed = ''; completed = ''; errs = 0; idx = local()?.idx ?? K().base;
       offer = K().offer || null; launches = [];
+      $('kcSkipped').hidden = true;
       $('kcNote').textContent = 'Word could not be confirmed. Continue from the displayed word.';
       paintTyping(); paintLocal();
     } finally {
@@ -313,7 +338,9 @@ UI.keyclash = (() => {
     if (changed) {
       round = k.rid; idx = k.base; typed = ''; completed = ''; errs = 0; stream = new Map(); offer = null;
       pending = []; sending = false; fx = []; launches = []; parts = []; knocked.clear(); celebrated.clear();
-      lastSubmitted = shakeUntil = milestoneUntil = -Infinity;
+      shakeUntil = milestoneUntil = -Infinity;
+      skippedUntil = Infinity;
+      $('kcSkipped').hidden = true;
       acceptedAt = performance.now() - (k.wordAge ?? 0) * 1000;
       $('kcNote').textContent = ''; $('kcMilestone').hidden = true;
       setActivity(false);
@@ -556,10 +583,10 @@ UI.keyclash = (() => {
   function paintLetters(box, word, value) {
     const cells = [...word].map((ch, i) => {
       const state = i >= value.length ? 'untyped' : value[i] === ch ? 'ok' : 'bad';
-      return ctx.el('span', `kc-letter ${state}`, ch);
+      return ctx.el('span', `kc-letter ${state}`, value[i] ?? ch);
     });
     if (value.length > word.length) {
-      cells.push(ctx.el('span', 'kc-overflow', '×'.repeat(value.length - word.length)));
+      for (const ch of value.slice(word.length)) cells.push(ctx.el('span', 'kc-overflow', ch));
     }
     box.replaceChildren(...cells);
   }
@@ -585,6 +612,17 @@ UI.keyclash = (() => {
         track.animate([{ transform: 'translateX(1.2ch)' }, { transform: 'translateX(0)' }], { duration: 85, easing: 'ease-out' });
       }
     }
+    const mistake = firstMistake(word);
+    let hint = '';
+    if (live && mistake >= 0) {
+      const steps = typed.length - mistake;
+      const correction = mistake === word.length ? 'Backspace to remove the extra letter'
+        : `Expected ${word[mistake]} · ${steps} Backspace${steps === 1 ? '' : 's'}`;
+      hint = (power ? `${power[0].toUpperCase()}${power.slice(1)} power · ` : '') + correction;
+      if (canSkip(power, word, mistake)) hint += ' · Space to skip';
+    }
+    const correction = $('kcCorrection');
+    if (correction.textContent !== hint) correction.textContent = hint;
     paintOffer(power);
   }
 
@@ -616,6 +654,10 @@ UI.keyclash = (() => {
   function tickClock() {
     const k = S && K();
     if (!k) return;
+    if (performance.now() >= skippedUntil) {
+      $('kcSkipped').hidden = true;
+      skippedUntil = Infinity;
+    }
     // (#384) words a minute move with the clock, not only when a word lands: letters so far over the time so far
     if (k.stage === 'play' && k.elapsed != null) {
       const t = k.elapsed + (S.paused ? 0 : (performance.now() - leftAt) / 1000);

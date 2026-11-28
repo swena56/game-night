@@ -3,12 +3,14 @@ const assert = require('node:assert/strict');
 const { chromium } = require('playwright-core');
 
 const BASE = process.env.BASE || 'http://localhost:8767';
+const TIMEOUT = Number(process.env.BROWSER_TIMEOUT || 30000);
 const roomAction = (page, type, extra) => page.evaluate(({ type, extra }) => act(type, extra), { type, extra });
 const current = (page) => page.locator('#kcCurrent').textContent();
 const state = (page) => page.evaluate(() => S.keyclash);
+const until = (page, predicate) => page.waitForFunction(predicate, null, { polling: 100 });
 async function focus(page) {
   try {
-    await page.waitForFunction(() => document.activeElement.id === 'kcInput', null, { polling: 100, timeout: 30000 });
+    await until(page, () => document.activeElement.id === 'kcInput');
   } catch (error) {
     const details = await page.evaluate(() => ({
       active: document.activeElement.id, phase: S?.phase, playing: S?.keyclash?.playing,
@@ -29,7 +31,7 @@ const submit = async (page, word) => {
 
 async function layout(page, width, height) {
   await page.setViewportSize({ width, height });
-  await page.waitForFunction(() => {
+  await until(page, () => {
     const hud = document.querySelector('.kc-top').getBoundingClientRect();
     const arena = document.querySelector('.kc-arena').getBoundingClientRect();
     const typing = document.querySelector('.kc-type').getBoundingClientRect();
@@ -41,9 +43,12 @@ async function layout(page, width, height) {
 async function duel(browser, errors) {
   const host = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   const guest = await browser.newPage({ viewport: { width: 1024, height: 620 }, reducedMotion: 'reduce' });
-  for (const page of [host, guest]) page.on('pageerror', (error) => errors.push(error.message));
+  for (const page of [host, guest]) {
+    page.setDefaultTimeout(TIMEOUT);
+    page.on('pageerror', (error) => errors.push(error.message));
+  }
   try {
-    await host.goto(BASE);
+    await host.goto(BASE, { waitUntil: 'domcontentloaded' });
     await host.bringToFront();
     await host.locator('#name').fill('Key Host');
     await host.locator('#createBtn').click();
@@ -51,11 +56,11 @@ async function duel(browser, errors) {
     await host.locator('#shareBtn').click();
     const invite = await host.locator('#modalBody input').inputValue();
     await host.locator('#modalOk').click();
-    await guest.goto(new URL(new URL(invite).search, BASE).href);
+    await guest.goto(new URL(new URL(invite).search, BASE).href, { waitUntil: 'domcontentloaded' });
     await guest.locator('#name').fill('Key Guest');
     await guest.locator('#joinBtn').click();
-    await host.waitForFunction(() => S.players.length === 2);
-    await roomAction(host, 'settings', { settings: { game: 'keyclash', mode: 'duel', secs: 120, words: 'easy' } });
+    await until(host, () => S.players.length === 2);
+    await roomAction(host, 'settings', { settings: { game: 'keyclash', mode: 'duel', secs: 0, words: 'easy' } });
     await host.waitForFunction(() => S.gameId === 'keyclash');
     await host.locator('#startBtn').click();
     await focus(host);
@@ -75,6 +80,11 @@ async function duel(browser, errors) {
     assert.equal(await current(guest), words[0]);
     const caret = host.locator('#kcCaret');
     const caretLeft = (await caret.boundingBox()).x;
+    const correction = host.locator('#kcCorrection');
+    const feedback = host.locator('.kc-feedback');
+    const correctionBox = await feedback.boundingBox();
+    const arenaBox = await host.locator('.kc-arena').boundingBox();
+    assert.equal(correctionBox.x, caretLeft);
     const stillAligned = async (letter) => {
       assert.equal((await caret.boundingBox()).x, caretLeft);
       if (letter) assert.ok(Math.abs((await letter.boundingBox()).x - caretLeft) < 1);
@@ -89,16 +99,26 @@ async function duel(browser, errors) {
     await stillAligned(letters.nth(1));
     await host.keyboard.press('Space');
     assert.equal(await current(host), words[0]);
-    await host.keyboard.type(words[0][1] === 'z' ? 'x' : 'z');
+    const wrong = words[0][1] === 'z' ? 'x' : 'z';
+    await host.keyboard.type(wrong);
     assert.match(await letters.nth(1).getAttribute('class'), / bad$/);
     await stillAligned();
     const firstCell = await letters.first().boundingBox();
     assert.ok(Math.abs(firstCell.x + 2 * firstCell.width - caretLeft) < 1);
-    assert.equal(await letters.nth(1).textContent(), words[0][1]);
+    assert.equal(await letters.nth(1).textContent(), wrong);
     assert.equal(await letters.nth(1).evaluate((cell) => getComputedStyle(cell).textDecorationLine), 'underline');
+    assert.equal(await correction.textContent(), `Expected ${words[0][1]} · 1 Backspace`);
+    await host.keyboard.type(words[0].slice(2));
+    const range = words[0].length - 1;
+    assert.equal(await correction.textContent(), `Expected ${words[0][1]} · ${range} Backspace${range === 1 ? '' : 's'}`);
+    assert.deepEqual(await feedback.boundingBox(), correctionBox);
+    assert.deepEqual(await host.locator('.kc-arena').boundingBox(), arenaBox);
     await host.keyboard.press('Space');
+    assert.equal(await letters.nth(1).textContent(), wrong);
+    assert.equal((await fighter(host, 0)).words, 0);
+    for (let i = 0; i < range; i++) await host.keyboard.press('Backspace');
     assert.equal(await current(host), words[0]);
-    await host.keyboard.press('Backspace');
+    assert.equal(await correction.textContent(), '');
     await stillAligned(letters.nth(1));
     assert.equal(await host.locator('#kcInput').evaluate((input) => {
       const event = new ClipboardEvent('paste', { cancelable: true, bubbles: true });
@@ -125,39 +145,71 @@ async function duel(browser, errors) {
     await host.locator('#kcActivity').click();
     await host.locator('#kcFocus').click();
 
-    // Keep a request open so several words and their local attack effects overlap.
-    let release;
-    const held = new Promise((resolve) => { release = resolve; });
+    await host.locator('#kcOptions').click();
+    const skipOption = host.getByLabel('Allow skipping mistyped words');
+    assert.equal(await skipOption.isChecked(), false);
+    await skipOption.check();
+    await host.getByRole('button', { name: 'Done' }).click();
+    await focus(host);
+    await host.keyboard.type(wrong + words[0].slice(2, -1));
+    if (words[0].length > 2) {
+      assert.doesNotMatch(await correction.textContent(), /Space to skip/);
+      await host.keyboard.press('Space');
+      assert.equal(await letters.nth(1).textContent(), wrong);
+      await host.keyboard.type(words[0].at(-1));
+    }
+    assert.match(await correction.textContent(), /Space to skip/);
+    await host.keyboard.press('Enter');
+    assert.equal(await letters.nth(1).textContent(), wrong);
+
+    // Hold the skip response after the server accepts it, then type several attacks locally.
     const submitted = [];
-    await host.route('**/api/action', async (route) => {
-      const body = route.request().postDataJSON();
-      if (body.type === 'word') {
-        submitted.push(body);
-        if (submitted.length === 1) await held;
-      }
-      await route.continue();
+    const record = (request) => {
+      if (!request.url().endsWith('/api/action')) return;
+      const body = request.postDataJSON();
+      if (body.type === 'word' || body.type === 'skip') submitted.push(body);
+    };
+    host.on('request', record);
+    await host.evaluate(() => {
+      const fetchAction = window.fetch;
+      const held = new Promise((resolve) => { window.releaseSkip = resolve; });
+      window.fetch = async (url, options) => {
+        const response = await fetchAction(url, options);
+        if (String(url).endsWith('/api/action') && JSON.parse(options.body).type === 'skip') await held;
+        return response;
+      };
     });
-    await submit(host, words[0].slice(1));
+    await host.keyboard.press('Space');
     assert.equal(await current(host), words[1]);
+    assert.equal(await host.locator('#kcSkipped').isVisible(), true);
+    assert.equal(await correction.textContent(), '');
     await stillAligned();
-    assert.equal(await host.locator('#kcCompleted').textContent(), words[0]);
+    assert.equal(await host.locator('#kcCompleted').textContent(), '');
     for (const word of words.slice(1, 5)) await submit(host, word);
     assert.equal(await current(host), words[5]);
     assert.equal(await host.locator('#kcCombo').textContent(), '4 combo');
     assert.match(await host.locator('#kcMilestone').textContent(), /Heating Up/);
-    assert.equal((await fighter(host, 0)).words, 0);
-    release();
+    await host.waitForFunction(() => S.keyclash.fighters.find((f) => f.id === S.me.id).words === 1);
+    const skipped = await fighter(host, 0);
+    assert.equal(skipped.chars, 0);
+    assert.equal(skipped.charge, 0);
+    assert.equal(skipped.errors, 2);
+    assert.equal((await fighter(host, 1)).hp, hp);
+    assert.equal(submitted.length, 1);
+    await host.evaluate(() => window.releaseSkip());
     await host.waitForFunction(() => S.keyclash.fighters.find((f) => f.id === S.me.id).words === 5);
-    await guest.waitForFunction(() => S.keyclash.fighters.find((f) => f.id !== S.me.id).words === 5);
+    await until(guest, () => S.keyclash.fighters.find((f) => f.id !== S.me.id).words === 5);
     assert.equal(submitted.length, 5);
     assert.deepEqual(submitted.map((entry) => entry.i), [0, 1, 2, 3, 4]);
-    assert.deepEqual(submitted.map((entry) => entry.errs), [1, 0, 0, 0, 0]);
+    assert.deepEqual(submitted.map((entry) => entry.type), ['skip', 'word', 'word', 'word', 'word']);
+    assert.deepEqual(submitted.map((entry) => entry.errs), [2, 0, 0, 0, 0]);
     const me = await fighter(host, 0);
     assert.equal(me.combo, 4);
-    assert.equal(me.acc, Math.round(100 * me.chars / (me.chars + 1)));
-    assert.equal((await state(host)).events.filter((e) => e.kind === 'hit').length, 5);
+    assert.equal(me.acc, Math.round(100 * me.chars / (me.chars + 2)));
+    assert.equal((await state(host)).events.filter((e) => e.kind === 'hit').length, 4);
     assert.ok((await fighter(guest, 0)).hp < hp);
-    await assert.rejects(roomAction(host, 'word', submitted[0]), /already counted/);
+    host.off('request', record);
+    await assert.rejects(roomAction(host, 'skip', submitted[0]), /already counted/);
     assert.equal((await fighter(host, 0)).words, 5);
 
     await host.keyboard.type(words[5][0] === 'z' ? 'x' : 'z');
@@ -167,7 +219,7 @@ async function duel(browser, errors) {
     await submit(host, words[5]);
     await host.waitForFunction(() => S.keyclash.fighters.find((f) => f.id === S.me.id).words === 6);
     assert.equal((await fighter(host, 0)).combo, 0);
-    assert.equal((await fighter(host, 0)).errors, 2);
+    assert.equal((await fighter(host, 0)).errors, 3);
 
     await guest.bringToFront();
     if (await guest.locator('#kcFocus').isVisible()) await guest.locator('#kcFocus').click();
@@ -176,7 +228,11 @@ async function duel(browser, errors) {
     await submit(guest, words[0]);
     assert.equal(await current(guest), words[1]);
     assert.equal(await guest.locator('#kcTrack').evaluate((track) => track.getAnimations().length), 0);
-    await host.waitForFunction(() => S.keyclash.fighters.find((f) => f.id !== S.me.id).words === 1);
+    await until(host, () => S.keyclash.fighters.find((f) => f.id !== S.me.id).words === 1);
+    await host.bringToFront();
+    await host.reload({ waitUntil: 'domcontentloaded' });
+    await host.locator('#kcOptions').click();
+    assert.equal(await skipOption.isChecked(), true);
   } finally {
     if (errors.length) console.error(errors);
     await host.close();
@@ -186,9 +242,10 @@ async function duel(browser, errors) {
 
 async function pause(browser, errors) {
   const page = await browser.newPage({ viewport: { width: 1150, height: 680 } });
+  page.setDefaultTimeout(TIMEOUT);
   page.on('pageerror', (error) => errors.push(error.message));
   try {
-    await page.goto(BASE);
+    await page.goto(BASE, { waitUntil: 'domcontentloaded' });
     await page.locator('#name').fill('Key Solo');
     await page.selectOption('#soloGame', 'keyclash', { force: true });
     await page.locator('#soloBtn').click();
@@ -214,13 +271,22 @@ async function pause(browser, errors) {
     await focus(page);
     assert.equal(await page.locator('.kc').getAttribute('data-size'), 'large');
     assert.match(await page.locator('.kc').getAttribute('class'), /kc-reduced kc-contrast kc-colorblind/);
+    const next = await current(page);
+    await page.keyboard.type(next + 'z');
+    assert.equal(await page.locator('.kc-overflow').textContent(), 'z');
+    assert.equal(await page.locator('#kcCorrection').textContent(), 'Backspace to remove the extra letter');
+    await page.keyboard.press('Backspace');
+    assert.equal(await page.locator('#kcCorrection').textContent(), '');
   } finally {
     await page.close();
   }
 }
 
 (async () => {
-  const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/usr/bin/chromium', args: ['--headless=new', '--no-sandbox'] });
+  const browser = await chromium.launch({
+    executablePath: process.env.CHROMIUM || '/usr/bin/chromium',
+    args: ['--headless=new', '--no-sandbox', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding'],
+  });
   const errors = [];
   try {
     await duel(browser, errors);

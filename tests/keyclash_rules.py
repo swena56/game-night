@@ -58,6 +58,36 @@ check("a bad typo count is refused", refused(lambda: g.act(a, {"type": "word", "
 a.g.last_at = g.now()
 check("inhumanly fast typing is refused", refused(lambda: g.act(a, {"type": "word", "i": a.g.idx, "word": g.words[a.g.idx], "errs": 0})))
 
+for mode in ("duel", "race", "hyper", "tug"):
+    _, game, (player, rival) = room(mode=mode)
+    game.words[:2] = ["test", "next"]
+    type_next(game, player)
+    stats = player.g
+    stats.last_at -= 60
+    skip = {"type": "skip", "rid": game.view(player)["keyclash"]["rid"],
+            "number": 2, "i": 1, "word": "nexz", "errs": 4}
+    if mode == "duel":
+        invalid = ({"word": "nex"}, {"word": "next"}, {"word": "ne?t"}, {"rid": None},
+                   {"rid": "another round"}, {"number": None}, {"number": 3}, {"i": 0},
+                   {"power": "shield"})
+        check("skip rejects invalid attempts and stale or missing bindings",
+              all(refused(lambda: game.act(player, {**skip, **change})) for change in invalid))
+    previous = (stats.chars, stats.charge, stats.dist, rival.g.hp, game.rope, len(game.events))
+    game.act(player, skip)
+    check(f"{mode}: skip advances the stream and acknowledgement, keeping accuracy errors",
+          stats.idx == 2 and stats.words == 2 and stats.errs == 4 and stats.combo == 0)
+    check(f"{mode}: skip grants no WPM, damage, energy or mode progress",
+          previous == (stats.chars, stats.charge, stats.dist, rival.g.hp, game.rope, len(game.events)))
+    check(f"{mode}: duplicate skip is refused", refused(lambda: game.act(player, skip)) and stats.errs == 4)
+
+    game.words[2] = "test"
+    stats.last_at -= 60
+    game.act(player, {**skip, "number": 3, "i": 2, "word": "tastz", "errs": 0})
+    check(f"{mode}: skip records unreported substitutions and extra letters", stats.errs == 6)
+    game.round_over([player])
+    check(f"{mode}: the round report only counts completed words",
+          game.history[-1]["stats"][player.id]["words"] == 1)
+
 # combo: perfect words build it, a typo breaks it
 for _ in range(3):
     type_next(g, a)

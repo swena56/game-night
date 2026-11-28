@@ -206,7 +206,7 @@ class Realm(Game):
         "Or win by ruling every land, or (an option) holding every capital 👑. With a round limit, the most lands wins when time's up. Press and hold a land to see its details.",
     ]
     name = "Realm Wars"
-    icon = "⚔️"
+    icon = "🗺️"
     blurb = "Conquer an archipelago: draft troops, roll for battles, hold whole islands for bonuses, brave the storms."
     min_players = 2
     max_players = 6

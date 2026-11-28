@@ -43,3 +43,10 @@ body.focus .pp-stage { height: max(240px, calc(var(--room) - 130px)); }
 }
 
 .pp-made-putt { display: block; white-space: nowrap; }
+/* (#395) aim without dragging: the panel under the hole bar, and the power as a number on the bar */
+.pp-aim { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0; }
+.pp-aim[hidden] { display: none; }
+.pp-aim output { min-width: 3.5em; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
+.pp-aim-tip { font-size: 12px; color: var(--muted); }
+#ppAimBtn.on { background: var(--accent-a20, #ffffff22); }
+.pp-power[data-pct]::after { content: attr(data-pct); position: absolute; inset: 0; display: grid; place-items: center; font: 700 12px system-ui, sans-serif; color: #fff; text-shadow: 0 1px 2px #000; }

@@ -77,7 +77,7 @@ class StarGuard(Game):
         "💣 Tap Bomb to wipe the shots and hurt every alien: you start with one, and a dropped 💣 gives a spare (up to 3). Every 5th wave is a boss!",
     ]
     name = "Star Guard"
-    icon = "🛸"
+    icon = "⭐"
     blurb = "Co-op arcade shooter. Defend the sky together against alien waves, power-ups and bosses."
     min_players = 1
     max_players = 6

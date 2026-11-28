@@ -44,7 +44,7 @@ class ShipCrew(Game):
         "🏴‍☠️ Raids: dock with 11 or 12 cargo and you plunder 2 from whoever leads (not you).",
     ]
     name = "Ship, Captain & Crew"
-    icon = "🚢"
+    icon = "🦜"
     blurb = "The old tavern dice game: roll a 6, 5 and 4 in order, then gamble on your cargo."
     min_players = 1
     max_players = 6

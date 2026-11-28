@@ -104,7 +104,7 @@ class Sumo(Game):
         "Last saucer standing wins the round; first to the target wins.",
     ]
     name = "Sumo Saucers"
-    icon = "🪐"
+    icon = "🛸"
     blurb = "Shove rival hover saucers off a shrinking platform in space. Last one floating wins."
     badges = {**Game.badges, "double_ko": ("💥", "Double KO", "Knock two saucers off in one round")}
     min_players = 2

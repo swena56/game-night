@@ -153,7 +153,7 @@ class Holdem(Game):
     ]
     name = "Texas Hold'em"
     streak_id, streak_n = None, 0  # 🔥 who has won the last hands on their own, and how many
-    icon = "♠️"
+    icon = "💰"
     blurb = "No-limit poker: two cards each, five shared, bluff and bet your way to every chip on the table."
     min_players = 2
     max_players = 6

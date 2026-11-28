@@ -101,6 +101,12 @@ r, g, ann, bo = course(0)
 for _ in range(putt.SAFETY_CAP):
     tap(g, ann); tap(g, bo)
 check("safety cap ends the hole", g.between and g.cards[0][-1] == putt.SAFETY_CAP + 1, f"cards {g.cards}")
+v = g.view(ann)["putt"]
+check("the screens are told it was the automatic pickup (#394)", v["autoPicked"][0] == [g.hole_no] and v["autoPicked"][1] == [g.hole_no], v["autoPicked"])
+check("the log says so, with what it costs", any(f"picks up automatically: {putt.SAFETY_CAP + 1}" in e["text"] for e in r.log))
+check("the setting and the rules state the stop", str(putt.SAFETY_CAP) in dict(putt.Putt.settings_schema["strokes"][1])[0]
+      and any(f"{putt.SAFETY_CAP} strokes" in line for line in putt.Putt.howto)
+      and any("Ball contact" in line for line in putt.Putt.howto))
 
 # a room saved before the setting existed plays to 8
 r, g, ann, bo = course(None)

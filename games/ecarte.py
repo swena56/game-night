@@ -16,7 +16,7 @@ from .tricks import TrickGame
 class Ecarte(TrickGame):
     id = "ecarte"
     name = "Écarté"
-    icon = "🎩"
+    icon = "🤵"
     blurb = "Five cards, five tricks, king high. Propose an exchange, or dare to play as dealt."
     howto = [
         "32 cards, king high: K Q J A 10 9 8 7. Five each; the turned card sets trumps (a turned king: dealer +1).",

@@ -36,6 +36,8 @@ CUP_SPEED = 2.0                # faster than this and the ball lips out
 FRAME = 8                      # record every 8th step (30 fps)
 MAX_STEPS = 240 * 14
 STROKE_CAP = 8          # the default most a hole can cost
+SETTLE_MOVE = 0.004     # (#390) a ball that has moved less than this in 3/4 s has settled, slope or not
+RECENT_SHOTS = 4        # (#389) putts kept for browsers to replay in order
 SAFETY_CAP = 20         # with no limit (#68), a hole still ends here so a lost ball can't stall the game
 LONG_PUTT = 3.5                # 🚀 holing out from at least this far (units) takes a stroke off
 BANK_KINDS, BANK_HITS = ("wall", "bumper", "post", "mill", "rock"), 3   # 🏀 holing out after this many bounces is a bank shot
@@ -238,6 +240,7 @@ def simulate(course, pos, angle, power, record=True, hits=None, t0=0.0, others=(
             vy -= (1 + e) * dot * nyv
         return -dot
 
+    rest = []   # (#390) where the ball was every quarter second, to tell a settled ball from a slow one
     for step in range(MAX_STEPS):
         k = None if air > 0 else course.kind(x, y)
         sp = math.hypot(vx, vy)
@@ -384,6 +387,15 @@ def simulate(course, pos, angle, power, record=True, hits=None, t0=0.0, others=(
         # stop when slow, unless the ground is steep enough to keep it rolling (a slope, a ramp, a hillside)
         if air <= 0 and sp < 0.03 and course.kind(x, y) not in ("slope", "ramp") and math.hypot(ax, ay) < ROLL:
             break
+        # (#390) ...but a ball held against a wall on a slope or ramp is pulled on and never "slow" by that test: once it
+        # has stayed put for SETTLE_SPAN, it has settled (a ball creeping down open ground moves more than that)
+        if step % 60 == 0:
+            rest.append((x, y))
+            if len(rest) > 4:
+                rest.pop(0)
+            if (air <= 0 and len(rest) == 4 and sp < 0.2
+                    and max(math.hypot(px - x, py - y) for px, py in rest) < SETTLE_MOVE):
+                break
     if record:
         frames.append([round(x, 3), round(y, 3)])
     return (x, y), None, frames
@@ -397,11 +409,11 @@ class Putt(Game):
         "Drag anywhere else to turn and tilt the view; two fingers (or a right-drag) pan, pinch or the wheel zooms. The camera follows your ball, then swings round behind it. 🎯 does that too, ⛳ shows the whole hole.",
         "⛰️ Humps push the ball aside and bowls pull it in; ⚪ bumpers, ▪️ posts and 🌑 rocks bounce it; long grass slows it.",
         "🌀 Time your putt through the windmill's doorway, and hit the ramp hard enough to clear the stream.",
-        "Everyone plays the same hole, one stroke each in turn. Balls pass through each other.",
+        "Everyone plays the same hole, one stroke each in turn. Balls pass through each other, unless 🎱 Ball contact is on: then balls in play block and bounce your putt.",
         "🟫 Sand slows the ball, ↗ slopes push it, ⚪ bumpers bounce it, and 💧 water costs a stroke (you replay from where you hit).",
         f"🚀 Long shot (an option, on by default): sink a putt from 3.5 tiles or more away and a stroke comes off your hole (never below 1).",
         "The scorecard shows each hole’s par and stroke count, your running total and the distance of each putt that found the cup.",
-        f"Hole out in the fewest strokes; {STROKE_CAP} is the most a hole can cost (a setting: 6, 10 or ∞, where ⛳ Pick up takes your strokes +1). Lowest total wins.",
+        f"Hole out in the fewest strokes; {STROKE_CAP} is the most a hole can cost (a setting: 6, 10 or ∞). With ∞ No limit, ⛳ Pick up takes your strokes +1, and a hole that reaches {SAFETY_CAP} strokes picks you up by itself: it counts {SAFETY_CAP + 1}. Lowest total wins.",
     ]
     name = "Putt Party"
     icon = "⛳"
@@ -413,7 +425,7 @@ class Putt(Game):
         "holes": ("Holes", [(6, "6"), (3, "3 (quick)"), (9, "9")], 6),
         "course": ("Course", [("classic", "Classic"), ("mixed", "🎲 Surprise each hole"), ("water", "🌊 Water hazards"),
                               ("obstacles", "🌀 Obstacle alley"), ("hills", "⛰️ Hills and bowls")], "classic"),
-        "strokes": ("Stroke limit", [(8, "8"), (6, "6"), (10, "10"), (0, "∞ No limit")], 8),
+        "strokes": ("Stroke limit", [(8, "8"), (6, "6"), (10, "10"), (0, f"∞ No limit (at {SAFETY_CAP} strokes you pick up: {SAFETY_CAP + 1})")], 8),
         "contact": ("🎱 Ball contact", [(0, "Off"), (1, "On: balls in play block and bounce your putt")], 0),
         "longshot": ("🚀 Long shot", [(1, "On: holing out from 3.5+ tiles takes a stroke off"), (0, "Off")], 1),
     }
@@ -554,13 +566,18 @@ class Putt(Game):
         self.room.add_log(f"⛳ {p.name} picks up ({self.strokes[i] + 1}).", "question")
         self.next_turn(i)
 
+    def blockers(self, i, start):
+        """(#388) The balls that block player i's putt with Ball contact on: in play (putted at least once, so never
+        one still on the tee) and still playing the hole: not holed, picked up, capped or gone."""
+        return [tuple(b) for j, b in enumerate(self.balls)
+                if j != i and self.strokes[j] and not self.done(j) and math.hypot(b[0] - start[0], b[1] - start[1]) > 2.2 * BALL]
+
     def putt(self, i, angle, power):
         start = tuple(self.balls[i])
         hits, t0 = [], time.time()
         others = ()
-        if self.s.get("contact"):  # balls already in play block the way (never the ones still on the tee)
-            others = [tuple(b) for j, b in enumerate(self.balls)
-                      if j != i and self.strokes[j] and not self.holed[j] and math.hypot(b[0] - start[0], b[1] - start[1]) > 2.2 * BALL]
+        if self.s.get("contact"):
+            others = self.blockers(i, start)
         end, result, frames = simulate(self.get_course(), start, angle, power, hits=hits, t0=t0, others=others)
         self.strokes[i] += 1
         p = self.pl(i)
@@ -581,6 +598,10 @@ class Putt(Game):
             if ls:
                 self.strokes[i] -= 1
                 self.moment(f"🚀 {name}: long shot, a stroke off!", "gold", "fanfare")
+                # (#387) remembered, so screens never call a long shot's credited 1 a hole in one
+                if not hasattr(self, "long_shots"):
+                    self.long_shots = [{} for _ in self.seats]
+                self.long_shots[i][self.hole_no] = True
             s = self.strokes[i]
             ace = s == 1 and not ls  # a long shot that trims a 2 to a 1 is no real hole in one
             if ace:
@@ -602,7 +623,13 @@ class Putt(Game):
         else:
             self.balls[i] = [end[0], end[1]]
             if self.strokes[i] >= (self.cap or SAFETY_CAP):
-                self.room.add_log(f"🙈 {name} picks up at {self.strokes[i]}.", "question")
+                if self.cap:
+                    self.room.add_log(f"🙈 {name} picks up at {self.strokes[i]}.", "question")
+                else:   # (#394) no limit: the safety stop, said plainly with what it costs
+                    self.room.add_log(f"🙈 {name} reaches {SAFETY_CAP} strokes and picks up automatically: {SAFETY_CAP + 1} for the hole.", "question")
+                    if not hasattr(self, "auto_picked"):
+                        self.auto_picked = [{} for _ in self.seats]
+                    self.auto_picked[i][self.hole_no] = True
             else:
                 self.room.add_log(f"🏌️ {name} putts ({self.strokes[i]}).", "question")
         self.shot_id += 1
@@ -613,7 +640,10 @@ class Putt(Game):
             who = next((self.name_of_seat(k) for k, b in enumerate(self.balls) if k != i and j is not None and tuple(b) == j), None)
             self.moment(f"🎱 {name} clacks into {who}'s ball!" if who else f"🎱 {name} clacks into a ball!", "good", None)
         self.shot = {"by": i, "frames": frames, "result": result, "id": self.shot_id, "from": list(start), "hits": hits[:40],
-                     "t0": round(t0, 3)}
+                     "t0": round(t0, 3), "hole": self.hole_no}
+        # (#389) the last few putts, in order: a putt made while the one before was still rolling, or an update a
+        # browser missed, would otherwise drop the earlier putt from its replay
+        self.recent = (getattr(self, "recent", []) + [self.shot])[-RECENT_SHOTS:]
         self.next_turn(i)
         # nobody putts again until this ball has stopped rolling on screen (a bot used to go after about a
         # second, cutting the animation short so the ball jumped to where it stopped)
@@ -669,9 +699,13 @@ class Putt(Game):
             "banks": h.get("banks", []), "mills": h.get("mills", []), "theme": h.get("theme", "day"), "style": h.get("style", "classic"), "millSpeed": MILL_OMEGA, "now": round(time.time(), 3), "cols": COLS, "rows": ROWS, "ball": BALL, "cupR": CUP, "roundR": ROUND,
             "balls": self.balls, "strokes": self.strokes, "holed": self.holed, "cards": self.cards,
             "madePutts": getattr(self, "made_putts", []),
+            "longShots": [sorted(d) for d in getattr(self, "long_shots", [])],
+            "autoPicked": [sorted(d) for d in getattr(self, "auto_picked", [])],   # (#394) holes ended by the 20-stroke stop   # (#387) holes each player won a stroke back on
+            # (#388) balls out of this hole without holing out (picked up, capped, gone): drawn faded, and they never block
+            "out": [self.done(j) and not self.holed[j] for j in range(len(self.seats))],
             "totals": [self.running_total(i) for i in range(len(self.seats))],
             "holeScores": [self.hole_score(i) if self.done(i) else None for i in range(len(self.seats))],
-            "shot": self.shot, "cap": self.cap, "picked": getattr(self, "picked", None), "between": getattr(self, "between", False),
+            "shot": self.shot, "shots": getattr(self, "recent", []), "cap": self.cap, "picked": getattr(self, "picked", None), "between": getattr(self, "between", False),
             "standings": self.standings() if getattr(self, "between", False) and len(self.seats) > 1 else None,
         }}
 
@@ -701,6 +735,9 @@ class Putt(Game):
         angles = {math.atan2(ty - by, tx - bx) for tx, ty in targets if (tx, ty) != (bx, by)}
         tries = {"easy": 25, "normal": 70, "hard": 160}[level]
         t0 = time.time()  # the windmills will be where they are now, give or take
+        # (#393) plan on the course as it really is: with Ball contact on, the balls that will block the real putt
+        # (on_timeout plans a timed-out turn's putt here too, so it gets them as well)
+        others = self.blockers(i, (bx, by)) if self.s.get("contact") else ()
         cands = []
         for a in list(angles):
             for _ in range(max(1, tries // max(1, len(angles)))):
@@ -709,7 +746,7 @@ class Putt(Game):
             cands.append((random.uniform(-math.pi, math.pi), random.uniform(0.05, 1.0)))
         best, best_score = cands[0], float("inf")
         for a, pw in cands:
-            end, result, _ = simulate(course, (bx, by), a, pw, record=False, t0=t0)
+            end, result, _ = simulate(course, (bx, by), a, pw, record=False, t0=t0, others=others)
             score = -100 if result == "cup" else 50 if result == "water" else self.path_distance(*end)
             if score < best_score:
                 best, best_score = (a, pw), score

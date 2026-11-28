@@ -60,7 +60,7 @@ class Minesweeper(PuzzleRace):
     id = "minesweeper"
     category = "classic"
     name = "Minesweeper"
-    icon = "💣"
+    icon = "🚩"
     noun = "minefield"
     blurb = "The mine-clearing puzzle as a race: same minefield for everyone, every safe square scores."
     howto = [

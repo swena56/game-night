@@ -128,7 +128,7 @@ class Pond(Game):
         "Everyone fishes the same frozen pond at once. 🐟 Perch 10, 🐠 trout 25, 🦈 pike 60, ✨ the golden char 150 (once a pond). ❄️ Squalls hide the shadows and the pings. Most points when time runs out wins.",
     ]
     name = "Frozen Pond"
-    icon = "🎣"
+    icon = "🧊"
     blurb = "Drill a hole → drop your line → wait for a nibble → reel when it strikes (hold to reel, ease off when it lunges)."
     min_players = 2
     max_players = 6

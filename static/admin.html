@@ -350,9 +350,11 @@
       $('password').focus();
     }
 
+    let loadedAt = 0;
     async function load() {
       try {
         const data = await api('/api/admin/feedback');
+        loadedAt = Date.now();
         items = data.items;
         remote = !!data.remote;
         $('signOut').hidden = !remote;
@@ -392,17 +394,19 @@
       const list = items.filter((i) => (!status || (status === 'verify' ? needsCheck(i) : i.status === status)) && (!kind || i.kind === kind)
         && (priority === 'any' || (i.priority || '') === priority) && (game === '*' || gameOf(i) === game)
         && (!q || (q[0] === '#' ? `#${i.id}` === q : [i.text, i.note, i.name, gameOf(i)].join('\n').toLowerCase().includes(q))));
+      // each report's sort keys are worked out once, not on every comparison
       const rank = (i) => PRIORITIES.findIndex(([v]) => v === (i.priority || ''));
-      const by = { verify: (a, b) => needsCheck(b) - needsCheck(a) || rank(a) - rank(b) || b.id - a.id, new: (a, b) => b.id - a.id, old: (a, b) => a.id - b.id, priority: (a, b) => rank(a) - rank(b) || b.id - a.id,
-        game: (a, b) => gameOf(a).localeCompare(gameOf(b)) || b.id - a.id };
-      return list.sort(by[$('sort').value]);
+      const keyed = list.map((i) => ({ i, check: needsCheck(i) ? 1 : 0, rank: rank(i), game: gameOf(i) }));
+      const by = { verify: (a, b) => b.check - a.check || a.rank - b.rank || b.i.id - a.i.id, new: (a, b) => b.i.id - a.i.id, old: (a, b) => a.i.id - b.i.id,
+        priority: (a, b) => a.rank - b.rank || b.i.id - a.i.id, game: (a, b) => a.game.localeCompare(b.game) || b.i.id - a.i.id };
+      return keyed.sort(by[$('sort').value]).map((k) => k.i);
     }
 
     // The actions apply only to ticked reports you can see, so a filter never leaves hidden ones to be changed by surprise.
-    const selected = () => shown().filter((i) => picked.has(i.id));
+    const selected = (list = shown()) => list.filter((i) => picked.has(i.id));
 
-    function syncBulk() {
-      const list = shown(), n = selected().length;
+    function syncBulk(list = shown()) {
+      const n = selected(list).length;
       $('picked').textContent = n ? `${n} selected` : 'Select all shown';
       $('all').checked = n > 0 && n === list.length;
       $('all').indeterminate = n > 0 && n < list.length;
@@ -413,18 +417,21 @@
       const open = items.filter((i) => i.status === 'open');
       $('counts').textContent = `${open.length} open (${open.filter((i) => i.priority === 'high').length} high, ${open.filter(needsCheck).length} to check) · ${items.length - open.length} done`;
       const list = $('list'), rows = shown(), grouped = $('sort').value === 'game';
-      list.replaceChildren();
-      if (!rows.length) list.append(el('p', 'empty', 'No reports match. 🎉'));
+      const sizes = new Map();
+      if (grouped) for (const i of rows) sizes.set(gameOf(i), (sizes.get(gameOf(i)) || 0) + 1);
+      const fragment = document.createDocumentFragment();
+      if (!rows.length) fragment.append(el('p', 'empty', 'No reports match. 🎉'));
       let group = null;
       for (const i of rows) {
         if (grouped && gameOf(i) !== group) {
           group = gameOf(i);
-          list.append(el('h3', 'group', `${group || 'No game'} (${rows.filter((x) => gameOf(x) === group).length})`));
+          fragment.append(el('h3', 'group', `${group || 'No game'} (${sizes.get(group)})`));
         }
-        list.append(drafts.get(i.id) || card(i));
+        fragment.append(drafts.get(i.id) || card(i));
       }
+      list.replaceChildren(fragment);   // one DOM insert instead of one per report
       for (const [id, view] of logs) if (view.pre.isConnected) { placeLog(view); followLog(id); }
-      syncBulk();
+      syncBulk(rows);
     }
 
     function card(i) {
@@ -451,10 +458,16 @@
         }
         box.append(shots);
       }
-      const extra = (title, text) => { const d = el('details'); d.append(el('summary', '', title), el('pre', '', text)); box.append(d); };
+      // a details block's text is built the first time it is opened, so a closed card costs nothing
+      const extra = (title, text) => {
+        const d = el('details'), body = () => (typeof text === 'function' ? text() : text);
+        d.append(el('summary', '', title));
+        d.addEventListener('toggle', () => { if (d.open && !d.querySelector('pre')) d.append(el('pre', '', body())); });
+        box.append(d);
+      };
       if (i.origin) box.append(el('div', 'hint', `Merged from ${i.origin.source}, where it is report #${i.origin.id}.`));
       if (i.original_text && i.original_text !== i.text) extra('Original text (edited)', i.original_text);
-      if (Object.keys(ctx).length) extra('Technical details', JSON.stringify(ctx, null, 2));
+      if (Object.keys(ctx).length) extra('Technical details', () => JSON.stringify(ctx, null, 2));
       const actions = el('div', 'row actions');
       const next = i.status === 'done' ? 'open' : 'done';
       const job = jobs?.[i.id];
@@ -596,7 +609,8 @@
     $('add').onclick = () => { if (!$('addBox').firstChild) $('addBox').replaceChildren(editor()); $('addBox').querySelector('textarea').focus(); };
     $('refresh').onclick = async () => { if (await load()) say('Refreshed.'); };
     for (const id of ['fStatus', 'fKind', 'fPriority', 'fGame', 'sort']) $(id).onchange = () => { $('copyBox').replaceChildren(); render(); };
-    $('search').oninput = render;
+    let searchTimer = 0;
+    $('search').oninput = () => { clearTimeout(searchTimer); searchTimer = setTimeout(render, 150); };
     $('all').onchange = () => { for (const i of shown()) $('all').checked ? picked.add(i.id) : picked.delete(i.id); render(); };
     for (const b of document.querySelectorAll('[data-bulk]')) {
       b.onclick = () => {
@@ -617,7 +631,7 @@
     };
     $('copy').onclick = () => copyText(markdown(selected()), `Copied ${selected().length} report(s).`);
     // pick up reports that arrived while the tab was in the background
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - loadedAt > 15000) load(); });
     load();
   </script>
 </body>

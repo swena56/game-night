@@ -187,7 +187,7 @@ class Rally(Game):
         "💥 Elimination (a lobby setting): each time the leader crosses the line, whoever is last is out. The last one flying wins.",
     ]
     name = "Hover Rally"
-    icon = "🛸"
+    icon = "🏎️"
     blurb = "Hover-craft racing on a new looping 3D track each game. Steer into the bends, hit the boost pads, fire homing missiles, drop mines."
     min_players = 1
     max_players = 6

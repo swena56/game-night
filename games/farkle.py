@@ -112,7 +112,7 @@ class Farkle(Game):
         "With 🐷 Piggyback on, when someone banks with dice still in hand, the next player may take over their points and those dice instead of starting fresh: farkle and it's all gone.",
     ]
     name = "Farkle"
-    icon = "🎯"
+    icon = "🎲"
     blurb = "Push-your-luck dice: keep the scoring dice, roll again or bank, and don't farkle it all away."
     min_players = 1
     max_players = 6

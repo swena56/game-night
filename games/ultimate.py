@@ -87,7 +87,7 @@ class Ultimate(Undo, Game):
         "If nobody can make a line, it's a draw, or, with the 🏆 Most small boards setting, a win for whoever took more boards.",
     ]
     name = "Ultimate Tic-Tac-Toe"
-    icon = "#️⃣"
+    icon = "🪟"
     blurb = "Nine tic-tac-toe boards in one: every move decides where your rival plays next."
     min_players = 2
     max_players = 2

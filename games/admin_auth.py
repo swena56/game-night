@@ -25,8 +25,37 @@ MIN_LENGTH, MAX_LENGTH = 10, 200
 SESSION_SECONDS = 12 * 3600
 MAX_SESSIONS = 32
 _SCRYPT = {"n": 2 ** 14, "r": 8, "p": 1}
-_sessions = {}   # token -> (expires, the password hash it was opened with)
+SESSIONS_FILE = os.path.join(os.path.dirname(PASSWORD_FILE), "admin-sessions.json")
 _lock = threading.Lock()
+
+
+def _key(token):
+    """Sessions are kept by a hash of their token, so the file on disk holds nothing that signs in."""
+    return hashlib.sha256(str(token).encode("utf-8", "surrogatepass")).hexdigest()
+
+
+def _read_sessions():
+    try:
+        with open(SESSIONS_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+        return {k: (float(v[0]), str(v[1])) for k, v in data.items() if isinstance(v, list) and len(v) == 2}
+    except (OSError, ValueError, TypeError, IndexError, KeyError):
+        return {}
+
+
+def _write_sessions(sessions):
+    """Call with _lock held."""
+    os.makedirs(os.path.dirname(SESSIONS_FILE), exist_ok=True)
+    tmp = SESSIONS_FILE + ".tmp"
+    with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as f:
+        json.dump({k: [expires, digest] for k, (expires, digest) in sessions.items()}, f)
+    os.replace(tmp, SESSIONS_FILE)
+
+
+# token hash -> (expires, the password hash it was opened with); kept on disk, so a restart keeps a session
+_sessions = {}
+with _lock:
+    _sessions = _read_sessions()
 
 
 def _hash(password, salt):
@@ -86,21 +115,23 @@ def login(password):
             del _sessions[old]
         while len(_sessions) >= MAX_SESSIONS:
             del _sessions[next(iter(_sessions))]
-        _sessions[token] = (now + SESSION_SECONDS, saved[1])
+        _sessions[_key(token)] = (now + SESSION_SECONDS, saved[1].hex())
+        _write_sessions(_sessions)
     return token
 
 
 def valid(token):
-    """A session ends after SESSION_SECONDS, at logout, at a restart, or when the password is changed or removed."""
+    """A session ends after SESSION_SECONDS, at logout, or when the password is changed or removed. It survives a restart."""
     saved = stored()
     with _lock:
-        session = _sessions.get(token)
-    return bool(saved and session and session[0] > time.time() and session[1] == saved[1])
+        session = _sessions.get(_key(token))
+    return bool(saved and session and session[0] > time.time() and session[1] == saved[1].hex())
 
 
 def logout(token):
     with _lock:
-        _sessions.pop(token, None)
+        if _sessions.pop(_key(token), None) is not None:
+            _write_sessions(_sessions)
 
 
 def main(argv):

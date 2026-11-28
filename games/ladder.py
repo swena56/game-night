@@ -80,7 +80,7 @@ class Ladder(Game):
         "With 🏃 Sprint on, the first player to the top cuts everyone else's clock to 15 seconds.",
     ]
     name = "Word Ladder"
-    icon = "🧗"
+    icon = "🪜"
     blurb = "Change one letter at a time to climb from word to word: Lewis Carroll's puzzle, as a race."
     min_players = 1
     max_players = 6

@@ -52,7 +52,7 @@ class Eleusis(CardGame):
     id = "eleusis"
     solo_bots = 2
     name = "Eleusis"
-    icon = "🔮"
+    icon = "🧪"
     blurb = "Crack the secret rule from the cards it accepts and rejects. Shed your hand, or name the rule."
     howto = [
         "Nobody knows the rule: the game picks one secretly, from the list under \"Cards left\". It looks at your card and the last accepted card in the line.",

@@ -61,7 +61,7 @@ class Yacht(Game):
         "With ⭐ Bonus roll on, everyone has one extra roll for the whole game: spend it on a turn after your third roll.",
     ]
     name = "Yacht"
-    icon = "🎲"
+    icon = "🛥️"
     blurb = "The classic dice game: three rolls, hold what you like, and fill twelve boxes for the best total."
     min_players = 1
     max_players = 6

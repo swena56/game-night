@@ -21,7 +21,7 @@ def val(c):
 class War(CardGame):
     id = "war"
     name = "War"
-    icon = "⚔️"
+    icon = "🪖"
     blurb = "Flip your top card, highest takes all. Tie? It's war: three down, one up, winner takes the lot."
     howto = [
         "The deck is dealt out. Everyone flips their top card together: highest takes them all (aces high).",

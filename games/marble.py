@@ -268,7 +268,7 @@ class Marble(Game):
         '🚩 Checkpoint split times are shown beside the race. A faster finish on the same maze saves a personal best ghost on this device; toggle it on or off during your next run.',
     ]
     name = "Marble Rush"
-    icon = "🌀"
+    icon = "🔮"
     blurb = "Tilt your own copy of the same 3D maze and race a marble to the goal. Fastest total time over the boards wins."
     min_players = 1
     max_players = 6

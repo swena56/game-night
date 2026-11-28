@@ -26,14 +26,18 @@ body.focus .pb-stage { height: max(220px, calc(var(--room) - 205px)); }
 /* (#362) a wide screen has the room beside the arena, not under it: the pad and the bomb button move to its sides and
    the square arena takes the whole height */
 @media (min-width: 861px) and (orientation: landscape) {
+  /* (#362, sent back) the round bar, cover bar and share line move into the side columns, so the arena takes the full height */
   .pb, body.focus .pb { max-width: none; display: grid; align-content: start; justify-content: center; column-gap: clamp(10px, 2vw, 32px);
-    --pb-side: min(max(280px, calc(var(--room) - 84px)), calc(100cqw - 340px));
+    --pb-side: min(max(280px, calc(var(--room) - 24px)), calc(100cqw - 340px));
     grid-template-columns: minmax(130px, 170px) var(--pb-side) minmax(130px, 170px);
-    grid-template-areas: "hud hud hud" "cover cover cover" "share share share" "pad stage bomb"; }
-  .pb-hud { grid-area: hud; } .pb-cover { grid-area: cover; } .pb-pct { grid-area: share; }
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas: "hud stage cover" "share stage cover" "pad stage bomb"; }
+  .pb-hud { grid-area: hud; flex-direction: column; align-items: stretch; text-align: center; }
+  .pb-cover { grid-area: cover; margin: 0 0 6px; }
+  .pb-pct { grid-area: share; margin: 0 0 6px; }
   .pb-controls { display: contents; }
   .pb-dpad { grid-area: pad; align-self: end; justify-self: end; margin-bottom: 8%; }
   .pb-bomb { grid-area: bomb; align-self: end; justify-self: start; margin-bottom: calc(8% + 26px); }
-  .pb-stage, body.focus .pb-stage { grid-area: stage; height: var(--pb-side); width: var(--pb-side); }
+  .pb-stage, body.focus .pb-stage { grid-area: stage; height: var(--pb-side); width: var(--pb-side); align-self: start; }
 }
 #game main:has(> .pb) { container-type: inline-size; }

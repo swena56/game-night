@@ -105,7 +105,7 @@ class Wordsmith(Game):
         '🔮 Plan ahead (once your placed tiles make a valid play): a private preview of your next turn with the tiles you would keep. Nothing is played. Alone against bots it names the words; otherwise it shows their scores.',
     ]
     name = "Wordsmith"
-    icon = "🔤"
+    icon = "✍️"
     blurb = (f"Build crossing words on an 11×11 board. Use the bounty letter for +{BOUNTY_BONUS}, "
              f"all 7 tiles for +{SWEEP_BONUS}.")
     min_players = 2
