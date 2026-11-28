@@ -18,8 +18,13 @@
 .pp-done h3 { margin: 0 0 8px; text-align: center; }
 .pp-done-row { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; font-size: 14px; }
 .pp-card { overflow-x: auto; }
-.pp-card table { font-size: 12px; }
-.pp-card td, .pp-card th { padding: 2px 5px; text-align: center; }
+/* (#371) a clearer scorecard: bigger figures, small headings over a rule, a divider between players */
+.pp-card table { font-size: 14px; width: 100%; border-collapse: collapse; }
+.pp-card th { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: 4px 6px 6px; border-bottom: 1px solid #ffffff1f; }
+.pp-card td, .pp-card th { padding: 6px 6px; text-align: center; }
+.pp-card td { font-variant-numeric: tabular-nums; border-bottom: 1px solid #ffffff0d; }
+.pp-card tr:last-child td { border-bottom: 0; }
+.pp-card td:first-child, .pp-card th:first-child { text-align: left; }
 .pp-card th.now, .pp-card td.now { background: var(--panel2); }
 .pp-card tr.pp-par td { color: var(--muted); font-style: italic; }
 .pp-mark { display: inline-block; min-width: 1.6em; line-height: 1.5em; border: 1.5px solid transparent; }
@@ -32,5 +37,9 @@
 .pp-legend { font-size: 11px; margin: 4px 0 0; }
 .pp-res.birdie, .pp-res.eagle { color: #57cc99; }
 body.focus .pp-stage { height: max(240px, calc(var(--room) - 130px)); }
+/* (#366) a wide screen: the course takes the height the hint line and the hole bar leave free */
+@media (min-width: 861px) and (orientation: landscape) {
+  .pp-stage, body.focus .pp-stage { height: max(240px, calc(var(--room) - 90px)); }
+}
 
 .pp-made-putt { display: block; white-space: nowrap; }

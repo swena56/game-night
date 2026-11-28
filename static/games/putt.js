@@ -302,7 +302,7 @@ UI.putt = (() => {
       t.append(row);
     });
     box.append(t);
-    box.append(ctx.el('p', 'hint left pp-legend', '◯ birdie · ◎ eagle · ▢ bogey · ± strokes against par · ⛳ made putt in tiles'));
+    box.append(ctx.el('p', 'hint left pp-legend', '◯ birdie · ◎ eagle · ▢ bogey · ±: strokes under or over par · ⛳ holed out'));
   }
 
   // between holes: this hole's strokes and the standings, once the last putt has rolled in (see loop)
@@ -598,6 +598,23 @@ UI.putt = (() => {
       return m;
     }
 
+    // (#368) a course tile is a slab with rounded corners and bevelled edges, not a box. Built once, then shared.
+    let slab = null;
+    // a hole (radius holeR at (hx, hy) from the tile's middle, or none) cut through the slab: the cup's tile has one, so the
+    // well can go down into the course (#370). The cup is seldom dead centre (the server puts it at y + 0.55).
+    function slabGeometry(holeR = 0, hx = 0, hy = 0) {
+      if (slab && !holeR) return slab;
+      const h = 0.45, r = 0.1, shape = new T.Shape();   // the outline is the inner edge; the bevel adds 0.05 outside it
+      shape.moveTo(-h + r, -h); shape.lineTo(h - r, -h); shape.quadraticCurveTo(h, -h, h, -h + r);
+      shape.lineTo(h, h - r); shape.quadraticCurveTo(h, h, h - r, h); shape.lineTo(-h + r, h);
+      shape.quadraticCurveTo(-h, h, -h, h - r); shape.lineTo(-h, -h + r); shape.quadraticCurveTo(-h, -h, -h + r, -h);
+      if (holeR) shape.holes.push(new T.Path().absarc(hx, hy, holeR, 0, Math.PI * 2, true));   // the bevel pulls the hole's edge in by 0.05
+      const geo = new T.ExtrudeGeometry(shape, { depth: 0.1, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05, bevelSegments: 3, curveSegments: holeR ? 24 : 6 });
+      geo.rotateX(-Math.PI / 2);      // lay it flat: the thickness runs down the Y axis
+      geo.translate(0, -0.05, 0);     // and span -0.1 .. 0.1, as the box it replaces did
+      if (!holeR) slab = geo;
+      return geo;
+    }
     function build() {
       scene.remove(course); course = new T.Group(); scene.add(course);
       bumperMeshes.length = 0;
@@ -620,8 +637,9 @@ UI.putt = (() => {
         } else {
           const water = kind === 'water';
           const mat = water ? waterMat : new T.MeshStandardMaterial({ color, roughness: 0.9, map: grass });
-          const tile = new T.Mesh(new T.BoxGeometry(1, 0.2, 1), mat);
-          tile.position.set(x + 0.5, water ? -0.16 : -0.1, -(y + 0.5)); tile.receiveShadow = true; course.add(tile);
+          const cupTile = !water && Math.floor(p.cup[0]) === x && Math.floor(p.cup[1]) === y;   // the cell the cup is in
+          const tile = new T.Mesh(cupTile ? slabGeometry(p.cupR + 0.05, p.cup[0] - x - 0.5, p.cup[1] - y - 0.5) : slabGeometry(), mat);
+          tile.position.set(x + 0.5, water ? -0.16 : -0.1, -(y + 0.5)); tile.receiveShadow = true; tile.castShadow = cupTile; course.add(tile);   // (#370) the lip shades the well
         }
         if (kind === 'slope' && p.slope) {
           const arrow = new T.Mesh(new T.ConeGeometry(0.12, 0.3, 12), new T.MeshBasicMaterial({ color: 0xffffff }));
@@ -727,12 +745,29 @@ UI.putt = (() => {
         gr.addColorStop(0, '#000'); gr.addColorStop(0.7, '#0b0b0e'); gr.addColorStop(1, '#2b2d33');
         g.fillStyle = gr; g.fillRect(0, 0, w, h);
       });
-      const cup = new T.Mesh(new T.CircleGeometry(p.cupR, 40), new T.MeshBasicMaterial({ map: well }));
-      cup.rotation.x = -Math.PI / 2; cup.position.copy(cupAt).setY(0.006); course.add(cup);
-      flatRing(p.cupR, p.cupR * 1.7, new T.MeshBasicMaterial({ color: 0xcfe8a8, transparent: true, opacity: 0.28, depthWrite: false }), 0.004);
-      const rim = new T.Mesh(new T.TorusGeometry(p.cupR * 1.02, 0.011, 8, 40), new T.MeshStandardMaterial({ color: 0xe6e9ee, metalness: 0.85, roughness: 0.25 }));
-      rim.rotation.x = Math.PI / 2; rim.position.copy(cupAt).setY(0.008); course.add(rim);
-      cupGlow = flatRing(p.cupR * 1.9, p.cupR * 2.4, new T.MeshBasicMaterial({ color: 0xffe27a, transparent: true, opacity: 0.3, depthWrite: false, side: T.DoubleSide }), 0.01);
+      // the well goes down through the tile: a dark wall, and the floor at its bottom (the gradient darkens toward the middle)
+      // (#370) a real hole: the walls and the floor take the light and the shadow of the lip above them
+      // the wall darkens with depth, as the light from the opening fades (a painted shadow: the sun's map is too coarse for so small a hole)
+      const wallTex = canvasTex(T, 4, 64, (g, w, h) => {
+        const gr = g.createLinearGradient(0, 0, 0, h);   // canvas top = the cylinder's top edge
+        gr.addColorStop(0, '#8a7458'); gr.addColorStop(0.12, '#4a3b2a'); gr.addColorStop(0.5, '#1c150e'); gr.addColorStop(1, '#050403');
+        g.fillStyle = gr; g.fillRect(0, 0, w, h);
+      });
+      const shaft = new T.Mesh(new T.CylinderGeometry(p.cupR, p.cupR, 0.16, 40, 1, true), new T.MeshStandardMaterial({ map: wallTex, roughness: 1, side: T.BackSide }));
+      shaft.position.copy(cupAt).setY(-0.08); shaft.receiveShadow = true; course.add(shaft);
+      const cup = new T.Mesh(new T.CircleGeometry(p.cupR, 40), new T.MeshStandardMaterial({ map: well, color: 0x6a6a6a, roughness: 1 }));
+      cup.rotation.x = -Math.PI / 2; cup.position.copy(cupAt).setY(-0.158); cup.receiveShadow = true; course.add(cup);
+      // a soft shadow on the grass just round the lip, so the opening sits in the green rather than on it (a ring's
+      // texture is mapped flat over its square, so the gradient is radial: the lip is at 1/1.6 of the way out)
+      flatRing(p.cupR, p.cupR * 1.6, new T.MeshBasicMaterial({ map: canvasTex(T, 64, 64, (g, w, h) => {
+        const gr = g.createRadialGradient(w / 2, h / 2, w / 2 / 1.6, w / 2, h / 2, w / 2); gr.addColorStop(0, '#000000a0'); gr.addColorStop(1, '#00000000');
+        g.fillStyle = gr; g.fillRect(0, 0, w, h);
+      }), transparent: true, depthWrite: false }), 0.004);
+      // a dark lip, not a bright ring, so the opening reads as a hole
+      const rim = new T.Mesh(new T.TorusGeometry(p.cupR, 0.008, 8, 40), new T.MeshStandardMaterial({ color: 0x2b2f36, metalness: 0.3, roughness: 0.6 }));
+      rim.rotation.x = Math.PI / 2; rim.position.copy(cupAt).setY(0.002); rim.castShadow = true; course.add(rim);
+      cupGlow = flatRing(p.cupR * 2.6, p.cupR * 2.9,   // (#370) faint and clear of the lip, so the hole isn't a white ring
+        new T.MeshBasicMaterial({ color: 0xffe27a, transparent: true, opacity: 0.3, depthWrite: false, side: T.DoubleSide }), 0.01);
       const pole = new T.Mesh(new T.CylinderGeometry(0.012, 0.012, 0.7, 6), new T.MeshStandardMaterial({ color: 0xeeeeee }));
       pole.position.copy(W(...p.cup)).setY(0.35); pole.castShadow = true; course.add(pole);
       // the flag: a strip of cloth that waves (see draw)
@@ -971,7 +1006,7 @@ UI.putt = (() => {
       // the flag waves, more toward its free end
       if (cupGlow) {
         const br = 0.5 + 0.5 * Math.sin(now / 420);
-        cupGlow.material.opacity = 0.16 + 0.26 * br; cupGlow.scale.setScalar(0.92 + 0.14 * br);
+        cupGlow.material.opacity = 0.05 + 0.1 * br; cupGlow.scale.setScalar(0.92 + 0.14 * br);
       }
       if (flag && flagBase) {
         const a = flag.geometry.attributes.position, t = now / 1000;
