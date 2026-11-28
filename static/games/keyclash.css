@@ -37,7 +37,14 @@
   font: 600 18px/1.3 ui-monospace, "SFMono-Regular", Menlo, monospace; color: var(--muted); }
 .kc-cur { font-size: 28px; color: var(--text, #fff); padding: 0 6px; border-radius: 6px; background: #ffffff0f; }
 .kc-cur .ok { color: #5be37d; }
-.kc-cur .bad { color: #fff; background: #e5394d; border-radius: 3px; }
+/* (#377) a wrong letter keeps the word's letter, in red; what was typed shows small above it */
+.kc-cur span { position: relative; }
+.kc-cur .bad { color: #ff6b7a; text-decoration: underline 3px #e5394d; text-underline-offset: 4px; }
+.kc-cur .bad[data-typed]::before { content: attr(data-typed); position: absolute; left: 50%; bottom: 100%; transform: translateX(-50%);
+  font-size: 13px; line-height: 1; padding: 1px 3px; border-radius: 3px; background: #e5394d; color: #fff; }
+.kc-cur .extra { color: #e5394d; opacity: .75; text-decoration: line-through; }
+.kc-cur .next { text-decoration: underline 2px var(--accent); text-underline-offset: 4px; }
+.kc-stream { padding-top: 14px; }
 .kc-stream.kc-err .kc-cur { box-shadow: inset 0 -3px 0 #e5394d; }
 .kc-next { opacity: .7; }
 .kc-next + .kc-next { opacity: .5; }
@@ -66,3 +73,48 @@
   .kc-fighters { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); }
 }
 @media (prefers-reduced-motion: reduce) { .kc-shake, .kc-charge.full i { animation: none; } }
+/* (#376) the other modes: a boss bar under your health, red and blue teams in a tug-of-war */
+.kc-hp.kc-boss { height: 10px; }
+.kc-hp.kc-boss i { background: #c264ff; }
+.kc-hp.kc-boss em { font-size: 9px; line-height: 10px; }
+.kc-f.kc-team0 { border-color: #ff6b6b88; }
+.kc-f.kc-team1 { border-color: #6bb8ff88; }
+.kc-f-team { font-size: 12px; font-weight: 700; margin-top: 4px; }
+/* (#378) typing a power word: the stream's word waits, dimmed, and the chip fills in */
+.kc-cur.kc-wait { opacity: .45; }
+.kc-pw.on b { color: #fff; text-shadow: 0 0 6px currentColor; }
+/* (#379) no time limit: the clock bar is a calm, empty track */
+.kc-time i.none { background: #ffffff1a; }
+/* (#380) each power word says what it does */
+.kc-pw-what { display: block; font: 500 10px system-ui, sans-serif; opacity: .8; margin-top: 1px; }
+/* (#381) typing analytics over the arena: between rounds the round just played, after the match all of them */
+.kc-report { position: absolute; inset: 8px; background: #141226ee; border: 1px solid #ffffff1a; border-radius: var(--r-md, 10px);
+  padding: 10px 12px; overflow: auto; display: flex; flex-direction: column; gap: 6px; }
+.kc-report[hidden] { display: none; }
+.kc-rep-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.kc-rep-tabs { display: flex; gap: 4px; }
+.kc-rep-tabs .on { background: var(--accent-a20, #ffffff22); }
+.kc-rep-close { margin-left: auto; }
+.kc-chart-wrap { position: relative; }
+.kc-chart { width: 100%; max-height: 240px; display: block; }
+.kc-grid { stroke: #ffffff14; stroke-width: 1; }
+.kc-axis { fill: var(--muted); font-size: 10px; }
+.kc-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.kc-typo { fill: #141226; stroke: #ff6b7a; stroke-width: 2; }
+.kc-endlab { fill: var(--text, #eee); font-size: 11px; font-weight: 700; }
+.kc-cross { stroke: #ffffff55; stroke-width: 1; }
+.kc-tip { position: absolute; top: 4px; min-width: 130px; background: #000c; border-radius: 6px; padding: 6px 8px; font-size: 12px; pointer-events: none; }
+.kc-tip-row { display: flex; align-items: center; gap: 6px; }
+.kc-tip-row b { margin-left: auto; font-variant-numeric: tabular-nums; }
+.kc-tip i, .kc-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; }
+.kc-legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.kc-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.kc-legend-typo i { border: 2px solid #ff6b7a; border-radius: 50%; width: 8px; height: 8px; }
+.kc-rep-tablewrap { overflow-x: auto; }
+.kc-rep-table { font-size: 12px; border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+.kc-rep-table th, .kc-rep-table td { padding: 4px 8px; text-align: left; border-bottom: 1px solid #ffffff10; white-space: nowrap; }
+.kc-rep-table th { color: var(--muted); font-weight: 600; }
+.kc-rep-table td.won { color: var(--text, #fff); font-weight: 700; }
+.kc-rep-total td, .kc-rep-total th { border-top: 1px solid #ffffff33; }
+/* (#384) the live words-a-minute figure */
+.kc-wpm { color: var(--text, #fff); font-weight: 700; font-variant-numeric: tabular-nums; }

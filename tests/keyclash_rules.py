@@ -79,6 +79,11 @@ b.g.shield = 5
 hp = b.g.hp
 g.hit(a, b, 8, "hit")
 check("a shield soaks damage", b.g.hp == hp - 3 and b.g.shield == 0)
+check("the screens see what the shield took", [e["kind"] for e in g.events[-2:]] == ["soak", "hit"] and g.events[-2]["dmg"] == 5)
+b.g.shield = 10
+g.hit(a, b, 4, "hit")
+check("a shield that takes all of a hit is a block", g.events[-1]["kind"] == "block" and g.events[-1]["dmg"] == 4 and b.g.shield == 6)
+b.g.shield = 0
 
 # a knock-out ends the round; winning the match takes most rounds
 b.g.hp = 1
@@ -117,6 +122,108 @@ check("revenge target", g.target(a).id == c.id)
 c.g.ko = True
 check("a knocked-out rival is no target", g.target(a).id == b.id)
 check("knocked out can't type", refused(lambda: type_next(g, c)))
+
+# 🏰 Castle Siege: a word sends soldiers; soldiers past halfway on their way to you are cut down first
+r, g, (a, b) = room(mode="siege")
+type_next(g, a)
+check("siege: a word sends soldiers", len(g.armies) == 1 and g.armies[0]["to"] == b.id and b.g.hp == kc.HP)
+g.skew += kc.MARCH * 0.6
+p0 = g.armies[0]["power"]
+type_next(g, b)
+check("siege: a word cuts down close soldiers first", not g.armies or g.armies[0]["power"] < p0 or g.armies[0]["by"] == b.id)
+r, g, (a, b) = room(mode="siege")
+type_next(g, a)
+g.skew += kc.MARCH + 0.1
+g.process()
+check("siege: soldiers that arrive hit the castle", b.g.hp < kc.HP and not [x for x in g.armies if x["by"] == a.id], str(b.g.hp))
+
+# 🧟 Survival: the same enemies for everyone; words hit your front one; ones that arrive bite
+r, g, (a, b) = room(mode="survival")
+f0 = g.foes[0]
+check("survival: waves are planned", len(g.foes) > 10 and f0["wave"] == 1)
+g.skew += f0["spawn"] - g.now() + 0.1
+type_next(g, a)
+check("survival: a word hits the front enemy", a.g.foe_hp.get(0, f0["hp"]) < f0["hp"] and b.g.foe_hp == {})
+a_stopped = a.g.foe_hp.get(0) == 0
+g.skew += f0["arrive"] - g.now() + 0.01
+g.process()
+check("survival: an enemy that arrives bites whoever didn't stop it", b.g.hp < kc.HP and (a.g.hp == kc.HP) == a_stopped,
+      f"a stopped it: {a_stopped}, a {a.g.hp}, b {b.g.hp}")
+
+# 👹 Boss Rush: the boss hits back on a beat; beating it wins the round
+r, g, (a, b) = room(mode="boss")
+g.skew += kc.BOSS_EVERY + 0.01
+g.process()
+check("boss: the boss hits everyone on its beat", a.g.hp == b.g.hp == kc.HP - kc.BOSS_HIT)
+a.g.boss = 1
+type_next(g, a)
+check("boss: beating your boss wins the round", g.stage == "reveal" and g.result["winner"] == a.id)
+
+# 🚀 Hyperdrive: first over the line
+r, g, (a, b) = room(mode="hyper")
+type_next(g, a)
+check("hyper: words fly you forward", 0 < a.g.dist < kc.TRACK and b.g.hp == kc.HP)
+a.g.dist = kc.TRACK - 0.5
+type_next(g, a)
+check("hyper: crossing the line wins the round", g.stage == "reveal" and g.result["winner"] == a.id)
+
+# 🪢 Tug-of-War: teams alternate; the rope over the line wins the round for the whole team
+r, g, (a, b, c) = room(("Ann", "Bo", "Cy"), mode="tug")
+check("tug: seats alternate teams", (a.g.team, b.g.team, c.g.team) == (0, 1, 0))
+type_next(g, b)
+pull_b = g.rope
+r2, g2, (a2, b2, c2) = room(("Ann", "Bo", "Cy"), mode="tug")
+g2.words[0] = g.words[0]
+type_next(g2, a2)
+check("tug: a team of one pulls as hard as a team of two", pull_b > 0 and abs(abs(g2.rope) * 2 - pull_b) < 0.01, f"{pull_b} vs {g2.rope}")
+g.rope = -kc.ROPE + 0.1
+type_next(g, a)
+check("tug: over the line wins for the team", g.stage == "reveal" and set(g.result["winners"]) == {a.id, c.id} and a.g.wins == c.g.wins == 1)
+
+# (#379) no time limit: rounds run to a winner; Pure Typing races to a goal; overtime breaks stalemates
+r, g, (a, b) = room(mode="race", secs=0)
+check("no limit: the round runs long", g.end - g.t0 >= kc.NO_LIMIT and g.view(a)["keyclash"]["unlimited"])
+a.g.chars = kc.RACE_GOAL - 1
+type_next(g, a)
+check("no limit: pure typing is a race to the goal", g.stage == "reveal" and g.result["winner"] == a.id)
+r, g, (a, b) = room(secs=0)
+a.g.idx = len(g.words) - 5
+n = len(g.words)
+type_next(g, a)
+check("no limit: the word stream goes on", len(g.words) > n and len(g.view(a)["keyclash"]["words"]) == kc.WINDOW)
+r, g, (a, b) = room(mode="siege", secs=0)
+check("no overtime yet", not g.overtime and g.surge() == 1)
+g.skew += kc.OVERTIME + 60.01
+g.process()
+check("overtime starts on time and hits grow", g.overtime and abs(g.surge() - 1.5) < 0.01, str(g.surge()))
+type_next(g, b)
+g.skew += kc.MARCH * 0.6
+p0 = [x["power"] for x in g.armies if x["by"] == b.id]
+type_next(g, a)
+check("overtime: castles stop cutting soldiers down", [x["power"] for x in g.armies if x["by"] == b.id] == p0)
+r, g, (a, b) = room(mode="tug", secs=0)
+g.skew += kc.OVERTIME + 120.01
+g.process()
+check("overtime: the tug lines creep in", abs(g.rope_line() - kc.ROPE * 0.5) < 0.1, str(g.rope_line()))
+r, g, (a, b) = room(mode="tug")
+check("a timed round has no overtime", not any(t[1] == "overtime" for t in g.timers))
+
+# (#383) while paused the clock stands still in the view
+r, g, (a, b) = room()
+import time as _time
+from unittest import mock
+r.paused = _time.time()
+left = g.view(a)["keyclash"]["left"]
+with mock.patch.object(kc.time, "time", return_value=_time.time() + 5):   # five seconds pass on the wall clock
+    check("paused: the clock stands still", abs(g.view(a)["keyclash"]["left"] - left) < 0.01)
+    r.paused = 0
+    check("unpaused: it runs", g.view(a)["keyclash"]["left"] < left - 4)
+
+# a rematch is a new game: the screen keys on it
+r, g, (a, b) = room()
+rid = g.view(a)["keyclash"]["rid"]
+g.gid = "later"
+check("view: a new game changes the round key", g.view(a)["keyclash"]["rid"] != rid)
 
 # a Duel is for two
 r = server.Room("TEST")
