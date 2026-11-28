@@ -240,12 +240,15 @@ UI.paintblast = (() => {
     if (!snap || !S?.paintblast) return;
     const r = S.paintblast;
     const left = snap.st === 'play' ? Math.max(0, (endsAt - now) / 1000) : null;
-    $('pbClock').textContent = left == null ? '' : `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
-    $('pbClock').classList.toggle('hurry', left != null && left < 10);
+    // 📦 Crate Clear counts crates, not seconds
+    const crates = r.crateClear ? snap.t.split('+').length - 1 : null;
+    const clock = r.crateClear ? (snap.st === 'play' || snap.st === 'countdown' ? `📦 ${crates} left` : '') : left == null ? '' : `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
+    if ($('pbClock').textContent !== clock) $('pbClock').textContent = clock;
+    $('pbClock').classList.toggle('hurry', r.crateClear ? crates <= r.lastCrates : left != null && left < 10);
     const cd = (countdownAt - now) / 1000, mine = r.me != null ? snap.p[r.me] : null;
     let text = '';
     if (S.phase === 'playing' && snap.st === 'countdown') text = cd > 0 ? String(Math.ceil(cd)) : 'GO!';
-    else if (S.phase === 'playing' && snap.st === 'over') text = r.lastStanding ? (snap.p.filter((seat) => !seat[1]).length === 1 ? 'Round complete' : 'Draw') : 'Time!';
+    else if (S.phase === 'playing' && snap.st === 'over') text = r.lastStanding ? (snap.p.filter((seat) => !seat[1]).length === 1 ? 'Round complete' : 'Draw') : r.crateClear && !crates ? '📦 All cleared!' : 'Time!';
     else if (S.phase === 'playing' && mine?.[1]) text = r.lastStanding ? 'Out for this round' : `💫 Back in ${Math.ceil(mine[1] / r.tick)}`;
     $('pbBanner').hidden = !text; $('pbBanner').textContent = text;
     if (g) draw(now);
@@ -274,7 +277,8 @@ UI.paintblast = (() => {
       g.fillRect(x, y, cell, cell);
       g.fillStyle = '#ffffff07'; g.fillRect(x, y, cell, 1.5);  // a hairline of light on each tile
       if (owner) {  // a splat, not a square: a blob with a few drops round it, the same shape every time
-        g.fillStyle = colorOf(owner - 1); g.globalAlpha = 0.72;
+        // (#363) muted: the floor still shows whose it is, but quietly enough for the players on it to stand out
+        g.fillStyle = colorOf(owner - 1); g.globalAlpha = 0.34;
         g.beginPath(); g.arc(x + cell / 2, y + cell / 2, cell * 0.5, 0, 7); g.fill();
         for (let k = 0; k < 3; k++) {
           const a = ((c * 7 + k * 13) % 12) * 0.52, rr = cell * (0.48 + ((c + k) % 3) * 0.05);
@@ -293,6 +297,13 @@ UI.paintblast = (() => {
         g.strokeStyle = '#6e4a24'; g.lineWidth = Math.max(1, cell * 0.07);
         g.strokeRect(x + cell * 0.14, y + cell * 0.14, cell * 0.72, cell * 0.72);
         g.beginPath(); g.moveTo(x + cell * 0.14, y + cell * 0.14); g.lineTo(x + cell * 0.86, y + cell * 0.86); g.stroke();
+      }
+    }
+    if (S.paintblast.crateClear) {  // 📦 the last few crates are ringed, so nobody has to hunt for them
+      const left_ = [...snap.t].flatMap((t, c) => (t === '+' ? [c] : []));
+      if (left_.length <= S.paintblast.lastCrates) {
+        g.strokeStyle = '#ffe27a'; g.lineWidth = Math.max(2, cell * 0.1);
+        for (const c of left_) { g.beginPath(); g.arc((c % n + 0.5) * cell, (Math.floor(c / n) + 0.5) * cell, cell * (0.56 + 0.07 * Math.sin(now / 160)), 0, 7); g.stroke(); }
       }
     }
     // where the bombs will blast: a faint red at first, pulsing harder as the fuse runs down (#6)
@@ -375,8 +386,12 @@ UI.paintblast = (() => {
       const under = g.createRadialGradient(x, y + cell * 0.1, cell * 0.2, x, y + cell * 0.1, cell * 0.7);  // underglow in the player's colour
       under.addColorStop(0, colorOf(i) + '66'); under.addColorStop(1, colorOf(i) + '00');
       g.fillStyle = under; g.fillRect(x - cell, y - cell, cell * 2, cell * 2);
-      g.fillStyle = colorOf(i); g.strokeStyle = i === S.paintblast.me ? '#fff' : '#000a'; g.lineWidth = cell * 0.09;
-      g.beginPath(); g.arc(x, y, cell * 0.38, 0, 7); g.fill(); g.stroke();
+      // a shadow under each, a dark rim to part them from any paint, and for you a white ring outside that
+      g.fillStyle = '#0009'; g.beginPath(); g.ellipse(x, y + cell * 0.3, cell * 0.4, cell * 0.2, 0, 0, 7); g.fill();
+      g.fillStyle = colorOf(i); g.beginPath(); g.arc(x, y, cell * 0.39, 0, 7); g.fill();
+      g.strokeStyle = '#0b0812'; g.lineWidth = cell * 0.11; g.stroke();
+      g.strokeStyle = i === S.paintblast.me ? '#fff' : '#ffffff8c'; g.lineWidth = cell * (i === S.paintblast.me ? 0.1 : 0.045);
+      g.beginPath(); g.arc(x, y, cell * 0.47, 0, 7); g.stroke();
       g.fillStyle = '#fff'; g.beginPath(); g.arc(x - cell * 0.12, y - cell * 0.08, cell * 0.08, 0, 7); g.arc(x + cell * 0.12, y - cell * 0.08, cell * 0.08, 0, 7); g.fill();
     });
     pfx.draw(g); pfx.end(g);  // paint splatter and +10s

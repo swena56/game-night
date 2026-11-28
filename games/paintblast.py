@@ -29,6 +29,10 @@ POWERS = {"b": "💣 extra bomb", "r": "🔥 longer blast", "p": "🖌️ paint 
 
 
 GOLD_POINTS = 3  # ⭐ a gold tile, painted in your colour at the end of the round
+# 📦 Crate Clear (#364): the round ends when the last crate is blown up, and the paint is counted then
+CRATE_CAP = 240     # s, not shown: a player who is behind could leave the last crate standing for ever
+LAST_CRATES = 6     # with this many left the finale starts and they are marked
+CLEAR_HOLD = 18     # ticks after the last crate: its blast is seen, and bombs already lit still count
 
 class PaintBlast(Game):
     id = "paintblast"
@@ -41,6 +45,8 @@ class PaintBlast(Game):
         "Caught in a blast? You're stunned for 3 s and respawn at home. Catching a rival scores +10, and 💥 two in one blast +10 more.",
         "⛓️ Chain reaction: a bomb whose blast sets off two more bombs (yours or a rival's) pays the one who started it +4, and +4 more for every bomb after that.",
         "Crates hide 💣 more bombs, 🔥 longer blasts, 🖌️ paint splashes and 👟 kick: walk into a bomb to send it sliding.",
+        f"📦 In Crate Clear mode there is no clock: the round ends when the last crate is blown up, and the paint is counted. "
+        f"Behind? You can leave crates standing, but not for ever. With {LAST_CRATES} left they are marked and the finale starts.",
         "When the clock runs out, every tile in your colour is a point. Most points after the last round wins.",
         "In Last Standing mode, a blast knocks you out for the round. The sole survivor earns one round win; no survivor or multiple survivors at time is a draw.",
         "⭐ In the default finale, three central tiles become worth 3 each in the last 15 s. In Last Standing, the finale places power-ups near the center.",
@@ -52,7 +58,7 @@ class PaintBlast(Game):
     max_players = 6
     replayable = False
     settings_schema = {
-        "mode": ("Mode", [("paint", "Paint points"), ("last", "Last Standing")], "paint"),
+        "mode": ("Mode", [("paint", "Paint points"), ("crates", "📦 Crate Clear: ends with the last crate"), ("last", "Last Standing")], "paint"),
         "secs": ("Round length", [(90, "1½ min"), (60, "1 min"), (120, "2 min")], 90),
         "rounds": ("Rounds", [(2, "2"), (1, "1"), (3, "3")], 2),
         "arena": ("Arena", [(13, "Medium"), (11, "Small"), (15, "Large")], 13),
@@ -68,6 +74,13 @@ class PaintBlast(Game):
     def last_standing(self):
         return self.s.get("mode") == "last"
 
+    @property
+    def crate_clear(self):
+        return self.s.get("mode") == "crates"
+
+    def crates_left(self):
+        return self.tiles.count(CRATE)
+
     # -- setup
 
     def start(self, seated, rng):
@@ -80,8 +93,8 @@ class PaintBlast(Game):
         self.room.turn = None
         self.room.deadline = None
         objective = "Be the last standing." if self.last_standing else "Paint the most floor."
-        self.room.add_log(f"🎨 Paint Blast! {self.s['rounds']} round{'s' if self.s['rounds'] > 1 else ''} of "
-                          f"{self.s['secs']} s. {objective}", "big")
+        long_ = "ending with the last crate" if self.crate_clear else f"of {self.s['secs']} s"
+        self.room.add_log(f"🎨 Paint Blast! {self.s['rounds']} round{'s' if self.s['rounds'] > 1 else ''} {long_}. {objective}", "big")
         self.new_round(time.time())
 
     def homes(self):
@@ -116,6 +129,7 @@ class PaintBlast(Game):
         self.closed = 0
         self.finale = False
         self.boosted = False
+        self.crates_at_start, self.cleared_tick = self.crates_left(), None
         self.last_frame = now
         self.acc = 0.0
         self.room.add_log(f"🎨 Round {self.round}/{self.s['rounds']}: a fresh maze. Get ready!")
@@ -187,7 +201,7 @@ class PaintBlast(Game):
         if self.stage == "countdown":
             if now >= self.next_at:
                 self.stage = "play"
-                self.ends_at = now + self.s["secs"]
+                self.ends_at = now + (CRATE_CAP if self.crate_clear else self.s["secs"])
                 self.acc = 0.0
                 return True
             return False
@@ -205,15 +219,28 @@ class PaintBlast(Game):
             self.run_finale(now)
             if not self.last_standing:
                 self.comeback(now)
-            if now >= self.ends_at or (self.last_standing and self.stun.count(0) <= 1):
+            if now >= self.ends_at or (self.last_standing and self.stun.count(0) <= 1) or self.all_cleared():
                 self.end_round(now)
                 return True
         self.broadcast(now)
         return False
 
+    def all_cleared(self):
+        """📦 True a moment after the last crate has gone."""
+        if not self.crate_clear:
+            return False
+        if getattr(self, "cleared_tick", None) is None:
+            if self.crates_left():
+                return False
+            self.cleared_tick = self.tick
+            self.room.add_log("📦 The last crate! Counting the paint…", "big")
+        return self.tick - self.cleared_tick >= CLEAR_HOLD
+
     def comeback(self, now):
-        """🎨 With 25 s left, whoever has painted least gets one extra bomb and a longer blast, so the round stays open."""
-        if getattr(self, "boosted", True) or self.ends_at - now > 25:
+        """🎨 With 25 s left (📦 or a third of the crates), whoever has painted least gets one extra bomb and a longer
+        blast, so the round stays open."""
+        late = self.crates_left() <= self.crates_at_start // 3 if self.crate_clear else self.ends_at - now <= 25
+        if getattr(self, "boosted", True) or not late:
             return
         self.boosted = True
         pts = [self.round_points(i) for i in range(len(self.seats))]
@@ -227,10 +254,15 @@ class PaintBlast(Game):
 
     def run_finale(self, now):
         rule = self.s.get("closing", "center")
-        left = self.ends_at - now
+        if self.crate_clear:  # 📦 the finale comes with the last few crates; walls closing in would take crates with them
+            if rule is True:
+                rule = "center"
+            due = self.crates_left() <= LAST_CRATES
+        else:
+            due = self.ends_at - now <= CLOSE_FROM
         if rule is True:
             self.close_in(now)
-        elif rule == "center" and left <= CLOSE_FROM and not self.finale:
+        elif rule == "center" and due and not self.finale:
             self.finale = True
             mid = self.n // 2
             candidates = (c for c, tile in enumerate(self.tiles) if tile == FLOOR
@@ -631,7 +663,7 @@ class PaintBlast(Game):
         now = time.time()
         return {"paintblast": {
             "n": self.n, "seats": self.seats, "me": self.seat(p), "round": self.round, "rounds": self.s["rounds"],
-            "lastStanding": self.last_standing, "secs": self.s["secs"], "total": self.total, "tick": TICK, "move": MOVE_TICKS, "fuse": FUSE,
+            "lastStanding": self.last_standing, "crateClear": self.crate_clear, "lastCrates": LAST_CRATES, "secs": self.s["secs"], "total": self.total, "tick": TICK, "move": MOVE_TICKS, "fuse": FUSE,
             "countdown": max(0.0, self.next_at - now) if self.stage in ("countdown", "over") else 0,
             "last": getattr(self, "last_points", None) if self.stage == "over" else None,
             **self.snapshot(now),
