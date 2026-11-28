@@ -42,6 +42,10 @@ UI.keyclash = (() => {
       if (e.key === 'Escape' && S?.phase === 'playing' && S.canPause && $('modal')?.hidden !== false) {
         e.preventDefault(); ctx.quiet(ctx.act(S.paused ? 'resume' : 'pause')); return;
       }
+      // while paused P can't be a letter, so it resumes as in other games (#383, sent back: "not able to resume with escape or p")
+      if (S?.paused && (e.key === 'p' || e.key === 'P') && !e.repeat && S.canPause && $('modal')?.hidden !== false) {
+        e.preventDefault(); e.stopPropagation(); ctx.quiet(ctx.act('resume')); return;
+      }
       if (S?.paused) { if (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Enter') e.preventDefault(); return; }
       if (e.ctrlKey && e.key !== 'Backspace' || e.metaKey || e.altKey) return;
       if (!$('modal')?.hidden || (e.target !== inp && e.target?.matches?.('input, textarea, select, [contenteditable]'))) return;
@@ -146,7 +150,7 @@ UI.keyclash = (() => {
     const inp = $('kcInput');
     inp.disabled = !k.playing || !!S.paused;
     if (!k.playing && inp.value) { inp.value = ''; errs = 0; lastLen = 0; }   // a round over (or knocked out): start clean
-    inp.placeholder = S.paused ? '⏸ paused · Esc to carry on' : k.playing ? (S.canPause ? 'type here… (Esc pauses)' : 'type here…') : me?.ko ? '💫 knocked out' : k.stage === 'reveal' ? 'next round soon…' : 'watching';
+    inp.placeholder = S.paused ? '⏸ paused · Esc or P to carry on' : k.playing ? (S.canPause ? 'type here… (Esc pauses)' : 'type here…') : me?.ko ? '💫 knocked out' : k.stage === 'reveal' ? 'next round soon…' : 'watching';
     if (!keys && k.playing && !ctx.replay && document.activeElement !== inp && !document.querySelector('#modal:not([hidden])')) inp.focus({ preventScroll: true });
     if (keys && document.activeElement === inp) inp.blur();
     inp.classList.toggle('live', keys && k.playing);
