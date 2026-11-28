@@ -238,5 +238,28 @@ type_next(g, a)
 v = g.view(a)["keyclash"]
 check("view: stream from the viewer's word", v["base"] == 1 and v["words"][0] == g.words[1] and len(v["words"]) == kc.WINDOW)
 
+# Queued submissions cannot be replayed against a later round or consume two power offers.
+r, g, (a, b) = room(rounds=3)
+g.words[0] = "guard"
+a.g.offer = {"shield": "guard"}
+rid = g.view(a)["keyclash"]["rid"]
+ordinary = {"type": "word", "rid": rid, "number": 1, "i": 0, "word": "guard", "errs": 1}
+g.act(a, ordinary)
+view = g.view(a)["keyclash"]
+check("numbered stream word takes precedence when power was not requested", a.g.idx == 1 and a.g.offer and b.g.hp < kc.HP)
+check("view exposes the exact recorded error count", view["fighters"][0]["errors"] == 1)
+check("a duplicate numbered stream word is rejected", refused(lambda: g.act(a, ordinary)))
+a.g.last_at -= 60
+power = {**ordinary, "number": 2, "i": 1, "power": "shield", "errs": 0}
+g.act(a, power)
+check("a numbered power word does not advance the stream", a.g.idx == 1 and a.g.shield == kc.SHIELD)
+a.g.offer = {"shield": "guard"}
+a.g.last_at -= 60
+check("a duplicate power word cannot consume another offer", refused(lambda: g.act(a, power)) and a.g.offer is not None)
+g.next_round()
+g.words[0] = "guard"
+a.g.last_at -= 60
+check("a queued word cannot land in a later round", refused(lambda: g.act(a, ordinary)) and a.g.idx == 0)
+
 print("\n" + ("keyclash rules OK" if not fails else f"{len(fails)} FAILED: {', '.join(fails)}"))
 sys.exit(1 if fails else 0)

@@ -1,92 +1,176 @@
-/* keyclash: Key Clash's own rules (#374): stats and health on top, the arena in the middle, the typing area at
-   the bottom. Loaded with static/games/keyclash.js; tokens come from static/style.css. */
-.kc { display: flex; flex-direction: column; gap: 8px; width: min(100%, 900px); margin: 0 auto;
-  height: max(420px, var(--room)); }
-.kc-top { display: flex; flex-direction: column; gap: 6px; }
-.kc-fighters { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 6px; }
-.kc-f { --h: 205; background: var(--panel); border-radius: var(--r-md, 10px); padding: 6px 8px; border: 2px solid hsl(var(--h) 70% 55% / .35); min-width: 0; }
-.kc-f.me { border-color: hsl(var(--h) 80% 60%); box-shadow: 0 0 0 1px hsl(var(--h) 80% 60% / .3); }
-.kc-f.ko { opacity: .55; }
-.kc-f-head { display: flex; justify-content: space-between; gap: 6px; align-items: baseline; }
-.kc-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: hsl(var(--h) 85% 72%); }
-.kc-wins { font-size: 12px; letter-spacing: 1px; color: var(--muted); white-space: nowrap; }
-.kc-hp { position: relative; height: 16px; border-radius: 8px; background: #00000055; overflow: hidden; margin-top: 4px; }
-.kc-hp i { position: absolute; inset: 0 auto 0 0; background: #5be37d; transition: width .25s ease-out, background-color .25s; }
-.kc-hp.kc-race i { background: hsl(var(--h) 75% 55%); }
-.kc-hp s { position: absolute; inset: 0 auto 0 0; background: repeating-linear-gradient(135deg, #9ad7ff99 0 6px, #9ad7ff44 6px 12px); text-decoration: none; }
-.kc-hp em { position: absolute; inset: 0; text-align: center; font: 700 11px/16px system-ui, sans-serif; font-style: normal; color: #fff; text-shadow: 0 1px 2px #000; }
-.kc-charge { height: 5px; border-radius: 3px; background: #00000044; overflow: hidden; margin-top: 3px; }
-.kc-charge i { display: block; height: 100%; background: #ffd34d; transition: width .25s; }
-.kc-charge.full i { animation: kc-glow .8s ease-in-out infinite alternate; }
-@keyframes kc-glow { from { background: #ffd34d; } to { background: #fff3b0; } }
-.kc-f-stats { font-size: 11px; color: var(--muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
-.kc-clock { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
-.kc-time { flex: 1; height: 6px; border-radius: 3px; background: var(--panel); overflow: hidden; }
-.kc-time i { display: block; height: 100%; background: var(--accent); }
-.kc-time i.low { background: #ff5d6c; }
-.kc-clock b { min-width: 3ch; text-align: right; font-variant-numeric: tabular-nums; color: var(--text, #fff); }
-
-.kc-arena { position: relative; flex: 1; min-height: 150px; border-radius: var(--r-md, 10px); overflow: hidden; }
-.kc-arena canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-.kc-banner { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); background: #000a; color: #ffe27a;
-  padding: 8px 16px; border-radius: 999px; font-weight: 800; white-space: nowrap; }
-
-/* the typing area stays put: the words move through it, not the box */
-.kc-type { display: flex; flex-direction: column; gap: 6px; background: var(--panel); border-radius: var(--r-md, 10px); padding: 10px; }
-.kc-stream { display: flex; gap: 12px; align-items: baseline; overflow: hidden; white-space: nowrap; min-height: 2.2em;
-  font: 600 18px/1.3 ui-monospace, "SFMono-Regular", Menlo, monospace; color: var(--muted); }
-.kc-cur { font-size: 28px; color: var(--text, #fff); padding: 0 6px; border-radius: 6px; background: #ffffff0f; }
-.kc-cur .ok { color: #5be37d; }
-/* (#377) a wrong letter keeps the word's letter, in red; what was typed shows small above it */
-.kc-cur span { position: relative; }
-.kc-cur .bad { color: #ff6b7a; text-decoration: underline 3px #e5394d; text-underline-offset: 4px; }
-.kc-cur .bad[data-typed]::before { content: attr(data-typed); position: absolute; left: 50%; bottom: 100%; transform: translateX(-50%);
-  font-size: 13px; line-height: 1; padding: 1px 3px; border-radius: 3px; background: #e5394d; color: #fff; }
-.kc-cur .extra { color: #e5394d; opacity: .75; text-decoration: line-through; }
-.kc-cur .next { text-decoration: underline 2px var(--accent); text-underline-offset: 4px; }
-.kc-stream { padding-top: 14px; }
-.kc-stream.kc-err .kc-cur { box-shadow: inset 0 -3px 0 #e5394d; }
-.kc-next { opacity: .7; }
-.kc-next + .kc-next { opacity: .5; }
-.kc-shake { animation: kc-shake .25s; }
-@keyframes kc-shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
-.kc-input { font: 600 20px ui-monospace, Menlo, monospace; padding: 8px 10px; width: 100%; box-sizing: border-box; }
-/* (#375) a real keyboard: the page reads the keys and the box only shows them, with a caret of its own */
-.kc-input.kc-keys { cursor: default; caret-color: transparent; }
-.kc-input.kc-keys.live { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-a20, #ffffff22);
-  background-image: linear-gradient(var(--accent), var(--accent)); background-repeat: no-repeat; background-size: 2px 1.1em;
-  background-position: calc(10px + var(--kc-caret, 0ch)) center; }
-.kc-note { min-height: 1.2em; margin: 0; font-size: 12px; }
-.kc-offer { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.kc-offer-tip { font-size: 12px; color: #ffd34d; font-weight: 700; }
-.kc-pw { padding: 3px 10px; border-radius: 999px; font: 700 15px ui-monospace, Menlo, monospace; background: #ffffff12; border: 1px solid #ffffff22; }
-.kc-pw-shield { color: #9ad7ff; } .kc-pw-strike { color: #ffcf5a; } .kc-pw-heal { color: #7dffa8; }
-.kc-pw.on { background: #ffffff2a; border-color: currentColor; }
-.kc-stats { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
-.kc-stat-row { display: flex; justify-content: space-between; gap: 8px; }
-.kc-stat-row span { color: var(--muted); font-variant-numeric: tabular-nums; }
-
-@media (max-width: 600px) {
-  .kc { height: max(380px, var(--room)); }
-  .kc-cur { font-size: 22px; }
-  .kc-stream { font-size: 15px; gap: 8px; }
-  .kc-fighters { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); }
+.kc {
+  --kc-surface: #171529;
+  --kc-word: #f7f3ff;
+  --kc-muted: #aca5c5;
+  --kc-good: #6df4ad;
+  --kc-bad: #ff8298;
+  --kc-gold: #ffda77;
+  --kc-type-size: clamp(22px, 3.1vw, 38px);
+  display: grid;
+  grid-template-rows: auto minmax(115px, 1fr) auto auto;
+  gap: 8px;
+  position: relative;
+  min-width: 0;
+  width: 100%;
+  height: max(390px, calc(var(--room) - 8px));
+  margin: 0 auto;
+  color: var(--kc-word);
+  color-scheme: dark;
 }
-@media (prefers-reduced-motion: reduce) { .kc-shake, .kc-charge.full i { animation: none; } }
-/* (#376) the other modes: a boss bar under your health, red and blue teams in a tug-of-war */
-.kc-hp.kc-boss { height: 10px; }
-.kc-hp.kc-boss i { background: #c264ff; }
-.kc-hp.kc-boss em { font-size: 9px; line-height: 10px; }
-.kc-f.kc-team0 { border-color: #ff6b6b88; }
-.kc-f.kc-team1 { border-color: #6bb8ff88; }
-.kc-f-team { font-size: 12px; font-weight: 700; margin-top: 4px; }
-/* (#378) typing a power word: the stream's word waits, dimmed, and the chip fills in */
-.kc-cur.kc-wait { opacity: .45; }
-.kc-pw.on b { color: #fff; text-shadow: 0 0 6px currentColor; }
-/* (#379) no time limit: the clock bar is a calm, empty track */
+.kc[data-size="small"] { --kc-type-size: clamp(18px, 2.5vw, 30px); }
+.kc[data-size="large"] { --kc-type-size: clamp(25px, 3.6vw, 44px); }
+.kc [hidden] { display: none !important; }
+#game .layout:has(.kc) { grid-template-columns: minmax(0, 1fr); max-width: 1500px; padding-bottom: 8px; }
+#game .layout:has(.kc) #players,
+#game .layout:has(.kc) #sideGame,
+#game .layout:has(.kc):not(.kc-activity-open) > aside,
+body:has(#game:not([hidden]) .kc) #fabs,
+#game:has(.kc) #dock,
+#game:has(.kc) #turnText:empty { display: none; }
+#game .layout:has(.kc) > aside { min-width: 0; align-self: start; }
+#game .layout:has(.kc).kc-activity-open > aside .log-panel { display: block; position: static; }
+#game .layout:has(.kc).kc-activity-open .log { color: var(--muted); }
+@media (min-width: 960px) {
+  #game .layout:has(.kc).kc-activity-open { grid-template-columns: minmax(0, 1fr) minmax(215px, 23%); }
+}
+@media (max-width: 959px) {
+  #game .layout:has(.kc).kc-activity-open > aside {
+    position: fixed; z-index: 9; right: 10px; top: auto; bottom: 48px;
+    width: min(320px, 85vw); max-height: min(280px, 38dvh); overflow: auto;
+  }
+}
+body.light #game .layout:has(.kc) #arena { padding: 0; }
+
+.kc-top { position: relative; }
+.kc-fighters { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(145px, 100%), 1fr)); gap: 6px; }
+.kc-top:has(.kc-f:nth-child(2):last-child) .kc-fighters { grid-template-columns: minmax(0, 1fr) clamp(74px, 17vw, 160px) minmax(0, 1fr); }
+.kc-top:has(.kc-f:nth-child(2):last-child) .kc-f:last-child { grid-column: 3; }
+.kc-top:has(.kc-f:nth-child(2):last-child) .kc-clock { position: absolute; inset: 0 0 0 0; margin: auto; width: clamp(62px, 15vw, 134px); }
+.kc-f {
+  --h: 205; min-width: 0; padding: 7px 12px 8px; border-radius: 9px;
+  background: linear-gradient(120deg, hsl(var(--h) 52% 22% / .72), transparent 86%), var(--kc-surface);
+  border-top: 2px solid hsl(var(--h) 80% 65%);
+}
+.kc-f.ko { opacity: .64; }
+.kc-f-head, .kc-vitals, .kc-f-stats { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.kc-portrait { width: 32px; height: 32px; flex: none; background: #0b102384; border-radius: 8px; }
+.kc-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: hsl(var(--h) 88% 79%); }
+.kc-wins { margin-left: auto; white-space: nowrap; color: var(--kc-muted); font-size: 11px; }
+.kc-vitals { min-height: 20px; justify-content: space-between; flex-wrap: wrap; gap: 0 5px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.kc-shield { color: #abddff; }
+.kc-boss { color: #dec3ff; }
+.kc-f-stats { justify-content: space-between; flex-wrap: wrap; gap: 2px 8px; font-size: 11px; color: #c6bfd8; margin-top: 6px; font-variant-numeric: tabular-nums; }
+.kc-clock { display: flex; flex-wrap: wrap; justify-content: center; align-content: center; align-items: center; gap: 3px 10px; pointer-events: none; font: 600 11px system-ui; color: var(--kc-muted); }
+.kc-clock b { color: #fff; font-size: clamp(13px, 1.7vw, 22px); font-variant-numeric: tabular-nums; }
+.kc-top:has(.kc-f:nth-child(2):last-child) .kc-clock { flex-direction: column; }
+.kc-time { width: 80%; max-width: 100px; height: 3px; border-radius: 3px; background: #ffffff22; overflow: hidden; }
+.kc-time i { display: block; height: 100%; background: #b1a2f8; }
+.kc-time i.low { background: var(--kc-bad); }
 .kc-time i.none { background: #ffffff1a; }
-/* (#380) each power word says what it does */
-.kc-pw-what { display: block; font: 500 10px system-ui, sans-serif; opacity: .8; margin-top: 1px; }
+.kc-clock:not(:has(i.none)) #kcScore { font-variant-numeric: tabular-nums; }
+.kc-hp, .kc-charge { position: relative; height: 10px; border-radius: 3px; background: #080919b0; overflow: hidden; }
+.kc-hp i, .kc-charge i { position: absolute; inset: 0 auto 0 0; transition: width 120ms ease-out; }
+.kc-hp i { background: linear-gradient(90deg, hsl(var(--h) 74% 41%), hsl(var(--h) 89% 67%)); }
+.kc-low .kc-hp i { background: #ff7083; }
+.kc-hp .kc-health-trail { background: #ffd38c; transition: width 160ms; }
+.kc-hp .kc-health-trail.kc-damage { transition: width 350ms 120ms; }
+
+.kc-arena { position: relative; border-radius: 10px; overflow: hidden; background: #211a37; }
+.kc-arena canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.kc-banner, .kc-milestone {
+  position: absolute; left: 50%; top: 9%; transform: translateX(-50%); max-width: 94%;
+  color: var(--kc-gold); background: #171025ed; border-radius: 999px;
+  padding: 5px 14px; font-size: clamp(12px, 1.6vw, 19px); font-weight: 800; white-space: nowrap; pointer-events: none;
+}
+.kc-milestone { box-shadow: 0 0 24px #ffcb5644; }
+.kc-type {
+  position: relative; min-width: 0; border-radius: 10px; padding: 9px clamp(10px, 2vw, 24px) 8px;
+  background: radial-gradient(ellipse at top left, #272044, transparent 55%), #171529;
+  box-shadow: inset 0 2px #8074b46a; --kc-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+.kc-type.kc-focused { box-shadow: inset 0 2px #8bd6ffab; }
+.kc-console-top { display: flex; align-items: center; gap: clamp(8px, 2vw, 24px); color: #c6bfd8; font: 650 11px system-ui; }
+.kc-combo { margin-right: auto; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.kc-combo.kc-hot { color: var(--kc-gold); }
+.kc-special, .kc-attack { width: clamp(65px, 18%, 150px); }
+.kc-special span { display: flex; justify-content: space-between; gap: 4px; }
+.kc-special b { color: var(--kc-gold); font-variant-numeric: tabular-nums; }
+.kc-charge { height: 4px; margin-top: 3px; }
+.kc-charge i { background: var(--kc-gold); }
+.kc-attack i { background: #8bd6ff; transition-duration: 70ms; }
+.kc-ready .kc-charge { box-shadow: 0 0 10px #ffda77b0; animation: kc-energy-ready 480ms ease-out; }
+@keyframes kc-energy-ready { 30% { box-shadow: 0 0 16px 2px #ffda77da; } }
+.kc-reduced .kc-ready .kc-charge { animation: none; }
+.kc-stream {
+  --kc-anchor: clamp(48px, 25%, 160px);
+  position: relative; cursor: text; white-space: nowrap; overflow: hidden;
+  height: 1.55em; margin-block: 3px; font: 550 var(--kc-type-size)/1.3 var(--kc-mono);
+  font-variant-ligatures: none;
+  mask-image: linear-gradient(90deg, transparent, #000 12px, #000 calc(100% - 18px), transparent);
+}
+.kc-track {
+  position: absolute; left: var(--kc-anchor); top: .125em;
+  display: flex; align-items: center; gap: 1.2ch;
+}
+.kc-cur { color: var(--kc-word); flex: none; }
+.kc-completed { position: absolute; right: calc(100% + 1.2ch); color: var(--kc-good); opacity: .65; }
+.kc-preview { display: flex; gap: 1.2ch; color: var(--kc-muted); }
+.kc-track .kc-letter, .kc-track .kc-overflow { display: inline-block; width: 1ch; }
+.kc-letter.ok { color: var(--kc-good); }
+.kc-letter.bad, .kc-overflow {
+  color: var(--kc-bad); background: #fa46692b;
+  text-decoration: underline solid; text-decoration-thickness: .075em; text-underline-offset: .14em;
+}
+.kc-caret {
+  position: absolute; z-index: 1; left: var(--kc-anchor); top: .22em; bottom: .22em;
+  width: max(2px, .065em); border-radius: 2px; background: #a4e5ff; box-shadow: 0 0 7px #8ad7ff88;
+  pointer-events: none; opacity: 0;
+}
+.kc-focused .kc-caret { opacity: 1; }
+.kc-input {
+  position: absolute; top: 40%; left: 12px; width: 1px; height: 1px; opacity: 0;
+  padding: 0; border: 0; font-size: 16px; pointer-events: none; clip-path: inset(50%);
+}
+.kc-focus { position: absolute; z-index: 2; inset: 30px 7px 22px; border: 0; border-radius: 6px; background: #171529ee; color: #e0f4ff; font-weight: 700; }
+.kc-note { color: #f9aec0; height: 1.25em; font-size: 11px; }
+.kc-offer { display: flex; gap: 6px; flex-wrap: wrap; }
+.kc-pw {
+  padding: 3px 8px; border-radius: 5px; position: relative;
+  font: 600 clamp(12px, 1.7vw, 17px)/1.3 var(--kc-mono); background: #ffffff10;
+}
+.kc-pw.on { box-shadow: inset 0 0 0 1px currentColor; }
+.kc-pw-shield { color: #a6ddff; }
+.kc-pw-strike { color: var(--kc-gold); }
+.kc-pw-heal { color: #86f3bd; }
+.kc-power-letters { position: relative; font-weight: inherit; }
+.kc-pw-what { display: block; font: 500 10px system-ui; opacity: .88; }
+.kc-controls { display: flex; justify-content: flex-end; gap: 6px; }
+.kc-controls button { font-size: 11px; min-height: 29px; color: var(--muted); }
+.kc-controls button[aria-expanded="true"] { background: var(--accent-a20, #ffffff22); color: var(--text); }
+.kc-prefs {
+  position: absolute; z-index: 5; bottom: 36px; right: 0; width: min(290px, 100%);
+  display: grid; gap: 7px; padding: 12px; border: 1px solid #776896;
+  border-radius: 9px; background: var(--kc-surface); box-shadow: 0 8px 30px #0008; font-size: 13px;
+}
+.kc-prefs label { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: inherit; }
+.kc-prefs select { width: auto; min-height: 26px; padding: 2px 6px; }
+.kc-prefs input { width: 17px; height: 17px; }
+.kc-contrast { --kc-word: #fff; --kc-muted: #ded8f2; --kc-good: #9fffbe; --kc-bad: #ffa2b5; }
+.kc-colorblind { --kc-good: #82d9ff; --kc-bad: #ffd18c; }
+.kc-colorblind .kc-letter.ok { box-shadow: inset 0 -.05em #82d9ff; }
+.kc-colorblind .kc-letter.bad, .kc-colorblind .kc-overflow { text-decoration-style: wavy; }
+.kc-reduced :is(.kc-hp i, .kc-charge i) { transition: none; }
+@media (max-width: 600px), (max-height: 610px) {
+  .kc { gap: 5px; }
+  .kc-fighters { grid-template-columns: repeat(auto-fit, minmax(min(103px, 100%), 1fr)); }
+  .kc-f { padding: 4px 6px; }
+  .kc-portrait { width: 24px; height: 24px; }
+  .kc-f-head { gap: 4px; font-size: 12px; }
+  .kc-wins { font-size: 9px; }
+  .kc-f-stats { font-size: 10px; }
+  .kc-hp { height: 7px; }
+  .kc-pw-what { font-size: 9px; }
+}
 /* (#381) typing analytics over the arena: between rounds the round just played, after the match all of them */
 .kc-report { position: absolute; inset: 8px; background: #141226ee; border: 1px solid #ffffff1a; border-radius: var(--r-md, 10px);
   padding: 10px 12px; overflow: auto; display: flex; flex-direction: column; gap: 6px; }

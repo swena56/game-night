@@ -836,7 +836,7 @@ function renderGame(view = S, readOnly = false, force = false) {
     mounted = view.gameId; mountedNo = view.gameNo;
     renderedKey = null;  // a fresh mount always draws
     clearHelpHint(); helpHint.used = false;
-    if (readOnly) dropTip(); else showTip(view);
+    if (readOnly || ui.compactLog) dropTip(); else showTip(view);
   }
   if (!readOnly && view.phase !== 'playing' && $('#tipCard')) seenTip(view.gameId);
   const me = view.me, playing = view.phase === 'playing', myTurn = !readOnly && playing && view.turn === me.id;
@@ -944,7 +944,10 @@ function renderLog(ui, view) {
   // Fast games push many updates; only rebuild when the log (or a log button) can have changed.
   if (newestId === lastLogId && !ui.logButton && logHasEntries()) return;
   const box = $('#log'); box.innerHTML = '';
+  const pauseNote = (e) => /^(?:⏸ |▶ .* resumed\.$)/.test(e.text);
+  const latestPause = ui.compactLog ? view.log.filter(pauseNote).at(-1) : null;
   for (const e of view.log) {
+    if (latestPause && e !== latestPause && pauseNote(e)) continue;
     const row = el('div', 'entry ' + e.kind, e.text);
     const b = replay ? null : ui.logButton?.(e);
     if (b) row.append(b);
@@ -959,7 +962,7 @@ function renderLog(ui, view) {
     if (mine) { sfx('fanfare'); toast(mine.text.replace(`${S.me.name} earned`, 'You earned')); }
     // ✨ moments (room.moment on the server): a callout across the screen, the newest one if several landed at once
     const moment = fresh.filter((e) => e.kind === 'moment').at(-1);
-    if (moment && typeof Kit !== 'undefined') Kit.callout(moment.text, moment.tone || 'gold', {
+    if (moment && !ui.compactLog && typeof Kit !== 'undefined') Kit.callout(moment.text, moment.tone || 'gold', {
       ms: 1700,
       sound: moment.sound || null,
       placement: (view.gameId === 'midway' && view.midway?.kind === 'hoops') || view.gameId === 'basketball' ? 'edge' : '',
@@ -1557,7 +1560,7 @@ document.addEventListener('pointerdown', (e) => {
   if (!$('#dockReactBar').hidden && !t.closest?.('#dock')) setReactOpen(false);
   if (logSheet() && !t.closest?.('.log-panel, #dockLog, #modal')) setLogSheet(false);
   if ($('#chatPanel').hidden && $('#prefsPanel').hidden) return;
-  if (t.closest?.('.drawer, #fabs, #homePrefsBtn, #dockChat, #gameMenu, #menuBtn, #chatBubble, #modal')) return;
+  if (t.closest?.('.drawer, #fabs, #homePrefsBtn, #dockChat, #gameMenu, #menuBtn, #chatBubble, #modal, [data-keep-drawer]')) return;
   $('#chatPanel').hidden = true; $('#prefsPanel').hidden = true;
 }, true);
 document.addEventListener('keydown', (e) => {

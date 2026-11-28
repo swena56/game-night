@@ -384,10 +384,20 @@ class KeyClash(Game):
         word, errs = a.get("word"), a.get("errs", 0)
         if not isinstance(word, str) or type(errs) is not int or not 0 <= errs <= 99:
             raise GameError("Bad word.")
+        # Older clients omit these fields. New clients bind queued words to a round and submission.
+        if "rid" in a and a["rid"] != f"{getattr(self, 'gid', '')}:{self.round}":
+            raise GameError("This round is over.")
+        if "number" in a and (type(a["number"]) is not int or a["number"] != p.g.words + 1):
+            raise GameError("Out of step: that word was already counted.")
         if self.now() - p.g.last_at < len(word) * MIN_CHAR_SECS:
             raise GameError("Too fast.")
         offer = p.g.offer or {}
-        kind = next((k for k, w in offer.items() if w == word), None)
+        if "number" in a:
+            kind = a.get("power")
+            if kind is not None and (not isinstance(kind, str) or offer.get(kind) != word):
+                raise GameError("That power word is no longer available.")
+        else:
+            kind = next((k for k, w in offer.items() if w == word), None)
         if kind:
             return self.power(p, kind, word, errs)
         i = a.get("i")
@@ -709,7 +719,7 @@ class KeyClash(Game):
                  "ko": g.ko, "wins": g.wins, "idx": g.idx, "words": g.words, "target": tgt.id if tgt else None,
                  # (#384) live while typing; between rounds and after the match, the round's final figure
                  "wpm": round(g.chars / 5 / (secs / 60)) if self.stage == "play" else ((self.result or {}).get("stats", {}).get(q.id, {}).get("wpm", 0)),
-                 "acc": self.accuracy(g.chars, g.errs), "chars": g.chars, "power": bool(g.offer), "team": g.team}
+                 "acc": self.accuracy(g.chars, g.errs), "errors": g.errs, "chars": g.chars, "power": bool(g.offer), "team": g.team}
             if self.mode == "hyper":
                 f["dist"] = round(g.dist, 1)
             elif self.mode == "boss":
@@ -725,6 +735,7 @@ class KeyClash(Game):
             "elapsed": round(max(0.0, now - self.t0), 2) if self.stage == "play" else None,
             "base": at, "words": self.words[at:at + WINDOW], "playing": me and not p.g.ko and self.stage == "play",
             "offer": p.g.offer if me else None, "fighters": fighters, "events": self.events,
+            "wordAge": max(0.0, now - p.g.last_at) if me else None, "minCharMs": MIN_CHAR_SECS * 1000,
             "result": self.result, "hp": HP, "charge": CHARGE, "powered": self.mode in POWERED,
             # (#381) the charts: shown between rounds and after the match, never while a round is being typed
             "history": self.history if self.stage == "reveal" or self.room.phase != "playing" else None,

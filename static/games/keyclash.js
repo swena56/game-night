@@ -1,161 +1,352 @@
-// Key Clash (#374): a typing battle. Stats and health bars on top, an animated arena in the middle (a 2D
-// canvas: fighters bob, every word flies across as a bolt), and a still typing area at the bottom. Typing
-// is checked here letter by letter; each finished word goes to the server, which keeps every score.
+// The console buffers keystrokes locally. The room validates completed words in order.
 UI.keyclash = (() => {
-  let S, ctx, raf = 0, idx = 0, round = 0, errs = 0, lastLen = 0, stream = new Map(), chain = Promise.resolve();
-  let seen = 0, fx = [], leftAt = 0, left = 0, offer = null, sentOffer = null, flash = 0, keyHook = null, keys = false;
+  let S, ctx, raf, round, idx, stream, typed, errs, offer, pending, acceptedAt, sending, live;
+  let seen, fx, launches, leftAt, left, milestoneUntil, cleanup, reduced, prefs;
+  let previewKey, letterKey, offerKey, lastSubmitted, nextClock, completed;
   const $ = (id) => document.getElementById(id);
   const HUES = [205, 350, 135, 45, 280, 20];
-  const hue = (id) => HUES[Math.max(0, (S?.players || []).findIndex((p) => p.id === id)) % HUES.length];
-  const K = () => S.keyclash;
+  const K = () => S?.keyclash;
+  const local = () => K()?.fighters.find((f) => f.id === S.me.id);
+  const fighters = () => [...K().fighters].sort((a, b) => Number(b.id === S.me.id) - Number(a.id === S.me.id));
+  const hue = (id) => HUES[Math.max(0, (S ? fighters().findIndex((p) => p.id === id) : 0)) % HUES.length];
   const ICON = { shield: '🛡️', strike: '💥', heal: '💚' };
+  const MILESTONES = { 3: 'Heating Up', 5: 'On Fire', 10: 'Rampage', 15: 'Unstoppable', 20: 'Legendary' };
+  const DEFAULTS = { size: 'auto', motion: false, shake: false, keys: false, sound: true, particles: 'normal', contrast: false, colorblind: false };
+  const motionOff = () => reduced.matches || prefs.motion;
+  const blocked = () => ['modal', 'chatPanel', 'prefsPanel', 'gameMenu', 'keyclashPrefs'].some((id) => $(id)?.hidden === false);
+  const interactive = (el) => el?.closest?.('input, textarea, select, button, a[href], [contenteditable], [role="button"], [role="textbox"]');
 
-  function mount(main, side) {
-    idx = 0; round = 0; errs = 0; lastLen = 0; stream = new Map(); chain = Promise.resolve();
-    seen = 0; fx = []; offer = null; sentOffer = null; flash = 0; parts = []; knocked.clear(); bgCache = null;
+  function mount(main) {
+    S = ctx = null; round = null; live = false; seen = 0; nextClock = 0; bgCache = null;
+    reportKey = ''; reportRound = null;
+    previewKey = letterKey = offerKey = null;
+    cleanup = new AbortController();
+    const { signal } = cleanup;
+    reduced = matchMedia('(prefers-reduced-motion: reduce)');
+    try { prefs = { ...DEFAULTS, ...JSON.parse(localStorage.getItem('keyclash-preferences')) }; }
+    catch { prefs = { ...DEFAULTS }; }
     main.innerHTML = `<div class="kc">
       <div class="kc-top"><div id="kcFighters" class="kc-fighters"></div>
-        <div class="kc-clock"><span id="kcRound"></span><div class="kc-time"><i id="kcTime"></i></div><b id="kcLeft"></b></div></div>
+        <div class="kc-clock"><span id="kcRound"></span><b id="kcLeft"></b><div class="kc-time"><i id="kcTime"></i></div>
+        <span id="kcScore"></span></div></div>
       <div class="kc-arena"><canvas id="kcCanvas" aria-hidden="true"></canvas><div id="kcBanner" class="kc-banner" hidden></div>
-        <div id="kcReport" class="kc-report" hidden></div></div>
-      <div class="kc-type">
-        <div id="kcOffer" class="kc-offer" hidden></div>
-        <div id="kcStream" class="kc-stream" aria-live="off"></div>
+        <div id="kcMilestone" class="kc-milestone" role="status" hidden></div><div id="kcReport" class="kc-report" hidden></div></div>
+      <div class="kc-type" id="kcType">
+        <div class="kc-console-top"><div id="kcCombo" class="kc-combo"></div><div id="kcSpecial" class="kc-special">
+          <span>Special <b id="kcPercent"></b></span><div class="kc-charge"><i id="kcEnergy"></i></div></div>
+          <div id="kcAttack" class="kc-attack"><span>Attack</span><div class="kc-charge"><i id="kcAttackFill"></i></div></div></div>
+        <div id="kcStream" class="kc-stream"><div id="kcTrack" class="kc-track"><span id="kcCompleted" class="kc-completed" aria-hidden="true"></span><span id="kcCurrent" class="kc-cur"></span><div id="kcPreview" class="kc-preview"></div></div><span id="kcCaret" class="kc-caret" aria-hidden="true"></span></div>
         <input id="kcInput" class="kc-input" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false"
-          enterkeyhint="next" aria-label="Type the highlighted word, then space">
-        <div id="kcNote" class="kc-note hint"></div>
-      </div></div>`;
-    side.innerHTML = '<div class="panel"><h3>Round stats</h3><div id="kcStats" class="kc-stats"></div></div>';
-    const inp = $('kcInput');
-    inp.oninput = onType;
-    inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); submit(inp.value.trim()); } };
-    // (#375) With a real keyboard the page reads the keys itself and the box only shows them: a focused text box
-    // gets the browser's and the system's word suggestions (Windows "text suggestions", autofill), which cover
-    // the words to type, and autocomplete="off" doesn't stop them all. A touch screen needs the box focused for
-    // its keyboard to open, so there it stays a real text box.
-    keys = !window.matchMedia?.('(pointer: coarse)').matches;
-    inp.readOnly = keys; inp.tabIndex = keys ? -1 : 0;
-    if (keys) inp.setAttribute('inputmode', 'none');
-    inp.classList.toggle('kc-keys', keys);
-    keyHook = (e) => {
-      // (#383) Esc pauses and resumes (P is a letter here); while paused, keys type nothing
-      if (e.key === 'Escape' && S?.phase === 'playing' && S.canPause && $('modal')?.hidden !== false) {
-        e.preventDefault(); ctx.quiet(ctx.act(S.paused ? 'resume' : 'pause')); return;
+          aria-label="Typing console. Type the active word, then press Space." aria-describedby="kcCurrent kcOffer">
+        <button id="kcFocus" class="kc-focus" hidden>Click to resume typing</button>
+        <div id="kcOffer" class="kc-offer" hidden></div>
+        <div id="kcNote" class="kc-note" role="status"></div>
+      </div>
+      <div class="kc-controls">
+        <button id="kcOptions" class="ghost-btn" aria-expanded="false" aria-controls="keyclashPrefs">Typing settings</button>
+        <button id="kcActivity" class="ghost-btn" aria-expanded="false" aria-controls="log">Activity</button>
+        <button id="kcChat" class="ghost-btn" data-keep-drawer aria-expanded="false" aria-controls="chatPanel">Chat</button>
+      </div>
+      <div id="keyclashPrefs" class="kc-prefs" role="region" aria-label="Typing settings" hidden></div>
+    </div>`;
+    const input = $('kcInput');
+    input.readOnly = !matchMedia('(pointer: coarse)').matches;
+    if (input.readOnly) input.inputMode = 'none';
+    input.addEventListener('keydown', onKey);
+    input.addEventListener('beforeinput', onBeforeInput);
+    input.addEventListener('input', () => { input.value = ''; });
+    for (const event of ['paste', 'drop']) input.addEventListener(event, (e) => e.preventDefault());
+    input.addEventListener('focus', syncFocus);
+    input.addEventListener('blur', () => queueMicrotask(syncFocus));
+    $('kcFocus').onclick = focusTyping;
+    $('kcStream').onclick = focusTyping;
+    $('kcChat').onclick = () => { $('chatBtn')?.click(); syncFocus(); };
+    $('kcActivity').onclick = () => setActivity($('kcActivity').getAttribute('aria-expanded') !== 'true');
+    $('kcOptions').onclick = () => toggleOptions($('keyclashPrefs').hidden);
+    buildOptions();
+    applyOptions();
+
+    addEventListener('keydown', shortcuts, { capture: true, signal });
+    addEventListener('blur', syncFocus, { signal });
+    addEventListener('focus', syncFocus, { signal });
+    reduced.addEventListener('change', applyOptions, { signal });
+    const observer = new MutationObserver((changes) => {
+      if (changes.some(({ target }) => target.id === 'modal' && target.hidden)) {
+        const active = document.activeElement;
+        if (active === $('helpBtn') || !interactive(active) || active?.closest('#modal')) focusTyping();
       }
-      // while paused P can't be a letter, so it resumes as in other games (#383, sent back: "not able to resume with escape or p")
-      if (S?.paused && (e.key === 'p' || e.key === 'P') && !e.repeat && S.canPause && $('modal')?.hidden !== false) {
-        e.preventDefault(); e.stopPropagation(); ctx.quiet(ctx.act('resume')); return;
-      }
-      if (S?.paused) { if (e.key.length === 1 || e.key === 'Backspace' || e.key === 'Enter') e.preventDefault(); return; }
-      if (e.ctrlKey && e.key !== 'Backspace' || e.metaKey || e.altKey) return;
-      if (!$('modal')?.hidden || (e.target !== inp && e.target?.matches?.('input, textarea, select, [contenteditable]'))) return;
-      if (!K()?.playing) return;
-      if (!keys) {   // touch screen with a keyboard attached: a key anywhere types into the box
-        if (e.key.length === 1 && document.activeElement !== inp) inp.focus({ preventScroll: true });
-        return;
-      }
-      let v = inp.value;
-      if (e.key === 'Enter') { e.preventDefault(); submit(v.trim()); return; }
-      if (e.key === 'Backspace') v = e.ctrlKey ? '' : v.slice(0, -1);
-      else if (e.key === ' ') v += ' ';
-      else if (/^[a-z]$/i.test(e.key)) v += e.key.toLowerCase();
-      else return;
-      e.preventDefault(); e.stopPropagation();
-      inp.value = v;
-      onType();
+      syncFocus();
+    });
+    for (const id of ['modal', 'chatPanel', 'prefsPanel', 'gameMenu']) {
+      if ($(id)) observer.observe($(id), { attributes: true, attributeFilter: ['hidden'] });
+    }
+    signal.addEventListener('abort', () => observer.disconnect());
+    const loop = (now) => {
+      raf = requestAnimationFrame(loop);
+      draw();
+      if (now >= nextClock) { tickClock(); nextClock = now + 80; }
     };
-    addEventListener('keydown', keyHook, true);
-    const loop = () => { raf = requestAnimationFrame(loop); draw(); tickClock(); };
     raf = requestAnimationFrame(loop);
   }
 
-  function unmount() { cancelAnimationFrame(raf); raf = 0; if (keyHook) removeEventListener('keydown', keyHook, true); keyHook = null; }
-
-  // ---------- typing
-
-  const target = () => stream.get(idx) || '';
-  const offerWords = () => (offer ? Object.values(offer) : []);
-
-  function onType() {
-    const inp = $('kcInput');
-    let v = inp.value.toLowerCase().replace(/[^a-z ]/g, '');
-    if (v.includes(' ')) {   // space finishes the word
-      const w = v.split(' ')[0];
-      v = '';
-      inp.value = '';
-      lastLen = 0;
-      if (w) { if (!submit(w)) { inp.value = w; lastLen = w.length; } }
-      paintStream();
-      return;
-    }
-    if (v !== inp.value) inp.value = v;
-    // a letter added that doesn't fit the word (or any power word) is a typo: it counts, and must be fixed
-    const ok = (w) => w.startsWith(v);
-    if (v.length > lastLen && !ok(target()) && !offerWords().some(ok)) { errs++; ctx.sfx?.('tick'); }
-    lastLen = v.length;
-    paintStream();
+  function unmount() {
+    cleanup.abort(); cancelAnimationFrame(raf);
+    $('kcType')?.closest('.layout')?.classList.remove('kc-activity-open');
+    S = ctx = null; live = false;
   }
 
-  function submit(w) {
-    const k = K();
-    if (!k?.playing || !w) return false;
-    const kind = offer && Object.keys(offer).find((key) => offer[key] === w);
-    let body;
-    if (kind) { body = { word: w, errs }; sentOffer = offer; offer = null; }
-    else if (w === target()) { body = { i: idx, word: w, errs }; idx++; }
-    else { nudge(); return false; }
-    errs = 0; lastLen = 0;
-    const inp = $('kcInput'); inp.value = '';
-    // words go one after another, in order: the server counts word i only after word i-1
-    chain = chain.then(() => ctx.act('word', body)).catch(() => { resync(); });
-    paintStream(); paintOffer();
+  function setActivity(open) {
+    $('kcActivity').setAttribute('aria-expanded', String(open));
+    $('kcType').closest('.layout')?.classList.toggle('kc-activity-open', open);
+    if (open && $('logToggle')?.getAttribute('aria-expanded') === 'false') $('logToggle').click();
+  }
+
+  function toggleOptions(open) {
+    $('keyclashPrefs').hidden = !open;
+    $('kcOptions').setAttribute('aria-expanded', String(open));
+    if (open) $('keyclashPrefs').querySelector('select').focus();
+    else if (!focusTyping()) $('kcOptions').focus();
+    syncFocus();
+  }
+
+  function buildOptions() {
+    const box = $('keyclashPrefs');
+    const select = (key, title, options) => {
+      const input = document.createElement('select');
+      for (const [value, label] of options) input.add(new Option(label, value));
+      input.value = prefs[key];
+      add(key, title, input, () => input.value);
+    };
+    const add = (key, title, input, value) => {
+      const label = document.createElement('label');
+      label.append(title, input); box.append(label);
+      input.onchange = () => {
+        prefs[key] = value();
+        try { localStorage.setItem('keyclash-preferences', JSON.stringify(prefs)); } catch {}
+        applyOptions();
+      };
+    };
+    select('size', 'Typing size', [['small', 'Small'], ['auto', 'Default'], ['large', 'Large']]);
+    select('particles', 'Particles', [['off', 'Off'], ['low', 'Low'], ['normal', 'Full']]);
+    for (const [key, title] of Object.entries({ motion: 'Reduce motion', shake: 'Screen shake', keys: 'Keystroke sounds', sound: 'Combat sounds', contrast: 'High contrast', colorblind: 'Colorblind feedback' })) {
+      const input = document.createElement('input');
+      input.type = 'checkbox'; input.checked = prefs[key];
+      add(key, title, input, () => input.checked);
+    }
+    const done = document.createElement('button');
+    done.className = 'ghost-btn'; done.textContent = 'Done'; done.onclick = () => toggleOptions(false); box.append(done);
+  }
+
+  function applyOptions() {
+    const board = $('kcType').closest('.kc');
+    board.dataset.size = prefs.size;
+    board.classList.toggle('kc-reduced', motionOff());
+    board.classList.toggle('kc-contrast', prefs.contrast);
+    board.classList.toggle('kc-colorblind', prefs.colorblind);
+    if (motionOff() || !prefs.shake) shakeUntil = 0;
+    if (motionOff() || prefs.particles === 'off') parts = [];
+    if (motionOff()) {
+      $('kcTrack').getAnimations().forEach((animation) => animation.cancel());
+    }
+    previewKey = null;
+    if (round) paintTyping();
+  }
+
+  function syncFocus() {
+    const input = $('kcInput');
+    if (!input) return;
+    const focused = document.activeElement === input && document.hasFocus() && !blocked();
+    $('kcType').classList.toggle('kc-focused', live && focused);
+    $('kcFocus').hidden = !live || focused || blocked();
+    $('kcChat').setAttribute('aria-expanded', String($('chatPanel')?.hidden === false));
+  }
+
+  function focusTyping() {
+    if (!live || blocked()) return false;
+    $('kcInput').focus({ preventScroll: true });
+    syncFocus();
     return true;
   }
 
-  function nudge() {
-    const box = $('kcStream');
-    if (!box) return;
-    box.classList.remove('kc-shake'); void box.offsetWidth; box.classList.add('kc-shake');
-    ctx.sfx?.('wrong');
-    $('kcNote').textContent = 'Fix the red letters first.';
+  function shortcuts(e) {
+    if (e.defaultPrevented || e.repeat || e.ctrlKey || e.altKey || e.metaKey || ctx?.readOnly) return;
+    if (e.key === 'Escape' && $('keyclashPrefs')?.hidden === false && !$('modal')?.matches(':not([hidden])')) {
+      e.preventDefault(); e.stopPropagation(); toggleOptions(false); return;
+    }
+    if (blocked() || S?.phase !== 'playing' || !S.canPause) return;
+    const inside = e.target === $('kcInput') || !interactive(e.target) || e.target?.closest?.('#pausedCover');
+    if (inside && (e.key === 'Escape' || (S.paused && e.key.toLowerCase() === 'p'))) {
+      e.preventDefault(); e.stopPropagation(); ctx.quiet(ctx.act(S.paused ? 'resume' : 'pause'));
+    }
   }
 
-  function resync() {
-    const me = K()?.fighters.find((f) => f.id === S.me.id);
-    if (me) idx = me.idx;
-    offer = K()?.offer || null;
-    paintStream(); paintOffer();
+  // Keyboard and mobile input feed the same append-only buffer.
+  function onKey(e) {
+    if (!live || blocked() || e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (!['Backspace', ' ', 'Enter'].includes(e.key) && !/^[a-z]$/i.test(e.key)) return;
+    e.preventDefault(); e.stopPropagation();
+    if (e.key === 'Backspace') backspace();
+    else if (e.key === ' ' || e.key === 'Enter') { if (!e.repeat) submit(); }
+    else addLetter(e.key.toLowerCase());
   }
 
-  // ---------- render
+  function onBeforeInput(e) {
+    e.preventDefault();
+    if (!live || blocked() || e.isComposing) return;
+    if (e.inputType === 'deleteContentBackward') backspace();
+    if (e.inputType !== 'insertText') return;
+    if (e.data === ' ') submit();
+    else if (/^[a-z]$/i.test(e.data ?? '')) addLetter(e.data.toLowerCase());
+  }
+
+  const target = () => stream.get(idx) || '';
+  const choices = () => [['', target()], ...Object.entries(offer || {})];
+  function activeChoice() {
+    const options = choices();
+    for (let n = typed.length; n; n--) {
+      const match = options.find(([, word]) => word.startsWith(typed.slice(0, n)));
+      if (match) return match;
+    }
+    return options[0];
+  }
+
+  function addLetter(letter) {
+    if (!target()) return;
+    const [, expected] = activeChoice();
+    if (typed.length > expected.length && !choices().some(([, word]) => word.startsWith(typed + letter))) return;
+    typed += letter;
+    const [, word] = activeChoice();
+    const wrong = word[typed.length - 1] !== letter;
+    if (wrong) errs = Math.min(99, errs + 1);
+    if (prefs.keys) ctx.sfx?.(wrong ? 'wrong' : 'tick');
+    $('kcNote').textContent = '';
+    paintTyping(); paintLocal();
+  }
+
+  function backspace() {
+    typed = typed.slice(0, -1);
+    $('kcNote').textContent = '';
+    paintTyping(); paintLocal();
+  }
+
+  function projection() {
+    const me = local();
+    if (!me) return { chars: 0, errors: 0, combo: 0, charge: 0 };
+    let { chars, combo, charge } = me, errors = me.errors ?? 0;
+    for (const entry of pending) {
+      if (entry.number <= me.words) continue;
+      const n = entry.body.word.length;
+      chars += n; errors += entry.body.errs;
+      combo = entry.body.errs ? 0 : combo + 1;
+      charge = entry.power ? 0 : Math.min(K().charge, charge + n * (entry.body.errs ? 1 : 3));
+    }
+    return { chars, errors: errors + errs, combo: errs ? 0 : combo, charge };
+  }
+
+  function submit() {
+    if (!typed) return;
+    const power = Object.keys(offer || {}).find((kind) => offer[kind] === typed);
+    if (!power && typed !== target()) {
+      const [, word] = activeChoice();
+      $('kcNote').textContent = [...typed].some((ch, i) => word[i] !== ch) ? 'Backspace to correct the underlined letters.' : 'Finish the word before pressing Space.';
+      return;
+    }
+    const me = local(), last = pending.at(-1);
+    const body = { rid: round, i: idx, word: typed, errs };
+    if (power) body.power = power;
+    const number = Math.max(me.words, last?.number ?? 0) + 1;
+    body.number = number;
+    pending.push({ number, power, body });
+    completed = typed;
+    if (power) offer = null;
+    else idx++;
+    const perfect = !errs;
+    typed = ''; errs = 0;
+    lastSubmitted = performance.now();
+    $('kcNote').textContent = '';
+    const { combo } = projection();
+    launches.push({ at: lastSubmitted, power, combo });
+    if (perfect && MILESTONES[combo]) {
+      $('kcMilestone').textContent = `${MILESTONES[combo]} · ${combo} perfect words`;
+      $('kcMilestone').hidden = false; milestoneUntil = lastSubmitted + 1200;
+      if (prefs.sound) ctx.sfx?.(combo >= 10 ? 'fanfare' : 'good');
+    }
+    paintTyping(true); paintLocal(); sendNext(pending);
+  }
+
+  async function sendNext(queue) {
+    const entry = queue.find((item) => !item.sent);
+    if (queue !== pending || !live || sending || !entry) return;
+    sending = true;
+    // Respect the existing server speed limit even when several words were typed during a slow request.
+    const ms = Math.max(0, acceptedAt + entry.body.word.length * (K().minCharMs ?? 30) + 4 - performance.now());
+    if (ms > 0) await new Promise((resolve) => setTimeout(resolve, ms));
+    if (queue !== pending || !S) return;
+    try {
+      if (!live) return;
+      await ctx.act('word', entry.body);
+      if (queue !== pending || !S) return;
+      entry.sent = true;
+      acceptedAt = performance.now();
+    } catch (error) {
+      if (queue !== pending || !S) return;
+      if (error.message === 'The game is paused.') return;
+      pending = []; sending = false; typed = ''; completed = ''; errs = 0; idx = local()?.idx ?? K().base;
+      offer = K().offer || null; launches = [];
+      $('kcNote').textContent = 'Word could not be confirmed. Continue from the displayed word.';
+      paintTyping(); paintLocal();
+    } finally {
+      if (queue === pending && S) {
+        sending = false;
+        if (entry.sent) sendNext(queue);
+      }
+    }
+  }
 
   function render(s, c) {
+    const wasLive = live;
     S = s; ctx = c;
     const k = K();
     if (!k) return;
-    if (k.rid !== round) {   // a new round, or a new game (a rematch starts at round 1 again): a new stream from the start
-      round = k.rid; idx = 0; errs = 0; lastLen = 0; stream = new Map(); offer = null; sentOffer = null;
-      chain = Promise.resolve(); fx = []; $('kcInput').value = '';
+    const changed = k.rid !== round;
+    const me = local();
+    if (changed) {
+      round = k.rid; idx = k.base; typed = ''; completed = ''; errs = 0; stream = new Map(); offer = null;
+      pending = []; sending = false; fx = []; launches = []; parts = []; knocked.clear(); celebrated.clear();
+      lastSubmitted = shakeUntil = milestoneUntil = -Infinity;
+      acceptedAt = performance.now() - (k.wordAge ?? 0) * 1000;
+      $('kcNote').textContent = ''; $('kcMilestone').hidden = true;
+      setActivity(false);
     }
-    k.words.forEach((w, i) => stream.set(k.base + i, w));
-    const me = k.fighters.find((f) => f.id === S.me.id);
-    if (me && me.idx > idx) idx = me.idx;                    // the server is ahead of us (a reload)
-    if (!k.playing && me) idx = Math.max(idx, me.idx);
-    if (!me) idx = k.base;                                    // watching: follow the leader
-    // the power offer: the server's, unless we've just used it and the server hasn't caught up
-    if (k.offer && sentOffer && JSON.stringify(k.offer) === JSON.stringify(sentOffer)) offer = null;
-    else { offer = k.offer || null; sentOffer = null; }
+    k.words.forEach((word, i) => stream.set(k.base + i, word));
+    for (const i of stream.keys()) { if (i < k.base - 1) stream.delete(i); }
+    while (pending.length && pending[0].number <= (me?.words ?? 0)) pending.shift();
+    if (me && me.idx > idx) { idx = me.idx; typed = ''; errs = 0; }
+    if (!me) idx = k.base;
+    offer = pending.some((entry) => entry.power) ? null : k.offer;
     left = k.left; leftAt = performance.now();
     for (const e of k.events) if (e.n > seen) { seen = e.n; play(e); }
+    live = !c.readOnly && s.phase === 'playing' && k.playing && !s.paused;
     const inp = $('kcInput');
-    inp.disabled = !k.playing || !!S.paused;
-    if (!k.playing && inp.value) { inp.value = ''; errs = 0; lastLen = 0; }   // a round over (or knocked out): start clean
-    inp.placeholder = S.paused ? '⏸ paused · Esc or P to carry on' : k.playing ? (S.canPause ? 'type here… (Esc pauses)' : 'type here…') : me?.ko ? '💫 knocked out' : k.stage === 'reveal' ? 'next round soon…' : 'watching';
-    if (!keys && k.playing && !ctx.replay && document.activeElement !== inp && !document.querySelector('#modal:not([hidden])')) inp.focus({ preventScroll: true });
-    if (keys && document.activeElement === inp) inp.blur();
-    inp.classList.toggle('live', keys && k.playing);
-    $('kcRound').textContent = `Round ${k.round}`;
-    paintFighters(); paintStream(); paintOffer(); paintBanner(); paintStats(); paintReport();
+    inp.disabled = !live;
+    if (!k.playing || s.phase !== 'playing') {
+      if (pending.length) { pending = []; sending = false; }
+      typed = ''; errs = 0;
+    }
+    if (live && !wasLive && !sending) acceptedAt = performance.now() - (k.wordAge ?? 0) * 1000;
+    if (live && (!wasLive || changed)) {
+      const focusOnStart = () => {
+        const active = document.activeElement;
+        if (!interactive(active) || active === inp || active?.closest('[hidden], #pausedCover') || active === $('pauseBtn')) focusTyping();
+      };
+      focusOnStart();
+      requestAnimationFrame(() => { if (inp.isConnected && !inp.disabled) focusOnStart(); });
+    }
+    syncFocus();
+    $('kcRound').textContent = `Round ${k.round} / ${k.rounds}`;
+    $('kcScore').textContent = fighters().length === 2 ? fighters().map((f) => f.wins).join(' : ') : `First to ${k.need}`;
+    paintFighters(); paintTyping(); paintLocal(); paintBanner(); paintReport();
+    sendNext(pending);
   }
 
   // ---------- (#381) typing analytics: between rounds the round just played, after the match every round
@@ -282,99 +473,133 @@ UI.keyclash = (() => {
     return wrap;
   }
 
+  const hud = new Map();
+
   function paintFighters() {
-    const k = K(), box = $('kcFighters');
-    box.replaceChildren(...k.fighters.map((f) => {
-      const p = ctx.player(f.id), card = ctx.el('div', 'kc-f' + (f.id === S.me.id ? ' me' : '') + (f.ko ? ' ko' : ''));
-      card.style.setProperty('--h', hue(f.id));
-      const head = ctx.el('div', 'kc-f-head');
-      head.append(ctx.el('b', 'kc-name', p?.name ?? '?'), ctx.el('span', 'kc-wins', '🏆'.repeat(f.wins) + '·'.repeat(Math.max(0, k.need - f.wins))));
-      card.append(head);
-      const bar = (cls, frac, label, color) => {
-        const el = ctx.el('div', 'kc-hp ' + cls), fill = ctx.el('i');
-        fill.style.width = `${Math.max(0, Math.min(100, 100 * frac))}%`;
-        if (color) fill.style.background = color;
-        el.append(fill, ctx.el('em', '', label));
-        return el;
-      };
-      if (k.powered) {
-        const hp = bar('', f.hp / k.hp, (k.mode === 'siege' ? '🏰 ' : '') + f.hp + (f.shield > 0 ? ` · 🛡️ ${f.shield}` : ''), `hsl(${Math.round((120 * f.hp) / k.hp)} 75% 50%)`);   // green → red; (#380) shield left
-        if (f.shield > 0) hp.title = `Shield: blocks the next ${f.shield} damage`;
-        const sh = ctx.el('s'); sh.style.width = `${Math.min(100, (100 * f.shield) / k.hp)}%`; hp.insertBefore(sh, hp.lastChild);
-        card.append(hp);
-        if (k.mode === 'boss') card.append(bar('kc-boss', f.boss / k.bossMax, `👹 ${f.boss}`));
-        const ch = ctx.el('div', 'kc-charge' + (f.power ? ' full' : '')), cf = ctx.el('i');
-        cf.style.width = `${(100 * f.charge) / k.charge}%`;
-        ch.append(cf);
-        card.append(ch);
-      } else if (k.mode === 'hyper') {
-        card.append(bar('kc-race', f.dist / k.track, `🚀 ${Math.round((100 * f.dist) / k.track)}%`));
-      } else if (k.mode === 'tug') {
-        card.classList.add('kc-team' + f.team);
-        card.append(ctx.el('div', 'kc-f-team', k.teams[f.team]));
-      } else {
-        const lead = k.goal || Math.max(1, ...k.fighters.map((x) => x.chars));   // with no time limit, a race to the goal (#379)
-        card.append(bar('kc-race', f.chars / lead, k.goal ? `${f.chars} / ${k.goal}` : `${f.chars} letters`));
+    const k = K(), box = $('kcFighters'), list = fighters();
+    const key = JSON.stringify(list.map((f) => [f.id, nameOf(f.id)]));
+    if (box.dataset.key !== key) {
+      box.dataset.key = key; hud.clear(); box.replaceChildren();
+      for (const f of list) {
+        const card = ctx.el('section', 'kc-f');
+        card.classList.toggle('me', f.id === S.me.id);
+        card.style.setProperty('--h', hue(f.id));
+        const head = ctx.el('div', 'kc-f-head'), portrait = document.createElement('canvas');
+        portrait.className = 'kc-portrait'; portrait.width = portrait.height = 72;
+        portrait.setAttribute('aria-hidden', 'true');
+        const g = portrait.getContext('2d');
+        if (g) drawFighter(g, 35, 37, 45, hue(f.id), f.id === S.me.id ? 1 : -1, false, false, 0, false, 0);
+        const wins = ctx.el('span', 'kc-wins'), readout = ctx.el('strong', 'kc-vital');
+        head.append(portrait, ctx.el('b', 'kc-name', nameOf(f.id)), wins);
+        const bar = ctx.el('div', 'kc-hp'), fill = ctx.el('i'), trail = ctx.el('i', 'kc-health-trail');
+        bar.append(trail, fill);
+        const shield = ctx.el('span', 'kc-shield'), boss = ctx.el('span', 'kc-boss');
+        const vitals = ctx.el('div', 'kc-vitals'); vitals.append(readout, shield, boss);
+        const stats = ctx.el('div', 'kc-f-stats'), wpm = ctx.el('b', 'kc-wpm'), acc = ctx.el('span'), combo = ctx.el('span');
+        stats.append(wpm, acc, combo);
+        card.append(head, vitals, bar, stats); box.append(card);
+        hud.set(f.id, { card, wins, readout, bar, fill, trail, shield, boss, wpm, acc, combo, hp: null });
       }
-      if (k.mode === 'survival') card.querySelector('.kc-hp em').textContent += ` · 🧟 ${f.kills}`;
-      const tgt = f.target && f.target !== S.me.id && f.id === S.me.id ? ` · 🎯 ${ctx.player(f.target)?.name ?? ''}` : '';
-      const line = ctx.el('div', 'kc-f-stats'), wpm = ctx.el('b', 'kc-wpm', `${f.wpm} wpm`);
-      wpm.dataset.chars = f.chars;   // (#384) tickClock keeps this live between words
-      line.append(wpm, ` · ${f.acc}%` + (f.combo > 1 ? ` · 🔥${f.combo}` : '') + tgt);
-      card.append(line);
-      return card;
-    }));
+    }
+    for (const f of list) {
+      const row = hud.get(f.id);
+      row.card.classList.toggle('ko', f.ko);
+      row.card.classList.toggle('kc-low', k.powered && f.hp <= k.hp * 0.25);
+      row.wins.textContent = `${f.wins} ${f.wins === 1 ? 'win' : 'wins'}`;
+      let percent = 100;
+      if (k.powered) {
+        percent = 100 * f.hp / k.hp;
+        row.readout.textContent = `${f.hp} / ${k.hp} HP` + (k.mode === 'survival' ? ` · ${f.kills} KOs` : '');
+      } else if (k.mode === 'hyper') {
+        percent = 100 * f.dist / k.track;
+        row.readout.textContent = `${Math.round(percent)}% of track`;
+      } else if (k.mode === 'tug') {
+        row.readout.textContent = k.teams[f.team];
+      } else {
+        percent = 100 * f.chars / (k.goal || Math.max(1, ...list.map((x) => x.chars)));
+        row.readout.textContent = k.goal ? `${f.chars} / ${k.goal} letters` : `${f.chars} letters`;
+      }
+      row.bar.hidden = k.mode === 'tug';
+      row.fill.style.width = row.trail.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+      row.trail.classList.toggle('kc-damage', k.powered && row.hp !== null && f.hp < row.hp);
+      row.hp = f.hp;
+      row.shield.textContent = f.shield ? `🛡 ${f.shield}` : '';
+      row.boss.textContent = k.mode === 'boss' ? `Boss ${f.boss} / ${k.bossMax}` : '';
+      row.wpm.dataset.chars = f.chars; row.wpm.textContent = `${f.wpm} WPM`;
+      row.acc.textContent = `${f.acc}% acc`;
+      row.combo.textContent = f.id === S.me.id ? '' : `${f.combo} combo`;
+    }
   }
 
-  function paintStream() {
-    const box = $('kcStream');
-    if (!box || !S) return;
-    const typed = $('kcInput').value, w = target(), parts = [];
-    $('kcInput').style.setProperty('--kc-caret', `${typed.length}ch`);   // the drawn caret (#375)
-    // (#378) typing a power word isn't a mistake: while the letters fit one, the word waits, unmarked, and the
-    // power word's chip fills in instead
-    const power = typed && !w.startsWith(typed) && offerWords().find((x) => x.startsWith(typed));
-    if (power) {
-      const cur = ctx.el('span', 'kc-cur kc-wait', w || '…');
-      box.replaceChildren(cur, ...[1, 2, 3, 4, 5, 6].map((i) => stream.get(idx + i)).filter(Boolean).map((n) => ctx.el('span', 'kc-next', n)));
-      box.classList.remove('kc-err');
-      $('kcNote').textContent = '⚡ Power word: finish it and press space';
-      paintOffer();
-      return;
+  function paintLocal() {
+    const p = projection(), me = local(), k = K();
+    const [, word] = activeChoice();
+    const correct = [...typed].filter((ch, i) => ch === word[i]).length;
+    const chars = p.chars + correct;
+    const accuracy = chars + p.errors ? Math.round(100 * chars / (chars + p.errors)) : 100;
+    if (me && hud.has(me.id)) {
+      const row = hud.get(me.id);
+      row.acc.textContent = `${accuracy}% acc`;
+      row.wpm.dataset.chars = p.chars;
     }
-    const cur = ctx.el('span', 'kc-cur');
-    // (#377) the word's own letters always stay on screen: a wrong one turns red and the letter you typed shows
-    // small above it; letters typed past the end are struck out; the next letter to type is underlined
-    let bad = false;
-    for (let i = 0; i < Math.max(w.length, typed.length); i++) {
-      const ch = w[i], t = typed[i];
-      if (ch == null) { cur.append(ctx.el('span', 'extra', t)); bad = true; continue; }
-      if (t == null) { cur.append(ctx.el('span', i === typed.length && !bad ? 'next' : '', ch)); continue; }
-      const ok = !bad && t === ch;
-      const span = ctx.el('span', ok ? 'ok' : 'bad', ch);
-      if (!ok) { bad = true; if (t !== ch) span.dataset.typed = t; }
-      cur.append(span);
-    }
-    if (!w) cur.textContent = '…';
-    parts.push(cur);
-    for (let i = 1; i <= 6; i++) { const n = stream.get(idx + i); if (n) parts.push(ctx.el('span', 'kc-next', n)); }
-    box.replaceChildren(...parts);
-    box.classList.toggle('kc-err', bad);
-    if (!bad) $('kcNote').textContent = '';
-    if (offer) paintOffer();
+    $('kcCombo').textContent = `${p.combo} combo`;
+    $('kcCombo').classList.toggle('kc-hot', p.combo >= 3);
+    $('kcSpecial').hidden = !k.powered;
+    $('kcAttack').hidden = !k.powered;
+    const charge = Math.round(100 * p.charge / k.charge);
+    $('kcPercent').textContent = `${charge}%`;
+    $('kcEnergy').style.width = `${charge}%`;
+    $('kcSpecial').classList.toggle('kc-ready', charge === 100);
+    $('kcAttackFill').style.width = `${word.length ? 100 * correct / word.length : 0}%`;
   }
 
-  function paintOffer() {
+  function paintLetters(box, word, value) {
+    const cells = [...word].map((ch, i) => {
+      const state = i >= value.length ? 'untyped' : value[i] === ch ? 'ok' : 'bad';
+      return ctx.el('span', `kc-letter ${state}`, ch);
+    });
+    if (value.length > word.length) {
+      cells.push(ctx.el('span', 'kc-overflow', '×'.repeat(value.length - word.length)));
+    }
+    box.replaceChildren(...cells);
+  }
+
+  function paintTyping(advanced = false) {
+    const [power, word] = activeChoice();
+    const cur = $('kcCurrent'), next = $('kcPreview'), track = $('kcTrack');
+    const words = Array.from({ length: 6 }, (_, i) => stream.get(idx + i + Number(!power))).filter(Boolean);
+    const upcoming = JSON.stringify(words);
+    if (upcoming !== previewKey) {
+      previewKey = upcoming;
+      next.replaceChildren(...words.map((w) => ctx.el('span', 'kc-next', w)));
+    }
+    const letters = JSON.stringify([idx, word, typed, power, completed, live]);
+    if (letters !== letterKey || advanced) {
+      letterKey = letters;
+      track.getAnimations().forEach((animation) => animation.cancel());
+      paintLetters(cur, word, typed);
+      $('kcCompleted').textContent = completed;
+      $('kcCaret').hidden = !live || !word;
+      track.style.transform = `translateX(-${typed.length}ch)`;
+      if (advanced && !motionOff()) {
+        track.animate([{ transform: 'translateX(1.2ch)' }, { transform: 'translateX(0)' }], { duration: 85, easing: 'ease-out' });
+      }
+    }
+    paintOffer(power);
+  }
+
+  function paintOffer(active) {
     const box = $('kcOffer');
-    box.hidden = !offer || !K()?.playing;
-    if (box.hidden) return;
-    const typed = $('kcInput').value;
-    box.replaceChildren(ctx.el('span', 'kc-offer-tip', '⚡ Type one:'), ...Object.entries(offer).map(([kind, w]) => {
-      const on = typed && w.startsWith(typed), chip = ctx.el('span', `kc-pw kc-pw-${kind}` + (on ? ' on' : ''), `${ICON[kind]} `);
-      if (on) chip.append(ctx.el('b', '', w.slice(0, typed.length)), w.slice(typed.length));   // the letters typed so far
-      else chip.append(w);
-      const what = K()?.effects?.[kind];   // (#380) what it does
-      if (what) { chip.append(ctx.el('small', 'kc-pw-what', what)); chip.title = what; }
+    box.hidden = !offer || !live;
+    const key = JSON.stringify([offer, active]);
+    if (box.hidden || offerKey === key) return;
+    offerKey = key;
+    box.replaceChildren(...Object.entries(offer).map(([kind, word]) => {
+      const chip = ctx.el('span', 'kc-pw kc-pw-' + kind + (active === kind ? ' on' : ''));
+      const letters = ctx.el('b', 'kc-power-letters');
+      const effect = K().effects?.[kind] ?? '';
+      paintLetters(letters, word, '');
+      chip.append(ICON[kind] + ' ', letters, ctx.el('small', 'kc-pw-what', effect));
       return chip;
     }));
   }
@@ -388,39 +613,24 @@ UI.keyclash = (() => {
     b.textContent = w ? (w.id === S.me.id ? '🏆 You take the round!' : `🏆 ${w.name} takes the round`) : '🤝 A drawn round';
   }
 
-  function paintStats() {
-    const k = K(), box = $('kcStats');
-    const st = k.result?.stats;
-    const rows = k.fighters.map((f) => {
-      const s = st?.[f.id] || { wpm: f.wpm, acc: f.acc, words: f.words };
-      const r = ctx.el('div', 'kc-stat-row');
-      const span = ctx.el('span', ''), wpm = ctx.el('span', st ? '' : 'kc-wpm', `${s.wpm} wpm`);
-      if (!st) wpm.dataset.chars = f.chars;   // (#384) live during the round
-      span.append(wpm, ` · ${s.acc}% · ${s.words} words` + (s.best ? ` · best 🔥${s.best}` : '') + (k.mode === 'survival' && s.kills != null ? ` · 🧟 ${s.kills}` : ''));
-      r.append(ctx.el('b', '', ctx.player(f.id)?.name ?? '?'), span);
-      return r;
-    });
-    box.replaceChildren(...rows);
-  }
-
   function tickClock() {
     const k = S && K();
     if (!k) return;
     // (#384) words a minute move with the clock, not only when a word lands: letters so far over the time so far
     if (k.stage === 'play' && k.elapsed != null) {
       const t = k.elapsed + (S.paused ? 0 : (performance.now() - leftAt) / 1000);
-      if (t > 1) for (const el of document.querySelectorAll('#kcFighters .kc-wpm, #kcStats .kc-wpm')) el.textContent = `${Math.round(+el.dataset.chars / 5 / (t / 60))} wpm`;
+      if (t > 1) for (const el of document.querySelectorAll('#kcFighters .kc-wpm')) el.textContent = `${Math.round(+el.dataset.chars / 5 / (t / 60))} WPM`;
     }
     const l = Math.max(0, left - (S.paused ? 0 : (performance.now() - leftAt) / 1000));   // (#383) a paused clock stands still
     const t = $('kcTime'), lb = $('kcLeft');
     if (k.unlimited) {   // (#379) no time limit: the round goes on until someone wins
       if (t) { t.style.width = '100%'; t.classList.remove('low'); t.classList.add('none'); }
-      if (lb) lb.textContent = k.overtime ? '∞ ⏱️ overtime' : '∞';
+      if (lb) lb.textContent = k.overtime ? 'Overtime' : '∞ Unlimited';
       return;
     }
     t?.classList.remove('none');
     if (t) { t.style.width = `${(100 * l) / k.secs}%`; t.classList.toggle('low', k.stage === 'play' && l < 10); }
-    if (lb) lb.textContent = k.stage === 'play' ? `${Math.ceil(l)}s` : '';
+    if (lb) lb.textContent = k.stage === 'play' || S.phase === 'playing' ? `${Math.ceil(l)}s` : '';
   }
 
   // ---------- the arena
@@ -435,7 +645,7 @@ UI.keyclash = (() => {
     const g = cv.getContext('2d');
     if (!g) return cv;
     g.scale(dpr, dpr);
-    const floorY = h * 0.78;
+    const floorY = h * 0.79;
     const sky = g.createLinearGradient(0, 0, 0, floorY);
     sky.addColorStop(0, '#120f2b'); sky.addColorStop(0.55, '#2a2052'); sky.addColorStop(1, '#4a2d5e');
     g.fillStyle = sky; g.fillRect(0, 0, w, h);
@@ -475,7 +685,9 @@ UI.keyclash = (() => {
   let parts = [], partAt = 0, shakeUntil = 0;
   const knocked = new Set();
   function burst(x, y, n, color, speed, kind = 'spark') {
-    for (let i = 0; i < n && parts.length < 260; i++) {
+    if (motionOff() || prefs.particles === 'off') return;
+    const count = prefs.particles === 'low' ? Math.ceil(n / 3) : n;
+    for (let i = 0; i < count && parts.length < 260; i++) {
       const a = Math.random() * Math.PI * 2, v = speed * (0.4 + Math.random() * 0.8);
       parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - (kind === 'plus' ? 40 : 0), life: 0,
         max: kind === 'plus' ? 0.8 : 0.25 + Math.random() * 0.3, color, kind, size: 1 + Math.random() * 1.5 });
@@ -486,7 +698,7 @@ UI.keyclash = (() => {
     if (at) {
       for (const e of fx) {
         if (e.sparked) continue;
-        const delay = e.kind === 'hit' || e.kind === 'strike' ? 300 : 0;
+        const delay = e.kind === 'hit' || e.kind === 'strike' ? 180 : 0;
         if (now - e.at < delay) continue;
         e.sparked = true;
         const who = HURTS.has(e.kind) || e.kind === 'block' || e.kind === 'soak' ? e.to : e.by, p = who && at.get(who);
@@ -523,19 +735,21 @@ UI.keyclash = (() => {
   function play(e) {
     const now = performance.now();
     fx.push({ ...e, at: now });
+    if (e.to === S.me.id && (e.kind === 'strike' || e.kind === 'boss') && prefs.shake && !motionOff()) shakeUntil = now + 180;
+    if (!prefs.sound || ctx.readOnly) return;
     if (e.to === S.me.id && HURTS.has(e.kind)) {
-      ctx.sfx?.(e.kind === 'strike' || e.kind === 'boss' ? 'boom' : 'thud'); ctx.buzz?.(e.kind === 'strike' ? 60 : 15); flash = now;
-      if ((e.kind === 'strike' || e.kind === 'boss') && !window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) shakeUntil = now + 260;   // (#382)
+      ctx.sfx?.(e.kind === 'strike' || e.kind === 'boss' ? 'boom' : 'thud');
+    } else if (e.by === S.me.id) {
+      ctx.sfx?.({ strike: 'boom', heal: 'good', shield: 'lock', kill: 'crack', cut: 'chip', pull: 'tick' }[e.kind] || 'pop');
     }
-    else if (e.by === S.me.id) ctx.sfx?.({ strike: 'boom', heal: 'good', shield: 'lock', kill: 'crack', cut: 'chip', pull: 'tick' }[e.kind] || 'pop');
   }
 
   function spots(w, h, list) {
     // two fighters face each other; more stand round in an arc
     const n = list.length, out = new Map();
     list.forEach((f, i) => {
-      const x = n === 2 ? (i ? w * 0.75 : w * 0.25) : w * (0.12 + (0.76 * i) / Math.max(1, n - 1));
-      const y = h * (n === 2 ? 0.62 : 0.55 + 0.12 * Math.sin((Math.PI * i) / Math.max(1, n - 1)));
+      const x = n === 2 ? (i ? w * 0.69 : w * 0.31) : w * (0.12 + (0.76 * i) / Math.max(1, n - 1));
+      const y = h * (n === 2 ? 0.58 : 0.55 + 0.12 * Math.sin((Math.PI * i) / Math.max(1, n - 1)));
       out.set(f.id, { x, y, face: n === 2 ? (i ? -1 : 1) : x < w / 2 ? 1 : -1 });
     });
     return out;
@@ -554,16 +768,44 @@ UI.keyclash = (() => {
     // (#382) a painted backdrop, drawn once per size; stars twinkle over it
     g.drawImage(backdrop(w, h, dpr), 0, 0, w, h);
     for (let i = 0; i < 10; i++) {
-      const a = 0.25 + 0.25 * Math.sin(now / 700 + i * 1.7);
+      const a = 0.25 + 0.25 * Math.sin((motionOff() ? 0 : now) / 700 + i * 1.7);
       g.fillStyle = `rgba(255,255,255,${a})`; g.fillRect((i * 173.3 + 40) % w, (i * 61.7 + 12) % (h * 0.42), 2, 2);
     }
-    if (now < shakeUntil) { const m = 5 * (shakeUntil - now) / 260; g.translate((Math.random() - 0.5) * m * 2, (Math.random() - 0.5) * m * 2); }
-    fx = fx.filter((e) => now - e.at < 1100);
+    if (now < shakeUntil) { const m = 3 * (shakeUntil - now) / 180; g.translate((Math.random() - 0.5) * m * 2, (Math.random() - 0.5) * m * 2); }
+    fx = fx.filter((e) => now - e.at < 875);
+    launches = launches.filter((e) => now - e.at < 240);
+    if (now >= milestoneUntil && !$('kcMilestone').hidden) $('kcMilestone').hidden = true;
     const scene = { race: drawRace, hyper: drawHyper, tug: drawTug, siege: drawSiege, survival: drawSurvival, boss: drawBoss }[k.mode] || drawBrawl;
     const at = scene(g, w, h, k, now);
     sparks(g, at, k, now);
     popups(g, at, now);
-    if (now - flash < 180) { g.fillStyle = `rgba(255,60,60,${0.25 * (1 - (now - flash) / 180)})`; g.fillRect(0, 0, w, h); }
+    const player = at?.get(S.me.id);
+    if (player) drawLaunches(g, player, now);
+    if (!motionOff() && k.stage === 'reveal' && at && k.result) celebrate(at, k);
+
+  }
+
+  function drawLaunches(g, p, now) {
+    if (motionOff()) return;
+    for (const launch of launches) {
+      const t = (now - launch.at) / 240, size = p.s || 20;
+      const dir = p.face || 1;
+      const x = p.x + dir * size * (0.74 + t * 0.55), y = p.y - size * 0.08;
+      g.globalAlpha = (1 - t) * 0.85;
+      g.strokeStyle = launch.power || launch.combo >= 3 ? '#ffda77' : '#8bd6ff'; g.lineWidth = 2;
+      g.beginPath(); g.ellipse(x, y, size * (0.15 + t * 0.27), size * (0.11 + t * 0.35), 0, 0, Math.PI * 2); g.stroke();
+    }
+    g.globalAlpha = 1;
+  }
+
+  const celebrated = new Set();
+  function celebrate(at, k) {
+    for (const id of k.result.winners || [k.result.winner]) {
+      const p = at.get(id);
+      if (!p || celebrated.has(id)) continue;
+      celebrated.add(id);
+      burst(p.x, p.y - p.s, 32, '#ffda77', 250);
+    }
   }
 
   // damage, heals and shields float up over whoever they happened to
@@ -571,31 +813,43 @@ UI.keyclash = (() => {
     if (!at) return;
     const stack = new Map();   // popups over the same fighter close together stack up instead of overlapping
     for (const e of fx) {
-      const t = (now - e.at) / 1000, delay = e.kind === 'hit' || e.kind === 'strike' ? 0.3 : 0;
+      const t = (now - e.at) / 1000, delay = !motionOff() && (e.kind === 'hit' || e.kind === 'strike') ? 0.18 : 0;
       if (t < delay) continue;
-      const v = (t - delay) / 0.8, who = HURTS.has(e.kind) || e.kind === 'block' || e.kind === 'soak' ? e.to : e.by, p = who && at.get(who);
-      if (!p || !['hit', 'strike', 'army', 'bite', 'boss', 'block', 'soak', 'heal', 'shield'].includes(e.kind)) continue;
-      g.globalAlpha = Math.max(0, 1 - v);
+      const v = (t - delay) / 0.65;
+      let who = HURTS.has(e.kind) || e.kind === 'block' || e.kind === 'soak' ? e.to : e.by;
+      if (!who && K().mode === 'boss' && (e.kind === 'hit' || e.kind === 'strike') && e.by === S.me.id) who = 'boss';
+      if (e.kind === 'zap' || e.kind === 'kill') who = `foe:${e.by}`;
+      const p = who && at.get(who);
+      if (!p || !['hit', 'strike', 'army', 'bite', 'boss', 'block', 'soak', 'heal', 'shield', 'zap', 'kill'].includes(e.kind)) continue;
+      g.globalAlpha = motionOff() ? 1 : Math.max(0, 1 - v);
       g.font = `800 ${e.kind === 'strike' || e.kind === 'boss' ? 20 : 15}px system-ui, sans-serif`; g.textAlign = 'center';
       g.fillStyle = { block: '#9ad7ff', soak: '#9ad7ff', shield: '#9ad7ff', heal: '#7dffa8', strike: '#ffcf5a' }[e.kind] || '#ff8a8a';
       const soak = e.kind === 'block' || e.kind === 'soak';   // (#380) what the shield took
       const row = stack.get(who) || 0; stack.set(who, row + 1);
       g.fillText(soak ? `🛡️ −${e.dmg} blocked` : e.kind === 'shield' ? `🛡️ +${e.dmg} shield` : e.kind === 'heal' ? `+${e.dmg}` : `-${e.dmg}`,
-        p.x, p.y - p.s * 1.3 - v * 24 - row * 18);
+        p.x, Math.max(15, p.y - p.s * 0.86 - (motionOff() ? 0 : v * 14) - row * 16));
       g.globalAlpha = 1;
     }
   }
 
   function fighterAt(g, f, p, s, now, face = p.face) {
-    const hurt = fx.find((e) => e.to === f.id && HURTS.has(e.kind) && now - e.at < 300);
-    const lunge = fx.find((e) => e.by === f.id && (e.kind === 'hit' || e.kind === 'strike') && now - e.at < 220) ? 10 * face : 0;
-    const bob = f.ko ? 0 : Math.sin(now / 300 + p.x) * 3, shake = hurt ? Math.sin(now / 18) * 4 : 0;
-    drawFighter(g, p.x + lunge + shake, p.y + bob, s, hue(f.id), face, f.ko, !!hurt, f.shield, f.id === S.me.id, now, f.combo || 0, !!lunge);
+    const still = motionOff();
+    const hurt = fx.findLast((e) => e.to === f.id && HURTS.has(e.kind) && now - e.at < 260);
+    const attack = fx.findLast((e) => e.by === f.id && (e.kind === 'hit' || e.kind === 'strike') && now - e.at < 200);
+    const launch = f.id === S.me.id ? launches.at(-1) : null;
+    const progress = attack || launch ? (now - Math.max(attack?.at ?? -Infinity, launch?.at ?? -Infinity)) / 240 : 1;
+    const lunge = still || progress >= 1 ? 0 : face * s * (progress < 0.18 ? -0.07 * progress / 0.18 : 0.18 * Math.sin(Math.PI * (progress - 0.18) / 0.82));
+    const bob = still || f.ko ? 0 : Math.sin(now / 360 + p.x) * 2;
+    const recoil = still || !hurt ? 0 : -face * s * 0.12 * (1 - (now - hurt.at) / 260);
+    const combo = f.id === S.me.id ? projection().combo : f.combo;
+    const collapse = f.ko && hurt && !still ? Math.min(1, (now - hurt.at) / 190) : 1;
+    drawFighter(g, p.x + lunge + recoil, p.y + bob, s, hue(f.id), face, f.ko, !!hurt && !still, f.shield, f.id === S.me.id, still ? 0 : now, combo, !still && progress < 0.7, collapse);
   }
 
   // a glowing bolt from a to b, u of the way there
   function bolt(g, a, b, u, color, big, arc) {
     const at = (v) => [a.x + (b.x - a.x) * v, a.y + (b.y - a.y) * v - Math.sin(Math.PI * v) * arc];
+    if (motionOff()) return;
     for (let i = 5; i >= 1; i--) {   // (#382) a fading trail behind it
       const v = u - i * 0.035;
       if (v < 0) continue;
@@ -612,10 +866,10 @@ UI.keyclash = (() => {
 
   // ⚔️ Duel and 🏟️ Last Typist Standing: fighters face off, every word flies across as a bolt
   function drawBrawl(g, w, h, k, now) {
-    const at = spots(w, h, k.fighters), size = Math.min(56, h * 0.22, w / (k.fighters.length * 2.6));
+    const list = fighters(), at = spots(w, h, list), size = Math.min(106, h * 0.39, w / (list.length * 2.65));
     for (const f of k.fighters) { const p = at.get(f.id); p.s = size; fighterAt(g, f, p, size, now); }
     for (const e of fx) {
-      const a = at.get(e.by), b = e.to && at.get(e.to), u = (now - e.at) / 300;
+      const a = at.get(e.by), b = e.to && at.get(e.to), u = (now - e.at) / 180;
       if (a && b && u < 1 && (e.kind === 'hit' || e.kind === 'strike' || e.kind === 'block'))
         bolt(g, { x: a.x, y: a.y - size * 0.5 }, b, u, `hsl(${hue(e.by)} 90% 65%)`, e.kind === 'strike', size * 0.6);
     }
@@ -624,7 +878,7 @@ UI.keyclash = (() => {
 
   // 🏰 Castle Siege: a castle each, soldiers marching between them
   function drawSiege(g, w, h, k, now) {
-    const at = spots(w, h, k.fighters), size = Math.min(44, h * 0.16, w / (k.fighters.length * 3));
+    const at = spots(w, h, fighters()), size = Math.min(63, h * 0.20, w / (k.fighters.length * 3));
     for (const f of k.fighters) {
       const p = at.get(f.id); p.s = size;
       const cw = size * 1.6, ch = size * 1.2 * (0.35 + 0.65 * (f.hp / k.hp)), base = p.y + size * 0.55;
@@ -642,14 +896,14 @@ UI.keyclash = (() => {
     for (const a of k.armies || []) {
       const from = at.get(a.by), to = at.get(a.to);
       if (!from || !to) continue;
-      const u = Math.min(1, a.prog + (performance.now() - leftAt) / 1000 / 5), y0 = h * 0.82, n = Math.min(6, Math.ceil(a.power / 3));
+      const u = Math.min(1, a.prog + (S.paused || motionOff() ? 0 : (now - leftAt) / 1000 / 5)), y0 = h * 0.82, n = Math.min(6, Math.ceil(a.power / 3));
       for (let i = 0; i < n; i++) {   // a little squad, in step
-        const x = from.x + (to.x - from.x) * u - Math.sign(to.x - from.x) * i * 7, y = y0 + (i % 2) * 6 + Math.abs(Math.sin(now / 90 + i)) * -3;
+        const x = from.x + (to.x - from.x) * u - Math.sign(to.x - from.x) * i * 7, y = y0 + (i % 2) * 6 + (motionOff() ? 0 : Math.abs(Math.sin(now / 90 + i)) * -3);
         g.fillStyle = `hsl(${hue(a.by)} 80% ${a.big ? 70 : 58}%)`; g.beginPath(); g.arc(x, y - 6, a.big ? 5 : 3.5, 0, Math.PI * 2); g.fill();
         g.fillRect(x - 2, y - 3, 4, 7);
       }
     }
-    for (const e of fx) if (e.kind === 'cut' && now - e.at < 400) {
+    for (const e of fx) if (!motionOff() && e.kind === 'cut' && now - e.at < 400) {
       const p = at.get(e.by);
       if (p) { g.strokeStyle = '#ffffffaa'; g.lineWidth = 2; g.beginPath(); g.arc(p.x, h * 0.8, 10 + (now - e.at) / 20, 0, Math.PI * 2); g.stroke(); }
     }
@@ -658,7 +912,7 @@ UI.keyclash = (() => {
 
   // 🧟 Survival: a lane each; the same enemies shuffle in from the left toward each typist on the right
   function drawSurvival(g, w, h, k, now) {
-    const n = k.fighters.length, lane = h / (n + 0.5), at = new Map(), s = Math.min(34, lane * 0.55);
+    const n = k.fighters.length, lane = h / (n + 0.5), at = new Map(), s = Math.min(50, lane * 0.65);
     g.fillStyle = '#ffffffcc'; g.font = '700 12px system-ui, sans-serif'; g.textAlign = 'left'; g.fillText(`Wave ${k.wave || 1}`, 10, 16);
     k.fighters.forEach((f, i) => {
       const y = lane * (i + 0.75), p = { x: w - 40, y, face: -1, s };
@@ -666,14 +920,16 @@ UI.keyclash = (() => {
       fighterAt(g, f, p, s, now, -1);
       at.set(f.id, p);
       for (const [prog, hp, max] of f.foes || []) {
-        const x = 20 + (w - 100) * prog, wob = Math.sin(now / 160 + prog * 40) * 2;
+        const x = 20 + (w - 100) * prog, wob = motionOff() ? 0 : Math.sin(now / 160 + prog * 40) * 2;
         g.fillStyle = '#6fbf5a'; g.beginPath(); g.ellipse(x, y + wob, s * 0.32, s * 0.4, 0, 0, Math.PI * 2); g.fill();
         g.fillStyle = '#e8ff8a'; g.beginPath(); g.arc(x + 4, y - s * 0.1 + wob, 2.5, 0, Math.PI * 2); g.arc(x + 10, y - s * 0.1 + wob, 2.5, 0, Math.PI * 2); g.fill();
         g.fillStyle = '#00000088'; g.fillRect(x - 10, y - s * 0.6, 20, 3); g.fillStyle = '#ff6b6b'; g.fillRect(x - 10, y - s * 0.6, 20 * (hp / max), 3);
       }
+      const front = (f.foes || [])[0], tx = front ? 20 + (w - 100) * front[0] : 40;
+      const aim = { x: tx, y, s };
+      at.set(`foe:${f.id}`, aim);
       for (const e of fx) if (e.by === f.id && (e.kind === 'zap' || e.kind === 'kill') && now - e.at < 250) {
-        const front = (f.foes || [])[0], tx = front ? 20 + (w - 100) * front[0] : 40;
-        bolt(g, p, { x: tx, y }, (now - e.at) / 250, `hsl(${hue(f.id)} 90% 65%)`, false, 8);
+        bolt(g, p, aim, (now - e.at) / 250, `hsl(${hue(f.id)} 90% 65%)`, false, 8);
       }
     });
     return at;
@@ -681,12 +937,13 @@ UI.keyclash = (() => {
 
   // 👹 Boss Rush: one boss up top (everyone fights their own copy: it shows yours), the typists in a row below
   function drawBoss(g, w, h, k, now) {
-    const at = spots(w, h, k.fighters), s = Math.min(40, h * 0.15, w / (k.fighters.length * 2.8));
-    k.fighters.forEach((f, i) => { const p = at.get(f.id); p.y = h * 0.76; p.x = w * ((i + 1) / (k.fighters.length + 1)); p.s = s; p.face = 1; fighterAt(g, f, p, s, now, 1); });
+    const at = spots(w, h, fighters()), s = Math.min(60, h * 0.20, w / (k.fighters.length * 2.8));
+    fighters().forEach((f, i) => { const p = at.get(f.id); p.y = h * 0.76; p.x = w * ((i + 1) / (k.fighters.length + 1)); p.s = s; p.face = 1; fighterAt(g, f, p, s, now, 1); });
     const me = k.fighters.find((f) => f.id === S.me.id) || k.fighters[0];
     const bx = w / 2, by = h * 0.3, bs = Math.min(70, h * 0.24), slam = fx.find((e) => e.kind === 'boss' && now - e.at < 400);
     const hit = fx.find((e) => e.by === me?.id && (e.kind === 'hit' || e.kind === 'strike') && now - e.at < 200);
-    g.save(); g.translate(bx + (hit ? Math.sin(now / 15) * 4 : 0), by + (slam ? -10 : Math.sin(now / 500) * 4));
+    at.set('boss', { x: bx, y: by, s: bs });
+    g.save(); g.translate(bx + (hit && !motionOff() ? Math.sin(now / 15) * 4 : 0), by + (motionOff() ? 0 : slam ? -10 : Math.sin(now / 500) * 4));
     const body = g.createRadialGradient(-bs * 0.2, -bs * 0.3, bs * 0.1, 0, 0, bs);
     body.addColorStop(0, me?.boss > 0 ? '#c264ff' : '#555'); body.addColorStop(1, me?.boss > 0 ? '#4a1470' : '#222');
     g.fillStyle = body; g.beginPath(); g.ellipse(0, 0, bs, bs * 0.8, 0, 0, Math.PI * 2); g.fill();
@@ -701,10 +958,10 @@ UI.keyclash = (() => {
       g.fillText(l < 1.2 ? '⚠️ incoming!' : `next slam ${Math.ceil(l)}s`, bx, by + bs + 16);
     }
     for (const e of fx) {
-      const a = at.get(e.by), u = (now - e.at) / 300;
+      const a = at.get(e.by), u = (now - e.at) / 180;
       if (a && u < 1 && (e.kind === 'hit' || e.kind === 'strike')) bolt(g, a, { x: bx, y: by }, u, `hsl(${hue(e.by)} 90% 65%)`, e.kind === 'strike', 20);
     }
-    if (slam) { g.strokeStyle = `rgba(255,80,80,${1 - (now - slam.at) / 400})`; g.lineWidth = 4; g.beginPath(); g.arc(bx, by, bs + (now - slam.at) / 2, 0, Math.PI * 2); g.stroke(); }
+    if (slam && !motionOff()) { g.strokeStyle = `rgba(255,80,80,${1 - (now - slam.at) / 400})`; g.lineWidth = 4; g.beginPath(); g.arc(bx, by, bs + (now - slam.at) / 2, 0, Math.PI * 2); g.stroke(); }
     return at;
   }
 
@@ -712,11 +969,11 @@ UI.keyclash = (() => {
   function drawHyper(g, w, h, k, now) {
     const n = k.fighters.length, lane = h / (n + 1), at = new Map(), fin = w - 30;
     g.strokeStyle = '#ffffff16';
-    for (let i = 0; i < 30; i++) { const y = (i * 53.7) % h, x = (w - ((now / 3 + i * 131) % (w + 60))); g.beginPath(); g.moveTo(x, y); g.lineTo(x + 30, y); g.stroke(); }
+    for (let i = 0; i < 30; i++) { const y = (i * 53.7) % h, x = (w - (((motionOff() ? 0 : now) / 3 + i * 131) % (w + 60))); g.beginPath(); g.moveTo(x, y); g.lineTo(x + 30, y); g.stroke(); }
     g.fillStyle = '#ffffff55'; for (let y = 0; y < h; y += 12) g.fillRect(fin, y, 4, 6);
     k.fighters.forEach((f, i) => {
       const y = lane * (i + 1), x = 20 + (fin - 50) * (f.dist / k.track), c = `hsl(${hue(f.id)} 85% 62%)`, boost = Math.min(10, f.combo);
-      g.fillStyle = `hsl(${hue(f.id)} 90% 60% / .5)`; g.beginPath(); g.moveTo(x - 14, y - 5); g.lineTo(x - 22 - boost * 3 - Math.random() * 6, y); g.lineTo(x - 14, y + 5); g.fill();   // the flame
+      g.fillStyle = `hsl(${hue(f.id)} 90% 60% / .5)`; g.beginPath(); g.moveTo(x - 14, y - 5); g.lineTo(x - 22 - boost * 3 - (motionOff() ? 0 : Math.random() * 6), y); g.lineTo(x - 14, y + 5); g.fill();   // the flame
       g.fillStyle = c; g.beginPath(); g.moveTo(x + 16, y); g.lineTo(x - 14, y - 9); g.lineTo(x - 10, y); g.lineTo(x - 14, y + 9); g.fill();
       if (f.id === S.me.id) { g.fillStyle = '#ffffffcc'; g.font = '700 11px system-ui, sans-serif'; g.textAlign = 'center'; g.fillText('YOU', x, y - 14); }
       at.set(f.id, { x, y, s: 14 });
@@ -738,7 +995,7 @@ UI.keyclash = (() => {
       const dir = team ? 1 : -1, outer = knot + dir * (s * 1.6 + (side.length - 1) * s * 1.2);
       const shift = team ? Math.min(0, w - s * 0.8 - outer) : Math.max(0, s * 0.8 - outer);   // keep the whole team on screen
       side.forEach((f, i) => {
-        const x = knot + dir * (s * 1.6 + i * s * 1.2) + shift, lean = fx.find((e) => e.by === f.id && now - e.at < 200) ? (team ? 6 : -6) : 0;
+        const x = knot + dir * (s * 1.6 + i * s * 1.2) + shift, lean = !motionOff() && fx.find((e) => e.by === f.id && now - e.at < 200) ? (team ? 6 : -6) : 0;
         const p = { x: x + lean, y: y - s * 0.1, face: team ? -1 : 1, s };
         fighterAt(g, f, p, s, now);
         at.set(f.id, p);
@@ -749,20 +1006,20 @@ UI.keyclash = (() => {
     return at;
   }
 
-  function drawFighter(g, x, y, s, h, face, ko, hurt, shield, me, now, combo = 0, attacking = false) {
-    // (#382) a combo of 5 or more lights an aura that grows with it
-    if (combo >= 5 && !ko) {
-      const r = s * (0.9 + 0.04 * Math.min(10, combo)) * (1 + 0.05 * Math.sin(now / 120));
+  function drawFighter(g, x, y, s, h, face, ko, hurt, shield, me, now, combo = 0, attacking = false, collapse = 1) {
+    // A combo milestone lights an aura that grows with the streak.
+    if (combo >= 3 && !ko) {
+      const r = s * (0.9 + 0.04 * Math.min(20, combo)) * (1 + 0.025 * Math.sin(now / 160));
       const aura = g.createRadialGradient(x, y, s * 0.3, x, y, r);
       aura.addColorStop(0, `hsla(${combo >= 10 ? 35 : h}, 100%, 60%, 0.35)`); aura.addColorStop(1, `hsla(${combo >= 10 ? 35 : h}, 100%, 60%, 0)`);
       g.fillStyle = aura; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
     }
     g.save();
     g.translate(x, y);
-    if (ko) g.rotate(face * 1.25);
+    if (ko) g.rotate(face * 1.25 * collapse);
     // shadow on the floor
     const sh = g.createRadialGradient(0, s * 0.56, 1, 0, s * 0.56, s * 0.65);
-    sh.addColorStop(0, '#00000088'); sh.addColorStop(1, '#00000000');
+    sh.addColorStop(0, '#000000bb'); sh.addColorStop(1, '#00000000');
     g.fillStyle = sh; g.beginPath(); g.ellipse(0, s * 0.56, s * 0.65, s * 0.16, 0, 0, Math.PI * 2); g.fill();
     const squash = ko ? 1 : 1 + 0.04 * Math.sin(now / 300 + x);   // breathing
     g.scale(1 / squash, squash);
@@ -819,7 +1076,7 @@ UI.keyclash = (() => {
     k.fighters.forEach((f, i) => {
       const y = lane * (i + 1), x = 30 + (w - 70) * (f.chars / lead);
       g.strokeStyle = '#ffffff22'; g.setLineDash([6, 8]); g.beginPath(); g.moveTo(20, y + 16); g.lineTo(w - 20, y + 16); g.stroke(); g.setLineDash([]);
-      drawFighter(g, x, y + Math.sin(now / 120 + i) * (f.wpm ? 2 : 0), Math.min(30, lane * 0.6), hue(f.id), 1, false, false, false, f.id === S.me.id, now);
+      drawFighter(g, x, y + (motionOff() ? 0 : Math.sin(now / 120 + i) * (f.wpm ? 2 : 0)), Math.min(44, lane * 0.66), hue(f.id), 1, false, false, false, f.id === S.me.id, motionOff() ? 0 : now);
     });
     return null;
   }
@@ -828,7 +1085,7 @@ UI.keyclash = (() => {
     const k = s.keyclash;
     if (!k || s.phase !== 'playing') return null;
     if (k.stage === 'reveal') return 'Round over';
-    return k.playing ? '⌨️ Type!' : null;
+    return s.paused ? 'Paused' : k.playing ? '' : 'Watching';
   }
 
   function myMove(s) { return !!s.keyclash?.playing; }
@@ -836,5 +1093,5 @@ UI.keyclash = (() => {
   // the round's clock is on the screen itself; the room's deadline is only the next bot's word
   const ownTimer = () => true;
 
-  return { mount, render, unmount, turnText, myMove, ownTimer };
+  return { mount, render, unmount, turnText, myMove, ownTimer, ownSounds: true, compactLog: true };
 })();
