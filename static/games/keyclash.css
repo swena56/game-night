@@ -233,3 +233,7 @@ body.light #game .layout:has(.kc) #arena { padding: 0; }
 .kc-practice-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .kc-practice-actions [aria-pressed="true"] { outline: 2px solid currentColor; }
 .kc-practice-stats { font-variant-numeric: tabular-nums; }
+.kc-lesson-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.kc-lesson-list [aria-pressed="true"] { outline: 2px solid var(--accent, #8bd6ff); }
+.kc-key-summary { margin: 0; color: var(--kc-muted); font-size: 0.8rem; }
+.kc-practice input[aria-label="Practice word"] { min-height: 40px; font: 600 18px ui-monospace, monospace; }

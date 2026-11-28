@@ -392,13 +392,17 @@ UI.riders = (() => {
     trails.forEach((t, i) => {
       if (!t.length || !live[i]?.alive || !(gapes[i] > 0.2)) return;
       const w = cols(), head = headPos(i, now), [dx, dy] = DIRS[headDir(i)];
-      let x = t[t.length - 1] % w, y = Math.floor(t[t.length - 1] / w);
-      for (let k = 0; head && k < 3; k++) {
-        x += dx; y += dy;
-        const c = y * w + x;
-        if (x < 0 || y < 0 || x >= w || y >= rows() || !orbs.has(c)) continue;
-        const far = Math.hypot(x - head[0], y - head[1]), by = Math.min(1, Math.max(0, (3 - far) / 2)) * gapes[i];
-        out.set(c, [x + (head[0] + dx * MOUTH - x) * by, y + (head[1] + dy * MOUTH - y) * by, 1 + 0.15 * by]);
+      if (!head) return;
+      const hx = Math.round(head[0]), hy = Math.round(head[1]), targetX = head[0] + dx * MOUTH, targetY = head[1] + dy * MOUTH;
+      for (let y = Math.max(0, hy - 3); y <= Math.min(rows() - 1, hy + 3); y++) {
+        for (let x = Math.max(0, hx - 3); x <= Math.min(w - 1, hx + 3); x++) {
+          const c = y * w + x;
+          if (!orbs.has(c)) continue;
+          const far = Math.hypot(x - head[0], y - head[1]);
+          if (far > 3) continue;
+          const by = Math.min(1, Math.max(0, (3 - far) / 2)) * gapes[i];
+          out.set(c, [x + (targetX - x) * by, y + (targetY - y) * by, 1 + 0.15 * by]);
+        }
       }
     });
     return out;
@@ -416,14 +420,9 @@ UI.riders = (() => {
   const lastMeal = (i, now) => { let at = -1e9, big = 1; for (const m of meals) if (m.i === i && m.at > at) { at = m.at; big = m.big; } return { age: now - at, big }; };
   function foodAhead(i) {
     const t = trails[i]; if (!t?.length || !live[i]?.alive) return false;
-    const w = cols(), [dx, dy] = DIRS[headDir(i)];
-    let x = t[t.length - 1] % w, y = Math.floor(t[t.length - 1] / w);
-    for (let k = 0; k < 3; k++) {
-      x += dx; y += dy;
-      if (x < 0 || y < 0 || x >= w || y >= rows()) return false;
-      if (orbs.has(y * w + x)) return true;
-    }
-    return false;
+    const w = cols(), head = headPos(i, performance.now());
+    if (!head) return false;
+    return [...orbs.keys()].some((c) => Math.hypot(c % w - head[0], Math.floor(c / w) - head[1]) <= 3);
   }
   // how open snake i's mouth is now (0 to 1), and how much its head is swollen by a gulp
   function mouth(i, now) {

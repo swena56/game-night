@@ -423,6 +423,9 @@ function renderLobby() {
     sel.onchange = () => quiet(act('settings', { settings: { [f.key]: JSON.parse(sel.value) } }));
     if (!isDefault(f)) { lab.classList.add('changed'); lab.title = 'Changed from the default (' + (f.options.find(([v]) => sameVal(v, f.default))?.[1] ?? '?') + ')'; }
     lab.append(sel); box.append(lab);
+    if (S.gameId === 'keyclash' && f.key === 'lesson') {
+      box.append(el('p', 'kc-lobby-rules', 'Everyone types the selected lesson words in each round. Mixed words keeps the regular stream.'));
+    }
     if (S.gameId === 'keyclash' && f.key === 'mode') {
       const rules = keyClashRules(S.settings.mode, S.settings.secs);
       const seats = rules.min === rules.max ? rules.min : `${rules.min}–${rules.max}`;

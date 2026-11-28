@@ -8,6 +8,7 @@ import json
 import os
 import sys
 import time
+from unittest.mock import patch
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
@@ -403,6 +404,41 @@ g.size[0] = riders.HUNT_LENGTH - 1
 check("a short bot eats before it picks fights", g.ambush(0, "hard") is None)
 g.size[0] = 30
 check("easy snakes don't hunt", g.ambush(0, "easy") is None)
+
+for level in ("easy", "normal", "hard"):
+    g = clear()
+    place(g, 0, [(10, 10)], 1, 8)
+    lap = [1, None, 2, None, 3, None, 0, None]
+    steps(g, lap * 3 + [1])
+    head = 10 * g.w + 11
+    history = list(g.recent_heads[0])
+    check(f"{level}: a human can repeat the loop and history stays bounded",
+          g.alive[0] and g.trails[0][-1] == head and len(history) == riders.HEAD_HISTORY
+          and history.count(head + 1) >= 2)
+    g.orbs.clear()
+    with patch.object(riders.random, "random", return_value=0.5), patch.object(riders.random, "uniform", return_value=0):
+        g.snake_steer(0, level)
+    check(f"{level}: a bot turns out of a repeated loop", list(g.queue[0]) in ([0], [2]))
+
+    g.queue[0].clear()
+    g.orbs = {head + 1: riders.GOLD_GROW}
+    with patch.object(riders.random, "random", side_effect=[0.5, 0.1]), patch.object(riders.random, "uniform", return_value=0):
+        g.snake_steer(0, level)
+    check(f"{level}: a bot still takes food straight ahead", not g.queue[0])
+
+    place(g, 1, [(11, 9), (10, 9), (9, 9), (9, 10), (9, 11), (10, 11), (11, 11)], 1)
+    with patch.object(riders.random, "random", return_value=0.5), patch.object(riders.random, "uniform", return_value=0):
+        g.snake_steer(0, level)
+    g.step(time.time())
+    check(f"{level}: a bot revisits a cell when the alternatives are blocked",
+          g.alive[0] and g.trails[0][-1] == head + 1)
+
+for own in ("cross", "wall"):
+    _, g, _ = arena(own=own)
+    steps(g, [None] * 3)
+    g.new_round(time.time())
+    check(f"{own}: a new round starts with only the new spawn cells in history",
+          [list(history) for history in g.recent_heads] == g.trails)
 
 # only bots left: they don't get to circle for ever
 r, g, _ = arena(n=3)

@@ -1322,9 +1322,27 @@ UI.keyclash = (() => {
     'Everyday words': 'apple winter pocket table garden jacket window rabbit morning pencil market planet button coffee',
     'Long words': 'adventure butterfly electricity grandfather instrument neighborhood opportunity punctuation watermelon',
   };
+  const LESSONS = [
+    { id: 'home-row', title: 'Home row', keys: 'asdf jkl;', words: ['ask', 'sad', 'all', 'fall', 'lass', 'salad', 'flask', 'adds', 'glass', 'shall'] },
+    { id: 'top-row', title: 'Top row', keys: 'qwerty uiop', words: ['type', 'write', 'quiet', 'power', 'query', 'tower', 'poetry', 'pretty', 'upper', 'quote'] },
+    { id: 'bottom-row', title: 'Bottom row', keys: 'zxcvbnm', words: ['zoom', 'cabin', 'combine', 'maximum', 'ban', 'can', 'man', 'van', 'mix', 'box'] },
+    { id: 'reach', title: 'Reach keys', keys: 'qwertyuiop zxcvbnm', words: ['quick', 'jazz', 'quiz', 'zero', 'sphinx', 'fuzzy', 'jumpy', 'zippy', 'fizz', 'buzz'] },
+    { id: 'accuracy', title: 'Accuracy', keys: 'all letters', words: ['accurate', 'practice', 'keyboard', 'remember', 'carefully', 'mistakes', 'rhythm', 'success', 'focus', 'steady'] },
+  ];
 
   function openPractice(missed = []) {
+    const el = (tag, cls = '', text = '') => {
+      const node = document.createElement(tag);
+      if (cls) node.className = cls;
+      if (text) node.textContent = text;
+      return node;
+    };
+    const saved = Profile.gameData('keyclash').lessons || {};
+    const progress = { completed: {}, keys: {}, ...saved, completed: { ...(saved.completed || {}) }, keys: { ...(saved.keys || {}) } };
     const box = el('div', 'kc kc-practice');
+    const lessonPicker = el('div', 'kc-lesson-list');
+    const lessonTitle = el('h3');
+    const lessonHelp = el('p', '', 'Complete every word with 90% accuracy to finish this lesson.');
     const preset = document.createElement('select');
     const lists = Object.fromEntries(Object.entries(PRACTICE_WORDS).map(([name, words]) => [name, words.split(' ')]));
     if (missed.length) lists['Missed in this match'] = [...missed];
@@ -1353,7 +1371,7 @@ UI.keyclash = (() => {
       powers.append(button);
       return button;
     });
-    let words, index, chars, errors, skips, streak, power, draft, last, started, feedback;
+    let words, index, chars, errors, skips, streak, power, draft, last, started, feedback, currentLesson;
     let drillErrors;
     const expected = () => power ? powerWords[power] : words[index];
     const typing = () => input.value.toLowerCase();
@@ -1382,7 +1400,7 @@ UI.keyclash = (() => {
     }
 
     function reset(focus = true) {
-      words = lists[preset.value];
+      words = currentLesson ? [...currentLesson.words] : lists[preset.value];
       index = chars = errors = skips = streak = started = drillErrors = 0;
       power = null;
       input.value = last = draft = feedback = '';
@@ -1407,8 +1425,12 @@ UI.keyclash = (() => {
     function finishWord(skipped = false) {
       if (!expected()) return;
       if (!skipped && typing() !== expected()) { focusInput(); return; }
+      const completedWord = expected();
       if (skipped) { skips++; streak = 0; }
-      else { chars += expected().length; streak = drillErrors ? 0 : streak + 1; }
+      else {
+        chars += completedWord.length;
+        streak = drillErrors ? 0 : streak + 1;
+      }
       drillErrors = 0;
       if (power) {
         feedback = `${POWER_NAMES[power]} practiced`;
@@ -1419,6 +1441,20 @@ UI.keyclash = (() => {
         feedback = skipped ? 'Word skipped' : '';
         index++;
         input.value = last = '';
+        if (currentLesson && index === words.length) {
+          const accuracy = chars + errors ? chars / (chars + errors) : 1;
+          if (!skips && accuracy >= 0.9) {
+            const prior = progress.completed[currentLesson.id];
+            progress.completed[currentLesson.id] = {
+              at: prior?.at || new Date().toISOString(),
+              bestAccuracy: Math.max(prior?.bestAccuracy || 0, Math.round(accuracy * 100)),
+              attempts: (prior?.attempts || 0) + 1,
+            };
+            lessonHelp.textContent = `${currentLesson.title} complete · ${Math.round(accuracy * 100)}% accuracy · best ${progress.completed[currentLesson.id].bestAccuracy}%`;
+          } else lessonHelp.textContent = `Reach 90% accuracy with no skipped words to complete this lesson · ${Math.round(accuracy * 100)}%`;
+          Profile.saveLessonProgress(progress);
+      paintLessons();
+        }
       }
       render();
       if (input.disabled) restart.focus(); else focusInput();
@@ -1437,6 +1473,11 @@ UI.keyclash = (() => {
         if (value[i] !== last[i] && value[i] !== word[i]) {
           errors++;
           drillErrors++;
+          if (currentLesson && /^[a-z]$/.test(value[i]) && value[i] !== last[i]) {
+            const key = value[i];
+            progress.keys[key] = (progress.keys[key] || 0) + 1;
+            Profile.saveLessonProgress(progress);
+          }
         }
       }
       last = value;
@@ -1452,11 +1493,33 @@ UI.keyclash = (() => {
       }
     });
     preset.onchange = () => reset();
+    function paintLessons() {
+      lessonPicker.replaceChildren(...LESSONS.map((lesson) => {
+        const complete = progress.completed[lesson.id];
+        const button = el('button', 'ghost-btn', `${complete ? '✓ ' : ''}${lesson.title}${complete ? ` · ${complete.bestAccuracy ?? complete.accuracy}%` : ''}`);
+        button.setAttribute('aria-pressed', String(currentLesson?.id === lesson.id));
+        button.onclick = () => {
+          currentLesson = lesson;
+          lessonTitle.textContent = lesson.title;
+          lessonHelp.textContent = `${lesson.keys} · ${complete ? `Completed at ${complete.accuracy}%` : 'Not completed yet'}`;
+          reset();
+          paintLessons();
+        };
+        return button;
+      }));
+      const problemKeys = Object.entries(progress.keys).filter(([, count]) => count > 0).sort((a, b) => b[1] - a[1]);
+      keySummary.textContent = problemKeys.length
+        ? `Keys to practice: ${problemKeys.slice(0, 8).map(([key, count]) => `${key.toUpperCase()} (${count})`).join(' · ')}`
+        : 'Problem keys will appear here as you practice.';
+      lessonPicker.setAttribute('aria-label', `${Object.keys(progress.completed).length} of ${LESSONS.length} lessons completed`);
+    }
+    const keySummary = el('p', 'kc-key-summary');
     check.onclick = () => finishWord();
     skip.onclick = () => finishWord(true);
     restart.onclick = () => reset();
     row.append(check, skip, restart);
-    box.append(label, wordDisplay, input, correction, stats, row, powers);
+    box.append(lessonPicker, lessonTitle, lessonHelp, keySummary, label, wordDisplay, input, correction, stats, row, powers);
+    paintLessons();
     reset(false);
     const dialog = ask('Type each word and press Space or Enter. Three perfect words unlock power practice.', {
       title: 'Key Clash practice', ok: 'Close practice', cancel: '', body: box,

@@ -577,6 +577,14 @@ const Profile = (() => {
   };
   const gameData = (gid) => ({ ...(get().games[gid]?.data || {}) });
   function saveGameData(gid, data) { const p = get(); (p.games[gid] ||= { played: 0, wins: 0 }).data = data; store(KEY, p); }
+  function saveLessonProgress(progress) {
+    const p = get();
+    (p.games.keyclash ||= { played: 0, wins: 0 }).data = {
+      ...(p.games.keyclash.data || {}), lessons: progress,
+    };
+    store(KEY, p);
+    sync(300);
+  }
 
   // for the picker's sorts (#98): how often, and when last, this device finished a game
   const played = (gid) => get().games[gid]?.played || 0;
@@ -584,5 +592,6 @@ const Profile = (() => {
 
   return { chessElo, onState, replayGoal, formatBenchmark: recordValue, overLine, show, suggest, stars, tried, starText, showNew, best, bestLabel, gameData, saveGameData, played, lastAt,
     xpCard, homeLine, iconPicker, look, level, levelOf, xpFor, unlocked, unlockAt, titleName, lockText, sync, dev, migrate, UNLOCKS, PACKS,
+    saveLessonProgress,
     set onSynced(f) { onSynced = f; }, set onLook(f) { onLook = f; } };
 })();

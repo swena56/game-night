@@ -54,6 +54,13 @@ POWER = {   # power words a full charge offers, one of each kind
     "strike": ["thunder", "meteor", "avalanche", "tempest", "lightning", "comet"],
     "heal": ["remedy", "restore", "recover", "mend", "soothe", "revive"],
 }
+LESSON_WORDS = {
+    "home-row": ("ask", "sad", "all", "fall", "lass", "salad", "flask", "adds", "glass", "shall"),
+    "top-row": ("type", "write", "quiet", "power", "query", "tower", "poetry", "pretty", "upper", "quote"),
+    "bottom-row": ("zoom", "cabin", "combine", "maximum", "ban", "can", "man", "van", "mix", "box"),
+    "reach": ("quick", "jazz", "quiz", "zero", "sphinx", "fuzzy", "jumpy", "zippy", "fizz", "buzz"),
+    "accuracy": ("accurate", "practice", "keyboard", "remember", "carefully", "mistakes", "rhythm", "success", "focus", "steady"),
+}
 SHIELD, STRIKE, HEAL = 15, 16, 18
 # 🏰 Castle Siege: soldiers march MARCH s; a word cuts down soldiers past the halfway mark first
 MARCH = 5.0
@@ -130,6 +137,7 @@ class KeyClash(Game):
         "mode": ("Mode", MODES, "duel"),
         "words": ("Words", [("easy", "Short"), ("normal", "Everyday"), ("hard", "Long")], "normal"),
         "theme": ("Theme", list(THEME_NAMES.items()), "mixed"),
+        "lesson": ("Training lesson", [("mixed", "Mixed words"), *[(key, key.replace("-", " ").title()) for key in LESSON_WORDS]], "mixed"),
         "secs": ("Round", [(45, "45 s"), (60, "1 min"), (90, "90 s"), (120, "2 min"), (0, "Play to win (15 min cutoff)")], 60),
         "rounds": ("Match", [(1, "1 round"), (3, "Best of 3"), (5, "Best of 5")], 3),
         "round_ready": ("Round start", [("off", "Immediate"), ("countdown", "3-second countdown"),
@@ -199,6 +207,8 @@ class KeyClash(Game):
             teams = " vs ".join(f"{TEAMS[t]} ({', '.join(p.name for p in seated if p.g.team == t)})" for t in (0, 1))
             mode += f": {teams}"
         limit = "play to win (15-minute cutoff)" + (f", first to {RACE_GOAL} letters" if self.mode == "race" else "") if not self.s["secs"] else f"{self.s['secs']} s rounds"
+        if self.s.get("lesson", "mixed") != "mixed":
+            mode += f" · {self.s['lesson'].replace('-', ' ')} lesson"
         self.room.add_log(f"⌨️ Key Clash: {mode}, {limit}, first to {self.need} round{'s' if self.need > 1 else ''}. Get typing!", "big")
         self.next_round()
 
@@ -240,7 +250,7 @@ class KeyClash(Game):
     def next_round(self):
         self.round += 1
         self.mark_round()
-        words = pool(self.s["words"], self.s.get("theme", "mixed"))
+        words = self.word_pool()
         self.words = [self.rng.choice(words) for _ in range(STREAM)]
         self.t0 = self.now()
         self.events = []
@@ -300,6 +310,10 @@ class KeyClash(Game):
         self.sync()
         self.room.add_log(f"🔔 Round {self.round}: " + {"race": "type!", "hyper": "engines on!", "tug": "pull!",
                                                        "survival": "here they come!", "boss": "the boss awakes!"}.get(self.mode, "fight!"), "question")
+
+    def word_pool(self):
+        lesson = self.s.get("lesson", "mixed")
+        return LESSON_WORDS[lesson] if lesson in LESSON_WORDS else pool(self.s["words"], self.s.get("theme", "mixed"))
 
     def timer(self, t, kind, data):
         self.timers.append((t, kind, data))
@@ -555,7 +569,7 @@ class KeyClash(Game):
     def advance_word(self, p):
         p.g.idx += 1
         if len(self.words) - p.g.idx < WINDOW + 10:   # a long round: the stream goes on
-            self.words += [self.rng.choice(pool(self.s["words"], self.s.get("theme", "mixed"))) for _ in range(200)]
+            self.words += [self.rng.choice(self.word_pool()) for _ in range(200)]
 
     def typed(self, p, word, errs):
         g = p.g

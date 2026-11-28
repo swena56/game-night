@@ -20,7 +20,7 @@ class OrbSnakes(Riders):
     howto = [
         "Your snake never stops. Swipe, use the arrows or the arrow keys to turn.",
         f"Eat orbs to grow: green +{ORB_GROW}, gold +{GOLD_GROW}, and the white +{DROP_GROW} ones a crashed snake leaves behind.",
-        f"Running into another snake costs a life, and so does biting your own {NECK} blocks just behind your head. "
+        f"Running into another snake costs a life. Your snake turns away from the {NECK} blocks just behind its head, choosing the side with more room. "
         "Farther back, your body is safe to cross, and the edge just turns you. With 🧱 Your own body set to Solid, all of it "
         "turns you like the edge does: you only crash when there's no way to turn.",
         f"⚡ Boost doubles your speed for a moment, but costs {BOOST_COST} length: it drops behind you as white orbs.",
@@ -29,7 +29,7 @@ class OrbSnakes(Riders):
     ]
     settings_schema = {
         "goal": ("Win a round by", [(0, "Last snake alive (no length limit)"), (60, "Reach length 60"), (100, "Reach length 100")], 0),
-        "own": ("Your own body", [("cross", "Cross it (but not the 5 blocks behind your head)"), ("wall", "Solid: it turns you, like a wall")], "cross"),
+        "own": ("Your own body", [("cross", "Cross it (turn away from the 30 blocks behind your head)"), ("wall", "Solid: it turns you, like a wall")], "cross"),
         "target": ("Rounds to win", [(3, "3"), (2, "2"), (5, "5")], 3),
         "arena": ("Arena", [(160, "Giant"), (128, "Huge"), (96, "Large"), (68, "Medium"), (52, "Small")], 160),
         "speed": ("Speed", [(10, "Normal"), (7, "Chill"), (14, "Fast")], 10),
