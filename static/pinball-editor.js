@@ -1086,7 +1086,15 @@
 
   // ---- templates and saved tables -----------------------------------------------------------------------
   const readSlots = () => { try { return JSON.parse(localStorage.getItem(SLOTS)) || {}; } catch { return {}; } };
-  const writeSlots = (slots) => { try { localStorage.setItem(SLOTS, JSON.stringify(slots)); } catch { say("Couldn't save: the browser's storage is full."); } };
+  function writeSlots(slots) {
+    try {
+      localStorage.setItem(SLOTS, JSON.stringify(slots));
+      return true;
+    } catch {
+      $('peSaveMsg').textContent = "Couldn't update saved tables. Close Tables and use Share code to keep a copy of your current table.";
+      return false;
+    }
+  }
   const tablesDlg = $('peTablesDlg');
   // a small picture of a table, drawn with the editor's own drawing code
   const thumbCache = new Map();
@@ -1142,7 +1150,13 @@
       saved.append(listItem(name, `${slots[name].items.length} parts`, [
         button('Open', () => load(slots[name])),
         button('▶ Play', () => playSpec(slots[name])),
-        button('Delete', () => { const s = readSlots(); delete s[name]; writeSlots(s); renderTables(); }),
+        button('Delete', () => {
+          const s = readSlots();
+          delete s[name];
+          if (!writeSlots(s)) return;
+          $('peSaveMsg').textContent = '';
+          renderTables();
+        }),
       ], '', slots[name]));
     }
   }
@@ -1237,15 +1251,23 @@
       }
     } catch (e) { body.textContent = e.message; }
   };
-  $('peTables').onclick = () => { renderTables(); tablesDlg.showModal(); };
+  $('peTables').onclick = () => { $('peSaveMsg').textContent = ''; renderTables(); tablesDlg.showModal(); };
   $('peSaveAs').onclick = () => {
     const name = (state.name || '').trim() || prompt('Name this table:');
     if (!name) return;
     const slots = readSlots();
-    if (!(name in slots) && Object.keys(slots).length >= 30) return say('You can keep up to 30 tables. Delete one first.');
-    state.name = name.trim().slice(0, 40);
-    slots[state.name] = toSpec();
-    writeSlots(slots); commit(); renderTables(); say(`Saved "${state.name}".`);
+    const slotName = name.trim().slice(0, 40);
+    if (!slotName) return;
+    if (!(slotName in slots) && Object.keys(slots).length >= 30) {
+      $('peSaveMsg').textContent = 'You can keep up to 30 tables. Delete one first.';
+      return;
+    }
+    slots[slotName] = { ...toSpec(), name: slotName };
+    if (!writeSlots(slots)) return;
+    state.name = slotName;
+    commit();
+    renderTables();
+    $('peSaveMsg').textContent = `Saved "${slotName}".`;
   };
 
   // ---- play ---------------------------------------------------------------------------------------------

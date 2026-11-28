@@ -563,11 +563,13 @@ function setBanner(down) {
   setBanner.t = setTimeout(() => ($('#connBanner').hidden = false), 1500);  // ignore blips
 }
 async function verifySeat() {
-  if (!session) return;
+  const seat = session;
+  if (!seat) return;
   try {
-    await api('/api/status', session);
-    reconnectSoon();                      // seat is fine: the stream just broke
+    await api('/api/status', seat);
+    if (session === seat) reconnectSoon(); // seat is fine: the stream just broke
   } catch (e) {
+    if (session !== seat) return;
     if (e.network) return reconnectSoon(); // server unreachable: keep trying
     leaveLocal(); toast(`${e.message} Your seat is gone.`);
   }
@@ -583,9 +585,10 @@ function checkLiveness() {
 setInterval(checkLiveness, 5000);
 // Presence heartbeat: tells the server this page is alive (it can't see dead connections).
 async function presence() {
-  if (!session || document.hidden) return;
-  try { await api('/api/status', session); }
-  catch (e) { if (!e.network && session) { leaveLocal(); toast(`${e.message} Your seat is gone.`); } }
+  const seat = session;
+  if (!seat || document.hidden) return;
+  try { await api('/api/status', seat); }
+  catch (e) { if (!e.network && session === seat) { leaveLocal(); toast(`${e.message} Your seat is gone.`); } }
 }
 setInterval(presence, 10000);
 // Phones freeze background tabs and change networks: re-check as soon as we're back.
