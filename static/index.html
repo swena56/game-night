@@ -161,7 +161,7 @@
       <span id="turnText" class="turn" aria-live="polite"></span>
       <span id="timer" class="timer"></span>
       <button id="helpBtn" class="icon-btn" title="How to play" aria-label="How to play">❓</button>
-      <button id="pauseBtn" class="icon-btn" title="Pause game" aria-label="Pause game" hidden>⏸</button>
+      <button id="pauseBtn" class="icon-btn" title="Pause game (P)" aria-label="Pause game" aria-keyshortcuts="p" hidden>⏸</button>
       <button id="menuBtn" class="icon-btn" title="Menu" aria-label="Menu" aria-haspopup="true" aria-expanded="false"><svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2.2"/><circle cx="12" cy="12" r="2.2"/><circle cx="19" cy="12" r="2.2"/></svg></button>
       <div id="gameMenu" class="game-menu" role="menu" hidden>
         <button id="focusBtn" role="menuitemcheckbox" aria-pressed="false"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="7" y="7" width="10" height="10" rx="1" fill="currentColor" stroke="none"/></svg><span>Bigger board</span></button>
@@ -172,7 +172,7 @@
         <button id="quitBtn" role="menuitem" class="menu-danger"><span>🚪</span><span id="quitLabel">Leave game</span></button>
       </div>
     </header>
-    <div id="pausedCover" class="paused-cover" hidden><div><b>⏸ Paused</b><p>Resume when you’re ready.</p><button id="resumeBtn" class="primary">▶ Resume</button></div></div>
+    <div id="pausedCover" class="paused-cover" hidden><div><b>⏸ Paused</b><p>Resume when you’re ready.<span class="key-hint"> (or press P)</span></p><button id="resumeBtn" class="primary">▶ Resume</button></div></div>
     <div id="restartBar" class="restart-bar" role="status" hidden><span id="restartText"></span>
       <button id="restartYes" class="primary">Agree</button><button id="restartNo">No</button></div>
     <div id="overBanner" class="over" hidden>

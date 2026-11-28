@@ -23,6 +23,7 @@ const PREFS = [
   ['motion', '✨ Animations', true],
   ['bubbles', '💬 Chat pop-ups', true],
   ['tips', '💡 First-time tips for each game', true],
+  ['askRestart', '🔁 Ask before restarting a game', true],
 ];
 
 let session = load('unmask.session');
@@ -1501,13 +1502,24 @@ $('#pauseBtn').onclick = () => act(S?.paused ? 'resume' : 'pause');
 $('#resumeBtn').onclick = () => act('resume');
 // tapping outside the card resumes too (#273)
 $('#pausedCover').onclick = (e) => { if (e.target === e.currentTarget && !$('#resumeBtn').hidden) act('resume'); };
-// 🔁 restart (#17): alone with bots it just asks "sure?"; with other people, every one of them has to agree
+// 🔁 restart (#17): alone with bots it just asks "sure?"; with other people, every one of them has to agree. The
+// question can be told not to come back (#298; ⚙️ My settings turns it on again): the others' agreement stays.
 $('#restartBtn').onclick = async () => {
   closeMenu();
-  const others = S.restartNeeds.length > 1;
-  const ok = await ask(others ? 'Ask everyone to restart this game? It starts over once all players agree.'
-    : 'Restart this game from the beginning? Nobody gains or loses points.', { ok: others ? '🔁 Ask' : '🔁 Restart' });
-  if (ok) quiet(act('restart', { agree: true }));
+  if (prefs.askRestart) {
+    const others = S.restartNeeds.length > 1, game = S.gameNo;
+    const remember = el('label', 'check'), box = el('input');
+    box.type = 'checkbox'; box.id = 'restartRemember';
+    remember.append(box, 'Don’t ask me again');
+    if (!await ask(others ? 'Ask everyone to restart this game? It starts over once all players agree.'
+      : 'Restart this game from the beginning? Nobody gains or loses points.', { ok: others ? '🔁 Ask' : '🔁 Restart', body: remember })) return;
+    if (box.checked) {  // remembered only when the answer was yes
+      prefs.askRestart = false; store('unmask.prefs', prefs);
+      toast('Restart won’t ask again. ⚙️ My settings can turn the question back on.');
+    }
+    if (S?.gameNo !== game) return;  // that game ended while the question was up
+  }
+  quiet(act('restart', { agree: true }));
 };
 $('#restartYes').onclick = () => quiet(act('restart', { agree: true }));
 $('#restartNo').onclick = () => quiet(act('restart', { agree: false }));
@@ -1562,6 +1574,16 @@ addEventListener('keydown', (e) => {
   if (e.repeat || !$('#modal').hidden) return;  // already in a dialog (this one, maybe): leave it be
   closeMenu(); closeSheets(); $('#prefsPanel').hidden = true;
   reportDialog('bug');
+}, true);
+// (#357) P pauses and resumes. Only where the ⏸ button works (a game against bots with nobody else playing), and not
+// where P is something else: while typing, in a dialog, or in the games that take letters from the keyboard.
+const LETTER_KEY_GAMES = ['sudoku', 'garden', 'gridhunt'];
+addEventListener('keydown', (e) => {
+  if (e.key?.toLowerCase() !== 'p' || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+  if (S?.phase !== 'playing' || !S.canPause || replay || $('#game').hidden || !$('#modal').hidden || LETTER_KEY_GAMES.includes(S.gameId)) return;
+  if (e.target?.matches?.('input:not([type=checkbox]), textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+  e.preventDefault(); e.stopPropagation();
+  if (!e.repeat) quiet(act(S.paused ? 'resume' : 'pause'));
 }, true);
 applyPrefs();
 

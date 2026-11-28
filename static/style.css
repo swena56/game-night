@@ -1782,10 +1782,12 @@ body[data-color] .home-art { background-color: var(--c); background-blend-mode: 
 #lobby .room-code b { color: var(--table-accent); font-size: clamp(1.5rem, 6vw, 2rem); }
 #lobby #shareBtn, #lobby #leaveBtn { margin: 0; }
 /* the header stays on screen down the long page, so Leave and Invite are always in reach */
-/* (#340) it sticks flush with the top and has square top corners: any gap there shows the page scrolling past behind it */
-#lobby .room-header { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 6; gap: 4px 12px; padding-block: 6px; box-shadow: 0 6px 18px #0006;
-  border-radius: 0 0 var(--r-md) var(--r-md); }
-#lobby .room-header::before { content: ""; position: absolute; inset: auto -1px 100%; height: env(safe-area-inset-top, 0px); background: var(--panel2); }  /* behind a phone's status bar */
+/* (#361) it floats just under the top with all four corners rounded. Two layers behind its contents: a plate in the
+   page's colour, running up to the top of the screen so nothing scrolling past shows through the gap or round the
+   corners (#340), and on the plate the rounded bar itself. */
+#lobby .room-header { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 6px); z-index: 6; gap: 4px 12px; padding-block: 6px; background: none; border-color: transparent; }
+#lobby .room-header::before { content: ""; position: absolute; z-index: -2; inset: calc(-7px - env(safe-area-inset-top, 0px)) -1px -1px; background: var(--panel); }
+#lobby .room-header::after { content: ""; position: absolute; z-index: -1; inset: -1px; border: 1px solid var(--line); border-radius: var(--r-lg, 16px); background: var(--panel2); box-shadow: 0 6px 18px #0006; }
 #lobby :is(#shareBtn, #leaveBtn) { width: auto; padding-inline: 4px; }
 #lobby :is(.settings-head, .game-chosen) { scroll-margin-top: 84px; }
 @media (max-width: 560px) {
@@ -1924,6 +1926,10 @@ body.light[data-color] #arena { background: radial-gradient(circle at 30% 0, col
   #home #homeTiles { grid-template-columns: repeat(auto-fill, minmax(126px, 1fr)); }
   #home .home-foot { grid-row: 9; margin-top: 6px; }
 }
+/* #357: keyboard hints only where there's likely a keyboard */
+.key-hint { display: none; }
+/* (#357: never on a phone, even one that says it has a mouse) */
+@media (hover: hover) and (pointer: fine) and (min-width: 861px) { .key-hint { display: inline; } }
 /* #352: the report shortcut, shown where there's likely a keyboard */
 .report-key { display: none; margin-left: 10px; padding: 1px 7px; border: 1px solid currentColor; border-radius: 5px; font: 700 var(--fs-xs) var(--font-mono, monospace); opacity: .75; }
 @media (hover: hover) and (pointer: fine) { .report-key { display: inline-block; } }
