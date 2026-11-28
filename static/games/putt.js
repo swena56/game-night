@@ -578,10 +578,24 @@ UI.putt = (() => {
     const W = (x, y) => new T.Vector3(x, groundH(x, y), -y);
 
     // a tile with a hump or a bowl in it: a grid of vertices lifted to the ground's height
-    function hillTile(x, y, color) {
+    // corner: the tile's corners as slabGeometry takes them (#368): grid points outside a rounded or cut corner are
+    // pulled onto its edge, so a hill or a ramp never pokes out past the curved rail
+    function hillTile(x, y, color, corner = []) {
       const N = 18, pos = [], uv = [], idx = [];
       for (let j = 0; j <= N; j++) for (let i = 0; i <= N; i++) {
-        const u = i / N, v = j / N;
+        let u = i / N, v = j / N;
+        CORNERS.forEach(([sx, sy], k) => {
+          const c = corner[k];
+          if (!c) return;
+          const gx = u - 0.5, gy = v - 0.5, r = c[1];
+          if (c[0] === 'round') {
+            const ox = 0.5 * sx - r * sx, oy = 0.5 * sy - r * sy, d = Math.hypot(gx - ox, gy - oy);
+            if ((gx - ox) * sx > 0 && (gy - oy) * sy > 0 && d > r) { u = ox + (gx - ox) * r / d + 0.5; v = oy + (gy - oy) * r / d + 0.5; }
+          } else {
+            const over = sx * gx + sy * gy - (1 - r);
+            if (over > 0) { u -= sx * over / 2; v -= sy * over / 2; }
+          }
+        });
         pos.push(x + u, groundH(x + u * 0.999 + 0.0005, y + v * 0.999 + 0.0005), -(y + v)); uv.push(u, v);
       }
       for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
@@ -598,22 +612,118 @@ UI.putt = (() => {
       return m;
     }
 
-    // (#368) a course tile is a slab with rounded corners and bevelled edges, not a box. Built once, then shared.
-    let slab = null;
+    // (#368, sent back: "does not look so box like") the course is one smooth surface: tiles sit flush with no bevel
+    // and no seam, and only the course's outer corners are rounded, to the radius the server's walls curve at
+    // (roundR). A tile's corners are numbered round it: 0 (+x,-y), 1 (+x,+y), 2 (-x,+y), 3 (-x,-y).
+    const CORNERS = [[1, -1], [1, 1], [-1, 1], [-1, -1]];
+    const slabs = new Map();
     // a hole (radius holeR at (hx, hy) from the tile's middle, or none) cut through the slab: the cup's tile has one, so the
     // well can go down into the course (#370). The cup is seldom dead centre (the server puts it at y + 0.55).
-    function slabGeometry(holeR = 0, hx = 0, hy = 0) {
-      if (slab && !holeR) return slab;
-      const h = 0.45, r = 0.1, shape = new T.Shape();   // the outline is the inner edge; the bevel adds 0.05 outside it
-      shape.moveTo(-h + r, -h); shape.lineTo(h - r, -h); shape.quadraticCurveTo(h, -h, h, -h + r);
-      shape.lineTo(h, h - r); shape.quadraticCurveTo(h, h, h - r, h); shape.lineTo(-h + r, h);
-      shape.quadraticCurveTo(-h, h, -h, h - r); shape.lineTo(-h, -h + r); shape.quadraticCurveTo(-h, -h, -h + r, -h);
-      if (holeR) shape.holes.push(new T.Path().absarc(hx, hy, holeR, 0, Math.PI * 2, true));   // the bevel pulls the hole's edge in by 0.05
-      const geo = new T.ExtrudeGeometry(shape, { depth: 0.1, bevelEnabled: true, bevelThickness: 0.05, bevelSize: 0.05, bevelSegments: 3, curveSegments: holeR ? 24 : 6 });
-      geo.rotateX(-Math.PI / 2);      // lay it flat: the thickness runs down the Y axis
-      geo.translate(0, -0.05, 0);     // and span -0.1 .. 0.1, as the box it replaces did
-      if (!holeR) slab = geo;
+    // corner: per corner [shape, size] — 'round' (a quarter circle), 'flat' (a 45° cut, a bank) or null (square)
+    function slabGeometry(corner = [], holeR = 0, hx = 0, hy = 0) {
+      const key = corner.map((c) => (c ? c.join(':') : '-')).join('|');
+      if (!holeR && slabs.has(key)) return slabs.get(key);
+      const shape = new T.Shape();   // in the tile's own grid units: shape y is the course's +y (rotated onto -z below)
+      shape.moveTo(-0.5 + (corner[3] ? corner[3][1] : 0), -0.5);
+      CORNERS.forEach(([sx, sy], k) => {
+        const a0 = -Math.PI / 2 + k * Math.PI / 2, c = corner[k];
+        if (c && c[0] === 'round') shape.absarc(0.5 * sx - c[1] * sx, 0.5 * sy - c[1] * sy, c[1], a0, a0 + Math.PI / 2, false);
+        else if (c) {   // the cut runs from the side coming in to the side going out
+          const r = c[1], into = k % 2 ? [0.5 * sx, 0.5 * sy - r * sy] : [0.5 * sx - r * sx, 0.5 * sy];
+          const out = k % 2 ? [0.5 * sx - r * sx, 0.5 * sy] : [0.5 * sx, 0.5 * sy - r * sy];
+          shape.lineTo(...into); shape.lineTo(...out);
+        } else shape.lineTo(0.5 * sx, 0.5 * sy);
+      });
+      shape.closePath();
+      if (holeR) shape.holes.push(new T.Path().absarc(hx, hy, holeR, 0, Math.PI * 2, true));
+      const geo = new T.ExtrudeGeometry(shape, { depth: 0.2, bevelEnabled: false, curveSegments: holeR ? 24 : 10 });
+      geo.rotateX(-Math.PI / 2);      // lay it flat: the thickness runs up the Y axis
+      geo.translate(0, -0.1, 0);      // and span -0.1 .. 0.1, as the box it replaces did
+      if (!holeR) slabs.set(key, geo);
       return geo;
+    }
+    // (#368, sent back: "the wall lip intersects with other wall lips") the rails are one piece per loop round the course:
+    // its boundary is traced edge by edge, the outer corners rounded (or banked, as the server banks them), the inner
+    // corners given a small fillet, and the whole loop built as one wall with one rounded cap, so no two lips cross
+    const RAIL_T = 0.07, RAIL_TOP = 0.12, CAP_R = 0.045, FILLET = 0.07;
+    function buildRails(open, cornerOf) {
+      // every edge between an open and a closed cell, pointing so the course is on its left
+      const edges = new Map(), add = (x1, y1, x2, y2) => {
+        const k = `${x1},${y1}`;
+        if (!edges.has(k)) edges.set(k, []);
+        edges.get(k).push({ a: [x1, y1], b: [x2, y2], d: [x2 - x1, y2 - y1], used: false });
+      };
+      for (const key of open) {
+        const [x, y] = key.split(',').map(Number);
+        if (!open.has(`${x},${y - 1}`)) add(x, y, x + 1, y);
+        if (!open.has(`${x + 1},${y}`)) add(x + 1, y, x + 1, y + 1);
+        if (!open.has(`${x},${y + 1}`)) add(x + 1, y + 1, x, y + 1);
+        if (!open.has(`${x - 1},${y}`)) add(x, y + 1, x, y);
+      }
+      const cross = (u, v) => u[0] * v[1] - u[1] * v[0];
+      for (const list of edges.values()) for (const first of list) {
+        if (first.used) continue;
+        const loop = [];   // follow the boundary round to where it started
+        for (let e = first; e && !e.used;) {
+          e.used = true; loop.push(e);
+          const next = (edges.get(`${e.b[0]},${e.b[1]}`) || []).filter((n) => !n.used);
+          next.sort((m, n) => cross(e.d, n.d) - cross(e.d, m.d));   // where two corners touch, keep turning left
+          e = next[0];
+        }
+        railLoop(loop, cornerOf);
+      }
+    }
+    function railLoop(loop, cornerOf) {
+      // merge straight runs; each join is a corner: a left turn is an outer corner of the course, a right turn an inner one
+      const runs = [];
+      for (const e of loop) {
+        const last = runs[runs.length - 1];
+        if (last && last.d[0] === e.d[0] && last.d[1] === e.d[1]) last.b = e.b;
+        else runs.push({ a: e.a, b: e.b, d: e.d });
+      }
+      if (runs.length > 1 && runs[0].d[0] === runs[runs.length - 1].d[0] && runs[0].d[1] === runs[runs.length - 1].d[1]) {
+        runs[0].a = runs.pop().a;
+      }
+      const n = runs.length, corners = runs.map((r, i) => {
+        const o = runs[(i + 1) % n], q = r.b, left = r.d[0] * o.d[1] - r.d[1] * o.d[0] > 0;
+        if (!left) return { q, kind: 'round', r: FILLET, left };
+        // an outer corner belongs to the tile inside it; it curves as that tile's slab does
+        const cx = q[0] - r.d[0] * 0.5 + o.d[0] * 0.5, cy = q[1] - r.d[1] * 0.5 + o.d[1] * 0.5;
+        const c = cornerOf(Math.floor(cx), Math.floor(cy), r.d[0] - o.d[0], r.d[1] - o.d[1]);
+        return { q, kind: c ? c[0] : 'round', r: c ? c[1] : FILLET, left };
+      });
+      // the centre line, as points with the way into the course (left of travel)
+      const pts = [];
+      const push = (x, y, dx, dy) => { const l = Math.hypot(dx, dy) || 1; pts.push([x, y, -dy / l, dx / l]); };
+      runs.forEach((r, i) => {
+        const r0 = corners[(i - 1 + n) % n].r, r1 = corners[i].r;
+        const len = Math.hypot(r.b[0] - r.a[0], r.b[1] - r.a[1]) - r0 - r1, steps = Math.max(1, Math.ceil(len / 0.25));
+        for (let k = 0; k <= steps; k++) {
+          const t = r0 + (len * k) / steps;
+          push(r.a[0] + r.d[0] * t, r.a[1] + r.d[1] * t, r.d[0], r.d[1]);
+        }
+        const c = corners[i], o = runs[(i + 1) % n], s0 = [c.q[0] - r.d[0] * c.r, c.q[1] - r.d[1] * c.r], s1 = [c.q[0] + o.d[0] * c.r, c.q[1] + o.d[1] * c.r];
+        if (c.kind === 'flat') { push(...s0, (s1[0] - s0[0]), (s1[1] - s0[1])); push(...s1, (s1[0] - s0[0]), (s1[1] - s0[1])); return; }
+        const side = c.left ? 1 : -1, nl = [-r.d[1], r.d[0]];   // the arc's centre: into the course for an outer corner
+        const ox = s0[0] + nl[0] * c.r * side, oy = s0[1] + nl[1] * c.r * side;
+        const a0 = Math.atan2(s0[1] - oy, s0[0] - ox), a1 = Math.atan2(s1[1] - oy, s1[0] - ox);
+        let da = a1 - a0; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
+        for (let k = 1; k < 8; k++) {
+          const a = a0 + (da * k) / 8;
+          push(ox + c.r * Math.cos(a), oy + c.r * Math.sin(a), -Math.sin(a) * Math.sign(da), Math.cos(a) * Math.sign(da));
+        }
+      });
+      const clean = pts.filter((pt, i) => { const q = pts[(i + 1) % pts.length]; return Math.hypot(pt[0] - q[0], pt[1] - q[1]) > 1e-4; });
+      // the wall: the band between the centre line moved half the rail's thickness each way, standing on the tile bottom
+      const outer = clean.map(([x, y, nx, ny]) => new T.Vector2(x - nx * RAIL_T / 2, y - ny * RAIL_T / 2));
+      const inner = clean.map(([x, y, nx, ny]) => new T.Vector2(x + nx * RAIL_T / 2, y + ny * RAIL_T / 2));
+      const shape = new T.Shape(outer); shape.holes.push(new T.Path(inner));
+      const geo = new T.ExtrudeGeometry(shape, { depth: RAIL_TOP + 0.2, bevelEnabled: false });
+      geo.rotateX(-Math.PI / 2); geo.translate(0, -0.2, 0);
+      const wall = new T.Mesh(geo, railMat); wall.castShadow = wall.receiveShadow = true; course.add(wall);
+      // the lip: one rounded tube all the way round
+      const curve = new T.CatmullRomCurve3(clean.map(([x, y]) => new T.Vector3(x, RAIL_TOP, -y)), true, 'centripetal');
+      course.add(new T.Mesh(new T.TubeGeometry(curve, clean.length * 3, CAP_R, 8, true), railCapMat));
     }
     function build() {
       scene.remove(course); course = new T.Group(); scene.add(course);
@@ -623,7 +733,19 @@ UI.putt = (() => {
       const blades = [];  // grass blades to stand on the fringe and the long grass: [x, y, height]
       mills.length = 0;
       dress(p);
+      const R = p.roundR || 0.22, BANK = 0.38;
+      const bankAt = new Map((p.banks || []).map(([cx, cy, ex, ey, nx, ny, shape]) => [`${cx},${cy}`, [-(ex + nx), -(ey + ny), shape]]));
+      // (#368) a tile's outer corner (walled on both sides): a bank's curve or cut where the server put one, else rounded
+      const cornerOf = (x, y, sx, sy) => {
+        if (open.has(`${x + sx},${y}`) || open.has(`${x},${y + sy}`)) return null;
+        const b = bankAt.get(`${x},${y}`);
+        if (b && b[0] === sx && b[1] === sy) return b[2] === 'flat' ? ['flat', BANK] : ['round', BANK];
+        return ['round', R];
+      };
+      const rounded = (x, y) => CORNERS.map(([sx, sy]) => cornerOf(x, y, sx, sy));
+      buildRails(open, cornerOf);
       for (const [x, y] of p.cells) {
+        const round = rounded(x, y);
         const kind = p.kinds[`${x},${y}`];
         const color = kind ? COLORS[kind] : COLORS.fair[(x + y) % 2];
         if (kind === 'fringe' || kind === 'long') {
@@ -631,14 +753,15 @@ UI.putt = (() => {
           for (let i = 0; i < n; i++) blades.push([x + 0.04 + Math.random() * 0.92, y + 0.04 + Math.random() * 0.92, tall * (0.6 + Math.random() * 0.6)]);
         }
         if (hills.has(`${x},${y}`) || kind === 'ramp') {
-          course.add(hillTile(x, y, color));
-          const base = new T.Mesh(new T.BoxGeometry(1, 0.06, 1), new T.MeshStandardMaterial({ color: 0x1f6f35 }));
-          base.position.set(x + 0.5, -0.17, -(y + 0.5)); course.add(base);
+          course.add(hillTile(x, y, color, round));
+          // the earth under it: the same outline as a flat tile's slab, squashed to 0.06 thick (#368)
+          const base = new T.Mesh(slabGeometry(round), new T.MeshStandardMaterial({ color: 0x1f6f35 }));
+          base.scale.y = 0.3; base.position.set(x + 0.5, -0.17, -(y + 0.5)); course.add(base);
         } else {
           const water = kind === 'water';
           const mat = water ? waterMat : new T.MeshStandardMaterial({ color, roughness: 0.9, map: grass });
           const cupTile = !water && Math.floor(p.cup[0]) === x && Math.floor(p.cup[1]) === y;   // the cell the cup is in
-          const tile = new T.Mesh(cupTile ? slabGeometry(p.cupR + 0.05, p.cup[0] - x - 0.5, p.cup[1] - y - 0.5) : slabGeometry(), mat);
+          const tile = new T.Mesh(cupTile ? slabGeometry(round, p.cupR, p.cup[0] - x - 0.5, p.cup[1] - y - 0.5) : slabGeometry(round), mat);
           tile.position.set(x + 0.5, water ? -0.16 : -0.1, -(y + 0.5)); tile.receiveShadow = true; tile.castShadow = cupTile; course.add(tile);   // (#370) the lip shades the well
         }
         if (kind === 'slope' && p.slope) {
@@ -647,13 +770,6 @@ UI.putt = (() => {
           arrow.lookAt(x + 0.5 + p.slope[0], 0.02, -(y + 0.5 + p.slope[1]));  // +Z toward the downhill side
           arrow.rotateX(Math.PI / 2);  // the cone's tip (+Y) now points along +Z
           course.add(arrow);
-        }
-        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-          if (open.has(`${x + dx},${y + dy}`)) continue;
-          const wall = new T.Mesh(new T.BoxGeometry(dx ? 0.07 : 1.07, 0.335, dy ? 0.07 : 1.07), railMat);   // (#372) down to the tile's bottom
-          wall.position.set(x + 0.5 + dx * 0.5, -0.0325, -(y + 0.5 + dy * 0.5)); wall.castShadow = wall.receiveShadow = true; course.add(wall);
-          const cap = new T.Mesh(new T.BoxGeometry(dx ? 0.09 : 1.09, 0.02, dy ? 0.09 : 1.09), railCapMat);
-          cap.position.set(x + 0.5 + dx * 0.5, 0.145, -(y + 0.5 + dy * 0.5)); course.add(cap);
         }
       }
       for (const [bx, by, br] of p.bumpers) {
@@ -682,26 +798,7 @@ UI.putt = (() => {
         rock.scale.set(1, 0.7, 1); rock.rotation.set(Math.random(), Math.random() * 6, Math.random());
         rock.position.set(rx, rr * 0.45, -ry); rock.castShadow = rock.receiveShadow = true; course.add(rock);
       }
-      // banks: a straight wall at 45° across a turn's outer corner, or a curve of short wall pieces
-      const BANK = 0.38;
-      for (const [cx, cy, ex, ey, nx, ny, shape] of p.banks || []) {
-        const qx = cx + 0.5 - 0.5 * ex - 0.5 * nx, qy = cy + 0.5 - 0.5 * ey - 0.5 * ny;
-        const seg = (x1, y1, x2, y2) => {
-          const len = Math.hypot(x2 - x1, y2 - y1), w = new T.Mesh(new T.BoxGeometry(len + 0.02, 0.335, 0.06), railMat);   // (#372) down to the tile's bottom
-          w.position.set((x1 + x2) / 2, -0.0325, -(y1 + y2) / 2); w.rotation.y = Math.atan2(y2 - y1, x2 - x1);
-          w.castShadow = true; course.add(w);
-        };
-        if (shape === 'flat') seg(qx + BANK * nx, qy + BANK * ny, qx + BANK * ex, qy + BANK * ey);
-        else {
-          const ox = qx + BANK * (ex + nx), oy = qy + BANK * (ey + ny), a0 = Math.atan2(-ny, -nx), a1 = Math.atan2(-ey, -ex);
-          // the arc runs from where it touches one side round to the other, bulging into the corner
-          let da = a1 - a0; while (da > Math.PI) da -= 2 * Math.PI; while (da < -Math.PI) da += 2 * Math.PI;
-          for (let k = 0; k < 8; k++) {
-            const t0 = a0 + da * k / 8, t1 = a0 + da * (k + 1) / 8;
-            seg(ox + BANK * Math.cos(t0), oy + BANK * Math.sin(t0), ox + BANK * Math.cos(t1), oy + BANK * Math.sin(t1));
-          }
-        }
-      }
+      // banks are part of the rail outline (buildRails): a turn's outer corner curves or is cut across at 45°
       // windmills: a little house across the fairway with a doorway, its sails turning on the server's clock
       for (const [mx, my] of p.mills || []) {
         const g = new T.Group(), body = new T.MeshStandardMaterial({ color: 0xf1e3c8, roughness: 0.8 });

@@ -25,6 +25,7 @@ FRINGE, LONG = 1.4, 2.2        # longer grass slows the ball more (fairway ROLL,
 FRICTION = {"sand": SAND, "fringe": FRINGE, "long": LONG}
 RAMP_G = 1.6                   # a ramp's uphill pull, units/s²
 BANK = 0.38                    # a corner bank's size: how far along each side it starts
+ROUND = 0.22                   # (#368) every other outer corner of the course is rounded off to this radius
 ROCK_BOUNCE = 0.45
 MILL_OMEGA = 2 * math.pi / 5   # a windmill turns once every 5 seconds
 MILL_BLOCK = 0.32              # radians either side of straight down that a blade fills the doorway
@@ -193,6 +194,19 @@ class Course:
         for cx, cy, ex, ey, nx, ny, shape in hole.get("banks", []):
             corner = (cx + 0.5 - 0.5 * ex - 0.5 * nx, cy + 0.5 - 0.5 * ey - 0.5 * ny)
             self.banks[(cx, cy)] = (corner, (ex, ey), (nx, ny), shape)
+        # (#368) the rounded outer corners: where both sides of a tile's corner are walled, the wall curves round it
+        # (a corner with a bank keeps the bank). cell -> [(arc centre x, y, sign x, sign y)]
+        self.rounds = {}
+        for cx, cy in self.cells:
+            bank = self.banks.get((cx, cy))
+            for sx in (-1, 1):
+                for sy in (-1, 1):
+                    if (cx + sx, cy) in self.cells or (cx, cy + sy) in self.cells:
+                        continue
+                    if bank and (sx, sy) == (-(bank[1][0] + bank[2][0]), -(bank[1][1] + bank[2][1])):
+                        continue
+                    qx, qy = cx + 0.5 + 0.5 * sx, cy + 0.5 + 0.5 * sy
+                    self.rounds.setdefault((cx, cy), []).append((qx - ROUND * sx, qy - ROUND * sy, sx, sy))
 
     def open(self, cx, cy):
         return (cx, cy) in self.cells
@@ -303,6 +317,15 @@ def simulate(course, pos, angle, power, record=True, hits=None, t0=0.0, others=(
                         ux, uy = dx / d, dy / d
                         x, y = ox + ux * (BANK - BALL), oy + uy * (BANK - BALL)
                         hit(step, "wall", bounce(-ux, -uy, WALL_BOUNCE))
+        # (#368) a rounded outer corner: past the arc's centre the wall is a quarter circle of radius ROUND
+        for ox, oy, sx, sy in course.rounds.get((math.floor(x), math.floor(y)), ()):
+            if (x - ox) * sx > 0 and (y - oy) * sy > 0:
+                dx, dy = x - ox, y - oy
+                d = math.hypot(dx, dy)
+                if d > ROUND - BALL and d > 1e-9:
+                    ux, uy = dx / d, dy / d
+                    x, y = ox + ux * (ROUND - BALL), oy + uy * (ROUND - BALL)
+                    hit(step, "wall", bounce(-ux, -uy, WALL_BOUNCE))
         if air <= 0:
             for bx, by, br in course.bumpers:
                 dx, dy = x - bx, y - by
@@ -643,7 +666,7 @@ class Putt(Game):
             "cells": h["cells"], "kinds": h["kinds"], "slope": h["slope"], "bumpers": h["bumpers"],
             "tee": h["tee"], "cup": h["cup"], "path": h["path"], "par": h.get("par", 3), "pars": getattr(self, "pars", []),
             "hills": h.get("hills", []), "posts": h.get("posts", []), "rocks": h.get("rocks", []),
-            "banks": h.get("banks", []), "mills": h.get("mills", []), "theme": h.get("theme", "day"), "style": h.get("style", "classic"), "millSpeed": MILL_OMEGA, "now": round(time.time(), 3), "cols": COLS, "rows": ROWS, "ball": BALL, "cupR": CUP,
+            "banks": h.get("banks", []), "mills": h.get("mills", []), "theme": h.get("theme", "day"), "style": h.get("style", "classic"), "millSpeed": MILL_OMEGA, "now": round(time.time(), 3), "cols": COLS, "rows": ROWS, "ball": BALL, "cupR": CUP, "roundR": ROUND,
             "balls": self.balls, "strokes": self.strokes, "holed": self.holed, "cards": self.cards,
             "madePutts": getattr(self, "made_putts", []),
             "totals": [self.running_total(i) for i in range(len(self.seats))],
