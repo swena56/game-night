@@ -632,8 +632,8 @@ UI.putt = (() => {
         }
         for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
           if (open.has(`${x + dx},${y + dy}`)) continue;
-          const wall = new T.Mesh(new T.BoxGeometry(dx ? 0.07 : 1.07, 0.17, dy ? 0.07 : 1.07), railMat);
-          wall.position.set(x + 0.5 + dx * 0.5, 0.05, -(y + 0.5 + dy * 0.5)); wall.castShadow = wall.receiveShadow = true; course.add(wall);
+          const wall = new T.Mesh(new T.BoxGeometry(dx ? 0.07 : 1.07, 0.335, dy ? 0.07 : 1.07), railMat);   // (#372) down to the tile's bottom
+          wall.position.set(x + 0.5 + dx * 0.5, -0.0325, -(y + 0.5 + dy * 0.5)); wall.castShadow = wall.receiveShadow = true; course.add(wall);
           const cap = new T.Mesh(new T.BoxGeometry(dx ? 0.09 : 1.09, 0.02, dy ? 0.09 : 1.09), railCapMat);
           cap.position.set(x + 0.5 + dx * 0.5, 0.145, -(y + 0.5 + dy * 0.5)); course.add(cap);
         }
@@ -669,8 +669,8 @@ UI.putt = (() => {
       for (const [cx, cy, ex, ey, nx, ny, shape] of p.banks || []) {
         const qx = cx + 0.5 - 0.5 * ex - 0.5 * nx, qy = cy + 0.5 - 0.5 * ey - 0.5 * ny;
         const seg = (x1, y1, x2, y2) => {
-          const len = Math.hypot(x2 - x1, y2 - y1), w = new T.Mesh(new T.BoxGeometry(len + 0.02, 0.17, 0.06), railMat);
-          w.position.set((x1 + x2) / 2, 0.05, -(y1 + y2) / 2); w.rotation.y = Math.atan2(y2 - y1, x2 - x1);
+          const len = Math.hypot(x2 - x1, y2 - y1), w = new T.Mesh(new T.BoxGeometry(len + 0.02, 0.335, 0.06), railMat);   // (#372) down to the tile's bottom
+          w.position.set((x1 + x2) / 2, -0.0325, -(y1 + y2) / 2); w.rotation.y = Math.atan2(y2 - y1, x2 - x1);
           w.castShadow = true; course.add(w);
         };
         if (shape === 'flat') seg(qx + BANK * nx, qy + BANK * ny, qx + BANK * ex, qy + BANK * ey);
