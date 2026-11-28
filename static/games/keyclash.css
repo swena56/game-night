@@ -1,0 +1,68 @@
+/* keyclash: Key Clash's own rules (#374): stats and health on top, the arena in the middle, the typing area at
+   the bottom. Loaded with static/games/keyclash.js; tokens come from static/style.css. */
+.kc { display: flex; flex-direction: column; gap: 8px; width: min(100%, 900px); margin: 0 auto;
+  height: max(420px, var(--room)); }
+.kc-top { display: flex; flex-direction: column; gap: 6px; }
+.kc-fighters { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 6px; }
+.kc-f { --h: 205; background: var(--panel); border-radius: var(--r-md, 10px); padding: 6px 8px; border: 2px solid hsl(var(--h) 70% 55% / .35); min-width: 0; }
+.kc-f.me { border-color: hsl(var(--h) 80% 60%); box-shadow: 0 0 0 1px hsl(var(--h) 80% 60% / .3); }
+.kc-f.ko { opacity: .55; }
+.kc-f-head { display: flex; justify-content: space-between; gap: 6px; align-items: baseline; }
+.kc-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: hsl(var(--h) 85% 72%); }
+.kc-wins { font-size: 12px; letter-spacing: 1px; color: var(--muted); white-space: nowrap; }
+.kc-hp { position: relative; height: 16px; border-radius: 8px; background: #00000055; overflow: hidden; margin-top: 4px; }
+.kc-hp i { position: absolute; inset: 0 auto 0 0; background: #5be37d; transition: width .25s ease-out, background-color .25s; }
+.kc-hp.kc-race i { background: hsl(var(--h) 75% 55%); }
+.kc-hp s { position: absolute; inset: 0 auto 0 0; background: repeating-linear-gradient(135deg, #9ad7ff99 0 6px, #9ad7ff44 6px 12px); text-decoration: none; }
+.kc-hp em { position: absolute; inset: 0; text-align: center; font: 700 11px/16px system-ui, sans-serif; font-style: normal; color: #fff; text-shadow: 0 1px 2px #000; }
+.kc-charge { height: 5px; border-radius: 3px; background: #00000044; overflow: hidden; margin-top: 3px; }
+.kc-charge i { display: block; height: 100%; background: #ffd34d; transition: width .25s; }
+.kc-charge.full i { animation: kc-glow .8s ease-in-out infinite alternate; }
+@keyframes kc-glow { from { background: #ffd34d; } to { background: #fff3b0; } }
+.kc-f-stats { font-size: 11px; color: var(--muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.kc-clock { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.kc-time { flex: 1; height: 6px; border-radius: 3px; background: var(--panel); overflow: hidden; }
+.kc-time i { display: block; height: 100%; background: var(--accent); }
+.kc-time i.low { background: #ff5d6c; }
+.kc-clock b { min-width: 3ch; text-align: right; font-variant-numeric: tabular-nums; color: var(--text, #fff); }
+
+.kc-arena { position: relative; flex: 1; min-height: 150px; border-radius: var(--r-md, 10px); overflow: hidden; }
+.kc-arena canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.kc-banner { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); background: #000a; color: #ffe27a;
+  padding: 8px 16px; border-radius: 999px; font-weight: 800; white-space: nowrap; }
+
+/* the typing area stays put: the words move through it, not the box */
+.kc-type { display: flex; flex-direction: column; gap: 6px; background: var(--panel); border-radius: var(--r-md, 10px); padding: 10px; }
+.kc-stream { display: flex; gap: 12px; align-items: baseline; overflow: hidden; white-space: nowrap; min-height: 2.2em;
+  font: 600 18px/1.3 ui-monospace, "SFMono-Regular", Menlo, monospace; color: var(--muted); }
+.kc-cur { font-size: 28px; color: var(--text, #fff); padding: 0 6px; border-radius: 6px; background: #ffffff0f; }
+.kc-cur .ok { color: #5be37d; }
+.kc-cur .bad { color: #fff; background: #e5394d; border-radius: 3px; }
+.kc-stream.kc-err .kc-cur { box-shadow: inset 0 -3px 0 #e5394d; }
+.kc-next { opacity: .7; }
+.kc-next + .kc-next { opacity: .5; }
+.kc-shake { animation: kc-shake .25s; }
+@keyframes kc-shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+.kc-input { font: 600 20px ui-monospace, Menlo, monospace; padding: 8px 10px; width: 100%; box-sizing: border-box; }
+/* (#375) a real keyboard: the page reads the keys and the box only shows them, with a caret of its own */
+.kc-input.kc-keys { cursor: default; caret-color: transparent; }
+.kc-input.kc-keys.live { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-a20, #ffffff22);
+  background-image: linear-gradient(var(--accent), var(--accent)); background-repeat: no-repeat; background-size: 2px 1.1em;
+  background-position: calc(10px + var(--kc-caret, 0ch)) center; }
+.kc-note { min-height: 1.2em; margin: 0; font-size: 12px; }
+.kc-offer { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.kc-offer-tip { font-size: 12px; color: #ffd34d; font-weight: 700; }
+.kc-pw { padding: 3px 10px; border-radius: 999px; font: 700 15px ui-monospace, Menlo, monospace; background: #ffffff12; border: 1px solid #ffffff22; }
+.kc-pw-shield { color: #9ad7ff; } .kc-pw-strike { color: #ffcf5a; } .kc-pw-heal { color: #7dffa8; }
+.kc-pw.on { background: #ffffff2a; border-color: currentColor; }
+.kc-stats { display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.kc-stat-row { display: flex; justify-content: space-between; gap: 8px; }
+.kc-stat-row span { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+@media (max-width: 600px) {
+  .kc { height: max(380px, var(--room)); }
+  .kc-cur { font-size: 22px; }
+  .kc-stream { font-size: 15px; gap: 8px; }
+  .kc-fighters { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) { .kc-shake, .kc-charge.full i { animation: none; } }

@@ -1577,7 +1577,7 @@ addEventListener('keydown', (e) => {
 }, true);
 // (#357) P pauses and resumes. Only where the ⏸ button works (a game against bots with nobody else playing), and not
 // where P is something else: while typing, in a dialog, or in the games that take letters from the keyboard.
-const LETTER_KEY_GAMES = ['sudoku', 'garden', 'gridhunt'];
+const LETTER_KEY_GAMES = ['sudoku', 'garden', 'gridhunt', 'keyclash'];
 addEventListener('keydown', (e) => {
   if (e.key?.toLowerCase() !== 'p' || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
   if (S?.phase !== 'playing' || !S.canPause || replay || $('#game').hidden || !$('#modal').hidden || LETTER_KEY_GAMES.includes(S.gameId)) return;
