@@ -35,6 +35,7 @@ from urllib.parse import parse_qs, urlparse
 from games import CATEGORIES, FAMILIES, GAME_INFO, GAME_LIST, GAMES, GameError
 from games.bar_darts import AXES_PER_ROUND
 from games.base import shift_times
+from games.putt import parse_course_code
 from games import admin_auth, garden, implement, release, wordbomb
 from games.wordsmith import warm_up, words
 
@@ -992,6 +993,15 @@ class Room:
                 raise GameError("Unknown game.")
             if s["game"] != self.settings["game"]:
                 return self.switch_game(s["game"])
+        if self.settings["game"] == "putt":
+            if "course_code" in s:
+                code = s["course_code"]
+                if code == "":
+                    self.settings.pop("course_code", None)
+                    return
+                style, holes, seed = parse_course_code(code)
+                self.settings.update(course=style, holes=holes, course_code=f"P1-{style}-{holes}-{seed:08x}")
+                return
         schema = {**GAMES[self.settings["game"]].settings_schema, **ROOM_SETTINGS}
         for k, v in s.items():
             if k == "game":
@@ -1001,6 +1011,8 @@ class Room:
             if self.settings.get(k) != v:
                 label = dict(schema[k][1])[v]
                 self.add_log(f"⚙️ {schema[k][0]}: {label}")
+            if k in ("course", "holes") and self.settings.get(k) != v:
+                self.settings.pop("course_code", None)
             self.settings[k] = v
 
     def start(self):

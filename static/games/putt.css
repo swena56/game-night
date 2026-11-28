@@ -11,6 +11,7 @@
 .pp-power { position: absolute; left: 12px; right: 12px; top: 12px; height: 10px; border-radius: 999px; background: #0008; overflow: hidden; }
 .pp-power span { display: block; height: 100%; background: linear-gradient(90deg, var(--ok), var(--accent), var(--danger)); }
 .pp-cam { position: absolute; right: 8px; top: 34px; display: flex; flex-direction: column; gap: 6px; z-index: 2; }
+.pp-cam[hidden] { display: none; }
 .pp-cam button { width: 40px; height: 40px; padding: 0; border-radius: 12px; background: #0b1626cc; border: 1px solid #ffffff2a;
   font-size: 18px; line-height: 1; display: grid; place-items: center; touch-action: manipulation; }
 .pp-done { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(88%, 340px); max-height: 86%; overflow: auto;
@@ -50,3 +51,29 @@ body.focus .pp-stage { height: max(240px, calc(var(--room) - 130px)); }
 .pp-aim-tip { font-size: 12px; color: var(--muted); }
 #ppAimBtn.on { background: var(--accent-a20, #ffffff22); }
 .pp-power[data-pct]::after { content: attr(data-pct); position: absolute; inset: 0; display: grid; place-items: center; font: 700 12px system-ui, sans-serif; color: #fff; text-shadow: 0 1px 2px #000; }
+
+.pp-cam button[data-c="preset"], .pp-cam button[data-c="lock"] { width: auto; padding: 0 6px; font-size: 0.72rem; }
+.pp-cam button[aria-pressed="true"] { border-color: #f5d77a; color: #f5d77a; }
+@media (max-height: 640px) {
+  .pp-cam { display: grid; grid-template-columns: repeat(2, 32px); gap: 4px; top: 28px; }
+  .pp-cam button { width: 32px; height: 30px; }
+  .pp-cam button[data-c="preset"], .pp-cam button[data-c="lock"] { grid-column: span 2; }
+}
+
+.pp-result { position: absolute; top: 30px; left: 8px; max-width: calc(100% - 100px); z-index: 1;
+  padding: 4px 8px; color: #fff; background: #0b1626ee; border-radius: 6px; font-size: 13px; pointer-events: none; }
+.pp-preview-result { font-size: 12px; }
+.pp-preview-result:empty { display: none; }
+.pp-hazards { margin: 5px 0; }
+#ppCode { user-select: text; -webkit-user-select: text; }
+
+.pp-card .scores { border-collapse: separate; border-spacing: 0; }
+.pp-card .pp-name, .pp-card .pp-total {
+  position: sticky; z-index: 1; background: var(--panel); text-align: left;
+}
+.pp-card .pp-name { left: 0; box-sizing: border-box; width: 6rem; min-width: 6rem; max-width: 6rem; overflow-wrap: anywhere; }
+.pp-card .pp-total { left: 6rem; font-weight: 700; text-align: center; }
+.pp-card th[scope="row"] { text-transform: none; font-size: 12px; }
+.pp-card th { white-space: nowrap; }
+.pp-score-button { padding: 2px 6px; min-width: 27px; color: inherit; background: transparent; cursor: pointer; }
+#ppScoreDetail { font-size: 13px; margin-bottom: 0; }

@@ -402,6 +402,18 @@ function renderLobby() {
     if (!isDefault(f)) { lab.classList.add('changed'); lab.title = 'Changed from the default (' + (f.options.find(([v]) => sameVal(v, f.default))?.[1] ?? '?') + ')'; }
     lab.append(sel); box.append(lab);
   }
+  if (S.gameId === 'putt') {
+    const saved = S.settings.course_code ?? '';
+    const label = el('label', 'wide', 'Course code');
+    const input = el('input');
+    input.value = saved;
+    input.placeholder = 'Random course';
+    input.maxLength = 48;
+    input.disabled = !host;
+    input.onchange = () => quiet(act('settings', { settings: { course_code: input.value.trim() } }));
+    label.append(input);
+    box.append(label);
+  }
   $('#defaultsBtn').hidden = !host || info.settings.every((f) => isDefault(f));
   $('#lobbyEditorBtn').hidden = !(S.gameId === 'pinball' && window.gnEditor);
   // table size: a Start that says what's missing, and one tap to seat the right number of bots

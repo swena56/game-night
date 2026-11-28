@@ -10,6 +10,7 @@ Physics runs on the server in 2D (x across, y up the course, one unit per tile) 
 and each putt's path is sent to every browser to play back, like Billiards."""
 import math
 import random
+import re
 import time
 
 from .base import Game, GameError
@@ -160,10 +161,61 @@ def make_hole(rng, style="classic"):
             kinds[c] = "fringe"
     tee = (path[0][0] + 0.5, 0.35)
     cup = (path[-1][0] + 0.5, path[-1][1] + 0.55)
-    par = 3 + ("ramp" in kinds.values() or bool(mills) or len(path) > 12)
+    turns = sum((x - px, y - py) != (nx - x, ny - y)
+                for (px, py), (x, y), (nx, ny) in zip(path, path[1:], path[2:]))
+    par = max(3, min(8, 2 + (len(path) + turns * 2) // 7 + bool(mills) + ("ramp" in kinds.values())))
     return {"par": par, "cells": sorted(cells), "kinds": {f"{x},{y}": k for (x, y), k in kinds.items()}, "slope": slope,
             "bumpers": bumpers, "tee": tee, "cup": cup, "path": path, "hills": hills, "posts": posts,
             "rocks": rocks, "banks": banks, "mills": mills, "style": style, "theme": rng.choice(THEMES)}
+
+
+COURSE_CODE = re.compile(r"P1-(classic|mixed|water|obstacles|hills)-(3|6|9)-([0-9a-f]{8})", re.IGNORECASE)
+
+
+def parse_course_code(value):
+    match = COURSE_CODE.fullmatch(value.strip()) if isinstance(value, str) and len(value) <= 48 else None
+    if not match:
+        raise GameError("Enter a Putt Party course code in the format P1-style-holes-seed.")
+    style, holes, seed = match.groups()
+    return style.lower(), int(holes), int(seed, 16)
+
+
+def valid_route(hole):
+    path, kinds = hole["path"], hole["kinds"]
+    cells = set(hole["cells"])
+    if (not path or not 3 <= hole["par"] <= 8 or set(path) - cells
+            or any(abs(x - nx) + abs(y - ny) != 1 for (x, y), (nx, ny) in zip(path, path[1:]))):
+        return False
+    for i, (x, y) in enumerate(path):
+        if kinds.get(f"{x},{y}") != "water":
+            continue
+        if (i < 2 or i + 1 >= len(path) or path[i-2:i+2] != [(x, y-2), (x, y-1), (x, y), (x, y+1)]
+                or kinds.get(f"{x},{y-1}") != "ramp"):
+            return False
+        # Verify the jump using the actual physics from a dry, unobstructed approach.
+        approach = (x + 0.5, y - 1.2)
+        course = Course(hole)
+        hits = []
+        simulate(course, approach, math.pi / 2, 1, record=False, hits=hits)
+        if not any(h[3] == "land" and h[2] >= y + 1 for h in hits):
+            return False
+    return True
+
+
+def generated_hole(rng, style):
+    while True:
+        hole = make_hole(rng, style)
+        if valid_route(hole):
+            return hole
+
+
+def practice_hole():
+    """A fixed route with a bank, sand, a timed gate, a jump, and a short finishing putt."""
+    path = [(2, 0), (2, 1), (3, 1), (3, 2), (3, 3), (3, 4), (3, 5), (3, 6), (3, 7), (3, 8)]
+    return {"par": 4, "cells": sorted(path), "path": path, "tee": (2.5, 0.35), "cup": (3.5, 8.55),
+            "kinds": {"3,2": "sand", "3,6": "ramp", "3,7": "water"}, "slope": None,
+            "bumpers": [], "banks": [(2, 1, 0, -1, 1, 0, "flat")],
+            "mills": [(3, 4)], "style": "practice", "theme": "day"}
 
 
 def hill_grad(a, u, v):
@@ -240,6 +292,7 @@ def simulate(course, pos, angle, power, record=True, hits=None, t0=0.0, others=(
             vy -= (1 + e) * dot * nyv
         return -dot
 
+    near_cup = False
     rest = []   # (#390) where the ball was every quarter second, to tell a settled ball from a slow one
     for step in range(MAX_STEPS):
         k = None if air > 0 else course.kind(x, y)
@@ -384,6 +437,10 @@ def simulate(course, pos, angle, power, record=True, hits=None, t0=0.0, others=(
             if record:
                 frames.append([round(cx_, 3), round(cy_, 3)])
             return (cx_, cy_), "cup", frames
+        at_cup = air <= 0 and math.hypot(x - cx_, y - cy_) < CUP
+        if at_cup and not near_cup:
+            hit(step, "lip", sp)
+        near_cup = at_cup
         # stop when slow, unless the ground is steep enough to keep it rolling (a slope, a ramp, a hillside)
         if air <= 0 and sp < 0.03 and course.kind(x, y) not in ("slope", "ramp") and math.hypot(ax, ay) < ROLL:
             break
@@ -424,7 +481,8 @@ class Putt(Game):
     settings_schema = {
         "holes": ("Holes", [(6, "6"), (3, "3 (quick)"), (9, "9")], 6),
         "course": ("Course", [("classic", "Classic"), ("mixed", "🎲 Surprise each hole"), ("water", "🌊 Water hazards"),
-                              ("obstacles", "🌀 Obstacle alley"), ("hills", "⛰️ Hills and bowls")], "classic"),
+                              ("obstacles", "🌀 Obstacle alley"), ("hills", "⛰️ Hills and bowls"), ("practice", "Practice hole")], "classic"),
+        "preview": ("Shot preview", [(0, "Off"), (1, "Available to every player")], 0),
         "strokes": ("Stroke limit", [(8, "8"), (6, "6"), (10, "10"), (0, f"∞ No limit (at {SAFETY_CAP} strokes you pick up: {SAFETY_CAP + 1})")], 8),
         "contact": ("🎱 Ball contact", [(0, "Off"), (1, "On: balls in play block and bounce your putt")], 0),
         "longshot": ("🚀 Long shot", [(1, "On: holing out from 3.5+ tiles takes a stroke off"), (0, "Off")], 1),
@@ -435,7 +493,21 @@ class Putt(Game):
 
     def start(self, seated, rng):
         self.rng = rng
+        self.course_code = ""
+        code = self.s.get("course_code")
+        if self.s.get("course") != "practice":
+            style, holes, seed = (parse_course_code(code) if code else
+                                  (self.s.get("course", "classic"), self.s["holes"], rng.getrandbits(32)))
+            # Tests and restored/custom rooms may use counts outside the lobby's options.
+            if style in (*STYLES, "mixed") and holes in (3, 6, 9):
+                self.course_code = f"P1-{style}-{holes}-{seed:08x}"
+            self.rng = random.Random(seed)
+        self.practice = self.s.get("course") == "practice"
+        if self.practice:
+            self.s = {**self.s, "holes": 1, "preview": 1}
+        self.previews = {}
         self.seats = [p.id for p in seated]
+        self.score_history = [[] for _ in seated]
         self.cards = [[] for _ in seated]   # strokes per finished hole
         self.made_putts = [{} for _ in seated]  # hole number to hole-out distance in tiles
         self.hole_no = 0
@@ -450,14 +522,18 @@ class Putt(Game):
         self.between = False
         self.mark_round()
         self.hole_no += 1
-        self.hole = make_hole(self.rng, self.s.get("course", "classic"))
+        self.hole = practice_hole() if getattr(self, "practice", False) else generated_hole(self.rng, self.s.get("course", "classic"))
+        self.previews = {}
         self.pars = getattr(self, "pars", [3] * (self.hole_no - 1)) + [self.hole.get("par", 3)]
         self.course = None
         n = len(self.seats)
         self.balls = [list(self.hole["tee"]) for _ in range(n)]
         self.strokes = [0] * n
+        self.played_strokes = [0] * n
+        self.water_penalties = [0] * n
         self.holed = [False] * n
         self.picked = [False] * n   # picked up (no stroke limit only)
+        self.pickup_notice = None
         self.shot = None  # {"by", "frames", "result", "id"}
         self.shot_id = getattr(self, "shot_id", 0)
         self.room.add_log(f"⛳ Hole {self.hole_no}/{self.s['holes']}.")
@@ -490,6 +566,23 @@ class Putt(Game):
             return self.strokes[i]
         return self.cap or self.strokes[i] + 1
 
+    def score_detail(self, i):
+        status = "playing"
+        if self.holed[i]:
+            status = "holed"
+        elif getattr(self, "picked", None) and self.picked[i]:
+            status = "picked up"
+        elif self.strokes[i] >= (self.cap or SAFETY_CAP):
+            status = "capped" if self.cap else "automatic pickup"
+        elif self.done(i):
+            status = "left the hole"
+        played = getattr(self, "played_strokes", [None] * len(self.seats))[i]
+        water = getattr(self, "water_penalties", [None] * len(self.seats))[i]
+        discount = int(self.hole_no in getattr(self, "long_shots", [{}] * len(self.seats))[i])
+        score = self.strokes[i] if status == "playing" else self.hole_score(i)
+        return {"status": status, "played": played, "water": water, "discount": discount, "score": score,
+                "adjustment": score - played - water + discount if played is not None else None}
+
     def next_turn(self, after):
         n = len(self.seats)
         for k in range(1, n + 1):
@@ -500,7 +593,10 @@ class Putt(Game):
 
     def end_hole(self):
         r = self.room
+        if not hasattr(self, "score_history"):
+            self.score_history = [[None] * len(card) for card in self.cards]
         for i in range(len(self.seats)):
+            self.score_history[i].append(self.score_detail(i))
             self.cards[i].append(self.hole_score(i))
         names = [self.pl(i).name if self.pl(i) else "?" for i in range(len(self.seats))]
         r.add_log(f"🏁 Hole {self.hole_no}: " + " · ".join(f"{names[i]} {self.cards[i][-1]}" for i in range(len(self.seats))), "big")
@@ -540,13 +636,35 @@ class Putt(Game):
     def act(self, p, a):
         if a.get("type") == "pickup":
             return self.pickup(p)
-        if a.get("type") != "putt":
+        if a.get("type") not in ("putt", "preview"):
             raise GameError("Unknown action.")
         self.require_turn(p)
         ang, pw = a.get("angle"), a.get("power")
         if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in (ang, pw)):
             raise GameError("Bad shot.")
-        self.putt(self.seat(p), float(ang), max(0.0, min(1.0, float(pw))))
+        power = max(0.0, min(1.0, float(pw)))
+        i = self.seat(p)
+        if a["type"] == "preview":
+            if not self.s.get("preview"):
+                raise GameError("Shot preview is off.")
+            self.preview(i, float(ang), power)
+        else:
+            self.putt(i, float(ang), power)
+
+    def preview(self, i, angle, power):
+        now = time.time()
+        previews = getattr(self, "previews", {})
+        if i in previews and now - previews[i]["at"] < 0.25:
+            raise GameError("Wait a moment before previewing another shot.")
+        start = self.balls[i]
+        others = self.blockers(i, start) if self.s.get("contact") else ()
+        hits = []
+        end, result, _ = simulate(self.get_course(), start, angle, power, record=False, hits=hits,
+                                  t0=now, others=others)
+        first = next((h for h in hits if h[3] in (*BANK_KINDS, "ball", "land")), None)
+        previews[i] = {"at": now, "angle": angle, "power": power,
+                       "point": first[1:3] if first else end, "kind": first[3] if first else result}
+        self.previews = previews
 
     def name_of_seat(self, k):
         p = self.pl(k)
@@ -562,7 +680,9 @@ class Putt(Game):
             raise GameError("Have a go first!")
         if not hasattr(self, "picked"):
             self.picked = [False] * len(self.seats)
+        getattr(self, "previews", {}).clear()
         self.picked[i] = True
+        self.pickup_notice = {"by": i, "score": self.hole_score(i)}
         self.room.add_log(f"⛳ {p.name} picks up ({self.strokes[i] + 1}).", "question")
         self.next_turn(i)
 
@@ -579,7 +699,13 @@ class Putt(Game):
         if self.s.get("contact"):
             others = self.blockers(i, start)
         end, result, frames = simulate(self.get_course(), start, angle, power, hits=hits, t0=t0, others=others)
+        getattr(self, "previews", {}).clear()
+        self.pickup_notice = None
+        if hasattr(self, "played_strokes"):
+            self.played_strokes[i] += 1
+            self.water_penalties[i] += int(result == "water")
         self.strokes[i] += 1
+        ls = False
         p = self.pl(i)
         name = p.name if p else "?"
         if result == "water":
@@ -612,10 +738,10 @@ class Putt(Game):
                 pass  # the long-shot callout is this putt's moment
             elif ace:
                 self.moment(f"🎯 {name}: HOLE IN ONE!", "gold", "fanfare")
-            elif s <= par - 2:
-                self.moment(f"🦅 {name}: eagle!", "gold", "fanfare")
             elif sum(1 for h in hits if h[3] in BANK_KINDS) >= BANK_HITS:
                 self.moment(f"🏀 {name}: bank shot! ({sum(1 for h in hits if h[3] in BANK_KINDS)} bounces)", "good", "good")
+            elif s <= par - 2:
+                self.moment(f"🦅 {name}: eagle!", "gold", "fanfare")
             elif s == par - 1:
                 self.moment(f"🐦 {name}: birdie", "good", "good")
             elif s >= 8:
@@ -639,7 +765,16 @@ class Putt(Game):
             j = min(others, key=lambda b: math.hypot(b[0] - hx, b[1] - hy), default=None)
             who = next((self.name_of_seat(k) for k, b in enumerate(self.balls) if k != i and j is not None and tuple(b) == j), None)
             self.moment(f"🎱 {name} clacks into {who}'s ball!" if who else f"🎱 {name} clacks into a ball!", "good", None)
-        self.shot = {"by": i, "frames": frames, "result": result, "id": self.shot_id, "from": list(start), "hits": hits[:40],
+        outcome = []
+        if result == "water":
+            outcome.append("Water · +1 penalty · ball returned")
+        elif ls:
+            outcome.append("Long Shot · −1 stroke")
+        elif result != "cup" and any(h[3] == "lip" for h in hits):
+            outcome.append("Lip-out · too fast for the cup")
+        if result != "cup" and self.strokes[i] >= (self.cap or SAFETY_CAP):
+            outcome.append(f"{'Stroke cap' if self.cap else 'Automatic pickup'} · scores {self.hole_score(i)}")
+        self.shot = {"by": i, "outcome": outcome, "frames": frames, "result": result, "id": self.shot_id, "from": list(start), "hits": hits[:40],
                      "t0": round(t0, 3), "hole": self.hole_no}
         # (#389) the last few putts, in order: a putt made while the one before was still rolling, or an update a
         # browser missed, would otherwise drop the earlier putt from its replay
@@ -697,7 +832,12 @@ class Putt(Game):
             "tee": h["tee"], "cup": h["cup"], "path": h["path"], "par": h.get("par", 3), "pars": getattr(self, "pars", []),
             "hills": h.get("hills", []), "posts": h.get("posts", []), "rocks": h.get("rocks", []),
             "banks": h.get("banks", []), "mills": h.get("mills", []), "theme": h.get("theme", "day"), "style": h.get("style", "classic"), "millSpeed": MILL_OMEGA, "now": round(time.time(), 3), "cols": COLS, "rows": ROWS, "ball": BALL, "cupR": CUP, "roundR": ROUND,
+            "courseCode": getattr(self, "course_code", ""),
+            "previewOn": bool(self.s.get("preview")), "practice": getattr(self, "practice", False),
+            "preview": getattr(self, "previews", {}).get(self.seat(p)),
             "balls": self.balls, "strokes": self.strokes, "holed": self.holed, "cards": self.cards,
+            "scoreHistory": getattr(self, "score_history", []),
+            "liveScores": [self.score_detail(i) for i in range(len(self.seats))],
             "madePutts": getattr(self, "made_putts", []),
             "longShots": [sorted(d) for d in getattr(self, "long_shots", [])],
             "autoPicked": [sorted(d) for d in getattr(self, "auto_picked", [])],   # (#394) holes ended by the 20-stroke stop   # (#387) holes each player won a stroke back on
@@ -705,6 +845,7 @@ class Putt(Game):
             "out": [self.done(j) and not self.holed[j] for j in range(len(self.seats))],
             "totals": [self.running_total(i) for i in range(len(self.seats))],
             "holeScores": [self.hole_score(i) if self.done(i) else None for i in range(len(self.seats))],
+            "pickupNotice": getattr(self, "pickup_notice", None),
             "shot": self.shot, "shots": getattr(self, "recent", []), "cap": self.cap, "picked": getattr(self, "picked", None), "between": getattr(self, "between", False),
             "standings": self.standings() if getattr(self, "between", False) and len(self.seats) > 1 else None,
         }}

@@ -11,7 +11,32 @@ UI.putt = (() => {
   let aimSet = null;   // (#395) a shot set by the aim panel, keys or a tap instead of a drag: {angle, power}
   let pts = new Map(), gest = null, lastTap = null, behindFor = '', onKey = null, clockOff = 0, holeShownAt = 0, behindTimer = 0;
   const COLORS = { fair: ['#2f9e44', '#37b24d'], sand: '#e9c46a', water: '#3a86ff', slope: '#74c69d', fringe: '#2b7a3b', long: '#1f5f2e', ramp: '#b5835a' };
+  const HAZARD_MARKS = { sand: '⠿', water: '≈', fringe: '╵╵╵', long: '╿╿╿', ramp: '↑' };
+  function hazardMark(kind, p) {
+    if (kind !== 'slope') return HAZARD_MARKS[kind];
+    const [x, y] = p.slope || [0, -1];
+    return x > 0 ? '→' : x < 0 ? '←' : y > 0 ? '↑' : '↓';
+  }
+  let scoreSelection = null;
+  let pickupKey = '', resultUntil = 0;
+  function showResult(by, message) {
+    const who = by === S.putt.me ? 'You' : (ctx.player(S.putt.seats[by])?.name ?? 'Player');
+    $('ppResult').textContent = `${who} · ${message}`;
+    resultUntil = performance.now() + 4000;
+    $('ppResult').hidden = false;
+  }
   const $ = (id) => document.getElementById(id);
+  const cameraModes = ['Behind ball', 'Overhead'];
+  let cameraMode = 0, cameraLocked = false, overview = false;
+  const cameraHeld = () => cameraLocked && !overview;
+  function saveCamera() {
+    try { localStorage.setItem('putt-camera', JSON.stringify([cameraMode, cameraLocked])); } catch {}
+  }
+  function cameraLabels() {
+    $('ppPreset').textContent = cameraModes[cameraMode];
+    $('ppLock').setAttribute('aria-pressed', String(cameraLocked));
+    $('ppLock').textContent = cameraLocked ? 'Locked' : 'Lock';
+  }
   const GRAB = 56;  // px: how near your ball a drag has to start to be a putt
   const coarse = () => window.matchMedia?.('(pointer: coarse)').matches;
 
@@ -77,9 +102,14 @@ UI.putt = (() => {
   }
 
   function mount(main, side) {
-    gl = null; flat = null; holeKey = ''; aim = null;
-    anim = null; queue = []; seenShot = 0; primed = false;
-    pts = new Map(); gest = null; behindFor = '';
+    gl = null; flat = null; holeKey = ''; aim = null; scoreSelection = null;
+    anim = null; queue = []; seenShot = 0; primed = false; pickupKey = ''; resultUntil = 0;
+    pts = new Map(); gest = null; behindFor = ''; overview = false;
+    try {
+      const saved = JSON.parse(localStorage.getItem('putt-camera'));
+      cameraMode = saved?.[0] === 1 ? 1 : 0;
+      cameraLocked = saved?.[1] === true;
+    } catch {}
     main.innerHTML = `<div class="pp"><div class="pp-hud"><span id="ppHole"></span><span id="ppTurn"></span><button id="ppAimBtn" class="ghost-btn pp-pick" hidden title="Aim with buttons or keys instead of dragging (Z X turn, C V power, Enter putts)">🎯 Aim</button><button id="ppPick" class="ghost-btn pp-pick" hidden title="Pick up your ball: this hole costs your strokes so far +1">⛳ Pick up</button></div>
       <div class="pp-aim" id="ppAim" hidden role="group" aria-label="Aim your putt">
         <button data-a="left" title="Turn the aim left (Z; Shift for fine)" aria-label="Turn the aim left">⟲</button>
@@ -87,23 +117,32 @@ UI.putt = (() => {
         <button data-a="less" title="Less power (C)" aria-label="Less power">−</button>
         <output id="ppAimPow" aria-live="polite">40%</output>
         <button data-a="more" title="More power (V)" aria-label="More power">+</button>
+        <button id="ppPreview" data-a="preview" title="Estimate from current conditions. Windmill timing changes as you wait." hidden>Preview</button>
         <button data-a="go" class="primary" title="Putt (Enter)">⛳ Putt</button>
         <button data-a="close" title="Close (Esc)" aria-label="Close the aim panel">✕</button>
+        <output id="ppPreviewResult" class="pp-preview-result"></output>
         <span class="pp-aim-tip">Tap the course to aim there</span>
       </div>
+      <p id="ppPractice" class="hint" hidden>Practice: bank off the first corner, use more power through sand, watch the windmill doorway, build speed for the ramp, and ease off near the cup. Rematch to try the same hole again.</p>
       <div class="pp-stage" id="ppStage"><div class="pp-power" id="ppPower" hidden><span></span></div>
+        <div id="ppResult" class="pp-result" role="status" hidden></div>
         <div class="pp-cam" id="ppCam" hidden>
+          <button id="ppPreset" data-c="preset" title="Switch aiming camera"></button>
+          <button id="ppLock" data-c="lock" title="Lock camera and disable follow and inertia"></button>
           <button data-c="left" title="Turn anticlockwise (←)" aria-label="Turn the course anticlockwise">⟲</button>
           <button data-c="right" title="Turn clockwise (→)" aria-label="Turn the course clockwise">⟳</button>
           <button data-c="in" title="Zoom in (+)" aria-label="Zoom in">＋</button>
           <button data-c="out" title="Zoom out (−)" aria-label="Zoom out">－</button>
-          <button data-c="ball" title="Look from behind your ball" aria-label="Look from behind your ball">🎯</button>
+          <button data-c="ball" title="Return to aiming view" aria-label="Return to aiming view">🎯</button>
           <button data-c="fit" title="Show the whole hole" aria-label="Show the whole hole">⛳</button>
         </div>
         <div class="pp-done" id="ppDone" hidden><h3 id="ppDoneTitle"></h3><div id="ppDoneRows"></div><div id="ppStand" hidden></div></div>
       </div>
+      <p class="hint pp-hazards">⠿ Sand · ╵╵╵ Rough · ≈ Water · Arrows show downhill or up a ramp</p>
+      <p id="ppCode" class="hint" hidden>Course code <code></code></p>
       <p id="ppHint" class="hint"></p></div>`;
-    side.innerHTML = '<div class="panel"><h3>Scorecard</h3><div id="ppCard" class="pp-card"></div></div>';
+    side.innerHTML = '<div class="panel"><h3>Scorecard</h3><div id="ppCard" class="pp-card" tabindex="0" aria-label="Hole scores"></div><p id="ppScoreDetail" role="status" hidden></p><p class="hint pp-legend">Total includes the current hole. To par counts finished holes only.</p></div>';
+    cameraLabels();
     const stage = $('ppStage');
     // (#395) aim without dragging: a panel (and keys) set the direction and power, the same putt goes to the server
     $('ppAimBtn').onclick = () => (aimSet ? closeAim() : openAim());
@@ -122,12 +161,18 @@ UI.putt = (() => {
     $('ppCam').addEventListener('click', (e) => {
       const c = e.target.closest('button')?.dataset.c, v = gl?.view;
       if (!c || !v) return;
-      if (c === 'left') v.rotate(Math.PI / 4);    // the course turns anticlockwise: the camera swings right
+      if (c === 'preset' || c === 'ball') {
+        if (c === 'preset') { cameraMode = 1 - cameraMode; saveCamera(); cameraLabels(); }
+        overview = false; v.behind();
+      } else if (c === 'fit') {
+        overview = true; v.fit();
+      } else if (c === 'lock') {
+        cameraLocked = !cameraLocked; saveCamera(); cameraLabels(); v.stop(cameraLocked);
+      } else if (cameraHeld()) return;
+      else if (c === 'left') v.rotate(Math.PI / 4);    // the course turns anticlockwise: the camera swings right
       else if (c === 'right') v.rotate(-Math.PI / 4);
       else if (c === 'in') v.zoom(1.3);
       else if (c === 'out') v.zoom(1 / 1.3);
-      else if (c === 'ball') v.behind();
-      else if (c === 'fit') v.fit();
     });
     const two = () => {
       const [a, b] = [...pts.values()];
@@ -137,13 +182,18 @@ UI.putt = (() => {
       if (e.target.closest('.gl3-retry')) return;
       try { stage.setPointerCapture(e.pointerId); } catch {}
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (pts.size === 2 && gl) { aim = null; $('ppPower').hidden = true; gest = { ...two(), kind: 'two' }; return; }
+      if (pts.size === 2 && gl && !cameraHeld()) { aim = null; $('ppPower').hidden = true; gest = { ...two(), kind: 'two' }; return; }
       if (pts.size > 1) return;
       // a putt starts on your ball (anywhere in the flat view, which has no camera to move)
       const onBall = !gl || gl.nearBall(e.clientX, e.clientY, coarse() ? GRAB * 1.4 : GRAB);  // a fingertip is wider than a cursor
       if (e.button === 0 && !e.shiftKey && onBall && myTurn()) {
         skipAhead();  // putting now: any putt still rolling jumps to where it stopped
+        gl?.view.stop(true);
         aim = { x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY };
+        return;
+      }
+      if (cameraHeld()) {
+        if (aimSet) gest = { kind: 'aim-tap', x0: e.clientX, y0: e.clientY };
         return;
       }
       // a second tap on the same spot flies the view there (a mouse has dblclick)
@@ -186,10 +236,10 @@ UI.putt = (() => {
     };
     const release = (e) => {
       pts.delete(e.pointerId);
-      if (gest && gest.kind === 'orbit' && aimSet && Math.hypot(e.clientX - gest.x0, e.clientY - gest.y0) < 6 && tapAim(e)) { gest = null; return; }
+      if (gest && ['orbit', 'aim-tap'].includes(gest.kind) && aimSet && Math.hypot(e.clientX - gest.x0, e.clientY - gest.y0) < 6 && tapAim(e)) { gest = null; return; }
       if (gest) {
         // (#385) a flick keeps the view turning for a moment, slowing to a stop
-        if (gest.kind === 'orbit' && gl && performance.now() - gest.t < 80 && Math.abs(gest.vx) > 0.0004) gl.view.spin(gest.vx * 1000, gest.vy * 1000);
+        if (gest.kind === 'orbit' && gl && !cameraLocked && performance.now() - gest.t < 80 && Math.abs(gest.vx) > 0.0004) gl.view.spin(gest.vx * 1000, gest.vy * 1000);
         if (!pts.size || gest.kind === 'two') gest = null;
         return;
       }
@@ -204,17 +254,18 @@ UI.putt = (() => {
     stage.addEventListener('pointercancel', (e) => { pts.delete(e.pointerId); gest = null; aim = null; $('ppPower').hidden = true; });
     stage.addEventListener('contextmenu', (e) => e.preventDefault());
     // (#385) the wheel zooms toward what's under the cursor; a double-click (or double-tap) flies the view to a spot
-    stage.addEventListener('wheel', (e) => { if (!gl) return; e.preventDefault(); gl.view.zoomAt(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX, e.clientY); }, { passive: false });
-    stage.addEventListener('dblclick', (e) => { if (gl && !e.target.closest('#ppCam')) gl.view.focus(e.clientX, e.clientY); });
+    stage.addEventListener('wheel', (e) => { if (!gl || cameraHeld()) return; e.preventDefault(); gl.view.zoomAt(e.deltaY < 0 ? 1.12 : 1 / 1.12, e.clientX, e.clientY); }, { passive: false });
+    stage.addEventListener('dblclick', (e) => { if (gl && !cameraHeld() && !e.target.closest('#ppCam')) gl.view.focus(e.clientX, e.clientY); });
     // keys: ← → turn, ↑ ↓ tilt, + − zoom, W A S D pan
     onKey = (e) => {
-      if (!gl || e.target.closest?.('input, textarea, select') || e.ctrlKey || e.metaKey || e.altKey) return;
-      const v = gl.view, k = e.key;
+      if (e.target.closest?.('input, textarea, select') || e.ctrlKey || e.metaKey || e.altKey) return;
+      const v = gl?.view, k = e.key;
       // (#395) aim by keys: Z X turn (Shift: fine), C V power, Enter putts, Esc closes
       const ak = { z: 'left', x: 'right', c: 'less', v: 'more' }[k.toLowerCase()];
       if (ak && myTurn()) { aimStep(ak, e.shiftKey); e.preventDefault(); return; }
       if (k === 'Enter' && aimSet && myTurn()) { aimStep('go'); e.preventDefault(); return; }
       if (k === 'Escape' && aimSet) { closeAim(); e.preventDefault(); return; }
+      if (!v || cameraHeld()) return;
       if (k === 'ArrowLeft' || k === 'q' || k === 'Q') v.rotate(Math.PI / 16); else if (k === 'ArrowRight' || k === 'e' || k === 'E') v.rotate(-Math.PI / 16);
       else if (k === 'ArrowUp') v.tilt(-0.08); else if (k === 'ArrowDown') v.tilt(0.08);
       else if (k === '+' || k === '=') v.zoom(1.15); else if (k === '-' || k === '_') v.zoom(1 / 1.15);
@@ -245,7 +296,11 @@ UI.putt = (() => {
 
   const myTurn = () => S?.phase === 'playing' && ctx?.myTurn && !S.putt.between;
   const rolling = () => !!(anim || queue.length);
-  const skipAhead = () => { anim = null; queue = []; };
+  function skipAhead() {
+    const skipped = [...queue].reverse().concat(anim).find((shot) => shot?.outcome?.length);
+    if (skipped) showResult(skipped.by, skipped.outcome.join(' · '));
+    anim = null; queue = [];
+  }
   const colorOf = (i) => ctx.player(S.putt.seats[i])?.color ?? '#fff';
 
   // aim colour by power (#82): green for a tap, amber mid-way, red at full power
@@ -255,12 +310,19 @@ UI.putt = (() => {
   function openAim() {
     const p = S?.putt;
     if (!p || p.me == null || !myTurn()) return;
+    gl?.view.stop(true);
     const [bx, by] = p.balls[p.me];
     aimSet = { angle: Math.atan2(p.cup[1] - by, p.cup[0] - bx), power: 0.4 };
     paintAim();
   }
   function closeAim() { aimSet = null; paintAim(); }
   function aimStep(a, fine) {
+    if (a === 'preview') {
+      if (aimSet && myTurn() && S.putt.previewOn) ctx.quiet(ctx.act('preview', {
+        angle: +aimSet.angle.toFixed(4), power: +aimSet.power.toFixed(3),
+      }));
+      return;
+    }
     if (!aimSet && a !== 'close') openAim();
     if (!aimSet) return;
     const turn = fine ? Math.PI / 180 * 0.5 : Math.PI / 180 * 3, step = fine ? 0.01 : 0.05;
@@ -278,6 +340,10 @@ UI.putt = (() => {
     box.hidden = !aimSet;
     $('ppAimBtn')?.classList.toggle('on', !!aimSet);
     if (aimSet) $('ppAimPow').textContent = `${Math.round(aimSet.power * 100)}%`;
+    const previewLabel = { land: 'Predicted landing', water: 'Predicted splash', cup: 'Predicted hole-out' };
+    const prediction = matchingPreview(aimSet, S.putt.preview);
+    $('ppPreviewResult').textContent = prediction ? (previewLabel[prediction.kind] ??
+      (prediction.kind ? 'Predicted bounce' : 'Predicted stop')) : '';
   }
   // a putt, from a drag or the aim panel: feedback straight away (#73), then the server
   function fire(shot) {
@@ -301,6 +367,17 @@ UI.putt = (() => {
   function render(s, c) {
     S = s; ctx = c;
     const p = S.putt;
+    $('ppCode').hidden = !p.courseCode;
+    $('ppCode').firstElementChild.textContent = p.courseCode || '';
+    $('ppPreview').hidden = !p.previewOn;
+    $('ppPractice').hidden = !p.practice;
+    if (p.pickupNotice) {
+      const key = `${p.hole}:${p.pickupNotice.by}`;
+      if (key !== pickupKey) {
+        pickupKey = key;
+        showResult(p.pickupNotice.by, `Picked up · scores ${p.pickupNotice.score}`);
+      }
+    }
     if (p.now) clockOff = p.now - performance.now() / 1000;  // server time = performance time + clockOff (the windmills)
     // (#389) every putt since the last one seen, in order (the server keeps the last few), so a quick second putt
     // or a missed update doesn't drop one from the replay
@@ -310,7 +387,7 @@ UI.putt = (() => {
       if (sh.id <= seenShot) continue;
       seenShot = sh.id;
       if (sh.frames?.length && sh.by < p.balls.length && (sh.hole ?? p.hole) === p.hole) {   // never an old hole's putt on this course
-        queue.push({ by: sh.by, frames: sh.frames, from: sh.from, result: sh.result, hits: sh.hits || [], hole: sh.hole ?? p.hole, clock: sh.t0 });
+        queue.push({ by: sh.by, frames: sh.frames, from: sh.from, result: sh.result, outcome: sh.outcome, hits: sh.hits || [], hole: sh.hole ?? p.hole, clock: sh.t0 });
       }
     }
     $('ppHole').textContent = `⛳ Hole ${p.hole} of ${p.holes} · par ${p.par ?? 3}`;
@@ -320,6 +397,7 @@ UI.putt = (() => {
     $('ppPick').hidden = !(p.cap == null && myTurn() && p.strokes[p.me] > 0);
     $('ppAimBtn').hidden = !myTurn() || !!p.between;
     if (aimSet && (!myTurn() || p.between)) closeAim();
+    else if (aimSet) paintAim();
     hint();
     renderCard();
     renderDone();
@@ -327,7 +405,7 @@ UI.putt = (() => {
 
   function hint() {
     const p = S.putt;
-    const cam = !gl ? '' : coarse() ? ' Drag elsewhere to turn the view; two fingers pan and zoom; double-tap flies there.'
+    const cam = !gl ? '' : cameraHeld() ? ' Camera locked.' : coarse() ? ' Drag elsewhere to turn the view; two fingers pan and zoom; double-tap flies there.'
       : ' Drag elsewhere to turn the view (flick it to spin); right-drag pans, the wheel zooms where you point, double-click flies there (or ← → / Q E, ↑ ↓, W A S D, + −).';
     const t = S.phase !== 'playing' ? '' : p.between ? 'Next hole in a moment…'
       : !myTurn() ? cam.trim()
@@ -373,52 +451,91 @@ UI.putt = (() => {
   const markCls = (n, par) => (n - par <= -2 ? 'eagle' : n - par === -1 ? 'birdie' : n - par === 1 ? 'bogey' : n - par >= 2 ? 'dbl' : '');
   const toPar = (d) => (d === 0 ? 'E' : d > 0 ? `+${d}` : String(d));
 
-  function renderCard() {
-    const p = S.putt, box = $('ppCard'); box.innerHTML = '';
-    const t = ctx.el('table', 'scores');
-    const head = ctx.el('tr');
-    const live = !p.between && S.phase === 'playing';  // between holes and after the last one, the hole just played is already on the card
-    const pars = p.pars || [];
-    const played = p.cards[0].length + (live ? 1 : 0);
-    const addMadePutt = (td, i, hole) => {
-      const distance = p.madePutts?.[i]?.[hole];
-      if (distance != null) td.append(ctx.el('small', 'pp-made-putt', `⛳ ${distance.toFixed(1)}`));
-    };
-    head.append(ctx.el('th', '', 'Hole'), ...Array.from({ length: played }, (_, k) => ctx.el('th', k + 1 === p.hole ? 'now' : '', String(k + 1))));
-    head.append(ctx.el('th', '', 'Σ'), ctx.el('th', '', '±'));
-    t.append(head);
-    if (pars.length) {
-      const pr = ctx.el('tr', 'pp-par');
-      pr.append(ctx.el('td', '', 'Par'), ...Array.from({ length: played }, (_, k) => ctx.el('td', '', String(pars[k] ?? 3))));
-      pr.append(ctx.el('td', '', String(pars.slice(0, played).reduce((a, b) => a + b, 0))), ctx.el('td'));
-      t.append(pr);
+  function scoreDetail(i, hole) {
+    const p = S.putt;
+    return p.cards[i].length >= hole ? p.scoreHistory?.[i]?.[hole - 1] : p.liveScores?.[i];
+  }
+
+  function paintScoreDetail() {
+    const line = $('ppScoreDetail');
+    line.hidden = !scoreSelection;
+    if (!scoreSelection) return;
+    const [i, hole] = scoreSelection, p = S.putt;
+    const d = scoreDetail(i, hole);
+    const name = ctx.player(p.seats[i])?.name ?? '?';
+    const score = p.cards[i][hole - 1] ?? p.holeScores?.[i] ?? p.strokes[i];
+    const distance = p.madePutts?.[i]?.[hole];
+    const parts = [`${name} · Hole ${hole}`];
+    if (d) {
+      parts.push(d.status);
+      if (d.played != null) {
+        parts.push(`${d.played} played`);
+        if (d.water) parts.push(`+${d.water} water`);
+        if (d.adjustment) parts.push(`${d.adjustment > 0 ? '+' : ''}${d.adjustment} ${d.status}`);
+      }
+      if (d.discount) parts.push('−1 Long Shot');
+    } else if (longShot(i, hole)) {
+      parts.push('−1 Long Shot');
     }
+    parts.push(d?.status === 'playing' ? `${score} running score` : `${score} credited`);
+    if (distance != null) parts.push(`${distance.toFixed(1)} tiles to hole out`);
+    line.textContent = parts.join(' · ');
+  }
+
+  function renderCard() {
+    const p = S.putt, box = $('ppCard'), scroll = box.scrollLeft;
+    const selected = document.activeElement?.dataset.score;
+    box.innerHTML = '';
+    const t = ctx.el('table', 'scores');
+    const live = !p.between && S.phase === 'playing';
+    const pars = p.pars || [];
+    const head = ctx.el('tr');
+    const range = Array.from({ length: p.holes }, (_, k) => k + 1);
+    head.append(ctx.el('th', 'pp-name', 'Hole'), ctx.el('th', 'pp-total', 'Total'));
+    head.append(...range.map((hole) => ctx.el('th', hole === p.hole ? 'now' : '', String(hole))));
+    head.append(ctx.el('th', '', 'To par'));
+    t.append(head);
+    const pr = ctx.el('tr', 'pp-par');
+    pr.append(ctx.el('td', 'pp-name', 'Par'), ctx.el('td', 'pp-total', ''));
+    pr.append(...range.map((hole) => ctx.el('td', '', String(pars[hole - 1] ?? '—'))));
+    pr.append(ctx.el('td'));
+    t.append(pr);
     p.seats.forEach((pid, i) => {
       const row = ctx.el('tr');
-      const nm = ctx.el('td', '', ctx.player(pid)?.name ?? '?'); nm.style.color = colorOf(i);
-      row.append(nm);
+      const name = ctx.player(pid)?.name ?? '?';
+      const nm = ctx.el('th', 'pp-name', name); nm.scope = 'row'; nm.style.color = colorOf(i);
+      row.append(nm, ctx.el('td', 'pp-total', String(p.totals[i])));
       let diff = 0;
-      p.cards[i].forEach((v, k) => {
-        const par = pars[k] ?? 3; diff += v - par;
-        const td = ctx.el('td'); td.append(ctx.el('span', 'pp-mark ' + markCls(v, par), String(v)));
-        td.title = p.autoPicked?.[i]?.includes(k + 1) ? `${v}: picked up automatically at 20 strokes` : vsPar(v, par, longShot(i, k + 1));
-        addMadePutt(td, i, k + 1); row.append(td);
-      });
-      const locked = p.holeScores?.[i];
-      const current = locked ?? p.strokes[i];
-      if (live) {
-        const td = ctx.el('td', 'now', p.holed[i] ? `${current}✓` : String(current));
-        addMadePutt(td, i, p.hole);
+      for (const hole of range) {
+        const finished = p.cards[i][hole - 1] ?? (live && hole === p.hole ? p.holeScores?.[i] : null);
+        const score = finished ?? (live && hole === p.hole ? p.strokes[i] : null);
+        const par = pars[hole - 1] ?? 3;
+        const td = ctx.el('td', hole === p.hole ? 'now' : '');
+        if (score != null) {
+          if (finished != null) diff += finished - par;
+          const d = scoreDetail(i, hole);
+          const mark = ctx.el('button', 'pp-score-button', String(score));
+          mark.type = 'button';
+          mark.dataset.score = `${i}:${hole}`;
+          mark.setAttribute('aria-label', `${name}, hole ${hole}, ${score}${d ? ', ' + d.status : ''}`);
+          if (finished != null) mark.classList.add('pp-mark', ...markCls(score, par).split(' ').filter(Boolean));
+          mark.onclick = () => { scoreSelection = [i, hole]; paintScoreDetail(); };
+          td.append(mark);
+          if (d && d.status !== 'playing') td.append(ctx.el('small', 'pp-made-putt', d.status));
+          const distance = p.madePutts?.[i]?.[hole];
+          if (distance != null) td.append(ctx.el('small', 'pp-made-putt', `${distance.toFixed(1)} tiles`));
+        } else {
+          td.textContent = '—';
+        }
         row.append(td);
-        if (locked != null) diff += locked - (pars[p.hole - 1] ?? p.par ?? 3);
       }
-      const tot = ctx.el('td');
-      tot.append(ctx.el('b', '', String(p.totals?.[i] ?? (p.cards[i].reduce((a, b) => a + b, 0) + (live ? current : 0)))));
-      row.append(tot, ctx.el('td', 'pp-topar ' + (diff < 0 ? 'pp-under' : diff > 0 ? 'pp-over' : ''), toPar(diff)));
+      row.append(ctx.el('td', 'pp-topar ' + (diff < 0 ? 'pp-under' : diff > 0 ? 'pp-over' : ''), toPar(diff)));
       t.append(row);
     });
     box.append(t);
-    box.append(ctx.el('p', 'hint left pp-legend', '◯ birdie · ◎ eagle · ▢ bogey · ±: strokes under or over par · ⛳ holed out'));
+    box.scrollLeft = scroll;
+    if (selected) box.querySelector(`[data-score="${selected}"]`)?.focus({ preventScroll: true });
+    paintScoreDetail();
   }
 
   // between holes: this hole's strokes and the standings, once the last putt has rolled in (see loop)
@@ -459,13 +576,18 @@ UI.putt = (() => {
     return i !== p.me && !p.strokes[i] && !p.holed[i] && !(anim && anim.by === i) && !queue.some((q) => q.by === i);
   }
 
+  function matchingPreview(shot, preview) {
+    return shot && preview && Math.abs(preview.angle - shot.angle) < 0.00006
+      && Math.abs(preview.power - shot.power) < 0.0006 ? preview : null;
+  }
+
   function loop(now) {
     if (!document.getElementById('ppStage')) { raf = 0; return; }  // the game view is gone: stop drawing
     raf = requestAnimationFrame(loop);
     if (!S?.putt) return;
     const p = S.putt, key = `${p.hole}:${JSON.stringify(p.cells)}`;
     if (key !== holeKey && (gl || flat)) {
-      holeKey = key; behindFor = ''; holeShownAt = performance.now();
+      holeKey = key; behindFor = ''; overview = false; holeShownAt = performance.now();
       queue = queue.filter((q) => q.hole === p.hole); if (anim && anim.hole !== p.hole) anim = null;
       (gl || flat).build();
     }
@@ -481,6 +603,7 @@ UI.putt = (() => {
       while (anim.hi < anim.hits.length && anim.hits[anim.hi][0] <= f) { const h = anim.hits[anim.hi++]; gl?.effect(h); }
       if (!anim.ended && f >= anim.frames.length - 1) {
         anim.ended = true;
+        if (anim.outcome?.length) showResult(anim.by, anim.outcome.join(' · '));
         const [x, y] = anim.frames[anim.frames.length - 1];
         if (anim.result === 'cup') {
           gl?.burst(x, y, 0xffffff, 18); knock(1400, 0.12); setTimeout(() => knock(1000, 0.1), 90);
@@ -497,11 +620,12 @@ UI.putt = (() => {
       }
       if (f >= anim.frames.length + 8) anim = null;  // a short rest at the end
     }
+    if (now >= resultUntil) $('ppResult').hidden = true;
     const me = p.me, mine = !!anim && anim.by === me;
     // while your ball rolls, the camera follows it; once it stops, it swings round behind it
-    if (gl && mine) gl.view.follow(...ballPos(me, now));
+    if (gl && mine && !cameraLocked && !overview && !aim && !aimSet) gl.view.follow(...ballPos(me, now));
     const mineWaiting = me != null && queue.some((q) => q.by === me);
-    if (gl && me != null && S.phase === 'playing' && !p.between && !p.holed[me] && !mine && !mineWaiting) {
+    if (gl && !overview && !aim && !aimSet && me != null && S.phase === 'playing' && !p.between && !p.holed[me] && !mine && !mineWaiting) {
       // (#386) every putt, the first of a hole too: there the whole hole shows for a moment before the view steps behind the ball
       const k = `${p.hole}:${p.strokes[me]}`, wait = p.strokes[me] === 0 ? 2500 - (performance.now() - holeShownAt) : 0;
       if (k !== behindFor && wait <= 0) { behindFor = k; gl.view.behind(); }
@@ -511,13 +635,14 @@ UI.putt = (() => {
     const shot = aimShot();
     const bar = $('ppPower');
     bar.hidden = !shot;
+    const point = matchingPreview(shot, p.preview)?.point;
     if (shot) {
       const fill = bar.firstElementChild;
       fill.style.width = `${shot.power * 100}%`;
       bar.dataset.pct = `${Math.round(shot.power * 100)}%`;   // (#395) the number beside the colour
       fill.style.background = powerCss(shot.power); fill.style.boxShadow = `0 0 10px ${powerCss(shot.power, 0.8)}`;
     }
-    (gl || flat)?.draw(now, shot);
+    (gl || flat)?.draw(now, shot, point);
     hint();  // the putts finish rolling here, not in render
   }
 
@@ -961,6 +1086,24 @@ UI.putt = (() => {
       const curve = new T.CatmullRomCurve3(clean.map(([x, y]) => new T.Vector3(x, RAIL_TOP, -y)), true, 'centripetal');
       course.add(new T.Mesh(new T.TubeGeometry(curve, clean.length * 3, CAP_R, 8, true), railCapMat));
     }
+    const hazardMaterials = new Map();
+    const hazardPlane = new T.PlaneGeometry(0.65, 0.65);
+    function addHazardMark(x, y, kind, p) {
+      const mark = hazardMark(kind, p);
+      if (!mark) return;
+      if (!hazardMaterials.has(mark)) {
+        const map = canvasTex(T, 128, 128, (g) => {
+          g.font = 'bold 74px system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle';
+          g.lineWidth = 6; g.strokeStyle = '#18232b'; g.fillStyle = '#fff4cf';
+          g.strokeText(mark, 64, 64); g.fillText(mark, 64, 64);
+        });
+        hazardMaterials.set(mark, new T.MeshBasicMaterial({ map, transparent: true, depthWrite: false }));
+      }
+      const mesh = new T.Mesh(hazardPlane, hazardMaterials.get(mark));
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.set(x + 0.5, groundH(x + 0.5, y + 0.5) + (kind === 'ramp' ? 0.05 : 0.015), -(y + 0.5));
+      course.add(mesh);
+    }
     function build() {
       scene.remove(course); course = new T.Group(); scene.add(course);
       bumperMeshes.length = 0;
@@ -975,6 +1118,7 @@ UI.putt = (() => {
       for (const [x, y] of p.cells) {
         const round = rounded(x, y);
         const kind = p.kinds[`${x},${y}`];
+        addHazardMark(x, y, kind, p);
         const color = kind ? COLORS[kind] : COLORS.fair[(x + y) % 2];
         if (kind === 'fringe' || kind === 'long') {
           const n = kind === 'long' ? 70 : 30, tall = kind === 'long' ? 0.06 : 0.03;
@@ -1108,6 +1252,7 @@ UI.putt = (() => {
       Object.assign(sun.shadow.camera, { left: -span, right: span, top: span, bottom: -span, near: 1, far: 25 });
       sun.shadow.camera.updateProjectionMatrix();
       // a new hole starts on the whole-hole view, at once
+      spinV = null;
       Object.assign(goal, HOME); Object.assign(view, HOME);
       resize();
     }
@@ -1197,7 +1342,7 @@ UI.putt = (() => {
     }
     function clamp(v) {
       v.zoom = Math.min(8, Math.max(0.6, v.zoom));
-      v.tilt = Math.min(1.45, Math.max(0.3, v.tilt));   // (#385) down to a low look along the course
+      v.tilt = Math.min(1.56, Math.max(0.3, v.tilt));   // (#385) down to a low look along the course
       // keep the point you look at over the course, give or take a tile
       v.px = Math.min(box.x1 + 1 - box.cx, Math.max(box.x0 - 1 - box.cx, v.px));
       v.pz = Math.min(-box.y0 + 1 - box.cz, Math.max(-box.y1 - 1 - box.cz, v.pz));
@@ -1290,7 +1435,7 @@ UI.putt = (() => {
     const viewApi = {
       fit() { spinV = null; Object.assign(goal, HOME); },
       spin(vyaw, vtilt) { spinV = { yaw: vyaw, tilt: vtilt }; },
-      stop() { spinV = null; },
+      stop(freeze = false) { spinV = null; if (freeze) Object.assign(goal, view); },
       // zoom by f keeping the ground under screen point (x, y) where it is
       zoomAt(f, x, y) {
         const a = toGround(x, y);
@@ -1331,19 +1476,27 @@ UI.putt = (() => {
         const p = S.putt;
         if (p.me == null || !box) return;
         const [bx, by] = p.balls[p.me], [dx, dy] = downFairway(bx, by), len = Math.hypot(dx, dy) || 1;
-        let yaw = Math.atan2(dx, dy);
+        let yaw = cameraMode ? 0 : Math.atan2(dx, dy);
         while (yaw - view.yaw > Math.PI) yaw -= 2 * Math.PI;   // turn the short way round
         while (yaw - view.yaw < -Math.PI) yaw += 2 * Math.PI;
         // (#386) lower than the overview (about 42°), looking at a point part way to the target, back far enough that
         // the ball sits low in the picture and the target is in it too
-        const tilt = AIM_TILT, d = fitFor(yaw, tilt);
+        const tilt = cameraMode ? 1.56 : AIM_TILT, d = fitFor(yaw, tilt);
         const dist = Math.min(7.5, Math.max(nearDist() * 0.8, 2.8, len * 0.75 + 2)), ahead = Math.min(len * 0.45, 2.4);
         fitKey = '';
         Object.assign(goal, { yaw, tilt, zoom: d / dist, px: bx + (dx / len) * ahead - box.cx, pz: -(by + (dy / len) * ahead) - box.cz });
+        if (cameraLocked) Object.assign(view, goal);
         place();  // fitFor() moved the camera while measuring: put it back where the view is now
       },
     };
-    function draw(now, shot) {
+    const previewMarker = new T.Mesh(new T.RingGeometry(0.12, 0.17, 28),
+      new T.MeshBasicMaterial({ color: 0xffdf72, side: T.DoubleSide, depthTest: false }));
+    previewMarker.rotation.x = -Math.PI / 2;
+    previewMarker.renderOrder = 5;
+    scene.add(previewMarker);
+    function draw(now, shot, point) {
+      previewMarker.visible = !!point;
+      if (point) previewMarker.position.set(point[0], groundH(...point) + 0.06, -point[1]);
       ensureBalls();
       const dt = Math.min(0.1, last ? (now - last) / 1000 : 0); last = now;
       glide(dt);
@@ -1428,7 +1581,12 @@ UI.putt = (() => {
       }
       renderer.render(scene, camera);
     }
-    function dispose() { stg.dispose(); renderer.dispose(); renderer.domElement.remove(); }
+    function dispose() {
+      hazardPlane.dispose();
+      for (const material of hazardMaterials.values()) { material.map?.dispose(); material.dispose(); }
+      previewMarker.geometry.dispose(); previewMarker.material.dispose();
+      stg.dispose(); renderer.dispose(); renderer.domElement.remove();
+    }
     const groundAt = (cx, cy) => { const g = toGround(cx, cy); return g ? [g.x, -g.z] : null; };   // (#395) course x, y under a screen point
     return { build, draw, resize, dispose, screenDir, nearBall, ballOnScreen, effect, burst, groundAt, view: viewApi };
   }
@@ -1449,7 +1607,7 @@ UI.putt = (() => {
       k = canvas.width / cols;
     }
     const X = (x) => x * k, Y = (y) => canvas.height - y * k;
-    function draw(now, shot) {
+    function draw(now, shot, point) {
       const p = S.putt;
       if (!canvas.width) resize();
       g.fillStyle = '#0c1a2b'; g.fillRect(0, 0, canvas.width, canvas.height);
@@ -1460,6 +1618,12 @@ UI.putt = (() => {
         g.fillStyle = kind ? COLORS[kind] : COLORS.fair[(x + y) % 2];
         const pts = tileOutline(x, y, TILE_CORNERS.map(([sx, sy]) => cornerOf(x, y, sx, sy)));
         g.beginPath(); pts.forEach(([px, py], i) => (i ? g.lineTo(X(px), Y(py)) : g.moveTo(X(px), Y(py)))); g.closePath(); g.fill();
+        const mark = hazardMark(kind, p);
+        if (mark) {
+          g.font = `bold ${k * 0.43}px system-ui`; g.textAlign = 'center'; g.textBaseline = 'middle';
+          g.lineWidth = 2; g.strokeStyle = '#18232b'; g.fillStyle = '#fff4cf';
+          g.strokeText(mark, X(x + 0.5), Y(y + 0.5)); g.fillText(mark, X(x + 0.5), Y(y + 0.5));
+        }
       }
       for (const [hx, hy, a] of p.hills || []) {  // a hump is lighter in the middle, a bowl darker
         const gr = g.createRadialGradient(X(hx + 0.5), Y(hy + 0.5), 0, X(hx + 0.5), Y(hy + 0.5), k * 0.5);
@@ -1516,6 +1680,10 @@ UI.putt = (() => {
         g.fillStyle = 'rgba(255,255,255,0.9)'; g.beginPath(); g.arc(bx - br * 0.35, by - br * 0.38, br * 0.2, 0, 7); g.fill();
         g.globalAlpha = 1;
       });
+      if (point) {
+        g.strokeStyle = '#ffdf72'; g.lineWidth = 3;
+        g.beginPath(); g.arc(X(point[0]), Y(point[1]), k * 0.15, 0, 2 * Math.PI); g.stroke();
+      }
       if (shot && p.me != null) {  // a dotted guide with an arrowhead, in the power colour (#82)
         const [bx, by] = p.balls[p.me], len = 0.4 + shot.power * 2.2;
         const x0 = X(bx), y0 = Y(by), x1 = X(bx + Math.cos(shot.angle) * len), y1 = Y(by + Math.sin(shot.angle) * len);

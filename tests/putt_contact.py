@@ -30,13 +30,18 @@ def game(contact):
     return r.game
 
 
+wide = {"cells": [[x, y] for x in range(3) for y in range(5)], "kinds": {}, "slope": None, "bumpers": [], "cup": [1.5, 4.55],
+        "hills": [], "posts": [], "rocks": [], "mills": [], "banks": [], "path": [(1, y) for y in range(5)], "tee": [1.5, 0.35],
+        "par": 2, "theme": "day", "style": "classic"}
+
 check("default off", putt.Putt.settings_schema["contact"][2] == 0)
 for contact in (0, 1):
     g = game(contact)
+    g.hole = dict(wide); g.course = None
+    g.balls = [list(g.hole["tee"]) for _ in g.seats]
     c = g.get_course()
     tx, ty = g.hole["tee"]
     # straight at a spot ~1 tile away: put Bo's ball there, already in play
-    path = g.hole["path"]
     a = math.atan2(g.hole["cup"][1] - ty, g.hole["cup"][0] - tx)
     bx, by = tx + math.cos(a) * 0.9, ty + math.sin(a) * 0.9
     g.balls[1] = [bx, by]; g.strokes[1] = 1
@@ -74,9 +79,6 @@ check("a ball still on the tee does not block", not g.blockers(0, (tx, ty)))
 # (#393) a bot plans with the balls that will really block it: on a straight, 3-wide hole with a rival ball right on
 # the line to the cup, the hard bot's putts must not run into that ball (an open line runs either side of it)
 import random as _random
-wide = {"cells": [[x, y] for x in range(3) for y in range(5)], "kinds": {}, "slope": None, "bumpers": [], "cup": [1.5, 4.55],
-        "hills": [], "posts": [], "rocks": [], "mills": [], "banks": [], "path": [(1, y) for y in range(5)], "tee": [1.5, 0.35],
-        "par": 2, "theme": "day", "style": "classic"}
 holed = {True: 0, False: 0}
 left = {True: 0.0, False: 0.0}
 for aware in (True, False):
