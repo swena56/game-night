@@ -23,6 +23,7 @@ UI.riders = (() => {
   const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]];
   let orbs = new Map(), seq = [], size = [];  // 🐍 orbs on the grid (cell → worth), cells each snake has moved, body lengths
   let orbTick = 0;  // the tick our orbs are right up to
+  let gulps = [];  // 🐍 orbs on their way down a throat: { i, worth, at }
   let faces = [];  // 🐍 the way each head is drawn facing, which swings round to its heading (#356)
   let gapes = [], gapeAt = [];  // 🐍 how wide each mouth is open (0 to 1), and when that was last worked out
   let gilded = new Map(), trapped = 0, myTop = 0, recapFor = 0;  // new gold orbs, my traps so far, my longest yet to save, the recap shown
@@ -123,7 +124,7 @@ UI.riders = (() => {
   const $ = (id) => document.getElementById(id);
 
   function mount(main, side) {
-    S = null; trails = []; live = []; round = 0; shape = ''; fitFor = 0; meals = []; spilled = new Map(); closing = new Set(); follow_ = load('snake.follow'); prior = []; point = null; faces = []; gapes = []; gapeAt = []; gilded = new Map(); trapped = 0; myTop = 0; recapFor = 0; gl = null; flat = null; preds = []; recent = []; lastCount = '';
+    S = null; trails = []; live = []; round = 0; shape = ''; fitFor = 0; meals = []; spilled = new Map(); closing = new Set(); follow_ = load('snake.follow'); prior = []; point = null; gulps = []; faces = []; gapes = []; gapeAt = []; gilded = new Map(); trapped = 0; myTop = 0; recapFor = 0; gl = null; flat = null; preds = []; recent = []; lastCount = '';
     items = new Map(); slow = []; grabsSeen = new Set(); orbs = new Map(); seq = []; size = []; sideKey = '';
     tapTurn = !!load('riders.tapTurn');
     main.innerHTML = `<div class="lr" id="lrRoot"><div class="lr-stage" id="lrStage">
@@ -284,7 +285,7 @@ UI.riders = (() => {
     if (Math.abs(dx) + Math.abs(dy) <= 1) { if (!point.held) point = null; return; }
     const cur = myDir(), toward = (d) => DIRS[d][0] * dx + DIRS[d][1] * dy;
     // the neck: the cells that would still be just behind the head after one more step (#347)
-    const neck = new Set(t.slice(-5));
+    const neck = new Set(S.riders.solid ? t.slice(1) : t.slice(-5));  // (a solid body: steer round all of it)
     const open = (d) => {
       const nx = x + DIRS[d][0], ny = y + DIRS[d][1];
       return d !== (cur + 2) % 4 && nx >= 0 && ny >= 0 && nx < w && ny < rows() && !neck.has(ny * w + nx);
@@ -314,7 +315,7 @@ UI.riders = (() => {
     const me = i === mine();
     if (was.alive && !now.alive) {
       (gl || flat)?.crash?.(i);
-      snd.play(me ? 'crashMe' : 'crash');
+      snd.play(isSnake() ? (me ? 'snakeCrashMe' : 'snakeCrash') : me ? 'crashMe' : 'crash');
       if (me) { buzz([80, 50, 160]); preds = []; point = null; keepLongest(); }
       if (me && S.riders.maxLives > 1 && now.lives > 0) Kit.callout(`💔 Lost a life: ${now.lives} left`, 'bad', { ms: 1500 });
     } else if (!was.alive && now.alive && S.riders.stage === 'ride') {
@@ -380,8 +381,38 @@ UI.riders = (() => {
     pops(grew);
   }
 
-  // 🐍 eating (#353): the mouth opens as an orb comes up ahead, snaps shut on it with a bounce of the head,
-  // crumbs fly, and then the bulge goes down the body
+  // 🐍 eating (#353): jaws part as an orb comes up ahead and the orb is drawn toward them, slides in and shrinks
+  // away down the throat as they snap shut; the head bounces, the eyes close happily, crumbs fly, and the bulge
+  // goes down the body
+  const SWALLOW = 190, MOUTH = 1.35;  // ms an orb takes to go down; cells from a head's middle to its open mouth
+  const happy = (i, now) => { const { age } = lastMeal(i, now); return age > 120 && age < 520; };
+  // orbs about to be eaten, and where to draw them instead: cell -> [x, y, size]
+  function pulledOrbs(now) {
+    const out = new Map();
+    trails.forEach((t, i) => {
+      if (!t.length || !live[i]?.alive || !(gapes[i] > 0.2)) return;
+      const w = cols(), head = headPos(i, now), [dx, dy] = DIRS[headDir(i)];
+      let x = t[t.length - 1] % w, y = Math.floor(t[t.length - 1] / w);
+      for (let k = 0; head && k < 3; k++) {
+        x += dx; y += dy;
+        const c = y * w + x;
+        if (x < 0 || y < 0 || x >= w || y >= rows() || !orbs.has(c)) continue;
+        const far = Math.hypot(x - head[0], y - head[1]), by = Math.min(1, Math.max(0, (3 - far) / 2)) * gapes[i];
+        out.set(c, [x + (head[0] + dx * MOUTH - x) * by, y + (head[1] + dy * MOUTH - y) * by, 1 + 0.15 * by]);
+      }
+    });
+    return out;
+  }
+  // the swallowed ones: [worth, x, y, size], from just past the jaws to the back of the throat
+  function swallowing(now) {
+    gulps = gulps.filter((m) => now - m.at < SWALLOW);
+    return gulps.flatMap((m) => {
+      const head = live[m.i]?.alive ? headPos(m.i, now) : null;
+      if (!head) return [];
+      const k = Math.max(0, (now - m.at) / SWALLOW), [dx, dy] = DIRS[headDir(m.i)], out = MOUTH - k * (MOUTH - 0.15);
+      return [[m.worth, head[0] + dx * out, head[1] + dy * out, 1.15 * (1 - 0.8 * k * k)]];
+    });
+  }
   const lastMeal = (i, now) => { let at = -1e9, big = 1; for (const m of meals) if (m.i === i && m.at > at) { at = m.at; big = m.big; } return { age: now - at, big }; };
   function foodAhead(i) {
     const t = trails[i]; if (!t?.length || !live[i]?.alive) return false;
@@ -462,6 +493,7 @@ UI.riders = (() => {
     if (!layer || !view?.project) return;
     for (const [i, worth] of list) {
       meals = [...meals.filter((m) => performance.now() - m.at < 2500), { i, at: performance.now(), big: Math.min(1.6, 0.7 + worth * 0.18) }];
+      gulps = [...gulps.slice(-11), { i, worth, at: performance.now() }];
       const at = headPos(i, performance.now()); if (!at) continue;
       const [x, y] = view.project(at[0], at[1]);
       crumbs(layer, x, y, worth);
@@ -622,7 +654,7 @@ UI.riders = (() => {
     box.innerHTML = '';
     box.append(ctx.el('div', 'hint left', `Round ${r.round} · first to ${r.target}${r.maxLives > 1 ? ` · ${r.maxLives} lives` : ''}`));
     if (snake) {
-      box.append(ctx.el('div', 'hint left', `🐍 ${r.goal ? `First to length ${r.goal} takes the round, or the last snake with lives left.` : 'The last snake with lives left takes the round.'} Running into another snake, or the 5 blocks behind your own head, costs a life. Farther back you can cross yourself; the edge just turns you.`));
+      box.append(ctx.el('div', 'hint left', `🐍 ${r.goal ? `First to length ${r.goal} takes the round, or the last snake with lives left.` : 'The last snake with lives left takes the round.'} Running into another snake costs a life. ${r.solid ? 'Your own body and the edge just turn you; you only crash when there\'s no way to turn.' : 'So do the 5 blocks behind your own head; farther back you can cross yourself, and the edge just turns you.'}`));
       const key_ = ctx.el('div', 'lr-key');
       for (const [worth, what] of [[1, 'from a crash'], [2, ''], [10, 'rare']]) {
         const item = ctx.el('span', ''), dot = ctx.el('i'); dot.style.background = ORBS[worth].color;
@@ -733,7 +765,9 @@ UI.riders = (() => {
   function wallTurn(i, d) {
     const t = trails[i]; if (!t?.length) return d;
     const w = cols(), h = rows(), x = t[t.length - 1] % w, y = Math.floor(t[t.length - 1] / w);
-    const inside = (o) => { const a = x + DIRS[o][0], b = y + DIRS[o][1]; return a >= 0 && b >= 0 && a < w && b < h; };
+    // with a solid body (#359), your own squares turn you too (not the tip of your tail, which moves off in time)
+    const own = S.riders.solid ? new Set(t.slice(t.length >= (size[i] ?? 0) ? 1 : 0)) : null;
+    const inside = (o) => { const a = x + DIRS[o][0], b = y + DIRS[o][1]; return a >= 0 && b >= 0 && a < w && b < h && !own?.has(b * w + a); };
     if (inside(d)) return d;
     const was = live[i]?.dir !== d ? live[i]?.dir : null;
     const room = (o) => (DIRS[o][0] ? (DIRS[o][0] > 0 ? w - 1 - x : x) : (DIRS[o][1] > 0 ? h - 1 - y : y));
@@ -796,7 +830,19 @@ UI.riders = (() => {
       src.buffer = buf; fl.type = 'bandpass'; fl.Q.value = q; fl.frequency.setValueAtTime(f0, t); fl.frequency.exponentialRampToValueAtTime(f1, t + dur);
       g.gain.value = vol; src.connect(fl).connect(g).connect(dest()); src.start(t);
     }
+    // 🐍 a snake running into something (#360): a deep thud, a sharp crack and a wet squash, then its orbs
+    // scattering in a few falling chimes. `loud`: 1 for your own, less for somebody else's.
+    function squash(loud) {
+      tone(185, 42, 0.26, 'sine', 0.5 * loud);
+      tone(98, 52, 0.2, 'triangle', 0.22 * loud);
+      noise(0.07, 2700, 950, 1.4, 0.8 * loud);
+      noise(0.22, 950, 170, 0.9, 0.9 * loud, 0.03);
+      [0, 1, 2, 3, 4].forEach((k) => tone(1560 - k * 175, 1500 - k * 175, 0.08, 'sine', 0.06 * loud, 0.11 + k * 0.048));
+    }
     const HITS = {
+      snakeCrash: () => squash(0.42),
+      // your own: the same, then three falling notes
+      snakeCrashMe: () => { squash(1); [392, 311, 233].forEach((f, k) => tone(f, f * 0.93, k === 2 ? 0.42 : 0.15, 'sawtooth', 0.065, 0.3 + k * 0.15)); },
       turn: () => tone(900, 700, 0.05, 'square', 0.025),
       boost: () => { noise(0.6, 300, 2600, 1.2, 0.5); tone(110, 330, 0.5, 'sawtooth', 0.04); },
       crash: () => { noise(0.35, 900, 200, 0.8, 0.3); tone(110, 50, 0.3, 'sine', 0.1); },
@@ -1047,24 +1093,35 @@ UI.riders = (() => {
       const flesh = new T.MeshStandardMaterial({ color: tone, emissive: color, emissiveIntensity: 0.14, roughness: 0.38, metalness: 0.1, toneMapped: false });
       const white = new T.MeshBasicMaterial({ color: 0xfff7c2 }), black = new T.MeshBasicMaterial({ color: 0x05060f });
       part(flesh, 0.68, 0.44, 0.82, 0, 0.56, 0.1);   // skull, wide at the jaws
-      part(flesh, 0.45, 0.32, 0.62, 0, 0.52, 0.62);  // snout
+      const muzzle = new T.Group(), eyes = [], lids = []; head.add(muzzle);  // (the closed snout: the jaws replace it)
+      part(flesh, 0.45, 0.32, 0.62, 0, 0.52, 0.62, muzzle);  // snout
       part(new T.MeshStandardMaterial({ color: pale, emissive: pale, emissiveIntensity: 0.15, roughness: 0.45, toneMapped: false }), 0.13, 0.07, 0.3, 0, 0.98, -0.1);  // a pale flash on the crown
       for (const x of [-1, 1]) {
         part(flesh, 0.27, 0.22, 0.3, x * 0.37, 0.84, 0.3);        // brow
-        part(white, 0.2, 0.17, 0.21, x * 0.39, 0.94, 0.38);       // eye
-        part(black, 0.065, 0.1, 0.15, x * 0.4, 1.08, 0.43);       // slit pupil
-        part(white, 0.035, 0.03, 0.035, x * 0.37, 1.18, 0.49);    // glint
-        part(black, 0.05, 0.04, 0.07, x * 0.16, 0.82, 1.0);       // nostril
+        eyes.push(part(white, 0.2, 0.17, 0.21, x * 0.39, 0.94, 0.38));       // eye
+        eyes.push(part(black, 0.065, 0.1, 0.15, x * 0.4, 1.08, 0.43));       // slit pupil
+        eyes.push(part(white, 0.035, 0.03, 0.035, x * 0.37, 1.18, 0.49));    // glint
+        part(black, 0.05, 0.04, 0.07, x * 0.16, 0.82, 1.0, muzzle);       // nostril
+        const lid = new T.Mesh(new T.TorusGeometry(0.17, 0.04, 6, 16, Math.PI), black);  // a closed, smiling eye
+        lid.rotation.x = -Math.PI / 2; lid.position.set(x * 0.39, 1.13, 0.4); lid.visible = false; head.add(lid); lids.push(lid);
       }
-      // the open mouth (#353): a dark throat and two fangs in front of the snout, grown as it opens
-      const gape = new T.Group(); gape.position.set(0, 0.5, 0.9); gape.visible = false; head.add(gape);
-      part(new T.MeshBasicMaterial({ color: 0x5c0a1c }), 0.5, 0.12, 0.46, 0, 0, 0.14, gape);
-      part(new T.MeshBasicMaterial({ color: 0xff6f8c }), 0.24, 0.13, 0.26, 0, 0.02, 0.1, gape);
-      const ivory = new T.MeshBasicMaterial({ color: 0xffffff });
-      for (const x of [-1, 1]) {
-        const fang = new T.Mesh(new T.ConeGeometry(0.075, 0.34, 8), ivory);
-        fang.rotation.x = Math.PI / 2; fang.position.set(x * 0.3, 0.14, 0.42); gape.add(fang);
-      }
+      // the open mouth (#353): the front of the head parts into two jaws hinged at the back, pink inside, with a
+      // fang near each tip, over a dark throat and a tongue
+      const gape = new T.Group(); gape.position.set(0, 0.52, 0.34); gape.visible = false; head.add(gape);
+      const throat = part(new T.MeshBasicMaterial({ color: 0x4a0716 }), 0.3, 0.1, 0.4, 0, -0.06, 0.34, gape);
+      const pad = part(new T.MeshBasicMaterial({ color: 0xff7d9b }), 0.14, 0.1, 0.34, 0, -0.01, 0.34, gape);
+      const lining = new T.MeshBasicMaterial({ color: 0xe8456b }), ivory = new T.MeshBasicMaterial({ color: 0xffffff });
+      const jaws = [-1, 1].map((x) => {
+        const hinge = new T.Group(); hinge.position.set(x * 0.2, 0, 0); gape.add(hinge);
+        part(flesh, 0.24, 0.26, 0.62, x * 0.08, 0, 0.5, hinge);               // the jaw
+        part(lining, 0.13, 0.2, 0.5, x * -0.06, 0.07, 0.5, hinge);           // its pink inside
+        for (const [along, long] of [[0.9, 0.34], [0.55, 0.2]]) {            // a fang, and a tooth behind it
+          const tooth = new T.Mesh(new T.ConeGeometry(0.07, long, 8), ivory);
+          tooth.rotation.z = x * Math.PI / 2; tooth.position.set(x * -0.16, 0.25, along); hinge.add(tooth);
+        }
+        return hinge;
+      });
+      Object.assign(head.userData, { jaws, throat, pad, muzzle, eyes, lids });
       head.userData.gape = gape; head.userData.size = 1.55;
       const tongue = new T.Group(); tongue.position.set(0, 0.42, 1.15); head.add(tongue);
       const red = new T.MeshBasicMaterial({ color: 0xff3b5c });
@@ -1084,9 +1141,14 @@ UI.riders = (() => {
     function flick(i, now) {
       const head_ = bikes[i], tongue = head_?.userData.tongue;
       if (!tongue) return;
-      const { open, gulp } = mouth(i, now), gape = head_.userData.gape;
-      gape.visible = open > 0.06;
-      gape.scale.set(0.35 + 0.65 * open, 1, Math.max(0.05, open));
+      const { open, gulp } = mouth(i, now), { gape, jaws, throat, pad, muzzle, eyes, lids } = head_.userData;
+      gape.visible = open > 0.08;
+      muzzle.visible = !gape.visible;
+      jaws.forEach((hinge, k) => { hinge.rotation.y = (k ? 1 : -1) * open * 0.66; });
+      throat.scale.x = 0.14 + 0.46 * open; pad.scale.x = 0.07 + 0.2 * open;
+      const glad = happy(i, now);
+      for (const eye of eyes) eye.visible = !glad;
+      for (const lid of lids) lid.visible = glad;
       head_.scale.setScalar(head_.userData.size * gulp);
       const t = (now + i * 530) % 1600;
       tongue.visible = t < 420 && open < 0.2;  // no flicking with its mouth full
@@ -1160,14 +1222,21 @@ UI.riders = (() => {
     }
     function drawOrbs(now) {
       if (!orbMeshes) return;
-      const used = { white: 0, green: 0, gold: 0 };
+      const used = { white: 0, green: 0, gold: 0 }, pulled = pulledOrbs(now);
+      // an orb partway down a throat rides over the head
+      for (const [worth, gx, gy, size_] of swallowing(now)) {
+        const mesh = orbMeshes[orbKind(worth).name], k = used[orbKind(worth).name];
+        if (k >= mesh.instanceMatrix.count) continue;
+        sc.setScalar((orbKind(worth).r * 1.15 * size_) / ORB_BEAD); v.set(gx - n / 2 + 0.5, 2.1, gy - high / 2 + 0.5); q.identity();
+        mtx.compose(v, q, sc); mesh.setMatrixAt(k, mtx); used[orbKind(worth).name]++;
+      }
       for (const [c, worth] of orbs) {
-        const [x, z] = at(c), kind = orbKind(worth), gold = worth >= 5, mesh = orbMeshes[kind.name], k = used[kind.name];
+        const to = pulled.get(c), [x, z] = to ? [to[0] - n / 2 + 0.5, to[1] - high / 2 + 0.5] : at(c), kind = orbKind(worth), gold = worth >= 5, mesh = orbMeshes[kind.name], k = used[kind.name];
         if (k >= mesh.instanceMatrix.count) continue;
         // each breathes in its own time; a gold one turns its rays, and one that has just appeared flares wide
         const pulse_ = 1 + (gold ? 0.14 : 0.07) * Math.sin(now / (gold ? 190 : 300) + c);
         const flare = gilded.has(c) ? 1 + 1.8 * Math.max(0, 1 - (now - gilded.get(c)) / 1300) : 1;
-        sc.setScalar((kind.r * 1.15 * pulse_ * popIn(c, now) * flare) / ORB_BEAD); v.set(x, 0.42 + (k % 7) * 0.002, z);
+        sc.setScalar((kind.r * 1.15 * pulse_ * popIn(c, now) * flare * (to ? to[2] : 1)) / ORB_BEAD); v.set(x, to ? 0.75 : 0.42 + (k % 7) * 0.002, z);
         if (gold) q.setFromAxisAngle(up, now / 1400 + c); else q.identity();
         mtx.compose(v, q, sc); mesh.setMatrixAt(k, mtx); used[kind.name]++;
         if (gold && !goldTags.has(c)) {
@@ -1477,10 +1546,12 @@ UI.riders = (() => {
       for (let k = 0; k <= n; k += 4) { g.beginPath(); g.moveTo(k * cell, 0); g.lineTo(k * cell, canvas.height); g.stroke(); }
       for (let k = 0; k <= high; k += 4) { g.beginPath(); g.moveTo(0, k * cell); g.lineTo(canvas.width, k * cell); g.stroke(); }
       if (garden) {  // 🐍 orbs lie under the snakes, sized and coloured by what they're worth
+        const pulled = pulledOrbs(now);
         for (const [c, worth] of orbs) {
-          const kind = orbKind(worth), x = (c % n + 0.5) * cell, y = (Math.floor(c / n) + 0.5) * cell;
+          const to = pulled.get(c), kind = orbKind(worth);
+          const x = ((to ? to[0] : c % n) + 0.5) * cell, y = ((to ? to[1] : Math.floor(c / n)) + 0.5) * cell;
           const pulse_ = 1 + (worth >= 5 ? 0.14 : 0.07) * Math.sin(now / (worth >= 5 ? 190 : 300) + c);
-          const half_ = (cell * kind.r * 1.15 * pulse_ * popIn(c, now)) / ORB_BEAD;
+          const half_ = (cell * kind.r * 1.15 * pulse_ * popIn(c, now) * (to ? to[2] : 1)) / ORB_BEAD;
           g.drawImage(orbPicture(worth), x - half_, y - half_, half_ * 2, half_ * 2);
           if (gilded.has(c)) {  // just appeared: a ring closing in on it
             const left = Math.max(0, 1 - (now - gilded.get(c)) / 1300);
@@ -1508,6 +1579,12 @@ UI.riders = (() => {
         g.restore();
         ring2d(i, now);
       });
+      if (garden) {  // orbs partway down a throat are drawn over the heads
+        for (const [worth, gx, gy, size_] of swallowing(now)) {
+          const half_ = (cell * orbKind(worth).r * 1.15 * size_) / ORB_BEAD;
+          g.drawImage(orbPicture(worth), (gx + 0.5) * cell - half_, (gy + 0.5) * cell - half_, half_ * 2, half_ * 2);
+        }
+      }
       drawRest(now);
     }
     // `color` darkened toward black by `by` (0 to 1)
@@ -1570,20 +1647,34 @@ UI.riders = (() => {
         g.strokeStyle = '#ff3b5c'; g.lineWidth = 0.16;
         g.beginPath(); g.moveTo(0.9, 0); g.lineTo(out, 0); g.lineTo(out + 0.4, -0.3); g.moveTo(out, 0); g.lineTo(out + 0.4, 0.3); g.stroke();
       }
-      g.beginPath(); g.moveTo(-0.5, -0.6);
-      g.bezierCurveTo(0.35, -1.1, 0.8, -0.5, 1.2, -0.28); g.quadraticCurveTo(1.38, 0, 1.2, 0.28);
-      g.bezierCurveTo(0.8, 0.5, 0.35, 1.1, -0.5, 0.6); g.closePath();
-      g.fillStyle = color; g.strokeStyle = '#000a'; g.lineWidth = 0.14; g.fill(); g.stroke();
-      if (open > 0.06) {  // the open mouth: a throat, then a fang at each side
-        g.fillStyle = '#5c0a1c'; g.beginPath(); g.ellipse(1.28, 0, 0.62 * open, 0.2 + 0.46 * open, 0, 0, 6.283); g.fill();
-        g.fillStyle = '#ff6f8c'; g.beginPath(); g.ellipse(1.22, 0, 0.32 * open, 0.1 + 0.22 * open, 0, 0, 6.283); g.fill();
-        g.fillStyle = '#fff';
-        for (const side of [-1, 1]) { const y_ = side * (0.14 + 0.38 * open); g.beginPath(); g.moveTo(1.15, y_); g.lineTo(1.2 + 0.75 * open, y_ - side * 0.1); g.lineTo(1.15, y_ - side * 0.22); g.closePath(); g.fill(); }
+      const skinned = () => { g.fillStyle = color; g.strokeStyle = '#000a'; g.lineWidth = 0.14; g.fill(); g.stroke(); };
+      if (open <= 0.08) {
+        g.beginPath(); g.moveTo(-0.5, -0.6);
+        g.bezierCurveTo(0.35, -1.1, 0.8, -0.5, 1.2, -0.28); g.quadraticCurveTo(1.38, 0, 1.2, 0.28);
+        g.bezierCurveTo(0.8, 0.5, 0.35, 1.1, -0.5, 0.6); g.closePath(); skinned();
+      } else {  // the open mouth: the throat first, then the two jaws swung apart over it, pink inside and fanged
+        const hinge = 0.15, swing = open * 0.62, tip = (side) => [hinge + 1.3 * Math.cos(swing), side * 1.3 * Math.sin(swing)];
+        g.fillStyle = '#4a0716'; g.beginPath(); g.moveTo(hinge, 0); g.lineTo(...tip(-1)); g.quadraticCurveTo(hinge + 0.75, 0, ...tip(1)); g.closePath(); g.fill();
+        g.fillStyle = '#ff7d9b'; g.beginPath(); g.ellipse(hinge + 0.45, 0, 0.42, 0.06 + 0.17 * open, 0, 0, 6.283); g.fill();
+        for (const side of [-1, 1]) {
+          g.save(); g.translate(hinge, 0); g.rotate(side * swing); g.translate(-hinge, 0); g.scale(1, side);  // drawn as the lower jaw
+          g.beginPath(); g.moveTo(-0.5, 0.6); g.bezierCurveTo(0.35, 1.1, 0.8, 0.5, 1.2, 0.3);
+          g.quadraticCurveTo(1.5, 0.08, 1.25, 0.02); g.lineTo(hinge, 0); g.lineTo(-0.5, 0); g.closePath(); skinned();
+          g.strokeStyle = '#e8456b'; g.lineWidth = 0.13; g.beginPath(); g.moveTo(hinge + 0.1, 0.07); g.lineTo(1.2, 0.07); g.stroke();
+          g.fillStyle = '#fff';
+          for (const [at_, long] of [[1.08, 0.36], [0.68, 0.2]]) { g.beginPath(); g.moveTo(at_ - 0.11, 0.07); g.lineTo(at_ + 0.02, -long); g.lineTo(at_ + 0.12, 0.07); g.closePath(); g.fill(); }
+          g.restore();
+        }
       }
+      const glad = happy(i, now);
       for (const side of [-1, 1]) {
+        if (glad) {  // closed, smiling
+          g.strokeStyle = '#05060f'; g.lineWidth = 0.14; g.beginPath(); g.arc(0.24, side * 0.46, 0.2, -1.15, 1.15); g.stroke();
+          continue;
+        }
         g.fillStyle = '#fff7c2'; g.beginPath(); g.arc(0.3, side * 0.44, 0.27, 0, 6.283); g.fill();
         g.fillStyle = '#05060f'; g.beginPath(); g.ellipse(0.38, side * 0.44, 0.18, 0.08, 0, 0, 6.283); g.fill();
-        g.beginPath(); g.arc(1.05, side * 0.15, 0.07, 0, 6.283); g.fill();
+        if (open <= 0.08) { g.beginPath(); g.arc(1.05, side * 0.15, 0.07, 0, 6.283); g.fill(); }
       }
       g.restore();
     }

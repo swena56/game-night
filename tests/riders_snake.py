@@ -318,6 +318,92 @@ recap = g.view(r.players[g.seats[0]])["riders"]["recap"]
 check("the recap has the longest lengths and the trap", recap and recap["best"][2] >= 60 and recap["traps"] == [0, 1, 0], recap)
 check("snake rounds pause long enough to read it", g.next_at - time.time() > riders.ROUND_PAUSE + 1)
 
+# your own body as a wall (#359): it turns you, and only being boxed in costs a life
+def coil(own="wall"):
+    r, g, _ = arena(own=own)
+    place(g, 1, [(40, 40)], 1, 8)
+    place(g, 0, [(x, 10) for x in range(1, 25)], 1)
+    g.prior = [None, None]
+    g.orbs.clear()
+    return g
+
+
+check("crossing yourself is the default", arena()[1].s.get("own") == "cross" and not arena()[1].solid)
+g = coil()
+steps(g, [2, None, 3, None, None, 0, None, None])  # down, left, then up into the body
+hx, hy = g.trails[0][-1] % g.w, g.trails[0][-1] // g.w
+check("solid: the body turns you instead of letting you cross", g.alive[0] and g.lives[0] == 3 and hy >= 11 and len(set(g.trails[0])) == len(g.trails[0]) and consistent(g), (hx, hy, g.dirs[0]))
+g = coil()
+steps(g, [2, 3, 0])  # a tight curl: with bodies that cross, this bites the neck
+steps(g, [None])
+check("solid: even a tight curl just turns you", g.alive[0] and g.lives[0] == 3 and len(set(g.trails[0])) == len(g.trails[0]), g.dirs[0])
+g = coil()
+place(g, 0, [(1, 1), (1, 0), (0, 0), (0, 1), (0, 2), (1, 2), (2, 2), (2, 1), (2, 0), (3, 0)][::-1] + [(1, 1)] if False else
+      [(0, 2), (1, 2), (2, 2), (2, 1), (2, 0), (1, 0), (0, 0), (0, 1), (1, 1)], 1, 30)   # wound up with no way out
+g.orbs.clear()
+g.step(time.time())
+waited = g.alive[0]
+g.step(time.time())
+check("solid: boxed in by yourself and the edge, you crash", waited and not g.alive[0] and consistent(g), (waited, g.alive[0]))
+check("and it is nobody's trap", not any(getattr(g, "kills", None) or []))
+g = coil()
+place(g, 0, [(10, 10), (11, 10), (11, 11), (10, 11)], 3, 4)   # a full-grown ring chasing its own tail
+g.orbs.clear()
+steps(g, [0, 1, 2, 3])
+check("solid: a snake can follow the tip of its own tail", g.alive[0] and g.lives[0] == 3 and consistent(g), g.trails[0])
+g = coil()
+place(g, 1, [(25, y) for y in range(5, 16)], 2)
+g.ghost = [0, 9]
+steps(g, [None, None])
+check("solid: another snake still costs a life", not g.alive[0])
+check("browsers are told", g.view(g.room.players[g.seats[0]])["riders"]["solid"] is True)
+for level in ("easy", "normal", "hard"):
+    r, g, _ = arena(n=3, target=2, own="wall", arena=52)
+    for p in r.players.values():
+        p.bot = level
+    now = time.time()
+    g.stage, g.next_at, g.last_frame = "countdown", now, now
+    k, ok = 0, True
+    while r.phase == "playing" and k < 150000:
+        k, now = k + 1, now + 0.05
+        g.frame(now)
+        if k % 100 == 0:
+            ok = ok and consistent(g) and all(len(set(t)) == len(t) for t in g.trails)
+    check(f"solid bodies: {level} bots finish a match without ever overlapping themselves", r.phase == "over" and ok, (r.phase, g.wins))
+
+# bots find their way round things, and go after other snakes (#358)
+def clear(n=2):
+    r, g, _ = arena(n=n)
+    for i in range(n):
+        place(g, i, [(2 + 6 * i, 45)], 1, 8)
+    g.routes = {}
+    return g
+
+
+g = clear()
+place(g, 1, [(30, y) for y in range(10, 31)], 2)      # a wall of snake
+place(g, 0, [(x, 20) for x in range(20, 25)], 1)
+goal = 20 * g.w + 36
+path = g.search(0, goal, 2000)
+check("a route goes round a body to what's behind it", path and path[-1] == goal and not any(g.blocked(c, 0) for c in path)
+      and any(c // g.w in (9, 31) for c in path), len(path))
+check("every step of it is one square on", all(g.beside(a, b) for a, b in zip([g.trails[0][-1]] + path, path)))
+check("with little looking it still gets closer", g.search(0, goal, 5) != [])
+first = g.route(0, goal, "hard")
+kept = g.routes[0][1]
+g.search = lambda *a: [] if True else None
+check("a good route is followed, not searched again", g.route(0, goal, "hard") == first and g.routes[0][1] == kept)
+g = clear()
+place(g, 1, [(x, 20) for x in range(18, 21)], 1, 30)  # a rival riding right, a little below and ahead of nothing
+place(g, 0, [(26, y) for y in range(14, 17)], 2, 30)  # me, ahead of it and above its line
+g.orbs.clear()
+cut = g.ambush(0, "hard") if (g.tick // riders.HUNT_SPELL + 0) % 3 < 2 else None
+check("a hunter aims for the space ahead of a rival", cut is not None and cut // g.w == 20 and cut % g.w > 20, cut and (cut % g.w, cut // g.w))
+g.size[0] = riders.HUNT_LENGTH - 1
+check("a short bot eats before it picks fights", g.ambush(0, "hard") is None)
+g.size[0] = 30
+check("easy snakes don't hunt", g.ambush(0, "easy") is None)
+
 # only bots left: they don't get to circle for ever
 r, g, _ = arena(n=3)
 for p in list(r.players.values())[1:]:

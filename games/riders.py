@@ -14,6 +14,7 @@ import math
 import random
 import time
 from collections import deque
+from heapq import heappop, heappush
 
 from .base import Game, GameError
 
@@ -41,6 +42,12 @@ BOOST_COST = 4     # a snake's boost is paid in length, dropped behind it as whi
 # pacing (measure a change with tests/riders_balance.py before keeping it)
 CRASH_KEEP = 0     # 🐍 the share of its length a snake comes back with after a crash (never below the start); 0: off, untested
 SHIELD = 0         # 🐍 seconds after respawning with no crashing for it or into it; 0: off (untested, and not yet drawn)
+# hunting (#358): how far off a rival's head a bot will go after it, and in how many of every three spells it does
+HUNT = {"normal": (14, 1), "hard": (24, 2)}
+HUNT_SPELL, HUNT_LENGTH = 40, 18  # ticks a spell lasts; a bot eats until it's this long before it picks fights
+HUNT_BOOST_LENGTH = 60            # a hard bot only pays for a boost to cut someone off once it has this much to spend
+HEAD_ON = {"hard": 160}           # how much a square a rival could also reach next puts a bot off (others: 40)
+ROUTE_LOOK = {"normal": 350, "hard": 700}  # the most squares a bot's route search opens: enough to get round a body
 EASY_SEEK = 0.2    # how often an easy snake heads for food instead of carrying on
 SNAKE_PAUSE = 5.0  # 🐍 between rounds: long enough to read the recap
 BOTS_ONLY = 15     # ...and sooner once only computer snakes have lives left: careful bots can circle for ever
@@ -154,6 +161,7 @@ class Riders(Game):
         self.respawn_at, self.ghost, self.grind = [None] * k, [0] * k, [0] * k
         self.held = [False] * k  # 🐍 a person's snake that has used its last moment on this approach
         self.shield = [0] * k  # 🐍 ticks of protection left after a respawn
+        self.routes = {}  # 🐍 bots: seat -> (goal, the squares still to go), kept while it stays good
         self.prior = [None] * k  # 🐍 each snake's heading before its latest turn (the way it'll go at a wall)
         self.comeback = [SNAKE_START] * k  # 🐍 the length each snake respawns with
         self.best, self.traps = [SNAKE_START] * k, [0] * k  # 🐍 this round's recap: longest length, snakes trapped
@@ -249,7 +257,28 @@ class Riders(Game):
         """🐍 True if snake i dies moving onto c: another snake's body does that, and so does its own neck, the NECK
         cells behind its head (#347: a tight curl bites; the rest of its body is safe to cross)."""
         owner = self.grid[c]
+        if owner == i + 1 and self.solid:
+            return self.own_wall(i, c)
         return owner != 0 and (owner != i + 1 or c in self.trails[i][-NECK - 1:-1])
+
+    @property
+    def solid(self):
+        """🐍 Is a snake's own body a wall to it (#359)? Then it's turned away like at the edge, never over it."""
+        return self.snake and self.s.get("own") == "wall"
+
+    def own_wall(self, i, c):
+        """🐍 Solid bodies: is cell c snake i's own body, still there when its head would arrive? (The tip of a
+        full-grown tail moves off in the same step, so a snake can chase it.)"""
+        if not self.solid or self.grid[c] != i + 1:
+            return False
+        t = self.trails[i]
+        return not (c == t[0] and len(t) >= self.size[i] and self.own[c] == 1)
+
+    def open_way(self, i, d):
+        """🐍 May snake i head d without meeting the edge or (solid bodies) itself?"""
+        head = self.trails[i][-1]
+        x, y = head % self.w + DIRS[d][0], head // self.w + DIRS[d][1]
+        return self.inside(x, y) and not self.own_wall(i, y * self.w + x)
 
     def heading(self, i, d):
         if d != self.dirs[i]:
@@ -263,15 +292,16 @@ class Riders(Game):
         prior = (self.__dict__.get("prior") or [None] * len(self.seats))[i]
         head, d = self.trails[i][-1], self.dirs[i]
         x, y = head % self.w, head // self.w
-        if self.inside(x + DIRS[d][0], y + DIRS[d][1]):
+        if self.open_way(i, d):
             return d
         options = []
-        for o in (was, (was + 1) % 4, (was + 3) % 4):
+        back = (d + 2) % 4
+        for o in dict.fromkeys((was, (was + 1) % 4, (was + 3) % 4, (d + 1) % 4, (d + 3) % 4)):
             xx, yy = x + DIRS[o][0], y + DIRS[o][1]
-            if self.inside(xx, yy):
+            if o != back and self.open_way(i, o):
                 ahead = sum(self.inside(x + DIRS[o][0] * k, y + DIRS[o][1] * k) for k in range(1, max(self.w, self.h)))
                 options.append((not self.blocked(yy * self.w + xx, i), o == was, o == prior, ahead, o))
-        return max(options)[-1]
+        return max(options)[-1] if options else d  # (boxed in: it carries on into whatever it was going to hit)
 
     def time_up(self, now):
         """🐍 A round that has run far too long goes to the longest living snake (lives break a tie)."""
@@ -509,6 +539,9 @@ class Riders(Game):
                     self.heading(i, self.edge_turn(i, was[i] if sub == 0 else self.dirs[i]))
                     dx, dy = DIRS[self.dirs[i]]
                     c = (hy + dy) * self.w + hx + dx
+                    if not self.inside(hx + dx, hy + dy):  # no way to turn at all: boxed in against the edge
+                        crashed.add(i)
+                        continue
                     if self.blocked(c, i):
                         owner = self.grid[c] - 1
                         if self.shields()[i] or self.shields()[owner]:  # protected: whoever's in the way, nobody crashes
@@ -815,7 +848,7 @@ class Riders(Game):
             if clear == 8:  # only boost onto an open straight
                 self.start_boost(i)
 
-    # -- 🐍 snake bots: stay off other snakes and go for orbs; hard ones also go out of their way for richer ones and dither less
+    # -- 🐍 snake bots: stay off other snakes and go for orbs by a route round whatever's in the way; normal and hard ones cut in front of rivals (#358), and hard ones also go out of their way for richer orbs
 
     def open_to(self, i, start, limit):
         """Flood-fill count of cells snake i could move through from start (its own body included), capped."""
@@ -831,6 +864,132 @@ class Riders(Game):
                         seen.add(cc)
                         todo.append(cc)
         return min(len(seen), limit)  # the search overshoots by a few: that must not outvote the food
+
+    def beside(self, a, b):
+        w = self.w
+        return abs(a % w - b % w) + abs(a // w - b // w) == 1
+
+    def search(self, i, goal, limit):
+        """A* from snake i's head toward `goal`, round every body: the squares to go, first one first. If the goal
+        isn't reached within `limit` squares opened, the way to the closest one found ([] if boxed in)."""
+        w, h, grid = self.w, self.h, self.grid
+        head, back = self.trails[i][-1], (self.dirs[i] + 2) % 4
+        gx, gy = goal % w, goal // w
+        hx, hy = head % w, head // w
+        came = {head: None}
+        reach = abs(hx - gx) + abs(hy - gy)
+        frontier = [(reach, 0, head)]
+        best, nearest, opened = head, reach, 0
+        while frontier and opened < limit:
+            _, steps, c = heappop(frontier)
+            opened += 1
+            if c == goal:
+                best = c
+                break
+            x, y = c % w, c // w
+            for d, (dx, dy) in enumerate(DIRS):
+                xx, yy = x + dx, y + dy
+                if not (0 <= xx < w and 0 <= yy < h) or (c == head and d == back):
+                    continue
+                cc = yy * w + xx
+                if cc in came or (grid[cc] and self.blocked(cc, i)):
+                    continue
+                came[cc] = c
+                far = abs(xx - gx) + abs(yy - gy)
+                if far < nearest or cc == goal:
+                    best, nearest = cc, far
+                # (the 1.001 breaks ties toward the goal, so open ground is crossed without exploring all of it)
+                heappush(frontier, (steps + 1 + far * 1.001, steps + 1, cc))
+        path = []
+        while best != head:
+            path.append(best)
+            best = came[best]
+        return path[::-1]
+
+    def route(self, i, goal, level):
+        """The next square on snake i's way to `goal` (None if boxed in). A route is searched once and followed for
+        as long as it leads to the same place and its next squares stay clear, which is most ticks."""
+        routes = self.__dict__.setdefault("routes", {})
+        head = self.trails[i][-1]
+        old_goal, path = routes.get(i, (None, []))
+        if path and path[0] == head:
+            path = path[1:]
+        if (old_goal != goal or not path or not self.beside(head, path[0])
+                or any(self.grid[c] and self.blocked(c, i) for c in path[:4])):
+            path = self.search(i, goal, ROUTE_LOOK.get(level, 350))
+        routes[i] = (goal, path)
+        return path[0] if path else None
+
+    def ambush(self, i, level):
+        """A square just ahead of a nearby rival that snake i can reach first: crossing there puts a body across the
+        rival's path. None when nobody is near enough, or there's no safe way in front."""
+        far, spells = HUNT.get(level, (0, 0))
+        if not far or self.size[i] < HUNT_LENGTH or (self.tick // HUNT_SPELL + i) % 3 >= spells:
+            return None
+        w = self.w
+        x, y = self.trails[i][-1] % w, self.trails[i][-1] // w
+        best = None
+        for j in range(len(self.seats)):
+            if j == i or not self.alive[j] or not self.trails[j] or self.shields()[j]:
+                continue
+            hx, hy = self.trails[j][-1] % w, self.trails[j][-1] // w
+            if abs(hx - x) + abs(hy - y) > far:
+                continue
+            dx, dy = DIRS[self.dirs[j]]
+            for k in range(2, 10):  # the tightest cut there's time for: the sooner it comes, the less room to dodge
+                ax, ay = hx + dx * k, hy + dy * k
+                if not self.inside(ax, ay) or self.blocked(ay * w + ax, i):
+                    break
+                mine = abs(ax - x) + abs(ay - y)
+                if mine < k:  # I get there with a square or more to spare
+                    # which side of its line I'm on (dead ahead of it: whichever way I'm already turning)
+                    side = (x - ax) * -dy + (y - ay) * dx
+                    sx, sy = (-dy, dx) if side > 0 else (dy, -dx)
+                    if not side:
+                        sx, sy = DIRS[self.dirs[i]]
+                        if sx * dx + sy * dy:
+                            sx, sy = -dy, dx
+                    if side:
+                        sx, sy = -sx, -sy  # carry on past, to the far side, so the body lies right across the way
+                    past = 0
+                    while past < 5 and self.inside(ax + sx * (past + 1), ay + sy * (past + 1)) and not self.blocked((ay + sy * (past + 1)) * w + ax + sx * (past + 1), i):
+                        past += 1
+                    if abs(x - ax) + abs(y - ay) <= 1:  # at the crossing: now it's the far side I want
+                        goal = (ay + sy * past) * w + ax + sx * past
+                    else:
+                        goal = ay * w + ax
+                    if best is None or k < best[0]:
+                        best = (k, goal)
+                    break
+        if best is not None:
+            return best[1]
+        return self.stalk(i, far)
+
+    def stalk(self, i, far):
+        """No cut to be had yet: head for the space in front of the nearest rival, leading it by more the farther off
+        it is, so as to get there ahead of it. A gold orb close by comes first."""
+        w = self.w
+        head = self.trails[i][-1]
+        x, y = head % w, head // w
+        if any(v == GOLD_GROW and abs(c % w - x) + abs(c // w - y) <= 8 for c, v in self.orbs.items()):
+            return None
+        near = None
+        for j in range(len(self.seats)):
+            if j == i or not self.alive[j] or not self.trails[j] or self.shields()[j]:
+                continue
+            hx, hy = self.trails[j][-1] % w, self.trails[j][-1] // w
+            gap = abs(hx - x) + abs(hy - y)
+            if gap <= far and (near is None or gap < near[0]):
+                near = (gap, j, hx, hy)
+        if near is None:
+            return None
+        gap, j, hx, hy = near
+        dx, dy = DIRS[self.dirs[j]]
+        for lead in range(max(3, min(10, gap // 2 + 2)), 0, -1):
+            ax, ay = hx + dx * lead, hy + dy * lead
+            if self.inside(ax, ay) and not self.blocked(ay * w + ax, i):
+                return ay * w + ax
+        return None
 
     def snake_steer(self, i, level):
         n, head, d = self.w, self.trails[i][-1], self.dirs[i]
@@ -865,22 +1024,31 @@ class Riders(Game):
             if hard and self.orbs:  # nearest still, but a richer orb is worth a few cells' detour
                 food = min(self.orbs, key=lambda c: gap(head, c) - 2 * (self.orbs[c] - ORB_GROW))
 
+            prey = self.ambush(i, level)
+            goal = prey if prey is not None else food
+            step_to = self.route(i, goal, level) if goal is not None else None
             # Food behind can't be reached by going on (a snake can't reverse): straight must not win a tie then, or
             # the snake rides away from its meal for as long as nothing else tips the choice.
-            behind = food is not None and (food % n - x) * DIRS[d][0] + (food // n - y) * DIRS[d][1] <= 0
+            behind = goal is not None and (goal % n - x) * DIRS[d][0] + (goal // n - y) * DIRS[d][1] <= 0
 
             def score(o):
                 c = safe[o]
                 v = self.open_to(i, c, 150 if hard else 60) * 10
                 if any(gap(h, c) <= far for h, far in rivals):  # a rival could reach that cell too
-                    v -= 40
-                if food is not None:
-                    v -= gap(c, food) * 2
+                    v -= HEAD_ON.get(level, 40)
+                if goal is not None:
+                    v -= gap(c, goal) * 2
+                if c == step_to:  # the way round whatever lies between (worth more than any straight-line pull)
+                    v += 14 if prey is None else 22
                 if c in self.orbs:
                     v += 12 * self.orbs[c] if hard else 25
                 return v + (3 if o == d and not behind else 0) + random.uniform(0, 1 if hard else 6)
 
             best = max(safe, key=score)
+            if prey is not None and best == d and self.can_boost(i) and self.size[i] >= HUNT_BOOST_LENGTH and 4 <= gap(head, prey) <= 10:
+                ahead = [(x + DIRS[d][0] * k, y + DIRS[d][1] * k) for k in range(1, 9)]
+                if level == "hard" and all(self.inside(a, b) and not self.blocked(b * n + a, i) for a, b in ahead):
+                    self.start_boost(i)  # a clear straight run at the crossing point: pay to get there
         if best != d:
             self.queue[i].clear()
             self.queue[i].append(best)
@@ -953,7 +1121,7 @@ class Riders(Game):
         return {"riders": {
             "n": self.n, "w": self.w, "h": self.h, "seats": self.seats, "me": self.seat(p), "stage": self.stage, "round": self.round,
             "mode": "snake" if self.snake else "cycles", "won": getattr(self, "won", None),
-            **({"orbs": [[c, v] for c, v in self.orbs.items()], "sq": self.seq, "size": self.size, "goal": self.goal,
+            **({"orbs": [[c, v] for c, v in self.orbs.items()], "sq": self.seq, "size": self.size, "goal": self.goal, "solid": self.solid,
                 "boostCost": BOOST_COST, "boostMin": SNAKE_START + BOOST_COST,
                 "recap": {"best": self.__dict__.get("best"), "traps": self.__dict__.get("traps")} if self.stage in ("over", "done") else None}
                if self.snake else {}),
