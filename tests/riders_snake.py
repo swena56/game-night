@@ -120,6 +120,17 @@ place(g, 0, [(8, 0), (9, 0), (10, 0)], 1)
 steps(g, [0])  # steering into the wall: carry on along it, not back over itself
 check("steering into the edge keeps the old heading", g.alive[0] and g.dirs[0] == 1 and g.trails[0][-1] == 11)
 
+# at a wall a snake carries on the way it was going before it turned (#349)
+for came, name in ((1, "right"), (3, "left")):
+    r2, g2, _ = arena()
+    place(g2, 1, [(30, 30)], 1, 8)
+    place(g2, 0, [(40, 5)], came, 3)
+    g2.prior = [None, None]
+    g2.orbs.clear()
+    steps(g2, [0] + [None] * 8)  # turn up toward the top edge and run into it
+    x, y = g2.trails[0][-1] % g2.w, g2.trails[0][-1] // g2.w
+    check(f"going {name} then up, the top wall sends it {name} again", g2.alive[0] and y == 0 and g2.dirs[0] == came, (x, y, g2.dirs[0]))
+
 # another snake kills
 place(g, 1, [(20, y) for y in range(15, 26)], 2)
 place(g, 0, [(x, 20) for x in range(14, 20)], 1)
@@ -290,6 +301,22 @@ g.on_input(r.players[g.seats[0]], {"boost": True})
 g.boosting[0] = 0
 g.on_input(r.players[g.seats[0]], {"brake": True})
 check("light cycles keep their charges and brake", g.boosts[0] == riders.BOOSTS - 1 and g.braking[0])
+
+# the round recap: each snake's longest length and how many it trapped
+r, g, _ = arena(n=3, goal=60)
+check("no recap while riding", g.view(r.players[g.seats[0]])["riders"]["recap"] is None)
+place(g, 1, [(20, y) for y in range(15, 26)], 2)
+place(g, 0, [(x, 20) for x in range(14, 20)], 1)
+place(g, 2, [(40, 40)], 1, 8)
+g.ghost = [0, 5, 5]
+g.orbs.clear()
+steps(g, [None, None])
+g.size[2] = 60
+g.slither(2, g.trails[2][-1])
+g.check_goal(time.time())
+recap = g.view(r.players[g.seats[0]])["riders"]["recap"]
+check("the recap has the longest lengths and the trap", recap and recap["best"][2] >= 60 and recap["traps"] == [0, 1, 0], recap)
+check("snake rounds pause long enough to read it", g.next_at - time.time() > riders.ROUND_PAUSE + 1)
 
 # only bots left: they don't get to circle for ever
 r, g, _ = arena(n=3)

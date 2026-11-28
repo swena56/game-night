@@ -42,9 +42,10 @@ BOOST_COST = 4     # a snake's boost is paid in length, dropped behind it as whi
 CRASH_KEEP = 0     # 🐍 the share of its length a snake comes back with after a crash (never below the start); 0: off, untested
 SHIELD = 0         # 🐍 seconds after respawning with no crashing for it or into it; 0: off (untested, and not yet drawn)
 EASY_SEEK = 0.2    # how often an easy snake heads for food instead of carrying on
-BOTS_ONLY = 30     # ...and sooner once only computer snakes have lives left: careful bots can circle for ever
+SNAKE_PAUSE = 5.0  # 🐍 between rounds: long enough to read the recap
+BOTS_ONLY = 15     # ...and sooner once only computer snakes have lives left: careful bots can circle for ever
 ORB_GROW, DROP_GROW = 2, 1  # length gained: a scattered orb, an orb spilled by a dead snake
-GOLD_GROW, GOLD_CHANCE, GOLD_MOST = 5, 0.08, 3  # the odd scattered orb is gold, a few on the board at most
+GOLD_GROW, GOLD_CHANCE, GOLD_MOST = 10, 0.08, 3  # the odd scattered orb is gold, a few on the board at most
 ORB_AREA = 45      # one scattered orb is kept on the grid for every this many cells
 FIT_MIN, FIT_MAX = 0.65, 2.5  # how tall or wide the board may get to match a screen
 ITEMS = {  # kind: (icon, what the log says it did)
@@ -153,7 +154,9 @@ class Riders(Game):
         self.respawn_at, self.ghost, self.grind = [None] * k, [0] * k, [0] * k
         self.held = [False] * k  # 🐍 a person's snake that has used its last moment on this approach
         self.shield = [0] * k  # 🐍 ticks of protection left after a respawn
+        self.prior = [None] * k  # 🐍 each snake's heading before its latest turn (the way it'll go at a wall)
         self.comeback = [SNAKE_START] * k  # 🐍 the length each snake respawns with
+        self.best, self.traps = [SNAKE_START] * k, [0] * k  # 🐍 this round's recap: longest length, snakes trapped
         self.tick = 0
         self.ring, self.ride_at = 0, None
         self.bots_since = None
@@ -201,6 +204,9 @@ class Riders(Game):
         self.own[c] += 1
         self.seq[i] += 1
         self.size[i] += self.orbs.pop(c, 0)
+        best = self.__dict__.get("best")
+        if best:
+            best[i] = max(best[i], self.size[i])
         t = self.trails[i]
         while len(t) > self.size[i]:
             old = t.pop(0)
@@ -245,9 +251,16 @@ class Riders(Game):
         owner = self.grid[c]
         return owner != 0 and (owner != i + 1 or c in self.trails[i][-NECK - 1:-1])
 
+    def heading(self, i, d):
+        if d != self.dirs[i]:
+            self.__dict__.setdefault("prior", [None] * len(self.seats))[i] = self.dirs[i]
+            self.dirs[i] = d
+
     def edge_turn(self, i, was):
-        """🐍 The edge doesn't kill. A snake about to leave the grid keeps its old heading if that's
-        still inside, or turns along the edge (away from other snakes, toward the roomier side)."""
+        """🐍 The edge doesn't kill. A snake about to leave the grid keeps its old heading if that's still inside;
+        failing that it carries on the way it was going before its last turn (#349: up after going right means right
+        at the wall), and only then takes the roomier side. Other snakes in the way are avoided first of all."""
+        prior = (self.__dict__.get("prior") or [None] * len(self.seats))[i]
         head, d = self.trails[i][-1], self.dirs[i]
         x, y = head % self.w, head // self.w
         if self.inside(x + DIRS[d][0], y + DIRS[d][1]):
@@ -257,8 +270,8 @@ class Riders(Game):
             xx, yy = x + DIRS[o][0], y + DIRS[o][1]
             if self.inside(xx, yy):
                 ahead = sum(self.inside(x + DIRS[o][0] * k, y + DIRS[o][1] * k) for k in range(1, max(self.w, self.h)))
-                options.append((not self.blocked(yy * self.w + xx, i), o == was, ahead, o))
-        return max(options)[3]
+                options.append((not self.blocked(yy * self.w + xx, i), o == was, o == prior, ahead, o))
+        return max(options)[-1]
 
     def time_up(self, now):
         """🐍 A round that has run far too long goes to the longest living snake (lives break a tie)."""
@@ -468,7 +481,7 @@ class Riders(Game):
             if self.queue[i]:
                 d = self.queue[i].popleft()
                 if not (self.snake and d == (self.dirs[i] + 2) % 4):  # an edge turn can make a queued turn a reversal
-                    self.dirs[i] = d
+                    self.heading(i, d)
         crashed = set()
         cutter = {}  # crashed rider -> whose trail they hit (✂️ credit)
         holding = {i for i in range(len(self.seats)) if self.ghost[i]}
@@ -493,7 +506,7 @@ class Riders(Game):
             for i in movers:
                 hy, hx = divmod(self.trails[i][-1], self.w)
                 if self.snake:
-                    self.dirs[i] = self.edge_turn(i, was[i] if sub == 0 else self.dirs[i])
+                    self.heading(i, self.edge_turn(i, was[i] if sub == 0 else self.dirs[i]))
                     dx, dy = DIRS[self.dirs[i]]
                     c = (hy + dy) * self.w + hx + dx
                     if self.blocked(c, i):
@@ -569,6 +582,8 @@ class Riders(Game):
             if kp and vp and self.alive[k]:
                 self.kills = getattr(self, "kills", None) or [0] * len(self.seats)
                 self.kills[k] += 1
+                if self.__dict__.get("traps"):
+                    self.traps[k] += 1
                 self.moment(f"🪤 {kp.name} trapped {vp.name}!" if self.snake else f"✂️ {kp.name} cut {vp.name} off!", "cool", "crack")
         self.check_round(now)
         return True
@@ -681,7 +696,7 @@ class Riders(Game):
             r.add_log(f"🤝 Round {self.round} is a draw{'' if any(self.alive) else ' — everyone crashed'}.", "big")
         self.respawn_at = [None] * len(self.seats)
         self.stage = "over"
-        self.next_at = now + ROUND_PAUSE
+        self.next_at = now + (SNAKE_PAUSE if self.snake else ROUND_PAUSE)
 
     def broadcast(self, now):
         self.room.push_fast({
@@ -939,7 +954,9 @@ class Riders(Game):
             "n": self.n, "w": self.w, "h": self.h, "seats": self.seats, "me": self.seat(p), "stage": self.stage, "round": self.round,
             "mode": "snake" if self.snake else "cycles", "won": getattr(self, "won", None),
             **({"orbs": [[c, v] for c, v in self.orbs.items()], "sq": self.seq, "size": self.size, "goal": self.goal,
-                "boostCost": BOOST_COST, "boostMin": SNAKE_START + BOOST_COST} if self.snake else {}),
+                "boostCost": BOOST_COST, "boostMin": SNAKE_START + BOOST_COST,
+                "recap": {"best": self.__dict__.get("best"), "traps": self.__dict__.get("traps")} if self.stage in ("over", "done") else None}
+               if self.snake else {}),
             "ring": getattr(self, "ring", 0), "kills": getattr(self, "kills", None) or [0] * len(self.seats),
             "items": [[c, k] for c, k in getattr(self, "items", {}).items()], "pickups": bool(self.s.get("pickups")) and not self.snake,
             "slow": [int(x > 0) for x in getattr(self, "slow", [0] * len(self.seats))], "grabs": getattr(self, "grabs", []),

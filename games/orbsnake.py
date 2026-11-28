@@ -1,7 +1,7 @@
 """🐍 Orb Snakes: Light Riders' grid played as a snake game, as a game of its own (#345, #346).
 
 Every player is a snake that eats orbs to grow: white +1 (spilled by a crashed snake), green +2 and the rare
-gold +5. Running into another snake costs a life, and so does biting the blocks just behind its own head (#347);
+gold +10 (#355). Running into another snake costs a life, and so does biting the blocks just behind its own head (#347);
 farther back its own body is safe to cross, and the edge only turns it.
 There is no clock and no longest snake: a round goes to the last one with lives left, or, if a goal length is
 chosen, to the first to reach it.
@@ -29,7 +29,7 @@ class OrbSnakes(Riders):
     settings_schema = {
         "goal": ("Win a round by", [(0, "Last snake alive (no length limit)"), (60, "Reach length 60"), (100, "Reach length 100")], 0),
         "target": ("Rounds to win", [(3, "3"), (2, "2"), (5, "5")], 3),
-        "arena": ("Arena", [(52, "Medium"), (40, "Small"), (68, "Large")], 52),
+        "arena": ("Arena", [(160, "Giant"), (128, "Huge"), (96, "Large"), (68, "Medium"), (52, "Small")], 160),
         "speed": ("Speed", [(10, "Normal"), (7, "Chill"), (14, "Fast")], 10),
         "lives": ("Lives", [(3, "3"), (1, "1 (classic)"), (5, "5")], 3),
     }

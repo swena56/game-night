@@ -47,6 +47,23 @@
 .lr-pop.me { font-size: 28px; }
 .lr-pop.me.gold { font-size: 40px; }
 @keyframes lr-pop { 0% { opacity: 0; margin-top: 0; scale: .6; } 15% { opacity: 1; scale: 1.15; } 100% { opacity: 0; margin-top: -46px; scale: 1; } }
+/* between rounds: longest length and traps for each snake */
+.lr-recap { position: absolute; left: 50%; top: 52%; z-index: 3; transform: translateX(-50%); max-width: calc(100% - 24px); padding: 8px 14px; border-radius: var(--r-md); background: #000d; color: #fff; pointer-events: none; }
+.lr-recap[hidden] { display: none; }
+.lr-recap table { border-collapse: collapse; font-size: 14px; }
+.lr-recap th { white-space: nowrap; font-size: 11px; font-weight: 700; color: #ffffffa6; text-align: right; padding: 0 0 4px 16px; }
+.lr-recap td { padding: 3px 0 3px 16px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lr-recap td:first-child { padding-left: 0; text-align: left; }
+.lr-recap td i { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 50%; }
+.lr-recap tr.me td { font-weight: 800; color: #ffe27a; }
+/* 🐍 crumbs from an eaten orb: a flash where it was, and bits of its colour flying out */
+.lr-crumbs { position: absolute; width: 0; height: 0; }
+.lr-crumbs::before { content: ""; position: absolute; left: -11px; top: -11px; width: 22px; height: 22px; border-radius: 50%; background: radial-gradient(circle, #fff 0 20%, var(--orb) 45%, transparent 72%); animation: lr-flare .3s ease-out forwards; }
+.lr-crumbs i { position: absolute; left: -3px; top: -3px; width: 6px; height: 6px; border-radius: 50%; background: var(--orb); box-shadow: 0 0 6px var(--orb); animation: lr-crumb .48s cubic-bezier(.15, .7, .4, 1) forwards; }
+.lr-crumbs.gold i { width: 8px; height: 8px; }
+.lr-crumbs.gold::before { left: -19px; top: -19px; width: 38px; height: 38px; }
+@keyframes lr-flare { from { transform: scale(1.4); opacity: 1; } to { transform: scale(.2); opacity: 0; } }
+@keyframes lr-crumb { from { transform: translate(0, 0) scale(1.1); opacity: 1; } to { transform: translate(var(--x), var(--y)) scale(.3); opacity: 0; } }
 .lr-key { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; margin: 6px 0; font-size: var(--fs-sm); }
 .lr-key span { display: inline-flex; align-items: center; gap: 5px; }
 .lr-key i { width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 6px #0006; }
@@ -56,7 +73,7 @@
 .lr-goal i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #69f08c, #ffc933); }
 .lr-stage > canvas.lr-map { position: absolute; right: 8px; top: 74px; z-index: 2; width: 104px; height: auto; border: 2px solid #b98a52; border-radius: 6px; pointer-events: none; }
 .lr-map[hidden] { display: none; }
-@media (min-width: 861px) { .lr-follow { display: none !important; } }
+@media (min-width: 861px) { .lr-stage > canvas.lr-map { width: 220px; } }
 .lr.keys .lr-pad { display: none !important; }
 .lr-stage.nope { animation: lr-nope .35s ease-out; }
 @keyframes lr-nope { 0%, 100% { translate: 0; } 25% { translate: -5px 0; } 75% { translate: 5px 0; } }
