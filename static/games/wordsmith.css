@@ -67,8 +67,8 @@ body.calm .ws-cell.justplayed, body.calm .ws-cell.nope { animation: none; }
    Each other look sets its own variables; the rules after them put those on the board. Tiles stay light on dark ink. */
 .ws-lookpick { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
 .ws-lookpick select { flex: 1; min-width: 0; margin: 0; }
-.ws-board[data-look="cream"] { --frame: #7b5a36; --sq: #eadfc4; --ink: #5b4a2e; --dl: #a9d3ea; --tl: #3f8fc4; --dw: #f0b3b0; --tw: #cf4b3c; --star: #e9a93c;
-  --dlink: #123a52; --dwink: #5c1d1a; }
+.ws-board[data-look="cream"] { --frame: #5a3a1c; --sq: #e3d9c3; --ink: #6a5836; --dl: #52b6ec; --tl: #1263b5; --dw: #e8679a; --tw: #cc2a1f; --star: #eaa62a;
+  --dlink: #fff; --dwink: #fff; }
 .ws-board[data-look="night"] { --frame: #070b16; --sq: #1a2440; --ink: #c3ccea; --dl: #2b6f9e; --tl: #4338ca; --dw: #8e3b76; --tw: #a82d4a; --star: #b8860b;
   --dlink: #fff; --dwink: #fff; --tile: linear-gradient(160deg, #e8edf8, #c5cde2); }
 .ws-board[data-look="walnut"] { --frame: #3a2212; --sq: #8a5a32; --ink: #ffe9c9; --dl: #3f7f8c; --tl: #23566b; --dw: #b5654a; --tw: #8f2f22; --star: #c99a2e;
@@ -90,3 +90,66 @@ body.calm .ws-cell.justplayed, body.calm .ws-cell.nope { animation: none; }
   #game .layout > main:has(.ws-board) > #players { flex-direction: column; align-items: stretch; align-self: start; }
   #game .layout > main:has(.ws-board) > #arena { grid-column: 2; grid-row: 1 / span 3; }
 }
+
+/* ---------- #365: the Wordsmith table, after the reporter's mock-up ---------- */
+/* every look: a wooden frame with a lit gold rim, raised ivory tiles with book lettering, glossy bonus squares */
+.ws-board { gap: 3px; padding: 11px; border-radius: 16px; background: linear-gradient(135deg, #8a5a2b, #4a2b12 45%, #7a4a20);
+  box-shadow: inset 0 0 0 2px #e8b06a, inset 0 0 0 5px #5a3416, 0 0 0 1px #2a1707, 0 0 22px #e8a23c3d, 0 14px 30px #000a; }
+.ws-board[data-look]:not([data-look="felt"]) { background: linear-gradient(135deg, #ffffff24, #00000030), var(--frame); }
+.ws-board[data-look="felt"] .ws-cell:not(.tile):not([class*=" p"]) { background-color: #1f6b52; }
+.ws-cell { border-radius: 5px; box-shadow: inset 0 1px 0 #ffffff45, inset 0 -1px 0 #00000045; }
+.ws-board .ws-cell:not(.tile) { background-image: linear-gradient(180deg, #ffffff30, #ffffff08 45%, #00000018); }
+.ws-board .ws-cell:is(.p2L, .p3L, .p2W, .p3W):not(.tile) { text-shadow: 0 1px 2px #0007; font-weight: 800; letter-spacing: .02em; box-shadow: inset 0 1px 0 #ffffff80, inset 0 -3px 0 #0000003d, 0 1px 2px #0006; }
+.ws-cell.tile, .rack-tile { font-family: Georgia, "Times New Roman", "Noto Serif", serif; color: #231606; }
+.ws-board .ws-cell.tile, .rack-tile { background: linear-gradient(165deg, #fff3d4, #f4dca6 60%, #e8c780);
+  box-shadow: inset 0 1px 0 #fffdf2, inset 0 -3px 0 #bd9550, inset 0 -5px 0 var(--by, #0000), 0 2px 3px #0008; }
+.ws-board .ws-cell.tile.pending { background: linear-gradient(165deg, #fffaec, #fde9b8); box-shadow: inset 0 -3px 0 #bd9550, 0 6px 10px #0009; }
+.ws-board .ws-cell.tile.last { box-shadow: inset 0 0 0 2px #ef476f, inset 0 -3px 0 #bd9550, 0 2px 3px #0008; }
+.ws-board[data-look="night"] .ws-cell.tile:not(.pending) { background: linear-gradient(165deg, #eef2fb, #c8d0e4); }
+.ws-board[data-look="contrast"] .ws-cell.tile:not(.pending) { background: #fff; }
+.ws-cell.tile sub, .rack-tile sub { font-family: system-ui, sans-serif; font-weight: 800; right: 3px; bottom: 3px; }
+.rack-tile { width: 46px; height: 48px; border-radius: 7px; font-size: 25px; }
+@media (max-width: 420px) { .ws-board { gap: 2px; padding: 7px; border-radius: 12px; } .rack-tile { width: 42px; height: 44px; font-size: 22px; } }
+/* the night-time table: navy sky, mountains and pines at the foot, blue glass panels and a gold Play. The light theme
+   and a chosen background colour are left as they are. */
+body:not(.light):not([data-color]) #game:has(.ws-board) { background: url("data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20viewBox=%270%200%20600%20260%27%20preserveAspectRatio=%27xMinYMax%20meet%27%3E%3Cpath%20fill=%27%231d3f6e%27%20d=%27M0%20210%2090%2090l38%2042%2052-86%2062%2096%2034-34%2070%2092%2046-44%2070%2054v50H0z%27/%3E%3Cpath%20fill=%27%239db8dd%27%20opacity=%27.55%27%20d=%27M180%2046l-26%2043%2014-6%2010%2012%2013-13%2017%209zM90%2090l-22%2029%2013-4%209%209%2011-11%2013%206z%27/%3E%3Cpath%20fill=%27%230f2447%27%20d=%27M0%20232%2070%20170l52%2040%2060-62%2074%2070%2058-34%2096%2052v24H0z%27/%3E%3Cpath%20fill=%27%23081428%27%20d=%27M18%20260v-12l-17%203%2012-19-10%202%2011-21-8%201%2012-30%2012%2030-8-1%2011%2021-10-2%2012%2019-17-3v12z%27%20transform=%27translate%2818%20260%29%20scale%281.0%29%20translate%28-18%20-260%29%27/%3E%3Cpath%20fill=%27%23081428%27%20d=%27M52%20260v-12l-17%203%2012-19-10%202%2011-21-8%201%2012-30%2012%2030-8-1%2011%2021-10-2%2012%2019-17-3v12z%27%20transform=%27translate%2852%20260%29%20scale%280.78%29%20translate%28-52%20-260%29%27/%3E%3Cpath%20fill=%27%23081428%27%20d=%27M80%20260v-12l-17%203%2012-19-10%202%2011-21-8%201%2012-30%2012%2030-8-1%2011%2021-10-2%2012%2019-17-3v12z%27%20transform=%27translate%2880%20260%29%20scale%281.15%29%20translate%28-80%20-260%29%27/%3E%3Cpath%20fill=%27%23081428%27%20d=%27M116%20260v-12l-17%203%2012-19-10%202%2011-21-8%201%2012-30%2012%2030-8-1%2011%2021-10-2%2012%2019-17-3v12z%27%20transform=%27translate%28116%20260%29%20scale%280.7%29%20translate%28-116%20-260%29%27/%3E%3Cpath%20fill=%27%23081428%27%20d=%27M142%20260v-12l-17%203%2012-19-10%202%2011-21-8%201%2012-30%2012%2030-8-1%2011%2021-10-2%2012%2019-17-3v12z%27%20transform=%27translate%28142%20260%29%20scale%280.9%29%20translate%28-142%20-260%29%27/%3E%3Cpath%20fill=%27%23081428%27%20d=%27M176%20260v-12l-17%203%2012-19-10%202%2011-21-8%201%2012-30%2012%2030-8-1%2011%2021-10-2%2012%2019-17-3v12z%27%20transform=%27translate%28176%20260%29%20scale%280.62%29%20translate%28-176%20-260%29%27/%3E%3Cpath%20fill=%27%23081428%27%20d=%27M205%20260v-12l-17%203%2012-19-10%202%2011-21-8%201%2012-30%2012%2030-8-1%2011%2021-10-2%2012%2019-17-3v12z%27%20transform=%27translate%28205%20260%29%20scale%280.8%29%20translate%28-205%20-260%29%27/%3E%3Cpath%20fill=%27%23081428%27%20d=%27M450%20260v-12l-17%203%2012-19-10%202%2011-21-8%201%2012-30%2012%2030-8-1%2011%2021-10-2%2012%2019-17-3v12z%27%20transform=%27translate%28450%20260%29%20scale%280.5%29%20translate%28-450%20-260%29%27/%3E%3Cpath%20fill=%27%23081428%27%20d=%27M480%20260v-12l-17%203%2012-19-10%202%2011-21-8%201%2012-30%2012%2030-8-1%2011%2021-10-2%2012%2019-17-3v12z%27%20transform=%27translate%28480%20260%29%20scale%280.66%29%20translate%28-480%20-260%29%27/%3E%3C/svg%3E") left bottom / min(46vw, 720px) auto no-repeat fixed,
+  radial-gradient(ellipse 70% 45% at 50% 100%, #6b3d1a55, transparent 70%), radial-gradient(ellipse at 50% 0, #17376a, #0a1734 55%, #060d20); min-height: var(--app-h, 100vh); }
+body:not(.light) #game:has(.ws-board) .layout > aside .panel { background: linear-gradient(180deg, #14305c, #0b1c3d); border: 1px solid #2f5fa8; box-shadow: inset 0 1px 0 #6ea8ff33, 0 8px 22px #0007; }
+body:not(.light) #game:has(.ws-board) .layout > aside :is(#wsRecall, #wsShuffle, #wsSwap, #wsPass, #wsHint, #wsLook) { background: linear-gradient(180deg, #1b4180, #102a57); border: 1px solid #3f78cc; color: #fff; }
+#game:has(.ws-board) .layout > aside button.primary { background: linear-gradient(180deg, #ffe07a, #f4ab12); color: #2a1a00; border: 1px solid #ffeaa0; box-shadow: 0 0 16px #ffbe3055, inset 0 -3px 0 #a86f00; }
+#game:has(.ws-board) .layout > aside button.primary:disabled { filter: saturate(.45) brightness(.8); box-shadow: none; }
+body:not(.light) #game:has(.ws-board) #players .chip { background: linear-gradient(180deg, #163463, #0c1f43); border: 2px solid #2c589c; border-radius: 999px; padding: 6px 14px 6px 6px; box-shadow: 0 4px 12px #0007; }
+body:not(.light) #game:has(.ws-board) #players .chip.turn-now { border-color: #ffc94a; box-shadow: 0 0 0 1px #ffe7a0, 0 0 18px #ffb52e88; }
+#game:has(.ws-board) .ws-best { border: 1px solid #3f78cc; border-left: 3px solid var(--accent); background: #1c448044; padding: 8px 10px; }
+#game:has(.ws-board) .ws-info { color: var(--text); font-weight: 700; }
+#game:has(.ws-board) :is(#wsPlay, #wsRecall, #wsPass) { white-space: nowrap; padding-inline: 6px; }
+#game:has(.ws-board) #wsShuffle { flex: 0 0 56px; }
+#game:has(.ws-board) .ws-info { gap: 10px; flex-wrap: wrap; }
+/* #365 again: points you can read, a readable look menu, clearer lettering on the board, deeper tiles */
+/* the open menu is the browser's own list: give its rows their own colours, or they can come out white on white */
+#wsLook option { background: #fff; color: #16120a; }
+/* tiles: light falling from the upper left, a rounded face, and a thick wooden edge under it */
+.ws-board .ws-cell.tile, .rack-tile {
+  background: radial-gradient(120% 90% at 28% 18%, #ffffffe6 0, #ffffff00 52%), linear-gradient(168deg, #fff6dc 0, #f6e0ab 52%, #e2bc72 100%);
+  box-shadow: inset 0 2px 0 #fffef6, inset 2px 0 0 #ffffffa6, inset -2px 0 0 #b9893f66, inset 0 -3px 0 #c6984e, inset 0 -5px 0 var(--by, #0000),
+    0 2px 0 #8a6128, 0 4px 6px #0009;
+  text-shadow: 0 1px 0 #fffdf0cc; color: #1a1004; }
+.ws-board .ws-cell.tile.pending { background: radial-gradient(120% 90% at 28% 18%, #fff 0, #ffffff00 55%), linear-gradient(168deg, #fffbf0, #ffe9b4);
+  box-shadow: inset 0 -3px 0 #c6984e, 0 3px 0 #8a6128, 0 9px 14px #000b; }
+.ws-board .ws-cell.tile.last { box-shadow: inset 0 0 0 2px #e11d48, inset 0 -4px 0 #c6984e, 0 2px 0 #8a6128, 0 0 10px #ff4d6d99; }
+.ws-board[data-look="night"] .ws-cell.tile:not(.pending) { background: radial-gradient(120% 90% at 28% 18%, #fff 0, #ffffff00 52%), linear-gradient(168deg, #f4f7ff, #c3cce2); }
+.ws-board[data-look="contrast"] .ws-cell.tile:not(.pending) { background: #fff; }
+/* the letter sits a little up and left, leaving the points their own corner: bigger, heavy, near black */
+.ws-board .ws-cell.tile { padding: 0 .22em .16em 0; line-height: 1; }
+.rack-tile { padding: 0 6px 4px 0; line-height: 1; }
+.ws-board .ws-cell.tile sub, .rack-tile sub { right: 2px; bottom: 3px; font-size: max(10px, .52em); font-weight: 900; line-height: 1; color: #1a1004;
+  font-variant-numeric: lining-nums tabular-nums; letter-spacing: -.03em; text-shadow: 0 0 2px #fff8e0, 0 1px 0 #fff8e0; }
+/* bonus squares: larger, heavier labels with a dark outline; plain squares sit slightly sunk so tiles stand proud */
+.ws-board .ws-cell:is(.p2L, .p3L, .p2W, .p3W):not(.tile) { font-size: clamp(10px, 3vw, 14px); font-weight: 900; letter-spacing: .03em; color: #fff;
+  text-shadow: 0 1px 2px #000c, 0 0 2px #0009, 0 0 1px #000; }
+.ws-board[data-look="contrast"] .ws-cell:is(.p2L, .p2W):not(.tile) { color: #000; text-shadow: 0 1px 0 #fff9; }
+.ws-board .ws-cell:not(.tile):not(.p2L, .p3L, .p2W, .p3W, .pstar) { box-shadow: inset 0 2px 3px #00000030, inset 0 -1px 0 #ffffff55; }
+@media (min-width: 861px) { .ws-board .ws-cell:is(.p2L, .p3L, .p2W, .p3W):not(.tile) { font-size: clamp(10px, 2.5cqw, 21px); } }
+@media (max-width: 420px) { .ws-board .ws-cell.tile { padding: 0 .2em .1em 0; } .ws-board .ws-cell.tile sub { font-size: max(8px, .5em); right: 1px; bottom: 2px; } }
+@media (min-width: 861px) { .ws-board .ws-cell.tile { font-size: clamp(14px, 4.3cqw, 40px); } }
+.ws-lookpick { flex-wrap: wrap; } #game:has(.ws-board) #wsLook { flex: 1 1 170px; font-size: var(--fs-sm); padding: 8px 4px 8px 8px; text-overflow: ellipsis; }
