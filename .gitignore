@@ -15,4 +15,5 @@ data/profiles/
 tests/_shots/
 tests/_*.js
 .claude/loop-queue.md
+.claude/feedback-queue/
 graphify-out/

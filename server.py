@@ -87,7 +87,7 @@ AXE_DEBUG_LOCK = threading.Lock()
 FEEDBACK_STATUS = FEEDBACK_FILE.rsplit(".", 1)[0] + "-status.json"
 FEEDBACK_KINDS = ("bug", "idea", "table")      # "table" = a pinball table a player suggests for the curated list
 FEEDBACK_MAX_BYTES = 8 * 1024 * 1024
-FEEDBACK_PRIORITIES = ("high", "", "low")      # "" = normal; set in the admin tool
+FEEDBACK_PRIORITIES = ("high", "", "low", "none")   # "" = normal, "none" = never work it; set in the admin tool
 ADMIN_PORT = 8000                              # the feedback admin tool exists only on a server running on this port
 ADMIN_COOKIE = "gn_admin"
 # Screenshots pasted into the admin tool (#272): files beside the inbox, named by the server, listed on their report.
@@ -1690,6 +1690,10 @@ def admin_fields(body):
         if body["priority"] not in FEEDBACK_PRIORITIES:
             raise GameError("Unknown priority.")
         fields["priority"] = body["priority"]
+    if "touch" in body:   # 🔄 Refresh: stamps the report as changed now, so the feedback queue works on it again
+        if body["touch"] is not True:
+            raise GameError("Bad refresh.")
+        fields["touched_at"] = round(time.time(), 3)
     if "verify" in body:   # a change is in place and waits for the maintainer to check it, then resolve the report
         if type(body["verify"]) is not bool:
             raise GameError("Bad check flag.")
@@ -1802,8 +1806,8 @@ def admin_update_feedback(body):
     drop = body.get("remove_images", [])
     if not isinstance(drop, list) or not all(isinstance(n, str) for n in drop):
         raise GameError("Bad screenshot list.")
-    if len(ids) > 1 and (set(fields) - {"priority", "verify"} or shots or drop):
-        raise GameError("Only status, priority and the check flag can be changed on several reports at once.")
+    if len(ids) > 1 and (set(fields) - {"priority", "verify", "touched_at"} or shots or drop):
+        raise GameError("Only status, priority, the check flag and 🔄 Refresh can be changed on several reports at once.")
     if status == "open":   # reopened: whatever was waiting to be checked didn't do it
         fields["verify"] = False
     with FEEDBACK_LOCK:

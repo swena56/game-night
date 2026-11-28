@@ -59,7 +59,7 @@
 <body>
   <main class="admin">
     <h1>🛠️ Feedback admin</h1>
-    <p class="hint left">Review, add, edit and resolve player reports. Open it on the server's own device at <code>localhost:8000</code>, or from elsewhere over HTTPS with the admin password. Implement, review and restart need <code>localhost</code>, unless a development server has them switched on for its own network.</p>
+    <p class="hint left">Review, add, edit and resolve player reports. Open it on the server's own device at <code>localhost:8000</code>, or from elsewhere over HTTPS with the admin password. Review and restart need <code>localhost</code>, unless a development server has them switched on for its own network.</p>
     <p id="loginMessage" role="status"></p>
     <form id="login" hidden>
       <label class="field">Admin password<input type="password" id="password" autocomplete="current-password" maxlength="200" required></label>
@@ -77,7 +77,7 @@
     <div class="row" style="margin-top:12px">
       <select id="fStatus" aria-label="Status"><option value="open">Open</option><option value="done">Done</option><option value="">Open + done</option><option value="verify">👀 Needs my check</option></select>
       <select id="fKind" aria-label="Kind"><option value="">All kinds</option><option value="bug">🐞 Bugs</option><option value="idea">💡 Ideas</option><option value="table">🎱 Tables</option></select>
-      <select id="fPriority" aria-label="Priority"><option value="any">Any priority</option><option value="high">High</option><option value="">Normal</option><option value="low">Low</option></select>
+      <select id="fPriority" aria-label="Priority"><option value="any">Any priority</option><option value="high">High</option><option value="">Normal</option><option value="low">Low</option><option value="none">None</option></select>
       <select id="fGame" aria-label="Game"><option value="*">All games</option></select>
       <select id="sort" aria-label="Order"><option value="new">Newest first</option><option value="old">Oldest first</option><option value="verify">Needs my check first</option><option value="priority">By priority</option><option value="game">Grouped by game</option></select>
       <input type="search" id="search" placeholder="Search text, notes, names, #id" aria-label="Search">
@@ -88,7 +88,8 @@
       <button data-bulk='{"status":"open"}'>↩︎ Reopen</button>
       <button data-bulk='{"verify":true}' title="Add to the list waiting for your check">👀 Needs check</button>
       <button data-bulk='{"verify":false}' title="Take off the list waiting for your check">🚫 Clear check</button>
-      <select id="bulkPriority" aria-label="Set priority of selected"><option value="-">Set priority…</option><option value="high">High</option><option value="">Normal</option><option value="low">Low</option></select>
+      <button data-bulk='{"touch":true}' title="Mark as changed now, so the feedback queue works on them again">🔄 Refresh</button>
+      <select id="bulkPriority" aria-label="Set priority of selected"><option value="-">Set priority…</option><option value="high">High</option><option value="">Normal</option><option value="low">Low</option><option value="none">None</option></select>
       <button id="copy" title="Copy the selected reports as a list">📋 Copy</button>
     </div>
     <p id="message" role="status"></p>
@@ -99,7 +100,7 @@
   <script>
     // Everything from a report goes into the page through textContent or .value: reports are untrusted input.
     const KINDS = { bug: '🐞 Bug', idea: '💡 Idea', table: '🎱 Table' };
-    const PRIORITIES = [['high', 'High'], ['', 'Normal'], ['low', 'Low']];
+    const PRIORITIES = [['high', 'High'], ['', 'Normal'], ['low', 'Low'], ['none', 'None']];
     const $ = (id) => document.getElementById(id);
     const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
     const button = (text, onclick, cls = '') => { const b = el('button', cls, text); b.type = 'button'; b.onclick = onclick; return b; };
@@ -249,10 +250,6 @@
       view.box.replaceChildren(...parts);
     }
 
-    async function implementReport(i) {
-      if (!confirm(`Run Claude on #${i.id}? It edits the files in this repository. It doesn't commit, restart the server or resolve the report.`)) return;
-      if (await save('/api/admin/feedback/implement', { id: i.id }, `Claude started on #${i.id}.`)) await loadJobs();
-    }
 
     function logView(id, job) {
       let view = logs.get(id);
@@ -439,8 +436,9 @@
         el('span', '', i.source === 'admin' ? `added here${i.name ? ` for ${i.name}` : ''}` : i.name ? `from ${i.name}` : 'anonymous'));
       if (ctx.game) meta.append(el('span', '', `${ctx.game} · ${ctx.phase}`));
       if (ctx.errors?.length) meta.append(el('span', '', `⚠️ ${ctx.errors.length} JS error(s)`));
-      if (i.priority) meta.append(el('span', i.priority === 'high' ? 'high' : '', i.priority === 'high' ? '▲ High' : '▼ Low'));
+      if (i.priority) meta.append(el('span', i.priority === 'high' ? 'high' : '', { high: '▲ High', low: '▼ Low', none: '⊘ None' }[i.priority] || i.priority));
       if (needsCheck(i)) meta.append(el('span', '', '👀 Needs your check'));
+      if (i.touched_at) meta.append(el('span', '', `🔄 ${new Date(i.touched_at * 1000).toLocaleString()}`));
       if (i.status === 'done') meta.append(el('span', '', '✅ Done'));
       box.append(meta, el('div', 'text', i.text));
       if (i.note) box.append(el('div', 'note', `📝 ${i.note}`));
@@ -470,15 +468,16 @@
         actions.append(button(i.verify ? '🚫 Clear check' : '👀 Needs check',
           () => update([i.id], { verify: !i.verify }, i.verify ? `#${i.id} is off your check list.` : `#${i.id} is waiting for your check.`)));
       }
+      // 🔄 Refresh: the report counts as changed now, so the feedback queue (.claude/skills/feedback-queue) takes it up again
+      if (i.kind !== 'table') {
+        const r = button('🔄 Refresh', () => update([i.id], { touch: true }, `#${i.id} refreshed: the feedback queue will take it up.`));
+        r.title = 'Mark as changed now, so the feedback queue works on it again';
+        actions.append(r);
+      }
       if (job?.state === 'running') {
         actions.append(button('⏹ Stop Claude', async () => {
           if (await save('/api/admin/feedback/implement/stop', { id: i.id }, `Stopped the run on #${i.id}.`)) await loadJobs();
         }));
-      } else if (jobs && i.status === 'open' && i.kind !== 'table') {
-        const go = button(job ? '🤖 Implement again' : '🤖 Implement', () => implementReport(i));
-        go.disabled = running();
-        if (go.disabled) go.title = 'Claude is working on another report';
-        actions.append(go);
       }
       box.append(actions);
       if (job) box.append(steps(i, job));
@@ -602,7 +601,7 @@
     for (const b of document.querySelectorAll('[data-bulk]')) {
       b.onclick = () => {
         const change = JSON.parse(b.dataset.bulk), ids = selected().map((i) => i.id);
-        const what = change.status ? `mark ${change.status}` : change.verify ? 'add to your check list' : 'take off your check list';
+        const what = change.status ? `mark ${change.status}` : change.touch ? 'refresh' : change.verify ? 'add to your check list' : 'take off your check list';
         const unshipped = change.status === 'done' ? ids.filter((id) => hasChanges(jobs?.[id])) : [];
         if (unshipped.length) {
           if (!confirm(`Mark ${ids.length} report(s) done? This commits and pushes nothing, including Claude's changes for #${unshipped.join(', #')}.`)) return;

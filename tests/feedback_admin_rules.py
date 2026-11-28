@@ -166,6 +166,22 @@ class AdminTest(unittest.TestCase):
         self.assertEqual(self.call("/api/admin/implement", headers=session)[0], 404)
         self.assertEqual(self.call("/api/admin/restart", {}, session)[0], 404)
 
+    def test_refresh(self):
+        """🔄 Refresh stamps touched_at (and edited_at) on one or several reports, and changes nothing else."""
+        add = lambda text: self.call("/api/admin/feedback/add", {"kind": "bug", "text": text})[1]["id"]
+        ids = [add("refresh me please"), add("and me as well")]
+        got = lambda: {i["id"]: i for i in server.list_feedback()["items"] if i["id"] in ids}
+        before = got()
+        self.assertEqual(self.call("/api/admin/feedback/update", {"ids": ids, "touch": True})[0], 200)
+        after = got()
+        for i in ids:
+            self.assertTrue(after[i].get("touched_at"))
+            self.assertLess(abs(after[i]["edited_at"] - after[i]["touched_at"]), 1)   # the modified time moves too
+            self.assertEqual({k: v for k, v in after[i].items() if k not in ("touched_at", "edited_at")},
+                             {k: v for k, v in before[i].items() if k not in ("touched_at", "edited_at")})
+        for bad in (False, "yes", 1):
+            self.assertEqual(self.call("/api/admin/feedback/update", {"ids": ids[:1], "touch": bad})[0], 400, bad)
+
     def test_the_check_flag(self):
         add = lambda text: self.call("/api/admin/feedback/add", {"kind": "bug", "text": text})[1]["id"]
         ids = [add("first to check"), add("second to check")]
@@ -187,6 +203,10 @@ class AdminTest(unittest.TestCase):
         self.assertEqual([i["verify"] for i in got() if i["id"] in one], [True])
         self.assertEqual(edit(text="first to check, and more"), 200)
         self.assertEqual({i["id"]: i["verify"] for i in got()}[one[0]], False)
+        # "none" = never work it (the feedback-queue skill skips it); unknown priorities are refused
+        self.assertEqual(edit(priority="none"), 200)
+        self.assertEqual({i["id"]: i.get("priority") for i in got()}[one[0]], "none")
+        self.assertEqual(edit(priority="urgent"), 400)
 
     def test_screenshots(self):
         status, data, _ = self.call("/api/admin/feedback/add", {"kind": "bug", "text": "with a picture", "add_images": [PNG]})
