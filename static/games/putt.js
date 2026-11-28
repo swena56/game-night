@@ -700,8 +700,9 @@ UI.putt = (() => {
         roof.position.set(mx + 0.5, 0.535, -(line + 0.12)); roof.castShadow = true; g.add(roof);
         const ridge = new T.Mesh(new T.BoxGeometry(1.06, 0.03, 0.05), new T.MeshStandardMaterial({ color: 0x7d2230, roughness: 0.6 }));
         ridge.position.set(mx + 0.5, 0.655, -(line + 0.12)); g.add(ridge);
+        // (#369) the hub sits in front of the roof: the sails used to turn through its gable
         const hub = new T.Group();
-        hub.position.set(mx + 0.5, 0.5, -(line - 0.06));
+        hub.position.set(mx + 0.5, 0.5, -(line - 0.14));
         for (let i = 0; i < 4; i++) {
           const arm = new T.Group(); arm.rotation.z = i * Math.PI / 2;
           const sail = new T.Mesh(new T.BoxGeometry(0.46, 0.1, 0.015), new T.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 }));
