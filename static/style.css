@@ -1924,6 +1924,9 @@ body.light[data-color] #arena { background: radial-gradient(circle at 30% 0, col
   #home #homeTiles { grid-template-columns: repeat(auto-fill, minmax(126px, 1fr)); }
   #home .home-foot { grid-row: 9; margin-top: 6px; }
 }
+/* #352: the report shortcut, shown where there's likely a keyboard */
+.report-key { display: none; margin-left: 10px; padding: 1px 7px; border: 1px solid currentColor; border-radius: 5px; font: 700 var(--fs-xs) var(--font-mono, monospace); opacity: .75; }
+@media (hover: hover) and (pointer: fine) { .report-key { display: inline-block; } }
 /* #315: the list view: icon, name, players on one row; stars and "new" move to the end of it */
 .picker.as-list .game-tile { flex-direction: row; gap: 10px; padding: 6px 10px; text-align: left; }
 .picker.as-list .game-tile .gicon { --gi: 34px; font-size: 19px; margin-block: 0; }

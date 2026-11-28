@@ -1554,6 +1554,15 @@ document.addEventListener('keydown', (e) => {
   closeSheets();
 });
 $('#reportBtn').onclick = () => { $('#prefsPanel').hidden = true; reportDialog('bug'); };
+// (#352) F2 reports a bug from any screen, mid-game too: reportDialog pauses a game that can be paused (against bots
+// only; with other people it plays on). F2, because games and their typing boxes want the letters, Space and Shift.
+addEventListener('keydown', (e) => {
+  if (e.key !== 'F2' || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+  e.preventDefault(); e.stopPropagation();
+  if (e.repeat || !$('#modal').hidden) return;  // already in a dialog (this one, maybe): leave it be
+  closeMenu(); closeSheets(); $('#prefsPanel').hidden = true;
+  reportDialog('bug');
+}, true);
 applyPrefs();
 
 // ---------- full screen, and fitting the screen when the on-screen keyboard opens
